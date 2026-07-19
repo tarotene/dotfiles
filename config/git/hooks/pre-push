@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+# Detect worktree: git-dir differs from git-common-dir in worktrees
+git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+
+if [[ "$git_dir" != "$common_dir" ]]; then
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
+    echo "error: Push blocked from worktree branch '${branch}'" >&2
+    echo "" >&2
+    echo "  Worktree branches are for local development only." >&2
+    echo "  Merge back to your parent branch first, then push from there." >&2
+    echo "" >&2
+    echo "  Override: git push --no-verify" >&2
+    exit 1
+fi
+
+# Chain to repo-local pre-push hook (core.hooksPath skips .git/hooks/)
+local_hook="${common_dir}/hooks/pre-push"
+if [[ -x "$local_hook" ]]; then
+    exec "$local_hook" "$@"
+fi

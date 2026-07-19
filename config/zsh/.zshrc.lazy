@@ -1,0 +1,14 @@
+# .zshrc.lazy for Darwin on aarch64
+# NOTE: Load via zsh plugin manager in a deffered manner.
+
+# shellcheck disable=SC2148,SC2155
+
+# Terraform CLI completion
+# NOTE: `terraform -install-autocomplete` does not work.
+autoload -Uz compinit && compinit -C
+autoload -U bashcompinit && bashcompinit
+complete -o nospace -C terraform terraform
+
+# Custom shell functions
+autoload -U gpd
+# shellcheck disable=SC1009,SC1036,SC1054,SC1056,SC1072,SC1073

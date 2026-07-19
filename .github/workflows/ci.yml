@@ -1,0 +1,70 @@
+name: CI
+
+# Minimal checks for the surviving escape-hatch shell layer. The declarative
+# core (flake evaluation + per-host activation build) is validated separately by
+# nix.yml; this workflow only lints and dry-runs the shell scripts that remain
+# outside home-manager (bootstrap + system-layer installer + SOPS/SSH helpers).
+on:
+  push:
+    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+  pull_request:
+    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    name: Shell script validation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck surviving scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
+          # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
+          # removed in Phase 4 (#218); only the escape-hatch scripts survive.
+          scandir: '.'
+          # config/ holds zsh modules and the fcitx5 profile, which shellcheck
+          # cannot parse (SC1071). zsh syntax is validated by the step below.
+          ignore_paths: config
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      - name: Install zsh for syntax validation
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh
+
+      - name: Zsh module syntax check
+        run: |
+          set -euo pipefail
+          echo "Checking zsh module syntax..."
+          shopt -s nullglob
+          fail=0
+          for f in config/zsh/modules/*.zsh config/zsh/*.zsh; do
+            echo "zsh -n $f"
+            if ! zsh -n "$f"; then
+              echo "::error file=$f::zsh syntax error"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+  dry-run:
+    runs-on: ubuntu-latest
+    name: Escape-hatch dry-run
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bootstrap.sh --dry-run
+        run: ./bootstrap.sh --dry-run
+
+      - name: install-packages.sh --dry-run
+        run: ./scripts/install-packages.sh --dry-run

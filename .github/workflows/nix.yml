@@ -1,0 +1,57 @@
+name: Nix
+
+# Path filters scope runs to inputs that actually affect the build: the flake,
+# the home-manager modules, and the literal config files they embed via
+# xdg.configFile (plus this workflow itself).
+on:
+  push:
+    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "home/**"
+      - "config/**"
+      - ".github/workflows/nix.yml"
+  pull_request:
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "home/**"
+      - "config/**"
+      - ".github/workflows/nix.yml"
+  workflow_dispatch:
+
+# Key the group on the commit SHA so the push and pull_request events for the
+# same commit collapse into one run (avoids duplicate, occasionally flaky runs).
+concurrency:
+  group: nix-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  flake-check:
+    runs-on: ubuntu-latest
+    name: nix flake check
+    steps:
+      - uses: actions/checkout@v4
+      # Determinate Systems installer (ADR-0001).
+      - uses: DeterminateSystems/nix-installer-action@main
+      # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
+      # in Feb 2025. We rely on cache.nixos.org substituters here; a FlakeHub
+      # cache action can be added later once a token is provisioned.
+      - run: nix flake check --print-build-logs
+
+  build-host:
+    runs-on: ubuntu-latest
+    name: build ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [ personal-pop, company-pop-old, company-pop-new ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build activation package
+        run: |
+          nix build \
+            ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
+            --print-build-logs --no-link

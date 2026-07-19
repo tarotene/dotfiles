@@ -1,0 +1,25 @@
+# NOTE: COSMIC desktop does not natively support XDG autostart.
+# However, Pop!_OS 24.04 uses systemd-xdg-autostart-generator as a workaround,
+# which converts this .desktop file into a systemd user service automatically.
+#
+# This file will be loaded as: app-fcitx5@autostart.service
+# Verify with: systemctl --user status app-fcitx5@autostart.service
+#
+# Related issues (tracking COSMIC native implementation):
+# - https://github.com/pop-os/cosmic-session/issues/67
+# - https://github.com/pop-os/cosmic-epoch/issues/274
+
+[Desktop Entry]
+Type=Application
+Name=Fcitx 5
+GenericName=Input Method
+Comment=Start Input Method
+Exec=/usr/bin/fcitx5
+Icon=fcitx
+Terminal=false
+Categories=System;Utility;
+StartupNotify=false
+X-GNOME-Autostart-Phase=Applications
+X-GNOME-AutoRestart=true
+X-GNOME-Autostart-Notify=false
+X-KDE-autostart-after=panel

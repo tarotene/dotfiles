@@ -1,0 +1,66 @@
+#!/bin/sh
+# POSIX-compliant common environment variable settings
+# Basic configuration loaded by all shells
+
+# XDG Base Directory specification compliance
+[ -z "$XDG_CONFIG_HOME" ] && export XDG_CONFIG_HOME="$HOME/.config"
+[ -z "$XDG_DATA_HOME" ] && export XDG_DATA_HOME="$HOME/.local/share"
+[ -z "$XDG_STATE_HOME" ] && export XDG_STATE_HOME="$HOME/.local/state"
+[ -z "$XDG_CACHE_HOME" ] && export XDG_CACHE_HOME="$HOME/.cache"
+
+# Cargo path (Rust uses default location)
+if [ -d "$HOME/.cargo/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.cargo/bin:"*) ;;
+        *) export PATH="$HOME/.cargo/bin:$PATH" ;;
+    esac
+fi
+
+# Deno path
+if [ -d "$HOME/.deno/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.deno/bin:"*) ;;
+        *) export PATH="$HOME/.deno/bin:$PATH" ;;
+    esac
+fi
+
+# Bun path
+if [ -d "$HOME/.bun/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.bun/bin:"*) ;;
+        *) export PATH="$HOME/.bun/bin:$PATH" ;;
+    esac
+fi
+
+# Locale settings: default LANG only when unset. Never export LC_ALL — it
+# force-overrides every LC_* category (including the session-level LC_CTYPE
+# from environment.d) and cannot be selectively undone downstream.
+if [ -z "$LANG" ]; then
+    if locale -a 2>/dev/null | grep -qE '^en_US\.(UTF-8|utf8)$'; then
+        # Use system's preferred UTF-8 variant
+        _locale=$(locale -a 2>/dev/null | grep -E '^en_US\.(UTF-8|utf8)$' | head -1)
+        export LANG="$_locale"
+        unset _locale
+    else
+        # Fallback to C.UTF-8/C.utf8, then plain POSIX C
+        _locale=$(locale -a 2>/dev/null | grep -E '^C\.(UTF-8|utf8)$' | head -1)
+        export LANG="${_locale:-C}"
+        unset _locale
+    fi
+fi
+
+# Java and Go are consolidated into mise (#215 / ADR-0002); SDKMAN! and goup
+# were retired. mise manages their versions and shims via its shell hook.
+
+# Colors for script output
+export COLOR_RED='\033[0;31m'
+export COLOR_GREEN='\033[0;32m'
+export COLOR_YELLOW='\033[1;33m'
+export COLOR_BLUE='\033[0;34m'
+export COLOR_CYAN='\033[0;36m'
+export COLOR_MAGENTA='\033[0;35m'
+export COLOR_NC='\033[0m' # No Color
+
+# Default editor
+[ -z "$EDITOR" ] && export EDITOR="vim"
+[ -z "$VISUAL" ] && export VISUAL="$EDITOR"

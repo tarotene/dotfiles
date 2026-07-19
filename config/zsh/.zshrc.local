@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+# Local Zsh configuration - not tracked by git
+# This file is for personal/machine-specific settings
+
+# WORKAROUND: Force ~/.local/bin to be in PATH
+# Issue: ~/.local/bin is not being added to PATH in some shell contexts
+if [[ -d "$HOME/.local/bin" ]]; then
+    # Check for exact match to avoid partial directory name matches
+    local found=0
+    for p in ${(s/:/)PATH}; do
+        if [[ "$p" == "$HOME/.local/bin" ]]; then
+            found=1
+            break
+        fi
+    done
+    if [[ $found -eq 0 ]]; then
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+fi

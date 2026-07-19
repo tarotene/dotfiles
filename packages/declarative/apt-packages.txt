@@ -1,0 +1,29 @@
+# System-layer APT packages (Phase 2 / #216).
+#
+# User-space CLIs now live in home.packages (nixpkgs).  This file retains ONLY
+# what genuinely requires root, a system service, or kernel/driver integration.
+# See ADR-0001 / ADR-0002 for the boundary rationale.
+
+# --- Login shell fallback (system-level) ---
+# The primary login shell is now the Nix-provided zsh (home/modules/shell.nix,
+# #245); apt's zsh is kept only so a valid shell always exists even before
+# Nix/home-manager is bootstrapped.
+zsh
+
+# --- Build toolchain (C / C++ / system libs) ---
+build-essential
+libudev-dev
+pkg-config
+
+# --- Cross C toolchain for embedded / C-Rust FFI (ADR-0002) ---
+gcc-arm-none-eabi
+libnewlib-arm-none-eabi
+libnewlib-dev
+
+# --- Input method (system daemon — fcitx5 stack) ---
+fcitx5
+fcitx5-mozc
+fcitx5-config-qt
+
+# --- Smartcard / YubiKey (scdaemon CCID, no pcscd) ---
+scdaemon
