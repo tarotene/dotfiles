@@ -92,7 +92,7 @@ dotfiles/
 ├── scripts/                  # escape-hatch scripts (install-packages, sops, ssh)
 ├── keys/                     # committed public keys
 ├── bootstrap.sh              # greenfield entrypoint
-└── docs/{adr,cutover-runbook.md,nixification-roadmap.md}
+└── docs/{adr,operations.md,cutover-runbook.md,nixification-roadmap.md}
 ```
 
 ## Architecture Decision Records
@@ -102,6 +102,18 @@ dotfiles/
 - [ADR-0003](docs/adr/0003-secrets-and-identity.md) — secrets & identity (YubiKey-rooted, runtime SOPS). See the Amendment for the deployed model.
 - [ADR-0004](docs/adr/0004-repo-identity-and-relocation.md) — repo identity & relocation.
 - [ADR-0005](docs/adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, not auth.
+
+## Routine operations
+
+Refresh the pinned inputs on a cadence (weekly is enough), and consult the
+tool-layer decision flow before installing anything new — both in
+[`docs/operations.md`](docs/operations.md):
+
+```bash
+nix flake update
+nix flake check
+home-manager switch --flake .#"$(hostname)" -b backup
+```
 
 ## Rollback
 
