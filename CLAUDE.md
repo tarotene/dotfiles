@@ -50,6 +50,7 @@ dotfiles/
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
 ├── docs/
 │   ├── adr/0001..0005        # architecture decision records
+│   ├── operations.md         # routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -107,6 +108,7 @@ dotfiles/
 - `home-manager switch --flake .#"$(hostname)" -b backup` — apply (see runbook).
 - Rollback via generations: `home-manager generations`, then `--rollback`.
 - Provisioning procedures: `docs/cutover-runbook.md`.
+- Routine flake update + which layer a new tool goes in: `docs/operations.md`.
 
 ## Scope boundaries
 - Do **not** manage drivers, the display stack, or anything root-owned through
