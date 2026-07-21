@@ -79,6 +79,13 @@ Secrets load automatically in new shells (or `reload_sops_secrets`). With the
 YubiKey absent the shell still starts cleanly (silent failure preserved). See
 [ADR-0003](docs/adr/0003-secrets-and-identity.md).
 
+## Company host: CrowdStrike Falcon Sensor
+
+Falcon Sensor is a root-owned system service and is installed separately from
+home-manager and the ordinary apt package list. On `company-pop-new`, follow
+the dedicated [Falcon Sensor runbook](docs/falcon-sensor.md) after bootstrap.
+The company-provided `.deb` and CID must remain outside Git.
+
 ## Verify
 
 ```bash

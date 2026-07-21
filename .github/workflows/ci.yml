@@ -68,3 +68,11 @@ jobs:
 
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
+
+      - name: install-falcon-sensor.sh --dry-run
+        env:
+          FALCON_CID: dry-run-placeholder
+        run: |
+          ./scripts/install-falcon-sensor.sh \
+            --dry-run \
+            --package /tmp/falcon-sensor.deb
