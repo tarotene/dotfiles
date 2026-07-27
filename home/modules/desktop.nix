@@ -4,12 +4,52 @@
 # The fcitx5 *packages* stay an apt escape hatch (system input method); only the
 # user-level env/autostart/profile wiring is managed here.
 #
+# How nix-installed GUI apps actually reach fcitx5 — and what was measured
+# rather than assumed — is written up in docs/ime-chrome-diagnosis.md.
+#
 # The fcitx5 profile is seeded once, not symlinked (fcitx5 rewrites it at
 # runtime). If fcitx5 wrote its default profile before the first switch,
 # recover with: rm ~/.config/fcitx5/profile && home-manager switch && fcitx5 -r
 { lib, pkgs, ... }:
 let
   repoConfig = ../../config;
+
+  # Restart fcitx5 when the session locks. fcitx5 sometimes consumes the trigger
+  # key without switching the input method, and the failures cluster hard right
+  # after an unlock: one measured burst was six consecutive Ctrl+Space presses in
+  # two seconds, all swallowed, recovering only when an unrelated focus event
+  # arrived nine seconds later. A freshly started fcitx5 does not show it.
+  #
+  # The lock is the only observable moment: COSMIC emits logind's `Session.Lock`
+  # but never `Unlock`, and never calls `SetLockedHint`. Restarting on the lock
+  # means fcitx5 is new by the time the screen comes back.
+  #
+  # Restarting the autostart *unit* rather than exec'ing fcitx5 keeps the daemon
+  # owned by its own unit instead of adopting it into this watcher's cgroup. The
+  # unit name is what systemd-xdg-autostart-generator derives from the
+  # fcitx5.desktop deployed below — keep the two in step. The fallback covers a
+  # hand-started fcitx5 (e.g. while debugging), where the unit sits inactive.
+  fcitx5LockRecover = pkgs.writeShellScript "fcitx5-lock-recover" ''
+    set -u
+    unit="app-fcitx5@autostart.service"
+    last=0
+    ${pkgs.glib}/bin/gdbus monitor --system --dest org.freedesktop.login1 \
+      | while IFS= read -r line; do
+          case "$line" in
+            *Session.Lock*) ;;
+            *) continue ;;
+          esac
+          # Debounce: one restart per lock, not one per stray signal.
+          now=$(${pkgs.coreutils}/bin/date +%s)
+          [ $((now - last)) -lt 10 ] && continue
+          last=$now
+          if /usr/bin/systemctl --user --quiet is-active "$unit"; then
+            /usr/bin/systemctl --user restart "$unit" || true
+          else
+            /usr/bin/fcitx5 -r -d || true
+          fi
+        done
+  '';
 in
 {
   home.packages = [
@@ -18,11 +58,15 @@ in
     pkgs.nerd-fonts.fira-code
 
     # GUI apps (unfree; allowUnfree is set at the flake's pkgs import).
-    # All three run under XWayland by default; fcitx5 input works via the
-    # GTK/QT_IM_MODULE vars in environment.d/10-fcitx5.conf. If screenshare
-    # or fractional scaling misbehaves, set NIXOS_OZONE_WL=1 in environment.d
-    # — the nixpkgs chrome/slack wrappers then add --ozone-platform-hint=auto
-    # --enable-wayland-ime (re-verify Japanese input after flipping it).
+    #
+    # Chrome 149 already runs as a native Wayland client and already binds
+    # zwp_text_input_v3 — measured with WAYLAND_DEBUG=1, see
+    # docs/ime-chrome-diagnosis.md. Adding --ozone-platform-hint=auto /
+    # --enable-wayland-ime / --wayland-text-input-version=3 changes nothing at
+    # the protocol level, so do not add them expecting to fix Japanese input.
+    # Slack Desktop is native Wayland too (`ozone-platform=wayland`); with all
+    # three of these running, `xprop -root _NET_CLIENT_LIST` is empty, so nothing
+    # here is on XWayland or XIM.
     pkgs.google-chrome
     pkgs.slack
     pkgs.zoom-us
@@ -43,6 +87,24 @@ in
     "environment.d/20-locale.conf".source = repoConfig + "/environment.d/20-locale.conf";
   };
 
+  # Workaround service for the fcitx5 trigger-key failure — see the comment on
+  # fcitx5LockRecover above, docs/ime-chrome-diagnosis.md, and issue #14. This is
+  # exposure reduction, not a fix: the failure also occurs mid-session, away from
+  # any lock.
+  systemd.user.services.fcitx5-lock-recover = {
+    Unit = {
+      Description = "Restart fcitx5 on session lock (fcitx5 trigger-key workaround)";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${fcitx5LockRecover}";
+      Restart = "always";
+      RestartSec = "5s";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   # X11-session fallback; Wayland/COSMIC relies on environment.d + autostart.
   # im-config's 23_fcitx5.rc starts /usr/bin/fcitx5 and sets the IM variables.
   home.file.".xinputrc".text = "run_im fcitx5\n";
@@ -60,6 +122,37 @@ in
     profile="''${XDG_CONFIG_HOME:-$HOME/.config}/fcitx5/profile"
     if [ ! -e "$profile" ]; then
       run install -D -m 600 ${repoConfig + "/fcitx5/profile"} "$profile"
+    fi
+  '';
+
+  # Same seed-if-absent treatment for fcitx5's main config, which fcitx5 also
+  # rewrites at runtime. The value worth carrying to a new machine is
+  # ShareInputState=All: with the default (No) every focus change drops the
+  # input method back to inactive, so Ctrl+Space has to be pressed constantly —
+  # and fcitx5 sometimes swallows the trigger key entirely (see
+  # docs/ime-chrome-diagnosis.md and issue #14). Sharing the state across
+  # applications cuts how often the key must be pressed, which is the only lever
+  # available locally; it does not make any individual press more reliable.
+  # ActiveByDefault stays False on purpose: True would start terminals and the
+  # omnibox in Japanese mode.
+  home.activation.seedFcitx5Config = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    cfg="''${XDG_CONFIG_HOME:-$HOME/.config}/fcitx5/config"
+    if [ ! -e "$cfg" ]; then
+      run install -D -m 600 ${repoConfig + "/fcitx5/config"} "$cfg"
+    fi
+  '';
+
+  # Quarantine the pre-migration hand-placed autostart entry. Both it and the
+  # home-managed fcitx5.desktop become app-*@autostart.service units execing
+  # /usr/bin/fcitx5, so they race at login and the loser dies with "Unable to
+  # request dbus name" — leaving the surviving daemon nondeterministically
+  # either the managed or the unmanaged one. Renamed rather than deleted: the
+  # file is outside home-manager's ownership, and the generator only picks up
+  # *.desktop, so a .bak suffix is enough to retire it.
+  home.activation.quarantineStrayFcitx5Autostart = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    stray="''${XDG_CONFIG_HOME:-$HOME/.config}/autostart/org.fcitx.Fcitx5.desktop"
+    if [ -e "$stray" ] || [ -L "$stray" ]; then
+      run mv -f "$stray" "$stray.bak"
     fi
   '';
 
