@@ -64,3 +64,12 @@ Decision flow for adding a tool, per
 A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /
 pipx) should be reclaimed into the right layer — workflow tracked in
 [#4](https://github.com/tarotene/dotfiles/issues/4).
+
+For a **GUI app** landing in step 4, check how it actually reaches fcitx5 — it is
+not obvious and differs per app. A nix-installed app cannot load the apt GTK/Qt
+immodule, so one that runs under XWayland (Slack, Zoom) falls back to XIM, while
+one that goes native Wayland (Chrome) uses `zwp_text_input_v3`. Measure before
+assuming: `xprop -root _NET_CLIENT_LIST` shows whether anything is on XWayland at
+all, and `WAYLAND_DEBUG=1` shows which protocols the app binds. Known-unresolved
+issue and the measurements already taken:
+[`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md).
