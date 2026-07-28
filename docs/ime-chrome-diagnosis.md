@@ -217,35 +217,80 @@ Lock-adjacency, on the evidence available: of the two locks with logind data, on
 failures at all. Bursts also occur mid-session with no lock nearby. So the lock
 is a strong aggravator, not the only trigger.
 
-## Mitigation 1: restart fcitx5 on session lock
+## Withdrawn: restarting fcitx5 on session lock
 
-`systemd.user.services.fcitx5-lock-recover` in `home/modules/desktop.nix` watches
-logind for `Session.Lock` and restarts fcitx5, so the daemon is fresh by the time
-the screen comes back. It restarts the `app-fcitx5@autostart.service` unit rather
-than exec'ing fcitx5, to keep the daemon owned by its own unit; it falls back to
-`fcitx5 -r -d` when that unit is inactive (a hand-started fcitx5, e.g. while
-debugging).
+This was implemented, shipped, and taken back out. Recording it because the
+reasoning looked sound and the failure mode was not obvious.
 
-The lock is the only observable moment — COSMIC emits `Session.Lock` but never
-`Unlock` and never calls `SetLockedHint`, so an unlock-triggered restart is not
-implementable here.
+The idea: watch logind for `Session.Lock` and restart fcitx5, so the daemon is
+fresh by the time the screen comes back. The lock is the only observable moment —
+COSMIC emits `Session.Lock` but never `Unlock` and never calls `SetLockedHint`.
 
-**Unverified assumption**: that restarting fcitx5 *while the screen is locked*
-leaves it able to grab the input method after the unlock. It has not been
-observed failing, but it has not been proven either. If Japanese input is dead
-immediately after every unlock from now on, this service is the first thing to
-suspect — `systemctl --user stop fcitx5-lock-recover` to rule it out.
+Why it was withdrawn:
 
-## Mitigation 2: press the trigger key less often
+- **It made a transient failure permanent.** The service restarted the
+  `app-fcitx5@autostart.service` unit when that unit was active, and exec'd
+  `fcitx5 -r -d` directly when it was not. Both paths could end up racing for the
+  D-Bus name, and the loser exits:
 
-Reduces ambient exposure only, for the reason above.
+  ```
+  11:02:03  app-fcitx5@autostart.service: ExecStart=/usr/bin/fcitx5
+            "Failed to create addon: dbus Unable to request dbus name.
+             Is there another fcitx already running?"
+            -> unit inactive (dead)
+  11:02:22  fcitx5 -r -d running with PPID 1, outside any fcitx5 unit
+  ```
+
+  With the unit dead there is nothing left for the next lock to restart, so
+  instead of a failure that clears itself in seconds, Japanese input stays broken
+  until fcitx5 is restarted by hand.
+
+- **The fallback branch detached fcitx5 from its unit**, which is wrong
+  independently of the race.
+
+- **Its central assumption was never proven**: that restarting fcitx5 while the
+  screen is locked leaves it able to grab the input method after the unlock.
+
+- **It was only ever exercised on one branch.** Before a reboot the autostart
+  unit was inactive (fcitx5 had been started by hand for tracing), so every
+  observation came from the fallback path. The unit-restart path — the one that
+  runs in normal operation — first executed after a reboot, and that is when the
+  breakage appeared. A workaround that changes behaviour depending on how fcitx5
+  was started needs testing across a reboot before it is trusted.
+
+Recovery, if this state is ever reached again:
+
+```bash
+systemctl --user stop fcitx5-lock-recover 2>/dev/null   # if it still exists
+pkill -x fcitx5
+systemctl --user start app-fcitx5@autostart.service
+```
+
+Then confirm the unit's own instance loaded the Wayland pieces:
+
+```bash
+journalctl --user -u app-fcitx5@autostart.service -b \
+  | grep -E 'Loaded addon (waylandim|mozc)|classicui for wayland'
+```
+
+## What to do when it happens
+
+- **Move focus away and back** (click another window, click back). The transient
+  state clears on a focus event — that is what the 17:28:35 recovery shows.
+- If it persists, restart fcitx5 **through its unit**, never by hand, so it stays
+  owned by systemd: `systemctl --user restart app-fcitx5@autostart.service`.
+
+## The one mitigation that stayed: press the trigger key less often
+
+Reduces ambient exposure only, for the reason above. It is the only lever left
+after the lock-triggered restart was withdrawn.
 
 `ShareInputState=No` (fcitx5's default) gives every application its own
 active/inactive state, so with `ActiveByDefault=False` the input method drops
 back to `keyboard-us` on every focus change and `Ctrl+Space` has to be pressed
 again. **`ShareInputState=All`** shares one state across applications: press once,
-and moving between Chrome, the terminal and Slack keeps it. Fewer presses, so
-fewer encounters with the 14% failure.
+and moving between Chrome, the terminal and Slack keeps it. Fewer presses means
+fewer encounters — it does not make any individual press more reliable.
 
 `ActiveByDefault` stays `False` deliberately. `True` would remove nearly all
 remaining presses, but every text field — terminals, the omnibox, password

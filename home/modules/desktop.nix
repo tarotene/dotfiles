@@ -14,42 +14,6 @@
 let
   repoConfig = ../../config;
 
-  # Restart fcitx5 when the session locks. fcitx5 sometimes consumes the trigger
-  # key without switching the input method, and the failures cluster hard right
-  # after an unlock: one measured burst was six consecutive Ctrl+Space presses in
-  # two seconds, all swallowed, recovering only when an unrelated focus event
-  # arrived nine seconds later. A freshly started fcitx5 does not show it.
-  #
-  # The lock is the only observable moment: COSMIC emits logind's `Session.Lock`
-  # but never `Unlock`, and never calls `SetLockedHint`. Restarting on the lock
-  # means fcitx5 is new by the time the screen comes back.
-  #
-  # Restarting the autostart *unit* rather than exec'ing fcitx5 keeps the daemon
-  # owned by its own unit instead of adopting it into this watcher's cgroup. The
-  # unit name is what systemd-xdg-autostart-generator derives from the
-  # fcitx5.desktop deployed below — keep the two in step. The fallback covers a
-  # hand-started fcitx5 (e.g. while debugging), where the unit sits inactive.
-  fcitx5LockRecover = pkgs.writeShellScript "fcitx5-lock-recover" ''
-    set -u
-    unit="app-fcitx5@autostart.service"
-    last=0
-    ${pkgs.glib}/bin/gdbus monitor --system --dest org.freedesktop.login1 \
-      | while IFS= read -r line; do
-          case "$line" in
-            *Session.Lock*) ;;
-            *) continue ;;
-          esac
-          # Debounce: one restart per lock, not one per stray signal.
-          now=$(${pkgs.coreutils}/bin/date +%s)
-          [ $((now - last)) -lt 10 ] && continue
-          last=$now
-          if /usr/bin/systemctl --user --quiet is-active "$unit"; then
-            /usr/bin/systemctl --user restart "$unit" || true
-          else
-            /usr/bin/fcitx5 -r -d || true
-          fi
-        done
-  '';
 in
 {
   home.packages = [
@@ -87,23 +51,10 @@ in
     "environment.d/20-locale.conf".source = repoConfig + "/environment.d/20-locale.conf";
   };
 
-  # Workaround service for the fcitx5 trigger-key failure — see the comment on
-  # fcitx5LockRecover above, docs/ime-chrome-diagnosis.md, and issue #14. This is
-  # exposure reduction, not a fix: the failure also occurs mid-session, away from
-  # any lock.
-  systemd.user.services.fcitx5-lock-recover = {
-    Unit = {
-      Description = "Restart fcitx5 on session lock (fcitx5 trigger-key workaround)";
-      PartOf = [ "graphical-session.target" ];
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      ExecStart = "${fcitx5LockRecover}";
-      Restart = "always";
-      RestartSec = "5s";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
-  };
+  # Deliberately NOT here: a service that restarts fcitx5 on logind's
+  # Session.Lock, to dodge the trigger-key failure that clusters after an unlock.
+  # It was tried and withdrawn — it made the failure permanent instead of
+  # transient. See docs/ime-chrome-diagnosis.md ("Withdrawn").
 
   # X11-session fallback; Wayland/COSMIC relies on environment.d + autostart.
   # im-config's 23_fcitx5.rc starts /usr/bin/fcitx5 and sets the IM variables.
