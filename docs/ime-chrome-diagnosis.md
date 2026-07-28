@@ -217,58 +217,106 @@ Lock-adjacency, on the evidence available: of the two locks with logind data, on
 failures at all. Bursts also occur mid-session with no lock nearby. So the lock
 is a strong aggravator, not the only trigger.
 
-## Withdrawn: restarting fcitx5 on session lock
+## Withdrawn, retryable under conditions: restarting fcitx5 on session lock
 
-This was implemented, shipped, and taken back out. Recording it because the
-reasoning looked sound and the failure mode was not obvious.
+Implemented, shipped, and taken back out. Recorded because the reasoning looked
+sound, and because the first write-up of *why* it failed was itself wrong.
 
 The idea: watch logind for `Session.Lock` and restart fcitx5, so the daemon is
 fresh by the time the screen comes back. The lock is the only observable moment —
 COSMIC emits `Session.Lock` but never `Unlock` and never calls `SetLockedHint`.
 
-Why it was withdrawn:
+### What actually happened
 
-- **It made a transient failure permanent.** The service restarted the
-  `app-fcitx5@autostart.service` unit when that unit was active, and exec'd
-  `fcitx5 -r -d` directly when it was not. Both paths could end up racing for the
-  D-Bus name, and the loser exits:
+After a reboot, Japanese input stopped recovering from lock/unlock at all, and
+the autostart unit was found dead:
 
-  ```
-  11:02:03  app-fcitx5@autostart.service: ExecStart=/usr/bin/fcitx5
-            "Failed to create addon: dbus Unable to request dbus name.
-             Is there another fcitx already running?"
-            -> unit inactive (dead)
-  11:02:22  fcitx5 -r -d running with PPID 1, outside any fcitx5 unit
-  ```
+```
+11:02:03  app-fcitx5@autostart.service: ExecStart=/usr/bin/fcitx5
+          "Failed to create addon: dbus Unable to request dbus name.
+           Is there another fcitx already running?"
+          -> unit inactive (dead)
+11:02:22  fcitx5 -r -d running with PPID 1, outside any fcitx5 unit
+```
 
-  With the unit dead there is nothing left for the next lock to restart, so
-  instead of a failure that clears itself in seconds, Japanese input stays broken
-  until fcitx5 is restarted by hand.
+The detached `fcitx5 -r -d` was **started by hand**, not by the service — its
+cgroup was a terminal scope, not the watcher's. (The first version of this
+section blamed the service's fallback branch for it. That was a misattribution:
+the cgroup contradicted the claim and was not followed up.)
 
-- **The fallback branch detached fcitx5 from its unit**, which is wrong
-  independently of the race.
+The real sequence:
 
-- **Its central assumption was never proven**: that restarting fcitx5 while the
+1. fcitx5 was restarted by hand with `fcitx5 -r -d` — `-r` replaces the running
+   instance, so the unit's `ExecStart` process exits and the unit goes inactive;
+   `-d` daemonizes, so the survivor sits outside any fcitx5 unit.
+2. On the next lock the service ran
+   `systemctl --user restart app-fcitx5@autostart.service`.
+3. The unit started `/usr/bin/fcitx5`, could not take the D-Bus name because the
+   hand-started instance held it, and exited — leaving the unit dead.
+
+With the unit dead there is nothing for the next lock to restart, so a failure
+that used to clear itself within seconds became one that persists until fcitx5 is
+restarted manually. **That** is the reason to keep it out: the workaround made the
+failure worse in a state that is easy to reach.
+
+### Why it stays out for now
+
+- **Its central assumption is still unproven**: that restarting fcitx5 while the
   screen is locked leaves it able to grab the input method after the unlock.
-
-- **It was only ever exercised on one branch.** Before a reboot the autostart
-  unit was inactive (fcitx5 had been started by hand for tracing), so every
+  Nothing observed either confirms or refutes it.
+- **It cannot coexist with hand-started fcitx5 instances**, which are exactly what
+  gets used while debugging this bug.
+- **It was only ever exercised on one branch.** Before the reboot the autostart
+  unit was inactive (fcitx5 had been hand-started for tracing), so every
   observation came from the fallback path. The unit-restart path — the one that
-  runs in normal operation — first executed after a reboot, and that is when the
-  breakage appeared. A workaround that changes behaviour depending on how fcitx5
-  was started needs testing across a reboot before it is trusted.
+  runs in normal operation — first executed after the reboot. A change whose
+  behaviour depends on how fcitx5 was started has to be tested across a reboot.
 
-Recovery, if this state is ever reached again:
+### Conditions for retrying it
+
+Not a dead end, but it may only be retried from a **clean state**, verified
+first, and the retry must answer the open assumption rather than assume it.
+
+Preconditions, all four checked immediately before the test:
+
+```bash
+# 1. exactly one fcitx5, and it belongs to its unit
+pgrep -xc fcitx5                                    # expect 1
+cat /proc/"$(pgrep -x fcitx5)"/cgroup                # expect app-fcitx5@autostart.service
+# 2. the unit is the owner, not a leftover
+systemctl --user is-active app-fcitx5@autostart.service   # expect active
+# 3. no hand-started instance anywhere
+ps -eo args | grep -c '[f]citx5 -r'                  # expect 0
+# 4. session freshly rebooted, so the unit path is the one under test
+uptime -p
+```
+
+The test itself must confirm the assumption directly, not by feel: restart fcitx5
+**while the screen is locked**, then after unlocking check that its Wayland side
+came up and that the input method is reachable.
+
+```bash
+journalctl --user -u app-fcitx5@autostart.service -b \
+  | grep -E 'Loaded addon (waylandim|mozc)|classicui for wayland|Unable to request'
+```
+
+If `waylandim` and `classicui for wayland` are absent, or `Unable to request dbus
+name` appears, the assumption is refuted and the approach is finished.
+
+Design changes any retry should carry:
+
+- **No direct-exec fallback.** Restart the unit or do nothing. The fallback is
+  what makes a race with a hand-started instance possible in the first place.
+- **Refuse to act when the state is not clean** — if `pgrep -xc fcitx5` is not 1,
+  or the running fcitx5 is outside the unit's cgroup, log and skip rather than
+  restart into a name conflict.
+
+### Recovery, if this state is reached again
 
 ```bash
 systemctl --user stop fcitx5-lock-recover 2>/dev/null   # if it still exists
 pkill -x fcitx5
 systemctl --user start app-fcitx5@autostart.service
-```
-
-Then confirm the unit's own instance loaded the Wayland pieces:
-
-```bash
 journalctl --user -u app-fcitx5@autostart.service -b \
   | grep -E 'Loaded addon (waylandim|mozc)|classicui for wayland'
 ```
@@ -277,8 +325,18 @@ journalctl --user -u app-fcitx5@autostart.service -b \
 
 - **Move focus away and back** (click another window, click back). The transient
   state clears on a focus event — that is what the 17:28:35 recovery shows.
-- If it persists, restart fcitx5 **through its unit**, never by hand, so it stays
-  owned by systemd: `systemctl --user restart app-fcitx5@autostart.service`.
+- If it persists, restart fcitx5 **through its unit**:
+
+  ```bash
+  systemctl --user restart app-fcitx5@autostart.service
+  ```
+
+- **Do not use `fcitx5 -r -d`.** `-r` replaces the running instance, so the unit's
+  `ExecStart` process exits and the unit goes inactive; `-d` daemonizes, so the
+  survivor ends up outside any fcitx5 unit with PPID 1. The result works, but
+  fcitx5 is no longer owned by systemd, and anything that later restarts the unit
+  hits a D-Bus name conflict and leaves the unit dead. That is how the state
+  described above was reached.
 
 ## The one mitigation that stayed: press the trigger key less often
 

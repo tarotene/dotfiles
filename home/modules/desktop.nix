@@ -53,8 +53,12 @@ in
 
   # Deliberately NOT here: a service that restarts fcitx5 on logind's
   # Session.Lock, to dodge the trigger-key failure that clusters after an unlock.
-  # It was tried and withdrawn — it made the failure permanent instead of
-  # transient. See docs/ime-chrome-diagnosis.md ("Withdrawn").
+  # Tried and withdrawn — racing a hand-started fcitx5 for the D-Bus name left
+  # the autostart unit dead, turning a failure that clears itself in seconds into
+  # one that persists. It is retryable, but only from a verified-clean state and
+  # only if it answers the open assumption; the preconditions and the required
+  # design changes are in docs/ime-chrome-diagnosis.md ("Withdrawn, retryable
+  # under conditions").
 
   # X11-session fallback; Wayland/COSMIC relies on environment.d + autostart.
   # im-config's 23_fcitx5.rc starts /usr/bin/fcitx5 and sets the IM variables.
