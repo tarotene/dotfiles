@@ -141,7 +141,10 @@ load_cid_from_sops() {
     local line
 
     [[ -x "$helper" ]] || return 1
-    line=$("$helper" 2>/dev/null | grep '^export FALCON_CID=') || return 1
+    # Bounded on purpose.  With the YubiKey absent gpg can block on the card
+    # rather than fail, and the helper carries no timeout of its own, so an
+    # unbounded call can hang the installer.  The hint below is more useful.
+    line=$(timeout 30 "$helper" 2>/dev/null | grep '^export FALCON_CID=') || return 1
     eval "$line"
     [[ -n "${FALCON_CID:-}" ]]
 }
@@ -157,8 +160,10 @@ cid_hint() {
         echo "  ./scripts/setup-sops-secrets.sh init" >&2
         echo "  ./scripts/setup-sops-secrets.sh add-secret FALCON_CID" >&2
     else
-        echo "FALCON_CID is not in host-local SOPS, or it could not be decrypted." >&2
-        echo "Insert the YubiKey, then run:" >&2
+        echo "Host-local SOPS exists but FALCON_CID could not be read from it." >&2
+        echo "Check that the YubiKey is inserted:" >&2
+        echo "  gpg --card-status" >&2
+        echo "then confirm the secret is present:" >&2
         echo "  ./scripts/setup-sops-secrets.sh add-secret FALCON_CID" >&2
     fi
 }
@@ -186,7 +191,7 @@ done
 
 [[ -n "$PACKAGE_PATH" ]] || fail "--package is required"
 
-require_commands hostname realpath dpkg dpkg-deb
+require_commands hostname realpath dpkg dpkg-deb timeout
 validate_host
 validate_package
 
@@ -239,8 +244,11 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$staged_package"
 # traverse it — this check must run as root or it always reports "missing".
 sudo test -x "$FALCONCTL" || runtime_fail "$FALCONCTL was not installed"
 
+# -f is required whenever a CID is already set: without it falconctl refuses
+# with "CID is set, but -f was not specified".  Every re-run and every sensor
+# update hits that, so the plain form is only ever correct on a virgin host.
 echo "Registering Falcon Sensor with the company tenant..."
-sudo "$FALCONCTL" -s --cid="$FALCON_CID"
+sudo "$FALCONCTL" -s -f --cid="$FALCON_CID"
 
 # The package postinst enables and starts the unit before any CID exists, so a
 # fresh install always leaves one failed start behind.  Clearing it (and the
