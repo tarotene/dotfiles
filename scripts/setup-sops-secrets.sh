@@ -124,11 +124,14 @@ check_prerequisites() {
 get_gpg_key() {
     local key_fingerprint
 
-    # Get the first secret key
-    key_fingerprint=$(gpg --list-secret-keys --keyid-format=long 2>/dev/null | \
-        grep -A 1 "^sec" | \
-        tail -1 | \
-        tr -d ' ')
+    # Read the fingerprint from the machine-readable listing.  The
+    # human-readable one changes shape depending on gpg.conf: with
+    # `with-fingerprint` set, the line after `sec` becomes
+    # "Key fingerprint = ..." and scraping it yields "Keyfingerprint=<hex>",
+    # which then makes every later gpg call fail.
+    # The first fpr record belongs to the first secret key's primary key.
+    key_fingerprint=$(gpg --list-secret-keys --with-colons 2>/dev/null |
+        awk -F: '$1 == "fpr" { print $10; exit }')
 
     if [ -z "$key_fingerprint" ]; then
         print_error "No GPG secret key found"
