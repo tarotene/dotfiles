@@ -69,10 +69,30 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # Build a fixture package so the dry-run really reads package metadata
+      # with dpkg-deb.  Pointing --package at a path that does not exist made
+      # this step pass without validating anything.  The runner is not
+      # company-pop-new, so the host checks warn instead of failing.
       - name: install-falcon-sensor.sh --dry-run
-        env:
-          FALCON_CID: dry-run-placeholder
         run: |
+          fixture="$(mktemp -d)/falcon-sensor"
+          mkdir -p "$fixture/DEBIAN"
+          printf '%s\n' \
+            'Package: falcon-sensor' \
+            'Version: 0.0.0-ci' \
+            'Architecture: amd64' \
+            'Maintainer: ci <ci@example.invalid>' \
+            'Description: CI fixture for the company-provided package' \
+            > "$fixture/DEBIAN/control"
+          dpkg-deb -b "$fixture" /tmp/falcon-sensor.deb
           ./scripts/install-falcon-sensor.sh \
             --dry-run \
             --package /tmp/falcon-sensor.deb
+
+      - name: install-falcon-sensor.sh --dry-run rejects a missing package
+        run: |
+          if ./scripts/install-falcon-sensor.sh \
+               --dry-run --package /tmp/does-not-exist.deb; then
+            echo "::error::dry-run accepted a missing package"
+            exit 1
+          fi
