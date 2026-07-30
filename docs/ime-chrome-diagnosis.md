@@ -320,6 +320,48 @@ its keys never reach fcitx5, because the compositor excludes virtual-keyboard
 input from the input-method grab (otherwise fcitx5's own key forwarding would
 loop). A real keystroke is unavoidable.
 
+### Running a different fcitx5 version alongside apt's
+
+Needed to test the version axis, and the one place with a real trap. apt caps
+fcitx5 at 5.1.7, so a newer build has to come from nixpkgs:
+
+```bash
+nix build --no-link --print-out-paths --impure --expr '
+  let p = import (builtins.getFlake "github:NixOS/nixpkgs/<rev>") {
+            system = "x86_64-linux"; config.allowUnfree = true; };
+  in p.qt6Packages.fcitx5-with-addons.override {
+       addons = [ p.fcitx5-mozc ]; withConfigtool = false; }'
+```
+
+`withConfigtool = false` drops the configtool's KDE Qt6 closure: 25 paths / 44 MiB
+instead of 84 / 101 MiB, and only the `symlinkJoin` is built locally.
+
+**Stop `app-fcitx5@autostart.service` first** and confirm `pgrep -xc fcitx5` is 0.
+Two fcitx5 processes cannot both hold the D-Bus name, and the loser leaves the
+unit dead — see "Withdrawn, retryable under conditions".
+
+Three environment variables matter, and getting the second one wrong is a silent
+failure rather than a loud one:
+
+| variable | why |
+|---|---|
+| `FCITX_DATA_DIRS=$W/share/fcitx5` | **the trap.** Addon *descriptors* (`addon/*.conf`) are a `pkgdatadir`-type path, so they fall back to every `XDG_DATA_DIRS` entry — which puts `/usr/share/fcitx5/addon` *ahead* of the nix one. `AddonManager::load()` keeps the first match per filename, and `checkDependencies` passes `core:5.1.7 <= 5.1.19`, so apt's 5.1.7 descriptors are used against the newer core **without any error**. Setting this replaces that list; the core's own `share/fcitx5` is still appended automatically because `"pkgdatadir"` starts with `pkg`. Leave `XDG_DATA_DIRS` alone — classicui needs `/usr/share/icons`. |
+| `XDG_CONFIG_HOME=$LAB/xdgconfig` | the **only** way to isolate mozc. `mozc_server` has no `MOZC_*` profile override; it reads `XDG_CONFIG_HOME`/`HOME`, and `fcitx5-mozc.so` spawns it so it inherits this. Without it, mozc 2.30 rewrites `~/.config/mozc`, whose `LRUStorage` files (`.history.db`, `segment.db`, …) are **silently discarded and recreated** on a version mismatch — learned-conversion loss, and there is no seed for them anywhere in this repo. Take a tar backup regardless. |
+| `FCITX_ADDON_DIRS` (unset it) | the `.so` path. `fcitx5-with-addons` sets it with `--prefix`, not `--set`, so `env -u FCITX_ADDON_DIRS` guarantees exactly one directory. It happens to *replace* the compiled-in default rather than prepending (`"addondir"` does not start with `pkg`), so apt's `.so` files cannot be dlopen'd either way — but do not rely on the ambient variable staying empty. |
+
+Verify what is actually executing, from `/proc`, not from the log:
+
+```bash
+P=$(pgrep -x fcitx5)
+readlink /proc/$P/exe
+grep -cE '/usr/lib/x86_64-linux-gnu/(fcitx5/|libFcitx5)' /proc/$P/maps   # must be 0
+grep -E 'Loaded addon (waylandim|wayland|classicui|mozc)|Could not load addon' trace.log | sort -u
+```
+
+The apt daemon maps 19 `.so` under `/usr/lib/x86_64-linux-gnu/fcitx5/` plus
+`libFcitx5{Core,Config,Utils}.so.5.1.7`; under a correctly fenced nix arm that
+count is 0. The store path in `/proc/$P/exe` is the version proof.
+
 ### `key_trace` captures the login password — redact before it hits disk
 
 `--verbose key_trace=5` logs **every** keystroke, and fcitx5 keeps its keyboard
