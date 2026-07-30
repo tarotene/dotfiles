@@ -1,17 +1,25 @@
 # Ctrl+Space silently fails — investigation record
 
-Status: **cause located; the upstream fix is identified and released; verification
-on this host pending.** A measurement log, not a decision. Two separate defects
-were found; several plausible-looking hypotheses were refuted along the way and
-are recorded so nobody re-treads them.
+Status: **root cause found and locally worked around; upstream report outstanding.**
+A measurement log, not a decision. Several plausible-looking hypotheses were
+refuted along the way — including one this document itself asserted — and are
+recorded so nobody re-treads them.
 
 Tracked in [#14](https://github.com/tarotene/dotfiles/issues/14).
 
-> **The blind spot, in one line.** This investigation never asked what version of
-> fcitx5 it was measuring. It was apt's **5.1.7** — tagged 2024-01-16, capped
-> there by noble/universe, and **just over two years older than the upstream fix**.
-> See "The version axis" below; read it before spending any more time on the
-> traces.
+> **The answer, in one paragraph.** After the COSMIC lock screen goes away,
+> cosmic-comp re-activates the input method for the newly focused surface but
+> **never re-sends `content_type`**. fcitx5 therefore keeps `purpose=password`
+> from the lock screen, and `Instance::inputMethod()` pins the input method to
+> `keyboard-<layout>` **ignoring `isActive()` entirely**. So `Ctrl+Space` is
+> consumed and nothing switches, until an unrelated focus event makes the client
+> re-assert its content type. `AllowInputMethodForPassword=True` removes that
+> branch and fixes it: **0 of 4 trials and 0 of 27 presses failed, against 18 of
+> 18 trials failing across five control arms.** See "The actual cause".
+>
+> **The fcitx5 version is irrelevant.** 5.1.7, 5.1.16 and 5.1.19 fail
+> identically. That hypothesis was formed, tested and refuted — see "The version
+> axis, and why it was wrong".
 
 ## Symptom
 
@@ -63,11 +71,16 @@ to a focus event rather than to the keypress:
 16:24:58.157  Activate: [Last]: [Activating]:mozc              <- switch appears here
 ```
 
-Consistent with fcitx5 applying the toggle to an input context that is not the
-one actually focused at that instant.
+This looked like fcitx5 applying the toggle to an input context that is not the
+one actually focused at that instant. **That inference was wrong** — see "The
+actual cause". The toggle is applied to the right context and the state really
+flips; what does not happen is the *resolution* of that state into an input
+method, because a leftover `Password` capability pins it. The distinction matters:
+the wrong-IC reading is what made an upstream commit about focus handling look
+like the fix.
 
-**The Wayland side was healthy at the moment of failure**, which is what rules
-out the compositor for this defect. Tracing fcitx5 itself with `WAYLAND_DEBUG=1`:
+**The Wayland keyboard grab was healthy at the moment of failure.** Tracing
+fcitx5 itself with `WAYLAND_DEBUG=1`:
 
 ```
 16:28:15  zwp_input_method_keyboard_grab_v2#21.key(176, 12201550, 57, 1)  <- space with ctrl held
@@ -79,7 +92,14 @@ The grab was live and delivering keys. fcitx5 also conforms to the protocol
 throughout: every `activate` answered with `grab_keyboard`, every `deactivate`
 with `release`, and `commit(serial)` always matching the `done` count.
 
-## The version axis — the question nobody asked
+An earlier version of this document concluded from the above that the compositor
+was **ruled out**. It does not follow, and it was wrong: a healthy grab shows the
+compositor is delivering *keys* correctly, and says nothing about whether it is
+delivering *text-input state* correctly. It is not. The evidence for that is a
+`content_type` the compositor never re-sends, which no amount of looking at the
+key path would have surfaced.
+
+## The version axis, and why it was wrong
 
 Everything above was measured against apt's **fcitx5 5.1.7-1build3**, upstream tag
 `5.1.7` of **2024-01-16**. Pop!_OS 24.04 inherits noble/universe, where that is
@@ -112,9 +132,12 @@ The commit message explains the mechanism:
 > temporarily. We need ensure key event can take back the focus just like other
 > frontend.
 
-That is the same conclusion this document reached at "Consistent with fcitx5
-applying the toggle to an input context that is not the one actually focused at
-that instant" — arrived at independently, from the traces.
+This reads as the same conclusion this document had reached from the traces, and
+that apparent agreement is exactly what made the version hypothesis convincing.
+Both descriptions say "the toggle went to the wrong input context", so the commit
+looked like the fix. It is not: the trigger differs (alt-tab, not unlock) and the
+measurement below shows 5.1.19 failing identically. Two accounts sharing a
+*mechanism* sentence is not evidence that they are the same defect.
 
 First release containing it, by `git` tag containment:
 
@@ -130,10 +153,14 @@ First release containing it, by `git` tag containment:
 Its reproducer: focus **Firefox's address bar**, **Alt+Tab** to Alacritty, press
 `Ctrl+Space` — nothing happens. Its workarounds: press Super twice, or open and
 close the launcher, or switch via the panel icon instead of Alt+Tab. That is the
-same "move focus away and back" escape recorded below, on KDE rather than COSMIC —
-so **the defect is not COSMIC-specific**, and the compositor was never a candidate
-for Defect 1. Note also that switching via the panel icon does *not* reproduce it:
-a **keyboard** window switch is part of the trigger, not a mouse one.
+same "move focus away and back" escape recorded below, on KDE rather than COSMIC.
+Note also that switching via the panel icon does *not* reproduce it: a **keyboard**
+window switch is part of the trigger, not a mouse one.
+
+Treat this as a *similar-looking* upstream issue, not as this one. #1503 is
+alt-tab-triggered and reportedly fixed; the failure measured here is
+unlock-triggered and is not. The shared symptom sentence is a coincidence of
+wording.
 
 ### Why this host is a good place to hit it
 
@@ -156,21 +183,164 @@ Everything else talks to fcitx5 over D-Bus. "It presents as Chrome-only" was not
 coincidence and not a Chrome bug — it is the set of clients on the affected code
 path.
 
-### What this does not yet establish
+### Measured, and refuted
 
-That 5.1.18+ actually fixes it *here*. Commit archaeology is not measurement, and
-this document has already retracted three conclusions that were reached by
-plausible reasoning from real evidence (see "Refuted hypotheses"). The verification
-is a three-arm comparison — apt 5.1.7, nix 5.1.16 (pre-fix), nix 5.1.19 (post-fix)
-— under the keyboard-switch provocation above, scored per *trial* rather than per
-press for the reason given in "The failure is bursty". Results will be recorded
-here.
+**5.1.19 reproduces the failure exactly as badly as 5.1.7.** The hypothesis above
+is wrong, and it was wrong in an instructive way: `c2c757f0e3d4`'s commit message
+matches this document's *mechanism* wording, but it addresses the **alt-tab**
+trigger of #1503, which is not the trigger here. Measured under a keyboard
+window-switch provocation, 5.1.7 failed **0 of 8 presses** — that path was never
+what broke on this host, because `ShareInputState=All` means a press is rarely
+needed after a window switch at all.
 
-## Second, separate defect: cosmic-comp sends a duplicate `enter`
+The trigger that does fire is **lock → unlock**, at which point the version makes
+no difference:
 
-**Status: unreported upstream, deliberately deferred.** Not withdrawn and not
-refuted — it is real and it is benign in isolation, so it lost to other work. The
-evidence is kept here so a later decision to report it does not start from zero.
+| arm | fcitx5 | trials failed | presses failed |
+|---|---|---|---|
+| A | apt 5.1.7 | 6/6 | 14/34 (41%) |
+| B | nix 5.1.16 (pre-`c2c757f0e3d4`) | 4/4 | 16/31 (52%) |
+| C | nix **5.1.19** (post-fix) | 4/4 | 16/59 (27%) |
+
+Arm B matters: it is nix too, so the failure is not an artefact of running fcitx5
+out of the store. Arm C's failures carry the identical signature — six consecutive
+presses, every one `result:1`, no switch.
+
+Honest caveat on the arms: the per-press rates differ between arms (41%, 52%, 27%)
+by more than the pre/post-fix distinction can explain, so the arms are not
+perfectly matched in absolute severity — the isolated config and a fresh mozc
+profile differ from the live ones, and the arms saw different amounts of ambient
+use. The trial-level verdict — every arm fails every trial — does not depend on it.
+
+Commit archaeology is not measurement. This document had already retracted three
+conclusions reached by plausible reasoning from real evidence; declaring victory
+here would have been the fourth.
+
+## The actual cause: a password content type left over from the lock screen
+
+`Instance::inputMethod()` (`src/lib/fcitx/instance.cpp`, unchanged across every
+version tested) begins:
+
+```cpp
+if (ic->capabilityFlags().test(CapabilityFlag::Disable) ||
+    (ic->capabilityFlags().test(CapabilityFlag::Password) &&
+     !d->globalConfig_.allowInputMethodForPassword())) {
+    auto defaultLayoutIM = stringutils::concat("keyboard-", group.defaultLayout());
+    ...
+    return entry ? entry->uniqueName() : "";
+}
+```
+
+**That branch ignores `isActive()` completely.** So when the focused input context
+carries `Password` and `AllowInputMethodForPassword` is `False`, the input method
+is pinned to `keyboard-us` no matter what the toggle does.
+
+Meanwhile the key-dispatch table only consults `canTrigger()` — which is just
+"does the group have more than one input method" — before calling `trigger()` and
+then `keyEvent.filterAndAccept()`. Hence the exact observed signature: **the key
+is consumed (`result:1`), the state genuinely flips, and nothing appears.**
+
+### Proof, from the protocol and from fcitx5's own state
+
+One traced trial, `content_type` shown with the text-input-v3 meanings of its
+arguments (`hint=128` = `sensitive_data`, `purpose=8` = `password`):
+
+```
+03:13:51.154  zwp_input_method_v2#17.deactivate()
+03:13:51.280  zwp_input_method_v2#17.activate()
+03:13:51.280  zwp_input_method_v2#17.content_type(128, 8)   <- lock screen, correct
+03:13:51.729  zwp_input_method_v2#17.content_type(128, 8)
+03:13:53.733  Key(Return) Release:0                          <- password submitted, unlock
+03:13:55.175  zwp_input_method_v2#17.deactivate()
+03:13:55.178  zwp_input_method_v2#17.activate()              <- focus returns to Chrome
+              ***  no content_type is ever re-sent  ***
+03:13:55.619  Key(Control+space) Release:0 -> result:1, no switch
+03:13:57.009  deactivate event_type=… -> [Activating]:mozc   <- deferred recovery
+```
+
+Sampled independently over D-Bus, without touching focus (`DebugInfo` every
+200 ms), across that same failing burst:
+
+```
+03:13:55.174  CurrentInputMethod=keyboard-us  frontend:wayland_v2 cap:100000005a focus:1
+03:13:55.627  CurrentInputMethod=keyboard-us  frontend:wayland_v2 cap:100000005a focus:1
+03:13:56.567  CurrentInputMethod=keyboard-us  frontend:wayland_v2 cap:100000005a focus:1
+```
+
+`cap:100000005a` decodes to `Preedit | Password | FormattedPreedit |
+SurroundingText | Sensitive` — bit 3 is `Password`, bit 36 is `Sensitive`. Note
+bit 40 (`Disable`) is **not** set, which is what makes the option a viable lever;
+`Disable` would force `keyboard-us` unconditionally.
+
+For contrast, the trial in the same run where the user pressed while a terminal
+held focus:
+
+```
+03:13:58.162  CurrentInputMethod=mozc  frontend:dbus cap:c001000032 focus:1
+```
+
+No `Password` bit, and the switch works. Capability present → pinned; capability
+absent → switches. That is the whole causal chain, observed rather than inferred.
+
+### Whose defect this is
+
+**Primarily cosmic-comp.** text-input-v3 invalidates state across focus
+transitions and requires it to be re-sent; the compositor sends `activate()` for
+the newly focused surface but no `content_type`, leaving the input method holding
+the lock screen's `purpose=password`. fcitx5 could also defensively reset
+capability on `deactivate()` rather than carrying it across, which is a secondary
+report.
+
+**This also overturns the verdict on Defect 2 below.** The duplicate `enter`
+without an intervening `leave` is the same class of defect — cosmic-comp
+mishandling text-input state transitions — and the "benign in isolation"
+conclusion was reached by checking only that *preedit continued*. It never tested
+capability leakage. Defect 2 should be treated as probably-related, not benign.
+
+### The workaround
+
+`AllowInputMethodForPassword=True`, in `config/fcitx5/config`. Same provocation,
+same detector:
+
+| arm | condition | trials failed | presses failed |
+|---|---|---|---|
+| A | apt 5.1.7 | 6/6 | 14/34 |
+| B | nix 5.1.16 | 4/4 | 16/31 |
+| C | nix 5.1.19 | 4/4 | 16/59 |
+| D | `ActivateKeys`/`DeactivateKeys` on real keys | 3/3 | 12/15 |
+| E | `ShareInputState=No` | 1/1 | 2/6 |
+| **F** | **`AllowInputMethodForPassword=True`** | **0/4** | **0/27** |
+
+One-sided Fisher exact: F versus arm A alone **p = 0.005**; F versus all 18
+control trials pooled **p = 0.00014**.
+
+Every figure above is from the **final** trace of each arm, scored with a bounded
+trial window (`--trial-ms`, default 30 s). An earlier pass reported slightly
+different numbers because each arm was scored while its runner was still
+capturing, and because the last trial's window then ran to end-of-trace and
+swallowed subsequent ambient presses. Both are fixed in the detector; the
+qualitative result never moved.
+
+**Do not read F as zero.** Four trials give a one-sided 95% upper bound of **53%**
+on its failure rate. What makes it convincing is not the bound but the mechanism:
+the branch that pins the input method is removed, so there is nothing left to fail
+by this route. Arms D and E are what rule out the cheaper explanations — the
+absolute `activate(ic)`/`deactivate(ic)` path and the `ShareInputState` propagation
+machinery both fail, because both converge on the same `inputMethod()` resolution.
+
+The cost is real and is stated in `config/fcitx5/config`: a genuine password
+prompt, including the lock screen, can now receive input from an active input
+method. `ShowPreeditForPassword=False` keeps it invisible, but keystrokes would go
+into a conversion buffer. `ActiveByDefault=False` plus the state being dropped at
+lock makes that rare, not impossible. Revert the line if the compositor is fixed.
+
+## Second defect, probably not separate: cosmic-comp sends a duplicate `enter`
+
+**Status: unreported upstream, deferred — and its "benign" verdict is now
+suspect.** See "Whose defect this is" above: the root cause turns out to be
+cosmic-comp mishandling text-input state across a focus transition, which is the
+same class of defect as this one. The evidence below still stands as recorded; the
+conclusion drawn from it does not.
 
 Real, reproducible on demand, and benign in isolation. When any client creates a
 `zwp_text_input_v3`, the compositor sends `enter` to an already-entered client
@@ -230,7 +400,12 @@ full log.
 | A serial desync between client `commit`s and compositor `done` | direct count: 105 commits vs `done(106)` — a one-event lag, permitted. The large apparent offsets came from a monitor attached mid-stream |
 | cosmic-comp leaves the IM deactivated while a focused client has text-input enabled | reading the complete trace: Chrome had sent `disable` and received `leave` first |
 | Cross-client interference: another client's `disable` kills the focused client's IME | surfaceless-client experiment produces no `activate`/`deactivate` traffic at all |
-| The duplicate `enter` is what breaks input | provoked it on demand while Chrome was composing; preedit continued |
+| The duplicate `enter` is what breaks input | provoked it on demand while Chrome was composing; preedit continued. **This test was too narrow** — it checked preedit, never capability leakage. See "Whose defect this is" |
+| The Wayland side being healthy rules out the compositor | it rules out the *key* path only. The compositor's text-input state handling is the actual cause |
+| The toggle is applied to the wrong input context | it is applied to the right one and the state flips; the *resolution* of that state is pinned |
+| apt's fcitx5 5.1.7 is too old; `c2c757f0e3d4` (5.1.18) fixes this | measured: 5.1.16 and 5.1.19 fail identically, 4/4 trials each. #1503 is alt-tab-triggered; this is unlock-triggered |
+| The absolute `ActivateKeys`/`DeactivateKeys` path avoids the broken toggle | arm D, 3/3 failed. `result:1` on both proves `setActive()` ran and the state flipped — and still nothing switched, because both paths converge on `inputMethod()` |
+| `ShareInputState=All` is causing it by propagating state across five contexts | arm E, `ShareInputState=No`, still failed. It is not the propagation |
 
 Every entry in that table is a hypothesis that was *formed and then tested*. The
 costlier mistake was of a different kind: a question never asked at all. Six of
@@ -319,6 +494,44 @@ Key synthesis is **not** available for automating the check: `wtype` exits 0 but
 its keys never reach fcitx5, because the compositor excludes virtual-keyboard
 input from the input-method grab (otherwise fcitx5's own key forwarding would
 loop). A real keystroke is unavoidable.
+
+### Sampling fcitx5's internal state without disturbing it
+
+`org.fcitx.Fcitx.Controller1.DebugInfo` is the only way to see which input context
+holds focus, which frontend it belongs to, and its capability flags. It cannot be
+read by hand during a failure: reading it means focusing a terminal, and a focus
+event is precisely what clears the broken state. Poll it from a process started
+**before** the provocation:
+
+```bash
+while :; do
+  printf '%s\t' "$(date +%H:%M:%S.%3N)"
+  gdbus call --session --dest org.fcitx.Fcitx5 --object-path /controller \
+    --method org.fcitx.Fcitx.Controller1.CurrentInputMethod
+  gdbus call --session --dest org.fcitx.Fcitx5 --object-path /controller \
+    --method org.fcitx.Fcitx.Controller1.DebugInfo
+  sleep 0.2
+done
+```
+
+Decode `cap:` against `CapabilityFlag` in `src/lib/fcitx-utils/capabilityflags.h`:
+bit 3 `Password`, bit 36 `Sensitive`, bit 40 `Disable`. Count the hex digits
+carefully — a `1` in the tenth digit is `Sensitive`, in the eleventh it is
+`Disable`, and the two lead to different conclusions about whether
+`AllowInputMethodForPassword` can help.
+
+### The provocation that actually fires
+
+A keyboard window switch does **not** reproduce this: 0 of 8 presses failed under
+it. `ShareInputState=All` means a press is rarely needed after a switch, so the
+opportunity barely arises. Lock/unlock does, essentially every time:
+
+1. record the trial start, then `loginctl lock-session`
+2. unlock by typing the password
+3. press `Ctrl+Space` three times **in Chrome**, without clicking anything
+
+Score per *trial*, not per press — see "The failure is bursty". Five trials per arm
+is enough for p < 0.01 against a control that fails every time.
 
 ### Running a different fcitx5 version alongside apt's
 
@@ -574,8 +787,18 @@ journalctl --user -u app-fcitx5@autostart.service -b \
 
 ## What to do when it happens
 
-- **Move focus away and back** (click another window, click back). The transient
-  state clears on a focus event — that is what the 17:28:35 recovery shows.
+If `AllowInputMethodForPassword=True` is in place it should not happen at all; see
+"The workaround". If it does:
+
+- **Move focus away and back** (click another window, click back). This works
+  because it makes the client re-assert its content type, which clears the
+  leftover `Password` capability — the mechanism behind the 17:28:35 recovery.
+- Check whether the option is actually set, and whether the running daemon read
+  it: `grep AllowInputMethodForPassword ~/.config/fcitx5/config`, then
+  `gdbus call --session --dest org.fcitx.Fcitx5 --object-path /controller
+  --method org.fcitx.Fcitx.Controller1.DebugInfo` and look for a focused context
+  whose `cap:` has bit 3 set while `CurrentInputMethod` is stuck on
+  `keyboard-us`.
 - If it persists, restart fcitx5 **through its unit**:
 
   ```bash
@@ -589,10 +812,12 @@ journalctl --user -u app-fcitx5@autostart.service -b \
   hits a D-Bus name conflict and leaves the unit dead. That is how the state
   described above was reached.
 
-## The one mitigation that stayed: press the trigger key less often
+## The other setting: press the trigger key less often
 
-Reduces ambient exposure only, for the reason above. It is the only lever left
-after the lock-triggered restart was withdrawn.
+`ShareInputState=All` was once described here as the only lever available. That
+was true only while the cause was unknown; the fix is
+`AllowInputMethodForPassword=True` (see "The workaround"). This setting is kept on
+its own merits and reduces how often the key is needed at all.
 
 `ShareInputState=No` (fcitx5's default) gives every application its own
 active/inactive state, so with `ActiveByDefault=False` the input method drops

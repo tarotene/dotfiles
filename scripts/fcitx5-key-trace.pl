@@ -170,6 +170,7 @@ my %opt = (
     'window-ms' => 250,     # a press's effect must land within this to count
     'gap-ms'    => 2000,    # consecutive failures closer than this are one burst
     'defer-ms'  => 2000,    # see classify_press() for why this bound exists
+    'trial-ms'  => 30000,   # a trial's probe window; see score_trials()
 );
 
 GetOptions(
@@ -182,6 +183,7 @@ GetOptions(
     'window-ms=i',
     'gap-ms=i',
     'defer-ms=i',
+    'trial-ms=i',
     'trials=s',
     'json',
     'help',
@@ -526,11 +528,21 @@ sub score_trials {
 
     for my $n ( 0 .. $#{$trials} ) {
         my $start = $trials->[$n]{t};
-        my $end = $n < $#{$trials} ? $trials->[ $n + 1 ]{t} : undef;
 
-        my @mine = grep {
-            $_->{t} >= $start && ( !defined $end || $_->{t} < $end )
-        } @{$presses};
+        # Bound every trial, including the last one, by --trial-ms.
+        #
+        # The last trial used to run to end-of-trace. That is wrong whenever the
+        # arm keeps recording after the final provocation — ambient presses land
+        # in the last trial's window and change its verdict, and worse, scoring a
+        # trace while its runner is still capturing gives a different answer every
+        # time it is read. Both happened during the #14 measurement and produced
+        # numbers that could not be reproduced afterwards.
+        my $end = $start + $opt{'trial-ms'} / 1000;
+        if ( $n < $#{$trials} && $trials->[ $n + 1 ]{t} < $end ) {
+            $end = $trials->[ $n + 1 ]{t};
+        }
+
+        my @mine = grep { $_->{t} >= $start && $_->{t} < $end } @{$presses};
 
         $trials->[$n]{presses} = scalar @mine;
 
