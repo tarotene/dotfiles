@@ -74,6 +74,13 @@ our @ALLOW_KEYSYM = (
     'Hangul',               # configured trigger, absent from a US layout
     'Super+space',
     'Shift+Super+space',
+    # ActivateKeys / DeactivateKeys.  fcitx5 ships these bound to Hangul_Hanja /
+    # Hangul_Romaja, which do not exist on a US layout; these are the bindings
+    # used to measure whether the absolute activate/deactivate path survives when
+    # the toggle path does not (see docs/ime-chrome-diagnosis.md).
+    'Control+Shift+space',
+    'Control+Alt+space',
+    'Control+Alt+Shift+space',
     'Control_L',
     'Control_R',
     'Super_L',
@@ -128,12 +135,22 @@ my $RE_KEYEVENT = qr/KeyEvent:\s*Key\(/;
 my $RE_KEYSYM   = qr/KeyEvent:\s*Key\(([^)\s]+)/;
 
 # A trigger-key press (not the release). Release:0 means "this is a press".
-my $RE_PRESS = qr/KeyEvent:\s*Key\(Control\+space[^)]*\)\s+Release:0/;
+#
+# `Release:0` is NOT adjacent to the Key(...) group.  A real line looks like:
+#
+#   KeyEvent: Key(Control+space states=4) rawKey: <redacted> states=4) \
+#     origKey: <redacted> states=4) Release:0 keycode: <redacted>
+#
+# so the rawKey/origKey fields sit in between.  An earlier version of this regex
+# required `\)\s+Release:0` and therefore matched **nothing on real input** while
+# every hand-written selftest fixture passed — the fixtures used the document's
+# abbreviated form.  Fixture 12 below is the real line, verbatim from a trace.
+my $RE_PRESS = qr/KeyEvent:\s*Key\(Control\+space[^)]*\).*\bRelease:0\b/;
 
 # Any other configured trigger, counted separately so it never contaminates the
 # Control+space ratio that the baseline in docs/ime-chrome-diagnosis.md reports.
 my $RE_OTHER_PRESS =
-  qr/KeyEvent:\s*Key\((?:Zenkaku_Hankaku|Hangul|Super\+space)[^)]*\)\s+Release:0/;
+  qr/KeyEvent:\s*Key\((?:Zenkaku_Hankaku|Hangul|Super\+space)[^)]*\).*\bRelease:0\b/;
 
 # The input method actually changed.
 my $RE_SWITCH = qr/Input method switched|\[Activating\]:/;
@@ -870,6 +887,30 @@ sub run_selftest {
         ],
         { presses => 1, failed => 1, consumed => 1 },
     );
+
+    # --- 9b. REAL captured lines, verbatim -------------------------------
+    # Every fixture above this point was hand-written from the document's
+    # abbreviated excerpts, and they all passed while $RE_PRESS matched nothing
+    # whatsoever on real input: the document compresses the KeyEvent line, but
+    # fcitx5 actually emits rawKey/origKey fields between Key(...) and Release:N.
+    # These lines are copied out of a trace taken on company-pop-new, redaction
+    # marks included.  Any future regex change is checked against reality here.
+    {
+        my @real = (
+            '@02:07:06.940 [ 437091.185] {Default Queue} zwp_input_method_keyboard_grab_v2#21.key(31, 6987298, <redacted>, 1)',
+            '@02:07:06.940 D2026-07-31 02:07:06.940350 instance.cpp:910] KeyEvent: Key(Control+space states=4) rawKey: <redacted> states=4) origKey: <redacted> states=4) Release:0 keycode: <redacted>',
+            '@02:07:06.940 D2026-07-31 02:07:06.940445 instance.cpp:2381] Instance::deactivateInputMethod event_type=4106',
+            '@02:07:06.940 D2026-07-31 02:07:06.940534 instance.cpp:2344] Activate: [Last]: [Activating]:mozc',
+            '@02:07:06.941 D2026-07-31 02:07:06.941002 instance.cpp:918] KeyEvent handling time: 0ms result:1',
+            # the matching key release must NOT be counted as a press
+            '@02:07:07.042 D2026-07-31 02:07:07.042314 instance.cpp:910] KeyEvent: Key(Control+space states=4) rawKey: <redacted> states=4) origKey: <redacted> states=4) Release:1 keycode: <redacted>',
+        );
+        $failures += check_report(
+            'a real captured press is recognised, and its release is not',
+            \@real,
+            { presses => 1, switched => 1, failed => 0, deferred => 0 },
+        );
+    }
 
     # --- 10. the pre-registered independence rule ------------------------
     # A trial whose first press was already inside a burst carried over from the
