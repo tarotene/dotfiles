@@ -1,18 +1,42 @@
-# Terminal & desktop (#214) — alacritty, fcitx5 wiring, fonts.
+# Terminal & desktop (#214) — alacritty, fcitx5, fonts.
 #
 # Hybrid translation (ADR-0002): config files stay literal via xdg.configFile.
-# The fcitx5 *packages* stay an apt escape hatch (system input method); only the
-# user-level env/autostart/profile wiring is managed here.
+#
+# The fcitx5 *daemon and mozc engine* are managed here, not by apt — see the
+# Amendment to ADR-0001.  The client-side immodules stay apt
+# (fcitx5-frontend-all), because an apt GTK/Qt application can only load an
+# immodule out of /usr/lib.
 #
 # How nix-installed GUI apps actually reach fcitx5 — and what was measured
 # rather than assumed — is written up in docs/ime-chrome-diagnosis.md.
 #
 # The fcitx5 profile is seeded once, not symlinked (fcitx5 rewrites it at
-# runtime). If fcitx5 wrote its default profile before the first switch,
-# recover with: rm ~/.config/fcitx5/profile && home-manager switch && fcitx5 -r
+# runtime). If fcitx5 wrote its default profile before the first switch, recover
+# with: rm ~/.config/fcitx5/profile && home-manager switch &&
+# systemctl --user restart app-fcitx5@autostart.service
 { lib, pkgs, ... }:
 let
   repoConfig = ../../config;
+
+  # fcitx5 5.1.19 + mozc 2.30, from the pinned nixos-26.05.
+  #
+  # NOT because of the trigger-key defect in docs/ime-chrome-diagnosis.md / #14.
+  # That hypothesis was measured and refuted: 5.1.16 and 5.1.19 reproduce it as
+  # badly as apt's 5.1.7 (4 of 4 trials each, identical signature).  Its cause is a
+  # leftover password content type, and the fix is
+  # AllowInputMethodForPassword=True in config/fcitx5/config.
+  #
+  # The reason this moves out of apt is the layer boundary itself: fcitx5 runs as a
+  # per-user process, so ADR-0001's own criterion puts it in the user environment
+  # (see that ADR's Amendment).  Being able to pick the version at all is a
+  # consequence worth having — apt noble caps fcitx5 at 5.1.7-1build3, tagged
+  # 2024-01-16, with no newer candidate — but it is not what fixed #14.
+  #
+  # withConfigtool stays at its default (true) so fcitx5-config-qt matches the
+  # daemon's version rather than skewing against apt's 5.1.4.
+  fcitx5Package = pkgs.qt6Packages.fcitx5-with-addons.override {
+    addons = [ pkgs.fcitx5-mozc ];
+  };
 
 in
 {
@@ -23,7 +47,7 @@ in
 
     # GUI apps (unfree; allowUnfree is set at the flake's pkgs import).
     #
-    # Chrome 149 already runs as a native Wayland client and already binds
+    # Chrome already runs as a native Wayland client and already binds
     # zwp_text_input_v3 — measured with WAYLAND_DEBUG=1, see
     # docs/ime-chrome-diagnosis.md. Adding --ozone-platform-hint=auto /
     # --enable-wayland-ime / --wayland-text-input-version=3 changes nothing at
@@ -34,6 +58,11 @@ in
     pkgs.google-chrome
     pkgs.slack
     pkgs.zoom-us
+
+    # The input method itself.  Also puts fcitx5-remote and fcitx5-config-qt on
+    # PATH at a version matching the daemon.  Listing it here as well as in the
+    # autostart Exec= keeps it a GC root of the current generation either way.
+    fcitx5Package
   ];
 
   # Make the home-managed font discoverable by fontconfig.
@@ -43,8 +72,23 @@ in
     # Terminal — literal alacritty.toml.
     "alacritty/alacritty.toml".source = repoConfig + "/alacritty/alacritty.toml";
 
-    # fcitx5 wiring (env + autostart). The fcitx5 packages stay apt (#216).
-    "autostart/fcitx5.desktop".source = repoConfig + "/autostart/fcitx5.desktop";
+    # fcitx5 autostart. systemd-xdg-autostart-generator turns this into
+    # app-fcitx5@autostart.service (COSMIC has no native XDG autostart).
+    #
+    # One interpolated value in an otherwise literal file, so the file stays
+    # literal with an @fcitx5@ placeholder rather than moving into Nix DSL
+    # (ADR-0002: use Nix DSL only where interpolation pays).  replaceVars errors
+    # on both an unmatched placeholder and an unused replacement, so a typo fails
+    # the build instead of producing a silently wrong Exec=.
+    #
+    # The store path, not ~/.nix-profile/bin/fcitx5: a profile symlink would
+    # follow package updates without a re-login, but it lets "declared" and
+    # "running" diverge — exactly the property quarantineStrayFcitx5Autostart
+    # below exists to protect.  A store path is auditable.
+    "autostart/fcitx5.desktop".source = pkgs.replaceVars (repoConfig + "/autostart/fcitx5.desktop") {
+      fcitx5 = "${fcitx5Package}/bin/fcitx5";
+    };
+
     "environment.d/10-fcitx5.conf".source = repoConfig + "/environment.d/10-fcitx5.conf";
 
     # Session locale: LC_CTYPE=ja for JP glyph fallback (UI stays English).
@@ -60,9 +104,16 @@ in
   # design changes are in docs/ime-chrome-diagnosis.md ("Withdrawn, retryable
   # under conditions").
 
-  # X11-session fallback; Wayland/COSMIC relies on environment.d + autostart.
-  # im-config's 23_fcitx5.rc starts /usr/bin/fcitx5 and sets the IM variables.
-  home.file.".xinputrc".text = "run_im fcitx5\n";
+  # Deliberately NOT here: home.file.".xinputrc" = "run_im fcitx5".
+  #
+  # It was an X11-session fallback, and it is now dead code that would also be
+  # actively broken.  im-config's 23_fcitx5.rc execs /usr/bin/fcitx5, which apt no
+  # longer installs; and this host has no X11 clients at all
+  # (`xprop -root _NET_CLIENT_LIST` is empty, and fcitx5's own x11::1 input-method
+  # group holds zero input contexts).  Removed rather than repointed at the nix
+  # binary: the real mechanism is environment.d + autostart, and a fallback that
+  # has never once been exercised is not a fallback.  If an X11 session ever
+  # becomes a requirement, add it back deliberately and test it.
 
   # JP-capable terminal font for cosmic-term. cosmic-text has no glyph
   # fallback for fullwidth Latin (U+FF00 block), so the configured font must
@@ -110,10 +161,12 @@ in
   '';
 
   # Quarantine the pre-migration hand-placed autostart entry. Both it and the
-  # home-managed fcitx5.desktop become app-*@autostart.service units execing
-  # /usr/bin/fcitx5, so they race at login and the loser dies with "Unable to
-  # request dbus name" — leaving the surviving daemon nondeterministically
-  # either the managed or the unmanaged one. Renamed rather than deleted: the
+  # home-managed fcitx5.desktop become app-*@autostart.service units, so they race
+  # at login and the loser dies with "Unable to request dbus name" — leaving the
+  # surviving daemon nondeterministically either the managed or the unmanaged one.
+  # Now that Exec= is a store path this also protects against the worse version of
+  # the same race: the stray entry execs /usr/bin/fcitx5, so the winner could be
+  # apt's 5.1.7 rather than the declared 5.1.19. Renamed rather than deleted: the
   # file is outside home-manager's ownership, and the generator only picks up
   # *.desktop, so a .bak suffix is enough to retire it.
   home.activation.quarantineStrayFcitx5Autostart = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

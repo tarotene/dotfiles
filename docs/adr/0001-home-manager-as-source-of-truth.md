@@ -40,3 +40,51 @@ with the operating system sit.
   the display stack through Nix.
 - Project toolchains remain fast to switch and do not bloat the global closure.
 - Rollback is a generation switch, not a hand-written snapshot system.
+
+## Amendment (2026-07 — fcitx5 moves to home-manager, #14)
+
+The Decision above lists `fcitx5` under the system layer, on the stated criterion
+"anything requiring root or a system service." **That criterion never applied to
+fcitx5 on these hosts.** fcitx5 runs as a *per-user* process:
+`app-fcitx5@autostart.service` inside `user@1000.service/app.slice`, started from
+`~/.config/autostart/fcitx5.desktop`, requiring no root and no system unit. This
+ADR's own rule therefore places it in the user environment. The original placement
+was a mis-application of the criterion, not a trade-off between competing ones.
+
+What prompted looking at it: the investigation in
+[`docs/ime-chrome-diagnosis.md`](../ime-chrome-diagnosis.md) / issue #14 needed to
+test a newer fcitx5, and apt noble caps it at `5.1.7-1build3` (upstream tag
+2024-01-16, no newer candidate) — so the system layer offered no way to change the
+version at all, not even to rule it out.
+
+**The version turned out not to be the cause** (it was measured and refuted; the
+cause is a leftover password content type, and the fix is a config option). That
+does not weaken this amendment, it clarifies it: the argument here is about the
+*criterion*, not about any particular defect. Being unable to choose the version of
+a per-user daemon is a defect in the layer boundary whether or not a specific bug
+happens to be fixed by choosing it. The pinned nixpkgs ships 5.1.19.
+
+Scope of the move:
+
+- The **daemon and the mozc engine** move to home-manager, as
+  `qt6Packages.fcitx5-with-addons.override { addons = [ fcitx5-mozc ]; }`, with
+  the autostart `Exec=` pointing at the wrapped store path.
+- The **client-side immodules stay apt** (`fcitx5-frontend-all`). An
+  apt-installed GTK/Qt application can only load an immodule out of `/usr/lib`,
+  and two do so today — verified by `im-fcitx5.so` appearing in ghostty's and
+  Firefox's `/proc/<pid>/maps`.
+
+The system-layer criterion is therefore restated as: **root, a system service,
+kernel/driver integration, or code that must be loaded into an apt-installed
+process.** The last clause is the part that generalises — it is what makes the
+next borderline case decidable instead of ad hoc.
+
+Kernel, drivers and the display stack are unchanged: still apt, still out of scope
+for Nix.
+
+### Consequence worth stating
+
+A home-manager-owned input method is only as current as the pin. The failure mode
+this amendment fixes — running two-year-old software with a known fix released —
+is now a flake-update question rather than a distro-release question, which is
+strictly better but not automatic. `docs/operations.md` owns that cadence.

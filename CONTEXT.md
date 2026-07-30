@@ -21,9 +21,11 @@ configuration.
 home-manager is the **source of truth for the user environment**. Two layers
 stay deliberately outside it as escape hatches:
 
-- **System layer (`apt`)** — kernel, drivers, display manager, input-method
-  daemons (`fcitx5`), and anything that needs root or a system
-  service. Slimmed to a system-only set in Phase 2 (#216). See ADR-0001.
+- **System layer (`apt`)** — kernel, drivers, display manager, and anything that
+  needs root, a system service, or **to be loaded into an apt-installed process**
+  (the fcitx5 GTK/Qt immodules are the latter; the fcitx5 *daemon* is
+  home-manager's). Slimmed to a system-only set in Phase 2 (#216). See ADR-0001
+  and its Amendment.
 - **Per-project runtimes (`mise` / `direnv` / `rustup`)** — language toolchains
   and project-local versions. home-manager installs the *launchers*; the actual
   toolchains stay project-scoped. See ADR-0001 / ADR-0002.

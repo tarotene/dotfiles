@@ -12,5 +12,7 @@ cutover is not blocked on rewriting everything up front.
 | Prompt | `config/starship.toml` | `programs.starship.settings` | Literal first (#209). |
 | Terminal | `config/alacritty/alacritty.toml` | `programs.alacritty.settings` | Literal first (#214). |
 | Secrets loader | `35-secrets-sops.zsh` + `sops-secrets-env.sh` | stays a runtime escape hatch | Do NOT move to sops-nix (ADR-0003). |
+| fcitx5 autostart | `config/autostart/fcitx5.desktop` + `pkgs.replaceVars` for `Exec=` | `systemd.user.services.fcitx5` | Blocked on COSMIC gaining native XDG autostart (pop-os/cosmic-session#67, pop-os/cosmic-epoch#274). Today the `.desktop` is the only mechanism; `systemd-xdg-autostart-generator` converts it. One interpolated value, so the file stays literal (ADR-0002). |
+| fcitx5 config / profile | `config/fcitx5/{config,profile}`, seeded if absent | `i18n.inputMethod.fcitx5` — **not applicable** to standalone home-manager (it is an NixOS option) | fcitx5 rewrites both at runtime, so a store symlink cannot work. Seed-if-absent is the end state, not a way-station. |
 
 Add rows as new literal configs land; remove them once nixified.
