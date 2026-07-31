@@ -33,6 +33,30 @@ Notes:
   [#3](https://github.com/tarotene/dotfiles/issues/3); until then this manual
   routine is the operating procedure.
 
+### fcitx5 needs an explicit unit restart after a switch
+
+`app-fcitx5@autostart.service` is **generated** from
+`~/.config/autostart/fcitx5.desktop` by `systemd-xdg-autostart-generator`, and its
+`Exec=` is a store path. `home-manager switch` runs `daemon-reload` but does **not**
+restart a generated unit, so after any switch that moves fcitx5 the old binary is
+still running:
+
+```bash
+home-manager switch --flake .#"$(hostname)" -b backup
+systemctl --user daemon-reload
+systemctl --user restart app-fcitx5@autostart.service
+systemctl --user cat app-fcitx5@autostart.service | grep ExecStart   # expect the new store path
+readlink /proc/"$(pgrep -x fcitx5)"/exe                              # and the running process
+```
+
+Do **not** use `fcitx5 -r` to pick up the change: `-r` makes the unit's ExecStart
+process exit, leaving the unit inactive with a daemon outside it. Details and the
+recovery path are in [`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md).
+
+Because the input method is now pinned rather than distro-supplied, it is only as
+current as the flake — which is the point (apt was stuck two years behind a fix),
+but it makes the update cadence above load-bearing for Japanese input.
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per

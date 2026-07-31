@@ -15,8 +15,8 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 
 | Layer | Owns | Managed by | ADR |
 |-------|------|------------|-----|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, SOPS loader, GUI apps | home-manager (`flake.nix` + `home/`) | ADR-0001 |
-| **System layer** (escape hatch) | anything needing root or a system service: build toolchain, cross C toolchain, `fcitx5`, `scdaemon`, login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 |
+| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, SOPS loader, GUI apps, **fcitx5 daemon + mozc** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
+| **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
 ## Project Structure

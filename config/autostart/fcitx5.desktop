@@ -8,13 +8,19 @@
 # Related issues (tracking COSMIC native implementation):
 # - https://github.com/pop-os/cosmic-session/issues/67
 # - https://github.com/pop-os/cosmic-epoch/issues/274
+#
+# Exec is @fcitx5@, substituted with the home-manager fcitx5 store path by
+# pkgs.replaceVars in home/modules/desktop.nix.  It must be the *wrapped* binary:
+# the wrapper sets FCITX_ADDON_DIRS (which replaces the compiled-in addon dir) and
+# GDK_PIXBUF_MODULE_FILE for classicui's SVG icons.  An unmatched placeholder is a
+# build failure, not a silently wrong Exec=.
 
 [Desktop Entry]
 Type=Application
 Name=Fcitx 5
 GenericName=Input Method
 Comment=Start Input Method
-Exec=/usr/bin/fcitx5
+Exec=@fcitx5@
 Icon=fcitx
 Terminal=false
 Categories=System;Utility;

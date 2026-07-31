@@ -7,7 +7,9 @@ set -euo pipefail
 #   - login shell fallback (zsh) — Nix zsh is now the primary login shell (#245)
 #   - build toolchain (build-essential, libudev-dev, pkg-config)
 #   - cross C toolchain for embedded / C-Rust FFI
-#   - input method daemon (fcitx5 stack)
+#   - fcitx5 client-side immodules (the daemon itself is home-manager's; apt
+#     GTK/Qt apps can only load an immodule out of /usr/lib — see ADR-0001's
+#     Amendment)
 #   - smartcard support (scdaemon, direct CCID)
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).

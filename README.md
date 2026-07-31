@@ -42,7 +42,7 @@ deliberate escape hatches.
 | Layer | Owns | Managed by |
 |-------|------|------------|
 | **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompt, GPG agent, SOPS loader, GUI apps | home-manager (`flake.nix` + `home/`) |
-| **System layer** (escape hatch) | build/cross toolchain, `fcitx5`, `scdaemon`, login-shell fallback — anything needing root | `apt` (`scripts/install-packages.sh` + `packages/declarative/apt-packages.txt`) |
+| **System layer** (escape hatch) | build/cross toolchain, `scdaemon`, fcitx5 *immodules*, login-shell fallback — anything needing root, a system service, or to be loaded into an apt-installed process | `apt` (`scripts/install-packages.sh` + `packages/declarative/apt-packages.txt`) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (home-manager installs them; toolchains stay project-scoped) |
 
 See [ADR-0001](docs/adr/0001-home-manager-as-source-of-truth.md) and
@@ -67,7 +67,12 @@ rationale.
   `scripts/setup-sops-secrets.sh`. See
   [ADR-0003](docs/adr/0003-secrets-and-identity.md) (and its Amendment).
 - **Terminal & desktop** — Alacritty, FiraCode Nerd Font (`pkgs.nerd-fonts.fira-code`
-  + `fonts.fontconfig`), fcitx5 user-level wiring (env/autostart/profile).
+  + `fonts.fontconfig`).
+- **Input method** — fcitx5 + mozc from nixpkgs
+  (`qt6Packages.fcitx5-with-addons`), plus the env/autostart/profile wiring. apt
+  caps fcitx5 at 5.1.7, which predates the fix for the trigger-key defect in
+  [`docs/ime-chrome-diagnosis.md`](docs/ime-chrome-diagnosis.md); only the
+  client-side immodules stay apt. See ADR-0001's Amendment.
 - **GUI apps** — Google Chrome, Slack, Zoom via home-manager. Chrome is set as
   the default browser on company hosts (`xdg.mimeApps`).
 - **AI tooling** — `claude-code` via nixpkgs (`home/modules/packages.nix`).
