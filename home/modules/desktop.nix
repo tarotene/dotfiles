@@ -92,10 +92,13 @@ in
   #   five control arms. The trade-off (a real password prompt can receive input
   #   from an active IM) is spelled out in config/fcitx5/config.
   #
-  # ShareInputState=All — one press carries across applications instead of one
-  #   per focus change. Kept on its own merits; it never made an individual press
-  #   more reliable, and the note that once called it "the only lever available"
-  #   was written before the cause was found.
+  # ShareInputState=No — reverted from All. All shares one active state across
+  #   every input context, which propagates into the lock screen's context and
+  #   brings the login password field up with mozc active. Observed, not
+  #   predicted, and it matters because mozc learns from what it commits. All was
+  #   only ever a guess made while the cause was unknown; it never made an
+  #   individual press more reliable, and the trigger-key fix above is independent
+  #   of it.
   #
   # ActiveByDefault stays False on purpose: True would start terminals and the
   # omnibox in Japanese mode.

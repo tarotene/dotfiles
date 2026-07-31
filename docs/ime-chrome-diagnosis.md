@@ -107,10 +107,12 @@ both the installed and the candidate version — `apt-cache policy fcitx5` shows
 other: there is no newer fcitx5 available through apt at all. Upstream was at
 5.1.21 (2026-06-26) by the time this was written, fourteen releases later.
 
-**The defect is fixed upstream**, by
+The hypothesis was that the defect is fixed upstream by
 [`c2c757f0e3d4`](https://github.com/fcitx/fcitx5/commit/c2c757f0e3d4) —
 "Force focus in on wayland keyevent." (2026-02-12), whose commit message ends
-`Fix #1503`:
+`Fix #1503`. **It is not** (see "Measured, and refuted" below); the reasoning is
+recorded here because it was convincing and because the way it was wrong is the
+useful part:
 
 ```diff
 --- a/src/frontend/waylandim/waylandimserverv2.cpp
@@ -328,11 +330,40 @@ by this route. Arms D and E are what rule out the cheaper explanations — the
 absolute `activate(ic)`/`deactivate(ic)` path and the `ShareInputState` propagation
 machinery both fail, because both converge on the same `inputMethod()` resolution.
 
-The cost is real and is stated in `config/fcitx5/config`: a genuine password
-prompt, including the lock screen, can now receive input from an active input
-method. `ShowPreeditForPassword=False` keeps it invisible, but keystrokes would go
-into a conversion buffer. `ActiveByDefault=False` plus the state being dropped at
-lock makes that rare, not impossible. Revert the line if the compositor is fixed.
+### The cost, as observed rather than predicted
+
+Applied on `company-pop-new`, the workaround worked — and its side effect showed up
+immediately: **the login password field came up with mozc active.**
+
+That is worse than an annoyance. `ShowPreeditForPassword=False` keeps the preedit
+invisible, but the keystrokes still go through the conversion engine, and mozc
+*learns from what it commits* — `~/.config/mozc/.history.db` was written during the
+window in which this was live. A password typed that way can be persisted in
+mozc's learning data. `AllowInputMethodForPassword=False` and
+`ShowPreeditForPassword=False` exist precisely to prevent this.
+
+The cause is the **combination**, not the option alone. With `ShareInputState=All`
+one active state is shared across every input context, so it propagates into the
+lock screen's context; with the password branch no longer masking it, mozc is
+active there. So:
+
+**`ShareInputState` is reverted to `No`.** The lock screen's context then carries
+its own state and starts inactive under `ActiveByDefault=False`. This costs the
+cross-application convenience — one press per focus change again — and nothing
+else: arm E established that `No` does not fix the trigger-key failure, so it is
+not load-bearing for the fix, and the fix is not load-bearing for it. The two
+settings are independent; they only interact badly.
+
+`All` was a guess made while the cause was unknown. Reverting it is not a
+regression, it is removing a change that never did what it was introduced to do.
+
+The residual exposure with `No`: the path is still reachable if the input method is
+deliberately activated while a password field has focus. Revert
+`AllowInputMethodForPassword` if the compositor is fixed.
+
+The mozc learning databases were cleared after this was found
+(`.history.db`, `segment.db`, `boundary.db`, `cform.db` deleted, `config1.db` and
+`.encrypt_key.db` kept), with a tar backup taken first.
 
 ## Second defect, probably not separate: cosmic-comp sends a duplicate `enter`
 
@@ -779,11 +810,17 @@ Design changes any retry should carry:
 
 ```bash
 systemctl --user stop fcitx5-lock-recover 2>/dev/null   # if it still exists
-pkill -x fcitx5
+pkill -x fcitx5; pkill -x mozc_server
 systemctl --user start app-fcitx5@autostart.service
+# confirm the daemon is owned by its unit, not D-Bus activated
+cat /proc/"$(pgrep -x fcitx5)"/cgroup     # expect app-fcitx5@autostart.service
 journalctl --user -u app-fcitx5@autostart.service -b \
   | grep -E 'Loaded addon (waylandim|mozc)|classicui for wayland'
 ```
+
+The cgroup check is the one worth keeping: this recovery has been needed for
+D-Bus activation as well as for a hand-started `fcitx5 -r`, and the two look
+identical apart from that line.
 
 ## What to do when it happens
 
@@ -805,6 +842,15 @@ If `AllowInputMethodForPassword=True` is in place it should not happen at all; s
   systemctl --user restart app-fcitx5@autostart.service
   ```
 
+- **Beware the second way to start fcitx5 outside its unit.** apt ships
+  `/usr/share/dbus-1/services/org.fcitx.Fcitx5.service` with
+  `Exec=/usr/bin/fcitx5`, so **any** D-Bus call to `org.fcitx.Fcitx5` while the
+  daemon is stopped will start it — unowned by systemd, with the unit left
+  inactive. This was reached during the measurement by a `DebugInfo` sampler that
+  kept polling after the traced daemon exited. The symptom is
+  `cat /proc/$(pgrep -x fcitx5)/cgroup` reading `dbus-…-org.fcitx.Fcitx5@1.service`
+  instead of `app-fcitx5@autostart.service`. Recovery is the same as below.
+
 - **Do not use `fcitx5 -r -d`.** `-r` replaces the running instance, so the unit's
   `ExecStart` process exits and the unit goes inactive; `-d` daemonizes, so the
   survivor ends up outside any fcitx5 unit with PPID 1. The result works, but
@@ -812,12 +858,16 @@ If `AllowInputMethodForPassword=True` is in place it should not happen at all; s
   hits a D-Bus name conflict and leaves the unit dead. That is how the state
   described above was reached.
 
-## The other setting: press the trigger key less often
+## Withdrawn: `ShareInputState=All`
 
-`ShareInputState=All` was once described here as the only lever available. That
-was true only while the cause was unknown; the fix is
-`AllowInputMethodForPassword=True` (see "The workaround"). This setting is kept on
-its own merits and reduces how often the key is needed at all.
+Once described here as the only lever available. That was true only while the cause
+was unknown, and it was never more than a guess: it reduced how often the trigger
+key was needed without making any individual press more reliable.
+
+**Reverted to `No`**, because combined with the actual fix it brought mozc up on
+the login password field — see "The cost, as observed rather than predicted". The
+text below is kept for the reasoning, which was sound given what was known; the
+conclusion is superseded.
 
 `ShareInputState=No` (fcitx5's default) gives every application its own
 active/inactive state, so with `ActiveByDefault=False` the input method drops
