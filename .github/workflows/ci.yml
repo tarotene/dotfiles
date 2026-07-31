@@ -69,6 +69,15 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # The key-trace tool's fixtures are the log excerpts quoted in
+      # docs/ime-chrome-diagnosis.md, so this step fails if the detector and the
+      # document ever disagree about what those traces mean.  It also guards the
+      # redaction rules, which are what keep a lock-screen password out of a
+      # trace file (see the header comment in the script).  Perl is preinstalled
+      # on ubuntu-latest; shellcheck ignores .pl, so the file needs no exclusion.
+      - name: fcitx5-key-trace.pl --selftest
+        run: perl ./scripts/fcitx5-key-trace.pl --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not

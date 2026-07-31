@@ -66,10 +66,33 @@ pipx) should be reclaimed into the right layer — workflow tracked in
 [#4](https://github.com/tarotene/dotfiles/issues/4).
 
 For a **GUI app** landing in step 4, check how it actually reaches fcitx5 — it is
-not obvious and differs per app. A nix-installed app cannot load the apt GTK/Qt
-immodule, so one that runs under XWayland (Slack, Zoom) falls back to XIM, while
-one that goes native Wayland (Chrome) uses `zwp_text_input_v3`. Measure before
-assuming: `xprop -root _NET_CLIENT_LIST` shows whether anything is on XWayland at
-all, and `WAYLAND_DEBUG=1` shows which protocols the app binds. Known-unresolved
-issue and the measurements already taken:
-[`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md).
+not obvious, it differs per app, and guessing has cost real time here. There are
+three routes, and the app picks one:
+
+| route | who takes it | fcitx5 frontend |
+|---|---|---|
+| `zwp_text_input_v3` | native Wayland apps | `wayland_v2` |
+| GTK/Qt immodule (`im-fcitx5.so`, D-Bus) | apt apps, with `GTK_IM_MODULE`/`QT_IM_MODULE` set | `dbus` |
+| XIM | X11/XWayland apps | `xcb` |
+
+A nix-installed app cannot load the apt immodule, so it takes route 1 or 3.
+
+**Measure, do not assume.** The most direct answer is fcitx5's own view:
+
+```bash
+gdbus call --session --dest org.fcitx.Fcitx5 --object-path /controller \
+  --method org.fcitx.Fcitx.Controller1.DebugInfo
+```
+
+It lists every input context with its `program:` and `frontend:`, and which one
+holds focus. Corroborate with `grep im-fcitx5 /proc/<pid>/maps` (route 2),
+`xprop -root _NET_CLIENT_LIST` (empty on this host — nothing is on XWayland at
+all), and `WAYLAND_DEBUG=1` for which protocols the app binds.
+
+On `company-pop-new` this currently splits as: **Chrome and Slack Desktop on
+`wayland_v2`** (both are native Wayland, despite Slack having been assumed to be
+an XWayland/XIM client for a while), everything apt — ghostty, Firefox — on
+`dbus`. A mixed-frontend session is not a problem in itself, but it is the
+precondition for the trigger-key defect recorded in
+[`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md) / issue #14, so it is worth
+knowing which side a new app lands on.

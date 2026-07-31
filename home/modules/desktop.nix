@@ -81,13 +81,25 @@ in
   '';
 
   # Same seed-if-absent treatment for fcitx5's main config, which fcitx5 also
-  # rewrites at runtime. The value worth carrying to a new machine is
-  # ShareInputState=All: with the default (No) every focus change drops the
-  # input method back to inactive, so Ctrl+Space has to be pressed constantly —
-  # and fcitx5 sometimes swallows the trigger key entirely (see
-  # docs/ime-chrome-diagnosis.md and issue #14). Sharing the state across
-  # applications cuts how often the key must be pressed, which is the only lever
-  # available locally; it does not make any individual press more reliable.
+  # rewrites at runtime. Two values are load-bearing for a new machine:
+  #
+  # AllowInputMethodForPassword=True — the fix for the trigger-key failure in
+  #   docs/ime-chrome-diagnosis.md / issue #14, and the only thing measured to fix
+  #   it. cosmic-comp re-activates the input method after the lock screen without
+  #   re-sending content_type, so fcitx5 keeps purpose=password and
+  #   Instance::inputMethod() pins the IM to keyboard-<layout>, ignoring
+  #   isActive(). 0 of 4 trials failed with this True, against 18 of 18 across
+  #   five control arms. The trade-off (a real password prompt can receive input
+  #   from an active IM) is spelled out in config/fcitx5/config.
+  #
+  # ShareInputState=No — reverted from All. All shares one active state across
+  #   every input context, which propagates into the lock screen's context and
+  #   brings the login password field up with mozc active. Observed, not
+  #   predicted, and it matters because mozc learns from what it commits. All was
+  #   only ever a guess made while the cause was unknown; it never made an
+  #   individual press more reliable, and the trigger-key fix above is independent
+  #   of it.
+  #
   # ActiveByDefault stays False on purpose: True would start terminals and the
   # omnibox in Japanese mode.
   home.activation.seedFcitx5Config = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

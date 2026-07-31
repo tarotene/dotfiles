@@ -41,17 +41,21 @@ dotfiles/
 │   └── starship.toml
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
-├── scripts/                  # surviving escape-hatch scripts
+├── scripts/                  # escape-hatch and diagnostic scripts
 │   ├── install-packages.sh   # thin system-layer apt installer (#216)
+│   ├── install-falcon-sensor.sh # company EDR agent installer
 │   ├── fix-ssh-permissions.sh
 │   ├── setup-sops-secrets.sh # host-local SOPS/.sops.yaml setup
-│   └── sops-secrets-env.sh   # SOPS runtime env helper (deployed to ~/.local/bin)
+│   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to ~/.local/bin)
+│   └── fcitx5-key-trace.pl   # fcitx5 trace redactor + trigger-key detector (#14)
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
 ├── docs/
 │   ├── adr/0001..0005        # architecture decision records
 │   ├── operations.md         # routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
+│   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
+│   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
 ```

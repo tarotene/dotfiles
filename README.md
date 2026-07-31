@@ -89,10 +89,11 @@ dotfiles/
 │   └── modules/{shell,git,gpg,secrets,packages,desktop,runtimes}.nix
 ├── config/                   # literal config, deployed verbatim
 ├── packages/declarative/apt-packages.txt   # system layer only
-├── scripts/                  # escape-hatch scripts (install-packages, sops, ssh)
+├── scripts/                  # escape-hatch + diagnostic scripts (install-packages, sops, ssh, fcitx5 trace)
 ├── keys/                     # committed public keys
 ├── bootstrap.sh              # greenfield entrypoint
-└── docs/{adr,operations.md,cutover-runbook.md,nixification-roadmap.md}
+└── docs/{adr,operations.md,cutover-runbook.md,nixification-roadmap.md,
+         ime-chrome-diagnosis.md,falcon-sensor.md}
 ```
 
 ## Architecture Decision Records

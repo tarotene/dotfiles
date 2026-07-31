@@ -47,7 +47,26 @@ EnumerateSkipFirst=False
 # Active By Default
 ActiveByDefault=False
 # Share Input State
-ShareInputState=All
+#
+# No (fcitx5's default), and this is a deliberate revert of an earlier mitigation.
+#
+# `All` shares one active/inactive state across every input context, so one
+# Ctrl+Space carries across applications instead of one per focus change. It was
+# added while the trigger-key cause was unknown, on the theory that fewer presses
+# meant less exposure. It never made an individual press more reliable.
+#
+# It is back to `No` because of what it does in combination with
+# AllowInputMethodForPassword=True below: the shared active state propagates into
+# the lock screen's input context, so the login password field comes up with mozc
+# active. That was observed, not predicted — and it means password keystrokes go
+# through the conversion engine, which learns from what it commits
+# (~/.config/mozc/.history.db). With `No`, the lock screen's context carries its
+# own state and starts inactive under ActiveByDefault=False.
+#
+# This costs the cross-application convenience and nothing else: the trigger-key
+# fix is the capability branch below, which is independent of this setting
+# (measured — arm E showed `No` alone does not fix the trigger-key failure).
+ShareInputState=No
 # Show preedit in application
 PreeditEnabledByDefault=True
 # Show Input Method Information when switch input method
@@ -71,7 +90,38 @@ DisabledAddons=
 # Preload input method to be used by default
 PreloadInputMethod=True
 # Allow input method in the password field
-AllowInputMethodForPassword=False
+#
+# True, deliberately, and not for the reason the option name suggests.  This is
+# the workaround for the trigger-key failure in docs/ime-chrome-diagnosis.md /
+# issue #14, and it is the ONLY thing measured to fix it.
+#
+# Mechanism: after the COSMIC lock screen goes away, cosmic-comp re-activates the
+# input method for the newly focused surface but never re-sends content_type, so
+# fcitx5 keeps purpose=password from the lock screen.  With this option False,
+# Instance::inputMethod() then pins the input method to keyboard-<layout> and
+# ignores isActive() entirely — so Ctrl+Space is consumed and nothing switches,
+# until an unrelated focus event makes the client re-assert its content type.
+# Setting this True removes that branch.
+#
+# Measured under a lock/unlock provocation: 0 of 4 trials and 0 of 27 presses
+# failed, against 18 of 18 trials failing across five control arms (apt 5.1.7,
+# nix 5.1.16, nix 5.1.19, absolute Activate/Deactivate keys, ShareInputState=No).
+# The version arms are what rule out "just upgrade fcitx5".
+#
+# The cost, stated plainly: a genuine password field can now receive input from
+# an active input method.  ShowPreeditForPassword stays False so nothing is
+# rendered, but keystrokes would go into a conversion buffer — and mozc learns
+# from what it commits, so a password typed that way can end up in
+# ~/.config/mozc/.history.db.
+#
+# That is not hypothetical: with ShareInputState=All it was observed at the login
+# password field, which is why ShareInputState is back to No above.  With No, the
+# lock screen's input context starts inactive and this path is not reached in
+# normal use.  It remains reachable if the input method is deliberately activated
+# while a password field has focus.
+#
+# Revert this line if the compositor bug is fixed.
+AllowInputMethodForPassword=True
 # Show preedit text when typing password
 ShowPreeditForPassword=False
 # Interval of saving user data in minutes
