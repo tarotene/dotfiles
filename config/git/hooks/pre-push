@@ -7,13 +7,20 @@ common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 
 if [[ "$git_dir" != "$common_dir" ]]; then
     branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
-    echo "error: Push blocked from worktree branch '${branch}'" >&2
-    echo "" >&2
-    echo "  Worktree branches are for local development only." >&2
-    echo "  Merge back to your parent branch first, then push from there." >&2
-    echo "" >&2
-    echo "  Override: git push --no-verify" >&2
-    exit 1
+    # Exception: chore/backlog-* branches are ephemeral bookkeeping
+    # branches (pj-backlog-dag-tfim's fire-and-forget pipeline) that
+    # exist precisely to be pushed from a throwaway worktree. The
+    # guard targets accidental publication of development branches,
+    # not these; they still fall through to the repo-local hook.
+    if [[ "$branch" != chore/backlog-* ]]; then
+        echo "error: Push blocked from worktree branch '${branch}'" >&2
+        echo "" >&2
+        echo "  Worktree branches are for local development only." >&2
+        echo "  Merge back to your parent branch first, then push from there." >&2
+        echo "" >&2
+        echo "  Override: git push --no-verify" >&2
+        exit 1
+    fi
 fi
 
 # Chain to repo-local pre-push hook (core.hooksPath skips .git/hooks/)
