@@ -4,6 +4,7 @@
 { lib, ... }:
 {
   imports = [
+    ./modules/claude.nix
     ./modules/shell.nix
     ./modules/git.nix
     ./modules/gpg.nix
