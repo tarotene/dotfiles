@@ -14,5 +14,6 @@ cutover is not blocked on rewriting everything up front.
 | Secrets loader | `35-secrets-sops.zsh` + `sops-secrets-env.sh` | stays a runtime escape hatch | Do NOT move to sops-nix (ADR-0003). |
 | fcitx5 autostart | `config/autostart/fcitx5.desktop` + `pkgs.replaceVars` for `Exec=` | `systemd.user.services.fcitx5` | Blocked on COSMIC gaining native XDG autostart (pop-os/cosmic-session#67, pop-os/cosmic-epoch#274). Today the `.desktop` is the only mechanism; `systemd-xdg-autostart-generator` converts it. One interpolated value, so the file stays literal (ADR-0002). |
 | fcitx5 config / profile | `config/fcitx5/{config,profile}`, seeded if absent | `i18n.inputMethod.fcitx5` — **not applicable** to standalone home-manager (it is an NixOS option) | fcitx5 rewrites both at runtime, so a store symlink cannot work. Seed-if-absent is the end state, not a way-station. |
+| Claude Code plan-review hook | `~/.claude/hooks/codex-plan-review.sh` + `~/.claude/commands/codex-plan-review.md` (hand-managed, outside this repo) | `home.file` deploy of both + note that `~/.claude/settings.json` is Claude-Code-owned (hook registration stays manual) | Auto Codex review gate on ExitPlanMode (deny→revise loop, max 2 rounds, fail-open). Nixify once the workflow has proven stable across a few weeks of plan sessions. |
 
 Add rows as new literal configs land; remove them once nixified.
