@@ -19,6 +19,10 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 | **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
+Note on graphics: the driver stack itself is root-owned and stays in the system
+layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
+per-package `nixGL` wrapper in `home/modules/desktop.nix` (ADR-0006).
+
 ## Project Structure
 
 ```
@@ -69,6 +73,7 @@ dotfiles/
 - **ADR-0003** — secrets & identity: YubiKey-rooted, runtime-decrypted SOPS (no sops-nix). **See the Amendment** for the deployed model ([S] subkey on-disk per-machine, two identities, host-local `.sops.yaml`, migration ⊆ rotation).
 - **ADR-0004** — repo identity & relocation (keep the `dotfiles` name; publish to public `tarotene/dotfiles` via clean orphan history; no semver releases).
 - **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
+- **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.
 
 ## Development Rules
 

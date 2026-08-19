@@ -75,6 +75,11 @@ rationale.
   client-side immodules stay apt. See ADR-0001's Amendment.
 - **GUI apps** — Google Chrome, Slack, Zoom via home-manager. Chrome is set as
   the default browser on company hosts (`xdg.mimeApps`).
+- **GL / EGL** — nix-built GUI apps get their driver from **nix's own mesa** via
+  a per-package `nixGL` wrapper, because `/run/opengl-driver` is NixOS-only and
+  the system mesa cannot be loaded into a nix process. Without it Alacritty does
+  not start at all and Chrome/Slack silently fall back to software rendering.
+  See [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md).
 - **AI tooling** — `claude-code` via nixpkgs (`home/modules/packages.nix`).
 - **User-space CLIs** — neovim, ripgrep, fd, bat, zellij, gh, siketyan-ghr,
   git-interactive-rebase-tool, and more, all from nixpkgs.
@@ -108,6 +113,7 @@ dotfiles/
 - [ADR-0003](docs/adr/0003-secrets-and-identity.md) — secrets & identity (YubiKey-rooted, runtime SOPS). See the Amendment for the deployed model.
 - [ADR-0004](docs/adr/0004-repo-identity-and-relocation.md) — repo identity & relocation.
 - [ADR-0005](docs/adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, not auth.
+- [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own GL stack (nixGL); the system graphics stack stays apt.
 
 ## Routine operations
 
