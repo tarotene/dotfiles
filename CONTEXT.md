@@ -40,6 +40,7 @@ stay deliberately outside it as escape hatches:
 | Translation | hybrid — keep working config files literal, use Nix DSL only where interpolation pays | ADR-0002 |
 | Secrets / identity | YubiKey-rooted; runtime-decrypted SOPS (no sops-nix); public keys committed; retire keybase | ADR-0003 |
 | Repo identity | keep the `dotfiles` name; relocate to public `tarotene/dotfiles` via a clean orphan history; no semver releases | ADR-0004 |
+| Graphics | nix GUI apps carry their own GL stack via a per-package `nixGL` wrapper; the system graphics stack stays apt and untouched | ADR-0006 |
 | Infra | latest pinned stable release channel; Determinate Systems installer; nix-centric CI; rollback via generations | ADR-0001 |
 
 ## Repository layout (two-layer flake)
