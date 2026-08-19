@@ -1,0 +1,131 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "readiness",
+    "findings",
+    "carryover"
+  ],
+  "properties": {
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirements",
+        "scope",
+        "implementation",
+        "verification"
+      ],
+      "properties": {
+        "requirements": {
+          "type": "boolean",
+          "description": "要件が特定されているか"
+        },
+        "scope": {
+          "type": "boolean",
+          "description": "スコープ / 非スコープが明確か"
+        },
+        "implementation": {
+          "type": "boolean",
+          "description": "実装手順が具体化されているか"
+        },
+        "verification": {
+          "type": "boolean",
+          "description": "検証方法が定義されているか"
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "実装をブロックする問題のみ。空配列は正常かつ望ましい結果である。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "kind",
+          "readiness_axis",
+          "summary",
+          "failure_mode",
+          "trigger",
+          "evidence"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "BLOCKER",
+              "MAJOR",
+              "MINOR",
+              "NIT"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "TECHNICAL",
+              "NEEDS_DECISION"
+            ]
+          },
+          "readiness_axis": {
+            "type": "string",
+            "enum": [
+              "REQUIREMENTS",
+              "SCOPE",
+              "IMPLEMENTATION",
+              "VERIFICATION",
+              "NONE"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "description": "一行要約"
+          },
+          "failure_mode": {
+            "type": "string",
+            "description": "具体的にどう失敗するか"
+          },
+          "trigger": {
+            "type": "string",
+            "description": "どういう条件で発生するか"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "リポジトリ上の path[:line] / プランの該当箇所 / 外部仕様の出典"
+          }
+        }
+      }
+    },
+    "carryover": {
+      "type": "array",
+      "description": "前ラウンドの未解決指摘への判定。ラウンド 1 では空配列。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "rationale"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "hook が渡した open set の id をそのまま返す"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RESOLVED",
+              "UNRESOLVED",
+              "REFUTED_BY_PLAN"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "description": "その status の理由（プランのどこで解消 / 反証されたか）"
+          }
+        }
+      }
+    }
+  }
+}

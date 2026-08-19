@@ -1,13 +1,17 @@
 # Claude Code plan-review workflow — an automatic Codex CLI review gate on
-# ExitPlanMode (deny→revise loop, max 2 rounds/session, fail-open), plus a
-# manual /codex-plan-review advisory command.
+# ExitPlanMode, plus a manual /codex-plan-review advisory command.
 #
-# Hybrid translation (ADR-0002): the hook script and the slash command stay
-# literal under config/claude/ and are deployed via home.file. The hook
-# no-ops silently on hosts without a codex binary (ADR-0005's
-# binary-existence gating), so it is deployed unconditionally to every host —
-# enabling/disabling per machine is a matter of whether codex is installed,
-# not of home-manager configuration.
+# The gate is acceptance-convergent, not critic-convergent: Codex emits
+# schema-validated findings (never a verdict), the hook script decides
+# gate eligibility deterministically with jq, and the acceptance oracle is
+# "no BLOCKER/MAJOR left open". See docs/codex-plan-review.md for why.
+#
+# Hybrid translation (ADR-0002): the hook script, its output schema, and the
+# slash command stay literal under config/claude/ and are deployed via
+# home.file. The hook no-ops silently on hosts without a codex binary
+# (ADR-0005's binary-existence gating), so it is deployed unconditionally to
+# every host — enabling/disabling per machine is a matter of whether codex is
+# installed, not of home-manager configuration.
 #
 # ~/.claude/settings.json is Claude-Code-owned (the CLI rewrites it at
 # runtime), so the hook *registration* cannot be a store symlink — the same
@@ -57,6 +61,12 @@ in
     source = repoConfig + "/claude/hooks/codex-plan-review.sh";
     executable = true;
   };
+
+  # The critic's forced output shape (codex exec --output-schema). The hook
+  # resolves it relative to its own directory, so the two files must stay
+  # side by side under ~/.claude/hooks/.
+  home.file.".claude/hooks/codex-plan-review.schema.json".source =
+    repoConfig + "/claude/hooks/codex-plan-review.schema.json";
 
   # The command file hardcodes /home/tarotene — fine while every identity
   # pins home.username = "tarotene" (identities/*.nix). Revisit if a host

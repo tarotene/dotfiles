@@ -36,6 +36,18 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
+      # config/ is excluded above because it holds zsh modules and the fcitx5
+      # profile, which shellcheck cannot parse (SC1071).  config/claude/hooks/
+      # is genuine bash, though, and it carries the plan-review gate's judge
+      # logic, so it gets its own pass with the exclusion lifted.
+      - name: ShellCheck Claude Code hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/claude/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
       - name: Install zsh for syntax validation
         run: |
           set -euo pipefail
@@ -77,6 +89,16 @@ jobs:
       # on ubuntu-latest; shellcheck ignores .pl, so the file needs no exclusion.
       - name: fcitx5-key-trace.pl --selftest
         run: perl ./scripts/fcitx5-key-trace.pl --selftest
+
+      # The plan-review gate's acceptance decision is deterministic shell +
+      # jq, so it is testable without calling Codex.  The selftest runs the
+      # judge over fixtures and drives the hook end to end against a fake
+      # codex in a throwaway REVIEW_DIR (docs/codex-plan-review.md).
+      - name: codex-plan-review output schema is valid JSON
+        run: jq empty config/claude/hooks/codex-plan-review.schema.json
+
+      - name: codex-plan-review.sh --selftest
+        run: bash ./config/claude/hooks/codex-plan-review.sh --selftest
 
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
