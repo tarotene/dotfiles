@@ -16,9 +16,18 @@
 #   - open set が空 / エラー / タイムアウト / スキーマ不適合 / スキップ
 #       → 何も決定しない（exit 0）＝ 通常の Approve ダイアログに進む
 #   - hook がプランを自動承認することは決してない（allow を返さない）
-#   - セッションあたり最大 MAX_PLAN_REVIEWS (既定 2) レビュー。fail-open が原則。
-#   - 上限到達時に open set が残っていたら、codex を呼ばずに deny を 1 回だけ返して
-#     人間の GO/NO-GO を強制する（state/<sid>.escalated で 1 回に限定）。
+#   - セッションあたり最大 MAX_PLAN_REVIEWS (既定 3) レビュー。fail-open が原則。
+#
+# 最終ラウンド (round == MAX_PLAN_REVIEWS) は「発見」ではなく closer である。
+# lens Z が carry-over 判定だけを行い、新規 finding は severity に関わらず gate 対象外
+# （backlog 行き）になる。これがないと最終ラウンドで生えた指摘を判定するラウンドが
+# 存在せず、open set = ∅ が原理的に到達不能になる（docs/codex-plan-review.md の
+# 「第二次の非収束」）。不変条件は:
+#
+#   gate 適格な finding は、修正後の再判定を最低 1 回受ける
+#
+#   - closer 後も open set が残っていたら、deny を 1 回だけ返して人間の GO/NO-GO を
+#     強制する（state/<sid>.escalated で 1 回に限定）。以後そのセッションは素通る。
 #
 # 使い方:
 #   hook として:      settings.json の PreToolUse (matcher: ExitPlanMode) から stdin JSON で呼ばれる
@@ -47,7 +56,7 @@ BACKLOG_DIR="$REVIEW_DIR/backlog"
 SCHEMA_FILE="${CODEX_PLAN_REVIEW_SCHEMA:-$SCRIPT_DIR/codex-plan-review.schema.json}"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
-MAX_REVIEWS="${MAX_PLAN_REVIEWS:-2}"
+MAX_REVIEWS="${MAX_PLAN_REVIEWS:-3}"
 CODEX_TIMEOUT="${CODEX_PLAN_REVIEW_TIMEOUT:-280}"
 GATE_SEVERITIES="${CODEX_PLAN_REVIEW_GATE_SEVERITIES:-BLOCKER,MAJOR}"
 PARALLEL="${CODEX_PLAN_REVIEW_PARALLEL:-1}"
@@ -196,6 +205,22 @@ adversarial に見る。「このプランを実装した結果、何が壊れ�
 新しい観点を無理に増やす必要はない。ブロックすべき問題がなければ findings は空配列でよい。
 EOF
       ;;
+    Z)
+      cat <<'EOF'
+
+## このレビューの観点 (lens Z — closer)
+
+これはこのセッションの最終ラウンドである。あなたの職責は **carry-over の判定だけ** で
+あり、それ以外にはない。
+
+  - 新しい欠陥を探すな。プランを読み直して別の問題を見つけ出す作業はしない
+  - 下の carry-over 節にある各 id について、改訂プランを読んで判定を返すことに専念せよ
+  - **findings は空配列を返せ。** ここで報告した新規指摘は severity に関わらず
+    gate 対象にならず backlog に退避されるだけなので、探す労力に見合わない
+
+carry-over の判定精度がこのラウンドの唯一の成果物である。
+EOF
+      ;;
     *)
       cat <<'EOF'
 
@@ -234,6 +259,14 @@ EOF
 
 判定を落とした id は保守的に UNRESOLVED として扱われる。落としても通過はしない。
 同じ指摘を findings に再掲する必要はない。carryover で UNRESOLVED と答えれば足りる。
+
+判定は **改訂後プランの現行本文** を根拠に述べること。下に添えた根拠は前ラウンド時点の
+ものであり、改訂で行番号がずれたり記述そのものが消えていることがある。
+
+  - 行番号の一致で照合するな。記述内容で照合せよ
+  - 前ラウンドの根拠が指していた記述が現行プランに存在しないなら、その指摘は
+    RESOLVED（書き換えで解消された）または REFUTED_BY_PLAN と判定せよ。
+    存在しない記述を根拠に UNRESOLVED を返してはならない
 
 EOF
   jq -r '.[] | "- id: " + .id + " [" + .severity + "] " + .summary
@@ -404,9 +437,21 @@ JQEOF
 
 # $1=round $2=open set JSON [$3=gate severities] ; stdin: critics 配列 JSON
 # → stdout: judged JSON
+#
+# $3 の既定値展開は `${3-...}` でなければならない（`${3:-...}` ではない）。
+# closer ラウンドは「gate 適格な severity は無い」を空文字で表現するので、空文字が
+# 既定値 BLOCKER,MAJOR に置換されると closer が新規流入を止められなくなる。
 judge() {
-  local gate="${3:-$GATE_SEVERITIES}"
+  local gate="${3-$GATE_SEVERITIES}"
   jq --arg round "$1" --arg gate "$gate" --argjson open "$2" "$JUDGE_JQ"
+}
+
+# closer ラウンド用に judged JSON を整える。
+# gate 適格 severity が空なので readiness の未充足軸は必ず「裏付ける finding なし」に
+# なるが、それは critic の不備ではなく closer の仕様である。偽陽性の警告を潰す。
+# stdin: judged JSON → stdout: judged JSON
+suppress_closer_warn() {
+  jq '.warn.readiness_inconsistent = false'
 }
 
 # ---------------------------------------------------------------------------
@@ -676,6 +721,40 @@ if [[ "${1:-}" == "--selftest" ]]; then
   j="$(judge 1 '[]' <<<"[$c]")"
   check "既定の閾値では MAJOR がゲート対象" true "$(jq -r '.gate' <<<"$j")"
 
+  # 12b) closer: gate 適格 severity を空文字で明示すると gate が無効化される。
+  # judge() の $3 展開が `${3:-...}` に戻ると既定値 BLOCKER,MAJOR が復活してこれが落ちる。
+  c="$(mkcritic Z "[$(mkfinding BLOCKER 'closer が見つけた新規'), $(mkfinding MAJOR 'もう一件')]" '[]')"
+  j="$(judge 3 '[]' "" <<<"[$c]")"
+  check "closer: 空 gate → gate=false" false "$(jq -r '.gate' <<<"$j")"
+  check "closer: 空 gate → new_eligible=0" 0 "$(jq -r '.new_eligible | length' <<<"$j")"
+  check "closer: 新規 BLOCKER/MAJOR は backlog へ" 2 "$(jq -r '.backlog | length' <<<"$j")"
+
+  # 12c) closer: carry-over が UNRESOLVED なら新規流入なしでも gate は張る
+  c="$(mkcritic Z "[$(mkfinding BLOCKER 'closer が見つけた新規')]" \
+    '[{"id":"R1-A-1","status":"UNRESOLVED","rationale":"まだ直っていない"}]')"
+  j="$(judge 3 "$OPEN1" "" <<<"[$c]")"
+  check "closer: carry-over 未解消 → gate=true" true "$(jq -r '.gate' <<<"$j")"
+  check "closer: carry-over 未解消 → open=1" 1 "$(jq -r '.open | length' <<<"$j")"
+  check "closer: carry-over 未解消 → new_eligible=0" 0 \
+    "$(jq -r '.new_eligible | length' <<<"$j")"
+
+  # 12d) closer: carry-over 全閉なら PASS する（収束経路が到達可能であること）
+  c="$(mkcritic Z '[]' '[{"id":"R1-A-1","status":"RESOLVED","rationale":"直した"}]')"
+  j="$(judge 3 "$OPEN1" "" <<<"[$c]")"
+  check "closer: carry-over 全閉 → gate=false" false "$(jq -r '.gate' <<<"$j")"
+  check "closer: carry-over 全閉 → closed=1" 1 "$(jq -r '.closed | length' <<<"$j")"
+
+  # 12e) closer: readiness 不整合の偽陽性を潰す
+  c="$(mkcritic Z '[]' '[{"id":"R1-A-1","status":"RESOLVED","rationale":"直した"}]' \
+    "$READY_NO_R")"
+  j="$(judge 3 "$OPEN1" "" <<<"[$c]")"
+  check "closer: 抑止前は readiness 不整合が立つ" true \
+    "$(jq -r '.warn.readiness_inconsistent' <<<"$j")"
+  j="$(suppress_closer_warn <<<"$j")"
+  check "closer: 抑止後は readiness 不整合が消える" false \
+    "$(jq -r '.warn.readiness_inconsistent' <<<"$j")"
+  check "closer: 抑止で警告文が空になる" "" "$(warn_text <<<"$j")"
+
   # 13) 旧形式の markdown レビューは非 JSON として弾かれる
   legacy="$REVIEW_DIR/.legacy-out"
   printf -- '- [技術] 旧形式のレビュー本文\n\nVERDICT: REQUEST_CHANGES\n' > "$legacy"
@@ -802,6 +881,7 @@ case "$prompt" in
   *"(lens A)"*) lens=A ;;
   *"(lens B)"*) lens=B ;;
   *"(lens C)"*) lens=C ;;
+  *"(lens Z"*) lens=Z ;;
 esac
 [ -e "$FAKE_CODEX_DIR/$lens.fail" ] && exit 1
 cp "$FAKE_CODEX_DIR/$lens.json" "$out"
@@ -839,6 +919,93 @@ CJSON
     "$(jq -r 'length' "$STATE_DIR/selftest-parallel.open.json")"
   check "ラウンド 2 → カウンタが 2 になる" 2 \
     "$(cat "$STATE_DIR/selftest-parallel.count")"
+
+  # 22b) 最終ラウンドは closer。carry-over 全閉 → PASS
+  #      （収束経路が実際に到達可能であることの回帰テスト。旧設計ではここが 0% だった）
+  cat > "$fake_dir/Z.json" <<'ZJSON'
+{"readiness": {"requirements": true, "scope": true, "implementation": true,
+               "verification": true},
+ "findings": [],
+ "carryover": [{"id": "R1-A-1", "status": "RESOLVED", "rationale": "改訂で解消"}]}
+ZJSON
+  mkhookinput selftest-closer-pass
+  printf '%s\n' "$((MAX_REVIEWS - 1))" > "$STATE_DIR/selftest-closer-pass.count"
+  printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-closer-pass.open.json"
+  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
+    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  check "closer: carry-over 全閉 → 素通り" none "$(decision <<<"$out")"
+  check "closer: carry-over 全閉 → open set が空になる" 0 \
+    "$(jq -r 'length' "$STATE_DIR/selftest-closer-pass.open.json")"
+  check "closer: ラウンドを消費する" "$MAX_REVIEWS" \
+    "$(cat "$STATE_DIR/selftest-closer-pass.count")"
+  if [[ -e "$STATE_DIR/selftest-closer-pass.escalated" ]]; then
+    ng "closer: PASS ならエスカレーションしない"
+  else
+    ok "closer: PASS ならエスカレーションしない"
+  fi
+
+  # 22c) closer で carry-over が残る → 通常 deny を飛ばして即エスカレーション。
+  #      同時に出た新規 BLOCKER は gate 対象にせず backlog へ回す。
+  cat > "$fake_dir/Z.json" <<'ZJSON'
+{"readiness": {"requirements": true, "scope": true, "implementation": true,
+               "verification": true},
+ "findings": [{"severity": "BLOCKER", "kind": "TECHNICAL",
+               "readiness_axis": "IMPLEMENTATION", "summary": "closer が見つけた新規",
+               "failure_mode": "壊れる", "trigger": "常に", "evidence": "z.sh:1"}],
+ "carryover": [{"id": "R1-A-1", "status": "UNRESOLVED", "rationale": "まだ直っていない"}]}
+ZJSON
+  mkhookinput selftest-closer-deny
+  printf '%s\n' "$((MAX_REVIEWS - 1))" > "$STATE_DIR/selftest-closer-deny.count"
+  printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-closer-deny.open.json"
+  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
+    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  check "closer: carry-over 未解消 → deny" deny "$(decision <<<"$out")"
+  case "$(reason <<<"$out")" in
+    *AskUserQuestion*GO*NO-GO*) ok "closer: GO/NO-GO を要求する" ;;
+    *) ng "closer: GO/NO-GO を要求する" ;;
+  esac
+  case "$(reason <<<"$out")" in
+    *"再度 ExitPlanMode を呼んでください"*)
+      ng "closer: 通常 deny（直して来い）には落ちない" ;;
+    *) ok "closer: 通常 deny（直して来い）には落ちない" ;;
+  esac
+  if [[ -e "$STATE_DIR/selftest-closer-deny.escalated" ]]; then
+    ok "closer: escalated フラグが立つ"
+  else
+    ng "closer: escalated フラグが立つ"
+  fi
+  check "closer: 新規 BLOCKER は open set に入らない" 1 \
+    "$(jq -r 'length' "$STATE_DIR/selftest-closer-deny.open.json")"
+  check "closer: open set は carry-over だけ" "R1-A-1" \
+    "$(jq -r '.[0].id' "$STATE_DIR/selftest-closer-deny.open.json")"
+  case "$(cat "$BACKLOG_DIR/selftest-closer-deny.md" 2>/dev/null)" in
+    *"closer が見つけた新規"*) ok "closer: 新規 BLOCKER は backlog に残る" ;;
+    *) ng "closer: 新規 BLOCKER は backlog に残る" ;;
+  esac
+
+  # 22d) escalated 済みなら上限未到達でも素通る（早期 exit の回帰テスト）
+  mkhookinput selftest-escalated
+  printf '1\n' > "$STATE_DIR/selftest-escalated.count"
+  printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-escalated.open.json"
+  : > "$STATE_DIR/selftest-escalated.escalated"
+  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir")"
+  check "escalated 済み + 上限未到達 → 素通り" none "$(decision <<<"$out")"
+  check "escalated 済み → ラウンドを消費しない" 1 \
+    "$(cat "$STATE_DIR/selftest-escalated.count")"
+
+  # 22e) MAX_PLAN_REVIEWS=1 の退化ケースではラウンド 1 を closer 化しない
+  mkcritic M "[$(mkfinding BLOCKER 'lens M の指摘')]" '[]' | jq '.data' > "$fake_dir/M.json"
+  mkhookinput selftest-max1
+  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
+    CODEX_PLAN_REVIEW_TIMEOUT=20 MAX_PLAN_REVIEWS=1 CODEX_PLAN_REVIEW_PARALLEL=0)"
+  check "MAX=1: ラウンド 1 は closer 化しない → deny" deny "$(decision <<<"$out")"
+  check "MAX=1: 新規 BLOCKER が open set に入る" 1 \
+    "$(jq -r 'length' "$STATE_DIR/selftest-max1.open.json")"
+  if [[ -e "$STATE_DIR/selftest-max1.escalated" ]]; then
+    ng "MAX=1: ラウンド 1 でエスカレーションしない"
+  else
+    ok "MAX=1: ラウンド 1 でエスカレーションしない"
+  fi
 
   # 23) 有効な JSON を書いた後に非ゼロ終了 → 失敗として扱う
   #     （rc を捨てていると成功扱いになり、不完全な結果で gate を張ってしまう）
@@ -916,6 +1083,27 @@ deny_with() { # $1=reason (Claude に届く)
   exit 0
 }
 
+# 未解消の指摘を残したまま最終ラウンドを終えた → 人間の GO/NO-GO を強制する。
+# deny は 1 回だけ（ESCALATED_FILE で限定）。以後そのセッションは素通る。
+# $1=judged JSON（.open を持つ） $2=状況の説明行 $3=レビュー全文のパス（空可）
+escalate_with() {
+  local judged="$1" situation="$2" log_path="$3" n residual
+  n="$(jq '.open | length' <<<"$judged")"
+  residual="$(render_open <<<"$judged")"
+  : > "$ESCALATED_FILE"
+  deny_with "${situation}実装をブロックする指摘が ${n} 件未解消のまま残っています。
+
+追加のレビューは行いません。**AskUserQuestion で、この状態のまま実装に進んでよいか (GO / NO-GO) をユーザーに確認すること。** あなたの判断で未解消のまま進めてはならない。
+
+- GO なら、そのまま再度 ExitPlanMode を呼ぶ（次回は素通ります）。
+- NO-GO なら、ExitPlanMode を呼ばずにプランの修正を続けること。
+
+--- 未解消の指摘 ---
+
+$residual
+MINOR/NIT は $BACKLOG_FILE を参照。レビュー全文: ${log_path:-$REVIEW_DIR}"
+}
+
 # --- codex 不在のマシンでは黙って素通り（ADR-0005: バイナリ存在でゲート） ---
 if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
   pass_through
@@ -940,24 +1128,24 @@ open_set="$(cat "$OPEN_FILE" 2>/dev/null || echo '[]')"
 jq -e 'type == "array"' <<<"$open_set" >/dev/null 2>&1 || open_set='[]'
 open_n="$(jq 'length' <<<"$open_set")"
 
+# --- 既にエスカレーション済み → 無条件に素通る（ループしない） ---
+# ラウンド上限の判定より前に置く。エスカレーションは closer ラウンドの直後に起きるので、
+# 上限到達を待たずに立つフラグである。
+if [[ -e "$ESCALATED_FILE" ]]; then
+  latest_log="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1)"
+  pass_through "Codex プランレビュー: このセッションでは既に人間の GO/NO-GO を要求したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
+fi
+
 # --- ラウンド上限 ---
+# 通常フローでは closer ラウンドが escalate_with を呼ぶのでここには未解消が残らない。
+# MAX_PLAN_REVIEWS を途中で下げた等で古い state が上限を超えている場合の安全網。
 if [[ "$count" -ge "$MAX_REVIEWS" ]]; then
   latest_log="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1)"
-  if [[ "$open_n" != "0" && ! -e "$ESCALATED_FILE" ]]; then
+  if [[ "$open_n" != "0" ]]; then
     # codex は呼ばない。deny を 1 回だけ返して人間の GO/NO-GO を強制する。
-    : > "$ESCALATED_FILE"
-    residual="$(jq -n --argjson o "$open_set" '{open: $o}' | render_open)"
-    deny_with "Codex プランレビューの上限 (${MAX_REVIEWS} ラウンド) に到達しましたが、実装をブロックする指摘が ${open_n} 件未解消のまま残っています。
-
-追加のレビューは行いません。**AskUserQuestion で、この状態のまま実装に進んでよいか (GO / NO-GO) をユーザーに確認すること。** あなたの判断で未解消のまま進めてはならない。
-
-- GO なら、そのまま再度 ExitPlanMode を呼ぶ（次回は素通ります）。
-- NO-GO なら、ExitPlanMode を呼ばずにプランの修正を続けること。
-
---- 未解消の指摘 ---
-
-$residual
-MINOR/NIT は $BACKLOG_FILE を参照。直近のレビュー全文: ${latest_log:-$REVIEW_DIR}"
+    escalate_with "$(jq -n --argjson o "$open_set" '{open: $o}')" \
+      "Codex プランレビューの上限 (${MAX_REVIEWS} ラウンド) に到達しましたが、" \
+      "$latest_log"
   fi
   pass_through "Codex プランレビュー: このセッションの上限 (${MAX_REVIEWS} ラウンド) に達したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
 fi
@@ -985,8 +1173,16 @@ round=$((count + 1))
 
 # --- lens の選択 ---
 # ラウンド 1 は観点の異なる 2 critic を並列（相関した見落としを減らす）。
-# ラウンド 2 以降は adversarial 1 本 + carry-over 判定。
-if [[ "$round" == "1" ]]; then
+# 中間ラウンドは adversarial 1 本 + carry-over 判定。
+# 最終ラウンドは closer（carry-over 判定専用、新規は gate 対象外）。
+#
+# MAX_PLAN_REVIEWS=1 に絞られた退化ケースでは closer 化しない。発見ラウンドが 1 本も
+# 無くなり、レビューが carry-over 判定だけの空回りになるため。
+closer=0
+if [[ "$round" -ge "$MAX_REVIEWS" && "$round" -gt 1 ]]; then
+  lenses=(Z)
+  closer=1
+elif [[ "$round" == "1" ]]; then
   if [[ "$PARALLEL" == "1" ]]; then
     lenses=(A B)
   else
@@ -1007,7 +1203,15 @@ if [[ "$(jq 'length' <<<"$critics" 2>/dev/null || echo 0)" == "0" ]]; then
   pass_through "Codex プランレビュー: 実行に失敗しました（タイムアウト ${CODEX_TIMEOUT}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。"
 fi
 
-if ! judged="$(judge "$round" "$open_set" <<<"$critics")"; then
+# closer ラウンドは gate 適格 severity を空にする（= 新規 finding は全て backlog へ）。
+# judge() の $3 は `${3-...}` 展開なので、空文字が既定値に戻ることはない。
+if [[ "$closer" == "1" ]]; then
+  judged="$(judge "$round" "$open_set" "" <<<"$critics" | suppress_closer_warn)" ||
+    judged=""
+else
+  judged="$(judge "$round" "$open_set" <<<"$critics")" || judged=""
+fi
+if [[ -z "$judged" ]]; then
   pass_through "Codex プランレビュー: レビュー結果の解析に失敗しました。fail-open で通過させます。ラウンドは消費していません。"
 fi
 
@@ -1039,6 +1243,13 @@ carried_n="$(jq -r '.carried | length' <<<"$judged")"
 backlog_n="$(jq -r '.backlog | length' <<<"$judged")"
 
 if [[ "$gate" == "true" ]]; then
+  # closer は最後の言葉である。ここで通常 deny（= 直してもう一度来い）を返すと、その
+  # 修正を判定するラウンドがまた無くなる。人間の GO/NO-GO に直行する。
+  if [[ "$closer" == "1" ]]; then
+    escalate_with "$judged" \
+      "Codex プランレビューの最終ラウンド (closer) で改訂プランに対して再判定した結果、" \
+      "$review_log"
+  fi
   deny_with "Codex によるプランレビューの結果、実装をブロックする指摘が ${open_n} 件あります（ラウンド ${round}/${MAX_REVIEWS}、新規 ${new_n} 件 / 前ラウンドから未解消 ${carried_n} 件）。
 
 対応の方針:
@@ -1056,6 +1267,20 @@ if [[ "$gate" == "true" ]]; then
 
 $(render_open <<<"$judged")
 レビュー全文: $review_log"
+fi
+
+if [[ "$closer" == "1" ]]; then
+  # closer は gate 適格 severity を空にして走るので、backlog には BLOCKER/MAJOR も
+  # 混じる。黙って飲まず、件数を人間の Approve ダイアログまで持ち上げる。
+  serious_n="$(jq -r '[.backlog[] | select(.severity == "BLOCKER" or .severity == "MAJOR")] | length' <<<"$judged")"
+  blocker_n="$(jq -r '[.backlog[] | select(.severity == "BLOCKER")] | length' <<<"$judged")"
+  closer_note="前ラウンドの指摘はすべて解消 / 却下されました（closer ラウンド ${round}/${MAX_REVIEWS}）。"
+  if [[ "$serious_n" != "0" ]]; then
+    closer_note="${closer_note}closer は carry-over 判定専用なので、新たに報告された BLOCKER/MAJOR ${serious_n} 件（うち BLOCKER ${blocker_n} 件）は gate 対象にせず backlog に退避しました。実装前に $BACKLOG_FILE を確認してください。"
+  fi
+  pass_through "Codex プランレビュー: ${closer_note}backlog は計 ${backlog_n} 件。全文: $review_log${warn:+
+
+（注意: $warn）}"
 fi
 
 pass_through "Codex プランレビュー: 実装をブロックする指摘はありません（ラウンド ${round}/${MAX_REVIEWS}）。MINOR/NIT ${backlog_n} 件は $BACKLOG_FILE に退避しました。全文: $review_log${warn:+

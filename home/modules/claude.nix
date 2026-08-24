@@ -6,6 +6,13 @@
 # gate eligibility deterministically with jq, and the acceptance oracle is
 # "no BLOCKER/MAJOR left open". See docs/codex-plan-review.md for why.
 #
+# Reaching that oracle needs the *last* round to be a closer that only
+# adjudicates carry-over — a final round that also discovers new findings
+# leaves them with no round to be re-judged in, which made the oracle
+# unreachable in practice (0 passes in 9 sessions). Hence 3 rounds by
+# default, the third being the closer; the hook's 300s timeout is per
+# round, so it is unaffected.
+#
 # Hybrid translation (ADR-0002): the hook script, its output schema, and the
 # slash command stay literal under config/claude/ and are deployed via
 # home.file. The hook no-ops silently on hosts without a codex binary
