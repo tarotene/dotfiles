@@ -33,6 +33,13 @@
     ripgrep
     fd
 
+    # Document conversion. The plan-view hook (home/modules/claude.nix) renders
+    # plans to HTML with it. A stray /usr/bin/pandoc may exist on an inherited
+    # host but is not declared in packages/declarative/apt-packages.txt, so the
+    # declarative answer is to own it here (ADR-0001: user-space CLIs are the
+    # home-manager layer). ~/.nix-profile/bin precedes /usr/bin on PATH.
+    pandoc
+
     # AI tooling (unfree — flake sets allowUnfree; version follows the
     # nixpkgs pin, bump via `nix flake update`).
     # A native install at ~/.local/bin/claude (from Anthropic's official
