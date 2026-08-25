@@ -1,30 +1,26 @@
-# Claude Code plan-review workflow — an automatic Codex CLI review gate on
-# ExitPlanMode, plus a manual /codex-plan-review advisory command.
+# Claude Code のフック群 — plan-review ゲートと wrap-up inbox を home-manager で配備する。
 #
-# The gate is acceptance-convergent, not critic-convergent: Codex emits
-# schema-validated findings (never a verdict), the hook script decides
-# gate eligibility deterministically with jq, and the acceptance oracle is
-# "no BLOCKER/MAJOR left open". See docs/codex-plan-review.md for why.
+# 1) plan-review ゲート(PreToolUse / ExitPlanMode):
+#    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
+#    critic は verdict を出さず、judge(jq)が決定論的に gate 適格性を判定する。
+#    最終ラウンドは closer。詳細は docs/codex-plan-review.md。
 #
-# Reaching that oracle needs the *last* round to be a closer that only
-# adjudicates carry-over — a final round that also discovers new findings
-# leaves them with no round to be re-judged in, which made the oracle
-# unreachable in practice (0 passes in 9 sessions). Hence 3 rounds by
-# default, the third being the closer; the hook's 300s timeout is per
-# round, so it is unaffected.
+# 2) wrap-up inbox(SessionStart + Stop):
+#    スコープ外の気づきの「収集」と「起票」を分離する。SessionStart hook が
+#    additionalContext で「気づきは state 領域の inbox(JSONL)に --add で追記せよ」
+#    と注入し、Stop hook が inbox 非空かつ起票可能(gh あり・git repo・GitHub
+#    remote あり)なら exit 2 + stderr 指示でフルコンテキストの本体 Claude に
+#    gh issue create させる。それ以外は黙って exit 0(ADR-0005 の binary-existence
+#    gating に倣う)。詳細は docs/wrapup-inbox.md。
 #
-# Hybrid translation (ADR-0002): the hook script, its output schema, and the
-# slash command stay literal under config/claude/ and are deployed via
-# home.file. The hook no-ops silently on hosts without a codex binary
-# (ADR-0005's binary-existence gating), so it is deployed unconditionally to
-# every host — enabling/disabling per machine is a matter of whether codex is
-# installed, not of home-manager configuration.
+# Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
+# config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
+# バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
 #
-# ~/.claude/settings.json is Claude-Code-owned (the CLI rewrites it at
-# runtime), so the hook *registration* cannot be a store symlink — the same
-# constraint as the fcitx5 profile in desktop.nix. Instead it is merged
-# idempotently at activation time: the PreToolUse entry is injected only if
-# an identical one is missing, and nothing else in the file is touched.
+# ~/.claude/settings.json は Claude-Code-owned(CLI が実行時に書き換える)なので、
+# hook の登録だけは store symlink にできない — desktop.nix の fcitx5 プロファイルと
+# 同じ制約。代わりに activation 時に冪等マージする: 同一 command を持つエントリが
+# 該当イベント配下に無いときだけ注入し、それ以外は一切触らない。
 {
   config,
   lib,
@@ -33,12 +29,14 @@
 }:
 let
   repoConfig = ../../config;
-  hookCmd = "bash '${config.home.homeDirectory}/.claude/hooks/codex-plan-review.sh'";
+  hooksDir = "${config.home.homeDirectory}/.claude/hooks";
+  planReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
+  wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
+  wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
 
-  registerHook = pkgs.writeShellScript "register-claude-plan-review-hook" ''
+  registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
     settings="$1"
-    hook_cmd="$2"
     jq=${pkgs.jq}/bin/jq
 
     if [ ! -f "$settings" ]; then
@@ -46,21 +44,32 @@ let
       printf '{}\n' > "$settings"
     fi
 
-    if "$jq" -e --arg cmd "$hook_cmd" \
-        '[.hooks.PreToolUse[]? | select(.matcher == "ExitPlanMode")
-          | .hooks[]? | select(.command == $cmd)] | length > 0' \
-        "$settings" >/dev/null; then
-      exit 0
-    fi
+    # register <event> <matcher> <cmd> <timeout>
+    #   matcher / timeout は空文字ならフィールド自体を出力しない。
+    #   存在判定は command の一致だけで足りる(hook のパスがエントリを一意に定める)。
+    register() {
+      event="$1" matcher="$2" cmd="$3" timeout="$4"
+      if "$jq" -e --arg event "$event" --arg cmd "$cmd" \
+          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
+          "$settings" >/dev/null; then
+        return 0
+      fi
+      tmp="$(mktemp)"
+      "$jq" --arg event "$event" --arg matcher "$matcher" \
+            --arg cmd "$cmd" --arg timeout "$timeout" '
+        .hooks[$event] = ((.hooks[$event] // []) + [
+          (if $matcher == "" then {} else { matcher: $matcher } end)
+          + { hooks: [
+              { type: "command", command: $cmd }
+              + (if $timeout == "" then {} else { timeout: ($timeout | tonumber) } end)
+            ] }
+        ])' "$settings" > "$tmp"
+      mv "$tmp" "$settings"
+    }
 
-    tmp="$(mktemp)"
-    "$jq" --arg cmd "$hook_cmd" \
-      '.hooks.PreToolUse = ((.hooks.PreToolUse // []) + [{
-        matcher: "ExitPlanMode",
-        hooks: [{ type: "command", command: $cmd, timeout: 300 }]
-      }])' \
-      "$settings" > "$tmp"
-    mv "$tmp" "$settings"
+    register PreToolUse ExitPlanMode "$2" 300
+    register Stop "" "$3" ""
+    register SessionStart "" "$4" ""
   '';
 in
 {
@@ -69,19 +78,32 @@ in
     executable = true;
   };
 
-  # The critic's forced output shape (codex exec --output-schema). The hook
-  # resolves it relative to its own directory, so the two files must stay
-  # side by side under ~/.claude/hooks/.
+  # critic の強制出力スキーマ(codex exec --output-schema)。hook が自身の
+  # ディレクトリ相対で解決するので、2 ファイルは ~/.claude/hooks/ に並べて置く。
   home.file.".claude/hooks/codex-plan-review.schema.json".source =
     repoConfig + "/claude/hooks/codex-plan-review.schema.json";
 
-  # The command file hardcodes /home/tarotene — fine while every identity
-  # pins home.username = "tarotene" (identities/*.nix). Revisit if a host
-  # ever overrides the username.
+  # wrap-up inbox の 2 hook。session-start は stop-gate と同じパス計算を使い、
+  # 同じディレクトリに並んでいることを前提に stop-gate のパスを指示文に埋める。
+  home.file.".claude/hooks/wrapup-stop-gate.sh" = {
+    source = repoConfig + "/claude/hooks/wrapup-stop-gate.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/wrapup-session-start.sh" = {
+    source = repoConfig + "/claude/hooks/wrapup-session-start.sh";
+    executable = true;
+  };
+
+  # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
+  # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
+  # username を上書きするホストが現れたら見直すこと。
   home.file.".claude/commands/codex-plan-review.md".source =
     repoConfig + "/claude/commands/codex-plan-review.md";
 
-  home.activation.registerClaudePlanReviewHook = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${registerHook} "$HOME/.claude/settings.json" ${lib.escapeShellArg hookCmd}
+  home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${registerHooks} "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg planReviewCmd} \
+      ${lib.escapeShellArg wrapupStopCmd} \
+      ${lib.escapeShellArg wrapupSessionStartCmd}
   '';
 }

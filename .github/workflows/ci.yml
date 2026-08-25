@@ -100,6 +100,14 @@ jobs:
       - name: codex-plan-review.sh --selftest
         run: bash ./config/claude/hooks/codex-plan-review.sh --selftest
 
+      # The wrap-up inbox gate is deterministic shell + jq end to end: the
+      # degradation gates, the flock-guarded --add/--mark-filed mutations, and
+      # the --check-dup verdict (against a stub gh) are all exercised in a
+      # throwaway state dir, plus the SessionStart injection it pairs with
+      # (docs/wrapup-inbox.md).
+      - name: wrapup-stop-gate.sh --selftest
+        run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not
