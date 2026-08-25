@@ -1,4 +1,5 @@
-# Claude Code のフック群 — plan-review ゲートと wrap-up inbox を home-manager で配備する。
+# Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view を
+# home-manager で配備する。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
@@ -12,6 +13,13 @@
 #    remote あり)なら exit 2 + stderr 指示でフルコンテキストの本体 Claude に
 #    gh issue create させる。それ以外は黙って exit 0(ADR-0005 の binary-existence
 #    gating に倣う)。詳細は docs/wrapup-inbox.md。
+#
+# 3) plan-view(PreToolUse / ExitPlanMode + CLI):
+#    プランを pandoc で HTML にして Chrome の専用窓(--app)に飛ばす。LLM は呼ばず、
+#    Markdown を 1:1 で写すだけの表示専用の道具である。plan-review gate と同じ
+#    matcher に別エントリとして並び、並列に走る(= review の結果を待たない)。承認
+#    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
+#    詳細は docs/plan-view.md。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
@@ -33,6 +41,7 @@ let
   planReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
   wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
+  planViewCmd = "bash '${hooksDir}/plan-view.sh'";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -70,6 +79,11 @@ let
     register PreToolUse ExitPlanMode "$2" 300
     register Stop "" "$3" ""
     register SessionStart "" "$4" ""
+    # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
+    # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
+    # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
+    # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
+    register PreToolUse ExitPlanMode "$5" 15
   '';
 in
 {
@@ -94,16 +108,37 @@ in
     executable = true;
   };
 
+  # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
+  # スクリプトは CSS を自身のディレクトリ相対で解決するので、schema と同じく
+  # 2 ファイルを ~/.claude/hooks/ に並べて置く（リポジトリ上の隣接関係も同じ)。
+  home.file.".claude/hooks/plan-view.sh" = {
+    source = repoConfig + "/claude/hooks/plan-view.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/hooks/plan-view.css";
+
+  # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
+  # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
+  home.file.".local/bin/plan-view" = {
+    text = ''
+      #!/usr/bin/env bash
+      exec bash "$HOME/.claude/hooks/plan-view.sh" "$@"
+    '';
+    executable = true;
+  };
+
   # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
   # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
   # username を上書きするホストが現れたら見直すこと。
   home.file.".claude/commands/codex-plan-review.md".source =
     repoConfig + "/claude/commands/codex-plan-review.md";
+  home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
 
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerHooks} "$HOME/.claude/settings.json" \
       ${lib.escapeShellArg planReviewCmd} \
       ${lib.escapeShellArg wrapupStopCmd} \
-      ${lib.escapeShellArg wrapupSessionStartCmd}
+      ${lib.escapeShellArg wrapupSessionStartCmd} \
+      ${lib.escapeShellArg planViewCmd}
   '';
 }

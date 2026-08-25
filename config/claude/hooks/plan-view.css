@@ -1,0 +1,407 @@
+/* plan-view.css — pandoc が吐くプラン HTML の見た目。JS は使わない。
+ *
+ * 設計と根拠: docs/plan-view.md
+ *
+ * ============================================================================
+ * 順序依存（壊すと配色が全部無効になる）
+ * ============================================================================
+ *
+ * このファイルは pandoc の `--include-in-header` に style 要素で包んで渡される。
+ * pandoc の default.html5 テンプレートは
+ *
+ *     1. style 要素（組み込み CSS + skylighting のハイライト色）
+ *     2. $for(header-includes)$ … $endfor$      ← このファイルはここ
+ *
+ * の順に出すので、このファイルは常に最後に来て両方を上書きできる。pandoc 3.1.3 で
+ * 実測（組み込み style がドキュメント 8 行目、こちらが 233 行目）。`--css=` で
+ * link 要素として渡しても同じ位置に入るが、それだと単一ファイルにならないので
+ * --include-in-header を使っている。
+ *
+ * **このファイルに HTML の終了タグ `</` + `style>` を書いてはいけない。** ブラウザは
+ * style 要素の中では CSS のコメント構文を解釈せず、その並びを見た時点で要素を閉じる。
+ * コメント内に書いただけでも、そこから下の CSS 全部が本文に漏れて表示される（実際に
+ * 一度やった）。selftest がこの並びの不在を検査している。
+ *
+ * 上書きが必要な pandoc 組み込みの指定（3.x で実測）:
+ *   html { color: #1a1a1a; background-color: #fdfdfd; }
+ *   body { max-width: 36em; padding: 50px; }
+ *   a, a:visited { color: #1a1a1a; }
+ *
+ * ============================================================================
+ * ダークが基底、ライトが上書き
+ * ============================================================================
+ *
+ * skylighting のハイライト色は pandoc が固定で吐く（`--highlight-style` は 1 つしか
+ * 選べず、メディアクエリでは切り替わらない）。そこで
+ *
+ *   - 基底 = breezeDark を前提にしたダーク配色（フックは breezeDark で呼ぶ）
+ *   - @media (prefers-color-scheme: light) で背景・本文と **ハイライト色の両方** を上書き
+ *
+ * とする。ライト側でハイライト色を上書きしないと、breezeDark の keyword/operator
+ * (#cfcfc2 = ほぼ白) が白背景で完全に読めなくなる。これは実測した既知の欠陥であり、
+ * ライト側の `code span.*` 群を削るとそこに戻る。
+ */
+
+:root {
+  --bg: #16181d;
+  --fg: #d6d9de;
+  --fg-muted: #8b929e;
+  --fg-strong: #f0f2f5;
+  --rule: #2c313a;
+  --accent: #7aa2f7;
+  --code-bg: #1b1e24;
+  --code-border: #2c313a;
+  --inline-bg: #23272e;
+  --quote-bar: #3a4150;
+  --measure: 46rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * 土台
+ * ------------------------------------------------------------------------ */
+
+html {
+  color: var(--fg);
+  background-color: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 6rem;
+  background-color: var(--bg);
+  color: var(--fg);
+  /* 日本語の本文は行間を広めに取らないと視線が迷子になる。 */
+  line-height: 1.8;
+  font-size: 16px;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Noto Sans CJK JP",
+    "Noto Sans JP",
+    "Hiragino Sans",
+    Meiryo,
+    sans-serif;
+  /* 組み込みの hyphens/overflow-wrap は英語前提。日本語では不要。 */
+  hyphens: manual;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 2rem 1rem 4rem;
+    font-size: 15px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 見出し — h1/h2 は罫線で区切り、h3 以下はウェイトとサイズだけで階層を出す
+ * ------------------------------------------------------------------------ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--fg-strong);
+  line-height: 1.4;
+  font-weight: 600;
+  /* 見出しの直前は広く、直後は狭く。段落との結合を視覚的に示す。 */
+  margin: 2.6em 0 0.8em;
+}
+
+h1 {
+  font-size: 1.9em;
+  font-weight: 700;
+  margin-top: 0;
+  padding-bottom: 0.4em;
+  border-bottom: 2px solid var(--rule);
+}
+
+h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--rule);
+}
+
+h3 {
+  font-size: 1.15em;
+}
+
+h4,
+h5,
+h6 {
+  font-size: 1em;
+  color: var(--fg);
+}
+
+/* h1 直下に差し込まれるメタ行（リポジトリ名 · 時刻）。 */
+.plan-view-meta {
+  margin: -0.4em 0 2.4em;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  letter-spacing: 0.02em;
+}
+
+/* ---------------------------------------------------------------------------
+ * 本文要素
+ * ------------------------------------------------------------------------ */
+
+p {
+  margin: 1em 0;
+}
+
+a,
+a:visited {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+strong {
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+
+ul,
+ol {
+  padding-left: 1.6em;
+  margin: 1em 0;
+}
+
+li {
+  margin: 0.35em 0;
+}
+
+li > p {
+  margin: 0.35em 0;
+}
+
+/* GFM のタスクリスト。pandoc は <ul class="task-list"> を出す。 */
+ul.task-list {
+  list-style: none;
+  padding-left: 0.4em;
+}
+
+ul.task-list > li > input[type="checkbox"] {
+  margin-right: 0.5em;
+}
+
+blockquote {
+  margin: 1.2em 0;
+  padding: 0.2em 0 0.2em 1.1em;
+  border-left: 3px solid var(--quote-bar);
+  color: var(--fg-muted);
+}
+
+hr {
+  height: 1px;
+  margin: 2.5em 0;
+  border: 0;
+  background-color: var(--rule);
+}
+
+img {
+  max-width: 100%;
+}
+
+/* ---------------------------------------------------------------------------
+ * コード — 横スクロールはブロックの内側で起こす。ページ本体は横に伸ばさない
+ * ------------------------------------------------------------------------ */
+
+code {
+  font-family:
+    ui-monospace,
+    "JetBrains Mono",
+    "Cascadia Code",
+    Menlo,
+    Consolas,
+    "Noto Sans Mono CJK JP",
+    monospace;
+  font-size: 0.875em;
+}
+
+/* インラインコード。pre の中の code には効かせない。 */
+:not(pre) > code {
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background-color: var(--inline-bg);
+  color: var(--fg-strong);
+  /* `path/to/file.sh:12` の類が行末で割れると読めない。 */
+  word-break: keep-all;
+  white-space: nowrap;
+}
+
+pre {
+  margin: 1.2em 0;
+  padding: 0.9em 1.1em;
+  border: 1px solid var(--code-border);
+  border-radius: 6px;
+  background-color: var(--code-bg);
+  /* 折り返さずに、このブロックの内側だけでスクロールさせる。 */
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+pre code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+
+/* pandoc はハイライト対象のブロックを div.sourceCode で包む。二重枠を避ける。 */
+div.sourceCode {
+  margin: 1.2em 0;
+  background: none;
+  border: 0;
+  overflow: visible;
+}
+
+div.sourceCode > pre {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * 表 — 幅の広い表もブロックの内側でスクロールさせる
+ * width: max-content + max-width: 100% + display: block がスクロール可能な表の定石。
+ * ------------------------------------------------------------------------ */
+
+table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.4em 0;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+
+th,
+td {
+  padding: 0.45em 0.85em;
+  border: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background-color: var(--inline-bg);
+  color: var(--fg-strong);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+caption {
+  margin-bottom: 0.5em;
+  color: var(--fg-muted);
+  font-size: 0.9em;
+  text-align: left;
+}
+
+/* ---------------------------------------------------------------------------
+ * ライトテーマ — 配色とハイライト色の両方を上書きする
+ * ------------------------------------------------------------------------ */
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fcfcfd;
+    --fg: #2b3038;
+    --fg-muted: #6b7280;
+    --fg-strong: #14171c;
+    --rule: #e0e3e8;
+    --accent: #1a56b8;
+    --code-bg: #f6f7f9;
+    --code-border: #e0e3e8;
+    --inline-bg: #eef0f3;
+    --quote-bar: #cfd4dc;
+  }
+
+  /* breezeDark の色をライト背景で読める値に差し替える。役割ごとにまとめて指定し、
+   * skylighting の全クラスを漏らさず覆う（al an at bn bu cf ch cn co cv do dt dv
+   * er ex fl fu im in kw op ot pp re sc ss st va vs wa）。
+   * 特に kw / op は breezeDark で #cfcfc2 なので、ここが無いと白背景で消える。 */
+
+  /* まず基底色。skylighting は個別クラスのほかに
+   *   code span { color: #cfcfc2; }            (Normal — クラスの付かない span)
+   *   div.sourceCode { color: #cfcfc2; }       (span の付かない素のテキスト)
+   * の 2 つを出す。どちらもほぼ白なので、ここを外すと `--arg c` の `c` や nix の
+   * `pkgs` のような素のトークンが白背景で消える（実測した欠陥）。
+   * 下の個別クラスはクラスセレクタの分だけ詳細度が高いので、この規則に潰されない。 */
+  div.sourceCode,
+  code span {
+    color: var(--fg);
+  }
+
+  /* キーワード・制御構文・プリプロセッサ */
+  code span.kw,
+  code span.cf,
+  code span.im,
+  code span.ot,
+  code span.pp {
+    color: #b3143c;
+  }
+
+  /* 演算子・区切り */
+  code span.op,
+  code span.sc {
+    color: #2b3038;
+  }
+
+  /* 文字列・文字・補間 */
+  code span.st,
+  code span.ch,
+  code span.vs,
+  code span.ss,
+  code span.re {
+    color: #0a5c36;
+  }
+
+  /* 数値 */
+  code span.dv,
+  code span.bn,
+  code span.fl,
+  code span.cn {
+    color: #0b5aa6;
+  }
+
+  /* 型・属性・変数 */
+  code span.dt,
+  code span.at,
+  code span.va,
+  code span.in {
+    color: #6929c4;
+  }
+
+  /* 関数・組み込み・外部 */
+  code span.fu,
+  code span.bu,
+  code span.ex {
+    color: #7d4cdb;
+  }
+
+  /* コメント・ドキュメント・注釈 */
+  code span.co,
+  code span.do,
+  code span.an,
+  code span.cv {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  /* 警告・エラー — breezeDark は暗い背景色を持つので背景ごと差し替える */
+  code span.al,
+  code span.er,
+  code span.wa {
+    color: #96122f;
+    background-color: #fdecef;
+    font-weight: 600;
+  }
+
+  /* 行番号のアンカー */
+  pre > code.sourceCode > span > a:first-child::before {
+    color: #9aa1ad;
+  }
+}

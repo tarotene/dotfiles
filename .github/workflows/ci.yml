@@ -108,6 +108,16 @@ jobs:
       - name: wrapup-stop-gate.sh --selftest
         run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
 
+      # plan-view only renders and launches, so its selftest drives the hook and
+      # CLI paths against a fake browser in a throwaway view dir.  The invariant
+      # it guards is that the hook never writes to stdout (anything there would
+      # be read as a permissionDecision and would interfere with the approval
+      # dialog), plus the CSS ordering that keeps light-theme code readable
+      # (docs/plan-view.md).  Cases needing pandoc skip themselves when the
+      # runner has none, so this step does not depend on the image's tool list.
+      - name: plan-view.sh --selftest
+        run: bash ./config/claude/hooks/plan-view.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not
