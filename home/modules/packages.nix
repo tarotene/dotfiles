@@ -16,6 +16,11 @@
     curl
     wget
     gh
+    # Declares jq for the Claude Code hooks (config/claude/hooks/*.sh) that
+    # depend on it unconditionally — a stray /usr/bin/jq may exist on an
+    # inherited host but was never declared anywhere (#28), so hooks would
+    # silently emit nothing on a freshly provisioned machine.
+    jq
     shellcheck
     xsel
     zip
