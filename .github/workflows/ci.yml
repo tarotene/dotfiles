@@ -118,6 +118,15 @@ jobs:
       - name: plan-view.sh --selftest
         run: bash ./config/claude/hooks/plan-view.sh --selftest
 
+      # issue-index is deterministic shell + jq end to end against a stub gh:
+      # the git-only/binary-existence gates, the mine→all fallback with its
+      # asymmetric failure classification (R2-C-2: "whichever side was
+      # adopted" rather than "both failed"), incomplete_results handling
+      # (R2-C-1), title sanitization, and the PR-row status distinction are
+      # all exercised in a throwaway fixture repo (docs/issue-index.md).
+      - name: issue-index.sh --selftest
+        run: bash ./config/claude/hooks/issue-index.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not

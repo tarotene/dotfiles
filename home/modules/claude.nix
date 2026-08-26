@@ -21,6 +21,16 @@
 #    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
 #    詳細は docs/plan-view.md。
 #
+# 4) issue-index(SessionStart, matcher: startup|resume|compact):
+#    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
+#    additionalContext で注入する。本文は渡さない — 深掘りは Claude 自身に
+#    `gh issue view` を叩かせる。データ源は `gh issue list` ではなく GitHub
+#    Search API(`gh api search/issues`): --limit は取得上限であり総数ではない
+#    ので、それで総数を数えると嘘になる。assignee:@me が 0 件なら repo 全体の
+#    open にフォールバックし、他人起票の行にだけ起票者を明記する(タイトルは
+#    untrusted なので制御文字除去 + 120 文字切り詰めもするが、これは防御ではなく
+#    payload 制御に過ぎない)。詳細は docs/issue-index.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
 # バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -42,6 +52,7 @@ let
   wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "bash '${hooksDir}/plan-view.sh'";
+  issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -84,6 +95,12 @@ let
     # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
     register PreToolUse ExitPlanMode "$5" 15
+    # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
+    # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
+    # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
+    # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
+    # 引き継ぐので不要。
+    register SessionStart "startup|resume|compact" "$6" 10
   '';
 in
 {
@@ -117,6 +134,12 @@ in
   };
   home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/hooks/plan-view.css";
 
+  # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
+  home.file.".claude/hooks/issue-index.sh" = {
+    source = repoConfig + "/claude/hooks/issue-index.sh";
+    executable = true;
+  };
+
   # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
   # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
   home.file.".local/bin/plan-view" = {
@@ -139,6 +162,7 @@ in
       ${lib.escapeShellArg planReviewCmd} \
       ${lib.escapeShellArg wrapupStopCmd} \
       ${lib.escapeShellArg wrapupSessionStartCmd} \
-      ${lib.escapeShellArg planViewCmd}
+      ${lib.escapeShellArg planViewCmd} \
+      ${lib.escapeShellArg issueIndexCmd}
   '';
 }
