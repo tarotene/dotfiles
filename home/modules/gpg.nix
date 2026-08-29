@@ -16,7 +16,23 @@
 #        programs.git.signing.key = "<SUBKEY_ID>";
 #
 # This step is hardware-bound and cannot be declarative (ADR-0003).
-{ pkgs, ... }:
+#
+# TTL / Linger (ADR-0003 Amendment 2): the on-disk [S] passphrase is cached for
+# the whole login session rather than a fixed clock window. What actually
+# bounds that cache is not the TTL but the agent process's own lifetime, which
+# ends with the login session only if the systemd user instance does not
+# linger past logout. assertNoLinger below refuses to activate rather than
+# assume that — it cannot enforce it: org.freedesktop.login1.set-user-linger
+# is auth_admin_keep on this OS, so calling `loginctl disable-linger` here
+# would either prompt for admin auth on every switch (breaking the
+# non-interactive switch ADR-0003 promises) or silently fail. Reading the
+# state needs no authorization, so that is all this does.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   repoRoot = ../..;
 in
@@ -51,9 +67,13 @@ in
     # a TTY (git GUIs, editors, agents); falls back to curses over SSH.
     pinentry.package = pkgs.pinentry-gnome3;
 
-    # Cache passphrases for a reasonable session window.
-    defaultCacheTtl = 3600;
-    maxCacheTtl = 7200;
+    # Cache the on-disk [S] passphrase for the whole login session. The bound
+    # is not the clock but the agent's lifetime, which ends with the login
+    # session — assertNoLinger below refuses to activate on a host where that
+    # is not true. Threat-model delta vs. the previous 1h/2h: see the header
+    # comment above and ADR-0003 Amendment 2.
+    defaultCacheTtl = 34560000; # 400d — i.e. bounded by the login, not the clock
+    maxCacheTtl = 34560000;
 
     # Enable SSH agent support so the YubiKey auth subkey can serve as an SSH key.
     enableSshSupport = true;
@@ -80,4 +100,20 @@ in
         fi
       '';
     };
+
+  # Assert, never enforce (see the header comment above). Runs before
+  # writeBoundary so a host that fails this check gets no files written at
+  # all, rather than a half-applied generation.
+  home.activation.assertNoLinger = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+    linger="$(${pkgs.systemd}/bin/loginctl show-user --value -p Linger \
+      ${config.home.username} 2>/dev/null || true)"
+    if [ "$linger" = "yes" ]; then
+      echo "gpg.nix: Linger is enabled for ${config.home.username}." >&2
+      echo "  gpg-agent — and with it the cached on-disk [S] passphrase —" >&2
+      echo "  would survive logout for up to the 400d cache TTL set here." >&2
+      echo "  Fix: sudo loginctl disable-linger ${config.home.username}" >&2
+      echo "  Rationale: docs/adr/0003-secrets-and-identity.md, Amendment 2." >&2
+      exit 1
+    fi
+  '';
 }

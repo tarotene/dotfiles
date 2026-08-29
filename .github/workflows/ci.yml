@@ -127,6 +127,15 @@ jobs:
       - name: issue-index.sh --selftest
         run: bash ./config/claude/hooks/issue-index.sh --selftest
 
+      # sign-prewarm is deterministic shell + a stubbed gpg end to end: the
+      # cwd-independent global-config gating, the field-15 on-disk/card/stub
+      # classification, the warm/cold branch, and the local-override
+      # regression (starting from a repo with commit.gpgsign=false locally
+      # must not suppress warming when the global value is enabled) are all
+      # exercised against a throwaway HOME (docs/sign-prewarm.md).
+      - name: sign-prewarm.sh --selftest
+        run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not

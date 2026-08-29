@@ -78,3 +78,42 @@ above is left intact for provenance); where they conflict, this amendment wins.
    `[S]`, Stage 3 greenfield cuts a fresh `[S]` on the new host, and the annual
    cadence rotates `[S]` in place. `[A]`/`[E]` are unaffected — they stay on the
    smartcard across host swaps.
+
+## Amendment 2 (2026-08 — #35)
+
+Grilling a request to skip signing on squash-only remotes surfaced that the
+real pain was passphrase-entry frequency, not signing itself, and that fixing
+it changes the effective grain of Amendment §1's "a memorized passphrase plus
+a rotation cadence." Recorded here rather than folded into the Amendment above
+because it stems from a different investigation.
+
+1. **The passphrase cache window moved from a fixed clock to the login
+   session.** `home/modules/gpg.nix` previously set `defaultCacheTtl=3600` /
+   `maxCacheTtl=7200` — a forced re-entry at least every 2 hours. Both are now
+   effectively unbounded (400d). What actually bounds the cache is not the
+   clock but the `gpg-agent` process's own lifetime, which ends when its
+   systemd user instance dies — normally at logout. In effect, the on-disk
+   `[S]` passphrase is now entered once per login rather than once every
+   couple of hours. The corollary: **the cache also survives a screen lock**,
+   since locking does not end the login session.
+
+2. **This bound is asserted, not enforced.** Whether "agent dies at logout"
+   holds depends on `loginctl`'s per-user `Linger` setting, which was measured
+   on only one host. `gpg.nix` cannot force `Linger=no` itself:
+   `org.freedesktop.login1.set-user-linger` is `auth_admin_keep` on this OS
+   (`/usr/share/polkit-1/actions/org.freedesktop.login1.policy:137`, no
+   override rule), so calling `loginctl disable-linger` from activation would
+   either prompt for admin authentication on every `home-manager switch` —
+   breaking this ADR's own Consequence that switch stays non-interactive — or
+   silently fail behind an error guard. Reading the setting needs no
+   authorization, so `home.activation.assertNoLinger` only checks it: if
+   `Linger=yes`, activation exits 1 before `writeBoundary` (no files written)
+   and points at `sudo loginctl disable-linger <user>` as the fix.
+
+3. **The remaining sentries are unchanged from Amendment §1**: the annual
+   `[S]` rotation cadence, and the fact that the key is still passphrase-
+   protected on disk (clearing the agent's cache still requires re-entry).
+   `grabKeyboardAndMouse` stays `true`; the moment the passphrase is asked for
+   is instead moved earlier, to a `SessionStart` hook that prompts while the
+   user is already looking at the screen (`config/claude/hooks/sign-prewarm.sh`,
+   `docs/sign-prewarm.md`).
