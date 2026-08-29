@@ -7,8 +7,11 @@ name: CI
 on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
+  # No branches filter here (unlike push above): these checks are required
+  # status checks (pr-gate ruleset, docs/pr-gate.md), and a required check
+  # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
+  # that PR's Stop gate permanently blocked on a check that will never exist.
   pull_request:
-    branches: [ main, "feat/home-manager", "feat/hm-**" ]
   workflow_dispatch:
 
 concurrency:
@@ -135,6 +138,15 @@ jobs:
       # exercised against a throwaway HOME (docs/sign-prewarm.md).
       - name: sign-prewarm.sh --selftest
         run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
+
+      # pr-gate is the PR completion barrier (docs/pr-gate.md): its central
+      # invariant is "never read an incomplete check set as green" against a
+      # stub gh, including the R2 regression where `gh pr checks --watch`
+      # exits 0 early on a partial subset (cli/cli#9973) — the selftest
+      # re-fetches --json and judges with jq regardless of --watch's exit
+      # code, so this step is what actually guards that invariant.
+      - name: pr-gate.sh --selftest
+        run: bash ./config/claude/hooks/pr-gate.sh --selftest
 
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
