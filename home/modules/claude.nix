@@ -1,5 +1,5 @@
-# Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view を
-# home-manager で配備する。
+# Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view・
+# sign-prewarm・issue-index を home-manager で配備する。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
@@ -21,7 +21,16 @@
 #    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
 #    詳細は docs/plan-view.md。
 #
-# 4) issue-index(SessionStart, matcher: startup|resume|compact):
+# 4) sign-prewarm(SessionStart, matcher: startup|resume):
+#    git commit の署名パスフレーズ入力を、ログイン後最初に Claude を開いた安全な
+#    瞬間に前倒しする。home/modules/gpg.nix が gpg-agent の cache TTL を実質無限に
+#    したことで再入力は「ログインに 1 回」まで落ちるが、その 1 回を放置すると
+#    Claude の Bash 呼び出し中に GUI pinentry が grab 付きで出現し、キー入力を
+#    奪ったままコミットが固まる。判定は SessionStart 時の cwd に依存せず、常に
+#    グローバルな git 設定だけを見る。additionalContext は出さない(副作用だけの
+#    hook)。詳細は docs/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
+#
+# 5) issue-index(SessionStart, matcher: startup|resume|compact):
 #    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
 #    additionalContext で注入する。本文は渡さない — 深掘りは Claude 自身に
 #    `gh issue view` を叩かせる。データ源は `gh issue list` ではなく GitHub
@@ -53,6 +62,7 @@ let
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "bash '${hooksDir}/plan-view.sh'";
   issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
+  signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -101,6 +111,11 @@ let
     # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
     # 引き継ぐので不要。
     register SessionStart "startup|resume|compact" "$6" 10
+    # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
+    # キャッシュはすでに温まっているか、そもそもまだ温まっていないかのどちらか
+    # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
+    # ない。resume は別ログインからの再開があり得るので含める。
+    register SessionStart "startup|resume" "$7" 120
   '';
 in
 {
@@ -140,6 +155,12 @@ in
     executable = true;
   };
 
+  # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
+  home.file.".claude/hooks/sign-prewarm.sh" = {
+    source = repoConfig + "/claude/hooks/sign-prewarm.sh";
+    executable = true;
+  };
+
   # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
   # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
   home.file.".local/bin/plan-view" = {
@@ -163,6 +184,7 @@ in
       ${lib.escapeShellArg wrapupStopCmd} \
       ${lib.escapeShellArg wrapupSessionStartCmd} \
       ${lib.escapeShellArg planViewCmd} \
-      ${lib.escapeShellArg issueIndexCmd}
+      ${lib.escapeShellArg issueIndexCmd} \
+      ${lib.escapeShellArg signPrewarmCmd}
   '';
 }
