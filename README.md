@@ -99,7 +99,7 @@ dotfiles/
 │   └── modules/{shell,git,gpg,secrets,packages,desktop,runtimes}.nix
 ├── config/                   # literal config, deployed verbatim
 ├── packages/declarative/apt-packages.txt   # system layer only
-├── scripts/                  # escape-hatch + diagnostic scripts (install-packages, sops, ssh, fcitx5 trace)
+├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, sops, ssh, fcitx5 trace)
 ├── keys/                     # committed public keys
 ├── bootstrap.sh              # greenfield entrypoint
 └── docs/{adr,operations.md,cutover-runbook.md,nixification-roadmap.md,
@@ -117,6 +117,12 @@ dotfiles/
 
 ## Routine operations
 
+The canonical apply is `hms` (deployed to `~/.local/bin`): no arguments
+applies pushed main (`github:tarotene/dotfiles`), `hms .` applies the
+current checkout for pre-push verification. It wraps the switch, the user
+`daemon-reload`, and the fcitx5 unit restart in one command — see
+[`docs/operations.md`](docs/operations.md).
+
 Refresh the pinned inputs on a cadence (weekly is enough), and consult the
 tool-layer decision flow before installing anything new — both in
 [`docs/operations.md`](docs/operations.md):
@@ -124,7 +130,7 @@ tool-layer decision flow before installing anything new — both in
 ```bash
 nix flake update
 nix flake check
-home-manager switch --flake .#"$(hostname)" -b backup
+hms .        # apply this checkout; commit + push once it proves out
 ```
 
 ## Rollback

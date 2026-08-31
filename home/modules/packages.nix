@@ -54,4 +54,12 @@
     # install" in docs/cutover-runbook.md.
     claude-code
   ];
+
+  # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
+  # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
+  # point is not depending on being inside a checkout.
+  home.file.".local/bin/hms" = {
+    source = ../../scripts/hms.sh;
+    executable = true;
+  };
 }

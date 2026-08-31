@@ -51,6 +51,8 @@ dotfiles/
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
 ├── scripts/                  # escape-hatch and diagnostic scripts
+│   ├── hms.sh                # canonical apply wrapper (deployed to ~/.local/bin/hms):
+│   │                         #   switch + daemon-reload + fcitx5 restart + verification
 │   ├── install-packages.sh   # thin system-layer apt installer (#216)
 │   ├── install-falcon-sensor.sh # company EDR agent installer
 │   ├── fix-ssh-permissions.sh
@@ -124,7 +126,11 @@ dotfiles/
 ## Verification / Testing
 - `nix flake check` — evaluates every host's activation package.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
-- `home-manager switch --flake .#"$(hostname)" -b backup` — apply (see runbook).
+- `hms` — canonical apply (pushed main); `hms .` applies the current
+  checkout/worktree for pre-push verification (wraps switch + daemon-reload +
+  fcitx5 restart; see `docs/operations.md`).
+- `home-manager switch --flake .#"$(hostname)" -b backup` — the raw switch
+  `hms` wraps (see runbook).
 - Rollback via generations: `home-manager generations`, then `--rollback`.
 - Provisioning procedures: `docs/cutover-runbook.md`.
 - Routine flake update + which layer a new tool goes in: `docs/operations.md`.
