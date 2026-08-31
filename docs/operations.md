@@ -55,6 +55,65 @@ Notes:
   GitHub App token) is tracked in
   [#3](https://github.com/tarotene/dotfiles/issues/3); until then this manual
   routine is the operating procedure.
+- **`nixpkgs-unstable` moves faster than the pinned stable channel it sits
+  beside** (ADR-0001 Amendment 2026-08, `herdr`). Bump it explicitly and
+  separately when regressions land there — `nix flake update nixpkgs-unstable`
+  — rather than assuming the weekly `nix flake update` sweep is safe for both
+  channels at once. If `herdr` regresses after an update, roll back just that
+  input by reverting `flake.lock`'s `nixpkgs-unstable` node (or the whole
+  generation, per the rollback note above).
+
+### Restarting herdr after a switch that changes its binary or hooks
+
+`herdr` (nix-managed, `home/modules/herdr.nix`) is not restarted by
+`home-manager switch` — the running `herdr server` and its TUI client keep the
+old binary in memory until you kill and relaunch them. Do this from a plain
+terminal, **not from inside herdr itself**: it will drop every pane it is
+managing, including the one you are running the switch from.
+
+```bash
+hms .                       # or hms, once the change is on main
+herdr server stop           # from outside herdr — this ends live agent sessions
+herdr                       # relaunch; client/server versions must match (wire
+                             # protocol is version-gated)
+```
+
+Since the binary comes from a pin, client and server always match after a
+switch — there is no risk of relaunching a mismatched pair, unlike an
+in-place `herdr update` against a moving install.
+
+### Checking for orphaned hook / statusLine entries after a `--rollback`
+
+`registerHooks` / `syncStatusLine`'s declarative retirement
+(`retiredHookEntries` / `retiredStatusLineCommands` in `home/modules/claude.nix`)
+only runs as part of the activation script baked into a given home-manager
+generation. A **forward** `hms` picks it up; a `home-manager switch --rollback`
+to a generation that predates the retirement re-executes *that generation's*
+(older) activation, which cannot retire anything it does not know about. If you
+roll back across a boundary where a hook or `statusLine` command was added and
+later retired, `home.file` will remove the now-unmanaged script but the
+`~/.claude/settings.json` entry pointing at it can survive — the exact ENOENT /
+broken-status-line symptom issue #44 diagnosed (see
+[`claude-permissions.md`](claude/claude-permissions.md) and
+[`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) for the
+mechanism). Treat `--rollback` as an emergency measure, not a way to retire a
+feature permanently — retiring permanently means adding to the retired list and
+doing a forward `hms`, not rolling back.
+
+After any emergency rollback, check for orphans:
+
+```bash
+jq -r '.hooks[]?[]? | .hooks[]? | .command' ~/.claude/settings.json |
+  sed -n "s/^bash '\([^']*\)'.*/\1/p" |
+  while read -r p; do [ -e "$p" ] || echo "orphan hook: $p"; done
+
+p="$(jq -r '.statusLine.command // ""' ~/.claude/settings.json |
+  sed -n "s/^bash '\([^']*\)'.*/\1/p")"
+[ -z "$p" ] || [ -e "$p" ] || echo "orphan statusLine: $p"
+```
+
+If either script reports an orphan, the fix is a forward `hms .` on the
+checkout that has the retirement — not another rollback.
 
 ### fcitx5 needs an explicit unit restart after a switch
 

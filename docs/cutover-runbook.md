@@ -148,6 +148,21 @@ Or, to switch to a specific older generation:
 /nix/var/nix/profiles/per-user/$USER/home-manager-<gen>-link/activate
 ```
 
+**`--rollback` re-executes the activation script baked into the target
+generation, not the current one.** For most modules that is invisible — the
+target generation's `home.file` / `home.packages` are exactly what you get.
+But for the imperative `~/.claude/settings.json` merge (`registerHooks` /
+`registerPermissions` / `syncStatusLine` in `home/modules/claude.nix`), it
+means a rollback to a generation that predates a hook's declarative retirement
+cannot retire it — the old activation never learned about the retirement.
+`home.file` still removes the now-unmanaged script, so you can end up with a
+`settings.json` entry pointing at a path that no longer exists (this is what
+happened with the herdr-sidebar-metadata hooks; see issue #44 and
+[`operations.md`](operations.md#checking-for-orphaned-hook-statusline-entries-after-a---rollback)
+for the check to run afterward). Treat `--rollback` as an emergency measure to
+undo a *recent* switch, not as a way to permanently retire a feature — retiring
+permanently means adding to the retired list in Nix and doing a forward `hms`.
+
 ## Known noise: `reloadSystemd` and host-side XDG autostart failures
 
 On Pop!_OS + COSMIC hosts, `home-manager switch` may print a wall of
@@ -208,6 +223,31 @@ readlink -f "$(which claude)"   # → /nix/store/…-claude-code-<ver>/bin/claud
 If `which claude` still points into `~/.local/`, the native installer has
 already re-populated it; re-run the removal and check whether a background
 process or a shell alias is re-invoking the native installer.
+
+## Removing an ad-hoc native herdr install
+
+`herdr` is installed declaratively via `home/modules/herdr.nix` (from a
+`nixpkgs-unstable` overlay — ADR-0001 Amendment 2026-08, #42). Same PATH
+shadowing trap as claude-code above (`~/.local/bin` precedes
+`~/.nix-profile/bin`), but here `home.activation.quarantineSelfInstalledHerdr`
+handles it automatically on every switch — it renames a stray real file at
+`~/.local/bin/herdr` to `~/.local/bin/herdr.pre-nix` (a store symlink is left
+alone; only a genuine self-installed binary is quarantined). No manual step
+should be necessary; if `which herdr` still resolves into `~/.local/bin/herdr`
+after a switch, check that the activation actually ran
+(`home-manager generations` for the current one) rather than removing the file
+by hand.
+
+Unlike claude-code, herdr's own updater does not fight this: it detects a Nix
+install and disables its self-update path (`herdr channel show` / `herdr
+update` refuse with a message pointing at `nix profile upgrade` / the flake
+input). There is no re-populating background process to race.
+
+After the binary changes (a version bump or the first cutover to Nix), the
+running `herdr server` and its TUI client still hold the old binary in memory
+— restart from outside herdr per
+[`operations.md`](operations.md#restarting-herdr-after-a-switch-that-changes-its-binary-or-hooks),
+since it will otherwise drop the pane you are running the switch from.
 
 ## Legacy artifact cleanup
 

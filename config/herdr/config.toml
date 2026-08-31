@@ -1,0 +1,38 @@
+# managed by home-manager — edit config/herdr/config.toml in the dotfiles repo,
+# then `home-manager switch`. This file is a read-only store symlink, so
+# in-app settings writes fail by design (ADR-0001: home-manager is the source
+# of truth; ADR-0002: literal config deployed verbatim, like alacritty.toml).
+
+onboarding = false
+
+[theme]
+# Match the alacritty palette (Dracula) so panes and chrome read as one UI.
+name = "dracula"
+
+[ui]
+agent_panel_sort = "spaces"
+
+# Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
+# $model/$ctx/$cost/$effort は config/claude/hooks/claude-statusline.sh が
+# pane.report_metadata で注入する。トークンの色は静的指定しかできないので、
+# permission mode の色分けは「モード毎に別トークン + 非アクティブは reporter 側で
+# null クリア」で表現する(1 行に 4 トークン並ぶが、値を持つのは常に 1 つ)。
+# 配色は Dracula パレット: cyan #8BE9FD / purple #BD93F9 / yellow #F1FA8C /
+# red #FF5555 / pink #FF79C6 / comment #6272A4。
+[ui.sidebar.agents.rows_by_agent]
+claude = [
+  ["state_icon", "workspace", "tab"],
+  ["terminal_title_stripped"],
+  [
+    { token = "$mode_plan", fg = "#8BE9FD", bold = true },
+    { token = "$mode_default", fg = "#BD93F9", bold = true },
+    { token = "$mode_accept", fg = "#F1FA8C", bold = true },
+    { token = "$mode_bypass", fg = "#FF5555", bold = true },
+    { token = "$model", fg = "#FF79C6" },
+  ],
+  [
+    { token = "$ctx", fg = "#6272A4" },
+    { token = "$cost", fg = "#6272A4" },
+    { token = "$effort", fg = "#6272A4", dim = true },
+  ],
+]

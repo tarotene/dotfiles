@@ -38,6 +38,17 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 git-worktree-allow hook（検証つきのプログラム的許可 —
 `docs/claude/git-worktree-allow.md`）。
 
+同じ撤回パターンを `.hooks.<event>` にも敷いたのが `registerHooks` の
+`retiredHookEntries`、`statusLine` にも敷いたのが `syncStatusLine` の
+`retiredStatusLineCommands`(いずれも `home/modules/claude.nix`。詳細は
+`docs/claude/herdr-sidebar-metadata.md`)。この文書の「削除も宣言的に行える」は
+**forward switch にしか効かない**ことに注意: `home-manager switch --rollback`
+は撤回機構自体を含む前の generation の activation を再実行するので、撤回リストが
+まだ無い generation に戻れば「エントリだけ残る」問題が再発する
+(`docs/operations.md` に孤児チェックの手順がある)。これは `retiredPermissionRules`
+にも等しく当てはまる、activation を generation ごとに固定する home-manager の
+モデル自体の制約であり、settings.json 側の imperative merge を採る限り避けられない。
+
 ## 何を入れているか / 入れていないか
 
 破壊的でない読み取り・検査系と、Add / Commit / Create PR という主目的に直接効く

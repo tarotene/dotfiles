@@ -11,6 +11,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Escape hatch for packages not yet in the pinned stable channel.
+    # herdr landed in nixpkgs after the 26.05 branch-off; drop this input
+    # (and the herdr overlay below) once `nixpkgs.herdr` evaluates on stable.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
     # GL/EGL for nix-built GUI apps on a non-NixOS host (ADR-0006 / #13).
     # `follows` is load-bearing, not tidiness: nixGL ships the mesa and libglvnd
     # that get dlopen'd into our applications, so a second nixpkgs would mean a
@@ -25,6 +30,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-unstable,
       home-manager,
       nixgl,
       ...
@@ -58,6 +64,18 @@
               enable32bits = false;
               enableIntelX86Extensions = true;
             };
+          })
+
+          # herdr from unstable (not yet in nixos-26.05). Unlike nixGL this does
+          # not need `follows`: herdr is a TUI that never dlopens GL, so a second
+          # glibc in its closure is harmless. Remove once stable has herdr.
+          #
+          # legacyPackages.${system} reuses the input's own already-instantiated
+          # nixpkgs rather than `import nixpkgs-unstable { inherit system; }`,
+          # which would re-instantiate a second whole nixpkgs for one package
+          # and silently drop this flake's `config.allowUnfree = true`.
+          (_final: _prev: {
+            herdr = nixpkgs-unstable.legacyPackages.${system}.herdr;
           })
         ];
       };

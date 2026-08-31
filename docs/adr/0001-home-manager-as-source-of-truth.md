@@ -88,3 +88,43 @@ A home-manager-owned input method is only as current as the pin. The failure mod
 this amendment fixes — running two-year-old software with a known fix released —
 is now a flake-update question rather than a distro-release question, which is
 strictly better but not automatic. `docs/operations.md` owns that cadence.
+
+## Amendment (2026-08 — nixpkgs-unstable escape hatch for herdr, #42)
+
+The Decision above pins to "the latest **stable release** channel" with no stated
+exception. `herdr` (the worktree/workspace manager this repo's own hooks already
+assume — see `docs/claude/git-worktree-allow.md`) landed in nixpkgs after the
+`nixos-26.05` branch-off and is not evaluable there at all
+(`nix eval` on the pinned channel errors with "does not provide attribute
+… herdr"). Being on the stable channel offered no way to reach the package, not
+even an old version to accept as a trade-off — the same shape of gap the fcitx5
+amendment above describes, one layer up (a missing *package*, not a capped
+*version*).
+
+Unlike the `nixgl` input, a second nixpkgs here does not need
+`inputs.nixpkgs.follows`: `follows` is load-bearing for `nixgl` because its mesa
+and libglvnd get `dlopen`'d into *this repo's own* GUI processes, so a second
+nixpkgs would mean a second glibc in the same address space
+(`GLIBC_2.x not found`). `herdr` is a plain TUI binary that is only ever `exec`'d,
+never `dlopen`'d into anything this repo builds — a second glibc in its own
+closure is invisible to every other package.
+
+**Criterion for the next borderline case**: a single-package `nixpkgs-unstable`
+overlay is acceptable for a user-space tool that (a) is absent from the pinned
+stable channel, and (b) is never `dlopen`'d into another package's process (i.e.
+it does not need to share a libc/ABI with anything else in the closure — the same
+"loaded into a process" distinction the fcitx5 amendment already draws for the
+system-layer boundary, applied here to the *input* boundary instead). A tool that
+fails (b) — anything resembling `nixgl` — still needs `follows`, or stays out of
+this escape hatch entirely.
+
+Version tracking follows the same discipline as any other pinned package here
+(cf. `claude-code` in `home/modules/packages.nix`): the lock fixes the version:
+it does not move on its own, only via a deliberate `nix flake update
+nixpkgs-unstable`. An unstable input moves faster than the stable channel it sits
+beside, so `docs/operations.md`'s routine-update cadence calls that out
+separately.
+
+**File an issue to drop this input the moment `nixpkgs.herdr` evaluates on
+`nixos-26.05`** — this escape hatch is not meant to be a permanent second input;
+Issue #42 tracks it for the current instance.

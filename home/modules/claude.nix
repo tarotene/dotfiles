@@ -69,6 +69,13 @@
 #    "Bash(git *)" まで広げ、絞り込みは hook 内部の早期 exit(grep → jq)に移した。
 #    詳細は docs/claude/git-stash-guard.md。
 #
+# 9) herdr-sidebar-metadata(5 イベント + statusLine):
+#    各エージェントの permission mode・モデル・context%・コスト・effort を Herdr
+#    サイドバーに常時表示する。mode は hook input からしか取れず、モデル等は
+#    statusline JSON からしか取れないため 2 チャネル構成になっている。トークン色は
+#    静的指定のみなので、mode の色分けは「モード毎に別トークン + 非アクティブは
+#    null クリア」で表現する。詳細は docs/claude/herdr-sidebar-metadata.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
 # バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -96,16 +103,73 @@ let
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
+  herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
+  statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
+
+  # かつて登録したが撤回した hook。activation が全ホストの settings.json から
+  # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
+  # スクリプトを home.file から外すと settings.json のエントリだけが残り、消えた
+  # パスを指したまま毎イベントで ENOENT を吐き続けた(#44 の実体 — herdr のリネーム
+  # ではなく自リポジトリ由来。herdr が settings.json に書くのは
+  # integration::claude_settings::rewrite による .hooks.SessionStart の
+  # herdr-agent-state.sh だけで、statusLine にも他イベントにも触れない)。
+  retiredHookEntries = [
+    # 旧イテレーションは PostToolUse に herdr-claude-metadata.sh を登録していた。
+    # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
+    {
+      event = "PostToolUse";
+      command = herdrMetadataCmd;
+    }
+  ];
+
+  # かつて配って撤回した statusLine。syncStatusLine が .statusLine.command との
+  # 完全一致でキーを削除する対象。今回は herdr-sidebar-metadata を新規導入するので
+  # 空 — 将来この機能自体を取り下げるときに statusLineCmd をここへ移す。
+  retiredStatusLineCommands = [ ];
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
     settings="$1"
+    shift
     jq=${pkgs.jq}/bin/jq
 
     if [ ! -f "$settings" ]; then
       mkdir -p "$(dirname "$settings")"
       printf '{}\n' > "$settings"
     fi
+
+    # tmp は settings.json と同じディレクトリに作る。mktemp の既定($TMPDIR か
+    # /tmp)は $HOME と別 fs になり得て、その場合 mv は rename(2) ではなく
+    # copy+unlink に落ちる(非原子的で、途中で落ちれば settings.json が壊れる)。
+    # mode も mktemp の 0600 決め打ちではなく元ファイルに合わせる。
+    write_back() {
+      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
+      mv "$1" "$settings"
+    }
+
+    # retire <event> <cmd>: そのイベント配下から command 完全一致のハンドラだけを
+    # 外す。空になった matcher グループとイベントキーも畳む。該当ゼロなら読むだけで
+    # 書かない(定常状態では settings.json に触らない)。他ツールのエントリ(herdr の
+    # herdr-agent-state.sh、ローカルの public-publish-guard.sh / pr-body-guard.sh)は
+    # command が一致しない限り触れない。
+    retire() {
+      event="$1" cmd="$2"
+      if ! "$jq" -e --arg event "$event" --arg cmd "$cmd" \
+          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
+          "$settings" >/dev/null; then
+        return 0
+      fi
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      "$jq" --arg event "$event" --arg cmd "$cmd" '
+        .hooks[$event] = ( (.hooks[$event] // [])
+          | map( if any(.hooks[]?; .command == $cmd)
+                 then (.hooks |= map(select(.command != $cmd)))
+                 else . end )
+          | map(select((.hooks? == null) or ((.hooks | length) > 0))) )
+        | (if ((.hooks[$event] // []) | length) == 0 then del(.hooks[$event]) else . end)
+      ' "$settings" > "$tmp"
+      write_back "$tmp"
+    }
 
     # register <event> <matcher> <cmd> <timeout> [<if>]
     #   matcher / timeout / if は空文字(または省略)ならフィールド自体を出力しない。
@@ -119,7 +183,7 @@ let
           "$settings" >/dev/null; then
         return 0
       fi
-      tmp="$(mktemp)"
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
       "$jq" --arg event "$event" --arg matcher "$matcher" \
             --arg cmd "$cmd" --arg timeout "$timeout" --arg ifrule "$if_rule" '
         .hooks[$event] = ((.hooks[$event] // []) + [
@@ -130,44 +194,128 @@ let
               + (if $timeout == "" then {} else { timeout: ($timeout | tonumber) } end)
             ] }
         ])' "$settings" > "$tmp"
-      mv "$tmp" "$settings"
+      write_back "$tmp"
     }
 
-    register PreToolUse ExitPlanMode "$2" 300
-    register Stop "" "$3" ""
-    register SessionStart "" "$4" ""
+    if [ "''${1-}" = "--retire" ]; then
+      shift
+      while [ "$#" -gt 0 ] && [ "$1" != "--register" ]; do
+        retire "$1" "$2"
+        shift 2
+      done
+    fi
+    if [ "''${1-}" != "--register" ]; then
+      echo "register-claude-hooks: --register が必要" >&2
+      exit 1
+    fi
+    shift
+
+    plan_review="$1";           shift
+    wrapup_stop="$1";           shift
+    wrapup_session_start="$1";  shift
+    plan_view="$1";             shift
+    issue_index="$1";           shift
+    sign_prewarm="$1";          shift
+    pr_gate_session_start="$1"; shift
+    pr_gate_stop="$1";          shift
+    git_worktree_allow="$1";    shift
+    git_stash_guard="$1";       shift
+    herdr_metadata="$1";        shift
+
+    register PreToolUse ExitPlanMode "$plan_review" 300
+    register Stop "" "$wrapup_stop" ""
+    register SessionStart "" "$wrapup_session_start" ""
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
     # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
     # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
-    register PreToolUse ExitPlanMode "$5" 15
+    register PreToolUse ExitPlanMode "$plan_view" 15
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
     # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
     # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
     # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
     # 引き継ぐので不要。
-    register SessionStart "startup|resume|compact" "$6" 10
+    register SessionStart "startup|resume|compact" "$issue_index" 10
     # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
     # キャッシュはすでに温まっているか、そもそもまだ温まっていないかのどちらか
     # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
     # ない。resume は別ログインからの再開があり得るので含める。
-    register SessionStart "startup|resume" "$7" 120
+    register SessionStart "startup|resume" "$sign_prewarm" 120
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
     # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
     # するので、matcher/timeout を後から変えても既存エントリは更新されない —
     # docs/claude/issue-index.md。だから timeout は最初から余裕を持たせておく)。
-    register SessionStart "" "$8" 10
-    register Stop "" "$9" 600
+    register SessionStart "" "$pr_gate_session_start" 10
+    register Stop "" "$pr_gate_stop" 600
     # git-worktree-allow: if で "Bash(git -C *)" に絞る — それ以外の Bash 呼び出しでは
     # hook プロセス自体が起動しない。判定はすべて hook 側(パス実在・許可サブコマンド・
     # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
     # フォールスルーする。
-    register PreToolUse Bash "''${10}" 10 "Bash(git -C *)"
+    register PreToolUse Bash "$git_worktree_allow" 10 "Bash(git -C *)"
     # git-stash-guard: if を worktree-allow よりずっと広い "Bash(git *)" にする
     # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
-    register PreToolUse Bash "''${11}" 10 "Bash(git *)"
+    register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
+    # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
+    # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
+    # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
+    # 1 プロンプト 1 回で拾う / PreToolUse=plan 承認→acceptEdits を最小遅延で拾う
+    # (スクリプト側の前回値キャッシュで、モードが同じなら jq 1 回で即抜ける)/
+    # Stop=ttl リフレッシュ / SessionEnd=トークン全クリア。PostToolUse は
+    # PreToolUse と同情報で遅延だけ悪いので登録しない(旧イテレーションは
+    # PostToolUse に登録していたので retiredHookEntries で外す)。Herdr 外では
+    # 即 no-op。
+    register SessionStart "" "$herdr_metadata" 10
+    register UserPromptSubmit "" "$herdr_metadata" 10
+    register PreToolUse "" "$herdr_metadata" 10
+    register Stop "" "$herdr_metadata" 10
+    register SessionEnd "" "$herdr_metadata" 10
+  '';
+
+  # settings.json の statusLine を宣言に合わせる。
+  # 使い方: sync-claude-statusline <settings> <desired-or-empty> [<retired>…]
+  #   retired を先に処理し、.statusLine.command が retired のいずれかに完全一致
+  #   したときだけキーを削除する。無条件 del にしないのは、/statusline で本人が
+  #   設定した値を「宣言なし」の switch で奪わないため — retiredPermissionRules が
+  #   「かつて自分が配った文字列」だけを消すのと同型。desired が非空なら最後に
+  #   set-if-different するので、retire→set の順で set が勝つ。
+  syncStatusLine = pkgs.writeShellScript "sync-claude-statusline" ''
+    set -eu
+    settings="$1"
+    desired="$2"
+    shift 2
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    write_back() {
+      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
+      mv "$1" "$settings"
+    }
+
+    current="$("$jq" -r '.statusLine.command // ""' "$settings")"
+
+    for retired in "$@"; do
+      [ "$current" = "$retired" ] || continue
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      # null 代入ではなくキーの削除。「この機能を入れる前の形に戻す」が撤回の
+      # 意味であり、これで /statusline による後からの設定も素直に効く。
+      "$jq" 'del(.statusLine)' "$settings" > "$tmp"
+      write_back "$tmp"
+      current=""
+      break
+    done
+
+    if [ -n "$desired" ] && [ "$current" != "$desired" ]; then
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      "$jq" --arg cmd "$desired" \
+        '.statusLine = { type: "command", command: $cmd }' "$settings" > "$tmp"
+      write_back "$tmp"
+    fi
   '';
 
   # settings.json の permissions.allow を要素単位で冪等に同期する。
@@ -333,6 +481,20 @@ in
     executable = true;
   };
 
+  # herdr-sidebar-metadata: permission mode(hook)とモデル・メトリクス(statusline)
+  # を Herdr サイドバーのカスタムトークンに流す 2 チャネル構成。表示側の行定義は
+  # config/herdr/config.toml(home/modules/herdr.nix が配備)。herdr が自動
+  # インストールする統合 hook(herdr-agent-state.sh、herdr 管理)の隣に並ぶが、
+  # 互いに自分のエントリしか触らないので衝突しない。
+  home.file.".claude/hooks/herdr-claude-metadata.sh" = {
+    source = repoConfig + "/claude/hooks/herdr-claude-metadata.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/claude-statusline.sh" = {
+    source = repoConfig + "/claude/hooks/claude-statusline.sh";
+    executable = true;
+  };
+
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
   home.file.".claude/hooks/pr-gate.sh" = {
@@ -373,8 +535,17 @@ in
     repoConfig + "/claude/commands/codex-plan-review.md";
   home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
 
+  # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう
+  # concatMapStrings(区切り文字列を要素ごとに前置)で組む — concatMapStringsSep
+  # だと空リストで区切りだけが浮く。
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerHooks} "$HOME/.claude/settings.json" \
+      --retire${
+        lib.concatMapStrings (
+          e: " \\\n      " + lib.escapeShellArg e.event + " " + lib.escapeShellArg e.command
+        ) retiredHookEntries
+      } \
+      --register \
       ${lib.escapeShellArg planReviewCmd} \
       ${lib.escapeShellArg wrapupStopCmd} \
       ${lib.escapeShellArg wrapupSessionStartCmd} \
@@ -384,7 +555,15 @@ in
       ${lib.escapeShellArg prGateSessionStartCmd} \
       ${lib.escapeShellArg prGateStopCmd} \
       ${lib.escapeShellArg gitWorktreeAllowCmd} \
-      ${lib.escapeShellArg gitStashGuardCmd}
+      ${lib.escapeShellArg gitStashGuardCmd} \
+      ${lib.escapeShellArg herdrMetadataCmd}
+  '';
+
+  home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${syncStatusLine} "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg statusLineCmd}${
+        lib.concatMapStrings (c: " \\\n      " + lib.escapeShellArg c) retiredStatusLineCommands
+      }
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ

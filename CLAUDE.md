@@ -15,7 +15,7 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 
 | Layer | Owns | Managed by | ADR |
 |-------|------|------------|-----|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, SOPS loader, GUI apps, **fcitx5 daemon + mozc** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
+| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, SOPS loader, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
 | **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
@@ -23,11 +23,20 @@ Note on graphics: the driver stack itself is root-owned and stays in the system
 layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
 per-package `nixGL` wrapper in `home/modules/desktop.nix` (ADR-0006).
 
+Note on `herdr`: not yet in the pinned stable nixpkgs channel, so it comes from
+a single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
+#42) — drop the input once stable has it. Unlike `nixgl`, this overlay does not
+need `inputs.nixpkgs.follows`: herdr is a TUI that is only ever `exec`'d, never
+`dlopen`'d into another package's process, so a second glibc in its closure is
+harmless.
+
 ## Project Structure
 
 ```
 dotfiles/
-├── flake.nix                 # inputs (nixpkgs + home-manager, pinned) + homeConfigurations.<hostname>
+├── flake.nix                 # inputs (nixpkgs + home-manager, pinned; nixpkgs-unstable
+│                             #   is a herdr-only escape hatch, ADR-0001 Amendment) +
+│                             #   homeConfigurations.<hostname>
 ├── flake.lock
 ├── home/                     # home-manager modules (Identity / Instance two-layer)
 │   ├── common.nix            # shared across every host; imports all modules/
@@ -38,17 +47,19 @@ dotfiles/
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes
+│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes, herdr
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
-│   │                         #   git-worktree-allow, git-stash-guard + output
+│   │                         #   git-worktree-allow, git-stash-guard,
+│   │                         #   herdr-sidebar-metadata + statusline + output
 │   │                         #   schema + slash commands
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook), prune-branches.sh (helper for
 │   │                         #   the `git prune-branches` alias)
+│   ├── herdr/                # Herdr config: seed (bootstrap) + sidebar custom rows (managed)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -80,6 +91,7 @@ dotfiles/
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
+│   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
 │   │   └── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md

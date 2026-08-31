@@ -5,6 +5,7 @@
 {
   imports = [
     ./modules/claude.nix
+    ./modules/herdr.nix
     ./modules/shell.nix
     ./modules/git.nix
     ./modules/gpg.nix

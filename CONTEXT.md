@@ -41,14 +41,15 @@ stay deliberately outside it as escape hatches:
 | Secrets / identity | YubiKey-rooted; runtime-decrypted SOPS (no sops-nix); public keys committed; retire keybase | ADR-0003 |
 | Repo identity | keep the `dotfiles` name; relocate to public `tarotene/dotfiles` via a clean orphan history; no semver releases | ADR-0004 |
 | Graphics | nix GUI apps carry their own GL stack via a per-package `nixGL` wrapper; the system graphics stack stays apt and untouched | ADR-0006 |
-| Infra | latest pinned stable release channel; Determinate Systems installer; nix-centric CI; rollback via generations | ADR-0001 |
+| Infra | latest pinned stable release channel (+ a single-package `nixpkgs-unstable` escape hatch for tools absent there, currently `herdr`); Determinate Systems installer; nix-centric CI; rollback via generations | ADR-0001 (+ Amendment) |
 
 ## Repository layout (two-layer flake)
 
 The flake is **Identity / Instance** two-layer:
 
 ```
-flake.nix                     # inputs (nixpkgs + home-manager, pinned) and homeConfigurations.<hostname>
+flake.nix                     # inputs (nixpkgs + home-manager, pinned; nixpkgs-unstable is
+                               #   a herdr-only escape hatch) and homeConfigurations.<hostname>
 home/
   common.nix                  # shared across every host
   identities/
