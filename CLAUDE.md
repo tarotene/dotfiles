@@ -100,7 +100,8 @@ dotfiles/
 - Identity-scoped values (git `user.name`/`email`, browser default) go in
   `identities/`; per-machine values (signing key bound to the host's YubiKey/[S]
   subkey) go in `hosts/`.
-- Format with `nix fmt` (nixfmt-rfc-style).
+- Format with `nix fmt` (nixfmt-tree — a treefmt wrapper that feeds nixfmt only
+  the `*.nix` files, so no arguments are needed).
 
 ### Hybrid translation (ADR-0002)
 - **Keep working config files literal** and deploy them via `xdg.configFile` /
