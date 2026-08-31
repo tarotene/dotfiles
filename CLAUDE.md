@@ -138,6 +138,10 @@ dotfiles/
   - `No-Issue: <reason>` — when the work genuinely has no issue behind it
     (feature work born mid-session is the common case). This is a real escape
     hatch, not a formality: do not file a throwaway issue just to have a number.
+- Keep the keyword **out of code spans and fences**. GitHub ignores
+  `` `Closes #1` `` and anything inside ``` fences, so a quoted example does not
+  link anything — and the gate deliberately reads the body the same way GitHub
+  does.
 - The `G_link` judgement in `config/claude/hooks/pr-gate.sh` blocks the Stop hook
   when neither is present. Rationale: `docs/claude/pr-gate.md`.
 - Closing keywords only fire when the PR targets the **default branch**. On a

@@ -158,8 +158,35 @@ CLOSING_KEYWORD_RE='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:
 # 決定に変えるという G_link の目的が失われ、ただのおまじないになる。
 NO_ISSUE_RE='^[[:space:]]*No-Issue:[[:space:]]*[^[:space:]]'
 
+# GitHub は **コード内の closing keyword を解釈しない**。fenced code block の中も、
+# `Closes #30` のようなインラインのコードスパンの中も無視される。判定前に両方
+# 落としておかないと、ゲートが「閉じないのに LINKED」と読む — つまり G_link が
+# 防ごうとしているまさにその事故(マージしても Issue が open のまま)を、ゲート自身
+# が見逃す側に倒れる。
+#
+# これは机上の懸念ではない。この判定を入れた PR #46 の本文が
+# 「本文に `Closes #30 / #33 / …` を明記し」と実例をコードスパンで引用しており、
+# 初回の実地検証で `gh pr view --json closingIssuesReferences` が空を返して発覚した。
+# 規約や設計を説明する PR ほど keyword を引用するので、踏む確率は低くない。
+#
+# 判定基準は「GitHub がどう読むか」であって「人がどう書いたつもりか」ではない。
+# ここでは GitHub の parser に寄せる。
+strip_code_spans() {
+  awk '
+    BEGIN { fence = 0 }
+    {
+      line = $0
+      if (line ~ /^[[:space:]]*(```|~~~)/) { fence = 1 - fence; next }
+      if (fence) next
+      gsub(/`[^`]*`/, " ", line)
+      print line
+    }
+  ' <<<"$1"
+}
+
 judge_link() { # judge_link <body> ; echo LINKED|NO_ISSUE|MISSING
-  local body="$1"
+  local body
+  body="$(strip_code_spans "$1")"
   if grep -Eiq -- "$CLOSING_KEYWORD_RE" <<<"$body"; then
     printf 'LINKED'
   elif grep -Eiq -- "$NO_ISSUE_RE" <<<"$body"; then
@@ -868,6 +895,35 @@ Closes #30")"
   # 理由の無い `No-Issue:` を通すと、沈黙を決定に変えるという狙いが失われる。
   rc="$(glink link-noissue-bare-sid "No-Issue:")"
   check "理由の無い No-Issue: は逃がさない(exit 2)" 2 "$rc"
+
+  # GitHub はコード内の keyword を解釈しない。ゲートがここで LINKED と読むと、
+  # 「マージしても閉じない PR」を通してしまい、G_link の存在意義が消える。
+  # PR #46 の実地検証で実際に踏んだ回帰(closingIssuesReferences が空だった)。
+  rc="$(glink link-inline-code-sid "本文に \`Closes #30\` と書く規約を説明する PR。")"
+  check "インラインのコードスパン内の keyword は数えない(exit 2)" 2 "$rc"
+
+  rc="$(glink link-fence-sid "規約の例:
+
+\`\`\`
+Closes #30
+\`\`\`
+
+説明の続き。")"
+  check "fenced code block 内の keyword は数えない(exit 2)" 2 "$rc"
+
+  rc="$(glink link-fence-plus-real-sid "規約の例:
+
+\`\`\`
+Closes #99
+\`\`\`
+
+Closes #30")"
+  check "コード外に本物があれば LINKED(exit 0)" 0 "$rc"
+
+  rc="$(glink link-code-then-noissue-sid "\`Closes #99\` の書き方を説明する PR。
+
+No-Issue: 規約を説明するだけで対応 Issue は無い")"
+  check "コード内 keyword + No-Issue: は No-Issue: が効く(exit 0)" 0 "$rc"
 
   # G_push が止める場面では、本文の指摘は単独 block ではなく相乗りで伝える
   # (本文修正は CI を待たずに済むので 1 往復を消費させない)。

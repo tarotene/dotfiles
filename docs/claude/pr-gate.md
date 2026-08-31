@@ -121,6 +121,35 @@ feature 作業で、閉じるべき Issue が存在しない。ここで「毎�
 その形の判定は、観測された失敗そのものを通してしまう。設計として、実際に起きた事例を
 素通しするゲートを入れる意味はない。
 
+### 判定基準は「GitHub がどう読むか」
+
+GitHub は **コード内の closing keyword を解釈しない**。fenced code block の中も、
+`` `Closes #30` `` のようなインラインのコードスパンの中も無視される。判定前に両方
+落としておかないと、ゲートが「閉じないのに LINKED」と読む —— つまり `G_link` が防ごうと
+しているまさにその事故（マージしても Issue が open のまま）を、**ゲート自身が見逃す側に
+倒れる**。
+
+これは机上の懸念ではない。`G_link` を入れた PR #46 の本文が「本文に
+`` `Closes #30 / #33 / …` `` を明記し」と実例をコードスパンで引用しており、初回の実地検証で
+`gh pr view --json closingIssuesReferences` が空を返して発覚した。規約や設計を説明する PR
+ほど keyword を引用するので、踏む確率は低くない。
+
+判定基準は「GitHub がどう読むか」であって「人がどう書いたつもりか」ではない。ゲートが
+GitHub より緩くても厳しくても、どちらも嘘になる。
+
+実 PR 6 本を ground truth（`gh pr view --json closingIssuesReferences`）と突き合わせて
+一致を確認している:
+
+| PR | `judge_link` | GitHub の実リンク |
+|---|---|---|
+| #45 | `LINKED` | `10, 11, 30, 33, 34` |
+| #46 | `NO_ISSUE` | （なし） |
+| #40 / #32 / #37 / #27 | `MISSING` | （なし） |
+
+なお HTML コメント（`<!-- … -->`）は落としていない。GitHub はそこも解釈しないが、この
+リポジトリは PR テンプレートを使わない（使えない — 上記のとおり `--body` がテンプレートを
+読まない）ので、コメントに keyword が紛れ込む経路が無い。踏んだら足す。
+
 ### base が default branch でない場合を advisory にする理由
 
 GitHub の仕様上、closing keyword は **default branch を狙う PR でのみ**解釈される
