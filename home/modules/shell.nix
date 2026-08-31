@@ -15,7 +15,12 @@
 # systemd.user half, a `chsh` leaves them spawning the old shell until a full
 # logout/login (see config/i18n.nix for the same two-option pattern used for
 # LOCALE_ARCHIVE).
-{ lib, pkgs, config, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
   repoConfig = ../../config;
   loginShell = "${config.home.homeDirectory}/.nix-profile/bin/zsh";

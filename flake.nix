@@ -84,6 +84,12 @@
       # `nix flake check` evaluates every host's activation package.
       checks.${system} = builtins.mapAttrs (_name: cfg: cfg.activationPackage) self.homeConfigurations;
 
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      # nixfmt-tree, not nixfmt itself (#30). `nix fmt` with no arguments hands
+      # the formatter the whole tree, and bare nixfmt reads that as stdin and
+      # dies on the first non-Nix file; nixfmt upstream now points at this
+      # wrapper by name. It is a treefmt wrapper that walks the tree and feeds
+      # nixfmt only the *.nix files, so `nix fmt` works unqualified — which is
+      # what CLAUDE.md and the docs tell you to run.
+      formatter.${system} = pkgs.nixfmt-tree;
     };
 }

@@ -13,7 +13,7 @@ set -euo pipefail
 #   1. Install Nix via the Determinate Systems installer (multi-user default).
 #   2. Clone this repo (skipped when already inside a checkout).
 #   3. Install system-layer apt packages (scripts/install-packages.sh).
-#   4. Run `home-manager switch --flake .#<hostname>`.
+#   4. Build and run this host's home-manager activation package.
 #   5. Register the Nix-provided zsh in /etc/shells (idempotent). `chsh` itself
 #      stays manual — see "Next steps" — since it authenticates interactively
 #      and can fail when stdin is consumed by curl|bash.
@@ -102,14 +102,36 @@ else
     "$REPO_DIR/scripts/install-packages.sh"
 fi
 
-# --- 4. home-manager switch ---
+# --- 4. home-manager activation ---
 HOSTNAME="$(hostname)"
 info "Activating home-manager configuration for host '$HOSTNAME'..."
 
+# Build the activation package out of this flake and run it, rather than
+# `nix run home-manager -- switch` (#11). The CLI form resolves `home-manager`
+# through the global flake registry — i.e. the *master* branch — while flake.nix
+# pins the configuration to a release branch, so a greenfield bootstrap would
+# drive a pinned config with whatever CLI master happened to be that day.
+#
+# The obvious fix, spelling the release branch into the `nix run` URL, just moves
+# the problem: the branch name would then live in two places and one of them
+# would go stale at the next channel bump. (#11's own body proposed
+# `release-25.11`, which was already wrong by the time it was read — PR #17 moved
+# the flake to 26.05.) Building the activation package has no version string at
+# all: it uses whatever flake.lock pins, so the skew is zero by construction and
+# no external fetch or registry lookup is involved.
+#
+# Only this first activation needs it. `programs.home-manager.enable = true` in
+# home/common.nix installs the CLI from the same pinned input, so every later
+# apply goes through `hms` (docs/operations.md) with no unpinned invocation left
+# anywhere in the repo.
+ACTIVATION_ATTR="$REPO_DIR#homeConfigurations.\"$HOSTNAME\".activationPackage"
+
 if [[ "$DRY_RUN" == "true" ]]; then
-    echo "[dry-run] Would run: nix run home-manager -- switch --flake $REPO_DIR#$HOSTNAME"
+    echo "[dry-run] Would run: nix build --no-link --print-out-paths $ACTIVATION_ATTR"
+    echo "[dry-run] Would run: <result>/activate"
 else
-    nix run home-manager -- switch --flake "$REPO_DIR#$HOSTNAME"
+    activation_path="$(nix build --no-link --print-out-paths "$ACTIVATION_ATTR")"
+    "$activation_path/activate"
 fi
 
 # --- 5. Register the Nix zsh as a valid login shell ---

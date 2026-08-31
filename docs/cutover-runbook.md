@@ -43,6 +43,13 @@ below. This step is idempotent and safe to re-run on already-cut-over hosts,
 because the native installer's self-update mechanism can recreate the shadow
 long after the initial cutover.
 
+Also work through
+[Legacy artifact cleanup](#legacy-artifact-cleanup) below. Those are artifacts
+the retired installers *already deployed*, which removing the installers did not
+undo — a stale `~/.gitconfig` that overrides the declared credential helper, and
+stale systemd user units. Both are silent, so check even on hosts that were cut
+over long ago.
+
 ### 2. Install system-layer packages
 
 ```bash
@@ -201,3 +208,98 @@ readlink -f "$(which claude)"   # → /nix/store/…-claude-code-<ver>/bin/claud
 If `which claude` still points into `~/.local/`, the native installer has
 already re-populated it; re-run the removal and check whether a background
 process or a shell alias is re-invoking the native installer.
+
+## Legacy artifact cleanup
+
+Removing the legacy procedural installers (#218) did not remove what they had
+already deployed. Every host that was managed by them before the migration still
+carries debris that home-manager never placed and therefore never cleans up.
+Two kinds have been found so far; both are silent, so check for them explicitly
+rather than waiting to be told.
+
+Run these on each migrated host. Both checks are idempotent and safe to re-run.
+
+### Stale `~/.gitconfig` (#34)
+
+The old layer wrote a `~/.gitconfig` pointing the GitHub credential helper at
+the **apt** `gh`:
+
+```
+[credential "https://github.com"]
+	helper =
+	helper = !/usr/bin/gh auth git-credential
+```
+
+Git reads `~/.config/git/config` (XDG) *before* `~/.gitconfig`, and the later
+file wins, so this quietly overrides the helper that `home/modules/git.nix`
+declares — the Nix `gh` never gets asked. That is a direct ADR-0001 violation:
+home-manager is supposed to be the source of truth for this value.
+
+The second effect is nastier because it is invisible. Once `~/.gitconfig`
+exists, `git config --global` addresses *that* file and stops seeing the XDG
+config entirely, so any script reading a home-manager-declared value with
+`--global` silently gets nothing. The `sign-prewarm` hook hit exactly this
+during development and had to drop to a scope-less `git config --get`.
+
+```bash
+# Check
+ls -l ~/.gitconfig                       # absent → nothing to do
+
+# Back up, then remove
+cp ~/.gitconfig ~/.gitconfig.pre-hm.bak  # only if it exists
+rm ~/.gitconfig
+
+# Verify: the helper must now resolve to the Nix gh, via the XDG config
+git config --get credential."https://github.com".helper   # → !gh auth git-credential
+git config --show-origin --get user.email                 # → …/.config/git/config
+```
+
+Do not use `git config --global --get` to verify — that is the scope this whole
+step is about, and it will keep reading a file you just deleted (or claim the
+value is unset). Use the scope-less form.
+
+### Stale systemd user units (#10)
+
+The symlink installer enabled a `fcitx5.service` user unit pointing into the old
+repo layout (`config/systemd/user/`). That path no longer exists — fcitx5 is now
+wired via XDG autostart in `home/modules/desktop.nix` (ADR-0001 Amendment) — so
+the symlinks dangle:
+
+```
+~/.config/systemd/user/fcitx5.service
+  -> ~/dotfiles/config/systemd/user/fcitx5.service          (dangling)
+~/.config/systemd/user/graphical-session.target.wants/fcitx5.service
+  -> ~/dotfiles/config/systemd/user/fcitx5.service          (dangling)
+```
+
+systemd reports the unit as `bad` yet `enabled`, and logs a failure on **every**
+`home-manager switch` during `reloadSystemd`. Two reasons to clean it up rather
+than tolerate it: the noise lands right next to the documented-harmless
+`reloadSystemd` output (see "Known noise" above), which makes a real activation
+failure easy to miss; and the unit is still *enabled*, so if a checkout at
+`~/dotfiles` ever regains that path, systemd would start a second fcitx5 daemon
+racing the XDG-autostart one (`app-fcitx5@autostart.service`).
+
+```bash
+# Check — a clean host lists only home-manager symlinks into /nix/store
+ls -l ~/.config/systemd/user/
+systemctl --user list-units --state=failed
+
+# Clean up
+systemctl --user disable fcitx5.service
+rm -f ~/.config/systemd/user/fcitx5.service \
+      ~/.config/systemd/user/graphical-session.target.wants/fcitx5.service
+systemctl --user daemon-reload
+
+# Verify: exactly one fcitx5 process, started from the XDG autostart unit
+systemctl --user status app-fcitx5@autostart.service --no-pager
+pgrep -c fcitx5    # → 1
+```
+
+### Status per host
+
+| Host | `~/.gitconfig` | stale systemd units |
+|---|---|---|
+| `company-pop-new` | cleaned 2026-08-31 | already clean |
+| `personal-pop` | unverified | present as of #10 |
+| `company-pop-old` | unverified | unverified |

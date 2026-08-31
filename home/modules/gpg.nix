@@ -75,8 +75,23 @@ in
     defaultCacheTtl = 34560000; # 400d — i.e. bounded by the login, not the clock
     maxCacheTtl = 34560000;
 
-    # Enable SSH agent support so the YubiKey auth subkey can serve as an SSH key.
-    enableSshSupport = true;
+    # No `enableSshSupport` here, deliberately (#33). The [A] subkey does exist
+    # on the card (keygrip AC6226020D13A46E0CD8E47A8C08C5D01C142127), but it was
+    # never registered in ~/.gnupg/sshcontrol and nothing on any host speaks SSH:
+    # there is no ~/.ssh, and git remotes are HTTPS via `gh auth git-credential`
+    # (see git.nix). The declaration was therefore inert.
+    #
+    # Inert is not free. `enableSshSupport = true` makes gpg-agent claim
+    # SSH_AUTH_SOCK, so the day someone does start using ssh, gpg-agent answers
+    # as an ssh-agent holding zero identities and the result is a
+    # `Permission denied (publickey)` whose cause is nowhere near ssh. An unused
+    # declaration that breaks the first use of the thing it names is a liability,
+    # not a convenience — so it is gone, along with the defaultCacheTtlSsh /
+    # maxCacheTtlSsh question it dragged along (those were never set, leaving the
+    # SSH cache at the 30m/2h default, asymmetric with the [S] policy above).
+    #
+    # Reversible in one line: the subkey stays on the card, so re-enabling this
+    # and writing the keygrip into ~/.gnupg/sshcontrol is all it would take.
   };
 
   # Import committed public keys at activation time.  On a fresh host the user
