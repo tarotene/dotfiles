@@ -51,6 +51,17 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
+      # config/ is excluded above for the same reason as the Claude Code hooks
+      # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
+      # pre-commit chain), so it gets its own pass with the exclusion lifted.
+      - name: ShellCheck git hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/git/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
       - name: Install zsh for syntax validation
         run: |
           set -euo pipefail

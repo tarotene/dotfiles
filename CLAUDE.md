@@ -44,6 +44,8 @@ dotfiles/
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm
 │   │                         #   + output schema + slash commands
+│   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
+│   │                         #   pre-commit (chains to the repo-local hook)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
