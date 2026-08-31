@@ -42,8 +42,8 @@ dotfiles/
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
-│   │                         #   plan-view, issue-index, sign-prewarm + output schema
-│   │                         #   + slash commands
+│   │                         #   plan-view, pr-gate, issue-index, sign-prewarm
+│   │                         #   + output schema + slash commands
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -64,6 +64,7 @@ dotfiles/
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
 │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
+│   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
 │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md

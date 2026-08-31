@@ -1,5 +1,5 @@
 # Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view・
-# sign-prewarm・issue-index を home-manager で配備する。
+# sign-prewarm・pr-gate・issue-index を home-manager で配備する。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
@@ -30,7 +30,15 @@
 #    グローバルな git 設定だけを見る。additionalContext は出さない(副作用だけの
 #    hook)。詳細は docs/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
 #
-# 5) issue-index(SessionStart, matcher: startup|resume|compact):
+# 5) pr-gate(SessionStart + Stop):
+#    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」の 2 事故を、Stop の
+#    1 点だけで hard gate する(base 鮮度・未コミット変更は advisory)。判定対象は
+#    ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリのみ)で、
+#    それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読まないこと」
+#    — 期待される required check をサーバの ruleset から取り、`gh pr checks --watch`
+#    の exit code ではなく取り直した --json を jq で判定する。詳細は docs/pr-gate.md。
+#
+# 6) issue-index(SessionStart, matcher: startup|resume|compact):
 #    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
 #    additionalContext で注入する。本文は渡さない — 深掘りは Claude 自身に
 #    `gh issue view` を叩かせる。データ源は `gh issue list` ではなく GitHub
@@ -63,6 +71,8 @@ let
   planViewCmd = "bash '${hooksDir}/plan-view.sh'";
   issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
+  prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
+  prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -116,6 +126,13 @@ let
     # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
     # ない。resume は別ログインからの再開があり得るので含める。
     register SessionStart "startup|resume" "$7" 120
+    # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
+    # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
+    # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
+    # するので、matcher/timeout を後から変えても既存エントリは更新されない —
+    # docs/issue-index.md。だから timeout は最初から余裕を持たせておく)。
+    register SessionStart "" "$8" 10
+    register Stop "" "$9" 600
   '';
 in
 {
@@ -161,6 +178,18 @@ in
     executable = true;
   };
 
+  # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
+  # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
+  home.file.".claude/hooks/pr-gate.sh" = {
+    source = repoConfig + "/claude/hooks/pr-gate.sh";
+    executable = true;
+  };
+  home.file.".claude/pr-gate-repos".text = ''
+    # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
+    # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
+    tarotene/dotfiles
+  '';
+
   # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
   # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
   home.file.".local/bin/plan-view" = {
@@ -185,6 +214,8 @@ in
       ${lib.escapeShellArg wrapupSessionStartCmd} \
       ${lib.escapeShellArg planViewCmd} \
       ${lib.escapeShellArg issueIndexCmd} \
-      ${lib.escapeShellArg signPrewarmCmd}
+      ${lib.escapeShellArg signPrewarmCmd} \
+      ${lib.escapeShellArg prGateSessionStartCmd} \
+      ${lib.escapeShellArg prGateStopCmd}
   '';
 }
