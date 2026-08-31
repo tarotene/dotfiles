@@ -282,6 +282,12 @@ deny の文言側では GO/NO-GO それぞれの次の行動を明示するよ�
 | `CODEX_PLAN_REVIEW_SCHEMA` | スクリプトと同じディレクトリ | 出力スキーマのパス |
 | `SKIP_PLAN_REVIEW` | — | `1` でスキップ |
 
+`CODEX_PLAN_REVIEW_GATE_SEVERITIES` と `MAX_PLAN_REVIEWS` は `home/modules/claude.nix` の
+`home.sessionVariables` で `BLOCKER` / `2` に再校正している。実測（`~/.claude/plan-reviews/`
+322 セッション分）で deny 率 69%、3 ラウンド到達が中位という結果が出ており、review の
+価値より摩擦が勝っていたための調整。MAJOR は backlog へ落として報告のみになる。
+`home.sessionVariables` は次回ログインから効く（同一シェルでは反映されない）。
+
 ### 生成物
 
 ```

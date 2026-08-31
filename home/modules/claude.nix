@@ -136,6 +136,19 @@ let
   '';
 in
 {
+  # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
+  # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
+  # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
+  # し、ラウンドも 2 に絞る。gate 本体(codex-plan-review.sh)は触らない — closer
+  # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
+  # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
+  # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
+  # docs/codex-plan-review.md の環境変数節。
+  home.sessionVariables = {
+    CODEX_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
+    MAX_PLAN_REVIEWS = "2";
+  };
+
   home.file.".claude/hooks/codex-plan-review.sh" = {
     source = repoConfig + "/claude/hooks/codex-plan-review.sh";
     executable = true;
