@@ -29,7 +29,7 @@ Design and rationale for the hooks and commands deployed from
 
 - [`codex-plan-review.md`](claude/codex-plan-review.md) — ExitPlanMode gate:
   Codex reviews the plan; the gate is on severity, not on a verdict.
-- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier
+- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ)
   (CI/push, not review/base).
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
