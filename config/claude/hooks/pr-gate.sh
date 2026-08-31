@@ -1236,7 +1236,8 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
   # なければ behind は生まれない。origin/main を HEAD と共通祖先を持つ別の
   # 1 commit へ付け替えて、本物の divergence(ahead 2 / behind 1)を作る。
   base_commit="$(git -C "$repo" rev-parse HEAD~2)"
-  other_commit="$(git -C "$repo" commit-tree "${base_commit}^{tree}" -p "$base_commit" -m other-team-commit)"
+  other_commit="$(git -C "$repo" -c user.email=t@example.com -c user.name=t \
+    commit-tree "${base_commit}^{tree}" -p "$base_commit" -m other-team-commit)"
   git -C "$repo" update-ref refs/remotes/origin/main "$other_commit"
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   rc=0
