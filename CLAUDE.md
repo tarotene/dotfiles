@@ -71,7 +71,7 @@ dotfiles/
 │   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
-│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
+│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link)
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
@@ -128,6 +128,21 @@ dotfiles/
 - `nix.yml` runs `nix flake check` + a per-host activation build matrix.
 - `ci.yml` is a slim shell pass: shellcheck the surviving scripts, `bootstrap.sh`
   + `install-packages.sh` `--dry-run`, and a zsh module syntax check.
+
+### Pull request descriptions
+- Every PR body **must** either close an issue or say why there is none:
+  - `Closes #<n>` — one line per issue (`Fixes`/`Resolves` and
+    `owner/repo#<n>` work too). Without this, merging does not touch the issue
+    and a finished piece of work sits open until someone re-triages it by hand —
+    which is exactly how #28 and #29 survived months after being solved.
+  - `No-Issue: <reason>` — when the work genuinely has no issue behind it
+    (feature work born mid-session is the common case). This is a real escape
+    hatch, not a formality: do not file a throwaway issue just to have a number.
+- The `G_link` judgement in `config/claude/hooks/pr-gate.sh` blocks the Stop hook
+  when neither is present. Rationale: `docs/claude/pr-gate.md`.
+- Closing keywords only fire when the PR targets the **default branch**. On a
+  stacked PR the gate says so, but it will not stop you — close the issue by
+  hand, or carry the keyword on the PR that lands on `main`.
 
 ## Verification / Testing
 - `nix flake check` — evaluates every host's activation package.

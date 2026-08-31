@@ -3,11 +3,13 @@
 #
 # 設計と根拠: docs/claude/pr-gate.md（このリポジトリ内）
 #
-# 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」という 2 種の事故を、
-# Stop の 1 点だけで hard gate する。base 鮮度・未コミット変更は advisory
+# 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
+# 繋がないまま終わる」という 3 種の事故を、Stop の 1 点だけで hard gate する。
+# base 鮮度・未コミット変更は advisory
 # (block するときだけ相乗りで伝える。それ単独では終了を止めない)。
 #
 #   G_push : ローカル HEAD == PR の headRefOid                → block
+#   G_link : PR 本文に closing keyword または No-Issue:        → block
 #   G_CI   : 期待される check がすべて pass/skipping           → block
 #   G_base : origin/<base> に対する ahead/behind               → advisory
 #   G_wt   : 未コミット件数                                    → advisory
@@ -22,6 +24,27 @@
 #      「1 件以上現れたら待機開始」では防げないので、`--watch` は待つための
 #      道具に格下げし、その exit code を acceptance criterion にしない。
 #
+# G_link が塞ぐのは「マージが Issue に伝播せず、解決済みの Issue が open のまま
+# 残る」事故。merged PR 21 本のうち closing keyword を持つのは 4 本(19%)で、
+# #28/#29 は実質解決から数か月 open のまま残っていた。コストが出るのは PR の
+# 時点ではなく、後日の再トリアージ時 — 遅延して現れる沈黙なので advisory では
+# 構造がそのまま再生産される。よって block し、対応 Issue が本当に無い場合は
+# 本文に `No-Issue: <理由>` と書いて明示的に抜ける。沈黙を決定に変えるのが狙いで、
+# `No-Issue:` は grep 可能なので後から監査できる(advisory の警告と違う点)。
+#
+# G_link は「言及があるのに keyword が無い」だけを見る形にはしない。#28/#29 を
+# 実質解決した PR は Issue に一切言及していなかった — 観測された失敗そのものを
+# 通す判定には意味がない。
+#
+# closing keyword は default branch へのマージでのみ発火する。base がそれ以外の
+# stacked PR では本文に書いてもマージで閉じないが、stacked 自体は正当な運用なので
+# block ではなく advisory にする。default branch は refs/remotes/origin/HEAD から
+# 読む — API 呼び出しを増やさない(取れなければこの advisory を出さない)。
+#
+# 参照先 Issue の実在確認はしない。捕まえられるのは「存在しない番号」だけで、
+# より起きやすい「存在するが別の Issue」は捕まえられない一方、API 呼び出しが
+# 1 本増えて下の縮退表が太る。利得が釣り合わない。
+#
 # 発火範囲: allowlist ファイル(既定 ~/.claude/pr-gate-repos)に nwo が無ければ
 # 完全沈黙。全ホストに無条件配備する前提(会社リポジトリでは既定で沈黙する)。
 #
@@ -29,14 +52,19 @@
 #   完全沈黙(exit 0, 出力なし) → allowlist 外 / git repo でない / GitHub remote
 #     でない / jq・gh・git 不在 / open PR が無い / skip
 #   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗
-#   hard block(exit 2)         → G_push 不一致 / G_CI が揃わない・失敗・pending
+#   hard block(exit 2)         → G_push 不一致 / G_link 欠落 / G_CI が揃わない・
+#     失敗・pending
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
 # (docs/claude/codex-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
-# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-3} に達したら 1 回だけ escalate し、
+# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-4} に達したら 1 回だけ escalate し、
 # touch state/<sid>.escalated。以後そのセッションは無条件で素通る(escalated の
 # チェックは上限判定より前 — docs/claude/codex-plan-review.md の closer と同じ置き方)。
+# 上限が 3 でなく 4 なのは G_link を足したから: 最悪の連鎖(push → 本文修正 →
+# CI 待ち)が正当に 3 回 block しうるので、3 のままだと最後の 1 回が escalate に
+# 化ける。なお G_link の指摘は単独 block になる前に G_push / G_CI の block へ
+# 相乗りするので、この最悪連鎖は実際には起きにくい。
 #
 # 使い方:
 #   hook として:  settings.json の SessionStart / Stop から
@@ -54,7 +82,7 @@ CI_TIMEOUT="${PR_GATE_CI_TIMEOUT:-300}"
 CHECK_APPEAR_TIMEOUT="${PR_GATE_CHECK_APPEAR_TIMEOUT:-60}"
 QUIESCE="${PR_GATE_QUIESCE:-15}"
 FETCH_TTL="${PR_GATE_FETCH_TTL:-600}"
-MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-3}"
+MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-4}"
 
 # 自身の絶対パス。symlink は辿らない — 配備後は ~/.claude/hooks/ 配下が nix store
 # への symlink であり、世代を跨いで安定な symlink 側を指示文に出したい
@@ -112,6 +140,42 @@ uncommitted_count() {
   n="$(git -C "$1" status --porcelain 2>/dev/null | wc -l | tr -d ' ')" || n="?"
   [[ -n "$n" ]] || n="?"
   printf '%s' "$n"
+}
+
+# --- G_link: PR 本文が Issue を閉じるか ---------------------------------------
+
+# GitHub が解釈する closing keyword は close/closes/closed, fix/fixes/fixed,
+# resolve/resolves/resolved の 9 語。参照形式は同一リポジトリの `#N` と
+# クロスリポジトリの `owner/repo#N`。keyword は大文字でもよく、コロンを伴っても
+# よい(`Closes: #10` も公式に解釈される)ので、いずれも受理する。
+# 出典: docs.github.com「Linking a pull request to an issue」
+#
+# issue URL 形式は上記の表には無いが、書かれていれば意図は明白で、これを
+# MISSING と判定すると gate が誤って止める側に倒れる。受理する。
+CLOSING_KEYWORD_RE='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+(#[0-9]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+|https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/issues/[0-9]+)'
+
+# `No-Issue:` は理由を伴って初めて成立する。空の `No-Issue:` を通すと、沈黙を
+# 決定に変えるという G_link の目的が失われ、ただのおまじないになる。
+NO_ISSUE_RE='^[[:space:]]*No-Issue:[[:space:]]*[^[:space:]]'
+
+judge_link() { # judge_link <body> ; echo LINKED|NO_ISSUE|MISSING
+  local body="$1"
+  if grep -Eiq -- "$CLOSING_KEYWORD_RE" <<<"$body"; then
+    printf 'LINKED'
+  elif grep -Eiq -- "$NO_ISSUE_RE" <<<"$body"; then
+    printf 'NO_ISSUE'
+  else
+    printf 'MISSING'
+  fi
+}
+
+# default branch を refs/remotes/origin/HEAD から読む。API を叩かない代わりに、
+# origin/HEAD が未設定のクローンでは空を返す — 呼び出し側はその場合 advisory を
+# 出さない(判定できないことを断定に変えない)。
+default_branch() {
+  local ref
+  ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0
+  printf '%s' "${ref#origin/}"
 }
 
 # --- state: block 回数 / escalated フラグ -------------------------------------
@@ -353,7 +417,7 @@ cmd_session_start() {
 
   local pr_json pr_num
   pr_json="$(gh pr list -R "$nwo" --head "$branch" --state open --limit 1 \
-    --json number,baseRefName,headRefOid 2>/dev/null)" || pr_json=""
+    --json number,baseRefName,headRefOid,body 2>/dev/null)" || pr_json=""
   [[ -n "$pr_json" ]] || pr_json='[]'
   pr_num="$(jq -r '.[0].number // empty' <<<"$pr_json")"
   [[ -n "$pr_num" ]] || exit 0 # PR が無ければ運ぶ情報が無い(PR 有無自体は issue-index が示す)
@@ -377,8 +441,16 @@ cmd_session_start() {
     else [.[].bucket] | group_by(.) | map("\(.[0]): \(length)") | join(", ")
     end' <<<"$checks_json" 2>/dev/null)" || bucket_summary="不明"
 
+  local link_state
+  case "$(judge_link "$(jq -r '.[0].body // ""' <<<"$pr_json")")" in
+    LINKED) link_state="closing keyword あり" ;;
+    NO_ISSUE) link_state="No-Issue: 宣言あり" ;;
+    *) link_state="なし — Closes #N か No-Issue: が要ります" ;;
+  esac
+
   local ctx
   ctx="[pr-gate] PR #${pr_num} (base: ${base}) — CI: ${bucket_summary}${fetch_note}
+Issue リンク: ${link_state}
 base 追従: ahead ${ahead} / behind ${behind}
 未 push: ${unpushed} 件"
 
@@ -417,7 +489,7 @@ cmd_stop() {
 
   local pr_json pr_num
   pr_json="$(gh pr list -R "$nwo" --head "$branch" --state open --limit 1 \
-    --json number,baseRefName,headRefOid 2>/dev/null)" || pr_json=""
+    --json number,baseRefName,headRefOid,body 2>/dev/null)" || pr_json=""
   [[ -n "$pr_json" ]] || pr_json='[]'
   pr_num="$(jq -r '.[0].number // empty' <<<"$pr_json")"
   [[ -n "$pr_num" ]] || exit 0 # open PR が無い → 完全沈黙
@@ -435,6 +507,40 @@ cmd_stop() {
   advisory="base 追従: ahead ${ahead} / behind ${behind}
 未コミット: ${wt_count} ファイル"
 
+  # G_link — 判定だけ先に済ませ、block は最後に回す。G_push / G_CI が止める場面
+  # では、その block メッセージに相乗りさせる($rider)。本文の修正は CI を待たずに
+  # 済むので、単独で 1 往復を消費させる理由がない。
+  local body link_verdict link_msg="" link_blocks=0 default_br
+  body="$(jq -r '.[0].body // ""' <<<"$pr_json")"
+  link_verdict="$(judge_link "$body")"
+  default_br="$(default_branch "$project")"
+
+  if [[ "$link_verdict" == "MISSING" ]]; then
+    link_blocks=1
+    link_msg="PR #${pr_num} の本文が Issue を閉じません(closing keyword なし)。
+
+このままマージしても Issue は open のまま残り、後日の再トリアージまで
+誰も気づきません。次のどちらかを本文に入れてください:
+
+  Closes #<番号>          — 対応する Issue がある場合(複数なら各行に)
+  No-Issue: <理由>        — 対応する Issue が本当に無い場合
+
+  gh pr edit ${pr_num} --body-file <file>
+
+open な Issue の一覧は SessionStart の issue-index が注入しています。"
+  elif [[ "$link_verdict" == "LINKED" && -n "$default_br" && "$base" != "$default_br" ]]; then
+    # 公式仕様: closing keyword は default branch を狙う PR でのみ解釈される。
+    # stacked PR 自体は正当なので断定せず advisory に留める。
+    advisory="${advisory}
+注意: base が ${base} で default branch(${default_br})ではないため、本文の
+      closing keyword はマージしても発火しません。"
+  fi
+
+  local rider="$advisory"
+  [[ -n "$link_msg" ]] && rider="${link_msg}
+
+${advisory}"
+
   # G_push
   local local_head
   local_head="$(git -C "$project" rev-parse HEAD 2>/dev/null)" || local_head=""
@@ -450,7 +556,7 @@ push してから終了してください。
 注: この worktree は pre-push に阻まれます。--no-verify を
     使う前にユーザーに確認してください。
 
-${advisory}"
+${rider}"
   fi
 
   # G_CI
@@ -460,13 +566,13 @@ ${advisory}"
         block_or_escalate "$sid" "CI のチェックがまだ 1 件も報告されていません。
 gh pr checks で確認してから終わってください。
 
-${advisory}"
+${rider}"
         ;;
       MISSING)
         block_or_escalate "$sid" "CI のチェックが揃っていません。未出現: ${G_CI_DETAIL}
 gh pr checks --watch で待ってから終わってください。
 
-${advisory}"
+${rider}"
         ;;
       FAILED)
         block_or_escalate "$sid" "CI が赤です。PR #${pr_num} (head ${head_oid:0:7})
@@ -474,12 +580,12 @@ ${advisory}"
 $(render_failed_checks "$pr_num" "$nwo")
 修正して push してから終わってください。
 
-${advisory}"
+${rider}"
         ;;
       *)
         block_or_escalate "$sid" "CI がまだ pending です。gh pr checks --watch で待ってから終わってください。
 
-${advisory}"
+${rider}"
         ;;
     esac
   fi
@@ -488,6 +594,16 @@ ${advisory}"
     advisory="${advisory}
 ${G_CI_DETAIL}"
   fi
+
+  # G_link を単独で block するのはここ — push も CI も通っている、つまり
+  # 「あとは終わるだけ」の一点。まさにリンクが忘れられる瞬間なので、この位置で
+  # 止める。上の block 経路を通った場合は既に $rider として伝えてある。
+  if ((link_blocks)); then
+    block_or_escalate "$sid" "${link_msg}
+
+${advisory}"
+  fi
+
   printf '%s\n' "$advisory" >&2
   exit 0
 }
@@ -523,6 +639,9 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # PR_GATE_STUB_RULES_FILE         : gh api rules/branches の応答(未指定なら [])
   # PR_GATE_STUB_CHECKS_FILE        : gh pr checks --json の応答(未指定なら [])
   # PR_GATE_STUB_WATCH_RC           : gh pr checks --watch の exit code(既定 0)
+  # PR_GATE_STUB_PR_BODY            : gh pr list が返す PR 本文
+  #   既定は "Closes #1" — G_link を足す前から在った緑パスのケースを緑のまま
+  #   保つため。G_link 自体の検査は下でこの変数を明示的に上書きして行う。
   mkdir -p "$dir/bin"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -537,7 +656,8 @@ case "$1" in
           "$jqbin" -n --arg num "${PR_GATE_STUB_PR_NUM:-37}" \
             --arg base "${PR_GATE_STUB_BASE:-main}" \
             --arg head "${PR_GATE_STUB_HEAD_OID:-0000000000000000000000000000000000000000}" \
-            '[{number:($num|tonumber), baseRefName:$base, headRefOid:$head}]'
+            --arg body "${PR_GATE_STUB_PR_BODY-Closes #1}" \
+            '[{number:($num|tonumber), baseRefName:$base, headRefOid:$head, body:$body}]'
         fi
         ;;
       checks)
@@ -705,16 +825,98 @@ STUB
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput quiesce-fail-sid)" 2>"$dir/err")" || rc=$?
   check "stacked PR + 1件 fail: exit 2" 2 "$rc"
 
+  echo "G_link (PR 本文 → Issue のリンク):"
+
+  # 以降の G_link ケースは push 済み + 全 required pass、つまり「あとは終わるだけ」
+  # の状態で回す。リンクが忘れられるのがまさにこの一点だから。
+  glink() { # glink <sid> <body>  → exit code を返し、stderr を $dir/err に置く
+    local sid="$1" body="$2" rc=0
+    PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_RULES_FILE="$dir/rules-2.json" \
+      PR_GATE_STUB_CHECKS_FILE="$dir/checks-2pass.json" PR_GATE_STUB_PR_BODY="$body" \
+      PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+      <<<"$(hookinput "$sid")" >"$dir/out" 2>"$dir/err" || rc=$?
+    printf '%s' "$rc"
+  }
+
+  rc="$(glink link-missing-sid "本文に Issue への言及が一切ない PR。")"
+  check "closing keyword も No-Issue: も無い: exit 2" 2 "$rc"
+  check_grep "block メッセージが Closes を教える" "Closes #<番号>" "$(cat "$dir/err")"
+  check_grep "block メッセージが No-Issue: を教える" "No-Issue: <理由>" "$(cat "$dir/err")"
+
+  # #28/#29 を実質解決した PR は Issue に一切言及していなかった。「言及はあるが
+  # keyword が無い」だけを見る判定では、観測された失敗そのものを通してしまう。
+  rc="$(glink link-mention-only-sid "関連: #30 の調査で見つけた問題を直す。")"
+  check "番号への言及はあるが keyword が無い: exit 2" 2 "$rc"
+
+  rc="$(glink link-closes-sid "本文。
+
+Closes #30")"
+  check "Closes #N: 素通り(exit 0)" 0 "$rc"
+
+  rc="$(glink link-colon-sid "CLOSES: #30")"
+  check "大文字 + コロン形式も GitHub の仕様どおり受理" 0 "$rc"
+
+  rc="$(glink link-crossrepo-sid "Fixes octo-org/octo-repo#100")"
+  check "クロスリポジトリ形式を受理" 0 "$rc"
+
+  rc="$(glink link-url-sid "Resolves https://github.com/example/example/issues/7")"
+  check "issue URL 形式を受理" 0 "$rc"
+
+  rc="$(glink link-noissue-sid "No-Issue: セッション中に生まれた作業で対応 Issue が無い")"
+  check "No-Issue: + 理由: 素通り(exit 0)" 0 "$rc"
+
+  # 理由の無い `No-Issue:` を通すと、沈黙を決定に変えるという狙いが失われる。
+  rc="$(glink link-noissue-bare-sid "No-Issue:")"
+  check "理由の無い No-Issue: は逃がさない(exit 2)" 2 "$rc"
+
+  # G_push が止める場面では、本文の指摘は単独 block ではなく相乗りで伝える
+  # (本文修正は CI を待たずに済むので 1 往復を消費させない)。
+  rc=0
+  PR_GATE_STUB_HEAD_OID=0000000000000000000000000000000000000000 \
+    PR_GATE_STUB_PR_BODY="言及なし" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+    <<<"$(hookinput link-rider-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
+  errtext="$(cat "$dir/err")"
+  check "G_push block 時: exit 2" 2 "$rc"
+  check_grep "G_push block に G_link が相乗りする" "closing keyword なし" "$errtext"
+  check_grep "G_push の指摘も残る" "未 push" "$errtext"
+
+  # closing keyword は default branch へのマージでのみ発火する(GitHub 公式)。
+  # stacked PR 自体は正当なので block ではなく advisory。
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  rc=0
+  PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_BASE=stacked-base \
+    PR_GATE_STUB_RULES_FILE="$dir/rules-empty.json" \
+    PR_GATE_STUB_CHECKS_FILE="$dir/checks-quiesce-pass.json" \
+    PR_GATE_STUB_PR_BODY="Closes #30" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+    <<<"$(hookinput link-offbase-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
+  check "base が default branch でない: block はしない(exit 0)" 0 "$rc"
+  check_grep "発火しない旨の advisory が出る" "発火しません" "$(cat "$dir/err")"
+
+  # origin/HEAD が読めないクローンでは advisory を出さない(判定できないことを
+  # 断定に変えない)。
+  git -C "$repo" symbolic-ref --delete refs/remotes/origin/HEAD
+  rc=0
+  PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_BASE=stacked-base \
+    PR_GATE_STUB_RULES_FILE="$dir/rules-empty.json" \
+    PR_GATE_STUB_CHECKS_FILE="$dir/checks-quiesce-pass.json" \
+    PR_GATE_STUB_PR_BODY="Closes #30" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+    <<<"$(hookinput link-nohead-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
+  check "origin/HEAD 不明: exit 0" 0 "$rc"
+  check "origin/HEAD 不明: 発火しない旨は出さない" 0 "$(grep -Fc '発火しません' "$dir/err")"
+
   echo "escalate (独自カウンタ + 上限):"
 
   n=0
-  while [[ $n -lt 3 ]]; do
+  while [[ $n -lt 4 ]]; do
     rc=0
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
       >"$dir/out" 2>"$dir/err" || rc=$?
     n=$((n + 1))
   done
-  check "3 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
+  check "4 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
   rc=0
   PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
     >"$dir/out" 2>"$dir/err" || rc=$?
@@ -732,6 +934,7 @@ STUB
   check_grep "session-start: PR 番号が出る" "PR #37" "$ctx"
   check_grep "session-start: base 追従の ahead が出る(2 commit 進めた)" "ahead 2" "$ctx"
   check_grep "session-start: 未 push 0 件" "未 push: 0 件" "$ctx"
+  check_grep "session-start: Issue リンクの状態が出る" "Issue リンク: closing keyword あり" "$ctx"
 
   rc=0
   out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \

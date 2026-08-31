@@ -1,10 +1,10 @@
 # PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
 
-herdr の並行 worktree セッションで起きる 3 種の事故のうち、ローカル hook で扱える 2 つ
-（CI 待ちのまま完了を宣言する／push し忘れたまま完了する）を Stop hook で hard gate する
-仕組みの設計記録。実装は `config/claude/hooks/pr-gate.sh`、デプロイは
-`home/modules/claude.nix`。3 つ目の事故（main が進んだことに気づかない）は advisory
-に留める。
+herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 3 つ
+（CI 待ちのまま完了を宣言する／push し忘れたまま完了する／PR を Issue に繋がないまま
+終わる）を Stop hook で hard gate する仕組みの設計記録。実装は
+`config/claude/hooks/pr-gate.sh`、デプロイは `home/modules/claude.nix`。
+main が進んだことに気づかない件と未コミット変更は advisory に留める。
 
 ## 強制力はどこに置くか
 
@@ -58,6 +58,106 @@ conflict を検出したらそもそも merge できない）。同じ理由で 
 block にしない —— PR があるブランチで WIP を残して終わるセッションを全部止める価値は無い。
 
 どちらも **advisory**（block するときだけ相乗りで伝える。単独では終了を止めない）に留めた。
+
+## G_link — なぜ「PR 本文が Issue を閉じるか」を block するのか
+
+### 直そうとしている事故
+
+2026-08-31 に open Issue 17 件を棚卸ししたところ、**実質解決済みなのに open のまま
+残っていたものが 2 件**あった（#28 jq、#29 pandoc）。どちらも `home/modules/packages.nix`
+が既に宣言していて、`command -v` は nix 側を返す。作業は終わっていた。閉じていなかっただけ。
+
+原因は単純で、解決した PR の本文に closing keyword が無く、マージが Issue に伝播しなかった。
+merged PR 21 本のうち `Closes #N` を持つのは 4 本（**19%**）。
+
+この事故の性質は、`G_push` や `G_CI` が扱うものと違う。CI 待ちや push 忘れは
+**その場で**壊れる。リンク忘れは**その場では何も壊れない** —— PR はマージされ、コードは
+正しく入る。コストが出るのは数か月後、誰かが Issue 一覧を見て「これは終わっているのか？」と
+一件ずつ実測して回る時。遅延して現れる沈黙だ。
+
+### なぜ Stop hook なのか（PR テンプレートでも CI でもなく）
+
+**`.github/pull_request_template.md` は効かない。** このリポジトリの PR は全て
+`gh pr create --body …` で作られており、`--body` を渡した時点でテンプレートは読まれない。
+テンプレートが効くのは「本文を空で作った人間」だけで、実際の発生源（エージェント）に
+一切当たらない。置いた瞬間から死に設定になる —— #33 で削った `enableSshSupport` と
+同じ種類の負債を新設することになる。
+
+**CI job にすると粒度が合わない。** `G_CI` は CI 全体の緑を完了条件にしているので、
+本文チェックの job もその期待集合に入る。すると「本文に 1 行足す」で直る話に、
+push → check 出現待ち → 再判定という CI ラウンドトリップを丸ごと 1 回払わせることになる。
+
+Stop hook なら `gh pr edit --body` で即座に直り、`pr-gate.sh` が既に持っている
+allowlist・縮退・block 上限・selftest の枠組みにそのまま乗る。settings.json も
+CLAUDE.md も膨らまない。
+
+### なぜ advisory ではなく block なのか
+
+`G_base` / `G_wt` を advisory にした理由は「それ単独では事故にならない」だった。
+`G_link` は違う。advisory はエージェントが読んで無視できるので、**遅延コストの構造を
+そのまま再生産する** —— まさに「今は何も壊れないから後回し」が原因の事故に対して、
+「今は何も壊れないという警告」を出すことになる。
+
+### `No-Issue:` という逃がし方
+
+対応 Issue が本当に無い PR は多い。実際、merged PR の大半はセッション中に生まれた
+feature 作業で、閉じるべき Issue が存在しない。ここで「毎回 Issue を先に立てろ」に
+すると、このリポジトリの実際の流れ（wrap-up inbox が**事後に** Issue を生む）と逆走し、
+「PR を出すために形式的な Issue を 1 枚立てる」が常態化してトラッカーの信号が薄まる。
+
+そこで本文に `No-Issue: <理由>` があれば通す。狙いは**沈黙を決定に変えること**で、
+書く手間はほぼゼロだが、書く瞬間に「本当に対応 Issue は無いか」を一度だけ考えることになる。
+#28/#29 は、その一考があれば残らなかった。
+
+副次的だが重要な性質として、`No-Issue:` は **grep 可能な監査可能痕跡**を残す。advisory の
+警告は流れて消えるが、これは後から「Issue 無しと宣言した PR」を数えられる。
+
+理由の無い裸の `No-Issue:` は受理しない。それを通すと、ただのおまじないになって狙いが消える。
+
+### 「言及はあるが keyword が無い」だけを見ない理由
+
+一見すると「本文が `#N` に言及しているのに closing keyword が無い」ケースだけを弾くのが
+穏当に見える。採らなかった。**#28/#29 を実質解決した PR は Issue に一切言及していない。**
+その形の判定は、観測された失敗そのものを通してしまう。設計として、実際に起きた事例を
+素通しするゲートを入れる意味はない。
+
+### base が default branch でない場合を advisory にする理由
+
+GitHub の仕様上、closing keyword は **default branch を狙う PR でのみ**解釈される
+（[公式ドキュメント](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+は "If the pull request targets any other branch, then these keywords are ignored" と明記）。
+つまり stacked PR では、本文に `Closes #N` と書いてマージしても Issue は閉じない ——
+**この設計が直そうとしている事故と同型の沈黙**が、書いたつもりの側で起きる。
+
+一方 stacked PR 自体は正当な運用なので、ゲートが「それは間違い」と断ずるべき場面ではない。
+よって `G_base` / `G_wt` と同じ advisory の列に置く。
+
+default branch は `refs/remotes/origin/HEAD` から読む。`gh repo view` を叩けば確実だが、
+API 呼び出しが 1 本増えると下の縮退表がその分太る。`origin/HEAD` が未設定のクローンでは
+この advisory を出さない —— 判定できないことを断定に変えない。
+
+### 参照先 Issue の実在確認をしない理由
+
+`Closes #43` と書いて実は #34 のつもり、という誤りは正規表現では素通りする。では
+`gh issue view` で実在確認するか、というと採らない。捕まえられるのは「存在しない番号」
+だけで、**より起きやすい「存在するが別の Issue」は捕まえられない**。検出力が低い一方で
+API 呼び出しが 1 本増え、縮退経路（未ログイン・API 失敗時の fail-open）も 1 本増える。
+`pr-gate.sh` は縮退の一覧を明示して不変条件を守っている作りなので、利得の小さい判定の
+ために縮退表を太らせるのは割に合わない。
+
+### block の位置と `MAX_BLOCKS` の引き上げ
+
+`G_link` は判定だけ先に済ませ、**block は最後に回す**。`G_push` / `G_CI` が止める場面では、
+その block メッセージに相乗りさせる（実装中の `$rider`）。本文の修正は CI を待たずに
+済むので、単独で 1 往復を消費させる理由がない。
+
+単独で block するのは push も CI も通った後 —— 「あとは終わるだけ」の一点で、まさに
+リンクが忘れられる瞬間だ。
+
+judgement が 1 つ増えたぶん、`PR_GATE_MAX_BLOCKS` の既定を 3 から **4** に上げた。
+最悪の連鎖（push → 本文修正 → CI 待ち）が正当に 3 回 block しうるので、3 のままだと
+最後の 1 回が escalate に化ける。相乗りのおかげでこの連鎖は実際には起きにくいが、
+上限は最悪ケースで決める。
 
 ## `stop_hook_active` を見ない理由
 
@@ -144,7 +244,7 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 |---|---|---|
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
-| `PR_GATE_MAX_BLOCKS` | `3` | escalate までの block 回数 |
+| `PR_GATE_MAX_BLOCKS` | `4` | escalate までの block 回数（G_link 追加時に 3 から引き上げ。下記参照） |
 | `PR_GATE_CI_TIMEOUT` | `300` | `gh pr checks --watch` の timeout(秒) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
