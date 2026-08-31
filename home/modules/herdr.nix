@@ -38,10 +38,24 @@
   # (「手で消すこと」という手順書は、ゼロ手作業を憲章にした repo には置けない)。
   # symlink(store 由来のもの)は対象外 — 二重管理を避けるため、real file だけを
   # 見る。
-  home.activation.quarantineSelfInstalledHerdr = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  #
+  # DAG 位置は entryBefore [ "checkLinkTargets" ] — entryAfter [ "writeBoundary" ]
+  # では手遅れになる。checkLinkTargets は writeBoundary より前に走り、herdr 自身が
+  # 書いた real file の ~/.config/herdr/config.toml と、過去の `-b backup` が残した
+  # config.toml.backup が両方 activation 前に存在すると「退避先が既に埋まっている」
+  # として `home-manager switch -b backup` 全体を止める(hms がここで死ぬ)。
+  home.activation.quarantineSelfInstalledHerdr = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
     stray="$HOME/.local/bin/herdr"
     if [ -f "$stray" ] && [ ! -L "$stray" ]; then
       run mv -f "$stray" "$stray.pre-nix"
+    fi
+
+    cfg="$HOME/.config/herdr/config.toml"
+    if [ -e "$cfg" ] && [ ! -L "$cfg" ]; then
+      run mv -f "$cfg" "$cfg.pre-nix"
+    fi
+    if [ -e "$cfg.backup" ]; then
+      run mv -f "$cfg.backup" "$cfg.backup.pre-nix"
     fi
   '';
 }

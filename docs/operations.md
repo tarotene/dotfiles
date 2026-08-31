@@ -82,6 +82,25 @@ Since the binary comes from a pin, client and server always match after a
 switch — there is no risk of relaunching a mismatched pair, unlike an
 in-place `herdr update` against a moving install.
 
+### `hms` fails at `checkLinkTargets` with a `.backup` clobber error
+
+```
+Existing file '/home/tarotene/.config/<something>.backup' would be
+clobbered by backing up '/home/tarotene/.config/<something>'
+```
+
+This is `home-manager switch -b backup` refusing to activate because a
+retreat path from a *previous* switch is still sitting there when the current
+one goes to write a fresh one. It fires whenever a file newly taken under
+home-manager management (like `herdr/config.toml` in #57) already exists as a
+real file on disk with a stale `.backup` next to it — `checkLinkTargets` runs
+before `writeBoundary`, so an `entryAfter [ "writeBoundary" ]` quarantine (the
+DAG position used elsewhere, e.g. `quarantineStrayFcitx5Autostart`) never gets
+a chance to clear the path first. The fix is a quarantine activation script
+pinned to `entryBefore [ "checkLinkTargets" ]` that moves both the real file
+and its stale `.backup` out of the way before the check runs — see
+`quarantineSelfInstalledHerdr` in `home/modules/herdr.nix` for the pattern.
+
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
 `registerHooks` / `syncStatusLine`'s declarative retirement
