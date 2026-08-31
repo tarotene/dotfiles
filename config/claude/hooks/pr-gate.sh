@@ -8,11 +8,25 @@
 # base 鮮度・未コミット変更は advisory
 # (block するときだけ相乗りで伝える。それ単独では終了を止めない)。
 #
-#   G_push : ローカル HEAD == PR の headRefOid                → block
-#   G_link : PR 本文に closing keyword または No-Issue:        → block
-#   G_CI   : 期待される check がすべて pass/skipping           → block
-#   G_base : origin/<base> に対する ahead/behind               → advisory
-#   G_wt   : 未コミット件数                                    → advisory
+#   G_push     : ローカル HEAD == PR の headRefOid              → block
+#   G_unpushed : PR が無いときの「push すべきコミットが 0 件か」→ block
+#   G_link     : PR 本文に closing keyword または No-Issue:     → block
+#   G_CI       : 期待される check がすべて pass/skipping        → block
+#   G_base     : origin/<base> に対する ahead/behind            → advisory
+#   G_wt       : 未コミット件数                                 → advisory
+#
+# G_unpushed は G_push が届かない領域を塞ぐ: G_push は比較対象の headRefOid を
+# open PR から取るので、PR がまだ無いセッションでは何も見ずに完全沈黙していた
+# (実測: コミットを 3 つ積んで push せずに終わっても pr-gate は無言だった)。
+# PR を作るべきかには踏み込まず、「積んだコミットが 1 個もリモートに無い」と
+# いう事実だけを見る。解消は git push 1 回で済み、履歴改変は伴わない。
+#
+# SessionStart は同じ理由で「PR が無ければ完全沈黙」だったため、base が何コミット
+# 遅れていても [gone] ブランチが何本溜まっていても一切表示されなかった。PR の
+# 有無を問わず stale_base_line / gone_branches_line / stale_worktrees_line を計算し、
+# 材料があれば単独で advisory を出す(こちらは Stop の advisory と違い、
+# 「他の block への相乗り」に制約されない — SessionStart 自体には block/pass の
+# 概念が無いので、単独発火のコストは無い)。
 #
 # G_CI の中心不変条件は「揃っていない集合を緑と読まないこと」。次の 3 経路で
 # `gh pr checks` は「チェックが無い/揃っていない」を「exit 0」で返す。どの経路でも
@@ -50,10 +64,10 @@
 #
 # 縮退:
 #   完全沈黙(exit 0, 出力なし) → allowlist 外 / git repo でない / GitHub remote
-#     でない / jq・gh・git 不在 / open PR が無い / skip
+#     でない / jq・gh・git 不在 / skip / (PR が無く、かつ hygiene の材料も無い)
 #   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗
-#   hard block(exit 2)         → G_push 不一致 / G_link 欠落 / G_CI が揃わない・
-#     失敗・pending
+#   hard block(exit 2)         → G_push 不一致 / G_unpushed(PR 無し + 未push
+#     commit あり) / G_link 欠落 / G_CI が揃わない・失敗・pending
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
@@ -138,6 +152,99 @@ compute_ahead_behind() {
 uncommitted_count() {
   local n
   n="$(git -C "$1" status --porcelain 2>/dev/null | wc -l | tr -d ' ')" || n="?"
+  [[ -n "$n" ]] || n="?"
+  printf '%s' "$n"
+}
+
+# --- hygiene advisories(事故①古い base / 事故④残骸): PR の有無を問わず計算できる ---
+# 以下は API を叩かず git だけで求まる。SessionStart は「PR が無ければ完全沈黙」
+# だったため、この worktree 自身が origin/main から複数コミット遅れていても、
+# [gone] ブランチが溜まっていても一切表示されなかった。PR の有無に関わらず
+# 単独の SessionStart advisory として出す(cmd_stop の advisory は既存どおり
+# 「他の block に相乗り、単独では終了を止めない」のままにする — 履歴改変を
+# 自動化しない判断は変えない)。
+
+# stale base 行。$2(base)が空、origin/$2 が手元に無い、behind が 0 のいずれか
+# なら空文字(呼び出し側は空なら行を足さない — 判定できないことを断定に変えない)。
+stale_base_line() {
+  local project="$1" base="$2" ab behind
+  [[ -n "$base" ]] || return 0
+  ab="$(compute_ahead_behind "$project" "$base")"
+  behind="${ab##*$'\t'}"
+  [[ "$behind" =~ ^[0-9]+$ ]] || return 0
+  [[ "$behind" -gt 0 ]] || return 0
+  printf 'base 追従: origin/%s から %s コミット遅れています(git pull --ff-only 等で追従してください)' \
+    "$base" "$behind"
+}
+
+# [gone] ブランチ本数。0 なら空文字。
+gone_branches_line() {
+  local project="$1" n
+  n="$(git -C "$project" for-each-ref --format='%(upstream:track)' refs/heads 2>/dev/null \
+    | grep -Fxc '[gone]')" || n=0
+  [[ "$n" =~ ^[0-9]+$ ]] || n=0
+  [[ "$n" -gt 0 ]] || return 0
+  printf '残骸ブランチ: [gone] が %s 本あります(git prune-branches で確認・削除)' "$n"
+}
+
+# [gone] かつ未変更の worktree 数。0 なら空文字。dirty な worktree は本物の
+# 作業中の可能性があるので数えない(false positive を出さない側に倒す)。
+stale_worktrees_line() {
+  local project="$1" n=0 wt br track dirty
+  while IFS= read -r wt; do
+    [[ -n "$wt" ]] || continue
+    br="$(git -C "$wt" branch --show-current 2>/dev/null)" || br=""
+    [[ -n "$br" ]] || continue
+    track="$(git -C "$project" for-each-ref --format='%(upstream:track)' "refs/heads/$br" 2>/dev/null)" || track=""
+    [[ "$track" == "[gone]" ]] || continue
+    dirty="$(uncommitted_count "$wt")"
+    [[ "$dirty" == "0" ]] || continue
+    n=$((n + 1))
+  done < <(git -C "$project" worktree list --porcelain 2>/dev/null | sed -n 's#^worktree ##p')
+  [[ "$n" -gt 0 ]] || return 0
+  printf '残骸 worktree: [gone] かつ未変更の worktree が %s 個あります' "$n"
+}
+
+# 上の行(空文字は無視)を改行区切りで連結する。
+join_hygiene_lines() {
+  local line out=""
+  for line in "$@"; do
+    [[ -n "$line" ]] || continue
+    if [[ -n "$out" ]]; then
+      out="${out}
+${line}"
+    else
+      out="$line"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+# --- G_unpushed(PR 未作成時の push 忘れ): 事故③のうち G_push が届かない領域 -----
+# G_push は open PR の headRefOid と比較するので、PR がまだ無いセッションでは
+# 何も見ずに完全沈黙していた(cmd_stop の `[[ -n "$pr_num" ]] || exit 0` がそれ)。
+# PR を作るべきかには踏み込まず、「積んだコミットが 1 個もリモートに無い」事実
+# だけを見る。解消は git push 1 回(push.autoSetupRemote が upstream を自動で
+# 張るので --set-upstream の指定は要らない) — 履歴改変は伴わない。
+unpushed_count() {
+  local project="$1" branch="$2" upstream n
+  upstream="$(git -C "$project" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || upstream=""
+  if [[ -z "$upstream" ]]; then
+    if git -C "$project" rev-parse --verify -q "origin/$branch" >/dev/null 2>&1; then
+      upstream="origin/$branch"
+    else
+      local default_br
+      default_br="$(default_branch "$project")"
+      if [[ -n "$default_br" ]] && git -C "$project" rev-parse --verify -q "origin/$default_br" >/dev/null 2>&1; then
+        upstream="origin/$default_br"
+      fi
+    fi
+  fi
+  if [[ -z "$upstream" ]]; then
+    printf '?'
+    return 0
+  fi
+  n="$(git -C "$project" rev-list --count "${upstream}..HEAD" 2>/dev/null)" || n="?"
   [[ -n "$n" ]] || n="?"
   printf '%s' "$n"
 }
@@ -442,12 +549,32 @@ cmd_session_start() {
   branch="$(git -C "$project" branch --show-current 2>/dev/null)" || branch=""
   [[ -n "$branch" ]] || exit 0
 
+  # hygiene advisory(事故①④): PR の有無を問わず計算できる。API は叩かない。
+  local gone_line stale_wt_line
+  gone_line="$(gone_branches_line "$project")"
+  stale_wt_line="$(stale_worktrees_line "$project")"
+
   local pr_json pr_num
   pr_json="$(gh pr list -R "$nwo" --head "$branch" --state open --limit 1 \
     --json number,baseRefName,headRefOid,body 2>/dev/null)" || pr_json=""
   [[ -n "$pr_json" ]] || pr_json='[]'
   pr_num="$(jq -r '.[0].number // empty' <<<"$pr_json")"
-  [[ -n "$pr_num" ]] || exit 0 # PR が無ければ運ぶ情報が無い(PR 有無自体は issue-index が示す)
+
+  if [[ -z "$pr_num" ]]; then
+    # 以前はここで無条件 exit 0 していたため、PR を作る前のセッションでは
+    # base がどれだけ遅れていても [gone] が何本あっても一切表示されなかった
+    # (この worktree 自身が origin/main から 4 コミット遅れていて実際に無音
+    # だったケース)。PR 有無自体は issue-index が示すので、ここでは
+    # hygiene の材料が無ければやはり無音にする。
+    local default_br stale_line hygiene
+    default_br="$(default_branch "$project")"
+    stale_line="$(stale_base_line "$project" "$default_br")"
+    hygiene="$(join_hygiene_lines "$stale_line" "$gone_line" "$stale_wt_line")"
+    [[ -n "$hygiene" ]] || exit 0
+    jq -n --arg ctx "[pr-gate] ${hygiene}" \
+      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
+    exit 0
+  fi
 
   local base head_oid
   base="$(jq -r '.[0].baseRefName' <<<"$pr_json")"
@@ -480,6 +607,16 @@ cmd_session_start() {
 Issue リンク: ${link_state}
 base 追従: ahead ${ahead} / behind ${behind}
 未 push: ${unpushed} 件"
+
+  # PR がある場合の base 追従は上の ahead/behind 行がすでに単独で運んでいるので
+  # stale_base_line は重ねない。gone/worktree 残骸は PR の有無と無関係な情報
+  # なので、こちらには追加する。
+  local extra_hygiene
+  extra_hygiene="$(join_hygiene_lines "$gone_line" "$stale_wt_line")"
+  if [[ -n "$extra_hygiene" ]]; then
+    ctx="${ctx}
+${extra_hygiene}"
+  fi
 
   jq -n --arg ctx "$ctx" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
   exit 0
@@ -519,7 +656,29 @@ cmd_stop() {
     --json number,baseRefName,headRefOid,body 2>/dev/null)" || pr_json=""
   [[ -n "$pr_json" ]] || pr_json='[]'
   pr_num="$(jq -r '.[0].number // empty' <<<"$pr_json")"
-  [[ -n "$pr_num" ]] || exit 0 # open PR が無い → 完全沈黙
+
+  if [[ -z "$pr_num" ]]; then
+    # G_push は open PR の headRefOid が無いと判定できない。以前はここで
+    # 無条件に完全沈黙していたため、コミットを積んで push せずに終わる
+    # セッションを何も止めなかった。PR を作るべきかには踏み込まず、
+    # 「積んだコミットが 1 個もリモートに無い」事実だけを見る(G_unpushed)。
+    local unpushed
+    unpushed="$(unpushed_count "$project" "$branch")"
+    if [[ "$unpushed" =~ ^[0-9]+$ ]] && [[ "$unpushed" -gt 0 ]]; then
+      local default_br hygiene
+      default_br="$(default_branch "$project")"
+      hygiene="$(join_hygiene_lines \
+        "$(stale_base_line "$project" "$default_br")" \
+        "未コミット: $(uncommitted_count "$project") ファイル")"
+      block_or_escalate "$sid" "未 push の commit が ${unpushed} 件あります。PR はまだありません。
+
+push してから終了してください(push.autoSetupRemote が upstream を自動で
+設定するので --set-upstream の指定は要りません)。
+
+${hygiene}"
+    fi
+    exit 0 # 未 push が無ければ運ぶ情報が無い(PR 有無自体は issue-index が示す)
+  fi
 
   local base head_oid
   base="$(jq -r '.[0].baseRefName' <<<"$pr_json")"
@@ -580,8 +739,9 @@ ${advisory}"
 CI の緑は古い head (${head_oid:0:7}) の結果です。
 
 push してから終了してください。
-注: この worktree は pre-push に阻まれます。--no-verify を
-    使う前にユーザーに確認してください。
+注: herdr worktree からの push は pre-push の例外です(#39)。手動で切った
+    worktree の場合のみ阻まれるので、その場合は --no-verify を使う前に
+    ユーザーに確認してください。
 
 ${rider}"
   fi
@@ -759,11 +919,9 @@ STUB
   check "gh 不在(stop): exit 0" 0 "$rc"
   check "gh 不在(stop): 出力なし" "" "$out$(cat "$dir/err")"
 
-  rc=0
-  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
-    bash "$self" stop <<<"$(hookinput)" 2>"$dir/err")" || rc=$?
-  check "open PR 無し: exit 0" 0 "$rc"
-  check "open PR 無し: 出力なし" "" "$out$(cat "$dir/err")"
+  # 「PR 無し」は以前は無条件で完全沈黙していたが、G_unpushed を足したので
+  # そうではなくなった。専用のセクションで両方の分岐(未 push あり/無し)を
+  # 検査する(下の「G_unpushed」セクション)。
 
   echo "G_push:"
 
@@ -774,6 +932,33 @@ STUB
   check "未push で block: exit 2" 2 "$rc"
   check_grep "未push で block: メッセージに '未 push'" "未 push" "$errtext"
   check_grep "未push で block: --no-verify の注意" "--no-verify" "$errtext"
+
+  echo "G_unpushed (PR がまだ無いときの push 忘れ):"
+
+  # 専用の追跡 ref を使う — origin/main は他のテスト(SessionStart の "ahead 2"
+  # 等)が古い位置のままであることを前提にしているので、ここでは触らない。
+  cur_branch="$(git -C "$repo" branch --show-current)"
+  git -C "$repo" update-ref refs/remotes/origin/gate-test-upstream "$(git -C "$repo" rev-parse HEAD~2)"
+  git -C "$repo" config "branch.${cur_branch}.remote" origin
+  git -C "$repo" config "branch.${cur_branch}.merge" refs/heads/gate-test-upstream
+
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gu-behind-sid)" 2>"$dir/err")" || rc=$?
+  check "PR 無し + 未push commit あり: exit 2" 2 "$rc"
+  check_grep "PR 無し + 未push: 件数が出る" "未 push の commit が 2 件" "$(cat "$dir/err")"
+  check_grep "PR 無し + 未push: push を促す" "push してから終了してください" "$(cat "$dir/err")"
+
+  git -C "$repo" update-ref refs/remotes/origin/gate-test-upstream "$real_head"
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gu-clean-sid)" 2>"$dir/err")" || rc=$?
+  check "PR 無し + 未push commit 0 件: exit 0" 0 "$rc"
+  check "PR 無し + 未push commit 0 件: 出力なし" "" "$out$(cat "$dir/err")"
+
+  # 後続の(PR ありを前提とする)テストに影響しないよう戻す。
+  git -C "$repo" config --unset "branch.${cur_branch}.remote" || true
+  git -C "$repo" config --unset "branch.${cur_branch}.merge" || true
 
   echo "G_CI (PASS 経路の到達可能性 — #26 の回帰対象):"
 
@@ -997,6 +1182,70 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
     bash "$self" session-start <<<"$(hookinput ss-nopr-sid)")" || rc=$?
   check "session-start: PR 無しは完全沈黙" 0 "$rc"
   check "session-start: PR 無しは stdout 空" "" "$out"
+
+  echo "hygiene advisories(事故①古い base / 事故④残骸):"
+
+  # [gone] は本物の fetch --prune がなくても、branch.*.merge が指す remote-tracking
+  # ref が存在しないだけで git 自身が判定してくれる(実測で確認済み)。
+  git -C "$repo" branch hygiene-gone-branch >/dev/null
+  git -C "$repo" config branch.hygiene-gone-branch.remote origin
+  git -C "$repo" config branch.hygiene-gone-branch.merge refs/heads/hygiene-nonexistent
+
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" session-start <<<"$(hookinput hyg-gone-sid)")" || rc=$?
+  check "hygiene: [gone] ありでも session-start exit 0" 0 "$rc"
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)" || ctx=""
+  check_grep "hygiene: PR 無しでも [gone] 本数が出る" "残骸ブランチ: [gone] が 1 本" "$ctx"
+
+  # 同じ [gone] ブランチを PR ありの経路(extra_hygiene)でも確認する。
+  git -C "$repo" branch hygiene-gone-branch2 >/dev/null
+  git -C "$repo" config branch.hygiene-gone-branch2.remote origin
+  git -C "$repo" config branch.hygiene-gone-branch2.merge refs/heads/hygiene-nonexistent2
+  rc=0
+  out="$(PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_RULES_FILE="$dir/rules-2.json" \
+    PR_GATE_STUB_CHECKS_FILE="$dir/checks-2pass.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" session-start <<<"$(hookinput hyg-withpr-sid)")" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)" || ctx=""
+  check_grep "hygiene: PR ありでも [gone] 本数が付く" "残骸ブランチ: [gone] が 2 本" "$ctx"
+  git -C "$repo" branch -D hygiene-gone-branch2
+
+  # 残骸 worktree: [gone] ブランチを別 worktree に checkout して clean のまま。
+  wt="$dir/hygiene-wt"
+  git -C "$repo" worktree add -q "$wt" hygiene-gone-branch
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" session-start <<<"$(hookinput hyg-wt-sid)")" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)" || ctx=""
+  check_grep "hygiene: 残骸 worktree 数が出る" "残骸 worktree: [gone] かつ未変更の worktree が 1 個" "$ctx"
+
+  # dirty にすると数えない(false positive を出さない側に倒す)。
+  touch "$wt/dirty.txt"
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" session-start <<<"$(hookinput hyg-wt-dirty-sid)")" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)" || ctx=""
+  check "hygiene: dirty な worktree は残骸として数えない" 0 "$(grep -Fc '残骸 worktree' <<<"$ctx")"
+
+  git -C "$repo" worktree remove --force "$wt"
+  git -C "$repo" branch -D hygiene-gone-branch
+
+  echo "hygiene: stale base(origin/HEAD 設定時):"
+  # 「ahead」(ローカルに未 push の commit がある)と「behind」(origin 側が
+  # 進んでいて追従していない)は別の事象 — HEAD が origin/main の祖先のままで
+  # なければ behind は生まれない。origin/main を HEAD と共通祖先を持つ別の
+  # 1 commit へ付け替えて、本物の divergence(ahead 2 / behind 1)を作る。
+  base_commit="$(git -C "$repo" rev-parse HEAD~2)"
+  other_commit="$(git -C "$repo" -c user.email=t@example.com -c user.name=t \
+    commit-tree "${base_commit}^{tree}" -p "$base_commit" -m other-team-commit)"
+  git -C "$repo" update-ref refs/remotes/origin/main "$other_commit"
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" session-start <<<"$(hookinput hyg-base-sid)")" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" 2>/dev/null)" || ctx=""
+  check_grep "hygiene: stale base 行が出る(behind 1)" "base 追従: origin/main から 1 コミット遅れています" "$ctx"
+  git -C "$repo" symbolic-ref --delete refs/remotes/origin/HEAD
 
   [[ "$fail" == 0 ]] && echo "selftest: all passed"
   exit "$fail"

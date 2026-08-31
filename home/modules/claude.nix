@@ -57,6 +57,18 @@
 #    許可サブコマンド + 単一 git 呼び出し」を検証してから allow を返せる。
 #    詳細は docs/claude/git-worktree-allow.md。
 #
+# 8) git-stash-guard(PreToolUse, matcher: Bash, if: "Bash(git *)"):
+#    素の `git stash` / `git stash pop` / SHA 無しの apply・drop・裸の push・
+#    clear を deny する。stash スタックはリポジトリ単位で herdr の worktree 間
+#    (=セッション間)で共有されているため、素の stash は他セッションの WIP を
+#    取り違えて pop/apply する事故につながる。git-worktree-allow(allow 側)とは
+#    非対称: allow 側は if 不一致でも安全(単に許可を出さないだけ)だが、この
+#    hook は deny 側なので if 不一致は検査されない素通り = 事故そのものになる。
+#    かつ registerHooks は command 文字列の完全一致でしか存在判定しないため、
+#    同一スクリプトを 2 つの if で二重登録することもできない。よって if は
+#    "Bash(git *)" まで広げ、絞り込みは hook 内部の早期 exit(grep → jq)に移した。
+#    詳細は docs/claude/git-stash-guard.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
 # バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -83,6 +95,7 @@ let
   prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
+  gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -151,6 +164,10 @@ let
     # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
     # フォールスルーする。
     register PreToolUse Bash "''${10}" 10 "Bash(git -C *)"
+    # git-stash-guard: if を worktree-allow よりずっと広い "Bash(git *)" にする
+    # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
+    # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
+    register PreToolUse Bash "''${11}" 10 "Bash(git *)"
   '';
 
   # settings.json の permissions.allow を要素単位で冪等に同期する。
@@ -327,6 +344,11 @@ in
     source = repoConfig + "/claude/hooks/git-worktree-allow.sh";
     executable = true;
   };
+  # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
+  home.file.".claude/hooks/git-stash-guard.sh" = {
+    source = repoConfig + "/claude/hooks/git-stash-guard.sh";
+    executable = true;
+  };
 
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
@@ -361,7 +383,8 @@ in
       ${lib.escapeShellArg signPrewarmCmd} \
       ${lib.escapeShellArg prGateSessionStartCmd} \
       ${lib.escapeShellArg prGateStopCmd} \
-      ${lib.escapeShellArg gitWorktreeAllowCmd}
+      ${lib.escapeShellArg gitWorktreeAllowCmd} \
+      ${lib.escapeShellArg gitStashGuardCmd}
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ

@@ -1,0 +1,74 @@
+#!/bin/bash
+set -euo pipefail
+
+# `git prune-branches` — delete local branches whose upstream is [gone]
+# (i.e. the PR was merged — squash, in this repo's case — and GitHub deleted
+# the remote branch), with a confirmation prompt before anything is deleted.
+#
+# Why not `--merged=main` (the old filter): squash-merge means the PR's
+# commits are never literal ancestors of main, so `--merged=main` is always
+# false for a squash-merged branch. It filtered out almost everything it was
+# meant to catch (measured on this repo: 21 [gone] branches, only 2 passed
+# the old filter).
+#
+# Why `-D` not `-d`: `-d` refuses an "unmerged" branch for the same reason —
+# squash merge never satisfies git's own merge check. `[gone]` from a real
+# `fetch --prune` is the safety net instead: it only appears once the PR's
+# remote branch was actually deleted (merged, or removed on purpose), not
+# from any local ancestry heuristic.
+#
+# A branch checked out in another worktree is reported separately and never
+# touched: `git branch -D` refuses those anyway, and deleting a worktree's
+# branch out from under it is not something to do without looking at that
+# worktree first.
+
+git fetch --prune origin
+
+checked_out=$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')
+
+gone=$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads \
+    | awk '$2 == "[gone]" {print $1}')
+
+if [[ -z "$gone" ]]; then
+    echo "prune-branches: no [gone] branches."
+    exit 0
+fi
+
+to_delete=""
+in_use=""
+while IFS= read -r b; do
+    [[ -z "$b" ]] && continue
+    if printf '%s\n' "$checked_out" | grep -qxF "$b"; then
+        in_use="${in_use}${b}"$'\n'
+    else
+        to_delete="${to_delete}${b}"$'\n'
+    fi
+done <<<"$gone"
+
+if [[ -n "$in_use" ]]; then
+    echo "prune-branches: [gone] but checked out in a worktree — remove the worktree first:"
+    printf '%s' "$in_use" | sed 's/^/  /'
+fi
+
+if [[ -z "$to_delete" ]]; then
+    echo "prune-branches: nothing left to delete."
+    exit 0
+fi
+
+echo "prune-branches: will delete these [gone] branches:"
+printf '%s' "$to_delete" | sed 's/^/  /'
+
+ans=""
+read -r -p "Delete? [y/N] " ans || true
+case "$ans" in
+    y | Y | yes | YES) ;;
+    *)
+        echo "prune-branches: aborted."
+        exit 0
+        ;;
+esac
+
+while IFS= read -r b; do
+    [[ -z "$b" ]] && continue
+    git branch -D -- "$b"
+done <<<"$to_delete"

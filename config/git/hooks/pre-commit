@@ -1,6 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
+# Protected-branch guard: block a direct commit onto main/master. herdr
+# provisions a fresh worktree per task, so a commit landing on main/master
+# usually means the wrong pane/cwd was used — the commit is real and easy to
+# miss until it is already ahead of origin. Detached HEAD (symbolic-ref
+# fails) is not a branch commit, so it is let through untouched.
+#
+# --no-verify is deliberately NOT the escape hatch here: it would also skip
+# the chained repo-local pre-commit below (ruff/mypy/etc. in other repos).
+# Use GIT_ALLOW_MAIN_COMMIT=1 to bypass only this guard and still run the
+# chain.
+branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+case "$branch" in
+    main | master)
+        if [[ "${GIT_ALLOW_MAIN_COMMIT:-0}" != 1 ]]; then
+            echo "error: Direct commit blocked on branch '${branch}'" >&2
+            echo "" >&2
+            echo "  main/master is meant to move by merge (PR), not by direct commit." >&2
+            echo "  If this is intentional (e.g. main is a solo scratch repo)," >&2
+            echo "  set GIT_ALLOW_MAIN_COMMIT=1 for this commit:" >&2
+            echo "" >&2
+            echo "    GIT_ALLOW_MAIN_COMMIT=1 git commit ..." >&2
+            echo "" >&2
+            echo "  (--no-verify also works but skips every other pre-commit check" >&2
+            echo "   this repo has chained, not just this guard.)" >&2
+            exit 1
+        fi
+        ;;
+esac
+
 # core.hooksPath makes git ignore .git/hooks/ entirely, including in linked
 # worktrees (where the working tree's own .git is a file, not a directory).
 # Chain to the repo-local pre-commit hook if one is installed, resolving it

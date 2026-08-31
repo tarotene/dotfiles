@@ -43,9 +43,12 @@ dotfiles/
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
-│   │                         #   git-worktree-allow + output schema + slash commands
+│   │                         #   git-worktree-allow, git-stash-guard + output
+│   │                         #   schema + slash commands
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
-│   │                         #   pre-commit (chains to the repo-local hook)
+│   │                         #   pre-commit (protected-branch guard, then chains to
+│   │                         #   the repo-local hook), prune-branches.sh (helper for
+│   │                         #   the `git prune-branches` alias)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -66,10 +69,12 @@ dotfiles/
 │   ├── adr/0001..0006        # architecture decision records
 │   ├── operations.md         # the canonical apply (hms) + routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
+│   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
+│   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
 │   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link)
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
@@ -117,6 +122,17 @@ dotfiles/
   existence (`command -v`), never on auth credentials (e.g. `GITHUB_TOKEN`).
   Suppress tool warnings with `2>/dev/null`, not by skipping the loader — a
   token-gated loader breaks in the token-less home-manager session.
+
+### Git sync guards (herdr's parallel worktrees)
+- `home/modules/git.nix` sets `pull.ff=only` / `fetch.prune` / `push.autoSetupRemote` /
+  `rerere.enabled` / `merge.conflictStyle=zdiff3` machine-wide — herdr creates a
+  worktree from the parent checkout's HEAD without fetching or setting an upstream.
+- `config/git/hooks/pre-commit` blocks a direct commit on `main`/`master`.
+  Bypass with `GIT_ALLOW_MAIN_COMMIT=1`, **not** `--no-verify` — `--no-verify`
+  would also skip the chained repo-local pre-commit (other repos' ruff/mypy).
+- `git prune-branches` (alias → `config/git/hooks/prune-branches.sh`) deletes
+  local branches whose upstream is `[gone]`, after listing them and asking once.
+  Full rationale: `docs/git-sync.md`.
 
 ### Escape-hatch scripts
 - Keep the surviving scripts small and POSIX/bash-lint clean (shellcheck
