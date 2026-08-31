@@ -38,17 +38,19 @@ dotfiles/
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes
+│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes, herdr
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
-│   │                         #   git-worktree-allow, git-stash-guard + output
+│   │                         #   git-worktree-allow, git-stash-guard,
+│   │                         #   herdr-sidebar-metadata + statusline + output
 │   │                         #   schema + slash commands
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook), prune-branches.sh (helper for
 │   │                         #   the `git prune-branches` alias)
+│   ├── herdr/                # Herdr config: seed (bootstrap) + sidebar custom rows (managed)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -80,6 +82,7 @@ dotfiles/
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
+│   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
 │   │   └── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
