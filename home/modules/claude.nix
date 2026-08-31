@@ -48,6 +48,15 @@
 #    untrusted なので制御文字除去 + 120 文字切り詰めもするが、これは防御ではなく
 #    payload 制御に過ぎない)。詳細は docs/claude/issue-index.md。
 #
+# 7) git-worktree-allow(PreToolUse, matcher: Bash, if: "Bash(git -C *)"):
+#    herdr worktree を外から駆動する `git -C <worktree> <サブコマンド>` を検証して
+#    プログラム的に許可する。`Bash(git -C * add *)` のような中間ワイルドカードの
+#    permission rule は、`-C` の位置への任意オプション挿入(--exec-path 等 = 任意
+#    コード実行)を素通しするため Claude Code が毎セッション警告し、しかも中間 `*`
+#    は実際にはマッチしない。hook なら「実在する ~/.herdr/worktrees/ 配下のパス +
+#    許可サブコマンド + 単一 git 呼び出し」を検証してから allow を返せる。
+#    詳細は docs/claude/git-worktree-allow.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
 # バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -73,6 +82,7 @@ let
   signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
+  gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -84,11 +94,13 @@ let
       printf '{}\n' > "$settings"
     fi
 
-    # register <event> <matcher> <cmd> <timeout>
-    #   matcher / timeout は空文字ならフィールド自体を出力しない。
+    # register <event> <matcher> <cmd> <timeout> [<if>]
+    #   matcher / timeout / if は空文字(または省略)ならフィールド自体を出力しない。
+    #   if はハンドラレベルの絞り込み(permission rule 構文、例: "Bash(git -C *)")で、
+    #   マッチしない呼び出しでは hook プロセス自体が spawn されない。
     #   存在判定は command の一致だけで足りる(hook のパスがエントリを一意に定める)。
     register() {
-      event="$1" matcher="$2" cmd="$3" timeout="$4"
+      event="$1" matcher="$2" cmd="$3" timeout="$4" if_rule="''${5-}"
       if "$jq" -e --arg event "$event" --arg cmd "$cmd" \
           '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
           "$settings" >/dev/null; then
@@ -96,11 +108,12 @@ let
       fi
       tmp="$(mktemp)"
       "$jq" --arg event "$event" --arg matcher "$matcher" \
-            --arg cmd "$cmd" --arg timeout "$timeout" '
+            --arg cmd "$cmd" --arg timeout "$timeout" --arg ifrule "$if_rule" '
         .hooks[$event] = ((.hooks[$event] // []) + [
           (if $matcher == "" then {} else { matcher: $matcher } end)
           + { hooks: [
               { type: "command", command: $cmd }
+              + (if $ifrule == "" then {} else { "if": $ifrule } end)
               + (if $timeout == "" then {} else { timeout: ($timeout | tonumber) } end)
             ] }
         ])' "$settings" > "$tmp"
@@ -133,13 +146,21 @@ let
     # docs/claude/issue-index.md。だから timeout は最初から余裕を持たせておく)。
     register SessionStart "" "$8" 10
     register Stop "" "$9" 600
+    # git-worktree-allow: if で "Bash(git -C *)" に絞る — それ以外の Bash 呼び出しでは
+    # hook プロセス自体が起動しない。判定はすべて hook 側(パス実在・許可サブコマンド・
+    # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
+    # フォールスルーする。
+    register PreToolUse Bash "''${10}" 10 "Bash(git -C *)"
   '';
 
-  # settings.json の permissions.allow に、要素単位で冪等に追加する。registerHooks と
-  # 同じ制約を負う: 既に同一文字列があれば何もしない。ルール文字列自体を後から書き
-  # 換えても、旧ルールは消えない(registerHooks の「command 一致だけの存在判定」と
-  # 同型の罠 — docs/claude/sign-prewarm.md の既知の制約を参照)。permissions.defaultMode や
-  # allow 以外のキーには一切触らない。
+  # settings.json の permissions.allow を要素単位で冪等に同期する。
+  # 使い方: register-claude-permissions <settings> --retire <r>… --allow <a>…
+  #   --retire 以降のルールは allow から削除(無ければ何もしない)、--allow 以降は
+  #   追加(既に同一文字列があれば何もしない)。ルール文字列を後から書き換えるときは
+  #   旧文字列を retiredPermissionRules に移す — これで全ホストが次回の switch で旧
+  #   ルールを掃除する(かつては「旧ルールが残り続ける」が既知の制約だった —
+  #   docs/claude/claude-permissions.md)。permissions.defaultMode や allow 以外の
+  #   キーには一切触らない。
   registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
     set -eu
     settings="$1"
@@ -151,11 +172,28 @@ let
       printf '{}\n' > "$settings"
     fi
 
-    for rule in "$@"; do
+    mode=""
+    for arg in "$@"; do
+      case "$arg" in
+        --retire|--allow) mode="$arg"; continue ;;
+      esac
       tmp="$(mktemp)"
-      "$jq" --arg r "$rule" '
-        .permissions.allow = ((.permissions.allow // []) | if index($r) then . else . + [$r] end)
-      ' "$settings" > "$tmp"
+      case "$mode" in
+        --retire)
+          "$jq" --arg r "$arg" '
+            .permissions.allow = ((.permissions.allow // []) | map(select(. != $r)))
+          ' "$settings" > "$tmp"
+          ;;
+        --allow)
+          "$jq" --arg r "$arg" '
+            .permissions.allow = ((.permissions.allow // []) | if index($r) then . else . + [$r] end)
+          ' "$settings" > "$tmp"
+          ;;
+        *)
+          echo "register-claude-permissions: --retire/--allow より前にルールが来た: $arg" >&2
+          exit 1
+          ;;
+      esac
       mv "$tmp" "$settings"
     done
   '';
@@ -183,10 +221,6 @@ let
     "Bash(git worktree list *)"
     "Bash(git switch *)"
     "Bash(git checkout -b *)"
-    "Bash(git -C * add *)"
-    "Bash(git -C * commit *)"
-    "Bash(git -C * status *)"
-    "Bash(git -C * diff *)"
 
     "Bash(uv run pytest *)"
     "Bash(uv run ruff *)"
@@ -212,6 +246,18 @@ let
     "Bash(npm ci)"
     "Bash(npm run *)"
     "Bash(npm test *)"
+  ];
+
+  # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
+  # `Bash(git -C * add *)` 等の中間ワイルドカードは、`-C` の位置への任意オプション
+  # 挿入(--exec-path 等)を素通しするとして Claude Code が毎セッション警告し、
+  # しかも中間 `*` は実際にはマッチしない。代替は git-worktree-allow hook(検証つき
+  # のプログラム的許可 — docs/claude/git-worktree-allow.md)。
+  retiredPermissionRules = [
+    "Bash(git -C * add *)"
+    "Bash(git -C * commit *)"
+    "Bash(git -C * status *)"
+    "Bash(git -C * diff *)"
   ];
 in
 {
@@ -276,6 +322,12 @@ in
     source = repoConfig + "/claude/hooks/pr-gate.sh";
     executable = true;
   };
+  # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
+  home.file.".claude/hooks/git-worktree-allow.sh" = {
+    source = repoConfig + "/claude/hooks/git-worktree-allow.sh";
+    executable = true;
+  };
+
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
     # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
@@ -308,7 +360,8 @@ in
       ${lib.escapeShellArg issueIndexCmd} \
       ${lib.escapeShellArg signPrewarmCmd} \
       ${lib.escapeShellArg prGateSessionStartCmd} \
-      ${lib.escapeShellArg prGateStopCmd}
+      ${lib.escapeShellArg prGateStopCmd} \
+      ${lib.escapeShellArg gitWorktreeAllowCmd}
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ
@@ -317,6 +370,9 @@ in
   # 混ぜない。
   home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerPermissions} "$HOME/.claude/settings.json" \
+      --retire \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredPermissionRules} \
+      --allow \
       ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules}
   '';
 }

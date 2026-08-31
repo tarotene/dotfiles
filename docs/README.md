@@ -39,8 +39,11 @@ Design and rationale for the hooks and commands deployed from
   in-progress plan to HTML in Chrome.
 - [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
   findings land in an issue-filing inbox.
+- [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
+  validated programmatic allow for `git -C <worktree>`, replacing unsafe
+  mid-pattern wildcard rules.
 - [`claude-permissions.md`](claude/claude-permissions.md) —
-  `permissions.allow` under nix: declarative, idempotent jq merge.
+  `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 
 ## Investigation records
 
