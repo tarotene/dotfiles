@@ -5,7 +5,20 @@ set -euo pipefail
 git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
 common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 
-if [[ "$git_dir" != "$common_dir" ]]; then
+# herdr provisions one throwaway worktree per PR under ~/.herdr/worktrees/, and
+# pushing the PR branch directly from there is that tool's normal workflow —
+# there is no "parent branch" to merge back into first. Every other worktree
+# (manual `git worktree add`, etc.) keeps the block below. Note: --git-dir for
+# a linked worktree resolves under the *common* repo's .git/worktrees/, not
+# under ~/.herdr/ — the working tree's actual location is --show-toplevel.
+herdr_worktrees_root="${HOME}/.herdr/worktrees/"
+toplevel=$(git rev-parse --path-format=absolute --show-toplevel 2>/dev/null || true)
+is_herdr_worktree=0
+case "$toplevel" in
+    "$herdr_worktrees_root"*) is_herdr_worktree=1 ;;
+esac
+
+if [[ "$git_dir" != "$common_dir" && "$is_herdr_worktree" -eq 0 ]]; then
     branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
     echo "error: Push blocked from worktree branch '${branch}'" >&2
     echo "" >&2
