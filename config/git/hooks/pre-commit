@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+# core.hooksPath makes git ignore .git/hooks/ entirely, including in linked
+# worktrees (where the working tree's own .git is a file, not a directory).
+# Chain to the repo-local pre-commit hook if one is installed, resolving it
+# via --git-common-dir so this works from any linked worktree, not just the
+# main checkout. Mirrors the existing pre-push chain in this same directory.
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+
+local_hook="${common_dir}/hooks/pre-commit"
+if [[ -x "$local_hook" ]]; then
+    exec "$local_hook" "$@"
+fi

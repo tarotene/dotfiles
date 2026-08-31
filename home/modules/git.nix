@@ -84,4 +84,12 @@ in
     source = repoConfig + "/git/hooks/pre-push";
     executable = true;
   };
+
+  # core.hooksPath makes git skip .git/hooks/ for pre-commit too, so every
+  # per-repo pre-commit (ruff/mypy via .pre-commit-config.yaml, etc.) was
+  # silently inert. Chain to it the same way pre-push already does.
+  xdg.configFile."git/hooks/pre-commit" = {
+    source = repoConfig + "/git/hooks/pre-commit";
+    executable = true;
+  };
 }

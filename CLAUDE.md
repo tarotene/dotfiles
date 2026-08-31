@@ -44,6 +44,8 @@ dotfiles/
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm
 │   │                         #   + output schema + slash commands
+│   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
+│   │                         #   pre-commit (chains to the repo-local hook)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -66,6 +68,7 @@ dotfiles/
 │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
 │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
 │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
+│   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
