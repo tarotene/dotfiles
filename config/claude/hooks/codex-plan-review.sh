@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # codex-plan-review.sh — ExitPlanMode 直前に Codex CLI でプランを自動レビューする hook。
 #
-# 設計と根拠: docs/codex-plan-review.md（このリポジトリ内）
+# 設計と根拠: docs/claude/codex-plan-review.md（このリポジトリ内）
 #
 # 停止条件は「critic が黙ること」ではなく「実装をブロックする defect がゼロであること」。
 # critic / judge / acceptance oracle を分離する:
@@ -21,7 +21,7 @@
 # 最終ラウンド (round == MAX_PLAN_REVIEWS) は「発見」ではなく closer である。
 # lens Z が carry-over 判定だけを行い、新規 finding は severity に関わらず gate 対象外
 # （backlog 行き）になる。これがないと最終ラウンドで生えた指摘を判定するラウンドが
-# 存在せず、open set = ∅ が原理的に到達不能になる（docs/codex-plan-review.md の
+# 存在せず、open set = ∅ が原理的に到達不能になる（docs/claude/codex-plan-review.md の
 # 「第二次の非収束」）。不変条件は:
 #
 #   gate 適格な finding は、修正後の再判定を最低 1 回受ける

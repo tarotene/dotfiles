@@ -62,15 +62,19 @@ dotfiles/
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
 ├── docs/
-│   ├── adr/0001..0005        # architecture decision records
-│   ├── operations.md         # routine flake update + tool-layer decision flow
+│   ├── README.md             # index of everything below, by category
+│   ├── adr/0001..0006        # architecture decision records
+│   ├── operations.md         # the canonical apply (hms) + routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
-│   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
-│   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
-│   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
-│   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
-│   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
+│   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
+│   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
+│   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
+│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
+│   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
+│   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
+│   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
+│   │   └── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)

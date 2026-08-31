@@ -5,7 +5,7 @@ name: Nix
 # via xdg.configFile (plus this workflow itself).
 #
 # pull_request has NO path filter (unlike push above): these jobs are
-# required status checks (pr-gate ruleset, docs/pr-gate.md), and a required
+# required status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required
 # check that a path filter skips reporting on a docs-only PR leaves that PR's
 # Stop gate permanently blocked on a check that will never exist.
 on:

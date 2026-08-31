@@ -102,8 +102,8 @@ dotfiles/
 ├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, sops, ssh, fcitx5 trace)
 ├── keys/                     # committed public keys
 ├── bootstrap.sh              # greenfield entrypoint
-└── docs/{adr,operations.md,cutover-runbook.md,nixification-roadmap.md,
-         ime-chrome-diagnosis.md,falcon-sensor.md}
+└── docs/{README.md,adr,claude,operations.md,cutover-runbook.md,
+         nixification-roadmap.md,ime-chrome-diagnosis.md,falcon-sensor.md}
 ```
 
 ## Architecture Decision Records

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wrapup-session-start.sh — wrap-up inbox の収集指示を注入する SessionStart hook。
 #
-# 設計と根拠: docs/wrapup-inbox.md(このリポジトリ内)
+# 設計と根拠: docs/claude/wrapup-inbox.md(このリポジトリ内)
 #
 # グローバル CLAUDE.md を home-manager の store symlink にすると Claude Code の
 # `#` メモリ追記が書き込み失敗で壊れるため、常時指示は additionalContext 注入で届ける。

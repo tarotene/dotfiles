@@ -8,7 +8,7 @@ on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
   # No branches filter here (unlike push above): these checks are required
-  # status checks (pr-gate ruleset, docs/pr-gate.md), and a required check
+  # status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required check
   # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
   # that PR's Stop gate permanently blocked on a check that will never exist.
   pull_request:
@@ -107,7 +107,7 @@ jobs:
       # The plan-review gate's acceptance decision is deterministic shell +
       # jq, so it is testable without calling Codex.  The selftest runs the
       # judge over fixtures and drives the hook end to end against a fake
-      # codex in a throwaway REVIEW_DIR (docs/codex-plan-review.md).
+      # codex in a throwaway REVIEW_DIR (docs/claude/codex-plan-review.md).
       - name: codex-plan-review output schema is valid JSON
         run: jq empty config/claude/hooks/codex-plan-review.schema.json
 
@@ -118,7 +118,7 @@ jobs:
       # degradation gates, the flock-guarded --add/--mark-filed mutations, and
       # the --check-dup verdict (against a stub gh) are all exercised in a
       # throwaway state dir, plus the SessionStart injection it pairs with
-      # (docs/wrapup-inbox.md).
+      # (docs/claude/wrapup-inbox.md).
       - name: wrapup-stop-gate.sh --selftest
         run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
 
@@ -127,7 +127,7 @@ jobs:
       # it guards is that the hook never writes to stdout (anything there would
       # be read as a permissionDecision and would interfere with the approval
       # dialog), plus the CSS ordering that keeps light-theme code readable
-      # (docs/plan-view.md).  Cases needing pandoc skip themselves when the
+      # (docs/claude/plan-view.md).  Cases needing pandoc skip themselves when the
       # runner has none, so this step does not depend on the image's tool list.
       - name: plan-view.sh --selftest
         run: bash ./config/claude/hooks/plan-view.sh --selftest
@@ -137,7 +137,7 @@ jobs:
       # asymmetric failure classification (R2-C-2: "whichever side was
       # adopted" rather than "both failed"), incomplete_results handling
       # (R2-C-1), title sanitization, and the PR-row status distinction are
-      # all exercised in a throwaway fixture repo (docs/issue-index.md).
+      # all exercised in a throwaway fixture repo (docs/claude/issue-index.md).
       - name: issue-index.sh --selftest
         run: bash ./config/claude/hooks/issue-index.sh --selftest
 
@@ -146,11 +146,11 @@ jobs:
       # classification, the warm/cold branch, and the local-override
       # regression (starting from a repo with commit.gpgsign=false locally
       # must not suppress warming when the global value is enabled) are all
-      # exercised against a throwaway HOME (docs/sign-prewarm.md).
+      # exercised against a throwaway HOME (docs/claude/sign-prewarm.md).
       - name: sign-prewarm.sh --selftest
         run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
 
-      # pr-gate is the PR completion barrier (docs/pr-gate.md): its central
+      # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
       # invariant is "never read an incomplete check set as green" against a
       # stub gh, including the R2 regression where `gh pr checks --watch`
       # exits 0 early on a partial subset (cli/cli#9973) — the selftest

@@ -116,4 +116,4 @@ because it stems from a different investigation.
    `grabKeyboardAndMouse` stays `true`; the moment the passphrase is asked for
    is instead moved earlier, to a `SessionStart` hook that prompts while the
    user is already looking at the screen (`config/claude/hooks/sign-prewarm.sh`,
-   `docs/sign-prewarm.md`).
+   `docs/claude/sign-prewarm.md`).

@@ -4,7 +4,7 @@
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
 #    critic は verdict を出さず、judge(jq)が決定論的に gate 適格性を判定する。
-#    最終ラウンドは closer。詳細は docs/codex-plan-review.md。
+#    最終ラウンドは closer。詳細は docs/claude/codex-plan-review.md。
 #
 # 2) wrap-up inbox(SessionStart + Stop):
 #    スコープ外の気づきの「収集」と「起票」を分離する。SessionStart hook が
@@ -12,14 +12,14 @@
 #    と注入し、Stop hook が inbox 非空かつ起票可能(gh あり・git repo・GitHub
 #    remote あり)なら exit 2 + stderr 指示でフルコンテキストの本体 Claude に
 #    gh issue create させる。それ以外は黙って exit 0(ADR-0005 の binary-existence
-#    gating に倣う)。詳細は docs/wrapup-inbox.md。
+#    gating に倣う)。詳細は docs/claude/wrapup-inbox.md。
 #
 # 3) plan-view(PreToolUse / ExitPlanMode + CLI):
 #    プランを pandoc で HTML にして Chrome の専用窓(--app)に飛ばす。LLM は呼ばず、
 #    Markdown を 1:1 で写すだけの表示専用の道具である。plan-review gate と同じ
 #    matcher に別エントリとして並び、並列に走る(= review の結果を待たない)。承認
 #    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
-#    詳細は docs/plan-view.md。
+#    詳細は docs/claude/plan-view.md。
 #
 # 4) sign-prewarm(SessionStart, matcher: startup|resume):
 #    git commit の署名パスフレーズ入力を、ログイン後最初に Claude を開いた安全な
@@ -28,7 +28,7 @@
 #    Claude の Bash 呼び出し中に GUI pinentry が grab 付きで出現し、キー入力を
 #    奪ったままコミットが固まる。判定は SessionStart 時の cwd に依存せず、常に
 #    グローバルな git 設定だけを見る。additionalContext は出さない(副作用だけの
-#    hook)。詳細は docs/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
+#    hook)。詳細は docs/claude/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
 #
 # 5) pr-gate(SessionStart + Stop):
 #    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」の 2 事故を、Stop の
@@ -36,7 +36,7 @@
 #    ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリのみ)で、
 #    それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読まないこと」
 #    — 期待される required check をサーバの ruleset から取り、`gh pr checks --watch`
-#    の exit code ではなく取り直した --json を jq で判定する。詳細は docs/pr-gate.md。
+#    の exit code ではなく取り直した --json を jq で判定する。詳細は docs/claude/pr-gate.md。
 #
 # 6) issue-index(SessionStart, matcher: startup|resume|compact):
 #    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
@@ -46,7 +46,7 @@
 #    ので、それで総数を数えると嘘になる。assignee:@me が 0 件なら repo 全体の
 #    open にフォールバックし、他人起票の行にだけ起票者を明記する(タイトルは
 #    untrusted なので制御文字除去 + 120 文字切り詰めもするが、これは防御ではなく
-#    payload 制御に過ぎない)。詳細は docs/issue-index.md。
+#    payload 制御に過ぎない)。詳細は docs/claude/issue-index.md。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
@@ -130,7 +130,7 @@ let
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
     # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
     # するので、matcher/timeout を後から変えても既存エントリは更新されない —
-    # docs/issue-index.md。だから timeout は最初から余裕を持たせておく)。
+    # docs/claude/issue-index.md。だから timeout は最初から余裕を持たせておく)。
     register SessionStart "" "$8" 10
     register Stop "" "$9" 600
   '';
@@ -138,7 +138,7 @@ let
   # settings.json の permissions.allow に、要素単位で冪等に追加する。registerHooks と
   # 同じ制約を負う: 既に同一文字列があれば何もしない。ルール文字列自体を後から書き
   # 換えても、旧ルールは消えない(registerHooks の「command 一致だけの存在判定」と
-  # 同型の罠 — docs/sign-prewarm.md の既知の制約を参照)。permissions.defaultMode や
+  # 同型の罠 — docs/claude/sign-prewarm.md の既知の制約を参照)。permissions.defaultMode や
   # allow 以外のキーには一切触らない。
   registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
     set -eu
@@ -222,7 +222,7 @@ in
   # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
   # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
   # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
-  # docs/codex-plan-review.md の環境変数節。
+  # docs/claude/codex-plan-review.md の環境変数節。
   home.sessionVariables = {
     CODEX_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
     MAX_PLAN_REVIEWS = "2";

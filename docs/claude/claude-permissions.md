@@ -3,7 +3,7 @@
 `~/.claude/settings.json` の `permissions.allow` は、Claude Code が自分の判断で
 "許可プロンプトを毎回出さずに実行してよいコマンド" を宣言する場所。手で書いた
 ルールは他機の同期対象にならず、`home-manager switch` のたびに検証されないので、
-`registerHooks`（`docs/codex-plan-review.md`）と同じ「activation 時の冪等 jq マージ」
+`registerHooks`（`docs/claude/codex-plan-review.md`）と同じ「activation 時の冪等 jq マージ」
 パターンを allow にも敷いた。
 
 配備は `home/modules/claude.nix` の `registerPermissions` / `permissionRules` /
