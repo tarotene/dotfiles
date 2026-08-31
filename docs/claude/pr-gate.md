@@ -6,6 +6,12 @@ herdr の並行 worktree セッションで起きる事故のうち、ローカ�
 `config/claude/hooks/pr-gate.sh`、デプロイは `home/modules/claude.nix`。
 main が進んだことに気づかない件と未コミット変更は advisory に留める。
 
+「push し忘れたまま完了する」は PR が既にある前提の判定（`G_push`）だけでは、
+**PR を作る前**という最も起きやすい場面を素通ししていた。`G_unpushed` がその領域を
+塞ぐ。同様に base 鮮度・`[gone]` ブランチ・残骸 worktree の advisory は、以前は
+「open PR が無ければ SessionStart も完全沈黙」だったため、PR 作成前のセッションでは
+一切表示されなかった。詳細は下の各節。
+
 ## 強制力はどこに置くか
 
 Hooks を PR の SDLC に絡めるとき、選択肢は次の 3 段階ある。
@@ -58,6 +64,55 @@ conflict を検出したらそもそも merge できない）。同じ理由で 
 block にしない —— PR があるブランチで WIP を残して終わるセッションを全部止める価値は無い。
 
 どちらも **advisory**（block するときだけ相乗りで伝える。単独では終了を止めない）に留めた。
+この決定そのものは変えていない —— 下の「SessionStart は PR の有無を問わず advisory を出す」
+は Stop の block 判定には一切影響しない、別の話である。
+
+## SessionStart は PR の有無を問わず advisory を出す
+
+`cmd_session_start` は当初「open PR が無ければ完全沈黙」だった。この判断は
+`cmd_stop` の「advisory は他の block への相乗りに限る」という設計とは別物のはずが、
+実装上は同じ形の早期 `exit 0` になっていた。結果、**PR をまだ作っていないセッションは
+base がどれだけ遅れていても、`[gone]` ブランチが何本溜まっていても一切知らされない**。
+
+実測でこれが起きた: このリポジトリの worktree（`worktree/lucky-field-2794`）は
+origin/main から 4 コミット遅れ、ローカルブランチ 30 本中 21 本が `[gone]` の状態で
+新しいセッションを開いたが、pr-gate は無言だった —— PR が無いという理由だけで。
+
+Stop の advisory が「他の block への相乗り」に留まるのは正しい判断のままにした
+（`G_base` / `G_wt` を単独 block にしない理由は上のとおり、履歴改変を自動化しない）。
+だが SessionStart には元々 block/pass の概念が無く、「単独発火のコストが無い」——
+Stop と違って「単独では終了を止めない」という制約自体が意味を持たない場所だった。
+そこで SessionStart だけ、PR の有無を問わず 3 つの hygiene advisory を計算し、
+材料があれば単独で出すようにした:
+
+- **stale base**（`stale_base_line`）: PR があれば `baseRefName`、無ければ
+  `refs/remotes/origin/HEAD` の default branch に対する behind 数
+- **`[gone]` ブランチ本数**（`gone_branches_line`）: `git prune-branches`（後述）が
+  対応できる残骸の量
+- **残骸 worktree 数**（`stale_worktrees_line`）: `[gone]` かつ未変更の worktree。
+  dirty な worktree は本物の作業中の可能性があるので数えない（false positive を
+  出さない側に倒す）
+
+いずれも API を叩かず git だけで求まるので、縮退表・allowlist・fetch TTL には影響しない。
+材料が無ければ(以前と同じく)完全沈黙する。
+
+## G_unpushed — G_push が届かない領域
+
+`G_push` は open PR の `headRefOid` とローカル `HEAD` を比較するので、**PR がまだ無い
+セッションでは比較対象が無く、判定できずに完全沈黙していた**。これは「push し忘れたまま
+完了する」という当初からの対象事故そのものが、PR 作成前という最も起きやすい場面では
+素通しになっていたことを意味する。
+
+`G_unpushed` はこの領域だけを塞ぐ。PR を作るべきかには踏み込まず、「積んだコミットが
+1 個もリモートに無い」という事実だけを見る（upstream → `origin/<branch>` →
+`origin/<default_branch>` の順で比較対象を探し、どれも無ければ判定を諦めて何もしない
+——判定できないことを断定に変えない、という他の advisory と同じ姿勢）。0 件なら通す。
+1 件以上なら block し、解消は `git push` 1 回で済む（`home/modules/git.nix` の
+`push.autoSetupRemote` が upstream を自動で張るので `--set-upstream` の指定は不要
+——履歴改変は一切伴わない）。
+
+PR がある場合は既存の `G_push` がより正確に見るので、`G_unpushed` は
+`pr_num` が空のときだけ動く。二重に block することはない。
 
 ## G_link — なぜ「PR 本文が Issue を閉じるか」を block するのか
 
@@ -307,3 +362,7 @@ bash config/claude/hooks/pr-gate.sh --selftest
   （上記「部分出現」の回帰テスト）
 - **チェック 0 件・部分出現・stacked PR フォールバックのそれぞれで block/pass が
   正しく分岐すること**
+- **`G_unpushed`**: PR 無し + 未 push commit あり(exit 2)/ PR 無し + 0 件(完全沈黙)
+  の両方
+- **hygiene advisory**: `[gone]` ブランチ・残骸 worktree(dirty なら数えない)・
+  stale base(PR 有無どちらでも)がそれぞれ単独で `additionalContext` に出ること

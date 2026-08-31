@@ -33,8 +33,43 @@ in
 
       sequence.editor = "interactive-rebase-tool";
 
+      # herdr provisions a worktree per task from the parent checkout's HEAD
+      # without fetching or setting an upstream first (measured: every
+      # herdr-created branch's reflog says "Created from HEAD", no fetch call
+      # in its logic, no `branch.*.remote` set on a fresh worktree). These
+      # five close the gap that leaves open, machine-wide:
+      pull = {
+        # a diverged pull fails loudly instead of creating a surprise
+        # merge/rebase commit — rebase/merge stay explicit, human acts
+        ff = "only";
+      };
+      fetch = {
+        # remote-tracking refs for deleted PR branches don't linger as stale
+        # [gone] noise between fetches
+        prune = true;
+      };
+      push = {
+        # herdr never sets an upstream; the first `git push` from a fresh
+        # worktree branch would otherwise fail asking for `--set-upstream`
+        autoSetupRemote = true;
+      };
+      rerere = {
+        # the same conflict resolved once in one worktree doesn't have to be
+        # re-solved by hand in a sibling worktree
+        enabled = true;
+      };
+      merge = {
+        # shows the common ancestor, not just both sides — materially better
+        # for an agent resolving a conflict
+        conflictStyle = "zdiff3";
+      };
+
       alias = {
-        prune-branches = "!f() { git fetch -p && git for-each-ref --merged=main --format='%(refname:short) %(upstream:track)' refs/heads | awk '$2 == \"[gone]\" {print $1}' | while IFS= read -r branch; do git branch -d -- \"$branch\"; done; }; f";
+        # See config/git/hooks/prune-branches.sh for why this shells out to a
+        # real script instead of staying a one-liner (squash-merge broke the
+        # old --merged=main filter; the replacement needs a confirmation
+        # prompt and worktree-awareness that don't fit in an alias string).
+        prune-branches = "!\"$HOME\"/.config/git/hooks/prune-branches.sh";
       };
 
       # GitHub credential helpers (gh auth).
@@ -90,6 +125,14 @@ in
   # silently inert. Chain to it the same way pre-push already does.
   xdg.configFile."git/hooks/pre-commit" = {
     source = repoConfig + "/git/hooks/pre-commit";
+    executable = true;
+  };
+
+  # Not a git hook — a helper script the `prune-branches` alias above shells
+  # out to. Deployed next to the hooks for the same reason (literal file,
+  # xdg.configFile, no interpretation by home-manager).
+  xdg.configFile."git/hooks/prune-branches.sh" = {
+    source = repoConfig + "/git/hooks/prune-branches.sh";
     executable = true;
   };
 }

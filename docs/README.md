@@ -6,6 +6,9 @@
   flake update, and the tool-layer decision flow for new tools.
 - [`cutover-runbook.md`](cutover-runbook.md) — per-host provisioning /
   migration procedure, including rollback.
+- [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
+  guard herdr's parallel-worktree workflow (stale base, protected-branch
+  commits, stale `[gone]` branches).
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
@@ -42,6 +45,8 @@ Design and rationale for the hooks and commands deployed from
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
+- [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
+  bare `git stash` (the stack is shared across herdr's parallel worktrees).
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 
