@@ -81,6 +81,11 @@ rationale.
   not start at all and Chrome/Slack silently fall back to software rendering.
   See [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md).
 - **AI tooling** — `claude-code` via nixpkgs (`home/modules/packages.nix`).
+- **herdr** — worktree/workspace manager, via a `nixpkgs-unstable` overlay
+  (`home/modules/herdr.nix`; not yet in the pinned stable channel — ADR-0001
+  Amendment, #42). Sidebar shows each pane's Claude Code permission mode /
+  model / context / cost via two hooks
+  (`docs/claude/herdr-sidebar-metadata.md`).
 - **User-space CLIs** — neovim, ripgrep, fd, bat, zellij, gh, siketyan-ghr,
   git-interactive-rebase-tool, and more, all from nixpkgs.
 - **Dev-runtime launchers** — `mise`, `direnv` (+ nix-direnv), `uv`, `deno`,
@@ -91,12 +96,13 @@ rationale.
 
 ```
 dotfiles/
-├── flake.nix / flake.lock    # pinned nixpkgs + home-manager; homeConfigurations.<hostname>
+├── flake.nix / flake.lock    # pinned nixpkgs + home-manager (+ nixpkgs-unstable, a
+│                             #   herdr-only escape hatch); homeConfigurations.<hostname>
 ├── home/                     # Identity / Instance two-layer modules
 │   ├── common.nix
 │   ├── identities/{personal,company}.nix
 │   ├── hosts/{personal-pop,company-pop-old,company-pop-new}.nix
-│   └── modules/{shell,git,gpg,secrets,packages,desktop,runtimes}.nix
+│   └── modules/{shell,git,gpg,secrets,packages,desktop,runtimes,herdr}.nix
 ├── config/                   # literal config, deployed verbatim
 ├── packages/declarative/apt-packages.txt   # system layer only
 ├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, sops, ssh, fcitx5 trace)

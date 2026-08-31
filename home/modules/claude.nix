@@ -540,9 +540,11 @@ in
   # だと空リストで区切りだけが浮く。
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerHooks} "$HOME/.claude/settings.json" \
-      --retire${lib.concatMapStrings (
-        e: " \\\n      " + lib.escapeShellArg e.event + " " + lib.escapeShellArg e.command
-      ) retiredHookEntries} \
+      --retire${
+        lib.concatMapStrings (
+          e: " \\\n      " + lib.escapeShellArg e.event + " " + lib.escapeShellArg e.command
+        ) retiredHookEntries
+      } \
       --register \
       ${lib.escapeShellArg planReviewCmd} \
       ${lib.escapeShellArg wrapupStopCmd} \
@@ -559,9 +561,9 @@ in
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${syncStatusLine} "$HOME/.claude/settings.json" \
-      ${lib.escapeShellArg statusLineCmd}${lib.concatMapStrings (
-        c: " \\\n      " + lib.escapeShellArg c
-      ) retiredStatusLineCommands}
+      ${lib.escapeShellArg statusLineCmd}${
+        lib.concatMapStrings (c: " \\\n      " + lib.escapeShellArg c) retiredStatusLineCommands
+      }
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ

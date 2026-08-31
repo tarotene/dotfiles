@@ -71,16 +71,38 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
 ## 既知の制約・運用ノート
 
 - **statusline の巻き戻り**: `~/.claude/settings.json` の `statusLine` は activation
-  (`registerClaudeStatusLine`)が宣言値に合わせるので、`/statusline` で手動変更しても
-  次の `home-manager switch` で戻る。変更はこのリポジトリの
-  `config/claude/hooks/claude-statusline.sh` を編集すること。
+  (`registerClaudeStatusLine` → `syncStatusLine`)が宣言値に合わせるので、
+  `/statusline` で手動変更しても次の `home-manager switch` で戻る。変更はこの
+  リポジトリの `config/claude/hooks/claude-statusline.sh` を編集すること。
+- **hook / statusLine の撤回は forward switch でのみ効く**: `registerHooks` /
+  `syncStatusLine` は `retiredHookEntries` / `retiredStatusLineCommands`
+  (`home/modules/claude.nix`)に載っている command を完全一致で settings.json から
+  削除する。これが効くのは新しい generation への **forward** switch だけで、
+  home-manager generation の `--rollback` では効かない — rollback 先の世代の
+  activation は当時のコードをそのまま実行するため、撤回機構自体がまだ無い世代に
+  戻れば孤児が再発し得る(`retiredPermissionRules` も同じ限界を持つ、
+  home-manager の generation モデル一般の制約)。緊急 rollback 後は
+  `docs/operations.md` の孤児チェックを走らせること。
 - **herdr 統合 hook との共存**: herdr は自分の `herdr-agent-state.sh`(編集禁止、
   integration 更新で上書き)を settings.json に登録する。registerHooks は command
-  文字列が異なるエントリに触れず、herdr も自ファイル以外に触れないので衝突しない。
+  文字列が異なるエントリに触れず、herdr も自ファイル以外に触れないので衝突しない
+  (herdr の書き込みは `.hooks.SessionStart` の自ファイルと `~/.claude/hooks/`,
+  `~/.codex/`, `~/.copilot/hooks/`, `~/.config/devin/` への統合ファイル配備だけで、
+  `statusLine` には一切触れない — 実行バイナリの静的解析で確認済み)。
 - **Herdr 外では無害**: どちらのスクリプトも `HERDR_ENV=1` と socket/pane 環境変数を
   ガードにしており、素のターミナルでは statusline の表示だけが動く(ADR-0005 の
   binary-existence gating に倣い、欠如時は黙って no-op)。
 - **herdr バイナリは nix 管理**(`home/modules/herdr.nix`)。nixos-26.05 に herdr が
   無いため flake の `nixpkgs-unstable` input から overlay で取っている — 安定
-  チャネルに入ったら input ごと畳むこと。旧 self-installed `~/.local/bin/herdr` は
-  手で消さないと nix の herdr を shadow する。
+  チャネルに入ったら input ごと畳むこと(Issue #42)。旧 self-installed
+  `~/.local/bin/herdr` は `home.activation.quarantineSelfInstalledHerdr` が
+  `.pre-nix` へ自動的に退避する(手動削除の手順は置かない — ADR-0001 のゼロ手
+  作業の原則)。
+- **config.toml は store symlink**。herdr の実行時書き込み(in-TUI の theme /
+  sound / toast / status indicators / agent border labels トグル、onboarding、
+  channel set)はすべて失敗する。CLI 経路(`herdr channel set`)は
+  `Permission denied` を返して停止することを実機で確認済み。in-TUI 経路は
+  `logging::config_write_failed` に記録されて飲み込まれ、UI のトグルが黙って
+  元に戻るだけ(見える失敗ではない)。設定変更はこのリポジトリの
+  `config/herdr/config.toml` を編集して `home-manager switch` + 反映は
+  `herdr server reload-config`。

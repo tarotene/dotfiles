@@ -10,7 +10,7 @@
 # herdr-claude-metadata.sh(hook)が担う 2 チャネル構成。報告は表示をブロック
 # しないよう detach したサブシェルで行い、値が変わらない・前回送信から 2 秒未満の
 # 間は送らない(statusline はストリーミング中 ~300ms 毎に再実行されるため)。
-# Herdr 外では表示だけが動く。詳細は docs/herdr-sidebar-metadata.md。
+# Herdr 外では表示だけが動く。詳細は docs/claude/herdr-sidebar-metadata.md。
 
 set -eu
 

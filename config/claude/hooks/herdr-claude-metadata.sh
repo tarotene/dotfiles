@@ -9,7 +9,7 @@
 # ソケット書き込みは herdr 統合 hook(~/.claude/hooks/herdr-agent-state.sh、
 # herdr 管理・編集禁止)と同じパターン: unix socket に JSON 1 行、失敗は無音。
 # Herdr 外(HERDR_ENV なし)や依存欠如では黙って exit 0 する(ADR-0005 の
-# binary-existence gating に倣う)。詳細は docs/herdr-sidebar-metadata.md。
+# binary-existence gating に倣う)。詳細は docs/claude/herdr-sidebar-metadata.md。
 
 set -eu
 
