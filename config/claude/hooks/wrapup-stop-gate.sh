@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wrapup-stop-gate.sh — スコープ外の気づき(wrap-up inbox)を Issue 化させる Stop hook。
 #
-# 設計と根拠: docs/wrapup-inbox.md(このリポジトリ内)
+# 設計と根拠: docs/claude/wrapup-inbox.md(このリポジトリ内)
 #
 # SessionEnd での起票は decision control なし・時間予算・報告先なしの三重苦で成立
 # しないため、収集と起票を分離する:

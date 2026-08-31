@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pr-gate.sh — PR の完了を待つ Stop hook（+ 現在状態を運ぶ SessionStart hook）。
 #
-# 設計と根拠: docs/pr-gate.md（このリポジトリ内）
+# 設計と根拠: docs/claude/pr-gate.md（このリポジトリ内）
 #
 # 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」という 2 種の事故を、
 # Stop の 1 点だけで hard gate する。base 鮮度・未コミット変更は advisory
@@ -33,10 +33,10 @@
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
-# (docs/codex-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
+# (docs/claude/codex-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
 # state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-3} に達したら 1 回だけ escalate し、
 # touch state/<sid>.escalated。以後そのセッションは無条件で素通る(escalated の
-# チェックは上限判定より前 — docs/codex-plan-review.md の closer と同じ置き方)。
+# チェックは上限判定より前 — docs/claude/codex-plan-review.md の closer と同じ置き方)。
 #
 # 使い方:
 #   hook として:  settings.json の SessionStart / Stop から

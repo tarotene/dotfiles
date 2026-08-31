@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # issue-index.sh — 自分に関係する open Issue の索引だけを薄く注入する SessionStart hook。
 #
-# 設計と根拠: docs/issue-index.md(このリポジトリ内)
+# 設計と根拠: docs/claude/issue-index.md(このリポジトリ内)
 #
 # 「全 Issue を巡回して本文を流し込む」は成立しない(会社リポジトリは open Issue が
 # 700 件超あり、全件取得は数秒かかる)。本文ではなくポインタ(番号・タイトル・ラベル・

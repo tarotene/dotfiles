@@ -3,6 +3,29 @@
 Routine care of the declarative environment. For provisioning and migration,
 see [`cutover-runbook.md`](cutover-runbook.md).
 
+## Applying the configuration
+
+The canonical apply is `hms` (from `scripts/hms.sh`, deployed to
+`~/.local/bin` by `home/modules/packages.nix`), runnable from any directory:
+
+```bash
+hms          # apply pushed main (github:tarotene/dotfiles) — the default
+hms .        # apply the current checkout/worktree (pre-push verification)
+hms <path>   # apply an arbitrary local checkout
+```
+
+One command covers the whole apply runbook: the switch itself (with
+`-b backup`), the user `daemon-reload`, the fcitx5 unit restart, and the
+verification that the running fcitx5 matches the new store path (see
+[the fcitx5 section](#fcitx5-needs-an-explicit-unit-restart-after-a-switch)
+for why that restart is load-bearing).
+
+The default deliberately references the **remote** main, not a local checkout
+path: a checkout is whatever branch it happens to be on (the main checkout
+regularly sits on a feature branch), so a path reference is an implicit
+branch dependency. Applying a worktree or checkout is legitimate for
+pre-push verification — but only ever explicitly, as `hms .`.
+
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
@@ -12,7 +35,7 @@ weekly is enough:
 ```bash
 nix flake update
 nix flake check
-home-manager switch --flake .#"$(hostname)" -b backup
+hms .        # apply this checkout; commit + push once it proves out
 ```
 
 To update a single input only:
@@ -39,7 +62,8 @@ Notes:
 `~/.config/autostart/fcitx5.desktop` by `systemd-xdg-autostart-generator`, and its
 `Exec=` is a store path. `home-manager switch` runs `daemon-reload` but does **not**
 restart a generated unit, so after any switch that moves fcitx5 the old binary is
-still running:
+still running. `hms` performs the restart and verification automatically; the
+manual sequence it encodes is:
 
 ```bash
 home-manager switch --flake .#"$(hostname)" -b backup
@@ -82,7 +106,7 @@ Decision flow for adding a tool, per
 
 4. **Everything else** (user-space CLI, GUI app, font, prompt tooling)
    → **home-manager**, the default: add it to `home/modules/packages.nix`
-   (or the topical module) and run `home-manager switch`. The other layers
+   (or the topical module) and run `hms`. The other layers
    are escape hatches, not alternatives.
 
 A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /

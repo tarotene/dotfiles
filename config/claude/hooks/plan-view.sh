@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # plan-view.sh — プランを Markdown レンダリング済みの HTML にして Chrome の専用窓へ飛ばす。
 #
-# 設計と根拠: docs/plan-view.md（このリポジトリ内）
+# 設計と根拠: docs/claude/plan-view.md（このリポジトリ内）
 #
 # プランは端末内のプレーンテキストとして読まされる。この repo のプランは 1 万字前後
 # あり、plan-review gate が deny するたび書き直された版を読み直すことになる。長文を

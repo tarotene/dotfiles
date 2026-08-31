@@ -51,6 +51,8 @@ dotfiles/
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
 ├── scripts/                  # escape-hatch and diagnostic scripts
+│   ├── hms.sh                # canonical apply wrapper (deployed to ~/.local/bin/hms):
+│   │                         #   switch + daemon-reload + fcitx5 restart + verification
 │   ├── install-packages.sh   # thin system-layer apt installer (#216)
 │   ├── install-falcon-sensor.sh # company EDR agent installer
 │   ├── fix-ssh-permissions.sh
@@ -60,15 +62,19 @@ dotfiles/
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
 ├── docs/
-│   ├── adr/0001..0005        # architecture decision records
-│   ├── operations.md         # routine flake update + tool-layer decision flow
+│   ├── README.md             # index of everything below, by category
+│   ├── adr/0001..0006        # architecture decision records
+│   ├── operations.md         # the canonical apply (hms) + routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
-│   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
-│   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
-│   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
-│   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
-│   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
+│   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
+│   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
+│   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
+│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
+│   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
+│   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
+│   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
+│   │   └── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -124,7 +130,11 @@ dotfiles/
 ## Verification / Testing
 - `nix flake check` — evaluates every host's activation package.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
-- `home-manager switch --flake .#"$(hostname)" -b backup` — apply (see runbook).
+- `hms` — canonical apply (pushed main); `hms .` applies the current
+  checkout/worktree for pre-push verification (wraps switch + daemon-reload +
+  fcitx5 restart; see `docs/operations.md`).
+- `home-manager switch --flake .#"$(hostname)" -b backup` — the raw switch
+  `hms` wraps (see runbook).
 - Rollback via generations: `home-manager generations`, then `--rollback`.
 - Provisioning procedures: `docs/cutover-runbook.md`.
 - Routine flake update + which layer a new tool goes in: `docs/operations.md`.

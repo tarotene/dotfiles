@@ -2,7 +2,7 @@
 # sign-prewarm.sh — git commit の署名パスフレーズを、ログイン後最初に Claude を
 # 開いた安全な瞬間に前倒しして温める SessionStart hook。
 #
-# 設計と根拠: docs/sign-prewarm.md(このリポジトリ内)
+# 設計と根拠: docs/claude/sign-prewarm.md(このリポジトリ内)
 #
 # home/modules/gpg.nix が gpg-agent の cache TTL を実質無限(400d)にしたことで、
 # パスフレーズの再入力は「ログインに 1 回」まで落ちる(境界は home.activation の
