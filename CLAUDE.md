@@ -42,8 +42,8 @@ dotfiles/
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
-│   │                         #   plan-view, pr-gate, issue-index, sign-prewarm
-│   │                         #   + output schema + slash commands
+│   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
+│   │                         #   git-worktree-allow + output schema + slash commands
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (chains to the repo-local hook)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
@@ -69,6 +69,7 @@ dotfiles/
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
+│   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
 │   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push, not review/base)
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache

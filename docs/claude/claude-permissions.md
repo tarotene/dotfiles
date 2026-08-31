@@ -17,19 +17,26 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 `Bash(git commit *)`）。裸のコマンド文字列（`git commit *`）は Bash ツールの
 許可ルールとして認識されない — これは一度実際に取り違えて摩擦の原因になった。
 
-## 既知の制約: ルール文字列を変えると旧ルールは残る
+## ルールの撤回: `retiredPermissionRules`
 
-`registerPermissions` の存在判定は `.permissions.allow` に**同一文字列**が
-含まれているかだけ（`registerHooks` の「command 一致だけの存在判定」と同型）。
-つまり:
+追加の存在判定は `.permissions.allow` に**同一文字列**が含まれているかだけ
+（`registerHooks` の「command 一致だけの存在判定」と同型）。かつては「ルール
+文字列を直すと旧ルールが残り続ける」が既知の制約で、手動 jq が必要だったが、
+現在は削除も宣言的に行える:
 
-- ルールを追加するのは安全（無ければ足す、あれば何もしない）
-- ルールの**文字列そのものを直す**場合（例: `Bash(git commit *)` を
-  `Bash(git commit -s *)` に絞り直す）は、旧ルールが `.permissions.allow` に
-  残り続ける。手で `jq 'del(.permissions.allow[] | select(. == "..."))'` するか、
-  該当行を `~/.claude/settings.json` から直接消してから `home-manager switch`
-  すること
-- `permissions.allow` 配下でも `permissions.defaultMode` や他のキーには一切触らない
+- ルールの**文字列そのものを直す・撤回する**場合は、旧文字列を
+  `retiredPermissionRules`（`home/modules/claude.nix`）に移す。activation が
+  `--retire` パスで全ホストの `.permissions.allow` から該当文字列を削除する
+  （無ければ何もしない = 冪等）
+- 追加は従来どおり `permissionRules` へ（無ければ足す、あれば何もしない）
+- どちらのパスも `permissions.defaultMode` や allow 以外のキーには一切触らない
+
+最初の適用例が `Bash(git -C * add *)` / `commit` / `status` / `diff` の 4 件。
+サブコマンドより前の `*` は `-c` / `--exec-path` 等のオプション挿入(= 任意
+コード実行)も素通しするとして Claude Code が毎セッション警告し、しかも中間
+`*` はワイルドカードとして機能せず実際にはマッチしていなかった。代替は
+git-worktree-allow hook（検証つきのプログラム的許可 —
+`docs/claude/git-worktree-allow.md`）。
 
 ## 何を入れているか / 入れていないか
 
