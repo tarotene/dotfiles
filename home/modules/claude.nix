@@ -134,6 +134,85 @@ let
     register SessionStart "" "$8" 10
     register Stop "" "$9" 600
   '';
+
+  # settings.json の permissions.allow に、要素単位で冪等に追加する。registerHooks と
+  # 同じ制約を負う: 既に同一文字列があれば何もしない。ルール文字列自体を後から書き
+  # 換えても、旧ルールは消えない(registerHooks の「command 一致だけの存在判定」と
+  # 同型の罠 — docs/sign-prewarm.md の既知の制約を参照)。permissions.defaultMode や
+  # allow 以外のキーには一切触らない。
+  registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
+    set -eu
+    settings="$1"
+    shift
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    for rule in "$@"; do
+      tmp="$(mktemp)"
+      "$jq" --arg r "$rule" '
+        .permissions.allow = ((.permissions.allow // []) | if index($r) then . else . + [$r] end)
+      ' "$settings" > "$tmp"
+      mv "$tmp" "$settings"
+    done
+  '';
+
+  # Claude Code の permission rule 構文は `Tool(specifier)`(裸のコマンド文字列では
+  # 認識されない)。Add / Commit / Create PR で毎回止まる直接原因はこの 4 件。
+  # 破壊的操作は増やさない — 読み取り・検査系のみ追加する。gh の書き込み系
+  # (pr edit / issue create / issue edit)は aocs-draft スキルが明示的な人の確認を
+  # 要求する操作なので入れない。
+  permissionRules = [
+    "Bash(git add *)"
+    "Bash(git commit *)"
+    "Bash(git push *)"
+    "Bash(gh pr create *)"
+
+    "Bash(git status *)"
+    "Bash(git diff *)"
+    "Bash(git log *)"
+    "Bash(git show *)"
+    "Bash(git grep *)"
+    "Bash(git rev-parse *)"
+    "Bash(git branch *)"
+    "Bash(git fetch *)"
+    "Bash(git ls-remote *)"
+    "Bash(git worktree list *)"
+    "Bash(git switch *)"
+    "Bash(git checkout -b *)"
+    "Bash(git -C * add *)"
+    "Bash(git -C * commit *)"
+    "Bash(git -C * status *)"
+    "Bash(git -C * diff *)"
+
+    "Bash(uv run pytest *)"
+    "Bash(uv run ruff *)"
+    "Bash(uv run mypy *)"
+    "Bash(uv run pre-commit run *)"
+    "Bash(uv run docs-check *)"
+    "Bash(./scripts/check-*.sh *)"
+    "Bash(./scripts/list-branch-inventory.sh *)"
+    "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
+
+    "Bash(gh pr view *)"
+    "Bash(gh pr list *)"
+    "Bash(gh pr diff *)"
+    "Bash(gh pr checks *)"
+    "Bash(gh issue view *)"
+    "Bash(gh issue list *)"
+
+    "Bash(nix fmt)"
+    "Bash(nix flake check)"
+    "Bash(nix build *)"
+    "Bash(home-manager generations)"
+
+    "Bash(npm ci)"
+    "Bash(npm run *)"
+    "Bash(npm test *)"
+  ];
 in
 {
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
@@ -230,5 +309,14 @@ in
       ${lib.escapeShellArg signPrewarmCmd} \
       ${lib.escapeShellArg prGateSessionStartCmd} \
       ${lib.escapeShellArg prGateStopCmd}
+  '';
+
+  # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ
+  # DAG 位置(writeBoundary の後)で、独立した activation script として走らせる —
+  # 片方が既存の hooks 登録ロジックを壊さないようにするため、jq マージの責務を
+  # 混ぜない。
+  home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${registerPermissions} "$HOME/.claude/settings.json" \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules}
   '';
 }
