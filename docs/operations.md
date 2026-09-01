@@ -26,6 +26,13 @@ regularly sits on a feature branch), so a path reference is an implicit
 branch dependency. Applying a worktree or checkout is legitimate for
 pre-push verification — but only ever explicitly, as `hms .`.
 
+For a remote ref, `hms` forces `nix flake metadata --refresh` before the
+switch and prints the resolved revision (`==> applying revision <rev>`) —
+without it, nix's `tarball-ttl` cache (1h by default) can make `hms` silently
+apply an hour-old main right after a merge, and still print `Done.` as if
+nothing were wrong. `hms .` skips this — a local path always reads the
+current tree, so there is nothing to refresh.
+
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
