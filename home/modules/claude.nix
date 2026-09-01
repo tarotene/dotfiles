@@ -94,6 +94,14 @@
 #    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
 #    docs/claude/diagramming.md、docs/claude/skill-gardening.md。
 #
+# 12) claude-usage(herdr の tab_bar_right command、hook ではない):
+#    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
+#    のタブバー右端に常時表示する。データ源は statusline / hooks の入力 JSON には
+#    無い唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
+#    hook 登録はしない — herdr が interval 実行して標準出力の最終行を描画する。
+#    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
+#    詳細は docs/claude/claude-usage-tabbar.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -588,6 +596,14 @@ in
   };
   home.file.".claude/hooks/claude-statusline.sh" = {
     source = repoConfig + "/claude/hooks/claude-statusline.sh";
+    executable = true;
+  };
+
+  # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
+  # hook ではない — settings.json には登録しない)。呼び出し側は
+  # config/herdr/config.toml。詳細は docs/claude/claude-usage-tabbar.md。
+  home.file.".claude/hooks/claude-usage.sh" = {
+    source = repoConfig + "/claude/hooks/claude-usage.sh";
     executable = true;
   };
 
