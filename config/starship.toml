@@ -88,6 +88,10 @@ symbol = "guix "
 [hg_branch]
 symbol = "hg "
 
+[hostname]
+ssh_only = false
+format = "[$hostname](bold blue) "
+
 [java]
 symbol = "java "
 
