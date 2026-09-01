@@ -74,6 +74,8 @@ dotfiles/
 │   ├── fix-ssh-permissions.sh
 │   ├── setup-sops-secrets.sh # host-local SOPS/.sops.yaml setup
 │   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to ~/.local/bin)
+│   ├── open-url.sh           # $BROWSER target (deployed to ~/.local/bin/open-url):
+│   │                         #   detaches the URL open so gh browse etc. don't block
 │   └── fcitx5-key-trace.pl   # fcitx5 trace redactor + trigger-key detector (#14)
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch

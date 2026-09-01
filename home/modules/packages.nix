@@ -62,4 +62,14 @@
     source = ../../scripts/hms.sh;
     executable = true;
   };
+
+  # $BROWSER target (config/shell/common_env exports it). gh browse and
+  # anything else that honors $BROWSER wait for it to exit; the system
+  # xdg-open blocks in the foreground on COSMIC (unrecognized DE → generic
+  # mode execs the browser's Exec directly), so Ctrl+C kills the browser
+  # along with the blocked shell. This wrapper detaches instead.
+  home.file.".local/bin/open-url" = {
+    source = ../../scripts/open-url.sh;
+    executable = true;
+  };
 }
