@@ -11,6 +11,14 @@ onboarding = false
 # table shared by this file, claude-statusline.sh and alacritty.toml.
 name = "catppuccin"
 
+[theme.custom]
+# Catppuccin Mocha の既定 active_row_bg は base #1E1E2E とほぼ同系の暗色で、
+# ~17 workspace を並走させるとサイドバーのどの行がアクティブか判別しづらい。
+# surface1 相当まで明るくし、accent も揺れの少ない mauve から lavender に
+# 変えてハイライト/ナビ UI 全体で目立たせる。
+active_row_bg = "#45475A"  # Mocha surface1
+accent = "#B4BEFE"         # Mocha lavender
+
 [ui]
 agent_panel_sort = "spaces"
 # ボーダーレス化: 枠線ではなく gap + 背景階調でペインを分ける(2020年代後半の
