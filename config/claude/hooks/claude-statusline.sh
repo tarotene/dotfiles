@@ -1,9 +1,11 @@
 #!/bin/sh
-# claude-statusline — ペイン内のかわいい 1 行表示 + Herdr へのメトリクス横流し。
+# claude-statusline — ペイン内の 1 行表示 + Herdr へのメトリクス横流し。
 #
 # Claude Code の statusline スクリプト。stdin の JSON からモデル・context 使用率・
-# セッションコスト・effort を取り、Dracula パステルの 1 行を stdout に出す。
-# 表示例: ✨ Fable 5 · 🧠 42% · 💰 $1.23 · ⚡ high
+# セッションコスト・effort を取り、Catppuccin Mocha の 1 行を stdout に出す。
+# 表示例: ◆ Fable 5 · ◐ 42% · $1.23 · ↯ high
+# effort は既定値(high)のときは出さない(「非デフォルト時のみ表示」の定石)。
+# 絵文字ではなく幅が安定する Unicode 幾何記号を使う(端末フォント依存の崩れを回避)。
 #
 # 同じ値を Herdr の pane.report_metadata($model/$ctx/$cost/$effort トークン)にも
 # 報告する — permission mode は statusline JSON に来ないので、そちらは
@@ -33,15 +35,15 @@ $vals
 EOF
 
 esc="$(printf '\033')"
-pink="${esc}[1;38;2;255;121;198m"    # model
-green="${esc}[38;2;80;250;123m"      # ctx < 60%
-yellow="${esc}[38;2;241;250;140m"    # ctx 60-79% / fast
-red="${esc}[38;2;255;85;85m"         # ctx >= 80%
-cyan="${esc}[38;2;139;233;253m"      # cost
-purple="${esc}[38;2;189;147;249m"    # effort
-comment="${esc}[38;2;98;114;164m"    # separators
+pink="${esc}[1;38;2;245;194;231m"    # model      (Catppuccin Mocha pink)
+green="${esc}[38;2;166;227;161m"     # ctx < 60%  (green)
+yellow="${esc}[38;2;249;226;175m"    # ctx 60-79% / fast (yellow)
+red="${esc}[38;2;243;139;168m"       # ctx >= 80% (red)
+teal="${esc}[38;2;148;226;213m"      # cost       (teal)
+lavender="${esc}[38;2;180;190;254m"  # effort     (lavender)
+overlay="${esc}[38;2;108;112;134m"   # separators (overlay0)
 reset="${esc}[0m"
-sep=" ${comment}·${reset} "
+sep=" ${overlay}·${reset} "
 
 ctx_color="$green"
 if [ -n "$ctx" ]; then
@@ -57,8 +59,8 @@ append() {
   if [ -z "$line" ]; then line="$1"; else line="${line}${sep}$1"; fi
 }
 
-[ -n "$model" ] && append "✨ ${pink}${model}${reset}"
-[ -n "$ctx" ] && append "🧠 ${ctx_color}${ctx}%${reset}"
+[ -n "$model" ] && append "◆ ${pink}${model}${reset}"
+[ -n "$ctx" ] && append "◐ ${ctx_color}${ctx}%${reset}"
 
 # 狭いペインではモデルと context だけに畳む。
 cols="${COLUMNS:-80}"
@@ -66,14 +68,14 @@ case "$cols" in '' | *[!0-9]*) cols=80 ;; esac
 if [ "$cols" -ge 60 ]; then
   if [ -n "$cost" ]; then
     cost_fmt="$(LC_ALL=C printf '%.2f' "$cost" 2>/dev/null || printf '%s' "$cost")"
-    append "💰 ${cyan}\$${cost_fmt}${reset}"
+    append "${teal}\$${cost_fmt}${reset}"
   fi
-  if [ -n "$effort" ]; then
-    if [ "$fast" = "1" ]; then
-      append "⚡ ${purple}${effort}${reset} ${yellow}fast${reset}"
-    else
-      append "⚡ ${purple}${effort}${reset}"
-    fi
+  # effort は既定値(high)のときは出さない — 非デフォルト時のみ表示する定石。
+  if [ -n "$effort" ] && [ "$effort" != "high" ]; then
+    append "↯ ${lavender}${effort}${reset}"
+  fi
+  if [ "$fast" = "1" ]; then
+    append "${yellow}fast${reset}"
   fi
 fi
 

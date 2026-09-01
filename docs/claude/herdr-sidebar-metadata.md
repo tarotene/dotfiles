@@ -23,7 +23,13 @@ Claude Code は必要な情報を 1 か所で公開していない:
 `claude-statusline.sh`(statusline、source=`claude-statusline`)がモデルとメトリクス
 を、それぞれ独立に報告する。トークン名は source 間で完全に分離してあり
 (`mode_*` vs `model`/`ctx`/`cost`/`effort`)、Herdr 側のマージ仕様がどちらでも
-壊れない。実測では source を跨いでトークン名単位でマージされる(0.7.5)。
+壊れない。実測では source を跨いでトークン名単位でマージされる(0.7.5、未再検証)。
+
+`herdr-claude-metadata.sh` はもう一つ、hook input JSON の `.cwd` から
+`git branch --show-current` を取った `branch` トークンも同じ source で報告する
+(`worktree/` プレフィクスは表示幅節約のため落とす)。git 失敗時・非 git cwd では
+空 = `null` を送るだけで、herdr 外でも無害。mode の変更検知でスキップする経路
+では git を呼ばないので、頻発イベント(PreToolUse)でのコストは増えない。
 
 ## モードの色分けは「モード毎に別トークン」で表現する
 
@@ -32,10 +38,46 @@ Herdr のサイドバートークンは `{ token = "$mode", fg = "#..." }` の**
 4 トークン(`mode_plan` / `mode_default` / `mode_accept` / `mode_bypass`)にし、
 hook がアクティブな 1 つにだけ値を入れ、残りを `null` でクリアする。config.toml
 側は 4 トークンを同じ行に並べて別々の fg を割り当てる — 値を持つのは常に 1 つ
-なので、行には 1 色のモードだけが現れる。
+なので、行には 1 色のモードだけが現れる。0.8.2 のバイナリを逆アセンブルして
+確認した制約: サイドバー行トークンのスタイルは `fg`(`#RGB`/`#RRGGBB` 厳格。
+named color は不可)+ `bold`/`dim` のみで、`bg` は指定できない。
 
-未知のモード(`auto` / `dontAsk` など)は `mode_default` トークンに実名で流す。
-古い表示を残すより、紫の実名表示のほうが正直。
+さらに色だけに頼らないよう、ラベルの記号も形で差別化する(色覚多様性対策。
+状態は色 + 形の冗長エンコードが定石):
+
+- `◇ plan` — 輪郭のみ(低リスク)
+- `◆ default` — 塗り(基準)
+- `✓ accept` — チェック(承認済み)
+- `▲ bypass` — 三角(警戒)
+
+未知のモード(`auto` / `dontAsk` など)は `mode_default` トークンに `◆ <実名>`
+で流す。古い表示を残すより実名表示のほうが正直。
+
+## 配色: Catppuccin Mocha の役割トークン
+
+Dracula から Catppuccin Mocha への着せ替え(2026-09)で、`config/herdr/config.toml`
+/ `claude-statusline.sh` / `config/alacritty/alacritty.toml` の 3 ファイルが共有する
+role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラルで置く(共通定義
+ファイルは持たない)ので、色を変える際は 3 箇所とも手で揃えること。
+
+| 役割 | Mocha トークン | hex | 使用箇所 |
+|---|---|---|---|
+| mode: plan | blue | `#89B4FA` | sidebar `$mode_plan` |
+| mode: default | mauve | `#CBA6F7` | sidebar `$mode_default`(未知モードもここ) |
+| mode: acceptEdits | green | `#A6E3A1` | sidebar `$mode_accept` |
+| mode: bypass | red | `#F38BA8` | sidebar `$mode_bypass` |
+| model 名 | pink | `#F5C2E7` | sidebar `$model` / statusline model |
+| ctx OK(<60%) | green | `#A6E3A1` | statusline |
+| ctx 注意(60–79%)/ fast | yellow | `#F9E2AF` | statusline |
+| ctx 危険(>=80%) | red | `#F38BA8` | statusline |
+| cost | teal | `#94E2D5` | statusline |
+| effort | lavender | `#B4BEFE` | statusline |
+| 控えめ情報(branch, metrics 行) | overlay1 | `#7F849C` | sidebar `$branch`/`$ctx`/`$cost`/`$effort` |
+| 区切り | overlay0 | `#6C7086` | statusline `·` |
+
+green=「許可/OK」、red=「危険」、yellow=「注意」で全ファイル一貫させ、
+サイドバーと statusline で色→意味が食い違わないようにしている(旧 Dracula 版は
+cyan がサイドバーでは plan・statusline では cost という食い違いがあった)。
 
 ## イベント選定(hook)
 

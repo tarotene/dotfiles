@@ -59,7 +59,9 @@ dotfiles/
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook), prune-branches.sh (helper for
 │   │                         #   the `git prune-branches` alias)
-│   ├── herdr/                # Herdr config: seed (bootstrap) + sidebar custom rows (managed)
+│   ├── herdr/                # Herdr config.toml (theme + sidebar rows), fully managed —
+│   │                         #   xdg.configFile deploys it verbatim (store symlink,
+│   │                         #   read-only; in-app settings writes fail by design)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/

@@ -59,51 +59,51 @@ builtin_box_drawing = true
 
 [colors.primary]
 # Foreground color
-foreground = "#F8F8F2"
+foreground = "#CDD6F4"
 # Background color
-background = "#282A36" # Dracula theme background
+background = "#1E1E2E" # Catppuccin Mocha background
 
 [colors.normal]
 # Black
-black = "#000000"
+black = "#45475A"
 # Red
-red = "#FF5555"
+red = "#F38BA8"
 # Green
-green = "#50FA7B"
+green = "#A6E3A1"
 # Yellow
-yellow = "#F1FA8C"
+yellow = "#F9E2AF"
 # Blue
-blue = "#BD93F9"
+blue = "#89B4FA"
 # Magenta
-magenta = "#FF79C6"
+magenta = "#F5C2E7"
 # Cyan
-cyan = "#8BE9FD"
+cyan = "#94E2D5"
 # White
-white = "#BFBFBF"
+white = "#BAC2DE"
 
 [colors.bright]
 # Bright black
-black = "#4D4D4D"
+black = "#585B70"
 # Bright red
-red = "#FF6E67"
+red = "#F38BA8"
 # Bright green
-green = "#5AF78E"
+green = "#A6E3A1"
 # Bright yellow
-yellow = "#F4F99D"
+yellow = "#F9E2AF"
 # Bright blue
-blue = "#CAA9FA"
+blue = "#89B4FA"
 # Bright magenta
-magenta = "#FF92D0"
+magenta = "#F5C2E7"
 # Bright cyan
-cyan = "#9AEDFE"
+cyan = "#94E2D5"
 # Bright white
-white = "#E6E6E6"
+white = "#A6ADC8"
 
 [colors.cursor]
 # Cursor text color
 text = "CellBackground"
 # Cursor color
-cursor = "#F8F8F2"
+cursor = "#F5E0DC"
 
 [cursor]
 # Cursor style

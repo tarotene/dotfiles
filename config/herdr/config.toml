@@ -6,33 +6,57 @@
 onboarding = false
 
 [theme]
-# Match the alacritty palette (Dracula) so panes and chrome read as one UI.
-name = "dracula"
+# Match the alacritty palette (Catppuccin Mocha) so panes and chrome read as
+# one UI. See docs/claude/herdr-sidebar-metadata.md for the full role→color
+# table shared by this file, claude-statusline.sh and alacritty.toml.
+name = "catppuccin"
 
 [ui]
 agent_panel_sort = "spaces"
+# ボーダーレス化: 枠線ではなく gap + 背景階調でペインを分ける(2020年代後半の
+# TUI 潮流。Catppuccin の base/mantle/crust 3 層背景もこの前提)。
+pane_borders = false
+pane_outer_borders = false
+pane_gaps = true
+# 状態は色だけでなく形でも区別する(色覚多様性対策)。
+status_indicators = "symbols"
+# タブバー右側: 3 ホスト × 2 identity 運用でどのマシン/時刻かを常時表示。
+tab_bar_right = [
+  { type = "hostname" },
+  { type = "datetime", format = "%H:%M" },
+]
+tab_bar_right_separator = "·"
 
 # Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
-# $model/$ctx/$cost/$effort は config/claude/hooks/claude-statusline.sh が
-# pane.report_metadata で注入する。トークンの色は静的指定しかできないので、
-# permission mode の色分けは「モード毎に別トークン + 非アクティブは reporter 側で
-# null クリア」で表現する(1 行に 4 トークン並ぶが、値を持つのは常に 1 つ)。
-# 配色は Dracula パレット: cyan #8BE9FD / purple #BD93F9 / yellow #F1FA8C /
-# red #FF5555 / pink #FF79C6 / comment #6272A4。
+# $model/$ctx/$cost/$effort は config/claude/hooks/claude-statusline.sh、$branch も
+# herdr-claude-metadata.sh が(git 由来で)pane.report_metadata で注入する。トークンの
+# 色は静的指定しかできないので、permission mode の色分けは「モード毎に別トークン +
+# 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
+# 値を持つのは常に 1 つ)。
+#
+# 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
+#   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
+#   red #F38BA8(bypass) / pink #F5C2E7(model) / overlay1 #7F849C(控えめ情報)。
+[ui.sidebar.agents]
+row_gap = 0
+
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "workspace", "tab"],
-  ["terminal_title_stripped"],
   [
-    { token = "$mode_plan", fg = "#8BE9FD", bold = true },
-    { token = "$mode_default", fg = "#BD93F9", bold = true },
-    { token = "$mode_accept", fg = "#F1FA8C", bold = true },
-    { token = "$mode_bypass", fg = "#FF5555", bold = true },
-    { token = "$model", fg = "#FF79C6" },
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
   ],
   [
-    { token = "$ctx", fg = "#6272A4" },
-    { token = "$cost", fg = "#6272A4" },
-    { token = "$effort", fg = "#6272A4", dim = true },
+    { token = "$mode_plan", fg = "#89B4FA", bold = true },
+    { token = "$mode_default", fg = "#CBA6F7", bold = true },
+    { token = "$mode_accept", fg = "#A6E3A1", bold = true },
+    { token = "$mode_bypass", fg = "#F38BA8", bold = true },
+    { token = "$model", fg = "#F5C2E7" },
+  ],
+  [
+    { token = "$ctx", fg = "#7F849C" },
+    { token = "$cost", fg = "#7F849C" },
+    { token = "$effort", fg = "#7F849C", dim = true },
   ],
 ]
