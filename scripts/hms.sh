@@ -19,6 +19,12 @@ set -euo pipefail
 # The default ref is the remote main so the apply never depends on which
 # branch (or how dirty) any local checkout happens to be.  Applying a
 # worktree is possible but only ever explicit: `hms .`.
+#
+# nix caches a github:-style flake ref's resolution for tarball-ttl (1h by
+# default). Right after a merge, that means `hms` can silently apply an hour-old
+# main and still print "Done." (#48) — so for a non-local ref (anything that
+# isn't a path on disk) we force a refresh before switching, and print the
+# revision actually applied so a stale apply leaves a trace instead of none.
 
 DEFAULT_REF="github:tarotene/dotfiles"
 FCITX5_UNIT="app-fcitx5@autostart.service"
@@ -45,6 +51,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 host="$(hostname)"
+
+# Remote flake refs (github:, git+ssh:, ...) are the ones nix caches; a local
+# path (`.` or a checkout directory) always reads the current tree, so there is
+# nothing to refresh.
+if [[ ! -e "$ref" ]]; then
+    echo "==> nix flake metadata --refresh ${ref}"
+    if revision="$(nix flake metadata --refresh --json "$ref" 2>/dev/null | jq -r '.revision // empty')" && [[ -n "$revision" ]]; then
+        echo "==> applying revision ${revision}"
+    else
+        echo "==> could not resolve a revision for ${ref} (offline?); continuing with whatever switch resolves" >&2
+    fi
+fi
 
 echo "==> home-manager switch --flake ${ref}#${host} -b backup"
 home-manager switch --flake "${ref}#${host}" -b backup
