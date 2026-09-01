@@ -33,8 +33,7 @@ in
     enable = true;
 
     # Orchestrate init: source every literal module under zsh/modules in
-    # numerical order, then the machine-local file if present — the same loading
-    # scheme config/zsh/.zshrc uses.
+    # numerical order, then the machine-local file if present.
     initContent = ''
       ZSHRC_MODULE_DIR="''${XDG_CONFIG_HOME:-$HOME/.config}/zsh/modules"
       if [[ -d "$ZSHRC_MODULE_DIR" ]]; then

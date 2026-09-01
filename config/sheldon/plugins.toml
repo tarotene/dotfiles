@@ -29,6 +29,3 @@ apply = ["defer"]
 [plugins.zsh-completions]
 github = "zsh-users/zsh-completions"
 apply = ["defer"]
-
-[plugins.zsh-lazy]
-inline = 'zsh-defer source $ZDOTDIR/.zshrc.lazy'
