@@ -84,9 +84,19 @@
 #    /model で日常的に切り替える対象なので home-manager は触らない。
 #    詳細は docs/claude/opusplan-model-aliases.md。
 #
-# Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
-# config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
-# バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
+# 11) 個人スキル(diagramming, skill-gardening):
+#    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
+#    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
+#    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
+#    含める等)を持つ。skill-gardening はこの知見をどう dotfiles(公開)に固定化
+#    するかのメタスキルで、公開リポジトリ向けサニタイズ規則の正本を持つ。
+#    hook のような settings.json 登録は不要(スキルは ~/.claude/skills/ を
+#    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
+#    docs/claude/diagramming.md、docs/claude/skill-gardening.md。
+#
+# Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
+# スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
+# 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
 #
 # ~/.claude/settings.json は Claude-Code-owned(CLI が実行時に書き換える)なので、
 # hook の登録だけは store symlink にできない — desktop.nix の fcitx5 プロファイルと
@@ -620,6 +630,17 @@ in
   home.file.".claude/commands/codex-plan-review.md".source =
     repoConfig + "/claude/commands/codex-plan-review.md";
   home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
+
+  # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。
+  # cases.md は追記型の失敗事例集で、追記時のサニタイズ規則は skill-gardening 側を見る。
+  home.file.".claude/skills/diagramming/SKILL.md".source =
+    repoConfig + "/claude/skills/diagramming/SKILL.md";
+  home.file.".claude/skills/diagramming/cases.md".source =
+    repoConfig + "/claude/skills/diagramming/cases.md";
+  # skill-gardening: 知見をこの公開リポジトリにスキル化するときのメタスキル
+  # (器の判断・配線チェックリスト・公開リポジトリ向けサニタイズ規則の正本)。
+  home.file.".claude/skills/skill-gardening/SKILL.md".source =
+    repoConfig + "/claude/skills/skill-gardening/SKILL.md";
 
   # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう
   # concatMapStrings(区切り文字列を要素ごとに前置)で組む — concatMapStringsSep
