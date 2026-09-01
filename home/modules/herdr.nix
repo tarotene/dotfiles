@@ -32,30 +32,26 @@
 
   xdg.configFile."herdr/config.toml".source = ../../config/herdr/config.toml;
 
+  # herdr's config.toml is a real file with switch history behind it (a prior
+  # -b backup can leave config.toml.backup sitting next to it), so it hits the
+  # generic `.backup` collision quarantine (#64) — see home/modules/quarantine.nix
+  # for why this is a shared helper rather than a copy of the logic here.
+  dotfiles.quarantine.managedFiles = [ ".config/herdr/config.toml" ];
+
   # 自前インストールの ~/.local/bin/herdr は PATH で ~/.nix-profile/bin に先行する
   # ので、残っていると旧版が nix の herdr を shadow し続ける。desktop.nix の
   # quarantineStrayFcitx5Autostart と同型に、消さずに改名して退避する
   # (「手で消すこと」という手順書は、ゼロ手作業を憲章にした repo には置けない)。
   # symlink(store 由来のもの)は対象外 — 二重管理を避けるため、real file だけを
-  # 見る。
+  # 見る。この経路は herdr 固有(quarantine.nix の対象は xdg.configFile /
+  # home.file の管理下ファイルのみ)なのでここに残す。
   #
   # DAG 位置は entryBefore [ "checkLinkTargets" ] — entryAfter [ "writeBoundary" ]
-  # では手遅れになる。checkLinkTargets は writeBoundary より前に走り、herdr 自身が
-  # 書いた real file の ~/.config/herdr/config.toml と、過去の `-b backup` が残した
-  # config.toml.backup が両方 activation 前に存在すると「退避先が既に埋まっている」
-  # として `home-manager switch -b backup` 全体を止める(hms がここで死ぬ)。
+  # では手遅れになる。checkLinkTargets は writeBoundary より前に走るため。
   home.activation.quarantineSelfInstalledHerdr = lib.hm.dag.entryBefore [ "checkLinkTargets" ] ''
     stray="$HOME/.local/bin/herdr"
     if [ -f "$stray" ] && [ ! -L "$stray" ]; then
       run mv -f "$stray" "$stray.pre-nix"
-    fi
-
-    cfg="$HOME/.config/herdr/config.toml"
-    if [ -e "$cfg" ] && [ ! -L "$cfg" ]; then
-      run mv -f "$cfg" "$cfg.pre-nix"
-    fi
-    if [ -e "$cfg.backup" ]; then
-      run mv -f "$cfg.backup" "$cfg.backup.pre-nix"
     fi
   '';
 }
