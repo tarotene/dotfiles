@@ -1,10 +1,13 @@
 #!/bin/sh
-# herdr-claude-metadata — Claude Code の permission mode を Herdr サイドバーに流す。
+# herdr-claude-metadata — Claude Code の permission mode(+ git branch)を
+# Herdr サイドバーに流す。
 #
 # Herdr のトークン色は静的指定しかできないので、モード毎に別トークン
 # (mode_plan / mode_default / mode_accept / mode_bypass)を使い、アクティブな
 # 1 つにだけ値を入れて他は null でクリアする。config/herdr/config.toml が
-# 各トークンに Dracula パステルの fg を割り当てる。
+# 各トークンに Catppuccin Mocha の fg を割り当てる。ラベルの記号も形で差別化
+# する(色だけに頼らない状態表示): ◇ plan(低リスク・輪郭)/ ◆ default(基準・
+# 塗り)/ ✓ accept / ▲ bypass(警戒)。
 #
 # ソケット書き込みは herdr 統合 hook(~/.claude/hooks/herdr-agent-state.sh、
 # herdr 管理・編集禁止)と同じパターン: unix socket に JSON 1 行、失敗は無音。
@@ -26,10 +29,11 @@ command -v python3 >/dev/null 2>&1 || exit 0
 vals="$(jq -r '[
   (.hook_event_name // ""),
   (.permission_mode // ""),
-  (if .agent_id then "1" else "0" end)
+  (if .agent_id then "1" else "0" end),
+  (.cwd // "")
 ] | @tsv' "$hook_input_file" 2>/dev/null)" || exit 0
 tab="$(printf '\t')"
-IFS="$tab" read -r event mode subagent <<EOF
+IFS="$tab" read -r event mode subagent cwd <<EOF
 $vals
 EOF
 
@@ -60,7 +64,16 @@ case "$event" in
     ;;
 esac
 
-HCM_EVENT="$event" HCM_MODE="$mode" HCM_STATE_FILE="$state_file" python3 - <<'PY'
+# 実際に送る段になってから git ブランチを取る(mode 未変化でスキップする経路
+# では呼ばない)。worktree/ プレフィクスは表示幅節約のため落とす。取得失敗は
+# 単に空 — herdr 外・非 git cwd でも無害。
+branch=""
+if [ -n "$cwd" ]; then
+  branch="$(git -C "$cwd" branch --show-current 2>/dev/null || true)"
+  branch="${branch#worktree/}"
+fi
+
+HCM_EVENT="$event" HCM_MODE="$mode" HCM_BRANCH="$branch" HCM_STATE_FILE="$state_file" python3 - <<'PY'
 import json
 import os
 import random
@@ -69,24 +82,26 @@ import time
 
 event = os.environ["HCM_EVENT"]
 mode = os.environ["HCM_MODE"]
+branch = os.environ.get("HCM_BRANCH") or None
 state_file = os.environ["HCM_STATE_FILE"]
 pane_id = os.environ["HERDR_PANE_ID"]
 socket_path = os.environ["HERDR_SOCKET_PATH"]
 
 LABELS = {
     "plan": ("mode_plan", "◇ plan"),
-    "default": ("mode_default", "◈ default"),
+    "default": ("mode_default", "◆ default"),
     "acceptEdits": ("mode_accept", "✓ accept"),
-    "bypassPermissions": ("mode_bypass", "⚡ bypass"),
+    "bypassPermissions": ("mode_bypass", "▲ bypass"),
 }
 tokens = {name: None for name, _ in LABELS.values()}
+tokens["branch"] = None if event == "SessionEnd" else branch
 if event != "SessionEnd":
     if mode in LABELS:
         name, label = LABELS[mode]
     else:
         # 未知のモード(auto / dontAsk など)は default 用トークンに実名で流す —
-        # 古い表示を残すよりは紫の実名表示のほうが正直。
-        name, label = "mode_default", f"◈ {mode}"
+        # 古い表示を残すよりは実名表示のほうが正直。
+        name, label = "mode_default", f"◆ {mode}"
     tokens[name] = label
 
 params = {
