@@ -28,8 +28,14 @@ pane_outer_borders = false
 pane_gaps = true
 # 状態は色だけでなく形でも区別する(色覚多様性対策)。
 status_indicators = "symbols"
-# タブバー右側: 3 ホスト × 2 identity 運用でどのマシン/時刻かを常時表示。
+# タブバー右側: Claude の usage(5h / 週間 rate limit)+ どのマシン/時刻かを常時表示。
+# usage セグメントは ~/.claude/hooks/claude-usage.sh(home/modules/claude.nix が
+# 配備、Claude Code hook ではない)が非公開 API(/usage コマンドの内部エンドポイント)
+# から取る。壊れたときの症状は「タブバーからこのセグメントが消える」だけ(herdr の
+# command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
+# docs/claude/claude-usage-tabbar.md。
 tab_bar_right = [
+  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage.sh\"", interval_seconds = 60, timeout_seconds = 10 },
   { type = "hostname" },
   { type = "datetime", format = "%H:%M" },
 ]

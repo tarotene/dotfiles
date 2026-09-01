@@ -52,6 +52,13 @@ Design and rationale for the hooks and commands deployed from
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
   Mode は *エイリアス* のペア: `opus` を Fable 5 に差し替えて「Plan 中は Fable
   5(1M)、実行中は Sonnet 5」にする + `fallbackModel`。
+- [`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) — Herdr
+  sidebar: per-agent Claude mode/model/metrics via pane metadata (2-channel:
+  hook for permission mode, statusline for model/ctx/cost/effort).
+- [`claude-usage-tabbar.md`](claude/claude-usage-tabbar.md) — Herdr tab bar:
+  Claude rate-limit usage (5h session window / weekly per-model cap) with
+  burn-rate prediction, from the undocumented `/usage` API (fail-soft: the
+  segment just disappears).
 
 ## Investigation records
 

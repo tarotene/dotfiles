@@ -159,6 +159,16 @@ jobs:
       - name: pr-gate.sh --selftest
         run: bash ./config/claude/hooks/pr-gate.sh --selftest
 
+      # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
+      # runs it) but lives in this directory for the shellcheck coverage above.
+      # The selftest exercises label mapping over limits[], the burn-rate
+      # prediction (endpoint slope, min-span, reset-crossing), series reset on
+      # resets_at change / percent drop, and the token-never-leaks assertion —
+      # all against fixtures and a stubbed curl, without network or real
+      # credentials (docs/claude/claude-usage-tabbar.md).
+      - name: claude-usage.sh --selftest
+        run: sh ./config/claude/hooks/claude-usage.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not

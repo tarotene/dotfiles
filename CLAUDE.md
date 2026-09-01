@@ -54,7 +54,8 @@ dotfiles/
 │   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
 │   │                         #   herdr-sidebar-metadata + statusline + output
-│   │                         #   schema + slash commands
+│   │                         #   schema + slash commands, claude-usage (herdr
+│   │                         #   tab-bar command, not a hook)
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook), prune-branches.sh (helper for
@@ -97,8 +98,10 @@ dotfiles/
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
 │   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
-│   │   └── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
-│   │                         #   Fable 5 に差し替え、Plan 中だけ別モデルにする
+│   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
+│   │   │                     #   Fable 5 に差し替え、Plan 中だけ別モデルにする
+│   │   └── claude-usage-tabbar.md # Herdr tab bar: 5h/weekly rate-limit usage +
+│   │                         #   burn-rate prediction, from the undocumented /usage API
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
