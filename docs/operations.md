@@ -103,10 +103,12 @@ home-manager management (like `herdr/config.toml` in #57) already exists as a
 real file on disk with a stale `.backup` next to it — `checkLinkTargets` runs
 before `writeBoundary`, so an `entryAfter [ "writeBoundary" ]` quarantine (the
 DAG position used elsewhere, e.g. `quarantineStrayFcitx5Autostart`) never gets
-a chance to clear the path first. The fix is a quarantine activation script
-pinned to `entryBefore [ "checkLinkTargets" ]` that moves both the real file
-and its stale `.backup` out of the way before the check runs — see
-`quarantineSelfInstalledHerdr` in `home/modules/herdr.nix` for the pattern.
+a chance to clear the path first. `home/modules/quarantine.nix` (#64) is the
+shared fix: add the new file's `$HOME`-relative path to
+`dotfiles.quarantine.managedFiles` and its `entryBefore [ "checkLinkTargets" ]`
+activation script moves both the real file and its stale `.backup` out of the
+way before the check runs — see `home/modules/herdr.nix` for a module using
+it.
 
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
