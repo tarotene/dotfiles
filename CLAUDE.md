@@ -92,7 +92,9 @@ dotfiles/
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
 │   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
-│   │   └── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
+│   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
+│   │   └── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
+│   │                         #   Fable 5 に差し替え、Plan 中だけ別モデルにする
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
