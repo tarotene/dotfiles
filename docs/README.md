@@ -49,6 +49,9 @@ Design and rationale for the hooks and commands deployed from
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
+- [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
+  Mode は *エイリアス* のペア: `opus` を Fable 5 に差し替えて「Plan 中は Fable
+  5(1M)、実行中は Sonnet 5」にする + `fallbackModel`。
 
 ## Investigation records
 

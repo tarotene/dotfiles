@@ -76,6 +76,14 @@
 #    静的指定のみなので、mode の色分けは「モード毎に別トークン + 非アクティブは
 #    null クリア」で表現する。詳細は docs/claude/herdr-sidebar-metadata.md。
 #
+# 10) Opus Plan Mode のモデル実体(settings.json の env + fallbackModel):
+#    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
+#    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
+#    別に宣言できる。ここで opus エイリアスだけを Fable 5 に差し替えることで
+#    「Plan 中は Fable 5(1M)、実行中は Sonnet 5」を得る。model キー自体は
+#    /model で日常的に切り替える対象なので home-manager は触らない。
+#    詳細は docs/claude/opusplan-model-aliases.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンドは
 # config/claude/ 配下に literal で置き、home.file で配備する。どの hook も必要な
 # バイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -126,6 +134,36 @@ let
   # 完全一致でキーを削除する対象。今回は herdr-sidebar-metadata を新規導入するので
   # 空 — 将来この機能自体を取り下げるときに statusLineCmd をここへ移す。
   retiredStatusLineCommands = [ ];
+
+  # Opus Plan Mode のエイリアス実体。
+  #
+  # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
+  # 解決する(claude 2.1.252 の実測: Plan 側が Hl() を、実行側が dp() を呼ぶ)。
+  # その Hl() は ANTHROPIC_DEFAULT_OPUS_MODEL を最優先で返し、未設定ならカタログ
+  # 既定の Opus に落ちる — dp() も ANTHROPIC_DEFAULT_SONNET_MODEL で同型。つまり
+  # 「Plan 中だけ別のモデルを使う」はこの env 1 本で表現できる。
+  #
+  # ここでは opus エイリアスだけを Fable 5 に差し替える。sonnet エイリアスは
+  # カタログ既定(= Sonnet 5)がそのまま望みの値なので宣言しない — 宣言すると
+  # モデル世代が上がったときに古い ID に固定してしまう。
+  #
+  # 副作用: opus エイリアスは *全体* が Fable 5 になる。`/model opus` を選んでも
+  # 実体は Fable 5 なので、素の Opus を使いたいときはエイリアスではなくモデル名を
+  # 直接指定する(`/model claude-opus-5`)。
+  claudeModelEnv = {
+    ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-fable-5";
+  };
+
+  # primary が overload / 利用不可のときに順に試すモデル(settings スキーマの
+  # fallbackModel)。Plan 中の Fable が詰まったら Opus 5 に落ちる。エイリアスでは
+  # なく具体 ID を書く — "opus" と書くと上の env で Fable 5 に解決され、
+  # fallback が自分自身を指してしまう。
+  claudeFallbackModels = [ "claude-opus-5" ];
+
+  # かつて宣言したが撤回した env キー。activation が settings.json の .env から
+  # 削除する。retiredPermissionRules と同じく「かつて自分が書いたキー」だけを
+  # 消す — 無条件 del にしないのは、他の経路で入れた env を奪わないため。
+  retiredModelEnvKeys = [ ];
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -314,6 +352,54 @@ let
       tmp="$(mktemp "$settings.hm.XXXXXX")"
       "$jq" --arg cmd "$desired" \
         '.statusLine = { type: "command", command: $cmd }' "$settings" > "$tmp"
+      write_back "$tmp"
+    fi
+  '';
+
+  # settings.json の .env と .fallbackModel を宣言に合わせる。
+  # 使い方: sync-claude-model-config <settings> <desired-json> <retired-env-keys-json>
+  #   desired = { env: {…}, fallbackModel: […] }
+  #   retire を先に処理してから宣言値を書くので、同じキーを両方に置いたら宣言が勝つ。
+  #   .env の他のキー・.model・他のトップレベルキーには一切触らない — .model は
+  #   /model で本人が切り替える対象で、宣言的に固定すると UI の選択を毎 switch で
+  #   奪ってしまう。
+  syncModelConfig = pkgs.writeShellScript "sync-claude-model-config" ''
+    set -eu
+    settings="$1"
+    desired="$2"
+    retired="$3"
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    write_back() {
+      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
+      mv "$1" "$settings"
+    }
+
+    tmp="$(mktemp "$settings.hm.XXXXXX")"
+    "$jq" --argjson desired "$desired" --argjson retired "$retired" '
+      # 撤回: 宣言から外したキーだけを .env から外す(.env が無ければ何もしない)。
+      reduce $retired[] as $k (
+        .;
+        if (.env | type) == "object" then del(.env[$k]) else . end
+      )
+      # 宣言: .env の該当キーだけを宣言値にする。
+      | reduce (($desired.env // {}) | to_entries[]) as $e (.; .env[$e.key] = $e.value)
+      # 撤回で空になった .env はキーごと畳む(「入れる前の形」に戻す)。
+      | if (.env | type) == "object" and (.env | length) == 0 then del(.env) else . end
+      | if (($desired.fallbackModel // []) | length) > 0
+        then .fallbackModel = $desired.fallbackModel
+        else . end
+    ' "$settings" > "$tmp"
+
+    # 定常状態では settings.json に触らない(mtime も動かさない)。
+    if "$jq" -e -s '.[0] == .[1]' "$settings" "$tmp" >/dev/null; then
+      rm -f "$tmp"
+    else
       write_back "$tmp"
     fi
   '';
@@ -564,6 +650,22 @@ in
       ${lib.escapeShellArg statusLineCmd}${
         lib.concatMapStrings (c: " \\\n      " + lib.escapeShellArg c) retiredStatusLineCommands
       }
+  '';
+
+  # settings.json の .env / .fallbackModel を宣言に合わせる。hooks・statusLine・
+  # permissions と同じ DAG 位置で、独立した activation として走らせる(jq マージの
+  # 責務を混ぜない)。
+  home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${syncModelConfig} "$HOME/.claude/settings.json" \
+      ${
+        lib.escapeShellArg (
+          builtins.toJSON {
+            env = claudeModelEnv;
+            fallbackModel = claudeFallbackModels;
+          }
+        )
+      } \
+      ${lib.escapeShellArg (builtins.toJSON retiredModelEnvKeys)}
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ
