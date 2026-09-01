@@ -76,7 +76,16 @@
 #    静的指定のみなので、mode の色分けは「モード毎に別トークン + 非アクティブは
 #    null クリア」で表現する。詳細は docs/claude/herdr-sidebar-metadata.md。
 #
-# 10) Opus Plan Mode のモデル実体(settings.json の env + fallbackModel):
+# 10) worktree-fresh-base(SessionStart, matcher: startup|resume):
+#    herdr の Workspace Fork は親チェックアウトの HEAD を fetch なしで使うため、
+#    新しい worktree が古い base から生まれることがある。まだ何も積んでいない
+#    pristine な worktree(作業ツリークリーン かつ ahead==0 かつ behind>0)に限り、
+#    fetch 後に `git merge --ff-only` で origin/<base> へ黙って揃える。履行歴を
+#    持つブランチは動かさない — 既存 pr-gate.sh の base 追従 advisory とは非対称に
+#    「本当に何もない」ケースだけを能動的に解消する。詳細は
+#    docs/claude/worktree-fresh-base.md。
+#
+# 11) Opus Plan Mode のモデル実体(settings.json の env + fallbackModel):
 #    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
 #    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
 #    別に宣言できる。ここで opus エイリアスだけを Fable 5 に差し替えることで
@@ -84,7 +93,7 @@
 #    /model で日常的に切り替える対象なので home-manager は触らない。
 #    詳細は docs/claude/opusplan-model-aliases.md。
 #
-# 11) 個人スキル(diagramming, skill-gardening):
+# 12) 個人スキル(diagramming, skill-gardening):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -94,7 +103,7 @@
 #    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
 #    docs/claude/diagramming.md、docs/claude/skill-gardening.md。
 #
-# 12) claude-usage(herdr の tab_bar_right command、hook ではない):
+# 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
 #    のタブバー右端に常時表示する。データ源は statusline / hooks の入力 JSON には
 #    無い唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
@@ -131,6 +140,7 @@ let
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
+  worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
 
   # かつて登録したが撤回した hook。activation が全ホストの settings.json から
   # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
@@ -277,6 +287,7 @@ let
     git_worktree_allow="$1";    shift
     git_stash_guard="$1";       shift
     herdr_metadata="$1";        shift
+    worktree_fresh_base="$1";   shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -297,6 +308,12 @@ let
     # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
     # ない。resume は別ログインからの再開があり得るので含める。
     register SessionStart "startup|resume" "$sign_prewarm" 120
+    # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
+    # fast-forward する。pr-gate の SessionStart advisory(base 追従)より先に
+    # 列挙しているが、Claude Code は同一イベントの hook を並列実行するため
+    # 逐次を保証しない — レースは許容し、動かした場合だけこの hook 自身が
+    # additionalContext で報告する(docs/claude/worktree-fresh-base.md)。
+    register SessionStart "startup|resume" "$worktree_fresh_base" 30
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
     # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
@@ -607,6 +624,13 @@ in
     executable = true;
   };
 
+  # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
+  # fast-forward する SessionStart hook。
+  home.file.".claude/hooks/worktree-fresh-base.sh" = {
+    source = repoConfig + "/claude/hooks/worktree-fresh-base.sh";
+    executable = true;
+  };
+
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
   home.file.".claude/hooks/pr-gate.sh" = {
@@ -679,7 +703,8 @@ in
       ${lib.escapeShellArg prGateStopCmd} \
       ${lib.escapeShellArg gitWorktreeAllowCmd} \
       ${lib.escapeShellArg gitStashGuardCmd} \
-      ${lib.escapeShellArg herdrMetadataCmd}
+      ${lib.escapeShellArg herdrMetadataCmd} \
+      ${lib.escapeShellArg worktreeFreshBaseCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

@@ -59,6 +59,9 @@ Design and rationale for the hooks and commands deployed from
   Claude rate-limit usage (5h session window / weekly per-model cap) with
   burn-rate prediction, from the undocumented `/usage` API (fail-soft: the
   segment just disappears).
+- [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
+  hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
+  fast-forward する。
 
 ## Investigation records
 
