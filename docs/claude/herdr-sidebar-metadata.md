@@ -67,6 +67,7 @@ role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラ�
 | mode: acceptEdits | green | `#A6E3A1` | sidebar `$mode_accept` |
 | mode: bypass | red | `#F38BA8` | sidebar `$mode_bypass` |
 | model 名 | pink | `#F5C2E7` | sidebar `$model` / statusline model |
+| リポ名 | peach | `#FAB387` | statusline 先頭(セッション識別子、狭幅でも残す) |
 | ctx OK(<60%) | green | `#A6E3A1` | statusline |
 | ctx 注意(60–79%)/ fast | yellow | `#F9E2AF` | statusline |
 | ctx 危険(>=80%) | red | `#F38BA8` | statusline |
@@ -74,6 +75,8 @@ role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラ�
 | effort | lavender | `#B4BEFE` | statusline |
 | 控えめ情報(branch, metrics 行) | overlay1 | `#7F849C` | sidebar `$branch`/`$ctx`/`$cost`/`$effort` |
 | 区切り | overlay0 | `#6C7086` | statusline `·` |
+| sidebar active row 背景 | surface1(手動上書き) | `#45475A` | `config/herdr/config.toml` `[theme.custom].active_row_bg` |
+| ui accent(ハイライト/ナビ) | lavender(手動上書き) | `#B4BEFE` | `config/herdr/config.toml` `[theme.custom].accent` |
 
 green=「許可/OK」、red=「危険」、yellow=「注意」で全ファイル一貫させ、
 サイドバーと statusline で色→意味が食い違わないようにしている(旧 Dracula 版は
@@ -109,6 +112,16 @@ statusline はストリーミング中 ~300ms 毎に再実行され得る。ソ�
 終了イベントが無いので、両チャネルとも `ttl_ms = 4h` を保険にする — クラッシュや
 kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `applies_to_source` で
 横断クリアできるかは未検証のため、初版では ttl 任せにしている。
+
+## アクティブ行の視認性(`[theme.custom]`)
+
+catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系の暗色で、
+~17 workspace を並走させるとサイドバーのどの行がフォーカス中かが判別しづらい。
+`config/herdr/config.toml` の `[theme.custom]` でテーマの上から
+`active_row_bg = "#45475A"`(surface1)・`accent = "#B4BEFE"`(lavender)を
+上書きし、ハイライトとナビ UI 全体で明確な差を作る。`herdr --default-config`
+(0.8.2)で確認した通り `[theme.custom]` はテーマ本体を書き換えずに個別トークン
+だけ差し替えられるので、テーマ更新に追従したまま維持できる。
 
 ## 既知の制約・運用ノート
 

@@ -1,11 +1,19 @@
 #!/bin/sh
 # claude-statusline — ペイン内の 1 行表示 + Herdr へのメトリクス横流し。
 #
-# Claude Code の statusline スクリプト。stdin の JSON からモデル・context 使用率・
-# セッションコスト・effort を取り、Catppuccin Mocha の 1 行を stdout に出す。
-# 表示例: ◆ Fable 5 · ◐ 42% · $1.23 · ↯ high
+# Claude Code の statusline スクリプト。stdin の JSON からリポ名・モデル・
+# context 使用率・セッションコスト・effort を取り、Catppuccin Mocha の 1 行を
+# stdout に出す。表示例: ■ dotfiles · ◆ Fable 5 · ◐ 42% · $1.23 · ↯ high
 # effort は既定値(high)のときは出さない(「非デフォルト時のみ表示」の定石)。
 # 絵文字ではなく幅が安定する Unicode 幾何記号を使う(端末フォント依存の崩れを回避)。
+#
+# 先頭のリポ名(■)は ~17 workspace を並走させたときに「メインペインがどの
+# セッションか」を判別するための識別子。herdr worktree 配下では
+# `--show-toplevel` が worktree-xxx を返してしまうため、`--git-common-dir` の
+# 親ディレクトリ名を使う(通常チェックアウトでも同じ導出で repo 名になる)。
+# git 呼び出しはプロジェクトディレクトリ毎に 1 回だけ行い、statusline の
+# 高頻度実行(ストリーミング中 ~300ms 毎)に合わせて結果をキャッシュする。
+# 狭幅折り畳み(60 桁未満)でもリポ名だけは残す — それが表示の本命。
 #
 # 同じ値を Herdr の pane.report_metadata($model/$ctx/$cost/$effort トークン)にも
 # 報告する — permission mode は statusline JSON に来ないので、そちらは
@@ -27,14 +35,32 @@ vals="$(jq -r '[
   (.context_window.used_percentage // null | if . == null then "" else (round | tostring) end),
   (.cost.total_cost_usd // null | if . == null then "" else tostring end),
   (.effort.level // ""),
-  (if .fast_mode == true then "1" else "0" end)
+  (if .fast_mode == true then "1" else "0" end),
+  (.workspace.project_dir // .workspace.current_dir // .cwd // "")
 ] | @tsv' "$input_file" 2>/dev/null)" || exit 0
 tab="$(printf '\t')"
-IFS="$tab" read -r model ctx cost effort fast <<EOF
+IFS="$tab" read -r model ctx cost effort fast project_dir <<EOF
 $vals
 EOF
 
+# リポ名(project_dir 毎にキャッシュ)。--show-toplevel は herdr worktree だと
+# worktree-xxx を返すので、--git-common-dir の親ディレクトリ名を使う。
+repo=""
+if [ -n "$project_dir" ]; then
+  repo_cache="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline-repo.$(printf '%s' "$project_dir" | tr -c 'A-Za-z0-9_-' '_')"
+  if [ -f "$repo_cache" ]; then
+    repo="$(cat "$repo_cache" 2>/dev/null)" || repo=""
+  else
+    common_dir="$(cd "$project_dir" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common_dir=""
+    if [ -n "$common_dir" ]; then
+      repo="$(basename "$(dirname "$common_dir")")"
+      printf '%s' "$repo" >"$repo_cache" 2>/dev/null || true
+    fi
+  fi
+fi
+
 esc="$(printf '\033')"
+peach="${esc}[1;38;2;250;179;135m"   # repo       (Catppuccin Mocha peach)
 pink="${esc}[1;38;2;245;194;231m"    # model      (Catppuccin Mocha pink)
 green="${esc}[38;2;166;227;161m"     # ctx < 60%  (green)
 yellow="${esc}[38;2;249;226;175m"    # ctx 60-79% / fast (yellow)
@@ -59,6 +85,7 @@ append() {
   if [ -z "$line" ]; then line="$1"; else line="${line}${sep}$1"; fi
 }
 
+[ -n "$repo" ] && append "■ ${peach}${repo}${reset}"
 [ -n "$model" ] && append "◆ ${pink}${model}${reset}"
 [ -n "$ctx" ] && append "◐ ${ctx_color}${ctx}%${reset}"
 
