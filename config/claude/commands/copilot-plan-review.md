@@ -1,9 +1,9 @@
 ---
-description: 執筆中のプランを Codex に中間レビューさせる（advisory・ゲートなし）
-allowed-tools: Bash(bash /home/tarotene/.claude/hooks/codex-plan-review.sh --advisory *)
+description: 執筆中のプランを Copilot に中間レビューさせる（advisory・ゲートなし）
+allowed-tools: Bash(bash /home/tarotene/.claude/hooks/copilot-plan-review.sh --advisory *)
 ---
 
-執筆中のプランに対する Codex の中間レビュー（advisory）を実行する。
+執筆中のプランに対する Copilot の中間レビュー（advisory）を実行する。
 
 観点の異なる 2 つの critic（要件・スコープ / 実装可能性・検証戦略）が並列で走り、
 指摘は `BLOCKER` / `MAJOR` / `MINOR` / `NIT` に分類されて返る。
@@ -13,7 +13,7 @@ allowed-tools: Bash(bash /home/tarotene/.claude/hooks/codex-plan-review.sh --adv
 1. 現在のセッションのプランファイル（plan mode の system message に記載されたパス、通常 `~/.claude/plans/*.md`）を特定する。プランファイルがまだ存在しない・空の場合は、先にここまでの内容をプランファイルに書き出してから進む。
 2. 次を実行する（数分かかる。タイムアウトは 300000 ms を指定）:
    ```
-   bash /home/tarotene/.claude/hooks/codex-plan-review.sh --advisory <プランファイルの絶対パス> <プロジェクトの絶対パス>
+   bash /home/tarotene/.claude/hooks/copilot-plan-review.sh --advisory <プランファイルの絶対パス> <プロジェクトの絶対パス>
    ```
 3. レビュー結果をユーザーに要約して報告する。**対応対象は `BLOCKER` と `MAJOR` だけ**である:
    - `BLOCKER` / `MAJOR` かつ `[TECHNICAL]`: リポジトリ等の証拠で検証し、妥当なら反映、誤りなら反証の根拠を添えて報告する。**反証できた指摘を却下するのは正当な帰結**であり、無理に反映しなくてよい。

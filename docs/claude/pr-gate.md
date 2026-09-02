@@ -250,12 +250,12 @@ judgement が 1 つ増えたぶん、`PR_GATE_MAX_BLOCKS` の既定を 3 から 
 Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=true` で即座に素通りし、
 **CI の判定に一度も到達しない**。
 
-これは `docs/claude/codex-plan-review.md` の「第二次の非収束」（最終ラウンドに carry-over 判定の
+これは `docs/claude/copilot-plan-review.md` の「第二次の非収束」（最終ラウンドに carry-over 判定の
 機会が無く、`open set = ∅` が原理的に到達不能だった話）と同型の穴である。pr-gate は
 `stop_hook_active` を無視し、**独自カウンタ**（`state/<sid>.count`）で上限を持つ。
 `count == MAX_BLOCKS` に達したら 1 回だけ escalate 文言を返して
 `state/<sid>.escalated` を touch し、以後そのセッションは無条件で素通る。
-`escalated` のチェックは上限判定より**前**に置く（`docs/claude/codex-plan-review.md` の closer /
+`escalated` のチェックは上限判定より**前**に置く（`docs/claude/copilot-plan-review.md` の closer /
 escalated と同じ置き方）。block cap（Claude Code 側の「連続 8 回で打ち切り」）の消費は
 wrapup 側と合わせて最大 4 回に収まる。
 
@@ -292,7 +292,7 @@ pr-gate の G_CI を実装するときに Codex plan-review で 3 回連続し�
 
 3 が最も危ない。「1 件以上現れたら待機を始める」という素朴な実装では防げないため、
 `gh pr checks --watch` を**待つための道具**に格下げし、**その exit code を acceptance
-criterion にしない**。これは `docs/claude/codex-plan-review.md` の「judge をシェルに置くのが要点。
+criterion にしない**。これは `docs/claude/copilot-plan-review.md` の「judge をシェルに置くのが要点。
 acceptance criterion を確率的な写像に任せない」と同じ論理を、LLM critic ではなく `gh` という
 外部コマンドに対して適用したものである。
 
@@ -355,7 +355,7 @@ bash config/claude/hooks/pr-gate.sh --selftest
 
 `gh` をスタブして hook 経路を end-to-end に駆動する。回帰テストとして特に重要なのは:
 
-- **PASS 経路が到達可能であること**（`docs/claude/codex-plan-review.md` の「第二次の非収束」と
+- **PASS 経路が到達可能であること**（`docs/claude/copilot-plan-review.md` の「第二次の非収束」と
   同種の穴——ゲートが弾くだけで一度も通さない実装になっていないかの検査）
 - **`--watch` の exit code に依存していないこと** — stub の `--watch` を常に exit 0 に
   固定した上で、`--json` が部分 pending / fail を返すケースで block されること

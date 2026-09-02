@@ -22,7 +22,7 @@
 #
 #   PreToolUse hook が stdout に JSON を出すと permissionDecision として解釈される。
 #   このフックは承認フローに一切干渉してはならない（表示するだけの道具である）ので、
-#   成功しようが失敗しようが無音で exit 0 する。既存の codex-plan-review gate とは
+#   成功しようが失敗しようが無音で exit 0 する。既存の copilot-plan-review gate とは
 #   完全に独立した別エントリとして登録され、並列に走る。
 #
 # スキップ手段:
@@ -728,7 +728,7 @@ CWD="$(jq -r '.cwd // empty' <<<"$INPUT" 2>/dev/null || echo '')"
 [[ -d "$CWD" ]] || CWD="$HOME"
 
 # --- プラン本文の取得: tool_input.plan → planFilePath → 最新の ~/.claude/plans/*.md ---
-# 既存の codex-plan-review.sh と同じ順序。実測では ExitPlanMode で plan と
+# 既存の copilot-plan-review.sh と同じ順序。実測では ExitPlanMode で plan と
 # planFilePath の両方が来るが、片方だけのケースに備えて 3 段で落とす。
 plan_tmp=""
 plan_file=""

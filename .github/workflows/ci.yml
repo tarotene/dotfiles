@@ -105,14 +105,14 @@ jobs:
         run: perl ./scripts/fcitx5-key-trace.pl --selftest
 
       # The plan-review gate's acceptance decision is deterministic shell +
-      # jq, so it is testable without calling Codex.  The selftest runs the
-      # judge over fixtures and drives the hook end to end against a fake
-      # codex in a throwaway REVIEW_DIR (docs/claude/codex-plan-review.md).
-      - name: codex-plan-review output schema is valid JSON
-        run: jq empty config/claude/hooks/codex-plan-review.schema.json
+      # jq, so it is testable without calling GitHub Copilot CLI. The selftest
+      # runs the judge over fixtures and drives the hook end to end against a
+      # fake copilot in a throwaway REVIEW_DIR (docs/claude/copilot-plan-review.md).
+      - name: copilot-plan-review output schema is valid JSON
+        run: jq empty config/claude/hooks/copilot-plan-review.schema.json
 
-      - name: codex-plan-review.sh --selftest
-        run: bash ./config/claude/hooks/codex-plan-review.sh --selftest
+      - name: copilot-plan-review.sh --selftest
+        run: bash ./config/claude/hooks/copilot-plan-review.sh --selftest
 
       # The wrap-up inbox gate is deterministic shell + jq end to end: the
       # degradation gates, the flock-guarded --add/--mark-filed mutations, and
