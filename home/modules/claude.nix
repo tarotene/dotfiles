@@ -95,15 +95,19 @@
 #    /model で日常的に切り替える対象なので home-manager は触らない。
 #    詳細は docs/claude/opusplan-model-aliases.md。
 #
-# 12) 個人スキル(diagramming, skill-gardening):
+# 12) 個人スキル(diagramming, skill-gardening, living-description):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
 #    含める等)を持つ。skill-gardening はこの知見をどう dotfiles(公開)に固定化
 #    するかのメタスキルで、公開リポジトリ向けサニタイズ規則の正本を持つ。
-#    hook のような settings.json 登録は不要(スキルは ~/.claude/skills/ を
-#    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
-#    docs/claude/diagramming.md、docs/claude/skill-gardening.md。
+#    living-description は Issue/PR の本文(Description)を「起票時点のスナップ
+#    ショット」ではなく「現在の合意状態を表す正本」として扱い、コメントで裁定が
+#    確定した時点で本文を編集し続ける習慣(複数の関連Issueに仕様が重複している
+#    場合は横断的に同期する)。hook のような settings.json 登録は不要(スキルは
+#    ~/.claude/skills/ をスキャンするだけで発動する)なので home.file だけで
+#    足りる。詳細は docs/claude/diagramming.md、docs/claude/skill-gardening.md、
+#    docs/claude/living-description.md。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
@@ -731,6 +735,12 @@ in
     repoConfig + "/claude/skills/test-grounding/SKILL.md";
   home.file.".claude/skills/test-grounding/cases.md".source =
     repoConfig + "/claude/skills/test-grounding/cases.md";
+  # living-description: Issue/PR の Description を正本として、コメントで裁定が
+  # 確定した時点で編集し続ける習慣。cases.md は追記型の失敗事例集。
+  home.file.".claude/skills/living-description/SKILL.md".source =
+    repoConfig + "/claude/skills/living-description/SKILL.md";
+  home.file.".claude/skills/living-description/cases.md".source =
+    repoConfig + "/claude/skills/living-description/cases.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
