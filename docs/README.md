@@ -63,6 +63,10 @@ Design and rationale for the hooks and commands deployed from
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
+- [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
+  `~/.claude/CLAUDE.md`: 検証可能な仮定は情報源(Slack/Drive/GitHub/公式ドキュメント/
+  文献)を参照するか明示判断し、発明する前に先行例を確認する調査規律を全セッション
+  常時注入する(read-only 配布、`#` 追記は skill-gardening の PR フローへ)。
 
 ## Investigation records
 

@@ -113,6 +113,16 @@
 #    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
 #    詳細は docs/claude/claude-usage-tabbar.md。
 #
+# 14) グローバル ~/.claude/CLAUDE.md(全セッション常時コンテキスト):
+#    「検証可能な不確実性が現れたら情報源(Slack/Drive/GitHub/公式ドキュメント/
+#    文献)を参照するか明示的に判断せよ」「発明する前に先行例を確認せよ」という
+#    調査規律だけを持つ単一目的ファイル。hook 注入(issue-index 方式)は動的生成が
+#    要らない静的方針には過剰、スキルは呼び出し起点が要るため常時適用の方針には
+#    不向きなので、CLAUDE.md 自体を home.file で配備する。store symlink による
+#    read-only 配布なので、セッション中の `#` メモ追記ショートカットは書き込み
+#    失敗する — 知見の永続化は skill-gardening の PR フローに乗せる想定であり、
+#    意図的な設計。詳細は docs/claude/global-claude-md.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -702,6 +712,10 @@ in
   # (器の判断・配線チェックリスト・公開リポジトリ向けサニタイズ規則の正本)。
   home.file.".claude/skills/skill-gardening/SKILL.md".source =
     repoConfig + "/claude/skills/skill-gardening/SKILL.md";
+
+  # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
+  # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
+  home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
 
   # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう
   # concatMapStrings(区切り文字列を要素ごとに前置)で組む — concatMapStringsSep
