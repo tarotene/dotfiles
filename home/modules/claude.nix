@@ -712,6 +712,12 @@ in
   # (器の判断・配線チェックリスト・公開リポジトリ向けサニタイズ規則の正本)。
   home.file.".claude/skills/skill-gardening/SKILL.md".source =
     repoConfig + "/claude/skills/skill-gardening/SKILL.md";
+  # test-grounding: 複数の実コンポーネントが絡む検証項目・試験手順を書く前に、
+  # facts文書+層別モデルで一次資料に当たることを強制する個人スキル。
+  home.file.".claude/skills/test-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/test-grounding/SKILL.md";
+  home.file.".claude/skills/test-grounding/cases.md".source =
+    repoConfig + "/claude/skills/test-grounding/cases.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
