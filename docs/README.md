@@ -30,8 +30,9 @@
 Design and rationale for the hooks and commands deployed from
 `config/claude/` by `home/modules/claude.nix`:
 
-- [`codex-plan-review.md`](claude/codex-plan-review.md) — ExitPlanMode gate:
-  Codex reviews the plan; the gate is on severity, not on a verdict.
+- [`copilot-plan-review.md`](claude/copilot-plan-review.md) — ExitPlanMode gate:
+  a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
+  severity, not on a verdict.
 - [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ)
   (CI/push, not review/base).
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an

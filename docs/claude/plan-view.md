@@ -2,7 +2,7 @@
 
 Plan モードから抜けるとき、プランは端末内のプレーンテキストとして読まされる。この
 repo のプランは 1 万字前後（`~/.claude/plans/` の実測で 161 本、最大 3 万字）あり、
-`codex-plan-review` gate が deny するたび書き直された版を読み直すことになる。長文を
+`copilot-plan-review` gate が deny するたび書き直された版を読み直すことになる。長文を
 未レンダリングのまま端末で読むのが苦痛だという、体験そのものの問題への対処。
 
 | 部品 | 役割 |
@@ -27,13 +27,13 @@ repo のプランは 1 万字前後（`~/.claude/plans/` の実測で 161 本、
 
 ## なぜ plan-review gate と独立なのか
 
-`codex-plan-review` gate と同じ `PreToolUse` / `ExitPlanMode` matcher に、**別エントリ
+`copilot-plan-review` gate と同じ `PreToolUse` / `ExitPlanMode` matcher に、**別エントリ
 として**登録する。Claude Code は同一 matcher の hook を並列に走らせるので、plan-view は
 review（最大 300 秒、deny あり）の結果を待たずに窓を開く。
 
 つまり **deny されて書き直されるプランも描画される**。それを承知で独立を選んだ:
 
-- gate の pass 経路の末尾から呼ぶ案は、既存 hook に責務が増え、fail-open 経路（codex
+- gate の pass 経路の末尾から呼ぶ案は、既存 hook に責務が増え、fail-open 経路（copilot
   不在・skip・タイムアウト・上限到達・スキーマ不適合）の各々に呼び出しを入れ忘れる
   リスクを背負う。表示という無害な機能のために、gate の縮退経路を全部見直すのは筋が
   悪い。
@@ -154,7 +154,7 @@ pandoc は skylighting の CSS を一切出さず、テストが空振りする�
 
 ## プラン本文とタイトル
 
-本文の取得は既存 `codex-plan-review.sh` と同じ 3 段:
+本文の取得は既存 `copilot-plan-review.sh` と同じ 3 段:
 
 1. `tool_input.plan`
 2. `tool_input.planFilePath`
@@ -212,7 +212,7 @@ home-manager switch --flake .#"$(hostname)" -b backup
 適用後:
 
 ```bash
-# ExitPlanMode のエントリが 2 本並び、既存の codex エントリが無傷であること
+# ExitPlanMode のエントリが 2 本並び、既存の copilot エントリが無傷であること
 jq '.hooks.PreToolUse' ~/.claude/settings.json
 
 # 手動経路

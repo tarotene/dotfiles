@@ -2,9 +2,11 @@
 # sign-prewarm・pr-gate・issue-index を home-manager で配備する。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
-#    Codex CLI によるプランの自動レビュー。gate は acceptance-convergent であり、
-#    critic は verdict を出さず、judge(jq)が決定論的に gate 適格性を判定する。
-#    最終ラウンドは closer。詳細は docs/claude/codex-plan-review.md。
+#    GitHub Copilot CLI(read-only custom agent)によるプランの自動レビュー。
+#    gate は acceptance-convergent であり、critic は verdict を出さず、
+#    judge(jq)が決定論的に gate 適格性を判定する。最終ラウンドは closer。
+#    詳細は docs/claude/copilot-plan-review.md(旧 Codex 版の設計経緯も同ファイルに
+#    履歴として残る)。
 #
 # 2) wrap-up inbox(SessionStart + Stop):
 #    スコープ外の気づきの「収集」と「起票」を分離する。SessionStart hook が
@@ -128,7 +130,7 @@
 let
   repoConfig = ../../config;
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
-  planReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
+  planReviewCmd = "bash '${hooksDir}/copilot-plan-review.sh'";
   wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "bash '${hooksDir}/plan-view.sh'";
@@ -141,6 +143,10 @@ let
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
+  # 旧 Codex 版の plan-review hook command。中身(--search exec --output-schema
+  # 等)ごと copilot-plan-review.sh に置き換えたので、activation が settings.json
+  # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
+  legacyCodexPlanReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
 
   # かつて登録したが撤回した hook。activation が全ホストの settings.json から
   # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
@@ -155,6 +161,12 @@ let
     {
       event = "PostToolUse";
       command = herdrMetadataCmd;
+    }
+    # Codex → Copilot 移行(docs/claude/copilot-plan-review.md)。旧 command 文字列を
+    # PreToolUse/ExitPlanMode から完全一致削除してから、新 planReviewCmd を登録する。
+    {
+      event = "PreToolUse";
+      command = legacyCodexPlanReviewCmd;
     }
   ];
 
@@ -550,25 +562,34 @@ in
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
   # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
   # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
-  # し、ラウンドも 2 に絞る。gate 本体(codex-plan-review.sh)は触らない — closer
+  # し、ラウンドも 2 に絞る。gate 本体(copilot-plan-review.sh)は触らない — closer
   # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
   # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
   # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
-  # docs/claude/codex-plan-review.md の環境変数節。
+  # docs/claude/copilot-plan-review.md の環境変数節。
   home.sessionVariables = {
-    CODEX_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
+    COPILOT_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
     MAX_PLAN_REVIEWS = "2";
   };
 
-  home.file.".claude/hooks/codex-plan-review.sh" = {
-    source = repoConfig + "/claude/hooks/codex-plan-review.sh";
+  home.file.".claude/hooks/copilot-plan-review.sh" = {
+    source = repoConfig + "/claude/hooks/copilot-plan-review.sh";
     executable = true;
   };
 
-  # critic の強制出力スキーマ(codex exec --output-schema)。hook が自身の
-  # ディレクトリ相対で解決するので、2 ファイルは ~/.claude/hooks/ に並べて置く。
-  home.file.".claude/hooks/codex-plan-review.schema.json".source =
-    repoConfig + "/claude/hooks/codex-plan-review.schema.json";
+  # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
+  # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
+  # 実際の検証は hook 内の CRITIC_SCHEMA_JQ が行う — この JSON はその契約を
+  # 人間 / プロンプト向けに文書化したものである。hook が自身のディレクトリ相対で
+  # 解決するので、2 ファイルは ~/.claude/hooks/ に並べて置く。
+  home.file.".claude/hooks/copilot-plan-review.schema.json".source =
+    repoConfig + "/claude/hooks/copilot-plan-review.schema.json";
+
+  # plan-reviewer: copilot-plan-review.sh が `--agent plan-reviewer` で呼ぶ
+  # read-only custom agent。tools は view/grep/glob だけで、
+  # write/execute/web/GitHub MCP は与えない(docs/claude/copilot-plan-review.md)。
+  home.file.".copilot/agents/plan-reviewer.agent.md".source =
+    repoConfig + "/copilot/agents/plan-reviewer.agent.md";
 
   # wrap-up inbox の 2 hook。session-start は stop-gate と同じパス計算を使い、
   # 同じディレクトリに並んでいることを前提に stop-gate のパスを指示文に埋める。
@@ -667,8 +688,8 @@ in
   # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
   # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
   # username を上書きするホストが現れたら見直すこと。
-  home.file.".claude/commands/codex-plan-review.md".source =
-    repoConfig + "/claude/commands/codex-plan-review.md";
+  home.file.".claude/commands/copilot-plan-review.md".source =
+    repoConfig + "/claude/commands/copilot-plan-review.md";
   home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
 
   # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。

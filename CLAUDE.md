@@ -88,7 +88,7 @@ dotfiles/
 │   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
-│   │   ├── codex-plan-review.md  # Codex plan-review gate: why it gates on severity, not on a verdict
+│   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl

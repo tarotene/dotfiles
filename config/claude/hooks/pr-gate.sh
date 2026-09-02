@@ -71,10 +71,10 @@
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
-# (docs/claude/codex-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
+# (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
 # state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-4} に達したら 1 回だけ escalate し、
 # touch state/<sid>.escalated。以後そのセッションは無条件で素通る(escalated の
-# チェックは上限判定より前 — docs/claude/codex-plan-review.md の closer と同じ置き方)。
+# チェックは上限判定より前 — docs/claude/copilot-plan-review.md の closer と同じ置き方)。
 # 上限が 3 でなく 4 なのは G_link を足したから: 最悪の連鎖(push → 本文修正 →
 # CI 待ち)が正当に 3 回 block しうるので、3 のままだと最後の 1 回が escalate に
 # 化ける。なお G_link の指摘は単独 block になる前に G_push / G_CI の block へ

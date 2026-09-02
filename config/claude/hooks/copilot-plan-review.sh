@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# codex-plan-review.sh — ExitPlanMode 直前に Codex CLI でプランを自動レビューする hook。
+# copilot-plan-review.sh — ExitPlanMode 直前に GitHub Copilot CLI でプランを
+# 自動レビューする hook。
 #
-# 設計と根拠: docs/claude/codex-plan-review.md（このリポジトリ内）
+# 設計と根拠: docs/claude/copilot-plan-review.md（このリポジトリ内。旧 Codex 版の
+# 設計経緯も同ファイルに履歴として残す）
 #
 # 停止条件は「critic が黙ること」ではなく「実装をブロックする defect がゼロであること」。
 # critic / judge / acceptance oracle を分離する:
 #
-#   critic : codex exec --output-schema  … findings と carry-over 判定を JSON で出すだけ
+#   critic : copilot -p --agent plan-reviewer --silent  … findings と carry-over
+#            判定を JSON で出すだけ。Copilot CLI には Codex の `exec --output-schema`
+#            に相当する強制出力スキーマ機構が無いため、契約は
+#            copilot-plan-review.schema.json に文書として残しつつ、judge の直前で
+#            このスクリプトの jq validator が構造(top-level keys 完全一致・readiness
+#            の bool・findings/carryover の必須キー・型・enum・additionalProperties
+#            禁止)を厳格検証する。不適合は critic failure として扱う(fail-open)。
 #   judge  : このスクリプト + jq         … gate 適格性を決定論的に判定し open set を更新
 #   oracle : gate = open set が非空
 #
@@ -21,7 +29,7 @@
 # 最終ラウンド (round == MAX_PLAN_REVIEWS) は「発見」ではなく closer である。
 # lens Z が carry-over 判定だけを行い、新規 finding は severity に関わらず gate 対象外
 # （backlog 行き）になる。これがないと最終ラウンドで生えた指摘を判定するラウンドが
-# 存在せず、open set = ∅ が原理的に到達不能になる（docs/claude/codex-plan-review.md の
+# 存在せず、open set = ∅ が原理的に到達不能になる（docs/claude/copilot-plan-review.md の
 # 「第二次の非収束」）。不変条件は:
 #
 #   gate 適格な finding は、修正後の再判定を最低 1 回受ける
@@ -29,19 +37,30 @@
 #   - closer 後も open set が残っていたら、deny を 1 回だけ返して人間の GO/NO-GO を
 #     強制する（state/<sid>.escalated で 1 回に限定）。以後そのセッションは素通る。
 #
+# critic の read-only 境界: `--agent plan-reviewer` (config/copilot/agents/
+# plan-reviewer.agent.md, ~/.copilot/agents/ に配備) が tools を view/grep/glob
+# だけに絞る。write/execute/web/GitHub MCP は与えない。非対話実行は
+# --silent（最終応答だけを stdout に出す）+ --no-custom-instructions（リポジトリの
+# AGENTS.md 等を読ませない）+ --disable-builtin-mcps（GitHub MCP 等を無効化）+
+# --no-ask-user（ask_user tool を無効化し、質問で停止させない）で行う。
+# --allow-all-tools / --yolo / --allow-all-paths / --allow-all-urls は critic に
+# 変更権限・無制限ファイルアクセス・外部送信経路を与えるため使わない。
+# plan file がリポジトリ外にある場合は、その直接の親ディレクトリだけを
+# --add-dir で追加読み取り許可する。
+#
 # 使い方:
 #   hook として:      settings.json の PreToolUse (matcher: ExitPlanMode) から stdin JSON で呼ばれる
-#   advisory として:  codex-plan-review.sh --advisory <plan.md> [cwd]  → レビュー全文を stdout に出す
-#   自己検査:         codex-plan-review.sh --selftest                  → judge と hook 経路の回帰テスト
+#   advisory として:  copilot-plan-review.sh --advisory <plan.md> [cwd]  → レビュー全文を stdout に出す
+#   自己検査:         copilot-plan-review.sh --selftest                  → judge と hook 経路の回帰テスト
 #
 # スキップ手段:
 #   touch ~/.claude/plan-reviews/skip   または   SKIP_PLAN_REVIEW=1
 #
 # 既知バグ対策:
-#   - codex exec は非 TTY で stdin を待ち続ける → 必ず </dev/null (openai/codex#20919)
+#   - copilot -p は非 TTY で stdin を待ち続ける可能性があるため必ず </dev/null にする。
 #   - ExitPlanMode hook は cwd=~ で走る → stdin JSON の .cwd へ明示 cd (anthropics/claude-code#22343)
-#   - --search は root 専用フラグ。`codex --search exec` が正しく、`codex exec --search` は
-#     パースエラーになる（codex-cli 0.147.0 で実測）。フラグ位置を「修正」しないこと。
+#   - 認証切れ・モデル利用不可・タイムアウトはすべて fail-open（critic failure と
+#     同じ扱い）。ゲートを止めない代わりに warn として transcript に残す。
 set -u
 
 # 生成物（レビュー本文・生 JSON・backlog・state）はプラン本文由来のテキストを含むため、
@@ -50,17 +69,25 @@ umask 077
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-REVIEW_DIR="${CODEX_PLAN_REVIEW_DIR:-$HOME/.claude/plan-reviews}"
+REVIEW_DIR="${COPILOT_PLAN_REVIEW_DIR:-$HOME/.claude/plan-reviews}"
 STATE_DIR="$REVIEW_DIR/state"
 BACKLOG_DIR="$REVIEW_DIR/backlog"
-SCHEMA_FILE="${CODEX_PLAN_REVIEW_SCHEMA:-$SCRIPT_DIR/codex-plan-review.schema.json}"
+# schema.json は CLI に渡す強制出力スキーマではなく契約文書。実際の検証は
+# CRITIC_SCHEMA_JQ(このスクリプト内の jq validator)がハードコードして行う。
+SCHEMA_FILE="${COPILOT_PLAN_REVIEW_SCHEMA:-$SCRIPT_DIR/copilot-plan-review.schema.json}"
 
-CODEX_BIN="${CODEX_BIN:-codex}"
+COPILOT_BIN="${COPILOT_BIN:-copilot}"
 MAX_REVIEWS="${MAX_PLAN_REVIEWS:-3}"
-CODEX_TIMEOUT="${CODEX_PLAN_REVIEW_TIMEOUT:-280}"
-GATE_SEVERITIES="${CODEX_PLAN_REVIEW_GATE_SEVERITIES:-BLOCKER,MAJOR}"
-PARALLEL="${CODEX_PLAN_REVIEW_PARALLEL:-1}"
-RETENTION_DAYS="${CODEX_PLAN_REVIEW_RETENTION_DAYS:-30}"
+COPILOT_TIMEOUT="${COPILOT_PLAN_REVIEW_TIMEOUT:-280}"
+GATE_SEVERITIES="${COPILOT_PLAN_REVIEW_GATE_SEVERITIES:-BLOCKER,MAJOR}"
+PARALLEL="${COPILOT_PLAN_REVIEW_PARALLEL:-1}"
+RETENTION_DAYS="${COPILOT_PLAN_REVIEW_RETENTION_DAYS:-30}"
+# 調査時点で利用可能な最新 GPT の具体 ID に固定する。model catalog の変更で
+# 利用不可になった場合も fail-open するが、ログ警告で model failure を識別できる
+# ようにする(docs/claude/copilot-plan-review.md)。
+COPILOT_MODEL="${COPILOT_PLAN_REVIEW_MODEL:-gpt-5.6-sol}"
+# read-only custom agent。ファイル名(拡張子抜き)がそのまま --agent の値になる。
+COPILOT_AGENT="${COPILOT_PLAN_REVIEW_AGENT:-plan-reviewer}"
 
 ensure_dirs() {
   mkdir -p "$STATE_DIR" "$BACKLOG_DIR"
@@ -93,7 +120,7 @@ prompt_preamble() {
 プラン本文: ${plan_file} を読むこと。
 作業ディレクトリは対象リポジトリである。プランの前提（ファイル・関数・設定の存在、既存パターンとの整合）を read-only で自由に探索して検証してよい。
 プランが他のリポジトリやディレクトリ（例: ~/.ghr/github.com/ 配下の別リポジトリ、\$HOME 直下の設定ファイル）を参照している場合は、それらも read-only で探索して検証してよい。ただしプランが参照していない場所の探索に迷い込まないこと。
-プランが外部事実（API 仕様・ライブラリのバージョン・公式推奨）に依拠している場合、必要に応じて web 検索で最新性を検証してよい。
+ネットワークアクセスはできない。外部事実（API 仕様・ライブラリのバージョン・公式推奨）は、プランまたはリポジトリに記録された根拠だけで判定し、追加の web 検索は行わないこと。
 
 ## 受入基準
 
@@ -153,7 +180,31 @@ readiness の 4 boolean を出すこと。false にした軸は必ず BLOCKER �
 
 ## 出力
 
-最終メッセージは指定された JSON スキーマに厳密に従うこと。散文・前置き・要約は出力しない。
+最終メッセージは以下の JSON にちょうど一致する 1 オブジェクトだけにすること。
+コードフェンス(\`\`\`)・前置き・要約・末尾のコメントは一切出力しない。
+キーの過不足・型不一致・enum 外の値は機械的に破棄され、critic failure として
+扱われる（黙って通過にはならないが、その critic の指摘は今ラウンドで失われる）。
+
+  {
+    "readiness": {
+      "requirements": <boolean>, "scope": <boolean>,
+      "implementation": <boolean>, "verification": <boolean>
+    },
+    "findings": [
+      { "severity": "BLOCKER"|"MAJOR"|"MINOR"|"NIT",
+        "kind": "TECHNICAL"|"NEEDS_DECISION",
+        "readiness_axis": "REQUIREMENTS"|"SCOPE"|"IMPLEMENTATION"|"VERIFICATION"|"NONE",
+        "summary": <string>, "failure_mode": <string>,
+        "trigger": <string>, "evidence": <string> }, ...
+    ],
+    "carryover": [
+      { "id": <string>, "status": "RESOLVED"|"UNRESOLVED"|"REFUTED_BY_PLAN",
+        "rationale": <string> }, ...
+    ]
+  }
+
+上記 3 キー(readiness/findings/carryover)以外は出力しないこと。各オブジェクトも
+挙げたキーだけを持ち、余計なキーを足さないこと。
 EOF
 }
 
@@ -285,7 +336,54 @@ build_prompt() {
 # critic 実行
 # ---------------------------------------------------------------------------
 
-# 1 プロセスだけ codex を回し、最終メッセージ (JSON) を $4 に書く。
+# CRITIC_SCHEMA_JQ: copilot-plan-review.schema.json と一致する構造検証。
+# Copilot CLI には Codex の `--output-schema` に相当する強制出力スキーマが無い
+# ため、この jq validator が唯一の構造ゲートになる。top-level keys の完全一致・
+# readiness の bool 4 種・findings/carryover の必須キー・型・enum・
+# additionalProperties 相当(想定外キーの禁止)を検証する。コードフェンス付き
+# 出力や部分的な JSON は手前の `jq -e '.'` で弾かれる（フェンス込みの文字列は
+# それ自体が妥当な JSON ではないため）。
+CRITIC_SCHEMA_JQ=$(
+  cat <<'JQEOF'
+def has_exact_keys(spec):
+  type == "object" and ((keys_unsorted | sort) == (spec | sort));
+def valid_readiness:
+  has_exact_keys(["requirements", "scope", "implementation", "verification"])
+  and (.requirements | type == "boolean")
+  and (.scope | type == "boolean")
+  and (.implementation | type == "boolean")
+  and (.verification | type == "boolean");
+def valid_finding:
+  has_exact_keys(["severity", "kind", "readiness_axis", "summary",
+                   "failure_mode", "trigger", "evidence"])
+  and (.severity | type == "string" and IN("BLOCKER", "MAJOR", "MINOR", "NIT"))
+  and (.kind | type == "string" and IN("TECHNICAL", "NEEDS_DECISION"))
+  and (.readiness_axis | type == "string"
+       and IN("REQUIREMENTS", "SCOPE", "IMPLEMENTATION", "VERIFICATION", "NONE"))
+  and (.summary | type == "string")
+  and (.failure_mode | type == "string")
+  and (.trigger | type == "string")
+  and (.evidence | type == "string");
+def valid_carry:
+  has_exact_keys(["id", "status", "rationale"])
+  and (.id | type == "string")
+  and (.status | type == "string" and IN("RESOLVED", "UNRESOLVED", "REFUTED_BY_PLAN"))
+  and (.rationale | type == "string");
+
+has_exact_keys(["readiness", "findings", "carryover"])
+and (.readiness | valid_readiness)
+and (.findings | type == "array") and (.findings | map(valid_finding) | all)
+and (.carryover | type == "array") and (.carryover | map(valid_carry) | all)
+JQEOF
+)
+
+# stdin: critic の生出力ファイルの中身候補(jq でパース済みの JSON 値) →
+# 終了コードでスキーマ適合を返す。値そのものは呼び出し側が既に持っている。
+validate_critic_schema() {
+  jq -e "$CRITIC_SCHEMA_JQ" >/dev/null 2>&1
+}
+
+# 1 プロセスだけ copilot を回し、最終メッセージ (JSON) を $4 に書く。
 # ログ・state には一切書かない（並列実行時の競合を構造的に避けるため）。
 # $1=lens $2=plan_file $3=workdir $4=out_file $5=open set JSON
 run_critic() {
@@ -294,8 +392,23 @@ run_critic() {
   prompt="$(build_prompt "$lens" "$plan_file" "$open_json")"
   (
     cd "$workdir" 2>/dev/null || cd "$HOME" || exit 1
-    timeout "$CODEX_TIMEOUT" "$CODEX_BIN" --search exec -s read-only --skip-git-repo-check \
-      --output-schema "$SCHEMA_FILE" -o "$out" "$prompt" </dev/null >/dev/null 2>&1
+    # plan file がこの workdir の外にある場合だけ、その直接の親ディレクトリを
+    # 追加で読み取り許可する（--allow-all-paths は使わない）。cwd 自体は
+    # デフォルトで読める。
+    local -a add_dir_args=()
+    local plan_dir cur_dir
+    plan_dir="$(cd -- "$(dirname -- "$plan_file")" >/dev/null 2>&1 && pwd)" || plan_dir=""
+    cur_dir="$(pwd)"
+    if [[ -n "$plan_dir" ]]; then
+      case "$plan_dir" in
+        "$cur_dir" | "$cur_dir"/*) : ;;
+        *) add_dir_args=(--add-dir "$plan_dir") ;;
+      esac
+    fi
+    timeout "$COPILOT_TIMEOUT" "$COPILOT_BIN" -p "$prompt" \
+      --agent "$COPILOT_AGENT" --model "$COPILOT_MODEL" \
+      --silent --no-custom-instructions --disable-builtin-mcps --no-ask-user \
+      "${add_dir_args[@]}" </dev/null > "$out" 2>/dev/null
   )
 }
 
@@ -314,7 +427,7 @@ run_critics() {
   local lens out pid i
 
   for lens in "${lenses[@]}"; do
-    out="$(mktemp "$REVIEW_DIR/.codex-out.XXXXXX")"
+    out="$(mktemp "$REVIEW_DIR/.copilot-out.XXXXXX")"
     outs+=("$out")
   done
 
@@ -325,7 +438,7 @@ run_critics() {
       pids+=("$!")
       i=$((i + 1))
     done
-    # 終了コードは捨てない。codex が -o に有効な JSON を書いた後で
+    # 終了コードは捨てない。copilot が stdout に有効な JSON を書いた後で
     # 非ゼロ終了する（タイムアウト・後処理エラー等）ケースを成功扱いしないため。
     for pid in "${pids[@]}"; do
       if wait "$pid"; then rcs+=(0); else rcs+=(1); fi
@@ -348,7 +461,8 @@ run_critics() {
     out="${outs[$i]}"
     rc="${rcs[$i]}"
     i=$((i + 1))
-    if [[ "$rc" == "0" ]] && [[ -s "$out" ]] && data="$(jq -e '.' "$out" 2>/dev/null)"; then
+    if [[ "$rc" == "0" ]] && [[ -s "$out" ]] && data="$(jq -e '.' "$out" 2>/dev/null)" &&
+      validate_critic_schema <<<"$data"; then
       results="$(jq --arg l "$lens" --argjson d "$data" \
         '. + [{lens: $l, data: $d}]' <<<"$results")"
     else
@@ -391,7 +505,15 @@ def filled: (.summary | nonblank) and (.failure_mode | nonblank)
 | ($open | map(.id)) as $open_ids
 | [ $co_raw[] | select(.id | IN($open_ids[])) ] as $co
 | (($co_raw | length) - ($co | length)) as $unknown_carryover
-| (reduce $co[] as $c ({}; .[$c.id] = $c)) as $co_map
+| (reduce $co[] as $c ({};
+     if has($c.id)
+     then .[$c.id] = {
+       id: $c.id,
+       status: "UNRESOLVED",
+       rationale: "critic が同じ id に重複した判定を返した"
+     }
+     else .[$c.id] = $c
+     end)) as $co_map
 | [ $open[] | . as $o | ($co_map[$o.id] // null) as $c
     | if ($c == null)
       then ($o + { _carry: "UNRESOLVED", _carry_missing: true, _carry_rationale: "" })
@@ -540,15 +662,15 @@ warn_text() {
 }
 
 # ---------------------------------------------------------------------------
-# advisory モード（手動中間レビュー: /codex-plan-review から呼ばれる）
+# advisory モード（手動中間レビュー: /copilot-plan-review から呼ばれる）
 # ---------------------------------------------------------------------------
 
 if [[ "${1:-}" == "--advisory" ]]; then
   ensure_dirs
-  adv_plan="${2:?usage: codex-plan-review.sh --advisory <plan.md> [cwd]}"
+  adv_plan="${2:?usage: copilot-plan-review.sh --advisory <plan.md> [cwd]}"
   adv_workdir="${3:-$PWD}"
-  if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
-    echo "codex が見つかりません (CODEX_BIN=$CODEX_BIN)。" >&2
+  if ! command -v "$COPILOT_BIN" >/dev/null 2>&1; then
+    echo "copilot が見つかりません (COPILOT_BIN=$COPILOT_BIN)。" >&2
     exit 1
   fi
   if [[ "$PARALLEL" == "1" ]]; then
@@ -560,7 +682,7 @@ if [[ "${1:-}" == "--advisory" ]]; then
   adv_critics="$(jq '.critics' <<<"$adv_raw")"
   adv_failed="$(jq -r '.failed | join(", ")' <<<"$adv_raw")"
   if [[ "$(jq 'length' <<<"$adv_critics")" == "0" ]]; then
-    echo "codex レビューの実行に失敗しました（タイムアウト・未ログイン・ネットワーク等）。" >&2
+    echo "copilot レビューの実行に失敗しました（タイムアウト・未ログイン・モデル利用不可・ネットワーク等）。" >&2
     exit 1
   fi
   if ! adv_judged="$(judge 1 '[]' <<<"$adv_critics")"; then
@@ -581,6 +703,22 @@ fi
 
 if [[ "${1:-}" == "--selftest" ]]; then
   selftest_fail=0
+
+  # 隔離(#56 / #58): ホストの home-manager sessionVariables 等が既に export した
+  # COPILOT_* / MAX_PLAN_REVIEWS がテストの前提を汚染しないよう、判定に使う
+  # グローバルをここで既知値へ固定し直す。これらは script 冒頭で一度だけ
+  # 環境変数から読まれているため、後段で env を unset しても手遅れ — この
+  # ブロック自身が「真の初期値」を再代入する。
+  COPILOT_BIN="true"
+  MAX_REVIEWS=3
+  COPILOT_TIMEOUT=280
+  GATE_SEVERITIES="BLOCKER,MAJOR"
+  PARALLEL=1
+  RETENTION_DAYS=30
+  COPILOT_MODEL="gpt-5.6-sol"
+  COPILOT_AGENT="plan-reviewer"
+  unset SKIP_PLAN_REVIEW
+
   selftest_dir="$(mktemp -d)"
   trap 'rm -rf "$selftest_dir"' EXIT
   REVIEW_DIR="$selftest_dir"
@@ -687,13 +825,22 @@ if [[ "${1:-}" == "--selftest" ]]; then
   check "carry-over RESOLVED + 新規 0 → gate=false" false "$(jq -r '.gate' <<<"$j")"
   check "carry-over RESOLVED → closed=1" 1 "$(jq -r '.closed | length' <<<"$j")"
 
-  # 9) carry-over REFUTED_BY_PLAN → open set から外れる
+  # 9) 同じ id への重複・矛盾判定は順序によらず保守的に UNRESOLVED
+  c="$(mkcritic C '[]' \
+    '[{"id":"R1-A-1","status":"RESOLVED","rationale":"解消した"},
+      {"id":"R1-A-1","status":"UNRESOLVED","rationale":"まだ残る"}]')"
+  j="$(judge 2 "$OPEN1" <<<"[$c]")"
+  check "carry-over 重複 → gate=true" true "$(jq -r '.gate' <<<"$j")"
+  check "carry-over 重複 → UNRESOLVED が優先される" "UNRESOLVED" \
+    "$(jq -r '.open[0]._carry' <<<"$j")"
+
+  # 10) carry-over REFUTED_BY_PLAN → open set から外れる
   c="$(mkcritic C '[]' '[{"id":"R1-A-1","status":"REFUTED_BY_PLAN","rationale":"反証が妥当"}]')"
   j="$(judge 2 "$OPEN1" <<<"[$c]")"
   check "carry-over REFUTED_BY_PLAN → gate=false" false "$(jq -r '.gate' <<<"$j")"
   check "carry-over REFUTED_BY_PLAN → closed=1" 1 "$(jq -r '.closed | length' <<<"$j")"
 
-  # 10) open set の id に判定が返らない → UNRESOLVED 扱い + 警告
+  # 11) open set の id に判定が返らない → UNRESOLVED 扱い + 警告
   c="$(mkcritic C '[]' '[]')"
   j="$(judge 2 "$OPEN1" <<<"[$c]")"
   check "carry-over 未応答 → gate=true" true "$(jq -r '.gate' <<<"$j")"
@@ -704,7 +851,7 @@ if [[ "${1:-}" == "--selftest" ]]; then
     *) ng "carry-over 未応答 → 本文に未解消と明示" ;;
   esac
 
-  # 11) open set に無い id を返してきた → 無視 + 警告
+  # 12) open set に無い id を返してきた → 無視 + 警告
   c="$(mkcritic C '[]' '[{"id":"R1-A-1","status":"RESOLVED","rationale":"ok"},
                          {"id":"R9-Z-9","status":"UNRESOLVED","rationale":"知らない id"}]')"
   j="$(judge 2 "$OPEN1" <<<"[$c]")"
@@ -798,8 +945,17 @@ if [[ "${1:-}" == "--selftest" ]]; then
                          tool_name: "ExitPlanMode", permission_mode: "plan",
                          tool_input: {plan: "# plan\n"}}' > "$fixture"
   }
+  # 隔離(#56 / #58): サブプロセスにもホストの ambient env(home-manager の
+  # sessionVariables 等)を継承させない。env -u で関連キーを明示的に消してから
+  # $@ で上書きするテスト用の値だけを渡す。
   runhook() { # 残りの引数は env 代入として渡す
-    env CODEX_PLAN_REVIEW_DIR="$REVIEW_DIR" "$@" bash "$self" < "$fixture"
+    env \
+      -u COPILOT_BIN -u COPILOT_PLAN_REVIEW_DIR -u COPILOT_PLAN_REVIEW_MODEL \
+      -u COPILOT_PLAN_REVIEW_AGENT -u COPILOT_PLAN_REVIEW_TIMEOUT \
+      -u COPILOT_PLAN_REVIEW_GATE_SEVERITIES -u COPILOT_PLAN_REVIEW_PARALLEL \
+      -u COPILOT_PLAN_REVIEW_RETENTION_DAYS -u COPILOT_PLAN_REVIEW_SCHEMA \
+      -u MAX_PLAN_REVIEWS -u SKIP_PLAN_REVIEW \
+      COPILOT_PLAN_REVIEW_DIR="$REVIEW_DIR" "$@" bash "$self" < "$fixture"
   }
   decision() { jq -r '.hookSpecificOutput.permissionDecision // "none"'; }
   reason() { jq -r '.hookSpecificOutput.permissionDecisionReason // ""'; }
@@ -808,7 +964,7 @@ if [[ "${1:-}" == "--selftest" ]]; then
   mkhookinput selftest-cap
   printf '%s\n' "$MAX_REVIEWS" > "$STATE_DIR/selftest-cap.count"
   printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-cap.open.json"
-  out="$(runhook CODEX_BIN=true)"
+  out="$(runhook COPILOT_BIN=true)"
   check "上限到達 + open 非空 → deny" deny "$(decision <<<"$out")"
   case "$(reason <<<"$out")" in
     *AskUserQuestion*GO*NO-GO*) ok "上限到達 → GO/NO-GO を要求する" ;;
@@ -823,31 +979,31 @@ if [[ "${1:-}" == "--selftest" ]]; then
   else
     ng "上限到達 → escalated フラグが立つ"
   fi
-  out="$(runhook CODEX_BIN=true)"
+  out="$(runhook COPILOT_BIN=true)"
   check "escalated 済み → 素通り" none "$(decision <<<"$out")"
 
   # 17) 上限到達 + open set 空 → 素通り
   mkhookinput selftest-cap2
   printf '%s\n' "$MAX_REVIEWS" > "$STATE_DIR/selftest-cap2.count"
   printf '[]\n' > "$STATE_DIR/selftest-cap2.open.json"
-  out="$(runhook CODEX_BIN=true)"
+  out="$(runhook COPILOT_BIN=true)"
   check "上限到達 + open 空 → 素通り" none "$(decision <<<"$out")"
 
-  # 18) codex 不在 → 無言で素通り、カウンタも作らない
-  mkhookinput selftest-nocodex
-  out="$(runhook CODEX_BIN=definitely-not-a-real-binary)"
-  check "codex 不在 → 出力なし" "" "$out"
-  if [[ -e "$STATE_DIR/selftest-nocodex.count" ]]; then
-    ng "codex 不在 → カウンタを作らない"
+  # 18) copilot 不在 → 無言で素通り、カウンタも作らない
+  mkhookinput selftest-nocopilot
+  out="$(runhook COPILOT_BIN=definitely-not-a-real-binary)"
+  check "copilot 不在 → 出力なし" "" "$out"
+  if [[ -e "$STATE_DIR/selftest-nocopilot.count" ]]; then
+    ng "copilot 不在 → カウンタを作らない"
   else
-    ok "codex 不在 → カウンタを作らない"
+    ok "copilot 不在 → カウンタを作らない"
   fi
 
   # 19) SKIP_PLAN_REVIEW=1 / skip フラグ → 無言で素通り
-  out="$(runhook CODEX_BIN=true SKIP_PLAN_REVIEW=1)"
+  out="$(runhook COPILOT_BIN=true SKIP_PLAN_REVIEW=1)"
   check "SKIP_PLAN_REVIEW=1 → 出力なし" "" "$out"
   : > "$REVIEW_DIR/skip"
-  out="$(runhook CODEX_BIN=true)"
+  out="$(runhook COPILOT_BIN=true)"
   check "skip フラグ → 出力なし" "" "$out"
   rm -f "$REVIEW_DIR/skip"
 
@@ -860,22 +1016,48 @@ if [[ "${1:-}" == "--selftest" ]]; then
   check "debug ダンプに文字数だけが残る" 7 \
     "$(jq -r '.plan_chars' "$REVIEW_DIR/debug-last-input.json")"
 
-  # 21) 偽 codex で並列経路を通す。lens B だけ失敗させる
+  # 21) 偽 copilot で並列経路を通す。lens B だけ失敗させる。
+  # 実機の copilot 1.0.82 の引数形(-p, --agent, --model, --silent,
+  # --no-custom-instructions, --disable-builtin-mcps, --no-ask-user,
+  # --add-dir)を受け、固定契約(model/agent/read-only
+  # 境界・危険フラグの不在)を自ら検証してから応答する。
   fake_dir="$selftest_dir/fake"
   mkdir -p "$fake_dir"
-  cat > "$fake_dir/codex" <<'FAKEEOF'
+  cat > "$fake_dir/copilot" <<'FAKEEOF'
 #!/usr/bin/env bash
 set -u
-out=""
-prompt=""
+prompt="" agent="" model=""
+saw_silent=0 saw_no_custom=0 saw_disable_mcps=0 saw_no_ask_user=0
+add_dirs=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    -o) out="${2:-}"; shift 2 ;;
-    --output-schema | -s | -m | -C) shift 2 ;;
-    --search | exec | --skip-git-repo-check | --ephemeral) shift ;;
-    *) prompt="$1"; shift ;;
+    -p) prompt="${2:-}"; shift 2 ;;
+    --agent) agent="${2:-}"; shift 2 ;;
+    --model) model="${2:-}"; shift 2 ;;
+    --add-dir) add_dirs+=("${2:-}"); shift 2 ;;
+    --silent) saw_silent=1; shift ;;
+    --no-custom-instructions) saw_no_custom=1; shift ;;
+    --disable-builtin-mcps) saw_disable_mcps=1; shift ;;
+    --no-ask-user) saw_no_ask_user=1; shift ;;
+    --allow-all-tools | --yolo | --allow-all | --allow-all-paths | --allow-all-urls | --allow-url*)
+      echo "FAKE_COPILOT: dangerous flag $1 must never be passed" >&2
+      exit 99
+      ;;
+    *) shift ;;
   esac
 done
+if [ "$agent" != "${FAKE_COPILOT_EXPECT_AGENT:-plan-reviewer}" ]; then
+  echo "FAKE_COPILOT: unexpected --agent '$agent'" >&2
+  exit 98
+fi
+if [ "$model" != "${FAKE_COPILOT_EXPECT_MODEL:-gpt-5.6-sol}" ]; then
+  echo "FAKE_COPILOT: unexpected --model '$model'" >&2
+  exit 97
+fi
+if [ "$saw_silent$saw_no_custom$saw_disable_mcps$saw_no_ask_user" != "1111" ]; then
+  echo "FAKE_COPILOT: missing required noninteractive/read-only flag(s)" >&2
+  exit 96
+fi
 lens=M
 case "$prompt" in
   *"(lens A)"*) lens=A ;;
@@ -883,18 +1065,31 @@ case "$prompt" in
   *"(lens C)"*) lens=C ;;
   *"(lens Z"*) lens=Z ;;
 esac
-[ -e "$FAKE_CODEX_DIR/$lens.fail" ] && exit 1
-cp "$FAKE_CODEX_DIR/$lens.json" "$out"
+{
+  printf 'agent=%s\n' "$agent"
+  printf 'model=%s\n' "$model"
+  printf 'silent=%s custom=%s mcps=%s askuser=%s\n' \
+    "$saw_silent" "$saw_no_custom" "$saw_disable_mcps" "$saw_no_ask_user"
+  printf 'add_dirs=%s\n' "${add_dirs[*]-}"
+} > "$FAKE_COPILOT_DIR/last-invocation-$lens.txt" 2>/dev/null
+[ -e "$FAKE_COPILOT_DIR/$lens.fail" ] && exit 1
+if [ -e "$FAKE_COPILOT_DIR/$lens.fence" ]; then
+  printf '```json\n'
+  cat "$FAKE_COPILOT_DIR/$lens.json"
+  printf '\n```\n'
+else
+  cat "$FAKE_COPILOT_DIR/$lens.json"
+fi
 # 有効な JSON を書いたうえで非ゼロ終了する（タイムアウト・後処理エラーの再現）
-[ -e "$FAKE_CODEX_DIR/$lens.rcfail" ] && exit 1
+[ -e "$FAKE_COPILOT_DIR/$lens.rcfail" ] && exit 1
 exit 0
 FAKEEOF
-  chmod +x "$fake_dir/codex"
+  chmod +x "$fake_dir/copilot"
   mkcritic A "[$(mkfinding BLOCKER 'lens A の指摘')]" '[]' | jq '.data' > "$fake_dir/A.json"
   : > "$fake_dir/B.fail"
   mkhookinput selftest-parallel
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "片側失敗 → deny" deny "$(decision <<<"$out")"
   case "$(reason <<<"$out")" in
     *"lens B"*) ok "片側失敗 → 失敗した lens を報告する" ;;
@@ -912,8 +1107,8 @@ FAKEEOF
  "findings": [],
  "carryover": [{"id": "R1-A-1", "status": "RESOLVED", "rationale": "修正済み"}]}
 CJSON
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "ラウンド 2 で carry-over 解消 → 素通り" none "$(decision <<<"$out")"
   check "ラウンド 2 → open set が空になる" 0 \
     "$(jq -r 'length' "$STATE_DIR/selftest-parallel.open.json")"
@@ -931,8 +1126,8 @@ ZJSON
   mkhookinput selftest-closer-pass
   printf '%s\n' "$((MAX_REVIEWS - 1))" > "$STATE_DIR/selftest-closer-pass.count"
   printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-closer-pass.open.json"
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "closer: carry-over 全閉 → 素通り" none "$(decision <<<"$out")"
   check "closer: carry-over 全閉 → open set が空になる" 0 \
     "$(jq -r 'length' "$STATE_DIR/selftest-closer-pass.open.json")"
@@ -957,8 +1152,8 @@ ZJSON
   mkhookinput selftest-closer-deny
   printf '%s\n' "$((MAX_REVIEWS - 1))" > "$STATE_DIR/selftest-closer-deny.count"
   printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-closer-deny.open.json"
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "closer: carry-over 未解消 → deny" deny "$(decision <<<"$out")"
   case "$(reason <<<"$out")" in
     *AskUserQuestion*GO*NO-GO*) ok "closer: GO/NO-GO を要求する" ;;
@@ -988,7 +1183,7 @@ ZJSON
   printf '1\n' > "$STATE_DIR/selftest-escalated.count"
   printf '%s\n' "$OPEN1" > "$STATE_DIR/selftest-escalated.open.json"
   : > "$STATE_DIR/selftest-escalated.escalated"
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir")"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir")"
   check "escalated 済み + 上限未到達 → 素通り" none "$(decision <<<"$out")"
   check "escalated 済み → ラウンドを消費しない" 1 \
     "$(cat "$STATE_DIR/selftest-escalated.count")"
@@ -996,8 +1191,8 @@ ZJSON
   # 22e) MAX_PLAN_REVIEWS=1 の退化ケースではラウンド 1 を closer 化しない
   mkcritic M "[$(mkfinding BLOCKER 'lens M の指摘')]" '[]' | jq '.data' > "$fake_dir/M.json"
   mkhookinput selftest-max1
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20 MAX_PLAN_REVIEWS=1 CODEX_PLAN_REVIEW_PARALLEL=0)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 MAX_PLAN_REVIEWS=1 COPILOT_PLAN_REVIEW_PARALLEL=0)"
   check "MAX=1: ラウンド 1 は closer 化しない → deny" deny "$(decision <<<"$out")"
   check "MAX=1: 新規 BLOCKER が open set に入る" 1 \
     "$(jq -r 'length' "$STATE_DIR/selftest-max1.open.json")"
@@ -1011,8 +1206,8 @@ ZJSON
   #     （rc を捨てていると成功扱いになり、不完全な結果で gate を張ってしまう）
   : > "$fake_dir/A.rcfail"
   mkhookinput selftest-rcfail
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "JSON を書いて非ゼロ終了 → 素通り" none "$(decision <<<"$out")"
   if [[ -e "$STATE_DIR/selftest-rcfail.count" ]]; then
     ng "JSON を書いて非ゼロ終了 → ラウンドを消費しない"
@@ -1023,14 +1218,105 @@ ZJSON
   # 24) 両方失敗 → fail-open、ラウンド非消費
   : > "$fake_dir/A.fail"
   mkhookinput selftest-bothfail
-  out="$(runhook CODEX_BIN="$fake_dir/codex" FAKE_CODEX_DIR="$fake_dir" \
-    CODEX_PLAN_REVIEW_TIMEOUT=20)"
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20)"
   check "両方失敗 → 素通り" none "$(decision <<<"$out")"
   if [[ -e "$STATE_DIR/selftest-bothfail.count" ]]; then
     ng "両方失敗 → ラウンドを消費しない"
   else
     ok "両方失敗 → ラウンドを消費しない"
   fi
+  rm -f "$fake_dir"/*.fail "$fake_dir"/*.rcfail
+
+  echo "copilot 呼び出し契約:"
+
+  # 25) 固定契約: --agent / --model / 非対話・read-only フラグが実際に渡っている。
+  # ラウンド 1 を PARALLEL=0 で lens M 単独にし、fake copilot が書いた argv dump を検査する。
+  mkcritic M "[$(mkfinding BLOCKER 'lens M の指摘')]" '[]' | jq '.data' > "$fake_dir/M.json"
+  mkhookinput selftest-contract
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0)"
+  check "契約: --agent は plan-reviewer 固定" "agent=plan-reviewer" \
+    "$(sed -n 1p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
+  check "契約: --model の既定は gpt-5.6-sol" "model=gpt-5.6-sol" \
+    "$(sed -n 2p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
+  check "契約: --silent/--no-custom-instructions/--disable-builtin-mcps/--no-ask-user が揃う" \
+    "silent=1 custom=1 mcps=1 askuser=1" \
+    "$(sed -n 3p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
+
+  # 26) COPILOT_PLAN_REVIEW_MODEL で model を上書きできる
+  mkhookinput selftest-model-override
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0 \
+    COPILOT_PLAN_REVIEW_MODEL=gpt-9-test FAKE_COPILOT_EXPECT_MODEL=gpt-9-test)"
+  check "契約: COPILOT_PLAN_REVIEW_MODEL で上書きできる" "model=gpt-9-test" \
+    "$(sed -n 2p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
+
+  # 27) COPILOT_PLAN_REVIEW_AGENT で agent を上書きできる
+  mkhookinput selftest-agent-override
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0 \
+    COPILOT_PLAN_REVIEW_AGENT=custom-reviewer FAKE_COPILOT_EXPECT_AGENT=custom-reviewer)"
+  check "契約: COPILOT_PLAN_REVIEW_AGENT で上書きできる" "agent=custom-reviewer" \
+    "$(sed -n 1p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
+
+  # 28) plan file がリポジトリ外にあるとき、その親ディレクトリだけ --add-dir する
+  #    (mkhookinput は cwd="." + tool_input.plan を渡すので plan_tmp は必ず
+  #    $REVIEW_DIR 配下 = workdir(".") の外になり、常に add-dir されるはず)
+  mkhookinput selftest-adddir
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0)"
+  case "$(sed -n 4p "$fake_dir/last-invocation-M.txt" 2>/dev/null)" in
+    "add_dirs=$REVIEW_DIR"*) ok "契約: plan file の親ディレクトリを --add-dir する" ;;
+    *) ng "契約: plan file の親ディレクトリを --add-dir する" ;;
+  esac
+
+  echo "critic の JSON 厳格検証:"
+
+  # 29) コードフェンス付き JSON → 非 JSON として critic failure(fail-open)
+  : > "$fake_dir/M.fence"
+  mkhookinput selftest-fence
+  out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+    COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0)"
+  check "フェンス付き JSON → fail-open" none "$(decision <<<"$out")"
+  if [[ -e "$STATE_DIR/selftest-fence.count" ]]; then
+    ng "フェンス付き JSON → ラウンドを消費しない"
+  else
+    ok "フェンス付き JSON → ラウンドを消費しない"
+  fi
+  rm -f "$fake_dir/M.fence"
+
+  # $1=変換後の JSON を書く jq フィルタ $2=ラベル $3=session id
+  check_schema_reject() {
+    local filter="$1" label="$2" sid="$3"
+    jq "$filter" "$fake_dir/M.json" > "$fake_dir/M.json.mut" && mv "$fake_dir/M.json.mut" "$fake_dir/M.json"
+    mkhookinput "$sid"
+    out="$(runhook COPILOT_BIN="$fake_dir/copilot" FAKE_COPILOT_DIR="$fake_dir" \
+      COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0)"
+    check "$label → fail-open" none "$(decision <<<"$out")"
+    if [[ -e "$STATE_DIR/$sid.count" ]]; then
+      ng "$label → ラウンドを消費しない"
+    else
+      ok "$label → ラウンドを消費しない"
+    fi
+    # 次のテストのため常に正当な baseline に戻す
+    mkcritic M "[$(mkfinding BLOCKER 'lens M の指摘')]" '[]' | jq '.data' > "$fake_dir/M.json"
+  }
+
+  # 30) top-level キー欠落(carryover が無い) → additionalProperties/required 違反
+  check_schema_reject 'del(.carryover)' "top-level キー欠落" selftest-missingkey
+
+  # 31) top-level に想定外キーを追加 → additionalProperties 違反
+  check_schema_reject '. + {extra: "unexpected"}' "top-level 余剰キー" selftest-extrakey
+
+  # 32) finding の severity が enum 外 → 破棄され critic failure
+  check_schema_reject '.findings[0].severity = "CRITICAL"' "severity enum 違反" selftest-badenum
+
+  # 33) readiness の型が boolean でない → 破棄され critic failure
+  check_schema_reject '.readiness.requirements = "true"' "readiness 型不正" selftest-badtype
+
+  # 34) finding に想定外キーが混じる → additionalProperties 違反
+  check_schema_reject '.findings[0].extra = "nope"' "finding 余剰キー" selftest-findingextrakey
 
   echo
   if [[ "$selftest_fail" == "0" ]]; then
@@ -1104,8 +1390,8 @@ $residual
 MINOR/NIT は $BACKLOG_FILE を参照。レビュー全文: ${log_path:-$REVIEW_DIR}"
 }
 
-# --- codex 不在のマシンでは黙って素通り（ADR-0005: バイナリ存在でゲート） ---
-if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
+# --- copilot 不在のマシンでは黙って素通り（ADR-0005: バイナリ存在でゲート） ---
+if ! command -v "$COPILOT_BIN" >/dev/null 2>&1; then
   pass_through
 fi
 
@@ -1133,7 +1419,7 @@ open_n="$(jq 'length' <<<"$open_set")"
 # 上限到達を待たずに立つフラグである。
 if [[ -e "$ESCALATED_FILE" ]]; then
   latest_log="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1)"
-  pass_through "Codex プランレビュー: このセッションでは既に人間の GO/NO-GO を要求したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
+  pass_through "Copilot プランレビュー: このセッションでは既に人間の GO/NO-GO を要求したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
 fi
 
 # --- ラウンド上限 ---
@@ -1142,12 +1428,12 @@ fi
 if [[ "$count" -ge "$MAX_REVIEWS" ]]; then
   latest_log="$(ls -t "$REVIEW_DIR"/*.md 2>/dev/null | head -1)"
   if [[ "$open_n" != "0" ]]; then
-    # codex は呼ばない。deny を 1 回だけ返して人間の GO/NO-GO を強制する。
+    # copilot は呼ばない。deny を 1 回だけ返して人間の GO/NO-GO を強制する。
     escalate_with "$(jq -n --argjson o "$open_set" '{open: $o}')" \
-      "Codex プランレビューの上限 (${MAX_REVIEWS} ラウンド) に到達しましたが、" \
+      "Copilot プランレビューの上限 (${MAX_REVIEWS} ラウンド) に到達しましたが、" \
       "$latest_log"
   fi
-  pass_through "Codex プランレビュー: このセッションの上限 (${MAX_REVIEWS} ラウンド) に達したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
+  pass_through "Copilot プランレビュー: このセッションの上限 (${MAX_REVIEWS} ラウンド) に達したため素通しします。直近のレビュー: ${latest_log:-$REVIEW_DIR}"
 fi
 
 # --- プラン本文の取得: tool_input.plan → planFilePath → 最新の ~/.claude/plans/*.md ---
@@ -1164,7 +1450,7 @@ elif [[ -n "$plan_path" && -f "$plan_path" ]]; then
 else
   latest_plan="$(ls -t "$HOME/.claude/plans/"*.md 2>/dev/null | head -1)"
   if [[ -z "$latest_plan" ]]; then
-    pass_through "Codex プランレビュー: プラン本文を取得できなかったためスキップしました（tool_input.plan / planFilePath なし、~/.claude/plans/ も空）。"
+    pass_through "Copilot プランレビュー: プラン本文を取得できなかったためスキップしました（tool_input.plan / planFilePath なし、~/.claude/plans/ も空）。"
   fi
   plan_file="$latest_plan"
 fi
@@ -1200,7 +1486,7 @@ critics="$(jq '.critics' <<<"$critic_raw" 2>/dev/null || echo '[]')"
 critic_failed="$(jq -r '.failed | join(", ")' <<<"$critic_raw" 2>/dev/null || echo '')"
 
 if [[ "$(jq 'length' <<<"$critics" 2>/dev/null || echo 0)" == "0" ]]; then
-  pass_through "Codex プランレビュー: 実行に失敗しました（タイムアウト ${CODEX_TIMEOUT}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。"
+  pass_through "Copilot プランレビュー: 実行に失敗しました（タイムアウト ${COPILOT_TIMEOUT}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。"
 fi
 
 # closer ラウンドは gate 適格 severity を空にする（= 新規 finding は全て backlog へ）。
@@ -1212,7 +1498,7 @@ else
   judged="$(judge "$round" "$open_set" <<<"$critics")" || judged=""
 fi
 if [[ -z "$judged" ]]; then
-  pass_through "Codex プランレビュー: レビュー結果の解析に失敗しました。fail-open で通過させます。ラウンドは消費していません。"
+  pass_through "Copilot プランレビュー: レビュー結果の解析に失敗しました。fail-open で通過させます。ラウンドは消費していません。"
 fi
 
 # --- ここから先はレビューが成立した = ラウンドを消費する ---
@@ -1247,10 +1533,10 @@ if [[ "$gate" == "true" ]]; then
   # 修正を判定するラウンドがまた無くなる。人間の GO/NO-GO に直行する。
   if [[ "$closer" == "1" ]]; then
     escalate_with "$judged" \
-      "Codex プランレビューの最終ラウンド (closer) で改訂プランに対して再判定した結果、" \
+      "Copilot プランレビューの最終ラウンド (closer) で改訂プランに対して再判定した結果、" \
       "$review_log"
   fi
-  deny_with "Codex によるプランレビューの結果、実装をブロックする指摘が ${open_n} 件あります（ラウンド ${round}/${MAX_REVIEWS}、新規 ${new_n} 件 / 前ラウンドから未解消 ${carried_n} 件）。
+  deny_with "Copilot によるプランレビューの結果、実装をブロックする指摘が ${open_n} 件あります（ラウンド ${round}/${MAX_REVIEWS}、新規 ${new_n} 件 / 前ラウンドから未解消 ${carried_n} 件）。
 
 対応の方針:
 
@@ -1278,11 +1564,11 @@ if [[ "$closer" == "1" ]]; then
   if [[ "$serious_n" != "0" ]]; then
     closer_note="${closer_note}closer は carry-over 判定専用なので、新たに報告された BLOCKER/MAJOR ${serious_n} 件（うち BLOCKER ${blocker_n} 件）は gate 対象にせず backlog に退避しました。実装前に $BACKLOG_FILE を確認してください。"
   fi
-  pass_through "Codex プランレビュー: ${closer_note}backlog は計 ${backlog_n} 件。全文: $review_log${warn:+
+  pass_through "Copilot プランレビュー: ${closer_note}backlog は計 ${backlog_n} 件。全文: $review_log${warn:+
 
 （注意: $warn）}"
 fi
 
-pass_through "Codex プランレビュー: 実装をブロックする指摘はありません（ラウンド ${round}/${MAX_REVIEWS}）。MINOR/NIT ${backlog_n} 件は $BACKLOG_FILE に退避しました。全文: $review_log${warn:+
+pass_through "Copilot プランレビュー: 実装をブロックする指摘はありません（ラウンド ${round}/${MAX_REVIEWS}）。MINOR/NIT ${backlog_n} 件は $BACKLOG_FILE に退避しました。全文: $review_log${warn:+
 
 （注意: $warn）}"
