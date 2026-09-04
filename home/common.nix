@@ -6,6 +6,7 @@
   imports = [
     ./modules/claude.nix
     ./modules/herdr.nix
+    ./modules/worktree.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
     ./modules/git.nix
