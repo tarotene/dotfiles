@@ -128,6 +128,16 @@ in
     executable = true;
   };
 
+  xdg.configFile."git/hooks/identity-guard.sh" = {
+    source = repoConfig + "/git/hooks/identity-guard.sh";
+    executable = true;
+  };
+
+  xdg.configFile."git/hooks/identity-guard-self-test.sh" = {
+    source = repoConfig + "/git/hooks/identity-guard-self-test.sh";
+    executable = true;
+  };
+
   # Not a git hook — a helper script the `prune-branches` alias above shells
   # out to. Deployed next to the hooks for the same reason (literal file,
   # xdg.configFile, no interpretation by home-manager).

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+hook_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+"$hook_dir/identity-guard.sh" commit
+
 # Protected-branch guard: block a direct commit onto main/master. herdr
 # provisions a fresh worktree per task, so a commit landing on main/master
 # usually means the wrong pane/cwd was used — the commit is real and easy to

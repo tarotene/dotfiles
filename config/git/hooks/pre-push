@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+hook_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 # Detect worktree: git-dir differs from git-common-dir in worktrees
 git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
 common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
@@ -28,6 +30,14 @@ if [[ "$git_dir" != "$common_dir" && "$is_herdr_worktree" -eq 0 ]]; then
     echo "  Override: git push --no-verify" >&2
     exit 1
 fi
+
+# stdin has one line per ref update: <local-ref> <local-oid> <remote-ref>
+# <remote-oid>.  Check tag objects before anything reaches the remote, so a
+# bad tagger cannot trigger a release workflow.
+while read -r local_ref local_oid remote_ref remote_oid; do
+    [[ "$local_ref" == refs/tags/* ]] || continue
+    "$hook_dir/identity-guard.sh" tag "$local_oid" "${local_ref#refs/tags/}"
+done
 
 # Chain to repo-local pre-push hook (core.hooksPath skips .git/hooks/)
 local_hook="${common_dir}/hooks/pre-push"
