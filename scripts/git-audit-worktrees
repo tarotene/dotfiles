@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Detect stale linked-worktree registrations across ghr and Herdr repositories.
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+GHR_ROOT="${GIT_WORKTREE_AUDIT_GHR_ROOT:-$HOME/.ghr}"
+HERDR_ROOT="${GIT_WORKTREE_AUDIT_HERDR_ROOT:-$HOME/.herdr/worktrees}"
+STATE_DIR="${GIT_WORKTREE_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-worktree-audit}"
+HERDR_BIN="${GIT_WORKTREE_AUDIT_HERDR_BIN:-herdr}"
+TEST_TMP=''
+
+usage() {
+  cat <<'EOF'
+usage: git audit-worktrees [--notify|--context|--prune [--yes]|--selftest]
+
+Without options, report stale worktree registrations and exit 1 when any exist.
+--notify sends one Herdr notification per stale-set fingerprint.
+--context emits SessionStart hook JSON.
+--prune removes stale registrations after confirmation; branches are preserved.
+EOF
+}
+
+discover_repositories() { # print: <common-dir TAB usable-worktree>
+  local root dotgit repo common
+  declare -A seen=()
+  for root in "$GHR_ROOT" "$HERDR_ROOT"; do
+    [[ -d $root ]] || continue
+    while IFS= read -r -d '' dotgit; do
+      repo="${dotgit%/.git}"
+      common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
+      common="$(realpath -m -- "$common")"
+      [[ -n ${seen[$common]+x} ]] && continue
+      seen[$common]=1
+      printf '%s\t%s\n' "$common" "$repo"
+    done < <(find "$root" -mindepth 1 -maxdepth 4 -name .git -print0 2>/dev/null)
+  done
+}
+
+scan() { # print TSV: common, repo, path, branch, reason
+  local common repo line path branch reason
+  while IFS=$'\t' read -r common repo; do
+    [[ -n $common ]] || continue
+    path='' branch='' reason=''
+    while IFS= read -r line || [[ -n $line ]]; do
+      if [[ -z $line ]]; then
+        if [[ -n $reason ]]; then
+          printf '%s\t%s\t%s\t%s\t%s\n' "$common" "$repo" "$path" "${branch#refs/heads/}" "$reason"
+        fi
+        path='' branch='' reason=''
+        continue
+      fi
+      case "$line" in
+        worktree\ *) path="${line#worktree }" ;;
+        branch\ *) branch="${line#branch }" ;;
+        prunable\ *) reason="${line#prunable }" ;;
+      esac
+    done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null; printf '\n')
+  done < <(discover_repositories)
+}
+
+render_report() {
+  local findings="$1" common repo path branch reason count=0
+  while IFS=$'\t' read -r common repo path branch reason; do
+    [[ -n $path ]] || continue
+    count=$((count + 1))
+    printf 'stale worktree: repo=%s path=%s branch=%s reason=%s\n' "$repo" "$path" "${branch:-(detached)}" "$reason"
+  done <<< "$findings"
+  [[ $count -eq 0 ]] || printf 'total: %d stale worktree registration(s)\n' "$count"
+}
+
+fingerprint() { LC_ALL=C sort | sha256sum | cut -d' ' -f1; }
+
+write_state() {
+  local fingerprint_value="$1" first_seen="$2" notified="$3" tmp
+  mkdir -p "$STATE_DIR"
+  tmp="$(mktemp "$STATE_DIR/state.json.XXXXXX")"
+  jq -n --arg fingerprint "$fingerprint_value" --arg first_seen "$first_seen" --argjson notified "$notified" \
+    '{fingerprint: $fingerprint, first_seen: $first_seen, notified: $notified}' > "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$STATE_DIR/state.json"
+}
+
+notify() {
+  local findings="$1" fp old_fp first_seen notified response body count
+  mkdir -p "$STATE_DIR"
+  exec 9>"$STATE_DIR/lock"
+  flock -n 9 || exit 0
+  if [[ -z $findings ]]; then rm -f "$STATE_DIR/state.json"; exit 0; fi
+  fp="$(printf '%s\n' "$findings" | fingerprint)"
+  old_fp="$(jq -r '.fingerprint // empty' "$STATE_DIR/state.json" 2>/dev/null || true)"
+  if [[ $old_fp == "$fp" ]]; then
+    first_seen="$(jq -r '.first_seen // empty' "$STATE_DIR/state.json" 2>/dev/null || true)"
+    notified="$(jq -r '.notified // false' "$STATE_DIR/state.json" 2>/dev/null || printf false)"
+  else
+    first_seen="$(date --iso-8601=seconds)"
+    notified=false
+    write_state "$fp" "$first_seen" false
+    printf 'git-worktree-audit: first detected at %s\n' "$first_seen" >&2
+    render_report "$findings" >&2
+  fi
+  [[ $notified == true ]] && exit 0
+  count="$(wc -l <<< "$findings" | tr -d ' ')"
+  body="$(render_report "$findings")"
+  body="${body:0:230}"
+  response="$($HERDR_BIN notification show "stale worktree を検出 (${count}件)" --body "$body" --sound request 2>/dev/null)" || exit 0
+  if jq -e '.. | objects | select(has("shown")) | .shown == true' <<< "$response" >/dev/null 2>&1; then
+    write_state "$fp" "$first_seen" true
+  fi
+}
+
+context() {
+  local findings="$1" report
+  [[ -n $findings ]] || exit 0
+  report="$(render_report "$findings")"
+  jq -n --arg ctx "[git-worktree-audit] 存在しない checkout の登録があります。自動削除せず、git audit-worktrees で確認してください。\n${report}" \
+    '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
+}
+
+prune() {
+  local findings="$1" assume_yes="$2" answer common
+  [[ -n $findings ]] || { printf 'stale worktree registration はありません。\n'; return 0; }
+  render_report "$findings"
+  if [[ $assume_yes != true ]]; then
+    [[ -t 0 ]] || { printf '非対話実行では --yes が必要です。\n' >&2; return 2; }
+    read -r -p '上記の登録メタデータを prune しますか? [y/N] ' answer
+    [[ $answer == y || $answer == Y ]] || return 2
+  fi
+  while IFS= read -r common; do
+    [[ -n $common ]] || continue
+    git --git-dir="$common" worktree prune --verbose
+  done < <(cut -f1 <<< "$findings" | LC_ALL=C sort -u)
+}
+
+selftest() {
+  local tmp repo wt out calls
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/ghr/github.com/acme/repo"
+  wt="$tmp/disappeared"
+  mkdir -p "$repo" "$tmp/herdr" "$tmp/bin" "$tmp/state"
+  git -C "$repo" init -q
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+  git -C "$repo" worktree add -qb test/stale "$wt"
+  rm -rf "$wt"
+  if out="$(GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" 2>&1)"; then
+    printf 'FAIL: stale 検出が成功終了した\n' >&2; return 1
+  fi
+  grep -F "path=$wt branch=test/stale" <<< "$out" >/dev/null
+  cat > "$tmp/bin/herdr" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' call >> "$GIT_WORKTREE_AUDIT_TEST_CALLS"
+reason="$(cat "$GIT_WORKTREE_AUDIT_TEST_REASON")"
+if [[ $reason == shown ]]; then shown=true; else shown=false; fi
+printf '{"result":{"shown":%s,"reason":"%s"}}\n' "$shown" "$reason"
+EOF
+  chmod +x "$tmp/bin/herdr"
+  printf busy > "$tmp/reason"
+  export GIT_WORKTREE_AUDIT_TEST_CALLS="$tmp/calls" GIT_WORKTREE_AUDIT_TEST_REASON="$tmp/reason"
+  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
+  printf shown > "$tmp/reason"
+  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
+  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
+  calls="$(wc -l < "$tmp/calls" | tr -d ' ')"
+  [[ $calls == 2 ]] || { printf 'FAIL: notify 呼び出し回数=%s (期待=2)\n' "$calls" >&2; return 1; }
+  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" --prune --yes >/dev/null
+  git -C "$repo" show-ref --verify --quiet refs/heads/test/stale
+  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" >/dev/null
+  printf 'selftest: OK\n'
+}
+
+main() {
+  local mode=report assume_yes=false findings
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --notify) mode=notify ;;
+      --context) mode=context ;;
+      --prune) mode=prune ;;
+      --yes) assume_yes=true ;;
+      --selftest) selftest; return ;;
+      -h | --help) usage; return ;;
+      *) usage >&2; return 2 ;;
+    esac
+    shift
+  done
+  findings="$(scan)"
+  case "$mode" in
+    report) if [[ -n $findings ]]; then render_report "$findings"; return 1; fi; printf 'stale worktree registration はありません。\n' ;;
+    notify) notify "$findings" ;;
+    context) context "$findings" ;;
+    prune) prune "$findings" "$assume_yes" ;;
+  esac
+}
+
+main "$@"

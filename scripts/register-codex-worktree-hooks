@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Idempotently add dotfiles-owned hooks while preserving Herdr/Codex entries.
+set -euo pipefail
+TEST_TMP=''
+
+register() {
+  local settings="$1" event="$2" matcher="$3" command="$4" timeout="$5" tmp
+  if jq -e --arg event "$event" --arg command "$command" \
+      '[.hooks[$event][]? | .hooks[]? | select(.command == $command)] | length > 0' \
+      "$settings" >/dev/null; then
+    return 0
+  fi
+  tmp="$(mktemp "$settings.hm.XXXXXX")"
+  jq --arg event "$event" --arg matcher "$matcher" --arg command "$command" \
+    --argjson timeout "$timeout" '
+      .hooks[$event] = ((.hooks[$event] // []) + [
+        (if $matcher == "" then {} else {matcher: $matcher} end)
+        + {hooks: [{type: "command", command: $command, timeout: $timeout}]}
+      ])
+    ' "$settings" > "$tmp"
+  chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$settings"
+}
+
+main() {
+  local settings="$1" guard="$2" context="$3"
+  if [[ ! -f $settings ]]; then
+    mkdir -p "$(dirname "$settings")"
+    printf '{}\n' > "$settings"
+  fi
+  register "$settings" PreToolUse Bash "$guard" 10
+  register "$settings" SessionStart 'startup|resume' "$context" 30
+}
+
+selftest() {
+  local tmp settings
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  settings="$tmp/hooks.json"
+  printf '%s\n' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"herdr-existing"}]}]}}' > "$settings"
+  main "$settings" guard-command context-command
+  main "$settings" guard-command context-command
+  jq -e '
+    ([.hooks.SessionStart[]?.hooks[]? | select(.command == "herdr-existing")] | length) == 1
+    and (([.hooks.SessionStart[]?.hooks[]? | select(.command == "context-command")] | length) == 1)
+    and (([.hooks.PreToolUse[]?.hooks[]? | select(.command == "guard-command")] | length) == 1)
+  ' "$settings" >/dev/null
+  printf 'selftest: OK\n'
+}
+
+if [[ ${1-} == --selftest ]]; then
+  selftest
+elif [[ $# -eq 3 ]]; then
+  main "$@"
+else
+  printf 'usage: register-codex-worktree-hooks <hooks.json> <guard-command> <context-command>\n' >&2
+  exit 2
+fi

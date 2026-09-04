@@ -9,6 +9,8 @@
 - [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
   guard herdr's parallel-worktree workflow (stale base, protected-branch
   commits, stale `[gone]` branches).
+- [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
+  creation, detect stale registrations, and notify through Herdr.
 
 ## Architecture Decision Records ([`adr/`](adr/))
 

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Block direct `git worktree add`; Herdr must own creation and cleanup together.
+set -euo pipefail
+
+decide_segment() {
+  local segment="$1" idx=1 token
+  local -a words
+  read -r -a words <<< "$segment"
+  [[ ${#words[@]} -gt 0 && ${words[0]} == git ]] || return 1
+  while [[ $idx -lt ${#words[@]} ]]; do
+    token="${words[$idx]}"
+    case "$token" in
+      -C | -c | --git-dir | --work-tree | --namespace) idx=$((idx + 2)) ;;
+      --git-dir=* | --work-tree=* | --namespace=* | --bare | --no-pager | --literal-pathspecs) idx=$((idx + 1)) ;;
+      *) break ;;
+    esac
+  done
+  [[ ${words[$idx]:-} == worktree && ${words[$((idx + 1))]:-} == add ]] || return 1
+  printf '直接の git worktree add は一時ディレクトリ削除後に stale 登録を残すため拒否しました。herdr worktree create --cwd <repo> --branch <name> を使ってください。'
+}
+
+decide() {
+  local command="$1" normalized segment reason
+  grep -qE 'worktree[[:space:]]+add' <<< "$command" || return 1
+  normalized="${command//&&/$'\n'}"
+  normalized="${normalized//||/$'\n'}"
+  normalized="${normalized//;/$'\n'}"
+  normalized="${normalized//|/$'\n'}"
+  while IFS= read -r segment; do
+    segment="${segment#"${segment%%[![:space:]]*}"}"
+    if reason="$(decide_segment "$segment")"; then printf '%s' "$reason"; return 0; fi
+  done <<< "$normalized"
+  return 1
+}
+
+main() {
+  command -v jq >/dev/null 2>&1 || exit 0
+  local input command reason
+  input="$(cat)" || exit 0
+  grep -qE 'worktree[[:space:]]+add' <<< "$input" || exit 0
+  command="$(jq -r 'select(.tool_name == "Bash") | .tool_input.command // empty' <<< "$input" 2>/dev/null)" || exit 0
+  [[ -n $command ]] || exit 0
+  if reason="$(decide "$command")"; then
+    jq -n --arg reason "$reason" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'
+  fi
+}
+
+selftest() {
+  local failures=0 output
+  expect_deny() { if ! output="$(decide "$1")" || [[ -z $output ]]; then printf 'FAIL(deny): %s\n' "$1" >&2; failures=$((failures + 1)); fi; }
+  expect_pass() { if decide "$1" >/dev/null; then printf 'FAIL(pass): %s\n' "$1" >&2; failures=$((failures + 1)); fi; }
+  expect_deny 'git worktree add /tmp/wt'
+  expect_deny 'git -C /repo worktree add /tmp/wt topic'
+  expect_deny 'cd /repo && git worktree add /tmp/wt'
+  expect_deny $'git status\ngit worktree add /tmp/wt'
+  expect_deny 'git --git-dir=/repo/.git worktree add /tmp/wt'
+  expect_pass 'git worktree list'
+  expect_pass 'git worktree remove /tmp/wt'
+  expect_pass 'git worktree prune --dry-run'
+  expect_pass 'echo "use git worktree add carefully"'
+  expect_pass 'rg "git worktree add" docs/'
+  output="$(jq -n '{tool_name:"Bash",tool_input:{command:"git worktree add /tmp/wt"}}' | main)"
+  jq -e '.hookSpecificOutput.permissionDecision == "deny"' <<< "$output" >/dev/null || failures=$((failures + 1))
+  output="$(jq -n '{tool_name:"Bash",tool_input:{command:"git worktree list"}}' | main)"
+  [[ -z $output ]] || failures=$((failures + 1))
+  [[ $failures -eq 0 ]] || { printf 'selftest: %d 件失敗\n' "$failures" >&2; return 1; }
+  printf 'selftest: OK\n'
+}
+
+if [[ ${1-} == --selftest ]]; then selftest; else main; fi

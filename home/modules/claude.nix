@@ -153,6 +153,8 @@ let
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
+  worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
+  worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   # 旧 Codex 版の plan-review hook command。中身(--search exec --output-schema
   # 等)ごと copilot-plan-review.sh に置き換えたので、activation が settings.json
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
@@ -310,6 +312,8 @@ let
     git_stash_guard="$1";       shift
     herdr_metadata="$1";        shift
     worktree_fresh_base="$1";   shift
+    worktree_create_guard="$1"; shift
+    worktree_audit_context="$1"; shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -366,6 +370,12 @@ let
     register PreToolUse "" "$herdr_metadata" 10
     register Stop "" "$herdr_metadata" 10
     register SessionEnd "" "$herdr_metadata" 10
+    # Direct worktree creation can outlive an agent's temporary checkout cleanup.
+    # Herdr owns both lifecycle ends, so reject every Bash spelling here.
+    register PreToolUse Bash "$worktree_create_guard" 10
+    # The timer is the primary detector; SessionStart also exposes pending state
+    # directly to the agent that is in a position to clean it up.
+    register SessionStart "startup|resume" "$worktree_audit_context" 30
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -748,7 +758,9 @@ in
       ${lib.escapeShellArg gitWorktreeAllowCmd} \
       ${lib.escapeShellArg gitStashGuardCmd} \
       ${lib.escapeShellArg herdrMetadataCmd} \
-      ${lib.escapeShellArg worktreeFreshBaseCmd}
+      ${lib.escapeShellArg worktreeFreshBaseCmd} \
+      ${lib.escapeShellArg worktreeCreateGuardCmd} \
+      ${lib.escapeShellArg worktreeAuditContextCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

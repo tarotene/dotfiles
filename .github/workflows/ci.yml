@@ -150,6 +150,14 @@ jobs:
       - name: sign-prewarm.sh --selftest
         run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
 
+      # A deleted checkout must be detected without deleting its branch; hook
+      # registration must remain idempotent beside Herdr's own Codex hook.
+      - name: Worktree lifecycle self-tests
+        run: |
+          ./scripts/git-audit-worktrees --selftest
+          ./scripts/git-worktree-create-guard --selftest
+          ./scripts/register-codex-worktree-hooks --selftest
+
       # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
       # invariant is "never read an incomplete check set as green" against a
       # stub gh, including the R2 regression where `gh pr checks --watch`

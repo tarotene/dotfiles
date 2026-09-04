@@ -1,5 +1,8 @@
 # Git 同期設定 — herdr の並行 worktree が生む同期事故への手当て
 
+worktree の作成・削除そのものと stale 登録の監査は
+[`worktree-lifecycle.md`](worktree-lifecycle.md)を参照。
+
 herdr は PR ごとに worktree を切るが、`git worktree add -b <branch> <path>` を
 **親 checkout の HEAD から、fetch せず、upstream も張らずに**実行する(実測: 全
 herdr ブランチの reflog が `branch: Created from HEAD`、fresh worktree に
