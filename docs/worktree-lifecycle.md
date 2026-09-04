@@ -85,7 +85,13 @@ Codex は `~/.codex/hooks.json` の新しい command を初回だけ信頼確認
 状態が変わった(Herdr で開かれた、push された、`git shelve` が乗った等)候補は
 黙って削除せず「状態が変化したため見送り」として報告する。削除は
 `git worktree remove`(`--force` は使わない) — Git 自身が拒否したらその
-worktree はスキップして報告する。ブランチには触れない。
+worktree はスキップして報告する。唯一の例外が submodule を含む worktree で、
+Git は clean かどうかに関係なく plain remove を無条件拒否するため
+(`man git-worktree` remove 節)、自前でより厳格な clean 判定
+(`status --porcelain --ignore-submodules=none` が空、かつ submodule 内容も
+含めて dirty が無いこと)を通った場合に限り `--force` で再試行する。dirty な
+submodule はこの厳格判定に落ちるため従来通りスキップされる。ブランチには
+触れない。
 
 ```bash
 git prune-worktrees              # 一覧 → 確認 → 削除
