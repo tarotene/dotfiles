@@ -72,4 +72,18 @@
     source = ../../scripts/open-url.sh;
     executable = true;
   };
+
+  # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
+  # ラッパー(docs/claude/git-stash-guard.md)。~/.local/bin に置くだけで
+  # git のサブコマンド解決に乗り、`git shelve` / `git unshelve` と呼べる
+  # (alias 不要)。config/claude/hooks/git-stash-guard.sh の deny 案内が
+  # ここへ誘導する。
+  home.file.".local/bin/git-shelve" = {
+    source = ../../scripts/git-shelve;
+    executable = true;
+  };
+  home.file.".local/bin/git-unshelve" = {
+    source = ../../scripts/git-unshelve;
+    executable = true;
+  };
 }

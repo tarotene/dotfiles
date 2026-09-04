@@ -7,6 +7,11 @@ stash スタックは git ではリポジトリ単位で、herdr が worktree �
 実装は `config/claude/hooks/git-stash-guard.sh`(配備先 `~/.claude/hooks/`)、
 登録は `home/modules/claude.nix` の `registerHooks`。
 
+deny 側の代替として `git shelve` / `git unshelve`(`scripts/git-shelve` /
+`scripts/git-unshelve`、配備先 `~/.local/bin/`)を用意している。worktree の絶対パス
+をタグとして自分の entry だけを解決するラッパーで、詳細は下の「舗装路: `git
+shelve` / `git unshelve`」を参照。
+
 ## なぜルールではなく hook か
 
 `Bash(git stash)` のような permission rule は「stash という単語で始まるコマンドを
@@ -61,18 +66,88 @@ event + command 文字列の完全一致だけなので、**同一スクリプ�
 `git -C <dir> stash ...` の 2 形だけを厳密に見て、`-c` などのグローバルオプションを
 挟む形は対象外(フォールスルーし、通常のプロンプトに委ねる)。
 
+**注意: `git stash drop <SHA>` は git 自身が拒否する死文。** 上表の pass 境界は
+コード上 `drop` を `apply` と同一に扱っているが、git 2.54 の実測では
+`git stash drop <40桁SHA>` は `error: '<SHA>' is not a stash reference` で拒否
+される——`drop`/`pop` が受け付ける参照形は `stash@{N}` のみで、SHA を受けるのは
+`apply` だけ。ガードのコード自体はこの形を無害に通している(パス境界としては
+安全)が、**案内としては使わない**: deny 理由文は SHA 無し `drop` に対して
+`git unshelve`(apply + drop を安全にまとめて行う)だけを案内する。
+
 複合コマンド(`;` `&` `|` `$(` バッククォート・リダイレクト・改行)は、
 `git-worktree-allow.sh` とは**向きが逆**に倒す: allow 側は複合コマンドを対象外にして
 フォールスルーする(素通し=無害)が、この hook では stash を含む複合コマンドを
 フォールスルーすると事故そのものになるので、サブコマンドへの厳密な分解を諦めて
-deny 側に倒す。
+deny 側に倒す。ただし「"stash" という単語を含むか」だけでは誤爆する
+(下の「既知の限界」参照)ので、"git" と "stash" が**空白で隣接**するパターン
+(`git stash ...` / `git -C <dir> stash ...` に近い形)を要求する。
 
 ## 既知の限界
 
-`if` は `Bash(git *)` という「コマンド文字列の先頭一致」なので、`cd wt && git stash pop`
-のように git が先頭語でない複合コマンドは、そもそも hook を spawn させない
-(`git-worktree-allow.sh` にも同じ形の限界がある)。脅威モデルは敵対的入力ではなく
+### `if` は best-effort — git 以外のコマンドにも発火する
+
+`if: "Bash(git *)"` は Claude Code の公式仕様(hooks-guide.md の "Filter by tool
+name and arguments with the `if` field")だが、**best-effort フィルタ**であり
+「コマンド文字列の先頭一致」ではない。パイプ・リダイレクト・コマンド置換・変数
+展開を含む Bash コマンドは、Claude Code がその引数パターンを完全に解析できないと
+判断すると、パターンに関わらず hook を実行する(公式ドキュメント: "When Claude
+Code can't determine which commands the Bash input runs, it runs your hook
+regardless of the pattern.")。
+
+実測でこれを踏んだ: `man git-stash 2>/dev/null | col -b`(git を一切実行しない
+コマンド)がこの hook を spawn させ、しかも旧実装では「複合コマンドの中に
+"stash" という単語があれば deny」という判定だったため、`git-stash` という
+ハイフン区切りのコマンド名だけで deny されていた(`grep -w` はハイフンも単語
+境界とみなすため、"git" と "stash" を両方単語として要求するだけでは直らない
+——実測で確認済み)。現在は上の「"git" と "stash" が空白で隣接」判定でこの
+誤爆を避けている。
+
+`if` が「先頭一致ではなく best-effort」であることは実測で確認したが、
+`cd wt && git stash pop` のように git が先頭語でない複合コマンドで実際に
+hook が spawn されるかどうかは未検証(公式ドキュメントが明示するのは
+`$()` ・バッククォート・変数展開を含む場合の run-anyway 挙動で、単純な `&&`
+連結の扱いまでは確認していない)。spawn されなかった場合は
+`git-worktree-allow.sh` と同じ形の限界が残る。脅威モデルは敵対的入力ではなく
 Claude 自身が生成するコマンドなので許容している。
+
+## 舗装路: `git shelve` / `git unshelve`
+
+deny 案内が当初示していた公認フロー(list → SHA 確認 → apply → drop)は、
+`git stash drop <SHA>` を git 自身が拒否するために**成立しない**(上の
+「deny / 通す の境界」の注意参照)。ガードは正しく安全側に倒れているが、
+安全な代替が事実上無かった。`scripts/git-shelve` / `scripts/git-unshelve`
+(配備先 `~/.local/bin/`、`home/modules/packages.nix`)はこの穴を埋める:
+
+- `git shelve [<メモ>]` — `git stash push -u -m "shelve:<worktree絶対パス>:
+  <メモ>"` のラッパー。worktree の絶対パス(`git rev-parse --show-toplevel`)
+  をタグに埋め込む。
+- `git unshelve` — 現在の worktree のタグを持つ最新 entry を SHA で解決して
+  `apply` し、`drop` する。**drop の安全性**が肝: `drop` は `stash@{N}` 形の
+  参照しか受け付けないため、「list で index を確認 → drop」という事前検証
+  方式では確認と削除が別コマンドである以上 TOCTOU が残る(他 worktree が
+  その間に push/drop すると index がずれ、意図しない entry を消し得る ——
+  plan review で指摘され、e2e で実際に再現・検証した)。そこで検証を
+  **drop の後**に置く: `git stash drop stash@{N}` は実際に削除した entry の
+  SHA を `Dropped stash@{N} (<sha>)` という形で出力する(git 2.54 実測)。
+  これを期待 SHA と比較し、不一致なら `git stash store -m <元のmessage>
+  <dropped-sha>` で**同一 SHA のまま復元**して index を再解決し、再試行する
+  (上限 3 回)。`git stash store` は任意のコミットを stash entry として登録
+  し直す操作で、SHA はコミットオブジェクトのハッシュそのものなので、
+  drop 前と同一の entry が復元される(実測: 復元後も apply 可能)。
+- 両コマンドは同じリポジトリの `claude-shelve.lock`(`git rev-parse
+  --git-common-dir` 基準)を `flock` で保持し、舗装路同士の変更系操作を
+  直列化する。手動の `git stash push` / `apply <SHA>` とはロックを共有しない
+  が、そのレースは上記の事後検証+復元で吸収する設計。
+- `git stash list | head -N` 等のように出力を早期に読み止める消費者へ
+  パイプすると、git は SIGPIPE ではなく EPIPE を fatal error として
+  exit 1 で終了する(実測)。`set -e` 下ではこれが無言のスクリプト異常
+  終了を招くため、両スクリプトは git の出力を必ずコマンド置換で全量
+  キャプチャしてから、その文字列に対して awk/grep をかける(生の git
+  出力を head/`grep -q` に直接パイプしない)。
+
+手動の安全ルート(`push -u -m` / `apply <SHA>`)も引き続き通す。ガードの
+deny 理由文はこれらを案内するが、第一選択は常に `git shelve` /
+`git unshelve`。
 
 ## 縮退と検査
 

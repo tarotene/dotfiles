@@ -79,6 +79,19 @@ decide_single() {
   local -a args=("${tok[@]:$((idx + 1))}")
   local sub="${args[0]:-push}" # 裸の `git stash` は push と同じ
 
+  # deny 案内の第一選択は `git shelve` / `git unshelve`(scripts/git-shelve,
+  # scripts/git-unshelve — docs/claude/git-stash-guard.md)。worktree の
+  # 絶対パスをタグにして自分の entry だけを解決するラッパーで、この
+  # ガードが求める「タグ付きで積む」「SHA 指定で取り違えを防ぐ」を
+  # 1 コマンドで満たす。手動ルート(push -u -m / apply <SHA>)も残すが、
+  # それは案内の第二選択。
+  #
+  # drop <SHA> は案内しない: git 自身が `error: '<SHA>' is not a stash
+  # reference` として拒否する(drop/pop が受け付けるのは stash@{N} 形の
+  # み。SHA を受けるのは apply だけ — git 2.54 で実測)。パス境界として
+  # コード上は SHA 付き drop を通しているが、それは「無害な死文」であり
+  # 積極的な代替案ではない。SHA 無し drop への案内は `git unshelve` 一本に
+  # 絞る(apply+drop をまとめて安全に行う)。
   case "$sub" in
     list | show)
       return 1 # 参照のみ、通す
@@ -88,17 +101,31 @@ decide_single() {
         && has_flag --message -m "${args[@]:1}"; then
         return 1 # -u かつ -m: タグ付きで積む正規の手順、通す
       fi
-      printf 'git stash push は -u と -m <tag> を両方付けてください(deny)'
+      printf 'git stash push は -u と -m <tag> を両方付けてください(deny)。%s' \
+        'この worktree の退避は git shelve "<メモ>" で積めます(推奨)。手動なら -u と -m <tag> を両方付けてください。'
       ;;
-    apply | drop)
+    apply)
       if has_sha "${args[@]:1}"; then
         return 1 # SHA 指定: 取り違えない、通す
       fi
-      printf 'git stash %s は SHA を明示してください(deny)。%s' \
-        "$sub" "git stash list --format='%H %gs' で確認してから apply/drop してください"
+      printf 'git stash apply は SHA を明示してください(deny)。%s' \
+        'この worktree の退避を戻すなら git unshelve を使ってください。手動なら git stash list --format="%H %gs" で確認してから git stash apply <SHA> としてください。'
       ;;
-    pop | clear)
-      printf 'git stash %s は他の worktree の WIP を巻き込みます(deny)' "$sub"
+    drop)
+      if has_sha "${args[@]:1}"; then
+        return 1 # SHA 指定: パス境界としては通すが、git 自身がこの形を
+        # "not a stash reference" として拒否する(上のコメント参照)。
+      fi
+      printf 'git stash drop は SHA を明示してください(deny)。%s' \
+        'この worktree の退避を消すだけなら git unshelve が apply と drop をまとめて安全に行います。'
+      ;;
+    pop)
+      printf 'git stash pop は他の worktree の WIP を巻き込みます(deny)。%s' \
+        'この worktree の退避は git unshelve で戻せます。'
+      ;;
+    clear)
+      printf 'git stash clear は他の worktree の WIP を含めて全消去します(deny)。%s' \
+        '個別に戻すなら git unshelve、内容を確認したいだけなら git stash list / show を使ってください。'
       ;;
     *)
       # 未知の形(--keep-index 等の push 相当フラグ, stash@{N} を裸で渡す等)
@@ -142,9 +169,20 @@ decide() {
     # コマンド置換・リダイレクトを含む文は個別サブコマンドへの厳密な分解を
     # 諦め、"stash" という語を含んでいればその文だけ deny 側に倒す
     # (git-worktree-allow の allow 側とは向きが逆 — 素通しは事故そのもの)。
+    #
+    # ただし "stash" 単語だけでの判定は誤爆する: `if: "Bash(git *)"` は
+    # best-effort フィルタで、パイプ・リダイレクト・コマンド置換を含む
+    # コマンドは git が先頭に無くても hook を spawn させる(公式仕様、
+    # docs/claude/git-stash-guard.md)。実際に `man git-stash 2>/dev/null |
+    # col -b` が deny されていた——しかも `git` と `stash` を両方単語として
+    # 要求するだけでは直らない: grep -w はハイフンも単語境界とみなすため
+    # "git-stash" は "git" にも "stash" にも単語として一致してしまう
+    # (実測で確認済み)。実際の呼び出し形("git stash ..." または
+    # "git -C <dir> stash ...")に近い、"git" と "stash" が空白で隣接する
+    # パターンを要求することで、ハイフン区切りのパス片は除外する。
     if [[ "$seg" == *'$('* || "$seg" == *'`'* || "$seg" == *'>'* || "$seg" == *'<'* ]]; then
-      if grep -qw stash <<< "$seg"; then
-        printf '複合コマンドの中に stash が含まれています(deny): %s' "$seg"
+      if grep -qE '(^|[^[:alnum:]_])git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?stash([^[:alnum:]_]|$)' <<< "$seg"; then
+        printf '複合コマンドの中に git stash が含まれています(deny): %s' "$seg"
         return 0
       fi
       continue
@@ -249,6 +287,24 @@ selftest() {
 
   # 分解後、片方の文だけが実際の stash 呼び出しなら、その文だけで deny する。
   expect_deny "$(printf 'echo hi\ngit stash pop')"
+
+  # 回帰: "git" と "stash" が単語としては両方出現するが、実際には
+  # "git-stash"(ハイフン区切りのコマンド名/パス片)としてしか出現しない
+  # 文は通す。grep -w はハイフンも単語境界とみなすため、単純な
+  # 「両方の単語を要求する」だけでは直らないことを固定する回帰。
+  expect_pass "man git-stash 2>/dev/null | col -b"
+  expect_pass "echo stash > /tmp/f"
+  expect_pass "cat ~/.claude/hooks/git-stash-guard.sh > /tmp/out"
+
+  # 一方、リダイレクトを伴っていても実際の呼び出し("git" と "stash" が
+  # 空白で隣接)なら deny する。
+  expect_deny "git stash pop > /tmp/log"
+  expect_deny "git -C /some/worktree stash pop 2>&1 | tee /tmp/log"
+
+  # git-shelve / git-unshelve は "stash" という単語をコマンド名に含まない
+  # ので、そもそも最初の grep フィルタで対象外になる。
+  expect_pass "git shelve wip-note"
+  expect_pass "git unshelve"
 
   if [[ $fails -gt 0 ]]; then
     echo "selftest: ${fails} 件失敗" >&2
