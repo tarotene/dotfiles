@@ -202,7 +202,7 @@ stale_worktrees_line() {
     n=$((n + 1))
   done < <(git -C "$project" worktree list --porcelain 2>/dev/null | sed -n 's#^worktree ##p')
   [[ "$n" -gt 0 ]] || return 0
-  printf '残骸 worktree: [gone] かつ未変更の worktree が %s 個あります' "$n"
+  printf '残骸 worktree: [gone] かつ未変更の worktree が %s 個あります(git prune-worktrees で確認・削除)' "$n"
 }
 
 # 上の行(空文字は無視)を改行区切りで連結する。

@@ -155,6 +155,7 @@ jobs:
       - name: Worktree lifecycle self-tests
         run: |
           ./scripts/git-audit-worktrees --selftest
+          ./scripts/git-prune-worktrees --selftest
           ./scripts/git-worktree-create-guard --selftest
           ./scripts/register-codex-worktree-hooks --selftest
 

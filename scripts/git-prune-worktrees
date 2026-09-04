@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# `git prune-worktrees` — remove orphaned-but-present worktree checkouts
+# that `git audit-worktrees` classifies as abandoned (see that script's
+# usage text and docs/worktree-lifecycle.md for the exact criteria).
+#
+# This is the checkout-deleting half of the worktree-lifecycle pair:
+#   git audit-worktrees --prune   registration metadata only (checkout already gone)
+#   git prune-worktrees            real checkout, via `git worktree remove`
+#   git prune-branches             the [gone] branches left behind by either
+#
+# Never uses `--force`: if Git itself refuses (e.g. the tree turned dirty
+# after listing), that worktree is skipped and reported, not overridden.
+# Branches are never touched here — `git prune-branches` is the follow-up.
+set -euo pipefail
+
+AUDIT_BIN="${GIT_PRUNE_WORKTREES_AUDIT_BIN:-git-audit-worktrees}"
+TEST_TMP=''
+
+usage() {
+  cat <<'EOF'
+usage: git prune-worktrees [--dry-run|--yes|--selftest]
+
+Lists worktree checkouts `git audit-worktrees` classifies as orphaned,
+confirms once, re-validates right before acting (state may have changed
+between listing and confirming), then removes each via `git worktree
+remove` (no --force — a Git refusal is reported and skipped, not
+overridden). Branches are left alone; run `git prune-branches` afterward.
+
+--dry-run  list candidates only, remove nothing
+--yes      skip the confirmation prompt (required for non-interactive use)
+EOF
+}
+
+# orphaned_candidates: TSV repo, path, branch, reason — the "orphaned"-class
+# rows from the audit's own scan, which already applies every safety check
+# (clean, not open in Herdr, no active shelve, [gone] or never-pushed).
+orphaned_candidates() {
+  "$AUDIT_BIN" --porcelain 2>/dev/null | awk -F'\t' '$5 == "orphaned" { print $2"\t"$3"\t"$4"\t"$6 }'
+}
+
+render() {
+  local findings="$1" repo path branch reason count=0
+  while IFS=$'\t' read -r repo path branch reason; do
+    [[ -n $path ]] || continue
+    count=$((count + 1))
+    printf 'orphaned worktree: repo=%s path=%s branch=%s reason=%s\n' "$repo" "$path" "$branch" "$reason"
+  done <<<"$findings"
+  [[ $count -eq 0 ]] || printf 'total: %d orphaned worktree(s)\n' "$count"
+}
+
+main() {
+  local dry=false assume_yes=false findings fresh answer removed=0 skipped=0
+  local repo path branch reason err
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry=true ;;
+      --yes) assume_yes=true ;;
+      --selftest)
+        selftest
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  findings="$(orphaned_candidates)"
+  if [[ -z $findings ]]; then
+    printf 'orphaned worktree はありません。\n'
+    return 0
+  fi
+  render "$findings"
+
+  if [[ $dry == true ]]; then
+    printf '(--dry-run: 削除はしていません)\n'
+    return 0
+  fi
+
+  if [[ $assume_yes != true ]]; then
+    [[ -t 0 ]] || {
+      printf '非対話実行では --yes が必要です。\n' >&2
+      return 2
+    }
+    read -r -p '上記の checkout を削除しますか? [y/N] ' answer
+    [[ $answer == y || $answer == Y ]] || return 2
+  fi
+
+  # 再検証: 一覧表示・確認の間に状態が変わっていないか、削除に取り掛かる
+  # 直前でもう一度スキャンし直す(TOCTOU 対策)。テスト専用シーム
+  # GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK は git-unshelve の
+  # GIT_UNSHELVE_TEST_PRE_DROP_HOOK と同じ役目 — 通常運用では未設定。
+  if [[ -n "${GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK-}" ]]; then
+    eval "$GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK"
+  fi
+  fresh="$(orphaned_candidates)"
+
+  while IFS=$'\t' read -r repo path branch reason; do
+    [[ -n $path ]] || continue
+    if ! grep -qF "$path" <<<"$fresh"; then
+      printf 'skip(状態が変化したため見送り): %s\n' "$path" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if err="$(git -C "$repo" worktree remove -- "$path" 2>&1)"; then
+      printf 'removed: %s (%s)\n' "$path" "$branch"
+      removed=$((removed + 1))
+    else
+      printf 'skip(git が拒否): %s: %s\n' "$path" "$err" >&2
+      skipped=$((skipped + 1))
+    fi
+  done <<<"$findings"
+
+  printf 'removed=%d skipped=%d\n' "$removed" "$skipped"
+  [[ $removed -eq 0 ]] || printf '[gone] ブランチが残っていれば git prune-branches で確認・削除してください。\n'
+}
+
+selftest() {
+  local tmp repo wt1 wt2 out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+
+  wt1="$tmp/orphan-a"
+  wt2="$tmp/orphan-b"
+  git -C "$repo" worktree add -q "$wt1" -b worktree/orphan-a
+  git -C "$repo" worktree add -q "$wt2" -b worktree/orphan-b
+
+  # Stub the audit binary: reports both as orphaned, independent of any real
+  # Herdr/remote state — this selftest is about prune-worktrees' own
+  # rendering/confirmation/re-validation/removal, not the audit's
+  # classification (covered by git-audit-worktrees --selftest).
+  # マーカーファイルが無ければ両方 orphaned として返す。TOCTOU テストは
+  # 「一覧表示直後の確認後・削除直前の再スキャン」で結果が変わる状況を
+  # 模すため、マーカーを作って 2 回目以降の呼び出しから wt2 を消す。
+  cat >"$tmp/audit-stub" <<STUB
+#!/usr/bin/env bash
+printf 'common\t%s\t%s\tworktree/orphan-a\torphaned\tno-upstream, unique=0\n' '$repo' '$wt1'
+[[ -e '$tmp/drop-b' ]] || printf 'common\t%s\t%s\tworktree/orphan-b\torphaned\tno-upstream, unique=0\n' '$repo' '$wt2'
+STUB
+  chmod +x "$tmp/audit-stub"
+  export GIT_PRUNE_WORKTREES_AUDIT_BIN="$tmp/audit-stub"
+
+  out="$(bash "$0" --dry-run)"
+  grep -qF "$wt1" <<<"$out"
+  grep -qF "$wt2" <<<"$out"
+  grep -qF -- '--dry-run' <<<"$out"
+  [[ -d $wt1 ]] || {
+    printf 'FAIL: --dry-run が削除した\n' >&2
+    return 1
+  }
+
+  if bash "$0" </dev/null >/dev/null 2>&1; then
+    printf 'FAIL: 非対話 かつ --yes 無しで確認をすり抜けた\n' >&2
+    return 1
+  fi
+  [[ -d $wt1 ]] || {
+    printf 'FAIL: 確認前に削除した\n' >&2
+    return 1
+  }
+
+  # TOCTOU: 確認後・削除直前の再検証タイミングで wt2 がスタブの結果から
+  # 消えるようにする。削除されるのは wt1 だけで、wt2 は「状態が変化した」
+  # skip になり checkout もブランチも残るはず(git worktree remove 自体は
+  # 一度も呼ばれない)。
+  export GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK="touch '$tmp/drop-b'"
+  out="$(bash "$0" --yes 2>&1)"
+  unset GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK
+
+  [[ ! -d $wt1 ]] || {
+    printf 'FAIL: wt1 が削除されなかった\n' >&2
+    return 1
+  }
+  [[ -d $wt2 ]] || {
+    printf 'FAIL: 再検証で除外されるはずの wt2 が削除された\n' >&2
+    return 1
+  }
+  grep -qF 'skip(状態が変化したため見送り)' <<<"$out"
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/orphan-a
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/orphan-b
+
+  git -C "$repo" worktree remove --force "$wt2"
+
+  printf 'selftest: OK\n'
+}
+
+main "$@"

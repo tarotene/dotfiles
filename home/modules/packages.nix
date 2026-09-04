@@ -86,4 +86,14 @@
     source = ../../scripts/git-unshelve;
     executable = true;
   };
+
+  # git-prune-branches: delete local branches whose upstream is [gone]
+  # (docs/git-sync.md). Same "executable in ~/.local/bin, no alias needed"
+  # placement as git-shelve/git-unshelve above — used to be a
+  # `config/git/hooks/prune-branches.sh` + `alias.prune-branches` pair, but
+  # it isn't a git hook and doesn't need core.hooksPath's indirection.
+  home.file.".local/bin/git-prune-branches" = {
+    source = ../../scripts/git-prune-branches;
+    executable = true;
+  };
 }
