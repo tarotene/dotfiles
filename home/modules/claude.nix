@@ -529,6 +529,9 @@ let
     "Bash(git worktree list *)"
     "Bash(git switch *)"
     "Bash(git checkout -b *)"
+    "Bash(git shelve *)"
+    "Bash(git shelve)"
+    "Bash(git unshelve)"
 
     "Bash(uv run pytest *)"
     "Bash(uv run ruff *)"

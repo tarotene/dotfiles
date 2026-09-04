@@ -22,6 +22,7 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
 | `config/git/hooks/prune-branches.sh` | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
+| `git shelve` / `git unshelve`(`scripts/git-shelve` / `scripts/git-unshelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
 
 ## `git prune-branches`
 
