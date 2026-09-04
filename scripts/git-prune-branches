@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # `git prune-branches` — delete local branches whose upstream is [gone]
@@ -20,7 +20,8 @@ set -euo pipefail
 # A branch checked out in another worktree is reported separately and never
 # touched: `git branch -D` refuses those anyway, and deleting a worktree's
 # branch out from under it is not something to do without looking at that
-# worktree first.
+# worktree first. Run `git prune-worktrees` first to clear those checkouts,
+# then this command's own [gone] filter naturally covers their branches too.
 
 git fetch --prune origin
 

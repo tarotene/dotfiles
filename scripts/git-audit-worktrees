@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Detect stale linked-worktree registrations across ghr and Herdr repositories.
+# Detect stale linked-worktree registrations *and* orphaned-but-present
+# worktree checkouts, across ghr and Herdr repositories.
 set -euo pipefail
 
 SELF="$(realpath "$0")"
@@ -11,12 +12,21 @@ TEST_TMP=''
 
 usage() {
   cat <<'EOF'
-usage: git audit-worktrees [--notify|--context|--prune [--yes]|--selftest]
+usage: git audit-worktrees [--notify|--context|--porcelain|--prune [--yes]|--selftest]
 
-Without options, report stale worktree registrations and exit 1 when any exist.
+Without options, report stale findings and exit 1 when any exist. Two
+independent classes are detected:
+  prunable  registration survives after the checkout directory disappeared
+            (git worktree list --porcelain's own "prunable" verdict)
+  orphaned  checkout is still present, but looks abandoned: clean, not open
+            in Herdr, and either [gone] upstream or never pushed with zero
+            commits unique to the repo's default branch
 --notify sends one Herdr notification per stale-set fingerprint.
 --context emits SessionStart hook JSON.
---prune removes stale registrations after confirmation; branches are preserved.
+--porcelain emits the raw class-tagged TSV (for git-prune-worktrees).
+--prune removes *prunable* registrations after confirmation (metadata only;
+  branches are preserved; orphaned checkouts are untouched — use
+  `git prune-worktrees` for those).
 EOF
 }
 
@@ -36,36 +46,143 @@ discover_repositories() { # print: <common-dir TAB usable-worktree>
   done
 }
 
-scan() { # print TSV: common, repo, path, branch, reason
-  local common repo line path branch reason
+# resolve_default_branch: origin/HEAD's short name, else the first of
+# main/master that exists locally. Empty if neither is resolvable (unique-
+# commit comparison is then skipped, never asserted as "0").
+resolve_default_branch() {
+  local common="$1" ref b
+  ref="$(git --git-dir="$common" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)" || ref=""
+  if [[ -n $ref ]]; then
+    printf '%s' "${ref#origin/}"
+    return 0
+  fi
+  for b in main master; do
+    if git --git-dir="$common" show-ref --verify --quiet "refs/heads/$b"; then
+      printf '%s' "$b"
+      return 0
+    fi
+  done
+  printf ''
+}
+
+uncommitted_count() {
+  local n
+  n="$(git -C "$1" status --porcelain 2>/dev/null | wc -l | tr -d ' ')" || n="?"
+  [[ -n $n ]] || n="?"
+  printf '%s' "$n"
+}
+
+# is_shelved: true if this worktree has a `git shelve` entry still on the
+# stash stack (scripts/git-shelve tags the message with the worktree's
+# absolute path — see that script's header). Never treat a shelved worktree
+# as orphaned: it carries WIP the owner asked to keep.
+is_shelved() {
+  local wt="$1" common="$2" tag
+  tag="shelve:${wt}:"
+  git --git-dir="$common" stash list --format='%gs' 2>/dev/null | grep -qF "$tag"
+}
+
+# herdr_open_paths: newline-separated worktree paths Herdr currently reports
+# as having an open workspace for the given repo, via the socket API's own
+# worktree-listing helper (mirrors `git worktree list` plus `open_workspace_id`
+# where a workspace happens to be open). Prints nothing and returns non-zero
+# if Herdr is unreachable — callers must treat that as "can't tell, so don't
+# flag anything" per the audit's own bias.
+herdr_open_paths() {
+  local repo="$1" json
+  json="$("$HERDR_BIN" worktree list --cwd "$repo" 2>/dev/null)" || return 1
+  jq -r '.result.worktrees[]? | select(has("open_workspace_id")) | .path' <<<"$json" 2>/dev/null
+}
+
+# scan_prunable: registrations whose checkout directory is gone. Emits TSV
+# rows: common, repo, path, branch, class=prunable, reason (git's own
+# "prunable <reason>" text).
+scan_prunable() {
+  local common="$1" repo="$2" line path branch reason
+  path='' branch='' reason=''
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ -z $line ]]; then
+      if [[ -n $reason ]]; then
+        printf '%s\t%s\t%s\t%s\tprunable\t%s\n' "$common" "$repo" "$path" "${branch#refs/heads/}" "$reason"
+      fi
+      path='' branch='' reason=''
+      continue
+    fi
+    case "$line" in
+      worktree\ *) path="${line#worktree }" ;;
+      branch\ *) branch="${line#branch }" ;;
+      prunable\ *) reason="${line#prunable }" ;;
+    esac
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null; printf '\n')
+}
+
+# scan_orphaned: checkouts that still exist but look abandoned. Emits TSV
+# rows: common, repo, path, branch, class=orphaned, reason.
+#
+# Deliberately biased toward false negatives, not false positives: any
+# ambiguity (Herdr unreachable, detached HEAD, dirty tree, an active shelve,
+# a real upstream that just hasn't merged yet) drops the worktree from
+# consideration rather than flagging it.
+scan_orphaned() {
+  local common="$1" repo="$2" wt br upstream track default_branch compare_base unique
+  local -A open_path=()
+  local p herdr_ok=1 main_root="${common%/.git}"
+  default_branch="$(resolve_default_branch "$common")"
+  while IFS= read -r p; do
+    [[ -n $p ]] && open_path[$p]=1
+  done < <(herdr_open_paths "$repo") || herdr_ok=0
+  while IFS= read -r wt; do
+    [[ -n $wt ]] || continue
+    [[ $wt != "$main_root" ]] || continue # the main checkout, never a candidate
+    [[ -d $wt ]] || continue # missing checkout is scan_prunable's job
+    [[ $herdr_ok -eq 1 ]] || continue # can't confirm closed in Herdr — skip
+    [[ -z ${open_path[$wt]+x} ]] || continue # still open — never a candidate
+    br="$(git -C "$wt" branch --show-current 2>/dev/null)" || br=""
+    [[ -n $br ]] || continue # detached HEAD — not a class we judge here
+    [[ $br != HERDR ]] || continue # Herdr's own control worktree
+    [[ "$(uncommitted_count "$wt")" == 0 ]] || continue # dirty may be real WIP
+    is_shelved "$wt" "$common" && continue
+    IFS=$'\t' read -r upstream track < <(
+      git -C "$wt" for-each-ref --format='%(upstream)%09%(upstream:track)' "refs/heads/$br" 2>/dev/null
+    )
+    if [[ $track == "[gone]" ]]; then
+      printf '%s\t%s\t%s\t%s\torphaned\t%s\n' "$common" "$repo" "$wt" "$br" "upstream ブランチが削除済み([gone])"
+      continue
+    fi
+    [[ -z $upstream ]] || continue # a real, non-gone upstream — leave alone
+    [[ -n $default_branch ]] || continue # nothing to compare against
+    compare_base="refs/remotes/origin/${default_branch}"
+    git -C "$wt" rev-parse --verify -q "$compare_base" >/dev/null 2>&1 || compare_base="refs/heads/${default_branch}"
+    git -C "$wt" rev-parse --verify -q "$compare_base" >/dev/null 2>&1 || continue
+    unique="$(git -C "$wt" rev-list --count "${compare_base}..refs/heads/${br}" 2>/dev/null)" || unique=""
+    if [[ $unique == 0 ]]; then
+      printf '%s\t%s\t%s\t%s\torphaned\t%s\n' "$common" "$repo" "$wt" "$br" \
+        "upstream 未設定・${default_branch} に対して unique commit 0"
+    fi
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null | sed -n 's#^worktree ##p')
+}
+
+scan() { # print TSV: common, repo, path, branch, class, reason
+  local common repo
   while IFS=$'\t' read -r common repo; do
     [[ -n $common ]] || continue
-    path='' branch='' reason=''
-    while IFS= read -r line || [[ -n $line ]]; do
-      if [[ -z $line ]]; then
-        if [[ -n $reason ]]; then
-          printf '%s\t%s\t%s\t%s\t%s\n' "$common" "$repo" "$path" "${branch#refs/heads/}" "$reason"
-        fi
-        path='' branch='' reason=''
-        continue
-      fi
-      case "$line" in
-        worktree\ *) path="${line#worktree }" ;;
-        branch\ *) branch="${line#branch }" ;;
-        prunable\ *) reason="${line#prunable }" ;;
-      esac
-    done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null; printf '\n')
+    scan_prunable "$common" "$repo"
+    scan_orphaned "$common" "$repo"
   done < <(discover_repositories)
 }
 
+prunable_rows() { awk -F'\t' '$5 == "prunable"'; }
+orphaned_rows() { awk -F'\t' '$5 == "orphaned"'; }
+
 render_report() {
-  local findings="$1" common repo path branch reason count=0
-  while IFS=$'\t' read -r common repo path branch reason; do
+  local findings="$1" common repo path branch class reason count=0
+  while IFS=$'\t' read -r common repo path branch class reason; do
     [[ -n $path ]] || continue
     count=$((count + 1))
-    printf 'stale worktree: repo=%s path=%s branch=%s reason=%s\n' "$repo" "$path" "${branch:-(detached)}" "$reason"
-  done <<< "$findings"
-  [[ $count -eq 0 ]] || printf 'total: %d stale worktree registration(s)\n' "$count"
+    printf 'stale worktree: repo=%s path=%s branch=%s class=%s reason=%s\n' \
+      "$repo" "$path" "${branch:-(detached)}" "$class" "$reason"
+  done <<<"$findings"
+  [[ $count -eq 0 ]] || printf 'total: %d stale worktree finding(s)\n' "$count"
 }
 
 fingerprint() { LC_ALL=C sort | sha256sum | cut -d' ' -f1; }
@@ -75,7 +192,7 @@ write_state() {
   mkdir -p "$STATE_DIR"
   tmp="$(mktemp "$STATE_DIR/state.json.XXXXXX")"
   jq -n --arg fingerprint "$fingerprint_value" --arg first_seen "$first_seen" --argjson notified "$notified" \
-    '{fingerprint: $fingerprint, first_seen: $first_seen, notified: $notified}' > "$tmp"
+    '{fingerprint: $fingerprint, first_seen: $first_seen, notified: $notified}' >"$tmp"
   chmod 600 "$tmp"
   mv "$tmp" "$STATE_DIR/state.json"
 }
@@ -85,7 +202,10 @@ notify() {
   mkdir -p "$STATE_DIR"
   exec 9>"$STATE_DIR/lock"
   flock -n 9 || exit 0
-  if [[ -z $findings ]]; then rm -f "$STATE_DIR/state.json"; exit 0; fi
+  if [[ -z $findings ]]; then
+    rm -f "$STATE_DIR/state.json"
+    exit 0
+  fi
   fp="$(printf '%s\n' "$findings" | fingerprint)"
   old_fp="$(jq -r '.fingerprint // empty' "$STATE_DIR/state.json" 2>/dev/null || true)"
   if [[ $old_fp == "$fp" ]]; then
@@ -99,11 +219,11 @@ notify() {
     render_report "$findings" >&2
   fi
   [[ $notified == true ]] && exit 0
-  count="$(wc -l <<< "$findings" | tr -d ' ')"
+  count="$(wc -l <<<"$findings" | tr -d ' ')"
   body="$(render_report "$findings")"
   body="${body:0:230}"
   response="$($HERDR_BIN notification show "stale worktree を検出 (${count}件)" --body "$body" --sound request 2>/dev/null)" || exit 0
-  if jq -e '.. | objects | select(has("shown")) | .shown == true' <<< "$response" >/dev/null 2>&1; then
+  if jq -e '.. | objects | select(has("shown")) | .shown == true' <<<"$response" >/dev/null 2>&1; then
     write_state "$fp" "$first_seen" true
   fi
 }
@@ -112,34 +232,52 @@ context() {
   local findings="$1" report
   [[ -n $findings ]] || exit 0
   report="$(render_report "$findings")"
-  jq -n --arg ctx "[git-worktree-audit] 存在しない checkout の登録があります。自動削除せず、git audit-worktrees で確認してください。\n${report}" \
+  jq -n --arg ctx "[git-worktree-audit] 存在しない checkout の登録、または開いていない残骸 checkout があります。自動削除せず、prunable は git audit-worktrees --prune、orphaned は git prune-worktrees で確認してください。\n${report}" \
     '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
 }
 
 prune() {
-  local findings="$1" assume_yes="$2" answer common
-  [[ -n $findings ]] || { printf 'stale worktree registration はありません。\n'; return 0; }
-  render_report "$findings"
-  if [[ $assume_yes != true ]]; then
-    [[ -t 0 ]] || { printf '非対話実行では --yes が必要です。\n' >&2; return 2; }
-    read -r -p '上記の登録メタデータを prune しますか? [y/N] ' answer
-    [[ $answer == y || $answer == Y ]] || return 2
+  local findings="$1" assume_yes="$2" answer common prunable orphaned orphaned_n
+  [[ -n $findings ]] || {
+    printf 'stale worktree registration はありません。\n'
+    return 0
+  }
+  prunable="$(prunable_rows <<<"$findings")"
+  orphaned="$(orphaned_rows <<<"$findings")"
+  if [[ -z $prunable ]]; then
+    printf 'prunable な登録はありません。\n'
+  else
+    render_report "$prunable"
+    if [[ $assume_yes != true ]]; then
+      [[ -t 0 ]] || {
+        printf '非対話実行では --yes が必要です。\n' >&2
+        return 2
+      }
+      read -r -p '上記の登録メタデータを prune しますか? [y/N] ' answer
+      [[ $answer == y || $answer == Y ]] || return 2
+    fi
+    while IFS= read -r common; do
+      [[ -n $common ]] || continue
+      git --git-dir="$common" worktree prune --verbose
+    done < <(cut -f1 <<<"$prunable" | LC_ALL=C sort -u)
   fi
-  while IFS= read -r common; do
-    [[ -n $common ]] || continue
-    git --git-dir="$common" worktree prune --verbose
-  done < <(cut -f1 <<< "$findings" | LC_ALL=C sort -u)
+  if [[ -n $orphaned ]]; then
+    orphaned_n="$(wc -l <<<"$orphaned" | tr -d ' ')"
+    printf 'orphaned な checkout が %s 件あります。checkout ごと削除するには git prune-worktrees を使ってください。\n' "$orphaned_n"
+  fi
 }
 
 selftest() {
-  local tmp repo wt out calls
+  local tmp repo wt wt_empty out calls
   tmp="$(mktemp -d)"
   TEST_TMP="$tmp"
   trap 'rm -rf "$TEST_TMP"' EXIT
   repo="$tmp/ghr/github.com/acme/repo"
   wt="$tmp/disappeared"
   mkdir -p "$repo" "$tmp/herdr" "$tmp/bin" "$tmp/state"
-  git -C "$repo" init -q
+  # -b main pins the initial branch name regardless of the runner's
+  # init.defaultBranch (older Git and CI images still default to "master").
+  git -C "$repo" init -qb main
   git -C "$repo" config core.hooksPath /dev/null
   git -C "$repo" config commit.gpgsign false
   git -C "$repo" config user.name test
@@ -147,29 +285,107 @@ selftest() {
   git -C "$repo" commit --allow-empty -qm initial
   git -C "$repo" worktree add -qb test/stale "$wt"
   rm -rf "$wt"
-  if out="$(GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" 2>&1)"; then
-    printf 'FAIL: stale 検出が成功終了した\n' >&2; return 1
-  fi
-  grep -F "path=$wt branch=test/stale" <<< "$out" >/dev/null
-  cat > "$tmp/bin/herdr" <<'EOF'
+
+  # A real bare remote, so the [gone] fixture below can go through a genuine
+  # push/delete-on-remote/fetch-prune cycle instead of hand-crafting refs.
+  git init -q --bare "$tmp/remote.git"
+  git -C "$repo" remote add origin "$tmp/remote.git"
+  git -C "$repo" push -q origin main
+
+  # Stub herdr for the whole run: `worktree list --cwd` reports no open
+  # workspace for any path (so scan_orphaned can proceed past the "can't
+  # tell" guard), `notification show` behaves per the reason file below.
+  cat >"$tmp/bin/herdr" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' call >> "$GIT_WORKTREE_AUDIT_TEST_CALLS"
+if [[ "$1 $2" == "worktree list" ]]; then
+  printf '{"result":{"worktrees":[]}}\n'
+  exit 0
+fi
+printf '%s\n' call >>"$GIT_WORKTREE_AUDIT_TEST_CALLS"
 reason="$(cat "$GIT_WORKTREE_AUDIT_TEST_REASON")"
 if [[ $reason == shown ]]; then shown=true; else shown=false; fi
 printf '{"result":{"shown":%s,"reason":"%s"}}\n' "$shown" "$reason"
-EOF
+STUB
   chmod +x "$tmp/bin/herdr"
-  printf busy > "$tmp/reason"
-  export GIT_WORKTREE_AUDIT_TEST_CALLS="$tmp/calls" GIT_WORKTREE_AUDIT_TEST_REASON="$tmp/reason"
-  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
-  printf shown > "$tmp/reason"
-  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
-  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" "$SELF" --notify
-  calls="$(wc -l < "$tmp/calls" | tr -d ' ')"
-  [[ $calls == 2 ]] || { printf 'FAIL: notify 呼び出し回数=%s (期待=2)\n' "$calls" >&2; return 1; }
-  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" --prune --yes >/dev/null
+  printf busy >"$tmp/reason"
+  export GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" \
+    GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" \
+    GIT_WORKTREE_AUDIT_TEST_CALLS="$tmp/calls" GIT_WORKTREE_AUDIT_TEST_REASON="$tmp/reason"
+
+  if out="$("$SELF" 2>&1)"; then
+    printf 'FAIL: stale 検出が成功終了した\n' >&2
+    return 1
+  fi
+  grep -F "path=$wt branch=test/stale" <<<"$out" | grep -qF "class=prunable"
+
+  # orphaned fixture: a second, *present* linked worktree whose branch has
+  # no upstream and zero commits unique to main — the "herdr created it,
+  # nothing was ever pushed" shape.
+  wt_empty="$tmp/orphan-empty"
+  git -C "$repo" worktree add -q "$wt_empty" -b worktree/orphan-empty
+  out="$("$SELF" --porcelain)" || true
+  grep -F "$wt_empty" <<<"$out" | grep -qF $'\torphaned\t' || {
+    printf 'FAIL: orphaned(no-upstream, unique=0) を検出しなかった\n' >&2
+    return 1
+  }
+
+  # dirty must never be flagged, even with the same no-upstream shape.
+  touch "$wt_empty/dirty.txt"
+  out="$("$SELF" --porcelain)" || true
+  grep -qF "$wt_empty" <<<"$out" && {
+    printf 'FAIL: dirty な worktree を orphaned として数えた\n' >&2
+    return 1
+  }
+  rm -f "$wt_empty/dirty.txt"
+
+  # a real unique commit must never be flagged.
+  git -C "$wt_empty" commit --allow-empty -qm 'real work'
+  out="$("$SELF" --porcelain)" || true
+  grep -qF "$wt_empty" <<<"$out" && {
+    printf 'FAIL: unique commit を持つ worktree を orphaned として数えた\n' >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt_empty"
+
+  # [gone] fixture: a real push/delete-on-remote/fetch-prune cycle, and its
+  # exemption when shelved.
+  wt_empty="$tmp/orphan-gone"
+  git -C "$repo" worktree add -q "$wt_empty" -b worktree/orphan-gone
+  git -C "$wt_empty" push -q -u origin worktree/orphan-gone
+  git -C "$repo" push -q origin --delete worktree/orphan-gone
+  git -C "$wt_empty" fetch -q --prune origin
+  out="$("$SELF" --porcelain)" || true
+  grep -F "$wt_empty" <<<"$out" | grep -qF $'\torphaned\t' || {
+    printf 'FAIL: orphaned([gone]) を検出しなかった\n' >&2
+    return 1
+  }
+  touch "$wt_empty/wip.txt"
+  git -C "$wt_empty" -c core.hooksPath=/dev/null stash push --include-untracked -m "shelve:${wt_empty}: wip" >/dev/null
+  out="$("$SELF" --porcelain)" || true
+  grep -qF "$wt_empty" <<<"$out" && {
+    printf 'FAIL: shelve 済み worktree を orphaned として数えた\n' >&2
+    return 1
+  }
+  git -C "$wt_empty" -c core.hooksPath=/dev/null stash clear
+  git -C "$repo" worktree remove --force "$wt_empty"
+
+  # Notify de-dup checks: the count assertion below only cares about call
+  # counts against the still-present prunable finding, not classes.
+  printf busy >"$tmp/reason"
+  "$SELF" --notify
+  printf shown >"$tmp/reason"
+  "$SELF" --notify
+  "$SELF" --notify
+  calls="$(wc -l <"$tmp/calls" | tr -d ' ')"
+  [[ $calls == 2 ]] || {
+    printf 'FAIL: notify 呼び出し回数=%s (期待=2)\n' "$calls" >&2
+    return 1
+  }
+
+  "$SELF" --prune --yes >/dev/null
   git -C "$repo" show-ref --verify --quiet refs/heads/test/stale
-  GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" "$SELF" >/dev/null
+  "$SELF" >/dev/null
+
   printf 'selftest: OK\n'
 }
 
@@ -179,19 +395,36 @@ main() {
     case "$1" in
       --notify) mode=notify ;;
       --context) mode=context ;;
+      --porcelain) mode=porcelain ;;
       --prune) mode=prune ;;
       --yes) assume_yes=true ;;
-      --selftest) selftest; return ;;
-      -h | --help) usage; return ;;
-      *) usage >&2; return 2 ;;
+      --selftest)
+        selftest
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
     esac
     shift
   done
   findings="$(scan)"
   case "$mode" in
-    report) if [[ -n $findings ]]; then render_report "$findings"; return 1; fi; printf 'stale worktree registration はありません。\n' ;;
+    report)
+      if [[ -n $findings ]]; then
+        render_report "$findings"
+        return 1
+      fi
+      printf 'stale worktree はありません。\n'
+      ;;
     notify) notify "$findings" ;;
     context) context "$findings" ;;
+    porcelain) [[ -z $findings ]] || printf '%s\n' "$findings" ;;
     prune) prune "$findings" "$assume_yes" ;;
   esac
 }

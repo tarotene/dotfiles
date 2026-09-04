@@ -22,6 +22,15 @@ in
     source = ../../scripts/git-audit-worktrees;
     executable = true;
   };
+  # git-prune-worktrees: the checkout-deleting half of the pair (docs/worktree-lifecycle.md).
+  # Deployed as a plain ~/.local/bin executable — same "no alias needed"
+  # placement as git-shelve/git-prune-branches (home/modules/packages.nix) —
+  # rather than here as one more xdg.configFile, since it's a user-invoked
+  # command, not something the audit timer or a Claude/Codex hook calls.
+  home.file.".local/bin/git-prune-worktrees" = {
+    source = ../../scripts/git-prune-worktrees;
+    executable = true;
+  };
   home.file.".local/libexec/git-worktree-create-guard" = {
     source = ../../scripts/git-worktree-create-guard;
     executable = true;
@@ -35,8 +44,11 @@ in
       ${lib.escapeShellArg contextCmd}
   '';
 
-  systemd.user.services.git-worktree-audit = {
-    Unit.Description = "Detect stale Git worktree registrations";
+  # Named after the command it runs (git-audit-worktrees), not the other way
+  # around — the old "git-worktree-audit" name had the words reversed from
+  # the command, which is how a `git worktree-audit` typo actually happened.
+  systemd.user.services.git-audit-worktrees = {
+    Unit.Description = "Detect stale Git worktree registrations and orphaned checkouts";
     Service = {
       Type = "oneshot";
       ExecStart = "${auditPath} --notify";
@@ -54,14 +66,14 @@ in
     };
   };
 
-  systemd.user.timers.git-worktree-audit = {
+  systemd.user.timers.git-audit-worktrees = {
     Unit.Description = "Check for stale Git worktrees every minute";
     Timer = {
       OnBootSec = "1min";
       OnUnitActiveSec = "1min";
       AccuracySec = "1s";
       Persistent = true;
-      Unit = "git-worktree-audit.service";
+      Unit = "git-audit-worktrees.service";
     };
     Install.WantedBy = [ "timers.target" ];
   };

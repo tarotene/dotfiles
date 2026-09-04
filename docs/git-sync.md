@@ -24,13 +24,16 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `rerere.enabled = true` | 同じ衝突を worktree ごとに手で再解決する | 一度解決した衝突の解決結果を再利用する |
 | `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
-| `config/git/hooks/prune-branches.sh` | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
+| `git prune-branches`(`scripts/git-prune-branches`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
 | `git shelve` / `git unshelve`(`scripts/git-shelve` / `scripts/git-unshelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
 
 ## `git prune-branches`
 
-`alias.prune-branches` は `config/git/hooks/prune-branches.sh` を呼ぶだけの薄い
-alias。旧実装(`--merged=main` かつ `[gone]` を AND する 1 行 alias)は squash merge
+`git prune-branches` は `scripts/git-prune-branches` を `~/.local/bin` に置くだけの
+実行ファイル(git の `git-<subcommand>` 解決に乗るので alias は不要 — `git-shelve` /
+`git-unshelve` と同じ配置。以前は git hook でもないのに
+`config/git/hooks/prune-branches.sh` + `alias.prune-branches` として置かれていた)。
+旧実装(`--merged=main` かつ `[gone]` を AND する 1 行 alias)は squash merge
 運用と噛み合っていなかった —— squash merge では PR のコミットが `main` の祖先に
 **ならない**ため `--merged=main` は常に偽になる(実測: ローカル 30 ブランチ中
 `[gone]` は 21 本、旧 alias が実際に消せたのは 2 本だけ)。

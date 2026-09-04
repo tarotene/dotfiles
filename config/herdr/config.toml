@@ -5,6 +5,14 @@
 
 onboarding = false
 
+# 既定は delivery = "off"(トースト非表示)。stale worktree 監査
+# (docs/worktree-lifecycle.md)の Herdr 通知が `{"shown":false,"reason":
+# "disabled"}` を返し続けていたのはこれが原因 — 誰にも見えない状態で
+# 毎分リトライしていた。in-app トーストで有効化する(アクティブタブでは
+# Herdr 自身が抑制するので、作業中の割り込みは無い)。
+[ui.toast]
+delivery = "herdr"
+
 [theme]
 # Match the alacritty palette (Catppuccin Mocha) so panes and chrome read as
 # one UI. See docs/claude/herdr-sidebar-metadata.md for the full role→color

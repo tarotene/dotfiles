@@ -64,14 +64,6 @@ in
         conflictStyle = "zdiff3";
       };
 
-      alias = {
-        # See config/git/hooks/prune-branches.sh for why this shells out to a
-        # real script instead of staying a one-liner (squash-merge broke the
-        # old --merged=main filter; the replacement needs a confirmation
-        # prompt and worktree-awareness that don't fit in an alias string).
-        prune-branches = "!\"$HOME\"/.config/git/hooks/prune-branches.sh";
-      };
-
       # GitHub credential helpers (gh auth).
       "credential \"https://github.com\"" = {
         helper = [
@@ -125,14 +117,6 @@ in
   # silently inert. Chain to it the same way pre-push already does.
   xdg.configFile."git/hooks/pre-commit" = {
     source = repoConfig + "/git/hooks/pre-commit";
-    executable = true;
-  };
-
-  # Not a git hook — a helper script the `prune-branches` alias above shells
-  # out to. Deployed next to the hooks for the same reason (literal file,
-  # xdg.configFile, no interpretation by home-manager).
-  xdg.configFile."git/hooks/prune-branches.sh" = {
-    source = repoConfig + "/git/hooks/prune-branches.sh";
     executable = true;
   };
 }
