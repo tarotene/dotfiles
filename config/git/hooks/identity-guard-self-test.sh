@@ -40,6 +40,11 @@ fi
 
 GIT_ALLOW_MAIN_COMMIT=1 git -C "$repo" -c commit.gpgsign=false -c user.name='Kentaro Sugimoto' -c user.email='sugimoto-kentaro@arkedgespace.com' \
     commit --allow-empty -q -m fixture
+git -C "$repo" -c tag.gpgsign=false tag -a good-tag -m fixture
+(
+    cd "$repo"
+    GIT_CONFIG_GLOBAL="$global_config" "$guard" tag "$(git rev-parse good-tag)" good-tag
+)
 git -C "$repo" config user.name test
 git -C "$repo" config user.email test@example.com
 git -C "$repo" -c tag.gpgsign=false tag -a test-tag -m fixture

@@ -73,7 +73,9 @@ case "${1:-}" in
             die "release tag '$tag_name' must be annotated"
         }
         require_tagger_identity "$oid" "$tag_name"
-        [[ "$tag_name" == verrine/* ]] && require_release_signature "$oid" "$tag_name"
+        if [[ "$tag_name" == verrine/* ]]; then
+            require_release_signature "$oid" "$tag_name"
+        fi
         ;;
     *)
         die "internal use requires commit or tag mode"
