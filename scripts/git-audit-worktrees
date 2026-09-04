@@ -275,7 +275,9 @@ selftest() {
   repo="$tmp/ghr/github.com/acme/repo"
   wt="$tmp/disappeared"
   mkdir -p "$repo" "$tmp/herdr" "$tmp/bin" "$tmp/state"
-  git -C "$repo" init -q
+  # -b main pins the initial branch name regardless of the runner's
+  # init.defaultBranch (older Git and CI images still default to "master").
+  git -C "$repo" init -qb main
   git -C "$repo" config core.hooksPath /dev/null
   git -C "$repo" config commit.gpgsign false
   git -C "$repo" config user.name test
