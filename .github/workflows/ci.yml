@@ -30,7 +30,8 @@ jobs:
         with:
           # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
           # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
-          # removed in Phase 4 (#218); only the escape-hatch scripts survive.
+          # removed in Phase 4 (#218); scripts/ now mixes home-manager-deployed
+          # user-environment tools with true escape-hatch/diagnostic scripts.
           scandir: '.'
           # config/ holds zsh modules and the fcitx5 profile, which shellcheck
           # cannot parse (SC1071). zsh syntax is validated by the step below.
