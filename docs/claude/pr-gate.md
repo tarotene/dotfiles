@@ -1,10 +1,11 @@
 # PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
 
-herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 3 つ
+herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 4 つ
 （CI 待ちのまま完了を宣言する／push し忘れたまま完了する／PR を Issue に繋がないまま
-終わる）を Stop hook で hard gate する仕組みの設計記録。実装は
-`config/claude/hooks/pr-gate.sh`、デプロイは `home/modules/claude.nix`。
-main が進んだことに気づかない件と未コミット変更は advisory に留める。
+終わる／見た目の変更なのに視覚証跡が無いまま終わる)を Stop hook で hard gate する
+仕組みの設計記録。実装は `config/claude/hooks/pr-gate.sh`、デプロイは
+`home/modules/claude.nix`。main が進んだことに気づかない件と未コミット変更は
+advisory に留める。
 
 「push し忘れたまま完了する」は PR が既にある前提の判定（`G_push`）だけでは、
 **PR を作る前**という最も起きやすい場面を素通ししていた。`G_unpushed` がその領域を
@@ -243,6 +244,59 @@ judgement が 1 つ増えたぶん、`PR_GATE_MAX_BLOCKS` の既定を 3 から 
 最後の 1 回が escalate に化ける。相乗りのおかげでこの連鎖は実際には起きにくいが、
 上限は最悪ケースで決める。
 
+## G_visual — なぜ「Before/After の視覚証跡」を block するのか
+
+### 直そうとしている事故
+
+`G_link` と同じ形の事故。見た目に影響する変更(GUI/Web に限らずターミナル/TUI の
+見た目も含む)を merge した PR の本文に、変更前後がどう見えたかの証跡が一切無いと、
+その場では何も壊れない。壊れるのは数か月後 —— 別のレビュアーや将来の自分がコードの
+履歴を追ったとき、コードを読んでも「実際どう見えていたか」は再現できない。`G_link`
+の「遅延コストの沈黙」とまったく同じ構造なので、advisory では構造がそのまま
+再生産される。よって block する。
+
+### 判定基準(3 択の OR)
+
+```
+(a) 本文に user-attachments の画像       — gh --attach (>= 2.99.0) が
+                                            アップロード後に書く形
+(b) `## Before / After` 見出し配下の
+    fenced code block が 1 つ以上         — テキスト差分で十分な変更向け
+(c) `No-Visual: <理由>`                   — No-Issue: と同型のエスケープハッチ
+```
+
+(a)(c) は `strip_code_spans` を通した本文で判定する。`G_link` の inline-code
+回帰と同じ理由で、画像記法や `No-Visual:` を「例として」コードスパン内に引用しても
+証跡として数えない。(b) だけは逆に **strip しない** —— fence 自体が判定対象の証跡
+なので、strip すると判定材料ごと消えてしまう。
+
+ローカルパスのままの画像記法(`![x](./a.png)`)はアップロードの証拠にならないので
+数えない。`gh --attach` は実行後に本文の画像記法を user-attachments の URL へ
+書き換える(既存の記法があればその場で、無ければ末尾に追記)ため、アップロード済みか
+どうかは本文の記法だけから機械的に判定できる。
+
+### 検査しないこと
+
+Before と After が実際にペアで揃っているか、画像が何枚か、fence の中身が本当に
+対比になっているかは検査しない。`G_link` が参照先 Issue の実在を確認しないのと
+同じ理由 —— 機械的に判定できるのは「証跡があるかどうか」までで、「対比として
+十分か」を判定に持ち込むと、Before が存在しない正当なケース(新規追加など)を
+誤って止める側に倒れる。この「対比として十分か」の判断は `pr-description` スキル
+(LLM の判断)の責務にする。ゲートとスキルのどちらが何を担うかを曖昧にしないための
+明示的な分担であって、単なる手抜きではない。
+
+### block の位置と `MAX_BLOCKS` を上げない理由
+
+`G_link` と全く同じ「あとは終わるだけ」の一点(push も CI も通過した後)で単独
+block する。しかも **`G_link` と同じ block メッセージに合流させる** —— 本文の
+不備は 2 種類あっても、修正は `gh pr edit` 1 回で両方直せるので、2 往復を消費
+させる理由がない。
+
+この合流のおかげで、`G_visual` を足しても `PR_GATE_MAX_BLOCKS` は 4 のまま
+据え置いた。最悪の正当チェーン(push → 本文修正 → CI 待ち = 3)の長さ自体は
+変わらない —— 本文修正のステップに直す項目が 1 つ増えるだけで、chain の段数は
+増えないため。
+
 ## `stop_hook_active` を見ない理由
 
 既存の `wrapup-stop-gate.sh` は `stop_hook_active == true` を見て即 `exit 0` する
@@ -328,7 +382,7 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 |---|---|---|
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
-| `PR_GATE_MAX_BLOCKS` | `4` | escalate までの block 回数（G_link 追加時に 3 から引き上げ。下記参照） |
+| `PR_GATE_MAX_BLOCKS` | `4` | escalate までの block 回数（G_link 追加時に 3 から引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
 | `PR_GATE_CI_TIMEOUT` | `300` | `gh pr checks --watch` の timeout(秒) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
@@ -364,5 +418,9 @@ bash config/claude/hooks/pr-gate.sh --selftest
   正しく分岐すること**
 - **`G_unpushed`**: PR 無し + 未 push commit あり(exit 2)/ PR 無し + 0 件(完全沈黙)
   の両方
+- **`G_visual`**: 画像・fence・No-Visual: のいずれかで PASS すること、fence は
+  Before/After 見出し配下でのみ証跡になること、コードスパン内の引用(画像記法・
+  No-Visual:)は数えないこと、ローカルパス画像は数えないこと、`G_link` と同じ
+  block メッセージに合流すること
 - **hygiene advisory**: `[gone]` ブランチ・残骸 worktree(dirty なら数えない)・
   stale base(PR 有無どちらでも)がそれぞれ単独で `additionalContext` に出ること

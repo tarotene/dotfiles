@@ -35,8 +35,11 @@ Design and rationale for the hooks and commands deployed from
 - [`copilot-plan-review.md`](claude/copilot-plan-review.md) — ExitPlanMode gate:
   a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
   severity, not on a verdict.
-- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ)
+- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ)
   (CI/push, not review/base).
+- [`pr-description.md`](claude/pr-description.md) — PR 本文の標準スケルトンと
+  Before/After 視覚証跡の判断知識(スキル)+ `G_visual` による強制(ゲート)の
+  二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
 - [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
@@ -69,6 +72,17 @@ Design and rationale for the hooks and commands deployed from
   `~/.claude/CLAUDE.md`: 検証可能な仮定は情報源(Slack/Drive/GitHub/公式ドキュメント/
   文献)を参照するか明示判断し、発明する前に先行例を確認する調査規律を全セッション
   常時注入する(read-only 配布、`#` 追記は skill-gardening の PR フローへ)。
+- [`diagramming.md`](claude/diagramming.md) — 個人スキル: 作図時に内容の型に
+  合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
+- [`skill-gardening.md`](claude/skill-gardening.md) — 個人スキル: 知見を
+  この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
+  公開リポジトリ向けサニタイズ規則の正本)。
+- [`living-description.md`](claude/living-description.md) — 個人スキル:
+  Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
+  正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。
+- [`test-grounding.md`](claude/test-grounding.md) — 個人スキル: 複数の実
+  コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
+  一次資料に当たることを強制する。
 
 ## Investigation records
 

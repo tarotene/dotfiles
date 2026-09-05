@@ -63,12 +63,17 @@ Notes:
   [#3](https://github.com/tarotene/dotfiles/issues/3); until then this manual
   routine is the operating procedure.
 - **`nixpkgs-unstable` moves faster than the pinned stable channel it sits
-  beside** (ADR-0001 Amendment 2026-08, `herdr`). Bump it explicitly and
-  separately when regressions land there — `nix flake update nixpkgs-unstable`
-  — rather than assuming the weekly `nix flake update` sweep is safe for both
-  channels at once. If `herdr` regresses after an update, roll back just that
-  input by reverting `flake.lock`'s `nixpkgs-unstable` node (or the whole
-  generation, per the rollback note above).
+  beside** (ADR-0001 Amendment 2026-08 for `herdr`, 2026-09 for `gh`). Bump it
+  explicitly and separately when regressions land there — `nix flake update
+  nixpkgs-unstable` — rather than assuming the weekly `nix flake update` sweep
+  is safe for both channels at once. This bump now moves **both** `herdr` and
+  `gh` together (same overlay entry, same input) — a `gh` regression from
+  unstable is higher-stakes than it looks, since `pr-gate.sh` / `issue-index.sh`
+  / `wrapup-stop-gate.sh` all shell out to `gh` unconditionally. If either
+  package regresses after an update, roll back just that input by reverting
+  `flake.lock`'s `nixpkgs-unstable` node (or the whole generation, per the
+  rollback note above) — there is no way to roll back only one of the two
+  packages while keeping the other's update, since they share a single input.
 
 ### Restarting herdr after a switch that changes its binary or hooks
 

@@ -23,19 +23,20 @@ Note on graphics: the driver stack itself is root-owned and stays in the system
 layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
 per-package `nixGL` wrapper in `home/modules/desktop.nix` (ADR-0006).
 
-Note on `herdr`: not yet in the pinned stable nixpkgs channel, so it comes from
-a single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
-#42) — drop the input once stable has it. Unlike `nixgl`, this overlay does not
-need `inputs.nixpkgs.follows`: herdr is a TUI that is only ever `exec`'d, never
-`dlopen`'d into another package's process, so a second glibc in its closure is
-harmless.
+Note on `herdr` / `gh`: `herdr` is not yet in the pinned stable nixpkgs channel;
+`gh` is present but version-capped (stable ships 2.96.0, `--attach` needs
+>= 2.99.0). Both come from a single-package `nixpkgs-unstable` overlay in
+`flake.nix` (ADR-0001 Amendment, #42 for herdr) — drop each package's overlay
+entry once stable catches up. Unlike `nixgl`, this overlay does not need
+`inputs.nixpkgs.follows`: both are only ever `exec`'d, never `dlopen`'d into
+another package's process, so a second glibc in their closure is harmless.
 
 ## Project Structure
 
 ```
 dotfiles/
 ├── flake.nix                 # inputs (nixpkgs + home-manager, pinned; nixpkgs-unstable
-│                             #   is a herdr-only escape hatch, ADR-0001 Amendment) +
+│                             #   is a herdr + gh escape hatch, ADR-0001 Amendment) +
 │                             #   homeConfigurations.<hostname>
 ├── flake.lock
 ├── home/                     # home-manager modules (Identity / Instance two-layer)
@@ -97,7 +98,9 @@ dotfiles/
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
-│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link)
+│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link/visual-evidence)
+│   │   ├── pr-description.md     # PR body skeleton + mandatory Before/After
+│   │   │                     #   visual evidence (gate: G_visual, skill: pr-description)
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
@@ -189,6 +192,24 @@ dotfiles/
 - Closing keywords only fire when the PR targets the **default branch**. On a
   stacked PR the gate says so, but it will not stop you — close the issue by
   hand, or carry the keyword on the PR that lands on `main`.
+- Every PR body follows a 5-section skeleton (full rationale + how-to:
+  `docs/claude/pr-description.md`, skill: `config/claude/skills/pr-description/`):
+  ```
+  Closes #N / No-Issue: <reason>
+
+  ## 課題
+  ## 解決策
+  ## Before / After
+  ## 検証
+  ## 要確認   (omit the whole section if there is nothing)
+  ```
+- `## Before / After` needs one of: an uploaded image (`gh pr create|edit
+  --attach './after.png#Alt'`, gh >= 2.99.0), a fenced code block under that
+  heading for text-only diffs, or `No-Visual: <reason>` when the change has no
+  visible effect (GUI/Web **and** terminal/TUI appearance both count as
+  visible). The `G_visual` judgement in `pr-gate.sh` blocks the Stop hook when
+  none of the three is present — it rides the same terminal block as `G_link`,
+  so both body fixes cost one round trip.
 
 ## Verification / Testing
 - `nix flake check` — evaluates every host's activation package.
