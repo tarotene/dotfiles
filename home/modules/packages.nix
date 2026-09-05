@@ -49,11 +49,13 @@
     # skill, docs/claude/pr-description.md — G_visual in pr-gate.sh enforces
     # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
     # stable) because freeze renders ANSI text piped on stdin
-    # (`cmd | freeze -o out.png`), so a "Before" state captured before a
+    # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
     # change can still be turned into an image afterwards; termshot instead
     # re-executes the command live in a pty, which cannot reproduce a
-    # already-lost pre-change state. Output must be PNG, not SVG — `gh
-    # --attach` (>= 2.99.0, see the flake.nix overlay) only accepts images.
+    # already-lost pre-change state. Use `.svg` or `.webp` output, not
+    # `.png` — this build's PNG encoder segfaults on this host (Go runtime
+    # crash reproduced on trivial input; SVG/WebP unaffected). `gh --attach`
+    # (>= 2.99.0, see the flake.nix overlay) accepts SVG/WebP along with PNG.
     charm-freeze
 
     # AI tooling (unfree — flake sets allowUnfree; version follows the

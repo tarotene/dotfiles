@@ -54,12 +54,17 @@ G_visual 節にも明記している。
 
 ターミナル出力(プロンプト、statusline、TUI のレンダリング結果)の見た目を画像化
 する手段として、stable 収録済みの `charm-freeze`(バイナリ: `freeze`)と
-`termshot` を比較検討した。`freeze` はパイプで受けた ANSI 出力を PNG/SVG に描画
-できる(`cmd | freeze -o out.png`)ため、変更前に保存しておいた「Before」の出力を
-後から画像化できる。`termshot` はコマンドを pty で再実行する方式で、既に失われた
-変更前の状態を再現できない。「Before は変更を当てる前に撮る」というスキルの原則と
-相性が良いのは前者。出力は必ず PNG にする(`--attach` は画像/動画のみ、SVG は
-受理されない)。
+`termshot` を比較検討した。`freeze` はパイプで受けた ANSI 出力を画像に描画できる
+(`cmd | freeze -o out.svg`)ため、変更前に保存しておいた「Before」の出力を後から
+画像化できる。`termshot` はコマンドを pty で再実行する方式で、既に失われた変更前
+の状態を再現できない。「Before は変更を当てる前に撮る」というスキルの原則と相性が
+良いのは前者。
+
+出力形式は `.svg` か `.webp` を使う(`.png` ではなく)。`gh --attach` は画像として
+PNG・JPEG・GIF・WebP・SVG のいずれも受理するが、このリポジトリで検証した
+`charm-freeze` 0.2.2 のビルドは PNG エンコード時に Go ランタイムがクラッシュする
+(trivial な入力でも再現する segfault)。SVG / WebP 出力は同一環境で問題なく動作
+することを確認済み。
 
 ## `PULL_REQUEST_TEMPLATE.md` を置かない理由
 
