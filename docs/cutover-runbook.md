@@ -249,6 +249,19 @@ running `herdr server` and its TUI client still hold the old binary in memory
 [`operations.md`](operations.md#restarting-herdr-after-a-switch-that-changes-its-binary-or-hooks),
 since it will otherwise drop the pane you are running the switch from.
 
+### Claude integration hook (agent session restore)
+
+`home.activation.installHerdrClaudeIntegration` runs `herdr integration install
+claude` automatically on every switch when `~/.claude/hooks/herdr-agent-state.sh`
+is missing — no manual step needed on a fresh host. This hook is what lets
+herdr's native agent session restore (`[session] resume_agents_on_restore`,
+on by default) reattach a `claude` pane to its prior conversation after
+`herdr server` restarts; without it, restore only recreates the pane's layout
+and cwd, spawning a plain shell instead. This repo ships `onboarding = false`
+in `config/herdr/config.toml`, which also skips the onboarding flow that would
+otherwise install the integration — the activation step exists specifically to
+cover that gap. Verify with `herdr integration status` (`claude: installed`).
+
 ## Legacy artifact cleanup
 
 Removing the legacy procedural installers (#218) did not remove what they had
