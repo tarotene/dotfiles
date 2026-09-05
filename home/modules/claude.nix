@@ -33,12 +33,16 @@
 #    hook)。詳細は docs/claude/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
 #
 # 5) pr-gate(SessionStart + Stop):
-#    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」の 2 事故を、Stop の
-#    1 点だけで hard gate する(base 鮮度・未コミット変更は advisory)。判定対象は
-#    ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリのみ)で、
-#    それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読まないこと」
-#    — 期待される required check をサーバの ruleset から取り、`gh pr checks --watch`
-#    の exit code ではなく取り直した --json を jq で判定する。詳細は docs/claude/pr-gate.md。
+#    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
+#    繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」の 4 事故を、
+#    Stop の 1 点だけで hard gate する(base 鮮度・未コミット変更は advisory)。
+#    判定対象は ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリの
+#    み)で、それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読ま
+#    ないこと」— 期待される required check をサーバの ruleset から取り、
+#    `gh pr checks --watch` の exit code ではなく取り直した --json を jq で判定
+#    する。視覚証跡(G_visual)は 12) の pr-description スキルが定める本文スケルト
+#    ンの `## Before / After` 節を検査し、証跡の有無だけを機械強制する(対比の完全
+#    性はスキル側の責務)。詳細は docs/claude/pr-gate.md。
 #
 # 6) issue-index(SessionStart, matcher: startup|resume|compact):
 #    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
@@ -95,7 +99,7 @@
 #    /model で日常的に切り替える対象なので home-manager は触らない。
 #    詳細は docs/claude/opusplan-model-aliases.md。
 #
-# 12) 個人スキル(diagramming, skill-gardening, living-description):
+# 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -104,10 +108,14 @@
 #    living-description は Issue/PR の本文(Description)を「起票時点のスナップ
 #    ショット」ではなく「現在の合意状態を表す正本」として扱い、コメントで裁定が
 #    確定した時点で本文を編集し続ける習慣(複数の関連Issueに仕様が重複している
-#    場合は横断的に同期する)。hook のような settings.json 登録は不要(スキルは
-#    ~/.claude/skills/ をスキャンするだけで発動する)なので home.file だけで
-#    足りる。詳細は docs/claude/diagramming.md、docs/claude/skill-gardening.md、
-#    docs/claude/living-description.md。
+#    場合は横断的に同期する)。pr-description は PR 本文の標準スケルトン(課題・
+#    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
+#    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
+#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。hook のような
+#    settings.json 登録は不要(スキルは ~/.claude/skills/ をスキャンするだけで発動
+#    する)なので home.file だけで足りる。詳細は docs/claude/diagramming.md、
+#    docs/claude/skill-gardening.md、docs/claude/living-description.md、
+#    docs/claude/pr-description.md。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
@@ -741,6 +749,14 @@ in
     repoConfig + "/claude/skills/living-description/SKILL.md";
   home.file.".claude/skills/living-description/cases.md".source =
     repoConfig + "/claude/skills/living-description/cases.md";
+  # pr-description: PR 本文の標準スケルトンと Before/After 視覚証跡の判断知識。
+  # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate.sh の
+  # G_visual(~/.claude/pr-gate-repos の allowlist 内のみ)が担う。cases.md は
+  # 追記型の失敗事例集。
+  home.file.".claude/skills/pr-description/SKILL.md".source =
+    repoConfig + "/claude/skills/pr-description/SKILL.md";
+  home.file.".claude/skills/pr-description/cases.md".source =
+    repoConfig + "/claude/skills/pr-description/cases.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。

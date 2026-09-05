@@ -4,13 +4,14 @@
 # 設計と根拠: docs/claude/pr-gate.md（このリポジトリ内）
 #
 # 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
-# 繋がないまま終わる」という 3 種の事故を、Stop の 1 点だけで hard gate する。
-# base 鮮度・未コミット変更は advisory
-# (block するときだけ相乗りで伝える。それ単独では終了を止めない)。
+# 繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」という
+# 4 種の事故を、Stop の 1 点だけで hard gate する。base 鮮度・未コミット変更は
+# advisory(block するときだけ相乗りで伝える。それ単独では終了を止めない)。
 #
 #   G_push     : ローカル HEAD == PR の headRefOid              → block
 #   G_unpushed : PR が無いときの「push すべきコミットが 0 件か」→ block
 #   G_link     : PR 本文に closing keyword または No-Issue:     → block
+#   G_visual   : PR 本文に Before/After の視覚証跡 or No-Visual: → block
 #   G_CI       : 期待される check がすべて pass/skipping        → block
 #   G_base     : origin/<base> に対する ahead/behind            → advisory
 #   G_wt       : 未コミット件数                                 → advisory
@@ -59,6 +60,28 @@
 # より起きやすい「存在するが別の Issue」は捕まえられない一方、API 呼び出しが
 # 1 本増えて下の縮退表が太る。利得が釣り合わない。
 #
+# G_visual が塞ぐのは G_link と同じ形の事故 — 「見た目が変わった PR なのに
+# 証跡が本文に残らず、数か月後のレビューで何がどう変わったか誰にも分からない」。
+# コストが出るのは PR の時点ではなく後日なので、advisory では構造が再生産される。
+# よって block し、見た目に影響しない変更では本文に `No-Visual: <理由>` と書いて
+# 明示的に抜ける(`No-Issue:` と同型のエスケープハッチ)。判定は 3 択の OR:
+#   (a) 本文に user-attachments の画像(gh --attach がアップロード後に書く形。
+#       ローカルパスのままの画像記法はアップロードの証拠にならないので数えない)
+#   (b) `## Before / After` 見出し配下に fenced code block が 1 つ以上
+#       (テキスト差分で十分伝わる変更向け。ここだけは strip_code_spans を通さない
+#        — G_link と逆で、fence 自体が判定対象の証跡だから)
+#   (c) `No-Issue:` と同型の `No-Visual: <理由>`
+# **検査しないこと**: Before と After が実際にペアで揃っているか、画像が何枚か、
+# fence の中身が本当に対比になっているかは見ない。G_link が参照先 Issue の実在を
+# 確認しないのと同じ理由 — 機械的に判定できるのは「証跡があるかどうか」までで、
+# 「対比として十分か」は pr-description スキル(LLM の判断)の責務にする。
+# ペア強制はゲート側でやると、Before が存在しない正当ケース(新規追加など)を
+# 誤って止める側に倒れる。
+#
+# G_visual は G_link と同じ「あとは終わるだけ」の一点で単独 block する(cmd_stop
+# 内、G_push/G_CI を通過した後)。本文修正は CI を再走させないため、G_link と
+# 同じ block メッセージに合流させ、2 件まとめて 1 往復で直せるようにする。
+#
 # 発火範囲: allowlist ファイル(既定 ~/.claude/pr-gate-repos)に nwo が無ければ
 # 完全沈黙。全ホストに無条件配備する前提(会社リポジトリでは既定で沈黙する)。
 #
@@ -67,7 +90,7 @@
 #     でない / jq・gh・git 不在 / skip / (PR が無く、かつ hygiene の材料も無い)
 #   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗
 #   hard block(exit 2)         → G_push 不一致 / G_unpushed(PR 無し + 未push
-#     commit あり) / G_link 欠落 / G_CI が揃わない・失敗・pending
+#     commit あり) / G_link 欠落 / G_visual 欠落 / G_CI が揃わない・失敗・pending
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
@@ -78,7 +101,9 @@
 # 上限が 3 でなく 4 なのは G_link を足したから: 最悪の連鎖(push → 本文修正 →
 # CI 待ち)が正当に 3 回 block しうるので、3 のままだと最後の 1 回が escalate に
 # 化ける。なお G_link の指摘は単独 block になる前に G_push / G_CI の block へ
-# 相乗りするので、この最悪連鎖は実際には起きにくい。
+# 相乗りするので、この最悪連鎖は実際には起きにくい。G_visual を追加しても
+# 4 のまま据え置く: G_visual は G_link と同じ終端 block に合流し(本文修正は
+# CI を再走させない)、最悪連鎖の長さそのものは変わらないため。
 #
 # 使い方:
 #   hook として:  settings.json の SessionStart / Stop から
@@ -298,6 +323,46 @@ judge_link() { # judge_link <body> ; echo LINKED|NO_ISSUE|MISSING
     printf 'LINKED'
   elif grep -Eiq -- "$NO_ISSUE_RE" <<<"$body"; then
     printf 'NO_ISSUE'
+  else
+    printf 'MISSING'
+  fi
+}
+
+# --- G_visual: PR 本文に Before/After の視覚証跡があるか ----------------------
+
+# `No-Visual:` は `No-Issue:` と同型 — 理由を伴って初めて成立する。
+NO_VISUAL_RE='^[[:space:]]*No-Visual:[[:space:]]*[^[:space:]]'
+
+# gh pr create/edit --attach (>= 2.99.0) がアップロード後に本文へ書く markdown
+# 画像の形。ローカルパスのままの `![x](./a.png)` はアップロードの証拠にならない
+# ので数えない。
+ATTACH_IMAGE_RE='!\[[^]]*\]\(https://github\.com/user-attachments/assets/[^)[:space:]]+\)'
+
+# `## Before / After` 系の見出し配下に fenced code block が 1 つ以上あるか。
+# strip_code_spans は通さない — G_link と逆で、ここでは fence 自体が判定対象の
+# 証跡だから(strip すると判定材料ごと消える)。次の見出し(同レベル以下、awk では
+# `#+` で一括に見なす)に当たるまでを「節の中」とみなす。
+before_after_has_fence() { # before_after_has_fence <body> ; 0=あり 1=なし
+  awk '
+    BEGIN { insec = 0; found = 0 }
+    /^#+[[:space:]]/ {
+      insec = (tolower($0) ~ /before[[:space:]]*\/?[[:space:]]*after/) ? 1 : 0
+      next
+    }
+    insec && /^[[:space:]]*(```|~~~)/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' <<<"$1"
+}
+
+judge_visual() { # judge_visual <body> ; echo IMAGE|CODEBLOCK|NO_VISUAL|MISSING
+  local stripped
+  stripped="$(strip_code_spans "$1")"
+  if grep -Eq -- "$ATTACH_IMAGE_RE" <<<"$stripped"; then
+    printf 'IMAGE'
+  elif before_after_has_fence "$1"; then
+    printf 'CODEBLOCK'
+  elif grep -Eiq -- "$NO_VISUAL_RE" <<<"$stripped"; then
+    printf 'NO_VISUAL'
   else
     printf 'MISSING'
   fi
@@ -595,16 +660,28 @@ cmd_session_start() {
     else [.[].bucket] | group_by(.) | map("\(.[0]): \(length)") | join(", ")
     end' <<<"$checks_json" 2>/dev/null)" || bucket_summary="不明"
 
+  local pr_body
+  pr_body="$(jq -r '.[0].body // ""' <<<"$pr_json")"
+
   local link_state
-  case "$(judge_link "$(jq -r '.[0].body // ""' <<<"$pr_json")")" in
+  case "$(judge_link "$pr_body")" in
     LINKED) link_state="closing keyword あり" ;;
     NO_ISSUE) link_state="No-Issue: 宣言あり" ;;
     *) link_state="なし — Closes #N か No-Issue: が要ります" ;;
   esac
 
+  local visual_state
+  case "$(judge_visual "$pr_body")" in
+    IMAGE) visual_state="画像あり" ;;
+    CODEBLOCK) visual_state="Before/After コードブロックあり" ;;
+    NO_VISUAL) visual_state="No-Visual: 宣言あり" ;;
+    *) visual_state="なし — Before/After 画像/コード対比か No-Visual: が要ります" ;;
+  esac
+
   local ctx
   ctx="[pr-gate] PR #${pr_num} (base: ${base}) — CI: ${bucket_summary}${fetch_note}
 Issue リンク: ${link_state}
+視覚証跡: ${visual_state}
 base 追従: ahead ${ahead} / behind ${behind}
 未 push: ${unpushed} 件"
 
@@ -722,10 +799,30 @@ open な Issue の一覧は SessionStart の issue-index が注入していま�
       closing keyword はマージしても発火しません。"
   fi
 
+  # G_visual — G_link と同じ「判定だけ先に済ませ、block は最後に回す」形。
+  local visual_verdict visual_msg="" visual_blocks=0
+  visual_verdict="$(judge_visual "$body")"
+  if [[ "$visual_verdict" == "MISSING" ]]; then
+    visual_blocks=1
+    visual_msg="PR #${pr_num} の本文に Before/After の視覚証跡がありません。
+次のいずれかを本文の \`## Before / After\` 節に入れてください:
+
+  画像:       gh pr edit ${pr_num} --attach './before.png#Before' --attach './after.png#After'
+              (gh 2.99.0 以降が必要)
+  コード対比: 見出し配下に fenced code block でテキストの Before/After を書く
+              (見た目の差分がテキストで十分伝わる場合)
+  No-Visual: <理由>  — 外観に影響しない変更の場合(1 行、理由必須)
+
+撮り方・Before の取り方は pr-description スキルを参照。"
+  fi
+
   local rider="$advisory"
+  [[ -n "$visual_msg" ]] && rider="${visual_msg}
+
+${rider}"
   [[ -n "$link_msg" ]] && rider="${link_msg}
 
-${advisory}"
+${rider}"
 
   # G_push
   local local_head
@@ -782,11 +879,20 @@ ${rider}"
 ${G_CI_DETAIL}"
   fi
 
-  # G_link を単独で block するのはここ — push も CI も通っている、つまり
-  # 「あとは終わるだけ」の一点。まさにリンクが忘れられる瞬間なので、この位置で
-  # 止める。上の block 経路を通った場合は既に $rider として伝えてある。
-  if ((link_blocks)); then
-    block_or_escalate "$sid" "${link_msg}
+  # G_link / G_visual を単独で block するのはここ — push も CI も通っている、
+  # つまり「あとは終わるだけ」の一点。まさに本文の不備が忘れられる瞬間なので、
+  # この位置で止める。上の block 経路を通った場合は既に $rider として伝えてある。
+  # 2 件とも欠けていれば 1 つの block メッセージに合流させ、本文修正をまとめて
+  # 1 往復で直せるようにする(どちらも CI を再走させない修正のため)。
+  local body_msg=""
+  ((link_blocks)) && body_msg="$link_msg"
+  if ((visual_blocks)); then
+    body_msg="${body_msg:+${body_msg}
+
+}${visual_msg}"
+  fi
+  if [[ -n "$body_msg" ]]; then
+    block_or_escalate "$sid" "${body_msg}
 
 ${advisory}"
   fi
@@ -827,8 +933,9 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # PR_GATE_STUB_CHECKS_FILE        : gh pr checks --json の応答(未指定なら [])
   # PR_GATE_STUB_WATCH_RC           : gh pr checks --watch の exit code(既定 0)
   # PR_GATE_STUB_PR_BODY            : gh pr list が返す PR 本文
-  #   既定は "Closes #1" — G_link を足す前から在った緑パスのケースを緑のまま
-  #   保つため。G_link 自体の検査は下でこの変数を明示的に上書きして行う。
+  #   既定は "Closes #1" + "No-Visual: selftest 既定本文" の 2 行 — G_link /
+  #   G_visual を足す前から在った緑パスのケースを緑のまま保つため。G_link /
+  #   G_visual 自体の検査は下でこの変数を明示的に上書きして行う。
   mkdir -p "$dir/bin"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -843,7 +950,8 @@ case "$1" in
           "$jqbin" -n --arg num "${PR_GATE_STUB_PR_NUM:-37}" \
             --arg base "${PR_GATE_STUB_BASE:-main}" \
             --arg head "${PR_GATE_STUB_HEAD_OID:-0000000000000000000000000000000000000000}" \
-            --arg body "${PR_GATE_STUB_PR_BODY-Closes #1}" \
+            --arg body "${PR_GATE_STUB_PR_BODY-Closes #1
+No-Visual: selftest 既定本文}" \
             '[{number:($num|tonumber), baseRefName:$base, headRefOid:$head, body:$body}]'
         fi
         ;;
@@ -1054,27 +1162,38 @@ STUB
   check "closing keyword も No-Issue: も無い: exit 2" 2 "$rc"
   check_grep "block メッセージが Closes を教える" "Closes #<番号>" "$(cat "$dir/err")"
   check_grep "block メッセージが No-Issue: を教える" "No-Issue: <理由>" "$(cat "$dir/err")"
+  # この body は視覚証跡も無いので、G_link と G_visual が 1 つの block メッセージに
+  # 合流していることも同時に検査する(G_visual (合流) セクションの本題)。
+  check_grep "同じ block に --attach の案内も乗る" "gh pr edit" "$(cat "$dir/err")"
+  check_grep "同じ block に No-Visual: の案内も乗る" "No-Visual: <理由>" "$(cat "$dir/err")"
 
   # #28/#29 を実質解決した PR は Issue に一切言及していなかった。「言及はあるが
   # keyword が無い」だけを見る判定では、観測された失敗そのものを通してしまう。
   rc="$(glink link-mention-only-sid "関連: #30 の調査で見つけた問題を直す。")"
   check "番号への言及はあるが keyword が無い: exit 2" 2 "$rc"
 
+  # 以降の exit-0 期待ケースは、まだ存在しない G_visual にも捕まらないよう
+  # No-Visual: を添えて body を独立に保つ(G_visual 自体の検査は専用セクションで行う)。
   rc="$(glink link-closes-sid "本文。
 
-Closes #30")"
+Closes #30
+No-Visual: selftest")"
   check "Closes #N: 素通り(exit 0)" 0 "$rc"
 
-  rc="$(glink link-colon-sid "CLOSES: #30")"
+  rc="$(glink link-colon-sid "CLOSES: #30
+No-Visual: selftest")"
   check "大文字 + コロン形式も GitHub の仕様どおり受理" 0 "$rc"
 
-  rc="$(glink link-crossrepo-sid "Fixes octo-org/octo-repo#100")"
+  rc="$(glink link-crossrepo-sid "Fixes octo-org/octo-repo#100
+No-Visual: selftest")"
   check "クロスリポジトリ形式を受理" 0 "$rc"
 
-  rc="$(glink link-url-sid "Resolves https://github.com/example/example/issues/7")"
+  rc="$(glink link-url-sid "Resolves https://github.com/example/example/issues/7
+No-Visual: selftest")"
   check "issue URL 形式を受理" 0 "$rc"
 
-  rc="$(glink link-noissue-sid "No-Issue: セッション中に生まれた作業で対応 Issue が無い")"
+  rc="$(glink link-noissue-sid "No-Issue: セッション中に生まれた作業で対応 Issue が無い
+No-Visual: selftest")"
   check "No-Issue: + 理由: 素通り(exit 0)" 0 "$rc"
 
   # 理由の無い `No-Issue:` を通すと、沈黙を決定に変えるという狙いが失われる。
@@ -1102,12 +1221,14 @@ Closes #30
 Closes #99
 \`\`\`
 
-Closes #30")"
+Closes #30
+No-Visual: selftest")"
   check "コード外に本物があれば LINKED(exit 0)" 0 "$rc"
 
   rc="$(glink link-code-then-noissue-sid "\`Closes #99\` の書き方を説明する PR。
 
-No-Issue: 規約を説明するだけで対応 Issue は無い")"
+No-Issue: 規約を説明するだけで対応 Issue は無い
+No-Visual: selftest")"
   check "コード内 keyword + No-Issue: は No-Issue: が効く(exit 0)" 0 "$rc"
 
   # G_push が止める場面では、本文の指摘は単独 block ではなく相乗りで伝える
@@ -1120,6 +1241,7 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
   errtext="$(cat "$dir/err")"
   check "G_push block 時: exit 2" 2 "$rc"
   check_grep "G_push block に G_link が相乗りする" "closing keyword なし" "$errtext"
+  check_grep "G_push block に G_visual も相乗りする" "視覚証跡がありません" "$errtext"
   check_grep "G_push の指摘も残る" "未 push" "$errtext"
 
   # closing keyword は default branch へのマージでのみ発火する(GitHub 公式)。
@@ -1129,7 +1251,8 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
   PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_BASE=stacked-base \
     PR_GATE_STUB_RULES_FILE="$dir/rules-empty.json" \
     PR_GATE_STUB_CHECKS_FILE="$dir/checks-quiesce-pass.json" \
-    PR_GATE_STUB_PR_BODY="Closes #30" \
+    PR_GATE_STUB_PR_BODY="Closes #30
+No-Visual: selftest" \
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
     <<<"$(hookinput link-offbase-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
   check "base が default branch でない: block はしない(exit 0)" 0 "$rc"
@@ -1142,11 +1265,81 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
   PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_BASE=stacked-base \
     PR_GATE_STUB_RULES_FILE="$dir/rules-empty.json" \
     PR_GATE_STUB_CHECKS_FILE="$dir/checks-quiesce-pass.json" \
-    PR_GATE_STUB_PR_BODY="Closes #30" \
+    PR_GATE_STUB_PR_BODY="Closes #30
+No-Visual: selftest" \
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
     <<<"$(hookinput link-nohead-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
   check "origin/HEAD 不明: exit 0" 0 "$rc"
   check "origin/HEAD 不明: 発火しない旨は出さない" 0 "$(grep -Fc '発火しません' "$dir/err")"
+
+  echo "G_visual (PR 本文の Before/After 視覚証跡):"
+
+  # 以降も push 済み + 全 required pass の「あとは終わるだけ」状態で回す。
+  # body には常に Closes #1 を含め、G_link 側を LINKED に固定して G_visual を
+  # 単独で切り出す(link 側は上のセクションで既に検査済み)。
+
+  rc="$(glink visual-image-sid "Closes #1
+
+## Before / After
+
+![After](https://github.com/user-attachments/assets/abc123-def456)")"
+  check "user-attachments 画像: 素通り(exit 0)" 0 "$rc"
+
+  rc="$(glink visual-codeblock-sid "Closes #1
+
+## Before / After
+
+\`\`\`
+- before: 3 columns
++ after:  4 columns
+\`\`\`")"
+  check "Before/After 見出し配下の fenced code block: 素通り(exit 0)" 0 "$rc"
+
+  rc="$(glink visual-noissue-sid "Closes #1
+No-Visual: 外観に影響しない内部リファクタ")"
+  check "No-Visual: + 理由: 素通り(exit 0)" 0 "$rc"
+
+  # 理由の無い `No-Visual:` を通すと、G_link の bare No-Issue: と同じく
+  # 沈黙を決定に変えるという狙いが失われる。
+  rc="$(glink visual-noissue-bare-sid "Closes #1
+No-Visual:")"
+  check "理由の無い No-Visual: は逃がさない(exit 2)" 2 "$rc"
+
+  rc="$(glink visual-missing-sid "Closes #1")"
+  check "証跡が何も無い: exit 2" 2 "$rc"
+  check_grep "証跡なし: --attach の案内が出る" "gh pr edit" "$(cat "$dir/err")"
+  check_grep "証跡なし: No-Visual: の案内が出る" "No-Visual: <理由>" "$(cat "$dir/err")"
+
+  # GitHub はインラインのコードスパン内を解釈しない — G_link の inline-code
+  # ケースと同型の回帰ガード。画像記法を「例として」引用しているだけでは
+  # アップロード済みと数えない。
+  rc="$(glink visual-inline-code-sid "Closes #1
+
+## Before / After
+
+画像記法の例: \`![After](https://github.com/user-attachments/assets/abc)\` の形で貼る。")"
+  check "インラインのコードスパン内の画像記法は数えない(exit 2)" 2 "$rc"
+
+  # fenced code block は Before/After 見出し配下でのみ証跡とみなす。他の見出し
+  # (例: 検証)配下の fence は対比ではなく単なるログ等の可能性があるため。
+  rc="$(glink visual-wrong-heading-sid "Closes #1
+
+## 検証
+
+\`\`\`
+\$ nix flake check
+...
+\`\`\`")"
+  check "Before/After 以外の見出し配下の fence は数えない(exit 2)" 2 "$rc"
+
+  # ローカルパスのままの画像記法はアップロードの証拠にならない。
+  rc="$(glink visual-local-path-sid "Closes #1
+
+## Before / After
+
+![Before](./before.png)
+![After](./after.png)")"
+  check "ローカルパスの画像記法はアップロード未証明として扱う(exit 2)" 2 "$rc"
 
   echo "escalate (独自カウンタ + 上限):"
 
@@ -1176,6 +1369,7 @@ No-Issue: 規約を説明するだけで対応 Issue は無い")"
   check_grep "session-start: base 追従の ahead が出る(2 commit 進めた)" "ahead 2" "$ctx"
   check_grep "session-start: 未 push 0 件" "未 push: 0 件" "$ctx"
   check_grep "session-start: Issue リンクの状態が出る" "Issue リンク: closing keyword あり" "$ctx"
+  check_grep "session-start: 視覚証跡の状態が出る" "視覚証跡: No-Visual: 宣言あり" "$ctx"
 
   rc=0
   out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \

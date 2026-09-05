@@ -128,3 +128,28 @@ separately.
 **File an issue to drop this input the moment `nixpkgs.herdr` evaluates on
 `nixos-26.05`** — this escape hatch is not meant to be a permanent second input;
 Issue #42 tracks it for the current instance.
+
+## Amendment (2026-09 — the same escape hatch also carries `gh`, version-capped)
+
+`gh` is not absent from the pinned stable channel the way `herdr` was — it
+evaluates fine, at 2.96.0. What is missing is a specific feature: `--attach`
+(upload Before/After images straight from `gh pr create|edit`, see the
+`pr-description` skill / `docs/claude/pr-gate.md`'s `G_visual` judgement),
+which shipped in gh v2.99.0. This is the *input-boundary* mirror of the shape
+the 2026-07 fcitx5 amendment already drew at the *system-layer* boundary: a
+capped version, not a missing package. The criterion above ("a tool that is
+absent from the pinned stable channel") reads narrower than what it was
+actually protecting — the underlying property is "the pinned stable channel
+cannot reach the capability this repo needs," and a version cap is one more
+way that happens.
+
+`gh`'s same two properties from the herdr criterion still hold: it is only
+ever `exec`'d (never `dlopen`'d into another package's process), so it needs
+no `inputs.nixpkgs.follows` and can share the herdr overlay's `legacyPackages`
+instantiation directly (`flake.nix`, same overlay entry as herdr, not a
+second one). The overlay entry is version-capped rather than package-absent,
+so its removal criterion is "stable ships gh >= 2.99.0" rather than "stable
+evaluates the attribute at all" — otherwise identical to herdr's.
+
+Issue #91 tracks dropping this overlay entry once `nixpkgs.gh` on
+`nixos-26.05` reaches >= 2.99.0, the same way Issue #42 tracks herdr.
