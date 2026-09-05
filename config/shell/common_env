@@ -65,6 +65,7 @@ export COLOR_NC='\033[0m' # No Color
 [ -z "$EDITOR" ] && export EDITOR="vim"
 [ -z "$VISUAL" ] && export VISUAL="$EDITOR"
 
-# Non-blocking URL opener (scripts/open-url.sh). gh browse etc. wait for
-# $BROWSER to exit; the system xdg-open blocks in the foreground on COSMIC.
-[ -z "$BROWSER" ] && export BROWSER="$HOME/.local/bin/open-url"
+# Non-blocking opener (scripts/detach-open.sh, deployed as ~/.local/bin/open).
+# gh browse etc. wait for $BROWSER to exit; the system xdg-open blocks in the
+# foreground on COSMIC.
+[ -z "$BROWSER" ] && export BROWSER="$HOME/.local/bin/open"

@@ -75,8 +75,9 @@ dotfiles/
 │   ├── fix-ssh-permissions.sh
 │   ├── setup-sops-secrets.sh # host-local SOPS/.sops.yaml setup
 │   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to ~/.local/bin)
-│   ├── open-url.sh           # $BROWSER target (deployed to ~/.local/bin/open-url):
-│   │                         #   detaches the URL open so gh browse etc. don't block
+│   ├── detach-open.sh        # deployed as ~/.local/bin/open AND ~/.local/bin/xdg-open
+│   │                         #   (shadows the system xdg-open, which blocks in the
+│   │                         #   foreground on COSMIC), and as the $BROWSER target
 │   ├── git-shelve             # worktree-tagged `git stash push` wrapper
 │   │                         #   (deployed to ~/.local/bin/git-shelve, called as
 │   │                         #   `git shelve` via git's subcommand resolution)
