@@ -76,13 +76,20 @@
     executable = true;
   };
 
-  # $BROWSER target (config/shell/common_env exports it). gh browse and
-  # anything else that honors $BROWSER wait for it to exit; the system
-  # xdg-open blocks in the foreground on COSMIC (unrecognized DE → generic
-  # mode execs the browser's Exec directly), so Ctrl+C kills the browser
-  # along with the blocked shell. This wrapper detaches instead.
-  home.file.".local/bin/open-url" = {
-    source = ../../scripts/open-url.sh;
+  # Shadow the system `open`/`xdg-open` (both resolve to xdg-utils 1.1.3,
+  # which blocks in the foreground on COSMIC — unrecognized DE → generic
+  # mode execs the MIME handler's Exec directly, so Ctrl+C kills the
+  # viewer/browser along with the blocked shell). ~/.local/bin precedes
+  # /usr/bin on PATH (10-path.zsh), so both names resolve here instead.
+  # Also the $BROWSER target (config/shell/common_env exports it) — gh
+  # browse and anything else honoring $BROWSER wait for it to exit, so it
+  # needs the same detaching behavior.
+  home.file.".local/bin/open" = {
+    source = ../../scripts/detach-open.sh;
+    executable = true;
+  };
+  home.file.".local/bin/xdg-open" = {
+    source = ../../scripts/detach-open.sh;
     executable = true;
   };
 
