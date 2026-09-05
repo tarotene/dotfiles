@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SOPS Secrets Setup Script
 # Creates and manages encrypted secrets using SOPS with GPG
 

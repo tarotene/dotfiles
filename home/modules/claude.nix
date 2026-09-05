@@ -128,7 +128,7 @@
 #    無い唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
 #    hook 登録はしない — herdr が interval 実行して標準出力の最終行を描画する。
 #    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
-#    詳細は docs/claude/claude-usage-tabbar.md。
+#    詳細は docs/claude/claude-usage.md。
 #
 # 14) グローバル ~/.claude/CLAUDE.md(全セッション常時コンテキスト):
 #    「検証可能な不確実性が現れたら情報源(Slack/Drive/GitHub/公式ドキュメント/
@@ -679,7 +679,7 @@ in
 
   # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
   # hook ではない — settings.json には登録しない)。呼び出し側は
-  # config/herdr/config.toml。詳細は docs/claude/claude-usage-tabbar.md。
+  # config/herdr/config.toml。詳細は docs/claude/claude-usage.md。
   home.file.".claude/hooks/claude-usage.sh" = {
     source = repoConfig + "/claude/hooks/claude-usage.sh";
     executable = true;

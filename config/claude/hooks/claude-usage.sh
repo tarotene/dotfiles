@@ -5,7 +5,7 @@
 # これは Claude Code hook ではない。settings.json には一切登録しない。
 # herdr の `ui.tab_bar_right` の command エントリ(config/herdr/config.toml)が
 # `/bin/sh -lc` で interval 実行し、標準出力の最終行をそのまま描画する。
-# 設計と根拠: docs/claude/claude-usage-tabbar.md(このリポジトリ内)。
+# 設計と根拠: docs/claude/claude-usage.md(このリポジトリ内)。
 #
 # データ源は `/usage` コマンドが内部で使う非公開 API
 # `GET https://api.anthropic.com/api/oauth/usage`(ヘッダ
