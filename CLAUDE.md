@@ -176,6 +176,9 @@ dotfiles/
   + `install-packages.sh` `--dry-run`, and a zsh module syntax check.
 
 ### Pull request descriptions
+- A coding task is **not done** until the PR exists: commit → push →
+  `gh pr create` in one motion, without pausing to ask. The Stop hook
+  (`G_pr` in pr-gate.sh) enforces this.
 - Every PR body **must** either close an issue or say why there is none:
   - `Closes #<n>` — one line per issue (`Fixes`/`Resolves` and
     `owner/repo#<n>` work too). Without this, merging does not touch the issue

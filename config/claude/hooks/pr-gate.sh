@@ -4,12 +4,14 @@
 # 設計と根拠: docs/claude/pr-gate.md（このリポジトリ内）
 #
 # 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
-# 繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」という
-# 4 種の事故を、Stop の 1 点だけで hard gate する。base 鮮度・未コミット変更は
-# advisory(block するときだけ相乗りで伝える。それ単独では終了を止めない)。
+# 繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」「push 済み
+# なのに PR を作らないまま終わる」という 5 種の事故を、Stop の 1 点だけで
+# hard gate する。base 鮮度・未コミット変更は advisory(block するときだけ
+# 相乗りで伝える。それ単独では終了を止めない)。
 #
 #   G_push     : ローカル HEAD == PR の headRefOid              → block
 #   G_unpushed : PR が無いときの「push すべきコミットが 0 件か」→ block
+#   G_pr       : push 済み・PR 無し・ahead>0 のブランチ         → block
 #   G_link     : PR 本文に closing keyword または No-Issue:     → block
 #   G_visual   : PR 本文に Before/After の視覚証跡 or No-Visual: → block
 #   G_CI       : 期待される check がすべて pass/skipping        → block
@@ -19,8 +21,17 @@
 # G_unpushed は G_push が届かない領域を塞ぐ: G_push は比較対象の headRefOid を
 # open PR から取るので、PR がまだ無いセッションでは何も見ずに完全沈黙していた
 # (実測: コミットを 3 つ積んで push せずに終わっても pr-gate は無言だった)。
-# PR を作るべきかには踏み込まず、「積んだコミットが 1 個もリモートに無い」と
-# いう事実だけを見る。解消は git push 1 回で済み、履歴改変は伴わない。
+# push の事実だけを見て、その先の「PR を作るべきか」は G_pr が判定する。
+# 解消は git push 1 回で済み、履歴改変は伴わない。
+#
+# G_pr は G_unpushed のさらに先を塞ぐ: push 済みなら G_unpushed は何も言わず、
+# 以前はここで完全沈黙していた(実測: push だけして PR を作らずに終わっても
+# 無言だった)。「PR を作成しますか?」と確認待ちで止まる/PR という選択肢が
+# 提案されないまま終わる、という遅延コスト型の事故 — コストが出るのは
+# セッションの時点ではなく、レビューに乗らない作業が後日放置されてから
+# (G_link と同じ論法)。判定できる場合だけ block し、判定できない場合
+# (upstream 不明、origin/HEAD 未設定、default branch 上、ahead 不明、
+# merged/closed PR が既にある)は断定に変えず素通す。詳細: docs/claude/pr-gate.md。
 #
 # SessionStart は同じ理由で「PR が無ければ完全沈黙」だったため、base が何コミット
 # 遅れていても [gone] ブランチが何本溜まっていても一切表示されなかった。PR の
@@ -88,22 +99,25 @@
 # 縮退:
 #   完全沈黙(exit 0, 出力なし) → allowlist 外 / git repo でない / GitHub remote
 #     でない / jq・gh・git 不在 / skip / (PR が無く、かつ hygiene の材料も無い)
-#   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗
+#     / G_pr の判定不能条件(upstream 不明・default branch 未設定・default
+#     branch 上・ahead 不明 or 0・merged/closed PR 既存)
+#   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗・
+#     G_pr の merged/closed 検査 API 失敗
 #   hard block(exit 2)         → G_push 不一致 / G_unpushed(PR 無し + 未push
-#     commit あり) / G_link 欠落 / G_visual 欠落 / G_CI が揃わない・失敗・pending
+#     commit あり) / G_pr(push 済み・PR 無し・ahead>0) / G_link 欠落 /
+#     G_visual 欠落 / G_CI が揃わない・失敗・pending
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
 # (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
-# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-4} に達したら 1 回だけ escalate し、
+# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-5} に達したら 1 回だけ escalate し、
 # touch state/<sid>.escalated。以後そのセッションは無条件で素通る(escalated の
 # チェックは上限判定より前 — docs/claude/copilot-plan-review.md の closer と同じ置き方)。
-# 上限が 3 でなく 4 なのは G_link を足したから: 最悪の連鎖(push → 本文修正 →
-# CI 待ち)が正当に 3 回 block しうるので、3 のままだと最後の 1 回が escalate に
-# 化ける。なお G_link の指摘は単独 block になる前に G_push / G_CI の block へ
-# 相乗りするので、この最悪連鎖は実際には起きにくい。G_visual を追加しても
-# 4 のまま据え置く: G_visual は G_link と同じ終端 block に合流し(本文修正は
-# CI を再走させない)、最悪連鎖の長さそのものは変わらないため。
+# 上限が 4 でなく 5 なのは G_pr を足したから: 最悪の連鎖(push → G_pr →
+# 本文修正 → CI 待ち)が正当に 4 回 block しうるので、4 のままだと最後の
+# 1 回が escalate に化ける(3→4 に上げた G_link 追加時と同じ論法)。なお
+# G_unpushed の block メッセージは push と `gh pr create` を 1 往復に
+# まとめて案内するため、この最悪連鎖は実際には起きにくい。
 #
 # 使い方:
 #   hook として:  settings.json の SessionStart / Stop から
@@ -121,7 +135,7 @@ CI_TIMEOUT="${PR_GATE_CI_TIMEOUT:-300}"
 CHECK_APPEAR_TIMEOUT="${PR_GATE_CHECK_APPEAR_TIMEOUT:-60}"
 QUIESCE="${PR_GATE_QUIESCE:-15}"
 FETCH_TTL="${PR_GATE_FETCH_TTL:-600}"
-MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-4}"
+MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-5}"
 
 # 自身の絶対パス。symlink は辿らない — 配備後は ~/.claude/hooks/ 配下が nix store
 # への symlink であり、世代を跨いで安定な symlink 側を指示文に出したい
@@ -739,22 +753,71 @@ cmd_stop() {
     # 無条件に完全沈黙していたため、コミットを積んで push せずに終わる
     # セッションを何も止めなかった。PR を作るべきかには踏み込まず、
     # 「積んだコミットが 1 個もリモートに無い」事実だけを見る(G_unpushed)。
-    local unpushed
+    local unpushed default_br
     unpushed="$(unpushed_count "$project" "$branch")"
+    default_br="$(default_branch "$project")"
     if [[ "$unpushed" =~ ^[0-9]+$ ]] && [[ "$unpushed" -gt 0 ]]; then
-      local default_br hygiene
-      default_br="$(default_branch "$project")"
+      local hygiene
       hygiene="$(join_hygiene_lines \
         "$(stale_base_line "$project" "$default_br")" \
         "未コミット: $(uncommitted_count "$project") ファイル")"
       block_or_escalate "$sid" "未 push の commit が ${unpushed} 件あります。PR はまだありません。
 
-push してから終了してください(push.autoSetupRemote が upstream を自動で
-設定するので --set-upstream の指定は要りません)。
+push し、そのまま \`gh pr create\` まで実行してから終了してください
+(push.autoSetupRemote が upstream を自動で設定するので --set-upstream の
+指定は要りません)。本文は pr-description スキルの 5 節スケルトンに従い、
+1 行目に \`Closes #<番号>\` か \`No-Issue: <理由>\`、\`## Before / After\` に
+証跡(または \`No-Visual: <理由>\`)を入れてください。
 
 ${hygiene}"
+      exit 0
     fi
-    exit 0 # 未 push が無ければ運ぶ情報が無い(PR 有無自体は issue-index が示す)
+
+    # G_pr — push 済みなのに PR が無いまま終わろうとする事故を塞ぐ。
+    # G_unpushed は「push したか」しか見ないため、push 済みブランチが
+    # PR を作らずに終わるケースはここまで無条件で完全沈黙していた
+    # (詳細: docs/claude/pr-gate.md の G_pr 節)。「PR を作るべきか」に
+    # 踏み込まず判定できる場合だけ block し、判定できないときは断定に
+    # 変えず素通す(以下はすべて exit 0 の skip 条件):
+    #   - unpushed が "?"(upstream 不明。判定不能)
+    #   - default_br が空(origin/HEAD 未設定。判定不能)
+    #   - branch が default branch そのもの(PR フロー外の直接作業)
+    [[ "$unpushed" == "0" ]] || exit 0
+    [[ -n "$default_br" ]] || exit 0
+    [[ "$branch" != "$default_br" ]] || exit 0
+
+    local ab ahead
+    ab="$(compute_ahead_behind "$project" "$default_br")"
+    ahead="${ab%%$'\t'*}"
+    # ahead が非数値("?": origin/<default_br> が手元に無い)か 0
+    # (PR に値する commit が無い)なら判定できない/対象外として素通す。
+    [[ "$ahead" =~ ^[0-9]+$ ]] || exit 0
+    [[ "$ahead" -gt 0 ]] || exit 0
+
+    # merged/closed の PR が既にある場合は block しない — squash merge 後の
+    # 残骸ブランチ(ahead>0 のまま残る)や、意図的に閉じた PR まで block
+    # すると「PR を作れ」という案内が誤りになる。gh 失敗時は fail-open
+    # (空応答と API 失敗を区別せず、どちらも「分からないので止めない」に倒す)。
+    local all_json all_state
+    all_json="$(gh pr list -R "$nwo" --head "$branch" --state all --limit 1 \
+      --json state 2>/dev/null)" || exit 0
+    [[ -n "$all_json" ]] || all_json='[]'
+    all_state="$(jq -r '.[0].state // empty' <<<"$all_json")"
+    [[ -z "$all_state" ]] || exit 0
+
+    local hygiene
+    hygiene="$(join_hygiene_lines \
+      "未コミット: $(uncommitted_count "$project") ファイル")"
+    block_or_escalate "$sid" "ブランチ ${branch} は push 済みですが PR がありません
+(origin/${default_br} に対し ahead ${ahead})。
+
+\`gh pr create\` まで実行してから終了してください。本文は pr-description
+スキルの 5 節スケルトンに従い、1 行目に \`Closes #<番号>\` か
+\`No-Issue: <理由>\`、\`## Before / After\` に証跡(または
+\`No-Visual: <理由>\`)を入れてください(G_link / G_visual が後で検査します)。
+
+${hygiene}"
+    exit 0
   fi
 
   local base head_oid
@@ -944,7 +1007,14 @@ case "$1" in
   pr)
     case "$2" in
       list)
-        if [[ "${PR_GATE_STUB_NO_PR:-0}" == "1" ]]; then
+        if [[ "$*" == *"--state all"* ]]; then
+          # G_pr の merged/closed 検査。既定は空(=merged/closed PR 無し)。
+          if [[ -n "${PR_GATE_STUB_ALL_STATE:-}" ]]; then
+            "$jqbin" -n --arg s "${PR_GATE_STUB_ALL_STATE}" '[{state:$s}]'
+          else
+            echo '[]'
+          fi
+        elif [[ "${PR_GATE_STUB_NO_PR:-0}" == "1" ]]; then
           echo '[]'
         else
           "$jqbin" -n --arg num "${PR_GATE_STUB_PR_NUM:-37}" \
@@ -990,14 +1060,23 @@ STUB
   repo="$dir/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q
-  git -C "$repo" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m base
+  # -c core.hooksPath=/dev/null: このマシンはグローバルに core.hooksPath を
+  # 張って main/master への直 commit を弾く pre-commit を全リポジトリへ効かせて
+  # いる(#59)。selftest 用の使い捨てリポジトリ(既定ブランチ名が環境の
+  # init.defaultBranch 依存で "main" になりうる)がそれに巻き込まれて selftest
+  # 自体が exit 1 で落ちていた。selftest はこのマシンの実 git 環境から
+  # 自己完結しているべきなので、commit だけ無効化する。
+  git -C "$repo" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m base
   git -C "$repo" remote add origin https://github.com/example/example.git
   git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD)"
   # fetch(ネットワーク I/O)は selftest の対象外。FETCH_HEAD を touch して
   # TTL 判定(「新しければ fetch しない」)だけを検査する。
   touch "$repo/.git/FETCH_HEAD"
-  git -C "$repo" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m c1
-  git -C "$repo" -c user.email=t@example.com -c user.name=t commit --allow-empty -q -m c2
+  git -C "$repo" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m c1
+  git -C "$repo" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m c2
   real_head="$(git -C "$repo" rev-parse HEAD)"
 
   export PR_GATE_DIR="$dir/state" PR_GATE_ALLOWLIST="$dir/allowlist"
@@ -1055,7 +1134,7 @@ STUB
     bash "$self" stop <<<"$(hookinput gu-behind-sid)" 2>"$dir/err")" || rc=$?
   check "PR 無し + 未push commit あり: exit 2" 2 "$rc"
   check_grep "PR 無し + 未push: 件数が出る" "未 push の commit が 2 件" "$(cat "$dir/err")"
-  check_grep "PR 無し + 未push: push を促す" "push してから終了してください" "$(cat "$dir/err")"
+  check_grep "PR 無し + 未push: push と PR 作成まで促す" "gh pr create" "$(cat "$dir/err")"
 
   git -C "$repo" update-ref refs/remotes/origin/gate-test-upstream "$real_head"
   rc=0
@@ -1065,6 +1144,55 @@ STUB
   check "PR 無し + 未push commit 0 件: 出力なし" "" "$out$(cat "$dir/err")"
 
   # 後続の(PR ありを前提とする)テストに影響しないよう戻す。
+  git -C "$repo" config --unset "branch.${cur_branch}.remote" || true
+  git -C "$repo" config --unset "branch.${cur_branch}.merge" || true
+
+  echo "G_pr (push 済み・PR 無し・ahead>0 の block):"
+
+  # default branch 名に "main" を使うと、この selftest 環境の init.defaultBranch
+  # が "main" のときに cur_branch と一致し、branch==default_br の skip 条件で
+  # 全ケースが素通りしてしまう。gate-test-upstream と同じ理由で専用名にする。
+  git -C "$repo" update-ref refs/remotes/origin/gate-test-default "$(git -C "$repo" rev-parse HEAD~2)"
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/gate-test-default
+
+  # push 済みにする(unpushed=0): upstream を HEAD と同じ位置に張る。
+  git -C "$repo" update-ref refs/remotes/origin/gate-test-upstream "$real_head"
+  git -C "$repo" config "branch.${cur_branch}.remote" origin
+  git -C "$repo" config "branch.${cur_branch}.merge" refs/heads/gate-test-upstream
+
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gpr-block-sid)" 2>"$dir/err")" || rc=$?
+  check "push 済み+PR無し+ahead>0: exit 2" 2 "$rc"
+  check_grep "push済み+PR無し: gh pr create を促す" "gh pr create" "$(cat "$dir/err")"
+  check_grep "push済み+PR無し: pr-description を案内" "pr-description" "$(cat "$dir/err")"
+
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PR_GATE_STUB_ALL_STATE=MERGED \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gpr-merged-sid)" 2>"$dir/err")" || rc=$?
+  check "merged PR 既存: exit 0(squash 残骸を block しない)" 0 "$rc"
+  check "merged PR 既存: 出力なし" "" "$out$(cat "$dir/err")"
+
+  git -C "$repo" symbolic-ref --delete refs/remotes/origin/HEAD
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gpr-nodefault-sid)" 2>"$dir/err")" || rc=$?
+  check "origin/HEAD 不明: exit 0(判定不能を断定に変えない)" 0 "$rc"
+  check "origin/HEAD 不明: 出力なし" "" "$out$(cat "$dir/err")"
+
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/gate-test-default
+  git -C "$repo" update-ref refs/remotes/origin/gate-test-default "$real_head"
+  rc=0
+  out="$(PR_GATE_STUB_NO_PR=1 PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    bash "$self" stop <<<"$(hookinput gpr-ahead0-sid)" 2>"$dir/err")" || rc=$?
+  check "ahead 0: exit 0(PR に値する commit が無い)" 0 "$rc"
+  check "ahead 0: 出力なし" "" "$out$(cat "$dir/err")"
+
+  # 後続の(PR ありを前提とする)テストに影響しないよう戻す。
+  git -C "$repo" symbolic-ref --delete refs/remotes/origin/HEAD 2>/dev/null || true
+  git -C "$repo" update-ref -d refs/remotes/origin/gate-test-default 2>/dev/null || true
+  git -C "$repo" update-ref -d refs/remotes/origin/gate-test-upstream 2>/dev/null || true
   git -C "$repo" config --unset "branch.${cur_branch}.remote" || true
   git -C "$repo" config --unset "branch.${cur_branch}.merge" || true
 
@@ -1344,13 +1472,13 @@ No-Visual:")"
   echo "escalate (独自カウンタ + 上限):"
 
   n=0
-  while [[ $n -lt 4 ]]; do
+  while [[ $n -lt 5 ]]; do
     rc=0
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
       >"$dir/out" 2>"$dir/err" || rc=$?
     n=$((n + 1))
   done
-  check "4 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
+  check "5 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
   rc=0
   PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
     >"$dir/out" 2>"$dir/err" || rc=$?

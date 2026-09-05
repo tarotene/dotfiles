@@ -1,9 +1,10 @@
 # PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
 
-herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 4 つ
-（CI 待ちのまま完了を宣言する／push し忘れたまま完了する／PR を Issue に繋がないまま
-終わる／見た目の変更なのに視覚証跡が無いまま終わる)を Stop hook で hard gate する
-仕組みの設計記録。実装は `config/claude/hooks/pr-gate.sh`、デプロイは
+herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 5 つ
+（CI 待ちのまま完了を宣言する／push し忘れたまま完了する／push 済みなのに PR を
+作らないまま終わる／PR を Issue に繋がないまま終わる／見た目の変更なのに視覚証跡が
+無いまま終わる)を Stop hook で hard gate する仕組みの設計記録。実装は
+`config/claude/hooks/pr-gate.sh`、デプロイは
 `home/modules/claude.nix`。main が進んだことに気づかない件と未コミット変更は
 advisory に留める。
 
@@ -114,6 +115,61 @@ Stop と違って「単独では終了を止めない」という制約自体が
 
 PR がある場合は既存の `G_push` がより正確に見るので、`G_unpushed` は
 `pr_num` が空のときだけ動く。二重に block することはない。
+
+この「PR を作るべきかには踏み込まない」という判断は、`G_pr`（次節）の導入で
+上書きした。`G_unpushed` はそのまま残し、push の事実だけを見る役割に留める。
+
+## G_pr — なぜ「PR を作るべきか」に踏み込むことにしたか
+
+### 直そうとしている事故
+
+`G_unpushed` を入れてもなお塞がらない領域があった: **push はしたが、そこで
+「PR を作成しますか?」と確認待ちに入る/報告して終わる/PR という選択肢自体が
+検討から落ちる**、という 3 態様の停止である。`G_unpushed` は「push したか」
+しか見ないので、push 済みなら無条件で完全沈黙し続けていた(実測: push だけ
+して PR を作らずに終えても pr-gate は無言だった)。
+
+この事故の性質は `G_link` と同じ——**その場では何も壊れない**。壊れるのは
+後日、レビューに乗らない作業が放置されてから。advisory はエージェントが
+読んで無視できるので、`G_link` の節で述べた論法(「今は何も壊れないという
+警告」は遅延コストの構造をそのまま再生産する)がそのまま適用できる。よって
+block する。
+
+### 判定できる場合だけ踏み込む
+
+「PR を作るべきか」への判定は、判定できない場合に断定へ倒れやすい。次のいずれかに
+該当すれば **block しない**(判定できないことを断定に変えない、という他の
+advisory と同じ姿勢):
+
+- `unpushed` が `?`(upstream が特定できない)
+- `default_br` が空(`origin/HEAD` が未設定)
+- ローカルブランチが default branch そのもの(PR フロー外の直接作業)
+- `origin/<default_br>` に対する ahead が非数値(比較対象が手元に無い)か `0`
+  (PR に値する commit が無い)
+- 同じ head ブランチの PR が既に **merged/closed** で存在する(`gh pr list
+  --state all` で 1 本だけ追加確認する。squash merge 後もローカルブランチは
+  ahead>0 のまま残るため、この検査が無いと merge 済みブランチを block して
+  しまう。この追加 API 呼び出しが失敗した場合は fail-open——空応答と
+  API 失敗を区別せず、どちらも「分からないので止めない」に倒す)
+
+どれにも該当しなければ block し、`gh pr create` まで実行し本文を
+pr-description スキルの 5 節スケルトンに従わせるよう案内する(`G_link` /
+`G_visual` はその後の Stop 呼び出しで通常どおり検査する)。
+
+### 指示レイヤ(CLAUDE.md)との分担
+
+`config/claude/CLAUDE.md` に「実装タスクの完了定義 = PR 作成まで」を明文化
+しても、それだけでは `G_link` を block にした理由と同じ弱点を持つ——指示は
+読んで無視できる。強制レイヤを重ねるのは、G_link/G_visual で既に採用した
+「指示と機械判定を両輪にする」設計をそのまま踏襲したもの。
+
+### `MAX_BLOCKS` の引き上げ(4 → 5)
+
+`G_pr` を挟むぶん、最悪の正当チェーン(push → `G_pr` → 本文修正 → CI 待ち)が
+4 回まで block しうる。4 のままだと最後の 1 回が escalate に化ける——`G_link`
+追加時に 3 から 4 に上げたのと同じ論法(「上限は最悪ケースで決める」)。
+`G_unpushed` の block メッセージ自体を「push し、そのまま `gh pr create` まで」
+に改めて 1 往復へ圧縮したため、この最悪連鎖は実際には起きにくい。
 
 ## G_link — なぜ「PR 本文が Issue を閉じるか」を block するのか
 
@@ -311,7 +367,7 @@ Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=tru
 `state/<sid>.escalated` を touch し、以後そのセッションは無条件で素通る。
 `escalated` のチェックは上限判定より**前**に置く（`docs/claude/copilot-plan-review.md` の closer /
 escalated と同じ置き方）。block cap（Claude Code 側の「連続 8 回で打ち切り」）の消費は
-wrapup 側と合わせて最大 4 回に収まる。
+wrapup 側と合わせて最大 5 回に収まる。
 
 ## required check がまだ無いと、ゲートは空振りする
 
@@ -382,7 +438,7 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 |---|---|---|
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
-| `PR_GATE_MAX_BLOCKS` | `4` | escalate までの block 回数（G_link 追加時に 3 から引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
+| `PR_GATE_MAX_BLOCKS` | `5` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
 | `PR_GATE_CI_TIMEOUT` | `300` | `gh pr checks --watch` の timeout(秒) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
@@ -418,6 +474,9 @@ bash config/claude/hooks/pr-gate.sh --selftest
   正しく分岐すること**
 - **`G_unpushed`**: PR 無し + 未 push commit あり(exit 2)/ PR 無し + 0 件(完全沈黙)
   の両方
+- **`G_pr`**: push 済み・PR 無し・ahead>0 で block、merged/closed PR が既にある
+  ときは block しない、`origin/HEAD` 不明のときは block しない、ahead 0 のときは
+  block しない
 - **`G_visual`**: 画像・fence・No-Visual: のいずれかで PASS すること、fence は
   Before/After 見出し配下でのみ証跡になること、コードスパン内の引用(画像記法・
   No-Visual:)は数えないこと、ローカルパス画像は数えないこと、`G_link` と同じ
