@@ -143,7 +143,14 @@ catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系
   文字列が異なるエントリに触れず、herdr も自ファイル以外に触れないので衝突しない
   (herdr の書き込みは `.hooks.SessionStart` の自ファイルと `~/.claude/hooks/`,
   `~/.codex/`, `~/.copilot/hooks/`, `~/.config/devin/` への統合ファイル配備だけで、
-  `statusLine` には一切触れない — 実行バイナリの静的解析で確認済み)。
+  `statusLine` には一切触れない — 実行バイナリの静的解析で確認済み)。この
+  integration hook は herdr のネイティブ agent セッション復元
+  (`[session] resume_agents_on_restore`、既定 on)が動く前提条件でもある
+  — 無いと `herdr server` 再起動後の復元は layout だけになり、claude ペインは
+  素のシェルとして戻る。onboarding フローでしか入らず、本リポジトリは
+  `config/herdr/config.toml` で `onboarding = false` を配備しているため、
+  `home/modules/herdr.nix` の `home.activation.installHerdrClaudeIntegration`
+  が `herdr integration install claude` を代わりに(未導入時のみ)実行する。
 - **Herdr 外では無害**: どちらのスクリプトも `HERDR_ENV=1` と socket/pane 環境変数を
   ガードにしており、素のターミナルでは statusline の表示だけが動く(ADR-0005 の
   binary-existence gating に倣い、欠如時は黙って no-op)。
