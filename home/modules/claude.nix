@@ -99,7 +99,8 @@
 #    /model で日常的に切り替える対象なので home-manager は触らない。
 #    詳細は docs/claude/opusplan-model-aliases.md。
 #
-# 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description):
+# 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
+#     wrapup-chores):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -111,11 +112,15 @@
 #    場合は横断的に同期する)。pr-description は PR 本文の標準スケルトン(課題・
 #    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
 #    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
-#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。hook のような
-#    settings.json 登録は不要(スキルは ~/.claude/skills/ をスキャンするだけで発動
-#    する)なので home.file だけで足りる。詳細は docs/claude/diagramming.md、
-#    docs/claude/skill-gardening.md、docs/claude/living-description.md、
-#    docs/claude/pr-description.md。
+#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。wrapup-chores
+#    は 2) の wrap-up inbox のうち判断を要さない軽微な項目(未起票の inbox 行 +
+#    起票済みの wrapup 由来 open Issue)をまとめて triage し、1 回の確認後に 1 つの
+#    chores PR で一括対処する習慣 — hook 自体には手を入れず、削除は既存の
+#    `--mark-filed` 経由のみを使う。hook のような settings.json 登録は不要
+#    (スキルは ~/.claude/skills/ をスキャンするだけで発動する)なので home.file
+#    だけで足りる。詳細は docs/claude/diagramming.md、docs/claude/skill-gardening.md、
+#    docs/claude/living-description.md、docs/claude/pr-description.md、
+#    docs/claude/wrapup-chores.md。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
@@ -757,6 +762,12 @@ in
     repoConfig + "/claude/skills/pr-description/SKILL.md";
   home.file.".claude/skills/pr-description/cases.md".source =
     repoConfig + "/claude/skills/pr-description/cases.md";
+  # wrapup-chores: wrap-up inbox のうち判断を要さない軽微な項目を、未起票の inbox
+  # 行と起票済みの wrapup 由来 Issue の両方からまとめて triage し、1 回の確認後に
+  # 1 つの chores PR で一括対処する判断知識。hook 側(wrapup-stop-gate.sh)には
+  # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
+  home.file.".claude/skills/wrapup-chores/SKILL.md".source =
+    repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
