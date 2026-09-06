@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Protected-branch guard: block a direct commit onto main/master. herdr

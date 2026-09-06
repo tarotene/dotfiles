@@ -566,8 +566,6 @@ let
     "Bash(uv run pre-commit run *)"
     "Bash(uv run docs-check *)"
     "Bash(./scripts/check-*.sh *)"
-    "Bash(./scripts/list-branch-inventory.sh *)"
-    "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
 
     "Bash(gh pr view *)"
     "Bash(gh pr list *)"
@@ -591,11 +589,18 @@ let
   # 挿入(--exec-path 等)を素通しするとして Claude Code が毎セッション警告し、
   # しかも中間 `*` は実際にはマッチしない。代替は git-worktree-allow hook(検証つき
   # のプログラム的許可 — docs/claude/git-worktree-allow.md)。
+  #
+  # `list-branch-inventory.sh` / `sweep-removed-vendor-symbols.sh` は使い捨ての
+  # ワンオフ作業用ルールが陳腐化して残っていたもの(#101)。~/.ghr 配下の全ローカル
+  # リポジトリおよび tarotene 名義の全 GitHub リポジトリを検索したが、該当スクリプトは
+  # このファイル自身の permissionRules 記述以外に実体が存在しないことを確認済み。
   retiredPermissionRules = [
     "Bash(git -C * add *)"
     "Bash(git -C * commit *)"
     "Bash(git -C * status *)"
     "Bash(git -C * diff *)"
+    "Bash(./scripts/list-branch-inventory.sh *)"
+    "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
   ];
 in
 {

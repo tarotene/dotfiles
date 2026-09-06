@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Bootstrap a fresh Pop!_OS / Ubuntu host from bare metal to a fully managed
