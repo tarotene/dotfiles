@@ -40,6 +40,7 @@ stay deliberately outside it as escape hatches:
 | Translation | hybrid — keep working config files literal, use Nix DSL only where interpolation pays | ADR-0002 |
 | Secrets / identity | YubiKey-rooted; runtime-decrypted SOPS (no sops-nix); public keys committed; retire keybase | ADR-0003 |
 | Repo identity | keep the `dotfiles` name; relocate to public `tarotene/dotfiles` via a clean orphan history; no semver releases | ADR-0004 |
+| Shell-extension init | gate `eval "$(tool init …)"` / `source <(tool …)` on binary existence only, never on auth credentials (a token-gated loader breaks in the token-less home-manager session) | ADR-0005 |
 | Graphics | nix GUI apps carry their own GL stack via a per-package `nixGL` wrapper; the system graphics stack stays apt and untouched | ADR-0006 |
 | Infra | latest pinned stable release channel (+ a single-package `nixpkgs-unstable` escape hatch for tools absent there, currently `herdr`); Determinate Systems installer; nix-centric CI; rollback via generations | ADR-0001 (+ Amendment) |
 
@@ -58,7 +59,7 @@ home/
   hosts/
     <hostname>.nix            # instance-scoped settings; imports common + one identity
 docs/
-  adr/0001..0004              # architecture decision records
+  adr/0001..0006              # architecture decision records
   nixification-roadmap.md     # candidates to move from literal config to native Nix DSL
 ```
 

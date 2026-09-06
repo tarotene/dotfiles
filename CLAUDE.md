@@ -48,7 +48,8 @@ dotfiles/
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes, herdr
+│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes,
+│                             #   herdr, claude, worktree, quarantine
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
@@ -59,8 +60,7 @@ dotfiles/
 │   │                         #   tab-bar command, not a hook)
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
-│   │                         #   the repo-local hook), prune-branches.sh (helper for
-│   │                         #   the `git prune-branches` alias)
+│   │                         #   the repo-local hook)
 │   ├── herdr/                # Herdr config.toml (theme + sidebar rows), fully managed —
 │   │                         #   xdg.configFile deploys it verbatim (store symlink,
 │   │                         #   read-only; in-app settings writes fail by design)
@@ -68,7 +68,13 @@ dotfiles/
 │   └── starship.toml
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
-├── scripts/                  # escape-hatch and diagnostic scripts
+├── scripts/                  # mix of home-manager-deployed user-environment tools
+│   │                         #   (hms, sops-secrets-env, git-shelve/unshelve,
+│   │                         #   git-prune-branches, git-audit/prune-worktrees,
+│   │                         #   git-worktree-create-guard) and true escape-hatch /
+│   │                         #   diagnostic scripts (install-packages,
+│   │                         #   install-falcon-sensor, fix-ssh-permissions,
+│   │                         #   setup-sops-secrets) — not escape-hatch-only
 │   ├── hms.sh                # canonical apply wrapper (deployed to ~/.local/bin/hms):
 │   │                         #   switch + daemon-reload + fcitx5 restart + verification
 │   ├── install-packages.sh   # thin system-layer apt installer (#216)
@@ -85,6 +91,16 @@ dotfiles/
 │   │                         #   `git shelve` via git's subcommand resolution)
 │   ├── git-unshelve           # resolves + applies + drops this worktree's own
 │   │                         #   shelve entry (SHA-based, TOCTOU-safe drop)
+│   ├── git-prune-branches     # deletes local branches whose upstream is [gone]
+│   │                         #   (deployed to ~/.local/bin, called as `git prune-branches`)
+│   ├── git-audit-worktrees    # reports/prunes stale herdr worktree registrations
+│   │                         #   (deployed to ~/.local/bin + a systemd user timer)
+│   ├── git-prune-worktrees    # removes orphaned worktree checkouts
+│   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
+│   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
+│   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
+│   ├── register-codex-worktree-hooks # activation-only (writeShellScript, not a
+│   │                         #   deployed file): registers Codex worktree hooks
 │   └── fcitx5-key-trace.pl   # fcitx5 trace redactor + trigger-key detector (#14)
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
@@ -95,10 +111,13 @@ dotfiles/
 │   ├── cutover-runbook.md    # per-host migration procedure
 │   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
+│   ├── worktree-lifecycle.md # herdr worktree create/prune lifecycle across scripts/hooks
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
+│   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
+│   │   │                     #   pristine worktree to origin/<base>
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
 │   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link/visual-evidence)
 │   │   ├── pr-description.md     # PR body skeleton + mandatory Before/After
@@ -106,12 +125,22 @@ dotfiles/
 │   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
+│   │   ├── wrapup-chores.md      # skill: triage the wrap-up inbox into one batch chores PR
 │   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
 │   │   │                     #   Fable 5 に差し替え、Plan 中だけ別モデルにする
-│   │   └── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
-│   │                         #   burn-rate prediction, from the undocumented /usage API
+│   │   ├── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
+│   │   │                     #   burn-rate prediction, from the undocumented /usage API
+│   │   ├── global-claude-md.md   # global ~/.claude/CLAUDE.md: injects research
+│   │   │                     #   discipline into every session
+│   │   ├── diagramming.md        # skill: diagramming (SKILL.md + cases.md)
+│   │   ├── living-description.md # skill: treat Issue/PR body as living source of
+│   │   │                     #   truth, not an at-filing-time snapshot
+│   │   ├── skill-gardening.md    # skill: crystallize session learnings into this
+│   │   │                     #   repo (meta-skill)
+│   │   └── test-grounding.md     # skill: ground verification items in facts before
+│   │                         #   writing test procedures
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -161,7 +190,8 @@ dotfiles/
 - `config/git/hooks/pre-commit` blocks a direct commit on `main`/`master`.
   Bypass with `GIT_ALLOW_MAIN_COMMIT=1`, **not** `--no-verify` — `--no-verify`
   would also skip the chained repo-local pre-commit (other repos' ruff/mypy).
-- `git prune-branches` (alias → `config/git/hooks/prune-branches.sh`) deletes
+- `git prune-branches` (`scripts/git-prune-branches`, deployed to `~/.local/bin`
+  and resolved via git's `git-<subcommand>` mechanism, no alias) deletes
   local branches whose upstream is `[gone]`, after listing them and asking once.
   Full rationale: `docs/git-sync.md`.
 
