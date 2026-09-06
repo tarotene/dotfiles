@@ -154,6 +154,7 @@ dotfiles/
 - **ADR-0004** — repo identity & relocation (keep the `dotfiles` name; publish to public `tarotene/dotfiles` via clean orphan history; no semver releases).
 - **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
 - **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.
+- **ADR-0007** — naming & layout conventions: extension policy (drop `.sh` from the deployed name for PATH-resolved executables), shebang policy, hook-role vocabulary (`-guard`/`-gate`/`-allow`/no suffix, new hooks only), `config/claude/hooks/` source-tree purity, docs-correspondence principle, and `_DIR` env-var suffixing. No retroactive bulk rename of existing files.
 
 ## Development Rules
 
