@@ -74,11 +74,14 @@ prune_old() {
 # ---------------------------------------------------------------------------
 
 # CSS の探索。配備後は ~/.claude/hooks/ に .sh と .css が並ぶので SCRIPT_DIR 相対で
-# 足りる（リポジトリ上でも同じ隣接関係を保っている）。見つからなければ pandoc の
-# 既定スタイルのまま描く — CSS の不在で描画そのものを落とすのは筋が悪い。
+# 足りる。リポジトリ上ではソースツリーの純度(ADR-0007)のため .css が
+# config/claude/assets/ に分離されているので、SCRIPT_DIR の一つ上の assets/ も
+# 探す。見つからなければ pandoc の既定スタイルのまま描く — CSS の不在で描画
+# そのものを落とすのは筋が悪い。
 find_css() {
   local c
   for c in "$CSS_OVERRIDE" "$SCRIPT_DIR/plan-view.css" \
+    "$SCRIPT_DIR/../assets/plan-view.css" \
     "$HOME/.claude/hooks/plan-view.css"; do
     if [[ -n "$c" && -r "$c" ]]; then
       printf '%s' "$c"

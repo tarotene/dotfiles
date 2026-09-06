@@ -52,12 +52,18 @@ dotfiles/
 │                             #   herdr, claude, worktree, quarantine
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
-│   ├── claude/               # Claude Code hooks: plan-review gate, wrap-up inbox,
-│   │                         #   plan-view, pr-gate, issue-index, sign-prewarm,
+│   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
+│   │                         #   pr-gate, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
-│   │                         #   herdr-sidebar-metadata + statusline + output
-│   │                         #   schema + slash commands, claude-usage (herdr
-│   │                         #   tab-bar command, not a hook)
+│   │                         #   herdr-sidebar-metadata (hook half only);
+│   │                         #   assets/: non-hook files kept beside their
+│   │                         #   consumer for source-tree purity (ADR-0007) —
+│   │                         #   plan-view.css, copilot-plan-review's output
+│   │                         #   schema; statusline/: claude-statusline.sh +
+│   │                         #   claude-usage.sh (herdr tab-bar command, not a
+│   │                         #   hook) — deployed alongside hooks/ under
+│   │                         #   ~/.claude/hooks/ regardless of this split;
+│   │                         #   commands/, skills/: slash commands + skills
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook)

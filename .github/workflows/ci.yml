@@ -52,6 +52,18 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
+      # config/claude/statusline/ holds claude-statusline.sh and
+      # claude-usage.sh, split out of config/claude/hooks/ for source-tree
+      # purity (ADR-0007) since neither is a Claude Code hook. Same exclusion
+      # reason as the step above, so it gets its own scandir too.
+      - name: ShellCheck Claude Code statusline scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/claude/statusline'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
       # config/ is excluded above for the same reason as the Claude Code hooks
       # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
       # pre-commit chain), so it gets its own pass with the exclusion lifted.
@@ -110,7 +122,7 @@ jobs:
       # runs the judge over fixtures and drives the hook end to end against a
       # fake copilot in a throwaway REVIEW_DIR (docs/claude/copilot-plan-review.md).
       - name: copilot-plan-review output schema is valid JSON
-        run: jq empty config/claude/hooks/copilot-plan-review.schema.json
+        run: jq empty config/claude/assets/copilot-plan-review.schema.json
 
       - name: copilot-plan-review.sh --selftest
         run: bash ./config/claude/hooks/copilot-plan-review.sh --selftest
@@ -170,14 +182,15 @@ jobs:
         run: bash ./config/claude/hooks/pr-gate.sh --selftest
 
       # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
-      # runs it) but lives in this directory for the shellcheck coverage above.
+      # runs it) but lives in config/claude/statusline/ alongside
+      # claude-statusline.sh, covered by the shellcheck step above.
       # The selftest exercises label mapping over limits[], the burn-rate
       # prediction (endpoint slope, min-span, reset-crossing), series reset on
       # resets_at change / percent drop, and the token-never-leaks assertion —
       # all against fixtures and a stubbed curl, without network or real
-      # credentials (docs/claude/claude-usage-tabbar.md).
+      # credentials (docs/claude/claude-usage.md).
       - name: claude-usage.sh --selftest
-        run: sh ./config/claude/hooks/claude-usage.sh --selftest
+        run: sh ./config/claude/statusline/claude-usage.sh --selftest
 
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made

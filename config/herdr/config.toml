@@ -41,7 +41,7 @@ status_indicators = "symbols"
 # 配備、Claude Code hook ではない)が非公開 API(/usage コマンドの内部エンドポイント)
 # から取る。壊れたときの症状は「タブバーからこのセグメントが消える」だけ(herdr の
 # command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
-# docs/claude/claude-usage-tabbar.md。
+# docs/claude/claude-usage.md。
 tab_bar_right = [
   { type = "command", command = "\"$HOME/.claude/hooks/claude-usage.sh\"", interval_seconds = 60, timeout_seconds = 10 },
   { type = "hostname" },
@@ -50,7 +50,7 @@ tab_bar_right = [
 tab_bar_right_separator = "·"
 
 # Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
-# $model/$ctx/$cost/$effort は config/claude/hooks/claude-statusline.sh、$branch も
+# $model/$ctx/$cost/$effort は config/claude/statusline/claude-statusline.sh、$branch も
 # herdr-claude-metadata.sh が(git 由来で)pane.report_metadata で注入する。トークンの
 # 色は静的指定しかできないので、permission mode の色分けは「モード毎に別トークン +
 # 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
