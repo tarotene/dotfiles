@@ -496,6 +496,11 @@ let
   #   ルールを掃除する(かつては「旧ルールが残り続ける」が既知の制約だった —
   #   docs/claude/claude-permissions.md)。permissions.defaultMode や allow 以外の
   #   キーには一切触らない。
+  # ルール1件ごとに mktemp+jq+mv の read-modify-write サイクルを回すと(かつては
+  # retiredPermissionRules + permissionRules で最大 53 回)、herdr-agent-state.sh や
+  # Claude Code CLI 自体との並行書き込みに対する lost-update 窓がルール数分だけ
+  # 反復される(#61)。retire/allow の全ルールを 1 回の jq 呼び出しにまとめ、
+  # mktemp+mv も 1 回に減らして窓の反復回数を減らす。
   registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
     set -eu
     settings="$1"
@@ -508,29 +513,33 @@ let
     fi
 
     mode=""
+    retire_args=()
+    allow_args=()
     for arg in "$@"; do
       case "$arg" in
         --retire|--allow) mode="$arg"; continue ;;
       esac
-      tmp="$(mktemp)"
       case "$mode" in
-        --retire)
-          "$jq" --arg r "$arg" '
-            .permissions.allow = ((.permissions.allow // []) | map(select(. != $r)))
-          ' "$settings" > "$tmp"
-          ;;
-        --allow)
-          "$jq" --arg r "$arg" '
-            .permissions.allow = ((.permissions.allow // []) | if index($r) then . else . + [$r] end)
-          ' "$settings" > "$tmp"
-          ;;
+        --retire) retire_args+=("$arg") ;;
+        --allow) allow_args+=("$arg") ;;
         *)
           echo "register-claude-permissions: --retire/--allow より前にルールが来た: $arg" >&2
           exit 1
           ;;
       esac
-      mv "$tmp" "$settings"
     done
+
+    retire_json="$("$jq" -n --args '$ARGS.positional' "''${retire_args[@]}")"
+    allow_json="$("$jq" -n --args '$ARGS.positional' "''${allow_args[@]}")"
+
+    tmp="$(mktemp)"
+    "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" '
+      .permissions.allow = (
+        ((.permissions.allow // []) - $retire) as $kept
+        | $kept + ($allow | map(select(. as $r | ($kept | index($r)) | not)))
+      )
+    ' "$settings" > "$tmp"
+    mv "$tmp" "$settings"
   '';
 
   # Claude Code の permission rule 構文は `Tool(specifier)`(裸のコマンド文字列では
