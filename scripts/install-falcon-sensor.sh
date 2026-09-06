@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Install the company-provided CrowdStrike Falcon Sensor package on the new
@@ -38,7 +38,7 @@ Options:
 
 Environment:
     FALCON_CID        CrowdStrike Customer ID.  When unset it is read from
-                      host-local SOPS via ~/.local/bin/sops-secrets-env.sh
+                      host-local SOPS via ~/.local/bin/sops-secrets-env
                       (requires the YubiKey), so it never has to be typed.
 EOF
 }
@@ -137,7 +137,7 @@ validate_package() {
 # prints `export KEY=<quoted value>` for every secret; take only FALCON_CID so
 # the rest never reaches this process environment.
 load_cid_from_sops() {
-    local helper="$HOME/.local/bin/sops-secrets-env.sh"
+    local helper="$HOME/.local/bin/sops-secrets-env"
     local line
 
     [[ -x "$helper" ]] || return 1

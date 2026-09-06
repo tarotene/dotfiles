@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # hms — home-manager switch, the canonical apply (docs/operations.md).

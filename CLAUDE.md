@@ -75,7 +75,8 @@ dotfiles/
 │   ├── install-falcon-sensor.sh # company EDR agent installer
 │   ├── fix-ssh-permissions.sh
 │   ├── setup-sops-secrets.sh # host-local SOPS/.sops.yaml setup
-│   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to ~/.local/bin)
+│   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to
+│   │                         #   ~/.local/bin/sops-secrets-env, no .sh)
 │   ├── detach-open.sh        # deployed as ~/.local/bin/open AND ~/.local/bin/xdg-open
 │   │                         #   (shadows the system xdg-open, which blocks in the
 │   │                         #   foreground on COSMIC), and as the $BROWSER target
@@ -109,7 +110,7 @@ dotfiles/
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
 │   │   │                     #   Fable 5 に差し替え、Plan 中だけ別モデルにする
-│   │   └── claude-usage-tabbar.md # Herdr tab bar: 5h/weekly rate-limit usage +
+│   │   └── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
 │   │                         #   burn-rate prediction, from the undocumented /usage API
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md

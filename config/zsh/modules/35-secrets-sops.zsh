@@ -9,12 +9,13 @@
 SOPS_DIR="${SOPS_DIR:-$HOME/.sops}"
 SOPS_CONFIG="$SOPS_DIR/.sops.yaml"
 SECRETS_FILE="$SOPS_DIR/.env"
-# home-manager deploys sops-secrets-env.sh to ~/.local/bin (#212);
-# fall back to the legacy dotfiles location for non-HM environments.
+# home-manager deploys sops-secrets-env.sh to ~/.local/bin/sops-secrets-env
+# (no .sh — #212, #98); fall back to the legacy dotfiles location for non-HM
+# environments.
 SOPS_SECRETS_SCRIPT="${SOPS_SECRETS_SCRIPT:-}"
 if [[ -z "$SOPS_SECRETS_SCRIPT" ]]; then
-    if [[ -x "$HOME/.local/bin/sops-secrets-env.sh" ]]; then
-        SOPS_SECRETS_SCRIPT="$HOME/.local/bin/sops-secrets-env.sh"
+    if [[ -x "$HOME/.local/bin/sops-secrets-env" ]]; then
+        SOPS_SECRETS_SCRIPT="$HOME/.local/bin/sops-secrets-env"
     else
         SOPS_SECRETS_SCRIPT="${DOTFILES_DIR:-$HOME/dotfiles}/scripts/sops-secrets-env.sh"
     fi

@@ -16,7 +16,7 @@
 #   2. 形が `git -C <dir> <subcommand> …` に厳密一致(`git` の直後は `-C` のみ。
 #      `-c` などのグローバルオプションは不可)
 #   3. <dir> は `-` 始まりでない実在ディレクトリで、realpath(symlink 解決後)が
-#      ~/.herdr/worktrees/ 配下(テスト用に HERDR_WORKTREES_ROOT で上書き可)
+#      ~/.herdr/worktrees/ 配下(テスト用に HERDR_WORKTREES_DIR で上書き可)
 #   4. <subcommand> が許可リスト内(status diff log show add commit push —
 #      permissionRules の素の git ルール群と同じ守備範囲)
 #   5. 残りの引数に git を別実行体へ向けられるものがない(--receive-pack /
@@ -42,7 +42,7 @@ ALLOWED_SUBCOMMANDS=(status diff log show add commit push)
 # それ以外(フォールスルー)は非 0 を返す。
 decide() {
   local cmd="$1"
-  local root="${HERDR_WORKTREES_ROOT:-$HOME/.herdr/worktrees}"
+  local root="${HERDR_WORKTREES_DIR:-$HOME/.herdr/worktrees}"
 
   # 1. 複合コマンド・リダイレクト・展開の拒否
   case "$cmd" in
@@ -110,7 +110,7 @@ selftest() {
   # trap は関数スコープ外(スクリプト exit 時)で走るので、local にせず今展開する。
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  export HERDR_WORKTREES_ROOT="$tmp/worktrees"
+  export HERDR_WORKTREES_DIR="$tmp/worktrees"
   mkdir -p "$tmp/worktrees/wt1/nested" "$tmp/outside"
   ln -s "$tmp/outside" "$tmp/worktrees/escape"
 

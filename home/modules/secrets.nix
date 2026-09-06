@@ -8,8 +8,10 @@
 # The literal zsh module (35-secrets-sops.zsh) is already deployed by shell.nix
 # as part of config/zsh/modules.  This module:
 #   - provides the `sops` binary via home.packages;
-#   - deploys the wrapper script (sops-secrets-env.sh) to ~/.local/bin/ so the
-#     zsh module can find it at a stable, home-manager-managed path;
+#   - deploys the wrapper script (source: sops-secrets-env.sh) to
+#     ~/.local/bin/sops-secrets-env (no .sh — matches the other ~/.local/bin
+#     deploys) so the zsh module can find it at a stable,
+#     home-manager-managed path;
 #   - keeps the MCP-gdrive credential generation helper (in the zsh module).
 { pkgs, ... }:
 let
@@ -21,7 +23,7 @@ in
   ];
 
   # Deploy the wrapper script to ~/.local/bin (on PATH via 10-path.zsh).
-  home.file.".local/bin/sops-secrets-env.sh" = {
+  home.file.".local/bin/sops-secrets-env" = {
     source = repoScripts + "/sops-secrets-env.sh";
     executable = true;
   };

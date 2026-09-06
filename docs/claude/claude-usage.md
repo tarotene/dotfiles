@@ -1,4 +1,4 @@
-# claude-usage-tabbar — Herdr のタブバーに Claude の Rate Limit / Fable 使用量を常時表示する
+# claude-usage — Herdr のタブバーに Claude の Rate Limit / Fable 使用量を常時表示する
 
 `/usage` を毎回打たないと、5h セッション窓や Fable の週間上限にあとどれくらいで
 到達するか、到達後いつ復活するかが分からない。この機能は Herdr の**タブバー

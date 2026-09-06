@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SOPS Secrets Environment Variable Exporter
 # Outputs export statements for all secrets in SOPS-encrypted dotenv file
 #

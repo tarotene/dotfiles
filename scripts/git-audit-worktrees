@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SELF="$(realpath "$0")"
-GHR_ROOT="${GIT_WORKTREE_AUDIT_GHR_ROOT:-$HOME/.ghr}"
-HERDR_ROOT="${GIT_WORKTREE_AUDIT_HERDR_ROOT:-$HOME/.herdr/worktrees}"
+GHR_DIR="${GIT_WORKTREE_AUDIT_GHR_DIR:-$HOME/.ghr}"
+HERDR_DIR="${GIT_WORKTREE_AUDIT_HERDR_DIR:-$HOME/.herdr/worktrees}"
 STATE_DIR="${GIT_WORKTREE_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-worktree-audit}"
 HERDR_BIN="${GIT_WORKTREE_AUDIT_HERDR_BIN:-herdr}"
 TEST_TMP=''
@@ -33,7 +33,7 @@ EOF
 discover_repositories() { # print: <common-dir TAB usable-worktree>
   local root dotgit repo common
   declare -A seen=()
-  for root in "$GHR_ROOT" "$HERDR_ROOT"; do
+  for root in "$GHR_DIR" "$HERDR_DIR"; do
     [[ -d $root ]] || continue
     while IFS= read -r -d '' dotgit; do
       repo="${dotgit%/.git}"
@@ -308,7 +308,7 @@ printf '{"result":{"shown":%s,"reason":"%s"}}\n' "$shown" "$reason"
 STUB
   chmod +x "$tmp/bin/herdr"
   printf busy >"$tmp/reason"
-  export GIT_WORKTREE_AUDIT_GHR_ROOT="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_ROOT="$tmp/herdr" \
+  export GIT_WORKTREE_AUDIT_GHR_DIR="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_DIR="$tmp/herdr" \
     GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" \
     GIT_WORKTREE_AUDIT_TEST_CALLS="$tmp/calls" GIT_WORKTREE_AUDIT_TEST_REASON="$tmp/reason"
 
