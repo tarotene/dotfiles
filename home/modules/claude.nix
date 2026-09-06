@@ -620,10 +620,12 @@ in
   # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
   # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
   # 実際の検証は hook 内の CRITIC_SCHEMA_JQ が行う — この JSON はその契約を
-  # 人間 / プロンプト向けに文書化したものである。hook が自身のディレクトリ相対で
-  # 解決するので、2 ファイルは ~/.claude/hooks/ に並べて置く。
+  # 人間 / プロンプト向けに文書化したものである。配備先は hook と同じ
+  # ~/.claude/hooks/ に並べて置く(hook が自身のディレクトリ相対で解決するため)
+  # が、ソースツリー上は非 hook アセットとして config/claude/assets/ に分離
+  # している(ADR-0007)。
   home.file.".claude/hooks/copilot-plan-review.schema.json".source =
-    repoConfig + "/claude/hooks/copilot-plan-review.schema.json";
+    repoConfig + "/claude/assets/copilot-plan-review.schema.json";
 
   # plan-reviewer: copilot-plan-review.sh が `--agent plan-reviewer` で呼ぶ
   # read-only custom agent。tools は view/grep/glob だけで、
@@ -643,13 +645,15 @@ in
   };
 
   # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
-  # スクリプトは CSS を自身のディレクトリ相対で解決するので、schema と同じく
-  # 2 ファイルを ~/.claude/hooks/ に並べて置く（リポジトリ上の隣接関係も同じ)。
+  # スクリプトは CSS を自身のディレクトリ相対で解決するので、配備先では schema
+  # と同じく 2 ファイルを ~/.claude/hooks/ に並べて置く。ソースツリー上は
+  # config/claude/assets/ に分離しているが、plan-view.sh の find_css() が
+  # SCRIPT_DIR/../assets/ も探すので、リポジトリ直接実行でも解決する(ADR-0007)。
   home.file.".claude/hooks/plan-view.sh" = {
     source = repoConfig + "/claude/hooks/plan-view.sh";
     executable = true;
   };
-  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/hooks/plan-view.css";
+  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
 
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
@@ -673,15 +677,17 @@ in
     executable = true;
   };
   home.file.".claude/hooks/claude-statusline.sh" = {
-    source = repoConfig + "/claude/hooks/claude-statusline.sh";
+    source = repoConfig + "/claude/statusline/claude-statusline.sh";
     executable = true;
   };
 
   # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
   # hook ではない — settings.json には登録しない)。呼び出し側は
   # config/herdr/config.toml。詳細は docs/claude/claude-usage.md。
+  # ソースツリー上は config/claude/statusline/ に分離しているが(ADR-0007)、
+  # 配備先は herdr のハードコード実行パスに合わせて引き続き ~/.claude/hooks/。
   home.file.".claude/hooks/claude-usage.sh" = {
-    source = repoConfig + "/claude/hooks/claude-usage.sh";
+    source = repoConfig + "/claude/statusline/claude-usage.sh";
     executable = true;
   };
 

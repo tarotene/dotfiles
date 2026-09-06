@@ -8,7 +8,8 @@ Herdr が自前で検出するのは agent_status(working/blocked/…)とター�
 
 これを Herdr の **pane metadata**(`pane.report_metadata` API + サイドバー行の
 `$name` トークン)で埋める。表示側の行定義は `config/herdr/config.toml`、報告側は
-Claude Code の hook / statusline スクリプト 2 本(`config/claude/hooks/`)。
+Claude Code の hook(`config/claude/hooks/herdr-claude-metadata.sh`)と
+statusline スクリプト(`config/claude/statusline/claude-statusline.sh`)の 2 本。
 
 ## なぜ 2 チャネルか
 
@@ -128,7 +129,7 @@ catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系
 - **statusline の巻き戻り**: `~/.claude/settings.json` の `statusLine` は activation
   (`registerClaudeStatusLine` → `syncStatusLine`)が宣言値に合わせるので、
   `/statusline` で手動変更しても次の `home-manager switch` で戻る。変更はこの
-  リポジトリの `config/claude/hooks/claude-statusline.sh` を編集すること。
+  リポジトリの `config/claude/statusline/claude-statusline.sh` を編集すること。
 - **hook / statusLine の撤回は forward switch でのみ効く**: `registerHooks` /
   `syncStatusLine` は `retiredHookEntries` / `retiredStatusLineCommands`
   (`home/modules/claude.nix`)に載っている command を完全一致で settings.json から

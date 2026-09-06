@@ -183,7 +183,7 @@ CURLCFG
 ## 自己検査
 
 ```sh
-sh config/claude/hooks/claude-usage.sh --selftest
+sh config/claude/statusline/claude-usage.sh --selftest
 ```
 
 ネットワーク・実 credentials に依存せず、以下を検証する:

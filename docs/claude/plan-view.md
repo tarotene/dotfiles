@@ -8,7 +8,7 @@ repo のプランは 1 万字前後（`~/.claude/plans/` の実測で 161 本、
 | 部品 | 役割 |
 |------|------|
 | `config/claude/hooks/plan-view.sh` | hook / CLI / `--selftest` を兼ねる 1 本 |
-| `config/claude/hooks/plan-view.css` | 見た目。pandoc の `--include-in-header` に `<style>` で包んで渡される |
+| `config/claude/assets/plan-view.css` | 見た目。pandoc の `--include-in-header` に `<style>` で包んで渡される |
 | `config/claude/commands/plan-view.md` | `/plan-view`（執筆中のプランを手動で飛ばす） |
 | `~/.local/bin/plan-view` | hook を持たないエージェント・素のシェルからの入口 |
 
