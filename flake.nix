@@ -11,13 +11,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Escape hatch for packages not yet in the pinned stable channel — two
-    # distinct reasons feed off this one input:
+    # Escape hatch for packages not yet in the pinned stable channel:
     #   - herdr: absent from nixos-26.05 entirely.
-    #   - gh: present but version-capped (2.96.0 < the 2.99.0 that shipped
-    #     `--attach`, see pr-description skill / docs/claude/pr-gate.md).
-    # Drop each package's overlay entry below once stable's gh/herdr catch up;
-    # drop this whole input once both have.
+    # (gh's version-cap escape hatch was dropped once stable shipped >= 2.99.0,
+    # see #91.) Drop herdr's overlay entry below once stable catches up too;
+    # drop this whole input once it has.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     # GL/EGL for nix-built GUI apps on a non-NixOS host (ADR-0006 / #13).
@@ -80,15 +78,6 @@
           # and silently drop this flake's `config.allowUnfree = true`.
           (_final: _prev: {
             herdr = nixpkgs-unstable.legacyPackages.${system}.herdr;
-
-            # gh from unstable: not absent from stable like herdr, but
-            # version-capped. `--attach` (upload Before/After images straight
-            # from `gh pr create|edit`, see the pr-description skill) shipped
-            # in gh v2.99.0; nixos-26.05 carries 2.96.0. Same no-`follows`
-            # rationale as herdr — gh is only ever exec'd, never dlopen'd into
-            # another package's process, so a second glibc in its closure is
-            # harmless. Remove this entry once stable ships gh >= 2.99.0.
-            gh = nixpkgs-unstable.legacyPackages.${system}.gh;
           })
         ];
       };

@@ -23,13 +23,13 @@ Note on graphics: the driver stack itself is root-owned and stays in the system
 layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
 per-package `nixGL` wrapper in `home/modules/desktop.nix` (ADR-0006).
 
-Note on `herdr` / `gh`: `herdr` is not yet in the pinned stable nixpkgs channel;
-`gh` is present but version-capped (stable ships 2.96.0, `--attach` needs
->= 2.99.0). Both come from a single-package `nixpkgs-unstable` overlay in
-`flake.nix` (ADR-0001 Amendment, #42 for herdr) — drop each package's overlay
-entry once stable catches up. Unlike `nixgl`, this overlay does not need
-`inputs.nixpkgs.follows`: both are only ever `exec`'d, never `dlopen`'d into
-another package's process, so a second glibc in their closure is harmless.
+Note on `herdr`: not yet in the pinned stable nixpkgs channel. Comes from a
+single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
+#42) — drop the overlay entry once stable catches up. Unlike `nixgl`, this
+overlay does not need `inputs.nixpkgs.follows`: herdr is only ever `exec`'d,
+never `dlopen`'d into another package's process, so a second glibc in its
+closure is harmless. (`gh`'s own version-capped escape hatch on this same
+overlay was dropped once stable shipped >= 2.99.0, see #91.)
 
 ## Project Structure
 

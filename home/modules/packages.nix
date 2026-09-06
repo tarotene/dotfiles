@@ -55,7 +55,8 @@
     # already-lost pre-change state. Use `.svg` or `.webp` output, not
     # `.png` — this build's PNG encoder segfaults on this host (Go runtime
     # crash reproduced on trivial input; SVG/WebP unaffected). `gh --attach`
-    # (>= 2.99.0, see the flake.nix overlay) accepts SVG/WebP along with PNG.
+    # (>= 2.99.0, shipped in the pinned stable channel since #91) accepts
+    # SVG/WebP along with PNG.
     charm-freeze
 
     # AI tooling (unfree — flake sets allowUnfree; version follows the
