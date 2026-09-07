@@ -295,7 +295,7 @@ critic の権限境界そのものである。フロントマターの `tools` �
 `["view", "grep", "glob"]` に絞り、write / execute / web / GitHub MCP を
 一切含めない。実機で `tools` を絞った custom agent にファイル作成・シェル実行を
 指示すると、モデル自身が「このセッションには書き込み/実行ツールが無い」と応答して
-拒否することを確認済み(1.0.82 実測)。`--allow-all-tools` / `--yolo` /
+拒否することを確認済み(1.0.82 実測、1.0.83 でも同様)。`--allow-all-tools` / `--yolo` /
 `--allow-all-paths` は critic に変更権限や無制限ファイルアクセスを与えるため
 使わない。plan file がリポジトリ外にある場合は、その直接の親ディレクトリだけを
 `--add-dir` で追加読み取り許可する(cwd 自体は既定で読める)。
@@ -310,7 +310,7 @@ read-only は「書き込まない」だけでは不十分である。リポジ�
 
 ```
 copilot -p "<prompt>" \
-  --agent plan-reviewer --model gpt-5.6-sol \
+  --agent plan-reviewer --model gpt-6-astra \
   --silent --no-custom-instructions --disable-builtin-mcps --no-ask-user \
   [--add-dir <plan file の親ディレクトリ>]
 ```
@@ -332,9 +332,11 @@ copilot -p "<prompt>" \
 
 ### モデル固定と premium request
 
-`COPILOT_PLAN_REVIEW_MODEL`(既定 `gpt-5.6-sol`)で固定する。調査時点で利用可能な
-最新 GPT の具体 ID であり、model catalog の変更で利用不可になった場合は fail-open
-するが、warn として critic failure が記録されるのでログで気づける。
+`COPILOT_PLAN_REVIEW_MODEL`(既定 `gpt-6-astra`)で固定する。調査時点(2026-09-08、
+GPT-6 Astra は同年 09-04 に Copilot CLI で GA)で critic に適する具体モデル ID を選び、
+model catalog の変更で利用不可になった場合は fail-open するが、warn として critic
+failure が記録されるのでログで気づける。過去の固定先は `gpt-5.6-sol`(#80 移行時点)
+だった。モデル追従の手順は `copilot-model-bump` スキルにまとめてある。
 
 Copilot CLI の呼び出し 1 回が premium request を 1 回消費する。ラウンド 1 は
 lens A / B の並列 2 critic なので、その回だけ 2 回分を消費する。それ以外の
@@ -367,8 +369,9 @@ GitHub Copilot CLI には Codex の `exec --output-schema` に相当する、モ
 
 ### 導入は含めない
 
-pinned nixpkgs の `github-copilot-cli` は 1.0.61 だが、実機で `gpt-5.6-sol` と
-read-only custom agent の非対話実行を確認したのは native install の 1.0.82 である。
+pinned nixpkgs の `github-copilot-cli` は 1.0.61 だが、実機で read-only custom agent
+の非対話実行を確認したのは native install の 1.0.82 であり、1.0.83 + `gpt-6-astra`
+でも同じ引数形で再確認済み(2026-09-08)。
 新しい GPT モデルとの互換性を優先し、パッケージ管理(`home/modules/packages.nix` への
 追加や `nixpkgs-unstable` オーバーレイの要否検討)は本 PR の範囲に含めない。
 `copilot` バイナリが無いマシンでは ADR-0005 のバイナリ存在ゲートにより黙って
@@ -383,7 +386,7 @@ no-op になるので、導入前のホストにも安全にデプロイでき�
 |---|---|---|
 | `COPILOT_BIN` | `copilot` | バイナリ名。不在ならサイレント no-op |
 | `MAX_PLAN_REVIEWS` | `3` | セッションあたりのレビューラウンド上限。**最終ラウンドは closer（lens Z）になる**ので、発見ラウンドは `MAX-1` 本。`1` に絞った場合だけ closer 化せず従来の単発 critic に落ちる |
-| `COPILOT_PLAN_REVIEW_MODEL` | `gpt-5.6-sol` | critic に固定する具体モデル ID |
+| `COPILOT_PLAN_REVIEW_MODEL` | `gpt-6-astra` | critic に固定する具体モデル ID |
 | `COPILOT_PLAN_REVIEW_AGENT` | `plan-reviewer` | `--agent` に渡す read-only custom agent 名(`~/.copilot/agents/<name>.agent.md`) |
 | `COPILOT_PLAN_REVIEW_TIMEOUT` | `280` | critic 1 本あたりの timeout（hook 側 300s より短く保つ） |
 | `COPILOT_PLAN_REVIEW_GATE_SEVERITIES` | `BLOCKER,MAJOR` | deny を張る severity |
@@ -436,8 +439,8 @@ SOPS 管理の秘密は runtime 復号なので（ADR-0003）ここには流れ�
 bash config/claude/hooks/copilot-plan-review.sh --selftest
 ```
 
-judge を fixture で回し、hook 経路を偽 copilot(実機の 1.0.82 の引数形 — `-p`,
-`--agent`, `--model`, `--silent`, `--no-custom-instructions`,
+judge を fixture で回し、hook 経路を偽 copilot(実機の 1.0.82 の引数形(1.0.83 でも
+不変を再確認済み) — `-p`, `--agent`, `--model`, `--silent`, `--no-custom-instructions`,
 `--disable-builtin-mcps`, `--no-ask-user`, `--add-dir` — を
 受け、固定契約や危険フラグの不在を自ら検証する)で end-to-end に駆動する。
 `COPILOT_PLAN_REVIEW_DIR` を `mktemp -d` に差し替えるので実運用のログ・state・`skip` は
@@ -505,7 +508,7 @@ severity 定義、(3) `COPILOT_PLAN_REVIEW_GATE_SEVERITIES` を `BLOCKER` に絞
 - **custom agent のフロントマター本文(system prompt)は `--no-custom-instructions`
   の影響を受けない。** このフラグが抑制するのはリポジトリの `AGENTS.md` 等の
   自動読み込みだけで、`--agent` で明示指定したファイルの内容は常に効く
-  （1.0.82 実測）。
+  （1.0.82 実測、1.0.83 でも再確認済み）。
 - **`--output-format json` は critic の応答ではない。** CLI 内部のイベント JSONL
   (`assistant.message` 等)であり、最終応答テキストそのものではない。critic の
   最終応答は `--silent` 付きの通常出力(stdout)から取る。
