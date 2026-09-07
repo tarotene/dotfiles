@@ -83,6 +83,9 @@ Design and rationale for the hooks and commands deployed from
 - [`test-grounding.md`](claude/test-grounding.md) — 個人スキル: 複数の実
   コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
   一次資料に当たることを強制する。
+- [`copilot-model-bump.md`](claude/copilot-model-bump.md) — 個人スキル: 外部
+  AI CLI に固定 pin した具体モデル ID を GA・廃止サイクルに追従して更新する
+  定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。
 
 ## Investigation records
 

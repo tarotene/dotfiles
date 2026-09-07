@@ -85,7 +85,7 @@ RETENTION_DAYS="${COPILOT_PLAN_REVIEW_RETENTION_DAYS:-30}"
 # 調査時点で利用可能な最新 GPT の具体 ID に固定する。model catalog の変更で
 # 利用不可になった場合も fail-open するが、ログ警告で model failure を識別できる
 # ようにする(docs/claude/copilot-plan-review.md)。
-COPILOT_MODEL="${COPILOT_PLAN_REVIEW_MODEL:-gpt-5.6-sol}"
+COPILOT_MODEL="${COPILOT_PLAN_REVIEW_MODEL:-gpt-6-astra}"
 # read-only custom agent。ファイル名(拡張子抜き)がそのまま --agent の値になる。
 COPILOT_AGENT="${COPILOT_PLAN_REVIEW_AGENT:-plan-reviewer}"
 
@@ -715,7 +715,7 @@ if [[ "${1:-}" == "--selftest" ]]; then
   GATE_SEVERITIES="BLOCKER,MAJOR"
   PARALLEL=1
   RETENTION_DAYS=30
-  COPILOT_MODEL="gpt-5.6-sol"
+  COPILOT_MODEL="gpt-6-astra"
   COPILOT_AGENT="plan-reviewer"
   unset SKIP_PLAN_REVIEW
 
@@ -1017,7 +1017,7 @@ if [[ "${1:-}" == "--selftest" ]]; then
     "$(jq -r '.plan_chars' "$REVIEW_DIR/debug-last-input.json")"
 
   # 21) 偽 copilot で並列経路を通す。lens B だけ失敗させる。
-  # 実機の copilot 1.0.82 の引数形(-p, --agent, --model, --silent,
+  # 実機の copilot 1.0.83 の引数形(-p, --agent, --model, --silent,
   # --no-custom-instructions, --disable-builtin-mcps, --no-ask-user,
   # --add-dir)を受け、固定契約(model/agent/read-only
   # 境界・危険フラグの不在)を自ら検証してから応答する。
@@ -1050,7 +1050,7 @@ if [ "$agent" != "${FAKE_COPILOT_EXPECT_AGENT:-plan-reviewer}" ]; then
   echo "FAKE_COPILOT: unexpected --agent '$agent'" >&2
   exit 98
 fi
-if [ "$model" != "${FAKE_COPILOT_EXPECT_MODEL:-gpt-5.6-sol}" ]; then
+if [ "$model" != "${FAKE_COPILOT_EXPECT_MODEL:-gpt-6-astra}" ]; then
   echo "FAKE_COPILOT: unexpected --model '$model'" >&2
   exit 97
 fi
@@ -1238,7 +1238,7 @@ ZJSON
     COPILOT_PLAN_REVIEW_TIMEOUT=20 COPILOT_PLAN_REVIEW_PARALLEL=0)"
   check "契約: --agent は plan-reviewer 固定" "agent=plan-reviewer" \
     "$(sed -n 1p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
-  check "契約: --model の既定は gpt-5.6-sol" "model=gpt-5.6-sol" \
+  check "契約: --model の既定は gpt-6-astra" "model=gpt-6-astra" \
     "$(sed -n 2p "$fake_dir/last-invocation-M.txt" 2>/dev/null)"
   check "契約: --silent/--no-custom-instructions/--disable-builtin-mcps/--no-ask-user が揃う" \
     "silent=1 custom=1 mcps=1 askuser=1" \
