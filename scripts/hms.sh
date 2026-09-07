@@ -52,6 +52,35 @@ done
 
 host="$(hostname)"
 
+# home-manager runs `nix-env --profile --set` (which advances the current
+# generation) before the activation script's real work executes. If
+# activation then fails partway (e.g. checkLinkTargets, #62/#63), the current
+# generation points at the new store path while the actual home-files symlink
+# under gcroots/current-home is still the old, successful generation — a
+# "generation advanced but the world is stale" state that hms does not
+# otherwise detect (#65). Warn (never fail) when the two disagree.
+check_generation_consistency() {
+    local profile_link="${1:-$HOME/.local/state/nix/profiles/home-manager}"
+    local current_home_link="${2:-$HOME/.local/state/home-manager/gcroots/current-home}"
+
+    [[ -e "$profile_link" && -e "$current_home_link" ]] || return 0
+
+    local profile_target current_home_target
+    profile_target="$(readlink -f "$profile_link")"
+    current_home_target="$(readlink -f "$current_home_link")"
+
+    if [[ "$profile_target" != "$current_home_target" ]]; then
+        echo "Warning: home-manager generation/reality mismatch detected." >&2
+        echo "  profile (${profile_link}): ${profile_target}" >&2
+        echo "  current-home (${current_home_link}): ${current_home_target}" >&2
+        echo "  A previous activation likely failed partway through, leaving the" >&2
+        echo "  generation pointer ahead of what is actually applied. A successful" >&2
+        echo "  switch (this one) will resolve it." >&2
+    fi
+}
+
+check_generation_consistency
+
 # Remote flake refs (github:, git+ssh:, ...) are the ones nix caches; a local
 # path (`.` or a checkout directory) always reads the current tree, so there is
 # nothing to refresh.
@@ -65,7 +94,12 @@ if [[ ! -e "$ref" ]]; then
 fi
 
 echo "==> home-manager switch --flake ${ref}#${host} -b backup"
-home-manager switch --flake "${ref}#${host}" -b backup
+rc=0
+home-manager switch --flake "${ref}#${host}" -b backup || rc=$?
+if [[ $rc -ne 0 ]]; then
+    check_generation_consistency
+    exit "$rc"
+fi
 
 echo "==> systemctl --user daemon-reload"
 systemctl --user daemon-reload
