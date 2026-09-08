@@ -369,21 +369,34 @@ Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=tru
 escalated と同じ置き方）。block cap（Claude Code 側の「連続 8 回で打ち切り」）の消費は
 wrapup 側と合わせて最大 5 回に収まる。
 
-## required check がまだ無いと、ゲートは空振りする
+## required check が無いと、ゲートは空振りする
 
 `gh pr checks --required` は required status check が 1 件も設定されていないと
 `no required checks reported` を出して **exit 0** する。つまり ruleset を先に直さないと、
-pr-gate の CI ゲートは「常に緑」を返す no-op になる。実装順序として:
+pr-gate の CI ゲートは「常に緑」を返す no-op になる。実装順序:
 
 1. `.github/workflows/{ci,nix}.yml` の `pull_request` から path / branch フィルタを外す
    （required check は「報告されない = 満たされない」ので、フィルタで報告漏れがあると
-   その PR は永久に block されたままになる）
+   その PR は永久に block されたままになる）— 完了。
 2. `Ephemeral Initial` ruleset（id `19799324`）に `required_status_checks` を追加する
+   — 2026-09-09、#129 で完了。6 job の check run 名
+   (`Shell script validation` / `Escape-hatch dry-run` / `nix flake check` /
+   `build personal-pop` / `build company-pop-old` / `build company-pop-new`)を
+   そのまま登録した。
 
-の順で行う。ruleset は `~DEFAULT_BRANCH` スコープのままにした（stacked PR まで対象を
+ruleset は `~DEFAULT_BRANCH` スコープのままにした（stacked PR まで対象を
 広げると、同じ ruleset に同居する `pull_request` / `non_fast_forward` が全ブランチに
 掛かってしまい作業不能になる）。stacked PR のマージ先 feature branch は自身が `main` への
 PR を持ち、そちらが ruleset の対象なので、`main` への merge-time safety はそれで保たれる。
+
+**ruleset のスコープ(適用対象)と CI の報告(発火するかどうか)は別軸** —
+`~DEFAULT_BRANCH` スコープなので非 default branch の PR には
+`required_status_checks` は適用されないが、両 workflow の `pull_request`
+にブランチフィルタが無い(手順 1)ため CI 自体は base を問わず走り、
+チェックは報告される。stacked PR で quiesce モードに縮退するのは
+「チェックが報告されない」からではなく「required 集合 E が空」だからで
+ある、という区別は #133 で再検証済み(`docs/stacked-pr-github-native.md`
+「再検証すべきこと」節)。
 
 ## 中心不変条件: 「揃っていない集合を緑と読まない」
 
@@ -394,7 +407,7 @@ pr-gate の G_CI を実装するときに Codex plan-review で 3 回連続し�
 | # | 経路 | 何が起きるか |
 |---|---|---|
 | 1 | push 直後 | check run がまだ GitHub の API に現れていない（[cli/cli#7401]） |
-| 2 | stacked PR | ruleset の対象外(base が `main` 以外)で required が 0 件 |
+| 2 | stacked PR | ruleset の対象外(base が `main` 以外)で required が 0 件(CI 自体は base を問わず報告される。「対象外」は E が空になることを言っており「報告されない」ことではない) |
 | 3 | 部分出現 | 6 件のうち一部だけが現れ、その部分集合が pass した時点で `--watch` が早期終了する（[cli/cli#9973]） |
 
 [cli/cli#7401]: https://github.com/cli/cli/issues/7401
@@ -410,7 +423,13 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 
 1. **期待集合 E をサーバから取る** — `gh api repos/<nwo>/rules/branches/<base>` の
    `required_status_checks[].context`。単一の真実をサーバと共有することで
-   「何件揃えば良いか」を推測しない
+   「何件揃えば良いか」を推測しない。この API は次の 3 状態をすべて `[]` に
+   潰して返す(区別しない): (a) ruleset に `required_status_checks` が無い、
+   (b) `base` が ruleset の対象外(スコープ外のブランチ)、(c) API 呼び出し
+   自体の失敗。#129 まではほぼ常に (a) だったため quiesce フォールバックが
+   `main` 宛でも常時発火していた。(b) は stacked PR で今も起きる、想定された
+   経路。(c) は一時的な API 障害を「required 無し」と誤読しうる経路で、
+   required が存在する今の方が誤読の害が大きい(要判断、別 Issue で追跡)。
 2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ（出現待ち）
 3. E が空（stacked PR）なら、E の代わりに **quiescence**（報告件数が一定時間増えない）
    で「揃った」を近似する
