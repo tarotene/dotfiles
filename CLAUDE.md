@@ -188,6 +188,7 @@ dotfiles/
 - **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
 - **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.
 - **ADR-0007** — naming & layout conventions: extension policy (drop `.sh` from the deployed name for PATH-resolved executables), shebang policy, hook-role vocabulary (`-guard`/`-gate`/`-allow`/no suffix, new hooks only), `config/claude/hooks/` source-tree purity, docs-correspondence principle, and `_DIR` env-var suffixing. No retroactive bulk rename of existing files.
+- **ADR-0008** — documentation artifact selection: a new decision or piece of research goes to (1) an investigation record if it decays over time (external preview status, tool version, open-issue counts), (2) an ADR if it is a single significant decision (Nygard's five areas), even at single-developer scope, (3) `docs/claude/<name>.md` if it is the living design rationale for one hook/skill/tool, or (4) existing docs otherwise. ADRs stay immutable; link out to decaying facts rather than embedding them.
 
 ## Development Rules
 

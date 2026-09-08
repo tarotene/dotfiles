@@ -26,6 +26,12 @@
   init gates on binary existence, not auth.
 - [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own
   GL stack (nixGL); the system graphics stack stays apt.
+- [ADR-0007](adr/0007-naming-and-layout-conventions.md) — 命名・配置規約
+  (拡張子・shebang・hook 語彙・`config/claude/hooks/` の純度・docs 対応原則・
+  環境変数接尾辞・`scripts/` の位置づけ・モジュール分割の軸)。
+- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択
+  規約: 新しい判断・調査を ADR / `docs/claude/*.md` / Investigation record の
+  どれに書くか、腐る事実と腐らない決定を分離する理由。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
