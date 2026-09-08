@@ -137,9 +137,69 @@ Claude Code のみ。Codex(`~/.codex/`)・Copilot(`~/.copilot/`)には現時点�
 になり今回のスコープに含めない。この判断自体を要求インベントリの語彙で言えば
 `User-Excluded:`(ユーザーが明示的に除外)。
 
-## 効果の確かめ方
+## 効果の確かめ方(段 1: 指示文・skill)
 
 指示文・skill の効き方は一度きりの `nix build` では検証できない(プロンプトへの
 効き方の問題、`docs/claude/global-claude-md.md` と同じ運用)。`hms .` 適用後、
 新しいセッションで複数項目の依頼を投げ、`## 要求インベントリ` が自発的に
 書かれるかを観察する。弱ければ文面を PR で調整する。
+
+## `plan-scope-gate.sh`(段 2: 決定論的検査)
+
+指示文・skill だけでは足りない(BAITBENCH の知見、上述)ため、`ExitPlanMode` 時に
+機械検査する hook を追加した。`copilot-plan-review.sh` の critic/judge/oracle
+分離とは違い、この gate は **LLM を一切呼ばない** — jq/grep/gh だけで判定する
+純粋な judge。プランレビューの読み取り専用エージェントには `gh` もネットワークも
+無く元 Issue を読めないため、この判定を lens A へ足すことはできない(前述)。
+
+### 経路A: Issue 起点の実カバレッジ
+
+1. `transcript_path`(hook の stdin JSON に実在するフィールド)から、
+   **ユーザー自身が書いた行だけ**を抜く。transcript の JSONL は
+   `type=="user"` の行に SessionStart hook(issue-index 等)が注入した
+   `additionalContext` も混在するが、それらは `message.content` が配列
+   (`tool_result` 等)であり文字列ではない。実測で確認済み: ユーザーが実際に
+   打った行だけが `message.content` を素の文字列として持つ。したがって
+   `type=="user" and (.message.content|type)=="string"` で厳密に絞れば、
+   `issue-index` の索引注入(このセッション冒頭にも実在し、Issue 番号が
+   15 件並ぶ)を誤って拾わない。
+2. 抜いた行から `#N` / `owner/repo#N` を抽出し、`gh api graphql` で
+   `subIssues(first:100){totalCount nodes{number title}}` を取得
+   (variables 付きクエリで実測動作確認済み)。`totalCount == 0` のときは
+   `gh issue view --json body` から未チェック task-list にフォールバックする。
+3. 子が 2 件以上ある参照 Issue ごとに、プランが「実装対象として全子項目を処分
+   (`## 要求インベントリ` 節内で、子番号を含む行に段の指定か閉じたタグがある)」
+   または `Reference-Only: #N` のどちらかを宣言しているかを検査する。
+
+checkbox フォールバックの子は GitHub Issue ではなく本文の1行テキストなので、
+番号による厳密照合ができない。プラン全文に対する部分文字列一致(先頭40文字)で
+判定する——sub-issues 経路より弱い検査であることを承知で受け入れている。
+
+### 経路B: インベントリ内整合性
+
+`## 要求インベントリ` 節が存在するときだけ発火する(存在しないことは deny しない
+——書かなくてよい依頼まで書かせる規律ではないため)。各 `Rn` 行について:
+
+- 処分(段の指定、または `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:`)
+  があるか
+- 閉じたタグ集合に無いタグ(例: `Conflicts:`)を使っていないか
+- 同じ `Rn` が複数回処分されていないか
+
+### fail-open と e2e
+
+`gh` 不在・未認証・ネットワーク不通・`transcript_path` 不在・JSON パース失敗は
+個々の参照 Issue 単位で黙って諦める(ADR-0005)。`~/.claude/plan-scope-gate/skip`
+と `SKIP_PLAN_SCOPE_GATE=1` がエスケープハッチ。
+
+`--selftest` は `gh` をシェル関数で上書きしてネットワークを使わずに全経路を検査
+する。`--check <plan.md> <issue-ref>` は実 Issue に対する手動 e2e 用の CLI で、
+このリポジトリの親 Issue #136(sub-issues に #137/#138 を持つ、この機能自体の
+tracking issue)を使って実測済み: 子番号の欠落検出・全カバー・`Reference-Only:`
+宣言による免除の 3 経路すべてが期待どおりに判定された。
+
+### 並列 hook の実測
+
+`ExitPlanMode` の同一 matcher に `plan-review`(300s)・`plan-view`(15s)・
+`plan-scope-gate`(20s)の 3 エントリが並ぶ。Claude Code は同一 matcher の hook を
+並列に走らせるため、3 つが同時に `deny` を返す状況が起こり得る。この repo での
+実地観察はまだ無い——気づいた挙動があればここに追記する。
