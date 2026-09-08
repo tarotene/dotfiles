@@ -63,6 +63,15 @@ in
         # for an agent resolving a conflict
         conflictStyle = "zdiff3";
       };
+      rebase = {
+        # stacked PR work (docs/claude/stacked-pr.md) keeps several branches
+        # pointing into the same worktree's commit range. A plain rebase of
+        # the top branch leaves the middle branches' refs behind, pointing
+        # at the pre-rebase commits — --update-refs force-updates any branch
+        # tip that lies inside the rebased range (git-rebase(1), git 2.38+),
+        # so one rebase from the top carries the whole stack forward.
+        updateRefs = true;
+      };
 
       # GitHub credential helpers (gh auth).
       "credential \"https://github.com\"" = {
