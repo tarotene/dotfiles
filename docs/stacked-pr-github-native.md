@@ -56,12 +56,28 @@ public preview が GA したときは、このファイルだけを差し替え�
 - `arkedge/sbir-aocs-report`: squash-merge のみ許可。
   `main-protection` ruleset は `deletion` / `non_fast_forward` /
   `pull_request` / `required_status_checks`。署名必須ルールは無い。
-  dotfiles には `required_status_checks` が無く、ここには有る —
-  ruleset のぶれの実例(別 Issue で追跡)。
+  dotfiles には `required_status_checks` が無く、ここには有る、という
+  ruleset のぶれが 2026-09-09 まで存在した(#129)。同日、dotfiles の
+  `Ephemeral Initial` にも `required_status_checks`(6 context)を追加して
+  解消した。ぶれの棚卸し・再発防止の仕組みは別 Issue(#130)で追跡する。
 
-## 再検証すべきこと
+## 再検証すべきこと(再検証済み、2026-09-09)
 
-`docs/claude/pr-gate.md:383-387` の「stacked PR は ruleset 対象外」前提は、
-GitHub Docs の「中段 PR にも branch protection と default-branch 向け CI が
-適用される」という記述と噛み合わない可能性がある。`gh stack link` を実際に
-使ったケースで実測し直す(別 Issue で追跡)。
+`docs/claude/pr-gate.md:383-387` の「stacked PR は ruleset 対象外」前提を、
+`gh stack link` を実際に使った stack(#124)の merged PR で実測した:
+
+| PR | base | 報告された check(計 6 件) |
+|---|---|---|
+| [#126](https://github.com/tarotene/dotfiles/pull/126) | `docs/adr-0008-documentation-artifact-selection`(非 default) | 全件 pass |
+| [#127](https://github.com/tarotene/dotfiles/pull/127) | `feat/rebase-update-refs`(非 default) | 全件 pass |
+
+GitHub Docs の「中段 PR にも default-branch 向け CI が適用される」は
+矛盾していなかった — それは **CI が実行される**ことを述べており、
+`pr-gate.md` の前提は **ruleset が適用される**かどうかを述べている。
+両 workflow の `pull_request:` トリガーにブランチフィルタが無い
+(`.github/workflows/ci.yml:9-13`, `.github/workflows/nix.yml:7-10`)ため、
+CI は base を問わず走る。一方 ruleset `Ephemeral Initial` の条件は
+`~DEFAULT_BRANCH` のままなので、非 default branch 向け PR には
+`required_status_checks` が適用されない(`gh api rules/branches/<非 main>`
+は `[]` を返す、2026-09-09 実測)。つまり前提は正しく、「対象外」と
+「報告されない」を区別せず読める書き方だっただけだった。
