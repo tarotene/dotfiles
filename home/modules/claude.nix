@@ -107,7 +107,7 @@
 #    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
 #
 # 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
-#     wrapup-chores, copilot-model-bump, issue-hygiene, stacked-pr):
+#     wrapup-chores, copilot-model-bump, issue-hygiene, tracking-issue, stacked-pr):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -129,7 +129,13 @@
 #    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
 #    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
 #    未更新のまま open で残る「腐った tracking Issue」を清算する定期衛生管理の手順
-#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。stacked-pr は
+#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。tracking-issue
+#    は issue-hygiene から「書く/更新する」側を分離したスキルで、親 Issue を起票・
+#    更新するときの本文スケルトン(目的/スコープ・完了定義・傘の外への依存・
+#    スコープ外 + 維持義務の一文)・禁止事項(子 Issue へのチェックボックス参照・
+#    期日の本文への記載・親を議論の場にすること)・`tracking` ラベルによる
+#    findability を持つ。issue-hygiene は事後の衛生管理(clean up)、tracking-issue
+#    は起票・更新時の書式(write)に責務を分ける。stacked-pr は
 #    PR 同士に依存関係がある(先行 PR の成果物を後続が参照する、または同一ファイルの
 #    同じ節を逐次編集する)ときに main 起点で並行させず base を親ブランチにした
 #    stacked PR として積む手順 — 判定条件・分割の設計原則・rebase.updateRefs による
@@ -140,7 +146,8 @@
 #    docs/claude/diagramming.md、docs/claude/skill-gardening.md、
 #    docs/claude/living-description.md、docs/claude/pr-description.md、
 #    docs/claude/wrapup-chores.md、docs/claude/copilot-model-bump.md、
-#    docs/claude/issue-hygiene.md、docs/claude/stacked-pr.md
+#    docs/claude/issue-hygiene.md、docs/claude/tracking-issue.md、
+#    docs/claude/stacked-pr.md
 #    (腐る事実は docs/stacked-pr-github-native.md に切り出す、ADR-0008)。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
@@ -808,6 +815,11 @@ in
   # で親子構造を明示、腐った tracking Issue を清算する定期衛生管理の判断知識。
   home.file.".claude/skills/issue-hygiene/SKILL.md".source =
     repoConfig + "/claude/skills/issue-hygiene/SKILL.md";
+  # tracking-issue: 複数の子作業を束ねる親 Issue を書く/更新する側の書式規約。
+  # issue-hygiene(事後の棚卸し・清算)とは役割が異なる。詳細は
+  # docs/claude/tracking-issue.md。
+  home.file.".claude/skills/tracking-issue/SKILL.md".source =
+    repoConfig + "/claude/skills/tracking-issue/SKILL.md";
   # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
   # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
   # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
