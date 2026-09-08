@@ -161,16 +161,21 @@
 #    失敗する — 知見の永続化は skill-gardening の PR フローに乗せる想定であり、
 #    意図的な設計。詳細は docs/claude/global-claude-md.md。
 #
-# 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節):
+# 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節)+ plan-scope-gate
+#     (PreToolUse / ExitPlanMode):
 #    Tracking Issue のような複数項目を含む依頼を Plan Mode に投げると、作業スコープ
 #    の増大を気にして依頼された範囲を黙って縮小した計画を返してくることが多い。
 #    global CLAUDE.md に「複数項目の依頼は計画冒頭に要求インベントリ(逐語列挙 +
-#    Rn の ID)を置く」という短い規律を追加し、このスキルがその作り方(gh graphql
-#    での sub-issues 列挙・閉じた棄却タグ Blocked-Upstream/Obsolete/User-Excluded・
-#    参照 Issue を Reference-Only: で書き分ける手順)を持つ。規律そのものの強制は
-#    plan-scope-gate.sh が担う(未実装。追加時にこの索引へ追記する)。当初検討した
-#    「プラン中の縮小マーカーを起点に検査する」設計は、過去プラン 327 本の実測で
-#    誤検知率が高すぎて棄却した。詳細は docs/claude/scope-inventory.md。
+#    Rn の ID)を置く」という短い規律を追加し、scope-inventory スキルがその作り方
+#    (gh graphql での sub-issues 列挙・閉じた棄却タグ Blocked-Upstream/Obsolete/
+#    User-Excluded・参照 Issue を Reference-Only: で書き分ける手順)を持つ。
+#    plan-scope-gate.sh は指示文だけでは足りない部分(BAITBENCH: 明示的に禁止しても
+#    ショートカット使用率は平均50%超)を機械検査で塞ぐ — LLM を呼ばず、jq/grep/gh
+#    だけで判定する純粋な judge。plan-review / plan-view と同じ matcher に 3 つ目の
+#    エントリとして並ぶ。経路A(ユーザー発言から参照 Issue を抽出し、子 sub-issues
+#    のカバレッジを検査)と経路B(`## 要求インベントリ` 節内の処分の整合性を検査)の
+#    2本立て。当初検討した「プラン中の縮小マーカーを起点に検査する」設計は、過去
+#    プラン327本の実測で誤検知率が高すぎて棄却した。詳細は docs/claude/scope-inventory.md。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
@@ -204,6 +209,7 @@ let
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
   worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
+  planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
   # 旧 Codex 版の plan-review hook command。中身(--search exec --output-schema
   # 等)ごと copilot-plan-review.sh に置き換えたので、activation が settings.json
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
@@ -362,6 +368,7 @@ let
     worktree_fresh_base="$1";   shift
     worktree_create_guard="$1"; shift
     worktree_audit_context="$1"; shift
+    plan_scope_gate="$1";        shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -371,6 +378,9 @@ let
     # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
     register PreToolUse ExitPlanMode "$plan_view" 15
+    # plan-scope-gate も同じ matcher に 3 つ目のエントリとして並ぶ。gh api graphql
+    # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
+    register PreToolUse ExitPlanMode "$plan_scope_gate" 20
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
     # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
     # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
@@ -652,6 +662,13 @@ in
   };
   home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
 
+  # plan-scope-gate: 要求インベントリ(scope-inventory、15番)の脱落を機械検査する。
+  # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
+  home.file.".claude/hooks/plan-scope-gate.sh" = {
+    source = repoConfig + "/claude/hooks/plan-scope-gate.sh";
+    executable = true;
+  };
+
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
     source = repoConfig + "/claude/hooks/issue-index.sh";
@@ -831,7 +848,8 @@ in
       ${lib.escapeShellArg herdrMetadataCmd} \
       ${lib.escapeShellArg worktreeFreshBaseCmd} \
       ${lib.escapeShellArg worktreeCreateGuardCmd} \
-      ${lib.escapeShellArg worktreeAuditContextCmd}
+      ${lib.escapeShellArg worktreeAuditContextCmd} \
+      ${lib.escapeShellArg planScopeGateCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

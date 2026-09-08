@@ -53,7 +53,7 @@ dotfiles/
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
-│   │                         #   pr-gate, issue-index, sign-prewarm,
+│   │                         #   plan-scope-gate, pr-gate, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
 │   │                         #   assets/: non-hook files kept beside their
@@ -253,7 +253,11 @@ dotfiles/
   effort, or session length are never valid reasons to drop an item.
   A referenced Issue that isn't an implementation target gets
   `Reference-Only: #N — <reason>` instead of being silently ignored.
-- This rule is instructions-only for now — no hook checks it yet. Full
+- The `PreToolUse`/`ExitPlanMode` hook (`plan-scope-gate.sh`) enforces this:
+  it cross-checks referenced Issues' sub-issues (or unchecked task-list items
+  as a fallback) against the plan's inventory, and separately checks the
+  inventory section's internal consistency (every `Rn` has a disposition,
+  tags are from the closed set, no duplicates). It calls no LLM. Full
   rationale + how-to: `docs/claude/scope-inventory.md`, skill:
   `config/claude/skills/scope-inventory/`.
 
