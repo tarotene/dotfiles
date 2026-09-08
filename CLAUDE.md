@@ -260,8 +260,19 @@ dotfiles/
 - The `G_link` judgement in `config/claude/hooks/pr-gate.sh` blocks the Stop hook
   when neither is present. Rationale: `docs/claude/pr-gate.md`.
 - Closing keywords only fire when the PR targets the **default branch**. On a
-  stacked PR the gate says so, but it will not stop you — close the issue by
-  hand, or carry the keyword on the PR that lands on `main`.
+  stacked PR the gate says so, but it will not stop you — carry the keyword on
+  the stage that actually closes that issue (`stacked-pr` skill, §6): each
+  stage's `Closes #N` / `No-Issue:` line reflects what *that stage* completes,
+  not the stack as a whole. GitHub auto-retargets a stage's base to the
+  default branch once the stage below it merges, so a stage's own keyword
+  fires once it lands — you don't need to close by hand unless a stage never
+  merges on its own.
+- **Dependent PRs go into a stacked PR**, not parallel PRs off `main`: when a
+  later change references an earlier PR's output, or edits the same section
+  of the same file, base it on the parent branch instead. Full rationale +
+  how-to: `docs/claude/stacked-pr.md`, skill: `config/claude/skills/stacked-pr/`.
+  A `Stack: <n>/<total> (base: #<parent>)` line goes next to `Closes #N` /
+  `No-Issue:` when stacking; `pr-gate.sh` does not check it.
 - Every PR body follows a 5-section skeleton (full rationale + how-to:
   `docs/claude/pr-description.md`, skill: `config/claude/skills/pr-description/`):
   ```

@@ -107,7 +107,7 @@
 #    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
 #
 # 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
-#     wrapup-chores, copilot-model-bump, issue-hygiene):
+#     wrapup-chores, copilot-model-bump, issue-hygiene, stacked-pr):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -129,12 +129,19 @@
 #    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
 #    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
 #    未更新のまま open で残る「腐った tracking Issue」を清算する定期衛生管理の手順
-#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。hook のような
-#    settings.json 登録は不要(スキルは ~/.claude/skills/ をスキャンするだけで発動する)
-#    なので home.file だけで足りる。詳細は docs/claude/diagramming.md、
-#    docs/claude/skill-gardening.md、docs/claude/living-description.md、
-#    docs/claude/pr-description.md、docs/claude/wrapup-chores.md、
-#    docs/claude/copilot-model-bump.md、docs/claude/issue-hygiene.md。
+#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。stacked-pr は
+#    PR 同士に依存関係がある(先行 PR の成果物を後続が参照する、または同一ファイルの
+#    同じ節を逐次編集する)ときに main 起点で並行させず base を親ブランチにした
+#    stacked PR として積む手順 — 判定条件・分割の設計原則・rebase.updateRefs による
+#    追従・Issue リンクの書き分け・GitHub ネイティブ stack 機能(`gh stack link`)の
+#    使い方を持つ。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに
+#    注意。hook のような settings.json 登録は不要(スキルは ~/.claude/skills/ を
+#    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
+#    docs/claude/diagramming.md、docs/claude/skill-gardening.md、
+#    docs/claude/living-description.md、docs/claude/pr-description.md、
+#    docs/claude/wrapup-chores.md、docs/claude/copilot-model-bump.md、
+#    docs/claude/issue-hygiene.md、docs/claude/stacked-pr.md
+#    (腐る事実は docs/stacked-pr-github-native.md に切り出す、ADR-0008)。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
@@ -773,6 +780,11 @@ in
   # で親子構造を明示、腐った tracking Issue を清算する定期衛生管理の判断知識。
   home.file.".claude/skills/issue-hygiene/SKILL.md".source =
     repoConfig + "/claude/skills/issue-hygiene/SKILL.md";
+  # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
+  # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
+  # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
+  home.file.".claude/skills/stacked-pr/SKILL.md".source =
+    repoConfig + "/claude/skills/stacked-pr/SKILL.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。

@@ -98,11 +98,19 @@ Design and rationale for the hooks and commands deployed from
 - [`copilot-model-bump.md`](claude/copilot-model-bump.md) — 個人スキル: 外部
   AI CLI に固定 pin した具体モデル ID を GA・廃止サイクルに追従して更新する
   定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。
+- [`stacked-pr.md`](claude/stacked-pr.md) — 個人スキル: PR 同士に依存関係が
+  あるとき main 起点で並行させず base を親ブランチにした stacked PR として
+  積む手順。なぜ素の `--base` + `gh stack link` を選び `init/submit/sync` を
+  避けたか、なぜ pr-gate.sh を触らなかったかの裁定を記録。
 
 ## Investigation records
 
 - [`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md) — fcitx5 trigger-key
   investigation (#14): methodology, traces, and the recovery path.
+- [`stacked-pr-github-native.md`](stacked-pr-github-native.md) — GitHub
+  ネイティブ Stacked pull requests 機能の実測(preview ステータス・API
+  サーフェス・`gh-stack` 拡張の既知 issue)。時間で腐る事実を
+  `claude/stacked-pr.md` の裁定から分離するための器(ADR-0008)。
 
 ## Miscellaneous
 
