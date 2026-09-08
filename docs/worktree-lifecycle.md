@@ -117,5 +117,5 @@ journalctl --user-unit git-audit-worktrees.service
 scripts/git-audit-worktrees --selftest
 scripts/git-prune-worktrees --selftest
 scripts/git-worktree-create-guard --selftest
-scripts/register-codex-worktree-hooks --selftest
+scripts/register-codex-hooks --selftest
 ```

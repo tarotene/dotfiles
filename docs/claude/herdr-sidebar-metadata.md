@@ -114,6 +114,75 @@ statusline はストリーミング中 ~300ms 毎に再実行され得る。ソ�
 kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `applies_to_source` で
 横断クリアできるかは未検証のため、初版では ttl 任せにしている。
 
+## Codex / Copilot ペイン
+
+Claude 以外のエージェントペインも同じ `pane.report_metadata` API で埋められる。
+ただし表示は `$branch` + `$model` の 2 トークンだけに絞っている — mode/ctx/cost/
+effort に相当するものは、upstream の一次情報(developers.openai.com/codex/hooks +
+openai/codex ソース、docs.github.com hooks-reference、2026-09 時点)を確認した
+うえで **確実に取れないため意図的に見送った**。
+
+| データ | Codex CLI | Copilot CLI |
+|---|---|---|
+| model | hook payload に documented(SessionEnd 以外の全イベント必須フィールド) | payload に無い |
+| cwd(→branch) | hook payload に documented | hook payload に documented |
+| permission/approval | payload の `permission_mode` は **lossy**(実測では `bypassPermissions` か `default` の 2 値しか出ない)→ 表示しない | 無し |
+| reasoning effort | hooks に無い(config.toml か undocumented な rollout JSONL のみ) | n/a |
+
+Claude 版と違い statusline 相当のチャネルが無いので、reporter は各ツールにつき
+1 本(単チャネル)。
+
+### Codex: `config/codex/hooks/herdr-codex-metadata.sh`
+
+`~/.codex/hooks.json` の SessionStart / UserPromptSubmit / Stop / SessionEnd に
+登録(PreToolUse には登録しない — model が変わる頻度は低く、他 3 イベントで
+十分足りるため、Claude 版のような debounce キャッシュも持たない)。model は
+hook payload の `.model` から、branch は `.cwd` から git 呼び出しで取る。
+`agent_id` が付くサブアージェントイベントは親ペイン共有のため無視する。
+
+登録は `scripts/register-codex-hooks`(variadic な `(event, matcher, command,
+timeout)` タプルを何個でも受け取る idempotent jq マージャー。旧
+`register-codex-worktree-hooks` を一般化・改名したもので、`home/modules/worktree.nix`
+の worktree guard/context hooks もこの同じスクリプトを使う)。書き込み先が
+`home/modules/worktree.nix` の activation と同じ `~/.codex/hooks.json` なので、
+`home/modules/herdr.nix` の `registerCodexHerdrMetadataHooks` はその後ろに
+`entryAfter` で明示的に順序付けている(lost-update 対策、#61 と同種)。
+
+**Codex の hook trust**: `~/.codex/config.toml` の `hooks.state.*.trusted_hash`
+はエントリ単位で、command・matcher・timeout の変更や並び替えは trust を無効化
+するが、**末尾への追記は既存エントリの trust を壊さない**(確認済み)。ただし
+新しいエントリ自体は初回、Codex 側で `/hooks` から対話的に trust するまで
+無音で発火しない — 各ホストで switch 後に一度だけ手作業が要る。
+
+### Copilot: `config/copilot/hooks/herdr-copilot-metadata.sh`
+
+Copilot CLI の hook payload には event 名も model も乗らない(公式リファレンス
+確認済み: 全イベント共通で `sessionId`/`timestamp`/`cwd` のみ)。そのため:
+
+- イベントは **argv** で渡す(herdr 自身の `herdr-agent-state.sh session` と
+  同じパターン)。`sessionStart`/`userPromptSubmitted`/`agentStop` に
+  `… report` を、`sessionEnd` に `… clear` を登録する。
+- model は payload からではなく **`~/.copilot/settings.json` の `.model`**
+  (Copilot CLI 自身が永続化する現在のモデル設定)から読む。`/model` 直後は
+  Copilot 側の書き込みタイミング次第で遅延しうるが、表示専用なので許容する。
+
+登録は新規の `scripts/register-copilot-hooks`。Copilot の native hook 形は
+Claude/Codex の `{matcher?, hooks:[...]}` ネストと違い `{type, bash,
+timeoutSec}` を camelCase イベント配列に直置きする形なので(herdr 自身が
+`~/.copilot/settings.json` の `.hooks.SessionStart` に入れている既存エントリと
+同じ形)、専用のマージャーにした。イベント名は camelCase の native 形を使う
+(Claude 形式の PascalCase も公式に受理されるので、herdr の `SessionStart` と
+共存する)。`~/.copilot/settings.json` を activation で書くのはこれだけなので
+`entryAfter [ "writeBoundary" ]` で足りる。
+
+### 見送った表示: tab-bar usage
+
+Codex の rate-limit(`/status` 相当)・Copilot の premium request quota も
+同じ調査で洗ったが、いずれも安定した取得手段が無い(Codex はセッションの
+rollout JSONL や experimental な app-server API、Copilot は 2026-06 の
+billing 移行で legacy 化予定の REST エンドポイントのみ)。tab-bar 拡張は
+実装せず、調査メモを添えて別 Issue(#117)に切り出した。
+
 ## アクティブ行の視認性(`[theme.custom]`)
 
 catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系の暗色で、

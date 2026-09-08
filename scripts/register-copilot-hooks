@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Idempotently add dotfiles-owned hooks to ~/.copilot/settings.json's native
+# "hooks" object, while preserving Herdr's own entry (installed out-of-band by
+# `herdr integration install copilot`) and everything else in the file —
+# notably the top-level "model" key, which Copilot CLI itself persists.
+#
+# Unlike Claude/Codex's {matcher?, hooks:[...]} nesting, Copilot's native shape
+# puts {type, bash, timeoutSec} entries directly in the event array — this
+# mirrors Herdr's own already-installed SessionStart entry. Accepts any number
+# of (event, bash-command, timeoutSec) triples.
+set -euo pipefail
+TEST_TMP=''
+
+register() {
+  local settings="$1" event="$2" command="$3" timeout="$4" tmp
+  if jq -e --arg event "$event" --arg command "$command" \
+      '[.hooks[$event][]? | select(.bash == $command)] | length > 0' \
+      "$settings" >/dev/null; then
+    return 0
+  fi
+  tmp="$(mktemp "$settings.hm.XXXXXX")"
+  jq --arg event "$event" --arg command "$command" --argjson timeout "$timeout" '
+      .hooks[$event] = ((.hooks[$event] // []) + [
+        {type: "command", bash: $command, timeoutSec: $timeout}
+      ])
+    ' "$settings" > "$tmp"
+  chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$settings"
+}
+
+main() {
+  local settings="$1"
+  shift
+  if [[ ! -f $settings ]]; then
+    mkdir -p "$(dirname "$settings")"
+    printf '{}\n' > "$settings"
+  fi
+  while (( $# > 0 )); do
+    register "$settings" "$1" "$2" "$3"
+    shift 3
+  done
+}
+
+selftest() {
+  local tmp settings
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+
+  settings="$tmp/settings.json"
+  printf '%s\n' '{"hooks":{"SessionStart":[{"type":"command","bash":"herdr-existing","timeoutSec":10}]},"model":"claude-opus-5"}' > "$settings"
+  main "$settings" \
+    sessionStart report-cmd 10 \
+    userPromptSubmitted report-cmd 10 \
+    agentStop report-cmd 10 \
+    sessionEnd clear-cmd 10
+  main "$settings" \
+    sessionStart report-cmd 10 \
+    userPromptSubmitted report-cmd 10 \
+    agentStop report-cmd 10 \
+    sessionEnd clear-cmd 10
+  jq -e '
+    ([.hooks.SessionStart[]? | select(.bash == "herdr-existing")] | length) == 1
+    and (([.hooks.sessionStart[]? | select(.bash == "report-cmd")] | length) == 1)
+    and (([.hooks.userPromptSubmitted[]? | select(.bash == "report-cmd")] | length) == 1)
+    and (([.hooks.agentStop[]? | select(.bash == "report-cmd")] | length) == 1)
+    and (([.hooks.sessionEnd[]? | select(.bash == "clear-cmd")] | length) == 1)
+    and (.model == "claude-opus-5")
+  ' "$settings" >/dev/null
+
+  printf 'selftest: OK\n'
+}
+
+if [[ ${1-} == --selftest ]]; then
+  selftest
+elif [[ $# -ge 4 ]] && (( ($# - 1) % 3 == 0 )); then
+  main "$@"
+else
+  printf 'usage: register-copilot-hooks <settings.json> <event> <bash-command> <timeoutSec> [<event> <bash-command> <timeoutSec>]...\n' >&2
+  exit 2
+fi

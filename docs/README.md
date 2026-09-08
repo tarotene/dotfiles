@@ -59,8 +59,10 @@ Design and rationale for the hooks and commands deployed from
   Mode は *エイリアス* のペア: `opus` を Fable 5 に差し替えて「Plan 中は Fable
   5(1M)、実行中は Sonnet 5」にする + `fallbackModel`。
 - [`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) — Herdr
-  sidebar: per-agent Claude mode/model/metrics via pane metadata (2-channel:
-  hook for permission mode, statusline for model/ctx/cost/effort).
+  sidebar: per-agent mode/model/metrics via pane metadata. Claude is 2-channel
+  (hook for permission mode, statusline for model/ctx/cost/effort); Codex and
+  Copilot get a leaner branch+model-only reporter each, plus the research
+  notes on why tab-bar usage was deferred (#117).
 - [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
   Claude rate-limit usage (5h session window / weekly per-model cap) with
   burn-rate prediction, from the undocumented `/usage` API (fail-soft: the
