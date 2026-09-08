@@ -23,6 +23,7 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `push.autoSetupRemote = true` | herdr worktree が upstream 無しで作られ、初回 push が `--set-upstream` を要求してくる | 初回 `git push` が自動で upstream を張る |
 | `rerere.enabled = true` | 同じ衝突を worktree ごとに手で再解決する | 一度解決した衝突の解決結果を再利用する |
 | `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
+| `rebase.updateRefs = true` | stacked PR([`docs/claude/stacked-pr.md`](claude/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語は無いが、効果はまさにこれ) |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
 | `git prune-branches`(`scripts/git-prune-branches`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
 | `git shelve` / `git unshelve`(`scripts/git-shelve` / `scripts/git-unshelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
