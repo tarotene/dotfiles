@@ -102,6 +102,10 @@ Design and rationale for the hooks and commands deployed from
   あるとき main 起点で並行させず base を親ブランチにした stacked PR として
   積む手順。なぜ素の `--base` + `gh stack link` を選び `init/submit/sync` を
   避けたか、なぜ pr-gate.sh を触らなかったかの裁定を記録。
+- [`tracking-issue.md`](claude/tracking-issue.md) — 個人スキル: 複数の子作業
+  を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
+  sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
+  `issue-hygiene` が担う。
 
 ## Investigation records
 
