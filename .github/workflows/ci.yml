@@ -75,6 +75,26 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
+      # config/codex/hooks/ and config/copilot/hooks/ hold the herdr sidebar
+      # metadata reporters for Codex CLI / Copilot CLI panes
+      # (docs/claude/herdr-sidebar-metadata.md) — genuine POSIX sh, excluded
+      # above for the same reason as the other config/ subdirectories.
+      - name: ShellCheck Codex CLI hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/codex/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      - name: ShellCheck Copilot CLI hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/copilot/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
       - name: Install zsh for syntax validation
         run: |
           set -euo pipefail
@@ -170,7 +190,8 @@ jobs:
           ./scripts/git-audit-worktrees --selftest
           ./scripts/git-prune-worktrees --selftest
           ./scripts/git-worktree-create-guard --selftest
-          ./scripts/register-codex-worktree-hooks --selftest
+          ./scripts/register-codex-hooks --selftest
+          ./scripts/register-copilot-hooks --selftest
 
       # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
       # invariant is "never read an incomplete check set as green" against a

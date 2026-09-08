@@ -70,6 +70,13 @@ dotfiles/
 │   ├── herdr/                # Herdr config.toml (theme + sidebar rows), fully managed —
 │   │                         #   xdg.configFile deploys it verbatim (store symlink,
 │   │                         #   read-only; in-app settings writes fail by design)
+│   ├── codex/hooks/          # herdr-codex-metadata.sh: sidebar reporter for Codex CLI
+│   │                         #   panes (herdr-sidebar-metadata.md); deployed beside
+│   │                         #   herdr's own ~/.codex/ integration, not registered
+│   │                         #   through Codex's own config surface
+│   ├── copilot/              # agents/: plan-reviewer.agent.md (copilot-plan-review);
+│   │                         #   hooks/: herdr-copilot-metadata.sh, same role as
+│   │                         #   codex/hooks/ above, for Copilot CLI panes
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
@@ -105,8 +112,15 @@ dotfiles/
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
 │   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
 │   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
-│   ├── register-codex-worktree-hooks # activation-only (writeShellScript, not a
-│   │                         #   deployed file): registers Codex worktree hooks
+│   ├── register-codex-hooks   # activation-only (writeShellScript, not a
+│   │                         #   deployed file): idempotent variadic merger for
+│   │                         #   ~/.codex/hooks.json — worktree.nix registers the
+│   │                         #   worktree guard/context hooks, herdr.nix registers
+│   │                         #   the sidebar-metadata reporter, in one shared file
+│   ├── register-copilot-hooks # activation-only (writeShellScript, not a
+│   │                         #   deployed file): idempotent variadic merger for
+│   │                         #   ~/.copilot/settings.json's native "hooks" object
+│   │                         #   (herdr.nix registers the sidebar-metadata reporter)
 │   └── fcitx5-key-trace.pl   # fcitx5 trace redactor + trigger-key detector (#14)
 ├── keys/                     # committed public keys (non-secret), imported at activation
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
@@ -132,7 +146,9 @@ dotfiles/
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
 │   │   ├── wrapup-chores.md      # skill: triage the wrap-up inbox into one batch chores PR
-│   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent Claude mode/model/metrics via pane metadata
+│   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent mode/model/branch
+│   │   │                     #   via pane metadata (Claude full, Codex/Copilot
+│   │   │                     #   branch+model only; tab-bar usage deferred, #117)
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
 │   │   │                     #   Fable 5 に差し替え、Plan 中だけ別モデルにする

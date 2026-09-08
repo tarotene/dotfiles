@@ -56,6 +56,12 @@ tab_bar_right_separator = "·"
 # 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
 # 値を持つのは常に 1 つ)。
 #
+# Codex / Copilot ペインの $branch/$model は
+# config/codex/hooks/herdr-codex-metadata.sh /
+# config/copilot/hooks/herdr-copilot-metadata.sh がそれぞれ報告する
+# (mode/ctx/cost/effort 相当は無い — 確実に取れるデータだけに絞っている。
+# 詳細・見送った理由は docs/claude/herdr-sidebar-metadata.md)。
+#
 # 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
 #   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
 #   red #F38BA8(bypass) / pink #F5C2E7(model) / overlay1 #7F849C(控えめ情報)。
@@ -81,4 +87,20 @@ claude = [
     { token = "$cost", fg = "#7F849C" },
     { token = "$effort", fg = "#7F849C", dim = true },
   ],
+]
+codex = [
+  ["state_icon", "workspace", "tab"],
+  [
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
+  ],
+  [ { token = "$model", fg = "#F5C2E7" } ],
+]
+copilot = [
+  ["state_icon", "workspace", "tab"],
+  [
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
+  ],
+  [ { token = "$model", fg = "#F5C2E7" } ],
 ]

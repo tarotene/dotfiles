@@ -11,8 +11,8 @@ let
   guardCmd = "bash '${guardPath}'";
   contextCmd = "bash '${auditPath}' --context";
 
-  registerCodexHooks = pkgs.writeShellScript "register-codex-worktree-hooks" (
-    builtins.readFile ../../scripts/register-codex-worktree-hooks
+  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
+    builtins.readFile ../../scripts/register-codex-hooks
   );
 in
 {
@@ -40,8 +40,8 @@ in
   # our two commands and preserve all unrelated entries.
   home.activation.registerCodexWorktreeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-      ${lib.escapeShellArg guardCmd} \
-      ${lib.escapeShellArg contextCmd}
+      PreToolUse Bash ${lib.escapeShellArg guardCmd} 10 \
+      SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg contextCmd} 30
   '';
 
   # Named after the command it runs (git-audit-worktrees), not the other way

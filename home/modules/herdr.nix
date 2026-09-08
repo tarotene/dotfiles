@@ -23,12 +23,63 @@
 # 設定変更はこのリポジトリを編集して `home-manager switch`、反映は
 # `herdr server reload-config`(alacritty / starship / git と同じ運用)。
 {
+  config,
   lib,
   pkgs,
   ...
 }:
+let
+  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
+    builtins.readFile ../../scripts/register-codex-hooks
+  );
+  registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
+    builtins.readFile ../../scripts/register-copilot-hooks
+  );
+  codexMetadataCmd = "sh '${config.home.homeDirectory}/.codex/herdr-codex-metadata.sh'";
+  copilotMetadataCmd = "sh '${config.home.homeDirectory}/.copilot/hooks/herdr-copilot-metadata.sh'";
+in
 {
   home.packages = [ pkgs.herdr ];
+
+  # サイドバー行の Codex/Copilot 版レポーター(docs/claude/herdr-sidebar-metadata.md)。
+  # herdr 自身の integration ファイル(~/.codex/herdr-agent-state.sh、
+  # ~/.copilot/hooks/herdr-agent-state.sh、herdr 管理・編集禁止)の隣に置く —
+  # herdr 側のヘッダコメントが「custom hooks はこのファイルの隣に置け」と
+  # 指示している配置に倣う。
+  home.file.".codex/herdr-codex-metadata.sh" = {
+    source = ../../config/codex/hooks/herdr-codex-metadata.sh;
+    executable = true;
+  };
+  home.file.".copilot/hooks/herdr-copilot-metadata.sh" = {
+    source = ../../config/copilot/hooks/herdr-copilot-metadata.sh;
+    executable = true;
+  };
+
+  # Codex は worktree.nix の registerCodexWorktreeHooks も同じ
+  # ~/.codex/hooks.json を jq で書き換える — lost-update 窓(#61 と同種)を
+  # 避けるため明示的にその後ろに順序付ける
+  # (installHerdrClaudeIntegration が registerClaudeHooks の後ろに並ぶのと同じ手法)。
+  # PreToolUse には登録しない(herdr-codex-metadata.sh のコメント参照)。
+  home.activation.registerCodexHerdrMetadataHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexWorktreeHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          SessionStart "" ${lib.escapeShellArg codexMetadataCmd} 10 \
+          UserPromptSubmit "" ${lib.escapeShellArg codexMetadataCmd} 10 \
+          Stop "" ${lib.escapeShellArg codexMetadataCmd} 10 \
+          SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 10
+      '';
+
+  # ~/.copilot/settings.json を activation で書くものは他に無いので
+  # writeBoundary だけで足りる。イベント名は Copilot CLI の native camelCase
+  # (herdr 自身の PascalCase エントリと共存する — herdr-sidebar-metadata.md 参照)。
+  home.activation.registerCopilotHerdrMetadataHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+      sessionStart ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
+      userPromptSubmitted ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
+      agentStop ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
+      sessionEnd ${lib.escapeShellArg "${copilotMetadataCmd} clear"} 10
+  '';
 
   xdg.configFile."herdr/config.toml".source = ../../config/herdr/config.toml;
 
