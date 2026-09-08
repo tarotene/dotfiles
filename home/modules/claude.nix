@@ -91,13 +91,19 @@
 #    「本当に何もない」ケースだけを能動的に解消する。詳細は
 #    docs/claude/worktree-fresh-base.md。
 #
-# 11) Opus Plan Mode のモデル実体(settings.json の env + fallbackModel):
+# 11) Opus Plan Mode のモデル実体(scripts/claude-plan-model + settings.json):
 #    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
 #    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
-#    別に宣言できる。ここで opus エイリアスだけを Fable 5 に差し替えることで
-#    「Plan 中は Fable 5(1M)、実行中は Sonnet 5」を得る。model キー自体は
-#    /model で日常的に切り替える対象なので home-manager は触らない。
-#    詳細は docs/claude/opusplan-model-aliases.md。
+#    settings.json の env で別に宣言できる。opus エイリアスを Fable に差し替えると
+#    「Plan 中は Fable、実行中は Sonnet」になるが、その瞬間 `/model opus` も Fable に
+#    なるため、Fable 固有のリミットが枯れたときに戻る道が塞がる(fallbackModel は
+#    overload 系にしか効かず、Usage limit では発火しない)。そこで
+#    `claude-plan-model` を 1 コマンドの往復路として置く。
+#    「今どちらのモードか」は本人が倒す実行時状態としてスクリプトが所有し、
+#    home-manager は上書きしない(model キーを触らないのと同じ理由)。逆に
+#    「そのモードの具体モデル ID」は宣言側の責務で、activation の `sync` が
+#    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
+#    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
 #
 # 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
 #     wrapup-chores, copilot-model-bump, issue-hygiene):
@@ -211,35 +217,34 @@ let
   # 空 — 将来この機能自体を取り下げるときに statusLineCmd をここへ移す。
   retiredStatusLineCommands = [ ];
 
-  # Opus Plan Mode のエイリアス実体。
+  # Opus Plan Mode のモデル実体 — 具体値は scripts/claude-plan-model が持つ。
   #
   # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
-  # 解決する(claude 2.1.252 の実測: Plan 側が Hl() を、実行側が dp() を呼ぶ)。
-  # その Hl() は ANTHROPIC_DEFAULT_OPUS_MODEL を最優先で返し、未設定ならカタログ
-  # 既定の Opus に落ちる — dp() も ANTHROPIC_DEFAULT_SONNET_MODEL で同型。つまり
-  # 「Plan 中だけ別のモデルを使う」はこの env 1 本で表現できる。
+  # 解決する。opus エイリアスの解決先は settings.json の
+  # `.env.ANTHROPIC_DEFAULT_OPUS_MODEL` で乗っ取れるので、そこに Fable を置けば
+  # 「Plan 中は Fable、実行中は Sonnet」になる。
   #
-  # ここでは opus エイリアスだけを Fable 5 に差し替える。sonnet エイリアスは
-  # カタログ既定(= Sonnet 5)がそのまま望みの値なので宣言しない — 宣言すると
-  # モデル世代が上がったときに古い ID に固定してしまう。
+  # ここに具体モデル ID を書かないのは、書くと必ず腐るから。エイリアス文字列
+  # (`fable`)は env の値として使えず(API が unrecognized_model で拒否する)、
+  # 具体 ID は世代が上がるたびに手で追う必要がある — 実際 `claude-fable-5` の pin は
+  # claude 2.1.263 の時点で既に 1 世代遅れていた。代わりに、どちらのモードかだけを
+  # settings.json に残し、その具体 ID は claude バイナリに焼かれた
+  # `latest_per_family` から毎回引き直す。宣言(activation)が持つのは「引き直す
+  # 規則」であって、「今どちらのモードか」ではない — モードは Fable のリミットが
+  # 枯れたときに本人が倒す実行時状態で、`.model` を宣言で固定しないのと同じ理由で
+  # home-manager は上書きしない。
   #
-  # 副作用: opus エイリアスは *全体* が Fable 5 になる。`/model opus` を選んでも
-  # 実体は Fable 5 なので、素の Opus を使いたいときはエイリアスではなくモデル名を
-  # 直接指定する(`/model claude-opus-5`)。
-  claudeModelEnv = {
-    ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-fable-5";
-  };
+  # 詳細は docs/claude/opusplan-model-aliases.md。
+  planModelScript = ../../scripts/claude-plan-model;
 
-  # primary が overload / 利用不可のときに順に試すモデル(settings スキーマの
-  # fallbackModel)。Plan 中の Fable が詰まったら Opus 5 に落ちる。エイリアスでは
-  # なく具体 ID を書く — "opus" と書くと上の env で Fable 5 に解決され、
-  # fallback が自分自身を指してしまう。
-  claudeFallbackModels = [ "claude-opus-5" ];
-
-  # かつて宣言したが撤回した env キー。activation が settings.json の .env から
-  # 削除する。retiredPermissionRules と同じく「かつて自分が書いたキー」だけを
-  # 消す — 無条件 del にしないのは、他の経路で入れた env を奪わないため。
-  retiredModelEnvKeys = [ ];
+  # activation の PATH には jq も ~/.local/bin(claude 本体の置き場。自己更新する
+  # ので nix 管理外)も載っていない。sync はその両方を読むので明示的に足す。
+  planModelSyncPath = lib.makeBinPath [
+    pkgs.jq
+    pkgs.coreutils
+    pkgs.gnugrep
+    pkgs.gnused
+  ];
 
   registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
     set -eu
@@ -443,54 +448,6 @@ let
       tmp="$(mktemp "$settings.hm.XXXXXX")"
       "$jq" --arg cmd "$desired" \
         '.statusLine = { type: "command", command: $cmd }' "$settings" > "$tmp"
-      write_back "$tmp"
-    fi
-  '';
-
-  # settings.json の .env と .fallbackModel を宣言に合わせる。
-  # 使い方: sync-claude-model-config <settings> <desired-json> <retired-env-keys-json>
-  #   desired = { env: {…}, fallbackModel: […] }
-  #   retire を先に処理してから宣言値を書くので、同じキーを両方に置いたら宣言が勝つ。
-  #   .env の他のキー・.model・他のトップレベルキーには一切触らない — .model は
-  #   /model で本人が切り替える対象で、宣言的に固定すると UI の選択を毎 switch で
-  #   奪ってしまう。
-  syncModelConfig = pkgs.writeShellScript "sync-claude-model-config" ''
-    set -eu
-    settings="$1"
-    desired="$2"
-    retired="$3"
-    jq=${pkgs.jq}/bin/jq
-
-    if [ ! -f "$settings" ]; then
-      mkdir -p "$(dirname "$settings")"
-      printf '{}\n' > "$settings"
-    fi
-
-    write_back() {
-      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
-      mv "$1" "$settings"
-    }
-
-    tmp="$(mktemp "$settings.hm.XXXXXX")"
-    "$jq" --argjson desired "$desired" --argjson retired "$retired" '
-      # 撤回: 宣言から外したキーだけを .env から外す(.env が無ければ何もしない)。
-      reduce $retired[] as $k (
-        .;
-        if (.env | type) == "object" then del(.env[$k]) else . end
-      )
-      # 宣言: .env の該当キーだけを宣言値にする。
-      | reduce (($desired.env // {}) | to_entries[]) as $e (.; .env[$e.key] = $e.value)
-      # 撤回で空になった .env はキーごと畳む(「入れる前の形」に戻す)。
-      | if (.env | type) == "object" and (.env | length) == 0 then del(.env) else . end
-      | if (($desired.fallbackModel // []) | length) > 0
-        then .fallbackModel = $desired.fallbackModel
-        else . end
-    ' "$settings" > "$tmp"
-
-    # 定常状態では settings.json に触らない(mtime も動かさない)。
-    if "$jq" -e -s '.[0] == .[1]' "$settings" "$tmp" >/dev/null; then
-      rm -f "$tmp"
-    else
       write_back "$tmp"
     fi
   '';
@@ -752,6 +709,16 @@ in
     executable = true;
   };
 
+  # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
+  # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
+  # git-prune-branches と同じ「PATH で解決される実行可能ファイル」扱い(ADR-0007 に
+  # 従い配備名から .sh を落とす)。activation はこの配備物ではなく store 上の同じ
+  # ファイルを `sync` で呼ぶ。
+  home.file.".local/bin/claude-plan-model" = {
+    source = planModelScript;
+    executable = true;
+  };
+
   # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
   # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
   # username を上書きするホストが現れたら見直すこと。
@@ -844,20 +811,15 @@ in
       }
   '';
 
-  # settings.json の .env / .fallbackModel を宣言に合わせる。hooks・statusLine・
-  # permissions と同じ DAG 位置で、独立した activation として走らせる(jq マージの
-  # 責務を混ぜない)。
+  # 今のモード(Fable / Opus)は保ったまま、その具体モデル ID だけを claude バイナリの
+  # `latest_per_family` から引き直す。hooks・statusLine・permissions と同じ DAG 位置で、
+  # 独立した activation として走らせる。
+  #
+  # claude が未インストールなら(bootstrap 直後)何も書かずに終わる — 起動する claude が
+  # 無いのに env だけ置いても意味が無く、中途半端な model 設定のほうが有害だから。
   home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${syncModelConfig} "$HOME/.claude/settings.json" \
-      ${
-        lib.escapeShellArg (
-          builtins.toJSON {
-            env = claudeModelEnv;
-            fallbackModel = claudeFallbackModels;
-          }
-        )
-      } \
-      ${lib.escapeShellArg (builtins.toJSON retiredModelEnvKeys)}
+    run env PATH=${planModelSyncPath}:"$HOME/.local/bin":"$PATH" \
+      ${pkgs.bash}/bin/bash ${planModelScript} sync
   '';
 
   # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ

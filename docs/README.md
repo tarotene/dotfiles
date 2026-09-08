@@ -56,8 +56,10 @@ Design and rationale for the hooks and commands deployed from
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
-  Mode は *エイリアス* のペア: `opus` を Fable 5 に差し替えて「Plan 中は Fable
-  5(1M)、実行中は Sonnet 5」にする + `fallbackModel`。
+  Mode は *エイリアス* のペア: `opus` を Fable に差し替えて「Plan 中は Fable
+  (1M)、実行中は Sonnet」にし、`claude-plan-model` で 1 コマンドで Opus へ往復
+  する。モードは実行時状態、具体モデル ID は宣言が `latest_per_family` から毎回
+  引き直す(pin ゼロ)。`fallbackModel` は Usage limit では発火しない。
 - [`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) — Herdr
   sidebar: per-agent Claude mode/model/metrics via pane metadata (2-channel:
   hook for permission mode, statusline for model/ctx/cost/effort).
