@@ -172,8 +172,11 @@ dotfiles/
 │   │   │                     #   truth, not an at-filing-time snapshot
 │   │   ├── skill-gardening.md    # skill: crystallize session learnings into this
 │   │   │                     #   repo (meta-skill)
-│   │   └── test-grounding.md     # skill: ground verification items in facts before
-│   │                         #   writing test procedures
+│   │   ├── test-grounding.md     # skill: ground verification items in facts before
+│   │   │                     #   writing test procedures
+│   │   └── scope-inventory.md    # global CLAUDE.md rule + skill: enumerate every
+│   │                         #   requirement item before planning so none is
+│   │                         #   silently dropped; gate: plan-scope-gate.sh
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -240,6 +243,19 @@ dotfiles/
 - `nix.yml` runs `nix flake check` + a per-host activation build matrix.
 - `ci.yml` is a slim shell pass: shellcheck the surviving scripts, `bootstrap.sh`
   + `install-packages.sh` `--dry-run`, and a zsh module syntax check.
+
+### Scope inventory (Claude Code only)
+- A request with multiple items (a Tracking Issue with sub-issues, a bulleted
+  ask) gets a `## 要求インベントリ` (requirement inventory) at the top of its
+  plan: every item, verbatim, with an `Rn` id, before design starts.
+- Every `Rn` gets a disposition: which stage implements it, or one of the
+  closed tags `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:`. Size,
+  effort, or session length are never valid reasons to drop an item.
+  A referenced Issue that isn't an implementation target gets
+  `Reference-Only: #N — <reason>` instead of being silently ignored.
+- This rule is instructions-only for now — no hook checks it yet. Full
+  rationale + how-to: `docs/claude/scope-inventory.md`, skill:
+  `config/claude/skills/scope-inventory/`.
 
 ### Pull request descriptions
 - A coding task is **not done** until the PR exists: commit → push →

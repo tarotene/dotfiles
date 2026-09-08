@@ -161,6 +161,17 @@
 #    失敗する — 知見の永続化は skill-gardening の PR フローに乗せる想定であり、
 #    意図的な設計。詳細は docs/claude/global-claude-md.md。
 #
+# 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節):
+#    Tracking Issue のような複数項目を含む依頼を Plan Mode に投げると、作業スコープ
+#    の増大を気にして依頼された範囲を黙って縮小した計画を返してくることが多い。
+#    global CLAUDE.md に「複数項目の依頼は計画冒頭に要求インベントリ(逐語列挙 +
+#    Rn の ID)を置く」という短い規律を追加し、このスキルがその作り方(gh graphql
+#    での sub-issues 列挙・閉じた棄却タグ Blocked-Upstream/Obsolete/User-Excluded・
+#    参照 Issue を Reference-Only: で書き分ける手順)を持つ。規律そのものの強制は
+#    plan-scope-gate.sh が担う(未実装。追加時にこの索引へ追記する)。当初検討した
+#    「プラン中の縮小マーカーを起点に検査する」設計は、過去プラン 327 本の実測で
+#    誤検知率が高すぎて棄却した。詳細は docs/claude/scope-inventory.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -785,6 +796,12 @@ in
   # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
   home.file.".claude/skills/stacked-pr/SKILL.md".source =
     repoConfig + "/claude/skills/stacked-pr/SKILL.md";
+  # scope-inventory: Tracking Issue 等の複数項目の依頼を計画に起こすとき、子タスク
+  # を黙って落とさせないための要求インベントリの作り方(gh graphql での sub-issues
+  # 列挙、閉じた棄却タグ、Reference-Only: での参照 Issue の書き分け)。強制は
+  # plan-scope-gate.sh(段2)が担う。詳細は docs/claude/scope-inventory.md。
+  home.file.".claude/skills/scope-inventory/SKILL.md".source =
+    repoConfig + "/claude/skills/scope-inventory/SKILL.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
