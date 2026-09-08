@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# claude-plan-model — switch the model behind Opus Plan Mode's *plan* side
+# between Fable and Opus, in one command.
+#
+# `model: "opusplan"` is a *pair of aliases*: the plan side resolves the `opus`
+# alias, the execution side the `sonnet` alias. Which concrete model each alias
+# resolves to is declared separately, via ANTHROPIC_DEFAULT_<FAMILY>_MODEL in
+# ~/.claude/settings.json's `env`. Overriding the opus alias is therefore the
+# only way to put Fable on the plan side — and it is also why this command
+# exists: once that override is in place, `/model opus` no longer reaches Opus,
+# so there is no in-band way back when Fable's own rate limit runs out.
+#
+# `fallbackModel` does not cover that case. It fires on model_not_found /
+# permission_denied / server_error / overload only; "Usage limit reached" takes
+# a different path (wait for the window to reset). The switch has to be manual.
+#
+# Two things own state here, deliberately split:
+#
+#   mode (fable | opus)  — runtime state, owned by this command. `hms` never
+#                          overwrites it, the same way it never touches `.model`.
+#   concrete model IDs   — owned by the declaration: re-resolved on every run
+#                          from the installed claude binary's baked catalog
+#                          (`latest_per_family`). Nothing is pinned, so a new
+#                          model generation is picked up without editing Nix.
+#
+# Alias strings cannot be used as the env value: the value is passed through
+# unchanged and the API rejects `fable` with `unrecognized_model`. Concrete IDs
+# are mandatory, which is exactly what makes the catalog lookup necessary.
+#
+# Opus mode is represented by *writing* the concrete Opus ID, not by deleting
+# the key. An absent key has to keep meaning "never initialised" — otherwise
+# `sync` could not tell a fresh machine from a deliberate Opus mode, and every
+# `hms` would silently drag you back to Fable while its limit is still exhausted.
+#
+# Full rationale: docs/claude/opusplan-model-aliases.md
+
+prog=claude-plan-model
+settings="${CLAUDE_PLAN_MODEL_SETTINGS:-$HOME/.claude/settings.json}"
+
+usage() {
+    cat <<EOF
+Usage: ${prog} [fable|opus|status|sync]
+
+Switch the model behind Opus Plan Mode's plan side.
+
+  ${prog}          toggle between Fable and Opus
+  ${prog} fable    select Fable explicitly (idempotent)
+  ${prog} opus     select Opus explicitly (idempotent)
+  ${prog} status   report the current mode without changing anything
+  ${prog} sync     keep the current mode, refresh the concrete model IDs
+                   (run from home-manager activation)
+EOF
+}
+
+warn() { printf '%s: %s\n' "$prog" "$*" >&2; }
+say() { printf '%s: %s\n' "$prog" "$*"; }
+
+# The catalog is baked into the installed binary as
+#   latest_per_family:{fable:"claude-fable-5-1",opus:"claude-opus-5",...}
+# An empty `latest_per_family:{}` also appears, so the pattern requires at least
+# one character inside the braces. Reading the binary directly (rather than via
+# `strings`) keeps this free of a binutils dependency and costs ~50ms.
+read_catalog() {
+    local bin
+    bin="$(command -v claude 2>/dev/null)" || return 1
+    bin="$(readlink -f "$bin")" || return 1
+    [ -f "$bin" ] || return 1
+    LC_ALL=C grep -aom1 'latest_per_family:{[^}]\+}' "$bin"
+}
+
+catalog_field() {
+    # $1: catalog text, $2: family key
+    sed -n "s/.*[{,]$2:\"\([^\"]*\)\".*/\1/p" <<<"$1"
+}
+
+ensure_settings() {
+    if [ ! -f "$settings" ]; then
+        mkdir -p "$(dirname "$settings")"
+        printf '{}\n' >"$settings"
+    fi
+}
+
+current_env_model() {
+    jq -r '.env.ANTHROPIC_DEFAULT_OPUS_MODEL // empty' "$settings"
+}
+
+# uninit  — key absent; effectively Opus (the alias falls through to the
+#           catalog default), but not something this command wrote
+# fable   — plan side is Fable
+# opus    — plan side is Opus
+# unknown — someone put a model this command does not recognise; never
+#           overwritten, only reported
+mode_of() {
+    case "$1" in
+    "") echo uninit ;;
+    claude-fable-*) echo fable ;;
+    claude-opus-*) echo opus ;;
+    *) echo unknown ;;
+    esac
+}
+
+# Warn when the whole construction is inert. It only does anything while
+# `.model` is "opusplan": that is the one setting that splits plan from
+# execution. `.model` is switched by hand with /model, so this reports and
+# never repairs.
+check_model_key() {
+    local model
+    model="$(jq -r '.model // empty' "$settings")"
+    case "$model" in
+    opusplan | 'opusplan[1m]') return 0 ;;
+    "")
+        warn "settings has no .model; this switch only has an effect while .model is \"opusplan\"."
+        warn "  select it with \`/model opusplan\`."
+        ;;
+    *)
+        warn "settings .model is \"${model}\", not \"opusplan\" — this switch is inert right now."
+        warn "  the plan/execution split only exists under \"opusplan\"; select it with \`/model opusplan\`."
+        ;;
+    esac
+}
+
+# Write both halves of a mode in a single jq pass and a single mktemp+mv, so the
+# window for a lost update against Claude Code itself (or herdr-agent-state.sh)
+# is not reopened per key (#61).
+#
+# fallbackModel only makes sense in Fable mode. In Opus mode the plan side *is*
+# Opus, and Claude Code rejects a fallback equal to the main model
+# ("Fallback model cannot be the same as the main model."), so the key is
+# removed rather than repointed at Sonnet — falling further down from an already
+# degraded plan model is not a trade worth making silently.
+apply_mode() {
+    local mode="$1" fable_id="$2" opus_id="$3"
+    local model_id fallback tmp
+
+    case "$mode" in
+    fable)
+        model_id="$fable_id"
+        fallback="[\"${opus_id}\"]"
+        ;;
+    opus)
+        model_id="$opus_id"
+        fallback="[]"
+        ;;
+    *)
+        warn "internal error: unknown mode ${mode}"
+        return 1
+        ;;
+    esac
+
+    tmp="$(mktemp "${settings}.hm.XXXXXX")"
+    jq --arg m "$model_id" --argjson fb "$fallback" '
+      .env.ANTHROPIC_DEFAULT_OPUS_MODEL = $m
+      | if ($fb | length) > 0 then .fallbackModel = $fb else del(.fallbackModel) end
+    ' "$settings" >"$tmp"
+
+    # Steady state must not touch the file at all (not even its mtime).
+    if jq -e -s '.[0] == .[1]' "$settings" "$tmp" >/dev/null; then
+        rm -f "$tmp"
+        return 1
+    fi
+
+    chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+    mv "$tmp" "$settings"
+    return 0
+}
+
+# The env is materialised into the process environment when claude starts, so a
+# switch never reaches a session that is already running. Say so every time
+# rather than leaving a silent no-op.
+report_reach() {
+    local target_id="$1"
+    say "this takes effect in newly started sessions only."
+    say "  running session: restart with \`claude --continue\`, or use \`/model ${target_id}\`"
+}
+
+action="${1-}"
+case "$action" in
+-h | --help | help)
+    usage
+    exit 0
+    ;;
+"" | fable | opus | status | sync) ;;
+*)
+    warn "unknown argument: ${action}"
+    usage >&2
+    exit 1
+    ;;
+esac
+
+ensure_settings
+
+catalog=""
+if ! catalog="$(read_catalog)" || [ -z "$catalog" ]; then
+    # No claude, or a binary this pattern no longer matches. Leave settings.json
+    # exactly as it is: an env var for a program that is not installed is
+    # harmless, and a half-written model config is not.
+    warn "could not read the model catalog from the installed claude binary; leaving settings.json unchanged."
+    if [ "$action" = sync ]; then exit 0; fi
+    exit 1
+fi
+
+fable_id="$(catalog_field "$catalog" fable)"
+opus_id="$(catalog_field "$catalog" opus)"
+if [ -z "$fable_id" ] || [ -z "$opus_id" ]; then
+    warn "model catalog is missing a fable/opus entry; leaving settings.json unchanged."
+    if [ "$action" = sync ]; then exit 0; fi
+    exit 1
+fi
+
+cur="$(current_env_model)"
+mode="$(mode_of "$cur")"
+
+case "$action" in
+status)
+    case "$mode" in
+    uninit) say "mode: opus (uninitialised — the opus alias falls through to the catalog default)" ;;
+    unknown) say "mode: unknown (.env.ANTHROPIC_DEFAULT_OPUS_MODEL = ${cur})" ;;
+    *) say "mode: ${mode} (.env.ANTHROPIC_DEFAULT_OPUS_MODEL = ${cur})" ;;
+    esac
+    say "fallbackModel: $(jq -c '.fallbackModel // "none"' "$settings")"
+    say "latest known to this claude: fable=${fable_id} opus=${opus_id}"
+    check_model_key
+    exit 0
+    ;;
+sync)
+    case "$mode" in
+    unknown)
+        warn ".env.ANTHROPIC_DEFAULT_OPUS_MODEL is \"${cur}\", which this command does not manage; left untouched."
+        exit 0
+        ;;
+    uninit) target=fable ;;
+    *) target="$mode" ;;
+    esac
+    if apply_mode "$target" "$fable_id" "$opus_id"; then
+        say "mode ${target}: model config updated ($(current_env_model))"
+    fi
+    exit 0
+    ;;
+fable | opus)
+    target="$action"
+    ;;
+"")
+    case "$mode" in
+    fable) target=opus ;;
+    opus | uninit) target=fable ;;
+    unknown)
+        warn ".env.ANTHROPIC_DEFAULT_OPUS_MODEL is \"${cur}\", which this command does not manage."
+        warn "  refusing to guess a direction; pick one explicitly: \`${prog} fable\` or \`${prog} opus\`."
+        exit 1
+        ;;
+    esac
+    ;;
+esac
+
+from="$mode"
+if [ "$from" = uninit ]; then from="opus (uninitialised)"; fi
+
+if apply_mode "$target" "$fable_id" "$opus_id"; then
+    say "${from} -> ${target} ($(current_env_model))"
+else
+    say "already ${target} ($(current_env_model))"
+fi
+report_reach "$(current_env_model)"
+check_model_key

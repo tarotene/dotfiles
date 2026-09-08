@@ -84,7 +84,8 @@ dotfiles/
 ├── scripts/                  # mix of home-manager-deployed user-environment tools
 │   │                         #   (hms, sops-secrets-env, git-shelve/unshelve,
 │   │                         #   git-prune-branches, git-audit/prune-worktrees,
-│   │                         #   git-worktree-create-guard) and true escape-hatch /
+│   │                         #   git-worktree-create-guard, claude-plan-model)
+│   │                         #   and true escape-hatch /
 │   │                         #   diagnostic scripts (install-packages,
 │   │                         #   install-falcon-sensor, fix-ssh-permissions,
 │   │                         #   setup-sops-secrets) — not escape-hatch-only
@@ -110,6 +111,12 @@ dotfiles/
 │   │                         #   (deployed to ~/.local/bin + a systemd user timer)
 │   ├── git-prune-worktrees    # removes orphaned worktree checkouts
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
+│   ├── claude-plan-model      # toggles Opus Plan Mode's plan-side model between
+│   │                         #   Fable and Opus, and re-resolves the concrete
+│   │                         #   model IDs from the installed claude binary's
+│   │                         #   baked catalog (deployed to ~/.local/bin; the
+│   │                         #   `sync` subcommand runs from home-manager
+│   │                         #   activation)
 │   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
 │   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
 │   ├── register-codex-hooks   # activation-only (writeShellScript, not a
@@ -151,7 +158,9 @@ dotfiles/
 │   │   │                     #   branch+model only; tab-bar usage deferred, #117)
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
-│   │   │                     #   Fable 5 に差し替え、Plan 中だけ別モデルにする
+│   │   │                     #   Fable に差し替えて Plan 中だけ別モデルにし、
+│   │   │                     #   claude-plan-model で 1 コマンドで往復する
+│   │   │                     #   (モード=実行時状態 / 具体 ID=宣言が毎回引き直し)
 │   │   ├── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
 │   │   │                     #   burn-rate prediction, from the undocumented /usage API
 │   │   ├── global-claude-md.md   # global ~/.claude/CLAUDE.md: injects research
