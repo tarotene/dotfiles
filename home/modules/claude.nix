@@ -94,12 +94,13 @@
 # 11) Opus Plan Mode のモデル実体(scripts/claude-plan-model + settings.json):
 #    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
 #    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
-#    settings.json の env で別に宣言できる。opus エイリアスを Fable に差し替えると
-#    「Plan 中は Fable、実行中は Sonnet」になるが、その瞬間 `/model opus` も Fable に
-#    なるため、Fable 固有のリミットが枯れたときに戻る道が塞がる(fallbackModel は
-#    overload 系にしか効かず、Usage limit では発火しない)。そこで
-#    `claude-plan-model` を 1 コマンドの往復路として置く。
-#    「今どちらのモードか」は本人が倒す実行時状態としてスクリプトが所有し、
+#    settings.json の env で別に宣言できる。したがってモードは常に
+#    (Plan 側, 実行側) のペアで、3 つある: fable/sonnet(既定)・opus/sonnet・
+#    fable/opus。opus エイリアスを Fable に差し替えるとその瞬間 `/model opus` も
+#    Fable になるため、Fable 固有のリミットが枯れたときに戻る道が塞がる
+#    (fallbackModel は overload 系にしか効かず、Usage limit では発火しない)。
+#    そこで `claude-plan-model` を 1 コマンドの巡回路として置く。
+#    「今どのモードか」は本人が倒す実行時状態としてスクリプトが所有し、
 #    home-manager は上書きしない(model キーを触らないのと同じ理由)。逆に
 #    「そのモードの具体モデル ID」は宣言側の責務で、activation の `sync` が
 #    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
@@ -220,9 +221,9 @@ let
   # Opus Plan Mode のモデル実体 — 具体値は scripts/claude-plan-model が持つ。
   #
   # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
-  # 解決する。opus エイリアスの解決先は settings.json の
-  # `.env.ANTHROPIC_DEFAULT_OPUS_MODEL` で乗っ取れるので、そこに Fable を置けば
-  # 「Plan 中は Fable、実行中は Sonnet」になる。
+  # 解決する。各エイリアスの解決先は settings.json の
+  # `.env.ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL` で乗っ取れるので、モードは
+  # (Plan 側, 実行側) のペアになる — fable/sonnet(既定)・opus/sonnet・fable/opus。
   #
   # ここに具体モデル ID を書かないのは、書くと必ず腐るから。エイリアス文字列
   # (`fable`)は env の値として使えず(API が unrecognized_model で拒否する)、
@@ -230,7 +231,7 @@ let
   # claude 2.1.263 の時点で既に 1 世代遅れていた。代わりに、どちらのモードかだけを
   # settings.json に残し、その具体 ID は claude バイナリに焼かれた
   # `latest_per_family` から毎回引き直す。宣言(activation)が持つのは「引き直す
-  # 規則」であって、「今どちらのモードか」ではない — モードは Fable のリミットが
+  # 規則」であって、「今どのモードか」ではない — モードは Fable のリミットが
   # 枯れたときに本人が倒す実行時状態で、`.model` を宣言で固定しないのと同じ理由で
   # home-manager は上書きしない。
   #

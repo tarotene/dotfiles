@@ -183,6 +183,16 @@ jobs:
       - name: sign-prewarm.sh --selftest
         run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
 
+      # A mode here is a *pair* (plan side / execution side), so the interesting
+      # failures are combinations: a transition that leaves the other half
+      # behind, a .model guard that fires after the write (which is how an
+      # "inert" switch silently rewrote every request), a `sync` that drags a
+      # deliberate mode back to the default. The catalog is stubbed so the test
+      # does not depend on which claude is installed
+      # (docs/claude/opusplan-model-aliases.md).
+      - name: claude-plan-model --selftest
+        run: ./scripts/claude-plan-model --selftest
+
       # A deleted checkout must be detected without deleting its branch; hook
       # registration must remain idempotent beside Herdr's own Codex hook.
       - name: Worktree lifecycle self-tests
