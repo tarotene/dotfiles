@@ -111,12 +111,13 @@ dotfiles/
 │   │                         #   (deployed to ~/.local/bin + a systemd user timer)
 │   ├── git-prune-worktrees    # removes orphaned worktree checkouts
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
-│   ├── claude-plan-model      # toggles Opus Plan Mode's plan-side model between
-│   │                         #   Fable and Opus, and re-resolves the concrete
+│   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
+│   │                         #   side) pair — fable/sonnet, opus/sonnet,
+│   │                         #   fable/opus — and re-resolves the concrete
 │   │                         #   model IDs from the installed claude binary's
 │   │                         #   baked catalog (deployed to ~/.local/bin; the
 │   │                         #   `sync` subcommand runs from home-manager
-│   │                         #   activation)
+│   │                         #   activation, `--selftest` from CI)
 │   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
 │   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
 │   ├── register-codex-hooks   # activation-only (writeShellScript, not a
@@ -157,9 +158,10 @@ dotfiles/
 │   │   │                     #   via pane metadata (Claude full, Codex/Copilot
 │   │   │                     #   branch+model only; tab-bar usage deferred, #117)
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
-│   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア: opus を
-│   │   │                     #   Fable に差し替えて Plan 中だけ別モデルにし、
-│   │   │                     #   claude-plan-model で 1 コマンドで往復する
+│   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア:
+│   │   │                     #   opus/sonnet の 2 本を乗っ取り、モードを
+│   │   │                     #   (Plan 側, 実行側) のペア 3 種として
+│   │   │                     #   claude-plan-model で巡回する
 │   │   │                     #   (モード=実行時状態 / 具体 ID=宣言が毎回引き直し)
 │   │   ├── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
 │   │   │                     #   burn-rate prediction, from the undocumented /usage API
