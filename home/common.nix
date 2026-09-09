@@ -15,6 +15,7 @@
     ./modules/packages.nix
     ./modules/desktop.nix
     ./modules/runtimes.nix
+    ./modules/hm-warnings.nix
   ];
 
   programs.home-manager.enable = true;
