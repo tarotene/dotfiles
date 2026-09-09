@@ -211,6 +211,7 @@ let
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
+  publicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
@@ -371,6 +372,7 @@ let
     pr_gate_stop="$1";          shift
     git_worktree_allow="$1";    shift
     git_stash_guard="$1";       shift
+    public_publish_guard="$1"; shift
     herdr_metadata="$1";        shift
     worktree_fresh_base="$1";   shift
     worktree_create_guard="$1"; shift
@@ -421,6 +423,13 @@ let
     # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
     register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
+    # public-publish-guard: 会社/private リポジトリの実名が git push・
+    # gh pr/issue の create/edit/comment 経由で PUBLIC な面に漏れるのを防ぐ
+    # (docs/claude/public-publish-guard.md)。git-stash-guard と同じ理由
+    # (deny/ask 側は if 不一致 = 素通りが事故になる)で if を "Bash(*)" まで
+    # 広げ、絞り込みは hook 内部の早期 exit(push/gh の気配が無ければ即 exit 0)
+    # に置く。gh api の生呼び出しの往復も想定してタイムアウトはやや長め。
+    register PreToolUse Bash "$public_publish_guard" 20 "Bash(*)"
     # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
     # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
     # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
@@ -735,6 +744,12 @@ in
     source = repoConfig + "/claude/hooks/git-stash-guard.sh";
     executable = true;
   };
+  # public-publish-guard: 会社/private リポジトリの実名が PUBLIC な面に
+  # 漏れるのを防ぐ PreToolUse hook(docs/claude/public-publish-guard.md)。
+  home.file.".claude/hooks/public-publish-guard.sh" = {
+    source = repoConfig + "/claude/hooks/public-publish-guard.sh";
+    executable = true;
+  };
 
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
@@ -857,6 +872,7 @@ in
       ${lib.escapeShellArg prGateStopCmd} \
       ${lib.escapeShellArg gitWorktreeAllowCmd} \
       ${lib.escapeShellArg gitStashGuardCmd} \
+      ${lib.escapeShellArg publicPublishGuardCmd} \
       ${lib.escapeShellArg herdrMetadataCmd} \
       ${lib.escapeShellArg worktreeFreshBaseCmd} \
       ${lib.escapeShellArg worktreeCreateGuardCmd} \
