@@ -1,0 +1,20 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Non-secret public GPG material (ADR-0003)"
+paths = [
+  '''keys/personal\.pub''',
+  '''keys/company\.pub''',
+]
+
+[[allowlists]]
+description = "GPG [S] subkey fingerprints are public identifiers, not secrets (ADR-0003)"
+# The per-host `programs.git.signing.key` values are 40-hex GPG signing subkey
+# fingerprints — public (also shown on the GitHub profile), non-secret by
+# ADR-0003. gitleaks' generic-api-key rule flags them on entropy alone.
+# Match the whole line (the extracted secret is just the fingerprint).
+regexTarget = "line"
+regexes = [
+  '''programs\.git\.signing\.key = "[A-F0-9]{40}"''',
+]

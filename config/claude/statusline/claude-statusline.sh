@@ -1,0 +1,180 @@
+#!/bin/sh
+# claude-statusline — ペイン内の 1 行表示 + Herdr へのメトリクス横流し。
+#
+# Claude Code の statusline スクリプト。stdin の JSON からリポ名・モデル・
+# context 使用率・セッションコスト・effort を取り、Catppuccin Mocha の 1 行を
+# stdout に出す。表示例: ■ dotfiles · ◆ Fable 5 · ◐ 42% · $1.23 · ↯ high
+# effort は既定値(high)のときは出さない(「非デフォルト時のみ表示」の定石)。
+# 絵文字ではなく幅が安定する Unicode 幾何記号を使う(端末フォント依存の崩れを回避)。
+#
+# 先頭のリポ名(■)は ~17 workspace を並走させたときに「メインペインがどの
+# セッションか」を判別するための識別子。herdr worktree 配下では
+# `--show-toplevel` が worktree-xxx を返してしまうため、`--git-common-dir` の
+# 親ディレクトリ名を使う(通常チェックアウトでも同じ導出で repo 名になる)。
+# git 呼び出しはプロジェクトディレクトリ毎に 1 回だけ行い、statusline の
+# 高頻度実行(ストリーミング中 ~300ms 毎)に合わせて結果をキャッシュする。
+# 狭幅折り畳み(60 桁未満)でもリポ名だけは残す — それが表示の本命。
+#
+# 同じ値を Herdr の pane.report_metadata($model/$ctx/$cost/$effort トークン)にも
+# 報告する — permission mode は statusline JSON に来ないので、そちらは
+# herdr-claude-metadata.sh(hook)が担う 2 チャネル構成。報告は表示をブロック
+# しないよう detach したサブシェルで行い、値が変わらない・前回送信から 2 秒未満の
+# 間は送らない(statusline はストリーミング中 ~300ms 毎に再実行されるため)。
+# Herdr 外では表示だけが動く。詳細は docs/claude/herdr-sidebar-metadata.md。
+
+set -eu
+
+input_file="$(mktemp "${TMPDIR:-/tmp}/claude-statusline.XXXXXX")" || exit 0
+trap 'rm -f "$input_file"' EXIT HUP INT TERM
+cat >"$input_file" 2>/dev/null || true
+
+command -v jq >/dev/null 2>&1 || exit 0
+
+vals="$(jq -r '[
+  (.model.display_name // .model.id // ""),
+  (.context_window.used_percentage // null | if . == null then "" else (round | tostring) end),
+  (.cost.total_cost_usd // null | if . == null then "" else tostring end),
+  (.effort.level // ""),
+  (if .fast_mode == true then "1" else "0" end),
+  (.workspace.project_dir // .workspace.current_dir // .cwd // "")
+] | @tsv' "$input_file" 2>/dev/null)" || exit 0
+tab="$(printf '\t')"
+IFS="$tab" read -r model ctx cost effort fast project_dir <<EOF
+$vals
+EOF
+
+# リポ名(project_dir 毎にキャッシュ)。--show-toplevel は herdr worktree だと
+# worktree-xxx を返すので、--git-common-dir の親ディレクトリ名を使う。
+repo=""
+if [ -n "$project_dir" ]; then
+  repo_cache="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline-repo.$(printf '%s' "$project_dir" | tr -c 'A-Za-z0-9_-' '_')"
+  if [ -f "$repo_cache" ]; then
+    repo="$(cat "$repo_cache" 2>/dev/null)" || repo=""
+  else
+    common_dir="$(cd "$project_dir" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common_dir=""
+    if [ -n "$common_dir" ]; then
+      repo="$(basename "$(dirname "$common_dir")")"
+      printf '%s' "$repo" >"$repo_cache" 2>/dev/null || true
+    fi
+  fi
+fi
+
+esc="$(printf '\033')"
+peach="${esc}[1;38;2;250;179;135m"   # repo       (Catppuccin Mocha peach)
+pink="${esc}[1;38;2;245;194;231m"    # model      (Catppuccin Mocha pink)
+green="${esc}[38;2;166;227;161m"     # ctx < 60%  (green)
+yellow="${esc}[38;2;249;226;175m"    # ctx 60-79% / fast (yellow)
+red="${esc}[38;2;243;139;168m"       # ctx >= 80% (red)
+teal="${esc}[38;2;148;226;213m"      # cost       (teal)
+lavender="${esc}[38;2;180;190;254m"  # effort     (lavender)
+overlay="${esc}[38;2;108;112;134m"   # separators (overlay0)
+reset="${esc}[0m"
+sep=" ${overlay}·${reset} "
+
+ctx_color="$green"
+if [ -n "$ctx" ]; then
+  if [ "$ctx" -ge 80 ]; then
+    ctx_color="$red"
+  elif [ "$ctx" -ge 60 ]; then
+    ctx_color="$yellow"
+  fi
+fi
+
+line=""
+append() {
+  if [ -z "$line" ]; then line="$1"; else line="${line}${sep}$1"; fi
+}
+
+[ -n "$repo" ] && append "■ ${peach}${repo}${reset}"
+[ -n "$model" ] && append "◆ ${pink}${model}${reset}"
+[ -n "$ctx" ] && append "◐ ${ctx_color}${ctx}%${reset}"
+
+# 狭いペインではモデルと context だけに畳む。
+cols="${COLUMNS:-80}"
+case "$cols" in '' | *[!0-9]*) cols=80 ;; esac
+if [ "$cols" -ge 60 ]; then
+  if [ -n "$cost" ]; then
+    cost_fmt="$(LC_ALL=C printf '%.2f' "$cost" 2>/dev/null || printf '%s' "$cost")"
+    append "${teal}\$${cost_fmt}${reset}"
+  fi
+  # effort は既定値(high)のときは出さない — 非デフォルト時のみ表示する定石。
+  if [ -n "$effort" ] && [ "$effort" != "high" ]; then
+    append "↯ ${lavender}${effort}${reset}"
+  fi
+  if [ "$fast" = "1" ]; then
+    append "${yellow}fast${reset}"
+  fi
+fi
+
+printf '%s\n' "$line"
+
+# ---- ここから Herdr への報告(Herdr 外では何もしない) ----
+[ "${HERDR_ENV:-}" = "1" ] || exit 0
+[ -n "${HERDR_SOCKET_PATH:-}" ] || exit 0
+[ -n "${HERDR_PANE_ID:-}" ] || exit 0
+command -v python3 >/dev/null 2>&1 || exit 0
+
+state_file="${XDG_RUNTIME_DIR:-/tmp}/herdr-claude-status.$(printf '%s' "$HERDR_PANE_ID" | tr -c 'A-Za-z0-9_-' '_')"
+cost_token=""
+[ -n "$cost" ] && cost_token="\$$(LC_ALL=C printf '%.2f' "$cost" 2>/dev/null || printf '%s' "$cost")"
+ctx_token=""
+[ -n "$ctx" ] && ctx_token="${ctx}%"
+
+(
+  HCS_MODEL="$model" HCS_CTX="$ctx_token" HCS_COST="$cost_token" HCS_EFFORT="$effort" \
+    HCS_STATE_FILE="$state_file" python3 - <<'PY'
+import json
+import os
+import random
+import socket
+import time
+
+state_file = os.environ["HCS_STATE_FILE"]
+tokens = {
+    "model": os.environ["HCS_MODEL"] or None,
+    "ctx": os.environ["HCS_CTX"] or None,
+    "cost": os.environ["HCS_COST"] or None,
+    "effort": os.environ["HCS_EFFORT"] or None,
+}
+
+fingerprint = json.dumps(tokens, sort_keys=True)
+try:
+    stat = os.stat(state_file)
+    with open(state_file, encoding="utf-8") as handle:
+        previous = handle.read()
+    # 値が同じ、または前回送信から 2 秒未満なら送らない。
+    if previous == fingerprint or time.time() - stat.st_mtime < 2.0:
+        raise SystemExit(0)
+except FileNotFoundError:
+    pass
+
+request = {
+    "id": f"claude-statusline:{int(time.time() * 1000)}:{random.randrange(1_000_000):06d}",
+    "method": "pane.report_metadata",
+    "params": {
+        "pane_id": os.environ["HERDR_PANE_ID"],
+        "source": "claude-statusline",
+        "seq": time.time_ns(),
+        "tokens": tokens,
+        "ttl_ms": 14_400_000,
+    },
+}
+
+try:
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(0.5)
+    client.connect(os.environ["HERDR_SOCKET_PATH"])
+    client.sendall((json.dumps(request) + "\n").encode())
+    try:
+        client.recv(4096)
+    except Exception:
+        pass
+    client.close()
+    with open(state_file, "w", encoding="utf-8") as handle:
+        handle.write(fingerprint)
+except Exception:
+    pass
+PY
+) >/dev/null 2>&1 &
+
+exit 0

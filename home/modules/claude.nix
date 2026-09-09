@@ -1,0 +1,896 @@
+# Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view・
+# sign-prewarm・pr-gate・issue-index を home-manager で配備する。
+#
+# 1) plan-review ゲート(PreToolUse / ExitPlanMode):
+#    GitHub Copilot CLI(read-only custom agent)によるプランの自動レビュー。
+#    gate は acceptance-convergent であり、critic は verdict を出さず、
+#    judge(jq)が決定論的に gate 適格性を判定する。最終ラウンドは closer。
+#    詳細は docs/claude/copilot-plan-review.md(旧 Codex 版の設計経緯も同ファイルに
+#    履歴として残る)。
+#
+# 2) wrap-up inbox(SessionStart + Stop):
+#    スコープ外の気づきの「収集」と「起票」を分離する。SessionStart hook が
+#    additionalContext で「気づきは state 領域の inbox(JSONL)に --add で追記せよ」
+#    と注入し、Stop hook が inbox 非空かつ起票可能(gh あり・git repo・GitHub
+#    remote あり)なら exit 2 + stderr 指示でフルコンテキストの本体 Claude に
+#    gh issue create させる。それ以外は黙って exit 0(ADR-0005 の binary-existence
+#    gating に倣う)。詳細は docs/claude/wrapup-inbox.md。
+#
+# 3) plan-view(PreToolUse / ExitPlanMode + CLI):
+#    プランを pandoc で HTML にして Chrome の専用窓(--app)に飛ばす。LLM は呼ばず、
+#    Markdown を 1:1 で写すだけの表示専用の道具である。plan-review gate と同じ
+#    matcher に別エントリとして並び、並列に走る(= review の結果を待たない)。承認
+#    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
+#    詳細は docs/claude/plan-view.md。
+#
+# 4) sign-prewarm(SessionStart, matcher: startup|resume):
+#    git commit の署名パスフレーズ入力を、ログイン後最初に Claude を開いた安全な
+#    瞬間に前倒しする。home/modules/gpg.nix が gpg-agent の cache TTL を実質無限に
+#    したことで再入力は「ログインに 1 回」まで落ちるが、その 1 回を放置すると
+#    Claude の Bash 呼び出し中に GUI pinentry が grab 付きで出現し、キー入力を
+#    奪ったままコミットが固まる。判定は SessionStart 時の cwd に依存せず、常に
+#    グローバルな git 設定だけを見る。additionalContext は出さない(副作用だけの
+#    hook)。詳細は docs/claude/sign-prewarm.md、脅威モデルの変化は ADR-0003 Amendment 2。
+#
+# 5) pr-gate(SessionStart + Stop):
+#    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
+#    繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」の 4 事故を、
+#    Stop の 1 点だけで hard gate する(base 鮮度・未コミット変更は advisory)。
+#    判定対象は ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリの
+#    み)で、それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読ま
+#    ないこと」— 期待される required check をサーバの ruleset から取り、
+#    `gh pr checks --watch` の exit code ではなく取り直した --json を jq で判定
+#    する。視覚証跡(G_visual)は 12) の pr-description スキルが定める本文スケルト
+#    ンの `## Before / After` 節を検査し、証跡の有無だけを機械強制する(対比の完全
+#    性はスキル側の責務)。詳細は docs/claude/pr-gate.md。
+#
+# 6) issue-index(SessionStart, matcher: startup|resume|compact):
+#    自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)だけを
+#    additionalContext で注入する。本文は渡さない — 深掘りは Claude 自身に
+#    `gh issue view` を叩かせる。データ源は `gh issue list` ではなく GitHub
+#    Search API(`gh api search/issues`): --limit は取得上限であり総数ではない
+#    ので、それで総数を数えると嘘になる。assignee:@me が 0 件なら repo 全体の
+#    open にフォールバックし、他人起票の行にだけ起票者を明記する(タイトルは
+#    untrusted なので制御文字除去 + 120 文字切り詰めもするが、これは防御ではなく
+#    payload 制御に過ぎない)。詳細は docs/claude/issue-index.md。
+#
+# 7) git-worktree-allow(PreToolUse, matcher: Bash, if: "Bash(git -C *)"):
+#    herdr worktree を外から駆動する `git -C <worktree> <サブコマンド>` を検証して
+#    プログラム的に許可する。`Bash(git -C * add *)` のような中間ワイルドカードの
+#    permission rule は、`-C` の位置への任意オプション挿入(--exec-path 等 = 任意
+#    コード実行)を素通しするため Claude Code が毎セッション警告し、しかも中間 `*`
+#    は実際にはマッチしない。hook なら「実在する ~/.herdr/worktrees/ 配下のパス +
+#    許可サブコマンド + 単一 git 呼び出し」を検証してから allow を返せる。
+#    詳細は docs/claude/git-worktree-allow.md。
+#
+# 8) git-stash-guard(PreToolUse, matcher: Bash, if: "Bash(git *)"):
+#    素の `git stash` / `git stash pop` / SHA 無しの apply・drop・裸の push・
+#    clear を deny する。stash スタックはリポジトリ単位で herdr の worktree 間
+#    (=セッション間)で共有されているため、素の stash は他セッションの WIP を
+#    取り違えて pop/apply する事故につながる。git-worktree-allow(allow 側)とは
+#    非対称: allow 側は if 不一致でも安全(単に許可を出さないだけ)だが、この
+#    hook は deny 側なので if 不一致は検査されない素通り = 事故そのものになる。
+#    かつ registerHooks は command 文字列の完全一致でしか存在判定しないため、
+#    同一スクリプトを 2 つの if で二重登録することもできない。よって if は
+#    "Bash(git *)" まで広げ、絞り込みは hook 内部の早期 exit(grep → jq)に移した。
+#    詳細は docs/claude/git-stash-guard.md。
+#
+# 9) herdr-sidebar-metadata(5 イベント + statusLine):
+#    各エージェントの permission mode・モデル・context%・コスト・effort を Herdr
+#    サイドバーに常時表示する。mode は hook input からしか取れず、モデル等は
+#    statusline JSON からしか取れないため 2 チャネル構成になっている。トークン色は
+#    静的指定のみなので、mode の色分けは「モード毎に別トークン + 非アクティブは
+#    null クリア」で表現する。詳細は docs/claude/herdr-sidebar-metadata.md。
+#
+# 10) worktree-fresh-base(SessionStart, matcher: startup|resume):
+#    herdr の Workspace Fork は親チェックアウトの HEAD を fetch なしで使うため、
+#    新しい worktree が古い base から生まれることがある。まだ何も積んでいない
+#    pristine な worktree(作業ツリークリーン かつ ahead==0 かつ behind>0)に限り、
+#    fetch 後に `git merge --ff-only` で origin/<base> へ黙って揃える。履行歴を
+#    持つブランチは動かさない — 既存 pr-gate.sh の base 追従 advisory とは非対称に
+#    「本当に何もない」ケースだけを能動的に解消する。詳細は
+#    docs/claude/worktree-fresh-base.md。
+#
+# 11) Opus Plan Mode のモデル実体(scripts/claude-plan-model + settings.json):
+#    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
+#    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
+#    settings.json の env で別に宣言できる。したがってモードは常に
+#    (Plan 側, 実行側) のペアで、3 つある: fable/sonnet(既定)・opus/sonnet・
+#    fable/opus。opus エイリアスを Fable に差し替えるとその瞬間 `/model opus` も
+#    Fable になるため、Fable 固有のリミットが枯れたときに戻る道が塞がる
+#    (fallbackModel は overload 系にしか効かず、Usage limit では発火しない)。
+#    そこで `claude-plan-model` を 1 コマンドの巡回路として置く。
+#    「今どのモードか」は本人が倒す実行時状態としてスクリプトが所有し、
+#    home-manager は上書きしない(model キーを触らないのと同じ理由)。逆に
+#    「そのモードの具体モデル ID」は宣言側の責務で、activation の `sync` が
+#    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
+#    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
+#
+# 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
+#     wrapup-chores, copilot-model-bump, issue-hygiene, tracking-issue, stacked-pr):
+#    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
+#    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
+#    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
+#    含める等)を持つ。skill-gardening はこの知見をどう dotfiles(公開)に固定化
+#    するかのメタスキルで、公開リポジトリ向けサニタイズ規則の正本を持つ。
+#    living-description は Issue/PR の本文(Description)を「起票時点のスナップ
+#    ショット」ではなく「現在の合意状態を表す正本」として扱い、コメントで裁定が
+#    確定した時点で本文を編集し続ける習慣(複数の関連Issueに仕様が重複している
+#    場合は横断的に同期する)。pr-description は PR 本文の標準スケルトン(課題・
+#    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
+#    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
+#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。wrapup-chores
+#    は 2) の wrap-up inbox のうち判断を要さない軽微な項目(未起票の inbox 行 +
+#    起票済みの wrapup 由来 open Issue)をまとめて triage し、1 回の確認後に 1 つの
+#    chores PR で一括対処する習慣 — hook 自体には手を入れず、削除は既存の
+#    `--mark-filed` 経由のみを使う。copilot-model-bump は外部 AI CLI(Copilot CLI 等)
+#    に固定 pin した具体モデル ID を、ベンダー側の GA・廃止サイクルに追従して更新する
+#    定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。issue-hygiene
+#    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
+#    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
+#    未更新のまま open で残る「腐った tracking Issue」を清算する定期衛生管理の手順
+#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。tracking-issue
+#    は issue-hygiene から「書く/更新する」側を分離したスキルで、親 Issue を起票・
+#    更新するときの本文スケルトン(目的/スコープ・完了定義・傘の外への依存・
+#    スコープ外 + 維持義務の一文)・禁止事項(子 Issue へのチェックボックス参照・
+#    期日の本文への記載・親を議論の場にすること)・`tracking` ラベルによる
+#    findability を持つ。issue-hygiene は事後の衛生管理(clean up)、tracking-issue
+#    は起票・更新時の書式(write)に責務を分ける。stacked-pr は
+#    PR 同士に依存関係がある(先行 PR の成果物を後続が参照する、または同一ファイルの
+#    同じ節を逐次編集する)ときに main 起点で並行させず base を親ブランチにした
+#    stacked PR として積む手順 — 判定条件・分割の設計原則・rebase.updateRefs による
+#    追従・Issue リンクの書き分け・GitHub ネイティブ stack 機能(`gh stack link`)の
+#    使い方を持つ。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに
+#    注意。hook のような settings.json 登録は不要(スキルは ~/.claude/skills/ を
+#    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
+#    docs/claude/diagramming.md、docs/claude/skill-gardening.md、
+#    docs/claude/living-description.md、docs/claude/pr-description.md、
+#    docs/claude/wrapup-chores.md、docs/claude/copilot-model-bump.md、
+#    docs/claude/issue-hygiene.md、docs/claude/tracking-issue.md、
+#    docs/claude/stacked-pr.md
+#    (腐る事実は docs/stacked-pr-github-native.md に切り出す、ADR-0008)。
+#
+# 13) claude-usage(herdr の tab_bar_right command、hook ではない):
+#    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
+#    のタブバー右端に常時表示する。データ源は statusline / hooks の入力 JSON には
+#    無い唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
+#    hook 登録はしない — herdr が interval 実行して標準出力の最終行を描画する。
+#    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
+#    詳細は docs/claude/claude-usage.md。
+#
+# 14) グローバル ~/.claude/CLAUDE.md(全セッション常時コンテキスト):
+#    「検証可能な不確実性が現れたら情報源(Slack/Drive/GitHub/公式ドキュメント/
+#    文献)を参照するか明示的に判断せよ」「発明する前に先行例を確認せよ」という
+#    調査規律だけを持つ単一目的ファイル。hook 注入(issue-index 方式)は動的生成が
+#    要らない静的方針には過剰、スキルは呼び出し起点が要るため常時適用の方針には
+#    不向きなので、CLAUDE.md 自体を home.file で配備する。store symlink による
+#    read-only 配布なので、セッション中の `#` メモ追記ショートカットは書き込み
+#    失敗する — 知見の永続化は skill-gardening の PR フローに乗せる想定であり、
+#    意図的な設計。詳細は docs/claude/global-claude-md.md。
+#
+# 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節)+ plan-scope-gate
+#     (PreToolUse / ExitPlanMode):
+#    Tracking Issue のような複数項目を含む依頼を Plan Mode に投げると、作業スコープ
+#    の増大を気にして依頼された範囲を黙って縮小した計画を返してくることが多い。
+#    global CLAUDE.md に「複数項目の依頼は計画冒頭に要求インベントリ(逐語列挙 +
+#    Rn の ID)を置く」という短い規律を追加し、scope-inventory スキルがその作り方
+#    (gh graphql での sub-issues 列挙・閉じた棄却タグ Blocked-Upstream/Obsolete/
+#    User-Excluded・参照 Issue を Reference-Only: で書き分ける手順)を持つ。
+#    plan-scope-gate.sh は指示文だけでは足りない部分(BAITBENCH: 明示的に禁止しても
+#    ショートカット使用率は平均50%超)を機械検査で塞ぐ — LLM を呼ばず、jq/grep/gh
+#    だけで判定する純粋な judge。plan-review / plan-view と同じ matcher に 3 つ目の
+#    エントリとして並ぶ。経路A(ユーザー発言から参照 Issue を抽出し、子 sub-issues
+#    のカバレッジを検査)と経路B(`## 要求インベントリ` 節内の処分の整合性を検査)の
+#    2本立て。当初検討した「プラン中の縮小マーカーを起点に検査する」設計は、過去
+#    プラン327本の実測で誤検知率が高すぎて棄却した。詳細は docs/claude/scope-inventory.md。
+#
+# Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
+# スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
+# 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
+#
+# ~/.claude/settings.json は Claude-Code-owned(CLI が実行時に書き換える)なので、
+# hook の登録だけは store symlink にできない — desktop.nix の fcitx5 プロファイルと
+# 同じ制約。代わりに activation 時に冪等マージする: 同一 command を持つエントリが
+# 該当イベント配下に無いときだけ注入し、それ以外は一切触らない。
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  repoConfig = ../../config;
+  hooksDir = "${config.home.homeDirectory}/.claude/hooks";
+  planReviewCmd = "bash '${hooksDir}/copilot-plan-review.sh'";
+  wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
+  wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
+  planViewCmd = "bash '${hooksDir}/plan-view.sh'";
+  issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
+  signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
+  prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
+  prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
+  gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
+  gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
+  herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
+  statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
+  worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
+  worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
+  worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
+  planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
+  # 旧 Codex 版の plan-review hook command。中身(--search exec --output-schema
+  # 等)ごと copilot-plan-review.sh に置き換えたので、activation が settings.json
+  # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
+  legacyCodexPlanReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
+
+  # かつて登録したが撤回した hook。activation が全ホストの settings.json から
+  # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
+  # スクリプトを home.file から外すと settings.json のエントリだけが残り、消えた
+  # パスを指したまま毎イベントで ENOENT を吐き続けた(#44 の実体 — herdr のリネーム
+  # ではなく自リポジトリ由来。herdr が settings.json に書くのは
+  # integration::claude_settings::rewrite による .hooks.SessionStart の
+  # herdr-agent-state.sh だけで、statusLine にも他イベントにも触れない)。
+  retiredHookEntries = [
+    # 旧イテレーションは PostToolUse に herdr-claude-metadata.sh を登録していた。
+    # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
+    {
+      event = "PostToolUse";
+      command = herdrMetadataCmd;
+    }
+    # Codex → Copilot 移行(docs/claude/copilot-plan-review.md)。旧 command 文字列を
+    # PreToolUse/ExitPlanMode から完全一致削除してから、新 planReviewCmd を登録する。
+    {
+      event = "PreToolUse";
+      command = legacyCodexPlanReviewCmd;
+    }
+  ];
+
+  # かつて配って撤回した statusLine。syncStatusLine が .statusLine.command との
+  # 完全一致でキーを削除する対象。今回は herdr-sidebar-metadata を新規導入するので
+  # 空 — 将来この機能自体を取り下げるときに statusLineCmd をここへ移す。
+  retiredStatusLineCommands = [ ];
+
+  # Opus Plan Mode のモデル実体 — 具体値は scripts/claude-plan-model が持つ。
+  #
+  # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
+  # 解決する。各エイリアスの解決先は settings.json の
+  # `.env.ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL` で乗っ取れるので、モードは
+  # (Plan 側, 実行側) のペアになる — fable/sonnet(既定)・opus/sonnet・fable/opus。
+  #
+  # ここに具体モデル ID を書かないのは、書くと必ず腐るから。エイリアス文字列
+  # (`fable`)は env の値として使えず(API が unrecognized_model で拒否する)、
+  # 具体 ID は世代が上がるたびに手で追う必要がある — 実際 `claude-fable-5` の pin は
+  # claude 2.1.263 の時点で既に 1 世代遅れていた。代わりに、どちらのモードかだけを
+  # settings.json に残し、その具体 ID は claude バイナリに焼かれた
+  # `latest_per_family` から毎回引き直す。宣言(activation)が持つのは「引き直す
+  # 規則」であって、「今どのモードか」ではない — モードは Fable のリミットが
+  # 枯れたときに本人が倒す実行時状態で、`.model` を宣言で固定しないのと同じ理由で
+  # home-manager は上書きしない。
+  #
+  # 詳細は docs/claude/opusplan-model-aliases.md。
+  planModelScript = ../../scripts/claude-plan-model;
+
+  # activation の PATH には jq も ~/.local/bin(claude 本体の置き場。自己更新する
+  # ので nix 管理外)も載っていない。sync はその両方を読むので明示的に足す。
+  planModelSyncPath = lib.makeBinPath [
+    pkgs.jq
+    pkgs.coreutils
+    pkgs.gnugrep
+    pkgs.gnused
+  ];
+
+  registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
+    set -eu
+    settings="$1"
+    shift
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    # tmp は settings.json と同じディレクトリに作る。mktemp の既定($TMPDIR か
+    # /tmp)は $HOME と別 fs になり得て、その場合 mv は rename(2) ではなく
+    # copy+unlink に落ちる(非原子的で、途中で落ちれば settings.json が壊れる)。
+    # mode も mktemp の 0600 決め打ちではなく元ファイルに合わせる。
+    write_back() {
+      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
+      mv "$1" "$settings"
+    }
+
+    # retire <event> <cmd>: そのイベント配下から command 完全一致のハンドラだけを
+    # 外す。空になった matcher グループとイベントキーも畳む。該当ゼロなら読むだけで
+    # 書かない(定常状態では settings.json に触らない)。他ツールのエントリ(herdr の
+    # herdr-agent-state.sh、ローカルの public-publish-guard.sh / pr-body-guard.sh)は
+    # command が一致しない限り触れない。
+    retire() {
+      event="$1" cmd="$2"
+      if ! "$jq" -e --arg event "$event" --arg cmd "$cmd" \
+          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
+          "$settings" >/dev/null; then
+        return 0
+      fi
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      "$jq" --arg event "$event" --arg cmd "$cmd" '
+        .hooks[$event] = ( (.hooks[$event] // [])
+          | map( if any(.hooks[]?; .command == $cmd)
+                 then (.hooks |= map(select(.command != $cmd)))
+                 else . end )
+          | map(select((.hooks? == null) or ((.hooks | length) > 0))) )
+        | (if ((.hooks[$event] // []) | length) == 0 then del(.hooks[$event]) else . end)
+      ' "$settings" > "$tmp"
+      write_back "$tmp"
+    }
+
+    # register <event> <matcher> <cmd> <timeout> [<if>]
+    #   matcher / timeout / if は空文字(または省略)ならフィールド自体を出力しない。
+    #   if はハンドラレベルの絞り込み(permission rule 構文、例: "Bash(git -C *)")で、
+    #   マッチしない呼び出しでは hook プロセス自体が spawn されない。
+    #   存在判定は command の一致だけで足りる(hook のパスがエントリを一意に定める)。
+    register() {
+      event="$1" matcher="$2" cmd="$3" timeout="$4" if_rule="''${5-}"
+      if "$jq" -e --arg event "$event" --arg cmd "$cmd" \
+          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
+          "$settings" >/dev/null; then
+        return 0
+      fi
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      "$jq" --arg event "$event" --arg matcher "$matcher" \
+            --arg cmd "$cmd" --arg timeout "$timeout" --arg ifrule "$if_rule" '
+        .hooks[$event] = ((.hooks[$event] // []) + [
+          (if $matcher == "" then {} else { matcher: $matcher } end)
+          + { hooks: [
+              { type: "command", command: $cmd }
+              + (if $ifrule == "" then {} else { "if": $ifrule } end)
+              + (if $timeout == "" then {} else { timeout: ($timeout | tonumber) } end)
+            ] }
+        ])' "$settings" > "$tmp"
+      write_back "$tmp"
+    }
+
+    if [ "''${1-}" = "--retire" ]; then
+      shift
+      while [ "$#" -gt 0 ] && [ "$1" != "--register" ]; do
+        retire "$1" "$2"
+        shift 2
+      done
+    fi
+    if [ "''${1-}" != "--register" ]; then
+      echo "register-claude-hooks: --register が必要" >&2
+      exit 1
+    fi
+    shift
+
+    plan_review="$1";           shift
+    wrapup_stop="$1";           shift
+    wrapup_session_start="$1";  shift
+    plan_view="$1";             shift
+    issue_index="$1";           shift
+    sign_prewarm="$1";          shift
+    pr_gate_session_start="$1"; shift
+    pr_gate_stop="$1";          shift
+    git_worktree_allow="$1";    shift
+    git_stash_guard="$1";       shift
+    herdr_metadata="$1";        shift
+    worktree_fresh_base="$1";   shift
+    worktree_create_guard="$1"; shift
+    worktree_audit_context="$1"; shift
+    plan_scope_gate="$1";        shift
+
+    register PreToolUse ExitPlanMode "$plan_review" 300
+    register Stop "" "$wrapup_stop" ""
+    register SessionStart "" "$wrapup_session_start" ""
+    # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
+    # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
+    # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
+    # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
+    register PreToolUse ExitPlanMode "$plan_view" 15
+    # plan-scope-gate も同じ matcher に 3 つ目のエントリとして並ぶ。gh api graphql
+    # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
+    register PreToolUse ExitPlanMode "$plan_scope_gate" 20
+    # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
+    # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
+    # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
+    # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
+    # 引き継ぐので不要。
+    register SessionStart "startup|resume|compact" "$issue_index" 10
+    # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
+    # キャッシュはすでに温まっているか、そもそもまだ温まっていないかのどちらか
+    # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
+    # ない。resume は別ログインからの再開があり得るので含める。
+    register SessionStart "startup|resume" "$sign_prewarm" 120
+    # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
+    # fast-forward する。pr-gate の SessionStart advisory(base 追従)より先に
+    # 列挙しているが、Claude Code は同一イベントの hook を並列実行するため
+    # 逐次を保証しない — レースは許容し、動かした場合だけこの hook 自身が
+    # additionalContext で報告する(docs/claude/worktree-fresh-base.md)。
+    register SessionStart "startup|resume" "$worktree_fresh_base" 30
+    # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
+    # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
+    # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
+    # するので、matcher/timeout を後から変えても既存エントリは更新されない —
+    # docs/claude/issue-index.md。だから timeout は最初から余裕を持たせておく)。
+    register SessionStart "" "$pr_gate_session_start" 10
+    register Stop "" "$pr_gate_stop" 600
+    # git-worktree-allow: if で "Bash(git -C *)" に絞る — それ以外の Bash 呼び出しでは
+    # hook プロセス自体が起動しない。判定はすべて hook 側(パス実在・許可サブコマンド・
+    # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
+    # フォールスルーする。
+    register PreToolUse Bash "$git_worktree_allow" 10 "Bash(git -C *)"
+    # git-stash-guard: if を worktree-allow よりずっと広い "Bash(git *)" にする
+    # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
+    # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
+    register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
+    # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
+    # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
+    # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
+    # 1 プロンプト 1 回で拾う / PreToolUse=plan 承認→acceptEdits を最小遅延で拾う
+    # (スクリプト側の前回値キャッシュで、モードが同じなら jq 1 回で即抜ける)/
+    # Stop=ttl リフレッシュ / SessionEnd=トークン全クリア。PostToolUse は
+    # PreToolUse と同情報で遅延だけ悪いので登録しない(旧イテレーションは
+    # PostToolUse に登録していたので retiredHookEntries で外す)。Herdr 外では
+    # 即 no-op。
+    register SessionStart "" "$herdr_metadata" 10
+    register UserPromptSubmit "" "$herdr_metadata" 10
+    register PreToolUse "" "$herdr_metadata" 10
+    register Stop "" "$herdr_metadata" 10
+    register SessionEnd "" "$herdr_metadata" 10
+    # Direct worktree creation can outlive an agent's temporary checkout cleanup.
+    # Herdr owns both lifecycle ends, so reject every Bash spelling here.
+    register PreToolUse Bash "$worktree_create_guard" 10
+    # The timer is the primary detector; SessionStart also exposes pending state
+    # directly to the agent that is in a position to clean it up.
+    register SessionStart "startup|resume" "$worktree_audit_context" 30
+  '';
+
+  # settings.json の statusLine を宣言に合わせる。
+  # 使い方: sync-claude-statusline <settings> <desired-or-empty> [<retired>…]
+  #   retired を先に処理し、.statusLine.command が retired のいずれかに完全一致
+  #   したときだけキーを削除する。無条件 del にしないのは、/statusline で本人が
+  #   設定した値を「宣言なし」の switch で奪わないため — retiredPermissionRules が
+  #   「かつて自分が配った文字列」だけを消すのと同型。desired が非空なら最後に
+  #   set-if-different するので、retire→set の順で set が勝つ。
+  syncStatusLine = pkgs.writeShellScript "sync-claude-statusline" ''
+    set -eu
+    settings="$1"
+    desired="$2"
+    shift 2
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    write_back() {
+      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
+      mv "$1" "$settings"
+    }
+
+    current="$("$jq" -r '.statusLine.command // ""' "$settings")"
+
+    for retired in "$@"; do
+      [ "$current" = "$retired" ] || continue
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      # null 代入ではなくキーの削除。「この機能を入れる前の形に戻す」が撤回の
+      # 意味であり、これで /statusline による後からの設定も素直に効く。
+      "$jq" 'del(.statusLine)' "$settings" > "$tmp"
+      write_back "$tmp"
+      current=""
+      break
+    done
+
+    if [ -n "$desired" ] && [ "$current" != "$desired" ]; then
+      tmp="$(mktemp "$settings.hm.XXXXXX")"
+      "$jq" --arg cmd "$desired" \
+        '.statusLine = { type: "command", command: $cmd }' "$settings" > "$tmp"
+      write_back "$tmp"
+    fi
+  '';
+
+  # settings.json の permissions.allow を要素単位で冪等に同期する。
+  # 使い方: register-claude-permissions <settings> --retire <r>… --allow <a>…
+  #   --retire 以降のルールは allow から削除(無ければ何もしない)、--allow 以降は
+  #   追加(既に同一文字列があれば何もしない)。ルール文字列を後から書き換えるときは
+  #   旧文字列を retiredPermissionRules に移す — これで全ホストが次回の switch で旧
+  #   ルールを掃除する(かつては「旧ルールが残り続ける」が既知の制約だった —
+  #   docs/claude/claude-permissions.md)。permissions.defaultMode や allow 以外の
+  #   キーには一切触らない。
+  # ルール1件ごとに mktemp+jq+mv の read-modify-write サイクルを回すと(かつては
+  # retiredPermissionRules + permissionRules で最大 53 回)、herdr-agent-state.sh や
+  # Claude Code CLI 自体との並行書き込みに対する lost-update 窓がルール数分だけ
+  # 反復される(#61)。retire/allow の全ルールを 1 回の jq 呼び出しにまとめ、
+  # mktemp+mv も 1 回に減らして窓の反復回数を減らす。
+  registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
+    set -eu
+    settings="$1"
+    shift
+    jq=${pkgs.jq}/bin/jq
+
+    if [ ! -f "$settings" ]; then
+      mkdir -p "$(dirname "$settings")"
+      printf '{}\n' > "$settings"
+    fi
+
+    mode=""
+    retire_args=()
+    allow_args=()
+    for arg in "$@"; do
+      case "$arg" in
+        --retire|--allow) mode="$arg"; continue ;;
+      esac
+      case "$mode" in
+        --retire) retire_args+=("$arg") ;;
+        --allow) allow_args+=("$arg") ;;
+        *)
+          echo "register-claude-permissions: --retire/--allow より前にルールが来た: $arg" >&2
+          exit 1
+          ;;
+      esac
+    done
+
+    retire_json="$("$jq" -n --args '$ARGS.positional' "''${retire_args[@]}")"
+    allow_json="$("$jq" -n --args '$ARGS.positional' "''${allow_args[@]}")"
+
+    tmp="$(mktemp)"
+    "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" '
+      .permissions.allow = (
+        ((.permissions.allow // []) - $retire) as $kept
+        | $kept + ($allow | map(select(. as $r | ($kept | index($r)) | not)))
+      )
+    ' "$settings" > "$tmp"
+    mv "$tmp" "$settings"
+  '';
+
+  # Claude Code の permission rule 構文は `Tool(specifier)`(裸のコマンド文字列では
+  # 認識されない)。Add / Commit / Create PR で毎回止まる直接原因はこの 4 件。
+  # 破壊的操作は増やさない — 読み取り・検査系のみ追加する。gh の書き込み系
+  # (pr edit / issue create / issue edit)は aocs-draft スキルが明示的な人の確認を
+  # 要求する操作なので入れない。
+  permissionRules = [
+    "Bash(git add *)"
+    "Bash(git commit *)"
+    "Bash(git push *)"
+    "Bash(gh pr create *)"
+
+    "Bash(git status *)"
+    "Bash(git diff *)"
+    "Bash(git log *)"
+    "Bash(git show *)"
+    "Bash(git grep *)"
+    "Bash(git rev-parse *)"
+    "Bash(git branch *)"
+    "Bash(git fetch *)"
+    "Bash(git ls-remote *)"
+    "Bash(git worktree list *)"
+    "Bash(git switch *)"
+    "Bash(git checkout -b *)"
+    "Bash(git shelve *)"
+    "Bash(git shelve)"
+    "Bash(git unshelve)"
+
+    "Bash(uv run pytest *)"
+    "Bash(uv run ruff *)"
+    "Bash(uv run mypy *)"
+    "Bash(uv run pre-commit run *)"
+    "Bash(uv run docs-check *)"
+    "Bash(./scripts/check-*.sh *)"
+
+    "Bash(gh pr view *)"
+    "Bash(gh pr list *)"
+    "Bash(gh pr diff *)"
+    "Bash(gh pr checks *)"
+    "Bash(gh issue view *)"
+    "Bash(gh issue list *)"
+
+    "Bash(nix fmt)"
+    "Bash(nix flake check)"
+    "Bash(nix build *)"
+    "Bash(home-manager generations)"
+
+    "Bash(npm ci)"
+    "Bash(npm run *)"
+    "Bash(npm test *)"
+  ];
+
+  # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
+  # `Bash(git -C * add *)` 等の中間ワイルドカードは、`-C` の位置への任意オプション
+  # 挿入(--exec-path 等)を素通しするとして Claude Code が毎セッション警告し、
+  # しかも中間 `*` は実際にはマッチしない。代替は git-worktree-allow hook(検証つき
+  # のプログラム的許可 — docs/claude/git-worktree-allow.md)。
+  #
+  # `list-branch-inventory.sh` / `sweep-removed-vendor-symbols.sh` は使い捨ての
+  # ワンオフ作業用ルールが陳腐化して残っていたもの(#101)。~/.ghr 配下の全ローカル
+  # リポジトリおよび tarotene 名義の全 GitHub リポジトリを検索したが、該当スクリプトは
+  # このファイル自身の permissionRules 記述以外に実体が存在しないことを確認済み。
+  retiredPermissionRules = [
+    "Bash(git -C * add *)"
+    "Bash(git -C * commit *)"
+    "Bash(git -C * status *)"
+    "Bash(git -C * diff *)"
+    "Bash(./scripts/list-branch-inventory.sh *)"
+    "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
+  ];
+in
+{
+  # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
+  # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
+  # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
+  # し、ラウンドも 2 に絞る。gate 本体(copilot-plan-review.sh)は触らない — closer
+  # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
+  # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
+  # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
+  # docs/claude/copilot-plan-review.md の環境変数節。
+  home.sessionVariables = {
+    COPILOT_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
+    MAX_PLAN_REVIEWS = "2";
+  };
+
+  home.file.".claude/hooks/copilot-plan-review.sh" = {
+    source = repoConfig + "/claude/hooks/copilot-plan-review.sh";
+    executable = true;
+  };
+
+  # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
+  # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
+  # 実際の検証は hook 内の CRITIC_SCHEMA_JQ が行う — この JSON はその契約を
+  # 人間 / プロンプト向けに文書化したものである。配備先は hook と同じ
+  # ~/.claude/hooks/ に並べて置く(hook が自身のディレクトリ相対で解決するため)
+  # が、ソースツリー上は非 hook アセットとして config/claude/assets/ に分離
+  # している(ADR-0007)。
+  home.file.".claude/hooks/copilot-plan-review.schema.json".source =
+    repoConfig + "/claude/assets/copilot-plan-review.schema.json";
+
+  # plan-reviewer: copilot-plan-review.sh が `--agent plan-reviewer` で呼ぶ
+  # read-only custom agent。tools は view/grep/glob だけで、
+  # write/execute/web/GitHub MCP は与えない(docs/claude/copilot-plan-review.md)。
+  home.file.".copilot/agents/plan-reviewer.agent.md".source =
+    repoConfig + "/copilot/agents/plan-reviewer.agent.md";
+
+  # wrap-up inbox の 2 hook。session-start は stop-gate と同じパス計算を使い、
+  # 同じディレクトリに並んでいることを前提に stop-gate のパスを指示文に埋める。
+  home.file.".claude/hooks/wrapup-stop-gate.sh" = {
+    source = repoConfig + "/claude/hooks/wrapup-stop-gate.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/wrapup-session-start.sh" = {
+    source = repoConfig + "/claude/hooks/wrapup-session-start.sh";
+    executable = true;
+  };
+
+  # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
+  # スクリプトは CSS を自身のディレクトリ相対で解決するので、配備先では schema
+  # と同じく 2 ファイルを ~/.claude/hooks/ に並べて置く。ソースツリー上は
+  # config/claude/assets/ に分離しているが、plan-view.sh の find_css() が
+  # SCRIPT_DIR/../assets/ も探すので、リポジトリ直接実行でも解決する(ADR-0007)。
+  home.file.".claude/hooks/plan-view.sh" = {
+    source = repoConfig + "/claude/hooks/plan-view.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
+
+  # plan-scope-gate: 要求インベントリ(scope-inventory、15番)の脱落を機械検査する。
+  # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
+  home.file.".claude/hooks/plan-scope-gate.sh" = {
+    source = repoConfig + "/claude/hooks/plan-scope-gate.sh";
+    executable = true;
+  };
+
+  # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
+  home.file.".claude/hooks/issue-index.sh" = {
+    source = repoConfig + "/claude/hooks/issue-index.sh";
+    executable = true;
+  };
+
+  # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
+  home.file.".claude/hooks/sign-prewarm.sh" = {
+    source = repoConfig + "/claude/hooks/sign-prewarm.sh";
+    executable = true;
+  };
+
+  # herdr-sidebar-metadata: permission mode(hook)とモデル・メトリクス(statusline)
+  # を Herdr サイドバーのカスタムトークンに流す 2 チャネル構成。表示側の行定義は
+  # config/herdr/config.toml(home/modules/herdr.nix が配備)。herdr が自動
+  # インストールする統合 hook(herdr-agent-state.sh、herdr 管理)の隣に並ぶが、
+  # 互いに自分のエントリしか触らないので衝突しない。
+  home.file.".claude/hooks/herdr-claude-metadata.sh" = {
+    source = repoConfig + "/claude/hooks/herdr-claude-metadata.sh";
+    executable = true;
+  };
+  home.file.".claude/hooks/claude-statusline.sh" = {
+    source = repoConfig + "/claude/statusline/claude-statusline.sh";
+    executable = true;
+  };
+
+  # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
+  # hook ではない — settings.json には登録しない)。呼び出し側は
+  # config/herdr/config.toml。詳細は docs/claude/claude-usage.md。
+  # ソースツリー上は config/claude/statusline/ に分離しているが(ADR-0007)、
+  # 配備先は herdr のハードコード実行パスに合わせて引き続き ~/.claude/hooks/。
+  home.file.".claude/hooks/claude-usage.sh" = {
+    source = repoConfig + "/claude/statusline/claude-usage.sh";
+    executable = true;
+  };
+
+  # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
+  # fast-forward する SessionStart hook。
+  home.file.".claude/hooks/worktree-fresh-base.sh" = {
+    source = repoConfig + "/claude/hooks/worktree-fresh-base.sh";
+    executable = true;
+  };
+
+  # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
+  # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
+  home.file.".claude/hooks/pr-gate.sh" = {
+    source = repoConfig + "/claude/hooks/pr-gate.sh";
+    executable = true;
+  };
+  # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
+  home.file.".claude/hooks/git-worktree-allow.sh" = {
+    source = repoConfig + "/claude/hooks/git-worktree-allow.sh";
+    executable = true;
+  };
+  # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
+  home.file.".claude/hooks/git-stash-guard.sh" = {
+    source = repoConfig + "/claude/hooks/git-stash-guard.sh";
+    executable = true;
+  };
+
+  home.file.".claude/pr-gate-repos".text = ''
+    # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
+    # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
+    tarotene/dotfiles
+  '';
+
+  # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
+  # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
+  home.file.".local/bin/plan-view" = {
+    text = ''
+      #!/usr/bin/env bash
+      exec bash "$HOME/.claude/hooks/plan-view.sh" "$@"
+    '';
+    executable = true;
+  };
+
+  # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
+  # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
+  # git-prune-branches と同じ「PATH で解決される実行可能ファイル」扱い(ADR-0007 に
+  # 従い配備名から .sh を落とす)。activation はこの配備物ではなく store 上の同じ
+  # ファイルを `sync` で呼ぶ。
+  home.file.".local/bin/claude-plan-model" = {
+    source = planModelScript;
+    executable = true;
+  };
+
+  # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
+  # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
+  # username を上書きするホストが現れたら見直すこと。
+  home.file.".claude/commands/copilot-plan-review.md".source =
+    repoConfig + "/claude/commands/copilot-plan-review.md";
+  home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
+
+  # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。
+  # cases.md は追記型の失敗事例集で、追記時のサニタイズ規則は skill-gardening 側を見る。
+  home.file.".claude/skills/diagramming/SKILL.md".source =
+    repoConfig + "/claude/skills/diagramming/SKILL.md";
+  home.file.".claude/skills/diagramming/cases.md".source =
+    repoConfig + "/claude/skills/diagramming/cases.md";
+  # skill-gardening: 知見をこの公開リポジトリにスキル化するときのメタスキル
+  # (器の判断・配線チェックリスト・公開リポジトリ向けサニタイズ規則の正本)。
+  home.file.".claude/skills/skill-gardening/SKILL.md".source =
+    repoConfig + "/claude/skills/skill-gardening/SKILL.md";
+  # test-grounding: 複数の実コンポーネントが絡む検証項目・試験手順を書く前に、
+  # facts文書+層別モデルで一次資料に当たることを強制する個人スキル。
+  home.file.".claude/skills/test-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/test-grounding/SKILL.md";
+  home.file.".claude/skills/test-grounding/cases.md".source =
+    repoConfig + "/claude/skills/test-grounding/cases.md";
+  # living-description: Issue/PR の Description を正本として、コメントで裁定が
+  # 確定した時点で編集し続ける習慣。cases.md は追記型の失敗事例集。
+  home.file.".claude/skills/living-description/SKILL.md".source =
+    repoConfig + "/claude/skills/living-description/SKILL.md";
+  home.file.".claude/skills/living-description/cases.md".source =
+    repoConfig + "/claude/skills/living-description/cases.md";
+  # pr-description: PR 本文の標準スケルトンと Before/After 視覚証跡の判断知識。
+  # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate.sh の
+  # G_visual(~/.claude/pr-gate-repos の allowlist 内のみ)が担う。cases.md は
+  # 追記型の失敗事例集。
+  home.file.".claude/skills/pr-description/SKILL.md".source =
+    repoConfig + "/claude/skills/pr-description/SKILL.md";
+  home.file.".claude/skills/pr-description/cases.md".source =
+    repoConfig + "/claude/skills/pr-description/cases.md";
+  # wrapup-chores: wrap-up inbox のうち判断を要さない軽微な項目を、未起票の inbox
+  # 行と起票済みの wrapup 由来 Issue の両方からまとめて triage し、1 回の確認後に
+  # 1 つの chores PR で一括対処する判断知識。hook 側(wrapup-stop-gate.sh)には
+  # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
+  home.file.".claude/skills/wrapup-chores/SKILL.md".source =
+    repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
+  # copilot-model-bump: 外部 AI CLI(Copilot CLI 等)に固定 pin した具体モデル ID を、
+  # ベンダー側の GA・廃止サイクルに追従して更新する手順の判断知識。pin 箇所の棚卸し
+  # (既定値・selftest 期待値・docs)・上流確認・スラッグ実機確認・完了条件を定型化する
+  # (copilot-plan-review.sh の gpt-5.6-sol → gpt-6-astra bump が初出時の実例)。
+  home.file.".claude/skills/copilot-model-bump/SKILL.md".source =
+    repoConfig + "/claude/skills/copilot-model-bump/SKILL.md";
+  # issue-hygiene: open Issue を出自でクラスタリングし、GitHub ネイティブ sub-issues
+  # で親子構造を明示、腐った tracking Issue を清算する定期衛生管理の判断知識。
+  home.file.".claude/skills/issue-hygiene/SKILL.md".source =
+    repoConfig + "/claude/skills/issue-hygiene/SKILL.md";
+  # tracking-issue: 複数の子作業を束ねる親 Issue を書く/更新する側の書式規約。
+  # issue-hygiene(事後の棚卸し・清算)とは役割が異なる。詳細は
+  # docs/claude/tracking-issue.md。
+  home.file.".claude/skills/tracking-issue/SKILL.md".source =
+    repoConfig + "/claude/skills/tracking-issue/SKILL.md";
+  # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
+  # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
+  # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
+  home.file.".claude/skills/stacked-pr/SKILL.md".source =
+    repoConfig + "/claude/skills/stacked-pr/SKILL.md";
+  # scope-inventory: Tracking Issue 等の複数項目の依頼を計画に起こすとき、子タスク
+  # を黙って落とさせないための要求インベントリの作り方(gh graphql での sub-issues
+  # 列挙、閉じた棄却タグ、Reference-Only: での参照 Issue の書き分け)。強制は
+  # plan-scope-gate.sh(段2)が担う。詳細は docs/claude/scope-inventory.md。
+  home.file.".claude/skills/scope-inventory/SKILL.md".source =
+    repoConfig + "/claude/skills/scope-inventory/SKILL.md";
+
+  # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
+  # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
+  home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
+
+  # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう
+  # concatMapStrings(区切り文字列を要素ごとに前置)で組む — concatMapStringsSep
+  # だと空リストで区切りだけが浮く。
+  home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${registerHooks} "$HOME/.claude/settings.json" \
+      --retire${
+        lib.concatMapStrings (
+          e: " \\\n      " + lib.escapeShellArg e.event + " " + lib.escapeShellArg e.command
+        ) retiredHookEntries
+      } \
+      --register \
+      ${lib.escapeShellArg planReviewCmd} \
+      ${lib.escapeShellArg wrapupStopCmd} \
+      ${lib.escapeShellArg wrapupSessionStartCmd} \
+      ${lib.escapeShellArg planViewCmd} \
+      ${lib.escapeShellArg issueIndexCmd} \
+      ${lib.escapeShellArg signPrewarmCmd} \
+      ${lib.escapeShellArg prGateSessionStartCmd} \
+      ${lib.escapeShellArg prGateStopCmd} \
+      ${lib.escapeShellArg gitWorktreeAllowCmd} \
+      ${lib.escapeShellArg gitStashGuardCmd} \
+      ${lib.escapeShellArg herdrMetadataCmd} \
+      ${lib.escapeShellArg worktreeFreshBaseCmd} \
+      ${lib.escapeShellArg worktreeCreateGuardCmd} \
+      ${lib.escapeShellArg worktreeAuditContextCmd} \
+      ${lib.escapeShellArg planScopeGateCmd}
+  '';
+
+  home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${syncStatusLine} "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg statusLineCmd}${
+        lib.concatMapStrings (c: " \\\n      " + lib.escapeShellArg c) retiredStatusLineCommands
+      }
+  '';
+
+  # 今のモード(Fable / Opus)は保ったまま、その具体モデル ID だけを claude バイナリの
+  # `latest_per_family` から引き直す。hooks・statusLine・permissions と同じ DAG 位置で、
+  # 独立した activation として走らせる。
+  #
+  # claude が未インストールなら(bootstrap 直後)何も書かずに終わる — 起動する claude が
+  # 無いのに env だけ置いても意味が無く、中途半端な model 設定のほうが有害だから。
+  home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run env PATH=${planModelSyncPath}:"$HOME/.local/bin":"$PATH" \
+      ${pkgs.bash}/bin/bash ${planModelScript} sync
+  '';
+
+  # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ
+  # DAG 位置(writeBoundary の後)で、独立した activation script として走らせる —
+  # 片方が既存の hooks 登録ロジックを壊さないようにするため、jq マージの責務を
+  # 混ぜない。
+  home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${registerPermissions} "$HOME/.claude/settings.json" \
+      --retire \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredPermissionRules} \
+      --allow \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules}
+  '';
+}

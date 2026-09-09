@@ -1,0 +1,262 @@
+name: CI
+
+# Minimal checks for the surviving escape-hatch shell layer. The declarative
+# core (flake evaluation + per-host activation build) is validated separately by
+# nix.yml; this workflow only lints and dry-runs the shell scripts that remain
+# outside home-manager (bootstrap + system-layer installer + SOPS/SSH helpers).
+on:
+  push:
+    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+  # No branches filter here (unlike push above): these checks are required
+  # status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required check
+  # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
+  # that PR's Stop gate permanently blocked on a check that will never exist.
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    name: Shell script validation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck surviving scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
+          # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
+          # removed in Phase 4 (#218); scripts/ now mixes home-manager-deployed
+          # user-environment tools with true escape-hatch/diagnostic scripts.
+          scandir: '.'
+          # config/ holds zsh modules and the fcitx5 profile, which shellcheck
+          # cannot parse (SC1071). zsh syntax is validated by the step below.
+          ignore_paths: config
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      # config/ is excluded above because it holds zsh modules and the fcitx5
+      # profile, which shellcheck cannot parse (SC1071).  config/claude/hooks/
+      # is genuine bash, though, and it carries the plan-review gate's judge
+      # logic, so it gets its own pass with the exclusion lifted.
+      - name: ShellCheck Claude Code hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/claude/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      # config/claude/statusline/ holds claude-statusline.sh and
+      # claude-usage.sh, split out of config/claude/hooks/ for source-tree
+      # purity (ADR-0007) since neither is a Claude Code hook. Same exclusion
+      # reason as the step above, so it gets its own scandir too.
+      - name: ShellCheck Claude Code statusline scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/claude/statusline'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      # config/ is excluded above for the same reason as the Claude Code hooks
+      # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
+      # pre-commit chain), so it gets its own pass with the exclusion lifted.
+      - name: ShellCheck git hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/git/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      # config/codex/hooks/ and config/copilot/hooks/ hold the herdr sidebar
+      # metadata reporters for Codex CLI / Copilot CLI panes
+      # (docs/claude/herdr-sidebar-metadata.md) — genuine POSIX sh, excluded
+      # above for the same reason as the other config/ subdirectories.
+      - name: ShellCheck Codex CLI hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/codex/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      - name: ShellCheck Copilot CLI hooks
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './config/copilot/hooks'
+          severity: error
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+
+      - name: Install zsh for syntax validation
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zsh
+
+      - name: Zsh module syntax check
+        run: |
+          set -euo pipefail
+          echo "Checking zsh module syntax..."
+          shopt -s nullglob
+          fail=0
+          for f in config/zsh/modules/*.zsh config/zsh/*.zsh; do
+            echo "zsh -n $f"
+            if ! zsh -n "$f"; then
+              echo "::error file=$f::zsh syntax error"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+  dry-run:
+    runs-on: ubuntu-latest
+    name: Escape-hatch dry-run
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bootstrap.sh --dry-run
+        run: ./bootstrap.sh --dry-run
+
+      - name: install-packages.sh --dry-run
+        run: ./scripts/install-packages.sh --dry-run
+
+      # The key-trace tool's fixtures are the log excerpts quoted in
+      # docs/ime-chrome-diagnosis.md, so this step fails if the detector and the
+      # document ever disagree about what those traces mean.  It also guards the
+      # redaction rules, which are what keep a lock-screen password out of a
+      # trace file (see the header comment in the script).  Perl is preinstalled
+      # on ubuntu-latest; shellcheck ignores .pl, so the file needs no exclusion.
+      - name: fcitx5-key-trace.pl --selftest
+        run: perl ./scripts/fcitx5-key-trace.pl --selftest
+
+      # The plan-review gate's acceptance decision is deterministic shell +
+      # jq, so it is testable without calling GitHub Copilot CLI. The selftest
+      # runs the judge over fixtures and drives the hook end to end against a
+      # fake copilot in a throwaway REVIEW_DIR (docs/claude/copilot-plan-review.md).
+      - name: copilot-plan-review output schema is valid JSON
+        run: jq empty config/claude/assets/copilot-plan-review.schema.json
+
+      - name: copilot-plan-review.sh --selftest
+        run: bash ./config/claude/hooks/copilot-plan-review.sh --selftest
+
+      # The wrap-up inbox gate is deterministic shell + jq end to end: the
+      # degradation gates, the flock-guarded --add/--mark-filed mutations, and
+      # the --check-dup verdict (against a stub gh) are all exercised in a
+      # throwaway state dir, plus the SessionStart injection it pairs with
+      # (docs/claude/wrapup-inbox.md).
+      - name: wrapup-stop-gate.sh --selftest
+        run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
+
+      # plan-view only renders and launches, so its selftest drives the hook and
+      # CLI paths against a fake browser in a throwaway view dir.  The invariant
+      # it guards is that the hook never writes to stdout (anything there would
+      # be read as a permissionDecision and would interfere with the approval
+      # dialog), plus the CSS ordering that keeps light-theme code readable
+      # (docs/claude/plan-view.md).  Cases needing pandoc skip themselves when the
+      # runner has none, so this step does not depend on the image's tool list.
+      - name: plan-view.sh --selftest
+        run: bash ./config/claude/hooks/plan-view.sh --selftest
+
+      # issue-index is deterministic shell + jq end to end against a stub gh:
+      # the git-only/binary-existence gates, the mine→all fallback with its
+      # asymmetric failure classification (R2-C-2: "whichever side was
+      # adopted" rather than "both failed"), incomplete_results handling
+      # (R2-C-1), title sanitization, and the PR-row status distinction are
+      # all exercised in a throwaway fixture repo (docs/claude/issue-index.md).
+      - name: issue-index.sh --selftest
+        run: bash ./config/claude/hooks/issue-index.sh --selftest
+
+      # sign-prewarm is deterministic shell + a stubbed gpg end to end: the
+      # cwd-independent global-config gating, the field-15 on-disk/card/stub
+      # classification, the warm/cold branch, and the local-override
+      # regression (starting from a repo with commit.gpgsign=false locally
+      # must not suppress warming when the global value is enabled) are all
+      # exercised against a throwaway HOME (docs/claude/sign-prewarm.md).
+      - name: sign-prewarm.sh --selftest
+        run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
+
+      # A mode here is a *pair* (plan side / execution side), so the interesting
+      # failures are combinations: a transition that leaves the other half
+      # behind, a .model guard that fires after the write (which is how an
+      # "inert" switch silently rewrote every request), a `sync` that drags a
+      # deliberate mode back to the default. The catalog is stubbed so the test
+      # does not depend on which claude is installed
+      # (docs/claude/opusplan-model-aliases.md).
+      - name: claude-plan-model --selftest
+        run: ./scripts/claude-plan-model --selftest
+
+      # A deleted checkout must be detected without deleting its branch; hook
+      # registration must remain idempotent beside Herdr's own Codex hook.
+      - name: Worktree lifecycle self-tests
+        run: |
+          ./scripts/git-audit-worktrees --selftest
+          ./scripts/git-prune-worktrees --selftest
+          ./scripts/git-worktree-create-guard --selftest
+          ./scripts/register-codex-hooks --selftest
+          ./scripts/register-copilot-hooks --selftest
+
+      # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
+      # invariant is "never read an incomplete check set as green" against a
+      # stub gh, including the R2 regression where `gh pr checks --watch`
+      # exits 0 early on a partial subset (cli/cli#9973) — the selftest
+      # re-fetches --json and judges with jq regardless of --watch's exit
+      # code, so this step is what actually guards that invariant.
+      - name: pr-gate.sh --selftest
+        run: bash ./config/claude/hooks/pr-gate.sh --selftest
+
+      # github-audit-rulesets (#130) is deterministic shell + jq end to end
+      # against a stubbed gh: rule-type union judgement (ok/drifted/
+      # ungoverned), the pull_request parameter check, and the overrides
+      # file's exempt short-circuit — including the regression that clearing
+      # overrides makes the same repo fall back to its own (drifted)
+      # judgement rather than coincidentally staying green
+      # (docs/github-audit-rulesets.md).
+      - name: github-audit-rulesets --selftest
+        run: ./scripts/github-audit-rulesets --selftest
+
+      # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
+      # runs it) but lives in config/claude/statusline/ alongside
+      # claude-statusline.sh, covered by the shellcheck step above.
+      # The selftest exercises label mapping over limits[], the burn-rate
+      # prediction (endpoint slope, min-span, reset-crossing), series reset on
+      # resets_at change / percent drop, and the token-never-leaks assertion —
+      # all against fixtures and a stubbed curl, without network or real
+      # credentials (docs/claude/claude-usage.md).
+      - name: claude-usage.sh --selftest
+        run: sh ./config/claude/statusline/claude-usage.sh --selftest
+
+      # Build a fixture package so the dry-run really reads package metadata
+      # with dpkg-deb.  Pointing --package at a path that does not exist made
+      # this step pass without validating anything.  The runner is not
+      # company-pop-new, so the host checks warn instead of failing.
+      - name: install-falcon-sensor.sh --dry-run
+        run: |
+          fixture="$(mktemp -d)/falcon-sensor"
+          mkdir -p "$fixture/DEBIAN"
+          printf '%s\n' \
+            'Package: falcon-sensor' \
+            'Version: 0.0.0-ci' \
+            'Architecture: amd64' \
+            'Maintainer: ci <ci@example.invalid>' \
+            'Description: CI fixture for the company-provided package' \
+            > "$fixture/DEBIAN/control"
+          dpkg-deb -b "$fixture" /tmp/falcon-sensor.deb
+          ./scripts/install-falcon-sensor.sh \
+            --dry-run \
+            --package /tmp/falcon-sensor.deb
+
+      - name: install-falcon-sensor.sh --dry-run rejects a missing package
+        run: |
+          if ./scripts/install-falcon-sensor.sh \
+               --dry-run --package /tmp/does-not-exist.deb; then
+            echo "::error::dry-run accepted a missing package"
+            exit 1
+          fi

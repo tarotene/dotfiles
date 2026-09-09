@@ -1,0 +1,106 @@
+# managed by home-manager — edit config/herdr/config.toml in the dotfiles repo,
+# then `home-manager switch`. This file is a read-only store symlink, so
+# in-app settings writes fail by design (ADR-0001: home-manager is the source
+# of truth; ADR-0002: literal config deployed verbatim, like alacritty.toml).
+
+onboarding = false
+
+# 既定は delivery = "off"(トースト非表示)。stale worktree 監査
+# (docs/worktree-lifecycle.md)の Herdr 通知が `{"shown":false,"reason":
+# "disabled"}` を返し続けていたのはこれが原因 — 誰にも見えない状態で
+# 毎分リトライしていた。in-app トーストで有効化する(アクティブタブでは
+# Herdr 自身が抑制するので、作業中の割り込みは無い)。
+[ui.toast]
+delivery = "herdr"
+
+[theme]
+# Match the alacritty palette (Catppuccin Mocha) so panes and chrome read as
+# one UI. See docs/claude/herdr-sidebar-metadata.md for the full role→color
+# table shared by this file, claude-statusline.sh and alacritty.toml.
+name = "catppuccin"
+
+[theme.custom]
+# Catppuccin Mocha の既定 active_row_bg は base #1E1E2E とほぼ同系の暗色で、
+# ~17 workspace を並走させるとサイドバーのどの行がアクティブか判別しづらい。
+# surface1 相当まで明るくし、accent も揺れの少ない mauve から lavender に
+# 変えてハイライト/ナビ UI 全体で目立たせる。
+active_row_bg = "#45475A"  # Mocha surface1
+accent = "#B4BEFE"         # Mocha lavender
+
+[ui]
+agent_panel_sort = "spaces"
+# ボーダーレス化: 枠線ではなく gap + 背景階調でペインを分ける(2020年代後半の
+# TUI 潮流。Catppuccin の base/mantle/crust 3 層背景もこの前提)。
+pane_borders = false
+pane_outer_borders = false
+pane_gaps = true
+# 状態は色だけでなく形でも区別する(色覚多様性対策)。
+status_indicators = "symbols"
+# タブバー右側: Claude の usage(5h / 週間 rate limit)+ どのマシン/時刻かを常時表示。
+# usage セグメントは ~/.claude/hooks/claude-usage.sh(home/modules/claude.nix が
+# 配備、Claude Code hook ではない)が非公開 API(/usage コマンドの内部エンドポイント)
+# から取る。壊れたときの症状は「タブバーからこのセグメントが消える」だけ(herdr の
+# command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
+# docs/claude/claude-usage.md。
+tab_bar_right = [
+  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage.sh\"", interval_seconds = 60, timeout_seconds = 10 },
+  { type = "hostname" },
+  { type = "datetime", format = "%H:%M" },
+]
+tab_bar_right_separator = "·"
+
+# Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
+# $model/$ctx/$cost/$effort は config/claude/statusline/claude-statusline.sh、$branch も
+# herdr-claude-metadata.sh が(git 由来で)pane.report_metadata で注入する。トークンの
+# 色は静的指定しかできないので、permission mode の色分けは「モード毎に別トークン +
+# 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
+# 値を持つのは常に 1 つ)。
+#
+# Codex / Copilot ペインの $branch/$model は
+# config/codex/hooks/herdr-codex-metadata.sh /
+# config/copilot/hooks/herdr-copilot-metadata.sh がそれぞれ報告する
+# (mode/ctx/cost/effort 相当は無い — 確実に取れるデータだけに絞っている。
+# 詳細・見送った理由は docs/claude/herdr-sidebar-metadata.md)。
+#
+# 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
+#   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
+#   red #F38BA8(bypass) / pink #F5C2E7(model) / overlay1 #7F849C(控えめ情報)。
+[ui.sidebar.agents]
+row_gap = 0
+
+[ui.sidebar.agents.rows_by_agent]
+claude = [
+  ["state_icon", "workspace", "tab"],
+  [
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
+  ],
+  [
+    { token = "$mode_plan", fg = "#89B4FA", bold = true },
+    { token = "$mode_default", fg = "#CBA6F7", bold = true },
+    { token = "$mode_accept", fg = "#A6E3A1", bold = true },
+    { token = "$mode_bypass", fg = "#F38BA8", bold = true },
+    { token = "$model", fg = "#F5C2E7" },
+  ],
+  [
+    { token = "$ctx", fg = "#7F849C" },
+    { token = "$cost", fg = "#7F849C" },
+    { token = "$effort", fg = "#7F849C", dim = true },
+  ],
+]
+codex = [
+  ["state_icon", "workspace", "tab"],
+  [
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
+  ],
+  [ { token = "$model", fg = "#F5C2E7" } ],
+]
+copilot = [
+  ["state_icon", "workspace", "tab"],
+  [
+    { token = "$branch", fg = "#7F849C" },
+    { token = "terminal_title_stripped", dim = true },
+  ],
+  [ { token = "$model", fg = "#F5C2E7" } ],
+]

@@ -1,0 +1,394 @@
+#!/usr/bin/env bash
+# Cross-repository GitHub ruleset audit (#130): reports which owned
+# repositories' default-branch rulesets have drifted from the account-wide
+# baseline, without applying or modifying anything. Read-only.
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+OWNER="${GITHUB_AUDIT_RULESETS_OWNER:-tarotene}"
+CONFIG_DIR="${GITHUB_AUDIT_RULESETS_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-audit-rulesets}"
+STATE_DIR="${GITHUB_AUDIT_RULESETS_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit-rulesets}"
+OVERRIDES_FILE="${GITHUB_AUDIT_RULESETS_OVERRIDES_FILE:-$CONFIG_DIR/overrides.tsv}"
+GH_BIN="${GITHUB_AUDIT_RULESETS_GH_BIN:-gh}"
+TEST_TMP=''
+
+# Account-wide baseline: the rule TYPES every default-branch ruleset set
+# should cover, regardless of how many named rulesets carry them. Derived
+# from the rust-repo-governance/typst-repo-governance/astro-site-governance
+# skills' rulesets/*.json (Security + Quality agree byte-for-byte across all
+# three) plus what is actually live on the reference repos — some repos
+# split copilot_code_review into its own "Review" ruleset instead of
+# bundling it into "Workflow" as the skill templates do, and repos with a
+# single "Default"/"default" ruleset already cover every type below except
+# required_status_checks. A ruleset-NAME or ruleset-COUNT check would
+# false-positive on all of these legitimate variations, so judgement here is
+# by rule-type union only (docs/github-audit-rulesets.md has the full
+# evidence trail; private-repo specifics are intentionally omitted there).
+BASELINE_RULE_TYPES=(
+  deletion
+  non_fast_forward
+  required_signatures
+  required_linear_history
+  required_status_checks
+  pull_request
+  copilot_code_review
+)
+
+usage() {
+  cat <<'EOF'
+usage: github-audit-rulesets [--json|--selftest]
+
+Read-only cross-repository audit of GitHub rulesets (Issue #130). For every
+non-archived, non-fork repository owned by $GITHUB_AUDIT_RULESETS_OWNER
+(default: tarotene), inspects the active branch rulesets targeting
+~DEFAULT_BRANCH and reports one of:
+  ok          rule-type union covers the account-wide baseline, and the
+              pull_request rule's parameters match the expected shape
+  drifted     some baseline coverage is missing or a parameter mismatches
+              (see the "missing=" list)
+  ungoverned  the repository has zero active branch rulesets
+  exempt      the repository is listed in the overrides file (see below)
+
+Without options, prints a human-readable report and exits 1 if any
+non-exempt repository is drifted or ungoverned. --json prints the
+machine-readable findings array instead. A ledger snapshot is always
+written to $XDG_STATE_HOME/github-audit-rulesets/ledger.json (override with
+GITHUB_AUDIT_RULESETS_STATE_DIR).
+
+This audit only reports drift — it never applies a ruleset. Use the
+relevant *-repo-governance skill (or gh api directly) to fix what it finds.
+
+Exempt a repository by adding a line "<repo><TAB>exempt" to
+$XDG_CONFIG_HOME/github-audit-rulesets/overrides.tsv (override with
+GITHUB_AUDIT_RULESETS_OVERRIDES_FILE). Lines starting with # are ignored.
+EOF
+}
+
+list_repos() { # print: <name TAB primaryLanguage-or-"-" TAB visibility>
+  "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 \
+    --json name,primaryLanguage,visibility 2>/dev/null |
+    jq -r '.[] | [.name, (.primaryLanguage.name // "-"), .visibility] | @tsv'
+}
+
+read_overrides() { # print: <repo TAB directive>, comments/blank lines dropped
+  [[ -f $OVERRIDES_FILE ]] || return 0
+  grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE"
+}
+
+fetch_rulesets_list() { "$GH_BIN" api "repos/$OWNER/$1/rulesets" 2>/dev/null; }
+fetch_ruleset_detail() { "$GH_BIN" api "repos/$OWNER/$1/rulesets/$2" 2>/dev/null; }
+
+# default_branch_rulesets: JSON array of the full ruleset objects that are
+# active, target=branch, and apply to the default branch. Never fails the
+# script on a missing/inaccessible repo — an empty array reads as
+# "ungoverned", which is the honest answer when we can't tell otherwise.
+#
+# "Applies to the default branch" means include has ~DEFAULT_BRANCH *or*
+# ~ALL (and exclude doesn't carve ~DEFAULT_BRANCH back out) — confirmed
+# against the live account (2026-09-10): some repos' copilot_code_review-only
+# "Review" ruleset targets ~ALL, not ~DEFAULT_BRANCH, so a
+# ~DEFAULT_BRANCH-only check false-positived copilot_code_review as missing.
+default_branch_rulesets() {
+  local repo="$1" ids id detail arr='[]'
+  ids="$(fetch_rulesets_list "$repo" | jq -r '.[]? | select(.target=="branch" and .enforcement=="active") | .id' 2>/dev/null)" || ids=''
+  while IFS= read -r id; do
+    [[ -n $id ]] || continue
+    detail="$(fetch_ruleset_detail "$repo" "$id")" || continue
+    [[ -n $detail ]] || continue
+    if jq -e '
+      ((.conditions.ref_name.include // []) | (index("~DEFAULT_BRANCH") or index("~ALL")))
+      and ((.conditions.ref_name.exclude // []) | (index("~DEFAULT_BRANCH") | not))
+    ' <<<"$detail" >/dev/null 2>&1; then
+      arr="$(jq -c --argjson d "$detail" '. + [$d]' <<<"$arr")"
+    fi
+  done <<<"$ids"
+  printf '%s' "$arr"
+}
+
+judge_repo() { # $1=repo $2=language -> one JSON finding object
+  local repo="$1" lang="$2" arr count types t pr checks
+  local -a missing=()
+  arr="$(default_branch_rulesets "$repo")"
+  count="$(jq 'length' <<<"$arr")"
+  if [[ $count -eq 0 ]]; then
+    jq -n --arg repo "$repo" --arg lang "$lang" \
+      '{repo: $repo, language: $lang, verdict: "ungoverned", missing: [], status_checks: []}'
+    return
+  fi
+
+  types="$(jq -c '[.[].rules[]?.type] | unique' <<<"$arr")"
+  for t in "${BASELINE_RULE_TYPES[@]}"; do
+    jq -e --arg t "$t" 'index($t)' <<<"$types" >/dev/null 2>&1 || missing+=("$t")
+  done
+
+  pr="$(jq -c '[.[].rules[]? | select(.type=="pull_request") | .parameters] | last // null' <<<"$arr")"
+  if [[ $pr != null ]]; then
+    [[ "$(jq -r '.required_review_thread_resolution // false' <<<"$pr")" == true ]] ||
+      missing+=("pull_request.required_review_thread_resolution")
+    jq -e '(.allowed_merge_methods // []) == ["squash"]' <<<"$pr" >/dev/null 2>&1 ||
+      missing+=("pull_request.allowed_merge_methods")
+  fi
+
+  # required_status_checks context names are project-specific (CI job
+  # titles) — reported for a human to read, never machine-judged beyond
+  # "the rule type exists" (already covered by BASELINE_RULE_TYPES above).
+  checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
+
+  if ((${#missing[@]} == 0)); then
+    jq -n --arg repo "$repo" --arg lang "$lang" --argjson checks "$checks" \
+      '{repo: $repo, language: $lang, verdict: "ok", missing: [], status_checks: $checks}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --arg repo "$repo" --arg lang "$lang" --argjson missing "$missing_json" --argjson checks "$checks" \
+      '{repo: $repo, language: $lang, verdict: "drifted", missing: $missing, status_checks: $checks}'
+  fi
+}
+
+audit() { # print: JSON array of findings, one object per repo
+  local repo lang vis results='[]' entry
+  declare -A overrides=()
+  while IFS=$'\t' read -r repo directive; do
+    [[ -n $repo ]] || continue
+    overrides[$repo]="$directive"
+  done < <(read_overrides)
+
+  while IFS=$'\t' read -r repo lang vis; do
+    [[ -n $repo ]] || continue
+    if [[ "${overrides[$repo]:-}" == "exempt" ]]; then
+      entry="$(jq -n --arg repo "$repo" --arg lang "$lang" --arg vis "$vis" \
+        '{repo: $repo, language: $lang, visibility: $vis, verdict: "exempt", missing: [], status_checks: []}')"
+    else
+      entry="$(judge_repo "$repo" "$lang")"
+      entry="$(jq -c --arg vis "$vis" '. + {visibility: $vis}' <<<"$entry")"
+    fi
+    results="$(jq -c --argjson e "$entry" '. + [$e]' <<<"$results")"
+  done < <(list_repos)
+  printf '%s' "$results"
+}
+
+write_ledger() {
+  local findings="$1" tmp
+  mkdir -p "$STATE_DIR"
+  tmp="$(mktemp "$STATE_DIR/ledger.json.XXXXXX")"
+  jq -n --argjson repos "$findings" --arg generated_at "$(date --iso-8601=seconds)" \
+    '{generated_at: $generated_at, repos: $repos}' >"$tmp"
+  mv "$tmp" "$STATE_DIR/ledger.json"
+}
+
+render_report() {
+  local findings="$1" total ok drifted ungoverned exempt
+  jq -r '
+    .[] | "\(.verdict)\tverdict=\(.verdict) repo=\(.repo) lang=\(.language)"
+      + (if (.missing | length) > 0 then " missing=" + (.missing | join(",")) else "" end)
+  ' <<<"$findings" | LC_ALL=C sort | cut -f2-
+  total="$(jq 'length' <<<"$findings")"
+  ok="$(jq '[.[] | select(.verdict=="ok")] | length' <<<"$findings")"
+  drifted="$(jq '[.[] | select(.verdict=="drifted")] | length' <<<"$findings")"
+  ungoverned="$(jq '[.[] | select(.verdict=="ungoverned")] | length' <<<"$findings")"
+  exempt="$(jq '[.[] | select(.verdict=="exempt")] | length' <<<"$findings")"
+  printf 'total: %d repo(s) - ok=%d drifted=%d ungoverned=%d exempt=%d\n' \
+    "$total" "$ok" "$drifted" "$ungoverned" "$exempt"
+}
+
+selftest() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+
+  mkdir -p "$tmp/fixtures" "$tmp/bin" "$tmp/state" "$tmp/config"
+
+  cat >"$tmp/fixtures/repo-list.json" <<'EOF'
+[
+  {"name": "governed-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC"},
+  {"name": "governed-drifted", "primaryLanguage": {"name": "Rust"}, "visibility": "PRIVATE"},
+  {"name": "bare", "primaryLanguage": null, "visibility": "PRIVATE"},
+  {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE"}
+]
+EOF
+
+  # Split across two rulesets on purpose, mirroring a live shape found on
+  # some repos: copilot_code_review lives in its own ruleset targeting
+  # ~ALL, not ~DEFAULT_BRANCH — a ~DEFAULT_BRANCH-only include check missed
+  # it entirely (caught by running against the real account).
+  cat >"$tmp/fixtures/repos_tarotene_governed-ok_rulesets.json" <<'EOF'
+[
+  {"id": 1, "target": "branch", "enforcement": "active"},
+  {"id": 4, "target": "branch", "enforcement": "active"}
+]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_governed-ok_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": true, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_governed-ok_rulesets_4.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~ALL"], "exclude": []}},
+  "rules": [{"type": "copilot_code_review"}]
+}
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_governed-drifted_rulesets.json" <<'EOF'
+[{"id": 2, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_governed-drifted_rulesets_2.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": []}},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["merge", "squash"]}}
+  ]
+}
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_bare_rulesets.json" <<'EOF'
+[]
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_exempted_rulesets.json" <<'EOF'
+[{"id": 3, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_exempted_rulesets_3.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [{"type": "deletion"}]
+}
+EOF
+
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+FIXTURES="$GITHUB_AUDIT_RULESETS_TEST_FIXTURES"
+case "$1" in
+  repo)
+    cat "$FIXTURES/repo-list.json"
+    ;;
+  api)
+    key="$(printf '%s' "$2" | tr '/' '_')"
+    if [[ -f "$FIXTURES/$key.json" ]]; then
+      cat "$FIXTURES/$key.json"
+    else
+      printf '[]'
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$tmp/bin/gh"
+
+  printf 'exempted\texempt\n' >"$tmp/config/overrides.tsv"
+
+  export GITHUB_AUDIT_RULESETS_OWNER=tarotene \
+    GITHUB_AUDIT_RULESETS_GH_BIN="$tmp/bin/gh" \
+    GITHUB_AUDIT_RULESETS_STATE_DIR="$tmp/state" \
+    GITHUB_AUDIT_RULESETS_OVERRIDES_FILE="$tmp/config/overrides.tsv" \
+    GITHUB_AUDIT_RULESETS_TEST_FIXTURES="$tmp/fixtures"
+
+  out="$("$SELF" 2>&1)" && {
+    printf 'FAIL: drifted/ungoverned が存在するのに exit 0 だった\n' >&2
+    return 1
+  }
+  grep -F 'repo=governed-ok' <<<"$out" | grep -qF 'missing=' && {
+    printf 'FAIL: governed-ok に missing が付いた\n' >&2
+    return 1
+  }
+  grep -F 'repo=governed-drifted' <<<"$out" | grep -qF 'required_signatures' || {
+    printf 'FAIL: governed-drifted の required_signatures 欠落を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=governed-drifted' <<<"$out" | grep -qF 'copilot_code_review' || {
+    printf 'FAIL: governed-drifted の copilot_code_review 欠落を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=governed-drifted' <<<"$out" | grep -qF 'pull_request.required_review_thread_resolution' || {
+    printf 'FAIL: governed-drifted の required_review_thread_resolution 不一致を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=governed-drifted' <<<"$out" | grep -qF 'pull_request.allowed_merge_methods' || {
+    printf 'FAIL: governed-drifted の allowed_merge_methods 不一致を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=bare' <<<"$out" | grep -qF ungoverned || {
+    printf 'FAIL: bare が ungoverned と判定されなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=exempted' <<<"$out" | grep -qF exempt || {
+    printf 'FAIL: exempted が exempt と判定されなかった(override が効いていない)\n' >&2
+    return 1
+  }
+  grep -F 'repo=exempted' <<<"$out" | grep -qF 'missing=' && {
+    printf 'FAIL: exempted なのに missing が付いた(judge_repo に流れている)\n' >&2
+    return 1
+  }
+  grep -qF 'total: 4 repo(s) - ok=1 drifted=1 ungoverned=1 exempt=1' <<<"$out" || {
+    printf 'FAIL: サマリ集計が一致しない: %s\n' "$out" >&2
+    return 1
+  }
+
+  [[ -f "$tmp/state/ledger.json" ]] || {
+    printf 'FAIL: ledger.json が書かれなかった\n' >&2
+    return 1
+  }
+  jq -e '.repos | length == 4' "$tmp/state/ledger.json" >/dev/null || {
+    printf 'FAIL: ledger.json の repos 件数が一致しない\n' >&2
+    return 1
+  }
+
+  # overrides を空にすると、exempted も自前のドリフトで判定されることを確認
+  # (override が本当に短絡しているだけで、たまたま同じ結果ではないことの回帰)
+  : >"$tmp/config/overrides.tsv"
+  out="$("$SELF" --json 2>&1)" || true
+  jq -e '.[] | select(.repo=="exempted") | .verdict == "drifted"' <<<"$out" >/dev/null || {
+    printf 'FAIL: override 解除後に exempted が自前のドリフトで判定されなかった\n' >&2
+    return 1
+  }
+
+  printf 'selftest: OK\n'
+}
+
+main() {
+  local mode=report
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) mode=json ;;
+      --selftest)
+        selftest
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  local findings
+  findings="$(audit)"
+  write_ledger "$findings"
+  case "$mode" in
+    report) render_report "$findings" ;;
+    json) printf '%s\n' "$findings" ;;
+  esac
+  jq -e '[.[] | select(.verdict=="drifted" or .verdict=="ungoverned")] | length == 0' <<<"$findings" >/dev/null
+}
+
+main "$@"
