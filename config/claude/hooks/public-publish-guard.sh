@@ -89,11 +89,20 @@ read_lines() { # $1=file; コメント行・空行を除いて出力。ファイ
 # refresh_private_repo_cache: 自分の private リポ名一覧を live 取得して
 # キャッシュに書く。取得に失敗したら何もしない(呼び出し側が古いキャッシュに
 # フォールバックする)。
+#
+# `.github` は GitHub の特殊リポジトリ(org-wide デフォルト用)で、その裸の
+# 名前は `.github/workflows/`・`docs.github.com` 等どこにでも出現する
+# パス片・URL 断片と衝突し、denylist に混ぜると際限なく誤検知する
+# (実測: CODEOWNERS・nix.yml・docs 内の GitHub 公式ドキュメント URL 等)。
+# 「その名前が漏れても実害がない」特殊リポジトリなので、常に除外する。
+EXCLUDE_REPO_NAMES=(.github)
 refresh_private_repo_cache() {
   mkdir -p "$STATE_DIR"
-  local tmp names
+  local tmp names exclude_jq
   tmp="$(mktemp "$STATE_DIR/private-repos-cache.json.XXXXXX")"
-  if names="$("$GH_BIN" repo list "$OWNER" --visibility private --limit 500 --json name --jq '[.[].name]' 2>/dev/null)" \
+  exclude_jq="$(printf '%s\n' "${EXCLUDE_REPO_NAMES[@]}" | jq -R . | jq -s .)"
+  if names="$("$GH_BIN" repo list "$OWNER" --visibility private --limit 500 --json name \
+    --jq "[.[].name] - ${exclude_jq}" 2>/dev/null)" \
     && [[ -n $names ]]; then
     printf '%s' "$names" > "$tmp"
     mv "$tmp" "$PRIVATE_CACHE"
