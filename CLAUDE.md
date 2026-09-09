@@ -55,6 +55,7 @@ dotfiles/
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
 │   │                         #   plan-scope-gate, pr-gate, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
+│   │                         #   public-publish-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
 │   │                         #   assets/: non-hook files kept beside their
 │   │                         #   consumer for source-tree purity (ADR-0007) —
@@ -150,6 +151,9 @@ dotfiles/
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
+│   │   ├── public-publish-guard.md # PreToolUse hook: deny/ask on git push /
+│   │   │                     #   gh pr|issue create|edit|comment that would
+│   │   │                     #   leak a company/private repo name (#130 era incident)
 │   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
 │   │   │                     #   pristine worktree to origin/<base>
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl

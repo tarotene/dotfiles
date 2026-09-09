@@ -63,6 +63,9 @@ Design and rationale for the hooks and commands deployed from
   mid-pattern wildcard rules.
 - [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
+- [`public-publish-guard.md`](claude/public-publish-guard.md) — PreToolUse
+  hook: deny/ask on `git push` / `gh pr|issue create|edit|comment` that
+  would leak a company or private repository name to a public surface.
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
