@@ -11,6 +11,10 @@
   commits, stale `[gone]` branches).
 - [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
   creation, detect stale registrations, and notify through Herdr.
+- [`github-audit-rulesets.md`](github-audit-rulesets.md) — read-only
+  cross-repository GitHub ruleset drift audit (#130): why it lives here
+  instead of `github-inventory`, and why judgement is by rule-type union
+  rather than ruleset name/count.
 
 ## Architecture Decision Records ([`adr/`](adr/))
 

@@ -212,6 +212,16 @@ jobs:
       - name: pr-gate.sh --selftest
         run: bash ./config/claude/hooks/pr-gate.sh --selftest
 
+      # github-audit-rulesets (#130) is deterministic shell + jq end to end
+      # against a stubbed gh: rule-type union judgement (ok/drifted/
+      # ungoverned), the pull_request parameter check, and the overrides
+      # file's exempt short-circuit — including the regression that clearing
+      # overrides makes the same repo fall back to its own (drifted)
+      # judgement rather than coincidentally staying green
+      # (docs/github-audit-rulesets.md).
+      - name: github-audit-rulesets --selftest
+        run: ./scripts/github-audit-rulesets --selftest
+
       # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
       # runs it) but lives in config/claude/statusline/ alongside
       # claude-statusline.sh, covered by the shellcheck step above.

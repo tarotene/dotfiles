@@ -111,6 +111,9 @@ dotfiles/
 │   │                         #   (deployed to ~/.local/bin + a systemd user timer)
 │   ├── git-prune-worktrees    # removes orphaned worktree checkouts
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
+│   ├── github-audit-rulesets  # read-only cross-repository GitHub ruleset
+│   │                         #   drift audit (#130; deployed to ~/.local/bin,
+│   │                         #   manual command, no timer)
 │   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
 │   │                         #   side) pair — fable/sonnet, opus/sonnet,
 │   │                         #   fable/opus — and re-resolves the concrete
@@ -140,6 +143,9 @@ dotfiles/
 │   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── worktree-lifecycle.md # herdr worktree create/prune lifecycle across scripts/hooks
+│   ├── github-audit-rulesets.md # read-only cross-repo GitHub ruleset drift
+│   │                         #   audit (#130): rule-type-union judgement,
+│   │                         #   why it's not in github-inventory
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
