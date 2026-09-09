@@ -1,0 +1,703 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# claude-plan-model — switch the *pair of models* behind Opus Plan Mode, in one
+# command.
+#
+# `model: "opusplan"` is a *pair of aliases*, not a pair of models: the plan side
+# resolves the `opus` alias, the execution side the `sonnet` alias. Which
+# concrete model each alias resolves to is declared separately, via
+# ANTHROPIC_DEFAULT_<FAMILY>_MODEL in ~/.claude/settings.json's `env`. So a mode
+# here is always a *pair* and is named as one:
+#
+#   fable/sonnet   plan = Fable, execute = Sonnet   (the default)
+#   opus/sonnet    plan = Opus,  execute = Sonnet
+#   fable/opus     plan = Fable, execute = Opus
+#
+# Overriding the opus alias is the only way to put Fable on the plan side — and
+# it is also why this command exists: once that override is in place, `/model
+# opus` no longer reaches Opus, so there is no in-band way back when Fable's own
+# rate limit runs out.
+#
+# `fallbackModel` does not cover that case. It fires on model_not_found /
+# permission_denied / server_error / overload only; "Usage limit reached" takes
+# a different path (wait for the window to reset). The switch has to be manual.
+#
+# Two things own state here, deliberately split:
+#
+#   mode (the pair)      — runtime state, owned by this command. `hms` never
+#                          overwrites it, the same way it never touches `.model`.
+#   concrete model IDs   — owned by the declaration: re-resolved on every run
+#                          from the installed claude binary's baked catalog
+#                          (`latest_per_family`). Nothing is pinned, so a new
+#                          model generation is picked up without editing Nix.
+#
+# Alias strings cannot be used as the env value: the value is passed through
+# unchanged and the API rejects `fable` with `unrecognized_model`. Concrete IDs
+# are mandatory, which is exactly what makes the catalog lookup necessary.
+#
+# The `opus/sonnet` mode is represented by *writing* the concrete Opus ID, not
+# by deleting the key. An absent key has to keep meaning "never initialised" —
+# otherwise `sync` could not tell a fresh machine from a deliberately selected
+# mode, and every `hms` would silently drag you back to Fable while its limit is
+# still exhausted. The execution side is the mirror image: `sonnet` execution is
+# the alias default, so the SONNET key is *absent* in the two `*/sonnet` modes
+# and only written for `fable/opus`.
+#
+# Full rationale: docs/claude/opusplan-model-aliases.md
+
+prog=claude-plan-model
+self="${BASH_SOURCE[0]}"
+settings="${CLAUDE_PLAN_MODEL_SETTINGS:-$HOME/.claude/settings.json}"
+default_mode=fable/sonnet
+
+usage() {
+    cat <<EOF
+Usage: ${prog} [--force] [fable/sonnet|opus/sonnet|fable/opus|status|sync]
+
+Switch the pair of models behind Opus Plan Mode (plan side / execution side).
+
+  ${prog}               cycle fable/sonnet -> opus/sonnet -> fable/opus -> ...
+  ${prog} fable/opus    select a mode explicitly (idempotent)
+  ${prog} status        report the current mode without changing anything
+  ${prog} sync          keep the current mode, refresh the concrete model IDs
+                        (run from home-manager activation)
+  ${prog} --selftest    run the built-in self-tests
+
+Modes:
+  fable/sonnet   plan = Fable, execute = Sonnet   (default; also accepts "fable")
+  opus/sonnet    plan = Opus,  execute = Sonnet   (also accepts "opus")
+  fable/opus     plan = Fable, execute = Opus
+
+Options:
+  --force   apply even when .model is not "opusplan" (see below)
+
+The whole construction only does something while .model is "opusplan": that is
+the one setting that splits plan from execution. Any other value makes this
+switch either inert (a concrete model ID bypasses the aliases) or far too broad
+(a bare alias like "opus" routes the *whole* session through the alias this
+command overrides), so a mutating run stops instead of guessing.
+EOF
+}
+
+warn() { printf '%s: %s\n' "$prog" "$*" >&2; }
+say() { printf '%s: %s\n' "$prog" "$*"; }
+
+# The catalog is baked into the installed binary as
+#   latest_per_family:{fable:"claude-fable-5-1",opus:"claude-opus-5",...}
+# An empty `latest_per_family:{}` also appears, so the pattern requires at least
+# one character inside the braces. Reading the binary directly (rather than via
+# `strings`) keeps this free of a binutils dependency and costs ~50ms.
+#
+# CLAUDE_PLAN_MODEL_CATALOG is a test seam: --selftest has to drive the state
+# machine without depending on which claude happens to be installed.
+read_catalog() {
+    local bin
+    if [ -n "${CLAUDE_PLAN_MODEL_CATALOG-}" ]; then
+        printf '%s\n' "$CLAUDE_PLAN_MODEL_CATALOG"
+        return 0
+    fi
+    bin="$(command -v claude 2>/dev/null)" || return 1
+    bin="$(readlink -f "$bin")" || return 1
+    [ -f "$bin" ] || return 1
+    LC_ALL=C grep -aom1 'latest_per_family:{[^}]\+}' "$bin"
+}
+
+catalog_field() {
+    # $1: catalog text, $2: family key
+    sed -n "s/.*[{,]$2:\"\([^\"]*\)\".*/\1/p" <<<"$1"
+}
+
+ensure_settings() {
+    if [ ! -f "$settings" ]; then
+        mkdir -p "$(dirname "$settings")"
+        printf '{}\n' >"$settings"
+    fi
+}
+
+env_plan() { jq -r '.env.ANTHROPIC_DEFAULT_OPUS_MODEL // empty' "$settings"; }
+env_exec() { jq -r '.env.ANTHROPIC_DEFAULT_SONNET_MODEL // empty' "$settings"; }
+model_key() { jq -r '.model // empty' "$settings"; }
+
+# Plan side, from the value of the opus alias override:
+#   uninit  — key absent; never initialised by this command
+#   fable / opus
+#   unknown — a value this command does not manage; never overwritten
+plan_of() {
+    case "$1" in
+    "") echo uninit ;;
+    claude-fable-*) echo fable ;;
+    claude-opus-*) echo opus ;;
+    *) echo unknown ;;
+    esac
+}
+
+# Execution side, from the value of the sonnet alias override. Absence *is* the
+# sonnet mode (the alias default is what we want, so nothing is written). A
+# concrete Sonnet ID therefore came from somewhere else and is left alone — the
+# same rule as an unrecognised plan-side value.
+exec_of() {
+    case "$1" in
+    "") echo sonnet ;;
+    claude-opus-*) echo opus ;;
+    *) echo unknown ;;
+    esac
+}
+
+# uninit | unknown | unmanaged | <one of the three modes>
+detect_mode() {
+    local p e
+    p="$(plan_of "$1")"
+    e="$(exec_of "$2")"
+    if [ "$p" = uninit ]; then
+        echo uninit
+        return 0
+    fi
+    if [ "$p" = unknown ] || [ "$e" = unknown ]; then
+        echo unknown
+        return 0
+    fi
+    case "$p/$e" in
+    fable/sonnet | opus/sonnet | fable/opus) echo "$p/$e" ;;
+    *) echo unmanaged ;;
+    esac
+}
+
+report_unmanaged() {
+    # $1: current plan value, $2: current exec value, $3: detected mode
+    local p e
+    p="$(plan_of "$1")"
+    e="$(exec_of "$2")"
+    if [ "$p" = unknown ]; then
+        warn ".env.ANTHROPIC_DEFAULT_OPUS_MODEL is \"${1}\", which this command does not manage."
+    fi
+    if [ "$e" = unknown ]; then
+        warn ".env.ANTHROPIC_DEFAULT_SONNET_MODEL is \"${2}\", which this command does not manage."
+    fi
+    if [ "$3" = unmanaged ]; then
+        warn "the current pair (plan=${p}, exec=${e}) is not one of the modes this command manages."
+    fi
+}
+
+normalize_mode() {
+    local a="${1//-//}"
+    case "$a" in
+    fable) echo fable/sonnet ;;
+    opus) echo opus/sonnet ;;
+    fable/sonnet | opus/sonnet | fable/opus) echo "$a" ;;
+    *) return 1 ;;
+    esac
+}
+
+next_mode() {
+    case "$1" in
+    fable/sonnet) echo opus/sonnet ;;
+    opus/sonnet) echo fable/opus ;;
+    fable/opus) echo fable/sonnet ;;
+    *) return 1 ;;
+    esac
+}
+
+# split | alias | flat — how `.model` relates to the aliases this command writes.
+#
+#   split  "opusplan"  — the plan/execution split exists; this is the one value
+#          the whole construction is built for.
+#   alias  a bare alias — the override reaches the *whole* session, not just one
+#          side. "opus"/"sonnet" obviously; "haiku" too, because it splits as
+#          (plan=sonnet alias, exec=haiku alias); "best" resolves through the
+#          provider's own alias table. Not inert — over-broad.
+#   flat   a concrete model ID, "fable*" (the FABLE alias, which this command
+#          never writes), or nothing at all — the aliases are bypassed, so the
+#          switch really is inert.
+classify_model_key() {
+    case "$1" in
+    opusplan | 'opusplan[1m]') echo split ;;
+    opus | 'opus[1m]' | sonnet | 'sonnet[1m]' | haiku | 'haiku[1m]' | best) echo alias ;;
+    *) echo flat ;;
+    esac
+}
+
+report_model_key() {
+    # $1: .model value, $2: its class. Returns 1 when the class is not "split".
+    local model="$1" class="$2"
+    case "$class" in
+    split) return 0 ;;
+    alias)
+        warn "settings .model is \"${model}\" — a bare alias, and aliases are exactly what this command overrides."
+        case "$model" in
+        opus | 'opus[1m]')
+            warn "  the opus alias resolves the WHOLE session here, not just the plan side."
+            ;;
+        sonnet | 'sonnet[1m]')
+            warn "  the sonnet alias resolves the WHOLE session here, not just the execution side."
+            ;;
+        haiku | 'haiku[1m]')
+            warn "  \"haiku\" splits as (plan=sonnet alias, exec=haiku alias), so the sonnet alias covers its plan side."
+            ;;
+        best)
+            warn "  \"best\" resolves through the provider's own alias table."
+            ;;
+        esac
+        warn "  switching would silently rewrite every request, not only plan mode."
+        warn "  select the split first: \`/model opusplan\` (or re-run with --force)."
+        ;;
+    flat)
+        if [ -z "$model" ]; then
+            warn "settings has no .model; the plan/execution split only exists under \"opusplan\"."
+        else
+            warn "settings .model is \"${model}\", which bypasses the aliases — this switch would be inert."
+        fi
+        warn "  select it with \`/model opusplan\` (or re-run with --force)."
+        ;;
+    esac
+    return 1
+}
+
+# Write every half of a mode in a single jq pass and a single mktemp+mv, so the
+# window for a lost update against Claude Code itself (or herdr-agent-state.sh)
+# is not reopened per key (#61).
+#
+# The SONNET key is deleted, not left as it was, in the two `*/sonnet` modes:
+# leaving a stale execution-side override behind would make the mode a lie.
+#
+# fallbackModel is per mode, and never equal to a model the mode already uses
+# (Claude Code rejects that: "Fallback model cannot be the same as the main
+# model."):
+#   fable/sonnet -> latest Opus    (the escape hatch from a degraded plan model)
+#   opus/sonnet  -> deleted        (Opus *is* the plan model; falling further
+#                                   down from an already degraded plan model is
+#                                   not a trade worth making silently)
+#   fable/opus   -> latest Sonnet  (the execution model this mode displaced)
+#
+# Returns 0 when the file was rewritten, 2 when it was already in that state
+# (steady state must not touch the file at all, not even its mtime), 1 on an
+# internal error.
+apply_mode() {
+    local mode="$1"
+    local plan_id exec_id fallback tmp
+
+    case "$mode" in
+    fable/sonnet)
+        plan_id="$fable_id"
+        exec_id=""
+        fallback="[\"${opus_id}\"]"
+        ;;
+    opus/sonnet)
+        plan_id="$opus_id"
+        exec_id=""
+        fallback="[]"
+        ;;
+    fable/opus)
+        plan_id="$fable_id"
+        exec_id="$opus_id"
+        fallback="[\"${sonnet_id}\"]"
+        ;;
+    *)
+        warn "internal error: unknown mode ${mode}"
+        return 1
+        ;;
+    esac
+
+    tmp="$(mktemp "${settings}.hm.XXXXXX")"
+    jq --arg p "$plan_id" --arg x "$exec_id" --argjson fb "$fallback" '
+      .env.ANTHROPIC_DEFAULT_OPUS_MODEL = $p
+      | if $x == "" then del(.env.ANTHROPIC_DEFAULT_SONNET_MODEL)
+        else .env.ANTHROPIC_DEFAULT_SONNET_MODEL = $x end
+      | if ($fb | length) > 0 then .fallbackModel = $fb else del(.fallbackModel) end
+    ' "$settings" >"$tmp"
+
+    if jq -e -s '.[0] == .[1]' "$settings" "$tmp" >/dev/null; then
+        rm -f "$tmp"
+        return 2
+    fi
+
+    chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+    mv "$tmp" "$settings"
+    return 0
+}
+
+# What the mode resolves to, and how far the switch reaches. The env is
+# materialised into the process environment when claude starts, so a switch
+# never reaches a session that is already running — say so every time rather
+# than leaving a silent no-op.
+report_effect() {
+    local mode="$1" plan exec_
+    plan="$(env_plan)"
+    exec_="$(env_exec)"
+    say "  plan = ${plan}"
+    if [ -n "$exec_" ]; then
+        say "  exec = ${exec_}"
+    elif [ -n "$sonnet_id" ]; then
+        say "  exec = ${sonnet_id} (sonnet alias default)"
+    else
+        say "  exec = the sonnet alias default"
+    fi
+    if [ "$mode" = fable/opus ]; then
+        say "  note: the sonnet alias now resolves to Opus everywhere — \`/model sonnet\`"
+        say "        and any subagent pinned to \`sonnet\` run on Opus too."
+    fi
+    say "this takes effect in newly started sessions only."
+    say "  running session: restart with \`claude --continue\`, or use \`/model ${plan}\`"
+}
+
+# --- self-tests -------------------------------------------------------------
+#
+# The state machine is a pair now, so the interesting failures are combinations:
+# a mode transition that leaves the other half behind, a guard that fires after
+# the write, a `sync` that drags a deliberate mode back to the default.
+
+st_fails=0
+st_catalog='latest_per_family:{fable:"claude-fable-5-1",opus:"claude-opus-5",sonnet:"claude-sonnet-5",haiku:"claude-haiku-4-5"}'
+st_out=""
+st_rc=0
+
+st_run() {
+    # $1: settings file, rest: arguments
+    local file="$1"
+    shift
+    st_rc=0
+    st_out="$(CLAUDE_PLAN_MODEL_SETTINGS="$file" CLAUDE_PLAN_MODEL_CATALOG="$st_catalog" \
+        bash "$self" "$@" 2>&1)" || st_rc=$?
+}
+
+st_state() {
+    jq -cS '{p: .env.ANTHROPIC_DEFAULT_OPUS_MODEL, x: .env.ANTHROPIC_DEFAULT_SONNET_MODEL, fb: .fallbackModel}' "$1"
+}
+
+st_eq() {
+    # $1: label, $2: expected, $3: actual
+    if [ "$2" = "$3" ]; then
+        printf 'ok   %s\n' "$1"
+    else
+        printf 'FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"
+        st_fails=$((st_fails + 1))
+    fi
+}
+
+st_seed() {
+    # $1: settings file, $2: JSON contents
+    printf '%s\n' "$2" >"$1"
+}
+
+st_M_FABLE_SONNET='{"fb":["claude-opus-5"],"p":"claude-fable-5-1","x":null}'
+st_M_OPUS_SONNET='{"fb":null,"p":"claude-opus-5","x":null}'
+st_M_FABLE_OPUS='{"fb":["claude-sonnet-5"],"p":"claude-fable-5-1","x":"claude-opus-5"}'
+
+selftest() {
+    local dir f before after
+    dir="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$dir'" EXIT
+    f="$dir/settings.json"
+
+    # 1) uninitialised seeds the default mode, and says so without claiming a
+    #    previous mode it never had.
+    st_seed "$f" '{"model":"opusplan"}'
+    st_run "$f" ""
+    st_eq "1a uninit seeds ${default_mode}" "$st_M_FABLE_SONNET" "$(st_state "$f")"
+    st_eq "1b uninit exit 0" "0" "$st_rc"
+    case "$st_out" in
+    *'[uninitialised] => [fable/sonnet]'*) printf 'ok   %s\n' "1c uninit is not reported as opus" ;;
+    *)
+        printf 'FAIL %s\n       output: %s\n' "1c uninit is not reported as opus" "$st_out"
+        st_fails=$((st_fails + 1))
+        ;;
+    esac
+
+    # 2) the bare toggle cycles all three modes and comes back round.
+    st_run "$f" ""
+    st_eq "2a cycle 1 -> opus/sonnet" "$st_M_OPUS_SONNET" "$(st_state "$f")"
+    st_run "$f" ""
+    st_eq "2b cycle 2 -> fable/opus" "$st_M_FABLE_OPUS" "$(st_state "$f")"
+    st_run "$f" ""
+    st_eq "2c cycle 3 -> fable/sonnet" "$st_M_FABLE_SONNET" "$(st_state "$f")"
+
+    # 3) leaving fable/opus removes the execution-side override rather than
+    #    leaving it behind.
+    st_seed "$f" '{"model":"opusplan"}'
+    st_run "$f" fable/opus
+    st_eq "3a explicit fable/opus" "$st_M_FABLE_OPUS" "$(st_state "$f")"
+    st_run "$f" opus/sonnet
+    st_eq "3b SONNET key deleted on exit" "$st_M_OPUS_SONNET" "$(st_state "$f")"
+    st_eq "3c SONNET key really absent" "false" "$(jq -c '.env | has("ANTHROPIC_DEFAULT_SONNET_MODEL")' "$f")"
+    st_run "$f" fable-opus
+    st_eq "3d dash spelling accepted" "$st_M_FABLE_OPUS" "$(st_state "$f")"
+    st_run "$f" fable
+    st_eq "3e legacy name \"fable\"" "$st_M_FABLE_SONNET" "$(st_state "$f")"
+    st_run "$f" opus
+    st_eq "3f legacy name \"opus\"" "$st_M_OPUS_SONNET" "$(st_state "$f")"
+
+    # 4) steady state does not touch the file at all.
+    before="$(stat -c '%s %Y %y' "$f")"
+    st_run "$f" opus/sonnet
+    after="$(stat -c '%s %Y %y' "$f")"
+    st_eq "4a steady state leaves mtime alone" "$before" "$after"
+    st_eq "4b steady state exit 0" "0" "$st_rc"
+    case "$st_out" in
+    *'mode unchanged: [opus/sonnet]'*) printf 'ok   %s\n' "4c steady state says unchanged" ;;
+    *)
+        printf 'FAIL %s\n       output: %s\n' "4c steady state says unchanged" "$st_out"
+        st_fails=$((st_fails + 1))
+        ;;
+    esac
+
+    # 5) a bare alias in .model is over-broad, not inert: refuse before writing.
+    st_seed "$f" '{"model":"opus[1m]","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-opus-5"}}'
+    before="$(cat "$f")"
+    st_run "$f" ""
+    st_eq "5a alias .model exits 1" "1" "$st_rc"
+    st_eq "5b alias .model leaves the file untouched" "$before" "$(cat "$f")"
+    case "$st_out" in
+    *'WHOLE session'*) printf 'ok   %s\n' "5c alias .model is diagnosed, not called inert" ;;
+    *)
+        printf 'FAIL %s\n       output: %s\n' "5c alias .model is diagnosed, not called inert" "$st_out"
+        st_fails=$((st_fails + 1))
+        ;;
+    esac
+    st_run "$f" --force ""
+    st_eq "5d --force applies anyway" "$st_M_FABLE_OPUS" "$(st_state "$f")"
+    st_eq "5e --force exit 0" "0" "$st_rc"
+
+    # 6) a concrete model ID, or no .model at all, is genuinely inert: also
+    #    refuse, and also before writing.
+    st_seed "$f" '{"model":"claude-opus-5[1m]","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5-1"}}'
+    before="$(cat "$f")"
+    st_run "$f" ""
+    st_eq "6a flat .model exits 1" "1" "$st_rc"
+    st_eq "6b flat .model leaves the file untouched" "$before" "$(cat "$f")"
+    st_seed "$f" '{"env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5-1"}}'
+    before="$(cat "$f")"
+    st_run "$f" ""
+    st_eq "6c absent .model exits 1" "1" "$st_rc"
+    st_eq "6d absent .model leaves the file untouched" "$before" "$(cat "$f")"
+
+    # 7) values this command did not write are never stolen — on either side.
+    st_seed "$f" '{"model":"opusplan","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-mythos-preview"}}'
+    before="$(cat "$f")"
+    st_run "$f" ""
+    st_eq "7a unknown plan value exits 1" "1" "$st_rc"
+    st_eq "7b unknown plan value untouched" "$before" "$(cat "$f")"
+    st_seed "$f" '{"model":"opusplan","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5-1","ANTHROPIC_DEFAULT_SONNET_MODEL":"claude-sonnet-5"}}'
+    before="$(cat "$f")"
+    st_run "$f" ""
+    st_eq "7c foreign sonnet pin exits 1" "1" "$st_rc"
+    st_eq "7d foreign sonnet pin untouched" "$before" "$(cat "$f")"
+    st_run "$f" sync
+    st_eq "7e sync leaves it untouched too" "$before" "$(cat "$f")"
+    st_eq "7f sync still exits 0" "0" "$st_rc"
+
+    # 8) sync preserves the mode and refreshes rotten IDs, whatever .model says.
+    st_seed "$f" '{"model":"claude-opus-5[1m]","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5"}}'
+    st_run "$f" sync
+    st_eq "8a sync refreshes a rotten fable pin" "$st_M_FABLE_SONNET" "$(st_state "$f")"
+    st_eq "8b sync ignores .model" "0" "$st_rc"
+    st_seed "$f" '{"model":"opusplan","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5","ANTHROPIC_DEFAULT_SONNET_MODEL":"claude-opus-4-1"}}'
+    st_run "$f" sync
+    st_eq "8c sync preserves fable/opus and refreshes both" "$st_M_FABLE_OPUS" "$(st_state "$f")"
+    st_seed "$f" '{"model":"opusplan","env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-opus-4-1"}}'
+    st_run "$f" sync
+    st_eq "8d sync preserves opus/sonnet" "$st_M_OPUS_SONNET" "$(st_state "$f")"
+    st_seed "$f" '{"model":"opusplan"}'
+    st_run "$f" sync
+    st_eq "8e sync seeds the default mode" "$st_M_FABLE_SONNET" "$(st_state "$f")"
+
+    # 9) unrelated keys survive, and status never mutates or fails.
+    st_seed "$f" '{"model":"opusplan","permissions":{"allow":["Bash(ls)"]},"env":{"FOO":"bar"}}'
+    st_run "$f" fable/opus
+    st_eq "9a unrelated keys preserved" '{"env":{"ANTHROPIC_DEFAULT_OPUS_MODEL":"claude-fable-5-1","ANTHROPIC_DEFAULT_SONNET_MODEL":"claude-opus-5","FOO":"bar"},"fallbackModel":["claude-sonnet-5"],"model":"opusplan","permissions":{"allow":["Bash(ls)"]}}' "$(jq -cS . "$f")"
+    before="$(cat "$f")"
+    st_run "$f" status
+    st_eq "9b status exits 0" "0" "$st_rc"
+    st_eq "9c status does not mutate" "$before" "$(cat "$f")"
+    st_seed "$f" '{"model":"claude-opus-5[1m]"}'
+    before="$(cat "$f")"
+    st_run "$f" status
+    st_eq "9d status exits 0 even when inert" "0" "$st_rc"
+    st_eq "9e status does not mutate when inert" "$before" "$(cat "$f")"
+
+    # 10) no leftover temp files anywhere along the way.
+    st_eq "10a no leftover temp files" "" "$(find "$dir" -name 'settings.json.hm.*' -printf '%f\n')"
+
+    if [ "$st_fails" -gt 0 ]; then
+        printf '%s: %d self-test(s) FAILED\n' "$prog" "$st_fails" >&2
+        return 1
+    fi
+    printf '%s: all self-tests passed\n' "$prog"
+    return 0
+}
+
+# --- argument parsing -------------------------------------------------------
+
+force=0
+action=""
+have_action=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    -h | --help | help)
+        usage
+        exit 0
+        ;;
+    --selftest)
+        selftest
+        exit $?
+        ;;
+    --force)
+        force=1
+        ;;
+    -*)
+        warn "unknown option: $1"
+        usage >&2
+        exit 1
+        ;;
+    *)
+        if [ "$have_action" -eq 1 ] && [ -n "$action" ]; then
+            warn "unexpected argument: $1"
+            usage >&2
+            exit 1
+        fi
+        action="$1"
+        have_action=1
+        ;;
+    esac
+    shift
+done
+
+target_arg=""
+case "$action" in
+"" | status | sync) ;;
+*)
+    if ! target_arg="$(normalize_mode "$action")"; then
+        warn "unknown argument: ${action}"
+        usage >&2
+        exit 1
+    fi
+    ;;
+esac
+
+ensure_settings
+
+catalog=""
+if ! catalog="$(read_catalog)" || [ -z "$catalog" ]; then
+    # No claude, or a binary this pattern no longer matches. Leave settings.json
+    # exactly as it is: an env var for a program that is not installed is
+    # harmless, and a half-written model config is not.
+    warn "could not read the model catalog from the installed claude binary; leaving settings.json unchanged."
+    if [ "$action" = sync ]; then exit 0; fi
+    exit 1
+fi
+
+fable_id="$(catalog_field "$catalog" fable)"
+opus_id="$(catalog_field "$catalog" opus)"
+sonnet_id="$(catalog_field "$catalog" sonnet)"
+if [ -z "$fable_id" ] || [ -z "$opus_id" ]; then
+    warn "model catalog is missing a fable/opus entry; leaving settings.json unchanged."
+    if [ "$action" = sync ]; then exit 0; fi
+    exit 1
+fi
+
+cur_plan="$(env_plan)"
+cur_exec="$(env_exec)"
+mode="$(detect_mode "$cur_plan" "$cur_exec")"
+model="$(model_key)"
+model_class="$(classify_model_key "$model")"
+
+# fable/opus is the one mode that needs the sonnet ID (for fallbackModel).
+require_sonnet_id() {
+    if [ -n "$sonnet_id" ]; then return 0; fi
+    warn "model catalog is missing the sonnet entry, which fable/opus needs for fallbackModel;"
+    warn "  leaving settings.json unchanged."
+    return 1
+}
+
+case "$action" in
+status)
+    case "$mode" in
+    uninit)
+        say "mode = uninitialised (nothing written yet; both aliases fall through to the catalog default)"
+        ;;
+    unknown | unmanaged)
+        say "mode = unmanaged"
+        ;;
+    *)
+        say "mode = ${mode}"
+        ;;
+    esac
+    say "  plan (opus alias)   = ${cur_plan:-<absent> -> ${opus_id} (catalog default)}"
+    say "  exec (sonnet alias) = ${cur_exec:-<absent> -> ${sonnet_id:-catalog default}}"
+    say "fallbackModel: $(jq -c '.fallbackModel // "none"' "$settings")"
+    say "latest known to this claude: fable=${fable_id} opus=${opus_id} sonnet=${sonnet_id:-?}"
+    case "$mode" in
+    unknown | unmanaged) report_unmanaged "$cur_plan" "$cur_exec" "$mode" ;;
+    esac
+    report_model_key "$model" "$model_class" || true
+    exit 0
+    ;;
+sync)
+    # Deliberately does not look at .model: activation is not a human action,
+    # and refusing here would break `hms` over a runtime choice this command
+    # does not own.
+    case "$mode" in
+    unknown | unmanaged)
+        report_unmanaged "$cur_plan" "$cur_exec" "$mode"
+        warn "  left untouched."
+        exit 0
+        ;;
+    uninit) target="$default_mode" ;;
+    *) target="$mode" ;;
+    esac
+    if [ "$target" = fable/opus ] && ! require_sonnet_id; then exit 0; fi
+    rc=0
+    apply_mode "$target" || rc=$?
+    case "$rc" in
+    0)
+        new_exec="$(env_exec)"
+        say "mode ${target}: model config updated (plan=$(env_plan) exec=${new_exec:-${sonnet_id} via the sonnet alias})"
+        ;;
+    2) ;;
+    *) exit 1 ;;
+    esac
+    exit 0
+    ;;
+esac
+
+# Mutating path: the bare toggle, or an explicitly named mode.
+case "$mode" in
+unknown | unmanaged)
+    report_unmanaged "$cur_plan" "$cur_exec" "$mode"
+    warn "  refusing to guess a direction; pick one explicitly, e.g. \`${prog} ${default_mode}\`."
+    exit 1
+    ;;
+esac
+
+if [ -n "$target_arg" ]; then
+    target="$target_arg"
+elif [ "$mode" = uninit ]; then
+    target="$default_mode"
+else
+    target="$(next_mode "$mode")"
+fi
+
+# Before the write, not after it: the whole point is to not rewrite every
+# request's model while claiming the switch had no effect.
+if [ "$model_class" != split ]; then
+    report_model_key "$model" "$model_class" || true
+    if [ "$force" -eq 0 ]; then
+        exit 1
+    fi
+    warn "  --force given: applying anyway."
+fi
+
+if [ "$target" = fable/opus ] && ! require_sonnet_id; then exit 1; fi
+
+from="$mode"
+if [ "$from" = uninit ]; then from=uninitialised; fi
+
+rc=0
+apply_mode "$target" || rc=$?
+case "$rc" in
+0) say "mode changed: [${from}] => [${target}]" ;;
+2) say "mode unchanged: [${target}]" ;;
+*) exit 1 ;;
+esac
+report_effect "$target"

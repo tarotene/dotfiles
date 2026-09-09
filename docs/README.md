@@ -1,0 +1,130 @@
+# docs/ index
+
+## Operations
+
+- [`operations.md`](operations.md) — the canonical apply (`hms`), routine
+  flake update, and the tool-layer decision flow for new tools.
+- [`cutover-runbook.md`](cutover-runbook.md) — per-host provisioning /
+  migration procedure, including rollback.
+- [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
+  guard herdr's parallel-worktree workflow (stale base, protected-branch
+  commits, stale `[gone]` branches).
+- [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
+  creation, detect stale registrations, and notify through Herdr.
+- [`github-audit-rulesets.md`](github-audit-rulesets.md) — read-only
+  cross-repository GitHub ruleset drift audit (#130): why it lives here
+  instead of a dedicated inventory repo, and why judgement is by rule-type
+  union rather than ruleset name/count.
+
+## Architecture Decision Records ([`adr/`](adr/))
+
+- [ADR-0001](adr/0001-home-manager-as-source-of-truth.md) — home-manager is
+  the source of truth; apt + per-project runtimes are escape hatches.
+- [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime
+  consolidation + hybrid config translation.
+- [ADR-0003](adr/0003-secrets-and-identity.md) — secrets & identity
+  (YubiKey-rooted, runtime SOPS). See the Amendment for the deployed model.
+- [ADR-0004](adr/0004-repo-identity-and-relocation.md) — repo identity &
+  relocation.
+- [ADR-0005](adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension
+  init gates on binary existence, not auth.
+- [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own
+  GL stack (nixGL); the system graphics stack stays apt.
+- [ADR-0007](adr/0007-naming-and-layout-conventions.md) — 命名・配置規約
+  (拡張子・shebang・hook 語彙・`config/claude/hooks/` の純度・docs 対応原則・
+  環境変数接尾辞・`scripts/` の位置づけ・モジュール分割の軸)。
+- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択
+  規約: 新しい判断・調査を ADR / `docs/claude/*.md` / Investigation record の
+  どれに書くか、腐る事実と腐らない決定を分離する理由。
+
+## Claude Code tooling ([`claude/`](claude/))
+
+Design and rationale for the hooks and commands deployed from
+`config/claude/` by `home/modules/claude.nix`:
+
+- [`copilot-plan-review.md`](claude/copilot-plan-review.md) — ExitPlanMode gate:
+  a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
+  severity, not on a verdict.
+- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ)
+  (CI/push, not review/base).
+- [`pr-description.md`](claude/pr-description.md) — PR 本文の標準スケルトンと
+  Before/After 視覚証跡の判断知識(スキル)+ `G_visual` による強制(ゲート)の
+  二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
+- [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
+  Issue index, not a full crawl.
+- [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
+  the git-signing passphrase cache.
+- [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
+  in-progress plan to HTML in Chrome.
+- [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
+  findings land in an issue-filing inbox.
+- [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
+  validated programmatic allow for `git -C <worktree>`, replacing unsafe
+  mid-pattern wildcard rules.
+- [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
+  bare `git stash` (the stack is shared across herdr's parallel worktrees).
+- [`public-publish-guard.md`](claude/public-publish-guard.md) — PreToolUse
+  hook: deny/ask on `git push` / `gh pr|issue create|edit|comment` that
+  would leak a company or private repository name to a public surface.
+- [`claude-permissions.md`](claude/claude-permissions.md) —
+  `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
+- [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
+  Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
+  モードを **(Plan 側, 実行側) のペア 3 種**(`fable/sonnet` / `opus/sonnet` /
+  `fable/opus`)として `claude-plan-model` で巡回する。モードは実行時状態、
+  具体モデル ID は宣言が `latest_per_family` から毎回引き直す(pin ゼロ)。
+  `.model` が `opusplan` でなければ書き込む前に落ちる。`fallbackModel` は
+  Usage limit では発火しない。
+- [`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) — Herdr
+  sidebar: per-agent mode/model/metrics via pane metadata. Claude is 2-channel
+  (hook for permission mode, statusline for model/ctx/cost/effort); Codex and
+  Copilot get a leaner branch+model-only reporter each, plus the research
+  notes on why tab-bar usage was deferred (#117).
+- [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
+  Claude rate-limit usage (5h session window / weekly per-model cap) with
+  burn-rate prediction, from the undocumented `/usage` API (fail-soft: the
+  segment just disappears).
+- [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
+  hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
+  fast-forward する。
+- [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
+  `~/.claude/CLAUDE.md`: 検証可能な仮定は情報源(Slack/Drive/GitHub/公式ドキュメント/
+  文献)を参照するか明示判断し、発明する前に先行例を確認する調査規律を全セッション
+  常時注入する(read-only 配布、`#` 追記は skill-gardening の PR フローへ)。
+- [`diagramming.md`](claude/diagramming.md) — 個人スキル: 作図時に内容の型に
+  合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
+- [`skill-gardening.md`](claude/skill-gardening.md) — 個人スキル: 知見を
+  この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
+  公開リポジトリ向けサニタイズ規則の正本)。
+- [`living-description.md`](claude/living-description.md) — 個人スキル:
+  Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
+  正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。
+- [`test-grounding.md`](claude/test-grounding.md) — 個人スキル: 複数の実
+  コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
+  一次資料に当たることを強制する。
+- [`copilot-model-bump.md`](claude/copilot-model-bump.md) — 個人スキル: 外部
+  AI CLI に固定 pin した具体モデル ID を GA・廃止サイクルに追従して更新する
+  定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。
+- [`stacked-pr.md`](claude/stacked-pr.md) — 個人スキル: PR 同士に依存関係が
+  あるとき main 起点で並行させず base を親ブランチにした stacked PR として
+  積む手順。なぜ素の `--base` + `gh stack link` を選び `init/submit/sync` を
+  避けたか、なぜ pr-gate.sh を触らなかったかの裁定を記録。
+- [`tracking-issue.md`](claude/tracking-issue.md) — 個人スキル: 複数の子作業
+  を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
+  sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
+  `issue-hygiene` が担う。
+
+## Investigation records
+
+- [`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md) — fcitx5 trigger-key
+  investigation (#14): methodology, traces, and the recovery path.
+- [`stacked-pr-github-native.md`](stacked-pr-github-native.md) — GitHub
+  ネイティブ Stacked pull requests 機能の実測(preview ステータス・API
+  サーフェス・`gh-stack` 拡張の既知 issue)。時間で腐る事実を
+  `claude/stacked-pr.md` の裁定から分離するための器(ADR-0008)。
+
+## Miscellaneous
+
+- [`falcon-sensor.md`](falcon-sensor.md) — company EDR agent notes.
+- [`nixification-roadmap.md`](nixification-roadmap.md) — literal configs
+  worth translating to Nix DSL later, per ADR-0002.

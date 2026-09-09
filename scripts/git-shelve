@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# git-shelve — worktree 単位で所有権が分かる `git stash push` のラッパー。
+#
+# Usage: git shelve [<メモ>]
+#   git shelve                 メモ無し(タグのみ)で積む
+#   git shelve "rebase 前の退避"   メモ付きで積む
+#
+# stash スタックは git ではリポジトリ単位で、herdr が worktree ごとに切る
+# セッション単位ではない(docs/claude/git-stash-guard.md)。素の
+# `git stash push` で積んだ entry は、どの worktree が積んだものか区別でき
+# ず、後から `git stash pop` で他 worktree の WIP を取り違える事故につながる。
+#
+# この wrapper は message に現在の worktree の絶対パスをタグとして埋め込む
+# ("shelve:<toplevel>: <メモ>")。対になる `git unshelve` はこのタグを読んで
+# 自分の worktree の entry だけを解決する。
+#
+# `git unshelve` は list 解決 → drop → 検証の間、同じリポジトリの
+# `claude-shelve.lock` を flock で保持する(TOCTOU 対策、詳細はそちらの
+# コメント)。push 単体は git 自身の ref lock で原子的だが、
+# 「unshelve が list を読んでいる最中に push が割り込む」窓を無くすため、
+# この push も同じロックに参加させておく(手動の `git stash push` はこの
+# ロックの外なので、レースは `git unshelve` 側の事後検証+復元で吸収する)。
+#
+# `config/claude/hooks/git-stash-guard.sh` の deny 案内はここへ誘導する。
+
+toplevel="$(git rev-parse --show-toplevel)"
+note="${1-}"
+
+if [[ -n "$note" ]]; then
+    message="shelve:${toplevel}: ${note}"
+else
+    message="shelve:${toplevel}:"
+fi
+
+lockfile="$(git rev-parse --git-common-dir)/claude-shelve.lock"
+exec 9> "$lockfile"
+flock 9
+
+git stash push --include-untracked --message "$message"

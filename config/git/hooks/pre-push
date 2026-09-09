@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Detect worktree: git-dir differs from git-common-dir in worktrees
+git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+
+# herdr provisions one throwaway worktree per PR under ~/.herdr/worktrees/, and
+# pushing the PR branch directly from there is that tool's normal workflow —
+# there is no "parent branch" to merge back into first. Every other worktree
+# (manual `git worktree add`, etc.) keeps the block below. Note: --git-dir for
+# a linked worktree resolves under the *common* repo's .git/worktrees/, not
+# under ~/.herdr/ — the working tree's actual location is --show-toplevel.
+herdr_worktrees_root="${HOME}/.herdr/worktrees/"
+toplevel=$(git rev-parse --path-format=absolute --show-toplevel 2>/dev/null || true)
+is_herdr_worktree=0
+case "$toplevel" in
+    "$herdr_worktrees_root"*) is_herdr_worktree=1 ;;
+esac
+
+if [[ "$git_dir" != "$common_dir" && "$is_herdr_worktree" -eq 0 ]]; then
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "(detached)")
+    echo "error: Push blocked from worktree branch '${branch}'" >&2
+    echo "" >&2
+    echo "  Worktree branches are for local development only." >&2
+    echo "  Merge back to your parent branch first, then push from there." >&2
+    echo "" >&2
+    echo "  Override: git push --no-verify" >&2
+    exit 1
+fi
+
+# Chain to repo-local pre-push hook (core.hooksPath skips .git/hooks/)
+local_hook="${common_dir}/hooks/pre-push"
+if [[ -x "$local_hook" ]]; then
+    exec "$local_hook" "$@"
+fi

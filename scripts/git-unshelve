@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# git-unshelve — `git shelve` で積んだ、この worktree の entry だけを
+# apply して drop する。
+#
+# Usage: git unshelve
+#
+# 対になる `git shelve` の説明はそちらを参照。ここでは「どの entry が自分の
+# ものか」の解決と、drop の安全性だけを扱う。
+#
+# ## drop の安全性(TOCTOU 対策)
+#
+# stash スタックは worktree 間で共有されているので、この worktree が
+# unshelve している最中に別 worktree が push/drop するとスタックの index
+# (stash@{N})がずれる。`git stash drop`(`stash@{N}` しか受け付けない)は
+# 「list で対象 index の SHA を確認 → drop」という事前検証方式だと、確認と
+# drop が別コマンドである以上、その間の競合を検出できない(grilling セッ
+# ションでの plan review 指摘: 事前検証では別 worktree が積んだ entry を
+# 誤って消し得る)。
+#
+# そこで検証を drop の**後**に置く: `git stash drop stash@{N}` は実際に削除
+# した entry の SHA を `Dropped stash@{N} (<sha>)` という形で出力する(git
+# 2.54 で実測)。これを期待 SHA と比較し、不一致なら `git stash store` で
+# 「削除してしまった entry」を同一 SHA のまま復元してから再試行する。
+# store は任意のコミットを stash entry として登録し直す操作で、SHA は
+# コミットオブジェクトのハッシュそのものなので、drop 前と同一の entry が
+# 復元される(実測: 復元後も apply 可能)。
+#
+# 変更系のセクション(list 解決 → drop → 検証)全体を flock で直列化し、
+# `git shelve` / `git unshelve` 同士の競合はそもそも起こさない。手動の
+# `git stash push` / `apply <SHA>` とはロックを共有しないが、それは上記の
+# 事後検証+復元で吸収する。
+
+lockfile="$(git rev-parse --git-common-dir)/claude-shelve.lock"
+toplevel="$(git rev-parse --show-toplevel)"
+tag="shelve:${toplevel}:"
+
+# 注意: `git stash list` を awk/head/grep -q へ直接パイプして早期に読み止め
+# ると、git 側が EPIPE を fatal error として exit 1 で終える(SIGPIPE ではな
+# く、SIGPIPE 無視 + 書き込みエラー扱い。実測で確認済み)。`set -e` 下では
+# これがスクリプトを無言で異常終了させる。対策として、git の出力は必ず
+# コマンド置換で全量キャプチャしてから(bash が EOF まで読み切るので EPIPE
+# は起きない)、その文字列に対して awk/grep をかける。
+
+# find_entry: 現在の stash list から、このタグを持つ最新(先頭側)の
+# entry を選び、"<SHA>\t<元の %gs>" を1行で返す。無ければ何も出さず non-zero。
+#
+# %gs(reflog message)は git stash push -m <msg> でも常に "On <branch>: "
+# を前置する(裸の push と同じ挙動)ので、タグは先頭一致ではなく部分一致
+# で見る。タグに worktree の絶対パスを含むので誤マッチはまず起きない。
+find_entry() {
+    local snapshot
+    snapshot="$(git stash list --format='%H%x09%gs')"
+    awk -F'\t' -v tag="$tag" '
+        index($2, tag) > 0 { print; exit }
+    ' <<< "$snapshot"
+}
+
+# resolve_index: 与えた SHA が現在何番目の stash@{N} か返す。
+resolve_index() {
+    local sha="$1" snapshot
+    snapshot="$(git stash list --format='%gd%x09%H')"
+    awk -F'\t' -v sha="$sha" '
+        $2 == sha { print $1; exit }
+    ' <<< "$snapshot"
+}
+
+entry="$(find_entry)"
+if [[ -z "$entry" ]]; then
+    echo "git-unshelve: この worktree の shelve はありません(${toplevel})" >&2
+    exit 1
+fi
+
+expected_sha="${entry%%$'\t'*}"
+original_message="${entry#*$'\t'}"
+
+echo "==> apply ${expected_sha} (${original_message})"
+if ! git stash apply "$expected_sha"; then
+    echo "git-unshelve: apply がコンフリクトしました。entry は残しています(${expected_sha})。" >&2
+    echo "  解消後、この entry は手動で drop してください: git stash list で index を確認" >&2
+    exit 1
+fi
+
+exec 9> "$lockfile"
+flock 9
+
+attempt=0
+max_attempts=3
+while :; do
+    attempt=$((attempt + 1))
+
+    idx="$(resolve_index "$expected_sha")"
+    if [[ -z "$idx" ]]; then
+        echo "git-unshelve: apply 済みの entry が drop 前に見当たりません(${expected_sha})。手動で確認してください。" >&2
+        exit 1
+    fi
+
+    # テスト専用シーム: drop 直前に別 worktree の push/drop を割り込ませて
+    # 競合復元パスを検証するための hook。通常運用では未設定。
+    if [[ -n "${GIT_UNSHELVE_TEST_PRE_DROP_HOOK-}" ]]; then
+        eval "$GIT_UNSHELVE_TEST_PRE_DROP_HOOK"
+    fi
+
+    # drop の直前(かつ上の test hook 挿入の後)のスナップショットを取る。
+    # 誤って別 entry が消された場合、その元の message はここから引く
+    # (drop 後の list には既に無いので、後から取得する手段がない)。
+    pre_drop_snapshot="$(git stash list --format='%H%x09%gs')"
+
+    drop_out="$(git stash drop "$idx" 2>&1)" || {
+        echo "git-unshelve: git stash drop ${idx} が失敗しました: ${drop_out}" >&2
+        exit 1
+    }
+    echo "$drop_out"
+
+    dropped_sha="$(sed -n 's/.*(\([0-9a-f]\{40\}\))\.\{0,1\}$/\1/p' <<< "$drop_out")"
+
+    if [[ "$dropped_sha" == "$expected_sha" ]]; then
+        echo "==> drop 完了: ${expected_sha}"
+        exit 0
+    fi
+
+    if [[ -z "$dropped_sha" ]]; then
+        echo "git-unshelve: drop の出力から SHA を抽出できませんでした: ${drop_out}" >&2
+        exit 1
+    fi
+
+    echo "git-unshelve: 競合を検出(期待 ${expected_sha}, 実際に消えたのは ${dropped_sha})。復元して再試行します(${attempt}/${max_attempts})。" >&2
+
+    # store は「別 worktree が誤って消してしまった entry」を同一 SHA のまま
+    # 復元する。message は drop 直前のスナップショットから引く(すでに
+    # list から消えているので、これが唯一の取得元)。見つからない場合
+    # (スナップショットと drop の間にさらに別の変化があった極端なケース)
+    # は汎用メッセージで登録し、entry 自体は失わないことを優先する。
+    dropped_message="$(awk -F'\t' -v sha="$dropped_sha" '$1 == sha { print $2; exit }' <<< "$pre_drop_snapshot")"
+    git stash store -m "${dropped_message:-shelve-recovered: ${dropped_sha}}" "$dropped_sha"
+
+    if [[ "$attempt" -ge "$max_attempts" ]]; then
+        echo "git-unshelve: 再試行上限に達しました。apply は済んでいますが drop できていません(${expected_sha})。手動で確認してください。" >&2
+        exit 1
+    fi
+done

@@ -1,0 +1,11 @@
+# Global code owners - automatically request reviews for all PRs
+* @tarotene
+
+# Specific ownership for different areas
+scripts/ @tarotene
+config/ @tarotene
+packages/ @tarotene
+docs/ @tarotene
+
+# GitHub configuration and workflows
+.github/ @tarotene
