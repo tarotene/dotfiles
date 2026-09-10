@@ -36,6 +36,10 @@
 - [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択
   規約: 新しい判断・調査を ADR / `docs/claude/*.md` / Investigation record の
   どれに書くか、腐る事実と腐らない決定を分離する理由。
+- [ADR-0009](adr/0009-publish-guard-upstream-split.md) — 公開面ガード
+  (public-publish-guard)を別リポジトリ `tarotene/publish-guard` へ切り出し、
+  flake input で逆消費する決定。「No semver releases」と plugin 配布の
+  commit-SHA/tag pin が両立しないことが理由。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
