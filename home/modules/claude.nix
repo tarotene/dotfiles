@@ -196,6 +196,7 @@
   config,
   lib,
   pkgs,
+  publish-guard,
   ...
 }:
 let
@@ -211,7 +212,15 @@ let
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
-  publicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
+  # 上流(tarotene/publish-guard、ADR-0009)の Claude adapter は plugin
+  # 配布時の ${CLAUDE_PLUGIN_ROOT} を自分で解決する前提で書かれている。
+  # home.file 配備では plugin マーケットプレイス機構を経ないので、この
+  # リポジトリの配備先パスを明示的に CLAUDE_PLUGIN_ROOT として渡す
+  # (adapter 自身のフォールバック解決に頼らず、上流が文書化している経路を使う)。
+  publicPublishGuardCmd = "CLAUDE_PLUGIN_ROOT='${hooksDir}/publish-guard' bash '${hooksDir}/publish-guard/hooks/claude-adapter.sh'";
+  # 旧(別リポジトリ切り出し前)の command 文字列。settings.json から完全一致
+  # 削除するためだけに残す(下の retiredHookEntries)。
+  legacyPublicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
@@ -242,6 +251,15 @@ let
     {
       event = "PreToolUse";
       command = legacyCodexPlanReviewCmd;
+    }
+    # public-publish-guard の上流分離(ADR-0009)。旧 command は matcher が
+    # "Bash" 単体だったが、新 command は "Bash|mcp__.*" で登録する — register()
+    # の存在判定は command の完全一致だけで matcher を見ないため、retire を
+    # 挟まないと matcher が古いまま更新されない(既知の罠、claude.nix 内の
+    # register() 定義のコメント参照)。
+    {
+      event = "PreToolUse";
+      command = legacyPublicPublishGuardCmd;
     }
   ];
 
@@ -423,13 +441,20 @@ let
     # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
     register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
-    # public-publish-guard: 会社/private リポジトリの実名が git push・
-    # gh pr/issue の create/edit/comment 経由で PUBLIC な面に漏れるのを防ぐ
-    # (docs/claude/public-publish-guard.md)。git-stash-guard と同じ理由
-    # (deny/ask 側は if 不一致 = 素通りが事故になる)で if を "Bash(*)" まで
-    # 広げ、絞り込みは hook 内部の早期 exit(push/gh の気配が無ければ即 exit 0)
-    # に置く。gh api の生呼び出しの往復も想定してタイムアウトはやや長め。
-    register PreToolUse Bash "$public_publish_guard" 20 "Bash(*)"
+    # publish-guard(上流分離、ADR-0009): 会社/private リポジトリの実名が
+    # git push・gh pr/issue の create/edit/comment・MCP tool call 経由で
+    # PUBLIC な面に漏れるのを防ぐ(docs/claude/public-publish-guard.md)。
+    # matcher は複合1本 "Bash|mcp__.*" — Bash と MCP を2つの hook エントリに
+    # 分けない。register() の存在判定は command 文字列の完全一致だけで
+    # matcher を見ないため、同一 command を2つの matcher で登録しようとすると
+    # 2回目が早期 return し、MCP 経路が無検査のまま残ってしまう(旧実装が
+    # matcher "Bash" 単体だったために持っていた最大の機能欠陥そのもの)。
+    # if は付けない(Bash(*) のような permission rule 構文は MCP の tool 名
+    # には一致しないため) — git-stash-guard と同じ理由(deny/ask 側は
+    # matcher/if 不一致 = 素通りが事故になる)で、絞り込みは hook 内部の
+    # 早期 exit に置く。gh api の生呼び出しの往復も想定してタイムアウトは
+    # やや長め。
+    register PreToolUse "Bash|mcp__.*" "$public_publish_guard" 20
     # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
     # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
     # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
@@ -744,11 +769,14 @@ in
     source = repoConfig + "/claude/hooks/git-stash-guard.sh";
     executable = true;
   };
-  # public-publish-guard: 会社/private リポジトリの実名が PUBLIC な面に
-  # 漏れるのを防ぐ PreToolUse hook(docs/claude/public-publish-guard.md)。
-  home.file.".claude/hooks/public-publish-guard.sh" = {
-    source = repoConfig + "/claude/hooks/public-publish-guard.sh";
-    executable = true;
+  # publish-guard: 会社/private リポジトリの実名が PUBLIC な面に漏れるのを
+  # 防ぐ PreToolUse hook。上流を別リポジトリ tarotene/publish-guard に切り出し
+  # (ADR-0009)、flake input(pinned rev)からツリーごと配備する。ツリー全体を
+  # 1つの home.file で(個々のファイルを列挙せず)配ることで、adapter の
+  # ${CLAUDE_PLUGIN_ROOT} 相当のパス解決(自分の2階層上に publish-guard 本体が
+  # あるという前提)がそのまま成立する — 詳細は docs/claude/public-publish-guard.md。
+  home.file.".claude/hooks/publish-guard" = {
+    source = publish-guard;
   };
 
   home.file.".claude/pr-gate-repos".text = ''

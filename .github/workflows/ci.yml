@@ -222,13 +222,10 @@ jobs:
       - name: github-audit-rulesets --selftest
         run: ./scripts/github-audit-rulesets --selftest
 
-      # public-publish-guard (docs/claude/public-publish-guard.md) is
-      # deterministic shell + jq end to end against a stubbed gh/git: the
-      # deny/ask two-tier denylist match, the git-push diff+log scan against
-      # a real throwaway repo, the PRIVATE-target skip, and the
-      # PUBLIC_PUBLISH_GUARD_ALLOW=1 bypass are all exercised.
-      - name: public-publish-guard.sh --selftest
-        run: bash ./config/claude/hooks/public-publish-guard.sh --selftest
+      # public-publish-guard's selftest now lives in its own repository
+      # (tarotene/publish-guard, ADR-0009) and runs in that repo's own CI —
+      # this repo no longer carries the source, so there is nothing to
+      # selftest here.
 
       # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
       # runs it) but lives in config/claude/statusline/ alongside

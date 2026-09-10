@@ -26,6 +26,18 @@
       url = "github:nix-community/nixGL";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # public-publish-guard's upstream (ADR-0009): a plain source tree, not a
+    # flake (`flake = false`) — we only take `home.file.source` from it, never
+    # evaluate it as a flake. Pinned to a commit SHA rather than a branch name
+    # so `flake.lock` fully determines the content; bump this rev by hand when
+    # tarotene/publish-guard cuts a new release. No `follows` needed: it is
+    # only ever `exec`'d as standalone bash, never `dlopen`'d into another
+    # package's process (same reasoning as herdr's overlay entry above).
+    publish-guard = {
+      url = "github:tarotene/publish-guard/9e490ef337552cfab48853d913490ea52368cfa9";
+      flake = false;
+    };
   };
 
   outputs =
@@ -35,6 +47,7 @@
       nixpkgs-unstable,
       home-manager,
       nixgl,
+      publish-guard,
       ...
     }:
     let
@@ -90,6 +103,13 @@
         home-manager.lib.homeManagerConfiguration {
           inherit pkgs;
           modules = [ hostModule ];
+          # publish-guard is a plain source tree (flake = false), threaded
+          # through as an extra module argument rather than an overlay —
+          # claude.nix only needs its store path for home.file.source, not a
+          # package derivation (ADR-0009).
+          extraSpecialArgs = {
+            inherit publish-guard;
+          };
         };
     in
     {

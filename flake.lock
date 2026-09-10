@@ -92,12 +92,30 @@
         "type": "github"
       }
     },
+    "publish-guard": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789021055,
+        "narHash": "sha256-pkZQrv20QbHhtDvjhci6CKE/yErI2Zeu4Bt95ara+E0=",
+        "owner": "tarotene",
+        "repo": "publish-guard",
+        "rev": "9e490ef337552cfab48853d913490ea52368cfa9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tarotene",
+        "repo": "publish-guard",
+        "rev": "9e490ef337552cfab48853d913490ea52368cfa9",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "home-manager": "home-manager",
         "nixgl": "nixgl",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstable": "nixpkgs-unstable"
+        "nixpkgs-unstable": "nixpkgs-unstable",
+        "publish-guard": "publish-guard"
       }
     },
     "systems": {
