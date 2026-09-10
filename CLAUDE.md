@@ -55,8 +55,10 @@ dotfiles/
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
 │   │                         #   plan-scope-gate, pr-gate, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
-│   │                         #   public-publish-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
+│   │                         #   (public-publish-guard moved upstream to
+│   │                         #   tarotene/publish-guard, ADR-0009 — deployed
+│   │                         #   from a flake input, not this source tree);
 │   │                         #   assets/: non-hook files kept beside their
 │   │                         #   consumer for source-tree purity (ADR-0007) —
 │   │                         #   plan-view.css, copilot-plan-review's output
@@ -152,8 +154,11 @@ dotfiles/
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── public-publish-guard.md # PreToolUse hook: deny/ask on git push /
-│   │   │                     #   gh pr|issue create|edit|comment that would
-│   │   │                     #   leak a company/private repo name (#130 era incident)
+│   │   │                     #   gh pr|issue create|edit|comment/MCP GitHub
+│   │   │                     #   tool calls that would leak a company/private
+│   │   │                     #   repo name (#130 era incident) — design now
+│   │   │                     #   lives upstream in tarotene/publish-guard
+│   │   │                     #   (ADR-0009); this doc covers dotfiles wiring only
 │   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
 │   │   │                     #   pristine worktree to origin/<base>
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
