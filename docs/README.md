@@ -40,6 +40,10 @@
   (public-publish-guard)を別リポジトリ `tarotene/publish-guard` へ切り出し、
   flake input で逆消費する決定。「No semver releases」と plugin 配布の
   commit-SHA/tag pin が両立しないことが理由。
+- [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム
+  復号チャネル(シェル起動時の自動シークレットロード)の全撤去。棚卸しで
+  全消費者(MCP-gdrive・brave-search・Falcon Sensor 含む)が代替済みまたは
+  消滅済みと判明したため。ADR-0003 の該当 Decision 項目を supersede。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
