@@ -125,6 +125,14 @@ Design and rationale for the hooks and commands deployed from
   を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
   sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
   `issue-hygiene` が担う。
+- [`issue-hygiene.md`](claude/issue-hygiene.md) — 個人スキル: open Issue が
+  出自ごとに束ねられず積み上がったとき、GitHub の sub-issues 機能で親子構造を
+  明示し直し、腐った tracking Issue を清算する定期衛生管理の手順。起票・更新
+  する側の規約は `tracking-issue` が担う。
+- [`scope-inventory.md`](claude/scope-inventory.md) — グローバル CLAUDE.md
+  ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
+  子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。
+  gate: `plan-scope-gate.sh`。
 
 ## Investigation records
 
