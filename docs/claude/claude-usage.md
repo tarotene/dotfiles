@@ -180,6 +180,31 @@ CURLCFG
 | `limits[]` から表示可能なエントリが 1 件も取れない | 空出力(この場合は `last_fetch` を更新し、無駄な再フェッチは避ける) |
 | Herdr 外の素のターミナルで実行 | 通常どおり動く(表示するだけの副作用なので危険はない) |
 
+### herdr 側レイアウト譲歩による非表示(スクリプト外)
+
+Alacritty を WM 上で横幅縮小したときにタブバー右端の usage セグメントが
+消えることがあるが、これは上記の縮退表とは別経路であり、スクリプトの責任
+範囲外である。herdr 公式ドキュメントに以下の仕様が明記されている:
+
+> "On a narrow tab row, the complete status area yields to the tabs and
+> their controls."
+> — herdr 公式ドキュメント Configuration ページ
+>   (https://herdr.dev/docs/configuration、2026-09-13 取得)
+
+タブ行が窮屈になると `tab_bar_right` の右ステータス領域(usage・
+hostname・時計)が **all-or-nothing で丸ごと** 非表示になる。セグメント
+単位の切り詰め・優先度制御は herdr 側に存在しない。発生条件はそのときの
+タブ本数・タブタイトル幅に依存するため、同じ画面幅でも起きたり起きなかっ
+たりする。
+
+切り分け方: usage だけでなく同じ右端の hostname・時計も同時に消えていれば
+このレイアウト譲歩(herdr 仕様どおり)。usage だけが消えて hostname・時計
+は残っていれば、`claude-usage.sh` 側の縮退(上記表のいずれか)を疑う。
+
+なお `ui.mobile_width_threshold`(既定 64 列)を境にモバイル単一カラム
+レイアウトへの切替もあるが、半画面表示程度で 64 列を割ることは通常なく、
+本件の主因ではない。
+
 ## 自己検査
 
 ```sh
