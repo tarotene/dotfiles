@@ -15,7 +15,7 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 
 | Layer | Owns | Managed by | ADR |
 |-------|------|------------|-----|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, SOPS loader, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
+| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
 | **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
@@ -85,21 +85,22 @@ dotfiles/
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
 ├── scripts/                  # mix of home-manager-deployed user-environment tools
-│   │                         #   (hms, sops-secrets-env, git-shelve/unshelve,
+│   │                         #   (hms, git-shelve/unshelve,
 │   │                         #   git-prune-branches, git-audit/prune-worktrees,
 │   │                         #   git-worktree-create-guard, claude-plan-model)
 │   │                         #   and true escape-hatch /
 │   │                         #   diagnostic scripts (install-packages,
-│   │                         #   install-falcon-sensor, fix-ssh-permissions,
-│   │                         #   setup-sops-secrets) — not escape-hatch-only
+│   │                         #   install-falcon-sensor, fix-ssh-permissions)
+│   │                         #   — not escape-hatch-only
+│   │                         #   (SOPS runtime secrets loader retired,
+│   │                         #   ADR-0010 — no consumer had survived it)
 │   ├── hms.sh                # canonical apply wrapper (deployed to ~/.local/bin/hms):
 │   │                         #   switch + daemon-reload + fcitx5 restart + verification
 │   ├── install-packages.sh   # thin system-layer apt installer (#216)
-│   ├── install-falcon-sensor.sh # company EDR agent installer
+│   ├── install-falcon-sensor.sh # company EDR agent installer; FALCON_CID is
+│   │                         #   prompted interactively at install time, not
+│   │                         #   read from SOPS (ADR-0010)
 │   ├── fix-ssh-permissions.sh
-│   ├── setup-sops-secrets.sh # host-local SOPS/.sops.yaml setup
-│   ├── sops-secrets-env.sh   # SOPS runtime env helper (deployed to
-│   │                         #   ~/.local/bin/sops-secrets-env, no .sh)
 │   ├── detach-open.sh        # deployed as ~/.local/bin/open AND ~/.local/bin/xdg-open
 │   │                         #   (shadows the system xdg-open, which blocks in the
 │   │                         #   foreground on COSMIC), and as the $BROWSER target
@@ -201,13 +202,14 @@ dotfiles/
 
 - **ADR-0001** — home-manager is the source of truth; apt + per-project runtimes are escape hatches.
 - **ADR-0002** — runtime consolidation (Java/Go → mise; rustup/uv kept) + hybrid config translation.
-- **ADR-0003** — secrets & identity: YubiKey-rooted, runtime-decrypted SOPS (no sops-nix). **See the Amendment** for the deployed model ([S] subkey on-disk per-machine, two identities, host-local `.sops.yaml`, migration ⊆ rotation).
+- **ADR-0003** — secrets & identity: YubiKey-rooted key model. **See the Amendment** for the deployed model ([S] subkey on-disk per-machine, two identities, host-local `.sops.yaml`, migration ⊆ rotation). The runtime-decrypted-SOPS Decision item is superseded by **ADR-0010** (retired — no consumer survived a re-audit).
 - **ADR-0004** — repo identity & relocation (keep the `dotfiles` name; publish to public `tarotene/dotfiles` via clean orphan history; no semver releases).
 - **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
 - **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.
 - **ADR-0007** — naming & layout conventions: extension policy (drop `.sh` from the deployed name for PATH-resolved executables), shebang policy, hook-role vocabulary (`-guard`/`-gate`/`-allow`/no suffix, new hooks only), `config/claude/hooks/` source-tree purity, docs-correspondence principle, and `_DIR` env-var suffixing. No retroactive bulk rename of existing files.
 - **ADR-0008** — documentation artifact selection: a new decision or piece of research goes to (1) an investigation record if it decays over time (external preview status, tool version, open-issue counts), (2) an ADR if it is a single significant decision (Nygard's five areas), even at single-developer scope, (3) `docs/claude/<name>.md` if it is the living design rationale for one hook/skill/tool, or (4) existing docs otherwise. ADRs stay immutable; link out to decaying facts rather than embedding them.
 - **ADR-0009** — public-publish-guard's upstream split: the guard is now maintained in a separate public repo (`tarotene/publish-guard`), consumed here as a pinned flake input, because this repo's "No semver releases" policy and orphan-history rewrites (ADR-0004) are structurally incompatible with plugin-distribution commit-SHA/tag pinning.
+- **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
 
 ## Development Rules
 

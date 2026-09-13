@@ -38,10 +38,11 @@ stay deliberately outside it as escape hatches:
 | Host model | Pop!_OS ×2 (do not assume root); multi-user Nix default, single-user fallback documented | ADR-0001 |
 | Runtimes | consolidate Java/Go into mise (drop SDKMAN!/goup); keep rustup as the global Rust default; ROS scoped to the personal host | ADR-0002 |
 | Translation | hybrid — keep working config files literal, use Nix DSL only where interpolation pays | ADR-0002 |
-| Secrets / identity | YubiKey-rooted; runtime-decrypted SOPS (no sops-nix); public keys committed; retire keybase | ADR-0003 |
+| Secrets / identity | YubiKey-rooted; public keys committed; retire keybase | ADR-0003 |
 | Repo identity | keep the `dotfiles` name; relocate to public `tarotene/dotfiles` via a clean orphan history; no semver releases | ADR-0004 |
 | Shell-extension init | gate `eval "$(tool init …)"` / `source <(tool …)` on binary existence only, never on auth credentials (a token-gated loader breaks in the token-less home-manager session) | ADR-0005 |
 | Graphics | nix GUI apps carry their own GL stack via a per-package `nixGL` wrapper; the system graphics stack stays apt and untouched | ADR-0006 |
+| Secrets (runtime channel) | retire the SOPS runtime-decryption shell loader entirely — a consumer audit found every secret it decrypted had already migrated away or gone unused | ADR-0010 |
 | Infra | latest pinned stable release channel (+ a single-package `nixpkgs-unstable` escape hatch for tools absent there, currently `herdr`); Determinate Systems installer; nix-centric CI; rollback via generations | ADR-0001 (+ Amendment) |
 
 ## Repository layout (two-layer flake)
@@ -89,5 +90,5 @@ in order:
 - [home-manager manual](https://nix-community.github.io/home-manager/)
 - [home-manager standalone flakes](https://nix-community.github.io/home-manager/index.xhtml#sec-flakes-standalone)
 - [Determinate Systems nix-installer](https://github.com/DeterminateSystems/nix-installer)
-- [sops-nix](https://github.com/Mic92/sops-nix) — evaluated and deferred (ADR-0003)
+- [sops-nix](https://github.com/Mic92/sops-nix) — evaluated and deferred (ADR-0003); the runtime SOPS loader it was compared against was later retired outright (ADR-0010)
 - YubiKey + GPG operating model: <https://fuwa.dev/posts/yubikey/>

@@ -23,7 +23,8 @@
 - [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime
   consolidation + hybrid config translation.
 - [ADR-0003](adr/0003-secrets-and-identity.md) — secrets & identity
-  (YubiKey-rooted, runtime SOPS). See the Amendment for the deployed model.
+  (YubiKey-rooted key model). See the Amendment for the deployed model; the
+  runtime-SOPS Decision item is retired by ADR-0010.
 - [ADR-0004](adr/0004-repo-identity-and-relocation.md) — repo identity &
   relocation.
 - [ADR-0005](adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension

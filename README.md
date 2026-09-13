@@ -41,7 +41,7 @@ deliberate escape hatches.
 
 | Layer | Owns | Managed by |
 |-------|------|------------|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompt, GPG agent, SOPS loader, GUI apps | home-manager (`flake.nix` + `home/`) |
+| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompt, GPG agent, GUI apps | home-manager (`flake.nix` + `home/`) |
 | **System layer** (escape hatch) | build/cross toolchain, `scdaemon`, fcitx5 *immodules*, login-shell fallback — anything needing root, a system service, or to be loaded into an apt-installed process | `apt` (`scripts/install-packages.sh` + `packages/declarative/apt-packages.txt`) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (home-manager installs them; toolchains stay project-scoped) |
 
@@ -62,10 +62,6 @@ rationale.
 - **GPG / YubiKey** — `programs.gpg` + `services.gpg-agent` (GNOME pinentry, SSH
   agent support, `scdaemon` CCID, no pcscd). Public keys committed under `keys/`,
   imported at activation.
-- **Secrets** — SOPS **runtime**-decrypted in the interactive shell only (no
-  sops-nix). Host-local `~/.sops/.sops.yaml` + `~/.sops/.env`, set up by
-  `scripts/setup-sops-secrets.sh`. See
-  [ADR-0003](docs/adr/0003-secrets-and-identity.md) (and its Amendment).
 - **Terminal & desktop** — Alacritty, FiraCode Nerd Font (`pkgs.nerd-fonts.fira-code`
   + `fonts.fontconfig`).
 - **Input method** — fcitx5 + mozc from nixpkgs
@@ -102,10 +98,10 @@ dotfiles/
 │   ├── common.nix
 │   ├── identities/{personal,company}.nix
 │   ├── hosts/{personal-pop,company-pop-old,company-pop-new}.nix
-│   └── modules/{shell,git,gpg,secrets,packages,desktop,runtimes,herdr}.nix
+│   └── modules/{shell,git,gpg,packages,desktop,runtimes,herdr}.nix
 ├── config/                   # literal config, deployed verbatim
 ├── packages/declarative/apt-packages.txt   # system layer only
-├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, sops, ssh, fcitx5 trace)
+├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, ssh, fcitx5 trace)
 ├── keys/                     # committed public keys
 ├── bootstrap.sh              # greenfield entrypoint
 └── docs/{README.md,adr,claude,operations.md,cutover-runbook.md,
@@ -116,7 +112,7 @@ dotfiles/
 
 - [ADR-0001](docs/adr/0001-home-manager-as-source-of-truth.md) — home-manager is the source of truth; apt + runtimes are escape hatches.
 - [ADR-0002](docs/adr/0002-runtimes-and-hybrid-translation.md) — runtime consolidation + hybrid config translation.
-- [ADR-0003](docs/adr/0003-secrets-and-identity.md) — secrets & identity (YubiKey-rooted, runtime SOPS). See the Amendment for the deployed model.
+- [ADR-0003](docs/adr/0003-secrets-and-identity.md) — secrets & identity (YubiKey-rooted key model). See the Amendment for the deployed model; the runtime-SOPS Decision item is retired by [ADR-0010](docs/adr/0010-retire-sops-runtime-secrets.md).
 - [ADR-0004](docs/adr/0004-repo-identity-and-relocation.md) — repo identity & relocation.
 - [ADR-0005](docs/adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, not auth.
 - [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own GL stack (nixGL); the system graphics stack stays apt.

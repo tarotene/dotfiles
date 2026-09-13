@@ -11,7 +11,6 @@
     ./modules/shell.nix
     ./modules/git.nix
     ./modules/gpg.nix
-    ./modules/secrets.nix
     ./modules/packages.nix
     ./modules/desktop.nix
     ./modules/runtimes.nix
