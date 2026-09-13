@@ -1,8 +1,8 @@
 # Falcon Sensor は専用スクリプトで会社用 PC に導入する
 
-CrowdStrike Falcon Sensor は root 権限と systemd サービスを使うため、system layer として管理する。会社から受け取った `.deb` と CID は Git に入れず、`company-pop-new` 上で専用スクリプトを実行する。
+CrowdStrike Falcon Sensor は root 権限と systemd サービスを使うため、system layer として管理する。会社から受け取った `.deb` は Git に入れず、CID もホストに保存せず、`company-pop-new` 上で専用スクリプトを実行する。
 
-この runbook は `company-pop-new` の所有者向けで、ターミナルと sudo、そして SOPS 復号用の YubiKey が手元にあることを前提とする。初回導入では「IT 管理者の承認」から「端末登録」までを順に読み、導入後は更新と障害調査の節だけを参照すればよい。
+この runbook は `company-pop-new` の所有者向けで、ターミナルと sudo、そして会社のパスワードマネージャーに保管された CID が手元にあることを前提とする。初回導入では「IT 管理者の承認」から「端末登録」までを順に読み、導入後は更新と障害調査の節だけを参照すればよい。
 
 ## IT 管理者の承認を得てから始める
 
@@ -13,23 +13,13 @@ CrowdStrike Falcon Sensor は root 権限と systemd サービスを使うため
 - CID だけで登録でき、provisioning token、proxy、cloud region の指定が不要であること
 - 端末から Falcon Cloud へ通信できること
 
-## 配布物と CID はホスト内だけに置く
+## 配布物はホスト内だけに置く
 
 会社から受け取った `.deb` は Git 管理外に置く。`~/Downloads/` のままでよい。インストールスクリプトが root から読める作業ディレクトリへ複製してから apt に渡すので、保存場所に制約はない。リポジトリの作業ツリー内に置くと `git clean -xfd` で消えるため避ける。
 
-CID はホストローカルの SOPS に入れる。新しいホストでは SOPS 自体が未初期化なので、`init` から始める。YubiKey を挿し、PIN を入力できる状態で実行する。
+CID はホストに保存しない。会社のパスワードマネージャーに控えておき、インストールスクリプトが実行時にプロンプトしたら貼り付ける(エコーは無効化されるので端末にもスクロールバックにも残らない)。`export FALCON_CID=...` と直接打つとシェル履歴に平文で残るため、この経路は使わない。あらかじめ環境変数として渡したい場合は `FALCON_CID=<cid> ./scripts/install-falcon-sensor.sh ...` のようにコマンドの一部として渡す(こちらも履歴に残る点は同じなので、通常はプロンプト入力を使う)。
 
-```bash
-./scripts/setup-sops-secrets.sh init          # ~/.sops/.sops.yaml を作る（初回のみ）
-./scripts/setup-sops-secrets.sh add-secret FALCON_CID
-./scripts/setup-sops-secrets.sh validate
-```
-
-`init` を飛ばして `add-secret` を実行すると `Secrets file not found` で止まる。SOPS 全体の位置づけは [SETUP.md](../SETUP.md) と [ADR-0003](adr/0003-secrets-and-identity.md) を参照する。
-
-`add-secret` は値を対話入力で受け取るので、シェル履歴には残らない。CID を `export FALCON_CID=...` と直接打つと履歴に平文で残るため、この経路は使わない。
-
-インストールスクリプトは `FALCON_CID` が環境になければ SOPS から自力で読む。`exec zsh` や `reload_sops_secrets` でシェルへ読み込ませる必要はない。読み込めているかどうかは、次節の dry-run が報告する。
+読み込めているかどうかは、次節の dry-run が報告する(実プロンプトはしない)。
 
 ## dry-run の後にインストールする
 
@@ -41,7 +31,7 @@ CID はホストローカルの SOPS に入れる。新しいホストでは SOP
   --package ~/Downloads/falcon-sensor_<version>_amd64.deb
 ```
 
-表示された `.deb` のバージョンが IT 管理者の指定と一致していること、`FALCON_CID: [available]` になっていることを確認する。`[not available; ...]` なら前節の SOPS 設定に戻る。
+表示された `.deb` のバージョンが IT 管理者の指定と一致していることを確認する。`FALCON_CID` の行は `[from environment]`(環境変数で既に渡してある)か `[will prompt at install time]`(実行時にプロンプトされる)のどちらかになる。
 
 内容を確認したら `--dry-run` を外して実行する。
 
@@ -50,7 +40,7 @@ CID はホストローカルの SOPS に入れる。新しいホストでは SOP
   --package ~/Downloads/falcon-sensor_<version>_amd64.deb
 ```
 
-スクリプトは apt でパッケージを導入し、`falconctl` で CID を登録する。その後、`falcon-sensor.service` を有効化して起動する。CID はスクリプトの出力には表示しない。
+`FALCON_CID` を環境で渡していなければ、ここで CID の入力を求められる(エコーなし)。会社のパスワードマネージャーから貼り付ける。スクリプトは apt でパッケージを導入し、`falconctl` で CID を登録する。その後、`falcon-sensor.service` を有効化して起動する。CID はスクリプトの出力には表示しない。
 
 導入の途中で、`.deb` の postinst が CID 設定前にサービスを起動しようとして一度失敗する。journal に `CID is not set. Use falconctl to set the CID` が 1 回残るのは正常で、スクリプトはこの失敗状態を消してから起動し直す。
 
@@ -81,7 +71,7 @@ sudo /opt/CrowdStrike/falconctl -g --aid >/dev/null && echo "AID is set"
 
 ## 更新にも同じスクリプトを使う
 
-社内 IT 管理者から新しい `.deb` を受け取ったら、同じ手順で dry-run の後に再実行する。スクリプトは CID を再設定し、サービスが有効かつ稼働中であることを確認する。
+社内 IT 管理者から新しい `.deb` を受け取ったら、同じ手順で dry-run の後に再実行する。スクリプトは CID を再設定し、サービスが有効かつ稼働中であることを確認する(CID は初回同様、環境変数か実行時プロンプトで渡す)。
 
 同じことが失敗からの復旧にも当てはまる。スクリプトの各ステップは冪等で、パッケージだけ入ってサービスが failed のような中途半端な状態からでも、同じコマンドをもう一度実行すれば正常な状態へ収束する。まず再実行を試す。
 
@@ -96,12 +86,11 @@ dpkg-query -W falcon-sensor
 ## 用語と公式資料
 
 - **Falcon Sensor**: 端末上で常駐する CrowdStrike のセンサー。本リポジトリでは `falcon-sensor.service` として扱う。
-- **CID**: 端末を会社の Falcon テナントへ関連付ける Customer ID。ホストローカルの SOPS に保存する。
-- **SOPS**: CID などを暗号化して保存し、必要なときに復号して読み込む既存の秘密管理手段。復号には YubiKey が必要。
+- **CID**: 端末を会社の Falcon テナントへ関連付ける Customer ID。ホストには保存せず、会社のパスワードマネージャーから導入・更新・復旧のたびに入力する(ADR-0010)。
 - **falconctl**: `/opt/CrowdStrike/falconctl`。CID の設定と参照に使う管理コマンド。root 専用。
 - **falcond**: `/opt/CrowdStrike/falcond`。`falcon-sensor.service` の `ExecStart` が起動する常駐プロセスの実体。子プロセスとして `falcon-sensor-bpf` が動く。
 - **AID**: Agent ID。センサーが Falcon Cloud と通信できたときに割り当てられる端末固有の識別子。CID を設定しただけでは埋まらない。
 
 対応 OS と最低センサーバージョンは [CrowdStrike の展開 FAQ](https://www.crowdstrike.com/ja-jp/products/faq/)、基本的な Linux 導入手順は [Installing Falcon Sensor for Linux](https://www.crowdstrike.com/tech-hub/endpoint-security/installing-falcon-sensor-for-linux/) を参照する。この runbook で解決しない問題やポリシー判断は、作業を止めて社内 IT 管理者へ問い合わせる。
 
-最終更新: 2026-07-28
+最終更新: 2026-09-13

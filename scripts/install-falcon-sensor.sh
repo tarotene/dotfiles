@@ -37,9 +37,10 @@ Options:
     -h, --help        Show this help
 
 Environment:
-    FALCON_CID        CrowdStrike Customer ID.  When unset it is read from
-                      host-local SOPS via ~/.local/bin/sops-secrets-env
-                      (requires the YubiKey), so it never has to be typed.
+    FALCON_CID        CrowdStrike Customer ID.  When unset (and this is a
+                      real run, not --dry-run) the script prompts for it on
+                      the controlling terminal with echo disabled, so it
+                      never lands in shell history.
 EOF
 }
 
@@ -132,40 +133,27 @@ validate_package() {
         || fail "expected package architecture $TARGET_ARCH, found $package_arch"
 }
 
-# Read FALCON_CID from host-local SOPS so it never has to be typed into an
-# interactive shell (where it would land in the shell history).  The helper
-# prints `export KEY=<quoted value>` for every secret; take only FALCON_CID so
-# the rest never reaches this process environment.
-load_cid_from_sops() {
-    local helper="$HOME/.local/bin/sops-secrets-env"
-    local line
-
-    [[ -x "$helper" ]] || return 1
-    # Bounded on purpose.  With the YubiKey absent gpg can block on the card
-    # rather than fail, and the helper carries no timeout of its own, so an
-    # unbounded call can hang the installer.  The hint below is more useful.
-    line=$(timeout 30 "$helper" 2>/dev/null | grep '^export FALCON_CID=') || return 1
-    eval "$line"
-    [[ -n "${FALCON_CID:-}" ]]
+# Prompt for FALCON_CID on the controlling terminal with echo disabled, so it
+# never lands in shell history.  Only valid for a real run on an interactive
+# terminal; --dry-run never prompts (see the dry-run branch below), and a
+# non-interactive invocation (no controlling tty) has no way to ask.
+prompt_for_cid() {
+    [[ -t 0 ]] || return 1
+    read -rsp "CrowdStrike Customer ID (FALCON_CID): " FALCON_CID
+    echo >&2
+    [[ -n "$FALCON_CID" ]]
 }
 
 resolve_cid() {
     [[ -n "${FALCON_CID:-}" ]] && return 0
-    load_cid_from_sops
+    prompt_for_cid
 }
 
 cid_hint() {
-    if [[ ! -d "$HOME/.sops" ]]; then
-        echo "Host-local SOPS is not initialised on this host. Run:" >&2
-        echo "  ./scripts/setup-sops-secrets.sh init" >&2
-        echo "  ./scripts/setup-sops-secrets.sh add-secret FALCON_CID" >&2
-    else
-        echo "Host-local SOPS exists but FALCON_CID could not be read from it." >&2
-        echo "Check that the YubiKey is inserted:" >&2
-        echo "  gpg --card-status" >&2
-        echo "then confirm the secret is present:" >&2
-        echo "  ./scripts/setup-sops-secrets.sh add-secret FALCON_CID" >&2
-    fi
+    echo "FALCON_CID was not provided and could not be read interactively." >&2
+    echo "Pass it via the environment, e.g.:" >&2
+    echo "  FALCON_CID=<cid> ./scripts/install-falcon-sensor.sh --package <sensor.deb>" >&2
+    echo "or re-run on an interactive terminal to be prompted for it." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -196,8 +184,13 @@ validate_host
 validate_package
 
 if [[ "$DRY_RUN" == true ]]; then
-    cid_status="[not available; required for installation]"
-    resolve_cid && cid_status="[available]"
+    # Never prompt under --dry-run: report the two possible outcomes of a
+    # real run without actually blocking on terminal input.
+    if [[ -n "${FALCON_CID:-}" ]]; then
+        cid_status="[from environment]"
+    else
+        cid_status="[will prompt at install time]"
+    fi
 
     cat <<EOF
 [dry-run] Validated:

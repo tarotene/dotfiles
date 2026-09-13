@@ -26,6 +26,12 @@
     zip
     unzip
 
+    # Used by direnv (`.envrc`) in projects outside this repo for per-file
+    # GPG/age-based decryption — independent of the retired SOPS runtime
+    # secrets loader (ADR-0010). Previously provided by the now-deleted
+    # home/modules/secrets.nix; kept here as a plain user-space CLI.
+    sops
+
     # Rust-tool CLIs (were cargo-binstall)
     bat
     zellij

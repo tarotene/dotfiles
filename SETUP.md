@@ -64,21 +64,6 @@ grep -qxF "$NIX_ZSH" /etc/shells || echo "$NIX_ZSH" | sudo tee -a /etc/shells >/
 chsh -s "$NIX_ZSH"             # log out and back in to take effect
 ```
 
-## Secrets (SOPS)
-
-Secrets are runtime-decrypted in the interactive shell (never at activation).
-Set up the host-local SOPS config and add secrets with:
-
-```bash
-./scripts/setup-sops-secrets.sh init                            # host-local ~/.sops/.sops.yaml
-./scripts/setup-sops-secrets.sh add-secret GITHUB_ACCESS_TOKEN  # add a secret
-./scripts/setup-sops-secrets.sh validate                        # verify
-```
-
-Secrets load automatically in new shells (or `reload_sops_secrets`). With the
-YubiKey absent the shell still starts cleanly (silent failure preserved). See
-[ADR-0003](docs/adr/0003-secrets-and-identity.md).
-
 ## Company host: CrowdStrike Falcon Sensor
 
 Falcon Sensor is a root-owned system service and is installed separately from
