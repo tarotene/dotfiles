@@ -37,13 +37,22 @@
 つまり、この機構が現在「サポートしている」機能は実質ゼロで、シェル起動
 ごとの PIN プロンプトはコストだけを払って便益を得ていない状態だった。
 
+なお `sops` **バイナリ自体**は、このリポジトリ管理下にない複数の個人プロジェクトで
+`direnv`(`.envrc`)経由のファイル単位暗号化(`sops --decrypt`)に現役で使われて
+おり、退役対象の `~/.sops/.env` シェル起動時ローダーとは独立した依存である。
+今回の全撤去は `home/modules/secrets.nix` が担っていた**ローダー配線**が対象で、
+`sops` パッケージそのものの提供は止めない(Decision 参照)。
+
 ## Decision
 
 1. **SOPS ランタイム復号チャネルを全撤去する。** `config/zsh/modules/
    35-secrets-sops.zsh`(自動ロード本体 + `reload_sops_secrets` /
    `sops_status` 手動コマンド)、`scripts/sops-secrets-env.sh`(wrapper)、
    `scripts/setup-sops-secrets.sh`(ホストローカル setup)、
-   `home/modules/secrets.nix`(home-manager 配線)を削除する。
+   `home/modules/secrets.nix`(home-manager 配線)を削除する。**ただし
+   `sops` パッケージ自体は `home/modules/packages.nix` の一般 CLI 群へ
+   移し、`home.packages` からは外さない**(Context 参照 — 退役対象の
+   ローダーとは独立に現役で使われているため)。
 2. **シークレットは各ツール固有の認証チャネルに委ねる。** MCP-gdrive /
    brave-search の env 供給という間接経路をやめ、claude.ai の Google Drive
    コネクタと Claude Code 組み込み WebSearch という直接の代替に置き換える。
@@ -76,7 +85,9 @@
 
 ## Consequences
 
-- YubiKey `[E]` サブ鍵は日常的な消費者を失う。鍵構成・ローテーション方針
+- YubiKey `[E]` サブ鍵はこのリポジトリ管理下の消費者を失うが、上記の
+  外部プロジェクトでの `direnv` 経由の利用は継続するため、`sops` パッケージ
+  自体の home-manager 提供は止めない。鍵構成・ローテーション方針
   (ADR-0003 Amendment)自体は変更なし。
 - 新しいシークレットが将来必要になった場合、この ADR の存在を踏まえた
   上で供給チャネルを都度選び直す(自動ロードを安易に復活させない)。
