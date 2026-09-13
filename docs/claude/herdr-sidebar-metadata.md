@@ -221,6 +221,8 @@ catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系
   `config/herdr/config.toml` で `onboarding = false` を配備しているため、
   `home/modules/herdr.nix` の `home.activation.installHerdrClaudeIntegration`
   が `herdr integration install claude` を代わりに(未導入時のみ)実行する。
+  同じ理由・同じ仕組みで codex/copilot にも `installHerdrCodexIntegration` /
+  `installHerdrCopilotIntegration` を用意している(#168)。
 - **Herdr 外では無害**: どちらのスクリプトも `HERDR_ENV=1` と socket/pane 環境変数を
   ガードにしており、素のターミナルでは statusline の表示だけが動く(ADR-0005 の
   binary-existence gating に倣い、欠如時は黙って no-op)。

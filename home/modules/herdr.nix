@@ -139,4 +139,31 @@ in
           run ${pkgs.herdr}/bin/herdr integration install claude || true
         fi
       '';
+
+  # codex/copilot 版。上の installHerdrClaudeIntegration と同じ理由・同じ
+  # ゲート方式(ファイル存在、`herdr integration status` のテキストはパース
+  # しない)。entryAfter の対象は、対象 hooks.json/settings.json を jq merge
+  # する registrar(このモジュール内 registerCodex/CopilotHerdrMetadataHooks、
+  # codex はさらに worktree.nix の registerCodexWorktreeHooks)— claude 版と
+  # 同じ lost-update 回避(#61 と同種)。
+  home.activation.installHerdrCodexIntegration =
+    lib.hm.dag.entryAfter
+      [
+        "writeBoundary"
+        "registerCodexWorktreeHooks"
+        "registerCodexHerdrMetadataHooks"
+      ]
+      ''
+        if [ ! -e "$HOME/.codex/herdr-agent-state.sh" ]; then
+          run ${pkgs.herdr}/bin/herdr integration install codex || true
+        fi
+      '';
+
+  home.activation.installHerdrCopilotIntegration =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
+      ''
+        if [ ! -e "$HOME/.copilot/hooks/herdr-agent-state.sh" ]; then
+          run ${pkgs.herdr}/bin/herdr integration install copilot || true
+        fi
+      '';
 }
