@@ -123,12 +123,20 @@ in
   # settings.json への書き込みは registerClaudeHooks(claude.nix)と同じ
   # ファイルを対象にするため、jq merge の lost-update 窓(#61 と同種)を
   # 避けて entryAfter で明示的にその後ろに置く。
+  #
+  # herdr バイナリの解決は `${pkgs.herdr}/bin/herdr` を直書きする — `command -v
+  # herdr` は使わない。home-manager activation スクリプトの PATH は nix store
+  # の coreutils/jq 等に限定され、`~/.nix-profile/bin`(nix-env/home-manager が
+  # パッケージをリンクする場所)を含まないため、`command -v herdr` は対話シェル
+  # では成功しても activation 内では常に失敗する。このモジュール自身が
+  # `home.packages` に `pkgs.herdr` を入れているのでバイナリの存在は自明であり、
+  # ゲートとして `command -v` を挟む意味がそもそも無い(#94 で入れたこのゲートが
+  # 原因で、当該 activation はどのマシンでも一度も発火していなかった)。
   home.activation.installHerdrClaudeIntegration =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerClaudeHooks" ]
       ''
-        if command -v herdr >/dev/null 2>&1 \
-           && [ ! -e "$HOME/.claude/hooks/herdr-agent-state.sh" ]; then
-          run herdr integration install claude || true
+        if [ ! -e "$HOME/.claude/hooks/herdr-agent-state.sh" ]; then
+          run ${pkgs.herdr}/bin/herdr integration install claude || true
         fi
       '';
 }
