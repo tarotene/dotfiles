@@ -180,7 +180,7 @@ dotfiles/
 │   │   │                     #   claude-plan-model で巡回する
 │   │   │                     #   (モード=実行時状態 / 具体 ID=宣言が毎回引き直し)
 │   │   ├── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
-│   │   │                     #   burn-rate prediction, from the undocumented /usage API
+│   │   │                     #   pace-at-reset projection, from the undocumented /usage API
 │   │   ├── global-claude-md.md   # global ~/.claude/CLAUDE.md: injects research
 │   │   │                     #   discipline into every session
 │   │   ├── diagramming.md        # skill: diagramming (SKILL.md + cases.md)
