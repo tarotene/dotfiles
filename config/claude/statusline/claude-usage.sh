@@ -49,12 +49,6 @@ EXTRACT_JQ="$(cat <<'JQ'
         ($l.percent >= 100)
         or ( (($l.severity // "") | ascii_downcase) | test("exceed|block|critical") )
       ),
-      series_key: (
-        if $kind == "weekly_scoped"
-        then "weekly_scoped:" + ( ($l.scope.model.display_name) // "null" )
-        else $kind
-        end
-      ),
       label: (
         if $kind == "session" then "5h"
         elif $kind == "weekly_scoped" then ( ($l.scope.model.display_name) // "wk" )
@@ -67,55 +61,43 @@ EXTRACT_JQ="$(cat <<'JQ'
 JQ
 )"
 
-# 燃焼率予測・表示行の組み立て・series(サンプル履歴)の更新。
-# 純関数(日時変換は済んだ状態の $items を受け取る)なので selftest から
-# ネットワーク・credentials 非依存に叩ける。
+# ペース着地予測・表示行の組み立て。
+# 「窓開始(resets_at − 窓長)からの平均ペースで使い続けたら、リセット時点で
+# 何 % に着地するか」を出す(着地% = 使用% ÷ 経過%)。サンプル履歴は使わない
+# 純関数(日時変換済みの $items と $now だけで決まる)なので、state file に
+# 予測用の状態を持たず、再起動直後・初回呼び出しでも即座に表示できる。
+# 純関数なので selftest からネットワーク・state 非依存に叩ける。
 CORE_JQ="$(cat <<'JQ'
-def min_span_for(k):
-  if k == "session" then 300
-  elif (k == "weekly_scoped" or k == "weekly") then 1800
-  else 300 end;
-
-def retention_for(k):
-  if k == "session" then 5400
-  elif (k == "weekly_scoped" or k == "weekly") then 21600
-  else 5400 end;
-
 def fmt_percent(p): (p | round | tostring);
 
-def fmt_eta(sec):
-  if sec >= 3600 then
-    ((((sec / 3600 * 10) | round) / 10) | tostring) + "h"
-  else
-    ((sec / 60 | floor | tostring)) + "m"
-  end;
+# kind ごとの窓の長さ(秒)。未知の kind は着地を予測しない(null)。
+def window_for(k):
+  if k == "session" then 18000
+  elif (k == "weekly_scoped" or k == "weekly") then 604800
+  else null end;
 
 [ $items[] | . as $it |
-  ($prev_series[$it.series_key] // {resets_at: null, samples: []}) as $old |
-  ( ($old.resets_at != null) and ($old.resets_at != $it.resets_at) ) as $reset_changed |
-  ( (($old.samples | length) > 0) and ( ($old.samples[-1][1] - $it.percent) > 1 ) ) as $percent_dropped |
-  ( if ($reset_changed or $percent_dropped) then [] else $old.samples end ) as $base |
-  ( $base + [[$now, $it.percent]] ) as $with_new |
-  ( [ $with_new[] | select( ($now - .[0]) <= retention_for($it.kind) ) ] ) as $pruned |
-  ( $pruned[0] ) as $first |
-  ( $pruned[-1] ) as $last |
-  ( (($pruned | length) >= 2) and ( ($last[0] - $first[0]) >= min_span_for($it.kind) ) ) as $enough |
-  ( if $enough then ( ($last[1] - $first[1]) / ($last[0] - $first[0]) ) else null end ) as $slope |
-  ( if ($slope != null and $slope > 0) then ( (100 - $it.percent) / $slope ) else null end ) as $eta |
-  ( if ($eta != null and ($now + $eta) < $it.reset_epoch) then $eta else null end ) as $eta_shown |
-  ( $it.label + " " + fmt_percent($it.percent) + "%→" + $it.reset_display ) as $base_seg |
-  ( if $it.exceeded then
-      "!" + $base_seg
-    elif $eta_shown != null then
-      $base_seg + " (~" + fmt_eta($eta_shown) + ")"
+  window_for($it.kind) as $win |
+  # 評価順が重要: show を先に確定し、除算・丸めは show=true の分岐内だけで
+  # 行う。jq は null や 0 での除算をエラーにし、CORE_JQ が失敗すると
+  # render_from_files() が空出力で中断して他の正常なセグメントまで消える。
+  ( (($it.exceeded | not))
+    and ($win != null)
+    and ($it.reset_epoch > $now)
+    and ( ($now - ($it.reset_epoch - $win)) >= ($win * 0.05) )
+  ) as $show |
+  ( if $show then
+      ( ($now - ($it.reset_epoch - $win)) / $win ) as $elapsed |
+      ( ($it.percent / $elapsed) | round ) as $landing |
+      ( " " + (if $landing >= 100 then "▲" else "▼" end) + ($landing | tostring) + "%" )
     else
-      $base_seg
+      ""
     end
-  ) as $segment |
-  { key: $it.series_key, entry: {resets_at: $it.resets_at, samples: $pruned}, segment: $segment }
-] as $r |
-{ line: ([ $r[].segment ] | join(" · ")),
-  series: (reduce $r[] as $x ({}; .[$x.key] = $x.entry)) }
+  ) as $suffix |
+  ( $it.label + " " + fmt_percent($it.percent) + "%→" + $it.reset_display ) as $base_seg |
+  ( if $it.exceeded then "!" + $base_seg else $base_seg + $suffix end )
+] as $segments |
+{ line: ($segments | join(" · ")) }
 JQ
 )"
 
@@ -156,6 +138,8 @@ augment_items() {
 # $1 = usage JSON が入ったファイル $2 = state file $3 = now(epoch)
 # 成功時は表示行があれば stdout に 1 行、state file を atomic に更新する。
 # 失敗・空結果は何もしない(呼び出し側は常に exit 0 で終える)。
+# state file は 30 秒再取得ガード(last_fetch / last_line)専用で、予測ロジック
+# 用の履歴は持たない(CORE_JQ が純関数のため不要)。
 render_from_files() {
   usage_file="$1"
   state_file="$2"
@@ -164,37 +148,25 @@ render_from_files() {
   usage_json="$(cat "$usage_file" 2>/dev/null)" || return 0
   printf '%s' "$usage_json" | jq -e . >/dev/null 2>&1 || return 0
 
-  prev_json='{}'
-  if [ -s "$state_file" ]; then
-    cand="$(cat "$state_file" 2>/dev/null)" || cand=''
-    if printf '%s' "$cand" | jq -e . >/dev/null 2>&1; then
-      prev_json="$cand"
-    fi
-  fi
-
   base_items="$(printf '%s' "$usage_json" | jq -c "$EXTRACT_JQ" 2>/dev/null)" || base_items='[]'
   [ -n "$base_items" ] || base_items='[]'
 
   augmented="$(augment_items "$base_items" "$now")"
   [ -n "$augmented" ] || augmented='[]'
 
-  prev_series="$(printf '%s' "$prev_json" | jq -c '.series // {}' 2>/dev/null)" || prev_series='{}'
-
   result="$(
     jq -n -c \
       --argjson items "$augmented" \
-      --argjson prev_series "$prev_series" \
       --argjson now "$now" \
       "$CORE_JQ" 2>/dev/null
   )" || return 0
   [ -n "$result" ] || return 0
 
   line="$(printf '%s' "$result" | jq -r '.line // empty' 2>/dev/null)" || line=''
-  new_series="$(printf '%s' "$result" | jq -c '.series // {}' 2>/dev/null)" || new_series='{}'
 
   new_state="$(
-    jq -n -c --argjson now "$now" --arg line "$line" --argjson series "$new_series" \
-      '{last_fetch: $now, last_line: $line, series: $series}' 2>/dev/null
+    jq -n -c --argjson now "$now" --arg line "$line" \
+      '{last_fetch: $now, last_line: $line}' 2>/dev/null
   )" || return 0
 
   state_dir="$(dirname "$state_file")"
@@ -244,7 +216,7 @@ if [ "${1:-}" = "--selftest" ]; then
   md_at() { date -u -d "@$1" +%-m/%-d; }
   iso_at() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-  # --- 通常表示(予測なし・2 limits) ------------------------------------
+  # --- 通常表示(session/weekly とも経過が十分で着地予測が付く) -----------
   r_session=$((NOW + 3600))
   r_weekly=$((NOW + 3 * 86400))
   usage_f="$dir/u1.json"
@@ -254,164 +226,172 @@ if [ "${1:-}" = "--selftest" ]; then
   )"
   state_f="$dir/s1.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="5h 21%→$(hm_at "$r_session") · Fable 48%→$(md_at "$r_weekly")"
-  check "通常表示: 2 limits" "$expected" "$out"
+  # session: 経過=(18000-14400)/18000=0.8 → 着地=21/0.8=26.25→round 26 → ▼26%
+  # weekly:  経過=345600/604800=4/7 → 着地=48/(4/7)=84 → ▼84%
+  expected="5h 21%→$(hm_at "$r_session") ▼26% · Fable 48%→$(md_at "$r_weekly") ▼84%"
+  check "通常表示: 2 limits(着地予測あり)" "$expected" "$out"
 
-  # --- 予測表示(履歴 2 点、リセット前に 100% 到達見込み) -----------------
+  # --- 着地予測: 使いすぎ側(▲) ------------------------------------------
   usage_f="$dir/u2.json"
-  r_session2=$((NOW + 3600 * 5))
-  mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":52,"severity":"normal","resets_at":"%s","scope":null}]' \
-      "$(iso_at "$r_session2")"
-  )"
-  state_f="$dir/s2.json"
-  printf '{"last_fetch":0,"last_line":"","series":{"session":{"resets_at":"%s","samples":[[%s,40]]}}}' \
-    "$(iso_at "$r_session2")" "$((NOW - 600))" >"$state_f"
-  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  # slope=(52-40)/600=0.02%/s → eta=(100-52)/0.02=2400s=40m
-  expected="5h 52%→$(hm_at "$r_session2") (~40m)"
-  check "予測表示: リセット前に到達見込み" "$expected" "$out"
-
-  # --- 予測なし(到達見込みがリセットより後) -----------------------------
-  usage_f="$dir/u3.json"
-  r_session3=$((NOW + 500))
-  mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":52,"severity":"normal","resets_at":"%s","scope":null}]' \
-      "$(iso_at "$r_session3")"
-  )"
-  state_f="$dir/s3.json"
-  printf '{"last_fetch":0,"last_line":"","series":{"session":{"resets_at":"%s","samples":[[%s,40]]}}}' \
-    "$(iso_at "$r_session3")" "$((NOW - 600))" >"$state_f"
-  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="5h 52%→$(hm_at "$r_session3")"
-  check "予測なし: 到達見込みがリセットより後" "$expected" "$out"
-
-  # --- 予測なし(傾きが負) -----------------------------------------------
-  usage_f="$dir/u4.json"
-  r_session4=$((NOW + 3600 * 5))
-  mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":54,"severity":"normal","resets_at":"%s","scope":null}]' \
-      "$(iso_at "$r_session4")"
-  )"
-  state_f="$dir/s4.json"
-  printf '{"last_fetch":0,"last_line":"","series":{"session":{"resets_at":"%s","samples":[[%s,55]]}}}' \
-    "$(iso_at "$r_session4")" "$((NOW - 600))" >"$state_f"
-  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="5h 54%→$(hm_at "$r_session4")"
-  check "予測なし: 傾きが負(1pt 以内の低下は履歴継続)" "$expected" "$out"
-  samples_len="$(jq -r '.series.session.samples | length' "$state_f")"
-  check "1pt 以内の低下: 履歴は消えず 2 点になる" "2" "$samples_len"
-
-  # --- percent が 1pt 超低下 → 履歴クリア ---------------------------------
-  usage_f="$dir/u5.json"
-  r_session5=$((NOW + 3600 * 5))
+  r2=$((NOW + 13500)) # 経過 25%(session 窓 18000s)
   mkusage "$usage_f" "$(
     printf '[{"kind":"session","group":"session","percent":30,"severity":"normal","resets_at":"%s","scope":null}]' \
-      "$(iso_at "$r_session5")"
+      "$(iso_at "$r2")"
+  )"
+  state_f="$dir/s2.json"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  # 着地=30/0.25=120 → ▲120%
+  expected="5h 30%→$(hm_at "$r2") ▲120%"
+  check "着地予測: 使いすぎ側(▲)" "$expected" "$out"
+
+  # --- 着地予測: 余る側(▼) -----------------------------------------------
+  usage_f="$dir/u3.json"
+  r3=$((NOW + 302400)) # 経過 50%(weekly 窓 604800s)
+  mkusage "$usage_f" "$(
+    printf '[{"kind":"weekly_scoped","group":"weekly","percent":38,"severity":"normal","resets_at":"%s","scope":{"model":{"id":null,"display_name":"Fable"}}}]' \
+      "$(iso_at "$r3")"
+  )"
+  state_f="$dir/s3.json"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  # 着地=38/0.5=76 → ▼76%
+  expected="Fable 38%→$(md_at "$r3") ▼76%"
+  check "着地予測: 余る側(▼)" "$expected" "$out"
+
+  # --- 着地予測: 境界(ちょうど 100%) ------------------------------------
+  usage_f="$dir/u4.json"
+  r4=$((NOW + 9000)) # 経過 50%(session)
+  mkusage "$usage_f" "$(
+    printf '[{"kind":"session","group":"session","percent":50,"severity":"normal","resets_at":"%s","scope":null}]' \
+      "$(iso_at "$r4")"
+  )"
+  state_f="$dir/s4.json"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  expected="5h 50%→$(hm_at "$r4") ▲100%"
+  check "着地予測: 境界(ちょうど 100% は ▲)" "$expected" "$out"
+
+  # --- 序盤ガード: 経過 5% 未満は着地を伏せる ------------------------------
+  usage_f="$dir/u5.json"
+  r5=$((NOW + 17280)) # 経過 4%(session)
+  mkusage "$usage_f" "$(
+    printf '[{"kind":"session","group":"session","percent":5,"severity":"normal","resets_at":"%s","scope":null}]' \
+      "$(iso_at "$r5")"
   )"
   state_f="$dir/s5.json"
-  printf '{"last_fetch":0,"last_line":"","series":{"session":{"resets_at":"%s","samples":[[%s,60]]}}}' \
-    "$(iso_at "$r_session5")" "$((NOW - 600))" >"$state_f"
-  "$self" __render "$usage_f" "$state_f" "$NOW" >/dev/null
-  samples_len="$(jq -r '.series.session.samples | length' "$state_f")"
-  check "percent 1pt 超低下: 履歴クリアされ 1 点になる" "1" "$samples_len"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  expected="5h 5%→$(hm_at "$r5")"
+  check "序盤ガード: 経過 5% 未満は着地なし" "$expected" "$out"
 
-  # --- resets_at が変わった → 履歴クリア(percent は増えていても) -------
+  # --- 窓開始ちょうど(経過 0%): 除算エラーで他セグメントまで消えない -----
   usage_f="$dir/u6.json"
-  r_old=$((NOW - 100))
-  r_new=$((NOW + 3600 * 5))
+  r6a=$((NOW + 18000)) # session 窓開始ちょうど(経過 0%)
+  r6b=$((NOW + 302400)) # weekly 経過 50%
   mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":8,"severity":"normal","resets_at":"%s","scope":null}]' \
-      "$(iso_at "$r_new")"
+    printf '[{"kind":"session","group":"session","percent":5,"severity":"normal","resets_at":"%s","scope":null},{"kind":"weekly","group":"weekly","percent":20,"severity":"normal","resets_at":"%s"}]' \
+      "$(iso_at "$r6a")" "$(iso_at "$r6b")"
   )"
   state_f="$dir/s6.json"
-  printf '{"last_fetch":0,"last_line":"","series":{"session":{"resets_at":"%s","samples":[[%s,5]]}}}' \
-    "$(iso_at "$r_old")" "$((NOW - 600))" >"$state_f"
-  "$self" __render "$usage_f" "$state_f" "$NOW" >/dev/null
-  samples_len="$(jq -r '.series.session.samples | length' "$state_f")"
-  check "resets_at 変化: 履歴クリアされ 1 点になる" "1" "$samples_len"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  # weekly: 着地=20/0.5=40 → ▼40%
+  expected="5h 5%→$(hm_at "$r6a") · wk 20%→$(md_at "$r6b") ▼40%"
+  check "窓開始ちょうど: 他セグメントは正常描画・着地は伏せる" "$expected" "$out"
 
-  # --- 上限到達(percent>=100) --------------------------------------------
+  # --- resets_at が過去(経過 >100%): 着地なし ----------------------------
   usage_f="$dir/u7.json"
-  r7=$((NOW + 3600))
+  r7=$((NOW - 100))
   mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":100,"severity":"normal","resets_at":"%s","scope":null}]' \
+    printf '[{"kind":"session","group":"session","percent":50,"severity":"normal","resets_at":"%s","scope":null}]' \
       "$(iso_at "$r7")"
   )"
   state_f="$dir/s7.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="!5h 100%→$(hm_at "$r7")"
-  check "上限到達(percent>=100): ! 表示・予測なし" "$expected" "$out"
+  expected="5h 50%→$(hm_at "$r7")"
+  check "resets_at が過去: 着地なし" "$expected" "$out"
 
-  # --- 上限到達(severity ベース、percent<100) -----------------------------
+  # --- 上限到達(percent>=100) --------------------------------------------
   usage_f="$dir/u8.json"
   r8=$((NOW + 3600))
   mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":95,"severity":"blocked","resets_at":"%s","scope":null}]' \
+    printf '[{"kind":"session","group":"session","percent":100,"severity":"normal","resets_at":"%s","scope":null}]' \
       "$(iso_at "$r8")"
   )"
   state_f="$dir/s8.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="!5h 95%→$(hm_at "$r8")"
-  check "上限到達(severity=blocked): ! 表示" "$expected" "$out"
+  expected="!5h 100%→$(hm_at "$r8")"
+  check "上限到達(percent>=100): ! 表示・着地なし" "$expected" "$out"
 
-  # --- weekly ラベルのフォールバック(display_name 欠落) ------------------
+  # --- 上限到達(severity ベース、percent<100) -----------------------------
   usage_f="$dir/u9.json"
-  r9=$((NOW + 3 * 86400))
+  r9=$((NOW + 3600))
   mkusage "$usage_f" "$(
-    printf '[{"kind":"weekly_scoped","group":"weekly","percent":10,"severity":"normal","resets_at":"%s","scope":{"model":{"display_name":null}}}]' \
+    printf '[{"kind":"session","group":"session","percent":95,"severity":"blocked","resets_at":"%s","scope":null}]' \
       "$(iso_at "$r9")"
   )"
   state_f="$dir/s9.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="wk 10%→$(md_at "$r9")"
-  check "weekly_scoped: display_name 欠落は wk にフォールバック" "$expected" "$out"
+  expected="!5h 95%→$(hm_at "$r9")"
+  check "上限到達(severity=blocked): ! 表示" "$expected" "$out"
 
-  # --- 未知 kind: group にフォールバックしつつ描画を継続 -------------------
+  # --- weekly ラベルのフォールバック(display_name 欠落) ------------------
   usage_f="$dir/u10.json"
-  r10=$((NOW + 3 * 86400))
+  r10=$((NOW + 600000)) # 経過 <5%(weekly 窓): 着地は伏せる、フォールバックのみ検証
   mkusage "$usage_f" "$(
-    printf '[{"kind":"seven_day_opus","group":"opus_weekly","percent":33,"severity":"normal","resets_at":"%s"}]' \
+    printf '[{"kind":"weekly_scoped","group":"weekly","percent":10,"severity":"normal","resets_at":"%s","scope":{"model":{"display_name":null}}}]' \
       "$(iso_at "$r10")"
   )"
   state_f="$dir/s10.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="opus_weekly 33%→$(md_at "$r10")"
-  check "未知 kind: group ラベルで描画される" "$expected" "$out"
+  expected="wk 10%→$(md_at "$r10")"
+  check "weekly_scoped: display_name 欠落は wk にフォールバック" "$expected" "$out"
 
-  # --- percent/resets_at 欠落エントリはスキップ、他は描画継続 --------------
+  # --- 未知 kind: 着地を予測せず group にフォールバックしつつ描画を継続 ----
   usage_f="$dir/u11.json"
-  r11=$((NOW + 3600))
+  r11=$((NOW + 3 * 86400))
   mkusage "$usage_f" "$(
-    printf '[{"kind":"session","group":"session","percent":null,"resets_at":"%s"},{"kind":"weekly","group":"weekly","percent":5,"severity":"normal","resets_at":"%s"}]' \
-      "$(iso_at "$r11")" "$(iso_at "$r11")"
+    printf '[{"kind":"seven_day_opus","group":"opus_weekly","percent":33,"severity":"normal","resets_at":"%s"}]' \
+      "$(iso_at "$r11")"
   )"
   state_f="$dir/s11.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
-  expected="wk 5%→$(hm_at "$r11")"
+  expected="opus_weekly 33%→$(md_at "$r11")"
+  check "未知 kind: 着地なし・group ラベルで描画される" "$expected" "$out"
+
+  # --- percent/resets_at 欠落エントリはスキップ、他は描画継続 --------------
+  usage_f="$dir/u12.json"
+  r12=$((NOW + 590000)) # 経過 <5%(weekly 窓): 着地は伏せる
+  mkusage "$usage_f" "$(
+    printf '[{"kind":"session","group":"session","percent":null,"resets_at":"%s"},{"kind":"weekly","group":"weekly","percent":5,"severity":"normal","resets_at":"%s"}]' \
+      "$(iso_at "$r12")" "$(iso_at "$r12")"
+  )"
+  state_f="$dir/s12.json"
+  out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
+  expected="wk 5%→$(md_at "$r12")"
   check "percent 欠落エントリはスキップ・他は描画" "$expected" "$out"
 
   # --- limits 空・欠落 → 空出力 --------------------------------------------
-  usage_f="$dir/u12.json"
+  usage_f="$dir/u13.json"
   printf '{"limits":[]}' >"$usage_f"
-  state_f="$dir/s12.json"
+  state_f="$dir/s13.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
   check "limits 空: 空出力" "" "$out"
 
-  usage_f="$dir/u12b.json"
+  usage_f="$dir/u13b.json"
   printf '{}' >"$usage_f"
-  state_f="$dir/s12b.json"
+  state_f="$dir/s13b.json"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
   check "limits キー欠落: 空出力" "" "$out"
 
   # --- 不正 JSON → 空出力、state file は変更しない -------------------------
-  usage_f="$dir/u13.json"
+  usage_f="$dir/u14.json"
   printf '{not valid json' >"$usage_f"
-  state_f="$dir/s13.json"
+  state_f="$dir/s14.json"
   printf 'SENTINEL' >"$state_f"
   out="$("$self" __render "$usage_f" "$state_f" "$NOW")"
   check "不正 JSON: 空出力" "" "$out"
   check "不正 JSON: state file は書き換えない" "SENTINEL" "$(cat "$state_f")"
+
+  # --- state file に予測用の series は残らない -----------------------------
+  has_series="$(jq -r 'has("series")' "$dir/s1.json" 2>/dev/null)" || has_series='error'
+  check "state file: series キーを持たない" "false" "$has_series"
 
   # --- トークン非漏えい + 30 秒ガード(通常経路をスタブで通す) -------------
   mkdir -p "$dir/bin" "$dir/home/.claude" "$dir/xdg"

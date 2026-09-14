@@ -97,9 +97,10 @@ Design and rationale for the hooks and commands deployed from
   Copilot get a leaner branch+model-only reporter each, plus the research
   notes on why tab-bar usage was deferred (#117).
 - [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
-  Claude rate-limit usage (5h session window / weekly per-model cap) with
-  burn-rate prediction, from the undocumented `/usage` API (fail-soft: the
-  segment just disappears).
+  Claude rate-limit usage (5h session window / weekly per-model cap) with a
+  pace-at-reset projection (average pace since window start → projected % at
+  reset), from the undocumented `/usage` API (fail-soft: the segment just
+  disappears).
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
