@@ -9,6 +9,7 @@
     ./modules/worktree.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
+    ./modules/atuin.nix
     ./modules/git.nix
     ./modules/gpg.nix
     ./modules/packages.nix
