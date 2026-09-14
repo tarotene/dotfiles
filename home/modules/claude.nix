@@ -227,6 +227,21 @@ let
   worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
+  # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
+  # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
+  # (herdr-claude-metadata.sh と同じ形)。出力は
+  # ${XDG_STATE_HOME:-~/.local/state}/daily-report/agent-events.jsonl —
+  # 別リポジトリ(daily-report)がそのまま読む契約なので、フィールド名は
+  # 変更しないこと。
+  agentTurnLogCmd = "bash '${hooksDir}/agent-turn-log.sh'";
+  # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
+  # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
+  # history.db に記録する。`atuin hook install claude-code` は settings.json
+  # を直接書き換えて宣言的管理の外に出るため使わず、この repo の既存の
+  # register() 経由で配線する。コマンド文字列は atuin, "Agent Hooks",
+  # <https://docs.atuin.sh/latest/guide/agent-hooks/>(2026-09-14 取得)が
+  # 文書化する契約のとおり(引数なし)。
+  atuinHookClaudeCodeCmd = "atuin hook claude-code";
   # 旧 Codex 版の plan-review hook command。中身(--search exec --output-schema
   # 等)ごと copilot-plan-review.sh に置き換えたので、activation が settings.json
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
@@ -396,6 +411,8 @@ let
     worktree_create_guard="$1"; shift
     worktree_audit_context="$1"; shift
     plan_scope_gate="$1";        shift
+    agent_turn_log="$1";         shift
+    atuin_hook_claude_code="$1"; shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -475,6 +492,20 @@ let
     # The timer is the primary detector; SessionStart also exposes pending state
     # directly to the agent that is in a position to clean it up.
     register SessionStart "startup|resume" "$worktree_audit_context" 30
+    # agent-turn-log(docs/adr/0011): 純粋なロガーで判定を持たないため matcher/if
+    # は不要。UserPromptSubmit/Stop の両方に同一 command で登録し、スクリプト側が
+    # `.hook_event_name` で分岐する(herdr-claude-metadata.sh と同じ形)。
+    register UserPromptSubmit "" "$agent_turn_log" 10
+    register Stop "" "$agent_turn_log" 10
+    # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
+    # フックを、Bash tool の PreToolUse/PostToolUse/PostToolUseFailure 3 イベント
+    # すべてに同一 command で登録する(成功/失敗どちらの exit code も history.db
+    # に残すため、PostToolUse だけでは足りない)。matcher は Claude Code 標準の
+    # tool 名一致("Bash")であり、他 hook が使う permission-rule 構文の `if`
+    # ではない。
+    register PreToolUse Bash "$atuin_hook_claude_code" 10
+    register PostToolUse Bash "$atuin_hook_claude_code" 10
+    register PostToolUseFailure Bash "$atuin_hook_claude_code" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -703,6 +734,13 @@ in
   };
   home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
 
+  # agent-turn-log: UserPromptSubmit / Stop の1ターン境界を JSONL 追記する
+  # 純粋なロガー(ゲートではない)。出力契約は docs/adr/0011。
+  home.file.".claude/hooks/agent-turn-log.sh" = {
+    source = repoConfig + "/claude/hooks/agent-turn-log.sh";
+    executable = true;
+  };
+
   # plan-scope-gate: 要求インベントリ(scope-inventory、15番)の脱落を機械検査する。
   # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
   home.file.".claude/hooks/plan-scope-gate.sh" = {
@@ -905,7 +943,9 @@ in
       ${lib.escapeShellArg worktreeFreshBaseCmd} \
       ${lib.escapeShellArg worktreeCreateGuardCmd} \
       ${lib.escapeShellArg worktreeAuditContextCmd} \
-      ${lib.escapeShellArg planScopeGateCmd}
+      ${lib.escapeShellArg planScopeGateCmd} \
+      ${lib.escapeShellArg agentTurnLogCmd} \
+      ${lib.escapeShellArg atuinHookClaudeCodeCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

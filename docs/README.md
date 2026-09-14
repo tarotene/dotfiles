@@ -45,6 +45,10 @@
   復号チャネル(シェル起動時の自動シークレットロード)の全撤去。棚卸しで
   全消費者(MCP-gdrive・brave-search・Falcon Sensor 含む)が代替済みまたは
   消滅済みと判明したため。ADR-0003 の該当 Decision 項目を supersede。
+- [ADR-0011](adr/0011-local-activity-log-capture.md) — ローカル活動ログの
+  採取(atuin + Claude Code ターンログ)。オフライン専用の atuin
+  history.db と `agent-events.jsonl` の 2 採取点、出力パス・JSON 行の形式
+  という消費側(別リポジトリ)向けの契約を固定する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
