@@ -190,9 +190,16 @@ dotfiles/
 │   │   │                     #   repo (meta-skill)
 │   │   ├── test-grounding.md     # skill: ground verification items in facts before
 │   │   │                     #   writing test procedures
-│   │   └── scope-inventory.md    # global CLAUDE.md rule + skill: enumerate every
-│   │                         #   requirement item before planning so none is
-│   │                         #   silently dropped; gate: plan-scope-gate.sh
+│   │   ├── scope-inventory.md    # global CLAUDE.md rule + skill: enumerate every
+│   │   │                     #   requirement item before planning so none is
+│   │   │                     #   silently dropped; gate: plan-scope-gate.sh
+│   │   └── precedent-grounding.md # global CLAUDE.md rule + skill: for every
+│   │                         #   non-obvious design decision in a Plan, cite
+│   │                         #   the prior art it follows or deviates from
+│   │                         #   (`## 先行例との対比`, ADR-0012 — replaces
+│   │                         #   asking for "adversarial review" per prompt);
+│   │                         #   critic: copilot-plan-review lens A, gate:
+│   │                         #   plan-precedent-gate.sh
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -210,6 +217,7 @@ dotfiles/
 - **ADR-0008** — documentation artifact selection: a new decision or piece of research goes to (1) an investigation record if it decays over time (external preview status, tool version, open-issue counts), (2) an ADR if it is a single significant decision (Nygard's five areas), even at single-developer scope, (3) `docs/claude/<name>.md` if it is the living design rationale for one hook/skill/tool, or (4) existing docs otherwise. ADRs stay immutable; link out to decaying facts rather than embedding them.
 - **ADR-0009** — public-publish-guard's upstream split: the guard is now maintained in a separate public repo (`tarotene/publish-guard`), consumed here as a pinned flake input, because this repo's "No semver releases" policy and orphan-history rewrites (ADR-0004) are structurally incompatible with plugin-distribution commit-SHA/tag pinning.
 - **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
+- **ADR-0012** — precedent grounding over prompted adversarial review: instead of turning the user's per-prompt "run an adversarial review" / "check the literature" requests into an abstract standing CLAUDE.md instruction (which a literature survey found does not improve design/reasoning tasks), each non-obvious design decision in a Plan is grounded against prior art in the plan body itself; a context-isolated critic (copilot-plan-review's lens A) audits the citations, and a deterministic gate (`plan-precedent-gate.sh`) enforces the section's form.
 
 ## Development Rules
 
