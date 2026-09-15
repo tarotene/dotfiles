@@ -193,9 +193,11 @@
 #    も「fresh context の批評者 + 明示的基準 + 報告範囲の限定」を推奨するため、
 #    著者が接地し既存の文脈を切った critic(lens A)が監査する形にした。新規の
 #    独立 lens は立てず lens A に統合し、premium request は増やさない。形式検査
-#    (節または免除行の存在)は LLM を呼ばない機械 gate(plan-precedent-gate、
-#    別 PR で追加予定)が担う。詳細は docs/adr/0012-precedent-grounding-over-
-#    prompted-adversarial-review.md と docs/claude/precedent-grounding.md。
+#    (節または免除行の存在、各 Dn の出典・取得日・差分の要素)は LLM を呼ばない
+#    機械 gate(plan-precedent-gate.sh)が担う。plan-review / plan-view /
+#    plan-scope-gate と同じ ExitPlanMode matcher に 4 つ目のエントリとして並ぶ。
+#    詳細は docs/adr/0012-precedent-grounding-over-prompted-adversarial-review.md
+#    と docs/claude/precedent-grounding.md。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
@@ -240,6 +242,7 @@ let
   worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
+  planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
   # (herdr-claude-metadata.sh と同じ形)。出力は
@@ -424,6 +427,7 @@ let
     worktree_create_guard="$1"; shift
     worktree_audit_context="$1"; shift
     plan_scope_gate="$1";        shift
+    plan_precedent_gate="$1";    shift
     agent_turn_log="$1";         shift
     atuin_hook_claude_code="$1"; shift
 
@@ -438,6 +442,9 @@ let
     # plan-scope-gate も同じ matcher に 3 つ目のエントリとして並ぶ。gh api graphql
     # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
     register PreToolUse ExitPlanMode "$plan_scope_gate" 20
+    # plan-precedent-gate(ADR-0012)も同じ matcher に 4 つ目のエントリとして並ぶ。
+    # gh/ネットワークを一切呼ばず jq とテキスト処理だけなので timeout は最短。
+    register PreToolUse ExitPlanMode "$plan_precedent_gate" 10
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
     # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
     # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
@@ -761,6 +768,13 @@ in
     executable = true;
   };
 
+  # plan-precedent-gate: 先行例との対比(precedent-grounding、16番、ADR-0012)の
+  # 脱落を機械検査する。同じ matcher に 4 つ目のエントリとして並ぶ。
+  home.file.".claude/hooks/plan-precedent-gate.sh" = {
+    source = repoConfig + "/claude/hooks/plan-precedent-gate.sh";
+    executable = true;
+  };
+
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
     source = repoConfig + "/claude/hooks/issue-index.sh";
@@ -964,6 +978,7 @@ in
       ${lib.escapeShellArg worktreeCreateGuardCmd} \
       ${lib.escapeShellArg worktreeAuditContextCmd} \
       ${lib.escapeShellArg planScopeGateCmd} \
+      ${lib.escapeShellArg planPrecedentGateCmd} \
       ${lib.escapeShellArg agentTurnLogCmd} \
       ${lib.escapeShellArg atuinHookClaudeCodeCmd}
   '';

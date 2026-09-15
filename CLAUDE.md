@@ -53,7 +53,8 @@ dotfiles/
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
-│   │                         #   plan-scope-gate, pr-gate, issue-index, sign-prewarm,
+│   │                         #   plan-scope-gate, plan-precedent-gate, pr-gate,
+│   │                         #   issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
 │   │                         #   (public-publish-guard moved upstream to
