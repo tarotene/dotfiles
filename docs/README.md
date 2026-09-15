@@ -148,7 +148,8 @@ Design and rationale for the hooks and commands deployed from
   CLAUDE.md ルール + 個人スキル: Plan の非自明な設計判断ごとに先行例との
   対比(`D1..Dn`)を成果物に残す書き方。プロンプトでの「敵対的レビュー」
   「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
-  copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`。
+  copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`(gh/LLM
+  を呼ばない決定論的 judge)。
 
 ## Investigation records
 
