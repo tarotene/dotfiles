@@ -1,0 +1,388 @@
+#!/usr/bin/env bash
+# Cross-repository README charter drift audit: reports which owned
+# repositories lack a machine-checkable "why does this repository exist,
+# and which Issues belong in it" charter, without applying or modifying
+# anything. Read-only. Sibling of github-audit-rulesets (docs/github-audit-charters.md).
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+OWNER="${GITHUB_AUDIT_CHARTERS_OWNER:-tarotene}"
+CONFIG_DIR="${GITHUB_AUDIT_CHARTERS_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-audit-charters}"
+STATE_DIR="${GITHUB_AUDIT_CHARTERS_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit-charters}"
+OVERRIDES_FILE="${GITHUB_AUDIT_CHARTERS_OVERRIDES_FILE:-$CONFIG_DIR/overrides.tsv}"
+GH_BIN="${GITHUB_AUDIT_CHARTERS_GH_BIN:-gh}"
+TEST_TMP=''
+
+usage() {
+  cat <<'EOF'
+usage: github-audit-charters [--json|--selftest]
+
+Read-only cross-repository audit of the README "charter" schema
+(config/claude/skills/repo-charter/). For every non-archived, non-fork
+repository owned by $GITHUB_AUDIT_CHARTERS_OWNER (default: tarotene),
+inspects README.md and GitHub metadata and reports one of:
+  ok       purpose sentence, Scope section, Issue litmus section, and at
+           least one topic are all present and mutually consistent
+  drifted  one or more of the above is missing (see the "missing=" list)
+  exempt   the repository is listed in the overrides file (see below)
+
+Without options, prints a human-readable report and exits 1 if any
+non-exempt repository is drifted. --json prints the machine-readable
+findings array instead. A ledger snapshot is always written to
+$XDG_STATE_HOME/github-audit-charters/ledger.json (override with
+GITHUB_AUDIT_CHARTERS_STATE_DIR).
+
+Judged items (see docs/github-audit-charters.md for why each is
+decidable without an LLM call):
+  readme-missing              no README could be fetched
+  no-purpose-paragraph        no non-empty paragraph follows the H1
+  purpose-mismatch            GitHub description does not match the
+                               README's purpose sentence (normalized)
+  no-scope-section            no "## Scope" heading
+  no-issue-litmus-section     no "## Issue litmus" heading
+  no-topics                   zero GitHub topics
+
+This audit only reports drift — it never edits a README or repository.
+Use the repo-charter skill to fix what it finds.
+
+Exempt a repository by adding a line "<repo><TAB>exempt" to
+$XDG_CONFIG_HOME/github-audit-charters/overrides.tsv (override with
+GITHUB_AUDIT_CHARTERS_OVERRIDES_FILE). Lines starting with # are ignored.
+EOF
+}
+
+list_repos() { # print: <name TAB lang TAB visibility TAB description TAB topicCount>
+  "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 \
+    --json name,primaryLanguage,visibility,description,repositoryTopics 2>/dev/null |
+    jq -r '.[] | [
+      .name,
+      (.primaryLanguage.name // "-"),
+      .visibility,
+      (.description // ""),
+      ((.repositoryTopics // []) | length)
+    ] | @tsv'
+}
+
+read_overrides() { # print: <repo TAB directive>, comments/blank lines dropped
+  [[ -f $OVERRIDES_FILE ]] || return 0
+  grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE"
+}
+
+fetch_readme() { # $1=repo -> raw README text, or empty on failure
+  "$GH_BIN" api "repos/$OWNER/$1/readme" -H 'Accept: application/vnd.github.v3.raw' 2>/dev/null || true
+}
+
+# extract_purpose: the first non-empty paragraph following the first H1
+# line. Stops at the next blank line or heading. Prints nothing if there
+# is no H1 or no paragraph follows it.
+extract_purpose() {
+  awk '
+    /^# / && !seenH1 { seenH1 = 1; next }
+    !seenH1 { next }
+    !started && /^[[:space:]]*$/ { next }
+    !started { started = 1 }
+    started && /^[[:space:]]*$/ { exit }
+    started && /^#/ { exit }
+    started {
+      if (para == "") para = $0
+      else para = para " " $0
+    }
+    END { print para }
+  ' <<<"$1"
+}
+
+# first_sentence: the shortest prefix of $1 ending in "." or the
+# full-width "。", or the whole string if neither appears. Used because a
+# purpose paragraph may run past the sentence that should mirror the
+# GitHub description.
+first_sentence() {
+  local s
+  s="$(grep -oP '^.*?[.。]' <<<"$1" | head -n1)"
+  [[ -n $s ]] && printf '%s' "$s" || printf '%s' "$1"
+}
+
+# normalize_text: collapse whitespace, strip markdown emphasis/links, trim,
+# drop a trailing sentence-terminator — so "**Foo** bar." and "Foo bar"
+# compare equal. Intentionally strict otherwise: this is a literal-match
+# check, not a semantic one (docs/github-audit-charters.md).
+normalize_text() {
+  local s="$1"
+  s="${s//\*\*/}"
+  s="${s//__/}"
+  s="$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$s")"
+  s="$(tr -s '[:space:]' ' ' <<<"$s")"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  s="${s%.}"
+  s="${s%。}"
+  printf '%s' "$s"
+}
+
+judge_repo() { # $1=repo $2=lang $3=vis $4=description $5=topicCount -> one JSON finding object
+  local repo="$1" lang="$2" vis="$3" description="$4" topics="$5"
+  local readme purpose_para purpose_sentence
+  local -a missing=()
+
+  readme="$(fetch_readme "$repo")"
+  if [[ -z $readme ]]; then
+    missing+=("readme-missing")
+  else
+    purpose_para="$(extract_purpose "$readme")"
+    if [[ -z $purpose_para ]]; then
+      missing+=("no-purpose-paragraph")
+    else
+      purpose_sentence="$(first_sentence "$purpose_para")"
+      if [[ -z $description ]] || [[ "$(normalize_text "$purpose_sentence")" != "$(normalize_text "$description")" ]]; then
+        missing+=("purpose-mismatch")
+      fi
+    fi
+    grep -qE '^## Scope([[:space:]]|$)' <<<"$readme" || missing+=("no-scope-section")
+    grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$readme" || missing+=("no-issue-litmus-section")
+  fi
+
+  [[ $topics -ge 1 ]] || missing+=("no-topics")
+
+  if ((${#missing[@]} == 0)); then
+    jq -n --arg repo "$repo" --arg lang "$lang" --arg vis "$vis" \
+      '{repo: $repo, language: $lang, visibility: $vis, verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --arg repo "$repo" --arg lang "$lang" --arg vis "$vis" --argjson missing "$missing_json" \
+      '{repo: $repo, language: $lang, visibility: $vis, verdict: "drifted", missing: $missing}'
+  fi
+}
+
+audit() { # print: JSON array of findings, one object per repo
+  local repo lang vis description topics results='[]' entry
+  declare -A overrides=()
+  while IFS=$'\t' read -r repo directive; do
+    [[ -n $repo ]] || continue
+    overrides[$repo]="$directive"
+  done < <(read_overrides)
+
+  while IFS=$'\t' read -r repo lang vis description topics; do
+    [[ -n $repo ]] || continue
+    if [[ "${overrides[$repo]:-}" == "exempt" ]]; then
+      entry="$(jq -n --arg repo "$repo" --arg lang "$lang" --arg vis "$vis" \
+        '{repo: $repo, language: $lang, visibility: $vis, verdict: "exempt", missing: []}')"
+    else
+      entry="$(judge_repo "$repo" "$lang" "$vis" "$description" "$topics")"
+    fi
+    results="$(jq -c --argjson e "$entry" '. + [$e]' <<<"$results")"
+  done < <(list_repos)
+  printf '%s' "$results"
+}
+
+write_ledger() {
+  local findings="$1" tmp
+  mkdir -p "$STATE_DIR"
+  tmp="$(mktemp "$STATE_DIR/ledger.json.XXXXXX")"
+  jq -n --argjson repos "$findings" --arg generated_at "$(date --iso-8601=seconds)" \
+    '{generated_at: $generated_at, repos: $repos}' >"$tmp"
+  mv "$tmp" "$STATE_DIR/ledger.json"
+}
+
+render_report() {
+  local findings="$1" total ok drifted exempt
+  jq -r '
+    .[] | "\(.verdict)\tverdict=\(.verdict) repo=\(.repo) lang=\(.language)"
+      + (if (.missing | length) > 0 then " missing=" + (.missing | join(",")) else "" end)
+  ' <<<"$findings" | LC_ALL=C sort | cut -f2-
+  total="$(jq 'length' <<<"$findings")"
+  ok="$(jq '[.[] | select(.verdict=="ok")] | length' <<<"$findings")"
+  drifted="$(jq '[.[] | select(.verdict=="drifted")] | length' <<<"$findings")"
+  exempt="$(jq '[.[] | select(.verdict=="exempt")] | length' <<<"$findings")"
+  printf 'total: %d repo(s) - ok=%d drifted=%d exempt=%d\n' \
+    "$total" "$ok" "$drifted" "$exempt"
+}
+
+selftest() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+
+  mkdir -p "$tmp/fixtures" "$tmp/bin" "$tmp/state" "$tmp/config"
+
+  cat >"$tmp/fixtures/repo-list.json" <<'EOF'
+[
+  {"name": "charter-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Compares two rendering engines against a shared formula.", "repositoryTopics": [{"node": {"name": "verification"}}]},
+  {"name": "charter-drifted", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": null},
+  {"name": "charter-mismatch", "primaryLanguage": {"name": "Rust"}, "visibility": "PRIVATE", "description": "A completely different description.", "repositoryTopics": [{"node": {"name": "x"}}]},
+  {"name": "charter-exempted", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": null}
+]
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_charter-ok_readme.md" <<'EOF'
+# charter-ok
+
+Compares two rendering engines against a shared formula.
+
+## Why
+
+Free-form rationale.
+
+## Scope
+
+In:
+- formula verification
+
+Out:
+- automation tooling
+
+## Issue litmus
+
+Judging question: does this advance the shared-formula verification thesis?
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_charter-drifted_readme.md" <<'EOF'
+# charter-drifted
+
+Just a paragraph with no charter sections at all.
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_charter-mismatch_readme.md" <<'EOF'
+# charter-mismatch
+
+This purpose sentence does not match the GitHub description at all.
+
+## Scope
+
+In:
+- something
+
+## Issue litmus
+
+Judging question: does it help?
+EOF
+
+  # charter-exempted has no readme fixture on purpose — exempt short-circuits
+  # before fetch_readme is ever called, so a missing fixture must not matter.
+
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+FIXTURES="$GITHUB_AUDIT_CHARTERS_TEST_FIXTURES"
+case "$1" in
+  repo)
+    cat "$FIXTURES/repo-list.json"
+    ;;
+  api)
+    key="$(printf '%s' "$2" | tr '/' '_' | sed 's/_readme$/_readme.md/')"
+    if [[ -f "$FIXTURES/$key" ]]; then
+      cat "$FIXTURES/$key"
+    else
+      exit 1
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$tmp/bin/gh"
+
+  printf 'charter-exempted\texempt\n' >"$tmp/config/overrides.tsv"
+
+  export GITHUB_AUDIT_CHARTERS_OWNER=tarotene \
+    GITHUB_AUDIT_CHARTERS_GH_BIN="$tmp/bin/gh" \
+    GITHUB_AUDIT_CHARTERS_STATE_DIR="$tmp/state" \
+    GITHUB_AUDIT_CHARTERS_OVERRIDES_FILE="$tmp/config/overrides.tsv" \
+    GITHUB_AUDIT_CHARTERS_TEST_FIXTURES="$tmp/fixtures"
+
+  out="$("$SELF" 2>&1)" && {
+    printf 'FAIL: drifted repos exist but exit code was 0\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-ok' <<<"$out" | grep -qF 'missing=' && {
+    printf 'FAIL: charter-ok に missing が付いた\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-drifted' <<<"$out" | grep -qF 'no-scope-section' || {
+    printf 'FAIL: charter-drifted の no-scope-section を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-drifted' <<<"$out" | grep -qF 'no-issue-litmus-section' || {
+    printf 'FAIL: charter-drifted の no-issue-litmus-section を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-drifted' <<<"$out" | grep -qF 'no-topics' || {
+    printf 'FAIL: charter-drifted の no-topics を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-drifted' <<<"$out" | grep -qF 'purpose-mismatch' || {
+    printf 'FAIL: charter-drifted の purpose-mismatch(description 空)を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-mismatch' <<<"$out" | grep -qF 'purpose-mismatch' || {
+    printf 'FAIL: charter-mismatch の purpose-mismatch を検出しなかった\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-mismatch' <<<"$out" | grep -qF 'no-scope-section' && {
+    printf 'FAIL: charter-mismatch に no-scope-section が誤検出された\n' >&2
+    return 1
+  }
+  grep -F 'repo=charter-exempted' <<<"$out" | grep -qF exempt || {
+    printf 'FAIL: charter-exempted が exempt と判定されなかった\n' >&2
+    return 1
+  }
+  grep -qF 'total: 4 repo(s) - ok=1 drifted=2 exempt=1' <<<"$out" || {
+    printf 'FAIL: サマリ集計が一致しない: %s\n' "$out" >&2
+    return 1
+  }
+
+  [[ -f "$tmp/state/ledger.json" ]] || {
+    printf 'FAIL: ledger.json が書かれなかった\n' >&2
+    return 1
+  }
+  jq -e '.repos | length == 4' "$tmp/state/ledger.json" >/dev/null || {
+    printf 'FAIL: ledger.json の repos 件数が一致しない\n' >&2
+    return 1
+  }
+
+  # overrides を空にすると、exempted も自前の drift(README fixture すら無い
+  # ので readme-missing)で判定されることを確認する — override が短絡している
+  # だけで、たまたま同じ結果だったわけではないことの回帰。
+  : >"$tmp/config/overrides.tsv"
+  out="$("$SELF" --json 2>&1)" || true
+  jq -e '.[] | select(.repo=="charter-exempted") | .verdict == "drifted" and (.missing | index("readme-missing"))' <<<"$out" >/dev/null || {
+    printf 'FAIL: override 解除後に charter-exempted が readme-missing で drift しなかった\n' >&2
+    return 1
+  }
+
+  printf 'selftest: OK\n'
+}
+
+main() {
+  local mode=report
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) mode=json ;;
+      --selftest)
+        selftest
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  local findings
+  findings="$(audit)"
+  write_ledger "$findings"
+  case "$mode" in
+    report) render_report "$findings" ;;
+    json) printf '%s\n' "$findings" ;;
+  esac
+  jq -e '[.[] | select(.verdict=="drifted")] | length == 0' <<<"$findings" >/dev/null
+}
+
+main "$@"

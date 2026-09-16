@@ -231,6 +231,16 @@ jobs:
       - name: github-audit-rulesets --selftest
         run: ./scripts/github-audit-rulesets --selftest
 
+      # github-audit-charters (ADR-0013) is deterministic shell + jq end to
+      # end against a stubbed gh: the purpose-sentence extraction/normalize/
+      # compare logic, the literal Scope/Issue-litmus heading checks, the
+      # topics-count check, and the overrides file's exempt short-circuit —
+      # including the regression that clearing overrides makes the same
+      # repo fall back to its own (drifted) judgement rather than
+      # coincidentally staying green (docs/github-audit-charters.md).
+      - name: github-audit-charters --selftest
+        run: ./scripts/github-audit-charters --selftest
+
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/publish-guard, ADR-0009) and runs in that repo's own CI —
       # this repo no longer carries the source, so there is nothing to
