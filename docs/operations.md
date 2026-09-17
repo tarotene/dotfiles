@@ -33,6 +33,12 @@ apply an hour-old main right after a merge, and still print `Done.` as if
 nothing were wrong. `hms .` skips this — a local path always reads the
 current tree, so there is nothing to refresh.
 
+For a local ref, `hms` instead passes `--option warn-dirty false` to the
+underlying `home-manager switch` — a local checkout's git tree is routinely
+dirty mid-session (that's the point of `hms .`), and without this nix repeats
+`warning: Git tree '<path>' has uncommitted changes` on every switch. The
+suppression is local-path-only, not a machine-wide `nix.conf` setting (#149).
+
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
