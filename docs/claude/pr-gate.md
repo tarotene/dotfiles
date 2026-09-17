@@ -423,13 +423,16 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 
 1. **期待集合 E をサーバから取る** — `gh api repos/<nwo>/rules/branches/<base>` の
    `required_status_checks[].context`。単一の真実をサーバと共有することで
-   「何件揃えば良いか」を推測しない。この API は次の 3 状態をすべて `[]` に
-   潰して返す(区別しない): (a) ruleset に `required_status_checks` が無い、
-   (b) `base` が ruleset の対象外(スコープ外のブランチ)、(c) API 呼び出し
-   自体の失敗。#129 まではほぼ常に (a) だったため quiesce フォールバックが
-   `main` 宛でも常時発火していた。(b) は stacked PR で今も起きる、想定された
-   経路。(c) は一時的な API 障害を「required 無し」と誤読しうる経路で、
-   required が存在する今の方が誤読の害が大きい(要判断、別 Issue で追跡)。
+   「何件揃えば良いか」を推測しない。この API 呼び出しには本質的に異なる
+   3 状態がある: (a) ruleset に `required_status_checks` が無い、(b) `base`
+   が ruleset の対象外(スコープ外のブランチ、stacked PR で起きる想定内の
+   経路)、(c) API 呼び出し自体の失敗、または応答のパース失敗。(a)/(b) は
+   区別不要 — どちらも「required 無し」として quiesce(3.)で近似する。(c) は
+   一時的な API 障害を「required 無し」と誤読しうる経路で、required が実在
+   する状態のほうが誤読の害が大きいため、`expected_contexts()`
+   (`config/claude/hooks/pr-gate.sh`)は (c) を戻り値 1 で区別し、
+   `run_g_ci()` は quiesce に縮退させず `G_CI_STATUS=API_FAILURE` として
+   block する(#135)。
 2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ（出現待ち）
 3. E が空（stacked PR）なら、E の代わりに **quiescence**（報告件数が一定時間増えない）
    で「揃った」を近似する

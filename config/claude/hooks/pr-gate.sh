@@ -418,17 +418,34 @@ bump_count() {
 # --- G_CI: 期待集合の取得と判定 -----------------------------------------------
 
 # サーバの ruleset から $2(base ブランチ)の required_status_checks の
-# context 名一覧を取る。取れない/無い場合は "[]" を返す(空 = quiesce モード)。
+# context 名一覧を取る。戻り値 0 で "[]" を返すのは、ruleset に
+# required_status_checks が無い/base がスコープ外の場合(= quiesce モードで
+# 報告された全チェックを判定材料にする、区別不要)。gh api 呼び出し自体の
+# 失敗、または応答が非空なのに jq でのパースに失敗した場合は戻り値 1 を返す
+# — 呼び出し側はこれを quiesce に縮退させず block する(#135: この区別が
+# 無いと、required が実在する状態で一時的な API 障害が起きたとき、揃って
+# いない集合を黙って緑と読んでしまう)。
 expected_contexts() {
-  local nwo="$1" base="$2" raw out
-  raw="$(gh api "repos/${nwo}/rules/branches/$(url_encode_slash "$base")" 2>/dev/null)" || raw=""
+  local nwo="$1" base="$2" raw gh_rc out jq_rc
+  raw="$(gh api "repos/${nwo}/rules/branches/$(url_encode_slash "$base")" 2>/dev/null)"
+  gh_rc=$?
+  if [[ "$gh_rc" -ne 0 ]]; then
+    printf '%s' '[]'
+    return 1
+  fi
   out=""
   if [[ -n "$raw" ]]; then
     out="$(jq -c '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context]' \
-      <<<"$raw" 2>/dev/null)" || out=""
+      <<<"$raw" 2>/dev/null)"
+    jq_rc=$?
+    if [[ "$jq_rc" -ne 0 ]]; then
+      printf '%s' '[]'
+      return 1
+    fi
   fi
   [[ -n "$out" ]] || out='[]'
   printf '%s' "$out"
+  return 0
 }
 
 reported_checks() {
@@ -455,7 +472,7 @@ render_failed_checks() {
 }
 
 # G_CI の判定。結果はグローバル変数 G_CI_STATUS
-# (PASS/EMPTY/MISSING/FAILED/PENDING) と G_CI_DETAIL に置く。
+# (PASS/EMPTY/MISSING/FAILED/PENDING/API_FAILURE) と G_CI_DETAIL に置く。
 # 戻り値: PASS なら 0、それ以外は 1。
 run_g_ci() {
   local nwo="$1" pr_num="$2" base="$3"
@@ -463,7 +480,10 @@ run_g_ci() {
   G_CI_DETAIL=""
 
   local expected expected_count mode note=""
-  expected="$(expected_contexts "$nwo" "$base")"
+  if ! expected="$(expected_contexts "$nwo" "$base")"; then
+    G_CI_STATUS="API_FAILURE"
+    return 1
+  fi
   expected_count="$(jq 'length' <<<"$expected" 2>/dev/null)" || expected_count=0
 
   local required_flag=()
@@ -472,7 +492,7 @@ run_g_ci() {
     required_flag=(--required)
   else
     mode="quiesce"
-    note="base ${base} は ruleset の対象外(または取得失敗)。報告された全チェックで判定した"
+    note="base ${base} は ruleset の対象外。報告された全チェックで判定した"
   fi
 
   local deadline reported names_json missing missing_count
@@ -921,6 +941,18 @@ gh pr checks --watch で待ってから終わってください。
 
 ${rider}"
         ;;
+      API_FAILURE)
+        block_or_escalate "$sid" "required チェック集合の取得に失敗しました(gh api の呼び出しエラー、
+または応答のパースに失敗)。ネットワーク・認証・API レート制限等の一時的な
+障害の可能性があります。required が実在しないと確定できないまま quiesce
+判定に倒すと、揃っていないチェック集合を緑と読みかねません。
+
+  gh api repos/${nwo}/rules/branches/${base}
+
+で手動確認するか、しばらく待って再実行してください。
+
+${rider}"
+        ;;
       FAILED)
         block_or_escalate "$sid" "CI が赤です。PR #${pr_num} (head ${head_oid:0:7})
 
@@ -993,6 +1025,8 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # PR_GATE_STUB_NO_PR=1            : gh pr list が [] を返す
   # PR_GATE_STUB_PR_NUM / _BASE / _HEAD_OID : gh pr list が返す PR の中身
   # PR_GATE_STUB_RULES_FILE         : gh api rules/branches の応答(未指定なら [])
+  # PR_GATE_STUB_RULES_FAIL=1       : gh api rules/branches を非ゼロ終了させる
+  #   (#135: required 無しと API 障害を区別する G_CI の fail-closed 経路)
   # PR_GATE_STUB_CHECKS_FILE        : gh pr checks --json の応答(未指定なら [])
   # PR_GATE_STUB_WATCH_RC           : gh pr checks --watch の exit code(既定 0)
   # PR_GATE_STUB_PR_BODY            : gh pr list が返す PR 本文
@@ -1041,6 +1075,9 @@ No-Visual: selftest 既定本文}" \
   api)
     case "$*" in
       *rules/branches*)
+        if [[ "${PR_GATE_STUB_RULES_FAIL:-0}" == "1" ]]; then
+          exit 1
+        fi
         if [[ -n "${PR_GATE_STUB_RULES_FILE:-}" && -f "${PR_GATE_STUB_RULES_FILE:-}" ]]; then
           cat "${PR_GATE_STUB_RULES_FILE}"
         else
@@ -1210,6 +1247,15 @@ STUB
     PR_GATE_STUB_CHECKS_FILE="$dir/checks-2pass.json" \
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput pass-sid)" 2>"$dir/err")" || rc=$?
   check "push 済み + 全 required pass: 素通り(exit 0)" 0 "$rc"
+
+  echo "G_CI (required 無しと API 障害を区別する — #135 の回帰対象):"
+
+  rc=0
+  out="$(PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_RULES_FAIL=1 \
+    PR_GATE_STUB_CHECKS_FILE="$dir/checks-2pass.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput apifail-sid)" 2>"$dir/err")" || rc=$?
+  check "rules/branches の gh api 失敗: exit 2(quiesce に縮退しない)" 2 "$rc"
+  check_grep "API 障害メッセージ" "取得に失敗" "$(cat "$dir/err")"
 
   echo "G_CI (揃っていない集合を緑と読まない — R1/R2 の回帰対象):"
 
