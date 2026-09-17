@@ -81,6 +81,8 @@ check_generation_consistency() {
 
 check_generation_consistency
 
+extra_opts=()
+
 # Remote flake refs (github:, git+ssh:, ...) are the ones nix caches; a local
 # path (`.` or a checkout directory) always reads the current tree, so there is
 # nothing to refresh.
@@ -91,11 +93,18 @@ if [[ ! -e "$ref" ]]; then
     else
         echo "==> could not resolve a revision for ${ref} (offline?); continuing with whatever switch resolves" >&2
     fi
+else
+    # `hms .` applies a local checkout/worktree whose git tree is routinely
+    # dirty mid-session — that is the entire point of pre-push verification.
+    # nix would otherwise repeat "warning: Git tree '<path>' has uncommitted
+    # changes" on every switch. Suppress it only on this local-path branch,
+    # not machine-wide via nix.conf (#149) — a non-local ref never triggers it.
+    extra_opts=(--option warn-dirty false)
 fi
 
 echo "==> home-manager switch --flake ${ref}#${host} -b backup"
 rc=0
-home-manager switch --flake "${ref}#${host}" -b backup || rc=$?
+home-manager switch --flake "${ref}#${host}" -b backup "${extra_opts[@]}" || rc=$?
 if [[ $rc -ne 0 ]]; then
     check_generation_consistency
     exit "$rc"

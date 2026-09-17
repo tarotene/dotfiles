@@ -236,6 +236,20 @@ let
   # 旧(別リポジトリ切り出し前)の command 文字列。settings.json から完全一致
   # 削除するためだけに残す(下の retiredHookEntries)。
   legacyPublicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
+  # Codex/Copilot 版 adapter(tarotene/publish-guard の adapters/、#160)。
+  # Claude 版と違い ${CLAUDE_PLUGIN_ROOT} 相当の変数は要らない —
+  # adapters/{codex,copilot}-adapter.sh は自分の2階層上(adapters/ の親)に
+  # publish-guard 本体があるという前提で自分でパスを解決するため、上と同じ
+  # ~/.claude/hooks/publish-guard ツリーをそのまま指すだけでよい(#161: Codex
+  # の MCP tool 命名は未確認のままなので matcher は保守的に Bash|mcp__.* とする)。
+  codexPublishGuardCmd = "bash '${hooksDir}/publish-guard/adapters/codex-adapter.sh'";
+  copilotPublishGuardCmd = "bash '${hooksDir}/publish-guard/adapters/copilot-adapter.sh'";
+  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
+    builtins.readFile ../../scripts/register-codex-hooks
+  );
+  registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
+    builtins.readFile ../../scripts/register-copilot-hooks
+  );
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
@@ -843,6 +857,32 @@ in
   home.file.".claude/hooks/publish-guard" = {
     source = publish-guard;
   };
+
+  # Codex/Copilot 版 adapter の配線(#160)。Claude Code plugin 相当の配線
+  # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /
+  # Copilot CLI (~/.copilot/settings.json) には ADR-0009 決定7で明示的に
+  # 対象外としたまま配線していなかった。register-codex-hooks /
+  # register-copilot-hooks は worktree.nix / herdr.nix が同じ対象ファイルを
+  # 書き換える registrar なので、lost-update 窓(#61 と同種)を避けるため
+  # それらの後ろに明示的に順序付ける。
+  home.activation.registerCodexPublishGuardHooks =
+    lib.hm.dag.entryAfter
+      [
+        "writeBoundary"
+        "registerCodexWorktreeHooks"
+        "registerCodexHerdrMetadataHooks"
+      ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPublishGuardCmd} 20
+      '';
+
+  home.activation.registerCopilotPublishGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
+      ''
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          preToolUse ${lib.escapeShellArg copilotPublishGuardCmd} 20
+      '';
 
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。

@@ -225,6 +225,15 @@ notify() {
   response="$($HERDR_BIN notification show "stale worktree を検出 (${count}件)" --body "$body" --sound request 2>/dev/null)" || exit 0
   if jq -e '.. | objects | select(has("shown")) | .shown == true' <<<"$response" >/dev/null 2>&1; then
     write_state "$fp" "$first_seen" true
+    return 0
+  fi
+  # reason=="disabled"(herdr の [ui.toast] delivery が "off")は他の reason
+  # (busy 等)と違い、次回実行で自然に解消しない恒常的な設定不備。無音で
+  # 再試行し続けると気づく手段が無くなる(#89) — oneshot unit を fail させ、
+  # systemctl --user --failed / journal で見えるようにする。
+  if jq -e '.. | objects | select(has("reason")) | .reason == "disabled"' <<<"$response" >/dev/null 2>&1; then
+    printf 'git-worktree-audit: herdr notification delivery is disabled (reason=disabled) — %s件の stale worktree が無音で未通知です。config/herdr/config.toml の [ui.toast] delivery を設定してください。\n' "$count" >&2
+    exit 1
   fi
 }
 
@@ -379,6 +388,18 @@ STUB
   calls="$(wc -l <"$tmp/calls" | tr -d ' ')"
   [[ $calls == 2 ]] || {
     printf 'FAIL: notify 呼び出し回数=%s (期待=2)\n' "$calls" >&2
+    return 1
+  }
+
+  # reason=disabled は busy と違い無音リトライにせず unit を fail させる(#89)。
+  rm -f "$tmp/state/state.json"
+  printf disabled >"$tmp/reason"
+  if out="$("$SELF" --notify 2>&1)"; then
+    printf 'FAIL: delivery disabled でも exit 0 だった\n' >&2
+    return 1
+  fi
+  grep -qF "reason=disabled" <<<"$out" || {
+    printf 'FAIL: disabled 検出のエラーメッセージが出なかった: %s\n' "$out" >&2
     return 1
   }
 
