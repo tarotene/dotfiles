@@ -4,7 +4,7 @@
 # retains only what needs root or a system service — see #216.
 # starship + sheldon come from their programs.* / shell module; direnv/mise/rustup
 # are dev-runtime escape hatches (#215).
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 {
   home.packages = with pkgs; [
     # Core CLIs (were apt user-space)
@@ -142,4 +142,20 @@
     source = ../../scripts/github-audit-charters;
     executable = true;
   };
+
+  # gh-stack 拡張(stacked-pr スキルが使う `gh stack link` の提供元、#124)を
+  # 宣言的に管理する。`gh extension install` は ~/.local/share/gh/extensions/
+  # へ直接 git clone するだけなので、これまで home-manager 管理外のまま当機に
+  # 残っていた(ADR-0001 の source of truth 原則からのドリフト、#132)。--pin
+  # でバージョンを固定し、home.packages と同等の再現性を得る。
+  # herdr.nix の installHerdrClaudeIntegration と同じ形:
+  # ファイル存在ゲート(二重インストールを避ける)+ `${pkgs.gh}/bin/gh` を
+  # 直書き(activation の PATH は ~/.nix-profile/bin を含まないため `command -v`
+  # は使えない、同ファイルのコメント参照)+ `|| true` で fail-open
+  # (トークン未設定機・オフライン環境でも switch 自体は止めない)。
+  home.activation.installGhStackExtension = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if [ ! -e "$HOME/.local/share/gh/extensions/gh-stack" ]; then
+      run ${pkgs.gh}/bin/gh extension install github/gh-stack --pin v0.1.1 || true
+    fi
+  '';
 }
