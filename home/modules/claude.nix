@@ -184,6 +184,19 @@
 #    2本立て。当初検討した「プラン中の縮小マーカーを起点に検査する」設計は、過去
 #    プラン327本の実測で誤検知率が高すぎて棄却した。詳細は docs/claude/scope-inventory.md。
 #
+# 16) precedent-grounding(個人スキル、global CLAUDE.md の 1 節)+ 拡張した
+#     copilot-plan-review lens A(ADR-0012):
+#    プロンプトへの「敵対的レビュー」「文献調査」の都度指示を、著者(プランを
+#    書く Claude)が設計判断ごとに先行例へ接地して成果物に残す形に機構化する。
+#    文献調査(Huang et al. 2023 / Kamoi et al. 2024 等)が「同一コンテキストの
+#    自己批評は推論・設計タスクで改善しない」と示す一方、Anthropic 公式ドキュメント
+#    も「fresh context の批評者 + 明示的基準 + 報告範囲の限定」を推奨するため、
+#    著者が接地し既存の文脈を切った critic(lens A)が監査する形にした。新規の
+#    独立 lens は立てず lens A に統合し、premium request は増やさない。形式検査
+#    (節または免除行の存在)は LLM を呼ばない機械 gate(plan-precedent-gate、
+#    別 PR で追加予定)が担う。詳細は docs/adr/0012-precedent-grounding-over-
+#    prompted-adversarial-review.md と docs/claude/precedent-grounding.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -912,6 +925,13 @@ in
   # plan-scope-gate.sh(段2)が担う。詳細は docs/claude/scope-inventory.md。
   home.file.".claude/skills/scope-inventory/SKILL.md".source =
     repoConfig + "/claude/skills/scope-inventory/SKILL.md";
+  # precedent-grounding: Plan に非自明な設計判断を書くとき、確立されたやり方
+  # (先行例・文献)と照合した結果を `## 先行例との対比` 節として成果物に残す
+  # 書き方(出典・取得日・差分の書式、免除行の条件)。批評(lens A)が何を監査
+  # するかもここに持つ。形式検査は plan-precedent-gate.sh(段2)が担う。詳細は
+  # docs/claude/precedent-grounding.md、コメント索引 16) 参照。
+  home.file.".claude/skills/precedent-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。

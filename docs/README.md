@@ -49,6 +49,12 @@
   採取(atuin + Claude Code ターンログ)。オフライン専用の atuin
   history.db と `agent-events.jsonl` の 2 採取点、出力パス・JSON 行の形式
   という消費側(別リポジトリ)向けの契約を固定する。
+- [ADR-0012](adr/0012-precedent-grounding-over-prompted-adversarial-review.md)
+  — プロンプトでの「敵対的レビュー」「文献調査」の都度指示を、常設
+  システムプロンプトへの抽象指示にはせず、著者が先行例へ接地し文脈を
+  切った批評者(既存 copilot-plan-review の lens A)が監査する形に
+  機構化する決定。文献調査(自己批評の非収束性)を根拠に、抽象指示への
+  変換を明示的に棄却した。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -138,6 +144,11 @@ Design and rationale for the hooks and commands deployed from
   ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
   子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。
   gate: `plan-scope-gate.sh`。
+- [`precedent-grounding.md`](claude/precedent-grounding.md) — グローバル
+  CLAUDE.md ルール + 個人スキル: Plan の非自明な設計判断ごとに先行例との
+  対比(`D1..Dn`)を成果物に残す書き方。プロンプトでの「敵対的レビュー」
+  「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
+  copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`。
 
 ## Investigation records
 
