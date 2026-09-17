@@ -119,6 +119,9 @@ dotfiles/
 │   ├── github-audit-rulesets  # read-only cross-repository GitHub ruleset
 │   │                         #   drift audit (#130; deployed to ~/.local/bin,
 │   │                         #   manual command, no timer)
+│   ├── github-audit-charters  # read-only cross-repository README charter
+│   │                         #   drift audit (ADR-0012; deployed to
+│   │                         #   ~/.local/bin, manual command, no timer)
 │   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
 │   │                         #   side) pair — fable/sonnet, opus/sonnet,
 │   │                         #   fable/opus — and re-resolves the concrete
@@ -151,6 +154,9 @@ dotfiles/
 │   ├── github-audit-rulesets.md # read-only cross-repo GitHub ruleset drift
 │   │                         #   audit (#130): rule-type-union judgement,
 │   │                         #   why it's not in a dedicated inventory repo
+│   ├── github-audit-charters.md # read-only cross-repo README charter drift
+│   │                         #   audit (ADR-0012): purpose/Scope/Issue-litmus/
+│   │                         #   topics schema, why judgement skips any LLM call
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
@@ -194,13 +200,16 @@ dotfiles/
 │   │   ├── scope-inventory.md    # global CLAUDE.md rule + skill: enumerate every
 │   │   │                     #   requirement item before planning so none is
 │   │   │                     #   silently dropped; gate: plan-scope-gate.sh
-│   │   └── precedent-grounding.md # global CLAUDE.md rule + skill: for every
-│   │                         #   non-obvious design decision in a Plan, cite
-│   │                         #   the prior art it follows or deviates from
-│   │                         #   (`## 先行例との対比`, ADR-0012 — replaces
-│   │                         #   asking for "adversarial review" per prompt);
-│   │                         #   critic: copilot-plan-review lens A, gate:
-│   │                         #   plan-precedent-gate.sh
+│   │   ├── precedent-grounding.md # global CLAUDE.md rule + skill: for every
+│   │   │                     #   non-obvious design decision in a Plan, cite
+│   │   │                     #   the prior art it follows or deviates from
+│   │   │                     #   (`## 先行例との対比`, ADR-0012 — replaces
+│   │   │                     #   asking for "adversarial review" per prompt);
+│   │   │                     #   critic: copilot-plan-review lens A, gate:
+│   │   │                     #   plan-precedent-gate.sh
+│   │   └── repo-charter.md       # skill: README charter schema (purpose
+│   │                         #   sentence / Scope / Issue litmus / topics),
+│   │                         #   ADR-0013; pilot-adoption design notes
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -218,7 +227,9 @@ dotfiles/
 - **ADR-0008** — documentation artifact selection: a new decision or piece of research goes to (1) an investigation record if it decays over time (external preview status, tool version, open-issue counts), (2) an ADR if it is a single significant decision (Nygard's five areas), even at single-developer scope, (3) `docs/claude/<name>.md` if it is the living design rationale for one hook/skill/tool, or (4) existing docs otherwise. ADRs stay immutable; link out to decaying facts rather than embedding them.
 - **ADR-0009** — public-publish-guard's upstream split: the guard is now maintained in a separate public repo (`tarotene/publish-guard`), consumed here as a pinned flake input, because this repo's "No semver releases" policy and orphan-history rewrites (ADR-0004) are structurally incompatible with plugin-distribution commit-SHA/tag pinning.
 - **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
+- **ADR-0011** — local activity log capture: atuin (offline-only, no sync/update-check) plus a Claude Code turn-boundary JSONL log (`agent-events.jsonl`), both write-only capture points whose path/field contract a separate downstream repository depends on.
 - **ADR-0012** — precedent grounding over prompted adversarial review: instead of turning the user's per-prompt "run an adversarial review" / "check the literature" requests into an abstract standing CLAUDE.md instruction (which a literature survey found does not improve design/reasoning tasks), each non-obvious design decision in a Plan is grounded against prior art in the plan body itself; a context-isolated critic (copilot-plan-review's lens A) audits the citations, and a deterministic gate (`plan-precedent-gate.sh`) enforces the section's form.
+- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit-charters`, deliberately without any LLM call.
 
 ## Development Rules
 

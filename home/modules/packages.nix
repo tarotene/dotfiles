@@ -133,4 +133,13 @@
     source = ../../scripts/github-audit-rulesets;
     executable = true;
   };
+
+  # github-audit-charters: read-only cross-repository README charter drift
+  # audit (docs/github-audit-charters.md). Same manual-command, no-timer
+  # placement as github-audit-rulesets above — a sibling audit over a
+  # different axis (purpose/scope/Issue-litmus/topics, not branch rulesets).
+  home.file.".local/bin/github-audit-charters" = {
+    source = ../../scripts/github-audit-charters;
+    executable = true;
+  };
 }

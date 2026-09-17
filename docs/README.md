@@ -15,6 +15,10 @@
   cross-repository GitHub ruleset drift audit (#130): why it lives here
   instead of a dedicated inventory repo, and why judgement is by rule-type
   union rather than ruleset name/count.
+- [`github-audit-charters.md`](github-audit-charters.md) — read-only
+  cross-repository README charter drift audit: the purpose-sentence /
+  Scope / Issue-litmus / topics schema, and why judgement is by literal
+  presence/match rather than an LLM call.
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
@@ -55,6 +59,11 @@
   切った批評者(既存 copilot-plan-review の lens A)が監査する形に
   機構化する決定。文献調査(自己批評の非収束性)を根拠に、抽象指示への
   変換を明示的に棄却した。
+- [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリの README
+  に machine-checkable な charter(目的1文 = description のミラー /
+  `## Scope` / `## Issue litmus` / topics)を強制する決定。作成時
+  (`repo-charter` スキル)と事後(`github-audit-charters`)の二点で強制し、
+  Issue 起票時の意味照合は第 2 弾に送る。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -150,6 +159,11 @@ Design and rationale for the hooks and commands deployed from
   「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
   copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`(gh/LLM
   を呼ばない決定論的 judge)。
+- [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
+  README に machine-checkable な charter(目的1文・`## Scope`・
+  `## Issue litmus`・topics)を播く/適合化する手順。事後の横断監査は
+  `github-audit-charters.md` が担う。パイロット適合(命名と責務の乖離が
+  判明した経緯)も記録。
 
 ## Investigation records
 
