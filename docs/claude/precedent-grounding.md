@@ -88,6 +88,44 @@ Anthropic 公式ドキュメント(`code.claude.com/docs/en/best-practices`)
 あり、本仕組みの射程には含めていない。今後同様の依頼が増えれば、別途
 検討する(wrap-up inbox 参照)。
 
+## 形式検査(plan-precedent-gate.sh)
+
+`config/claude/hooks/plan-precedent-gate.sh` は `plan-scope-gate.sh` と同型の
+決定論的 judge で、LLM も `gh` も呼ばない(jq とテキスト処理だけ)。
+`plan-review` / `plan-view` / `plan-scope-gate` と同じ ExitPlanMode matcher に
+4 つ目のエントリとして並ぶ。
+
+検査するのは形式だけ:
+
+1. `## 先行例との対比` 節、または `先行例: 該当なし — <理由>` の免除行
+   (ダッシュは `—`/`–`/`-` のいずれでも可)のどちらかが存在するか。
+2. 節がある場合、`- Dn:` 行が1件以上あり、重複が無いか。
+3. 各 `Dn` ブロックが `先行例なし: <非空テキスト>`、または
+   `先行例:` + 出典トークン(`https?://` の URL、`#N`、`owner/repo#N`、
+   スラッシュを含むパス風文字列のいずれか)+ `(取得 YYYY-MM-DD)` +
+   `差分:(一致|異なる)` のすべてを満たすか。
+
+不足があれば `Dn: 先行例の記載に不足があります — <不足要素>` の形で列挙して
+deny する。allow は返さない。問題が無ければ何も決定せず、通常の Approve
+ダイアログに進む。
+
+### 意図的な限界
+
+- **出典トークンの存在しか見ない。** URL が実在するか、リポジトリ内パスが
+  本当にその設計判断を支えているかは検査しない — それは lens A の職責
+  (「批評者(lens A)が監査すること」節)。
+- **取得日の妥当性は検査しない。** 未来日付や捏造された日付を機械的には
+  見分けられない。ここは `precedent-grounding` スキルの「アンチパターン」
+  節が指示文として塞ぐ領域。
+- **checkbox フォールバックは無い。** `plan-scope-gate.sh` の Issue 子項目
+  カバレッジ検査とは異なり、この gate は Issue/GitHub 状態を一切参照しない
+  ため、対象は常に「今書かれているプラン本文」だけ。
+
+### スキップ手段
+
+`touch ~/.claude/plan-precedent-gate/skip` または
+`SKIP_PLAN_PRECEDENT_GATE=1`。
+
 ## 効果の確かめ方
 
 挙動そのものは一度きりの `nix build` では検証できない(プロンプトへの

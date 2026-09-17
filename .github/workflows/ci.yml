@@ -165,6 +165,15 @@ jobs:
       - name: plan-view.sh --selftest
         run: bash ./config/claude/hooks/plan-view.sh --selftest
 
+      # plan-precedent-gate is deterministic shell + jq end to end, no gh/network:
+      # the section-vs-exemption-line branch, the per-Dn required-element checks
+      # (citation token, retrieval date, diff verdict), and duplicate-Dn
+      # detection are all exercised directly against the judge function
+      # (docs/adr/0012-precedent-grounding-over-prompted-adversarial-review.md,
+      # docs/claude/precedent-grounding.md).
+      - name: plan-precedent-gate.sh --selftest
+        run: bash ./config/claude/hooks/plan-precedent-gate.sh --selftest
+
       # issue-index is deterministic shell + jq end to end against a stub gh:
       # the git-only/binary-existence gates, the mine→all fallback with its
       # asymmetric failure classification (R2-C-2: "whichever side was
