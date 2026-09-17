@@ -63,7 +63,8 @@
   に machine-checkable な charter(目的1文 = description のミラー /
   `## Scope` / `## Issue litmus` / topics)を強制する決定。作成時
   (`repo-charter` スキル)と事後(`github-audit-charters`)の二点で強制し、
-  Issue 起票時の意味照合は第 2 弾に送る。
+  Issue 起票時の意味照合は第 2 弾に送る。Amendment で 3 点目の enforcement
+  point(`charter-sweep` による監査駆動の一括整地)を追加。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -164,6 +165,11 @@ Design and rationale for the hooks and commands deployed from
   `## Issue litmus`・topics)を播く/適合化する手順。事後の横断監査は
   `github-audit-charters.md` が担う。パイロット適合(命名と責務の乖離が
   判明した経緯)も記録。
+- [`charter-sweep.md`](claude/charter-sweep.md) — 個人スキル:
+  `github-audit-charters` の findings を入力に、drifted な全リポジトリの
+  charter を LLM が一括起草し、1 回の一括レビューで適用する手順
+  (ADR-0013 Amendment)。構造的な気づきが必要なリポは `repo-charter` の
+  個別インタビューへ送る 2 レーン構成。
 
 ## Investigation records
 

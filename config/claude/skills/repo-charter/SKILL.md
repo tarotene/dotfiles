@@ -10,7 +10,10 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
 + 1 メタデータという機械検査可能な形に固定する。
 
 事後の横断検査は `github-audit-charters`(手順は `docs/github-audit-charters.md`)。
-このスキルは charter を**播く/適合化する**側の手順。
+このスキルは charter を**播く/適合化する**側の手順。多数のリポジトリが
+同時に drift しており 1 リポずつのインタビューでは収束しない場合は、
+監査駆動で一括起草・一括レビューする `charter-sweep` スキルを使う
+(このスキルのスキーマ定義を正本として参照する)。
 
 ## 1. charter インタビュー
 

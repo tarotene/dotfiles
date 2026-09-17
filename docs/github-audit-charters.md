@@ -119,7 +119,10 @@ In scope: read-only inventory + drift detection over the four checks
 above. Out of scope, tracked for a follow-up:
 
 - **Applying** a charter to a drifted repository — a manual job for the
-  `repo-charter` skill.
+  `repo-charter` skill (single repository, interview-driven), or, when many
+  repositories are drifted at once, the `charter-sweep` skill (audit-driven
+  bulk draft + one batch review; see `docs/claude/charter-sweep.md` and
+  ADR-0013's Amendment).
 - Judging litmus-test *quality* (a present-but-weak judging question
   passes; see above).
 - Cross-checking a specific open Issue against its repository's litmus
@@ -132,9 +135,11 @@ above. Out of scope, tracked for a follow-up:
 
 As of this writing, this schema is brand new: every owned repository
 reports `drifted` (no repository has adopted the charter yet). That is
-the expected starting state, not a bug in the audit. Adoption is
+the expected starting state, not a bug in the audit. Adoption can be
 incremental, repository by repository, as each is next touched — see
-`docs/claude/repo-charter.md` for the pilot adoption's design notes.
+`docs/claude/repo-charter.md` for the pilot adoption's design notes — or
+swept in one batch via the `charter-sweep` skill when the drifted count is
+too large for when-next-touched to converge (ADR-0013's Amendment).
 
 ## Private-repository specifics
 

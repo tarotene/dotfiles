@@ -83,6 +83,45 @@ topics も調査した範囲の全リポジトリで未設定だった。
 - charter スキーマを変更する場合(見出しリテラルや判定項目の追加・変更)は、
   この ADR を supersede する新しい ADR を起こす(ADR-0008 の規約)。
 
+## Amendment (2026-09 — charter-sweep, bulk remediation)
+
+Decision 4 は「既存リポジトリへの適合化は一括では行わず、監査の drift 報告に
+任せて各リポを次に触るタイミングで順次適合化する」としていた。この前提が
+成立するには、いずれ drift したリポの数が十分に減っていく必要がある。しかし
+本 ADR 導入直後の実測(`total 34 repo(s) — ok=0 drifted=34 exempt=0`、
+Verification 節参照)が示す通り、初期状態では**全リポが drifted**であり、
+「次に触るタイミング」が来る保証がない。この状態を when-next-touched 方式
+だけに委ねると事実上収束しない。
+
+Decision 4 がこの方式を選んだ理由自体(`repo-charter` のインタビューが
+litmus の質だけでなくリポ名と責務の不一致のような構造問題を掘り当てた
+実績、`docs/claude/repo-charter.md` 参照)は今も有効であり、これを覆すもの
+ではない。そこで、既存 2 つの enforcement point(創設時の `repo-charter`、
+事後監査の `github-audit-charters`)に加えて **3 つ目の enforcement
+point** を追加する:
+
+- **`config/claude/skills/charter-sweep/`** — `github-audit-charters --json`
+  の findings を入力に、LLM が drifted リポの charter を一括起草し、人間は
+  1 回の一括レビュー(GO/修正/除外/exempt をリポ単位で指定)だけを行う。
+  ただし、リポ名と責務の不一致・目的自体を争う open Issue の存在など
+  `repo-charter` のインタビューが構造的な気づきを生んできた特徴に該当する
+  リポは起草せず、個別インタビュー(`repo-charter`)へ送る 2 レーン構成に
+  することで、一括処理に振り切ってインタビューの価値を失わないようにする。
+  設計の詳細は `docs/claude/charter-sweep.md`。
+- 反映順序は README を PR で merge した後に `gh repo edit` で
+  description/topics を反映する(README が正本、description はミラーと
+  いう本 ADR の規定から必然)。
+- charter 適合と同時に発覚する、README と矛盾する open Issue の棚卸し
+  (`repo-charter` SKILL.md §6)も一括レビューのレーンに乗せるが、Issue の
+  close という不可逆操作は一括起草フェーズから切り離し、人間の GO の後に
+  限る。
+
+これにより Decision 4 は「一括では行わない」から「一括起草・一括レビューは
+行うが、一律の無人適用はしない(低確信リポは個別インタビューへ、Issue
+close は GO 後のみ)」に改訂される。Decision 1〜3(charter スキーマ本体、
+`repo-charter` / `github-audit-charters` の 2 点強制、AGENTS.md 除外)は
+無傷のまま残る。
+
 ## Verification
 
 - `github-audit-charters --selftest` — fixture で ok / drifted(複数の

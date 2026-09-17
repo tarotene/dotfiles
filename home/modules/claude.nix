@@ -946,6 +946,17 @@ in
   # docs/claude/precedent-grounding.md、コメント索引 16) 参照。
   home.file.".claude/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+  # repo-charter: 自作リポジトリの README に machine-checkable な charter
+  # (目的1文・Scope・Issue litmus・topics)を播く/適合化する対話型インタビュー
+  # の判断知識。事後の横断監査は github-audit-charters(scripts/ 側)が担う。
+  home.file.".claude/skills/repo-charter/SKILL.md".source =
+    repoConfig + "/claude/skills/repo-charter/SKILL.md";
+  # charter-sweep: github-audit-charters の findings を入力に、drifted な
+  # 全リポジトリの charter を LLM が一括起草し、1 回の一括レビューで適用する
+  # 判断知識(ADR-0013 Amendment)。repo-charter のスキーマ定義を正本として
+  # 参照し、二重定義しない。詳細は docs/claude/charter-sweep.md。
+  home.file.".claude/skills/charter-sweep/SKILL.md".source =
+    repoConfig + "/claude/skills/charter-sweep/SKILL.md";
 
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。

@@ -207,9 +207,14 @@ dotfiles/
 │   │   │                     #   asking for "adversarial review" per prompt);
 │   │   │                     #   critic: copilot-plan-review lens A, gate:
 │   │   │                     #   plan-precedent-gate.sh
-│   │   └── repo-charter.md       # skill: README charter schema (purpose
-│   │                         #   sentence / Scope / Issue litmus / topics),
-│   │                         #   ADR-0013; pilot-adoption design notes
+│   │   ├── repo-charter.md       # skill: README charter schema (purpose
+│   │   │                     #   sentence / Scope / Issue litmus / topics),
+│   │   │                     #   ADR-0013; pilot-adoption design notes
+│   │   └── charter-sweep.md      # skill: audit-driven bulk charter
+│   │                         #   remediation — github-audit-charters
+│   │                         #   findings → LLM bulk draft → one batch
+│   │                         #   review, low-confidence repos routed to
+│   │                         #   repo-charter's interview (ADR-0013 Amendment)
 │   ├── falcon-sensor.md      # EDR agent notes
 │   └── nixification-roadmap.md
 └── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
@@ -229,7 +234,7 @@ dotfiles/
 - **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
 - **ADR-0011** — local activity log capture: atuin (offline-only, no sync/update-check) plus a Claude Code turn-boundary JSONL log (`agent-events.jsonl`), both write-only capture points whose path/field contract a separate downstream repository depends on.
 - **ADR-0012** — precedent grounding over prompted adversarial review: instead of turning the user's per-prompt "run an adversarial review" / "check the literature" requests into an abstract standing CLAUDE.md instruction (which a literature survey found does not improve design/reasoning tasks), each non-obvious design decision in a Plan is grounded against prior art in the plan body itself; a context-isolated critic (copilot-plan-review's lens A) audits the citations, and a deterministic gate (`plan-precedent-gate.sh`) enforces the section's form.
-- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit-charters`, deliberately without any LLM call.
+- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit-charters`, deliberately without any LLM call. **Amendment** adds a third enforcement point, `charter-sweep`, for audit-driven bulk remediation when too many repositories are drifted at once for when-next-touched retrofitting to converge (LLM bulk draft + one batch human review; low-confidence repos still route to `repo-charter`'s interview).
 
 ## Development Rules
 
