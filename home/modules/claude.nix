@@ -199,6 +199,22 @@
 #    詳細は docs/adr/0012-precedent-grounding-over-prompted-adversarial-review.md
 #    と docs/claude/precedent-grounding.md。
 #
+# 17) attribution-guard(PreToolUse, matcher: "Bash|mcp__.*"):
+#    Claude が GitHub に書く外向きテキスト(PR/Issue の create・edit、Issue/PR
+#    コメント、gh pr review のレビュー本体)に attribution フッターが載って
+#    いることを保証する。PR 本文のフッターは harness 側の attribution 指示
+#    由来なので、(a) コメント投稿には一切付かず、(b) 本文側も repo に強制が
+#    無い(pr-gate.sh は G_link / G_visual しか見ない)という 2 つの穴があった。
+#    投稿は通知が飛ぶ不可逆操作なので Stop hook では取り返せず、PreToolUse で
+#    deny する。抜け道は本文マーカー No-Attribution: <理由>(pr-gate.sh の
+#    No-Issue: と同型、理由必須で grep 可能)。
+#
+#    matcher は publish-guard と同じ複合 1 本 "Bash|mcp__.*" — MCP GitHub は
+#    現在未接続だが、matcher を Bash 単体にすると接続した瞬間に無検査になる
+#    (下の publish-guard の登録コメントが、旧実装の同じ欠陥を「最大の機能
+#    欠陥」と記録している)。絞り込みは hook 内部の早期 exit に置く。
+#    詳細は docs/claude/attribution-guard.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -257,6 +273,7 @@ let
   worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
   planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
+  attributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
   # (herdr-claude-metadata.sh と同じ形)。出力は
@@ -442,6 +459,7 @@ let
     worktree_audit_context="$1"; shift
     plan_scope_gate="$1";        shift
     plan_precedent_gate="$1";    shift
+    attribution_guard="$1";      shift
     agent_turn_log="$1";         shift
     atuin_hook_claude_code="$1"; shift
 
@@ -506,6 +524,12 @@ let
     # 早期 exit に置く。gh api の生呼び出しの往復も想定してタイムアウトは
     # やや長め。
     register PreToolUse "Bash|mcp__.*" "$public_publish_guard" 20
+    # attribution-guard: publish-guard と同じ外向き投稿面(gh pr/issue の
+    # create/edit/comment・gh pr review・MCP tool call)を見るが、判定の向きが
+    # 逆 — あちらは「社名が現れる」ことの検出、こちらは「attribution が無い」
+    # ことの検出。matcher も同じ複合 1 本にする(上と同じ理由: Bash 単体だと
+    # MCP 経路が無検査のまま残る)。gh api の往復は無いのでタイムアウトは短い。
+    register PreToolUse "Bash|mcp__.*" "$attribution_guard" 10
     # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
     # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
     # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
@@ -789,6 +813,14 @@ in
     executable = true;
   };
 
+  # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
+  # フッターを強制する(docs/claude/attribution-guard.md)。判定は純関数群に
+  # 切り出してあり --selftest がネットワーク無しに 26 ケースを検査する。
+  home.file.".claude/hooks/attribution-guard.sh" = {
+    source = repoConfig + "/claude/hooks/attribution-guard.sh";
+    executable = true;
+  };
+
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
     source = repoConfig + "/claude/hooks/issue-index.sh";
@@ -1019,6 +1051,7 @@ in
       ${lib.escapeShellArg worktreeAuditContextCmd} \
       ${lib.escapeShellArg planScopeGateCmd} \
       ${lib.escapeShellArg planPrecedentGateCmd} \
+      ${lib.escapeShellArg attributionGuardCmd} \
       ${lib.escapeShellArg agentTurnLogCmd} \
       ${lib.escapeShellArg atuinHookClaudeCodeCmd}
   '';

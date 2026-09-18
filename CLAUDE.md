@@ -54,7 +54,7 @@ dotfiles/
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
 │   │                         #   plan-scope-gate, plan-precedent-gate, pr-gate,
-│   │                         #   issue-index, sign-prewarm,
+│   │                         #   attribution-guard, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
 │   │                         #   (public-publish-guard moved upstream to
@@ -161,6 +161,10 @@ dotfiles/
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
+│   │   ├── attribution-guard.md  # PreToolUse hook: deny a gh pr|issue
+│   │   │                     #   create|edit|comment / gh pr review whose body
+│   │   │                     #   has no Claude-Code attribution footer
+│   │   │                     #   (escape hatch: `No-Attribution: <reason>`)
 │   │   ├── public-publish-guard.md # PreToolUse hook: deny/ask on git push /
 │   │   │                     #   gh pr|issue create|edit|comment/MCP GitHub
 │   │   │                     #   tool calls that would leak a company/private

@@ -76,3 +76,24 @@ sub-issue を持つ Issue、または箇条書きで複数項目を含む依頼�
 - 例外は 2 つだけ: (1) ユーザーが「commit まで」「PR 不要」等と明示した場合、
   (2) リポジトリが PR フローを持たない場合。迷ったら PR を作る側に倒す。
 - 調査のみ・ファイル変更なしのセッションはこの節の対象外。
+
+# GitHub に投稿するテキストには生成元を明示する
+
+Claude が GitHub に書く外向きのテキストには、経路を問わず末尾に次の 1 行を置く。
+
+```
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+対象は PR / Issue の本文(`create` / `edit`)、Issue / PR のコメント、
+`gh pr review` のレビュー本体。`gh` でも `gh api` でも MCP tool 経由でも同じ。
+コメントに mention が付くかどうかで判断を変えない — mention が無くても
+watcher / assignee には通知が飛ぶ。
+
+- 本文が Claude 生成でないとき(ユーザーが書いた文章をそのまま代理投稿する等)は
+  `No-Attribution: <理由>` を本文に書いて明示的に抜ける。理由は必須。
+  読者にとっても「これは AI が書いたのではない」という正しい情報になる。
+- コード行に対するインラインレビューコメントは対象外(1〜2 行が典型で、
+  フッターが本文より長くなる)。
+- 形式検査は attribution-guard.sh が PreToolUse で行う。gate に当たる前に
+  自発的に付けること — gate は漏れを拾うためのもので、一次的な手段ではない。
