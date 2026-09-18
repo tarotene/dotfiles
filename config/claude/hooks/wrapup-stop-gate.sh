@@ -250,8 +250,11 @@ cat >&2 <<EOF
      exit 1 なら同名の open Issue が既にある(重複)。exit 3 なら判定不能 —
      その行は今回スキップして inbox に残す。
   2. 重複でなければ gh issue create --title "<title>" --body "<本文>" で起票する。
-     本文は detail を会話の文脈で補って書き、末尾に出自フッター
-     「🤖 Filed from Claude Code wrap-up inbox」を付ける。
+     本文は detail を会話の文脈で補って書き、末尾に次の 2 行を付ける
+     (前者は attribution-guard.sh が要求する生成元表示、後者は inbox 由来を
+     後から grep で絞るための出自フッター。目的が違うので両方必要):
+       「🤖 Generated with [Claude Code](https://claude.com/claude-code)」
+       「🤖 Filed from Claude Code wrap-up inbox」
   3. 起票に成功した行、または重複でスキップした行だけを
      bash '${self}' --mark-filed '${inbox}' '<その行そのまま>' で削除する。
      gh issue create に失敗した行には --mark-filed を呼ばず、inbox に残す(次ターンで再試行)。

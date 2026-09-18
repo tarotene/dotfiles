@@ -124,6 +124,15 @@ grep -n 'gh pr comment 1 --body' docs/claude/attribution-guard.md
 echo 'gh issue comment 1 --body x'
 ```
 
+### wrap-up inbox の起票とはフッターが 2 本になる
+
+`wrapup-stop-gate.sh` の起票手順は出自フッター
+`🤖 Filed from Claude Code wrap-up inbox` を要求するが、これは `ATTRIBUTION_RE`
+(`Generated with … Claude Code`) にマッチしないので、それだけでは deny される
+(実測)。出自フッターは「inbox 由来を後から grep で絞る」ためのもので、attribution
+フッターは「生成元の表示」— 目的が違うので両方付ける。`wrapup-stop-gate.sh` の
+指示文側にその旨を書いてあるので、手で足す必要はない。
+
 ### gate 自身を直すときは gate を外す
 
 この guard のバグを直す作業そのものが guard に止められることがある（実際に起きた）。
