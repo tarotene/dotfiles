@@ -1,12 +1,43 @@
 # dotfiles
 
-Declarative, reproducible **user environment** for Pop!_OS, built as a
-flake-based **standalone home-manager** configuration. One flake is the source
-of truth across every host and identity, so a fresh machine comes up identically
-with near-zero manual steps.
+Flake-based standalone home-manager configuration that reproduces one user
+environment identically across Pop!_OS hosts and identities. One flake is the
+source of truth, so a fresh machine comes up identically with near-zero manual
+steps.
 
 Migrated from a procedural shell-script installer to home-manager — see
 [`CONTEXT.md`](CONTEXT.md) and the [ADRs](docs/adr/) for the charter.
+
+## Scope
+
+In:
+- home-manager modules for the user environment: shell, git, GPG, terminal,
+  IME, GUI apps, and the Claude Code tooling under `config/claude/`
+- the apt system-layer escape hatch (`bootstrap.sh` +
+  `packages/declarative/apt-packages.txt`)
+- the ADRs and runbooks that record why this repo is structured this way
+
+Out:
+- per-project language toolchains (managed by `mise`/`direnv`/`rustup` at the
+  project level — ADR-0002)
+- the judgement engine behind `publish-guard` (lives in
+  `tarotene/publish-guard`; this repo only wires it in)
+- feature development on the upstream tools this repo merely consumes
+  (e.g. `herdr` itself, `hato` itself — those live in their own repos)
+
+## Issue litmus
+
+判定問: Does resolving this change what `home-manager switch` (or the
+documented apt/bootstrap escape hatch) provisions or configures on a host?
+
+採用例:
+- adopt a new CLI tool into home-manager's package list
+- fix a home-manager module that fails to activate on a host
+
+棄却例:
+- add a new feature to `herdr` itself (belongs in the upstream `herdr` repo)
+- pin a specific project's Rust toolchain version (belongs to that project's
+  `mise`/`rustup` config, not this repo)
 
 ## Quick start
 
