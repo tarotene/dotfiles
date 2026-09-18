@@ -1018,6 +1018,12 @@ in
   # docs/claude/precedent-grounding.md、コメント索引 16) 参照。
   home.file.".claude/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+  # github-audit-triage: github-audit の findings を入力に複数リポジトリの
+  # 一括起草・一括レビュー・一括 PR 化を行う判断知識(ADR-0015 の LLM
+  # ノード)。charter-sweep(#180)を巻き取り、完了定義を PR 作成までに
+  # 変更している。詳細は docs/claude/github-audit-triage.md。
+  home.file.".claude/skills/github-audit-triage/SKILL.md".source =
+    repoConfig + "/claude/skills/github-audit-triage/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1057,6 +1063,8 @@ in
     repoConfig + "/claude/skills/scope-inventory/SKILL.md";
   home.file.".agents/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+  home.file.".agents/skills/github-audit-triage/SKILL.md".source =
+    repoConfig + "/claude/skills/github-audit-triage/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に

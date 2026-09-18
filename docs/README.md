@@ -180,10 +180,16 @@ Design and rationale for the hooks and commands deployed from
   copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`(gh/LLM
   を呼ばない決定論的 judge)。
 - [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
-  README に machine-checkable な charter(目的1文・`## Scope`・
-  `## Issue litmus`・topics)を播く/適合化する手順。事後の横断監査は
-  `github-audit-charters.md` が担う。パイロット適合(命名と責務の乖離が
-  判明した経緯)も記録。
+  README/CONTRIBUTING.md に machine-checkable な charter(目的1文・
+  `## Scope`・Issue litmus・命名クラス・topics)を播く/適合化し、
+  AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順(ADR-0016 で
+  部分改訂)。事後の横断監査は `github-audit.md` が担う。パイロット適合
+  (命名と責務の乖離が判明した経緯)も記録。
+- [`github-audit-triage.md`](claude/github-audit-triage.md) — 個人スキル:
+  `github-audit` の findings を入力に複数リポジトリぶんの修正を一括起草し、
+  1 回の一括レビューを経て一括 PR 化する手順(ADR-0015 の LLM ノード)。
+  charter-sweep(#180)を巻き取り、完了定義を PR 作成までに変更した理由
+  (品質劣化・人間裁定なしの正本書き換えという 2 つの実害)を記録。
 
 ## Investigation records
 
