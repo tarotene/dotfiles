@@ -15,10 +15,18 @@
 # 「タブバーからこのセグメントが消えるだけ」に収束させる(herdr の command 仕様:
 # 失敗・空出力・timeout は表示クリア)。
 #
-# 縮退(すべて空出力 + exit 0。stderr にも出さない):
-#   jq/curl/date 不在、~/.claude/.credentials.json 不在・トークン空、
-#   HTTP 失敗(401 含む)・ネットワーク断、レスポンスが不正 JSON、
-#   limits[] から表示可能なエントリが 1 件も取れない
+# 縮退:
+#   jq/curl/date 不在は空出力 + exit 0(state すら読めないため sticky 化の
+#   対象外)。
+#   それ以外の失敗(credentials 不在・トークン空、HTTP 失敗(401 含む)・
+#   ネットワーク断、レスポンスが不正 JSON)は stale-if-error(RFC 5861 の
+#   キャッシュ意味論と同型)— 最終成功 fetch から STALE_TTL 秒以内なら
+#   state file の last_line をそのまま再出力する。TTL 超過、または一度も
+#   成功していない場合は空出力。
+#   limits[] から表示可能なエントリが 1 件も取れない場合は fetch 自体は
+#   成功しているので stale ではなく authoritative empty — 空出力 + state
+#   を今回の now で更新する(古い行は復活しない)。
+#   いずれも stderr には出さない。
 #
 # トークンは curl の argv には載せない(`/proc/<pid>/cmdline` 対策)。
 # `--config -` で stdin から Authorization ヘッダを渡す。state file にも
@@ -31,6 +39,11 @@
 #               (fetch を挟まず、フィクスチャからレンダリングだけを行う。
 #               --selftest がネットワーク非依存でロジックを検証するために使う。)
 set -eu
+
+# stale-if-error の許容時間(秒)。最終成功 fetch からこの秒数以内の失敗は
+# last_line を再出力する。RFC 5861 の stale-if-error に同型(ADR 相当の
+# 一次情報は docs/claude/claude-usage.md 参照)。
+STALE_TTL=900
 
 # ---- jq プログラム(ヒアドキュメントの 'EOF' はシェル展開を止めるため) -------
 
@@ -174,6 +187,33 @@ render_from_files() {
   printf '%s' "$new_state" >"$tmp_state" && mv -f "$tmp_state" "$state_file"
 
   [ -n "$line" ] && printf '%s\n' "$line"
+  return 0
+}
+
+# ---- stale-if-error(fetch 失敗時に直近成功行を再出力する) -----------------
+
+# $1 = state file $2 = now(epoch)
+# state file が有効 JSON で、最終成功 fetch(last_fetch)から STALE_TTL 秒
+# 以内なら last_line を stdout に 1 行出力する。state file が無い・壊れて
+# いる・last_line が空・TTL 超過のいずれかなら何も出力しない。常に exit 0
+# 相当(呼び出し側の set -e を止めないよう return で終える)。
+emit_stale() {
+  state_file="$1"
+  now="$2"
+
+  [ -s "$state_file" ] || return 0
+  content="$(cat "$state_file" 2>/dev/null)" || return 0
+  printf '%s' "$content" | jq -e . >/dev/null 2>&1 || return 0
+
+  last_fetch="$(printf '%s' "$content" | jq -r '.last_fetch // empty' 2>/dev/null)" || return 0
+  case "$last_fetch" in '' | *[!0-9]*) return 0 ;; esac
+  age=$((now - last_fetch))
+  [ "$age" -ge 0 ] || return 0
+  [ "$age" -le "$STALE_TTL" ] || return 0
+
+  last_line="$(printf '%s' "$content" | jq -r '.last_line // empty' 2>/dev/null)" || return 0
+  [ -n "$last_line" ] || return 0
+  printf '%s\n' "$last_line"
   return 0
 }
 
@@ -452,6 +492,79 @@ STUB
   calls="$(wc -l <"$dir/curl-calls.log" | tr -d ' ')"
   check "30 秒ガード: curl は 1 回しか呼ばれない" "1" "$calls"
 
+  # --- stale-if-error: fetch 失敗時は直近成功行を TTL 内で再出力する -------
+  state_tabbar="$dir/xdg/claude-usage-tabbar.json"
+  now_real="$(date +%s)"
+  backdate=$((now_real - 60)) # 30 秒ガードは越え、TTL(900s)には収まる
+
+  jq --argjson t "$backdate" '.last_fetch = $t' "$state_tabbar" >"$state_tabbar.tmp" &&
+    mv "$state_tabbar.tmp" "$state_tabbar"
+
+  cat >"$dir/bin/curl" <<'STUBFAIL'
+#!/bin/sh
+cat >/dev/null
+exit 1
+STUBFAIL
+  chmod +x "$dir/bin/curl"
+
+  out_fail="$(HOME="$dir/home" XDG_RUNTIME_DIR="$dir/xdg" PATH="$dir/bin:$PATH" "$self" 2>"$dir/err_fail")"
+  check "stale-if-error: fetch 失敗時は直前の行を再出力(TTL 内)" "$out1" "$out_fail"
+  check "stale-if-error: 失敗時も stderr 空" "" "$(cat "$dir/err_fail")"
+  fetch_after_fail="$(jq -r '.last_fetch' "$state_tabbar")"
+  check "stale-if-error: 失敗時は last_fetch を更新しない" "$backdate" "$fetch_after_fail"
+
+  # --- stale-if-error: TTL(900s)超過は空出力 ------------------------------
+  backdate_old=$((now_real - 901))
+  jq --argjson t "$backdate_old" '.last_fetch = $t' "$state_tabbar" >"$state_tabbar.tmp" &&
+    mv "$state_tabbar.tmp" "$state_tabbar"
+  out_ttl="$(HOME="$dir/home" XDG_RUNTIME_DIR="$dir/xdg" PATH="$dir/bin:$PATH" "$self")"
+  check "stale-if-error: TTL(900s)超過は空出力" "" "$out_ttl"
+
+  # --- stale-if-error: 不正 JSON レスポンスも fetch 失敗として扱われる ----
+  jq --argjson t "$backdate" '.last_fetch = $t' "$state_tabbar" >"$state_tabbar.tmp" &&
+    mv "$state_tabbar.tmp" "$state_tabbar"
+  cat >"$dir/bin/curl" <<STUBBADJSON
+#!/bin/sh
+outfile=""
+prev=""
+for a in "\$@"; do
+  if [ "\$prev" = "-o" ]; then outfile="\$a"; fi
+  prev="\$a"
+done
+cat >/dev/null
+if [ -n "\$outfile" ]; then
+  printf '{not valid json' >"\$outfile"
+fi
+STUBBADJSON
+  chmod +x "$dir/bin/curl"
+  out_badjson="$(HOME="$dir/home" XDG_RUNTIME_DIR="$dir/xdg" PATH="$dir/bin:$PATH" "$self")"
+  check "stale-if-error: 不正 JSON レスポンスも stale 再出力(TTL 内)" "$out1" "$out_badjson"
+  fetch_after_badjson="$(jq -r '.last_fetch' "$state_tabbar")"
+  check "stale-if-error: 不正 JSON 時も last_fetch を更新しない" "$backdate" "$fetch_after_badjson"
+
+  # --- authoritative empty: 表示可能なエントリが無い成功レスポンスは
+  #     stale を復活させず、state をクリアする ------------------------------
+  jq --argjson t "$backdate" '.last_fetch = $t' "$state_tabbar" >"$state_tabbar.tmp" &&
+    mv "$state_tabbar.tmp" "$state_tabbar"
+  cat >"$dir/bin/curl" <<STUBEMPTY
+#!/bin/sh
+outfile=""
+prev=""
+for a in "\$@"; do
+  if [ "\$prev" = "-o" ]; then outfile="\$a"; fi
+  prev="\$a"
+done
+cat >/dev/null
+if [ -n "\$outfile" ]; then
+  printf '{"limits":[]}' >"\$outfile"
+fi
+STUBEMPTY
+  chmod +x "$dir/bin/curl"
+  out_empty="$(HOME="$dir/home" XDG_RUNTIME_DIR="$dir/xdg" PATH="$dir/bin:$PATH" "$self")"
+  check "authoritative empty: 空出力(古い行は復活しない)" "" "$out_empty"
+  last_line_after_empty="$(jq -r '.last_line' "$state_tabbar")"
+  check "authoritative empty: state の last_line がクリアされる" "" "$last_line_after_empty"
+
   exit "$fail"
 fi
 
@@ -484,11 +597,20 @@ if [ -s "$STATE_FILE" ]; then
 fi
 
 CRED_FILE="${HOME:-}/.claude/.credentials.json"
-[ -r "$CRED_FILE" ] || exit 0
-token="$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED_FILE" 2>/dev/null)" || exit 0
-[ -n "$token" ] || exit 0
+if [ ! -r "$CRED_FILE" ]; then
+  emit_stale "$STATE_FILE" "$now"
+  exit 0
+fi
+token="$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED_FILE" 2>/dev/null)" || token=''
+if [ -z "$token" ]; then
+  emit_stale "$STATE_FILE" "$now"
+  exit 0
+fi
 
-usage_file="$(mktemp "${TMPDIR:-/tmp}/claude-usage-fetch.XXXXXX")" || exit 0
+usage_file="$(mktemp "${TMPDIR:-/tmp}/claude-usage-fetch.XXXXXX")" || {
+  emit_stale "$STATE_FILE" "$now"
+  exit 0
+}
 trap 'rm -f "$usage_file"' EXIT HUP INT TERM
 
 if ! curl -s --fail --max-time 5 --config - -o "$usage_file" 2>/dev/null <<CURLCFG
@@ -497,9 +619,24 @@ header = "Authorization: Bearer ${token}"
 header = "anthropic-beta: oauth-2025-04-20"
 CURLCFG
 then
+  unset token
+  emit_stale "$STATE_FILE" "$now"
   exit 0
 fi
 unset token
 
-render_from_files "$usage_file" "$STATE_FILE" "$now"
+# render_from_files は表示可能な結果があれば 1 行出力し、いずれの場合も
+# state file を更新する。空出力(表示可能なエントリなし)の場合、state
+# file が「今回の now」で更新されていれば fetch は成功している
+# (authoritative empty — 古い行を復活させない)。更新されていなければ
+# レスポンス不正 JSON 等の失敗であり、stale-if-error の対象。
+output="$(render_from_files "$usage_file" "$STATE_FILE" "$now")" || output=''
+if [ -n "$output" ]; then
+  printf '%s\n' "$output"
+else
+  updated_fetch="$(jq -r '.last_fetch // empty' "$STATE_FILE" 2>/dev/null)" || updated_fetch=''
+  if [ "$updated_fetch" != "$now" ]; then
+    emit_stale "$STATE_FILE" "$now"
+  fi
+fi
 exit 0

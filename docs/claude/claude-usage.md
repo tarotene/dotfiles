@@ -44,12 +44,20 @@ anthropic-beta: oauth-2025-04-20
 interval_seconds = 60, timeout_seconds = 10 }` を追加した。Herdr の command エント
 リは interval 実行(前回実行と重複しない)・**成功出力の最終行だけを表示**・
 **失敗/空出力/timeout で表示クリア**・`/bin/sh -lc` 実行、という仕様(公式 config
-リファレンス確認済み)。ANSI 色対応は未確認のため、出力は常にプレーンテキスト
-1 行にしている。
+リファレンス確認済み)。ANSI エスケープシーケンスは herdr 側で除去される
+(詳細は後述)ため、出力は常にプレーンテキスト 1 行にしている。
 
 `~/.claude/hooks/claude-usage.sh`(`home/modules/claude.nix` が配備)がこの
 command の実体。**Claude Code hook ではない**ので `settings.json` には一切登録
 しない — herdr が直接 `/bin/sh -lc` で呼ぶだけの独立スクリプト。
+
+herdr 公式 Configuration ドキュメント(<https://herdr.dev/docs/configuration>、
+2026-09-18 取得)は command エントリの出力について "removes ESC-prefixed
+terminal control sequences instead of interpreting styles" と明記している —
+ANSI エスケープシーケンスは解釈されず除去されるため、**出力自体での動的な
+色分けはできない**。静的な色は config.toml 側の `fg`(16 進カラー)でしか
+指定できず、値に応じて色を変える(例: 上限到達時だけ赤くする)ことは herdr
+の仕様上できない。上限到達は前置記号 `!`(後述)で表現している。
 
 interval 60s / timeout 10s の根拠: `/usage` と同じエンドポイントに 1 rpm は保守
 的な負荷。timeout はスクリプト内部の `curl --max-time 5` が先に諦めて空出力する
@@ -143,8 +151,8 @@ interval 60s / timeout 10s の根拠: `/usage` と同じエンドポイントに
 `${XDG_RUNTIME_DIR:-/tmp}/claude-usage-tabbar.json`(tmpfs 相当。再起動で消えて
 よい — 着地予測は履歴を使わない純関数なので、消えても次回呼び出しで即座に
 復帰する)。同ディレクトリに `mktemp` してから `mv` で atomic に書き換える。
-トークンも生レスポンスも保存しない。30 秒再取得ガード(後述)専用の 2 フィー
-ルドのみ:
+トークンも生レスポンスも保存しない。用途は 2 つ(いずれも同じ 2 フィールドを
+読む)— 30 秒再取得ガードと stale-if-error:
 
 ```json
 {
@@ -158,6 +166,11 @@ herdr の interval(60s)と独立な保険で、`herdr server reload-config` 直�
 即時実行ストーム等が API を余計に叩かないようにする。通常のポーリング間隔の
 制御は herdr の interval 側に一本化しており、スクリプト側に二重のキャッシュ
 機構は持たない。
+
+`last_fetch` から 900 秒(`STALE_TTL`)以内の fetch 失敗は同じ `last_line` を
+stale-if-error として再出力する(前節)。30 秒ガードと stale-if-error は
+排他的な分岐ではなく、前者は「直近すぎる再フェッチを間引く」、後者は
+「フェッチした結果が失敗だったときの表示継続」という別レイヤーの役割。
 
 ## トークンの取り扱い
 
@@ -177,21 +190,43 @@ CURLCFG
 偽 credentials で実際に通し、stdout・state file にトークン文字列が現れないこと
 を grep で検証する。
 
-## 縮退表
+## 縮退表: stale-if-error
 
-すべて **空出力 + `exit 0`**(stderr にも出さない。herdr の command 仕様が
-失敗/空出力/timeout を表示クリアとして扱うので、これで十分):
+herdr の command 仕様は失敗/空出力/timeout を「セグメント表示クリア」として
+扱う。旧実装はすべての失敗を空出力に落としていたため、一時的な HTTP 失敗・
+ネットワーク断・トークンリフレッシュ中の 401・`curl --max-time 5` の
+タイムアウトのたびに、次の interval(60s)の成功までタブバーから usage
+セグメントだけが消えていた(hostname・時計は残ったまま)。これは herdr 側の
+レイアウト譲歩(後述の別経路)とは無関係の、スクリプト側の縮退だった。
+
+対策として HTTP キャッシュの **stale-if-error**(RFC 5861 "HTTP
+Cache-Control Extensions for Stale Content"、Mark Nottingham、2010-05、
+<https://www.rfc-editor.org/rfc/rfc5861>、2026-09-18 取得 — "When an error
+is encountered, a cached stale response MAY be used to satisfy the
+request")と同型の意味論を採用した: **fetch が失敗しても、最終成功
+(`last_fetch`)から `STALE_TTL`(900 秒 = 15 分)以内なら state file の
+`last_line` をそのまま再出力する**。ネゴシエーション主体(サーバー側の
+`stale-if-error` ヘッダ)は存在しないため、TTL は固定値。
+
+fetch 自体が成功したが `limits[]` に表示可能なエントリが 1 件もない場合は
+stale の対象外(fresh response が常にキャッシュを置換する、という同じ RFC の
+意味論どおり)— 空出力にし、state もその場で更新して古い行を復活させない
+(authoritative empty)。
 
 | 状況 | 挙動 |
 |---|---|
-| `jq` / `curl` / `date` が無い | 空出力 |
-| `~/.claude/.credentials.json` が無い・読めない・トークンが空 | 空出力 |
-| HTTP 失敗(401 含む)・ネットワーク断 | 空出力(`last_fetch` も更新しないので次回すぐ再試行) |
-| レスポンスが不正 JSON | 空出力、state file は書き換えない |
-| `limits[]` から表示可能なエントリが 1 件も取れない | 空出力(この場合は `last_fetch` を更新し、無駄な再フェッチは避ける) |
+| `jq` / `curl` / `date` が無い | 空出力(state すら読めないため sticky 化の対象外) |
+| `~/.claude/.credentials.json` が無い・読めない・トークンが空 | stale-if-error(TTL 内なら `last_line` を再出力、超過で空出力) |
+| HTTP 失敗(401 含む)・ネットワーク断 | stale-if-error(`last_fetch` は更新しないので次回すぐ再試行) |
+| レスポンスが不正 JSON | stale-if-error(state file は書き換えない) |
+| `limits[]` から表示可能なエントリが 1 件も取れない(fetch は成功) | 空出力 + state をこの回の `now` で更新(authoritative empty、古い行は復活しない) |
 | Herdr 外の素のターミナルで実行 | 通常どおり動く(表示するだけの副作用なので危険はない) |
 
 ### herdr 側レイアウト譲歩による非表示(スクリプト外)
+
+stale-if-error はスクリプト側の縮退(上表)によるチラつきを解消するもので、
+以下のレイアウト起因の非表示は対象外(そもそも state file の中身とは無関係
+に herdr がステータス領域ごと描画しない)。
 
 Alacritty を WM 上で横幅縮小したときにタブバー右端の usage セグメントが
 消えることがあるが、これは上記の縮退表とは別経路であり、スクリプトの責任
@@ -231,9 +266,15 @@ sh config/claude/statusline/claude-usage.sh --selftest
 - 上限到達(`percent>=100` / `severity` ベース)の `!` 表示・着地を出さないこと
 - weekly のラベルフォールバック、未知 `kind` の扱い(着地を出さない)、
   `percent`/`resets_at` 欠落エントリのスキップ
-- 不正 JSON・空 `limits[]` での空出力と state file 非破壊
+- `__render` 単体では不正 JSON・空 `limits[]` は空出力かつ state file 非破壊
+  (stale-if-error は `__render` の外、通常経路側の責務)
 - state file が予測用の履歴(`series`)を持たないこと
 - トークン非漏えい(スタブ curl 越しの実経路)
+- stale-if-error: fetch 失敗(curl 失敗・不正 JSON レスポンス)時に
+  `last_line` を TTL(900s)内で再出力し、`last_fetch` を更新しないこと
+- stale-if-error: TTL 超過後は空出力になること
+- authoritative empty: `limits[]` が空の成功レスポンスは stale を復活させず
+  空出力・state クリアで応答すること
 - 30 秒の再取得ガード(curl が 1 回しか呼ばれないこと)
 
 内部専用の隠しサブコマンド `claude-usage.sh __render <usage_json_file>
