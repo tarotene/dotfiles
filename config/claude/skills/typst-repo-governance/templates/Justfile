@@ -1,0 +1,244 @@
+# Justfile — single command entry for build, format, lint, verify, and CI.
+# Usage:  just          — list all recipes
+#         just build    — compile all PDFs
+#         just ci       — full local CI gate
+#
+# Prerequisites (install before first use):
+#   typst      >= 0.14 — https://github.com/typst/typst/releases
+#   typstyle          — cargo binstall typstyle  OR  brew install typstyle
+#   just              — cargo install just       OR  brew install just
+#   yamllint          — pip install yamllint     OR  pipx install yamllint
+#   actionlint        — brew install actionlint  OR  go install github.com/rhysd/actionlint/cmd/actionlint@latest
+#   zizmor            — uvx zizmor               OR  pip install zizmor
+#   poppler-utils     — apt install poppler-utils / brew install poppler  (for pdffonts/pdftotext)
+
+ROOT := justfile_directory()
+DIST := ROOT / "dist"
+
+# ADJUST: Typst compile flags for this project.
+# --root sets the project root for absolute imports.
+# --font-path adds bundled fonts (remove if using system fonts only).
+# --pdf-standard a-2b enforces PDF/A-2b (ATS-compatible; remove for visual-only PDFs).
+
+COMPILE_FLAGS := "--root " + ROOT + " --font-path " + ROOT + "/fonts --pdf-standard a-2b"
+
+# ADJUST: Typst source entrypoints and output paths.
+# Add or remove lines to match your document set.
+
+SRC_EN := ROOT / "src/cv-en.typ"
+SRC_JA := ROOT / "src/cv-ja.typ"
+SRC_SHOKUMU := ROOT / "src/shokumu-keirekisho-ja.typ"
+OUT_EN := DIST / "cv-en.pdf"
+OUT_JA := DIST / "cv-ja.pdf"
+OUT_SHOKUMU := DIST / "shokumu-keirekisho-ja.pdf"
+
+# ── List all recipes (default target) ─────────────────────────────────────────
+
+_default:
+    @just --list
+
+# ── CORE ──────────────────────────────────────────────────────────────────────
+
+# Build all PDFs into dist/
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{ DIST }}"
+    echo "=== Building CVs ==="
+    compile() {
+        local src="$1" out="$2"
+        echo "  compiling $(basename "$src") → $(basename "$out")"
+        # shellcheck disable=SC2086
+        typst compile {{ COMPILE_FLAGS }} "$src" "$out"
+    }
+    # ADJUST: Add/remove compile() calls to match your SRC/OUT variables above.
+    compile "{{ SRC_EN }}"      "{{ OUT_EN }}"
+    compile "{{ SRC_JA }}"      "{{ OUT_JA }}"
+    compile "{{ SRC_SHOKUMU }}" "{{ OUT_SHOKUMU }}"
+    echo ""
+    echo "=== Build complete ==="
+    ls -lh "{{ DIST }}"/*.pdf
+
+# Build and open PDFs (macOS: open; Linux: xdg-open)
+build-open: build
+    #!/usr/bin/env bash
+    open "{{ DIST }}"/*.pdf 2>/dev/null \
+        || xdg-open "{{ DIST }}"/*.pdf 2>/dev/null \
+        || echo "Could not auto-open — open {{ DIST }}/*.pdf manually."
+
+# ── VERIFY (ATS gate) ─────────────────────────────────────────────────────────
+# Verify generated PDFs: font embedding, text extraction, page counts, ATS email gate.
+
+# Requires poppler-utils (pdffonts, pdftotext) and typst on PATH.
+verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DIST="{{ DIST }}"
+    ROOT="{{ ROOT }}"
+    PASS=0
+    FAIL=0
+
+    ok()   { echo "  ✓ $*"; PASS=$((PASS+1)); }
+    fail() { echo "  ✗ $*" >&2; FAIL=$((FAIL+1)); }
+
+    # ── Document table ────────────────────────────────────────────────────────
+    # ADJUST: Update for your document set. Format: "name|src_path|class|max_pages|ats_email"
+    #   class=ats  → strict: font embedding + text extraction + email verbatim + page limit
+    #   class=rich → relaxed: font embedding + text extraction + page limit (no email gate)
+    #   ats_email  → leave blank for rich class documents
+    DOCS=(
+        "cv-en|src/cv-en.typ|ats|2|__ATS_EMAIL__"
+        "cv-ja|src/cv-ja.typ|rich|2|"
+        "shokumu-keirekisho-ja|src/shokumu-keirekisho-ja.typ|rich|4|"
+    )
+
+    check_fonts() {
+        local pdf="$1"
+        if ! command -v pdffonts &>/dev/null; then
+            echo "    SKIP: pdffonts not found (install poppler-utils)"; return
+        fi
+        local bad; bad=$(pdffonts "$pdf" 2>/dev/null | tail -n +3 | awk '$5=="no" {print $0}' || true)
+        if [ -n "$bad" ]; then
+            fail "Non-embedded font(s) in $(basename "$pdf"): $bad"
+        else
+            ok "All fonts embedded"
+        fi
+    }
+
+    check_text() {
+        local pdf="$1" email="$2"
+        if ! command -v pdftotext &>/dev/null; then
+            echo "    SKIP: pdftotext not found (install poppler-utils)"; return
+        fi
+        local text; text=$(pdftotext -layout "$pdf" - 2>/dev/null)
+        if [ -z "$text" ]; then
+            fail "No text extracted from $(basename "$pdf") — image PDF?"
+        else
+            ok "Text extraction: $(echo "$text" | wc -w | tr -d ' ') words"
+        fi
+        if [ -n "$email" ]; then
+            if ! echo "$text" | grep -qF "$email"; then
+                fail "ATS gate: email '$email' not found verbatim in $(basename "$pdf")"
+            else
+                ok "ATS gate: email found verbatim"
+            fi
+        fi
+    }
+
+    check_pages() {
+        local src="$1" max_pages="$2" label="$3"
+        if ! command -v typst &>/dev/null; then
+            echo "    SKIP: typst not found"; return
+        fi
+        local pages
+        pages=$(typst query --root "$ROOT" --field value "$src" "<page-count>" 2>/dev/null \
+                | tr -d '[]" \n' || true)
+        if [ -z "$pages" ]; then
+            echo "    SKIP: could not query page count (missing <page-count> element?)"; return
+        fi
+        if [ "$pages" -gt "$max_pages" ]; then
+            fail "Page count: $pages pages (max $max_pages) for $label"
+        else
+            ok "Page count: $pages / $max_pages"
+        fi
+    }
+
+    echo "=== PDF Verification ==="
+    for row in "${DOCS[@]}"; do
+        IFS='|' read -r name src class max_pages email <<< "$row"
+        pdf="$DIST/$name.pdf"
+        echo ""
+        echo "── $name  [class=$class]"
+        if [ ! -f "$pdf" ]; then
+            fail "PDF not found: $pdf — run 'just build' first"; continue
+        fi
+        check_fonts "$pdf"
+        check_text  "$pdf" "$email"
+        check_pages "$ROOT/$src" "$max_pages" "$name"
+    done
+
+    echo ""
+    echo "=== Results: $PASS passed, $FAIL failed ==="
+    if [ "$FAIL" -gt 0 ]; then exit 1; fi
+
+# ── FORMAT ────────────────────────────────────────────────────────────────────
+
+# Format all Typst source files in-place (requires typstyle)
+fmt:
+    # ADJUST: Update directories if your Typst sources live elsewhere.
+    typstyle -i lib/ src/
+
+# Check Typst formatting without modifying files (used in CI and pre-commit hook)
+fmt-check:
+    typstyle --check lib/ src/
+
+# Check Justfile formatting
+justfile-fmt-check:
+    just --fmt --check --unstable
+
+# ── LINT ──────────────────────────────────────────────────────────────────────
+
+# Lint YAML files. Uses system yamllint if on PATH, otherwise falls back to uvx.
+# On GitHub-hosted runners yamllint is pre-installed; locally install via pip or pipx.
+lint-yaml:
+    #!/usr/bin/env sh
+    if command -v yamllint >/dev/null 2>&1; then
+        yamllint .
+    else
+        uvx yamllint .
+    fi
+
+# Lint GitHub Actions workflow syntax and expressions (requires actionlint)
+lint-actions:
+    actionlint
+
+# Security audit GitHub Actions workflows (requires zizmor; install: uvx zizmor or pip install zizmor)
+lint-security:
+    uvx zizmor . 2>/dev/null || zizmor .
+
+# Run all linters
+lint: lint-yaml lint-actions lint-security
+
+# ── HOOKS ─────────────────────────────────────────────────────────────────────
+# Validate a conventional commit message file (used by commit-msg hook).
+
+# Usage: just commit-check .git/COMMIT_EDITMSG
+commit-check FILE:
+    #!/usr/bin/env sh
+    set -eu
+    msg=$(cat "{{ FILE }}")
+    # Skip merge commits and automated revert commits
+    case "$msg" in
+        Merge\ *|Revert\ *) exit 0 ;;
+    esac
+    # Conventional Commits regex (POSIX ERE).
+    # Matches: type[(scope)][!]: description
+    # Allowed scopes may contain alphanumerics, dots, hyphens, slashes, plus.
+    pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([[:alnum:]._/+-]+\))?!?: .+'
+    if ! printf '%s' "$msg" | grep -qE "$pattern"; then
+        printf '\n  ✗ Commit message rejected — does not follow Conventional Commits.\n'
+        printf '    Expected: type(scope): short description\n'
+        printf '    Types: feat fix docs style refactor perf test build ci chore revert\n'
+        printf '    Example: feat(cv): add robotics experience section\n\n'
+        exit 1
+    fi
+
+# ── CI ────────────────────────────────────────────────────────────────────────
+# Run the full local CI gate: fmt-check + yaml-lint + build + verify
+
+# (Does not include actionlint/zizmor — those require extra installs)
+ci: fmt-check justfile-fmt-check lint-yaml build verify
+
+# Full CI gate including actionlint and zizmor (requires all lint tools on PATH)
+ci-full: fmt-check justfile-fmt-check lint build verify
+
+# ── RELEASE ───────────────────────────────────────────────────────────────────
+# Generate changelog from git history using git-cliff.
+# Requires: cargo binstall git-cliff   OR   brew install git-cliff
+# Usage:  just release-notes              — unreleased changes
+#         just release-notes v2026.07     — changes tagged v2026.07
+
+# just release-notes v2026.06..v2026.07  — between two tags
+[positional-arguments]
+release-notes *args:
+    git cliff {{ args }}

@@ -1,0 +1,80 @@
+name: Monthly metrics reminder
+
+# Sends a recurring reminder issue to capture quantitative metrics for CV bullets.
+# This workflow is CV-specific and should be removed or repurposed for non-CV projects.
+# ADJUST: Update the issue body checklist for your project's metric categories.
+
+on:
+  schedule:
+    - cron: '0 9 1 * *'   # 1st of every month at 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    name: Monthly metrics reminder
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create label if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # ADJUST: Rename label and description for your project.
+          gh label create cv-metrics \
+            --repo "${{ github.repository }}" \
+            --color "0075ca" \
+            --description "Quantitative metrics to add to CV bullets" \
+            2>/dev/null || true
+
+      - name: Check for existing open issue
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label cv-metrics \
+            --state open \
+            --json number \
+            --jq 'length')
+          echo "open_count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Create monthly metrics review issue
+        if: steps.check.outputs.open_count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          month=$(date -u +%Y-%m)
+          cat > /tmp/issue-body.md << 'BODY'
+## Monthly CV metrics review
+
+Scan `data/bio.en.yml` and `data/bio.ja.yml` for bullets that still lack quantitative values:
+
+```bash
+grep -n "★ TODO" data/bio.*.yml
+```
+
+### Metric checklist
+
+- [ ] **Time savings** — any automation shipped since last check? Measure before/after.
+- [ ] **Scale / coverage** — test count, repo count, or OS targets changed?
+- [ ] **Improvement rate** — any performance fix shipped? Note % or duration.
+- [ ] **Team impact** — headcount, teams, or adoption changed?
+
+### How to update
+
+1. Edit `data/bio.en.yml` and `data/bio.ja.yml` — replace `# ★ TODO:` with the actual number.
+2. `just build-open` to preview.
+3. `just verify` to confirm ATS checks pass.
+4. Tag a new release: `git tag vYYYY.MM && git push --tags`
+
+Close this issue when all current gaps are resolved or explicitly deferred to next month.
+BODY
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "chore: CV metrics check — ${month}" \
+            --label cv-metrics \
+            --body-file /tmp/issue-body.md

@@ -1,0 +1,63 @@
+# git-cliff configuration
+# Reference: https://git-cliff.org/docs/configuration
+#
+# This config is tuned for CalVer tags (vYYYY.MM and vYYYY.MM.P)
+# and Conventional Commits from a squash-merge PR workflow.
+#
+# Usage:
+#   git cliff                  # changelog for all tags
+#   git cliff --unreleased     # changes since last tag
+#   git cliff --unreleased --tag v2026.07   # preview next release notes
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes are documented here. Tags follow `vYYYY.MM[.P]` (CalVer).\n
+"""
+body = """
+{% if version %}\
+    ## {{ version }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## Unreleased
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+footer = ""
+trim = true
+
+[git]
+# ADJUST: Update regex if your tag scheme differs from vYYYY.MM[.P]
+tag_pattern = "v\\d{4}\\.\\d{2}(\\.[0-9]+)?"
+
+sort_commits = "oldest"
+
+commit_preprocessors = [
+    # Strip trailing PR reference from squash-merge messages: "feat: x (#42)" → "feat: x"
+    { pattern = ' \(#\d+\)$', replace = "" },
+]
+
+commit_parsers = [
+    { message = "^feat",     group = "Features" },
+    { message = "^fix",      group = "Bug Fixes" },
+    { message = "^docs",     group = "Documentation" },
+    { message = "^style",    group = "Styling" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^perf",     group = "Performance" },
+    { message = "^test",     group = "Testing" },
+    # Skip maintenance commits from the changelog body
+    { message = "^chore",    skip = true },
+    { message = "^ci",       skip = true },
+    { message = "^build",    skip = true },
+    # Catch-all for unconventional messages
+    { body = ".*",           group = "Other" },
+]
+
+# Protect against including pre-release tags (e.g. v2026.05-beta violates CalVer policy)
+# ADJUST: Remove this filter if you need pre-release entries in the changelog
+ignore_tags = "-beta|-rc|-alpha"

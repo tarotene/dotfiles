@@ -1,0 +1,6 @@
+[toolchain]
+channel = "stable"
+# OPTIONAL: Remove thumbv7em-none-eabi if your project does not include
+# embedded firmware cross-compiled for Cortex-M. If you use a different
+# embedded target, replace this value (e.g. "thumbv6m-none-eabi" for Cortex-M0).
+targets = ["thumbv7em-none-eabi"]

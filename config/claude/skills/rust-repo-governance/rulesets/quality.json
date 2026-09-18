@@ -1,0 +1,30 @@
+{
+  "name": "Quality",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": ["~DEFAULT_BRANCH"]
+    }
+  },
+  "rules": [
+    { "type": "required_signatures" },
+    { "type": "required_linear_history" },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "Format check", "integration_id": 15368 },
+          { "context": "Host (clippy + test + smoke)", "integration_id": 15368 },
+          { "context": "MSRV (__MSRV__)", "integration_id": 15368 },
+          { "context": "Firmware (cross-compile nRF52840-DK)", "integration_id": 15368 },
+          { "context": "Tools (__CLI_CRATE__ CLI clippy + tests)", "integration_id": 15368 }
+        ]
+      }
+    }
+  ],
+  "bypass_actors": []
+}

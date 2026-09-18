@@ -1,0 +1,34 @@
+---
+extends: default
+
+# ADJUST: If any workflow uses a shell heredoc containing Markdown code fences
+# (```bash), add it here. yamllint incorrectly parses backtick-starting lines
+# in heredoc content as YAML tokens (a yamllint limitation, not a workflow error).
+ignore: |
+  .github/workflows/metrics-reminder.yml
+
+rules:
+  # GitHub Actions uses 120-char lines; warn rather than error.
+  line-length:
+    max: 120
+    level: warning
+
+  # Workflows don't use '---' document start markers.
+  document-start: disable
+
+  # 'on:' is a valid top-level key in GitHub Actions workflow files.
+  truthy:
+    check-keys: false
+
+  # One space before inline comments is enough.
+  comments:
+    min-spaces-from-content: 1
+
+  # Allow indented comments (e.g. inside multi-line shell blocks).
+  comments-indentation: disable
+
+  # ADJUST: If your data YAML files use aligned colons for readability
+  # (e.g. "name_en:     value"), allow extra spaces with max-spaces-after: -1.
+  # Otherwise remove this rule to enforce exactly one space after colon.
+  colons:
+    max-spaces-after: -1

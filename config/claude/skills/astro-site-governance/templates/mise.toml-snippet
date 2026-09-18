@@ -1,0 +1,6 @@
+# mise.toml snippet — merge these entries into your existing mise.toml.
+# DO NOT overwrite your entire mise.toml; preserve existing tool pins.
+#
+# [tools]
+# node = "__NODE_VERSION__"   # already present if you set up Node via mise
+# cocogitto = "latest"        # adds cog (Conventional Commits verifier)

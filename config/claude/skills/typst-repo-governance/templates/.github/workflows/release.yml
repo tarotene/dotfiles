@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  # Trigger via GitHub UI: Actions → "Release" → Run workflow (enter tag)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v2026.07)  — format: vYYYY.MM[.P]'
+        required: true
+        type: string
+
+  # Trigger via CLI: git tag v2026.07 && git push --tags
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # required for creating releases and pushing tags
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for git-cliff changelog
+
+      - name: Set up Typst environment
+        uses: ./.github/actions/typst-setup
+        with:
+          cache-key: release
+
+      - name: Build PDFs
+        run: just build
+
+      - name: Verify PDFs (ATS gate)
+        run: just verify
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.tag.outputs.name }}"
+          git push origin "${{ steps.tag.outputs.name }}"
+
+      # Generate structured release notes from Conventional Commits history.
+      # Falls back gracefully if git-cliff is not configured (exits 0 with a warning).
+      - name: Generate release notes with git-cliff
+        uses: orhun/git-cliff-action@v4
+        id: cliff
+        continue-on-error: true
+        with:
+          config: cliff.toml
+          args: --unreleased --tag ${{ steps.tag.outputs.name }} --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "CV ${{ steps.tag.outputs.name }}"
+          # Use git-cliff notes if available, otherwise fall back to GitHub auto-notes.
+          body_path: ${{ steps.cliff.outcome == 'success' && 'RELEASE_NOTES.md' || '' }}
+          generate_release_notes: ${{ steps.cliff.outcome != 'success' }}
+          draft: false
+          # ADJUST: Update PDF filenames and paths to match your document set.
+          files: |
+            dist/cv-en.pdf
+            dist/cv-ja.pdf
+            dist/shokumu-keirekisho-ja.pdf

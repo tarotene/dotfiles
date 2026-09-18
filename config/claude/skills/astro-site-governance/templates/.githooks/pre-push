@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+# .githooks/pre-push — Full quality gate before push.
+# Installed by: git config --local core.hooksPath .githooks
+set -eu
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "ERROR: 'npm' not found on PATH. Install Node.js 22+."
+  exit 1
+fi
+
+echo "── pre-push: running content lint ──"
+if ! npm run check; then
+  echo "──────────────────────────────────────────────────"
+  echo "  PUSH REJECTED — npm run check failed."
+  echo "  Fix errors above then retry."
+  echo "──────────────────────────────────────────────────"
+  exit 1
+fi
+
+echo "── pre-push: running unit tests ────"
+if ! npm test; then
+  echo "──────────────────────────────────────────────────"
+  echo "  PUSH REJECTED — npm test failed."
+  echo "  Fix failing tests then retry."
+  echo "──────────────────────────────────────────────────"
+  exit 1
+fi
+
+echo "── pre-push: OK ────────────────────"

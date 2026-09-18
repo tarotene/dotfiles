@@ -1,0 +1,55 @@
+[workspace]
+git_release_enable = false
+git_tag_enable = false
+git_release_name = "v{{ version }}"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+pr_labels = ["release"]
+dependencies_update = false
+release_commits = "^(feat|fix|perf|refactor)"
+
+[changelog]
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] \
+{%- if previous %}\
+{%- if previous.version %}\
+([`{{ version | trim_start_matches(pat="v") }}`](https://github.com/__OWNER__/__REPO__/compare/{{ previous.version }}..{{ version }}))\
+{% endif %}\
+{% endif %} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits | filter(attribute="merge_commit", value=false) %}
+- {% if commit.breaking %}**[BREAKING]** {% endif %}\
+{% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+{{ commit.message | upper_first }}\
+{% if commit.remote.pr_number %} \
+([#{{ commit.remote.pr_number }}](https://github.com/__OWNER__/__REPO__/pull/{{ commit.remote.pr_number }}))\
+{% endif %}
+{% endfor %}
+{% endfor %}
+"""
+
+# Single-tag pattern: __CANONICAL_CRATE__ is the canonical tag owner.
+# One vX.Y.Z tag and one GitHub Release cover all workspace members (unified versioning).
+[[package]]
+name = "__CANONICAL_CRATE__"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+
+# ADJUST: If you have a workspace member that should NOT be published to crates.io
+# (e.g. a binary example crate or integration test harness), add it here.
+# Remove this block entirely if all workspace members publish.
+[[package]]
+name = "host-pty-server"
+publish = false
+
+# ADJUST: Add one [[package]] block per additional publishable workspace crate.
+# Minimal entry — release-plz handles versioning automatically:
+#
+# [[package]]
+# name = "my-other-crate"

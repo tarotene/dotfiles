@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# .githooks/pre-commit — Fast staged-file check with Biome.
+# Installed by: git config --local core.hooksPath .githooks
+set -eu
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "ERROR: 'npx' not found on PATH. Install Node.js 22+."
+  exit 1
+fi
+
+if ! npx @biomejs/biome check --staged --no-errors-on-unmatched 2>/dev/null; then
+  echo "──────────────────────────────────────────────────"
+  echo "  COMMIT REJECTED — Biome found errors in staged files."
+  echo ""
+  echo "  To fix automatically:  npm run lint:fix && npm run format"
+  echo "  To review:             npm run ci:biome"
+  echo "──────────────────────────────────────────────────"
+  exit 1
+fi

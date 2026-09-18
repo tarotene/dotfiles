@@ -1,0 +1,14 @@
+# Build output — merge into your .gitignore
+# (This is a snippet, not a standalone .gitignore)
+dist/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Justfile shebang-recipe temp files (rare)
+.just-*
