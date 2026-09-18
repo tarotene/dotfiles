@@ -97,7 +97,7 @@
 
       # Build a standalone home-manager configuration from a single host module.
       # A host module imports home/common.nix plus exactly one identity module
-      # (Identity / Instance two-layer layout — see CONTEXT.md / ADR-0001).
+      # (Identity / Instance two-layer layout — see ADR-0001).
       mkHome =
         hostModule:
         home-manager.lib.homeManagerConfiguration {

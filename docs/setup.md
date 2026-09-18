@@ -2,7 +2,7 @@
 
 Bring a Pop!_OS host up to the declarative home-manager environment. For the
 full per-host migration procedure (existing machines, rollback, greenfield
-details) see [`docs/cutover-runbook.md`](docs/cutover-runbook.md).
+details) see [`cutover-runbook.md`](cutover-runbook.md).
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ cd ~/dotfiles
 
 To migrate a machine that already has the old procedural dotfiles, follow the
 **Existing host cutover** procedure in
-[`docs/cutover-runbook.md`](docs/cutover-runbook.md): install system packages,
+[`cutover-runbook.md`](cutover-runbook.md): install system packages,
 run `home-manager switch -b backup` (backs up any file collisions), switch your
 login shell, verify, then clean up the `.bak` files.
 

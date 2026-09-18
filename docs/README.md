@@ -4,6 +4,8 @@
 
 - [`operations.md`](operations.md) — the canonical apply (`hms`), routine
   flake update, and the tool-layer decision flow for new tools.
+- [`setup.md`](setup.md) — step-by-step host setup guide (moved from root
+  `SETUP.md`, ADR-0016 root-document allowlist).
 - [`cutover-runbook.md`](cutover-runbook.md) — per-host provisioning /
   migration procedure, including rollback.
 - [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
