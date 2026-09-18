@@ -97,6 +97,11 @@ Design and rationale for the hooks and commands deployed from
   private repository name); the design and denylist mechanism now live
   upstream in [tarotene/publish-guard](https://github.com/tarotene/publish-guard)
   (ADR-0009).
+- [`attribution-guard.md`](claude/attribution-guard.md) — PreToolUse hook: deny
+  a `gh pr|issue create|edit|comment` / `gh pr review` whose body carries no
+  Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
+  Covers the two holes left by the harness-supplied footer: comments never got
+  one, and the PR/Issue body side had no repo-side enforcement at all.
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
