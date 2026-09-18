@@ -124,22 +124,15 @@
     executable = true;
   };
 
-  # github-audit-rulesets: read-only cross-repository GitHub ruleset drift
-  # audit (docs/github-audit-rulesets.md, #130). Manual command, no timer —
+  # github-audit: read-only cross-repository GitHub audit, unified across
+  # five domains (rulesets/#130, charters, naming, settings, renovate —
+  # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
+  # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's
   # systemd.user.services pattern.
-  home.file.".local/bin/github-audit-rulesets" = {
-    source = ../../scripts/github-audit-rulesets;
-    executable = true;
-  };
-
-  # github-audit-charters: read-only cross-repository README charter drift
-  # audit (docs/github-audit-charters.md). Same manual-command, no-timer
-  # placement as github-audit-rulesets above — a sibling audit over a
-  # different axis (purpose/scope/Issue-litmus/topics, not branch rulesets).
-  home.file.".local/bin/github-audit-charters" = {
-    source = ../../scripts/github-audit-charters;
+  home.file.".local/bin/github-audit" = {
+    source = ../../scripts/github-audit;
     executable = true;
   };
 

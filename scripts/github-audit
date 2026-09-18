@@ -1,0 +1,968 @@
+#!/usr/bin/env bash
+# Unified cross-repository GitHub audit (ADR-0015). Replaces the sibling
+# scripts github-audit-rulesets (#130) and github-audit-charters (ADR-0013),
+# and adds three new domains: naming (ADR-0014), settings, renovate. Every
+# domain is judged deterministically — this script never calls an LLM. Its
+# findings feed the github-audit-triage skill, which is the only place an
+# LLM enters the loop (docs/github-audit.md).
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+OWNER="${GITHUB_AUDIT_OWNER:-tarotene}"
+CONFIG_DIR="${GITHUB_AUDIT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-audit}"
+STATE_DIR="${GITHUB_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit}"
+OVERRIDES_FILE="${GITHUB_AUDIT_OVERRIDES_FILE:-$CONFIG_DIR/overrides.tsv}"
+GH_BIN="${GITHUB_AUDIT_GH_BIN:-gh}"
+TEST_TMP=''
+
+ALL_DOMAINS=(rulesets charters naming settings renovate)
+
+# Account-wide ruleset baseline (rulesets domain). Derived from the
+# rust-repo-governance/typst-repo-governance/astro-site-governance skills'
+# rulesets/*.json plus what is actually live on the reference repos — see
+# docs/github-audit.md for the full evidence trail.
+BASELINE_RULE_TYPES=(
+  deletion
+  non_fast_forward
+  required_signatures
+  required_linear_history
+  required_status_checks
+  pull_request
+  copilot_code_review
+)
+
+# README schema (charters domain, ADR-0016). Background is optional and may
+# appear only before Install; the rest is a fixed, required sequence.
+REQUIRED_README_HEADINGS=(Install Usage Scope Development License)
+ALLOWED_README_HEADINGS=(Background Install Usage Scope Development License)
+ROOT_ALLOWLIST_EXACT=(README.md CONTRIBUTING.md CHANGELOG.md AGENTS.md CLAUDE.md)
+
+# Language-mix heuristic threshold (charters domain). Provisional: a
+# textlint-class linter should replace this if one is found suitable at
+# implementation time (docs/github-audit.md).
+LANG_MIX_THRESHOLD=20
+
+usage() {
+  cat <<'EOF'
+usage: github-audit [--json|--selftest] [domain...]
+
+Read-only cross-repository audit (ADR-0015). For every non-archived,
+non-fork repository owned by $GITHUB_AUDIT_OWNER (default: tarotene),
+judges the requested domains (default: all of them):
+
+  rulesets   default-branch GitHub ruleset rule-type coverage (#130)
+  charters   README schema + CONTRIBUTING.md litmus + root doc allowlist +
+             language mixing + CLAUDE.md/AGENTS.md routing (ADR-0013/0016)
+  naming     repository naming class declaration + pattern match (ADR-0014)
+  settings   squash-only merge, delete-branch-on-merge, default branch,
+             wiki/projects disabled
+  renovate   Renovate config presence, for repos with a dependency manifest
+             and a CI workflow
+
+Without options, prints a human-readable report and exits 1 if any
+non-exempt repository is drifted/ungoverned in any judged domain. --json
+prints the machine-readable findings array instead. A ledger snapshot is
+always written to $XDG_STATE_HOME/github-audit/ledger.json (override with
+GITHUB_AUDIT_STATE_DIR).
+
+This audit only reports drift — it never applies a fix. Use the
+github-audit-triage skill (or the relevant *-repo-governance skill / gh
+directly) to fix what it finds.
+
+Exempt a repository from one domain (or all of them) by adding a line
+"<repo><TAB><domain-or-*><TAB>exempt" to
+$XDG_CONFIG_HOME/github-audit/overrides.tsv (override with
+GITHUB_AUDIT_OVERRIDES_FILE). Lines starting with # are ignored. ".github"
+is permanently exempt from the naming and charters domains (GitHub reserves
+the name).
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Repository listing (shared across all domains)
+# ---------------------------------------------------------------------------
+
+list_repos_meta() { # print: JSON array of repo metadata objects
+  "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 --json \
+    name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
+squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
+hasWikiEnabled,hasProjectsEnabled 2>/dev/null
+}
+
+read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
+  [[ -f $OVERRIDES_FILE ]] || return 0
+  grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE"
+}
+
+is_exempt() { # $1=repo $2=domain $3=overrides-tsv-blob -> 0 if exempt
+  local repo="$1" domain="$2" overrides="$3"
+  if [[ $repo == .github && ($domain == naming || $domain == charters) ]]; then
+    return 0
+  fi
+  awk -F'\t' -v r="$repo" -v d="$domain" '
+    $1 == r && ($2 == d || $2 == "*") && $3 == "exempt" { found = 1 }
+    END { exit !found }
+  ' <<<"$overrides"
+}
+
+# ---------------------------------------------------------------------------
+# GraphQL batch fetch (charters + renovate domains): file existence/content
+# across every repo in one call, avoiding REST secondary rate limits.
+# ---------------------------------------------------------------------------
+
+build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
+  local repos_json="$1" i=0 name query='query {'
+  while IFS= read -r name; do
+    i=$((i + 1))
+    query+=" r$i: repository(owner: \"$OWNER\", name: \"$name\") {
+      readme: object(expression: \"HEAD:README.md\") { ... on Blob { text } }
+      contributing: object(expression: \"HEAD:CONTRIBUTING.md\") { ... on Blob { text } }
+      claudeMd: object(expression: \"HEAD:CLAUDE.md\") { ... on Blob { text } }
+      agentsMd: object(expression: \"HEAD:AGENTS.md\") { ... on Blob { id } }
+      rootTree: object(expression: \"HEAD:\") { ... on Tree { entries { name type } } }
+      claudeSkillsDir: object(expression: \"HEAD:.claude/skills\") { ... on Tree { entries { name type mode } } }
+      cargoToml: object(expression: \"HEAD:Cargo.toml\") { ... on Blob { id } }
+      packageJson: object(expression: \"HEAD:package.json\") { ... on Blob { id } }
+      pyprojectToml: object(expression: \"HEAD:pyproject.toml\") { ... on Blob { id } }
+      goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
+      workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
+      renovateJson: object(expression: \"HEAD:renovate.json\") { ... on Blob { id } }
+      renovateJson5: object(expression: \"HEAD:renovate.json5\") { ... on Blob { id } }
+      ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") { ... on Blob { id } }
+      ghRenovateJson5: object(expression: \"HEAD:.github/renovate.json5\") { ... on Blob { id } }
+      renovaterc: object(expression: \"HEAD:.renovaterc.json\") { ... on Blob { id } }
+    }"
+  done < <(jq -r '.[]' <<<"$repos_json")
+  query+=' }'
+  printf '%s' "$query"
+}
+
+fetch_graphql_batch() { # $1=JSON array of repo names -> {repoName: {...}} keyed object
+  local repos_json="$1" query result
+  [[ "$(jq 'length' <<<"$repos_json")" -gt 0 ]] || {
+    printf '{}'
+    return
+  }
+  query="$(build_graphql_query "$repos_json")"
+  result="$("$GH_BIN" api graphql -f query="$query" 2>/dev/null)" || result='{"data":{}}'
+  # $result can carry the full README/CONTRIBUTING text of every repo, which
+  # blows past ARG_MAX if passed as a jq --argjson command-line argument —
+  # pipe it through stdin instead; only the small $repos_json goes as --argjson.
+  jq -c --argjson names "$repos_json" '
+    .data as $data
+    | reduce range(0; ($names | length)) as $i
+        ({}; . + {($names[$i]): ($data["r\($i+1)"] // {})})
+  ' <<<"$result"
+}
+
+# ---------------------------------------------------------------------------
+# rulesets domain (unchanged judgement logic from github-audit-rulesets)
+# ---------------------------------------------------------------------------
+
+fetch_rulesets_list() { "$GH_BIN" api "repos/$OWNER/$1/rulesets" 2>/dev/null; }
+fetch_ruleset_detail() { "$GH_BIN" api "repos/$OWNER/$1/rulesets/$2" 2>/dev/null; }
+
+default_branch_rulesets() {
+  local repo="$1" ids id detail arr='[]'
+  ids="$(fetch_rulesets_list "$repo" | jq -r '.[]? | select(.target=="branch" and .enforcement=="active") | .id' 2>/dev/null)" || ids=''
+  while IFS= read -r id; do
+    [[ -n $id ]] || continue
+    detail="$(fetch_ruleset_detail "$repo" "$id")" || continue
+    [[ -n $detail ]] || continue
+    if jq -e '
+      ((.conditions.ref_name.include // []) | (index("~DEFAULT_BRANCH") or index("~ALL")))
+      and ((.conditions.ref_name.exclude // []) | (index("~DEFAULT_BRANCH") | not))
+    ' <<<"$detail" >/dev/null 2>&1; then
+      arr="$(jq -c --argjson d "$detail" '. + [$d]' <<<"$arr")"
+    fi
+  done <<<"$ids"
+  printf '%s' "$arr"
+}
+
+judge_rulesets() { # $1=repo -> one JSON finding object (no repo/language wrapper)
+  local repo="$1" arr count types t pr checks
+  local -a missing=()
+  arr="$(default_branch_rulesets "$repo")"
+  count="$(jq 'length' <<<"$arr")"
+  if [[ $count -eq 0 ]]; then
+    jq -n '{verdict: "ungoverned", missing: [], status_checks: []}'
+    return
+  fi
+
+  types="$(jq -c '[.[].rules[]?.type] | unique' <<<"$arr")"
+  for t in "${BASELINE_RULE_TYPES[@]}"; do
+    jq -e --arg t "$t" 'index($t)' <<<"$types" >/dev/null 2>&1 || missing+=("$t")
+  done
+
+  pr="$(jq -c '[.[].rules[]? | select(.type=="pull_request") | .parameters] | last // null' <<<"$arr")"
+  if [[ $pr != null ]]; then
+    [[ "$(jq -r '.required_review_thread_resolution // false' <<<"$pr")" == true ]] ||
+      missing+=("pull_request.required_review_thread_resolution")
+    jq -e '(.allowed_merge_methods // []) == ["squash"]' <<<"$pr" >/dev/null 2>&1 ||
+      missing+=("pull_request.allowed_merge_methods")
+  fi
+
+  checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
+
+  if ((${#missing[@]} == 0)); then
+    jq -n --argjson checks "$checks" '{verdict: "ok", missing: [], status_checks: $checks}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" --argjson checks "$checks" \
+      '{verdict: "drifted", missing: $missing, status_checks: $checks}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# charters domain (ADR-0013 purpose/topics + ADR-0016 schema/litmus/allowlist/
+# language/routing)
+# ---------------------------------------------------------------------------
+
+extract_purpose() { # $1=readme text -> first non-empty paragraph after the H1
+  awk '
+    /^# / && !seenH1 { seenH1 = 1; next }
+    !seenH1 { next }
+    !started && /^[[:space:]]*$/ { next }
+    !started { started = 1 }
+    started && /^[[:space:]]*$/ { exit }
+    started && /^#/ { exit }
+    started {
+      if (para == "") para = $0
+      else para = para " " $0
+    }
+    END { print para }
+  ' <<<"$1"
+}
+
+first_sentence() {
+  local s
+  s="$(grep -oP '^.*?[.。]' <<<"$1" | head -n1)"
+  [[ -n $s ]] && printf '%s' "$s" || printf '%s' "$1"
+}
+
+normalize_text() {
+  local s="$1"
+  s="${s//\*\*/}"
+  s="${s//__/}"
+  s="$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$s")"
+  s="$(tr -s '[:space:]' ' ' <<<"$s")"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  s="${s%.}"
+  s="${s%。}"
+  printf '%s' "$s"
+}
+
+# strip_for_lang: drop fenced code blocks, inline code, and URLs before
+# classifying a document's language mix.
+strip_for_lang() {
+  awk '
+    /^```/ { infence = !infence; next }
+    infence { next }
+    { print }
+  ' <<<"$1" | sed -E 's/`[^`]*`//g; s#https?://[^ )]+##g'
+}
+
+count_cjk() { grep -oP '[\x{3040}-\x{30FF}\x{4E00}\x{9FFF}\x{3400}-\x{4DBF}]' <<<"$1" 2>/dev/null | wc -l; }
+count_latin() { grep -oP '[A-Za-z]' <<<"$1" 2>/dev/null | wc -l; }
+
+is_language_mixed() { # $1=doc text -> 0 (true) if both scripts exceed the threshold
+  local stripped cjk latin
+  stripped="$(strip_for_lang "$1")"
+  cjk="$(count_cjk "$stripped")"
+  latin="$(count_latin "$stripped")"
+  [[ $cjk -ge $LANG_MIX_THRESHOLD && $latin -ge $LANG_MIX_THRESHOLD ]]
+}
+
+# readme_headings: '## X' heading texts in document order, skipping fenced
+# code blocks.
+readme_headings() {
+  awk '
+    /^```/ { infence = !infence; next }
+    infence { next }
+    /^## / { sub(/^## /, ""); print }
+  ' <<<"$1"
+}
+
+judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> finding
+  local repo="$1" description="$2" topics="$3" gql="$4"
+  local readme contributing claude_md has_agents_md root_tree claude_skills_dir
+  local -a missing=()
+
+  readme="$(jq -r '.readme.text // ""' <<<"$gql")"
+  contributing="$(jq -r '.contributing.text // ""' <<<"$gql")"
+  claude_md="$(jq -r '.claudeMd.text // ""' <<<"$gql")"
+  has_agents_md="$(jq -e '.agentsMd != null' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  root_tree="$(jq -c '.rootTree.entries // []' <<<"$gql")"
+  claude_skills_dir="$(jq -c '.claudeSkillsDir.entries // null' <<<"$gql")"
+
+  if [[ -z $readme ]]; then
+    missing+=("readme-missing")
+  else
+    local purpose_para purpose_sentence
+    purpose_para="$(extract_purpose "$readme")"
+    if [[ -z $purpose_para ]]; then
+      missing+=("no-purpose-paragraph")
+    else
+      purpose_sentence="$(first_sentence "$purpose_para")"
+      if [[ -z $description ]] || [[ "$(normalize_text "$purpose_sentence")" != "$(normalize_text "$description")" ]]; then
+        missing+=("purpose-mismatch")
+      fi
+    fi
+
+    local -a headings=() stray=() present_required=()
+    while IFS= read -r h; do
+      [[ -n $h ]] || continue
+      headings+=("$h")
+    done < <(readme_headings "$readme")
+    for h in "${headings[@]}"; do
+      local ok=0 a
+      for a in "${ALLOWED_README_HEADINGS[@]}"; do [[ "$h" == "$a" ]] && ok=1 && break; done
+      ((ok)) || stray+=("$h")
+      for a in "${REQUIRED_README_HEADINGS[@]}"; do [[ "$h" == "$a" ]] && present_required+=("$h"); done
+    done
+    [[ "${present_required[*]:-}" == "${REQUIRED_README_HEADINGS[*]}" ]] || missing+=("readme-schema-incomplete-or-out-of-order")
+    ((${#stray[@]} == 0)) || missing+=("readme-stray-heading:$(
+      IFS=,
+      echo "${stray[*]}"
+    )")
+
+    grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$readme" && missing+=("litmus-not-migrated")
+
+    is_language_mixed "$readme" && missing+=("readme-language-mixed")
+  fi
+
+  if [[ -z $contributing ]]; then
+    missing+=("contributing-missing")
+  else
+    grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$contributing" || missing+=("contributing-no-litmus")
+    is_language_mixed "$contributing" && missing+=("contributing-language-mixed")
+  fi
+
+  [[ $topics -ge 1 ]] || missing+=("no-topics")
+
+  # Root doc allowlist
+  local -a stray_root=()
+  while IFS= read -r name; do
+    [[ -n $name ]] || continue
+    [[ $name == *.md ]] || continue
+    local ok=0 a
+    for a in "${ROOT_ALLOWLIST_EXACT[@]}"; do [[ "$name" == "$a" ]] && ok=1 && break; done
+    [[ $name == LICENSE* ]] && ok=1
+    ((ok)) || stray_root+=("$name")
+  done < <(jq -r '.[]? | select(.type=="blob") | .name' <<<"$root_tree")
+  ((${#stray_root[@]} == 0)) || missing+=("root-doc-not-allowlisted:$(
+    IFS=,
+    echo "${stray_root[*]}"
+  )")
+
+  # CLAUDE.md router check: only judged if CLAUDE.md exists.
+  if [[ -n $claude_md ]]; then
+    if ! grep -qE '^@AGENTS\.md[[:space:]]*$' <<<"$claude_md"; then
+      missing+=("claude-md-not-routed")
+    elif [[ $has_agents_md != true ]]; then
+      missing+=("claude-md-routed-but-agents-md-missing")
+    fi
+  fi
+
+  # skills routing check: entries directly under .claude/skills must be
+  # symlinks (git mode 120000) into ../.agents/skills/<name>, not real
+  # directories.
+  if [[ $claude_skills_dir != null ]]; then
+    local -a stray_skills=()
+    while IFS= read -r entry; do
+      [[ -n $entry ]] || continue
+      local name mode
+      name="$(jq -r '.name' <<<"$entry")"
+      mode="$(jq -r '.mode // ""' <<<"$entry")"
+      [[ $mode == "120000" ]] || stray_skills+=("$name")
+    done < <(jq -c '.[]?' <<<"$claude_skills_dir")
+    ((${#stray_skills[@]} == 0)) || missing+=("skills-not-routed:$(
+      IFS=,
+      echo "${stray_skills[*]}"
+    )")
+  fi
+
+  if ((${#missing[@]} == 0)); then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# naming domain (ADR-0014)
+# ---------------------------------------------------------------------------
+
+judge_naming() { # $1=repo $2=JSON array of topic names -> finding
+  local repo="$1" topics_json="$2"
+  local -a naming_topics=() missing=()
+  while IFS= read -r t; do
+    [[ -n $t ]] || continue
+    naming_topics+=("$t")
+  done < <(jq -r '.[] | select(startswith("naming-"))' <<<"$topics_json")
+
+  local class='' pattern=''
+  if ((${#naming_topics[@]} == 0)); then
+    missing+=("class-undeclared")
+  elif ((${#naming_topics[@]} > 1)); then
+    missing+=("class-ambiguous")
+  else
+    class="${naming_topics[0]}"
+    case "$class" in
+      naming-pj) pattern='^pj-[a-z0-9]+(-[a-z0-9]+)*$' ;;
+      naming-codename) pattern='^[a-z0-9]+$' ;;
+      naming-descriptive) pattern='^[a-z0-9]+(-[a-z0-9]+)+$' ;;
+      naming-site) pattern='^[a-z0-9]+(\.[a-z0-9]+)+$' ;;
+      *) missing+=("class-unknown:$class") ;;
+    esac
+    if [[ -n $pattern ]] && ! [[ $repo =~ $pattern ]]; then
+      missing+=("pattern-mismatch:$class")
+    fi
+  fi
+
+  if ((${#missing[@]} == 0)); then
+    jq -n --arg class "$class" '{verdict: "ok", missing: [], class: $class}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" --arg class "$class" \
+      '{verdict: "drifted", missing: $missing, class: $class}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# settings domain
+# ---------------------------------------------------------------------------
+
+judge_settings() { # $1=repo-meta-json -> finding
+  local meta="$1"
+  local -a missing=()
+  jq -e '.squashMergeAllowed == true and .mergeCommitAllowed == false and .rebaseMergeAllowed == false' <<<"$meta" >/dev/null 2>&1 ||
+    missing+=("merge-not-squash-only")
+  jq -e '.deleteBranchOnMerge == true' <<<"$meta" >/dev/null 2>&1 || missing+=("delete-branch-on-merge-disabled")
+  jq -e '(.defaultBranchRef.name // "") == "main"' <<<"$meta" >/dev/null 2>&1 || missing+=("default-branch-not-main")
+  jq -e '.hasWikiEnabled == false' <<<"$meta" >/dev/null 2>&1 || missing+=("wiki-enabled")
+  jq -e '.hasProjectsEnabled == false' <<<"$meta" >/dev/null 2>&1 || missing+=("projects-enabled")
+
+  if ((${#missing[@]} == 0)); then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# renovate domain
+# ---------------------------------------------------------------------------
+
+judge_renovate() { # $1=gql-data-json -> finding
+  local gql="$1" has_manifest has_workflows has_config
+  has_manifest="$(jq -e '(.cargoToml != null) or (.packageJson != null) or (.pyprojectToml != null) or (.goMod != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+
+  if [[ $has_manifest != true || $has_workflows != true ]]; then
+    jq -n '{verdict: "not-applicable", missing: []}'
+    return
+  fi
+
+  has_config="$(jq -e '(.renovateJson != null) or (.renovateJson5 != null) or (.ghRenovateJson != null) or (.ghRenovateJson5 != null) or (.renovaterc != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  if [[ $has_config == true ]]; then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    jq -n '{verdict: "drifted", missing: ["renovate-config-missing"]}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+parse_domains() { # $@=args -> sets DOMAINS array, echoes remaining unrecognized args to stderr and exits 2
+  local -a out=()
+  local d ok
+  for d in "$@"; do
+    ok=0
+    for known in "${ALL_DOMAINS[@]}"; do [[ "$d" == "$known" ]] && ok=1 && break; done
+    ((ok)) || {
+      printf 'unknown domain: %s\n' "$d" >&2
+      return 2
+    }
+    out+=("$d")
+  done
+  ((${#out[@]} > 0)) && DOMAINS=("${out[@]}") || DOMAINS=("${ALL_DOMAINS[@]}")
+}
+
+audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibility, domains: {...}}
+  local repos_meta overrides results='[]'
+  repos_meta="$(list_repos_meta)"
+  overrides="$(read_overrides)"
+
+  local need_graphql=0 need_rulesets=0
+  for d in "${DOMAINS[@]}"; do
+    [[ $d == charters || $d == renovate ]] && need_graphql=1
+    [[ $d == rulesets ]] && need_rulesets=1
+  done
+
+  local repo_names_json gql_batch='{}'
+  repo_names_json="$(jq -c '[.[].name]' <<<"$repos_meta")"
+  if ((need_graphql)); then
+    gql_batch="$(fetch_graphql_batch "$repo_names_json")"
+  fi
+
+  local repo lang vis description topics_json topic_count meta domains_obj entry
+  while IFS= read -r meta; do
+    repo="$(jq -r '.name' <<<"$meta")"
+    lang="$(jq -r '.primaryLanguage.name // "-"' <<<"$meta")"
+    vis="$(jq -r '.visibility' <<<"$meta")"
+    description="$(jq -r '.description // ""' <<<"$meta")"
+    topics_json="$(jq -c '[.repositoryTopics[]?.name]' <<<"$meta")"
+    topic_count="$(jq 'length' <<<"$topics_json")"
+    domains_obj='{}'
+
+    for d in "${DOMAINS[@]}"; do
+      if is_exempt "$repo" "$d" "$overrides"; then
+        entry='{"verdict":"exempt","missing":[]}'
+      else
+        case "$d" in
+          rulesets) ((need_rulesets)) && entry="$(judge_rulesets "$repo")" ;;
+          charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")")" ;;
+          naming) entry="$(judge_naming "$repo" "$topics_json")" ;;
+          settings) entry="$(judge_settings "$meta")" ;;
+          renovate) entry="$(judge_renovate "$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")")" ;;
+        esac
+      fi
+      domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
+    done
+
+    results="$(jq -c --arg repo "$repo" --arg lang "$lang" --arg vis "$vis" --argjson domains "$domains_obj" \
+      '. + [{repo: $repo, language: $lang, visibility: $vis, domains: $domains}]' <<<"$results")"
+  done < <(jq -c '.[]' <<<"$repos_meta")
+
+  printf '%s' "$results"
+}
+
+write_ledger() {
+  local findings="$1" tmp
+  mkdir -p "$STATE_DIR"
+  tmp="$(mktemp "$STATE_DIR/ledger.json.XXXXXX")"
+  jq -n --argjson repos "$findings" --arg generated_at "$(date --iso-8601=seconds)" \
+    '{generated_at: $generated_at, repos: $repos}' >"$tmp"
+  mv "$tmp" "$STATE_DIR/ledger.json"
+}
+
+render_report() {
+  local findings="$1" total
+  jq -r '
+    .[] as $r
+    | ($r.domains | to_entries[])
+    | select(.value.verdict != "not-applicable")
+    | "\(.value.verdict)\tdomain=\(.key) verdict=\(.value.verdict) repo=\($r.repo)"
+      + (if (.value.missing | length) > 0 then " missing=" + (.value.missing | join(",")) else "" end)
+  ' <<<"$findings" | LC_ALL=C sort | cut -f2-
+  total="$(jq '[.[].domains | to_entries[]] | length' <<<"$findings")"
+  printf 'total: %d finding(s) across %d repo(s)\n' "$total" "$(jq 'length' <<<"$findings")"
+  local verdict
+  for verdict in ok drifted ungoverned exempt not-applicable; do
+    local count
+    count="$(jq --arg v "$verdict" '[.[].domains | to_entries[] | select(.value.verdict == $v)] | length' <<<"$findings")"
+    printf '  %s=%d\n' "$verdict" "$count"
+  done
+}
+
+any_drift() { # $1=findings -> exit 0 if any non-exempt/non-ok/non-not-applicable verdict exists
+  jq -e '[.[].domains | to_entries[] | select(.value.verdict != "ok" and .value.verdict != "exempt" and .value.verdict != "not-applicable")] | length == 0' <<<"$1" >/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# selftest
+# ---------------------------------------------------------------------------
+
+selftest() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+
+  mkdir -p "$tmp/fixtures" "$tmp/bin" "$tmp/state" "$tmp/config"
+
+  cat >"$tmp/fixtures/repo-list.json" <<'EOF'
+[
+  {"name": "all-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "All domains pass.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
+  {"name": "all-drifted", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "master"}, "squashMergeAllowed": true, "mergeCommitAllowed": true, "rebaseMergeAllowed": true, "deleteBranchOnMerge": false, "hasWikiEnabled": true, "hasProjectsEnabled": true},
+  {"name": "pj-ambiguous", "primaryLanguage": {"name": "Shell"}, "visibility": "PRIVATE", "description": "Two naming topics.", "repositoryTopics": [{"name": "naming-pj"}, {"name": "naming-codename"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
+  {"name": "not-pj-prefixed", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "Declares pj but is not prefixed.", "repositoryTopics": [{"name": "naming-pj"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
+  {"name": "no-renovate-target", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "No manifest, no CI.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
+  {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
+  {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false}
+]
+EOF
+
+  cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "copilot_code_review"},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": true, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
+
+  local other_repo
+  for other_repo in all-drifted pj-ambiguous not-pj-prefixed no-renovate-target exempted .github; do
+    printf '[]' >"$tmp/fixtures/repos_tarotene_${other_repo}_rulesets.json"
+  done
+
+  cat >"$tmp/fixtures/graphql-response.json" <<'EOF'
+{
+  "data": {
+    "r1": {
+      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "contributing": {"text": "# Contributing\n\n## Issue litmus\n\nJudging question: does it help?\n"},
+      "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
+      "agentsMd": {"id": "abc"},
+      "rootTree": {"entries": [{"name": "README.md", "type": "blob"}, {"name": "CONTRIBUTING.md", "type": "blob"}, {"name": "AGENTS.md", "type": "blob"}, {"name": "CLAUDE.md", "type": "blob"}]},
+      "claudeSkillsDir": {"entries": [{"name": "foo", "type": "blob", "mode": "120000"}]},
+      "cargoToml": {"id": "x"},
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": {"id": "y"},
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r2": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": {"text": "This repo has no @AGENTS.md import line at all.\n"},
+      "agentsMd": null,
+      "rootTree": {"entries": [{"name": "CONTEXT.md", "type": "blob"}, {"name": "README.md", "type": "blob"}]},
+      "claudeSkillsDir": {"entries": [{"name": "bar", "type": "tree", "mode": "040000"}]},
+      "cargoToml": {"id": "x"},
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r3": {
+      "readme": {"text": "# pj-ambiguous\n\nTwo naming topics.\n\n## Install\n\nx\n\n## Usage\n\nx\n\n## Scope\n\nx\n\n## Development\n\nx\n\n## License\n\nx\n"},
+      "contributing": {"text": "## Issue litmus\n\nq?\n"},
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": null,
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r4": {
+      "readme": {"text": "# not-pj-prefixed\n\nDeclares pj but is not prefixed.\n\n## Install\n\nx\n\n## Usage\n\nx\n\n## Scope\n\nx\n\n## Development\n\nx\n\n## License\n\nx\n"},
+      "contributing": {"text": "## Issue litmus\n\nq?\n"},
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": {"id": "x"},
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r5": {
+      "readme": {"text": "# no-renovate-target\n\nNo manifest, no CI.\n\n## Install\n\nx\n\n## Usage\n\nx\n\n## Scope\n\nx\n\n## Development\n\nx\n\n## License\n\nx\n"},
+      "contributing": {"text": "## Issue litmus\n\nq?\n"},
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": null,
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r6": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": null,
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r7": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": null,
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    }
+  }
+}
+EOF
+
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+FIXTURES="$GITHUB_AUDIT_TEST_FIXTURES"
+case "$1" in
+  repo)
+    cat "$FIXTURES/repo-list.json"
+    ;;
+  api)
+    if [[ "$2" == "graphql" ]]; then
+      cat "$FIXTURES/graphql-response.json"
+    else
+      key="$(printf '%s' "$2" | tr '/' '_')"
+      if [[ -f "$FIXTURES/$key.json" ]]; then
+        cat "$FIXTURES/$key.json"
+      else
+        printf '[]'
+      fi
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+STUB
+  chmod +x "$tmp/bin/gh"
+
+  printf 'exempted\t*\texempt\n' >"$tmp/config/overrides.tsv"
+
+  export GITHUB_AUDIT_OWNER=tarotene \
+    GITHUB_AUDIT_GH_BIN="$tmp/bin/gh" \
+    GITHUB_AUDIT_STATE_DIR="$tmp/state" \
+    GITHUB_AUDIT_OVERRIDES_FILE="$tmp/config/overrides.tsv" \
+    GITHUB_AUDIT_TEST_FIXTURES="$tmp/fixtures"
+
+  out="$("$SELF" --json 2>&1)" || true
+
+  # naming domain
+  jq -e '.[] | select(.repo=="all-ok") | .domains.naming.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok naming should be ok\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.naming.missing | index("class-undeclared")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted naming should be class-undeclared\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="pj-ambiguous") | .domains.naming.missing | index("class-ambiguous")' <<<"$out" >/dev/null || {
+    printf 'FAIL: pj-ambiguous naming should be class-ambiguous\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="not-pj-prefixed") | .domains.naming.missing | index("pattern-mismatch:naming-pj")' <<<"$out" >/dev/null || {
+    printf 'FAIL: not-pj-prefixed naming should be pattern-mismatch\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo==".github") | .domains.naming.verdict == "exempt"' <<<"$out" >/dev/null || {
+    printf 'FAIL: .github naming should be permanently exempt\n' >&2
+    return 1
+  }
+
+  # settings domain
+  jq -e '.[] | select(.repo=="all-ok") | .domains.settings.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok settings should be ok\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("merge-not-squash-only")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted settings should flag merge-not-squash-only\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("default-branch-not-main")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted settings should flag default-branch-not-main\n' >&2
+    return 1
+  }
+
+  # renovate domain
+  jq -e '.[] | select(.repo=="all-ok") | .domains.renovate.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok renovate should be ok\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="not-pj-prefixed") | .domains.renovate.verdict == "drifted"' <<<"$out" >/dev/null || {
+    printf 'FAIL: not-pj-prefixed renovate should be drifted (manifest+CI, no config)\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="no-renovate-target") | .domains.renovate.verdict == "not-applicable"' <<<"$out" >/dev/null || {
+    printf 'FAIL: no-renovate-target renovate should be not-applicable\n' >&2
+    return 1
+  }
+
+  # charters domain
+  jq -e '.[] | select(.repo=="all-ok") | .domains.charters.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok charters should be ok: %s\n' "$(jq -c '.[] | select(.repo=="all-ok") | .domains.charters' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("readme-missing")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag readme-missing\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("contributing-missing")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag contributing-missing\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("root-doc-not-allowlisted:CONTEXT.md")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag CONTEXT.md as a stray root doc\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("claude-md-not-routed")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag claude-md-not-routed\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("skills-not-routed:bar")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag skills-not-routed:bar\n' >&2
+    return 1
+  }
+
+  # exempt short-circuit
+  jq -e '.[] | select(.repo=="exempted") | [.domains[].verdict] | all(. == "exempt")' <<<"$out" >/dev/null || {
+    printf 'FAIL: exempted repo should be exempt in every domain\n' >&2
+    return 1
+  }
+
+  # overrides を空にすると、exempted も自前の drift(README fixture すら無い
+  # ので readme-missing、topics も無いので class-undeclared)で判定される
+  # ことを確認する — override が短絡しているだけで、たまたま同じ結果
+  # だったわけではないことの回帰。
+  : >"$tmp/config/overrides.tsv"
+  out="$("$SELF" --json 2>&1)" || true
+  jq -e '.[] | select(.repo=="exempted") | .domains.charters.verdict == "drifted" and (.domains.charters.missing | index("readme-missing"))' <<<"$out" >/dev/null || {
+    printf 'FAIL: override 解除後に exempted が readme-missing で drift しなかった\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="exempted") | .domains.naming.verdict == "drifted" and (.domains.naming.missing | index("class-undeclared"))' <<<"$out" >/dev/null || {
+    printf 'FAIL: override 解除後に exempted が class-undeclared で drift しなかった\n' >&2
+    return 1
+  }
+  printf 'exempted\t*\texempt\n' >"$tmp/config/overrides.tsv"
+
+  # ledger + human report
+  [[ -f "$tmp/state/ledger.json" ]] || {
+    printf 'FAIL: ledger.json が書かれなかった\n' >&2
+    return 1
+  }
+  jq -e '.repos | length == 7' "$tmp/state/ledger.json" >/dev/null || {
+    printf 'FAIL: ledger.json の repos 件数が一致しない\n' >&2
+    return 1
+  }
+
+  out="$("$SELF" 2>&1)" && {
+    printf 'FAIL: drift が存在するのに exit 0 だった\n' >&2
+    return 1
+  }
+  grep -qF 'repo=all-ok' <<<"$out" || {
+    printf 'FAIL: 人間可読レポートに all-ok が含まれない\n' >&2
+    return 1
+  }
+
+  # rulesets domain isolated: only requested domain runs judge_rulesets
+  out="$("$SELF" --json rulesets 2>&1)" || true
+  jq -e '.[] | select(.repo=="all-ok") | .domains.rulesets.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-only run should still judge all-ok as ok\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-ok") | (.domains | keys) == ["rulesets"]' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-only run should not include other domains\n' >&2
+    return 1
+  }
+
+  printf 'selftest: OK\n'
+}
+
+main() {
+  local mode=report
+  local -a domain_args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) mode=json ;;
+      --selftest)
+        selftest
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      -*)
+        usage >&2
+        return 2
+        ;;
+      *) domain_args+=("$1") ;;
+    esac
+    shift
+  done
+
+  local -a DOMAINS=()
+  parse_domains "${domain_args[@]}"
+
+  local findings
+  findings="$(audit)"
+  write_ledger "$findings"
+  case "$mode" in
+    report) render_report "$findings" ;;
+    json) printf '%s\n' "$findings" ;;
+  esac
+  any_drift "$findings"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

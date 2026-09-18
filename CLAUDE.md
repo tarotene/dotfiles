@@ -116,12 +116,11 @@ dotfiles/
 │   │                         #   (deployed to ~/.local/bin + a systemd user timer)
 │   ├── git-prune-worktrees    # removes orphaned worktree checkouts
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
-│   ├── github-audit-rulesets  # read-only cross-repository GitHub ruleset
-│   │                         #   drift audit (#130; deployed to ~/.local/bin,
+│   ├── github-audit           # read-only cross-repository GitHub audit,
+│   │                         #   unified across 5 domains — rulesets (#130) /
+│   │                         #   charters / naming (ADR-0014) / settings /
+│   │                         #   renovate (ADR-0015; deployed to ~/.local/bin,
 │   │                         #   manual command, no timer)
-│   ├── github-audit-charters  # read-only cross-repository README charter
-│   │                         #   drift audit (ADR-0012; deployed to
-│   │                         #   ~/.local/bin, manual command, no timer)
 │   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
 │   │                         #   side) pair — fable/sonnet, opus/sonnet,
 │   │                         #   fable/opus — and re-resolves the concrete
@@ -151,12 +150,12 @@ dotfiles/
 │   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── worktree-lifecycle.md # herdr worktree create/prune lifecycle across scripts/hooks
-│   ├── github-audit-rulesets.md # read-only cross-repo GitHub ruleset drift
-│   │                         #   audit (#130): rule-type-union judgement,
-│   │                         #   why it's not in a dedicated inventory repo
-│   ├── github-audit-charters.md # read-only cross-repo README charter drift
-│   │                         #   audit (ADR-0012): purpose/Scope/Issue-litmus/
-│   │                         #   topics schema, why judgement skips any LLM call
+│   ├── github-audit.md       # unified 5-domain audit (ADR-0015): rulesets
+│   │                         #   rule-type-union judgement, charters schema/
+│   │                         #   routing (ADR-0016), naming class pattern
+│   │                         #   (ADR-0014), settings, renovate — why one
+│   │                         #   command instead of 5 sibling scripts, why
+│   │                         #   judgement skips any LLM call
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
