@@ -108,6 +108,12 @@ in
     executable = true;
   };
 
+  # Newly taken under home-manager management here — same `.backup` collision
+  # quarantine (#64) as herdr's config.toml above; see quarantine.nix for why
+  # this is a shared helper. Without this, a pre-existing real file/symlink at
+  # this path makes `hms` fail at checkLinkTargets (#244).
+  dotfiles.quarantine.managedFiles = [ ".local/bin/gpg-subkey" ];
+
   # Daily expiry check for every [S] subkey on this host, notified through
   # Herdr the same way git-audit-worktrees is (home/modules/worktree.nix) —
   # not notify-send/libnotify, which nothing else in this repo declares.
