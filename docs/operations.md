@@ -109,6 +109,11 @@ Since the binary comes from a pin, client and server always match after a
 switch — there is no risk of relaunching a mismatched pair, unlike an
 in-place `herdr update` against a moving install.
 
+`hms` itself warns (never fails) when it detects this: after a successful
+switch it compares the store path the running `herdr server` process resolves
+to against the store path the new generation's `herdr` points at, and prints
+the restart instructions above if they differ (#200).
+
 ### `hms` fails at `checkLinkTargets` with a `.backup` clobber error
 
 ```
