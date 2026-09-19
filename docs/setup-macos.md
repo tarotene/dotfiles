@@ -87,8 +87,12 @@ gpg> addkey
 # Choose: (4) RSA (sign only), key size 4096, expires in 1y
 gpg> save
 
-# Export the new subkey (note its keygrip/fingerprint from `gpg -K` first):
-gpg --export-secret-subkeys <NEW_SUBKEY_FPR>! > altair-sign.key
+# Export the new subkey (note its keygrip/fingerprint from `gpg -K` first).
+# umask 077 keeps the file unreadable by other local users regardless of the
+# shell's ambient umask; chmod 600 covers the case where a stale
+# altair-sign.key with looser permissions already exists at this path.
+(umask 077 && gpg --export-secret-subkeys <NEW_SUBKEY_FPR>! > altair-sign.key)
+chmod 600 altair-sign.key
 ```
 
 Move `altair-sign.key` to the Mac over a channel you trust (a USB drive is
@@ -118,7 +122,7 @@ Then:
 hms                                      # resolves "altair" via the marker, applies cleanly
 brew bundle check --file=packages/declarative/Brewfile
 git log --show-signature -1
-which bat ripgrep fd nvim claude alacritty
+which bat rg fd nvim claude alacritty
 alacritty --version                      # launches; FiraCode NF renders (Font Book → search "FiraCode Nerd Font")
 launchctl list | grep git-audit-worktrees   # the launchd agent (ADR-0018) is loaded
 ./bootstrap.sh --dry-run                 # re-running bootstrap is a no-op, nothing destructive
