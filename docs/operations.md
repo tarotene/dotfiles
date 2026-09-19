@@ -188,6 +188,41 @@ Because the input method is now pinned rather than distro-supplied, it is only a
 current as the flake — which is the point (apt was stuck two years behind a fix),
 but it makes the update cadence above load-bearing for Japanese input.
 
+## Rotating a machine-local GPG [S] signing subkey
+
+`scripts/gpg-subkey` (deployed to `~/.local/bin/gpg-subkey`) generates and
+rotates the on-disk `[S]` subkey each identity's primary card-backed key
+signs Git commits with (ADR-0003 Amendment 2). It was absorbed from the
+now-archived private predecessor tool, stripped of that tool's
+git-config-writing side effect: `programs.git.signing.key` in
+`home/hosts/<host>.nix` is the sole declared source of truth for which
+subkey Git actually uses, so this tool never touches git config — it only
+prints the next manual step. A daily `systemd.user.timer`
+(`gpg-subkey-remind`, `home/modules/gpg.nix`) checks every `[S]` subkey's
+expiry and notifies through Herdr (same channel as
+`git-audit-worktrees` — not a desktop-notification tool, since nothing else
+in this repo declares one) once it is within 30 days of expiring.
+
+Full rotation sequence (needs the identity's YubiKey inserted — the
+primary's `[C]` capability signs the new subkey's binding signature):
+
+```bash
+gpg-subkey status                                    # see every [S] subkey and its remaining days
+gpg-subkey rotate --key <primary-fpr> --revoke-old    # touch/PIN prompt via pinentry
+gpg-subkey export --repo <dotfiles-checkout> --identity <personal|company>
+```
+
+`export` re-exports `keys/<identity>.pub` from the local keyring and prints
+the new subkey ID to put in `programs.git.signing.key`:
+
+1. Edit `home/hosts/<host>.nix`: `programs.git.signing.key = "<new-subkey-id>";`
+2. Commit `keys/<identity>.pub` + the host module together, PR, merge.
+3. `hms .` (or `hms` after merge) to apply.
+
+`gpg-subkey remind --threshold 30 --notify` is what the timer runs; run it
+by hand to check without waiting for the timer, or `gpg-subkey status` for a
+read-only listing with no exit-code side effect.
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per

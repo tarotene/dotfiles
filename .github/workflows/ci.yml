@@ -210,6 +210,16 @@ jobs:
       - name: sign-prewarm.sh --selftest
         run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
 
+      # gpg-subkey (absorbed from an archived private predecessor tool) is
+      # exercised against real GnuPG operations in an isolated
+      # GNUPGHOME with a throwaway empty-passphrase fixture key — not a
+      # stubbed gpg — since the addkey/revkey --command-file mechanics are
+      # exactly what needs validating. Covers generate, rotate --revoke-old,
+      # status, remind's threshold/exit-code contract, and export's diff
+      # detection + next-step message (docs/operations.md).
+      - name: gpg-subkey --selftest
+        run: ./scripts/gpg-subkey --selftest
+
       # A mode here is a *pair* (plan side / execution side), so the interesting
       # failures are combinations: a transition that leaves the other half
       # behind, a .model guard that fires after the write (which is how an
