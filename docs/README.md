@@ -63,7 +63,24 @@
   に machine-checkable な charter(目的1文 = description のミラー /
   `## Scope` / `## Issue litmus` / topics)を強制する決定。作成時
   (`repo-charter` スキル)と事後(`github-audit-charters`)の二点で強制し、
-  Issue 起票時の意味照合は第 2 弾に送る。
+  Issue 起票時の意味照合は第 2 弾に送る。README スキーマ自体は
+  ADR-0016 が部分 supersede。
+- [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス
+  体系(codename / descriptive / pj / site の 4 種)を定め、正本を GitHub
+  topics に置く決定。形式一致は機械判定、クラス帰属の意味判断は
+  `github-audit-triage` 経由で人間が裁定する。
+- [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を
+  `github-audit` 統合 CLI に再編し、決定論ノード(監査)と LLM ノード
+  (`github-audit-triage`)を分離した判断ループとして定義する決定。
+  charter-sweep(#180)の「merge まで自動」を廃止し、完了定義を PR 作成
+  までに固定する。
+- [ADR-0016](adr/0016-repository-document-canon.md) — README 全節固定
+  スキーマ・Issue litmus の CONTRIBUTING.md 移設・ルート文書 allowlist・
+  markdown 単位の言語混在禁止・人間文書/AI 文書の完全分離
+  (AGENTS.md 正本化・CLAUDE.md ルータ化・skills の `.agents/skills/`
+  ルーティング)を、一次情報(standard-readme・GitHub 公式・Art of
+  README・Google style guide 等)に接地して定める決定。ADR-0013 の
+  README スキーマと AGENTS.md 扱いを部分 supersede。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
