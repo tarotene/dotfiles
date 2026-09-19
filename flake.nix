@@ -136,6 +136,13 @@
       # `nix flake check` evaluates every host's activation package.
       checks.${system} = builtins.mapAttrs (_name: cfg: cfg.activationPackage) self.homeConfigurations;
 
+      # Addressable alias for the patched herdr build (overlay above). CI's
+      # build-host job builds this explicitly to root it for GC before
+      # building the (much larger, unpatched-input) activationPackages, so
+      # cache-nix-action's post-run GC can keep the saved cache scoped to
+      # herdr's own closure instead of the whole /nix store.
+      packages.${system}.herdr = pkgs.herdr;
+
       # nixfmt-tree, not nixfmt itself (#30). `nix fmt` with no arguments hands
       # the formatter the whole tree, and bare nixfmt reads that as stdin and
       # dies on the first non-Nix file; nixfmt upstream now points at this
