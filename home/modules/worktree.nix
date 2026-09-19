@@ -101,10 +101,20 @@ in
       ];
       StartInterval = 60;
       RunAtLoad = true;
+      # launchd's EnvironmentVariables *replaces* the agent's PATH rather than
+      # extending it (unlike systemd's Environment=), so every binary
+      # git-audit-worktrees actually shells out to must be listed explicitly.
+      # coreutils/findutils do not provide grep/sed/awk — those are separate
+      # nixpkgs packages — and the script uses all three (is_shelved,
+      # scan_orphaned, prunable_rows/orphaned_rows). Omitting them silently
+      # breaks the --notify scan on darwin instead of erroring loudly.
       EnvironmentVariables.PATH = lib.makeBinPath [
         pkgs.bash
         pkgs.coreutils
         pkgs.findutils
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.gawk
         pkgs.git
         pkgs.jq
         pkgs.flock
