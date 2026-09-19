@@ -226,7 +226,10 @@ classes draw their variable slot from a closed, repo-tracked vocabulary:
 The species closed set intentionally excludes action nouns (e.g.
 `cleanup`, `migration`) — a completable action belongs to `naming-pj`, not
 `naming-descriptive`. See ADR-0020's Context for the incident that
-motivated this.
+motivated this. It also excludes research-subject nouns (a phenomenon or
+field name) — one word per subject would make the set grow without bound,
+defeating the point of a closed vocabulary; a completed/frozen research
+record uses `archive` regardless of subject (ADR-0020's Amendment).
 
 ### settings
 
