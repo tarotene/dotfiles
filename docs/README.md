@@ -11,14 +11,12 @@
   commits, stale `[gone]` branches).
 - [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
   creation, detect stale registrations, and notify through Herdr.
-- [`github-audit-rulesets.md`](github-audit-rulesets.md) — read-only
-  cross-repository GitHub ruleset drift audit (#130): why it lives here
-  instead of a dedicated inventory repo, and why judgement is by rule-type
-  union rather than ruleset name/count.
-- [`github-audit-charters.md`](github-audit-charters.md) — read-only
-  cross-repository README charter drift audit: the purpose-sentence /
-  Scope / Issue-litmus / topics schema, and why judgement is by literal
-  presence/match rather than an LLM call.
+- [`github-audit.md`](github-audit.md) — read-only cross-repository GitHub
+  audit unified across five domains (rulesets #130 / charters / naming
+  ADR-0014 / settings / renovate — ADR-0015): why it lives here instead of
+  a dedicated inventory repo, why each domain judges the way it does
+  (rule-type union, literal schema match, naming-class pattern, …), and
+  why it's one command instead of five sibling scripts.
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
