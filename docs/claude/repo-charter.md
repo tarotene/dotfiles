@@ -47,7 +47,7 @@ dotfiles が private/company リポジトリ名を自身のツリーに書かな
   場所と agent が必ず読む場所を一致させるため。description を正本にすると
   Web UI 経由でしか見えず、agent の作業フロー(リポジトリを clone/開く →
   README を読む)から外れる。
-- **charter は 3 見出し + topics の固定スキーマ**(`docs/github-audit-charters.md`
+- **charter は 3 見出し + topics の固定スキーマ**(`docs/github-audit.md`
   に判定条件の詳細)。自由記述の「良い Scope 節」を期待するのではなく、
   見出しリテラルを固定して機械検査可能にした。良い内容を書く動機付けは
   スキーマではなく `repo-charter` スキルのインタビュー手順が担う。
@@ -55,7 +55,7 @@ dotfiles が private/company リポジトリ名を自身のツリーに書かな
   ○○を前進させるか」)だけでは抽象的すぎて、結局読み手の解釈に戻ってしまう。
   採用例・棄却例を書かせることで、新しい Issue 候補をパターンマッチで
   判定できるようにした。
-- **監査は LLM を呼ばない**(`github-audit-charters` 参照)。見出しの存在・
+- **監査は LLM を呼ばない**(`github-audit charters` 参照)。見出しの存在・
   description との文字列一致・topics 数という決定的な条件だけを見る。
   litmus の**内容の質**(判定問が本当に鋭いか)は監査の対象外 — そこは
   charter インタビュー(人間との対話)の責務であり、事後の自動検査には
@@ -95,7 +95,7 @@ dotfiles が private/company リポジトリ名を自身のツリーに書かな
 
 - Issue 起票時にリトマス照合を自動で行う hook(意味判断が要るため LLM
   なしでは書式検査までしかできない。第 2 弾候補)。
-- 各リポジトリ自身の CI での自己検査(横断監査の `github-audit-charters`
+- 各リポジトリ自身の CI での自己検査(横断監査の `github-audit charters`
   が現状の代替)。
 - 全リポジトリへの charter 一括適用(監査の drift 報告に任せ、各リポを
   次に触るときに順次適合化する)。
