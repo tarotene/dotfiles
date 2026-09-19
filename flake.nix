@@ -155,6 +155,9 @@
         "personal-pop" = mkHome linuxSystem ./home/hosts/personal-pop.nix;
         "company-pop-old" = mkHome linuxSystem ./home/hosts/company-pop-old.nix;
         "company-pop-new" = mkHome linuxSystem ./home/hosts/company-pop-new.nix;
+
+        # First darwin host (2022 M2 MacBook Air) — ADR-0018/ADR-0019.
+        "altair" = mkHome darwinSystem ./home/hosts/altair.nix;
       };
 
       # `nix flake check` evaluates every host's activation package, filtered

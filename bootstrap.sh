@@ -94,12 +94,17 @@ else
     fi
 fi
 
-# --- 3. System-layer packages (apt) ---
-info "Installing system-layer apt packages..."
-if [[ "$DRY_RUN" == "true" ]]; then
-    "$REPO_DIR/scripts/install-packages.sh" --dry-run
+# --- 3. System-layer packages (apt on Linux, Homebrew on darwin — ADR-0018) ---
+info "Installing system-layer packages..."
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    SYSTEM_INSTALLER="$REPO_DIR/scripts/install-packages-darwin.sh"
 else
-    "$REPO_DIR/scripts/install-packages.sh"
+    SYSTEM_INSTALLER="$REPO_DIR/scripts/install-packages.sh"
+fi
+if [[ "$DRY_RUN" == "true" ]]; then
+    "$SYSTEM_INSTALLER" --dry-run
+else
+    "$SYSTEM_INSTALLER"
 fi
 
 # --- 4. home-manager activation ---

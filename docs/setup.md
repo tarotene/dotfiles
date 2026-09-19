@@ -2,7 +2,9 @@
 
 Bring a Pop!_OS host up to the declarative home-manager environment. For the
 full per-host migration procedure (existing machines, rollback, greenfield
-details) see [`cutover-runbook.md`](cutover-runbook.md).
+details) see [`cutover-runbook.md`](cutover-runbook.md). For a macOS host
+(darwin, ADR-0018), see [`setup-macos.md`](setup-macos.md) instead — the
+system layer, IME, and terminal wrapping all differ from what follows here.
 
 ## Prerequisites
 
