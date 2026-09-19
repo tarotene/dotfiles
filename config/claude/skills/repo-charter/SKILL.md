@@ -257,3 +257,5 @@ CONTRIBUTING.md `## Issues` の棄却例に該当するものがないか一度�
 収束しない場合は、監査駆動で一括起草・一括レビューする
 `github-audit-triage` スキルを使う(このスキルのスキーマ定義を正本として
 参照する)。
+
+事例は `cases.md` を参照。追記時のサニタイズ規則は `skill-gardening` を参照。

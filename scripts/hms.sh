@@ -75,6 +75,39 @@ host="$(resolve_host)"
 # under gcroots/current-home is still the old, successful generation — a
 # "generation advanced but the world is stale" state that hms does not
 # otherwise detect (#65). Warn (never fail) when the two disagree.
+# herdr server staleness check (warn-only, #200): a switch replaces the
+# `herdr` store path but never restarts the running `herdr server` — it keeps
+# the old binary loaded in memory until someone kills and relaunches it
+# (docs/operations.md, "Restarting herdr after a switch..."). This has no
+# in-band way to fail loudly (hms usually runs *inside* a herdr pane, so hms
+# cannot restart its own host process), so it only ever warns, matching
+# check_generation_consistency's warn-but-never-fail shape.
+check_herdr_staleness() {
+    command -v herdr > /dev/null 2>&1 || return 0
+    local current_bin running_pid running_bin
+    current_bin="$(readlink -f "$(command -v herdr)" 2>/dev/null || true)"
+    running_pid="$(pgrep -x herdr | head -n1 || true)"
+    [[ -n "$current_bin" && -n "$running_pid" ]] || return 0
+    running_bin="$(readlink -f "/proc/${running_pid}/exe" 2>/dev/null || true)"
+    [[ -n "$running_bin" ]] || return 0
+
+    # Only compare when both sides resolve into the nix store — anything else
+    # (a wrapper script, a non-nix install) is not a staleness signal here.
+    case "$current_bin:$running_bin" in
+        /nix/store/*:/nix/store/*) : ;;
+        *) return 0 ;;
+    esac
+
+    if [[ "$current_bin" != "$running_bin" ]]; then
+        echo "Warning: the running herdr server is still on the old binary." >&2
+        echo "  current generation: ${current_bin}" >&2
+        echo "  running (pid ${running_pid}): ${running_bin}" >&2
+        echo "  Any change to herdr's server-side behavior will not take effect" >&2
+        echo "  until you kill and relaunch it from outside herdr (see" >&2
+        echo "  docs/operations.md, 'Restarting herdr after a switch...')." >&2
+    fi
+}
+
 check_generation_consistency() {
     local profile_link="${1:-$HOME/.local/state/nix/profiles/home-manager}"
     local current_home_link="${2:-$HOME/.local/state/home-manager/gcroots/current-home}"
@@ -136,6 +169,9 @@ fi
 
 echo "==> systemctl --user daemon-reload"
 systemctl --user daemon-reload
+
+# herdr server staleness check (warn-only, #200)
+check_herdr_staleness
 
 # fcitx5 unit follow-up — skipped cleanly on a host without the unit.
 if ! systemctl --user cat "$FCITX5_UNIT" > /dev/null 2>&1; then
