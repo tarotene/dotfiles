@@ -87,6 +87,10 @@
   GitHub 自身の "Issues" 語彙へ廃止する決定。GitHub 公式・Open Source
   Guides・nayafia/contributing-template に接地。ADR-0013 Decision 1 の
   Issue litmus 項と ADR-0016 Decision 2 を部分 supersede。
+- [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) —
+  新規ホストは恒星コードネームで命名し(役割・identity・世代を名前に
+  埋め込まない)、論理ホスト名はマーカーファイル優先・`hostname`
+  フォールバックで解決する決定。既存 3 ホストの改名は別 Issue。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

@@ -50,7 +50,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-host="$(hostname)"
+# Resolve the logical host name: a marker file first, `hostname` as fallback
+# (ADR-0019). The marker lets a host carry a star-codename (e.g. "altair")
+# that never touches the OS hostname; the three existing Linux hosts have no
+# marker and keep resolving via hostname unchanged.
+resolve_host() {
+    local marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host" h
+    if [[ -r "$marker" ]]; then
+        h="$(head -n1 "$marker" | tr -d '[:space:]')"
+        if [[ -n "$h" ]]; then
+            echo "$h"
+            return
+        fi
+    fi
+    hostname
+}
+
+host="$(resolve_host)"
 
 # home-manager runs `nix-env --profile --set` (which advances the current
 # generation) before the activation script's real work executes. If
@@ -108,6 +124,14 @@ home-manager switch --flake "${ref}#${host}" -b backup "${extra_opts[@]}" || rc=
 if [[ $rc -ne 0 ]]; then
     check_generation_consistency
     exit "$rc"
+fi
+
+# systemd --user and the fcitx5 unit are Linux-only (ADR-0018); darwin hosts
+# (e.g. altair) have neither, so the whole follow-up is a no-op there.
+if [[ "$(uname -s)" != "Linux" ]]; then
+    echo "==> non-Linux host; skipping systemctl daemon-reload and fcitx5 restart."
+    echo "Done."
+    exit 0
 fi
 
 echo "==> systemctl --user daemon-reload"

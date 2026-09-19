@@ -103,7 +103,25 @@ else
 fi
 
 # --- 4. home-manager activation ---
-HOSTNAME="$(hostname)"
+# Resolve the logical host name: a marker file first, `hostname` as fallback
+# (ADR-0019, mirrors scripts/hms.sh's resolve_host — kept duplicated rather
+# than shared since the two scripts are independently distributed). The
+# marker lets a host carry a star-codename (e.g. "altair") that never touches
+# the OS hostname; the three existing Linux hosts have no marker and keep
+# resolving via hostname unchanged.
+resolve_host() {
+    local marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host" h
+    if [[ -r "$marker" ]]; then
+        h="$(head -n1 "$marker" | tr -d '[:space:]')"
+        if [[ -n "$h" ]]; then
+            echo "$h"
+            return
+        fi
+    fi
+    hostname
+}
+
+HOSTNAME="$(resolve_host)"
 info "Activating home-manager configuration for host '$HOSTNAME'..."
 
 # Build the activation package out of this flake and run it, rather than
@@ -131,7 +149,13 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] Would run: <result>/activate"
 else
     activation_path="$(nix build --no-link --print-out-paths "$ACTIVATION_ATTR")"
-    "$activation_path/activate"
+    # `home-manager switch -b backup` is sugar over this same env var; calling
+    # activate directly (see the comment above on why) means we must set it
+    # ourselves, or a pre-existing file the host module also declares (e.g.
+    # altair's own `dotfiles/host` marker, ADR-0019) makes this first
+    # activation fail on a plain file/symlink conflict instead of backing it
+    # up and proceeding.
+    HOME_MANAGER_BACKUP_EXT=backup "$activation_path/activate"
 fi
 
 # --- 5. Register the Nix zsh as a valid login shell ---
