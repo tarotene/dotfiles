@@ -62,9 +62,9 @@
 - [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリの README
   に machine-checkable な charter(目的1文 = description のミラー /
   `## Scope` / `## Issue litmus` / topics)を強制する決定。作成時
-  (`repo-charter` スキル)と事後(`github-audit-charters`)の二点で強制し、
+  (`repo-charter` スキル)と事後(`github-audit charters`)の二点で強制し、
   Issue 起票時の意味照合は第 2 弾に送る。README スキーマ自体は
-  ADR-0016 が部分 supersede。
+  ADR-0016 が、Issue litmus 項は ADR-0017 が部分 supersede。
 - [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス
   体系(codename / descriptive / pj / site の 4 種)を定め、正本を GitHub
   topics に置く決定。形式一致は機械判定、クラス帰属の意味判断は
@@ -81,6 +81,12 @@
   ルーティング)を、一次情報(standard-readme・GitHub 公式・Art of
   README・Google style guide 等)に接地して定める決定。ADR-0013 の
   README スキーマと AGENTS.md 扱いを部分 supersede。
+- [ADR-0017](adr/0017-contributing-schema.md) — CONTRIBUTING.md 自体の節構成
+  を固定スキーマ(`## Issues` の judging question + Accepted/Rejected 例・
+  `## Pull requests`・`## Expectations`)にし、自作語彙「Issue litmus」を
+  GitHub 自身の "Issues" 語彙へ廃止する決定。GitHub 公式・Open Source
+  Guides・nayafia/contributing-template に接地。ADR-0013 Decision 1 の
+  Issue litmus 項と ADR-0016 Decision 2 を部分 supersede。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -183,10 +189,10 @@ Design and rationale for the hooks and commands deployed from
   を呼ばない決定論的 judge)。
 - [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
   README/CONTRIBUTING.md に machine-checkable な charter(目的1文・
-  `## Scope`・Issue litmus・命名クラス・topics)を播く/適合化し、
-  AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順(ADR-0016 で
-  部分改訂)。事後の横断監査は `github-audit.md` が担う。パイロット適合
-  (命名と責務の乖離が判明した経緯)も記録。
+  `## Scope`・CONTRIBUTING の Issues 節・命名クラス・topics)を播く/適合化し、
+  AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順(ADR-0016・
+  ADR-0017 で部分改訂)。事後の横断監査は `github-audit.md` が担う。
+  パイロット適合(命名と責務の乖離が判明した経緯)も記録。
 - [`github-audit-triage.md`](claude/github-audit-triage.md) — 個人スキル:
   `github-audit` の findings を入力に複数リポジトリぶんの修正を一括起草し、
   1 回の一括レビューを経て一括 PR 化する手順(ADR-0015 の LLM ノード)。

@@ -1,7 +1,8 @@
 # dotfiles agent instructions
 
 See [README.md](README.md) for what this repository is and does, and
-[CONTRIBUTING.md](CONTRIBUTING.md) for the Issue-acceptance litmus test.
+[CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are
+accepted.
 This file is for agent operating instructions only (ADR-0016) — it does not
 duplicate README/CONTRIBUTING content.
 
@@ -154,7 +155,7 @@ dotfiles/
 ├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
 ├── docs/
 │   ├── README.md             # index of everything below, by category
-│   ├── adr/0001..0016        # architecture decision records
+│   ├── adr/0001..0017        # architecture decision records
 │   ├── setup.md              # step-by-step host setup guide
 │   ├── operations.md         # the canonical apply (hms) + routine flake update + tool-layer decision flow
 │   ├── cutover-runbook.md    # per-host migration procedure
@@ -222,8 +223,9 @@ dotfiles/
 │   │   │                     #   critic: copilot-plan-review lens A, gate:
 │   │   │                     #   plan-precedent-gate.sh
 │   │   ├── repo-charter.md       # skill: README/CONTRIBUTING charter schema
-│   │   │                     #   (purpose sentence / Scope / Issue litmus /
-│   │   │                     #   naming class / topics), ADR-0013 + ADR-0016
+│   │   │                     #   (purpose sentence / Scope / CONTRIBUTING
+│   │   │                     #   Issues section / naming class / topics),
+│   │   │                     #   ADR-0013 + ADR-0016 + ADR-0017
 │   │   └── github-audit-triage.md # skill: monitor-driven bulk remediation
 │   │                         #   across repositories (ADR-0015 LLM node);
 │   │                         #   absorbed charter-sweep (#180)
@@ -246,10 +248,11 @@ dotfiles/
 - **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
 - **ADR-0011** — local activity log capture: atuin (offline-only, no sync/update-check) plus a Claude Code turn-boundary JSONL log (`agent-events.jsonl`), both write-only capture points whose path/field contract a separate downstream repository depends on.
 - **ADR-0012** — precedent grounding over prompted adversarial review: instead of turning the user's per-prompt "run an adversarial review" / "check the literature" requests into an abstract standing CLAUDE.md instruction (which a literature survey found does not improve design/reasoning tasks), each non-obvious design decision in a Plan is grounded against prior art in the plan body itself; a context-isolated critic (copilot-plan-review's lens A) audits the citations, and a deterministic gate (`plan-precedent-gate.sh`) enforces the section's form.
-- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit-charters`, deliberately without any LLM call. The README schema itself is partially superseded by ADR-0016.
+- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit charters`, deliberately without any LLM call. The README schema itself is partially superseded by ADR-0016; the Issue litmus item is partially superseded by ADR-0017 (moved to CONTRIBUTING.md's `## Issues` section, "Issue litmus" vocabulary retired).
 - **ADR-0014** — repository naming class taxonomy (codename / descriptive / pj / site), authoritative record in GitHub topics; format match is machine-judged, class assignment is a human decision surfaced through `github-audit-triage`.
 - **ADR-0015** — diagnostics unified into the `github-audit` CLI, structured as a deterministic node (audit) plus an LLM node (`github-audit-triage`) triage loop; retires charter-sweep's auto-merge behavior in favor of a PR-only completion definition.
-- **ADR-0016** — repository document canon: fixed README section schema, Issue litmus moved to CONTRIBUTING.md, a closed root-file allowlist, per-file language-mixing ban, and full separation of human-facing docs from AI-facing docs (AGENTS.md as the AI canon, CLAUDE.md as a router, skills routed through `.agents/skills/`) — grounded in standard-readme, GitHub's own docs, and Art of README. Partially supersedes ADR-0013's README schema and AGENTS.md treatment. This file is a direct consequence of that ADR's Decision 5.
+- **ADR-0016** — repository document canon: fixed README section schema, Issue litmus moved to CONTRIBUTING.md, a closed root-file allowlist, per-file language-mixing ban, and full separation of human-facing docs from AI-facing docs (AGENTS.md as the AI canon, CLAUDE.md as a router, skills routed through `.agents/skills/`) — grounded in standard-readme, GitHub's own docs, and Art of README. Partially supersedes ADR-0013's README schema and AGENTS.md treatment. This file is a direct consequence of that ADR's Decision 5. Decision 2 (Issue litmus placement) is partially superseded by ADR-0017.
+- **ADR-0017** — CONTRIBUTING.md gets its own fixed section schema (`## Issues` with a judging question + Accepted/Rejected examples, `## Pull requests`, `## Expectations`), retiring the self-invented "Issue litmus" vocabulary in favor of GitHub's own "Issues" terminology. Grounded in GitHub's own docs, Open Source Guides, and the nayafia/contributing-template precedent. Partially supersedes ADR-0013 Decision 1's Issue litmus item and ADR-0016 Decision 2.
 
 ## Development Rules
 

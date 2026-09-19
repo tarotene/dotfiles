@@ -39,9 +39,10 @@ description・topics・settings フィールド・ファイルツリー・open I
 だけを読み、**clone しない**。
 
 - 起草するのは `missing=` に挙がった項目のみ(最小差分)。ただし charters
-  ドメインで purpose 文・見出しスキーマ・litmus のいずれか 1 つでも欠けて
-  いる場合は、矛盾なく整合させた 1 セットとして起草する(purpose 文だけ
-  直して Scope と噛み合わなくなる、という事故を避けるため)。
+  ドメインで purpose 文・見出しスキーマ・CONTRIBUTING の Issues 節
+  (judging question / Accepted / Rejected、ADR-0017)のいずれか 1 つでも
+  欠けている場合は、矛盾なく整合させた 1 セットとして起草する(purpose 文
+  だけ直して Scope と噛み合わなくなる、という事故を避けるため)。
 - README/CONTRIBUTING のスキーマ・見出しリテラル・禁止事項(時限記述・
   Issue 番号焼き込み・長文弁明の禁止)は `repo-charter` SKILL.md §2〜3 の
   テンプレートをそのまま使う。**品質ガードレールを外して急がない** —
@@ -76,7 +77,7 @@ drifted な組全体を 1 枚の表で提示する:
 | repo | domain | 提案内容の要約 | 処分案 |
 |---|---|---|---|
 
-charters ドメインは「起草した purpose 文 / Scope 要約 / litmus 判定問」、
+charters ドメインは「起草した purpose 文 / Scope 要約 / judging question」、
 naming は「提案クラス」、settings/renovate は「適用するテンプレート差分」を
 要約欄に書く。低確信フラグの組は要約欄を空にし、処分案を「repo-charter へ
 送る」と書く。ユーザーはリポジトリ×ドメイン単位で **GO / 修正 / 除外 /
@@ -85,10 +86,11 @@ exempt** を返す。確認はこの 1 回だけで、GO 後は項目ごとに�
 
 ## 5. Issue 棚卸し(charters ドメインで GO が出たリポジトリのみ)
 
-起草時に、そのリポジトリの open Issue を新しい Issue litmus の棄却例へ照らし、
-合致するものを表の「close 候補 Issue」欄(charters 行にのみ追加)に挙げて
-おく。**close するのは GO が出た後のみ**。close するときは、合致した棄却例を
-名指しするコメントを必ず付ける(理由なし close は禁止 — `repo-charter`
+起草時に、そのリポジトリの open Issue を新しい CONTRIBUTING の Issues 節
+(ADR-0017)の Rejected 例へ照らし、合致するものを表の「close 候補 Issue」欄
+(charters 行にのみ追加)に挙げておく。**close するのは GO が出た後のみ**。
+close するときは、合致した Rejected 例を名指しするコメントを必ず付ける
+(理由なし close は禁止 — `repo-charter`
 SKILL.md §9 と同じ作法)。
 
 ## 6. 一括適用(GO 分のみ、リポジトリ×ドメインごとに)
