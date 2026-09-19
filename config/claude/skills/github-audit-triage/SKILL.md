@@ -49,7 +49,7 @@ description・topics・settings フィールド・ファイルツリー・open I
   ここで規範から外れた起草をすると、次の監査サイクルでまた drift として
   戻ってくるだけで何も収束しない。
 - naming ドメインの `class-undeclared`/`class-ambiguous`/`pattern-mismatch`
-  は、自由裁定ではなく**盲再導出(ADR-0020)**で提案する — subagent には
+  は、自由裁定ではなく**盲再導出(ADR-0021)**で提案する — subagent には
   対象リポジトリの実際の名前を伏せた状態で README・ファイルツリー・open
   Issue だけを渡し、「本 ADR の語彙・文法のみで命名するなら何と付けるか」
   (クラス + 規範名)を導出させてから、実名を開示して一致度を報告させる。
@@ -60,11 +60,21 @@ description・topics・settings フィールド・ファイルツリー・open I
   dotfiles には書かない)への追記案も併記する。
 - rulesets ドメインの `ci-absent` は、リポジトリごとに
   {最小 CI 播種 PR / CI 播種を促す誘導 Issue の起票 / exempt} の三択を
-  提案する(ADR-0020)。コードを持つリポジトリは播種 PR、記録・ノート系は
+  提案する(ADR-0021)。コードを持つリポジトリは播種 PR、記録・ノート系は
   exempt、判断が割れる場合は Issue 起票を既定の推奨にする。
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。
+- rulesets ドメインは `review_layer`(ADR-0021)を読んで扱いを分ける。
+  `missing` のコア層項目(`deletion`/`pull_request.allowed_merge_methods`
+  等)は対象の `*-repo-governance` スキルの `apply-rulesets.sh`(デフォルト
+  引数、コア 3 ファイルのみ)適用提案として表に書く。`review_layer=
+  partial-drift`(`missing` に `review_layer.*` が立つ)は、`--with-review`
+  で完備させるか `--remove-review` で剥がすかの二択として表に書き、
+  低確信フラグ相当として**起草せず人間裁定に回す**(片方だけ入った経緯が
+  読み取れないため)。`review_layer=absent` は drift ではないので表に
+  出さない — 既存の低速シグナル(`ungoverned`)と同様、レビュー層は
+  opt-in であって欠落ではない。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
@@ -132,7 +142,7 @@ SKILL.md §9 と同じ作法)。
   §6 4 と同じ完了定義)。
 - {誘導 Issue の起票} 選択: 対象リポジトリに CI 播種を促す Issue を起票する
   (attribution フッター必須)。self-verify では「Issue 起票済み・追跡中」
-  として報告する(ADR-0020)。
+  として報告する(ADR-0021)。
 - {exempt} 選択: §7 の overrides.tsv に追記する。
 
 ## 7. exempt 処分
@@ -151,7 +161,7 @@ SKILL.md §9 と同じ作法)。
 - `exempt`(今回除外)
 - 依然 `drifted` だが「`repo-charter`/`*-repo-governance` へ送った」
   「PR 作成済み・merge 待ち」「Issue 起票済み・追跡中」(ci-absent、
-  ADR-0020)のいずれかとして最終報告に明記されている
+  ADR-0021)のいずれかとして最終報告に明記されている
 
 ## 9. 注意
 
