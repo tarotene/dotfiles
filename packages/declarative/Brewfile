@@ -1,0 +1,7 @@
+# macOS system-layer packages (ADR-0018) — the Homebrew mirror of
+# apt-packages.txt. Only what needs macOS's own app-bundle/GUI-registration
+# machinery goes here; user-space CLIs stay in home/modules/packages.nix.
+#
+# Installed via `brew bundle --file=Brewfile` (scripts/install-packages-darwin.sh).
+
+cask "google-chrome"

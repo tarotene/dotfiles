@@ -41,33 +41,54 @@ jobs:
       #
       # --no-build: `checks.${system}` (flake.nix) maps every host to its
       # activationPackage, so a full `nix flake check` here would rebuild all
-      # three hosts a second time — build-host below already does that as a
+      # hosts a second time — build-host below already does that as a
       # matrix. This job stays evaluation-only (module type errors, missing
       # source paths, ...); the real build coverage lives in build-host.
-      - run: nix flake check --no-build --print-build-logs
+      #
+      # --all-systems: darwin (altair, ADR-0018) has no runner here — this is
+      # the cheap eval-only check that catches a darwin module type error
+      # (e.g. an unguarded Linux-only option) without needing a macOS runner.
+      # The corresponding aarch64-darwin build.host matrix row below is the
+      # real build coverage for that system.
+      - run: nix flake check --all-systems --no-build --print-build-logs
 
   build-host:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     name: build ${{ matrix.host }}
     strategy:
       fail-fast: false
       matrix:
-        host: [ personal-pop, company-pop-old, company-pop-new ]
+        include:
+          - host: personal-pop
+            runner: ubuntu-latest
+          - host: company-pop-old
+            runner: ubuntu-latest
+          - host: company-pop-new
+            runner: ubuntu-latest
+          # altair (2022 M2 MacBook Air, aarch64-darwin — ADR-0018).
+          # macos-latest is Apple Silicon (M-series, arm64) — matches
+          # aarch64-darwin without any cross/emulation concern.
+          - host: altair
+            runner: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
       # herdr carries a source patch (patches/herdr-worktree-names.patch,
       # ADR-0001 Amendment) that forces a local Rust build instead of a
-      # cache.nixos.org substitution — several minutes per job, x3 in this
-      # matrix. Cache /nix keyed on what actually determines herdr's
-      # derivation, so a warm run restores it instead of rebuilding.
+      # cache.nixos.org substitution — several minutes per job, x4 in this
+      # matrix (both x86_64-linux and aarch64-darwin need their own build;
+      # the patch invalidates the substitutable derivation on both). Cache
+      # /nix keyed on what actually determines herdr's derivation, so a warm
+      # run restores it instead of rebuilding. The key includes runner.os so
+      # Linux and macOS caches never collide or overwrite each other.
       - uses: nix-community/cache-nix-action@v7
         with:
-          primary-key: nix-herdr-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**') }}
-          restore-prefixes-first-match: nix-herdr-
+          primary-key: nix-herdr-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**') }}
+          restore-prefixes-first-match: nix-herdr-${{ runner.os }}-
           gc-max-store-size-linux: 1G
+          gc-max-store-size-macos: 1G
           purge: true
-          purge-prefixes: nix-herdr-
+          purge-prefixes: nix-herdr-${{ runner.os }}-
           purge-primary-key: never
       - name: Build herdr (GC root, keeps the cache scoped to its closure)
         run: nix build ".#herdr" --print-build-logs -o /tmp/herdr-gcroot

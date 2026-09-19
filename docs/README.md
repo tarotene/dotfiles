@@ -6,6 +6,9 @@
   flake update, and the tool-layer decision flow for new tools.
 - [`setup.md`](setup.md) — step-by-step host setup guide (moved from root
   `SETUP.md`, ADR-0016 root-document allowlist).
+- [`setup-macos.md`](setup-macos.md) — macOS (darwin) host setup guide:
+  erase → update → bootstrap → signing-subkey provisioning (ADR-0018 /
+  ADR-0019).
 - [`cutover-runbook.md`](cutover-runbook.md) — per-host provisioning /
   migration procedure, including rollback.
 - [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
@@ -87,6 +90,11 @@
   GitHub 自身の "Issues" 語彙へ廃止する決定。GitHub 公式・Open Source
   Guides・nayafia/contributing-template に接地。ADR-0013 Decision 1 の
   Issue litmus 項と ADR-0016 Decision 2 を部分 supersede。
+- [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — 最初の darwin
+  ホスト(altair)は standalone home-manager をそのまま拡張し、macOS
+  システム層は nix-darwin ではなく apt 対称の Homebrew Bundle(Brewfile)
+  に委ねる決定。Linux 専用モジュールは各モジュール内で isLinux/isDarwin
+  分岐する。
 - [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) —
   新規ホストは恒星コードネームで命名し(役割・identity・世代を名前に
   埋め込まない)、論理ホスト名はマーカーファイル優先・`hostname`
