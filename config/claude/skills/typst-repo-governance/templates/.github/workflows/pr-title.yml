@@ -1,0 +1,52 @@
+name: PR Title
+
+# This workflow validates that PR titles follow the Conventional Commits spec.
+#
+# Why PR title, not commit messages?
+# This repository uses squash-merge (enforced by the Workflow Ruleset). On squash-merge,
+# GitHub uses the PR title as the commit message on the default branch. Enforcing the
+# PR title therefore enforces the entire commit history convention without per-commit
+# pre-push hooks.
+#
+# As a side effect: since this check only fires on pull_request events, it will never
+# be reported for direct pushes to __DEFAULT_BRANCH__ — those will be blocked by the
+# Quality Ruleset's required_status_checks (context never reported → push rejected).
+# This effectively enforces a PR-only workflow.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: PR title (Conventional Commits)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ADJUST: Review amannn/action-semantic-pull-request options:
+      #   https://github.com/amannn/action-semantic-pull-request#configuration
+      # Key options: types (allowed commit types), requireScope, subjectPattern.
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # ADJUST: Remove types you don't use.
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          # Scope is optional but recommended for clarity.
+          requireScope: false
+          # Allow breaking changes (trailing !).
+          # This is implicit in the action — breaking changes are always allowed.

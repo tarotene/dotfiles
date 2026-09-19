@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# pre-push — Build PDFs and run the ATS verification gate before every push.
+# Installed by: git config --local core.hooksPath .githooks
+set -eu
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "[pre-push] 'just' not found on PATH."
+    echo "  Install: cargo install just   OR   brew install just"
+    exit 1
+fi
+
+echo "[pre-push] Running CI gate via just..."
+just ci || {
+    echo ""
+    echo "  CI gate failed. Fix the issues above, then retry 'git push'."
+    exit 1
+}
+
+echo "[pre-push] OK"

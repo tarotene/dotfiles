@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# commit-msg — Validate commit message against Conventional Commits spec.
+# Installed by: git config --local core.hooksPath .githooks
+set -eu
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "[commit-msg] 'just' not found on PATH."
+    echo "  Install: cargo install just   OR   brew install just"
+    echo "  Then re-run the failing git command."
+    exit 1
+fi
+
+just commit-check "$1" || {
+    echo ""
+    echo "  Commit message rejected. Use Conventional Commits format:"
+    echo "    feat(scope): description       # new feature"
+    echo "    fix(scope): description        # bug fix"
+    echo "    docs(scope): description       # docs/content only"
+    echo "    chore(scope): description      # maintenance (no release)"
+    echo "    feat(scope)!: description      # breaking change"
+    echo "  Fix with 'git commit --amend' and try again."
+    exit 1
+}
+
+echo "[commit-msg] OK"

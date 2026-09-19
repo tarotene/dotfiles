@@ -1,0 +1,36 @@
+name: 'Typst Setup'
+description: >
+  Install the Typst compiler, system fonts and PDF tools (poppler),
+  and the 'just' task runner. Used by build, min-typst, and release workflows.
+  The fmt workflow installs typstyle separately via typstyle-rs/typstyle-action.
+
+inputs:
+  typst-version:
+    description: >
+      Typst version to install. Pass '__TYPST_VERSION__' for the pinned CI version
+      or a specific semver string (e.g. '0.14.0') for minimum-version testing.
+    default: '__TYPST_VERSION__'
+  cache-key:
+    description: 'Unique key suffix for apt cache (use job name: build, min-typst, release, …)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Typst compiler
+      # renovate: datasource=github-releases depName=typst/typst
+      uses: typst-community/setup-typst@v5
+      with:
+        typst-version: ${{ inputs.typst-version }}
+
+    - name: Install fonts and PDF tools
+      # Cached to avoid repeated apt-get installs across runs.
+      uses: awalsh128/cache-apt-pkgs-action@v1
+      with:
+        packages: fonts-noto-cjk poppler-utils
+        version: 1.0
+
+    - name: Install just task runner
+      uses: taiki-e/install-action@v2
+      with:
+        tool: just

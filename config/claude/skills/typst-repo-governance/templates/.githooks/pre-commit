@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# pre-commit — Check Typst and YAML formatting before every commit.
+# Installed by: git config --local core.hooksPath .githooks
+set -eu
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "[pre-commit] 'just' not found on PATH."
+    echo "  Install: cargo install just   OR   brew install just"
+    echo "  Then re-run the failing git command."
+    exit 1
+fi
+
+echo "[pre-commit] Running format check via just..."
+just fmt-check || {
+    echo ""
+    echo "  Typst format check failed. Run 'just fmt' to auto-fix, then re-stage."
+    exit 1
+}
+
+echo "[pre-commit] OK"

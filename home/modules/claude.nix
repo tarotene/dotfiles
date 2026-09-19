@@ -1019,6 +1019,76 @@ in
   home.file.".claude/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
 
+  # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
+  # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
+  # Copilot CLI がネイティブ読取)。上の .claude/skills/ 配下の各スキルと
+  # 同一ソースを .agents/skills/ にも張る(コメント・追跡ロジックは
+  # .claude/skills/ 側に一本化し、ここは張り替えのみ)。Claude Code が
+  # .agents/skills/ をネイティブに読むようになったらこのブロックは撤去する。
+  home.file.".agents/skills/diagramming/SKILL.md".source =
+    repoConfig + "/claude/skills/diagramming/SKILL.md";
+  home.file.".agents/skills/diagramming/cases.md".source =
+    repoConfig + "/claude/skills/diagramming/cases.md";
+  home.file.".agents/skills/skill-gardening/SKILL.md".source =
+    repoConfig + "/claude/skills/skill-gardening/SKILL.md";
+  home.file.".agents/skills/test-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/test-grounding/SKILL.md";
+  home.file.".agents/skills/test-grounding/cases.md".source =
+    repoConfig + "/claude/skills/test-grounding/cases.md";
+  home.file.".agents/skills/living-description/SKILL.md".source =
+    repoConfig + "/claude/skills/living-description/SKILL.md";
+  home.file.".agents/skills/living-description/cases.md".source =
+    repoConfig + "/claude/skills/living-description/cases.md";
+  home.file.".agents/skills/pr-description/SKILL.md".source =
+    repoConfig + "/claude/skills/pr-description/SKILL.md";
+  home.file.".agents/skills/pr-description/cases.md".source =
+    repoConfig + "/claude/skills/pr-description/cases.md";
+  home.file.".agents/skills/wrapup-chores/SKILL.md".source =
+    repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
+  home.file.".agents/skills/copilot-model-bump/SKILL.md".source =
+    repoConfig + "/claude/skills/copilot-model-bump/SKILL.md";
+  home.file.".agents/skills/issue-hygiene/SKILL.md".source =
+    repoConfig + "/claude/skills/issue-hygiene/SKILL.md";
+  home.file.".agents/skills/tracking-issue/SKILL.md".source =
+    repoConfig + "/claude/skills/tracking-issue/SKILL.md";
+  home.file.".agents/skills/stacked-pr/SKILL.md".source =
+    repoConfig + "/claude/skills/stacked-pr/SKILL.md";
+  home.file.".agents/skills/scope-inventory/SKILL.md".source =
+    repoConfig + "/claude/skills/scope-inventory/SKILL.md";
+  home.file.".agents/skills/precedent-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+
+  # rust-repo-governance / typst-repo-governance / astro-site-governance:
+  # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
+  # 移設。ディレクトリ全体を単一シンボリックリンクとしてデプロイし(個別
+  # ファイル列挙はしない — scripts/templates/rulesets/reference の下位
+  # 構造は各スキル側で完結している)、上と同じ理由で .agents/skills/ にも
+  # 同一ソースを張る。
+  home.file.".claude/skills/rust-repo-governance" = {
+    source = repoConfig + "/claude/skills/rust-repo-governance";
+    recursive = true;
+  };
+  home.file.".agents/skills/rust-repo-governance" = {
+    source = repoConfig + "/claude/skills/rust-repo-governance";
+    recursive = true;
+  };
+  home.file.".claude/skills/typst-repo-governance" = {
+    source = repoConfig + "/claude/skills/typst-repo-governance";
+    recursive = true;
+  };
+  home.file.".agents/skills/typst-repo-governance" = {
+    source = repoConfig + "/claude/skills/typst-repo-governance";
+    recursive = true;
+  };
+  home.file.".claude/skills/astro-site-governance" = {
+    source = repoConfig + "/claude/skills/astro-site-governance";
+    recursive = true;
+  };
+  home.file.".agents/skills/astro-site-governance" = {
+    source = repoConfig + "/claude/skills/astro-site-governance";
+    recursive = true;
+  };
+
   # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
   # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
   home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";

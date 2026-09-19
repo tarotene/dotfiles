@@ -1,0 +1,203 @@
+# Task runner for Rust workspace projects.
+# Requires: https://github.com/casey/just
+#
+# ADJUST: Customize recipes for your project structure.
+# Section markers indicate which parts are optional:
+#   CORE            — required for every Rust workspace repo
+#   CI              — aggregate gate recipe
+#   RELEASE-MACHINERY — needed only if using release-plz with excluded crates
+#   HOST-PTY-SMOKE  — hardware-free integration smoke test (telepath-specific; replace or remove)
+#   TOOLS-CLI       — required if you have an excluded CLI crate under tools/
+#   EMBEDDED        — required only for embedded firmware development
+#   AGGREGATE       — full-project build check
+
+# =============================================================================
+# CORE
+# =============================================================================
+
+# Build all workspace members (host targets only)
+build:
+    cargo build --workspace
+
+# Run all workspace tests
+test:
+    cargo test --workspace
+
+# Check formatting (no changes written)
+fmt-check:
+    cargo fmt --all -- --check
+
+# Apply formatting
+fmt:
+    cargo fmt --all
+
+# Run clippy on workspace members only
+clippy-workspace:
+    cargo clippy --workspace -- -D warnings
+
+# Run clippy on tools/__CLI_CRATE__ across all relevant feature combinations.
+# ADJUST: Update feature flags to match your CLI crate's Cargo features.
+clippy-tools:
+    cargo clippy --manifest-path tools/__CLI_CRATE__/Cargo.toml --all-targets -- -D warnings
+    cargo clippy --manifest-path tools/__CLI_CRATE__/Cargo.toml --no-default-features --features shell,serial --all-targets -- -D warnings
+    cargo clippy --manifest-path tools/__CLI_CRATE__/Cargo.toml --no-default-features --features mcp,serial --all-targets -- -D warnings
+
+# Run clippy everywhere (workspace + tools); warnings are treated as errors
+clippy: clippy-workspace clippy-tools
+
+# Verify a single commit message file against Conventional Commits (used by .githooks/commit-msg)
+# Requires: cargo install --locked cocogitto
+commit-check MSG_FILE:
+    cog verify --file '{{MSG_FILE}}'
+
+# =============================================================================
+# CI
+# =============================================================================
+
+# Full CI gate: fmt-check + clippy + test + smoke + CLI tests.
+# ADJUST: Add or remove sub-checks to match what your project needs.
+# Remove host-pty-smoke if you don't have a hardware-free integration test.
+# Remove mcp-test if you don't have a separate CLI crate.
+ci: fmt-check clippy test host-pty-smoke mcp-test
+
+# =============================================================================
+# RELEASE-MACHINERY
+# =============================================================================
+
+# Preview what the next release would update, then restore the working tree.
+# Requires: cargo install --locked release-plz; gh auth login (for PR number lookup)
+release-preview:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GIT_TOKEN=$(gh auth token) release-plz update --allow-dirty
+    git diff
+    git restore .
+
+# Bump excluded crates' versions to match the upcoming workspace release.
+# Called automatically by the release-plz CI workflow.
+# Usage: just bump-excluded 0.1.1
+# ADJUST: Add similar sed + cargo update lines for additional excluded crates.
+bump-excluded VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in tools/__CLI_CRATE__/Cargo.toml; do
+        sed 's/^version = "[^"]*"/version = "{{VERSION}}"/' "$f" > "$f.tmp" \
+            && mv "$f.tmp" "$f"
+    done
+    # Sync each excluded crate's Cargo.lock to the new version.
+    # --precise pins the update to exactly the new version.
+    (cd tools/__CLI_CRATE__ && cargo update -p __CLI_CRATE__ --precise "{{VERSION}}")
+    # ADJUST: If you have additional excluded crates, add:
+    # (cd examples/my-firmware && cargo update -p my-firmware --precise "{{VERSION}}")
+
+# =============================================================================
+# HOST-PTY-SMOKE
+# ADJUST: Replace this recipe with your own hardware-free smoke test, or remove
+# it and update the ci recipe if you do not have such a test.
+# =============================================================================
+
+# Smoke test host-pty-server end-to-end via a serial PTY pair (no hardware required).
+host-pty-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build -p host-pty-server
+    cargo build --manifest-path tools/__CLI_CRATE__/Cargo.toml --no-default-features --features shell,serial
+    cargo run -p host-pty-server > /tmp/host-pty-server.out &
+    SERVER_PID=$!
+    trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+    for i in $(seq 1 15); do
+        SLAVE=$(grep 'HOST_PTY_SERVER_PATH=' /tmp/host-pty-server.out 2>/dev/null | sed 's/HOST_PTY_SERVER_PATH=//' | head -1 || true)
+        if [ -n "$SLAVE" ]; then break; fi
+        sleep 1
+    done
+    if [ -z "$SLAVE" ]; then
+        echo "ERROR: host-pty-server did not print PTY path"; exit 1
+    fi
+    tools/__CLI_CRATE__/target/debug/__CLI_CRATE__ shell --transport serial --port "$SLAVE" --exec ping | tee /dev/stderr | grep -qF "ping -> 0xDEADBEEF"
+    tools/__CLI_CRATE__/target/debug/__CLI_CRATE__ shell --transport serial --port "$SLAVE" --exec "add 2 3" | tee /dev/stderr | grep -qF "add -> 5"
+    tools/__CLI_CRATE__/target/debug/__CLI_CRATE__ shell --transport serial --port "$SLAVE" --exec "add [2, 3]" | tee /dev/stderr | grep -qF "add -> 5"
+
+# =============================================================================
+# TOOLS-CLI
+# ADJUST: Update feature flags, paths, and test commands for your CLI crate.
+# =============================================================================
+
+# Build the CLI crate (default features)
+cli-build:
+    cd tools/__CLI_CRATE__ && cargo build
+
+# Run the CLI with arguments
+cli *ARGS:
+    cd tools/__CLI_CRATE__ && cargo run -- shell {{ARGS}}
+
+# Test the CLI crate across feature matrices.
+# ADJUST: Update feature flag combinations to match your CLI crate.
+mcp-test:
+    cd tools/__CLI_CRATE__ && cargo test
+    cd tools/__CLI_CRATE__ && cargo test --no-default-features --features mcp,serial
+
+# Run the MCP server (requires a running target with RTT transport).
+# ADJUST: Update the subcommand name if different.
+mcp-run-rtt:
+    cd tools/__CLI_CRATE__ && cargo run -- mcp
+
+# =============================================================================
+# EMBEDDED
+# OPTIONAL: Remove this entire section if not doing embedded firmware development.
+# ADJUST: Update chip names, target triples, and example paths.
+# =============================================================================
+
+# Build firmware example (cross-compile; requires thumbv7em-none-eabi target)
+firmware-build:
+    cd examples/nrf52840-ping && cargo build --release
+
+# Flash firmware to nRF52840-DK
+firmware-flash:
+    cd examples/nrf52840-ping && cargo run --release
+    probe-rs reset --chip nRF52840_xxAA
+
+# Local end-to-end smoke: flash + run `ping` once + assert sentinel.
+# Requires nRF52840-DK connected.
+firmware-ping: firmware-flash
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/__CLI_CRATE__ && cargo run -- shell --exec ping | tee /dev/stderr | grep -qF "ping -> 0xDEADBEEF"
+
+# Benchmark framing overhead via a PTY pair (no hardware required).
+bench-pty DURATION="10s":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build -p host-pty-server --features profile
+    cargo build --manifest-path tools/__CLI_CRATE__/Cargo.toml \
+        --no-default-features --features shell,serial,profile
+    cargo run -p host-pty-server --features profile > /tmp/host-pty-server.out &
+    SERVER_PID=$!
+    trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+    for i in $(seq 1 15); do
+        SLAVE=$(grep 'HOST_PTY_SERVER_PATH=' /tmp/host-pty-server.out 2>/dev/null \
+                | sed 's/HOST_PTY_SERVER_PATH=//' | head -1 || true)
+        if [ -n "$SLAVE" ]; then break; fi
+        sleep 1
+    done
+    if [ -z "$SLAVE" ]; then
+        echo "ERROR: host-pty-server did not print PTY path"; exit 1
+    fi
+    tools/__CLI_CRATE__/target/debug/__CLI_CRATE__ shell \
+        --transport serial --port "$SLAVE" \
+        --ping-storm {{DURATION}}
+
+# Benchmark framing overhead on a connected nRF52840-DK.
+firmware-bench DURATION="30s":
+    cd examples/nrf52840-ping && cargo build --release --features profile
+    probe-rs download --chip nRF52840_xxAA examples/nrf52840-ping/target/thumbv7em-none-eabi/release/nrf52840-ping
+    probe-rs reset --chip nRF52840_xxAA
+    cd tools/__CLI_CRATE__ && cargo run --features profile -- \
+        shell --transport rtt --ping-storm {{DURATION}}
+
+# =============================================================================
+# AGGREGATE
+# =============================================================================
+
+# Build everything: workspace + CLI.
+# ADJUST: Add firmware-build for embedded projects: check-all: build cli-build firmware-build
+check-all: build cli-build

@@ -1,0 +1,92 @@
+name: Fmt
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+    tags-ignore: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # ADJUST: Update to match your source layout and config files.
+          PATTERNS='^(src/|lib/|data/.*\.yml$|i18n/.*\.yml$|\.yamllint$|Justfile$|\.github/(workflows/fmt\.yml|actions/typst-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No fmt-relevant changes; skipping."
+          fi
+
+      # typstyle ships as a bare binary (no archive). Download to ~/.local/bin and chmod +x.
+      - name: Install typstyle
+        if: steps.guard.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          tag=$(gh api repos/typstyle-rs/typstyle/releases/latest --jq .tag_name)
+          gh release download "$tag" --repo typstyle-rs/typstyle \
+            --pattern 'typstyle-x86_64-unknown-linux-gnu' \
+            --output "$HOME/.local/bin/typstyle"
+          chmod +x "$HOME/.local/bin/typstyle"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install just
+        if: steps.guard.outputs.run == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      # typstyle: --check exits 1 if any file needs reformatting.
+      # ADJUST: Update paths to match your Typst source layout.
+      - name: Check Typst formatting
+        if: steps.guard.outputs.run == 'true'
+        run: typstyle --check lib/ src/
+
+      - name: Check YAML files
+        if: steps.guard.outputs.run == 'true'
+        run: yamllint .
+
+      - name: Check Justfile formatting
+        if: steps.guard.outputs.run == 'true'
+        run: just --fmt --check --unstable

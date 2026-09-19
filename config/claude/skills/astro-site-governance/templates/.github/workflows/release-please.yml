@@ -1,0 +1,27 @@
+name: Release Please
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # Using the default GITHUB_TOKEN means release PRs won't trigger CI
+          # automatically (GitHub suppresses PR events from the bot). The Quality
+          # Ruleset has an admin bypass_actor so maintainers can merge them.
+          #
+          # ADJUST: To have release PRs trigger full CI, create a GitHub App with
+          # Contents/PRs R/W, set RELEASE_PLEASE_APP_ID + _PRIVATE_KEY secrets,
+          # and use a token generated from that App here instead.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

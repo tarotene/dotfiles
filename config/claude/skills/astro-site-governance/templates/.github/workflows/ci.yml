@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+    branches: [__DEFAULT_BRANCH__]
+
+# NOTE: Job `name:` strings must exactly match the `context` values in the
+# Quality GitHub Ruleset (rulesets/quality.json). If you rename a job here,
+# update the Ruleset context string at the same time.
+#
+# Current required contexts:
+#   "Format & Lint (Biome)" / "Content lint" / "Unit tests" / "Build"
+#
+# ADJUST: If this project has no custom MDX content-lint scripts, remove the
+# "Content lint" job here AND its entry in rulesets/quality.json.
+
+jobs:
+  biome:
+    name: Format & Lint (Biome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: __NODE_VERSION__
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Biome CI (format-check + lint + imports)
+        run: npm run ci:biome
+
+  content-lint:
+    name: Content lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: __NODE_VERSION__
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and content lint (astro check + abbr + style)
+        run: npm run check
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: __NODE_VERSION__
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest unit tests
+        run: npm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: __NODE_VERSION__
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Astro site
+        run: npm run build

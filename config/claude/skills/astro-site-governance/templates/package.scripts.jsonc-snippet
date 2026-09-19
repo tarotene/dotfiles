@@ -1,0 +1,20 @@
+// package.json additions — merge into your existing package.json.
+// DO NOT overwrite the whole file; add/update only the keys shown here.
+//
+// "private": true,
+// "engines": { "node": ">=__NODE_VERSION__" },
+//
+// Add to "scripts":
+//   "lint":         "biome lint .",
+//   "lint:fix":     "biome lint --write .",
+//   "format":       "biome format --write .",
+//   "format:check": "biome format .",
+//   "ci:biome":     "biome ci .",
+//   "test":         "vitest run",
+//   "test:watch":   "vitest",
+//   "commit-check": "cog verify"
+//
+// Add to "devDependencies":
+//   "@biomejs/biome":      "^2.4.0",
+//   "vitest":              "^4.1.0",
+//   "@vitest/coverage-v8": "^4.1.0"

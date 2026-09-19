@@ -1,0 +1,89 @@
+name: Tools
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  tools:
+    # IMPORTANT: This job name must exactly match the required status check context
+    # registered in rulesets/quality.json ("Tools (__CLI_CRATE__ CLI clippy + tests)").
+    # After seed.sh substitution, both this name and the Ruleset context become identical.
+    name: Tools (__CLI_CRATE__ CLI clippy + tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ADJUST: Update crate directory names and the tools/ path to match your workspace.
+          # The tools/__CLI_CRATE__/ path is the excluded CLI crate under tools/.
+          PATTERNS='^(telepath-(wire|client|macros)/|tools/__CLI_CRATE__/|Cargo\.(toml|lock)$|Justfile$|rust-toolchain\.toml$|\.github/(workflows/tools\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No tools-relevant changes; skipping."
+          fi
+
+      - name: Setup Rust environment
+        if: steps.guard.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          components: clippy
+          cache-key: tools-__CLI_CRATE__
+          cache-workspaces: tools/__CLI_CRATE__
+          install-libudev: 'true'
+
+      # ADJUST: Update the step name and recipe if your CLI crate has different feature combinations.
+      - name: Clippy (tools/__CLI_CRATE__ — all feature combos)
+        if: steps.guard.outputs.run == 'true'
+        run: just clippy-tools
+
+      # ADJUST: Update the step name and recipe to match your CLI crate's test targets.
+      - name: Test CLI tool (default + additional feature combos)
+        if: steps.guard.outputs.run == 'true'
+        run: just mcp-test
