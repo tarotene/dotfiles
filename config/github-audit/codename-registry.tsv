@@ -1,0 +1,14 @@
+# naming-codename 鋳造レジストリ(ADR-0020)。
+#
+# naming-codename を宣言する PUBLIC リポジトリはここに追記する。追記は
+# dotfiles への PR 経由(default-deny — 未登録の codename 宣言は
+# github-audit の naming ドメインで drift として検出される)。
+#
+# private リポジトリの codename は dotfiles(PUBLIC)にリポジトリ名を書け
+# ないため、ここではなく `~/.config/github-audit/codename-registry.local.tsv`
+# に置く(docs/claude/public-publish-guard.md の非公開方針)。監査は両者の
+# 和集合を読む。
+#
+# name<TAB>responsibility(1 line)<TAB>decided-date(YYYY-MM-DD)
+dotfiles	standalone home-manager configuration for one person's user environment	2026-09-19
+telepath	embedded/MCP/RPC tool	2026-09-19

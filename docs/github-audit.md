@@ -48,10 +48,21 @@ a single-user tool.
 
 ## Domains
 
-### rulesets (#130)
+### rulesets (#130, ADR-0020)
 
 Reports which repositories' default-branch rulesets have drifted from the
 account-wide baseline.
+
+**`required_status_checks` is derived from CI presence, not required
+unconditionally (ADR-0020).** A repository with no `.github/workflows`
+has no status check to require, so this one rule type is excluded from the
+baseline loop for it — but that exclusion is never silent. Such a
+repository is still reported `drifted`, with `ci-absent` in `missing`
+instead of `required_status_checks`. This matters because a plain
+`not-applicable` (as used by the `renovate` domain below) would remove the
+repository from view entirely, and CI never gets a reason to exist —
+`ci-absent` keeps it visible so `github-audit-triage` can propose {a
+minimal CI-seeding PR / a CI-seeding Issue / an exempt} for a human to pick.
 
 **Why judgement is by rule-type union, not ruleset name/count.** The
 `*-repo-governance` skills' `rulesets/*.json` templates describe a 3-file
@@ -170,7 +181,7 @@ weak judging question still passes; catching a weak-but-present litmus
 test is a human review problem (the `repo-charter` skill's interview
 step), not this audit's job.
 
-### naming (ADR-0014)
+### naming (ADR-0014 + ADR-0020)
 
 Reports naming-class declaration and pattern conformance. Every repository
 should carry exactly one `naming-*` GitHub topic (`naming-codename` /
@@ -188,7 +199,34 @@ pattern.
 `.github` is permanently exempt (GitHub reserves the name; there's no
 class it could meaningfully declare). This audit never decides *which*
 class a repository should declare — that's a human judgement call the
-`github-audit-triage` skill surfaces from these findings.
+`github-audit-triage` skill surfaces from these findings (as of ADR-0020,
+via **blind re-derivation**: a class + canonical name is derived from the
+repository's contents with its actual name hidden, then compared back
+against the real name).
+
+**ADR-0020 closed vocabularies.** Beyond the lexical pattern above, three
+classes draw their variable slot from a closed, repo-tracked vocabulary:
+
+- `codename-not-registered` — a `naming-codename` repository whose name is
+  not in the codename registry (`config/github-audit/codename-registry.tsv`
+  plus a `~/.config/github-audit/codename-registry.local.tsv` overlay for
+  PRIVATE repositories, which cannot be named in this PUBLIC repository's
+  tracked files). Applies to **every** `naming-codename` declaration,
+  regardless of when the repository was created — the registry's
+  default-deny gate is meant to start now, not only for future repos.
+- `species-unrecognized:<token>` — a `naming-descriptive` repository whose
+  trailing `-<token>` is not in the species closed set
+  (`config/github-audit/descriptive-species.tsv`). Only checked for
+  repositories created after ADR-0020's cutoff (`created_at` grandfather,
+  same idea as ADR-0007's no-retroactive-rename rule).
+- `domain-unrecognized` — a `naming-site` repository whose name is not in
+  the site domain closed set (`config/github-audit/site-domains.tsv` +
+  local overlay). Same cutoff rule as species above.
+
+The species closed set intentionally excludes action nouns (e.g.
+`cleanup`, `migration`) — a completable action belongs to `naming-pj`, not
+`naming-descriptive`. See ADR-0020's Context for the incident that
+motivated this.
 
 ### settings
 

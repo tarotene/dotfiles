@@ -23,12 +23,29 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
    H1 直後の段落の書き出しになり、そのまま GitHub の description にもなる
    (両者は同じ文字列 — description は README のミラーであって独立した二つ目の
    要約ではない)。
-2. **命名クラス**(ADR-0014) — このリポジトリは `naming-codename`(恒久ツール・
-   一語)/ `naming-descriptive`(研究・記録・コンテンツ系の複合語)/
-   `naming-pj`(期限付きプロジェクト、`pj-` prefix)/ `naming-site`
-   (公開ドメインのサイト、FQDN)のどれか。名前が宣言したクラスのパターンに
-   一致しない場合、リポジトリ名を変えるかクラスを選び直すかをここで決める
-   (改名は既存リンクを壊すので、新規作成時に決めるのが一番安い)。
+2. **命名クラス**(ADR-0014 + ADR-0020) — このリポジトリは `naming-codename`
+   (恒久ツール・一語)/ `naming-descriptive`(研究・記録・コンテンツ系の
+   複合語)/ `naming-pj`(期限付きプロジェクト、`pj-` prefix)/
+   `naming-site`(公開ドメインのサイト、FQDN)のどれか。**新規作成は常に
+   ADR-0020 の cutoff より後なので、字句パターンだけでなく閉じた語彙も
+   ここで強制する**(github-audit の naming ドメインが後から drift 検出
+   するのを待たない — 生成側で先に閉じる):
+   - `naming-descriptive` を選ぶ場合: 名前の末尾トークンが
+     `config/github-audit/descriptive-species.tsv` の種別語に**ないと
+     作成に進めない**。ここにない種別語(特に「完了しうる行為」を表す
+     語 — cleanup, migration 等)は `naming-pj` へ倒す。種別語を追加したい
+     場合は先にそのファイルの改訂 PR を立てる。
+   - `naming-codename` を選ぶ場合: 名前が
+     `config/github-audit/codename-registry.tsv`(PUBLIC)または
+     `~/.config/github-audit/codename-registry.local.tsv`(PRIVATE)に
+     **登録されていないと作成に進めない**。未登録なら先にレジストリへの
+     追記(PUBLIC は PR、PRIVATE はローカルファイルへの直接追記)を行う。
+   - `naming-site` を選ぶ場合: ドメインが対応する
+     `site-domains.tsv`/`.local.tsv` に登録されている前提で進める。
+   - `naming-pj` は対象スロットが字句規則のみ(閉じた語彙なし)。
+   名前が選んだクラスのパターン・語彙に一致しない場合、リポジトリ名を
+   変えるかクラスを選び直すかをここで決める(改名は既存リンクを壊すので、
+   新規作成時に決めるのが一番安い)。
 3. **Scope**(地の文、In/Out ラベルなし) — このリポジトリが担うこと・担わない
    ことを、境界と代表的な caveats だけ数文で書く。担わない側は「関連するが
    別リポジトリの責務」を具体的に書く(例: 「現像ワークフローの自動化は
@@ -180,6 +197,11 @@ ln -s ../../.agents/skills/<name> .claude/skills/<name>
 ```
 
 ## 7. GitHub メタデータへの反映
+
+**新規作成の場合、`gh repo create` の前に手順 2 の閉じた語彙チェックが
+通っていることを確認する**(ADR-0020)— `naming-codename` を選んだのに
+レジストリ未登録のまま `gh repo create` すると、直後の `github-audit
+naming` が `codename-not-registered` で即 drift 報告する。
 
 ```bash
 gh repo create <owner>/<repo> --private --description "<目的 1 文>"   # 新規時

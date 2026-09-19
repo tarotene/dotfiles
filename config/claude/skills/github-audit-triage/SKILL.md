@@ -49,8 +49,19 @@ description・topics・settings フィールド・ファイルツリー・open I
   ここで規範から外れた起草をすると、次の監査サイクルでまた drift として
   戻ってくるだけで何も収束しない。
 - naming ドメインの `class-undeclared`/`class-ambiguous`/`pattern-mismatch`
-  は、起草ではなく**クラス帰属の提案**を表に書く(ADR-0014 の語彙から
-  1 つ選び、パターン一致する改名案があれば併記)。
+  は、自由裁定ではなく**盲再導出(ADR-0020)**で提案する — subagent には
+  対象リポジトリの実際の名前を伏せた状態で README・ファイルツリー・open
+  Issue だけを渡し、「本 ADR の語彙・文法のみで命名するなら何と付けるか」
+  (クラス + 規範名)を導出させてから、実名を開示して一致度を報告させる。
+  表には「導出クラス / 導出名 / 実名 / 一致度 / 処分案」を書く。処分案は
+  高一致なら「宣言のみ」、不一致なら「改名 + 宣言」。`naming-codename` を
+  提案する場合は、`config/github-audit/codename-registry.tsv`(PUBLIC)
+  または `~/.config/github-audit/codename-registry.local.tsv`(PRIVATE、
+  dotfiles には書かない)への追記案も併記する。
+- rulesets ドメインの `ci-absent` は、リポジトリごとに
+  {最小 CI 播種 PR / CI 播種を促す誘導 Issue の起票 / exempt} の三択を
+  提案する(ADR-0020)。コードを持つリポジトリは播種 PR、記録・ノート系は
+  exempt、判断が割れる場合は Issue 起票を既定の推奨にする。
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。
@@ -107,7 +118,22 @@ SKILL.md §9 と同じ作法)。
    ドメインの `naming-*` topic 反映も、**該当 PR が merge された後**に
    人間が個別に行う(この段階では行わない — README が正本、メタデータは
    鏡という関係上、README merge 前に鏡だけ書き換えると矛盾した状態が
-   一時的に生まれる)。
+   一時的に生まれる)。ただし naming ドメインで改名を伴わない場合(盲
+   再導出の一致度が高く、宣言のみで済む場合)は対応する PR 自体が存在
+   しないため、GO 直後に `gh repo edit --add-topic naming-<class>` を
+   直接実行してよい — 待つ理由(README merge 前の鏡の矛盾)がそもそも
+   発生しない。改名を伴う場合(`naming-pj` への移行など)は改名 PR の
+   merge を待つ。
+
+## 6a. rulesets ドメインの ci-absent 適用(GO 分のみ)
+
+- {最小 CI 播種 PR} 選択: 対象リポジトリに最小の CI ワークフローを追加する
+  PR を、そのリポジトリの通常の PR フローで作成する(merge は待つ —
+  §6 4 と同じ完了定義)。
+- {誘導 Issue の起票} 選択: 対象リポジトリに CI 播種を促す Issue を起票する
+  (attribution フッター必須)。self-verify では「Issue 起票済み・追跡中」
+  として報告する(ADR-0020)。
+- {exempt} 選択: §7 の overrides.tsv に追記する。
 
 ## 7. exempt 処分
 
@@ -124,7 +150,8 @@ SKILL.md §9 と同じ作法)。
 - `ok`(今回 PR 作成済み、または既に merge 済みで再監査に反映)
 - `exempt`(今回除外)
 - 依然 `drifted` だが「`repo-charter`/`*-repo-governance` へ送った」
-  「PR 作成済み・merge 待ち」のいずれかとして最終報告に明記されている
+  「PR 作成済み・merge 待ち」「Issue 起票済み・追跡中」(ci-absent、
+  ADR-0020)のいずれかとして最終報告に明記されている
 
 ## 9. 注意
 

@@ -1,0 +1,25 @@
+# naming-descriptive 種別語の閉集合(ADR-0020)。
+#
+# naming-descriptive は `<対象>-<種別語>` の文法を取り、末尾トークン
+# (種別語)はこの閉集合からのみ選ぶ(cutoff = 本 ADR の Date 以降に作成
+# されたリポジトリにのみ機械適用。既存リポジトリは createdAt による
+# grandfather 対象)。
+#
+# 採録基準: 恒久的な「器」の名詞のみ。完了しうる行為を表す名詞
+# (cleanup, migration, consolidation 等)は採録しない — 行為は
+# naming-pj(期限付きプロジェクト)へ強制する(ADR-0020 Context の実例が
+# 根拠)。追加はこのファイルの改訂 PR 経由。
+#
+# token<TAB>note
+cards	コンテンツ・教材の集合
+config	設定・ポリシーの集合
+context	文脈情報の集合
+ctl	操作対象を制御するツール
+dag	有向グラフとして構造化されたデータの集合
+guard	防御・監視の役割を持つ機構
+guidebook	手引き・案内文書
+inventory	棚卸し対象の一覧
+lab	実験・試作の場
+ops	運用手順・運用ツールの集合
+template	雛形文書・雛形コード
+toolbox	ツール群の集合
