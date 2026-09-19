@@ -39,6 +39,11 @@ upstream-split.md` を参照。
   `retiredHookEntries` で完全一致削除してから新 command を登録する —
   matcher/timeout は既存エントリの command が変わらない限り更新されない
   (この nix ファイル内 `register()` のコメント参照)。
+- `config/git/hooks/pre-push`(`core.hooksPath` で全リポジトリ共通、
+  `docs/git-sync.md`)が `scan-push` を呼ぶ(#196)。エンジン不在は黙って
+  スキップ(ADR-0005)。exit 1(ask)/2(deny)のどちらも push を block する
+  (pre-push に対話の経路が無いため)。回避は `PUBLISH_GUARD_ALLOW=1 git
+  push`。PRIVATE/INTERNAL リポジトリの自動スキップは engine 側の判定。
 
 ## 未検証の前提
 
