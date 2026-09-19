@@ -139,6 +139,9 @@ dotfiles/
 │   │                         #   charters / naming (ADR-0014) / settings /
 │   │                         #   renovate (ADR-0015; deployed to ~/.local/bin,
 │   │                         #   manual command, no timer)
+│   ├── github-rulesets-apply  # seeds standard rulesets via the governance
+│   │                         #   skills' apply-rulesets.sh (#153; deployed
+│   │                         #   to ~/.local/bin, manual command)
 │   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
 │   │                         #   side) pair — fable/sonnet, opus/sonnet,
 │   │                         #   fable/opus — and re-resolves the concrete
