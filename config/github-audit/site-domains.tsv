@@ -1,0 +1,11 @@
+# naming-site の保有ドメイン閉集合(ADR-0020)。
+#
+# naming-site を宣言する PUBLIC リポジトリの対応ドメインをここに追記する
+# (cutoff 以降に作成されたリポジトリにのみ機械適用)。private リポジトリの
+# 保有ドメインは `~/.config/github-audit/site-domains.local.tsv` に置く
+# (docs/claude/public-publish-guard.md の非公開方針)。監査は両者の和集合を
+# 読む。
+#
+# domain<TAB>decided-date(YYYY-MM-DD)
+#
+# (現時点で PUBLIC な naming-site リポジトリは無し)

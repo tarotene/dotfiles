@@ -21,6 +21,24 @@ OVERRIDES_FILE="${GITHUB_AUDIT_OVERRIDES_FILE:-$CONFIG_DIR/overrides.tsv}"
 GH_BIN="${GITHUB_AUDIT_GH_BIN:-gh}"
 TEST_TMP=''
 
+# ADR-0020: closed vocabularies for the naming domain's generative grammar.
+# Repo-tracked files hold PUBLIC repository entries (dotfiles is itself
+# PUBLIC); the .local.tsv siblings hold PRIVATE repository entries and are
+# never committed (docs/claude/public-publish-guard.md) — the audit reads
+# the union of both.
+CODENAME_REGISTRY_FILE="${GITHUB_AUDIT_CODENAME_REGISTRY_FILE:-$CONFIG_DIR/codename-registry.tsv}"
+CODENAME_REGISTRY_LOCAL_FILE="${GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE:-$CONFIG_DIR/codename-registry.local.tsv}"
+DESCRIPTIVE_SPECIES_FILE="${GITHUB_AUDIT_DESCRIPTIVE_SPECIES_FILE:-$CONFIG_DIR/descriptive-species.tsv}"
+SITE_DOMAINS_FILE="${GITHUB_AUDIT_SITE_DOMAINS_FILE:-$CONFIG_DIR/site-domains.tsv}"
+SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/site-domains.local.tsv}"
+
+# ADR-0020: repositories created on/before this instant are grandfathered
+# under the loose ADR-0014 pattern check; only repositories created after it
+# face the closed-vocabulary strict grammar (species set / site domain set).
+# The codename registry inclusion check applies regardless of this cutoff —
+# see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
+NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
+
 ALL_DOMAINS=(rulesets charters naming settings renovate)
 
 # Account-wide ruleset baseline (rulesets domain). Derived from the
@@ -66,10 +84,17 @@ Read-only cross-repository audit (ADR-0015). For every non-archived,
 non-fork repository owned by $GITHUB_AUDIT_OWNER (default: tarotene),
 judges the requested domains (default: all of them):
 
-  rulesets   default-branch GitHub ruleset rule-type coverage (#130)
+  rulesets   default-branch GitHub ruleset rule-type coverage (#130).
+             required_status_checks is derived from CI presence
+             (ADR-0020) — repos with no .github/workflows are reported
+             drifted with missing=ci-absent instead of silently excused
   charters   README + CONTRIBUTING.md schema + root doc allowlist + CJK
              presence + CLAUDE.md/AGENTS.md routing (ADR-0013/0016/0017)
-  naming     repository naming class declaration + pattern match (ADR-0014)
+  naming     repository naming class declaration + pattern match
+             (ADR-0014); repos created after ADR-0020's cutoff also face
+             its closed vocabularies (descriptive species set, codename
+             registry, site domain set) — the codename registry check
+             applies to every repo regardless of cutoff
   settings   squash-only merge, delete-branch-on-merge, default branch,
              wiki/projects disabled
   renovate   Renovate config presence, for repos with a dependency manifest
@@ -91,6 +116,15 @@ $XDG_CONFIG_HOME/github-audit/overrides.tsv (override with
 GITHUB_AUDIT_OVERRIDES_FILE). Lines starting with # are ignored. ".github"
 is permanently exempt from the naming and charters domains (GitHub reserves
 the name).
+
+ADR-0020's closed vocabularies (naming domain) live in
+$XDG_CONFIG_HOME/github-audit/{codename-registry,descriptive-species,
+site-domains}.tsv (repo-tracked, PUBLIC repos only) plus a
+{codename-registry,site-domains}.local.tsv sibling for PRIVATE repos
+(never committed). Override the paths with GITHUB_AUDIT_CODENAME_REGISTRY_FILE
+/ GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE /
+GITHUB_AUDIT_DESCRIPTIVE_SPECIES_FILE / GITHUB_AUDIT_SITE_DOMAINS_FILE /
+GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE.
 EOF
 }
 
@@ -102,12 +136,25 @@ list_repos_meta() { # print: JSON array of repo metadata objects
   "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 --json \
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
-hasWikiEnabled,hasProjectsEnabled 2>/dev/null
+hasWikiEnabled,hasProjectsEnabled,createdAt 2>/dev/null
 }
 
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
   [[ -f $OVERRIDES_FILE ]] || return 0
-  grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE"
+  grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE" || true
+}
+
+# ---------------------------------------------------------------------------
+# ADR-0020 closed-vocabulary readers (naming domain)
+# ---------------------------------------------------------------------------
+
+read_tsv_col1() { # $1=tsv-file -> newline-separated column-1 values (never errors, may be empty)
+  [[ -f $1 ]] || return 0
+  grep -Ev '^[[:space:]]*(#|$)' "$1" | cut -f1 || true
+}
+
+read_closed_set_json() { # $1=repo-file $2=local-file -> JSON array of deduped column-1 tokens
+  { read_tsv_col1 "$1"; read_tsv_col1 "$2"; } | LC_ALL=C sort -u | jq -R -c -s 'split("\n") | map(select(length > 0))'
 }
 
 is_exempt() { # $1=repo $2=domain $3=overrides-tsv-blob -> 0 if exempt
@@ -221,8 +268,8 @@ default_branch_rulesets() {
   printf '%s' "$arr"
 }
 
-judge_rulesets() { # $1=repo -> one JSON finding object (no repo/language wrapper)
-  local repo="$1" arr count types t pr checks
+judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding object (no repo/language wrapper)
+  local repo="$1" has_workflows="${2:-true}" arr count types t pr checks
   local -a missing=()
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
@@ -233,8 +280,18 @@ judge_rulesets() { # $1=repo -> one JSON finding object (no repo/language wrappe
 
   types="$(jq -c '[.[].rules[]?.type] | unique' <<<"$arr")"
   for t in "${BASELINE_RULE_TYPES[@]}"; do
+    # ADR-0020: required_status_checks is derived from CI presence — a repo
+    # with no .github/workflows has nothing to require a status check from,
+    # so this one rule type is excluded from the baseline loop for it. This
+    # is not silent — see the ci-absent push below, which keeps such a repo
+    # reported as drifted (not not-applicable) so it surfaces for human
+    # triage {CI 播種 PR / 誘導 Issue / exempt} instead of going quiet forever.
+    if [[ $t == required_status_checks && $has_workflows != true ]]; then
+      continue
+    fi
     jq -e --arg t "$t" 'index($t)' <<<"$types" >/dev/null 2>&1 || missing+=("$t")
   done
+  [[ $has_workflows == true ]] || missing+=("ci-absent")
 
   pr="$(jq -c '[.[].rules[]? | select(.type=="pull_request") | .parameters] | last // null' <<<"$arr")"
   if [[ $pr != null ]]; then
@@ -453,13 +510,23 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
 # naming domain (ADR-0014)
 # ---------------------------------------------------------------------------
 
-judge_naming() { # $1=repo $2=JSON array of topic names -> finding
-  local repo="$1" topics_json="$2"
+judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codename-registry-json $6=site-domains-json -> finding
+  local repo="$1" topics_json="$2" created_at="$3"
+  local species_json="${4:-[]}" registry_json="${5:-[]}" site_json="${6:-[]}"
   local -a naming_topics=() missing=()
   while IFS= read -r t; do
     [[ -n $t ]] || continue
     naming_topics+=("$t")
   done < <(jq -r '.[] | select(startswith("naming-"))' <<<"$topics_json")
+
+  # ADR-0020: repositories created after the strict cutoff face the closed
+  # vocabulary (species set / site domain set) on top of the ADR-0014
+  # lexical pattern; earlier repositories are grandfathered (ADR-0007
+  # precedent — no retroactive rename). The codename registry-inclusion
+  # check below is NOT gated by this flag: it applies to every
+  # naming-codename declaration regardless of when the repo was created.
+  local strict=0
+  [[ "$created_at" > "$NAMING_STRICT_CUTOFF" ]] && strict=1
 
   local class='' pattern=''
   if ((${#naming_topics[@]} == 0)); then
@@ -470,9 +537,26 @@ judge_naming() { # $1=repo $2=JSON array of topic names -> finding
     class="${naming_topics[0]}"
     case "$class" in
       naming-pj) pattern='^pj-[a-z0-9]+(-[a-z0-9]+)*$' ;;
-      naming-codename) pattern='^[a-z0-9]+$' ;;
-      naming-descriptive) pattern='^[a-z0-9]+(-[a-z0-9]+)+$' ;;
-      naming-site) pattern='^[a-z0-9]+(\.[a-z0-9]+)+$' ;;
+      naming-codename)
+        pattern='^[a-z0-9]+$'
+        jq -e --arg r "$repo" 'index($r)' <<<"$registry_json" >/dev/null 2>&1 ||
+          missing+=("codename-not-registered")
+        ;;
+      naming-descriptive)
+        pattern='^[a-z0-9]+(-[a-z0-9]+)+$'
+        if ((strict)); then
+          local species_token="${repo##*-}"
+          jq -e --arg s "$species_token" 'index($s)' <<<"$species_json" >/dev/null 2>&1 ||
+            missing+=("species-unrecognized:$species_token")
+        fi
+        ;;
+      naming-site)
+        pattern='^[a-z0-9]+(\.[a-z0-9]+)+$'
+        if ((strict)); then
+          jq -e --arg r "$repo" 'index($r)' <<<"$site_json" >/dev/null 2>&1 ||
+            missing+=("domain-unrecognized")
+        fi
+        ;;
       *) missing+=("class-unknown:$class") ;;
     esac
     if [[ -n $pattern ]] && ! [[ $repo =~ $pattern ]]; then
@@ -561,7 +645,10 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
 
   local need_graphql=0 need_rulesets=0
   for d in "${DOMAINS[@]}"; do
-    [[ $d == charters || $d == renovate ]] && need_graphql=1
+    # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
+    # presence) — required_status_checks is derived from it, not just
+    # charters/renovate's file-existence checks.
+    [[ $d == charters || $d == renovate || $d == rulesets ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
   done
 
@@ -569,19 +656,27 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repo_names_json="$(jq -c '[.[].name]' <<<"$repos_meta")"
   if ((need_graphql)); then
     gql_batch="$(fetch_graphql_batch "$repo_names_json")" || {
-      printf 'github-audit: aborting — charters/renovate judgement requires GraphQL data that failed to fetch\n' >&2
+      printf 'github-audit: aborting — charters/renovate/rulesets judgement requires GraphQL data that failed to fetch\n' >&2
       return 1
     }
   fi
 
-  local repo lang vis description topics_json topic_count meta domains_obj entry
+  # ADR-0020: closed vocabularies, read once for the whole run (not per-repo).
+  local species_json registry_json site_json
+  species_json="$(read_closed_set_json "$DESCRIPTIVE_SPECIES_FILE" /dev/null)"
+  registry_json="$(read_closed_set_json "$CODENAME_REGISTRY_FILE" "$CODENAME_REGISTRY_LOCAL_FILE")"
+  site_json="$(read_closed_set_json "$SITE_DOMAINS_FILE" "$SITE_DOMAINS_LOCAL_FILE")"
+
+  local repo lang vis description topics_json topic_count meta domains_obj entry created_at repo_gql has_workflows
   while IFS= read -r meta; do
     repo="$(jq -r '.name' <<<"$meta")"
     lang="$(jq -r '.primaryLanguage.name // "-"' <<<"$meta")"
     vis="$(jq -r '.visibility' <<<"$meta")"
     description="$(jq -r '.description // ""' <<<"$meta")"
+    created_at="$(jq -r '.createdAt // ""' <<<"$meta")"
     topics_json="$(jq -c '[.repositoryTopics[]?.name]' <<<"$meta")"
     topic_count="$(jq 'length' <<<"$topics_json")"
+    repo_gql="$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")"
     domains_obj='{}'
 
     for d in "${DOMAINS[@]}"; do
@@ -589,11 +684,16 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
         entry='{"verdict":"exempt","missing":[]}'
       else
         case "$d" in
-          rulesets) ((need_rulesets)) && entry="$(judge_rulesets "$repo")" ;;
-          charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")")" ;;
-          naming) entry="$(judge_naming "$repo" "$topics_json")" ;;
+          rulesets)
+            if ((need_rulesets)); then
+              has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
+              entry="$(judge_rulesets "$repo" "$has_workflows")"
+            fi
+            ;;
+          charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
+          naming) entry="$(judge_naming "$repo" "$topics_json" "$created_at" "$species_json" "$registry_json" "$site_json")" ;;
           settings) entry="$(judge_settings "$meta")" ;;
-          renovate) entry="$(judge_renovate "$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")")" ;;
+          renovate) entry="$(judge_renovate "$repo_gql")" ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -652,13 +752,13 @@ selftest() {
 
   cat >"$tmp/fixtures/repo-list.json" <<'EOF'
 [
-  {"name": "all-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "All domains pass.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
-  {"name": "all-drifted", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "master"}, "squashMergeAllowed": true, "mergeCommitAllowed": true, "rebaseMergeAllowed": true, "deleteBranchOnMerge": false, "hasWikiEnabled": true, "hasProjectsEnabled": true},
-  {"name": "pj-ambiguous", "primaryLanguage": {"name": "Shell"}, "visibility": "PRIVATE", "description": "Two naming topics.", "repositoryTopics": [{"name": "naming-pj"}, {"name": "naming-codename"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
-  {"name": "not-pj-prefixed", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "Declares pj but is not prefixed.", "repositoryTopics": [{"name": "naming-pj"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
-  {"name": "no-renovate-target", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "No manifest, no CI.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
-  {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false},
-  {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false}
+  {"name": "all-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "All domains pass.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "all-drifted", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "master"}, "squashMergeAllowed": true, "mergeCommitAllowed": true, "rebaseMergeAllowed": true, "deleteBranchOnMerge": false, "hasWikiEnabled": true, "hasProjectsEnabled": true, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "pj-ambiguous", "primaryLanguage": {"name": "Shell"}, "visibility": "PRIVATE", "description": "Two naming topics.", "repositoryTopics": [{"name": "naming-pj"}, {"name": "naming-codename"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "not-pj-prefixed", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "Declares pj but is not prefixed.", "repositoryTopics": [{"name": "naming-pj"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "no-renovate-target", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "No manifest, no CI.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
 EOF
 
@@ -847,11 +947,52 @@ STUB
 
   printf 'exempted\t*\texempt\n' >"$tmp/config/overrides.tsv"
 
+  # ADR-0020 closed-vocabulary fixtures (naming domain). No *.local.tsv
+  # counterpart is created — read_tsv_col1 on a missing file returns empty,
+  # which is exactly what production looks like on a machine with no
+  # private-repo overlay yet.
+  printf 'toolbox\tfixture\n' >"$tmp/config/descriptive-species.tsv"
+  printf 'regcode\tfixture\t2020-01-01\n' >"$tmp/config/codename-registry.tsv"
+  printf 'known.site\t2020-01-01\n' >"$tmp/config/site-domains.tsv"
+
   export GITHUB_AUDIT_OWNER=tarotene \
     GITHUB_AUDIT_GH_BIN="$tmp/bin/gh" \
     GITHUB_AUDIT_STATE_DIR="$tmp/state" \
     GITHUB_AUDIT_OVERRIDES_FILE="$tmp/config/overrides.tsv" \
-    GITHUB_AUDIT_TEST_FIXTURES="$tmp/fixtures"
+    GITHUB_AUDIT_TEST_FIXTURES="$tmp/fixtures" \
+    GITHUB_AUDIT_DESCRIPTIVE_SPECIES_FILE="$tmp/config/descriptive-species.tsv" \
+    GITHUB_AUDIT_CODENAME_REGISTRY_FILE="$tmp/config/codename-registry.tsv" \
+    GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE="$tmp/config/codename-registry.local.tsv" \
+    GITHUB_AUDIT_SITE_DOMAINS_FILE="$tmp/config/site-domains.tsv" \
+    GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE="$tmp/config/site-domains.local.tsv"
+
+  # judge_rulesets()/judge_naming() below are called directly (this process
+  # already has them defined, being the same script) rather than through a
+  # "$SELF" subprocess. GH_BIN as a plain variable was already resolved at
+  # this script's own startup (before the export above existed), so a direct
+  # call would otherwise shell out to the real `gh` — repoint it explicitly.
+  GH_BIN="$tmp/bin/gh"
+
+  # Fixture for the judge_rulesets() direct-call checks below: one ruleset
+  # covering every baseline type EXCEPT required_status_checks, so the
+  # has_workflows argument alone determines whether "required_status_checks"
+  # or "ci-absent" appears in missing.
+  cat >"$tmp/fixtures/repos_tarotene_ruleset-ci-test_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_ruleset-ci-test_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "copilot_code_review"},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": true, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
 
   out="$("$SELF" --json 2>&1)" || true
 
@@ -992,6 +1133,62 @@ STUB
   }
   jq -e '.[] | select(.repo=="all-ok") | (.domains | keys) == ["rulesets"]' <<<"$out" >/dev/null || {
     printf 'FAIL: rulesets-only run should not include other domains\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # ADR-0020: direct function-call checks. judge_rulesets()/judge_naming()
+  # are plain functions in this same script, so they can be called
+  # in-process instead of round-tripping through a "$SELF" subprocess —
+  # this isolates each new branch precisely instead of needing a
+  # combinatorial fixture repo per branch.
+  # ---------------------------------------------------------------------
+
+  # rulesets: CI-absence derivation (ci-absent vs required_status_checks)
+  jq -e '.verdict == "drifted" and (.missing | index("ci-absent")) and (.missing | index("required_status_checks") | not)' \
+    <<<"$(judge_rulesets ruleset-ci-test false)" >/dev/null || {
+    printf 'FAIL: judge_rulesets(has_workflows=false) should report ci-absent, not required_status_checks\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("required_status_checks")) and (.missing | index("ci-absent") | not)' \
+    <<<"$(judge_rulesets ruleset-ci-test true)" >/dev/null || {
+    printf 'FAIL: judge_rulesets(has_workflows=true) should report required_status_checks, not ci-absent\n' >&2
+    return 1
+  }
+
+  # naming: ADR-0020 closed vocabularies
+  local species='["toolbox"]' registry='["regcode"]' domains='["known.site"]'
+  local pre='2020-01-01T00:00:00Z' post='2027-01-01T00:00:00Z'
+
+  jq -e '.verdict == "ok"' <<<"$(judge_naming foo-toolbox '["naming-descriptive"]' "$post" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: foo-toolbox (post-cutoff, species in closed set) should be naming ok\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("species-unrecognized:cleanup")' \
+    <<<"$(judge_naming foo-cleanup '["naming-descriptive"]' "$post" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: foo-cleanup (post-cutoff, species not in closed set) should flag species-unrecognized\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_naming foo-ancient '["naming-descriptive"]' "$pre" '[]' "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: foo-ancient (pre-cutoff, empty species set) should grandfather to naming ok\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_naming regcode '["naming-codename"]' "$pre" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: regcode (registered codename) should be naming ok\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("codename-not-registered")' \
+    <<<"$(judge_naming roguecode '["naming-codename"]' "$pre" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: roguecode (unregistered codename, even pre-cutoff) should flag codename-not-registered\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_naming known.site '["naming-site"]' "$post" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: known.site (post-cutoff, domain in closed set) should be naming ok\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("domain-unrecognized")' \
+    <<<"$(judge_naming rogue.site '["naming-site"]' "$post" "$species" "$registry" "$domains")" >/dev/null || {
+    printf 'FAIL: rogue.site (post-cutoff, domain not in closed set) should flag domain-unrecognized\n' >&2
     return 1
   }
 

@@ -136,6 +136,15 @@
     executable = true;
   };
 
+  # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
+  # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that
+  # this module does not manage, written directly to disk instead).
+  xdg.configFile."github-audit/codename-registry.tsv".source =
+    ../../config/github-audit/codename-registry.tsv;
+  xdg.configFile."github-audit/descriptive-species.tsv".source =
+    ../../config/github-audit/descriptive-species.tsv;
+  xdg.configFile."github-audit/site-domains.tsv".source = ../../config/github-audit/site-domains.tsv;
+
   # gh-stack 拡張(stacked-pr スキルが使う `gh stack link` の提供元、#124)を
   # 宣言的に管理する。`gh extension install` は ~/.local/share/gh/extensions/
   # へ直接 git clone するだけなので、これまで home-manager 管理外のまま当機に
