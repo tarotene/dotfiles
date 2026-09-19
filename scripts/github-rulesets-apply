@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# github-rulesets-apply — seed the standard GitHub rulesets onto one or more
+# repositories by driving the matching *-repo-governance skill's
+# apply-rulesets.sh (#153). This script owns no ruleset logic of its own —
+# rulesets/*.json under each skill stays the single source of truth
+# (ADR-0021's core/review layer split) — it only resolves which skill a
+# repository type maps to and loops apply-rulesets.sh over one or more repos.
+#
+# Auto-apply wiring: the repo-charter skill (config/claude/skills/repo-charter/
+# SKILL.md §7) calls this right after `gh repo create`, since gh itself has no
+# create-time hook mechanism to attach to.
+set -euo pipefail
+
+SKILLS_DIR="${GITHUB_RULESETS_APPLY_SKILLS_DIR:-$HOME/.claude/skills}"
+
+usage() {
+  cat <<'EOF'
+usage: github-rulesets-apply [--with-review] [--dry-run] <rust|typst|astro> <owner/repo>... [-- <passthrough args>]
+       github-rulesets-apply --selftest
+
+Seeds the standard Security/Quality/Workflow rulesets (core layer, ADR-0021)
+onto every given repository by calling the matching governance skill's
+apply-rulesets.sh:
+
+  rust   -> rust-repo-governance
+  typst  -> typst-repo-governance
+  astro  -> astro-site-governance
+
+--with-review is passed through to also apply the opt-in review layer
+(copilot_code_review + required conversation resolution). Anything after a
+bare `--` is passed through verbatim to apply-rulesets.sh for each repo
+(e.g. `-- --msrv 1.90`).
+
+Failures are collected across all repos and reported at the end — one bad
+repo does not stop the rest. Exit 1 if any repo failed or the invocation
+itself is malformed.
+EOF
+}
+
+skill_for() {
+  case "$1" in
+    rust) printf '%s\n' rust-repo-governance ;;
+    typst) printf '%s\n' typst-repo-governance ;;
+    astro) printf '%s\n' astro-site-governance ;;
+    *) return 1 ;;
+  esac
+}
+
+apply_one() {
+  local skill="$1" owner_repo="$2" with_review="$3" dry_run="$4"
+  shift 4
+  local -a passthrough=("$@")
+  local owner="${owner_repo%%/*}" repo="${owner_repo#*/}"
+  local apply_script="$SKILLS_DIR/$skill/scripts/apply-rulesets.sh"
+
+  if [[ ! -x "$apply_script" ]]; then
+    echo "ERROR: $apply_script not found or not executable (home-manager 未配備の可能性)" >&2
+    return 1
+  fi
+
+  local -a args=(--owner "$owner" --repo "$repo")
+  [[ "$with_review" == 1 ]] && args+=(--with-review)
+  [[ "$dry_run" == 1 ]] && args+=(--dry-run)
+  args+=("${passthrough[@]}")
+
+  bash "$apply_script" "${args[@]}"
+}
+
+main() {
+  local with_review=0 dry_run=0 type='' owner_repo_arg_seen=0
+  local -a repos=() passthrough=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --with-review) with_review=1; shift ;;
+      --dry-run) dry_run=1; shift ;;
+      --) shift; passthrough=("$@"); break ;;
+      -*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+      *)
+        if [[ -z "$type" ]]; then
+          type="$1"
+        else
+          [[ "$1" == */* ]] || { echo "ERROR: '$1' is not owner/repo" >&2; exit 2; }
+          repos+=("$1")
+          owner_repo_arg_seen=1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$type" ]] || { usage >&2; exit 2; }
+  local skill
+  skill="$(skill_for "$type")" || { echo "ERROR: unknown type '$type' (want rust|typst|astro)" >&2; exit 2; }
+  ((owner_repo_arg_seen)) || { echo "ERROR: at least one owner/repo is required" >&2; exit 2; }
+
+  local -a failed=()
+  local r
+  for r in "${repos[@]}"; do
+    if ! apply_one "$skill" "$r" "$with_review" "$dry_run" "${passthrough[@]}"; then
+      failed+=("$r")
+    fi
+  done
+
+  if ((${#failed[@]} > 0)); then
+    echo "" >&2
+    echo "FAILED (${#failed[@]}):" >&2
+    printf '  %s\n' "${failed[@]}" >&2
+    exit 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# selftest — no network, stubs apply-rulesets.sh to record how it was called.
+# ---------------------------------------------------------------------------
+
+SELFTEST_TMP=""
+cleanup_selftest() { [[ -n ${SELFTEST_TMP:-} ]] && rm -rf "$SELFTEST_TMP"; }
+
+selftest() {
+  local fails=0 tmp
+  SELFTEST_TMP="$(mktemp -d)"
+  trap cleanup_selftest EXIT
+  tmp="$SELFTEST_TMP"
+
+  # Stub layout mirrors the real skill tree:
+  # $tmp/skills/<skill>/scripts/apply-rulesets.sh
+  local skill
+  for skill in rust-repo-governance typst-repo-governance astro-site-governance; do
+    mkdir -p "$tmp/skills/$skill/scripts"
+    cat > "$tmp/skills/$skill/scripts/apply-rulesets.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'CALLED %s: %s\n' "$(basename "$(dirname "$(dirname "$0")")")" "$*" >> "$STUB_LOG"
+EOF
+    chmod +x "$tmp/skills/$skill/scripts/apply-rulesets.sh"
+  done
+
+  export GITHUB_RULESETS_APPLY_SKILLS_DIR="$tmp/skills"
+  export STUB_LOG="$tmp/calls.log"
+
+  expect_contains() { # $1=ラベル $2=期待する部分文字列
+    # `--` はパターンが `--owner ...` のようにハイフンで始まるとき grep に
+    # オプションと誤認させないための区切り(実測で踏んだ)。
+    grep -qF -- "$2" "$STUB_LOG" 2>/dev/null || {
+      echo "FAIL($1): ログに含まれない: $2" >&2
+      echo "  --- log ---" >&2
+      cat "$STUB_LOG" 2>/dev/null >&2 || echo "  (empty)" >&2
+      fails=$((fails + 1))
+    }
+  }
+  expect_fail() { # $1=ラベル $2..=コマンド
+    local label="$1"
+    shift
+    if "$SELF" "$@" > /dev/null 2>&1; then
+      echo "FAIL($label: 失敗を期待したが成功した): $*" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  # 1: 型→skill マッピング + --owner/--repo 分解
+  : > "$STUB_LOG"
+  "$SELF" rust tarotene/dotfiles > /dev/null
+  expect_contains "1 rust→rust-repo-governance" "CALLED rust-repo-governance: --owner tarotene --repo dotfiles"
+
+  : > "$STUB_LOG"
+  "$SELF" typst tarotene/typst-slydst-template > /dev/null
+  expect_contains "1 typst→typst-repo-governance" "CALLED typst-repo-governance: --owner tarotene --repo typst-slydst-template"
+
+  : > "$STUB_LOG"
+  "$SELF" astro tarotene/kakapotech.me > /dev/null
+  expect_contains "1 astro→astro-site-governance" "CALLED astro-site-governance: --owner tarotene --repo kakapotech.me"
+
+  # 2: 複数 repo で複数回呼ばれる
+  : > "$STUB_LOG"
+  "$SELF" rust tarotene/a tarotene/b tarotene/c > /dev/null
+  expect_contains "2 repo a" "--owner tarotene --repo a"
+  expect_contains "2 repo b" "--owner tarotene --repo b"
+  expect_contains "2 repo c" "--owner tarotene --repo c"
+  if [[ "$(wc -l < "$STUB_LOG")" -ne 3 ]]; then
+    echo "FAIL(2 呼び出し回数): 期待=3 実際=$(wc -l < "$STUB_LOG")" >&2
+    fails=$((fails + 1))
+  fi
+
+  # 3: --with-review passthrough
+  : > "$STUB_LOG"
+  "$SELF" --with-review rust tarotene/dotfiles > /dev/null
+  expect_contains "3 --with-review" "--with-review"
+
+  # 3b: --dry-run passthrough
+  : > "$STUB_LOG"
+  "$SELF" --dry-run rust tarotene/dotfiles > /dev/null
+  expect_contains "3b --dry-run" "--dry-run"
+
+  # 4: エラー系
+  expect_fail "4 未知の型" ghost tarotene/dotfiles
+  expect_fail "4 owner/repo 形式違反" rust dotfiles
+  expect_fail "4 repo 引数無し" rust
+  expect_fail "4 型引数無し"
+
+  # 4b: skill 不在(GITHUB_RULESETS_APPLY_SKILLS_DIR を空ディレクトリに向ける)
+  local empty_dir="$tmp/empty"
+  mkdir -p "$empty_dir"
+  GITHUB_RULESETS_APPLY_SKILLS_DIR="$empty_dir" "$SELF" rust tarotene/dotfiles > /dev/null 2>&1 &&
+    { echo "FAIL(4b skill 不在で成功した)" >&2; fails=$((fails + 1)); }
+
+  # 5: -- 以降の passthrough
+  : > "$STUB_LOG"
+  "$SELF" rust tarotene/dotfiles -- --msrv 1.90 > /dev/null
+  expect_contains "5 -- passthrough" "--msrv 1.90"
+
+  if ((fails > 0)); then
+    echo "selftest: ${fails} 件失敗" >&2
+    exit 1
+  fi
+  echo "selftest: OK"
+}
+
+SELF="$(realpath "$0")"
+
+case "${1-}" in
+  --selftest) selftest ;;
+  --help | -h) usage ;;
+  *) main "$@" ;;
+esac

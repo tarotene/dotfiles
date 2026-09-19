@@ -148,6 +148,16 @@
     executable = true;
   };
 
+  # github-rulesets-apply: seeds the standard Security/Quality/Workflow
+  # rulesets (ADR-0021 core layer) onto one or more repositories by driving
+  # the matching *-repo-governance skill's apply-rulesets.sh (#153). Owns no
+  # ruleset logic itself — a thin dispatcher over the skills' rulesets/*.json.
+  # Manual command, no timer.
+  home.file.".local/bin/github-rulesets-apply" = {
+    source = ../../scripts/github-rulesets-apply;
+    executable = true;
+  };
+
   # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
   # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that
   # this module does not manage, written directly to disk instead).

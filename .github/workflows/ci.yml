@@ -239,6 +239,11 @@ jobs:
       - name: pr-gate.sh --selftest
         run: bash ./config/claude/hooks/pr-gate.sh --selftest
 
+      # attribution-guard (docs/claude/attribution-guard.md) is deterministic
+      # bash end to end against fixture commands — no gh/network involved.
+      - name: attribution-guard.sh --selftest
+        run: bash ./config/claude/hooks/attribution-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema
@@ -249,6 +254,13 @@ jobs:
       # staying green (docs/github-audit.md).
       - name: github-audit --selftest
         run: ./scripts/github-audit --selftest
+
+      # github-rulesets-apply (#153) is a thin dispatcher over the
+      # governance skills' apply-rulesets.sh — the selftest stubs that
+      # script to verify the type→skill mapping, multi-repo looping, and
+      # flag passthrough without shelling out to gh.
+      - name: github-rulesets-apply --selftest
+        run: ./scripts/github-rulesets-apply --selftest
 
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/publish-guard, ADR-0009) and runs in that repo's own CI —

@@ -214,6 +214,18 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 の topic(`naming-codename` 等)は必ず 1 つ、加えてリポジトリの技術領域・
 ドメインを表す topic を最低 1 つ。
 
+**新規作成の場合、続けて標準 ruleset を播く**(#153)。`gh` 自体には
+`repo create` 直後に走るフック機構が無いため、この手順が事実上の自動適用に
+なる。リポジトリの型が rust/typst/astro のいずれかで該当 governance skill を
+持つ場合:
+
+```bash
+github-rulesets-apply <rust|typst|astro> <owner>/<repo>
+```
+
+review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
+初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。
+
 ## 8. 自己検証
 
 ```bash
