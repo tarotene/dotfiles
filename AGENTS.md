@@ -44,6 +44,10 @@ dotfiles/
 │                             #   is a herdr + gh escape hatch, ADR-0001 Amendment) +
 │                             #   homeConfigurations.<hostname>
 ├── flake.lock
+├── patches/                   # source patches applied via `overrideAttrs` in
+│                             #   flake.nix's package overlay (herdr-worktree-
+│                             #   names.patch: personal-taste worktree-naming
+│                             #   patch, drop once herdrdev/herdr#4374 lands)
 ├── home/                     # home-manager modules (Identity / Instance two-layer)
 │   ├── common.nix            # shared across every host; imports all modules/
 │   ├── identities/           # identity-scoped (git identity, browser default)
