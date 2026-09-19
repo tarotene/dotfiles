@@ -37,19 +37,7 @@ Gmail/Calendar/Drive/Claude Docs 等)で将来代替できるものもある。�
 ## 使い方(populate する側)
 
 ```nix
-# home/identities/personal.nix
-{
-  dotfiles.claude.mcpServers.esa = {
-    type = "stdio";
-    command = "npx";
-    args = [ "-y" "@esaio/esa-mcp-server" ];
-    env.ESA_ACCESS_TOKEN = "\${ESA_ACCESS_TOKEN}";
-  };
-}
-```
-
-```nix
-# home/identities/company.nix
+# home/identities/company.nix — 秘密の要らない remote server の例
 {
   dotfiles.claude.mcpServers.slack = {
     type = "http";
@@ -60,9 +48,18 @@ Gmail/Calendar/Drive/Claude Docs 等)で将来代替できるものもある。�
 
 - 値は Claude Code 自身の MCP server config スキーマ(stdio なら
   `command`/`args`/`env`、remote なら `type = "http"`/`url`/`oauth`)にそのまま従う。
-- 秘密情報はリテラルで書かず `${ENV_VAR}` 間接参照にする(`claude-permissions.md`
-  と同じ規律)。env の供給経路(environment.d / zshenv 等)は populate する側の
-  モジュールが別途確保する。
+- `${ENV_VAR}` はセッション起動時のプロセス環境変数として実際に展開される
+  (Claude Code 公式ドキュメント確認済み)。ただし秘密がホストローカルの
+  ファイル(gpg 暗号化など)にしか無い場合、`${VAR}` を機能させるには
+  ログインシェル起動のたびにその変数を復号・export する必要があり、これは
+  ADR-0010 が明示的に退役させたパターン(シェル起動時の GPG PIN プロンプト・
+  全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
+  `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
+  スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
+  (`home/modules/esa.nix` + `scripts/esa-mcp-launcher`、
+  [`esa-mcp.md`](esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
+  トークン(例: 別プロセスが供給する company workspace のトークン)なら
+  `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。
 - 宣言した key は merge のたびに上書きされる。宣言していない key(`claude mcp add`
   で手で足したもの、他ツールが書いたもの)には一切触れない。
 
@@ -71,4 +68,4 @@ Gmail/Calendar/Drive/Claude Docs 等)で将来代替できるものもある。�
 値をこの option から削除しても、`~/.claude.json` 側の既存エントリは自動では
 消えない(`claude-permissions.md` の `retiredPermissionRules` と同種の制約 —
 削除の宣言化が要るなら同じ `--retire` パターンを `registerMcpServers` に足す)。
-今のところ値を 1 件も populate していないため、この撤回パスは未実装。
+`esa`(ADR-0022)が最初の populate 例で、この撤回パスはまだ実装していない。

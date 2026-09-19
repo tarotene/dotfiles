@@ -233,6 +233,14 @@ jobs:
       - name: claude-plan-model --selftest
         run: ./scripts/claude-plan-model --selftest
 
+      # esa-mcp-launcher is deterministic shell end to end against stubbed
+      # gpg/npx: the missing-token-file diagnostic, decrypt failure, empty
+      # token, missing npx, and the ESA_ACCESS_TOKEN handoff to the exec'd
+      # server are exercised without network or real credentials
+      # (docs/claude/esa-mcp.md).
+      - name: esa-mcp-launcher --selftest
+        run: ./scripts/esa-mcp-launcher --selftest
+
       # A deleted checkout must be detected without deleting its branch; hook
       # registration must remain idempotent beside Herdr's own Codex hook.
       - name: Worktree lifecycle self-tests

@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# esa-mcp-launcher — esa.io MCP サーバの起動ラッパー(ADR-0022)。
+#
+# ホストローカル(git 管理外)の GPG 暗号化トークン ~/.config/esa/token.gpg を
+# 復号して ESA_ACCESS_TOKEN として環境に載せ、`exec npx -y @esaio/esa-mcp-server`
+# する。~/.claude.json の mcpServers.esa がこの launcher を指す
+# (home/modules/esa.nix が activation の冪等マージで宣言)。汎用 secret ラッパーに
+# はしない — env トークン依存の MCP サーバは esa だけと調査済みで、抽象化する
+# 利用者が他にいない。
+#
+# トークンの宛先は personal identity の master fingerprint で、GnuPG は
+# YubiKey 上の [E] サブ鍵に解決する(ADR-0003 Amendment)。したがって復号には
+# カードの挿入が要り、ログイン後最初の復号ではカード PIN の pinentry が出る
+# (以後は gpg-agent がキャッシュする)。MCP サーバの起動はセッション開始時 =
+# 画面を見ている瞬間なので、sign-prewarm(on-disk [S] 鍵のパスフレーズを前倒し
+# する別機構)と同じ「安全な瞬間への前倒し」に収まる。
+#
+# 縮退はしない: トークン欠如・gpg/npx 不在・復号失敗・空トークンは stderr に
+# 診断を出して exit 1 する。hook 群の「黙って no-op」(ADR-0005)を採らないのは、
+# サイレントに Unauthorized で動き続ける状態こそがこのラッパーの直したい事故
+# だから。
+#
+# 使い方:
+#   MCP サーバとして: Claude Code が ~/.claude.json 経由で exec する
+#   自己検査:        esa-mcp-launcher --selftest(gpg/npx はスタブ、ネットワーク不要)
+#
+# 設計と根拠: docs/claude/esa-mcp.md
+set -euo pipefail
+
+TOKEN_FILE="${ESA_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/esa/token.gpg}"
+
+die() {
+  printf 'esa-mcp-launcher: %s\n' "$1" >&2
+  [[ -n "${2-}" ]] && printf '  %s\n' "$2" >&2
+  exit 1
+}
+
+launch() {
+  command -v gpg >/dev/null 2>&1 || die 'gpg が見つからない(home-manager 未適用?)'
+  if [[ ! -f "$TOKEN_FILE" ]]; then
+    die "トークンファイルが無い: $TOKEN_FILE" \
+      'esa.io で Personal access token を発行し、docs/setup.md の「esa MCP token」節の手順で配置する'
+  fi
+  local token
+  if ! token="$(gpg --quiet --batch --decrypt "$TOKEN_FILE")"; then
+    die "復号に失敗した: $TOKEN_FILE" \
+      'YubiKey([E] サブ鍵)の挿入と gpg-agent の状態を確認する'
+  fi
+  [[ -n "$token" ]] || die "復号結果が空だった: $TOKEN_FILE"
+  command -v npx >/dev/null 2>&1 || die 'npx が見つからない(mise の node runtime を確認)'
+  ESA_ACCESS_TOKEN="$token" exec npx -y @esaio/esa-mcp-server "$@"
+}
+
+selftest() {
+  local failures=0 out tmp base_path
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  mkdir -p "$tmp/bin" "$tmp/bin-no-npx"
+  cat > "$tmp/bin/gpg" <<'STUB'
+#!/usr/bin/env bash
+[ "${GPG_STUB_FAIL:-0}" = 1 ] && exit 2
+f=""
+for a in "$@"; do f="$a"; done
+cat "$f"
+STUB
+  cat > "$tmp/bin/npx" <<'STUB'
+#!/usr/bin/env bash
+printf '%s' "${ESA_ACCESS_TOKEN:-}"
+STUB
+  chmod +x "$tmp/bin/gpg" "$tmp/bin/npx"
+  cp "$tmp/bin/gpg" "$tmp/bin-no-npx/gpg"
+  base_path="$tmp/bin:/usr/bin:/bin"
+
+  # 1) トークンファイル欠如 → exit 1 + プロビジョニング誘導
+  if out="$(ESA_TOKEN_FILE="$tmp/absent.gpg" PATH="$base_path" bash "$0" 2>&1)"; then
+    echo 'FAIL: missing token file accepted' >&2
+    failures=$((failures + 1))
+  elif ! grep -q 'トークンファイルが無い' <<< "$out"; then
+    echo 'FAIL: missing-file diagnostic not shown' >&2
+    failures=$((failures + 1))
+  fi
+
+  printf 'sekrit-token' > "$tmp/token.gpg"
+
+  # 2) 復号失敗 → exit 1
+  if ESA_TOKEN_FILE="$tmp/token.gpg" PATH="$base_path" GPG_STUB_FAIL=1 bash "$0" >/dev/null 2>&1; then
+    echo 'FAIL: decrypt failure accepted' >&2
+    failures=$((failures + 1))
+  fi
+
+  # 3) 空トークン → exit 1
+  : > "$tmp/empty.gpg"
+  if ESA_TOKEN_FILE="$tmp/empty.gpg" PATH="$base_path" bash "$0" >/dev/null 2>&1; then
+    echo 'FAIL: empty token accepted' >&2
+    failures=$((failures + 1))
+  fi
+
+  # 4) npx 不在 → exit 1
+  if ESA_TOKEN_FILE="$tmp/token.gpg" PATH="$tmp/bin-no-npx:/usr/bin:/bin" bash "$0" >/dev/null 2>&1; then
+    echo 'FAIL: missing npx accepted' >&2
+    failures=$((failures + 1))
+  fi
+
+  # 5) 正常系 → exec された(スタブ)npx が ESA_ACCESS_TOKEN を受け取る
+  out="$(ESA_TOKEN_FILE="$tmp/token.gpg" PATH="$base_path" bash "$0")" || out=''
+  if [[ $out != 'sekrit-token' ]]; then
+    echo "FAIL: token handoff (got: $out)" >&2
+    failures=$((failures + 1))
+  fi
+
+  if ((failures != 0)); then
+    printf 'selftest: %d 件失敗\n' "$failures" >&2
+    return 1
+  fi
+  printf 'selftest: OK\n'
+}
+
+if [[ ${1-} == --selftest ]]; then
+  selftest
+else
+  launch "$@"
+fi

@@ -108,6 +108,13 @@
   会話 resolve 必須、opt-in アドイン)の 2 層に分割する決定。フェーズ宣言
   台帳ではなく存在検出方式を採用し、開発初期リポでレビュー往復を強制
   しない。ADR-0015 の rulesets ドメイン baseline を部分 amend。
+- [ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md) — esa.io MCP サーバの
+  トークン供給を、供給元が壊れていた別の private リポジトリ(SOPS +
+  direnv、実質シークレット 1 個のための器)から、ホストローカルの素の GPG
+  暗号化ファイル + 専用 launcher + `~/.claude.json` への宣言的 merge へ
+  置き換える決定。その private リポジトリは archive。ADR-0010 の
+  「供給チャネルを都度選び直す」の初適用例で、唯一の sops 消費者の消滅に
+  伴い `sops` パッケージも削除する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -152,6 +159,11 @@ Design and rationale for the hooks and commands deployed from
   `.mcpServers`: an extensible option (`dotfiles.claude.mcpServers`, same shape
   as `quarantine.nix`'s `managedFiles`) that ships with zero values — a
   mechanism for identity modules to populate later, not a data migration.
+  First populated value: `esa`(下記、ADR-0022)。
+- [`esa-mcp.md`](claude/esa-mcp.md) — esa.io MCP サーバのトークン供給:
+  ホストローカルの GPG 暗号化ファイルを起動時に復号する専用 launcher +
+  `dotfiles.claude.mcpServers.esa` への populate(personal identity 層限定、
+  ADR-0022)。
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
   Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
   モードを **(Plan 側, 実行側) のペア 3 種**(`fable/sonnet` / `opus/sonnet` /

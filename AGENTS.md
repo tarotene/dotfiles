@@ -58,8 +58,10 @@ dotfiles/
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, git, gpg, secrets, packages, desktop, runtimes,
-│                             #   herdr, claude, worktree, quarantine
+│   └── modules/              # shell, atuin, git, gpg, packages, desktop, runtimes,
+│                             #   herdr, claude, worktree, quarantine, hm-warnings, esa
+│                             #   (esa: esa.io MCP token supply, personal identity only,
+│                             #   ADR-0022 — imported from identities/personal.nix, not here)
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
@@ -106,7 +108,8 @@ dotfiles/
 ├── scripts/                  # mix of home-manager-deployed user-environment tools
 │   │                         #   (hms, git-shelve/unshelve,
 │   │                         #   git-prune-branches, git-audit/prune-worktrees,
-│   │                         #   git-worktree-create-guard, claude-plan-model)
+│   │                         #   git-worktree-create-guard, claude-plan-model,
+│   │                         #   esa-mcp-launcher)
 │   │                         #   and true escape-hatch /
 │   │                         #   diagnostic scripts (install-packages,
 │   │                         #   install-falcon-sensor, fix-ssh-permissions)
@@ -151,6 +154,9 @@ dotfiles/
 │   │                         #   activation, `--selftest` from CI)
 │   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
 │   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
+│   ├── esa-mcp-launcher       # decrypts ~/.config/esa/token.gpg and execs the
+│   │                         #   esa.io MCP server (deployed to ~/.local/libexec,
+│   │                         #   personal identity only, ADR-0022)
 │   ├── register-codex-hooks   # activation-only (writeShellScript, not a
 │   │                         #   deployed file): idempotent variadic merger for
 │   │                         #   ~/.codex/hooks.json — worktree.nix registers the
@@ -210,6 +216,10 @@ dotfiles/
 │   │   │                     #   via pane metadata (Claude full, Codex/Copilot
 │   │   │                     #   branch+model only; tab-bar usage deferred, #117)
 │   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
+│   │   ├── esa-mcp.md         # esa.io MCP サーバのトークン供給: ホストローカル
+│   │   │                     #   GPG 暗号化ファイル + 専用 launcher +
+│   │   │                     #   ~/.claude.json への宣言的 merge(personal
+│   │   │                     #   identity 層限定、ADR-0022)
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア:
 │   │   │                     #   opus/sonnet の 2 本を乗っ取り、モードを
 │   │   │                     #   (Plan 側, 実行側) のペア 3 種として
