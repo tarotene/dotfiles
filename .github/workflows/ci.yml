@@ -215,8 +215,11 @@ jobs:
       # GNUPGHOME with a throwaway empty-passphrase fixture key — not a
       # stubbed gpg — since the addkey/revkey --command-file mechanics are
       # exactly what needs validating. Covers generate, rotate --revoke-old,
-      # status, remind's threshold/exit-code contract, and export's diff
-      # detection + next-step message (docs/operations.md).
+      # status, remind's threshold/exit-code contract, export's diff
+      # detection + next-step message, and sync's drift detection/--fix
+      # convergence against GitHub + keys.openpgp.org (`gh`/`curl` are
+      # stubbed for sync specifically — this step must never touch a real
+      # GitHub account or the real keyserver) (docs/operations.md).
       - name: gpg-subkey --selftest
         run: ./scripts/gpg-subkey --selftest
 
