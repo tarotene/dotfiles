@@ -93,8 +93,11 @@
 # exit 0。判定できない場合は断定に変えず素通す(pr-gate.sh の縮退表と同じ)。
 #
 # 既知の限界(意図的な選択、docs/claude/attribution-guard.md に詳しい):
-#   - gh api の生呼び出しは判定しない(正規経路が揃っているので使う必然性がなく、
-#     URL パターン判定を入れると「インラインは対象外」という決定と交錯する)
+#   - gh api は外向き投稿の URL パス(issues/pulls の作成・編集・コメント、
+#     pulls のレビュー作成)のみ判定する(#195)。pulls/N/comments のような
+#     インラインレビューコメントの経路は判定対象外のまま(#194 の決定を維持)。
+#     GET/HEAD/DELETE は明示 -X/--method があるときだけ除外し、それ以外は
+#     本文フラグの有無で自然に判定不能(通す)に落ちる。
 #   - コード行へのインラインレビューコメントは対象外(1〜2 行が典型でフッターが
 #     本文を圧迫する)
 #   - Codex CLI / Copilot CLI は対象外(adapter を持たない)
@@ -260,14 +263,27 @@ is_sep() {
   [[ ${#1} -eq 1 && $CMD_SEPS == *"$1"* ]]
 }
 
+# is_target_at() が対象位置を見つけたときにセットする判定範囲の種別。
+# cli: 従来の gh pr/issue サブコマンド / api: gh api の URL パス判定(#195)。
+TARGET_KIND=""
+
 # グローバル TOK の $1 番目が対象コマンドの先頭なら 0。
-#   gh (pr|issue) (create|edit|comment)  /  gh pr review
-# gh は素の `gh` でもフルパス(/usr/bin/gh)でもよい。
+#   gh (pr|issue) (create|edit|comment)  /  gh pr review  /  gh api ...
+# gh は素の `gh` でもフルパス(/usr/bin/gh)でもよい。gh api はサブコマンドの
+# 有無だけで判定範囲を開始し、対象パスかどうかは decide_api_tokens() 側で
+# 判定する(-X/--method がパスより先に来る形もあるため、ここではパス位置を
+# 固定しない)。
 is_target_at() {
   local i=$1 n=${#TOK[@]} base
-  ((i + 2 < n)) || return 1
+  ((i + 1 < n)) || return 1
   base="${TOK[i]##*/}"
   [[ $base == gh ]] || return 1
+  if [[ ${TOK[i + 1]} == api ]]; then
+    TARGET_KIND=api
+    return 0
+  fi
+  ((i + 2 < n)) || return 1
+  TARGET_KIND=cli
   case "${TOK[i + 1]}" in
     pr)
       case "${TOK[i + 2]}" in
@@ -353,6 +369,123 @@ decide_tokens() {
   return 0
 }
 
+# gh api の判定対象エンドポイント(#195)。issues/pulls への外向き投稿のみ。
+# pulls への `/comments` 系(インラインレビューコメント)はこの正規表現の
+# alternation に無い(pulls は `(/[0-9]+)?(/reviews)?` までしか許さない)ため
+# 自然に非対象になる — #194 の「インラインは対象外」の決定を追加の除外
+# regex 無しでそのまま維持できる。
+API_JUDGED_RE='^/repos/[^/]+/[^/]+/(issues(/[0-9]+)?(/comments)?|issues/comments/[0-9]+|pulls(/[0-9]+)?(/reviews)?)$'
+
+# $@=1 投稿ぶんの `gh api ...` トークン列; deny なら理由文を stdout に出して
+# 0、通すなら非 0。decide_tokens() と対になる gh api 版(#195)。
+#
+# 対象化の手順:
+#   1. -X/--method の値が GET/HEAD/DELETE なら判定不能で通す(実測ベース。
+#      既定メソッドの推測はしない — 値が明示されていない場合は下の本文フラグ
+#      チェックで自然に判定不能に落ちる)。
+#   2. 範囲内トークンから API_JUDGED_RE にマッチする最初のパスを探す。無ければ
+#      非対象パス(rulesets 等)として通す — apply-rulesets.sh の
+#      `gh api -X POST repos/.../rulesets --input -` を誤判定しない回帰要件。
+#   3. 本文は -f/--field/-F/--raw-field の `body=<値>`、または --input <file>
+#      (jq で .body を読む)。--input - は判定不能(有効な texts を積まない)。
+decide_api_tokens() {
+  local -a tok=("$@")
+  local n=${#tok[@]} i=0 have_flag=0 has_hd=0 p method='' path='' body t
+  local -a texts=()
+
+  # 各 for ループに `|| true` を付ける: ループ最後の反復で内側の `[[ ]]`/
+  # `case` が非マッチ(非 0)のまま終わると for 文自体の終了ステータスも
+  # 非 0 になり、set -e がこの関数ごと即死させる(if/while の条件式と
+  # 違い for 文自体はこの除外規則の対象外)。decide_tokens 側の
+  # `while ((i < n))` ループが毎周を `i=$((i + 1))` という必ず成功する文で
+  # 終えているのと同じ理由の別解。
+  for ((i = 0; i < n; i++)); do
+    if [[ ${tok[i]} == *'<<'* ]]; then
+      has_hd=1
+      break
+    fi
+  done || true
+
+  for ((i = 0; i < n; i++)); do
+    case "${tok[i]}" in
+      -X | --method)
+        ((i + 1 < n)) && method="${tok[i + 1]}"
+        ;;
+      --method=*)
+        method="${tok[i]#--method=}"
+        ;;
+    esac
+  done || true
+  case "${method^^}" in
+    GET | HEAD | DELETE) return 1 ;;
+  esac
+
+  for ((i = 0; i < n; i++)); do
+    t="/${tok[i]#/}"
+    if [[ $t =~ $API_JUDGED_RE ]]; then
+      path="$t"
+      break
+    fi
+  done || true
+  [[ -n $path ]] || return 1 # 対象エンドポイントでない → 通す
+
+  i=0
+  while ((i < n)); do
+    case "${tok[i]}" in
+      -f | --field | -F | --raw-field)
+        if ((i + 1 < n)) && [[ ${tok[i + 1]} == body=* ]]; then
+          have_flag=1
+          texts+=("${tok[i + 1]#body=}")
+          i=$((i + 2))
+          continue
+        fi
+        ;;
+      --field=body=* | --raw-field=body=*)
+        have_flag=1
+        texts+=("${tok[i]#*=body=}")
+        ;;
+      --input)
+        if ((i + 1 < n)); then
+          p="${tok[i + 1]}"
+          have_flag=1
+          if [[ $p != - && -f $p && -r $p ]]; then
+            body="$(jq -r '.body // empty' -- "$p" 2> /dev/null)" || body=""
+            [[ -n $body ]] && texts+=("$body")
+          fi
+          i=$((i + 2))
+          continue
+        fi
+        ;;
+      --input=*)
+        p="${tok[i]#--input=}"
+        have_flag=1
+        if [[ $p != - && -f $p && -r $p ]]; then
+          body="$(jq -r '.body // empty' -- "$p" 2> /dev/null)" || body=""
+          [[ -n $body ]] && texts+=("$body")
+        fi
+        ;;
+    esac
+    i=$((i + 1))
+  done
+
+  ((have_flag)) || return 1 # 本文フラグ無し(GET 相当含む)→ 判定不能で通す
+
+  local text=""
+  ((${#texts[@]} > 0)) && text="$(printf '%s\n' "${texts[@]}")"
+
+  if ((has_hd)) && [[ -n ${HD_BODIES:-} ]]; then
+    text+=$'\n'"$HD_BODIES"
+  elif [[ $text == *'$('* || $text == *'`'* ]]; then
+    return 1 # 本文がコマンド置換 → 判定不能で通す
+  fi
+
+  [[ -n ${text//[[:space:]]/} ]] || return 1 # --input - 等、値が取れない → 通す
+
+  has_marker "$text" && return 1
+  deny_reason
+  return 0
+}
+
 # $1=Bash ツールのコマンド文字列全体; deny なら理由文を stdout に出して 0。
 #
 # 対象コマンドは「コマンド位置」にあるものだけを拾う。コマンド文字列全体を
@@ -370,23 +503,35 @@ decide() {
   ((${#TOK[@]} > 0)) || return 1
 
   local n=${#TOK[@]} i at_cmd_pos=1
-  local -a starts=()
+  local -a starts=() kinds=()
   for ((i = 0; i < n; i++)); do
     if ((at_cmd_pos)) && is_target_at "$i"; then
       starts+=("$i")
+      kinds+=("$TARGET_KIND")
     fi
     if is_sep "${TOK[i]}"; then at_cmd_pos=1; else at_cmd_pos=0; fi
   done
   ((${#starts[@]} > 0)) || return 1
 
+  # 判定関数の呼び出しは必ず `&&` の非最終項にする(set -e の除外規則に乗せる
+  # ため)。$(...) 単独の代入文は、中身が非 0 を返すと set -e でスクリプト
+  # ごと落ちる — decide_tokens/decide_api_tokens が pass(非 0)を返すのは
+  # 通常経路なので、ここを裸の代入文にすると大半のコマンドで即死する。
   local m=${#starts[@]} s e reason
   for ((i = 0; i < m; i++)); do
     s=${starts[i]}
     if ((i + 1 < m)); then e=${starts[i + 1]}; else e=$n; fi
-    reason="$(decide_tokens "${TOK[@]:s:e - s}")" && {
-      printf '%s' "$reason"
-      return 0
-    }
+    if [[ ${kinds[i]} == api ]]; then
+      reason="$(decide_api_tokens "${TOK[@]:s:e - s}")" && {
+        printf '%s' "$reason"
+        return 0
+      }
+    else
+      reason="$(decide_tokens "${TOK[@]:s:e - s}")" && {
+        printf '%s' "$reason"
+        return 0
+      }
+    fi
   done
   return 1
 }
@@ -545,6 +690,48 @@ selftest() {
   expect_pass "22 wrapup 統合フッター" "gh issue create --title t --body '本文 $wrapup_footer'"
   expect_deny "23 wrapup フッターだが Claude Code 無し" "gh issue create --title t --body '本文 🤖 Filed from wrap-up inbox'"
   expect_pass "24 旧 2 行形式(回帰)" "$(printf "gh issue create --title t --body '本文\n%s\n🤖 Filed from Claude Code wrap-up inbox'" "$footer")"
+
+  # 25-33: gh api の外向き投稿経路(#195)。
+  printf '{"body": "本文だけ"}\n' > "$tmp/api-without.json"
+  printf '{"body": "本文 %s"}\n' "$footer" > "$tmp/api-with.json"
+
+  # 25: issue コメント作成(-f body=)
+  expect_deny "25 api issue comment -footer" "gh api repos/o/r/issues/1/comments -f body='確認しました'"
+  expect_pass "25 api issue comment +footer" "gh api repos/o/r/issues/1/comments -f body=\"確認しました $footer\""
+
+  # 26: pr 作成(pulls への POST)
+  expect_deny "26 api pr create -footer" "gh api repos/o/r/pulls -f title=t -f body='本文'"
+  expect_pass "26 api pr create +footer" "gh api repos/o/r/pulls -f title=t -f body=\"本文 $footer\""
+
+  # 27: インラインレビューコメント(pulls/N/comments)は #194 の決定どおり
+  #     対象外のまま。API_JUDGED_RE の alternation に無いパスなので、
+  #     除外用の追加正規表現なしで自然に通る(除外の正本ケース)。
+  expect_pass "27 api inline pulls/N/comments" "gh api repos/o/r/pulls/1/comments -f body='inline コメント'"
+  expect_pass "27 api inline pulls/comments/N(編集)" "gh api -X PATCH repos/o/r/pulls/comments/9 -f body='inline 編集'"
+
+  # 28: --input <file>(judged path + --input)
+  expect_deny "28 api --input ファイル -footer" "gh api repos/o/r/issues --input $tmp/api-without.json"
+  expect_pass "28 api --input ファイル +footer" "gh api repos/o/r/issues --input $tmp/api-with.json"
+  expect_pass "28 api --input ファイル不在(判定不能)" "gh api repos/o/r/issues --input $tmp/nope.json"
+
+  # 29: --input -(stdin、判定不能 → 通す)。heredoc 併用時は本体を検査する。
+  expect_pass "29 api --input -(stdin)" "gh api repos/o/r/issues --input -"
+  expect_deny "29 api --input - + heredoc footer 無し" \
+    "$(printf "gh api repos/o/r/issues --input - <<%sEOF%s\n{\"body\": \"本文だけ\"}\nEOF" "'" "'")"
+
+  # 30: PATCH 編集(issues/comments/N)
+  expect_deny "30 api PATCH 編集 -footer" "gh api -X PATCH repos/o/r/issues/comments/9 -f body='編集'"
+  expect_pass "30 api PATCH 編集 +footer" "gh api -X PATCH repos/o/r/issues/comments/9 -f body=\"編集 $footer\""
+
+  # 31: 明示 GET(判定不能 → 通す)。本文フラグも無いので二重に安全。
+  expect_pass "31 api GET" "gh api -X GET repos/o/r/issues --jq '.[].title'"
+
+  # 32: 非対象パス(rulesets 等)は素通り —
+  #     scripts/github-rulesets-apply が呼ぶ実際の形の回帰。
+  expect_pass "32 api 非対象パス(rulesets)" "gh api -X POST repos/o/r/rulesets --input $tmp/api-without.json"
+
+  # 33: コマンド位置外の綴り(echo の引数内)で発火しないこと
+  expect_pass "33 api コマンド位置外" "echo 'gh api repos/o/r/issues -f body=x'"
 
   if [[ $fails -gt 0 ]]; then
     echo "selftest: ${fails} 件失敗" >&2

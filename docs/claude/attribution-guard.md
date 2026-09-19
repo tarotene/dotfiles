@@ -188,12 +188,34 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 ただし heredoc だけは素通しではなく範囲全体の検索に落とす — 本体が実在するので
 判定材料がある。
 
+## `gh api` の判定（#195）
+
+正規経路（`gh pr|issue comment`、`gh pr review`）が揃っていても、`gh api` の
+生呼び出しで同じ投稿ができてしまう穴があった。規約（CLAUDE.md）側は経路を
+問わず要求しているため、`gh api` のうち**外向き投稿とわかるエンドポイント**
+だけを対象に追加した。判定は `decide_tokens()` と対になる `decide_api_tokens()`
+が担う（`is_target_at()` が `gh api` をコマンド位置として検出し、範囲ごとの
+判定を `TARGET_KIND` で `decide_tokens`/`decide_api_tokens` に振り分ける）。
+
+| 形 | 判定 |
+|----|------|
+| `repos/OWNER/REPO/issues`（作成）/ `issues/N`（編集） | judge |
+| `issues/N/comments` / `issues/comments/N`（コメント作成・編集） | judge |
+| `repos/OWNER/REPO/pulls`（作成）/ `pulls/N`（編集）/ `pulls/N/reviews`（レビュー） | judge |
+| `pulls/N/comments` / `pulls/comments/N`（インラインレビューコメント） | 対象外（下の既知の限界どおり） |
+| 上記以外の URL パス（`rulesets` 等） | 対象外（素通り） |
+| `-X`/`--method` が明示 `GET`/`HEAD`/`DELETE` | 判定不能 → 通す |
+
+インラインの除外は追加の正規表現を持たない — 対象パスの正規表現
+（`API_JUDGED_RE`）は `pulls` に `(/[0-9]+)?(/reviews)?` までしか許さないため、
+`pulls/N/comments` はそもそもこの正規表現にマッチせず自然に非対象になる。
+
+本文は `-f`/`--field`/`-F`/`--raw-field` の `body=<値>`、または `--input <file>`
+（jq で `.body` を読む）から取る。`--input -`（stdin）は判定不能 → 通す
+（heredoc と併用していれば heredoc 本体を検査する、既存の倒し方と同じ）。
+
 ## 既知の限界（意図的な選択）
 
-- **`gh api` の生呼び出しは判定しない。** 正規経路（`gh pr|issue comment`、
-  `gh pr review`）が揃っているので使う必然性がなく、`/issues/N/comments` や
-  `/pulls/N/reviews` の URL パターン判定を入れると「インラインコメントは対象外」と
-  いう決定と交錯して判定表が太る。規約（CLAUDE.md）側では経路を問わず要求している。
 - **コード行へのインラインレビューコメントは対象外。** 1〜2 行が典型で、フッターが
   本文より長くなり S/N を壊す。投稿経路も `gh api` / MCP に発散する。
 - **Codex CLI / Copilot CLI は対象外。** publish-guard のような adapter 層を持たない。
@@ -214,12 +236,15 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 ## 縮退と検査
 
 - `jq` 不在・stdin 不正は黙って `exit 0`（ADR-0005 の binary-existence gating）。
-- `attribution-guard.sh --selftest` が 31 ケースをネットワーク無しに検査する。
-  うち 3 件は Copilot plan review の指摘 R1-B-1 の回帰ケース（`&&` 連結での
-  取り違え / 手前の `echo` からの混入 / 閉じクォートを理由と誤認）、1 件は
-  「Markdown 箇条書きで本文が切れて全 deny になる」false deny の回帰ケース、
-  3 件は「コマンド位置にない投稿コマンドの綴りで発火する」false deny の回帰ケース、
-  3 件は wrap-up inbox の統合フッター（前節）の受理・非受理・旧形式回帰。
+- `attribution-guard.sh --selftest` がケース 1〜33(45 アサーション)を
+  ネットワーク無しに検査する。うち 3 件は Copilot plan review の指摘 R1-B-1 の
+  回帰ケース（`&&` 連結での取り違え / 手前の `echo` からの混入 / 閉じクォートを
+  理由と誤認）、1 件は「Markdown 箇条書きで本文が切れて全 deny になる」false
+  deny の回帰ケース、3 件は「コマンド位置にない投稿コマンドの綴りで発火する」
+  false deny の回帰ケース、3 件は wrap-up inbox の統合フッター(前節)の受理・
+  非受理・旧形式回帰、ケース 25〜33(9 件)は `gh api` の判定(前節)——
+  対象パス judge/deny・インライン除外・`--input` ファイル/stdin・PATCH 編集・
+  GET 通過・非対象パス(`rulesets`)素通りの回帰。
   **false deny 系が落ちると gate は実用上使えない。**
 - `attribution-guard.sh --check '<コマンド文字列>'` で手動 e2e ができる。
 
