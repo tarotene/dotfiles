@@ -117,3 +117,40 @@ because it stems from a different investigation.
    is instead moved earlier, to a `SessionStart` hook that prompts while the
    user is already looking at the screen (`config/claude/hooks/sign-prewarm.sh`,
    `docs/claude/sign-prewarm.md`).
+
+## Amendment 3 (2026-09 — #235)
+
+Absorbing a private predecessor tool's subkey tooling into `scripts/gpg-subkey`
+surfaced that Amendment §1 Decision 4's phrase "the annual cadence rotates
+`[S]` **in place**" is ambiguous between two different operations, and the
+tooling review needed to pick one before it could rotate a real identity's
+`[S]` subkey.
+
+1. **"Rotation" means generate-new-then-revoke-old, not extend the same
+   key's expiry.** "In place" describes *where* the new `[S]` lands (still
+   on-disk, still per-machine, no card round-trip) — not that the same key
+   material survives. This is now the tested, deployed behavior
+   (`scripts/gpg-subkey rotate --revoke-old`) and matches actual production
+   history: the company identity's `[S]` went through two real rotations
+   (2025-12, 2026-07), each cutting a **new** keyid and revoking the
+   previous one, never extending an existing key's expiry
+   (`gpg --quick-set-expire`/`--edit-key ... expire` was never used).
+   Rationale: the rotation cadence exists to bound how long any *one*
+   on-disk key stays valid (Amendment §1's stated trade for skipping a
+   smartcard touch per commit) — extending one key's expiry indefinitely
+   would defeat that bound.
+
+2. **The local passphrase protecting each generated `[S]` may be reused
+   across rotations.** The passphrase's job is local-disk protection of
+   whichever `[S]` currently exists; it is orthogonal to the key-material
+   rotation cadence in point 1, and forcing a fresh passphrase on every
+   annual rotation only pushes toward weaker, predictable passphrases.
+   Per NIST SP 800-63B (memorized secrets should not be rotated on a fixed
+   schedule; a verifier "shall force a change if there is evidence of
+   compromise of the authenticator", otherwise not —
+   <https://pages.nist.gov/800-63-3/sp800-63b.html>, retrieved 2026-09-20),
+   the same passphrase may be reused for a newly generated `[S]` subkey.
+   Reuse must stop and the passphrase must change the moment there is any
+   suspicion it was itself exposed (shoulder-surfed, logged by a compromised
+   pinentry, found in a leaked backup) — that is a compromise event
+   independent of the annual key-material cadence.

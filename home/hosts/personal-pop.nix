@@ -9,10 +9,12 @@
     ../identities/personal.nix
   ];
 
-  # Per-machine sign subkey. On-disk, annual rotation (ADR-0003 amended).
+  # Per-machine sign subkey. On-disk, annual rotation (ADR-0003 Amendment 3).
   # Master fp 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 → [S] subkey created
-  # 2025-10-18, expires 2026-10-18.
-  programs.git.signing.key = "26F56F7A73B2FD0FBF12D7FBEA9E735C451B8541";
+  # 2026-09-19, expires 2027-09-19. Rotated via `gpg-subkey rotate
+  # --revoke-old`; the previous subkey (…EA9E735C451B8541) is revoked, not
+  # deleted — its signature history stays verifiable.
+  programs.git.signing.key = "100CF448A28322D1474FE17A01E5FF8AC9A9306F";
 
   # ROS is scoped to the personal host only (#215 / ADR-0002): place the
   # host-scoped zsh module and source it after the shared modules. home-manager

@@ -48,7 +48,16 @@ edit_key_extra_args() {
   local -a args=()
   [[ -n ${GPG_SUBKEY_PINENTRY_MODE:-} ]] && args+=(--pinentry-mode "$GPG_SUBKEY_PINENTRY_MODE")
   [[ -v GPG_SUBKEY_PASSPHRASE ]] && args+=(--passphrase "$GPG_SUBKEY_PASSPHRASE")
-  printf '%s\n' "${args[@]}"
+  # `printf '%s\n' "${args[@]}"` with an EMPTY args array still runs once,
+  # substituting "" for the unmet %s — i.e. it prints one blank line instead
+  # of nothing. mapfile then turns that into extra=("") at the call site, an
+  # empty-string positional argument that lands *before* --command-file on
+  # gpg's command line and makes gpg stop recognizing every option after it
+  # ("'--command-file' is not considered an option"). This is exactly the
+  # production path (no GPG_SUBKEY_* env set), so the guard below is not
+  # cosmetic — skip printf entirely when there is nothing to emit.
+  ((${#args[@]} > 0)) && printf '%s\n' "${args[@]}"
+  return 0
 }
 
 usage() {
@@ -486,6 +495,19 @@ selftest() {
   # never used by this script's own gpg calls (only by the real production
   # path via the operator's configured agent), so nothing here depends on a
   # terminal.
+
+  # Regression check for the production path specifically: with neither
+  # GPG_SUBKEY_PINENTRY_MODE nor GPG_SUBKEY_PASSPHRASE set,
+  # edit_key_extra_args must emit nothing at all — this is the exact branch
+  # every other check below never exercises (both are exported above for the
+  # fixture key), and the one that broke real usage in production.
+  local -a prod_extra=()
+  (
+    unset GPG_SUBKEY_PINENTRY_MODE GPG_SUBKEY_PASSPHRASE
+    edit_key_extra_args
+  ) >"$dir/prod-extra.out" 2>&1
+  mapfile -t prod_extra <"$dir/prod-extra.out"
+  check "edit_key_extra_args: 本番(env未設定)では空配列" 0 "${#prod_extra[@]}"
 
   local first_keyid
   first_keyid="$(_generate_on "$fpr" 1d 2>"$dir/generate.err")" || {
