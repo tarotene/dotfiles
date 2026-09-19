@@ -16,6 +16,7 @@ on:
       - "flake.lock"
       - "home/**"
       - "config/**"
+      - "patches/**"
       - ".github/workflows/nix.yml"
   pull_request:
   workflow_dispatch:
@@ -37,7 +38,13 @@ jobs:
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
       # in Feb 2025. We rely on cache.nixos.org substituters here; a FlakeHub
       # cache action can be added later once a token is provisioned.
-      - run: nix flake check --print-build-logs
+      #
+      # --no-build: `checks.${system}` (flake.nix) maps every host to its
+      # activationPackage, so a full `nix flake check` here would rebuild all
+      # three hosts a second time — build-host below already does that as a
+      # matrix. This job stays evaluation-only (module type errors, missing
+      # source paths, ...); the real build coverage lives in build-host.
+      - run: nix flake check --no-build --print-build-logs
 
   build-host:
     runs-on: ubuntu-latest
