@@ -66,12 +66,13 @@ minimal CI-seeding PR / a CI-seeding Issue / an exempt} for a human to pick.
 
 **Why judgement is by rule-type union, not ruleset name/count.** The
 `*-repo-governance` skills' `rulesets/*.json` templates describe a 3-file
-layout — Security, Quality, Workflow — with byte-identical Security/Quality
-rule types across skills. It was tempting to judge a repository by "does it
-have exactly these 3 rulesets, by name". Checking the actual account
-(2026-09-10) showed that would produce false positives: some repositories
-split `copilot_code_review` into its own ruleset instead of bundling it
-into Workflow as the skill templates do; others cover every baseline rule
+core layout — Security, Quality, Workflow — with byte-identical
+Security/Quality rule types across skills (plus a 4th, opt-in `review.json`
+file — see below). It was tempting to judge a repository by "does it have
+exactly these rulesets, by name". Checking the actual account (2026-09-10)
+showed that would produce false positives: some repositories split
+`copilot_code_review` into its own ruleset instead of bundling it into
+Workflow as the skill templates used to; others cover every baseline rule
 type below except `required_status_checks` through a single catch-all
 ruleset; others have no ruleset at all.
 
@@ -81,12 +82,53 @@ branch. So judgement here never looks at ruleset names or count — only at
 that union, plus the `pull_request` rule's parameters
 (`required_review_thread_resolution`, `allowed_merge_methods`).
 
-Baseline rule types (`BASELINE_RULE_TYPES` in the script):
+**Two layers, not one baseline (ADR-0021).** Prior to ADR-0021, the
+baseline bundled a mandatory review-approval workflow — Copilot code
+review auto-requested plus required conversation resolution before
+merge — into the same single baseline as basic branch protection. For an
+early-stage or pre-release repository, forcing that review round trip on
+every commit was judged excessive and noisy, without a way to opt out
+short of exempting the whole `rulesets` domain (losing coverage of
+`deletion`/`non_fast_forward`/etc. too). The baseline is now two layers:
 
-```
-deletion, non_fast_forward, required_signatures, required_linear_history,
-required_status_checks, pull_request, copilot_code_review
-```
+- **Core layer** — always required, unconditionally. `BASELINE_RULE_TYPES`
+  in the script:
+
+  ```
+  deletion, non_fast_forward, required_signatures, required_linear_history,
+  required_status_checks, pull_request
+  ```
+
+  (`pull_request`'s `allowed_merge_methods` must resolve to squash-only —
+  see the aggregation note below.)
+
+- **Review layer** — an opt-in addin, judged only if a repository has
+  opted into it. Presence is detected by either half showing up: the
+  `copilot_code_review` rule type, or any active `pull_request` rule with
+  `required_review_thread_resolution: true`. A repository with neither is
+  reported `review_layer=absent` — informational, never drift (mirroring
+  the existing `required_status_checks` check-name precedent below: this
+  audit collects and reports what it can't or shouldn't force a judgement
+  on). A repository with one half but not the other is `review_layer=
+  partial-drift` — `missing` carries `review_layer.copilot_code_review` and/
+  or `review_layer.required_review_thread_resolution` as needed. Both
+  halves present is `review_layer=complete`.
+
+  A phase-tracking mechanism (a declared "development stage" signal, e.g.
+  via GitHub topics or Release presence) was considered and rejected — see
+  ADR-0021 for why. The addin is presence-based, not declaration-based.
+
+**Aggregating `pull_request` across two rulesets.** Once the review layer
+lives in its own ruleset (`review.json`, applied independently of the core
+3-file layout — see the `*-repo-governance` skills), a repository that has
+opted in carries *two* active `pull_request` rules on its default branch:
+the core one (squash-only) and the review layer's (squash-only + thread
+resolution). GitHub aggregates same-type rules across active rulesets by
+applying the most restrictive value per parameter (GitHub Docs, "About
+rulesets", rule-layering section). The audit mirrors that: thread
+resolution is an OR across every `pull_request` rule found, and
+`allowed_merge_methods` is an intersection across every rule that
+specifies it.
 
 `required_status_checks`' actual check-name list (e.g. `MSRV (1.88)`,
 `Format check`) is inherently project-specific (CI job titles) — the audit

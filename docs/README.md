@@ -99,6 +99,15 @@
   新規ホストは恒星コードネームで命名し(役割・identity・世代を名前に
   埋め込まない)、論理ホスト名はマーカーファイル優先・`hostname`
   フォールバックで解決する決定。既存 3 ホストの改名は別 Issue。
+- [ADR-0020](adr/0020-generative-repo-governance-rules.md) — リポジトリ
+  統制(命名クラス・ruleset baseline)を、監査対象へ都度問い合わせる
+  分岐ロジックから、生成側が従うべき閉じた文法+語彙(codename-registry
+  等の TSV)へ反転する決定。
+- [ADR-0021](adr/0021-ruleset-review-layer-addin.md) — `github-audit` の
+  ruleset baseline をコア層(常に必須)とレビュー層(Copilot code review +
+  会話 resolve 必須、opt-in アドイン)の 2 層に分割する決定。フェーズ宣言
+  台帳ではなく存在検出方式を採用し、開発初期リポでレビュー往復を強制
+  しない。ADR-0015 の rulesets ドメイン baseline を部分 amend。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
