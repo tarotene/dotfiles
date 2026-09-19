@@ -87,11 +87,11 @@ beyond confirming the rule type itself is present.
 constrains the default branch, and at least one governed repo in the
 account carries `copilot_code_review` exclusively through such a ruleset.
 
-### charters (ADR-0013 + ADR-0016)
+### charters (ADR-0013 + ADR-0016 + ADR-0017)
 
 Reports which repositories lack a machine-checkable "why this repository
-exists, and which Issues belong in it" charter, and (since ADR-0016) which
-repositories' documentation drifts from the fixed document canon.
+exists, and which Issues belong in it" charter, and (since ADR-0016/ADR-0017)
+which repositories' documentation drifts from the fixed document canon.
 
 **Why the schema changed (ADR-0016).** The original schema's `In:`/`Out:`
 Scope labels and README-embedded Issue litmus had no precedent in
@@ -101,6 +101,22 @@ repository (see `docs/claude/public-publish-guard.md` for why this
 document doesn't name it) produced README content those sources actively
 warn against (timestamped history, Issue-number citations, long litmus
 prose). ADR-0016 replaces it with a schema grounded in those sources.
+
+**Why CONTRIBUTING.md got its own fixed schema, and "Issue litmus" is
+retired (ADR-0017).** ADR-0016 only moved the litmus section out of README
+and into CONTRIBUTING.md; it never grounded CONTRIBUTING.md's own structure
+in anything, and the file that shipped as ADR-0016's own self-application
+(`## Issue litmus` with `判定問:`/`採用例:`/`棄却例:` labels) mixed Japanese
+and English in a file ADR-0016 Decision 4 fixes to a single English
+original. A primary-source survey (GitHub Docs, opensource.guide,
+`nayafia/contributing-template`; see ADR-0017) found no standard-readme-
+equivalent spec for CONTRIBUTING.md, but converged on two headings across
+every source: how to file an issue, and how to send a pull request. ADR-0017
+fixes CONTRIBUTING.md to that pair plus an optional third, and retires the
+self-invented "Issue litmus" vocabulary in favor of the judging-
+question-plus-examples *content* under a plain `## Issues` heading — that
+content shape has no precedent either (contributors are increasingly AI
+agents, a case no source above addresses), so it stays, just renamed.
 
 Judged items:
 
@@ -120,17 +136,23 @@ Judged items:
 - `readme-stray-heading:<names>` — a `##` heading outside the allowed set
   (`Background`, `Install`, `Usage`, `Scope`, `Development`, `License`).
 - `litmus-not-migrated` — README still has a `## Issue litmus` heading
-  (it belongs in CONTRIBUTING.md now).
-- `contributing-no-litmus` — CONTRIBUTING.md exists but lacks
-  `## Issue litmus`.
-- `readme-language-mixed` / `contributing-language-mixed` — the document,
-  after stripping fenced/inline code and URLs, has a CJK-script character
-  count and a Latin-letter count both at or above `LANG_MIX_THRESHOLD`
-  (20, provisional — a textlint-class linter should replace this
-  heuristic if one is found suitable). ADR-0016 requires README/
-  CONTRIBUTING to be a single English original; this only judges the two
-  files this audit fetches, not every markdown file in the repository —
-  the rest is each repository's own per-repo CI's job.
+  (it belongs in CONTRIBUTING.md now, under the current `## Issues` name).
+- `contributing-schema-incomplete-or-out-of-order` (ADR-0017) — the
+  required headings (`## Issues`, `## Pull requests`) are missing or not in
+  that relative order. `## Expectations` is optional and, if present, comes
+  last.
+- `contributing-stray-heading:<names>` (ADR-0017) — a `##` heading outside
+  the allowed set (`Issues`, `Pull requests`, `Expectations`). A leftover
+  `## Issue litmus` heading is caught here, not by a dedicated check — the
+  retired vocabulary is simply not in the allowed set.
+- `readme-cjk-present` / `contributing-cjk-present` (ADR-0017) — the
+  document, after stripping fenced/inline code and URLs, has a CJK-script
+  character count at or above `CJK_PRESENCE_THRESHOLD` (5). ADR-0016
+  requires README/CONTRIBUTING to be a single English original, so unlike
+  the retired two-script "mixing" heuristic this predecessor superseded, CJK
+  presence alone is drift — Latin content does not need to co-occur. This
+  only judges the two files this audit fetches, not every markdown file in
+  the repository — the rest is each repository's own per-repo CI's job.
 - `no-topics` — `repositoryTopics` is empty.
 - `root-doc-not-allowlisted:<names>` — a root-level `*.md` file outside
   `README.md` / `CONTRIBUTING.md` / `CHANGELOG.md` / `AGENTS.md` /

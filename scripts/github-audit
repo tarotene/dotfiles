@@ -35,12 +35,22 @@ BASELINE_RULE_TYPES=(
 # appear only before Install; the rest is a fixed, required sequence.
 REQUIRED_README_HEADINGS=(Install Usage Scope Development License)
 ALLOWED_README_HEADINGS=(Background Install Usage Scope Development License)
+
+# CONTRIBUTING.md schema (charters domain, ADR-0017). Both headings are
+# required, in this order; Expectations is optional and, if present, comes
+# last. "Issue litmus" is retired vocabulary (ADR-0013/ADR-0016) — it is not
+# in this allowed set, so a document that still carries it is flagged as a
+# stray heading like any other.
+REQUIRED_CONTRIBUTING_HEADINGS=(Issues "Pull requests")
+ALLOWED_CONTRIBUTING_HEADINGS=(Issues "Pull requests" Expectations)
+
 ROOT_ALLOWLIST_EXACT=(README.md CONTRIBUTING.md CHANGELOG.md AGENTS.md CLAUDE.md)
 
-# Language-mix heuristic threshold (charters domain). Provisional: a
-# textlint-class linter should replace this if one is found suitable at
-# implementation time (docs/github-audit.md).
-LANG_MIX_THRESHOLD=20
+# CJK-presence threshold (charters domain, ADR-0017). README/CONTRIBUTING are
+# fixed to a single English original (ADR-0016 Decision 4), so any CJK
+# content at or above this floor is drift on its own — unlike the retired
+# two-script "mixing" heuristic, Latin content is not required to co-occur.
+CJK_PRESENCE_THRESHOLD=5
 
 usage() {
   cat <<'EOF'
@@ -51,8 +61,8 @@ non-fork repository owned by $GITHUB_AUDIT_OWNER (default: tarotene),
 judges the requested domains (default: all of them):
 
   rulesets   default-branch GitHub ruleset rule-type coverage (#130)
-  charters   README schema + CONTRIBUTING.md litmus + root doc allowlist +
-             language mixing + CLAUDE.md/AGENTS.md routing (ADR-0013/0016)
+  charters   README + CONTRIBUTING.md schema + root doc allowlist + CJK
+             presence + CLAUDE.md/AGENTS.md routing (ADR-0013/0016/0017)
   naming     repository naming class declaration + pattern match (ADR-0014)
   settings   squash-only merge, delete-branch-on-merge, default branch,
              wiki/projects disabled
@@ -215,8 +225,8 @@ judge_rulesets() { # $1=repo -> one JSON finding object (no repo/language wrappe
 }
 
 # ---------------------------------------------------------------------------
-# charters domain (ADR-0013 purpose/topics + ADR-0016 schema/litmus/allowlist/
-# language/routing)
+# charters domain (ADR-0013 purpose/topics + ADR-0016 README schema/
+# allowlist/routing + ADR-0017 CONTRIBUTING schema/CJK presence)
 # ---------------------------------------------------------------------------
 
 extract_purpose() { # $1=readme text -> first non-empty paragraph after the H1
@@ -265,19 +275,17 @@ strip_for_lang() {
 }
 
 count_cjk() { grep -oP '[\x{3040}-\x{30FF}\x{4E00}\x{9FFF}\x{3400}-\x{4DBF}]' <<<"$1" 2>/dev/null | wc -l; }
-count_latin() { grep -oP '[A-Za-z]' <<<"$1" 2>/dev/null | wc -l; }
 
-is_language_mixed() { # $1=doc text -> 0 (true) if both scripts exceed the threshold
-  local stripped cjk latin
+is_cjk_present() { # $1=doc text -> 0 (true) if CJK count meets the presence floor
+  local stripped cjk
   stripped="$(strip_for_lang "$1")"
   cjk="$(count_cjk "$stripped")"
-  latin="$(count_latin "$stripped")"
-  [[ $cjk -ge $LANG_MIX_THRESHOLD && $latin -ge $LANG_MIX_THRESHOLD ]]
+  [[ $cjk -ge $CJK_PRESENCE_THRESHOLD ]]
 }
 
-# readme_headings: '## X' heading texts in document order, skipping fenced
-# code blocks.
-readme_headings() {
+# doc_headings: '## X' heading texts in document order, skipping fenced code
+# blocks. Used for both README and CONTRIBUTING.md.
+doc_headings() {
   awk '
     /^```/ { infence = !infence; next }
     infence { next }
@@ -315,7 +323,7 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
     while IFS= read -r h; do
       [[ -n $h ]] || continue
       headings+=("$h")
-    done < <(readme_headings "$readme")
+    done < <(doc_headings "$readme")
     for h in "${headings[@]}"; do
       local ok=0 a
       for a in "${ALLOWED_README_HEADINGS[@]}"; do [[ "$h" == "$a" ]] && ok=1 && break; done
@@ -330,14 +338,30 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
 
     grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$readme" && missing+=("litmus-not-migrated")
 
-    is_language_mixed "$readme" && missing+=("readme-language-mixed")
+    is_cjk_present "$readme" && missing+=("readme-cjk-present")
   fi
 
   if [[ -z $contributing ]]; then
     missing+=("contributing-missing")
   else
-    grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$contributing" || missing+=("contributing-no-litmus")
-    is_language_mixed "$contributing" && missing+=("contributing-language-mixed")
+    local -a c_headings=() c_stray=() c_present_required=()
+    while IFS= read -r h; do
+      [[ -n $h ]] || continue
+      c_headings+=("$h")
+    done < <(doc_headings "$contributing")
+    for h in "${c_headings[@]}"; do
+      local ok=0 a
+      for a in "${ALLOWED_CONTRIBUTING_HEADINGS[@]}"; do [[ "$h" == "$a" ]] && ok=1 && break; done
+      ((ok)) || c_stray+=("$h")
+      for a in "${REQUIRED_CONTRIBUTING_HEADINGS[@]}"; do [[ "$h" == "$a" ]] && c_present_required+=("$h"); done
+    done
+    [[ "${c_present_required[*]:-}" == "${REQUIRED_CONTRIBUTING_HEADINGS[*]}" ]] || missing+=("contributing-schema-incomplete-or-out-of-order")
+    ((${#c_stray[@]} == 0)) || missing+=("contributing-stray-heading:$(
+      IFS=,
+      echo "${c_stray[*]}"
+    )")
+
+    is_cjk_present "$contributing" && missing+=("contributing-cjk-present")
   fi
 
   [[ $topics -ge 1 ]] || missing+=("no-topics")
@@ -631,7 +655,7 @@ EOF
   "data": {
     "r1": {
       "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
-      "contributing": {"text": "# Contributing\n\n## Issue litmus\n\nJudging question: does it help?\n"},
+      "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"id": "abc"},
       "rootTree": {"entries": [{"name": "README.md", "type": "blob"}, {"name": "CONTRIBUTING.md", "type": "blob"}, {"name": "AGENTS.md", "type": "blob"}, {"name": "CLAUDE.md", "type": "blob"}]},
@@ -869,6 +893,18 @@ STUB
   }
   jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("skills-not-routed:bar")' <<<"$out" >/dev/null || {
     printf 'FAIL: all-drifted charters should flag skills-not-routed:bar\n' >&2
+    return 1
+  }
+  # Regression (ADR-0017): pj-ambiguous's CONTRIBUTING.md fixture still
+  # carries the retired "## Issue litmus" heading instead of "## Issues" —
+  # confirm it is caught as an out-of-schema stray heading, not silently
+  # accepted the way the pre-ADR-0017 grep-for-litmus check would have.
+  jq -e '.[] | select(.repo=="pj-ambiguous") | .domains.charters.missing | index("contributing-stray-heading:Issue litmus")' <<<"$out" >/dev/null || {
+    printf 'FAIL: pj-ambiguous charters should flag the retired Issue litmus heading as stray\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="pj-ambiguous") | .domains.charters.missing | index("contributing-schema-incomplete-or-out-of-order")' <<<"$out" >/dev/null || {
+    printf 'FAIL: pj-ambiguous charters should flag missing Issues/Pull requests headings\n' >&2
     return 1
   }
 
