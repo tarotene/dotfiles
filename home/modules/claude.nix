@@ -994,8 +994,8 @@ in
   # リポジトリ(PRIVATE)から使用実績で選別して収容した command 2 本
   # (128 回・7 回の実使用、いずれもローカル版が正本)。@home@ プレースホルダは
   # 使わないため replaceVars を挟まず literal のまま配る。同時に見つかった
-  # weekly-backlog-review は PRIVATE リポジトリ tarotene/selffiles の運用
-  # モデルに構造的に依存するため収容していない(実機に手動管理のまま残す)。
+  # weekly-backlog-review は別の PRIVATE リポジトリの運用モデルに構造的に
+  # 依存するため収容していない(実機に手動管理のまま残す)。
   home.file.".claude/commands/resolve-pr-threads.md".source =
     repoConfig + "/claude/commands/resolve-pr-threads.md";
   home.file.".claude/commands/promote-permissions.md".source =
