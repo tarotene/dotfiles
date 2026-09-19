@@ -1,5 +1,15 @@
 # repo-charter: README charter スキーマの設計理由
 
+> **2026-09-18 更新(ADR-0016)**: 以下は ADR-0013 時点の設計判断の記録として
+> 残す。README のスキーマ自体(3 見出し + topics、`In:`/`Out:` ラベル、
+> README 内 Issue litmus)と「AGENTS.md は監査対象に含めない」の 2 点は
+> `docs/adr/0016-repository-document-canon.md` により部分 supersede
+> された — README は全節固定スキーマに、Issue litmus は CONTRIBUTING.md
+> へ、AGENTS.md は AI 向け正本として監査対象に含まれる。以下の
+> 「何が問題だったか」「パイロット適合」の記録自体はそのまま有効。
+> 横断監査は `github-audit-charters` から `github-audit charters` へ統合
+> された(ADR-0015、`docs/github-audit.md`)。
+
 ## 何が問題だったか
 
 herdr で開いていた複数の個人リポジトリ(公開・非公開を含む)を実地調査した

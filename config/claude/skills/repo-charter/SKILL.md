@@ -1,112 +1,196 @@
 ---
 name: repo-charter
-description: 新規リポジトリ作成時(gh repo create)、または既存リポジトリの目的が曖昧になってきたときに、README に機械検査可能な charter(目的1文・Scope・Issue litmus・topics)を播く手順。charter・リポジトリの目的を言語化・Issue受け入れ判定・Issue litmus・スコープが曖昧・迷走している・gh repo create、といった文脈で使う。repo purpose statement, Issue acceptance criteria, README charter, gh repo create checklist、といった英語の文脈でも使う。github-audit-charters(事後の横断監査)とは役割が異なる — こちらは作成/適合化する側。
+description: 新規リポジトリ作成時(gh repo create)、または既存リポジトリの目的が曖昧になってきたときに、README + CONTRIBUTING.md に機械検査可能な charter(目的1文・Scope・Issue litmus・命名クラス・topics)を播き、AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順。charter・リポジトリの目的を言語化・Issue受け入れ判定・Issue litmus・スコープが曖昧・迷走している・gh repo create、といった文脈で使う。repo purpose statement, Issue acceptance criteria, README charter, gh repo create checklist、といった英語の文脈でも使う。github-audit(事後の横断監査)・github-audit-triage(監査駆動の一括裁定)とは役割が異なる — こちらは 1 リポジトリを播く/適合化する側。
 ---
 
 新規リポジトリは「何を作るか」だけが先に決まり、「どの Issue がこのリポジトリに
 属するか」を判定する軸が言語化されないまま育つことが多い。軸が無いと、AI Agent
 は目指すべき方向性がブレ、人間は何を期待すべきかブレて、見当外れの Issue を切る
-(あるいは切ってよいか判断できない)。charter はこの軸を、README の中の 3 見出し
-+ 1 メタデータという機械検査可能な形に固定する。
+(あるいは切ってよいか判断できない)。charter はこの軸を、README/CONTRIBUTING の
+中の機械検査可能な形に固定する。
 
-事後の横断検査は `github-audit-charters`(手順は `docs/github-audit-charters.md`)。
-このスキルは charter を**播く/適合化する**側の手順。
+事後の横断検査は `github-audit`(手順は `docs/github-audit.md`)、監査 findings
+からの一括裁定は `github-audit-triage`(`docs/claude/github-audit-triage.md`)。
+このスキルは 1 リポジトリを**播く/適合化する**側の手順。README 正形・
+CONTRIBUTING.md への litmus 移設・ルート文書 allowlist・AGENTS.md 正本化は
+ADR-0016(tarotene/dotfiles)の裁定に従う。
 
 ## 1. charter インタビュー
 
 次の順で、1 つずつ確定させる(飛ばさない)。
 
-1. **目的 1 文** — このリポジトリが存在する理由を 1 文で。README の H1 直後の
-   第 1 段落の第 1 文になり、そのまま GitHub の description にもなる
+1. **目的 1 文**(≤120 字) — このリポジトリが存在する理由を 1 文で。README の
+   H1 直後の段落の書き出しになり、そのまま GitHub の description にもなる
    (両者は同じ文字列 — description は README のミラーであって独立した二つ目の
    要約ではない)。
-2. **Scope(In / Out)** — 「このリポジトリが担うこと」「担わないこと」を
-   箇条書きで。Out は「関連するが別リポジトリの責務」を具体的に書く
-   (例: 「現像ワークフローの自動化は別リポジトリの責務」)。
-3. **Issue litmus(判定問 + 実例)** — 「その Issue はこのリポジトリの
-   [目的 1 文の核心] を前進させるか?」型の判定問を 1、2 個。判定問だけでは
-   曖昧なので、採用例・棄却例を各 1、2 個添える。実例はパターンマッチで判定
-   できることが目的なので、実在または実在しそうな具体的な Issue を書く
-   (抽象的な原則の言い換えにしない)。
+2. **命名クラス**(ADR-0014) — このリポジトリは `naming-codename`(恒久ツール・
+   一語)/ `naming-descriptive`(研究・記録・コンテンツ系の複合語)/
+   `naming-pj`(期限付きプロジェクト、`pj-` prefix)/ `naming-site`
+   (公開ドメインのサイト、FQDN)のどれか。名前が宣言したクラスのパターンに
+   一致しない場合、リポジトリ名を変えるかクラスを選び直すかをここで決める
+   (改名は既存リンクを壊すので、新規作成時に決めるのが一番安い)。
+3. **Scope**(地の文、In/Out ラベルなし) — このリポジトリが担うこと・担わない
+   ことを、境界と代表的な caveats だけ数文で書く。担わない側は「関連するが
+   別リポジトリの責務」を具体的に書く(例: 「現像ワークフローの自動化は
+   downstream リポジトリの責務」)。箇条書きの羅列にせず、読んで文脈が繋がる
+   ようにする(standard-readme の簡潔性規範、ADR-0016)。
+4. **Issue litmus(判定問 + 実例)** — 「その Issue はこのリポジトリの
+   [目的 1 文の核心] を前進させるか?」型の判定問を 1 個。判定問だけでは
+   曖昧なので、採用例・棄却例を各 1〜2 行で添える(長文の弁明は書かない —
+   1 項目 1〜2 行に収める)。実例はパターンマッチで判定できることが目的なので、
+   実在または実在しそうな具体的な Issue を書く(抽象的な原則の言い換えにしない)。
 
 インタビューは人間との対話で埋める。埋まらない項目があるなら、それは
 「リポジトリの目的がまだ固まっていない」ということなので、charter を書くこと
 自体を急がず、目的の言語化を先に済ませる。
 
-## 2. README への反映(スキーマ)
+## 2. README への反映(ADR-0016 の固定スキーマ)
 
-見出しリテラル(英語)は固定 — `github-audit-charters` がこの文字列で機械検査
-する。日本語で書くリポジトリでも見出しはこの英語表記を使う。
+見出しリテラル(英語)は固定・順序も固定 — `github-audit` の charters ドメインが
+この形で機械検査する。日本語で書くリポジトリでも見出しはこの英語表記を使う。
+`## Background` は任意(知的出自のみ)、それ以外は必須。
 
 ```markdown
 # <repo-name>
 
 <目的 1 文>。<自由記述の続き。省略可>
 
-## Why
-(自由記述。既存の内容があればそのまま活かす)
+## Background
+
+(任意。なぜこの形で存在するに至ったかの知的系譜のみ。改名の経緯・日付・
+「〜待ち」のような時限状態は書かない — 履歴は git log/CHANGELOG の責務。
+個別 Issue 番号も焼き込まない。)
+
+## Install
+
+<環境構築手順>
+
+## Usage
+
+<最小の実行可能な例>
 
 ## Scope
 
-In:
-- ...
+<地の文。境界と代表的な caveats>
 
-Out:
-- ...
+## Development
+
+<build/test/lint の定型コマンド>
+
+## License
+
+<ライセンス表記>
+```
+
+**書いてはいけないもの(出典は `docs/adr/0016-repository-document-canon.md`)**:
+履歴・時限記述(「改名した」「follow-up 待ち」等、Google style guide の
+timeless documentation 規範)、個別 Issue 番号の引用(Art of README の
+永続性原則)、`## Issue litmus` 見出し(CONTRIBUTING.md へ移設、次節)、
+許可外の見出し。既存の `CONTEXT.md` のような詳細ドキュメントは中身を精査し、
+恒久的な内容だけ README/`docs/` へ移し、それ以外は破棄する(ルート allowlist、
+次々節)。
+
+## 3. CONTRIBUTING.md への Issue litmus(ADR-0013 部分 supersede)
+
+```markdown
+# Contributing
 
 ## Issue litmus
 
-判定問: <このリポジトリの目的を前進させるかを問う疑問文>
+Judging question: <このリポジトリの目的を前進させるかを問う疑問文>
 
-採用例:
+Accepted:
 - ...
 
-棄却例:
+Rejected:
 - ...(別リポジトリの責務ならその名前を書く)
 ```
 
-既存の `CONTEXT.md` / `vision.md` 等の詳細ドキュメントは削らず、README から
-リンクする形で残す。charter は「意思決定に十分な最小限」であって、詳細設計の
-置き場ではない。
+CONTRIBUTING.md は GitHub が Issue/PR 作成画面で自動リンク表示する標準ファイル
+なので、判定問が読まれるべき瞬間(起票時)に自然に表示される。
 
-## 3. GitHub メタデータへの反映
+## 4. ルート文書 allowlist(ADR-0016)
+
+リポジトリのルートに置いてよい Markdown は `README.md` / `CONTRIBUTING.md` /
+`CHANGELOG.md` / `AGENTS.md` / `CLAUDE.md` の 5 種(+ `LICENSE*`)のみ。
+`CONTEXT.md` / `NOTES.md` のような野良ルート文書は作らない — 深い文書は
+`docs/` 配下に置く。既存リポジトリの適合化でこの種のファイルが見つかったら、
+恒久的な内容は README の `## Background` か `docs/` へ吸収し、ファイル自体は
+削除する。
+
+## 5. AGENTS.md / CLAUDE.md ルーティング(ADR-0016)
+
+AI 向け正本は `AGENTS.md` 1 本。README/CONTRIBUTING を参照する側に置き、
+内容を複製しない。
+
+```markdown
+# Agent instructions for <repo-name>
+
+See [README.md](README.md) for what this repository is and does, and
+[CONTRIBUTING.md](CONTRIBUTING.md) for the Issue-acceptance litmus test.
+This file is for agent operating instructions only.
+```
+
+Claude Code を使うリポジトリでは `CLAUDE.md` を `@AGENTS.md` import 1 行 +
+Claude 固有差分のみのルータにする:
+
+```markdown
+@AGENTS.md
+
+<!-- Claude-specific differences from AGENTS.md, if any, go below. -->
+```
+
+CLAUDE.md に実内容を書き足していく(AGENTS.md との二重管理になる)構成は
+`github-audit` の charters ドメインが drift として検出する。
+
+## 6. skills を持つ場合のルーティング(ADR-0016)
+
+このリポジトリ自身が Claude Code の repo スコープ skill を持つ(`.claude/
+skills/<name>/SKILL.md` を新設する)場合、正本はツール中立の
+`.agents/skills/<name>/SKILL.md` に置き、`.claude/skills/<name>` はそこへの
+相対 symlink にする(Codex CLI・Copilot CLI は `.agents/skills/` を
+ネイティブ読取、Claude Code は `.claude/skills/` のみ読取のため):
+
+```bash
+mkdir -p .agents/skills/<name>
+# SKILL.md 等を .agents/skills/<name>/ に置いてから:
+mkdir -p .claude/skills
+ln -s ../../.agents/skills/<name> .claude/skills/<name>
+```
+
+## 7. GitHub メタデータへの反映
 
 ```bash
 gh repo create <owner>/<repo> --private --description "<目的 1 文>"   # 新規時
 gh repo edit <owner>/<repo> --description "<目的 1 文>"                # 既存の適合化時
-gh repo edit <owner>/<repo> --add-topic <topic1> --add-topic <topic2>
+gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 ```
 
 `--description` は charter インタビューの目的 1 文と**一字一句**一致させる
-(監査は正規化した文字列一致で判定する — `docs/github-audit-charters.md`)。
-topics は最低 1 つ、リポジトリの技術領域・ドメインを表す語を選ぶ。
+(監査は正規化した文字列一致で判定する — `docs/github-audit.md`)。命名クラス
+の topic(`naming-codename` 等)は必ず 1 つ、加えてリポジトリの技術領域・
+ドメインを表す topic を最低 1 つ。
 
-## 4. AGENTS.md への参照行(任意だが推奨)
-
-AGENTS.md がある(または新設する)リポジトリでは、冒頭に 1 行:
-
-```markdown
-このリポジトリの方向性・Issue 受け入れ判定は README の Charter
-(`## Scope` / `## Issue litmus`)を正本とする。作業規約は本ファイルが担う。
-```
-
-AGENTS.md 自体は `github-audit-charters` の監査対象ではない(方向性の正本は
-README、作業規約は別問題)。
-
-## 5. 自己検証
+## 8. 自己検証
 
 ```bash
-github-audit-charters
+github-audit charters naming
 ```
 
-対象リポジトリが `ok` と出れば完了。`drifted` の場合は `missing=` の項目
-(`no-purpose-paragraph` / `purpose-mismatch` / `no-scope-section` /
-`no-issue-litmus-section` / `no-topics`)を読んで埋め直す。
+対象リポジトリが両ドメインとも `ok` と出れば完了。`drifted` の場合は
+`missing=` の項目を読んで埋め直す(`docs/github-audit.md` に各項目の説明)。
 
-## 6. 既存 Issue への適用(適合化のとき)
+## 9. 既存 Issue への適用(適合化のとき)
 
 既存リポジトリに charter を播いた直後は、居座っている open Issue の中に
 Issue litmus の棄却例に該当するものがないか一度だけ棚卸しする。該当する
 Issue は「Issue litmus の棄却例(<該当する棄却例>)に該当」という理由を
 コメントして close する。理由を書かずに close しない — 後から見た人が
 「なぜ切られたか」を charter に立ち戻って再確認できることが目的。
+
+## 10. 一括適合化が必要なとき
+
+多数のリポジトリが同時に drift しており 1 リポジトリずつのインタビューでは
+収束しない場合は、監査駆動で一括起草・一括レビューする
+`github-audit-triage` スキルを使う(このスキルのスキーマ定義を正本として
+参照する)。
