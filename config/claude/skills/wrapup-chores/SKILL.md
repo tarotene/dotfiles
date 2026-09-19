@@ -11,9 +11,9 @@ wrap-up inbox の項目は「判断無しで即対処できる」ものが多く
 - **起票済み wrapup 由来 Issue**: `gh issue list` + `jq` で列挙する。`gh search issues` は使わない(Search API のインデックス遅延があり、絵文字入りフッターの一致も不安定なため)。
   ```
   gh issue list --state open --limit 200 --json number,title,body \
-    | jq '[.[] | select(.body | contains("Filed from Claude Code wrap-up inbox"))]'
+    | jq '[.[] | select(.body | test("Filed from \\[?Claude Code.*wrap-up inbox"))]'
   ```
-  フィルタ文字列は絵文字を含まない ASCII 部分だけを使う。`--limit` は既定値(30)だと取りこぼすので明示する。
+  フィルタは正規表現 `test()` を使い、統合形(`Filed from [Claude Code](...) wrap-up inbox`)と旧 2 行形式(`Filed from Claude Code wrap-up inbox`)の両方に 1 本でマッチさせる。絵文字を含まない ASCII 部分だけを対象にするのは従来どおり。`--limit` は既定値(30)だと取りこぼすので明示する。
 
 ## 2. triage 基準
 

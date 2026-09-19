@@ -23,12 +23,14 @@ hook のその契約に完全に乗っかり、hook 自体には一切手を入�
 
 ### なぜ `gh issue list` + jq で、`gh search issues` ではないのか
 
-wrapup 由来の Issue は本文末尾のフッター「🤖 Filed from Claude Code wrap-up inbox」
-で識別する。`gh search issues` は GitHub の Search API に依存し、インデックスの反映
-に遅延があるうえ、絵文字を含む文字列のトークナイズ一致は不安定になりやすい。
-`gh issue list --json body` で本文を取得し、jq の `contains` で ASCII 部分文字列に
-対する厳密な一致を取る方が、遅延なく決定論的に判定できる。`--limit` は既定値(30)
-のままだと取りこぼすため、実行のたびに明示する。
+wrapup 由来の Issue は本文末尾のフッター
+「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」
+(統合形。旧 2 行形式の Issue も残っているため、フィルタは両方にマッチする
+正規表現を使う)で識別する。`gh search issues` は GitHub の Search API に依存し、
+インデックスの反映に遅延があるうえ、絵文字を含む文字列のトークナイズ一致は
+不安定になりやすい。`gh issue list --json body` で本文を取得し、jq の `test()`
+で ASCII 部分文字列に対する正規表現一致を取る方が、遅延なく決定論的に判定できる。
+`--limit` は既定値(30)のままだと取りこぼすため、実行のたびに明示する。
 
 ### `--mark-filed` を呼ぶタイミング: commit 後・PR 作成後・merge 後の比較
 

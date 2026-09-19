@@ -43,7 +43,7 @@ Claude に起票させられる。起票の実行主体が LLM 本体なので�
 | 収集指示の経路 | SessionStart `additionalContext` 注入 | グローバル CLAUDE.md を store symlink にすると `#` メモリ追記が壊れる。skill は受動的ルールの担い手として発火が不確実 |
 | 起票先 | 作業中プロジェクト自身のリポジトリ | スコープ外の気づきもそのリポジトリの事象。起票は hook でなく本体 Claude が行う |
 | 縮退 | gh 不在 / git repo 外 / GitHub remote 不在 なら黙って exit 0 | ADR-0005 の binary-existence gating。inbox は残り、条件が揃う環境・セッションで回収される。remote 判定は `git remote -v` の `github.` マッチ(静的検査のみ、hook 内でネットワークに出ない) |
-| スキーマ | 最小 JSONL `{"ts", "title", "detail"}`・ラベルなし | 存在しないラベルは `gh issue create` を落とす。出自は本文フッター「🤖 Filed from Claude Code wrap-up inbox」で検索可能にする |
+| スキーマ | 最小 JSONL `{"ts", "title", "detail"}`・ラベルなし | 存在しないラベルは `gh issue create` を落とす。出自は本文フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」で検索可能にする(このリンクが attribution-guard.sh の生成元表示要求も兼ねる、`attribution-guard.md`「wrap-up inbox の出自フッターは生成元表示を兼ねる」参照) |
 | inbox 置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク。slug はプロジェクトパスの `/` `.` → `-` 置換 |
 
 ## inbox の整合性(Codex レビューで確定)
