@@ -208,6 +208,12 @@ expiry and notifies through Herdr (same channel as
 `git-audit-worktrees` — not a desktop-notification tool, since nothing else
 in this repo declares one) once it is within 30 days of expiring.
 
+"Rotate" means generate a new subkey and revoke the old one — never extend
+one subkey's own expiry in place (ADR-0003 Amendment 3). The local
+passphrase protecting each generated `[S]` may be reused across rotations
+unless it is itself suspected of compromise (same Amendment, grounded in
+NIST SP 800-63B's guidance against fixed-schedule secret rotation).
+
 Full rotation sequence (needs the identity's YubiKey inserted — the
 primary's `[C]` capability signs the new subkey's binding signature):
 
@@ -227,6 +233,35 @@ the new subkey ID to put in `programs.git.signing.key`:
 `gpg-subkey remind --threshold 30 --notify` is what the timer runs; run it
 by hand to check without waiting for the timer, or `gpg-subkey status` for a
 read-only listing with no exit-code side effect.
+
+### Keeping GitHub / keys.openpgp.org in sync after a rotation
+
+`rotate`'s generate+revoke is the one irreversible step in this whole
+sequence; the repo's `keys/<identity>.pub`, GitHub's registered GPG key, and
+keys.openpgp.org's published copy are all just downstream *copies* of that
+local keyring state, and they can drift independently of it and of each
+other — this happened for real once (a `gh` CLI quoting bug silently failed
+a re-upload, leaving GitHub showing "Unverified" on new commits until
+noticed by hand). There is no shared transaction across GnuPG + the GitHub
+API + an independent keyserver, so instead of trying to force one, run:
+
+```bash
+gpg-subkey sync --repo <dotfiles-checkout> --identity <personal|company>          # report drift
+gpg-subkey sync --repo <dotfiles-checkout> --identity <personal|company> --fix    # converge it
+```
+
+`sync` compares the local keyring (source of truth) against `keys/*.pub`,
+the GitHub GPG key registration, and keys.openpgp.org, and reports what's
+out of date. `--fix` re-exports the stale file, and re-registers/re-sends
+the updated key where needed (GitHub does not support updating a
+registration in place — `--fix` deletes the stale entry and re-adds the
+current export). It is safe to run repeatedly regardless of where a
+previous attempt stopped. It only checks *this host's* `hosts/<host>.nix` —
+`[S]` is per-machine (ADR-0003 Amendment §1), so a second host sharing the
+same identity (e.g. a personal laptop alongside a personal desktop) is
+expected to carry its own independent subkey, not this machine's — and it
+never edits nix files itself; a stale `hosts/<host>.nix` is reported with
+the same manual-update instruction `export` prints.
 
 ## Which layer does a new tool go in?
 

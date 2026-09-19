@@ -19,6 +19,7 @@
 #   gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
 #   gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
 #   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
+#   gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
 #   gpg-subkey status   [--repo <dotfiles-checkout>]
 #   gpg-subkey remind   [--threshold 30] [--notify]
 #   gpg-subkey --selftest
@@ -28,6 +29,15 @@
 # operation lives on the YubiKey (ADR-0003). --key accepts anything
 # `gpg --list-secret-keys` resolves to exactly one primary key (a
 # fingerprint, keyid, or email substring).
+#
+# rotate's generate+revoke is the one irreversible step; everything after it
+# — keys/<identity>.pub, GitHub's registered GPG key, keys.openpgp.org — is
+# just a copy of local keyring state and can drift independently of it and
+# of each other (this happened for real once already). `sync` detects that
+# drift against the local keyring and, with --fix, converges every copy back
+# to it; it is safe to re-run regardless of where a previous attempt
+# stopped. It never edits hosts/<host>.nix — a mismatch there is reported,
+# not fixed, same boundary `export` already draws for git config/nix files.
 set -euo pipefail
 
 GPG_BIN="${GPG_SUBKEY_GPG_BIN:-gpg}"
@@ -66,13 +76,16 @@ usage:
   gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
   gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
+  gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
   gpg-subkey status   [--repo <dotfiles-checkout>]
   gpg-subkey remind   [--threshold 30] [--notify]
   gpg-subkey --selftest
 
 generate/rotate require the card (the primary key's [C] capability signs the
-new subkey). This tool never writes git config — export prints the next
-manual step (update programs.git.signing.key, PR, hms).
+new subkey). This tool never writes git config — export/sync print the next
+manual step (update programs.git.signing.key, PR, hms). sync detects (and,
+with --fix, converges) drift between the local keyring and keys/*.pub /
+GitHub's registered GPG key / keys.openpgp.org.
 EOF
 }
 
@@ -263,18 +276,28 @@ cmd_rotate() {
   new_keyid="$(_generate_on "$fpr" "$validity")" || return 1
   printf '%s\n' "$new_keyid"
 
+  # The new key is created either way — a revoke failure below must NOT be
+  # swallowed into an overall success, or `rotate --revoke-old` silently
+  # leaves two live [S] subkeys while claiming the rotation is done (this
+  # gap shipped once already: _revoke_subkey used to `return 0` on failure,
+  # so the loop below never noticed).
+  local revoke_failed=0
   if [[ $revoke_old == true && -n $old_keyids ]]; then
     local old
     while IFS= read -r old; do
       [[ -n $old ]] || continue
-      _revoke_subkey "$fpr" "$old"
+      _revoke_subkey "$fpr" "$old" || revoke_failed=1
     done <<<"$old_keyids"
   elif [[ $revoke_old == true ]]; then
     printf 'gpg-subkey: revoke 対象の旧 [S] subkey がありませんでした\n' >&2
   fi
+  if [[ $revoke_failed == 1 ]]; then
+    printf 'gpg-subkey: 新 subkey %s は生成済みですが、旧 subkey の revoke に失敗したものがあります(要手動確認: gpg-subkey status)\n' "$new_keyid" >&2
+    return 1
+  fi
 }
 
-_revoke_subkey() { # <primary-fpr> <subkey-keyid>
+_revoke_subkey() { # <primary-fpr> <subkey-keyid> — exit 0 revoked, 1 failed.
   local fpr="$1" keyid="$2" batch out rc
   batch="$(mktemp)"
   printf 'key %s\nrevkey\ny\n0\ngpg-subkey rotate\n\ny\nsave\nquit\n' "$keyid" >"$batch"
@@ -285,13 +308,33 @@ _revoke_subkey() { # <primary-fpr> <subkey-keyid>
   rm -f "$batch"
   if [[ $rc -ne 0 ]]; then
     printf '%s\n' "$out" >&2
-    printf 'gpg-subkey: 旧 subkey %s の revoke に失敗しました(既に revoke 済みの可能性)\n' "$keyid" >&2
-    return 0
+    printf 'gpg-subkey: 旧 subkey %s の revoke に失敗しました\n' "$keyid" >&2
+    return 1
   fi
   printf 'gpg-subkey: 旧 subkey %s を revoke しました\n' "$keyid" >&2
 }
 
-# --- export --------------------------------------------------------------
+# --- export / sync ----------------------------------------------------------
+
+# repo_identity_fpr <repo> <identity> — echoes keys/<identity>.pub's primary
+# fingerprint, or nothing (with a message on stderr) if it can't be read.
+repo_identity_fpr() {
+  local repo="$1" identity="$2" pubfile fpr
+  pubfile="$repo/keys/$identity.pub"
+  [[ -f $pubfile ]] || {
+    printf 'gpg-subkey: %s がありません\n' "$pubfile" >&2
+    return 1
+  }
+  fpr="$("$GPG_BIN" --with-colons --show-keys "$pubfile" 2>/dev/null | awk -F: '
+    $1 == "pub" { want = 1; next }
+    $1 == "fpr" && want { print $10; exit }
+  ')"
+  [[ -n $fpr ]] || {
+    printf 'gpg-subkey: %s から primary fingerprint を読めませんでした\n' "$pubfile" >&2
+    return 1
+  }
+  printf '%s\n' "$fpr"
+}
 
 cmd_export() {
   local repo="" identity=""
@@ -316,18 +359,7 @@ cmd_export() {
     return 2
   }
   local pubfile="$repo/keys/$identity.pub" fpr new_export new_keyid
-  [[ -f $pubfile ]] || {
-    printf 'gpg-subkey export: %s がありません\n' "$pubfile" >&2
-    return 1
-  }
-  fpr="$("$GPG_BIN" --with-colons --show-keys "$pubfile" 2>/dev/null | awk -F: '
-    $1 == "pub" { want = 1; next }
-    $1 == "fpr" && want { print $10; exit }
-  ')"
-  [[ -n $fpr ]] || {
-    printf 'gpg-subkey export: %s から primary fingerprint を読めませんでした\n' "$pubfile" >&2
-    return 1
-  }
+  fpr="$(repo_identity_fpr "$repo" "$identity")" || return 1
   new_export="$("$GPG_BIN" --armor --export "$fpr" 2>/dev/null)"
   [[ -n $new_export ]] || {
     printf 'gpg-subkey export: %s のローカル鍵束から export できませんでした\n' "$fpr" >&2
@@ -344,6 +376,207 @@ cmd_export() {
   printf '  1. hosts/<host>.nix の programs.git.signing.key を %s に更新\n' "${new_keyid:-<subkey-id>}"
   printf '  2. commit → push → PR\n'
   printf '  3. hms でこのホストに適用\n'
+}
+
+# --- sync --------------------------------------------------------------
+# `rotate` (local GnuPG generate+revoke) is the one truly irreversible step
+# in a rotation; everything downstream of it — the repo's keys/*.pub export,
+# GitHub's registered GPG key, keys.openpgp.org's published copy — is just a
+# *copy* of that local state, and copies can drift independently (this
+# shipped for real: `gh -f key=@file` silently mangled a re-upload, and the
+# committed keys/personal.pub sat stale until noticed by hand). True
+# cross-system atomicity across GnuPG + the GitHub API + an independent
+# keyserver isn't achievable — there's no shared transaction coordinator —
+# so `sync` takes the realistic alternative instead: detect drift against
+# the local keyring (the source of truth) and converge every downstream copy
+# back to it, safely re-runnable regardless of where a previous attempt
+# stopped. `home/hosts/<host>.nix`'s `programs.git.signing.key` is reported
+# only, never edited — same boundary `export` already draws.
+cmd_sync() {
+  local repo="" identity="" fix=false yes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      --identity)
+        identity="$2"
+        shift 2
+        ;;
+      --fix)
+        fix=true
+        shift
+        ;;
+      --yes)
+        yes=true
+        shift
+        ;;
+      *)
+        printf 'gpg-subkey sync: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  [[ -n $repo && -n $identity ]] || {
+    printf 'gpg-subkey sync: --repo と --identity が必要です\n' >&2
+    return 2
+  }
+  local fpr
+  fpr="$(repo_identity_fpr "$repo" "$identity")" || return 1
+
+  local active_keyid active_fpr
+  active_keyid="$(extract_latest_sign_subkey "$fpr")"
+  [[ -n $active_keyid ]] || {
+    printf 'gpg-subkey sync: %s に有効な [S] subkey がありません\n' "$fpr" >&2
+    return 1
+  }
+  active_fpr="$(sign_subkeys "$fpr" | awk -F'\t' -v k="$active_keyid" '$3 == k { print $4; exit }')"
+
+  local -a revoked_keyids=()
+  local row_keyid row_revoked
+  while IFS=$'\t' read -r _ _ row_keyid _ _ _ row_revoked; do
+    [[ -n $row_keyid ]] || continue
+    [[ $row_revoked == 1 ]] && revoked_keyids+=("$row_keyid")
+  done < <(sign_subkeys "$fpr")
+
+  local -a problems=()
+
+  # 1. repo keys/<identity>.pub
+  local pubfile="$repo/keys/$identity.pub" current_export
+  current_export="$("$GPG_BIN" --armor --export "$fpr" 2>/dev/null)"
+  [[ "$current_export" == "$(cat "$pubfile" 2>/dev/null)" ]] || problems+=("export")
+
+  # 2. GitHub — one registration per primary key, keyed by its short keyid.
+  local primary_short gh_json gh_entry github_drift=false
+  primary_short="${fpr: -16}"
+  gh_json="$(gh api user/gpg_keys 2>/dev/null)" || gh_json=""
+  if [[ -z $gh_json ]]; then
+    printf 'gpg-subkey sync: GitHub API に到達できませんでした(gh 未認証/ネットワーク不通) — スキップ\n' >&2
+  else
+    gh_entry="$(jq -c --arg k "$primary_short" '[.[] | select(.key_id==$k)][0] // empty' <<<"$gh_json")"
+    if [[ -z $gh_entry ]]; then
+      github_drift=true
+    else
+      [[ "$(jq -r --arg k "$active_keyid" '.subkeys[]? | select(.key_id==$k) | (.can_sign and (.revoked|not))' <<<"$gh_entry")" == true ]] || github_drift=true
+      local rk
+      for rk in "${revoked_keyids[@]}"; do
+        local rk_on_gh
+        rk_on_gh="$(jq -r --arg k "$rk" '.subkeys[]? | select(.key_id==$k) | .revoked' <<<"$gh_entry")"
+        [[ -z $rk_on_gh || $rk_on_gh == true ]] || github_drift=true
+      done
+    fi
+    [[ $github_drift == false ]] || problems+=("github")
+  fi
+
+  # 3. keys.openpgp.org — via a temp file, not a shell variable: the VKS
+  # response is binary OpenPGP key material, and `$(...)` command
+  # substitution can corrupt binary data (embedded NULs, trailing-newline
+  # stripping).
+  local ks_file keyserver_drift=false
+  ks_file="$(mktemp)"
+  if ! curl -sf "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr" -o "$ks_file" 2>/dev/null || [[ ! -s $ks_file ]]; then
+    keyserver_drift=true
+  else
+    local ks_colons
+    ks_colons="$("$GPG_BIN" --show-keys --with-colons "$ks_file" 2>/dev/null)"
+    grep -qF $'sub:u:' <(grep "$active_keyid" <<<"$ks_colons") || keyserver_drift=true
+    local rk
+    for rk in "${revoked_keyids[@]}"; do
+      grep -qF $'sub:r:' <(grep "$rk" <<<"$ks_colons") || keyserver_drift=true
+    done
+  fi
+  rm -f "$ks_file"
+  [[ $keyserver_drift == false ]] || problems+=("keyserver")
+
+  # 4. THIS host's hosts/<host>.nix only — report-only, this tool never
+  # edits nix files. [S] is per-machine (ADR-0003 Amendment §1): a second
+  # host sharing this identity (e.g. altair alongside personal-pop) is
+  # expected to carry its OWN independent [S] subkey, generated on that
+  # machine — its keyring isn't even present here, so checking every
+  # hosts/*.nix that imports this identity against *this* machine's
+  # $active_fpr would misreport every other host as "stale" when it simply
+  # has a different, equally valid subkey. Resolve "this host" the same way
+  # scripts/hms.sh's resolve_host() does: the dotfiles/host marker, else
+  # `hostname`.
+  local -a stale_hosts=()
+  local this_host marker hf hf_key
+  marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host"
+  if [[ -r $marker ]]; then
+    this_host="$(head -n1 "$marker" | tr -d '[:space:]')"
+  fi
+  [[ -n ${this_host:-} ]] || this_host="$(hostname)"
+  hf="$repo/home/hosts/$this_host.nix"
+  if [[ -f $hf ]] && grep -qF "identities/${identity}.nix" "$hf"; then
+    # sed, not `grep -oP`: BSD grep (darwin, where this script also runs
+    # per home/modules/gpg.nix's launchd branch) has no -P.
+    hf_key="$(sed -n 's/.*programs\.git\.signing\.key = "\([^"]*\)".*/\1/p' "$hf" | head -1)"
+    [[ "$hf_key" == "$active_fpr" ]] || stale_hosts+=("$hf")
+  fi
+
+  if [[ ${#problems[@]} -eq 0 && ${#stale_hosts[@]} -eq 0 ]]; then
+    printf 'gpg-subkey sync: %s は同期済みです(現行 [S] subkey %s)\n' "$identity" "$active_keyid"
+    return 0
+  fi
+
+  printf 'gpg-subkey sync: %s の drift:\n' "$identity"
+  local p
+  for p in "${problems[@]}"; do
+    case "$p" in
+      export) printf '  - keys/%s.pub がローカル鍵束より古い\n' "$identity" ;;
+      github) printf '  - GitHub の GPG 登録が現行 subkey %s を反映していない\n' "$active_keyid" ;;
+      keyserver) printf '  - keys.openpgp.org が現行 subkey %s を反映していない\n' "$active_keyid" ;;
+    esac
+  done
+  for hf in "${stale_hosts[@]}"; do
+    printf '  - %s の programs.git.signing.key が現行 subkey (%s) と異なる(手動更新が必要)\n' "$hf" "$active_fpr"
+  done
+
+  [[ $fix == true ]] || return 1
+
+  if [[ $yes != true ]]; then
+    [[ -t 0 ]] || {
+      printf 'gpg-subkey sync --fix: 非対話実行では --yes が必要です\n' >&2
+      return 2
+    }
+    local answer=""
+    read -r -p '上記のうち keys.pub/GitHub/keyserver を現行状態へ反映しますか? [y/N] ' answer
+    [[ $answer == y || $answer == Y ]] || return 1
+  fi
+
+  local p
+  for p in "${problems[@]}"; do
+    case "$p" in
+      export)
+        printf '%s\n' "$current_export" >"$pubfile"
+        printf 'gpg-subkey sync: %s を更新しました\n' "$pubfile"
+        ;;
+      github)
+        if [[ -n $gh_json ]]; then
+          local old_id
+          old_id="$(jq -r --arg k "$primary_short" '[.[] | select(.key_id==$k)][0].id // empty' <<<"$gh_json")"
+          [[ -n $old_id ]] && gh api -X DELETE "user/gpg_keys/$old_id" >/dev/null 2>&1
+          local payload_file
+          payload_file="$(mktemp)"
+          jq -n --arg key "$current_export" '{armored_public_key: $key}' >"$payload_file"
+          if gh api user/gpg_keys -X POST --input "$payload_file" >/dev/null 2>&1; then
+            printf 'gpg-subkey sync: GitHub の GPG 登録を更新しました\n'
+          else
+            printf 'gpg-subkey sync: GitHub の GPG 登録更新に失敗しました\n' >&2
+          fi
+          rm -f "$payload_file"
+        fi
+        ;;
+      keyserver)
+        if "$GPG_BIN" --keyserver hkps://keys.openpgp.org --send-keys "$fpr" >/dev/null 2>&1; then
+          printf 'gpg-subkey sync: keys.openpgp.org へ送信しました\n'
+        else
+          printf 'gpg-subkey sync: keys.openpgp.org への送信に失敗しました\n' >&2
+        fi
+        ;;
+    esac
+  done
+  return 0
 }
 
 # --- status / remind -------------------------------------------------------
@@ -558,6 +791,63 @@ selftest() {
   export_out="$(cmd_export --repo "$dir/repo" --identity selftest)"
   check "export: 変更なしなら再実行で no-op" 1 "$(grep -qF '変更はありません' <<<"$export_out" && echo 1 || echo 0)"
 
+  # sync: `gh` and `curl` are stubbed — this must never touch a real GitHub
+  # account or the real keys.openpgp.org, even by accident. keys/selftest.pub
+  # is already current from the export block above, so only github/keyserver
+  # drift is expected in the detection sub-test.
+  mkdir -p "$dir/bin"
+  local primary_short="${fpr: -16}"
+  jq -n --arg k "$primary_short" --arg old "$first_keyid" \
+    '[{id: 999, key_id: $k, subkeys: [{key_id: $old, can_sign: true, revoked: false}]}]' \
+    >"$dir/gh-list.json"
+  cat >"$dir/bin/gh" <<STUB
+#!/usr/bin/env bash
+all="\$*"
+case "\$all" in
+  *"-X DELETE"*) printf 'delete\n' >>"$dir/gh-calls.txt"; exit 0 ;;
+  *"-X POST"*) printf 'post\n' >>"$dir/gh-calls.txt"; exit 0 ;;
+  *"user/gpg_keys"*) cat "$dir/gh-list.json"; exit 0 ;;
+esac
+exit 1
+STUB
+  chmod +x "$dir/bin/gh"
+  cat >"$dir/bin/curl" <<STUB
+#!/usr/bin/env bash
+out=""
+prev=""
+for a in "\$@"; do
+  [[ "\$prev" == "-o" ]] && out="\$a"
+  prev="\$a"
+done
+if [[ -n "\${GPG_SUBKEY_TEST_CURL_RESPONSE:-}" && -f "\${GPG_SUBKEY_TEST_CURL_RESPONSE:-}" ]]; then
+  cp "\$GPG_SUBKEY_TEST_CURL_RESPONSE" "\$out"
+  exit 0
+fi
+exit 22
+STUB
+  chmod +x "$dir/bin/curl"
+
+  local sync_out sync_rc=0
+  sync_out="$(PATH="$dir/bin:$PATH" cmd_sync --repo "$dir/repo" --identity selftest 2>&1)" || sync_rc=$?
+  check "sync: drift があれば exit 1" 1 "$sync_rc"
+  check "sync: github drift を報告する" 1 "$(grep -qF 'GitHub' <<<"$sync_out" && echo 1 || echo 0)"
+  check "sync: keyserver drift を報告する(未公開の fixture key)" 1 "$(grep -qF 'keys.openpgp.org' <<<"$sync_out" && echo 1 || echo 0)"
+  check "sync: export は既に同期済みなので報告しない" 0 "$(grep -c 'keys/selftest.pub' <<<"$sync_out")"
+
+  # --fix: neutralize keyserver drift via the curl stub (serve the current
+  # export as the keyserver's "already published" response) so only the
+  # stubbed github path is exercised — this run must never invoke the real
+  # `gpg --send-keys` against the real network.
+  "$GPG_BIN" --export "$fpr" >"$dir/keyserver-current.bin"
+  rm -f "$dir/gh-calls.txt"
+  local fix_rc=0
+  GPG_SUBKEY_TEST_CURL_RESPONSE="$dir/keyserver-current.bin" \
+    PATH="$dir/bin:$PATH" cmd_sync --repo "$dir/repo" --identity selftest --fix --yes \
+    >"$dir/sync-fix.out" 2>&1 || fix_rc=$?
+  check "sync --fix --yes: exit 0" 0 "$fix_rc"
+  check "sync --fix: GitHub の delete を呼ぶ" 1 "$(grep -qF 'delete' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
+  check "sync --fix: GitHub の post を呼ぶ" 1 "$(grep -qF 'post' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
+
   [[ $fail == 0 ]] && printf 'selftest: all passed\n'
   return "$fail"
 }
@@ -576,6 +866,10 @@ main() {
     export)
       shift
       cmd_export "$@"
+      ;;
+    sync)
+      shift
+      cmd_sync "$@"
       ;;
     status)
       shift
