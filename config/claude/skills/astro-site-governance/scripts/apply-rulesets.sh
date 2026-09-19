@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# apply-rulesets.sh — Create the 3 GitHub Rulesets (Security / Quality / Workflow).
-# Skips rulesets that already exist by name.
+# apply-rulesets.sh — Create the GitHub Rulesets: Security / Quality / Workflow
+# (core layer, always applied) and Review (review layer, opt-in addin —
+# ADR-0020 in tarotene/dotfiles). Skips rulesets that already exist by name.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +16,8 @@ PACKAGE_NAME=""
 SITE_BASE=""
 PAGES_URL=""
 DRY_RUN=false
+WITH_REVIEW=false
+REMOVE_REVIEW=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,6 +29,8 @@ while [[ $# -gt 0 ]]; do
     --site-base)        SITE_BASE="$2";       shift 2 ;;
     --pages-url)        PAGES_URL="$2";       shift 2 ;;
     --package-version)                        shift 2 ;;  # accepted, not used in rulesets
+    --with-review)       WITH_REVIEW=true;    shift ;;
+    --remove-review)     REMOVE_REVIEW=true;  shift ;;
     --dry-run)          DRY_RUN=true;         shift ;;
     *)                  echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -59,16 +64,80 @@ process_ruleset() {
     "$file"
 }
 
+# Remove the review layer (ADR-0020) from a repository: delete the
+# standalone Review ruleset if present, and strip copilot_code_review /
+# required_review_thread_resolution out of any other active branch ruleset
+# still carrying them (the pre-ADR-0020 layout, where Workflow bundled the
+# review layer in). Fetches each ruleset's full detail and PUTs back a
+# filtered payload — the update endpoint takes the same shape as create,
+# not a partial patch.
+remove_review_layer() {
+  echo "Removing review layer from: $OWNER/$REPO"
+  local rulesets review_id ids id detail has_review new_body name
+
+  rulesets=$(gh api "repos/$OWNER/$REPO/rulesets" 2>/dev/null || echo '[]')
+
+  review_id=$(jq -r '.[] | select(.name=="Review") | .id' <<<"$rulesets" | head -1)
+  if [[ -n "$review_id" ]]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  DRY-RUN: would DELETE Ruleset 'Review' (id=$review_id)"
+    else
+      gh api -X DELETE "repos/$OWNER/$REPO/rulesets/$review_id" >/dev/null
+      echo "  ✓  Deleted Ruleset 'Review' (id=$review_id)"
+    fi
+  fi
+
+  ids=$(jq -r '.[] | select(.target=="branch" and .enforcement=="active") | .id' <<<"$rulesets")
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    detail=$(gh api "repos/$OWNER/$REPO/rulesets/$id" 2>/dev/null) || continue
+    [[ -n "$detail" ]] || continue
+
+    has_review=false
+    jq -e '
+      ([.rules[]?.type] | index("copilot_code_review"))
+      or (any(.rules[]?; .type=="pull_request" and (.parameters.required_review_thread_resolution // false) == true))
+    ' <<<"$detail" >/dev/null 2>&1 && has_review=true
+    [[ "$has_review" == "true" ]] || continue
+
+    name=$(jq -r '.name' <<<"$detail")
+    new_body=$(jq '
+      {name, target, enforcement, conditions, bypass_actors,
+       rules: [.rules[] | select(.type != "copilot_code_review")
+               | if .type == "pull_request"
+                 then .parameters.required_review_thread_resolution = false
+                 else . end]}
+    ' <<<"$detail")
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  DRY-RUN: would PUT Ruleset '$name' (id=$id) stripped of the review layer:"
+      echo "$new_body" | jq .
+    else
+      echo "$new_body" | gh api -X PUT "repos/$OWNER/$REPO/rulesets/$id" --input - >/dev/null
+      echo "  ✓  Updated Ruleset '$name' (id=$id) — review layer removed"
+    fi
+  done <<<"$ids"
+}
+
+if [[ "$REMOVE_REVIEW" == "true" ]]; then
+  remove_review_layer
+  exit 0
+fi
+
 echo "Applying Rulesets to: $OWNER/$REPO"
 echo ""
 
 # Fetch existing ruleset names to detect duplicates.
 EXISTING_NAMES=$(gh api "repos/$OWNER/$REPO/rulesets" --jq '.[].name' 2>/dev/null || echo "")
 
-for ruleset_file in \
-    "$RULESETS_DIR/security.json" \
-    "$RULESETS_DIR/quality.json" \
-    "$RULESETS_DIR/workflow.json"; do
+RULESET_FILES=(
+  "$RULESETS_DIR/security.json"
+  "$RULESETS_DIR/quality.json"
+  "$RULESETS_DIR/workflow.json"
+)
+[[ "$WITH_REVIEW" == "true" ]] && RULESET_FILES+=("$RULESETS_DIR/review.json")
+
+for ruleset_file in "${RULESET_FILES[@]}"; do
 
   name=$(jq -r '.name' "$ruleset_file")
   processed=$(process_ruleset "$ruleset_file")
@@ -100,3 +169,8 @@ echo ""
 echo "Key invariant: The job name: fields in templates/.github/workflows/ci.yml"
 echo "must exactly match the context strings in rulesets/quality.json."
 echo "If you rename a CI job, update the Ruleset context string at the same time."
+if [[ "$WITH_REVIEW" != "true" ]]; then
+  echo "NOTE: Review layer (Copilot code review + required conversation resolution)"
+  echo "was not applied — pass --with-review to opt in once this repository is past"
+  echo "its early-development phase (ADR-0020 in tarotene/dotfiles)."
+fi

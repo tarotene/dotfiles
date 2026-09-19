@@ -7,8 +7,14 @@
    into the target repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
 2. Applies repository merge settings (squash-only, delete-on-merge, wiki/projects disabled — same
    baseline `github-audit`'s `settings` domain judges, ADR-0015 in tarotene/dotfiles) via `gh api`.
-3. Creates the three GitHub Rulesets (Security / Quality / Workflow) that enforce
-   branch protection, required status checks, Copilot review, and commit signatures.
+3. Creates the core GitHub Rulesets (Security / Quality / Workflow) that enforce
+   branch protection, required status checks, and commit signatures. A fourth,
+   Review, is **opt-in** (`--with-review`) — Copilot code review auto-request +
+   required conversation resolution before merge. It is left out by default
+   because forcing that review round trip on every commit of an early-stage or
+   pre-release repository was judged excessive and noisy (ADR-0020 in
+   tarotene/dotfiles). Opt in once the repository is past that phase, or strip
+   it back out of an already-governed repository with `--remove-review`.
 4. Points you to `reference/manual-steps.md` for steps that require browser flows:
    Mend Renovate App installation, commit-signing setup, first-PR green-check.
 
@@ -31,6 +37,7 @@ Before running anything, confirm these values with the user:
 | Minimum Typst version | `--min-typst` | `0.14.0` (default) |
 | ATS contact email | `--ats-email` | `you@example.com` |
 | Target repo path | `--dest` | `/home/user/src/cv` |
+| Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0020). Ask whether the repository is past its early-development phase before defaulting this on. |
 
 Also check prerequisites:
 ```
@@ -147,7 +154,7 @@ just build && just verify
 ```bash
 # Rulesets should appear:
 gh api repos/OWNER/REPO/rulesets --jq '.[].name'
-# → Security, Quality, Workflow
+# → Security, Quality, Workflow (+ Review if seeded with --with-review)
 
 # Required checks in Quality Ruleset:
 gh api repos/OWNER/REPO/rulesets \
@@ -163,6 +170,17 @@ gh api repos/OWNER/REPO \
   --jq '{allow_squash_merge,allow_merge_commit,allow_rebase_merge,delete_branch_on_merge}'
 # → true / false / false / true
 ```
+
+### Removing the review layer (ADR-0020)
+
+`apply-rulesets.sh --owner OWNER --repo REPO --remove-review [--dry-run]`
+handles the two layouts it can meet: a standalone `Review` ruleset (this
+skill's own `review.json` layout) is deleted outright; `copilot_code_review`
+or `required_review_thread_resolution: true` bundled into some *other*
+active branch ruleset is stripped out via a fetch-modify-`PUT` round trip
+(the update endpoint takes the same shape as create, not a partial patch).
+An irregular layout the script won't recognize needs manual removal via
+`gh api repos/OWNER/REPO/rulesets/<id>` + a hand-built `PUT`.
 
 ### CI gates
 
@@ -198,14 +216,16 @@ Ruleset context string to match (all three must stay in sync).
 │   ├── cliff.toml                     CalVer changelog (vYYYY.MM tags)
 │   ├── .yamllint                      YAML style rules
 │   └── .gitignore-snippet             dist/ + editor/OS (merge manually)
-├── rulesets/
+├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0020)
 │   ├── security.json    deletion + non_fast_forward
 │   ├── quality.json     signatures + linear history + 5 status checks
-│   └── workflow.json    squash-only + thread resolution + Copilot review
+│   ├── workflow.json    squash-only (core; thread resolution NOT required here)
+│   └── review.json      Copilot code review + required thread resolution (opt-in addin)
 ├── scripts/
 │   ├── seed.sh                    main orchestrator
 │   ├── copy-files.sh              template copy + placeholder substitution
-│   ├── apply-rulesets.sh          gh api POST the 3 Rulesets
+│   ├── apply-rulesets.sh          gh api POST the core 3 Rulesets (+ Review with
+│   │                              --with-review; --remove-review strips it back out)
 │   ├── apply-repo-settings.sh     gh api PATCH repo merge settings
 │   └── setup-hooks.sh             git config core.hooksPath
 └── reference/

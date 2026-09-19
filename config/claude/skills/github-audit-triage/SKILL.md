@@ -65,6 +65,16 @@ description・topics・settings フィールド・ファイルツリー・open I
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。
+- rulesets ドメインは `review_layer`(ADR-0020)を読んで扱いを分ける。
+  `missing` のコア層項目(`deletion`/`pull_request.allowed_merge_methods`
+  等)は対象の `*-repo-governance` スキルの `apply-rulesets.sh`(デフォルト
+  引数、コア 3 ファイルのみ)適用提案として表に書く。`review_layer=
+  partial-drift`(`missing` に `review_layer.*` が立つ)は、`--with-review`
+  で完備させるか `--remove-review` で剥がすかの二択として表に書き、
+  低確信フラグ相当として**起草せず人間裁定に回す**(片方だけ入った経緯が
+  読み取れないため)。`review_layer=absent` は drift ではないので表に
+  出さない — 既存の低速シグナル(`ungoverned`)と同様、レビュー層は
+  opt-in であって欠落ではない。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
