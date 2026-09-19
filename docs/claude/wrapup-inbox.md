@@ -4,6 +4,13 @@
 対処。**収集**(セッション中に inbox へ溜める)と**起票**(`gh issue create`)を分離し、
 Claude Code の hook 2 本で回す。
 
+inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` スキル §1 の判定条件)が
+無い気づきに限る。依存があれば stacked PR の追加提案段として受ける選択肢が先に
+出るため、この文書が扱うのは「stack せず inbox に落ち着いた」気づきの以降の経路
+(SessionStart 注入・Stop ゲート・起票)である。振り分け自体の設計根拠は
+`docs/claude/stacked-pr.md`「スコープ外発見を stack の一段として受ける入口」を
+参照。
+
 | 部品 | イベント | 役割 |
 |------|----------|------|
 | `wrapup-session-start.sh` | SessionStart | 「気づきは inbox に `--add` で追記せよ」を `additionalContext` で注入。未処理件数も掲示 |

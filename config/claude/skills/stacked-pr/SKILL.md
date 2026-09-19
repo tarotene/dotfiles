@@ -1,6 +1,6 @@
 ---
 name: stacked-pr
-description: PR 同士に依存関係があるとき(先行 PR の成果物を後続が参照する、または同一ファイルの同じ節を逐次編集する)、main 起点で並行させず stacked PR として積む手順。依存する変更・stacked PR・PR を積む・base を親ブランチに・ADR を分割・同一ファイルを逐次編集、といった文脈で使う。stack changes, dependent pull requests, base branch chain, といった英語の文脈でも使う。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに注意 — 1 つの Issue が複数段の stack になることもあり、複数の独立 Issue が 1 つの線形 stack になることもある。
+description: PR 同士に依存関係があるとき(先行 PR の成果物を後続が参照する、または同一ファイルの同じ節を逐次編集する)、main 起点で並行させず stacked PR として積む手順。依存する変更・stacked PR・PR を積む・base を親ブランチに・ADR を分割・同一ファイルを逐次編集、計画・グリル中に見つかったスコープ外項目を stack に積む、といった文脈で使う。stack changes, dependent pull requests, base branch chain, といった英語の文脈でも使う。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに注意 — 1 つの Issue が複数段の stack になることもあり、複数の独立 Issue が 1 つの線形 stack になることもある。
 ---
 
 依存する変更を 1 つの巨大な PR に詰めず、main 起点で並行させて衝突させることもなく、
@@ -16,6 +16,11 @@ description: PR 同士に依存関係があるとき(先行 PR の成果物を�
 
 どちらも満たさない独立した変更は、stack せず別の PR にする(git-town:
 "independent work should use separate top-level branches")。
+
+判定対象は依頼された変更同士に限らない。計画・グリル・実装中に見つかった
+依頼スコープ外の項目も、現在進行中の変更との間で (a)/(b) を満たすなら
+**追加提案段**として stack に受ける。満たさない独立項目は stack せず、
+wrap-up inbox へ流す(global CLAUDE.md 参照)。
 
 ## 2. 分割の設計原則
 
@@ -40,7 +45,13 @@ description: PR 同士に依存関係があるとき(先行 PR の成果物を�
 
 1. 分割案(何段に分け、各段が何を含むか)を計画段階で先に提示する。承認後は
    全段の PR 作成まで確認を挟まず進む — 「PR を作成しますか?」は聞かない
-   (global CLAUDE.md の完了定義と同じ規律)。
+   (global CLAUDE.md の完了定義と同じ規律)。計画・グリル中に見つかった
+   スコープ外の追加提案段は、依頼由来の段と区別できるよう分割案に
+   「追加提案」と明示する(ユーザーが plan 修正でこの段を外せば
+   wrap-up inbox 行きになる)。承認後の実装中に見つかった項目は
+   `AskUserQuestion` で「stack に積む / wrap-up inbox に送る」の 2 択を
+   聞く(「同一 PR に混ぜる」はレビュー負荷が事実上ゼロの微小修正に限る
+   例外で、既定の選択肢には出さない)。
 2. 最下段を `main` から切って実装 → commit。
 3. 2 段目以降は、直前の段のブランチから切って実装 → commit
    (`git switch -c <branch>`。`git worktree add` ではない — 同一 worktree
