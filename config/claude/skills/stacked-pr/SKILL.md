@@ -81,6 +81,65 @@ git push --force-with-lease origin <段のブランチ>   # 影響を受けた�
 `docs/git-sync.md` 参照)。これが無いと最上位段だけ rebase され、中間段の
 ブランチ ref が古いコミットを指したまま置いていかれる。
 
+### 最下段の base(main)自体が進んで衝突したとき
+
+最下段の作業中に `main` が他の変更で先に進み、最下段の PR が `main` と
+衝突することがある(同一 worktree で長時間セッションを回していると
+頻発する)。GitHub は `pull_request` イベントの CI を、マージ先との自動
+マージが計算できない(`mergeable: CONFLICTING`)PR では走らせない
+(WebFetch で `cache-nix-action` の入力名を確認したのと同じ調べ方の徹底を、
+運用面のトラブルシュートにも適用する)。「CI がずっと pending/未実行の
+まま」に見えたら、待つ前に `gh pr view <N> --json mergeable` で
+`CONFLICTING` になっていないかを確認する — `pending` を漫然と待っても
+CI は永遠に発火しない。
+
+対処は §4 と同じ「その場で rebase、先延ばしにしない」だが、**最下段から
+順に**行う(最下段が `main` と衝突しているなら、上位段を rebase しても
+土台が古いまま揺れているだけで解決しない)。
+
+この節の手順はどのステップから始める場合も、**まず `git fetch origin
+main` を打ってから** `origin/main` を参照する。ローカルの
+remote-tracking ref(`origin/main`)は明示的に fetch するまで更新
+されない — 同一セッション中に main がリモートでさらに進んだ後、古い
+`origin/main` に対して rebase すると、GitHub 側が計算する実際の
+`mergeable` は解消されないまま(見かけ上は衝突が消えたように見えて)
+push してしまう。
+
+```bash
+git fetch origin main
+git switch <最下段のブランチ>
+git rebase origin/main
+# コンフリクト解消 → git add <file> → git rebase --continue
+nix flake check --all-systems --no-build   # このリポジトリでの回帰確認
+git push --force-with-lease origin <最下段のブランチ>
+```
+
+続けて 2 段目以降を rebase する際、単純に `git rebase <直下の段>` とは
+**書かない**。最下段を rebase すると最下段の commit SHA が変わるため、
+上位段の履歴にはまだ「古い SHA の最下段コミット」が残っている。ここで
+素の `git rebase <直下の段>` を打つと、git は「新しい直下の段に含まれない
+コミット」を古い最下段コミットもろとも再生しようとし、**既に解決した
+はずの衝突がもう一度(無意味に)出る**。`--onto` で「古い最下段コミットは
+飛ばして、直下の段より後のコミットだけを新しい直下の段の上に積み直す」と
+明示する:
+
+```bash
+git switch <2段目のブランチ>
+git rebase --onto <最下段のブランチ> <rebase 前の最下段コミットの SHA> <2段目のブランチ>
+# 2段目自身の変更が新しい最下段と実質衝突する場合のみコンフリクトが出る
+# (最下段の rebase 由来の衝突は再現しない)
+nix flake check --all-systems --no-build
+git push --force-with-lease origin <2段目のブランチ>
+```
+
+3 段目以降も同じ要領で、直下の段のブランチ名と「rebase 前の直下の段の
+コミット SHA」(`git rebase --onto` 実行前に `git log --oneline -1
+<直下の段>` などで控えておく)を差し替えて繰り返す。各段を rebase する
+たびに `nix flake check --all-systems --no-build`(このリポジトリの回帰
+確認コマンド、他リポジトリではそれぞれの高速検証コマンドに読み替える)を
+挟み、全段 push し終えてから `gh pr checks <N> --watch` で CI を待つ
+(`mergeable` が `MERGEABLE` に変わったことも合わせて確認する)。
+
 ## 5. GitHub ネイティブの stack 機能
 
 2026-07-30 に GitHub 本体へ public preview で入った Stacked pull requests
