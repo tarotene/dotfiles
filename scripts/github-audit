@@ -802,7 +802,9 @@ selftest() {
   {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "rulesets-core-only", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core layer only, review layer never opted into (ADR-0020).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": "rulesets-partial-review", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Copilot rule present but thread resolution not required (ADR-0020 partial-drift).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
+  {"name": "rulesets-partial-review", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Copilot rule present but thread resolution not required (ADR-0020 partial-drift).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-review-split", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core + review layer split across two active rulesets, like the real Stage 2 layout (ADR-0020).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-squash-conflict", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Two pull_request rules with disjoint allowed_merge_methods — no common squash-only.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
 EOF
 
@@ -861,6 +863,87 @@ EOF
     {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
     {"type": "copilot_code_review"},
     {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
+
+  # ADR-0020 regression coverage: aggregation across TWO active rulesets
+  # (not one ruleset with multiple pull_request rules) — the shape Stage 2
+  # actually produces (core Workflow ruleset + opt-in Review ruleset). Uses
+  # deliberately different allowed_merge_methods supersets on each ruleset
+  # (["squash","merge"] vs ["squash","rebase"]) so the assertion only passes
+  # if the intersection is computed for real — a "last param wins" bug would
+  # see ["squash","rebase"] alone and wrongly flag squash-only as missing.
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-review-split_rulesets.json" <<'EOF'
+[
+  {"id": 4, "target": "branch", "enforcement": "active"},
+  {"id": 5, "target": "branch", "enforcement": "active"},
+  {"id": 6, "target": "branch", "enforcement": "active"},
+  {"id": 7, "target": "branch", "enforcement": "active"}
+]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-review-split_rulesets_4.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-review-split_rulesets_5.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-review-split_rulesets_6.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["squash", "merge"]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-review-split_rulesets_7.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "copilot_code_review"},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": true, "allowed_merge_methods": ["squash", "rebase"]}}
+  ]
+}
+EOF
+
+  # Negative case: two pull_request rules whose allowed_merge_methods sets
+  # share no common element — the true intersection is empty, so squash-only
+  # must be reported missing (proves the "missing" branch of the same
+  # aggregation, not just the passing one).
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-squash-conflict_rulesets.json" <<'EOF'
+[
+  {"id": 8, "target": "branch", "enforcement": "active"},
+  {"id": 9, "target": "branch", "enforcement": "active"}
+]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-squash-conflict_rulesets_8.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["merge"]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-squash-conflict_rulesets_9.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["rebase"]}}
   ]
 }
 EOF
@@ -1013,6 +1096,42 @@ EOF
       "renovaterc": null
     },
     "r9": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r10": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r11": {
       "readme": null,
       "contributing": null,
       "claudeMd": null,
@@ -1222,6 +1341,21 @@ EOF
     return 1
   }
 
+  # rulesets domain (ADR-0020: aggregation across TWO active rulesets, not
+  # just multiple pull_request rules on one — the shape Stage 2 produces)
+  jq -e '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.verdict == "ok" and .domains.rulesets.review_layer == "complete" and (.domains.rulesets.missing | length == 0)' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-review-split should be ok/complete with no missing (cross-ruleset OR + intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.verdict == "drifted" and (.domains.rulesets.missing | index("pull_request.allowed_merge_methods"))' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-squash-conflict should flag pull_request.allowed_merge_methods (empty cross-ruleset intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.review_layer == "absent"' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-squash-conflict should be review_layer=absent (neither half opted in)\n' >&2
+    return 1
+  }
+
   # exempt short-circuit
   jq -e '.[] | select(.repo=="exempted") | [.domains[].verdict] | all(. == "exempt")' <<<"$out" >/dev/null || {
     printf 'FAIL: exempted repo should be exempt in every domain\n' >&2
@@ -1249,7 +1383,7 @@ EOF
     printf 'FAIL: ledger.json が書かれなかった\n' >&2
     return 1
   }
-  jq -e '.repos | length == 9' "$tmp/state/ledger.json" >/dev/null || {
+  jq -e '.repos | length == 11' "$tmp/state/ledger.json" >/dev/null || {
     printf 'FAIL: ledger.json の repos 件数が一致しない\n' >&2
     return 1
   }
