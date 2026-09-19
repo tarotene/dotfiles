@@ -97,12 +97,12 @@ timeless documentation 規範)、個別 Issue 番号の引用(Art of README の
 
 ## Issue litmus
 
-判定問: <このリポジトリの目的を前進させるかを問う疑問文>
+Judging question: <このリポジトリの目的を前進させるかを問う疑問文>
 
-採用例:
+Accepted:
 - ...
 
-棄却例:
+Rejected:
 - ...(別リポジトリの責務ならその名前を書く)
 ```
 
