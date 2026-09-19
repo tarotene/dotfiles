@@ -1,195 +1,66 @@
 # dotfiles
 
-Flake-based standalone home-manager configuration that reproduces one user
-environment identically across Pop!_OS hosts and identities. One flake is the
-source of truth, so a fresh machine comes up identically with near-zero manual
-steps.
+Flake-based home-manager config that reproduces one user environment identically across Pop!_OS hosts.
 
-Migrated from a procedural shell-script installer to home-manager — see
-[`CONTEXT.md`](CONTEXT.md) and the [ADRs](docs/adr/) for the charter.
+## Background
 
-## Scope
+home-manager is the single source of truth for the user environment; a thin apt layer and per-project runtime launchers (`mise`/`direnv`/`rustup`) stay outside it as deliberate escape hatches (ADR-0001, ADR-0002). The full architecture record lives in [`docs/adr/`](docs/adr/), indexed at [`docs/README.md`](docs/README.md).
 
-In:
-- home-manager modules for the user environment: shell, git, GPG, terminal,
-  IME, GUI apps, and the Claude Code tooling under `config/claude/`
-- the apt system-layer escape hatch (`bootstrap.sh` +
-  `packages/declarative/apt-packages.txt`)
-- the ADRs and runbooks that record why this repo is structured this way
+Further reading: the [home-manager manual](https://nix-community.github.io/home-manager/) and its [standalone-flakes section](https://nix-community.github.io/home-manager/index.xhtml#sec-flakes-standalone); this repo's YubiKey + GPG operating model follows <https://fuwa.dev/posts/yubikey/>.
 
-Out:
-- per-project language toolchains (managed by `mise`/`direnv`/`rustup` at the
-  project level — ADR-0002)
-- the judgement engine behind `publish-guard` (lives in
-  `tarotene/publish-guard`; this repo only wires it in)
-- feature development on the upstream tools this repo merely consumes
-  (e.g. `herdr` itself, `hato` itself — those live in their own repos)
+## Install
 
-## Issue litmus
-
-判定問: Does resolving this change what `home-manager switch` (or the
-documented apt/bootstrap escape hatch) provisions or configures on a host?
-
-採用例:
-- adopt a new CLI tool into home-manager's package list
-- fix a home-manager module that fails to activate on a host
-
-棄却例:
-- add a new feature to `herdr` itself (belongs in the upstream `herdr` repo)
-- pin a specific project's Rust toolchain version (belongs to that project's
-  `mise`/`rustup` config, not this repo)
-
-## Quick start
-
-### Greenfield (fresh Pop!_OS install)
+Greenfield (fresh Pop!_OS install):
 
 ```bash
-# Bootstrap: install Nix (Determinate Systems), then run home-manager.
 curl -fsSL https://raw.githubusercontent.com/tarotene/dotfiles/main/bootstrap.sh | bash
+```
 
-# Or clone first and run locally:
+or clone first and run locally:
+
+```bash
 git clone https://github.com/tarotene/dotfiles.git ~/dotfiles
 cd ~/dotfiles && ./bootstrap.sh
 ```
 
-`bootstrap.sh` installs Nix, installs the system-layer apt packages, runs
-`home-manager switch --flake .#"$(hostname)"`, and registers the Nix-provided
-zsh in `/etc/shells`. It then prints the manual steps (YubiKey `gpg
---card-status`, `chsh` to the Nix zsh). See [`SETUP.md`](SETUP.md) for the
-step-by-step guide and [`docs/cutover-runbook.md`](docs/cutover-runbook.md) for
-migrating an existing host.
+`bootstrap.sh` installs Nix (Determinate Systems), the system-layer apt packages, runs `home-manager switch --flake .#"$(hostname)"`, and registers the Nix-provided zsh in `/etc/shells`. It prints the remaining manual steps (YubiKey `gpg --card-status`, `chsh`). See [`docs/setup.md`](docs/setup.md) for the step-by-step guide and [`docs/cutover-runbook.md`](docs/cutover-runbook.md) for migrating an existing host.
 
-### Existing host
+## Usage
 
-Follow the **Existing host cutover** procedure in
-[`docs/cutover-runbook.md`](docs/cutover-runbook.md) (system packages →
-`home-manager switch -b backup` → switch login shell → verify).
-
-## Architecture: three layers
-
-home-manager owns the user environment; two layers stay outside it as
-deliberate escape hatches.
-
-| Layer | Owns | Managed by |
-|-------|------|------------|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompt, GPG agent, GUI apps | home-manager (`flake.nix` + `home/`) |
-| **System layer** (escape hatch) | build/cross toolchain, `scdaemon`, fcitx5 *immodules*, login-shell fallback — anything needing root, a system service, or to be loaded into an apt-installed process | `apt` (`scripts/install-packages.sh` + `packages/declarative/apt-packages.txt`) |
-| **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (home-manager installs them; toolchains stay project-scoped) |
-
-See [ADR-0001](docs/adr/0001-home-manager-as-source-of-truth.md) and
-[ADR-0002](docs/adr/0002-runtimes-and-hybrid-translation.md) for the boundary
-rationale.
-
-## What's managed by home-manager
-
-- **Shell** — Nix-provided zsh (primary login shell), Starship prompt, Sheldon
-  plugin manager. Literal `config/zsh/modules/*.zsh` deployed via `xdg.configFile`
-  (hybrid translation, ADR-0002). `$SHELL` pinned via both
-  `home.sessionVariables` and `systemd.user.sessionVariables` so GUI terminals
-  pick up the right shell.
-- **Git & identity** — `programs.git`; `user.name`/`user.email` per identity
-  (personal / company), signing key per host (bound to the machine's YubiKey /
-  on-disk [S] subkey). Commit signing on by default; `gh` credential helper.
-- **GPG / YubiKey** — `programs.gpg` + `services.gpg-agent` (GNOME pinentry, SSH
-  agent support, `scdaemon` CCID, no pcscd). Public keys committed under `keys/`,
-  imported at activation.
-- **Terminal & desktop** — Alacritty, FiraCode Nerd Font (`pkgs.nerd-fonts.fira-code`
-  + `fonts.fontconfig`).
-- **Input method** — fcitx5 + mozc from nixpkgs
-  (`qt6Packages.fcitx5-with-addons`), plus the env/autostart/profile wiring. apt
-  caps fcitx5 at 5.1.7, which predates the fix for the trigger-key defect in
-  [`docs/ime-chrome-diagnosis.md`](docs/ime-chrome-diagnosis.md); only the
-  client-side immodules stay apt. See ADR-0001's Amendment.
-- **GUI apps** — Google Chrome, Slack, Zoom via home-manager. Chrome is set as
-  the default browser on company hosts (`xdg.mimeApps`).
-- **GL / EGL** — nix-built GUI apps get their driver from **nix's own mesa** via
-  a per-package `nixGL` wrapper, because `/run/opengl-driver` is NixOS-only and
-  the system mesa cannot be loaded into a nix process. Without it Alacritty does
-  not start at all and Chrome/Slack silently fall back to software rendering.
-  See [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md).
-- **AI tooling** — `claude-code` via nixpkgs (`home/modules/packages.nix`).
-- **herdr** — worktree/workspace manager, via a `nixpkgs-unstable` overlay
-  (`home/modules/herdr.nix`; not yet in the pinned stable channel — ADR-0001
-  Amendment, #42). Sidebar shows each pane's Claude Code permission mode /
-  model / context / cost via two hooks
-  (`docs/claude/herdr-sidebar-metadata.md`).
-- **User-space CLIs** — neovim, ripgrep, fd, bat, zellij, gh, siketyan-ghr,
-  git-interactive-rebase-tool, and more, all from nixpkgs.
-- **Dev-runtime launchers** — `mise`, `direnv` (+ nix-direnv), `uv`, `deno`,
-  `rustup`. Java/Go consolidate into mise; rustup stays the global Rust default
-  for cross-compilation and C↔Rust FFI (ADR-0002).
-
-## Repository layout
-
-```
-dotfiles/
-├── flake.nix / flake.lock    # pinned nixpkgs + home-manager (+ nixpkgs-unstable, a
-│                             #   herdr-only escape hatch); homeConfigurations.<hostname>
-├── home/                     # Identity / Instance two-layer modules
-│   ├── common.nix
-│   ├── identities/{personal,company}.nix
-│   ├── hosts/{personal-pop,company-pop-old,company-pop-new}.nix
-│   └── modules/{shell,git,gpg,packages,desktop,runtimes,herdr}.nix
-├── config/                   # literal config, deployed verbatim
-├── packages/declarative/apt-packages.txt   # system layer only
-├── scripts/                  # escape-hatch + diagnostic scripts (hms, install-packages, ssh, fcitx5 trace)
-├── keys/                     # committed public keys
-├── bootstrap.sh              # greenfield entrypoint
-└── docs/{README.md,adr,claude,operations.md,cutover-runbook.md,
-         nixification-roadmap.md,ime-chrome-diagnosis.md,falcon-sensor.md}
-```
-
-## Architecture Decision Records
-
-- [ADR-0001](docs/adr/0001-home-manager-as-source-of-truth.md) — home-manager is the source of truth; apt + runtimes are escape hatches.
-- [ADR-0002](docs/adr/0002-runtimes-and-hybrid-translation.md) — runtime consolidation + hybrid config translation.
-- [ADR-0003](docs/adr/0003-secrets-and-identity.md) — secrets & identity (YubiKey-rooted key model). See the Amendment for the deployed model; the runtime-SOPS Decision item is retired by [ADR-0010](docs/adr/0010-retire-sops-runtime-secrets.md).
-- [ADR-0004](docs/adr/0004-repo-identity-and-relocation.md) — repo identity & relocation.
-- [ADR-0005](docs/adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, not auth.
-- [ADR-0006](docs/adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own GL stack (nixGL); the system graphics stack stays apt.
-
-## Routine operations
-
-The canonical apply is `hms` (deployed to `~/.local/bin`): no arguments
-applies pushed main (`github:tarotene/dotfiles`), `hms .` applies the
-current checkout for pre-push verification. It wraps the switch, the user
-`daemon-reload`, and the fcitx5 unit restart in one command — see
-[`docs/operations.md`](docs/operations.md).
-
-Refresh the pinned inputs on a cadence (weekly is enough), and consult the
-tool-layer decision flow before installing anything new — both in
-[`docs/operations.md`](docs/operations.md):
+The canonical apply is `hms` (deployed to `~/.local/bin`): no arguments applies pushed `main`, `hms .` applies the current checkout for pre-push verification. It wraps the switch, the user `daemon-reload`, and the fcitx5 unit restart in one command.
 
 ```bash
-nix flake update
-nix flake check
-hms .        # apply this checkout; commit + push once it proves out
+nix flake update   # refresh pinned inputs (weekly cadence is enough)
+nix flake check    # evaluate every host's activation package
+hms .               # apply this checkout; commit + push once it proves out
 ```
 
-## Rollback
-
-home-manager keeps every activation as a generation:
+Roll back to a previous generation at any time:
 
 ```bash
-home-manager generations                               # list
-home-manager switch --flake .#"$(hostname)" --rollback # previous generation
+home-manager generations
+home-manager switch --flake .#"$(hostname)" --rollback
 ```
 
-## Limitations
+Routine operations and the tool-layer decision flow (new CLI → home-manager package vs. apt vs. per-project runtime) are in [`docs/operations.md`](docs/operations.md).
 
-- **One manual step per host**: identity is hardware-rooted, so inserting the
-  YubiKey, importing/trusting keys (`gpg --card-status`, `gpg --import
-  keys/*.pub`), and setting the per-host signing key cannot be declarative
-  (ADR-0003).
-- **`chsh` stays manual**: `bootstrap.sh` registers the Nix zsh in `/etc/shells`
-  but does not change your login shell (interactive auth; can fail under
-  `curl | bash`).
-- **System layer is not reproducible**: apt packages are installed
-  imperatively; only the *list* is version-controlled.
-- **Per-project toolchains are out of scope**: home-manager installs the
-  launchers (mise/direnv/rustup); the actual toolchain versions live per project.
-- **Pop!_OS only**: hosts are Pop!_OS 24.04; other distros/macOS are not
-  targeted.
+## Scope
+
+home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the Claude Code tooling under `config/claude/`. Two layers stay outside it as escape hatches — the apt system layer (`bootstrap.sh` + `packages/declarative/apt-packages.txt`) for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
+
+This repository does not manage per-project language toolchains, the judgement engine behind `publish-guard` (lives in `tarotene/publish-guard`; this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
+
+Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are Pop!_OS 24.04 only; other distros/macOS are not targeted.
+
+## Development
+
+```bash
+nix fmt            # format all *.nix files (nixfmt-tree)
+nix flake check    # evaluate every host's activation package
+hms .               # build + activate this checkout for end-to-end verification
+```
+
+CI (`.github/workflows/`) runs a per-host activation build matrix plus a slim shellcheck pass over the surviving escape-hatch scripts.
 
 ## License
 
