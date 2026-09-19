@@ -80,6 +80,15 @@ Notes:
   `flake.lock`'s `nixpkgs-unstable` node (or the whole generation, per the
   rollback note above) — there is no way to roll back only one of the two
   packages while keeping the other's update, since they share a single input.
+- `herdr`'s overlay entry also carries `patches/herdr-worktree-names.patch`
+  (a personal-taste patch renaming generated worktrees after hololive
+  talents instead of the built-in adjective-noun list) via `overrideAttrs`.
+  This forces `herdr` to build from source locally instead of fetching a
+  binary — a `nixpkgs-unstable` bump can shift `src/worktree.rs` enough for
+  the patch to stop applying, which fails the build loudly (not silently);
+  the fix is to regenerate the patch against the new source. Drop the patch
+  once [herdrdev/herdr#4374](https://github.com/herdrdev/herdr/issues/4374)
+  (word list configurable via `config.toml`) lands upstream.
 
 ### Restarting herdr after a switch that changes its binary or hooks
 
