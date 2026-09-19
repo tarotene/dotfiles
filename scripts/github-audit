@@ -44,7 +44,8 @@ ALL_DOMAINS=(rulesets charters naming settings renovate)
 # Account-wide ruleset baseline (rulesets domain). Derived from the
 # rust-repo-governance/typst-repo-governance/astro-site-governance skills'
 # rulesets/*.json plus what is actually live on the reference repos — see
-# docs/github-audit.md for the full evidence trail.
+# docs/github-audit.md for the full evidence trail. Core layer only —
+# always required, regardless of a repository's development phase.
 BASELINE_RULE_TYPES=(
   deletion
   non_fast_forward
@@ -52,8 +53,15 @@ BASELINE_RULE_TYPES=(
   required_linear_history
   required_status_checks
   pull_request
-  copilot_code_review
 )
+
+# Review layer (ADR-0020): a self-contained addin, not part of the core
+# baseline. Judged only if a repository has opted in — presence is
+# detected by either half showing up (the copilot_code_review rule type,
+# or any active pull_request rule with required_review_thread_resolution
+# true). A repository that opts into neither is reported informationally
+# (review_layer=absent) and never drifts on this layer.
+REVIEW_LAYER_RULE_TYPE=copilot_code_review
 
 # README schema (charters domain, ADR-0016). Background is optional and may
 # appear only before Install; the rest is a fixed, required sequence.
@@ -269,12 +277,12 @@ default_branch_rulesets() {
 }
 
 judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding object (no repo/language wrapper)
-  local repo="$1" has_workflows="${2:-true}" arr count types t pr checks
+  local repo="$1" has_workflows="${2:-true}" arr count types t pr_params thread_ok squash_ok checks
   local -a missing=()
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
   if [[ $count -eq 0 ]]; then
-    jq -n '{verdict: "ungoverned", missing: [], status_checks: []}'
+    jq -n '{verdict: "ungoverned", missing: [], status_checks: [], review_layer: "absent"}'
     return
   fi
 
@@ -293,23 +301,56 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
   done
   [[ $has_workflows == true ]] || missing+=("ci-absent")
 
-  pr="$(jq -c '[.[].rules[]? | select(.type=="pull_request") | .parameters] | last // null' <<<"$arr")"
-  if [[ $pr != null ]]; then
-    [[ "$(jq -r '.required_review_thread_resolution // false' <<<"$pr")" == true ]] ||
-      missing+=("pull_request.required_review_thread_resolution")
-    jq -e '(.allowed_merge_methods // []) == ["squash"]' <<<"$pr" >/dev/null 2>&1 ||
-      missing+=("pull_request.allowed_merge_methods")
+  # A pull_request rule may appear on more than one active ruleset (the core
+  # layer's own rule, plus the review layer's, once split into review.json —
+  # ADR-0020). GitHub aggregates same-type rules across rulesets by applying
+  # the most restrictive value per parameter (GitHub Docs, "About rulesets",
+  # rule layering), so thread resolution is an OR and allowed_merge_methods
+  # is an intersection across every pull_request rule found.
+  pr_params="$(jq -c '[.[].rules[]? | select(.type=="pull_request") | .parameters]' <<<"$arr")"
+  thread_ok=false
+  if [[ "$(jq 'length' <<<"$pr_params")" -gt 0 ]]; then
+    jq -e 'any(.[]; (.required_review_thread_resolution // false) == true)' <<<"$pr_params" >/dev/null 2>&1 &&
+      thread_ok=true
+    jq -e '
+      [.[] | select(.allowed_merge_methods != null) | .allowed_merge_methods] as $lists
+      | ($lists | length) > 0
+        and (($lists[1:] | reduce .[] as $l ($lists[0]; [.[] | select(. as $x | $l | index($x) != null)])) == ["squash"])
+    ' <<<"$pr_params" >/dev/null 2>&1 && squash_ok=true || squash_ok=false
+    [[ $squash_ok == true ]] || missing+=("pull_request.allowed_merge_methods")
+  fi
+
+  # Review layer (ADR-0020): opt-in addin, judged only if present. A
+  # repository that opted into neither half is not drift — it is reported
+  # informationally as review_layer=absent.
+  local review_layer_present=false
+  jq -e --arg t "$REVIEW_LAYER_RULE_TYPE" 'index($t)' <<<"$types" >/dev/null 2>&1 && review_layer_present=true
+  [[ $thread_ok == true ]] && review_layer_present=true
+
+  local review_layer=absent
+  if [[ $review_layer_present == true ]]; then
+    local -a review_missing=()
+    jq -e --arg t "$REVIEW_LAYER_RULE_TYPE" 'index($t)' <<<"$types" >/dev/null 2>&1 ||
+      review_missing+=("review_layer.copilot_code_review")
+    [[ $thread_ok == true ]] || review_missing+=("review_layer.required_review_thread_resolution")
+    if ((${#review_missing[@]} == 0)); then
+      review_layer=complete
+    else
+      review_layer=partial-drift
+      missing+=("${review_missing[@]}")
+    fi
   fi
 
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
 
   if ((${#missing[@]} == 0)); then
-    jq -n --argjson checks "$checks" '{verdict: "ok", missing: [], status_checks: $checks}'
+    jq -n --argjson checks "$checks" --arg rl "$review_layer" \
+      '{verdict: "ok", missing: [], status_checks: $checks, review_layer: $rl}'
   else
     local missing_json
     missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
-    jq -n --argjson missing "$missing_json" --argjson checks "$checks" \
-      '{verdict: "drifted", missing: $missing, status_checks: $checks}'
+    jq -n --argjson missing "$missing_json" --argjson checks "$checks" --arg rl "$review_layer" \
+      '{verdict: "drifted", missing: $missing, status_checks: $checks, review_layer: $rl}'
   fi
 }
 
@@ -723,6 +764,7 @@ render_report() {
     | select(.value.verdict != "not-applicable")
     | "\(.value.verdict)\tdomain=\(.key) verdict=\(.value.verdict) repo=\($r.repo)"
       + (if (.value.missing | length) > 0 then " missing=" + (.value.missing | join(",")) else "" end)
+      + (if .value.review_layer then " review_layer=" + .value.review_layer else "" end)
   ' <<<"$findings" | LC_ALL=C sort | cut -f2-
   total="$(jq '[.[].domains | to_entries[]] | length' <<<"$findings")"
   printf 'total: %d finding(s) across %d repo(s)\n' "$total" "$(jq 'length' <<<"$findings")"
@@ -758,7 +800,9 @@ selftest() {
   {"name": "not-pj-prefixed", "primaryLanguage": {"name": "Python"}, "visibility": "PRIVATE", "description": "Declares pj but is not prefixed.", "repositoryTopics": [{"name": "naming-pj"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "no-renovate-target", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "No manifest, no CI.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
+  {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-core-only", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core layer only, review layer never opted into (ADR-0020).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-partial-review", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Copilot rule present but thread resolution not required (ADR-0020 partial-drift).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
 EOF
 
@@ -784,6 +828,42 @@ EOF
   for other_repo in all-drifted pj-ambiguous not-pj-prefixed no-renovate-target exempted .github; do
     printf '[]' >"$tmp/fixtures/repos_tarotene_${other_repo}_rulesets.json"
   done
+
+  # ADR-0020: review layer addin fixtures — core-only (opted out, ok/absent)
+  # and partial (copilot present but thread resolution missing, drifted).
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-core-only_rulesets.json" <<'EOF'
+[{"id": 2, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-core-only_rulesets_2.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-partial-review_rulesets.json" <<'EOF'
+[{"id": 3, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_rulesets-partial-review_rulesets_3.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "copilot_code_review"},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["squash"]}}
+  ]
+}
+EOF
 
   cat >"$tmp/fixtures/graphql-response.json" <<'EOF'
 {
@@ -908,6 +988,42 @@ EOF
       "pyprojectToml": null,
       "goMod": null,
       "workflowsDir": null,
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r8": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "renovateJson": null,
+      "renovateJson5": null,
+      "ghRenovateJson": null,
+      "ghRenovateJson5": null,
+      "renovaterc": null
+    },
+    "r9": {
+      "readme": null,
+      "contributing": null,
+      "claudeMd": null,
+      "agentsMd": null,
+      "rootTree": {"entries": []},
+      "claudeSkillsDir": null,
+      "cargoToml": null,
+      "packageJson": null,
+      "pyprojectToml": null,
+      "goMod": null,
+      "workflowsDir": {"entries": [{"name": "ci.yml"}]},
       "renovateJson": null,
       "renovateJson5": null,
       "ghRenovateJson": null,
@@ -1084,6 +1200,28 @@ EOF
     return 1
   }
 
+  # rulesets domain (ADR-0020: review layer addin)
+  jq -e '.[] | select(.repo=="all-ok") | .domains.rulesets.review_layer == "complete"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok rulesets should be review_layer=complete\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-core-only") | .domains.rulesets.verdict == "ok" and .domains.rulesets.review_layer == "absent"' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-core-only should be ok with review_layer=absent\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-partial-review") | .domains.rulesets.verdict == "drifted" and .domains.rulesets.review_layer == "partial-drift"' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-partial-review should be drifted with review_layer=partial-drift\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-partial-review") | .domains.rulesets.missing | index("review_layer.required_review_thread_resolution")' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-partial-review should flag review_layer.required_review_thread_resolution\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="rulesets-partial-review") | .domains.rulesets.missing | index("review_layer.copilot_code_review") | not' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-partial-review already has copilot_code_review — should not flag it missing\n' >&2
+    return 1
+  }
+
   # exempt short-circuit
   jq -e '.[] | select(.repo=="exempted") | [.domains[].verdict] | all(. == "exempt")' <<<"$out" >/dev/null || {
     printf 'FAIL: exempted repo should be exempt in every domain\n' >&2
@@ -1111,7 +1249,7 @@ EOF
     printf 'FAIL: ledger.json が書かれなかった\n' >&2
     return 1
   }
-  jq -e '.repos | length == 7' "$tmp/state/ledger.json" >/dev/null || {
+  jq -e '.repos | length == 9' "$tmp/state/ledger.json" >/dev/null || {
     printf 'FAIL: ledger.json の repos 件数が一致しない\n' >&2
     return 1
   }
