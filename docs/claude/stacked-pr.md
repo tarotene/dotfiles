@@ -22,10 +22,43 @@ open issue、バージョン番号)は `docs/stacked-pr-github-native.md` に切
 2. 親 PR のマージ待ちで子作業が始められず、セッションが空転する
 3. 分けられないので ADR + 実装 + docs を 1 PR に詰め、レビュー不能な塊になる
 4. 「これは分けるべきか」の判断がセッションごとにブレる
+5. grilling セッションや Plan モード中にスコープ外だが価値のある発見が
+   あったとき、選択肢空間に「stack の一段として受ける」が無いため、
+   「wrap-up inbox 送り」か「同一 PR に混ぜる」かという極端な二択を
+   `AskUserQuestion` で迫ってしまう(2026-09-19 の grilling セッションで
+   観測)
 
 PR 同士の依存関係は Issue 同士の依存関係とは別問題 — 1 つの Issue が複数段の
 stack になることもあり、複数の独立 Issue が 1 つの線形 stack になることもある。
 この区別を規律の前提として明記した。
+
+## スコープ外発見を stack の一段として受ける入口(2026-09-19)
+
+上記 5 の観測を受けて、判定条件(§1)の対象を「依頼された変更同士」から
+「現在進行中の変更と、計画・グリル・実装中に見つかったスコープ外項目」に
+広げた。決定ルールは単純な条件分岐にした:現在の変更との間で判定条件
+(a)/(b) を満たせば stacked PR の追加提案段として受け、満たさなければ
+wrap-up inbox へ流す(global CLAUDE.md「複数項目の依頼は要求インベントリで
+受ける」節)。この分岐自体はモデルに聞かず機械的に決める — 聞くのは
+「今のセッションでやるか」(Plan 中は分割案への追加提案として一括承認、
+実装中の発見のみ `AskUserQuestion` で stack か inbox かの 2 択)だけに絞る。
+
+「同一 PR に混ぜる」は選択肢から落とすが、レビュー負荷が事実上ゼロの微小
+修正(通りかかったファイルの typo・dead link 修正等、数行)に限り例外として
+残した。Google の "Small CLs" ガイド(eng-practices,
+https://google.github.io/eng-practices/review/developer/small-cls.html、
+取得 2026-09-19)も同旨で、"It's usually best to do refactorings in a
+separate CL from feature changes or bug fixes." としつつ "Small cleanups
+such as fixing a local variable name can be included inside of a feature
+change or bug fix CL, though." と裁量の余地を残している。ただし同文書は
+同梱を裁量に委ねるだけなのに対し、ここでは同梱時に PR 本文で一言断る義務を
+追加した — 後からレビュー・監査する側が「意図した同梱」と「スコープの
+なし崩し的な混入」を区別できるようにするため。
+
+機械 gate(`plan-scope-gate.sh` / `pr-gate.sh` への検査追加)は今回作らない。
+`AskUserQuestion` の選択肢空間は機械検査に向かないうえ、§8「なぜ
+pr-gate.sh を触らないか」の既存裁定(判定できる場合だけ踏み込む、実測が
+出てから block 化を検討する)にそのまま従う。
 
 ## なぜ素の `--base` + `gh stack link` を選び、`init/submit/sync` を避けたか
 
