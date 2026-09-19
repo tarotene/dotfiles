@@ -109,6 +109,14 @@ timeless documentation 規範)、個別 Issue 番号の引用(Art of README の
 恒久的な内容だけ README/`docs/` へ移し、それ以外は破棄する(ルート allowlist、
 次々節)。
 
+**監査の目的文抽出には罠が 2 つある**(`github-audit` charters ドメインの
+実装挙動、#182)。監査は H1 直後の**最初の非空段落**をそのまま目的段落として
+取るので、キャッチコピーやバッジ行を H1 と目的 1 文の間に挟むとそれが目的文と
+誤認される — 目的 1 文の段落を H1 の直後に置く。また目的 1 文は**最初の
+`.` / `。` で切り出して** description と照合するため、URL やバージョン番号の
+ような埋め込みピリオドを目的 1 文の中に書くと途中で切れて `purpose-mismatch`
+になる。
+
 ## 3. CONTRIBUTING.md への反映(ADR-0013 部分 supersede、固定スキーマは ADR-0017)
 
 CONTRIBUTING.md は GitHub が Issue/PR 作成画面で自動リンク表示する標準ファイル
