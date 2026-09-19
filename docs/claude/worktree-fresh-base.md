@@ -71,3 +71,9 @@ hook を並列実行するため逐次実行は保証できない
 親チェックアウト自身の `main` を常に新鮮に保つ(home-manager 管理の systemd
 user timer で定期 fetch + ff-only pull する)案は、全リポジトリへの常駐動作
 という別議論が要るため、この hook のスコープには含めない。
+
+長い Plan セッション中の drift(この hook は SessionStart 限定なので対象外)
+は `plan-fresh-gate.sh`(PreToolUse / ExitPlanMode)が別途担う。移動条件
+(pristine 5 条件 + ff-only)はこの hook と同じだが、移動できない場合でも
+deny 判定は独立に行う点が異なる。詳細は
+[`docs/claude/plan-fresh-gate.md`](plan-fresh-gate.md)。

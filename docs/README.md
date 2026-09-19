@@ -159,6 +159,11 @@ Design and rationale for the hooks and commands deployed from
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
+- [`plan-fresh-gate.md`](claude/plan-fresh-gate.md) — PreToolUse /
+  ExitPlanMode hook: 並行 worktree 運用で drift したコードベースを見たまま
+  プランが承認されるのを防ぐ。pristine なら ff-only で追従しつつ、
+  origin/`<base>` の進行分がプラン参照ファイルと交差するときだけ deny する。
+  deny 済み SHA のセッション state で収束を保証する。
 - [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
   `~/.claude/CLAUDE.md`: 検証可能な仮定は情報源(Slack/Drive/GitHub/公式ドキュメント/
   文献)を参照するか明示判断し、発明する前に先行例を確認する調査規律を全セッション

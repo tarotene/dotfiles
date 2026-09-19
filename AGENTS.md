@@ -63,7 +63,8 @@ dotfiles/
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
-│   │                         #   plan-scope-gate, plan-precedent-gate, pr-gate,
+│   │                         #   plan-scope-gate, plan-precedent-gate,
+│   │                         #   plan-fresh-gate, pr-gate,
 │   │                         #   attribution-guard, issue-index, sign-prewarm,
 │   │                         #   git-worktree-allow, git-stash-guard,
 │   │                         #   herdr-sidebar-metadata (hook half only);
@@ -190,6 +191,10 @@ dotfiles/
 │   │   │                     #   (ADR-0009); this doc covers dotfiles wiring only
 │   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
 │   │   │                     #   pristine worktree to origin/<base>
+│   │   ├── plan-fresh-gate.md    # PreToolUse/ExitPlanMode hook: ff-only when
+│   │   │                     #   pristine, deny when origin/<base>'s progress
+│   │   │                     #   intersects plan-referenced files, converges
+│   │   │                     #   via a denied-SHA session state
 │   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
 │   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link/visual-evidence)
 │   │   ├── pr-description.md     # PR body skeleton + mandatory Before/After
