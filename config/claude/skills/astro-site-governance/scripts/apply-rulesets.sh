@@ -87,7 +87,9 @@ remove_review_layer() {
     fi
   fi
 
-  ids=$(jq -r '.[] | select(.target=="branch" and .enforcement=="active") | .id' <<<"$rulesets")
+  # Exclude review_id — it was just deleted above (if it existed), so a
+  # second GET/PUT round trip on the same id would 404.
+  ids=$(jq -r --arg rid "$review_id" '.[] | select(.target=="branch" and .enforcement=="active" and (.id|tostring) != $rid) | .id' <<<"$rulesets")
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
     detail=$(gh api "repos/$OWNER/$REPO/rulesets/$id" 2>/dev/null) || continue
