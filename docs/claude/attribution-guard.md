@@ -124,14 +124,17 @@ grep -n 'gh pr comment 1 --body' docs/claude/attribution-guard.md
 echo 'gh issue comment 1 --body x'
 ```
 
-### wrap-up inbox の起票とはフッターが 2 本になる
+### wrap-up inbox の出自フッターは生成元表示を兼ねる
 
 `wrapup-stop-gate.sh` の起票手順は出自フッター
-`🤖 Filed from Claude Code wrap-up inbox` を要求するが、これは `ATTRIBUTION_RE`
-(`Generated with … Claude Code`) にマッチしないので、それだけでは deny される
-(実測)。出自フッターは「inbox 由来を後から grep で絞る」ためのもので、attribution
-フッターは「生成元の表示」— 目的が違うので両方付ける。`wrapup-stop-gate.sh` の
-指示文側にその旨を書いてあるので、手で足す必要はない。
+`🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox` を
+要求する。当初は「生成元表示」と「inbox 由来を grep で絞る出自フッター」を
+別行で 2 本付けていたが、出自フッター自体に `Claude Code` へのリンクを含めれば
+1 行で両方を満たせる。`ATTRIBUTION_RE` はそのため
+`(Generated with|Filed from)[[:space:]]*\[?Claude Code` の alternation にして
+おり、統合形・旧 2 行形式のどちらも受理する(旧形式で起票済みの Issue を
+書き換える必要はない)。`Claude Code` を含まない出自フッター単独(例:
+`🤖 Filed from wrap-up inbox`)は引き続き deny される。
 
 ### gate 自身を直すときは gate を外す
 
@@ -211,12 +214,13 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 ## 縮退と検査
 
 - `jq` 不在・stdin 不正は黙って `exit 0`（ADR-0005 の binary-existence gating）。
-- `attribution-guard.sh --selftest` が 26 ケースをネットワーク無しに検査する。
+- `attribution-guard.sh --selftest` が 31 ケースをネットワーク無しに検査する。
   うち 3 件は Copilot plan review の指摘 R1-B-1 の回帰ケース（`&&` 連結での
   取り違え / 手前の `echo` からの混入 / 閉じクォートを理由と誤認）、1 件は
   「Markdown 箇条書きで本文が切れて全 deny になる」false deny の回帰ケース、
-  3 件は「コマンド位置にない投稿コマンドの綴りで発火する」false deny の回帰ケース。
-  **後 2 者が落ちると gate は実用上使えない。**
+  3 件は「コマンド位置にない投稿コマンドの綴りで発火する」false deny の回帰ケース、
+  3 件は wrap-up inbox の統合フッター（前節）の受理・非受理・旧形式回帰。
+  **false deny 系が落ちると gate は実用上使えない。**
 - `attribution-guard.sh --check '<コマンド文字列>'` で手動 e2e ができる。
 
 ## 登録形

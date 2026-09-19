@@ -118,7 +118,11 @@ export LC_ALL=C
 ATTRIBUTION_FOOTER='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
 # 検出は緩め — 文言の軽微なズレで false deny しない。CLAUDE.md の指示は厳密。
-ATTRIBUTION_RE='Generated with[[:space:]]*\[?Claude Code'
+# alternation の "Filed from" は wrap-up inbox の出自フッター(統合形
+# 「🤖 Filed from [Claude Code](...) wrap-up inbox」)が生成元表示を兼ねる
+# ケースを受理するためのもの(D1)。旧 2 行形式(Generated with 行を別途
+# 持つ)も alternation の前段でそのまま通る。
+ATTRIBUTION_RE='(Generated with|Filed from)[[:space:]]*\[?Claude Code'
 
 # 理由を伴って初めて成立する。空の No-Attribution: は通さない。
 # 除外集合はフォールバック経路で効く: 範囲文字列全体を見る場合、
@@ -533,6 +537,14 @@ selftest() {
   #     pass に倒れていた、実測)。
   expect_deny "21 heredoc 本体に footer 無し" \
     "$(printf "gh pr comment 1 --body \"\$(cat <<%sEOF%s\n本文だけ\nEOF\n)\"" "'" "'")"
+
+  # 22-24: wrap-up inbox の統合フッター(D1)。出自フッターが生成元表示を兼ねる
+  # 1 行形式を受理し、Claude Code を含まない出自フッター単独は引き続き deny、
+  # 旧 2 行形式も回帰として通ることを確認する。
+  local wrapup_footer='🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox'
+  expect_pass "22 wrapup 統合フッター" "gh issue create --title t --body '本文 $wrapup_footer'"
+  expect_deny "23 wrapup フッターだが Claude Code 無し" "gh issue create --title t --body '本文 🤖 Filed from wrap-up inbox'"
+  expect_pass "24 旧 2 行形式(回帰)" "$(printf "gh issue create --title t --body '本文\n%s\n🤖 Filed from Claude Code wrap-up inbox'" "$footer")"
 
   if [[ $fails -gt 0 ]]; then
     echo "selftest: ${fails} 件失敗" >&2

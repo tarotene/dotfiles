@@ -102,6 +102,10 @@ watcher / assignee には通知が飛ぶ。
 - 本文が Claude 生成でないとき(ユーザーが書いた文章をそのまま代理投稿する等)は
   `No-Attribution: <理由>` を本文に書いて明示的に抜ける。理由は必須。
   読者にとっても「これは AI が書いたのではない」という正しい情報になる。
+- 別の目的を持つフッター(出自を grep で絞るためのタグ等)が `Claude Code` への
+  リンクを含む形で生成元も表示できるときは、それ 1 行で足り、上記フッターを
+  重ねて付ける必要はない(例: wrap-up inbox 起票の
+  `🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox`)。
 - コード行に対するインラインレビューコメントは対象外(1〜2 行が典型で、
   フッターが本文より長くなる)。
 - 形式検査は attribution-guard.sh が PreToolUse で行う。gate に当たる前に
