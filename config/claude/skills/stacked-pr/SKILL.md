@@ -97,7 +97,16 @@ CI は永遠に発火しない。
 順に**行う(最下段が `main` と衝突しているなら、上位段を rebase しても
 土台が古いまま揺れているだけで解決しない)。
 
+この節の手順はどのステップから始める場合も、**まず `git fetch origin
+main` を打ってから** `origin/main` を参照する。ローカルの
+remote-tracking ref(`origin/main`)は明示的に fetch するまで更新
+されない — 同一セッション中に main がリモートでさらに進んだ後、古い
+`origin/main` に対して rebase すると、GitHub 側が計算する実際の
+`mergeable` は解消されないまま(見かけ上は衝突が消えたように見えて)
+push してしまう。
+
 ```bash
+git fetch origin main
 git switch <最下段のブランチ>
 git rebase origin/main
 # コンフリクト解消 → git add <file> → git rebase --continue
