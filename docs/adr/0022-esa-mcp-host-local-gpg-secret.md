@@ -99,6 +99,22 @@ riベース時に発見して採用した — Decision 3 はこの機構の消�
   同機構が merge されたと分かった時点で、重複する activation スクリプトを
   2 本 `~/.claude.json` に書き込ませる状態を避けるため、独自実装を捨てて
   共通の「口」へ乗り換えた。
+- **esa 公式のリモート MCP サーバー(`https://mcp.esa.io/`、OAuth 2.1、β
+  公開)への切り替え**: レビュー中に指摘され一次情報で調査した(取得日
+  2026-09-19)。esa 公式ドキュメント(<https://docs.esa.io/posts/582>)は
+  「Claude Desktop から連携することで、Claude Code で利用可能です。
+  Claude Code から連携は今後対応予定です」と明記しており、このリポジトリの
+  実際の利用クライアント(Claude Code CLI)からの直接接続は esa 自身が
+  未対応と述べている。リモート MCP サーバー自体も
+  「本機能は現在ベータ(β)版です。仕様は予告なく変更される場合があります」
+  (<https://docs.esa.io/posts/584>)と明記されたベータ機能。加えて Claude
+  Code の OAuth トークン保管は、このリポジトリの主要ホスト(Linux)で
+  ADR-0003 の YubiKey ルート secrets モデルと同水準の保護を持つか
+  ドキュメントから確認できなかった(<https://code.claude.com/docs/en/mcp>
+  は「client secret はキーチェーン(macOS)または credentials file に保管」
+  としか書いておらず、Linux での暗号化・ハードウェア連動の有無が不明)。
+  以上 3 点(vendor 未対応・ベータ依存・保護水準不明)により今は見送り、
+  棄却。再検討条件は tarotene/dotfiles#247 に追跡する。
 
 ## Consequences
 
