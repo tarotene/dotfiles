@@ -1,0 +1,601 @@
+#!/usr/bin/env bash
+# gpg-subkey — generate/rotate a machine-local ed25519 [S] (signing) subkey
+# under a card-backed primary key, monitor its expiry, and refresh this
+# repo's committed public-key export.
+#
+# Absorbed from a now-archived private predecessor tool's
+# generate-machine-subkey.sh / rotate-machine-subkey.sh (dotfiles GPG
+# tooling review, 2026-09-19): that tool's `--command-file --expert
+# --edit-key` batch mechanics for addkey/revkey are reused here (validated
+# in production — the company identity's [S] subkey was rotated with it in
+# 2025-12 and 2026-07), but its git-config-writing side effect is
+# deliberately dropped.
+# `home/modules/gpg.nix` header + `hosts/<host>.nix`'s
+# `programs.git.signing.key` is the sole declared source of truth for which
+# subkey Git signs with (ADR-0003) — this tool never touches git config, it
+# only prints the next manual step.
+#
+# Usage:
+#   gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
+#   gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
+#   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
+#   gpg-subkey status   [--repo <dotfiles-checkout>]
+#   gpg-subkey remind   [--threshold 30] [--notify]
+#   gpg-subkey --selftest
+#
+# generate/rotate need the card inserted: the primary key's own [C]
+# (certify) capability signs the new subkey's binding signature, and that
+# operation lives on the YubiKey (ADR-0003). --key accepts anything
+# `gpg --list-secret-keys` resolves to exactly one primary key (a
+# fingerprint, keyid, or email substring).
+set -euo pipefail
+
+GPG_BIN="${GPG_SUBKEY_GPG_BIN:-gpg}"
+HERDR_BIN="${GPG_SUBKEY_HERDR_BIN:-herdr}"
+SELF="$(realpath "$0")"
+DEFAULT_VALIDITY="1y"
+DEFAULT_ALGORITHM="ed25519"
+DEFAULT_THRESHOLD=30
+
+# edit_key_extra_args — additional gpg flags for the --edit-key calls in
+# _generate_on/_revoke_subkey. Empty in production: the real primary key's
+# passphrase/PIN goes through the operator's configured pinentry
+# (pinentry-gnome3 via home/modules/gpg.nix), interactively. --selftest sets
+# GPG_SUBKEY_PINENTRY_MODE=loopback + GPG_SUBKEY_PASSPHRASE='' to unlock its
+# throwaway empty-passphrase fixture key non-interactively — this switch
+# never fires outside that fixture because both env vars stay unset otherwise.
+edit_key_extra_args() {
+  local -a args=()
+  [[ -n ${GPG_SUBKEY_PINENTRY_MODE:-} ]] && args+=(--pinentry-mode "$GPG_SUBKEY_PINENTRY_MODE")
+  [[ -v GPG_SUBKEY_PASSPHRASE ]] && args+=(--passphrase "$GPG_SUBKEY_PASSPHRASE")
+  # `printf '%s\n' "${args[@]}"` with an EMPTY args array still runs once,
+  # substituting "" for the unmet %s — i.e. it prints one blank line instead
+  # of nothing. mapfile then turns that into extra=("") at the call site, an
+  # empty-string positional argument that lands *before* --command-file on
+  # gpg's command line and makes gpg stop recognizing every option after it
+  # ("'--command-file' is not considered an option"). This is exactly the
+  # production path (no GPG_SUBKEY_* env set), so the guard below is not
+  # cosmetic — skip printf entirely when there is nothing to emit.
+  ((${#args[@]} > 0)) && printf '%s\n' "${args[@]}"
+  return 0
+}
+
+usage() {
+  cat <<'EOF'
+usage:
+  gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
+  gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
+  gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
+  gpg-subkey status   [--repo <dotfiles-checkout>]
+  gpg-subkey remind   [--threshold 30] [--notify]
+  gpg-subkey --selftest
+
+generate/rotate require the card (the primary key's [C] capability signs the
+new subkey). This tool never writes git config — export prints the next
+manual step (update programs.git.signing.key, PR, hms).
+EOF
+}
+
+now_epoch() { date +%s; }
+
+# days_until <expire_epoch> <now_epoch> — ceiling division; "" (no expiry) → "inf"
+days_until() {
+  local expire="$1" now="$2"
+  [[ -n $expire && $expire != 0 ]] || {
+    printf 'inf'
+    return 0
+  }
+  printf '%d' $(((expire - now + 86399) / 86400))
+}
+
+# resolve_primary_key <selector> — echoes the fingerprint(s) matching the
+# selector's primary key (one per line; callers reject anything but exactly
+# one line as ambiguous/not-found).
+resolve_primary_key() {
+  local selector="$1"
+  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint "$selector" 2>/dev/null | awk -F: '
+    $1 == "sec" { pending = 1; next }
+    $1 == "fpr" && pending { print $10; pending = 0 }
+  '
+}
+
+# primary_uid <fpr> — first uid line for that primary.
+primary_uid() {
+  local fpr="$1"
+  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint "$fpr" 2>/dev/null | awk -F: '
+    $1 == "sec" { insec = 1; next }
+    $1 == "uid" && insec { print $10; exit }
+    $1 == "sec" || $1 == "pub" { insec = 0 }
+  '
+}
+
+# sign_subkeys <selector-or-empty> — TSV: primary_fpr, primary_uid, keyid,
+# subkey_fpr, created_epoch, expire_epoch("" if none), revoked(0/1). Scans
+# every secret primary when selector is empty.
+sign_subkeys() {
+  local selector="${1:-}"
+  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint ${selector:+"$selector"} 2>/dev/null | awk -F: '
+    $1 == "sec" { pfpr = ""; puid = ""; insec = 1; next }
+    $1 == "fpr" && insec { pfpr = $10; insec = 0; next }
+    $1 == "uid" && puid == "" { puid = $10; next }
+    $1 == "ssb" {
+      revoked = ($2 == "r") ? 1 : 0
+      cap = $12
+      created = $6
+      expires = $7
+      keyid = $5
+      sign_pending = (cap ~ /s/) ? 1 : 0
+      next
+    }
+    $1 == "fpr" && sign_pending {
+      print pfpr "\t" puid "\t" keyid "\t" $10 "\t" created "\t" expires "\t" revoked
+      sign_pending = 0
+    }
+  '
+}
+
+# --- generate ---------------------------------------------------------------
+
+extract_latest_sign_subkey() { # $1 = primary fpr → prints keyid of the
+  # most-recently-created non-revoked [S] subkey. `>=` (not `>`) so that two
+  # subkeys created within the same wall-clock second — generate immediately
+  # followed by rotate, both `date +%s`-resolution — break the tie toward
+  # whichever gpg listed last, i.e. the one actually added most recently.
+  sign_subkeys "$1" | awk -F'\t' '$7 == 0 { if ($5 >= max) { max = $5; keyid = $3 } } END { print keyid }'
+}
+
+cmd_generate() {
+  local key="" validity="$DEFAULT_VALIDITY" algorithm="$DEFAULT_ALGORITHM"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --key)
+        key="$2"
+        shift 2
+        ;;
+      --validity)
+        validity="$2"
+        shift 2
+        ;;
+      --algorithm)
+        algorithm="$2"
+        shift 2
+        ;;
+      *)
+        printf 'gpg-subkey generate: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  [[ $algorithm == ed25519 ]] || {
+    printf 'gpg-subkey generate: algorithm=%s は未対応(ed25519 のみ)\n' "$algorithm" >&2
+    return 2
+  }
+  [[ -n $key ]] || {
+    printf 'gpg-subkey generate: --key が必要です\n' >&2
+    return 2
+  }
+  _generate_on "$key" "$validity"
+}
+
+# _generate_on <primary-selector> <validity> — resolves the selector,
+# addkey's an ECC(sign-only)/Curve25519 subkey via the validated command-file
+# menu answers, and prints the new subkey's keyid on stdout.
+_generate_on() {
+  local selector="$1" validity="$2" fpr candidates batch out new_keyid
+  candidates="$(resolve_primary_key "$selector")"
+  if [[ -z $candidates ]]; then
+    printf 'gpg-subkey: --key %s に一致する秘密鍵がありません\n' "$selector" >&2
+    return 1
+  fi
+  if [[ $(wc -l <<<"$candidates") -gt 1 ]]; then
+    printf 'gpg-subkey: --key %s が複数の秘密鍵に一致しました。fingerprint で指定してください:\n' "$selector" >&2
+    printf '%s\n' "$candidates" >&2
+    return 1
+  fi
+  fpr="$candidates"
+  printf 'gpg-subkey: primary=%s (%s) に ed25519 [S] を追加します(YubiKey のタッチ/PIN が必要です)\n' \
+    "$fpr" "$(primary_uid "$fpr")" >&2
+
+  batch="$(mktemp)"
+  printf 'addkey\n10\n1\n%s\ny\nsave\nquit\n' "$validity" >"$batch"
+
+  # No `trap ... RETURN` here: a RETURN trap set inside a function is not
+  # function-scoped in bash — it keeps firing on every subsequent function
+  # return in the same call chain (including the caller's), tripping `set -u`
+  # on a `$batch` that no longer exists once this function itself returns.
+  # Explicit rm on every exit path avoids that entirely.
+  local -a extra=()
+  mapfile -t extra < <(edit_key_extra_args)
+  out="$("$GPG_BIN" --batch "${extra[@]}" --command-file "$batch" --expert --edit-key "$fpr" 2>&1)"
+  local rc=$?
+  rm -f "$batch"
+  if [[ $rc -ne 0 ]]; then
+    printf '%s\n' "$out" >&2
+    printf 'gpg-subkey: subkey 生成に失敗しました\n' >&2
+    return 1
+  fi
+
+  new_keyid="$(extract_latest_sign_subkey "$fpr")"
+  [[ -n $new_keyid ]] || {
+    printf 'gpg-subkey: 生成後の新しい [S] subkey を特定できませんでした\n' >&2
+    return 1
+  }
+  printf '%s\n' "$new_keyid"
+}
+
+# --- rotate ------------------------------------------------------------------
+
+cmd_rotate() {
+  local key="" validity="$DEFAULT_VALIDITY" revoke_old=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --key)
+        key="$2"
+        shift 2
+        ;;
+      --validity)
+        validity="$2"
+        shift 2
+        ;;
+      --revoke-old)
+        revoke_old=true
+        shift
+        ;;
+      *)
+        printf 'gpg-subkey rotate: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  [[ -n $key ]] || {
+    printf 'gpg-subkey rotate: --key が必要です\n' >&2
+    return 2
+  }
+
+  local fpr old_keyids new_keyid
+  fpr="$(resolve_primary_key "$key")"
+  [[ -n $fpr && $(wc -l <<<"$fpr") -eq 1 ]] || {
+    printf 'gpg-subkey: --key %s が primary key を一意に特定できません\n' "$key" >&2
+    return 1
+  }
+  old_keyids="$(sign_subkeys "$fpr" | awk -F'\t' '$7 == 0 { print $3 }')"
+
+  new_keyid="$(_generate_on "$fpr" "$validity")" || return 1
+  printf '%s\n' "$new_keyid"
+
+  if [[ $revoke_old == true && -n $old_keyids ]]; then
+    local old
+    while IFS= read -r old; do
+      [[ -n $old ]] || continue
+      _revoke_subkey "$fpr" "$old"
+    done <<<"$old_keyids"
+  elif [[ $revoke_old == true ]]; then
+    printf 'gpg-subkey: revoke 対象の旧 [S] subkey がありませんでした\n' >&2
+  fi
+}
+
+_revoke_subkey() { # <primary-fpr> <subkey-keyid>
+  local fpr="$1" keyid="$2" batch out rc
+  batch="$(mktemp)"
+  printf 'key %s\nrevkey\ny\n0\ngpg-subkey rotate\n\ny\nsave\nquit\n' "$keyid" >"$batch"
+  local -a extra=()
+  mapfile -t extra < <(edit_key_extra_args)
+  out="$("$GPG_BIN" --batch "${extra[@]}" --command-file "$batch" --expert --edit-key "$fpr" 2>&1)"
+  rc=$?
+  rm -f "$batch"
+  if [[ $rc -ne 0 ]]; then
+    printf '%s\n' "$out" >&2
+    printf 'gpg-subkey: 旧 subkey %s の revoke に失敗しました(既に revoke 済みの可能性)\n' "$keyid" >&2
+    return 0
+  fi
+  printf 'gpg-subkey: 旧 subkey %s を revoke しました\n' "$keyid" >&2
+}
+
+# --- export --------------------------------------------------------------
+
+cmd_export() {
+  local repo="" identity=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      --identity)
+        identity="$2"
+        shift 2
+        ;;
+      *)
+        printf 'gpg-subkey export: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  [[ -n $repo && -n $identity ]] || {
+    printf 'gpg-subkey export: --repo と --identity が必要です\n' >&2
+    return 2
+  }
+  local pubfile="$repo/keys/$identity.pub" fpr new_export new_keyid
+  [[ -f $pubfile ]] || {
+    printf 'gpg-subkey export: %s がありません\n' "$pubfile" >&2
+    return 1
+  }
+  fpr="$("$GPG_BIN" --with-colons --show-keys "$pubfile" 2>/dev/null | awk -F: '
+    $1 == "pub" { want = 1; next }
+    $1 == "fpr" && want { print $10; exit }
+  ')"
+  [[ -n $fpr ]] || {
+    printf 'gpg-subkey export: %s から primary fingerprint を読めませんでした\n' "$pubfile" >&2
+    return 1
+  }
+  new_export="$("$GPG_BIN" --armor --export "$fpr" 2>/dev/null)"
+  [[ -n $new_export ]] || {
+    printf 'gpg-subkey export: %s のローカル鍵束から export できませんでした\n' "$fpr" >&2
+    return 1
+  }
+  if [[ "$new_export" == "$(cat "$pubfile")" ]]; then
+    printf 'gpg-subkey export: %s に変更はありません\n' "$pubfile"
+  else
+    printf '%s\n' "$new_export" >"$pubfile"
+    printf 'gpg-subkey export: %s を更新しました\n' "$pubfile"
+  fi
+  new_keyid="$(extract_latest_sign_subkey "$fpr")"
+  printf '\n次の手順(このツールは git config / nix ファイルには触れません):\n'
+  printf '  1. hosts/<host>.nix の programs.git.signing.key を %s に更新\n' "${new_keyid:-<subkey-id>}"
+  printf '  2. commit → push → PR\n'
+  printf '  3. hms でこのホストに適用\n'
+}
+
+# --- status / remind -------------------------------------------------------
+
+_status_rows() { # <repo-or-empty> → TSV rows, restricted to keys/*.pub
+  # fingerprints when a repo is given, else every local secret key.
+  local repo="$1"
+  if [[ -z $repo ]]; then
+    sign_subkeys ""
+    return 0
+  fi
+  local f fpr
+  for f in "$repo"/keys/*.pub; do
+    [[ -f $f ]] || continue
+    fpr="$("$GPG_BIN" --with-colons --show-keys "$f" 2>/dev/null | awk -F: '
+      $1 == "pub" { want = 1; next }
+      $1 == "fpr" && want { print $10; exit }
+    ')"
+    [[ -n $fpr ]] || continue
+    sign_subkeys "$fpr"
+  done
+}
+
+cmd_status() {
+  local repo=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        repo="$2"
+        shift 2
+        ;;
+      *)
+        printf 'gpg-subkey status: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  local now rows pfpr puid keyid _sfpr created expires revoked days found=0
+  now="$(now_epoch)"
+  rows="$(_status_rows "$repo")"
+  [[ -n $rows ]] || {
+    printf 'gpg-subkey status: [S] subkey が見つかりません\n'
+    return 0
+  }
+  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked; do
+    [[ -n $keyid ]] || continue
+    found=1
+    days="$(days_until "$expires" "$now")"
+    if [[ $revoked == 1 ]]; then
+      printf '%s (%s) sub=%s: revoked\n' "$puid" "$pfpr" "$keyid"
+    elif [[ $days == inf ]]; then
+      printf '%s (%s) sub=%s: 無期限\n' "$puid" "$pfpr" "$keyid"
+    else
+      printf '%s (%s) sub=%s: 残り %s 日\n' "$puid" "$pfpr" "$keyid" "$days"
+    fi
+  done <<<"$rows"
+  [[ $found == 1 ]] || printf 'gpg-subkey status: [S] subkey が見つかりません\n'
+}
+
+cmd_remind() {
+  local threshold="$DEFAULT_THRESHOLD" notify=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --threshold)
+        threshold="$2"
+        shift 2
+        ;;
+      --notify)
+        notify=true
+        shift
+        ;;
+      *)
+        printf 'gpg-subkey remind: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  local now rows pfpr puid keyid _sfpr created expires revoked days
+  local -a due=()
+  now="$(now_epoch)"
+  rows="$(sign_subkeys "")"
+  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked; do
+    [[ -n $keyid ]] || continue
+    [[ $revoked == 0 ]] || continue
+    days="$(days_until "$expires" "$now")"
+    [[ $days == inf ]] && continue
+    if ((days <= threshold)); then
+      due+=("${puid} sub=${keyid} 残り${days}日で失効")
+    fi
+  done <<<"$rows"
+  [[ ${#due[@]} -gt 0 ]] || {
+    printf 'gpg-subkey remind: %s 日以内に失効する [S] subkey はありません\n' "$threshold"
+    return 0
+  }
+  local line
+  for line in "${due[@]}"; do
+    printf 'gpg-subkey remind: %s\n' "$line" >&2
+  done
+  if [[ $notify == true ]]; then
+    local body
+    body="$(printf '%s\n' "${due[@]}")"
+    "$HERDR_BIN" notification show "GPG [S] subkey の失効が近づいています" --body "${body:0:230}" --sound request >/dev/null 2>&1 || true
+  fi
+  return 1
+}
+
+# --- selftest ----------------------------------------------------------------
+# Exercises real GnuPG operations (generate/rotate/status/remind/export)
+# against a throwaway, empty-passphrase primary key in an isolated GNUPGHOME —
+# not stubbed, since the addkey/revkey command-file mechanics are exactly
+# what needs validating (same "real operations in a fixture dir" precedent
+# as scripts/git-audit-worktrees' --selftest uses real git repos).
+selftest() {
+  local dir fail=0
+  dir="$(mktemp -d)"
+  # Double-quoted so $dir is substituted into the trap command *now*: an EXIT
+  # trap fires at actual process exit, long after this function's `local dir`
+  # has gone out of scope, so a single-quoted 'rm -rf "$dir"' would resolve
+  # $dir against nothing and trip `set -u` (the same class of bug fixed above
+  # for _generate_on/_revoke_subkey's now-removed RETURN traps).
+  # shellcheck disable=SC2064
+  trap "rm -rf '$dir'" EXIT
+  export GNUPGHOME="$dir/gnupg"
+  mkdir -m 700 "$dir/gnupg"
+  printf 'allow-loopback-pinentry\n' >"$dir/gnupg/gpg-agent.conf"
+  # Loopback + an empty passphrase unlocks the fixture key non-interactively;
+  # see edit_key_extra_args' header comment for why this never leaks into
+  # the production generate/rotate path.
+  export GPG_SUBKEY_PINENTRY_MODE=loopback
+  export GPG_SUBKEY_PASSPHRASE=''
+  "$GPG_BIN" --batch --passphrase '' --pinentry-mode loopback \
+    --quick-generate-key 'Selftest <selftest@example.invalid>' ed25519 cert never >/dev/null 2>&1
+  local fpr
+  fpr="$("$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint | awk -F: '
+    $1 == "sec" { pending = 1; next }
+    $1 == "fpr" && pending { print $10; exit }
+  ')"
+
+  check() { # check <name> <expected> <actual>
+    if [[ "$2" == "$3" ]]; then
+      printf 'ok   %s\n' "$1"
+    else
+      printf 'FAIL %s (expected [%s], got [%s])\n' "$1" "$2" "$3" >&2
+      fail=1
+    fi
+  }
+  # generate/rotate call gpg --edit-key non-interactively; pinentry loopback
+  # with an empty passphrase needs no GPG_TTY, but --pinentry-mode ask is
+  # never used by this script's own gpg calls (only by the real production
+  # path via the operator's configured agent), so nothing here depends on a
+  # terminal.
+
+  # Regression check for the production path specifically: with neither
+  # GPG_SUBKEY_PINENTRY_MODE nor GPG_SUBKEY_PASSPHRASE set,
+  # edit_key_extra_args must emit nothing at all — this is the exact branch
+  # every other check below never exercises (both are exported above for the
+  # fixture key), and the one that broke real usage in production.
+  local -a prod_extra=()
+  (
+    unset GPG_SUBKEY_PINENTRY_MODE GPG_SUBKEY_PASSPHRASE
+    edit_key_extra_args
+  ) >"$dir/prod-extra.out" 2>&1
+  mapfile -t prod_extra <"$dir/prod-extra.out"
+  check "edit_key_extra_args: 本番(env未設定)では空配列" 0 "${#prod_extra[@]}"
+
+  local first_keyid
+  first_keyid="$(_generate_on "$fpr" 1d 2>"$dir/generate.err")" || {
+    printf 'FAIL generate: %s\n' "$(cat "$dir/generate.err")" >&2
+    exit 1
+  }
+  check "generate: 新しい keyid を出力する" 1 "$([[ -n $first_keyid ]] && echo 1 || echo 0)"
+
+  local rows count
+  rows="$(sign_subkeys "$fpr")"
+  count="$(wc -l <<<"$rows" | tr -d ' ')"
+  check "generate 後: [S] subkey が 1 本" 1 "$count"
+
+  local status_out
+  status_out="$(cmd_status)"
+  check "status: 生成した subkey を含む" 1 "$(grep -qF "$first_keyid" <<<"$status_out" && echo 1 || echo 0)"
+
+  local remind_rc=0
+  cmd_remind --threshold 2 >/dev/null 2>"$dir/remind.err" || remind_rc=$?
+  check "remind: 閾値内なら exit 1" 1 "$remind_rc"
+  cmd_remind --threshold 0 >/dev/null 2>&1
+  check "remind: 閾値外(0日)なら exit 0" 0 $?
+
+  # export: seed keys/selftest.pub with the pre-rotation state (what a
+  # committed dotfiles checkout would still have), so the export step below
+  # has a genuine diff to report against the post-rotation keyring.
+  mkdir -p "$dir/repo/keys"
+  "$GPG_BIN" --armor --export "$fpr" >"$dir/repo/keys/selftest.pub"
+
+  local second_keyid rotate_out
+  rotate_out="$(cmd_rotate --key "$fpr" --validity 1d --revoke-old 2>"$dir/rotate.err")" || {
+    printf 'FAIL rotate: %s\n' "$(cat "$dir/rotate.err")" >&2
+    exit 1
+  }
+  second_keyid="$(head -1 <<<"$rotate_out")"
+  check "rotate: 新しい keyid は generate と異なる" 1 "$([[ $second_keyid != "$first_keyid" ]] && echo 1 || echo 0)"
+
+  rows="$(sign_subkeys "$fpr")"
+  local old_revoked
+  old_revoked="$(awk -F'\t' -v k="$first_keyid" '$3 == k { print $7 }' <<<"$rows")"
+  check "rotate --revoke-old: 旧 subkey が revoked=1" 1 "$old_revoked"
+
+  local export_out
+  export_out="$(cmd_export --repo "$dir/repo" --identity selftest)"
+  check "export: 更新を報告する" 1 "$(grep -qF '更新しました' <<<"$export_out" && echo 1 || echo 0)"
+  check "export: 新 subkey の次手順を印刷する" 1 "$(grep -qF "$second_keyid" <<<"$export_out" && echo 1 || echo 0)"
+
+  export_out="$(cmd_export --repo "$dir/repo" --identity selftest)"
+  check "export: 変更なしなら再実行で no-op" 1 "$(grep -qF '変更はありません' <<<"$export_out" && echo 1 || echo 0)"
+
+  [[ $fail == 0 ]] && printf 'selftest: all passed\n'
+  return "$fail"
+}
+
+main() {
+  local mode="${1:-}"
+  case "$mode" in
+    generate)
+      shift
+      cmd_generate "$@"
+      ;;
+    rotate)
+      shift
+      cmd_rotate "$@"
+      ;;
+    export)
+      shift
+      cmd_export "$@"
+      ;;
+    status)
+      shift
+      cmd_status "$@"
+      ;;
+    remind)
+      shift
+      cmd_remind "$@"
+      ;;
+    --selftest) selftest ;;
+    -h | --help | '')
+      usage
+      [[ $mode == -h || $mode == --help ]]
+      ;;
+    *)
+      printf 'gpg-subkey: 不明なコマンド %s\n' "$mode" >&2
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"

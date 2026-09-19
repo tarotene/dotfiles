@@ -35,6 +35,7 @@
 }:
 let
   repoRoot = ../..;
+  subkeyPath = "${config.home.homeDirectory}/.local/bin/gpg-subkey";
 in
 {
   programs.gpg = {
@@ -95,6 +96,76 @@ in
     #
     # Reversible in one line: the subkey stays on the card, so re-enabling this
     # and writing the keygrip into ~/.gnupg/sshcontrol is all it would take.
+  };
+
+  # gpg-subkey: generate/rotate a machine-local [S] subkey and refresh
+  # keys/<identity>.pub (absorbed from a now-archived private predecessor
+  # tool — see the script's own header for why; it never writes git config,
+  # `programs.git.signing.key` above stays the sole declared source of truth
+  # per ADR-0003).
+  home.file.".local/bin/gpg-subkey" = {
+    source = repoRoot + "/scripts/gpg-subkey";
+    executable = true;
+  };
+
+  # Daily expiry check for every [S] subkey on this host, notified through
+  # Herdr the same way git-audit-worktrees is (home/modules/worktree.nix) —
+  # not notify-send/libnotify, which nothing else in this repo declares.
+  # The dangling cron this replaces (from the archived predecessor tool
+  # above) had been failing silently for ~11 months; a systemd/launchd unit
+  # shows up in `systemctl --user --failed` instead.
+  systemd.user.services.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Warn when a GPG [S] signing subkey is close to expiry";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${subkeyPath} remind --notify";
+      Environment = "PATH=${
+        lib.makeBinPath [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.gawk
+          pkgs.gnupg
+          pkgs.herdr
+        ]
+      }";
+    };
+  };
+
+  systemd.user.timers.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Check GPG [S] subkey expiry once a day";
+    Timer = {
+      OnCalendar = "daily";
+      Persistent = true;
+      Unit = "gpg-subkey-remind.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  # launchd equivalent (ADR-0018) — see worktree.nix's git-audit-worktrees
+  # agent for why EnvironmentVariables.PATH must list every binary the
+  # script shells out to (launchd replaces PATH rather than extending it).
+  launchd.agents.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isDarwin {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        subkeyPath
+        "remind"
+        "--notify"
+      ];
+      StartCalendarInterval = [
+        {
+          Hour = 9;
+          Minute = 0;
+        }
+      ];
+      EnvironmentVariables.PATH = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.gawk
+        pkgs.gnupg
+        pkgs.herdr
+      ];
+    };
   };
 
   # Import committed public keys at activation time.  On a fresh host the user
