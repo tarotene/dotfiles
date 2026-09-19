@@ -9,6 +9,15 @@
 > 「何が問題だったか」「パイロット適合」の記録自体はそのまま有効。
 > 横断監査は `github-audit-charters` から `github-audit charters` へ統合
 > された(ADR-0015、`docs/github-audit.md`)。
+>
+> **2026-09-19 追記(ADR-0017)**: ADR-0016 は litmus を README から
+> CONTRIBUTING.md へ移すことだけを決め、CONTRIBUTING.md 自体の節構成には
+> 一次情報の裏付けがなかった。`docs/adr/0017-contributing-schema.md` が
+> CONTRIBUTING.md を `## Issues` / `## Pull requests`(+ 任意
+> `## Expectations`)の固定スキーマにし、「Issue litmus」という見出し名の
+> 自作語彙を廃止した(判定問 + 採用例・棄却例という内容の形は `## Issues`
+> 冒頭に維持)。以下の本文が使う「Issue litmus」表記は当時のスキーマの
+> 記録としてそのまま残す。
 
 ## 何が問題だったか
 
