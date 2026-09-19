@@ -3,7 +3,7 @@
 # Settings that follow the *person* on their work machines.  Git user.name /
 # user.email are set here; the per-machine signing key lives in the host
 # module (#211 / ADR-0003).
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
   home.username = lib.mkDefault "tarotene";
   home.homeDirectory = lib.mkDefault "/home/tarotene";
@@ -21,10 +21,18 @@
   # Default browser — Chrome on work machines. home-manager takes over
   # ~/.config/mimeapps.list; the DE writes that file on its own, so force
   # is needed to clobber the pre-existing copy (same on every company host).
-  xdg.configFile."mimeapps.list".force = true;
-  xdg.dataFile."applications/mimeapps.list".force = true;
+  #
+  # xdg.mimeApps is Linux-only in home-manager (it asserts
+  # `cfg.enable -> platforms.linux`, which fails eval outright on darwin) —
+  # a future company-identity darwin host would need its own default-browser
+  # mechanism (macOS has no mimeapps.list equivalent; LSHandlers/`duti` is
+  # the closest analogue) rather than this block. No such host exists yet
+  # (ADR-0018 covers only the personal-identity altair host), so this is
+  # forward guarding, not a currently-exercised path.
+  xdg.configFile."mimeapps.list".force = lib.mkIf pkgs.stdenv.isLinux true;
+  xdg.dataFile."applications/mimeapps.list".force = lib.mkIf pkgs.stdenv.isLinux true;
 
-  xdg.mimeApps = {
+  xdg.mimeApps = lib.mkIf pkgs.stdenv.isLinux {
     enable = true;
     defaultApplications =
       let
