@@ -6,6 +6,12 @@
 # findings feed the github-audit-triage skill, which is the only place an
 # LLM enters the loop (docs/github-audit.md).
 set -euo pipefail
+# Command substitutions ($(...)) run in a subshell; without this, a bare
+# `exit N` inside one does not propagate errexit to the assignment's caller
+# (bash resets errexit state entering the subshell unless inherit_errexit is
+# set). fetch_graphql_batch()/audit() below rely on `||` failure checks that
+# need this to actually short-circuit main(), not just report a stray exit.
+shopt -s inherit_errexit
 
 SELF="$(realpath "$0")"
 OWNER="${GITHUB_AUDIT_OWNER:-tarotene}"
@@ -147,22 +153,48 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
   printf '%s' "$query"
 }
 
+# A single query spanning every audited repo (~35 repos, ~50KB of query text)
+# reliably gets HTTP 502 from GitHub's GraphQL endpoint (observed 2026-09-19;
+# see docs.github.com/en/graphql/overview/resource-limitations on node/point
+# limits for large queries). Fetch in fixed-size chunks instead.
+GRAPHQL_CHUNK_SIZE=10
+
 fetch_graphql_batch() { # $1=JSON array of repo names -> {repoName: {...}} keyed object
-  local repos_json="$1" query result
-  [[ "$(jq 'length' <<<"$repos_json")" -gt 0 ]] || {
+  local repos_json="$1" total start=0 merged='{}'
+  total="$(jq 'length' <<<"$repos_json")"
+  ((total > 0)) || {
     printf '{}'
     return
   }
-  query="$(build_graphql_query "$repos_json")"
-  result="$("$GH_BIN" api graphql -f query="$query" 2>/dev/null)" || result='{"data":{}}'
-  # $result can carry the full README/CONTRIBUTING text of every repo, which
-  # blows past ARG_MAX if passed as a jq --argjson command-line argument —
-  # pipe it through stdin instead; only the small $repos_json goes as --argjson.
-  jq -c --argjson names "$repos_json" '
-    .data as $data
-    | reduce range(0; ($names | length)) as $i
-        ({}; . + {($names[$i]): ($data["r\($i+1)"] // {})})
-  ' <<<"$result"
+  while ((start < total)); do
+    local chunk query result mapped
+    chunk="$(jq -c --argjson s "$start" --argjson n "$GRAPHQL_CHUNK_SIZE" '.[$s:($s+$n)]' <<<"$repos_json")"
+    query="$(build_graphql_query "$chunk")"
+    # Fail loud: a fetch failure here must abort the whole audit, not fall
+    # back to an empty object — an empty object reads downstream as "every
+    # file in every repo in this chunk is missing", producing wholesale
+    # false-positive drift instead of surfacing the actual fetch failure.
+    if ! result="$("$GH_BIN" api graphql -f query="$query")"; then
+      printf 'github-audit: GraphQL batch fetch failed for repos [%s] — aborting (not falling back to empty data)\n' \
+        "$(jq -r 'join(", ")' <<<"$chunk")" >&2
+      return 1
+    fi
+    # $result can carry the full README/CONTRIBUTING text of every repo in
+    # the chunk, which blows past ARG_MAX if passed as a jq --argjson
+    # command-line argument — pipe it through stdin instead; only the small
+    # $chunk goes as --argjson.
+    mapped="$(jq -c --argjson names "$chunk" '
+      .data as $data
+      | reduce range(0; ($names | length)) as $i
+          ({}; . + {($names[$i]): ($data["r\($i+1)"] // {})})
+    ' <<<"$result")"
+    # Same ARG_MAX hazard as above: $merged accumulates every prior chunk's
+    # README/CONTRIBUTING text, so it must not go through --argjson either —
+    # feed both sides via process substitution instead.
+    merged="$(jq -c -s '.[0] + .[1]' <(printf '%s' "$merged") <(printf '%s' "$mapped"))"
+    start=$((start + GRAPHQL_CHUNK_SIZE))
+  done
+  printf '%s' "$merged"
 }
 
 # ---------------------------------------------------------------------------
@@ -536,7 +568,10 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   local repo_names_json gql_batch='{}'
   repo_names_json="$(jq -c '[.[].name]' <<<"$repos_meta")"
   if ((need_graphql)); then
-    gql_batch="$(fetch_graphql_batch "$repo_names_json")"
+    gql_batch="$(fetch_graphql_batch "$repo_names_json")" || {
+      printf 'github-audit: aborting — charters/renovate judgement requires GraphQL data that failed to fetch\n' >&2
+      return 1
+    }
   fi
 
   local repo lang vis description topics_json topic_count meta domains_obj entry
@@ -990,7 +1025,10 @@ main() {
   parse_domains "${domain_args[@]}"
 
   local findings
-  findings="$(audit)"
+  findings="$(audit)" || {
+    printf 'github-audit: aborting — audit() failed, not writing ledger or findings\n' >&2
+    return 1
+  }
   write_ledger "$findings"
   case "$mode" in
     report) render_report "$findings" ;;
