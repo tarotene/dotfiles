@@ -182,6 +182,16 @@ jobs:
       - name: plan-scope-gate.sh --selftest
         run: bash ./config/claude/hooks/plan-scope-gate.sh --selftest
 
+      # plan-fresh-gate is deterministic shell + git + jq end to end, no gh/network:
+      # the pristine-ff-then-deny path, the dirty/non-pristine no-move path, the
+      # branch==base no-move path, the denied-SHA session-state convergence (same
+      # SHA re-allows, base advancing re-checks only the increment), the
+      # full-path/basename intersection match, and the no-truncation guarantee
+      # over a 250-file diff are all exercised against throwaway fixture repos
+      # (docs/claude/plan-fresh-gate.md).
+      - name: plan-fresh-gate.sh --selftest
+        run: bash ./config/claude/hooks/plan-fresh-gate.sh --selftest
+
       # issue-index is deterministic shell + jq end to end against a stub gh:
       # the git-only/binary-existence gates, the mine→all fallback with its
       # asymmetric failure classification (R2-C-2: "whichever side was

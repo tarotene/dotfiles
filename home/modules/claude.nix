@@ -215,6 +215,22 @@
 #    欠陥」と記録している)。絞り込みは hook 内部の早期 exit に置く。
 #    詳細は docs/claude/attribution-guard.md。
 #
+# 18) plan-fresh-gate(PreToolUse / ExitPlanMode):
+#    herdr worktree を並行 Plan モードでパイプライン駆動する運用では、先発の
+#    PR が merge された後も後発のエージェントがセッション開始時点の古い
+#    コードベースを見たままプランを承認してしまう。worktree-fresh-base.sh は
+#    SessionStart 限定の pristine ff-only 追従しか持たず、長い Plan セッション
+#    中の drift はノーガードだった。この hook が ExitPlanMode 承認点そのもので
+#    その隙間を塞ぐ: 常に fetch し、pristine(worktree-fresh-base.sh と同じ
+#    5 条件)なら ff-only で追従、origin/<base> の進行分がプラン参照ファイルと
+#    交差するときだけ deny する。pr-gate.sh の G_base は同種の drift を
+#    advisory に留めるが、その根拠(block が rebase → force-push ループを
+#    誘発する)はここでは成立しない — 要求するのは履歴改変ではなく「再読 +
+#    再 ExitPlanMode」だけで、deny 済み SHA のセッション state 記録により
+#    有限回に収束する。plan-review / plan-view / plan-scope-gate /
+#    plan-precedent-gate と同じ matcher に 5 つ目のエントリとして並ぶ。
+#    詳細は docs/claude/plan-fresh-gate.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -273,6 +289,7 @@ let
   worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
   planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
+  planFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
   attributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
@@ -459,6 +476,7 @@ let
     worktree_audit_context="$1"; shift
     plan_scope_gate="$1";        shift
     plan_precedent_gate="$1";    shift
+    plan_fresh_gate="$1";        shift
     attribution_guard="$1";      shift
     agent_turn_log="$1";         shift
     atuin_hook_claude_code="$1"; shift
@@ -477,6 +495,9 @@ let
     # plan-precedent-gate(ADR-0012)も同じ matcher に 4 つ目のエントリとして並ぶ。
     # gh/ネットワークを一切呼ばず jq とテキスト処理だけなので timeout は最短。
     register PreToolUse ExitPlanMode "$plan_precedent_gate" 10
+    # plan-fresh-gate も同じ matcher に 5 つ目のエントリとして並ぶ。fetch 1 回
+    # (timeout 15s)+ diff/grep/awk のみで gh は呼ばない。
+    register PreToolUse ExitPlanMode "$plan_fresh_gate" 30
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
     # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
     # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
@@ -813,6 +834,14 @@ in
     executable = true;
   };
 
+  # plan-fresh-gate: ExitPlanMode 直前に origin/<base> の進行を検出し、プラン
+  # 参照ファイルと交差するときだけ deny する(docs/claude/plan-fresh-gate.md)。
+  # 同じ matcher に 5 つ目のエントリとして並ぶ。
+  home.file.".claude/hooks/plan-fresh-gate.sh" = {
+    source = repoConfig + "/claude/hooks/plan-fresh-gate.sh";
+    executable = true;
+  };
+
   # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
   # フッターを強制する(docs/claude/attribution-guard.md)。判定は純関数群に
   # 切り出してあり --selftest がネットワーク無しに 26 ケースを検査する。
@@ -1129,6 +1158,7 @@ in
       ${lib.escapeShellArg worktreeAuditContextCmd} \
       ${lib.escapeShellArg planScopeGateCmd} \
       ${lib.escapeShellArg planPrecedentGateCmd} \
+      ${lib.escapeShellArg planFreshGateCmd} \
       ${lib.escapeShellArg attributionGuardCmd} \
       ${lib.escapeShellArg agentTurnLogCmd} \
       ${lib.escapeShellArg atuinHookClaudeCodeCmd}
