@@ -182,7 +182,37 @@ in
 
     # Session locale: LC_CTYPE=ja for JP glyph fallback (UI stays English).
     "environment.d/20-locale.conf".source = repoConfig + "/environment.d/20-locale.conf";
-  };
+  }
+  # Pop!_OS ships GNOME/X11-only XDG autostart entries under
+  # /etc/xdg/autostart/ that exit 1 under COSMIC on every host here
+  # (hidpi-daemon: GNOME only; hidpi-frontend: X11 only;
+  # nvidia-settings-autostart: no NVIDIA driver on any of the three hosts).
+  # Each failed unit marks the user session "degraded", which
+  # home-manager's reloadSystemd activation step prints on every switch
+  # regardless of whether the unit is home-manager-managed
+  # (home-manager#7557; see docs/cutover-runbook.md "Known noise").
+  # A user-level Hidden=true override is the XDG Autostart Specification's
+  # own mechanism for disabling a system-wide entry — it takes precedence
+  # over /etc/xdg/autostart without touching the apt layer, and
+  # systemd-xdg-autostart-generator(8) honors it by generating no unit at
+  # all.
+  // lib.listToAttrs (
+    map
+      (name: {
+        name = "autostart/${name}.desktop";
+        value.text = ''
+          [Desktop Entry]
+          Type=Application
+          Name=${name} (autostart disabled by home-manager)
+          Hidden=true
+        '';
+      })
+      [
+        "hidpi-daemon"
+        "hidpi-frontend"
+        "nvidia-settings-autostart"
+      ]
+  );
 
   # Deliberately NOT here: a service that restarts fcitx5 on logind's
   # Session.Lock, to dodge the trigger-key failure that clusters after an unlock.
