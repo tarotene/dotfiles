@@ -51,69 +51,90 @@
       ...
     }:
     let
-      system = "x86_64-linux";
+      inherit (nixpkgs) lib;
 
-      pkgs = import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
+      # aarch64-darwin added for the altair host (2022 M2 MacBook Air, ADR-0018).
+      linuxSystem = "x86_64-linux";
+      darwinSystem = "aarch64-darwin";
+      systems = [
+        linuxSystem
+        darwinSystem
+      ];
+      forAllSystems = lib.genAttrs systems;
 
-        overlays = [
-          # `pkgs.nixgl.nixGLIntel`, available to every module without widening
-          # extraSpecialArgs.
-          #
-          # default.nix is imported directly rather than taking
-          # nixgl.packages.<system>.nixGLIntel, because nixGL's own flake output
-          # hardcodes enable32bits = true on x86_64-linux and there is no way to
-          # override it from the outside. Measured: dropping the 32-bit mesa
-          # takes the wrapper closure from 2.1 GiB to 1.1 GiB with no behavioural
-          # change for any GL consumer we install — all four (alacritty, Chrome,
-          # Slack, Zoom) are x86_64. Set it back to true if a 32-bit GL consumer
-          # (Steam, wine) ever enters home.packages.
-          #
-          # enableIntelX86Extensions stays true: it is what puts
-          # LIBVA_DRIVERS_PATH at intel-media-driver, i.e. the difference between
-          # Chrome having a GPU and Chrome having a GPU that can decode video.
-          (final: _prev: {
-            nixgl = import "${nixgl}/default.nix" {
-              pkgs = final;
-              enable32bits = false;
-              enableIntelX86Extensions = true;
-            };
-          })
-
-          # herdr from unstable (not yet in nixos-26.05). Unlike nixGL this does
-          # not need `follows`: herdr is a TUI that never dlopens GL, so a second
-          # glibc in its closure is harmless. Remove once stable has herdr.
-          #
-          # legacyPackages.${system} reuses the input's own already-instantiated
-          # nixpkgs rather than `import nixpkgs-unstable { inherit system; }`,
-          # which would re-instantiate a second whole nixpkgs for one package
-          # and silently drop this flake's `config.allowUnfree = true`.
-          #
-          # `overrideAttrs` layers patches/herdr-worktree-names.patch on top:
-          # a personal-taste patch swapping herdr's hardcoded generated-worktree
-          # word list (adjective-noun, e.g. "brave-river") for hololive talent
-          # nicknames (e.g. "okayu"). This forces a local Rust build instead of
-          # a binary-cache fetch (a few minutes on `nix build`/CI), because
-          # `patches` invalidates the fixed-output cargoDeps hash's derivation
-          # but not the hash itself — Cargo.lock is untouched by the patch.
-          # Drop this override once herdr's word list is configurable upstream:
-          # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19).
-          (_final: _prev: {
-            herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
-              patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
-            });
-          })
-        ];
+      # `pkgs.nixgl.nixGLIntel`, available to every Linux module without
+      # widening extraSpecialArgs. Linux-only: nixGL wraps a Linux OpenGL/EGL
+      # loader and has nothing to wrap on darwin, which uses its own native GL
+      # stack (ADR-0006). Applied only to Linux pkgs below, never to darwin's.
+      #
+      # default.nix is imported directly rather than taking
+      # nixgl.packages.<system>.nixGLIntel, because nixGL's own flake output
+      # hardcodes enable32bits = true on x86_64-linux and there is no way to
+      # override it from the outside. Measured: dropping the 32-bit mesa
+      # takes the wrapper closure from 2.1 GiB to 1.1 GiB with no behavioural
+      # change for any GL consumer we install — all four (alacritty, Chrome,
+      # Slack, Zoom) are x86_64. Set it back to true if a 32-bit GL consumer
+      # (Steam, wine) ever enters home.packages.
+      #
+      # enableIntelX86Extensions stays true: it is what puts
+      # LIBVA_DRIVERS_PATH at intel-media-driver, i.e. the difference between
+      # Chrome having a GPU and Chrome having a GPU that can decode video.
+      nixglOverlay = final: _prev: {
+        nixgl = import "${nixgl}/default.nix" {
+          pkgs = final;
+          enable32bits = false;
+          enableIntelX86Extensions = true;
+        };
       };
+
+      # herdr from unstable (not yet in nixos-26.05). Unlike nixGL this does
+      # not need `follows`: herdr is a TUI that never dlopens GL, so a second
+      # glibc in its closure is harmless. Remove once stable has herdr.
+      #
+      # legacyPackages.${system} reuses the input's own already-instantiated
+      # nixpkgs rather than `import nixpkgs-unstable { inherit system; }`,
+      # which would re-instantiate a second whole nixpkgs for one package
+      # and silently drop this flake's `config.allowUnfree = true`.
+      #
+      # `overrideAttrs` layers patches/herdr-worktree-names.patch on top:
+      # a personal-taste patch swapping herdr's hardcoded generated-worktree
+      # word list (adjective-noun, e.g. "brave-river") for hololive talent
+      # nicknames (e.g. "okayu"). Whatever herdr's own build system does with
+      # a patched source tree, this forces a from-source build instead of a
+      # binary-cache fetch (a few minutes on `nix build`/CI per system).
+      # nixpkgs' herdr derivation declares `meta.platforms = lib.platforms.unix`
+      # (darwin gets extra cctools/xcbuild inputs upstream), so this overlay is
+      # applied per-system below rather than hardcoded to one.
+      # Drop this override once herdr's word list is configurable upstream:
+      # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19).
+      herdrOverlay =
+        system:
+        (_final: _prev: {
+          herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
+          });
+        });
+
+      mkPkgs =
+        system:
+        import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+          overlays = [
+            (herdrOverlay system)
+          ]
+          ++ lib.optionals (lib.hasSuffix "-linux" system) [ nixglOverlay ];
+        };
+
+      pkgsFor = forAllSystems mkPkgs;
 
       # Build a standalone home-manager configuration from a single host module.
       # A host module imports home/common.nix plus exactly one identity module
       # (Identity / Instance two-layer layout — see ADR-0001).
       mkHome =
-        hostModule:
+        system: hostModule:
         home-manager.lib.homeManagerConfiguration {
-          inherit pkgs;
+          pkgs = pkgsFor.${system};
           modules = [ hostModule ];
           # publish-guard is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
@@ -126,22 +147,36 @@
     in
     {
       # Keyed by hostname so `home-manager switch` auto-selects per machine.
-      # Hostname convention: <identity>-pop[-<generation>].  See #207 / stage1-prep.
+      # Hostname convention: <identity>-pop[-<generation>] for the three
+      # existing Linux hosts (#207 / stage1-prep). New hosts (e.g. altair) use
+      # a star-codename instead and resolve via a marker file, not hostname
+      # (ADR-0019) — see scripts/hms.sh / bootstrap.sh `resolve_host`.
       homeConfigurations = {
-        "personal-pop" = mkHome ./home/hosts/personal-pop.nix;
-        "company-pop-old" = mkHome ./home/hosts/company-pop-old.nix;
-        "company-pop-new" = mkHome ./home/hosts/company-pop-new.nix;
+        "personal-pop" = mkHome linuxSystem ./home/hosts/personal-pop.nix;
+        "company-pop-old" = mkHome linuxSystem ./home/hosts/company-pop-old.nix;
+        "company-pop-new" = mkHome linuxSystem ./home/hosts/company-pop-new.nix;
       };
 
-      # `nix flake check` evaluates every host's activation package.
-      checks.${system} = builtins.mapAttrs (_name: cfg: cfg.activationPackage) self.homeConfigurations;
+      # `nix flake check` evaluates every host's activation package, filtered
+      # to the check's own system — a darwin host's activationPackage cannot
+      # be built (only evaluated) from a Linux `checks.x86_64-linux`, and vice
+      # versa, so each system only claims the homeConfigurations whose
+      # activationPackage actually targets it.
+      checks = forAllSystems (
+        system:
+        lib.mapAttrs (_name: cfg: cfg.activationPackage) (
+          lib.filterAttrs (_name: cfg: cfg.activationPackage.system == system) self.homeConfigurations
+        )
+      );
 
       # Addressable alias for the patched herdr build (overlay above). CI's
       # build-host job builds this explicitly to root it for GC before
       # building the (much larger, unpatched-input) activationPackages, so
       # cache-nix-action's post-run GC can keep the saved cache scoped to
       # herdr's own closure instead of the whole /nix store.
-      packages.${system}.herdr = pkgs.herdr;
+      packages = forAllSystems (system: {
+        herdr = pkgsFor.${system}.herdr;
+      });
 
       # nixfmt-tree, not nixfmt itself (#30). `nix fmt` with no arguments hands
       # the formatter the whole tree, and bare nixfmt reads that as stdin and
@@ -149,6 +184,6 @@
       # wrapper by name. It is a treefmt wrapper that walks the tree and feeds
       # nixfmt only the *.nix files, so `nix fmt` works unqualified — which is
       # what CLAUDE.md and the docs tell you to run.
-      formatter.${system} = pkgs.nixfmt-tree;
+      formatter = forAllSystems (system: pkgsFor.${system}.nixfmt-tree);
     };
 }
