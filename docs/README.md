@@ -148,6 +148,10 @@ Design and rationale for the hooks and commands deployed from
   one, and the PR/Issue body side had no repo-side enforcement at all.
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
+- [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s
+  `.mcpServers`: an extensible option (`dotfiles.claude.mcpServers`, same shape
+  as `quarantine.nix`'s `managedFiles`) that ships with zero values — a
+  mechanism for identity modules to populate later, not a data migration.
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
   Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
   モードを **(Plan 側, 実行側) のペア 3 種**(`fable/sonnet` / `opus/sonnet` /

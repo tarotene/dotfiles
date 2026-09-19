@@ -5,6 +5,7 @@
 {
   imports = [
     ./modules/claude.nix
+    ./modules/claude-mcp-servers.nix
     ./modules/herdr.nix
     ./modules/worktree.nix
     ./modules/quarantine.nix

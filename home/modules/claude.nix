@@ -231,6 +231,11 @@
 #    plan-precedent-gate と同じ matcher に 5 つ目のエントリとして並ぶ。
 #    詳細は docs/claude/plan-fresh-gate.md。
 #
+# 19) dotfiles.claude.mcpServers(home/modules/claude-mcp-servers.nix、値は既定で空):
+#    ~/.claude.json の .mcpServers を加法的に merge する extensible option。この
+#    ファイルではなく独立モジュールに切り出してある(quarantine.nix と同じ
+#    「1 option = 1 ファイル」の粒度)。詳細は docs/claude/claude-mcp-servers.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -984,6 +989,17 @@ in
   home.file.".claude/commands/plan-view.md".source = pkgs.replaceVars (
     repoConfig + "/claude/commands/plan-view.md"
   ) { home = config.home.homeDirectory; };
+
+  # resolve-pr-threads / promote-permissions: 退役済みの私設 AI 設定同期
+  # リポジトリ(PRIVATE)から使用実績で選別して収容した command 2 本
+  # (128 回・7 回の実使用、いずれもローカル版が正本)。@home@ プレースホルダは
+  # 使わないため replaceVars を挟まず literal のまま配る。同時に見つかった
+  # weekly-backlog-review は PRIVATE リポジトリ tarotene/selffiles の運用
+  # モデルに構造的に依存するため収容していない(実機に手動管理のまま残す)。
+  home.file.".claude/commands/resolve-pr-threads.md".source =
+    repoConfig + "/claude/commands/resolve-pr-threads.md";
+  home.file.".claude/commands/promote-permissions.md".source =
+    repoConfig + "/claude/commands/promote-permissions.md";
 
   # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。
   # cases.md は追記型の失敗事例集で、追記時のサニタイズ規則は skill-gardening 側を見る。
