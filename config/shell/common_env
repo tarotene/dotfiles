@@ -67,5 +67,13 @@ export COLOR_NC='\033[0m' # No Color
 
 # Non-blocking opener (scripts/detach-open.sh, deployed as ~/.local/bin/open).
 # gh browse etc. wait for $BROWSER to exit; the system xdg-open blocks in the
-# foreground on COSMIC.
-[ -z "$BROWSER" ] && export BROWSER="$HOME/.local/bin/open"
+# foreground on COSMIC. Linux-only shim (home/modules/packages.nix guards its
+# deployment the same way) — macOS's own /usr/bin/open already returns
+# immediately, so darwin uses it directly instead of a nonexistent shim path.
+if [ -z "$BROWSER" ]; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+        export BROWSER="/usr/bin/open"
+    else
+        export BROWSER="$HOME/.local/bin/open"
+    fi
+fi

@@ -27,7 +27,11 @@ let
 in
 {
   home.sessionVariables.SHELL = loginShell;
-  systemd.user.sessionVariables.SHELL = loginShell;
+  # systemd --user (and thus ~/.config/environment.d) is Linux-only; darwin
+  # hosts (ADR-0018) get $SHELL from home.sessionVariables alone, which is
+  # sufficient there since there is no GUI-launched-terminal caching layer to
+  # route around.
+  systemd.user.sessionVariables = lib.mkIf pkgs.stdenv.isLinux { SHELL = loginShell; };
 
   programs.zsh = {
     enable = true;

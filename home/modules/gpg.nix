@@ -65,7 +65,10 @@ in
     # GUI pinentry via GCR system prompter (gnome-keyring provides it on
     # Pop!_OS/COSMIC). Unlike curses it also works when gpg is invoked without
     # a TTY (git GUIs, editors, agents); falls back to curses over SSH.
-    pinentry.package = pkgs.pinentry-gnome3;
+    # darwin has no GCR/gnome-keyring; pinentry_mac is the established
+    # equivalent there (Keychain-backed GUI prompt, home-manager's own
+    # gpg-agent module supports it via launchd — ADR-0018).
+    pinentry.package = if pkgs.stdenv.isDarwin then pkgs.pinentry_mac else pkgs.pinentry-gnome3;
 
     # Cache the on-disk [S] passphrase for the whole login session. The bound
     # is not the clock but the agent's lifetime, which ends with the login
@@ -119,16 +122,24 @@ in
   # Assert, never enforce (see the header comment above). Runs before
   # writeBoundary so a host that fails this check gets no files written at
   # all, rather than a half-applied generation.
-  home.activation.assertNoLinger = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-    linger="$(${pkgs.systemd}/bin/loginctl show-user --value -p Linger \
-      ${config.home.username} 2>/dev/null || true)"
-    if [ "$linger" = "yes" ]; then
-      echo "gpg.nix: Linger is enabled for ${config.home.username}." >&2
-      echo "  gpg-agent — and with it the cached on-disk [S] passphrase —" >&2
-      echo "  would survive logout for up to the 400d cache TTL set here." >&2
-      echo "  Fix: sudo loginctl disable-linger ${config.home.username}" >&2
-      echo "  Rationale: docs/adr/0003-secrets-and-identity.md, Amendment 2." >&2
-      exit 1
-    fi
-  '';
+  #
+  # Linger is a systemd --user concept with no darwin equivalent: a launchd
+  # agent's lifetime is already tied to the login session by construction
+  # (ADR-0018), so there is nothing here to assert on darwin. Guarded with
+  # mkIf rather than left unconditional so ${pkgs.systemd} — Linux-only in
+  # nixpkgs — is never forced on a darwin pkgs set.
+  home.activation.assertNoLinger = lib.mkIf pkgs.stdenv.isLinux (
+    lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+      linger="$(${pkgs.systemd}/bin/loginctl show-user --value -p Linger \
+        ${config.home.username} 2>/dev/null || true)"
+      if [ "$linger" = "yes" ]; then
+        echo "gpg.nix: Linger is enabled for ${config.home.username}." >&2
+        echo "  gpg-agent — and with it the cached on-disk [S] passphrase —" >&2
+        echo "  would survive logout for up to the 400d cache TTL set here." >&2
+        echo "  Fix: sudo loginctl disable-linger ${config.home.username}" >&2
+        echo "  Rationale: docs/adr/0003-secrets-and-identity.md, Amendment 2." >&2
+        exit 1
+      fi
+    ''
+  );
 }

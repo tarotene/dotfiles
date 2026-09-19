@@ -1,6 +1,6 @@
 ---
 description: 執筆中のプランを Chrome の専用窓に HTML でレンダリングして表示する
-allowed-tools: Bash(bash /home/tarotene/.claude/hooks/plan-view.sh *)
+allowed-tools: Bash(bash @home@/.claude/hooks/plan-view.sh *)
 ---
 
 執筆中のプランを Markdown レンダリング済みの HTML にして、Chrome の専用窓に表示する。
@@ -15,7 +15,7 @@ ExitPlanMode 時には同じものが自動で開く。このコマンドは、*
    先にここまでの内容をプランファイルに書き出してから進む。
 2. 次を実行する:
    ```
-   bash /home/tarotene/.claude/hooks/plan-view.sh <プランファイルの絶対パス>
+   bash @home@/.claude/hooks/plan-view.sh <プランファイルの絶対パス>
    ```
 3. 標準出力に生成された HTML のパスが 1 行返る。**それを一言添えて報告するだけでよい。**
    プランの内容を要約し直したり、レンダリング結果について推測を述べたりしないこと

@@ -942,12 +942,19 @@ in
     executable = true;
   };
 
-  # コマンドファイルは /home/tarotene をハードコードしている — どの identity も
-  # home.username = "tarotene" を固定している間は問題ない(identities/*.nix)。
-  # username を上書きするホストが現れたら見直すこと。
+  # コマンドファイルは @home@ プレースホルダを config.home.homeDirectory に
+  # 展開する(ADR-0002: literal + 1 変数の replaceVars パターン、
+  # desktop.nix の fcitx5.desktop と同型)。altair(darwin, /Users/tarotene)
+  # のように homeDirectory がホストごとに異なる環境でも壊れない
+  # (PR2, ADR-0018 対応)。
   home.file.".claude/commands/copilot-plan-review.md".source =
-    repoConfig + "/claude/commands/copilot-plan-review.md";
-  home.file.".claude/commands/plan-view.md".source = repoConfig + "/claude/commands/plan-view.md";
+    pkgs.replaceVars (repoConfig + "/claude/commands/copilot-plan-review.md")
+      {
+        home = config.home.homeDirectory;
+      };
+  home.file.".claude/commands/plan-view.md".source = pkgs.replaceVars (
+    repoConfig + "/claude/commands/plan-view.md"
+  ) { home = config.home.homeDirectory; };
 
   # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。
   # cases.md は追記型の失敗事例集で、追記時のサニタイズ規則は skill-gardening 側を見る。

@@ -212,7 +212,12 @@ notify() {
     first_seen="$(jq -r '.first_seen // empty' "$STATE_DIR/state.json" 2>/dev/null || true)"
     notified="$(jq -r '.notified // false' "$STATE_DIR/state.json" 2>/dev/null || printf false)"
   else
-    first_seen="$(date --iso-8601=seconds)"
+    # Portable form, not --iso-8601 (a GNU coreutils extension absent from
+    # BSD date): the launchd agent on darwin (worktree.nix, ADR-0018) puts
+    # pkgs.coreutils on PATH ahead of /bin/date, so --iso-8601 would in fact
+    # resolve to GNU date there too — but this format needs no such PATH
+    # assumption at all, GNU or BSD alike.
+    first_seen="$(date +%Y-%m-%dT%H:%M:%S%z)"
     notified=false
     write_state "$fp" "$first_seen" false
     printf 'git-worktree-audit: first detected at %s\n' "$first_seen" >&2

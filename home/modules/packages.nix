@@ -6,74 +6,79 @@
 # are dev-runtime escape hatches (#215).
 { pkgs, lib, ... }:
 {
-  home.packages = with pkgs; [
-    # Core CLIs (were apt user-space)
-    # git is provided by programs.git (#210) — not duplicated here.
-    coreutils
-    neovim
-    vim
-    tree
-    curl
-    wget
-    gh
-    # Declares jq for the Claude Code hooks (config/claude/hooks/*.sh) that
-    # depend on it unconditionally — a stray /usr/bin/jq may exist on an
-    # inherited host but was never declared anywhere (#28), so hooks would
-    # silently emit nothing on a freshly provisioned machine.
-    jq
-    shellcheck
-    xsel
-    zip
-    unzip
+  home.packages =
+    with pkgs;
+    [
+      # Core CLIs (were apt user-space)
+      # git is provided by programs.git (#210) — not duplicated here.
+      coreutils
+      neovim
+      vim
+      tree
+      curl
+      wget
+      gh
+      # Declares jq for the Claude Code hooks (config/claude/hooks/*.sh) that
+      # depend on it unconditionally — a stray /usr/bin/jq may exist on an
+      # inherited host but was never declared anywhere (#28), so hooks would
+      # silently emit nothing on a freshly provisioned machine.
+      jq
+      shellcheck
+      zip
+      unzip
 
-    # Used by direnv (`.envrc`) in projects outside this repo for per-file
-    # GPG/age-based decryption — independent of the retired SOPS runtime
-    # secrets loader (ADR-0010). Previously provided by the now-deleted
-    # home/modules/secrets.nix; kept here as a plain user-space CLI.
-    sops
+      # Used by direnv (`.envrc`) in projects outside this repo for per-file
+      # GPG/age-based decryption — independent of the retired SOPS runtime
+      # secrets loader (ADR-0010). Previously provided by the now-deleted
+      # home/modules/secrets.nix; kept here as a plain user-space CLI.
+      sops
 
-    # Rust-tool CLIs (were cargo-binstall)
-    bat
-    zellij
-    git-interactive-rebase-tool
-    # siketyan/ghr (repo manager, `ghr cd` — what 30-tools-ghr.zsh expects).
-    # Plain `pkgs.ghr` is tcnksm/ghr, a GitHub Release uploader. Binary: `ghr`.
-    siketyan-ghr
+      # Rust-tool CLIs (were cargo-binstall)
+      bat
+      zellij
+      git-interactive-rebase-tool
+      # siketyan/ghr (repo manager, `ghr cd` — what 30-tools-ghr.zsh expects).
+      # Plain `pkgs.ghr` is tcnksm/ghr, a GitHub Release uploader. Binary: `ghr`.
+      siketyan-ghr
 
-    # Search tools
-    ripgrep
-    fd
+      # Search tools
+      ripgrep
+      fd
 
-    # Document conversion. The plan-view hook (home/modules/claude.nix) renders
-    # plans to HTML with it. A stray /usr/bin/pandoc may exist on an inherited
-    # host but is not declared in packages/declarative/apt-packages.txt, so the
-    # declarative answer is to own it here (ADR-0001: user-space CLIs are the
-    # home-manager layer). ~/.nix-profile/bin precedes /usr/bin on PATH.
-    pandoc
+      # Document conversion. The plan-view hook (home/modules/claude.nix) renders
+      # plans to HTML with it. A stray /usr/bin/pandoc may exist on an inherited
+      # host but is not declared in packages/declarative/apt-packages.txt, so the
+      # declarative answer is to own it here (ADR-0001: user-space CLIs are the
+      # home-manager layer). ~/.nix-profile/bin precedes /usr/bin on PATH.
+      pandoc
 
-    # Terminal-look capture for PR Before/After evidence (pr-description
-    # skill, docs/claude/pr-description.md — G_visual in pr-gate.sh enforces
-    # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
-    # stable) because freeze renders ANSI text piped on stdin
-    # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
-    # change can still be turned into an image afterwards; termshot instead
-    # re-executes the command live in a pty, which cannot reproduce a
-    # already-lost pre-change state. Use `.svg` or `.webp` output, not
-    # `.png` — this build's PNG encoder segfaults on this host (Go runtime
-    # crash reproduced on trivial input; SVG/WebP unaffected). `gh --attach`
-    # (>= 2.99.0, shipped in the pinned stable channel since #91) accepts
-    # SVG/WebP along with PNG.
-    charm-freeze
+      # Terminal-look capture for PR Before/After evidence (pr-description
+      # skill, docs/claude/pr-description.md — G_visual in pr-gate.sh enforces
+      # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
+      # stable) because freeze renders ANSI text piped on stdin
+      # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
+      # change can still be turned into an image afterwards; termshot instead
+      # re-executes the command live in a pty, which cannot reproduce a
+      # already-lost pre-change state. Use `.svg` or `.webp` output, not
+      # `.png` — this build's PNG encoder segfaults on this host (Go runtime
+      # crash reproduced on trivial input; SVG/WebP unaffected). `gh --attach`
+      # (>= 2.99.0, shipped in the pinned stable channel since #91) accepts
+      # SVG/WebP along with PNG.
+      charm-freeze
 
-    # AI tooling (unfree — flake sets allowUnfree; version follows the
-    # nixpkgs pin, bump via `nix flake update`).
-    # A native install at ~/.local/bin/claude (from Anthropic's official
-    # installer) shadows this one because ~/.local/bin precedes
-    # ~/.nix-profile/bin on PATH. If you inherit a host that had claude
-    # installed natively, follow "Removing an ad-hoc native Claude Code
-    # install" in docs/cutover-runbook.md.
-    claude-code
-  ];
+      # AI tooling (unfree — flake sets allowUnfree; version follows the
+      # nixpkgs pin, bump via `nix flake update`).
+      # A native install at ~/.local/bin/claude (from Anthropic's official
+      # installer) shadows this one because ~/.local/bin precedes
+      # ~/.nix-profile/bin on PATH. If you inherit a host that had claude
+      # installed natively, follow "Removing an ad-hoc native Claude Code
+      # install" in docs/cutover-runbook.md.
+      claude-code
+    ]
+    # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
+    # equivalent and already on PATH). Not referenced by anything under
+    # config/, so dropping it on darwin is a pure subtraction, not a gap.
+    ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.xsel ];
 
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
   # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
@@ -91,11 +96,18 @@
   # Also the $BROWSER target (config/shell/common_env exports it) — gh
   # browse and anything else honoring $BROWSER wait for it to exit, so it
   # needs the same detaching behavior.
-  home.file.".local/bin/open" = {
+  #
+  # Linux-only, deliberately: detach-open.sh hardcodes `setsid -f
+  # /usr/bin/xdg-open`, neither of which exists on darwin. macOS's own
+  # `/usr/bin/open` already returns immediately (it hands off to
+  # LaunchServices and exits), so there is no foreground-blocking problem to
+  # work around there — shadowing it would only risk breaking a tool that
+  # already works.
+  home.file.".local/bin/open" = lib.mkIf pkgs.stdenv.isLinux {
     source = ../../scripts/detach-open.sh;
     executable = true;
   };
-  home.file.".local/bin/xdg-open" = {
+  home.file.".local/bin/xdg-open" = lib.mkIf pkgs.stdenv.isLinux {
     source = ../../scripts/detach-open.sh;
     executable = true;
   };
