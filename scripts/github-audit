@@ -55,7 +55,7 @@ BASELINE_RULE_TYPES=(
   pull_request
 )
 
-# Review layer (ADR-0020): a self-contained addin, not part of the core
+# Review layer (ADR-0021): a self-contained addin, not part of the core
 # baseline. Judged only if a repository has opted in — presence is
 # detected by either half showing up (the copilot_code_review rule type,
 # or any active pull_request rule with required_review_thread_resolution
@@ -303,7 +303,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
 
   # A pull_request rule may appear on more than one active ruleset (the core
   # layer's own rule, plus the review layer's, once split into review.json —
-  # ADR-0020). GitHub aggregates same-type rules across rulesets by applying
+  # ADR-0021). GitHub aggregates same-type rules across rulesets by applying
   # the most restrictive value per parameter (GitHub Docs, "About rulesets",
   # rule layering), so thread resolution is an OR and allowed_merge_methods
   # is an intersection across every pull_request rule found.
@@ -320,7 +320,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
     [[ $squash_ok == true ]] || missing+=("pull_request.allowed_merge_methods")
   fi
 
-  # Review layer (ADR-0020): opt-in addin, judged only if present. A
+  # Review layer (ADR-0021): opt-in addin, judged only if present. A
   # repository that opted into neither half is not drift — it is reported
   # informationally as review_layer=absent.
   local review_layer_present=false
@@ -801,9 +801,9 @@ selftest() {
   {"name": "no-renovate-target", "primaryLanguage": {"name": "TeX"}, "visibility": "PRIVATE", "description": "No manifest, no CI.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "exempted", "primaryLanguage": {"name": "Astro"}, "visibility": "PRIVATE", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": ".github", "primaryLanguage": null, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": "rulesets-core-only", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core layer only, review layer never opted into (ADR-0020).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": "rulesets-partial-review", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Copilot rule present but thread resolution not required (ADR-0020 partial-drift).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": "rulesets-review-split", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core + review layer split across two active rulesets, like the real Stage 2 layout (ADR-0020).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-core-only", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core layer only, review layer never opted into (ADR-0021).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-partial-review", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Copilot rule present but thread resolution not required (ADR-0021 partial-drift).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "rulesets-review-split", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core + review layer split across two active rulesets, like the real Stage 2 layout (ADR-0021).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "rulesets-squash-conflict", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Two pull_request rules with disjoint allowed_merge_methods — no common squash-only.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
 EOF
@@ -831,7 +831,7 @@ EOF
     printf '[]' >"$tmp/fixtures/repos_tarotene_${other_repo}_rulesets.json"
   done
 
-  # ADR-0020: review layer addin fixtures — core-only (opted out, ok/absent)
+  # ADR-0021: review layer addin fixtures — core-only (opted out, ok/absent)
   # and partial (copilot present but thread resolution missing, drifted).
   cat >"$tmp/fixtures/repos_tarotene_rulesets-core-only_rulesets.json" <<'EOF'
 [{"id": 2, "target": "branch", "enforcement": "active"}]
@@ -867,7 +867,7 @@ EOF
 }
 EOF
 
-  # ADR-0020 regression coverage: aggregation across TWO active rulesets
+  # ADR-0021 regression coverage: aggregation across TWO active rulesets
   # (not one ruleset with multiple pull_request rules) — the shape Stage 2
   # actually produces (core Workflow ruleset + opt-in Review ruleset). Uses
   # deliberately different allowed_merge_methods supersets on each ruleset
@@ -1319,7 +1319,7 @@ EOF
     return 1
   }
 
-  # rulesets domain (ADR-0020: review layer addin)
+  # rulesets domain (ADR-0021: review layer addin)
   jq -e '.[] | select(.repo=="all-ok") | .domains.rulesets.review_layer == "complete"' <<<"$out" >/dev/null || {
     printf 'FAIL: all-ok rulesets should be review_layer=complete\n' >&2
     return 1
@@ -1341,7 +1341,7 @@ EOF
     return 1
   }
 
-  # rulesets domain (ADR-0020: aggregation across TWO active rulesets, not
+  # rulesets domain (ADR-0021: aggregation across TWO active rulesets, not
   # just multiple pull_request rules on one — the shape Stage 2 produces)
   jq -e '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.verdict == "ok" and .domains.rulesets.review_layer == "complete" and (.domains.rulesets.missing | length == 0)' <<<"$out" >/dev/null || {
     printf 'FAIL: rulesets-review-split should be ok/complete with no missing (cross-ruleset OR + intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets' <<<"$out")" >&2

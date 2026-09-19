@@ -1,4 +1,4 @@
-# ADR-0020 — ruleset baseline のコア層/レビュー層 2 層化
+# ADR-0021 — ruleset baseline のコア層/レビュー層 2 層化
 
 - Status: Accepted
 - Date: 2026-09-19

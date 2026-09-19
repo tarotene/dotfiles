@@ -82,7 +82,7 @@ branch. So judgement here never looks at ruleset names or count — only at
 that union, plus the `pull_request` rule's parameters
 (`required_review_thread_resolution`, `allowed_merge_methods`).
 
-**Two layers, not one baseline (ADR-0020).** Prior to ADR-0020, the
+**Two layers, not one baseline (ADR-0021).** Prior to ADR-0021, the
 baseline bundled a mandatory review-approval workflow — Copilot code
 review auto-requested plus required conversation resolution before
 merge — into the same single baseline as basic branch protection. For an
@@ -116,7 +116,7 @@ short of exempting the whole `rulesets` domain (losing coverage of
 
   A phase-tracking mechanism (a declared "development stage" signal, e.g.
   via GitHub topics or Release presence) was considered and rejected — see
-  ADR-0020 for why. The addin is presence-based, not declaration-based.
+  ADR-0021 for why. The addin is presence-based, not declaration-based.
 
 **Aggregating `pull_request` across two rulesets.** Once the review layer
 lives in its own ruleset (`review.json`, applied independently of the core
