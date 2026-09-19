@@ -89,8 +89,20 @@
           # nixpkgs rather than `import nixpkgs-unstable { inherit system; }`,
           # which would re-instantiate a second whole nixpkgs for one package
           # and silently drop this flake's `config.allowUnfree = true`.
+          #
+          # `overrideAttrs` layers patches/herdr-worktree-names.patch on top:
+          # a personal-taste patch swapping herdr's hardcoded generated-worktree
+          # word list (adjective-noun, e.g. "brave-river") for hololive talent
+          # nicknames (e.g. "okayu"). This forces a local Rust build instead of
+          # a binary-cache fetch (a few minutes on `nix build`/CI), because
+          # `patches` invalidates the fixed-output cargoDeps hash's derivation
+          # but not the hash itself — Cargo.lock is untouched by the patch.
+          # Drop this override once herdr's word list is configurable upstream:
+          # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19).
           (_final: _prev: {
-            herdr = nixpkgs-unstable.legacyPackages.${system}.herdr;
+            herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
+              patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
+            });
           })
         ];
       };

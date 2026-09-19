@@ -1,0 +1,55 @@
+Replace herdr's generated worktree/branch word list (adjective + noun, e.g.
+"brave-river") with a single word list of hololive talent nicknames (JP/EN/ID
+branches + graduated members), e.g. "okayu". Source list fetched from
+https://hololive.hololivepro.com/talents on 2026-09-19.
+
+This is a personal-taste patch, not a behavior fix — see the upstream feature
+request asking for the word list to become configurable instead of hardcoded:
+https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19). Drop this
+patch once that lands.
+
+--- a/src/worktree.rs
++++ b/src/worktree.rs
+@@ -19,16 +19,23 @@
+ }
+
+ pub(crate) fn generated_branch_slug(seed: u64) -> String {
+-    let adjectives = [
+-        "brave", "calm", "clear", "green", "lucky", "quiet", "rapid", "silver",
++    // hololive talent nicknames (JP/EN/ID branches + graduated), one word each.
++    // Source: https://hololive.hololivepro.com/talents (fetched 2026-09-19).
++    let names = [
++        "sora", "roboco", "aki", "haato", "fubuki", "matsuri", "ayame", "choco", "subaru",
++        "azki", "mio", "miko", "okayu", "korone", "suisei", "pekora", "flare", "noel",
++        "marine", "watame", "towa", "luna", "lamy", "nene", "botan", "polka", "laplus",
++        "lui", "koyori", "iroha", "risu", "moona", "iofi", "ollie", "anya", "reine",
++        "zeta", "kaela", "kobo", "calli", "kiara", "ina", "irys", "kronii", "bae",
++        "shiori", "bijou", "nerissa", "fuwawa", "mococo", "elizabeth", "gigi", "cecilia",
++        "raora", "kanade", "ririka", "raden", "hajime", "riona", "niko", "su", "chihaya",
++        "vivi", "mela", "sopia", "tsuzuri", "kyoko", "michiru", "sayaka", "yuki", "aqua",
++        "shion", "kanata", "coco", "gura", "sana", "fauna", "mumei", "ao", "chloe",
++        "amelia", "nodoka", "frienda",
+     ];
+-    let nouns = [
+-        "river", "cloud", "field", "forest", "harbor", "meadow", "stone", "valley",
+-    ];
+-    let adjective = adjectives[(seed as usize) % adjectives.len()];
+-    let noun = nouns[((seed / adjectives.len() as u64) as usize) % nouns.len()];
++    let name = names[(seed as usize) % names.len()];
+     let suffix = seed & 0xffff;
+-    format!("{DEFAULT_WORKTREE_PREFIX}/{adjective}-{noun}-{suffix:04x}")
++    format!("{DEFAULT_WORKTREE_PREFIX}/{name}-{suffix:04x}")
+ }
+
+ pub(crate) fn branch_to_path_slug(branch: &str) -> String {
+@@ -539,8 +546,8 @@
+
+     #[test]
+     fn generated_branch_slug_is_worktree_namespaced_and_stable() {
+-        assert_eq!(generated_branch_slug(0), "worktree/brave-river-0000");
+-        assert_eq!(generated_branch_slug(9), "worktree/calm-cloud-0009");
++        assert_eq!(generated_branch_slug(0), "worktree/sora-0000");
++        assert_eq!(generated_branch_slug(9), "worktree/azki-0009");
+     }
+
+     #[test]
