@@ -12,7 +12,7 @@
    Review, is **opt-in** (`--with-review`) — Copilot code review auto-request +
    required conversation resolution before merge. It is left out by default
    because forcing that review round trip on every commit of an early-stage or
-   pre-release repository was judged excessive and noisy (ADR-0020 in
+   pre-release repository was judged excessive and noisy (ADR-0021 in
    tarotene/dotfiles). Opt in once the repository is past that phase, or strip
    it back out of an already-governed repository with `--remove-review`.
 4. Points you to `reference/manual-steps.md` for steps that require browser flows:
@@ -37,7 +37,7 @@ Before running anything, confirm these values with the user:
 | Minimum Typst version | `--min-typst` | `0.14.0` (default) |
 | ATS contact email | `--ats-email` | `you@example.com` |
 | Target repo path | `--dest` | `/home/user/src/cv` |
-| Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0020). Ask whether the repository is past its early-development phase before defaulting this on. |
+| Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0021). Ask whether the repository is past its early-development phase before defaulting this on. |
 
 Also check prerequisites:
 ```
@@ -171,7 +171,7 @@ gh api repos/OWNER/REPO \
 # → true / false / false / true
 ```
 
-### Removing the review layer (ADR-0020)
+### Removing the review layer (ADR-0021)
 
 `apply-rulesets.sh --owner OWNER --repo REPO --remove-review [--dry-run]`
 handles the two layouts it can meet: a standalone `Review` ruleset (this
@@ -216,7 +216,7 @@ Ruleset context string to match (all three must stay in sync).
 │   ├── cliff.toml                     CalVer changelog (vYYYY.MM tags)
 │   ├── .yamllint                      YAML style rules
 │   └── .gitignore-snippet             dist/ + editor/OS (merge manually)
-├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0020)
+├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0021)
 │   ├── security.json    deletion + non_fast_forward
 │   ├── quality.json     signatures + linear history + 5 status checks
 │   ├── workflow.json    squash-only (core; thread resolution NOT required here)

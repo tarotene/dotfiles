@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # apply-rulesets.sh — Create the GitHub Rulesets: Security / Quality / Workflow
 # (core layer, always applied) and Review (review layer, opt-in addin —
-# ADR-0020 in tarotene/dotfiles). Skips rulesets that already exist by name
+# ADR-0021 in tarotene/dotfiles). Skips rulesets that already exist by name
 # (idempotent).
 set -euo pipefail
 
@@ -66,10 +66,10 @@ process_ruleset() {
     "$file"
 }
 
-# Remove the review layer (ADR-0020) from a repository: delete the
+# Remove the review layer (ADR-0021) from a repository: delete the
 # standalone Review ruleset if present, and strip copilot_code_review /
 # required_review_thread_resolution out of any other active branch ruleset
-# still carrying them (the pre-ADR-0020 layout, where Workflow bundled the
+# still carrying them (the pre-ADR-0021 layout, where Workflow bundled the
 # review layer in). Fetches each ruleset's full detail and PUTs back a
 # filtered payload — the update endpoint takes the same shape as create,
 # not a partial patch.
@@ -176,5 +176,5 @@ echo "placeholder-substituted (via __MIN_TYPST__) to stay in sync."
 if [[ "$WITH_REVIEW" != "true" ]]; then
   echo "NOTE: Review layer (Copilot code review + required conversation resolution)"
   echo "was not applied — pass --with-review to opt in once this repository is past"
-  echo "its early-development phase (ADR-0020 in tarotene/dotfiles)."
+  echo "its early-development phase (ADR-0021 in tarotene/dotfiles)."
 fi

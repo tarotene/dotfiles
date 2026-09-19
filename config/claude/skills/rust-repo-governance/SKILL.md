@@ -1,6 +1,6 @@
 ---
 name: rust-repo-governance
-description: Bootstrap or replicate battle-tested GitHub governance (Security/Quality/Workflow core Rulesets always applied, plus an opt-in Review ruleset for Copilot code review + required conversation resolution — ADR-0020 in tarotene/dotfiles, merge-base-diff CI, release-plz with OIDC Trusted Publishing, Renovate MSRV-safe config, git hooks, Justfile) from the telepath reference implementation into any Rust workspace repository. Use when asked to "撒く", "bootstrap governance", "apply rulesets", "apply GitHub settings", "set up release-plz", "replicate telepath's CI setup", "seed CI to a new Rust repo", "rulesets / release / renovate をまとめて適用", or "telepath の GitHub 設定を別リポジトリに持っていく".
+description: Bootstrap or replicate battle-tested GitHub governance (Security/Quality/Workflow core Rulesets always applied, plus an opt-in Review ruleset for Copilot code review + required conversation resolution — ADR-0021 in tarotene/dotfiles, merge-base-diff CI, release-plz with OIDC Trusted Publishing, Renovate MSRV-safe config, git hooks, Justfile) from the telepath reference implementation into any Rust workspace repository. Use when asked to "撒く", "bootstrap governance", "apply rulesets", "apply GitHub settings", "set up release-plz", "replicate telepath's CI setup", "seed CI to a new Rust repo", "rulesets / release / renovate をまとめて適用", or "telepath の GitHub 設定を別リポジトリに持っていく".
 ---
 
 ## What this Skill does
@@ -17,7 +17,7 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    Review, is **opt-in** (`--with-review`) — Copilot code review auto-request +
    required conversation resolution before merge. It is left out by default
    because forcing that review round trip on every commit of an early-stage or
-   pre-release repository was judged excessive and noisy (ADR-0020 in
+   pre-release repository was judged excessive and noisy (ADR-0021 in
    tarotene/dotfiles). Opt in once the repository is past that phase, or strip
    it back out of an already-governed repository with `--remove-review`.
 4. Points you to `reference/manual-steps.md` for the steps that require browser flows:
@@ -40,7 +40,7 @@ Before running anything, confirm the following values with the user:
 | CLI crate | `--cli-crate` | `my-cli` — the excluded crate under `tools/` |
 | Target repo path | `--dest` | `/home/user/src/my-lib` |
 | Firmware? | `--with-firmware` | pass flag if project has embedded firmware |
-| Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0020). Ask whether the repository is past its early-development phase before defaulting this on. |
+| Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0021). Ask whether the repository is past its early-development phase before defaulting this on. |
 
 If any value is unclear, ask the user before proceeding.
 
@@ -174,7 +174,7 @@ gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_reb
 # → true / false / false / true
 ```
 
-### Removing the review layer (ADR-0020)
+### Removing the review layer (ADR-0021)
 
 `apply-rulesets.sh --owner OWNER --repo REPO --remove-review [--dry-run]`
 handles the two layouts it can meet:
@@ -223,7 +223,7 @@ verify job `name:` in the workflow files matches the Ruleset context strings exa
 │   ├── .githooks/{commit-msg,pre-commit,pre-push}
 │   ├── renovate.json  release-plz.toml  cog.toml
 │   └── rust-toolchain.toml  Justfile  .gitignore-snippet
-├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0020)
+├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0021)
 │   ├── security.json    deletion + non_fast_forward
 │   ├── quality.json     signatures + linear history + 5 status checks
 │   ├── workflow.json    squash-only (core; thread resolution NOT required here)
