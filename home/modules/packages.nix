@@ -60,6 +60,15 @@
       # SVG/WebP along with PNG.
       charm-freeze
 
+      # Embedded flashing/debugging CLI (probe-rs, cargo-flash, cargo-embed
+      # in one package). Unprivileged user-space CLI, so home-manager is the
+      # right layer (ADR-0001) — the apt system layer already provisions its
+      # device permissions (packages/declarative/apt-packages.txt's
+      # gcc-arm-none-eabi/libnewlib-*/build-essential/libudev-dev/pkg-config,
+      # plus /etc/udev/rules.d/69-probe-rs.rules from install-packages.sh),
+      # but nothing previously installed the tool itself (#20).
+      probe-rs-tools
+
       # AI tooling (unfree — flake sets allowUnfree; version follows the
       # nixpkgs pin, bump via `nix flake update`).
       # A native install at ~/.local/bin/claude (from Anthropic's official
