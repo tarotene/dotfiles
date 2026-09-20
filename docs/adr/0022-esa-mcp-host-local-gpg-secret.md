@@ -121,10 +121,17 @@ riベース時に発見して採用した — Decision 3 はこの機構の消�
 - esa MCP は YubiKey 挿入が前提になる。カード不在時は launcher が明確な
   診断(トークンファイル欠如/復号失敗いずれの原因かを区別)を出して起動
   失敗する。
+  > **[ADR-0003 Amendment 4(#252)により部分的に superseded]** [E] サブ鍵が
+  > on-disk per-machine 化されたことで、日常運用でのカード挿入は不要になった
+  > (カード上の元 [E] は disaster-recovery 用途として残置)。この行が書かれた
+  > 時点の設計上の前提だった事実として残す。
 - ログイン後、esa MCP を最初に起動したときにカード PIN の pinentry が
   1 回出る(以後は gpg-agent がキャッシュ)。sign-prewarm(on-disk [S] 鍵の
   パスフレーズを前倒しする別機構)はこの PIN を温めないが、発火点が
   セッション開始 = 画面を見ている瞬間である点は同じ設計思想を共有する。
+  > **[ADR-0003 Amendment 4(#252)により superseded]** sign-prewarm は [E] も
+  > 対象に拡張された(独立したキャッシュエントリのため個別に温める)。「カード
+  > PIN」は「on-disk [E] のパスフレーズ」に置き換わった。
 - company ホストには esa MCP を配らない(company-pop-old / company-pop-new
   は esa.nix を import しない)。
 - `sops` パッケージの削除により、他にリポジトリ外の SOPS 消費者が現れた

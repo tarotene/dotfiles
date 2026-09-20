@@ -212,7 +212,10 @@ dotfiles/
 │   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link/visual-evidence)
 │   │   ├── pr-description.md     # PR body skeleton + mandatory Before/After
 │   │   │                     #   visual evidence (gate: G_visual, skill: pr-description)
-│   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing passphrase cache
+│   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing
+│   │   │                     #   [S] AND esa MCP token.gpg [E] passphrase
+│   │   │                     #   caches (#252) — independent gpg-agent cache
+│   │   │                     #   entries, warmed independently
 │   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
 │   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
 │   │   ├── wrapup-chores.md      # skill: triage the wrap-up inbox into one batch chores PR
@@ -266,7 +269,7 @@ dotfiles/
 
 - **ADR-0001** — home-manager is the source of truth; apt + per-project runtimes are escape hatches.
 - **ADR-0002** — runtime consolidation (Java/Go → mise; rustup/uv kept) + hybrid config translation.
-- **ADR-0003** — secrets & identity: YubiKey-rooted key model. **See the Amendment** for the deployed model ([S] subkey on-disk per-machine, two identities, host-local `.sops.yaml`, migration ⊆ rotation). The runtime-decrypted-SOPS Decision item is superseded by **ADR-0010** (retired — no consumer survived a re-audit).
+- **ADR-0003** — secrets & identity: YubiKey-rooted key model. **See the Amendments** for the deployed model ([S] *and* [E] subkeys on-disk per-machine as of Amendment 4/#252 — the card-backed originals are kept live as a fallback, never revoked; two identities; host-local `.sops.yaml`; migration ⊆ rotation). The runtime-decrypted-SOPS Decision item is superseded by **ADR-0010** (retired — no consumer survived a re-audit).
 - **ADR-0004** — repo identity & relocation (keep the `dotfiles` name; publish to public `tarotene/dotfiles` via clean orphan history; no semver releases).
 - **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
 - **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.

@@ -154,3 +154,82 @@ tooling review needed to pick one before it could rotate a real identity's
    suspicion it was itself exposed (shoulder-surfed, logged by a compromised
    pinentry, found in a leaked backup) — that is a compromise event
    independent of the annual key-material cadence.
+
+## Amendment 4 (2026-09 — #252)
+
+Investigating a complaint that esa MCP (#239, ADR-0022) forces a physical
+YubiKey insertion at every Claude Code session start surfaced that `[E]`
+was the one subkey Amendment §1 left card-backed, and that this — not
+signing — was the actual remaining source of per-session card friction. The
+fix applies Amendment §1's own reasoning to `[E]`, plus two empirical
+findings from validating it on real hardware.
+
+1. **`[E]` is now also held on-disk per-machine, in addition to the
+   card-backed original.** Generated/rotated via `scripts/gpg-subkey
+   generate|rotate --usage encrypt` (#252, extending the `--usage sign`
+   default tooling built for Amendment §1/§3). The card's original `[E]` is
+   **deliberately not revoked** — it stays live as a fallback / disaster-
+   recovery path (Consequences §2 below), unlike `[S]` where the smartcard
+   copy was never cut in the first place. `rotate`'s revoke-candidate
+   collection and "which subkey is currently active" resolution are both
+   restricted to on-disk secret material only (GnuPG `--with-colons` field
+   15 == `+`) — the card-backed `[E]` is structurally excluded from ever
+   being an `--revoke-old` target, so a future annual rotation cannot
+   accidentally revoke it.
+
+2. **GnuPG resolves encryption to the newest valid `[E]` automatically.**
+   `gpg --encrypt -r <primary-fingerprint>` (the existing convention this
+   repo already used for `token.gpg`, unchanged by this amendment) picks the
+   most-recently-created non-revoked `[E]` subkey when more than one exists.
+   Verified empirically (2026-09-20, personal identity): with a 2025-07
+   card-backed `cv25519` `[E]` and a freshly generated 2026-09 on-disk
+   `cv25519` `[E]` both valid, encryption selected the on-disk one with no
+   `!`-suffixed subkey pinning needed.
+
+3. **`[S]` and `[E]` are independent `gpg-agent` cache entries, even under
+   an identical passphrase string.** Cache entries are keyed by keygrip, not
+   by passphrase value — unlocking `[S]` does not warm `[E]`'s entry and
+   vice versa (verified empirically, 2026-09-20/21: killing `gpg-agent` and
+   probing each subkey with `--pinentry-mode error` showed both cold
+   independently, and warming one left the other cold). `sign-prewarm.sh`
+   (Amendment §2/§3) was extended to prewarm `[E]` too, as a fully
+   independent code path gated on `~/.config/esa/token.gpg`'s existence
+   (mirroring `scripts/esa-mcp-launcher`'s own path resolution) rather than
+   on any git config — a host without esa MCP set up (company-pop-*, or a
+   personal-pop before #252's rollout) sees this path stay silent. This does
+   not reduce the prompt count below Amendment §2's existing "once per
+   login" shape — it batches the (now) two independent prompts at
+   `SessionStart` instead of letting `[E]`'s fire unpredictably whenever the
+   esa MCP server first launches.
+
+4. **A GnuPG-native external password cache does not eliminate even that
+   one prompt on this host, and Amendment §3's passphrase-reuse allowance
+   does not change that.** `gpg-agent` permits pinentry to persist a
+   passphrase to an external cache (e.g. via libsecret/gnome-keyring) by
+   default (`--no-allow-external-cache` is the opt-out; GnuPG Project,
+   "Agent Options",
+   <https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html>,
+   retrieved 2026-09-20) and the host's `pinentry-gnome3` binary is linked
+   against `libsecret`/`libgcr-base`. In practice, though, its GCR system-
+   prompter dialog on this host (Pop!\_OS, GNOME/GCR 3.41.2) never offers a
+   "save to keyring" option and no Secret Service item is ever created —
+   verified empirically by inspecting `org.freedesktop.secrets` via
+   `gdbus` before and after multiple real unlocks. This is recorded so it
+   is not re-investigated without new evidence (a GCR/pinentry-gnome3
+   version bump, or a different pinentry flavor). The accepted residual
+   is therefore Amendment §2's existing shape — one passphrase prompt per
+   subkey-usage-class per login — applied to two independent classes
+   (`[S]`, `[E]`) instead of one.
+
+## Consequences (Amendment 4)
+
+- No YubiKey insertion is required for any routine Claude Code session
+  start any more — the original complaint behind #252 is fully resolved.
+- The card's `[E]` remains a valid, non-revoked fallback: a lost/wiped
+  on-disk `[E]` (or a fresh checkout on a machine that hasn't run the
+  `--usage encrypt` rollout) can still decrypt anything encrypted to this
+  identity's primary fingerprint, by inserting the card.
+- `keys/<identity>.pub` and `gpg-subkey sync` now track two independent
+  `[S]`/`[E]` on-disk lifecycles per host instead of one; `docs/claude/
+  esa-mcp.md` and `docs/claude/sign-prewarm.md` carry the operational
+  detail.
