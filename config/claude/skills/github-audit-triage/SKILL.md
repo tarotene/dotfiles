@@ -93,7 +93,10 @@ description・topics・settings フィールド・ファイルツリー・open I
 
 ## 4. 一括レビュー表と GO 確認(1 回だけ)
 
-drifted な組全体を 1 枚の表で提示する:
+drifted な組全体を、chat 本文の表ではなく **`Artifact` ツールで HTML
+として** 提示する(`artifact-design` スキルに従う)。ファイル名は
+`github-audit-triage-review.html` のようにスキル名をプレフィックスにし、
+セッション内で最初に一度だけ publish する。表の列は:
 
 | repo | domain | 提案内容の要約 | 処分案 |
 |---|---|---|---|
@@ -104,6 +107,11 @@ naming は「提案クラス」、settings/renovate は「適用するテンプ�
 送る」と書く。ユーザーはリポジトリ×ドメイン単位で **GO / 修正 / 除外 /
 exempt** を返す。確認はこの 1 回だけで、GO 後は項目ごとに止まらない
 (`wrapup-chores` と同じ「一括 triage → GO 1 回 → 一括処理」の型)。
+
+review artifact は **GO 待ちの間も GO 後も編集しない** — 承認時点の
+スナップショットとして凍結する。GO 後に判明した訂正・実際の適用結果は
+§6 の作業記録 artifact(別ファイル・別 URL)に書く。同一ファイルを
+上書きすると、GO を出した時点で何を承認したかという決定記録が消える。
 
 ## 5. Issue 棚卸し(charters ドメインで GO が出たリポジトリのみ)
 
@@ -124,7 +132,19 @@ SKILL.md §9 と同じ作法)。
    人間裁定なしの merge・メタデータ反映は正本を直接書き換えることになり、
    判断ループの設計と矛盾する)。ruleset で CI 待ちになるリポジトリも、
    単に「PR 作成済み、merge 待ち」として最終報告に列挙するだけでよい。
-5. charters ドメインの description/topics 反映(`gh repo edit`)、naming
+5. 一括適用が完了したら、**別ファイル**(`github-audit-triage-record.html`
+   のように review とは異なるファイル名 → 別 URL)で作業記録 artifact を
+   新規 publish する。中身の骨子:
+   - 先頭に「今すぐ確認してほしいこと」ブロック — まだ merge していない
+     PR 等、ユーザーの判断が要る項目へのリンクを最優先で置く
+   - ドメイン別の適用サマリ(件数・self-verify 結果)
+   - セッション中に見つかった問題とその対処(解決済み/持ち越しを明記)
+   - 次回セッションへの持ち越し事項
+   - review artifact への相互リンク
+   両 artifact とも private リポジトリ名を含むため既定非公開のまま
+   (docs には残さない、§9 参照)。favicon は review と record で区別
+   できるものを選ぶ。
+6. charters ドメインの description/topics 反映(`gh repo edit`)、naming
    ドメインの `naming-*` topic 反映も、**該当 PR が merge された後**に
    人間が個別に行う(この段階では行わない — README が正本、メタデータは
    鏡という関係上、README merge 前に鏡だけ書き換えると矛盾した状態が
