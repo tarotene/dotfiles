@@ -27,6 +27,9 @@
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
   別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
   (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
+- [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
+  自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
+  OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
