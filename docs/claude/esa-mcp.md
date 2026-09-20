@@ -58,6 +58,48 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
 sign-prewarm と同じ設計思想であり、Claude の Bash 呼び出し中に不意に
 pinentry が奪う事故(sign-prewarm が防いでいるもの)とは性質が異なる。
 
+## 落とし穴: `throw-keyids` との相互作用
+
+`home/modules/gpg.nix` は通信のプライバシー対策として `throw-keyids = true`
+(gpg 全体設定、privacy: 受信者の鍵 ID を暗号文に載せない)を有効にしている。
+これはこのホストの **すべての** `gpg --encrypt` に効く汎用設定であり、
+`docs/setup.md` の暗号化手順が `--recipient <fingerprint>` を指定していても
+無条件に anonymous recipient になる。
+
+実際に起きた事故: この状態で作成した `token.gpg` を launcher が復号すると、
+gpg は宛先を特定できず、鍵束にある card-backed secret 鍵を **総当たり**する
+(gpg(1) "Esoteric Options": "it may slow down the decryption process because
+all available secret keys must be tried")。鍵束に別カードの secret stub が
+残っていると、正しいカードを挿していてもそのカードの「挿入せよ」プロンプトが
+先に出る。personal-pop の鍵束には company カードの stub が残っていたため、
+セッション開始のたびに **2 枚のカードそれぞれに対して**挿入プロンプトが
+立て続けに出る症状になった。
+
+対策は `docs/setup.md` の手順どおり `--no-throw-keyids` を明示すること
+(GnuPG Project, "GPG Esoteric Options",
+<https://www.gnupg.org/documentation/manuals/gnupg/GPG-Esoteric-Options.html>、
+取得 2026-09-20)。token.gpg のような単一ホスト内のローカル保管ファイルは
+そもそも「誰に暗号化したか」を第三者から隠す必要がなく、トレードオフなしで
+外せる。既存の `token.gpg` を直す場合は再暗号化が要る:
+
+```bash
+tok="$(gpg --decrypt ~/.config/esa/token.gpg)"
+printf '%s' "$tok" | gpg --encrypt --no-throw-keyids \
+  --recipient 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 \
+  --output ~/.config/esa/token.gpg.new
+# ラウンドトリップが一致してから置換すること(先に decrypt が失敗すると
+# 空データの暗号文で元ファイルを潰しうる)
+[ "$(gpg --quiet --batch --decrypt ~/.config/esa/token.gpg.new)" = "$tok" ] && \
+  mv ~/.config/esa/token.gpg.new ~/.config/esa/token.gpg
+unset tok
+```
+
+鍵束に残った他カードの secret stub 自体は `gpg --delete-secret-keys
+<fingerprint>` で削除できる(公開鍵は残る。stub はカードを挿して
+`gpg --card-status` すれば再生成される、可逆な操作)。ただし stub の残存は
+`throw-keyids` 事故の症状を増幅するだけで根本原因ではないため、
+`--no-throw-keyids` の是正が先。
+
 ## `~/.claude.json` への登録
 
 `home/modules/esa.nix` は `dotfiles.claude.mcpServers.esa` に値を populate
