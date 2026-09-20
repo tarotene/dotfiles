@@ -22,6 +22,11 @@
   a dedicated inventory repo, why each domain judges the way it does
   (rule-type union, literal schema match, naming-class pattern, …), and
   why it's one command instead of five sibling scripts.
+- [`repo-lifecycle.md`](repo-lifecycle.md) — visibility/license 方針・
+  Maintain/Archive/Delete triage 基準・deprecate-then-archive チェックリスト・
+  テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
+  別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
+  (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
@@ -115,6 +120,13 @@
   置き換える決定。その private リポジトリは archive。ADR-0010 の
   「供給チャネルを都度選び直す」の初適用例で、唯一の sops 消費者の消滅に
   伴い `sops` パッケージも削除する。
+- [ADR-0023](adr/0023-repo-lifecycle-governance.md) — リポジトリの
+  visibility/license 方針・Maintain/Archive/Delete triage 基準・
+  deprecate-then-archive チェックリスト・consolidation 手順を、別の私設
+  ポートフォリオ管理リポジトリ(PRIVATE)から dotfiles の
+  `docs/repo-lifecycle.md` へ正本化する決定。`github-audit`(drift 検査)
+  とは別層(存続判定)であることを明確化する。私設リポジトリは移設内容の
+  検証後に archive。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
