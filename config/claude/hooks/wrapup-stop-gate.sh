@@ -54,18 +54,21 @@ self_path() {
   printf '%s/%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" "$(basename "${BASH_SOURCE[0]}")"
 }
 
-# --- サブコマンド: --add <inbox> <json1行> ------------------------------------
+# --- サブコマンド: --add <inbox> <json> ---------------------------------------
+# 入力が pretty-print(複数行)であっても jq -c で 1 行に強制コンパクト化してから
+# 書き込む。--mark-filed は行全体の完全一致で削除するため、非コンパクトな行が
+# 紛れ込むと二度と自動削除できなくなる(#248)。
 if [[ "${1:-}" == "--add" ]]; then
   inbox="${2:?usage: wrapup-stop-gate.sh --add <inbox> <json>}"
   line="${3:?usage: wrapup-stop-gate.sh --add <inbox> <json>}"
-  jq -e . >/dev/null <<<"$line" || {
+  compact="$(jq -ce . <<<"$line")" || {
     echo "wrapup-stop-gate: --add: 不正な JSON です" >&2
     exit 64
   }
   mkdir -p "$(dirname "$inbox")"
   (
     flock 9
-    printf '%s\n' "$line" >>"$inbox"
+    printf '%s\n' "$compact" >>"$inbox"
   ) 9>>"$inbox.lock"
   exit 0
 fi
@@ -158,6 +161,18 @@ STUB
   rc=0
   bash "$self" --add "$inbox" 'not-json' 2>/dev/null || rc=$?
   check "--add は不正 JSON を拒否" 64 "$rc"
+
+  # #248: pretty-print(複数行)入力も 1 行にコンパクト化して書き込まれる
+  # (以降の行数アサーションを崩さないよう、専用の別 inbox で検証する)
+  pretty_inbox="$dir/pretty.jsonl"
+  pretty='{
+  "ts": "2026-08-25T00:00:00+09:00",
+  "title": "pretty",
+  "detail": "c"
+}'
+  bash "$self" --add "$pretty_inbox" "$pretty"
+  check "--add は pretty-print 入力を 1 行に圧縮する" 1 "$(wc -l <"$pretty_inbox")"
+  check "圧縮後の行は改行を含まない" 0 "$(tail -n1 "$pretty_inbox" | jq -e . >/dev/null 2>&1; echo $?)"
 
   # 非空 inbox + 条件充足 → exit 2 + stderr 非空
   rc=0

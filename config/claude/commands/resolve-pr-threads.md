@@ -80,6 +80,23 @@ Options:
 
 For `partial`, Claude MUST ask a follow-up free-text question: "Describe which part of the suggestion to adopt."
 
+For `defer`, Claude MUST ask a follow-up `AskUserQuestion` classifying the reason:
+
+```
+Question: "Why are you deferring this thread?"
+
+Options:
+  out-of-scope — The fix is valid but touches files/modules outside this PR's diff.
+  other        — Just deferring for now; no issue should be filed.
+```
+
+`out-of-scope` and `other` are handled differently in Phase 4 (see below) — the
+former files a GitHub issue automatically with no further confirmation, the
+latter leaves the thread untouched. This split exists because "the fix is
+right but out of scope" has no judgment call left to make — filing is the only
+sane outcome, so it should not cost another round-trip through
+`AskUserQuestion`.
+
 Results MUST be collected before any mutations begin.
 
 ### Phase 3: Apply (accept / partial only)
@@ -131,7 +148,26 @@ gh api graphql -f query='mutation {
 }'
 ```
 
-`defer` threads receive no mutations.
+`defer` threads with reason `other` receive no mutations.
+
+`defer` threads with reason `out-of-scope` receive an automatic issue-filing
+step — no additional `AskUserQuestion` confirmation, since the disposition
+(file it) is mechanical once `out-of-scope` was chosen:
+
+1. **File an issue** in the target repo: `gh issue create --title "<summary>" --body "<body>"`. The body MUST include the thread's permalink URL (`https://github.com/OWNER/REPO/pull/PR#discussion_rDDDDDDD`, derivable from the thread node), a one-paragraph summary of the original comment, and the defer rationale the user gave (if `partial`-style free text was provided when classifying). The body MUST end with the attribution footer required by this repo's `attribution-guard` (or the target repo's equivalent policy) unless `No-Attribution: <reason>` applies.
+2. **Reply to the thread** (no unresolve/resolve — the thread was never resolved, so there is nothing to undo):
+   ```bash
+   gh api graphql -f query='mutation {
+     addPullRequestReviewThreadReply(input: {
+       pullRequestReviewThreadId: "$THREAD_ID",
+       body: "$REPLY_BODY"
+     }) {
+       comment { id url }
+     }
+   }'
+   ```
+   Reply body template: `Filed as a separate issue: <ISSUE_URL> — <one-line reason>`.
+3. The thread itself is **not** resolved — it remains `unresolved`/deferred, same as `other`. Only the reply and the new issue are new state.
 
 ## Implementation Requirements
 
@@ -168,6 +204,14 @@ When invoked with `verify`, Claude MUST:
 
 `/resolve-pr-threads` MUST NOT silently expand scope beyond the review threads listed for the target PR. If related but unflagged issues are observed during code inspection, Claude SHOULD surface them in the post-run summary as "Related (not in scope)", clearly separated from the threads being resolved. A `--scan-related` flag is planned for a future version.
 
+This is a distinct concern from the `out-of-scope` defer reason above: this
+policy covers issues **not flagged by any review comment** that Claude
+happens to notice while inspecting code — those go to the summary only,
+never auto-filed. The `out-of-scope` defer reason instead covers a review
+comment that **was** flagged, where the triage itself concluded the valid
+fix exceeds this PR's diff — that case has no judgment call left, so it
+auto-files (see Phase 4).
+
 ## Required Response Format
 
 ### List Output
@@ -198,6 +242,7 @@ Triage decisions:
   PRRT_...WsyL  crates/telepath-host/src/lib.rs:183  → accept
   PRRT_...WsyO  crates/telepath-host/src/lib.rs:221  → partial  (validate kind only, not size)
   PRRT_...Hd3p  crates/telepath-wire/src/lib.rs:9    → reject   (already corrected in #8)
+  PRRT_...Kq2m  crates/telepath-host/src/lib.rs:340  → defer    (out-of-scope: touches telepath-wire, not this PR)
 ```
 
 ### Resolution Log (after Phase 4)
@@ -214,7 +259,10 @@ Resolving with commit traceability...
   ✓ PRRT_...Hd3p  crates/telepath-wire/src/lib.rs:9
     → Won't fix — corrected in PR #8 (commit 0bf7994); doc updated there
 
-3/3 threads resolved with commit references. 0 deferred.
+  ⬤ PRRT_...Kq2m  crates/telepath-host/src/lib.rs:340  (still unresolved)
+    → Filed as a separate issue: https://github.com/OWNER/REPO/issues/42 — touches telepath-wire, not this PR
+
+3/4 threads resolved with commit references. 1 deferred (1 filed as #42, 0 left untouched).
 
 Note: --scan-related (surface related but unflagged issues) is planned for a future version.
 ```

@@ -62,6 +62,8 @@ Before は変更を当てる**前**に撮る。変更後に「そういえば」
 | 見た目の面 | 手段 |
 |---|---|
 | Web / HTML(ブラウザで見る画面) | Playwright でスクリーンショット |
+| Web / HTML(Playwright が使えない環境) | `google-chrome --headless=new --screenshot=out.png --window-size=W,H --hide-scrollbars --user-data-dir="$(mktemp -d)" file:///path/to/page.html` のような headless Chrome 直叩きにフォールバックする。`--hide-scrollbars` を忘れるとビューポートより大きい要素でスクロールバーが写り込む。`--user-data-dir` は毎回 `mktemp -d` で使い捨てにする — 固定プロファイルを使い回すと、ファイル更新後に撮り直しても古い内容がキャッシュされたまま再レンダリングされることがある |
+| ローカルの画像/SVG ファイル(実描画範囲がキャンバス全体より小さい場合を含む) | ファイルが最終成果物ならそのまま添付する。SVG で余白が大きい場合は `viewBox`/`width`/`height` から実寸を読み取って撮影ウィンドウを合わせるか、実描画内容のバウンディングボックスを計算して Pillow 等で最終クロップする(bbox 計算手段がリポジトリ側にあればそれを流用する) |
 | ターミナル出力の見た目(プロンプト、statusline、コマンド出力の色/レイアウト) | ANSI 出力を画像化するツール(`cmd \| freeze -l txt -o out.svg` のように、パイプで受けた出力を画像化できるものを選ぶ — 変更前に保存しておいた出力から後で画像化できるのが利点。出力形式は SVG か WebP を使う。charm-freeze はホストによっては PNG エンコーダがクラッシュすることがある) |
 | 対話的 GUI(実機の画面操作が要るもの) | LLM では撮れないため、ユーザーにスクリーンショットを依頼し、`## 要確認` に計上する |
 

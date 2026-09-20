@@ -10,10 +10,13 @@ fi
 # History file settings
 HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
 
-# Create history file directory if it doesn't exist
-# (fallback to /tmp if read-only)
+# If $HOME (or $ZDOTDIR) isn't writable, don't persist history at all.
+# A previous fallback wrote to the shared, world-readable /tmp/.zsh_history
+# instead — on a multi-user host that leaks command history (which can
+# contain secrets) to every other user, and could interleave history from
+# unrelated sessions/users that hit the same fallback path (#263).
 if [[ ! -w "${HISTFILE:h}" ]]; then
-    HISTFILE="/tmp/.zsh_history"
+    unset HISTFILE
 fi
 
 HISTSIZE=10000
@@ -36,5 +39,11 @@ setopt SHARE_HISTORY          # Share history between multiple Zsh sessions
 HISTORY_IGNORE='(*/tmp/claude-*|*.herdr/worktrees/*)'
 
 # History search keybindings (for vi mode)
-bindkey '^R' history-incremental-search-backward
+# Ctrl-R is intentionally left to atuin (home/modules/atuin.nix's
+# `atuin init zsh`, evaluated in the generated .zshrc after this module's
+# loop — confirmed via the generated ~/.zshrc — so atuin's own ^R binding
+# always wins regardless). atuin owns the interactive search UI by design,
+# while ↑-arrow keeps zsh's native behavior (--disable-up-arrow in that
+# module). A native bindkey here was redundant and made the intent
+# ambiguous — this module never actually controls ^R (#264).
 bindkey '^S' history-incremental-search-forward

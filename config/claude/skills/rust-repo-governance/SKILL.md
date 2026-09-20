@@ -34,8 +34,8 @@ Before running anything, confirm the following values with the user:
 | GitHub owner | `--owner` | `acme` |
 | Repository name | `--repo` | `my-lib` |
 | Default branch | `--default-branch` | `main` (default) |
-| MSRV (short) | `--msrv` | `1.88` (default) |
-| MSRV (full) | `--msrv-full` | `1.88.0` (default) |
+| MSRV (short) | `--msrv` | `1.88` (default; used by `msrv.yml` regardless of Renovate pin status) |
+| MSRV (full) | `--msrv-full` | 適用先が実際に `Cargo.toml` の `rust-version` や CI で特定バージョンを固定している場合のみ渡す(例 `1.88.0`)。省略すると `renovate.json` の `constraints.rust` ブロックと対応する保護用 packageRule は丸ごと省略される(#222 — `dtolnay/rust-toolchain@stable` のようなチャンネル名運用に架空の MSRV pin を作り込まない) |
 | Canonical crate | `--canonical-crate` | `my-lib-core` — the crate that owns the git tag |
 | CLI crate | `--cli-crate` | `my-cli` — the excluded crate under `tools/` |
 | Target repo path | `--dest` | `/home/user/src/my-lib` |

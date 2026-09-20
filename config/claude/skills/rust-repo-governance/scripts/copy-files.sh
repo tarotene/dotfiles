@@ -17,6 +17,11 @@ CLI_CRATE=""
 DEST=""
 WITH_FIRMWARE=false
 DRY_RUN=false
+# #222: constraints.rust (renovate.json) は "実在する MSRV pin" を表明する
+# 明示フラグが無い限り埋めない — 適用先が dtolnay/rust-toolchain@stable 等
+# チャンネル名運用(pin なし)のとき、機械的な既定値がRenovateの依存更新を
+# 黙って阻害する事故を防ぐ。
+HAS_MSRV_PIN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --repo)             REPO="$2";            shift 2 ;;
     --default-branch)   DEFAULT_BRANCH="$2";  shift 2 ;;
     --msrv)             MSRV="$2";            shift 2 ;;
-    --msrv-full)        MSRV_FULL="$2";       shift 2 ;;
+    --msrv-full)        MSRV_FULL="$2"; HAS_MSRV_PIN=true; shift 2 ;;
     --canonical-crate)  CANONICAL_CRATE="$2"; shift 2 ;;
     --cli-crate)        CLI_CRATE="$2";       shift 2 ;;
     --dest)             DEST="$2";            shift 2 ;;
@@ -114,6 +119,14 @@ copy_file ".githooks/pre-push"
 
 # Root config files
 copy_file "renovate.json"
+if [[ "$HAS_MSRV_PIN" != "true" && "$DRY_RUN" == "false" && -f "$DEST/renovate.json" ]]; then
+  # #222: MSRV pin が実在しない適用先では、constraints.rust ブロックと
+  # それを保護する packageRule(matchDepNames: ["rust"])を丸ごと省略する。
+  tmpfile="$(mktemp)"
+  jq 'del(.constraints) | .packageRules |= map(select((.matchDepNames // []) != ["rust"]))' \
+    "$DEST/renovate.json" > "$tmpfile" && mv "$tmpfile" "$DEST/renovate.json"
+  echo "  (no --msrv-full given: dropped renovate.json constraints.rust + its protective packageRule)"
+fi
 copy_file "release-plz.toml"
 copy_file "cog.toml"
 copy_file "rust-toolchain.toml"

@@ -214,8 +214,11 @@ Judged items:
   `CLAUDE.md` exists but does not start with an `@AGENTS.md` import line,
   or does but `AGENTS.md` itself is missing.
 - `skills-not-routed:<names>` — an entry directly under `.claude/skills/`
-  is a real directory (git mode other than `120000`) instead of a symlink
-  into `../.agents/skills/<name>`.
+  is a real directory (git mode other than `120000`/`40960` — REST's
+  `git/trees` API returns the symlink mode as the octal string `"120000"`,
+  GraphQL's `TreeEntry.mode` returns the same mode as the decimal `40960`;
+  both are accepted, #259) instead of a symlink into
+  `../.agents/skills/<name>`.
 
 **Why judgement is by literal presence/match, never an LLM call.** Every
 item above is decidable without reading for quality — a litmus test with a

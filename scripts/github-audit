@@ -530,7 +530,11 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
       local name mode
       name="$(jq -r '.name' <<<"$entry")"
       mode="$(jq -r '.mode // ""' <<<"$entry")"
-      [[ $mode == "120000" ]] || stray_skills+=("$name")
+      # #259: GraphQL's TreeEntry.mode returns the symlink mode as a decimal
+      # (40960), while REST's git/trees API returns the same mode as an octal
+      # string ("120000") — 040960 (decimal) == 0120000 (octal), same mode.
+      # Accept both representations rather than only the REST one.
+      [[ $mode == "120000" || $mode == "40960" ]] || stray_skills+=("$name")
     done < <(jq -c '.[]?' <<<"$claude_skills_dir")
     ((${#stray_skills[@]} == 0)) || missing+=("skills-not-routed:$(
       IFS=,
@@ -957,7 +961,7 @@ EOF
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"id": "abc"},
       "rootTree": {"entries": [{"name": "README.md", "type": "blob"}, {"name": "CONTRIBUTING.md", "type": "blob"}, {"name": "AGENTS.md", "type": "blob"}, {"name": "CLAUDE.md", "type": "blob"}]},
-      "claudeSkillsDir": {"entries": [{"name": "foo", "type": "blob", "mode": "120000"}]},
+      "claudeSkillsDir": {"entries": [{"name": "foo", "type": "blob", "mode": "120000"}, {"name": "foo2", "type": "blob", "mode": "40960"}]},
       "cargoToml": {"id": "x"},
       "packageJson": null,
       "pyprojectToml": null,

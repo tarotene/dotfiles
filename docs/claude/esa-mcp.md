@@ -149,6 +149,27 @@ YubiKey では原理的に復号できない。common.nix に置くと company �
   `gpg -K --with-colons <fingerprint>` で on-disk [E](field 15 == `+`)が
   存在するか確認する(#252 未実施のホストではまだ存在しない)。
 
+## 代替案の検討記録: 公式リモート MCP(OAuth)
+
+esa.io は公式のリモート MCP サーバー(`https://mcp.esa.io/`、OAuth 2.1)を
+β 公開しており、raw API token + 専用 launcher(この doc が説明する方式)
+より設定が単純になる可能性がある。2026-09-19 時点で一次情報を調査した
+結果、次の理由により見送った(#247):
+
+1. esa 公式ドキュメント(「Claude Desktop と esa MCP サーバー連携」)の
+   FAQ が「Claude Code から連携は今後対応予定です」と明記しており、
+   Claude Code(CLI)からの直接接続に esa 側がまだ対応していない。
+2. リモート MCP サーバー自体が明示的にベータ版(「仕様は予告なく変更
+   される場合があります」)。
+3. Linux(このリポジトリの主要ホスト)での OAuth トークン保管の暗号化・
+   ハードウェア連動の有無が、Claude Code 公式ドキュメント上でも不明。
+
+**再検討する条件**: 次の両方が満たされたら、この doc の方式からの
+移行を再検討する。
+
+- esa 公式が Claude Code(CLI)からの直接接続に対応したと明言する
+- リモート MCP サーバーがベータを卒業する(仕様凍結)
+
 ## 手動プロビジョニング
 
 `docs/setup.md` の「esa MCP token」節を参照。esa.io 側の操作(トークン名
