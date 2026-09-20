@@ -36,5 +36,11 @@ setopt SHARE_HISTORY          # Share history between multiple Zsh sessions
 HISTORY_IGNORE='(*/tmp/claude-*|*.herdr/worktrees/*)'
 
 # History search keybindings (for vi mode)
-bindkey '^R' history-incremental-search-backward
+# Ctrl-R is intentionally left to atuin (home/modules/atuin.nix's
+# `atuin init zsh`, evaluated in the generated .zshrc after this module's
+# loop — confirmed via the generated ~/.zshrc — so atuin's own ^R binding
+# always wins regardless). atuin owns the interactive search UI by design,
+# while ↑-arrow keeps zsh's native behavior (--disable-up-arrow in that
+# module). A native bindkey here was redundant and made the intent
+# ambiguous — this module never actually controls ^R (#264).
 bindkey '^S' history-incremental-search-forward
