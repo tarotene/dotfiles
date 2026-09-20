@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# gpg-subkey — generate/rotate a machine-local ed25519 [S] (signing) subkey
-# under a card-backed primary key, monitor its expiry, and refresh this
-# repo's committed public-key export.
+# gpg-subkey — generate/rotate a machine-local ed25519/cv25519 [S]/[E]
+# (signing/encryption) subkey under a card-backed primary key, monitor its
+# expiry, and refresh this repo's committed public-key export.
 #
 # Absorbed from a now-archived private predecessor tool's
 # generate-machine-subkey.sh / rotate-machine-subkey.sh (dotfiles GPG
@@ -9,15 +9,18 @@
 # --edit-key` batch mechanics for addkey/revkey are reused here (validated
 # in production — the company identity's [S] subkey was rotated with it in
 # 2025-12 and 2026-07), but its git-config-writing side effect is
-# deliberately dropped.
+# deliberately dropped. [E] support (#252, ADR-0003 Amendment 4) reuses the
+# same addkey/revkey mechanics with a different menu choice (encrypt-only
+# ECC instead of sign-only), validated against real GnuPG interactively
+# (2026-09-20) before being encoded here.
 # `home/modules/gpg.nix` header + `hosts/<host>.nix`'s
 # `programs.git.signing.key` is the sole declared source of truth for which
 # subkey Git signs with (ADR-0003) — this tool never touches git config, it
 # only prints the next manual step.
 #
 # Usage:
-#   gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
-#   gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
+#   gpg-subkey generate --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--algorithm ed25519]
+#   gpg-subkey rotate   --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--revoke-old]
 #   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
 #   gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
 #   gpg-subkey status   [--repo <dotfiles-checkout>]
@@ -28,7 +31,11 @@
 # (certify) capability signs the new subkey's binding signature, and that
 # operation lives on the YubiKey (ADR-0003). --key accepts anything
 # `gpg --list-secret-keys` resolves to exactly one primary key (a
-# fingerprint, keyid, or email substring).
+# fingerprint, keyid, or email substring). --usage defaults to `sign` for
+# backward compatibility; `encrypt` produces an encrypt-only cv25519 [E]
+# subkey via the same addkey menu mechanics (menu choice 12 instead of 10 —
+# both prompt the identical "which elliptic curve" follow-up, confirmed
+# against real GnuPG 2.4.9, 2026-09-20).
 #
 # rotate's generate+revoke is the one irreversible step; everything after it
 # — keys/<identity>.pub, GitHub's registered GPG key, keys.openpgp.org — is
@@ -37,7 +44,17 @@
 # drift against the local keyring and, with --fix, converges every copy back
 # to it; it is safe to re-run regardless of where a previous attempt
 # stopped. It never edits hosts/<host>.nix — a mismatch there is reported,
-# not fixed, same boundary `export` already draws for git config/nix files.
+# not fixed, same boundary `export` already draws.
+#
+# rotate NEVER revokes a card-backed subkey of the same usage, even if one
+# exists alongside the on-disk one (#252, ADR-0003 Amendment 4 — [E]'s
+# original card-backed subkey is deliberately kept live as a fallback/
+# disaster-recovery path once an on-disk [E] takes over day-to-day
+# decryption). Every "which subkey is currently active" resolution and every
+# rotate revoke-candidate collection in this script is restricted to
+# on-disk secret material (GnuPG `--with-colons` field 15 == "+", same test
+# as config/claude/hooks/sign-prewarm.sh's key_is_on_disk) — card-backed
+# (token serial) and stub (#) entries are never candidates.
 set -euo pipefail
 
 GPG_BIN="${GPG_SUBKEY_GPG_BIN:-gpg}"
@@ -45,6 +62,7 @@ HERDR_BIN="${GPG_SUBKEY_HERDR_BIN:-herdr}"
 SELF="$(realpath "$0")"
 DEFAULT_VALIDITY="1y"
 DEFAULT_ALGORITHM="ed25519"
+DEFAULT_USAGE="sign"
 DEFAULT_THRESHOLD=30
 
 # edit_key_extra_args — additional gpg flags for the --edit-key calls in
@@ -73,8 +91,8 @@ edit_key_extra_args() {
 usage() {
   cat <<'EOF'
 usage:
-  gpg-subkey generate --key <primary-key> [--validity 1y] [--algorithm ed25519]
-  gpg-subkey rotate   --key <primary-key> [--validity 1y] [--revoke-old]
+  gpg-subkey generate --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--algorithm ed25519]
+  gpg-subkey rotate   --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--revoke-old]
   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
   gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
   gpg-subkey status   [--repo <dotfiles-checkout>]
@@ -82,10 +100,15 @@ usage:
   gpg-subkey --selftest
 
 generate/rotate require the card (the primary key's [C] capability signs the
-new subkey). This tool never writes git config — export/sync print the next
-manual step (update programs.git.signing.key, PR, hms). sync detects (and,
+new subkey). --usage defaults to sign ([S]); encrypt produces an [E]
+encrypt-only subkey. rotate never revokes a card-backed subkey of the same
+usage — only on-disk material is ever a revoke candidate. This tool never
+writes git config — export/sync print the next manual step (update
+programs.git.signing.key, PR, hms; for --usage encrypt, re-encrypt whatever
+this identity's [E] protects, e.g. esa MCP's token.gpg). sync detects (and,
 with --fix, converges) drift between the local keyring and keys/*.pub /
-GitHub's registered GPG key / keys.openpgp.org.
+GitHub's registered GPG key ([S] only) / keys.openpgp.org ([S] and, once
+present, [E]).
 EOF
 }
 
@@ -122,43 +145,60 @@ primary_uid() {
   '
 }
 
-# sign_subkeys <selector-or-empty> — TSV: primary_fpr, primary_uid, keyid,
-# subkey_fpr, created_epoch, expire_epoch("" if none), revoked(0/1). Scans
-# every secret primary when selector is empty.
-sign_subkeys() {
-  local selector="${1:-}"
-  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint ${selector:+"$selector"} 2>/dev/null | awk -F: '
+# usage_subkeys <cap-char> [selector] [on-disk] — TSV: primary_fpr,
+# primary_uid, keyid, subkey_fpr, created_epoch, expire_epoch("" if none),
+# revoked(0/1), capability_field (gpg's raw ssb capability string, e.g.
+# "s"/"e"). Scans every secret primary when selector is empty. A non-empty
+# 4th argument additionally restricts to on-disk secret material only
+# (`--with-colons` field 15 == "+", GnuPG DETAILS doc; same判定 as
+# sign-prewarm.sh's key_is_on_disk) — card-backed (token S/N) and stub (#)
+# entries are excluded.
+usage_subkeys() {
+  local cap="$1" selector="${2:-}" ondisk_only="${3:-}"
+  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint ${selector:+"$selector"} 2>/dev/null | awk -F: -v capchar="$cap" -v ondisk_only="$ondisk_only" '
     $1 == "sec" { pfpr = ""; puid = ""; insec = 1; next }
     $1 == "fpr" && insec { pfpr = $10; insec = 0; next }
     $1 == "uid" && puid == "" { puid = $10; next }
     $1 == "ssb" {
       revoked = ($2 == "r") ? 1 : 0
-      cap = $12
+      cap_field = $12
       created = $6
       expires = $7
       keyid = $5
-      sign_pending = (cap ~ /s/) ? 1 : 0
+      loc = $15
+      cap_match = (index(cap_field, capchar) > 0)
+      loc_match = (ondisk_only == "" || loc == "+")
+      usage_pending = (cap_match && loc_match) ? 1 : 0
       next
     }
-    $1 == "fpr" && sign_pending {
-      print pfpr "\t" puid "\t" keyid "\t" $10 "\t" created "\t" expires "\t" revoked
-      sign_pending = 0
+    $1 == "fpr" && usage_pending {
+      print pfpr "\t" puid "\t" keyid "\t" $10 "\t" created "\t" expires "\t" revoked "\t" cap_field
+      usage_pending = 0
     }
   '
 }
 
-# --- generate ---------------------------------------------------------------
-
-extract_latest_sign_subkey() { # $1 = primary fpr → prints keyid of the
-  # most-recently-created non-revoked [S] subkey. `>=` (not `>`) so that two
-  # subkeys created within the same wall-clock second — generate immediately
-  # followed by rotate, both `date +%s`-resolution — break the tie toward
-  # whichever gpg listed last, i.e. the one actually added most recently.
-  sign_subkeys "$1" | awk -F'\t' '$7 == 0 { if ($5 >= max) { max = $5; keyid = $3 } } END { print keyid }'
+# extract_latest_usage_keyid <cap-char> <primary-fpr-or-selector> — prints
+# the keyid of the most-recently-created non-revoked ON-DISK subkey with
+# that capability. `>=` (not `>`) so that two subkeys created within the
+# same wall-clock second — generate immediately followed by rotate, both
+# `date +%s`-resolution — break the tie toward whichever gpg listed last,
+# i.e. the one actually added most recently.
+#
+# on-disk 限定の理由(#252, R1-B-1): 「現行」を card-backed/stub まで含めて
+# 解決すると、generate/rotate 直後の新規鍵の特定を誤ったり、sync がカード
+# 専用の [E] を「現行」と誤認したりする。card-backed な同一 usage の subkey
+# (元 [E] 等)は意図して残置される既知の状態であり、これを「現行」扱いしない
+# ことは設計そのもの(ADR-0003 Amendment 4)。
+extract_latest_usage_keyid() {
+  local cap="$1" selector="$2"
+  usage_subkeys "$cap" "$selector" on-disk | awk -F'\t' '$7 == 0 { if ($5 >= max) { max = $5; keyid = $3 } } END { print keyid }'
 }
 
+# --- generate ---------------------------------------------------------------
+
 cmd_generate() {
-  local key="" validity="$DEFAULT_VALIDITY" algorithm="$DEFAULT_ALGORITHM"
+  local key="" validity="$DEFAULT_VALIDITY" algorithm="$DEFAULT_ALGORITHM" usage_kind="$DEFAULT_USAGE"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --key)
@@ -173,6 +213,10 @@ cmd_generate() {
         algorithm="$2"
         shift 2
         ;;
+      --usage)
+        usage_kind="$2"
+        shift 2
+        ;;
       *)
         printf 'gpg-subkey generate: 不明な引数 %s\n' "$1" >&2
         return 2
@@ -183,18 +227,37 @@ cmd_generate() {
     printf 'gpg-subkey generate: algorithm=%s は未対応(ed25519 のみ)\n' "$algorithm" >&2
     return 2
   }
+  local cap addkey_choice
+  case "$usage_kind" in
+    sign)
+      cap=s
+      addkey_choice=10
+      ;;
+    encrypt)
+      cap=e
+      addkey_choice=12
+      ;;
+    *)
+      printf 'gpg-subkey generate: usage=%s は未対応(sign|encrypt のみ)\n' "$usage_kind" >&2
+      return 2
+      ;;
+  esac
   [[ -n $key ]] || {
     printf 'gpg-subkey generate: --key が必要です\n' >&2
     return 2
   }
-  _generate_on "$key" "$validity"
+  _generate_on "$key" "$validity" "$cap" "$addkey_choice"
 }
 
-# _generate_on <primary-selector> <validity> — resolves the selector,
-# addkey's an ECC(sign-only)/Curve25519 subkey via the validated command-file
-# menu answers, and prints the new subkey's keyid on stdout.
+# _generate_on <primary-selector> <validity> <cap-char> <addkey-menu-choice>
+# — resolves the selector, addkey's an ECC subkey via the validated
+# command-file menu answers, and prints the new subkey's keyid on stdout.
+# addkey-menu-choice 10 = "ECC (sign only)" → ed25519; 12 = "ECC (encrypt
+# only)" → cv25519. Both prompt an identical "select elliptic curve" follow-
+# up where choice 1 = "Curve 25519" — confirmed interactively against real
+# GnuPG 2.4.9 (2026-09-20) before this menu digit was hardcoded here.
 _generate_on() {
-  local selector="$1" validity="$2" fpr candidates batch out new_keyid
+  local selector="$1" validity="$2" cap="$3" addkey_choice="$4" fpr candidates batch out new_keyid
   candidates="$(resolve_primary_key "$selector")"
   if [[ -z $candidates ]]; then
     printf 'gpg-subkey: --key %s に一致する秘密鍵がありません\n' "$selector" >&2
@@ -206,11 +269,11 @@ _generate_on() {
     return 1
   fi
   fpr="$candidates"
-  printf 'gpg-subkey: primary=%s (%s) に ed25519 [S] を追加します(YubiKey のタッチ/PIN が必要です)\n' \
-    "$fpr" "$(primary_uid "$fpr")" >&2
+  printf 'gpg-subkey: primary=%s (%s) に [%s] subkey を追加します(YubiKey のタッチ/PIN が必要です)\n' \
+    "$fpr" "$(primary_uid "$fpr")" "${cap^^}" >&2
 
   batch="$(mktemp)"
-  printf 'addkey\n10\n1\n%s\ny\nsave\nquit\n' "$validity" >"$batch"
+  printf 'addkey\n%s\n1\n%s\ny\nsave\nquit\n' "$addkey_choice" "$validity" >"$batch"
 
   # No `trap ... RETURN` here: a RETURN trap set inside a function is not
   # function-scoped in bash — it keeps firing on every subsequent function
@@ -228,18 +291,23 @@ _generate_on() {
     return 1
   fi
 
-  new_keyid="$(extract_latest_sign_subkey "$fpr")"
+  new_keyid="$(extract_latest_usage_keyid "$cap" "$fpr")"
   [[ -n $new_keyid ]] || {
-    printf 'gpg-subkey: 生成後の新しい [S] subkey を特定できませんでした\n' >&2
+    printf 'gpg-subkey: 生成後の新しい [%s] subkey を特定できませんでした\n' "${cap^^}" >&2
     return 1
   }
+  if [[ $cap == e ]]; then
+    printf 'gpg-subkey: 次の手順(このツールはファイルには触れません): この identity の [E]\n' >&2
+    printf '  で暗号化している対象(例: esa MCP の token.gpg)を、新しい [E] subkey %s\n' "$new_keyid" >&2
+    printf '  宛に再暗号化してください(docs/claude/esa-mcp.md 参照)\n' >&2
+  fi
   printf '%s\n' "$new_keyid"
 }
 
 # --- rotate ------------------------------------------------------------------
 
 cmd_rotate() {
-  local key="" validity="$DEFAULT_VALIDITY" revoke_old=false
+  local key="" validity="$DEFAULT_VALIDITY" revoke_old=false usage_kind="$DEFAULT_USAGE"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --key)
@@ -254,6 +322,10 @@ cmd_rotate() {
         revoke_old=true
         shift
         ;;
+      --usage)
+        usage_kind="$2"
+        shift 2
+        ;;
       *)
         printf 'gpg-subkey rotate: 不明な引数 %s\n' "$1" >&2
         return 2
@@ -264,6 +336,21 @@ cmd_rotate() {
     printf 'gpg-subkey rotate: --key が必要です\n' >&2
     return 2
   }
+  local cap addkey_choice
+  case "$usage_kind" in
+    sign)
+      cap=s
+      addkey_choice=10
+      ;;
+    encrypt)
+      cap=e
+      addkey_choice=12
+      ;;
+    *)
+      printf 'gpg-subkey rotate: usage=%s は未対応(sign|encrypt のみ)\n' "$usage_kind" >&2
+      return 2
+      ;;
+  esac
 
   local fpr old_keyids new_keyid
   fpr="$(resolve_primary_key "$key")"
@@ -271,9 +358,12 @@ cmd_rotate() {
     printf 'gpg-subkey: --key %s が primary key を一意に特定できません\n' "$key" >&2
     return 1
   }
-  old_keyids="$(sign_subkeys "$fpr" | awk -F'\t' '$7 == 0 { print $3 }')"
+  # on-disk 限定(#252, R1-B-1): card-backed な同 usage の subkey(例: [E] の
+  # カード上の元鍵)を revoke 対象に含めない。カード鍵の残置は設計そのもの
+  # (ADR-0003 Amendment 4)であり、rotate が誤って失効させてはならない。
+  old_keyids="$(usage_subkeys "$cap" "$fpr" on-disk | awk -F'\t' '$7 == 0 { print $3 }')"
 
-  new_keyid="$(_generate_on "$fpr" "$validity")" || return 1
+  new_keyid="$(_generate_on "$fpr" "$validity" "$cap" "$addkey_choice")" || return 1
   printf '%s\n' "$new_keyid"
 
   # The new key is created either way — a revoke failure below must NOT be
@@ -289,7 +379,7 @@ cmd_rotate() {
       _revoke_subkey "$fpr" "$old" || revoke_failed=1
     done <<<"$old_keyids"
   elif [[ $revoke_old == true ]]; then
-    printf 'gpg-subkey: revoke 対象の旧 [S] subkey がありませんでした\n' >&2
+    printf 'gpg-subkey: revoke 対象の旧 on-disk [%s] subkey がありませんでした\n' "${cap^^}" >&2
   fi
   if [[ $revoke_failed == 1 ]]; then
     printf 'gpg-subkey: 新 subkey %s は生成済みですが、旧 subkey の revoke に失敗したものがあります(要手動確認: gpg-subkey status)\n' "$new_keyid" >&2
@@ -371,7 +461,7 @@ cmd_export() {
     printf '%s\n' "$new_export" >"$pubfile"
     printf 'gpg-subkey export: %s を更新しました\n' "$pubfile"
   fi
-  new_keyid="$(extract_latest_sign_subkey "$fpr")"
+  new_keyid="$(extract_latest_usage_keyid s "$fpr")"
   printf '\n次の手順(このツールは git config / nix ファイルには触れません):\n'
   printf '  1. hosts/<host>.nix の programs.git.signing.key を %s に更新\n' "${new_keyid:-<subkey-id>}"
   printf '  2. commit → push → PR\n'
@@ -392,6 +482,14 @@ cmd_export() {
 # back to it, safely re-runnable regardless of where a previous attempt
 # stopped. `home/hosts/<host>.nix`'s `programs.git.signing.key` is reported
 # only, never edited — same boundary `export` already draws.
+#
+# [S] と [E] で監査対象が違う(#252, ADR-0003 Amendment 4): GitHub の GPG
+# 登録は署名検証用途なので [S] のみ照合する。hosts/*.nix の
+# programs.git.signing.key も [S] の宣言専用。export(主鍵の armored 一括
+# export)と keys.openpgp.org は [S]/[E] 両方を含む/照合する — 主鍵の export
+# は元々両方のsubkeyを含むため usage で分岐する必要がない。on-disk [E] が
+# まだ無いホスト(#252 ロールアウト前)では [E] 関連チェックを無音でスキップ
+# する — カードのみの運用も引き続き妥当な状態のため。
 cmd_sync() {
   local repo="" identity="" fix=false yes=false
   while [[ $# -gt 0 ]]; do
@@ -425,29 +523,40 @@ cmd_sync() {
   local fpr
   fpr="$(repo_identity_fpr "$repo" "$identity")" || return 1
 
-  local active_keyid active_fpr
-  active_keyid="$(extract_latest_sign_subkey "$fpr")"
-  [[ -n $active_keyid ]] || {
-    printf 'gpg-subkey sync: %s に有効な [S] subkey がありません\n' "$fpr" >&2
+  local sign_active_keyid sign_active_fpr
+  sign_active_keyid="$(extract_latest_usage_keyid s "$fpr")"
+  [[ -n $sign_active_keyid ]] || {
+    printf 'gpg-subkey sync: %s に有効な on-disk [S] subkey がありません\n' "$fpr" >&2
     return 1
   }
-  active_fpr="$(sign_subkeys "$fpr" | awk -F'\t' -v k="$active_keyid" '$3 == k { print $4; exit }')"
+  sign_active_fpr="$(usage_subkeys s "$fpr" | awk -F'\t' -v k="$sign_active_keyid" '$3 == k { print $4; exit }')"
 
-  local -a revoked_keyids=()
-  local row_keyid row_revoked
-  while IFS=$'\t' read -r _ _ row_keyid _ _ _ row_revoked; do
+  local encrypt_active_keyid=""
+  encrypt_active_keyid="$(extract_latest_usage_keyid e "$fpr")"
+
+  # revoked の収集はロケーションで絞らない — 失効は保管場所(on-disk/card)に
+  # 関わらず全掲載箇所へ反映されるべきであり、drift 検査の対象はそこにある。
+  local -a sign_revoked_keyids=() encrypt_revoked_keyids=()
+  local row_keyid row_revoked row_cap
+  while IFS=$'\t' read -r _ _ row_keyid _ _ _ row_revoked row_cap; do
     [[ -n $row_keyid ]] || continue
-    [[ $row_revoked == 1 ]] && revoked_keyids+=("$row_keyid")
-  done < <(sign_subkeys "$fpr")
+    [[ $row_revoked == 1 ]] || continue
+    case "$row_cap" in
+      *s*) sign_revoked_keyids+=("$row_keyid") ;;
+      *e*) encrypt_revoked_keyids+=("$row_keyid") ;;
+    esac
+  done < <(usage_subkeys s "$fpr"; usage_subkeys e "$fpr")
 
   local -a problems=()
 
-  # 1. repo keys/<identity>.pub
+  # 1. repo keys/<identity>.pub — 主鍵の armored export は [S]/[E] 両方を含む
+  # ため、usage で分けず 1 回の比較で両方のドリフトを検出できる。
   local pubfile="$repo/keys/$identity.pub" current_export
   current_export="$("$GPG_BIN" --armor --export "$fpr" 2>/dev/null)"
   [[ "$current_export" == "$(cat "$pubfile" 2>/dev/null)" ]] || problems+=("export")
 
-  # 2. GitHub — one registration per primary key, keyed by its short keyid.
+  # 2. GitHub — [S] のみ(GitHub の GPG 登録は署名検証用途)。one registration
+  # per primary key, keyed by its short keyid.
   local primary_short gh_json gh_entry github_drift=false
   primary_short="${fpr: -16}"
   gh_json="$(gh api user/gpg_keys 2>/dev/null)" || gh_json=""
@@ -458,9 +567,9 @@ cmd_sync() {
     if [[ -z $gh_entry ]]; then
       github_drift=true
     else
-      [[ "$(jq -r --arg k "$active_keyid" '.subkeys[]? | select(.key_id==$k) | (.can_sign and (.revoked|not))' <<<"$gh_entry")" == true ]] || github_drift=true
+      [[ "$(jq -r --arg k "$sign_active_keyid" '.subkeys[]? | select(.key_id==$k) | (.can_sign and (.revoked|not))' <<<"$gh_entry")" == true ]] || github_drift=true
       local rk
-      for rk in "${revoked_keyids[@]}"; do
+      for rk in "${sign_revoked_keyids[@]}"; do
         local rk_on_gh
         rk_on_gh="$(jq -r --arg k "$rk" '.subkeys[]? | select(.key_id==$k) | .revoked' <<<"$gh_entry")"
         [[ -z $rk_on_gh || $rk_on_gh == true ]] || github_drift=true
@@ -469,7 +578,8 @@ cmd_sync() {
     [[ $github_drift == false ]] || problems+=("github")
   fi
 
-  # 3. keys.openpgp.org — via a temp file, not a shell variable: the VKS
+  # 3. keys.openpgp.org — [S] は必須、[E] はこのホストに on-disk [E] がある
+  # 場合のみ検査対象に加える。via a temp file, not a shell variable: the VKS
   # response is binary OpenPGP key material, and `$(...)` command
   # substitution can corrupt binary data (embedded NULs, trailing-newline
   # stripping).
@@ -480,25 +590,30 @@ cmd_sync() {
   else
     local ks_colons
     ks_colons="$("$GPG_BIN" --show-keys --with-colons "$ks_file" 2>/dev/null)"
-    grep -qF $'sub:u:' <(grep "$active_keyid" <<<"$ks_colons") || keyserver_drift=true
+    grep -qF $'sub:u:' <(grep "$sign_active_keyid" <<<"$ks_colons") || keyserver_drift=true
     local rk
-    for rk in "${revoked_keyids[@]}"; do
+    for rk in "${sign_revoked_keyids[@]}"; do
       grep -qF $'sub:r:' <(grep "$rk" <<<"$ks_colons") || keyserver_drift=true
     done
+    if [[ -n $encrypt_active_keyid ]]; then
+      grep -qF $'sub:u:' <(grep "$encrypt_active_keyid" <<<"$ks_colons") || keyserver_drift=true
+      for rk in "${encrypt_revoked_keyids[@]}"; do
+        grep -qF $'sub:r:' <(grep "$rk" <<<"$ks_colons") || keyserver_drift=true
+      done
+    fi
   fi
   rm -f "$ks_file"
   [[ $keyserver_drift == false ]] || problems+=("keyserver")
 
-  # 4. THIS host's hosts/<host>.nix only — report-only, this tool never
-  # edits nix files. [S] is per-machine (ADR-0003 Amendment §1): a second
-  # host sharing this identity (e.g. altair alongside personal-pop) is
-  # expected to carry its OWN independent [S] subkey, generated on that
-  # machine — its keyring isn't even present here, so checking every
-  # hosts/*.nix that imports this identity against *this* machine's
-  # $active_fpr would misreport every other host as "stale" when it simply
-  # has a different, equally valid subkey. Resolve "this host" the same way
-  # scripts/hms.sh's resolve_host() does: the dotfiles/host marker, else
-  # `hostname`.
+  # 4. THIS host's hosts/<host>.nix only — [S] のみ、report-only、このツール
+  # は nix ファイルには触れない。[S] は per-machine(ADR-0003 Amendment §1):
+  # 第二のホストが同じ identity を共有していても(例: altair と
+  # personal-pop)、そのホストは自分自身の独立した [S] subkey を持つのが
+  # 期待される挙動であり、ここでの鍵束には存在すらしない — 「このマシン」の
+  # $sign_active_fpr で他ホストの hosts/*.nix を全部チェックすると、単に
+  # 別の(同様に正当な)subkey を持つだけの他ホストを毎回 stale と誤報する。
+  # 「このホスト」の解決は scripts/hms.sh の resolve_host() と同じ規則:
+  # dotfiles/host マーカー、無ければ `hostname`。
   local -a stale_hosts=()
   local this_host marker hf hf_key
   marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host"
@@ -511,11 +626,16 @@ cmd_sync() {
     # sed, not `grep -oP`: BSD grep (darwin, where this script also runs
     # per home/modules/gpg.nix's launchd branch) has no -P.
     hf_key="$(sed -n 's/.*programs\.git\.signing\.key = "\([^"]*\)".*/\1/p' "$hf" | head -1)"
-    [[ "$hf_key" == "$active_fpr" ]] || stale_hosts+=("$hf")
+    [[ "$hf_key" == "$sign_active_fpr" ]] || stale_hosts+=("$hf")
   fi
 
   if [[ ${#problems[@]} -eq 0 && ${#stale_hosts[@]} -eq 0 ]]; then
-    printf 'gpg-subkey sync: %s は同期済みです(現行 [S] subkey %s)\n' "$identity" "$active_keyid"
+    if [[ -n $encrypt_active_keyid ]]; then
+      printf 'gpg-subkey sync: %s は同期済みです(現行 [S] subkey %s、現行 [E] subkey %s)\n' \
+        "$identity" "$sign_active_keyid" "$encrypt_active_keyid"
+    else
+      printf 'gpg-subkey sync: %s は同期済みです(現行 [S] subkey %s)\n' "$identity" "$sign_active_keyid"
+    fi
     return 0
   fi
 
@@ -524,12 +644,15 @@ cmd_sync() {
   for p in "${problems[@]}"; do
     case "$p" in
       export) printf '  - keys/%s.pub がローカル鍵束より古い\n' "$identity" ;;
-      github) printf '  - GitHub の GPG 登録が現行 subkey %s を反映していない\n' "$active_keyid" ;;
-      keyserver) printf '  - keys.openpgp.org が現行 subkey %s を反映していない\n' "$active_keyid" ;;
+      github) printf '  - GitHub の GPG 登録が現行 [S] subkey %s を反映していない\n' "$sign_active_keyid" ;;
+      keyserver)
+        printf '  - keys.openpgp.org が現行 [S] subkey %s を反映していない可能性があります\n' "$sign_active_keyid"
+        [[ -n $encrypt_active_keyid ]] && printf '  - keys.openpgp.org が現行 [E] subkey %s を反映していない可能性があります\n' "$encrypt_active_keyid"
+        ;;
     esac
   done
   for hf in "${stale_hosts[@]}"; do
-    printf '  - %s の programs.git.signing.key が現行 subkey (%s) と異なる(手動更新が必要)\n' "$hf" "$active_fpr"
+    printf '  - %s の programs.git.signing.key が現行 [S] subkey (%s) と異なる(手動更新が必要)\n' "$hf" "$sign_active_fpr"
   done
 
   [[ $fix == true ]] || return 1
@@ -581,11 +704,11 @@ cmd_sync() {
 
 # --- status / remind -------------------------------------------------------
 
-_status_rows() { # <repo-or-empty> → TSV rows, restricted to keys/*.pub
-  # fingerprints when a repo is given, else every local secret key.
-  local repo="$1"
+_status_rows() { # <repo-or-empty> → TSV rows([S]/[E] 両方), restricted to
+  # keys/*.pub fingerprints when a repo is given, else every local secret key.
+  local repo="$1" cap
   if [[ -z $repo ]]; then
-    sign_subkeys ""
+    for cap in s e; do usage_subkeys "$cap" ""; done
     return 0
   fi
   local f fpr
@@ -596,8 +719,18 @@ _status_rows() { # <repo-or-empty> → TSV rows, restricted to keys/*.pub
       $1 == "fpr" && want { print $10; exit }
     ')"
     [[ -n $fpr ]] || continue
-    sign_subkeys "$fpr"
+    for cap in s e; do usage_subkeys "$cap" "$fpr"; done
   done
+}
+
+# _usage_label <cap-field> — maps gpg's raw capability string to the
+# ADR-0003 bracket notation used throughout this repo's docs.
+_usage_label() {
+  case "$1" in
+    *s*) printf '[S]' ;;
+    *e*) printf '[E]' ;;
+    *) printf '[%s]' "$1" ;;
+  esac
 }
 
 cmd_status() {
@@ -614,26 +747,28 @@ cmd_status() {
         ;;
     esac
   done
-  local now rows pfpr puid keyid _sfpr created expires revoked days found=0
+  local now rows pfpr puid keyid _sfpr created expires revoked cap_field days found=0
   now="$(now_epoch)"
   rows="$(_status_rows "$repo")"
   [[ -n $rows ]] || {
-    printf 'gpg-subkey status: [S] subkey が見つかりません\n'
+    printf 'gpg-subkey status: [S]/[E] subkey が見つかりません\n'
     return 0
   }
-  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked; do
+  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked cap_field; do
     [[ -n $keyid ]] || continue
     found=1
     days="$(days_until "$expires" "$now")"
+    local label
+    label="$(_usage_label "$cap_field")"
     if [[ $revoked == 1 ]]; then
-      printf '%s (%s) sub=%s: revoked\n' "$puid" "$pfpr" "$keyid"
+      printf '%s (%s) sub=%s %s: revoked\n' "$puid" "$pfpr" "$keyid" "$label"
     elif [[ $days == inf ]]; then
-      printf '%s (%s) sub=%s: 無期限\n' "$puid" "$pfpr" "$keyid"
+      printf '%s (%s) sub=%s %s: 無期限\n' "$puid" "$pfpr" "$keyid" "$label"
     else
-      printf '%s (%s) sub=%s: 残り %s 日\n' "$puid" "$pfpr" "$keyid" "$days"
+      printf '%s (%s) sub=%s %s: 残り %s 日\n' "$puid" "$pfpr" "$keyid" "$label" "$days"
     fi
   done <<<"$rows"
-  [[ $found == 1 ]] || printf 'gpg-subkey status: [S] subkey が見つかりません\n'
+  [[ $found == 1 ]] || printf 'gpg-subkey status: [S]/[E] subkey が見つかりません\n'
 }
 
 cmd_remind() {
@@ -654,21 +789,21 @@ cmd_remind() {
         ;;
     esac
   done
-  local now rows pfpr puid keyid _sfpr created expires revoked days
+  local now rows pfpr puid keyid _sfpr created expires revoked cap_field days
   local -a due=()
   now="$(now_epoch)"
-  rows="$(sign_subkeys "")"
-  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked; do
+  rows="$(usage_subkeys s ""; usage_subkeys e "")"
+  while IFS=$'\t' read -r pfpr puid keyid _sfpr created expires revoked cap_field; do
     [[ -n $keyid ]] || continue
     [[ $revoked == 0 ]] || continue
     days="$(days_until "$expires" "$now")"
     [[ $days == inf ]] && continue
     if ((days <= threshold)); then
-      due+=("${puid} sub=${keyid} 残り${days}日で失効")
+      due+=("${puid} sub=${keyid} $(_usage_label "$cap_field") 残り${days}日で失効")
     fi
   done <<<"$rows"
   [[ ${#due[@]} -gt 0 ]] || {
-    printf 'gpg-subkey remind: %s 日以内に失効する [S] subkey はありません\n' "$threshold"
+    printf 'gpg-subkey remind: %s 日以内に失効する [S]/[E] subkey はありません\n' "$threshold"
     return 0
   }
   local line
@@ -678,7 +813,7 @@ cmd_remind() {
   if [[ $notify == true ]]; then
     local body
     body="$(printf '%s\n' "${due[@]}")"
-    "$HERDR_BIN" notification show "GPG [S] subkey の失効が近づいています" --body "${body:0:230}" --sound request >/dev/null 2>&1 || true
+    "$HERDR_BIN" notification show "GPG [S]/[E] subkey の失効が近づいています" --body "${body:0:230}" --sound request >/dev/null 2>&1 || true
   fi
   return 1
 }
@@ -688,7 +823,12 @@ cmd_remind() {
 # against a throwaway, empty-passphrase primary key in an isolated GNUPGHOME —
 # not stubbed, since the addkey/revkey command-file mechanics are exactly
 # what needs validating (same "real operations in a fixture dir" precedent
-# as scripts/git-audit-worktrees' --selftest uses real git repos).
+# as scripts/git-audit-worktrees' --selftest uses real git repos). The one
+# exception is the on-disk/card-backed filter regression test (#252,
+# R1-B-1): a real smartcard can't be faked in a fixture, so that check feeds
+# synthetic `--with-colons` text through a stub gpg binary instead — the
+# same technique config/claude/hooks/sign-prewarm.sh's --selftest already
+# uses for its own card/stub/on-disk field-15 coverage.
 selftest() {
   local dir fail=0
   dir="$(mktemp -d)"
@@ -743,20 +883,21 @@ selftest() {
   check "edit_key_extra_args: 本番(env未設定)では空配列" 0 "${#prod_extra[@]}"
 
   local first_keyid
-  first_keyid="$(_generate_on "$fpr" 1d 2>"$dir/generate.err")" || {
+  first_keyid="$(_generate_on "$fpr" 1d s 10 2>"$dir/generate.err")" || {
     printf 'FAIL generate: %s\n' "$(cat "$dir/generate.err")" >&2
     exit 1
   }
   check "generate: 新しい keyid を出力する" 1 "$([[ -n $first_keyid ]] && echo 1 || echo 0)"
 
   local rows count
-  rows="$(sign_subkeys "$fpr")"
+  rows="$(usage_subkeys s "$fpr")"
   count="$(wc -l <<<"$rows" | tr -d ' ')"
   check "generate 後: [S] subkey が 1 本" 1 "$count"
 
   local status_out
   status_out="$(cmd_status)"
   check "status: 生成した subkey を含む" 1 "$(grep -qF "$first_keyid" <<<"$status_out" && echo 1 || echo 0)"
+  check "status: [S] ラベルを付ける" 1 "$(grep -qF "sub=$first_keyid [S]:" <<<"$status_out" && echo 1 || echo 0)"
 
   local remind_rc=0
   cmd_remind --threshold 2 >/dev/null 2>"$dir/remind.err" || remind_rc=$?
@@ -778,10 +919,10 @@ selftest() {
   second_keyid="$(head -1 <<<"$rotate_out")"
   check "rotate: 新しい keyid は generate と異なる" 1 "$([[ $second_keyid != "$first_keyid" ]] && echo 1 || echo 0)"
 
-  rows="$(sign_subkeys "$fpr")"
+  rows="$(usage_subkeys s "$fpr")"
   local old_revoked
   old_revoked="$(awk -F'\t' -v k="$first_keyid" '$3 == k { print $7 }' <<<"$rows")"
-  check "rotate --revoke-old: 旧 subkey が revoked=1" 1 "$old_revoked"
+  check "rotate --revoke-old: 旧 [S] subkey が revoked=1" 1 "$old_revoked"
 
   local export_out
   export_out="$(cmd_export --repo "$dir/repo" --identity selftest)"
@@ -791,10 +932,88 @@ selftest() {
   export_out="$(cmd_export --repo "$dir/repo" --identity selftest)"
   check "export: 変更なしなら再実行で no-op" 1 "$(grep -qF '変更はありません' <<<"$export_out" && echo 1 || echo 0)"
 
+  # --- [E] カバレッジ(#252) --------------------------------------------
+  echo "[E] usage カバレッジ:"
+
+  local e_first_keyid
+  e_first_keyid="$(cmd_generate --key "$fpr" --usage encrypt --validity 1d 2>"$dir/generate-e.err")" || {
+    printf 'FAIL generate --usage encrypt: %s\n' "$(cat "$dir/generate-e.err")" >&2
+    exit 1
+  }
+  check "generate --usage encrypt: 新しい keyid を出力する" 1 "$([[ -n $e_first_keyid ]] && echo 1 || echo 0)"
+  check "generate --usage encrypt: 次手順(再暗号化)を案内する" 1 \
+    "$(grep -qF "$e_first_keyid" "$dir/generate-e.err" && echo 1 || echo 0)"
+
+  rows="$(usage_subkeys e "$fpr")"
+  count="$(wc -l <<<"$rows" | tr -d ' ')"
+  check "generate --usage encrypt 後: [E] subkey が 1 本" 1 "$count"
+
+  status_out="$(cmd_status)"
+  check "status: [E] subkey も報告する" 1 "$(grep -qF "sub=$e_first_keyid [E]:" <<<"$status_out" && echo 1 || echo 0)"
+
+  local e_second_keyid rotate_e_out
+  rotate_e_out="$(cmd_rotate --key "$fpr" --usage encrypt --validity 1d --revoke-old 2>"$dir/rotate-e.err")" || {
+    printf 'FAIL rotate --usage encrypt: %s\n' "$(cat "$dir/rotate-e.err")" >&2
+    exit 1
+  }
+  e_second_keyid="$(head -1 <<<"$rotate_e_out")"
+  check "rotate --usage encrypt: 新しい keyid は generate と異なる" 1 \
+    "$([[ $e_second_keyid != "$e_first_keyid" ]] && echo 1 || echo 0)"
+
+  rows="$(usage_subkeys e "$fpr")"
+  old_revoked="$(awk -F'\t' -v k="$e_first_keyid" '$3 == k { print $7 }' <<<"$rows")"
+  check "rotate --usage encrypt --revoke-old: 旧 on-disk [E] subkey が revoked=1" 1 "$old_revoked"
+
+  local s_after_e
+  s_after_e="$(extract_latest_usage_keyid s "$fpr")"
+  check "encrypt の rotate は [S] の現行 subkey に影響しない" "$second_keyid" "$s_after_e"
+
+  # --- on-disk フィルタの回帰(#252, R1-B-1) ------------------------------
+  # 実カードは fixture 内で偽装できないため、合成した --with-colons 出力を
+  # スタブ gpg 経由で usage_subkeys/extract_latest_usage_keyid に直接通し、
+  # card-backed な subkey が「現行」判定にも revoke 候補にも入らないことを
+  # 検証する(sign-prewarm.sh --selftest の card/stub 合成入力と同じ手法)。
+  echo "on-disk フィルタ(合成 card-backed 入力、R1-B-1):"
+
+  cat >"$dir/list-mixed-e.txt" <<'EOF'
+sec:u:255:22:AAAAAAAAAAAAAAAA:1753115795:::u:::scESCA:::D2760001240100000006246379980000::ed25519:::0:
+fpr:::::::::92E7B05978F0FE4E5500F6F76CFC837175BE257E:
+ssb:u:255:18:CARDEEEEEEEEEEEE:1753115911:1784651911:::::e:::D2760001240100000006246379980000::cv25519::
+fpr:::::::::CARDCARDCARDCARDCARDCARDCARDCARDCARDEEEE:
+ssb:u:255:18:DISKEEEEEEEEEEEE:1783930808:1815466808:::::e:::+::cv25519::
+fpr:::::::::57B25182FB450B06570860488608A3F925E329CC:
+EOF
+  mkdir -p "$dir/bin"
+  cat >"$dir/bin/gpg-list-stub" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  *--list-secret-keys*) cat "$GPG_SUBKEY_TEST_LIST_FILE" ;;
+  *) exit 1 ;;
+esac
+STUB
+  chmod +x "$dir/bin/gpg-list-stub"
+
+  local mixed_all mixed_ondisk
+  mixed_all="$(GPG_BIN="$dir/bin/gpg-list-stub" GPG_SUBKEY_TEST_LIST_FILE="$dir/list-mixed-e.txt" usage_subkeys e "")"
+  check "on-disk フィルタなし: card/disk 両方の [E] を含む(2行)" 2 "$(grep -c . <<<"$mixed_all")"
+
+  mixed_ondisk="$(GPG_BIN="$dir/bin/gpg-list-stub" GPG_SUBKEY_TEST_LIST_FILE="$dir/list-mixed-e.txt" usage_subkeys e "" on-disk)"
+  check "on-disk フィルタあり: card-backed [E] を除外する(1行)" 1 "$(grep -c . <<<"$mixed_ondisk")"
+  check "on-disk フィルタあり: 残る行は on-disk keyid" 1 "$(grep -qF 'DISKEEEEEEEEEEEE' <<<"$mixed_ondisk" && echo 1 || echo 0)"
+  check "on-disk フィルタあり: card keyid は含まれない" 0 "$(grep -qF 'CARDEEEEEEEEEEEE' <<<"$mixed_ondisk" && echo 1 || echo 0)"
+
+  local mixed_active
+  mixed_active="$(GPG_BIN="$dir/bin/gpg-list-stub" GPG_SUBKEY_TEST_LIST_FILE="$dir/list-mixed-e.txt" extract_latest_usage_keyid e "")"
+  check "extract_latest_usage_keyid: card-backed を「現行」として解決しない" "DISKEEEEEEEEEEEE" "$mixed_active"
+
   # sync: `gh` and `curl` are stubbed — this must never touch a real GitHub
   # account or the real keys.openpgp.org, even by accident. keys/selftest.pub
-  # is already current from the export block above, so only github/keyserver
-  # drift is expected in the detection sub-test.
+  # is stale in two independent ways at this point: (a) [S] rotated after
+  # the last export (github/keyserver-relevant), (b) the [E] subkeys didn't
+  # exist yet at the last export at all (export/keyserver-relevant). GitHub
+  # registration below deliberately references the OLD [S] key
+  # ($first_keyid, already revoked) so github drift detection stays covered
+  # exactly as it was before [E] support was added.
   mkdir -p "$dir/bin"
   local primary_short="${fpr: -16}"
   jq -n --arg k "$primary_short" --arg old "$first_keyid" \
@@ -830,14 +1049,19 @@ STUB
   local sync_out sync_rc=0
   sync_out="$(PATH="$dir/bin:$PATH" cmd_sync --repo "$dir/repo" --identity selftest 2>&1)" || sync_rc=$?
   check "sync: drift があれば exit 1" 1 "$sync_rc"
-  check "sync: github drift を報告する" 1 "$(grep -qF 'GitHub' <<<"$sync_out" && echo 1 || echo 0)"
-  check "sync: keyserver drift を報告する(未公開の fixture key)" 1 "$(grep -qF 'keys.openpgp.org' <<<"$sync_out" && echo 1 || echo 0)"
-  check "sync: export は既に同期済みなので報告しない" 0 "$(grep -c 'keys/selftest.pub' <<<"$sync_out")"
+  check "sync: github drift を報告する(旧 [S] key を stub 登録している)" 1 "$(grep -qF 'GitHub' <<<"$sync_out" && echo 1 || echo 0)"
+  check "sync: keyserver drift で [S] を報告する" 1 \
+    "$(grep -qF "現行 [S] subkey $second_keyid" <<<"$sync_out" && echo 1 || echo 0)"
+  check "sync: keyserver drift で [E] も報告する(on-disk [E] が存在するため)" 1 \
+    "$(grep -qF "現行 [E] subkey $e_second_keyid" <<<"$sync_out" && echo 1 || echo 0)"
+  check "sync: export drift も報告する([E] 生成後の再 export が未反映)" 1 "$(grep -c 'keys/selftest.pub' <<<"$sync_out")"
 
   # --fix: neutralize keyserver drift via the curl stub (serve the current
-  # export as the keyserver's "already published" response) so only the
-  # stubbed github path is exercised — this run must never invoke the real
-  # `gpg --send-keys` against the real network.
+  # export as the keyserver's "already published" response — covers both
+  # [S] and [E] at once since a primary-key export always includes every
+  # subkey) so only the stubbed github + export paths are exercised — this
+  # run must never invoke the real `gpg --send-keys` against the real
+  # network.
   "$GPG_BIN" --export "$fpr" >"$dir/keyserver-current.bin"
   rm -f "$dir/gh-calls.txt"
   local fix_rc=0
@@ -845,6 +1069,7 @@ STUB
     PATH="$dir/bin:$PATH" cmd_sync --repo "$dir/repo" --identity selftest --fix --yes \
     >"$dir/sync-fix.out" 2>&1 || fix_rc=$?
   check "sync --fix --yes: exit 0" 0 "$fix_rc"
+  check "sync --fix: export を更新する" 1 "$(grep -qF 'keys/selftest.pub を更新しました' "$dir/sync-fix.out" && echo 1 || echo 0)"
   check "sync --fix: GitHub の delete を呼ぶ" 1 "$(grep -qF 'delete' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
   check "sync --fix: GitHub の post を呼ぶ" 1 "$(grep -qF 'post' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
 
