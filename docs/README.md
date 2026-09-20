@@ -196,6 +196,10 @@ Design and rationale for the hooks and commands deployed from
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
+- [`git-checkout-freshness.md`](claude/git-checkout-freshness.md) —
+  home-manager 管理の systemd user timer: 親チェックアウト自身を
+  origin/`<base>` へ定期的に fast-forward する(worktree-fresh-base.md の
+  一段上、#78)。
 - [`plan-fresh-gate.md`](claude/plan-fresh-gate.md) — PreToolUse /
   ExitPlanMode hook: 並行 worktree 運用で drift したコードベースを見たまま
   プランが承認されるのを防ぐ。pristine なら ff-only で追従しつつ、
