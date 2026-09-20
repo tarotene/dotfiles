@@ -33,7 +33,7 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
   |---|---|
   | `gpg` が PATH に無い | home-manager 未適用の疑い |
   | トークンファイルが無い | esa.io でのトークン発行 + `docs/setup.md` 手順への誘導 |
-  | 復号失敗 | YubiKey([E] サブ鍵)の挿入・gpg-agent の状態確認を促す |
+  | 復号失敗 | on-disk [E] サブ鍵のパスフレーズ・gpg-agent の状態確認を促す(#252 未実施のホストではカード挿入を促す) |
   | 復号結果が空 | トークンファイル自体が壊れている |
   | `npx` が PATH に無い | mise の node runtime を確認 |
 
@@ -46,17 +46,36 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
   npx 不在・token handoff)をネットワークなしで検査する。CI(`ci.yml`)が
   毎回実行する。
 
-## PIN プロンプトについて
+## パスフレーズプロンプトについて(#252, ADR-0003 Amendment 4)
 
 トークンの gpg 宛先は personal identity の master fingerprint で、GnuPG は
-これを YubiKey 上の **[E](暗号化)サブ鍵**に解決する(ADR-0003 Amendment)。
-`sign-prewarm`(`docs/claude/sign-prewarm.md`)が温めるのは on-disk の
-**[S](署名)** サブ鍵のパスフレーズであり、カード PIN のキャッシュとは別の
-機構である。したがって esa MCP をログイン後に最初に起動したセッションでは、
-カード PIN の pinentry が 1 回出る(以後は gpg-agent がキャッシュする限り
-再入力は不要)。発火点が「セッション開始 = 画面を見ている瞬間」である点は
-sign-prewarm と同じ設計思想であり、Claude の Bash 呼び出し中に不意に
-pinentry が奪う事故(sign-prewarm が防いでいるもの)とは性質が異なる。
+これを有効な **[E](暗号化)サブ鍵**に解決する。#252 以降 [E] は [S] と同様
+per-machine の on-disk subkey として存在し(カード上の元 [E] は disaster
+recovery 用に残置、revoke されない)、GnuPG は複数の有効な [E] がある場合
+最も新しく作られたものを自動選択するため、on-disk [E] が優先して選ばれ、
+**日常的なカード挿入は不要になった**(実機検証: カードを完全に抜いた状態で
+複数回の復号が成功することを確認済み)。
+
+[S] と [E] は gpg-agent 内で**独立したキャッシュエントリ**(鍵ごと =
+keygrip ごと)であり、同じ文字列のパスフレーズを設定していても一方を解錠
+しても他方は温まらない(実機検証済み)。`sign-prewarm`
+(`docs/claude/sign-prewarm.md`)は #252 で [E] にも対応し、[S] とは独立に
+esa MCP の token.gpg を SessionStart 時に先回りして温める(token.gpg が
+存在しないホストでは無音でスキップ)。この結果、ログイン後最初の
+セッションでは [S]・[E] それぞれ独立に最大 1 回ずつパスフレーズを聞かれ
+うるが(2 つの独立した鍵である以上、1 回に統合することはできない)、
+その同じログイン中の 2 回目以降のセッションでは両方ともキャッシュ済み
+(400日 TTL)で無音になる。
+
+GnuPG は `gpg-agent` の外部パスワードキャッシュ機構(libsecret/gnome-keyring
+連携によるログインキーリングへの永続化)をデフォルトで許可しており、これが
+機能すればログイン後最初の 1 回すら不要になる可能性があった。実機検証した
+ところ、この host(pinentry-gnome3 + GCR 3.41.2)の pinentry ダイアログには
+保存用の UI(チェックボックス等)が実際には現れず、Secret Service に
+新規エントリも作られなかった(`gdbus` で `org.freedesktop.secrets` を
+複数回の復号の前後で確認)。したがって上記の「ログインに 1 回」が現実的な
+下限であり、これ以上の削減は追加調査(pinentry フレーバーの変更等)が
+要る。詳細は ADR-0003 Amendment 4 を参照。
 
 ## 落とし穴: `throw-keyids` との相互作用
 
@@ -125,8 +144,10 @@ YubiKey では原理的に復号できない。common.nix に置くと company �
   ホルダが残っていたら `hms` を再実行。
 - `~/.local/libexec/esa-mcp-launcher` を直接実行して stderr の診断を読む
   (Claude Code の MCP ログよりも直接的)。
-- カード PIN を聞かれ続ける・pinentry が出ない等は `gpg-agent` の状態
-  (`gpgconf --reload gpg-agent`)を確認。
+- パスフレーズを聞かれ続ける・pinentry が出ない等は `gpg-agent` の状態
+  (`gpgconf --reload gpg-agent`)を確認。カード挿入を求められる場合は
+  `gpg -K --with-colons <fingerprint>` で on-disk [E](field 15 == `+`)が
+  存在するか確認する(#252 未実施のホストではまだ存在しない)。
 
 ## 手動プロビジョニング
 
@@ -136,5 +157,8 @@ YubiKey では原理的に復号できない。common.nix に置くと company �
 read:member admin:comment` を選ぶ — 包括的な `read write` は採らない)から、
 `gpg -e` での暗号化・配置・ラウンドトリップ確認までを 1 ブロックにまとめて
 ある。トークン発行は 1 回だけでよく、暗号化済みファイルはそのまま他の
-personal ホストにコピーできる(GPG が挿さっている YubiKey の [E] サブ鍵に
-その都度解決するため、ホストごとの再暗号化は不要)。
+personal ホストにコピーできる。復号は personal identity の master
+fingerprint に対して有効な [E] を解決するので、コピー先のホストで
+`gpg-subkey generate --usage encrypt` 済み(on-disk [E] あり)であればカード
+無しで、未実施でもカードさえ挿せば復号できる — いずれの場合もホストごとの
+再暗号化は不要。

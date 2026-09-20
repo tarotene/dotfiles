@@ -8,12 +8,14 @@
 # はしない — env トークン依存の MCP サーバは esa だけと調査済みで、抽象化する
 # 利用者が他にいない。
 #
-# トークンの宛先は personal identity の master fingerprint で、GnuPG は
-# YubiKey 上の [E] サブ鍵に解決する(ADR-0003 Amendment)。したがって復号には
-# カードの挿入が要り、ログイン後最初の復号ではカード PIN の pinentry が出る
-# (以後は gpg-agent がキャッシュする)。MCP サーバの起動はセッション開始時 =
-# 画面を見ている瞬間なので、sign-prewarm(on-disk [S] 鍵のパスフレーズを前倒し
-# する別機構)と同じ「安全な瞬間への前倒し」に収まる。
+# トークンの宛先は personal identity の master fingerprint で、GnuPG はこれを
+# 有効な [E] サブ鍵に解決する。#252(ADR-0003 Amendment 4)以降は on-disk の
+# [E] を優先して選ぶため、カードの挿入は不要 —カード上の元 [E] は disaster
+# recovery 用に残置されているだけで、日常の復号経路には登場しない。したがって
+# ログイン後最初の復号では on-disk [E] のパスフレーズの pinentry が出る(以後
+# は gpg-agent がキャッシュする)。MCP サーバの起動はセッション開始時 = 画面を
+# 見ている瞬間なので、sign-prewarm([S]/[E] 両方のパスフレーズを前倒しする
+# 別機構、#252 で [E] にも対応)と同じ「安全な瞬間への前倒し」に収まる。
 #
 # 縮退はしない: トークン欠如・gpg/npx 不在・復号失敗・空トークンは stderr に
 # 診断を出して exit 1 する。hook 群の「黙って no-op」(ADR-0005)を採らないのは、
@@ -44,7 +46,7 @@ launch() {
   local token
   if ! token="$(gpg --quiet --batch --decrypt "$TOKEN_FILE")"; then
     die "復号に失敗した: $TOKEN_FILE" \
-      'YubiKey([E] サブ鍵)の挿入と gpg-agent の状態を確認する'
+      'on-disk [E] サブ鍵のパスフレーズ・gpg-agent の状態を確認する(#252 未実施のホストではカードの挿入が必要)'
   fi
   [[ -n "$token" ]] || die "復号結果が空だった: $TOKEN_FILE"
   command -v npx >/dev/null 2>&1 || die 'npx が見つからない(mise の node runtime を確認)'

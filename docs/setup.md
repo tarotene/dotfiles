@@ -71,13 +71,23 @@ chsh -s "$NIX_ZSH"             # log out and back in to take effect
 The esa.io MCP server (`@esaio/esa-mcp-server`, registered via
 `home/modules/esa.nix`) reads its token from `~/.config/esa/token.gpg`,
 encrypted to the personal identity's master key — GnuPG resolves this to
-the YubiKey [E] subkey, so decryption needs the card (ADR-0003 Amendment,
+whichever [E] subkey is currently valid (ADR-0003 Amendment 4,
 [ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md)). The file is
 host-local and never enters git. Personal hosts only (`personal-pop`,
 `altair`) — company hosts do not import this module. The token only needs
 issuing once: the same encrypted `.gpg` blob can be copied verbatim to
-every personal host, since GPG re-decrypts against whichever [E] subkey
-the inserted YubiKey exposes — no per-host re-encryption needed.
+every personal host — no per-host re-encryption needed.
+
+**Card-free decryption (recommended, #252)**: run
+`scripts/gpg-subkey generate --key <personal-fingerprint> --usage encrypt`
+once per host to cut a per-machine on-disk [E] subkey (mirrors the existing
+on-disk [S] subkey this repo already uses for signing). GnuPG then prefers
+this newest on-disk [E] over the YubiKey's card-backed one automatically —
+no `--recipient` change needed on the encryption side. Without this step,
+decryption still works but requires the YubiKey inserted every time
+`gpg-agent`'s cache is cold (once per login, same shape as signing before
+this step existed). The card's original [E] is never revoked by this —
+it stays available as a fallback.
 
 **On esa.io** — confirmed against esa-mcp-server's README and esa's PAT v2
 docs (2026-09-19). esa's own token-creation screen is screenshot-only in

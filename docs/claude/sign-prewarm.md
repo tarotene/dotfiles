@@ -1,8 +1,9 @@
-# sign-prewarm — 署名パスフレーズ入力を安全な瞬間に前倒しする hook
+# sign-prewarm — [S]/[E] パスフレーズ入力を安全な瞬間に前倒しする hook
 
 git コミットに署名しているのは、GitHub の vigilant mode で自分名義のコミットに
 Unverified が付かないようにするため。パスフレーズ入力そのものが地味に面倒、という
-問題への対処。
+問題への対処。#252(ADR-0003 Amendment 4)で esa MCP の token.gpg 復号
+([E] サブ鍵)も同じ問題を抱えることが分かり、この hook の対象に加わった。
 
 | 部品 | イベント | 役割 |
 |------|----------|------|
@@ -91,6 +92,41 @@ field 15 は `--with-secret` を付けなくても利用可能なオンディス
 (空ではない)——最初の実装ではここを「空ならオンディスク」と逆に書いており、
 plan-review の BLOCKER 指摘で実測して訂正した。
 
+## [E](esa MCP token.gpg)への拡張(#252)
+
+#252 で esa MCP の [E] サブ鍵も per-machine on-disk 化されたことで、[S] と
+まったく同じ構造の「ログインに 1 回だけパスフレーズを聞かれる」問題を抱える
+ようになった。しかし [S] と [E] は **gpg-agent 内で独立したキャッシュ
+エントリ**(鍵ごと = keygrip ごと)であり、同じ文字列のパスフレーズを設定
+していても一方を解錠しても他方は温まらない——実機で `gpg-agent` を再起動し、
+各鍵を個別に `--pinentry-mode error` でプローブして確認済み(2026-09-20/21)。
+したがって 2 つの独立した警告を 1 つに統合することはできず、`run_prewarm`
+は `warm_sign_if_configured` と `warm_decrypt_if_present` を**独立に**
+呼び出す。一方が対象外・失敗でも他方の試行を妨げない。
+
+[E] 側の対象判定は [S] と非対称である。[S] は `git config` という宣言的な
+「対象かどうか」の情報源を持つが、[E] にはそれが無いため、代わりに
+`scripts/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
+`XDG_CONFIG_HOME` → `$HOME/.config`)で求めた token.gpg の**実在**そのものを
+ゲートにする(ADR-0005 のファイル存在ゲートと同じ考え方)。company ホストや
+#252 ロールアウト前の personal-pop では token.gpg が存在しないため、この
+経路は完全に無音でスキップされる。
+
+温度判定・本番の温め呼び出しはどちらも [S] と対になる関数
+(`is_warm_decrypt`/`warm_up_decrypt`)で行う。**注意**: `--decrypt <file>`
+に対して `-o <output>` を後置すると GnuPG が
+`usage: gpg [options] --decrypt [filename]` で即座に失敗し、そもそも
+pinentry を経由しないまま exit 2 になる(`--detach-sign` 系の
+`-o /dev/null --local-user <key> --detach-sign` という並びとは逆)。
+`-o` は必ず `--decrypt <file>` より前に置く。スタブ gpg は引数を意味的に
+解釈しないため selftest はこの並び順の誤りを検出できず、実機での動作確認で
+見つかった。
+
+libsecret/gnome-keyring への永続化(gpg-agent の外部パスワードキャッシュ)
+でこの「ログインに 1 回」自体を無くせないか実機検証したが、この host
+(pinentry-gnome3 + GCR 3.41.2)では保存 UI が現れず、Secret Service にも
+何も保存されなかった。詳細と裏付けは ADR-0003 Amendment 4。
+
 ## なぜ同期ブロックなのか、なぜ hook 自身が `timeout` で刈るのか
 
 `gpg-agent.conf` には home-manager の `services.gpg-agent.grabKeyboardAndMouse`
@@ -124,9 +160,10 @@ exit 0」という設計)。
 
 | 分類 | 条件 | 挙動 |
 |---|---|---|
-| 対象外 | `gpg`/`git` 不在、`gpg.format` が `openpgp` 以外、`commit.gpgsign` が `true` でない、`user.signingkey` が空、鍵が card-backed/stub/不明、すでに warm | 完全沈黙(stdout・stderr とも空) |
-| 温める | 上記すべてを通過し cold | 本番の gpg 呼び出しを 1 回だけ行う |
-| 失敗 | 温め呼び出しが刈られた/キャンセルされた | stderr に 1 行、stdout は空 |
+| [S] 対象外 | `gpg`/`git` 不在、`gpg.format` が `openpgp` 以外、`commit.gpgsign` が `true` でない、`user.signingkey` が空、鍵が card-backed/stub/不明、すでに warm | 完全沈黙(stdout・stderr とも空) |
+| [E] 対象外 | `gpg` 不在、token.gpg が存在しない、すでに warm | 完全沈黙 |
+| 温める | 対象かつ cold([S]/[E] それぞれ独立に判定) | その対象について本番の gpg 呼び出しを 1 回だけ行う |
+| 失敗 | 温め呼び出しが刈られた/キャンセルされた | 対象ごとに stderr へ 1 行、stdout は空 |
 
 ## `register` の既知の制約
 
@@ -137,9 +174,13 @@ exit 0」という設計)。
 
 ## 検証
 
-- `bash config/claude/hooks/sign-prewarm.sh --selftest` — cwd 非依存の gating・
-  field 15 の 3 値判定・温度判定の分岐・本番失敗時の縮退・ローカル上書きに
-  引っ張られない回帰テスト(CI の `ci.yml` でも実行)。
-- 手動 E2E: `gpg-connect-agent reloadagent /bye` でキャッシュを捨ててから
-  新しい Claude セッションを開き、SessionStart のタイミングで pinentry が
-  出ること、以後の `git commit` ではダイアログが出ないことを確認する。
+- `bash config/claude/hooks/sign-prewarm.sh --selftest` — [S] 側は cwd 非依存の
+  gating・field 15 の 3 値判定・温度判定の分岐・本番失敗時の縮退・ローカル
+  上書きに引っ張られない回帰テスト、[E] 側は token.gpg の実在ゲート・温度
+  判定・本番失敗時の縮退、そして [S]/[E] が独立に温まることの回帰テスト
+  (CI の `ci.yml` でも実行)。
+- 手動 E2E: `gpgconf --kill gpg-agent` でキャッシュを完全に捨ててから hook
+  本体(または新しい Claude セッション)を実行し、SessionStart のタイミングで
+  [S]・[E] それぞれのパスフレーズが要求されること、以後の `git commit` や
+  esa MCP 起動ではダイアログが出ないことを確認する(2026-09-20/21、
+  personal-pop で実施、カードを完全に抜いた状態で確認済み)。
