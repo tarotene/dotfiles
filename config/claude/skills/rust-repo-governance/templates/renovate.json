@@ -110,12 +110,6 @@
       "labels": ["dependencies", "ci"]
     },
     {
-      "description": "dtolnay/rust-toolchain uses a channel name (@stable), not a tag — Renovate cannot version-bump it",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": ["dtolnay/rust-toolchain"],
-      "enabled": false
-    },
-    {
       "description": "Do not let Renovate auto-bump constraints.rust — it is the MSRV pin and must change only via a deliberate feat(toolchain)! MSRV bump. Renovate resolves it via the docker datasource ('rust' image) which is unrelated to this repo's build.",
       "matchManagers": ["renovate-config"],
       "matchDepNames": ["rust"],
