@@ -127,6 +127,13 @@
   `docs/repo-lifecycle.md` へ正本化する決定。`github-audit`(drift 検査)
   とは別層(存続判定)であることを明確化する。私設リポジトリは移設内容の
   検証後に archive。
+- [ADR-0024](adr/0024-hook-cli-scripts-target-rust.md) — hook / CLI
+  スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。
+  bash 続投(writeShellApplication)は closure 固定は解けても保守性・
+  表現力の主因を解決せず、Deno + TypeScript は closure 固定手法
+  (deno2nix)がアーカイブ済みで must 制約未達のため不採用。PoC 実測で
+  Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・
+  `cargo test` 移行を確認。一括移行はせず後続 Issue に段階分割する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -261,6 +268,11 @@ Design and rationale for the hooks and commands deployed from
   ネイティブ Stacked pull requests 機能の実測(preview ステータス・API
   サーフェス・`gh-stack` 拡張の既知 issue)。時間で腐る事実を
   `claude/stacked-pr.md` の裁定から分離するための器(ADR-0008)。
+- [`shell-successor-research.md`](shell-successor-research.md) — シェル
+  スクリプトの後継技術調査: bash 続投(writeShellApplication/resholve)・
+  Rust・Deno の deep dive、Go/Babashka/Nushell の浅掘り、学術文献
+  (Bash in the Wild, ACM TOSEM 2022)、`git-stash-guard.sh` の実移植 PoC
+  (起動レイテンシ・closure サイズ・テスト移行の実測)。決定は ADR-0024。
 
 ## Miscellaneous
 
