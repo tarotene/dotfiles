@@ -188,6 +188,13 @@ dotfiles/
 │   │                         #   (ADR-0014), settings, renovate — why one
 │   │                         #   command instead of 5 sibling scripts, why
 │   │                         #   judgement skips any LLM call
+│   ├── repo-lifecycle.md     # visibility/license policy, Maintain/Archive/
+│   │                         #   Delete triage criteria, deprecate-then-archive
+│   │                         #   checklist, theme-monorepo consolidation
+│   │                         #   (snapshot+PROVENANCE) — migrated from a
+│   │                         #   private portfolio-management repo (ADR-0023);
+│   │                         #   lifecycle layer, distinct from github-audit's
+│   │                         #   drift layer
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
@@ -285,6 +292,7 @@ dotfiles/
 - **ADR-0016** — repository document canon: fixed README section schema, Issue litmus moved to CONTRIBUTING.md, a closed root-file allowlist, per-file language-mixing ban, and full separation of human-facing docs from AI-facing docs (AGENTS.md as the AI canon, CLAUDE.md as a router, skills routed through `.agents/skills/`) — grounded in standard-readme, GitHub's own docs, and Art of README. Partially supersedes ADR-0013's README schema and AGENTS.md treatment. This file is a direct consequence of that ADR's Decision 5. Decision 2 (Issue litmus placement) is partially superseded by ADR-0017.
 - **ADR-0017** — CONTRIBUTING.md gets its own fixed section schema (`## Issues` with a judging question + Accepted/Rejected examples, `## Pull requests`, `## Expectations`), retiring the self-invented "Issue litmus" vocabulary in favor of GitHub's own "Issues" terminology. Grounded in GitHub's own docs, Open Source Guides, and the nayafia/contributing-template precedent. Partially supersedes ADR-0013 Decision 1's Issue litmus item and ADR-0016 Decision 2.
 - **ADR-0020** — repository governance flips from event-driven event detection to a generative one: each naming class draws its variable slot from a closed vocabulary (a codename cast registry, a descriptive-species set, a site-domain set) instead of being validated after free-form creation; `required_status_checks` is derived from CI presence but never silently excused (`ci-absent` keeps a CI-less repository visible for triage); existing repositories are grandfathered by `createdAt` (no retroactive rename, ADR-0007 precedent); and naming/purpose-sentence drift is checked by blind re-derivation (derive a name/purpose from the repository's contents with the real one hidden, then compare) instead of by accumulating more inspection rules per incident. Partially supersedes ADR-0014 (adds the closed vocabularies on top of its four-class taxonomy).
+- **ADR-0023** — repository lifecycle governance (visibility/license policy, Maintain/Archive/Delete triage criteria, deprecate-then-archive checklist, theme-monorepo consolidation via snapshot+PROVENANCE) is migrated from a private portfolio-management repository into `docs/repo-lifecycle.md`, distinct from `github-audit`'s drift layer. The source private repository is archived once the migration is verified.
 
 ## Development Rules
 
