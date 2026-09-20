@@ -10,10 +10,13 @@ fi
 # History file settings
 HISTFILE="${ZDOTDIR:-$HOME}/.zsh_history"
 
-# Create history file directory if it doesn't exist
-# (fallback to /tmp if read-only)
+# If $HOME (or $ZDOTDIR) isn't writable, don't persist history at all.
+# A previous fallback wrote to the shared, world-readable /tmp/.zsh_history
+# instead — on a multi-user host that leaks command history (which can
+# contain secrets) to every other user, and could interleave history from
+# unrelated sessions/users that hit the same fallback path (#263).
 if [[ ! -w "${HISTFILE:h}" ]]; then
-    HISTFILE="/tmp/.zsh_history"
+    unset HISTFILE
 fi
 
 HISTSIZE=10000
