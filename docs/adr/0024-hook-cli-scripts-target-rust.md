@@ -81,6 +81,18 @@ closure 固定)を満たす成熟した nix 統合手法が無いこと ——
   外で、後続 Issue に段階的な移行計画を切り出す。優先順位は「jq 密度 ×
   行数」が高いもの(pr-gate.sh、copilot-plan-review.sh、github-audit、
   gpg-subkey、stdin JSON を読む hook 群)から。
+- **ブートストラップへの影響: ホスト側の Rust toolchain は不要。** バイナリは
+  nix sandbox 内で `buildRustPackage`/`crane` がビルドし、rustc/cargo は
+  ビルド時依存として binary cache から substitute される(ADR-0002 の
+  rustup は per-project runtime の escape hatch であり別物。ランタイム
+  closure に rustc は入らない — 調査記録 §6.3)。`bootstrap.sh` の
+  `nix build .#homeConfigurations.<host>.activationPackage` の中で完結し、
+  provisioning が rustc の有無で失敗することはない。ただし自作 crate は
+  公式 binary cache に無いため、フレッシュマシンの初回 `home-manager
+  switch` ではソースからのコンパイルが走り、初回ビルド時間が伸びる
+  (PoC 実測: 1 crate で nix-build 57.3 秒 — 調査記録 §6.4)。これは失敗
+  要因ではなく遅延であり、必要なら自前 binary cache(CI 成果物の push)
+  で緩和できる。導入要否は移行 Issue 側で判断する(本 ADR は決めない)。
 - 新規に書く hook / CLI(対象スコープ内)は、この ADR 以降 Rust を既定とする。
   既存スクリプトは移行 Issue が個別に消化するまで bash のまま残る
   (ADR-0007 の「既存ファイルの一括リネームはしない」と同じ漸進方針)。
