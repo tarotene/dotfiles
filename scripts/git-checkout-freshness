@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# git-checkout-freshness — keep one or more *parent* checkouts (the ones
+# herdr forks new worktrees from) fast-forwarded to origin/<base>.
+#
+# 設計と根拠: docs/claude/git-checkout-freshness.md
+#
+# herdr's Workspace Fork (≒ creating a new worktree) reuses the parent
+# checkout's HEAD as-is, with no fetch in between. config/claude/hooks/
+# worktree-fresh-base.sh already solves the symmetric problem one level
+# down (a pristine, not-yet-touched *worktree* auto-fast-forwards to
+# origin/<base> at SessionStart). This script solves the level above it:
+# keeping the *parent* checkout itself fresh, so worktrees forked from it
+# start from a recent base in the first place.
+#
+# Safety conditions (all AND, checked per repo path, fetch happens first):
+#   - path exists and is a git work tree
+#   - current branch is non-empty (not detached HEAD / mid-rebase)
+#   - current branch IS the default branch (opposite of worktree-fresh-base:
+#     a parent checkout is expected to stay on main/master, not a feature
+#     branch — if it's on something else, this script is not the tool to
+#     reconcile that, so it skips)
+#   - `git status --porcelain` is empty (clean working tree)
+#   - ahead == 0 (no local commits not yet on origin/<base>)
+#   - behind > 0 (worth updating at all)
+#
+# Only under all of the above does it run `git merge --ff-only --quiet
+# origin/<base>` — never `reset --hard`, for the same TOCTOU-safety reason
+# as worktree-fresh-base.sh: ff-only re-enforces the precondition
+# atomically and fails silently rather than fabricating history if
+# something else committed between the fetch and the merge.
+#
+# 縮退: 各パスは独立に fail-open — 1 つの repo で何が起きても他の repo の
+# 処理は続行する。skip 理由は stderr に流すだけ(journalctl --user -u
+# git-checkout-freshness で追える)で、"dirty" や "on a feature branch" は
+# ごく普通の日常状態であり、systemd の unit を failed 扱いにするような
+# 異常ではない — このスクリプト自体は usage エラー以外では常に exit 0。
+#
+# 使い方:
+#   タイマーから: git-checkout-freshness <path> [<path> ...]
+#   自己検査:     git-checkout-freshness --selftest
+set -uo pipefail
+
+default_branch() { # $1=repo path
+  local ref
+  ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0
+  printf '%s' "${ref#origin/}"
+}
+
+process_one() { # $1=repo path -> 0=updated or nothing-to-do, 1=skipped/failed (non-fatal)
+  local project="$1"
+
+  [[ -n "$project" && -d "$project" ]] || {
+    echo "SKIP $project: no such directory" >&2
+    return 1
+  }
+  git -C "$project" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "SKIP $project: not a git work tree" >&2
+    return 1
+  }
+
+  local branch
+  branch="$(git -C "$project" branch --show-current 2>/dev/null)" || branch=""
+  [[ -n "$branch" ]] || {
+    echo "SKIP $project: detached HEAD or mid-rebase" >&2
+    return 1
+  }
+
+  local base
+  base="$(default_branch "$project")"
+  [[ -n "$base" ]] || {
+    echo "SKIP $project: origin/HEAD not set" >&2
+    return 1
+  }
+  [[ "$branch" == "$base" ]] || {
+    echo "SKIP $project: on '$branch', not the default branch '$base'" >&2
+    return 1
+  }
+
+  [[ -z "$(git -C "$project" status --porcelain 2>/dev/null)" ]] || {
+    echo "SKIP $project: working tree not clean" >&2
+    return 1
+  }
+
+  timeout 15 git -C "$project" fetch --quiet origin "$base" 2>/dev/null || {
+    echo "SKIP $project: fetch failed or timed out" >&2
+    return 1
+  }
+  git -C "$project" rev-parse --verify -q "origin/$base" >/dev/null 2>&1 || {
+    echo "SKIP $project: origin/$base not resolvable after fetch" >&2
+    return 1
+  }
+
+  local ab ahead behind
+  ab="$(git -C "$project" rev-list --left-right --count "HEAD...origin/$base" 2>/dev/null)" || {
+    echo "SKIP $project: rev-list failed" >&2
+    return 1
+  }
+  ahead="${ab%%$'\t'*}"
+  behind="${ab##*$'\t'}"
+  [[ "$ahead" == "0" ]] || {
+    echo "SKIP $project: $ahead local commit(s) not on origin/$base" >&2
+    return 1
+  }
+  [[ "$behind" =~ ^[0-9]+$ ]] && ((behind > 0)) || {
+    echo "OK   $project: already current with origin/$base" >&2
+    return 0
+  }
+
+  local before after
+  before="$(git -C "$project" rev-parse --short HEAD 2>/dev/null)" || before=""
+  if ! git -C "$project" merge --ff-only --quiet "origin/$base" 2>/dev/null; then
+    echo "SKIP $project: fast-forward merge failed (history moved under us?)" >&2
+    return 1
+  fi
+  after="$(git -C "$project" rev-parse --short HEAD 2>/dev/null)" || after=""
+  echo "OK   $project: fast-forwarded $before -> $after ($behind commit(s))" >&2
+  return 0
+}
+
+# --- サブコマンド: --selftest ---------------------------------------------------
+
+if [[ "${1:-}" == "--selftest" ]]; then
+  self_path() {
+    printf '%s/%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" "$(basename "${BASH_SOURCE[0]}")"
+  }
+  self="$(self_path)"
+  fail=0
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' EXIT
+
+  export GIT_CONFIG_GLOBAL=/dev/null
+  export GIT_CONFIG_SYSTEM=/dev/null
+
+  check() { # check <名前> <期待> <実際>
+    if [[ "$2" == "$3" ]]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1 (expected [$2], got [$3])" >&2
+      fail=1
+    fi
+  }
+
+  # upstream 側で 1 コミット進めてから default branch のままの checkout を作る
+  # (behind>0 の初期状態) — worktree-fresh-base.sh の new_repo_pair と対だが、
+  # ここではチェックアウト側が最初から default branch のまま(feature branch
+  # へ切り替えない)であることが違い。
+  new_repo_pair() {
+    local name="$1" upstream checkout
+    upstream="$dir/$name-upstream"
+    checkout="$dir/$name-checkout"
+    git init -q -b main "$upstream"
+    git -C "$upstream" -c user.email=t@example.com -c user.name=t \
+      commit --allow-empty -q -m base
+    git clone -q "$upstream" "$checkout"
+    git -C "$checkout" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+    git -C "$upstream" -c user.email=t@example.com -c user.name=t \
+      commit --allow-empty -q -m ahead1
+    printf '%s' "$checkout"
+  }
+
+  echo "FF 成功(clean + on default branch + behind>0):"
+  co="$(new_repo_pair fresh)"
+  before_head="$(git -C "$co" rev-parse HEAD)"
+  bash "$self" "$co" >"$dir/out" 2>"$dir/err"
+  rc=$?
+  after_head="$(git -C "$co" rev-parse HEAD)"
+  upstream_head="$(git -C "$dir/fresh-upstream" rev-parse HEAD)"
+  check "FF 成功: exit 0" 0 "$rc"
+  check "FF 成功: HEAD が upstream に一致" "$upstream_head" "$after_head"
+  grep -qF "fast-forwarded" "$dir/err" && echo "ok   FF 成功: ログに fast-forwarded" || {
+    echo "FAIL FF 成功: ログに fast-forwarded が無い: $(cat "$dir/err")" >&2
+    fail=1
+  }
+
+  echo "dirty な checkout は無視:"
+  co="$(new_repo_pair dirty)"
+  echo x >"$co/untracked.txt"
+  before_head="$(git -C "$co" rev-parse HEAD)"
+  bash "$self" "$co" >/dev/null 2>"$dir/err"
+  rc=$?
+  after_head="$(git -C "$co" rev-parse HEAD)"
+  check "dirty: exit 0(スキップは致命ではない)" 0 "$rc"
+  check "dirty: HEAD 不変" "$before_head" "$after_head"
+
+  echo "feature branch 上(default branch ではない)は無視:"
+  co="$(new_repo_pair onbranch)"
+  git -C "$co" checkout -q -b work
+  before_head="$(git -C "$co" rev-parse HEAD)"
+  bash "$self" "$co" >/dev/null 2>"$dir/err"
+  after_head="$(git -C "$co" rev-parse HEAD)"
+  check "feature branch: HEAD 不変" "$before_head" "$after_head"
+  grep -qF "not the default branch" "$dir/err" && echo "ok   feature branch: スキップ理由が出る" || {
+    echo "FAIL feature branch: スキップ理由が出ない: $(cat "$dir/err")" >&2
+    fail=1
+  }
+
+  echo "ahead>0(ローカルコミットあり)は無視:"
+  co="$(new_repo_pair ahead)"
+  git -C "$co" -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m own-commit
+  before_head="$(git -C "$co" rev-parse HEAD)"
+  bash "$self" "$co" >/dev/null 2>"$dir/err"
+  after_head="$(git -C "$co" rev-parse HEAD)"
+  check "ahead>0: HEAD 不変" "$before_head" "$after_head"
+
+  echo "behind==0(すでに最新)は成功扱い・無変更:"
+  co="$(new_repo_pair current)"
+  git -C "$co" fetch --quiet origin main
+  git -C "$co" merge --ff-only --quiet origin/main
+  before_head="$(git -C "$co" rev-parse HEAD)"
+  bash "$self" "$co" >/dev/null 2>"$dir/err"
+  rc=$?
+  after_head="$(git -C "$co" rev-parse HEAD)"
+  check "behind==0: exit 0" 0 "$rc"
+  check "behind==0: HEAD 不変" "$before_head" "$after_head"
+
+  echo "複数パス指定: 1つ壊れていても他は続行:"
+  good="$(new_repo_pair multigood)"
+  bash "$self" "$dir/does-not-exist" "$good" >/dev/null 2>"$dir/err"
+  good_head="$(git -C "$good" rev-parse HEAD)"
+  good_upstream_head="$(git -C "$dir/multigood-upstream" rev-parse HEAD)"
+  check "複数パス: 存在しないパスの後も処理継続" "$good_upstream_head" "$good_head"
+
+  [[ "$fail" == 0 ]] && echo "selftest: all passed"
+  exit "$fail"
+fi
+
+# --- 本体: 引数の全パスを処理する ------------------------------------------------
+
+[[ $# -ge 1 ]] || {
+  echo "usage: git-checkout-freshness <path> [<path> ...]" >&2
+  exit 64
+}
+
+for repo in "$@"; do
+  process_one "$repo" || true
+done
+exit 0

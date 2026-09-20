@@ -141,6 +141,10 @@ dotfiles/
 │   │                         #   prune --expire=now) and orphaned checkouts
 │   │                         #   (git worktree remove, --force optional)
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
+│   ├── git-checkout-freshness # fetch + ff-only merge one or more parent
+│   │                         #   checkouts onto origin/<base> when clean
+│   │                         #   and on the default branch (deployed to
+│   │                         #   ~/.local/bin + a systemd user timer, #78)
 │   ├── github-audit           # read-only cross-repository GitHub audit,
 │   │                         #   unified across 5 domains — rulesets (#130) /
 │   │                         #   charters / naming (ADR-0014) / settings /
@@ -214,6 +218,10 @@ dotfiles/
 │   │   │                     #   (ADR-0009); this doc covers dotfiles wiring only
 │   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
 │   │   │                     #   pristine worktree to origin/<base>
+│   │   ├── git-checkout-freshness.md # systemd user timer: fast-forward a
+│   │   │                     #   parent checkout to origin/<base> on a
+│   │   │                     #   10-minute interval (one level up from
+│   │   │                     #   worktree-fresh-base.md, #78)
 │   │   ├── plan-fresh-gate.md    # PreToolUse/ExitPlanMode hook: ff-only when
 │   │   │                     #   pristine, deny when origin/<base>'s progress
 │   │   │                     #   intersects plan-referenced files, converges

@@ -14,6 +14,16 @@ let
   registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
     builtins.readFile ../../scripts/register-codex-hooks
   );
+
+  # #78: parent checkouts that herdr's Workspace Fork reads HEAD from
+  # without fetching first. Explicit allowlist rather than a directory
+  # scan (ghr's ~/.ghr tree can contain many repos this host has no
+  # opinion about keeping fresh) — this dotfiles checkout is the only
+  # entry today; add more paths here as the need arises.
+  checkoutFreshnessPaths = [
+    "${config.home.homeDirectory}/.ghr/github.com/tarotene/dotfiles"
+  ];
+  checkoutFreshnessPath = "${config.home.homeDirectory}/.local/bin/git-checkout-freshness";
   # flock(1): Linux ships it via util-linux (already pulled in below). darwin
   # has no native flock, so pkgs.flock (discoteq/flock, a portable C
   # reimplementation, meta.platforms = platforms.all) is added there instead —
@@ -39,6 +49,15 @@ in
   };
   home.file.".local/libexec/git-worktree-create-guard" = {
     source = ../../scripts/git-worktree-create-guard;
+    executable = true;
+  };
+  # git-checkout-freshness: fetch + `merge --ff-only` a parent checkout onto
+  # origin/<base> when clean and on the default branch (docs/claude/
+  # git-checkout-freshness.md) — the one-level-up companion to
+  # config/claude/hooks/worktree-fresh-base.sh, which does the same for a
+  # pristine *worktree*.
+  home.file.".local/bin/git-checkout-freshness" = {
+    source = ../../scripts/git-checkout-freshness;
     executable = true;
   };
 
@@ -119,6 +138,55 @@ in
         pkgs.jq
         pkgs.flock
         pkgs.herdr
+      ];
+    };
+  };
+
+  # git-checkout-freshness timer (#78). 10-minute interval: frequent enough
+  # that a parent checkout rarely sits more than 10 minutes stale before the
+  # next Workspace Fork, but far less chatty against origin than
+  # git-audit-worktrees' 1-minute read-only scan (this one does a real
+  # `git fetch` per path per run).
+  systemd.user.services.git-checkout-freshness = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Fast-forward parent Git checkouts to origin/<base>";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${checkoutFreshnessPath} ${
+        lib.concatMapStringsSep " " lib.escapeShellArg checkoutFreshnessPaths
+      }";
+      Environment = "PATH=${
+        lib.makeBinPath [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.git
+          pkgs.util-linux # timeout(1)
+        ]
+      }";
+    };
+  };
+
+  systemd.user.timers.git-checkout-freshness = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Keep parent Git checkouts fresh every 10 minutes";
+    Timer = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "10min";
+      AccuracySec = "30s";
+      Persistent = true;
+      Unit = "git-checkout-freshness.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  launchd.agents.git-checkout-freshness = lib.mkIf pkgs.stdenv.isDarwin {
+    enable = true;
+    config = {
+      ProgramArguments = [ checkoutFreshnessPath ] ++ checkoutFreshnessPaths;
+      StartInterval = 600;
+      RunAtLoad = true;
+      EnvironmentVariables.PATH = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.git
       ];
     };
   };
