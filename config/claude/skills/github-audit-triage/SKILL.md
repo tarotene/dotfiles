@@ -57,7 +57,13 @@ description・topics・settings フィールド・ファイルツリー・open I
   高一致なら「宣言のみ」、不一致なら「改名 + 宣言」。`naming-codename` を
   提案する場合は、`config/github-audit/codename-registry.tsv`(PUBLIC)
   または `~/.config/github-audit/codename-registry.local.tsv`(PRIVATE、
-  dotfiles には書かない)への追記案も併記する。
+  dotfiles には書かない)への追記案も併記する。**閉じた語彙(species set・
+  命名クラス等)を既存の実データから帰納的にシードするときは、トークン
+  単体の語感だけで採否を判定しない — 必ず対応する README・Scope・
+  ファイル構成を読んでから確定する**(#232: 語感で「恒久的な主題」と
+  誤認した末尾トークンが、実際には「完了・凍結した研究アーカイブ」の
+  主題名に過ぎなかった事例がある。閉集合が際限なく増える設計は ADR-0020
+  自体の目的と矛盾する)。
 - rulesets ドメインの `ci-absent` は、リポジトリごとに
   {最小 CI 播種 PR / CI 播種を促す誘導 Issue の起票 / exempt} の三択を
   提案する(ADR-0021)。コードを持つリポジトリは播種 PR、記録・ノート系は
