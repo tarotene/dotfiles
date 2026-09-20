@@ -104,11 +104,19 @@ never echoes, logs, or leaves it in shell history:
 ```bash
 mkdir -p ~/.config/esa
 read -rs ESA_TOKEN     # paste the token, press Enter (not echoed)
-printf '%s' "$ESA_TOKEN" | gpg --encrypt --recipient 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 \
+printf '%s' "$ESA_TOKEN" | gpg --encrypt --no-throw-keyids \
+  --recipient 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 \
   --output ~/.config/esa/token.gpg
 unset ESA_TOKEN
 gpg --quiet --decrypt ~/.config/esa/token.gpg | wc -c   # round-trip: prints byte length, not the token
 ```
+
+`--no-throw-keyids` is required here: `home/modules/gpg.nix`'s
+`throw-keyids = true` applies to every `gpg --encrypt` on this host, so
+without this flag the recipient key ID is stripped and decryption falls
+back to trying every card-backed secret key in the keyring in turn — one
+"insert card" GUI prompt per card owned. See
+[`docs/claude/esa-mcp.md`](claude/esa-mcp.md) for the full incident.
 
 Rotating an existing token: revoke the old PAT v2 on esa.io first (same
 menu as step 1), then re-run the block above to overwrite

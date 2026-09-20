@@ -51,7 +51,12 @@ in
       keyid-format = "0xlong";
       with-fingerprint = true;
 
-      # Disable recipient key ID in messages (privacy).
+      # Disable recipient key ID in messages (privacy). Applies to every
+      # `gpg --encrypt` on this host — a local-storage file encrypted for a
+      # card-backed key (e.g. esa MCP's token.gpg) MUST pass `--no-throw-keyids`
+      # explicitly, or decryption falls back to trying every card-backed
+      # secret key in the keyring in turn (one "insert card" prompt per card
+      # owned). See docs/claude/esa-mcp.md's "落とし穴: throw-keyids" section.
       throw-keyids = true;
 
       # Auto-retrieve keys when verifying signatures.
