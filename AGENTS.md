@@ -161,6 +161,9 @@ dotfiles/
 │   ├── esa-mcp-launcher       # decrypts ~/.config/esa/token.gpg and execs the
 │   │                         #   esa.io MCP server (deployed to ~/.local/libexec,
 │   │                         #   personal identity only, ADR-0022)
+│   ├── gpg-subkey             # generate/rotate/export/sync/status/remind
+│   │                         #   subcommands for [S]/[E] subkey management
+│   │                         #   (deployed to ~/.local/bin, ADR-0003 Amendment)
 │   ├── register-codex-hooks   # activation-only (writeShellScript, not a
 │   │                         #   deployed file): idempotent variadic merger for
 │   │                         #   ~/.codex/hooks.json — worktree.nix registers the
