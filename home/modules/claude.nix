@@ -1076,6 +1076,14 @@ in
   # 変更している。詳細は docs/claude/github-audit-triage.md。
   home.file.".claude/skills/github-audit-triage/SKILL.md".source =
     repoConfig + "/claude/skills/github-audit-triage/SKILL.md";
+  # repo-charter: 新規リポジトリ作成時に README/CONTRIBUTING の charter
+  # スキーマ(purpose sentence / Scope / Issues 節 / naming class / topics)を
+  # インタビュー形式で埋める判断知識(ADR-0013 + ADR-0016 + ADR-0017)。
+  # cases.md は追記型の失敗事例集。
+  home.file.".claude/skills/repo-charter/SKILL.md".source =
+    repoConfig + "/claude/skills/repo-charter/SKILL.md";
+  home.file.".claude/skills/repo-charter/cases.md".source =
+    repoConfig + "/claude/skills/repo-charter/cases.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1117,6 +1125,10 @@ in
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
   home.file.".agents/skills/github-audit-triage/SKILL.md".source =
     repoConfig + "/claude/skills/github-audit-triage/SKILL.md";
+  home.file.".agents/skills/repo-charter/SKILL.md".source =
+    repoConfig + "/claude/skills/repo-charter/SKILL.md";
+  home.file.".agents/skills/repo-charter/cases.md".source =
+    repoConfig + "/claude/skills/repo-charter/cases.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
