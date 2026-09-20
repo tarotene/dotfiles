@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# 30-environment.zsh - Environment variables and history management
+# 20-environment.zsh - Environment variables and history management
 # Consolidated environment configuration
 
 # Load POSIX-compliant common environment variables
@@ -29,6 +29,11 @@ setopt HIST_FIND_NO_DUPS      # Don't show duplicates in history search
 setopt HIST_SAVE_NO_DUPS      # Don't save duplicates to history file
 setopt HIST_REDUCE_BLANKS     # Remove extra whitespace from history
 setopt SHARE_HISTORY          # Share history between multiple Zsh sessions
+
+# Don't persist commands referencing ephemeral agent-session paths
+# (Claude scratchpad, herdr worktrees) to HISTFILE; they remain in the
+# session's internal history only. SHARE_HISTORY stays on.
+HISTORY_IGNORE='(*/tmp/claude-*|*.herdr/worktrees/*)'
 
 # History search keybindings (for vi mode)
 bindkey '^R' history-incremental-search-backward
