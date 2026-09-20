@@ -28,8 +28,8 @@ checkout を削除しない(v0.8.2 時点、`herdr worktree remove` は `--works
 
 | コマンド | 責務 | 破壊度 |
 |---|---|---|
-| `git audit-worktrees` | 検出のみ(2 クラス)+ timer 通知 + SessionStart context | 読み取り専用(`--prune` は登録メタデータのみ削除) |
-| `git prune-worktrees` | 残骸 **checkout** の対話確認つき削除 | `git worktree remove`(`--force` は使わない) |
+| `git audit-worktrees` | 検出のみ(2 クラス)+ timer 通知 + SessionStart context | 読み取り専用、一切削除しない |
+| `git prune-worktrees` | prunable な**登録メタデータ**と orphaned な**checkout** の両方を、対話確認つきで削除 | `git worktree prune --expire=now`(prunable)/ `git worktree remove`(orphaned、既定では `--force` を使わない) |
 | `git prune-branches` | `[gone]` **ブランチ**の対話確認つき削除(`docs/git-sync.md`) | `git branch -D` |
 
 worktree → branch の順で畳む: `git prune-worktrees` が checkout を消すと、
@@ -56,13 +56,11 @@ detached HEAD、dirty、実際の upstream がまだマージされていない�
 ```bash
 git audit-worktrees                # 読み取り専用。検出時は終了コード 1
 git audit-worktrees --porcelain    # class 付き TSV(git-prune-worktrees が消費)
-git audit-worktrees --prune        # prunable な登録だけを一覧 → 確認 → 削除
 ```
 
-`--prune` が削除するのは prunable クラスの登録メタデータだけで、branch ref と
-commit は残る。orphaned クラスには一切触れない(そちらは `git prune-worktrees`
-の責務)。非対話実行での `--prune` は誤操作を避けるため拒否し、fixture や明示的な
-自動化だけが `--yes` を併用できる。
+audit は検出専用で、どちらのクラスも削除しない(かつて `--prune` で prunable
+クラスの登録メタデータだけ消せたが、削除は `git prune-worktrees` に一本化した —
+検出=audit / 削除=prune-worktrees の単一責務)。
 
 Home Manager は `git-audit-worktrees.timer` を有効化し、1分間隔で同じ監査を行う
 (旧名 `git-worktree-audit` はコマンド名と語順が逆で打ち間違いの元だったため改名)。
@@ -80,23 +78,34 @@ Codex は `~/.codex/hooks.json` の新しい command を初回だけ信頼確認
 
 ## 削除: `git prune-worktrees`
 
-`git audit-worktrees --porcelain` の orphaned クラスだけを消費する。一覧表示 →
-一度だけの y/N 確認 → **削除に取り掛かる直前に再スキャンし直し**、確認時点から
-状態が変わった(Herdr で開かれた、push された、`git shelve` が乗った等)候補は
-黙って削除せず「状態が変化したため見送り」として報告する。削除は
-`git worktree remove`(`--force` は使わない) — Git 自身が拒否したらその
-worktree はスキップして報告する。唯一の例外が submodule を含む worktree で、
-Git は clean かどうかに関係なく plain remove を無条件拒否するため
-(`man git-worktree` remove 節)、自前でより厳格な clean 判定
-(`status --porcelain --ignore-submodules=none` が空、かつ submodule 内容も
-含めて dirty が無いこと)を通った場合に限り `--force` で再試行する。dirty な
-submodule はこの厳格判定に落ちるため従来通りスキップされる。ブランチには
-触れない。
+`git audit-worktrees --porcelain` の**両クラス**を消費する。一覧表示 → 一度だけの
+y/N 確認 → 削除、の流れは共通だが、クラスごとに削除手段が異なる。
+
+- **prunable**(登録メタデータのみ、checkout は既に消えている):
+  `git worktree prune --verbose --expire=now` を該当 common directory ごとに
+  実行する。git の既定 expire(`gc.worktreePruneExpire`、3 ヶ月)には従わず
+  常に `--expire=now` を使う — audit が「消えている」と報告したものは、
+  経過時間に関わらず必ず消えることを保証するため。branch ref と commit は残る。
+- **orphaned**(checkout が実在): **削除に取り掛かる直前に再スキャンし直し**、
+  確認時点から状態が変わった(Herdr で開かれた、push された、`git shelve` が
+  乗った等)候補は黙って削除せず「状態が変化したため見送り」として報告する。
+  既定では `git worktree remove`(`--force` は使わない) — Git 自身が拒否したら
+  その worktree はスキップして報告する。唯一の組み込み例外が submodule を含む
+  worktree で、Git は clean かどうかに関係なく plain remove を無条件拒否するため
+  (`man git-worktree` remove 節)、自前でより厳格な clean 判定
+  (`status --porcelain --ignore-submodules=none` が空、かつ submodule 内容も
+  含めて dirty が無いこと)を通った場合に限り `--force` で再試行する。
+
+`--force` フラグを付けると、再検証を通った orphaned 候補全てに対して
+`git worktree remove --force` を直接使う。これは **Git 自身の削除拒否
+(dirty な内容も含む)だけを押し切る**という意味で、削除直前の再検証
+(状態が変わった候補を見送る安全層)はそのまま効き続ける。ブランチには触れない。
 
 ```bash
 git prune-worktrees              # 一覧 → 確認 → 削除
 git prune-worktrees --dry-run    # 一覧のみ、削除しない
 git prune-worktrees --yes        # 非対話実行(fixture や自動化向け)
+git prune-worktrees --force      # orphaned で Git 自身の削除拒否を押し切る
 ```
 
 ## 確認
@@ -109,8 +118,10 @@ journalctl --user-unit git-audit-worktrees.service
 
 実装の回帰テストは、一時 repository と実物のベア remote を使い、prunable/orphaned
 両クラスの検出・除外条件(dirty・shelve・unique commit・herdr open)・通知再試行・
-通知重複抑止・prune 後の branch 保持を一連で確認する。`git-prune-worktrees` 側は
-スタブの audit 結果を使い、確認ゲート・`--dry-run`・削除直前の再検証(TOCTOU)を
+通知重複抑止を一連で確認する(audit は検出専用になったため、git 本体の
+`worktree prune` で登録が消え branch は残ることも同じ selftest 内で直接確認する)。
+`git-prune-worktrees` 側はスタブの audit 結果を使い、両クラスの削除・確認ゲート・
+`--dry-run`・削除直前の再検証(TOCTOU)・`--force` によるコミット拒否の押し切りを
 確認する。
 
 ```bash

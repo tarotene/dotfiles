@@ -12,7 +12,7 @@ TEST_TMP=''
 
 usage() {
   cat <<'EOF'
-usage: git audit-worktrees [--notify|--context|--porcelain|--prune [--yes]|--selftest]
+usage: git audit-worktrees [--notify|--context|--porcelain|--selftest]
 
 Without options, report stale findings and exit 1 when any exist. Two
 independent classes are detected:
@@ -24,9 +24,8 @@ independent classes are detected:
 --notify sends one Herdr notification per stale-set fingerprint.
 --context emits SessionStart hook JSON.
 --porcelain emits the raw class-tagged TSV (for git-prune-worktrees).
---prune removes *prunable* registrations after confirmation (metadata only;
-  branches are preserved; orphaned checkouts are untouched — use
-  `git prune-worktrees` for those).
+
+Detection only, never deletes — for either class, run `git prune-worktrees`.
 EOF
 }
 
@@ -171,9 +170,6 @@ scan() { # print TSV: common, repo, path, branch, class, reason
   done < <(discover_repositories)
 }
 
-prunable_rows() { awk -F'\t' '$5 == "prunable"'; }
-orphaned_rows() { awk -F'\t' '$5 == "orphaned"'; }
-
 render_report() {
   local findings="$1" common repo path branch class reason count=0
   while IFS=$'\t' read -r common repo path branch class reason; do
@@ -246,39 +242,8 @@ context() {
   local findings="$1" report
   [[ -n $findings ]] || exit 0
   report="$(render_report "$findings")"
-  jq -n --arg ctx "[git-worktree-audit] 存在しない checkout の登録、または開いていない残骸 checkout があります。自動削除せず、prunable は git audit-worktrees --prune、orphaned は git prune-worktrees で確認してください。\n${report}" \
+  jq -n --arg ctx "[git-worktree-audit] 存在しない checkout の登録、または開いていない残骸 checkout があります。自動削除せず、git prune-worktrees で確認してください。\n${report}" \
     '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
-}
-
-prune() {
-  local findings="$1" assume_yes="$2" answer common prunable orphaned orphaned_n
-  [[ -n $findings ]] || {
-    printf 'stale worktree registration はありません。\n'
-    return 0
-  }
-  prunable="$(prunable_rows <<<"$findings")"
-  orphaned="$(orphaned_rows <<<"$findings")"
-  if [[ -z $prunable ]]; then
-    printf 'prunable な登録はありません。\n'
-  else
-    render_report "$prunable"
-    if [[ $assume_yes != true ]]; then
-      [[ -t 0 ]] || {
-        printf '非対話実行では --yes が必要です。\n' >&2
-        return 2
-      }
-      read -r -p '上記の登録メタデータを prune しますか? [y/N] ' answer
-      [[ $answer == y || $answer == Y ]] || return 2
-    fi
-    while IFS= read -r common; do
-      [[ -n $common ]] || continue
-      git --git-dir="$common" worktree prune --verbose
-    done < <(cut -f1 <<<"$prunable" | LC_ALL=C sort -u)
-  fi
-  if [[ -n $orphaned ]]; then
-    orphaned_n="$(wc -l <<<"$orphaned" | tr -d ' ')"
-    printf 'orphaned な checkout が %s 件あります。checkout ごと削除するには git prune-worktrees を使ってください。\n' "$orphaned_n"
-  fi
 }
 
 selftest() {
@@ -408,7 +373,11 @@ STUB
     return 1
   }
 
-  "$SELF" --prune --yes >/dev/null
+  # audit 自体は検出専用(削除は git prune-worktrees の責務、計画
+  # git-audit-force-logical-seal.md)。ここでは prunable 登録が実際に
+  # 消せる状態であること・branch が残ることだけを、git 本体の
+  # `worktree prune` で直接確認する。
+  git -C "$repo" worktree prune --verbose --expire=now
   git -C "$repo" show-ref --verify --quiet refs/heads/test/stale
   "$SELF" >/dev/null
 
@@ -416,14 +385,12 @@ STUB
 }
 
 main() {
-  local mode=report assume_yes=false findings
+  local mode=report findings
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --notify) mode=notify ;;
       --context) mode=context ;;
       --porcelain) mode=porcelain ;;
-      --prune) mode=prune ;;
-      --yes) assume_yes=true ;;
       --selftest)
         selftest
         return
@@ -451,7 +418,6 @@ main() {
     notify) notify "$findings" ;;
     context) context "$findings" ;;
     porcelain) [[ -z $findings ]] || printf '%s\n' "$findings" ;;
-    prune) prune "$findings" "$assume_yes" ;;
   esac
 }
 

@@ -133,9 +133,13 @@ dotfiles/
 │   │                         #   shelve entry (SHA-based, TOCTOU-safe drop)
 │   ├── git-prune-branches     # deletes local branches whose upstream is [gone]
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-branches`)
-│   ├── git-audit-worktrees    # reports/prunes stale herdr worktree registrations
+│   ├── git-audit-worktrees    # detects (never deletes) stale herdr worktree
+│   │                         #   registrations, both classes (prunable + orphaned)
 │   │                         #   (deployed to ~/.local/bin + a systemd user timer)
-│   ├── git-prune-worktrees    # removes orphaned worktree checkouts
+│   ├── git-prune-worktrees    # removes what git-audit-worktrees detects, both
+│   │                         #   classes — prunable registrations (git worktree
+│   │                         #   prune --expire=now) and orphaned checkouts
+│   │                         #   (git worktree remove, --force optional)
 │   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
 │   ├── github-audit           # read-only cross-repository GitHub audit,
 │   │                         #   unified across 5 domains — rulesets (#130) /
