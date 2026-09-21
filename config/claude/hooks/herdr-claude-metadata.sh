@@ -73,7 +73,26 @@ if [ -n "$cwd" ]; then
   branch="${branch#worktree/}"
 fi
 
-HCM_EVENT="$event" HCM_MODE="$mode" HCM_BRANCH="$branch" HCM_STATE_FILE="$state_file" python3 - <<'PY'
+# worktree ディレクトリ名(worktree-<name>-<hex4>、
+# patches/herdr-worktree-names.patch が生成する hololive タレント名)から
+# ファンマーク(推しマーク)絵文字を引く。branch はリネームされうるが
+# ディレクトリ名は不変なのでこちらから抽出する。非 worktree・未確証タレント
+# では空 = トークン非表示。詳細は docs/claude/herdr-sidebar-metadata.md。
+oshi=""
+if [ -n "$cwd" ]; then
+  top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
+  case "${top##*/}" in
+    worktree-*-*)
+      talent="${top##*/worktree-}"
+      talent="${talent%-*}"
+      marks="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/oshi-marks.tsv"
+      [ -f "$marks" ] && oshi="$(awk -F'\t' -v n="$talent" \
+        '!/^#/ && $1==n {print $2; exit}' "$marks")"
+      ;;
+  esac
+fi
+
+HCM_EVENT="$event" HCM_MODE="$mode" HCM_BRANCH="$branch" HCM_OSHI="$oshi" HCM_STATE_FILE="$state_file" python3 - <<'PY'
 import json
 import os
 import random
@@ -83,6 +102,7 @@ import time
 event = os.environ["HCM_EVENT"]
 mode = os.environ["HCM_MODE"]
 branch = os.environ.get("HCM_BRANCH") or None
+oshi = os.environ.get("HCM_OSHI") or None
 state_file = os.environ["HCM_STATE_FILE"]
 pane_id = os.environ["HERDR_PANE_ID"]
 socket_path = os.environ["HERDR_SOCKET_PATH"]
@@ -95,6 +115,7 @@ LABELS = {
 }
 tokens = {name: None for name, _ in LABELS.values()}
 tokens["branch"] = None if event == "SessionEnd" else branch
+tokens["oshi"] = None if event == "SessionEnd" else oshi
 if event != "SessionEnd":
     if mode in LABELS:
         name, label = LABELS[mode]

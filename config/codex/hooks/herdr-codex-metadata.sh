@@ -57,12 +57,29 @@ esac
 # worktree/ プレフィクスは表示幅節約のため落とす。取得失敗は単に空 —
 # herdr 外・非 git cwd でも無害。SessionEnd では取らない(すべて null で送る)。
 branch=""
+oshi=""
 if [ "$event" != "SessionEnd" ] && [ -n "$cwd" ]; then
   branch="$(git -C "$cwd" branch --show-current 2>/dev/null || true)"
   branch="${branch#worktree/}"
+
+  # worktree ディレクトリ名(worktree-<name>-<hex4>、
+  # patches/herdr-worktree-names.patch が生成する hololive タレント名)から
+  # ファンマーク(推しマーク)絵文字を引く。branch はリネームされうるが
+  # ディレクトリ名は不変なのでこちらから抽出する。詳細は
+  # docs/claude/herdr-sidebar-metadata.md。
+  top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
+  case "${top##*/}" in
+    worktree-*-*)
+      talent="${top##*/worktree-}"
+      talent="${talent%-*}"
+      marks="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/oshi-marks.tsv"
+      [ -f "$marks" ] && oshi="$(awk -F'\t' -v n="$talent" \
+        '!/^#/ && $1==n {print $2; exit}' "$marks")"
+      ;;
+  esac
 fi
 
-HCM_EVENT="$event" HCM_MODEL="$model" HCM_BRANCH="$branch" python3 - <<'PY'
+HCM_EVENT="$event" HCM_MODEL="$model" HCM_BRANCH="$branch" HCM_OSHI="$oshi" python3 - <<'PY'
 import json
 import os
 import random
@@ -72,6 +89,7 @@ import time
 event = os.environ["HCM_EVENT"]
 model = os.environ.get("HCM_MODEL") or None
 branch = os.environ.get("HCM_BRANCH") or None
+oshi = os.environ.get("HCM_OSHI") or None
 pane_id = os.environ["HERDR_PANE_ID"]
 socket_path = os.environ["HERDR_SOCKET_PATH"]
 
@@ -79,7 +97,7 @@ params = {
     "pane_id": pane_id,
     "source": "codex-hook",
     "seq": time.time_ns(),
-    "tokens": {"model": model, "branch": branch},
+    "tokens": {"model": model, "branch": branch, "oshi": oshi},
 }
 if event != "SessionEnd":
     params["ttl_ms"] = 14_400_000  # 4h — SessionEnd クリアの保険
