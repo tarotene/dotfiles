@@ -215,6 +215,13 @@
 #    欠陥」と記録している)。絞り込みは hook 内部の早期 exit に置く。
 #    詳細は docs/claude/attribution-guard.md。
 #
+#    Codex CLI / Copilot CLI にも同じ判定エンジンを展開する(#192)。
+#    publish-guard の「1つの判定エンジン + 薄い per-agent adapter」の型を
+#    踏襲し、config/codex/hooks/・config/copilot/hooks/ の adapter が
+#    config/claude/hooks/attribution-guard.sh を `source` してフッターの
+#    エージェント名だけを差し替える。登録は publish-guard の Codex/Copilot
+#    登録ブロック(下方)と同じ lost-update 対策の順序付けに続ける。
+#
 # 18) plan-fresh-gate(PreToolUse / ExitPlanMode):
 #    herdr worktree を並行 Plan モードでパイプライン駆動する運用では、先発の
 #    PR が merge された後も後発のエージェントがセッション開始時点の古い
@@ -287,6 +294,13 @@ let
   registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
     builtins.readFile ../../scripts/register-copilot-hooks
   );
+  # attribution-guard の Codex/Copilot adapter(#192)。相対 source
+  # (config/codex/hooks/attribution-guard.sh 等)が ../../claude/hooks/
+  # attribution-guard.sh を辿れる前提の配置パスなので、この2つは必ず
+  # ~/.codex/hooks/・~/.copilot/hooks/ 直下に置く(herdr-{codex,copilot}-
+  # metadata.sh と同じ配置)。
+  codexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
+  copilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
@@ -854,6 +868,17 @@ in
     source = repoConfig + "/claude/hooks/attribution-guard.sh";
     executable = true;
   };
+  # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
+  # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 — 相対
+  # パスで辿るため配置は ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。
+  home.file.".codex/hooks/attribution-guard.sh" = {
+    source = repoConfig + "/codex/hooks/attribution-guard.sh";
+    executable = true;
+  };
+  home.file.".copilot/hooks/attribution-guard.sh" = {
+    source = repoConfig + "/copilot/hooks/attribution-guard.sh";
+    executable = true;
+  };
 
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
@@ -948,6 +973,22 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg copilotPublishGuardCmd} 20
+      '';
+
+  # attribution-guard の Codex/Copilot 展開(#192)。同じ lost-update 対策で
+  # publish-guard の登録の後ろに明示的に順序付ける。
+  home.activation.registerCodexAttributionGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPublishGuardHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexAttributionGuardCmd} 10
+      '';
+
+  home.activation.registerCopilotAttributionGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPublishGuardHooks" ]
+      ''
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          preToolUse ${lib.escapeShellArg copilotAttributionGuardCmd} 10
       '';
 
   home.file.".claude/pr-gate-repos".text = ''

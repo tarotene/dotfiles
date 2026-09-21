@@ -100,8 +100,22 @@
 #     本文フラグの有無で自然に判定不能(通す)に落ちる。
 #   - コード行へのインラインレビューコメントは対象外(1〜2 行が典型でフッターが
 #     本文を圧迫する)
-#   - Codex CLI / Copilot CLI は対象外(adapter を持たない)
 #   - フォールバック経路では --title 等の他フラグにマーカーがあると通る
+#
+# Codex CLI / Copilot CLI への展開(#192、裁定: エージェント名入りの文言):
+#   この判定エンジン(decide/decide_tokens/decide_api_tokens/decide_mcp/
+#   has_marker/emit_deny 等)はエージェント非依存で、config/codex/hooks/
+#   attribution-guard.sh・config/copilot/hooks/attribution-guard.sh から
+#   `source` される(publish-guard の「1つの判定エンジン + 薄い per-agent
+#   adapter」という既存の型を踏襲、tarotene/publish-guard の
+#   adapters/{codex,copilot}-adapter.sh が同型)。ATTRIBUTION_AGENT_NAME /
+#   ATTRIBUTION_AGENT_URL を adapter 側が source 前に上書きすることで
+#   フッター文言だけがエージェントごとに変わる。ファイル末尾の実行時
+#   ディスパッチは `source` 時に暴発しないよう `[[ "${BASH_SOURCE[0]}" ==
+#   "$0" ]]` で直接実行時のみに限定してある。
+#   MCP tool 名の命名規則は Codex/Copilot とも未確認(#161)のため、
+#   `decide_mcp`(mcp__github* 前提)は Codex/Copilot の adapter からは
+#   呼ばない — Bash 経由の `gh` コマンドのみが対象。
 #
 # 使い方:
 #   hook として: settings.json の PreToolUse(matcher: "Bash|mcp__.*")から
@@ -117,15 +131,23 @@ export LC_ALL=C
 # 定数
 # ---------------------------------------------------------------------------
 
+# エージェント名/リンク先(#192): adapter が source 前に上書きすることで
+# Codex CLI / Copilot CLI 向けのフッター文言に切り替えられる。既定値は
+# Claude Code 自身の直接実行時の値(後方互換 — このリポジトリの唯一の
+# 文言箇所という D4 の原則は agent ごとに 1 箇所ずつという形で維持する)。
+ATTRIBUTION_AGENT_NAME="${ATTRIBUTION_AGENT_NAME:-Claude Code}"
+ATTRIBUTION_AGENT_URL="${ATTRIBUTION_AGENT_URL:-https://claude.com/claude-code}"
+
 # 要求するフッター(repo 内でこの 1 箇所だけが文言を持つ、D4)。
-ATTRIBUTION_FOOTER='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+ATTRIBUTION_FOOTER="🤖 Generated with [${ATTRIBUTION_AGENT_NAME}](${ATTRIBUTION_AGENT_URL})"
 
 # 検出は緩め — 文言の軽微なズレで false deny しない。CLAUDE.md の指示は厳密。
 # alternation の "Filed from" は wrap-up inbox の出自フッター(統合形
 # 「🤖 Filed from [Claude Code](...) wrap-up inbox」)が生成元表示を兼ねる
 # ケースを受理するためのもの(D1)。旧 2 行形式(Generated with 行を別途
-# 持つ)も alternation の前段でそのまま通る。
-ATTRIBUTION_RE='(Generated with|Filed from)[[:space:]]*\[?Claude Code'
+# 持つ)も alternation の前段でそのまま通る。wrap-up inbox は Claude Code
+# 専用機能だが、エージェント名を差し替えても害はないため汎用の形にしてある。
+ATTRIBUTION_RE="(Generated with|Filed from)[[:space:]]*\\[?${ATTRIBUTION_AGENT_NAME}"
 
 # 理由を伴って初めて成立する。空の No-Attribution: は通さない。
 # 除外集合はフォールバック経路で効く: 範囲文字列全体を見る場合、
@@ -740,14 +762,20 @@ selftest() {
   echo "selftest: OK"
 }
 
-case "${1-}" in
-  --selftest) selftest ;;
-  --check)
-    if reason="$(decide "${2-}")"; then
-      printf 'deny: %s\n' "$reason"
-      exit 1
-    fi
-    echo "pass"
-    ;;
-  *) main ;;
-esac
+# config/codex/hooks/attribution-guard.sh・config/copilot/hooks/
+# attribution-guard.sh がこのファイルを `source` して判定エンジンだけを
+# 再利用する(#192)。source 時にこのディスパッチが暴発しないよう、直接
+# 実行時のみに限定する(標準的な bash の「source か実行か」判定イディオム)。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1-}" in
+    --selftest) selftest ;;
+    --check)
+      if reason="$(decide "${2-}")"; then
+        printf 'deny: %s\n' "$reason"
+        exit 1
+      fi
+      echo "pass"
+      ;;
+    *) main ;;
+  esac
+fi

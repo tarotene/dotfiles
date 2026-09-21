@@ -91,10 +91,14 @@ dotfiles/
 │   ├── codex/hooks/          # herdr-codex-metadata.sh: sidebar reporter for Codex CLI
 │   │                         #   panes (herdr-sidebar-metadata.md); deployed beside
 │   │                         #   herdr's own ~/.codex/ integration, not registered
-│   │                         #   through Codex's own config surface
+│   │                         #   through Codex's own config surface; attribution-guard.sh:
+│   │                         #   thin PreToolUse adapter that sources claude/hooks/
+│   │                         #   attribution-guard.sh's decision engine (#192)
 │   ├── copilot/              # agents/: plan-reviewer.agent.md (copilot-plan-review);
 │   │                         #   hooks/: herdr-copilot-metadata.sh, same role as
-│   │                         #   codex/hooks/ above, for Copilot CLI panes
+│   │                         #   codex/hooks/ above, for Copilot CLI panes;
+│   │                         #   attribution-guard.sh: same adapter role as the
+│   │                         #   Codex one, for Copilot's preToolUse (#192)
 │   ├── github-audit/         # ADR-0020 closed vocabularies (PUBLIC repos only):
 │   │                         #   codename-registry.tsv, descriptive-species.tsv,
 │   │                         #   site-domains.tsv — deployed verbatim to
@@ -201,8 +205,10 @@ dotfiles/
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── attribution-guard.md  # PreToolUse hook: deny a gh pr|issue
 │   │   │                     #   create|edit|comment / gh pr review whose body
-│   │   │                     #   has no Claude-Code attribution footer
-│   │   │                     #   (escape hatch: `No-Attribution: <reason>`)
+│   │   │                     #   has no attribution footer (escape hatch:
+│   │   │                     #   `No-Attribution: <reason>`); decision engine
+│   │   │                     #   shared across Claude Code / Codex CLI / Copilot
+│   │   │                     #   CLI via thin per-agent adapters (#192)
 │   │   ├── public-publish-guard.md # PreToolUse hook: deny/ask on git push /
 │   │   │                     #   gh pr|issue create|edit|comment/MCP GitHub
 │   │   │                     #   tool calls that would leak a company/private
