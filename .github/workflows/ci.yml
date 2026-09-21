@@ -339,6 +339,23 @@ jobs:
       - name: claude-usage.sh --selftest
         run: sh ./config/claude/statusline/claude-usage.sh --selftest
 
+      # The three Herdr metadata producers all read their JSON payload through
+      # a shared parse_payload() shape.  They used to read a single-line
+      # `@tsv` row with one `read`, which silently collapsed consecutive tabs
+      # (a tab is IFS whitespace in POSIX) and shifted every field by one as
+      # soon as an optional field was empty — that is what killed $branch and
+      # $oshi on every Claude pane (#305).  Each selftest feeds synthetic
+      # payloads with missing/empty optional fields and asserts the
+      # field-to-variable mapping, so the regression cannot come back quietly.
+      - name: herdr-claude-metadata.sh --selftest
+        run: sh ./config/claude/hooks/herdr-claude-metadata.sh --selftest
+
+      - name: herdr-codex-metadata.sh --selftest
+        run: sh ./config/codex/hooks/herdr-codex-metadata.sh --selftest
+
+      - name: claude-statusline.sh --selftest
+        run: sh ./config/claude/statusline/claude-statusline.sh --selftest
+
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not

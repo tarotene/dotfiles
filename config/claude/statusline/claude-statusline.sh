@@ -21,8 +21,94 @@
 # しないよう detach したサブシェルで行い、値が変わらない・前回送信から 2 秒未満の
 # 間は送らない(statusline はストリーミング中 ~300ms 毎に再実行されるため)。
 # Herdr 外では表示だけが動く。詳細は docs/claude/herdr-sidebar-metadata.md。
+#
+# 自己検査: sh config/claude/statusline/claude-statusline.sh --selftest
 
 set -eu
+
+# statusline JSON の 6 フィールドを取り出す。
+#
+# 1 行 TSV + 単一 read は使わない: タブは POSIX の IFS whitespace なので連続
+# タブが 1 個の区切りに潰れ、空フィールド(ctx/cost が無い起動直後など)が消えて
+# フィールドが 1 個ずつシフトする。実機の herdr snapshot に
+# "cost":"$0.00high" / "effort":"0" という形で実害が出ていた(#305)。
+# 1 フィールド 1 行 + 逐次 read なら空行がそのまま空フィールドとして残る。
+parse_payload() {
+  _vals="$(jq -r '[
+    (.model.display_name // .model.id // ""),
+    (.context_window.used_percentage // null | if . == null then "" else (round | tostring) end),
+    (.cost.total_cost_usd // null | if . == null then "" else tostring end),
+    (.effort.level // ""),
+    (if .fast_mode == true then "1" else "0" end),
+    (.workspace.project_dir // .workspace.current_dir // .cwd // "")
+  ] | map(tostring | gsub("[\r\n]"; " ")) | .[]' "$1" 2>/dev/null)" || return 1
+
+  # 末尾フィールドが空だと $() が行を落とすため、read の失敗は空値として扱う。
+  {
+    IFS= read -r model || model=""
+    IFS= read -r ctx || ctx=""
+    IFS= read -r cost || cost=""
+    IFS= read -r effort || effort=""
+    IFS= read -r fast || fast=""
+    IFS= read -r project_dir || project_dir=""
+  } <<EOF
+$_vals
+EOF
+}
+
+# --selftest: 空フィールド入りの合成 payload でフィールド対応が崩れないことを
+# 検査する(#305)。
+selftest() {
+  command -v jq >/dev/null 2>&1 || { echo "selftest: jq required" >&2; return 1; }
+  _tmp="$(mktemp -d "${TMPDIR:-/tmp}/claude-statusline-selftest.XXXXXX")" || return 1
+  _fail=0
+
+  _eq() { # label got want
+    if [ "$2" != "$3" ]; then
+      echo "selftest: FAIL $1: got '$2', want '$3'" >&2
+      _fail=1
+    fi
+  }
+
+  _case() { # name json model ctx cost effort fast project_dir
+    printf '%s' "$2" >"$_tmp/in.json"
+    model=""; ctx=""; cost=""; effort=""; fast=""; project_dir=""
+    parse_payload "$_tmp/in.json" || true
+    _eq "[$1] model" "$model" "$3"
+    _eq "[$1] ctx" "$ctx" "$4"
+    _eq "[$1] cost" "$cost" "$5"
+    _eq "[$1] effort" "$effort" "$6"
+    _eq "[$1] fast" "$fast" "$7"
+    _eq "[$1] project_dir" "$project_dir" "$8"
+  }
+
+  _case "full" \
+    '{"model":{"display_name":"Fable 5"},"context_window":{"used_percentage":42.4},"cost":{"total_cost_usd":1.5},"effort":{"level":"high"},"fast_mode":false,"workspace":{"project_dir":"/tmp/a"}}' \
+    "Fable 5" "42" "1.5" "high" "0" "/tmp/a"
+  # 回帰の本体: ctx/cost が無い起動直後でも effort/project_dir がずれないこと。
+  _case "no-ctx-no-cost" \
+    '{"model":{"display_name":"Fable 5"},"effort":{"level":"high"},"workspace":{"project_dir":"/tmp/a"}}' \
+    "Fable 5" "" "" "high" "0" "/tmp/a"
+  _case "no-ctx" \
+    '{"model":{"display_name":"Fable 5"},"cost":{"total_cost_usd":0},"effort":{"level":"high"},"workspace":{"project_dir":"/tmp/a"}}' \
+    "Fable 5" "" "0" "high" "0" "/tmp/a"
+  _case "no-effort" \
+    '{"model":{"display_name":"Fable 5"},"context_window":{"used_percentage":7},"cost":{"total_cost_usd":0},"fast_mode":true,"workspace":{"project_dir":"/tmp/a"}}' \
+    "Fable 5" "7" "0" "" "1" "/tmp/a"
+  _case "only-model" \
+    '{"model":{"id":"sonnet"}}' \
+    "sonnet" "" "" "" "0" ""
+  _case "empty" '{}' "" "" "" "" "0" ""
+
+  rm -rf "$_tmp"
+  [ "$_fail" = 0 ] && echo "selftest: all passed"
+  return "$_fail"
+}
+
+if [ "${1:-}" = "--selftest" ]; then
+  selftest
+  exit $?
+fi
 
 input_file="$(mktemp "${TMPDIR:-/tmp}/claude-statusline.XXXXXX")" || exit 0
 trap 'rm -f "$input_file"' EXIT HUP INT TERM
@@ -30,18 +116,7 @@ cat >"$input_file" 2>/dev/null || true
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-vals="$(jq -r '[
-  (.model.display_name // .model.id // ""),
-  (.context_window.used_percentage // null | if . == null then "" else (round | tostring) end),
-  (.cost.total_cost_usd // null | if . == null then "" else tostring end),
-  (.effort.level // ""),
-  (if .fast_mode == true then "1" else "0" end),
-  (.workspace.project_dir // .workspace.current_dir // .cwd // "")
-] | @tsv' "$input_file" 2>/dev/null)" || exit 0
-tab="$(printf '\t')"
-IFS="$tab" read -r model ctx cost effort fast project_dir <<EOF
-$vals
-EOF
+parse_payload "$input_file" || exit 0
 
 # リポ名(project_dir 毎にキャッシュ)。--show-toplevel は herdr worktree だと
 # worktree-xxx を返すので、--git-common-dir の親ディレクトリ名を使う。
