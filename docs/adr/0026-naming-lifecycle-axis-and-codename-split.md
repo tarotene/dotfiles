@@ -53,10 +53,9 @@ grill-me セッションでこの指摘を掘り下げるため、2 系統の分
 - `naming-coined`(新設): 著者固有の命名形態論に基づく、意味を持つ
   造語(Context の分析例が該当)。**閉語彙を持たない** — 各リポジトリ
   ごとに個別の意図を持って作られる造語であり、固定キャストから採番する
-  性質のものではない。
-  命名時にその造語がなぜ選ばれたかの根拠(形態素パターン・比較審査の
-  記録)を当該リポジトリの ADR 等に残すことを推奨するが、dotfiles 側は
-  強制しない。
+  性質のものではない。命名時にその造語がなぜ選ばれたかの根拠
+  (形態素パターン・比較審査の記録)を当該リポジトリの ADR 等に残す
+  ことを推奨するが、dotfiles 側は強制しない。
 
 これにより命名クラスは 5 種になる: `naming-codename` /
 `naming-coined` / `naming-descriptive` / `naming-pj` / `naming-site`。
@@ -91,12 +90,12 @@ prefix の有無と `isArchived` の組み合わせで候補を検出する。**
 ### 3. 既存リポジトリの裁定は本 ADR の対象外
 
 ADR-0014 Decision 4 を継承する。2026-09-19 時点で GO 済みの既存
-naming topic 割り当ては、本 ADR 確定後に再監査で見直す(後続 Issue)。
+naming topic 割り当ては、本 ADR 確定後に再監査で見直す(#278)。
 
 ### 4. repo-charter スキルへの反映
 
 新規リポジトリ作成時のインタビュー(命名クラス質問)に `naming-coined`
-の選択肢と、ライフサイクルトピックの質問を追加する(後続 Issue)。
+の選択肢と、ライフサイクルトピックの質問を追加する(#279)。
 
 ## Alternatives considered
 
@@ -124,12 +123,11 @@ naming topic 割り当ては、本 ADR 確定後に再監査で見直す(後続 
 ## Consequences
 
 - `github-audit` の naming ドメインが、5 クラスの語彙・パターンに加えて
-  `lifecycle-species.tsv` を判定基準として参照する(実装は後続 Issue)。
+  `lifecycle-species.tsv` を判定基準として参照する(実装は #278)。
 - 既存の `naming-codename` 8 件は、本 ADR 確定後の再監査で
-  `naming-coined` への再分類対象になり得る(裁定は再監査時、後続
-  Issue)。
+  `naming-coined` への再分類対象になり得る(裁定は再監査時、#278)。
 - `repo-charter` スキルのインタビューに新しい選択肢・質問が増える
-  (後続 Issue)。
+  (#279)。
 - 命名クラス・ライフサイクル軸の語彙・パターンを変更する場合は、この
   ADR を supersede する新しい ADR を起こす(ADR-0008 の規約、ADR-0014
   Decision 4 の継承)。
@@ -137,5 +135,5 @@ naming topic 割り当ては、本 ADR 確定後に再監査で見直す(後続 
 ## Verification
 
 - `github-audit naming --selftest` に 5 クラス + ライフサイクル 2
-  トピックの分岐が fixture で検証されること(実装は後続 Issue)。
+  トピックの分岐が fixture で検証されること(実装は #278)。
 - 本 ADR 自体は docs のみの変更のため `nix flake check` への影響はない。
