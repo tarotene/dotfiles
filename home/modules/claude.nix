@@ -238,7 +238,21 @@
 #    plan-precedent-gate と同じ matcher に 5 つ目のエントリとして並ぶ。
 #    詳細は docs/claude/plan-fresh-gate.md。
 #
-# 19) dotfiles.claude.mcpServers(home/modules/claude-mcp-servers.nix、値は既定で空):
+# 19) stack-base-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-0027):
+#    セッション内の複数 PR は依存関係を予測せず常に作成順の単一チェーンに
+#    積む(uncertainty-first stacking)ことを、`gh pr create` / `gh pr edit
+#    --base`(および相当する MCP GitHub 呼び出し)の作成時に機械強制する。
+#    層(i) 状態レスの祖先一致検査(HEAD が他の open PR のコミットを祖先に
+#    含むなら base はその PR の head でなければならない — タグでも抜けられ
+#    ない)と、層(ii) セッション ID 単位の状態(2 本目以降のチェーン外
+#    ブランチは本文 `Independent-PR: <理由>` を要求する)の 2 層で判定する。
+#    判定不能はすべて fail-open。attribution-guard.sh の判定エンジン
+#    (split_heredoc/tokenize/is_sep)を source して再利用する。完了時の
+#    対になる強制(`gh stack link` の要求)は pr-gate.sh の G_stack が担う。
+#    詳細は docs/adr/0027-uncertainty-first-stacking.md と
+#    docs/claude/stack-base-guard.md。
+#
+# 20) dotfiles.claude.mcpServers(home/modules/claude-mcp-servers.nix、値は既定で空):
 #    ~/.claude.json の .mcpServers を加法的に merge する extensible option。この
 #    ファイルではなく独立モジュールに切り出してある(quarantine.nix と同じ
 #    「1 option = 1 ファイル」の粒度)。詳細は docs/claude/claude-mcp-servers.md。
@@ -310,6 +324,10 @@ let
   planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
   planFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
   attributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
+  # stack-base-guard(ADR-0027)は attribution-guard.sh を source するので
+  # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
+  # "$(dirname ...)/attribution-guard.sh" が解決できる配置)。
+  stackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
   # (herdr-claude-metadata.sh と同じ形)。出力は
@@ -499,6 +517,7 @@ let
     attribution_guard="$1";      shift
     agent_turn_log="$1";         shift
     atuin_hook_claude_code="$1"; shift
+    stack_base_guard="$1";       shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -604,6 +623,12 @@ let
     register PreToolUse Bash "$atuin_hook_claude_code" 10
     register PostToolUse Bash "$atuin_hook_claude_code" 10
     register PostToolUseFailure Bash "$atuin_hook_claude_code" 10
+    # stack-base-guard(ADR-0027): publish-guard/attribution-guard と同じ
+    # 複合 matcher "Bash|mcp__.*" に並ぶ(Bash 単体だと MCP 接続の瞬間に
+    # 無検査になる、同じ理由の繰り返し)。gh pr list 1 往復 + ローカル git
+    # 走査のみなので timeout は attribution-guard 並みでよいが、往復を含む
+    # ため若干長めに確保する。
+    register PreToolUse "Bash|mcp__.*" "$stack_base_guard" 20
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -866,6 +891,14 @@ in
   # 切り出してあり --selftest がネットワーク無しに 26 ケースを検査する。
   home.file.".claude/hooks/attribution-guard.sh" = {
     source = repoConfig + "/claude/hooks/attribution-guard.sh";
+    executable = true;
+  };
+  # stack-base-guard(ADR-0027): セッション内の複数 PR を常時単一チェーンに
+  # 積むことを作成時に機械強制する(docs/claude/stack-base-guard.md)。
+  # attribution-guard.sh を同ディレクトリから source するので、配置は
+  # 必ず ~/.claude/hooks/ 直下(上の attribution-guard.sh と同じ階層)。
+  home.file.".claude/hooks/stack-base-guard.sh" = {
+    source = repoConfig + "/claude/hooks/stack-base-guard.sh";
     executable = true;
   };
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
@@ -1244,7 +1277,8 @@ in
       ${lib.escapeShellArg planFreshGateCmd} \
       ${lib.escapeShellArg attributionGuardCmd} \
       ${lib.escapeShellArg agentTurnLogCmd} \
-      ${lib.escapeShellArg atuinHookClaudeCodeCmd}
+      ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
+      ${lib.escapeShellArg stackBaseGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
