@@ -172,8 +172,8 @@ Design and rationale for the hooks and commands deployed from
 - [`copilot-plan-review.md`](claude/copilot-plan-review.md) — ExitPlanMode gate:
   a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
   severity, not on a verdict.
-- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ)
-  (CI/push, not review/base).
+- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ・
+  stacked PR チェーンの stack link 忘れ)(CI/push, not review/base).
 - [`pr-description.md`](claude/pr-description.md) — PR 本文の標準スケルトンと
   Before/After 視覚証跡の判断知識(スキル)+ `G_visual` による強制(ゲート)の
   二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
