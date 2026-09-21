@@ -9,7 +9,7 @@ PRの本文は、リポジトリごとにまちまちな自由記述ではなく
 
 ```
 Closes #N / No-Issue: <理由>
-Stack: <段番号>/<総段数> (base: #<親PR番号>)  ← stacked PR のときだけ
+Stack: <段番号>/<総段数> (base: #<親PR番号>)  ← stacked PR のときだけ(ADR-0027 によりセッション内 2 本目以降の PR は既定で該当する)
 
 ## 課題
 解決したい問題を簡潔に(経緯の全列挙はしない)
@@ -29,7 +29,7 @@ Claude が引き続き担当する残作業はここに入れず「検証」ま�
 説明に書く。両方とも無ければセクションごと省略
 ```
 
-1行目(`Closes #N` / `No-Issue:`)は既存の pr-gate(`G_link`)が機械的に強制する。`## Before / After` の証跡有無は `G_visual` が機械的に強制する(いずれもこのリポジトリの `config/claude/hooks/pr-gate.sh`)。それ以外(課題・解決策・検証・要確認の中身、および `Stack:` 行)はゲートの検査対象ではなく、この本文スケルトンが唯一の規律。`Stack:` 行は stacked PR のときだけ書く(手順は `stacked-pr` スキルを参照)。最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。
+1行目(`Closes #N` / `No-Issue:`)は既存の pr-gate(`G_link`)が機械的に強制する。`## Before / After` の証跡有無は `G_visual` が機械的に強制する(いずれもこのリポジトリの `config/claude/hooks/pr-gate.sh`)。それ以外(課題・解決策・検証・要確認の中身、および `Stack:` 行)はゲートの検査対象ではなく、この本文スケルトンが唯一の規律。`Stack:` 行は stacked PR のときだけ書く(手順は `stacked-pr` スキルを参照。ADR-0027 によりセッション内 2 本目以降の PR は既定でこれに該当する)。最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。
 
 ## 2. Visual の範囲
 

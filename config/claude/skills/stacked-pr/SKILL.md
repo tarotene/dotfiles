@@ -1,28 +1,45 @@
 ---
 name: stacked-pr
-description: PR 同士に依存関係があるとき(先行 PR の成果物を後続が参照する、または同一ファイルの同じ節を逐次編集する)、main 起点で並行させず stacked PR として積む手順。依存する変更・stacked PR・PR を積む・base を親ブランチに・ADR を分割・同一ファイルを逐次編集、計画・グリル中に見つかったスコープ外項目を stack に積む、といった文脈で使う。stack changes, dependent pull requests, base branch chain, といった英語の文脈でも使う。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに注意 — 1 つの Issue が複数段の stack になることもあり、複数の独立 Issue が 1 つの線形 stack になることもある。
+description: セッション内で複数の PR を作るとき、依存関係を予測せず常に作成順の単一チェーン(stacked PR)に積む手順(ADR-0027、uncertainty-first stacking)。離脱は閉じたタグ `Independent-PR: <理由>` のみ。複数 PR・stacked PR・PR を積む・base を親ブランチに・同一セッションで PR を複数作る、計画・グリル中に見つかったスコープ外項目を stack に積む、といった文脈で使う。stack changes, multiple PRs in one session, base branch chain, といった英語の文脈でも使う。PR 同士の依存関係は Issue 同士の依存関係とは別問題であることに注意 — 1 つの Issue が複数段の stack になることもあり、複数の独立 Issue が 1 つの線形 stack になることもある。
 ---
 
 依存する変更を 1 つの巨大な PR に詰めず、main 起点で並行させて衝突させることもなく、
 **stacked PR**(base を親ブランチにした PR の線形チェーン)として積む。
 
-## 1. 判定条件
+## 1. 常時単一チェーンに積む(ADR-0027)
 
-次のどちらかを満たせば stack する。
-
-- (a) 後続の変更が先行 PR の成果物(ADR の決定、関数、設定キー、スキル本体など)を
-  参照する
-- (b) 同一ファイルの同じ節を逐次編集する
-
-どちらも満たさない独立した変更は、stack せず別の PR にする(git-town:
-"independent work should use separate top-level branches")。
+同一セッション・同一 worktree で 2 本目以降の PR を作るときは、依存の
+有無を予測せず**常に**直前の段の head branch を base にする。かつての
+判定条件(後続が先行 PR の成果物を参照するか / 同一ファイルの同じ節を
+逐次編集するか)は「積むかどうか」の分岐としては廃止した — 機能的な
+依存関係とコード競合ベースの依存関係は別物で、後者は実際に PR を作る
+まで予測できない。この予測に依存の有無を委ねる設計は、2026-09-21 の
+実測(`docs/adr/0027-uncertainty-first-stacking.md` Context)でセッション内
+の判定が系統的に外れ、base 宣言と実体(物理的な直列ブランチ)が不整合に
+なる事故を招いた。
 
 判定対象は依頼された変更同士に限らない。計画・グリル・実装中に見つかった
-依頼スコープ外の項目も、現在進行中の変更との間で (a)/(b) を満たすなら
-**追加提案段**として stack に受ける。満たさない独立項目は stack せず、
-wrap-up inbox へ流す(global CLAUDE.md 参照)。
+依頼スコープ外の項目も、今のセッションで手を付けるなら既定でチェーンに
+積む(段の追加は `AskUserQuestion` で「stack に積む / wrap-up inbox に
+送る」の 2 択を聞く — こちらは何を「今」やるかのスコープ判断であり、
+チェーンに積むかどうかの判断ではない)。
+
+離脱(このチェーンに積まない独立 PR にする)は、PR 本文に閉じたタグ
+**`Independent-PR: <理由>`**(`No-Issue:`/`No-Visual:`/`No-Attribution:` と
+同じ「理由必須の閉じたタグ」家系)を書いたときだけ成立する。依存の有無を
+先読みして自発的にチェーンから外れることはしない。
+
+作成時は `config/claude/hooks/stack-base-guard.sh` が base の取り違えを
+機械的に deny する(`docs/claude/stack-base-guard.md`)。完了時は
+`pr-gate.sh` の `G_stack` が `gh stack link` の実行忘れを block する
+(`docs/claude/pr-gate.md`)。§8 参照。
 
 ## 2. 分割の設計原則
+
+旧判定条件((a) 後続が先行段の成果物を参照する / (b) 同一ファイルの同じ節を
+逐次編集する)は、「積むかどうか」の判断からは退いたが、**何を 1 段に
+まとめるか**の目安としては引き続き使う — 段が細かすぎる/粗すぎるかを
+判断する参考にする。
 
 - 各段は単体でマージしても壊れないこと(Google eng-practices の
   "Don't Break the Build")。ADR とその実装を別段にする場合、実装段が
@@ -60,7 +77,9 @@ wrap-up inbox へ流す(global CLAUDE.md 参照)。
    `gh pr create --base <直前の段のブランチ>`(最下段だけ `--base main`)。
    全段を作り終えるまで止まらない。
 5. 全段の PR ができたら `gh stack link <PR番号1> <PR番号2> ... <PR番号N>`
-   (最下段から順)で GitHub 上の stack にまとめる(§5 参照)。
+   (最下段から順)で GitHub 上の stack にまとめる(§5 参照)。**この実行は
+   完了の一部** — `pr-gate.sh` の `G_stack` が未リンクのまま終わろうとする
+   のを block する(ADR-0027、§8 参照)。
 
 ## 4. 下位段への修正が入ったときの追従
 
@@ -179,14 +198,24 @@ Stack: <段番号>/<総段数> (base: #<親PR番号>)
 最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。この行は
 `pr-gate.sh` の検査対象ではない(人間とレビュアーのための注記)。
 
-## 8. なぜ pr-gate.sh を触らないか
+## 8. 機械強制(ADR-0027)
 
-`pr-gate.sh` は既に PR の `baseRefName` を見て動作し(`G_link` に stacked
-advisory、`G_CI` に quiesce フォールバックを持つ)、stacked PR で完全に
-沈黙するわけではない。「base が親のコミットを含むのに default branch」
-のような取り違えを機械的に block する案もあるが、今回は指示文とスキルの
-運用を先に確立し、実際に取り違えが起きてから block 化を検討する
-(判断できる場合だけ踏み込む、という既存の pr-gate の設計原則に倣う)。
+§1 の常時単一チェーンは指示文だけに頼らず、両端で機械強制する
+(2026-09-21、`docs/adr/0027-uncertainty-first-stacking.md`)。
+
+- **作成時**: `config/claude/hooks/stack-base-guard.sh`(PreToolUse)が
+  `gh pr create` / `gh pr edit --base` を検査する。HEAD が他の open PR の
+  コミットを祖先として含むのに base が違えば deny する(`Independent-PR:`
+  タグでも抜けられない — 物理的必然のため)。セッション内 2 本目以降で
+  チェーン外のブランチから PR を作ろうとした場合は、`Independent-PR:
+  <理由>` が無ければ deny する。
+- **完了時**: `pr-gate.sh` の `G_stack`(Stop)が、chain size 2 以上の
+  stacked PR が GitHub 上の stack(`gh stack link`)にリンクされていなけ
+  れば block する。`gh-stack` 拡張不在・API 取得不能は advisory に降格
+  する。
+
+設計根拠の詳細は `docs/claude/stack-base-guard.md` と
+`docs/claude/pr-gate.md` を参照。
 
 ## 9. 追記
 
