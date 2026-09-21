@@ -9,7 +9,9 @@
 #   - スコープ外の気づきは wrapup-stop-gate.sh --add で inbox(JSONL)に追記せよ
 #   - inbox に未処理行が残っていれば「未処理 N 件」を掲示(遅延フラッシュ)
 #
-# inbox のパス計算は wrapup-stop-gate.sh と同一(source して共有)。
+# inbox のパス計算(repo_slug/自己修復マージ)は wrapup-stop-gate.sh に一本化
+# されている(--inbox-path / --migrate サブコマンド)。ここでは source せず
+# 呼び出すだけに留める — gate を source すると hook 本体まで走ってしまうため。
 # 起票可否(gh・git repo・GitHub remote)の判定は Stop 側の縮退ゲートに任せ、
 # ここでは常に注入する。jq 不在なら黙って exit 0(fail-open)。
 set -euo pipefail
@@ -23,14 +25,8 @@ gate="$hooks_dir/wrapup-stop-gate.sh"
 project="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<<"$input")}"
 [[ -n "$project" ]] || exit 0
 
-# パス計算は wrapup-stop-gate.sh の state_root/slug と同一式(source すると gate の
-# hook 本体まで走ってしまうため、2 関数だけ複製する。変更時は両方を揃えること —
-# selftest が session-start の注入内容も検査するので、ズレれば CI で落ちる)。
-state_root() { printf '%s/claude/wrapup' "${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"; }
-slug() { printf '%s' "$1" | tr '/.' '--'; }
-inbox="$(printf '%s/%s.jsonl' "$(state_root)" "$(slug "$project")")"
-
-mkdir -p "$(state_root)"
+bash "$gate" --migrate "$project" 2>/dev/null || true
+inbox="$(bash "$gate" --inbox-path "$project")"
 
 pending=0
 [[ -s "$inbox" ]] && pending="$(wc -l <"$inbox")"

@@ -12,7 +12,10 @@
 #
 # inbox は作業ツリーを汚さないよう state 領域に置く:
 #   ${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl
-#   (slug はプロジェクトパスの '/' '.' → '-' 置換)
+#   (slug は原則リポジトリ単位: `git remote get-url origin` を正規化した
+#   <host>-<owner>-<repo>。remote なし・git repo 外はプロジェクト絶対パスの
+#   '/' '.' → '-' 置換にフォールバックする。§ slug のリポジトリ単位化と
+#   自己修復マージ、docs/claude/wrapup-inbox.md)
 #
 # 1 行スキーマ: {"ts": "<ISO8601>", "title": "...", "detail": "..."}
 # ts は一意でない(削除キーには使わない)。行の同一性は行全体の完全一致。
@@ -33,6 +36,12 @@
 #                   exit 0 = 重複なし / 1 = 同名 open Issue あり / 3 = 判定不能(gh 失敗)
 #   起票済み削除: wrapup-stop-gate.sh --mark-filed <inbox> '<json1行>'
 #                   (行全体の完全一致で先頭の 1 行だけ削除)
+#   inbox パス解決: wrapup-stop-gate.sh --inbox-path <project-dir>
+#                   (repo_slug 解決後の inbox パスを stdout に出すだけ。副作用なし)
+#   自己修復移行:  wrapup-stop-gate.sh --migrate <project-dir>
+#                   (旧・絶対パス slug の inbox が残っていれば新 slug へ
+#                   append-only マージし、全行存在を確認してから旧を削除する。
+#                   常に exit 0。session-start hook と Stop hook 本体が毎回呼ぶ)
 #   自己検査:     wrapup-stop-gate.sh --selftest
 set -euo pipefail
 
@@ -40,12 +49,93 @@ state_root() {
   printf '%s/claude/wrapup' "${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"
 }
 
-slug() {
+# 絶対パス slug(remote なし・git repo 外のフォールバック、および旧 inbox の
+# 位置計算に使う)。
+path_slug() {
   printf '%s' "$1" | tr '/.' '--'
 }
 
+# remote URL → リポジトリ単位 slug。正規化仕様:
+#   - 末尾 '/' と '.git' suffix を除去
+#   - scheme(https:// ssh:// git://)と認証情報の user@ を除去
+#   - scp 形式 host:owner/repo の ':' を '/' に正規化
+#   - 全体を小文字化(GitHub の owner/repo は大文字小文字非区別)
+#   - '/' '.' → '-'
+# 例: https://github.com/tarotene/dotfiles.git / git@github.com:Tarotene/dotfiles
+#     / ssh://git@github.com/tarotene/dotfiles / HTTPS://GitHub.com/tarotene/dotfiles/
+#     → いずれも github-com-tarotene-dotfiles
+normalize_remote_url() {
+  local u="$1"
+  u="${u%/}"
+  u="${u%.git}"
+  u="${u#*://}"
+  u="${u#*@}"
+  u="${u/:/\/}"
+  printf '%s' "$u" | tr '[:upper:]' '[:lower:]' | tr '/.' '--'
+}
+
+# exit 0 = repo_slug を stdout に出せた。exit 非 0 = フォールバック対象
+# (git 不在・repo 外・remote 未設定)。
+repo_slug() {
+  command -v git >/dev/null 2>&1 || return 1
+  local url
+  url="$(git -C "$1" config --get remote.origin.url 2>/dev/null)" || return 1
+  [[ -n "$url" ]] || return 1
+  normalize_remote_url "$url"
+}
+
 inbox_for() {
-  printf '%s/%s.jsonl' "$(state_root)" "$(slug "$1")"
+  local s
+  if s="$(repo_slug "$1" 2>/dev/null)"; then
+    printf '%s/%s.jsonl' "$(state_root)" "$s"
+  else
+    printf '%s/%s.jsonl' "$(state_root)" "$(path_slug "$1")"
+  fi
+}
+
+# 旧(絶対パス slug)の inbox が残っていれば、新(repo_slug)inbox へ
+# append-only でマージし、全行の存在を確認してから旧を削除する。
+#
+# 安全性の要点(このリポジトリの inbox 整合性モデルを壊さないため):
+#   - 使用中になり得る <inbox>.lock は削除・再作成しない。二重 flock を
+#     取るのは本関数だけで、全呼び出し箇所が「新 → 旧」の同一順序で
+#     取得するためデッドロックしない。
+#   - 空ファイル判定もロック取得後に行う(空判定直後の並行 --add を
+#     消さないため)。
+#   - 新ファイルへは append のみ(truncate/rewrite しない)。dedup は
+#     行全体の完全一致(この機構の行同一性モデルそのもの。ts+title 一致
+#     だと detail 違いの行を落とすため使わない)。
+#   - 旧の全行が新に存在することを確認できたときだけ旧 + 旧 lock を削除。
+#     1 行でも欠ければ両方残して return し、次回呼び出し(次セッション)で
+#     再試行する(冪等)。
+migrate_legacy_inbox() {
+  local project="$1" new legacy
+  new="$(inbox_for "$project")"
+  legacy="$(state_root)/$(path_slug "$project").jsonl"
+  [[ "$new" == "$legacy" ]] && return 0
+  [[ -f "$legacy" ]] || return 0
+
+  mkdir -p "$(state_root)"
+  (
+    flock 9
+    (
+      flock 8
+      if [[ ! -s "$legacy" ]]; then
+        rm -f "$legacy" "$legacy.lock"
+        exit 0
+      fi
+      touch "$new"
+      grep -Fvxf "$new" "$legacy" >>"$new" 2>/dev/null || true
+      local all_present=1 line
+      while IFS= read -r line; do
+        grep -Fxq -- "$line" "$new" || { all_present=0; break; }
+      done <"$legacy"
+      if [[ "$all_present" == 1 ]]; then
+        rm -f "$legacy" "$legacy.lock"
+      fi
+    ) 8>>"$legacy.lock"
+  ) 9>>"$new.lock"
+  return 0
 }
 
 # 自身の絶対パス。symlink は辿らない — deployed 環境では ~/.claude/hooks/ 配下が
@@ -53,6 +143,20 @@ inbox_for() {
 self_path() {
   printf '%s/%s' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" "$(basename "${BASH_SOURCE[0]}")"
 }
+
+# --- サブコマンド: --inbox-path <project-dir> ----------------------------------
+if [[ "${1:-}" == "--inbox-path" ]]; then
+  project="${2:?usage: wrapup-stop-gate.sh --inbox-path <project-dir>}"
+  inbox_for "$project"
+  exit 0
+fi
+
+# --- サブコマンド: --migrate <project-dir> --------------------------------------
+if [[ "${1:-}" == "--migrate" ]]; then
+  project="${2:?usage: wrapup-stop-gate.sh --migrate <project-dir>}"
+  migrate_legacy_inbox "$project"
+  exit 0
+fi
 
 # --- サブコマンド: --add <inbox> <json> ---------------------------------------
 # 入力が pretty-print(複数行)であっても jq -c で 1 行に強制コンパクト化してから
@@ -209,6 +313,57 @@ STUB
     bash "$self" <<<'{"cwd":"'"$plain"'","stop_hook_active":false}' 2>/dev/null || rc=$?
   check "git repo 外で素通り" 0 "$rc"
 
+  # --- repo_slug: URL 表記違いの正規化同値性 ---
+  scp_repo="$dir/scp_repo"
+  mkdir -p "$scp_repo"
+  git -C "$scp_repo" init -q
+  git -C "$scp_repo" remote add origin git@github.com:Example/Example.git
+  ssh_repo="$dir/ssh_repo"
+  mkdir -p "$ssh_repo"
+  git -C "$ssh_repo" init -q
+  git -C "$ssh_repo" remote add origin ssh://git@github.com/example/example
+  check "scp 形式・大文字表記が同一 inbox に正規化される" 0 \
+    "$([[ "$(inbox_for "$scp_repo")" == "$inbox" ]]; echo $?)"
+  check "ssh:// 形式も同一 inbox に正規化される" 0 \
+    "$([[ "$(inbox_for "$ssh_repo")" == "$inbox" ]]; echo $?)"
+
+  # --- --inbox-path: remote なし・repo 外はプロジェクト絶対パス slug のまま ---
+  check "--inbox-path は remote なしで絶対パス slug を返す" 0 \
+    "$(diff <(bash "$self" --inbox-path "$norepo") <(printf '%s' "$(inbox_for "$norepo")") >/dev/null; echo $?)"
+  check "--inbox-path は git repo 外で絶対パス slug を返す" 0 \
+    "$(diff <(bash "$self" --inbox-path "$plain") <(printf '%s' "$(inbox_for "$plain")") >/dev/null; echo $?)"
+
+  # --- --migrate: 旧(絶対パス slug)inbox の自己修復マージ ---
+  mig_repo="$dir/mig_repo"
+  mkdir -p "$mig_repo"
+  git -C "$mig_repo" init -q
+  git -C "$mig_repo" remote add origin https://github.com/example/migrated.git
+  mig_new="$(inbox_for "$mig_repo")"
+  mig_legacy="$(state_root)/$(path_slug "$mig_repo").jsonl"
+  mig_l1='{"ts":"2026-08-25T00:00:00+09:00","title":"legacy-only","detail":"a"}'
+  mig_l2='{"ts":"2026-08-25T00:00:00+09:00","title":"shared","detail":"b"}'
+  mkdir -p "$(dirname "$mig_legacy")"
+  printf '%s\n%s\n' "$mig_l1" "$mig_l2" >"$mig_legacy"
+  bash "$self" --add "$mig_new" "$mig_l2" # 新側に同一内容 1 行を先に用意(dedup 対象)
+  bash "$self" --migrate "$mig_repo"
+  check "--migrate 後、新 inbox は旧の全行を(重複排除して)含む" 0 \
+    "$(grep -Fxq "$mig_l1" "$mig_new" && grep -cFx "$mig_l2" "$mig_new" | grep -qx 1; echo $?)"
+  check "--migrate 後、旧 inbox は消滅する" 1 "$([[ -f "$mig_legacy" ]]; echo $?)"
+  check "--migrate 後、旧 lock も消滅する" 1 "$([[ -f "$mig_legacy.lock" ]]; echo $?)"
+  before_new="$(cat "$mig_new")"
+  bash "$self" --migrate "$mig_repo" # 2 回目は無変化(冪等)
+  check "--migrate は冪等(2 回目は無変化)" 0 "$([[ "$before_new" == "$(cat "$mig_new")" ]]; echo $?)"
+
+  # --- --migrate: 旧が 0 バイトなら掃除のみ ---
+  empty_repo="$dir/empty_repo"
+  mkdir -p "$empty_repo"
+  git -C "$empty_repo" init -q
+  git -C "$empty_repo" remote add origin https://github.com/example/emptylegacy.git
+  empty_legacy="$(state_root)/$(path_slug "$empty_repo").jsonl"
+  : >"$empty_legacy"
+  bash "$self" --migrate "$empty_repo"
+  check "--migrate は 0 バイトの旧 inbox を削除する" 1 "$([[ -f "$empty_legacy" ]]; echo $?)"
+
   # --- --mark-filed: 同一内容 2 行 + 別内容 1 行から対象 1 行だけ削除 ---
   bash "$self" --add "$inbox" "$line1" # inbox: line1, line2, line1
   bash "$self" --mark-filed "$inbox" "$line1"
@@ -248,6 +403,7 @@ input="$(cat)"
 project="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<<"$input")}"
 [[ -n "$project" ]] || exit 0
 
+migrate_legacy_inbox "$project"
 inbox="$(inbox_for "$project")"
 [[ -s "$inbox" ]] || exit 0
 
