@@ -79,7 +79,8 @@
 - [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス
   体系(codename / descriptive / pj / site の 4 種)を定め、正本を GitHub
   topics に置く決定。形式一致は機械判定、クラス帰属の意味判断は
-  `github-audit-triage` 経由で人間が裁定する。
+  `github-audit-triage` 経由で人間が裁定する。Decision 1(4 クラス体系)は
+  ADR-0026 が supersede。
 - [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を
   `github-audit` 統合 CLI に再編し、決定論ノード(監査)と LLM ノード
   (`github-audit-triage`)を分離した判断ループとして定義する決定。
@@ -145,6 +146,14 @@
   マーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の
   自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped
   exception。
+- [ADR-0026](adr/0026-naming-lifecycle-axis-and-codename-split.md) —
+  命名クラス体系(ADR-0014)の改訂決定。`naming-codename` を「無意味な
+  恣意的ラベル」と「著者固有の命名形態論に基づく造語」の
+  `naming-coined` に分割し 5 クラス体制にする。加えて
+  `lifecycle-timeboxed` / `lifecycle-study` という `naming-*` と併用
+  できるライフサイクル軸を新設し、完了済み研究アーカイブが
+  `naming-descriptive` の受けに流れていた問題を解消する。ADR-0014
+  Decision 1 を supersede。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
