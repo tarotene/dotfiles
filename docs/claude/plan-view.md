@@ -199,6 +199,33 @@ pandoc は skylighting の CSS を一切出さず、テストが空振りする�
   のみ）、`vscode://` 的なスキームが成立しない
 - **ライブリロード / 1 窓集約** — 毎回新規窓を選んだ（上記「なぜ `--app`」）
 
+## darwin 対応(#230)
+
+表示可能判定を `DISPLAY`/`WAYLAND_DISPLAY` の存在チェックだけで行っていたため、
+どちらの変数も持たない macOS ネイティブ GUI セッションでは常に「表示不可」と
+誤判定され、Chrome cask(`packages/declarative/Brewfile`)を入れていても
+`/plan-view` が無言のまま発火しなかった(PR #213 のレビュー、スレッド
+[discussion_r4052556531](https://github.com/tarotene/dotfiles/pull/213#discussion_r4052556531))。
+
+- `has_display()`: `uname -s` が `Darwin` なら常に真を返す(X11/Wayland の
+  概念自体が無いネイティブ GUI セッションなので、Linux 版の判定はそもそも
+  当てはまらない)。
+- `browser_available()`(新設): Linux は従来どおり `$BROWSER_BIN` を PATH で
+  探す。darwin は Homebrew cask `google-chrome` が置く `.app` バンドル
+  (既定 `/Applications/Google Chrome.app`、`PLAN_VIEW_DARWIN_CHROME_APP` で
+  上書き可)の存在を見る — cask は PATH 上の CLI バイナリを提供しないため、
+  `command -v google-chrome` は darwin では常に失敗する(ADR-0005 の
+  バイナリ存在ゲートを `.app` バンドルの存在に読み替えた形)。
+- `open_window()`: darwin では `open -a "<Chrome.app>" --args --app=<url>
+  --window-size=<size>` で起動する。macOS の `open` は LaunchServices に
+  処理を渡してすぐ戻る(`scripts/detach-open.sh` が同じ事実を記録している)
+  ため、Linux 版のような `setsid` での明示的な切り離しは不要。
+
+selftest は `PLAN_VIEW_UNAME_OVERRIDE=Darwin` で実機非依存に darwin 分岐を
+検査する(偽 `open(1)` + `.app` ディレクトリの有無で 2 ケース)。altair
+(darwin ホスト)実機での動作確認は未実施 — `docs/setup-macos.md` の
+検証節に追記する候補。
+
 ## 検証
 
 ```bash

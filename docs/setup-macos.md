@@ -132,6 +132,23 @@ A Claude Code hook that shells out to `flock` (e.g. the wrap-up inbox gate)
 resolving without a "command not found" confirms `pkgs.flock` landed on PATH
 (worktree.nix, darwin-only addition — ADR-0018).
 
+`/plan-view` opens a dedicated Chrome window from Plan mode (#230 — the
+darwin branch in `config/claude/hooks/plan-view.sh` was added without an
+altair run to verify it):
+
+```bash
+plan-view --no-open --out /tmp/p.html ~/.claude/plans/<any-existing-plan>.md
+open -a "Google Chrome" --args --app="file:///tmp/p.html"   # sanity-check
+                                                              # the launch args
+                                                              # in isolation
+/plan-view                                                   # from a Claude
+                                                              # Code session
+                                                              # in Plan mode
+```
+
+Expect a new Chrome window (app mode, no tabs/toolbar) to open with the
+rendered plan.
+
 ## 8. Known differences from the Linux hosts
 
 - No IME daemon (fcitx5/mozc) — this machine uses macOS's own input method
