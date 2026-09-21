@@ -7,13 +7,13 @@ wrap-up inbox の項目は「判断無しで即対処できる」ものが多く
 
 ## 1. 候補収集
 
-- **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl`(slug はプロジェクト絶対パスの `/` `.` を `-` に置換したもの)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
-- **起票済み wrapup 由来 Issue**: `gh issue list` + `jq` で列挙する。`gh search issues` は使わない(Search API のインデックス遅延があり、絵文字入りフッターの一致も不安定なため)。
+- **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `bash ~/.claude/hooks/wrapup-stop-gate.sh --inbox-path "$PWD"` で解決する(slug の計算方法は gate 側に一本化されている — 原則リポジトリ単位、remote なし・git repo 外はプロジェクト絶対パス由来にフォールバック)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
+- **母集団は open Issue 全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の雑務性基準で LLM が判定する:
   ```
-  gh issue list --state open --limit 200 --json number,title,body \
-    | jq '[.[] | select(.body | test("Filed from \\[?Claude Code.*wrap-up inbox"))]'
+  gh issue list --state open --limit 500 --json number,title,body,labels \
+    | jq '[.[] | select(([.labels[].name] | index("blocked-by-upstream")) | not)]'
   ```
-  フィルタは正規表現 `test()` を使い、統合形(`Filed from [Claude Code](...) wrap-up inbox`)と旧 2 行形式(`Filed from Claude Code wrap-up inbox`)の両方に 1 本でマッチさせる。絵文字を含まない ASCII 部分だけを対象にするのは従来どおり。`--limit` は既定値(30)だと取りこぼすので明示する。
+  **取得件数が `--limit` と一致したら打ち切りの可能性がある**ので、その場合は limit を倍にして再実行する。wrap-up フッター regex(統合形 `Filed from [Claude Code](...) wrap-up inbox` と旧 2 行形式の両方にマッチする `test("Filed from \\[?Claude Code.*wrap-up inbox")`)は廃止しない — マッチする Issue は雑務性判定を経ずに無条件で候補に含める**ヒント**として使う。
 
 ## 2. triage 基準
 
@@ -25,9 +25,22 @@ wrap-up inbox の項目は「判断無しで即対処できる」ものが多く
 - 検証が機械的(既存の selftest / lint / ビルドチェックがそのまま合否を出す)
 - 非互換な挙動変更を含まない(落ちても単純 revert で戻せる)
 
+wrap-up フッターに一致しない Issue は、まず**雑務性**(1 つの chores PR に同梱できる規模か)を判定する: (i) 変更が数ファイル以内で自己完結、(ii) 設計判断・ADR 起草を要しない、(iii) 外部 blocked でない。雑務性ありと判定できたものだけ上記の即対処/要判断の基準に進む。雑務性なしと判定したものは「除外」として理由 1 行と共に §3 の一覧に必ず載せる — **黙って母集団から落とさない**。
+
 ## 3. 一覧提示と GO 確認(1 回だけ)
 
 出自(`inbox` / `#N`)・title・振り分け(即対処 / 要判断)・判定理由を表で提示し、1 回だけ確認を取る(GO / 一部除外して GO / 中止)。**GO 後は項目ごとの確認をしない** — それがこのスキルの存在理由であり、毎回止まるならスキル化する意味がない。
+
+対処対象の表に加えて「除外一覧」を必ず併記する。機械除外(`blocked-by-upstream`)は件数と番号を 1 行、雑務性なしと判定した Issue は `#N <title> — 除外: <理由 1 行>` で全件列挙する:
+
+```
+## 対処対象
+| 出自 | title | 振り分け | 理由 |
+
+## 除外一覧(今回の chores PR の対象外)
+- 機械除外(blocked-by-upstream): #2, #14
+- #274 design: ... — 除外: 設計構想で単一 chores PR の規模を超える
+```
 
 ## 4. 一括対処
 
@@ -61,5 +74,6 @@ PR 作成(`gh pr create` 成功)の直後に、対処済みの inbox 行を 1 �
 - 対処済みの inbox 行が inbox から 0 件になっている
 - リポジトリ標準の検証(selftest / lint / ビルド等)が green
 - 要判断として残した一覧をユーザーに報告済み
+- open Issue 全件が対処対象・要判断・除外一覧のいずれかに 1 回ずつ現れている(発見漏れゼロ)
 
 事例が積み重なったら `cases.md` を新設して追記する。サニタイズ規則は `skill-gardening` を参照。
