@@ -77,6 +77,14 @@
       # installed natively, follow "Removing an ad-hoc native Claude Code
       # install" in docs/cutover-runbook.md.
       claude-code
+
+      # Declarative Gmail filter management for a personal filters repo,
+      # built on mbrt/gmailctl. Unlike vhs (a one-shot-per-PR tool used
+      # elsewhere that falls back to `nix shell nixpkgs#vhs` when absent
+      # from PATH), gmailctl's diff/apply/edit are run repeatedly during
+      # normal filter maintenance, so it's declared here instead of
+      # re-fetched per invocation.
+      gmailctl
     ]
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
