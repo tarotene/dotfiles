@@ -14,9 +14,22 @@
 #   G_pr       : push 済み・PR 無し・ahead>0 のブランチ         → block
 #   G_link     : PR 本文に closing keyword または No-Issue:     → block
 #   G_visual   : PR 本文に Before/After の視覚証跡 or No-Visual: → block
+#   G_stack    : stacked PR チェーンが GitHub 上の stack に未リンク → block
 #   G_CI       : 期待される check がすべて pass/skipping        → block
 #   G_base     : origin/<base> に対する ahead/behind            → advisory
 #   G_wt       : 未コミット件数                                 → advisory
+#
+# G_stack(ADR-0027、docs/claude/pr-gate.md「G_stack」節): セッション内の
+# 複数 PR は常に作成順の単一チェーンに積む(uncertainty-first stacking)。
+# 現在の PR を起点に open PR の base チェーンを両方向(祖先・子孫)へたどり
+# 連結成分(chain)を求める — chain が自分だけ(size 1)なら stacked PR で
+# はないので沈黙する。chain が 2 以上あるのに GitHub 上の stack
+# (`gh api repos/<nwo>/stacks`)へリンクされていなければ block する。
+# `gh-stack` 拡張が無い、または `stacks` API が取得できない(機能撤収・
+# ネットワーク障害)場合は判定不能として advisory に降格する — base
+# チェーンの正しさ自体は作成時の `stack-base-guard.sh`(docs/claude/
+# stack-base-guard.md)が別途・全環境で強制しているため、この降格でも
+# orphan PR(base 宣言の不整合)自体は発生しない。
 #
 # G_unpushed は G_push が届かない領域を塞ぐ: G_push は比較対象の headRefOid を
 # open PR から取るので、PR がまだ無いセッションでは何も見ずに完全沈黙していた
@@ -100,22 +113,25 @@
 #   完全沈黙(exit 0, 出力なし) → allowlist 外 / git repo でない / GitHub remote
 #     でない / jq・gh・git 不在 / skip / (PR が無く、かつ hygiene の材料も無い)
 #     / G_pr の判定不能条件(upstream 不明・default branch 未設定・default
-#     branch 上・ahead 不明 or 0・merged/closed PR 既存)
+#     branch 上・ahead 不明 or 0・merged/closed PR 既存) / G_stack の chain
+#     size が 1(stacked PR ではない)
 #   警告 1 行 + fail-open      → gh 未ログイン・API 失敗・fetch 失敗・
-#     G_pr の merged/closed 検査 API 失敗
+#     G_pr の merged/closed 検査 API 失敗・G_stack の gh-stack 拡張不在
+#     または stacks API 取得不能(advisory 降格)
 #   hard block(exit 2)         → G_push 不一致 / G_unpushed(PR 無し + 未push
 #     commit あり) / G_pr(push 済み・PR 無し・ahead>0) / G_link 欠落 /
-#     G_visual 欠落 / G_CI が揃わない・失敗・pending
+#     G_visual 欠落 / G_stack(chain 2 以上・未リンク・拡張/API 利用可能) /
+#     G_CI が揃わない・失敗・pending
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
 # (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自カウンタ:
-# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-5} に達したら 1 回だけ escalate し、
+# state/<sid>.count が ${PR_GATE_MAX_BLOCKS:-6} に達したら 1 回だけ escalate し、
 # touch state/<sid>.escalated。以後そのセッションは無条件で素通る(escalated の
 # チェックは上限判定より前 — docs/claude/copilot-plan-review.md の closer と同じ置き方)。
-# 上限が 4 でなく 5 なのは G_pr を足したから: 最悪の連鎖(push → G_pr →
-# 本文修正 → CI 待ち)が正当に 4 回 block しうるので、4 のままだと最後の
-# 1 回が escalate に化ける(3→4 に上げた G_link 追加時と同じ論法)。なお
+# 上限が 5 でなく 6 なのは G_stack を足したから: 最悪の連鎖(push → G_pr →
+# 本文修正 → stack link → CI 待ち)が正当に 5 回 block しうるので、5 のままだと
+# 最後の 1 回が escalate に化ける(4→5 に上げた G_pr 追加時と同じ論法)。なお
 # G_unpushed の block メッセージは push と `gh pr create` を 1 往復に
 # まとめて案内するため、この最悪連鎖は実際には起きにくい。
 #
@@ -135,7 +151,7 @@ CI_TIMEOUT="${PR_GATE_CI_TIMEOUT:-300}"
 CHECK_APPEAR_TIMEOUT="${PR_GATE_CHECK_APPEAR_TIMEOUT:-60}"
 QUIESCE="${PR_GATE_QUIESCE:-15}"
 FETCH_TTL="${PR_GATE_FETCH_TTL:-600}"
-MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-5}"
+MAX_BLOCKS="${PR_GATE_MAX_BLOCKS:-6}"
 
 # 自身の絶対パス。symlink は辿らない — 配備後は ~/.claude/hooks/ 配下が nix store
 # への symlink であり、世代を跨いで安定な symlink 側を指示文に出したい
@@ -389,6 +405,81 @@ default_branch() {
   local ref
   ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0
   printf '%s' "${ref#origin/}"
+}
+
+# --- G_stack: chain 検出と GitHub stack リンク判定(ADR-0027) -----------------
+
+# $1=nwo; gh-stack 拡張が導入済みなら 0。--version がバイナリの唯一の存在
+# 確認手段(サブコマンド一覧に "installed" フラグは無い)。
+gh_stack_extension_available() {
+  gh stack --version > /dev/null 2>&1
+}
+
+# $1=nwo; `repos/<nwo>/stacks` の生 JSON を返す。取得不能(404・機能撤収・
+# ネットワーク障害のいずれか区別しない)なら非 0。
+fetch_stacks_json() {
+  gh api "repos/$1/stacks" 2>/dev/null
+}
+
+# $1=nwo $2=現在の PR 番号 $3=現在の PR の head branch $4=現在の PR の base;
+# 現在の PR を起点に open PR の base チェーンを両方向(祖先・子孫)へたどり
+# 連結成分を求める。成功時に 0 を返し、グローバル STACK_CHAIN_NUMS
+# (bottom→top のスペース区切り PR 番号列)・STACK_CHAIN_SIZE をセットする。
+# 一覧取得失敗、または自分自身が一覧に見当たらない(想定外)場合は非 0。
+compute_stack_chain() {
+  local nwo="$1" pr_num="$2" head_branch="$3" base="$4"
+  local prs_json rows
+  prs_json="$(gh pr list -R "$nwo" --state open --limit 100 \
+    --json number,headRefName,baseRefName 2> /dev/null)" || return 1
+  [[ -n $prs_json ]] || return 1
+  rows="$(jq -r '.[] | [(.number|tostring), .headRefName, .baseRefName] | @tsv' <<< "$prs_json" 2> /dev/null)" || return 1
+  [[ -n $rows ]] || return 1
+
+  local -A num_of_head=() base_of_num=() head_of_num=()
+  local n h b
+  while IFS=$'\t' read -r n h b; do
+    [[ -n $n ]] || continue
+    num_of_head["$h"]="$n"
+    base_of_num["$n"]="$b"
+    head_of_num["$n"]="$h"
+  done <<< "$rows"
+
+  # 空文字キーはここでは無効(head_branch/base の解決に失敗している)。
+  # bash の連想配列は unquoted な空展開だと添字そのものが消えて
+  # "bad array subscript" 構文エラーになるため、必ず "" でクォートする。
+  [[ -n $head_branch ]] || return 1
+  [[ -n ${num_of_head["$head_branch"]:-} ]] || return 1
+
+  # 祖先方向: base が別の open PR の head と一致する限りさかのぼる。
+  local -a chain=("$pr_num")
+  local cur_base="$base" anc
+  while [[ -n $cur_base && -n ${num_of_head["$cur_base"]:-} ]]; do
+    anc="${num_of_head["$cur_base"]}"
+    chain=("$anc" "${chain[@]}")
+    cur_base="${base_of_num["$anc"]:-}"
+  done
+
+  # 子孫方向: base がこの PR(またはその子孫)の head と一致する PR を
+  # 幅優先で拾う。
+  local -a queue=("$pr_num")
+  local cn ch n2 h2 b2
+  while ((${#queue[@]})); do
+    cn="${queue[0]}"
+    queue=("${queue[@]:1}")
+    ch="${head_of_num["$cn"]:-}"
+    while IFS=$'\t' read -r n2 h2 b2; do
+      [[ -n $n2 ]] || continue
+      [[ $b2 == "$ch" ]] || continue
+      if [[ " ${chain[*]} " != *" $n2 "* ]]; then
+        chain+=("$n2")
+        queue+=("$n2")
+      fi
+    done <<< "$rows"
+  done
+
+  STACK_CHAIN_NUMS="${chain[*]}"
+  STACK_CHAIN_SIZE=${#chain[@]}
+  return 0
 }
 
 # --- state: block 回数 / escalated フラグ -------------------------------------
@@ -899,8 +990,54 @@ open な Issue の一覧は SessionStart の issue-index が注入していま�
 撮り方・Before の取り方は pr-description スキルを参照。"
   fi
 
+  # G_stack(ADR-0027)— G_link / G_visual と同じ「判定だけ先に済ませ、block は
+  # 最後に回す」形。現在の PR を起点に open PR の base チェーンをたどり、
+  # chain size が 2 以上(= stacked PR)なのに GitHub 上の stack へリンク
+  # されていなければ block する。gh-stack 拡張が無い/stacks API が取得
+  # できない場合は判定不能として advisory に留める(base チェーンの正しさ
+  # 自体は作成時の stack-base-guard.sh が別途・全環境で強制している)。
+  # head branch は $pr_json に含めていない(headRefName を追加すると呼び出し
+  # 元 G_push 等の縮退判定と無関係に応答形を太らせるだけ)ので、--head
+  # フィルタで絞り込みに使った現在のチェックアウトブランチ($branch)を
+  # そのまま使う — 両者は定義上一致する。
+  local stack_msg="" stack_blocks=0
+  if compute_stack_chain "$nwo" "$pr_num" "$branch" "$base" \
+    && ((STACK_CHAIN_SIZE >= 2)); then
+    if ! gh_stack_extension_available; then
+      advisory="${advisory}
+stack: gh-stack 拡張が無いため \`gh stack link\` できません(base チェーン
+       自体は stack-base-guard.sh が別途強制しています)。導入するには
+       \`gh extension install github/gh-stack\`。"
+    else
+      local stacks_json linked_verdict nums_json
+      if stacks_json="$(fetch_stacks_json "$nwo")" && [[ -n "$stacks_json" ]]; then
+        nums_json="$(tr ' ' '\n' <<< "$STACK_CHAIN_NUMS" | jq -R 'select(length>0)|tonumber' | jq -s .)"
+        linked_verdict="$(jq --argjson nums "$nums_json" '
+          any(.[]?; (.open == true) and (($nums - [(.pull_requests[]?.number)]) | length == 0))
+        ' <<<"$stacks_json" 2>/dev/null)" || linked_verdict=""
+        if [[ "$linked_verdict" != "true" ]]; then
+          stack_blocks=1
+          stack_msg="stacked PR チェーン(#$(printf '%s' "$STACK_CHAIN_NUMS" | sed 's/ / → #/g'))が
+GitHub 上の stack にリンクされていません。最下段から順に PR **番号**を
+指定して(ブランチ名ではない — link はブランチ引数だと未作成の PR を
+自動生成する副作用があります)リンクしてください:
+
+  gh stack link ${STACK_CHAIN_NUMS}"
+        fi
+      else
+        advisory="${advisory}
+stack: stacks API の取得に失敗しました(拡張は導入済み)。ネットワーク・
+       認証・機能撤収のいずれかの可能性があります。base チェーン自体は
+       stack-base-guard.sh が別途強制しています。"
+      fi
+    fi
+  fi
+
   local rider="$advisory"
   [[ -n "$visual_msg" ]] && rider="${visual_msg}
+
+${rider}"
+  [[ -n "$stack_msg" ]] && rider="${stack_msg}
 
 ${rider}"
   [[ -n "$link_msg" ]] && rider="${link_msg}
@@ -974,17 +1111,23 @@ ${rider}"
 ${G_CI_DETAIL}"
   fi
 
-  # G_link / G_visual を単独で block するのはここ — push も CI も通っている、
-  # つまり「あとは終わるだけ」の一点。まさに本文の不備が忘れられる瞬間なので、
-  # この位置で止める。上の block 経路を通った場合は既に $rider として伝えてある。
-  # 2 件とも欠けていれば 1 つの block メッセージに合流させ、本文修正をまとめて
-  # 1 往復で直せるようにする(どちらも CI を再走させない修正のため)。
+  # G_link / G_visual / G_stack を単独で block するのはここ — push も CI も
+  # 通っている、つまり「あとは終わるだけ」の一点。まさに本文の不備・stack
+  # リンク忘れが見落とされる瞬間なので、この位置で止める。上の block 経路を
+  # 通った場合は既に $rider として伝えてある。欠けているものが複数あれば
+  # 1 つの block メッセージに合流させ、まとめて 1 往復で直せるようにする
+  # (いずれも CI を再走させない修正のため)。
   local body_msg=""
   ((link_blocks)) && body_msg="$link_msg"
   if ((visual_blocks)); then
     body_msg="${body_msg:+${body_msg}
 
 }${visual_msg}"
+  fi
+  if ((stack_blocks)); then
+    body_msg="${body_msg:+${body_msg}
+
+}${stack_msg}"
   fi
   if [[ -n "$body_msg" ]]; then
     block_or_escalate "$sid" "${body_msg}
@@ -1033,6 +1176,14 @@ if [[ "${1:-}" == "--selftest" ]]; then
   #   既定は "Closes #1" + "No-Visual: selftest 既定本文" の 2 行 — G_link /
   #   G_visual を足す前から在った緑パスのケースを緑のまま保つため。G_link /
   #   G_visual 自体の検査は下でこの変数を明示的に上書きして行う。
+  # PR_GATE_STUB_CHAIN_FILE         : gh pr list --state open(--head 無し、
+  #   G_stack の compute_stack_chain 用)の応答。未指定なら自分1件だけの配列
+  #   (chain size 1 = 沈黙)。
+  # PR_GATE_STUB_STACK_EXT_RC       : gh stack --version の exit code(既定 0
+  #   = 拡張あり)
+  # PR_GATE_STUB_STACKS_FILE        : gh api repos/<nwo>/stacks の応答
+  #   (未指定なら [])
+  # PR_GATE_STUB_STACKS_RC          : 同 API の exit code(既定 0)
   mkdir -p "$dir/bin"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -1047,6 +1198,14 @@ case "$1" in
             "$jqbin" -n --arg s "${PR_GATE_STUB_ALL_STATE}" '[{state:$s}]'
           else
             echo '[]'
+          fi
+        elif [[ "$*" != *"--head "* ]]; then
+          # G_stack の compute_stack_chain 用(--head フィルタ無し)。
+          if [[ -n "${PR_GATE_STUB_CHAIN_FILE:-}" && -f "${PR_GATE_STUB_CHAIN_FILE:-}" ]]; then
+            cat "${PR_GATE_STUB_CHAIN_FILE}"
+          else
+            "$jqbin" -n --arg num "${PR_GATE_STUB_PR_NUM:-37}" --arg base "${PR_GATE_STUB_BASE:-main}" \
+              '[{number:($num|tonumber), headRefName:"selftest-branch-unused", baseRefName:$base}]'
           fi
         elif [[ "${PR_GATE_STUB_NO_PR:-0}" == "1" ]]; then
           echo '[]'
@@ -1072,6 +1231,12 @@ No-Visual: selftest 既定本文}" \
       *) exit 1 ;;
     esac
     ;;
+  stack)
+    case "$2" in
+      --version) exit "${PR_GATE_STUB_STACK_EXT_RC:-0}" ;;
+      *) exit 1 ;;
+    esac
+    ;;
   api)
     case "$*" in
       *rules/branches*)
@@ -1080,6 +1245,16 @@ No-Visual: selftest 既定本文}" \
         fi
         if [[ -n "${PR_GATE_STUB_RULES_FILE:-}" && -f "${PR_GATE_STUB_RULES_FILE:-}" ]]; then
           cat "${PR_GATE_STUB_RULES_FILE}"
+        else
+          echo '[]'
+        fi
+        ;;
+      *stacks*)
+        if [[ "${PR_GATE_STUB_STACKS_RC:-0}" != "0" ]]; then
+          exit "${PR_GATE_STUB_STACKS_RC}"
+        fi
+        if [[ -n "${PR_GATE_STUB_STACKS_FILE:-}" && -f "${PR_GATE_STUB_STACKS_FILE:-}" ]]; then
+          cat "${PR_GATE_STUB_STACKS_FILE}"
         else
           echo '[]'
         fi
@@ -1515,16 +1690,64 @@ No-Visual:")"
 ![After](./after.png)")"
   check "ローカルパスの画像記法はアップロード未証明として扱う(exit 2)" 2 "$rc"
 
+  echo "G_stack (stacked PR チェーンの link 検査、ADR-0027):"
+
+  git -C "$repo" branch -q stage1 2> /dev/null || true
+  git -C "$repo" branch -q stage2 2> /dev/null || true
+
+  jq -n '[{number:38,headRefName:"stage1",baseRefName:"main"},{number:39,headRefName:"stage2",baseRefName:"stage1"}]' \
+    > "$dir/chain-2.json"
+  jq -n '[{number:38,headRefName:"stage1",baseRefName:"main"}]' \
+    > "$dir/chain-1.json"
+  jq -n '[]' > "$dir/stacks-empty.json"
+  jq -n '[{"open":true,"pull_requests":[{"number":38},{"number":39}]}]' \
+    > "$dir/stacks-linked.json"
+
+  # gstack <sid> <branch> <pr_num> <base> <chain_file> [<stacks_file>] [<stacks_rc>] [<ext_rc>]
+  gstack() {
+    local sid="$1" br="$2" num="$3" base="$4" chainf="$5" stacksf="${6:-}" stacksrc="${7:-0}" extrc="${8:-0}" rc=0
+    git -C "$repo" switch -q "$br"
+    PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_RULES_FILE="$dir/rules-empty.json" \
+      PR_GATE_STUB_CHECKS_FILE="$dir/checks-quiesce-pass.json" \
+      PR_GATE_STUB_PR_NUM="$num" PR_GATE_STUB_BASE="$base" \
+      PR_GATE_STUB_CHAIN_FILE="$chainf" \
+      PR_GATE_STUB_STACKS_FILE="$stacksf" PR_GATE_STUB_STACKS_RC="$stacksrc" \
+      PR_GATE_STUB_STACK_EXT_RC="$extrc" \
+      PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+      <<< "$(hookinput "$sid")" > "$dir/out" 2> "$dir/err" || rc=$?
+    printf '%s' "$rc"
+  }
+
+  rc="$(gstack chain-block-sid stage2 39 stage1 "$dir/chain-2.json" "$dir/stacks-empty.json" 0 0)"
+  check "チェーンあり・未リンクは block(exit 2)" 2 "$rc"
+  check_grep "gh stack link コマンドを案内(PR番号、bottom→top)" "gh stack link 38 39" "$(cat "$dir/err")"
+
+  rc="$(gstack chain-linked-sid stage2 39 stage1 "$dir/chain-2.json" "$dir/stacks-linked.json" 0 0)"
+  check "リンク済みは pass(exit 0)" 0 "$rc"
+
+  rc="$(gstack chain-single-sid stage1 38 main "$dir/chain-1.json" "$dir/stacks-empty.json" 0 0)"
+  check "単独 PR(chain size 1)は沈黙・pass(exit 0)" 0 "$rc"
+
+  rc="$(gstack chain-noext-sid stage2 39 stage1 "$dir/chain-2.json" "" 0 1)"
+  check "gh-stack 拡張不在は advisory 降格・pass(exit 0)" 0 "$rc"
+  check_grep "拡張不在の advisory 文言" "gh-stack 拡張が無い" "$(cat "$dir/err")"
+
+  rc="$(gstack chain-apifail-sid stage2 39 stage1 "$dir/chain-2.json" "$dir/stacks-empty.json" 1 0)"
+  check "stacks API 失敗は advisory 降格・pass(exit 0)" 0 "$rc"
+  check_grep "stacks API 失敗の advisory 文言" "stacks API の取得に失敗" "$(cat "$dir/err")"
+
+  git -C "$repo" switch -q main
+
   echo "escalate (独自カウンタ + 上限):"
 
   n=0
-  while [[ $n -lt 5 ]]; do
+  while [[ $n -lt 6 ]]; do
     rc=0
     PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
       >"$dir/out" 2>"$dir/err" || rc=$?
     n=$((n + 1))
   done
-  check "5 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
+  check "6 回目で escalate 文言" 1 "$(grep -Fc 'AskUserQuestion' "$dir/err")"
   rc=0
   PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop <<<"$(hookinput esc-sid)" \
     >"$dir/out" 2>"$dir/err" || rc=$?

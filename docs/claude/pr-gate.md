@@ -1,9 +1,10 @@
 # PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
 
-herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 5 つ
+herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 6 つ
 （CI 待ちのまま完了を宣言する／push し忘れたまま完了する／push 済みなのに PR を
 作らないまま終わる／PR を Issue に繋がないまま終わる／見た目の変更なのに視覚証跡が
-無いまま終わる)を Stop hook で hard gate する仕組みの設計記録。実装は
+無いまま終わる／stacked PR チェーンを GitHub 上の stack にリンクしないまま終わる)を
+Stop hook で hard gate する仕組みの設計記録。実装は
 `config/claude/hooks/pr-gate.sh`、デプロイは
 `home/modules/claude.nix`。main が進んだことに気づかない件と未コミット変更は
 advisory に留める。
@@ -352,6 +353,71 @@ block する。しかも **`G_link` と同じ block メッセージに合流さ�
 据え置いた。最悪の正当チェーン(push → 本文修正 → CI 待ち = 3)の長さ自体は
 変わらない —— 本文修正のステップに直す項目が 1 つ増えるだけで、chain の段数は
 増えないため。
+
+## G_stack — なぜ「stack へのリンク忘れ」を block するのか(ADR-0027)
+
+### 直そうとしている事故
+
+2026-09-21、ある private リポジトリで 1 セッション約 10 PR を作成した際、
+`gh stack link` が実行されないまま Web UI で手動 stack を試み、束ねきれない
+orphan PR が発生した(詳細は `docs/adr/0027-uncertainty-first-stacking.md`
+Context、`docs/claude/stacked-pr.md`「保留条項の発火」節)。当時この種の
+取り違えを機械的に block する案(`G_stack`)は「実際に取り違えが起きて
+から block 化を検討する」と明示的に保留されていた(`docs/claude/
+stacked-pr.md` 旧「なぜ pr-gate.sh を触らなかったか」節)。上記の
+インシデントはその保留条項の発火そのものである。
+
+作成時の base 宣言の正しさは `config/claude/hooks/stack-base-guard.sh`
+(`docs/claude/stack-base-guard.md`)が別途・PreToolUse で強制する。
+`G_stack` が塞ぐのはその先 —— base が正しく積まれていても、GitHub 上の
+stack オブジェクトへのリンク(`gh stack link`)自体を忘れたまま終わる
+事故は防げない。stack map・atomic prefix merge といった public preview
+の利点は、リンクして初めて得られる。
+
+### chain の検出はセッション状態を持たない
+
+現在の PR を起点に、その回の `gh pr list --state open` で取れる base
+チェーンを両方向(祖先・子孫)へたどり連結成分(chain)を求める
+(`compute_stack_chain()`)。祖先方向は「base が別の open PR の head と
+一致する限りさかのぼる」、子孫方向は「base がこの PR(またはその子孫)の
+head と一致する PR を幅優先で拾う」。両方向を見るのは、Stop がどの段の
+セッションで呼ばれても(最下段でも最上段でも中間段でも)同じ chain 全体を
+一意に求めるため。
+
+chain size が 1(他の PR と base チェーンで繋がっていない)なら stacked PR
+ではないので完全に沈黙する。
+
+### リンク判定は `stacks` API を直接見る
+
+`gh api repos/<nwo>/stacks` が返す配列から、`open: true` かつ
+`pull_requests[].number` が chain の PR 番号集合を包含する要素があるかを
+jq で判定する。`gh stack view --json` は「current stack」を前提とした
+ローカル追跡状態への依存が排除できないため採用しなかった
+(`docs/stacked-pr-github-native.md` の実測、2026-09-09・2026-09-21 再確認)。
+
+### 縮退 — advisory への降格
+
+`gh-stack` 拡張が未導入(`gh stack --version` が失敗)、または `stacks`
+API 自体が取得できない(機能撤収・ネットワーク障害のいずれか区別しない)
+場合は、`G_stack` を block ではなく advisory に降格する。この縮退でも
+orphan PR(base 宣言の不整合)自体は発生しない —— base チェーンの正しさは
+`stack-base-guard.sh` が `gh` CLI の引数検査だけで完結させており、
+`gh-stack` 拡張や `stacks` API の可用性に依存しないため。
+
+### block の位置と PR 番号を指定する理由
+
+`G_link`/`G_visual` と同じ「あとは終わるだけ」の一点で、同じ block
+メッセージに合流させる(いずれも CI を再走させない修正のため)。案内文は
+**ブランチ名ではなく PR 番号**を bottom→top で示す —— `gh stack link` は
+ブランチ名を渡すと、そのブランチに PR が無い場合に新規 PR を自動作成する
+副作用があり(実機確認)、意図しない PR 生成を避けるため。
+
+### `MAX_BLOCKS` を 5 から 6 に上げた理由
+
+最悪の正当チェーン(push → G_pr → 本文修正 → stack link → CI 待ち)が
+正当に 5 回 block しうるようになった(`G_stack` の追加分 1 回)。5 のまま
+だと最後の 1 回が escalate に化けるため、4→5 に上げた `G_pr` 追加時と
+同じ論法で 6 に上げた。
 
 ## `stop_hook_active` を見ない理由
 
