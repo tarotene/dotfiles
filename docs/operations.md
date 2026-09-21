@@ -295,6 +295,46 @@ A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /
 pipx) should be reclaimed into the right layer — workflow tracked in
 [#4](https://github.com/tarotene/dotfiles/issues/4).
 
+### Ad-hoc installers must never prepend to PATH
+
+Whatever the layer, an installer that puts its own directory at the **front**
+of PATH breaks the whole decision flow above. nix enters PATH at
+`/etc/profile.d/nix.sh` — system level, before any user file runs — so a
+user-level prepend does not merely "come later", it **always outranks nix**.
+The result is silent: a `cargo install`ed alacritty 0.15.1 answered to
+`alacritty` for months while `home/modules/desktop.nix` declared 0.17.0-nixgl,
+and nine other tools were shadowed the same way
+([ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md)).
+
+The order this repository guarantees:
+
+```
+$HOME/.local/bin  →  <nix profile>  →  <system>  →  ad-hoc installer dirs
+```
+
+So, when adding anything to the shell startup path:
+
+- **Append, never prepend**, for any `$HOME`-local installer directory
+  (`.cargo/bin`, `.deno/bin`, `.bun/bin`, …). `config/shell/common_env` is the
+  place for it; `config/shell/profile` (deployed as `~/.profile`) is the one
+  that governs the *graphical* session.
+- **Do not `source` an installer's env script** if it prepends —
+  `. "$HOME/.cargo/env"` is exactly that. Leave the file on disk (it no-ops
+  once the directory is already on PATH), just stop sourcing it.
+- `rustup-init`, if it is ever run here, needs **`--no-modify-path`**.
+  `~/.profile` is a read-only store symlink, so the installer's attempt to
+  amend it fails with `could not amend shell profile`. That failure is by
+  design and harmless — PATH is already correct at that point — but the flag
+  avoids the noise. Note `rustup` itself is declared in
+  `home/modules/runtimes.nix`, so `rustup-init` should not be needed at all.
+
+To check whether something is currently shadowed:
+
+```bash
+comm -12 <(ls ~/.cargo/bin) <(ls ~/.nix-profile/bin)   # names present in both
+command -v <tool>                                      # which one actually wins
+```
+
 For a **GUI app** landing in step 4, check how it actually reaches fcitx5 — it is
 not obvious, it differs per app, and guessing has cost real time here. There are
 three routes, and the app picks one:

@@ -43,6 +43,10 @@ let
   # see that file for the full rationale.
   nixGLWrap = import ./nixgl.nix { inherit pkgs; };
 
+  # Bound rather than inlined into home.packages: the launcher entry below
+  # needs this exact derivation's store path for its Exec= (ADR-0029).
+  alacrittyPackage = nixGLWrap pkgs.alacritty;
+
 in
 {
   # Linux (Pop!_OS/COSMIC): the full fcitx5/nixGL/XDG-autostart stack below.
@@ -56,7 +60,7 @@ in
   config = lib.mkMerge [
     (lib.mkIf pkgs.stdenv.isLinux {
       home.packages = [
-        (nixGLWrap pkgs.alacritty)
+        alacrittyPackage
         # FiraCode Nerd Font from nixpkgs (retires scripts/install-firacode-font.sh).
         pkgs.nerd-fonts.fira-code
 
@@ -132,7 +136,7 @@ in
         #
         # The store path, not ~/.nix-profile/bin/fcitx5: a profile symlink would
         # follow package updates without a re-login, but it lets "declared" and
-        # "running" diverge — exactly the property quarantineStrayFcitx5Autostart
+        # "running" diverge — exactly the property the strayFiles quarantine
         # below exists to protect.  A store path is auditable.
         "autostart/fcitx5.desktop".source = pkgs.replaceVars (repoConfig + "/autostart/fcitx5.desktop") {
           fcitx5 = "${fcitx5Package}/bin/fcitx5";
@@ -201,6 +205,26 @@ in
       # via fontdb, which scans XDG data dirs but not the nix profile.
       xdg.dataFile."fonts/udev-gothic-nf".source = "${pkgs.udev-gothic-nf}/share/fonts";
 
+      # Launcher entry for alacritty, overriding the one nixpkgs installs into
+      # ~/.nix-profile/share/applications/ — XDG_DATA_DIRS puts ~/.local/share
+      # ahead of the nix profile, so this one wins without the upstream entry
+      # needing to be quarantined.
+      #
+      # Same shape and same reason as autostart/fcitx5.desktop above: one
+      # interpolated value in an otherwise literal file (ADR-0002), and a store
+      # path rather than a bare name so "declared" and "running" cannot
+      # diverge.  Here that divergence was not hypothetical — the bare
+      # `Exec=alacritty` upstream ships resolved through the COSMIC session's
+      # PATH, where ~/.cargo/bin sat ahead of ~/.nix-profile/bin, so the
+      # declared 0.17.0-nixgl had in practice never run (ADR-0029).  ~/.profile
+      # now orders that PATH correctly, but the store path here is what makes
+      # the launcher independent of it.
+      xdg.dataFile."applications/Alacritty.desktop".source =
+        pkgs.replaceVars (repoConfig + "/applications/Alacritty.desktop")
+          {
+            alacritty = "${alacrittyPackage}/bin/alacritty";
+          };
+
       # Seed the fcitx5 input-method profile (Mozc in the default group) only when
       # absent — fcitx5 owns the file afterwards, so a store symlink would conflict.
       home.activation.seedFcitx5Profile = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -239,21 +263,30 @@ in
         fi
       '';
 
-      # Quarantine the pre-migration hand-placed autostart entry. Both it and the
-      # home-managed fcitx5.desktop become app-*@autostart.service units, so they race
-      # at login and the loser dies with "Unable to request dbus name" — leaving the
-      # surviving daemon nondeterministically either the managed or the unmanaged one.
-      # Now that Exec= is a store path this also protects against the worse version of
-      # the same race: the stray entry execs /usr/bin/fcitx5, so the winner could be
-      # apt's 5.1.7 rather than the declared 5.1.19. Renamed rather than deleted: the
-      # file is outside home-manager's ownership, and the generator only picks up
-      # *.desktop, so a .bak suffix is enough to retire it.
-      home.activation.quarantineStrayFcitx5Autostart = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        stray="''${XDG_CONFIG_HOME:-$HOME/.config}/autostart/org.fcitx.Fcitx5.desktop"
-        if [ -e "$stray" ] || [ -L "$stray" ]; then
-          run mv -f "$stray" "$stray.bak"
-        fi
-      '';
+      # Retire hand-placed entries that home-manager now supersedes, via the
+      # shared quarantine (home/modules/quarantine.nix).  Both are the same
+      # failure: a stray *.desktop competing with a managed one, and naming a
+      # different build of the binary than the one declared here.
+      #
+      # org.fcitx.Fcitx5.desktop — the pre-migration autostart entry.  Both it
+      # and the home-managed fcitx5.desktop become app-*@autostart.service
+      # units, so they race at login and the loser dies with "Unable to request
+      # dbus name" — leaving the surviving daemon nondeterministically either
+      # the managed or the unmanaged one.  Now that Exec= is a store path this
+      # also protects against the worse version of the same race: the stray
+      # entry execs /usr/bin/fcitx5, so the winner could be apt's 5.1.7 rather
+      # than the declared 5.1.19.
+      #
+      # alacritty.desktop — the retired shell installer's launcher entry
+      # (#218 removed the installer, not its residue).  It execs
+      # ~/.cargo/bin/alacritty, i.e. a cargo-built 0.15.1 with no nixGL
+      # wrapper, against the declared 0.17.0-nixgl; and because it duplicates
+      # StartupWMClass=Alacritty the launcher offered two identical-looking
+      # entries.  See ADR-0029.
+      dotfiles.quarantine.strayFiles = [
+        ".config/autostart/org.fcitx.Fcitx5.desktop"
+        ".local/share/applications/alacritty.desktop"
+      ];
 
       # Seed cosmic-term's font (COSMIC settings rewrite these files at runtime,
       # so seed-if-missing like the fcitx5 profile above). Restart cosmic-term to

@@ -8,11 +8,25 @@
 [ -z "$XDG_STATE_HOME" ] && export XDG_STATE_HOME="$HOME/.local/state"
 [ -z "$XDG_CACHE_HOME" ] && export XDG_CACHE_HOME="$HOME/.cache"
 
-# Cargo path (Rust uses default location)
+# Ad-hoc installer paths (ADR-0029).
+#
+# These are appended, never prepended.  home-manager is the source of truth
+# for the user environment (ADR-0001), and PATH order is what actually
+# enforces that: ~/.nix-profile/bin enters PATH at /etc/profile.d/nix.sh time,
+# so *any* user-level prepend lands in front of it and silently wins.  That is
+# how a cargo-installed alacritty 0.15.1 shadowed the declared 0.17.0-nixgl,
+# and a deno installed by its own installer still shadows the declared one.
+#
+# Appending is free here: none of these three directories has a single name in
+# common with /usr/bin, /usr/local/bin or /bin, so nothing system-level can
+# shadow them in turn.  They keep working; they just stop outranking nix.
+#
+# Cargo path (Rust uses default location; also ADR-0025's registry of
+# self-authored pre-release CLIs, which have no nixpkgs counterpart at all).
 if [ -d "$HOME/.cargo/bin" ]; then
     case ":$PATH:" in
         *":$HOME/.cargo/bin:"*) ;;
-        *) export PATH="$HOME/.cargo/bin:$PATH" ;;
+        *) export PATH="$PATH:$HOME/.cargo/bin" ;;
     esac
 fi
 
@@ -20,7 +34,7 @@ fi
 if [ -d "$HOME/.deno/bin" ]; then
     case ":$PATH:" in
         *":$HOME/.deno/bin:"*) ;;
-        *) export PATH="$HOME/.deno/bin:$PATH" ;;
+        *) export PATH="$PATH:$HOME/.deno/bin" ;;
     esac
 fi
 
@@ -28,7 +42,7 @@ fi
 if [ -d "$HOME/.bun/bin" ]; then
     case ":$PATH:" in
         *":$HOME/.bun/bin:"*) ;;
-        *) export PATH="$HOME/.bun/bin:$PATH" ;;
+        *) export PATH="$PATH:$HOME/.bun/bin" ;;
     esac
 fi
 

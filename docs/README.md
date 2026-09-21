@@ -163,6 +163,18 @@
   作成時 PreToolUse hook(`stack-base-guard.sh`)と完了時 Stop judgement
   (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
   「積むか否か」の判定としては supersede。
+- [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH
+  の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は
+  `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、
+  ユーザレベルの prepend は構造的に必ず nix を追い越す — COSMIC
+  ランチャーの Alacritty 重複を調べた結果、実は両エントリとも
+  `~/.profile` の `. "$HOME/.cargo/env"` が先頭に置いた cargo 版
+  0.15.1 を起動しており、宣言済みの 0.17.0-nixgl は一度も動いて
+  いなかった(同様の shadow は計 10 件 + `deno`)。順序を
+  `.local/bin` → nix → system → ad-hoc installer dirs に規定し、
+  ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager
+  管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も
+  store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
