@@ -26,7 +26,9 @@ Plan mode で非自明な設計判断を書くときは、判断を確認して�
 (`Dn:` 採った判断 / 出典と取得日 / 先行例との差分、または `先行例なし:`
 と探した範囲)で書く。設計判断を含まない Plan は代わりに 1 行の免除
 (`先行例: 該当なし — <理由>`)でよい。書式は precedent-grounding
-スキルに従う。
+スキルに従い、**ExitPlanMode を呼ぶ前に
+`~/.claude/hooks/plan-precedent-gate.sh --check <プランファイル>` で
+自己検査して指摘ゼロを確認する**(gate の deny 往復を待たない)。
 
 ## 調べ方の規律
 
@@ -81,6 +83,8 @@ sub-issue を持つ Issue、または箇条書きで複数項目を含む依頼�
   事実上ゼロの微小修正(数行の typo・dead link 修正等)に限り、断りを
   入れた上で同一 PR に同梱してよい。「inbox か同一 PR か」の二択を
   AskUserQuestion で迫らない。
+- ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate.sh --check-plan
+  <プランファイル>` で節内整合性(処分・タグ)を自己検査する。
 - 手順は scope-inventory スキルに従う。
 
 # 実装タスクの完了定義

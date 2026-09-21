@@ -500,6 +500,19 @@ severity 定義、(3) `COPILOT_PLAN_REVIEW_GATE_SEVERITIES` を `BLOCKER` に絞
 **ラウンド数を増やす対策は採らない** — 最終ラウンドが closer である限り収束は
 保証されており、非収束が再発したならそれは別の不変条件が破れている。
 
+2026-09-21 実測: dotfiles 系セッションのトランスクリプト(プランセッション
+58 本)で copilot 実行 170 回・累計 42 分(平均 15 秒/回)。並列で走る書式
+gate(plan-precedent-gate / plan-scope-gate)の deny に起因する再試行が
+132 assistant ターンあり、cache_read 15.8M + cache_creation 1.1M トークン
+を消費していたが、その再試行のたびに critic も無駄に毎回走っていた
+(書式で確実に落ちるラウンドでもラウンド state を 1 つ消費する)。このため
+hook 冒頭に書式 gate の precheck を追加した: stdin JSON をそのまま sibling
+2 本(precedent → scope の順)に再実行させ、どちらかが deny を返すなら
+copilot 自身がその deny 理由(sibling の例文ブロック込み)をそのまま返し、
+critic は起動せずラウンド state にも触れない。sibling 不在・timeout・
+非ゼロ終了・空出力・jq 失敗は fail-open(非 deny 扱いで通常の critic 経路
+へ進む)。
+
 ## 確定した技術事実（現行 = Copilot CLI）
 
 これを「修正」しないための記録。

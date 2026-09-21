@@ -80,6 +80,15 @@ COPILOT_BIN="${COPILOT_BIN:-copilot}"
 MAX_REVIEWS="${MAX_PLAN_REVIEWS:-3}"
 COPILOT_TIMEOUT="${COPILOT_PLAN_REVIEW_TIMEOUT:-280}"
 GATE_SEVERITIES="${COPILOT_PLAN_REVIEW_GATE_SEVERITIES:-BLOCKER,MAJOR}"
+
+# 書式 gate precheck 用 sibling。3 本の hook は home.file で ~/.claude/hooks/
+# に個別配備されるが、ソースツリーでも配備先でも同一ディレクトリに並ぶため
+# SCRIPT_DIR 基準で解決できる(二重パス解決は不要)。
+PLAN_PRECEDENT_GATE_BIN="${PLAN_PRECEDENT_GATE_BIN:-$SCRIPT_DIR/plan-precedent-gate.sh}"
+PLAN_SCOPE_GATE_BIN="${PLAN_SCOPE_GATE_BIN:-$SCRIPT_DIR/plan-scope-gate.sh}"
+# 本家 gate の register 登録値(home/modules/claude.nix)に合わせる。
+PLAN_PRECEDENT_GATE_TIMEOUT=10
+PLAN_SCOPE_GATE_TIMEOUT=20
 PARALLEL="${COPILOT_PLAN_REVIEW_PARALLEL:-1}"
 RETENTION_DAYS="${COPILOT_PLAN_REVIEW_RETENTION_DAYS:-30}"
 # 調査時点で利用可能な最新 GPT の具体 ID に固定する。model catalog の変更で
@@ -963,13 +972,19 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # sessionVariables 等)を継承させない。env -u で関連キーを明示的に消してから
   # $@ で上書きするテスト用の値だけを渡す。
   runhook() { # 残りの引数は env 代入として渡す
+    # PLAN_PRECEDENT_GATE_BIN / PLAN_SCOPE_GATE_BIN は既定で /dev/null に向け、
+    # precheck を無効化する(fixture のプラン本文 "# plan\n" は書式 gate 自体
+    # には確実に deny されるため、無効化しないと以降の全テストが precheck 側の
+    # deny に化けてしまう)。precheck 自体をテストするケースだけ "$@" で上書きする。
     env \
       -u COPILOT_BIN -u COPILOT_PLAN_REVIEW_DIR -u COPILOT_PLAN_REVIEW_MODEL \
       -u COPILOT_PLAN_REVIEW_AGENT -u COPILOT_PLAN_REVIEW_TIMEOUT \
       -u COPILOT_PLAN_REVIEW_GATE_SEVERITIES -u COPILOT_PLAN_REVIEW_PARALLEL \
       -u COPILOT_PLAN_REVIEW_RETENTION_DAYS -u COPILOT_PLAN_REVIEW_SCHEMA \
       -u MAX_PLAN_REVIEWS -u SKIP_PLAN_REVIEW \
-      COPILOT_PLAN_REVIEW_DIR="$REVIEW_DIR" "$@" bash "$self" < "$fixture"
+      COPILOT_PLAN_REVIEW_DIR="$REVIEW_DIR" \
+      PLAN_PRECEDENT_GATE_BIN=/dev/null PLAN_SCOPE_GATE_BIN=/dev/null \
+      "$@" bash "$self" < "$fixture"
   }
   decision() { jq -r '.hookSpecificOutput.permissionDecision // "none"'; }
   reason() { jq -r '.hookSpecificOutput.permissionDecisionReason // ""'; }
@@ -1020,6 +1035,62 @@ if [[ "${1:-}" == "--selftest" ]]; then
   out="$(runhook COPILOT_BIN=true)"
   check "skip フラグ → 出力なし" "" "$out"
   rm -f "$REVIEW_DIR/skip"
+
+  # 19.5) 書式 gate precheck
+  # 19.5-a) deny stub → copilot 自身が deny を返し、ラウンド state を作らない
+  mkhookinput selftest-precheck-deny
+  fake_deny_gate="$selftest_dir/fake-deny-gate.sh"
+  cat > "$fake_deny_gate" <<'FAKEEOF'
+#!/usr/bin/env bash
+cat >/dev/null
+jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
+        permissionDecisionReason: "stub-deny-reason-12345"}}'
+FAKEEOF
+  chmod +x "$fake_deny_gate"
+  out="$(runhook COPILOT_BIN=true PLAN_PRECEDENT_GATE_BIN="$fake_deny_gate")"
+  check "precheck deny → permissionDecision=deny" deny "$(decision <<<"$out")"
+  case "$(reason <<<"$out")" in
+    *stub-deny-reason-12345*) ok "precheck deny → sibling の deny 理由を含む" ;;
+    *) ng "precheck deny → sibling の deny 理由を含む" ;;
+  esac
+  if [[ -e "$STATE_DIR/selftest-precheck-deny.count" ]]; then
+    ng "precheck deny → ラウンド state を作らない(critic 不起動)"
+  else
+    ok "precheck deny → ラウンド state を作らない(critic 不起動)"
+  fi
+
+  # 19.5-b) 壊れた stub(非ゼロ終了)→ fail-open で通常のレビュー経路へ進む
+  mkhookinput selftest-precheck-broken
+  fake_broken_gate="$selftest_dir/fake-broken-gate.sh"
+  cat > "$fake_broken_gate" <<'FAKEEOF'
+#!/usr/bin/env bash
+cat >/dev/null
+exit 3
+FAKEEOF
+  chmod +x "$fake_broken_gate"
+  out="$(runhook COPILOT_BIN=true PLAN_PRECEDENT_GATE_BIN="$fake_broken_gate")"
+  check "precheck 壊れ stub → deny しない(fail-open)" none "$(decision <<<"$out")"
+  case "$(jq -r '.systemMessage // ""' <<<"$out" 2>/dev/null)" in
+    *実行に失敗しました*) ok "precheck 壊れ stub → 通常のレビュー経路(copilot 実行)に到達" ;;
+    *) ng "precheck 壊れ stub → 通常のレビュー経路(copilot 実行)に到達" ;;
+  esac
+
+  # 19.5-c) 実 sibling 統合: 免除行入りプランは precheck を素通りしレビュー経路へ進む
+  # (契約ドリフト検知: sibling の stdout JSON 形式が変わればここで壊れる)
+  jq -n --arg s selftest-precheck-real \
+    '{session_id: $s, cwd: ".", hook_event_name: "PreToolUse", tool_name: "ExitPlanMode",
+      permission_mode: "plan", tool_input: {plan: "先行例: 該当なし — selftest\n"}}' > "$fixture"
+  out="$(runhook COPILOT_BIN=true \
+    PLAN_PRECEDENT_GATE_BIN="$SCRIPT_DIR/plan-precedent-gate.sh" \
+    PLAN_SCOPE_GATE_BIN="$SCRIPT_DIR/plan-scope-gate.sh")"
+  check "precheck 実 sibling(免除行あり) → deny しない" none "$(decision <<<"$out")"
+  case "$(jq -r '.systemMessage // ""' <<<"$out" 2>/dev/null)" in
+    *実行に失敗しました*) ok "precheck 実 sibling(免除行あり) → レビュー経路に到達" ;;
+    *) ng "precheck 実 sibling(免除行あり) → レビュー経路に到達" ;;
+  esac
+  # 以降のテストが参照する debug-last-input.json / $fixture を標準状態に戻す。
+  mkhookinput selftest-precheck-reset
+  runhook COPILOT_BIN=true > /dev/null
 
   # 20) debug ダンプにプラン本文が残らない
   if jq -e 'has("tool_input")' "$REVIEW_DIR/debug-last-input.json" >/dev/null 2>&1; then
@@ -1412,6 +1483,49 @@ fi
 # --- エスケープハッチ ---
 if [[ -e "$REVIEW_DIR/skip" || "${SKIP_PLAN_REVIEW:-0}" == "1" ]]; then
   pass_through
+fi
+
+# --- 書式 gate precheck ---
+# 並列に走る plan-precedent-gate / plan-scope-gate が deny を返すことが確実
+# なら、critic を起動してもそのラウンドは無駄になる(2026-09-21 実測: 同一
+# セッションでの deny 118/188、copilot は平均 15 秒/回・累計 42 分)。stdin
+# JSON をそのまま sibling に渡して再実行し、deny が出るなら copilot 自身が
+# その deny 理由(例文ブロック込み)を返し、critic は呼ばずラウンド state
+# にも触れない。
+#
+# 「systemMessage で素通りし deny は並列の本家 gate に委ねる」案は採らない:
+# 本家 scope hook の register timeout は 20s・precedent は 10s(home/modules/
+# claude.nix)であり、precheck はここで独立に実行するため「precheck は deny
+# を検出できたのに本家がタイムアウトして deny を出せない」競合窓が生じ得る。
+# その窓では書式 deny もレビューもないまま承認ダイアログへ抜けてしまう。
+# copilot 自身が deny を返せば本家の成否に依存しない(両方が deny した場合の
+# 二重 deny は同一内容で無害)。sibling 不在・timeout・非ゼロ終了・空出力・
+# jq 失敗は fail-open(非 deny 扱いで critic へ進む)。
+precheck_deny_reason() { # $1=gate bin $2=timeout秒 ; deny なら理由文字列を出力、非deny なら何も出さない
+  local bin="$1" secs="$2" out decision reason
+  [[ -f "$bin" ]] || return 0
+  out="$(timeout "$secs" bash "$bin" <<<"$INPUT" 2>/dev/null)" || return 0
+  [[ -n "$out" ]] || return 0
+  decision="$(jq -r '(.hookSpecificOutput.permissionDecision
+                      // .hookSpecificOutput.decision.behavior // empty)' \
+              <<<"$out" 2>/dev/null)" || return 0
+  [[ "$decision" == "deny" ]] || return 0
+  reason="$(jq -r '(.hookSpecificOutput.permissionDecisionReason
+                    // .hookSpecificOutput.decision.message // empty)' \
+            <<<"$out" 2>/dev/null)" || return 0
+  [[ -n "$reason" ]] && printf '%s' "$reason"
+}
+
+precheck_reason="$(precheck_deny_reason "$PLAN_PRECEDENT_GATE_BIN" "$PLAN_PRECEDENT_GATE_TIMEOUT")"
+precheck_gate="plan-precedent-gate"
+if [[ -z "$precheck_reason" ]]; then
+  precheck_reason="$(precheck_deny_reason "$PLAN_SCOPE_GATE_BIN" "$PLAN_SCOPE_GATE_TIMEOUT")"
+  precheck_gate="plan-scope-gate"
+fi
+if [[ -n "$precheck_reason" ]]; then
+  deny_with "(copilot-plan-review: ${precheck_gate} の書式 gate precheck による deny。このラウンドのレビューは未実行・未消費です)
+
+${precheck_reason}"
 fi
 
 COUNT_FILE="$STATE_DIR/${SESSION_ID}.count"
