@@ -36,13 +36,19 @@ in
   # unmanaged install, reclaiming it into the layer ADR-0001 says it
   # belongs in (unprivileged user-space GUI app → home-manager).
   #
-  # Linux needs the nixGL wrap (same GL bootstrap problem as alacritty/
-  # Chrome/Slack/Zoom in desktop.nix — Warp is GPU-accelerated and looks for
-  # its driver under the NixOS-only /run/opengl-driver). darwin has its own
-  # native GL stack, so it stays unwrapped there, same as alacritty in
-  # desktop.nix.
-  home.packages =
-    if pkgs.stdenv.isLinux then [ (nixGLWrap pkgs.warp-terminal) ] else [ pkgs.warp-terminal ];
+  # Linux only for now, needing the nixGL wrap (same GL bootstrap problem as
+  # alacritty/Chrome/Slack/Zoom in desktop.nix — Warp is GPU-accelerated and
+  # looks for its driver under the NixOS-only /run/opengl-driver).
+  #
+  # darwin (altair) is excluded, not just left unwrapped: the pinned
+  # nixpkgs' `warp-terminal` derivation fails to build there entirely.
+  # Upstream switched to an APFS-formatted .dmg, and nixpkgs' `undmg`-based
+  # unpackPhase only understands HFS+ ("only HFS file systems are
+  # supported") — a currently-open nixpkgs bug
+  # (https://github.com/NixOS/nixpkgs/issues/516928, confirmed against this
+  # pin by the `build altair` CI job failing with that exact message).
+  # Revisit once the pinned channel picks up a fix.
+  home.packages = lib.optionals pkgs.stdenv.isLinux [ (nixGLWrap pkgs.warp-terminal) ];
 
   # Git identity — personal (non-secret).
   programs.git.settings.user = {
