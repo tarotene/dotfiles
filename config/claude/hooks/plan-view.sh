@@ -50,6 +50,11 @@ HIGHLIGHT_STYLE="${PLAN_VIEW_HIGHLIGHT:-breezeDark}"
 WINDOW_SIZE="${PLAN_VIEW_WINDOW_SIZE:-1000,900}"
 RETENTION_DAYS="${PLAN_VIEW_RETENTION_DAYS:-30}"
 CSS_OVERRIDE="${PLAN_VIEW_CSS:-}"
+# darwin(#230): Homebrew cask "google-chrome"(packages/declarative/Brewfile)は
+# /Applications/ に .app バンドルを置くだけで、Linux の google-chrome のような
+# PATH 上の CLI バイナリは提供しない。存在判定・起動ともに Linux 経路とは別に
+# 分岐する(下記 is_darwin/browser_available/open_window 参照)。
+DARWIN_CHROME_APP="${PLAN_VIEW_DARWIN_CHROME_APP:-/Applications/Google Chrome.app}"
 
 ensure_dirs() {
   mkdir -p "$VIEW_DIR"
@@ -164,9 +169,29 @@ render_html() {
   return "$rc"
 }
 
+# selftest から実機の OS に依存せず darwin 分岐を検査できるよう、テスト専用の
+# override を先に見る(空なら実際の uname に落ちる — 通常運用に影響しない)。
+is_darwin() {
+  case "${PLAN_VIEW_UNAME_OVERRIDE:-}" in
+    Darwin) return 0 ;;
+    Linux) return 1 ;;
+  esac
+  [[ "$(uname -s 2>/dev/null)" == "Darwin" ]]
+}
+
 # ブラウザを切り離して起動し、即座に戻る。ここを同期にすると承認ダイアログが出ない。
+#
+# darwin(#230): `open -a` は LaunchServices に処理を渡してすぐ戻る(detach-open.sh
+# が同じ事実を記録している — setsid 相当の切り離しが元から要らない)。`--args` 以降
+# が対象アプリの argv にそのまま渡る。
 open_window() { # $1=html path
   local url="file://$1"
+  if is_darwin; then
+    open -a "$DARWIN_CHROME_APP" --args --app="$url" --window-size="$WINDOW_SIZE" \
+      >/dev/null 2>&1 </dev/null &
+    disown 2>/dev/null || true
+    return 0
+  fi
   if command -v setsid >/dev/null 2>&1; then
     setsid "$BROWSER_BIN" --app="$url" --window-size="$WINDOW_SIZE" \
       >/dev/null 2>&1 </dev/null &
@@ -178,8 +203,23 @@ open_window() { # $1=html path
   return 0
 }
 
+# darwin のネイティブ GUI セッションは DISPLAY/WAYLAND_DISPLAY の概念を持たない
+# (X11/Wayland ではない)。SSH 経由の非対話セッションを除外する目的だった元の
+# 判定は Linux 固有のシグナルなので、darwin では常に「表示可能」とみなす(#230)。
 has_display() {
+  is_darwin && return 0
   [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]
+}
+
+# ADR-0005: バイナリ(darwin では .app バンドル)の**存在**でゲートする、認証情報
+# では判定しない。Linux は PATH 上の $BROWSER_BIN、darwin は Homebrew cask
+# "google-chrome" が置く .app バンドルの存在を見る(#230)。
+browser_available() {
+  if is_darwin; then
+    [[ -d "$DARWIN_CHROME_APP" ]]
+  else
+    command -v "$BROWSER_BIN" >/dev/null 2>&1
+  fi
 }
 
 latest_plan() {
@@ -506,6 +546,61 @@ if true; then echo hi; fi
   check "DISPLAY なし → HTML を作らない" 0 "$(html_count)"
   check "DISPLAY なし → ブラウザを呼ばない" 0 "$(browser_calls)"
 
+  echo "darwin 分岐(#230、PLAN_VIEW_UNAME_OVERRIDE で実機非依存に検査):"
+
+  # 偽 open(1): darwin の起動経路が呼ぶコマンド自体が Linux の $BROWSER_BIN とは
+  # 別物(`open`)なので、専用の偽コマンドと専用ログを用意する。
+  fake_open_dir="$selftest_dir/fake-open-bin"
+  mkdir -p "$fake_open_dir"
+  fake_open="$fake_open_dir/open"
+  open_log="$selftest_dir/open.log"
+  cat > "$fake_open" <<'FAKEEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_OPEN_LOG"
+exit 0
+FAKEEOF
+  chmod +x "$fake_open"
+  darwin_chrome_present="$selftest_dir/DarwinChromePresent.app"
+  darwin_chrome_absent="$selftest_dir/DarwinChromeAbsent.app"
+  mkdir -p "$darwin_chrome_present"
+
+  # 10) darwin + Chrome.app あり + DISPLAY/WAYLAND_DISPLAY 両方なし →
+  #     DISPLAY 相当が無くても has_display() が darwin では常に真を返すので発火する
+  #     (実 pandoc で HTML を生成するので have_pandoc==1 のときのみ検査する)
+  if [[ "$have_pandoc" == "1" ]]; then
+    reset_probe
+    : > "$open_log"
+    hook_out="$(env -u DISPLAY -u WAYLAND_DISPLAY PATH="$fake_open_dir:$PATH" \
+      PLAN_VIEW_DIR="$VIEW_DIR" PLAN_VIEW_UNAME_OVERRIDE=Darwin \
+      PLAN_VIEW_DARWIN_CHROME_APP="$darwin_chrome_present" \
+      FAKE_OPEN_LOG="$open_log" \
+      bash "${BASH_SOURCE[0]}" < "$fixture")"
+    check "darwin+Chrome.app+DISPLAYなし → stdout は空" "" "$hook_out"
+    check "darwin+Chrome.app+DISPLAYなし → HTML が 1 本できる" 1 "$(html_count)"
+    case "$(cat "$open_log" 2>/dev/null)" in
+      *"-a $darwin_chrome_present --args --app=file://"*) ok "darwin: open -a <Chrome.app> --args --app=file:// で起動する" ;;
+      *) ng "darwin: open -a <Chrome.app> --args --app=file:// で起動する ($(cat "$open_log" 2>/dev/null))" ;;
+    esac
+    case "$(cat "$open_log" 2>/dev/null)" in
+      *--window-size=*) ok "darwin: --window-size も渡る" ;;
+      *) ng "darwin: --window-size も渡る" ;;
+    esac
+  else
+    echo "  skip pandoc 不在のため HTML 生成系のケースをスキップ"
+  fi
+
+  # 11) darwin + Chrome.app なし → 素通り(ADR-0005 のバイナリ存在ゲート)
+  reset_probe
+  : > "$open_log"
+  hook_out="$(env -u DISPLAY -u WAYLAND_DISPLAY PATH="$fake_open_dir:$PATH" \
+    PLAN_VIEW_DIR="$VIEW_DIR" PLAN_VIEW_UNAME_OVERRIDE=Darwin \
+    PLAN_VIEW_DARWIN_CHROME_APP="$darwin_chrome_absent" \
+    FAKE_OPEN_LOG="$open_log" \
+    bash "${BASH_SOURCE[0]}" < "$fixture")"
+  check "darwin+Chrome.app なし → stdout は空" "" "$hook_out"
+  check "darwin+Chrome.app なし → HTML を作らない" 0 "$(html_count)"
+  check "darwin+Chrome.app なし → open を呼ばない" "" "$(cat "$open_log" 2>/dev/null)"
+
   echo "CLI 経路:"
 
   if [[ "$have_pandoc" == "1" ]]; then
@@ -684,8 +779,11 @@ USAGE
   fi
 
   if [[ "$cli_open" == "1" ]]; then
-    command -v "$BROWSER_BIN" >/dev/null 2>&1 ||
-      die "ブラウザが見つかりません (PLAN_VIEW_BROWSER=$BROWSER_BIN)"
+    if is_darwin; then
+      browser_available || die "Google Chrome.app が見つかりません ($DARWIN_CHROME_APP)"
+    else
+      browser_available || die "ブラウザが見つかりません (PLAN_VIEW_BROWSER=$BROWSER_BIN)"
+    fi
     has_display ||
       die "DISPLAY / WAYLAND_DISPLAY がありません（--no-open なら HTML だけ作れます）"
   fi
@@ -717,7 +815,7 @@ fi
 
 # --- バイナリ存在でゲート（ADR-0005）。認証情報ではなく存在だけを見る ---
 command -v "$PANDOC_BIN" >/dev/null 2>&1 || exit 0
-command -v "$BROWSER_BIN" >/dev/null 2>&1 || exit 0
+browser_available || exit 0
 
 # --- 画面が無いセッション（SSH 経由など）では何もしない ---
 has_display || exit 0
