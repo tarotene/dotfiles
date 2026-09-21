@@ -94,7 +94,7 @@ dotfiles/
 │   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
 │   │                         #   pre-commit (protected-branch guard, then chains to
 │   │                         #   the repo-local hook)
-│   ├── herdr/                # Herdr config.toml (theme + sidebar rows), fully managed —
+│   ├── herdr/                # Herdr config.toml (theme + sidebar rows + keybindings), fully managed —
 │   │                         #   xdg.configFile deploys it verbatim (store symlink,
 │   │                         #   read-only; in-app settings writes fail by design);
 │   │                         #   oshi-marks.tsv: hololive talent name → fan-mark
