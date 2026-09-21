@@ -44,7 +44,8 @@ Claude に起票させられる。起票の実行主体が LLM 本体なので�
 | 起票先 | 作業中プロジェクト自身のリポジトリ | スコープ外の気づきもそのリポジトリの事象。起票は hook でなく本体 Claude が行う |
 | 縮退 | gh 不在 / git repo 外 / GitHub remote 不在 なら黙って exit 0 | ADR-0005 の binary-existence gating。inbox は残り、条件が揃う環境・セッションで回収される。remote 判定は `git remote -v` の `github.` マッチ(静的検査のみ、hook 内でネットワークに出ない) |
 | スキーマ | 最小 JSONL `{"ts", "title", "detail"}`・ラベルなし | 存在しないラベルは `gh issue create` を落とす。出自は本文フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」で検索可能にする(このリンクが attribution-guard.sh の生成元表示要求も兼ねる、`attribution-guard.md`「wrap-up inbox の出自フッターは生成元表示を兼ねる」参照) |
-| inbox 置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク。slug はプロジェクトパスの `/` `.` → `-` 置換 |
+| inbox 置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク |
+| slug のキー | 原則リポジトリ単位(`remote.origin.url` の正規化)。remote なし・git repo 外はプロジェクト絶対パスの `/` `.` → `-` 置換にフォールバック | 旧・絶対パス slug は同一リポジトリでも worktree ごとに inbox が分散し、worktree 削除後は orphan 化していた(実測: dotfiles で 3 個以上の分散 inbox、うち 1 個が並行セッション中に無言で 0 バイト化してデータ喪失)。remote URL 単位に正規化すれば worktree 間で inbox を共有できる |
 
 ## inbox の整合性(Codex レビューで確定)
 
@@ -64,6 +65,37 @@ flock は `--add` と `--mark-filed` の両方が取る。session_id フィル�
 
 Stop ゲートの stderr 指示は「起票成功または重複スキップした行だけ `--mark-filed`、
 失敗行は残して次ターンで再試行、直接編集は禁止」と明示する。
+
+## slug のリポジトリ単位化と自己修復マージ
+
+worktree ごとに絶対パスが変わる旧 slug 方式では、同一リポジトリでも inbox が
+worktree の数だけ分散し、worktree 削除後は誰も読まない orphan として残り続けた。
+`repo_slug()` は `git config --get remote.origin.url` を正規化して
+`<host>-<owner>-<repo>` 形式の slug を作る(scheme・認証情報・`.git` suffix・
+大文字小文字・https/ssh/scp 表記の差を吸収)。remote が無い、または git repo 外
+なら従来の絶対パス slug にフォールバックする。
+
+過去に書かれた旧 slug の inbox を回収するため、`--migrate <project-dir>`
+サブコマンド(Stop hook 本体と `wrapup-session-start.sh` の双方が毎回呼ぶ)が
+自己修復マージを行う。安全性はこのリポジトリの inbox 整合性モデル(上記
+「inbox の整合性」節)を壊さないことを最優先に設計している:
+
+- 使用中になり得る `<inbox>.lock` は削除・再作成しない。新旧両方の lock を
+  取るのはこのマージだけで、全呼び出し箇所が「新 → 旧」の同一順序で取得する
+  ためデッドロックしない。
+- 空ファイル判定もロック取得後に行う(空判定直後に並行 `--add` が書いた行を
+  消さないため)。
+- 新ファイルへは append のみ(truncate/rewrite する経路を持たない)。dedup は
+  行全体の完全一致(この機構の行同一性モデルそのもの。`ts`+`title` 一致だと
+  `detail` の異なる行を落とすため使わない)。
+- 旧の全行が新に存在することを確認できたときだけ旧本体 + 旧 lock を削除する。
+  1 行でも欠ければ両方残して次回呼び出し(次セッション)に再試行を委ねる
+  (冪等)。
+
+移行後も、旧パスを埋め込んだ SessionStart 注入を持つ長命セッションが
+リテラル旧パスへ `--add` して旧ファイルを再作成することがあり得るが、
+次にどのセッションの hook が起動しても `--migrate` が毎回走るため自己修復
+される。
 
 ## 検証
 
