@@ -1,12 +1,15 @@
-# attribution-guard — Claude 生成テキストに attribution を強制する PreToolUse hook
+# attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
 
-スクリプト: `config/claude/hooks/attribution-guard.sh`
+判定エンジン: `config/claude/hooks/attribution-guard.sh`
+Codex CLI adapter: `config/codex/hooks/attribution-guard.sh`
+Copilot CLI adapter: `config/copilot/hooks/attribution-guard.sh`
 規約側: `config/claude/CLAUDE.md`「GitHub に投稿するテキストには生成元を明示する」
-Issue: #190
+Issue: #190、#192(Codex CLI / Copilot CLI への展開)
 
-Claude が GitHub に書く外向きテキスト（PR / Issue の `create`・`edit`、Issue / PR
-コメント、`gh pr review` のレビュー本体）に attribution フッターが載っていることを
-保証する。
+Claude Code / Codex CLI / Copilot CLI が GitHub に書く外向きテキスト（PR / Issue の
+`create`・`edit`、Issue / PR コメント、`gh pr review` のレビュー本体)に attribution
+フッターが載っていることを保証する。以下は主に Claude Code 版の判定エンジンの
+設計記録(Codex/Copilot への展開は #192 の節を参照)。
 
 ## なぜ必要だったか
 
@@ -218,9 +221,6 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 
 - **コード行へのインラインレビューコメントは対象外。** 1〜2 行が典型で、フッターが
   本文より長くなり S/N を壊す。投稿経路も `gh api` / MCP に発散する。
-- **Codex CLI / Copilot CLI は対象外。** publish-guard のような adapter 層を持たない。
-  別エージェントには別の文言が必要で、「どのエージェントにどの文言」の管理表が
-  生まれる。
 - **フォールバック経路では `--title` 等の他フラグにマーカーがあると通る。** 厳密経路
   （本文抽出が成功した場合）では塞がっている。脅威モデルは敵対的入力ではなく Claude
   自身が生成するコマンドなので許容している（`git-stash-guard.sh:31-33` と同じ前提）。
@@ -232,6 +232,65 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
   しなかったのは、接続した瞬間に無検査になるのを防ぐため — publish-guard の旧実装が
   まさにこれで「最大の機能欠陥」を抱えていた（`home/modules/claude.nix` の登録
   コメントに記録がある）。
+
+## Codex CLI / Copilot CLI への展開(#192)
+
+裁定(#192): 別エージェントには別の文言が必要という当初の懸念(「文言を
+増やすと grep 対象が分散する」)は、汎用の「AI generated」ではなく
+**エージェント名入りの文言**で展開する方針で解消した。読者が「どの
+エージェントが生成したか」を本文だけで判別できることを、grep 対象の
+一元化より優先する。
+
+判定エンジン(`decide`/`decide_tokens`/`decide_api_tokens`/`has_marker`/
+`emit_deny` 等)はエージェント非依存のまま `config/claude/hooks/
+attribution-guard.sh` に残し、`config/codex/hooks/attribution-guard.sh` と
+`config/copilot/hooks/attribution-guard.sh` がこれを `source` して薄い
+I/O adapter だけを持つ。`tarotene/publish-guard` の「1つの判定エンジン +
+per-agent adapter」という既存の型(`adapters/{codex,copilot}-adapter.sh`)を
+そのまま踏襲した。
+
+エージェントごとに変わるのは `ATTRIBUTION_AGENT_NAME` / `ATTRIBUTION_AGENT_URL`
+の2変数だけ(adapter が `source` 前に上書きする)。フッターは
+`🤖 Generated with [<エージェント名>](<URL>)` の形で統一する:
+
+| エージェント | 名前 | URL |
+|---|---|---|
+| Claude Code(既定値) | `Claude Code` | `https://claude.com/claude-code` |
+| Codex CLI | `Codex CLI` | `https://learn.chatgpt.com/docs/codex/cli`(取得 2026-09-21。`developers.openai.com/codex/cli` は 308 でこの URL へ転送されるため転送先を直接使う) |
+| GitHub Copilot CLI | `GitHub Copilot CLI` | `https://docs.github.com/en/copilot/how-tos/copilot-cli`(取得 2026-09-21) |
+
+### I/O adapter が違いを吸収する
+
+Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
+`tarotene/publish-guard` の同種 adapter が実機で確認済みの事実をそのまま
+引き継いでいる:
+
+| | 入力 | tool 名 | 出力 |
+|---|---|---|---|
+| Claude Code | `tool_input.command` | `Bash`(大文字) | `hookSpecificOutput` でラップ |
+| Codex CLI | `tool_input.command` | `Bash`(大文字、Claude と同型) | `hookSpecificOutput` でラップ(Claude と同型) |
+| Copilot CLI | `toolArgs.command` | `bash`(小文字) | ラップしない直下の JSON |
+
+Copilot CLI の `preToolUse` には matcher が無く全 tool call で無条件発火
+するため、`toolName=="bash"` 以外は adapter 内部で早期 exit する。
+
+### スコープ外にしたもの
+
+MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま
+(#161 が同じ課題を publish-guard について記録している)。この展開では
+Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*`
+前提)は Codex/Copilot の adapter から呼ばない。
+
+### ソース元を安全に共有する
+
+`config/claude/hooks/attribution-guard.sh` は他ファイルから `source`
+される前提で末尾の実行時ディスパッチを
+`[[ "${BASH_SOURCE[0]}" == "$0" ]]` で直接実行時のみに限定してある
+(標準的な bash の「source か実行か」判定イディオム)。Codex/Copilot の
+adapter は相対パス(`../../claude/hooks/attribution-guard.sh`)でこれを
+辿るため、配置は `~/.codex/hooks/`・`~/.copilot/hooks/` 直下で固定
+(herdr サイドバー用の `herdr-{codex,copilot}-metadata.sh` と同じ配置
+パターン)。
 
 ## 縮退と検査
 
@@ -250,6 +309,8 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 
 ## 登録形
 
+Claude Code:
+
 ```
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
 ```
@@ -259,3 +320,19 @@ publish-guard と同じ複合 matcher 1 本。Bash と MCP を 2 つの hook エ
 同一 command を 2 つの matcher で登録しようとすると 2 回目が早期 return し、MCP 経路が
 無検査のまま残る。`if` は付けない（`Bash(*)` のような permission rule 構文は MCP の
 tool 名に一致しない）。絞り込みは hook 内部の早期 exit に置く。
+
+Codex CLI（`~/.codex/hooks.json`、`home/modules/claude.nix` の
+`registerCodexAttributionGuardHooks`、publish-guard の Codex 登録の後ろに
+明示的に順序付け、lost-update 対策は同モジュールの既存コメント参照）:
+
+```
+PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
+```
+
+Copilot CLI（`~/.copilot/settings.json`、同モジュールの
+`registerCopilotAttributionGuardHooks`、publish-guard の Copilot 登録の
+後ろに順序付け）:
+
+```
+preToolUse / matcher なし（Copilot 自体が対応していない）/ timeoutSec 10
+```
