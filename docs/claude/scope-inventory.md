@@ -220,3 +220,15 @@ tracking issue)を使って実測済み: 子番号の欠落検出・全カバー
 `plan-scope-gate`(20s)の 3 エントリが並ぶ。Claude Code は同一 matcher の hook を
 並列に走らせるため、3 つが同時に `deny` を返す状況が起こり得る。この repo での
 実地観察はまだ無い——気づいた挙動があればここに追記する。
+
+### deny 収束の実測(2026-09-21)
+
+dotfiles 系セッションのトランスクリプト(プランセッション 58 本)を実測した
+ところ、ExitPlanMode 試行 188 回中 deny 118 回のうち本 gate は 36 回、
+同一セッションで deny が反復した率は 59% だった。対策として、
+precedent-grounding gate と同型の `example_block()`(そのまま写せば通る
+`## 要求インベントリ` の完全例)を deny 文末尾に同梱し、経路B(インベントリ
+内整合性)だけをプラン単体で回す `--check-plan <プランファイル>` 自走モード
+を追加した(経路A の Issue 子項目カバレッジは引き続き `--check <plan.md>
+<issue-ref>` の担当)。CLAUDE.md とスキルにも ExitPlanMode 前の自己検査導線
+を追記した。
