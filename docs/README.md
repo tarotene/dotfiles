@@ -137,6 +137,14 @@
   (deno2nix)がアーカイブ済みで must 制約未達のため不採用。PoC 実測で
   Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・
   `cargo test` 移行を確認。一括移行はせず後続 Issue に段階分割する。
+- [ADR-0025](adr/0025-update-own-tools-local-registry.md) — 自作・
+  タグ付きリリース未達の pre-release CLI(実例: `tarotene/telepath`)の
+  導入を、ホストローカルレジストリファイルによる opt-in 方式で実現する
+  決定。dotfiles 側はスクリプトとスキーマのみ提供し、対象リポの名前は
+  git 管理外のホストローカル設定ファイルにのみ記録する。当初検討した
+  マーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の
+  自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped
+  exception。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
