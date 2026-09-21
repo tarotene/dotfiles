@@ -1692,6 +1692,16 @@ No-Visual:")"
 
   echo "G_stack (stacked PR チェーンの link 検査、ADR-0027):"
 
+  # 元のブランチ名を明示的に控えて戻す(ハードコードで "main" に switch
+  # しない)。CI ランナーの init.defaultBranch が "main" でない場合、
+  # "main" という名前は local branch として存在せず、origin/main の
+  # remote-tracking ref だけが存在する状態になる。その状態で
+  # `git switch main` を打つと git の DWIM 機能が発動し、
+  # origin/main を追跡する新しいローカル branch "main" を作って
+  # チェックアウトしてしまう — これは $real_head より古い commit
+  # (フィクスチャ構築時に origin/main へ固定した "base" commit)を
+  # 指すため、以降のテストの HEAD が静かに巻き戻る(実測: CI で発生)。
+  orig_branch="$(git -C "$repo" branch --show-current)"
   git -C "$repo" branch -q stage1 2> /dev/null || true
   git -C "$repo" branch -q stage2 2> /dev/null || true
 
@@ -1736,7 +1746,7 @@ No-Visual:")"
   check "stacks API 失敗は advisory 降格・pass(exit 0)" 0 "$rc"
   check_grep "stacks API 失敗の advisory 文言" "stacks API の取得に失敗" "$(cat "$dir/err")"
 
-  git -C "$repo" switch -q main
+  git -C "$repo" switch -q "$orig_branch"
 
   echo "escalate (独自カウンタ + 上限):"
 
