@@ -78,6 +78,37 @@ DATE_RE='取得[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}'
 DIFF_RE='差分:[[:space:]]*(一致|異なる)'
 NONE_RE='先行例なし:[[:space:]]*[^[:space:]]'
 
+# そのまま貼れば書式検査を通る完全な例文ブロック。deny メッセージ末尾と
+# --check の指摘あり出力に同梱する(2026-09-21 実測: 本 gate の deny の
+# 68% が同一セッションで反復していた — 不足要素名だけでは書式の綴りが
+# 当たらず往復していたため、通る完全形を直接見せる。docs/claude/
+# precedent-grounding.md「実測」節参照)。
+#
+# 取得日は実行時の日付を動的生成する(固定プレースホルダだと DATE_RE に
+# 一致せず、丸写しした瞬間に再 deny してしまうため)。selftest で
+# 「この関数の出力が judge_precedent を無条件に通る」ことを機械検証する。
+example_block() {
+  local today
+  today="$(date +%Y-%m-%d)"
+  cat <<EOF
+そのまま構造を写し、山括弧の中身だけ事実に置き換えれば書式検査は通ります:
+
+## 先行例との対比
+
+- D1: <採った設計判断を1文で>
+  先行例: <著者/組織, タイトル> https://example.com/doc (取得 ${today})
+  差分: 一致
+- D2: <採った設計判断を1文で>
+  先行例なし: <どこを・何のキーワードで・一次/二次のどちらまで探したか>
+
+出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス でも可。
+先行例から意図的に外れた場合は「差分: 異なる — <理由>」。
+設計判断を含まないプランなら、節の代わりに次の1行だけ:
+
+先行例: 該当なし — <理由(例: typo 修正で設計判断を含まない)>
+EOF
+}
+
 # `## 先行例との対比` 節の本文だけを出力(次の見出しまで)。無ければ何も出さない。
 extract_precedent_section() {
   awk '
@@ -203,7 +234,9 @@ main() {
   local msg
   msg="先行例との対比の検査で問題が見つかりました。precedent-grounding スキルの手順に従って計画を修正してください。
 
-$(printf '%s\n' "${deny_lines[@]}")"
+$(printf '%s\n' "${deny_lines[@]}")
+
+$(example_block)"
   deny_with "$msg"
 }
 
@@ -225,6 +258,9 @@ cmd_check() { # $1=plan_file
   done < <(judge_precedent "$plan_body")
   if [[ $found -eq 0 ]]; then
     echo "OK: 先行例との対比の検査を通過しました。"
+  else
+    printf '\n%s\n' "$(example_block)"
+    exit 1
   fi
 }
 
@@ -326,6 +362,10 @@ selftest() {
     echo "FAIL: extract_precedent_section が次の見出し以降まで含んでいる" >&2
     fails=$((fails + 1))
   }
+
+  # --- example_block は無条件に judge_precedent を通る(deny 文の自己整合性) ---
+  out="$(judge_precedent "$(example_block)")"
+  expect_empty "$out" "example_block が gate を通過する"
 
   if ((fails > 0)); then
     echo "selftest: ${fails} 件失敗" >&2
