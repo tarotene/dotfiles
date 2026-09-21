@@ -241,6 +241,11 @@ jobs:
       - name: esa-mcp-launcher --selftest
         run: ./scripts/esa-mcp-launcher --selftest
 
+      # ポインタ整合検査(#115): マーカー未設定・存在しないパス・レイアウト
+      # 不一致のいずれも無音で失敗せず明示メッセージを出すことを検査する。
+      - name: writing-style-hub --selftest
+        run: ./scripts/writing-style-hub --selftest
+
       # A deleted checkout must be detected without deleting its branch; hook
       # registration must remain idempotent beside Herdr's own Codex hook.
       - name: Worktree lifecycle self-tests

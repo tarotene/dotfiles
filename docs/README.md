@@ -186,6 +186,10 @@ Design and rationale for the hooks and commands deployed from
   ホストローカルの GPG 暗号化ファイルを起動時に復号する専用 launcher +
   `dotfiles.claude.mcpServers.esa` への populate(personal identity 層限定、
   ADR-0022)。
+- [`writing-style.md`](claude/writing-style.md) — 執筆規約(別 private
+  リポジトリの `docs/style/`)への薄いポインタスキル。ハブの絶対パスは
+  マーカーファイル/環境変数で間接参照し、未設定・パス不在・レイアウト
+  不一致のいずれも無音失敗にせず明示的に止まる(#115)。
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
   Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
   モードを **(Plan 側, 実行側) のペア 3 種**(`fable/sonnet` / `opus/sonnet` /

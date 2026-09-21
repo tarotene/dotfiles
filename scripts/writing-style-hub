@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# writing-style-hub — resolve the absolute path to the private style-guide
+# hub repository, for the writing-style pointer skill (#115).
+#
+# 設計と根拠: docs/claude/writing-style.md（このリポジトリ内）
+#
+# 執筆規約(文体・和文数式 punctuation)の正本は、この public リポジトリでは
+# なく別の private リポジトリの docs/style/ に置く裁定になっている(内容を
+# public に混ぜない)。dotfiles 側はその場所への薄いポインタだけを持つ。
+#
+# ハブの絶対パスをソースにハードコードしない(private リポジトリの存在自体を
+# 公開ソースに書かないため)— ADR-0019 のホスト・マーカー方式
+# (`${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host`)と同じ間接参照の型で、
+# マーカーファイル 1 個 + 環境変数のどちらかからパスを解決する。
+#
+# 解決順序:
+#   1. $WRITING_STYLE_HUB(環境変数、セッション限定の上書き用)
+#   2. ${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/style-hub の中身(1行、絶対パス)
+#
+# 縮退: マーカーが無い / 指すパスが存在しない / docs/style/README.md が無い、
+# いずれも黙って何もしない(silent failure)のではなく、明示的なメッセージを
+# stderr に出して非 0 で終わる(ADR-0005 の binary-existence gating と同じ
+# 「存在しないなら明示して止まる」原則。docs/claude/wrapup-inbox.md も同じ
+# 縮退方針の先例)。
+#
+# 使い方:
+#   パス解決:   writing-style-hub            → 成功時 stdout にハブの絶対パスを1行
+#   自己検査:   writing-style-hub --selftest
+set -euo pipefail
+
+MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/style-hub"
+
+resolve() { # stdout=解決したパス（末尾改行なし）; 失敗時は非0 + stderr にメッセージ
+  local hub=""
+  if [[ -n "${WRITING_STYLE_HUB:-}" ]]; then
+    hub="$WRITING_STYLE_HUB"
+  elif [[ -r "$MARKER" ]]; then
+    hub="$(head -n1 -- "$MARKER" 2> /dev/null || true)"
+  fi
+
+  if [[ -z "$hub" ]]; then
+    echo "writing-style-hub: スタイルガイドのハブが未設定です。次のいずれかで設定してください:" >&2
+    echo "  echo /path/to/style-hub-repo > '$MARKER'" >&2
+    echo "  export WRITING_STYLE_HUB=/path/to/style-hub-repo" >&2
+    return 1
+  fi
+  if [[ ! -d "$hub" ]]; then
+    echo "writing-style-hub: ハブのパスが存在しません: $hub" >&2
+    return 1
+  fi
+  if [[ ! -r "$hub/docs/style/README.md" ]]; then
+    echo "writing-style-hub: $hub/docs/style/README.md が読めません(ハブのレイアウトが想定と違う可能性)。" >&2
+    return 1
+  fi
+
+  printf '%s' "$hub"
+}
+
+# ---------------------------------------------------------------------------
+# selftest
+# ---------------------------------------------------------------------------
+
+if [[ "${1:-}" == "--selftest" ]]; then
+  fail=0
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' EXIT
+
+  check() { # $1=label $2=expected-exit $3=actual-exit
+    if [[ "$2" == "$3" ]]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1 (expected exit $2, got $3)" >&2
+      fail=1
+    fi
+  }
+
+  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+  fake_home="$dir/home"
+  marker="$fake_home/.config/dotfiles/style-hub"
+  mkdir -p "$(dirname -- "$marker")"
+
+  hub_ok="$dir/hub-ok"
+  mkdir -p "$hub_ok/docs/style"
+  printf '# Style guide\n' > "$hub_ok/docs/style/README.md"
+
+  hub_no_readme="$dir/hub-no-readme"
+  mkdir -p "$hub_no_readme/docs/style"
+
+  # 1) マーカー未設定・環境変数も無し → 失敗 + 明示メッセージ
+  rc=0
+  out="$(HOME="$fake_home" env -u WRITING_STYLE_HUB -u XDG_CONFIG_HOME \
+    bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "マーカー未設定は非0で終わる" 1 "$rc"
+  [[ "$out" == *"未設定"* ]] && echo "ok   マーカー未設定は明示メッセージを出す" || {
+    echo "FAIL マーカー未設定は明示メッセージを出す: $out" >&2
+    fail=1
+  }
+
+  # 2) マーカーが正しいハブを指す → 成功してパスを stdout に出す
+  printf '%s\n' "$hub_ok" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u WRITING_STYLE_HUB -u XDG_CONFIG_HOME bash "$self")" || rc=$?
+  check "マーカーが有効なら成功する" 0 "$rc"
+  check "マーカーが有効なら解決先を stdout に出す" "$hub_ok" "$out"
+
+  # 3) 環境変数がマーカーより優先される
+  rc=0
+  out="$(HOME="$fake_home" WRITING_STYLE_HUB="$hub_ok/../hub-ok" env -u XDG_CONFIG_HOME bash "$self")" || rc=$?
+  check "環境変数がマーカーより優先される" 0 "$rc"
+
+  # 4) マーカーが存在しないパスを指す → 失敗
+  printf '%s\n' "$dir/does-not-exist" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u WRITING_STYLE_HUB -u XDG_CONFIG_HOME bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "存在しないパスは非0で終わる" 1 "$rc"
+  [[ "$out" == *"存在しません"* ]] && echo "ok   存在しないパスは明示メッセージを出す" || {
+    echo "FAIL 存在しないパスは明示メッセージを出す: $out" >&2
+    fail=1
+  }
+
+  # 5) ハブは存在するが docs/style/README.md が無い → 失敗
+  printf '%s\n' "$hub_no_readme" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u WRITING_STYLE_HUB -u XDG_CONFIG_HOME bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "README 欠如は非0で終わる" 1 "$rc"
+
+  [[ "$fail" == 0 ]] && echo "selftest: all passed"
+  exit "$fail"
+fi
+
+resolve
