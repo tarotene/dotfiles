@@ -94,9 +94,20 @@ resolve_owner_repo() {
 }
 
 # $1=transcript_path ; ユーザー自身が打った行だけを改行区切りで出力
+#
+# type=="user" かつ message.content が文字列、だけでは足りない(#290) —
+# background agent の完了通知(task-notification)も同じ形でトランスクリプトに
+# 記録される。実測(2026-09-21): task-notification 行は
+# origin.kind=="task-notification" かつ promptSource=="system"、本物のユーザー
+# 入力は promptSource=="typed"(コマンド注入行はどちらのフィールドも無い)。
+# 両フィールド不在の旧形式行は `// ""` で従来どおり通す(後方互換)。
 extract_user_text() {
-  jq -r 'select(.type == "user" and (.message.content | type) == "string") | .message.content' \
-    "$1" 2> /dev/null
+  jq -r '
+    select(.type == "user" and (.message.content | type) == "string")
+    | select((.promptSource? // "") != "system")
+    | select((.origin.kind? // "") != "task-notification")
+    | .message.content
+  ' "$1" 2> /dev/null
 }
 
 # $1=text $2=default_owner_repo ; "owner/repo#N" を重複無しで出力
@@ -513,6 +524,24 @@ selftest() {
   fi
   if ! grep -q '#136' <<< "$extracted"; then
     echo "FAIL: 本来のユーザー入力(#136)を取り逃した" >&2
+    fails=$((fails + 1))
+  fi
+  rm -f "$jsonl_tmp"
+
+  # --- transcript 汚染耐性: task-notification(background agent の完了通知)を
+  # ユーザー発言として誤検知しない(#290) ---
+  jsonl_tmp="$(mktemp)"
+  {
+    printf '%s\n' '{"type":"user","promptSource":"system","origin":{"kind":"task-notification"},"message":{"content":"<task-notification>\n<task-id>abc</task-id>\n検証コマンド例: --check plan.md #999\n</task-notification>"}}'
+    printf '%s\n' '{"type":"user","promptSource":"typed","origin":{"kind":"human"},"message":{"content":"依頼: #136 をお願い"}}'
+  } > "$jsonl_tmp"
+  extracted="$(extract_user_text "$jsonl_tmp")"
+  if grep -q '#999' <<< "$extracted"; then
+    echo "FAIL: task-notification を誤ってユーザー発言として拾った" >&2
+    fails=$((fails + 1))
+  fi
+  if ! grep -q '#136' <<< "$extracted"; then
+    echo "FAIL: 本来のユーザー入力(#136)を取り逃した(task-notification 混在時)" >&2
     fails=$((fails + 1))
   fi
   rm -f "$jsonl_tmp"

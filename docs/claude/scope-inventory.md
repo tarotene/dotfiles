@@ -167,11 +167,19 @@ Claude Code のみ。Codex(`~/.codex/`)・Copilot(`~/.copilot/`)には現時点�
    **ユーザー自身が書いた行だけ**を抜く。transcript の JSONL は
    `type=="user"` の行に SessionStart hook(issue-index 等)が注入した
    `additionalContext` も混在するが、それらは `message.content` が配列
-   (`tool_result` 等)であり文字列ではない。実測で確認済み: ユーザーが実際に
-   打った行だけが `message.content` を素の文字列として持つ。したがって
-   `type=="user" and (.message.content|type)=="string"` で厳密に絞れば、
+   (`tool_result` 等)であり文字列ではない。したがって
+   `type=="user" and (.message.content|type)=="string"` で絞れば、
    `issue-index` の索引注入(このセッション冒頭にも実在し、Issue 番号が
-   15 件並ぶ)を誤って拾わない。
+   15 件並ぶ)は誤って拾わない。ただしこの条件だけでは不十分だった(#290) —
+   background agent(Agent tool のサブエージェント)の完了通知
+   (task-notification)も同じ `type=="user"` かつ `message.content` が文字列、
+   という形でトランスクリプトに記録されるため、通知本文中の Issue 番号の例示
+   (検証コマンド例など)を誤ってユーザー参照として拾ってしまう。実測
+   (2026-09-21): task-notification 行は `origin.kind=="task-notification"`
+   かつ `promptSource=="system"`、本物のユーザー入力は
+   `promptSource=="typed"` を持つ。`extract_user_text()` はこの2フィールドで
+   task-notification 行を追加除外する(両フィールド不在の旧形式行は後方互換で
+   従来どおり通す)。
 2. 抜いた行から `#N` / `owner/repo#N` を抽出し、`gh api graphql` で
    `subIssues(first:100){totalCount nodes{number title}}` を取得
    (variables 付きクエリで実測動作確認済み)。`totalCount == 0` のときは
