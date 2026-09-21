@@ -20,11 +20,22 @@ delivery = "herdr"
 name = "catppuccin"
 
 [theme.custom]
-# Catppuccin Mocha の既定 active_row_bg は base #1E1E2E とほぼ同系の暗色で、
-# ~17 workspace を並走させるとサイドバーのどの行がアクティブか判別しづらい。
-# surface1 相当まで明るくし、accent も揺れの少ない mauve から lavender に
-# 変えてハイライト/ナビ UI 全体で目立たせる。
-active_row_bg = "#45475A"  # Mocha surface1
+# 地を crust まで暗化して不透明に塗る案(旧 sidebar_bg = #11111B)は、Alacritty の
+# window.opacity が「既定背景色のセルにしか適用されない」仕様(man
+# alacritty.toml(5); alacritty/alacritty PR #847)と噛み合わず、サイドバーだけ
+# 透過しない黒い板になってしまった。地は端末側の透過(config/alacritty/
+# alacritty.toml の opacity)に任せ、theme.custom は明示 bg セル(常に不透明)側の
+# 意匠だけを担当する。sidebar_bg は "reset" を明示し、テーマ既定の透過を herdr
+# 0.9.x の regression(herdrdev/herdr#3773)からも守る。矩形は surface1 案の
+# グレー階調(旧 active_row_bg = #45475A、矩形 vs 地 1.9:1、WCAG 非テキスト基準
+# 3:1 未達)でなく accent と同系の青紫タイントにして色相差でも目立たせる
+# (VS Code 標準 dark テーマの list.activeSelectionBackground が同じくグレーでは
+# なく青系タイントである先行例に倣う)。selection_bg(navigate モードのカーソル行)
+# もテーマ既定の surface0 より一段明るい旧 active_row_bg 相当(surface1)に引き上げる。
+# 詳細は docs/claude/herdr-sidebar-metadata.md「アクティブ行の視認性」節。
+sidebar_bg = "reset"       # 端末透過に委ねる(テーマ既定と同値。#3773 保険の明示)
+active_row_bg = "#52567A"  # lavender #B4BEFE を base に ~35% ブレンド(非純正)
+selection_bg = "#45475A"   # Mocha surface1
 accent = "#B4BEFE"         # Mocha lavender
 
 [ui]
@@ -76,7 +87,10 @@ tab_bar_right_separator = "·"
 #
 # 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
 #   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
-#   red #F38BA8(bypass) / pink #F5C2E7(model) / overlay1 #7F849C(控えめ情報)。
+#   red #F38BA8(bypass) / pink #F5C2E7(model) / subtext0 #A6ADC8(控えめ情報)。
+# 控えめ情報は旧 overlay1 #7F849C(矩形上 2.5:1)から subtext0 に引き上げ済み
+# (矩形上 3.2:1)。dim はレンダラ依存で実効輝度が不定なため、暗さの表現は
+# fg の明示色だけで行い dim 修飾は使わない。
 [ui.sidebar.agents]
 row_gap = 0
 
@@ -84,8 +98,8 @@ row_gap = 0
 claude = [
   ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
-    { token = "$branch", fg = "#7F849C" },
-    { token = "terminal_title_stripped", dim = true },
+    { token = "$branch", fg = "#A6ADC8" },
+    { token = "terminal_title_stripped", fg = "#A6ADC8" },
   ],
   [
     { token = "$mode_plan", fg = "#89B4FA", bold = true },
@@ -95,24 +109,24 @@ claude = [
     { token = "$model", fg = "#F5C2E7" },
   ],
   [
-    { token = "$ctx", fg = "#7F849C" },
-    { token = "$cost", fg = "#7F849C" },
-    { token = "$effort", fg = "#7F849C", dim = true },
+    { token = "$ctx", fg = "#A6ADC8" },
+    { token = "$cost", fg = "#A6ADC8" },
+    { token = "$effort", fg = "#A6ADC8" },
   ],
 ]
 codex = [
   ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
-    { token = "$branch", fg = "#7F849C" },
-    { token = "terminal_title_stripped", dim = true },
+    { token = "$branch", fg = "#A6ADC8" },
+    { token = "terminal_title_stripped", fg = "#A6ADC8" },
   ],
   [ { token = "$model", fg = "#F5C2E7" } ],
 ]
 copilot = [
   ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
-    { token = "$branch", fg = "#7F849C" },
-    { token = "terminal_title_stripped", dim = true },
+    { token = "$branch", fg = "#A6ADC8" },
+    { token = "terminal_title_stripped", fg = "#A6ADC8" },
   ],
   [ { token = "$model", fg = "#F5C2E7" } ],
 ]

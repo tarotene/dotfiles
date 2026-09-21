@@ -9,10 +9,23 @@ padding = { x = 10, y = 10 }
 # Enable dynamic padding (distribute padding evenly around content)
 dynamic_padding = true
 
-# Background opacity (0.0 to 1.0)
-opacity = 0.75
+# Background opacity (0.0 to 1.0). Alacritty applies this only to cells still
+# holding the default background color (man alacritty.toml(5); alacritty/alacritty
+# PR #847) — a TUI's own explicit bg (e.g. herdr's active_row_bg) stays fully
+# opaque regardless of this value. A low value here washes out only the TUI's
+# default-background regions (herdr's sidebar/pane base), which used to read as
+# "the base looks faded but the highlight rectangle looks fine" — that's not a
+# TUI theming bug, it's this option's documented scope. See
+# docs/claude/herdr-sidebar-metadata.md「アクティブ行の視認性」.
+opacity = 0.95
 
-# Blur
+# Blur. Requests compositor-side background blur for transparent windows
+# (works on macOS/KDE Wayland per the Alacritty man page). On Pop!_OS/COSMIC
+# this is currently a no-op: winit's set_blur only speaks KWin's
+# org_kde_kwin_blur_manager protocol, while cosmic-comp exposes the newer
+# ext-background-effect-v1 instead (winit v0.30.9 src/window.rs;
+# pop-os/cosmic-comp PR #2179). Left enabled for forward-compat and for the
+# darwin host (ADR-0018).
 blur = true
 
 # Window startup mode

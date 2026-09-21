@@ -74,9 +74,11 @@ role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラ�
 | ctx 危険(>=80%) | red | `#F38BA8` | statusline |
 | cost | teal | `#94E2D5` | statusline |
 | effort | lavender | `#B4BEFE` | statusline |
-| 控えめ情報(branch, metrics 行) | overlay1 | `#7F849C` | sidebar `$branch`/`$ctx`/`$cost`/`$effort` |
+| 控えめ情報(branch, metrics 行) | subtext0 | `#A6ADC8` | sidebar `$branch`/`$ctx`/`$cost`/`$effort` |
 | 区切り | overlay0 | `#6C7086` | statusline `·` |
-| sidebar active row 背景 | surface1(手動上書き) | `#45475A` | `config/herdr/config.toml` `[theme.custom].active_row_bg` |
+| sidebar 背景(端末透過に委ねる、明示) | reset(端末既定背景) | `"reset"` | `config/herdr/config.toml` `[theme.custom].sidebar_bg` |
+| sidebar active row 背景(非純正ブレンド) | lavender タイント | `#52567A` | `config/herdr/config.toml` `[theme.custom].active_row_bg` |
+| sidebar navigate カーソル行背景 | surface1(手動上書き) | `#45475A` | `config/herdr/config.toml` `[theme.custom].selection_bg` |
 | ui accent(ハイライト/ナビ) | lavender(手動上書き) | `#B4BEFE` | `config/herdr/config.toml` `[theme.custom].accent` |
 
 green=「許可/OK」、red=「危険」、yellow=「注意」で全ファイル一貫させ、
@@ -180,10 +182,13 @@ $ printf 'SessionStart\t\t0\t/tmp/x' | { IFS="$(printf '\t')" read -r a b c d; e
 
 ### 系統 B — 値はあるが見えない(表示層)
 
-1. **選択行のコントラスト**: アクティブ行の背景は `#45475A`(surface1)。
-   `fg` 未指定のトークンは既定の控えめ色で描かれ、背景とほぼ同化する
-   (画素サンプリングで `(70,73,88)` vs `(69,71,90)`)。同じ行でも
-   `$model`(`#F5C2E7`)は読めるが `$branch`(`#7F849C`)はほぼ見えない。
+1. **選択行のコントラスト**: アクティブ行の背景は当時 `#45475A`(surface1、
+   `[theme.custom].active_row_bg` の旧値)。`fg` 未指定のトークンは既定の控えめ色
+   で描かれ、背景とほぼ同化する(画素サンプリングで `(70,73,88)` vs
+   `(69,71,90)`)。同じ行でも `$model`(`#F5C2E7`)は読めるが
+   `$branch`(`#7F849C`)はほぼ見えない。現在の `active_row_bg` は accent 系の
+   青紫タイント `#52567A` に変わっている(下記「アクティブ行の視認性」節)が、
+   この節の結論(fg 未指定は背景に同化し得る)自体は変わらない。
 2. **絵文字がモノクロ字形**: fontconfig の既定解決順は
    `Noto Sans Symbols2` → `Unifont Upper` → `DejaVu Sans` / `FreeSerif`
    → `Noto Color Emoji` で、カラー絵文字フォントが最後尾に回る。モノクロ
@@ -288,11 +293,81 @@ billing 移行で legacy 化予定の REST エンドポイントのみ)。tab-ba
 
 catppuccin テーマ既定の `active_row_bg` は base(`#1E1E2E`)とほぼ同系の暗色で、
 ~17 workspace を並走させるとサイドバーのどの行がフォーカス中かが判別しづらい。
-`config/herdr/config.toml` の `[theme.custom]` でテーマの上から
-`active_row_bg = "#45475A"`(surface1)・`accent = "#B4BEFE"`(lavender)を
-上書きし、ハイライトとナビ UI 全体で明確な差を作る。`herdr --default-config`
-(0.8.2)で確認した通り `[theme.custom]` はテーマ本体を書き換えずに個別トークン
-だけ差し替えられるので、テーマ更新に追従したまま維持できる。
+
+### 最初の 2 回の対策と、それぞれの見落とし
+
+1. **surface1 案**(`active_row_bg = "#45475A"` への引き上げのみ)— WCAG 相対
+   輝度で矩形 vs 地が **1.9:1**(非テキスト UI 基準 SC 1.4.11 の 3:1 未達)に
+   とどまった(WCAG 2.1: https://www.w3.org/TR/WCAG21/)。
+2. **地の暗色化案**(`sidebar_bg = "#11111B"` Mocha crust への明示塗り)—
+   矩形 vs 地は 2.6:1 まで改善したが、herdr サイドバーだけが周囲の Alacritty
+   ペインと違う不透明な黒い板になった。原因は Alacritty の `window.opacity`
+   の仕様: **既定背景色のセルにしか適用されない**(man alacritty.toml(5)、
+   0.15.1 で確認、2026-09-21 取得; alacritty/alacritty PR #847
+   "Fix solid background color opacity",
+   https://github.com/alacritty/alacritty/pull/847、2026-09-21 取得)。herdr
+   0.8.2 の catppuccin テーマは `sidebar_bg` の既定値が `Color::Reset`(端末
+   既定背景 = 透過対象)なので(v0.8.2 `src/app/state.rs`、2026-09-21 取得
+   https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/state.rs)、素の
+   テーマのままサイドバーは既に端末の透過(当時 opacity 0.75)を継承していた
+   — 1. の計測値は純 hex 前提で、実際の半透明表示を反映していなかった。
+   `sidebar_bg` を明示 RGB で上書きした時点でそのセルは不透明になり、
+   透過している周囲のペインとの断絶が生まれた。
+
+### 現在の対策: 主戦場を端末側に移す
+
+透過が高すぎて地(既定背景セル)が周囲の壁紙・背後ウィンドウと過剰に混ざり
+matrix 全体が washed out していたことが、「ハイライトが薄い」と感じる主因
+だった。TUI 側の塗り足しでなく、**`config/alacritty/alacritty.toml` の
+`window.opacity` を 0.75 → 0.95 に引き上げる**ことで地をほぼ純色に戻す。
+`[theme.custom]` 側は次の 2 点だけを担当する:
+
+1. **`sidebar_bg = "reset"` を明示する** — テーマ既定と同値(暗黙の
+   `Color::Reset` を上書きしない)だが、herdr 0.9.x で導入された透過継承の
+   regression(既定省略時の透過が壊れる、herdrdev/herdr#3773、
+   https://github.com/herdrdev/herdr/issues/3773、2026-09-21 取得)の
+   workaround が「`sidebar_bg`/`panel_bg` に `"reset"` を明示すること」なので、
+   将来の herdr バンプへの前方互換保険として書いておく。
+2. **矩形(`active_row_bg`)をグレー階調でなく accent 系タイントにする** —
+   `active_row_bg = "#52567A"` は lavender `#B4BEFE` を base に ~35% ブレンド
+   した非純正 hex(Catppuccin Mocha の役割トークンには存在しない値)。同輝度
+   でもグレーとの色相差で知覚的に見つけやすくなる。この発想は VS Code 標準
+   dark テーマの `list.activeSelectionBackground`(`#04395E`、青系タイント)に
+   倣った(https://github.com/microsoft/vscode/blob/main/src/vs/platform/theme/common/colors/listColors.ts、
+   2026-09-21 取得)。矩形自体は明示 bg セルなので opacity 0.95 の影響を受けず、
+   常に不透明に近い状態で描かれる。
+
+計測値(純 hex 前提、opacity 1.0 相当): 矩形 vs 地 2.6:1(+ 色相差)、矩形上の
+text `#CDD6F4` は 4.9:1。3:1 には届いていないが、この上ではテキストの可読性を
+壊す明度が必要になるトレードオフを確認済みで、色相差での補完を優先した。
+opacity 0.95 の下では地がほぼ純色 base に近づくため、この計測値がおおむね
+実表示に一致する(0.75 時代は地が壁紙と 25% 合成されており、この前提が
+崩れていた)。
+
+navigate モードのカーソル行(`selection_bg`)もテーマ既定の surface0 だと
+薄いため、旧 `active_row_bg` だった `#45475A`(surface1)に引き上げている。
+
+行内の控えめ情報(`$branch`/`$ctx`/`$cost`/`$effort`/`terminal_title_stripped`)
+も overlay1(矩形上 2.5:1)から subtext0 `#A6ADC8`(矩形上 3.2:1)に引き上げて
+いる。herdr の theme.custom 語彙(`herdr --default-config` 0.8.2 で確認、一次
+情報は https://raw.githubusercontent.com/herdrdev/herdr/v0.8.2/docs/next/website/src/data/config-reference.json )
+に `active_row_fg` は存在せず、行の文字色はトークンの静的 `fg` 指定のみ —
+「アクティブ時だけ文字を明るくする」動的表現はできないため、常時 subtext0 に
+底上げする形で代替した。同じ理由で `dim = true` 修飾も使っていない: dim の
+実効輝度は端末レンダラ依存で不定なため、暗さは fg の明示色だけで表現する。
+
+`herdr --default-config`(0.8.2)で確認した通り `[theme.custom]` はテーマ本体を
+書き換えずに個別トークンだけ差し替えられるので、テーマ更新に追従したまま
+維持できる。
+
+### 学び: TUI の色計測は端末の透過設定込みで行う
+
+WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指標であり、config に
+書いた純 hex 値ではない。半透明端末(`window.opacity < 1.0`)上では、TUI 側の
+セルが明示 bg を持つか既定背景のままかで実効色が変わる(Alacritty は前者を
+不透明、後者を透過合成で描く)。今回のように「TUI 側の色を変えたのに実機の
+見え方が計算と合わない」ときは、まず端末の透過設定とその適用範囲仕様を疑う
+— TUI のテーマ機構だけを見ていては原因に辿り着けない。
 
 ## 既知の制約・運用ノート
 
