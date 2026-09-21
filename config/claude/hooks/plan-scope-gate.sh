@@ -34,6 +34,8 @@
 #   手動 e2e:   plan-scope-gate.sh --check <plan.md> <issue-ref>
 #               (issue-ref は `#N` または `owner/repo#N`。bare の場合は cwd の
 #               git remote から owner/repo を解決する)
+#   提出前の自走(経路Bのみ、gh 不使用):
+#               plan-scope-gate.sh --check-plan <plan.md>
 #   自己検査:   plan-scope-gate.sh --selftest(gh をスタブしネットワーク不使用)
 #
 # スキップ手段:
@@ -243,6 +245,31 @@ judge_inventory() {
   done <<< "$section"
 }
 
+# そのまま貼れば書式検査を通る完全な例文ブロック。deny メッセージ末尾と
+# --check-plan の指摘あり出力に同梱する(2026-09-21 実測: 本 gate の deny の
+# 59% が同一セッションで反復していた。docs/claude/scope-inventory.md
+# 「実測」節参照)。プレースホルダ `#<番号>` は数字必須の Reference-Only
+# 免除正規表現にマッチしないため、丸写しのまま送っても実在 Issue の免除は
+# 誤発動しない。
+example_block() {
+  cat <<'EOF'
+そのまま構造を写し、山括弧の中身だけ事実に置き換えれば書式検査は通ります:
+
+## 要求インベントリ
+
+- R1: <依頼文からの逐語の要求項目> — 段1で実装
+- R2: <逐語項目> — Blocked-Upstream: <upstream 未修正など、外部にブロックされている理由>
+- R3: <逐語項目> — Obsolete: <既に別の変更で解消済みである理由>
+- R4: <逐語項目> — User-Excluded: <ユーザーが依頼文で明示的に除外した文言>
+
+参照 Issue の子 #番号 を実装対象に含める行は、その行内に段の指定
+(例: - R5: #137 <子タイトル逐語> — 段2で実装)か閉じたタグを書く。
+参照しただけで実装対象でない Issue は本文のどこかに1行:
+
+Reference-Only: #<番号> — <参照しただけである理由>
+EOF
+}
+
 # ---------------------------------------------------------------------------
 # hook モード
 # ---------------------------------------------------------------------------
@@ -318,7 +345,9 @@ main() {
   local msg
   msg="要求インベントリの検査で問題が見つかりました。scope-inventory スキルの手順に従って計画を修正してください。
 
-$(printf '%s\n' "${deny_lines[@]}")"
+$(printf '%s\n' "${deny_lines[@]}")
+
+$(example_block)"
   deny_with "$msg"
 }
 
@@ -349,6 +378,29 @@ cmd_check() { # $1=plan_file $2=issue_ref
   }
   echo "children: $(jq -c . <<< "$children")"
   judge_issue "$ref" "$children" "$plan_body"
+}
+
+# 経路B(インベントリ内整合性)だけをプラン単体で検査する自走モード。
+# 経路A(参照 Issue の子項目カバレッジ)は gh/Issue 参照が要るため対象外
+# — そちらは --check <plan.md> <issue-ref> で個別に確認する。
+cmd_check_plan() { # $1=plan_file
+  local plan_file="$1" plan_body problem found=0
+  [[ -f $plan_file ]] || {
+    echo "plan file not found: $plan_file" >&2
+    exit 1
+  }
+  plan_body="$(cat "$plan_file")"
+  while IFS= read -r problem; do
+    [[ -n $problem ]] || continue
+    found=1
+    echo "$problem"
+  done < <(judge_inventory "$plan_body")
+  if ((found == 0)); then
+    echo "OK: 要求インベントリの節内整合性の検査を通過しました(経路Aの Issue 照合は --check <plan.md> <issue-ref> で別途確認してください)。"
+  else
+    printf '\n%s\n' "$(example_block)"
+    exit 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -465,6 +517,10 @@ selftest() {
   fi
   rm -f "$jsonl_tmp"
 
+  # --- example_block は経路Bを無条件に通る(deny 文の自己整合性) ---
+  mapfile -t problems < <(judge_inventory "$(example_block)")
+  expect_eq "${#problems[@]}" "0" "example_block が経路Bを通過する"
+
   if ((fails > 0)); then
     echo "selftest: ${fails} 件失敗" >&2
     exit 1
@@ -477,6 +533,10 @@ case "${1-}" in
   --check)
     shift
     cmd_check "${1-}" "${2-}"
+    ;;
+  --check-plan)
+    shift
+    cmd_check_plan "${1-}"
     ;;
   *) main ;;
 esac
