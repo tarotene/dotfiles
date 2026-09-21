@@ -128,6 +128,33 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # patches/herdr-worktree-names.patch の hololive タレント名配列(worktree
+      # 名生成の正本)と config/herdr/oshi-marks.tsv のキー集合を双方向突合する。
+      # patch にあって TSV に無い名前は行欠落、TSV にあって patch に無い名前は
+      # 死んだエントリ — mark 列が空(未確証)なのは許容するが、行自体の欠落・
+      # 余剰は許さない(docs/claude/herdr-sidebar-metadata.md)。
+      - name: oshi-marks.tsv matches herdr-worktree-names.patch talent list
+        run: |
+          set -euo pipefail
+          awk '/^\+        "sora"/{f=1} f{print} /"frienda"/{if(f)exit}' \
+            patches/herdr-worktree-names.patch \
+            | grep -oE '"[a-z]+"' | tr -d '"' | sort -u \
+            > /tmp/patch-names.txt
+          awk -F'\t' '!/^#/ && NF {print $1}' config/herdr/oshi-marks.tsv \
+            | sort -u > /tmp/tsv-names.txt
+          missing_in_tsv="$(comm -23 /tmp/patch-names.txt /tmp/tsv-names.txt)"
+          extra_in_tsv="$(comm -13 /tmp/patch-names.txt /tmp/tsv-names.txt)"
+          fail=0
+          if [ -n "$missing_in_tsv" ]; then
+            echo "::error::patch にあって oshi-marks.tsv に無い名前: $missing_in_tsv"
+            fail=1
+          fi
+          if [ -n "$extra_in_tsv" ]; then
+            echo "::error::oshi-marks.tsv にあって patch に無い名前: $extra_in_tsv"
+            fail=1
+          fi
+          exit "$fail"
+
       # The key-trace tool's fixtures are the log excerpts quoted in
       # docs/ime-chrome-diagnosis.md, so this step fails if the detector and the
       # document ever disagree about what those traces mean.  It also guards the

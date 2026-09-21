@@ -114,6 +114,38 @@ statusline はストリーミング中 ~300ms 毎に再実行され得る。ソ�
 kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `applies_to_source` で
 横断クリアできるかは未検証のため、初版では ttl 任せにしている。
 
+## `$oshi` — worktree 名(hololive タレント名)のファンマーク
+
+`patches/herdr-worktree-names.patch`(herdr 本体の worktree 名生成を hololive
+タレント名の単語リストに差し替えるパッチ、83 名)により、worktree は
+`worktree-<name>-<hex4>` という名前を持つ。サイドバーの `workspace` トークンは
+この名前をそのまま表示するので、その横にタレント対応のファンマーク(推しマーク)
+絵文字を添えると視認性が上がる。herdr 本体・パッチは変更せず、既存の
+`pane.report_metadata` チャネルにカスタムトークン `$oshi` を追加するだけで足りる。
+
+- **データ**: `config/herdr/oshi-marks.tsv`(`name<TAB>mark`、非コメント行は
+  タレント名 1 行 1 件)。`xdg.configFile` で `~/.config/herdr/oshi-marks.tsv`
+  に verbatim 配布(ADR-0002)。マークは各タレントの公式表記をそのまま使い
+  (複数絵文字の組・ZWJ シーケンスも切り詰めない)、確証が取れないタレントは
+  mark 列を空にする(= サイドバーに非表示。存在しないと決めつけない)。出典
+  (各タレントの X プロフィール / hololive 公式)と取得日は TSV ヘッダに記載。
+- **抽出元は worktree ディレクトリ名**(`git rev-parse --show-toplevel` の
+  basename)であって branch 名ではない。branch は作業中に `feat/...` 等へ
+  リネームされることがあり(実例あり)、`$branch` トークンと違って本トークンは
+  worktree 生成時の値を指し続ける必要があるため。
+- **3 reporter すべてが同じ lookup を行う**: `herdr-claude-metadata.sh` /
+  `herdr-codex-metadata.sh` / `herdr-copilot-metadata.sh` が、それぞれの
+  branch 取得ロジックのすぐ後で `worktree-*-*` パターンにマッチしたときだけ
+  `awk` で TSV を引き、`tokens.oshi` として同じ `pane.report_metadata` 送信に
+  同乗させる(SessionEnd/clear では他トークンと同様 null)。
+- **`config.toml`**: `rows_by_agent` の 3 節すべて、1 行目の `workspace` の
+  直後に `{ token = "$oshi" }` を追加。絵文字自体が色を持つので `fg` は
+  指定しない。
+- **整合性**: 名前リストの正本は patch 内の Rust 配列。CI(`ci.yml`
+  `oshi-marks.tsv matches herdr-worktree-names.patch talent list`)が patch の
+  名前集合と TSV のキー集合を双方向突合し、片方にしかない名前があれば fail
+  する(mark 列が空なのは許容 — 行の有無だけを検査)。
+
 ## Codex / Copilot ペイン
 
 Claude 以外のエージェントペインも同じ `pane.report_metadata` API で埋められる。

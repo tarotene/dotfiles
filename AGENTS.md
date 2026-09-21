@@ -92,7 +92,11 @@ dotfiles/
 │   │                         #   the repo-local hook)
 │   ├── herdr/                # Herdr config.toml (theme + sidebar rows), fully managed —
 │   │                         #   xdg.configFile deploys it verbatim (store symlink,
-│   │                         #   read-only; in-app settings writes fail by design)
+│   │                         #   read-only; in-app settings writes fail by design);
+│   │                         #   oshi-marks.tsv: hololive talent name → fan-mark
+│   │                         #   emoji lookup for the $oshi sidebar token, shared
+│   │                         #   by all 3 agent metadata hooks, keyed against
+│   │                         #   patches/herdr-worktree-names.patch's talent list
 │   ├── codex/hooks/          # herdr-codex-metadata.sh: sidebar reporter for Codex CLI
 │   │                         #   panes (herdr-sidebar-metadata.md); deployed beside
 │   │                         #   herdr's own ~/.codex/ integration, not registered

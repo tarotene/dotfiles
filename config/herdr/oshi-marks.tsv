@@ -1,0 +1,94 @@
+# hololive talent fan marks(推しマーク)。name<TAB>mark。
+# name は patches/herdr-worktree-names.patch の 83 名と 1:1(CI で突合、
+# .github/workflows/ci.yml の oshi-marks.tsv ↔ patch 突合ステップ)。
+# mark 空欄 = 未確証(サイドバーに非表示。存在しないと決めつけたわけではない)。
+#
+# 出典: 各タレントの X(旧Twitter)公式表示名/bio、hololivepro.com 公式タレント
+# ページ、hololive.wiki(独立ファンwiki)、および複数の独立ファン集計サイト
+# (oshimark.com / holotame.com / tamaki-trend.com / v-data.info 等)間の一致。
+# 優先順位は一次(本人 X 表示名 / hololivepro.com 公式ページ)>二次(複数の
+# 独立ファンサイトが矛盾なく一致)。個別タレントごとの出典 URL・確証度の詳細は
+# この変更の PR 本文に記載。取得日: 2026-09-21。
+sora	🐻💿
+roboco	🤖
+aki	🍎
+haato	❤️‍🔥
+fubuki	🌽
+matsuri	🏮
+ayame	😈
+choco	💋
+subaru	🚑
+azki	⚒️
+mio	🌲
+miko	🌸
+okayu	🍙
+korone	🥐
+suisei	☄️
+pekora	👯‍♀️
+flare	🔥
+noel	⚔️
+marine	🏴‍☠️
+watame	🐏
+towa	👾
+luna	🍬
+lamy	☃️
+nene	🍑🥟
+botan	♌
+polka	🎪
+laplus	🛸💜
+lui	🥀
+koyori	🧪
+iroha	🍃
+risu	🐿️
+moona	🔮
+iofi	🎨
+ollie	🧟‍♀️
+anya	🍂
+reine	🦚
+zeta	📜
+kaela	🔨
+kobo	☔
+calli	💀
+kiara	🐔
+ina	🐙
+irys	💎
+kronii	⏳
+bae	🎲
+shiori	👁️‍🗨️
+bijou	🗿
+nerissa	🎼
+fuwawa	🐾🩵
+mococo	🐾🩷
+elizabeth	💄
+gigi	👧
+cecilia	🍵
+raora	🐱
+kanade	🎹✨
+ririka	🌃
+raden	🐚
+hajime	🐧⚡
+riona	🎤👑
+niko	☺️🐅
+su	💬🔁💙
+chihaya	🎧🔧
+vivi	💅✨
+mela	🧯
+sopia	📡
+tsuzuri	🐐💌
+kyoko	👮📢
+michiru
+sayaka
+yuki
+aqua	⚓
+shion	🌙
+kanata	💫
+coco	🐉
+gura	🔱
+sana	🪐
+fauna	🌿
+mumei	🪶
+ao	🖋
+chloe	🎣
+amelia	🔎
+nodoka
+frienda

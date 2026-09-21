@@ -83,6 +83,10 @@ in
 
   xdg.configFile."herdr/config.toml".source = ../../config/herdr/config.toml;
 
+  # サイドバーの $oshi トークン(推しマーク絵文字)が引く name→mark 表。
+  # 3 エージェントの metadata hook 共通で参照する。docs/claude/herdr-sidebar-metadata.md 参照。
+  xdg.configFile."herdr/oshi-marks.tsv".source = ../../config/herdr/oshi-marks.tsv;
+
   # herdr's config.toml is a real file with switch history behind it (a prior
   # -b backup can leave config.toml.backup sitting next to it), so it hits the
   # generic `.backup` collision quarantine (#64) — see home/modules/quarantine.nix

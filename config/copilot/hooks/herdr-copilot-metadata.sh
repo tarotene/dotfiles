@@ -36,6 +36,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 
 model=""
 branch=""
+oshi=""
 if [ "$action" = "report" ]; then
   cwd="$(jq -r '.cwd // ""' "$hook_input_file" 2>/dev/null)" || cwd=""
   # worktree/ プレフィクスは表示幅節約のため落とす。取得失敗は単に空 —
@@ -43,6 +44,22 @@ if [ "$action" = "report" ]; then
   if [ -n "$cwd" ]; then
     branch="$(git -C "$cwd" branch --show-current 2>/dev/null || true)"
     branch="${branch#worktree/}"
+
+    # worktree ディレクトリ名(worktree-<name>-<hex4>、
+    # patches/herdr-worktree-names.patch が生成する hololive タレント名)から
+    # ファンマーク(推しマーク)絵文字を引く。branch はリネームされうるが
+    # ディレクトリ名は不変なのでこちらから抽出する。詳細は
+    # docs/claude/herdr-sidebar-metadata.md。
+    top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
+    case "${top##*/}" in
+      worktree-*-*)
+        talent="${top##*/worktree-}"
+        talent="${talent%-*}"
+        marks="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/oshi-marks.tsv"
+        [ -f "$marks" ] && oshi="$(awk -F'\t' -v n="$talent" \
+          '!/^#/ && $1==n {print $2; exit}' "$marks")"
+        ;;
+    esac
   fi
   settings="${HOME:-}/.copilot/settings.json"
   if [ -f "$settings" ]; then
@@ -50,7 +67,7 @@ if [ "$action" = "report" ]; then
   fi
 fi
 
-HCM_MODEL="$model" HCM_BRANCH="$branch" HCM_ACTION="$action" python3 - <<'PY'
+HCM_MODEL="$model" HCM_BRANCH="$branch" HCM_OSHI="$oshi" HCM_ACTION="$action" python3 - <<'PY'
 import json
 import os
 import random
@@ -60,6 +77,7 @@ import time
 action = os.environ["HCM_ACTION"]
 model = os.environ.get("HCM_MODEL") or None
 branch = os.environ.get("HCM_BRANCH") or None
+oshi = os.environ.get("HCM_OSHI") or None
 pane_id = os.environ["HERDR_PANE_ID"]
 socket_path = os.environ["HERDR_SOCKET_PATH"]
 
@@ -67,7 +85,7 @@ params = {
     "pane_id": pane_id,
     "source": "copilot-hook",
     "seq": time.time_ns(),
-    "tokens": {"model": model, "branch": branch},
+    "tokens": {"model": model, "branch": branch, "oshi": oshi},
 }
 if action == "report":
     params["ttl_ms"] = 14_400_000  # 4h — clear 取りこぼしの保険

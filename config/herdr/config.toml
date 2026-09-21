@@ -62,6 +62,12 @@ tab_bar_right_separator = "·"
 # (mode/ctx/cost/effort 相当は無い — 確実に取れるデータだけに絞っている。
 # 詳細・見送った理由は docs/claude/herdr-sidebar-metadata.md)。
 #
+# $oshi(推しマーク絵文字)は 3 エージェントすべての metadata hook が、
+# worktree ディレクトリ名(worktree-<name>-<hex4>、
+# patches/herdr-worktree-names.patch の hololive タレント名)から
+# config/herdr/oshi-marks.tsv を引いて注入する。絵文字自体が色を持つため
+# fg 指定なし。未確証タレント・非 worktree ペインでは値が無く非表示。
+#
 # 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
 #   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
 #   red #F38BA8(bypass) / pink #F5C2E7(model) / overlay1 #7F849C(控えめ情報)。
@@ -70,7 +76,7 @@ row_gap = 0
 
 [ui.sidebar.agents.rows_by_agent]
 claude = [
-  ["state_icon", "workspace", "tab"],
+  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },
@@ -89,7 +95,7 @@ claude = [
   ],
 ]
 codex = [
-  ["state_icon", "workspace", "tab"],
+  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },
@@ -97,7 +103,7 @@ codex = [
   [ { token = "$model", fg = "#F5C2E7" } ],
 ]
 copilot = [
-  ["state_icon", "workspace", "tab"],
+  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },
