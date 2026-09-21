@@ -67,9 +67,14 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
 
 見出しリテラル(英語)は固定・順序も固定 — `github-audit` の charters ドメインが
 この形で機械検査する。日本語で書くリポジトリでも見出しはこの英語表記を使う。
-`## Background` は任意(知的出自のみ)、それ以外は必須。
+`## Background` は任意(知的出自のみ)、それ以外は必須。banner は任意(ADR-0028)。
 
 ```markdown
+<!-- 任意。第三者素材を使う場合は ADR-0028・後述の「第三者素材アセットの同梱」節に従う -->
+<p align="center">
+  <img src="docs/assets/<file>" alt="<英語 alt text>" width="420">
+</p>
+
 # <repo-name>
 
 <目的 1 文>。<自由記述の続き。省略可>
@@ -109,13 +114,15 @@ timeless documentation 規範)、個別 Issue 番号の引用(Art of README の
 恒久的な内容だけ README/`docs/` へ移し、それ以外は破棄する(ルート allowlist、
 次々節)。
 
-**監査の目的文抽出には罠が 2 つある**(`github-audit` charters ドメインの
+**監査の目的文抽出には罠が 3 つある**(`github-audit` charters ドメインの
 実装挙動、#182)。監査は H1 直後の**最初の非空段落**をそのまま目的段落として
 取るので、キャッチコピーやバッジ行を H1 と目的 1 文の間に挟むとそれが目的文と
-誤認される — 目的 1 文の段落を H1 の直後に置く。また目的 1 文は**最初の
-`.` / `。` で切り出して** description と照合するため、URL やバージョン番号の
-ような埋め込みピリオドを目的 1 文の中に書くと途中で切れて `purpose-mismatch`
-になる。
+誤認される — 目的 1 文の段落を H1 の直後に置く。同じ理由で **banner は
+H1 より上に置く**(H1 と目的 1 文の間に挟まない) — `extract_purpose()` は
+最初の `^# ` 行より前を一切読まないため、H1 より上に置いた banner は監査に
+不可視で済む(ADR-0028)。また目的 1 文は**最初の `.` / `。` で切り出して**
+description と照合するため、URL やバージョン番号のような埋め込みピリオドを
+目的 1 文の中に書くと途中で切れて `purpose-mismatch` になる。
 
 ## 3. CONTRIBUTING.md への反映(ADR-0013 部分 supersede、固定スキーマは ADR-0017)
 
@@ -164,7 +171,42 @@ ADR-0017 で廃止した(判定問 + 採用例・棄却例という**内容の�
 恒久的な内容は README の `## Background` か `docs/` へ吸収し、ファイル自体は
 削除する。
 
-## 5. AGENTS.md / CLAUDE.md ルーティング(ADR-0016)
+## 5. 第三者素材アセットの同梱(ADR-0028)
+
+repo ライセンス(MIT 等)と異なる利用規約を持つ第三者素材(README banner の
+イラスト等)を同梱する場合は次の手順を踏む。
+
+1. **素材源の利用規約を確認し、記録する。** 確認する 4 点: (a) 再配布可否、
+   (b) 商用利用の条件(点数制限の有無を含む)、(c) 改変可否(リサイズ・
+   トリミングを含む)、(d) 帰属表示の要否。確認した規約の URL と取得日を
+   このあとの帰属注記または PR 本文に残す。
+2. **`docs/assets/` に commit する。** ルート直下への配置と外部 URL への
+   hotlink は禁止。ファイル名は英語ケバブケース(例 `readme-banner.png`)。
+3. **banner として使う場合は H1 の直上に置く。**
+   `## 2. README への反映` の banner ブロックの罠(監査の目的文抽出との
+   衝突)を参照。
+4. **README の `## License` 節の末尾に、素材 1 点につき 1 行で帰属注記を
+   置く。**
+
+   ```markdown
+   The banner illustration ([`docs/assets/<file>`](docs/assets/<file>))
+   is by [<出所名>](<出所トップページ URL>)
+   ([source page](<素材ページ URL>)) and is **not** covered by this
+   repository's license; it is used under the
+   [<出所名> terms of use](<規約 URL>).
+   ```
+
+   1 点 1 行にすることで、同一素材源の使用点数を License 節の行数を数える
+   だけで把握できる(点数制限を持つ素材源への対応)。
+5. **LICENSE ファイルには書かない。** 第三者素材の例外は README `## License`
+   節側のみで行い、LICENSE ファイル自体はリポジトリのライセンス原文のみに
+   保つ。
+
+本規則は README banner に限らず、`docs/` 配下に置く第三者由来の図版・
+スクリーンショット一般に適用する。出典・調査範囲・却下した代替案は
+`docs/adr/0028-readme-banner-and-third-party-assets.md` を参照。
+
+## 6. AGENTS.md / CLAUDE.md ルーティング(ADR-0016)
 
 AI 向け正本は `AGENTS.md` 1 本。README/CONTRIBUTING を参照する側に置き、
 内容を複製しない。
@@ -189,7 +231,7 @@ Claude 固有差分のみのルータにする:
 CLAUDE.md に実内容を書き足していく(AGENTS.md との二重管理になる)構成は
 `github-audit` の charters ドメインが drift として検出する。
 
-## 6. skills を持つ場合のルーティング(ADR-0016)
+## 7. skills を持つ場合のルーティング(ADR-0016)
 
 このリポジトリ自身が Claude Code の repo スコープ skill を持つ(`.claude/
 skills/<name>/SKILL.md` を新設する)場合、正本はツール中立の
@@ -204,7 +246,7 @@ mkdir -p .claude/skills
 ln -s ../../.agents/skills/<name> .claude/skills/<name>
 ```
 
-## 7. GitHub メタデータへの反映
+## 8. GitHub メタデータへの反映
 
 **新規作成の場合、`gh repo create` の前に手順 2 の閉じた語彙チェックが
 通っていることを確認する**(ADR-0020)— `naming-codename` を選んだのに
@@ -234,7 +276,7 @@ github-rulesets-apply <rust|typst|astro> <owner>/<repo>
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。
 
-## 8. 自己検証
+## 9. 自己検証
 
 ```bash
 github-audit charters naming
@@ -243,7 +285,7 @@ github-audit charters naming
 対象リポジトリが両ドメインとも `ok` と出れば完了。`drifted` の場合は
 `missing=` の項目を読んで埋め直す(`docs/github-audit.md` に各項目の説明)。
 
-## 9. 既存 Issue への適用(適合化のとき)
+## 10. 既存 Issue への適用(適合化のとき)
 
 既存リポジトリに charter を播いた直後は、居座っている open Issue の中に
 CONTRIBUTING.md `## Issues` の棄却例に該当するものがないか一度だけ棚卸しする。
@@ -251,7 +293,7 @@ CONTRIBUTING.md `## Issues` の棄却例に該当するものがないか一度�
 理由をコメントして close する。理由を書かずに close しない — 後から見た人が
 「なぜ切られたか」を charter に立ち戻って再確認できることが目的。
 
-## 10. 一括適合化が必要なとき
+## 11. 一括適合化が必要なとき
 
 多数のリポジトリが同時に drift しており 1 リポジトリずつのインタビューでは
 収束しない場合は、監査駆動で一括起草・一括レビューする
