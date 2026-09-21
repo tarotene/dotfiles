@@ -1,0 +1,62 @@
+# ~/.profile: executed by the command interpreter for login shells.
+#
+# Taken under home-manager management by ADR-0029.  It is not managed for its
+# own sake — it is managed because it is the *only* file that governs PATH for
+# the graphical session.  The COSMIC session's PATH does not come from zsh:
+# cosmic-session is not started by the systemd user manager (its PATH and
+# `systemctl --user show-environment`'s disagree), it is started from a login
+# shell that reads this file.  Every launcher entry with a bare `Exec=name`
+# resolves against the PATH built right here.
+#
+# The order below is the whole point:
+#
+#   $HOME/.local/bin     home-manager-deployed scripts (hms, git-shelve, ...),
+#                        and the deliberate shadowing of the system xdg-open
+#                        by scripts/detach-open.sh — must stay in front.
+#   <nix profile>        put here by /etc/profile.d/nix.sh before this file
+#                        runs.  Never named explicitly: we only have to stop
+#                        jumping over it.
+#   $HOME/.cargo/bin     appended.  ADR-0025's registry of self-authored
+#                        pre-release CLIs keeps working, but loses to nix for
+#                        anything that exists in both.
+#
+# What this replaces is a single line, `. "$HOME/.cargo/env"`, written here by
+# rustup's installer.  That script prepends ~/.cargo/bin, which put a
+# cargo-built alacritty 0.15.1 in front of the declared 0.17.0-nixgl — along
+# with nine other shadowed tools — for months, without any visible symptom
+# beyond a duplicated launcher entry.
+#
+# NOTE: this file is a /nix/store symlink and is therefore read-only.  rustup
+# amends shell profiles in exactly two code paths, `rustup-init` and
+# `rustup self uninstall`, and either would fail here with
+# "could not amend shell profile".  If you ever need to run the installer
+# again, pass --no-modify-path: PATH is already correct, and rustup itself is
+# declared in home/modules/runtimes.nix rather than installed by rustup-init.
+
+# if running bash
+if [ -n "$BASH_VERSION" ]; then
+    # include .bashrc if it exists
+    if [ -f "$HOME/.bashrc" ]; then
+        . "$HOME/.bashrc"
+    fi
+fi
+
+# set PATH so it includes user's private bin if it exists
+if [ -d "$HOME/bin" ]; then
+    PATH="$HOME/bin:$PATH"
+fi
+
+# set PATH so it includes user's private bin if it exists
+if [ -d "$HOME/.local/bin" ]; then
+    PATH="$HOME/.local/bin:$PATH"
+fi
+
+# Appended, not prepended — see the header.
+if [ -d "$HOME/.cargo/bin" ]; then
+    case ":$PATH:" in
+        *":$HOME/.cargo/bin:"*) ;;
+        *) PATH="$PATH:$HOME/.cargo/bin" ;;
+    esac
+fi
+
+export PATH

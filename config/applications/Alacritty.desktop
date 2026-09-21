@@ -1,0 +1,43 @@
+# Application launcher entry for alacritty, overriding the one nixpkgs ships in
+# ~/.nix-profile/share/applications/Alacritty.desktop.
+#
+# The only reason this file exists is Exec=: upstream's entry says a bare
+# `Exec=alacritty`, which the launcher resolves through *its own* PATH — and
+# the COSMIC session's PATH is not the one home-manager reasons about.  It is
+# assembled by /etc/profile.d/nix.sh, then ~/.profile, then ~/.zprofile, and
+# any user-level prepend lands in front of ~/.nix-profile/bin.  That is how the
+# declared 0.17.0-nixgl silently lost to a cargo-installed 0.15.1 for months
+# (ADR-0029).
+#
+# The Exec=/TryExec= placeholder below is substituted with the nixGL-wrapped
+# store path by pkgs.replaceVars in home/modules/desktop.nix, on the same
+# reasoning as config/autostart/fcitx5.desktop: a store path cannot let
+# "declared" and "running" diverge, and an unmatched placeholder is a build
+# failure rather than a silently wrong Exec=.  It must be the *wrapped*
+# binary — alacritty is the one GL consumer here that exits before opening a
+# window when no EGL driver is reachable (ADR-0006).
+#
+# TryExec is deliberately the same absolute path: a bare name would be resolved
+# against the same untrusted PATH, so the entry could hide itself while the
+# store path is perfectly runnable.
+#
+# Everything below Exec=/TryExec= mirrors upstream's entry verbatim.
+
+[Desktop Entry]
+Type=Application
+TryExec=@alacritty@
+Exec=@alacritty@
+Icon=Alacritty
+Terminal=false
+Categories=System;TerminalEmulator;
+
+Name=Alacritty
+GenericName=Terminal
+Comment=A fast, cross-platform, OpenGL terminal emulator
+StartupNotify=true
+StartupWMClass=Alacritty
+Actions=New;
+
+[Desktop Action New]
+Name=New Terminal
+Exec=@alacritty@

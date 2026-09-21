@@ -4,11 +4,14 @@
 # This module sets up the Rust/Cargo environment if available.
 # It checks for the standard Rust installation locations.
 
-# Load Cargo environment using standard locations
-if [ -f "$HOME/.cargo/env" ]; then
-    # shellcheck disable=SC1091
-    source "$HOME/.cargo/env"
-fi
+# Deliberately NOT sourcing ~/.cargo/env here (ADR-0029).
+#
+# That script exists only to put ~/.cargo/bin on PATH, and it *prepends* —
+# landing in front of ~/.nix-profile/bin and silently overriding whatever
+# home-manager declares.  config/shell/common_env already adds the directory,
+# appended, which is the order ADR-0029 requires.  The file itself is left on
+# disk so anything else that sources it keeps working; it turns into a no-op
+# once ~/.cargo/bin is already present.
 
 # Enable shell completion for rustup and cargo
 if command -v rustup &>/dev/null; then

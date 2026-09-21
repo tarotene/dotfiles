@@ -66,7 +66,11 @@ dotfiles/
 │                             #   (esa: esa.io MCP token supply, personal identity only,
 │                             #   ADR-0022 — imported from identities/personal.nix, not here;
 │                             #   nixgl: shared nixGL wrapper function, ADR-0006, consumed by
-│                             #   desktop.nix and identities/personal.nix, #9)
+│                             #   desktop.nix and identities/personal.nix, #9;
+│                             #   quarantine: two shared options — managedFiles moves an
+│                             #   existing real file to .pre-nix before home-manager adopts
+│                             #   it, strayFiles renames an unmanaged leftover to .bak so it
+│                             #   stops competing with a managed one; neither ever deletes)
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
@@ -119,7 +123,16 @@ dotfiles/
 │   │                         #   限って Noto Color Emoji を strong binding で
 │   │                         #   追加し、絵文字をカラー字形にする(#305 系統 B、
 │   │                         #   docs/claude/herdr-sidebar-metadata.md)
-│   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
+│   ├── applications/         # Alacritty.desktop: launcher entry overriding nixpkgs',
+│   │                         #   with Exec=/TryExec= pinned to the nixGL-wrapped store
+│   │                         #   path via pkgs.replaceVars (ADR-0029) — a bare Exec=
+│   │                         #   resolves against the COSMIC session's PATH, not the
+│   │                         #   one home-manager reasons about
+│   ├── shell/                # common_env (sourced by 20-environment.zsh) + profile
+│   │                         #   (deployed as ~/.profile via home.file, Linux only):
+│   │                         #   ad-hoc installer dirs (.cargo/.deno/.bun) are appended,
+│   │                         #   never prepended, so nix keeps winning (ADR-0029)
+│   ├── git/, alacritty/, sheldon/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/
 │   └── apt-packages.txt      # system-layer packages ONLY
@@ -338,6 +351,8 @@ dotfiles/
 - **ADR-0024** — hook/CLI スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。bash 続投(writeShellApplication)は closure 固定は解けても保守性・表現力の主因を解決せず、Deno + TypeScript は closure 固定手法(deno2nix)がアーカイブ済みで must 制約未達のため不採用。`git-stash-guard.sh` の実移植 PoC で Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・`cargo test` 移行を実測。一括移行はせず後続 Issue に段階分割する。調査記録: `docs/shell-successor-research.md`。
 - **ADR-0025** — 自作・タグ付きリリース未達の pre-release CLI(実例: `tarotene/telepath`)の導入を、ホストローカルレジストリファイルによる opt-in 方式で実現する決定。dotfiles 側はスクリプトとスキーマのみ提供し、対象リポの名前は git 管理外のホストローカル設定ファイルにのみ記録する。対象リポ自体には一切触れない — 当初検討したマーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped exception。先行例: ADR-0020 の `*.local.tsv` パターン、ADR-0022 のホストローカル GPG ファイル。
 - **ADR-0026** — 命名クラス体系(ADR-0014)を改訂する決定。`naming-codename` を「無意味な恣意的ラベル(ADR-0020 の閉語彙を継続適用)」の `naming-codename` と「著者固有の命名形態論に基づく造語(閉語彙なし)」の `naming-coined` に分割し、5 クラス体制にする。加えて `lifecycle-timeboxed`(外部成果物を持つ時限プロジェクト)/ `lifecycle-study`(研究・学習記録、完了・進行中いずれも可)という、`naming-*` とは独立に併用できるライフサイクル軸を新設する。完了済み研究アーカイブが `naming-descriptive` の受けに事後的に流れていた問題と、`naming-codename` が意味的に異質な命名を混在させていた問題を、別々の直交する軸として解決する。ADR-0014 Decision 1 を supersede。
+
+- **ADR-0029** — PATH の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、ユーザレベルの prepend は構造的に必ず nix を追い越す — 実際 `~/.profile` の `. "$HOME/.cargo/env"` が `~/.cargo/bin` を先頭に置き、宣言済みの alacritty 0.17.0-nixgl に代わって cargo 版 0.15.1 が起動し続けていた(shadow は計 10 件 + `deno`)。順序を `.local/bin` → nix → system → ad-hoc installer dirs に規定し、ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager 管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
 
 ## Development Rules
 

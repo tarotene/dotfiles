@@ -78,4 +78,25 @@ in
     "shell/common_env".source = repoConfig + "/shell/common_env";
     "sheldon/plugins.toml".source = repoConfig + "/sheldon/plugins.toml";
   };
+
+  # ~/.profile is the only file that governs PATH for the graphical session —
+  # cosmic-session reads it, and every launcher entry with a bare `Exec=name`
+  # resolves against the PATH it builds.  Left unmanaged it carried rustup's
+  # installer line, which prepended ~/.cargo/bin ahead of ~/.nix-profile/bin
+  # and quietly inverted ADR-0001's source-of-truth claim.  The file itself
+  # explains the resulting order; ADR-0029 has the full rationale.
+  #
+  # ~/.profile is not XDG-scoped, so this is home.file rather than
+  # xdg.configFile.  A real file is already on disk (Ubuntu's skeleton plus
+  # rustup's line), so it goes through the adoption quarantine first.
+  #
+  # Linux-only (ADR-0018 branches in-module rather than splitting files): the
+  # measurement behind ADR-0029 is a COSMIC one, and darwin's login-shell
+  # chain reaches nix through /etc/zshrc rather than /etc/profile.d.  Adopting
+  # a login file on a host nobody has measured is the kind of unverified
+  # change this repo avoids; revisit if altair shows the same shadowing.
+  home.file = lib.mkIf pkgs.stdenv.isLinux {
+    ".profile".source = repoConfig + "/shell/profile";
+  };
+  dotfiles.quarantine.managedFiles = lib.mkIf pkgs.stdenv.isLinux [ ".profile" ];
 }
