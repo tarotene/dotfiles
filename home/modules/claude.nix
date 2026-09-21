@@ -1125,6 +1125,11 @@ in
     repoConfig + "/claude/skills/repo-charter/SKILL.md";
   home.file.".claude/skills/repo-charter/cases.md".source =
     repoConfig + "/claude/skills/repo-charter/cases.md";
+  # writing-style: 執筆規約の正本(別 private リポジトリの docs/style/)への
+  # 薄いポインタ(#115)。scripts/writing-style-hub がマーカーファイル/環境
+  # 変数からハブの絶対パスを解決する。
+  home.file.".claude/skills/writing-style/SKILL.md".source =
+    repoConfig + "/claude/skills/writing-style/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1170,6 +1175,8 @@ in
     repoConfig + "/claude/skills/repo-charter/SKILL.md";
   home.file.".agents/skills/repo-charter/cases.md".source =
     repoConfig + "/claude/skills/repo-charter/cases.md";
+  home.file.".agents/skills/writing-style/SKILL.md".source =
+    repoConfig + "/claude/skills/writing-style/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に

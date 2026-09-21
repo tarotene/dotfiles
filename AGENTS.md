@@ -172,6 +172,10 @@ dotfiles/
 │   ├── gpg-subkey             # generate/rotate/export/sync/status/remind
 │   │                         #   subcommands for [S]/[E] subkey management
 │   │                         #   (deployed to ~/.local/bin, ADR-0003 Amendment)
+│   ├── writing-style-hub      # resolves the private style-guide hub's path
+│   │                         #   via marker file / env var indirection, for
+│   │                         #   the writing-style skill (deployed to
+│   │                         #   ~/.local/bin, --selftest from CI, #115)
 │   ├── register-codex-hooks   # activation-only (writeShellScript, not a
 │   │                         #   deployed file): idempotent variadic merger for
 │   │                         #   ~/.codex/hooks.json — worktree.nix registers the
@@ -251,6 +255,9 @@ dotfiles/
 │   │   │                     #   GPG 暗号化ファイル + 専用 launcher +
 │   │   │                     #   ~/.claude.json への宣言的 merge(personal
 │   │   │                     #   identity 層限定、ADR-0022)
+│   │   ├── writing-style.md      # skill: 執筆規約への薄いポインタ。ハブの
+│   │   │                     #   絶対パスはマーカーファイル/環境変数で間接
+│   │   │                     #   参照し、無ければ明示的に失敗する(#115)
 │   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア:
 │   │   │                     #   opus/sonnet の 2 本を乗っ取り、モードを
 │   │   │                     #   (Plan 側, 実行側) のペア 3 種として

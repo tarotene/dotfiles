@@ -151,6 +151,14 @@
     executable = true;
   };
 
+  # writing-style-hub: resolves the private style-guide hub's absolute path
+  # (marker file or env var indirection — never hardcoded, #115) for the
+  # writing-style skill. docs/claude/writing-style.md has the design.
+  home.file.".local/bin/writing-style-hub" = {
+    source = ../../scripts/writing-style-hub;
+    executable = true;
+  };
+
   # github-rulesets-apply: seeds the standard Security/Quality/Workflow
   # rulesets (ADR-0021 core layer) onto one or more repositories by driving
   # the matching *-repo-governance skill's apply-rulesets.sh (#153). Owns no
