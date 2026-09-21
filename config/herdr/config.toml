@@ -65,8 +65,14 @@ tab_bar_right_separator = "·"
 # $oshi(推しマーク絵文字)は 3 エージェントすべての metadata hook が、
 # worktree ディレクトリ名(worktree-<name>-<hex4>、
 # patches/herdr-worktree-names.patch の hololive タレント名)から
-# config/herdr/oshi-marks.tsv を引いて注入する。絵文字自体が色を持つため
-# fg 指定なし。未確証タレント・非 worktree ペインでは値が無く非表示。
+# config/herdr/oshi-marks.tsv を引いて注入する。未確証タレント・非 worktree
+# ペインでは値が無く非表示。
+#
+# fg を明示しているのは、カラー字形が引けなかった場合の保険。カラー絵文字は
+# fg を無視するので通常は効かないが、FiraCode Nerd Font 自身がモノクロ字形を
+# 持つ数文字(☠ ☺ ♀ ⚡)はモノクロで描画され、fg 未指定だと既定の控えめ色に
+# なって選択行の背景(#45475A)とほぼ同色になり消える。カラー化そのものは
+# config/fontconfig/conf.d/75-color-emoji-fallback.conf が担当する二重防御。
 #
 # 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
 #   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
@@ -76,7 +82,7 @@ row_gap = 0
 
 [ui.sidebar.agents.rows_by_agent]
 claude = [
-  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
+  ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },
@@ -95,7 +101,7 @@ claude = [
   ],
 ]
 codex = [
-  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
+  ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },
@@ -103,7 +109,7 @@ codex = [
   [ { token = "$model", fg = "#F5C2E7" } ],
 ]
 copilot = [
-  ["state_icon", "workspace", { token = "$oshi" }, "tab"],
+  ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
   [
     { token = "$branch", fg = "#7F849C" },
     { token = "terminal_title_stripped", dim = true },

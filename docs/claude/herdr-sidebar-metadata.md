@@ -139,12 +139,81 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   `awk` で TSV を引き、`tokens.oshi` として同じ `pane.report_metadata` 送信に
   同乗させる(SessionEnd/clear では他トークンと同様 null)。
 - **`config.toml`**: `rows_by_agent` の 3 節すべて、1 行目の `workspace` の
-  直後に `{ token = "$oshi" }` を追加。絵文字自体が色を持つので `fg` は
-  指定しない。
+  直後に `{ token = "$oshi", fg = "#CDD6F4" }` を追加。`fg` はカラー字形が
+  引けなかった場合の保険（次節）。
 - **整合性**: 名前リストの正本は patch 内の Rust 配列。CI(`ci.yml`
   `oshi-marks.tsv matches herdr-worktree-names.patch talent list`)が patch の
   名前集合と TSV のキー集合を双方向突合し、片方にしかない名前があれば fail
   する(mark 列が空なのは許容 — 行の有無だけを検査)。
+
+## トークンが出ないときの 2 系統(#305)
+
+`$oshi` を入れた直後は出ていたのに、あるとき全ペインから消えた。原因は
+**独立した 2 系統の合成**で、片方だけ直しても見えるようにはならなかった。
+「実機で見えた」は「動いている」の証明にならない — 見えなくなり方が
+2 通りあるため、切り分けは必ず `herdr api snapshot`(値が来ているか)と
+画面(値が見えているか)の両方で行う。
+
+### 系統 A — 値が届いていない(データ層)
+
+hook は payload を jq で読むが、かつては `@tsv` の 1 行を単一の `read` で
+分解していた。**タブは POSIX の IFS whitespace** なので連続タブが 1 個の
+区切りに潰れ、optional フィールドが空だと以降が 1 個ずつシフトして、
+末尾の `cwd` が空になる。`cwd` が空なら `branch` も `oshi` も引けない。
+
+```
+$ printf 'SessionStart\t\t0\t/tmp/x' | { IFS="$(printf '\t')" read -r a b c d; echo "[$a][$b][$c][$d]"; }
+[SessionStart][0][/tmp/x][]
+```
+
+現在は 3 本とも `parse_payload()`(jq が 1 フィールド 1 行を出し、逐次
+`read` する)に統一し、`--selftest` を CI に接続している。`mode` / `model` が
+空でも `branch` / `oshi` は送り、モード表示トークンだけを落とす。
+
+- `config/claude/hooks/herdr-claude-metadata.sh --selftest`
+- `config/codex/hooks/herdr-codex-metadata.sh --selftest`
+- `config/claude/statusline/claude-statusline.sh --selftest`
+
+`config/copilot/hooks/herdr-copilot-metadata.sh` は最初からフィールド毎に
+`jq` を呼んでいたため無傷だった — 切り分けでは「copilot ペインだけ `oshi` が
+入っている」が最初の手がかりになった。
+
+### 系統 B — 値はあるが見えない(表示層)
+
+1. **選択行のコントラスト**: アクティブ行の背景は `#45475A`(surface1)。
+   `fg` 未指定のトークンは既定の控えめ色で描かれ、背景とほぼ同化する
+   (画素サンプリングで `(70,73,88)` vs `(69,71,90)`)。同じ行でも
+   `$model`(`#F5C2E7`)は読めるが `$branch`(`#7F849C`)はほぼ見えない。
+2. **絵文字がモノクロ字形**: fontconfig の既定解決順は
+   `Noto Sans Symbols2` → `Unifont Upper` → `DejaVu Sans` / `FreeSerif`
+   → `Noto Color Emoji` で、カラー絵文字フォントが最後尾に回る。モノクロ
+   字形は前景色を継承するので 1 と合成して完全に消える。
+
+対策は `config/fontconfig/conf.d/75-color-emoji-fallback.conf`
+(`home/modules/desktop.nix` が配布)。fontconfig の照合順位は
+**FAMILY_STRONG > LANG > FAMILY_WEAK** なので、weak な family 追加では
+lang カバレッジの広い `DejaVu Sans` などに負ける(実測で推しマーク 94
+コードポイント中 18 個がモノクロのまま)。strong binding で追加すると
+90/94 がカラー化する。ただし strong を全パターンに効かせると generic
+family の弱いエイリアスにも勝ってしまい `fc-match monospace` が
+`Noto Color Emoji` を返すため、**端末のフォント(`FiraCode Nerd Font`)を
+明示要求したパターンに限定**する。影響範囲は端末だけで、Chrome や COSMIC の
+文字送りは変わらない。
+
+残り 4 つ(☠ ☺ ♀ ⚡)は `FiraCode Nerd Font` 自身がモノクロ字形を持つため
+`append` では勝てない。`$oshi` に `fg = "#CDD6F4"` を明示しているのはこの
+4 つのための二重防御であって、冗長ではない(カラー字形は `fg` を無視する)。
+
+運用上の注意:
+
+- **fontconfig は端末の起動時に読まれる**。`hms` 後に既存の Alacritty
+  ウィンドウは変わらない — 目視検証は新しいウィンドウで行う。
+- **サイドバーの再描画はイベント駆動**。`herdr api snapshot` に値があっても
+  即座に描かれないことがあるので、目視検証は再描画を誘発してから行う。
+- Alacritty は ZWJ シーケンスを合成しない(👯‍♀️ は 👯 と ♀ に分かれて出る)。
+  TSV の公式表記は切り詰めないので、これは受容する既知の制約。
+- 検証は**選択行・非選択行の両方**で行う。片方だけ見て「出ている」と
+  判断したのが #301 の見落としだった。
 
 ## Codex / Copilot ペイン
 

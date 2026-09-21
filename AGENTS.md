@@ -114,6 +114,11 @@ dotfiles/
 │   │                         #   ~/.config/github-audit/; PRIVATE-repo entries
 │   │                         #   live in a *.local.tsv sibling on-disk only,
 │   │                         #   never in this tree (docs/claude/public-publish-guard.md)
+│   ├── fontconfig/conf.d/      # 75-color-emoji-fallback.conf: 端末フォント
+│   │                         #   (FiraCode Nerd Font)を明示要求したパターンに
+│   │                         #   限って Noto Color Emoji を strong binding で
+│   │                         #   追加し、絵文字をカラー字形にする(#305 系統 B、
+│   │                         #   docs/claude/herdr-sidebar-metadata.md)
 │   ├── git/, alacritty/, sheldon/, shell/, fcitx5/, environment.d/, ...
 │   └── starship.toml
 ├── packages/declarative/

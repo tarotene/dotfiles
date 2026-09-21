@@ -110,6 +110,17 @@ in
         # Terminal — literal alacritty.toml.
         "alacritty/alacritty.toml".source = repoConfig + "/alacritty/alacritty.toml";
 
+        # Color emoji fallback for the terminal font.  fontconfig otherwise
+        # resolves emoji to monochrome fonts (Noto Sans Symbols2 / Unifont /
+        # DejaVu Sans) long before Noto Color Emoji, and monochrome glyphs
+        # inherit the foreground color — which is what made the Herdr sidebar's
+        # $oshi mark vanish into the selected-row background.  The rule is
+        # scoped to the terminal's own family so generic monospace/sans-serif
+        # matching is untouched; rationale in the file's own header and in
+        # docs/claude/herdr-sidebar-metadata.md.
+        "fontconfig/conf.d/75-color-emoji-fallback.conf".source =
+          repoConfig + "/fontconfig/conf.d/75-color-emoji-fallback.conf";
+
         # fcitx5 autostart. systemd-xdg-autostart-generator turns this into
         # app-fcitx5@autostart.service (COSMIC has no native XDG autostart).
         #
