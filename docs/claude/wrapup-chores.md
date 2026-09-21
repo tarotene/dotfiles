@@ -21,16 +21,34 @@ hook のその契約に完全に乗っかり、hook 自体には一切手を入�
 
 ## 内部構成の意図
 
-### なぜ `gh issue list` + jq で、`gh search issues` ではないのか
+### 母集団はフッター一致ではなく雑務性判定(2026-09-21 改訂)
 
-wrapup 由来の Issue は本文末尾のフッター
+当初はフッター
 「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」
 (統合形。旧 2 行形式の Issue も残っているため、フィルタは両方にマッチする
-正規表現を使う)で識別する。`gh search issues` は GitHub の Search API に依存し、
-インデックスの反映に遅延があるうえ、絵文字を含む文字列のトークナイズ一致は
-不安定になりやすい。`gh issue list --json body` で本文を取得し、jq の `test()`
-で ASCII 部分文字列に対する正規表現一致を取る方が、遅延なく決定論的に判定できる。
-`--limit` は既定値(30)のままだと取りこぼすため、実行のたびに明示する。
+正規表現を使う)への本文一致を母集団の一次フィルタにしていた。しかし実測
+(2026-09-21)では dotfiles の open Issue のうちフッター一致はごく一部で、
+出自が wrap-up 由来であっても汎用の attribution フッター(`🤖 Generated with
+[Claude Code](...)`)しか持たない Issue が大半を占め、機械判別できずに
+「一撃で回収できない」不満の直接原因になっていた。
+
+母集団は open Issue 全件に広げ、`blocked-by-upstream` ラベルだけをクエリ段階で
+機械除外し、残りを LLM が §2 の雑務性基準で判定する構成に改めた
+(ADR-0015 の deterministic node + LLM node 構成を踏襲)。フッター一致は
+廃止せず、雑務性判定を経ずに無条件で候補に入れる**ヒント**として存続させる
+(判定コストを下げつつ、フッターに依存しない全数性を確保する)。雑務性なしと
+判定した Issue も理由付きで除外一覧に載せ、黙って母集団から落とさない
+(scope-inventory の閉じた処分タグ原則を実行時の triage 画面に移植したもの)。
+
+### なぜ `gh issue list` + jq で、`gh search issues` ではないのか
+
+`gh search issues` は GitHub の Search API に依存し、インデックスの反映に
+遅延があるうえ、絵文字を含む文字列のトークナイズ一致は不安定になりやすい。
+`gh issue list --json body,labels` で本文とラベルを取得し、jq でラベル除外と
+`test()` によるフッターヒント判定を行う方が、遅延なく決定論的に判定できる。
+`--limit` は既定値(30)のままだと取りこぼすため 500 を明示し、**取得件数が
+limit と一致したら打ち切りの可能性がある**ので limit を倍にして再実行する
+規約を SKILL.md に明記した。
 
 ### `--mark-filed` を呼ぶタイミング: commit 後・PR 作成後・merge 後の比較
 
@@ -56,9 +74,12 @@ title / detail をそのまま列挙することで監査可能性を担保し�
 
 - 発動キーワード: 「chores をまとめて」「wrapup を一掃」「inbox 消化」等(詳細は
   `SKILL.md` の `description`)。
-- 自律度: triage 結果(即対処 / 要判断の振り分けと理由)を 1 回だけ提示してユーザーの
-  GO を取り、以降は項目ごとの確認を挟まず 1 つの chores PR にまとめる。
+- 自律度: triage 結果(対処対象の即対処/要判断の振り分けと理由、および除外一覧)を
+  1 回だけ提示してユーザーの GO を取り、以降は項目ごとの確認を挟まず 1 つの
+  chores PR にまとめる。GO 画面は open Issue 全件が対処対象・要判断・除外一覧の
+  いずれかに 1 回ずつ現れていることを自己検査してから提示する(発見漏れゼロ)。
 - 要判断に振り分けた項目は一切手を付けない。inbox 行は次回セッションの通常の Stop
   ゲートフローに委ね、Issue はそのまま open で残して最終報告に一覧を載せる。
-- hook・selftest・`~/.claude/settings.json` の登録は変更しない。読み取りは
-  `cat` + `jq` で行い、書き込みは既存の `--mark-filed` 経由に限る。
+- hook の `--add`/`--mark-filed`/`--check-dup` の契約・selftest・
+  `~/.claude/settings.json` の登録は変更しない。inbox パスの解決は
+  `--inbox-path` サブコマンドに委ね、書き込みは既存の `--mark-filed` 経由に限る。
