@@ -15,8 +15,89 @@
 # Claude 版と違い前回値のキャッシュ(debounce)は持たない。
 #
 # 詳細は docs/claude/herdr-sidebar-metadata.md。
+#
+# 自己検査: sh config/codex/hooks/herdr-codex-metadata.sh --selftest
 
 set -eu
+
+# payload の 4 フィールドを $event/$model/$subagent/$cwd に取り出す。
+#
+# 1 行 TSV + 単一 read は使わない: タブは POSIX の IFS whitespace なので
+# 連続タブが 1 個の区切りに潰れ、空フィールド(model が無い payload など)が
+# 消えてフィールドが 1 個ずつシフトし、cwd が空になって branch/oshi が死ぬ
+# (Claude 版で実害が出た同型のバグ、#305)。1 フィールド 1 行 + 逐次 read なら
+# 空行がそのまま空フィールドとして残る。値に含まれる改行は jq 側で潰す。
+parse_payload() {
+  _vals="$(jq -r '[
+    (.hook_event_name // ""),
+    (.model // ""),
+    (if .agent_id then "1" else "0" end),
+    (.cwd // "")
+  ] | map(tostring | gsub("[\r\n]"; " ")) | .[]' "$1" 2>/dev/null)" || return 1
+
+  # 末尾フィールドが空だと $() が行を落とすため、read の失敗は空値として扱う。
+  {
+    IFS= read -r event || event=""
+    IFS= read -r model || model=""
+    IFS= read -r subagent || subagent=""
+    IFS= read -r cwd || cwd=""
+  } <<EOF
+$_vals
+EOF
+}
+
+# --selftest: 空フィールド入りの合成 payload でフィールド対応が崩れないことを
+# 検査する(#305)。
+selftest() {
+  command -v jq >/dev/null 2>&1 || { echo "selftest: jq required" >&2; return 1; }
+  _tmp="$(mktemp -d "${TMPDIR:-/tmp}/herdr-codex-metadata-selftest.XXXXXX")" || return 1
+  _fail=0
+
+  _eq() { # label got want
+    if [ "$2" != "$3" ]; then
+      echo "selftest: FAIL $1: got '$2', want '$3'" >&2
+      _fail=1
+    fi
+  }
+
+  _case() { # name json expect_event expect_model expect_subagent expect_cwd
+    printf '%s' "$2" >"$_tmp/in.json"
+    event=""; model=""; subagent=""; cwd=""
+    parse_payload "$_tmp/in.json" || true
+    _eq "[$1] event" "$event" "$3"
+    _eq "[$1] model" "$model" "$4"
+    _eq "[$1] subagent" "$subagent" "$5"
+    _eq "[$1] cwd" "$cwd" "$6"
+  }
+
+  _case "full" \
+    '{"hook_event_name":"SessionStart","model":"gpt-5","cwd":"/tmp/a"}' \
+    "SessionStart" "gpt-5" "0" "/tmp/a"
+  _case "no-model" \
+    '{"hook_event_name":"SessionStart","cwd":"/tmp/a"}' \
+    "SessionStart" "" "0" "/tmp/a"
+  _case "empty-model" \
+    '{"hook_event_name":"Stop","model":"","cwd":"/tmp/a"}' \
+    "Stop" "" "0" "/tmp/a"
+  _case "subagent" \
+    '{"hook_event_name":"Stop","model":"gpt-5","agent_id":"x","cwd":"/tmp/a"}' \
+    "Stop" "gpt-5" "1" "/tmp/a"
+  _case "no-cwd" \
+    '{"hook_event_name":"SessionEnd","model":"gpt-5"}' \
+    "SessionEnd" "gpt-5" "0" ""
+  _case "all-optional-missing" \
+    '{"hook_event_name":"SessionStart"}' \
+    "SessionStart" "" "0" ""
+
+  rm -rf "$_tmp"
+  [ "$_fail" = 0 ] && echo "selftest: all passed"
+  return "$_fail"
+}
+
+if [ "${1:-}" = "--selftest" ]; then
+  selftest
+  exit $?
+fi
 
 hook_input_file="$(mktemp "${TMPDIR:-/tmp}/herdr-codex-metadata.XXXXXX")" || exit 0
 trap 'rm -f "$hook_input_file"' EXIT HUP INT TERM
@@ -28,16 +109,7 @@ cat >"$hook_input_file" 2>/dev/null || true
 command -v jq >/dev/null 2>&1 || exit 0
 command -v python3 >/dev/null 2>&1 || exit 0
 
-vals="$(jq -r '[
-  (.hook_event_name // ""),
-  (.model // ""),
-  (if .agent_id then "1" else "0" end),
-  (.cwd // "")
-] | @tsv' "$hook_input_file" 2>/dev/null)" || exit 0
-tab="$(printf '\t')"
-IFS="$tab" read -r event model subagent cwd <<EOF
-$vals
-EOF
+parse_payload "$hook_input_file" || exit 0
 
 # サブエージェントは親と同じペインで走る — 親の表示を撹乱させない。
 [ "$subagent" = "1" ] && exit 0
@@ -47,7 +119,7 @@ case "$event" in
     # model/branch は取らない(payload に model が無く、表示も全クリアする)。
     ;;
   SessionStart | UserPromptSubmit | Stop)
-    [ -n "$model" ] || exit 0
+    # model が空でも branch/oshi は送る(model トークンだけ非表示、#305)。
     ;;
   *)
     exit 0
