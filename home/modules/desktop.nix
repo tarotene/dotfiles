@@ -38,71 +38,10 @@ let
     addons = [ pkgs.fcitx5-mozc ];
   };
 
-  # GL/EGL for nix-built GUI apps on Pop!_OS (#13 / ADR-0006).
-  #
-  # nix-built GL applications look for their driver under /run/opengl-driver,
-  # a NixOS-only path that does not exist here, so EGL never initializes:
-  # alacritty exits before opening a window, and Chrome/Slack/Zoom survive by
-  # silently falling back to software rendering (`--use-gl=disabled`).
-  #
-  # Pointing the loader variables at the *system* mesa does not fix it — measured:
-  # /usr/share/glvnd/egl_vendor.d/50_mesa.json names a bare "libEGL_mesa.so.0",
-  # which a nix process cannot resolve, and making it resolvable would mean
-  # loading glibc-2.39-linked drivers into a glibc-2.42 process. nix's own mesa
-  # in the closure is therefore not a preference, it is the only option.
-  # (nixglhost, which reuses host drivers, is not an alternative either: its
-  # support matrix lists Mesa as unsupported across the board.)
-  #
-  # Wrapping is applied per package below rather than mapped over the whole GUI
-  # list: a blanket map would silently pull a 1.1 GiB GL closure onto the next
-  # GUI package that has nothing to do with GL.
-  #
-  # bin/* is wrapped *and* share/applications/*.desktop is rewritten, because
-  # the two entry points differ per package: Alacritty and Zoom ship
-  # `Exec=alacritty` / `Exec=zoom` and resolve through PATH, but Chrome and Slack
-  # hardcode an absolute store path, so without the rewrite they would keep
-  # launching unwrapped from the COSMIC launcher while working fine from a shell.
-  #
-  # Caveat: the result is a plain derivation, so passthru and .override are lost.
-  # Apply any .override to the package *before* handing it to nixGLWrap.
-  nixGLWrap =
-    pkg:
-    pkgs.runCommand "${pkg.name}-nixgl"
-      {
-        nativeBuildInputs = [ pkgs.makeWrapper ];
-        inherit (pkg) meta;
-      }
-      ''
-        mkdir -p "$out/bin"
-
-        # Everything except bin/ and share/ can stay a symlink to the original.
-        for entry in ${pkg}/*; do
-          name="$(basename "$entry")"
-          case "$name" in
-            bin | share) ;;
-            *) ln -s "$entry" "$out/$name" ;;
-          esac
-        done
-
-        for binary in ${pkg}/bin/*; do
-          makeWrapper ${pkgs.nixgl.nixGLIntel}/bin/nixGLIntel \
-            "$out/bin/$(basename "$binary")" \
-            --add-flags "$binary"
-        done
-
-        if [ -d ${pkg}/share ]; then
-          cp -r ${pkg}/share "$out/share"
-          chmod -R u+w "$out/share"
-
-          # Repoint absolute Exec=/TryExec= at the wrappers. A plain prefix
-          # substitution covers both, and any other absolute reference into
-          # bin/ that a desktop entry may carry.
-          for desktop in "$out"/share/applications/*.desktop; do
-            [ -e "$desktop" ] || continue
-            substituteInPlace "$desktop" --replace-quiet "${pkg}/bin/" "$out/bin/"
-          done
-        fi
-      '';
+  # GL/EGL for nix-built GUI apps on Pop!_OS (#13 / ADR-0006). Extracted to
+  # nixgl.nix (#9) so identity-scoped modules can reuse the same wrapper —
+  # see that file for the full rationale.
+  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
 
 in
 {

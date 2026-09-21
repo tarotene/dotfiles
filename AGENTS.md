@@ -27,7 +27,9 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 
 Note on graphics: the driver stack itself is root-owned and stays in the system
 layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
-per-package `nixGL` wrapper in `home/modules/desktop.nix` (ADR-0006).
+per-package `nixGL` wrapper (`home/modules/nixgl.nix`, ADR-0006), applied to
+Linux GUI packages in `home/modules/desktop.nix` and identity-scoped ones
+like `warp-terminal` (`home/identities/personal.nix`, #9).
 
 Note on `herdr`: not yet in the pinned stable nixpkgs channel. Comes from a
 single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
@@ -52,16 +54,19 @@ dotfiles/
 ├── home/                     # home-manager modules (Identity / Instance two-layer)
 │   ├── common.nix            # shared across every host; imports all modules/
 │   ├── identities/           # identity-scoped (git identity, browser default)
-│   │   ├── personal.nix
+│   │   ├── personal.nix       # also home.packages for cloud-connected tools that must
+│   │   │                     #   not auto-deploy to company hosts (warp-terminal, #9)
 │   │   └── company.nix
 │   ├── hosts/                # instance-scoped; imports common + one identity + per-host signing key
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, atuin, git, gpg, packages, desktop, runtimes,
+│   └── modules/              # shell, atuin, git, gpg, packages, desktop, nixgl, runtimes,
 │                             #   herdr, claude, worktree, quarantine, hm-warnings, esa
 │                             #   (esa: esa.io MCP token supply, personal identity only,
-│                             #   ADR-0022 — imported from identities/personal.nix, not here)
+│                             #   ADR-0022 — imported from identities/personal.nix, not here;
+│                             #   nixgl: shared nixGL wrapper function, ADR-0006, consumed by
+│                             #   desktop.nix and identities/personal.nix, #9)
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
 │   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,

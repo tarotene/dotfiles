@@ -3,7 +3,12 @@
 # Settings that follow the *person* on their personal machines, independent of
 # which host they sit at.  Git user.name / user.email are set here; the
 # per-machine signing key lives in the host module (#211 / ADR-0003).
-{ lib, ... }:
+{ lib, pkgs, ... }:
+let
+  # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix. Only needed on
+  # Linux — darwin has its own native GL stack.
+  nixGLWrap = import ../modules/nixgl.nix { inherit pkgs; };
+in
 {
   imports = [
     # esa MCP token supply (ADR-0022). esa is a personal-identity service —
@@ -21,6 +26,23 @@
   home.sessionVariables = {
     DOTFILES_IDENTITY = "personal";
   };
+
+  # warp-terminal (#9): cloud-connected AI terminal. Identity-scoped rather
+  # than in desktop.nix on purpose — desktop.nix is imported unconditionally
+  # by common.nix for every host, including company ones, and a cloud AI
+  # tool must not silently land there. Was previously installed ad hoc via
+  # apt (a third-party source with an expired signing key that prints a
+  # scary GPG warning on every `apt-get update`); this replaces that
+  # unmanaged install, reclaiming it into the layer ADR-0001 says it
+  # belongs in (unprivileged user-space GUI app → home-manager).
+  #
+  # Linux needs the nixGL wrap (same GL bootstrap problem as alacritty/
+  # Chrome/Slack/Zoom in desktop.nix — Warp is GPU-accelerated and looks for
+  # its driver under the NixOS-only /run/opengl-driver). darwin has its own
+  # native GL stack, so it stays unwrapped there, same as alacritty in
+  # desktop.nix.
+  home.packages =
+    if pkgs.stdenv.isLinux then [ (nixGLWrap pkgs.warp-terminal) ] else [ pkgs.warp-terminal ];
 
   # Git identity — personal (non-secret).
   programs.git.settings.user = {
