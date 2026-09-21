@@ -94,7 +94,10 @@ preview が GA したときにこの裁定を見直すかどうかは、
 (追記なら可)」という切り方の規律を追加し、既に有効な `rerere.enabled =
 true` で残りを吸収する形にした。
 
-## なぜ pr-gate.sh を触らなかったか
+## なぜ pr-gate.sh を触らなかったか(2026-09-21 に ADR-0027 が上書き)
+
+**この節の裁定は ADR-0027 によって上書きされた。** 以下は当時の記録として
+残すが、現在の規律は「保留条項の発火と ADR-0027」節を参照。
 
 `pr-gate.sh` は既に PR の `baseRefName` を見て動作しており、`G_link` に
 stacked 用の advisory(base が default branch でないときは closing keyword
@@ -108,6 +111,33 @@ block する案(`G_stack`)も検討したが、`pr-gate.sh` の既存の設計�
 今回は指示文とスキルの運用を先に確立し、実際に取り違えが起きてから block
 化を検討することにした。誘発の実測が無いまま `MAX_BLOCKS` を引き上げて
 PR を大きくする判断はしない。
+
+## 保留条項の発火と ADR-0027(2026-09-21)
+
+上記の保留条項がまさに発火した。ある private リポジトリでの開発セッション
+(どのリポジトリかは ADR-0014 の方針により記さない — private/company
+リポジトリ名は dotfiles の成果物に残さない)で 1 セッション約 10 PR を
+作成した際、ブランチは物理的に直列に積まれていたのに base 宣言が
+不整合になった:
+
+- ある PR は先行 PR の head を base にすべきところ default branch の
+  ままで、他の複数 open PR のコミットを含む汚染 diff になっていた。
+- `gh stack link` が未実行のまま Web UI で手動 stack を試み、束ねきれない
+  orphan PR が発生した。
+- 並列 2 チェーン + 独立 PR 1 本に分裂した。
+
+判定条件 (a)/(b) に基づく依存予測は LLM 判断に委ねられており、セッション中
+に系統的に外れた。`ADR-0027`(uncertainty-first stacking)は、この予測を
+「積むか否か」の判定からは廃止し、セッション内の複数 PR は常に作成順の
+単一チェーンに積むことを、作成時 PreToolUse hook(`stack-base-guard.sh`)と
+完了時 Stop judgement(`G_stack`、`pr-gate.sh`)の両端で機械強制する決定を
+下した。詳細な設計根拠は ADR-0027 本文および `docs/claude/
+stack-base-guard.md` / `docs/claude/pr-gate.md` を参照。
+
+判定条件 (a)/(b) 自体は「段の切り方(何を 1 段にまとめるか)」の設計原則
+としては §2 に存続する。廃止したのは「積むかどうか」を予測で分岐する
+判断だけである。当該 private リポジトリの現行 PR 群の修復は本ドキュメントの
+スコープ外(private リポジトリ側の運用として個別に対応する)。
 
 ## `Stack:` 行を `pr-description` のスケルトンに追加した理由
 

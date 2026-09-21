@@ -154,6 +154,15 @@
   できるライフサイクル軸を新設し、完了済み研究アーカイブが
   `naming-descriptive` の受けに流れていた問題を解消する。ADR-0014
   Decision 1 を supersede。
+- [ADR-0027](adr/0027-uncertainty-first-stacking.md) — セッション内の
+  複数 PR は依存関係を予測せず常に作成順の単一チェーンに積む決定
+  (uncertainty-first stacking)。ある private リポジトリで 1 セッション
+  約 10 PR を作った際、依存予測に基づく判定条件が外れて base 宣言と実体が
+  不整合になり(汚染 diff・orphan PR)、`docs/claude/stacked-pr.md` の
+  保留条項が発火した。離脱は閉じたタグ `Independent-PR:` のみとし、
+  作成時 PreToolUse hook(`stack-base-guard.sh`)と完了時 Stop judgement
+  (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
+  「積むか否か」の判定としては supersede。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
