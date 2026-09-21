@@ -201,6 +201,12 @@ Design and rationale for the hooks and commands deployed from
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
   Covers the two holes left by the harness-supplied footer: comments never got
   one, and the PR/Issue body side had no repo-side enforcement at all.
+- [`stack-base-guard.md`](claude/stack-base-guard.md) — PreToolUse hook
+  (ADR-0027): `gh pr create` / `gh pr edit --base` の作成時に、セッション内の
+  複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
+  状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
+  単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
+  attribution-guard.sh のコマンド解析エンジンを source して再利用する。
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s

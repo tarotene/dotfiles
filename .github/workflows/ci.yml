@@ -270,6 +270,14 @@ jobs:
       - name: attribution-guard.sh --selftest
         run: bash ./config/claude/hooks/attribution-guard.sh --selftest
 
+      # stack-base-guard (ADR-0027, docs/claude/stack-base-guard.md) sources
+      # attribution-guard.sh's command-position/tokenizer engine and adds its
+      # own gh stub against a throwaway git repo with real commits (ancestry
+      # checks need real objects for `git merge-base --is-ancestor`) — no
+      # network involved.
+      - name: stack-base-guard.sh --selftest
+        run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema
