@@ -81,7 +81,16 @@ dotfiles/
 │                             #   stops competing with a managed one; neither ever deletes)
 ├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
 │   ├── zsh/                  # zsh modules (loaded in numeric order)
-│   ├── claude/               # hooks/: plan-review gate, wrap-up inbox, plan-view,
+│   ├── agents/                # AGENTS.md: canon for agent-agnostic global norms
+│   │                         #   (research discipline, stacked-PR/scope-inventory
+│   │                         #   principles, PR completion, rebase-not-merge,
+│   │                         #   attribution footer) — home.file-mounted at
+│   │                         #   ~/.agents/AGENTS.md, ~/.codex/AGENTS.md, and
+│   │                         #   ~/.copilot/copilot-instructions.md (ADR-0032,
+│   │                         #   same cross-tool pattern as .agents/skills/ below)
+│   ├── claude/               # CLAUDE.md: `@~/.agents/AGENTS.md` import + Claude
+│   │                         #   Code-specific gate wiring only (ADR-0032);
+│   │                         #   hooks/: plan-review gate, wrap-up inbox, plan-view,
 │   │                         #   plan-scope-gate, plan-precedent-gate,
 │   │                         #   plan-fresh-gate, pr-gate,
 │   │                         #   attribution-guard, issue-index, sign-prewarm,
@@ -365,6 +374,7 @@ dotfiles/
 - **ADR-0029** — PATH の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、ユーザレベルの prepend は構造的に必ず nix を追い越す — 実際 `~/.profile` の `. "$HOME/.cargo/env"` が `~/.cargo/bin` を先頭に置き、宣言済みの alacritty 0.17.0-nixgl に代わって cargo 版 0.15.1 が起動し続けていた(shadow は計 10 件 + `deno`)。順序を `.local/bin` → nix → system → ad-hoc installer dirs に規定し、ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager 管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
 - **ADR-0030** — GAS/clasp 基盤の配置決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ(セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には置かない。
 - **ADR-0031** — PR タイトルを commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが `main` の commit subject になる唯一のテキストであり、non-conventional な commit が `main` に混入する経路をこの 1 点に絞って client guard(PreToolUse deny)・server required check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。文法は Conventional Commits + Angular 慣行の 11 type 閉集合。Issue タイトル・ブランチ上の commit メッセージは対象外(squash で破棄される/「変更」でなく「状態」を記述する別ジャンルのため)。
+- **ADR-0032** — グローバル agent 指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)とする決定。`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・`~/.copilot/copilot-instructions.md` の 3 箇所に同一ソースを home.file マウントし、`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ単位 AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの — これまでグローバル指示は比較対象(Codex/Copilot 側のグローバル指示ファイル)が存在しなかったため Claude 専用のまま定着していたが、hook 層は attribution-guard(#192)・pr-title-guard(ADR-0031)で既にクロスツール共有 + per-agent adapter の型を確立しており、指示ファイル層だけがこの型に倣っていなかった非対称を解消する。
 
 ## Development Rules
 
