@@ -271,6 +271,19 @@
 #    docs/adr/0031-pr-title-as-commit-message-contract.md と
 #    docs/claude/pr-title-contract.md。
 #
+# 22) external-send-guard(PreToolUse, matcher: "mcp__.*"):
+#    Claude が Gmail MCP tool 経由で外部(自分以外)宛にメールを直接送信するのを
+#    deny し、create_draft(返信は replyToMessageId 付き)へ誘導する。motivating
+#    case: 公式サイトに実在するメールアドレスを一般問い合わせに使ったところ、
+#    実際は求人問い合わせ専用の窓口で、相手から不審がられた(2026-09-22)。
+#    アドレスの存在確認だけでは窓口の文脈までは保証されず、その文脈判定は
+#    機械では行えないため、外部宛送信そのものを一律止めてユーザーの Gmail
+#    上での編集・送信を承認点にする
+#    設計にした。send_message/reply/forward の 3 tool だけを対象にし、
+#    create_draft・読み取り系は対象外。自分のアドレス集合は
+#    ~/.config/external-send-guard/self.txt(このリポジトリにはコミットしない、
+#    publish-guard と同じ理由)。詳細は docs/claude/external-send-guard.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -351,6 +364,10 @@ let
   # に置く。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
+  # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
+  # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
+  # しない独立ファイルだが、配置ディレクトリは揃えておく。
+  externalSendGuardCmd = "bash '${hooksDir}/external-send-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
   # (herdr-claude-metadata.sh と同じ形)。出力は
@@ -542,6 +559,7 @@ let
     atuin_hook_claude_code="$1"; shift
     stack_base_guard="$1";       shift
     pr_title_guard="$1";         shift
+    external_send_guard="$1";    shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -657,6 +675,12 @@ let
     # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
     # 持たないため timeout は短め。
     register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
+    # external-send-guard(docs/claude/external-send-guard.md): Gmail MCP
+    # tool の send_message/reply/forward だけが対象なので matcher は
+    # "mcp__.*" のみでよい(publish-guard/attribution-guard と違い Bash 経由
+    # の送信は原理的に検出できないため、Bash|mcp__.* にする理由がない)。
+    # jq/文字列処理のみで往復が無いので timeout は最短。
+    register PreToolUse "mcp__.*" "$external_send_guard" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -945,6 +969,13 @@ in
   # 必ず ~/.claude/hooks/ 直下(上の attribution-guard.sh と同じ階層)。
   home.file.".claude/hooks/stack-base-guard.sh" = {
     source = repoConfig + "/claude/hooks/stack-base-guard.sh";
+    executable = true;
+  };
+  # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
+  # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
+  # source しない。
+  home.file.".claude/hooks/external-send-guard.sh" = {
+    source = repoConfig + "/claude/hooks/external-send-guard.sh";
     executable = true;
   };
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
@@ -1378,7 +1409,8 @@ in
       ${lib.escapeShellArg agentTurnLogCmd} \
       ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
       ${lib.escapeShellArg stackBaseGuardCmd} \
-      ${lib.escapeShellArg prTitleGuardCmd}
+      ${lib.escapeShellArg prTitleGuardCmd} \
+      ${lib.escapeShellArg externalSendGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

@@ -325,6 +325,15 @@ jobs:
       - name: pr-title-guard.sh (copilot adapter) --selftest
         run: bash ./config/copilot/hooks/pr-title-guard.sh --selftest
 
+      # external-send-guard (docs/claude/external-send-guard.md) is
+      # deterministic bash + jq end to end against fixture MCP tool_input
+      # JSON — no gh/network involved. Covers the self-vs-external address
+      # match, cc/bcc leakage, reply's implicit-recipient deny, non-target
+      # tools (create_draft, get_thread), case-insensitive matching, and
+      # the fail-closed default when self.txt is absent.
+      - name: external-send-guard.sh --selftest
+        run: bash ./config/claude/hooks/external-send-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema
