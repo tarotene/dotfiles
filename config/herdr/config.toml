@@ -130,3 +130,19 @@ copilot = [
   ],
   [ { token = "$model", fg = "#F5C2E7" } ],
 ]
+
+# マウス中心の操作からキーボード操作へ移行するための未設定バインド有効化。
+# 既存の既定ニーモニック(pane 移動 = prefix+hjkl、tab 切替 = prefix+p/n)の
+# alt 修飾ミラーとして揃えることで記憶コストを最小化する(herdr 0.8.2
+# default config のコメント例に倣う)。既定バインドとの衝突なし。
+#
+# 現在有効なバインド一覧は prefix+?(組み込み help overlay、この設定を反映)で
+# いつでも確認できる。help 自体は既定バインドのまま未設定。
+[keys]
+next_agent = "prefix+alt+j"
+previous_agent = "prefix+alt+k"
+focus_agent = "prefix+alt+1..9"
+next_workspace = "prefix+alt+n"
+previous_workspace = "prefix+alt+p"
+switch_workspace = "prefix+shift+1..9"
+last_pane = "prefix+backtick"
