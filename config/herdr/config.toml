@@ -135,6 +135,9 @@ copilot = [
 # 既存の既定ニーモニック(pane 移動 = prefix+hjkl、tab 切替 = prefix+p/n)の
 # alt 修飾ミラーとして揃えることで記憶コストを最小化する(herdr 0.8.2
 # default config のコメント例に倣う)。既定バインドとの衝突なし。
+#
+# 現在有効なバインド一覧は prefix+?(組み込み help overlay、この設定を反映)で
+# いつでも確認できる。help 自体は既定バインドのまま未設定。
 [keys]
 next_agent = "prefix+alt+j"
 previous_agent = "prefix+alt+k"
