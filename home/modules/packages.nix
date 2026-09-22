@@ -156,6 +156,18 @@
     executable = true;
   };
 
+  # pr-title-check: checker 単一ソース for the PR-title commit-message
+  # contract (ADR-0031, docs/claude/pr-title-contract.md). Both
+  # config/claude/hooks/pr-title-guard.sh (client-side PreToolUse deny) and
+  # .github/workflows/pr-title.yml (server-side required check) call this
+  # one script, so the grammar never drifts between the two enforcement
+  # points. Same "executable in ~/.local/bin, no alias needed" placement as
+  # git-prune-branches/github-audit above.
+  home.file.".local/bin/pr-title-check" = {
+    source = ../../scripts/pr-title-check;
+    executable = true;
+  };
+
   # github-audit: read-only cross-repository GitHub audit, unified across
   # five domains (rulesets/#130, charters, naming, settings, renovate —
   # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
