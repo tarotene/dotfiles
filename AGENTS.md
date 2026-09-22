@@ -361,6 +361,8 @@ dotfiles/
 - **ADR-0026** — 命名クラス体系(ADR-0014)を改訂する決定。`naming-codename` を「無意味な恣意的ラベル(ADR-0020 の閉語彙を継続適用)」の `naming-codename` と「著者固有の命名形態論に基づく造語(閉語彙なし)」の `naming-coined` に分割し、5 クラス体制にする。加えて `lifecycle-timeboxed`(外部成果物を持つ時限プロジェクト)/ `lifecycle-study`(研究・学習記録、完了・進行中いずれも可)という、`naming-*` とは独立に併用できるライフサイクル軸を新設する。完了済み研究アーカイブが `naming-descriptive` の受けに事後的に流れていた問題と、`naming-codename` が意味的に異質な命名を混在させていた問題を、別々の直交する軸として解決する。ADR-0014 Decision 1 を supersede。
 
 - **ADR-0029** — PATH の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、ユーザレベルの prepend は構造的に必ず nix を追い越す — 実際 `~/.profile` の `. "$HOME/.cargo/env"` が `~/.cargo/bin` を先頭に置き、宣言済みの alacritty 0.17.0-nixgl に代わって cargo 版 0.15.1 が起動し続けていた(shadow は計 10 件 + `deno`)。順序を `.local/bin` → nix → system → ad-hoc installer dirs に規定し、ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager 管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
+- **ADR-0030** — GAS/clasp 基盤の配置決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ(セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には置かない。
+- **ADR-0031** — PR タイトルを commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが `main` の commit subject になる唯一のテキストであり、non-conventional な commit が `main` に混入する経路をこの 1 点に絞って client guard(PreToolUse deny)・server required check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。文法は Conventional Commits + Angular 慣行の 11 type 閉集合。Issue タイトル・ブランチ上の commit メッセージは対象外(squash で破棄される/「変更」でなく「状態」を記述する別ジャンルのため)。
 
 ## Development Rules
 
