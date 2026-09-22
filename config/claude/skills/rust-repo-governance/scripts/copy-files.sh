@@ -111,6 +111,7 @@ copy_file ".github/workflows/release-plz.yml"
 copy_file ".github/workflows/release-binaries.yml"
 copy_file ".github/workflows/release-nudge.yml"
 copy_file ".github/workflows/lang-mix.yml"
+copy_file ".github/workflows/pr-title.yml"
 
 # .githooks
 copy_file ".githooks/commit-msg"

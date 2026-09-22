@@ -39,7 +39,7 @@ SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/sit
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles)
 
 # Account-wide ruleset baseline (rulesets domain). Derived from the
 # rust-repo-governance/typst-repo-governance/astro-site-governance skills'
@@ -104,9 +104,15 @@ judges the requested domains (default: all of them):
              registry, site domain set) — the codename registry check
              applies to every repo regardless of cutoff
   settings   squash-only merge, delete-branch-on-merge, default branch,
-             wiki/projects disabled
+             wiki/projects disabled, squash commit title=PR_TITLE/
+             message=BLANK (ADR-0031)
   renovate   Renovate config presence, for repos with a dependency manifest
              and a CI workflow
+  titles     PR-title commit-message contract enforcement presence
+             (ADR-0031): pr-title.yml caller workflow + "PR title" required
+             status check. Presence-detection only, not individual open PR
+             titles (the client guard and the required check judge those).
+             not-applicable for repos with no .github/workflows
 
 Without options, prints a human-readable report and exits 1 if any
 non-exempt repository is drifted/ungoverned in any judged domain. --json
@@ -145,6 +151,20 @@ list_repos_meta() { # print: JSON array of repo metadata objects
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
 hasWikiEnabled,hasProjectsEnabled,createdAt 2>/dev/null
+}
+
+# squash_merge_commit_title/squash_merge_commit_message (ADR-0031) are REST-
+# only fields — `gh repo list --json` is backed by GraphQL, and the
+# Repository GraphQL type does not expose them (confirmed 2026-09-22: `gh
+# repo list --json squashMergeCommitTitle` errors with "Unknown JSON
+# field"). One extra REST call per repo, only made when the settings domain
+# is actually being audited (see need_repo_rest in audit()). A fetch
+# failure is treated the same way judge_rulesets() treats an unfetchable
+# ruleset — silently reported as drift rather than aborting the whole run
+# (unlike the GraphQL batch fetch, a single repo's REST failure does not
+# risk blanket false-positive drift across every repo).
+fetch_repo_settings() { # $1=repo -> JSON (REST repo object) or {} on failure
+  "$GH_BIN" api "repos/$OWNER/$1" 2>/dev/null || printf '{}'
 }
 
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
@@ -623,8 +643,8 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
 # settings domain
 # ---------------------------------------------------------------------------
 
-judge_settings() { # $1=repo-meta-json -> finding
-  local meta="$1"
+judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional) -> finding
+  local meta="$1" rest="${2:-{\}}"
   local -a missing=()
   jq -e '.squashMergeAllowed == true and .mergeCommitAllowed == false and .rebaseMergeAllowed == false' <<<"$meta" >/dev/null 2>&1 ||
     missing+=("merge-not-squash-only")
@@ -632,6 +652,13 @@ judge_settings() { # $1=repo-meta-json -> finding
   jq -e '(.defaultBranchRef.name // "") == "main"' <<<"$meta" >/dev/null 2>&1 || missing+=("default-branch-not-main")
   jq -e '.hasWikiEnabled == false' <<<"$meta" >/dev/null 2>&1 || missing+=("wiki-enabled")
   jq -e '.hasProjectsEnabled == false' <<<"$meta" >/dev/null 2>&1 || missing+=("projects-enabled")
+  # ADR-0031: PR タイトル = main の squash commit subject という契約は、
+  # この2つの値の上に成立している(config/claude/skills/*-repo-governance/
+  # scripts/apply-repo-settings.sh の適用側と同じ宣言値)。
+  jq -e '.squash_merge_commit_title == "PR_TITLE"' <<<"$rest" >/dev/null 2>&1 ||
+    missing+=("squash-title-not-pr-title")
+  jq -e '.squash_merge_commit_message == "BLANK"' <<<"$rest" >/dev/null 2>&1 ||
+    missing+=("squash-message-not-blank")
 
   if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
@@ -665,6 +692,45 @@ judge_renovate() { # $1=gql-data-json -> finding
 }
 
 # ---------------------------------------------------------------------------
+# titles domain (ADR-0031): presence-detection only — whether the PR-title
+# commit-message contract's enforcement mechanism exists, not whether any
+# individual open PR's title currently conforms (that is the client guard's
+# and the required check's job; auditing it too would let this domain
+# report drift while CI is green, docs/claude/pr-title-contract.md).
+# ---------------------------------------------------------------------------
+
+REQUIRED_PR_TITLE_CONTEXT='PR title'
+
+judge_titles() { # $1=repo $2=repo-gql-json -> finding
+  local repo="$1" gql="$2" has_workflows has_caller arr checks
+  has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  # ADR-0020 の grandfathering 型と同じ: CI を持たないリポジトリには
+  # required check を要求する土台自体が無いため not-applicable にする
+  # (renovate ドメインと同じ判定、上の judge_renovate() 参照)。
+  if [[ $has_workflows != true ]]; then
+    jq -n '{verdict: "not-applicable", missing: []}'
+    return
+  fi
+
+  local -a missing=()
+  has_caller="$(jq -e '(.workflowsDir.entries // []) | any(.name == "pr-title.yml")' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  [[ $has_caller == true ]] || missing+=("pr-title-workflow-missing")
+
+  arr="$(default_branch_rulesets "$repo")"
+  checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
+  jq -e --arg c "$REQUIRED_PR_TITLE_CONTEXT" 'index($c)' <<<"$checks" >/dev/null 2>&1 ||
+    missing+=("pr-title-check-not-required")
+
+  if ((${#missing[@]} == 0)); then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -688,13 +754,17 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
-    # charters/renovate's file-existence checks.
-    [[ $d == charters || $d == renovate || $d == rulesets ]] && need_graphql=1
+    # charters/renovate's file-existence checks. titles (ADR-0031) needs
+    # the same workflowsDir data to detect the pr-title.yml caller.
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
+    # settings (ADR-0031 extension) needs the REST-only squash commit title/
+    # message fields (see fetch_repo_settings() comment).
+    [[ $d == settings ]] && need_repo_rest=1
   done
 
   local repo_names_json gql_batch='{}'
@@ -737,8 +807,13 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ;;
           charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
           naming) entry="$(judge_naming "$repo" "$topics_json" "$created_at" "$species_json" "$registry_json" "$site_json")" ;;
-          settings) entry="$(judge_settings "$meta")" ;;
+          settings)
+            local repo_rest='{}'
+            ((need_repo_rest)) && repo_rest="$(fetch_repo_settings "$repo")"
+            entry="$(judge_settings "$meta" "$repo_rest")"
+            ;;
           renovate) entry="$(judge_renovate "$repo_gql")" ;;
+          titles) entry="$(judge_titles "$repo" "$repo_gql")" ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -810,6 +885,13 @@ selftest() {
   {"name": "rulesets-review-split", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Core + review layer split across two active rulesets, like the real Stage 2 layout (ADR-0021).", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "rulesets-squash-conflict", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "Two pull_request rules with disjoint allowed_merge_methods — no common squash-only.", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
+EOF
+
+  # REST repo-settings fixture (ADR-0031, judge_settings' squash title/
+  # message check). Plain `gh api repos/OWNER/REPO` — not the /rulesets
+  # sub-path — so the fixture file has no trailing segment.
+  cat >"$tmp/fixtures/repos_tarotene_all-ok.json" <<'EOF'
+{"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK"}
 EOF
 
   cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets.json" <<'EOF'
@@ -1233,6 +1315,33 @@ EOF
 }
 EOF
 
+  # Fixtures for the judge_titles() direct-call checks below (ADR-0031).
+  # "titles-ok" has the required check context registered on its default-
+  # branch ruleset; "titles-missing-check" has an active ruleset but
+  # without the "PR title" context.
+  cat >"$tmp/fixtures/repos_tarotene_titles-ok_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_titles-ok_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "nix flake check"}, {"context": "PR title"}]}}
+  ]
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_titles-missing-check_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_titles-missing-check_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "nix flake check"}]}}
+  ]
+}
+EOF
+
   out="$("$SELF" --json 2>&1)" || true
 
   # naming domain
@@ -1465,6 +1574,54 @@ EOF
   jq -e '.missing | index("domain-unrecognized")' \
     <<<"$(judge_naming rogue.site '["naming-site"]' "$post" "$species" "$registry" "$domains")" >/dev/null || {
     printf 'FAIL: rogue.site (post-cutoff, domain not in closed set) should flag domain-unrecognized\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # ADR-0031: settings domain extension (squash commit title/message) +
+  # titles domain (presence-detection). Direct function-call checks, same
+  # rationale as the ADR-0020 block above.
+  # ---------------------------------------------------------------------
+
+  local meta_ok='{"squashMergeAllowed":true,"mergeCommitAllowed":false,"rebaseMergeAllowed":false,"deleteBranchOnMerge":true,"defaultBranchRef":{"name":"main"},"hasWikiEnabled":false,"hasProjectsEnabled":false}'
+  local rest_ok='{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}'
+  local rest_drift='{"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}'
+
+  jq -e '.verdict == "ok"' <<<"$(judge_settings "$meta_ok" "$rest_ok")" >/dev/null || {
+    printf 'FAIL: judge_settings should be ok when every field (incl. squash title/message) matches\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("squash-title-not-pr-title")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag squash-title-not-pr-title when squash_merge_commit_title != PR_TITLE\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("squash-message-not-blank")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag squash-message-not-blank when squash_merge_commit_message != BLANK\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("squash-title-not-pr-title")) and (.missing | index("squash-message-not-blank")) and (.missing | index("merge-not-squash-only") | not)' \
+    <<<"$(judge_settings "$meta_ok" '{}')" >/dev/null || {
+    printf 'FAIL: judge_settings with an unfetchable REST response ({}) should report the squash fields as drifted (fail-open to drift, not silently pass) without also misreporting the otherwise-compliant GraphQL-sourced fields\n' >&2
+    return 1
+  }
+
+  jq -e '.verdict == "not-applicable"' <<<"$(judge_titles no-ci-repo '{"workflowsDir": null}')" >/dev/null || {
+    printf 'FAIL: judge_titles should be not-applicable for a repo with no .github/workflows\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should be ok when the caller workflow exists and the required check is registered\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("pr-title-check-not-required")' \
+    <<<"$(judge_titles titles-missing-check '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should flag pr-title-check-not-required when the ruleset lacks the "PR title" context\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("pr-title-workflow-missing")' \
+    <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should flag pr-title-workflow-missing when no pr-title.yml caller exists, even if the ruleset happens to have the context registered\n' >&2
     return 1
   }
 

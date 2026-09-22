@@ -21,6 +21,7 @@
 # Usage:
 #   gpg-subkey generate --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--algorithm ed25519]
 #   gpg-subkey rotate   --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--revoke-old]
+#   gpg-subkey revoke   --key <primary-key> --subkey <keyid>
 #   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
 #   gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
 #   gpg-subkey status   [--repo <dotfiles-checkout>]
@@ -93,6 +94,7 @@ usage() {
 usage:
   gpg-subkey generate --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--algorithm ed25519]
   gpg-subkey rotate   --key <primary-key> [--usage sign|encrypt] [--validity 1y] [--revoke-old]
+  gpg-subkey revoke   --key <primary-key> --subkey <keyid>
   gpg-subkey export   --repo <dotfiles-checkout> --identity <name>
   gpg-subkey sync     --repo <dotfiles-checkout> --identity <name> [--fix] [--yes]
   gpg-subkey status   [--repo <dotfiles-checkout>]
@@ -102,8 +104,12 @@ usage:
 generate/rotate require the card (the primary key's [C] capability signs the
 new subkey). --usage defaults to sign ([S]); encrypt produces an [E]
 encrypt-only subkey. rotate never revokes a card-backed subkey of the same
-usage — only on-disk material is ever a revoke candidate. This tool never
-writes git config — export/sync print the next manual step (update
+usage — only on-disk material is ever a revoke candidate. revoke is the
+standalone form of that same on-disk-only revoke: use it to converge a
+subkey that was already superseded without --revoke-old (or by a rotate
+that failed partway) — the keyid to pass is whichever `status` still shows
+as non-revoked but no longer the one hosts/<host>.nix declares. This tool
+never writes git config — export/sync print the next manual step (update
 programs.git.signing.key, PR, hms; for --usage encrypt, re-encrypt whatever
 this identity's [E] protects, e.g. esa MCP's token.gpg). sync detects (and,
 with --fix, converges) drift between the local keyring and keys/*.pub /
@@ -193,6 +199,21 @@ usage_subkeys() {
 extract_latest_usage_keyid() {
   local cap="$1" selector="$2"
   usage_subkeys "$cap" "$selector" on-disk | awk -F'\t' '$7 == 0 { if ($5 >= max) { max = $5; keyid = $3 } } END { print keyid }'
+}
+
+# find_subkey_row <primary-fpr> <keyid> — TSV: keyid, revoked(0/1),
+# capability_field, location(gpg's raw field 15: "+" on-disk, token S/N
+# card-backed, "#" stub). Empty if no ssb with that keyid exists under the
+# primary. Used by cmd_revoke, which needs a single specific subkey's row
+# rather than usage_subkeys' capability-filtered listing.
+find_subkey_row() {
+  local fpr="$1" keyid="$2"
+  "$GPG_BIN" --list-secret-keys --with-colons --with-fingerprint "$fpr" 2>/dev/null | awk -F: -v want="$keyid" '
+    $1 == "ssb" && $5 == want {
+      revoked = ($2 == "r") ? 1 : 0
+      print $5 "\t" revoked "\t" $12 "\t" $15
+    }
+  '
 }
 
 # --- generate ---------------------------------------------------------------
@@ -387,10 +408,10 @@ cmd_rotate() {
   fi
 }
 
-_revoke_subkey() { # <primary-fpr> <subkey-keyid> — exit 0 revoked, 1 failed.
-  local fpr="$1" keyid="$2" batch out rc
+_revoke_subkey() { # <primary-fpr> <subkey-keyid> [<reason-text>] — exit 0 revoked, 1 failed.
+  local fpr="$1" keyid="$2" reason="${3:-gpg-subkey rotate}" batch out rc
   batch="$(mktemp)"
-  printf 'key %s\nrevkey\ny\n0\ngpg-subkey rotate\n\ny\nsave\nquit\n' "$keyid" >"$batch"
+  printf 'key %s\nrevkey\ny\n0\n%s\n\ny\nsave\nquit\n' "$keyid" "$reason" >"$batch"
   local -a extra=()
   mapfile -t extra < <(edit_key_extra_args)
   out="$("$GPG_BIN" --batch "${extra[@]}" --command-file "$batch" --expert --edit-key "$fpr" 2>&1)"
@@ -402,6 +423,68 @@ _revoke_subkey() { # <primary-fpr> <subkey-keyid> — exit 0 revoked, 1 failed.
     return 1
   fi
   printf 'gpg-subkey: 旧 subkey %s を revoke しました\n' "$keyid" >&2
+}
+
+# --- revoke (standalone) -----------------------------------------------------
+
+# gpg-subkey revoke --key <primary-key> --subkey <keyid>
+#
+# rotate --revoke-old only revokes an old subkey in the same breath as
+# generating its replacement. That leaves no way to converge a subkey that
+# was already rotated past without --revoke-old (or a previous rotate that
+# failed partway) without generating yet another new one just to trigger the
+# revoke path — this command fills that gap directly.
+cmd_revoke() {
+  local key="" subkey=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --key)
+        key="$2"
+        shift 2
+        ;;
+      --subkey)
+        subkey="$2"
+        shift 2
+        ;;
+      *)
+        printf 'gpg-subkey revoke: 不明な引数 %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  [[ -n $key && -n $subkey ]] || {
+    printf 'gpg-subkey revoke: --key と --subkey が必要です\n' >&2
+    return 2
+  }
+
+  local fpr
+  fpr="$(resolve_primary_key "$key")"
+  [[ -n $fpr && $(wc -l <<<"$fpr") -eq 1 ]] || {
+    printf 'gpg-subkey: --key %s が primary key を一意に特定できません\n' "$key" >&2
+    return 1
+  }
+
+  local row revoked loc
+  row="$(find_subkey_row "$fpr" "$subkey")"
+  [[ -n $row ]] || {
+    printf 'gpg-subkey revoke: subkey %s が primary %s の下に見つかりません\n' "$subkey" "$fpr" >&2
+    return 1
+  }
+  IFS=$'\t' read -r _ revoked _ loc <<<"$row"
+
+  if [[ $revoked == 1 ]]; then
+    printf 'gpg-subkey revoke: subkey %s は既に revoked です\n' "$subkey" >&2
+    return 1
+  fi
+  # rotate と同じ on-disk 限定(#252, R1-B-1 の判定を踏襲): card-backed な
+  # subkey の残置は ADR-0003 Amendment 4 の意図的な設計であり、このツールの
+  # revoke 対象に含めない。
+  if [[ $loc != "+" ]]; then
+    printf 'gpg-subkey revoke: subkey %s は on-disk ではありません(card-backed/stub は rotate と同じくこのツールの revoke 対象外 — ADR-0003 Amendment 4 の意図的な残置設計)\n' "$subkey" >&2
+    return 1
+  fi
+
+  _revoke_subkey "$fpr" "$subkey" "gpg-subkey revoke"
 }
 
 # --- export / sync ----------------------------------------------------------
@@ -1006,6 +1089,44 @@ STUB
   mixed_active="$(GPG_BIN="$dir/bin/gpg-list-stub" GPG_SUBKEY_TEST_LIST_FILE="$dir/list-mixed-e.txt" extract_latest_usage_keyid e "")"
   check "extract_latest_usage_keyid: card-backed を「現行」として解決しない" "DISKEEEEEEEEEEEE" "$mixed_active"
 
+  # --- revoke (standalone) ------------------------------------------------
+  echo "revoke (standalone):"
+
+  local third_keyid
+  third_keyid="$(cmd_generate --key "$fpr" --validity 1d 2>"$dir/generate-3.err")" || {
+    printf 'FAIL generate(revoke 用): %s\n' "$(cat "$dir/generate-3.err")" >&2
+    exit 1
+  }
+
+  local revoke_out revoke_rc=0
+  revoke_out="$(cmd_revoke --key "$fpr" --subkey "$third_keyid" 2>&1)" || revoke_rc=$?
+  check "revoke: 単独実行は exit 0" 0 "$revoke_rc"
+  check "revoke: revoke した keyid を報告する" 1 "$(grep -qF "$third_keyid" <<<"$revoke_out" && echo 1 || echo 0)"
+
+  rows="$(usage_subkeys s "$fpr")"
+  check "revoke: 対象 subkey が revoked=1 になる" 1 \
+    "$(awk -F'\t' -v k="$third_keyid" '$3 == k { print $7 }' <<<"$rows")"
+  check "revoke: 現行 [S] subkey ($second_keyid) には影響しない" 0 \
+    "$(awk -F'\t' -v k="$second_keyid" '$3 == k { print $7 }' <<<"$rows")"
+
+  local revoke_again_rc=0
+  cmd_revoke --key "$fpr" --subkey "$third_keyid" >/dev/null 2>"$dir/revoke-again.err" || revoke_again_rc=$?
+  check "revoke: 既に revoked な subkey は失敗する" 1 "$revoke_again_rc"
+  check "revoke: 既に revoked のエラーメッセージ" 1 \
+    "$(grep -qF '既に revoked' "$dir/revoke-again.err" && echo 1 || echo 0)"
+
+  local revoke_missing_rc=0
+  cmd_revoke --key "$fpr" --subkey "NOSUCHKEYID0000" >/dev/null 2>"$dir/revoke-missing.err" || revoke_missing_rc=$?
+  check "revoke: 存在しない keyid は失敗する" 1 "$revoke_missing_rc"
+
+  local revoke_card_rc=0
+  GPG_BIN="$dir/bin/gpg-list-stub" GPG_SUBKEY_TEST_LIST_FILE="$dir/list-mixed-e.txt" \
+    cmd_revoke --key "92E7B05978F0FE4E5500F6F76CFC837175BE257E" --subkey "CARDEEEEEEEEEEEE" \
+    >/dev/null 2>"$dir/revoke-card.err" || revoke_card_rc=$?
+  check "revoke: card-backed subkey は拒否する" 1 "$revoke_card_rc"
+  check "revoke: card-backed 拒否のメッセージ" 1 \
+    "$(grep -qF 'card-backed' "$dir/revoke-card.err" && echo 1 || echo 0)"
+
   # sync: `gh` and `curl` are stubbed — this must never touch a real GitHub
   # account or the real keys.openpgp.org, even by accident. keys/selftest.pub
   # is stale in two independent ways at this point: (a) [S] rotated after
@@ -1087,6 +1208,10 @@ main() {
     rotate)
       shift
       cmd_rotate "$@"
+      ;;
+    revoke)
+      shift
+      cmd_revoke "$@"
       ;;
     export)
       shift

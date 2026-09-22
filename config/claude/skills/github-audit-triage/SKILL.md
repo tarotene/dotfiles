@@ -1,6 +1,6 @@
 ---
 name: github-audit-triage
-description: github-audit(統合 5 ドメイン監査)が報告した drift を入力に、LLM で複数リポジトリの findings を一括起草し、1 回の一括レビュー(GO/修正/除外/exempt)を経て一括 PR 化する手順(ADR-0015 の LLM ノード)。charter 一括整地・drift まとめて直す・naming/settings/renovate 一括対応・全リポ横断で直す・github-audit-triage、といった依頼で使う。bulk remediation across repos, triage audit findings, apply drift fixes across repositories、といった英語の文脈でも使う。1 リポだけを対話で適合化する場合は repo-charter を使う — こちらは横断監査の findings をまとめて消化する側。
+description: github-audit(統合 6 ドメイン監査)が報告した drift を入力に、LLM で複数リポジトリの findings を一括起草し、1 回の一括レビュー(GO/修正/除外/exempt)を経て一括 PR 化する手順(ADR-0015 の LLM ノード)。charter 一括整地・drift まとめて直す・naming/settings/renovate 一括対応・全リポ横断で直す・github-audit-triage、といった依頼で使う。bulk remediation across repos, triage audit findings, apply drift fixes across repositories、といった英語の文脈でも使う。1 リポだけを対話で適合化する場合は repo-charter を使う — こちらは横断監査の findings をまとめて消化する側。
 ---
 
 `github-audit` は読み取り専用で drift を報告するだけで、直すのは

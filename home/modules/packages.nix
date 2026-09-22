@@ -85,6 +85,15 @@
       # normal filter maintenance, so it's declared here instead of
       # re-fetched per invocation.
       gmailctl
+
+      # Google Apps Script (GAS) CLI, official (google/clasp). Lets GAS
+      # projects be pushed/run from the terminal instead of copy-pasting
+      # into script.google.com and reading results off the browser
+      # execution log (ADR-0030 — a GAS script's Logger-only URL output was
+      # missed and cost a re-run). Setup/login/day-to-day usage is the
+      # gas-clasp-ops skill (docs/claude/gas-clasp-ops.md); credentials stay
+      # host-local, not managed here.
+      google-clasp
     ]
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
@@ -147,9 +156,22 @@
     executable = true;
   };
 
+  # pr-title-check: checker 単一ソース for the PR-title commit-message
+  # contract (ADR-0031, docs/claude/pr-title-contract.md). Both
+  # config/claude/hooks/pr-title-guard.sh (client-side PreToolUse deny) and
+  # .github/workflows/pr-title.yml (server-side required check) call this
+  # one script, so the grammar never drifts between the two enforcement
+  # points. Same "executable in ~/.local/bin, no alias needed" placement as
+  # git-prune-branches/github-audit above.
+  home.file.".local/bin/pr-title-check" = {
+    source = ../../scripts/pr-title-check;
+    executable = true;
+  };
+
   # github-audit: read-only cross-repository GitHub audit, unified across
-  # five domains (rulesets/#130, charters, naming, settings, renovate —
-  # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
+  # six domains (rulesets/#130, charters, naming, settings, renovate,
+  # titles/ADR-0031 — ADR-0015; docs/github-audit.md). Replaces the former
+  # sibling scripts
   # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's

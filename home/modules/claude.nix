@@ -257,6 +257,20 @@
 #    ファイルではなく独立モジュールに切り出してある(quarantine.nix と同じ
 #    「1 option = 1 ファイル」の粒度)。詳細は docs/claude/claude-mcp-servers.md。
 #
+# 21) pr-title-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-0031):
+#    PR タイトルを commit-message 契約として作成時に機械強制する。squash-only
+#    運用では PR タイトルが main の commit subject になる唯一のテキストであり、
+#    `gh pr create --title` / `gh pr edit --title` が Conventional Commits +
+#    Angular 慣行の 11 type 閉集合(scripts/pr-title-check が判定エンジンの
+#    単一ソース)に非適合なら deny する。発火は owner が tarotene のリポジトリ
+#    限定(会社ホストにも common 層として配備されるため)。判定不能・checker
+#    不在・非 tarotene owner はすべて fail-open。一時解除は環境変数
+#    PR_TITLE_GUARD_ALLOW=1。attribution-guard.sh/stack-base-guard.sh と同じ
+#    「判定エンジンを source して is_target_at を上書きする」型。Codex/Copilot
+#    にも同じ判定エンジンを展開する(#192 の型を踏襲)。詳細は
+#    docs/adr/0031-pr-title-as-commit-message-contract.md と
+#    docs/claude/pr-title-contract.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -328,6 +342,15 @@ let
   # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
   # "$(dirname ...)/attribution-guard.sh" が解決できる配置)。
   stackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
+  # pr-title-guard(ADR-0031)も同じ理由で attribution-guard.sh と同階層。
+  prTitleGuardCmd = "bash '${hooksDir}/pr-title-guard.sh'";
+  # Codex/Copilot 版 pr-title-guard adapter(#192 の型を踏襲)。相対 source
+  # (config/{codex,copilot}/hooks/pr-title-guard.sh)が ../../claude/hooks/
+  # pr-title-guard.sh を辿れる前提の配置パスなので、attribution-guard の
+  # Codex/Copilot adapter と同じく ~/.codex/hooks/・~/.copilot/hooks/ 直下
+  # に置く。
+  codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
+  copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
   # (herdr-claude-metadata.sh と同じ形)。出力は
@@ -518,6 +541,7 @@ let
     agent_turn_log="$1";         shift
     atuin_hook_claude_code="$1"; shift
     stack_base_guard="$1";       shift
+    pr_title_guard="$1";         shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -629,6 +653,10 @@ let
     # 走査のみなので timeout は attribution-guard 並みでよいが、往復を含む
     # ため若干長めに確保する。
     register PreToolUse "Bash|mcp__.*" "$stack_base_guard" 20
+    # pr-title-guard(ADR-0031): attribution-guard/stack-base-guard と同じ
+    # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
+    # 持たないため timeout は短め。
+    register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -931,6 +959,26 @@ in
     executable = true;
   };
 
+  # pr-title-guard(ADR-0031): PR タイトルを commit-message 契約として
+  # 作成時に機械強制する(docs/claude/pr-title-contract.md)。
+  # attribution-guard.sh を同ディレクトリから source するので、配置は
+  # 必ず ~/.claude/hooks/ 直下。
+  home.file.".claude/hooks/pr-title-guard.sh" = {
+    source = repoConfig + "/claude/hooks/pr-title-guard.sh";
+    executable = true;
+  };
+  # Codex CLI / Copilot CLI 版 adapter(#192 の型を踏襲)。相対パスで
+  # ~/.claude/hooks/pr-title-guard.sh を辿るため配置は
+  # ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。
+  home.file.".codex/hooks/pr-title-guard.sh" = {
+    source = repoConfig + "/codex/hooks/pr-title-guard.sh";
+    executable = true;
+  };
+  home.file.".copilot/hooks/pr-title-guard.sh" = {
+    source = repoConfig + "/copilot/hooks/pr-title-guard.sh";
+    executable = true;
+  };
+
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index.sh" = {
     source = repoConfig + "/claude/hooks/issue-index.sh";
@@ -1040,6 +1088,22 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg copilotAttributionGuardCmd} 10
+      '';
+
+  # pr-title-guard の Codex/Copilot 展開(ADR-0031、#192 の型を踏襲)。同じ
+  # lost-update 対策で attribution-guard の登録の後ろに明示的に順序付ける。
+  home.activation.registerCodexPrTitleGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexAttributionGuardHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrTitleGuardCmd} 10
+      '';
+
+  home.activation.registerCopilotPrTitleGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAttributionGuardHooks" ]
+      ''
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          preToolUse ${lib.escapeShellArg copilotPrTitleGuardCmd} 10
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
@@ -1181,6 +1245,19 @@ in
   # 変数からハブの絶対パスを解決する。
   home.file.".claude/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  # gas-clasp-ops: Google Apps Script (GAS) を clasp CLI で操作する判断知識
+  # (ADR-0030)。初回 GCP セットアップ・ログイン・日常操作・スクリプト側の
+  # 規約を持つ。GAS コード自体の正本は各利用リポジトリに分散配置し、ここには
+  # ツールのナレッジだけを置く。詳細は docs/claude/gas-clasp-ops.md。
+  home.file.".claude/skills/gas-clasp-ops/SKILL.md".source =
+    repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
+  # gpg-subkey-rotation: GPG の機体ローカル [S]/[E] サブ鍵ローテーションを
+  # 8 ステップの完了条件付きで終わらせる判断知識(ADR-0003)。rotate だけ
+  # 実行して export/nix 編集/GitHub-keyserver 同期/hms 適用のどれかを飛ばす
+  # と commit 署名検証が静かに壊れる、という実際の失敗から起票。詳細は
+  # docs/claude/gpg-subkey-rotation.md。
+  home.file.".claude/skills/gpg-subkey-rotation/SKILL.md".source =
+    repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1228,6 +1305,10 @@ in
     repoConfig + "/claude/skills/repo-charter/cases.md";
   home.file.".agents/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  home.file.".agents/skills/gas-clasp-ops/SKILL.md".source =
+    repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
+  home.file.".agents/skills/gpg-subkey-rotation/SKILL.md".source =
+    repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
@@ -1296,7 +1377,8 @@ in
       ${lib.escapeShellArg attributionGuardCmd} \
       ${lib.escapeShellArg agentTurnLogCmd} \
       ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
-      ${lib.escapeShellArg stackBaseGuardCmd}
+      ${lib.escapeShellArg stackBaseGuardCmd} \
+      ${lib.escapeShellArg prTitleGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

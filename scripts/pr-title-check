@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# pr-title-check — PR タイトル(= squash merge 後の main commit subject)の
+# 文法検査。判定エンジンの単一ソース(ADR-0031)。
+#
+# client-side guard(config/claude/hooks/pr-title-guard.sh)とサーバ側
+# required check(.github/workflows/pr-title.yml)の両方がこのスクリプトを
+# 呼ぶ — 文法の正規表現は 1 箇所にしか存在しない。
+#
+# 文法: type(scope)?!?: subject
+#   type    = feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
+#   scope   = [a-z0-9._/-]+ のカンマ区切り、省略可
+#   subject = 非空、言語自由、長さ無制限、末尾の "."/"。" は禁止
+#
+# 詳細と実測データ: docs/adr/0031-pr-title-as-commit-message-contract.md
+#
+# 使い方:
+#   pr-title-check "<タイトル>"   # 引数で渡す
+#   echo "<タイトル>" | pr-title-check   # stdin(引数省略時)
+#   pr-title-check --selftest     # ネットワーク不使用の自己検査
+#
+# 終了コード: 0 = 適合, 1 = 非適合, 2 = 判定不能(入力なし等)
+set -euo pipefail
+export LC_ALL=C
+
+TYPE_RE='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+SCOPE_RE='[a-z0-9._/-]+(,[a-z0-9._/-]+)*'
+# ヘッダー部(type(scope)?!?: )+ subject 先頭が非空白であることだけを
+# grep(ASCII のみ)で構造検査する。subject 末尾の "."/"。" 禁止は、
+# 全角句点を正規表現の文字クラスに混ぜると LC_ALL=C 下でバイト単位衝突の
+# 恐れがある(継続バイトが他の CJK 文字と衝突しうる)ため、bash の
+# リテラル一致([[ ... == *PATTERN ]])で別途検査する。
+HEADER_RE="^(${TYPE_RE})(\\(${SCOPE_RE}\\))?!?: [^[:space:]]"
+
+check_title() {
+  local title="$1" subject
+  [[ -n $title ]] || return 2
+  grep -qE "$HEADER_RE" <<< "$title" || return 1
+  subject="${title#*: }"
+  [[ -n $subject ]] || return 1
+  case "$subject" in
+    *. | *。) return 1 ;;
+  esac
+  return 0
+}
+
+usage() {
+  cat << 'EOF'
+usage: pr-title-check <title> | pr-title-check --selftest
+EOF
+}
+
+selftest() {
+  local fails=0
+
+  check() { # $1=名前 $2=タイトル $3=期待するexit(0|1)
+    local name="$1" title="$2" want="$3" rc=0
+    check_title "$title" || rc=$?
+    if [[ "$rc" == "$want" ]]; then
+      echo "ok   $name"
+    else
+      echo "FAIL $name (title=[$title] expected rc=$want got rc=$rc)" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  echo "適合:"
+  check "1 最小形" "feat: 追加する" 0
+  check "2 scope 付き" "fix(claude): 直す" 0
+  check "3 multi-scope" "feat(alacritty,herdr): 両方直す" 0
+  check "4 breaking change" "feat!: 破壊的変更" 0
+  check "5 scope + breaking" "feat(api)!: 破壊的変更" 0
+  check "6 英語件名" "docs: update README" 0
+  check "7 revert" "revert: 署名検証の早期 return を戻す" 0
+  check "8 1文字件名" "chore: x" 0
+  check "9 数字scope" "fix(v2): 直す" 0
+
+  echo "非適合:"
+  check "10 type なし" "PR タイトルを直す" 1
+  check "11 未知 type" "misc: 何か" 1
+  check "12 コロンなしスペース" "feat 追加する" 1
+  check "13 件名なし" "feat:" 1
+  check "14 件名空白のみ" "feat: " 1
+  check "15 末尾句点(日本語)" "feat: 追加する。" 1
+  check "16 末尾句点(英語)" "feat: add feature." 1
+  check "17 大文字 type" "Feat: 追加する" 1
+  check "18 revert UI 形" 'Revert "feat: 追加する"' 1
+  check "19 scope 大文字" "feat(Claude): 追加する" 1
+
+  echo "判定不能:"
+  check "20 空文字列" "" 2
+
+  if [[ $fails -gt 0 ]]; then
+    echo "selftest: ${fails} 件失敗" >&2
+    exit 1
+  fi
+  echo "selftest: OK"
+}
+
+main() {
+  case "${1-}" in
+    --selftest) selftest; return 0 ;;
+    --help | -h) usage; return 0 ;;
+  esac
+
+  local title="${1-}"
+  if [[ -z $title ]]; then
+    if [[ ! -t 0 ]]; then
+      title="$(cat)"
+    fi
+  fi
+
+  if [[ -z $title ]]; then
+    echo "pr-title-check: 判定不能(タイトルが空)" >&2
+    return 2
+  fi
+
+  if check_title "$title"; then
+    return 0
+  fi
+  echo "pr-title-check: 非適合 — 'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください: $title" >&2
+  return 1
+}
+
+main "$@"

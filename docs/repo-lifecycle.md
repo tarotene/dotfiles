@@ -169,8 +169,9 @@ descriptive-species.tsv`)に委ねる — 本文書は独立の命名規則を�
 
 ## 適用範囲外(github-audit との棲み分け)
 
-- `github-audit` の 5 ドメイン(rulesets / charters / naming / settings /
-  renovate、ADR-0015)は、既存リポジトリのガバナンス drift を検査する。
+- `github-audit` の 6 ドメイン(rulesets / charters / naming / settings /
+  renovate / titles、ADR-0015・ADR-0031)は、既存リポジトリのガバナンス
+  drift を検査する。
   本文書はそれとは別の問い(このリポジトリはまだ必要か)を扱う。
 - リポジトリの dormancy を機械的にスコアリングする機構は現時点で
   存在しない(旧 Rust CLI の当該機能はコードごと退役)。必要になれば

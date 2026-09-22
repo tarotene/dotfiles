@@ -117,11 +117,19 @@ comment. The table below lists the most important locations:
 | `renovate.json` | `cargo.managerFilePatterns` — add your excluded crate paths; adjust embedded HAL package list |
 | `release-plz.toml` | `[[package]]` entries — add your workspace crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Smoke test assertions in `host-pty-smoke`; feature combos in `clippy-tools` and `mcp-test` |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); confirm the actual reported check context on the first PR (CI gates section below) |
 
 **Key invariant**: The `name:` field of each workflow job **must exactly match**
 the `context` string in `rulesets/quality.json`. The `__MSRV__` and `__CLI_CRATE__`
 placeholders are replaced in both places simultaneously by `seed.sh`, preserving
 this match. But if you rename a job manually, update the Ruleset context too.
+
+**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
+tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
+context is GitHub's own concatenation of the two workflows' `name:` fields
+("PR Title / PR title"). `rulesets/quality.json` ships that string as a
+best-effort default; confirm it against this repository's Checks tab on the
+first PR and correct the Ruleset if it differs.
 
 ---
 
@@ -196,7 +204,7 @@ to inspect, then a hand-built `PUT` with `copilot_code_review` dropped from
 
 ### CI gates
 
-All 5 (or 4 without firmware) required checks should turn green on the first PR.
+All 6 (or 5 without firmware) required checks should turn green on the first PR.
 If `MSRV (X.Y)` or `Tools (my-cli CLI ...)` fail with "context not found",
 verify job `name:` in the workflow files matches the Ruleset context strings exactly.
 
@@ -219,13 +227,14 @@ verify job `name:` in the workflow files matches the Ruleset context strings exa
 │   │       ├── firmware.yml       optional: Firmware (cross-compile nRF52840-DK)
 │   │       ├── release-plz.yml    release: tag + crates.io publish
 │   │       ├── release-binaries.yml  release: 4-target binary builds
-│   │       └── release-nudge.yml  maintenance: weekly stale PR nudge
+│   │       ├── release-nudge.yml  maintenance: weekly stale PR nudge
+│   │       └── pr-title.yml       required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
 │   ├── .githooks/{commit-msg,pre-commit,pre-push}
 │   ├── renovate.json  release-plz.toml  cog.toml
 │   └── rust-toolchain.toml  Justfile  .gitignore-snippet
 ├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0021)
 │   ├── security.json    deletion + non_fast_forward
-│   ├── quality.json     signatures + linear history + 5 status checks
+│   ├── quality.json     signatures + linear history + 6 status checks
 │   ├── workflow.json    squash-only (core; thread resolution NOT required here)
 │   └── review.json      Copilot code review + required thread resolution (opt-in addin)
 ├── scripts/
