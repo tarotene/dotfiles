@@ -169,8 +169,9 @@
   };
 
   # github-audit: read-only cross-repository GitHub audit, unified across
-  # five domains (rulesets/#130, charters, naming, settings, renovate —
-  # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
+  # six domains (rulesets/#130, charters, naming, settings, renovate,
+  # titles/ADR-0031 — ADR-0015; docs/github-audit.md). Replaces the former
+  # sibling scripts
   # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's
