@@ -1181,6 +1181,12 @@ in
   # 変数からハブの絶対パスを解決する。
   home.file.".claude/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  # gas-clasp-ops: Google Apps Script (GAS) を clasp CLI で操作する判断知識
+  # (ADR-0030)。初回 GCP セットアップ・ログイン・日常操作・スクリプト側の
+  # 規約を持つ。GAS コード自体の正本は各利用リポジトリに分散配置し、ここには
+  # ツールのナレッジだけを置く。詳細は docs/claude/gas-clasp-ops.md。
+  home.file.".claude/skills/gas-clasp-ops/SKILL.md".source =
+    repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1228,6 +1234,8 @@ in
     repoConfig + "/claude/skills/repo-charter/cases.md";
   home.file.".agents/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  home.file.".agents/skills/gas-clasp-ops/SKILL.md".source =
+    repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
