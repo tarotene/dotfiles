@@ -63,9 +63,12 @@ dotfiles/
 │   │   └── company-pop-new.nix
 │   └── modules/              # shell, atuin, git, gpg, packages, desktop, nixgl, runtimes,
 │                             #   herdr, claude, claude-mcp-servers, worktree, quarantine,
-│                             #   hm-warnings, esa
+│                             #   hm-warnings, esa, line
 │                             #   (esa: esa.io MCP token supply, personal identity only,
 │                             #   ADR-0022 — imported from identities/personal.nix, not here;
+│                             #   line: LINE を chromium --app の独立ウィンドウとして宣言配備、
+│                             #   personal identity only — esa と同じ理由で identities/personal.nix
+│                             #   からのみ import;
 │                             #   claude-mcp-servers: reconcile 型で ~/.claude.json の
 │                             #   .mcpServers(user scope の MCP サーバー)を宣言集合に
 │                             #   一致させる口。populate は identities/personal.nix /

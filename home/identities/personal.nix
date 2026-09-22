@@ -18,6 +18,12 @@ in
     # common.nix: importing it there would just register an MCP server that
     # fails to start every session on company hosts.
     ../modules/esa.nix
+
+    # LINE (chromium --app around the official Chrome extension, see that
+    # module's header for the full rationale). Same judgment as esa above —
+    # a personal messaging account, kept out of common.nix so it does not
+    # land on company hosts.
+    ../modules/line.nix
   ];
 
   home.username = lib.mkDefault "tarotene";
