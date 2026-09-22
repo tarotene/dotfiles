@@ -111,13 +111,17 @@ extract_user_text() {
 }
 
 # $1=text $2=default_owner_repo ; "owner/repo#N" を重複無しで出力
+#
+# 中間の選択肢 "name#N"(スラッシュ無しの接頭辞付き、他リポジトリの略記
+# 言及 "telepath#105" 等)は自リポジトリの Issue 参照ではないため、
+# owner/repo#N 形式にも裸の #N にも該当しない限り破棄する(#288)。
 extract_issue_refs() {
   local text="$1" default="$2" ref
-  grep -oE '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+' <<< "$text" 2> /dev/null \
+  grep -oE '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+|[A-Za-z0-9_.-]+#[0-9]+|#[0-9]+' <<< "$text" 2> /dev/null \
     | while IFS= read -r ref; do
       if [[ $ref == */* ]]; then
         printf '%s\n' "$ref"
-      elif [[ -n $default ]]; then
+      elif [[ $ref == '#'* && -n $default ]]; then
         printf '%s%s\n' "$default" "$ref"
       fi
     done \
@@ -431,6 +435,11 @@ selftest() {
   local refs
   refs="$(extract_issue_refs '#136 の話と owner2/repo2#5 も参照。#136 は再掲。' 'tarotene/dotfiles')"
   expect_eq "$refs" "$(printf 'owner2/repo2#5\ntarotene/dotfiles#136')" "extract_issue_refs"
+
+  # --- extract_issue_refs: スラッシュ無し接頭辞("repo#N")は自リポジトリ
+  #     参照として誤検出せず破棄する(#288) ---
+  refs="$(extract_issue_refs 'telepath#105 の話 #136' 'tarotene/dotfiles')"
+  expect_eq "$refs" "tarotene/dotfiles#136" "extract_issue_refs (prefixed repo#N discarded)"
 
   # --- resolve_owner_repo: ssh / https 形式 ---
   local tmp

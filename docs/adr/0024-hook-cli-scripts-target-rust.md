@@ -114,3 +114,13 @@ closure 固定)を満たす成熟した nix 統合手法が無いこと ——
   `cargo test` 9 関数全 pass を実測済み。
 - `nix flake check` は本 ADR・調査記録の追加(docs のみ)による影響を受けない
   ため、回帰がないことの確認として実行する。
+
+## Amendment (2026-09-22 — stack-base-guard.sh を移行対象に追加, #287)
+
+ADR-0027(`docs/adr/0027-uncertainty-first-stacking.md`)D6 で、新規 hook
+`config/claude/hooks/stack-base-guard.sh` を本 ADR からの明示的な逸脱として
+bash で実装する決定をした(`attribution-guard.sh` の実戦検証済み判定エンジン
+を `source` して直接再利用するため、同一言語とした)。Consequences の
+「一括移行はしない」節が指す後続の移行 Issue が実施される際、対象スコープに
+`stack-base-guard.sh` を加える(`pr-gate.sh` / `attribution-guard.sh` を含む
+一括の Rust 移植と同時に移行する)。
