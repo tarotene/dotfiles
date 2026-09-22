@@ -62,9 +62,14 @@ dotfiles/
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
 │   └── modules/              # shell, atuin, git, gpg, packages, desktop, nixgl, runtimes,
-│                             #   herdr, claude, worktree, quarantine, hm-warnings, esa
+│                             #   herdr, claude, claude-mcp-servers, worktree, quarantine,
+│                             #   hm-warnings, esa
 │                             #   (esa: esa.io MCP token supply, personal identity only,
 │                             #   ADR-0022 — imported from identities/personal.nix, not here;
+│                             #   claude-mcp-servers: reconcile 型で ~/.claude.json の
+│                             #   .mcpServers(user scope の MCP サーバー)を宣言集合に
+│                             #   一致させる口。populate は identities/personal.nix /
+│                             #   esa.nix、PR #315;
 │                             #   nixgl: shared nixGL wrapper function, ADR-0006, consumed by
 │                             #   desktop.nix and identities/personal.nix, #9;
 │                             #   quarantine: two shared options — managedFiles moves an
