@@ -7,6 +7,7 @@
   imports = [
     ../common.nix
     ../identities/personal.nix
+    ../modules/obsidian.nix
   ];
 
   # Per-machine sign subkey. On-disk, annual rotation (ADR-0003 Amendment 3).
