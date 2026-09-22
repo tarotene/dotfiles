@@ -158,15 +158,23 @@
 #    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
 #    詳細は docs/claude/claude-usage.md。
 #
-# 14) グローバル ~/.claude/CLAUDE.md(全セッション常時コンテキスト):
+# 14) グローバル ~/.agents/AGENTS.md(正本)+ ~/.claude/CLAUDE.md(router、
+#     全セッション常時コンテキスト):
 #    「検証可能な不確実性が現れたら情報源(Slack/Drive/GitHub/公式ドキュメント/
 #    文献)を参照するか明示的に判断せよ」「発明する前に先行例を確認せよ」という
-#    調査規律だけを持つ単一目的ファイル。hook 注入(issue-index 方式)は動的生成が
-#    要らない静的方針には過剰、スキルは呼び出し起点が要るため常時適用の方針には
-#    不向きなので、CLAUDE.md 自体を home.file で配備する。store symlink による
-#    read-only 配布なので、セッション中の `#` メモ追記ショートカットは書き込み
-#    失敗する — 知見の永続化は skill-gardening の PR フローに乗せる想定であり、
-#    意図的な設計。詳細は docs/claude/global-claude-md.md。
+#    agent 非依存の調査規律・PR 運用・生成元明示の方針は共有 AGENTS.md が正本を
+#    持ち、Codex CLI(~/.codex/AGENTS.md)・Copilot CLI
+#    (~/.copilot/copilot-instructions.md)にも同一ソースをマウントする
+#    (リポジトリ単位の ADR-0016「AGENTS.md = canon、CLAUDE.md = router」と
+#    同型構造をグローバル階層に適用)。~/.claude/CLAUDE.md は `@~/.agents/AGENTS.md`
+#    を import する 1 行 + Claude Code 固有の施行配線(gate スクリプト・
+#    ExitPlanMode・AskUserQuestion まわり)だけを持つ。hook 注入(issue-index
+#    方式)は動的生成が要らない静的方針には過剰、スキルは呼び出し起点が要るため
+#    常時適用の方針には不向きなので、いずれも home.file で配備する。store
+#    symlink による read-only 配布なので、セッション中の `#` メモ追記
+#    ショートカットは書き込み失敗する — 知見の永続化は skill-gardening の PR
+#    フローに乗せる想定であり、意図的な設計。詳細は docs/claude/global-claude-md.md
+#    と docs/claude/global-agents-md.md。
 #
 # 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節)+ plan-scope-gate
 #     (PreToolUse / ExitPlanMode):
@@ -1372,8 +1380,21 @@ in
     recursive = true;
   };
 
-  # グローバル CLAUDE.md: 調査・先行例確認の方針(全セッション常時コンテキスト)。
-  # 詳細は上のコメント索引 14) と docs/claude/global-claude-md.md。
+  # グローバル AGENTS.md(正本): agent 非依存の調査・先行例確認・PR 運用・
+  # 生成元明示の方針。Codex CLI(~/.codex/AGENTS.md)・Copilot CLI
+  # (~/.copilot/copilot-instructions.md)・Claude Code(~/.agents/AGENTS.md
+  # を CLAUDE.md から @import)の 3 CLI に同一ソースをマウントする —
+  # ~/.agents/skills/ のクロスツールルーティング(コメント索引 14) 付近)と
+  # 同型。詳細は docs/claude/global-agents-md.md。
+  home.file.".agents/AGENTS.md".source = repoConfig + "/agents/AGENTS.md";
+  home.file.".codex/AGENTS.md".source = repoConfig + "/agents/AGENTS.md";
+  home.file.".copilot/copilot-instructions.md".source = repoConfig + "/agents/AGENTS.md";
+
+  # グローバル CLAUDE.md: 上記共有 AGENTS.md を @import する router +
+  # Claude Code 固有の施行配線(gate/ExitPlanMode/AskUserQuestion まわり)。
+  # リポジトリルートの CLAUDE.md(`@AGENTS.md`)と同型の router 構造を
+  # グローバル階層にも適用したもの。詳細は上のコメント索引 14) と
+  # docs/claude/global-claude-md.md。
   home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
 
   # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう

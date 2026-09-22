@@ -5,6 +5,13 @@
 `config/claude/CLAUDE.md`、配備は `home/modules/claude.nix` の
 `home.file.".claude/CLAUDE.md"`。
 
+**ADR-0032 以降、本文の正本は `config/agents/AGENTS.md`(agent 非依存の
+共有規範、`docs/claude/global-agents-md.md` 参照)に移り、このファイルは
+`@~/.agents/AGENTS.md` を import する router + Claude Code 固有の施行配線
+(gate スクリプトの自己検査手順・ExitPlanMode・AskUserQuestion まわり)だけを
+持つ。**以下の節は移設前の経緯として残すが、本文の内容そのものは共有
+AGENTS.md 側を参照すること。
+
 ## なぜこのファイルを作ったか
 
 Plan mode で明示的に指示しない限り、既存研究の調査・Slack/Google Drive の検索・

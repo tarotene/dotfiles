@@ -175,6 +175,13 @@
   ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager
   管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も
   store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
+- [ADR-0032](adr/0032-global-agent-instructions-canon.md) — グローバル agent
+  指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)
+  とし、`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・
+  `~/.copilot/copilot-instructions.md` の 3 箇所に同一ソースをマウントする
+  決定。`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する
+  router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ
+  単位の AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -263,10 +270,14 @@ Design and rationale for the hooks and commands deployed from
   プランが承認されるのを防ぐ。pristine なら ff-only で追従しつつ、
   origin/`<base>` の進行分がプラン参照ファイルと交差するときだけ deny する。
   deny 済み SHA のセッション state で収束を保証する。
+- [`global-agents-md.md`](claude/global-agents-md.md) — グローバル
+  `~/.agents/AGENTS.md`(正本、ADR-0032): agent 非依存の調査規律・PR 運用・
+  生成元明示の方針を Codex CLI・Copilot CLI・Claude Code の 3 CLI に
+  home.file マウントで共有する。
 - [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
-  `~/.claude/CLAUDE.md`: 検証可能な仮定は情報源(Slack/Drive/GitHub/公式ドキュメント/
-  文献)を参照するか明示判断し、発明する前に先行例を確認する調査規律を全セッション
-  常時注入する(read-only 配布、`#` 追記は skill-gardening の PR フローへ)。
+  `~/.claude/CLAUDE.md`: 上記共有 AGENTS.md を import する router +
+  Claude Code 固有の gate 配線(read-only 配布、`#` 追記は skill-gardening
+  の PR フローへ)。
 - [`diagramming.md`](claude/diagramming.md) — 個人スキル: 作図時に内容の型に
   合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
 - [`skill-gardening.md`](claude/skill-gardening.md) — 個人スキル: 知見を
