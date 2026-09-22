@@ -234,6 +234,23 @@ the new subkey ID to put in `programs.git.signing.key`:
 by hand to check without waiting for the timer, or `gpg-subkey status` for a
 read-only listing with no exit-code side effect.
 
+If `--revoke-old` was skipped (or a rotate failed partway) and `gpg-subkey
+status` shows more than one non-revoked on-disk subkey of the same usage,
+converge it without generating yet another new key:
+
+```bash
+gpg-subkey revoke --key <primary-fpr> --subkey <old-keyid>    # touch/PIN prompt via pinentry
+gpg-subkey export --repo <dotfiles-checkout> --identity <personal|company>
+gpg-subkey sync --repo <dotfiles-checkout> --identity <personal|company> --fix --yes
+```
+
+`revoke` refuses card-backed/stub subkeys the same way `rotate` does (§ above
+— that residency is intentional, ADR-0003 Amendment 4, not something to
+revoke). A revoke changes the key material, so `sync` will report fresh
+GitHub/keyserver drift right after — re-run it until it reports none. See
+the `gpg-subkey-rotation` Claude Code skill for the full step-by-step
+completion checklist this section maps to.
+
 ### Keeping GitHub / keys.openpgp.org in sync after a rotation
 
 `rotate`'s generate+revoke is the one irreversible step in this whole
