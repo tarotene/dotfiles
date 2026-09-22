@@ -85,6 +85,15 @@
       # normal filter maintenance, so it's declared here instead of
       # re-fetched per invocation.
       gmailctl
+
+      # Google Apps Script (GAS) CLI, official (google/clasp). Lets GAS
+      # projects be pushed/run from the terminal instead of copy-pasting
+      # into script.google.com and reading results off the browser
+      # execution log (ADR-0030 — a GAS script's Logger-only URL output was
+      # missed and cost a re-run). Setup/login/day-to-day usage is the
+      # gas-clasp-ops skill (docs/claude/gas-clasp-ops.md); credentials stay
+      # host-local, not managed here.
+      google-clasp
     ]
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
