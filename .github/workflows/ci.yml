@@ -305,6 +305,26 @@ jobs:
       - name: stack-base-guard.sh --selftest
         run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
 
+      # pr-title-check (ADR-0031, docs/claude/pr-title-contract.md) is the
+      # single-source grammar checker shared by the client guard and the
+      # required check below — its selftest is grep + bash string matching
+      # end to end, no gh/network involved.
+      - name: pr-title-check --selftest
+        run: ./scripts/pr-title-check --selftest
+
+      # pr-title-guard (ADR-0031) sources attribution-guard.sh's
+      # command-position/tokenizer engine the same way stack-base-guard does,
+      # and stubs the checker binary to exercise the owner-scope, escape
+      # hatch, and degradation paths without gh/network.
+      - name: pr-title-guard.sh --selftest
+        run: bash ./config/claude/hooks/pr-title-guard.sh --selftest
+
+      - name: pr-title-guard.sh (codex adapter) --selftest
+        run: bash ./config/codex/hooks/pr-title-guard.sh --selftest
+
+      - name: pr-title-guard.sh (copilot adapter) --selftest
+        run: bash ./config/copilot/hooks/pr-title-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema

@@ -48,6 +48,20 @@ type(scope)?!?: subject
 のような本文タグ型 escape hatch ではない — 理由を本文に残す恒久的な決定
 ではなく、単発の緊急対応向けの一時解除のため)。
 
+## required check の context 名
+
+dotfiles 自身は `pr-title.yml` に直接 `pull_request` トリガーを持たせて
+自己適用する — job 名がそのまま required check context `PR title` になり、
+連結の曖昧さがない。
+
+`workflow_call` 経由で他リポジトリが呼ぶ場合、GitHub の仕様上 context 名は
+`<呼び出し側 workflow の name> / <呼び出される job の name>` の連結になる
+(GitHub Community Discussion #46752, 取得 2026-09-22:
+<https://github.com/orgs/community/discussions/46752>)。Stage 5/6 の
+呼び出し workflow テンプレートは各利用リポジトリの `workflow` レベル
+`name:` を固定した上でこの連結形を required check として登録する。実際の
+文字列は最初の利用リポジトリへの展開時に実機で確認する。
+
 ## revert の扱い
 
 GitHub UI の revert ボタンが作る `Revert "..."` というタイトルは文法に
