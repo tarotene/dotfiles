@@ -1,0 +1,42 @@
+# Application launcher entry for LINE, run as a standalone Chromium --app
+# window around the official LINE Chrome extension (id
+# ophjlpahpchlmihnnnihgmmeilfjmjjc, Chrome Web Store). LINE ships no Linux
+# native client and no Firefox extension — the browser extension is the only
+# officially supported channel (checked against the Web Store listing,
+# 2026-09-22). This wraps it to look and behave like an independent app
+# instead of a tab/popup inside a general-purpose browser: its own launcher
+# entry, its own window, no visible tab strip or omnibox.
+#
+# chrome-extension://<id>/index.html as the entry point is the same one
+# documented for this exact extension id by BrLi's write-up
+# (https://brli.github.io/2019/06/19/chrome-line.html, 2019-06-19) — spot
+# check against the installed extension's manifest.json under
+# ~/.config/chromium/Default/Extensions/<id>/<version>/ if LINE ever changes
+# how it packages the popup.
+#
+# The @chromium@ placeholder is substituted with the nixGL-wrapped store path
+# by pkgs.replaceVars in home/modules/line.nix, on the same reasoning as
+# config/applications/Alacritty.desktop: a store path cannot let "declared"
+# and "running" diverge, and chromium is a GL consumer that needs the wrap
+# (ADR-0006). TryExec mirrors Exec for the same reason as Alacritty.desktop —
+# a bare name would resolve against the COSMIC session's untrusted PATH
+# (ADR-0029).
+#
+# Icon is a generic chat icon, not the LINE logo: LINE's brand guidelines
+# prohibit redistributing the logo, and this is a public repository (see
+# ADR-0028's third-party-asset policy for the adjacent case of README
+# banners). StartupWMClass is the crx_<id> class Chromium assigns to an --app
+# window for a packaged extension, confirmed by inspecting the running
+# window's WM class after first launch — update it here if COSMIC reports a
+# different class.
+
+[Desktop Entry]
+Type=Application
+Name=LINE
+TryExec=@chromium@
+Exec=@chromium@ --app=chrome-extension://ophjlpahpchlmihnnnihgmmeilfjmjjc/index.html
+Icon=internet-chat
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupNotify=true
+StartupWMClass=crx_ophjlpahpchlmihnnnihgmmeilfjmjjc
