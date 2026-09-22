@@ -328,6 +328,18 @@ So, when adding anything to the shell startup path:
   avoids the noise. Note `rustup` itself is declared in
   `home/modules/runtimes.nix`, so `rustup-init` should not be needed at all.
 
+`$HOME/.local/bin` is the one exception to "nix always outranks the rest": it
+comes first in PATH on purpose, and one entry there — `claude` — is a
+deliberate shadow of the nix-profile `claude`, not drift. It is a symlink into
+`~/.local/share/claude/versions/…`, kept live by the CLI's own self-updater;
+`scripts/claude-plan-model` resolves concrete model IDs from that *installed*
+binary's baked-in model catalog, so letting nix's copy win would silently
+swap the binary `claude-plan-model` depends on ([#313](https://github.com/tarotene/dotfiles/issues/313)).
+Other `.local/bin` names that happen to collide with a nix package (e.g.
+`mise`, `uv`, `uvx`) are not exceptions — those should resolve to the nix
+profile, and any ad-hoc binary left in `.local/bin` for them is drift to
+reclaim, not a case to add here.
+
 To check whether something is currently shadowed:
 
 ```bash
