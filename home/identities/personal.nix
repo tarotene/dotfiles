@@ -50,6 +50,32 @@ in
   # Revisit once the pinned channel picks up a fix.
   home.packages = lib.optionals pkgs.stdenv.isLinux [ (nixGLWrap pkgs.warp-terminal) ];
 
+  # user scope の MCP サーバー(`~/.claude.json` の `.mcpServers`)。
+  # `home/modules/claude-mcp-servers.nix` が reconcile する — ここと
+  # `../modules/esa.nix` に挙がっていない user scope のサーバーは switch のたびに
+  # 削除される。company ホストはこのファイルを import しないので user scope は
+  # 空になる(意図した動作)。
+  #
+  # identity 層に置くのは warp-terminal(#9)や esa(ADR-0022)と同じ判断 —
+  # どちらも外部サービスに繋ぐ経路であり、common.nix に置くと company ホストへ
+  # 黙って配備される。
+  dotfiles.claude.mcpServers = {
+    # PR の Before/After 視覚証跡(docs/claude/pr-description.md の G_visual)と
+    # Web UI の実地確認に使う。ローカル完結(npx でブラウザを起動するだけ)。
+    playwright = {
+      type = "stdio";
+      command = "npx";
+      args = [ "@playwright/mcp@latest" ];
+    };
+    # グローバル ~/.claude/CLAUDE.md の調査規律が Slack を一次情報源の一つに
+    # 指定している。oauth の clientId / callbackPort は認証時に Claude Code が
+    # 書き足すので宣言しない(reconcile は宣言 key を deep merge するため残る)。
+    slack = {
+      type = "http";
+      url = "https://mcp.slack.com/mcp";
+    };
+  };
+
   # Git identity — personal (non-secret).
   programs.git.settings.user = {
     name = lib.mkDefault "Kentaro Sugimoto";

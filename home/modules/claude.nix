@@ -791,6 +791,15 @@ let
   # ワンオフ作業用ルールが陳腐化して残っていたもの(#101)。~/.ghr 配下の全ローカル
   # リポジトリおよび tarotene 名義の全 GitHub リポジトリを検索したが、該当スクリプトは
   # このファイル自身の permissionRules 記述以外に実体が存在しないことを確認済み。
+  #
+  # `mcp__brave-search__*` / `mcp__github__*` は、対応する MCP サーバーが user scope
+  # から消えたことで宛先を失ったルール。brave-search は API キーが失効したまま
+  # サーバー自体が撤去され(#299)、github MCP は運用が gh CLI 側に寄った
+  # (グローバル CLAUDE.md の gh 前提)結果として
+  # home/modules/claude-mcp-servers.nix の reconcile 対象外になった。存在しない
+  # ツール名への allow は効果を持たないが、実態と乖離した宣言が残ると次に読む人が
+  # 「このサーバーは生きている」と誤読する。
+  # `mcp__plugin_context7_context7__*` は plugin 由来で現役なので触らない。
   retiredPermissionRules = [
     "Bash(git -C * add *)"
     "Bash(git -C * commit *)"
@@ -798,6 +807,15 @@ let
     "Bash(git -C * diff *)"
     "Bash(./scripts/list-branch-inventory.sh *)"
     "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
+
+    "mcp__brave-search__brave_web_search"
+    "mcp__github__issue_write"
+    "mcp__github__issue_read"
+    "mcp__github__pull_request_read"
+    "mcp__github__update_pull_request"
+    "mcp__github__list_issues"
+    "mcp__github__create_pull_request"
+    "mcp__github__search_issues"
   ];
 in
 {
