@@ -284,6 +284,17 @@
 #    ~/.config/external-send-guard/self.txt(このリポジトリにはコミットしない、
 #    publish-guard と同じ理由)。詳細は docs/claude/external-send-guard.md。
 #
+# 23) external-call-scheduling(個人スキル):
+#    電話・来店・窓口対応など Claude が代行できないハンドオフ作業を、トーク
+#    スクリプトを文書化して渡すだけで終わらせない。相手の営業時間・定休日と
+#    ユーザーの予定表上の空き時間を突き合わせ、衝突しない枠にリマインダー
+#    予定を作成するところまでを手順化する。Claude が提案する予定専用の
+#    カレンダーが既にあればそれを使い、無ければ書き込み先をユーザーに確認
+#    する。カレンダー・メール等の外部サービスに送る文章は skill-gardening の
+#    サニタイズ規則(固有名詞・URL・内部識別子を書かない)を適用する対象だと
+#    明記している — リポジトリ内の成果物とは別の基準がかかる。詳細は
+#    docs/claude/external-call-scheduling.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -1289,6 +1300,11 @@ in
   # docs/claude/gpg-subkey-rotation.md。
   home.file.".claude/skills/gpg-subkey-rotation/SKILL.md".source =
     repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
+  # external-call-scheduling: 電話等 Claude が代行できないハンドオフ作業を、
+  # 相手の営業時間とユーザーの空き時間を突き合わせてカレンダーに反映する
+  # 判断知識。詳細は docs/claude/external-call-scheduling.md。
+  home.file.".claude/skills/external-call-scheduling/SKILL.md".source =
+    repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1340,6 +1356,8 @@ in
     repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
   home.file.".agents/skills/gpg-subkey-rotation/SKILL.md".source =
     repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
+  home.file.".agents/skills/external-call-scheduling/SKILL.md".source =
+    repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
