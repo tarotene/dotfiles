@@ -14,12 +14,10 @@
   # `mkDefault "/home/tarotene"`.
   home.homeDirectory = "/Users/tarotene";
 
-  # Per-machine sign subkey (ADR-0003 amended). Placeholder until the
-  # provisioning steps in docs/setup-macos.md are run on the physical
-  # machine: generate an altair-scoped [S] subkey from the master key,
-  # export/import it, then replace this value with the real subkey
-  # fingerprint before the first `hms` on the host.
-  programs.git.signing.key = "REPLACE_WITH_ALTAIR_SIGNING_SUBKEY_FINGERPRINT";
+  # Per-machine sign subkey (ADR-0003 Amendment 4), generated via
+  # `gpg-subkey generate --usage sign` (docs/setup-macos.md §6). Still
+  # needs importing on the physical machine before the first `hms` there.
+  programs.git.signing.key = "464382A473897DEBF8BCB369F7F5798C1372F95D";
 
   # Declarative marker for resolve_host() (ADR-0019): once this activates,
   # `hms`/`bootstrap.sh` resolve this host as "altair" regardless of what
