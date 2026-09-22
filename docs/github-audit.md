@@ -1,12 +1,13 @@
 # github-audit: unified cross-repository GitHub audit
 
-Read-only audit across five domains — reports drift for every one of
+Read-only audit across six domains — reports drift for every one of
 tarotene's owned repositories without applying or modifying anything.
 Unifies the former sibling scripts `github-audit-rulesets` (#130) and
-`github-audit-charters` (ADR-0013), and adds three domains: naming
-(ADR-0014), settings, and renovate (ADR-0015). Its findings feed the
-`github-audit-triage` skill (`docs/claude/github-audit-triage.md`), which
-is the only place an LLM enters this loop — this script never calls one.
+`github-audit-charters` (ADR-0013), and adds four domains: naming
+(ADR-0014), settings, renovate (ADR-0015), and titles (ADR-0031). Its
+findings feed the `github-audit-triage` skill
+(`docs/claude/github-audit-triage.md`), which is the only place an LLM
+enters this loop — this script never calls one.
 
 ## Why this lives in dotfiles, not a dedicated inventory repo
 
@@ -28,7 +29,7 @@ governance state. Ledger output goes to
 
 ## Why one script, not five siblings (ADR-0015)
 
-Each new domain (naming, settings, renovate) shares the same skeleton as
+Each new domain (naming, settings, renovate, titles) shares the same skeleton as
 the original two — list repositories, judge, write a ledger, support
 `--selftest` and an overrides exempt file. Five sibling scripts would mean
 five copies of that skeleton and five ledgers for an LLM triage step to
@@ -278,13 +279,54 @@ record uses `archive` regardless of subject (ADR-0020's Amendment).
 
 ### settings
 
-Reports GitHub repository-settings drift against four baseline
-expectations, all read via `gh repo list`'s JSON fields:
+Reports GitHub repository-settings drift against six baseline
+expectations:
 
-- `merge-not-squash-only` — squash merges not exclusively allowed.
-- `delete-branch-on-merge-disabled`.
-- `default-branch-not-main`.
-- `wiki-enabled` / `projects-enabled` — unused GitHub features left on.
+- `merge-not-squash-only` — squash merges not exclusively allowed (`gh repo
+  list`).
+- `delete-branch-on-merge-disabled` (`gh repo list`).
+- `default-branch-not-main` (`gh repo list`).
+- `wiki-enabled` / `projects-enabled` — unused GitHub features left on (`gh
+  repo list`).
+- `squash-title-not-pr-title` / `squash-message-not-blank` (ADR-0031) —
+  the merge-title contract's foundation: `squash_merge_commit_title` must
+  be `PR_TITLE` and `squash_merge_commit_message` must be `BLANK`, so the
+  squash commit landing on the default branch is exactly the PR title with
+  no extra body text. These two fields are **not** exposed by the
+  Repository GraphQL type that `gh repo list --json` uses (confirmed
+  2026-09-22 — `gh repo list --json squashMergeCommitTitle` errors with
+  "Unknown JSON field"), so they come from one extra REST call per
+  repository (`gh api repos/OWNER/REPO`), made only when the `settings`
+  domain is actually requested. A repository whose REST call fails is
+  reported drifted on these two tokens (fail-open to drift, the same
+  convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
+  never silently treated as compliant.
+
+### titles (ADR-0031)
+
+Presence-detection for the PR-title commit-message contract's enforcement
+mechanism — **not** a re-check of any individual open PR's title. That
+distinction matters: the client guard (`config/claude/hooks/
+pr-title-guard.sh`) and the required check (`.github/workflows/
+pr-title.yml`) already judge individual titles; if this domain re-judged
+them too, a repository could show `drifted` here while every open PR is
+green, or vice versa, with no way to tell which layer to trust
+(`docs/claude/pr-title-contract.md`).
+
+Two checks, both informational about whether the *mechanism* exists:
+
+- `pr-title-workflow-missing` — no `.github/workflows/pr-title.yml` caller
+  workflow (checked by filename against the same `workflowsDir` GraphQL
+  data the `renovate` domain reads, not by content — every repository is
+  expected to name its caller `pr-title.yml` per the Stage 5 rollout
+  template).
+- `pr-title-check-not-required` — the active default-branch ruleset's
+  `required_status_checks` does not include the `PR title` context (reuses
+  `default_branch_rulesets()`, the same helper the `rulesets` domain uses).
+
+Repositories with no `.github/workflows` at all are `not-applicable` —
+there is no CI to register a required check against, the same convention
+`renovate` uses.
 
 ### renovate
 
@@ -343,7 +385,7 @@ repository/domain pair is reported as `exempt` and is never judged.
 
 ## Scope
 
-In scope: read-only inventory + drift detection across the five domains
+In scope: read-only inventory + drift detection across the six domains
 above. Out of scope, tracked for a follow-up (wrap-up inbox / #153):
 
 - **Applying** a fix to a drifted/ungoverned repository — that's the

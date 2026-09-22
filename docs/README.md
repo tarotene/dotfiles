@@ -17,11 +17,11 @@
 - [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
   creation, detect stale registrations, and notify through Herdr.
 - [`github-audit.md`](github-audit.md) — read-only cross-repository GitHub
-  audit unified across five domains (rulesets #130 / charters / naming
-  ADR-0014 / settings / renovate — ADR-0015): why it lives here instead of
-  a dedicated inventory repo, why each domain judges the way it does
-  (rule-type union, literal schema match, naming-class pattern, …), and
-  why it's one command instead of five sibling scripts.
+  audit unified across six domains (rulesets #130 / charters / naming
+  ADR-0014 / settings / renovate — ADR-0015 / titles — ADR-0031): why it
+  lives here instead of a dedicated inventory repo, why each domain judges
+  the way it does (rule-type union, literal schema match, naming-class
+  pattern, …), and why it's one command instead of six sibling scripts.
 - [`repo-lifecycle.md`](repo-lifecycle.md) — visibility/license 方針・
   Maintain/Archive/Delete triage 基準・deprecate-then-archive チェックリスト・
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。

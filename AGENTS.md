@@ -185,10 +185,11 @@ dotfiles/
 │   │                         #   and on the default branch (deployed to
 │   │                         #   ~/.local/bin + a systemd user timer, #78)
 │   ├── github-audit           # read-only cross-repository GitHub audit,
-│   │                         #   unified across 5 domains — rulesets (#130) /
+│   │                         #   unified across 6 domains — rulesets (#130) /
 │   │                         #   charters / naming (ADR-0014) / settings /
-│   │                         #   renovate (ADR-0015; deployed to ~/.local/bin,
-│   │                         #   manual command, no timer)
+│   │                         #   renovate (ADR-0015) / titles (ADR-0031;
+│   │                         #   deployed to ~/.local/bin, manual command,
+│   │                         #   no timer)
 │   ├── github-rulesets-apply  # seeds standard rulesets via the governance
 │   │                         #   skills' apply-rulesets.sh (#153; deployed
 │   │                         #   to ~/.local/bin, manual command)
@@ -232,12 +233,13 @@ dotfiles/
 │   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
 │   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
 │   ├── worktree-lifecycle.md # herdr worktree create/prune lifecycle across scripts/hooks
-│   ├── github-audit.md       # unified 5-domain audit (ADR-0015): rulesets
+│   ├── github-audit.md       # unified 6-domain audit (ADR-0015): rulesets
 │   │                         #   rule-type-union judgement, charters schema/
 │   │                         #   routing (ADR-0016), naming class pattern
-│   │                         #   (ADR-0014), settings, renovate — why one
-│   │                         #   command instead of 5 sibling scripts, why
-│   │                         #   judgement skips any LLM call
+│   │                         #   (ADR-0014), settings, renovate, titles
+│   │                         #   (ADR-0031) — why one command instead of
+│   │                         #   6 sibling scripts, why judgement skips
+│   │                         #   any LLM call
 │   ├── repo-lifecycle.md     # visibility/license policy, Maintain/Archive/
 │   │                         #   Delete triage criteria, deprecate-then-archive
 │   │                         #   checklist, theme-monorepo consolidation
