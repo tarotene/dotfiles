@@ -52,7 +52,11 @@ type(scope)?!?: subject
 
 dotfiles 自身は `pr-title.yml` に直接 `pull_request` トリガーを持たせて
 自己適用する — job 名がそのまま required check context `PR title` になり、
-連結の曖昧さがない。
+連結の曖昧さがない。checkout する `scripts/pr-title-check` の ref は
+`github.repository == 'tarotene/dotfiles'` の場合だけ `main` ではなく
+自身の head SHA にする(checker 自体を変更する自己適用 PR が「main に
+まだ乗っていない」ために fail する鶏卵問題の実測込みの回避、Stage 3 で
+実機確認)。
 
 `workflow_call` 経由で他リポジトリが呼ぶ場合、GitHub の仕様上 context 名は
 `<呼び出し側 workflow の name> / <呼び出される job の name>` の連結になる

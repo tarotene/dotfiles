@@ -33,13 +33,18 @@ jobs:
     runs-on: ubuntu-latest
     name: PR title
     steps:
-      # 文法検査の単一ソース(scripts/pr-title-check)を常に main の版で
-      # 取得する — 呼び出し元リポジトリの checkout とは独立させ、判定根拠が
-      # 全リポジトリで揃うことを保証する。
+      # 文法検査の単一ソース(scripts/pr-title-check)を取得する。dotfiles
+      # 自身のトリガー(github.repository == tarotene/dotfiles)では、この
+      # PR 自身の head SHA から取得する — pr-title-check 自体を変更する PR
+      # を、まだ main に乗っていない版で検査できる(これをしないと main に
+      # checker が乗るまでどの自己適用 PR も「ファイルが無い」で fail する
+      # 鶏卵問題になる、Stage 3 実装時に実測)。workflow_call 経由の他
+      # リポジトリでは常に main の安定版を使う — 呼び出し元の checkout とは
+      # 独立させ、判定根拠が全リポジトリで揃うことを保証する。
       - uses: actions/checkout@v4
         with:
           repository: tarotene/dotfiles
-          ref: main
+          ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
           sparse-checkout: |
             scripts/pr-title-check
           sparse-checkout-cone-mode: false
