@@ -1,0 +1,58 @@
+name: PR Title
+
+# PR タイトルを commit-message 契約(ADR-0031, docs/claude/pr-title-contract.md)
+# として強制する required check。判定は scripts/pr-title-check 1 本に一元化
+# されており、この workflow はその呼び出しに徹する(文法は checker 側にしか
+# 存在しない)。
+#
+# dotfiles 自身は下の pull_request トリガーで直接自己適用する — job 名が
+# そのまま required check context "PR title" になり、workflow_call 経由の
+# 連結名(<呼び出し側 workflow の name> / <呼び出される job の name>、GitHub
+# Community Discussion #46752)の曖昧さを避けられる。他リポジトリは
+# `workflow_call` からこの workflow を呼ぶ(#325 Stage 5/6、播きの準備)。
+on:
+  workflow_call:
+    inputs:
+      title:
+        description: >-
+          検査対象の PR タイトル。省略時はこの workflow を直接トリガーした
+          pull_request イベント自身のタイトルを使う(dotfiles 自己適用時の
+          既定経路)。他リポジトリから呼ぶ場合は呼び出し側の
+          github.event.pull_request.title を明示的に渡す。
+        required: false
+        type: string
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: PR title
+    steps:
+      # 文法検査の単一ソース(scripts/pr-title-check)を取得する。dotfiles
+      # 自身のトリガー(github.repository == tarotene/dotfiles)では、この
+      # PR 自身の head SHA から取得する — pr-title-check 自体を変更する PR
+      # を、まだ main に乗っていない版で検査できる(これをしないと main に
+      # checker が乗るまでどの自己適用 PR も「ファイルが無い」で fail する
+      # 鶏卵問題になる、Stage 3 実装時に実測)。workflow_call 経由の他
+      # リポジトリでは常に main の安定版を使う — 呼び出し元の checkout とは
+      # 独立させ、判定根拠が全リポジトリで揃うことを保証する。
+      - uses: actions/checkout@v4
+        with:
+          repository: tarotene/dotfiles
+          ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
+          sparse-checkout: |
+            scripts/pr-title-check
+          sparse-checkout-cone-mode: false
+
+      - name: Validate PR title
+        env:
+          TITLE: ${{ inputs.title || github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/pr-title-check
+          ./scripts/pr-title-check "$TITLE"
