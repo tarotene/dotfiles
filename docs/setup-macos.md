@@ -17,7 +17,7 @@ else first; the next step erases it.
 - The M2 MacBook Air itself, plugged in and connected to the internet.
 - Apple ID credentials (to sign back in after the erase).
 - Access to an existing host that already has the master GPG key, for the
-  signing-subkey provisioning in step 6.
+  signing-subkey and esa-token provisioning in steps 6–7.
 
 ## 2. Erase and update macOS
 
@@ -76,22 +76,30 @@ blocking activation on a file-already-exists conflict — you can delete that
 Use `--dry-run` first if you want to preview the steps without changing
 anything.
 
-## 6. Git signing subkey (ADR-0003 model, ADR-0018 applies the same
-   per-machine pattern to darwin)
+## 6. Git signing subkey (ADR-0003 Amendment 4 model, ADR-0018 applies the
+   same per-machine pattern to darwin)
 
-On a host that already has the master key (e.g. an existing Pop!_OS host):
+Generation happens on a host that already holds the primary key (e.g. an
+existing Pop!_OS host) with the YubiKey inserted — the primary key's own [C]
+(certify) capability signs the new subkey's binding signature, and that
+operation lives on the card. Use `scripts/gpg-subkey` (deployed to
+`~/.local/bin`), not raw `gpg --edit-key`: it reuses the same
+addkey/revoke-key mechanics already validated in production for the company
+identity's [S] subkey rotations (2025-12, 2026-07).
 
 ```bash
-gpg --edit-key 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8
-gpg> addkey
-# Choose: (4) RSA (sign only), key size 4096, expires in 1y
-gpg> save
+gpg-subkey generate --key <personal-primary-fingerprint> \
+  --usage sign --validity 1y
+```
 
-# Export the new subkey (note its keygrip/fingerprint from `gpg -K` first).
-# umask 077 keeps the file unreadable by other local users regardless of the
-# shell's ambient umask; chmod 600 covers the case where a stale
-# altair-sign.key with looser permissions already exists at this path.
-(umask 077 && gpg --export-secret-subkeys <NEW_SUBKEY_FPR>! > altair-sign.key)
+This cuts a new ed25519 [S] subkey. Note its fingerprint from `gpg -K`.
+
+Export it for transfer (`umask 077` keeps the file unreadable by other local
+users regardless of the shell's ambient umask; the `!` pins the export to
+this exact subkey rather than every subkey under the primary):
+
+```bash
+(umask 077 && gpg --export-secret-subkeys <NEW_S_SUBKEY_FPR>! > altair-sign.key)
 chmod 600 altair-sign.key
 ```
 
@@ -101,22 +109,73 @@ altair:
 
 ```bash
 gpg --import altair-sign.key
-gpg --edit-key <NEW_SUBKEY_FPR>   # trust → 5 (ultimate) → quit
+gpg --edit-key <NEW_S_SUBKEY_FPR>   # trust → 5 (ultimate) → quit
 ```
 
 Then:
 
 1. Delete `altair-sign.key` from both machines once the import is confirmed
    (`gpg -K` on altair shows the new subkey).
-2. Re-export the updated public key set from the machine that ran `addkey`
-   and commit it under `keys/*.pub` (so a future fresh host can import it at
+2. Re-export the updated public key set from the machine that ran `generate`:
+   `gpg-subkey export --repo <checkout> --identity personal`, and commit the
+   result under `keys/*.pub` (so a future fresh host can import it at
    activation time, same as the existing three hosts).
 3. Edit `home/hosts/altair.nix`, replacing
    `programs.git.signing.key = "REPLACE_WITH_ALTAIR_SIGNING_SUBKEY_FINGERPRINT"`
    with the new subkey's fingerprint.
 4. `hms .` from the `~/dotfiles` checkout to apply it.
 
-## 7. Verify
+## 7. esa MCP token (ADR-0022, personal identity only)
+
+altair imports `home/identities/personal.nix`, so the esa.io MCP server
+registers automatically and expects `~/.config/esa/token.gpg` to decrypt.
+Provision a per-machine on-disk [E] subkey the same way as the [S] one in
+step 6, then extend the existing `token.gpg` to also decrypt on altair
+rather than issuing a second PAT (one esa.io token stays simpler to revoke
+and rotate than two).
+
+On the host that already has the master key, with the YubiKey inserted:
+
+```bash
+gpg-subkey generate --key <personal-primary-fingerprint> \
+  --usage encrypt --validity 1y
+```
+
+Note the new [E] subkey's fingerprint, then re-encrypt the existing token to
+every personal-identity recipient that needs to decrypt it — the running
+host's own on-disk [E], altair's new on-disk [E], and the card-backed [E] as
+a fallback. `--no-throw-keyids` is required here for the same reason as
+`docs/setup.md`'s own token-provisioning block: `home/modules/gpg.nix` sets
+`throw-keyids = true` globally, and without this flag decryption falls back
+to trying every card-backed secret key in the keyring in turn (see
+[`docs/claude/esa-mcp.md`](claude/esa-mcp.md) for the incident this avoids).
+
+```bash
+gpg --quiet --decrypt ~/.config/esa/token.gpg | \
+gpg --encrypt --no-throw-keyids \
+  --recipient <RUNNING_HOST_E_SUBKEY_FPR>! \
+  --recipient <ALTAIR_E_SUBKEY_FPR>! \
+  --recipient <CARD_BACKED_E_FPR>! \
+  --output altair-token.gpg
+```
+
+Move `altair-sign.key` and `altair-token.gpg` to the Mac together (same USB
+transfer as step 6). On altair:
+
+```bash
+gpg --import altair-sign.key   # if not already done in step 6
+mkdir -p ~/.config/esa
+cp altair-token.gpg ~/.config/esa/token.gpg
+gpg --quiet --decrypt ~/.config/esa/token.gpg | wc -c   # round-trip: prints byte length, not the token
+```
+
+Delete `altair-token.gpg` from both machines once the round-trip above
+succeeds. The re-encrypted blob replaces the original `token.gpg` on every
+existing personal host too (it now lists all their recipients) — copy it
+back over `~/.config/esa/token.gpg` on personal-pop as well so a future key
+rotation only has to happen once, from a single current blob.
+
+## 8. Verify
 
 ```bash
 hms                                      # resolves "altair" via the marker, applies cleanly
@@ -126,6 +185,7 @@ which bat rg fd nvim claude alacritty
 alacritty --version                      # launches; FiraCode NF renders (Font Book → search "FiraCode Nerd Font")
 launchctl list | grep git-audit-worktrees   # the launchd agent (ADR-0018) is loaded
 ./bootstrap.sh --dry-run                 # re-running bootstrap is a no-op, nothing destructive
+~/.local/libexec/esa-mcp-launcher --selftest  # or: start a Claude Code session and confirm the esa MCP tools are listed
 ```
 
 A Claude Code hook that shells out to `flock` (e.g. the wrap-up inbox gate)
@@ -149,7 +209,7 @@ open -a "Google Chrome" --args --app="file:///tmp/p.html"   # sanity-check
 Expect a new Chrome window (app mode, no tabs/toolbar) to open with the
 rendered plan.
 
-## 8. Known differences from the Linux hosts
+## 9. Known differences from the Linux hosts
 
 - No IME daemon (fcitx5/mozc) — this machine uses macOS's own input method
   switching. If Japanese input is ever needed here, add it as a system
