@@ -61,10 +61,13 @@ dotfiles/
 │   │   ├── personal-pop.nix
 │   │   ├── company-pop-old.nix
 │   │   └── company-pop-new.nix
-│   └── modules/              # shell, atuin, git, gpg, packages, desktop, nixgl, runtimes,
-│                             #   herdr, claude, claude-mcp-servers, worktree, quarantine,
-│                             #   hm-warnings, esa, line
-│                             #   (esa: esa.io MCP token supply, personal identity only,
+│   └── modules/              # shell, atuin, git, gpg, sudo-askpass, packages, desktop, nixgl,
+│                             #   runtimes, herdr, claude, claude-mcp-servers, worktree,
+│                             #   quarantine, hm-warnings, esa, line
+│                             #   (sudo-askpass: SUDO_ASKPASS を gpg.nix の pinentry パッケージに
+│                             #   つなぐ helper。tty のない agent セッションから sudo を成立させる、
+│                             #   docs/claude/sudo-askpass.md;
+│                             #   esa: esa.io MCP token supply, personal identity only,
 │                             #   ADR-0022 — imported from identities/personal.nix, not here;
 │                             #   line: LINE を chromium --app の独立ウィンドウとして宣言配備、
 │                             #   personal identity only — esa と同じ理由で identities/personal.nix
@@ -204,6 +207,11 @@ dotfiles/
 │   ├── esa-mcp-launcher       # decrypts ~/.config/esa/token.gpg and execs the
 │   │                         #   esa.io MCP server (deployed to ~/.local/libexec,
 │   │                         #   personal identity only, ADR-0022)
+│   ├── sudo-askpass           # SUDO_ASKPASS helper: speaks pinentry's Assuan
+│   │                         #   protocol directly (GETPIN) so sudo can read its
+│   │                         #   password without a controlling terminal
+│   │                         #   (deployed to ~/.local/libexec, --selftest from CI
+│   │                         #   against a stubbed pinentry only, docs/claude/sudo-askpass.md)
 │   ├── gpg-subkey             # generate/rotate/export/sync/status/remind
 │   │                         #   subcommands for [S]/[E] subkey management
 │   │                         #   (deployed to ~/.local/bin, ADR-0003 Amendment)

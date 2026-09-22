@@ -268,6 +268,16 @@ jobs:
       - name: esa-mcp-launcher --selftest
         run: ./scripts/esa-mcp-launcher --selftest
 
+      # sudo-askpass is deterministic shell end to end against a stubbed
+      # pinentry — never the real one (docs/claude/sudo-askpass.md records
+      # a real-password exposure hit during development, so this and every
+      # future test of this script stays stub-only): percent-escape/decode
+      # round-trip, the normal GETPIN path (Assuan commands sent, decoded
+      # value returned), fail-closed on cancel (no `D` line), and the
+      # `timeout` bound actually killing a hung pinentry.
+      - name: sudo-askpass --selftest
+        run: ./scripts/sudo-askpass --selftest
+
       # ポインタ整合検査(#115): マーカー未設定・存在しないパス・レイアウト
       # 不一致のいずれも無音で失敗せず明示メッセージを出すことを検査する。
       - name: writing-style-hub --selftest

@@ -193,6 +193,8 @@ Design and rationale for the hooks and commands deployed from
   Issue index, not a full crawl.
 - [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
   the git-signing passphrase cache.
+- [`sudo-askpass.md`](claude/sudo-askpass.md) — `SUDO_ASKPASS` を pinentry に
+  つなぎ、tty のない agent セッションから sudo を成立させる仕組み。
 - [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
   in-progress plan to HTML in Chrome.
 - [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
