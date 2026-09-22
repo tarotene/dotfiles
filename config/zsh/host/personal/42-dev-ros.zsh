@@ -107,8 +107,9 @@ ros_status() {
     fi
 }
 
-# Automatically load ROS environment on shell startup
-load_ros_setup
-
-# Note: If loading fails, it fails silently to avoid cluttering shell startup.
-# Use 'reload_ros' or 'ros_status' to debug if needed.
+# Opt-in only: ROS's setup.zsh injects /opt/ros/<distro>/.../site-packages
+# into PYTHONPATH, which leaks into unrelated Python projects' shells and can
+# break `uv run pytest` (ROS's launch_testing registers a pytest11 entry
+# point that then fails to import without ROS's own deps, #300). Run
+# `load_ros_setup` by hand when you actually need ROS in this shell; use
+# `reload_ros` / `ros_status` to debug.
