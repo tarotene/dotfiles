@@ -68,7 +68,7 @@ Key locations:
 | `.github/workflows/build.yml` | `PATTERNS` regex — add your source directories |
 | `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path to typstyle-action |
 | `.github/workflows/min-typst.yml` | `PATTERNS` regex |
-| `.github/workflows/pr-title.yml` | Allowed commit types if you want a custom set |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); confirm the actual reported check context on the first PR (step 4 below) |
 | `.github/workflows/release.yml` | PDF filenames in `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body checklist; remove if not a CV |
 | `cliff.toml` | `tag_pattern` if your CalVer scheme differs from `vYYYY.MM[.P]` |
@@ -77,6 +77,13 @@ Key locations:
 **Key invariant**: the `name:` field of each workflow job in `quality.json` `required_status_checks`
 MUST exactly equal the `context` string. seed.sh substitutes `__MIN_TYPST__` in both files
 simultaneously. If you rename a job manually, update the Ruleset context too.
+
+**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
+tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
+context is GitHub's own concatenation of the two workflows' `name:` fields
+("PR Title / PR title"). `quality.json` ships that string as a best-effort
+default; confirm it against this repository's Checks tab on the first PR
+(step 4) and correct the Ruleset if it differs.
 
 ---
 
@@ -99,7 +106,7 @@ Wait for all 5 status checks to go green:
 - `Format check`
 - `Lint`
 - `Min Typst (X.Y.Z)`
-- `PR title (Conventional Commits)`
+- `PR Title / PR title` (confirm this exact string — see the Key invariant exception above)
 
 If `Format check` fails, run `just fmt` to auto-fix, commit, push.
 If `Min Typst` fails, bump `compiler` in `typst.toml` + `--min-typst` flag + `quality.json` context.

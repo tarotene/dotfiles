@@ -105,7 +105,7 @@ comment. The table below lists the most important locations:
 | `.github/workflows/build.yml` | `PATTERNS` regex — match your source directory layout |
 | `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path passed to typstyle-action |
 | `.github/workflows/min-typst.yml` | `PATTERNS` regex |
-| `.github/workflows/pr-title.yml` | Allowed commit types if you use a custom set |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — it calls tarotene/dotfiles' reusable workflow (ADR-0031), which owns the type list. Confirm the actual required-check context on the first PR (see the CI gates section below) |
 | `.github/workflows/release.yml` | PDF filenames in the `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body; **delete this file** if not a CV project |
 | `cliff.toml` | `tag_pattern` if your CalVer tag scheme differs |
@@ -115,6 +115,15 @@ comment. The table below lists the most important locations:
 the `context` string in `rulesets/quality.json`. The `__MIN_TYPST__` placeholder
 is substituted in both places simultaneously by seed.sh, preserving this match.
 If you rename a job manually, update the Ruleset context too.
+
+**Exception: `pr-title.yml`.** It calls tarotene/dotfiles' reusable
+`pr-title.yml` via `workflow_call` instead of defining its own job, so
+there is no local job `name:` to keep in sync. The reported check context
+is GitHub's own concatenation of the calling workflow's `name:` and the
+called job's `name:` ("PR Title / PR title") — `rulesets/quality.json`
+ships that string as a best-effort default, but you must confirm the
+actual string against this repository's own Checks tab on the first real
+PR (see CI gates below) and correct the Ruleset if it differs.
 
 ---
 
@@ -163,7 +172,7 @@ gh api repos/OWNER/REPO/rulesets \
 # → Format check
 # → Lint
 # → Min Typst (X.Y.Z)
-# → PR title (Conventional Commits)
+# → PR Title / PR title   (confirm this exact string on the first real PR — see above)
 
 # Repo merge settings:
 gh api repos/OWNER/REPO \
@@ -207,7 +216,7 @@ Ruleset context string to match (all three must stay in sync).
 │   │       ├── fmt.yml            required: Format check   (typstyle --check + yamllint)
 │   │       ├── lint.yml           required: Lint           (actionlint + zizmor)
 │   │       ├── min-typst.yml      required: Min Typst (X.Y.Z)
-│   │       ├── pr-title.yml       required: PR title (Conventional Commits)
+│   │       ├── pr-title.yml       required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
 │   │       ├── release.yml        release: tag + git-cliff + gh-release w/ PDFs
 │   │       └── metrics-reminder.yml  maintenance: monthly CV metrics issue
 │   ├── .githooks/{commit-msg,pre-commit,pre-push}
