@@ -97,7 +97,12 @@ inbox_for() {
 # append-only でマージし、全行の存在を確認してから旧を削除する。
 #
 # 安全性の要点(このリポジトリの inbox 整合性モデルを壊さないため):
-#   - 使用中になり得る <inbox>.lock は削除・再作成しない。二重 flock を
+#   - 使用中になり得る <inbox>.lock は削除・再作成しない(#297)。旧
+#     ファイルだけを消し、lock ファイル自体は orphan のまま残す —
+#     unlink すると、その lock を既に open/flock 待ちしている別プロセス
+#     との相互排他が壊れる(unlink 後は同名で新しい inode の lock が
+#     作られるため、旧 inode を握ったままの保持者と競合しなくなる)。
+#     orphan lock は空ファイルのままなので実害はない。二重 flock を
 #     取るのは本関数だけで、全呼び出し箇所が「新 → 旧」の同一順序で
 #     取得するためデッドロックしない。
 #   - 空ファイル判定もロック取得後に行う(空判定直後の並行 --add を
@@ -105,9 +110,9 @@ inbox_for() {
 #   - 新ファイルへは append のみ(truncate/rewrite しない)。dedup は
 #     行全体の完全一致(この機構の行同一性モデルそのもの。ts+title 一致
 #     だと detail 違いの行を落とすため使わない)。
-#   - 旧の全行が新に存在することを確認できたときだけ旧 + 旧 lock を削除。
-#     1 行でも欠ければ両方残して return し、次回呼び出し(次セッション)で
-#     再試行する(冪等)。
+#   - 旧の全行が新に存在することを確認できたときだけ旧を削除。1 行でも
+#     欠ければ残して return し、次回呼び出し(次セッション)で再試行する
+#     (冪等)。
 migrate_legacy_inbox() {
   local project="$1" new legacy
   new="$(inbox_for "$project")"
@@ -121,7 +126,7 @@ migrate_legacy_inbox() {
     (
       flock 8
       if [[ ! -s "$legacy" ]]; then
-        rm -f "$legacy" "$legacy.lock"
+        rm -f "$legacy"
         exit 0
       fi
       touch "$new"
@@ -131,7 +136,7 @@ migrate_legacy_inbox() {
         grep -Fxq -- "$line" "$new" || { all_present=0; break; }
       done <"$legacy"
       if [[ "$all_present" == 1 ]]; then
-        rm -f "$legacy" "$legacy.lock"
+        rm -f "$legacy"
       fi
     ) 8>>"$legacy.lock"
   ) 9>>"$new.lock"
@@ -190,6 +195,12 @@ if [[ "${1:-}" == "--check-dup" ]]; then
 fi
 
 # --- サブコマンド: --mark-filed <inbox> <json1行> ------------------------------
+# #297 の硬化: (a) 削除対象が無ければ rewrite 自体をしない(no-op 時の
+# mtime/パーミッション変化と無意味な mv を避ける)。(b) 削除した行は
+# "$inbox.filed.jsonl" に tombstone として退避してから mv する — 起票
+# 済み・重複スキップいずれの削除も、無検証の一撃消去にしない(データ
+# 喪失を不可逆にしない)。(c) mktemp の既定 0600 のまま mv すると inbox
+# のパーミッションが変わってしまうため、mv 前に元ファイルへ揃える。
 if [[ "${1:-}" == "--mark-filed" ]]; then
   inbox="${2:?usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>}"
   line="${3:?usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>}"
@@ -202,7 +213,13 @@ if [[ "${1:-}" == "--mark-filed" ]]; then
       !done && $0 == ENVIRON["TARGET"] { done = 1; next }
       { print }
     ' "$inbox" >"$tmp"
-    mv "$tmp" "$inbox"
+    if cmp -s "$tmp" "$inbox"; then
+      rm -f "$tmp"
+    else
+      printf '%s\n' "$line" >>"$inbox.filed.jsonl"
+      chmod --reference="$inbox" "$tmp" 2>/dev/null || true
+      mv "$tmp" "$inbox"
+    fi
   ) 9>>"$inbox.lock"
   exit 0
 fi
@@ -349,7 +366,8 @@ STUB
   check "--migrate 後、新 inbox は旧の全行を(重複排除して)含む" 0 \
     "$(grep -Fxq "$mig_l1" "$mig_new" && grep -cFx "$mig_l2" "$mig_new" | grep -qx 1; echo $?)"
   check "--migrate 後、旧 inbox は消滅する" 1 "$([[ -f "$mig_legacy" ]]; echo $?)"
-  check "--migrate 後、旧 lock も消滅する" 1 "$([[ -f "$mig_legacy.lock" ]]; echo $?)"
+  # #297: 旧 lock は unlink しない(使用中の flock 保持者との相互排他を壊さないため)。
+  check "--migrate 後も旧 lock は orphan のまま残る" 0 "$([[ -f "$mig_legacy.lock" ]]; echo $?)"
   before_new="$(cat "$mig_new")"
   bash "$self" --migrate "$mig_repo" # 2 回目は無変化(冪等)
   check "--migrate は冪等(2 回目は無変化)" 0 "$([[ "$before_new" == "$(cat "$mig_new")" ]]; echo $?)"
@@ -365,14 +383,26 @@ STUB
   check "--migrate は 0 バイトの旧 inbox を削除する" 1 "$([[ -f "$empty_legacy" ]]; echo $?)"
 
   # --- --mark-filed: 同一内容 2 行 + 別内容 1 行から対象 1 行だけ削除 ---
+  chmod 640 "$inbox"
   bash "$self" --add "$inbox" "$line1" # inbox: line1, line2, line1
+  filed_inbox="${inbox}.filed.jsonl"
   bash "$self" --mark-filed "$inbox" "$line1"
   check "--mark-filed は先頭一致 1 行だけ削除" 2 "$(wc -l <"$inbox")"
   check "--mark-filed 後も同一内容のもう 1 行は残る" 0 \
     "$(grep -cFx "$line1" "$inbox" | grep -qx 1; echo $?)"
+  # #297: 削除した行は tombstone(<inbox>.filed.jsonl)に退避される
+  check "--mark-filed は削除行を tombstone に退避する" 0 \
+    "$(grep -cFx "$line1" "$filed_inbox" | grep -qx 1; echo $?)"
+  # #297: mv 前に元ファイルのパーミッションを引き継ぐ(mktemp 既定の 0600 化を防ぐ)
+  check "--mark-filed 後も inbox のパーミッションは維持される" 0 \
+    "$([[ "$(stat -c%a "$inbox")" == "640" ]]; echo $?)"
   before="$(cat "$inbox")"
+  before_filed_lines="$(wc -l <"$filed_inbox")"
   bash "$self" --mark-filed "$inbox" '{"ts":"x","title":"nomatch","detail":"x"}'
   check "--mark-filed は不一致行では無変更" 0 "$([[ "$before" == "$(cat "$inbox")" ]]; echo $?)"
+  # #297: no-op(削除対象が無い)呼び出しは tombstone にも追記しない
+  check "--mark-filed は no-op 時に tombstone を増やさない" 0 \
+    "$([[ "$before_filed_lines" == "$(wc -l <"$filed_inbox")" ]]; echo $?)"
 
   # --- --check-dup: スタブ gh でヒット/非ヒット ---
   rc=0
