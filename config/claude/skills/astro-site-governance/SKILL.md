@@ -113,6 +113,7 @@ comment. The most important locations:
 | `.release-please-manifest.json` | Verify version matches current `package.json` |
 | `renovate.json` | Adjust `packageRules` grouping for your actual dependencies |
 | `biome.json` | Check `files.includes` globs match your TS/CSS paths; **never add `.mdx` or `.astro`** |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); confirm the actual reported check context on the first PR (see the exception below) |
 
 **Key invariant:** The `name:` field of each workflow job in `ci.yml` must
 exactly match the `context` string in `rulesets/quality.json`. These four
@@ -123,6 +124,13 @@ strings are static and pre-matched:
 - `"Build"` ↔ `build` job
 
 If you rename a job, update the Ruleset context string at the same time.
+
+**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
+tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
+context is GitHub's own concatenation of the two workflows' `name:` fields
+("PR Title / PR title"). `rulesets/quality.json` ships that string as a
+best-effort default; confirm it against this repository's Checks tab on the
+first PR and correct the Ruleset if it differs.
 If you remove `"Content lint"` (no MDX scripts), remove it from BOTH files.
 
 ---
@@ -208,14 +216,15 @@ An irregular layout the script won't recognize needs manual removal via
 │   │   ├── CODEOWNERS                    * @__OWNER__
 │   │   └── workflows/
 │   │       ├── ci.yml                    4-job CI (Biome / Content lint / Tests / Build)
-│   │       └── release-please.yml        automated CHANGELOG + Release
+│   │       ├── release-please.yml        automated CHANGELOG + Release
+│   │       └── pr-title.yml              required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
 │   └── .githooks/
 │       ├── commit-msg                    cog verify (Conventional Commits)
 │       ├── pre-commit                    biome check --staged (fast)
 │       └── pre-push                      npm run check + npm test
 ├── rulesets/                              (core layer applied by default; Review is opt-in — ADR-0021)
 │   ├── security.json                     deletion + non_fast_forward
-│   ├── quality.json                      signatures + linear history + 4 status checks
+│   ├── quality.json                      signatures + linear history + 5 status checks
 │   ├── workflow.json                     squash-only (core; thread resolution NOT required here)
 │   └── review.json                       Copilot code review + required thread resolution (opt-in addin)
 ├── scripts/

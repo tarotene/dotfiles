@@ -20,7 +20,8 @@
           { "context": "Format & Lint (Biome)", "integration_id": 15368 },
           { "context": "Content lint",          "integration_id": 15368 },
           { "context": "Unit tests",            "integration_id": 15368 },
-          { "context": "Build",                 "integration_id": 15368 }
+          { "context": "Build",                 "integration_id": 15368 },
+          { "context": "PR Title / PR title",   "integration_id": 15368 }
         ]
       }
     }

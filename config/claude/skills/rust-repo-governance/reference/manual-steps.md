@@ -96,7 +96,7 @@ After `seed.sh --dry-run` or `seed.sh` completes, open each file that has a
 | `renovate.json` | `cargo.managerFilePatterns` — add excluded crate paths; embedded HAL package list |
 | `release-plz.toml` | `[[package]]` list — add your crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Feature flag combos in `clippy-tools` and `mcp-test`; smoke test assertions |
-| `rulesets/quality.json` | Remove `Firmware (cross-compile nRF52840-DK)` context if not using firmware |
+| `rulesets/quality.json` | Remove `Firmware (cross-compile nRF52840-DK)` context if not using firmware; confirm the `PR Title / PR title` context against this repo's own Checks tab on the first PR (see `.github/workflows/pr-title.yml` — it calls tarotene/dotfiles' reusable workflow, ADR-0031, so nothing in that file itself needs adjusting) |
 
 ---
 
@@ -126,6 +126,6 @@ git -C /path/to/repo push -u origin <branch>
 gh pr create --repo OWNER/REPO --title "chore: apply rust-repo-governance templates"
 ```
 
-The PR will trigger all 5 (or 4, without firmware) CI checks. If any fail,
+The PR will trigger all 6 (or 5, without firmware) CI checks. If any fail,
 check the `# ADJUST:` items — most failures trace back to uncustomized paths
 or feature flags.

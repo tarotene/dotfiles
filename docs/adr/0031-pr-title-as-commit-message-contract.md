@@ -133,6 +133,38 @@ CI を持たないリポジトリ(workflows なし)は既存の `renovate` ド�
 止まってから行う(後続セッション、sub-issue S7)。本 ADR のスコープは
 方針の確定までであり、実施そのものは含まない。
 
+### D2 の追補: typst-repo-governance の先行実装との統合(Stage 5 で発見)
+
+Stage 5(governance skills テンプレート更新)の実装中に、
+`config/claude/skills/typst-repo-governance/templates/.github/workflows/
+pr-title.yml` が既に `amannn/action-semantic-pull-request` を使い、
+D1 と完全一致する 11 type の Conventional Commits 検査を実装済みだったと
+判明した(理由コメントも「squash-merge では PR タイトルが main の commit
+message になる」と ADR-0031 の Context と同じ論旨)。ただし実際にこの
+テンプレートが適用された実リポジトリは存在しなかった(2026-09-22 時点、
+typst 系リポ全数で 404 を実測)。
+
+D2 で「文法定義の二重化」を理由に `amannn/action-semantic-pull-request`
+を不採用としたにもかかわらず、この既存先行例を見落としていた
+(`config/claude/CLAUDE.md`「発明する前に先行例を確認する」の優先順位 2
+「組織内の先行実装」を Plan フェーズで検索していなかったことが原因)。
+
+ユーザー裁定: rust/typst/astro-site の 3 governance skill すべてを
+dotfiles の reusable workflow(D3)に統一する。typst の既存 amannn 版は
+置き換える。根拠: (a) 未配備のため移行コストがゼロ、(b) client guard
+(`pr-title-guard.sh`)は owner ベース(`tarotene/*`)で発火し言語を問わず
+これら 3 skill 対象リポにも既に効くため、判定根拠を統一しないと D2 が
+懸念した「二重化」が今度は逆方向(governance skill 側 vs client guard 側)
+で実際に発生する。
+
+`quality.json` の required check context は `workflow_call` の連結命名
+規則(`<呼び出し側 workflow の name> / <呼び出される job の name>`、GitHub
+Community Discussion #46752)に基づき `"PR Title / PR title"` をベスト
+エフォートの既定値として設定したが、実機未確認(どのリポにも未適用の
+ため)。各 skill の SKILL.md / reference/manual-steps.md に「最初の実 PR で
+Checks タブの実際の文字列を確認し、異なれば ruleset を訂正する」注記を
+明記した。
+
 ## Alternatives considered
 
 - **`amannn/action-semantic-pull-request` の採用**: D3 で棄却(文法定義の

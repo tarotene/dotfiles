@@ -21,7 +21,7 @@
           { "context": "Format check",                      "integration_id": 15368 },
           { "context": "Lint",                              "integration_id": 15368 },
           { "context": "Min Typst (__MIN_TYPST__)",         "integration_id": 15368 },
-          { "context": "PR title (Conventional Commits)",   "integration_id": 15368 }
+          { "context": "PR Title / PR title",               "integration_id": 15368 }
         ]
       }
     }

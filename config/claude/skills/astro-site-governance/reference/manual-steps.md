@@ -37,6 +37,7 @@ gh api repos/OWNER/REPO/rulesets \
 # → Content lint
 # → Unit tests
 # → Build
+# → PR Title / PR title   (confirm this exact string on the first real PR — see below)
 
 # Merge settings:
 gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, delete_branch_on_merge}'
@@ -52,6 +53,13 @@ The four static strings are:
 - `"Build"`
 
 If you rename a CI job, update the Ruleset context string in the same edit.
+
+**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
+tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
+context is GitHub's own concatenation of the two workflows' `name:` fields
+("PR Title / PR title"). `rulesets/quality.json` ships that string as a
+best-effort default; confirm it against this repository's Checks tab on the
+first PR and correct the Ruleset if it differs.
 
 ### Adapting for projects without MDX content lint
 

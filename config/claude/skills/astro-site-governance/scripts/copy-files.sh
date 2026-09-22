@@ -104,6 +104,7 @@ copy_file ".github/CODEOWNERS"
 copy_file ".github/workflows/ci.yml"
 copy_file ".github/workflows/release-please.yml"
 copy_file ".github/workflows/lang-mix.yml"
+copy_file ".github/workflows/pr-title.yml"
 
 # .githooks
 copy_file ".githooks/commit-msg"
