@@ -50,7 +50,7 @@ home-manager owns the user environment: shell, git, GPG, terminal, input method,
 
 This repository does not manage per-project language toolchains, the judgement engine behind `publish-guard` (lives in `tarotene/publish-guard`; this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
 
-Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are Pop!_OS 24.04 only; other distros/macOS are not targeted.
+Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are Pop!_OS 24.04 (three machines) plus one macOS host, `altair` (ADR-0018); other Linux distros are not targeted.
 
 ## Development
 

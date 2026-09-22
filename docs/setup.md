@@ -69,25 +69,34 @@ chsh -s "$NIX_ZSH"             # log out and back in to take effect
 ## Manual step: esa MCP token (host-local, personal identity only)
 
 The esa.io MCP server (`@esaio/esa-mcp-server`, registered via
-`home/modules/esa.nix`) reads its token from `~/.config/esa/token.gpg`,
-encrypted to the personal identity's master key — GnuPG resolves this to
-whichever [E] subkey is currently valid (ADR-0003 Amendment 4,
-[ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md)). The file is
-host-local and never enters git. Personal hosts only (`personal-pop`,
+`home/modules/esa.nix`) reads its token from `~/.config/esa/token.gpg`. The
+file is host-local and never enters git. Personal hosts only (`personal-pop`,
 `altair`) — company hosts do not import this module. The token only needs
-issuing once: the same encrypted `.gpg` blob can be copied verbatim to
-every personal host — no per-host re-encryption needed.
+issuing once, but under the per-machine on-disk [E] subkey model (#252,
+ADR-0003 Amendment 4) each host decrypts with its own [E] subkey — a blob
+encrypted to only one host's [E] fails to decrypt on any other. So the
+single `.gpg` blob is **multi-recipient**: encrypted to every personal
+host's on-disk [E] subkey (plus the card-backed [E] as a fallback), not
+copied verbatim from a single-recipient encryption. Adding a personal host
+means re-encrypting to add that host's [E] as a recipient — see
+[`docs/setup-macos.md`](setup-macos.md) §7 for the altair-specific walkthrough
+of this re-encryption.
 
 **Card-free decryption (recommended, #252)**: run
 `scripts/gpg-subkey generate --key <personal-fingerprint> --usage encrypt`
 once per host to cut a per-machine on-disk [E] subkey (mirrors the existing
-on-disk [S] subkey this repo already uses for signing). GnuPG then prefers
-this newest on-disk [E] over the YubiKey's card-backed one automatically —
-no `--recipient` change needed on the encryption side. Without this step,
+on-disk [S] subkey this repo already uses for signing). Without this step,
 decryption still works but requires the YubiKey inserted every time
 `gpg-agent`'s cache is cold (once per login, same shape as signing before
 this step existed). The card's original [E] is never revoked by this —
 it stays available as a fallback.
+
+Unlike signing, encryption needs every valid recipient listed explicitly:
+GnuPG's default recipient-resolution for a bare key fingerprint picks a
+single "best" [E] subkey (the newest on-disk one, if present), not every
+[E] subkey bound to that identity — so a token encrypted to only the latest
+host's on-disk [E] fails to decrypt on any earlier host. Pin each host's
+[E] subkey explicitly with `!` and list all of them as `--recipient`:
 
 **On esa.io** — confirmed against esa-mcp-server's README and esa's PAT v2
 docs (2026-09-19). esa's own token-creation screen is screenshot-only in
@@ -115,22 +124,32 @@ never echoes, logs, or leaves it in shell history:
 mkdir -p ~/.config/esa
 read -rs ESA_TOKEN     # paste the token, press Enter (not echoed)
 printf '%s' "$ESA_TOKEN" | gpg --encrypt --no-throw-keyids \
+  --recipient <THIS_HOST_E_SUBKEY_FPR>! \
+  --recipient <OTHER_PERSONAL_HOST_E_SUBKEY_FPR>! \
   --recipient 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 \
   --output ~/.config/esa/token.gpg
 unset ESA_TOKEN
 gpg --quiet --decrypt ~/.config/esa/token.gpg | wc -c   # round-trip: prints byte length, not the token
 ```
 
-`--no-throw-keyids` is required here: `home/modules/gpg.nix`'s
-`throw-keyids = true` applies to every `gpg --encrypt` on this host, so
-without this flag the recipient key ID is stripped and decryption falls
-back to trying every card-backed secret key in the keyring in turn — one
-"insert card" GUI prompt per card owned. See
+List one `--recipient <fpr>!` line per personal host's on-disk [E] subkey
+that should be able to decrypt this token, plus the bare master fingerprint
+(no `!`) as the card-backed fallback recipient — GnuPG resolves that one to
+whichever [E] the YubiKey currently carries. `--no-throw-keyids` is required
+here: `home/modules/gpg.nix`'s `throw-keyids = true` applies to every
+`gpg --encrypt` on this host, so without this flag every recipient key ID is
+stripped and decryption falls back to trying every card-backed secret key in
+the keyring in turn — one "insert card" GUI prompt per card owned. See
 [`docs/claude/esa-mcp.md`](claude/esa-mcp.md) for the full incident.
 
-Rotating an existing token: revoke the old PAT v2 on esa.io first (same
-menu as step 1), then re-run the block above to overwrite
-`~/.config/esa/token.gpg`.
+Adding a new personal host means re-running the block above with the
+token's current plaintext (`gpg --quiet --decrypt` the existing
+`token.gpg`) and the full, updated recipient list, then distributing the
+new blob to every personal host — see [`docs/setup-macos.md`](setup-macos.md)
+§7 for the concrete altair walkthrough. Rotating the token itself means
+revoking the old PAT v2 on esa.io first (same menu as step 1), then
+re-running the block above with a fresh `ESA_TOKEN` but the same recipient
+list to overwrite `~/.config/esa/token.gpg` on every personal host.
 
 Full design + troubleshooting: [`docs/claude/esa-mcp.md`](claude/esa-mcp.md).
 
