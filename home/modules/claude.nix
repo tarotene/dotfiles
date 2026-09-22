@@ -1188,7 +1188,7 @@ in
   home.file.".claude/skills/gas-clasp-ops/SKILL.md".source =
     repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
   # gpg-subkey-rotation: GPG の機体ローカル [S]/[E] サブ鍵ローテーションを
-  # 7 ステップの完了条件付きで終わらせる判断知識(ADR-0003)。rotate だけ
+  # 8 ステップの完了条件付きで終わらせる判断知識(ADR-0003)。rotate だけ
   # 実行して export/nix 編集/GitHub-keyserver 同期/hms 適用のどれかを飛ばす
   # と commit 署名検証が静かに壊れる、という実際の失敗から起票。詳細は
   # docs/claude/gpg-subkey-rotation.md。
