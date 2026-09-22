@@ -280,6 +280,107 @@ expected to carry its own independent subkey, not this machine's — and it
 never edits nix files itself; a stale `hosts/<host>.nix` is reported with
 the same manual-update instruction `export` prints.
 
+## Obsidian vault backup
+
+`home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
+`obsidian-backup` on `personal-pop` only. Obsidian is wrapped with nixGL like
+the other Electron GUI applications. Two persistent systemd user timers run a
+daily backup and weekly retention/health maintenance.
+
+The synchronization remote and the backup remote are deliberately separate:
+Self-hosted LiveSync uses Cloudflare R2, while restic uses Backblaze B2 through
+its S3-Compatible API. Synchronization is not a backup.
+
+### One-time Backblaze and Bitwarden setup
+
+1. Create a private Backblaze B2 bucket with Object Lock disabled. Set its
+   lifecycle to **Keep only the last version**; restic's S3 backend hides
+   deleted objects, and without this rule B2 retains those hidden versions.
+2. Create a bucket-scoped, read-write B2 application key. Record the bucket's
+   S3 endpoint.
+3. In Bitwarden Secrets Manager, create one project containing exactly these
+   secret names:
+
+   | Secret | Value |
+   |---|---|
+   | `RESTIC_REPOSITORY` | `s3:<B2 endpoint>/<bucket>/<prefix>` |
+   | `RESTIC_PASSWORD` | A generated restic repository password |
+   | `AWS_ACCESS_KEY_ID` | The B2 application key ID |
+   | `AWS_SECRET_ACCESS_KEY` | The B2 application key |
+
+4. Create a machine account with **read-only** access to that project and no
+   other project. Generate an access token for this host.
+5. Store only that revocable machine token in the login keyring:
+
+   ```bash
+   obsidian-backup configure-token
+   ```
+
+   The prompt does not echo the token. The token is not a recovery secret:
+   do not duplicate it into a file or another vault. Revoke and replace it
+   when rebuilding the PC. The four payload secrets remain solely in Secrets
+   Manager and are injected by `bws run`; they are never materialized as an
+   environment file.
+
+The Home Manager module configures the US Bitwarden service and disables bws
+state files. Without that opt-out, bws can reuse an encrypted local session for
+up to an hour after the machine token is revoked; the backup path instead
+re-authenticates from the Keyring token on every run.
+
+6. Initialize the repository, run the first backup, and inspect the snapshot:
+
+   ```bash
+   obsidian-backup init
+   obsidian-backup backup
+   systemctl --user list-timers 'obsidian-backup*'
+   ```
+
+The user manager is tied to the graphical login session (`gpg.nix` rejects
+linger), so GNOME Keyring is already unlocked when these timers run. If the
+keyring is locked, Bitwarden is unavailable, a secret is missing, or B2
+rejects a request, the command exits non-zero; timer failures also emit a
+Herdr notification rather than reporting a success-shaped fallback.
+
+### Retention, health checks, and restore tests
+
+The weekly maintenance service retains 7 daily, 5 weekly, and 12 monthly
+snapshots, prunes unreferenced data, then runs `restic check`:
+
+```bash
+systemctl --user start obsidian-backup-maintenance.service
+journalctl --user -u obsidian-backup-maintenance.service
+```
+
+The acceptance restore unit restores the latest snapshot into a private
+temporary directory and byte-compares three disposable fixtures with the live
+vault. It never writes into the live vault:
+
+```bash
+systemctl --user start obsidian-backup-restore-test.service
+journalctl --user -u obsidian-backup-restore-test.service
+```
+
+For an ad-hoc restore test, pass one or more vault-relative files:
+
+```bash
+obsidian-backup restore-test journal/2026/2026-09-22.md
+```
+
+For a real recovery, first stop Obsidian and LiveSync, then use restic directly
+with secrets injected from the same machine account. Restore into an empty
+staging directory, inspect it, and only then copy the intended files into the
+vault. Never target the live vault with an unreviewed `restic restore`.
+
+### Rotation and removal
+
+- Rotate a B2 application key by updating both AWS-named secrets in Bitwarden,
+  running a backup and restore test, then revoking the old B2 key.
+- Rotate the machine token with `obsidian-backup clear-token`, revoke it in
+  Bitwarden, issue a replacement, and run `obsidian-backup configure-token`.
+- Remove this host's automation by disabling both timers and clearing the
+  machine token. Removing the Home Manager module removes the commands and
+  units but intentionally does not delete any B2 data.
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per

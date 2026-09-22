@@ -1,0 +1,349 @@
+#!/usr/bin/env bash
+# Back up one Obsidian vault with restic. Payload secrets come from a
+# read-only Bitwarden Secrets Manager machine account; only its revocable
+# access token is materialized locally, in the login keyring.
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+BWS_BIN="${OBSIDIAN_BACKUP_BWS_BIN:-bws}"
+ENV_BIN="${OBSIDIAN_BACKUP_ENV_BIN:-env}"
+FIND_BIN="${OBSIDIAN_BACKUP_FIND_BIN:-find}"
+HERDR_BIN="${OBSIDIAN_BACKUP_HERDR_BIN:-herdr}"
+RESTIC_BIN="${OBSIDIAN_BACKUP_RESTIC_BIN:-restic}"
+SECRET_TOOL_BIN="${OBSIDIAN_BACKUP_SECRET_TOOL_BIN:-secret-tool}"
+VAULT="${OBSIDIAN_BACKUP_VAULT:-${HOME}/Documents/obsidian/personal}"
+BACKUP_HOST="${OBSIDIAN_BACKUP_HOST:-$(hostname)}"
+BACKUP_TAG="obsidian-personal"
+KEYRING_ATTRIBUTE_APP="obsidian-backup"
+KEYRING_ATTRIBUTE_KIND="bws-access-token"
+
+usage() {
+  cat <<'EOF'
+usage:
+  obsidian-backup configure-token
+  obsidian-backup clear-token
+  obsidian-backup init [--notify]
+  obsidian-backup backup [--notify]
+  obsidian-backup maintenance [--notify]
+  obsidian-backup restore-test [--notify] <vault-relative-path>...
+  obsidian-backup --selftest
+
+The Bitwarden machine account must have read-only access to exactly one project
+containing RESTIC_REPOSITORY, RESTIC_PASSWORD, AWS_ACCESS_KEY_ID, and
+AWS_SECRET_ACCESS_KEY. The bws access token is stored only in GNOME Keyring.
+EOF
+}
+
+notify_failure() {
+  local operation="$1"
+  "$HERDR_BIN" notification show "Obsidian backup failed" \
+    --body "${operation} failed; inspect systemctl --user status obsidian-backup*" \
+    --sound request >/dev/null 2>&1 || true
+}
+
+keyring_token() {
+  local token
+  token="$(
+    "$SECRET_TOOL_BIN" lookup \
+      application "$KEYRING_ATTRIBUTE_APP" \
+      credential "$KEYRING_ATTRIBUTE_KIND"
+  )"
+  if [[ -z $token ]]; then
+    printf 'obsidian-backup: Bitwarden machine token is missing from the login keyring\n' >&2
+    printf 'run: obsidian-backup configure-token\n' >&2
+    return 1
+  fi
+  printf '%s' "$token"
+}
+
+configure_token() {
+  local token
+  printf 'Bitwarden Secrets Manager access token: ' >/dev/tty
+  IFS= read -r -s token </dev/tty
+  printf '\n' >/dev/tty
+  if [[ -z $token ]]; then
+    printf 'obsidian-backup: refusing to store an empty access token\n' >&2
+    return 1
+  fi
+  printf '%s' "$token" |
+    "$SECRET_TOOL_BIN" store \
+      --label="Obsidian backup Bitwarden machine token" \
+      application "$KEYRING_ATTRIBUTE_APP" \
+      credential "$KEYRING_ATTRIBUTE_KIND"
+  unset token
+}
+
+clear_token() {
+  "$SECRET_TOOL_BIN" clear \
+    application "$KEYRING_ATTRIBUTE_APP" \
+    credential "$KEYRING_ATTRIBUTE_KIND"
+}
+
+validate_secret_environment() {
+  local missing=0
+  if [[ -z ${RESTIC_REPOSITORY:-} ]]; then
+    printf 'obsidian-backup: Bitwarden project is missing RESTIC_REPOSITORY\n' >&2
+    missing=1
+  fi
+  if [[ -z ${RESTIC_PASSWORD:-} ]]; then
+    printf 'obsidian-backup: Bitwarden project is missing RESTIC_PASSWORD\n' >&2
+    missing=1
+  fi
+  if [[ -z ${AWS_ACCESS_KEY_ID:-} ]]; then
+    printf 'obsidian-backup: Bitwarden project is missing AWS_ACCESS_KEY_ID\n' >&2
+    missing=1
+  fi
+  if [[ -z ${AWS_SECRET_ACCESS_KEY:-} ]]; then
+    printf 'obsidian-backup: Bitwarden project is missing AWS_SECRET_ACCESS_KEY\n' >&2
+    missing=1
+  fi
+  ((missing == 0))
+}
+
+validate_vault() {
+  if [[ ! -d $VAULT ]]; then
+    printf 'obsidian-backup: vault does not exist: %s\n' "$VAULT" >&2
+    return 1
+  fi
+}
+
+validate_relative_path() {
+  local path="$1"
+  case "$path" in
+    "" | /* | .. | ../* | */../* | */..)
+      printf 'obsidian-backup: unsafe vault-relative path: %s\n' "$path" >&2
+      return 1
+      ;;
+  esac
+}
+
+cleanup_tree() {
+  local path="$1"
+  [[ -n $path && -d $path ]] || return 0
+  "$FIND_BIN" "$path" -depth -delete
+}
+
+run_restore_test() (
+  local path tmp restored
+  validate_vault
+  if (($# == 0)); then
+    printf 'obsidian-backup restore-test: at least one vault-relative path is required\n' >&2
+    return 2
+  fi
+  for path in "$@"; do
+    validate_relative_path "$path"
+    if [[ ! -f $VAULT/$path ]]; then
+      printf 'obsidian-backup restore-test: source fixture is missing: %s\n' "$path" >&2
+      return 1
+    fi
+  done
+
+  tmp="$(mktemp -d)"
+  trap 'cleanup_tree "$tmp"' EXIT
+  "$RESTIC_BIN" restore latest \
+    --host "$BACKUP_HOST" \
+    --tag "$BACKUP_TAG" \
+    --target "$tmp"
+  restored="${tmp}${VAULT}"
+  for path in "$@"; do
+    if [[ ! -f $restored/$path ]]; then
+      printf 'obsidian-backup restore-test: restored fixture is missing: %s\n' "$path" >&2
+      return 1
+    fi
+    cmp -- "$VAULT/$path" "$restored/$path"
+  done
+  printf 'restore test passed for %d fixture(s)\n' "$#"
+)
+
+run_inner() {
+  local operation="$1"
+  shift
+  validate_secret_environment
+
+  case "$operation" in
+    init)
+      "$RESTIC_BIN" init
+      ;;
+    backup)
+      validate_vault
+      "$RESTIC_BIN" backup --host "$BACKUP_HOST" --tag "$BACKUP_TAG" "$VAULT"
+      ;;
+    maintenance)
+      "$RESTIC_BIN" forget \
+        --host "$BACKUP_HOST" \
+        --tag "$BACKUP_TAG" \
+        --keep-daily 7 \
+        --keep-weekly 5 \
+        --keep-monthly 12 \
+        --prune
+      "$RESTIC_BIN" check
+      ;;
+    restore-test)
+      run_restore_test "$@"
+      ;;
+    *)
+      printf 'obsidian-backup: unknown inner operation: %s\n' "$operation" >&2
+      return 2
+      ;;
+  esac
+}
+
+run_with_bitwarden() {
+  local operation="$1"
+  shift
+  local token rc
+  if ! token="$(keyring_token)"; then
+    return 1
+  fi
+  if BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- \
+    "$ENV_BIN" \
+      "HOME=$HOME" \
+      "PATH=$PATH" \
+      "OBSIDIAN_BACKUP_VAULT=$VAULT" \
+      "OBSIDIAN_BACKUP_HOST=$BACKUP_HOST" \
+      "$SELF" __run "$operation" "$@"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  unset token
+  return "$rc"
+}
+
+run_selftest() (
+  local tmp fake_bws fake_restic fake_secret_tool log vault
+  tmp="$(mktemp -d)"
+  trap 'cleanup_tree "$tmp"' EXIT
+  fake_restic="$tmp/restic"
+  fake_bws="$tmp/bws"
+  fake_secret_tool="$tmp/secret-tool"
+  log="$tmp/restic.log"
+  vault="$tmp/vault"
+  mkdir -p "$vault/acceptance"
+  printf 'round trip\n' >"$vault/acceptance/roundtrip.md"
+
+  cat >"$fake_restic" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$TEST_RESTIC_LOG"
+if [[ $1 == restore ]]; then
+  target=""
+  while (($# > 0)); do
+    if [[ $1 == --target ]]; then
+      target="$2"
+      break
+    fi
+    shift
+  done
+  mkdir -p "$(dirname "${target}${TEST_VAULT}")"
+  cp -a "$TEST_VAULT" "${target}${TEST_VAULT}"
+fi
+EOF
+  chmod +x "$fake_restic"
+
+  cat >"$fake_secret_tool" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $1 == lookup ]]
+printf 'test-machine-token'
+EOF
+  chmod +x "$fake_secret_tool"
+
+  cat >"$fake_bws" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${BWS_ACCESS_TOKEN:-} == test-machine-token ]]
+[[ $1 == run && $2 == --no-inherit-env && $3 == -- ]]
+shift 3
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export RESTIC_PASSWORD=test
+export RESTIC_REPOSITORY=s3:test.invalid/test
+exec "$@"
+EOF
+  chmod +x "$fake_bws"
+
+  export AWS_ACCESS_KEY_ID=test
+  export AWS_SECRET_ACCESS_KEY=test
+  export RESTIC_PASSWORD=test
+  export RESTIC_REPOSITORY=s3:test.invalid/test
+  export OBSIDIAN_BACKUP_RESTIC_BIN="$fake_restic"
+  export OBSIDIAN_BACKUP_VAULT="$vault"
+  export TEST_RESTIC_LOG="$log"
+  export TEST_VAULT="$vault"
+
+  "$SELF" __run init
+  "$SELF" __run backup
+  "$SELF" __run maintenance
+  "$SELF" __run restore-test acceptance/roundtrip.md
+  OBSIDIAN_BACKUP_BWS_BIN="$fake_bws" \
+    OBSIDIAN_BACKUP_SECRET_TOOL_BIN="$fake_secret_tool" \
+    "$SELF" backup
+  if "$SELF" __run restore-test ../outside >/dev/null 2>&1; then
+    printf 'selftest: unsafe restore path was accepted\n' >&2
+    return 1
+  fi
+  grep -q '^init$' "$log"
+  grep -q '^backup --host ' "$log"
+  grep -q '^forget --host ' "$log"
+  grep -q '^check$' "$log"
+  grep -q '^restore latest ' "$log"
+  if OBSIDIAN_BACKUP_SECRET_TOOL_BIN=false "$SELF" backup >/dev/null 2>&1; then
+    printf 'selftest: missing keyring token was reported as success\n' >&2
+    return 1
+  fi
+  printf 'obsidian-backup selftest passed\n'
+)
+
+main() {
+  if [[ ${1:-} == --selftest ]]; then
+    run_selftest
+    return
+  fi
+  case "${1:-}" in
+    configure-token)
+      (($# == 1)) || {
+        usage >&2
+        return 2
+      }
+      configure_token
+      ;;
+    clear-token)
+      (($# == 1)) || {
+        usage >&2
+        return 2
+      }
+      clear_token
+      ;;
+    __run)
+      shift
+      (($# > 0)) || {
+        usage >&2
+        return 2
+      }
+      run_inner "$@"
+      ;;
+    init | backup | maintenance | restore-test)
+      local operation="$1" notify=false rc
+      shift
+      if [[ ${1:-} == --notify ]]; then
+        notify=true
+        shift
+      fi
+      set +e
+      run_with_bitwarden "$operation" "$@"
+      rc=$?
+      set -e
+      if ((rc != 0)) && [[ $notify == true ]]; then
+        notify_failure "$operation"
+      fi
+      return "$rc"
+      ;;
+    *)
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"
