@@ -1,0 +1,8 @@
+# PostToolUse: gh pr create が成功して URL を出したら台帳に積む(出力はしない)
+bin.name = "gh-edit-allow"
+stdin = '{"hook_event_name":"PostToolUse","session_id":"sess-1","tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"},"tool_response":{"stdout":"https://github.com/Octo/Hello/pull/12\n","stderr":"","interrupted":false}}'
+status.code = 0
+stdout = ""
+fs.sandbox = true
+[env.add]
+GH_EDIT_ALLOW_DIR = "."

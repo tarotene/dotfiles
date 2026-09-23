@@ -386,6 +386,12 @@ let
   # adr-number(ADR-380, docs/claude/adr-numbering.md)も attribution-guard.sh
   # を source するので同階層。段3(利便性層)のみ — deny は一切しない。
   adrNumberCmd = "bash '${hooksDir}/adr-number.sh'";
+  # gh-edit-allow(#392, docs/claude/gh-edit-allow.md): Rust 製(crates/
+  # gh-edit-allow、ADR-0024)。bash を挟まず実行ファイルを直接呼ぶ。配置は
+  # 他の hook と同じ ~/.claude/hooks/ の安定パス — store path を command に
+  # 直接書くと、ビルドのたびに command 文字列が変わり、完全一致で存在判定
+  # する registerHooks が旧エントリを残し続けるため。
+  ghEditAllowCmd = "'${hooksDir}/gh-edit-allow'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -583,6 +589,7 @@ let
     pr_title_guard="$1";         shift
     external_send_guard="$1";    shift
     adr_number="$1";             shift
+    gh_edit_allow="$1";          shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -710,6 +717,14 @@ let
     # docs/adr/0000-*.md が無ければ stdin すら読まず即 exit するので常時
     # コストはほぼゼロ — timeout は atuin と同じ短さでよい。
     register PostToolUse Bash "$adr_number" 10
+    # gh-edit-allow(#392): 1 バイナリで記録役と判定役を兼ね、hook_event_name で
+    # 分岐する(herdr-claude-metadata と同じ「同一 command を複数イベントに」形)。
+    # PostToolUse は `git push && gh pr create …` のような複合コマンドの成功も
+    # 拾うため if を付けない(Rust 製で起動 ~1ms、非該当は即 exit)。PreToolUse は
+    # allow しか返さない(不一致は素通し)ので、if で gh 呼び出しに絞ってよい
+    # — git-worktree-allow と同じ理由付け。
+    register PostToolUse Bash "$gh_edit_allow" 10
+    register PreToolUse Bash "$gh_edit_allow" 10 "Bash(gh *)"
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -814,8 +829,10 @@ let
   # Claude Code の permission rule 構文は `Tool(specifier)`(裸のコマンド文字列では
   # 認識されない)。Add / Commit / Create PR で毎回止まる直接原因はこの 4 件。
   # 破壊的操作は増やさない — 読み取り・検査系のみ追加する。gh の書き込み系
-  # (pr edit / issue create / issue edit)は aocs-draft スキルが明示的な人の確認を
-  # 要求する操作なので入れない。
+  # (pr edit / issue create / issue edit)はワイルドカードでは入れない —
+  # `Bash(gh pr edit *)` は他人の PR の編集まで許してしまうため。代わりに
+  # gh-edit-allow hook(#392、docs/claude/gh-edit-allow.md)が「このセッションが
+  # 作成した PR/Issue」だけを検証付きで allow する。
   permissionRules = [
     "Bash(git add *)"
     "Bash(git commit *)"
@@ -1014,6 +1031,9 @@ in
     source = repoConfig + "/claude/hooks/adr-number.sh";
     executable = true;
   };
+  # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
+  # flake.nix の rustOverlay)への安定パスの symlink。
+  home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
   # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 — 相対
   # パスで辿るため配置は ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。
@@ -1467,7 +1487,8 @@ in
       ${lib.escapeShellArg stackBaseGuardCmd} \
       ${lib.escapeShellArg prTitleGuardCmd} \
       ${lib.escapeShellArg externalSendGuardCmd} \
-      ${lib.escapeShellArg adrNumberCmd}
+      ${lib.escapeShellArg adrNumberCmd} \
+      ${lib.escapeShellArg ghEditAllowCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

@@ -177,6 +177,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gh-edit-allow"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde_json",
+ "tempfile",
+ "trycmd",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -552,6 +562,15 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "update-own-tools"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "toml",
+]
 
 [[package]]
 name = "utf8parse"

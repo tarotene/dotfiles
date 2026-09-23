@@ -1,0 +1,10 @@
+# PreToolUse: 台帳にある PR の編集は allow
+bin.name = "gh-edit-allow"
+stdin = '{"hook_event_name":"PreToolUse","session_id":"sess-1","tool_name":"Bash","tool_input":{"command":"gh pr edit 12 -R octo/hello --body \"| a | b |\""}}'
+status.code = 0
+stdout = """
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"gh pr edit: このセッションが作成した pr octo/hello 12(gh-edit-allow)"}}
+"""
+fs.sandbox = true
+[env.add]
+GH_EDIT_ALLOW_DIR = "."
