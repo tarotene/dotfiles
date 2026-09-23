@@ -30,6 +30,15 @@ stacked PR に積む原則そのものは共有 AGENTS.md に従う。形式検�
 (Stop block)が担う。gate に当たる前に自発的に積むこと — gate は漏れを
 拾うためのもので、一次的な手段ではない。
 
+## 決定成果物の執行点の形式検査(ADR-396)
+
+決定成果物と執行点を同じ PR に出す原則そのものは共有 AGENTS.md に従う。
+形式検査は作成時 `decision-colocation-guard.sh`(PreToolUse deny)と CI
+required check(`scripts/decision-colocation-check`、単一ソース)が担う。
+gate に当たる前に自発的に執行点を含めること — gate は漏れを拾うためのもので、
+一次的な手段ではない。**「実装を後続 Issue に分離する」という選択肢は
+実行不能なので、`AskUserQuestion` の選択肢に出さない。**
+
 ## 要求インベントリの書式と自己検査
 
 計画冒頭に `## 要求インベントリ` を置き、依頼文と参照 Issue の子項目を
