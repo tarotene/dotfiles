@@ -491,11 +491,21 @@ jobs:
         run: ./scripts/github-audit --selftest
 
       # github-rulesets-apply (#153) is a thin dispatcher over the
-      # governance skills' apply-rulesets.sh — the selftest stubs that
-      # script to verify the type→skill mapping, multi-repo looping, and
-      # flag passthrough without shelling out to gh.
+      # governance skills' apply-rulesets.sh for the rust/typst/astro types,
+      # and over this repository's own scripts/apply-rulesets.sh for the
+      # dotfiles type (#349, no $SKILLS_DIR involved) — the selftest stubs
+      # both paths to verify the type→script mapping, multi-repo looping,
+      # and flag passthrough without shelling out to gh.
       - name: github-rulesets-apply --selftest
         run: ./scripts/github-rulesets-apply --selftest
+
+      # apply-rulesets.sh (#349): dotfiles 自身の Security/Quality/Workflow
+      # ruleset を rulesets/*.json の具体値から適用する。--reconcile 対応
+      # (既存 ruleset を名前一致で PUT)。config/claude/skills/*-repo-
+      # governance の配布テンプレート版とは別物 — dotfiles は Shell/Nix で
+      # どの言語 skill にも属さないための専用スクリプト。
+      - name: apply-rulesets.sh --selftest
+        run: ./scripts/apply-rulesets.sh --selftest
 
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/publish-guard, ADR-0009) and runs in that repo's own CI —
