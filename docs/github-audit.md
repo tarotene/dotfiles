@@ -270,20 +270,34 @@ file's schema/config) — detecting that requires semantic comparison
 against the source file, which isn't decidable by presence/match; it is
 left to the `github-audit-triage` LLM node (ADR-0015 Decision 4b).
 
-### naming (ADR-0014 + ADR-0020)
+### naming (ADR-0014 + ADR-0020 + ADR-0026)
 
 Reports naming-class declaration and pattern conformance. Every repository
-should carry exactly one `naming-*` GitHub topic (`naming-codename` /
-`naming-descriptive` / `naming-pj` / `naming-site` — see ADR-0014 for the
-class definitions), and the repository name should match that class's
-pattern.
+should carry exactly one `naming-*` GitHub topic — `naming-codename` /
+`naming-coined` / `naming-descriptive` / `naming-pj` / `naming-site`, five
+classes as of ADR-0026 (it split the original four-class ADR-0014 system's
+`naming-codename` in two; see below) — and the repository name should
+match that class's pattern.
 
 - `class-undeclared` — zero `naming-*` topics.
 - `class-ambiguous` — two or more `naming-*` topics.
 - `pattern-mismatch:<class>` — exactly one class declared, but the name
   doesn't match its pattern (e.g. `naming-pj` requires a `pj-` prefix).
-- `class-unknown:<class>` — a `naming-*` topic outside the four defined
+- `class-unknown:<class>` — a `naming-*` topic outside the five defined
   classes.
+
+**`naming-codename` vs `naming-coined` (ADR-0026, #278).** Both are a
+single lexical token (`^[a-z0-9]+$`) with no hyphen, but they differ in
+*why* the name has no descriptive meaning: `naming-codename` is a
+meaningless arbitrary label drawn from a closed cast (see the registry
+check below); `naming-coined` is a meaningful, author-specific coinage
+(a deliberate morphological pattern, evaluated on its own merits per
+repository) that has no closed vocabulary to check against — the split
+exists specifically *because* no mechanical rule can tell these two apart
+from the name alone. Reclassifying which of the pre-ADR-0026
+`naming-codename` declarations are actually `naming-coined` is therefore
+not something this audit does; it is the human judgement `github-audit-
+triage` surfaces (#278 scope).
 
 `.github` is permanently exempt (GitHub reserves the name; there's no
 class it could meaningfully declare). This audit never decides *which*
@@ -319,6 +333,43 @@ motivated this. It also excludes research-subject nouns (a phenomenon or
 field name) — one word per subject would make the set grow without bound,
 defeating the point of a closed vocabulary; a completed/frozen research
 record uses `archive` regardless of subject (ADR-0020's Amendment).
+
+**Lifecycle axis, orthogonal to the class (ADR-0026, #278).**
+`lifecycle-timeboxed` and `lifecycle-study` are separate GitHub topics —
+0 or 1 of each, independent of which `naming-*` class a repository
+declares. As with class assignment, this audit only surfaces *candidates*
+in a `lifecycle_candidates` array on the finding — never `missing`, so it
+never affects `verdict`, the same "candidate list, not a drift judgement"
+treatment `lifecycle` (the dormancy domain, #275) gives its own findings.
+The final topic assignment is `github-audit-triage`'s human-judgement job.
+
+- `lifecycle-study-candidate:<token>` — the description contains a token
+  from the closed vocabulary (`config/github-audit/lifecycle-species.tsv`:
+  `study`, `research`, `seminar`, `exam`, `coursework`, `thesis`,
+  `graduate`), and `lifecycle-study` is not already declared. Fires for
+  both archived and non-archived repositories (ADR-0026: this topic covers
+  completed *and* in-progress study/research).
+- `lifecycle-timeboxed-candidate` — the repository is `naming-pj`, not
+  archived, and does not yet carry `lifecycle-timeboxed`: a live timeboxed
+  project that could declare it.
+- `lifecycle-timeboxed-removal-candidate` — the repository carries
+  `lifecycle-timeboxed` but *is* archived: ADR-0026 says the topic may be
+  removed once the project is complete, and archival is the strongest
+  available completion signal this audit can observe.
+
+**Archived repositories are now included in the account listing (#278).**
+Before this, `list_repos_meta()` passed `--no-archived` to `gh repo list`,
+so an archived repository never appeared in any domain's output at all —
+which meant `naming`'s `isArchived`-dependent lifecycle candidates above
+could never fire for exactly the repositories ADR-0026's own motivating
+example was about (completed, already-archived research repos). Archived
+repositories are now fetched like any other, but every domain except
+`naming` reports `not-applicable` for one instead of judging it —
+`rulesets`/`charters`/`settings`/`renovate`/`titles` because governance
+drift on a read-only repository will never be fixed, and `lifecycle`
+(#275) because an already-archived repository has already been triaged:
+scoring it as a fresh "dormancy candidate" would just be redundant noise,
+not new signal. `naming` is the sole domain that consults `isArchived`.
 
 ### settings
 
