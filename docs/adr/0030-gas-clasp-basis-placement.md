@@ -74,3 +74,32 @@ developers.google.com、いずれも 2026-09-22 取得)上も事実上唯一の�
 - `home-manager switch` 後、`clasp --version` が v3 系(3.x)を返す。
 - `gas-clasp-ops` スキルが `~/.claude/skills/` および `~/.agents/skills/` に
   配備され、新規セッションのスキル一覧に現れる。
+
+## Amendment (2026-09-23 — GCP プロジェクトの命名は personal-cloud-projects.md に従う, No-Issue)
+
+Decision §2 は「個人で 1 つの Cloud プロジェクト + OAuth クライアントを
+使い回す」とだけ書き、その命名・設定値の決め方には触れていなかった。
+一方この ADR の 2 日前(2026-09-20)に、まさにこの種の判断を都度せずに
+済ませるための決定論的な導出規則が `docs/personal-cloud-projects.md`
+(#197)として既に正本化されていた。本 ADR はそれを参照せずに書かれたため、
+`gas-clasp-ops` スキルの初回セットアップ手順(手順2)は「External /
+Testing」という独自の指示を残していた。これは `personal-cloud-projects.md`
+の「Testing のまま test user 登録で運用しない(refresh token が 7 日で
+失効する)」という決定と矛盾していた。
+
+この ADR が対象とする個人プロジェクトで実際の GCP セットアップ作業を
+進める過程でこの矛盾が発覚したため、以下を修正した:
+
+- `docs/personal-cloud-projects.md` に「適用例2: 個人用 GAS 自動化
+  スクリプト群(gas-clasp-ops)」を追加。共有基盤(下流に複数スクリプトを
+  持つツール)の場合、`<tool>` は下流スクリプトごとではなく共有基盤自体
+  (`gas-clasp-ops`)とする扱いを明記した。
+- `gas-clasp-ops/SKILL.md` の初回セットアップ手順を、上記適用例2の導出値
+  (プロジェクト ID `gas-clasp-ops-<github-username>` / 同意画面アプリ名
+  `gas-clasp-ops` / 作成直後に Publish app → In production / OAuth
+  クライアント名 `gas-clasp-ops`)を明示する形に書き換え、Testing 運用の
+  指示を削除した。
+
+Decision §2 自体(GCP プロジェクト・OAuth クライアントを個人で 1 つ使い回す
+という設計)は変更しない。命名・公開ステータスの決め方を
+`personal-cloud-projects.md` に委譲する接続を追加しただけの Amendment。

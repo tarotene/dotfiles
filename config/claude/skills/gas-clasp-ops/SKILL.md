@@ -41,11 +41,22 @@ clasp v3 の `run-function` はスクリプトと同じ Google Cloud プロジ�
 繰り返し使う前提なので、Cloud プロジェクトと OAuth クライアントは
 **GAS プロジェクトごとではなく個人で 1 つ**を使い回す。
 
+命名・設定値は都度考えず、`docs/personal-cloud-projects.md`(個人ツールの
+自前クラウドプロジェクト命名・設定ポリシー)の「適用例2: 個人用 GAS 自動化
+スクリプト群(gas-clasp-ops)」から機械的に導出する。この場合の `<tool>` は
+個々の GAS スクリプトではなく共有基盤である `gas-clasp-ops` 自身。
+
 1. Google Cloud Console で個人共通のプロジェクトを新規作成する(既にあれば
-   再利用する)。
-2. OAuth 同意画面を設定する(External / Testing、自分自身を test user に
-   追加すれば十分)。
-3. OAuth クライアント ID を作成する。種別は **Desktop app**。ダウンロードした
+   再利用する)。プロジェクト ID/名は `gas-clasp-ops-<github-username>`。
+2. OAuth 同意画面を設定する。User type = External、アプリ名 =
+   `gas-clasp-ops`、サポートメール・開発者連絡先は所有アカウントのメール
+   アドレス。**作成直後に「Publish app」で In production へ切り替える**
+   (未審査のままでよい。個人利用は Google 審査対象外)。**Testing のまま
+   test user 登録で運用しない** — refresh token が 7 日で失効し、
+   `clasp login --user run` をやり直す羽目になる
+   (出典: `docs/personal-cloud-projects.md` 出典節)。
+3. OAuth クライアント ID を作成する。種別は **Desktop app**。クライアント名は
+   `gas-clasp-ops`(既定の "Desktop client 1" 等を使わない)。ダウンロードした
    JSON を `~/.config/clasp/client_secret.json` として保存する(git 管理外・
    home-manager 管理外。ホストローカルのファイルのまま扱う)。
 4. その Cloud プロジェクトで Apps Script API(`script.googleapis.com`)を
