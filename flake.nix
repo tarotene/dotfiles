@@ -31,11 +31,14 @@
     # flake (`flake = false`) — we only take `home.file.source` from it, never
     # evaluate it as a flake. Pinned to a commit SHA rather than a branch name
     # so `flake.lock` fully determines the content; bump this rev by hand when
-    # tarotene/publish-guard cuts a new release. No `follows` needed: it is
+    # tarotene/bleep cuts a new release. No `follows` needed: it is
     # only ever `exec`'d as standalone bash, never `dlopen`'d into another
     # package's process (same reasoning as herdr's overlay entry above).
-    publish-guard = {
-      url = "github:tarotene/publish-guard/9e490ef337552cfab48853d913490ea52368cfa9";
+    # Renamed from tarotene/publish-guard (github#28); this rev is the
+    # rename itself, which is also where the Rust hook/CLI migration
+    # (#25-27, `bleep`/`bleep-hook`/`hooks/bleep.sh`) lands.
+    bleep = {
+      url = "github:tarotene/bleep/eb5c40ac723e772fe60c9b7a619640aac7719d81";
       flake = false;
     };
 
@@ -55,7 +58,7 @@
       nixpkgs-unstable,
       home-manager,
       nixgl,
-      publish-guard,
+      bleep,
       crane,
       ...
     }:
@@ -196,12 +199,12 @@
         home-manager.lib.homeManagerConfiguration {
           pkgs = pkgsFor.${system};
           modules = [ hostModule ] ++ extraModules;
-          # publish-guard is a plain source tree (flake = false), threaded
+          # bleep is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
           # claude.nix only needs its store path for home.file.source, not a
           # package derivation (ADR-0009).
           extraSpecialArgs = {
-            inherit publish-guard;
+            inherit bleep;
           };
         };
     in

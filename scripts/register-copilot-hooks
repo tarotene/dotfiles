@@ -8,8 +8,31 @@
 # puts {type, bash, timeoutSec} entries directly in the event array — this
 # mirrors Herdr's own already-installed SessionStart entry. Accepts any number
 # of (event, bash-command, timeoutSec) triples.
+#
+# Optional leading `--retire <event> <command>`... pairs (terminated by
+# `--register` or end of args) remove bash-exact-match entries first — same
+# retire-then-register order as register-codex-hooks, added when the bleep
+# rename (tarotene/bleep, formerly publish-guard) orphaned the old adapter
+# command strings this script had registered (#160/#27 upstream cutover left
+# no way to remove a stale entry from this file).
 set -euo pipefail
 TEST_TMP=''
+
+retire() {
+  local settings="$1" event="$2" command="$3" tmp
+  if ! jq -e --arg event "$event" --arg command "$command" \
+      '[.hooks[$event][]? | select(.bash == $command)] | length > 0' \
+      "$settings" >/dev/null; then
+    return 0
+  fi
+  tmp="$(mktemp "$settings.hm.XXXXXX")"
+  jq --arg event "$event" --arg command "$command" '
+    .hooks[$event] = ((.hooks[$event] // []) | map(select(.bash != $command)))
+    | (if ((.hooks[$event] // []) | length) == 0 then del(.hooks[$event]) else . end)
+  ' "$settings" > "$tmp"
+  chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$settings"
+}
 
 register() {
   local settings="$1" event="$2" command="$3" timeout="$4" tmp
@@ -34,6 +57,14 @@ main() {
   if [[ ! -f $settings ]]; then
     mkdir -p "$(dirname "$settings")"
     printf '{}\n' > "$settings"
+  fi
+  if [[ "${1-}" == --retire ]]; then
+    shift
+    while (( $# > 0 )) && [[ "$1" != --register ]]; do
+      retire "$settings" "$1" "$2"
+      shift 2
+    done
+    [[ "${1-}" == --register ]] && shift
   fi
   while (( $# > 0 )); do
     register "$settings" "$1" "$2" "$3"
@@ -68,14 +99,33 @@ selftest() {
     and (.model == "claude-opus-5")
   ' "$settings" >/dev/null
 
+  # --retire removes a bash-exact-match entry (collapsing the now-empty event
+  # key), leaves Herdr's SessionStart entry and other callers' entries
+  # untouched, and is a no-op when the target command isn't present.
+  main "$settings" --retire \
+    sessionEnd clear-cmd \
+    --register
+  main "$settings" --retire \
+    agentStop report-cmd \
+    --register \
+    sessionStart new-report-cmd 10
+  jq -e '
+    ([.hooks.sessionEnd[]? | select(.bash == "clear-cmd")] | length) == 0
+    and (([.hooks.userPromptSubmitted[]? | select(.bash == "report-cmd")] | length) == 1)
+    and (([.hooks.sessionStart[]? | select(.bash == "new-report-cmd")] | length) == 1)
+    and (([.hooks.SessionStart[]? | select(.bash == "herdr-existing")] | length) == 1)
+  ' "$settings" >/dev/null
+  # Retiring the only entry under an event key collapses that key entirely.
+  jq -e '(.hooks | has("agentStop")) | not' "$settings" >/dev/null
+
   printf 'selftest: OK\n'
 }
 
 if [[ ${1-} == --selftest ]]; then
   selftest
-elif [[ $# -ge 4 ]] && (( ($# - 1) % 3 == 0 )); then
+elif [[ ${2-} == --retire ]] || { [[ $# -ge 4 ]] && (( ($# - 1) % 3 == 0 )); }; then
   main "$@"
 else
-  printf 'usage: register-copilot-hooks <settings.json> <event> <bash-command> <timeoutSec> [<event> <bash-command> <timeoutSec>]...\n' >&2
+  printf 'usage: register-copilot-hooks <settings.json> [--retire <event> <bash-command>]... [--register] <event> <bash-command> <timeoutSec> [<event> <bash-command> <timeoutSec>]...\n' >&2
   exit 2
 fi

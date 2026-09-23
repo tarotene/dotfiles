@@ -171,6 +171,6 @@ judgement が要求する(`docs/claude/pr-gate.md` 参照)。両者は独立に
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 20
 ```
 
-`publish-guard`/`attribution-guard` と同じ複合 matcher 1 本(Bash 単体
+`bleep`/`attribution-guard` と同じ複合 matcher 1 本(Bash 単体
 だと MCP 接続の瞬間に無検査になる、同じ理由の繰り返し)。`gh pr list`
 1 往復を含むため、attribution-guard(timeout 10)よりやや長めに確保する。

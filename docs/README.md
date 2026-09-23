@@ -60,9 +60,10 @@
   規約: 新しい判断・調査を ADR / `docs/claude/*.md` / Investigation record の
   どれに書くか、腐る事実と腐らない決定を分離する理由。
 - [ADR-0009](adr/0009-publish-guard-upstream-split.md) — 公開面ガード
-  (public-publish-guard)を別リポジトリ `tarotene/publish-guard` へ切り出し、
-  flake input で逆消費する決定。「No semver releases」と plugin 配布の
-  commit-SHA/tag pin が両立しないことが理由。
+  (public-publish-guard)を別リポジトリ `tarotene/publish-guard`(2026-09-24
+  に `tarotene/bleep` へ改名)へ切り出し、flake input で逆消費する決定。
+  「No semver releases」と plugin 配布の commit-SHA/tag pin が両立しない
+  ことが理由。
 - [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム
   復号チャネル(シェル起動時の自動シークレットロード)の全撤去。棚卸しで
   全消費者(MCP-gdrive・brave-search・Falcon Sensor 含む)が代替済みまたは
@@ -295,8 +296,8 @@ Design and rationale for the hooks and commands deployed from
   wiring for the PreToolUse hook (deny/ask on `git push` / `gh pr|issue
   create|edit|comment` / MCP GitHub tool calls that would leak a company or
   private repository name); the design and denylist mechanism now live
-  upstream in [tarotene/publish-guard](https://github.com/tarotene/publish-guard)
-  (ADR-0009).
+  upstream in [tarotene/bleep](https://github.com/tarotene/bleep) (formerly
+  `tarotene/publish-guard`, ADR-0009).
 - [`attribution-guard.md`](claude/attribution-guard.md) — PreToolUse hook: deny
   a `gh pr|issue create|edit|comment` / `gh pr review` whose body carries no
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).

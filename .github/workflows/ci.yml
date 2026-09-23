@@ -515,9 +515,9 @@ jobs:
         run: ./scripts/apply-rulesets.sh --selftest
 
       # public-publish-guard's selftest now lives in its own repository
-      # (tarotene/publish-guard, ADR-0009) and runs in that repo's own CI —
-      # this repo no longer carries the source, so there is nothing to
-      # selftest here.
+      # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs
+      # in that repo's own CI — this repo no longer carries the source, so
+      # there is nothing to selftest here.
 
       # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
       # runs it) but lives in config/claude/statusline/ alongside

@@ -29,20 +29,20 @@ if [[ "$git_dir" != "$common_dir" && "$is_herdr_worktree" -eq 0 ]]; then
     exit 1
 fi
 
-# publish-guard scan-push (#196): scan the outgoing diff+log for a public
-# repo name leak before it reaches a remote (docs/claude/public-publish-
-# guard.md). Silently skip if the engine isn't deployed (ADR-0005
+# bleep scan-push (#196, formerly publish-guard): scan the outgoing diff+log
+# for a public repo name leak before it reaches a remote (docs/claude/public-
+# publish-guard.md). Silently skip if the engine isn't deployed (ADR-0005
 # binary-existence gating) — PRIVATE/INTERNAL repo auto-skip and the
-# PUBLISH_GUARD_ALLOW=1 bypass are the engine's own responsibility. exit 1
+# BLEEP_ALLOW=1 bypass are the engine's own responsibility. exit 1
 # (ask) is treated the same as exit 2 (deny): this hook has no interactive
 # prompt to route an "ask" to.
-publish_guard="${HOME}/.claude/hooks/publish-guard/publish-guard"
-if [[ -x "$publish_guard" ]]; then
-    if ! reason="$("$publish_guard" scan-push < /dev/null)"; then
-        echo "error: Push blocked by publish-guard" >&2
+bleep="${HOME}/.claude/hooks/bleep/bleep"
+if [[ -x "$bleep" ]]; then
+    if ! reason="$("$bleep" scan-push < /dev/null)"; then
+        echo "error: Push blocked by bleep" >&2
         [[ -n "$reason" ]] && echo "  ${reason}" >&2
         echo "" >&2
-        echo "  Conscious bypass: PUBLISH_GUARD_ALLOW=1 git push" >&2
+        echo "  Conscious bypass: BLEEP_ALLOW=1 git push" >&2
         exit 1
     fi
 fi

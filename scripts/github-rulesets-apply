@@ -215,7 +215,7 @@ EOF
   "$SELF" rust tarotene/dotfiles > /dev/null
   expect_contains "1 rust→rust-repo-governance" "CALLED rust-repo-governance: --owner tarotene --repo dotfiles"
 
-  # 実在するリポジトリ名は使わない(publish-guard の denylist との衝突・
+  # 実在するリポジトリ名は使わない(bleep の denylist との衝突・
   # public リポジトリへの意図しない参照混入を避けるため)。
   : > "$STUB_LOG"
   "$SELF" typst tarotene/example-typst-repo > /dev/null
