@@ -21,15 +21,15 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 
 | Layer | Owns | Managed by | ADR |
 |-------|------|------------|-----|
-| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager (`flake.nix` + `home/`) | ADR-0001 (+ Amendment) |
-| **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | `apt` via `scripts/install-packages.sh` + `packages/declarative/apt-packages.txt` | ADR-0001 (+ Amendment) |
+| **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager | ADR-0001 (+ Amendment) |
+| **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | apt (`scripts/install-packages.sh`) | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
 Note on graphics: the driver stack itself is root-owned and stays in the system
 layer, but nix GUI apps cannot use it — they load **nix's own mesa** through a
-per-package `nixGL` wrapper (`home/modules/nixgl.nix`, ADR-0006), applied to
-Linux GUI packages in `home/modules/desktop.nix` and identity-scoped ones
-like `warp-terminal` (`home/identities/personal.nix`, #9).
+per-package `nixGL` wrapper (the shared wrapper module, ADR-0006), applied to
+Linux GUI packages in the desktop module and identity-scoped ones like
+`warp-terminal` (the personal identity module, #9).
 
 Note on `herdr`: not yet in the pinned stable nixpkgs channel. Comes from a
 single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
@@ -41,402 +41,62 @@ overlay was dropped once stable shipped >= 2.99.0, see #91.)
 
 ## Project Structure
 
-```
-dotfiles/
-├── flake.nix                 # inputs (nixpkgs + home-manager, pinned; nixpkgs-unstable
-│                             #   is a herdr + gh escape hatch, ADR-0001 Amendment) +
-│                             #   homeConfigurations.<hostname>
-├── flake.lock
-├── Cargo.toml, Cargo.lock    # Rust workspace for the hook/CLI migration (ADR-0024,
-│                             #   #389): crates/hook-io (shared stdin/decision/git/
-│                             #   plan/ledger I/O), crates/migration-audit (checks
-│                             #   rust-migration.toml, the migration allowlist,
-│                             #   against the tree), crates/fixture-oracle (trycmd
-│                             #   fixtures still aimed at bash originals),
-│                             #   crates/gh-edit-allow (hook: allow gh edits on this
-│                             #   session's own PRs/Issues, #392), crates/update-own-tools
-│                             #   (~/.local/bin CLI, ADR-0025); built by
-│                             #   crane in flake.nix as pkgs.dotfiles-tools.
-│                             #   How to port one: docs/rust-migration.md
-├── patches/                   # source patches applied via `overrideAttrs` in
-│                             #   flake.nix's package overlay (herdr-worktree-
-│                             #   names.patch: personal-taste worktree-naming
-│                             #   patch, drop once herdrdev/herdr#4374 lands)
-├── home/                     # home-manager modules (Identity / Instance two-layer)
-│   ├── common.nix            # shared across every host; imports all modules/
-│   ├── identities/           # identity-scoped (git identity, browser default)
-│   │   ├── personal.nix       # also home.packages for cloud-connected tools that must
-│   │   │                     #   not auto-deploy to company hosts (warp-terminal, #9)
-│   │   └── company.nix
-│   ├── hosts/                # instance-scoped; imports common + one identity + per-host signing key
-│   │   ├── personal-pop.nix
-│   │   ├── company-pop-old.nix
-│   │   └── company-pop-new.nix
-│   └── modules/              # shell, atuin, git, gpg, packages, desktop, nixgl, runtimes,
-│                             #   herdr, claude, claude-mcp-servers, worktree, quarantine,
-│                             #   hm-warnings, esa, line
-│                             #   (esa: esa.io MCP token supply, personal identity only,
-│                             #   ADR-0022 — imported from identities/personal.nix, not here;
-│                             #   line: LINE を chromium --app の独立ウィンドウとして宣言配備、
-│                             #   personal identity only — esa と同じ理由で identities/personal.nix
-│                             #   からのみ import;
-│                             #   claude-mcp-servers: reconcile 型で ~/.claude.json の
-│                             #   .mcpServers(user scope の MCP サーバー)を宣言集合に
-│                             #   一致させる口。populate は identities/personal.nix /
-│                             #   esa.nix、PR #315;
-│                             #   nixgl: shared nixGL wrapper function, ADR-0006, consumed by
-│                             #   desktop.nix and identities/personal.nix, #9;
-│                             #   quarantine: two shared options — managedFiles moves an
-│                             #   existing real file to .pre-nix before home-manager adopts
-│                             #   it, strayFiles renames an unmanaged leftover to .bak so it
-│                             #   stops competing with a managed one; neither ever deletes)
-├── config/                   # literal config files, deployed verbatim via xdg.configFile / home.file
-│   ├── zsh/                  # zsh modules (loaded in numeric order)
-│   ├── agents/                # AGENTS.md: canon for agent-agnostic global norms
-│   │                         #   (research discipline, stacked-PR/scope-inventory
-│   │                         #   principles, PR completion, rebase-not-merge,
-│   │                         #   attribution footer) — home.file-mounted at
-│   │                         #   ~/.agents/AGENTS.md, ~/.codex/AGENTS.md, and
-│   │                         #   ~/.copilot/copilot-instructions.md (ADR-0032,
-│   │                         #   same cross-tool pattern as .agents/skills/ below)
-│   ├── claude/               # CLAUDE.md: `@~/.agents/AGENTS.md` import + Claude
-│   │                         #   Code-specific gate wiring only (ADR-0032);
-│   │                         #   hooks/: plan-review gate, wrap-up inbox, plan-view,
-│   │                         #   plan-scope-gate, plan-precedent-gate,
-│   │                         #   plan-fresh-gate, pr-gate,
-│   │                         #   attribution-guard, issue-index, sign-prewarm,
-│   │                         #   git-worktree-allow, git-stash-guard,
-│   │                         #   herdr-sidebar-metadata (hook half only);
-│   │                         #   (public-publish-guard moved upstream to
-│   │                         #   tarotene/publish-guard, ADR-0009 — deployed
-│   │                         #   from a flake input, not this source tree);
-│   │                         #   assets/: non-hook files kept beside their
-│   │                         #   consumer for source-tree purity (ADR-0007) —
-│   │                         #   plan-view.css, copilot-plan-review's output
-│   │                         #   schema; statusline/: claude-statusline.sh +
-│   │                         #   claude-usage.sh (herdr tab-bar command, not a
-│   │                         #   hook) — deployed alongside hooks/ under
-│   │                         #   ~/.claude/hooks/ regardless of this split;
-│   │                         #   commands/, skills/: slash commands + skills
-│   │                         #   (also mirrored into .agents/skills/, ADR-0016)
-│   ├── git/hooks/            # core.hooksPath targets: pre-push (worktree push guard),
-│   │                         #   pre-commit (protected-branch guard, then chains to
-│   │                         #   the repo-local hook)
-│   ├── herdr/                # Herdr config.toml (theme + sidebar rows + keybindings), fully managed —
-│   │                         #   xdg.configFile deploys it verbatim (store symlink,
-│   │                         #   read-only; in-app settings writes fail by design);
-│   │                         #   oshi-marks.tsv: hololive talent name → fan-mark
-│   │                         #   emoji lookup for the $oshi sidebar token, shared
-│   │                         #   by all 3 agent metadata hooks, keyed against
-│   │                         #   patches/herdr-worktree-names.patch's talent list
-│   ├── codex/hooks/          # herdr-codex-metadata.sh: sidebar reporter for Codex CLI
-│   │                         #   panes (herdr-sidebar-metadata.md); deployed beside
-│   │                         #   herdr's own ~/.codex/ integration, not registered
-│   │                         #   through Codex's own config surface; attribution-guard.sh:
-│   │                         #   thin PreToolUse adapter that sources claude/hooks/
-│   │                         #   attribution-guard.sh's decision engine (#192)
-│   ├── copilot/              # agents/: plan-reviewer.agent.md (copilot-plan-review);
-│   │                         #   hooks/: herdr-copilot-metadata.sh, same role as
-│   │                         #   codex/hooks/ above, for Copilot CLI panes;
-│   │                         #   attribution-guard.sh: same adapter role as the
-│   │                         #   Codex one, for Copilot's preToolUse (#192)
-│   ├── github-audit/         # ADR-0020 closed vocabularies (PUBLIC repos only):
-│   │                         #   codename-registry.tsv, descriptive-species.tsv,
-│   │                         #   site-domains.tsv — deployed verbatim to
-│   │                         #   ~/.config/github-audit/; PRIVATE-repo entries
-│   │                         #   live in a *.local.tsv sibling on-disk only,
-│   │                         #   never in this tree (docs/claude/public-publish-guard.md)
-│   ├── fontconfig/conf.d/      # 75-color-emoji-fallback.conf: 端末フォント
-│   │                         #   (FiraCode Nerd Font)を明示要求したパターンに
-│   │                         #   限って Noto Color Emoji を strong binding で
-│   │                         #   追加し、絵文字をカラー字形にする(#305 系統 B、
-│   │                         #   docs/claude/herdr-sidebar-metadata.md)
-│   ├── applications/         # Alacritty.desktop: launcher entry overriding nixpkgs',
-│   │                         #   with Exec=/TryExec= pinned to the nixGL-wrapped store
-│   │                         #   path via pkgs.replaceVars (ADR-0029) — a bare Exec=
-│   │                         #   resolves against the COSMIC session's PATH, not the
-│   │                         #   one home-manager reasons about
-│   ├── shell/                # common_env (sourced by 20-environment.zsh) + profile
-│   │                         #   (deployed as ~/.profile via home.file, Linux only):
-│   │                         #   ad-hoc installer dirs (.cargo/.deno/.bun) are appended,
-│   │                         #   never prepended, so nix keeps winning (ADR-0029)
-│   ├── git/, alacritty/, sheldon/, fcitx5/, environment.d/, ...
-│   └── starship.toml
-├── packages/declarative/
-│   └── apt-packages.txt      # system-layer packages ONLY
-├── scripts/                  # mix of home-manager-deployed user-environment tools
-│   │                         #   (hms, git-shelve/unshelve,
-│   │                         #   git-prune-branches, git-audit/prune-worktrees,
-│   │                         #   git-worktree-create-guard, claude-plan-model,
-│   │                         #   esa-mcp-launcher)
-│   │                         #   and true escape-hatch /
-│   │                         #   diagnostic scripts (install-packages,
-│   │                         #   install-falcon-sensor, fix-ssh-permissions)
-│   │                         #   — not escape-hatch-only
-│   │                         #   (SOPS runtime secrets loader retired,
-│   │                         #   ADR-0010 — no consumer had survived it)
-│   ├── hms.sh                # canonical apply wrapper (deployed to ~/.local/bin/hms):
-│   │                         #   switch + daemon-reload + fcitx5 restart + verification
-│   ├── install-packages.sh   # thin system-layer apt installer (#216)
-│   ├── install-falcon-sensor.sh # company EDR agent installer; FALCON_CID is
-│   │                         #   prompted interactively at install time, not
-│   │                         #   read from SOPS (ADR-0010)
-│   ├── fix-ssh-permissions.sh
-│   ├── detach-open.sh        # deployed as ~/.local/bin/open AND ~/.local/bin/xdg-open
-│   │                         #   (shadows the system xdg-open, which blocks in the
-│   │                         #   foreground on COSMIC), and as the $BROWSER target
-│   ├── git-shelve             # worktree-tagged `git stash push` wrapper
-│   │                         #   (deployed to ~/.local/bin/git-shelve, called as
-│   │                         #   `git shelve` via git's subcommand resolution)
-│   ├── git-unshelve           # resolves + applies + drops this worktree's own
-│   │                         #   shelve entry (SHA-based, TOCTOU-safe drop)
-│   ├── git-prune-branches     # deletes local branches whose upstream is [gone]
-│   │                         #   (deployed to ~/.local/bin, called as `git prune-branches`)
-│   ├── git-audit-worktrees    # detects (never deletes) stale herdr worktree
-│   │                         #   registrations, both classes (prunable + orphaned)
-│   │                         #   (deployed to ~/.local/bin + a systemd user timer)
-│   ├── git-prune-worktrees    # removes what git-audit-worktrees detects, both
-│   │                         #   classes — prunable registrations (git worktree
-│   │                         #   prune --expire=now) and orphaned checkouts
-│   │                         #   (git worktree remove, --force optional)
-│   │                         #   (deployed to ~/.local/bin, called as `git prune-worktrees`)
-│   ├── git-checkout-freshness # fetch + ff-only merge one or more parent
-│   │                         #   checkouts onto origin/<base> when clean
-│   │                         #   and on the default branch (deployed to
-│   │                         #   ~/.local/bin + a systemd user timer, #78)
-│   ├── github-audit           # read-only cross-repository GitHub audit,
-│   │                         #   unified across 6 domains — rulesets (#130) /
-│   │                         #   charters / naming (ADR-0014) / settings /
-│   │                         #   renovate (ADR-0015) / titles (ADR-0031;
-│   │                         #   deployed to ~/.local/bin, manual command,
-│   │                         #   no timer)
-│   ├── github-rulesets-apply  # seeds standard rulesets via the governance
-│   │                         #   skills' apply-rulesets.sh (#153; deployed
-│   │                         #   to ~/.local/bin, manual command)
-│   ├── claude-plan-model      # cycles Opus Plan Mode's (plan side, execution
-│   │                         #   side) pair — fable/sonnet, opus/sonnet,
-│   │                         #   fable/opus — and re-resolves the concrete
-│   │                         #   model IDs from the installed claude binary's
-│   │                         #   baked catalog (deployed to ~/.local/bin; the
-│   │                         #   `sync` subcommand runs from home-manager
-│   │                         #   activation, `--selftest` from CI)
-│   ├── git-worktree-create-guard # PreToolUse guard helper for `git worktree add`
-│   │                         #   (deployed to ~/.local/libexec, not ~/.local/bin)
-│   ├── esa-mcp-launcher       # decrypts ~/.config/esa/token.gpg and execs the
-│   │                         #   esa.io MCP server (deployed to ~/.local/libexec,
-│   │                         #   personal identity only, ADR-0022)
-│   ├── gpg-subkey             # generate/rotate/export/sync/status/remind
-│   │                         #   subcommands for [S]/[E] subkey management
-│   │                         #   (deployed to ~/.local/bin, ADR-0003 Amendment)
-│   ├── writing-style-hub      # resolves the private style-guide hub's path
-│   │                         #   via marker file / env var indirection, for
-│   │                         #   the writing-style skill (deployed to
-│   │                         #   ~/.local/bin, --selftest from CI, #115)
-│   ├── register-codex-hooks   # activation-only (writeShellScript, not a
-│   │                         #   deployed file): idempotent variadic merger for
-│   │                         #   ~/.codex/hooks.json — worktree.nix registers the
-│   │                         #   worktree guard/context hooks, herdr.nix registers
-│   │                         #   the sidebar-metadata reporter, in one shared file
-│   ├── register-copilot-hooks # activation-only (writeShellScript, not a
-│   │                         #   deployed file): idempotent variadic merger for
-│   │                         #   ~/.copilot/settings.json's native "hooks" object
-│   │                         #   (herdr.nix registers the sidebar-metadata reporter)
-│   └── fcitx5-key-trace.pl   # fcitx5 trace redactor + trigger-key detector (#14)
-├── keys/                     # committed public keys (non-secret), imported at activation
-├── bootstrap.sh              # greenfield: Nix install → apt → home-manager switch
-├── docs/
-│   ├── README.md             # index of everything below, by category
-│   ├── adr/0001..0017        # architecture decision records
-│   ├── setup.md              # step-by-step host setup guide
-│   ├── operations.md         # the canonical apply (hms) + routine flake update + tool-layer decision flow
-│   ├── cutover-runbook.md    # per-host migration procedure
-│   ├── git-sync.md           # machine-wide git config + hooks guarding herdr's parallel worktrees
-│   ├── ime-chrome-diagnosis.md  # fcitx5 trigger-key investigation record (#14)
-│   ├── worktree-lifecycle.md # herdr worktree create/prune lifecycle across scripts/hooks
-│   ├── github-audit.md       # unified 6-domain audit (ADR-0015): rulesets
-│   │                         #   rule-type-union judgement, charters schema/
-│   │                         #   routing (ADR-0016), naming class pattern
-│   │                         #   (ADR-0014), settings, renovate, titles
-│   │                         #   (ADR-0031) — why one command instead of
-│   │                         #   6 sibling scripts, why judgement skips
-│   │                         #   any LLM call
-│   ├── repo-lifecycle.md     # visibility/license policy, Maintain/Archive/
-│   │                         #   Delete triage criteria, deprecate-then-archive
-│   │                         #   checklist, theme-monorepo consolidation
-│   │                         #   (snapshot+PROVENANCE) — migrated from a
-│   │                         #   private portfolio-management repo (ADR-0023);
-│   │                         #   lifecycle layer, distinct from github-audit's
-│   │                         #   drift layer
-│   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
-│   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
-│   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
-│   │   ├── gh-edit-allow.md      # Pre/PostToolUse hook (Rust): allow gh pr|issue edit / issue
-│   │   │                     #   create only on this session's own PRs/Issues (session ledger, #392)
-│   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
-│   │   ├── attribution-guard.md  # PreToolUse hook: deny a gh pr|issue
-│   │   │                     #   create|edit|comment / gh pr review whose body
-│   │   │                     #   has no attribution footer (escape hatch:
-│   │   │                     #   `No-Attribution: <reason>`); decision engine
-│   │   │                     #   shared across Claude Code / Codex CLI / Copilot
-│   │   │                     #   CLI via thin per-agent adapters (#192)
-│   │   ├── public-publish-guard.md # PreToolUse hook: deny/ask on git push /
-│   │   │                     #   gh pr|issue create|edit|comment/MCP GitHub
-│   │   │                     #   tool calls that would leak a company/private
-│   │   │                     #   repo name (#130 era incident) — design now
-│   │   │                     #   lives upstream in tarotene/publish-guard
-│   │   │                     #   (ADR-0009); this doc covers dotfiles wiring only
-│   │   ├── worktree-fresh-base.md # SessionStart hook: silently fast-forward a
-│   │   │                     #   pristine worktree to origin/<base>
-│   │   ├── git-checkout-freshness.md # systemd user timer: fast-forward a
-│   │   │                     #   parent checkout to origin/<base> on a
-│   │   │                     #   10-minute interval (one level up from
-│   │   │                     #   worktree-fresh-base.md, #78)
-│   │   ├── plan-fresh-gate.md    # PreToolUse/ExitPlanMode hook: ff-only when
-│   │   │                     #   pristine, deny when origin/<base>'s progress
-│   │   │                     #   intersects plan-referenced files, converges
-│   │   │                     #   via a denied-SHA session state
-│   │   ├── issue-index.md        # SessionStart hook: inject an Issue index, not a full crawl
-│   │   ├── pr-gate.md            # Stop hook: PR completion barrier (CI/push/issue-link/visual-evidence)
-│   │   ├── pr-description.md     # PR body skeleton + mandatory Before/After
-│   │   │                     #   visual evidence (gate: G_visual, skill: pr-description)
-│   │   ├── sign-prewarm.md       # SessionStart hook: pre-warm the git-signing
-│   │   │                     #   [S] AND esa MCP token.gpg [E] passphrase
-│   │   │                     #   caches (#252) — independent gpg-agent cache
-│   │   │                     #   entries, warmed independently
-│   │   ├── plan-view.md          # /plan-view: render the in-progress plan to HTML in Chrome
-│   │   ├── wrapup-inbox.md       # Stop hook: out-of-scope findings → issue-filing inbox
-│   │   ├── wrapup-chores.md      # skill: triage the wrap-up inbox into one batch chores PR
-│   │   ├── herdr-sidebar-metadata.md # Herdr sidebar: per-agent mode/model/branch
-│   │   │                     #   via pane metadata (Claude full, Codex/Copilot
-│   │   │                     #   branch+model only; tab-bar usage deferred, #117)
-│   │   ├── claude-permissions.md # permissions.allow: declarative, idempotent jq merge like registerHooks
-│   │   ├── esa-mcp.md         # esa.io MCP サーバのトークン供給: ホストローカル
-│   │   │                     #   GPG 暗号化ファイル + 専用 launcher +
-│   │   │                     #   ~/.claude.json への宣言的 merge(personal
-│   │   │                     #   identity 層限定、ADR-0022)
-│   │   ├── writing-style.md      # skill: 執筆規約への薄いポインタ。ハブの
-│   │   │                     #   絶対パスはマーカーファイル/環境変数で間接
-│   │   │                     #   参照し、無ければ明示的に失敗する(#115)
-│   │   ├── opusplan-model-aliases.md # Opus Plan Mode はエイリアスのペア:
-│   │   │                     #   opus/sonnet の 2 本を乗っ取り、モードを
-│   │   │                     #   (Plan 側, 実行側) のペア 3 種として
-│   │   │                     #   claude-plan-model で巡回する
-│   │   │                     #   (モード=実行時状態 / 具体 ID=宣言が毎回引き直し)
-│   │   ├── claude-usage.md   # Herdr tab bar: 5h/weekly rate-limit usage +
-│   │   │                     #   pace-at-reset projection, from the undocumented /usage API
-│   │   ├── global-claude-md.md   # global ~/.claude/CLAUDE.md: injects research
-│   │   │                     #   discipline into every session
-│   │   ├── diagramming.md        # skill: diagramming (SKILL.md + cases.md)
-│   │   ├── living-description.md # skill: treat Issue/PR body as living source of
-│   │   │                     #   truth, not an at-filing-time snapshot
-│   │   ├── skill-gardening.md    # skill: crystallize session learnings into this
-│   │   │                     #   repo (meta-skill)
-│   │   ├── test-grounding.md     # skill: ground verification items in facts before
-│   │   │                     #   writing test procedures
-│   │   ├── scope-inventory.md    # global CLAUDE.md rule + skill: enumerate every
-│   │   │                     #   requirement item before planning so none is
-│   │   │                     #   silently dropped; gate: plan-scope-gate.sh
-│   │   ├── precedent-grounding.md # global CLAUDE.md rule + skill: for every
-│   │   │                     #   non-obvious design decision in a Plan, cite
-│   │   │                     #   the prior art it follows or deviates from
-│   │   │                     #   (`## 先行例との対比`, ADR-0012 — replaces
-│   │   │                     #   asking for "adversarial review" per prompt);
-│   │   │                     #   critic: copilot-plan-review lens A, gate:
-│   │   │                     #   plan-precedent-gate.sh
-│   │   ├── repo-charter.md       # skill: README/CONTRIBUTING charter schema
-│   │   │                     #   (purpose sentence / Scope / CONTRIBUTING
-│   │   │                     #   Issues section / naming class / topics),
-│   │   │                     #   ADR-0013 + ADR-0016 + ADR-0017
-│   │   └── github-audit-triage.md # skill: monitor-driven bulk remediation
-│   │                         #   across repositories (ADR-0015 LLM node);
-│   │                         #   absorbed charter-sweep (#180)
-│   ├── falcon-sensor.md      # EDR agent notes
-│   └── nixification-roadmap.md
-└── .github/workflows/        # nix.yml (flake check + per-host build) + ci.yml (slim shellcheck)
-```
+Top-level layout, roughly: the flake + home-manager modules (the source of
+truth), literal config deployed verbatim, escape-hatch and home-manager-
+deployed scripts, the apt package list, architecture/operating docs,
+source patches applied via the flake's package overlay, committed public
+keys, and the greenfield installer. Browse the tree directly (GitHub's
+file view, or a local checkout) for the full breakdown — see
+[the docs index](docs/README.md) for a curated, by-category list of the
+design-rationale docs.
 
 ## Architecture Decision Records
 
-- **ADR-0001** — home-manager is the source of truth; apt + per-project runtimes are escape hatches.
-- **ADR-0002** — runtime consolidation (Java/Go → mise; rustup/uv kept) + hybrid config translation.
-- **ADR-0003** — secrets & identity: YubiKey-rooted key model. **See the Amendments** for the deployed model ([S] *and* [E] subkeys on-disk per-machine as of Amendment 4/#252 — the card-backed originals are kept live as a fallback, never revoked; two identities; host-local `.sops.yaml`; migration ⊆ rotation). The runtime-decrypted-SOPS Decision item is superseded by **ADR-0010** (retired — no consumer survived a re-audit).
-- **ADR-0004** — repo identity & relocation (keep the `dotfiles` name; publish to public `tarotene/dotfiles` via clean orphan history; no semver releases).
-- **ADR-0005** — shell-extension init gates on binary existence, never on auth credentials.
-- **ADR-0006** — nix GUI apps carry their own GL stack: `/run/opengl-driver` is NixOS-only and the system mesa cannot be loaded into a nix process, so GL-using GUI packages are wrapped per-package with `nixGL` (nix's mesa). The system graphics stack stays untouched in apt.
-- **ADR-0007** — naming & layout conventions: extension policy (drop `.sh` from the deployed name for PATH-resolved executables), shebang policy, hook-role vocabulary (`-guard`/`-gate`/`-allow`/no suffix, new hooks only), `config/claude/hooks/` source-tree purity, docs-correspondence principle, and `_DIR` env-var suffixing. No retroactive bulk rename of existing files.
-- **ADR-0008** — documentation artifact selection: a new decision or piece of research goes to (1) an investigation record if it decays over time (external preview status, tool version, open-issue counts), (2) an ADR if it is a single significant decision (Nygard's five areas), even at single-developer scope, (3) `docs/claude/<name>.md` if it is the living design rationale for one hook/skill/tool, or (4) existing docs otherwise. ADRs stay immutable; link out to decaying facts rather than embedding them.
-- **ADR-0009** — public-publish-guard's upstream split: the guard is now maintained in a separate public repo (`tarotene/publish-guard`), consumed here as a pinned flake input, because this repo's "No semver releases" policy and orphan-history rewrites (ADR-0004) are structurally incompatible with plugin-distribution commit-SHA/tag pinning.
-- **ADR-0010** — retirement of the SOPS runtime secrets channel (the shell-startup GPG PIN prompt): a consumer audit found every secret it decrypted had already migrated away or gone unused, so the loader, wrapper, setup script, and home-manager wiring are removed entirely. Supersedes the runtime-SOPS Decision item of ADR-0003.
-- **ADR-0011** — local activity log capture: atuin (offline-only, no sync/update-check) plus a Claude Code turn-boundary JSONL log (`agent-events.jsonl`), both write-only capture points whose path/field contract a separate downstream repository depends on.
-- **ADR-0012** — precedent grounding over prompted adversarial review: instead of turning the user's per-prompt "run an adversarial review" / "check the literature" requests into an abstract standing CLAUDE.md instruction (which a literature survey found does not improve design/reasoning tasks), each non-obvious design decision in a Plan is grounded against prior art in the plan body itself; a context-isolated critic (copilot-plan-review's lens A) audits the citations, and a deterministic gate (`plan-precedent-gate.sh`) enforces the section's form.
-- **ADR-0013** — README charter schema enforced across every self-authored repository: a purpose sentence (mirrored verbatim by the GitHub description), `## Scope`, `## Issue litmus` (judging question + accepted/rejected examples), and at least one topic — enforced at creation time by the `repo-charter` skill and audited after the fact by `github-audit charters`, deliberately without any LLM call. The README schema itself is partially superseded by ADR-0016; the Issue litmus item is partially superseded by ADR-0017 (moved to CONTRIBUTING.md's `## Issues` section, "Issue litmus" vocabulary retired).
-- **ADR-0014** — repository naming class taxonomy (codename / descriptive / pj / site), authoritative record in GitHub topics; format match is machine-judged, class assignment is a human decision surfaced through `github-audit-triage`. Decision 1 (the four-class taxonomy) is superseded by ADR-0026 (splits codename, adds an orthogonal lifecycle axis); the rest of this ADR stands.
-- **ADR-0015** — diagnostics unified into the `github-audit` CLI, structured as a deterministic node (audit) plus an LLM node (`github-audit-triage`) triage loop; retires charter-sweep's auto-merge behavior in favor of a PR-only completion definition.
-- **ADR-0016** — repository document canon: fixed README section schema, Issue litmus moved to CONTRIBUTING.md, a closed root-file allowlist, per-file language-mixing ban, and full separation of human-facing docs from AI-facing docs (AGENTS.md as the AI canon, CLAUDE.md as a router, skills routed through `.agents/skills/`) — grounded in standard-readme, GitHub's own docs, and Art of README. Partially supersedes ADR-0013's README schema and AGENTS.md treatment. This file is a direct consequence of that ADR's Decision 5. Decision 2 (Issue litmus placement) is partially superseded by ADR-0017.
-- **ADR-0017** — CONTRIBUTING.md gets its own fixed section schema (`## Issues` with a judging question + Accepted/Rejected examples, `## Pull requests`, `## Expectations`), retiring the self-invented "Issue litmus" vocabulary in favor of GitHub's own "Issues" terminology. Grounded in GitHub's own docs, Open Source Guides, and the nayafia/contributing-template precedent. Partially supersedes ADR-0013 Decision 1's Issue litmus item and ADR-0016 Decision 2.
-- **ADR-0018** — the first darwin host (altair) extends standalone home-manager as-is; the macOS system layer is Homebrew Bundle (a Brewfile, apt's symmetric counterpart) rather than nix-darwin. Linux-only modules branch on isLinux/isDarwin internally instead of being split into separate files.
-- **ADR-0019** — new hosts are named with star codenames (no role/identity/generation embedded in the name); the logical hostname resolves via a marker file first, falling back to `hostname`. Renaming the existing three hosts is tracked separately (#214).
-- **ADR-0020** — repository governance flips from event-driven event detection to a generative one: each naming class draws its variable slot from a closed vocabulary (a codename cast registry, a descriptive-species set, a site-domain set) instead of being validated after free-form creation; `required_status_checks` is derived from CI presence but never silently excused (`ci-absent` keeps a CI-less repository visible for triage); existing repositories are grandfathered by `createdAt` (no retroactive rename, ADR-0007 precedent); and naming/purpose-sentence drift is checked by blind re-derivation (derive a name/purpose from the repository's contents with the real one hidden, then compare) instead of by accumulating more inspection rules per incident. Partially supersedes ADR-0014 (adds the closed vocabularies on top of its four-class taxonomy).
-- **ADR-0021** — `github-audit`'s ruleset baseline splits into a core layer (always required) and a review layer (Copilot code review + required conversation resolution, opt-in addin). Uses presence-detection rather than a phase-declaration ledger, so early-development repos are not forced into review round-trips. Partially amends ADR-0015's rulesets-domain baseline.
-- **ADR-0022** — esa.io MCP token supply moves from a broken-supplier private repository (SOPS + direnv, a container for effectively one secret) to a host-local plain GPG-encrypted file + a dedicated launcher + declarative merge into `~/.claude.json`. That private repository is archived. First real application of ADR-0010's "re-choose the supply channel each time" — the sole sops consumer's disappearance also removes the `sops` package.
-- **ADR-0023** — repository lifecycle governance (visibility/license policy, Maintain/Archive/Delete triage criteria, deprecate-then-archive checklist, theme-monorepo consolidation via snapshot+PROVENANCE) is migrated from a private portfolio-management repository into `docs/repo-lifecycle.md`, distinct from `github-audit`'s drift layer. The source private repository is archived once the migration is verified.
-- **ADR-0024** — hook/CLI スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。bash 続投(writeShellApplication)は closure 固定は解けても保守性・表現力の主因を解決せず、Deno + TypeScript は closure 固定手法(deno2nix)がアーカイブ済みで must 制約未達のため不採用。`git-stash-guard.sh` の実移植 PoC で Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・`cargo test` 移行を実測。一括移行はせず後続 Issue に段階分割する(#389)。調査記録: `docs/shell-successor-research.md`。Amendment 2(#391)で優先順位の前段に「共通クレート(`crates/hook-io`)先行」を加え、workspace members 分割 + crane + fixture 4 段の移植方法論を確定(`docs/rust-migration.md`)。
-- **ADR-0025** — 自作・タグ付きリリース未達の pre-release CLI(実例: `tarotene/telepath`)の導入を、ホストローカルレジストリファイルによる opt-in 方式で実現する決定。dotfiles 側はスクリプトとスキーマのみ提供し、対象リポの名前は git 管理外のホストローカル設定ファイルにのみ記録する。対象リポ自体には一切触れない — 当初検討したマーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped exception。先行例: ADR-0020 の `*.local.tsv` パターン、ADR-0022 のホストローカル GPG ファイル。
-- **ADR-0026** — 命名クラス体系(ADR-0014)を改訂する決定。`naming-codename` を「無意味な恣意的ラベル(ADR-0020 の閉語彙を継続適用)」の `naming-codename` と「著者固有の命名形態論に基づく造語(閉語彙なし)」の `naming-coined` に分割し、5 クラス体制にする。加えて `lifecycle-timeboxed`(外部成果物を持つ時限プロジェクト)/ `lifecycle-study`(研究・学習記録、完了・進行中いずれも可)という、`naming-*` とは独立に併用できるライフサイクル軸を新設する。完了済み研究アーカイブが `naming-descriptive` の受けに事後的に流れていた問題と、`naming-codename` が意味的に異質な命名を混在させていた問題を、別々の直交する軸として解決する。ADR-0014 Decision 1 を supersede。
-- **ADR-0027** — セッション内 PR は依存関係を予測せず常時作成順の単一チェーン(stacked PR)に積む決定(uncertainty-first stacking)。機能的な依存関係とコード競合ベースの依存関係は別物で、後者は実際に PR を作るまで予測できない — 判定に依存予測を使うと、その予測がセッション内で系統的に外れ、base 宣言と実体(物理的な直列ブランチ)が不整合になる(汚染 diff・orphan PR)。離脱は閉じたタグ `Independent-PR: <理由>` を書いたときだけ成立する。
-- **ADR-0028** — README banner と第三者素材(repo ライセンスと異なる素材)の同梱規則を定める決定。ADR-0016 の README 固定スキーマ・ルート文書 allowlist を部分的に拡張し、画像アセットの置き場所・banner の位置・帰属注記の書式・素材の利用点数管理を規定する。
-- **ADR-0029** — PATH の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、ユーザレベルの prepend は構造的に必ず nix を追い越す — 実際 `~/.profile` の `. "$HOME/.cargo/env"` が `~/.cargo/bin` を先頭に置き、宣言済みの alacritty 0.17.0-nixgl に代わって cargo 版 0.15.1 が起動し続けていた(shadow は計 10 件 + `deno`)。順序を `.local/bin` → nix → system → ad-hoc installer dirs に規定し、ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager 管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
-- **ADR-0030** — GAS/clasp 基盤の配置決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ(セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には置かない。
-- **ADR-0031** — PR タイトルを commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが `main` の commit subject になる唯一のテキストであり、non-conventional な commit が `main` に混入する経路をこの 1 点に絞って client guard(PreToolUse deny)・server required check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。文法は Conventional Commits + Angular 慣行の 11 type 閉集合。Issue タイトル・ブランチ上の commit メッセージは対象外(squash で破棄される/「変更」でなく「状態」を記述する別ジャンルのため)。
-- **ADR-0032** — グローバル agent 指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)とする決定。`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・`~/.copilot/copilot-instructions.md` の 3 箇所に同一ソースを home.file マウントし、`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ単位 AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの — これまでグローバル指示は比較対象(Codex/Copilot 側のグローバル指示ファイル)が存在しなかったため Claude 専用のまま定着していたが、hook 層は attribution-guard(#192)・pr-title-guard(ADR-0031)で既にクロスツール共有 + per-agent adapter の型を確立しており、指示ファイル層だけがこの型に倣っていなかった非対称を解消する。
-- **ADR-0034** — 私的な machine-state 実値(実 bucket 名・GCP プロジェクト ID・PRIVATE リポ名・所有ドメイン等)は、外側の private wrapper flake に置く決定。dotfiles は `lib.mkHome` を export し、private wrapper flake がそれを呼んで自分の `homeConfigurations` を再定義する。依存の向きは常にこの1本 — dotfiles は private リポを flake input に取らない(`flake.lock` が input 名を平文で記録するため物理的に不可能)。所在は `scripts/hms.sh` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照し、本リポのソースには private wrapper flake の名前・パスを一切書かない。境界述語は「規則・スキーマは public、実値は private」— ADR-0025 の「存在すら書かない」対象は無条件でこれより優先し、既存の公開露出(`keys/*.pub`・実ホスト名・`oshi-marks.tsv` 等)は ADR-0007 に従い grandfather する。
-- **ADR-0033** — 導線文書(README/AGENTS.md 等)は実体を複製しない決定(nav-doc no-materialisation)。ディレクトリ構成図・コンテンツ一覧・他ファイルの中身の転記といった「実体が他所にある情報」の複製を禁じ、参照(リンク・パス言及)に置き換える。ADR-0016 Decision 5 の適用範囲を「導線文書同士の複製」から「導線文書が実体を複製すること」全般へ拡張する。
-- **ADR-0035** — 技術・仕組みの選択を 3 軸(宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式順序に接地させる決定(selection-grounding)。自己申告の「クリーンかつ先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と件の private リポジトリの決定履歴の横断調査から導いた。
-- **ADR-380** — ADR 番号をローカル連番でなく導入 PR の番号にする決定。ADR-0020→0021・ADR-0033 二重の 2 度の採番衝突を受け、連番という「分散システムに置かれた中央アロケータ」を無くす。`n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、CI required check が呼ぶ。ADR-0008 を amend する。
-- **ADR-387** — `wrapup-chores` スキルを裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由から外す。検査器は新設せず `plan-scope-gate.sh` を再利用し、大物も裁定対象にして選ばれたものは ADR-0027 の stacked PR の段として受ける。
-- **ADR-396** — 決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する決定(decision-colocation)。「後続 Issue への実装分離」を機械的に成立不能にする — repo 内の実測で ADR 27 本中 12 本が docs-only、うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは「非 `.md` かつ `docs/` 配下でない」の 2 述語のみ。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格側に倒して検算)。判定エンジンは `scripts/decision-colocation-check`(CI required check + client guard が共有)。`gh pr create` 後に番号を導入 PR の番号へ改番する(ADR-380)。
+Full list with one-line summaries: [`docs/README.md`](docs/README.md#architecture-decision-records)
+(kept as the single index — do not duplicate it here, ADR-0033). Browse
+`docs/adr/` directly for the full text of any decision.
 
 ## Development Rules
 
-### Nix modules (`home/`)
-- Modules are the source of truth. A host module imports `home/common.nix` plus
-  exactly one identity module; `common.nix` imports everything under `modules/`.
-- `homeConfigurations.<hostname>` in `flake.nix` is keyed by hostname so
+### Nix modules
+- Modules are the source of truth. A host module imports the shared module
+  plus exactly one identity module; the shared module imports everything
+  under the per-topic modules directory.
+- `homeConfigurations.<hostname>` in the flake is keyed by hostname so
   `home-manager switch --flake .#"$(hostname)"` auto-selects per machine.
 - Identity-scoped values (git `user.name`/`email`, browser default) go in
-  `identities/`; per-machine values (signing key bound to the host's YubiKey/[S]
-  subkey) go in `hosts/`.
-- Format with `nix fmt` (nixfmt-tree — a treefmt wrapper that feeds nixfmt only
-  the `*.nix` files, so no arguments are needed).
+  the identities directory; per-machine values (signing key bound to the
+  host's YubiKey/[S] subkey) go in the hosts directory.
+- Format with `nix fmt` (nixfmt-tree — a treefmt wrapper that feeds nixfmt
+  every Nix file, so no arguments are needed).
 
 ### Private machine-state values vs. public rules (ADR-0034)
 - This repo is PUBLIC. Write the **rule, schema, or derivation procedure** for
   a machine-state decision here, with a placeholder standing in for any real
-  value (`docs/personal-cloud-projects.md`'s `<tool>`/`<github-username>`,
-  `docs/operations.md`'s `s3:<B2 endpoint>/<bucket>/<prefix>`). Do **not**
+  value (see the operations doc's B2 endpoint example). Do **not**
   write the value itself — a real bucket name, GCP project ID, Healthchecks
   ping URL, backup-identity UUID, PRIVATE repository name, owned domain, or a
   private wrapper flake's own path/name — anywhere in this repo's source,
   Issues, or PRs. Those go in the private wrapper flake instead (ADR-0034);
   this repo never takes that flake as an input (`flake.lock` would record its
   `{owner, repo}` in the clear) and never names it — resolve it only through
-  the `~/.config/dotfiles/private-hub` marker (see `scripts/hms.sh`).
+  the private-hub marker (see the `hms` apply wrapper's resolver).
 - ADR-0025's "don't write the target's existence at all" class (pre-release
-  tool names bound for `update-own-tools`) overrides everything else in this
-  section unconditionally — no placeholder, no schema entry, nothing.
+  tool names bound for the update-own-tools registry) overrides everything
+  else in this section unconditionally — no placeholder, no schema entry,
+  nothing.
 - Grandfathered exceptions (ADR-0007 precedent — no retroactive bulk fix):
-  `keys/*.pub`, `home/identities/company.nix`'s work email, the three Linux
-  hosts' literal hostnames, `config/herdr/oshi-marks.tsv`. Do not use these
-  as precedent for adding new real values elsewhere.
+  the committed public keys, the company identity module's work email, the
+  three Linux hosts' literal hostnames, the herdr sidebar's fan-mark lookup
+  table. Do not use these as precedent for adding new real values elsewhere.
 
 ### Hybrid translation (ADR-0002)
 - **Keep working config files literal** and deploy them via `xdg.configFile` /
-  `home.file` (the `config/zsh/modules/*.zsh`, `starship.toml`, `alacritty.toml`,
-  `sheldon/plugins.toml`, ...). Do not rewrite battle-tested config into Nix DSL
-  wholesale.
+  `home.file` (the zsh modules, starship, alacritty, sheldon configs, ...).
+  Do not rewrite battle-tested config into Nix DSL wholesale.
 - **Use Nix DSL only where interpolation pays** — per-host/identity values, or
   where a `programs.*` module removes real boilerplate.
-- Track literal configs worth nixifying later in `docs/nixification-roadmap.md`.
+- Track literal configs worth nixifying later in the nixification roadmap doc.
 
 ### Shell-extension init (ADR-0005)
 - `eval "$(tool init …)"` / `source <(tool …)` MUST gate only on binary
@@ -445,16 +105,16 @@ dotfiles/
   token-gated loader breaks in the token-less home-manager session.
 
 ### Git sync guards (herdr's parallel worktrees)
-- `home/modules/git.nix` sets `pull.ff=only` / `fetch.prune` / `push.autoSetupRemote` /
+- The git module sets `pull.ff=only` / `fetch.prune` / `push.autoSetupRemote` /
   `rerere.enabled` / `merge.conflictStyle=zdiff3` machine-wide — herdr creates a
   worktree from the parent checkout's HEAD without fetching or setting an upstream.
-- `config/git/hooks/pre-commit` blocks a direct commit on `main`/`master`.
+- The repo-local `pre-commit` git hook blocks a direct commit on `main`/`master`.
   Bypass with `GIT_ALLOW_MAIN_COMMIT=1`, **not** `--no-verify` — `--no-verify`
   would also skip the chained repo-local pre-commit (other repos' ruff/mypy).
-- `git prune-branches` (`scripts/git-prune-branches`, deployed to `~/.local/bin`
-  and resolved via git's `git-<subcommand>` mechanism, no alias) deletes
-  local branches whose upstream is `[gone]`, after listing them and asking once.
-  Full rationale: `docs/git-sync.md`.
+- `git prune-branches` (deployed to the user's local bin directory, resolved
+  via git's `git-<subcommand>` mechanism, no alias) deletes local branches
+  whose upstream is `[gone]`, after listing them and asking once. Full
+  rationale: the git-sync operations doc.
 
 ### Escape-hatch scripts
 - Keep the surviving scripts small and POSIX/bash-lint clean (shellcheck
@@ -463,13 +123,13 @@ dotfiles/
   belong in `home/modules/packages.nix`, not apt.
 
 ### CI (nix-centric)
-- `nix.yml` runs `nix flake check` + a per-host activation build matrix, plus
-  a `rust` job: crane package/clippy/rustfmt checks and `nix develop --command
-  cargo test --workspace` (fixture oracles + the `rust-migration.toml` audit).
-- `ci.yml` is a slim shell pass: shellcheck the surviving scripts, `bootstrap.sh`
-  + `install-packages.sh` `--dry-run`, a zsh module syntax check, every
-  script's `--selftest` (a guard step fails when one exists but ci.yml never
-  runs it, #390), and a full-history gitleaks scan against `.gitleaks.toml`.
+- The nix workflow runs `nix flake check` + a per-host activation build
+  matrix, plus a rust job: crane package/clippy/rustfmt checks and
+  `cargo test --workspace` (fixture oracles + the migration-allowlist audit,
+  ADR-0024/#389).
+- The general CI workflow is a slim shell pass: shellcheck the surviving
+  scripts, the installer scripts' `--dry-run` paths, a zsh module syntax
+  check, every script's `--selftest`, and a full-history gitleaks scan.
 
 ### Scope inventory (Claude Code only)
 - A request with multiple items (a Tracking Issue with sub-issues, a bulleted
@@ -504,11 +164,12 @@ dotfiles/
   `` `Closes #1` `` and anything inside ``` fences, so a quoted example does not
   link anything — and the gate deliberately reads the body the same way GitHub
   does.
-- The `G_link` judgement in `config/claude/hooks/pr-gate.sh` blocks the Stop hook
-  when neither is present. Rationale: `docs/claude/pr-gate.md`.
+- The `G_link` judgement in the PR-completion Stop hook blocks the Stop hook
+  when neither is present. Rationale: the hook's design doc under
+  `docs/claude/`.
 - Closing keywords only fire when the PR targets the **default branch**. On a
   stacked PR the gate says so, but it will not stop you — carry the keyword on
-  the stage that actually closes that issue (`stacked-pr` skill, §6): each
+  the stage that actually closes that issue (the `stacked-pr` skill, §6): each
   stage's `Closes #N` / `No-Issue:` line reflects what *that stage* completes,
   not the stack as a whole. GitHub auto-retargets a stage's base to the
   default branch once the stage below it merges, so a stage's own keyword
@@ -517,11 +178,11 @@ dotfiles/
 - **Dependent PRs go into a stacked PR**, not parallel PRs off `main`: when a
   later change references an earlier PR's output, or edits the same section
   of the same file, base it on the parent branch instead. Full rationale +
-  how-to: `docs/claude/stacked-pr.md`, skill: `config/claude/skills/stacked-pr/`.
+  how-to: the `stacked-pr` skill's design doc and the skill itself.
   A `Stack: <n>/<total> (base: #<parent>)` line goes next to `Closes #N` /
-  `No-Issue:` when stacking; `pr-gate.sh` does not check it.
-- Every PR body follows a 5-section skeleton (full rationale + how-to:
-  `docs/claude/pr-description.md`, skill: `config/claude/skills/pr-description/`):
+  `No-Issue:` when stacking; the PR-completion gate does not check it.
+- Every PR body follows a 5-section skeleton (full rationale + how-to: the
+  `pr-description` skill's design doc and the skill itself):
   ```
   Closes #N / No-Issue: <reason>
 
@@ -532,12 +193,12 @@ dotfiles/
   ## 要確認   (omit the whole section if there is nothing)
   ```
 - `## Before / After` needs one of: an uploaded image (`gh pr create|edit
-  --attach './after.png#Alt'`, gh >= 2.99.0), a fenced code block under that
-  heading for text-only diffs, or `No-Visual: <reason>` when the change has no
-  visible effect (GUI/Web **and** terminal/TUI appearance both count as
-  visible). The `G_visual` judgement in `pr-gate.sh` blocks the Stop hook when
-  none of the three is present — it rides the same terminal block as `G_link`,
-  so both body fixes cost one round trip.
+  --attach` with an alt-text-tagged path, gh >= 2.99.0), a fenced code block
+  under that heading for text-only diffs, or `No-Visual: <reason>` when the
+  change has no visible effect (GUI/Web **and** terminal/TUI appearance both
+  count as visible). The `G_visual` judgement in the same PR-completion gate
+  blocks the Stop hook when none of the three is present — it rides the same
+  terminal block as `G_link`, so both body fixes cost one round trip.
 
 ## Verification / Testing
 - `nix flake check` — evaluates every host's activation package.
