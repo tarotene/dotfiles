@@ -104,6 +104,7 @@ copy_file ".github/CODEOWNERS"
 copy_file ".github/workflows/ci.yml"
 copy_file ".github/workflows/release-please.yml"
 copy_file ".github/workflows/lang-mix.yml"
+copy_file ".github/workflows/nav-docs.yml"
 copy_file ".github/workflows/pr-title.yml"
 
 # .githooks
@@ -120,6 +121,7 @@ copy_file ".release-please-manifest.json"
 copy_file "vitest.config.ts"
 
 copy_file "scripts/check-language-mixing.sh"
+copy_file "scripts/check-nav-docs.sh"
 
 # AI-facing document routing (ADR-0016 in tarotene/dotfiles): AGENTS.md is
 # the canon, CLAUDE.md just imports it. Content stays generic here — the
@@ -132,7 +134,8 @@ if [[ "$DRY_RUN" == "false" ]]; then
     "$DEST/.githooks/commit-msg" \
     "$DEST/.githooks/pre-commit" \
     "$DEST/.githooks/pre-push" \
-    "$DEST/scripts/check-language-mixing.sh" 2>/dev/null || true
+    "$DEST/scripts/check-language-mixing.sh" \
+    "$DEST/scripts/check-nav-docs.sh" 2>/dev/null || true
   echo ""
   echo "Made .githooks scripts executable."
 fi
