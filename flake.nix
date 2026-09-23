@@ -132,7 +132,7 @@
       # A host module imports home/common.nix plus exactly one identity module
       # (Identity / Instance two-layer layout — see ADR-0001).
       #
-      # extraModules (ADR-0033): additional modules layered on top of
+      # extraModules (ADR-0034): additional modules layered on top of
       # hostModule, e.g. a private wrapper flake's own value modules. Kept as
       # a third positional argument rather than folded into hostModule so the
       # four in-repo call sites below stay untouched in shape (`[ ]`) — only
@@ -169,7 +169,7 @@
         "altair" = mkHome darwinSystem ./home/hosts/altair.nix [ ];
       };
 
-      # Exported so an outside private wrapper flake (ADR-0033) can build its
+      # Exported so an outside private wrapper flake (ADR-0034) can build its
       # own homeConfigurations from this flake's host modules plus its own
       # private value modules, without this repo ever taking that flake as an
       # input — flake.lock records an input's `{owner, repo}` in the clear,
