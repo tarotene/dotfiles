@@ -103,3 +103,37 @@ Testing」という独自の指示を残していた。これは `personal-cloud
 Decision §2 自体(GCP プロジェクト・OAuth クライアントを個人で 1 つ使い回す
 という設計)は変更しない。命名・公開ステータスの決め方を
 `personal-cloud-projects.md` に委譲する接続を追加しただけの Amendment。
+
+## Amendment (2026-09-23 — Testing のまま運用する, No-Issue)
+
+前段の Amendment は「作成直後に Publish app → In production」を既定値と
+していたが、これは誤りだった。Google は User type = External の
+Production アプリに対し、Application home page・Privacy policy への
+リンクと、Search Console で所有証明した Authorized domain を要求する
+(未審査でも免除されない。出典: Google「Manage OAuth App Branding」
+<https://support.google.com/cloud/answer/15549049?hl=en>、取得
+2026-09-23、「These links are required for all external production
+apps」)。ドメインを持たない個人利用では、この要件を満たすためだけに
+ドメイン取得・Search Console 検証という不釣り合いな工数が発生する。
+
+一方、この個人が別途運用している Gmail 保持ジョブ(未読メールの自動整理を
+行う `systemd --user` timer)の設計記録は、Production 昇格を選んだ理由を
+「対象のジョブが無人・定期実行であり、Testing の 7 日失効を放置すると
+ジョブがサイレントに停止するリスクがあったため」と明記している。
+`gas-clasp-ops` の `clasp run-function` はこれとは性質が異なり、常に
+人間が都度手動で実行するものであり、無人実行される場面がない。7 日で
+refresh token が失効しても、次に使う時に再ログインし直すだけで実害が
+なく、Production 化のコスト(ドメイン所有証明等)に見合わない。
+
+よって以下を修正した:
+
+- `docs/personal-cloud-projects.md` の汎用規則から「即 Publish」の
+  無条件指示を外し、「無人・定期実行かどうか」で Testing/Production を
+  分岐する「Testing か Production か」節を新設した。Production 化の
+  コスト(ドメイン所有証明等)も出典付きで明記した。
+- `gas-clasp-ops/SKILL.md` の手順2を「Testing のまま test user に登録」
+  に戻し、その理由(無人実行ではないため Production 化のコストが
+  見合わない)を明記した。
+
+前段の Amendment で追加した「適用例2」自体(`<tool>` = 共有基盤という
+扱い)は変更しない。公開ステータスの推奨値だけを訂正した。

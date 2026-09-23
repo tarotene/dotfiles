@@ -50,11 +50,13 @@ clasp v3 の `run-function` はスクリプトと同じ Google Cloud プロジ�
    再利用する)。プロジェクト ID/名は `gas-clasp-ops-<github-username>`。
 2. OAuth 同意画面を設定する。User type = External、アプリ名 =
    `gas-clasp-ops`、サポートメール・開発者連絡先は所有アカウントのメール
-   アドレス。**作成直後に「Publish app」で In production へ切り替える**
-   (未審査のままでよい。個人利用は Google 審査対象外)。**Testing のまま
-   test user 登録で運用しない** — refresh token が 7 日で失効し、
-   `clasp login --user run` をやり直す羽目になる
-   (出典: `docs/personal-cloud-projects.md` 出典節)。
+   アドレス。**Testing のまま、自分自身を test user に登録する。**
+   `clasp run-function` は常に人間が都度実行するものであり無人・定期
+   実行ではないため、Production 化(ドメイン所有証明・homepage・
+   privacy policy の用意が必須。`docs/personal-cloud-projects.md`
+   「Testing か Production か」節参照)の工数を払う理由がない。
+   refresh token は 7 日で失効するが、次に使う時に手順3の
+   `clasp login --user run` をやり直すだけで実害はない。
 3. OAuth クライアント ID を作成する。種別は **Desktop app**。クライアント名は
    `gas-clasp-ops`(既定の "Desktop client 1" 等を使わない)。ダウンロードした
    JSON を `~/.config/clasp/client_secret.json` として保存する(git 管理外・
