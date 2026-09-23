@@ -128,6 +128,30 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # adr-number-check (ADR-380, docs/claude/adr-numbering.md): ADR 番号を
+      # 導入 PR の番号にすることで採番衝突を構造的に不可能にする決定の判定
+      # エンジン。selftest はネットワーク不使用。pull_request イベントでは
+      # base SHA を追加 fetch した上で base 差分限定の判定(1 PR = 最大 1 ADR、
+      # PR-number era の番号一致)も走らせる — push イベント(base/PR 番号が
+      # 無い)ではリポジトリ全体の判定(重複なし・0000 残存なし・
+      # filename==H1・README 索引網羅)のみ。
+      - name: adr-number-check --selftest
+        run: ./scripts/adr-number-check --selftest
+
+      - name: adr-number-check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_SHA" --depth=1
+            ./scripts/adr-number-check --base "$BASE_SHA" --pr "$PR_NUMBER"
+          else
+            ./scripts/adr-number-check
+          fi
+
       # patches/herdr-worktree-names.patch の hololive タレント名配列(worktree
       # 名生成の正本)と config/herdr/oshi-marks.tsv のキー集合を双方向突合する。
       # patch にあって TSV に無い名前は行欠落、TSV にあって patch に無い名前は

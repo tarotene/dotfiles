@@ -219,6 +219,12 @@
   先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、
   「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と
   件の private リポジトリの決定履歴の横断調査から導いた。
+- [ADR-380](adr/380-adr-number-by-pr.md) — ADR 番号をローカル連番でなく
+  導入 PR の番号にする決定。ADR-0020→0021・ADR-0033 二重の 2 度の採番衝突を
+  受け、連番という「分散システムに置かれた中央アロケータ」を無くす。
+  `n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の
+  番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、
+  CI required check が呼ぶ。ADR-0008 を amend する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

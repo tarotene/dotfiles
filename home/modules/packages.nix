@@ -168,6 +168,18 @@
     executable = true;
   };
 
+  # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
+  # docs/claude/adr-numbering.md — 番号を導入 PR の番号にすることで採番
+  # 衝突を構造的に不可能にする決定). Both .github/workflows/ci.yml's
+  # required check and (once wired) config/claude/hooks/adr-number.sh call
+  # this one script, so the rule never drifts between the two enforcement
+  # points. Same "executable in ~/.local/bin, no alias needed" placement as
+  # pr-title-check/git-prune-branches above.
+  home.file.".local/bin/adr-number-check" = {
+    source = ../../scripts/adr-number-check;
+    executable = true;
+  };
+
   # github-audit: read-only cross-repository GitHub audit, unified across
   # six domains (rulesets/#130, charters, naming, settings, renovate,
   # titles/ADR-0031 — ADR-0015; docs/github-audit.md). Replaces the former
