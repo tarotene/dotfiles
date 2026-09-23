@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# apply-repo-settings.sh — Apply squash-only merge settings and repo configuration.
+# apply-repo-settings.sh — Apply squash-only merge settings and other repo
+# configuration. Single source shared by rust/typst/astro-site-repo-
+# governance (#388): the three per-skill copies had zero real logic
+# difference — only the names of ecosystem-specific flags they silently
+# discard and a one-word wording difference in the Dependabot confirmation
+# echo. This file drops both (see setup-hooks.sh, deployed alongside this
+# file, for the identical rationale on the flag-discarding pattern).
+#
+# Deployed into every *-repo-governance skill directory by
+# home/modules/claude.nix (ADR-0032-style single-source, multi-mount).
 set -euo pipefail
 
 OWNER=""
@@ -9,19 +18,18 @@ ENABLE_DEPENDABOT=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --owner)           OWNER="$2";              shift 2 ;;
-    --repo)            REPO="$2";               shift 2 ;;
-    --no-dependabot)   ENABLE_DEPENDABOT=false; shift ;;
-    --dry-run)         DRY_RUN=true;            shift ;;
-    # Accepted but unused (passed by seed.sh)
-    --default-branch|--typst-version|--min-typst|--ats-email|--dest)
-                                                shift 2 ;;
-    *)                 echo "Unknown option: $1"; exit 1 ;;
+    --owner) OWNER="$2"; shift 2 ;;
+    --repo) REPO="$2"; shift 2 ;;
+    --no-dependabot) ENABLE_DEPENDABOT=false; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    --with-firmware) shift ;; # see setup-hooks.sh: rust's one 0-arg ecosystem flag
+    --*) shift 2 ;; # every other ecosystem-specific flag is `--flag value`
+    *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 [[ -z "$OWNER" ]] && echo "ERROR: --owner is required" && exit 1
-[[ -z "$REPO"  ]] && echo "ERROR: --repo is required"  && exit 1
+[[ -z "$REPO" ]] && echo "ERROR: --repo is required" && exit 1
 
 command -v gh >/dev/null 2>&1 || { echo "ERROR: 'gh' not found"; exit 1; }
 
@@ -60,6 +68,6 @@ if [[ "$ENABLE_DEPENDABOT" == "true" ]]; then
     echo "  DRY-RUN: would enable Dependabot vulnerability alerts"
   else
     gh api -X PUT "repos/$OWNER/$REPO/vulnerability-alerts" 2>/dev/null || true
-    echo "  ✓  Dependabot security alerts enabled"
+    echo "  ✓  Dependabot vulnerability alerts enabled"
   fi
 fi

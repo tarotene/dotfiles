@@ -1480,6 +1480,121 @@ in
     recursive = true;
   };
 
+  # repo-governance-common: 上の3 skill が共有する scripts/rulesets の
+  # 正本(#388 の三重化還元)。setup-hooks.sh / apply-repo-settings.sh は
+  # 3 skill でロジック差分ゼロだったため丸ごと1本化、security.json /
+  # workflow.json / review.json はバイト単位で完全一致だったため同様に
+  # 1本化した。quality.json と apply-rulesets.sh(のプレースホルダ置換部分)
+  # /copy-files.sh/seed.sh はエコシステム固有差分が実在するため各 skill 側
+  # に残る(apply-rulesets.sh の共有部分だけは
+  # scripts/_rulesets-apply-core.sh として source される)。
+  #
+  # まずディレクトリ自体を上と同じ recursive マウントで配る。次に、各
+  # governance skill の recursive マウントは「そのスキルの**自分の**
+  # ソースツリーに存在するファイルだけ」を個別シンボリックリンクするため
+  # (setup-hooks.sh 等はソースツリーから削除済み)、ここで正本を指す
+  # ネストした home.file エントリを skill × マウントルート(.claude/
+  # .agents)の組ごとに個別に宣言して併置する(ADR-0032 と同型の単一正本・
+  # 複数マウント、#388)。nix の内包表記(listToAttrs 等)で動的生成する案も
+  # 検討したが、このモジュールの規模では生成した attrset を
+  # `home.file = ...;` として直接代入する形が既存の dotted attrpath 宣言群
+  # と "attribute 'home.file' already defined" で衝突し、回避には
+  # モジュール全体を lib.mkMerge で包む必要があった — 1600 行超のファイル
+  # 全体の再インデントという不釣り合いなコストを伴うため、30 行の手書き
+  # 列挙(このコメントの直後)に倒した。
+  home.file.".claude/skills/repo-governance-common" = {
+    source = repoConfig + "/claude/skills/repo-governance-common";
+    recursive = true;
+  };
+  home.file.".agents/skills/repo-governance-common" = {
+    source = repoConfig + "/claude/skills/repo-governance-common";
+    recursive = true;
+  };
+  home.file.".claude/skills/rust-repo-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/rust-repo-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/rust-repo-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".claude/skills/rust-repo-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".claude/skills/rust-repo-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+  home.file.".agents/skills/rust-repo-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/rust-repo-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/rust-repo-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".agents/skills/rust-repo-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".agents/skills/rust-repo-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+  home.file.".claude/skills/typst-repo-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/typst-repo-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/typst-repo-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".claude/skills/typst-repo-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".claude/skills/typst-repo-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+  home.file.".agents/skills/typst-repo-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/typst-repo-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/typst-repo-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".agents/skills/typst-repo-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".agents/skills/typst-repo-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+  home.file.".claude/skills/astro-site-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/astro-site-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/astro-site-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".claude/skills/astro-site-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".claude/skills/astro-site-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+  home.file.".agents/skills/astro-site-governance/scripts/setup-hooks.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/setup-hooks.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/astro-site-governance/scripts/apply-repo-settings.sh" = {
+    source = repoConfig + "/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/astro-site-governance/rulesets/security.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/security.json";
+  home.file.".agents/skills/astro-site-governance/rulesets/workflow.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/workflow.json";
+  home.file.".agents/skills/astro-site-governance/rulesets/review.json".source =
+    repoConfig + "/claude/skills/repo-governance-common/rulesets/review.json";
+
   # グローバル AGENTS.md(正本): agent 非依存の調査・先行例確認・PR 運用・
   # 生成元明示の方針。Codex CLI(~/.codex/AGENTS.md)・Copilot CLI
   # (~/.copilot/copilot-instructions.md)・Claude Code(~/.agents/AGENTS.md
