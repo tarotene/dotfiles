@@ -1,3 +1,8 @@
+---
+name: typst-repo-governance
+description: Bootstrap or replicate battle-tested GitHub governance (Security/Quality/Workflow core Rulesets always applied, plus an opt-in Review ruleset for Copilot code review + required conversation resolution — ADR-0021 in tarotene/dotfiles, per-file language-mixing CI check, cliff.toml, Renovate, git hooks, Justfile) into any Typst/document repository. Use when asked to "撒く", "bootstrap governance", "apply rulesets", "apply GitHub settings", "seed CI to a new Typst repo", "rulesets / release / renovate をまとめて適用", or "Typst リポジトリに governance を播く". This is the Typst/document counterpart of `rust-repo-governance`; use `astro-site-governance` instead for Astro site repositories.
+---
+
 ## What this Skill does
 
 1. Copies parameterised CI/CD templates (6 workflows, including a per-file

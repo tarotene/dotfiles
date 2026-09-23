@@ -19,8 +19,8 @@ strip_for_lang() {
 
 while IFS= read -r -d '' file; do
   stripped="$(strip_for_lang "$file")"
-  cjk="$(grep -oP '[\x{3040}-\x{30FF}\x{4E00}\x{9FFF}\x{3400}-\x{4DBF}]' <<<"$stripped" 2>/dev/null | wc -l)"
-  latin="$(grep -oP '[A-Za-z]' <<<"$stripped" 2>/dev/null | wc -l)"
+  cjk="$(grep -oP '[\x{3040}-\x{30FF}\x{4E00}\x{9FFF}\x{3400}-\x{4DBF}]' <<<"$stripped" 2>/dev/null | wc -l || true)"
+  latin="$(grep -oP '[A-Za-z]' <<<"$stripped" 2>/dev/null | wc -l || true)"
   if [[ $cjk -ge $THRESHOLD && $latin -ge $THRESHOLD ]]; then
     echo "::error file=$file::language-mixed (cjk=$cjk latin=$latin, threshold=$THRESHOLD)"
     fail=1
