@@ -64,10 +64,18 @@ Notes:
   inputs — it only creates missing locks.
 - If the switch regresses, roll back via generations (see
   [`cutover-runbook.md`](cutover-runbook.md#rollback)).
-- Automating this as a weekly `flake.lock` PR (update-flake-lock driven by a
-  GitHub App token) is tracked in
-  [#3](https://github.com/tarotene/dotfiles/issues/3); until then this manual
-  routine is the operating procedure.
+- **`renovate.json`'s `nix` manager** (beta, opt-in;
+  <https://docs.renovatebot.com/modules/manager/nix/>) opens a weekly
+  `flake.lock` PR via `lockFileMaintenance`, so drift no longer accumulates
+  silently between manual runs of the command above — this manual routine is
+  now the fallback for out-of-cadence bumps (a specific input regressing, or
+  wanting an update sooner than the weekly PR), not the sole mechanism
+  ([#3](https://github.com/tarotene/dotfiles/issues/3)). The GitHub App
+  token + `DeterminateSystems/update-flake-lock` route #3 originally
+  proposed was dropped in favor of Renovate, which is already installed on
+  this account and needs no new App/secrets: see #3's resolution comment.
+  Review and merge the Renovate PR the same way as any other — `nix.yml`'s
+  CI still gates it.
 - **`nixpkgs-unstable` moves faster than the pinned stable channel it sits
   beside** (ADR-0001 Amendment 2026-08 for `herdr`, 2026-09 for `gh`). Bump it
   explicitly and separately when regressions land there — `nix flake update
