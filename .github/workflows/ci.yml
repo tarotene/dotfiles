@@ -449,6 +449,13 @@ jobs:
       - name: pr-title-check --selftest
         run: ./scripts/pr-title-check --selftest
 
+      # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
+      # scripts/github-audit's judge_settings()/fetch_repo_settings() (no
+      # new judgement logic) and stubs GH_BIN to exercise the ok/drifted/
+      # fetch-failed paths without gh/network.
+      - name: pr-merge-settings-check --selftest
+        run: ./scripts/pr-merge-settings-check --selftest
+
       # pr-title-guard (ADR-0031) sources attribution-guard.sh's
       # command-position/tokenizer engine the same way stack-base-guard does,
       # and stubs the checker binary to exercise the owner-scope, escape

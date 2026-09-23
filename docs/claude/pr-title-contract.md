@@ -18,7 +18,7 @@ client 側の作成時 deny・サーバ側の CI red・監査側の drift 検出
 | 層 | 何を見るか | 強制の形 | 実装 |
 |---|---|---|---|
 | client guard | ローカルで打つ `gh pr create`/`gh pr edit --title` | PreToolUse deny(作成前に止める) | `pr-title-guard.sh` |
-| required check | PR の現在のタイトル | CI red(squash merge をブロック) | `pr-title.yml` |
+| required check | PR の現在のタイトル + merge 設定の前提(下記「前提設定の自己防衛」) | CI red(squash merge をブロック) | `pr-title.yml` |
 | audit | 「仕組みが存在するか」(呼び出し workflow・required check context) | drift 報告(`github-audit titles`) | `github-audit` |
 
 3 層とも `scripts/pr-title-check` の 1 つの正規表現を最終的な判定根拠に
@@ -93,12 +93,35 @@ type に改題してから merge する運用とする(例:
 に既に同じ値がある — audit 側に監査項目を追加するだけで、新しい宣言値を
 発明しない。
 
+## 前提設定の自己防衛
+
+タイトル適合の判定は「squash merge した結果、PR タイトルがそのまま
+`main` の commit subject になる」という merge 設定(`squash_merge_
+commit_title=PR_TITLE` / `squash_merge_commit_message=BLANK` / squash-only)
+の上に乗った proxy であり、この設定自体が drift すると契約全体が無声で
+バイパスされる。`github-audit settings` ドメインはこの drift を検出できる
+が、監査は手動実行のため「検出」であって「防止」ではない — 実際に
+PRIVATE リポジトリ 2 件(実名は ADR-0034 により省略)が drift し、うち
+1 リポは直近 25 PR すべてで契約が無声にバイパスされていた実例がある
+(ADR-0031 Amendment 参照)。
+
+これを required check(`pr-title.yml`)に同居させ、drift した状態での
+merge 自体を CI red で止める。判定ロジックは新設せず、`scripts/
+pr-merge-settings-check` が `scripts/github-audit` の `judge_settings()`
+を re-source して再利用する(判定の単一正本は `github-audit` 側のまま)。
+API 取得に失敗した場合は fail-closed(red)にする — client guard
+(`pr-title-guard.sh`)の fail-open とは逆で、契約の前提が確認できない
+まま merge を通さないことを優先する。
+
 ## スコープ外(意図的)
 
 - Issue タイトルの書式強制 — 「変更」ではなく「世界の状態」を記述する
   別ジャンルであり、squash commit と無関係(ADR-0031 D6)。
 - ブランチ上の commit メッセージの書式強制 — squash で `main` の履歴
-  からは破棄される(同上)。
+  からは破棄される(同上)。実測(2026-09-23/24、squash 運用 4 リポの
+  直近 25 PR・ブランチ commit 計 109 件)では非適合 1 件のみ(適合率
+  99.1%)で、その 1 件も上記の merge 設定 drift を経由してしか
+  `main` に漏れなかった(ADR-0031 Amendment 参照)。
 - 他 19 リポジトリへの播き・merged PR のバックフィル — 本 ADR で方針は
   確定するが、実施は sub-issue へ切り出し後続セッションが行う
   (ADR-0031 Consequences)。
