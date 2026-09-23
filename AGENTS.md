@@ -381,6 +381,7 @@ dotfiles/
 - **ADR-0035** — 技術・仕組みの選択を 3 軸(宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式順序に接地させる決定(selection-grounding)。自己申告の「クリーンかつ先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と件の private リポジトリの決定履歴の横断調査から導いた。
 - **ADR-380** — ADR 番号をローカル連番でなく導入 PR の番号にする決定。ADR-0020→0021・ADR-0033 二重の 2 度の採番衝突を受け、連番という「分散システムに置かれた中央アロケータ」を無くす。`n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、CI required check が呼ぶ。ADR-0008 を amend する。
 - **ADR-387** — `wrapup-chores` スキルを裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由から外す。検査器は新設せず `plan-scope-gate.sh` を再利用し、大物も裁定対象にして選ばれたものは ADR-0027 の stacked PR の段として受ける。
+- **ADR-0000** — 決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する決定(decision-colocation)。「後続 Issue への実装分離」を機械的に成立不能にする — repo 内の実測で ADR 27 本中 12 本が docs-only、うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは「非 `.md` かつ `docs/` 配下でない」の 2 述語のみ。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格側に倒して検算)。判定エンジンは `scripts/decision-colocation-check`(CI required check + client guard が共有)。`gh pr create` 後に番号を導入 PR の番号へ改番する(ADR-380)。
 
 ## Development Rules
 

@@ -232,6 +232,16 @@
   `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由
   から外す。検査器は新設せず `plan-scope-gate.sh` を再利用し、大物も裁定
   対象にして選ばれたものは ADR-0027 の stacked PR の段として受ける。
+- [ADR-0000](adr/0000-decision-colocation.md) — 決定成果物(ADR/設計文書/
+  skill)の新規追加、または既存 ADR への `## Amendment` 追加に、その決定を
+  執行する実ファイルの同梱を要求する決定。「後続 Issue への実装分離」を
+  機械的に成立不能にする — repo 内の実測で ADR 27 本中 12 本が docs-only、
+  うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは
+  「非 `.md` かつ `docs/` 配下でない」の 2 述語のみで、パス分類台帳を持た
+  ない。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格
+  側に倒して検算)。判定エンジンは `scripts/decision-colocation-check`
+  (CI required check + client guard が共有)。`gh pr create` 後に番号を
+  導入 PR の番号へ改番する(ADR-380)。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -296,6 +306,11 @@ Design and rationale for the hooks and commands deployed from
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
   不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
   + `--fix` + 段3の PostToolUse hook `adr-number.sh` が共有)。
+- [`decision-colocation.md`](claude/decision-colocation.md) — ADR-0000:
+  決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
+  `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
+  判定エンジンは `scripts/decision-colocation-check`(CI required check +
+  client guard `decision-colocation-guard.sh` が共有)。
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s

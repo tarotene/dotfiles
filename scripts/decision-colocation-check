@@ -1,0 +1,484 @@
+#!/usr/bin/env bash
+# decision-colocation-check — 決定成果物(ADR / 設計文書 / skill)の新規追加、
+# または既存 ADR への `## Amendment` 追加に、その決定を執行する実ファイルの
+# 同梱を要求する判定エンジン単一ソース(docs/adr/<番号>-decision-
+# colocation.md)。
+#
+# client-side guard(config/claude/hooks/decision-colocation-guard.sh)と
+# サーバ側 required check(.github/workflows/ci.yml)の両方がこのスクリプト
+# を呼ぶ — 判定ロジックは 1 箇所にしか存在しない(scripts/pr-title-check /
+# scripts/adr-number-check と同型)。
+#
+# 背景: この repo で追跡可能な ADR 27 本のうち 12 本が docs-only で着地し、
+# うち 2 本(ADR-0024/ADR-0013)は「後続 Issue に段階分割する」と明記した
+# まま追跡 Issue が一度も作られなかった。この検査は「決定成果物だけを
+# 残して実装を後続 Issue に分離する」経路を、機械的に成立不能にする。
+#
+# トリガ(base との diff が次のいずれかを含むとき発火):
+#   1. docs/adr/** / docs/claude/** / config/claude/skills/** への
+#      新規ファイル追加(--diff-filter=A)
+#   2. 既存 docs/adr/*.md への `^## Amendment` 見出しの追加
+#      (diff の追加行に現れる見出し行そのものを新規と見なす)
+#
+# 検査:
+#   - トリガ1が docs/adr/*.md の新規追加のとき、そのファイルは
+#     `## 執行点` 節を持つこと。
+#   - トリガ2のとき、その Amendment 見出しのブロックは `### 執行点` を
+#     持つこと。
+#   - `## 執行点` / `### 執行点` に列挙された全パスが実在すること
+#     (壊れた参照の禁止)。
+#   - そのうち少なくとも 1 つが、非 `.md` かつ `docs/` 配下でない
+#     パスであり、かつこの PR の diff(base..HEAD の変更ファイル)に
+#     含まれること。実在するが無変更のパスの併記だけでは合格しない
+#     (「既存機構を再利用する」という自己申告と、実際にそれを検証する
+#     変更を区別できないため — ADR-387 が実例)。
+#   - トリガ1が docs/adr/ 以外(docs/claude/** または
+#     config/claude/skills/** の新規)のときは、節を要求せず、PR の
+#     diff 全体に「非 `.md` かつ非 `docs/`」のパスが 1 つ以上あることだけ
+#     を検査する。
+#   - どのトリガにも触れない diff(索引修繕・typo・既存ファイルの編集の
+#     み)は無条件で適合。既存 ADR への遡及適用はしない。
+#
+# `## 執行点` の書式: 見出し直下に 1 行 1 パスの箇条書き(バッククォート
+# 任意)。パスの後にスペース区切りで説明文を続けてよい(最初の
+# 空白区切りトークンだけをパスとして読む)。
+#
+#   ## 執行点
+#   - config/claude/hooks/foo-gate.sh
+#   - `home/modules/claude.nix` — hook 登録
+#
+# 使い方:
+#   decision-colocation-check --base <ref>   # 判定
+#   decision-colocation-check --selftest     # ネットワーク不使用の自己検査
+#
+# 終了コード: 0 = 適合, 1 = 非適合, 2 = 判定不能(使い方誤り等)
+set -euo pipefail
+
+usage() {
+  cat << 'EOF'
+usage: decision-colocation-check --base <ref>
+       decision-colocation-check --selftest
+EOF
+}
+
+# ---- 共通ヘルパー ---------------------------------------------------------
+
+# 執行点として認めるパスか: 非 .md かつ非 docs/ 配下(パス分類台帳を
+# 持たず、この 2 つの述語だけで判定する — docs/claude/decision-
+# colocation.md の D3 参照)。
+is_execution_point_path() {
+  case "$1" in
+    *.md) return 1 ;;
+    docs/*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+is_new_adr_path() {
+  case "$1" in
+    docs/adr/*.md) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_non_adr_artifact_path() {
+  case "$1" in
+    docs/claude/* | config/claude/skills/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+list_added_files() { # $1=repo $2=base
+  git -C "$1" diff --name-only --diff-filter=A "$2" HEAD -- . 2> /dev/null || true
+}
+
+list_changed_files() { # $1=repo $2=base ; 追加・変更・削除・改名すべて
+  git -C "$1" diff --name-only "$2" HEAD -- . 2> /dev/null || true
+}
+
+list_modified_adrs() { # $1=repo $2=base
+  git -C "$1" diff --name-only --diff-filter=M "$2" HEAD -- docs/adr/ 2> /dev/null || true
+}
+
+# base に無く HEAD の diff 追加行にのみ現れる `## Amendment` 見出し行
+# (先頭の '+' を除いた原文)を列挙する。
+list_new_amendment_headings() { # $1=repo $2=base $3=file
+  git -C "$1" diff "$2" HEAD -- "$3" 2> /dev/null \
+    | grep -E '^\+## Amendment' \
+    | sed -E 's/^\+//' || true
+}
+
+# stdin=本文(全体) $1=開始見出しの ERE $2=終了見出しの ERE(終了行は
+# 出力しない)。開始行そのものも出力しない。
+extract_section() {
+  # awk の組み込み関数 close() と衝突しないよう open_re/close_re と命名する。
+  awk -v open_re="$1" -v close_re="$2" '
+    $0 ~ open_re {flag=1; next}
+    flag && $0 ~ close_re {exit}
+    flag {print}
+  '
+}
+
+# $1=file $2=見出し行の原文(完全一致) -> その見出し(exclusive)から次の
+# `^## ` 見出し(exclusive)までの本文
+extract_block_by_heading() {
+  awk -v want="$2" '
+    $0 == want {flag=1; next}
+    flag && /^## / {exit}
+    flag {print}
+  ' "$1"
+}
+
+# stdin=節本文 -> 箇条書き行(- / *)からパストークンを 1 行 1 個で抽出。
+# バッククォートは除去し、パスの後の説明文(空白区切り)は捨てる。
+extract_paths() {
+  local line token
+  while IFS= read -r line; do
+    [[ $line =~ ^[[:space:]]*[-*][[:space:]]+(.*)$ ]] || continue
+    token="${BASH_REMATCH[1]}"
+    token="${token//\`/}"
+    token="${token%% *}"
+    token="${token//$'\t'/}"
+    [[ -n $token ]] && printf '%s\n' "$token"
+  done
+}
+
+# $1=ラベル(メッセージ用) $2=repo_root $3=changed_files(改行区切り)
+# stdin=節本文。全パス実在 + 非.md非docs かつ diff 内のパスが1つ以上。
+judge_execution_points() {
+  local label="$1" repo_root="$2" changed_files="$3"
+  local body paths=() p ok_exec=0 fails=0
+  body="$(cat)"
+  if [[ -z $body ]]; then
+    echo "decision-colocation-check: ${label} が空です" >&2
+    return 1
+  fi
+  mapfile -t paths < <(extract_paths <<< "$body")
+  if [[ ${#paths[@]} -eq 0 ]]; then
+    echo "decision-colocation-check: ${label} にパスが列挙されていません" >&2
+    return 1
+  fi
+  for p in "${paths[@]}"; do
+    if [[ ! -e "$repo_root/$p" ]]; then
+      echo "decision-colocation-check: ${label} の執行点 '$p' が実在しません" >&2
+      fails=1
+      continue
+    fi
+    if is_execution_point_path "$p" && grep -qxF "$p" <<< "$changed_files"; then
+      ok_exec=1
+    fi
+  done
+  if ((fails)); then
+    return 1
+  fi
+  if ((! ok_exec)); then
+    echo "decision-colocation-check: ${label} の執行点のうち、非 .md かつ非 docs/ 配下で、かつこの PR の diff に含まれるものが1つもありません(既存機構の無変更併記だけでは合格しません)" >&2
+    return 1
+  fi
+  return 0
+}
+
+check_new_adr() { # $1=repo_root $2=file $3=changed_files
+  local repo_root="$1" file="$2" changed_files="$3" section
+  section="$(extract_section '^## 執行点[[:space:]]*$' '^#{1,6}[[:space:]]' < "$repo_root/$file")"
+  if [[ -z $section ]]; then
+    echo "decision-colocation-check: $file は新規 ADR ですが '## 執行点' 節がありません" >&2
+    return 1
+  fi
+  judge_execution_points "$file の '## 執行点'" "$repo_root" "$changed_files" <<< "$section"
+}
+
+check_one_amendment() { # $1=repo_root $2=file $3=heading行 $4=changed_files
+  local repo_root="$1" file="$2" heading="$3" changed_files="$4" block section
+  block="$(extract_block_by_heading "$repo_root/$file" "$heading")"
+  section="$(extract_section '^### 執行点[[:space:]]*$' '^#{1,6}[[:space:]]' <<< "$block")"
+  if [[ -z $section ]]; then
+    echo "decision-colocation-check: $file の '$heading' に '### 執行点' がありません" >&2
+    return 1
+  fi
+  judge_execution_points "$file の '$heading' の '### 執行点'" "$repo_root" "$changed_files" <<< "$section"
+}
+
+check_amended_adr() { # $1=repo_root $2=base $3=file $4=changed_files
+  local repo_root="$1" base="$2" file="$3" changed_files="$4"
+  local headings heading fails=0
+  headings="$(list_new_amendment_headings "$repo_root" "$base" "$file")"
+  [[ -n $headings ]] || return 0 # 新規 Amendment 見出しなし(typo 修正等)は非該当
+  while IFS= read -r heading; do
+    [[ -n $heading ]] || continue
+    check_one_amendment "$repo_root" "$file" "$heading" "$changed_files" || fails=1
+  done <<< "$headings"
+  return "$fails"
+}
+
+diff_has_execution_point() { # $1=changed_files(改行区切り)
+  local p
+  while IFS= read -r p; do
+    [[ -n $p ]] || continue
+    is_execution_point_path "$p" && return 0
+  done <<< "$1"
+  return 1
+}
+
+# ---- 判定本体 ---------------------------------------------------------------
+
+run_check() { # $1=repo_root $2=base
+  local repo_root="$1" base="$2"
+  local added_files changed_files fails=0 f
+
+  added_files="$(list_added_files "$repo_root" "$base")"
+  changed_files="$(list_changed_files "$repo_root" "$base")"
+
+  # トリガ1a: 新規 ADR
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    is_new_adr_path "$f" || continue
+    check_new_adr "$repo_root" "$f" "$changed_files" || fails=1
+  done <<< "$added_files"
+
+  # トリガ1b: ADR 以外の新規決定成果物(docs/claude/**, config/claude/skills/**)
+  local non_adr_new=0
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    is_non_adr_artifact_path "$f" && non_adr_new=1
+  done <<< "$added_files"
+  if ((non_adr_new)) && ! diff_has_execution_point "$changed_files"; then
+    echo "decision-colocation-check: docs/claude/ または config/claude/skills/ への新規追加がありますが、この PR の diff に非 .md かつ非 docs/ 配下のパスが含まれていません" >&2
+    fails=1
+  fi
+
+  # トリガ2: 既存 ADR への `## Amendment` 追加
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    check_amended_adr "$repo_root" "$base" "$f" "$changed_files" || fails=1
+  done < <(list_modified_adrs "$repo_root" "$base")
+
+  if ((fails)); then
+    return 1
+  fi
+  echo "decision-colocation-check: OK"
+  return 0
+}
+
+# ---- selftest --------------------------------------------------------------
+
+selftest() {
+  local fails=0 tmp
+
+  tmp="$(mktemp -d)"
+
+  check() { # $1=名前 $2=want-rc(0|1) -- $3..=関数呼び出し
+    local name="$1" want="$2" rc=0
+    shift 2
+    "$@" > /dev/null 2>&1 || rc=$?
+    if [[ "$rc" == "$want" ]]; then
+      echo "ok   $name"
+    else
+      echo "FAIL $name (expected rc=$want got rc=$rc)" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  mkrepo() { # $1=path
+    mkdir -p "$1"
+    git -C "$1" init -q -b main
+    git -C "$1" config core.hooksPath /dev/null
+    git -C "$1" config user.email test@example.com
+    git -C "$1" config user.name test
+  }
+  commit_all() { # $1=repo $2=message
+    git -C "$1" add -A
+    git -C "$1" commit -qm "$2"
+  }
+
+  # --- 共通の base 状態: 1 本の着地済み ADR + 既存の非文書ファイル ---
+  local repo="$tmp/repo"
+  mkrepo "$repo"
+  mkdir -p "$repo/docs/adr" "$repo/docs/claude" "$repo/config/claude/hooks" "$repo/config/claude/skills"
+  printf '# ADR-0001 — base\n\n## Context\n' > "$repo/docs/adr/0001-base.md"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/existing-gate.sh"
+  commit_all "$repo" base
+  local base_sha
+  base_sha="$(git -C "$repo" rev-parse HEAD)"
+
+  reset_to_base() { git -C "$repo" reset -q --hard "$base_sha"; }
+
+  echo "トリガなし(適合フィクスチャ):"
+
+  reset_to_base
+  printf '# ADR-0001 — base\n\n## Context\n\n(typo fix)\n' > "$repo/docs/adr/0001-base.md"
+  commit_all "$repo" "typo"
+  check "1 既存ファイル編集のみは非該当で通過" 0 run_check "$repo" "$base_sha"
+
+  echo "トリガ1a 新規 ADR:"
+
+  reset_to_base
+  {
+    echo "# ADR-0100 — 執行点あり"
+    echo
+    echo "## 執行点"
+    echo "- config/claude/hooks/new-gate.sh"
+  } > "$repo/docs/adr/0100-with-exec.md"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/new-gate.sh"
+  commit_all "$repo" "add adr with exec"
+  check "2 新規ADR + 新規非mdファイルは合格" 0 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  printf '# ADR-0101 — 執行点なし\n\n## Context\n' > "$repo/docs/adr/0101-no-section.md"
+  commit_all "$repo" "add adr without section"
+  check "3 執行点節なしは不合格" 1 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  {
+    echo "# ADR-0102 — mdだけ"
+    echo
+    echo "## 執行点"
+    echo "- docs/claude/foo.md"
+  } > "$repo/docs/adr/0102-md-only.md"
+  printf 'placeholder\n' > "$repo/docs/claude/foo.md"
+  commit_all "$repo" "add adr with md-only exec"
+  check "4 執行点が全てmd/docsは不合格" 1 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  {
+    echo "# ADR-0103 — 存在しないパス"
+    echo
+    echo "## 執行点"
+    echo "- scripts/does-not-exist"
+  } > "$repo/docs/adr/0103-broken-ref.md"
+  commit_all "$repo" "add adr with broken ref"
+  check "5 執行点が実在しないパスは不合格" 1 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  {
+    echo "# ADR-0104 — 既存機構の無変更併記"
+    echo
+    echo "## 執行点"
+    echo "- config/claude/hooks/existing-gate.sh"
+  } > "$repo/docs/adr/0104-reuse-only.md"
+  commit_all "$repo" "add adr reusing unchanged file"
+  check "6 実在するが無変更のパスのみは不合格(D10)" 1 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  {
+    echo "# ADR-0105 — 変更された既存パスは合格"
+    echo
+    echo "## 執行点"
+    echo "- config/claude/hooks/existing-gate.sh"
+  } > "$repo/docs/adr/0105-modify-existing.md"
+  printf '#!/usr/bin/env bash\ntrue\necho changed\n' > "$repo/config/claude/hooks/existing-gate.sh"
+  commit_all "$repo" "add adr + modify existing exec point"
+  check "7 執行点が既存パスでも今回変更されていれば合格" 0 run_check "$repo" "$base_sha"
+
+  echo "トリガ1b ADR以外の新規決定成果物:"
+
+  reset_to_base
+  mkdir -p "$repo/config/claude/skills"
+  printf 'skill body\n' > "$repo/config/claude/skills/new-skill.md"
+  commit_all "$repo" "add new skill doc only"
+  check "8 非mdの同梱なしは不合格" 1 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  mkdir -p "$repo/config/claude/skills"
+  printf 'skill body\n' > "$repo/config/claude/skills/new-skill.md"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/new-skill-gate.sh"
+  commit_all "$repo" "add new skill doc + hook"
+  check "9 非mdの同梱ありは合格" 0 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  mkdir -p "$repo/docs/claude"
+  printf 'design rationale\n' > "$repo/docs/claude/new-design.md"
+  commit_all "$repo" "add design doc only"
+  check "10 docs/claude 新規のみは不合格" 1 run_check "$repo" "$base_sha"
+
+  echo "トリガ2 既存ADRへのAmendment追加:"
+
+  reset_to_base
+  {
+    cat "$repo/docs/adr/0001-base.md"
+    echo
+    echo "## Amendment (2026-09-23 — 執行点あり)"
+    echo
+    echo "### 執行点"
+    echo "- config/claude/hooks/amendment-gate.sh"
+  } > "$repo/docs/adr/0001-base.md.tmp"
+  mv "$repo/docs/adr/0001-base.md.tmp" "$repo/docs/adr/0001-base.md"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/amendment-gate.sh"
+  commit_all "$repo" "amend with exec"
+  check "11 Amendment + 新規非mdファイルは合格" 0 run_check "$repo" "$base_sha"
+
+  reset_to_base
+  {
+    cat "$repo/docs/adr/0001-base.md"
+    echo
+    echo "## Amendment (2026-09-23 — 執行点なし)"
+    echo
+    echo "新しい決定の説明のみ。"
+  } > "$repo/docs/adr/0001-base.md.tmp"
+  mv "$repo/docs/adr/0001-base.md.tmp" "$repo/docs/adr/0001-base.md"
+  commit_all "$repo" "amend without exec"
+  check "12 Amendment に執行点なしは不合格" 1 run_check "$repo" "$base_sha"
+
+  # ADR-387 相当の反例: 新規ADRなし、全変更が .md、既存スクリプトを
+  # 変更せず宣言だけする Amendment(D10 の意図的な裁定の検算)。
+  reset_to_base
+  {
+    cat "$repo/docs/adr/0001-base.md"
+    echo
+    echo "## Amendment (2026-09-23 — 既存機構の再利用のみ)"
+    echo
+    echo "### 執行点"
+    echo "- config/claude/hooks/existing-gate.sh"
+  } > "$repo/docs/adr/0001-base.md.tmp"
+  mv "$repo/docs/adr/0001-base.md.tmp" "$repo/docs/adr/0001-base.md"
+  commit_all "$repo" "amend reusing unchanged existing file"
+  check "13 ADR-387相当(既存機構の無変更宣言のみ)は不合格" 1 run_check "$repo" "$base_sha"
+
+  echo "縮退:"
+
+  check "14 --base に不正な ref は fail-open で通過" 0 run_check "$repo" "not-a-real-ref"
+
+  rm -rf "$tmp"
+
+  if [[ $fails -gt 0 ]]; then
+    echo "selftest: ${fails} 件失敗" >&2
+    return 1
+  fi
+  echo "selftest: OK"
+  return 0
+}
+
+# ---- main -------------------------------------------------------------
+
+main() {
+  case "${1-}" in
+    --selftest) selftest; return $? ;;
+    --help | -h) usage; return 0 ;;
+  esac
+
+  local base=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base)
+        base="${2-}"
+        shift 2
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+  done
+
+  if [[ -z $base ]]; then
+    usage >&2
+    return 2
+  fi
+
+  local repo_root
+  repo_root="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
+
+  run_check "$repo_root" "$base"
+}
+
+main "$@"
