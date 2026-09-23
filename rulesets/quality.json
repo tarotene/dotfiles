@@ -1,0 +1,32 @@
+{
+  "name": "Quality",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": ["~DEFAULT_BRANCH"]
+    }
+  },
+  "rules": [
+    { "type": "required_signatures" },
+    { "type": "required_linear_history" },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "Shell script validation" },
+          { "context": "Escape-hatch dry-run" },
+          { "context": "nix flake check" },
+          { "context": "build personal-pop" },
+          { "context": "build company-pop-old" },
+          { "context": "build company-pop-new" },
+          { "context": "PR title" }
+        ]
+      }
+    }
+  ],
+  "bypass_actors": []
+}

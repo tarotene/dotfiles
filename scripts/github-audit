@@ -324,6 +324,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
   fi
 
   types="$(jq -c '[.[].rules[]?.type] | unique' <<<"$arr")"
+
   for t in "${BASELINE_RULE_TYPES[@]}"; do
     # ADR-0020: required_status_checks is derived from CI presence — a repo
     # with no .github/workflows has nothing to require a status check from,
@@ -377,6 +378,35 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
       missing+=("${review_missing[@]}")
     fi
   fi
+
+  # ruleset レイアウト検査(#349): ruleset の「名前」ではなく「同じ rule type
+  # が複数の active ruleset に重複している」ことだけを見る。名前ベースの判定
+  # (rule type ごとに特定のルール set 名を要求する)は実アカウント監査
+  # (2026-09-10、上のコメント参照)で既に false positive を出すと分かって
+  # いる — Copilot review を独立 ruleset に分ける repo、単一の catch-all
+  # ruleset で賄う repo が実在するため。重複検出は名前を問わないのでこの
+  # 制約と両立する。dotfiles 自身の実例(legacy 名 "Ephemeral Initial" が
+  # Workflow と同じ pull_request rule を重複して持つ)はこれで拾える。
+  # `pull_request` だけは例外: review layer が opt-in された repo では
+  # core(Workflow 相当)と review 用の 2 つの active ruleset が両方とも
+  # `pull_request` を持つのが設計どおり(上の「Aggregating pull_request
+  # across two rulesets」節)なので、review_layer_present な間は誤検出になる
+  # — その間は判定しない。
+  for t in "${BASELINE_RULE_TYPES[@]}" "$REVIEW_LAYER_RULE_TYPE"; do
+    [[ $t == pull_request && $review_layer_present == true ]] && continue
+    local dup_names
+    # 重複の判定単位は ruleset の id(常に一意)であって name ではない —
+    # name が無い(または複数の ruleset が同名の)fixture・実リポジトリでも
+    # 正しく検出できるようにする。表示用のラベルは name があれば name、
+    # 無ければ id を使う。
+    dup_names="$(jq -r --arg t "$t" \
+      '[.[] | select(any(.rules[]?; .type == $t))] as $m
+       | if ($m | length) > 1
+         then ($m | map(.name // (.id | tostring)) | join(","))
+         else empty end' \
+      <<<"$arr")"
+    [[ -n $dup_names ]] && missing+=("duplicate-ruleset:${t}:${dup_names}")
+  done
 
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
 
@@ -1761,6 +1791,23 @@ EOF
   }
   jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.verdict == "drifted" and (.domains.rulesets.missing | index("pull_request.allowed_merge_methods"))' <<<"$out" >/dev/null || {
     printf 'FAIL: rulesets-squash-conflict should flag pull_request.allowed_merge_methods (empty cross-ruleset intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets' <<<"$out")" >&2
+    return 1
+  }
+  # #349: two DISTINCT active rulesets (ids 8/9) both carry pull_request and
+  # review_layer is absent here — the legitimate "review layer split across
+  # two rulesets" exception (ADR-0021, review_layer=complete) does not apply,
+  # so this must be flagged as a genuine layout duplicate (dotfiles' own
+  # real-world "Ephemeral Initial" + "Workflow" both holding pull_request).
+  jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.missing | map(select(startswith("duplicate-ruleset:pull_request:"))) | length == 1' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-squash-conflict should flag duplicate-ruleset:pull_request (2 distinct rulesets, review_layer=absent): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.missing' <<<"$out")" >&2
+    return 1
+  }
+  # ...but the legitimate review-layer split (rulesets-review-split, both
+  # halves complete) must NOT be flagged as a duplicate — already covered by
+  # the "missing | length == 0" assertion above, restated explicitly here so
+  # a future regression is unambiguous about which invariant broke.
+  jq -e '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.missing | map(select(startswith("duplicate-ruleset:"))) | length == 0' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-review-split must not flag duplicate-ruleset (legitimate core+review pull_request split): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.missing' <<<"$out")" >&2
     return 1
   }
   jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.review_layer == "absent"' <<<"$out" >/dev/null || {

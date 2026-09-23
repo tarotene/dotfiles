@@ -141,6 +141,24 @@ beyond confirming the rule type itself is present.
 constrains the default branch, and at least one governed repo in the
 account carries `copilot_code_review` exclusively through such a ruleset.
 
+**Layout drift: duplicate rule types across rulesets, name-agnostic
+(#349).** The rule-type-union judgement above cannot see when the SAME
+type is carried by more than one active ruleset — dotfiles' own account
+had exactly this: `required_status_checks`/`deletion`/`non_fast_forward`
+sat in a legacy ruleset literally named "Ephemeral Initial" that should
+have been retired once Security/Quality were split out, and its
+`pull_request` rule duplicated the one already in "Workflow". A check
+keyed on ruleset *name* (e.g. "`pull_request` must live in a ruleset named
+Workflow") was considered and rejected for the same evidence-based reason
+as above — it would misfire on the legitimately-varied shapes already
+seen in this account. Instead, `judge_rulesets()` counts, per rule type,
+how many *distinct* active rulesets (by id, not name — fixtures and some
+real repos leave `.name` absent) carry it; two or more is reported as
+`duplicate-ruleset:<type>:<name-or-id>,<name-or-id>`. `pull_request` is
+exempt from this check whenever `review_layer_present` is true, because
+the two-ruleset split described just above (core + review) is the
+*intended* shape, not drift.
+
 ### charters (ADR-0013 + ADR-0016 + ADR-0017)
 
 Reports which repositories lack a machine-checkable "why this repository

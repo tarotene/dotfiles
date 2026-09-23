@@ -206,6 +206,10 @@ path = "scripts/github-rulesets-apply"
 stage = "4e"
 
 [[target]]
+path = "scripts/apply-rulesets.sh"
+stage = "4e"
+
+[[target]]
 path = "scripts/gpg-subkey"
 stage = "4e"
 
