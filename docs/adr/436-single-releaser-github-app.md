@@ -1,4 +1,4 @@
-# ADR-0000 — releaser GitHub App を 1 個に集約し、宣言を workflow ファイルの存在に還元する
+# ADR-436 — releaser GitHub App を 1 個に集約し、宣言を workflow ファイルの存在に還元する
 
 - Status: Accepted
 - Date: 2026-09-24
