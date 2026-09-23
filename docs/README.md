@@ -182,6 +182,14 @@
   決定。`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する
   router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ
   単位の AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの。
+- [ADR-0033](adr/0033-machine-state-wrapper-flake.md) — 私的な
+  machine-state 実値(実 bucket 名・GCP プロジェクト ID・PRIVATE リポ名等)
+  は、外側の private wrapper flake に置く決定。dotfiles は `lib.mkHome` を
+  export し、private wrapper flake がそれを呼んで自分の `homeConfigurations`
+  を再定義する — 依存の向きは常にこの1本(dotfiles は private リポを
+  flake input に取らない。`flake.lock` が input 名を平文で記録するため)。
+  所在は `hms` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照
+  する。境界述語は「規則・スキーマは public、実値は private」。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

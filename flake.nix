@@ -131,11 +131,20 @@
       # Build a standalone home-manager configuration from a single host module.
       # A host module imports home/common.nix plus exactly one identity module
       # (Identity / Instance two-layer layout — see ADR-0001).
+      #
+      # extraModules (ADR-0033): additional modules layered on top of
+      # hostModule, e.g. a private wrapper flake's own value modules. Kept as
+      # a third positional argument rather than folded into hostModule so the
+      # four in-repo call sites below stay untouched in shape (`[ ]`) — only
+      # an outside caller through the exported `lib.mkHome` ever supplies a
+      # non-empty list. Order matters: extraModules come after hostModule, so
+      # a private module can override a `lib.mkDefault` the public host
+      # module set, but never the reverse.
       mkHome =
-        system: hostModule:
+        system: hostModule: extraModules:
         home-manager.lib.homeManagerConfiguration {
           pkgs = pkgsFor.${system};
-          modules = [ hostModule ];
+          modules = [ hostModule ] ++ extraModules;
           # publish-guard is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
           # claude.nix only needs its store path for home.file.source, not a
@@ -152,12 +161,23 @@
       # a star-codename instead and resolve via a marker file, not hostname
       # (ADR-0019) — see scripts/hms.sh / bootstrap.sh `resolve_host`.
       homeConfigurations = {
-        "personal-pop" = mkHome linuxSystem ./home/hosts/personal-pop.nix;
-        "company-pop-old" = mkHome linuxSystem ./home/hosts/company-pop-old.nix;
-        "company-pop-new" = mkHome linuxSystem ./home/hosts/company-pop-new.nix;
+        "personal-pop" = mkHome linuxSystem ./home/hosts/personal-pop.nix [ ];
+        "company-pop-old" = mkHome linuxSystem ./home/hosts/company-pop-old.nix [ ];
+        "company-pop-new" = mkHome linuxSystem ./home/hosts/company-pop-new.nix [ ];
 
         # First darwin host (2022 M2 MacBook Air) — ADR-0018/ADR-0019.
-        "altair" = mkHome darwinSystem ./home/hosts/altair.nix;
+        "altair" = mkHome darwinSystem ./home/hosts/altair.nix [ ];
+      };
+
+      # Exported so an outside private wrapper flake (ADR-0033) can build its
+      # own homeConfigurations from this flake's host modules plus its own
+      # private value modules, without this repo ever taking that flake as an
+      # input — flake.lock records an input's `{owner, repo}` in the clear,
+      # and that flake's name cannot appear in this PUBLIC repo's source
+      # (docs/claude/writing-style.md's same constraint). Dependency direction
+      # is inverted instead: the private flake takes this one as an input.
+      lib = {
+        inherit mkHome;
       };
 
       # `nix flake check` evaluates every host's activation package, filtered

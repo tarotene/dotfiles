@@ -4,7 +4,9 @@ set -euo pipefail
 # hms — home-manager switch, the canonical apply (docs/operations.md).
 #
 # Usage: hms [flake-ref]
-#   hms          apply pushed main (github:tarotene/dotfiles) — the default
+#   hms          apply pushed main (github:tarotene/dotfiles), or a private
+#                wrapper flake instead if one is registered (see
+#                resolve_default_ref below, ADR-0033)
 #   hms .        apply the current checkout/worktree (pre-push verification)
 #   hms <path>   apply an arbitrary local checkout
 #
@@ -25,11 +27,40 @@ set -euo pipefail
 # main and still print "Done." (#48) — so for a non-local ref (anything that
 # isn't a path on disk) we force a refresh before switching, and print the
 # revision actually applied so a stale apply leaves a trace instead of none.
+#
+# `hms .` degrades on a host with a registered private wrapper flake
+# (ADR-0033): it applies this PUBLIC worktree alone, so every private value
+# module the wrapper flake adds is dropped for that one apply. hms itself
+# takes only a single flake-ref argument (no flag passthrough), so verifying
+# a worktree together with the private values needs a direct call instead:
+#   home-manager switch --flake <private-hub-ref>#$(hostname) \
+#     --override-input dotfiles path:$PWD -b backup
 
 DEFAULT_REF="github:tarotene/dotfiles"
 FCITX5_UNIT="app-fcitx5@autostart.service"
 
-ref="$DEFAULT_REF"
+# Resolve the default flake ref: a marker file first, DEFAULT_REF as fallback
+# (ADR-0033, same indirection type as resolve_host below and docs/claude/
+# writing-style.md's style-hub marker). The marker lets one host point `hms`
+# (with no explicit ref) at a private wrapper flake that layers private
+# value modules on top of this repo's host modules, without this repo's
+# source ever naming that flake — declaring the path in home-manager would
+# put the same absolute path back into a managed (store-symlinked) file,
+# defeating the indirection, so this marker is hand-placed and never
+# home-manager-managed.
+resolve_default_ref() {
+    local marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/private-hub" r
+    if [[ -r "$marker" ]]; then
+        r="$(head -n1 "$marker" | tr -d '[:space:]')"
+        if [[ -n "$r" ]]; then
+            echo "$r"
+            return
+        fi
+    fi
+    echo "$DEFAULT_REF"
+}
+
+ref="$(resolve_default_ref)"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -37,8 +68,9 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: hms [flake-ref]"
             echo ""
             echo "Apply the home-manager configuration for this host."
-            echo "  hms          apply pushed main (${DEFAULT_REF})"
-            echo "  hms .        apply the current checkout/worktree (pre-push verification)"
+            echo "  hms          apply pushed main (${ref})"
+            echo "  hms .        apply the current checkout/worktree (pre-push verification;"
+            echo "               drops private value modules if ${ref} is a private wrapper flake)"
             echo "  hms <path>   apply an arbitrary local checkout"
             exit 0
             ;;
