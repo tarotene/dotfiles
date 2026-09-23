@@ -1,3 +1,8 @@
+---
+name: astro-site-governance
+description: Bootstrap or replicate battle-tested GitHub governance (Security/Quality/Workflow core Rulesets always applied, plus an opt-in Review ruleset for Copilot code review + required conversation resolution — ADR-0021 in tarotene/dotfiles, Biome/Vitest CI, cog.toml, Renovate, release-please, git hooks, Justfile) into any Astro site repository. Use when asked to "撒く", "bootstrap governance", "apply rulesets", "apply GitHub settings", "set up release-please", "seed CI to a new Astro repo", "rulesets / release / renovate をまとめて適用", or "Astro サイトに governance を播く". This is the Astro/site counterpart of `rust-repo-governance`; use `typst-repo-governance` instead for Typst/document repositories.
+---
+
 ## What this Skill does
 
 1. Copies parameterised templates (CI workflows including a per-file
