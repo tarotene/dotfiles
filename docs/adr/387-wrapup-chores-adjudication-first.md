@@ -1,4 +1,4 @@
-# ADR-0000 — wrapup-chores を裁定前倒し型に反転する(adjudication-first)
+# ADR-387 — wrapup-chores を裁定前倒し型に反転する(adjudication-first)
 
 - Status: Accepted
 - Date: 2026-09-23

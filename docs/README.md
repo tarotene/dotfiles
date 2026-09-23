@@ -225,9 +225,8 @@
   `n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の
   番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、
   CI required check が呼ぶ。ADR-0008 を amend する。
-- [ADR-0000](adr/0000-wrapup-chores-adjudication-first.md)(起草中、
-  `gh pr create` 後に導入 PR 番号へ改番)— `wrapup-chores` スキルを
-  裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を
+- [ADR-387](adr/387-wrapup-chores-adjudication-first.md) — `wrapup-chores`
+  スキルを裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を
   変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで
   `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` /
   `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由
@@ -258,7 +257,7 @@ Design and rationale for the hooks and commands deployed from
 - [`wrapup-chores.md`](claude/wrapup-chores.md) — 個人スキル: 未起票の
   inbox 行と起票済みだが未着手の wrapup 由来 Issue をまとめて棚卸しし、
   triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO として stacked
-  PR で一括対処する `/wrapup-chores` の手順(ADR-0000)。
+  PR で一括対処する `/wrapup-chores` の手順(ADR-387)。
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
