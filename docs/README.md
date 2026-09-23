@@ -247,6 +247,10 @@ Design and rationale for the hooks and commands deployed from
   in-progress plan to HTML in Chrome.
 - [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
   findings land in an issue-filing inbox.
+- [`wrapup-chores.md`](claude/wrapup-chores.md) — 個人スキル: 未起票の
+  inbox 行と起票済みだが未着手の wrapup 由来 Issue をまとめて棚卸しし、
+  判断を要さないものだけを 1 回の GO 確認後に 1 つの chores PR で一括対処
+  する `/wrapup-chores` の手順。
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
@@ -263,12 +267,28 @@ Design and rationale for the hooks and commands deployed from
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
   Covers the two holes left by the harness-supplied footer: comments never got
   one, and the PR/Issue body side had no repo-side enforcement at all.
+- [`external-send-guard.md`](claude/external-send-guard.md) — PreToolUse hook:
+  Gmail MCP tool 経由の外部(自分以外)宛メール直接送信を deny し、
+  `create_draft` へ誘導する。実在するアドレスでも「何の窓口か」の文脈判定は
+  機械では原理的に難しいという実インシデント(2026-09-22)を受けた
+  fail-closed 設計(`self.txt` 不在時は自分宛アドレス 0 件扱い)。
 - [`stack-base-guard.md`](claude/stack-base-guard.md) — PreToolUse hook
   (ADR-0027): `gh pr create` / `gh pr edit --base` の作成時に、セッション内の
   複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
   状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   attribution-guard.sh のコマンド解析エンジンを source して再利用する。
+- [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
+  運用では PR タイトルがそのまま `main` の commit subject になるため、
+  client guard(`pr-title-guard.sh`)・server required check
+  (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
+  Conventional Commits 文法を機械強制する。単一ソースの checker は
+  `scripts/pr-title-check`。
+- [`adr-numbering.md`](claude/adr-numbering.md) — ADR-380: ADR 番号をローカル
+  連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
+  アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
+  不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
+  + `--fix` + 段3の PostToolUse hook `adr-number.sh` が共有)。
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s
@@ -357,6 +377,12 @@ Design and rationale for the hooks and commands deployed from
   「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
   copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`(gh/LLM
   を呼ばない決定論的 judge)。
+- [`selection-grounding.md`](claude/selection-grounding.md) — ADR-0035:
+  「クリーンかつ先進的な技術選定を好む」という自認を、
+  `## 先行例との対比` 節にトークンを 1 つ足すだけで検証可能な 3 軸
+  (表現不可能性 → 還元性 → 先進性の辞書式順序)に変換した設計記録。
+  独立した plan 節・専用 gate を新設せず `plan-precedent-gate.sh` への
+  加算で済ませた理由(還元性)も記録。
 - [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
   README/CONTRIBUTING.md に machine-checkable な charter(目的1文・
   `## Scope`・CONTRIBUTING の Issues 節・命名クラス・topics)を播く/適合化し、
@@ -368,6 +394,21 @@ Design and rationale for the hooks and commands deployed from
   1 回の一括レビューを経て一括 PR 化する手順(ADR-0015 の LLM ノード)。
   charter-sweep(#180)を巻き取り、完了定義を PR 作成までに変更した理由
   (品質劣化・人間裁定なしの正本書き換えという 2 つの実害)を記録。
+- [`gpg-subkey-rotation.md`](claude/gpg-subkey-rotation.md) — 個人スキル:
+  `gpg-subkey rotate` 単体では完了しない GPG サブ鍵ローテーション
+  (export → nix 編集 → GitHub/keyserver 同期 → PR → `hms` 適用)を
+  抜け漏れなく終わらせる手順。途中で止まっても壊れて見えない
+  (旧サブ鍵がまだ有効)ため、次の PR の CI で `unknown_key` として
+  初めて発覚するという失敗モードへの対処。
+- [`gas-clasp-ops.md`](claude/gas-clasp-ops.md) — 個人スキル: Google Apps
+  Script (GAS) を公式 CLI `clasp` で操作する基盤(ADR-0030)。GAS コード
+  自体の正本は各利用リポジトリに分散配置したまま、セットアップ・
+  ログイン・日常操作・規約のナレッジだけをここに集約する。
+- [`external-call-scheduling.md`](claude/external-call-scheduling.md) —
+  個人スキル: 電話等 Claude が代行できないハンドオフ作業を、相手の営業
+  時間とユーザーの空き時間を突き合わせてカレンダーに反映する判断知識。
+  「トークスクリプトを渡して終わり」がユーザーの自発的な想起に賭ける
+  設計だった問題への対処。
 
 ## Investigation records
 
