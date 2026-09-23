@@ -1348,6 +1348,14 @@ in
   # docs/claude/precedent-grounding.md、コメント索引 16) 参照。
   home.file.".claude/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+  # selection-grounding: 技術・仕組みの選択(ツール・ライブラリ・hook/skill の
+  # 要否・置き換え)を表現不可能性 → 還元性 → 先進性の3軸の辞書式順序で評価し、
+  # precedent-grounding が確立した `## 先行例との対比` 節に `軸:` トークンと
+  # (該当時)`本命:`/`対抗馬:`/`外した候補:` を追加する書き方(ADR-0035)。
+  # 形式検査は plan-precedent-gate.sh(precedent-grounding と共有、新規 gate は
+  # 作らない)。詳細は docs/claude/selection-grounding.md。
+  home.file.".claude/skills/selection-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/selection-grounding/SKILL.md";
   # github-audit-triage: github-audit の findings を入力に複数リポジトリの
   # 一括起草・一括レビュー・一括 PR 化を行う判断知識(ADR-0015 の LLM
   # ノード)。charter-sweep(#180)を巻き取り、完了定義を PR 作成までに
@@ -1424,6 +1432,8 @@ in
     repoConfig + "/claude/skills/scope-inventory/SKILL.md";
   home.file.".agents/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
+  home.file.".agents/skills/selection-grounding/SKILL.md".source =
+    repoConfig + "/claude/skills/selection-grounding/SKILL.md";
   home.file.".agents/skills/github-audit-triage/SKILL.md".source =
     repoConfig + "/claude/skills/github-audit-triage/SKILL.md";
   home.file.".agents/skills/repo-charter/SKILL.md".source =
