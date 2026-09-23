@@ -31,8 +31,26 @@ fetch とチェックの間に何かコミットされても前提条件を**原
 `git symbolic-ref --short refs/remotes/origin/HEAD` は `origin/main` のような
 値を返す。これをそのまま `origin/<base>` に補間すると `origin/origin/main`
 という存在しない ref を参照し、ahead/behind 判定も merge も常に失敗する。
-`pr-gate.sh:default_branch()` と同一の `${ref#origin/}` で接頭辞を剥がした値
-を `default_branch()` の複製として持つ(変更時は両方揃えること)。
+`${ref#origin/}` で接頭辞を剥がした値を返す `default_branch()` は複数の
+hook/script に複製されている(手続き的な複数箇所同期コメントは箇所数を
+書くとすぐ陳腐化する実例になった、#394 — このため各複製側のコメントからは
+箇所数・ファイル名の列挙を外し、正本をこの節に一本化した)。
+
+実測(2026-09-23)時点で 2 クラスタ・計 6 箇所:
+
+- **byte-identical(4 箇所)**: `config/claude/hooks/worktree-fresh-base.sh`、
+  `config/claude/hooks/plan-fresh-gate.sh`、`config/claude/hooks/pr-gate.sh`、
+  `scripts/git-checkout-freshness`。いずれも
+  `git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD` を素の
+  `${ref#origin/}` で剥がすだけの実装。
+- **variant(2 箇所)**: `config/claude/hooks/stack-base-guard.sh`、
+  `config/claude/hooks/decision-colocation-guard.sh`。`$1=project $2=nwo` を
+  取り、symbolic-ref が失敗したら `gh repo view -R "$nwo" --json
+  defaultBranchRef` にフォールバックする 2 引数版。
+
+変更時はこの列挙をまず更新し、そのうえで各実装を揃える。根本解決(hook-io
+相当の共通クレートへの集約)は Rust 移行 Tracking Issue #389 の Stage 2
+(#391)で行う予定。
 
 ## fetch は base ブランチ名を明示する
 

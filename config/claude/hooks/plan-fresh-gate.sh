@@ -82,9 +82,9 @@ deny_with() { # $1=EVENT $2=理由
 }
 
 # default branch を refs/remotes/origin/HEAD から読み、origin/ 接頭辞を剥がす。
-# pr-gate.sh:default_branch() / worktree-fresh-base.sh:default_branch() と
-# 同一式の複製 — 変更時は3箇所とも揃えること(docs/claude/worktree-fresh-base.md
-# が明示的に許容している既存の重複パターン)。
+# 同一式の複製が他にも複数ある(docs/claude/worktree-fresh-base.md が正本の
+# 列挙を持つ、明示的に許容している既存の重複パターン) — 変更時はそちらを見て
+# 揃えること。箇所数はここでは書かない(陳腐化する、#394)。
 default_branch() {
   local ref
   ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0
