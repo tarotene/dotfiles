@@ -388,6 +388,10 @@ vault. Never target the live vault with an unreviewed `restic restore`.
   running a backup and restore test, then revoking the old B2 key.
 - Rotate the machine token with `obsidian-backup clear-token`, revoke it in
   Bitwarden, issue a replacement, and run `obsidian-backup configure-token`.
+  Set the Bitwarden access token's own Expiration to roughly one year — the
+  same annual cadence ADR-0003 uses to bound the `[S]` GPG subkey — so a
+  missed manual rotation still lapses on its own instead of remaining valid
+  indefinitely.
 - Remove this host's automation by disabling both timers and clearing the
   machine token. Removing the Home Manager module removes the commands and
   units but intentionally does not delete any B2 data.
