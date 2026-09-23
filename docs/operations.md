@@ -432,7 +432,7 @@ Once a tool's layer is decided, a second question applies whenever it needs a
 concrete value (a bucket name, a project ID, a ping URL, a PRIVATE repo name):
 does this repo need the **rule** (a derivation procedure with a placeholder,
 public, this repo) or the **value itself** (private, the wrapper flake,
-[ADR-0033](adr/0033-machine-state-wrapper-flake.md))? This repo never
+[ADR-0034](adr/0034-machine-state-wrapper-flake.md))? This repo never
 names the wrapper flake — see `scripts/hms.sh`'s `private-hub` marker. Note
 that `hms .` on a host with that marker registered applies this PUBLIC
 worktree alone, dropping every private value module for that one apply.

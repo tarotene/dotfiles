@@ -1,4 +1,4 @@
-# ADR-0033 — 私的な machine-state 実値は、外側の private wrapper flake に置く
+# ADR-0034 — 私的な machine-state 実値は、外側の private wrapper flake に置く
 
 - Status: Accepted
 - Date: 2026-09-23
