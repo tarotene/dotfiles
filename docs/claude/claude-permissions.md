@@ -54,5 +54,11 @@ git-worktree-allow hook（検証つきのプログラム的許可 —
 破壊的でない読み取り・検査系と、Add / Commit / Create PR という主目的に直接効く
 4 件（`git add` / `git commit` / `git push` / `gh pr create`）だけを入れている。
 `gh pr edit` / `gh issue create` / `gh issue edit` のような外部への書き込みは
-入れていない — `.claude/skills/aocs-draft/SKILL.md` のような各リポジトリのスキルが
-明示的な人の確認を要求している操作を、allow で無言に迂回させたくないため。
+ワイルドカードでは入れていない。`Bash(gh pr edit *)` と書くと、他人の PR の編集まで
+許すことを表してしまうためである。
+
+これらは代わりに gh-edit-allow hook(`docs/claude/gh-edit-allow.md`、#392)が
+扱う。allow するのは、このセッション自身が作成した PR/Issue(と、そのリポジトリへの
+`gh issue create`)に限る。それ以外は通常の確認フローに残す。
+`.claude/skills/aocs-draft/SKILL.md` のように、別リポジトリのスキルが人の確認を
+明示的に要求している場合は、その hook の skip 機構(同文書)で止められる。

@@ -215,6 +215,13 @@
     executable = true;
   };
 
+  # update-own-tools (ADR-0025, #276): builds self-authored, not-yet-released
+  # CLIs from origin/<branch> per a host-local registry
+  # (~/.config/update-own-tools/registry.toml — never in this repo). Rust,
+  # from crates/update-own-tools via pkgs.dotfiles-tools (ADR-0024);
+  # docs/update-own-tools.md has the schema and the exit procedure.
+  home.file.".local/bin/update-own-tools".source = "${pkgs.dotfiles-tools}/bin/update-own-tools";
+
   # github-rulesets-apply: seeds the standard Security/Quality/Workflow
   # rulesets (ADR-0021 core layer) onto one or more repositories by driving
   # the matching *-repo-governance skill's apply-rulesets.sh (#153). Owns no

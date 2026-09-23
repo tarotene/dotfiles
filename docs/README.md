@@ -27,6 +27,9 @@
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
   別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
   (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
+- [`update-own-tools.md`](update-own-tools.md) — 自作 pre-release CLI を
+  ホストローカルのレジストリに従って `origin/main` からビルドする
+  `update-own-tools` のスキーマ・動作・退出手順(ADR-0025、#276)。
 - [`rust-migration.md`](rust-migration.md) — hook/CLI の bash → Rust 移植
   手順(ADR-0024、#389): workspace 構成(`crates/hook-io` ほか)、
   fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段、
@@ -275,6 +278,10 @@ Design and rationale for the hooks and commands deployed from
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
+- [`gh-edit-allow.md`](claude/gh-edit-allow.md) — Pre/PostToolUse hook
+  (Rust, #392): validated programmatic allow for `gh pr|issue edit` /
+  `gh issue create` on PRs/Issues this session itself created, via a
+  session ledger fed from `gh … create` output — never a wildcard rule.
 - [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
 - [`public-publish-guard.md`](claude/public-publish-guard.md) — dotfiles-side

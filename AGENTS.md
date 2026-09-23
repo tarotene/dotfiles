@@ -52,7 +52,10 @@ dotfiles/
 │                             #   plan/ledger I/O), crates/migration-audit (checks
 │                             #   rust-migration.toml, the migration allowlist,
 │                             #   against the tree), crates/fixture-oracle (trycmd
-│                             #   fixtures still aimed at bash originals); built by
+│                             #   fixtures still aimed at bash originals),
+│                             #   crates/gh-edit-allow (hook: allow gh edits on this
+│                             #   session's own PRs/Issues, #392), crates/update-own-tools
+│                             #   (~/.local/bin CLI, ADR-0025); built by
 │                             #   crane in flake.nix as pkgs.dotfiles-tools.
 │                             #   How to port one: docs/rust-migration.md
 ├── patches/                   # source patches applied via `overrideAttrs` in
@@ -267,6 +270,8 @@ dotfiles/
 │   ├── claude/               # Claude Code tooling docs (design + rationale per hook)
 │   │   ├── copilot-plan-review.md  # Copilot plan-review gate: read-only custom agent, why it gates on severity, not on a verdict
 │   │   ├── git-worktree-allow.md # PreToolUse hook: validated programmatic allow for `git -C <worktree>`
+│   │   ├── gh-edit-allow.md      # Pre/PostToolUse hook (Rust): allow gh pr|issue edit / issue
+│   │   │                     #   create only on this session's own PRs/Issues (session ledger, #392)
 │   │   ├── git-stash-guard.md    # PreToolUse hook: deny bare `git stash` (shared stack across worktrees)
 │   │   ├── attribution-guard.md  # PreToolUse hook: deny a gh pr|issue
 │   │   │                     #   create|edit|comment / gh pr review whose body

@@ -26,9 +26,22 @@ ADR-0024 本体ではなくここに置く。
 (`buildDepsOnly`、serde / serde_json / toml ほか)は再ビルドされなかった。
 つまり、依存グラフのキャッシュは設計どおりメンバーの変更から切り離されている。
 
-**限界**: この時点の workspace は lib メンバーだけで、bin を持たない。
-bin を持つ構成(Stage 3 以降)の値は、下の cargo の計測で代替している。
-Stage 3 の PR で bin 入りの値を取り直す。
+#### bin 入りの再計測(Stage 3、#392)
+
+bin メンバーが 2 本(`gh-edit-allow` / `update-own-tools`)になった時点で、
+`crates/gh-edit-allow/src/main.rs` に 1 行足して取り直した:
+
+| 回 | 秒 |
+|---|---:|
+| 1 | 12.68 |
+| 2 | 12.04 |
+| 3 | 12.25 |
+
+deps drv は今回も再ビルドされなかった。ただし `dotfiles-tools` は workspace 全体を
+1 つの derivation でビルドする。そのため、どのメンバーを変更しても全 bin の
+コンパイルと LTO リンクが走る。bin が増えるとこの値はほぼ線形に伸びる見込み。
+許容できなくなった時点で、メンバーごとに `buildPackage`(`cargoExtraArgs = "-p <bin>"`)
+へ分ける。分けても deps drv は共有されたままなので、その変更は flake.nix の中だけで閉じる。
 
 ### cargo(release、bin 2 本 + 共有 lib の模擬構成)
 
@@ -60,6 +73,7 @@ hyperfine(`-N`、`--input` で stdin JSON を与える)の結果:
 |---|---:|---:|---:|
 | Rust(`hook-io` を使う模擬 allow hook、release) | 1.4 ± 0.5 | 1.1 | 8.3 |
 | 参考: `git-worktree-allow.sh`(bash、素通し経路) | 8.9 ± 0.7 | 8.0 | 11.3 |
+| `gh-edit-allow`(実物、allow 経路、`git config` 子プロセス込み、Stage 3) | 3.1 ± 0.3 | 2.5 | 5.5 |
 
 Rust の最大値 8.3ms でも予算の 1/6 に収まる。ADR-0024 の PoC 値(1.2ms)とも
 整合する。
@@ -68,7 +82,7 @@ Rust の最大値 8.3ms でも予算の 1/6 に収まる。ADR-0024 の PoC 値(
 
 どの数値も許容範囲内だった。
 
-- 再ビルドは nix で約 3 秒、cargo release で約 7 秒。
+- 再ビルドは nix で約 3 秒(lib のみ)〜約 12 秒(bin 2 本)、cargo release で約 7 秒。
 - 起動は 50ms 予算を大きく下回った。
 
 したがって #205(herdr ローカルビルドキャッシュの Cachix 昇格)は再オープンしない。

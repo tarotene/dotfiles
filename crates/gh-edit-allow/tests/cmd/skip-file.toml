@@ -1,0 +1,8 @@
+# <GH_EDIT_ALLOW_DIR>/skip があれば台帳にあっても判定しない
+bin.name = "gh-edit-allow"
+stdin = '{"hook_event_name":"PreToolUse","session_id":"sess-1","tool_name":"Bash","tool_input":{"command":"gh pr edit 12 -R octo/hello --title x"}}'
+status.code = 0
+stdout = ""
+fs.sandbox = true
+[env.add]
+GH_EDIT_ALLOW_DIR = "."
