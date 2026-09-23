@@ -4,7 +4,11 @@
 # precedent-grounding/SKILL.md)の欠落を機械的に検査する hook。
 #
 # 設計と根拠: docs/adr/0012-precedent-grounding-over-prompted-adversarial-
-# review.md、docs/claude/precedent-grounding.md(このリポジトリ内)
+# review.md、docs/claude/precedent-grounding.md(このリポジトリ内)。
+# 技術・仕組みの選択に関する `軸:`/重い欄の検査は docs/adr/0035-
+# selection-grounding.md、docs/claude/selection-grounding.md、
+# config/claude/skills/selection-grounding/SKILL.md を参照(段3、既存の
+# この gate への加算のみで新しい gate は作らない)。
 #
 # plan-scope-gate.sh と同じ二層構造(docs/claude/precedent-grounding.md
 # 「なぜ形式は機械 gate、内容は critic の報告にしたか」節): 形式(節または
@@ -20,6 +24,12 @@
 #     `先行例: <出典(URL・#N・owner/repo#N・パス風文字列のいずれか)>` +
 #     `(取得 YYYY-MM-DD)` + `差分:(一致|異なる)` のいずれかを満たすことを
 #     見る。満たさない要素があれば、その Dn について deny(不足要素を列挙)。
+#   - 各 Dn には `軸:(表現不可能|還元|検出のみ)` トークンも必須(`先行例なし:`
+#     の枝でも必須)。欠落していれば同じ「不足があります」形式に加える。
+#   - `本命:`/`対抗馬:`/`外した候補:`(重い欄)のいずれか 1 つでも書かれて
+#     いれば、`本命:` と `対抗馬:` が両方揃っているかを見る(節内整合性の
+#     みで、この重い欄を書くべきだったかどうかの発火判定はしない — それは
+#     selection-grounding スキルの内容判断で lens A に委ねる)。
 #   - allow は決して返さない。問題が無ければ何も決定しない(exit 0)。
 #
 # 既知の限界(意図的な選択):
@@ -27,6 +37,8 @@
 #     その主張を支えるかは検査しない(critic の職責、docs/claude/
 #     precedent-grounding.md 参照)。
 #   - 取得日の妥当性(未来日付・古すぎる日付)は検査しない。
+#   - 重い欄の発火漏れ(書くべきなのに書いていない)は検査しない。節内
+#     整合性(揃っているか)だけを見る。
 #
 # 使い方:
 #   hook として: settings.json の PreToolUse(matcher: ExitPlanMode)から
@@ -77,6 +89,12 @@ CITATION_RE='(https?://[^[:space:])]+|#[0-9]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)'
 DATE_RE='取得[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}'
 DIFF_RE='差分:[[:space:]]*(一致|異なる)'
 NONE_RE='先行例なし:[[:space:]]*[^[:space:]]'
+# selection-grounding(docs/adr/0035): 各 Dn に必須の軸トークンと、技術・
+# 仕組みの選択に限って発火する重い欄(本命/対抗馬/外した候補)。
+AXIS_RE='軸:[[:space:]]*(表現不可能|還元|検出のみ)'
+HONMEI_RE='本命:[[:space:]]*[^[:space:]]'
+TAIKOUBA_RE='対抗馬:[[:space:]]*[^[:space:]]'
+HAZUSHITA_RE='外した候補:[[:space:]]*[^[:space:]]'
 
 # そのまま貼れば書式検査を通る完全な例文ブロック。deny メッセージ末尾と
 # --check の指摘あり出力に同梱する(2026-09-21 実測: 本 gate の deny の
@@ -98,12 +116,18 @@ example_block() {
 - D1: <採った設計判断を1文で>
   先行例: <著者/組織, タイトル> https://example.com/doc (取得 ${today})
   差分: 一致
+  軸: 表現不可能 | 還元 | 検出のみ — <1句>
 - D2: <採った設計判断を1文で>
   先行例なし: <どこを・何のキーワードで・一次/二次のどちらまで探したか>
+  軸: 表現不可能 | 還元 | 検出のみ — <1句>
 
-出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス でも可。
-先行例から意図的に外れた場合は「差分: 異なる — <理由>」。
-設計判断を含まないプランなら、節の代わりに次の1行だけ:
+\`軸:\` は全 Dn に必須(precedent-grounding スキル §3、selection-grounding
+スキル参照)。出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス
+でも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・
+仕組みの選択で外部依存の新設・置換・撤去、または撤収コストが導入コストを
+上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」も
+書く(selection-grounding スキル参照)。設計判断を含まないプランなら、
+節の代わりに次の1行だけ:
 
 先行例: 該当なし — <理由(例: typo 修正で設計判断を含まない)>
 EOF
@@ -122,26 +146,40 @@ extract_precedent_section() {
 # $1=id $2=block(Dn行を含む複数行テキスト) ; 問題があれば1行1件で出力
 check_dn_block() {
   local id="$1" block="$2"
+  local -a missing=()
+  local has_none=0
 
-  grep -Eq "$NONE_RE" <<< "$block" && return 0
-
-  if grep -Eq '先行例:' <<< "$block"; then
-    local -a missing=()
+  if grep -Eq "$NONE_RE" <<< "$block"; then
+    has_none=1
+  elif grep -Eq '先行例:' <<< "$block"; then
     grep -Eq "$CITATION_RE" <<< "$block" || missing+=("出典(URL・#N・owner/repo#N・リポジトリ内パスのいずれか)")
     grep -Eq "$DATE_RE" <<< "$block" || missing+=("取得日(「(取得 YYYY-MM-DD)」の形)")
     grep -Eq "$DIFF_RE" <<< "$block" || missing+=("差分:(一致|異なる)")
-    if ((${#missing[@]} > 0)); then
-      local joined i
-      joined="${missing[0]}"
-      for ((i = 1; i < ${#missing[@]}; i++)); do
-        joined+="、${missing[$i]}"
-      done
-      printf 'D%s: 先行例の記載に不足があります — %s\n' "$id" "$joined"
-    fi
+  else
+    printf 'D%s には「先行例:」または「先行例なし:」の記載がありません\n' "$id"
     return 0
   fi
 
-  printf 'D%s には「先行例:」または「先行例なし:」の記載がありません\n' "$id"
+  # selection-grounding: 軸トークンは先行例:/先行例なし: どちらの枝でも必須
+  # (還元性の判定は先行例の有無と独立のため)。
+  grep -Eq "$AXIS_RE" <<< "$block" || missing+=("軸:(表現不可能|還元|検出のみ)")
+
+  if ((${#missing[@]} > 0)); then
+    local joined i
+    joined="${missing[0]}"
+    for ((i = 1; i < ${#missing[@]}; i++)); do
+      joined+="、${missing[$i]}"
+    done
+    printf 'D%s: 先行例の記載に不足があります — %s\n' "$id" "$joined"
+  fi
+
+  # selection-grounding: 重い欄(本命/対抗馬/外した候補)はどれか1つでも
+  # 書かれていれば本命/対抗馬が両方揃っていることだけを見る(発火判定は
+  # しない — lens A の職責)。
+  if grep -Eq "$HONMEI_RE|$TAIKOUBA_RE|$HAZUSHITA_RE" <<< "$block"; then
+    grep -Eq "$HONMEI_RE" <<< "$block" || printf 'D%s: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 本命: が欠落しています\n' "$id"
+    grep -Eq "$TAIKOUBA_RE" <<< "$block" || printf 'D%s: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 対抗馬: が欠落しています\n' "$id"
+  fi
 }
 
 # $1=plan_body ; 見つかった問題を1行1件で出力(無ければ何も出さない)
@@ -309,9 +347,9 @@ selftest() {
   out="$(judge_precedent $'依頼の説明\n先行例: 該当なし \xe2\x80\x93 typo 修正\n')"
   expect_empty "$out" "免除行(en dash)"
 
-  # --- 節あり、全項目適合(先行例あり + 先行例なし混在) → pass ---
+  # --- 節あり、全項目適合(先行例あり + 先行例なし混在、軸あり) → pass ---
   local plan_ok
-  plan_ok=$'## 先行例との対比\n\n- D1: 三層構成で規律を配置する\n  先行例: 自リポジトリ scope-inventory — config/claude/CLAUDE.md (取得 2026-09-15)\n  差分: 一致\n- D2: 別の判断\n  先行例なし: 公式ドキュメントと社内 ADR を検索したが見つからなかった\n'
+  plan_ok=$'## 先行例との対比\n\n- D1: 三層構成で規律を配置する\n  先行例: 自リポジトリ scope-inventory — config/claude/CLAUDE.md (取得 2026-09-15)\n  差分: 一致\n  軸: 還元 — 既存語彙で足りる\n- D2: 別の判断\n  先行例なし: 公式ドキュメントと社内 ADR を検索したが見つからなかった\n  軸: 検出のみ — 実行時にしか判定できないため\n'
   out="$(judge_precedent "$plan_ok")"
   expect_empty "$out" "節あり・全項目適合"
 
@@ -351,9 +389,47 @@ selftest() {
 
   # --- 太字マーカー付き Dn 行(- **D1:**)も認識する ---
   local plan_bold
-  plan_bold=$'## 先行例との対比\n\n- **D1:** 判断\n  先行例なし: 探索範囲\n'
+  plan_bold=$'## 先行例との対比\n\n- **D1:** 判断\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_bold")"
   expect_empty "$out" "太字マーカー付き Dn"
+
+  # --- selection-grounding: 軸欠落(先行例:の枝) → deny ---
+  local plan_axis_missing
+  plan_axis_missing=$'## 先行例との対比\n\n- D1: 判断\n  先行例: https://example.com/x (取得 2026-09-23)\n  差分: 一致\n'
+  out="$(judge_precedent "$plan_axis_missing")"
+  expect_nonempty "$out" "軸欠落(先行例の枝)"
+  grep -q '軸' <<< "$out" || {
+    echo "FAIL(軸欠落): 軸への言及が無い: [${out}]" >&2
+    fails=$((fails + 1))
+  }
+
+  # --- selection-grounding: 軸欠落(先行例なし:の枝) → deny ---
+  local plan_none_axis_missing
+  plan_none_axis_missing=$'## 先行例との対比\n\n- D1: 判断\n  先行例なし: 探索範囲\n'
+  out="$(judge_precedent "$plan_none_axis_missing")"
+  expect_nonempty "$out" "軸欠落(先行例なしの枝)"
+
+  # --- selection-grounding: 軸: 検出のみ 単体(先行例なし)で pass ---
+  local plan_axis_kenshutsu
+  plan_axis_kenshutsu=$'## 先行例との対比\n\n- D1: 判断\n  先行例なし: 公式ドキュメントを検索したが見つからなかった\n  軸: 検出のみ — nix 評価時に外部状態を読めないため\n'
+  out="$(judge_precedent "$plan_axis_kenshutsu")"
+  expect_empty "$out" "軸: 検出のみ 単体で pass"
+
+  # --- selection-grounding: 重い欄が揃っている(本命+対抗馬) → pass ---
+  local plan_heavy_ok
+  plan_heavy_ok=$'## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  先行例: https://example.com/x (取得 2026-09-23)\n  差分: 一致\n  軸: 表現不可能 — 理由\n'
+  out="$(judge_precedent "$plan_heavy_ok")"
+  expect_empty "$out" "重い欄が揃っている"
+
+  # --- selection-grounding: 対抗馬だけあって本命が無い → deny ---
+  local plan_heavy_incomplete
+  plan_heavy_incomplete=$'## 先行例との対比\n\n- D1: 判断\n  対抗馬: 候補A (同じ軸)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  out="$(judge_precedent "$plan_heavy_incomplete")"
+  expect_nonempty "$out" "重い欄の片方欠落(対抗馬のみ)"
+  grep -q '本命' <<< "$out" || {
+    echo "FAIL(重い欄の片方欠落): 本命欠落への言及が無い: [${out}]" >&2
+    fails=$((fails + 1))
+  }
 
   # --- extract_precedent_section: 次の見出しで止まる ---
   local sec
