@@ -242,6 +242,20 @@
     executable = true;
   };
 
+  # apply-rulesets.sh(#349)自身の PATH 配備(#417)。配備前は
+  # `github-rulesets-apply dotfiles ...` が呼ぶ既定 self-apply script
+  # ($SCRIPT_DIR/apply-rulesets.sh)が存在せず必ず失敗していた。
+  # rulesets/*.json(下の xdg.configFile)も併せて配備しないと、
+  # デプロイ先には REPO_ROOT/rulesets が存在しないため RULESETS_DIR の
+  # 解決先が無くなる(スクリプト側の 3 段フォールバックに対応)。
+  home.file.".local/bin/apply-rulesets.sh" = {
+    source = ../../scripts/apply-rulesets.sh;
+    executable = true;
+  };
+  xdg.configFile."dotfiles/rulesets/security.json".source = ../../rulesets/security.json;
+  xdg.configFile."dotfiles/rulesets/quality.json".source = ../../rulesets/quality.json;
+  xdg.configFile."dotfiles/rulesets/workflow.json".source = ../../rulesets/workflow.json;
+
   # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
   # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that
   # this module does not manage, written directly to disk instead).

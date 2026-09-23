@@ -23,7 +23,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-RULESETS_DIR="${APPLY_RULESETS_DIR:-$REPO_ROOT/rulesets}"
+
+# 既定の解決先は 3 段(#417): 明示指定 > checkout 相対 > 配備先。
+# home-manager 配備先(~/.local/bin/apply-rulesets.sh)には
+# $REPO_ROOT/rulesets が存在しない(SCRIPT_DIR の親は ~/.local であって
+# リポジトリではない)ため、それをそのまま使うと PATH 経由の実行が必ず
+# 失敗する(#417)。checkout 内 checkout で動かしたときの挙動は変えない
+# (REPO_ROOT/rulesets が実在すればそちらを優先する)。
+if [[ -n "${APPLY_RULESETS_DIR:-}" ]]; then
+  RULESETS_DIR="$APPLY_RULESETS_DIR"
+elif [[ -d "$REPO_ROOT/rulesets" ]]; then
+  RULESETS_DIR="$REPO_ROOT/rulesets"
+else
+  RULESETS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/rulesets"
+fi
 
 OWNER="tarotene"
 REPO="dotfiles"
@@ -35,8 +48,11 @@ usage() {
 usage: apply-rulesets.sh [--owner O] [--repo R] [--rulesets-dir DIR]
                           [--reconcile] [--dry-run]
 
-Applies rulesets/{security,quality,workflow}.json (repo root by default,
-override with --rulesets-dir) to a GitHub repository.
+Applies rulesets/{security,quality,workflow}.json to a GitHub repository.
+Source directory resolves in this order: --rulesets-dir / APPLY_RULESETS_DIR
+env override > <repo root>/rulesets when run from a checkout > the
+home-manager deployed location, ${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/
+rulesets (#417).
 
 Without --reconcile: create-only — skips any ruleset whose name already
 exists (same behavior as the *-repo-governance skills' apply-rulesets.sh).
