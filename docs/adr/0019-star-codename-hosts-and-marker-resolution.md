@@ -123,3 +123,9 @@ wrap-up chores セッション中、命名語彙が単一ホスト(altair)だけ
    `home/hosts/company-pop-old.nix` を削除し、対応する
    `homeConfigurations` キーも即削除する(移行期間の旧キーエイリアスは
    改名した 2 ホストにのみ設ける)。
+
+### 執行点
+
+- `home/hosts/vega.nix` — `personal-pop.nix` の改名(#214)
+- `home/hosts/arcturus.nix` — `company-pop-new.nix` の改名(#214)
+- `flake.nix` — `homeConfigurations` を新キーに更新、`company-pop-old` を削除
