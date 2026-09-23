@@ -39,7 +39,18 @@ SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/sit
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate titles)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle)
+
+# lifecycle domain (#275, ADR-0023): decision-theory thresholds for the
+# dormancy-scoring signals, deliberately simple and documented so a human
+# reviewing a candidate list can reconstruct why a repo scored the way it
+# did. Reference "now" is overridable (GITHUB_AUDIT_LIFECYCLE_NOW) so the
+# selftest is deterministic instead of depending on wall-clock time.
+LIFECYCLE_STALE_PUSH_DAYS_WARN=180
+LIFECYCLE_STALE_PUSH_DAYS_HIGH=365
+LIFECYCLE_STALE_RELEASE_DAYS=365
+LIFECYCLE_STALE_ISSUE_DAYS=180
+LIFECYCLE_CANDIDATE_SCORE_THRESHOLD=3
 
 # Account-wide ruleset baseline (rulesets domain). Derived from the
 # rust-repo-governance/typst-repo-governance/astro-site-governance skills'
@@ -129,9 +140,18 @@ judges the requested domains (default: all of them):
              status check. Presence-detection only, not individual open PR
              titles (the client guard and the required check judge those).
              not-applicable for repos with no .github/workflows
+  lifecycle  dormancy candidate scoring (#275, ADR-0023): days since last
+             push, days since last tagged release (if any), days since the
+             most recently updated open issue (if any open issues exist),
+             CI absence/latest-run failure. verdict=dormancy-candidate is
+             a candidate list, NOT drift — it never fails this command's
+             exit code, and the final Maintain/Archive/Delete call stays
+             a human decision (docs/repo-lifecycle.md)
 
 Without options, prints a human-readable report and exits 1 if any
-non-exempt repository is drifted/ungoverned in any judged domain. --json
+non-exempt repository is drifted/ungoverned in any judged domain
+(lifecycle's dormancy-candidate verdict is exempt from this — see above).
+--json
 prints the machine-readable findings array instead. A ledger snapshot is
 always written to $XDG_STATE_HOME/github-audit/ledger.json (override with
 GITHUB_AUDIT_STATE_DIR).
@@ -166,7 +186,16 @@ list_repos_meta() { # print: JSON array of repo metadata objects
   "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 --json \
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
-hasWikiEnabled,hasProjectsEnabled,createdAt 2>/dev/null
+hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt 2>/dev/null
+}
+
+# CI の成否(#275, lifecycle domain)。有無(workflowsDir の存在)は他ドメイン
+# と同じ GraphQL batch から取れるが、成否は REST の Actions API にしか無い。
+# settings ドメインの fetch_repo_settings() と同じ「実際に judge する時だけ
+# 遅延 fetch する」パターン(audit() の need_repo_rest 相当)。
+fetch_latest_run_conclusion() { # $1=repo -> "success"|"failure"|""(実行なし/取得不能)
+  "$GH_BIN" api "repos/$OWNER/$1/actions/runs?per_page=1&status=completed" \
+    --jq '.workflow_runs[0].conclusion // empty' 2>/dev/null || printf ''
 }
 
 # squash_merge_commit_title/squash_merge_commit_message (ADR-0031) are REST-
@@ -239,6 +268,8 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") { ... on Blob { id } }
       ghRenovateJson5: object(expression: \"HEAD:.github/renovate.json5\") { ... on Blob { id } }
       renovaterc: object(expression: \"HEAD:.renovaterc.json\") { ... on Blob { id } }
+      latestRelease: releases(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { createdAt } }
+      openIssueActivity: issues(states: OPEN, first: 1, orderBy: {field: UPDATED_AT, direction: DESC}) { totalCount nodes { updatedAt } }
     }"
   done < <(jq -r '.[]' <<<"$repos_json")
   query+=' }'
@@ -1015,6 +1046,89 @@ judge_titles() { # $1=repo $2=repo-gql-json -> finding
 }
 
 # ---------------------------------------------------------------------------
+# lifecycle domain (#275, ADR-0023): dormancy candidate scoring.
+#
+# 性質が他 5 ドメインと違う(#261 の裁定)。他ドメインは「あるべき設定から
+# 外れている」という drift 判定だが、この ドメインは「活動が止まっている
+# かもしれない」という候補提示に過ぎない — 古い・止まっているからといって
+# 「間違っている」わけではない(意図的に完了させたプロジェクトかもしれない)。
+# そのため verdict は "ok" / "dormancy-candidate" の2値で、後者は any_drift()
+# の失敗判定から明示的に除外する(下記参照)。Maintain/Archive/Delete の最終
+# 判断は docs/repo-lifecycle.md(ADR-0023)の人間裁定に委ねる — この関数は
+# 判断しない。
+#
+# シグナルは全て「決定論的に取れるもの」限定(#261 裁定文言どおり):
+#   - 最終 push からの経過日数(必須、pushedAt から算出)
+#   - 最終 tagged release からの経過日数(release が 1 件も無ければ計上しない
+#     — 「間隔(あれば)」の "あれば" はこの条件を指す)
+#   - 最も新しく更新された open issue の経過日数(open issue が無ければ
+#     計上しない — 0 件は活動停滞の証拠にならない)
+#   - CI の有無(無ければ +1)・直近の完了 run の成否(failure なら +1)
+lifecycle_days_since() { # $1=ISO8601 timestamp -> 経過日数(整数、$1 が空なら空)
+  local ts="$1" now="${GITHUB_AUDIT_LIFECYCLE_NOW:-}" now_epoch ts_epoch
+  [[ -n $ts ]] || return 0
+  [[ -n $now ]] || now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  now_epoch="$(date -u -d "$now" +%s 2>/dev/null)" || return 0
+  ts_epoch="$(date -u -d "$ts" +%s 2>/dev/null)" || return 0
+  printf '%d' $(((now_epoch - ts_epoch) / 86400))
+}
+
+judge_lifecycle() { # $1=repo $2=pushed_at $3=has_workflows(true/false) $4=repo-gql-json $5=ci_conclusion("success"/"failure"/"") -> finding
+  local repo="$1" pushed_at="$2" has_workflows="$3" gql="$4" ci_conclusion="$5"
+  local score=0
+  local -a signals=()
+
+  local push_days
+  push_days="$(lifecycle_days_since "$pushed_at")"
+  if [[ -n $push_days ]]; then
+    if ((push_days > LIFECYCLE_STALE_PUSH_DAYS_HIGH)); then
+      score=$((score + 2))
+      signals+=("stale-push:${push_days}d")
+    elif ((push_days > LIFECYCLE_STALE_PUSH_DAYS_WARN)); then
+      score=$((score + 1))
+      signals+=("stale-push:${push_days}d")
+    fi
+  fi
+
+  local release_at release_days
+  release_at="$(jq -r '.latestRelease.nodes[0].createdAt // empty' <<<"$gql")"
+  if [[ -n $release_at ]]; then
+    release_days="$(lifecycle_days_since "$release_at")"
+    if [[ -n $release_days ]] && ((release_days > LIFECYCLE_STALE_RELEASE_DAYS)); then
+      score=$((score + 1))
+      signals+=("stale-release:${release_days}d")
+    fi
+  fi
+
+  local open_issue_count issue_at issue_days
+  open_issue_count="$(jq -r '.openIssueActivity.totalCount // 0' <<<"$gql")"
+  if ((open_issue_count > 0)); then
+    issue_at="$(jq -r '.openIssueActivity.nodes[0].updatedAt // empty' <<<"$gql")"
+    issue_days="$(lifecycle_days_since "$issue_at")"
+    if [[ -n $issue_days ]] && ((issue_days > LIFECYCLE_STALE_ISSUE_DAYS)); then
+      score=$((score + 1))
+      signals+=("stale-issues:${issue_days}d")
+    fi
+  fi
+
+  if [[ $has_workflows != true ]]; then
+    score=$((score + 1))
+    signals+=("ci-absent")
+  elif [[ $ci_conclusion == failure ]]; then
+    score=$((score + 1))
+    signals+=("ci-failing")
+  fi
+
+  local verdict=ok
+  ((score >= LIFECYCLE_CANDIDATE_SCORE_THRESHOLD)) && verdict=dormancy-candidate
+
+  local signals_json
+  signals_json="$(printf '%s\n' "${signals[@]}" | jq -R . | jq -s 'map(select(length > 0))')"
+  jq -n --arg v "$verdict" --argjson score "$score" --argjson signals "$signals_json" \
+    '{verdict: $v, missing: $signals, score: $score}'
+}
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -1038,17 +1152,20 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0 need_repo_rest=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
     # charters/renovate's file-existence checks. titles (ADR-0031) needs
     # the same workflowsDir data to detect the pr-title.yml caller.
-    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles ]] && need_graphql=1
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
     # settings (ADR-0031 extension) needs the REST-only squash commit title/
     # message fields (see fetch_repo_settings() comment).
     [[ $d == settings ]] && need_repo_rest=1
+    # lifecycle (#275) needs the REST-only Actions run-conclusion field —
+    # same lazy-fetch pattern as settings' need_repo_rest above.
+    [[ $d == lifecycle ]] && need_ci_conclusion=1
   done
 
   local repo_names_json gql_batch='{}'
@@ -1066,13 +1183,14 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   registry_json="$(read_closed_set_json "$CODENAME_REGISTRY_FILE" "$CODENAME_REGISTRY_LOCAL_FILE")"
   site_json="$(read_closed_set_json "$SITE_DOMAINS_FILE" "$SITE_DOMAINS_LOCAL_FILE")"
 
-  local repo lang vis description topics_json topic_count meta domains_obj entry created_at repo_gql has_workflows
+  local repo lang vis description topics_json topic_count meta domains_obj entry created_at pushed_at repo_gql has_workflows
   while IFS= read -r meta; do
     repo="$(jq -r '.name' <<<"$meta")"
     lang="$(jq -r '.primaryLanguage.name // "-"' <<<"$meta")"
     vis="$(jq -r '.visibility' <<<"$meta")"
     description="$(jq -r '.description // ""' <<<"$meta")"
     created_at="$(jq -r '.createdAt // ""' <<<"$meta")"
+    pushed_at="$(jq -r '.pushedAt // ""' <<<"$meta")"
     topics_json="$(jq -c '[.repositoryTopics[]?.name]' <<<"$meta")"
     topic_count="$(jq 'length' <<<"$topics_json")"
     repo_gql="$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")"
@@ -1098,6 +1216,12 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ;;
           renovate) entry="$(judge_renovate "$repo_gql")" ;;
           titles) entry="$(judge_titles "$repo" "$repo_gql")" ;;
+          lifecycle)
+            has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
+            local ci_conclusion=''
+            ((need_ci_conclusion)) && [[ $has_workflows == true ]] && ci_conclusion="$(fetch_latest_run_conclusion "$repo")"
+            entry="$(judge_lifecycle "$repo" "$pushed_at" "$has_workflows" "$repo_gql" "$ci_conclusion")"
+            ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -1132,7 +1256,7 @@ render_report() {
   total="$(jq '[.[].domains | to_entries[]] | length' <<<"$findings")"
   printf 'total: %d finding(s) across %d repo(s)\n' "$total" "$(jq 'length' <<<"$findings")"
   local verdict
-  for verdict in ok drifted ungoverned exempt not-applicable; do
+  for verdict in ok drifted ungoverned exempt not-applicable dormancy-candidate; do
     local count
     count="$(jq --arg v "$verdict" '[.[].domains | to_entries[] | select(.value.verdict == $v)] | length' <<<"$findings")"
     printf '  %s=%d\n' "$verdict" "$count"
@@ -1140,7 +1264,11 @@ render_report() {
 }
 
 any_drift() { # $1=findings -> exit 0 if any non-exempt/non-ok/non-not-applicable verdict exists
-  jq -e '[.[].domains | to_entries[] | select(.value.verdict != "ok" and .value.verdict != "exempt" and .value.verdict != "not-applicable")] | length == 0' <<<"$1" >/dev/null
+  # dormancy-candidate (lifecycle domain, #275) is deliberately excluded:
+  # it is a candidate LIST, not a drift judgement (#261 裁定) — a dormant
+  # repository is not "wrong", so it must never fail the audit's exit code
+  # or count toward github-audit-triage's usual "propose a fix PR" flow.
+  jq -e '[.[].domains | to_entries[] | select(.value.verdict != "ok" and .value.verdict != "exempt" and .value.verdict != "not-applicable" and .value.verdict != "dormancy-candidate")] | length == 0' <<<"$1" >/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -1936,6 +2064,86 @@ EOF
     printf 'FAIL: rogue.site (post-cutoff, domain not in closed set) should flag domain-unrecognized\n' >&2
     return 1
   }
+
+  # ---------------------------------------------------------------------
+  # #275: lifecycle domain (dormancy scoring). Direct function-call checks
+  # with a fixed reference "now" for determinism (GITHUB_AUDIT_LIFECYCLE_NOW).
+  # ---------------------------------------------------------------------
+
+  export GITHUB_AUDIT_LIFECYCLE_NOW='2026-09-23T00:00:00Z'
+  local gql_empty='{}'
+  local gql_release_recent='{"latestRelease":{"nodes":[{"createdAt":"2026-08-01T00:00:00Z"}]}}'
+  local gql_release_stale='{"latestRelease":{"nodes":[{"createdAt":"2025-01-01T00:00:00Z"}]}}'
+  local gql_issue_recent='{"openIssueActivity":{"totalCount":1,"nodes":[{"updatedAt":"2026-09-01T00:00:00Z"}]}}'
+  local gql_issue_stale='{"openIssueActivity":{"totalCount":1,"nodes":[{"updatedAt":"2026-01-01T00:00:00Z"}]}}'
+  local gql_no_open_issues='{"openIssueActivity":{"totalCount":0,"nodes":[]}}'
+
+  # 全シグナル健全 → ok、score=0
+  jq -e '.verdict == "ok" and .score == 0 and (.missing | length == 0)' \
+    <<<"$(judge_lifecycle repo-fresh '2026-09-20T00:00:00Z' true "$gql_release_recent" success)" >/dev/null || {
+    printf 'FAIL: 全シグナル健全な repo は ok/score=0 になるべき: %s\n' \
+      "$(judge_lifecycle repo-fresh '2026-09-20T00:00:00Z' true "$gql_release_recent" success)" >&2
+    return 1
+  }
+
+  # push 停滞(400日)だけでは閾値(3)未満 → drift ではなく ok のまま、
+  # ただし signal 自体は missing に載る(候補提示であって二値の drift ではない)
+  jq -e '.verdict == "ok" and .score == 2 and (.missing | index("stale-push:400d"))' \
+    <<<"$(judge_lifecycle repo-old-push '2025-08-19T00:00:00Z' true "$gql_release_recent" success)" >/dev/null || {
+    printf 'FAIL: push 400日停滞は score=2/ok(閾値未満)になるべき: %s\n' \
+      "$(judge_lifecycle repo-old-push '2025-08-19T00:00:00Z' true "$gql_release_recent" success)" >&2
+    return 1
+  }
+
+  # push 停滞 + release 停滞 + issue 停滞 + CI absent が全て揃う → score>=閾値で dormancy-candidate
+  jq -e '.verdict == "dormancy-candidate" and (.score >= 3)
+    and (any(.missing[]; . == "stale-push:400d"))
+    and (any(.missing[]; startswith("stale-release:")))
+    and (any(.missing[]; startswith("stale-issues:")))
+    and (any(.missing[]; . == "ci-absent"))' \
+    <<<"$(judge_lifecycle repo-dormant '2025-08-19T00:00:00Z' false "$(jq -c '. + '"$gql_issue_stale"'' <<<"$gql_release_stale")" '')" >/dev/null || {
+    printf 'FAIL: 全シグナル停滞は dormancy-candidate になるべき: %s\n' \
+      "$(judge_lifecycle repo-dormant '2025-08-19T00:00:00Z' false "$(jq -c '. + '"$gql_issue_stale"'' <<<"$gql_release_stale")" '')" >&2
+    return 1
+  }
+
+  # release が 1 件も無ければ release シグナルは計上しない(#275: 「あれば」の条件)
+  jq -e '.missing | any(startswith("stale-release:")) | not' \
+    <<<"$(judge_lifecycle repo-no-release '2026-09-20T00:00:00Z' true "$gql_empty" success)" >/dev/null || {
+    printf 'FAIL: release 0件の repo は stale-release を計上してはいけない: %s\n' \
+      "$(judge_lifecycle repo-no-release '2026-09-20T00:00:00Z' true "$gql_empty" success)" >&2
+    return 1
+  }
+
+  # open issue が 0 件なら issue シグナルは計上しない
+  jq -e '.missing | any(startswith("stale-issues:")) | not' \
+    <<<"$(judge_lifecycle repo-no-issues '2026-09-20T00:00:00Z' true "$gql_no_open_issues" success)" >/dev/null || {
+    printf 'FAIL: open issue 0件の repo は stale-issues を計上してはいけない: %s\n' \
+      "$(judge_lifecycle repo-no-issues '2026-09-20T00:00:00Z' true "$gql_no_open_issues" success)" >&2
+    return 1
+  }
+
+  # CI は有るが直近 run が failure → ci-failing(ci-absent ではない)
+  jq -e '(.missing | index("ci-failing")) and (.missing | index("ci-absent") | not)' \
+    <<<"$(judge_lifecycle repo-ci-fail '2026-09-20T00:00:00Z' true "$gql_release_recent" failure)" >/dev/null || {
+    printf 'FAIL: CI failure は ci-failing のみ計上すべき: %s\n' \
+      "$(judge_lifecycle repo-ci-fail '2026-09-20T00:00:00Z' true "$gql_release_recent" failure)" >&2
+    return 1
+  }
+  unset GITHUB_AUDIT_LIFECYCLE_NOW
+
+  # any_drift(): dormancy-candidate は drift として数えない
+  local lifecycle_only_findings='[{"repo":"x","language":"-","visibility":"PUBLIC","domains":{"lifecycle":{"verdict":"dormancy-candidate","missing":["stale-push:400d"],"score":4}}}]'
+  any_drift "$lifecycle_only_findings" || {
+    printf 'FAIL: any_drift は dormancy-candidate のみの findings を drift と数えてはいけない\n' >&2
+    return 1
+  }
+  local mixed_findings='[{"repo":"x","language":"-","visibility":"PUBLIC","domains":{"lifecycle":{"verdict":"dormancy-candidate","missing":[],"score":4},"charters":{"verdict":"drifted","missing":["readme-missing"]}}}]'
+  any_drift "$mixed_findings" && {
+    printf 'FAIL: any_drift は他ドメインの本物の drift は見逃してはいけない\n' >&2
+    return 1
+  }
+  true
 
   # ---------------------------------------------------------------------
   # ADR-0031: settings domain extension (squash commit title/message) +

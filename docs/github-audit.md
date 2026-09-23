@@ -392,6 +392,60 @@ Mend App installation status is not checked — GitHub's API does not
 expose it deterministically; that stays a manual step documented in the
 relevant `*-repo-governance` skill.
 
+### lifecycle (#275, ADR-0023)
+
+Different in kind from the other six domains: they check for governance
+*drift* (a repository not matching a required declared state); this one
+scores *dormancy* — whether a repository's activity looks like it has
+stopped — and surfaces a candidate list, never a pass/fail judgement.
+`docs/repo-lifecycle.md` already defines the triage criteria (Maintain /
+Archive / Delete) and the deprecate-then-archive checklist; this domain
+feeds that human decision with signals it previously had no way to
+collect except a manual survey (a `grill-me` round every few months,
+2026-09's covering 32 repositories across 3 parallel agents). The 2026-09
+decision (`#261`) was to add this as a **deterministic** node — no LLM —
+mirroring the other six domains, with the explicit non-scope that the
+final Maintain/Archive/Delete call stays a human decision.
+
+Four signals, all derived from data github-audit already fetches for
+other domains (`list_repos_meta`'s `pushedAt`, the shared GraphQL batch
+extended with `releases`/`issues`, and one lazy REST call to the Actions
+API — the same "only fetch when the domain is actually judged" pattern
+`settings` uses for squash-commit-title/message):
+
+- **Days since last push** — always counted (`pushedAt` is always
+  present).
+- **Days since the latest tagged release** — counted only if a release
+  exists at all. A repository that has never done a tagged release (this
+  repo included — ADR-0004: "no semver releases") is not penalized for
+  something it never opted into; the signal is simply absent for it.
+- **Days since the most recently updated open issue** — counted only if
+  at least one open issue exists. Zero open issues is not evidence of
+  dormancy (it can just as easily mean nothing is currently broken).
+- **CI presence and latest-run outcome** — `ci-absent` if the repository
+  has no `.github/workflows` at all; `ci-failing` if it does but the most
+  recently completed run's conclusion is `failure`. These are mutually
+  exclusive (a repository with no CI cannot also be failing it).
+
+Each triggered signal is a token in `missing` (`stale-push:<n>d`,
+`stale-release:<n>d`, `stale-issues:<n>d`, `ci-absent`/`ci-failing`) and
+contributes to an integer `score`. Thresholds
+(`LIFECYCLE_STALE_PUSH_DAYS_WARN`/`_HIGH`, `LIFECYCLE_STALE_RELEASE_DAYS`,
+`LIFECYCLE_STALE_ISSUE_DAYS`, `LIFECYCLE_CANDIDATE_SCORE_THRESHOLD` in the
+script) are deliberately simple constants, not a tuned model, so a human
+reading a candidate list can reconstruct exactly why a repository scored
+the way it did.
+
+`score >= LIFECYCLE_CANDIDATE_SCORE_THRESHOLD` reports
+`verdict: dormancy-candidate` — a **fifth** verdict value, alongside
+`ok`/`drifted`/`exempt`/`not-applicable`/`ungoverned`, and the only one of
+them `any_drift()` explicitly excludes from its pass/fail computation. A
+dormant repository is not wrong the way a missing `README.md` is wrong;
+treating it as a run-failing condition would make `github-audit`'s exit
+code (and `github-audit-triage`'s "propose a fix PR" flow) misfire on a
+repository whose correct next action might be "leave it alone, it's
+finished" rather than any code change.
+
 ## Usage
 
 ```console
@@ -405,6 +459,7 @@ total: 170 finding(s) across 34 repo(s)
   ungoverned=16
   exempt=2
   not-applicable=34
+  dormancy-candidate=3
 ```
 
 (Illustrative, not a literal transcript — see
