@@ -241,6 +241,10 @@ stage = "4e"
 path = "scripts/register-copilot-hooks"
 stage = "4e"
 
+[[target]]
+path = "scripts/dotfiles-doctor"
+stage = "4e"
+
 # --- inline activation scripts (Stage 4e) ---
 [[inline]]
 name = "register-claude-hooks"
