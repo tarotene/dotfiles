@@ -1,0 +1,16 @@
+# hook/CLI スクリプト群の Rust 移行先(ADR-0024、#389)。members 分割(#391):
+# 1 クレートに全 bin を詰めず、共通ロジックは hook-io に寄せ、各 hook/CLI は
+# 自前のメンバーにする。nix 側は flake.nix の crane が buildDepsOnly で依存を
+# 全メンバー共通にキャッシュする。
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+publish = false
+
+[profile.release]
+lto = true
+strip = true

@@ -1,0 +1,279 @@
+# 移植対象集合の machine-checkable allowlist(#389 の完了定義、#391)。
+#
+# crates/migration-audit のテストがこのファイルと実体を突き合わせる:
+#   - [scan].dirs 配下の全ファイルが target / excluded のどちらかに分類済み
+#     であること(未分類の新規ファイルは fail — 新しい hook/CLI は Rust 既定、
+#     ADR-0024)
+#   - home/ 配下の nix に埋め込まれた inline シェル(writeShellScript の
+#     '' リテラル本体)が [[inline]] の宣言と一致すること
+#   - 残っている bash/sh の target + inline の件数が max_remaining 以下
+#     であること
+#
+# 移植で bash を 1 本消したら、その [[target]] 行を消して max_remaining を
+# 同じだけ下げる(下げ忘れは「上限が緩い」だけで fail しないが、テストが
+# 出力する現在値と比べてレビューで気づける)。max_remaining = 0 かつ
+# target / inline が空になった時点で #389 の完了定義を満たす。
+
+[scan]
+dirs = [
+  "config/claude/hooks",
+  "config/claude/statusline",
+  "config/codex/hooks",
+  "config/copilot/hooks",
+  "config/git/hooks",
+  "scripts",
+]
+# スキャン対象外だが分類を明示しておくルート直下のファイル
+extra = ["bootstrap.sh"]
+
+[limits]
+max_remaining = 52
+
+# stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
+
+# --- Stage 4a ---
+[[target]]
+path = "config/claude/hooks/attribution-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/stack-base-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/pr-gate.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/pr-title-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/adr-number.sh"
+stage = "4a"
+
+[[target]]
+path = "scripts/pr-title-check"
+stage = "4a"
+
+[[target]]
+path = "scripts/adr-number-check"
+stage = "4a"
+
+[[target]]
+path = "config/codex/hooks/attribution-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/codex/hooks/pr-title-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/copilot/hooks/attribution-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/copilot/hooks/pr-title-guard.sh"
+stage = "4a"
+
+# --- Stage 4b ---
+[[target]]
+path = "config/claude/hooks/plan-scope-gate.sh"
+stage = "4b"
+
+[[target]]
+path = "config/claude/hooks/plan-precedent-gate.sh"
+stage = "4b"
+
+[[target]]
+path = "config/claude/hooks/plan-fresh-gate.sh"
+stage = "4b"
+
+[[target]]
+path = "config/claude/hooks/plan-view.sh"
+stage = "4b"
+
+[[target]]
+path = "config/claude/hooks/copilot-plan-review.sh"
+stage = "4b"
+
+# --- Stage 4c ---
+[[target]]
+path = "config/claude/hooks/git-stash-guard.sh"
+stage = "4c"
+
+[[target]]
+path = "config/claude/hooks/git-worktree-allow.sh"
+stage = "4c"
+
+[[target]]
+path = "config/claude/hooks/worktree-fresh-base.sh"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-worktree-create-guard"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-checkout-freshness"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-audit-worktrees"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-prune-worktrees"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-prune-branches"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-shelve"
+stage = "4c"
+
+[[target]]
+path = "scripts/git-unshelve"
+stage = "4c"
+
+# --- Stage 4d ---
+[[target]]
+path = "config/claude/hooks/herdr-claude-metadata.sh"
+stage = "4d"
+
+[[target]]
+path = "config/codex/hooks/herdr-codex-metadata.sh"
+stage = "4d"
+
+[[target]]
+path = "config/copilot/hooks/herdr-copilot-metadata.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/statusline/claude-statusline.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/statusline/claude-usage.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/sign-prewarm.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/issue-index.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/wrapup-session-start.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/wrapup-stop-gate.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/agent-turn-log.sh"
+stage = "4d"
+
+[[target]]
+path = "config/claude/hooks/external-send-guard.sh"
+stage = "4d"
+
+# --- Stage 4e ---
+[[target]]
+path = "scripts/github-audit"
+stage = "4e"
+
+[[target]]
+path = "scripts/github-rulesets-apply"
+stage = "4e"
+
+[[target]]
+path = "scripts/gpg-subkey"
+stage = "4e"
+
+[[target]]
+path = "scripts/claude-plan-model"
+stage = "4e"
+
+[[target]]
+path = "scripts/obsidian-backup"
+stage = "4e"
+
+[[target]]
+path = "scripts/writing-style-hub"
+stage = "4e"
+
+[[target]]
+path = "scripts/esa-mcp-launcher"
+stage = "4e"
+
+[[target]]
+path = "scripts/hms.sh"
+stage = "4e"
+
+[[target]]
+path = "scripts/detach-open.sh"
+stage = "4e"
+
+[[target]]
+path = "scripts/register-codex-hooks"
+stage = "4e"
+
+[[target]]
+path = "scripts/register-copilot-hooks"
+stage = "4e"
+
+# --- inline activation scripts (Stage 4e) ---
+[[inline]]
+name = "register-claude-hooks"
+stage = "4e"
+
+[[inline]]
+name = "register-claude-permissions"
+stage = "4e"
+
+[[inline]]
+name = "register-claude-mcp-servers"
+stage = "4e"
+
+[[inline]]
+name = "sync-claude-statusline"
+stage = "4e"
+
+# --- 対象外 ---
+[[excluded]]
+path = "bootstrap.sh"
+reason = "escape hatch: Nix 導入前に動く greenfield 入口(ADR-0001・ADR-0024 スコープ外)"
+
+[[excluded]]
+path = "scripts/install-packages.sh"
+reason = "escape hatch: apt システム層(ADR-0001)"
+
+[[excluded]]
+path = "scripts/install-packages-darwin.sh"
+reason = "escape hatch: Homebrew システム層(ADR-0018)"
+
+[[excluded]]
+path = "scripts/install-falcon-sensor.sh"
+reason = "escape hatch: 会社 EDR の root インストーラ"
+
+[[excluded]]
+path = "scripts/fix-ssh-permissions.sh"
+reason = "escape hatch: 手動実行の診断・修復(未配備)"
+
+[[excluded]]
+path = "scripts/fcitx5-key-trace.pl"
+reason = "perl の診断ツール(未配備、bash/sh ではない)"
+
+[[excluded]]
+path = "config/git/hooks/pre-commit"
+reason = "git hooks は ADR-0024 スコープ外(repo-local hook へ chain する薄い入口)"
+
+[[excluded]]
+path = "config/git/hooks/pre-push"
+reason = "git hooks は ADR-0024 スコープ外(repo-local hook へ chain する薄い入口)"
