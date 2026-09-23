@@ -73,27 +73,68 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      # herdr carries a source patch (patches/herdr-worktree-names.patch,
-      # ADR-0001 Amendment) that forces a local Rust build instead of a
-      # cache.nixos.org substitution — several minutes per job, x4 in this
-      # matrix (both x86_64-linux and aarch64-darwin need their own build;
-      # the patch invalidates the substitutable derivation on both). Cache
-      # /nix keyed on what actually determines herdr's derivation, so a warm
-      # run restores it instead of rebuilding. The key includes runner.os so
-      # Linux and macOS caches never collide or overwrite each other.
+      # cache.nixos.org never substitutes two classes of package this repo
+      # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
+      # Amendment, invalidates the substitutable derivation) and bws
+      # (Bitwarden Secrets Manager CLI, unfree — Hydra never builds unfree
+      # packages, so no substitutable output can ever exist upstream;
+      # personal-pop only, via home/modules/obsidian.nix). Both are
+      # permanent per-run costs unless this cache actually retains them.
+      #
+      # The primary-key hashes home/** and config/** (the same set that
+      # gates nix.yml's own `push.paths` above) in addition to the flake
+      # inputs, and includes matrix.host: a key that only tracks
+      # flake.lock/flake.nix/patches/** stays byte-identical across changes
+      # to home/modules/obsidian.nix, so cache-nix-action's own "exact hit
+      # on primary-key -> skip saving" rule (nix-community/cache-nix-action
+      # README, 取得 2026-09-23) silently discarded every bws build this
+      # cache ever produced. A host-scoped key additionally stops
+      # personal-pop's bws-bearing closure and company-pop-*'s bws-less
+      # closure from overwriting each other under one shared key.
+      #
+      # A key that changes on every home/** edit is not a regression:
+      # restore-prefixes-first-match still restores the nearest prior cache
+      # for this host, so bws comes back from the store instead of
+      # rebuilding — a key miss is not a cache miss.
       - uses: nix-community/cache-nix-action@v7
         with:
-          primary-key: nix-herdr-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**') }}
-          restore-prefixes-first-match: nix-herdr-${{ runner.os }}-
+          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**') }}
+          restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
           gc-max-store-size-linux: 1G
           gc-max-store-size-macos: 1G
           purge: true
-          purge-prefixes: nix-herdr-${{ runner.os }}-
+          purge-prefixes: nix-${{ matrix.host }}-${{ runner.os }}-
           purge-primary-key: never
-      - name: Build herdr (GC root, keeps the cache scoped to its closure)
-        run: nix build ".#herdr" --print-build-logs -o /tmp/herdr-gcroot
+          purge-created: 30d
+          purge-last-accessed: 14d
       - name: Build activation package
         run: |
           nix build \
             ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
             --print-build-logs --no-link
+      # cache-nix-action does not create GC roots itself (its own README:
+      # "users must manage this separately"), so anything without a root is
+      # collected before the cache is saved. Rather than hand-listing every
+      # non-substitutable package (the herdr-only root here is exactly how
+      # bws went unnoticed), derive the set from fact: every store path this
+      # runner actually compiled (`ultimate: true`) that the just-built
+      # activationPackage or herdr still reference. New non-substitutable
+      # packages are covered automatically, with no list to remember to edit.
+      - name: Root every locally built path still in the closure
+        run: |
+          set -euo pipefail
+          nix path-info --json --all \
+            | jq -r 'to_entries[] | select(.value.ultimate == true) | .key' \
+            | sort > /tmp/ultimate.txt
+          nix-store -qR \
+            "$(nix eval --raw ".#homeConfigurations.${{ matrix.host }}.activationPackage.outPath")" \
+            "$(nix eval --raw ".#herdr.outPath")" \
+            | sort > /tmp/closure.txt
+          mkdir -p /tmp/nix-gcroots
+          i=0
+          while read -r p; do
+            [ -n "$p" ] || continue
+            nix-store --add-root "/tmp/nix-gcroots/$i" --indirect --realise "$p" >/dev/null
+            i=$((i + 1))
+          done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
+          echo "rooted $i locally built paths"
