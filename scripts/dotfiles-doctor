@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# dotfiles-doctor — report the status of every host-local marker file this
+# repository resolves indirectly, without ever writing the values themselves
+# (#368). This is a detector only: it never writes a marker, never creates a
+# directory, never touches ~/.config/dotfiles/*.
+#
+# 設計と根拠: ADR-0034(実値は private wrapper flake、規則・スキーマだけが
+# public)D5「規則は public、実値は private」を守ったまま、3 つのマーカーが
+# 揃って未設置という状態(#368 の実測、2026-09-23: ~/.config/dotfiles/ 自体が
+# 不存在)を人間が発見できるようにする。style-hub だけを直す narrow fix では
+# host/private-hub の同時欠落を見逃すので、3 マーカーをまとめて検出する。
+#
+# 3 マーカーは意味が異なる — host と private-hub は「無ければ既定へ縮退する」
+# 任意設定、style-hub は「無ければ writing-style skill が使えない」必須設定:
+#
+#   - dotfiles/host        (ADR-0019): 無ければ `hostname` にフォールバック
+#     する。既存 3 ホストはこのマーカーを持たない設計そのものなので、未設置は
+#     INFO(正常な既定状態)。
+#   - dotfiles/private-hub (ADR-0034): 無ければ `scripts/hms.sh` の
+#     DEFAULT_REF(github:tarotene/dotfiles)にフォールバックする。private
+#     wrapper flake を使わないホストでは未設置が正常。未設置は INFO。
+#   - dotfiles/style-hub   (#115, docs/claude/writing-style.md): フォール
+#     バック先は $WRITING_STYLE_HUB 環境変数のみで、どちらも無ければ
+#     writing-style skill が使用不能になる。未設置・解決不能は WARN。
+#     解決自体は `writing-style-hub` に委譲する(縮退・エラーメッセージの
+#     ロジックを重複させない)。
+#
+# 使い方:
+#   レポート:   dotfiles-doctor            → 各マーカーの状態を報告
+#   自己検査:   dotfiles-doctor --selftest
+#
+# 終了コード: 0 = 全マーカーが OK か INFO(想定内の未設置含む)。
+#             1 = WARN が 1 件以上ある(style-hub が解決できない)。
+set -uo pipefail
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+HOST_MARKER="$CONFIG_HOME/dotfiles/host"
+PRIVATE_HUB_MARKER="$CONFIG_HOME/dotfiles/private-hub"
+STYLE_HUB_MARKER="$CONFIG_HOME/dotfiles/style-hub"
+DEFAULT_PRIVATE_HUB_REF="github:tarotene/dotfiles"
+
+read_marker() { # $1=path -> stdout=先頭1行(前後空白除去)、無ければ空
+  [[ -r "$1" ]] || return 0
+  head -n1 -- "$1" 2>/dev/null | tr -d '[:space:]'
+}
+
+check_host() {
+  local val
+  val="$(read_marker "$HOST_MARKER")"
+  if [[ -n "$val" ]]; then
+    printf 'OK   host: %s (marker %s)\n' "$val" "$HOST_MARKER"
+  else
+    printf 'INFO host: unset — falling back to `hostname` (%s) — normal for hosts without a star-codename marker, ADR-0019\n' \
+      "$(hostname 2>/dev/null || echo '?')"
+  fi
+}
+
+check_private_hub() {
+  local val
+  val="$(read_marker "$PRIVATE_HUB_MARKER")"
+  if [[ -n "$val" ]]; then
+    printf 'OK   private-hub: %s (marker %s)\n' "$val" "$PRIVATE_HUB_MARKER"
+  else
+    printf 'INFO private-hub: unset — falling back to %s (public-only apply) — normal for hosts with no private wrapper flake, ADR-0034\n' \
+      "$DEFAULT_PRIVATE_HUB_REF"
+  fi
+}
+
+check_style_hub() { # -> 0=OK/INFO, 1=WARN
+  local bin out rc=0
+  if bin="$(command -v writing-style-hub 2>/dev/null)"; then
+    :
+  elif [[ -x "$(dirname -- "$(realpath -- "$0")")/writing-style-hub" ]]; then
+    bin="$(dirname -- "$(realpath -- "$0")")/writing-style-hub"
+  else
+    printf 'INFO style-hub: writing-style-hub バイナリが見つからないため判定できません(ADR-0005: 未インストールとして扱う)\n'
+    return 0
+  fi
+
+  if out="$("$bin" 2>&1)"; then
+    printf 'OK   style-hub: %s (writing-style-hub 経由で解決)\n' "$out"
+  else
+    printf 'WARN style-hub: 未解決 — %s\n' "$out" | tr '\n' ' '
+    printf '\n'
+    rc=1
+  fi
+  return "$rc"
+}
+
+report() {
+  local fail=0
+  check_host
+  check_private_hub
+  check_style_hub || fail=1
+  return "$fail"
+}
+
+# ---------------------------------------------------------------------------
+# selftest
+# ---------------------------------------------------------------------------
+
+if [[ "${1:-}" == "--selftest" ]]; then
+  fail=0
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' EXIT
+
+  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+  bash_bin="$(command -v bash)"
+
+  # PATH から実環境の writing-style-hub(~/.local/bin、home-manager 配備分)を
+  # 除いた安全な PATH を作る。dotfiles-doctor 自体は $0 の隣の
+  # scripts/writing-style-hub もフォールバック先に見るので、「バイナリが
+  # 本当に見つからない」ケースを再現するには自分自身も sibling の無い
+  # 隔離ディレクトリへコピーして呼ぶ。
+  safe_path=""
+  while IFS= read -r -d: seg || [[ -n $seg ]]; do
+    [[ $seg == "$HOME/.local/bin" ]] && continue
+    safe_path+="${safe_path:+:}$seg"
+  done <<<"$PATH:"
+  isolated_dir="$dir/isolated"
+  mkdir -p "$isolated_dir"
+  cp "$self" "$isolated_dir/dotfiles-doctor"
+  chmod +x "$isolated_dir/dotfiles-doctor"
+  isolated_self="$isolated_dir/dotfiles-doctor"
+
+  check() { # $1=label $2=expected-exit $3=actual-exit
+    if [[ "$2" == "$3" ]]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1 (expected exit $2, got $3)" >&2
+      fail=1
+    fi
+  }
+
+  fake_home="$dir/home"
+  mkdir -p "$fake_home/.config/dotfiles"
+
+  # 1) 3 マーカーとも未設置 → host/private-hub は INFO のみ、style-hub は
+  #    バイナリ不在なら INFO(判定不能)、あれば WARN。ここではバイナリを
+  #    PATH から外して「判定できない」経路を検査する(host/private-hub の
+  #    フォールバックだけで exit 0 になることを確認)。
+  rc=0
+  out="$(HOME="$fake_home" env -u XDG_CONFIG_HOME -u WRITING_STYLE_HUB PATH="$safe_path" \
+    "$bash_bin" "$isolated_self")" || rc=$?
+  check "全マーカー未設置・writing-style-hub 不在は exit 0" 0 "$rc"
+  [[ "$out" == *"INFO host: unset"* ]] && echo "ok   host 未設置は INFO" || {
+    echo "FAIL host 未設置は INFO: $out" >&2
+    fail=1
+  }
+  [[ "$out" == *"INFO private-hub: unset"* ]] && echo "ok   private-hub 未設置は INFO" || {
+    echo "FAIL private-hub 未設置は INFO: $out" >&2
+    fail=1
+  }
+
+  # 2) host/private-hub マーカーが設定済み → OK 行に値が出る
+  printf 'testhost\n' >"$fake_home/.config/dotfiles/host"
+  printf 'github:example/private\n' >"$fake_home/.config/dotfiles/private-hub"
+  rc=0
+  out="$(HOME="$fake_home" env -u XDG_CONFIG_HOME -u WRITING_STYLE_HUB PATH="$safe_path" \
+    "$bash_bin" "$isolated_self")" || rc=$?
+  check "設定済みマーカーも exit 0" 0 "$rc"
+  [[ "$out" == *"OK   host: testhost"* ]] && echo "ok   host 設定済みは OK" || {
+    echo "FAIL host 設定済みは OK: $out" >&2
+    fail=1
+  }
+  [[ "$out" == *"OK   private-hub: github:example/private"* ]] && echo "ok   private-hub 設定済みは OK" || {
+    echo "FAIL private-hub 設定済みは OK: $out" >&2
+    fail=1
+  }
+
+  # 3) writing-style-hub が PATH にあり、かつ style-hub 未設定 → WARN + exit 1
+  fake_bin="$dir/fake-bin"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/writing-style-hub" <<'INNER'
+#!/usr/bin/env bash
+echo "writing-style-hub: スタイルガイドのハブが未設定です。" >&2
+exit 1
+INNER
+  chmod +x "$fake_bin/writing-style-hub"
+  rc=0
+  out="$(HOME="$fake_home" env -u XDG_CONFIG_HOME -u WRITING_STYLE_HUB PATH="$fake_bin:$PATH" \
+    "$bash_bin" "$self")" || rc=$?
+  check "style-hub 未解決は exit 1" 1 "$rc"
+  [[ "$out" == *"WARN style-hub"* ]] && echo "ok   style-hub 未解決は WARN" || {
+    echo "FAIL style-hub 未解決は WARN: $out" >&2
+    fail=1
+  }
+
+  # 4) writing-style-hub が成功する → OK + exit 0
+  cat >"$fake_bin/writing-style-hub" <<'INNER'
+#!/usr/bin/env bash
+echo "/path/to/hub"
+exit 0
+INNER
+  chmod +x "$fake_bin/writing-style-hub"
+  rc=0
+  out="$(HOME="$fake_home" env -u XDG_CONFIG_HOME -u WRITING_STYLE_HUB PATH="$fake_bin:$PATH" \
+    "$bash_bin" "$self")" || rc=$?
+  check "style-hub 解決成功は exit 0" 0 "$rc"
+  [[ "$out" == *"OK   style-hub: /path/to/hub"* ]] && echo "ok   style-hub 解決成功は OK" || {
+    echo "FAIL style-hub 解決成功は OK: $out" >&2
+    fail=1
+  }
+
+  [[ "$fail" == 0 ]] && echo "selftest: all passed"
+  exit "$fail"
+fi
+
+report
+exit $?
