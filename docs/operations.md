@@ -62,40 +62,6 @@ itself (#368). `host`/`private-hub` being unset is reported as `INFO`, not
 an error — the three existing Linux hosts run with no `host` marker by
 design. Only `style-hub` being unresolved is reported as `WARN` (exit 1).
 
-### Renaming or retiring a host (#214)
-
-The `Quality` GitHub ruleset's `required_status_checks` lists literal CI
-job names (e.g. `build vega`) that must stay in sync with
-`.github/workflows/nix.yml`'s matrix — GitHub evaluates required checks
-against the ruleset's *current* configuration at merge time, not a
-snapshot from when the check first ran, so a stale check name blocks
-merges forever ("report されない = 満たされない"). The ruleset's
-`conditions.ref_name` is scoped to `~DEFAULT_BRANCH` — it therefore only
-actually gates whichever PR currently *targets* `main`, not every open PR
-in a stacked chain (ADR-0027): a mid-stack PR targeting another PR's
-branch is unaffected until GitHub auto-retargets it to `main` once every
-stage below it has merged. Renaming or retiring a host is an
-asymmetric, two-part update because of this:
-
-- **Dropping a required check is always safe, any time.** Removing an
-  entry only relaxes the gate — it cannot newly block a PR that was
-  already passing. Do this the moment a host module is deleted, even
-  while older stacked PRs (that still build the old host and still
-  report its check) are open: `scripts/apply-rulesets.sh --reconcile`
-  after removing the entry from `rulesets/quality.json`.
-- **Adding a new host's required check is only safe once the renaming
-  PR is itself the one targeting `main`.** Adding an entry tightens the
-  gate immediately for whichever PR currently targets `main` — if that
-  PR's own branch content predates the rename (the common case in a
-  stacked chain, where earlier stages don't carry the later rename's
-  diff), it can never produce the new check name and becomes
-  permanently blocked. Wait until every stage below the renaming PR has
-  merged and GitHub has retargeted it to `main`, confirm its CI is still
-  green under the new name(s), *then* add the entry and reconcile.
-
-In short: shrink the required set eagerly, grow it only once the PR that
-actually earns the new entry is next in line for `main`.
-
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
