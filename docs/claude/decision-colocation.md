@@ -7,7 +7,7 @@ client guard: `config/claude/hooks/decision-colocation-guard.sh`(段2)
 規範: `config/agents/AGENTS.md`「決定成果物は執行点と同じ PR に出す」(段2)
 
 「ADR だけ残して実装を後続 Issue に先送りする」判断をエージェントができない
-ようにする決定(ADR-0000)の判定エンジン単一ソース。repo 内の実測(27 本の
+ようにする決定(ADR-396)の判定エンジン単一ソース。repo 内の実測(27 本の
 ADR のうち 12 本が docs-only、うち 2 本は追跡 Issue が今日まで一度も
 作られていない)を根拠にする。
 

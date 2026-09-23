@@ -180,7 +180,7 @@
     executable = true;
   };
 
-  # decision-colocation-check: checker 単一ソース for the ADR-0000 decision-
+  # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
   # colocation rule (docs/claude/decision-colocation.md — 決定成果物
   # (ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment`
   # 追加に、その決定を執行する実ファイルの同梱を要求する決定). Both
