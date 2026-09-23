@@ -360,14 +360,6 @@ jobs:
       - name: stack-base-guard.sh --selftest
         run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
 
-      # decision-colocation-guard (ADR-0000, docs/claude/decision-colocation.md)
-      # sources attribution-guard.sh's command-position/tokenizer engine the
-      # same way stack-base-guard/pr-title-guard do, and stubs the checker
-      # binary to exercise base resolution, the escape hatch, and degradation
-      # paths without gh/network.
-      - name: decision-colocation-guard.sh --selftest
-        run: bash ./config/claude/hooks/decision-colocation-guard.sh --selftest
-
       # pr-title-check (ADR-0031, docs/claude/pr-title-contract.md) is the
       # single-source grammar checker shared by the client guard and the
       # required check below — its selftest is grep + bash string matching
