@@ -1,0 +1,8 @@
+# 下書き作成は対象外 → 何も出さない
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__create_draft","tool_input":{"to":["someone@example.com"],"subject":"s","body":"b"}}'
+status.code = 0
+stdout = ""
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "/nonexistent/fixture-oracle" }

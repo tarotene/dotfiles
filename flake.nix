@@ -38,6 +38,14 @@
       url = "github:tarotene/publish-guard/9e490ef337552cfab48853d913490ea52368cfa9";
       flake = false;
     };
+
+    # Rust workspace builder for the hook/CLI migration (ADR-0024, #391).
+    # crane over rustPlatform.buildRustPackage because buildDepsOnly caches the
+    # whole workspace's dependency graph as one derivation shared by every
+    # member, so a one-line change to one hook rebuilds only the workspace
+    # crates, not serde & co. (docs/rust-workspace-measurements.md). crane has
+    # no flake inputs of its own, so there is nothing to `follows`.
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
@@ -48,6 +56,7 @@
       home-manager,
       nixgl,
       publish-guard,
+      crane,
       ...
     }:
     let
@@ -115,6 +124,47 @@
           });
         });
 
+      # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024 / #391),
+      # exposed as `pkgs.dotfiles-tools` so home modules can point a hook
+      # command at "${pkgs.dotfiles-tools}/bin/<name>" — a store path, not a
+      # home.file copy. Built with crane; `rustWorkspace` carries the pieces
+      # the flake's checks and devShell reuse.
+      rustWorkspace =
+        pkgs:
+        let
+          craneLib = crane.mkLib pkgs;
+          # cleanCargoSource keeps *.rs / Cargo.* / *.toml only, so editing a
+          # bash hook or a doc never invalidates the Rust build.
+          src = craneLib.cleanCargoSource ./.;
+          commonArgs = {
+            inherit src;
+            pname = "dotfiles-tools";
+            version = "0.1.0";
+            strictDeps = true;
+            # Tests run in CI through `nix develop` (nix.yml), not in the
+            # build sandbox: the fixture oracles execute the bash originals,
+            # which need /usr/bin/env and the rest of the repo tree.
+            doCheck = false;
+          };
+          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        in
+        {
+          inherit craneLib;
+          package = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          clippy = craneLib.cargoClippy (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoClippyExtraArgs = "--workspace --all-targets -- --deny warnings";
+            }
+          );
+          fmt = craneLib.cargoFmt { inherit src; };
+        };
+
+      rustOverlay = final: _prev: {
+        dotfiles-tools = (rustWorkspace final).package;
+      };
+
       mkPkgs =
         system:
         import nixpkgs {
@@ -122,6 +172,7 @@
           config.allowUnfree = true;
           overlays = [
             (herdrOverlay system)
+            rustOverlay
           ]
           ++ lib.optionals (lib.hasSuffix "-linux" system) [ nixglOverlay ];
         };
@@ -185,11 +236,22 @@
       # be built (only evaluated) from a Linux `checks.x86_64-linux`, and vice
       # versa, so each system only claims the homeConfigurations whose
       # activationPackage actually targets it.
+      #
+      # The Rust workspace adds its package, clippy and rustfmt checks on top
+      # (ADR-0024 / #391); nix.yml's rust job builds these.
       checks = forAllSystems (
         system:
+        let
+          rust = rustWorkspace pkgsFor.${system};
+        in
         lib.mapAttrs (_name: cfg: cfg.activationPackage) (
           lib.filterAttrs (_name: cfg: cfg.activationPackage.system == system) self.homeConfigurations
         )
+        // {
+          dotfiles-tools = rust.package;
+          dotfiles-tools-clippy = rust.clippy;
+          dotfiles-tools-fmt = rust.fmt;
+        }
       );
 
       # Addressable alias for the patched herdr build (overlay above). CI's
@@ -199,7 +261,29 @@
       # herdr's own closure instead of the whole /nix store.
       packages = forAllSystems (system: {
         herdr = pkgsFor.${system}.herdr;
+        dotfiles-tools = pkgsFor.${system}.dotfiles-tools;
       });
+
+      # `nix develop`: the toolchain for crates/ (ADR-0024). nix.yml's rust
+      # job runs cargo test through this shell, so jq/git/bash are here for
+      # the fixture oracles that execute the bash originals.
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor.${system};
+        in
+        {
+          default = (rustWorkspace pkgs).craneLib.devShell {
+            packages = [
+              pkgs.rust-analyzer
+              pkgs.jq
+              pkgs.git
+              pkgs.bashInteractive
+              pkgs.hyperfine
+            ];
+          };
+        }
+      );
 
       # nixfmt-tree, not nixfmt itself (#30). `nix fmt` with no arguments hands
       # the formatter the whole tree, and bare nixfmt reads that as stdin and

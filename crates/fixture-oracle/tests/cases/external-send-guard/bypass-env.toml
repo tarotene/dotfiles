@@ -1,0 +1,7 @@
+# bypass 環境変数が立っていれば判定しない
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__send_message","tool_input":{"to":["someone@example.com"],"subject":"s","body":"b"}}'
+status.code = 0
+stdout = ""
+[env]
+add = { XDG_CONFIG_HOME = "/nonexistent/fixture-oracle", EXTERNAL_SEND_GUARD_ALLOW = "1" }

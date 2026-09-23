@@ -27,6 +27,10 @@
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
   別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
   (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
+- [`rust-migration.md`](rust-migration.md) — hook/CLI の bash → Rust 移植
+  手順(ADR-0024、#389): workspace 構成(`crates/hook-io` ほか)、
+  fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段、
+  `rust-migration.toml` allowlist の更新規則。
 - [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
   自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
   OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
@@ -445,6 +449,9 @@ Design and rationale for the hooks and commands deployed from
   Rust・Deno の deep dive、Go/Babashka/Nushell の浅掘り、学術文献
   (Bash in the Wild, ACM TOSEM 2022)、`git-stash-guard.sh` の実移植 PoC
   (起動レイテンシ・closure サイズ・テスト移行の実測)。決定は ADR-0024。
+- [`rust-workspace-measurements.md`](rust-workspace-measurements.md) —
+  Rust workspace(ADR-0024、#391)の実測: 1 行変更時の crane / cargo
+  再ビルド秒数、`src/bin/` 単一クレートとの差、hook 起動時間。
 
 ## Miscellaneous
 

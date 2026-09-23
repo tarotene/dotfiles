@@ -110,3 +110,6 @@ local/auth/ssh/hosts/
 # never be committed — they are not part of the declarative environment.
 .devin/
 .claude/
+
+# Cargo build output (crates/ workspace, ADR-0024)
+target/

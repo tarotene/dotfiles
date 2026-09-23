@@ -124,3 +124,32 @@ bash で実装する決定をした(`attribution-guard.sh` の実戦検証済み
 「一括移行はしない」節が指す後続の移行 Issue が実施される際、対象スコープに
 `stack-base-guard.sh` を加える(`pr-gate.sh` / `attribution-guard.sh` を含む
 一括の Rust 移植と同時に移行する)。
+
+## Amendment 2 (2026-09-23 — 共通クレート先行, #391)
+
+Consequences の優先順位ヒューリスティック(「jq 密度 × 行数」)の**前段**に、
+「共通クレートを先に立てる」段を加える。
+
+移行 Issue(#389)の重複分析で、hook/script 面には型で表しきれていない重複が
+構造的にあることが分かった(#391 のクラスタ表)。
+
+- `permissionDecision` の emit が 10 個の独立実装になっていた。
+- `default_branch()` は同一式が 4 箇所、変種が 1 箇所あった。
+- ほかにもクラスタ C〜G がある。
+
+`plan-fresh-gate.sh` は「3 箇所とも揃えること」とコメントしていたが、
+実数は 5 箇所だった。手続き的な同期が既に失敗していたことの実証である。
+
+最大の 2 本(`pr-gate.sh` / `copilot-plan-review.sh`)を移植しながら共通
+クレートを設計すると、検証ループが長くなる。そこで、共通入出力を
+`crates/hook-io` として先に立て、各移植はそれを使う形にした。
+
+同時に、Consequences で移行 Issue に委ねていた次の 3 点を確定した。
+
+- レイアウトは workspace の members 分割とする。
+- nix 側のビルドは crane(`buildDepsOnly`)とする。
+- 移植方法論は fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段とする。
+
+根拠と実測は `docs/rust-migration.md` と `docs/rust-workspace-measurements.md`
+にある。「jq 密度 × 行数」自体は廃止しない。共通クレート以後の各移植の順序付けに、
+そのまま使う。

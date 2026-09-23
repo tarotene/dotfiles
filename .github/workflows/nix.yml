@@ -17,6 +17,11 @@ on:
       - "home/**"
       - "config/**"
       - "patches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "rust-migration.toml"
+      - "scripts/**"
       - ".github/workflows/nix.yml"
   pull_request:
   workflow_dispatch:
@@ -51,6 +56,28 @@ jobs:
       # The corresponding aarch64-darwin build.host matrix row below is the
       # real build coverage for that system.
       - run: nix flake check --all-systems --no-build --print-build-logs
+
+  # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
+  # clippy (--deny warnings) and rustfmt run as crane derivations from
+  # flake.nix's checks, in the build sandbox. cargo test runs through
+  # `nix develop` instead, outside the sandbox: crates/fixture-oracle executes
+  # the bash originals (#!/usr/bin/env bash, jq, the rest of the repo tree),
+  # and migration-audit reads config/, scripts/ and home/ — neither is
+  # available inside a crane derivation's cleaned cargo source.
+  rust:
+    runs-on: ubuntu-latest
+    name: rust workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build package + clippy + rustfmt (crane)
+        run: |
+          nix build --print-build-logs --no-link \
+            .#checks.x86_64-linux.dotfiles-tools \
+            .#checks.x86_64-linux.dotfiles-tools-clippy \
+            .#checks.x86_64-linux.dotfiles-tools-fmt
+      - name: cargo test (fixture oracles + allowlist audit)
+        run: nix develop --command cargo test --workspace --locked
 
   build-host:
     runs-on: ${{ matrix.runner }}
@@ -107,7 +134,7 @@ jobs:
       # rebuilding — a key miss is not a cache miss.
       - uses: nix-community/cache-nix-action@v7
         with:
-          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**') }}
+          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
           gc-max-store-size-linux: 1G
           gc-max-store-size-macos: 1G
