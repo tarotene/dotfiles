@@ -43,12 +43,21 @@ usage: adr-number-check [--base <ref>] [--pr <N>]
 EOF
 }
 
+# ---- 共通ヘルパー ---------------------------------------------------------
+
+# ファイル名(basename)先頭の数字列を取り出す。legacy 連番(0001 のような
+# ゼロ埋め4桁)と PR-number era(380 のような桁数不定の裸の数字)の両方に
+# 対応するため、固定4文字切り出しではなく先頭の数字runを可変長で取る。
+adr_number_of() {
+  grep -oE '^[0-9]+' <<< "$1" || true
+}
+
 # ---- Category A: リポジトリ全体 -----------------------------------------
 
 check_no_duplicates() {
   local adr_dir="$1" dups
   dups="$(find "$adr_dir" -maxdepth 1 -name '*.md' -printf '%f\n' 2> /dev/null \
-    | grep -oE '^[0-9]{4}' | sort | uniq -d || true)"
+    | grep -oE '^[0-9]+' | sort | uniq -d || true)"
   if [[ -n $dups ]]; then
     echo "adr-number-check: 番号重複: $(echo "$dups" | tr '\n' ' ')" >&2
     return 1
@@ -71,9 +80,9 @@ check_filename_matches_h1() {
   for file in "$adr_dir"/*.md; do
     [[ -f $file ]] || continue
     base="$(basename "$file")"
-    fnum="${base:0:4}"
-    [[ $fnum =~ ^[0-9]{4}$ ]] || continue
-    hnum="$(head -n1 "$file" | grep -oE '^# ADR-[0-9]{4}' | grep -oE '[0-9]{4}' || true)"
+    fnum="$(adr_number_of "$base")"
+    [[ -n $fnum ]] || continue
+    hnum="$(head -n1 "$file" | grep -oE '^# ADR-[0-9]+' | grep -oE '[0-9]+' || true)"
     if [[ -z $hnum ]]; then
       echo "adr-number-check: $base の本文 H1 に ADR 番号が見つかりません" >&2
       fails=1
@@ -92,8 +101,8 @@ check_readme_index() {
   for file in "$adr_dir"/*.md; do
     [[ -f $file ]] || continue
     base="$(basename "$file")"
-    num="${base:0:4}"
-    [[ $num =~ ^[0-9]{4}$ ]] || continue
+    num="$(adr_number_of "$base")"
+    [[ -n $num ]] || continue
     if ! grep -qE "\[ADR-${num}\]" "$readme" 2> /dev/null; then
       echo "adr-number-check: ADR-$num が docs/README.md の索引にリンクされていません" >&2
       fails=1
@@ -120,8 +129,8 @@ check_added_adrs() {
 
   file="$added"
   base="$(basename "$file")"
-  num="${base:0:4}"
-  if [[ ! $num =~ ^[0-9]{4}$ ]]; then
+  num="$(adr_number_of "$base")"
+  if [[ -z $num ]]; then
     echo "adr-number-check: $base の番号を読み取れません" >&2
     return 1
   fi
@@ -173,7 +182,7 @@ cmd_fix() {
 
   local base slug old_num new
   base="$(basename "$file")"
-  old_num="${base:0:4}"
+  old_num="$(adr_number_of "$base")"
   slug="${base#*-}"
   new="$adr_dir/${pr_number}-${slug}"
 
@@ -254,10 +263,15 @@ selftest() {
   # 追加しない = 空差分)
   check "9 追加なしは通過" 0 check_added_adrs "$repo" "$base_sha" 999
 
-  printf '# ADR-0380 — new\n' > "$repo/docs/adr/0380-new.md"
+  # PR-number era のファイル名は --fix と同じくゼロ埋めしない裸の数字
+  # ("380-new.md")。ここを "0380-" のようにゼロ埋めすると、本番で実際に
+  # 起きた「${base:0:4} 固定4文字切り出しが3桁PR番号を読み違える」回帰を
+  # selftest がすり抜ける(実際に一度すり抜けて PR #380 の CI が red に
+  # なった)。
+  printf '# ADR-380 — new\n' > "$repo/docs/adr/380-new.md"
   git -C "$repo" add -A
-  git -C "$repo" commit -qm "add 0380"
-  check "10 PR番号と一致で通過" 0 check_added_adrs "$repo" "$base_sha" 380
+  git -C "$repo" commit -qm "add 380"
+  check "10 PR番号と一致で通過(裸の3桁)" 0 check_added_adrs "$repo" "$base_sha" 380
   check "11 --pr 無指定は skip され通過" 0 check_added_adrs "$repo" "$base_sha" ""
 
   echo "Category B: 非適合フィクスチャ:"
@@ -270,8 +284,8 @@ selftest() {
   check "13 緩衝帯(<0100)は PR番号不問で通過" 0 check_added_adrs "$repo" "$base_sha" 999
 
   git -C "$repo" reset -q --hard "$base_sha"
-  printf '# ADR-0381 — a\n' > "$repo/docs/adr/0381-a.md"
-  printf '# ADR-0381 — b\n' > "$repo/docs/adr/0381-b.md"
+  printf '# ADR-381 — a\n' > "$repo/docs/adr/381-a.md"
+  printf '# ADR-381 — b\n' > "$repo/docs/adr/381-b.md"
   git -C "$repo" add -A
   git -C "$repo" commit -qm "add two"
   check "14 1PR2ADR追加を検出" 1 check_added_adrs "$repo" "$base_sha" 381
