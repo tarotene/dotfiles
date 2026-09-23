@@ -19,6 +19,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    name: Secret scan (gitleaks)
+    steps:
+      # Full history, not just the PR diff: .gitleaks.toml's allowlists are
+      # path- and line-regex-based only (no commit allowlist), so they mean the
+      # same thing in either scan mode, and the public history is rewritten
+      # (orphan, ADR-0004) rather than grown forever — a full scan stays cheap.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Built from the Go module proxy at a pinned version rather than via
+      # gitleaks-action (which requires a license key for organization-owned
+      # repositories): the module checksum database pins the source, and no
+      # secret is needed. Bump the version here deliberately.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install gitleaks v8.30.1
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+
+      - name: gitleaks git (full history)
+        run: |
+          "$(go env GOPATH)/bin/gitleaks" git --config .gitleaks.toml \
+            --redact --no-banner --exit-code 1 .
+
   shellcheck:
     runs-on: ubuntu-latest
     name: Shell script validation
@@ -121,6 +149,24 @@ jobs:
     name: Escape-hatch dry-run
     steps:
       - uses: actions/checkout@v4
+
+      # Every script with a --selftest dispatcher must be invoked from this
+      # workflow (#390): a selftest CI never runs is not an oracle, and the Rust
+      # migration (ADR-0024, #389) relies on these selftests as its correctness
+      # oracle. Any mention of `--selftest` counts: in these directories it
+      # only ever appears in files that implement one (bash, POSIX sh, perl).
+      - name: Every --selftest is wired into CI
+        run: |
+          missing=0
+          for f in $(grep -rl -- --selftest \
+              config/claude/hooks config/claude/statusline config/codex/hooks \
+              config/copilot/hooks config/git/hooks scripts); do
+            if ! grep -qF -- "$f --selftest" .github/workflows/ci.yml; then
+              echo "::error file=$f::has a --selftest dispatcher but ci.yml never runs it"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: bootstrap.sh --dry-run
         run: ./bootstrap.sh --dry-run
@@ -317,6 +363,21 @@ jobs:
           ./scripts/register-codex-hooks --selftest
           ./scripts/register-copilot-hooks --selftest
 
+      # Git/worktree PreToolUse and SessionStart hooks plus the parent-checkout
+      # freshness timer (#390). Each selftest builds its own throwaway git
+      # repositories (or a HERDR_WORKTREES_DIR fixture) — no network involved.
+      - name: git-stash-guard.sh --selftest
+        run: bash ./config/claude/hooks/git-stash-guard.sh --selftest
+
+      - name: git-worktree-allow.sh --selftest
+        run: bash ./config/claude/hooks/git-worktree-allow.sh --selftest
+
+      - name: worktree-fresh-base.sh --selftest
+        run: bash ./config/claude/hooks/worktree-fresh-base.sh --selftest
+
+      - name: git-checkout-freshness --selftest
+        run: ./scripts/git-checkout-freshness --selftest
+
       # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
       # invariant is "never read an incomplete check set as green" against a
       # stub gh, including the R2 regression where `gh pr checks --watch`
@@ -330,6 +391,14 @@ jobs:
       # bash end to end against fixture commands — no gh/network involved.
       - name: attribution-guard.sh --selftest
         run: bash ./config/claude/hooks/attribution-guard.sh --selftest
+
+      # The Codex / Copilot adapters (#192) translate each agent's PreToolUse
+      # payload and decision output around the shared engine above.
+      - name: attribution-guard.sh (codex adapter) --selftest
+        run: bash ./config/codex/hooks/attribution-guard.sh --selftest
+
+      - name: attribution-guard.sh (copilot adapter) --selftest
+        run: bash ./config/copilot/hooks/attribution-guard.sh --selftest
 
       # stack-base-guard (ADR-0027, docs/claude/stack-base-guard.md) sources
       # attribution-guard.sh's command-position/tokenizer engine and adds its
@@ -410,8 +479,8 @@ jobs:
       - name: claude-usage.sh --selftest
         run: sh ./config/claude/statusline/claude-usage.sh --selftest
 
-      # The three Herdr metadata producers all read their JSON payload through
-      # a shared parse_payload() shape.  They used to read a single-line
+      # The Claude and Codex Herdr metadata producers read their JSON payload
+      # through a shared parse_payload() shape.  They used to read a single-line
       # `@tsv` row with one `read`, which silently collapsed consecutive tabs
       # (a tab is IFS whitespace in POSIX) and shifted every field by one as
       # soon as an optional field was empty — that is what killed $branch and
@@ -423,6 +492,13 @@ jobs:
 
       - name: herdr-codex-metadata.sh --selftest
         run: sh ./config/codex/hooks/herdr-codex-metadata.sh --selftest
+
+      # The Copilot producer gets its action from argv and its model from
+      # ~/.copilot/settings.json (no event/model in the payload), so its
+      # selftest covers the action filter, cwd extraction, settings read, and
+      # the worktree-name -> oshi-mark lookup instead.
+      - name: herdr-copilot-metadata.sh --selftest
+        run: sh ./config/copilot/hooks/herdr-copilot-metadata.sh --selftest
 
       - name: claude-statusline.sh --selftest
         run: sh ./config/claude/statusline/claude-statusline.sh --selftest

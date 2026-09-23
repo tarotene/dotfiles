@@ -451,7 +451,9 @@ dotfiles/
 ### CI (nix-centric)
 - `nix.yml` runs `nix flake check` + a per-host activation build matrix.
 - `ci.yml` is a slim shell pass: shellcheck the surviving scripts, `bootstrap.sh`
-  + `install-packages.sh` `--dry-run`, and a zsh module syntax check.
+  + `install-packages.sh` `--dry-run`, a zsh module syntax check, every
+  script's `--selftest` (a guard step fails when one exists but ci.yml never
+  runs it, #390), and a full-history gitleaks scan against `.gitleaks.toml`.
 
 ### Scope inventory (Claude Code only)
 - A request with multiple items (a Tracking Issue with sub-issues, a bulleted
