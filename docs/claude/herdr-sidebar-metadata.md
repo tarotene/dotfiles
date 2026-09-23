@@ -178,7 +178,12 @@ $ printf 'SessionStart\t\t0\t/tmp/x' | { IFS="$(printf '\t')" read -r a b c d; e
 
 `config/copilot/hooks/herdr-copilot-metadata.sh` は最初からフィールド毎に
 `jq` を呼んでいたため無傷だった — 切り分けでは「copilot ペインだけ `oshi` が
-入っている」が最初の手がかりになった。
+入っている」が最初の手がかりになった。こちらは payload に event/model を
+持たないため `parse_payload()` 型ではなく、action 判定・cwd 抽出・
+`settings.json` の model 読み取り・推しマーク照合を関数に切り出して
+`--selftest` で検査し、同じく CI に接続している(#390)。
+
+- `config/copilot/hooks/herdr-copilot-metadata.sh --selftest`
 
 ### 系統 B — 値はあるが見えない(表示層)
 
