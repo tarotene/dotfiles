@@ -383,6 +383,9 @@ let
   # に置く。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
+  # adr-number(ADR-380, docs/claude/adr-numbering.md)も attribution-guard.sh
+  # を source するので同階層。段3(利便性層)のみ — deny は一切しない。
+  adrNumberCmd = "bash '${hooksDir}/adr-number.sh'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -579,6 +582,7 @@ let
     stack_base_guard="$1";       shift
     pr_title_guard="$1";         shift
     external_send_guard="$1";    shift
+    adr_number="$1";             shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -700,6 +704,12 @@ let
     # の送信は原理的に検出できないため、Bash|mcp__.* にする理由がない)。
     # jq/文字列処理のみで往復が無いので timeout は最短。
     register PreToolUse "mcp__.*" "$external_send_guard" 10
+    # adr-number(ADR-380): `gh pr create` 直後に ADR-0000 を PR 番号へ自動
+    # 改番する段3(利便性層)。deny は一切しないため他の "Bash|mcp__.*" 系
+    # guard と揃える必要が無く、atuin と同じ単純な Bash matcher でよい。
+    # docs/adr/0000-*.md が無ければ stdin すら読まず即 exit するので常時
+    # コストはほぼゼロ — timeout は atuin と同じ短さでよい。
+    register PostToolUse Bash "$adr_number" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -995,6 +1005,13 @@ in
   # source しない。
   home.file.".claude/hooks/external-send-guard.sh" = {
     source = repoConfig + "/claude/hooks/external-send-guard.sh";
+    executable = true;
+  };
+  # adr-number(ADR-380, docs/claude/adr-numbering.md): PostToolUse で
+  # ADR-0000 を PR 番号へ自動改番する段3(利便性層)。attribution-guard.sh
+  # を同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
+  home.file.".claude/hooks/adr-number.sh" = {
+    source = repoConfig + "/claude/hooks/adr-number.sh";
     executable = true;
   };
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
@@ -1449,7 +1466,8 @@ in
       ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
       ${lib.escapeShellArg stackBaseGuardCmd} \
       ${lib.escapeShellArg prTitleGuardCmd} \
-      ${lib.escapeShellArg externalSendGuardCmd}
+      ${lib.escapeShellArg externalSendGuardCmd} \
+      ${lib.escapeShellArg adrNumberCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
