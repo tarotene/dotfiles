@@ -220,12 +220,37 @@ Judged items:
   GraphQL's `TreeEntry.mode` returns the same mode as the decimal `40960`;
   both are accepted, #259) instead of a symlink into
   `../.agents/skills/<name>`.
+- `nav-doc-tree-fence:<file>` (ADR-0033) — a fenced code block in README,
+  CONTRIBUTING.md, AGENTS.md, or CLAUDE.md contains a box-drawing character
+  (`├`/`└`/`│`), i.e. a hand-drawn directory tree.
+- `nav-doc-path-inventory:<file>:<heading>:<n>` (ADR-0033) — a
+  heading-delimited section (any level, `#` through `######`) has `n`
+  unique path-like tokens (a backtick-quoted span, or a fenced line's first
+  word, containing `/` or ending in a known extension) at or above
+  `NAV_DOC_PATH_THRESHOLD` (4) — a hand-written file/content listing rather
+  than incidental mentions.
+- `nav-doc-exempt-malformed:<file>` (ADR-0033) — a
+  `<!-- nav-doc-exempt: <check> — <reason> -->` marker is missing the check
+  name (`path-inventory` or `tree-fence`), the `—` separator, or the reason.
+- `nav-doc-exempt-unused:<file>:<check>` (ADR-0033) — a well-formed
+  `nav-doc-exempt` marker guards a block that would not have drifted
+  anyway (a `tree-fence` exemption on a fence with no box-drawing
+  characters; a `path-inventory` exemption on a section whose *raw*,
+  unexempted token count is still below threshold) — mirrors ESLint's
+  `reportUnusedDisableDirectives` / Ruff's `RUF100`.
+- `agentsMd`/`claudeMd` are now fetched as full text (previously existence
+  only) so the nav-doc checks above can scan them alongside README and
+  CONTRIBUTING.md.
 
 **Why judgement is by literal presence/match, never an LLM call.** Every
 item above is decidable without reading for quality — a litmus test with a
 weak judging question still passes; catching a weak-but-present litmus
 test is a human review problem (the `repo-charter` skill's interview
-step), not this audit's job.
+step), not this audit's job. The one exception this domain hands off
+rather than judges is transcribed file contents (a README copy of another
+file's schema/config) — detecting that requires semantic comparison
+against the source file, which isn't decidable by presence/match; it is
+left to the `github-audit-triage` LLM node (ADR-0015 Decision 4b).
 
 ### naming (ADR-0014 + ADR-0020)
 

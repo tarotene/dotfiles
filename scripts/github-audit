@@ -84,6 +84,22 @@ ROOT_ALLOWLIST_EXACT=(README.md CONTRIBUTING.md CHANGELOG.md AGENTS.md CLAUDE.md
 # two-script "mixing" heuristic, Latin content is not required to co-occur.
 CJK_PRESENCE_THRESHOLD=5
 
+# nav-doc thresholds (charters domain, ADR-0033). A heading-delimited
+# section whose unique path-like token count meets or exceeds this floor is
+# a hand-written inventory (file/content listing) rather than incidental
+# path mentions. Calibrated against real drift examples: a 13-line
+# directory-structure code block scored 11, a prose ADR index scored 5, a
+# legitimate 1-2 path mention scored 1-2.
+NAV_DOC_PATH_THRESHOLD=4
+# Extensions that make a bare token (no leading '/') look like a file
+# reference even without a path separator (e.g. a bare `profile.yml`).
+NAV_DOC_PATH_EXTENSIONS='\.(md|yml|yaml|typ|toml|json|sh|nix|rs|py|ts|js|lock|tsv|bib)$'
+# Box-drawing characters (U+251C ├, U+2514 └, U+2502 │) that mark a
+# hand-drawn directory tree inside a fenced code block. PCRE \x{} escapes
+# match count_cjk's style above — locale-independent, unlike bash's [[ =~ ]]
+# bracket expressions.
+NAV_DOC_TREE_CHARS_PATTERN='[\x{251C}\x{2514}\x{2502}]'
+
 usage() {
   cat <<'EOF'
 usage: github-audit [--json|--selftest] [domain...]
@@ -209,7 +225,7 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       readme: object(expression: \"HEAD:README.md\") { ... on Blob { text } }
       contributing: object(expression: \"HEAD:CONTRIBUTING.md\") { ... on Blob { text } }
       claudeMd: object(expression: \"HEAD:CLAUDE.md\") { ... on Blob { text } }
-      agentsMd: object(expression: \"HEAD:AGENTS.md\") { ... on Blob { id } }
+      agentsMd: object(expression: \"HEAD:AGENTS.md\") { ... on Blob { text } }
       rootTree: object(expression: \"HEAD:\") { ... on Tree { entries { name type } } }
       claudeSkillsDir: object(expression: \"HEAD:.claude/skills\") { ... on Tree { entries { name type mode } } }
       cargoToml: object(expression: \"HEAD:Cargo.toml\") { ... on Blob { id } }
@@ -443,15 +459,232 @@ doc_headings() {
   ' <<<"$1"
 }
 
+# ---------------------------------------------------------------------------
+# nav-doc domain (ADR-0033): README/CONTRIBUTING/AGENTS.md/CLAUDE.md must not
+# materialise a directory tree, a hand-written file/content inventory, or the
+# transcribed contents of another file — see repo-charter SKILL.md §4a for
+# the regime. Transcription can't be judged deterministically (it requires
+# semantic comparison against the source file) so it is left to the
+# github-audit-triage LLM node; the two signals below ARE deterministic and
+# are judged here.
+# ---------------------------------------------------------------------------
+
+# nav_doc_path_tokens: $1=section body text -> one unique path-like token per
+# line. A token is either an inline-code-span payload (`...`) or a fenced
+# code line's first whitespace-delimited word, kept only if it has no
+# internal whitespace, does not start with http(s)://, and either contains
+# '/' or ends in a known file extension. Trailing '/' is stripped before
+# dedup. Guarded with `|| true` because grep exits 1 on "zero matches",
+# which is the common (not exceptional) case for a section with no path
+# mentions at all — under this script's `set -o pipefail`, an unguarded
+# empty result would abort the caller instead of just meaning "no tokens".
+nav_doc_path_tokens() {
+  awk '
+    /^```/ { infence = !infence; next }
+    infence {
+      n = split($0, parts, /[[:space:]]+/)
+      if (n >= 1 && parts[1] != "") print parts[1]
+      next
+    }
+    {
+      s = $0
+      while (match(s, /`[^`]+`/)) {
+        tok = substr(s, RSTART + 1, RLENGTH - 2)
+        if (tok !~ /[[:space:]]/) print tok
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+  ' <<<"$1" \
+    | grep -vE '^https?://' \
+    | grep -E "(/|${NAV_DOC_PATH_EXTENSIONS})" \
+    | sed -E 's#/$##' \
+    | sort -u || true
+}
+
+# nav_doc_scan: $1=file label (e.g. "README.md") $2=doc text -> newline-
+# separated finding tokens: nav-doc-tree-fence:<file> / nav-doc-path-
+# inventory:<file>:<heading>:<n> / nav-doc-exempt-malformed:<file> /
+# nav-doc-exempt-unused:<file>:<check>. Empty input yields no findings.
+#
+# `<!-- nav-doc-exempt: <check> — <reason> -->` (check is path-inventory or
+# tree-fence) exempts the block immediately following the marker — the
+# whole fence if the next line opens one, otherwise contiguous lines up to
+# the next blank line or heading — from that one check only. A marker
+# missing the check name or the reason is nav-doc-exempt-malformed. A
+# marker whose guarded block would not have drifted anyway (the fence has
+# no tree characters; the section's raw, unexempted count is still below
+# threshold) is nav-doc-exempt-unused — mirroring ESLint's
+# reportUnusedDisableDirectives / Ruff's RUF100.
+nav_doc_scan() {
+  local file="$1" text="$2"
+  [[ -n $text ]] || return 0
+
+  local -a lines
+  mapfile -t lines <<<"$text"
+  local n=${#lines[@]}
+  ((n > 0)) || return 0
+
+  # Section index per line (0-based; section 0 is content before the first
+  # heading of any level 1-6), and the heading text starting each section.
+  local -a section_idx=() section_heading=("(intro)")
+  local cur=0 k
+  for ((k = 0; k < n; k++)); do
+    if [[ "${lines[$k]}" =~ ^#{1,6}[[:space:]](.*)$ ]]; then
+      cur=$((cur + 1))
+      section_heading+=("${BASH_REMATCH[1]}")
+    fi
+    section_idx[k]=$cur
+  done
+  local n_sections=$((cur + 1))
+
+  # Locate nav-doc-exempt markers and each one's guarded-block line range
+  # (0-based, inclusive; end < start means "guards nothing").
+  local -a m_check=() m_start=() m_end=() m_malformed=()
+  for ((k = 0; k < n; k++)); do
+    local trimmed="${lines[$k]}"
+    trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    [[ $trimmed == '<!-- nav-doc-exempt:'*'-->' ]] || continue
+
+    local content="${trimmed#<!-- nav-doc-exempt:}"
+    content="${content%-->}"
+    content="${content#"${content%%[![:space:]]*}"}"
+    content="${content%"${content##*[![:space:]]}"}"
+
+    local check='' malformed=1
+    if [[ $content == *' — '* ]]; then
+      local c="${content%% — *}" r="${content#* — }"
+      c="${c%"${c##*[![:space:]]}"}"
+      r="${r#"${r%%[![:space:]]*}"}"
+      if { [[ $c == "path-inventory" ]] || [[ $c == "tree-fence" ]]; } && [[ -n $r ]]; then
+        check="$c"
+        malformed=0
+      fi
+    fi
+
+    local start=$((k + 1)) end
+    if ((malformed == 0)); then
+      if ((start < n)) && [[ "${lines[$start]}" == '```'* ]]; then
+        end=$start
+        local j
+        for ((j = start + 1; j < n; j++)); do
+          if [[ "${lines[$j]}" == '```'* ]]; then
+            end=$j
+            break
+          fi
+        done
+      else
+        local j=$start
+        while ((j < n)); do
+          local bl="${lines[$j]}"
+          [[ -z $bl ]] && break
+          [[ $bl =~ ^#{1,6}[[:space:]] ]] && break
+          j=$((j + 1))
+        done
+        end=$((j - 1))
+      fi
+    else
+      end=$((start - 1))
+    fi
+    m_check+=("$check")
+    m_start+=("$start")
+    m_end+=("$end")
+    m_malformed+=("$malformed")
+  done
+
+  # Blank out each valid marker's guarded range, per check type, so the
+  # scans below skip exactly what was exempted and nothing else.
+  local -a lines_path=("${lines[@]}") lines_tree=("${lines[@]}")
+  local mi
+  for ((mi = 0; mi < ${#m_check[@]}; mi++)); do
+    ((m_malformed[mi] == 0)) || continue
+    local s=${m_start[mi]} e=${m_end[mi]}
+    ((e >= s)) || continue
+    local idx
+    for ((idx = s; idx <= e; idx++)); do
+      if [[ ${m_check[mi]} == "path-inventory" ]]; then
+        lines_path[idx]=""
+      else
+        lines_tree[idx]=""
+      fi
+    done
+  done
+
+  local -a findings=()
+
+  # tree-fence: any fence (post path/tree exemption) containing box-drawing
+  # characters is a hand-drawn directory tree. File-level, not per-section.
+  local infence=0
+  for ((k = 0; k < n; k++)); do
+    local l="${lines_tree[$k]}"
+    if [[ $l == '```'* ]]; then
+      infence=$((1 - infence))
+      continue
+    fi
+    if ((infence)) && grep -qP "$NAV_DOC_TREE_CHARS_PATTERN" <<<"$l"; then
+      findings+=("nav-doc-tree-fence:$file")
+      break
+    fi
+  done
+
+  # path-inventory: per-section unique path-token count, on both the
+  # exempted lines (what actually drifts) and the raw lines (the baseline
+  # used below to tell a used exemption from an unused one).
+  local -a section_raw_count=()
+  local si
+  for ((si = 0; si < n_sections; si++)); do
+    local body_exempted='' body_raw=''
+    for ((k = 0; k < n; k++)); do
+      ((section_idx[k] == si)) || continue
+      body_exempted+="${lines_path[$k]}"$'\n'
+      body_raw+="${lines[$k]}"$'\n'
+    done
+    local count_exempted count_raw
+    count_exempted="$(nav_doc_path_tokens "$body_exempted" | wc -l | tr -d '[:space:]')"
+    count_raw="$(nav_doc_path_tokens "$body_raw" | wc -l | tr -d '[:space:]')"
+    if ((count_exempted >= NAV_DOC_PATH_THRESHOLD)); then
+      findings+=("nav-doc-path-inventory:$file:${section_heading[$si]}:$count_exempted")
+    fi
+    section_raw_count[si]=$count_raw
+  done
+
+  # Marker bookkeeping: malformed (missing check name or reason) and unused
+  # (the guarded block would not have drifted even without the exemption).
+  local any_malformed=0
+  for ((mi = 0; mi < ${#m_check[@]}; mi++)); do
+    if ((m_malformed[mi] == 1)); then
+      any_malformed=1
+      continue
+    fi
+    if [[ ${m_check[mi]} == "tree-fence" ]]; then
+      local has_tree=0 idx2
+      for ((idx2 = m_start[mi]; idx2 <= m_end[mi]; idx2++)); do
+        ((idx2 >= 0 && idx2 < n)) || continue
+        grep -qP "$NAV_DOC_TREE_CHARS_PATTERN" <<<"${lines[$idx2]}" && has_tree=1
+      done
+      ((has_tree == 1)) || findings+=("nav-doc-exempt-unused:$file:tree-fence")
+    else
+      local sec=0
+      ((m_start[mi] < n)) && sec=${section_idx[${m_start[mi]}]}
+      ((section_raw_count[sec] >= NAV_DOC_PATH_THRESHOLD)) || findings+=("nav-doc-exempt-unused:$file:path-inventory")
+    fi
+  done
+  ((any_malformed == 0)) || findings+=("nav-doc-exempt-malformed:$file")
+
+  ((${#findings[@]} > 0)) && printf '%s\n' "${findings[@]}"
+  return 0
+}
+
 judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> finding
   local repo="$1" description="$2" topics="$3" gql="$4"
-  local readme contributing claude_md has_agents_md root_tree claude_skills_dir
+  local readme contributing claude_md agents_md has_agents_md root_tree claude_skills_dir
   local -a missing=()
 
   readme="$(jq -r '.readme.text // ""' <<<"$gql")"
   contributing="$(jq -r '.contributing.text // ""' <<<"$gql")"
   claude_md="$(jq -r '.claudeMd.text // ""' <<<"$gql")"
-  has_agents_md="$(jq -e '.agentsMd != null' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  agents_md="$(jq -r '.agentsMd.text // ""' <<<"$gql")"
+  [[ -n $agents_md ]] && has_agents_md=true || has_agents_md=false
   root_tree="$(jq -c '.rootTree.entries // []' <<<"$gql")"
   claude_skills_dir="$(jq -c '.claudeSkillsDir.entries // null' <<<"$gql")"
 
@@ -489,6 +722,10 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
     grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$readme" && missing+=("litmus-not-migrated")
 
     is_cjk_present "$readme" && missing+=("readme-cjk-present")
+
+    while IFS= read -r finding; do
+      [[ -n $finding ]] && missing+=("$finding")
+    done < <(nav_doc_scan "README.md" "$readme")
   fi
 
   if [[ -z $contributing ]]; then
@@ -512,7 +749,18 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
     )")
 
     is_cjk_present "$contributing" && missing+=("contributing-cjk-present")
+
+    while IFS= read -r finding; do
+      [[ -n $finding ]] && missing+=("$finding")
+    done < <(nav_doc_scan "CONTRIBUTING.md" "$contributing")
   fi
+
+  while IFS= read -r finding; do
+    [[ -n $finding ]] && missing+=("$finding")
+  done < <(nav_doc_scan "AGENTS.md" "$agents_md")
+  while IFS= read -r finding; do
+    [[ -n $finding ]] && missing+=("$finding")
+  done < <(nav_doc_scan "CLAUDE.md" "$claude_md")
 
   [[ $topics -ge 1 ]] || missing+=("no-topics")
 
@@ -1038,10 +1286,10 @@ EOF
 {
   "data": {
     "r1": {
-      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
       "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
-      "agentsMd": {"id": "abc"},
+      "agentsMd": {"text": "See [README.md](README.md) for what this repository is and does, and [CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are accepted. This file is for agent operating instructions only.\n"},
       "rootTree": {"entries": [{"name": "README.md", "type": "blob"}, {"name": "CONTRIBUTING.md", "type": "blob"}, {"name": "AGENTS.md", "type": "blob"}, {"name": "CLAUDE.md", "type": "blob"}]},
       "claudeSkillsDir": {"entries": [{"name": "foo", "type": "blob", "mode": "120000"}, {"name": "foo2", "type": "blob", "mode": "40960"}]},
       "cargoToml": {"id": "x"},
@@ -1058,7 +1306,7 @@ EOF
     "r2": {
       "readme": null,
       "contributing": null,
-      "claudeMd": {"text": "This repo has no @AGENTS.md import line at all.\n"},
+      "claudeMd": {"text": "This repo has no @AGENTS.md import line at all.\n\n## Structure\n\n```\ndata/    # a\nlib/     # b\nsrc/     # c\nstate/   # d\n```\n"},
       "agentsMd": null,
       "rootTree": {"entries": [{"name": "CONTEXT.md", "type": "blob"}, {"name": "README.md", "type": "blob"}]},
       "claudeSkillsDir": {"entries": [{"name": "bar", "type": "tree", "mode": "040000"}]},
@@ -1110,9 +1358,9 @@ EOF
       "renovaterc": null
     },
     "r5": {
-      "readme": {"text": "# no-renovate-target\n\nNo manifest, no CI.\n\n## Install\n\nx\n\n## Usage\n\nx\n\n## Scope\n\nx\n\n## Development\n\nx\n\n## License\n\nx\n"},
+      "readme": {"text": "# no-renovate-target\n\nNo manifest, no CI.\n\n## Background\n\n```\n.\n├── data\n└── lib\n```\n\n<!-- nav-doc-exempt: tree-fence — kept for a hypothetical future asset -->\n```\nplain fence, no tree chars here just text\n```\n\n## Install\n\nx\n\n## Usage\n\nx\n\n## Scope\n\nSee `data/profile.yml` and `lib/style.typ` for the schema.\n\n## Development\n\nx\n\n## License\n\nx\n"},
       "contributing": {"text": "## Issue litmus\n\nq?\n"},
-      "claudeMd": null,
+      "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n\n<!-- nav-doc-exempt: no reason given -->\nSee `x.md`, `y.yml`, `z.toml`, `w.json` here.\n"},
       "agentsMd": null,
       "rootTree": {"entries": []},
       "claudeSkillsDir": null,
@@ -1429,6 +1677,51 @@ EOF
   }
   jq -e '.[] | select(.repo=="pj-ambiguous") | .domains.charters.missing | index("contributing-schema-incomplete-or-out-of-order")' <<<"$out" >/dev/null || {
     printf 'FAIL: pj-ambiguous charters should flag missing Issues/Pull requests headings\n' >&2
+    return 1
+  }
+
+  # nav-doc domain (ADR-0033): README/CONTRIBUTING/AGENTS.md/CLAUDE.md must
+  # not materialise trees, inventories, or transcribed file contents.
+  #
+  # all-ok's AGENTS.md Background section carries a *used* path-inventory
+  # exemption (four backtick-quoted legacy filenames that would otherwise
+  # meet the threshold) — this repo staying verdict=ok already proves both
+  # that the exemption suppresses the finding AND that it is not
+  # mis-flagged as unused (either bug would flip all-ok to drifted).
+  jq -e '.[] | select(.repo=="all-ok") | .domains.charters.verdict == "ok"' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok charters should stay ok with a correctly-used nav-doc-exempt marker: %s\n' "$(jq -c '.[] | select(.repo=="all-ok") | .domains.charters' <<<"$out")" >&2
+    return 1
+  }
+
+  # all-drifted's CLAUDE.md has an un-exempted four-path comment-style
+  # listing (no box-drawing characters) under "## Structure" — the
+  # plain-inventory case, not the tree-fence case.
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.charters.missing | index("nav-doc-path-inventory:CLAUDE.md:Structure:4")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted charters should flag CLAUDE.md Structure as a path inventory: %s\n' "$(jq -c '.[] | select(.repo=="all-drifted") | .domains.charters.missing' <<<"$out")" >&2
+    return 1
+  }
+
+  # no-renovate-target's README has an un-exempted box-drawing tree fence
+  # under "## Background" (the tree-fence case), a second fence guarded by
+  # a tree-fence exemption that turns out not to contain any tree
+  # characters (the exemption is pointless — nav-doc-exempt-unused), and a
+  # two-path mention under "## Scope" that must NOT drift (below
+  # threshold). Its CLAUDE.md carries a marker missing the "— reason" half
+  # (nav-doc-exempt-malformed).
+  jq -e '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing | index("nav-doc-tree-fence:README.md")' <<<"$out" >/dev/null || {
+    printf 'FAIL: no-renovate-target charters should flag the un-exempted README tree fence: %s\n' "$(jq -c '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing | index("nav-doc-exempt-unused:README.md:tree-fence")' <<<"$out" >/dev/null || {
+    printf 'FAIL: no-renovate-target charters should flag the pointless tree-fence exemption as unused: %s\n' "$(jq -c '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="no-renovate-target") | (.domains.charters.missing | map(select(startswith("nav-doc-path-inventory:README.md:Scope")))) == []' <<<"$out" >/dev/null || {
+    printf 'FAIL: no-renovate-target charters should NOT flag a legitimate two-path Scope mention: %s\n' "$(jq -c '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing' <<<"$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing | index("nav-doc-exempt-malformed:CLAUDE.md")' <<<"$out" >/dev/null || {
+    printf 'FAIL: no-renovate-target charters should flag the reason-less CLAUDE.md exemption marker as malformed: %s\n' "$(jq -c '.[] | select(.repo=="no-renovate-target") | .domains.charters.missing' <<<"$out")" >&2
     return 1
   }
 
