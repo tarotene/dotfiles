@@ -1,0 +1,22 @@
+# lifecycle-study 候補検出用の閉集合(ADR-0026)。
+#
+# naming-* の命名クラスとは直交する lifecycle-study トピック(研究・学習
+# 記録、対象は自分の知識・学位であって外部成果物ではない)の候補を、
+# リポジトリの description に含まれる語からヒューリスティックに検出する
+# ための閉語彙。ADR-0020 の descriptive-species.tsv と同じ「生成規則が
+# 閉じているので後から自由記述+事後 lint にしない」設計を踏襲する。
+#
+# 一致してもトピック付与は自動化しない — github-audit の naming ドメインは
+# 候補(lifecycle-study-candidate)を提示するだけで、最終判断は
+# github-audit-triage(LLM ノード)が提案し人間が裁定する(ADR-0026 §2)。
+#
+# 初期集合は ADR-0026 本文が例示した語彙。追加はこのファイルの改訂 PR 経由。
+#
+# token
+study
+research
+seminar
+exam
+coursework
+thesis
+graduate

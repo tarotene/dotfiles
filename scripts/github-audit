@@ -31,6 +31,12 @@ CODENAME_REGISTRY_LOCAL_FILE="${GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE:-$CONF
 DESCRIPTIVE_SPECIES_FILE="${GITHUB_AUDIT_DESCRIPTIVE_SPECIES_FILE:-$CONFIG_DIR/descriptive-species.tsv}"
 SITE_DOMAINS_FILE="${GITHUB_AUDIT_SITE_DOMAINS_FILE:-$CONFIG_DIR/site-domains.tsv}"
 SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/site-domains.local.tsv}"
+# ADR-0026: lifecycle-study candidate detection (naming domain, orthogonal
+# to the naming-* class). PUBLIC-only, same reasoning as the others above —
+# private repos would need a .local.tsv sibling if this ever needs one, but
+# description text matching is a heuristic candidate signal, not a closed
+# assignment, so there is no PRIVATE-only entry list to protect yet.
+LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifecycle-species.tsv}"
 
 # ADR-0020: repositories created on/before this instant are grandfathered
 # under the loose ADR-0014 pattern check; only repositories created after it
@@ -183,10 +189,18 @@ EOF
 # ---------------------------------------------------------------------------
 
 list_repos_meta() { # print: JSON array of repo metadata objects
-  "$GH_BIN" repo list "$OWNER" --no-archived --source --limit 500 --json \
+  # #278 (ADR-0026): archived repos are now INCLUDED (dropped --no-archived,
+  # added isArchived) — the naming domain's lifecycle-study/lifecycle-
+  # timeboxed candidate detection needs isArchived, and its motivating
+  # example (ADR-0026 Context) is specifically completed-research repos
+  # that are already archived. The other 6 domains never meaningfully
+  # judged an archived (read-only) repo's drift anyway; audit() reports
+  # `not-applicable` for them on archived repos instead of silently
+  # excluding those repos from the run entirely (see judge dispatch below).
+  "$GH_BIN" repo list "$OWNER" --source --limit 500 --json \
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
-hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt 2>/dev/null
+hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived 2>/dev/null
 }
 
 # CI の成否(#275, lifecycle domain)。有無(workflowsDir の存在)は他ドメイン
@@ -890,9 +904,10 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
 # naming domain (ADR-0014)
 # ---------------------------------------------------------------------------
 
-judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codename-registry-json $6=site-domains-json -> finding
+judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codename-registry-json $6=site-domains-json $7=lifecycle-species-json $8=description $9=isArchived -> finding
   local repo="$1" topics_json="$2" created_at="$3"
   local species_json="${4:-[]}" registry_json="${5:-[]}" site_json="${6:-[]}"
+  local lifecycle_species_json="${7:-[]}" description="${8:-}" is_archived="${9:-false}"
   local -a naming_topics=() missing=()
   while IFS= read -r t; do
     [[ -n $t ]] || continue
@@ -922,6 +937,14 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
         jq -e --arg r "$repo" 'index($r)' <<<"$registry_json" >/dev/null 2>&1 ||
           missing+=("codename-not-registered")
         ;;
+      # ADR-0026: naming-coined 分割。naming-codename と同じ字面パターン
+      # (単一トークン)だが、閉語彙チェックは無い — 意味を持つ著者固有の
+      # 造語は固定キャストから採番する性質のものではない(ADR-0026 Decision
+      # 1)。既存 naming-codename 8 件のうちどれが実は naming-coined かの
+      # 再分類は、この関数では判定できない(機械的に区別する語彙が無い
+      # ことがそもそも分割理由)— github-audit-triage の人間裁定に委ねる
+      # (#278 スコープ)。
+      naming-coined) pattern='^[a-z0-9]+$' ;;
       naming-descriptive)
         pattern='^[a-z0-9]+(-[a-z0-9]+)+$'
         if ((strict)); then
@@ -944,13 +967,49 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
     fi
   fi
 
+  # ADR-0026 §2: lifecycle axis, orthogonal to naming-* class. Candidate
+  # detection only — never affects verdict/missing (these are judgement
+  # calls a human/LLM makes via github-audit-triage, not drift). Lives in a
+  # separate `lifecycle_candidates` array in the finding, same pattern as
+  # rulesets' `review_layer` informational field.
+  local has_timeboxed_topic=false has_study_topic=false
+  jq -e 'index("lifecycle-timeboxed")' <<<"$topics_json" >/dev/null 2>&1 && has_timeboxed_topic=true
+  jq -e 'index("lifecycle-study")' <<<"$topics_json" >/dev/null 2>&1 && has_study_topic=true
+
+  local -a lifecycle_candidates=()
+  # lifecycle-study candidate: description matches the closed vocabulary
+  # and the topic is not already declared. Works regardless of archived
+  # state — ADR-0026 explicitly covers both "進行中" and "完了済み(archived)".
+  if [[ $has_study_topic != true && -n $description ]]; then
+    local desc_lower matched_token
+    desc_lower="$(tr '[:upper:]' '[:lower:]' <<<"$description")"
+    matched_token="$(jq -r --arg d "$desc_lower" \
+      '[.[] as $tok | select($d | contains($tok)) | $tok] | first // empty' <<<"$lifecycle_species_json")"
+    [[ -n $matched_token ]] && lifecycle_candidates+=("lifecycle-study-candidate:$matched_token")
+  fi
+  # lifecycle-timeboxed candidate: naming-pj class, not archived, topic not
+  # yet declared → suggest adding it (a live timeboxed project).
+  if [[ $class == naming-pj && $is_archived != true && $has_timeboxed_topic != true ]]; then
+    lifecycle_candidates+=("lifecycle-timeboxed-candidate")
+  fi
+  # Removal candidate: topic declared but the repo is now archived — ADR-
+  # 0026 says the topic "may be removed" once complete; archived is the
+  # strongest available completion signal.
+  if [[ $has_timeboxed_topic == true && $is_archived == true ]]; then
+    lifecycle_candidates+=("lifecycle-timeboxed-removal-candidate")
+  fi
+
+  local lifecycle_candidates_json
+  lifecycle_candidates_json="$(printf '%s\n' "${lifecycle_candidates[@]}" | jq -R . | jq -s 'map(select(length > 0))')"
+
   if ((${#missing[@]} == 0)); then
-    jq -n --arg class "$class" '{verdict: "ok", missing: [], class: $class}'
+    jq -n --arg class "$class" --argjson lc "$lifecycle_candidates_json" \
+      '{verdict: "ok", missing: [], class: $class, lifecycle_candidates: $lc}'
   else
     local missing_json
     missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
-    jq -n --argjson missing "$missing_json" --arg class "$class" \
-      '{verdict: "drifted", missing: $missing, class: $class}'
+    jq -n --argjson missing "$missing_json" --arg class "$class" --argjson lc "$lifecycle_candidates_json" \
+      '{verdict: "drifted", missing: $missing, class: $class, lifecycle_candidates: $lc}'
   fi
 }
 
@@ -1178,12 +1237,14 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   fi
 
   # ADR-0020: closed vocabularies, read once for the whole run (not per-repo).
-  local species_json registry_json site_json
+  local species_json registry_json site_json lifecycle_species_json
   species_json="$(read_closed_set_json "$DESCRIPTIVE_SPECIES_FILE" /dev/null)"
   registry_json="$(read_closed_set_json "$CODENAME_REGISTRY_FILE" "$CODENAME_REGISTRY_LOCAL_FILE")"
   site_json="$(read_closed_set_json "$SITE_DOMAINS_FILE" "$SITE_DOMAINS_LOCAL_FILE")"
+  # ADR-0026: no PRIVATE-only sibling (see LIFECYCLE_SPECIES_FILE comment).
+  lifecycle_species_json="$(read_closed_set_json "$LIFECYCLE_SPECIES_FILE" /dev/null)"
 
-  local repo lang vis description topics_json topic_count meta domains_obj entry created_at pushed_at repo_gql has_workflows
+  local repo lang vis description topics_json topic_count meta domains_obj entry created_at pushed_at repo_gql has_workflows is_archived
   while IFS= read -r meta; do
     repo="$(jq -r '.name' <<<"$meta")"
     lang="$(jq -r '.primaryLanguage.name // "-"' <<<"$meta")"
@@ -1191,6 +1252,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     description="$(jq -r '.description // ""' <<<"$meta")"
     created_at="$(jq -r '.createdAt // ""' <<<"$meta")"
     pushed_at="$(jq -r '.pushedAt // ""' <<<"$meta")"
+    is_archived="$(jq -r '.isArchived // false' <<<"$meta")"
     topics_json="$(jq -c '[.repositoryTopics[]?.name]' <<<"$meta")"
     topic_count="$(jq 'length' <<<"$topics_json")"
     repo_gql="$(jq -c --arg r "$repo" '.[$r] // {}' <<<"$gql_batch")"
@@ -1199,6 +1261,15 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     for d in "${DOMAINS[@]}"; do
       if is_exempt "$repo" "$d" "$overrides"; then
         entry='{"verdict":"exempt","missing":[]}'
+      elif [[ $is_archived == true && $d != naming ]]; then
+        # #278: archived repos are read-only — governance drift on them is
+        # never going to be fixed, so the other domains never meaningfully
+        # judge them. `naming` is the one exception: isArchived is itself
+        # one of its lifecycle-candidate inputs (ADR-0026). `lifecycle`
+        # (dormancy scoring, #275) does NOT get the same exception — an
+        # already-archived repo has already been triaged; scoring it as a
+        # "dormancy candidate" again is redundant noise, not new signal.
+        entry='{"verdict":"not-applicable","missing":[]}'
       else
         case "$d" in
           rulesets)
@@ -1208,7 +1279,10 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             fi
             ;;
           charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
-          naming) entry="$(judge_naming "$repo" "$topics_json" "$created_at" "$species_json" "$registry_json" "$site_json")" ;;
+          naming)
+            entry="$(judge_naming "$repo" "$topics_json" "$created_at" "$species_json" "$registry_json" "$site_json" \
+              "$lifecycle_species_json" "$description" "$is_archived")"
+            ;;
           settings)
             local repo_rest='{}'
             ((need_repo_rest)) && repo_rest="$(fetch_repo_settings "$repo")"
@@ -1687,6 +1761,7 @@ STUB
   printf 'toolbox\tfixture\n' >"$tmp/config/descriptive-species.tsv"
   printf 'regcode\tfixture\t2020-01-01\n' >"$tmp/config/codename-registry.tsv"
   printf 'known.site\t2020-01-01\n' >"$tmp/config/site-domains.tsv"
+  printf 'study\nresearch\nexam\n' >"$tmp/config/lifecycle-species.tsv"
 
   export GITHUB_AUDIT_OWNER=tarotene \
     GITHUB_AUDIT_GH_BIN="$tmp/bin/gh" \
@@ -1697,7 +1772,8 @@ STUB
     GITHUB_AUDIT_CODENAME_REGISTRY_FILE="$tmp/config/codename-registry.tsv" \
     GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE="$tmp/config/codename-registry.local.tsv" \
     GITHUB_AUDIT_SITE_DOMAINS_FILE="$tmp/config/site-domains.tsv" \
-    GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE="$tmp/config/site-domains.local.tsv"
+    GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE="$tmp/config/site-domains.local.tsv" \
+    GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE="$tmp/config/lifecycle-species.tsv"
 
   # judge_rulesets()/judge_naming() below are called directly (this process
   # already has them defined, being the same script) rather than through a
@@ -2066,6 +2142,77 @@ EOF
   }
 
   # ---------------------------------------------------------------------
+  # #278 (ADR-0026): naming-coined class + lifecycle axis candidates.
+  # ---------------------------------------------------------------------
+
+  local lifespecies='["study","research"]'
+
+  # naming-coined: same single-token pattern as naming-codename, but NO
+  # closed-vocabulary check (that absence is the whole point of the split).
+  jq -e '.verdict == "ok" and .class == "naming-coined"' \
+    <<<"$(judge_naming somecoinage '["naming-coined"]' "$post" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: naming-coined (single-token, unregistered) should be ok, no registry check\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("pattern-mismatch:naming-coined")' \
+    <<<"$(judge_naming some-coinage '["naming-coined"]' "$post" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: naming-coined with a hyphen (multi-token) should flag pattern-mismatch\n' >&2
+    return 1
+  }
+
+  # lifecycle-study-candidate: description matches the closed vocabulary,
+  # topic not yet declared. Works whether archived or not (ADR-0026 covers
+  # both "進行中" and "完了済み").
+  jq -e '.lifecycle_candidates | any(startswith("lifecycle-study-candidate:"))' \
+    <<<"$(judge_naming foo-archive '["naming-descriptive"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "My graduate school study notes" false)" >/dev/null || {
+    printf 'FAIL: description matching lifecycle-species vocabulary should surface lifecycle-study-candidate\n' >&2
+    return 1
+  }
+  jq -e '.lifecycle_candidates | length == 0' \
+    <<<"$(judge_naming foo-archive '["naming-descriptive"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "My graduate school study notes" false)" >/dev/null && {
+    printf 'FAIL: (sanity inverse) matching description must produce a non-empty lifecycle_candidates\n' >&2
+    return 1
+  }
+  # already declared → no duplicate candidate suggested
+  jq -e '.lifecycle_candidates | any(startswith("lifecycle-study-candidate:")) | not' \
+    <<<"$(judge_naming foo-archive '["naming-descriptive","lifecycle-study"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "My graduate school study notes" false)" >/dev/null || {
+    printf 'FAIL: lifecycle-study already declared should not re-suggest the candidate\n' >&2
+    return 1
+  }
+  # non-matching description → no candidate
+  jq -e '.lifecycle_candidates | length == 0' \
+    <<<"$(judge_naming plain-tool '["naming-descriptive"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "A CLI for managing widgets" false)" >/dev/null || {
+    printf 'FAIL: non-matching description should not produce a lifecycle_candidates entry\n' >&2
+    return 1
+  }
+
+  # lifecycle-timeboxed-candidate: naming-pj, not archived, topic not
+  # declared yet → suggest adding.
+  jq -e '.lifecycle_candidates | index("lifecycle-timeboxed-candidate")' \
+    <<<"$(judge_naming pj-thing '["naming-pj"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: live naming-pj repo without the topic should suggest lifecycle-timeboxed-candidate\n' >&2
+    return 1
+  }
+  jq -e '.lifecycle_candidates | index("lifecycle-timeboxed-candidate") | not' \
+    <<<"$(judge_naming pj-thing '["naming-pj","lifecycle-timeboxed"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: naming-pj repo already carrying the topic should not re-suggest it\n' >&2
+    return 1
+  }
+
+  # lifecycle-timeboxed-removal-candidate: topic declared, repo archived
+  # → suggest removing (completion signal).
+  jq -e '.lifecycle_candidates | index("lifecycle-timeboxed-removal-candidate")' \
+    <<<"$(judge_naming pj-done '["naming-pj","lifecycle-timeboxed"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" true)" >/dev/null || {
+    printf 'FAIL: archived naming-pj repo carrying the topic should suggest removal\n' >&2
+    return 1
+  }
+  jq -e '.lifecycle_candidates | index("lifecycle-timeboxed-removal-candidate") | not' \
+    <<<"$(judge_naming pj-live '["naming-pj","lifecycle-timeboxed"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: non-archived naming-pj repo carrying the topic should not suggest removal\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
   # #275: lifecycle domain (dormancy scoring). Direct function-call checks
   # with a fixed reference "now" for determinism (GITHUB_AUDIT_LIFECYCLE_NOW).
   # ---------------------------------------------------------------------
@@ -2190,6 +2337,44 @@ EOF
   jq -e '.missing | index("pr-title-workflow-missing")' \
     <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}')" >/dev/null || {
     printf 'FAIL: judge_titles should flag pr-title-workflow-missing when no pr-title.yml caller exists, even if the ruleset happens to have the context registered\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # #278: archived repos are now included in the account listing —
+  # non-naming/non-lifecycle domains must report not-applicable for them
+  # instead of judging drift on a read-only repo (or silently disappearing,
+  # the pre-#278 --no-archived behavior). This overwrites the shared
+  # repo-list.json/graphql-response.json fixtures, so it MUST run last —
+  # every earlier assertion in this function has already consumed its own
+  # `$out` before this point.
+  # ---------------------------------------------------------------------
+
+  cat >"$tmp/fixtures/repo-list.json" <<'ARCHFIX'
+[
+  {"name": "archived-repo", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "old research notes for my exam prep", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z", "isArchived": true}
+]
+ARCHFIX
+  printf '[]' >"$tmp/fixtures/repos_tarotene_archived-repo_rulesets.json"
+  cat >"$tmp/fixtures/graphql-response.json" <<'ARCHGQL'
+{"data": {"r1": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "flakeNix": null, "workflowsDir": null, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null, "latestRelease": null, "openIssueActivity": null}}}
+ARCHGQL
+  local out_archived
+  out_archived="$("$SELF" --json 2>&1)" || true
+  jq -e '.[] | select(.repo=="archived-repo") | .domains.rulesets.verdict == "not-applicable"' <<<"$out_archived" >/dev/null || {
+    printf 'FAIL: archived repo should report rulesets not-applicable, not drifted/silently-excluded: %s\n' "$(jq -c '.[] | select(.repo=="archived-repo") | .domains' <<<"$out_archived")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="archived-repo") | .domains.charters.verdict == "not-applicable"' <<<"$out_archived" >/dev/null || {
+    printf 'FAIL: archived repo should report charters not-applicable\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="archived-repo") | .domains.lifecycle.verdict == "not-applicable"' <<<"$out_archived" >/dev/null || {
+    printf 'FAIL: archived repo should report lifecycle not-applicable too (already triaged, no new dormancy signal): %s\n' "$(jq -c '.[] | select(.repo=="archived-repo") | .domains.lifecycle' <<<"$out_archived")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="archived-repo") | .domains.naming.verdict == "ok" and (.domains.naming.lifecycle_candidates | any(startswith("lifecycle-study-candidate:")))' <<<"$out_archived" >/dev/null || {
+    printf 'FAIL: archived repo should still be judged by naming and surface a lifecycle-study candidate from its description: %s\n' "$(jq -c '.[] | select(.repo=="archived-repo") | .domains.naming' <<<"$out_archived")" >&2
     return 1
   }
 
