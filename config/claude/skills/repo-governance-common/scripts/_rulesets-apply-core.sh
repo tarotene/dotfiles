@@ -16,15 +16,23 @@
 # file holds exactly that identical part.
 #
 # Contract: before sourcing this file, the caller must set OWNER, REPO,
-# DRY_RUN, WITH_REVIEW, REMOVE_REVIEW, and define a `process_ruleset <file>`
-# function that prints the placeholder-substituted ruleset JSON to stdout.
-# After sourcing, the caller calls `governance_apply_rulesets_main
-# "$RULESETS_DIR"`. On the remove-review path this function exits the
-# whole script (matching the pre-#388 behavior exactly — remove-review was
-# always a terminal path, never falling through to the create-only loop or
-# to a skill's own trailing NOTE text); otherwise it returns normally so
-# the caller can print its own ecosystem-specific trailing note before this
-# file's own review-layer opt-in reminder.
+# DRY_RUN, WITH_REVIEW, REMOVE_REVIEW, RECONCILE, and define a
+# `process_ruleset <file>` function that prints the placeholder-substituted
+# ruleset JSON to stdout. After sourcing, the caller calls
+# `governance_apply_rulesets_main "$RULESETS_DIR"`. On the remove-review
+# path this function exits the whole script (matching the pre-#388 behavior
+# exactly — remove-review was always a terminal path, never falling through
+# to the create/reconcile loop or to a skill's own trailing NOTE text);
+# otherwise it returns normally so the caller can print its own
+# ecosystem-specific trailing note before this file's own review-layer
+# opt-in reminder.
+#
+# RECONCILE (#337, #349's dotfiles-only apply-rulesets.sh had this; the
+# three governance skills' own copies never did): without it, a ruleset
+# whose name already exists is skipped — every #337 target repository
+# already carries 1-4 rulesets, so create-only can never add the `PR
+# title` required check to an existing Quality ruleset. With it, an
+# existing same-name ruleset is PUT (updated) instead of skipped.
 
 remove_review_layer() {
   echo "Removing review layer from: $OWNER/$REPO"
@@ -84,11 +92,11 @@ governance_apply_rulesets_main() {
     exit 0
   fi
 
-  echo "Applying Rulesets to: $OWNER/$REPO"
+  echo "Applying Rulesets to: $OWNER/$REPO (reconcile=${RECONCILE:-false})"
   echo ""
 
-  local EXISTING_NAMES
-  EXISTING_NAMES=$(gh api "repos/$OWNER/$REPO/rulesets" --jq '.[].name' 2>/dev/null || echo "")
+  local EXISTING
+  EXISTING=$(gh api "repos/$OWNER/$REPO/rulesets" 2>/dev/null || echo '[]')
 
   local RULESET_FILES=(
     "$rulesets_dir/security.json"
@@ -97,7 +105,7 @@ governance_apply_rulesets_main() {
   )
   [[ "$WITH_REVIEW" == "true" ]] && RULESET_FILES+=("$rulesets_dir/review.json")
 
-  local ruleset_file name processed result id
+  local ruleset_file name processed result id existing_id
   for ruleset_file in "${RULESET_FILES[@]}"; do
     name=$(jq -r '.name' "$ruleset_file")
     processed=$(process_ruleset "$ruleset_file")
@@ -107,20 +115,33 @@ governance_apply_rulesets_main() {
       exit 1
     fi
 
-    if echo "$EXISTING_NAMES" | grep -qF "$name"; then
-      echo "  ⚠   '$name' already exists — skipping."
-      echo "      To update: gh api repos/$OWNER/$REPO/rulesets/<id> -X PUT --input <file>"
+    existing_id=$(jq -r --arg n "$name" '.[] | select(.name == $n) | .id' <<<"$EXISTING" | head -1)
+
+    if [[ -z "$existing_id" ]]; then
+      if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  DRY-RUN: would POST Ruleset '$name':"
+        echo "$processed" | jq .
+        echo ""
+      else
+        result=$(echo "$processed" | gh api -X POST "repos/$OWNER/$REPO/rulesets" --input -)
+        id=$(echo "$result" | jq -r '.id')
+        echo "  ✓  Created Ruleset '$name' (id=$id)"
+      fi
+      continue
+    fi
+
+    if [[ "${RECONCILE:-false}" != "true" ]]; then
+      echo "  ⚠   '$name' already exists (id=$existing_id) — skipping (pass --reconcile to update)."
       continue
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-      echo "  DRY-RUN: would POST Ruleset '$name':"
+      echo "  DRY-RUN: would PUT Ruleset '$name' (id=$existing_id):"
       echo "$processed" | jq .
       echo ""
     else
-      result=$(echo "$processed" | gh api -X POST "repos/$OWNER/$REPO/rulesets" --input -)
-      id=$(echo "$result" | jq -r '.id')
-      echo "  ✓  Created Ruleset '$name' (id=$id)"
+      echo "$processed" | gh api -X PUT "repos/$OWNER/$REPO/rulesets/$existing_id" --input - >/dev/null
+      echo "  ✓  Reconciled Ruleset '$name' (id=$existing_id)"
     fi
   done
 

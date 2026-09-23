@@ -10,13 +10,22 @@
 # SKILL.md §7) calls this right after `gh repo create`, since gh itself has no
 # create-time hook mechanism to attach to.
 #
-# dotfiles 自身への適用(#349)は他 3 型と種類が違う: `rust`/`typst`/`astro`
+# dotfiles 自身への適用(#349)は他の型と種類が違う: `rust`/`typst`/`astro`
 # は「他リポジトリに播く配布テンプレート」(placeholder 置換を持つ)を
 # $SKILLS_DIR 配下の governance skill から呼ぶが、dotfiles は Shell/Nix
 # リポジトリでどの言語 skill にも属さない。`dotfiles` 型は SKILLS_DIR を
 # 経由せず、このリポジトリ自身の `scripts/apply-rulesets.sh`(プレースホルダ
 # の無い具体値、--reconcile 対応、docs/github-audit.md「rulesets」節)を
 # 直接呼ぶ。
+#
+# `core` 型(#337)は「rust/typst/astro のどれにも属さないがガバナンスは
+# 要る」リポジトリ向け。ADR-0021 の core 層(Security/Quality/Workflow)を
+# 言語非依存の最小構成で適用する — Quality の required_status_check は
+# `PR title` のみで、ビルド/テストジョブ名は一切仮定しない(対象リポの
+# CI 構成を知らないため)。実体は $SKILLS_DIR を経由せず
+# repo-governance-common 自身の scripts/apply-rulesets.sh を呼ぶ(SELF 型と
+# 同じ「$SKILLS_DIR を経由しない」扱いだが、dotfiles 自身ではなく他の任意の
+# リポジトリに向けて実行する点が異なる)。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +34,7 @@ SELF_APPLY_SCRIPT="${GITHUB_RULESETS_APPLY_SELF_SCRIPT:-$SCRIPT_DIR/apply-rulese
 
 usage() {
   cat <<'EOF'
-usage: github-rulesets-apply [--with-review] [--dry-run] <rust|typst|astro|dotfiles> <owner/repo>... [-- <passthrough args>]
+usage: github-rulesets-apply [--with-review] [--dry-run] <rust|typst|astro|core|dotfiles> <owner/repo>... [-- <passthrough args>]
        github-rulesets-apply --selftest
 
 Seeds the standard Security/Quality/Workflow rulesets (core layer, ADR-0021)
@@ -35,6 +44,10 @@ apply-rulesets.sh:
   rust      -> rust-repo-governance
   typst     -> typst-repo-governance
   astro     -> astro-site-governance
+  core      -> repo-governance-common (#337): language-agnostic baseline
+               for a repository that matches none of the three ecosystems
+               above — its Quality ruleset requires only the `PR title`
+               check, no build/test job name is assumed
   dotfiles  -> this repository's own scripts/apply-rulesets.sh (#349,
                no --with-review support; pass `-- --reconcile` to update
                existing rulesets in place instead of skipping them)
@@ -55,6 +68,7 @@ skill_for() {
     rust) printf '%s\n' rust-repo-governance ;;
     typst) printf '%s\n' typst-repo-governance ;;
     astro) printf '%s\n' astro-site-governance ;;
+    core) printf '%s\n' repo-governance-common ;;
     dotfiles) printf '%s\n' SELF ;;
     *) return 1 ;;
   esac
@@ -112,7 +126,7 @@ main() {
 
   [[ -n "$type" ]] || { usage >&2; exit 2; }
   local skill
-  skill="$(skill_for "$type")" || { echo "ERROR: unknown type '$type' (want rust|typst|astro)" >&2; exit 2; }
+  skill="$(skill_for "$type")" || { echo "ERROR: unknown type '$type' (want rust|typst|astro|core|dotfiles)" >&2; exit 2; }
   ((owner_repo_arg_seen)) || { echo "ERROR: at least one owner/repo is required" >&2; exit 2; }
 
   local -a failed=()
@@ -147,7 +161,7 @@ selftest() {
   # Stub layout mirrors the real skill tree:
   # $tmp/skills/<skill>/scripts/apply-rulesets.sh
   local skill
-  for skill in rust-repo-governance typst-repo-governance astro-site-governance; do
+  for skill in rust-repo-governance typst-repo-governance astro-site-governance repo-governance-common; do
     mkdir -p "$tmp/skills/$skill/scripts"
     cat > "$tmp/skills/$skill/scripts/apply-rulesets.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -211,6 +225,10 @@ EOF
   "$SELF" astro tarotene/example-astro-site > /dev/null
   expect_contains "1 astro→astro-site-governance" "CALLED astro-site-governance: --owner tarotene --repo example-astro-site"
 
+  : > "$STUB_LOG"
+  "$SELF" core tarotene/example-plain-repo > /dev/null
+  expect_contains "1 core→repo-governance-common" "CALLED repo-governance-common: --owner tarotene --repo example-plain-repo"
+
   # 2: 複数 repo で複数回呼ばれる
   : > "$STUB_LOG"
   "$SELF" rust tarotene/a tarotene/b tarotene/c > /dev/null
@@ -226,6 +244,11 @@ EOF
   : > "$STUB_LOG"
   "$SELF" --with-review rust tarotene/dotfiles > /dev/null
   expect_contains "3 --with-review" "--with-review"
+
+  # 3c: core 型にも --with-review が付与される(SELF 型と違い制限しない)
+  : > "$STUB_LOG"
+  "$SELF" --with-review core tarotene/example-plain-repo > /dev/null
+  expect_contains "3c core --with-review" "--with-review"
 
   # 3b: --dry-run passthrough
   : > "$STUB_LOG"

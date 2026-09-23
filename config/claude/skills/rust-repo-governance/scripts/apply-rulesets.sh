@@ -27,6 +27,7 @@ CLI_CRATE=""
 DRY_RUN=false
 WITH_REVIEW=false
 REMOVE_REVIEW=false
+RECONCILE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --with-firmware)                          shift ;;  # accepted, not used here
     --with-review)       WITH_REVIEW=true;    shift ;;
     --remove-review)     REMOVE_REVIEW=true;  shift ;;
+    --reconcile)         RECONCILE=true;      shift ;;
     --dry-run)          DRY_RUN=true;         shift ;;
     *)                  echo "Unknown option: $1"; exit 1 ;;
   esac

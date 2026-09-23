@@ -140,9 +140,17 @@ Stage 5(governance skills テンプレート更新)の実装中に、
 pr-title.yml` が既に `amannn/action-semantic-pull-request` を使い、
 D1 と完全一致する 11 type の Conventional Commits 検査を実装済みだったと
 判明した(理由コメントも「squash-merge では PR タイトルが main の commit
-message になる」と ADR-0031 の Context と同じ論旨)。ただし実際にこの
-テンプレートが適用された実リポジトリは存在しなかった(2026-09-22 時点、
-typst 系リポ全数で 404 を実測)。
+message になる」と ADR-0031 の Context と同じ論旨)。**訂正(#337 実装時、
+2026-09-24)**: 「実際にこのテンプレートが適用された実リポジトリは存在
+しなかった(2026-09-22 時点、typst 系リポ全数で 404 を実測)」という
+当時の記述は誤りだった。private の typst リポジトリ 1 件が 2026-06-04
+から旧 amannn 版 `pr-title.yml` を既に配備しており、その ruleset context
+は `PR title (Conventional Commits)`(実値は ADR-0034 によりここに書かない)。
+2026-09-22 時点の実測が誤っていた原因は未特定(該当リポジトリを見落とした
+可能性が高い)。下記のユーザー裁定(既存 amannn 版を置き換える)自体は
+変わらないが、実施時は「未配備のため移行コストがゼロ」の前提が崩れており、
+この 1 件については置き換え移行(旧 context 名からの ruleset 更新を含む)が
+必要になる。
 
 D2 で「文法定義の二重化」を理由に `amannn/action-semantic-pull-request`
 を不採用としたにもかかわらず、この既存先行例を見落としていた
