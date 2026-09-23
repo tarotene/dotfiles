@@ -273,6 +273,16 @@ jobs:
       - name: writing-style-hub --selftest
         run: ./scripts/writing-style-hub --selftest
 
+      # obsidian-backup is exercised end to end against stubbed
+      # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
+      # restic invocations, the unsafe-relative-path rejection, the
+      # missing-keyring-token fail-closed path, and the notify_failure
+      # warning for herdr's toast-disabled response are all covered without
+      # touching a real Backblaze B2 repository or Bitwarden Secrets Manager
+      # account (docs/operations.md).
+      - name: obsidian-backup --selftest
+        run: ./scripts/obsidian-backup --selftest
+
       # A deleted checkout must be detected without deleting its branch; hook
       # registration must remain idempotent beside Herdr's own Codex hook.
       - name: Worktree lifecycle self-tests
