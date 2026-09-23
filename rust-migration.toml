@@ -32,7 +32,14 @@ extra = ["bootstrap.sh"]
 # dotfiles-doctor / apply-rulesets.sh の先取り分。後続段は max_remaining を
 # 再度書き換えない(stacked-pr スキル §2「同じ行を2段以上が書き換える切り方は
 # しない」— [[target]] の追記のみで済ませる)。
-max_remaining = 56
+#
+# 57 = 上記 56 + 別セッション(#325 グリルセッション由来)で追加した
+# scripts/pr-merge-settings-check の 1 件。既存の judge_settings()/
+# fetch_repo_settings()(scripts/github-audit、巨大な既存 bash 資産)を
+# source して再利用する設計上、この新スクリプトも bash のまま追加した —
+# github-audit 自体が Rust 化されるまでは、判定ロジックの単一正本を保つ
+# ために bash 側で揃える方が ADR-0035 D1(単一正本 > 複写+同期)に適う。
+max_remaining = 57
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -59,6 +66,10 @@ stage = "4a"
 
 [[target]]
 path = "scripts/pr-title-check"
+stage = "4a"
+
+[[target]]
+path = "scripts/pr-merge-settings-check"
 stage = "4a"
 
 [[target]]
