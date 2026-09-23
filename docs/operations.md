@@ -62,6 +62,35 @@ itself (#368). `host`/`private-hub` being unset is reported as `INFO`, not
 an error — the three existing Linux hosts run with no `host` marker by
 design. Only `style-hub` being unresolved is reported as `WARN` (exit 1).
 
+### Renaming or retiring a host (#214)
+
+The `Quality` GitHub ruleset's `required_status_checks` lists literal CI
+job names (`build vega`, `build arcturus`, ...) that must stay in sync
+with `.github/workflows/nix.yml`'s matrix — GitHub evaluates required
+checks against the ruleset's *current* configuration at merge time, not a
+snapshot from when the check first ran, so a stale check name blocks
+merges forever ("report されない = 満たされない"). Renaming or retiring a
+host is therefore a strict, order-dependent sequence, not just a code
+change:
+
+1. Add/rename the host module and matrix entry, push to a branch. Do
+   **not** open the PR yet.
+2. Wait for that branch's CI to go green under the *new* job name(s). The
+   ruleset still requires the *old* name(s) at this point, so this
+   branch's own CI result does not yet satisfy anything.
+3. The moment CI is green, update `rulesets/quality.json`'s
+   `required_status_checks` to the new job name(s) and reconcile it onto
+   GitHub (`scripts/apply-rulesets.sh --reconcile`, or a direct
+   `gh api -X PUT` on the ruleset). Check that any other in-flight PR
+   against `main` is currently green first — this update immediately
+   starts requiring the new name(s) from every open PR, not just this one.
+4. Re-read the ruleset (`gh api repos/tarotene/dotfiles/rulesets/<id>`) to
+   confirm the update landed, then open the PR. Its already-green run from
+   step 2 satisfies the now-current required checks.
+5. If a host is retired outright (not renamed), drop its
+   `required_status_checks` entry in the same step 3 update — do not
+   leave a job name that will never report again.
+
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
@@ -314,7 +343,7 @@ the same manual-update instruction `export` prints.
 ## Obsidian vault backup
 
 `home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
-`obsidian-backup` on `personal-pop` only. Obsidian is wrapped with nixGL like
+`obsidian-backup` on `vega` only. Obsidian is wrapped with nixGL like
 the other Electron GUI applications. Three persistent systemd user timers run
 a daily backup, weekly retention/health maintenance, and a monthly restore
 acceptance test.

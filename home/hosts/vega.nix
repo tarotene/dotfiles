@@ -1,7 +1,9 @@
-# Instance layer — personal Pop!_OS host (hostname: personal-pop).
+# Instance layer — personal Pop!_OS host (star-codename: vega, #214).
 #
-# Imports the shared base + the personal identity. Host-specific settings
-# (hostname-scoped packages, ROS on personal only — ADR-0002, etc.) go here.
+# Star-codename (ADR-0019) instead of the old `personal-pop` <identity>-pop
+# convention — resolved via scripts/hms.sh / bootstrap.sh's resolve_host(),
+# not the OS hostname. Renamed from personal-pop; content otherwise
+# unchanged (signing key, imports, ROS host module carried over verbatim).
 { lib, ... }:
 {
   imports = [
@@ -29,4 +31,12 @@
     done
     unset _hm
   '';
+
+  # Declarative marker for resolve_host() (ADR-0019): once this activates,
+  # hms/bootstrap.sh resolve this host as "vega" regardless of what the OS
+  # reports as $(hostname). Hand-place the marker once before the first
+  # switch under the new name (`echo vega > ~/.config/dotfiles/host`) —
+  # from the second switch onward, this declaration is the marker's source
+  # of truth (same bootstrap sequencing as altair.nix, ADR-0019 D3).
+  xdg.configFile."dotfiles/host".text = "vega\n";
 }

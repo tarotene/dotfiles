@@ -131,8 +131,9 @@ unset tok
 
 `home/modules/esa.nix` は `home/identities/personal.nix` からのみ import する
 (`home/common.nix` には入れない)。トークンの gpg 宛先が personal の master
-fingerprint である以上、company ホスト(company-pop-old / company-pop-new)の
-YubiKey では原理的に復号できない。common.nix に置くと company ホストには
+fingerprint である以上、company ホスト(arcturus、旧 company-pop-new。かつて
+存在した company-pop-old は退役済み、#214)の YubiKey では原理的に復号できない。
+common.nix に置くと company ホストには
 「毎セッション必ず失敗する MCP 登録」だけが残ることになる。「クラウド AI
 ツールは personal identity のみ」という既存方針(warp-terminal, #9)とも
 整合する。
