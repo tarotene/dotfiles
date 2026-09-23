@@ -14,6 +14,7 @@ let
     pkgs.bash
     pkgs.bws
     pkgs.coreutils
+    pkgs.diffutils
     pkgs.findutils
     pkgs.herdr
     pkgs.jq

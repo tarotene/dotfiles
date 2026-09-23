@@ -156,10 +156,23 @@ run_restore_test() (
 
   tmp="$(mktemp -d)"
   trap 'cleanup_tree "$tmp"' EXIT
+  # $VAULT is an absolute path, so restic reconstructs its full ancestor
+  # chain (/home, /home/<user>, ...) under $tmp too, and by default tries to
+  # restore each ancestor's metadata along with it:
+  #  - POSIX ACL xattrs, which a PrivateTmp=true unit's tmpfs can reject
+  #    outright (`xattr.LSet ... system.posix_acl_access: invalid argument`)
+  #  - ownership, via lchown to /home's real owner (root) — which an
+  #    unprivileged restore can never do (restic upstream #655/#1766/#244;
+  #    this is not sandbox-specific, running outside systemd hits the same
+  #    lchown failure once the xattr error above is excluded)
+  # restic treats both as fatal even though every requested file transferred
+  # correctly, so its own exit status is not the pass/fail signal here — the
+  # per-fixture existence + byte-comparison checks below are.
   "$RESTIC_BIN" restore latest \
     --host "$BACKUP_HOST" \
     --tag "$BACKUP_TAG" \
-    --target "$tmp"
+    --target "$tmp" \
+    --exclude-xattr 'system.posix_acl_*' || true
   restored="${tmp}${VAULT}"
   for path in "$@"; do
     if [[ ! -f $restored/$path ]]; then
