@@ -1,11 +1,12 @@
 # github-audit: unified cross-repository GitHub audit
 
-Read-only audit across six domains — reports drift for every one of
+Read-only audit across eight domains — reports drift for every one of
 tarotene's owned repositories without applying or modifying anything.
 Unifies the former sibling scripts `github-audit-rulesets` (#130) and
-`github-audit-charters` (ADR-0013), and adds four domains: naming
-(ADR-0014), settings, renovate (ADR-0015), and titles (ADR-0031). Its
-findings feed the `github-audit-triage` skill
+`github-audit-charters` (ADR-0013), and has since grown five more domains:
+naming (ADR-0014), settings, renovate, titles (ADR-0031), lifecycle (#275,
+ADR-0023), and releaser (grill-me セッション調べ). Its findings feed the
+`github-audit-triage` skill
 (`docs/claude/github-audit-triage.md`), which is the only place an LLM
 enters this loop — this script never calls one.
 
@@ -496,6 +497,62 @@ treating it as a run-failing condition would make `github-audit`'s exit
 code (and `github-audit-triage`'s "propose a fix PR" flow) misfire on a
 repository whose correct next action might be "leave it alone, it's
 finished" rather than any code change.
+
+### releaser
+
+Detects drift in the releaser GitHub App's secret wiring for repositories
+that use `release-plz` or `release-please` (checked by filename — a
+`release-plz.yml` or `release-please.yml` caller workflow — against the
+same `workflowsDir` GraphQL data the `renovate`/`titles` domains read).
+Repositories with neither workflow are `not-applicable`, the same
+convention `renovate`/`titles` use.
+
+Background: a `grill-me` session (2026-09-24) found that the releaser App
+had been created **per repository** (`config/claude/skills/
+rust-repo-governance/reference/manual-steps.md` used to name it
+`<REPO>-release-plz` and install it on that repository only), producing 4
+separate Apps on the personal account. The decision was to consolidate to
+**one** App (a bot identity is a permission set, not a per-repository
+resource — `actions/create-github-app-token` already scopes the minted
+token to the current repository when `owner`/`repositories` are omitted,
+so per-repo Apps bought no additional blast-radius containment over a
+single shared App). No file in this repository lists which repositories
+that App is installed on or holds its private key — see the next
+paragraph for why.
+
+Two verdicts, both about secret presence only:
+
+- `releaser-app-secrets-missing` — neither `RELEASER_APP_ID` nor
+  `RELEASER_APP_PRIVATE_KEY` (or only one of the pair) is set as a repo
+  secret.
+- `releaser-secret-name-legacy` — the repository still carries a complete
+  pre-consolidation pair under the old tool-specific names
+  (`RELEASE_PLZ_APP_ID`/`RELEASE_PLZ_APP_PRIVATE_KEY` for the rust
+  skill, or `RELEASE_PLEASE_APP_ID`/`RELEASE_PLEASE_APP_PRIVATE_KEY` for
+  the astro skill) instead of the tool-neutral `RELEASER_APP_*` pair.
+
+What this domain deliberately does **not** check: whether the App is
+actually *installed* on the repository. A missing install is not a silent
+failure — the next release-triggering push fails loudly, because
+`actions/create-github-app-token` cannot mint a token for a repository the
+App isn't installed on. Duplicating that detection here would just be a
+second, slower way to learn the same thing GitHub Actions already reports
+immediately. Secret presence has no such backstop (a repository can sit
+indefinitely with the wrong or missing secret names, as `publish-guard`
+did before this domain existed), which is why only that half is audited.
+
+There is also no repository-listing "registry" file for this domain to
+read against — unlike the naming domain's closed vocabularies, the
+applicable-repository set here is derived purely from `workflowsDir`
+(dynamic, per the "Why this lives in dotfiles" scoping above), not from a
+static list. A prior decision (`docs/adr/0025-update-own-tools-local-
+registry.md`) already rejected statically enumerating repository names in
+this PUBLIC repository for a structurally identical reason: doing so would
+itself leak which private repositories exist.
+
+Setup and rotation live in `config/claude/skills/repo-governance-common/
+reference/releaser-app.md`, referenced by every `*-repo-governance` skill
+that ships a releaser workflow template.
 
 ## Usage
 
