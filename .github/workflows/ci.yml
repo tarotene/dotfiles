@@ -368,6 +368,14 @@ jobs:
       - name: external-send-guard.sh --selftest
         run: bash ./config/claude/hooks/external-send-guard.sh --selftest
 
+      # adr-number.sh (ADR-380, docs/claude/adr-numbering.md) is
+      # deterministic bash + jq end to end with gh/adr-number-check both
+      # stubbed — no network involved. Covers the early-exit-without-draft
+      # path, gh pr create detection at command position, gh pr view
+      # failure (no crash), and the non-Bash-tool passthrough.
+      - name: adr-number.sh --selftest
+        run: bash ./config/claude/hooks/adr-number.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema
