@@ -43,24 +43,31 @@ suppression is local-path-only, not a machine-wide `nix.conf` setting (#149).
 
 Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let
 this PUBLIC repository's source stay unaware of host-specific or private
-values (ADR-0034 D5: the *schema* is public, the *values* are not). None of
-them is home-manager-managed — declaring one there would put the value back
-into a managed, store-symlinked file, defeating the indirection. They are
-hand-placed once per host and, for `host`/`private-hub`, optional:
+values (ADR-0034 D5: the *schema* is public, the *values* are not).
+`private-hub` and `style-hub` are never home-manager-managed — declaring
+either there would put the value back into a managed, store-symlinked file,
+defeating the indirection — so they stay hand-placed indefinitely. `host` is
+different: each star-codename host module declares its own marker via
+`xdg.configFile."dotfiles/host"` (ADR-0019 D3), so after a host's first
+switch under its new name, that declaration is the marker's source of
+truth — it only needs to be hand-placed once, before that first switch (see
+[`cutover-runbook.md`](cutover-runbook.md#renaming-an-existing-host-to-a-star-codename)):
 
 | marker | consumer | required? | fallback when unset |
 |---|---|---|---|
-| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional | `hostname` |
-| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034) | optional | `github:tarotene/dotfiles` (public-only apply) |
-| `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
+| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; hand-placed only until the first switch under the new name, home-manager-managed after | `hostname` |
+| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034) | optional, always hand-placed | `github:tarotene/dotfiles` (public-only apply) |
+| `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
 
 Run `dotfiles-doctor` (deployed to `~/.local/bin` by
 `home/modules/packages.nix`) to see the current status of all three at
 once — it reports each marker's presence and, for `style-hub`, whether it
 actually resolves (via `writing-style-hub`), without ever writing a value
 itself (#368). `host`/`private-hub` being unset is reported as `INFO`, not
-an error — the three existing Linux hosts run with no `host` marker by
-design. Only `style-hub` being unresolved is reported as `WARN` (exit 1).
+an error — it's expected before a host's first switch under a star codename,
+or for a host that has not been renamed yet (`flake.nix` still carries
+migration-era `homeConfigurations` aliases for those, ADR-0019 Amendment).
+Only `style-hub` being unresolved is reported as `WARN` (exit 1).
 
 ## Routine flake update
 

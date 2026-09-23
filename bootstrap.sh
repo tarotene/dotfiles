@@ -111,9 +111,13 @@ fi
 # Resolve the logical host name: a marker file first, `hostname` as fallback
 # (ADR-0019, mirrors scripts/hms.sh's resolve_host — kept duplicated rather
 # than shared since the two scripts are independently distributed). The
-# marker lets a host carry a star-codename (e.g. "altair") that never touches
-# the OS hostname; the three existing Linux hosts have no marker and keep
-# resolving via hostname unchanged.
+# marker lets a host carry a star-codename (e.g. "altair", "vega") that never
+# touches the OS hostname. Each star-codename host module declares its own
+# marker via `xdg.configFile`, so once a host has switched under its new name
+# the marker is home-manager-managed from then on; the `hostname` fallback
+# only matters before that first switch, or for a host that has not been
+# renamed yet (docs/cutover-runbook.md, "Renaming an existing host to a star
+# codename").
 resolve_host() {
     local marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host" h
     if [[ -r "$marker" ]]; then

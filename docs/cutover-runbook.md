@@ -130,6 +130,56 @@ cd ~/dotfiles
 ./bootstrap.sh
 ```
 
+## Renaming an existing host to a star codename
+
+Following up after a host module gets renamed to a star codename (ADR-0019,
+e.g. `personal-pop` → `vega`, #214) — for a host that is already provisioned
+and only needs to pick up its new logical name.
+
+**The OS hostname does not change.** `hostnamectl` / `scutil --set HostName`
+are not part of this procedure — ADR-0019 considered and rejected setting the
+OS hostname to the star name (`docs/adr/0019-star-codename-hosts-and-marker-resolution.md`,
+"Alternatives considered"). The logical name lives entirely in the
+`dotfiles/host` marker; `resolve_host()` in `scripts/hms.sh` / `bootstrap.sh`
+reads it first and only falls back to `hostname` when it is unset.
+
+```bash
+mkdir -p ~/.config/dotfiles
+echo <star-name> > ~/.config/dotfiles/host   # e.g. vega
+hms
+```
+
+`resolve_host()` picks up the marker and selects `.#<star-name>`. From here
+on `home/hosts/<star-name>.nix`'s own `xdg.configFile."dotfiles/host"`
+declaration is the marker's source of truth (same bootstrap sequencing as
+the greenfield altair setup below) — the hand-placed copy above only needs
+to survive long enough for this first switch.
+
+Verify:
+
+```bash
+dotfiles-doctor                        # expect: OK   host: <star-name>
+readlink -f ~/.config/dotfiles/host    # expect: a /nix/store/... path
+```
+
+Clean up: `-b backup` moves the pre-existing hand-placed marker aside to
+`~/.config/dotfiles/host.backup` rather than failing the switch (same
+`.backup` clobber mechanics as [`docs/operations.md`](operations.md#hms-fails-at-checklinktargets-with-a-backup-clobber-error));
+delete it once the `dotfiles-doctor` check above passes.
+
+Left alone on purpose: `scripts/install-falcon-sensor.sh` and
+`.github/workflows/ci.yml` key off the real OS hostname, so they keep the
+pre-rename name until the machine itself is reimaged or reprovisioned under
+the new identity — renaming the logical host name here does not touch them.
+
+Once every host has switched to its star-codename marker, the migration-era
+`homeConfigurations` aliases for the old names (`flake.nix`, currently
+`personal-pop` → `vega` and `company-pop-new` → `arcturus`) can be removed —
+they exist only as a safety net for hosts that have not yet switched.
+
+See also [`docs/setup-macos.md`](setup-macos.md#4-clone-the-repo-and-set-the-host-marker)
+for the same marker-then-switch sequence on a brand-new (greenfield) host.
+
 ## Rollback
 
 home-manager keeps every activation as a generation. To roll back:
