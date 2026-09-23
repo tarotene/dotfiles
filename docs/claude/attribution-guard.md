@@ -60,7 +60,7 @@ grep 可能な形で残す。
 | 本文がコマンド置換（`--body "$(cat f)"`） | 通す（判定不能） |
 | 上記以外 | **deny** |
 
-deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。publish-guard は
+deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。bleep は
 `verdict_reason()` に「bypass 手段はここに書かない。README 参照」と逆方針を明記して
 いるが、あちらは漏洩防止で、抜け道を教えると自分で抜けてしまう。`No-Attribution:` は
 正当な判断であり、Claude が使えないと意味がない。
@@ -228,8 +228,8 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
   範囲内に heredoc リダイレクトがあれば、分離した本体すべてを本文候補にする。
 - **MCP GitHub は未接続のまま実装している。** tool 名を書き込み系の語で絞り、
   `.tool_input.body` / `.comment` を見る。実際の命名規則は接続時に確認が必要
-  （#161 が publish-guard について同じ課題を抱えている）。matcher を `Bash` 単体に
-  しなかったのは、接続した瞬間に無検査になるのを防ぐため — publish-guard の旧実装が
+  （#161 が bleep について同じ課題を抱えている）。matcher を `Bash` 単体に
+  しなかったのは、接続した瞬間に無検査になるのを防ぐため — bleep の旧実装が
   まさにこれで「最大の機能欠陥」を抱えていた（`home/modules/claude.nix` の登録
   コメントに記録がある）。
 
@@ -245,9 +245,10 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 `emit_deny` 等)はエージェント非依存のまま `config/claude/hooks/
 attribution-guard.sh` に残し、`config/codex/hooks/attribution-guard.sh` と
 `config/copilot/hooks/attribution-guard.sh` がこれを `source` して薄い
-I/O adapter だけを持つ。`tarotene/publish-guard` の「1つの判定エンジン +
-per-agent adapter」という既存の型(`adapters/{codex,copilot}-adapter.sh`)を
-そのまま踏襲した。
+I/O adapter だけを持つ。`tarotene/bleep`(当時 `publish-guard`)の「1つの
+判定エンジン + per-agent adapter」という既存の型(`adapters/{codex,
+copilot}-adapter.sh`、bleep 自身は #25-28 で単一 shim `hooks/bleep.sh
+--host=<name>` に統合済み)をそのまま踏襲した。
 
 エージェントごとに変わるのは `ATTRIBUTION_AGENT_NAME` / `ATTRIBUTION_AGENT_URL`
 の2変数だけ(adapter が `source` 前に上書きする)。フッターは
@@ -262,7 +263,7 @@ per-agent adapter」という既存の型(`adapters/{codex,copilot}-adapter.sh`)
 ### I/O adapter が違いを吸収する
 
 Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
-`tarotene/publish-guard` の同種 adapter が実機で確認済みの事実をそのまま
+`tarotene/bleep` の同種 adapter が実機で確認済みの事実をそのまま
 引き継いでいる:
 
 | | 入力 | tool 名 | 出力 |
@@ -277,7 +278,7 @@ Copilot CLI の `preToolUse` には matcher が無く全 tool call で無条件�
 ### スコープ外にしたもの
 
 MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま
-(#161 が同じ課題を publish-guard について記録している)。この展開では
+(#161 が同じ課題を bleep について記録している)。この展開では
 Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*`
 前提)は Codex/Copilot の adapter から呼ばない。
 
@@ -315,14 +316,14 @@ Claude Code:
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
 ```
 
-publish-guard と同じ複合 matcher 1 本。Bash と MCP を 2 つの hook エントリに分けない
+bleep と同じ複合 matcher 1 本。Bash と MCP を 2 つの hook エントリに分けない
 — `register()` の存在判定は command 文字列の完全一致だけで matcher を見ないため、
 同一 command を 2 つの matcher で登録しようとすると 2 回目が早期 return し、MCP 経路が
 無検査のまま残る。`if` は付けない（`Bash(*)` のような permission rule 構文は MCP の
 tool 名に一致しない）。絞り込みは hook 内部の早期 exit に置く。
 
 Codex CLI（`~/.codex/hooks.json`、`home/modules/claude.nix` の
-`registerCodexAttributionGuardHooks`、publish-guard の Codex 登録の後ろに
+`registerCodexAttributionGuardHooks`、bleep の Codex 登録の後ろに
 明示的に順序付け、lost-update 対策は同モジュールの既存コメント参照）:
 
 ```
@@ -330,7 +331,7 @@ PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
 ```
 
 Copilot CLI（`~/.copilot/settings.json`、同モジュールの
-`registerCopilotAttributionGuardHooks`、publish-guard の Copilot 登録の
+`registerCopilotAttributionGuardHooks`、bleep の Copilot 登録の
 後ろに順序付け）:
 
 ```

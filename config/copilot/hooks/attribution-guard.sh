@@ -8,18 +8,19 @@
 # 判定ロジックは一切持たない: config/claude/hooks/attribution-guard.sh の
 # 判定エンジン(decide/has_marker 等)をそのまま `source` し、この adapter が
 # 持つのは Copilot CLI の実際の preToolUse I/O 形への変換だけ。tarotene/
-# publish-guard の adapters/copilot-adapter.sh(claude-adapter.sh を薄く包む
-# 既存の型)と同じ設計。
+# bleep(当時 publish-guard)の adapters/copilot-adapter.sh(claude-
+# adapter.sh を薄く包む既存の型 — #25-28 で単一 shim hooks/bleep.sh
+# --host=<name> に統合済み、ここでの記述は統合前の実測記録)と同じ設計。
 #
-# Copilot の preToolUse は Claude/Codex と入出力の形が違う(tarotene/
-# publish-guard の copilot-adapter.sh が 2026-09-10 に `copilot -p ...
+# Copilot の preToolUse は Claude/Codex と入出力の形が違う(tarotene/bleep
+# (当時 publish-guard)の copilot-adapter.sh が 2026-09-10 に `copilot -p ...
 # --allow-all-tools` で実測済み):
 #   実測入力: {"sessionId":"...","timestamp":..,"cwd":"...",
 #              "toolName":"bash","toolArgs":{"command":"..."}}
 #     (toolName は小文字 "bash"、Bash/Shell ではない)
 #   出力: hookSpecificOutput でラップしない直下の JSON
 #     {"permissionDecision":"deny","permissionDecisionReason":"..."}
-#   を返すと実際にブロックされることも実測済み(publish-guard 側の記録)。
+#   を返すと実際にブロックされることも実測済み(publish-guard 時代の記録)。
 #   Copilot の preToolUse には matcher が無く全 tool call で無条件発火する
 #   ため、tool 種別の絞り込みはこの adapter 内部(toolName=="bash" のみ
 #   対象)で行う。
@@ -42,7 +43,7 @@ CLAUDE_ATTRIBUTION_GUARD="$SELF_DIR/../../claude/hooks/attribution-guard.sh"
 source "$CLAUDE_ATTRIBUTION_GUARD"
 
 # Copilot は hookSpecificOutput でラップしない直下の JSON を読む(Claude/
-# Codex とはここだけ違う — publish-guard の copilot-adapter.sh で実測済み)。
+# Codex とはここだけ違う — publish-guard 時代の copilot-adapter.sh で実測済み)。
 emit_deny_copilot() {
   jq -n --arg reason "$1" '{
     permissionDecision: "deny",

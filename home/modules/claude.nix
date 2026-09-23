@@ -217,17 +217,17 @@
 #    deny する。抜け道は本文マーカー No-Attribution: <理由>(pr-gate.sh の
 #    No-Issue: と同型、理由必須で grep 可能)。
 #
-#    matcher は publish-guard と同じ複合 1 本 "Bash|mcp__.*" — MCP GitHub は
+#    matcher は bleep と同じ複合 1 本 "Bash|mcp__.*" — MCP GitHub は
 #    現在未接続だが、matcher を Bash 単体にすると接続した瞬間に無検査になる
-#    (下の publish-guard の登録コメントが、旧実装の同じ欠陥を「最大の機能
+#    (下の bleep の登録コメントが、旧実装の同じ欠陥を「最大の機能
 #    欠陥」と記録している)。絞り込みは hook 内部の早期 exit に置く。
 #    詳細は docs/claude/attribution-guard.md。
 #
 #    Codex CLI / Copilot CLI にも同じ判定エンジンを展開する(#192)。
-#    publish-guard の「1つの判定エンジン + 薄い per-agent adapter」の型を
+#    bleep の「1つの判定エンジン + 薄い per-agent adapter」の型を
 #    踏襲し、config/codex/hooks/・config/copilot/hooks/ の adapter が
 #    config/claude/hooks/attribution-guard.sh を `source` してフッターの
-#    エージェント名だけを差し替える。登録は publish-guard の Codex/Copilot
+#    エージェント名だけを差し替える。登録は bleep の Codex/Copilot
 #    登録ブロック(下方)と同じ lost-update 対策の順序付けに続ける。
 #
 # 18) plan-fresh-gate(PreToolUse / ExitPlanMode):
@@ -290,7 +290,7 @@
 #    設計にした。send_message/reply/forward の 3 tool だけを対象にし、
 #    create_draft・読み取り系は対象外。自分のアドレス集合は
 #    ~/.config/external-send-guard/self.txt(このリポジトリにはコミットしない、
-#    publish-guard と同じ理由)。詳細は docs/claude/external-send-guard.md。
+#    bleep と同じ理由)。詳細は docs/claude/external-send-guard.md。
 #
 # 23) external-call-scheduling(個人スキル):
 #    電話・来店・窓口対応など Claude が代行できないハンドオフ作業を、トーク
@@ -329,7 +329,7 @@
   config,
   lib,
   pkgs,
-  publish-guard,
+  bleep,
   ...
 }:
 let
@@ -345,23 +345,27 @@ let
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
-  # 上流(tarotene/publish-guard、ADR-0009)の Claude adapter は plugin
-  # 配布時の ${CLAUDE_PLUGIN_ROOT} を自分で解決する前提で書かれている。
-  # home.file 配備では plugin マーケットプレイス機構を経ないので、この
-  # リポジトリの配備先パスを明示的に CLAUDE_PLUGIN_ROOT として渡す
-  # (adapter 自身のフォールバック解決に頼らず、上流が文書化している経路を使う)。
-  publicPublishGuardCmd = "CLAUDE_PLUGIN_ROOT='${hooksDir}/publish-guard' bash '${hooksDir}/publish-guard/hooks/claude-adapter.sh'";
+  # 上流(tarotene/bleep、旧 tarotene/publish-guard、ADR-0009)は #25-28
+  # (Rust hook cutover + rename)で旧 3 adapter(claude-adapter.sh/
+  # adapters/{codex,copilot}-adapter.sh)を廃止し、単一 shim
+  # hooks/bleep.sh --host=<name> に統合した。bleep.sh は `realpath "$0"`
+  # で自己解決するため、旧 claude-adapter.sh と違い CLAUDE_PLUGIN_ROOT の
+  # 明示注入が不要になった(home.file 配備でも plugin 配布でも同じ
+  # 呼び出し形で動く)。
+  bleepClaudeCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
+  bleepCodexCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
+  bleepCopilotCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
   # 旧(別リポジトリ切り出し前)の command 文字列。settings.json から完全一致
   # 削除するためだけに残す(下の retiredHookEntries)。
   legacyPublicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
-  # Codex/Copilot 版 adapter(tarotene/publish-guard の adapters/、#160)。
-  # Claude 版と違い ${CLAUDE_PLUGIN_ROOT} 相当の変数は要らない —
-  # adapters/{codex,copilot}-adapter.sh は自分の2階層上(adapters/ の親)に
-  # publish-guard 本体があるという前提で自分でパスを解決するため、上と同じ
-  # ~/.claude/hooks/publish-guard ツリーをそのまま指すだけでよい(#161: Codex
-  # の MCP tool 命名は未確認のままなので matcher は保守的に Bash|mcp__.* とする)。
-  codexPublishGuardCmd = "bash '${hooksDir}/publish-guard/adapters/codex-adapter.sh'";
-  copilotPublishGuardCmd = "bash '${hooksDir}/publish-guard/adapters/copilot-adapter.sh'";
+  # #25-28 で置き換えられた旧 3 adapter の command 文字列。settings.json /
+  # ~/.codex/hooks.json / ~/.copilot/settings.json から完全一致削除する
+  # ためだけに残す(下の retiredHookEntries、および register-{codex,copilot}
+  # -hooks への --retire 呼び出し)。ファイル自体は upstream から削除済みで、
+  # 削除せず放置すると存在しないパスを指したまま毎 tool call で失敗する。
+  legacyPublishGuardClaudeAdapterCmd = "CLAUDE_PLUGIN_ROOT='${hooksDir}/publish-guard' bash '${hooksDir}/publish-guard/hooks/claude-adapter.sh'";
+  legacyPublishGuardCodexAdapterCmd = "bash '${hooksDir}/publish-guard/adapters/codex-adapter.sh'";
+  legacyPublishGuardCopilotAdapterCmd = "bash '${hooksDir}/publish-guard/adapters/copilot-adapter.sh'";
   registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
     builtins.readFile ../../scripts/register-codex-hooks
   );
@@ -463,6 +467,13 @@ let
     {
       event = "PreToolUse";
       command = legacyPublicPublishGuardCmd;
+    }
+    # #25-28: publish-guard → bleep への改名 + Rust hook cutover。旧
+    # claude-adapter.sh(CLAUDE_PLUGIN_ROOT 注入込み)の command 文字列を
+    # 完全一致削除してから、新 bleepClaudeCmd を登録する。
+    {
+      event = "PreToolUse";
+      command = legacyPublishGuardClaudeAdapterCmd;
     }
   ];
 
@@ -593,7 +604,7 @@ let
     pr_gate_stop="$1";          shift
     git_worktree_allow="$1";    shift
     git_stash_guard="$1";       shift
-    public_publish_guard="$1"; shift
+    bleep_claude="$1";          shift
     herdr_metadata="$1";        shift
     worktree_fresh_base="$1";   shift
     worktree_create_guard="$1"; shift
@@ -661,8 +672,8 @@ let
     # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
     register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
-    # publish-guard(上流分離、ADR-0009): 会社/private リポジトリの実名が
-    # git push・gh pr/issue の create/edit/comment・MCP tool call 経由で
+    # bleep(旧 publish-guard、上流分離、ADR-0009): 会社/private リポジトリの
+    # 実名が git push・gh pr/issue の create/edit/comment・MCP tool call 経由で
     # PUBLIC な面に漏れるのを防ぐ(docs/claude/public-publish-guard.md)。
     # matcher は複合1本 "Bash|mcp__.*" — Bash と MCP を2つの hook エントリに
     # 分けない。register() の存在判定は command 文字列の完全一致だけで
@@ -674,8 +685,8 @@ let
     # matcher/if 不一致 = 素通りが事故になる)で、絞り込みは hook 内部の
     # 早期 exit に置く。gh api の生呼び出しの往復も想定してタイムアウトは
     # やや長め。
-    register PreToolUse "Bash|mcp__.*" "$public_publish_guard" 20
-    # attribution-guard: publish-guard と同じ外向き投稿面(gh pr/issue の
+    register PreToolUse "Bash|mcp__.*" "$bleep_claude" 20
+    # attribution-guard: bleep と同じ外向き投稿面(gh pr/issue の
     # create/edit/comment・gh pr review・MCP tool call)を見るが、判定の向きが
     # 逆 — あちらは「社名が現れる」ことの検出、こちらは「attribution が無い」
     # ことの検出。matcher も同じ複合 1 本にする(上と同じ理由: Bash 単体だと
@@ -715,7 +726,7 @@ let
     register PreToolUse Bash "$atuin_hook_claude_code" 10
     register PostToolUse Bash "$atuin_hook_claude_code" 10
     register PostToolUseFailure Bash "$atuin_hook_claude_code" 10
-    # stack-base-guard(ADR-0027): publish-guard/attribution-guard と同じ
+    # stack-base-guard(ADR-0027): bleep/attribution-guard と同じ
     # 複合 matcher "Bash|mcp__.*" に並ぶ(Bash 単体だと MCP 接続の瞬間に
     # 無検査になる、同じ理由の繰り返し)。gh pr list 1 往復 + ローカル git
     # 走査のみなので timeout は attribution-guard 並みでよいが、往復を含む
@@ -732,7 +743,7 @@ let
     register PreToolUse "Bash|mcp__.*" "$decision_colocation_guard" 20
     # external-send-guard(docs/claude/external-send-guard.md): Gmail MCP
     # tool の send_message/reply/forward だけが対象なので matcher は
-    # "mcp__.*" のみでよい(publish-guard/attribution-guard と違い Bash 経由
+    # "mcp__.*" のみでよい(bleep/attribution-guard と違い Bash 経由
     # の送信は原理的に検出できないため、Bash|mcp__.* にする理由がない)。
     # jq/文字列処理のみで往復が無いので timeout は最短。
     register PreToolUse "mcp__.*" "$external_send_guard" 10
@@ -1160,24 +1171,29 @@ in
     source = repoConfig + "/claude/hooks/git-stash-guard.sh";
     executable = true;
   };
-  # publish-guard: 会社/private リポジトリの実名が PUBLIC な面に漏れるのを
-  # 防ぐ PreToolUse hook。上流を別リポジトリ tarotene/publish-guard に切り出し
-  # (ADR-0009)、flake input(pinned rev)からツリーごと配備する。ツリー全体を
-  # 1つの home.file で(個々のファイルを列挙せず)配ることで、adapter の
-  # ${CLAUDE_PLUGIN_ROOT} 相当のパス解決(自分の2階層上に publish-guard 本体が
-  # あるという前提)がそのまま成立する — 詳細は docs/claude/public-publish-guard.md。
-  home.file.".claude/hooks/publish-guard" = {
-    source = publish-guard;
+  # bleep(旧 publish-guard): 会社/private リポジトリの実名が PUBLIC な面に
+  # 漏れるのを防ぐ PreToolUse hook。上流を別リポジトリ tarotene/bleep に
+  # 切り出し(ADR-0009)、flake input(pinned rev)からツリーごと配備する。
+  # ツリー全体を1つの home.file で(個々のファイルを列挙せず)配ることで、
+  # hooks/bleep.sh の自己解決(`realpath "$0"`)がそのまま成立する — 詳細は
+  # docs/claude/public-publish-guard.md。
+  home.file.".claude/hooks/bleep" = {
+    source = bleep;
   };
 
-  # Codex/Copilot 版 adapter の配線(#160)。Claude Code plugin 相当の配線
+  # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
   # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /
   # Copilot CLI (~/.copilot/settings.json) には ADR-0009 決定7で明示的に
   # 対象外としたまま配線していなかった。register-codex-hooks /
   # register-copilot-hooks は worktree.nix / herdr.nix が同じ対象ファイルを
   # 書き換える registrar なので、lost-update 窓(#61 と同種)を避けるため
-  # それらの後ろに明示的に順序付ける。
-  home.activation.registerCodexPublishGuardHooks =
+  # それらの後ろに明示的に順序付ける。#25-28(Rust hook cutover + bleep
+  # 改名)で旧 adapters/{codex,copilot}-adapter.sh が upstream から削除された
+  # ため、--retire で旧 command 文字列を先に取り除いてから新 bleep.sh の
+  # command を登録する(register-{codex,copilot}-hooks に追加した --retire、
+  # Claude 側の retiredHookEntries と同型 — 削除せず放置すると存在しない
+  # パスを指したまま毎 tool call で失敗する)。
+  home.activation.registerCodexBleepHooks =
     lib.hm.dag.entryAfter
       [
         "writeBoundary"
@@ -1186,27 +1202,31 @@ in
       ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPublishGuardCmd} 20
+          --retire PreToolUse ${lib.escapeShellArg legacyPublishGuardCodexAdapterCmd} \
+          --register \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg bleepCodexCmd} 20
       '';
 
-  home.activation.registerCopilotPublishGuardHooks =
+  home.activation.registerCopilotBleepHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          preToolUse ${lib.escapeShellArg copilotPublishGuardCmd} 20
+          --retire preToolUse ${lib.escapeShellArg legacyPublishGuardCopilotAdapterCmd} \
+          --register \
+          preToolUse ${lib.escapeShellArg bleepCopilotCmd} 20
       '';
 
   # attribution-guard の Codex/Copilot 展開(#192)。同じ lost-update 対策で
-  # publish-guard の登録の後ろに明示的に順序付ける。
+  # bleep の登録の後ろに明示的に順序付ける。
   home.activation.registerCodexAttributionGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPublishGuardHooks" ]
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexBleepHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexAttributionGuardCmd} 10
       '';
 
   home.activation.registerCopilotAttributionGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPublishGuardHooks" ]
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotBleepHooks" ]
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg copilotAttributionGuardCmd} 10
@@ -1633,7 +1653,7 @@ in
       ${lib.escapeShellArg prGateStopCmd} \
       ${lib.escapeShellArg gitWorktreeAllowCmd} \
       ${lib.escapeShellArg gitStashGuardCmd} \
-      ${lib.escapeShellArg publicPublishGuardCmd} \
+      ${lib.escapeShellArg bleepClaudeCmd} \
       ${lib.escapeShellArg herdrMetadataCmd} \
       ${lib.escapeShellArg worktreeFreshBaseCmd} \
       ${lib.escapeShellArg worktreeCreateGuardCmd} \

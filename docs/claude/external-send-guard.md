@@ -18,7 +18,7 @@ deny し、`create_draft`(返信は `replyToMessageId` 付き)で下書きを作
 アドレスが公式サイトに**実在する**ことは確認していたが、**何の窓口か**という
 文脈までは確認していなかった。この文脈判定は機械では原理的に難しい(公式サイトの
 自然文から「これは一般問い合わせ用か、求人専用か」を確実に判定する既製手法は
-見当たらなかった — attribution-guard.md・publish-guard README・Claude Code hooks
+見当たらなかった — attribution-guard.md・bleep README・Claude Code hooks
 公式ドキュメントを確認したが該当なし)。よって機械判定は諦め、**外部宛の直接送信
 そのものを一律止め、人間の目視確認を通過点にする**設計にした。
 
@@ -42,7 +42,7 @@ PreToolUse でしか止められない)に加えて、Claude はこの操作の�
 | `self.txt` が存在しない/空 | fail-closed(自分宛でも deny) |
 
 `self.txt`(後述)が無い状態を「安全側」にしたのは、代替手段(`create_draft`)が
-常に使えて実用上の支障がないため。publish-guard のように「見つからない
+常に使えて実用上の支障がないため。bleep のように「見つからない
 = 危険を見逃す」方向の縮退ではなく、「見つからない = 常に確認を挟む」方向の
 縮退にできるのは、この hook の代替コストがほぼ 0 だからである。
 
@@ -50,7 +50,7 @@ PreToolUse でしか止められない)に加えて、Claude はこの操作の�
 
 `${XDG_CONFIG_HOME:-~/.config}/external-send-guard/self.txt`(1行1アドレス、
 `#` コメント・空行は無視)を読み、to/cc/bcc の全宛先がこの集合に含まれる場合
-だけ通す。publish-guard(`docs/claude/public-publish-guard.md` 相当、README
+だけ通す。bleep(`docs/claude/public-publish-guard.md` 相当、README
 「denylist データは一切このリポジトリにコミットしない」)と同じ理由で、個人の
 メールアドレスをこのリポジトリに書かない。ファイルは各自の home ディレクトリに
 手で置く(home-manager の管轄外)。
@@ -69,7 +69,7 @@ PreToolUse でしか止められない)に加えて、Claude はこの操作の�
 
 ## bypass: `EXTERNAL_SEND_GUARD_ALLOW=1`
 
-publish-guard と同じ形の env var bypass を持つ。**deny の理由文にはこの env var
+bleep と同じ形の env var bypass を持つ。**deny の理由文にはこの env var
 名を書いていない** — 制約される当事者(Claude)が deny の理由を読んで自分で
 bypass を再実行できてしまうため。この bypass の存在自体は、この hook を設定する
 人間だけが知っていればよい。
@@ -83,7 +83,7 @@ bypass を再実行できてしまうため。この bypass の存在自体は�
   手段が無い)。
 - **LINE・Web フォーム送信**は対象外。MCP tool として接続されていても、
   「外部宛かどうか」の判定に使える宛先フィールドの形が保証されない。
-  Saltzer & Schroeder の complete mediation の限界(publish-guard README が引く
+  Saltzer & Schroeder の complete mediation の限界(bleep README が引く
   のと同じ根拠)がここでも成立する — この hook が仲介するのは Gmail MCP tool
   の 3 tool だけであり、それ以外の経路は一切見ない。
 

@@ -23,19 +23,19 @@
 #
 # なぜ Bash 経由の送信(curl/sendmail 等)・LINE・Web フォーム送信は対象外か:
 # この hook が仲介できるのは Claude Code の PreToolUse イベントだけで、
-# それ以外の経路は一切見ない(publish-guard README が引く Saltzer &
+# それ以外の経路は一切見ない(bleep README が引く Saltzer &
 # Schroeder の complete mediation の限界と同じ)。Gmail MCP tool という
 # 単一の書き込み経路を確実に塞ぐことに範囲を絞った。
 #
 # 自分のアドレス判定: ${XDG_CONFIG_HOME:-~/.config}/external-send-guard/self.txt
-# (1行1アドレス、# コメント・空行は無視)。publish-guard と同じ理由で、
+# (1行1アドレス、# コメント・空行は無視)。bleep と同じ理由で、
 # 個人のメールアドレスをこのリポジトリにコミットしない —
 # ファイルが無い/空なら「自分宛アドレスは0件」として扱う(fail-closed:
 # 全ての送信を外部宛とみなして deny する)。これは安全側のデフォルトで、
 # 代替手段(create_draft)は常に使えるため実用上の支障はない。
 #
 # bypass: 環境変数 EXTERNAL_SEND_GUARD_ALLOW=1 が立っていると即座に pass する。
-# publish-guard と同じ方針で、この env var 名は deny の理由文には書かない
+# bleep と同じ方針で、この env var 名は deny の理由文には書かない
 # (制約される当事者が自分で bypass を再実行できてしまうため)。
 #
 # 縮退(ADR-0005 の binary-existence gating に倣う): jq 不在・stdin 不正は

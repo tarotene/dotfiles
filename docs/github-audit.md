@@ -538,8 +538,9 @@ failure — the next release-triggering push fails loudly, because
 App isn't installed on. Duplicating that detection here would just be a
 second, slower way to learn the same thing GitHub Actions already reports
 immediately. Secret presence has no such backstop (a repository can sit
-indefinitely with the wrong or missing secret names, as `publish-guard`
-did before this domain existed), which is why only that half is audited.
+indefinitely with the wrong or missing secret names, as `bleep` (then
+`publish-guard`) did before this domain existed), which is why only that
+half is audited.
 
 There is also no repository-listing "registry" file for this domain to
 read against — unlike the naming domain's closed vocabularies, the

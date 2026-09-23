@@ -30,7 +30,7 @@
 #
 # 抜け道は本文マーカー `No-Attribution: <理由>`(pr-gate.sh の No-Issue: /
 # No-Visual: と同型)。理由を伴って初めて成立する。deny の理由文にはこの抜け道を
-# 明示的に書く — publish-guard は verdict_reason() に「bypass 手段はここに
+# 明示的に書く — bleep は verdict_reason() に「bypass 手段はここに
 # 書かない」と逆方針を採っているが、あちらは漏洩防止で抜け道を教えると自分で
 # 抜けてしまう。No-Attribution: は正当な判断なので、使えないと意味がない。
 #
@@ -106,9 +106,11 @@
 #   この判定エンジン(decide/decide_tokens/decide_api_tokens/decide_mcp/
 #   has_marker/emit_deny 等)はエージェント非依存で、config/codex/hooks/
 #   attribution-guard.sh・config/copilot/hooks/attribution-guard.sh から
-#   `source` される(publish-guard の「1つの判定エンジン + 薄い per-agent
-#   adapter」という既存の型を踏襲、tarotene/publish-guard の
-#   adapters/{codex,copilot}-adapter.sh が同型)。ATTRIBUTION_AGENT_NAME /
+#   `source` される(bleep の「1つの判定エンジン + 薄い per-agent
+#   adapter」という既存の型を踏襲 — ただし tarotene/bleep 自身は #25-28
+#   で3本の adapter を単一 shim hooks/bleep.sh --host=<name> に統合済み。
+#   ここでの3ファイル分割はその統合前の型を参考にしただけで、bleep 自身の
+#   現行構成とは既に異なる)。ATTRIBUTION_AGENT_NAME /
 #   ATTRIBUTION_AGENT_URL を adapter 側が source 前に上書きすることで
 #   フッター文言だけがエージェントごとに変わる。ファイル末尾の実行時
 #   ディスパッチは `source` 時に暴発しないよう `[[ "${BASH_SOURCE[0]}" ==
@@ -179,7 +181,7 @@ has_marker() {
   return 1
 }
 
-# deny の理由文。抜け道を明示的に書く(publish-guard とは逆方針、冒頭参照)。
+# deny の理由文。抜け道を明示的に書く(bleep とは逆方針、冒頭参照)。
 deny_reason() {
   printf '%s' "GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「${ATTRIBUTION_FOOTER}」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。"
 }
@@ -562,7 +564,7 @@ decide() {
 # $1=tool 名 $2=stdin JSON 全体; deny なら理由文を stdout に出して 0。
 #
 # MCP GitHub は現在未接続。matcher を Bash 単体にすると接続した瞬間に無検査に
-# なる(home/modules/claude.nix が publish-guard の旧実装で同じ欠陥を持っていたと
+# なる(home/modules/claude.nix が bleep の旧 adapter 実装で同じ欠陥を持っていたと
 # 明記している)ので、名前で書き込み系に絞ってから body を見る。
 decide_mcp() {
   local tool="$1" input="$2" body

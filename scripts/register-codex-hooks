@@ -7,8 +7,36 @@
 # Accepts any number of (event, matcher, command, timeout) tuples so callers
 # from different home-manager modules can each register their own hooks
 # against the same file without knowing about each other's tuples.
+#
+# Optional leading `--retire <event> <command>`... pairs (terminated by
+# `--register` or end of args) remove command-exact-match entries first —
+# same retire-then-register order and jq shape as register-claude-hooks'
+# inline retire()/register(), added when the bleep rename (tarotene/bleep,
+# formerly publish-guard) orphaned the old adapter command strings this
+# script had registered (#160/#27 upstream cutover left no way to remove a
+# stale entry from this file).
 set -euo pipefail
 TEST_TMP=''
+
+retire() {
+  local settings="$1" event="$2" command="$3" tmp
+  if ! jq -e --arg event "$event" --arg command "$command" \
+      '[.hooks[$event][]? | .hooks[]? | select(.command == $command)] | length > 0' \
+      "$settings" >/dev/null; then
+    return 0
+  fi
+  tmp="$(mktemp "$settings.hm.XXXXXX")"
+  jq --arg event "$event" --arg command "$command" '
+    .hooks[$event] = ( (.hooks[$event] // [])
+      | map( if any(.hooks[]?; .command == $command)
+             then (.hooks |= map(select(.command != $command)))
+             else . end )
+      | map(select((.hooks? == null) or ((.hooks | length) > 0))) )
+    | (if ((.hooks[$event] // []) | length) == 0 then del(.hooks[$event]) else . end)
+  ' "$settings" > "$tmp"
+  chmod --reference="$settings" "$tmp" 2>/dev/null || chmod 600 "$tmp"
+  mv "$tmp" "$settings"
+}
 
 register() {
   local settings="$1" event="$2" matcher="$3" command="$4" timeout="$5" tmp
@@ -35,6 +63,14 @@ main() {
   if [[ ! -f $settings ]]; then
     mkdir -p "$(dirname "$settings")"
     printf '{}\n' > "$settings"
+  fi
+  if [[ "${1-}" == --retire ]]; then
+    shift
+    while (( $# > 0 )) && [[ "$1" != --register ]]; do
+      retire "$settings" "$1" "$2"
+      shift 2
+    done
+    [[ "${1-}" == --register ]] && shift
   fi
   while (( $# > 0 )); do
     register "$settings" "$1" "$2" "$3" "$4"
@@ -82,14 +118,32 @@ selftest() {
     and (([.hooks.SessionEnd[]?.hooks[]? | select(.command == "clear-cmd")] | length) == 1)
   ' "$settings2" >/dev/null
 
+  # --retire removes a command-exact-match entry (and collapses the now-empty
+  # matcher group / event key), leaves other callers' entries untouched, and
+  # is a no-op when the target command isn't present.
+  main "$settings2" --retire \
+    PreToolUse guard-command \
+    --register
+  main "$settings2" --retire \
+    SessionStart report-cmd \
+    --register \
+    PreToolUse Bash new-guard-command 10
+  jq -e '
+    ([.hooks.SessionStart[]?.hooks[]? | select(.command == "report-cmd")] | length) == 0
+    and (([.hooks.UserPromptSubmit[]?.hooks[]? | select(.command == "report-cmd")] | length) == 1)
+    and (([.hooks.PreToolUse[]?.hooks[]? | select(.command == "new-guard-command")] | length) == 1)
+  ' "$settings2" >/dev/null
+  # Retiring the last remaining SessionStart entry collapses the empty key.
+  jq -e '(.hooks | has("SessionStart")) | not' "$settings2" >/dev/null
+
   printf 'selftest: OK\n'
 }
 
 if [[ ${1-} == --selftest ]]; then
   selftest
-elif [[ $# -ge 5 ]] && (( ($# - 1) % 4 == 0 )); then
+elif [[ ${2-} == --retire ]] || { [[ $# -ge 5 ]] && (( ($# - 1) % 4 == 0 )); }; then
   main "$@"
 else
-  printf 'usage: register-codex-hooks <hooks.json> <event> <matcher> <command> <timeout> [<event> <matcher> <command> <timeout>]...\n' >&2
+  printf 'usage: register-codex-hooks <hooks.json> [--retire <event> <command>]... [--register] <event> <matcher> <command> <timeout> [<event> <matcher> <command> <timeout>]...\n' >&2
   exit 2
 fi

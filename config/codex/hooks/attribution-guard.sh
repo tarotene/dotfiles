@@ -6,18 +6,19 @@
 #
 # 判定ロジックは一切持たない: config/claude/hooks/attribution-guard.sh の
 # 判定エンジン(decide/emit_deny 等)をそのまま `source` し、この adapter が
-# 持つのは Codex CLI の実際の PreToolUse I/O 形への変換だけ。tarotene/
-# publish-guard の adapters/codex-adapter.sh(claude-adapter.sh を薄く包む
-# 既存の型)と同じ設計。
+# 持つのは Codex CLI の実際の PreToolUse I/O 形への変換だけ。tarotene/bleep
+# (当時 publish-guard)の adapters/codex-adapter.sh(claude-adapter.sh を
+# 薄く包む既存の型 — #25-28 で単一 shim hooks/bleep.sh --host=<name> に
+# 統合済み、ここでの記述は統合前の実測記録)と同じ設計。
 #
-# Codex の PreToolUse は Claude と入出力の形が同じ(tarotene/publish-guard の
-# codex-adapter.sh が 2026-09-10 に `codex exec
+# Codex の PreToolUse は Claude と入出力の形が同じ(tarotene/bleep(当時
+# publish-guard)の codex-adapter.sh が 2026-09-10 に `codex exec
 # --dangerously-bypass-hook-trust` で実測済み):
 #   実測入力: {"tool_name":"Bash","tool_input":{"command":"..."}, ...}
 #   出力: hookSpecificOutput でラップした
 #         {"hookSpecificOutput":{"hookEventName":"PreToolUse",
 #           "permissionDecision":"deny","permissionDecisionReason":"..."}}
-#   を返すと実際にブロックされることも実測済み(publish-guard 側の記録)。
+#   を返すと実際にブロックされることも実測済み(publish-guard 時代の記録)。
 #
 # hooks.json の登録は home/modules/claude.nix の registerCodexHooks 経由
 # (matcher "Bash|mcp__.*")。MCP tool 名の命名規則が Codex 側で未確認

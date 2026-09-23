@@ -27,7 +27,7 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
 | `git prune-branches`(`scripts/git-prune-branches`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
 | `git shelve` / `git unshelve`(`scripts/git-shelve` / `scripts/git-unshelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
-| `config/git/hooks/pre-push` の publish-guard `scan-push` 統合 | 公開リポジトリへ company/private リポジトリ名等を含む差分を push してしまう(#196) | push する差分+ログを denylist で走査し、ヒットで block。回避は `PUBLISH_GUARD_ALLOW=1`。詳細は `docs/claude/public-publish-guard.md` |
+| `config/git/hooks/pre-push` の bleep(旧 publish-guard)`scan-push` 統合 | 公開リポジトリへ company/private リポジトリ名等を含む差分を push してしまう(#196) | push する差分+ログを denylist で走査し、ヒットで block。回避は `BLEEP_ALLOW=1`。詳細は `docs/claude/public-publish-guard.md` |
 
 ## `git prune-branches`
 
