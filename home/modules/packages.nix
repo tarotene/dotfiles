@@ -94,6 +94,19 @@
       # gas-clasp-ops skill (docs/claude/gas-clasp-ops.md); credentials stay
       # host-local, not managed here.
       google-clasp
+
+      # Layer 1(Issue #4): ad-hoc install の動機そのものを減らす — 試用の
+      # 摩擦が高いと「とりあえず apt/cargo/npm/pipx」に流れる。
+      # comma(`, <cmd>`)は nixpkgs のパッケージをインストールせず一度だけ
+      # 実行する。nix-index は `nix-locate` を提供し、Layer 2 の
+      # `detect-drift --porcelain` がコマンド名→nixpkgs 属性の候補注記に
+      # 使う(ADR-0005: nix-locate が無ければ注記なしで黙って続行)。
+      # 初回のみ手動で `nix-index` を実行してローカル DB を作る必要がある
+      # (`nix-community/nix-index-database` の事前ビルド版は新規 flake
+      # input になり撤収コストが導入コストを上回るため見送った、
+      # docs/adr/0035-selection-grounding.md の3軸)。
+      comma
+      nix-index
     ]
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
@@ -221,6 +234,12 @@
   # from crates/update-own-tools via pkgs.dotfiles-tools (ADR-0024);
   # docs/update-own-tools.md has the schema and the exit procedure.
   home.file.".local/bin/update-own-tools".source = "${pkgs.dotfiles-tools}/bin/update-own-tools";
+
+  # detect-drift(Issue #4)の配備 + systemd/launchd timer は
+  # home/modules/drift.nix にまとめてある(worktree.nix が
+  # git-audit-worktrees をタイマーと同居させているのと同じ理由 —
+  # git-audit-worktrees/dotfiles-doctor/github-rulesets-apply のように
+  # タイマーを持たない手動コマンドはここ packages.nix に留める)。
 
   # dotfiles-doctor: reports the presence/resolvability of every host-local
   # marker this repo resolves indirectly (dotfiles/host ADR-0019,

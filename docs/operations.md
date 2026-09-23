@@ -438,6 +438,10 @@ Decision flow for adding a tool, per
    ```bash
    nix shell nixpkgs#<tool>   # throwaway shell with the tool on PATH
    nix run nixpkgs#<tool>     # one-shot run
+   , <command>                # comma (home.packages, #4 Layer 1): runs
+                               # <command> once via nix-locate, no attribute
+                               # name to type when it doesn't match the
+                               # binary (e.g. `, rg` finds ripgrep)
    ```
 
    Nothing lands in any profile, so there is nothing to reclaim later.
@@ -456,8 +460,18 @@ Decision flow for adding a tool, per
    are escape hatches, not alternatives.
 
 A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /
-pipx) should be reclaimed into the right layer — workflow tracked in
-[#4](https://github.com/tarotene/dotfiles/issues/4).
+pipx) should be reclaimed into the right layer. `detect-drift`(#4, Layer 2,
+`crates/detect-drift`)reports these automatically — weekly via a
+systemd/launchd timer (`home/modules/drift.nix`), or on demand:
+
+```bash
+detect-drift              # human-readable report, exit 1 if drift found
+detect-drift --porcelain  # TSV: layer, name, nixpkgs attribute candidate
+```
+
+It never installs, removes, or modifies anything — deciding whether a
+drifted package belongs in a layer above, or should stay an intentional
+escape hatch, is still the human judgment call this section describes.
 
 Once a tool's layer is decided, a second question applies whenever it needs a
 concrete value (a bucket name, a project ID, a ping URL, a PRIVATE repo name):
