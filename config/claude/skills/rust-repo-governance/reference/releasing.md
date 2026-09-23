@@ -15,18 +15,13 @@ anti-recursion guard suppresses the resulting `pull_request` and `release:publis
 events — breaking required CI on release PRs and preventing `release-binaries.yml`
 from firing.
 
-**App permissions needed**: Contents R/W · Issues R/W · Pull requests R/W · Webhook disabled.
-
-**Repository secrets**:
-
-| Secret | Value |
-|--------|-------|
-| `RELEASE_PLZ_APP_ID` | Numeric App ID from app settings page |
-| `RELEASE_PLZ_APP_PRIVATE_KEY` | PEM-encoded private key |
+See [`repo-governance-common/reference/releaser-app.md`](../../repo-governance-common/reference/releaser-app.md)
+for the App itself (shared across every repository — install it, don't
+create a new one) and the secrets it needs:
 
 ```
-gh secret set RELEASE_PLZ_APP_ID --repo __OWNER__/__REPO__ --body "<id>"
-gh secret set RELEASE_PLZ_APP_PRIVATE_KEY --repo __OWNER__/__REPO__ --body "$(cat key.pem)"
+gh secret set RELEASER_APP_ID --repo __OWNER__/__REPO__ --body "<id>"
+gh secret set RELEASER_APP_PRIVATE_KEY --repo __OWNER__/__REPO__ --body "$(cat key.pem)"
 ```
 
 ---
