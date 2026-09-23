@@ -71,6 +71,32 @@ description・topics・settings フィールド・ファイルツリー・open I
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。
+- charters ドメインで `nav-doc-*` トークン(ADR-0033)が立った場合、当該
+  ファイル(README.md / CONTRIBUTING.md / AGENTS.md / CLAUDE.md)を
+  fetch して人間の目で読み、次の 3 種をまとめて起草する(決定論
+  チェックが取れるのは前 2 つだけなので、機械フラグが 1 つでも立った
+  ファイルは、フラグの立った箇所に留めず**ファイル全体**を読んで
+  3 種目(転記)も併せて拾う — `repo-charter` SKILL.md §4a の判定軸
+  「情報の寿命」で 1 箇所ずつ判定する):
+  1. `nav-doc-tree-fence` / `nav-doc-path-inventory` が挙がった節 —
+     ディレクトリ構成図・手書き一覧を削除し、運んでいた役割説明を
+     実体の隣(`<dir>/README.md` の冒頭 1 文、無ければ新設)へ移す。
+     生成物・第三者素材の帰属注記(ADR-0028)など意図的に残す一覧は、
+     削除ではなく直前に `<!-- nav-doc-exempt: <check> — <理由> -->`
+     を足す(理由は具体的に — 「必要だから」のような同語反復は書かない)。
+  2. `nav-doc-exempt-malformed` — マーカーの書式(`<check> — <理由>` の
+     両方が要る)を直す。何を exempt しているか不明な場合は、マーカー
+     ごと削除して該当ブロックも上記 1 と同様に処理する。
+  3. `nav-doc-exempt-unused` — マーカーを削除する(exempt しなくても
+     drift しない箇所に残す理由がない)。
+  4. 他ファイルの中身の転記(YAML/JSON スキーマ・設定値・CLI 使用法
+     など、機械検査の対象外)— 転記元ファイルと突き合わせ、字面が
+     一致しているか・古くなっているかに関わらず削除し、転記元への
+     1 行ポインタに置き換える。転記元ファイル自身に説明が無い場合は、
+     ポインタを書く前に転記元へ最小限の説明を足す(情報を消すだけで
+     終わらせない)。
+  charters の要約欄には「nav-doc: <削除した節数> 節削除、<新設した
+  `<dir>/README.md` 数> 件新設」のように定量的に書く。
 - rulesets ドメインは `review_layer`(ADR-0021)を読んで扱いを分ける。
   `missing` のコア層項目(`deletion`/`pull_request.allowed_merge_methods`
   等)は対象の `*-repo-governance` スキルの `apply-rulesets.sh`(デフォルト
@@ -107,9 +133,11 @@ drifted な組全体を、chat 本文の表ではなく **`Artifact` ツール�
 | repo | domain | 提案内容の要約 | 処分案 |
 |---|---|---|---|
 
-charters ドメインは「起草した purpose 文 / Scope 要約 / judging question」、
-naming は「提案クラス」、settings/renovate は「適用するテンプレート差分」を
-要約欄に書く。低確信フラグの組は要約欄を空にし、処分案を「repo-charter へ
+charters ドメインは「起草した purpose 文 / Scope 要約 / judging question」
+に加え、`nav-doc-*` が起因の場合は「nav-doc: <削除した節数> 節削除、
+<新設した `<dir>/README.md` 数> 件新設」(§2 参照)を併記する。naming は
+「提案クラス」、settings/renovate は「適用するテンプレート差分」を要約欄に
+書く。低確信フラグの組は要約欄を空にし、処分案を「repo-charter へ
 送る」と書く。ユーザーはリポジトリ×ドメイン単位で **GO / 修正 / 除外 /
 exempt** を返す。確認はこの 1 回だけで、GO 後は項目ごとに止まらない
 (`wrapup-chores` と同じ「一括 triage → GO 1 回 → 一括処理」の型)。
