@@ -152,6 +152,27 @@ jobs:
             ./scripts/adr-number-check
           fi
 
+      # decision-colocation-check (docs/adr/<番号>-decision-colocation.md):
+      # 決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
+      # `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する
+      # 判定エンジン。base ref は adr-number-check のステップで既に fetch
+      # 済み。push イベント(base が無い)では比較対象が無いため skip する
+      # — この検査は PR の diff に対してのみ意味を持つ。
+      - name: decision-colocation-check --selftest
+        run: ./scripts/decision-colocation-check --selftest
+
+      - name: decision-colocation-check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            ./scripts/decision-colocation-check --base "$BASE_SHA"
+          else
+            echo "decision-colocation-check: push イベントには base が無いため skip"
+          fi
+
       # patches/herdr-worktree-names.patch の hololive タレント名配列(worktree
       # 名生成の正本)と config/herdr/oshi-marks.tsv のキー集合を双方向突合する。
       # patch にあって TSV に無い名前は行欠落、TSV にあって patch に無い名前は

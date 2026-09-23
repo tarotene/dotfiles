@@ -180,6 +180,20 @@
     executable = true;
   };
 
+  # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
+  # colocation rule (docs/claude/decision-colocation.md — 決定成果物
+  # (ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment`
+  # 追加に、その決定を執行する実ファイルの同梱を要求する決定). Both
+  # config/claude/hooks/decision-colocation-guard.sh (client-side PreToolUse
+  # deny) and .github/workflows/ci.yml's required check call this one
+  # script, so the rule never drifts between the two enforcement points.
+  # Same "executable in ~/.local/bin, no alias needed" placement as
+  # pr-title-check/adr-number-check above.
+  home.file.".local/bin/decision-colocation-check" = {
+    source = ../../scripts/decision-colocation-check;
+    executable = true;
+  };
+
   # github-audit: read-only cross-repository GitHub audit, unified across
   # six domains (rulesets/#130, charters, naming, settings, renovate,
   # titles/ADR-0031 — ADR-0015; docs/github-audit.md). Replaces the former
