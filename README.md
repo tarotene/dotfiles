@@ -23,7 +23,7 @@ git clone https://github.com/tarotene/dotfiles.git ~/dotfiles
 cd ~/dotfiles && ./bootstrap.sh
 ```
 
-`bootstrap.sh` installs Nix (Determinate Systems), the system-layer apt packages, runs `home-manager switch --flake .#"$(hostname)"`, and registers the Nix-provided zsh in `/etc/shells`. It prints the remaining manual steps (YubiKey `gpg --card-status`, `chsh`). See [`docs/setup.md`](docs/setup.md) for the step-by-step guide and [`docs/cutover-runbook.md`](docs/cutover-runbook.md) for migrating an existing host.
+`bootstrap.sh` installs Nix (Determinate Systems), the system-layer apt packages, runs `home-manager switch --flake .#"$(hostname)"`, and registers the Nix-provided zsh as a login shell option. It prints the remaining manual steps (YubiKey card verification, changing the shell). See [the step-by-step setup guide](docs/setup.md) and [the migration runbook](docs/cutover-runbook.md) for migrating an existing host.
 
 ## Usage
 
@@ -46,9 +46,9 @@ Routine operations and the tool-layer decision flow (new CLI → home-manager pa
 
 ## Scope
 
-home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the Claude Code tooling under `config/claude/`. Two layers stay outside it as escape hatches — the apt system layer (`bootstrap.sh` + `packages/declarative/apt-packages.txt`) for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
+home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the Claude Code tooling under `config/claude/`. Two layers stay outside it as escape hatches — a thin apt system layer for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
 
-This repository does not manage per-project language toolchains, the judgement engine behind `publish-guard` (lives in `tarotene/publish-guard`; this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
+This repository does not manage per-project language toolchains, the judgement engine behind `publish-guard` (lives in [tarotene/publish-guard](https://github.com/tarotene/publish-guard); this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
 
 Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are Pop!_OS 24.04 (three machines) plus one macOS host, `altair` (ADR-0018); other Linux distros are not targeted.
 
