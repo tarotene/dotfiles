@@ -1,6 +1,6 @@
 # adr-numbering — ADR 番号をローカル連番でなく導入 PR の番号にする
 
-設計判断の記録: `docs/adr/0000-adr-number-by-pr.md`(Amends ADR-0008)
+設計判断の記録: `docs/adr/380-adr-number-by-pr.md`(Amends ADR-0008)
 checker(単一ソース): `scripts/adr-number-check`
 サーバ側 required check: `.github/workflows/ci.yml` の `dry-run` job
 人間層(利便性): `config/claude/hooks/adr-number.sh`(PostToolUse、段 3)

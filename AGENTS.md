@@ -379,6 +379,7 @@ dotfiles/
 - **ADR-0034** — 私的な machine-state 実値(実 bucket 名・GCP プロジェクト ID・PRIVATE リポ名・所有ドメイン等)は、外側の private wrapper flake に置く決定。dotfiles は `lib.mkHome` を export し、private wrapper flake がそれを呼んで自分の `homeConfigurations` を再定義する。依存の向きは常にこの1本 — dotfiles は private リポを flake input に取らない(`flake.lock` が input 名を平文で記録するため物理的に不可能)。所在は `scripts/hms.sh` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照し、本リポのソースには private wrapper flake の名前・パスを一切書かない。境界述語は「規則・スキーマは public、実値は private」— ADR-0025 の「存在すら書かない」対象は無条件でこれより優先し、既存の公開露出(`keys/*.pub`・実ホスト名・`oshi-marks.tsv` 等)は ADR-0007 に従い grandfather する。
 - **ADR-0033** — 導線文書(README/AGENTS.md 等)は実体を複製しない決定(nav-doc no-materialisation)。ディレクトリ構成図・コンテンツ一覧・他ファイルの中身の転記といった「実体が他所にある情報」の複製を禁じ、参照(リンク・パス言及)に置き換える。ADR-0016 Decision 5 の適用範囲を「導線文書同士の複製」から「導線文書が実体を複製すること」全般へ拡張する。
 - **ADR-0035** — 技術・仕組みの選択を 3 軸(宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式順序に接地させる決定(selection-grounding)。自己申告の「クリーンかつ先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と件の private リポジトリの決定履歴の横断調査から導いた。
+- **ADR-380** — ADR 番号をローカル連番でなく導入 PR の番号にする決定。ADR-0020→0021・ADR-0033 二重の 2 度の採番衝突を受け、連番という「分散システムに置かれた中央アロケータ」を無くす。`n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、CI required check が呼ぶ。ADR-0008 を amend する。
 
 ## Development Rules
 

@@ -128,7 +128,7 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
-      # adr-number-check (ADR-0000, docs/claude/adr-numbering.md): ADR 番号を
+      # adr-number-check (ADR-380, docs/claude/adr-numbering.md): ADR 番号を
       # 導入 PR の番号にすることで採番衝突を構造的に不可能にする決定の判定
       # エンジン。selftest はネットワーク不使用。pull_request イベントでは
       # base SHA を追加 fetch した上で base 差分限定の判定(1 PR = 最大 1 ADR、

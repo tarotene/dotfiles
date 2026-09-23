@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# adr-number-check — ADR 採番規約(ADR-0000 → PR 番号での改番、
-# docs/adr/0000-adr-number-by-pr.md)の判定エンジン単一ソース。
+# adr-number-check — ADR 採番規約(ADR-380: 起草時の 0000 を PR 番号へ
+# 改番する、docs/adr/380-adr-number-by-pr.md)の判定エンジン単一ソース。
 #
 # CI の required check(.github/workflows/ci.yml の dry-run job)と、
 # 手動実行・段3の PostToolUse hook(将来 config/claude/hooks/adr-number.sh
@@ -9,7 +9,7 @@
 #
 # 番号帯: n < 0100 は grandfathered 連番(重複のみ検査)、n >= 0100 は
 # PR-number era(導入 PR の番号と一致必須)、0000 は起草中で main に
-# 残ってはならない。詳細: docs/adr/0000-adr-number-by-pr.md,
+# 残ってはならない。詳細: docs/adr/380-adr-number-by-pr.md,
 # docs/claude/adr-numbering.md
 #
 # 判定項目は 2 系統に分かれる。混ぜると既着地の ADR を現在の PR 番号で
