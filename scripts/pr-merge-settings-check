@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# pr-merge-settings-check — PR タイトル契約(ADR-0031)の前提となる merge 設定
+# (squash-only、squash_merge_commit_title=PR_TITLE、squash_merge_commit_message=
+# BLANK 等)が生きているかを required check(.github/workflows/pr-title.yml)
+# として検査する。
+#
+# 判定ロジックは新設しない: scripts/github-audit の judge_settings() /
+# fetch_repo_settings() を source して再利用する(判定の単一正本は
+# github-audit 側のまま、ADR-0035 D1「単一正本 > 複写+同期」)。
+# github-audit は末尾に `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+# main "$@"; fi` というソースガードを既に持つ(#185)ため、source しても
+# main() は実行されない。
+#
+# github-audit の settings ドメインは REST 由来の squash title/message に
+# 加え GraphQL 由来のフィールド(squashMergeAllowed 等)も見るが、CI から
+# 使うこのスクリプトは追加の GraphQL 呼び出しを避け、1 回の REST 呼び出し
+# (fetch_repo_settings がそのまま使う `gh api repos/<owner>/<repo>`)の
+# レスポンスを GraphQL 形状に読み替えて judge_settings() の両引数を賄う
+# (フィールドの実体は同じ値を REST/GraphQL 両方の命名で持っているだけ)。
+#
+# audit(手動実行、検出のみ)とは違い、このスクリプトは fail-closed —
+# 設定取得に失敗した場合も red にする。契約の前提が確認できないまま
+# merge を通さないことが目的で、再実行で復旧できる。
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./github-audit
+source "$SCRIPT_DIR/github-audit"
+
+usage() {
+  cat <<'EOF'
+usage: pr-merge-settings-check <owner>/<repo>
+       pr-merge-settings-check --selftest
+
+指定リポジトリの merge 設定が ADR-0031 の前提(squash-only、
+squash_merge_commit_title=PR_TITLE、squash_merge_commit_message=BLANK 等)を
+満たすかを検査する。判定は scripts/github-audit の judge_settings() をその
+まま使う。設定取得に失敗した場合も non-zero(fail-closed)。
+EOF
+}
+
+# REST の repos/<owner>/<repo> レスポンスを judge_settings() の $1(GraphQL
+# 形状の meta)に読み替える。フィールド名が違うだけで実体は同じ値。
+rest_to_graphql_meta() { # $1=REST repo json -> GraphQL 形状の meta json
+  jq '{
+    squashMergeAllowed: .allow_squash_merge,
+    mergeCommitAllowed: .allow_merge_commit,
+    rebaseMergeAllowed: .allow_rebase_merge,
+    deleteBranchOnMerge: .delete_branch_on_merge,
+    defaultBranchRef: {name: .default_branch},
+    hasWikiEnabled: .has_wiki,
+    hasProjectsEnabled: .has_projects
+  }' <<<"$1"
+}
+
+check_repo() { # $1=owner/repo -> exit 0(ok)/1(drifted or fetch failed)
+  local owner_repo="$1" repo rest meta result verdict
+  OWNER="${owner_repo%%/*}"
+  repo="${owner_repo#*/}"
+
+  rest="$(fetch_repo_settings "$repo")"
+  if [[ "$rest" == "{}" ]]; then
+    printf 'pr-merge-settings-check: %s の merge 設定取得に失敗しました(fail-closed で red にします)\n' \
+      "$owner_repo" >&2
+    return 1
+  fi
+
+  meta="$(rest_to_graphql_meta "$rest")"
+  result="$(judge_settings "$meta" "$rest")"
+  verdict="$(jq -r '.verdict' <<<"$result")"
+
+  if [[ "$verdict" != "ok" ]]; then
+    printf 'pr-merge-settings-check: %s の merge 設定が ADR-0031 の前提から drift しています: %s\n' \
+      "$owner_repo" "$(jq -r '.missing | join(", ")' <<<"$result")" >&2
+    return 1
+  fi
+
+  printf 'pr-merge-settings-check: %s OK\n' "$owner_repo"
+}
+
+selftest() {
+  local fails=0 tmp
+
+  check() { # $1=名前 $2=owner/repo $3=REST json $4=期待するexit(0|1)
+    local name="$1" owner_repo="$2" rest_json="$3" want="$4" rc=0
+    printf '%s' "$rest_json" >"$tmp/bin/fixture.json"
+    check_repo "$owner_repo" >/dev/null 2>"$tmp/err.log" || rc=$?
+    if [[ "$rc" == "$want" ]]; then
+      echo "ok   $name"
+    else
+      echo "FAIL $name (expected rc=$want got rc=$rc)" >&2
+      cat "$tmp/err.log" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp/bin"
+
+  # fetch_repo_settings() は `"$GH_BIN" api "repos/$OWNER/$1"` を呼ぶだけ
+  # なので、GH_BIN を差し替えて固定 JSON を返すスタブにする。fail 印がある
+  # 間は non-zero で終了し(fetch_repo_settings が {} にフォールバックする
+  # 経路を再現)、それ以外は fixture.json をそのまま返す。
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$(dirname "$0")"
+if [[ -f "$dir/fail" ]]; then
+  exit 1
+fi
+if [[ "$1" == api ]]; then
+  cat "$dir/fixture.json"
+else
+  exit 1
+fi
+STUB
+  chmod +x "$tmp/bin/gh"
+  GH_BIN="$tmp/bin/gh"
+
+  check "1 全項目 OK" "tarotene/all-ok" \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}' \
+    0
+
+  check "2 squash title drift(単一 commit PR での実例相当)" "tarotene/single-commit-drift" \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}' \
+    1
+
+  check "3 merge-not-squash-only drift" "tarotene/merge-allowed" \
+    '{"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}' \
+    1
+
+  touch "$tmp/bin/fail"
+  check "4 取得失敗(gh api 非ゼロ終了、fail-closed)" "tarotene/unreachable" '{}' 1
+  rm -f "$tmp/bin/fail"
+
+  rm -rf "$tmp"
+  [[ "$fails" == 0 ]] && printf 'selftest: all passed\n'
+  return "$fails"
+}
+
+main() {
+  case "${1:-}" in
+    --selftest) selftest ;;
+    -h | --help | '')
+      usage
+      [[ "${1:-}" == -h || "${1:-}" == --help ]]
+      ;;
+    */*) check_repo "$1" ;;
+    *)
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

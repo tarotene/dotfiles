@@ -209,3 +209,101 @@ Checks タブの実際の文字列を確認し、異なれば ruleset を訂正�
 - `scripts/github-audit --selftest`(後続段で拡張)。
 - 本 ADR 自体は docs のみの変更のため `nix flake check` への影響はない
   (回帰確認として実行する)。
+
+## Amendment (2026-09-24 — グリルセッションでの前提強化, #325)
+
+「PR タイトル CI を入れたなら、merge 時の Default Commit Message 設定や
+個別 commit の検査も要るのでは」という grill-me セッションでの問題提起を
+受け、実測を伴って本 ADR の前提を再検証した。
+
+### D1 の追補: ruleset `commit_message_pattern` の棄却
+
+D2/D5 が担保する「PR タイトル proxy + 前提設定の検査」に代えて、GitHub
+ruleset の `commit_message_pattern` メタデータ制限で artifact 側から直接
+強制できないかを検討したが、三重に不成立だった:
+
+1. **プランへの限定**: metadata restrictions は GitHub Docs のソース上
+   `{% ifversion repo-rules-enterprise %}` に囲まれており、対象は
+   "Organizations on a GitHub Enterprise plan"(GitHub Docs, "Available
+   rules for rulesets"、取得 2026-09-23)。`tarotene` は `type: "User"` の
+   個人アカウントで、実測(全 20 リポ、61 ルールを横断)でも metadata 系
+   ルールの使用は 0 件だった。
+2. **squash 時の意味論が未確定**: 同ページ内で本文と NOTE が矛盾しており
+   (本文は「squash では結果の 1 commit だけを検査する」、NOTE は「squash
+   するならブランチ上の全 commit が要件を満たす必要がある」)、GitHub の
+   Community Discussion #193197(2026-04-20、未回答)は後者(全 commit が
+   評価されて merge がブロックされる)を実地で報告している。
+3. **先行例ゼロ**: angular/angular・conventional-changelog/commitlint・
+   semantic-release/semantic-release・vitejs/vite・electron/electron の
+   ruleset を全数列挙し、`commit_message_pattern` の使用例はゼロだった。
+   確立された squash 運用下の答えは
+   `squash_merge_commit_title=PR_TITLE` の固定 + PR タイトルの CI 検査
+   という、本 ADR が D2/D3 で既に採っている構成そのもの
+   (`amannn/action-semantic-pull-request` README、取得 2026-09-23、
+   "you'll want to configure your GitHub repository to use the squash
+   & merge strategy and tick the option *Default to PR title for
+   squash merge commits*")。
+
+`Alternatives considered` に一行追加する:
+「**ruleset `commit_message_pattern` による artifact 側強制**: 個人
+アカウントでは利用不可(Enterprise 限定)、squash 時の適用範囲が GitHub
+自身のドキュメント内で矛盾しており未確定、確立された先行例も無い。三重の
+不成立により不採用。」
+
+### D2 の追補: 前提設定の検査を監査から required check へ格上げ
+
+D2/D5 が宣言・監査する「`squash_merge_commit_title=PR_TITLE` /
+`squash_merge_commit_message=BLANK` / squash-only」という前提は、**可変な
+リポ設定の上に乗った proxy** であり、設定が drift すると契約全体が無声で
+バイパスされる。全 20 リポの実測(2026-09-23/24)で、実際に **PRIVATE
+リポジトリ 2 件がこの前提から drift していた**(実名は ADR-0034 により
+省略、`squash_merge_commit_title=COMMIT_OR_PR_TITLE` /
+`squash_merge_commit_message=COMMIT_MESSAGES`)。`COMMIT_OR_PR_TITLE` は
+「PR が単一 commit なら PR タイトルではなく commit のメッセージを採用する」
+設定で、うち 1 リポは直近 25 PR がすべて単一 commit だったため
+**契約が 25/25 で無声にバイパスされていた**(証拠: そのリポの `main` に
+PR 番号が二重付与された commit が残っていた)。
+
+`github-audit settings` ドメインはこの drift を検出できるが、監査は手動
+実行のため「検出」であって「防止」ではない。この前提検査を
+required check(`.github/workflows/pr-title.yml`)へ同居させ、drift した
+状態での merge 自体を CI red で止める(後続段、`scripts/
+pr-merge-settings-check`)。判定ロジックは新設せず、
+`scripts/github-audit` の `judge_settings()` を関数として再利用する
+(単一正本を複数の実行点で使う。判定ロジックを複写すると 2 箇所が drift
+しうる別の不正状態を生む)。
+
+### D6 の追補: 実測による裏付け
+
+D6(ブランチ commit のメッセージは強制しない)の判断は変えないが、根拠を
+実測で強化する。squash 運用の 4 リポ(PUBLIC 2: dotfiles・telepath、
+PRIVATE 2、実名は ADR-0034 により省略)の直近 25 PR、ブランチ commit
+計 109 件を集計したところ、非適合は 1 件のみ(適合率 99.1%)で、その 1 件も
+上記の設定 drift を経由して
+初めて `main` に漏れた(D2 の追補が塞ぐ経路と同じ)。先行例として
+angular/angular の `.husky/commit-msg` hook は意図的に advisory
+(無条件 `exit 0`)であり、実際の強制は CI 側の `ng-dev commit-message
+validate-range` が担う。ただし Angular は squash せず rebase 運用のため
+ブランチ commit がそのまま `main` に残る点が本リポ群と異なる — squash
+運用では強制する対象("main に残るテキスト")自体が存在しないため、CI 側の
+強制も置かない。
+
+### D7 の縮小: バックフィル範囲を tag/release なしのリポに限定
+
+D7(既存非適合 commit のバックフィルをスコープに含める)の実施範囲を
+縮小する。実測(全 20 リポ、`main` の直近最大 100 commit)で非適合
+25 件を確認したが、うち PUBLIC 1(telepath、2 件)・PRIVATE 2(計 8 件、
+実名は ADR-0034 により省略)の計 3 リポは tag/release が非適合 commit を
+祖先に持ち、履歴書き換えで外向き資産(telepath は crates.io に公開済みの
+release 2 件、PRIVATE の 1 リポは稼働中の release 群)が全 orphan になる。
+ADR-0020 の `createdAt` grandfathering、ADR-0007「既存ファイルの遡及的な
+一括リネームはしない」と同じ扱いで、この 3 リポ・計 10 件を明示的に
+grandfather する。残る tag/release を持たない PUBLIC 2(dotfiles 1 /
+publish-guard 1)・PRIVATE 6(計 13 件、実名は ADR-0034 により省略)の
+計 8 リポ・15 件は D7 の実施対象のまま残す(対象リポの識別子は host-local
+な監査記録側で追跡する)。
+
+### 執行点
+
+- `scripts/pr-merge-settings-check`
+- `.github/workflows/pr-title.yml`
