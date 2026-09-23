@@ -20,8 +20,9 @@
           { "context": "Shell script validation" },
           { "context": "Escape-hatch dry-run" },
           { "context": "nix flake check" },
-          { "context": "build personal-pop" },
-          { "context": "build company-pop-new" },
+          { "context": "rust workspace" },
+          { "context": "build vega" },
+          { "context": "build arcturus" },
           { "context": "PR title" }
         ]
       }
