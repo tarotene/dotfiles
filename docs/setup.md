@@ -34,8 +34,9 @@ cd ~/dotfiles
 1. Installs Nix via the Determinate Systems installer (multi-user default).
 2. Installs the system-layer apt packages (`scripts/install-packages.sh`).
 3. Runs `home-manager switch --flake .#"$(hostname)"`. The hostname must match a
-   key in `homeConfigurations` in `flake.nix` (e.g. `personal-pop`,
-   `company-pop-old`, `company-pop-new`).
+   key in `homeConfigurations` in `flake.nix` (e.g. `vega`, `arcturus`,
+   `altair`) — or the logical hostname a `~/.config/dotfiles/host` marker
+   resolves to (ADR-0019), if one is placed before the first switch.
 4. Registers the Nix-provided zsh in `/etc/shells` (idempotent).
 
 ## Existing host
@@ -70,7 +71,7 @@ chsh -s "$NIX_ZSH"             # log out and back in to take effect
 
 The esa.io MCP server (`@esaio/esa-mcp-server`, registered via
 `home/modules/esa.nix`) reads its token from `~/.config/esa/token.gpg`. The
-file is host-local and never enters git. Personal hosts only (`personal-pop`,
+file is host-local and never enters git. Personal hosts only (`vega`,
 `altair`) — company hosts do not import this module. The token only needs
 issuing once, but under the per-machine on-disk [E] subkey model (#252,
 ADR-0003 Amendment 4) each host decrypts with its own [E] subkey — a blob

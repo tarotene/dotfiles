@@ -95,11 +95,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - host: personal-pop
+          - host: vega
             runner: ubuntu-latest
-          - host: company-pop-old
-            runner: ubuntu-latest
-          - host: company-pop-new
+          - host: arcturus
             runner: ubuntu-latest
           # altair (2022 M2 MacBook Air, aarch64-darwin — ADR-0018).
           # macos-latest is Apple Silicon (M-series, arm64) — matches
@@ -114,7 +112,7 @@ jobs:
       # Amendment, invalidates the substitutable derivation) and bws
       # (Bitwarden Secrets Manager CLI, unfree — Hydra never builds unfree
       # packages, so no substitutable output can ever exist upstream;
-      # personal-pop only, via home/modules/obsidian.nix). Both are
+      # vega (the personal host) only, via home/modules/obsidian.nix). Both are
       # permanent per-run costs unless this cache actually retains them.
       #
       # The primary-key hashes home/** and config/** (the same set that
@@ -125,8 +123,8 @@ jobs:
       # on primary-key -> skip saving" rule (nix-community/cache-nix-action
       # README, 取得 2026-09-23) silently discarded every bws build this
       # cache ever produced. A host-scoped key additionally stops
-      # personal-pop's bws-bearing closure and company-pop-*'s bws-less
-      # closure from overwriting each other under one shared key.
+      # vega's bws-bearing closure and arcturus's bws-less closure from
+      # overwriting each other under one shared key.
       #
       # A key that changes on every home/** edit is not a regression:
       # restore-prefixes-first-match still restores the nearest prior cache

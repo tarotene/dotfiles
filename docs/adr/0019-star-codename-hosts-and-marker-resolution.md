@@ -100,3 +100,32 @@ RFC 1178 "Choosing a Name for Your Computer"(D. Libes, 1990)
 - 実機(altair)での検証はセットアップ手順書(`docs/setup-macos.md`)の
   検証節に記載: マーカー設置 → `bootstrap.sh` → `hms` が `altair` を
   正しく解決すること。
+
+## Amendment (2026-09-23 — #214)
+
+wrap-up chores セッション中、命名語彙が単一ホスト(altair)だけを念頭に
+置いており、既存 3 ホストへの改名(当時「別 Issue で扱う」としていた
+もの)と将来の自宅サーバー増設の両方を見据えた語彙の閉じ方を明示して
+いなかったことが分かった。本 Amendment はこれを確定させる。
+
+1. **命名語彙は「IAU が公認した恒星固有名」の単一フラット空間とする。**
+   天体クラス(恒星=作業機 / 惑星・衛星=サーバー等)で用途ごとに語彙を
+   分けるアプローチは、ADR-0019 Decision 1 の「役割・identity・世代を
+   名前に埋め込まない」という原則そのものと矛盾するため採らない。
+   IAU 公認固有名はおよそ 450 件あり実質枯渇しない — 自宅サーバー等
+   将来のホスト増設にもこの単一空間からそのまま採番できる。
+2. **既存 3 ホストの改名を完了する**(#214、本 ADR が「別 Issue」と
+   していたもの): `personal-pop` → `vega`、`company-pop-new` →
+   `arcturus`。両者とも IAU 公認固有名。
+3. **`company-pop-old` は改名せず削除する。** 既に退役済みのホストを
+   新しい名前空間に持ち込む意味がないため(死んだ機構は今消す方が
+   後で消すより安い、docs/adr/0035-selection-grounding.md)。
+   `home/hosts/company-pop-old.nix` を削除し、対応する
+   `homeConfigurations` キーも即削除する(移行期間の旧キーエイリアスは
+   改名した 2 ホストにのみ設ける)。
+
+### 執行点
+
+- `home/hosts/vega.nix` — `personal-pop.nix` の改名(#214)
+- `home/hosts/arcturus.nix` — `company-pop-new.nix` の改名(#214)
+- `flake.nix` — `homeConfigurations` を新キーに更新、`company-pop-old` を削除

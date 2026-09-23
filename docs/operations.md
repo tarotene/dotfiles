@@ -314,7 +314,7 @@ the same manual-update instruction `export` prints.
 ## Obsidian vault backup
 
 `home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
-`obsidian-backup` on `personal-pop` only. Obsidian is wrapped with nixGL like
+`obsidian-backup` on `vega` only. Obsidian is wrapped with nixGL like
 the other Electron GUI applications. Three persistent systemd user timers run
 a daily backup, weekly retention/health maintenance, and a monthly restore
 acceptance test.

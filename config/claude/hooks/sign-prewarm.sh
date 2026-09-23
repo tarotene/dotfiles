@@ -42,7 +42,7 @@
 #
 # [E] の対象は esa MCP の token.gpg(scripts/esa-mcp-launcher と同じ解決規則:
 # `ESA_TOKEN_FILE` 環境変数 → `XDG_CONFIG_HOME` → `$HOME/.config`)。ファイルが
-# 存在しないホスト(company-pop-*、esa MCP 未セットアップの personal-pop 等)
+# 存在しないホスト(arcturus のような company ホスト、esa MCP 未セットアップの vega 等)
 # では ADR-0005 のファイル存在ゲートと同じ考え方で完全に無音スキップする —
 # [S] のように `git config` 経由の宣言的な「対象かどうか」の判定元が無いため、
 # ファイルの実在そのものをゲートにする。

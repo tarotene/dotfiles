@@ -9,8 +9,10 @@ duplicate README/CONTRIBUTING content.
 ## Project Overview
 
 Declarative, flake-based **standalone home-manager** configuration for one
-person's user environment across three Pop!_OS hosts (`personal-pop`,
-`company-pop-old`, `company-pop-new`) and two identities (personal, company).
+person's user environment across two Pop!_OS hosts (`vega`, `arcturus` —
+star codenames, ADR-0019; a third, retired `company-pop-old`, was
+decommissioned rather than renamed, #214) plus one darwin host (`altair`),
+and two identities (personal, company).
 
 **Core purpose**: home-manager is the single source of truth for the user
 environment, so a fresh machine is provisioned to an identical setup with

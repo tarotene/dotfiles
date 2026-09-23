@@ -691,7 +691,7 @@ cmd_sync() {
   # 4. THIS host's hosts/<host>.nix only — [S] のみ、report-only、このツール
   # は nix ファイルには触れない。[S] は per-machine(ADR-0003 Amendment §1):
   # 第二のホストが同じ identity を共有していても(例: altair と
-  # personal-pop)、そのホストは自分自身の独立した [S] subkey を持つのが
+  # vega)、そのホストは自分自身の独立した [S] subkey を持つのが
   # 期待される挙動であり、ここでの鍵束には存在すらしない — 「このマシン」の
   # $sign_active_fpr で他ホストの hosts/*.nix を全部チェックすると、単に
   # 別の(同様に正当な)subkey を持つだけの他ホストを毎回 stale と誤報する。

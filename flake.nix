@@ -206,18 +206,29 @@
         };
     in
     {
-      # Keyed by hostname so `home-manager switch` auto-selects per machine.
-      # Hostname convention: <identity>-pop[-<generation>] for the three
-      # existing Linux hosts (#207 / stage1-prep). New hosts (e.g. altair) use
-      # a star-codename instead and resolve via a marker file, not hostname
-      # (ADR-0019) — see scripts/hms.sh / bootstrap.sh `resolve_host`.
+      # Keyed by logical hostname (ADR-0019 star-codename, resolved via a
+      # marker file — see scripts/hms.sh / bootstrap.sh `resolve_host`, not
+      # the OS `hostname`). All three Linux hosts moved off the old
+      # `<identity>-pop[-<generation>]` convention (#207 / stage1-prep) to
+      # star codenames in #214: personal-pop → vega, company-pop-new →
+      # arcturus. company-pop-old was retired outright (no replacement
+      # module) rather than renamed.
       homeConfigurations = {
-        "personal-pop" = mkHome linuxSystem ./home/hosts/personal-pop.nix [ ];
-        "company-pop-old" = mkHome linuxSystem ./home/hosts/company-pop-old.nix [ ];
-        "company-pop-new" = mkHome linuxSystem ./home/hosts/company-pop-new.nix [ ];
+        "vega" = mkHome linuxSystem ./home/hosts/vega.nix [ ];
+        "arcturus" = mkHome linuxSystem ./home/hosts/arcturus.nix [ ];
 
         # First darwin host (2022 M2 MacBook Air) — ADR-0018/ADR-0019.
         "altair" = mkHome darwinSystem ./home/hosts/altair.nix [ ];
+
+        # Transitional aliases (#214): the old hostname-keyed entries, kept
+        # pointed at the SAME new host modules, so `hms`'s hostname fallback
+        # (resolve_host() when no ~/.config/dotfiles/host marker is placed
+        # yet) still resolves on a host that has not hand-placed its new
+        # marker file before its first post-rename `hms` run. Drop once
+        # every physical host has confirmed the marker took effect (tracked
+        # separately, not this PR — see #214's own follow-up note).
+        "personal-pop" = mkHome linuxSystem ./home/hosts/vega.nix [ ];
+        "company-pop-new" = mkHome linuxSystem ./home/hosts/arcturus.nix [ ];
       };
 
       # Exported so an outside private wrapper flake (ADR-0034) can build its
