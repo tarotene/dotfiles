@@ -124,8 +124,14 @@ pinentry を経由しないまま exit 2 になる(`--detach-sign` 系の
 
 libsecret/gnome-keyring への永続化(gpg-agent の外部パスワードキャッシュ)
 でこの「ログインに 1 回」自体を無くせないか実機検証したが、この host
-(pinentry-gnome3 + GCR 3.41.2)では保存 UI が現れず、Secret Service にも
-何も保存されなかった。詳細と裏付けは ADR-0003 Amendment 4。
+(pinentry-gnome3 + GCR 3.41.2)の GCR system-prompter ダイアログには保存 UI
+が現れなかった。**この主張は #348 により狭められている**: GCR ダイアログを
+経由しない直接呼び出し(pinentry に生の Assuan `GETPIN` を送る)では、実際に
+libsecret 経由の外部キャッシュから実パスワードが返ってくることが実機で
+確認された。`services.gpg-agent.noAllowExternalCache = true;`
+(`home/modules/gpg.nix`)で gpg-agent 自身が開くその経路は閉じたが、
+pinentry を直接起動する呼び出し元まではこのリポジトリの管轄が及ばない。
+詳細と裏付けは ADR-0003 Amendment 4 / Amendment 5。
 
 ## なぜ同期ブロックなのか、なぜ hook 自身が `timeout` で刈るのか
 

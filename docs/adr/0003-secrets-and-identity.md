@@ -233,3 +233,53 @@ findings from validating it on real hardware.
   `[S]`/`[E]` on-disk lifecycles per host instead of one; `docs/claude/
   esa-mcp.md` and `docs/claude/sign-prewarm.md` carry the operational
   detail.
+
+## Amendment 5 (2026-09 — #348)
+
+Investigating an unrelated sudo-askpass check surfaced that Amendment §4
+item 4's "no Secret Service item is ever created" claim was too broad. A
+bare Assuan `GETPIN` command sent directly to the `pinentry-gnome3`
+binary — bypassing `gpg-agent` entirely — returned the real login
+password via the `PASSWORD_FROM_CACHE` external-cache protocol, with no
+human interaction (#348, reproduced twice). The GCR system-prompter
+dialog (what Amendment §4 actually tested) indeed never offers a "save
+to keyring" UI; the mistake was extrapolating from that to "the external
+cache is unreachable" — a caller that skips the dialog and drives the
+Assuan protocol directly can still reach it, because the login keyring
+is already unlocked (PAM auto-unlocks it at login) and same-uid access
+to an unlocked Secret Service item is a GNOME-acknowledged trust
+boundary, not a bug GNOME will fix (CVE-2018-19358 was not accepted as
+a vulnerability on this basis).
+
+1. **`services.gpg-agent.noAllowExternalCache` is now declared `true`.**
+   This is home-manager's typed option for GnuPG's own
+   `--no-allow-external-cache` (Amendment §4 item 4 already cited this
+   flag but concluded it was unnecessary; #348 supersedes that
+   conclusion). It stops `gpg-agent` from ever sending pinentry the
+   `OPTION allow-external-password-cache` that enables the cache path.
+2. **This closes only the channel `gpg-agent` itself opens.** It does
+   not stop an arbitrary same-uid process from launching pinentry
+   directly and driving the Assuan protocol itself, as #348 did.
+   Nothing in GnuPG or GCR distinguishes "`gpg-agent` asked" from
+   "anything on this uid asked". Closing that fully would require not
+   trusting the login keyring's auto-unlock at all, which conflicts
+   with this host's own use of it (`scripts/obsidian-backup` reads a
+   Bitwarden token from the same keyring via `secret-tool lookup` for
+   unattended systemd-timer runs). The residual risk (same-uid Secret
+   Service read) is therefore accepted and only detected, not
+   eliminated — #348 stays open for the human follow-up (credential
+   rotation, login-keyring item inventory) that is out of this repo's
+   reach (ADR-0034: no real secret values in this public repo).
+
+### 執行点
+
+- `home/modules/gpg.nix` — `services.gpg-agent.noAllowExternalCache = true;`(#348)
+
+## Consequences (Amendment 5)
+
+- Amendment §4 item 4's claim narrows: the GCR dialog still never offers
+  a "save to keyring" UI, but the underlying external-cache protocol is
+  reachable by a direct pinentry caller, and is now explicitly closed at
+  the `gpg-agent` level.
+- `docs/claude/sign-prewarm.md`'s parallel claim is corrected in the
+  same PR.
