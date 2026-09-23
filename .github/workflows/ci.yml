@@ -364,6 +364,11 @@ jobs:
       - name: writing-style-hub --selftest
         run: ./scripts/writing-style-hub --selftest
 
+      # ホストローカル・マーカー(host/private-hub/style-hub)の欠落検出器
+      # (#368)。実値は書かない、検出のみ。
+      - name: dotfiles-doctor --selftest
+        run: ./scripts/dotfiles-doctor --selftest
+
       # obsidian-backup is exercised end to end against stubbed
       # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
       # restic invocations, the unsafe-relative-path rejection, the

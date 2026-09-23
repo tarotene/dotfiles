@@ -222,6 +222,16 @@
   # docs/update-own-tools.md has the schema and the exit procedure.
   home.file.".local/bin/update-own-tools".source = "${pkgs.dotfiles-tools}/bin/update-own-tools";
 
+  # dotfiles-doctor: reports the presence/resolvability of every host-local
+  # marker this repo resolves indirectly (dotfiles/host ADR-0019,
+  # dotfiles/private-hub ADR-0034, dotfiles/style-hub #115/#368) without
+  # ever writing a real value itself (ADR-0034 D5: schema is public, values
+  # are private). Detector only, manual command, no timer.
+  home.file.".local/bin/dotfiles-doctor" = {
+    source = ../../scripts/dotfiles-doctor;
+    executable = true;
+  };
+
   # github-rulesets-apply: seeds the standard Security/Quality/Workflow
   # rulesets (ADR-0021 core layer) onto one or more repositories by driving
   # the matching *-repo-governance skill's apply-rulesets.sh (#153). Owns no

@@ -39,6 +39,29 @@ dirty mid-session (that's the point of `hms .`), and without this nix repeats
 `warning: Git tree '<path>' has uncommitted changes` on every switch. The
 suppression is local-path-only, not a machine-wide `nix.conf` setting (#149).
 
+## Host-local marker files
+
+Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let
+this PUBLIC repository's source stay unaware of host-specific or private
+values (ADR-0034 D5: the *schema* is public, the *values* are not). None of
+them is home-manager-managed — declaring one there would put the value back
+into a managed, store-symlinked file, defeating the indirection. They are
+hand-placed once per host and, for `host`/`private-hub`, optional:
+
+| marker | consumer | required? | fallback when unset |
+|---|---|---|---|
+| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional | `hostname` |
+| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034) | optional | `github:tarotene/dotfiles` (public-only apply) |
+| `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
+
+Run `dotfiles-doctor` (deployed to `~/.local/bin` by
+`home/modules/packages.nix`) to see the current status of all three at
+once — it reports each marker's presence and, for `style-hub`, whether it
+actually resolves (via `writing-style-hub`), without ever writing a value
+itself (#368). `host`/`private-hub` being unset is reported as `INFO`, not
+an error — the three existing Linux hosts run with no `host` marker by
+design. Only `style-hub` being unresolved is reported as `WARN` (exit 1).
+
 ## Routine flake update
 
 Backports to the pinned stable nixpkgs channel are best-effort and batched
