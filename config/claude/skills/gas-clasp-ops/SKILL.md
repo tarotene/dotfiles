@@ -29,9 +29,9 @@ GAS のコード + `.clasp.json` は、それを使うプロジェクトのリ�
     *.gs
 ```
 
-`.clasp.json` は git 管理してよい(scriptId は秘密ではない)。実行結果として
-生成される `.clasprc.json`(認証トークン)だけは対象リポジトリの
-`.gitignore` に必ず加える(2節参照)。
+`.clasp.json` は git 管理してよい(scriptId は秘密ではない)。認証トークン
+(`~/.clasprc.json`)はホームディレクトリに置かれ、どのリポジトリにも
+含まれない(3節参照)。
 
 ## 2. 初回セットアップ(ホストごとに一度)
 
@@ -80,9 +80,13 @@ clasp login
 clasp login --user run --use-project-scopes --creds ~/.config/clasp/client_secret.json
 ```
 
-`--creds` を指定したログインは `.clasprc.json` を**カレントディレクトリ**に
-書き出す(公式 README に明記)。GAS プロジェクトのディレクトリで実行した
-場合は、そのリポジトリの `.gitignore` に `.clasprc.json` を必ず加える。
+clasp README は `--creds` 指定時に `.clasprc.json` をカレントディレクトリに
+書き出すと説明しているが、実機(clasp 3.3.0)で確認したところ両方の
+ログイン(通常・`--user run` のいずれも)とも実際には `~/.clasprc.json`
+(ホームディレクトリ)に書き込まれ、`"default"` / `"run"` という名前付き
+プロファイルとして 1 つのファイルに同居する。GAS プロジェクトごとに
+`.gitignore` へ追加する必要はない — 個人で 1 つの認証情報を使い回す
+という本スキルの設計とも整合する。
 
 ## 4. 日常操作
 
