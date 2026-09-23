@@ -45,7 +45,7 @@ LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifec
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser)
 
 # lifecycle domain (#275, ADR-0023): decision-theory thresholds for the
 # dormancy-scoring signals, deliberately simple and documented so a human
@@ -153,6 +153,12 @@ judges the requested domains (default: all of them):
              a candidate list, NOT drift — it never fails this command's
              exit code, and the final Maintain/Archive/Delete call stays
              a human decision (docs/repo-lifecycle.md)
+  releaser   releaser GitHub App secret wiring (release-plz/release-please),
+             for repos with a release-plz.yml or release-please.yml
+             workflow. Checks RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY repo
+             secret presence only — install status is not checked (a
+             missing install fails loudly on the next release push, so
+             this domain does not duplicate that detection)
 
 Without options, prints a human-readable report and exits 1 if any
 non-exempt repository is drifted/ungoverned in any judged domain
@@ -224,6 +230,19 @@ fetch_latest_run_conclusion() { # $1=repo -> "success"|"failure"|""(実行なし
 # risk blanket false-positive drift across every repo).
 fetch_repo_settings() { # $1=repo -> JSON (REST repo object) or {} on failure
   "$GH_BIN" api "repos/$OWNER/$1" 2>/dev/null || printf '{}'
+}
+
+# releaser ドメイン用: repo の Actions secret 名一覧。secret の値ではなく名前
+# しか REST は返さない(GitHub は値そのものを一切公開しない)ので、これで
+# 判定には十分。fetch_repo_settings() と同じ「実際に judge する時だけ遅延
+# fetch する」パターンで REST 1 リポジトリ 1 回のみ。取得失敗は空配列に
+# フォールバックする — GraphQL バッチ fetch と違い、単一リポジトリの取得
+# 失敗はその 1 リポジトリの判定にしか影響せず(false "missing" の可能性は
+# あるが overrides.tsv で訂正可能)、全リポジトリ規模の false positive には
+# ならないため、アボートしない(fetch_repo_settings() 直上のコメントと
+# 同じ理由)。
+fetch_repo_secrets() { # $1=repo -> JSON array of secret names, or [] on failure
+  "$GH_BIN" api "repos/$OWNER/$1/actions/secrets" --jq '[.secrets[].name]' 2>/dev/null || printf '[]'
 }
 
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
@@ -1066,6 +1085,46 @@ judge_renovate() { # $1=gql-data-json -> finding
 }
 
 # ---------------------------------------------------------------------------
+# releaser domain (grill-me セッション調べ, ADR pending): releaser GitHub App
+# (release-plz/release-please 用)の secret 配線を検出する。App の登録・
+# install 状態そのものは検出しない — install が漏れていれば
+# actions/create-github-app-token が次の release push で即座に失敗する
+# (loud failure)ため、二重に検出する機構を持たない。個人アカウントには
+# account-level の Actions secret が存在しないため(repo/environment/org の
+# みで org secret も Free プランでは private repo から読めない)、App を
+# 1 個に集約しても RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY の repo ごとの
+# コピーは還元できず、ここだけが drift しうる。
+# ---------------------------------------------------------------------------
+
+judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) -> finding
+  local has_workflow="$1" secrets="$2" has_id has_key has_legacy_id has_legacy_key
+
+  if [[ $has_workflow != true ]]; then
+    jq -n '{verdict: "not-applicable", missing: []}'
+    return
+  fi
+
+  has_id="$(jq -e 'any(. == "RELEASER_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
+  has_key="$(jq -e 'any(. == "RELEASER_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
+  if [[ $has_id == true && $has_key == true ]]; then
+    jq -n '{verdict: "ok", missing: []}'
+    return
+  fi
+
+  # 統合前の旧名(rust 系 RELEASE_PLZ_APP_*、astro 系 RELEASE_PLEASE_APP_*)。
+  # どちらか片方の組が丸ごと揃っている場合だけ「まだ移行していないだけ」と
+  # 区別し、それ以外(片方欠け・新旧混在等)は一律 missing 扱いにする。
+  has_legacy_id="$(jq -e 'any(. == "RELEASE_PLZ_APP_ID" or . == "RELEASE_PLEASE_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
+  has_legacy_key="$(jq -e 'any(. == "RELEASE_PLZ_APP_PRIVATE_KEY" or . == "RELEASE_PLEASE_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
+  if [[ $has_legacy_id == true && $has_legacy_key == true ]]; then
+    jq -n '{verdict: "drifted", missing: ["releaser-secret-name-legacy"]}'
+    return
+  fi
+
+  jq -n '{verdict: "drifted", missing: ["releaser-app-secrets-missing"]}'
+}
+
+# ---------------------------------------------------------------------------
 # titles domain (ADR-0031): presence-detection only — whether the PR-title
 # commit-message contract's enforcement mechanism exists, not whether any
 # individual open PR's title currently conforms (that is the client guard's
@@ -1222,13 +1281,14 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
     # charters/renovate's file-existence checks. titles (ADR-0031) needs
-    # the same workflowsDir data to detect the pr-title.yml caller.
-    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle ]] && need_graphql=1
+    # the same workflowsDir data to detect the pr-title.yml caller. releaser
+    # needs it too, to detect the release-plz.yml/release-please.yml caller.
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
     # settings (ADR-0031 extension) needs the REST-only squash commit title/
     # message fields (see fetch_repo_settings() comment).
@@ -1236,6 +1296,11 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # lifecycle (#275) needs the REST-only Actions run-conclusion field —
     # same lazy-fetch pattern as settings' need_repo_rest above.
     [[ $d == lifecycle ]] && need_ci_conclusion=1
+    # releaser needs the REST-only Actions secrets field — same lazy-fetch
+    # pattern, additionally gated on the workflow actually being present
+    # (see the releaser) case below) so repos without a releaser workflow
+    # never pay the extra REST call.
+    [[ $d == releaser ]] && need_releaser=1
   done
 
   local repo_names_json gql_batch='{}'
@@ -1306,6 +1371,17 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             local ci_conclusion=''
             ((need_ci_conclusion)) && [[ $has_workflows == true ]] && ci_conclusion="$(fetch_latest_run_conclusion "$repo")"
             entry="$(judge_lifecycle "$repo" "$pushed_at" "$has_workflows" "$repo_gql" "$ci_conclusion")"
+            ;;
+          releaser)
+            if ((need_releaser)); then
+              local has_releaser_workflow secret_names
+              has_releaser_workflow="$(jq -e '
+                (.workflowsDir.entries // []) | any(.name == "release-plz.yml" or .name == "release-please.yml")
+              ' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
+              secret_names='[]'
+              [[ $has_releaser_workflow == true ]] && secret_names="$(fetch_repo_secrets "$repo")"
+              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names")"
+            fi
             ;;
         esac
       fi
@@ -2373,6 +2449,105 @@ EOF
   jq -e '.verdict == "ok"' \
     <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
     printf 'FAIL: judge_titles should accept the workflow_call-connected context form ("<caller> / PR title"), not just the unconnected "PR title"\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # releaser domain (grill-me セッション調べ): release-plz/release-please 用
+  # GitHub App の secret 配線検出。judge_releaser() の直接呼び出しテスト、
+  # 同じ理由で settings/titles と同じスタイル。
+  # ---------------------------------------------------------------------
+
+  jq -e '.verdict == "not-applicable" and (.missing | length == 0)' \
+    <<<"$(judge_releaser false '[]')" >/dev/null || {
+    printf 'FAIL: release workflow を持たない repo は not-applicable になるべき: %s\n' \
+      "$(judge_releaser false '[]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok" and (.missing | length == 0)' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 新 secret 名が揃っていれば ok になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-secret-name-legacy"))' \
+    <<<"$(judge_releaser true '["RELEASE_PLZ_APP_ID","RELEASE_PLZ_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 旧 secret 名(rust 系)は releaser-secret-name-legacy になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASE_PLZ_APP_ID","RELEASE_PLZ_APP_PRIVATE_KEY"]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-secret-name-legacy"))' \
+    <<<"$(judge_releaser true '["RELEASE_PLEASE_APP_ID","RELEASE_PLEASE_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 旧 secret 名(astro 系)も releaser-secret-name-legacy になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASE_PLEASE_APP_ID","RELEASE_PLEASE_APP_PRIVATE_KEY"]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-app-secrets-missing"))' \
+    <<<"$(judge_releaser true '[]')" >/dev/null || {
+    printf 'FAIL: secret が無ければ releaser-app-secrets-missing になるべき: %s\n' \
+      "$(judge_releaser true '[]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-app-secrets-missing"))' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID"]')" >/dev/null || {
+    printf 'FAIL: 片方だけ揃っている場合も releaser-app-secrets-missing になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID"]')" >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # releaser domain: REST 経由の secret 名取得($GH_BIN 越し)を含む配線を
+  # 通しで確認する、独立の全パイプライン battery。共有 fixture(repo-list.json/
+  # graphql-response.json)を一時的に上書きするので、下の「archived repos」
+  # ブロックより前に置く — あちらは自分自身で全上書きするため、ここで残した
+  # 状態に依存しない。
+  # ---------------------------------------------------------------------
+
+  cat >"$tmp/fixtures/repo-list.json" <<'RELFIX'
+[
+  {"name": "releaser-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "releaser-legacy", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "releaser-missing", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "releaser-na", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
+]
+RELFIX
+  cat >"$tmp/fixtures/graphql-response.json" <<'RELGQL'
+{
+  "data": {
+    "r1": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r2": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-please.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r3": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r4": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null}
+  }
+}
+RELGQL
+  # secret 名 REST fixture(mock gh は --jq を適用しないので、フィルタ後の
+  # 形をそのまま置く — fetch_repo_settings() 用の repos_tarotene_all-ok.json
+  # と同じ約束)。releaser-missing は意図的に置かない — mock の既定
+  # フォールバック([])がそのまま「secret 無し」の実運用と一致する。
+  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-ok_actions_secrets.json"
+  printf '["RELEASE_PLEASE_APP_ID","RELEASE_PLEASE_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-legacy_actions_secrets.json"
+
+  local out_releaser
+  out_releaser="$("$SELF" --json 2>&1)" || true
+  jq -e '.[] | select(.repo=="releaser-ok") | .domains.releaser.verdict == "ok"' <<<"$out_releaser" >/dev/null || {
+    printf 'FAIL: releaser-ok は releaser=ok になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="releaser-ok") | .domains.releaser' <<<"$out_releaser")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="releaser-legacy") | .domains.releaser.verdict == "drifted" and (.domains.releaser.missing | index("releaser-secret-name-legacy"))' <<<"$out_releaser" >/dev/null || {
+    printf 'FAIL: releaser-legacy は drifted/releaser-secret-name-legacy になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="releaser-legacy") | .domains.releaser' <<<"$out_releaser")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="releaser-missing") | .domains.releaser.verdict == "drifted" and (.domains.releaser.missing | index("releaser-app-secrets-missing"))' <<<"$out_releaser" >/dev/null || {
+    printf 'FAIL: releaser-missing は drifted/releaser-app-secrets-missing になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="releaser-missing") | .domains.releaser' <<<"$out_releaser")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="releaser-na") | .domains.releaser.verdict == "not-applicable"' <<<"$out_releaser" >/dev/null || {
+    printf 'FAIL: release workflow を持たない releaser-na は not-applicable になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="releaser-na") | .domains.releaser' <<<"$out_releaser")" >&2
     return 1
   }
 
