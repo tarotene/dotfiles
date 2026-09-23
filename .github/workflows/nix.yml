@@ -55,6 +55,15 @@ jobs:
   build-host:
     runs-on: ${{ matrix.runner }}
     name: build ${{ matrix.host }}
+    # cache-nix-action's purge-created/purge-last-accessed need `actions:
+    # write` on the token to delete caches via the REST API (action README,
+    # 取得 2026-09-23) — the repo default (no permissions: block anywhere
+    # else in this repo) doesn't grant it, so purge attempts fail with
+    # "Resource not accessible by integration" and stale caches accumulate
+    # silently. contents: read keeps actions/checkout working.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -105,8 +114,12 @@ jobs:
           purge: true
           purge-prefixes: nix-${{ matrix.host }}-${{ runner.os }}-
           purge-primary-key: never
-          purge-created: 30d
-          purge-last-accessed: 14d
+          # ISO 8601 durations (nix-community/cache-nix-action README, 取得
+          # 2026-09-23: "a non-negative number or a string in the ISO 8601
+          # duration format" — plain "30d"/"14d" is neither and was silently
+          # treated as an immediate cutoff in testing).
+          purge-created: P30D
+          purge-last-accessed: P14D
       - name: Build activation package
         run: |
           nix build \
