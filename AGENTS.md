@@ -47,6 +47,14 @@ dotfiles/
 │                             #   is a herdr + gh escape hatch, ADR-0001 Amendment) +
 │                             #   homeConfigurations.<hostname>
 ├── flake.lock
+├── Cargo.toml, Cargo.lock    # Rust workspace for the hook/CLI migration (ADR-0024,
+│                             #   #389): crates/hook-io (shared stdin/decision/git/
+│                             #   plan/ledger I/O), crates/migration-audit (checks
+│                             #   rust-migration.toml, the migration allowlist,
+│                             #   against the tree), crates/fixture-oracle (trycmd
+│                             #   fixtures still aimed at bash originals); built by
+│                             #   crane in flake.nix as pkgs.dotfiles-tools.
+│                             #   How to port one: docs/rust-migration.md
 ├── patches/                   # source patches applied via `overrideAttrs` in
 │                             #   flake.nix's package overlay (herdr-worktree-
 │                             #   names.patch: personal-taste worktree-naming
@@ -367,7 +375,7 @@ dotfiles/
 - **ADR-0021** — `github-audit`'s ruleset baseline splits into a core layer (always required) and a review layer (Copilot code review + required conversation resolution, opt-in addin). Uses presence-detection rather than a phase-declaration ledger, so early-development repos are not forced into review round-trips. Partially amends ADR-0015's rulesets-domain baseline.
 - **ADR-0022** — esa.io MCP token supply moves from a broken-supplier private repository (SOPS + direnv, a container for effectively one secret) to a host-local plain GPG-encrypted file + a dedicated launcher + declarative merge into `~/.claude.json`. That private repository is archived. First real application of ADR-0010's "re-choose the supply channel each time" — the sole sops consumer's disappearance also removes the `sops` package.
 - **ADR-0023** — repository lifecycle governance (visibility/license policy, Maintain/Archive/Delete triage criteria, deprecate-then-archive checklist, theme-monorepo consolidation via snapshot+PROVENANCE) is migrated from a private portfolio-management repository into `docs/repo-lifecycle.md`, distinct from `github-audit`'s drift layer. The source private repository is archived once the migration is verified.
-- **ADR-0024** — hook/CLI スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。bash 続投(writeShellApplication)は closure 固定は解けても保守性・表現力の主因を解決せず、Deno + TypeScript は closure 固定手法(deno2nix)がアーカイブ済みで must 制約未達のため不採用。`git-stash-guard.sh` の実移植 PoC で Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・`cargo test` 移行を実測。一括移行はせず後続 Issue に段階分割する。調査記録: `docs/shell-successor-research.md`。
+- **ADR-0024** — hook/CLI スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。bash 続投(writeShellApplication)は closure 固定は解けても保守性・表現力の主因を解決せず、Deno + TypeScript は closure 固定手法(deno2nix)がアーカイブ済みで must 制約未達のため不採用。`git-stash-guard.sh` の実移植 PoC で Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・`cargo test` 移行を実測。一括移行はせず後続 Issue に段階分割する(#389)。調査記録: `docs/shell-successor-research.md`。Amendment 2(#391)で優先順位の前段に「共通クレート(`crates/hook-io`)先行」を加え、workspace members 分割 + crane + fixture 4 段の移植方法論を確定(`docs/rust-migration.md`)。
 - **ADR-0025** — 自作・タグ付きリリース未達の pre-release CLI(実例: `tarotene/telepath`)の導入を、ホストローカルレジストリファイルによる opt-in 方式で実現する決定。dotfiles 側はスクリプトとスキーマのみ提供し、対象リポの名前は git 管理外のホストローカル設定ファイルにのみ記録する。対象リポ自体には一切触れない — 当初検討したマーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped exception。先行例: ADR-0020 の `*.local.tsv` パターン、ADR-0022 のホストローカル GPG ファイル。
 - **ADR-0026** — 命名クラス体系(ADR-0014)を改訂する決定。`naming-codename` を「無意味な恣意的ラベル(ADR-0020 の閉語彙を継続適用)」の `naming-codename` と「著者固有の命名形態論に基づく造語(閉語彙なし)」の `naming-coined` に分割し、5 クラス体制にする。加えて `lifecycle-timeboxed`(外部成果物を持つ時限プロジェクト)/ `lifecycle-study`(研究・学習記録、完了・進行中いずれも可)という、`naming-*` とは独立に併用できるライフサイクル軸を新設する。完了済み研究アーカイブが `naming-descriptive` の受けに事後的に流れていた問題と、`naming-codename` が意味的に異質な命名を混在させていた問題を、別々の直交する軸として解決する。ADR-0014 Decision 1 を supersede。
 - **ADR-0027** — セッション内 PR は依存関係を予測せず常時作成順の単一チェーン(stacked PR)に積む決定(uncertainty-first stacking)。機能的な依存関係とコード競合ベースの依存関係は別物で、後者は実際に PR を作るまで予測できない — 判定に依存予測を使うと、その予測がセッション内で系統的に外れ、base 宣言と実体(物理的な直列ブランチ)が不整合になる(汚染 diff・orphan PR)。離脱は閉じたタグ `Independent-PR: <理由>` を書いたときだけ成立する。
@@ -449,7 +457,9 @@ dotfiles/
   belong in `home/modules/packages.nix`, not apt.
 
 ### CI (nix-centric)
-- `nix.yml` runs `nix flake check` + a per-host activation build matrix.
+- `nix.yml` runs `nix flake check` + a per-host activation build matrix, plus
+  a `rust` job: crane package/clippy/rustfmt checks and `nix develop --command
+  cargo test --workspace` (fixture oracles + the `rust-migration.toml` audit).
 - `ci.yml` is a slim shell pass: shellcheck the surviving scripts, `bootstrap.sh`
   + `install-packages.sh` `--dry-run`, a zsh module syntax check, every
   script's `--selftest` (a guard step fails when one exists but ci.yml never
