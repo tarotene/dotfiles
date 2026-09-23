@@ -357,17 +357,22 @@ there is no CI to register a required check against, the same convention
 
 Reports Renovate config presence, but only for repositories where it would
 plausibly matter: a dependency manifest (`Cargo.toml`, `package.json`,
-`pyproject.toml`, or `go.mod`) *and* at least one `.github/workflows/`
-file both present. Repositories without both are reported as
-`not-applicable`, a fourth verdict alongside `ok`/`drifted`/`exempt` — they
-are excluded from applicability, not silently judged and passed.
+`pyproject.toml`, `go.mod`, or `flake.nix`) *and* at least one
+`.github/workflows/` file both present. Repositories without both are
+reported as `not-applicable`, a fourth verdict alongside
+`ok`/`drifted`/`exempt` — they are excluded from applicability, not
+silently judged and passed.
 
-`flake.nix` does not count as a manifest: dotfiles' own Nix dependency
-updates go through the separate `nix flake update` cadence (`docs/
-operations.md`; ADR update-flake-lock tracking is #3), which is
-orthogonal to Renovate. Mend App installation status is not checked —
-GitHub's API does not expose it deterministically; that stays a manual
-step documented in the relevant `*-repo-governance` skill.
+`flake.nix` counts as a manifest as of #3: Renovate's `nix` manager
+(<https://docs.renovatebot.com/modules/manager/nix/>, beta, opt-in via
+`{"nix": {"enabled": true}}`) updates `flake.lock` inputs, so a repository
+that only has a flake is no longer exempt from the same Renovate-presence
+expectation as a Cargo/npm/PyPI/Go repository. dotfiles itself is the
+first repository this flips from `not-applicable` to a real verdict
+(`renovate.json` is now present, ADR update-flake-lock tracking issue #3).
+Mend App installation status is not checked — GitHub's API does not
+expose it deterministically; that stays a manual step documented in the
+relevant `*-repo-governance` skill.
 
 ## Usage
 

@@ -27,7 +27,12 @@ dirs = [
 extra = ["bootstrap.sh"]
 
 [limits]
-max_remaining = 52
+# 56 = 現行 52 + このコミットで追加する 2 件(decision-colocation-guard.sh /
+# decision-colocation-check) + #402/#404(段2・段4)がそれぞれ追記する
+# dotfiles-doctor / apply-rulesets.sh の先取り分。後続段は max_remaining を
+# 再度書き換えない(stacked-pr スキル §2「同じ行を2段以上が書き換える切り方は
+# しない」— [[target]] の追記のみで済ませる)。
+max_remaining = 56
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -58,6 +63,14 @@ stage = "4a"
 
 [[target]]
 path = "scripts/adr-number-check"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/decision-colocation-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "scripts/decision-colocation-check"
 stage = "4a"
 
 [[target]]

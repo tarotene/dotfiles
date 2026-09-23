@@ -232,6 +232,7 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       packageJson: object(expression: \"HEAD:package.json\") { ... on Blob { id } }
       pyprojectToml: object(expression: \"HEAD:pyproject.toml\") { ... on Blob { id } }
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
+      flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
       workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
       renovateJson: object(expression: \"HEAD:renovate.json\") { ... on Blob { id } }
       renovateJson5: object(expression: \"HEAD:renovate.json5\") { ... on Blob { id } }
@@ -928,7 +929,7 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
 
 judge_renovate() { # $1=gql-data-json -> finding
   local gql="$1" has_manifest has_workflows has_config
-  has_manifest="$(jq -e '(.cargoToml != null) or (.packageJson != null) or (.pyprojectToml != null) or (.goMod != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  has_manifest="$(jq -e '(.cargoToml != null) or (.packageJson != null) or (.pyprojectToml != null) or (.goMod != null) or (.flakeNix != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
   has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
 
   if [[ $has_manifest != true || $has_workflows != true ]]; then
@@ -1836,6 +1837,20 @@ EOF
   jq -e '.verdict == "drifted" and (.missing | index("required_status_checks")) and (.missing | index("ci-absent") | not)' \
     <<<"$(judge_rulesets ruleset-ci-test true)" >/dev/null || {
     printf 'FAIL: judge_rulesets(has_workflows=true) should report required_status_checks, not ci-absent\n' >&2
+    return 1
+  }
+
+  # renovate: flake.nix alone counts as a manifest (#3 — this repo itself
+  # uses flake.nix/flake.lock, not Cargo.toml/package.json/pyproject.toml/
+  # go.mod, and was previously silently not-applicable).
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-config-missing"))' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(flakeNix present, no other manifest) should be drifted, not not-applicable\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"id": "y"}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(flakeNix present, renovate.json present) should be ok\n' >&2
     return 1
   }
 

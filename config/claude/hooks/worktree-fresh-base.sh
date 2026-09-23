@@ -43,9 +43,10 @@ git_common_dir() {
 }
 
 # default branch を refs/remotes/origin/HEAD から読み、origin/ 接頭辞を剥がす。
-# pr-gate.sh:default_branch() と同一式の複製 — 変更時は両方揃えること
-# (剥がし忘れると "origin/origin/<base>" という存在しない ref を参照して
-# ff 判定が常に失敗する)。
+# 同一式の複製が他にも複数ある(docs/claude/worktree-fresh-base.md が正本の
+# 列挙を持つ) — 変更時はそちらを見て揃えること。箇所数はここでは書かない
+# (陳腐化する、#394)。剥がし忘れると "origin/origin/<base>" という存在しない
+# ref を参照して ff 判定が常に失敗する。
 default_branch() {
   local ref
   ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0

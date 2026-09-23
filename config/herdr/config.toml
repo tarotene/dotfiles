@@ -34,6 +34,12 @@ name = "catppuccin"
 # もテーマ既定の surface0 より一段明るい旧 active_row_bg 相当(surface1)に引き上げる。
 # 詳細は docs/claude/herdr-sidebar-metadata.md「アクティブ行の視認性」節。
 sidebar_bg = "reset"       # 端末透過に委ねる(テーマ既定と同値。#3773 保険の明示)
+# panel_bg も同じ保険として明示するが、chrome(サイドバー等 herdr 自身の描画)側
+# にしか効かない。pane 内で動くプログラム(vt ランタイムのセル)の透過は
+# herdrdev/herdr#3773 のコメントで「reattach 時にホスト端末の OSC 11 背景で
+# 上書きされ、config では回避不能」と実証されている(stock default config でも
+# 再現、0.9.1 での解消可否は未確認)。#314 参照。
+panel_bg = "reset"         # chrome 側限定の保険。pane 側は config で回避不能
 active_row_bg = "#52567A"  # lavender #B4BEFE を base に ~35% ブレンド(非純正)
 selection_bg = "#45475A"   # Mocha surface1
 accent = "#B4BEFE"         # Mocha lavender
