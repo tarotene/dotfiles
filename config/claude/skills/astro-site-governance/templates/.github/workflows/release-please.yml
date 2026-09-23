@@ -19,9 +19,11 @@ jobs:
           # automatically (GitHub suppresses PR events from the bot). The Quality
           # Ruleset has an admin bypass_actor so maintainers can merge them.
           #
-          # ADJUST: To have release PRs trigger full CI, create a GitHub App with
-          # Contents/PRs R/W, set RELEASE_PLEASE_APP_ID + _PRIVATE_KEY secrets,
-          # and use a token generated from that App here instead.
+          # ADJUST: To have release PRs trigger full CI, install the shared
+          # releaser App (repo-governance-common/reference/releaser-app.md —
+          # do not create a new one), set RELEASER_APP_ID +
+          # RELEASER_APP_PRIVATE_KEY secrets, and use a token generated from
+          # that App here instead.
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

@@ -8,33 +8,10 @@ operations. Complete them after running `seed.sh`.
 
 ## 1. GitHub App for release-plz
 
-`release-plz` needs a GitHub App installation token (not `GITHUB_TOKEN`) so
-that release PRs it creates can trigger required CI checks. GitHub's
-anti-recursion guard silently suppresses events from `GITHUB_TOKEN`-created
-objects.
-
-### Create the App
-
-1. Go to `https://github.com/settings/apps/new`
-2. Fill in:
-   - **App name**: e.g. `<REPO>-release-plz`
-   - **Homepage URL**: your repository URL
-   - **Permissions** (Repository):
-     - Contents: **Read and write**
-     - Issues: **Read and write** (for `release` label on PRs)
-     - Pull requests: **Read and write**
-   - **Webhook**: Disable (uncheck "Active")
-3. Click **Create GitHub App**
-4. Note the numeric **App ID** on the app settings page
-5. Generate a **Private Key** (PEM file) — download and store securely
-6. Install the app on your repository only: Settings → Install App → select repo
-
-### Add secrets to the repository
-
-```
-gh secret set RELEASE_PLZ_APP_ID     --repo OWNER/REPO --body "<numeric-app-id>"
-gh secret set RELEASE_PLZ_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat <path-to>.pem)"
-```
+See [`repo-governance-common/reference/releaser-app.md`](../../repo-governance-common/reference/releaser-app.md)
+(in this Claude skills directory) — the releaser App is shared across
+every repository, not created per repository. Install the existing App on
+this repository and set `RELEASER_APP_ID`/`RELEASER_APP_PRIVATE_KEY`.
 
 ---
 

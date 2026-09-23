@@ -137,8 +137,10 @@ first PR and correct the Ruleset if it differs.
 
 Follow `./reference/manual-steps.md` (in this Skill directory) for:
 
-1. **GitHub App** — create with Contents/Issues/PRs R/W, get App ID + private key,
-   set `RELEASE_PLZ_APP_ID` and `RELEASE_PLZ_APP_PRIVATE_KEY` as repo secrets.
+1. **GitHub App** — install the existing shared releaser App on this
+   repository (do not create a new one — see
+   `repo-governance-common/reference/releaser-app.md`), set
+   `RELEASER_APP_ID` and `RELEASER_APP_PRIVATE_KEY` as repo secrets.
 2. **crates.io Trusted Publishing** — register each published crate with
    owner/repo/workflow=`release-plz.yml`.
 3. **Bootstrap first publish** — one-time `publish-new` token for crates that
@@ -146,8 +148,8 @@ Follow `./reference/manual-steps.md` (in this Skill directory) for:
 
 Short version of the secrets:
 ```
-gh secret set RELEASE_PLZ_APP_ID --repo OWNER/REPO --body "<numeric-id>"
-gh secret set RELEASE_PLZ_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
+gh secret set RELEASER_APP_ID --repo OWNER/REPO --body "<numeric-id>"
+gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
 ```
 
 ---

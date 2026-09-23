@@ -73,26 +73,26 @@ This setup uses `GITHUB_TOKEN` for release-please. This means:
 
 If you want Release PRs to trigger full CI:
 
-1. Create a GitHub App with `Contents: R/W` and `Pull requests: R/W` permissions.
-   No webhooks needed.
-2. Install the App on the repository.
-3. Set two repository secrets:
+1. Install the shared releaser App on the repository — see
+   [`repo-governance-common/reference/releaser-app.md`](../../repo-governance-common/reference/releaser-app.md).
+   Do not create a new App; this one is shared across every repository.
+2. Set two repository secrets:
    ```bash
-   gh secret set RELEASE_PLEASE_APP_ID --repo OWNER/REPO --body "<numeric-id>"
-   gh secret set RELEASE_PLEASE_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
+   gh secret set RELEASER_APP_ID          --repo OWNER/REPO --body "<numeric-id>"
+   gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
    ```
-4. Update `release-please.yml` to generate a token from the App:
+3. Update `release-please.yml` to generate a token from the App:
    ```yaml
    - uses: actions/create-github-app-token@v1
      id: app-token
      with:
-       app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
-       private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+       app-id: ${{ secrets.RELEASER_APP_ID }}
+       private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
    
    - uses: googleapis/release-please-action@v4
      with:
        token: ${{ steps.app-token.outputs.token }}
        ...
    ```
-5. Remove the admin `bypass_actors` entry from `rulesets/quality.json` if
+4. Remove the admin `bypass_actors` entry from `rulesets/quality.json` if
    you want release PRs to be enforced like any other PR.
