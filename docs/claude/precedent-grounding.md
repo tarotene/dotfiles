@@ -139,6 +139,27 @@ dotfiles 系セッションのトランスクリプト(プランセッション 
 `plan-precedent-gate.sh --check <プランファイル>` による ExitPlanMode 前の
 自己検査導線を CLAUDE.md とスキルに追記した。
 
+## この節を selection-grounding と共有する設計になった経緯
+
+`docs/adr/0035-selection-grounding.md` は「技術・仕組みの選択を検証可能な
+3 軸で評価する」規範を、独立した plan 節・独立した gate としてではなく、
+この `## 先行例との対比` 節に `軸:` トークンを 1 つ足す形で実装した。
+理由は selection-grounding 自身の還元性の軸(その仕組みは、より安い手段
+では担えない仕事をしているか)に規範自身が従うため — `ExitPlanMode` の
+gate はすでに `plan-scope-gate.sh`・`plan-precedent-gate.sh`・
+`plan-fresh-gate.sh` の 3 本があり、4 本目を建てる正当化ができなかった。
+発動条件(「妥当な代替が複数ある場面」)が precedent-grounding のそれと
+完全に一致していたことも、器を共有できた直接の理由。
+
+形式検査は `check_dn_block()` に加算した:「先行例:」「先行例なし:」の
+判定と独立に `軸:` の有無を見て、`本命:`/`対抗馬:`/`外した候補:`(重い欄)
+はどれか 1 つでもあれば節内整合性(本命/対抗馬が揃っているか)だけを見る。
+**重い欄をいつ書くべきか(発火判定)は gate では見ない** — 「これは
+外部依存の出入りを伴う技術選定か」は decision-theoretic な意味判断で
+あり、precedent-grounding が最初から採用している二層構造(形式は gate、
+内容は critic)にそのまま従って lens A の監査項目に回した。設計動機の
+詳細は `docs/claude/selection-grounding.md`。
+
 ## 効果の確かめ方
 
 挙動そのものは一度きりの `nix build` では検証できない(プロンプトへの
