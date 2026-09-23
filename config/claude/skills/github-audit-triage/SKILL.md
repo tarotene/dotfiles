@@ -71,6 +71,39 @@ description・topics・settings フィールド・ファイルツリー・open I
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。
+- titles ドメイン(ADR-0031、#337)は `missing` トークンごとに機械的に
+  決まる:
+  - `pr-title-workflow-missing` — `.github/workflows/pr-title.yml`
+    (dotfiles の reusable workflow を呼ぶ caller)が無い。対象リポジトリの
+    言語に対応する `*-repo-governance` skill があれば、その
+    `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
+    テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
+    skill が無いリポジトリ(rust/typst/astro のいずれでもない)は
+    `repo-governance-common` の `templates/.github/workflows/pr-title.yml`
+    (存在しなければ `rust-repo-governance` 版と同一内容なのでそこから
+    流用してよい — プレースホルダを持たない定型ファイルのため
+    エコシステム差は無い)を直接コピーする提案にする。
+  - `pr-title-check-not-required` — 対象リポジトリの ruleset に
+    `PR title` required check が無い(`github-audit` は完全一致または
+    workflow_call 連結名 `<caller> / PR title` の後方一致を ok とする、
+    #337)。対応する `*-repo-governance` skill(rust/typst/astro)または
+    `core`(該当エコシステムが無いリポジトリ、`config/claude/skills/
+    repo-governance-common/scripts/apply-rulesets.sh`)の
+    `apply-rulesets.sh --reconcile` を適用する提案として表に書く
+    (`--reconcile` が無いと既存 ruleset は skip されて `PR title` が
+    追加されない、#337 で判明)。**dotfiles 自身と同じ手動 `gh api PUT`
+    は使わない** — 3 skill + core の `apply-rulesets.sh` が持つ
+    `--reconcile` に統一する。
+  - 上記どちらか一方だけが立っている場合(caller はあるが required
+    check だけ足りない、等)は、該当する提案だけを表に書けばよい —
+    両方揃えるための追加確認は不要(rulesets ドメインの
+    `review_layer=partial-drift` と違い、この 2 トークンに解釈の
+    分岐は無い)。
+  - 旧 `amannn/action-semantic-pull-request` 等、別の PR タイトル検査
+    ワークフローが既に存在するリポジトリ(ADR-0031 D2 追補の訂正
+    参照、2026-09-24)は、置き換え(旧 workflow ファイルの削除 + 旧
+    context 名を required check から外す)を提案に含める — 追加ではなく
+    置換であることを起草の時点で明記する。
 - charters ドメインで `nav-doc-*` トークン(ADR-0033)が立った場合、当該
   ファイル(README.md / CONTRIBUTING.md / AGENTS.md / CLAUDE.md)を
   fetch して人間の目で読み、次の 3 種をまとめて起草する(決定論

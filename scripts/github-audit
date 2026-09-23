@@ -1074,6 +1074,16 @@ judge_renovate() { # $1=gql-data-json -> finding
 # ---------------------------------------------------------------------------
 
 REQUIRED_PR_TITLE_CONTEXT='PR title'
+# workflow_call 経由で他リポジトリが .github/workflows/pr-title.yml を
+# 呼ぶと、GitHub は required check の context を
+# "<呼び出し側 workflow の name> / <呼び出される job の name>" に連結する
+# (GitHub Community Discussion #46752、ADR-0031 追補で 2026-09-22 取得と
+# して引用済み)。呼ばれる job の名前は pr-title.yml 側で常に "PR title"
+# 固定なので、連結後は必ずこの接尾辞になる。dotfiles 自身は
+# pull_request を直接トリガーする自己適用のため連結されず、単一名
+# "PR title" のまま(#337 実装時に判明: 完全一致だけを見ると、播いた
+# 先の全リポジトリで恒久的に pr-title-check-not-required と誤検出する)。
+REQUIRED_PR_TITLE_CONTEXT_SUFFIX=' / PR title'
 
 judge_titles() { # $1=repo $2=repo-gql-json -> finding
   local repo="$1" gql="$2" has_workflows has_caller arr checks
@@ -1092,7 +1102,8 @@ judge_titles() { # $1=repo $2=repo-gql-json -> finding
 
   arr="$(default_branch_rulesets "$repo")"
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
-  jq -e --arg c "$REQUIRED_PR_TITLE_CONTEXT" 'index($c)' <<<"$checks" >/dev/null 2>&1 ||
+  jq -e --arg c "$REQUIRED_PR_TITLE_CONTEXT" --arg suffix "$REQUIRED_PR_TITLE_CONTEXT_SUFFIX" \
+    'any(.[]; . == $c or endswith($suffix))' <<<"$checks" >/dev/null 2>&1 ||
     missing+=("pr-title-check-not-required")
 
   if ((${#missing[@]} == 0)); then
@@ -1830,6 +1841,24 @@ EOF
 }
 EOF
 
+  # "titles-connected-ok" (#337): the required check context is the
+  # workflow_call-connected form ("<caller workflow name> / PR title") that
+  # every non-dotfiles repository seeded via pr-title.yml gets — dotfiles
+  # itself never sees this form (self-applies via pull_request, unconnected
+  # "PR title"), so this fixture is what a repo #337 seeds onto actually
+  # looks like.
+  cat >"$tmp/fixtures/repos_tarotene_titles-connected-ok_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_titles-connected-ok_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI / PR title"}]}}
+  ]
+}
+EOF
+
   out="$("$SELF" --json 2>&1)" || true
 
   # naming domain
@@ -2337,6 +2366,13 @@ EOF
   jq -e '.missing | index("pr-title-workflow-missing")' \
     <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}')" >/dev/null || {
     printf 'FAIL: judge_titles should flag pr-title-workflow-missing when no pr-title.yml caller exists, even if the ruleset happens to have the context registered\n' >&2
+    return 1
+  }
+  # #337: workflow_call の連結名("<caller> / PR title")も ok として
+  # 受け付ける — dotfiles 自身以外の全播き先はこの形になる。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should accept the workflow_call-connected context form ("<caller> / PR title"), not just the unconnected "PR title"\n' >&2
     return 1
   }
 
