@@ -163,6 +163,11 @@
   作成時 PreToolUse hook(`stack-base-guard.sh`)と完了時 Stop judgement
   (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
   「積むか否か」の判定としては supersede。
+- [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README
+  banner と第三者素材(repo ライセンスと異なる素材)の同梱規則を定める決定。
+  ADR-0016 の README 固定スキーマ・ルート文書 allowlist を部分的に拡張し、
+  画像アセットの置き場所・banner の位置・帰属注記の書式・素材の利用点数
+  管理を規定する。
 - [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH
   の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は
   `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、
@@ -175,6 +180,18 @@
   ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager
   管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も
   store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
+- [ADR-0030](adr/0030-gas-clasp-basis-placement.md) — GAS/clasp 基盤の配置
+  決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS
+  コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ
+  (セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として
+  dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には
+  置かない。
+- [ADR-0031](adr/0031-pr-title-as-commit-message-contract.md) — PR タイトルを
+  commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが
+  `main` の commit subject になる唯一のテキストであり、non-conventional な
+  commit が混入する経路を client guard(PreToolUse deny)・server required
+  check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。
+  文法は Conventional Commits + Angular 慣行の 11 type 閉集合。
 - [ADR-0032](adr/0032-global-agent-instructions-canon.md) — グローバル agent
   指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)
   とし、`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・
@@ -190,6 +207,18 @@
   flake input に取らない。`flake.lock` が input 名を平文で記録するため)。
   所在は `hms` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照
   する。境界述語は「規則・スキーマは public、実値は private」。
+- [ADR-0033](adr/0033-nav-doc-no-materialisation.md) — 導線文書は実体を
+  複製しない決定(nav-doc no-materialisation)。ディレクトリ構成図・
+  コンテンツ一覧・他ファイルの中身の転記といった「実体が他所にある情報」の
+  複製を禁じ、参照(リンク・パス言及)に置き換える。ADR-0016 Decision 5 の
+  適用範囲を「導線文書同士の複製」から「導線文書が実体を複製すること」
+  全般へ拡張する。
+- [ADR-0035](adr/0035-selection-grounding.md) — 技術・仕組みの選択を 3 軸
+  (宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式
+  順序に接地させる決定(selection-grounding)。自己申告の「クリーンかつ
+  先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、
+  「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と
+  件の private リポジトリの決定履歴の横断調査から導いた。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
