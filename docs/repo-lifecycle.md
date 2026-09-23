@@ -169,10 +169,17 @@ descriptive-species.tsv`)に委ねる — 本文書は独立の命名規則を�
 
 ## 適用範囲外(github-audit との棲み分け)
 
-- `github-audit` の 6 ドメイン(rulesets / charters / naming / settings /
-  renovate / titles、ADR-0015・ADR-0031)は、既存リポジトリのガバナンス
-  drift を検査する。
-  本文書はそれとは別の問い(このリポジトリはまだ必要か)を扱う。
-- リポジトリの dormancy を機械的にスコアリングする機構は現時点で
-  存在しない(旧 Rust CLI の当該機能はコードごと退役)。必要になれば
-  `github-audit` にドメインを追加するかを別途検討する。
+- `github-audit` の rulesets / charters / naming / settings / renovate /
+  titles の 6 ドメイン(ADR-0015・ADR-0031)は、既存リポジトリのガバナンス
+  drift を検査する。本文書はそれとは別の問い(このリポジトリはまだ必要か)
+  を扱う。
+- **lifecycle ドメイン(#275、ADR-0023)** は、上記 6 ドメインとは性質が
+  異なる第 7 のドメインとして追加された: 最終 push からの経過日数・
+  最終 tagged release からの経過日数(あれば)・最も新しく更新された
+  open issue の経過日数(あれば)・CI の有無と直近 run の成否から
+  dormancy candidate list を提示する決定論スクリプト(LLM は呼ばない)。
+  `verdict: dormancy-candidate` は drift ではない(`any_drift()` の失敗
+  判定から明示的に除外される)— **候補提示のみ**で、この節の
+  Maintain/Archive/Delete という最終判断そのものは今後も人間裁定のまま
+  である。「検出層(github-audit)と判断層(本文書)は別」という整理は
+  維持される。詳細は `docs/github-audit.md`「lifecycle」節を参照。
