@@ -9,6 +9,7 @@ BWS_BIN="${OBSIDIAN_BACKUP_BWS_BIN:-bws}"
 ENV_BIN="${OBSIDIAN_BACKUP_ENV_BIN:-env}"
 FIND_BIN="${OBSIDIAN_BACKUP_FIND_BIN:-find}"
 HERDR_BIN="${OBSIDIAN_BACKUP_HERDR_BIN:-herdr}"
+JQ_BIN="${OBSIDIAN_BACKUP_JQ_BIN:-jq}"
 RESTIC_BIN="${OBSIDIAN_BACKUP_RESTIC_BIN:-restic}"
 SECRET_TOOL_BIN="${OBSIDIAN_BACKUP_SECRET_TOOL_BIN:-secret-tool}"
 VAULT="${OBSIDIAN_BACKUP_VAULT:-${HOME}/Documents/obsidian/personal}"
@@ -35,10 +36,25 @@ EOF
 }
 
 notify_failure() {
-  local operation="$1"
-  "$HERDR_BIN" notification show "Obsidian backup failed" \
-    --body "${operation} failed; inspect systemctl --user status obsidian-backup*" \
-    --sound request >/dev/null 2>&1 || true
+  local operation="$1" response
+  response="$(
+    "$HERDR_BIN" notification show "Obsidian backup failed" \
+      --body "${operation} failed; inspect systemctl --user status obsidian-backup*" \
+      --sound request 2>/dev/null
+  )" || return 0
+  if "$JQ_BIN" -e '.. | objects | select(has("shown")) | .shown == true' <<<"$response" >/dev/null 2>&1; then
+    return 0
+  fi
+  # reason=="disabled"(herdr の [ui.toast] delivery が "off")は次回実行でも
+  # 自然に解消しない恒常的な設定不備。ここは既に失敗を確定したパスなので unit
+  # は必ず failed として systemctl --user --failed / journal に残るが、その
+  # journal 自体が「通知経路も死んでいる」ことを語らないと、無音の二重失敗に
+  # 気づく手段が無くなる(scripts/git-audit-worktrees の同種チェック、#89、と
+  # 異なり notify_failure は成功パスからは呼ばれないため、ここでは exit code
+  # を変える意味がなく stderr へ警告するだけに留める)。
+  if "$JQ_BIN" -e '.. | objects | select(has("reason")) | .reason == "disabled"' <<<"$response" >/dev/null 2>&1; then
+    printf 'obsidian-backup: herdr notification delivery is disabled (reason=disabled) — %s failed with no toast delivered. config/herdr/config.toml の [ui.toast] delivery を設定してください。\n' "$operation" >&2
+  fi
 }
 
 keyring_token() {
@@ -211,12 +227,13 @@ run_with_bitwarden() {
 }
 
 run_selftest() (
-  local tmp fake_bws fake_restic fake_secret_tool log vault
+  local tmp fake_bws fake_restic fake_secret_tool fake_herdr log vault
   tmp="$(mktemp -d)"
   trap 'cleanup_tree "$tmp"' EXIT
   fake_restic="$tmp/restic"
   fake_bws="$tmp/bws"
   fake_secret_tool="$tmp/secret-tool"
+  fake_herdr="$tmp/herdr"
   log="$tmp/restic.log"
   vault="$tmp/vault"
   mkdir -p "$vault/acceptance"
@@ -263,6 +280,13 @@ exec "$@"
 EOF
   chmod +x "$fake_bws"
 
+  cat >"$fake_herdr" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '{"reason":"disabled"}'
+EOF
+  chmod +x "$fake_herdr"
+
   export AWS_ACCESS_KEY_ID=test
   export AWS_SECRET_ACCESS_KEY=test
   export RESTIC_PASSWORD=test
@@ -292,6 +316,19 @@ EOF
     printf 'selftest: missing keyring token was reported as success\n' >&2
     return 1
   fi
+
+  local notify_log="$tmp/notify.stderr"
+  if OBSIDIAN_BACKUP_SECRET_TOOL_BIN=false \
+    OBSIDIAN_BACKUP_HERDR_BIN="$fake_herdr" \
+    "$SELF" backup --notify >/dev/null 2>"$notify_log"; then
+    printf 'selftest: missing keyring token with --notify was reported as success\n' >&2
+    return 1
+  fi
+  if ! grep -q 'reason=disabled' "$notify_log"; then
+    printf 'selftest: reason=disabled toast failure was not reported on stderr\n' >&2
+    return 1
+  fi
+
   printf 'obsidian-backup selftest passed\n'
 )
 

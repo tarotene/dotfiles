@@ -16,6 +16,7 @@ let
     pkgs.coreutils
     pkgs.findutils
     pkgs.herdr
+    pkgs.jq
     pkgs.libsecret
     pkgs.restic
   ];
@@ -32,6 +33,7 @@ let
         "OBSIDIAN_BACKUP_ENV_BIN=${pkgs.coreutils}/bin/env"
         "OBSIDIAN_BACKUP_FIND_BIN=${pkgs.findutils}/bin/find"
         "OBSIDIAN_BACKUP_HERDR_BIN=${pkgs.herdr}/bin/herdr"
+        "OBSIDIAN_BACKUP_JQ_BIN=${pkgs.jq}/bin/jq"
         "OBSIDIAN_BACKUP_RESTIC_BIN=${pkgs.restic}/bin/restic"
         "OBSIDIAN_BACKUP_SECRET_TOOL_BIN=${pkgs.libsecret}/bin/secret-tool"
         "OBSIDIAN_BACKUP_VAULT=${vaultPath}"
@@ -104,6 +106,24 @@ in
       Persistent = true;
       RandomizedDelaySec = "2h";
       Unit = "obsidian-backup-maintenance.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  # weekly maintenance's `restic check` only validates repository metadata, it
+  # never reads the actual snapshot payload back. This timer exercises the
+  # real restore path against the acceptance fixtures monthly, so a broken
+  # restore is caught before it is needed for real. Interval is monthly, not
+  # weekly like maintenance, because the shortest retention tier is
+  # `--keep-daily 7` — a month between checks still leaves ample time to
+  # notice and fix a restore failure before older snapshots age out.
+  systemd.user.timers.obsidian-backup-restore-test = {
+    Unit.Description = "Restore and compare the Obsidian acceptance fixtures monthly";
+    Timer = {
+      OnCalendar = "monthly";
+      Persistent = true;
+      RandomizedDelaySec = "6h";
+      Unit = "obsidian-backup-restore-test.service";
     };
     Install.WantedBy = [ "timers.target" ];
   };

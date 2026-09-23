@@ -284,8 +284,9 @@ the same manual-update instruction `export` prints.
 
 `home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
 `obsidian-backup` on `personal-pop` only. Obsidian is wrapped with nixGL like
-the other Electron GUI applications. Two persistent systemd user timers run a
-daily backup and weekly retention/health maintenance.
+the other Electron GUI applications. Three persistent systemd user timers run
+a daily backup, weekly retention/health maintenance, and a monthly restore
+acceptance test.
 
 The synchronization remote and the backup remote are deliberately separate:
 Self-hosted LiveSync uses Cloudflare R2, while restic uses Backblaze B2 through
@@ -352,13 +353,23 @@ journalctl --user -u obsidian-backup-maintenance.service
 ```
 
 The acceptance restore unit restores the latest snapshot into a private
-temporary directory and byte-compares three disposable fixtures with the live
-vault. It never writes into the live vault:
+temporary directory and byte-compares three fixtures with the live vault. It
+never writes into the live vault:
 
 ```bash
 systemctl --user start obsidian-backup-restore-test.service
 journalctl --user -u obsidian-backup-restore-test.service
 ```
+
+`obsidian-backup-restore-test.timer` runs this automatically once a month
+(`obsidian-backup-maintenance`'s weekly `restic check` only validates
+repository metadata, it never reads a snapshot's actual payload back — this is
+the layer that does). The three fixtures it compares —
+`acceptance/roundtrip.md`, `acceptance/attachment.png`, and
+`acceptance/attachment.pdf` — are permanent vault contents, not a
+one-time setup artifact: `systemd.user.services.obsidian-backup-restore-test`
+in `home/modules/obsidian.nix` hardcodes those paths, so the unit fails with
+"source fixture is missing" if they are ever deleted from the vault.
 
 For an ad-hoc restore test, pass one or more vault-relative files:
 
