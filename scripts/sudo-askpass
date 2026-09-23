@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# sudo-askpass — SUDO_ASKPASS helper that reads the sudo password through
+# pinentry instead of a terminal.
+#
+# sudo(8) invokes the SUDO_ASKPASS program automatically whenever it needs a
+# password and no controlling terminal is available (sudo.conf(5) / sudo(8):
+# "used to read the password if no terminal is available or if the -A option
+# is specified" — https://www.sudo.ws/docs/man/sudo.man/, 2026-09-22). Claude
+# Code's Bash tool has no controlling terminal (verified: `tty` reports "not a
+# tty", /dev/tty is inaccessible), so `sudo` there fails outright with "a
+# terminal is required" unless this is wired up. An interactive shell keeps
+# its controlling terminal, so sudo there is unaffected — the switch is
+# sudo's own tty detection, not anything this script decides.
+#
+# sudo passes the prompt string as $1 and expects the password on stdout
+# (sudo.conf(5)'s own description of the askpass path). This script speaks
+# pinentry's Assuan protocol directly (GETPIN — see the GnuPG Project's
+# pinentry docs, https://www.gnupg.org/software/pinentry/, 2026-09-22) rather
+# than wrapping a separate ssh-askpass binary, so the same GUI (pinentry-gnome3
+# on Linux, pinentry_mac on darwin — home/modules/gpg.nix) and the same grab
+# behaviour is used for sudo as for GPG passphrases.
+#
+# No caching: every invocation asks pinentry fresh (deliberate — see
+# docs/claude/sudo-askpass.md for why this stays unlike sign-prewarm.sh).
+# sudo's own timestamp cache does not help here either, since each Bash tool
+# call is a fresh process.
+#
+# Cancel/timeout: nothing is printed and this exits non-zero, so sudo fails
+# immediately rather than hanging. `timeout $TIMEOUT_SECONDS` bounds the
+# pinentry call the same way sign-prewarm.sh does, so a killed pinentry never
+# lingers holding the input grab.
+#
+# 使い方:
+#   SUDO_ASKPASS として: sudo が argv[1]=プロンプト文字列で呼ぶ
+#   自己検査:            sudo-askpass --selftest(pinentry はスタブ、実物には触れない —
+#                        docs/claude/sudo-askpass.md に記録した実機事故の後、実物の
+#                        pinentry/gpg-agent を検証で叩くことは一切しない方針にした)
+set -euo pipefail
+
+# Assuan percent-escapes '%', CR and LF in SETDESC/SETPROMPT payloads.
+percent_escape() {
+  local s="$1"
+  s="${s//%/%25}"
+  s="${s//$'\r'/%0D}"
+  s="${s//$'\n'/%0A}"
+  printf '%s' "$s"
+}
+
+# Reverse pinentry's percent-encoding in a GETPIN response's `D <pin>` line.
+percent_decode() {
+  local s="$1" out="" i c hex byte
+  local len=${#s}
+  for ((i = 0; i < len; i++)); do
+    c="${s:i:1}"
+    if [[ "$c" == "%" && $((i + 2)) -lt $len ]]; then
+      hex="${s:i+1:2}"
+      # printf -v (not "$(...)") — command substitution strips trailing
+      # newlines, which would silently drop a decoded %0A.
+      printf -v byte '%b' "\\x$hex"
+      out+="$byte"
+      i=$((i + 2))
+    else
+      out+="$c"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+ask() {
+  local prompt="${1:-Password:}"
+  local desc
+  desc="$(percent_escape "sudo (Claude Code など、端末を持たないセッションからの要求)")"
+  prompt="$(percent_escape "$prompt")"
+
+  # 呼び出しのたびに解決する(トップレベルで一度だけ評価すると、--selftest が
+  # env var 経由でスタブに差し替えても反映されない)。home/modules/
+  # sudo-askpass.nix の pkgs.replaceVars が @pinentry@ を store path に置換する
+  # (本番)。
+  local pinentry_bin="${SUDO_ASKPASS_PINENTRY_BIN:-@pinentry@}"
+  local timeout_seconds="${SUDO_ASKPASS_TIMEOUT_SECONDS:-90}"
+
+  local response pin_line
+  # 末尾の `|| true`: timeout/pinentry の非ゼロ終了(キャンセル・timeout)で
+  # `set -e` がここで即座に関数を抜けてしまうと、下の grep による
+  # fail-closed 判定(exit 1)に到達できず、timeout の exit code(124 等)が
+  # そのまま漏れてしまう。応答の中身(D 行の有無)だけで成否を判定したいので、
+  # この代入自体は必ず成功させる。
+  response="$(
+    {
+      # `[[ ... ]] && printf ...` は条件が偽のとき文全体が非ゼロになり、
+      # `set -e` 下ではこのブロックがここで即終了して以降の SETTITLE 以下が
+      # 一切送られない(実機で踏んだ回帰) — 必ず if で囲む。
+      if [[ -n "${GPG_TTY:-}" ]]; then
+        printf 'OPTION ttyname=%s\n' "$GPG_TTY"
+      fi
+      printf 'SETTITLE sudo\n'
+      printf 'SETDESC %s\n' "$desc"
+      printf 'SETPROMPT %s\n' "$prompt"
+      printf 'SETTIMEOUT %s\n' "$timeout_seconds"
+      printf 'GETPIN\n'
+      printf 'BYE\n'
+    } | timeout "$timeout_seconds" "$pinentry_bin" 2>/dev/null
+  )" || true
+
+  # Cancel/timeout: GETPIN replies with ERR instead of a `D <pin>` line — no
+  # such line means the user cancelled or pinentry gave up, so fail closed.
+  pin_line="$(grep '^D ' <<< "$response" | head -1)" || return 1
+  [[ -n "$pin_line" ]] || return 1
+
+  percent_decode "${pin_line#D }"
+  printf '\n'
+}
+
+# --- サブコマンド: --selftest --------------------------------------------------
+# 実物の pinentry/gpg-agent には一切触れない(docs/claude/sudo-askpass.md の
+# 「既知の注意点」参照): 固定ダミー応答を返すスタブスクリプトのみを使う。
+selftest() {
+  local fail=0 dir
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' RETURN
+
+  check() { # check <名前> <期待> <実際>
+    if [[ "$2" == "$3" ]]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1 (expected [$2], got [$3])" >&2
+      fail=1
+    fi
+  }
+
+  echo "percent_escape/percent_decode の往復:"
+  local raw="a%b" # '%' 単体
+  check "percent_escape が % を %25 にする" "a%25b" "$(percent_escape "$raw")"
+  check "percent_decode が %25 を % に戻す" "$raw" "$(percent_decode "$(percent_escape "$raw")")"
+  # printf -v 版が改行を落とさないことの直接確認(かつて "$(...)" 版で発生した回帰)。
+  local decoded_len
+  decoded_len="$(percent_decode 'abc%0Adef' | wc -c)"
+  check "percent_decode が %0A を落とさず1バイトの改行として復元する" "7" "$decoded_len"
+
+  echo "GETPIN 正常系(スタブ、値は固定ダミー文字列):"
+  cat > "$dir/pinentry-ok" <<'STUB'
+#!/usr/bin/env bash
+cat >"$SELFTEST_SENT_FILE"
+printf 'OK\nOK\nOK\nOK\nOK\nD STUBPIN%%25marker\nOK\nOK closing connection\n'
+STUB
+  chmod +x "$dir/pinentry-ok"
+  local out rc=0
+  out="$(SELFTEST_SENT_FILE="$dir/sent-ok.txt" SUDO_ASKPASS_PINENTRY_BIN="$dir/pinentry-ok" ask '[sudo] password: ')" || rc=$?
+  check "正常系: percent-decode 済みの値を1行返す" "STUBPIN%marker" "$out"
+  check "正常系: exit 0" "0" "$rc"
+  check "正常系: SETTITLE を送る" "1" "$(grep -c '^SETTITLE sudo$' "$dir/sent-ok.txt")"
+  check "正常系: プロンプト文字列を SETPROMPT に渡す(percent-escape 済み)" "1" \
+    "$(grep -c '^SETPROMPT \[sudo\] password: $' "$dir/sent-ok.txt")"
+  check "正常系: GETPIN を送る" "1" "$(grep -c '^GETPIN$' "$dir/sent-ok.txt")"
+
+  echo "GETPIN キャンセル系(D行なし → fail closed):"
+  cat > "$dir/pinentry-cancel" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'OK\nOK\nOK\nOK\nOK\nERR 83886179 Operation cancelled <Pinentry>\nOK closing connection\n'
+STUB
+  chmod +x "$dir/pinentry-cancel"
+  local rc=0
+  out="$(SUDO_ASKPASS_PINENTRY_BIN="$dir/pinentry-cancel" ask 'prompt' 2>&1)" || rc=$?
+  check "キャンセル系: 非ゼロ終了" "1" "$rc"
+  check "キャンセル系: 何も出力しない" "" "$out"
+
+  echo "GETPIN ハング系(timeout で確実に終了する):"
+  cat > "$dir/pinentry-hang" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null
+sleep 30
+STUB
+  chmod +x "$dir/pinentry-hang"
+  rc=0
+  local start end
+  start="$(date +%s 2>/dev/null || true)"
+  # bash -c の $0 をダミー("bash")にして、CODE 側で source する実ファイルの
+  # BASH_SOURCE[0](=実パス)と一致させない — 一致させると末尾の
+  # 「直接実行時だけ」判定が真になり ask が二重に呼ばれてしまう。
+  out="$(SUDO_ASKPASS_PINENTRY_BIN="$dir/pinentry-hang" SUDO_ASKPASS_TIMEOUT_SECONDS=2 timeout 10 \
+    bash -c 'source "$1"; ask "$2"' bash "$0" 'prompt' 2>&1)" || rc=$?
+  end="$(date +%s 2>/dev/null || true)"
+  check "ハング系: 非ゼロ終了" "1" "$rc"
+  check "ハング系: 何も出力しない" "" "$out"
+  if [[ -n "$start" && -n "$end" ]]; then
+    local elapsed_ok=0
+    if ((end - start < 10)); then elapsed_ok=1; fi
+    check "ハング系: SUDO_ASKPASS_TIMEOUT_SECONDS で刈られる(10秒より早く終わる)" "1" "$elapsed_ok"
+  fi
+
+  [[ "$fail" == 0 ]] && echo "selftest: all passed"
+  return "$fail"
+}
+
+# selftest がこのファイルを source して ask を個別に呼ぶため、直接実行時だけ
+# 以下を走らせる(sign-prewarm.sh と同じ判定: source 時は BASH_SOURCE[0] と $0 が
+# 一致しない)。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  if [[ "${1-}" == "--selftest" ]]; then
+    selftest
+  else
+    ask "$@"
+  fi
+fi

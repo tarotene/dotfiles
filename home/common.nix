@@ -13,6 +13,7 @@
     ./modules/atuin.nix
     ./modules/git.nix
     ./modules/gpg.nix
+    ./modules/sudo-askpass.nix
     ./modules/packages.nix
     ./modules/desktop.nix
     ./modules/runtimes.nix
