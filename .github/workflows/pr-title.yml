@@ -33,7 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     name: PR title
     permissions:
-      contents: read
+      # merge 設定フィールド(squash_merge_commit_title 等)は GitHub REST API
+      # ドキュメント上「contents:read と contents:write の両方」が必要と
+      # 明記されている(admin 権限ではない。GITHUB_TOKEN に administration
+      # スコープは存在しない)。実測(この workflow 自身の最初の実行、
+      # 2026-09-24)で contents:read 単体では該当フィールドがレスポンスから
+      # 欠落し、pr-merge-settings-check が誤って全項目 drift と判定した。
+      # このジョブは実際には何も書き込まない — 読み取りのためだけに
+      # write を要求する GitHub 側の仕様上の制約。
+      contents: write
     steps:
       # 文法検査の単一ソース(scripts/pr-title-check)を取得する。dotfiles
       # 自身のトリガー(github.repository == tarotene/dotfiles)では、この
@@ -71,8 +79,8 @@ jobs:
       # 契約全体が無声でバイパスされる(PRIVATE リポで実際に直近 25 PR
       # 全件がバイパスされていた実例、docs/claude/pr-title-contract.md 参照)。
       # ここで前提の生存を required check として検査し、drift を検出では
-      # なく防止に変える。GITHUB_TOKEN の contents:read で merge 設定
-      # フィールドまで返るかは未確認 — 最初の実 PR で実測する。
+      # なく防止に変える。GITHUB_TOKEN の contents:write(上記 permissions
+      # 参照)で merge 設定フィールドが返ることを実測済み。
       - name: Validate merge settings prerequisite
         env:
           GH_TOKEN: ${{ github.token }}
