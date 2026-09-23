@@ -1,0 +1,369 @@
+#!/usr/bin/env bash
+# adr-number-check — ADR 採番規約(ADR-0000 → PR 番号での改番、
+# docs/adr/0000-adr-number-by-pr.md)の判定エンジン単一ソース。
+#
+# CI の required check(.github/workflows/ci.yml の dry-run job)と、
+# 手動実行・段3の PostToolUse hook(将来 config/claude/hooks/adr-number.sh
+# から呼ばれる)の両方がこのスクリプトを呼ぶ — 判定ロジックは 1 箇所にしか
+# 存在しない(ADR-0031 の scripts/pr-title-check と同型)。
+#
+# 番号帯: n < 0100 は grandfathered 連番(重複のみ検査)、n >= 0100 は
+# PR-number era(導入 PR の番号と一致必須)、0000 は起草中で main に
+# 残ってはならない。詳細: docs/adr/0000-adr-number-by-pr.md,
+# docs/claude/adr-numbering.md
+#
+# 判定項目は 2 系統に分かれる。混ぜると既着地の ADR を現在の PR 番号で
+# 誤判定する(例: ADR-0376 着地後、ADR を追加しない PR #380 で
+# 0376 != 380 となり required check が永久に通らなくなる)。
+#
+#   A. リポジトリ全体に適用(docs/adr/ を丸ごと走査。PR 番号を使わない):
+#      1. 番号重複がない
+#      2. 0000-*.md が存在しない
+#      3. ファイル名の番号 == 本文 H1(# ADR-NNNN — ...)の番号
+#      4. 全ファイルが docs/README.md の索引にリンクされている
+#   B. --base 指定時のみ、base との diff で新規追加された ADR にのみ適用:
+#      5. 追加された docs/adr/*.md は最大 1 本
+#      6. 追加された ADR の番号が n >= 0100 なら n == PR 番号
+#         (--pr 無指定なら skip)。n < 0100 なら緩衝帯として通過させる
+#
+# 使い方:
+#   adr-number-check [--base <ref>] [--pr <N>]   # 判定(--base 省略時は A のみ)
+#   adr-number-check --fix <PR番号> [<file>]      # git mv + H1 書き換え
+#                                                 # (<file> 省略時は 0000-*.md を対象)
+#   adr-number-check --selftest                  # ネットワーク不使用の自己検査
+#
+# 終了コード: 0 = 適合, 1 = 非適合, 2 = 判定不能(使い方誤り等)
+set -euo pipefail
+
+usage() {
+  cat << 'EOF'
+usage: adr-number-check [--base <ref>] [--pr <N>]
+       adr-number-check --fix <PR番号> [<file>]
+       adr-number-check --selftest
+EOF
+}
+
+# ---- Category A: リポジトリ全体 -----------------------------------------
+
+check_no_duplicates() {
+  local adr_dir="$1" dups
+  dups="$(find "$adr_dir" -maxdepth 1 -name '*.md' -printf '%f\n' 2> /dev/null \
+    | grep -oE '^[0-9]{4}' | sort | uniq -d || true)"
+  if [[ -n $dups ]]; then
+    echo "adr-number-check: 番号重複: $(echo "$dups" | tr '\n' ' ')" >&2
+    return 1
+  fi
+  return 0
+}
+
+check_no_draft() {
+  local adr_dir="$1" drafts
+  drafts="$(find "$adr_dir" -maxdepth 1 -name '0000-*.md' 2> /dev/null || true)"
+  if [[ -n $drafts ]]; then
+    echo "adr-number-check: 未採番の ADR が残っています(PR 作成後に --fix で改番してください): $drafts" >&2
+    return 1
+  fi
+  return 0
+}
+
+check_filename_matches_h1() {
+  local adr_dir="$1" file base fnum hnum fails=0
+  for file in "$adr_dir"/*.md; do
+    [[ -f $file ]] || continue
+    base="$(basename "$file")"
+    fnum="${base:0:4}"
+    [[ $fnum =~ ^[0-9]{4}$ ]] || continue
+    hnum="$(head -n1 "$file" | grep -oE '^# ADR-[0-9]{4}' | grep -oE '[0-9]{4}' || true)"
+    if [[ -z $hnum ]]; then
+      echo "adr-number-check: $base の本文 H1 に ADR 番号が見つかりません" >&2
+      fails=1
+      continue
+    fi
+    if [[ $fnum != "$hnum" ]]; then
+      echo "adr-number-check: $base — ファイル名の番号($fnum)と本文 H1 の番号($hnum)が不一致" >&2
+      fails=1
+    fi
+  done
+  return "$fails"
+}
+
+check_readme_index() {
+  local adr_dir="$1" readme="$2" file base num fails=0
+  for file in "$adr_dir"/*.md; do
+    [[ -f $file ]] || continue
+    base="$(basename "$file")"
+    num="${base:0:4}"
+    [[ $num =~ ^[0-9]{4}$ ]] || continue
+    if ! grep -qE "\[ADR-${num}\]" "$readme" 2> /dev/null; then
+      echo "adr-number-check: ADR-$num が docs/README.md の索引にリンクされていません" >&2
+      fails=1
+    fi
+  done
+  return "$fails"
+}
+
+# ---- Category B: base 差分で新規追加された ADR のみ ---------------------
+
+check_added_adrs() {
+  local repo_root="$1" base_ref="$2" pr_number="${3-}"
+  local added count file base num
+  added="$(git -C "$repo_root" diff --name-only --diff-filter=A "$base_ref" HEAD -- docs/adr/ 2> /dev/null || true)"
+  count="$(printf '%s\n' "$added" | grep -c . || true)"
+
+  if [[ $count -gt 1 ]]; then
+    echo "adr-number-check: この PR は複数の ADR を追加しています(1 PR = 最大 1 ADR): $(printf '%s' "$added" | tr '\n' ' ')" >&2
+    return 1
+  fi
+  if [[ $count -eq 0 ]]; then
+    return 0
+  fi
+
+  file="$added"
+  base="$(basename "$file")"
+  num="${base:0:4}"
+  if [[ ! $num =~ ^[0-9]{4}$ ]]; then
+    echo "adr-number-check: $base の番号を読み取れません" >&2
+    return 1
+  fi
+  if ((10#$num < 100)); then
+    return 0 # 緩衝帯: 通過
+  fi
+  if [[ -z $pr_number ]]; then
+    return 0 # --pr 無指定: 判定不能につき skip(fail にしない)
+  fi
+  if ((10#$num != 10#$pr_number)); then
+    echo "adr-number-check: $base の番号($num)が PR 番号($pr_number)と不一致です" >&2
+    return 1
+  fi
+  return 0
+}
+
+# ---- --fix ---------------------------------------------------------------
+
+cmd_fix() {
+  local repo_root="$1" adr_dir="$2" pr_number="${3-}" file="${4-}"
+  if [[ -z $pr_number ]]; then
+    echo "usage: adr-number-check --fix <PR番号> [<file>]" >&2
+    return 2
+  fi
+  if [[ ! $pr_number =~ ^[0-9]+$ ]]; then
+    echo "adr-number-check: PR番号は数字で指定してください: $pr_number" >&2
+    return 2
+  fi
+
+  if [[ -z $file ]]; then
+    local drafts count
+    drafts="$(find "$adr_dir" -maxdepth 1 -name '0000-*.md' 2> /dev/null || true)"
+    count="$(printf '%s\n' "$drafts" | grep -c . || true)"
+    if [[ $count -eq 0 ]]; then
+      echo "adr-number-check: 0000-*.md が見つかりません(改番の必要なし)" >&2
+      return 1
+    fi
+    if [[ $count -gt 1 ]]; then
+      echo "adr-number-check: 0000-*.md が複数あります: $(printf '%s' "$drafts" | tr '\n' ' ')" >&2
+      return 1
+    fi
+    file="$drafts"
+  fi
+
+  if [[ ! -f $file ]]; then
+    echo "adr-number-check: $file が見つかりません" >&2
+    return 1
+  fi
+
+  local base slug old_num new
+  base="$(basename "$file")"
+  old_num="${base:0:4}"
+  slug="${base#*-}"
+  new="$adr_dir/${pr_number}-${slug}"
+
+  git -C "$repo_root" mv "$file" "$new"
+  sed -i "1s/^# ADR-${old_num}/# ADR-${pr_number}/" "$new"
+  echo "adr-number-check: $(basename "$file") -> $(basename "$new")"
+  return 0
+}
+
+# ---- selftest --------------------------------------------------------------
+
+selftest() {
+  local fails=0 tmp
+
+  # --- Category A のフィクスチャ ---
+  # (RETURN トラップは呼び出したネストした関数の return でも発火してしまう
+  # ため使わず、末尾で明示的に rm -rf する)
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp/docs/adr"
+  {
+    echo "## Architecture Decision Records"
+    echo "- [ADR-0001](adr/0001-a.md) — a"
+    echo "- [ADR-0100](adr/0100-b.md) — b"
+  } > "$tmp/docs/README.md"
+  printf '# ADR-0001 — a\n' > "$tmp/docs/adr/0001-a.md"
+  printf '# ADR-0100 — b\n' > "$tmp/docs/adr/0100-b.md"
+
+  check() { # $1=名前 $2=want-rc(0|1) -- $3..=関数呼び出し
+    local name="$1" want="$2" rc=0
+    shift 2
+    "$@" > /dev/null 2>&1 || rc=$?
+    if [[ "$rc" == "$want" ]]; then
+      echo "ok   $name"
+    else
+      echo "FAIL $name (expected rc=$want got rc=$rc)" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  echo "Category A: 適合フィクスチャ:"
+  check "1 番号重複なし" 0 check_no_duplicates "$tmp/docs/adr"
+  check "2 0000 なし" 0 check_no_draft "$tmp/docs/adr"
+  check "3 filename==H1" 0 check_filename_matches_h1 "$tmp/docs/adr"
+  check "4 README 索引網羅" 0 check_readme_index "$tmp/docs/adr" "$tmp/docs/README.md"
+
+  echo "Category A: 非適合フィクスチャ:"
+  cp "$tmp/docs/adr/0100-b.md" "$tmp/docs/adr/0100-c.md" # 重複させる
+  check "5 番号重複を検出" 1 check_no_duplicates "$tmp/docs/adr"
+  rm "$tmp/docs/adr/0100-c.md"
+
+  printf '# ADR-0000 — draft\n' > "$tmp/docs/adr/0000-draft.md"
+  check "6 0000 残存を検出" 1 check_no_draft "$tmp/docs/adr"
+  rm "$tmp/docs/adr/0000-draft.md"
+
+  printf '# ADR-0099 — wrong\n' > "$tmp/docs/adr/0100-wrong.md"
+  check "7 filename!=H1 を検出" 1 check_filename_matches_h1 "$tmp/docs/adr"
+  rm "$tmp/docs/adr/0100-wrong.md"
+
+  printf '# ADR-0200 — no readme entry\n' > "$tmp/docs/adr/0200-orphan.md"
+  check "8 README 未リンクを検出" 1 check_readme_index "$tmp/docs/adr" "$tmp/docs/README.md"
+  rm "$tmp/docs/adr/0200-orphan.md"
+
+  # --- Category B のフィクスチャ(実 git 履歴が要る) ---
+  local repo="$tmp/repo"
+  mkdir -p "$repo/docs/adr"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config core.hooksPath /dev/null # ホストの pre-commit guard から隔離
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name test
+  printf '# ADR-0001 — a\n' > "$repo/docs/adr/0001-a.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "base"
+  local base_sha
+  base_sha="$(git -C "$repo" rev-parse HEAD)"
+
+  echo "Category B: 適合フィクスチャ:"
+  # 既着地 ADR が別 PR 番号で誤判定されないこと(このコミットでは何も
+  # 追加しない = 空差分)
+  check "9 追加なしは通過" 0 check_added_adrs "$repo" "$base_sha" 999
+
+  printf '# ADR-0380 — new\n' > "$repo/docs/adr/0380-new.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "add 0380"
+  check "10 PR番号と一致で通過" 0 check_added_adrs "$repo" "$base_sha" 380
+  check "11 --pr 無指定は skip され通過" 0 check_added_adrs "$repo" "$base_sha" ""
+
+  echo "Category B: 非適合フィクスチャ:"
+  check "12 PR番号と不一致で検出" 1 check_added_adrs "$repo" "$base_sha" 999
+
+  git -C "$repo" reset -q --hard "$base_sha"
+  printf '# ADR-0035 — buffer zone\n' > "$repo/docs/adr/0035-buffer.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "add 0035"
+  check "13 緩衝帯(<0100)は PR番号不問で通過" 0 check_added_adrs "$repo" "$base_sha" 999
+
+  git -C "$repo" reset -q --hard "$base_sha"
+  printf '# ADR-0381 — a\n' > "$repo/docs/adr/0381-a.md"
+  printf '# ADR-0381 — b\n' > "$repo/docs/adr/0381-b.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm "add two"
+  check "14 1PR2ADR追加を検出" 1 check_added_adrs "$repo" "$base_sha" 381
+
+  # --- --fix ---
+  echo "--fix:"
+  local fixdir="$tmp/fix"
+  mkdir -p "$fixdir/docs/adr"
+  git -C "$fixdir" init -q -b main
+  git -C "$fixdir" config core.hooksPath /dev/null # ホストの pre-commit guard から隔離
+  printf '# ADR-0000 — new decision\n\nbody\n' > "$fixdir/docs/adr/0000-new-decision.md"
+  git -C "$fixdir" add -A
+  if cmd_fix "$fixdir" "$fixdir/docs/adr" "382" > /dev/null 2>&1 \
+    && [[ -f "$fixdir/docs/adr/382-new-decision.md" ]] \
+    && [[ ! -f "$fixdir/docs/adr/0000-new-decision.md" ]] \
+    && head -n1 "$fixdir/docs/adr/382-new-decision.md" | grep -q '^# ADR-382 '; then
+    echo "ok   15 --fix が draft を改番する"
+  else
+    echo "FAIL 15 --fix が draft を改番する" >&2
+    fails=$((fails + 1))
+  fi
+
+  if cmd_fix "$fixdir" "$fixdir/docs/adr" "" > /dev/null 2>&1; then
+    echo "FAIL 16 --fix は PR番号必須(使い方誤りは非0を返すべき)" >&2
+    fails=$((fails + 1))
+  else
+    echo "ok   16 --fix は PR番号必須"
+  fi
+
+  rm -rf "$tmp"
+
+  if [[ $fails -gt 0 ]]; then
+    echo "selftest: ${fails} 件失敗" >&2
+    return 1
+  fi
+  echo "selftest: OK"
+  return 0
+}
+
+# ---- main -------------------------------------------------------------
+
+main() {
+  case "${1-}" in
+    --selftest) selftest; return $? ;;
+    --help | -h) usage; return 0 ;;
+    --fix)
+      shift
+      local repo_root adr_dir
+      repo_root="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
+      adr_dir="$repo_root/docs/adr"
+      cmd_fix "$repo_root" "$adr_dir" "$@"
+      return $?
+      ;;
+  esac
+
+  local base="" pr=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base)
+        base="${2-}"
+        shift 2
+        ;;
+      --pr)
+        pr="${2-}"
+        shift 2
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+  done
+
+  local repo_root adr_dir readme fails=0
+  repo_root="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
+  adr_dir="$repo_root/docs/adr"
+  readme="$repo_root/docs/README.md"
+
+  check_no_duplicates "$adr_dir" || fails=1
+  check_no_draft "$adr_dir" || fails=1
+  check_filename_matches_h1 "$adr_dir" || fails=1
+  check_readme_index "$adr_dir" "$readme" || fails=1
+
+  if [[ -n $base ]]; then
+    check_added_adrs "$repo_root" "$base" "$pr" || fails=1
+  fi
+
+  if [[ $fails -ne 0 ]]; then
+    return 1
+  fi
+  echo "adr-number-check: OK"
+  return 0
+}
+
+main "$@"
