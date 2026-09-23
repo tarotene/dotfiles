@@ -8,6 +8,7 @@
     ./modules/claude-mcp-servers.nix
     ./modules/herdr.nix
     ./modules/worktree.nix
+    ./modules/drift.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
     ./modules/atuin.nix
