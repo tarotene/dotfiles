@@ -65,31 +65,36 @@ design. Only `style-hub` being unresolved is reported as `WARN` (exit 1).
 ### Renaming or retiring a host (#214)
 
 The `Quality` GitHub ruleset's `required_status_checks` lists literal CI
-job names (`build vega`, `build arcturus`, ...) that must stay in sync
-with `.github/workflows/nix.yml`'s matrix — GitHub evaluates required
-checks against the ruleset's *current* configuration at merge time, not a
+job names (e.g. `build vega`) that must stay in sync with
+`.github/workflows/nix.yml`'s matrix — GitHub evaluates required checks
+against the ruleset's *current* configuration at merge time, not a
 snapshot from when the check first ran, so a stale check name blocks
-merges forever ("report されない = 満たされない"). Renaming or retiring a
-host is therefore a strict, order-dependent sequence, not just a code
-change:
+merges forever ("report されない = 満たされない"). The ruleset's
+`conditions.ref_name` is scoped to `~DEFAULT_BRANCH` — it therefore only
+actually gates whichever PR currently *targets* `main`, not every open PR
+in a stacked chain (ADR-0027): a mid-stack PR targeting another PR's
+branch is unaffected until GitHub auto-retargets it to `main` once every
+stage below it has merged. Renaming or retiring a host is an
+asymmetric, two-part update because of this:
 
-1. Add/rename the host module and matrix entry, push to a branch. Do
-   **not** open the PR yet.
-2. Wait for that branch's CI to go green under the *new* job name(s). The
-   ruleset still requires the *old* name(s) at this point, so this
-   branch's own CI result does not yet satisfy anything.
-3. The moment CI is green, update `rulesets/quality.json`'s
-   `required_status_checks` to the new job name(s) and reconcile it onto
-   GitHub (`scripts/apply-rulesets.sh --reconcile`, or a direct
-   `gh api -X PUT` on the ruleset). Check that any other in-flight PR
-   against `main` is currently green first — this update immediately
-   starts requiring the new name(s) from every open PR, not just this one.
-4. Re-read the ruleset (`gh api repos/tarotene/dotfiles/rulesets/<id>`) to
-   confirm the update landed, then open the PR. Its already-green run from
-   step 2 satisfies the now-current required checks.
-5. If a host is retired outright (not renamed), drop its
-   `required_status_checks` entry in the same step 3 update — do not
-   leave a job name that will never report again.
+- **Dropping a required check is always safe, any time.** Removing an
+  entry only relaxes the gate — it cannot newly block a PR that was
+  already passing. Do this the moment a host module is deleted, even
+  while older stacked PRs (that still build the old host and still
+  report its check) are open: `scripts/apply-rulesets.sh --reconcile`
+  after removing the entry from `rulesets/quality.json`.
+- **Adding a new host's required check is only safe once the renaming
+  PR is itself the one targeting `main`.** Adding an entry tightens the
+  gate immediately for whichever PR currently targets `main` — if that
+  PR's own branch content predates the rename (the common case in a
+  stacked chain, where earlier stages don't carry the later rename's
+  diff), it can never produce the new check name and becomes
+  permanently blocked. Wait until every stage below the renaming PR has
+  merged and GitHub has retargeted it to `main`, confirm its CI is still
+  green under the new name(s), *then* add the entry and reconcile.
+
+In short: shrink the required set eagerly, grow it only once the PR that
+actually earns the new entry is next in line for `main`.
 
 ## Routine flake update
 

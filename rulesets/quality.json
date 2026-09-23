@@ -21,7 +21,6 @@
           { "context": "Escape-hatch dry-run" },
           { "context": "nix flake check" },
           { "context": "build personal-pop" },
-          { "context": "build company-pop-old" },
           { "context": "build company-pop-new" },
           { "context": "PR title" }
         ]
