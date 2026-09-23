@@ -332,7 +332,13 @@ matrix 全体が washed out していたことが、「ハイライトが薄い�
    regression(既定省略時の透過が壊れる、herdrdev/herdr#3773、
    https://github.com/herdrdev/herdr/issues/3773、2026-09-21 取得)の
    workaround が「`sidebar_bg`/`panel_bg` に `"reset"` を明示すること」なので、
-   将来の herdr バンプへの前方互換保険として書いておく。
+   将来の herdr バンプへの前方互換保険として書いておく。`panel_bg = "reset"`
+   も #314 で同じ理由から明示済み(chrome 側限定)。ただし #3773 は
+   2026-09-23 時点も OPEN で、コメントによれば **pane 内で動くプログラム
+   (vt ランタイムのセル)の透過は config でも回避不能**(reattach 時に
+   ホスト端末の OSC 11 背景で上書きされる。stock default config でも再現)。
+   0.9.1 で解消するかは未確認 — 次の herdr バンプ時に upstream の状況と
+   実機表示の両方を確認すること(#314)。
 2. **矩形(`active_row_bg`)をグレー階調でなく accent 系タイントにする** —
    `active_row_bg = "#52567A"` は lavender `#B4BEFE` を base に ~35% ブレンド
    した非純正 hex(Catppuccin Mocha の役割トークンには存在しない値)。同輝度
