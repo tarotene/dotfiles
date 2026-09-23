@@ -84,6 +84,29 @@ in
     defaultCacheTtl = 34560000; # 400d — i.e. bounded by the login, not the clock
     maxCacheTtl = 34560000;
 
+    # Tell pinentry not to persist the passphrase to an external cache
+    # (libsecret/gnome-keyring) — the typed home-manager option for GnuPG's
+    # own `--no-allow-external-cache` (#348, ADR-0003 Amendment 4 item 4).
+    # Some desktops unlock everything with one master password and ship a
+    # pinentry that participates in that external cache; this host's
+    # `pinentry-gnome3` is linked against libsecret/libgcr-base and does
+    # have that code path (verified empirically, #348: a bare Assuan
+    # `GETPIN` sent directly to the pinentry binary returned the real login
+    # password via `PASSWORD_FROM_CACHE`, no human interaction). This option
+    # stops gpg-agent from ever sending pinentry the
+    # `OPTION allow-external-password-cache` that enables that path.
+    #
+    # Limit: this only closes the channel gpg-agent itself opens. It does
+    # NOT stop an arbitrary process from launching pinentry directly and
+    # sending that same OPTION itself, as #348 did — pinentry has no way to
+    # tell "gpg-agent asked" from "anything on this uid asked". Same-uid
+    # access to an already-unlocked Secret Service/login-keyring item is a
+    # GNOME-acknowledged trust boundary (CVE-2018-19358 was not treated as a
+    # vulnerability by GNOME on that basis), so this repo cannot make that
+    # residual risk unrepresentable — only detect and report it, which is
+    # what #348's investigation did.
+    noAllowExternalCache = true;
+
     # No `enableSshSupport` here, deliberately (#33). The [A] subkey does exist
     # on the card (keygrip AC6226020D13A46E0CD8E47A8C08C5D01C142127), but it was
     # never registered in ~/.gnupg/sshcontrol and nothing on any host speaks SSH:
