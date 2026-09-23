@@ -303,6 +303,20 @@
 #    明記している — リポジトリ内の成果物とは別の基準がかかる。詳細は
 #    docs/claude/external-call-scheduling.md。
 #
+# 24) decision-colocation-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-396):
+#    決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
+#    `## Amendment` 追加を、その決定を執行する実ファイルの同梱なしに `gh pr
+#    create` させない。判定は scripts/decision-colocation-check(判定エンジン
+#    単一ソース、CI required check と共有)に委譲する。執行点として認める
+#    パスは「非 .md かつ docs/ 配下でない」の 2 述語のみ。実在するが無変更の
+#    パスの併記だけでは合格しない(ADR-387 を意図的に不合格側に倒して検算
+#    — docs/claude/decision-colocation.md 参照)。attribution-guard.sh/
+#    stack-base-guard.sh/pr-title-guard.sh と同じ「判定エンジンを source
+#    して is_target_at を上書きする」型。Codex/Copilot adapter は作らない
+#    — CI required check が全エージェント共通の backstop になるため。一時
+#    解除は環境変数 SKIP_DECISION_COLOCATION_GUARD=1。詳細は
+#    docs/adr/396-decision-colocation.md と docs/claude/decision-colocation.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -383,6 +397,11 @@ let
   # に置く。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
+  # decision-colocation-guard(ADR-396, docs/claude/decision-colocation.md)
+  # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
+  # は意図的に作らない — CI required check が全エージェント共通の
+  # backstop として機能するため(ADR-396 の非目標に明記)。
+  decisionColocationGuardCmd = "bash '${hooksDir}/decision-colocation-guard.sh'";
   # adr-number(ADR-380, docs/claude/adr-numbering.md)も attribution-guard.sh
   # を source するので同階層。段3(利便性層)のみ — deny は一切しない。
   adrNumberCmd = "bash '${hooksDir}/adr-number.sh'";
@@ -581,6 +600,7 @@ let
     atuin_hook_claude_code="$1"; shift
     stack_base_guard="$1";       shift
     pr_title_guard="$1";         shift
+    decision_colocation_guard="$1"; shift
     external_send_guard="$1";    shift
     adr_number="$1";             shift
 
@@ -698,6 +718,11 @@ let
     # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
     # 持たないため timeout は短め。
     register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
+    # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
+    # pr-title-guard と同じ複合 matcher。scripts/decision-colocation-check
+    # 1 往復(git diff + ファイル読み取りのみ、gh API 往復は持たない)なので
+    # timeout は stack-base-guard 並みでよい。
+    register PreToolUse "Bash|mcp__.*" "$decision_colocation_guard" 20
     # external-send-guard(docs/claude/external-send-guard.md): Gmail MCP
     # tool の send_message/reply/forward だけが対象なので matcher は
     # "mcp__.*" のみでよい(publish-guard/attribution-guard と違い Bash 経由
@@ -1043,6 +1068,16 @@ in
   };
   home.file.".copilot/hooks/pr-title-guard.sh" = {
     source = repoConfig + "/copilot/hooks/pr-title-guard.sh";
+    executable = true;
+  };
+
+  # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
+  # 追加を執行点と同じ PR に機械強制する(docs/claude/decision-colocation.md)。
+  # attribution-guard.sh を同ディレクトリから source するので、配置は
+  # 必ず ~/.claude/hooks/ 直下。Codex/Copilot adapter は意図的に作らない
+  # (CI required check が全エージェント共通の backstop になるため)。
+  home.file.".claude/hooks/decision-colocation-guard.sh" = {
+    source = repoConfig + "/claude/hooks/decision-colocation-guard.sh";
     executable = true;
   };
 
@@ -1466,6 +1501,7 @@ in
       ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
       ${lib.escapeShellArg stackBaseGuardCmd} \
       ${lib.escapeShellArg prTitleGuardCmd} \
+      ${lib.escapeShellArg decisionColocationGuardCmd} \
       ${lib.escapeShellArg externalSendGuardCmd} \
       ${lib.escapeShellArg adrNumberCmd}
   '';
