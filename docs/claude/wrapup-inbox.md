@@ -115,6 +115,27 @@ worktree の数だけ分散し、worktree 削除後は誰も読まない orphan 
 - 手動 E2E は inbox にダミー行を `--add` して新しいセッションを開始する:
   SessionStart 注入に未処理件数が出て、ターン終了時に Stop ゲートが発火する。
 
+## feedback 型 auto memory の経路(#328)
+
+wrap-up inbox は「今回のタスクのスコープ外だが Issue 起票の価値がある気づき」
+だけを対象にしており、ユーザーから受けた作業方針上のフィードバックを Claude
+Code の auto memory(`~/.claude/projects/*/memory/*.md`、frontmatter
+`metadata.type: feedback`)に保存するケースは対象外だった。実測
+(2026-09-23)では、ローカル auto memory の `type: feedback` ファイル 17 件中
+14 件が Issue 化されずローカルに閉じたままだった。
+
+`wrapup-stop-gate.sh` の同じ Stop 本体に、inbox とは独立した第二の検査を
+足した: 今セッション中に更新された `type: feedback` メモリで `#N`(Issue
+番号)参照が無いものを検出し、inbox が空でも単独でゲートを発火させる。
+「今セッション」の境界は `wrapup-session-start.sh` が touch する stamp
+ファイル(`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)
+の mtime を基準に `find -newer` で判定する(GNU/BSD 両対応、epoch 文字列を
+扱わない)。stamp が無い(SessionStart 未実行など)場合は判定不能として
+何もしない側に倒す(ADR-0005 と同じ fail-open)。
+
+原則そのもの(不可視なローカルメモに閉じ込めない)は共有 AGENTS.md、
+auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
+
 ## 消化経路は 2 つ
 
 上記の Stop ゲートによる個別起票に加えて、判断を要さない軽微な項目をまとめて片す

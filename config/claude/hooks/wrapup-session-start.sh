@@ -28,6 +28,12 @@ project="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<<"$input")}"
 bash "$gate" --migrate "$project" 2>/dev/null || true
 inbox="$(bash "$gate" --inbox-path "$project")"
 
+# #328: フィードバックの Issue 化検査(wrapup-stop-gate.sh)が使う「今
+# セッション」境界の基準点を touch する。失敗しても fail-open(検査側が
+# 判定不能として何もしない側に倒れる)。
+session_id="$(jq -r '.session_id // "unknown"' <<<"$input" 2>/dev/null)" || session_id="unknown"
+bash "$gate" --stamp-feedback-session "$session_id" 2>/dev/null || true
+
 pending=0
 [[ -s "$inbox" ]] && pending="$(wc -l <"$inbox")"
 

@@ -42,11 +42,53 @@
 #                   (旧・絶対パス slug の inbox が残っていれば新 slug へ
 #                   append-only マージし、全行存在を確認してから旧を削除する。
 #                   常に exit 0。session-start hook と Stop hook 本体が毎回呼ぶ)
+#   セッション境界の刻印: wrapup-stop-gate.sh --stamp-feedback-session <session_id>
+#                   (auto memory の feedback-issue-discipline 検査(#328)が
+#                   使う「セッション開始」時刻の基準点を touch するだけ。
+#                   wrapup-session-start.sh が毎回呼ぶ)
 #   自己検査:     wrapup-stop-gate.sh --selftest
+#
+# フィードバックの Issue 化検査(#328、共有 AGENTS.md「ユーザーからの
+# フィードバックは不可視なローカルメモに閉じ込めない」節): wrap-up inbox と
+# 独立に、Stop 時点で auto memory(~/.claude/projects/*/memory/*.md、
+# frontmatter に `type: feedback`)のうち、今セッション中に更新され `#N`
+# (Issue 番号)参照を持たないものを検出して同じゲートで促す。inbox が
+# 空でもこちらだけで exit 2 になりうる(既存の inbox 早期 return より手前で
+# 判定する)。「今セッション」の境界は SessionStart で touch する stamp
+# ファイルの mtime(`find -newer`、GNU/BSD 両対応で epoch 文字列を扱わない)。
 set -euo pipefail
 
 state_root() {
   printf '%s/claude/wrapup' "${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"
+}
+
+# --- フィードバックの Issue 化検査(#328) ---------------------------------------
+
+FEEDBACK_STAMP_DIR="${WRAPUP_FEEDBACK_STAMP_DIR:-$HOME/.claude/wrapup-stop-gate/feedback-session}"
+FEEDBACK_MEMORY_ROOT="${WRAPUP_FEEDBACK_MEMORY_DIR:-$HOME/.claude/projects}"
+
+# $1=session_id -> セッション境界の stamp ファイルパス(stack-base-guard.sh の
+# state_file() と同型のサニタイズ)。
+feedback_stamp_file() {
+  local sid="${1//[^A-Za-z0-9._-]/_}"
+  printf '%s/%s.stamp' "$FEEDBACK_STAMP_DIR" "$sid"
+}
+
+# $1=session_id -> stdout: 今セッション中に更新され `#<数字>` の Issue 参照を
+# 持たない type: feedback の auto memory ファイルを 1 行 1 パスで列挙する
+# (無ければ何も出さない、常に exit 0)。stamp が無い(SessionStart 未実行・
+# --selftest 等)場合は判定不能として何も出さない — 誤検出よりも黙って何も
+# しない方向に倒す(ADR-0005 と同じ fail-open)。
+unlinked_feedback_memories() {
+  local sid="$1" stamp
+  stamp="$(feedback_stamp_file "$sid")"
+  [[ -f "$stamp" ]] || return 0
+  [[ -d "$FEEDBACK_MEMORY_ROOT" ]] || return 0
+  while IFS= read -r -d '' f; do
+    grep -qE '^[[:space:]]*type:[[:space:]]*feedback[[:space:]]*$' "$f" 2>/dev/null || continue
+    grep -qE '#[0-9]+' "$f" 2>/dev/null && continue
+    printf '%s\n' "$f"
+  done < <(find "$FEEDBACK_MEMORY_ROOT" -type f -path '*/memory/*.md' -newer "$stamp" -print0 2>/dev/null)
 }
 
 # 絶対パス slug(remote なし・git repo 外のフォールバック、および旧 inbox の
@@ -163,6 +205,18 @@ if [[ "${1:-}" == "--migrate" ]]; then
   exit 0
 fi
 
+# --- サブコマンド: --stamp-feedback-session <session_id> ------------------------
+# セッション開始時刻の基準点を touch するだけ(#328)。失敗しても致命的では
+# ない(stamp が無ければ unlinked_feedback_memories() は判定不能として何も
+# しない側に倒れる)。
+if [[ "${1:-}" == "--stamp-feedback-session" ]]; then
+  session_id="${2:?usage: wrapup-stop-gate.sh --stamp-feedback-session <session_id>}"
+  mkdir -p "$FEEDBACK_STAMP_DIR" 2>/dev/null || exit 0
+  chmod 700 "$FEEDBACK_STAMP_DIR" 2>/dev/null || true
+  : >"$(feedback_stamp_file "$session_id")" 2>/dev/null || true
+  exit 0
+fi
+
 # --- サブコマンド: --add <inbox> <json> ---------------------------------------
 # 入力が pretty-print(複数行)であっても jq -c で 1 行に強制コンパクト化してから
 # 書き込む。--mark-filed は行全体の完全一致で削除するため、非コンパクトな行が
@@ -242,6 +296,12 @@ if [[ "${1:-}" == "--selftest" ]]; then
 
   # 実験環境: github remote 付きの git repo と、それに対応する inbox
   export WRAPUP_STATE_DIR="$dir/state"
+  # #328: 実 $HOME を汚さないよう、選択したテストだけでなく selftest 全体を
+  # 通して隔離する(FEEDBACK_STAMP_DIR/FEEDBACK_MEMORY_ROOT はスクリプト先頭で
+  # 一度だけ評価されるグローバル変数なので、--selftest ブロック内で export
+  # しても手遅れ — この時点(トップレベル実行前)で export する)。
+  export WRAPUP_FEEDBACK_STAMP_DIR="$dir/feedback-stamp"
+  export WRAPUP_FEEDBACK_MEMORY_DIR="$dir/feedback-memory"
   repo="$dir/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q
@@ -420,6 +480,88 @@ STUB
   check "session-start は未処理件数を報告する" 0 \
     "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" | grep -q "未処理 2 件"; echo $?)"
 
+  # --- #328: feedback 型 auto memory の未起票検査 ---
+  fb_repo="$dir/fb_repo"
+  mkdir -p "$fb_repo"
+  git -C "$fb_repo" init -q
+  # $repo とは別の remote(= 別の inbox slug)にする — 同じ URL だと
+  # $repo で --add した既存 2 行を共有し、inbox が意図せず非空になる。
+  git -C "$fb_repo" remote add origin https://github.com/example/feedback-test.git
+  fb_hookinput='{"cwd":"'"$fb_repo"'","session_id":"fbsid","stop_hook_active":false}'
+
+  # WRAPUP_FEEDBACK_STAMP_DIR / WRAPUP_FEEDBACK_MEMORY_DIR は selftest 冒頭で
+  # 既に export 済み(実 $HOME を汚さないための隔離、上部コメント参照)。
+  mkdir -p "$WRAPUP_FEEDBACK_MEMORY_DIR/proj1/memory"
+
+  # stamp 未設定・空 inbox は判定不能扱いで素通り
+  rc=0
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$fb_repo" bash "$self" <<<"$fb_hookinput" 2>/dev/null || rc=$?
+  check "feedback: stamp 未設定・空 inbox は素通り" 0 "$rc"
+
+  # --stamp-feedback-session でスタンプを打ち、既存メモリより確実に古くなる
+  # よう 1 時間前にバックデートする(sleep を避ける、plan-view.sh の
+  # `touch -d '40 days ago'` と同じ型)
+  bash "$self" --stamp-feedback-session "fbsid"
+  # feedback_stamp_file() はスクリプト先頭で一度だけ評価される
+  # $FEEDBACK_STAMP_DIR を参照するグローバル関数なので、この selftest
+  # プロセス自身の中で呼んでも上の export 前の値を見てしまう。サブプロセス
+  # (--stamp-feedback-session)は新しい環境を評価し直すので正しいパスに
+  # 書くが、ドライバ側の照合には exported な env var から直接組み立てる。
+  fb_stamp="$WRAPUP_FEEDBACK_STAMP_DIR/fbsid.stamp"
+  check "--stamp-feedback-session はスタンプファイルを作る" 0 "$([[ -f "$fb_stamp" ]]; echo $?)"
+  touch -d '1 hour ago' "$fb_stamp"
+
+  # スタンプ後(=スタンプより新しい mtime)に #N 無しの type: feedback メモリを作る
+  cat >"$WRAPUP_FEEDBACK_MEMORY_DIR/proj1/memory/unlinked.md" <<'MEM'
+---
+name: unlinked
+description: test
+metadata:
+  type: feedback
+---
+
+本文に Issue 番号が無い。
+MEM
+
+  rc=0
+  errfile2="$dir/stderr2.txt"
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$fb_repo" bash "$self" <<<"$fb_hookinput" 2>"$errfile2" || rc=$?
+  check "feedback: #N 無しはゲート発動(空 inbox でも)" 2 "$rc"
+  check "feedback: メッセージが feedback-memory を含む" 0 \
+    "$(grep -q 'feedback-memory' "$errfile2"; echo $?)"
+
+  # #N を書き足すと素通りに戻る
+  cat >"$WRAPUP_FEEDBACK_MEMORY_DIR/proj1/memory/unlinked.md" <<'MEM'
+---
+name: unlinked
+description: test
+metadata:
+  type: feedback
+---
+
+対応: #123 起票済み。
+MEM
+  rc=0
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$fb_repo" bash "$self" <<<"$fb_hookinput" 2>/dev/null || rc=$?
+  check "feedback: #N ありは素通り" 0 "$rc"
+
+  # type: feedback でなければ #N 無しでも対象外
+  cat >"$WRAPUP_FEEDBACK_MEMORY_DIR/proj1/memory/other.md" <<'MEM'
+---
+name: other
+description: test
+metadata:
+  type: project
+---
+
+feedback ではない。
+MEM
+  rc=0
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$fb_repo" bash "$self" <<<"$fb_hookinput" 2>/dev/null || rc=$?
+  check "feedback: type!=feedback は対象外" 0 "$rc"
+
+  unset WRAPUP_FEEDBACK_STAMP_DIR WRAPUP_FEEDBACK_MEMORY_DIR
+
   [[ "$fail" == 0 ]] && echo "selftest: all passed"
   exit "$fail"
 fi
@@ -433,18 +575,30 @@ input="$(cat)"
 project="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<<"$input")}"
 [[ -n "$project" ]] || exit 0
 
+session_id="$(jq -r '.session_id // "unknown"' <<<"$input" 2>/dev/null)" || session_id="unknown"
+
 migrate_legacy_inbox "$project"
 inbox="$(inbox_for "$project")"
-[[ -s "$inbox" ]] || exit 0
+
+# #328: inbox が空でも feedback 型 auto memory の未起票が見つかれば単独で
+# ゲートしうる — この判定は inbox の早期 return より手前(両方とも空なら
+# ここで抜ける)。
+unlinked="$(unlinked_feedback_memories "$session_id")"
+
+if [[ ! -s "$inbox" && -z "$unlinked" ]]; then
+  exit 0
+fi
 
 command -v gh >/dev/null 2>&1 || exit 0
 git -C "$project" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 git -C "$project" remote -v 2>/dev/null | grep -q 'github\.' || exit 0
 
-count="$(wc -l <"$inbox")"
 self="$(self_path)"
+msg=""
 
-cat >&2 <<EOF
+if [[ -s "$inbox" ]]; then
+  count="$(wc -l <"$inbox")"
+  msg+="$(cat <<EOF
 [wrapup-inbox] 未起票の気づきが ${count} 件残っています: ${inbox}
 各行(JSONL: ts/title/detail)を、このプロジェクトのリポジトリに次の手順で起票してください:
   1. bash '${self}' --check-dup "<title>" を実行する。
@@ -460,4 +614,25 @@ cat >&2 <<EOF
      gh issue create に失敗した行には --mark-filed を呼ばず、inbox に残す(次ターンで再試行)。
 inbox を直接編集してはいけません(必ず --add / --mark-filed 経由)。
 EOF
+)"
+fi
+
+if [[ -n "$unlinked" ]]; then
+  [[ -n "$msg" ]] && msg+=$'\n\n'
+  fcount="$(wc -l <<<"$unlinked")"
+  msg+="$(cat <<EOF
+[feedback-memory] 今セッション中に更新された type: feedback の auto memory が
+${fcount} 件、Issue 番号(#N)の参照を持たずに残っています:
+$(sed 's/^/  - /' <<<"$unlinked")
+汎用的な作業方針フィードバック(プロジェクト固有でなく、センシティブでないもの)は
+既定で GitHub Issue として起票し、起票したら該当メモリファイルの本文に #N を
+追記してください(共有 AGENTS.md「ユーザーからのフィードバックは不可視な
+ローカルメモに閉じ込めない」節、config/claude/CLAUDE.md「フィードバックの
+Issue 化」節)。プロジェクト固有で汎用化できない、またはセキュリティ・個人情報
+等センシティブな内容はこの限りではありません。
+EOF
+)"
+fi
+
+printf '%s\n' "$msg" >&2
 exit 2
