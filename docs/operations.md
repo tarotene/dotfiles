@@ -428,6 +428,15 @@ A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /
 pipx) should be reclaimed into the right layer — workflow tracked in
 [#4](https://github.com/tarotene/dotfiles/issues/4).
 
+Once a tool's layer is decided, a second question applies whenever it needs a
+concrete value (a bucket name, a project ID, a ping URL, a PRIVATE repo name):
+does this repo need the **rule** (a derivation procedure with a placeholder,
+public, this repo) or the **value itself** (private, the wrapper flake,
+[ADR-0033](adr/0033-machine-state-wrapper-flake.md))? This repo never
+names the wrapper flake — see `scripts/hms.sh`'s `private-hub` marker. Note
+that `hms .` on a host with that marker registered applies this PUBLIC
+worktree alone, dropping every private value module for that one apply.
+
 ### Ad-hoc installers must never prepend to PATH
 
 Whatever the layer, an installer that puts its own directory at the **front**

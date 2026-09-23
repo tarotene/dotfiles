@@ -375,6 +375,7 @@ dotfiles/
 - **ADR-0030** — GAS/clasp 基盤の配置決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ(セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には置かない。
 - **ADR-0031** — PR タイトルを commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが `main` の commit subject になる唯一のテキストであり、non-conventional な commit が `main` に混入する経路をこの 1 点に絞って client guard(PreToolUse deny)・server required check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。文法は Conventional Commits + Angular 慣行の 11 type 閉集合。Issue タイトル・ブランチ上の commit メッセージは対象外(squash で破棄される/「変更」でなく「状態」を記述する別ジャンルのため)。
 - **ADR-0032** — グローバル agent 指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)とする決定。`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・`~/.copilot/copilot-instructions.md` の 3 箇所に同一ソースを home.file マウントし、`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ単位 AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの — これまでグローバル指示は比較対象(Codex/Copilot 側のグローバル指示ファイル)が存在しなかったため Claude 専用のまま定着していたが、hook 層は attribution-guard(#192)・pr-title-guard(ADR-0031)で既にクロスツール共有 + per-agent adapter の型を確立しており、指示ファイル層だけがこの型に倣っていなかった非対称を解消する。
+- **ADR-0033** — 私的な machine-state 実値(実 bucket 名・GCP プロジェクト ID・PRIVATE リポ名・所有ドメイン等)は、外側の private wrapper flake に置く決定。dotfiles は `lib.mkHome` を export し、private wrapper flake がそれを呼んで自分の `homeConfigurations` を再定義する。依存の向きは常にこの1本 — dotfiles は private リポを flake input に取らない(`flake.lock` が input 名を平文で記録するため物理的に不可能)。所在は `scripts/hms.sh` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照し、本リポのソースには private wrapper flake の名前・パスを一切書かない。境界述語は「規則・スキーマは public、実値は private」— ADR-0025 の「存在すら書かない」対象は無条件でこれより優先し、既存の公開露出(`keys/*.pub`・実ホスト名・`oshi-marks.tsv` 等)は ADR-0007 に従い grandfather する。
 
 ## Development Rules
 
@@ -388,6 +389,26 @@ dotfiles/
   subkey) go in `hosts/`.
 - Format with `nix fmt` (nixfmt-tree — a treefmt wrapper that feeds nixfmt only
   the `*.nix` files, so no arguments are needed).
+
+### Private machine-state values vs. public rules (ADR-0033)
+- This repo is PUBLIC. Write the **rule, schema, or derivation procedure** for
+  a machine-state decision here, with a placeholder standing in for any real
+  value (`docs/personal-cloud-projects.md`'s `<tool>`/`<github-username>`,
+  `docs/operations.md`'s `s3:<B2 endpoint>/<bucket>/<prefix>`). Do **not**
+  write the value itself — a real bucket name, GCP project ID, Healthchecks
+  ping URL, backup-identity UUID, PRIVATE repository name, owned domain, or a
+  private wrapper flake's own path/name — anywhere in this repo's source,
+  Issues, or PRs. Those go in the private wrapper flake instead (ADR-0033);
+  this repo never takes that flake as an input (`flake.lock` would record its
+  `{owner, repo}` in the clear) and never names it — resolve it only through
+  the `~/.config/dotfiles/private-hub` marker (see `scripts/hms.sh`).
+- ADR-0025's "don't write the target's existence at all" class (pre-release
+  tool names bound for `update-own-tools`) overrides everything else in this
+  section unconditionally — no placeholder, no schema entry, nothing.
+- Grandfathered exceptions (ADR-0007 precedent — no retroactive bulk fix):
+  `keys/*.pub`, `home/identities/company.nix`'s work email, the three Linux
+  hosts' literal hostnames, `config/herdr/oshi-marks.tsv`. Do not use these
+  as precedent for adding new real values elsewhere.
 
 ### Hybrid translation (ADR-0002)
 - **Keep working config files literal** and deploy them via `xdg.configFile` /
