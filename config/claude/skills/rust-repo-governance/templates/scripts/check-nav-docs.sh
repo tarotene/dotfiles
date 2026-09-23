@@ -78,9 +78,11 @@ nav_doc_scan() {
   # Section index per line (0-based; section 0 is content before the first
   # heading of any level 1-6), and the heading text starting each section.
   local -a section_idx=() section_heading=("(intro)")
-  local cur=0 k
+  local cur=0 k infence_hdr=0
   for ((k = 0; k < n; k++)); do
-    if [[ "${lines[$k]}" =~ ^#{1,6}[[:space:]](.*)$ ]]; then
+    if [[ "${lines[$k]}" == '```'* ]]; then
+      infence_hdr=$((1 - infence_hdr))
+    elif ((! infence_hdr)) && [[ "${lines[$k]}" =~ ^#{1,6}[[:space:]](.*)$ ]]; then
       cur=$((cur + 1))
       section_heading+=("${BASH_REMATCH[1]}")
     fi
