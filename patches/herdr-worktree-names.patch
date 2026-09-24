@@ -3,10 +3,11 @@ Replace herdr's generated worktree/branch word list (adjective + noun, e.g.
 branches + graduated members), e.g. "okayu". Source list fetched from
 https://hololive.hololivepro.com/talents on 2026-09-19.
 
-This is a personal-taste patch, not a behavior fix — see the upstream feature
-request asking for the word list to become configurable instead of hardcoded:
-https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19). Drop this
-patch once that lands.
+This is a personal-taste patch, not a behavior fix. The upstream feature
+request asking for the word list to become configurable instead of hardcoded,
+https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19), was closed
+as not planned on 2026-09-19, so this patch has no upstream exit. Whether to
+keep it as a permanent local patch is tracked in tarotene/dotfiles#449.
 
 --- a/src/worktree.rs
 +++ b/src/worktree.rs

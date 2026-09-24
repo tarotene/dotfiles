@@ -152,9 +152,11 @@ Notes:
   This forces `herdr` to build from source locally instead of fetching a
   binary — a `nixpkgs-unstable` bump can shift `src/worktree.rs` enough for
   the patch to stop applying, which fails the build loudly (not silently);
-  the fix is to regenerate the patch against the new source. Drop the patch
-  once [herdrdev/herdr#4374](https://github.com/herdrdev/herdr/issues/4374)
-  (word list configurable via `config.toml`) lands upstream.
+  the fix is to regenerate the patch against the new source. The upstream
+  request to make the word list configurable via `config.toml`,
+  [herdrdev/herdr#4374](https://github.com/herdrdev/herdr/issues/4374), was
+  closed as not planned on 2026-09-19, so the patch has no upstream exit.
+  Whether to keep it as a permanent local patch is tracked in #449.
 
 ### Restarting herdr after a switch that changes its binary or hooks
 
