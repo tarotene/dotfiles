@@ -117,8 +117,11 @@
       # nixpkgs' herdr derivation declares `meta.platforms = lib.platforms.unix`
       # (darwin gets extra cctools/xcbuild inputs upstream), so this overlay is
       # applied per-system below rather than hardcoded to one.
-      # Drop this override once herdr's word list is configurable upstream:
-      # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19).
+      # The upstream request to make the word list configurable,
+      # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19), was
+      # closed as not planned on 2026-09-19, so this override is not waiting
+      # on upstream anymore. Whether to keep it as a permanent local patch is
+      # tracked in tarotene/dotfiles#449.
       herdrOverlay =
         system:
         (_final: _prev: {

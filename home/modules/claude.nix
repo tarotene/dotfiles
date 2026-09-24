@@ -106,7 +106,8 @@
 #    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
 #    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
 #
-# 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
+# 12) 個人スキル(diagramming, skill-gardening, living-description,
+#     issue-ref-freshness, pr-description,
 #     wrapup-chores, copilot-model-bump, issue-hygiene, tracking-issue, stacked-pr):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
@@ -116,7 +117,9 @@
 #    living-description は Issue/PR の本文(Description)を「起票時点のスナップ
 #    ショット」ではなく「現在の合意状態を表す正本」として扱い、コメントで裁定が
 #    確定した時点で本文を編集し続ける習慣(複数の関連Issueに仕様が重複している
-#    場合は横断的に同期する)。pr-description は PR 本文の標準スケルトン(課題・
+#    場合は横断的に同期する)。issue-ref-freshness はその外部参照版で、他リポジトリ
+#    の issue/PR を Open 前提で参照している記述を、参照先の裁定を読んで書き直す
+#    (常時監視の timer は置かず、機会発動 + 手動の一括点検)。pr-description は PR 本文の標準スケルトン(課題・
 #    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
 #    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
 #    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。wrapup-chores
@@ -144,7 +147,8 @@
 #    注意。hook のような settings.json 登録は不要(スキルは ~/.claude/skills/ を
 #    スキャンするだけで発動する)なので home.file だけで足りる。詳細は
 #    docs/claude/diagramming.md、docs/claude/skill-gardening.md、
-#    docs/claude/living-description.md、docs/claude/pr-description.md、
+#    docs/claude/living-description.md、docs/claude/issue-ref-freshness.md、
+#    docs/claude/pr-description.md、
 #    docs/claude/wrapup-chores.md、docs/claude/copilot-model-bump.md、
 #    docs/claude/issue-hygiene.md、docs/claude/tracking-issue.md、
 #    docs/claude/stacked-pr.md
@@ -1321,6 +1325,11 @@ in
     repoConfig + "/claude/skills/living-description/SKILL.md";
   home.file.".claude/skills/living-description/cases.md".source =
     repoConfig + "/claude/skills/living-description/cases.md";
+  # issue-ref-freshness: 他リポジトリの issue/PR を Open 前提で参照している
+  # 記述を、参照先の裁定(close・merge・not planned)を読んで書き直す手順。
+  # living-description の外部参照版。詳細は docs/claude/issue-ref-freshness.md。
+  home.file.".claude/skills/issue-ref-freshness/SKILL.md".source =
+    repoConfig + "/claude/skills/issue-ref-freshness/SKILL.md";
   # pr-description: PR 本文の標準スケルトンと Before/After 視覚証跡の判断知識。
   # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate.sh の
   # G_visual(~/.claude/pr-gate-repos の allowlist 内のみ)が担う。cases.md は
@@ -1434,6 +1443,8 @@ in
     repoConfig + "/claude/skills/living-description/SKILL.md";
   home.file.".agents/skills/living-description/cases.md".source =
     repoConfig + "/claude/skills/living-description/cases.md";
+  home.file.".agents/skills/issue-ref-freshness/SKILL.md".source =
+    repoConfig + "/claude/skills/issue-ref-freshness/SKILL.md";
   home.file.".agents/skills/pr-description/SKILL.md".source =
     repoConfig + "/claude/skills/pr-description/SKILL.md";
   home.file.".agents/skills/pr-description/cases.md".source =

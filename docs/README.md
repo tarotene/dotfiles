@@ -390,6 +390,10 @@ Design and rationale for the hooks and commands deployed from
 - [`living-description.md`](claude/living-description.md) — 個人スキル:
   Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
   正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。
+- [`issue-ref-freshness.md`](claude/issue-ref-freshness.md) — 個人スキル:
+  他リポジトリの issue/PR を Open 前提で参照している記述を、参照先の裁定
+  (close・merge・not planned)を読んで書き直す手順。常時監視を置かず、機会
+  発動と手動の一括点検で回す理由を記録。
 - [`test-grounding.md`](claude/test-grounding.md) — 個人スキル: 複数の実
   コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
   一次資料に当たることを強制する。
