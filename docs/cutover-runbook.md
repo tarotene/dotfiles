@@ -44,11 +44,9 @@ follows the "Greenfield host" procedure. Stage 1 is the VM rehearsal of Stage
 > greenfield host, or one already cut over, there is nothing to remove — skip to
 > Step 2. (The Step 3 `-b backup` switch also backs up any leftover collisions.)
 
-If the host has an ad-hoc native Claude Code install, remove it — see
-[Removing an ad-hoc native Claude Code install](#removing-an-ad-hoc-native-claude-code-install)
-below. This step is idempotent and safe to re-run on already-cut-over hosts,
-because the native installer's self-update mechanism can recreate the shadow
-long after the initial cutover.
+If the host has no native Claude Code install yet, install one — see
+[Installing Claude Code (native installer)](#installing-claude-code-native-installer)
+below. This step is idempotent and safe to re-run on already-cut-over hosts.
 
 Also work through
 [Legacy artifact cleanup](#legacy-artifact-cleanup) below. Those are artifacts
@@ -323,43 +321,43 @@ gui/$(id -u)/org.nix-community.home.downloads-clean` (or the timer firing on
 its own) fails silently with `Operation not permitted` and nothing under
 `~/Downloads` gets cleaned up.
 
-## Removing an ad-hoc native Claude Code install
+## Installing Claude Code (native installer)
 
-`claude-code` is installed declaratively via `home/modules/packages.nix`
-(#265). A native install from Anthropic's official installer lives at
-`~/.local/bin/claude` → `~/.local/share/claude/versions/<version>`, and
-`~/.local/bin` precedes `~/.nix-profile/bin` on PATH (see
-`config/zsh/modules/10-path.zsh`) — so a leftover native binary silently
-shadows the Nix-managed one.
-
-Note that Claude Code's own self-update mechanism will re-download the
-latest native binary into `~/.local/share/claude/versions/` on startup as
-long as either the `claude` symlink under `~/.local/bin/` or the
-`~/.local/share/claude/` directory still exists. Removing just the symlink
-is not enough; the versions directory must go too.
-
-Keep `~/.claude` — that holds settings, memory, and history, which are
-independent of the binary location:
+Claude Code is **not** installed via `home/modules/packages.nix` — nixpkgs'
+`claude-code` trails upstream by dozens of patch releases, which does not fit
+a tool whose model catalog changes underneath it (ADR-0000). The native
+installer is the source of truth on every host:
 
 ```bash
-rm -f ~/.local/bin/claude
-rm -rf ~/.local/share/claude
-hash -r   # or open a new shell
-which claude                    # → ~/.nix-profile/bin/claude
-readlink -f "$(which claude)"   # → /nix/store/…-claude-code-<ver>/bin/claude
+curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-If `which claude` still points into `~/.local/`, the native installer has
-already re-populated it; re-run the removal and check whether a background
-process or a shell alias is re-invoking the native installer.
+This places `~/.local/bin/claude` as a symlink into
+`~/.local/share/claude/versions/<version>`. `~/.local/bin` precedes
+`~/.nix-profile/bin` on PATH (see `config/zsh/modules/10-path.zsh` and
+`config/shell/profile`) — this is the intended shadow, not drift
+(`docs/operations.md`'s Ad-hoc installers section).
+
+Background auto-update is disabled by declaration
+(`home.sessionVariables.DISABLE_AUTOUPDATER`, `home/modules/claude.nix`) — the
+only update path is running `claude update` yourself. The zsh function in
+`config/zsh/modules/53-tools-claude.zsh` wraps `update`/`upgrade` and runs
+`claude-plan-model sync` right after, so the Opus Plan Mode model pin never
+trails the installed binary's catalog (ADR-0000).
+
+If `which claude` resolves into `~/.nix-profile/bin/` instead, that host
+still has the retired nixpkgs `claude-code` in its generation — run `hms`
+to pick up its removal, then re-open the shell.
 
 ## Removing an ad-hoc native herdr install
 
 `herdr` is installed declaratively via `home/modules/herdr.nix` (from a
-`nixpkgs-unstable` overlay — ADR-0001 Amendment 2026-08, #42). Same PATH
-shadowing trap as claude-code above (`~/.local/bin` precedes
-`~/.nix-profile/bin`), but here `home.activation.quarantineSelfInstalledHerdr`
-handles it automatically on every switch — it renames a stray real file at
+`nixpkgs-unstable` overlay — ADR-0001 Amendment 2026-08, #42), unlike claude
+above (ADR-0000's scoped exception): herdr's Nix package is meant to win over
+any ad-hoc install, not lose to one. Same `~/.local/bin` precedes
+`~/.nix-profile/bin` PATH position as the claude case, but here
+`home.activation.quarantineSelfInstalledHerdr` handles the opposite direction
+automatically on every switch — it renames a stray real file at
 `~/.local/bin/herdr` to `~/.local/bin/herdr.pre-nix` (a store symlink is left
 alone; only a genuine self-installed binary is quarantined). No manual step
 should be necessary; if `which herdr` still resolves into `~/.local/bin/herdr`
@@ -367,7 +365,7 @@ after a switch, check that the activation actually ran
 (`home-manager generations` for the current one) rather than removing the file
 by hand.
 
-Unlike claude-code, herdr's own updater does not fight this: it detects a Nix
+Unlike claude, herdr's own updater does not fight this: it detects a Nix
 install and disables its self-update path (`herdr channel show` / `herdr
 update` refuse with a message pointing at `nix profile upgrade` / the flake
 input). There is no re-populating background process to race.

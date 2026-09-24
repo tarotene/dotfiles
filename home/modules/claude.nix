@@ -105,6 +105,10 @@
 #    「そのモードの具体モデル ID」は宣言側の責務で、activation の `sync` が
 #    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
 #    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
+#    引き直しの契機は `hms`・トグル実行時に加え、`claude update` 直後
+#    (config/zsh/modules/53-tools-claude.zsh、ADR-0000)。claude 本体は
+#    native installer が正で自動更新は宣言で OFF にしてあるため、更新は
+#    この手動経路 1 本に絞られる。
 #
 # 12) 個人スキル(diagramming, skill-gardening, living-description, pr-description,
 #     wrapup-chores, copilot-model-bump, issue-hygiene, tracking-issue, stacked-pr):
@@ -970,9 +974,18 @@ in
   # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
   # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
   # docs/claude/copilot-plan-review.md の環境変数節。
+  #
+  # `DISABLE_AUTOUPDATER`(claude 本体 = native installer が正、ADR-0000)は
+  # background check だけを止め、`claude update` 自体は動く(公式 docs 確認済み)。
+  # settings.json の `env`(Claude Code 所有ファイルへの jq merge、
+  # docs/claude/opusplan-model-aliases.md)ではなくここに置くのは、即時性が
+  # 要らない(次回ログインから効けば足りる)値のために merge/撤回の手続きを
+  # 増やさないため。更新は config/zsh/modules/53-tools-claude.zsh 経由の
+  # `claude update` 1 本に絞る。
   home.sessionVariables = {
     COPILOT_PLAN_REVIEW_GATE_SEVERITIES = "BLOCKER";
     MAX_PLAN_REVIEWS = "2";
+    DISABLE_AUTOUPDATER = "1";
   };
 
   home.file.".claude/hooks/copilot-plan-review.sh" = {

@@ -257,6 +257,13 @@
   還元できず、そこを `scripts/github-audit` の `releaser` ドメインが検出
   する。対象 repo を列挙する registry ファイルは持たない(ADR-0025 と同じ
   理由)— 宣言の正本は release workflow ファイルの存在に還元する。
+- [ADR-0000](adr/0000-claude-native-install-source-of-truth.md) — Claude
+  Code 本体は nixpkgs の `claude-code` でなく native installer
+  (`~/.local/bin/claude`)を正本とする決定(ADR-0001 への scoped
+  exception、ADR-0025 と同型)。`scripts/claude-plan-model` がインストール
+  済みバイナリの model catalog を読むため、実体は 1 つでなければならない。
+  自動更新は宣言で OFF にし、更新は `claude update`(zsh 関数が
+  `claude-plan-model sync` を直後に実行)の 1 経路に絞る。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

@@ -560,12 +560,17 @@ So, when adding anything to the shell startup path:
   `home/modules/runtimes.nix`, so `rustup-init` should not be needed at all.
 
 `$HOME/.local/bin` is the one exception to "nix always outranks the rest": it
-comes first in PATH on purpose, and one entry there — `claude` — is a
-deliberate shadow of the nix-profile `claude`, not drift. It is a symlink into
-`~/.local/share/claude/versions/…`, kept live by the CLI's own self-updater;
+comes first in PATH on purpose, and one entry there — `claude` — is
+deliberately the *only* claude on the system, not a shadow of a nix package
+(nixpkgs' `claude-code` is not declared at all — ADR-0000, a scoped exception
+to ADR-0001). It is a symlink into `~/.local/share/claude/versions/…`, kept
+live by the CLI's own self-updater (background auto-update disabled by
+declaration, manual `claude update` re-syncs the model pin —
+`docs/cutover-runbook.md`'s "Installing Claude Code" section);
 `scripts/claude-plan-model` resolves concrete model IDs from that *installed*
-binary's baked-in model catalog, so letting nix's copy win would silently
-swap the binary `claude-plan-model` depends on ([#313](https://github.com/tarotene/dotfiles/issues/313)).
+binary's baked-in model catalog, so a Nix-managed copy trailing upstream by
+dozens of patches would silently swap the binary `claude-plan-model` depends
+on ([#313](https://github.com/tarotene/dotfiles/issues/313)).
 Other `.local/bin` names that happen to collide with a nix package (e.g.
 `mise`, `uv`, `uvx`) are not exceptions — those should resolve to the nix
 profile, and any ad-hoc binary left in `.local/bin` for them is drift to

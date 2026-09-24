@@ -69,14 +69,13 @@
       # but nothing previously installed the tool itself (#20).
       probe-rs-tools
 
-      # AI tooling (unfree — flake sets allowUnfree; version follows the
-      # nixpkgs pin, bump via `nix flake update`).
-      # A native install at ~/.local/bin/claude (from Anthropic's official
-      # installer) shadows this one because ~/.local/bin precedes
-      # ~/.nix-profile/bin on PATH. If you inherit a host that had claude
-      # installed natively, follow "Removing an ad-hoc native Claude Code
-      # install" in docs/cutover-runbook.md.
-      claude-code
+      # Claude Code is intentionally *not* declared here — the native
+      # installer (~/.local/bin/claude) is the source of truth, a scoped
+      # exception to ADR-0001 (ADR-0000). nixpkgs' `claude-code` trails
+      # upstream releases by dozens of patches, which does not fit a tool
+      # whose model catalog `claude-plan-model` reads changes underneath it.
+      # See "Installing Claude Code (native installer)" in
+      # docs/cutover-runbook.md and AGENTS.md's "Note on `claude`".
 
       # Declarative Gmail filter management for a personal filters repo,
       # built on mbrt/gmailctl. Unlike vhs (a one-shot-per-PR tool used
