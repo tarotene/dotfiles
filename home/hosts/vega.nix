@@ -33,10 +33,10 @@
   '';
 
   # Declarative marker for resolve_host() (ADR-0019): once this activates,
-  # hms/bootstrap.sh resolve this host as "vega" regardless of what the OS
-  # reports as $(hostname). Hand-place the marker once before the first
-  # switch under the new name (`echo vega > ~/.config/dotfiles/host`) —
-  # from the second switch onward, this declaration is the marker's source
-  # of truth (same bootstrap sequencing as altair.nix, ADR-0019 D3).
+  # hms/bootstrap.sh resolve this host as "vega" even with no marker present
+  # yet, as long as $(hostname) already reports "vega" (the rename runbook,
+  # docs/cutover-runbook.md, sets the OS hostname first via `hostnamectl`
+  # before running `hms`). From this switch onward, this declaration is the
+  # marker's source of truth (ADR-0019 D3, Amendment 2).
   xdg.configFile."dotfiles/host".text = "vega\n";
 }

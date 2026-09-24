@@ -50,12 +50,17 @@ defeating the indirection — so they stay hand-placed indefinitely. `host` is
 different: each star-codename host module declares its own marker via
 `xdg.configFile."dotfiles/host"` (ADR-0019 D3), so after a host's first
 switch under its new name, that declaration is the marker's source of
-truth — it only needs to be hand-placed once, before that first switch (see
-[`cutover-runbook.md`](cutover-runbook.md#renaming-an-existing-host-to-a-star-codename)):
+truth. On Linux it doesn't even need hand-placing: the rename runbook (see
+[`cutover-runbook.md`](cutover-runbook.md#renaming-an-existing-host-to-a-star-codename))
+sets the OS hostname to the new name first, so `resolve_host()`'s
+`hostname` fallback already resolves correctly on the switch that deploys
+the marker. Hand-placing is only needed on a host where the OS hostname
+cannot (or should not yet) change — macOS (`altair`'s greenfield bootstrap),
+or a Linux host being switched before its OS hostname is renamed:
 
 | marker | consumer | required? | fallback when unset |
 |---|---|---|---|
-| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; hand-placed only until the first switch under the new name, home-manager-managed after | `hostname` |
+| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
 | `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034) | optional, always hand-placed | `github:tarotene/dotfiles` (public-only apply) |
 | `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
 

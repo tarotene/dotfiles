@@ -1,12 +1,12 @@
 # Falcon Sensor は専用スクリプトで会社用 PC に導入する
 
-CrowdStrike Falcon Sensor は root 権限と systemd サービスを使うため、system layer として管理する。会社から受け取った `.deb` は Git に入れず、CID もホストに保存せず、`company-pop-new` 上で専用スクリプトを実行する。
+CrowdStrike Falcon Sensor は root 権限と systemd サービスを使うため、system layer として管理する。会社から受け取った `.deb` は Git に入れず、CID もホストに保存せず、`arcturus` 上で専用スクリプトを実行する。
 
-この runbook は `company-pop-new` の所有者向けで、ターミナルと sudo、そして会社のパスワードマネージャーに保管された CID が手元にあることを前提とする。初回導入では「IT 管理者の承認」から「端末登録」までを順に読み、導入後は更新と障害調査の節だけを参照すればよい。
+この runbook は `arcturus` の所有者向けで、ターミナルと sudo、そして会社のパスワードマネージャーに保管された CID が手元にあることを前提とする。初回導入では「IT 管理者の承認」から「端末登録」までを順に読み、導入後は更新と障害調査の節だけを参照すればよい。
 
 ## IT 管理者の承認を得てから始める
 
-対象は Pop!_OS 24.04、x86_64 の `company-pop-new` に限る。CrowdStrike は Ubuntu 24.04 を Sensor 7.19.17219 以降の対応対象としているが、Pop!_OS は公式の対応一覧に明記されていない。本番導入の前に、次の点を社内 IT 管理者へ確認する。
+対象は Pop!_OS 24.04、x86_64 の `arcturus` に限る。CrowdStrike は Ubuntu 24.04 を Sensor 7.19.17219 以降の対応対象としているが、Pop!_OS は公式の対応一覧に明記されていない。本番導入の前に、次の点を社内 IT 管理者へ確認する。
 
 - Pop!_OS 24.04 への導入が社内ポリシー上認められていること
 - 配布された Linux 用 `.deb` のバージョンが指定どおりであること
@@ -67,7 +67,7 @@ sudo /opt/CrowdStrike/falconctl -g --aid >/dev/null && echo "AID is set"
 
 `/opt/CrowdStrike` は `0750 root:root` なので、この配下は `sudo` なしでは存在確認すらできない。`ls /opt/CrowdStrike` が `Permission denied` になるのは正常で、導入失敗の兆候ではない。
 
-最後に、社内 IT 管理者へ Falcon Console の Newly Installed Sensors に `company-pop-new` が現れたことを確認してもらう。ローカルサービスが動いていても、Console に現れなければ導入完了とはしない。
+最後に、社内 IT 管理者へ Falcon Console の Newly Installed Sensors に `arcturus` が現れたことを確認してもらう。ローカルサービスが動いていても、Console に現れなければ導入完了とはしない。
 
 ## 更新にも同じスクリプトを使う
 
@@ -93,4 +93,4 @@ dpkg-query -W falcon-sensor
 
 対応 OS と最低センサーバージョンは [CrowdStrike の展開 FAQ](https://www.crowdstrike.com/ja-jp/products/faq/)、基本的な Linux 導入手順は [Installing Falcon Sensor for Linux](https://www.crowdstrike.com/tech-hub/endpoint-security/installing-falcon-sensor-for-linux/) を参照する。この runbook で解決しない問題やポリシー判断は、作業を止めて社内 IT 管理者へ問い合わせる。
 
-最終更新: 2026-09-13
+最終更新: 2026-09-24

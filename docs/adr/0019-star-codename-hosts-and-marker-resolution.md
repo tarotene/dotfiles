@@ -129,3 +129,29 @@ wrap-up chores セッション中、命名語彙が単一ホスト(altair)だけ
 - `home/hosts/vega.nix` — `personal-pop.nix` の改名(#214)
 - `home/hosts/arcturus.nix` — `company-pop-new.nix` の改名(#214)
 - `flake.nix` — `homeConfigurations` を新キーに更新、`company-pop-old` を削除
+
+## Amendment 2(2026-09-24)
+
+`docs/cutover-runbook.md` に既存ホストの改名手順を runbook 化した際
+(#422)、「OS hostname は変えない」と断言し、根拠として上記
+Alternatives considered の `scutil` 棄却を引いた。これは読み違いである
+— 棄却したのは「macOS で `scutil --set HostName` を人間が設定し、
+`$(hostname)` 自動選択の*機構*をマーカーに変えない」という代替案
+(= マーカー機構そのものを導入しない案)であって、「Linux ホストの
+OS hostname を恒星名へ変えてはならない」という決定はどこにも無い。
+
+1. **Linux ホストの改名では OS hostname も同じ手順で恒星名に設定する。**
+   `sudo hostnamectl hostname <star-name>` を `hms` の前に実行する。
+   マーカー機構(`dotfiles/host` → `resolve_host()`)は解決の正本のまま
+   変わらない — OS hostname は分離した第二の名前ではなく、この手順に
+   よって正本と一致させておく冗長な表示名(starship・herdr・mDNS 等が
+   参照する)という位置づけになる。
+2. **macOS(altair)はこの Amendment の対象外。** Context 2 で述べた
+   とおり、macOS の `hostname` は安定した入力ではないため、そもそも
+   `hostname` に依存しないグリーンフィールド運用のままでよい。
+
+### 執行点
+
+- `docs/cutover-runbook.md` の「Renaming an existing host to a star
+  codename」節 — OS hostname も改名する手順に書き直す
+- `scripts/install-falcon-sensor.sh` — `TARGET_HOST` を `arcturus` に追従

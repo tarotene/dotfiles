@@ -226,10 +226,12 @@
         # Transitional aliases (#214): the old hostname-keyed entries, kept
         # pointed at the SAME new host modules, so `hms`'s hostname fallback
         # (resolve_host() when no ~/.config/dotfiles/host marker is placed
-        # yet) still resolves on a host that has not hand-placed its new
-        # marker file before its first post-rename `hms` run. Drop once
-        # every physical host has confirmed the marker took effect (tracked
-        # separately, not this PR — see #214's own follow-up note).
+        # yet) still resolves on a host whose OS hostname has not yet been
+        # renamed via the cutover runbook (docs/cutover-runbook.md,
+        # "Renaming an existing host to a star codename", ADR-0019
+        # Amendment 2). Drop once every physical host's OS hostname has been
+        # renamed (tracked separately, not this PR — see #214's own
+        # follow-up note).
         "personal-pop" = mkHome linuxSystem ./home/hosts/vega.nix [ ];
         "company-pop-new" = mkHome linuxSystem ./home/hosts/arcturus.nix [ ];
       };
