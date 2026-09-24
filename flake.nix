@@ -34,11 +34,12 @@
     # tarotene/bleep cuts a new release. No `follows` needed: it is
     # only ever `exec`'d as standalone bash, never `dlopen`'d into another
     # package's process (same reasoning as herdr's overlay entry above).
-    # Renamed from tarotene/publish-guard (github#28); this rev is the
-    # rename itself, which is also where the Rust hook/CLI migration
-    # (#25-27, `bleep`/`bleep-hook`/`hooks/bleep.sh`) lands.
+    # Renamed from tarotene/publish-guard (github#28). This rev additionally
+    # carries the orgs.txt fail-loud fix (tarotene/bleep#31): scan* now
+    # returns ask instead of silently passing when the org denylist is
+    # unconfigured (ADR-0034 Amendment).
     bleep = {
-      url = "github:tarotene/bleep/eb5c40ac723e772fe60c9b7a619640aac7719d81";
+      url = "github:tarotene/bleep/74ba946bd5f46fd6622de333d5020bfbb1207ae8";
       flake = false;
     };
 
