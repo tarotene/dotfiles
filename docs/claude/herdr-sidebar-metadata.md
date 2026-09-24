@@ -74,7 +74,7 @@ role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラ�
 | ctx 危険(>=80%) | red | `#F38BA8` | statusline |
 | cost | teal | `#94E2D5` | statusline |
 | effort | lavender | `#B4BEFE` | statusline |
-| 控えめ情報(branch, metrics 行) | subtext0 | `#A6ADC8` | sidebar `$branch`/`$ctx`/`$cost`/`$effort` |
+| 控えめ情報(branch, metrics 行, Issue 数) | subtext0 | `#A6ADC8` | sidebar `$branch`/`$ctx`/`$cost`/`$effort`/`$issues` |
 | 区切り | overlay0 | `#6C7086` | statusline `·` |
 | sidebar 背景(端末透過に委ねる、明示) | reset(端末既定背景) | `"reset"` | `config/herdr/config.toml` `[theme.custom].sidebar_bg` |
 | sidebar active row 背景(非純正ブレンド) | lavender タイント | `#52567A` | `config/herdr/config.toml` `[theme.custom].active_row_bg` |
@@ -147,6 +147,64 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   `oshi-marks.tsv matches herdr-worktree-names.patch talent list`)が patch の
   名前集合と TSV のキー集合を双方向突合し、片方にしかない名前があれば fail
   する(mark 列が空なのは許容 — 行の有無だけを検査)。
+
+## `$issues` — workspace 行の open Issue 数
+
+ここまでのトークンはすべて **pane** 単位(`pane.report_metadata`、エージェント
+行)だが、リポジトリの open Issue 数はリポジトリ = workspace の worktree に
+紐づく値なので、herdr のもう一つのチャネル **workspace metadata**
+(`workspace.report_metadata` / `herdr workspace report-metadata`)で報告し、
+`[ui.sidebar.spaces].rows` の `$issues` トークンで表示する。pane 版に乗せると
+同じリポジトリの値が pane の数だけ重複し、エージェントの居ない workspace には
+出ないため採らなかった。
+
+- **表示**: `config/herdr/config.toml` の `[ui.sidebar.spaces]`。`rows` を
+  明示すると herdr 既定の行定義を丸ごと置き換えるので、既定 2 行
+  (`["state_icon", "workspace"]` / `["branch", "git_status"]`、
+  `herdr --default-config` 0.8.2)を再現したうえで 1 行目末尾に足している。
+  値は `` + 件数(nf-oct-issue_opened、U+F41B。FiraCode Nerd Font に収録済みで
+  モノクロ字形なので `fg` が効く)。0 件も ` 0` と出す — 「取得済みで 0 件」と
+  「未取得」を見分けるため。
+- **報告**: `crates/herdr-issue-counts`(Rust、ADR-0024)を `~/.local/bin` に
+  配備し、`home/modules/herdr.nix` の systemd --user / launchd タイマーが 5 分毎に
+  呼ぶ。1 回の実行は `herdr workspace list` → `repo_root` ごとに `git remote -v`
+  → `gh api graphql` 1 リクエスト(リポジトリごとに alias `r0..rn`、
+  `issues(states: OPEN) { totalCount }`) → workspace ごとに report-metadata。
+  REST の `open_issues_count` は PR を含むので使わない。認証は gh の keyring に
+  委ねる(トークンを自前で持たない)。
+- **エージェント hook に同乗させない理由**: エージェントの居ない workspace が
+  更新されず、PreToolUse のような頻発経路にネットワーク往復が入る。tab bar の
+  `command` エントリはグローバルに 1 枠しかなく、リポジトリ単位にならない。
+- **古い値の消え方**: ローカルキャッシュは持たず、`ttl_ms` = 15 分(タイマー
+  間隔の 3 周期)だけに任せる。タイマーが止まれば herdr 自身が値を消す。
+  tab bar の `claude-usage.sh` が stale-if-error キャッシュを持つのは「command
+  の失敗 = 即表示クリア」という tab bar の仕様のためで、workspace metadata は
+  ttl まで値を保持するので二重の状態は要らない。
+- **exit code**: 配信の成否だけを表す(detect-drift と同じ考え方、#442)。
+  herdr 未起動・gh 未認証・GitHub remote のある workspace がゼロ、は恒久状態に
+  なり得るので stderr に 1 行出して 0。GraphQL・報告の失敗は 1。一部の
+  リポジトリだけ解決できない(削除済み・権限なし)場合は、そのリポジトリだけ
+  skip して他は報告する — このとき `gh api graphql` は非 0 で終わるが stdout に
+  `data` が入るので、成否は終了コードでなく応答の中身で判断している。
+- **対象外**: herdr が `worktree` 情報を付けない workspace(git 外で開いた
+  もの)と、GitHub remote の無いリポジトリ。remote は `origin` を優先し、
+  無ければ最初の github.com remote を使う(`issue-index.sh` の `owner_repo()`
+  と同じ判定だが、リポジトリ名の `.` を許す点だけ異なる)。
+- **CLI の引数順**: herdr 0.8.2 の `workspace report-metadata` は workspace ID を
+  先に置かないと `--source <ID>` の値を未知のオプションとして弾く(2026-09-24
+  実測)。
+
+切り分け:
+
+```
+herdr-issue-counts --dry-run                 # workspace_id / owner/repo / 件数の表(報告しない)
+systemctl --user start herdr-issue-counts    # 1 回報告
+journalctl --user -u herdr-issue-counts      # skip / 失敗の理由
+herdr api snapshot | jq '.result.snapshot.workspaces[] | {workspace_id, tokens}'
+```
+
+下の「2 系統」は `$issues` にも当てはまる: snapshot に値があって画面に無ければ
+表示層(フォント・色・再描画)を疑う。
 
 ## トークンが出ないときの 2 系統(#305)
 

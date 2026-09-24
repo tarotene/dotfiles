@@ -356,7 +356,9 @@ Design and rationale for the hooks and commands deployed from
   sidebar: per-agent mode/model/metrics via pane metadata. Claude is 2-channel
   (hook for permission mode, statusline for model/ctx/cost/effort); Codex and
   Copilot get a leaner branch+model-only reporter each, plus the research
-  notes on why tab-bar usage was deferred (#117).
+  notes on why tab-bar usage was deferred (#117). Space rows add each
+  repository's open issue count (`$issues`) via workspace metadata, refreshed
+  by a 5-minute timer.
 - [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
   Claude rate-limit usage (5h session window / weekly per-model cap) with a
   pace-at-reset projection (average pace since window start → projected % at

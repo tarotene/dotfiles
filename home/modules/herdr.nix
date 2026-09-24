@@ -37,6 +37,16 @@ let
   );
   codexMetadataCmd = "sh '${config.home.homeDirectory}/.codex/herdr-codex-metadata.sh'";
   copilotMetadataCmd = "sh '${config.home.homeDirectory}/.copilot/hooks/herdr-copilot-metadata.sh'";
+
+  issueCountsPath = "${config.home.homeDirectory}/.local/bin/herdr-issue-counts";
+  # herdr(workspace list / report-metadata)、git(remote -v)、gh(auth status /
+  # api graphql)だけを呼ぶ。launchd の EnvironmentVariables.PATH は置換なので
+  # 同じ一覧を両方に渡す(worktree.nix の git-audit-worktrees と同じ理由)。
+  issueCountsServicePath = lib.makeBinPath [
+    pkgs.gh
+    pkgs.git
+    pkgs.herdr
+  ];
 in
 {
   home.packages = [ pkgs.herdr ];
@@ -86,6 +96,53 @@ in
   # サイドバーの $oshi トークン(推しマーク絵文字)が引く name→mark 表。
   # 3 エージェントの metadata hook 共通で参照する。docs/claude/herdr-sidebar-metadata.md 参照。
   xdg.configFile."herdr/oshi-marks.tsv".source = ../../config/herdr/oshi-marks.tsv;
+
+  # サイドバー workspace 行の $issues(リポジトリの open Issue 数、PR 除く)。
+  # Rust、crates/herdr-issue-counts(ADR-0024)を pkgs.dotfiles-tools から配備し、
+  # 5 分毎のタイマーで workspace metadata として報告する(ttl 15 分なので、
+  # タイマーが止まれば herdr 自身が値を消す)。drift.nix と同じ「配備 + timer
+  # 同居」型。docs/claude/herdr-sidebar-metadata.md「$issues」節参照。
+  home.file.".local/bin/herdr-issue-counts".source = "${pkgs.dotfiles-tools}/bin/herdr-issue-counts";
+
+  # exit code は「配信の成否」だけを表す(crates/herdr-issue-counts の
+  # exit_code、detect-drift と同じ考え方、#442): herdr 未起動・gh 未認証・
+  # GitHub リポの workspace 無しは恒久状態になり得るので 0(stderr に 1 行)、
+  # GraphQL・報告の失敗は 1。後者は一過性で、次の成功で failed が消える。
+  systemd.user.services.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Report each Herdr workspace's open GitHub issue count";
+    Service = {
+      Type = "oneshot";
+      ExecStart = issueCountsPath;
+      Environment = "PATH=${issueCountsServicePath}";
+      # oneshot の既定 TimeoutStartSec は無限。gh がネットワークで固まっても
+      # 次の周期を塞がないよう上限を置く。
+      TimeoutStartSec = "2min";
+    };
+  };
+
+  # Persistent= は書かない — OnCalendar= にしか効かない死んだ宣言になる
+  # (drift.nix の #442 の教訓、systemd.timer(5))。
+  systemd.user.timers.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Refresh Herdr sidebar issue counts every 5 minutes";
+    Timer = {
+      OnBootSec = "1min";
+      OnUnitActiveSec = "5min";
+      AccuracySec = "30s";
+      Unit = "herdr-issue-counts.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  # launchd 版(ADR-0018)。RunAtLoad が systemd の OnBootSec に相当する。
+  launchd.agents.herdr-issue-counts = lib.mkIf pkgs.stdenv.isDarwin {
+    enable = true;
+    config = {
+      ProgramArguments = [ issueCountsPath ];
+      StartInterval = 300;
+      RunAtLoad = true;
+      EnvironmentVariables.PATH = issueCountsServicePath;
+    };
+  };
 
   # herdr's config.toml is a real file with switch history behind it (a prior
   # -b backup can leave config.toml.backup sitting next to it), so it hits the
