@@ -26,6 +26,12 @@
       shellcheck
       zip
       unzip
+      # Per-file GPG/age decryption for SOPS-managed secrets in private repos
+      # outside this one (direnv `.envrc`, their scripts and skills call `sops`
+      # directly). Removed by ADR-0022 Decision 6 on the premise that no such
+      # consumer remained; that premise was wrong, so ADR-0022's Amendment
+      # (#451) restores it as a plain user-space CLI.
+      sops
 
       # Rust-tool CLIs (were cargo-binstall)
       bat
