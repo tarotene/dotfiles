@@ -304,6 +304,25 @@ file — see git history) and replaced the old script-centric CI with nix-centri
 checks (`nix flake check` + per-host activation build in `nix.yml`, plus a slim
 shellcheck/dry-run pass in `ci.yml`).
 
+### Granting `altair`'s `~/Downloads` cleanup access to Full Disk Access
+
+`home/modules/downloads.nix` deploys a `launchd` agent
+(`downloads-clean`) that runs `/usr/bin/find` against `~/Downloads` daily.
+macOS's TCC (Transparency, Consent and Control) subsystem blocks a
+`launchd` agent from touching a protected user folder even though the same
+command works fine from Terminal — Terminal already holds the grant, and a
+`launchd`-spawned process does not inherit it. There is no way to declare
+this grant from Nix; it must be added by hand once per machine:
+
+1. **System Settings → Privacy & Security → Full Disk Access.**
+2. Click **+**, press **⌘⇧G**, and enter `/usr/bin/find` to add it.
+3. Toggle it on.
+
+Before this grant, `launchctl kickstart -k
+gui/$(id -u)/org.nix-community.home.downloads-clean` (or the timer firing on
+its own) fails silently with `Operation not permitted` and nothing under
+`~/Downloads` gets cleaned up.
+
 ## Removing an ad-hoc native Claude Code install
 
 `claude-code` is installed declaratively via `home/modules/packages.nix`

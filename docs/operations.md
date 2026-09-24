@@ -39,6 +39,29 @@ dirty mid-session (that's the point of `hms .`), and without this nix repeats
 `warning: Git tree '<path>' has uncommitted changes` on every switch. The
 suppression is local-path-only, not a machine-wide `nix.conf` setting (#149).
 
+## `~/Downloads` is not storage
+
+`home/modules/downloads.nix` deploys a daily cleanup (`systemd.user.tmpfiles`
+on Linux, a `launchd` agent on darwin) that deletes anything under
+`~/Downloads` that has gone 14 days without a modification or a fresh
+arrival. The 14-day threshold, and why `tmpfs` was rejected in favor of this
+age-based cleanup, are recorded in the module's header comment.
+
+The age check uses each entry's timestamps the way `systemd-tmpfiles`
+(Linux) and `find`'s `-atime`/`-mtime`/`-ctime` (darwin) do by default: any of
+access/modification/status-change time being more recent than 14 days ago
+keeps the entry alive. Because `/home` is mounted `noatime`, in practice this
+means "since the file was last modified or arrived" — merely opening a file
+to read it does **not** reset the clock.
+
+Anything worth keeping belongs in `~/Documents` (or another XDG directory),
+not `~/Downloads`. To see what the next cleanup pass would remove without
+removing it:
+
+```bash
+systemd-tmpfiles --user --clean --dry-run
+```
+
 ## Host-local marker files
 
 Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let

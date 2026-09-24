@@ -18,7 +18,9 @@ let
   # escape hatch、apt-mark/pipx はシステム/pip 由来)。見つからない層は
   # detect-drift 自身が ADR-0005 に倣って黙って skip するので、ここでの
   # PATH 漏れは即エラーにはならず「その層だけ検出できない」に留まる。
-  driftServicePath = lib.makeBinPath [ pkgs.nix-index ] + ":${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.local/share/mise/shims:${config.home.homeDirectory}/.cargo/bin:/usr/bin:/bin";
+  driftServicePath =
+    lib.makeBinPath [ pkgs.nix-index ]
+    + ":${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.local/share/mise/shims:${config.home.homeDirectory}/.cargo/bin:/usr/bin:/bin";
 in
 {
   # Rust、crates/detect-drift(ADR-0024)経由で pkgs.dotfiles-tools から配備。
