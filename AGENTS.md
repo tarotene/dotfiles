@@ -42,7 +42,7 @@ closure is harmless. (`gh`'s own version-capped escape hatch on this same
 overlay was dropped once stable shipped >= 2.99.0, see #91.)
 
 Note on `claude`: not managed via nix at all — the native installer
-(`~/.local/bin/claude`) is the source of truth on every host (ADR-0000, a
+(`~/.local/bin/claude`) is the source of truth on every host (ADR-457, a
 scoped exception to ADR-0001). Background auto-update is disabled by
 declaration; updates go through `claude update`, which the zsh wrapper
 (`config/zsh/modules/53-tools-claude.zsh`) follows with `claude-plan-model

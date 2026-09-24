@@ -325,7 +325,7 @@ its own) fails silently with `Operation not permitted` and nothing under
 
 Claude Code is **not** installed via `home/modules/packages.nix` — nixpkgs'
 `claude-code` trails upstream by dozens of patch releases, which does not fit
-a tool whose model catalog changes underneath it (ADR-0000). The native
+a tool whose model catalog changes underneath it (ADR-457). The native
 installer is the source of truth on every host:
 
 ```bash
@@ -343,7 +343,7 @@ Background auto-update is disabled by declaration
 only update path is running `claude update` yourself. The zsh function in
 `config/zsh/modules/53-tools-claude.zsh` wraps `update`/`upgrade` and runs
 `claude-plan-model sync` right after, so the Opus Plan Mode model pin never
-trails the installed binary's catalog (ADR-0000).
+trails the installed binary's catalog (ADR-457).
 
 If `which claude` resolves into `~/.nix-profile/bin/` instead, that host
 still has the retired nixpkgs `claude-code` in its generation — run `hms`
@@ -353,7 +353,7 @@ to pick up its removal, then re-open the shell.
 
 `herdr` is installed declaratively via `home/modules/herdr.nix` (from a
 `nixpkgs-unstable` overlay — ADR-0001 Amendment 2026-08, #42), unlike claude
-above (ADR-0000's scoped exception): herdr's Nix package is meant to win over
+above (ADR-457's scoped exception): herdr's Nix package is meant to win over
 any ad-hoc install, not lose to one. Same `~/.local/bin` precedes
 `~/.nix-profile/bin` PATH position as the claude case, but here
 `home.activation.quarantineSelfInstalledHerdr` handles the opposite direction

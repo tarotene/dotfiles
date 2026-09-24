@@ -562,7 +562,7 @@ So, when adding anything to the shell startup path:
 `$HOME/.local/bin` is the one exception to "nix always outranks the rest": it
 comes first in PATH on purpose, and one entry there — `claude` — is
 deliberately the *only* claude on the system, not a shadow of a nix package
-(nixpkgs' `claude-code` is not declared at all — ADR-0000, a scoped exception
+(nixpkgs' `claude-code` is not declared at all — ADR-457, a scoped exception
 to ADR-0001). It is a symlink into `~/.local/share/claude/versions/…`, kept
 live by the CLI's own self-updater (background auto-update disabled by
 declaration, manual `claude update` re-syncs the model pin —

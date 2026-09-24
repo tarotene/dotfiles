@@ -106,7 +106,7 @@
 #    claude バイナリの latest_per_family から毎回引き直す — 具体 ID を Nix に
 #    書くと必ず腐るため。詳細は docs/claude/opusplan-model-aliases.md。
 #    引き直しの契機は `hms`・トグル実行時に加え、`claude update` 直後
-#    (config/zsh/modules/53-tools-claude.zsh、ADR-0000)。claude 本体は
+#    (config/zsh/modules/53-tools-claude.zsh、ADR-457)。claude 本体は
 #    native installer が正で自動更新は宣言で OFF にしてあるため、更新は
 #    この手動経路 1 本に絞られる。
 #
@@ -975,7 +975,7 @@ in
   # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
   # docs/claude/copilot-plan-review.md の環境変数節。
   #
-  # `DISABLE_AUTOUPDATER`(claude 本体 = native installer が正、ADR-0000)は
+  # `DISABLE_AUTOUPDATER`(claude 本体 = native installer が正、ADR-457)は
   # background check だけを止め、`claude update` 自体は動く(公式 docs 確認済み)。
   # settings.json の `env`(Claude Code 所有ファイルへの jq merge、
   # docs/claude/opusplan-model-aliases.md)ではなくここに置くのは、即時性が

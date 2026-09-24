@@ -1,4 +1,4 @@
-# ADR-0000 — Claude Code 本体は native installer を正本にする
+# ADR-457 — Claude Code 本体は native installer を正本にする
 
 - Status: Accepted
 - Date: 2026-09-24

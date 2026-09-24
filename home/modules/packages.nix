@@ -71,7 +71,7 @@
 
       # Claude Code is intentionally *not* declared here — the native
       # installer (~/.local/bin/claude) is the source of truth, a scoped
-      # exception to ADR-0001 (ADR-0000). nixpkgs' `claude-code` trails
+      # exception to ADR-0001 (ADR-457). nixpkgs' `claude-code` trails
       # upstream releases by dozens of patches, which does not fit a tool
       # whose model catalog `claude-plan-model` reads changes underneath it.
       # See "Installing Claude Code (native installer)" in

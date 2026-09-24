@@ -140,7 +140,7 @@ latest_per_family:{fable:"claude-fable-5-1",opus:"claude-opus-5",sonnet:"claude-
 追従の粒度は「**インストール済み CLI のバージョン**」になる。サーバ側 catalog が
 先行しても、CLI が更新されるまでは気付かない。引き直しの契機は 3 つ:
 `hms`(activation)・トグル実行時・`claude update`(`config/zsh/modules/
-53-tools-claude.zsh` が update/upgrade を横取りして直後に sync、ADR-0000)。
+53-tools-claude.zsh` が update/upgrade を横取りして直後に sync、ADR-457)。
 claude 本体は native installer が正で自動更新を宣言で止めているため
 (`home.sessionVariables.DISABLE_AUTOUPDATER`)、更新はこの手動コマンドの
 1 経路に絞られており、3 つ目の契機で確実に捕まえられる。SessionStart フックには
