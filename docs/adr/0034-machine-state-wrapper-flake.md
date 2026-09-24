@@ -75,6 +75,9 @@ person-state hub(person-state, private)/ さらに別の private リポジトリ
    そのものが、その値の machine-wide (push・Bash・MCP)な deny 登録になる。
    denylist の生成自体は private wrapper flake 側の責務であり、本 ADR は
    決定のみを記録する — publish-guard 本体の改修は不要。
+   > **[本 ADR の Amendment(2026-09-24)により生成先を変更]** publish-guard は
+   > bleep に改名され、設定ディレクトリは `~/.config/bleep/` に移った。生成先は
+   > `~/.config/bleep/` とし、`orgs.txt` も同じ経路で生成する。
 7. publish-guard の `PreToolUse` matcher(現在 `"Bash|mcp__.*"`)を
    `Edit|Write` へ拡張することは、今回は見送る。唯一確認できた漏洩は
    push 時ゲート統合の前に起きており、ゲート不在下の事例であって
@@ -124,3 +127,29 @@ person-state hub(person-state, private)/ さらに別の private リポジトリ
   (`github:tarotene/dotfiles`)を表示し、`~/.config/dotfiles/private-hub`
   にマーカーを置いた場合はその値を表示すること。
 - `shellcheck -S error scripts/hms.sh` — CI の `ci.yml` と同条件。
+
+## Amendment (2026-09-24 — publish-guard の改名に追従し、生成先を ~/.config/bleep/ に改める)
+
+upstream の publish-guard は bleep に改名され(#439 で追従済み)、設定
+ディレクトリが `~/.config/publish-guard/` から `~/.config/bleep/` に移った。
+upstream は互換 shim を持たず、旧ディレクトリを読まない。Decision 6 が
+指定した生成先 `~/.config/publish-guard/repos.txt` は、改名後の bleep には
+届かない。
+
+- Decision 6 の生成先を `~/.config/bleep/repos.txt` に読み替える。
+- private wrapper flake は `~/.config/bleep/orgs.txt`(org 名)も同じ経路で
+  生成する。bleep は `orgs.txt` が存在しないと publish 系の検査を ask に
+  エスカレートする(upstream tarotene/bleep#30)。手置きをホスト移行の唯一の
+  経路にすると、改名のような設定パスの変更で黙って効かなくなるため、宣言から
+  生成する経路に寄せる。登録する org が無いホストは空ファイルを置く。
+- private wrapper flake 側の生成実装は、Consequences にあるとおり別リポジトリ
+  での作業で、本 ADR のスコープ外に留める。
+
+背景: 改名の直後、移行未了のホストで Claude Code セッションが private
+リポジトリ名を本文に含む Issue をこのリポジトリに起票した(削除済み)。
+当時の bleep は `orgs.txt` 不在を無言で pass させており、上記の fail-loud 化は
+その再発防止として upstream に入れたもの。
+
+### 執行点
+
+- `flake.nix` — `inputs.bleep` の pin を、`orgs.txt` 不在で ask を返す rev に上げる
