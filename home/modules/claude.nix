@@ -938,6 +938,14 @@ let
   # ツール名への allow は効果を持たないが、実態と乖離した宣言が残ると次に読む人が
   # 「このサーバーは生きている」と誤読する。
   # `mcp__plugin_context7_context7__*` は plugin 由来で現役なので触らない。
+  #
+  # `Bash(ps -p * -o pid,cmd)` はこのリスト(宣言)由来ではなく、実行時の
+  # 許可プロンプトで個別ホストの settings.json に足された野良ルールだった。
+  # 中間 `*` が `-p` の位置への任意オプション挿入を素通しするとして
+  # Claude Code 2.1.281 が起動時に警告するようになり、しかも transcript 上の
+  # 実際の利用は全て `ps -p <pid> >/dev/null && ...` 形でこのルールにマッチ
+  # した実績が無かった。撤回リストは同一文字列の削除だけを見るので、出自が
+  # 宣言か実行時プロンプトかを問わず効く。
   retiredPermissionRules = [
     "Bash(git -C * add *)"
     "Bash(git -C * commit *)"
@@ -945,6 +953,7 @@ let
     "Bash(git -C * diff *)"
     "Bash(./scripts/list-branch-inventory.sh *)"
     "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
+    "Bash(ps -p * -o pid,cmd)"
 
     "mcp__brave-search__brave_web_search"
     "mcp__github__issue_write"
