@@ -138,10 +138,15 @@ latest_per_family:{fable:"claude-fable-5-1",opus:"claude-opus-5",sonnet:"claude-
   中途半端な model 設定のほうが有害だから。
 
 追従の粒度は「**インストール済み CLI のバージョン**」になる。サーバ側 catalog が
-先行しても、CLI が自動更新されるまでは気付かない。引き直しの契機は `hms`
-(activation)と、トグル実行時の 2 つ。SessionStart フックにはしていない — 毎起動で
-バイナリを読むコストを払ってまで得るものが「1 セッション遅れて効く自己修復」しか
-ないため。
+先行しても、CLI が更新されるまでは気付かない。引き直しの契機は 3 つ:
+`hms`(activation)・トグル実行時・`claude update`(`config/zsh/modules/
+53-tools-claude.zsh` が update/upgrade を横取りして直後に sync、ADR-457)。
+claude 本体は native installer が正で自動更新を宣言で止めているため
+(`home.sessionVariables.DISABLE_AUTOUPDATER`)、更新はこの手動コマンドの
+1 経路に絞られており、3 つ目の契機で確実に捕まえられる。SessionStart フックには
+していない — env は起動時に process.env へ焼き込まれるため、SessionStart で
+sync しても効くのは次のセッションからで、毎起動でバイナリを読むコストを払う
+価値が薄い。
 
 ## 実測の落とし穴: settings.json の env は shell env を上書きする
 

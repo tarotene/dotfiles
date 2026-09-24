@@ -12,13 +12,15 @@
 #
 #   $HOME/.local/bin     home-manager-deployed scripts (hms, git-shelve, ...),
 #                        the deliberate shadowing of the system xdg-open by
-#                        scripts/detach-open.sh, and the deliberate shadowing
-#                        of nix's own `claude` by the Claude Code CLI's
-#                        self-updater symlink (~/.local/share/claude/versions/
-#                        ...) — scripts/claude-plan-model reads that installed
-#                        binary's baked-in model catalog, so the self-updated
-#                        copy is the correct one here (#313) — must stay in
-#                        front.
+#                        scripts/detach-open.sh, and the Claude Code CLI's
+#                        own self-updater symlink (~/.local/share/claude/
+#                        versions/...) — not a shadow of a nix package, since
+#                        nix's own `claude` is intentionally undeclared
+#                        (ADR-0000, a scoped exception to ADR-0001):
+#                        scripts/claude-plan-model reads that installed
+#                        binary's baked-in model catalog, so the native,
+#                        self-updated copy is the only correct one here
+#                        (#313) — must stay in front.
 #   <nix profile>        put here by /etc/profile.d/nix.sh before this file
 #                        runs.  Never named explicitly: we only have to stop
 #                        jumping over it.
