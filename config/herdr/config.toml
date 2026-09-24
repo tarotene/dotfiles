@@ -66,6 +66,19 @@ tab_bar_right = [
 ]
 tab_bar_right_separator = "·"
 
+# workspace(space)行。herdr 既定の 2 行(state_icon+workspace / branch+git_status)
+# を再現し、1 行目末尾にそのリポジトリの open Issue 数(PR 除く)を足す。
+# $issues は ~/.local/bin/herdr-issue-counts(crates/herdr-issue-counts、
+# home/modules/herdr.nix のタイマーで 5 分毎)が workspace metadata で報告する
+# (ttl 15 分)。値は nf-oct-issue_opened(U+F41B)+ 件数で、0 件も表示する。
+# GitHub remote の無い workspace には出ない。色は控えめ情報の subtext0。
+[ui.sidebar.spaces]
+row_gap = 0
+rows = [
+  ["state_icon", "workspace", { token = "$issues", fg = "#A6ADC8" }],
+  ["branch", "git_status"],
+]
+
 # Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
 # $model/$ctx/$cost/$effort は config/claude/statusline/claude-statusline.sh、$branch も
 # herdr-claude-metadata.sh が(git 由来で)pane.report_metadata で注入する。トークンの
