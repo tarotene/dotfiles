@@ -16,6 +16,7 @@
     ./modules/gpg.nix
     ./modules/packages.nix
     ./modules/desktop.nix
+    ./modules/downloads.nix
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix
   ];
