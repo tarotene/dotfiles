@@ -38,6 +38,11 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 git-worktree-allow hook（検証つきのプログラム的許可 —
 `docs/claude/git-worktree-allow.md`）。
 
+同じ経路は宣言由来のルールに限らない。`Bash(ps -p * -o pid,cmd)` は実行時の
+許可プロンプトで個別ホストの settings.json に直接足された野良ルールだったが、
+中間 `*` 警告は同様に発生し、撤回リストへ加えるだけで全ホストから消せた
+（このルールは元々マッチ実績が無く、置換ルールは置かなかった）。
+
 同じ撤回パターンを `.hooks.<event>` にも敷いたのが `registerHooks` の
 `retiredHookEntries`、`statusLine` にも敷いたのが `syncStatusLine` の
 `retiredStatusLineCommands`(いずれも `home/modules/claude.nix`。詳細は
