@@ -11,7 +11,7 @@ set -euo pipefail
 #   ./scripts/install-falcon-sensor.sh --package <sensor.deb>
 #   ./scripts/install-falcon-sensor.sh --dry-run --package <sensor.deb>
 
-TARGET_HOST="company-pop-new"
+TARGET_HOST="arcturus"
 TARGET_OS="pop"
 TARGET_VERSION="24.04"
 TARGET_ARCH="amd64"
@@ -29,7 +29,7 @@ usage() {
     cat <<'EOF'
 Usage: install-falcon-sensor.sh --package <sensor.deb> [--dry-run]
 
-Install and register CrowdStrike Falcon Sensor on company-pop-new.
+Install and register CrowdStrike Falcon Sensor on arcturus.
 
 Options:
     --package <path>  Company-provided falcon-sensor .deb package

@@ -557,7 +557,7 @@ jobs:
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made
       # this step pass without validating anything.  The runner is not
-      # company-pop-new, so the host checks warn instead of failing.
+      # arcturus, so the host checks warn instead of failing.
       - name: install-falcon-sensor.sh --dry-run
         run: |
           fixture="$(mktemp -d)/falcon-sensor"

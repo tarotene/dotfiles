@@ -8,7 +8,8 @@ Tracked by #217.
 - Nix installed (the `bootstrap.sh` script handles this for greenfield hosts).
 - The flake builds cleanly: `nix flake check` passes.
 - You know your machine's hostname (`hostname` — it must match a key in
-  `homeConfigurations` in `flake.nix`).
+  `homeConfigurations` in `flake.nix`), or the logical name a
+  `~/.config/dotfiles/host` marker resolves to (ADR-0019).
 
 ## Order of hosts
 
@@ -18,6 +19,12 @@ Tracked by #217.
 | 2 | company-pop-old | First real cutover. Existing on-disk [S] subkey is reused as-is. |
 | 3 | company-pop-new | Greenfield — provision from bare metal via `bootstrap.sh`. New [S] subkey is cut on this host. |
 | 4 | personal-pop | In-place cutover of this PC, after the procedure is proven on company hosts. |
+
+Historical record of this table's own cutover — the names above are as they
+were at the time. Current names (#214): `personal-pop` → `vega`,
+`company-pop-new` → `arcturus`; `company-pop-old` was retired outright (see
+"Renaming an existing host to a star codename" below for how the rename
+itself is done).
 
 Stages 2 and 4 follow the "Existing host cutover" procedure below. Stage 3
 follows the "Greenfield host" procedure. Stage 1 is the VM rehearsal of Stage
@@ -133,52 +140,84 @@ cd ~/dotfiles
 ## Renaming an existing host to a star codename
 
 Following up after a host module gets renamed to a star codename (ADR-0019,
-e.g. `personal-pop` → `vega`, #214) — for a host that is already provisioned
-and only needs to pick up its new logical name.
+e.g. `personal-pop` → `vega`, #214) — for a Linux host that is already
+provisioned and only needs to pick up its new name. macOS is out of scope
+for this section: `altair` was greenfield-provisioned directly under its
+star name (`docs/setup-macos.md`), and ADR-0019's Context 2 is exactly why
+macOS never keys off `hostname` in the first place.
 
-**The OS hostname does not change.** `hostnamectl` / `scutil --set HostName`
-are not part of this procedure — ADR-0019 considered and rejected setting the
-OS hostname to the star name (`docs/adr/0019-star-codename-hosts-and-marker-resolution.md`,
-"Alternatives considered"). The logical name lives entirely in the
-`dotfiles/host` marker; `resolve_host()` in `scripts/hms.sh` / `bootstrap.sh`
-reads it first and only falls back to `hostname` when it is unset.
+**The OS hostname changes too, as part of this same procedure.** ADR-0019's
+"Alternatives considered"
+(`docs/adr/0019-star-codename-hosts-and-marker-resolution.md`) rejected
+*relying on* `scutil --set HostName` as the resolution mechanism on macOS —
+not renaming the OS hostname on Linux. `resolve_host()` in `scripts/hms.sh` /
+`bootstrap.sh` still reads the `dotfiles/host` marker first, but on Linux the
+simplest way to make that marker resolve correctly *and* end up with a
+`hostname` that matches is to change the OS hostname itself, then let the
+marker fall out of that:
 
 ```bash
-mkdir -p ~/.config/dotfiles
-echo <star-name> > ~/.config/dotfiles/host   # e.g. vega
+sudo hostnamectl hostname <star-name>   # e.g. vega — sets static, transient,
+                                         # and pretty hostname together; no reboot needed
+hostname                                # expect: <star-name>
+grep -n '127\.0\.1\.1' /etc/hosts       # if this line exists, update it to <star-name> too
+                                         # (Pop!_OS 24.04 has no such line by default —
+                                         # NSS resolves the local hostname via `myhostname`)
 hms
 ```
 
-`resolve_host()` picks up the marker and selects `.#<star-name>`. From here
-on `home/hosts/<star-name>.nix`'s own `xdg.configFile."dotfiles/host"`
-declaration is the marker's source of truth (same bootstrap sequencing as
-the greenfield altair setup below) — the hand-placed copy above only needs
-to survive long enough for this first switch.
+With no `dotfiles/host` marker yet, `resolve_host()` falls back to `hostname`
+— now `<star-name>` — and selects `.#<star-name>`. `home/hosts/<star-name>.nix`'s
+own `xdg.configFile."dotfiles/host"` declaration then deploys the marker on
+this same switch, so from here on the marker is the resolution's source of
+truth and the OS hostname is a (now-matching) display name kept in sync by
+this procedure, not by any ongoing mechanism.
+
+If a marker was already hand-placed on this host before this procedure
+existed (true for `vega` and `arcturus` as of #214/#422 — the marker already
+resolves to the new name, only the OS hostname is still the old one), only
+the `hostnamectl` step above is needed; `hms` will pick up the OS hostname
+change but the marker (already home-manager-managed) does not change.
 
 Verify:
 
 ```bash
+hostname                               # expect: <star-name>
 dotfiles-doctor                        # expect: OK   host: <star-name>
 readlink -f ~/.config/dotfiles/host    # expect: a /nix/store/... path
 ```
 
-Clean up: `-b backup` moves the pre-existing hand-placed marker aside to
-`~/.config/dotfiles/host.backup` rather than failing the switch (same
-`.backup` clobber mechanics as [`docs/operations.md`](operations.md#hms-fails-at-checklinktargets-with-a-backup-clobber-error));
+Clean up: if this host had a *hand-placed* marker file predating this switch
+(the greenfield-style bootstrap, not the `hostnamectl` step above), `-b
+backup` moves it aside to `~/.config/dotfiles/host.backup` rather than
+failing the switch (same `.backup` clobber mechanics as
+[`docs/operations.md`](operations.md#hms-fails-at-checklinktargets-with-a-backup-clobber-error));
 delete it once the `dotfiles-doctor` check above passes.
 
-Left alone on purpose: `scripts/install-falcon-sensor.sh` and
-`.github/workflows/ci.yml` key off the real OS hostname, so they keep the
-pre-rename name until the machine itself is reimaged or reprovisioned under
-the new identity — renaming the logical host name here does not touch them.
+Side effects of the OS hostname change to expect, not to troubleshoot: the
+starship/herdr hostname segments pick up the new name on the next shell or
+herdr restart; the host's mDNS name becomes `<star-name>.local`; and on
+`arcturus`, the terminal name shown in the Falcon Console changes (mention
+this to IT if they track terminals by name). `crates/detect-drift` reads
+`/etc/hostname` directly, so its next drift-report Issue title also switches
+to the new name.
 
-Once every host has switched to its star-codename marker, the migration-era
-`homeConfigurations` aliases for the old names (`flake.nix`, currently
-`personal-pop` → `vega` and `company-pop-new` → `arcturus`) can be removed —
-they exist only as a safety net for hosts that have not yet switched.
+`scripts/install-falcon-sensor.sh`'s `TARGET_HOST` and the rest of
+`docs/falcon-sensor.md` are kept in sync with the current name (both track
+`arcturus` as of this rename) — the installer's own OS-hostname check is
+*not* relaxed, since it is exactly what tells you to run this procedure
+first if you try to run it on a not-yet-renamed host.
+
+Once every host's OS hostname has been renamed via this procedure, the
+migration-era `homeConfigurations` aliases for the old names (`flake.nix`,
+currently `personal-pop` → `vega` and `company-pop-new` → `arcturus`) can be
+removed — they exist only as a safety net for a host that has not yet
+renamed its OS hostname (so `hms`'s `hostname` fallback still resolves under
+the old key).
 
 See also [`docs/setup-macos.md`](setup-macos.md#4-clone-the-repo-and-set-the-host-marker)
-for the same marker-then-switch sequence on a brand-new (greenfield) host.
+for the greenfield marker-then-switch sequence used on a brand-new macOS
+host, which does not apply here.
 
 ## Rollback
 
