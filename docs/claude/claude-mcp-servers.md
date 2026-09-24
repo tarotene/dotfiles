@@ -57,18 +57,26 @@ identity 層(`home/identities/personal.nix` / `home/identities/company.nix`)か�
 `home/modules/claude.nix` 自身からも、同じ属性に足せる。会社 workspace 専用の
 接続情報を common 層に書いてしまう事故(全ホストへの意図しない配備)を、
 モジュール分割そのもので防ぐ。現在の populate は `home/modules/esa.nix` の `esa`
-(personal 限定、ADR-0022)と `home/identities/personal.nix` の `playwright` /
-`slack` — 後者 2 つも外部サービスへ繋ぐ経路なので identity 層に置いている
+(personal 限定、ADR-0022)と `home/identities/personal.nix` の `playwright` —
+外部サービス(ブラウザ経由の Web UI)に繋ぐ経路なので identity 層に置いている
 (warp-terminal #9 と同じ判断)。
+
+かつて同じ理由で `slack`(remote HTTP、OAuth)も personal.nix に宣言していたが、
+transcript 全件を確認したところ利用実績が 0 セッションで、未認証のまま
+起動のたびに `⚠ 1 MCP server needs authentication` を出すだけの状態が続いていた。
+使っていない外部サービス経路を認証だけして残す判断はせず、宣言ごと削除した。
+reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証時に書き足された
+`oauth` ブロックごと)も消す。
 
 ## 使い方(populate する側)
 
 ```nix
-# home/identities/company.nix — 秘密の要らない remote server の例
+# home/identities/company.nix — 秘密の要らない stdio server の例
 {
-  dotfiles.claude.mcpServers.slack = {
-    type = "http";
-    url = "https://mcp.slack.com/mcp";
+  dotfiles.claude.mcpServers.playwright = {
+    type = "stdio";
+    command = "npx";
+    args = [ "@playwright/mcp@latest" ];
   };
 }
 ```

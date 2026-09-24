@@ -73,13 +73,6 @@ in
       command = "npx";
       args = [ "@playwright/mcp@latest" ];
     };
-    # グローバル ~/.claude/CLAUDE.md の調査規律が Slack を一次情報源の一つに
-    # 指定している。oauth の clientId / callbackPort は認証時に Claude Code が
-    # 書き足すので宣言しない(reconcile は宣言 key を deep merge するため残る)。
-    slack = {
-      type = "http";
-      url = "https://mcp.slack.com/mcp";
-    };
   };
 
   # Git identity — personal (non-secret).
