@@ -88,6 +88,7 @@ in
           pkgs.coreutils
           pkgs.findutils
           pkgs.git
+          pkgs.gnused # scripts/git-audit-worktrees の `sed -n 's#^worktree ##p'`
           pkgs.jq
           pkgs.util-linux
           pkgs.herdr
