@@ -477,9 +477,18 @@ pipx) should be reclaimed into the right layer. `detect-drift`(#4, Layer 2,
 systemd/launchd timer (`home/modules/drift.nix`), or on demand:
 
 ```bash
-detect-drift              # human-readable report, exit 1 if drift found
-detect-drift --porcelain  # TSV: layer, name, nixpkgs attribute candidate
+detect-drift                                   # human-readable report, exit 1 if drift found
+detect-drift --porcelain                       # TSV: layer, name, nixpkgs attribute candidate
+detect-drift --file-issue tarotene/dotfiles     # file/comment on a `drift`-labelled Issue
 ```
+
+The `--file-issue` exit code reflects delivery, not drift presence: 0 =
+delivered (issue filed/commented, or nothing to report after ADR-0025
+filtering), 3 = delivery failed. This differs from the plain/`--porcelain`
+contract (0 = clean, 1 = drift) because cargo/npm/pipx have no declaration
+file, so every installed package is a drift candidate — treating drift
+presence as unit failure would make the weekly timer's `detect-drift.service`
+fail permanently.
 
 It never installs, removes, or modifies anything — deciding whether a
 drifted package belongs in a layer above, or should stay an intentional

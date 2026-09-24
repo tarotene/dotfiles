@@ -166,6 +166,36 @@ pub fn filter_registry_excluded(
     (filtered, excluded_count)
 }
 
+/// `--file-issue` の結果。起票そのものを要求しなかった(CLI 単独実行)か、
+/// 配信(起票・コメント追記・報告対象ゼロによる無配信)に成功したか、
+/// 配信に失敗したか — 3 択の閉じた語彙にすることで、`exit_code` が
+/// 未定義の組み合わせを扱わずに済む。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileIssueOutcome {
+    NotRequested,
+    Delivered,
+    Failed,
+}
+
+/// systemd/launchd の oneshot unit が「成功」と「要修復」のどちらに終わる
+/// べきかを決める純粋関数。cargo/npm/pipx レイヤーは宣言ファイルを持たない
+/// ため在庫全件が drift 扱いになり(#4 の設計)、`--file-issue` 運用では
+/// drift の有無そのものを exit code の失敗条件にすると恒久的に failed に
+/// なる(2026-09-24 の実機観測、hms が degraded と報告した原因)。
+/// `--file-issue` を要求していない CLI 単独実行では、従来どおり
+/// drift の有無を報告する(`detect-drift`/`detect-drift --porcelain` の
+/// 既存契約を維持)。
+///
+/// 戻り値: 0 = clean、1 = drift(CLI 契約) / 0 = 配信済み、3 = 起票失敗
+/// (`--file-issue` 契約。2 は usage error で既に main.rs が使用中)。
+pub fn exit_code(any_drift: bool, outcome: FileIssueOutcome) -> u8 {
+    match outcome {
+        FileIssueOutcome::NotRequested => u8::from(any_drift),
+        FileIssueOutcome::Delivered => 0,
+        FileIssueOutcome::Failed => 3,
+    }
+}
+
 /// 自動起票する GitHub Issue の title/body を組み立てる(純粋関数、
 /// 副作用なし)。`drifts` は `filter_registry_excluded` を通した後のもの
 /// でなければならない — この関数自身は ADR-0025 のフィルタを行わない。
@@ -262,6 +292,24 @@ mod registry_tests {
         let drifts = vec![drift("apt", &["pandoc"])];
         let body = compose_issue_report("vega", &drifts, 0);
         assert!(!body.contains("ADR-0025"));
+    }
+
+    #[test]
+    fn exit_code_not_requested_reports_drift_presence() {
+        assert_eq!(exit_code(false, FileIssueOutcome::NotRequested), 0);
+        assert_eq!(exit_code(true, FileIssueOutcome::NotRequested), 1);
+    }
+
+    #[test]
+    fn exit_code_delivered_is_always_success_regardless_of_drift() {
+        assert_eq!(exit_code(false, FileIssueOutcome::Delivered), 0);
+        assert_eq!(exit_code(true, FileIssueOutcome::Delivered), 0);
+    }
+
+    #[test]
+    fn exit_code_failed_is_always_nonzero_regardless_of_drift() {
+        assert_eq!(exit_code(false, FileIssueOutcome::Failed), 3);
+        assert_eq!(exit_code(true, FileIssueOutcome::Failed), 3);
     }
 }
 

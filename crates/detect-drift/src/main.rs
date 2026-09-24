@@ -11,9 +11,9 @@
 use std::process::{Command, ExitCode};
 
 use detect_drift::{
-    compose_issue_report, diff_apt, diff_cargo, diff_npm, diff_pipx, filter_registry_excluded,
-    parse_apt_declared, parse_apt_installed, parse_cargo_installed, parse_npm_global,
-    parse_pipx_venvs, LayerDrift,
+    compose_issue_report, diff_apt, diff_cargo, diff_npm, diff_pipx, exit_code,
+    filter_registry_excluded, parse_apt_declared, parse_apt_installed, parse_cargo_installed,
+    parse_npm_global, parse_pipx_venvs, FileIssueOutcome, LayerDrift,
 };
 
 const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<repo>]\n\n\
@@ -27,7 +27,9 @@ drift was found.\n\
 --file-issue <owner>/<repo>: on drift, file (or comment on) a `drift`-\n\
 labelled GitHub Issue via `gh`. Excludes any cargo/npm/pipx name registered\n\
 in update-own-tools' registry.toml (ADR-0025) — fails closed (files\n\
-nothing) if that registry exists but cannot be parsed.";
+nothing) if that registry exists but cannot be parsed. Exit code reflects\n\
+delivery, not drift presence: 0 = delivered (issue filed/commented, or\n\
+nothing to report after ADR-0025 filtering), 3 = delivery failed.";
 
 fn main() -> ExitCode {
     let mut porcelain = false;
@@ -95,19 +97,19 @@ fn main() -> ExitCode {
         }
     }
 
-    if any_drift {
-        if let Some(repo) = file_issue_repo {
-            if let Err(msg) = file_issue(&repo, &drifts) {
-                eprintln!("WARN detect-drift --file-issue: {msg}(起票せず終了)");
-                // ADR-0025 の fail-closed: 起票に失敗しても drift 検出そのもの
-                // の結果(exit 1)は変えない — 起票は付随的な通知であって、
-                // detect-drift 本来の「drift があるか」の判定とは独立している。
+    let outcome = match file_issue_repo {
+        None => FileIssueOutcome::NotRequested,
+        Some(_) if !any_drift => FileIssueOutcome::Delivered,
+        Some(repo) => match file_issue(&repo, &drifts) {
+            Ok(()) => FileIssueOutcome::Delivered,
+            Err(msg) => {
+                eprintln!("WARN detect-drift --file-issue: {msg}(起票せず終了、exit 3)");
+                FileIssueOutcome::Failed
             }
-        }
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    }
+        },
+    };
+
+    ExitCode::from(exit_code(any_drift, outcome))
 }
 
 /// `--file-issue`: レジストリで ADR-0025 対象を除外してから、`drift`
@@ -148,8 +150,11 @@ fn file_issue(owner_repo: &str, drifts: &[LayerDrift]) -> Result<(), String> {
 
     // `drift` ラベルが無いと `gh issue create --label drift` はエラーに
     // なる。`--force` で作成/更新を1本化し、事前のワンタイム手動セットアップ
-    // を要求しない(冪等 — 既にあれば説明文を上書きするだけ)。
-    run(
+    // を要求しない(冪等 — 既にあれば説明文を上書きするだけ)。このラベル
+    // 作成自体の失敗(既存ラベルへの権限不足等)は無視してよいので、
+    // 通常の `run()`(黙って skip)のままにするが、原因は stderr に残す
+    // (これも起票経路の一部なので ADR-0005 の「未インストール」の話とは別)。
+    if run(
         "gh",
         &[
             "label",
@@ -161,16 +166,17 @@ fn file_issue(owner_repo: &str, drifts: &[LayerDrift]) -> Result<(), String> {
             "detect-drift(#4)が検出した宣言外の ad-hoc install",
             "--force",
         ],
-    );
-
-    let existing = run(
-        "gh",
-        &[
-            "issue", "list", "--repo", owner_repo, "--label", "drift", "--state", "open", "--json",
-            "number", "--limit", "1",
-        ],
     )
-    .ok_or_else(|| "gh issue list に失敗".to_string())?;
+    .is_none()
+    {
+        eprintln!("WARN detect-drift --file-issue: gh label create drift に失敗(続行)");
+    }
+
+    let existing = run_gh(&[
+        "issue", "list", "--repo", owner_repo, "--label", "drift", "--state", "open", "--json",
+        "number", "--limit", "1",
+    ])
+    .map_err(|e| format!("gh issue list に失敗: {e}"))?;
 
     let numbers: Vec<serde_json::Value> = serde_json::from_str(&existing)
         .map_err(|e| format!("gh issue list の出力が JSON でない: {e}"))?;
@@ -180,28 +186,22 @@ fn file_issue(owner_repo: &str, drifts: &[LayerDrift]) -> Result<(), String> {
         .and_then(|v| v.get("number"))
         .and_then(|n| n.as_i64())
     {
-        run(
-            "gh",
-            &[
-                "issue",
-                "comment",
-                &n.to_string(),
-                "--repo",
-                owner_repo,
-                "--body",
-                &body,
-            ],
-        )
-        .ok_or_else(|| format!("gh issue comment #{n} に失敗"))?;
+        run_gh(&[
+            "issue",
+            "comment",
+            &n.to_string(),
+            "--repo",
+            owner_repo,
+            "--body",
+            &body,
+        ])
+        .map_err(|e| format!("gh issue comment #{n} に失敗: {e}"))?;
     } else {
-        run(
-            "gh",
-            &[
-                "issue", "create", "--repo", owner_repo, "--title", &title, "--body", &body,
-                "--label", "drift",
-            ],
-        )
-        .ok_or_else(|| "gh issue create に失敗".to_string())?;
+        run_gh(&[
+            "issue", "create", "--repo", owner_repo, "--title", &title, "--body", &body, "--label",
+            "drift",
+        ])
+        .map_err(|e| format!("gh issue create に失敗: {e}"))?;
     }
     Ok(())
 }
@@ -214,6 +214,27 @@ fn run(cmd: &str, args: &[&str]) -> Option<String> {
         return None;
     }
     String::from_utf8(out.stdout).ok()
+}
+
+/// `gh` を実行し stdout を返す。`run()` と違い、`gh` 自体が PATH に無い場合
+/// も含めて失敗理由を `Err` に残す — 起票経路(`file_issue`)専用のヘルパ。
+/// 検出層の `run()` は ADR-0005 どおり黙って skip し続ける(こちらは変えない)。
+/// 失敗時のメッセージは stderr の先頭行(無ければ実行自体の失敗内容)。
+fn run_gh(args: &[&str]) -> Result<String, String> {
+    let out = Command::new("gh")
+        .args(args)
+        .output()
+        .map_err(|e| format!("gh の実行に失敗: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let first_line = stderr.lines().next().unwrap_or("").trim();
+        return Err(if first_line.is_empty() {
+            format!("終了コード {}", out.status)
+        } else {
+            first_line.to_string()
+        });
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("gh の出力が UTF-8 でない: {e}"))
 }
 
 fn check_apt() -> Option<LayerDrift> {
