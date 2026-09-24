@@ -130,8 +130,8 @@
   direnv、実質シークレット 1 個のための器)から、ホストローカルの素の GPG
   暗号化ファイル + 専用 launcher + `~/.claude.json` への宣言的 merge へ
   置き換える決定。その private リポジトリは archive。ADR-0010 の
-  「供給チャネルを都度選び直す」の初適用例で、唯一の sops 消費者の消滅に
-  伴い `sops` パッケージも削除する。
+  「供給チャネルを都度選び直す」の初適用例。`sops` パッケージの削除は、
+  他の消費者が現役だったため Amendment(#451)で撤回した。
 - [ADR-0023](adr/0023-repo-lifecycle-governance.md) — リポジトリの
   visibility/license 方針・Maintain/Archive/Delete triage 基準・
   deprecate-then-archive チェックリスト・consolidation 手順を、別の私設

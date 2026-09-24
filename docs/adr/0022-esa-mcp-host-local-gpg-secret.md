@@ -75,6 +75,9 @@ riベース時に発見して採用した — Decision 3 はこの機構の消�
 6. **`home/modules/packages.nix` の `sops` パッケージを削除**する
    (ADR-0010 と同じ判断基準: 消費者不在の経路は残さない。唯一の消費者
    だったそのリポジトリの archive でこの条件が満たされる)。
+   > **[本 ADR の Amendment(#451)により撤回]** 「唯一の消費者」という前提が
+   > 誤りで、リポジトリ外に現役の SOPS 消費者があった。`sops` は
+   > `home/modules/packages.nix` に戻した。この決定が書かれた時点の判断として残す。
 
 ## Alternatives considered
 
@@ -151,3 +154,22 @@ riベース時に発見して採用した — Decision 3 はこの機構の消�
   パスへ書き換わること、トークン未配置状態で launcher が意図どおり
   診断つきで fail-closed することを実機確認済み。
 - 実機での secrets 配置手順は `docs/setup.md` の「esa MCP token」節を参照。
+
+## Amendment (2026-09-24 — Decision 6 の前提訂正: リポジトリ外に現役の SOPS 消費者がある, #451)
+
+Decision 6 は「`sops` の消費者は archive した旧 private リポジトリ 1 件だけ」
+という前提で `sops` パッケージを削除した。この前提は誤りだった。このリポジトリの
+外に、現役の private な消費者がある。`.sops.yaml` の creation_rule 群・
+スクリプト・skill から `sops` を直接呼んでおり、削除後はそのリポジトリで
+`sops: command not found` になった。ADR-0034 に従い、その名前はここに書かない。
+
+Consequences が明記していた復旧経路をそのまま踏み、`sops` を
+`home/modules/packages.nix` に戻す。Decision 6 の他の部分(esa MCP の
+トークン供給を SOPS から切り離したこと)は変えない。消費者を特定しないまま
+パッケージを消す判断は、ADR-0010 の「消費者不在の経路は残さない」を適用する
+前に、リポジトリ外の呼び出しを確かめる手段が無いと成り立たない。今回はその
+確認が無かった。
+
+### 執行点
+
+- `home/modules/packages.nix` — `sops` を戻す(#451)
