@@ -116,7 +116,19 @@
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
     # config/, so dropping it on darwin is a pure subtraction, not a gap.
-    ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.xsel ];
+    ++ lib.optionals pkgs.stdenv.isLinux [
+      pkgs.xsel
+
+      # notify-send (#462): was in the nix store but not on PATH — nothing
+      # under home/modules/packages.nix declared it, so it never got
+      # symlinked into the profile (same "in the store but not on PATH"
+      # pattern as #447/#286). A systemd user timer's ExecStart depending
+      # on `%h/.nix-profile/bin/notify-send` failed silently until this was
+      # added. darwin has no equivalent consumer (macOS notifications go
+      # through osascript/terminal-notifier, not libnotify), so this stays
+      # Linux-only like xsel above.
+      pkgs.libnotify
+    ];
 
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
   # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
