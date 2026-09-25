@@ -331,6 +331,20 @@
 #    解除は環境変数 SKIP_DECISION_COLOCATION_GUARD=1。詳細は
 #    docs/adr/396-decision-colocation.md と docs/claude/decision-colocation.md。
 #
+# 25) slot-availability(個人スキル):
+#    調整さん等の候補日程一覧を Google Calendar の空き状況と突き合わせ、
+#    朝・昼・夜の3コマ単位で当たり判定(○/△/×)を決定的なスクリプト
+#    (scripts/slot-hit.py)に委譲する。終日イベント(試験本番等)を見落として
+#    実際は拘束される日を ○ と誤判定しないよう、`soft_day_prefixes` に一致
+#    する終日イベントの日に時間指定の確定予定が無ければ実行を止める。調べて
+#    判明した拘束時間は設定ファイルではなく Google Calendar 側に時間指定の
+#    予定として書き戻す(判定ルールと個々の予定の事実を二重管理しない)。
+#    external-call-scheduling とは発火条件が異なる(こちらは Claude 自身が
+#    実行できる回答作業)ため独立したスキルにした。個人のカレンダー allowlist
+#    等は private な person-state リポジトリに置き、既定パス
+#    `~/.config/slot-availability/config.toml` へ手動シンボリックリンクで
+#    接続する(dotfiles には置かない)。詳細は docs/claude/slot-availability.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -1480,6 +1494,14 @@ in
   # 判断知識。詳細は docs/claude/external-call-scheduling.md。
   home.file.".claude/skills/external-call-scheduling/SKILL.md".source =
     repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
+  # slot-availability: 候補日程一覧 × Google Calendar の3コマ当たり判定。
+  # 詳細は docs/claude/slot-availability.md。
+  home.file.".claude/skills/slot-availability/SKILL.md".source =
+    repoConfig + "/claude/skills/slot-availability/SKILL.md";
+  home.file.".claude/skills/slot-availability/scripts/slot-hit.py" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.py";
+    executable = true;
+  };
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1537,6 +1559,12 @@ in
     repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
   home.file.".agents/skills/external-call-scheduling/SKILL.md".source =
     repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
+  home.file.".agents/skills/slot-availability/SKILL.md".source =
+    repoConfig + "/claude/skills/slot-availability/SKILL.md";
+  home.file.".agents/skills/slot-availability/scripts/slot-hit.py" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.py";
+    executable = true;
+  };
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
