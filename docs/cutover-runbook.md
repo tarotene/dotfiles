@@ -61,6 +61,26 @@ over long ago.
 ./scripts/install-packages.sh
 ```
 
+### 2b. Snapshot the apt drift baseline (#445)
+
+Pop!_OS's `distinst` post-install runs its own `apt-get install` inside the
+target during provisioning, so `apt-mark showmanual` reports hundreds of
+seed packages (`pop-desktop`, language packs, dev libs, ...) as "manually
+installed" even though nobody chose them. Without a baseline, `detect-drift`
+reports all of them as drift on every run. Take the snapshot now, right
+after `install-packages.sh` and before any ad-hoc `apt install` happens —
+this is the one point where `apt-mark showmanual`'s output genuinely *is*
+the seed:
+
+```bash
+detect-drift apt-baseline --init
+```
+
+This writes `$XDG_STATE_HOME/detect-drift/apt-baseline.txt` (a host-local
+file with real package names — never commit it; it isn't a repo artifact).
+Re-running it later would silently absorb whatever ad-hoc installs have
+accumulated since, so don't re-run `--init` outside of this one moment.
+
 ### 3. First home-manager switch
 
 Use `-b backup` so any remaining file collisions are backed up (renamed to
@@ -134,6 +154,49 @@ git clone https://github.com/tarotene/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 ./bootstrap.sh
 ```
+
+## Retrofitting the apt drift baseline on an existing host (#445)
+
+A host that was already cut over before #445 landed has no
+`apt-baseline.txt`, so `detect-drift` reports the Pop!_OS seed packages as
+drift (see "2b. Snapshot the apt drift baseline" above for why). Since
+`apt-mark showmanual` on an already-running host mixes seed and real ad-hoc
+installs together, `--init` would wrongly absorb the ad-hoc ones into the
+baseline too. Reconstruct instead from `/var/log/apt/history.log*`'s
+`Commandline:` lines, which record the actual `apt install <pkg...>`
+invocations a human ran:
+
+```bash
+detect-drift apt-baseline --from-history
+```
+
+This computes baseline = `apt-mark showmanual` **minus** every package name
+recovered from a logged `apt`/`apt-get install` commandline (`sudo`-prefixed
+included; flags and `=version` pins are stripped). Two known limitations,
+both inherent to reconstructing history after the fact rather than a defect
+to fix here:
+
+- `logrotate` keeps 12 monthly generations of `history.log`
+  (`/etc/logrotate.d/apt`), so installs from more than a year ago are
+  already gone and their packages end up staying in the baseline (as if
+  they were seed) — the safe-side error for this direction, since it just
+  means a few genuinely old ad-hoc packages get treated as baseline instead
+  of drift.
+- Conversely, a literal `apt install <pkg...>` run to **reinstall or repair
+  a seed package** (not to add a new one) also shows up as a logged
+  install, so it gets excluded from the reconstructed baseline and still
+  reports as drift. On a host with a long, hands-on troubleshooting
+  history this can leave a non-trivial residue of WARN lines even after
+  `--from-history` (observed on `vega`, 2026-09-25: 551 showmanual entries,
+  256-entry reconstructed baseline, still tens of WARN lines for what are
+  clearly desktop/toolchain seed packages like `cosmic-term`/`e2fsprogs`).
+  Triage the residue by hand once: for each WARN line that's genuinely
+  seed, either add it to `packages/declarative/apt-packages.txt` (if it
+  should be tracked going forward) or accept it into the baseline by
+  appending its name to `apt-baseline.txt` directly (host-local file, not
+  committed). This is a one-time cleanup per retrofitted host, not a
+  recurring chore — after it, `detect-drift`'s apt layer stays clean going
+  forward the same way `--init` keeps a freshly-provisioned host clean.
 
 ## Renaming an existing host to a star codename
 

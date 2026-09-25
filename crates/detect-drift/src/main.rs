@@ -11,12 +11,14 @@
 use std::process::{Command, ExitCode};
 
 use detect_drift::{
-    compose_issue_report, diff_apt, diff_cargo, diff_npm, diff_pipx, exit_code,
-    filter_registry_excluded, parse_apt_declared, parse_apt_installed, parse_cargo_installed,
-    parse_npm_global, parse_pipx_venvs, FileIssueOutcome, LayerDrift,
+    compose_issue_report, compute_baseline_from_history, diff_apt, diff_cargo, diff_npm, diff_pipx,
+    exit_code, filter_registry_excluded, parse_apt_baseline, parse_apt_declared,
+    parse_apt_installed, parse_cargo_installed, parse_history_log_installs, parse_npm_global,
+    parse_pipx_venvs, FileIssueOutcome, LayerDrift,
 };
 
-const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<repo>]\n\n\
+const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<repo>]\n\
+       detect-drift apt-baseline --init | --from-history\n\n\
 Reports apt/cargo/npm -g/pipx packages installed outside their declaration\n\
 (packages/declarative/apt-packages.txt for apt; cargo/npm/pipx have no\n\
 declaration file, so every installed package is a candidate, ADR-0001).\n\
@@ -29,9 +31,25 @@ labelled GitHub Issue via `gh`. Excludes any cargo/npm/pipx name registered\n\
 in update-own-tools' registry.toml (ADR-0025) — fails closed (files\n\
 nothing) if that registry exists but cannot be parsed. Exit code reflects\n\
 delivery, not drift presence: 0 = delivered (issue filed/commented, or\n\
-nothing to report after ADR-0025 filtering), 3 = delivery failed.";
+nothing to report after ADR-0025 filtering), 3 = delivery failed.\n\n\
+apt-baseline (#445): manage the host-local apt seed baseline that excludes\n\
+Pop!_OS's distinst post-install packages (`apt-mark showmanual` reports\n\
+them as manual, but they were never an ad-hoc install) from apt drift.\n\
+  --init         snapshot the current `apt-mark showmanual` output as the\n\
+                 baseline (run this during provisioning, before any ad-hoc\n\
+                 install has happened).\n\
+  --from-history reconstruct the baseline on an already-provisioned host:\n\
+                 baseline = showmanual minus the ad-hoc installs recovered\n\
+                 from /var/log/apt/history.log*'s `Commandline:` lines.\n\
+Writes to $XDG_STATE_HOME/detect-drift/apt-baseline.txt (or\n\
+$DETECT_DRIFT_APT_BASELINE if set).";
 
 fn main() -> ExitCode {
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.get(1).map(String::as_str) == Some("apt-baseline") {
+        return cmd_apt_baseline(&argv[2..]);
+    }
+
     let mut porcelain = false;
     let mut file_issue_repo: Option<String> = None;
     let mut args = std::env::args().skip(1);
@@ -242,7 +260,18 @@ fn check_apt() -> Option<LayerDrift> {
     let declared = parse_apt_declared(&declared_text);
     let installed_text = run("apt-mark", &["showmanual"])?;
     let installed = parse_apt_installed(&installed_text);
-    Some(diff_apt(&declared, &installed))
+    let baseline_path = apt_baseline_path();
+    let baseline = match std::fs::read_to_string(&baseline_path) {
+        Ok(text) => parse_apt_baseline(&text),
+        Err(_) => {
+            eprintln!(
+                "WARN detect-drift: apt baseline({}) が無いため、Pop!_OS の初期 seed パッケージも drift として報告されます。`detect-drift apt-baseline --init`(新規ホスト)または `--from-history`(既存ホスト)で作成してください。",
+                baseline_path.display()
+            );
+            std::collections::BTreeSet::new()
+        }
+    };
+    Some(diff_apt(&declared, &installed, &baseline))
 }
 
 /// 解決順は `scripts/apply-rulesets.sh`(#417)と同じ3段: 明示指定 >
@@ -265,6 +294,128 @@ fn apt_declared_path() -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from("packages/declarative/apt-packages.txt")
+}
+
+/// baseline ファイルの場所(#445)。machine-state なので repo には置かず
+/// `$XDG_STATE_HOME/detect-drift/apt-baseline.txt` に置く(ADR-0034 と同型
+/// の「実値はホストローカル」区分)。`DETECT_DRIFT_APT_BASELINE` は
+/// テスト/手動検証用の明示指定。
+fn apt_baseline_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("DETECT_DRIFT_APT_BASELINE") {
+        return std::path::PathBuf::from(p);
+    }
+    let xdg_state = std::env::var("XDG_STATE_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| format!("{h}/.local/state"))
+        });
+    let base = xdg_state.unwrap_or_else(|| ".".to_string());
+    std::path::PathBuf::from(base).join("detect-drift/apt-baseline.txt")
+}
+
+/// `detect-drift apt-baseline --init|--from-history` のディスパッチ(#445)。
+fn cmd_apt_baseline(rest: &[String]) -> ExitCode {
+    match rest.first().map(String::as_str) {
+        Some("--init") => {
+            let Some(installed_text) = run("apt-mark", &["showmanual"]) else {
+                eprintln!(
+                    "detect-drift apt-baseline --init: apt-mark showmanual の実行に失敗しました(apt 未インストール等)"
+                );
+                return ExitCode::from(1);
+            };
+            write_apt_baseline_and_report(&installed_text)
+        }
+        Some("--from-history") => {
+            let Some(installed_text) = run("apt-mark", &["showmanual"]) else {
+                eprintln!(
+                    "detect-drift apt-baseline --from-history: apt-mark showmanual の実行に失敗しました(apt 未インストール等)"
+                );
+                return ExitCode::from(1);
+            };
+            let installed = parse_apt_installed(&installed_text);
+            let history_text = read_apt_history_logs();
+            if history_text.is_empty() {
+                eprintln!(
+                    "WARN detect-drift apt-baseline --from-history: /var/log/apt/history.log* が読めません(存在しない、または logrotate で既に失われている可能性)。ad-hoc install を1件も除けないまま、現在の showmanual 全件を baseline にします。"
+                );
+            }
+            let ad_hoc = parse_history_log_installs(&history_text);
+            let baseline = compute_baseline_from_history(&installed, &ad_hoc);
+            let baseline_text = baseline
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join("\n")
+                + if baseline.is_empty() { "" } else { "\n" };
+            write_apt_baseline_and_report(&baseline_text)
+        }
+        _ => {
+            eprintln!("{USAGE}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn write_apt_baseline_and_report(baseline_text: &str) -> ExitCode {
+    let path = apt_baseline_path();
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "detect-drift apt-baseline: {} の作成に失敗しました: {e}",
+                parent.display()
+            );
+            return ExitCode::from(1);
+        }
+    }
+    if let Err(e) = std::fs::write(&path, baseline_text) {
+        eprintln!(
+            "detect-drift apt-baseline: {} への書き込みに失敗しました: {e}",
+            path.display()
+        );
+        return ExitCode::from(1);
+    }
+    let count = parse_apt_baseline(baseline_text).len();
+    println!(
+        "detect-drift apt-baseline: {} に {count} 件を保存しました",
+        path.display()
+    );
+    ExitCode::SUCCESS
+}
+
+/// `/var/log/apt/history.log`(未圧縮、現行分)と `history.log.N.gz`
+/// (logrotate によるローテーション分、`monthly` × 12 世代)を連結して
+/// 返す(#445)。読めるものが1つも無ければ空文字列(呼び出し側が扱う)。
+fn read_apt_history_logs() -> String {
+    let dir = std::path::Path::new("/var/log/apt");
+    let mut combined = String::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return combined;
+    };
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("history.log"))
+        })
+        .collect();
+    paths.sort();
+    for path in paths {
+        if path.extension().and_then(|e| e.to_str()) == Some("gz") {
+            if let Some(text) = run("zcat", &["-f", &path.to_string_lossy()]) {
+                combined.push_str(&text);
+                combined.push('\n');
+            }
+        } else if let Ok(text) = std::fs::read_to_string(&path) {
+            combined.push_str(&text);
+            combined.push('\n');
+        }
+    }
+    combined
 }
 
 fn check_cargo() -> Option<LayerDrift> {

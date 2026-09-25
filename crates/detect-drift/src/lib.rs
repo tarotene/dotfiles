@@ -50,13 +50,80 @@ pub fn parse_apt_installed(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// apt レイヤーの diff: 手動インストール済みだが宣言に無いもの。
-pub fn diff_apt(declared: &BTreeSet<String>, installed: &BTreeSet<String>) -> LayerDrift {
-    let undeclared = installed.difference(declared).cloned().collect();
+/// apt レイヤーの diff: 手動インストール済みだが宣言にも baseline にも無いもの。
+///
+/// `baseline`(#445)は Pop!_OS の distinst post-install が入れる初期 seed
+/// パッケージ(`apt-mark showmanual` からは「手動インストール」にしか見えない)
+/// を除外するためのホスト別集合。`apt_baseline_path()`(main.rs)で解決した
+/// ファイルが無ければ空集合を渡す — その場合は従来どおり `showmanual −
+/// declared` の判定になり、seed パッケージ全件が drift として出る
+/// (main.rs 側が WARN 1 行で baseline 作成を促す)。
+pub fn diff_apt(
+    declared: &BTreeSet<String>,
+    installed: &BTreeSet<String>,
+    baseline: &BTreeSet<String>,
+) -> LayerDrift {
+    let undeclared = installed
+        .difference(declared)
+        .filter(|name| !baseline.contains(*name))
+        .cloned()
+        .collect();
     LayerDrift {
         layer: "apt",
         undeclared,
     }
+}
+
+/// baseline ファイルの解析。`apt-mark showmanual` の出力と同じ 1行1
+/// パッケージ名の形式なので `parse_apt_installed` をそのまま使う。
+pub fn parse_apt_baseline(text: &str) -> BTreeSet<String> {
+    parse_apt_installed(text)
+}
+
+/// `/var/log/apt/history.log*`(複数世代、展開済みテキストとして連結した
+/// もの)の `Commandline:` 行から、人間が `apt`/`apt-get install <pkg...>`
+/// (`sudo` 経由も可)で明示的に入れたパッケージ名を復元する(#445)。
+/// upgrade/remove/autoremove 等 install 以外のサブコマンドは無視する。
+/// `pkg=version` 形式のバージョン指定は名前部分だけを残す。フラグ
+/// (`-y` 等)は無視する。
+pub fn parse_history_log_installs(text: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for line in text.lines() {
+        let Some(cmd) = line.strip_prefix("Commandline: ") else {
+            continue;
+        };
+        let mut tokens: Vec<&str> = cmd.split_whitespace().collect();
+        if tokens.first() == Some(&"sudo") {
+            tokens.remove(0);
+        }
+        let Some(bin) = tokens.first() else { continue };
+        if !(bin.ends_with("apt") || bin.ends_with("apt-get")) {
+            continue;
+        }
+        if tokens.get(1) != Some(&"install") {
+            continue;
+        }
+        for tok in &tokens[2..] {
+            if tok.starts_with('-') {
+                continue;
+            }
+            let name = tok.split('=').next().unwrap_or(tok);
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// `--from-history`(#445): 既存ホストの baseline を、現在の
+/// `apt-mark showmanual` から history.log 由来の ad-hoc install 集合を
+/// 除いたものとして復元する。
+pub fn compute_baseline_from_history(
+    installed: &BTreeSet<String>,
+    ad_hoc: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    installed.difference(ad_hoc).cloned().collect()
 }
 
 /// `cargo install --list` の出力を解析し、パッケージ名の集合を返す。
@@ -335,7 +402,7 @@ mod tests {
     fn diff_apt_reports_only_undeclared() {
         let declared = BTreeSet::from(["zsh".to_string(), "jq".to_string()]);
         let installed = BTreeSet::from(["zsh".to_string(), "jq".to_string(), "pandoc".to_string()]);
-        let drift = diff_apt(&declared, &installed);
+        let drift = diff_apt(&declared, &installed, &BTreeSet::new());
         assert_eq!(drift.undeclared, vec!["pandoc".to_string()]);
         assert!(!drift.is_clean());
     }
@@ -344,8 +411,93 @@ mod tests {
     fn diff_apt_clean_when_no_extra_installed() {
         let declared = BTreeSet::from(["zsh".to_string()]);
         let installed = BTreeSet::from(["zsh".to_string()]);
-        let drift = diff_apt(&declared, &installed);
+        let drift = diff_apt(&declared, &installed, &BTreeSet::new());
         assert!(drift.is_clean());
+    }
+
+    #[test]
+    fn diff_apt_excludes_baseline_seed_packages() {
+        // #445: Pop!_OS の初期 seed(baseline)は showmanual に出るが drift
+        // ではない。宣言にも baseline にも無いものだけが drift。
+        let declared = BTreeSet::from(["zsh".to_string()]);
+        let installed = BTreeSet::from([
+            "zsh".to_string(),
+            "pop-desktop".to_string(), // baseline 由来(seed)
+            "pandoc".to_string(),      // ad-hoc(真の drift)
+        ]);
+        let baseline = BTreeSet::from(["pop-desktop".to_string()]);
+        let drift = diff_apt(&declared, &installed, &baseline);
+        assert_eq!(drift.undeclared, vec!["pandoc".to_string()]);
+    }
+
+    #[test]
+    fn diff_apt_baseline_takes_priority_over_declaration_gap() {
+        // baseline に載っているだけで宣言が無くても drift にしない
+        // (baseline 自体が「宣言していない既知の seed」を表現するため)。
+        let declared = BTreeSet::new();
+        let installed = BTreeSet::from(["pop-desktop".to_string()]);
+        let baseline = BTreeSet::from(["pop-desktop".to_string()]);
+        let drift = diff_apt(&declared, &installed, &baseline);
+        assert!(drift.is_clean());
+    }
+
+    #[test]
+    fn parse_apt_baseline_same_format_as_installed() {
+        let text = "pop-desktop\n\ngnome-terminal\n";
+        let got = parse_apt_baseline(text);
+        assert_eq!(
+            got,
+            BTreeSet::from(["pop-desktop".to_string(), "gnome-terminal".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_history_log_installs_extracts_install_targets() {
+        let text = "\
+Start-Date: 2026-08-01  10:00:00
+Commandline: apt install gh pandoc
+Install: gh:amd64 (2.0.0), pandoc:amd64 (3.0.0)
+End-Date: 2026-08-01  10:00:05
+
+Start-Date: 2026-08-02  09:00:00
+Commandline: sudo apt-get install -y solaar=1.1.10-1
+Install: solaar:amd64 (1.1.10-1)
+End-Date: 2026-08-02  09:00:02
+
+Start-Date: 2026-08-03  08:00:00
+Commandline: apt-get autoremove
+End-Date: 2026-08-03  08:00:01
+
+Start-Date: 2026-08-04  07:00:00
+Commandline: apt upgrade
+End-Date: 2026-08-04  07:01:00
+";
+        let got = parse_history_log_installs(text);
+        assert_eq!(
+            got,
+            BTreeSet::from(["gh".to_string(), "pandoc".to_string(), "solaar".to_string(),])
+        );
+    }
+
+    #[test]
+    fn parse_history_log_installs_empty_on_no_install_commands() {
+        let text = "Start-Date: 2026-08-01\nCommandline: apt update\nEnd-Date: 2026-08-01\n";
+        assert_eq!(parse_history_log_installs(text), BTreeSet::new());
+    }
+
+    #[test]
+    fn compute_baseline_from_history_subtracts_ad_hoc_installs() {
+        let installed = BTreeSet::from([
+            "zsh".to_string(),
+            "pop-desktop".to_string(),
+            "gh".to_string(),
+        ]);
+        let ad_hoc = BTreeSet::from(["gh".to_string()]);
+        let baseline = compute_baseline_from_history(&installed, &ad_hoc);
+        assert_eq!(
+            baseline,
+            BTreeSet::from(["zsh".to_string(), "pop-desktop".to_string()])
+        );
     }
 
     #[test]
