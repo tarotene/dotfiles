@@ -639,6 +639,12 @@ file, so every installed package is a drift candidate — treating drift
 presence as unit failure would make the weekly timer's `detect-drift.service`
 fail permanently.
 
+The apt layer needs a host-local baseline (`detect-drift apt-baseline
+--init` at provisioning time, or `--from-history` to retrofit an existing
+host) or it reports Pop!_OS's `distinst` seed packages as drift on every
+run — see "2b. Snapshot the apt drift baseline" and "Retrofitting the apt
+drift baseline on an existing host" in `docs/cutover-runbook.md` (#445).
+
 It never installs, removes, or modifies anything — deciding whether a
 drifted package belongs in a layer above, or should stay an intentional
 escape hatch, is still the human judgment call this section describes.
