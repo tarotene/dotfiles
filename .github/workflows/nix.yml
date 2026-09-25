@@ -80,14 +80,21 @@ jobs:
           elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
             reason="label ci:full"
           else
-            children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"
-            if [ -z "$children" ]; then
-              reason="api-failure (fail-open)"
-            elif [ "$children" -eq 0 ]; then
-              reason="tip (children=0)"
+            # `if children=$(...); then` で終了コードを見る — `gh api` は
+            # 401/404 等でも(--jq がそのレスポンスに適用できないと)エラー
+            # JSON を stdout に出して非 0 終了することがあるため、`-z` での
+            # 空文字判定は fail-open を保証しない(実測 2026-09-25: Bad
+            # credentials 応答が children に入り、誤って intermediate 扱い
+            # = fail-closed になった)。終了コードのみを判定根拠にする。
+            if children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"; then
+              if [ "$children" -eq 0 ]; then
+                reason="tip (children=0)"
+              else
+                heavy=false
+                reason="intermediate (children=$children)"
+              fi
             else
-              heavy=false
-              reason="intermediate (children=$children)"
+              reason="api-failure (fail-open)"
             fi
           fi
           echo "heavy=$heavy ($reason)"
