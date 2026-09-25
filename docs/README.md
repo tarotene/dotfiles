@@ -264,6 +264,13 @@
   済みバイナリの model catalog を読むため、実体は 1 つでなければならない。
   自動更新は宣言で OFF にし、更新は `claude update`(zsh 関数が
   `claude-plan-model sync` を直後に実行)の 1 経路に絞る。
+- [ADR-468](adr/468-stack-aware-heavy-ci.md) — stacked PR の中間段では
+  `nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
+  / `build altair`)を skip する gate job `stack-position` を追加する決定
+  (#419)。job-level `if:` の skip は `skipped` = 成功扱いで required check
+  を block しないが、workflow 単位の path filter skip は `Pending` のまま
+  block する非対称性(GitHub Docs)を根拠にする。required 宣言
+  (`rulesets/quality.json`、#420)を live に反映する運用も併記。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
