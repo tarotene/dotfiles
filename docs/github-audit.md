@@ -440,9 +440,28 @@ that only has a flake is no longer exempt from the same Renovate-presence
 expectation as a Cargo/npm/PyPI/Go repository. dotfiles itself is the
 first repository this flips from `not-applicable` to a real verdict
 (`renovate.json` is now present, ADR update-flake-lock tracking issue #3).
-Mend App installation status is not checked — GitHub's API does not
-expose it deterministically; that stays a manual step documented in the
-relevant `*-repo-governance` skill.
+
+Mend App installation status (which repositories the App's *repository
+access* is scoped to) is still not checked directly — GitHub's REST API
+does not expose it deterministically for a user's own OAuth token
+(`/user/installations` needs a user-to-server token and returns 403
+otherwise, confirmed 2026-09-25); that stays a manual step documented in
+the relevant `*-repo-governance` skill. Since #465 (2026-09-25), the
+domain instead detects a proxy signal for that failure mode: when config
+is present, `dependencyDashboard` is not explicitly disabled in it, and no
+open Issue titled by Renovate's Dependency Dashboard feature exists
+(`renovate[bot]`-authored, via a GraphQL `filterBy: {createdBy:
+"renovate[bot]"}` query), the domain reports `drifted:
+renovate-dashboard-missing`. This is not gated by Renovate's `schedule`
+option — Renovate's `ensureDependencyDashboard()`
+(`lib/workers/repository/index.ts`,
+<https://github.com/renovatebot/renovate>, confirmed 2026-09-25) runs
+unconditionally at the end of every repository run regardless of
+`schedule`, so a repository whose config has landed and whose App access
+is correctly scoped gets a Dashboard Issue within its next run
+(observed same-day to 2-day latency across this account's other
+repositories) — install-scope gaps are the dominant remaining explanation
+for one never appearing.
 
 ### lifecycle (#275, ADR-0023)
 
