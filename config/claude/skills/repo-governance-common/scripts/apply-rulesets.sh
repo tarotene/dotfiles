@@ -11,7 +11,9 @@
 # rulesets-apply `core` type) is by definition not one of the three known
 # ecosystems, so this script cannot assume anything about its CI job names.
 # Its Quality ruleset (rulesets/quality.json, sibling of this file) reflects
-# that: the only required status check is `PR title` (ADR-0031) — no
+# that: the only required status check is `PR Title / PR title` (ADR-0031,
+# the two-part concatenation a workflow_call-triggered job reports — see
+# rulesets/quality.json's own note) — no
 # build/test job name is assumed. A repository that later gains a matching
 # ecosystem skill should migrate to that skill's own apply-rulesets.sh
 # (which can safely require its language-specific CI jobs) instead of
