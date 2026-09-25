@@ -160,3 +160,15 @@ stack の位置(第 k/N 段、親は #M)は GitHub の PR 画面が base branch 
 ADR-0008(記録の器の選択規約)はこのスキル自身の執筆にも適用した —
 腐る事実を `docs/stacked-pr-github-native.md` に追い出し、この文書には
 裁定とその理由だけを残した。
+
+## 中間段では重い CI が既定で skip される(ADR-468)
+
+`nix.yml` は stacked PR の中間段(bottom でも tip でもない段)で
+`rust workspace` / `build vega` / `build arcturus` / `build altair` を
+skip する(gate job `stack-position`、#419)。§4 の「下位段への修正が
+入ったときの追従」どおり全上位段を rebase すれば、tip の合成木で
+改めて検査されるので実害は無い。rebase せずにその段を単独でマージする
+場合だけ `ci:full` ラベルを貼って heavy を手動で走らせる — この場合を
+自動検出する仕組み(`pull_request: edited` での再発火や `pr-gate.sh` 側の
+検出)はコストに見合わないため意図的に追加していない(ADR-468
+Alternatives considered)。
