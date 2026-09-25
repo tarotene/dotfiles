@@ -200,3 +200,26 @@ watcher / assignee には通知が飛ぶ。
 
 書式・自己検査の具体手順はツールごとの運用規約(Claude Code なら
 selection-grounding スキル)に従う。
+
+# 外部発信は既定で下書き止まりにする
+
+Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発信を伴う
+タスクでは、実際の送信は行わず常に下書き(Slack のドラフト・下書き系
+ツール等、相当する下書き手段)に留める。外部発信は取り消しづらく、内容の
+最終確認は人間が行うべきである(#463。別プロジェクトでの作業中に受けた
+フィードバックを一般化した)。
+
+- 対象は Slack への送信・返信・予約投稿など、取り消しづらい外部宛の発信
+  全般。下書き系ツールが接続先に存在しない場合は、送信せず本文をチャット
+  に出力し、ユーザー自身が貼り付けて送信できるようにする。
+- **GitHub は対象外。** Issue/PR コメント・`gh pr create` 等は、この
+  AGENTS.md「実装タスクの完了定義」が確認を挟まず実行することを既に
+  要求しており、一律下書き止まりにすると矛盾する。GitHub 側の
+  「取り消しづらさ」はレビュープロセス(merge/close されるまで訂正可能)
+  に委ねる。
+- Claude Code では、Slack MCP tool の送信系(`send_message` /
+  `reply` / `schedule_message` / `post_message`)を PreToolUse hook が
+  deny し、draft 系ツールへ誘導することで決定論的に担保する
+  (`external-send-guard.sh`、`docs/claude/external-send-guard.md`)。
+  この機械強制はツールごとの運用規約側の責務であり、本節はその方針を
+  宣言するだけに留める。

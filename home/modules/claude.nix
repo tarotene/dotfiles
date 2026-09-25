@@ -298,7 +298,13 @@
 #    設計にした。send_message/reply/forward の 3 tool だけを対象にし、
 #    create_draft・読み取り系は対象外。自分のアドレス集合は
 #    ~/.config/external-send-guard/self.txt(このリポジトリにはコミットしない、
-#    bleep と同じ理由)。詳細は docs/claude/external-send-guard.md。
+#    bleep と同じ理由)。
+#    Slack への拡張(#463): 別セッションでの作業中に「外部発信は常に下書きに
+#    留めたい」というフィードバックがあり、同じ理由で Slack の
+#    send_message/reply/schedule_message/post_message 系 tool にも宛先を
+#    問わない無条件 deny を適用した(draft 系 tool は対象外)。GitHub は
+#    対象外 — AGENTS.md の完了定義(`gh pr create` 等を確認なしで実行)と
+#    矛盾するため。詳細は docs/claude/external-send-guard.md。
 #
 # 23) external-call-scheduling(個人スキル):
 #    電話・来店・窓口対応など Claude が代行できないハンドオフ作業を、トーク
@@ -749,10 +755,10 @@ let
     # 1 往復(git diff + ファイル読み取りのみ、gh API 往復は持たない)なので
     # timeout は stack-base-guard 並みでよい。
     register PreToolUse "Bash|mcp__.*" "$decision_colocation_guard" 20
-    # external-send-guard(docs/claude/external-send-guard.md): Gmail MCP
-    # tool の send_message/reply/forward だけが対象なので matcher は
-    # "mcp__.*" のみでよい(bleep/attribution-guard と違い Bash 経由
-    # の送信は原理的に検出できないため、Bash|mcp__.* にする理由がない)。
+    # external-send-guard(docs/claude/external-send-guard.md): Gmail/Slack
+    # の送信系 MCP tool だけが対象なので matcher は "mcp__.*" のみでよい
+    # (bleep/attribution-guard と違い Bash 経由の送信は原理的に検出できない
+    # ため、Bash|mcp__.* にする理由がない)。
     # jq/文字列処理のみで往復が無いので timeout は最短。
     register PreToolUse "mcp__.*" "$external_send_guard" 10
     # adr-number(ADR-380): `gh pr create` 直後に ADR-0000 を PR 番号へ自動
