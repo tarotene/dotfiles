@@ -699,17 +699,34 @@ cmd_sync() {
   # dotfiles/host マーカー、無ければ `hostname`。
   local -a stale_hosts=()
   local this_host marker hf hf_key
+  local this_host_source="dotfiles/host マーカー"
   marker="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host"
   if [[ -r $marker ]]; then
     this_host="$(head -n1 "$marker" | tr -d '[:space:]')"
   fi
-  [[ -n ${this_host:-} ]] || this_host="$(hostname)"
+  if [[ -z ${this_host:-} ]]; then
+    this_host="$(hostname)"
+    this_host_source="hostname フォールバック(dotfiles/host マーカー未設置)"
+  fi
   hf="$repo/home/hosts/$this_host.nix"
-  if [[ -f $hf ]] && grep -qF "identities/${identity}.nix" "$hf"; then
-    # sed, not `grep -oP`: BSD grep (darwin, where this script also runs
-    # per home/modules/gpg.nix's launchd branch) has no -P.
-    hf_key="$(sed -n 's/.*programs\.git\.signing\.key = "\([^"]*\)".*/\1/p' "$hf" | head -1)"
-    [[ "$hf_key" == "$sign_active_fpr" ]] || stale_hosts+=("$hf")
+  if [[ -f $hf ]]; then
+    if grep -qF "identities/${identity}.nix" "$hf"; then
+      # sed, not `grep -oP`: BSD grep (darwin, where this script also runs
+      # per home/modules/gpg.nix's launchd branch) has no -P.
+      hf_key="$(sed -n 's/.*programs\.git\.signing\.key = "\([^"]*\)".*/\1/p' "$hf" | head -1)"
+      [[ "$hf_key" == "$sign_active_fpr" ]] || stale_hosts+=("$hf")
+    fi
+    # hf が存在してもこの identity を宣言していなければ、このホストは
+    # そもそもこの identity を使わない(正当なスキップ、drift ではない)。
+  else
+    # #423: hf 自体が無い(マーカー未設置ホスト、または改名前のホスト名)場合、
+    # 以前はここを黙って skip していた — signing key の stale 判定を
+    # 一度も検査せずに `sync` が exit 0(同期済み)を返してしまう穴だった
+    # (gpg-subkey-rotation skill の「sync が exit 0 を報告するまで繰り返す」
+    # 契約と矛盾する)。hostname フォールバック自体は ADR-0019 が保護する
+    # 正当な挙動なので外さず、「検査できなかった」ことを drift として報告する
+    # 側に倒す(Saltzer & Schroeder の fail-safe defaults)。
+    problems+=("hostfile")
   fi
 
   if [[ ${#problems[@]} -eq 0 && ${#stale_hosts[@]} -eq 0 ]]; then
@@ -731,6 +748,10 @@ cmd_sync() {
       keyserver)
         printf '  - keys.openpgp.org が現行 [S] subkey %s を反映していない可能性があります\n' "$sign_active_keyid"
         [[ -n $encrypt_active_keyid ]] && printf '  - keys.openpgp.org が現行 [E] subkey %s を反映していない可能性があります\n' "$encrypt_active_keyid"
+        ;;
+      hostfile)
+        printf '  - このホスト(%s、解決元: %s)に %s が無く、signing key の stale 判定を検査できません(マーカーを設置するか home/hosts/ にホストを追加してください)\n' \
+          "$this_host" "$this_host_source" "$hf"
         ;;
     esac
   done
@@ -1193,6 +1214,51 @@ STUB
   check "sync --fix: export を更新する" 1 "$(grep -qF 'keys/selftest.pub を更新しました' "$dir/sync-fix.out" && echo 1 || echo 0)"
   check "sync --fix: GitHub の delete を呼ぶ" 1 "$(grep -qF 'delete' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
   check "sync --fix: GitHub の post を呼ぶ" 1 "$(grep -qF 'post' "$dir/gh-calls.txt" 2>/dev/null && echo 1 || echo 0)"
+
+  # #423: host-file 不在のサイレントスキップ潰し(正・負両経路)。実環境の
+  # ${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/host を読まないよう、
+  # どの呼び出しも XDG_CONFIG_HOME を専用の一時ディレクトリへ明示的に
+  # 差し替える(このホスト自身のマーカーに左右されない hermetic なテスト)。
+  local active_sign_keyid active_sign_fpr hostfile_out
+  active_sign_keyid="$(extract_latest_usage_keyid s "$fpr")"
+  active_sign_fpr="$(usage_subkeys s "$fpr" | awk -F'\t' -v k="$active_sign_keyid" '$3 == k { print $4; exit }')"
+
+  # 負経路 1: マーカー未設置 → hostname フォールバックで解決したホスト名に
+  # 対応する home/hosts/<host>.nix が無い。
+  mkdir -p "$dir/xdg-nomarker"
+  hostfile_out="$(XDG_CONFIG_HOME="$dir/xdg-nomarker" PATH="$dir/bin:$PATH" \
+    cmd_sync --repo "$dir/repo" --identity selftest 2>&1)" || true
+  check "sync: マーカー未設置ホストで hostfile drift を報告する(hostname フォールバック由来)" 1 \
+    "$(grep -qF 'hostname フォールバック' <<<"$hostfile_out" && echo 1 || echo 0)"
+  check "sync: hostfile drift のメッセージが出る" 1 \
+    "$(grep -qF '検査できません' <<<"$hostfile_out" && echo 1 || echo 0)"
+
+  # 負経路 2: マーカーは設置されているが、対応する home/hosts/<host>.nix が無い。
+  mkdir -p "$dir/xdg-marker-nohost/dotfiles"
+  printf 'ghost-host\n' >"$dir/xdg-marker-nohost/dotfiles/host"
+  hostfile_out="$(XDG_CONFIG_HOME="$dir/xdg-marker-nohost" PATH="$dir/bin:$PATH" \
+    cmd_sync --repo "$dir/repo" --identity selftest 2>&1)" || true
+  check "sync: マーカーはあるが home/hosts/<host>.nix が無ければ hostfile drift(マーカー由来)" 1 \
+    "$(grep -qF 'dotfiles/host マーカー' <<<"$hostfile_out" && echo 1 || echo 0)"
+  check "sync: マーカー由来では hostname フォールバックの文言は出ない" 0 \
+    "$(grep -qF 'hostname フォールバック' <<<"$hostfile_out" && echo 1 || echo 0)"
+
+  # 正経路: マーカーが指すホストの home/hosts/<host>.nix が存在し、identity と
+  # 現行 [S] subkey フィンガープリントの両方が一致する → hostfile drift は
+  # 出ない(github/keyserver は selftest のスタブが状態を永続化しないため
+  # 引き続き drift として出うるが、ここでは hostfile 固有の文言だけを見る)。
+  mkdir -p "$dir/xdg-marker-ok/dotfiles" "$dir/repo/home/hosts"
+  printf 'selftest-host\n' >"$dir/xdg-marker-ok/dotfiles/host"
+  cat >"$dir/repo/home/hosts/selftest-host.nix" <<EOF
+{
+  imports = [ ../identities/selftest.nix ];
+  programs.git.signing.key = "$active_sign_fpr";
+}
+EOF
+  hostfile_out="$(XDG_CONFIG_HOME="$dir/xdg-marker-ok" PATH="$dir/bin:$PATH" \
+    cmd_sync --repo "$dir/repo" --identity selftest 2>&1)" || true
+  check "sync: host-file が存在し identity・signing key とも一致すれば hostfile drift は出ない" 0 \
+    "$(grep -qF '検査できません' <<<"$hostfile_out" && echo 1 || echo 0)"
 
   [[ $fail == 0 ]] && printf 'selftest: all passed\n'
   return "$fail"

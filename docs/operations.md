@@ -173,8 +173,13 @@ Notes:
   the fix is to regenerate the patch against the new source. The upstream
   request to make the word list configurable via `config.toml`,
   [herdrdev/herdr#4374](https://github.com/herdrdev/herdr/issues/4374), was
-  closed as not planned on 2026-09-19, so the patch has no upstream exit.
-  Whether to keep it as a permanent local patch is tracked in #449.
+  closed as not planned on 2026-09-19 — herdr's `[worktrees]` config only
+  exposes `directory`, so there is no config-driven exit either. This is now
+  a **permanent local patch** (decided in #449, 2026-09-25): the word list
+  backs the herdr sidebar's `$oshi` fan-mark feature (`config/herdr/
+  oshi-marks.tsv` and the CI cross-check), so dropping the patch would drop
+  that feature too. Re-fit it against a new source tree by re-diffing
+  `generated_branch_slug` and its stability test.
 
 ### Restarting herdr after a switch that changes its binary or hooks
 
@@ -364,7 +369,11 @@ previous attempt stopped. It only checks *this host's* `hosts/<host>.nix` —
 same identity (e.g. a personal laptop alongside a personal desktop) is
 expected to carry its own independent subkey, not this machine's — and it
 never edits nix files itself; a stale `hosts/<host>.nix` is reported with
-the same manual-update instruction `export` prints.
+the same manual-update instruction `export` prints. If this host resolves
+to a marker-less or not-yet-renamed hostname with no matching
+`hosts/<host>.nix` at all, `sync` now reports that as drift too (`#423`) —
+run `dotfiles/host` marker placement (ADR-0019) or add the host's module
+before trusting a clean `sync` exit.
 
 ## Obsidian vault backup
 
