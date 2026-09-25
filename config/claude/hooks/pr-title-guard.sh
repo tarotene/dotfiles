@@ -38,10 +38,23 @@ have() { command -v "$1" > /dev/null 2>&1; }
 
 # 呼び出しのたびに解決する(env 上書きをテストごとに切り替えられるように
 # 遅延評価する — 起動時 1 回の解決だと --selftest の PR_TITLE_CHECK_BIN
-# 差し替えが効かない)。source tree からの相対パスを先に試し、無ければ
-# PATH 上の配備済み `pr-title-check`(~/.local/bin)にフォールバックする。
+# 差し替えが効かない)。
+#
+# PR_TITLE_CHECK_BIN が明示的に set されているときは最終決定として扱い、
+# 実行不能なら PATH フォールバックせずに解決失敗とする(#430)。
+# home-manager 適用済みホストでは `~/.local/bin/pr-title-check` が常に
+# 配備されているため、フォールバックすると「checker 不在」を意図した
+# 呼び出し(例: PR_TITLE_CHECK_BIN=does-not-exist)でも本物の checker が
+# 掴まり、明示指定を裏切って判定してしまう(env で差し替えたつもりが
+# 別の実体が動く不透明な挙動でもある)。env が unset のときだけ、
+# source tree からの相対パス → PATH 上の配備済みバイナリの順にフォール
+# バックする。
 resolve_pr_title_check() {
-  local candidate="${PR_TITLE_CHECK_BIN:-$GUARD_SELF_DIR/../../../scripts/pr-title-check}"
+  if [[ -n ${PR_TITLE_CHECK_BIN:-} ]]; then
+    [[ -x $PR_TITLE_CHECK_BIN ]] && printf '%s\n' "$PR_TITLE_CHECK_BIN"
+    return
+  fi
+  local candidate="$GUARD_SELF_DIR/../../../scripts/pr-title-check"
   if [[ -x $candidate ]]; then
     printf '%s\n' "$candidate"
     return 0

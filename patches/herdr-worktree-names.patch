@@ -6,8 +6,20 @@ https://hololive.hololivepro.com/talents on 2026-09-19.
 This is a personal-taste patch, not a behavior fix. The upstream feature
 request asking for the word list to become configurable instead of hardcoded,
 https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19), was closed
-as not planned on 2026-09-19, so this patch has no upstream exit. Whether to
-keep it as a permanent local patch is tracked in tarotene/dotfiles#449.
+as not planned on 2026-09-19 — herdr's `[worktrees]` config only exposes
+`directory` (no word-list key), so there is no config-driven exit either.
+
+This is now a **permanent local patch** (decided in tarotene/dotfiles#449,
+2026-09-25): the not-planned closure means there is no upstream path to drop
+it on, and the word list backs the herdr sidebar's `$oshi` fan-mark feature
+(`config/herdr/oshi-marks.tsv`, the CI cross-check in `.github/workflows/
+ci.yml`, and the metadata hooks under `config/{claude,codex,copilot}/hooks/`)
+— removing the patch would remove that feature, not just revert cosmetic
+naming. When a `nixpkgs-unstable` bump shifts `src/worktree.rs` enough that
+this patch stops applying, re-fit it against the new source: re-diff
+`generated_branch_slug` and its test
+`generated_branch_slug_is_worktree_namespaced_and_stable` from the new
+upstream tree, keeping the same hololive-nickname word list.
 
 --- a/src/worktree.rs
 +++ b/src/worktree.rs

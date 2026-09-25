@@ -40,10 +40,19 @@ have() { command -v "$1" > /dev/null 2>&1; }
 
 # 呼び出しのたびに解決する(pr-title-guard.sh の resolve_pr_title_check() と
 # 同じ理由 — --selftest の *_BIN 差し替えを起動時1回の解決だと効かせられ
-# ない)。source tree からの相対パスを先に試し、無ければ PATH 上の配備済み
-# `decision-colocation-check`(~/.local/bin)にフォールバックする。
+# ない)。
+#
+# DECISION_COLOCATION_CHECK_BIN が明示的に set されているときは最終決定
+# として扱い、実行不能なら PATH フォールバックせずに解決失敗とする
+# (#430 と同型の穴 — pr-title-guard.sh 側の理由を参照)。env が unset の
+# ときだけ、source tree からの相対パス → PATH 上の配備済みバイナリの順に
+# フォールバックする。
 resolve_checker() {
-  local candidate="${DECISION_COLOCATION_CHECK_BIN:-$GUARD_SELF_DIR/../../../scripts/decision-colocation-check}"
+  if [[ -n ${DECISION_COLOCATION_CHECK_BIN:-} ]]; then
+    [[ -x $DECISION_COLOCATION_CHECK_BIN ]] && printf '%s\n' "$DECISION_COLOCATION_CHECK_BIN"
+    return
+  fi
+  local candidate="$GUARD_SELF_DIR/../../../scripts/decision-colocation-check"
   if [[ -x $candidate ]]; then
     printf '%s\n' "$candidate"
     return 0

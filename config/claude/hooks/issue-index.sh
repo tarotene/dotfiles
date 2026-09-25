@@ -46,11 +46,22 @@ self_path() {
 
 # $1 の git repo の origin(相当)remote から "owner/repo" を取り出す。
 # GitHub 以外の remote、remote が無い場合は非 0 を返す(対象外の判定そのものを兼ねる)。
+#
+# 末尾の ".git" は sed の主パターンに組み込まず、bash の `${url%.git}` で
+# 先に落とす(POSIX ERE は leftmost-longest 判定のため、`[^/]+` と任意の
+# `(\.git)?` を1つのパターンに同居させると "o.github.io.git" のように
+# リポジトリ名自体に "." を含む場合に思わぬ切り分けになりうる。分離すれば
+# `[^/]+` は素直に「"." を含めてスラッシュまでの全部」を捕える)。
+# repo 名の capture を `[^/.]+`(旧実装)ではなく `[^/]+` にしているのは、
+# GitHub のリポジトリ名が "." を許すため — "o.github.io" のような名前は
+# 旧実装では一致せず索引がサイレントに出なくなっていた(#458)。
+# crates/herdr-issue-counts の parse_github_url と同じ判定に揃えている。
 owner_repo() {
   local url out
   url="$(git -C "$1" remote -v 2>/dev/null | awk '/github\.com/{print $2; exit}')"
   [[ -n "$url" ]] || return 1
-  out="$(printf '%s' "$url" | sed -nE 's#.*github\.com[:/]+([^/]+)/([^/.]+)(\.git)?/?$#\1/\2#p')"
+  url="${url%.git}"
+  out="$(printf '%s' "$url" | sed -nE 's#.*github\.com[:/]+([^/]+)/([^/]+)/?$#\1/\2#p')"
   [[ -n "$out" ]] || return 1
   printf '%s\n' "$out"
 }
@@ -242,6 +253,38 @@ STUB
   check "GitHub remote が無い: exit 0" 0 "$rc"
   check "GitHub remote が無い: stdout 空" "" "$(cat "$dir/out")"
   check "GitHub remote が無い: stderr 空" "" "$(cat "$dir/err")"
+
+  # #458: リポジトリ名に "." を含む GitHub リポジトリが対象外と誤判定されない
+  # (owner_repo() の回帰テスト)。total_count 非0 のフィクスチャを使い、
+  # 索引が実際に注入されること(旧バグでは owner_repo が空を返しサイレント
+  # スキップしていた)を確認する。
+  jq -n '{total_count:1,incomplete_results:false,
+    items:[{number:1,title:"dotted repo test",labels:[],user:{login:"tester"}}]}' \
+    >"$dir/dotrepo.json"
+
+  dotrepo="$dir/dotrepo"
+  mkdir -p "$dotrepo"
+  git -C "$dotrepo" init -q
+  git -C "$dotrepo" remote add origin https://github.com/o/o.github.io.git
+  rc=0
+  ISSUE_INDEX_STUB_ALL_FILE="$dir/dotrepo.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$dotrepo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "repo名に'.'を含む(.git付きURL): exit 0" 0 "$rc"
+  check "repo名に'.'を含む(.git付きURL): 索引が注入される" 1 \
+    "$(grep -Fc '#1 dotted repo test' <<<"$ctx")"
+
+  dotrepo_noext="$dir/dotrepo-noext"
+  mkdir -p "$dotrepo_noext"
+  git -C "$dotrepo_noext" init -q
+  git -C "$dotrepo_noext" remote add origin https://github.com/o/o.github.io
+  rc=0
+  ISSUE_INDEX_STUB_ALL_FILE="$dir/dotrepo.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$dotrepo_noext" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "repo名に'.'を含む(.git無しURL): exit 0" 0 "$rc"
+  check "repo名に'.'を含む(.git無しURL): 索引が注入される" 1 \
+    "$(grep -Fc '#1 dotted repo test' <<<"$ctx")"
 
   mkdir -p "$dir/nojq"
   for c in gh git awk sed grep basename dirname cat; do
