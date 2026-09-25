@@ -291,6 +291,10 @@ path = "scripts/install-packages-darwin.sh"
 reason = "escape hatch: Homebrew システム層(ADR-0018)"
 
 [[excluded]]
+path = "scripts/setup-firewall.sh"
+reason = "escape hatch: root 権限のホスト firewall 設定(ufw / ALF、ADR-471)"
+
+[[excluded]]
 path = "scripts/install-falcon-sensor.sh"
 reason = "escape hatch: 会社 EDR の root インストーラ"
 
