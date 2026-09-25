@@ -61,6 +61,20 @@ D7 と同型)。
   (pre-push に対話の経路が無いため)。回避は `BLEEP_ALLOW=1 git
   push`。PRIVATE/INTERNAL リポジトリの自動スキップは engine 側の判定。
 
+## `~/.config/bleep/` の実体(dotfiles には無い)
+
+`bleep` の判定語彙(`orgs.txt`・`repos.txt`)と、CLI ツール名と衝突する
+private リポジトリ名を通す `allow-stopwords.txt`(bleep README
+「Marking a private repo as "prospectively public"」節が正本、
+tarotene/bleep#15 → PR #19 で決着)は、いずれも実値を含むため PUBLIC な
+この dotfiles リポジトリには置かない(ADR-0034)。3 ファイルとも private
+wrapper flake が `~/.config/dotfiles/private-hub` マーカー経由で生成する
+(`scripts/hms.sh` の `resolve_default_ref()` と同じ間接参照。ADR-0034
+Decision 6 と同型 — 正本は wrapper flake 側、ここはスキーマ・手順だけを
+記す)。`allow-stopwords.txt` の各行は「実際には CLI ツール名としての
+言及であり private リポジトリ名との衝突ではない」と判断した文字列を、
+コメントで理由を添えて 1 行ずつ追記する(#431)。
+
 ## 未検証の前提
 
 - Claude Code hook の `deny` が `bypassPermissions` 下でも効くかは公式
