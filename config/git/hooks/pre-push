@@ -36,13 +36,23 @@ fi
 # BLEEP_ALLOW=1 bypass are the engine's own responsibility. exit 1
 # (ask) is treated the same as exit 2 (deny): this hook has no interactive
 # prompt to route an "ask" to.
+#
+# BLEEP_HOST=git-pre-push tags this call site in bleep's own judgment ledger
+# (ADR-478, tarotene/dotfiles) so an escalated fingerprint can be told apart
+# from PreToolUse hook denies. The deny text below deliberately does not
+# name the bypass — upstream bleep's own policy is that the constrained
+# party must not be able to read its way to disabling the check (see
+# tarotene/bleep's CONTRIBUTING.md and README). This hook previously
+# violated that policy by printing `BLEEP_ALLOW=1` directly in the message
+# an agent reads; anyone who legitimately needs the bypass finds it
+# documented for humans in docs/claude/public-publish-guard.md instead.
 bleep="${HOME}/.claude/hooks/bleep/bleep"
 if [[ -x "$bleep" ]]; then
-    if ! reason="$("$bleep" scan-push < /dev/null)"; then
+    if ! reason="$(BLEEP_HOST=git-pre-push "$bleep" scan-push < /dev/null)"; then
         echo "error: Push blocked by bleep" >&2
         [[ -n "$reason" ]] && echo "  ${reason}" >&2
         echo "" >&2
-        echo "  Conscious bypass: BLEEP_ALLOW=1 git push" >&2
+        echo "  詳細: docs/claude/public-publish-guard.md を参照してください。" >&2
         exit 1
     fi
 fi
