@@ -56,10 +56,17 @@ D7 と同型)。
   を登録する — Claude 側の `retiredHookEntries` に相当する仕組みが元々
   無かったため、改名 companion PR でこの2スクリプトに追加した。
 - `config/git/hooks/pre-push`(`core.hooksPath` で全リポジトリ共通、
-  `docs/git-sync.md`)が `scan-push` を呼ぶ(#196)。エンジン不在は黙って
-  スキップ(ADR-0005)。exit 1(ask)/2(deny)のどちらも push を block する
-  (pre-push に対話の経路が無いため)。回避は `BLEEP_ALLOW=1 git
-  push`。PRIVATE/INTERNAL リポジトリの自動スキップは engine 側の判定。
+  `docs/git-sync.md`)が `BLEEP_HOST=git-pre-push` を付けて `scan-push` を
+  呼ぶ(#196。`BLEEP_HOST` は ADR-478 の判定レッジャーが呼び出し元を
+  区別するためのタグで、判定そのものには影響しない)。エンジン不在は
+  黙ってスキップ(ADR-0005)。exit 1(ask)/2(deny)のどちらも push を
+  block する(pre-push に対話の経路が無いため)。回避は `BLEEP_ALLOW=1
+  git push` — ただし block 時に pre-push が表示する stderr にはこのコマンド
+  を書かない(上流 bleep の「deny 理由に bypass を書かない」方針、
+  README「Bypass: `BLEEP_ALLOW=1`」参照: 制約対象がその場で読む理由文に
+  出すと、読んだそばから bypass を打ててしまう)。回避手段の存在自体は
+  この文書のように能動的に探さないと出てこない場所にだけ書く。
+  PRIVATE/INTERNAL リポジトリの自動スキップは engine 側の判定。
 
 ## `~/.config/bleep/` の実体(dotfiles には無い)
 
