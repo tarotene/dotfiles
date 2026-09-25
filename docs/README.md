@@ -271,6 +271,10 @@
   を block しないが、workflow 単位の path filter skip は `Pending` のまま
   block する非対称性(GitHub Docs)を根拠にする。required 宣言
   (`rulesets/quality.json`、#420)を live に反映する運用も併記。
+- [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) —
+  カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
+  出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。
+  Obsidian の「今はクラウド、中長期でローカル」と同型の二段構え。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

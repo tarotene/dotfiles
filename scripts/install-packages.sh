@@ -11,6 +11,8 @@ set -euo pipefail
 #     GTK/Qt apps can only load an immodule out of /usr/lib — see ADR-0001's
 #     Amendment)
 #   - smartcard support (scdaemon, direct CCID)
+#   - mesh VPN daemon (tailscaled, root systemd system service) + host
+#     firewall (ufw) — ADR-471
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).
 # Usage: ./install-packages.sh [--dry-run]
@@ -53,11 +55,36 @@ fi
 
 UDEV_RULES="/etc/udev/rules.d/69-probe-rs.rules"
 
+# Tailscale apt repo/keyring (ADR-471): `tailscale` in apt-packages.txt needs
+# a third-party repo added before `apt-get update` can resolve it. Gated on
+# the keyring file the same way probe-rs's udev rule is gated below — a
+# fresh host installs it once, a re-run is a no-op.
+TAILSCALE_KEYRING="/usr/share/keyrings/tailscale-archive-keyring.gpg"
+TAILSCALE_LIST="/etc/apt/sources.list.d/tailscale.list"
+tailscale_repo_new=false
+[[ -f "$TAILSCALE_KEYRING" ]] || tailscale_repo_new=true
+
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] Would install ${#packages[@]} system packages:"
     printf '  %s\n' "${packages[@]}"
     [[ ! -f "$UDEV_RULES" ]] && echo "[dry-run] Would install probe-rs udev rules"
+    if [[ "$tailscale_repo_new" == "true" ]]; then
+        echo "[dry-run] Would install Tailscale apt repo and run 'tailscale up --operator=\$USER'"
+    fi
     exit 0
+fi
+
+if [[ "$tailscale_repo_new" == "true" ]]; then
+    echo "Installing Tailscale apt repo..."
+    # Pop!_OS is Ubuntu-based and sets UBUNTU_CODENAME in /etc/os-release
+    # (e.g. jammy on 22.04); Tailscale does not publish a Pop!_OS-specific
+    # repo, but the Ubuntu one works (confirmed: pkgs.tailscale.com only
+    # lists distro/release pairs, no Pop!_OS entry).
+    codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-jammy}")"
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
+        | sudo tee "$TAILSCALE_KEYRING" > /dev/null
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.tailscale-keyring.list" \
+        | sudo tee "$TAILSCALE_LIST" > /dev/null
 fi
 
 echo "Installing ${#packages[@]} system packages..."
@@ -73,6 +100,15 @@ if [[ ! -f "$UDEV_RULES" ]]; then
         | sudo tee "$UDEV_RULES" > /dev/null
     sudo udevadm control --reload-rules
     sudo udevadm trigger
+fi
+
+# Bring Tailscale up once, right after its first install, so `--operator`
+# is set before this host is ever used non-interactively (ADR-471). This
+# blocks on a login URL the human must open in a browser — deliberately: it
+# is a one-time interactive step, not something later re-runs should repeat.
+if [[ "$tailscale_repo_new" == "true" ]]; then
+    echo "Bringing Tailscale up — open the printed login URL in your browser to authorize this device."
+    sudo tailscale up --operator="$USER"
 fi
 
 echo "Done."
