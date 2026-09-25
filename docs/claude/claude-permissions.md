@@ -43,6 +43,11 @@ git-worktree-allow hook（検証つきのプログラム的許可 —
 中間 `*` 警告は同様に発生し、撤回リストへ加えるだけで全ホストから消せた
 （このルールは元々マッチ実績が無く、置換ルールは置かなかった）。
 
+`Bash(npx --prefix * playwright *)` も同型の野良ルールだったが、こちらは
+`config/claude/commands/promote-permissions.md` の generic 判定パターンにも
+「昇格すべき」として登録されていた。撤回リストだけでは `/promote-permissions`
+実行のたびに再び足されるため、昇格パターン側も同じ PR で削除した。
+
 同じ撤回パターンを `.hooks.<event>` にも敷いたのが `registerHooks` の
 `retiredHookEntries`、`statusLine` にも敷いたのが `syncStatusLine` の
 `retiredStatusLineCommands`(いずれも `home/modules/claude.nix`。詳細は

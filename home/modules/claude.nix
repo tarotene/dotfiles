@@ -950,6 +950,12 @@ let
   # 実際の利用は全て `ps -p <pid> >/dev/null && ...` 形でこのルールにマッチ
   # した実績が無かった。撤回リストは同一文字列の削除だけを見るので、出自が
   # 宣言か実行時プロンプトかを問わず効く。
+  #
+  # `Bash(npx --prefix * playwright *)` も同型(同じ中間 `*` 警告、transcript
+  # 上のマッチ実績なし — playwright の実利用は既存の `Bash(npx playwright *)`
+  # がカバーする)。ただしこちらは `config/claude/commands/promote-permissions.md`
+  # の generic 昇格パターンにも登録されていたため、そちらも同じ PR で削除した
+  # (でないと `/promote-permissions` 実行のたびに再び足される)。
   retiredPermissionRules = [
     "Bash(git -C * add *)"
     "Bash(git -C * commit *)"
@@ -958,6 +964,7 @@ let
     "Bash(./scripts/list-branch-inventory.sh *)"
     "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
     "Bash(ps -p * -o pid,cmd)"
+    "Bash(npx --prefix * playwright *)"
 
     "mcp__brave-search__brave_web_search"
     "mcp__github__issue_write"

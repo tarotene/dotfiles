@@ -86,9 +86,6 @@ function isGenericPermission(perm: string): boolean {
   // Package registries
   if (/^Bash\(curl -s https:\/\/crates\.io\//.test(perm)) return true;
 
-  // NPM/Playwright generic (without hardcoded project paths)
-  if (/^Bash\(npx --prefix \* playwright /.test(perm)) return true;
-
   // GPG signing utilities
   if (/^Bash\(gpg(conf)? /.test(perm)) return true;
   if (/^Bash\(gpg-connect-agent /.test(perm)) return true;
