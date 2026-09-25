@@ -108,3 +108,13 @@ CUPS docs、Apple Support(いずれも取得 2026-09-25)。
   firewall escape-hatch スクリプト
 - `.github/workflows/ci.yml` — `setup-firewall.sh --dry-run` を dry-run job に追加
 - `docs/operations.md` — "Café Wi-Fi" 運用節を新設
+
+段2(PR #471 のスタックの次段、home-manager 側の宣言 + ACL)で追加:
+
+- `home/modules/tailscale.nix` — 新規。`scripts/tailscale-prefs` の配備
+- `home/identities/personal.nix` / `home/identities/company.nix` —
+  `xdg.configFile."dotfiles/tailscale-prefs"` の宣言
+- `scripts/tailscale-prefs` — 新規。宣言された prefs を `tailscale set` へ
+  適用する warn-only CLI
+- `scripts/hms.sh` — switch 後に `tailscale-prefs apply` を呼ぶ
+- `config/tailscale/policy.hujson` — 新規。ACL policy の正本

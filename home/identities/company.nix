@@ -50,4 +50,17 @@
         "x-scheme-handler/claude-cli" = [ "claude-code-url-handler.desktop" ];
       };
   };
+
+  # Tailscale prefs (ADR-471): `arcturus` stays off the Mullvad exit node by
+  # default — an empty exit_node still emits a clearing `--exit-node=` flag
+  # (scripts/tailscale-prefs), so any manual `tailscale set --exit-node=...`
+  # a previous café-Wi-Fi session left set is reverted on the next `hms`.
+  # Select an exit node manually only while actually on café Wi-Fi
+  # (docs/operations.md's "Café Wi-Fi" section) — company traffic routing
+  # through a personal exit IP by default is not this repo's call to make.
+  xdg.configFile."dotfiles/tailscale-prefs".text = ''
+    exit_node=
+    exit_node_allow_lan_access=true
+    shields_up=true
+  '';
 }

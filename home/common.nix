@@ -15,6 +15,7 @@
     ./modules/git.nix
     ./modules/gpg.nix
     ./modules/packages.nix
+    ./modules/tailscale.nix
     ./modules/desktop.nix
     ./modules/downloads.nix
     ./modules/runtimes.nix

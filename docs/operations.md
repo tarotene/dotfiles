@@ -512,21 +512,30 @@ invoking `sudo`.
 
 ### Mullvad exit node (until the home Raspberry Pi/K8s stack exists)
 
+Exit node selection is declared, not run by hand on every session:
+`home/identities/{personal,company}.nix` write a small closed-vocabulary
+prefs file (`~/.config/dotfiles/tailscale-prefs`: `exit_node`,
+`exit_node_allow_lan_access`, `shields_up`), and `hms` applies it via
+`tailscale-prefs apply` (`scripts/tailscale-prefs`, `home/modules/
+tailscale.nix`) after every switch — warn-only, so a missing/unauthenticated
+Tailscale install never fails the switch. Personal devices stay on the
+Mullvad exit node at all times (no per-location toggle); `arcturus` stays
+off it by default. One-time setup and the manual override for `arcturus`:
+
 1. In the [Tailscale admin console](https://login.tailscale.com/admin),
    enable the Mullvad exit-node add-on (currently $5/month for 5 devices).
-2. On a personal device: `tailscale exit-node list` to see the available
-   Mullvad nodes, then pin one (do not use `auto:any` — it can fall back to
-   a Mullvad node that is not currently reachable):
-   ```bash
-   tailscale set --exit-node=<mullvad-node-name> --exit-node-allow-lan-access=true
-   ```
-   `--exit-node-allow-lan-access` keeps directly-connected subnets (e.g. the
-   home LAN printer) reachable while the exit node is active.
-3. On `arcturus` (company), leave the exit node unset by default and select
-   one manually only while actually on café Wi-Fi:
+2. Run `tailscale exit-node list` to see the available Mullvad nodes, then
+   replace the `<mullvad-exit-node-name>` placeholder in
+   `home/identities/personal.nix`'s `tailscale-prefs` declaration with the
+   chosen node's name (do not use `auto:any` — it can fall back to a
+   Mullvad node that is not currently reachable) and re-run `hms`.
+   `exit_node_allow_lan_access=true` keeps directly-connected subnets (e.g.
+   the home LAN printer) reachable while the exit node is active.
+3. On `arcturus` (company), select an exit node manually only while
+   actually on café Wi-Fi — this bypasses the declared prefs for the
+   current session, and the next `hms` clears it back to unset:
    ```bash
    tailscale set --exit-node=<mullvad-node-name>
-   tailscale set --exit-node=   # clear it again afterwards
    ```
 4. Verify: `curl https://am.i.mullvad.net/connected` should report a
    Mullvad IP while an exit node is set.

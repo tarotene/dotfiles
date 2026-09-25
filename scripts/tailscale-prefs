@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# tailscale-prefs — apply the per-identity Tailscale preferences declared by
+# home-manager (ADR-471, home/modules/tailscale.nix) via `tailscale set`.
+#
+# The declared prefs file is a closed vocabulary of `key=value` lines,
+# written by xdg.configFile in home/identities/{personal,company}.nix:
+#
+#   exit_node=<mullvad-node-name-or-empty>
+#   exit_node_allow_lan_access=true|false
+#   shields_up=true|false
+#
+# An empty exit_node value is deliberate (company identity: no exit node by
+# default, selected manually only while on café Wi-Fi — see
+# docs/operations.md's "Café Wi-Fi" section) and still emits
+# `--exit-node=` to clear any previously-set exit node.
+#
+# `apply` is meant to run from `hms` after every switch (warn-only, like the
+# herdr-staleness check it sits beside — a missing/unauthenticated Tailscale
+# install must never fail the switch). The pure, testable core is
+# build_set_args, which turns a prefs file into the `tailscale set` argument
+# list and fails hard on an unrecognized key — that failure is caught and
+# downgraded to a warning by `apply`, but exercised directly (and expected to
+# fail) by `--selftest`.
+#
+# Usage:
+#   tailscale-prefs apply [--prefs-file <path>]
+#   tailscale-prefs --selftest
+
+DEFAULT_PREFS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/tailscale-prefs"
+KNOWN_KEYS="exit_node exit_node_allow_lan_access shields_up"
+
+usage() {
+    cat <<'EOF'
+Usage: tailscale-prefs apply [--prefs-file <path>]
+       tailscale-prefs --selftest
+
+Apply the declared Tailscale prefs (exit_node, exit_node_allow_lan_access,
+shields_up) via `tailscale set`. Warn-only: a missing tailscale binary, an
+unauthenticated device, or a missing prefs file never fails the caller (hms).
+EOF
+}
+
+warn() {
+    echo "Warning: $*" >&2
+}
+
+is_known_key() {
+    local key="$1" k
+    for k in $KNOWN_KEYS; do
+        [[ "$k" == "$key" ]] && return 0
+    done
+    return 1
+}
+
+# build_set_args: read a prefs file, print one `tailscale set` flag per line
+# on stdout. Fails (non-zero, message on stderr) on any key outside the
+# closed vocabulary above — a typo or a stale declaration must be visible,
+# not silently ignored.
+build_set_args() {
+    local prefs_file="$1" line key value lineno=0
+    [[ -f "$prefs_file" ]] || { echo "build_set_args: no such file: $prefs_file" >&2; return 1; }
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lineno=$((lineno + 1))
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" != *=* ]]; then
+            echo "build_set_args: ${prefs_file}:${lineno}: not a key=value line: $line" >&2
+            return 1
+        fi
+        key="${line%%=*}"
+        value="${line#*=}"
+        if ! is_known_key "$key"; then
+            echo "build_set_args: ${prefs_file}:${lineno}: unknown key: $key" >&2
+            return 1
+        fi
+        case "$key" in
+            exit_node) printf -- '--exit-node=%s\n' "$value" ;;
+            exit_node_allow_lan_access) printf -- '--exit-node-allow-lan-access=%s\n' "$value" ;;
+            shields_up) printf -- '--shields-up=%s\n' "$value" ;;
+        esac
+    done < "$prefs_file"
+}
+
+cmd_apply() {
+    local prefs_file="$DEFAULT_PREFS_FILE"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --prefs-file) prefs_file="$2"; shift 2 ;;
+            *) echo "Error: unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    if [[ ! -f "$prefs_file" ]]; then
+        warn "no Tailscale prefs declared at $prefs_file — skipping"
+        exit 0
+    fi
+
+    if ! command -v tailscale >/dev/null 2>&1; then
+        warn "tailscale not installed (see scripts/install-packages.sh) — skipping"
+        exit 0
+    fi
+
+    if ! tailscale status >/dev/null 2>&1; then
+        warn "tailscale is installed but not logged in — skipping (run: sudo tailscale up)"
+        exit 0
+    fi
+
+    local -a args=()
+    local out
+    if ! out="$(build_set_args "$prefs_file")"; then
+        warn "$out"
+        warn "declared Tailscale prefs are malformed — skipping"
+        exit 0
+    fi
+    [[ -z "$out" ]] && { warn "no recognized prefs in $prefs_file — skipping"; exit 0; }
+    while IFS= read -r line; do
+        args+=("$line")
+    done <<< "$out"
+
+    echo "Applying Tailscale prefs: ${args[*]}"
+    if ! tailscale set "${args[@]}"; then
+        warn "tailscale set failed — skipping (host prefs unchanged)"
+        exit 0
+    fi
+}
+
+selftest() {
+    local fail=0 tmp
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' RETURN
+
+    # A full, valid prefs file builds the expected three flags.
+    cat > "$tmp/valid" <<'EOF'
+exit_node=mullvad-nrt-1
+exit_node_allow_lan_access=true
+shields_up=false
+EOF
+    local got
+    got="$(build_set_args "$tmp/valid")"
+    local want=$'--exit-node=mullvad-nrt-1\n--exit-node-allow-lan-access=true\n--shields-up=false'
+    if [[ "$got" != "$want" ]]; then
+        echo "FAIL: valid prefs file produced unexpected args: $got" >&2
+        fail=1
+    fi
+
+    # An empty exit_node value still emits a clearing flag.
+    cat > "$tmp/empty-exit-node" <<'EOF'
+exit_node=
+exit_node_allow_lan_access=true
+shields_up=true
+EOF
+    got="$(build_set_args "$tmp/empty-exit-node")"
+    if [[ "$got" != *$'--exit-node=\n'* ]]; then
+        echo "FAIL: empty exit_node did not produce a clearing --exit-node= flag: $got" >&2
+        fail=1
+    fi
+
+    # Comments and blank lines are skipped.
+    cat > "$tmp/with-comments" <<'EOF'
+# a comment
+shields_up=true
+
+EOF
+    got="$(build_set_args "$tmp/with-comments")"
+    if [[ "$got" != "--shields-up=true" ]]; then
+        echo "FAIL: comment/blank handling produced unexpected args: $got" >&2
+        fail=1
+    fi
+
+    # An unknown key fails hard (this is the invariant `apply` relies on to
+    # decide when to warn-and-skip rather than pass a bad flag through).
+    cat > "$tmp/unknown-key" <<'EOF'
+exit_node=x
+some_future_key=y
+EOF
+    if build_set_args "$tmp/unknown-key" > /dev/null 2>/tmp/tailscale-prefs-selftest-err; then
+        echo "FAIL: unknown key did not fail build_set_args" >&2
+        fail=1
+    elif ! grep -q 'unknown key: some_future_key' /tmp/tailscale-prefs-selftest-err; then
+        echo "FAIL: unknown-key error message did not name the key" >&2
+        fail=1
+    fi
+    rm -f /tmp/tailscale-prefs-selftest-err
+
+    # A malformed (non key=value) line fails hard too.
+    printf 'this is not a kv line\n' > "$tmp/malformed"
+    if build_set_args "$tmp/malformed" > /dev/null 2>&1; then
+        echo "FAIL: malformed line did not fail build_set_args" >&2
+        fail=1
+    fi
+
+    # A missing file fails hard (only `apply`'s wrapper treats "missing" as
+    # a skip, via its own -f test before ever calling build_set_args).
+    if build_set_args "$tmp/does-not-exist" > /dev/null 2>&1; then
+        echo "FAIL: missing file did not fail build_set_args" >&2
+        fail=1
+    fi
+
+    # apply(): missing prefs file warns and exits 0 (never fails hms).
+    local apply_out apply_rc=0
+    apply_out="$(cmd_apply --prefs-file "$tmp/does-not-exist" 2>&1)" || apply_rc=$?
+    if [[ $apply_rc -ne 0 ]]; then
+        echo "FAIL: apply with a missing prefs file exited non-zero ($apply_rc)" >&2
+        fail=1
+    fi
+    if [[ "$apply_out" != *"no Tailscale prefs declared"* ]]; then
+        echo "FAIL: apply with a missing prefs file did not warn as expected: $apply_out" >&2
+        fail=1
+    fi
+
+    # apply(): tailscale absent from PATH warns and exits 0.
+    local stub_path_dir
+    stub_path_dir="$(mktemp -d)"
+    apply_rc=0
+    apply_out="$(PATH="$stub_path_dir" cmd_apply --prefs-file "$tmp/valid" 2>&1)" || apply_rc=$?
+    rm -rf "$stub_path_dir"
+    if [[ $apply_rc -ne 0 ]]; then
+        echo "FAIL: apply with tailscale absent exited non-zero ($apply_rc)" >&2
+        fail=1
+    fi
+    if [[ "$apply_out" != *"tailscale not installed"* ]]; then
+        echo "FAIL: apply with tailscale absent did not warn as expected: $apply_out" >&2
+        fail=1
+    fi
+
+    # apply(): tailscale present but `tailscale status` fails (not logged
+    # in) warns and exits 0 — a stub binary on PATH that only understands
+    # `status` (fails) and refuses anything else loudly, so a regression
+    # that calls `tailscale set` here would be caught.
+    local stub_dir
+    stub_dir="$(mktemp -d)"
+    cat > "$stub_dir/tailscale" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    status) exit 1 ;;
+    *) echo "unexpected tailscale invocation: $*" >&2; exit 99 ;;
+esac
+STUB
+    chmod +x "$stub_dir/tailscale"
+    apply_rc=0
+    apply_out="$(PATH="$stub_dir" cmd_apply --prefs-file "$tmp/valid" 2>&1)" || apply_rc=$?
+    rm -rf "$stub_dir"
+    if [[ $apply_rc -ne 0 ]]; then
+        echo "FAIL: apply with tailscale not logged in exited non-zero ($apply_rc)" >&2
+        fail=1
+    fi
+    if [[ "$apply_out" != *"not logged in"* ]]; then
+        echo "FAIL: apply with tailscale not logged in did not warn as expected: $apply_out" >&2
+        fail=1
+    fi
+
+    if [[ "$fail" == 0 ]]; then
+        echo "selftest: all passed"
+    fi
+    return "$fail"
+}
+
+case "${1:-}" in
+    apply)
+        shift
+        cmd_apply "$@"
+        ;;
+    --selftest)
+        selftest
+        ;;
+    -h|--help)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 1
+        ;;
+esac

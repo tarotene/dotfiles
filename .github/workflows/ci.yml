@@ -355,6 +355,15 @@ jobs:
       - name: gpg-subkey --selftest
         run: ./scripts/gpg-subkey --selftest
 
+      # tailscale-prefs (ADR-471) is deterministic shell end to end: the
+      # pure build_set_args core (valid/empty/comment/unknown-key/malformed/
+      # missing-file cases) plus apply()'s three warn-only skip paths
+      # (missing prefs file, tailscale absent from PATH, tailscale present
+      # but not logged in via a stub binary) — no network, no real
+      # tailscaled involved.
+      - name: tailscale-prefs --selftest
+        run: ./scripts/tailscale-prefs --selftest
+
       # A mode here is a *pair* (plan side / execution side), so the interesting
       # failures are combinations: a transition that leaves the other half
       # behind, a .model guard that fires after the write (which is how an

@@ -1,0 +1,54 @@
+// Tailscale ACL policy (ADR-471). Source of truth for this repo; paste this
+// file's contents into the admin console's Access Controls editor (Policy
+// File) after any change — there is no API credential here to push it
+// automatically, and none is added (ADR-0034: this repo is PUBLIC, no
+// tailnet name/email is written here).
+//
+// Boundary: personal devices (autogroup:member — vega, altair, phone) reach
+// each other and the internet exit freely. `arcturus` (tag:company) reaches
+// only the internet exit (the Mullvad exit node, selected manually — see
+// docs/operations.md's "Café Wi-Fi" section) and nothing else; it is
+// unreachable from, and cannot reach, any personal device.
+{
+  "tagOwners": {
+    // "[]" is Tailscale's shorthand for ["autogroup:admin"] — no email is
+    // written here (ADR-0034).
+    "tag:company": [],
+  },
+
+  "acls": [
+    // Personal devices: full mesh connectivity among themselves, plus
+    // permission to route through an exit node (Mullvad today, the home
+    // Raspberry Pi/K8s stack once it exists) — autogroup:internet is a
+    // *separate* grant from device-to-device reachability, not implied by
+    // it, so this line exists even though the intent is "just let my own
+    // devices talk to each other and to the outside via my own exit node."
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:member:*", "autogroup:internet:*"],
+    },
+
+    // arcturus (tag:company): internet-exit-only. No line grants it access
+    // to autogroup:member, so it is unreachable from — and cannot reach —
+    // any personal device (ACLs are default-deny).
+    {
+      "action": "accept",
+      "src": ["tag:company"],
+      "dst": ["autogroup:internet:*"],
+    },
+  ],
+
+  // Tailscale SSH: personal devices only (vega <-> altair <-> phone).
+  // tag:company is deliberately absent — a tagged device cannot SSH into a
+  // user-owned device regardless (Tailscale's own tags KB), and this repo
+  // draws the same boundary explicitly rather than relying on that default.
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot"],
+    },
+  ],
+}

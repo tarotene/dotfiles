@@ -327,6 +327,14 @@ if [[ $rc -ne 0 ]]; then
     exit "$rc"
 fi
 
+# Tailscale prefs convergence (ADR-471, warn-only like check_herdr_staleness
+# below — a missing/unauthenticated Tailscale install must never fail a
+# switch). Common to Linux and darwin, so this runs before the Linux-only
+# systemd/fcitx5 follow-up below.
+if command -v tailscale-prefs > /dev/null 2>&1; then
+    tailscale-prefs apply
+fi
+
 # systemd --user and the fcitx5 unit are Linux-only (ADR-0018); darwin hosts
 # (e.g. altair) have neither, so the whole follow-up is a no-op there.
 if [[ "$(uname -s)" != "Linux" ]]; then
