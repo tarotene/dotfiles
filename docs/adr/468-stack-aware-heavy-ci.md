@@ -174,3 +174,89 @@ required check が定義できない(ruleset は `~DEFAULT_BRANCH` スコープ)
 - `rulesets/quality.json` — #420 で宣言済みの required 7 本(本 PR では
   変更しないが、`apply-rulesets.sh --reconcile` の実行により live 側を
   この宣言に一致させる)
+
+## Amendment (2026-09-26 — 変更 path が入力に含まれない PR でも heavy を skip する)
+
+Decision 1〜3 の stack 軸は、bottom 段(base=main)を常に `heavy=true` に
+した。しかし直近 60 本のマージ済み PR のうち約 33% は `flake.*` /
+`home/**` / `patches/**` / `crates/**` / `Cargo.*` を一切触っていない
+(docs のみ・`config/claude/skills/**` のみが典型)。bottom 段でも重い
+ジョブを毎回待つ運用(ユーザー確認、2026-09-26)では、required でない
+`build altair` を含む全ジョブの完走を Stop 前に待つため、stack 軸だけでは
+このコストを取り切れない。
+
+事実(2026-09-26 実測・確認):
+
+- `config/**` `scripts/**` `rulesets/*.json` `packages/declarative/
+  apt-packages.txt` は home/ から `home.file` / `xdg.configFile` の
+  `source =` で**コピーされるだけ**で、build 時に実行・コンパイルされない
+  (`home/`・`flake.nix` に config を処理する `runCommand` /
+  `writeShellApplication` は `nixgl.nix` のラッパー以外に無い)。参照
+  パスの欠落は常時走る `nix flake check --no-build`(flake-check job)の
+  eval で捕まる。
+- `rust workspace` は `rust-migration.toml` の `[scan].dirs`
+  (`config/{claude,codex,copilot,git}/hooks`, `config/claude/statusline`,
+  `scripts`)と `extra = ["bootstrap.sh"]` を migration-audit が走査し、
+  `crates/fixture-oracle` が `config/claude/hooks/external-send-guard.sh`
+  を実行する。よって hook・script の変更は rust の正当な入力。
+- job-level `if:` による skip は required check を `success` 扱いにする
+  (GitHub Docs "Troubleshooting required status checks" 取得
+  2026-09-25、Decision 1 と同じ根拠)。
+
+### Decision
+
+1. `stack-position` の出力を `heavy`(1 本)から `build_host` / `rust`
+   (2 本)に分ける。各出力は stack 軸(Decision 1〜3 のまま)と path 軸
+   の AND。
+2. path 軸: `event_name != pull_request` または `ci:full` ラベルでは
+   常に触れた扱い(stack 軸と同じ脱出口を共有する — 脱出口を増やさない)。
+   それ以外は `gh api repos/.../pulls/<N>/files --paginate` で変更ファイル
+   一覧を取り、`BUILD_INPUTS`(build_host の入力)・`RUST_EXTRA_INPUTS`
+   (`BUILD_INPUTS` に加えて rust だけが要る入力)への prefix/完全一致で
+   `build_touched` / `rust_touched` を決める。`gh api` 失敗、または
+   REST の 1 PR あたり上限 3000 件(GitHub Docs "List pull requests
+   files" 取得 2026-09-26)に達した一覧の打ち切りは fail-open。
+3. `config/` `scripts/` `rulesets/` `packages/` は `COPY_ONLY` として
+   宣言だけしておく(判定には使わない)。`ci.yml` に drift 検査ステップ
+   「nix.yml path gate covers every path the nix code reads」を足し、
+   `flake.nix` / `home/**/*.nix` が読む非コメントの相対パスのうち
+   `BUILD_INPUTS` にも `COPY_ONLY` にも載っていないものを `::error` に
+   する。新しいトップレベルディレクトリを nix コードから参照し始めた
+   のにこの PR がゲートのリストを触っていない状態を検出する
+   (「Every --selftest is wired into CI」ステップと同型)。
+4. push イベントと `.github/workflows/nix.yml` の `push.paths` は変えない
+   — push 側は job を区別しない粗い集合のままで、ゲート側の job 別集合
+   と単一正本化はしない(相互参照コメントで済ませる)。
+
+### 担保水準の変化
+
+- 下がらない。skip されるのは required check が `success` 扱いになる
+  job-level `if:` のみで、Decision 1 の根拠(`skipped` は success)が
+  そのまま当てはまる。
+- bottom 段でも path 軸で skip され得るようになる点が Decision 1〜3 から
+  の変更。「bottom 段は常に heavy」という本文冒頭の記述は、path 軸を
+  導入した現在は成立しない — bottom かつ変更 path が入力に無ければ
+  skip される。
+- 残る穴: (a) Decision の「残る穴」と同じ auto-retarget の穴(head SHA
+  が変わらないと再実行されない)。(b) `COPY_ONLY` 宣言そのものの誤り
+  ——drift 検査は「未分類」しか検出せず、「本当は copy-only でない」
+  という誤分類は検出しない。
+
+### Alternatives considered
+
+- **push イベントにも同じ判定をゲートで行い、`push.paths` を削って単一
+  正本にする**: `github.event.before` が force-push や新規ブランチで
+  全ゼロになる分岐が増えるだけで、push 側は既に required check の問題が
+  無いため得るものが少ない(還元性)。
+- **`dorny/paths-filter` action を使う**: PR イベントでは checkout 不要
+  で REST API から変更一覧を取る点は同じだが、第三者依存が 1 つ増える。
+  既存ゲートと同じ `gh api` + inline bash の延長で書ける(パターンは
+  全て prefix/完全一致で glob 不要)ため採らない。
+
+## 執行点(Amendment)
+
+- `.github/workflows/nix.yml` — `stack-position` の `build_host`/`rust`
+  出力分岐、`BUILD_INPUTS`/`RUST_EXTRA_INPUTS`/`COPY_ONLY` の宣言、
+  `rust`/`build-host` の `if:` 更新(本 PR で変更)
+- `.github/workflows/ci.yml` — drift 検査ステップ「nix.yml path gate
+  covers every path the nix code reads」(本 PR で追加)
