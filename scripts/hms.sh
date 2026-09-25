@@ -9,6 +9,7 @@ set -euo pipefail
 #                resolve_default_ref below, ADR-0034)
 #   hms .        apply the current checkout/worktree (pre-push verification)
 #   hms <path>   apply an arbitrary local checkout
+#   hms --selftest   run the offline, network-free unit tests below and exit
 #
 # One command = the whole apply runbook:
 #   1. home-manager switch --flake <ref>#$(hostname) -b backup
@@ -35,9 +36,111 @@ set -euo pipefail
 # a worktree together with the private values needs a direct call instead:
 #   home-manager switch --flake <private-hub-ref>#$(hostname) \
 #     --override-input dotfiles path:$PWD -b backup
+#
+# Applying a wrapper flake has the same #48-shaped staleness problem one
+# layer down: the wrapper's own flake.lock pins `dotfiles` to whatever rev it
+# was last bumped to, and #48's refresh only re-resolves the wrapper's own
+# ref, never the `dotfiles` input inside its lock. A dotfiles-side merge
+# (e.g. a retired permission rule) can land, `hms` can run right after and
+# still print "Done.", yet the wrapper's stale lock silently re-applies the
+# pre-merge dotfiles. So whenever the flake being applied has a `dotfiles`
+# input in its lock (a wrapper, whether remote or local), hms overrides it
+# with pushed main's resolved revision instead of trusting the lock — see
+# ADR-0034 Amendment (2026-09-25 — hms overrides the wrapper's dotfiles
+# input). The wrapper's own `flake.lock` entry for `dotfiles` is then only a
+# hygiene pin for `nix flake check`, not what gets applied.
 
 DEFAULT_REF="github:tarotene/dotfiles"
 FCITX5_UNIT="app-fcitx5@autostart.service"
+
+# Reads a `nix flake metadata --json` document on stdin and, if its root
+# flake's `dotfiles` input is a plain (non-follows) input — i.e. the flake
+# being applied is a private wrapper flake per ADR-0034 — prints the locked
+# rev that input is currently pinned to. Prints nothing (rc 0) for a flake
+# with no `dotfiles` input, or one expressed as a `follows` chain (a JSON
+# array rather than a node-name string): neither case is a wrapper flake's
+# own direct pin, so there is nothing to override.
+wrapper_locked_dotfiles_rev() {
+    jq -r '
+        (.locks.nodes.root.inputs.dotfiles // empty) as $node
+        | if ($node | type) != "string" then empty
+          else (.locks.nodes[$node].locked.rev // empty)
+          end
+    '
+}
+
+# Prints, one per line, the `home-manager switch` arguments that pin the
+# `dotfiles` input to pushed main's resolved revision ($1) instead of
+# whatever the wrapper's own lock says. Prints nothing (rc 0) when $1 is
+# empty — the caller only reaches for this once it has already resolved a
+# revision to pin, so an empty argument means "nothing to override".
+dotfiles_override_opts() { # $1=dotfiles revision to pin (pushed main's HEAD)
+    local main_rev="${1:-}"
+    [[ -n "$main_rev" ]] || return 0
+    printf '%s\n' \
+        --override-input dotfiles "github:tarotene/dotfiles/${main_rev}" \
+        --no-write-lock-file
+}
+
+selftest() {
+    local fails=0
+
+    check_rev() { # $1=名前 $2=metadata JSON $3=期待する出力
+        local name="$1" json="$2" want="$3" got
+        got="$(printf '%s' "$json" | wrapper_locked_dotfiles_rev)"
+        if [[ "$got" == "$want" ]]; then
+            echo "ok   $name"
+        else
+            echo "FAIL $name (want '$want' got '$got')" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    check_opts() { # $1=名前 $2=main_rev $3=期待する行数
+        local name="$1" main_rev="$2" want_lines="$3" got_lines
+        got_lines="$(dotfiles_override_opts "$main_rev" | wc -l | tr -d ' ')"
+        if [[ "$got_lines" == "$want_lines" ]]; then
+            echo "ok   $name"
+        else
+            echo "FAIL $name (want $want_lines lines got $got_lines)" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    echo "wrapper_locked_dotfiles_rev:"
+    check_rev "1 dotfiles input present (a wrapper flake)" \
+        '{"locks":{"nodes":{
+            "root":{"inputs":{"dotfiles":"dotfiles","nixpkgs":"nixpkgs"}},
+            "dotfiles":{"locked":{"rev":"abc123def456","type":"github"}}
+        }}}' \
+        "abc123def456"
+    check_rev "2 no dotfiles input (dotfiles applied directly)" \
+        '{"locks":{"nodes":{
+            "root":{"inputs":{"nixpkgs":"nixpkgs"}}
+        }}}' \
+        ""
+    check_rev "3 dotfiles input is a follows array" \
+        '{"locks":{"nodes":{
+            "root":{"inputs":{"dotfiles":["nixpkgs","dotfiles"]}}
+        }}}' \
+        ""
+
+    echo "dotfiles_override_opts:"
+    check_opts "4 non-empty revision -> 4 args" \
+        "90db04baaa54c598a2b5ba847adbb9451d2bc798" 4
+    check_opts "5 empty revision -> no output" "" 0
+
+    if [[ $fails -ne 0 ]]; then
+        return 1
+    fi
+    echo "hms.sh: OK"
+    return 0
+}
+
+if [[ "${1:-}" == "--selftest" ]]; then
+    selftest
+    exit $?
+fi
 
 # Resolve the default flake ref: a marker file first, DEFAULT_REF as fallback
 # (ADR-0034, same indirection type as resolve_host below and docs/claude/
@@ -72,6 +175,7 @@ while [[ $# -gt 0 ]]; do
             echo "  hms .        apply the current checkout/worktree (pre-push verification;"
             echo "               drops private value modules if ${ref} is a private wrapper flake)"
             echo "  hms <path>   apply an arbitrary local checkout"
+            echo "  hms --selftest   run offline unit tests and exit"
             exit 0
             ;;
         -*) echo "Error: Unknown option: $1" >&2; exit 1 ;;
@@ -171,12 +275,16 @@ extra_opts=()
 # Remote flake refs (github:, git+ssh:, ...) are the ones nix caches; a local
 # path (`.` or a checkout directory) always reads the current tree, so there is
 # nothing to refresh.
+ref_meta_json=""
 if [[ ! -e "$ref" ]]; then
     echo "==> nix flake metadata --refresh ${ref}"
-    if revision="$(nix flake metadata --refresh --json "$ref" 2>/dev/null | jq -r '.revision // empty')" && [[ -n "$revision" ]]; then
-        echo "==> applying revision ${revision}"
+    if ref_meta_json="$(nix flake metadata --refresh --json "$ref" 2>/dev/null)" \
+        && ref_revision="$(printf '%s' "$ref_meta_json" | jq -r '.revision // empty')" \
+        && [[ -n "$ref_revision" ]]; then
+        echo "==> applying revision ${ref_revision}"
     else
         echo "==> could not resolve a revision for ${ref} (offline?); continuing with whatever switch resolves" >&2
+        ref_meta_json=""
     fi
 else
     # `hms .` applies a local checkout/worktree whose git tree is routinely
@@ -185,6 +293,30 @@ else
     # changes" on every switch. Suppress it only on this local-path branch,
     # not machine-wide via nix.conf (#149) — a non-local ref never triggers it.
     extra_opts=(--option warn-dirty false)
+    ref_meta_json="$(nix flake metadata --json "$ref" 2>/dev/null || true)"
+fi
+
+# Wrapper-lock override (ADR-0034 Amendment, 2026-09-25): if the flake being
+# applied has a `dotfiles` input (a wrapper, remote or local), pin it to
+# pushed main's resolved revision instead of trusting the wrapper's lock.
+if [[ -n "$ref_meta_json" ]]; then
+    locked_dotfiles_rev="$(printf '%s' "$ref_meta_json" | wrapper_locked_dotfiles_rev)"
+    if [[ -n "$locked_dotfiles_rev" ]]; then
+        if dotfiles_meta_json="$(nix flake metadata --refresh --json "$DEFAULT_REF" 2>/dev/null)" \
+            && dotfiles_main_rev="$(printf '%s' "$dotfiles_meta_json" | jq -r '.revision // empty')" \
+            && [[ -n "$dotfiles_main_rev" ]]; then
+            if [[ "$dotfiles_main_rev" == "$locked_dotfiles_rev" ]]; then
+                echo "==> dotfiles revision ${dotfiles_main_rev} (wrapper's lock already at this revision)"
+            else
+                echo "==> dotfiles revision ${dotfiles_main_rev} (overriding the wrapper's lock, which pins ${locked_dotfiles_rev})"
+            fi
+            while IFS= read -r opt; do
+                extra_opts+=("$opt")
+            done < <(dotfiles_override_opts "$dotfiles_main_rev")
+        else
+            echo "==> could not resolve ${DEFAULT_REF} (offline?); applying the wrapper's lock as-is (dotfiles ${locked_dotfiles_rev})" >&2
+        fi
+    fi
 fi
 
 echo "==> home-manager switch --flake ${ref}#${host} -b backup"

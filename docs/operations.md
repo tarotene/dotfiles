@@ -39,6 +39,24 @@ dirty mid-session (that's the point of `hms .`), and without this nix repeats
 `warning: Git tree '<path>' has uncommitted changes` on every switch. The
 suppression is local-path-only, not a machine-wide `nix.conf` setting (#149).
 
+On a host with a registered private wrapper flake (ADR-0034), `hms`'s refresh
+above only re-resolves the wrapper's own ref — it never re-resolves the
+`dotfiles` input pinned inside the wrapper's `flake.lock`. Since dotfiles-side
+decisions (e.g. a retired `permissions.allow` rule) only take effect once
+their activation script actually runs, a stale wrapper lock can silently
+re-apply a pre-merge dotfiles even right after `hms` prints `Done.` (the same
+shape of bug #48 fixed, one layer down — see [ADR-0034's 2026-09-25
+Amendment](adr/0034-machine-state-wrapper-flake.md) for the full account).
+`hms` now detects this from the wrapper's own metadata and overrides
+`dotfiles` to pushed main's resolved revision instead of trusting the lock,
+printing `==> dotfiles revision <rev> (overriding the wrapper's lock, which
+pins <locked-rev>)`; when the lock already matches, it prints `(wrapper's
+lock already at this revision)` instead. Offline, it prints a warning and
+applies the wrapper's lock as-is rather than failing. This override never
+touches the wrapper's own `flake.lock` file — that pin now only matters for
+the wrapper flake's own `nix flake check`, not for what `hms` actually
+applies.
+
 ## `~/Downloads` is not storage
 
 `home/modules/downloads.nix` deploys a daily cleanup (`systemd.user.tmpfiles`

@@ -174,6 +174,14 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # hms.sh (docs/adr/0034-machine-state-wrapper-flake.md Amendment
+      # 2026-09-25): private wrapper flake 経由の適用でも、wrapper の
+      # flake.lock が古い dotfiles rev を pin していれば override して
+      # pushed main を適用する判定ロジックの selftest。ネットワーク不使用
+      # (フィクスチャの `nix flake metadata --json` 相当を直接与える)。
+      - name: hms.sh --selftest
+        run: ./scripts/hms.sh --selftest
+
       # adr-number-check (ADR-380, docs/claude/adr-numbering.md): ADR 番号を
       # 導入 PR の番号にすることで採番衝突を構造的に不可能にする決定の判定
       # エンジン。selftest はネットワーク不使用。pull_request イベントでは

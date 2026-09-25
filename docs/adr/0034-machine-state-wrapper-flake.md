@@ -153,3 +153,43 @@ upstream は互換 shim を持たず、旧ディレクトリを読まない。De
 ### 執行点
 
 - `flake.nix` — `inputs.bleep` の pin を、`orgs.txt` 不在で ask を返す rev に上げる
+
+## Amendment (2026-09-25 — hms は wrapper の lock を使わず pushed main の dotfiles を適用する)
+
+Decision 6・Consequences が設計した `hms` の refresh(#48 対策、`nix flake
+metadata --refresh` で wrapper 自身の ref を tarball-ttl キャッシュから
+逃がす)は、wrapper の `flake.lock` が pin する **`dotfiles` input までは
+refresh しない**。dotfiles 側の merge(例: 野良 permission ルールの撤回、
+#460)は home-manager の activation script が switch 時にしか実行されない
+ため、wrapper 経由の `hms` が wrapper の古い lock をそのまま適用すると、
+merge 済みのはずの dotfiles 側決定が再現なく再適用される。実例: #460 が
+09:34 にマージされた直後の 09:35 に `hms` を実行しても、wrapper の lock は
+1 つ前の #459 相当の rev を pin したままで、"Done." が出た後も
+`~/.claude/settings.json` の撤回対象ルールが消えなかった。
+
+- `hms` は、適用対象の flake の metadata(`nix flake metadata --json`)を見て
+  `.locks.nodes.root.inputs.dotfiles` が(follows chain ではなく)直接の
+  input として存在するとき、その flake を wrapper flake とみなす
+  (remote/local を問わない)。
+- wrapper とみなした場合、`nix flake metadata --refresh` で解決した
+  `github:tarotene/dotfiles` の HEAD rev を
+  `--override-input dotfiles github:tarotene/dotfiles/<rev>
+  --no-write-lock-file` として `home-manager switch` に渡す。wrapper 自身の
+  `flake.lock` の `dotfiles` エントリは書き換えない。
+- HEAD rev を解決できない(オフライン)ときは override せず、wrapper の
+  lock が pin する rev のまま警告して続行する(#48 と同じ retreat)。
+- Consequences が定めた `hms .`(dotfiles worktree の直接適用、root
+  input に `dotfiles` を持たない)の経路と、その私的実値込み検証の直叩き
+  手順(`--override-input dotfiles path:$PWD`)は変わらない。
+- wrapper の `flake.lock` に残る `dotfiles` の pin は、以後
+  「適用される rev」ではなく「wrapper 自身の `nix flake check` が評価する
+  rev」という衛生目的の pin に格下げされる。その鮮度維持(Renovate の
+  `nix` manager による `lockFileMaintenance` の導入等)は wrapper flake
+  自体の作業であり、本 ADR・本 Amendment のスコープ外(Decision 6 の
+  「private wrapper flake 自体の作成は本 ADR のスコープ外」原則を踏襲)。
+
+### 執行点
+
+- `scripts/hms.sh` — override 判定ロジック(`wrapper_locked_dotfiles_rev`
+  / `dotfiles_override_opts`)と適用フローへの組み込み、`--selftest`
+- `.github/workflows/ci.yml` — `hms.sh --selftest` の CI 配線
