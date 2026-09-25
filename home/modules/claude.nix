@@ -755,7 +755,7 @@ let
     # の送信は原理的に検出できないため、Bash|mcp__.* にする理由がない)。
     # jq/文字列処理のみで往復が無いので timeout は最短。
     register PreToolUse "mcp__.*" "$external_send_guard" 10
-    # adr-number(ADR-380): `gh pr create` 直後に ADR-0000 を PR 番号へ自動
+    # adr-number(ADR-380): `gh pr create` 直後に ADR-478 を PR 番号へ自動
     # 改番する段3(利便性層)。deny は一切しないため他の "Bash|mcp__.*" 系
     # guard と揃える必要が無く、atuin と同じ単純な Bash matcher でよい。
     # docs/adr/0000-*.md が無ければ stdin すら読まず即 exit するので常時
@@ -1094,7 +1094,7 @@ in
     executable = true;
   };
   # adr-number(ADR-380, docs/claude/adr-numbering.md): PostToolUse で
-  # ADR-0000 を PR 番号へ自動改番する段3(利便性層)。attribution-guard.sh
+  # ADR-478 を PR 番号へ自動改番する段3(利便性層)。attribution-guard.sh
   # を同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
   home.file.".claude/hooks/adr-number.sh" = {
     source = repoConfig + "/claude/hooks/adr-number.sh";
@@ -1103,7 +1103,7 @@ in
   # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
   # flake.nix の rustOverlay)への安定パスの symlink。
   home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
-  # verdict-escalate(ADR-0000、crates/verdict-escalate): 判定を返す hook では
+  # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
   # の register とは別の消費経路)。

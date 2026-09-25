@@ -1,5 +1,5 @@
 //! `docs/schemas/agent-verdict.schema.json` が `record::VerdictRecord` から
-//! 生成される内容と一致していることを検証する(ADR-0000 D8: 型が正本、
+//! 生成される内容と一致していることを検証する(ADR-478 D8: 型が正本、
 //! Schema は生成物)。
 
 use verdict_escalate::record::VerdictRecord;

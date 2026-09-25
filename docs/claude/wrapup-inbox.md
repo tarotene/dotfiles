@@ -136,13 +136,13 @@ Code の auto memory(`~/.claude/projects/*/memory/*.md`、frontmatter
 原則そのもの(不可視なローカルメモに閉じ込めない)は共有 AGENTS.md、
 auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
-## 判定レッジャーからの自動集約行(ADR-0000)
+## 判定レッジャーからの自動集約行(ADR-478)
 
 `verdict-escalate`(`crates/verdict-escalate`)が、`bleep` のような自作
 ガードレールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション単位で
 集約し、同一 fingerprint(ツール・reason_id・match_class・マッチ語の
 ハッシュ)で閾値(既定 3 回)以上 deny/ask された場合に inbox へ 1 行を
-追記する。詳細は[ADR-0000](../adr/0000-agent-verdict-ledger.md)と
+追記する。詳細は[ADR-478](../adr/478-agent-verdict-ledger.md)と
 [`verdict-escalate.md`](verdict-escalate.md)を参照。
 
 この経路が書く行は最小スキーマに 2 フィールドを追加する:
@@ -159,7 +159,7 @@ prompt も境界にならない — `gh-edit-allow` が同セッション内の�
 リポジトリへの `gh issue create` を自動 allow するため。そこで `go:"ask"`
 の行だけ、Stop 指示文が AskUserQuestion で title・detail・起票先 `repo` を
 提示し、「このまま起票」「別リポジトリへ振り直し」「今回は起票しない」の
-選択を得てから処理させる(ADR-0000 D6)。「収集・集約は自動、起票は人間の
+選択を得てから処理させる(ADR-478 D6)。「収集・集約は自動、起票は人間の
 GO 後」という要件をこの 2 フィールドだけで表現する。
 
 `--check-dup` は repo 引数を取れるようになった(`--check-dup <title>

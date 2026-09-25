@@ -20,7 +20,7 @@
 # 1 行スキーマ: {"ts": "<ISO8601>", "title": "...", "detail": "..."}
 # 任意で "repo"(既定の起票先を上書き)・"go":"ask"(起票前に AskUserQuestion
 # での明示 GO を要求)も持つ — 判定レッジャー(agent-verdicts/*.jsonl)の
-# 自動集約行(ADR-0000、crates/verdict-escalate)がこの形で書く。verdict-escalate
+# 自動集約行(ADR-478、crates/verdict-escalate)がこの形で書く。verdict-escalate
 # が配備されていれば、inbox 読み取りより前に(同じ Stop 実行内で)逐次呼ぶ。
 # ts は一意でない(削除キーには使わない)。行の同一性は行全体の完全一致。
 #
@@ -242,7 +242,7 @@ if [[ "${1:-}" == "--add" ]]; then
 fi
 
 # --- サブコマンド: --check-dup <title> [repo] ----------------------------------
-# repo(owner/repo)を渡すと `gh issue list -R <repo>` で調べる(ADR-0000:
+# repo(owner/repo)を渡すと `gh issue list -R <repo>` で調べる(ADR-478:
 # 判定レッジャーの起票候補は「このプロジェクト」以外のリポジトリ宛にもなる)。
 # 省略時は従来どおりカレントリポジトリを見る。
 if [[ "${1:-}" == "--check-dup" ]]; then
@@ -487,7 +487,7 @@ STUB
   PATH="$stub_path" bash "$self" --check-dup "dup title" || rc=$?
   check "--check-dup は非ヒット時 exit 0" 0 "$rc"
 
-  # --- --check-dup [repo]: repo 引数が gh に -R として渡る(ADR-0000) ---
+  # --- --check-dup [repo]: repo 引数が gh に -R として渡る(ADR-478) ---
   : >"$WRAPUP_GH_ARGS_LOG"
   rc=0
   PATH="$stub_path" bash "$self" --check-dup "dup title" "acme/bleep" || rc=$?
@@ -496,7 +496,7 @@ STUB
     "$(grep -q -- '-R acme/bleep' "$WRAPUP_GH_ARGS_LOG"; echo $?)"
 
   # --- verdict-escalate 統合: 集約結果が inbox 読み取り前に反映される ---
-  # (ADR-0000。集約自体のロジックは crates/verdict-escalate 側でテスト済み
+  # (ADR-478。集約自体のロジックは crates/verdict-escalate 側でテスト済み
   # — ここでは「Stop 本体が inbox 読み取り前に呼ぶ」配線だけを確認する)
   ve_repo="$dir/ve_repo"
   mkdir -p "$ve_repo"
@@ -649,7 +649,7 @@ session_id="$(jq -r '.session_id // "unknown"' <<<"$input" 2>/dev/null)" || sess
 migrate_legacy_inbox "$project"
 inbox="$(inbox_for "$project")"
 
-# 判定レッジャー(agent-verdicts/*.jsonl)の集約(ADR-0000)。inbox 読み取りより
+# 判定レッジャー(agent-verdicts/*.jsonl)の集約(ADR-478)。inbox 読み取りより
 # 前に呼ぶことで、今回の集約結果も同じ Stop 内で拾える(並列 hook にすると
 # 順序が非決定になる)。既定は同じディレクトリ(gh-edit-allow 等と同じ配置)
 # — PATH 経由(command -v)にしない理由は wrapup-session-start.sh の gate 解決
@@ -688,7 +688,7 @@ if [[ -s "$inbox" ]]; then
      その行は今回スキップして inbox に残す。
   2. 行に "go":"ask" が無ければ、重複でない場合そのまま
      gh issue create [-R <repo>] --title "<title>" --body "<本文>" で起票する。
-  3. 行に "go":"ask" がある場合(判定レッジャーからの自動集約行、ADR-0000)は、
+  3. 行に "go":"ask" がある場合(判定レッジャーからの自動集約行、ADR-478)は、
      重複でなくても直ちに起票してはいけません。AskUserQuestion で
      title・detail・repo(既定の起票先)を提示し、「このまま <repo> に起票する」
      「別のリポジトリに振り直す」「今回は起票しない」を選んでもらってから、

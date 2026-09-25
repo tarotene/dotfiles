@@ -1,10 +1,10 @@
-//! verdict-escalate — 判定レッジャー(`agent-verdicts/*.jsonl`、ADR-0000)を
+//! verdict-escalate — 判定レッジャー(`agent-verdicts/*.jsonl`、ADR-478)を
 //! セッション単位・fingerprint 単位に集約し、閾値を超えたら
 //! wrap-up inbox(`wrapup-stop-gate.sh --add`)へ 1 行追記する。
 //!
 //! 起票そのものは行わない — 追記する行には常に `"go":"ask"` を付け、
 //! 実際の Issue 化は Stop の指示文経由で人間の明示的な GO を得てから
-//! 行う(ADR-0000 D6)。「収集・集約は自動、起票は人間の GO 後」という
+//! 行う(ADR-478 D6)。「収集・集約は自動、起票は人間の GO 後」という
 //! 確定要件を、既存の wrap-up inbox 配管に最小差分で乗せる。
 //!
 //! どの失敗経路でも fail-open — 判定レッジャーが読めない・
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// 同一セッション・同一 fingerprint でこの件数以上 deny/ask されたら
-/// inbox 候補に昇格する(ADR-0000 D2)。
+/// inbox 候補に昇格する(ADR-478 D2)。
 pub const THRESHOLD: usize = 3;
 
 /// `${AGENT_VERDICTS_DIR}` → `${XDG_STATE_HOME}/agent-verdicts` →
@@ -78,7 +78,7 @@ pub fn read_session_records(dir: &Path, session_id: &str) -> Vec<VerdictRecord> 
     out
 }
 
-/// fingerprint(閉語彙タプルの文字列表現、ADR-0000 D3)。理由文やコマンド
+/// fingerprint(閉語彙タプルの文字列表現、ADR-478 D3)。理由文やコマンド
 /// 本文ではなく、これで群化する。
 pub fn fingerprint(r: &VerdictRecord) -> String {
     format!(

@@ -113,7 +113,7 @@
       ]
     },
     "ReasonId": {
-      "description": "`reason_id` フィールド。閉語彙 — 未知の値を書く書き手が現れたら、この enum を拡張してから Schema を再生成する(ADR-0000 D3)。",
+      "description": "`reason_id` フィールド。閉語彙 — 未知の値を書く書き手が現れたら、この enum を拡張してから Schema を再生成する(ADR-478 D3)。",
       "oneOf": [
         {
           "description": "org/repo 形式、または denylist 登録済みリポジトリ名の裸の単語一致。",

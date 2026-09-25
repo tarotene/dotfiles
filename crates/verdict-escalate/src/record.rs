@@ -1,4 +1,4 @@
-//! 判定レッジャー(`agent-verdicts/<tool>.jsonl`)1 レコードの契約(ADR-0000)。
+//! 判定レッジャー(`agent-verdicts/<tool>.jsonl`)1 レコードの契約(ADR-478)。
 //!
 //! この型が正本で、`docs/schemas/agent-verdict.schema.json` はここからの
 //! 生成物(`examples/gen_schema.rs`、`tests/schema.rs` が一致を検証する)。
@@ -17,7 +17,7 @@ pub enum Verdict {
 }
 
 /// `reason_id` フィールド。閉語彙 — 未知の値を書く書き手が現れたら、この
-/// enum を拡張してから Schema を再生成する(ADR-0000 D3)。
+/// enum を拡張してから Schema を再生成する(ADR-478 D3)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReasonId {
