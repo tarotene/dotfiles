@@ -54,6 +54,19 @@ function categorizePermissions(permissions: string[]): PermissionClassification 
 }
 
 function isGenericPermission(perm: string): boolean {
+  // #461: never promote a rule containing a MID-string wildcard (a `*` with
+  // more content after it before the closing `)`, e.g. `Bash(ps -p * -o
+  // pid,cmd)`). Several of the category patterns below match on a fixed
+  // prefix only (`/^Bash\(ps -p /`, `/^Bash\(gh (pr|issue|label) /`, ...) and
+  // would otherwise happily classify a mid-wildcard rule as "generic" and
+  // promote it — this is exactly how `Bash(npx --prefix * playwright *)` got
+  // re-promoted after being retired once (dotfiles#461). Claude Code's
+  // Wildcard patterns (https://code.claude.com/docs/en/permissions) make a
+  // mid-string `*` match real, dangerous option-injection positions
+  // (`-C`/`-p`/`--prefix`/...), so this MUST be checked before any
+  // fixed-prefix pattern below, not relied on downstream.
+  if (/(\(| )\*[ \t]+[^)]/.test(perm)) return false;
+
   // Universal patterns
   if (perm === "WebSearch") return true;
   if (/^WebFetch\(domain:(github\.com|pypi\.org|crates\.io)\)$/.test(perm)) return true;
@@ -197,6 +210,14 @@ function isGenericPermission(perm: string): boolean {
 - `WebFetch(domain:montreal-forced-aligner.readthedocs.io)` - MFA docs
 - `WebFetch(domain:mfa-models.readthedocs.io)` - MFA models docs
 - Any domain not in universal registries (github.com, pypi.org, crates.io)
+
+#### Mid-String Wildcards (dotfiles#461)
+- Any permission containing a `*` with more content after it before the
+  closing `)` (e.g. `Bash(git -C * add *)`, `Bash(ps -p * -o pid,cmd)`,
+  `Bash(npx --prefix * playwright *)`) **MUST NOT** be promoted, regardless
+  of whether it otherwise matches a generic prefix pattern above. Claude
+  Code's Wildcard patterns let such a `*` match at option-value positions
+  (`-C`/`-p`/`--prefix`/...), which lets arbitrary options through.
 
 ## Autonomous Heuristics
 
