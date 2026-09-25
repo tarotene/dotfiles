@@ -296,11 +296,12 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
       flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
       workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
-      renovateJson: object(expression: \"HEAD:renovate.json\") { ... on Blob { id } }
-      renovateJson5: object(expression: \"HEAD:renovate.json5\") { ... on Blob { id } }
-      ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") { ... on Blob { id } }
-      ghRenovateJson5: object(expression: \"HEAD:.github/renovate.json5\") { ... on Blob { id } }
-      renovaterc: object(expression: \"HEAD:.renovaterc.json\") { ... on Blob { id } }
+      renovateJson: object(expression: \"HEAD:renovate.json\") { ... on Blob { text } }
+      renovateJson5: object(expression: \"HEAD:renovate.json5\") { ... on Blob { text } }
+      ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") { ... on Blob { text } }
+      ghRenovateJson5: object(expression: \"HEAD:.github/renovate.json5\") { ... on Blob { text } }
+      renovaterc: object(expression: \"HEAD:.renovaterc.json\") { ... on Blob { text } }
+      renovateDashboard: issues(states: OPEN, first: 1, filterBy: {createdBy: \"renovate[bot]\"}) { totalCount }
       latestRelease: releases(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { createdAt } }
       openIssueActivity: issues(states: OPEN, first: 1, orderBy: {field: UPDATED_AT, direction: DESC}) { totalCount nodes { updatedAt } }
     }"
@@ -1077,10 +1078,34 @@ judge_renovate() { # $1=gql-data-json -> finding
   fi
 
   has_config="$(jq -e '(.renovateJson != null) or (.renovateJson5 != null) or (.ghRenovateJson != null) or (.ghRenovateJson5 != null) or (.renovaterc != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
-  if [[ $has_config == true ]]; then
-    jq -n '{verdict: "ok", missing: []}'
-  else
+  if [[ $has_config != true ]]; then
     jq -n '{verdict: "drifted", missing: ["renovate-config-missing"]}'
+    return
+  fi
+
+  # #465: 設定はあるのに Renovate App が一度も動いた形跡が無い(=
+  # Dependency Dashboard Issue が一度も作られていない)サイレント失敗を
+  # 検出する。App のインストール範囲(repository access)そのものは
+  # GitHub API から読めない(/user/installations は user-to-server token
+  # が必要で、gh の OAuth token では 403)ため、この代理指標で検出する —
+  # 一次情報: Renovate の ensureDependencyDashboard() は schedule の
+  # 判定を経ずに毎 repository run の末尾で無条件に呼ばれる
+  # (lib/workers/repository/index.ts、https://github.com/renovatebot/renovate、
+  # 取得 2026-09-25)ので、schedule 待ちで Dashboard が遅れている可能性は
+  # 除外できる。config 側で明示的に `dependencyDashboard: false` として
+  # いるリポジトリは対象外にする(その場合 Dashboard が無いのは正常)。
+  local config_text dashboard_disabled dashboard_count
+  config_text="$(jq -r '
+    (.renovateJson.text // .renovateJson5.text // .ghRenovateJson.text //
+      .ghRenovateJson5.text // .renovaterc.text // "")
+  ' <<<"$gql")"
+  dashboard_disabled="$(jq -e '.dependencyDashboard == false' <<<"$config_text" > /dev/null 2>&1 && echo true || echo false)"
+  dashboard_count="$(jq -r '.renovateDashboard.totalCount // 0' <<<"$gql")"
+
+  if [[ $dashboard_disabled != true && $dashboard_count -eq 0 ]]; then
+    jq -n '{verdict: "drifted", missing: ["renovate-dashboard-missing"]}'
+  else
+    jq -n '{verdict: "ok", missing: []}'
   fi
 }
 
@@ -1622,11 +1647,12 @@ EOF
       "pyprojectToml": null,
       "goMod": null,
       "workflowsDir": {"entries": [{"name": "ci.yml"}]},
-      "renovateJson": {"id": "y"},
+      "renovateJson": {"text": "{\"extends\": [\":dependencyDashboard\"]}"},
       "renovateJson5": null,
       "ghRenovateJson": null,
       "ghRenovateJson5": null,
-      "renovaterc": null
+      "renovaterc": null,
+      "renovateDashboard": {"totalCount": 1}
     },
     "r2": {
       "readme": null,
@@ -2205,8 +2231,39 @@ EOF
     return 1
   }
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"id": "y"}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(flakeNix present, renovate.json present) should be ok\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(flakeNix present, renovate.json present, dashboard exists) should be ok\n' >&2
+    return 1
+  }
+
+  # #465: renovate.json はあるのに Dependency Dashboard Issue が一度も
+  # 作られていない(App の install 漏れ等によるサイレント失敗)場合は
+  # drifted:renovate-dashboard-missing を報告する。
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing"))' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(renovate.json present, dashboard totalCount=0) should be renovate-dashboard-missing\n' >&2
+    return 1
+  }
+  # renovateDashboard フィールド自体が無い(GraphQL 側の欠落)場合も
+  # totalCount 0 と同じ扱いで drift 側に倒す(fail-safe デフォルト)。
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing"))' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(renovate.json present, renovateDashboard field missing) should be renovate-dashboard-missing\n' >&2
+    return 1
+  }
+  # config が明示的に dependencyDashboard: false としているリポジトリは
+  # Dashboard が無くて正常なので、drift にしない。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"dependencyDashboard\": false}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(dependencyDashboard: false, no dashboard issue) should be ok\n' >&2
+    return 1
+  }
+  # JSON5(コメント付き)等パース不能な config テキストでも Dashboard
+  # totalCount が非0なら ok(dashboard_disabled の判定失敗をどちらに
+  # 倒しても、Dashboard が実在するなら drift にならないことを確認)。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson5": {"text": "{ // comment\n}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(unparseable renovate.json5, dashboard exists) should be ok\n' >&2
     return 1
   }
 
