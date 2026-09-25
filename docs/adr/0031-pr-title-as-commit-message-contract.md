@@ -171,7 +171,8 @@ Community Discussion #46752)に基づき `"PR Title / PR title"` をベスト
 エフォートの既定値として設定したが、実機未確認(どのリポにも未適用の
 ため)。各 skill の SKILL.md / reference/manual-steps.md に「最初の実 PR で
 Checks タブの実際の文字列を確認し、異なれば ruleset を訂正する」注記を
-明記した。
+明記した。**この連結命名規則の理解は誤りだった — 2026-09-26 Amendment
+参照。**
 
 ## Alternatives considered
 
@@ -307,3 +308,75 @@ publish-guard 1)・PRIVATE 6(計 13 件、実名は ADR-0034 により省略)の
 
 - `scripts/pr-merge-settings-check`
 - `.github/workflows/pr-title.yml`
+
+## Amendment (2026-09-26 — required check context の理論訂正と自己検査の追加)
+
+#337(19 リポジトリへの播き)で 15 リポジトリに `PR Title / PR title` を
+required check として ruleset に登録したが、実際にどの PR でも check が
+Expected のまま報告されず、required のため merge が恒久的に止まる事故が
+起きた(telepath#243, bleep#33 で最初に顕在化)。
+
+### D2 の追補の訂正: 連結命名規則は「呼び出し側 workflow の name」ではなく
+### 「呼び出し側 job の name」
+
+telepath#243 の Actions API(`GET .../actions/runs/{run_id}/jobs`)を実測
+したところ、実際の check 名は `"check / PR title"` だった(取得
+2026-09-26)。呼び出し側テンプレートの job id は `check` で `name:` が
+無く、GitHub は無名の job を job id で表示する。2026-09-22 時点の
+D2 追補は「呼び出し側 **workflow** の name(`PR Title`)/ 呼び出される job
+の name(`PR title`)」という理論を GitHub Community Discussion #46752 から
+読み取ったが、この discussion 自体が未解決(no consensus)であり
+(2026-09-26 再読)、実測はこれを支持しない。正しい規則は「呼び出し側
+**job** の name / 呼び出される job の name」— dotfiles の `check` job に
+`name: PR Title` が無かったために起きた、テンプレート側の単純な記述
+漏れが根本原因だった。
+
+修正: `repo-governance-common/templates/.github/workflows/pr-title.yml`
+(3 skill 共通の単一正本、rust/typst/astro は symlink に統一)の `check`
+job に `name: PR Title` を固定する。これにより連結名は常に
+`"PR Title / PR title"` になり、`quality.json` の既定値は変更不要
+(誤理論だったが結果的に正しい文字列を書いていた)。
+
+### D2 の追補の拡張: `permissions:` 未宣言による startup_failure
+
+呼び出し側テンプレートに `permissions:` が無く、reusable job の
+`contents: write` 要求をリポジトリ既定の Actions workflow permissions が
+`read` のリポジトリ(bleep 含む 15 中 13)では満たせず `startup_failure`
+になっていた(bleep#33 で実測)。既定が `write` の telepath だけ偶然
+成功していた。呼び出し側テンプレートの job に
+`permissions: {contents: write, actions: read}` を明示し、リポジトリ既定
+に依存しない宣言にする。
+
+### D5 の拡張: `titles` ドメインの完全一致化 + ground-truth 突き合わせ
+
+`judge_titles()` は当初、接尾辞 `' / PR title'` の後方一致を ok として
+いた(#337 実装時、誤検出回避のため)。この緩さが今回の事故を検出
+できなかった直接の原因 — 呼び出し側 job に `name:` が無く実際の check 名
+`"check / PR title"` も接尾辞条件を満たしていたため、audit は誤って
+全リポジトリを ok と報告し続けた。完全一致(`"PR title"` / `"PR Title /
+PR title"` の 2 値)に締め、新たに新設した `fetch_run_job_names()` /
+`fetch_latest_pr_title_job_names()` で最新 run の実際の job 名を取得し、
+ruleset の宣言値と一致するかを突き合わせる(`pr-title-context-mismatch`)。
+run が一度も走っていないリポジトリ(まだ播いていない)は ground truth が
+無いため drift 扱いにしない。
+
+### 新設: reusable workflow 自身による実行時自己検査
+
+「最初の PR で Checks タブを目視確認する」という手動手順が唯一の防波堤
+だったが、実際には飛ばされた。`scripts/pr-title-context-check` を新設し、
+`.github/workflows/pr-title.yml`(reusable workflow)の最終 step として
+実行する — 呼び出し元の run ごとに自分自身の check 名を実測し、有効な
+branch ruleset の required_status_checks と自己照合する。`PR title` 系の
+required context があるのに一致しなければ CI を red にする(手動確認の
+廃止)。判定ロジックは新設せず、`scripts/github-audit` の
+`fetch_run_job_names()` を re-source して再利用する(ADR-0035 D1)。
+
+### 執行点
+
+新設・変更した実体は次のとおり(いずれも新設 `scripts/pr-title-context-check`
+と、既存の `.github/workflows/pr-title.yml` / `scripts/github-audit` への変更):
+
+- `scripts/pr-title-context-check`
+- `config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml`
+- `.github/workflows/pr-title.yml`
+- `scripts/github-audit`

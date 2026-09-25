@@ -37,7 +37,7 @@ gh api repos/OWNER/REPO/rulesets \
 # → Content lint
 # → Unit tests
 # → Build
-# → PR Title / PR title   (confirm this exact string on the first real PR — see below)
+# → PR Title / PR title   (fixed string — see the Exception note below)
 
 # Merge settings:
 gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, delete_branch_on_merge}'
@@ -54,12 +54,21 @@ The four static strings are:
 
 If you rename a CI job, update the Ruleset context string in the same edit.
 
-**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
-tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
-context is GitHub's own concatenation of the two workflows' `name:` fields
-("PR Title / PR title"). `rulesets/quality.json` ships that string as a
-best-effort default; confirm it against this repository's Checks tab on the
-first PR and correct the Ruleset if it differs.
+**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
+calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
+reported check context is GitHub's own concatenation of the **caller
+job's** `name:` and the called job's `name:` ("PR Title / PR title"). The
+`repo-governance-common/templates/.github/workflows/pr-title.yml`
+template (this skill's copy is a symlink to it) pins the caller job's
+`name: PR Title`, so this string is a fixed value, not a best-effort
+guess — no manual confirmation against the Checks tab is needed. (An
+earlier version of this note said to confirm the string on the first real
+PR; that assumed the wrong half of the concatenation was fixed and missed
+that #337's rollout had seeded a context the then-unnamed caller job
+could never satisfy — ADR-0031's 2026-09-26 Amendment.)
+`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
+re-verifies the match at runtime on every PR via
+`scripts/pr-title-context-check`.
 
 ### Adapting for projects without MDX content lint
 

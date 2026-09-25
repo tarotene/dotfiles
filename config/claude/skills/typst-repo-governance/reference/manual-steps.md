@@ -68,7 +68,7 @@ Key locations:
 | `.github/workflows/build.yml` | `PATTERNS` regex — add your source directories |
 | `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path to typstyle-action |
 | `.github/workflows/min-typst.yml` | `PATTERNS` regex |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); confirm the actual reported check context on the first PR (step 4 below) |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
 | `.github/workflows/release.yml` | PDF filenames in `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body checklist; remove if not a CV |
 | `cliff.toml` | `tag_pattern` if your CalVer scheme differs from `vYYYY.MM[.P]` |
@@ -78,12 +78,21 @@ Key locations:
 MUST exactly equal the `context` string. seed.sh substitutes `__MIN_TYPST__` in both files
 simultaneously. If you rename a job manually, update the Ruleset context too.
 
-**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
-tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
-context is GitHub's own concatenation of the two workflows' `name:` fields
-("PR Title / PR title"). `quality.json` ships that string as a best-effort
-default; confirm it against this repository's Checks tab on the first PR
-(step 4) and correct the Ruleset if it differs.
+**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
+calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
+reported context is GitHub's own concatenation of the **caller job's**
+`name:` and the called job's `name:` ("PR Title / PR title"). The
+`repo-governance-common/templates/.github/workflows/pr-title.yml`
+template (this skill's copy is a symlink to it) pins the caller job's
+`name: PR Title`, so this string is a fixed value, not a best-effort
+guess — no manual confirmation against the Checks tab is needed. (An
+earlier version of this note said to confirm the string on the first real
+PR (step 4); that assumed the wrong half of the concatenation was fixed
+and missed that #337's rollout had seeded a context the then-unnamed
+caller job could never satisfy — ADR-0031's 2026-09-26 Amendment.)
+`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
+re-verifies the match at runtime on every PR via
+`scripts/pr-title-context-check`.
 
 ---
 
@@ -106,7 +115,7 @@ Wait for all 5 status checks to go green:
 - `Format check`
 - `Lint`
 - `Min Typst (X.Y.Z)`
-- `PR Title / PR title` (confirm this exact string — see the Key invariant exception above)
+- `PR Title / PR title` (fixed string — see the Exception note above)
 
 If `Format check` fails, run `just fmt` to auto-fix, commit, push.
 If `Min Typst` fails, bump `compiler` in `typst.toml` + `--min-typst` flag + `quality.json` context.
@@ -143,7 +152,7 @@ gh api repos/OWNER/REPO/rulesets \
 # → Format check
 # → Lint
 # → Min Typst (X.Y.Z)
-# → PR title (Conventional Commits)
+# → PR Title / PR title
 
 # Repo merge settings:
 gh api repos/OWNER/REPO --jq '{allow_squash_merge,allow_merge_commit,delete_branch_on_merge}'

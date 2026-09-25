@@ -529,6 +529,17 @@ jobs:
       - name: pr-merge-settings-check --selftest
         run: ./scripts/pr-merge-settings-check --selftest
 
+      # pr-title-context-check (ADR-0031 Amendment, 2026-09-26) sources
+      # scripts/github-audit's fetch_run_job_names() (no new judgement
+      # logic) and stubs GH_BIN to exercise the match/mismatch/not-required/
+      # fetch-failed/ambiguous paths without gh/network. Its selftest also
+      # cross-checks the repo-governance-common template's job name against
+      # all four quality.json files and dotfiles' own rulesets/quality.json
+      # (D3-3: the #337 incident's root cause was exactly this pair going
+      # out of sync).
+      - name: pr-title-context-check --selftest
+        run: ./scripts/pr-title-context-check --selftest
+
       # pr-title-guard (ADR-0031) sources attribution-guard.sh's
       # command-position/tokenizer engine the same way stack-base-guard does,
       # and stubs the checker binary to exercise the owner-scope, escape

@@ -408,7 +408,8 @@ them too, a repository could show `drifted` here while every open PR is
 green, or vice versa, with no way to tell which layer to trust
 (`docs/claude/pr-title-contract.md`).
 
-Two checks, both informational about whether the *mechanism* exists:
+Three checks, all informational about whether the *mechanism* exists and
+actually works:
 
 - `pr-title-workflow-missing` — no `.github/workflows/pr-title.yml` caller
   workflow (checked by filename against the same `workflowsDir` GraphQL
@@ -416,12 +417,39 @@ Two checks, both informational about whether the *mechanism* exists:
   expected to name its caller `pr-title.yml` per the Stage 5 rollout
   template).
 - `pr-title-check-not-required` — the active default-branch ruleset's
-  `required_status_checks` does not include the `PR title` context (reuses
-  `default_branch_rulesets()`, the same helper the `rulesets` domain uses).
+  `required_status_checks` does not include the context this domain
+  accepts (reuses `default_branch_rulesets()`, the same helper the
+  `rulesets` domain uses). **Exact match only, as of the 2026-09-26
+  Amendment**: `"PR title"` (dotfiles' own self-applied job) or
+  `"PR Title / PR title"` (every other repository's workflow_call-connected
+  form — the caller template pins `name: PR Title` on its job, so this is
+  always the exact string). An earlier version of this check accepted any
+  context ending in `" / PR title"`, which is how #337's rollout seeded a
+  context that could never be satisfied (the caller template had no job
+  `name:` at the time, so the actual check name was `"check / PR title"`,
+  which also happened to satisfy the loose suffix match) without being
+  caught for 15 repositories.
+- `pr-title-context-mismatch` — the required context registered on the
+  ruleset does not match the job name the latest `pr-title.yml` run
+  actually reported (`fetch_latest_pr_title_job_names()`, a REST call to
+  `actions/workflows/pr-title.yml/runs` + `actions/runs/{id}/jobs`, only
+  made when a caller workflow was found). This is the ground-truth check
+  that would have caught #337's mismatch directly, instead of relying on
+  the (looser, now-tightened) string convention above. A repository whose
+  `pr-title.yml` has never run (`[]`) is not flagged — there is no ground
+  truth yet, and `pr-title-workflow-missing`/`pr-title-check-not-required`
+  already cover that case.
 
 Repositories with no `.github/workflows` at all are `not-applicable` —
 there is no CI to register a required check against, the same convention
 `renovate` uses.
+
+`.github/workflows/pr-title.yml` (the reusable workflow) also carries its
+own runtime self-check (`scripts/pr-title-context-check`) as a required
+check step, independent of this (manually run) audit domain: it compares
+its own run's actual job name against the live branch ruleset on every PR,
+so a mismatch fails CI immediately instead of only showing up the next
+time someone runs `github-audit titles` by hand.
 
 ### renovate
 

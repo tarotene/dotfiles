@@ -118,7 +118,7 @@ comment. The most important locations:
 | `.release-please-manifest.json` | Verify version matches current `package.json` |
 | `renovate.json` | Adjust `packageRules` grouping for your actual dependencies |
 | `biome.json` | Check `files.includes` globs match your TS/CSS paths; **never add `.mdx` or `.astro`** |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); confirm the actual reported check context on the first PR (see the exception below) |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
 
 **Key invariant:** The `name:` field of each workflow job in `ci.yml` must
 exactly match the `context` string in `rulesets/quality.json`. These four
@@ -130,12 +130,21 @@ strings are static and pre-matched:
 
 If you rename a job, update the Ruleset context string at the same time.
 
-**Exception: `pr-title.yml`.** It has no local job `name:` — it calls
-tarotene/dotfiles' reusable workflow via `workflow_call`, and the reported
-context is GitHub's own concatenation of the two workflows' `name:` fields
-("PR Title / PR title"). `rulesets/quality.json` ships that string as a
-best-effort default; confirm it against this repository's Checks tab on the
-first PR and correct the Ruleset if it differs.
+**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
+calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
+reported check context is GitHub's own concatenation of the **caller
+job's** `name:` and the called job's `name:` ("PR Title / PR title"). The
+`repo-governance-common/templates/.github/workflows/pr-title.yml`
+template (this skill's copy is a symlink to it) pins the caller job's
+`name: PR Title`, so this string is a fixed value, not a best-effort
+guess — no manual confirmation against the Checks tab is needed. (An
+earlier version of this note said to confirm the string on the first real
+PR; that assumed the wrong half of the concatenation was fixed and missed
+that #337's rollout had seeded a context the then-unnamed caller job
+could never satisfy — ADR-0031's 2026-09-26 Amendment.)
+`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
+re-verifies the match at runtime on every PR via
+`scripts/pr-title-context-check`.
 If you remove `"Content lint"` (no MDX scripts), remove it from BOTH files.
 
 ---
