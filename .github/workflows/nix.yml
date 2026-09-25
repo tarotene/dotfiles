@@ -7,7 +7,10 @@ name: Nix
 # pull_request has NO path filter (unlike push above): these jobs are
 # required status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required
 # check that a path filter skips reporting on a docs-only PR leaves that PR's
-# Stop gate permanently blocked on a check that will never exist.
+# Stop gate permanently blocked on a check that will never exist. Path-based
+# skipping of build-host/rust still happens, but at job level inside
+# stack-position below (ADR-468 Amendment 2026-09-26) — never via this
+# trigger's own `paths:`, which is the mechanism this comment warns against.
 on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
@@ -40,45 +43,76 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Stack-aware heavy-CI gate (ADR-468, docs/adr/468-stack-aware-heavy-ci.md,
-  # #419). Skipping a JOB via `if:` is safe for required checks in a way that
-  # skipping a WORKFLOW via `pull_request.paths` is not: GitHub Docs,
-  # "Troubleshooting required status checks" (取得 2026-09-25) — "Successful
-  # check statuses are `success`, `skipped`, and `neutral`", whereas a
-  # workflow skipped by path/branch filtering leaves its check "Pending"
-  # forever and blocks merging. That asymmetry is exactly why `pull_request`
-  # above still carries no path filter (comment further up) while this gate
-  # uses `needs:`/`if:` on individual jobs instead.
+  # Stack-aware + path-aware heavy-CI gate (ADR-468,
+  # docs/adr/468-stack-aware-heavy-ci.md, #419; Amendment 2026-09-26 added
+  # the path axis). Skipping a JOB via `if:` is safe for required checks in
+  # a way that skipping a WORKFLOW via `pull_request.paths` is not: GitHub
+  # Docs, "Troubleshooting required status checks" (取得 2026-09-25) —
+  # "Successful check statuses are `success`, `skipped`, and `neutral`",
+  # whereas a workflow skipped by path/branch filtering leaves its check
+  # "Pending" forever and blocks merging. That asymmetry is exactly why
+  # `pull_request` above still carries no path filter (comment further up)
+  # while this gate uses `needs:`/`if:` on individual jobs instead.
+  #
+  # Two independent axes, ANDed per job:
+  #   - stack axis (ADR-468): is this PR a bottom/tip stage, or an
+  #     intermediate stage whose synthesized tree gets re-checked later?
+  #   - path axis (Amendment 2026-09-26): did the PR actually touch a file
+  #     build-host/rust reads? home-manager only *copies* config/**,
+  #     scripts/**, rulesets/**, packages/** via `home.file`/`xdg.configFile`
+  #     `source =` (no `runCommand`/`writeShellApplication` processes them at
+  #     build time other than nixgl.nix's wrapper) — a change confined to
+  #     those trees cannot break activationPackage in a way `nix flake check
+  #     --no-build` (flake-check job, always runs) would miss. `rust`
+  #     additionally treats config/*/hooks, config/claude/statusline,
+  #     scripts/ and bootstrap.sh as inputs, because rust-migration.toml's
+  #     `[scan]` walks them and crates/fixture-oracle executes their bash
+  #     originals.
   stack-position:
     runs-on: ubuntu-latest
     name: stack position
     permissions:
       pull-requests: read
     outputs:
-      heavy: ${{ steps.judge.outputs.heavy }}
+      build_host: ${{ steps.judge.outputs.build_host }}
+      rust: ${{ steps.judge.outputs.rust }}
     steps:
       - id: judge
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          # build-host が実際に読む(コピーではなく評価・ビルドに使う)
+          # トップレベル項目。末尾 `/` はディレクトリ prefix、それ以外は
+          # 完全一致。ci.yml の drift 検査ステップ「nix.yml path gate
+          # covers every path the nix code reads」がこの行を grep するので、
+          # `BUILD_INPUTS: "..."` の形は変えない。
+          BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock rust-migration.toml .github/workflows/nix.yml"
+          # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。
+          RUST_EXTRA_INPUTS: "config/claude/hooks/ config/claude/statusline/ config/codex/hooks/ config/copilot/hooks/ config/git/hooks/ scripts/ bootstrap.sh"
+          # build の入力から意図的に外した「コピーされるだけ」の集合。
+          # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
+          # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも
+          # 載っていないものを「未分類」として検出するための宣言。
+          COPY_ONLY: "config/ scripts/ rulesets/ packages/"
         run: |
           set -uo pipefail
           # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル
           # → 子 PR 件数(この PR の head を base にした open PR が無ければ
-          # tip)。gh api 失敗は fail-open。heavy=false になるのは
+          # tip)。gh api 失敗は fail-open。stack_heavy=false になるのは
           # 「非 bottom かつ非 tip かつ ci:full 無し」の一本道だけ。
-          heavy=true
-          reason=""
+          stack_heavy=true
+          stack_reason=""
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            reason="event=$EVENT_NAME"
+            stack_reason="event=$EVENT_NAME"
           elif [ "$BASE_REF" = "$DEFAULT_BRANCH" ]; then
-            reason="bottom"
+            stack_reason="bottom"
           elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
-            reason="label ci:full"
+            stack_reason="label ci:full"
           else
             # `if children=$(...); then` で終了コードを見る — `gh api` は
             # 401/404 等でも(--jq がそのレスポンスに適用できないと)エラー
@@ -88,17 +122,73 @@ jobs:
             # = fail-closed になった)。終了コードのみを判定根拠にする。
             if children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"; then
               if [ "$children" -eq 0 ]; then
-                reason="tip (children=0)"
+                stack_reason="tip (children=0)"
               else
-                heavy=false
-                reason="intermediate (children=$children)"
+                stack_heavy=false
+                stack_reason="intermediate (children=$children)"
               fi
             else
-              reason="api-failure (fail-open)"
+              stack_reason="api-failure (fail-open)"
             fi
           fi
-          echo "heavy=$heavy ($reason)"
-          echo "heavy=$heavy" >>"$GITHUB_OUTPUT"
+
+          # path 軸: 非 PR イベント・ci:full ラベルは stack 軸と同じ理由で
+          # 常に触れた扱い。それ以外は変更ファイル一覧(REST の 1 PR
+          # あたり上限 3000 件、GitHub Docs "List pull requests files" 取得
+          # 2026-09-26)を取り、BUILD_INPUTS / RUST_EXTRA_INPUTS への
+          # prefix/完全一致で build_touched / rust_touched を決める。
+          # gh api 失敗・一覧打ち切りは fail-open(既存の stack 軸と同じ
+          # 方針)。
+          build_touched=true
+          rust_touched=true
+          path_reason=""
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            path_reason="event=$EVENT_NAME"
+          elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
+            path_reason="label ci:full"
+          else
+            if files="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' 2>/dev/null)"; then
+              n_files="$(printf '%s\n' "$files" | grep -c . || true)"
+              if [ "$n_files" -ge 3000 ]; then
+                path_reason="file-list-truncated (fail-open, n=$n_files)"
+              else
+                build_touched=false
+                rust_touched=false
+                while IFS= read -r p; do
+                  [ -n "$p" ] || continue
+                  for prefix in $BUILD_INPUTS; do
+                    case "$prefix" in
+                      */) case "$p" in "$prefix"*) build_touched=true; rust_touched=true ;; esac ;;
+                      *) [ "$p" = "$prefix" ] && { build_touched=true; rust_touched=true; } ;;
+                    esac
+                  done
+                  for prefix in $RUST_EXTRA_INPUTS; do
+                    case "$prefix" in
+                      */) case "$p" in "$prefix"*) rust_touched=true ;; esac ;;
+                      *) [ "$p" = "$prefix" ] && rust_touched=true ;;
+                    esac
+                  done
+                done <<<"$files"
+                path_reason="n=$n_files files, build=$build_touched rust=$rust_touched"
+              fi
+            else
+              path_reason="api-failure (fail-open)"
+            fi
+          fi
+
+          if [ "$stack_heavy" = "false" ] || [ "$build_touched" = "false" ]; then
+            build_out=false
+          else
+            build_out=true
+          fi
+          if [ "$stack_heavy" = "false" ] || [ "$rust_touched" = "false" ]; then
+            rust_out=false
+          else
+            rust_out=true
+          fi
+          echo "build_host=$build_out rust=$rust_out (stack: $stack_reason; paths: $path_reason)"
+          echo "build_host=$build_out" >>"$GITHUB_OUTPUT"
+          echo "rust=$rust_out" >>"$GITHUB_OUTPUT"
 
   flake-check:
     runs-on: ubuntu-latest
@@ -136,11 +226,11 @@ jobs:
     name: rust workspace
     needs: stack-position
     # `!= 'false'` (not `== 'true'`) + `!cancelled()`: if stack-position
-    # itself fails or is cancelled, `needs.*.outputs.heavy` comes back empty,
+    # itself fails or is cancelled, `needs.*.outputs.rust` comes back empty,
     # and `needs:`'s own default (skip when a dependency job failed) would
     # otherwise silently turn this into fail-closed — the opposite of the
     # gate's own fail-open branch (ADR-468).
-    if: ${{ !cancelled() && needs.stack-position.outputs.heavy != 'false' }}
+    if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
@@ -167,7 +257,7 @@ jobs:
       actions: write
     needs: stack-position
     # Same fail-open rationale as the `rust` job above.
-    if: ${{ !cancelled() && needs.stack-position.outputs.heavy != 'false' }}
+    if: ${{ !cancelled() && needs.stack-position.outputs.build_host != 'false' }}
     strategy:
       fail-fast: false
       matrix:

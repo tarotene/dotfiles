@@ -100,11 +100,13 @@ git push --force-with-lease origin <段のブランチ>   # 影響を受けた�
 `docs/git-sync.md` 参照)。これが無いと最上位段だけ rebase され、中間段の
 ブランチ ref が古いコミットを指したまま置いていかれる。
 
-中間段(bottom でも tip でもない段)は `nix.yml` の重いジョブ
-(`rust workspace` / `build vega` / `build arcturus` / `build altair`)が
-既定で skip される(ADR-468)。修正した段を rebase で上位段に追従させれば
-tip の合成木で改めて検査されるが、rebase せずにその段を単独でマージする
-場合は `ci:full` ラベルを貼って heavy を手動で走らせる。
+中間段(bottom でも tip でもない段)、または変更 path が build/rust の
+入力に含まれない段(bottom・tip を含む、ADR-468 Amendment 2026-09-26)は
+`nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
+/ `build altair`)が既定で skip される(ADR-468)。修正した段を rebase で
+上位段に追従させれば tip の合成木で改めて検査されるが、rebase せずに
+その段を単独でマージする場合は `ci:full` ラベルを貼って heavy を手動で
+走らせる。
 
 ### 最下段の base(main)自体が進んで衝突したとき
 

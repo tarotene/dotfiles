@@ -168,6 +168,56 @@ jobs:
           done
           exit "$missing"
 
+      # nix.yml path gate covers every path the nix code reads (ADR-468
+      # Amendment 2026-09-26, docs/adr/468-stack-aware-heavy-ci.md): a change
+      # confined to build_host/rust's declared "safe to skip" set can only
+      # stay safe as long as flake.nix / home/**/*.nix never start reading a
+      # new top-level path without that path being added to nix.yml's
+      # `BUILD_INPUTS`/`COPY_ONLY` declarations. This scans every non-comment
+      # `../`/`./` relative-path literal in those files, resolves it against
+      # the referencing file's own directory, and fails if the resulting
+      # top-level repo path is covered by neither list — the same
+      # "referenced but not wired in" shape as the --selftest check above.
+      # `./.`  (crane's cleanCargoSource taking the whole repo tree as a
+      # Cargo source) is a deliberate, explained skip, not a silent one.
+      - name: nix.yml path gate covers every path the nix code reads
+        run: |
+          set -uo pipefail
+          build_inputs="$(grep -oP '(?<=BUILD_INPUTS: ")[^"]*' .github/workflows/nix.yml)"
+          copy_only="$(grep -oP '(?<=COPY_ONLY: ")[^"]*' .github/workflows/nix.yml)"
+          covered="$build_inputs $copy_only"
+
+          fail=0
+          while IFS= read -r f; do
+            dir="$(dirname "$f")"
+            while IFS= read -r tok; do
+              [ -n "$tok" ] || continue
+              resolved="$(realpath -m --relative-to="$PWD" "$dir/$tok" 2>/dev/null)" || continue
+              case "$resolved" in
+                .) continue ;;   # ./. — see step comment above
+                home|home/*) continue ;;
+                ..|../*|/*) continue ;;
+              esac
+              ok=0
+              for c in $covered; do
+                case "$c" in
+                  */)
+                    cdir="${c%/}"
+                    case "$resolved" in
+                      "$cdir"|"$c"*) ok=1 ;;
+                    esac
+                    ;;
+                  *) [ "$resolved" = "$c" ] && ok=1 ;;
+                esac
+              done
+              if [ "$ok" -eq 0 ]; then
+                echo "::error file=$f::references '$tok' (-> $resolved) which nix.yml's BUILD_INPUTS/COPY_ONLY does not cover"
+                fail=1
+              fi
+            done < <(grep -vE '^[[:space:]]*#' "$f" | grep -oE '(\.\./)+[A-Za-z0-9_./-]+|\./[A-Za-z0-9_./-]+')
+          done < <(printf '%s\n' flake.nix; find home -name '*.nix')
+          exit "$fail"
+
       - name: bootstrap.sh --dry-run
         run: ./bootstrap.sh --dry-run
 

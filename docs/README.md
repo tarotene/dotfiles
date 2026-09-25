@@ -270,7 +270,9 @@
   (#419)。job-level `if:` の skip は `skipped` = 成功扱いで required check
   を block しないが、workflow 単位の path filter skip は `Pending` のまま
   block する非対称性(GitHub Docs)を根拠にする。required 宣言
-  (`rulesets/quality.json`、#420)を live に反映する運用も併記。
+  (`rulesets/quality.json`、#420)を live に反映する運用も併記。Amendment
+  (2026-09-26)で第 2 の軸を追加: 変更 path が build/rust の入力に含まれない
+  PR は bottom 段でも skip する。
 - [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) —
   カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
   出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。
