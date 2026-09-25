@@ -253,7 +253,7 @@ Decision 1〜3 の stack 軸は、bottom 段(base=main)を常に `heavy=true` �
   既存ゲートと同じ `gh api` + inline bash の延長で書ける(パターンは
   全て prefix/完全一致で glob 不要)ため採らない。
 
-## 執行点(Amendment)
+### 執行点
 
 - `.github/workflows/nix.yml` — `stack-position` の `build_host`/`rust`
   出力分岐、`BUILD_INPUTS`/`RUST_EXTRA_INPUTS`/`COPY_ONLY` の宣言、
