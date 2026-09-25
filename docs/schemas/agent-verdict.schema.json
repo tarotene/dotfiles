@@ -1,0 +1,178 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VerdictRecord",
+  "description": "判定レッジャーの 1 レコード。フィールド順は書き手(bleep)の出力に合わせる (可読性のためだけで、契約上の意味はない)。",
+  "type": "object",
+  "required": [
+    "host",
+    "match_class",
+    "reason_id",
+    "repo",
+    "tool",
+    "tool_name",
+    "tool_version",
+    "ts",
+    "v",
+    "verdict"
+  ],
+  "properties": {
+    "host": {
+      "$ref": "#/definitions/Host"
+    },
+    "match_class": {
+      "$ref": "#/definitions/MatchClass"
+    },
+    "reason_id": {
+      "$ref": "#/definitions/ReasonId"
+    },
+    "repo": {
+      "description": "起票候補になったときの既定の起票先(`\"owner/repo\"`)。",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "hook を呼んだセッション ID。ホストが持たない場合は `null`。",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "term_hash": {
+      "description": "マッチした語の HMAC ハッシュ(hex64)。マッチが無い判定では `null`。",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tool": {
+      "description": "書き手のツール名(例: `\"bleep\"`)。`agent-verdicts/<tool>.jsonl` の `<tool>` と一致する。",
+      "type": "string"
+    },
+    "tool_name": {
+      "description": "呼ばれたツール名(例: `\"Bash\"`、MCP ツール名)。git pre-push など ツール呼び出しを経ない経路では空文字列。",
+      "type": "string"
+    },
+    "tool_version": {
+      "type": "string"
+    },
+    "ts": {
+      "description": "ISO 8601(UTC、`Z` 終端)。",
+      "type": "string"
+    },
+    "v": {
+      "description": "レコード形式のバージョン。現在は 1 固定。",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "verdict": {
+      "$ref": "#/definitions/Verdict"
+    }
+  },
+  "definitions": {
+    "Host": {
+      "description": "`host` フィールド。判定を呼び出したホスト。",
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex",
+        "copilot",
+        "git-pre-push",
+        "cli"
+      ]
+    },
+    "MatchClass": {
+      "description": "`match_class` フィールド。マッチしなかった判定(fail-loud な ask 等)は `none`。",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        {
+          "description": "スラッシュを含む固定文字列(org/repo 形式)の一致。",
+          "type": "string",
+          "enum": [
+            "plain"
+          ]
+        },
+        {
+          "description": "裸のリポジトリ名の単語境界一致。",
+          "type": "string",
+          "enum": [
+            "word-hard"
+          ]
+        },
+        {
+          "description": "裸の org 名の単語境界一致。",
+          "type": "string",
+          "enum": [
+            "word-warn"
+          ]
+        }
+      ]
+    },
+    "ReasonId": {
+      "description": "`reason_id` フィールド。閉語彙 — 未知の値を書く書き手が現れたら、この enum を拡張してから Schema を再生成する(ADR-0000 D3)。",
+      "oneOf": [
+        {
+          "description": "org/repo 形式、または denylist 登録済みリポジトリ名の裸の単語一致。",
+          "type": "string",
+          "enum": [
+            "repo-ref"
+          ]
+        },
+        {
+          "description": "denylist 登録済み org 名の裸の単体出現。",
+          "type": "string",
+          "enum": [
+            "org-bare"
+          ]
+        },
+        {
+          "description": "判定に必要な設定ファイル(例: orgs.txt)が存在しない。",
+          "type": "string",
+          "enum": [
+            "unconfigured"
+          ]
+        },
+        {
+          "description": "設定ディレクトリの移行が未了。",
+          "type": "string",
+          "enum": [
+            "legacy-config"
+          ]
+        },
+        {
+          "description": "コマンド文字列の字句解析に失敗した。",
+          "type": "string",
+          "enum": [
+            "lex-failed"
+          ]
+        },
+        {
+          "description": "push 差分の計算に失敗した。",
+          "type": "string",
+          "enum": [
+            "push-diff-failed"
+          ]
+        },
+        {
+          "description": "判定エンジン自体が起動できない、または入力を読めない。",
+          "type": "string",
+          "enum": [
+            "engine-unavailable"
+          ]
+        }
+      ]
+    },
+    "Verdict": {
+      "description": "`verdict` フィールド。`pass` は書かれない(分母が要る集計は将来の拡張)。",
+      "type": "string",
+      "enum": [
+        "deny",
+        "ask"
+      ]
+    }
+  }
+}

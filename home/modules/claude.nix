@@ -1103,6 +1103,11 @@ in
   # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
   # flake.nix の rustOverlay)への安定パスの symlink。
   home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
+  # verdict-escalate(ADR-0000、crates/verdict-escalate): 判定を返す hook では
+  # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
+  # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
+  # の register とは別の消費経路)。
+  home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
   # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 — 相対
   # パスで辿るため配置は ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。

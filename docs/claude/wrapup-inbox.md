@@ -136,6 +136,35 @@ Code の auto memory(`~/.claude/projects/*/memory/*.md`、frontmatter
 原則そのもの(不可視なローカルメモに閉じ込めない)は共有 AGENTS.md、
 auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
+## 判定レッジャーからの自動集約行(ADR-0000)
+
+`verdict-escalate`(`crates/verdict-escalate`)が、`bleep` のような自作
+ガードレールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション単位で
+集約し、同一 fingerprint(ツール・reason_id・match_class・マッチ語の
+ハッシュ)で閾値(既定 3 回)以上 deny/ask された場合に inbox へ 1 行を
+追記する。詳細は[ADR-0000](../adr/0000-agent-verdict-ledger.md)と
+[`verdict-escalate.md`](verdict-escalate.md)を参照。
+
+この経路が書く行は最小スキーマに 2 フィールドを追加する:
+
+- `repo`(任意、`"owner/repo"`): 既定の起票先。省略時はこれまでどおり
+  「作業中プロジェクト自身のリポジトリ」。
+- `go`(任意、`"ask"` 固定): 「起票前に人間の明示的な GO が要る」印。
+  `verdict-escalate` が書く行には必ず付く。このフィールドが無い行(通常の
+  スコープ外の気づき)は従来どおり重複確認だけで起票してよい。
+
+`go:"ask"` を付ける理由: `wrapup-stop-gate.sh` の既存 Stop 指示は重複確認の
+直後に `gh issue create` を実行させ、人間の承認を挟む段階が無い。permission
+prompt も境界にならない — `gh-edit-allow` が同セッション内の作成実績がある
+リポジトリへの `gh issue create` を自動 allow するため。そこで `go:"ask"`
+の行だけ、Stop 指示文が AskUserQuestion で title・detail・起票先 `repo` を
+提示し、「このまま起票」「別リポジトリへ振り直し」「今回は起票しない」の
+選択を得てから処理させる(ADR-0000 D6)。「収集・集約は自動、起票は人間の
+GO 後」という要件をこの 2 フィールドだけで表現する。
+
+`--check-dup` は repo 引数を取れるようになった(`--check-dup <title>
+[repo]`)。repo があれば `gh issue list -R <repo>` で調べる。
+
 ## 消化経路は 2 つ
 
 上記の Stop ゲートによる個別起票に加えて、判断を要さない軽微な項目をまとめて片す

@@ -1,0 +1,7 @@
+# --inbox が無ければ何もせず exit 0(fail-open)。
+bin.name = "verdict-escalate"
+args = []
+stdin = '{"hook_event_name":"Stop","session_id":"sess-1"}'
+status.code = 0
+stdout = ""
+stderr = ""

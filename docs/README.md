@@ -275,6 +275,12 @@
   カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
   出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。
   Obsidian の「今はクラウド、中長期でローカル」と同型の二段構え。
+- [ADR-0000](adr/0000-agent-verdict-ledger.md) — 自作ツール(bleep 等)の
+  PreToolUse deny/ask をローカルの判定レッジャー(`agent-verdicts/*.jsonl`)
+  に集約し、wrap-up inbox 経由で人間の明示的な GO を得てから開発元へ
+  Issue 起票できるようにする配管。判定を下したツール自身が記録し
+  (tarotene/bleep 側は別 PR)、`crates/verdict-escalate` がセッション単位・
+  fingerprint 単位に集約する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -301,6 +307,11 @@ Design and rationale for the hooks and commands deployed from
   inbox 行と起票済みだが未着手の wrapup 由来 Issue をまとめて棚卸しし、
   triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO として stacked
   PR で一括対処する `/wrapup-chores` の手順(ADR-387)。
+- [`verdict-escalate.md`](claude/verdict-escalate.md) — ADR-0000:
+  `wrapup-stop-gate.sh` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
+  なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
+  単位・fingerprint 単位に集約し、閾値超えの候補を `repo`/`go:"ask"` 付きで
+  wrap-up inbox に追記する。
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
