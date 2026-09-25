@@ -39,7 +39,13 @@ extra = ["bootstrap.sh"]
 # source して再利用する設計上、この新スクリプトも bash のまま追加した —
 # github-audit 自体が Rust 化されるまでは、判定ロジックの単一正本を保つ
 # ために bash 側で揃える方が ADR-0035 D1(単一正本 > 複写+同期)に適う。
-max_remaining = 57
+#
+# 58 = 上記 57 + grill-me セッション(ADR-471)で追加した
+# scripts/tailscale-prefs の 1 件。他の home-manager 配備済み CLI
+# (gpg-subkey / dotfiles-doctor / hms.sh 等)と同じ扱いで、いずれ Rust
+# 化する対象として stage 4e に積む。scripts/setup-firewall.sh は同じ ADR
+# 由来だが root escape hatch なので上の [[excluded]] 側。
+max_remaining = 58
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -258,6 +264,10 @@ stage = "4e"
 
 [[target]]
 path = "scripts/dotfiles-doctor"
+stage = "4e"
+
+[[target]]
+path = "scripts/tailscale-prefs"
 stage = "4e"
 
 # --- inline activation scripts (Stage 4e) ---

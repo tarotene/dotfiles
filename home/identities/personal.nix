@@ -80,4 +80,27 @@ in
     name = lib.mkDefault "Kentaro Sugimoto";
     email = lib.mkDefault "tarotene@gmail.com";
   };
+
+  # Tailscale prefs (ADR-471): personal devices stay on the Mullvad exit
+  # node at all times, not just on café Wi-Fi — there is no per-location
+  # toggle to remember or forget. `--exit-node-allow-lan-access` keeps the
+  # home LAN printer reachable while the exit node is active. The node name
+  # is a pin, not `auto:any` — Tailscale's own "Recommended exit nodes" KB
+  # treats Mullvad only as a fallback and a known upstream bug can pick an
+  # unreachable one (see docs/operations.md's "Café Wi-Fi" section).
+  #
+  # scripts/tailscale-prefs (run from `hms`) turns this into `tailscale set`
+  # flags; it is a closed vocabulary (unknown keys fail its own selftest).
+  #
+  # <mullvad-exit-node-name> is a placeholder (ADR-0034 — this repo is
+  # PUBLIC, the real value only exists once the Mullvad add-on is enabled).
+  # Replace it locally with the output of `tailscale exit-node list` after
+  # enabling the add-on (docs/operations.md's "Café Wi-Fi" section) — until
+  # then `tailscale set` simply fails on this one flag and
+  # scripts/tailscale-prefs downgrades that to a warning, never failing hms.
+  xdg.configFile."dotfiles/tailscale-prefs".text = ''
+    exit_node=<mullvad-exit-node-name>
+    exit_node_allow_lan_access=true
+    shields_up=false
+  '';
 }
