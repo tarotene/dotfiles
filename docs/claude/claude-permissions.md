@@ -33,20 +33,40 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 
 最初の適用例が `Bash(git -C * add *)` / `commit` / `status` / `diff` の 4 件。
 サブコマンドより前の `*` は `-c` / `--exec-path` 等のオプション挿入(= 任意
-コード実行)も素通しするとして Claude Code が毎セッション警告し、しかも中間
-`*` はワイルドカードとして機能せず実際にはマッチしていなかった。代替は
-git-worktree-allow hook（検証つきのプログラム的許可 —
-`docs/claude/git-worktree-allow.md`）。
+コード実行)も素通しするとして Claude Code が毎セッション警告する。代替は
+git-worktree-allow hook(検証つきのプログラム的許可 —
+`docs/claude/git-worktree-allow.md`)。
 
 同じ経路は宣言由来のルールに限らない。`Bash(ps -p * -o pid,cmd)` は実行時の
 許可プロンプトで個別ホストの settings.json に直接足された野良ルールだったが、
-中間 `*` 警告は同様に発生し、撤回リストへ加えるだけで全ホストから消せた
-（このルールは元々マッチ実績が無く、置換ルールは置かなかった）。
+中間 `*` 警告は同様に発生し、撤回リストへ加えるだけで全ホストから消せた。
 
 `Bash(npx --prefix * playwright *)` も同型の野良ルールだったが、こちらは
 `config/claude/commands/promote-permissions.md` の generic 判定パターンにも
 「昇格すべき」として登録されていた。撤回リストだけでは `/promote-permissions`
 実行のたびに再び足されるため、昇格パターン側も同じ PR で削除した。
+
+これらを個別に3回撤回した(#453/#460/#461)末に判明したのは、「中間 `*`
+はワイルドカードとして機能せず実際にはマッチしていなかった」という、この
+文書がかつて書いていた理解が誤りだったこと。Claude Code の Wildcard
+patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
+「`*` はルール中どこにでも置け、`Bash(git * main)` は `git merge main` にも
+`git -c core.fsmonitor=<script> diff main` にも実際にマッチする」と明記して
+いる — 起動時の警告は事後の検出でしかなく、ルール自体は適用されたままだった。
+
+#461 で個別撤回をやめ、機構に還元した。中間 `*`(`(` か空白の直後の `*` に、
+空白を挟んで `)` 以外の文字が続くパターン)は次の 3 層で塞ぐ:
+
+- **宣言リスト**(`permissionRules`): `home/modules/claude.nix` の
+  `hasMidWildcard` で `nix flake check`/`nix build` の eval 時に
+  `assert` する。中間 `*` を含むルールはそもそも書けない(表現不可能)。
+- **settings.json の実体**: `registerPermissions` の jq が
+  `.permissions.allow` から中間 `*` を含むルールを一律 strip する
+  (Claude Code 自身の「常に許可」プロンプトが書く分も含む — こちらは
+  検出が上限で、宣言側のような表現不可能化はできない)。
+- **`/promote-permissions`**: `isGenericPermission` の先頭で中間 `*` を
+  即 `false` にする(以降のどの固定プレフィックス一致パターンにも
+  昇格させない)。
 
 同じ撤回パターンを `.hooks.<event>` にも敷いたのが `registerHooks` の
 `retiredHookEntries`、`statusLine` にも敷いたのが `syncStatusLine` の

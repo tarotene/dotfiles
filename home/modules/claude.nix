@@ -860,10 +860,21 @@ let
     retire_json="$("$jq" -n --args '$ARGS.positional' "''${retire_args[@]}")"
     allow_json="$("$jq" -n --args '$ARGS.positional' "''${allow_args[@]}")"
 
+    # #461: 中間 `*` を含む allow rule を settings.json の実体からも一律 strip
+    # する(宣言側は permissionRules の nix eval 時 assert で表現不可能にして
+    # あるが、settings.json は Claude Code 自身の「常に許可」プロンプトや
+    # /promote-permissions からも書かれる実行時の可変状態なので、宣言側の
+    # 防御だけでは届かない — こちらは検出のみが上限)。正規表現は
+    # `hasMidWildcard`(claude.nix)と同じ意図: `(` か空白の直後の `*` に、
+    # 空白を挟んで `)` 以外の文字が続くパターン。
+    mid_wildcard_re='(\(| )\*[[:space:]]+[^)]'
+
     tmp="$(mktemp)"
-    "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" '
+    "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" \
+      --arg midWildcardRe "$mid_wildcard_re" '
       .permissions.allow = (
-        ((.permissions.allow // []) - $retire) as $kept
+        (((.permissions.allow // []) - $retire)
+          | map(select(test($midWildcardRe) | not))) as $kept
         | $kept + ($allow | map(select(. as $r | ($kept | index($r)) | not)))
       )
     ' "$settings" > "$tmp"
@@ -877,7 +888,22 @@ let
   # `Bash(gh pr edit *)` は他人の PR の編集まで許してしまうため。代わりに
   # gh-edit-allow hook(#392、docs/claude/gh-edit-allow.md)が「このセッションが
   # 作成した PR/Issue」だけを検証付きで allow する。
-  permissionRules = [
+  #
+  # #461: `(` か空白の直後の `*` に、空白を挟んで `)` 以外の文字が続くパターン
+  # ("Bash(git -C * add *)" のような中間ワイルドカード)を検出する。Claude Code
+  # の Wildcard patterns(https://code.claude.com/docs/en/permissions、取得
+  # 2026-09-25)は「`*` はルール中どこにでも置け、`Bash(git * main)` は
+  # `git merge main` にも `git -c core.fsmonitor=<script> diff main` にも
+  # マッチする」と明記している — 中間 `*` は実際に危険側でマッチする(以前この
+  # ファイルに書かれていた「実際にはマッチしない」という理解は誤りだった)。
+  # `-C`/`-p`/`--prefix` のような値受け取り位置への任意オプション挿入を素通しし、
+  # #453/#460/#461 で3回、個別撤回を繰り返すことになった。個別撤回の代わりに、
+  # 宣言する側は `permissionRules_` の下の assert で nix eval 時に拒否し
+  # (表現不可能)、settings.json という実行時の可変状態は registerPermissions
+  # の jq が一律 strip する(検出のみが上限、上のコメント参照)。
+  hasMidWildcard = rule: builtins.match ".*(\\(| )\\*[[:space:]]+[^)]+.*" rule != null;
+
+  permissionRules_ = [
     "Bash(git add *)"
     "Bash(git commit *)"
     "Bash(git push *)"
@@ -923,11 +949,23 @@ let
     "Bash(npm test *)"
   ];
 
+  # #461: 上の `hasMidWildcard` で中間ワイルドカードを含むルールが無いことを
+  # nix eval 時(`nix flake check`/`nix build`)に確認してから実際に使う値を返す。
+  # `permissionRules_`(素の配列)という別バインディングを経由するのは、
+  # `permissionRules = assert (中略 permissionRules …); …` のように自分自身を
+  # 参照する assert を書くと Nix の遅延評価が自己再帰(infinite recursion)に
+  # なるため。
+  permissionRules =
+    assert lib.assertMsg (lib.all (r: !hasMidWildcard r) permissionRules_)
+      "home/modules/claude.nix permissionRules に中間 `*` を含むルールがあります: ${lib.concatStringsSep ", " (lib.filter hasMidWildcard permissionRules_)} — 値受け取り位置への任意オプション挿入を素通しするため書けません(#461)。個別ルールに絞るか、検証付きの allow hook を追加してください。";
+    permissionRules_;
+
   # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
-  # `Bash(git -C * add *)` 等の中間ワイルドカードは、`-C` の位置への任意オプション
-  # 挿入(--exec-path 等)を素通しするとして Claude Code が毎セッション警告し、
-  # しかも中間 `*` は実際にはマッチしない。代替は git-worktree-allow hook(検証つき
-  # のプログラム的許可 — docs/claude/git-worktree-allow.md)。
+  # `Bash(git -C * add *)` 等の中間ワイルドカードを含む撤回は、もう個別に
+  # ここへ列挙する必要が無い(#461) — registerPermissions の jq が
+  # settings.json 上の中間ワイルドカードルールを出自(宣言/promote/実行時
+  # プロンプトのどれか)を問わず一律 strip するようになった。このリストに
+  # 残す/追加するのは、中間ワイルドカード**以外**の理由で退役したルールだけ。
   #
   # `list-branch-inventory.sh` / `sweep-removed-vendor-symbols.sh` は使い捨ての
   # ワンオフ作業用ルールが陳腐化して残っていたもの(#101)。~/.ghr 配下の全ローカル
@@ -942,29 +980,9 @@ let
   # ツール名への allow は効果を持たないが、実態と乖離した宣言が残ると次に読む人が
   # 「このサーバーは生きている」と誤読する。
   # `mcp__plugin_context7_context7__*` は plugin 由来で現役なので触らない。
-  #
-  # `Bash(ps -p * -o pid,cmd)` はこのリスト(宣言)由来ではなく、実行時の
-  # 許可プロンプトで個別ホストの settings.json に足された野良ルールだった。
-  # 中間 `*` が `-p` の位置への任意オプション挿入を素通しするとして
-  # Claude Code 2.1.281 が起動時に警告するようになり、しかも transcript 上の
-  # 実際の利用は全て `ps -p <pid> >/dev/null && ...` 形でこのルールにマッチ
-  # した実績が無かった。撤回リストは同一文字列の削除だけを見るので、出自が
-  # 宣言か実行時プロンプトかを問わず効く。
-  #
-  # `Bash(npx --prefix * playwright *)` も同型(同じ中間 `*` 警告、transcript
-  # 上のマッチ実績なし — playwright の実利用は既存の `Bash(npx playwright *)`
-  # がカバーする)。ただしこちらは `config/claude/commands/promote-permissions.md`
-  # の generic 昇格パターンにも登録されていたため、そちらも同じ PR で削除した
-  # (でないと `/promote-permissions` 実行のたびに再び足される)。
   retiredPermissionRules = [
-    "Bash(git -C * add *)"
-    "Bash(git -C * commit *)"
-    "Bash(git -C * status *)"
-    "Bash(git -C * diff *)"
     "Bash(./scripts/list-branch-inventory.sh *)"
     "Bash(./scripts/sweep-removed-vendor-symbols.sh *)"
-    "Bash(ps -p * -o pid,cmd)"
-    "Bash(npx --prefix * playwright *)"
 
     "mcp__brave-search__brave_web_search"
     "mcp__github__issue_write"
