@@ -6,10 +6,23 @@ use std::path::Path;
 use std::process::Command;
 
 fn git(dir: &Path, args: &[&str]) -> String {
+    // `-c core.hooksPath=`(空文字)でこの一時 repo に対する git hooks を
+    // 常に無効化する(#428): home-manager がホストの ~/.gitconfig に
+    // configure する protected-branch guard が `core.hooksPath` 経由で
+    // 効いている環境だと、`main` への直接 commit がこの一時 repo でも
+    // ブロックされ、テストが spurious に落ちる。CI は home-manager 由来の
+    // hook が無いホームで走るため再現しないが、ローカルでは常に効かせる。
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid"])
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "core.hooksPath=",
+        ])
         .args(args)
         .output()
         .unwrap();

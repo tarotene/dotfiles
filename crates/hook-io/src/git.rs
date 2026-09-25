@@ -86,9 +86,18 @@ mod tests {
     use super::*;
 
     fn git(dir: &Path, args: &[&str]) {
+        // `-c core.hooksPath=`(空文字)でこの一時 repo に対する git hooks を
+        // 常に無効化する(#428): home-manager がホストの ~/.gitconfig に
+        // configure する protected-branch guard(config/git/hooks/pre-commit)
+        // が `core.hooksPath` 経由で効いている環境だと、`main` への直接
+        // commit がこの一時 repo でもブロックされ、テストが spurious に
+        // 落ちる。CI は home-manager 由来の hook が無いホームで走るため
+        // 再現しないが、ローカルでは常に効かせておく。
         let st = Command::new("git")
             .arg("-C")
             .arg(dir)
+            .arg("-c")
+            .arg("core.hooksPath=")
             .args(args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
