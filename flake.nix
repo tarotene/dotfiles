@@ -120,9 +120,12 @@
       # applied per-system below rather than hardcoded to one.
       # The upstream request to make the word list configurable,
       # https://github.com/herdrdev/herdr/issues/4374 (filed 2026-09-19), was
-      # closed as not planned on 2026-09-19, so this override is not waiting
-      # on upstream anymore. Whether to keep it as a permanent local patch is
-      # tracked in tarotene/dotfiles#449.
+      # closed as not planned on 2026-09-19 — herdr's `[worktrees]` config
+      # only exposes `directory`, so there is no config-driven exit either.
+      # This override is a **permanent local patch** (decided in
+      # tarotene/dotfiles#449, 2026-09-25): the word list backs the herdr
+      # sidebar's `$oshi` fan-mark feature, so dropping it would drop that
+      # feature, not just revert cosmetic naming.
       herdrOverlay =
         system:
         (_final: _prev: {
