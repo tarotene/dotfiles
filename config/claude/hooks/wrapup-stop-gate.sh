@@ -18,6 +18,10 @@
 #   自己修復マージ、docs/claude/wrapup-inbox.md)
 #
 # 1 行スキーマ: {"ts": "<ISO8601>", "title": "...", "detail": "..."}
+# 任意で "repo"(既定の起票先を上書き)・"go":"ask"(起票前に AskUserQuestion
+# での明示 GO を要求)も持つ — 判定レッジャー(agent-verdicts/*.jsonl)の
+# 自動集約行(ADR-478、crates/verdict-escalate)がこの形で書く。verdict-escalate
+# が配備されていれば、inbox 読み取りより前に(同じ Stop 実行内で)逐次呼ぶ。
 # ts は一意でない(削除キーには使わない)。行の同一性は行全体の完全一致。
 #
 # inbox への書き込みは LLM に直接させず、この script のサブコマンド経由に限定する。
@@ -32,7 +36,8 @@
 # 使い方:
 #   hook として:  settings.json の Stop から stdin JSON で呼ばれる
 #   追記:         wrapup-stop-gate.sh --add <inbox> '<json1行>'
-#   重複判定:     wrapup-stop-gate.sh --check-dup "<title>"
+#   重複判定:     wrapup-stop-gate.sh --check-dup "<title>" [repo]
+#                   repo(owner/repo)省略時はカレントリポジトリ。
 #                   exit 0 = 重複なし / 1 = 同名 open Issue あり / 3 = 判定不能(gh 失敗)
 #   起票済み削除: wrapup-stop-gate.sh --mark-filed <inbox> '<json1行>'
 #                   (行全体の完全一致で先頭の 1 行だけ削除)
@@ -236,10 +241,16 @@ if [[ "${1:-}" == "--add" ]]; then
   exit 0
 fi
 
-# --- サブコマンド: --check-dup <title> ----------------------------------------
+# --- サブコマンド: --check-dup <title> [repo] ----------------------------------
+# repo(owner/repo)を渡すと `gh issue list -R <repo>` で調べる(ADR-478:
+# 判定レッジャーの起票候補は「このプロジェクト」以外のリポジトリ宛にもなる)。
+# 省略時は従来どおりカレントリポジトリを見る。
 if [[ "${1:-}" == "--check-dup" ]]; then
-  title="${2:?usage: wrapup-stop-gate.sh --check-dup <title>}"
-  if ! json="$(gh issue list --state open --search "in:title $title" --json title 2>/dev/null)"; then
+  title="${2:?usage: wrapup-stop-gate.sh --check-dup <title> [repo]}"
+  repo="${3:-}"
+  repo_args=()
+  [[ -n "$repo" ]] && repo_args=(-R "$repo")
+  if ! json="$(gh issue list "${repo_args[@]}" --state open --search "in:title $title" --json title 2>/dev/null)"; then
     exit 3
   fi
   if jq -e --arg t "$title" 'any(.[]; .title == $t)' >/dev/null <<<"$json"; then
@@ -309,10 +320,14 @@ if [[ "${1:-}" == "--selftest" ]]; then
   export CLAUDE_PROJECT_DIR="$repo"
   inbox="$(inbox_for "$repo")"
 
-  # gh スタブ: WRAPUP_STUB_DUP=1 なら同名 Issue ヒットを返す
+  # gh スタブ: WRAPUP_STUB_DUP=1 なら同名 Issue ヒットを返す。呼び出し引数は
+  # WRAPUP_GH_ARGS_LOG に 1 行ずつ記録する(--check-dup の repo 引数検証用)。
   mkdir -p "$dir/bin"
+  export WRAPUP_GH_ARGS_LOG="$dir/gh-args.log"
+  : >"$WRAPUP_GH_ARGS_LOG"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >>"$WRAPUP_GH_ARGS_LOG" 2>/dev/null || true
 if [[ "${WRAPUP_STUB_DUP:-0}" == "1" ]]; then
   echo '[{"title":"dup title"}]'
 else
@@ -472,6 +487,60 @@ STUB
   PATH="$stub_path" bash "$self" --check-dup "dup title" || rc=$?
   check "--check-dup は非ヒット時 exit 0" 0 "$rc"
 
+  # --- --check-dup [repo]: repo 引数が gh に -R として渡る(ADR-478) ---
+  : >"$WRAPUP_GH_ARGS_LOG"
+  rc=0
+  PATH="$stub_path" bash "$self" --check-dup "dup title" "acme/bleep" || rc=$?
+  check "--check-dup は repo 指定でも非ヒット時 exit 0" 0 "$rc"
+  check "--check-dup は repo を -R として gh issue list に渡す" 0 \
+    "$(grep -q -- '-R acme/bleep' "$WRAPUP_GH_ARGS_LOG"; echo $?)"
+
+  # --- verdict-escalate 統合: 集約結果が inbox 読み取り前に反映される ---
+  # (ADR-478。集約自体のロジックは crates/verdict-escalate 側でテスト済み
+  # — ここでは「Stop 本体が inbox 読み取り前に呼ぶ」配線だけを確認する)
+  ve_repo="$dir/ve_repo"
+  mkdir -p "$ve_repo"
+  git -C "$ve_repo" init -q
+  git -C "$ve_repo" remote add origin https://github.com/example/verdict-escalate-test.git
+  ve_hookinput='{"cwd":"'"$ve_repo"'","stop_hook_active":false}'
+  cat >"$dir/bin/verdict-escalate" <<'STUB'
+#!/usr/bin/env bash
+inbox=""
+while [[ $# -gt 0 ]]; do
+  [[ "$1" == "--inbox" ]] && inbox="$2"
+  shift
+done
+cat >/dev/null # stdin を読み捨てる(hook_io::input::read_stdin 相当)
+[[ -n "$inbox" ]] && printf '%s\n' '{"ts":"x","title":"escalated","detail":"d","repo":"tarotene/bleep","go":"ask"}' >>"$inbox"
+STUB
+  chmod +x "$dir/bin/verdict-escalate"
+  rc=0
+  ve_errfile="$dir/ve-stderr.txt"
+  # CLAUDE_PROJECT_DIR は selftest 冒頭で $repo にエクスポート済みのため、
+  # ここで明示的に上書きしないと cwd の指定より優先されてしまう(他の
+  # 別プロジェクトを使うテストと同じ注意点)。verdict-escalate 自体は
+  # PATH ではなく WRAPUP_VERDICT_ESCALATE_BIN で差し替える(実配備と同じ
+  # 解決順)。
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$ve_repo" \
+    WRAPUP_VERDICT_ESCALATE_BIN="$dir/bin/verdict-escalate" \
+    bash "$self" <<<"$ve_hookinput" 2>"$ve_errfile" || rc=$?
+  check "verdict-escalate が追記した行だけでもゲート発動" 2 "$rc"
+  check "指示文に go:ask の扱いが含まれる" 0 \
+    "$(grep -Fq '"go":"ask"' "$ve_errfile"; echo $?)"
+  rm -f "$dir/bin/verdict-escalate"
+
+  # WRAPUP_VERDICT_ESCALATE_BIN 未指定・実体も無い既定解決先では、
+  # ゲートは黙って素通りする(fail-open)。別プロジェクトを使う — $ve_repo は
+  # 直前のテストで既に非空 inbox になっている。
+  ve_repo2="$dir/ve_repo2"
+  mkdir -p "$ve_repo2"
+  git -C "$ve_repo2" init -q
+  git -C "$ve_repo2" remote add origin https://github.com/example/verdict-escalate-test2.git
+  rc=0
+  PATH="$stub_path" CLAUDE_PROJECT_DIR="$ve_repo2" \
+    bash "$self" <<<'{"cwd":"'"$ve_repo2"'","stop_hook_active":false}' 2>/dev/null || rc=$?
+  check "verdict-escalate 未配備でも素通り" 0 "$rc"
+
   # --- SessionStart hook: 注入 JSON と未処理件数 ---
   ss="$(dirname "$self")/wrapup-session-start.sh"
   out="$(CLAUDE_PROJECT_DIR="$repo" bash "$ss" <<<"$hookinput")"
@@ -580,6 +649,18 @@ session_id="$(jq -r '.session_id // "unknown"' <<<"$input" 2>/dev/null)" || sess
 migrate_legacy_inbox "$project"
 inbox="$(inbox_for "$project")"
 
+# 判定レッジャー(agent-verdicts/*.jsonl)の集約(ADR-478)。inbox 読み取りより
+# 前に呼ぶことで、今回の集約結果も同じ Stop 内で拾える(並列 hook にすると
+# 順序が非決定になる)。既定は同じディレクトリ(gh-edit-allow 等と同じ配置)
+# — PATH 経由(command -v)にしない理由は wrapup-session-start.sh の gate 解決
+# と同じ: ~/.claude/hooks/ が PATH 上にある保証がない。WRAPUP_VERDICT_ESCALATE_BIN
+# で上書き可能(adr-number.sh の ADR_NUMBER_CHECK_BIN と同じ形、selftest 用)。
+# 未配備・失敗しても黙って続行する(fail-open、ADR-0005)。
+verdict_escalate_bin="${WRAPUP_VERDICT_ESCALATE_BIN:-$(dirname "$(self_path)")/verdict-escalate}"
+if [[ -x "$verdict_escalate_bin" ]]; then
+  printf '%s' "$input" | "$verdict_escalate_bin" --inbox "$inbox" 2>/dev/null || true
+fi
+
 # #328: inbox が空でも feedback 型 auto memory の未起票が見つかれば単独で
 # ゲートしうる — この判定は inbox の早期 return より手前(両方とも空なら
 # ここで抜ける)。
@@ -600,18 +681,29 @@ if [[ -s "$inbox" ]]; then
   count="$(wc -l <"$inbox")"
   msg+="$(cat <<EOF
 [wrapup-inbox] 未起票の気づきが ${count} 件残っています: ${inbox}
-各行(JSONL: ts/title/detail)を、このプロジェクトのリポジトリに次の手順で起票してください:
-  1. bash '${self}' --check-dup "<title>" を実行する。
+各行は JSONL(ts/title/detail、任意で repo/go)です。行ごとに次の手順で処理してください:
+  1. bash '${self}' --check-dup "<title>" [repo] を実行する(行に repo が
+     あれば渡す。無ければこのプロジェクトのリポジトリが対象)。
      exit 1 なら同名の open Issue が既にある(重複)。exit 3 なら判定不能 —
      その行は今回スキップして inbox に残す。
-  2. 重複でなければ gh issue create --title "<title>" --body "<本文>" で起票する。
-     本文は detail を会話の文脈で補って書き、末尾に次の 1 行を付ける
+  2. 行に "go":"ask" が無ければ、重複でない場合そのまま
+     gh issue create [-R <repo>] --title "<title>" --body "<本文>" で起票する。
+  3. 行に "go":"ask" がある場合(判定レッジャーからの自動集約行、ADR-478)は、
+     重複でなくても直ちに起票してはいけません。AskUserQuestion で
+     title・detail・repo(既定の起票先)を提示し、「このまま <repo> に起票する」
+     「別のリポジトリに振り直す」「今回は起票しない」を選んでもらってから、
+     選択に従ってください(振り直しは -R で指定先リポジトリを変えるだけ)。
+     gh-edit-allow が同セッション内の作成実績から gh issue create を自動
+     allow することがあるため、許可プロンプトの有無を GO の代わりにしない
+     こと — 必ず AskUserQuestion で確認する。
+  4. 本文は detail を会話の文脈で補って書き、末尾に次の 1 行を付ける
      (inbox 由来を後から grep で絞るための出自フッターが、
      attribution-guard.sh が要求する生成元表示を兼ねる):
        「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」
-  3. 起票に成功した行、または重複でスキップした行だけを
-     bash '${self}' --mark-filed '${inbox}' '<その行そのまま>' で削除する。
-     gh issue create に失敗した行には --mark-filed を呼ばず、inbox に残す(次ターンで再試行)。
+  5. 起票に成功した行、重複でスキップした行、または手順3で「今回は起票
+     しない」を選んだ行だけを bash '${self}' --mark-filed '${inbox}'
+     '<その行そのまま>' で削除する。gh issue create に失敗した行には
+     --mark-filed を呼ばず、inbox に残す(次ターンで再試行)。
 inbox を直接編集してはいけません(必ず --add / --mark-filed 経由)。
 EOF
 )"

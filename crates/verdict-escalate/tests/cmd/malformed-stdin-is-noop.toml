@@ -1,0 +1,10 @@
+# stdin が不正な JSON でも何もせず exit 0(fail-open)。
+bin.name = "verdict-escalate"
+args = ["--inbox", "inbox.jsonl"]
+stdin = "not json"
+status.code = 0
+stdout = ""
+stderr = ""
+fs.sandbox = true
+[env.add]
+AGENT_VERDICTS_DIR = "verdicts"
