@@ -264,7 +264,7 @@
   済みバイナリの model catalog を読むため、実体は 1 つでなければならない。
   自動更新は宣言で OFF にし、更新は `claude update`(zsh 関数が
   `claude-plan-model sync` を直後に実行)の 1 経路に絞る。
-- [ADR-0000](adr/0000-stack-aware-heavy-ci.md) — stacked PR の中間段では
+- [ADR-468](adr/468-stack-aware-heavy-ci.md) — stacked PR の中間段では
   `nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
   / `build altair`)を skip する gate job `stack-position` を追加する決定
   (#419)。job-level `if:` の skip は `skipped` = 成功扱いで required check

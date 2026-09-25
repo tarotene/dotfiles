@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Stack-aware heavy-CI gate (ADR-<pending>, docs/adr/0000-stack-aware-heavy-ci.md,
+  # Stack-aware heavy-CI gate (ADR-468, docs/adr/468-stack-aware-heavy-ci.md,
   # #419). Skipping a JOB via `if:` is safe for required checks in a way that
   # skipping a WORKFLOW via `pull_request.paths` is not: GitHub Docs,
   # "Troubleshooting required status checks" (取得 2026-09-25) — "Successful
@@ -132,7 +132,7 @@ jobs:
     # itself fails or is cancelled, `needs.*.outputs.heavy` comes back empty,
     # and `needs:`'s own default (skip when a dependency job failed) would
     # otherwise silently turn this into fail-closed — the opposite of the
-    # gate's own fail-open branch (ADR-<pending>).
+    # gate's own fail-open branch (ADR-468).
     if: ${{ !cancelled() && needs.stack-position.outputs.heavy != 'false' }}
     steps:
       - uses: actions/checkout@v4

@@ -1,4 +1,4 @@
-# ADR-0000 — stacked PR の中間段では重い CI ジョブを skip する
+# ADR-468 — stacked PR の中間段では重い CI ジョブを skip する
 
 - Status: Accepted
 - Date: 2026-09-25
