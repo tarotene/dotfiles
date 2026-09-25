@@ -88,9 +88,11 @@ in
         #     not start on this host at all: it exits 0 with no output, wrapped and
         #     unwrapped alike, even for `zoom --version`. That is a pre-existing
         #     defect unrelated to GL (see #24), so there was nothing to measure in
-        #     either direction. It stays wrapped because it is the same
-        #     Electron/Chromium engine as Slack, which measured positive, and
-        #     because the GL closure is already paid for by the other three.
+        #     either direction. It stays wrapped because the GL closure is already
+        #     paid for by the other two — not because it shares their engine: zoom
+        #     is Qt + a bundled Chromium Embedded Framework (`ZoomWebviewHost`),
+        #     not the same Electron/Chromium stack as Chrome/Slack (corrected
+        #     2026-09-25 — see #24 for the vega diagnosis this note was wrong on).
         (nixGLWrap pkgs.google-chrome)
         (nixGLWrap pkgs.slack)
         (nixGLWrap pkgs.zoom-us)
