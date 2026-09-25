@@ -482,6 +482,94 @@ vault. Never target the live vault with an unreviewed `restic restore`.
   machine token. Removing the Home Manager module removes the commands and
   units but intentionally does not delete any B2 data.
 
+## Café Wi-Fi: Tailscale mesh, exit node, host firewall
+
+Rationale and the two-stage (cloud-now, home-later) shape:
+[ADR-0000](adr/0000-cafe-wifi-tailscale-mesh-and-host-firewall.md).
+
+### Joining a device to the tailnet
+
+1. **Linux (`vega`, `arcturus`):** `./scripts/install-packages.sh` installs
+   `tailscaled` (via Tailscale's own apt repo) and brings it up on first
+   install — a login URL is printed; open it in a browser to authorize the
+   device. Re-running the script later is a no-op for this step.
+2. **macOS (`altair`):** `./scripts/install-packages-darwin.sh` installs the
+   `tailscale-app` cask (Standalone variant — required for the Tailscale SSH
+   server). First launch needs a one-time manual approval of its system
+   extension: System Settings > Privacy & Security > allow the Tailscale
+   extension, then open Tailscale.app and log in.
+3. **Phone (iOS/Android):** install the official Tailscale app from the
+   App Store / Play Store and log in with the same account. No repo config
+   applies to a phone — it participates in the ACL policy below purely by
+   virtue of being logged into the same tailnet.
+
+### Firewall
+
+Run `./scripts/setup-firewall.sh` on every joined Linux/macOS host, at home
+and on café Wi-Fi alike — the rule set is identical everywhere by design
+(ADR-0000). `--dry-run` prints the plan without touching anything or
+invoking `sudo`.
+
+### Mullvad exit node (until the home Raspberry Pi/K8s stack exists)
+
+1. In the [Tailscale admin console](https://login.tailscale.com/admin),
+   enable the Mullvad exit-node add-on (currently $5/month for 5 devices).
+2. On a personal device: `tailscale exit-node list` to see the available
+   Mullvad nodes, then pin one (do not use `auto:any` — it can fall back to
+   a Mullvad node that is not currently reachable):
+   ```bash
+   tailscale set --exit-node=<mullvad-node-name> --exit-node-allow-lan-access=true
+   ```
+   `--exit-node-allow-lan-access` keeps directly-connected subnets (e.g. the
+   home LAN printer) reachable while the exit node is active.
+3. On `arcturus` (company), leave the exit node unset by default and select
+   one manually only while actually on café Wi-Fi:
+   ```bash
+   tailscale set --exit-node=<mullvad-node-name>
+   tailscale set --exit-node=   # clear it again afterwards
+   ```
+4. Verify: `curl https://am.i.mullvad.net/connected` should report a
+   Mullvad IP while an exit node is set.
+
+### ACL policy
+
+`config/tailscale/policy.hujson` is the source of truth for the tailnet's
+access boundary (personal devices reach each other and the internet exit;
+`arcturus` reaches only the internet exit). Paste its contents into the
+admin console's Access Controls editor (Policy File) after any change —
+this repository has no API credential to push it automatically, and no
+private tailnet name/email is ever written into this file (ADR-0034).
+
+### Printer: static IP, no mDNS discovery
+
+Reserve the printer's IP in the router's DHCP settings so it never changes,
+then register it by IP rather than by discovery (mDNS/Bonjour is not opened
+through the host firewall above):
+
+```bash
+# Linux (CUPS), most modern printers support driverless IPP Everywhere:
+lpadmin -p <name> -E -v ipp://<printer-ip>/ipp/print -m everywhere
+```
+
+On macOS: System Settings > Printers & Scanners > Add Printer, Scanner, or
+Fax… > enter the printer's IP address directly (protocol: AirPrint or IPP).
+
+### Migrating to Headscale (once the home Raspberry Pi/K8s stack exists)
+
+1. Stand up Headscale on the home stack (out of scope for this repository —
+   see the ADR's two-stage table).
+2. On every device: `tailscale login --login-server <headscale-URL>`
+   (Linux/macOS CLI) or the platform-specific "use a custom/alternate
+   coordination server" option (iOS/Android/macOS GUI, see Headscale's own
+   "Connect" docs for the exact menu path on each platform).
+3. Re-paste `config/tailscale/policy.hujson` into Headscale's ACL config.
+4. Point the personal devices' exit node at the home stack instead of
+   Mullvad, then cancel the Mullvad exit-node add-on.
+5. Point Self-hosted LiveSync at the tailnet-internal CouchDB instead of
+   Cloudflare R2 (outside this repository's scope; see `obsidian.nix`'s own
+   backup section above — the sync remote and the backup remote stay
+   separate either way).
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per

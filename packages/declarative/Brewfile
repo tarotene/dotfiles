@@ -5,3 +5,12 @@
 # Installed via `brew bundle --file=Brewfile` (scripts/install-packages-darwin.sh).
 
 cask "google-chrome"
+
+# Tailscale standalone app (ADR-0000). The Standalone variant (System
+# Extension, no Apple ID) is required rather than the App Store variant: only
+# Standalone (and the open-source tailscaled) support running a Tailscale SSH
+# server — the App Store variant is client-only there
+# (https://tailscale.com/kb/1065/macos-variants, accessed 2026-09-25).
+# First launch needs a one-time manual approval of the system extension in
+# System Settings > Privacy & Security (see docs/operations.md).
+cask "tailscale-app"

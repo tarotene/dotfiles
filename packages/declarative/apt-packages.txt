@@ -43,3 +43,17 @@ fcitx5-frontend-all
 
 # --- Smartcard / YubiKey (scdaemon CCID, no pcscd) ---
 scdaemon
+
+# --- Network: mesh VPN daemon + host firewall (ADR-0000) ---
+#
+# tailscale: `tailscaled` runs as a root systemd system service (Tailscale's
+# own upstream guidance — nixpkgs' tailscale package is for the CLI only and
+# is not managed here, keeping the daemon's ownership in this one layer).
+# The apt repo/keyring bootstrap lives in install-packages.sh, not here — the
+# package name itself needs a third-party repo added first.
+#
+# ufw: a root-owned netfilter firewall front-end, applied by
+# scripts/setup-firewall.sh to block LAN-side reachability the same way on
+# every network (café or home).
+tailscale
+ufw
