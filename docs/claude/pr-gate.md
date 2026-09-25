@@ -263,6 +263,30 @@ GitHub より緩くても厳しくても、どちらも嘘になる。
 リポジトリは PR テンプレートを使わない（使えない — 上記のとおり `--body` がテンプレートを
 読まない）ので、コメントに keyword が紛れ込む経路が無い。踏んだら足す。
 
+### required job が job-level `if:` で skipped になる場合
+
+`nix.yml` の `build vega`/`build arcturus`/`build altair`/`rust workspace`
+は `rulesets/quality.json` 上 required だが、`stack-position` gate job が
+job-level `if:` で skip することがある(中間段は ADR-468、変更 path が
+build/rust の入力に触れない PR は Amendment 2026-09-26、
+`docs/adr/468-stack-aware-heavy-ci.md`)。この skip は `gh pr checks
+--json bucket` で `bucket: "skipping"`(GitHub の check-run `state` が
+`SKIPPED`/`NEUTRAL`)として報告される。
+
+`reported_checks()` が読む `bucket` の判定は `pass`/`skipping`/
+`fail`/`cancel`/`pending` の 5 種(`cli/cli` の
+`pkg/cmd/pr/checks/aggregate.go`)で、`pr-gate.sh` が `PENDING`/`失敗` に
+数えるのは `fail`・`cancel`・`pending` の 3 種だけ(本文書「G_CI_STATUS」
+節の判定)。つまり `skipping` は「未報告」ではなく「報告済みで
+pending/failed のどちらでもない」扱いになり、gate はこれを待たない。
+GitHub 側も同じ理由(job-level skip は `success`/`skipped`/`neutral` の
+いずれかとして required check を満たす、GitHub Docs
+"Troubleshooting required status checks")で merge box を block しない。
+
+判定できないから advisory にした `G_base` とは違い、これは判定できる
+(skip されたことが `bucket` から読める)ので gate の縮退表には載らない
+——「skip されている」は異常ではなく設計どおりの状態だからである。
+
 ### base が default branch でない場合を advisory にする理由
 
 GitHub の仕様上、closing keyword は **default branch を狙う PR でのみ**解釈される
