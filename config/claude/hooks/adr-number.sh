@@ -36,10 +36,18 @@ source "$GUARD_SELF_DIR/attribution-guard.sh"
 have() { command -v "$1" > /dev/null 2>&1; }
 
 # 呼び出しのたびに解決する(--selftest の ADR_NUMBER_CHECK_BIN 差し替えが
-# 効くように)。source tree からの相対パスを先に試し、無ければ PATH 上の
-# 配備済み `adr-number-check`(~/.local/bin)にフォールバックする。
+# 効くように)。
+#
+# ADR_NUMBER_CHECK_BIN が明示的に set されているときは最終決定として扱い、
+# 実行不能なら PATH フォールバックせずに解決失敗とする(#430 と同型の穴 —
+# pr-title-guard.sh 側の理由を参照)。env が unset のときだけ、source tree
+# からの相対パス → PATH 上の配備済みバイナリの順にフォールバックする。
 resolve_adr_number_check() {
-  local candidate="${ADR_NUMBER_CHECK_BIN:-$GUARD_SELF_DIR/../../../scripts/adr-number-check}"
+  if [[ -n ${ADR_NUMBER_CHECK_BIN:-} ]]; then
+    [[ -x $ADR_NUMBER_CHECK_BIN ]] && printf '%s\n' "$ADR_NUMBER_CHECK_BIN"
+    return
+  fi
+  local candidate="$GUARD_SELF_DIR/../../../scripts/adr-number-check"
   if [[ -x $candidate ]]; then
     printf '%s\n' "$candidate"
     return 0
