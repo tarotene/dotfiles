@@ -1,4 +1,4 @@
-# ADR-0000 — カフェ Wi-Fi 対策: Tailscale メッシュ + Mullvad 出口 + ホスト firewall
+# ADR-471 — カフェ Wi-Fi 対策: Tailscale メッシュ + Mullvad 出口 + ホスト firewall
 
 - Status: Accepted
 - Date: 2026-09-25

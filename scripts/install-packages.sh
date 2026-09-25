@@ -12,7 +12,7 @@ set -euo pipefail
 #     Amendment)
 #   - smartcard support (scdaemon, direct CCID)
 #   - mesh VPN daemon (tailscaled, root systemd system service) + host
-#     firewall (ufw) — ADR-0000
+#     firewall (ufw) — ADR-471
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).
 # Usage: ./install-packages.sh [--dry-run]
@@ -55,7 +55,7 @@ fi
 
 UDEV_RULES="/etc/udev/rules.d/69-probe-rs.rules"
 
-# Tailscale apt repo/keyring (ADR-0000): `tailscale` in apt-packages.txt needs
+# Tailscale apt repo/keyring (ADR-471): `tailscale` in apt-packages.txt needs
 # a third-party repo added before `apt-get update` can resolve it. Gated on
 # the keyring file the same way probe-rs's udev rule is gated below — a
 # fresh host installs it once, a re-run is a no-op.
@@ -103,7 +103,7 @@ if [[ ! -f "$UDEV_RULES" ]]; then
 fi
 
 # Bring Tailscale up once, right after its first install, so `--operator`
-# is set before this host is ever used non-interactively (ADR-0000). This
+# is set before this host is ever used non-interactively (ADR-471). This
 # blocks on a login URL the human must open in a browser — deliberately: it
 # is a one-time interactive step, not something later re-runs should repeat.
 if [[ "$tailscale_repo_new" == "true" ]]; then

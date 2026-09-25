@@ -485,7 +485,7 @@ vault. Never target the live vault with an unreviewed `restic restore`.
 ## Café Wi-Fi: Tailscale mesh, exit node, host firewall
 
 Rationale and the two-stage (cloud-now, home-later) shape:
-[ADR-0000](adr/0000-cafe-wifi-tailscale-mesh-and-host-firewall.md).
+[ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md).
 
 ### Joining a device to the tailnet
 
@@ -507,7 +507,7 @@ Rationale and the two-stage (cloud-now, home-later) shape:
 
 Run `./scripts/setup-firewall.sh` on every joined Linux/macOS host, at home
 and on café Wi-Fi alike — the rule set is identical everywhere by design
-(ADR-0000). `--dry-run` prints the plan without touching anything or
+(ADR-471). `--dry-run` prints the plan without touching anything or
 invoking `sudo`.
 
 ### Mullvad exit node (until the home Raspberry Pi/K8s stack exists)

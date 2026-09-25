@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Host firewall for café-Wi-Fi safety (ADR-0000): the same LAN-reachability
+# Host firewall for café-Wi-Fi safety (ADR-471): the same LAN-reachability
 # boundary applies whether this host is at home or on a café network — there
 # is no location-detection branch to keep in sync, by design.
 #
@@ -29,7 +29,7 @@ usage() {
     cat <<'EOF'
 Usage: setup-firewall.sh [--dry-run]
 
-Apply the host firewall boundary described in docs/adr/0000-cafe-wifi-
+Apply the host firewall boundary described in docs/adr/471-cafe-wifi-
 tailscale-mesh-and-host-firewall.md: deny LAN-side inbound reachability the
 same way on every network, so the boundary needs no per-location switch.
 
