@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""slot-hit.py — 候補日程一覧(調整さん等)と Google Calendar の予定を
-突き合わせ、朝・昼・夜の3コマ単位で当たり判定(○/△/×)を出す純関数。
+"""slot-hit.py — 候補日程一覧(調整さん等、人から提示される空き日程の
+問い合わせ全般)と Google Calendar の予定を突き合わせ、朝・昼・夜の3コマ
+単位で当たり判定(○/△/×)を出す純関数。
 
 ネットワークアクセスもファイル書き込み(出力先を除く)も行わない。
-Google Calendar の読み書きは呼び出し側(Claude の MCP 呼び出し)が担う —
-このスクリプトは「list_events の生レスポンス」と「候補日程一覧の文字列
-配列」を入力に取り、判定表とマーカー作成計画(JSON)を出力するだけ。
+Google Calendar の読み書きも、候補日程一覧の取得元固有の読み取り・回答
+書き込み(例: 調整さんのページ操作)も呼び出し側(Claude)が担う — この
+スクリプトはサービス非依存の構造化 JSON(候補の日付・時刻)と
+「list_events の生レスポンス」を入力に取り、判定表とマーカー作成計画
+(JSON)を出力するだけの判定コアである。候補日程一覧の具体的な取得元
+(調整さん等)ごとの手順は SKILL.md 側に持つ。
+
+年の無い月日表記(調整さん等、多くの日本語の日程調整サービスが年を
+省略する)から曜日一致で年を推定するロジックは `infer-year` サブコマンド
+として分離している — 判定コア(`judge` サブコマンド)は常に年月日確定
+済みの構造化 JSON だけを受け取る。
 
 標準ライブラリのみで動く(python3.11+、tomllib を使うため)。
 
@@ -29,8 +38,11 @@ Google Calendar の読み書きは呼び出し側(Claude の MCP 呼び出し)�
     id = "tarotene@gmail.com"
     summary = "本体"
 
-候補日程の文字列形式: "M/D(曜) H:MM〜"(調整さんの表記そのまま)。年は
-明記されないため、今日以降で最初に曜日が一致する年を採用する。
+候補日程一覧の入力契約(`judge` サブコマンドの `--candidates`)は構造化
+JSON: `[{"date": "2026-10-18", "time": "18:00"}, ...]`。年の無い表記
+(「10/18(日)」等)からの年推定・自由文からの日時抽出は、この入力を組み
+立てる Claude 側(または `infer-year` サブコマンド)の責務であり、この
+スクリプトの判定パスには含めない。
 
 終日イベントのうち `soft_day_prefixes` に一致するもの(例:【試験本番】)
 は、同じ日に時間指定の確定予定が1件も無いとエラー終了する — 「拘束時間が
@@ -43,7 +55,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -52,11 +63,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 WEEKDAY_JA = "月火水木金土日"  # index == datetime.weekday() (Mon=0)
-
-CANDIDATE_RE = re.compile(
-    r"^(?P<m>\d{1,2})/(?P<d>\d{1,2})\((?P<wd>[月火水木金土日])\)\s*"
-    r"(?P<h>\d{1,2}):(?P<mi>\d{2})〜\s*$"
-)
 
 
 class SlotHitError(Exception):
@@ -166,17 +172,23 @@ def match_slot(t: time, slots: dict[str, Slot]) -> str:
     return best[0]
 
 
-def parse_candidates(texts: list[str], today: date) -> list[Candidate]:
+def parse_structured_candidates(items: list[dict]) -> list[Candidate]:
+    """構造化 JSON(`[{"date": "YYYY-MM-DD", "time": "HH:MM"}, ...]`)を
+    `Candidate` のリストに変換する。年月日の解釈(自由文からの抽出・年の
+    無い表記からの年推定)は呼び出し側の責務 — ここでは ISO 形式を型で
+    要求し、それ以外は即エラーにする(閉語彙 > 自由記述+事後 lint)。"""
     out = []
-    for text in texts:
-        m = CANDIDATE_RE.match(text)
-        if not m:
-            raise SlotHitError(f"候補日程の形式が想定外です: {text!r}")
-        month, day, wd = int(m["m"]), int(m["d"]), m["wd"]
-        t = time(int(m["h"]), int(m["mi"]))
-        year = resolve_year(month, day, wd, today)
-        d = date(year, month, day)
-        out.append(Candidate(text, d, t, ""))
+    for item in items:
+        try:
+            d = date.fromisoformat(item["date"])
+            t = _parse_hm(item["time"])
+        except (KeyError, ValueError) as e:
+            raise SlotHitError(
+                f"候補日程の形式が想定外です(date は YYYY-MM-DD、time は "
+                f"HH:MM の構造化 JSON が必要): {item!r} ({e})"
+            ) from e
+        raw = f"{d.isoformat()} {t.strftime('%H:%M')}"
+        out.append(Candidate(raw, d, t, ""))
     return out
 
 
@@ -370,14 +382,13 @@ def run(
     config_path: Path,
     candidates_path: Path,
     events_dir: Path,
-    today: date,
     event_title: str,
     source_url: str,
     out_plan: Path | None,
 ) -> str:
     config = Config.load(config_path)
-    candidate_texts = json.loads(candidates_path.read_text(encoding="utf-8"))
-    candidates = parse_candidates(candidate_texts, today)
+    candidate_items = json.loads(candidates_path.read_text(encoding="utf-8"))
+    candidates = parse_structured_candidates(candidate_items)
     for c in candidates:
         c.slot_name = match_slot(c.slot_time, config.slots)
 
@@ -451,7 +462,8 @@ def run_selftest() -> None:
     assert match_slot(time(9, 0), config.slots) == "morning"
     assert match_slot(time(13, 0), config.slots) == "noon"
 
-    # 2) 年跨ぎ: 1/10 は今日(2026-09-25)以降で最初に曜日が一致する年を選ぶ。
+    # 2) 年跨ぎ(`infer-year` サブコマンドの中核): 1/10 は今日(2026-09-25)
+    # 以降で最初に曜日が一致する年を選ぶ。
     today = date(2026, 9, 25)
     target_weekday = WEEKDAY_JA[date(2027, 1, 10).weekday()]
     assert resolve_year(1, 10, target_weekday, today) == 2027
@@ -518,45 +530,79 @@ def run_selftest() -> None:
     _, _, soft_days_q, _ = classify_events(quirky_events, config, "")
     assert soft_days_q == {date(2026, 11, 15)}, soft_days_q
 
-    print("OK: slot-hit.py 自己検査 10 項目すべて通過")
+    # 11) 構造化 JSON の候補パース(判定コアの入力契約)。正常系は date/time
+    # から Candidate を作り、match_slot と組み合わせてコマまで解決できる。
+    # 異常系(必須キー欠落・不正な日付書式)は SlotHitError。
+    cands = parse_structured_candidates([{"date": "2026-10-18", "time": "19:00"}])
+    assert len(cands) == 1
+    assert cands[0].day == date(2026, 10, 18)
+    assert cands[0].slot_time == time(19, 0)
+    assert match_slot(cands[0].slot_time, config.slots) == "evening"
+    for bad in [{"date": "2026-10-18"}, {"date": "not-a-date", "time": "19:00"}, {"date": "2026-10-18", "time": "19h00"}]:
+        try:
+            parse_structured_candidates([bad])
+            raise AssertionError(f"should have raised for {bad!r}")
+        except SlotHitError:
+            pass
+
+    print("OK: slot-hit.py 自己検査 11 項目すべて通過")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--candidates", type=Path)
-    parser.add_argument("--events-dir", type=Path)
-    parser.add_argument("--today", type=str, default=None, help="YYYY-MM-DD(省略時はシステム今日)")
-    parser.add_argument("--event-title", type=str, default="", help="マーカー件名に使うイベント名")
-    parser.add_argument("--source-url", type=str, default="", help="候補日程一覧の URL(自分のマーカー識別・説明欄記載に使用)")
-    parser.add_argument("--out-plan", type=Path, default=None, help="marker/answers 計画 JSON の出力先")
     parser.add_argument("--selftest", action="store_true")
+    sub = parser.add_subparsers(dest="command")
+
+    judge_p = sub.add_parser("judge", help="候補日程 × カレンダーの当たり判定を実行する(判定コア)")
+    judge_p.add_argument("--config", type=Path, required=True)
+    judge_p.add_argument("--candidates", type=Path, required=True, help="構造化 JSON: [{\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}, ...]")
+    judge_p.add_argument("--events-dir", type=Path, required=True)
+    judge_p.add_argument("--event-title", type=str, default="", help="マーカー件名に使うイベント名")
+    judge_p.add_argument("--source-url", type=str, default="", help="候補日程一覧の URL(自分のマーカー識別・説明欄記載に使用)")
+    judge_p.add_argument("--out-plan", type=Path, default=None, help="marker/answers 計画 JSON の出力先")
+
+    infer_p = sub.add_parser(
+        "infer-year",
+        help="年の無い月日表記(調整さん等)から、曜日一致で年を推定する",
+    )
+    infer_p.add_argument("--month", type=int, required=True)
+    infer_p.add_argument("--day", type=int, required=True)
+    infer_p.add_argument("--weekday", type=str, required=True, choices=list(WEEKDAY_JA))
+    infer_p.add_argument("--today", type=str, required=True, help="YYYY-MM-DD")
+
     args = parser.parse_args()
 
     if args.selftest:
         run_selftest()
         return 0
 
-    if not (args.config and args.candidates and args.events_dir):
-        parser.error("--config / --candidates / --events-dir は --selftest でない限り必須です")
+    if args.command == "infer-year":
+        try:
+            year = resolve_year(args.month, args.day, args.weekday, date.fromisoformat(args.today))
+        except SlotHitError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(year)
+        return 0
 
-    today = date.fromisoformat(args.today) if args.today else date.today()
-    try:
-        output = run(
-            args.config,
-            args.candidates,
-            args.events_dir,
-            today,
-            args.event_title,
-            args.source_url,
-            args.out_plan,
-        )
-    except SlotHitError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+    if args.command == "judge":
+        try:
+            output = run(
+                args.config,
+                args.candidates,
+                args.events_dir,
+                args.event_title,
+                args.source_url,
+                args.out_plan,
+            )
+        except SlotHitError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(output)
+        return 0
 
-    print(output)
-    return 0
+    parser.error("--selftest か、judge/infer-year いずれかのサブコマンドを指定してください")
+    return 2
 
 
 if __name__ == "__main__":
