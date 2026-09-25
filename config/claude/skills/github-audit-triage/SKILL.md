@@ -79,26 +79,35 @@ description・topics・settings フィールド・ファイルツリー・open I
     `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
     テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
     skill が無いリポジトリ(rust/typst/astro のいずれでもない)は
-    `repo-governance-common` の `templates/.github/workflows/pr-title.yml`
-    (存在しなければ `rust-repo-governance` 版と同一内容なのでそこから
-    流用してよい — プレースホルダを持たない定型ファイルのため
-    エコシステム差は無い)を直接コピーする提案にする。
-  - `pr-title-check-not-required` — 対象リポジトリの ruleset に
-    `PR title` required check が無い(`github-audit` は完全一致または
-    workflow_call 連結名 `<caller> / PR title` の後方一致を ok とする、
-    #337)。対応する `*-repo-governance` skill(rust/typst/astro)または
-    `core`(該当エコシステムが無いリポジトリ、`config/claude/skills/
-    repo-governance-common/scripts/apply-rulesets.sh`)の
-    `apply-rulesets.sh --reconcile` を適用する提案として表に書く
-    (`--reconcile` が無いと既存 ruleset は skip されて `PR title` が
-    追加されない、#337 で判明)。**dotfiles 自身と同じ手動 `gh api PUT`
-    は使わない** — 3 skill + core の `apply-rulesets.sh` が持つ
-    `--reconcile` に統一する。
-  - 上記どちらか一方だけが立っている場合(caller はあるが required
-    check だけ足りない、等)は、該当する提案だけを表に書けばよい —
-    両方揃えるための追加確認は不要(rulesets ドメインの
-    `review_layer=partial-drift` と違い、この 2 トークンに解釈の
-    分岐は無い)。
+    `repo-governance-common/templates/.github/workflows/pr-title.yml`
+    (単一正本、rust/typst/astro-site の 3 skill はこのファイルへの symlink)
+    をそのまま `.github/workflows/pr-title.yml` にコピーする提案にする。
+  - `pr-title-check-not-required` — 対象リポジトリの ruleset に required
+    check context の完全一致(`"PR title"` または `"PR Title / PR title"`
+    のいずれか)が無い(ADR-0031 2026-09-26 Amendment で完全一致化。旧・
+    接尾辞後方一致の判定は #337 の事故 — 呼び出し側 job に `name:` が無い
+    テンプレートの実際の check 名 `"check / PR title"` を誤って ok と
+    判定し続けていた — を受けて廃止した)。対応する `*-repo-governance`
+    skill(rust/typst/astro)または `core`(該当エコシステムが無いリポジトリ、
+    `config/claude/skills/repo-governance-common/scripts/apply-rulesets.sh`)
+    の `apply-rulesets.sh --reconcile` を適用する提案として表に書く
+    (`--reconcile` が無いと既存 ruleset は skip されて追加されない、#337
+    で判明)。**dotfiles 自身と同じ手動 `gh api PUT` は使わない** — 3 skill
+    + core の `apply-rulesets.sh` が持つ `--reconcile` に統一する。
+  - `pr-title-context-mismatch` — ruleset の required context 文字列は
+    正しいが、最新の `pr-title.yml` run が実際に報告した job 名と一致しない
+    (ground-truth 突き合わせ、ADR-0031 2026-09-26 Amendment)。原因は
+    ほぼ必ず呼び出し側テンプレートの job に `name: PR Title` が無いこと
+    (現行テンプレートは固定済みなので、播き直し後の初回 run では発生
+    しないはず)か、旧型の別 PR タイトル検査ワークフローが残っていること
+    (下記)。提案は「呼び出し側 job の `name:` をテンプレートに合わせて
+    追加する PR」または「旧型 workflow の置換 PR」のいずれか、原因に応じて
+    起草時に判別する。
+  - 上記いずれか 1 つだけが立っている場合(caller はあるが required
+    check だけ足りない、context だけ mismatch、等)は、該当する提案だけを
+    表に書けばよい — 複数を揃えるための追加確認は不要(rulesets ドメインの
+    `review_layer=partial-drift` と違い、これらのトークンに解釈の分岐は
+    無い)。
   - 旧 `amannn/action-semantic-pull-request` 等、別の PR タイトル検査
     ワークフローが既に存在するリポジトリ(ADR-0031 D2 追補の訂正
     参照、2026-09-24)は、置き換え(旧 workflow ファイルの削除 + 旧

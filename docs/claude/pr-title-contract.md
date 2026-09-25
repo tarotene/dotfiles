@@ -59,12 +59,22 @@ dotfiles 自身は `pr-title.yml` に直接 `pull_request` トリガーを持た
 実機確認)。
 
 `workflow_call` 経由で他リポジトリが呼ぶ場合、GitHub の仕様上 context 名は
-`<呼び出し側 workflow の name> / <呼び出される job の name>` の連結になる
-(GitHub Community Discussion #46752, 取得 2026-09-22:
-<https://github.com/orgs/community/discussions/46752>)。Stage 5/6 の
-呼び出し workflow テンプレートは各利用リポジトリの `workflow` レベル
-`name:` を固定した上でこの連結形を required check として登録する。実際の
-文字列は最初の利用リポジトリへの展開時に実機で確認する。
+`<呼び出し側 **job** の name> / <呼び出される job の name>` の連結になる
+(telepath#243 の Actions API 実測、取得 2026-09-26。GitHub Community
+Discussion #46752 <https://github.com/orgs/community/discussions/46752>
+は「呼び出し側 workflow の name」説を裏付ける記述を持たず、discussion
+自体も未解決 — この説は誤読で、ADR-0031 D2 追補が誤って採用し、#337 の
+播きで required check が恒久的に「Expected」のまま merge を止める事故を
+起こした。ADR-0031 の 2026-09-26 Amendment 参照)。呼び出し workflow
+テンプレート(`config/claude/skills/repo-governance-common/templates/
+.github/workflows/pr-title.yml`、rust/typst/astro-site の 3 skill は
+symlink で共有)は `check` job に `name: PR Title` を固定するため、連結名は
+常に `"PR Title / PR title"` になる。「最初の利用リポジトリへの展開時に
+実機で確認する」という手動手順は、`.github/workflows/pr-title.yml`
+(reusable workflow)の最終 step `scripts/pr-title-context-check` による
+実行時の自己照合に置き換えた — run のたびに自分自身の check 名を Actions
+API から実測し、有効な branch ruleset の required_status_checks と比較
+して不一致なら CI を red にする。
 
 ## revert の扱い
 
@@ -76,8 +86,11 @@ type に改題してから merge する運用とする(例:
 ## titles ドメインが見るもの / 見ないもの
 
 - 見る: (a) `pr-title.yml` を呼び出す workflow がリポジトリに存在するか、
-  (b) その required check context(`PR title`)が ruleset に登録されて
-  いるか。
+  (b) その required check context(`PR title` または `PR Title / PR
+  title` の完全一致)が ruleset に登録されているか、(c) pr-title.yml の
+  最新 run が実際に報告した job 名と (b) の context が一致するか
+  (`pr-title-context-mismatch`、ADR-0031 2026-09-26 Amendment — #337 の
+  事故で (b) だけでは検出できなかった盲点を埋める)。
 - 見ない: open PR 個々のタイトルの適合。CI(required check)と client
   guard がその役割を担う。audit まで実測すると三層の判定が重複し、
   「audit は drift と言うが CI は green」のような不整合が起きうる。

@@ -6,10 +6,17 @@ name: PR Title
 # 存在しない)。
 #
 # dotfiles 自身は下の pull_request トリガーで直接自己適用する — job 名が
-# そのまま required check context "PR title" になり、workflow_call 経由の
-# 連結名(<呼び出し側 workflow の name> / <呼び出される job の name>、GitHub
-# Community Discussion #46752)の曖昧さを避けられる。他リポジトリは
+# そのまま required check context "PR title" になる。他リポジトリは
 # `workflow_call` からこの workflow を呼ぶ(#325 Stage 5/6、播きの準備)。
+# その場合の連結名は「呼び出し側 **job** の name / 呼び出される job の
+# name」(呼び出し側 **workflow** の name ではない — telepath#243 で実測、
+# 2026-09-26。当初「呼び出し側 workflow の name」という誤った理論で
+# ADR-0031 D2 追補を書き、#337 の播きが満たせない required check context
+# を作った)。呼び出し側テンプレート(config/claude/skills/
+# repo-governance-common/templates/.github/workflows/pr-title.yml)は
+# job に `name: PR Title` を固定しているため、連結名は常に
+# "PR Title / PR title" になる。末尾の `Validate required-check context`
+# step がこれを実行時に自己照合する。
 on:
   workflow_call:
     inputs:
@@ -42,6 +49,13 @@ jobs:
       # このジョブは実際には何も書き込まない — 読み取りのためだけに
       # write を要求する GitHub 側の仕様上の制約。
       contents: write
+      # 末尾の `Validate required-check context` step が自 run の jobs を
+      # 読むために必要(scripts/pr-title-context-check、ADR-0031 Amendment
+      # 2026-09-26)。workflow_call 経由の呼び出しでは、呼び出し側テンプレート
+      # の job 側でも同じ scope を明示しないとこの job 自体が
+      # startup_failure になる(bleep#33 で実測 — 呼び出し側の permissions
+      # 宣言が無いとリポジトリ既定に丸められ、既定が read だと足りない)。
+      actions: read
     steps:
       # 文法検査の単一ソース(scripts/pr-title-check)を取得する。dotfiles
       # 自身のトリガー(github.repository == tarotene/dotfiles)では、この
@@ -63,6 +77,7 @@ jobs:
             scripts/pr-title-check
             scripts/github-audit
             scripts/pr-merge-settings-check
+            scripts/pr-title-context-check
           sparse-checkout-cone-mode: false
 
       - name: Validate PR title
@@ -88,3 +103,20 @@ jobs:
           set -euo pipefail
           chmod +x scripts/pr-merge-settings-check
           ./scripts/pr-merge-settings-check "${{ github.repository }}"
+
+      # ADR-0031 Amendment(2026-09-26): #337 の播きで required check の
+      # context 文字列が実際の check 名と一致せず、15 リポジトリで required
+      # check が永久に "Expected" のまま merge を止めた事故の再発防止。
+      # 「最初の PR で Checks タブを目視確認する」という手動手順に頼らず、
+      # 呼び出し元(caller)の run のたびに自分自身の check 名を実測し、
+      # 有効な branch ruleset の required_status_checks と自己照合する。
+      - name: Validate required-check context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/pr-title-context-check
+          ./scripts/pr-title-context-check \
+            "${{ github.repository }}" \
+            "${{ github.run_id }}" \
+            "${{ github.event.repository.default_branch }}"

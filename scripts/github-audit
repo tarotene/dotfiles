@@ -143,8 +143,12 @@ judges the requested domains (default: all of them):
              and a CI workflow
   titles     PR-title commit-message contract enforcement presence
              (ADR-0031): pr-title.yml caller workflow + "PR title" required
-             status check. Presence-detection only, not individual open PR
-             titles (the client guard and the required check judge those).
+             status check (exact-match: "PR title" self-applied, or
+             "PR Title / PR title" workflow_call-connected), plus a
+             ground-truth check against the latest run's actual job name
+             (pr-title-context-mismatch, Amendment 2026-09-26). Presence-
+             detection only, not individual open PR titles (the client
+             guard and the required check judge those).
              not-applicable for repos with no .github/workflows
   lifecycle  dormancy candidate scoring (#275, ADR-0023): days since last
              push, days since last tagged release (if any), days since the
@@ -243,6 +247,28 @@ fetch_repo_settings() { # $1=repo -> JSON (REST repo object) or {} on failure
 # 同じ理由)。
 fetch_repo_secrets() { # $1=repo -> JSON array of secret names, or [] on failure
   "$GH_BIN" api "repos/$OWNER/$1/actions/secrets" --jq '[.secrets[].name]' 2>/dev/null || printf '[]'
+}
+
+# titles ドメイン(ADR-0031 Amendment, 2026-09-26)用: ある run が実際に報告
+# した job 名の一覧。required check の context 文字列(ruleset に書かれた
+# 宣言値)と、実測した check 名(GitHub が run 時に付ける ground truth)を
+# 突き合わせるのに使う — #337 で両者が一致しないまま播かれ、required check
+# が永久に "Expected" のまま merge を止めた事故の再発防止(judge_titles()
+# の pr-title-context-mismatch)。scripts/pr-title-context-check も同じ
+# ヘルパーを source して再利用する(ADR-0035 D1)。
+fetch_run_job_names() { # $1=repo $2=run_id -> JSON array of job names, [] on failure
+  "$GH_BIN" api "repos/$OWNER/$1/actions/runs/$2/jobs" --jq '[.jobs[].name]' 2>/dev/null || printf '[]'
+}
+
+# pr-title.yml caller workflow の最新 run の job 名一覧。run が一度も
+# 走っていないリポジトリ(播いたばかり、または未播き)は ground truth が
+# 存在しないので judge_titles() 側で drift 扱いにしない([] を返す)。
+fetch_latest_pr_title_job_names() { # $1=repo -> JSON array, [] if no run yet or unfetchable
+  local run_id
+  run_id="$("$GH_BIN" api "repos/$OWNER/$1/actions/workflows/pr-title.yml/runs" -X GET -F per_page=1 \
+    --jq '.workflow_runs[0].id // empty' 2>/dev/null)" || run_id=''
+  [[ -n "$run_id" ]] || { printf '[]'; return; }
+  fetch_run_job_names "$1" "$run_id"
 }
 
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
@@ -1157,20 +1183,29 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
 # report drift while CI is green, docs/claude/pr-title-contract.md).
 # ---------------------------------------------------------------------------
 
-REQUIRED_PR_TITLE_CONTEXT='PR title'
-# workflow_call 経由で他リポジトリが .github/workflows/pr-title.yml を
-# 呼ぶと、GitHub は required check の context を
-# "<呼び出し側 workflow の name> / <呼び出される job の name>" に連結する
-# (GitHub Community Discussion #46752、ADR-0031 追補で 2026-09-22 取得と
-# して引用済み)。呼ばれる job の名前は pr-title.yml 側で常に "PR title"
-# 固定なので、連結後は必ずこの接尾辞になる。dotfiles 自身は
-# pull_request を直接トリガーする自己適用のため連結されず、単一名
-# "PR title" のまま(#337 実装時に判明: 完全一致だけを見ると、播いた
-# 先の全リポジトリで恒久的に pr-title-check-not-required と誤検出する)。
-REQUIRED_PR_TITLE_CONTEXT_SUFFIX=' / PR title'
+# dotfiles 自身は pull_request を直接トリガーする自己適用のため連結されず、
+# 単一名 "PR title" のまま。他リポジトリは workflow_call 経由で呼ぶため
+# 連結名になる — GitHub は required check の context を「呼び出し側 **job**
+# の name / 呼び出される job の name」に連結する(telepath#243 の Actions
+# API 応答で実測、2026-09-26)。呼び出し側テンプレート
+# (config/claude/skills/repo-governance-common/templates/.github/workflows/
+# pr-title.yml)は job に `name: PR Title` を固定しているため、播いた先の
+# 連結名は常にこの固定文字列になる。
+#
+# 訂正の経緯: 当初「呼び出し側 **workflow** の name / job の name」という
+# 誤った理論(GitHub Community Discussion #46752 の誤読、ADR-0031 D2 追補、
+# 2026-09-22)を基に、この判定は「接尾辞 ' / PR title' の後方一致なら ok」
+# という緩い判定にしていた。この緩さのせいで、実際には呼び出し側 job に
+# name: が無く check 名が "check / PR title" になっていた #337 の播きを
+# ok と誤判定し続けていた(15 リポジトリで required check が永久に
+# "Expected" のまま merge を止める事故、2026-09-26 に発覚)。完全一致に
+# 締め、ground truth(実際の run の job 名、fetch_latest_pr_title_job_names()
+# 経由)との突き合わせを judge_titles() の $3 に追加する。
+REQUIRED_PR_TITLE_CONTEXT_SELF='PR title'
+REQUIRED_PR_TITLE_CONTEXT_CONNECTED='PR Title / PR title'
 
-judge_titles() { # $1=repo $2=repo-gql-json -> finding
-  local repo="$1" gql="$2" has_workflows has_caller arr checks
+judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=run未実行/取得不能, 既定'[]') -> finding
+  local repo="$1" gql="$2" run_jobs="${3:-[]}" has_workflows has_caller arr checks
   has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
   # ADR-0020 の grandfathering 型と同じ: CI を持たないリポジトリには
   # required check を要求する土台自体が無いため not-applicable にする
@@ -1186,9 +1221,19 @@ judge_titles() { # $1=repo $2=repo-gql-json -> finding
 
   arr="$(default_branch_rulesets "$repo")"
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
-  jq -e --arg c "$REQUIRED_PR_TITLE_CONTEXT" --arg suffix "$REQUIRED_PR_TITLE_CONTEXT_SUFFIX" \
-    'any(.[]; . == $c or endswith($suffix))' <<<"$checks" >/dev/null 2>&1 ||
+  jq -e --arg self "$REQUIRED_PR_TITLE_CONTEXT_SELF" --arg connected "$REQUIRED_PR_TITLE_CONTEXT_CONNECTED" \
+    'any(.[]; . == $self or . == $connected)' <<<"$checks" >/dev/null 2>&1 ||
     missing+=("pr-title-check-not-required")
+
+  # ground truth 突き合わせ(ADR-0031 Amendment, 2026-09-26): run が一度も
+  # 走っていない([]) 場合は判定材料が無いので何もしない(#337 の事故は
+  # 「run はあったが誰も見なかった」ケースなので、run が無いリポジトリまで
+  # drift 扱いにする必要はない — pr-title-workflow-missing が既に拾う)。
+  if [[ $has_caller == true && "$run_jobs" != "[]" ]]; then
+    jq -e --argjson jobs "$run_jobs" \
+      'any(.[]; . as $ctx | $jobs | index($ctx) != null)' <<<"$checks" >/dev/null 2>&1 ||
+      missing+=("pr-title-context-mismatch")
+  fi
 
   if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
@@ -1306,7 +1351,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
@@ -1326,6 +1371,11 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # (see the releaser) case below) so repos without a releaser workflow
     # never pay the extra REST call.
     [[ $d == releaser ]] && need_releaser=1
+    # titles' ground-truth check (ADR-0031 Amendment, 2026-09-26) needs the
+    # REST-only run/jobs fields — same lazy-fetch pattern, additionally
+    # gated on has_caller (see the titles) case below) so repos without a
+    # pr-title.yml caller never pay the extra REST calls.
+    [[ $d == titles ]] && need_title_jobs=1
   done
 
   local repo_names_json gql_batch='{}'
@@ -1390,7 +1440,13 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             entry="$(judge_settings "$meta" "$repo_rest")"
             ;;
           renovate) entry="$(judge_renovate "$repo_gql")" ;;
-          titles) entry="$(judge_titles "$repo" "$repo_gql")" ;;
+          titles)
+            local title_jobs='[]'
+            local has_pr_title_caller
+            has_pr_title_caller="$(jq -e '(.workflowsDir.entries // []) | any(.name == "pr-title.yml")' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
+            ((need_title_jobs)) && [[ $has_pr_title_caller == true ]] && title_jobs="$(fetch_latest_pr_title_job_names "$repo")"
+            entry="$(judge_titles "$repo" "$repo_gql" "$title_jobs")"
+            ;;
           lifecycle)
             has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
             local ci_conclusion=''
@@ -1943,16 +1999,34 @@ EOF
 }
 EOF
 
-  # "titles-connected-ok" (#337): the required check context is the
-  # workflow_call-connected form ("<caller workflow name> / PR title") that
-  # every non-dotfiles repository seeded via pr-title.yml gets — dotfiles
+  # "titles-connected-ok" (#337, corrected 2026-09-26): the required check
+  # context is the workflow_call-connected form that every non-dotfiles
+  # repository seeded via pr-title.yml gets — "PR Title / PR title" (the
+  # caller *job*'s fixed `name: PR Title` / the called job's "PR title",
+  # not the caller *workflow*'s name as originally theorized). dotfiles
   # itself never sees this form (self-applies via pull_request, unconnected
-  # "PR title"), so this fixture is what a repo #337 seeds onto actually
-  # looks like.
+  # "PR title").
   cat >"$tmp/fixtures/repos_tarotene_titles-connected-ok_rulesets.json" <<'EOF'
 [{"id": 1, "target": "branch", "enforcement": "active"}]
 EOF
   cat >"$tmp/fixtures/repos_tarotene_titles-connected-ok_rulesets_1.json" <<'EOF'
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "PR Title / PR title"}]}}
+  ]
+}
+EOF
+
+  # "titles-old-suffix-form": the pre-2026-09-26 loose judge_titles() logic
+  # accepted any context ending in " / PR title" (e.g. "CI / PR title") as
+  # ok — this was exactly the blind spot that let #337's actually-wrong
+  # "check / PR title" check names go undetected for 15 repositories. Now
+  # only the two exact strings are accepted.
+  cat >"$tmp/fixtures/repos_tarotene_titles-old-suffix-form_rulesets.json" <<'EOF'
+[{"id": 1, "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_titles-old-suffix-form_rulesets_1.json" <<'EOF'
 {
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
   "rules": [
@@ -2501,11 +2575,57 @@ EOF
     printf 'FAIL: judge_titles should flag pr-title-workflow-missing when no pr-title.yml caller exists, even if the ruleset happens to have the context registered\n' >&2
     return 1
   }
-  # #337: workflow_call の連結名("<caller> / PR title")も ok として
-  # 受け付ける — dotfiles 自身以外の全播き先はこの形になる。
+  # #337: workflow_call の連結名の正しい形("PR Title / PR title" — 呼び
+  # 出し側 job の固定 name / 呼び出される job の name)は ok として受け
+  # 付ける — dotfiles 自身以外の全播き先はこの形になる。
   jq -e '.verdict == "ok"' \
     <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
-    printf 'FAIL: judge_titles should accept the workflow_call-connected context form ("<caller> / PR title"), not just the unconnected "PR title"\n' >&2
+    printf 'FAIL: judge_titles should accept the workflow_call-connected context form ("PR Title / PR title"), not just the unconnected "PR title"\n' >&2
+    return 1
+  }
+  # 2026-09-26 の事故再発防止: 完全一致に締めた後は、旧・接尾辞後方一致
+  # だけを満たす形("CI / PR title" のような、呼び出し側 job の name が
+  # "PR Title" 以外の任意の値)を ok と誤判定しない。
+  jq -e '.missing | index("pr-title-check-not-required")' \
+    <<<"$(judge_titles titles-old-suffix-form '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should reject a context that only satisfies the old suffix match (e.g. "CI / PR title") now that matching is exact\n' >&2
+    return 1
+  }
+
+  # ADR-0031 Amendment(2026-09-26): $3 の ground-truth 突き合わせ
+  # (pr-title-context-mismatch)。#337 の事故そのもの — ruleset の context
+  # は正しい文字列だが、実際の run が報告した check 名がそれと違う
+  # (呼び出し側 job に name: が無かったため "check / PR title" になって
+  # いた)場合を検出できることを確認する。
+  jq -e '.missing | index("pr-title-context-mismatch")' \
+    <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '["check / PR title"]')" >/dev/null || {
+    printf 'FAIL: judge_titles should flag pr-title-context-mismatch when the latest run'"'"'s actual job name does not match any required context\n' >&2
+    return 1
+  }
+  # 旧型の別 PR タイトル検査ワークフロー(job 名がそもそも別物)を残した
+  # ままのリポジトリでも同様に検出できることを確認する。
+  jq -e '.missing | index("pr-title-context-mismatch")' \
+    <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '["PR title (Conventional Commits)"]')" >/dev/null || {
+    printf 'FAIL: judge_titles should flag pr-title-context-mismatch for a legacy inline workflow whose job name differs entirely\n' >&2
+    return 1
+  }
+  # 実際に一致していれば mismatch は立たない。
+  jq -e '(.missing | index("pr-title-context-mismatch")) | not' \
+    <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '["PR Title / PR title"]')" >/dev/null || {
+    printf 'FAIL: judge_titles should not flag pr-title-context-mismatch when the latest run job name matches a required context\n' >&2
+    return 1
+  }
+  # run が一度も走っていない(既定 '[]')場合は ground truth が無いので
+  # drift 扱いにしない — pr-title-workflow-missing 側が別途拾う。
+  jq -e '(.missing | index("pr-title-context-mismatch")) | not' \
+    <<<"$(judge_titles titles-connected-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_titles should not flag pr-title-context-mismatch when no run has happened yet (default $3=[])\n' >&2
+    return 1
+  }
+  # dotfiles 自己適用の単一名 "PR title" も ground truth と一致すれば ok。
+  jq -e '(.missing | index("pr-title-context-mismatch")) | not' \
+    <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '["PR title"]')" >/dev/null || {
+    printf 'FAIL: judge_titles should not flag pr-title-context-mismatch for dotfiles self-apply'"'"'s unconnected "PR title" job name\n' >&2
     return 1
   }
 
