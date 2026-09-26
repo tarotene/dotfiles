@@ -19,7 +19,9 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    because forcing that review round trip on every commit of an early-stage or
    pre-release repository was judged excessive and noisy (ADR-0021 in
    tarotene/dotfiles). Opt in once the repository is past that phase, or strip
-   it back out of an already-governed repository with `--remove-review`.
+   it back out of an already-governed repository — remove `.github/rulesets/
+   review.json` from the declaration, then `apply-rulesets.sh OWNER/REPO
+   --delete-ruleset Review` (see "Removing the review layer" below).
 4. Points you to `reference/manual-steps.md` for the steps that require browser flows:
    GitHub App creation, crates.io Trusted Publishing entry registration, first bootstrap publish.
 
@@ -89,9 +91,10 @@ Individual sub-scripts can be run independently (useful for re-runs):
   --owner OWNER --repo REPO --canonical-crate CANONICAL --cli-crate CLI \
   --dest /path/to/repo
 
-# Create Rulesets only (files already copied):
-~/.claude/skills/rust-repo-governance/scripts/apply-rulesets.sh \
-  --owner OWNER --repo REPO --msrv 1.88
+# Create Rulesets only (files already copied — the generic apply script,
+# not part of this skill, reads OWNER/REPO's own .github/rulesets/*.json;
+# ADR-0000-rulesets-declaration-in-repo):
+apply-rulesets.sh OWNER/REPO --unverified-contexts
 
 # Apply repo settings only:
 ~/.claude/skills/rust-repo-governance/scripts/apply-repo-settings.sh \
@@ -110,7 +113,7 @@ comment. The table below lists the most important locations:
 | `.github/workflows/host.yml` | `PATTERNS` regex — replace `telepath-(wire\|server\|...)` with your crate names |
 | `.github/workflows/tools.yml` | `PATTERNS` regex; feature flags in `clippy-tools` and `mcp-test` Justfile recipes |
 | `.github/workflows/msrv.yml` | `PATTERNS` regex — all workspace + excluded crate paths |
-| `.github/workflows/firmware.yml` | Chip name, target triple, example path. **Delete this file** if no embedded firmware, and remove the `Firmware (cross-compile nRF52840-DK)` entry from `rulesets/quality.json` |
+| `.github/workflows/firmware.yml` | Chip name, target triple, example path. **Delete this file** if no embedded firmware — `copy-files.sh` already drops the `Firmware (cross-compile nRF52840-DK)` entry from `.github/rulesets/quality.json` automatically when `--with-firmware` is not given |
 | `.github/workflows/release-plz.yml` | `host-pty-server` git-only package name; additional excluded crates in TREE_PAYLOAD |
 | `.github/workflows/release-binaries.yml` | License file names (`LICENSE-MIT`, `LICENSE-APACHE`), README path |
 | `.github/workflows/release-nudge.yml` | AGENTS.md anchor URL |
@@ -120,9 +123,13 @@ comment. The table below lists the most important locations:
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
 
 **Key invariant**: The `name:` field of each workflow job **must exactly match**
-the `context` string in `rulesets/quality.json`. The `__MSRV__` and `__CLI_CRATE__`
-placeholders are replaced in both places simultaneously by `seed.sh`, preserving
-this match. But if you rename a job manually, update the Ruleset context too.
+the `context` string in `.github/rulesets/quality.json`. The `__MSRV__` and
+`__CLI_CRATE__` placeholders are replaced in both places simultaneously by
+`seed.sh`, preserving this match. But if you rename a job manually, update the
+Ruleset context too — `apply-rulesets.sh` refuses to apply a context that
+isn't actually reported by a real run (ADR-0000-rulesets-declaration-in-repo),
+so a rename that forgets the other side fails loudly at apply time instead of
+leaving a required check permanently "Expected".
 
 **Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
 calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
@@ -137,7 +144,9 @@ PR; that assumed the wrong half of the concatenation was the fixed one and
 missed that #337's rollout had seeded a context the then-unnamed caller
 job could never satisfy — ADR-0031's 2026-09-26 Amendment.)
 `.github/workflows/pr-title.yml` (dotfiles' reusable workflow) re-verifies
-the match at runtime on every PR via `scripts/pr-title-context-check`.
+the match at runtime on every PR via `scripts/rulesets-context-check` — which
+checks every declared and live `required_status_checks` context, not just
+this one.
 
 ---
 
@@ -167,7 +176,7 @@ gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
 ### Local sanity
 ```bash
 # Validate Ruleset JSONs
-jq -e . ~/.claude/skills/rust-repo-governance/rulesets/*.json
+jq -e . ~/.claude/skills/rust-repo-governance/templates/.github/rulesets/*.json
 
 # Check hooks are wired
 git -C /path/to/repo config --local core.hooksPath
@@ -194,23 +203,25 @@ gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_reb
 
 ### Removing the review layer (ADR-0021)
 
-`apply-rulesets.sh --owner OWNER --repo REPO --remove-review [--dry-run]`
-handles the two layouts it can meet:
+Remove `.github/rulesets/review.json` from the repository first (the
+declaration is the source of truth — ADR-0000-rulesets-declaration-in-repo),
+commit that, then run:
 
-- A standalone `Review` ruleset (this skill's own `review.json` layout) — it
-  is deleted outright.
-- `copilot_code_review` or `required_review_thread_resolution: true` bundled
-  into some *other* active branch ruleset — the script fetches that
-  ruleset's full detail, strips the rule / resets the parameter, and `PUT`s
-  the filtered payload back (the update endpoint takes the same shape as
-  create, not a partial patch).
+```bash
+apply-rulesets.sh OWNER/REPO --delete-ruleset Review [--dry-run]
+```
 
-An irregular layout the script won't recognize (e.g. a hand-edited ruleset
-with a different name and the review layer folded into unrelated
-parameters) needs manual removal: `gh api repos/OWNER/REPO/rulesets/<id>`
-to inspect, then a hand-built `PUT` with `copilot_code_review` dropped from
+This refuses to run while `review.json` is still declared, so the order
+above is enforced, not just recommended. It only handles the standalone
+`Review` ruleset shape (this skill's own `review.json` layout) — it does not
+recognize `copilot_code_review` or `required_review_thread_resolution: true`
+bundled into some *other* active branch ruleset. An irregular layout like
+that needs manual removal: `gh api repos/OWNER/REPO/rulesets/<id>` to
+inspect, then a hand-built `PUT` with `copilot_code_review` dropped from
 `rules` and `required_review_thread_resolution` set to `false` on every
-`pull_request` rule.
+`pull_request` rule (`crates/rulesets-write-guard` denies a raw `gh api`
+write to this endpoint from a Claude session — run it yourself, or pass
+`RULESETS_WRITE_GUARD_BYPASS=1` if you're deliberately doing this by hand).
 
 ### CI gates
 
@@ -239,19 +250,24 @@ verify job `name:` in the workflow files matches the Ruleset context strings exa
 │   │       ├── release-binaries.yml  release: 4-target binary builds
 │   │       ├── release-nudge.yml  maintenance: weekly stale PR nudge
 │   │       └── pr-title.yml       required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
+│   ├── .github/rulesets/            (declaration copied into the target repo —
+│   │   │                             ADR-0000-rulesets-declaration-in-repo)
+│   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
+│   │   ├── quality.json     rust-specific: signatures + linear history + up to 6 status checks
+│   │   ├── workflow.json    shared with repo-governance-common: squash-only (core)
+│   │   └── review.json      shared with repo-governance-common: Copilot code review +
+│   │                        required thread resolution (opt-in, --with-review only)
 │   ├── .githooks/{commit-msg,pre-commit,pre-push}
 │   ├── renovate.json  release-plz.toml  cog.toml
 │   └── rust-toolchain.toml  Justfile  .gitignore-snippet
-├── rulesets/                        (core layer applied by default; Review is opt-in — ADR-0021)
-│   ├── security.json    deletion + non_fast_forward
-│   ├── quality.json     signatures + linear history + 6 status checks
-│   ├── workflow.json    squash-only (core; thread resolution NOT required here)
-│   └── review.json      Copilot code review + required thread resolution (opt-in addin)
 ├── scripts/
-│   ├── seed.sh           main orchestrator
-│   ├── copy-files.sh     template copy + placeholder substitution
-│   ├── apply-rulesets.sh gh api POST the core 3 Rulesets (+ Review with --with-review;
-│   │                     --remove-review strips the review layer back out)
+│   ├── seed.sh           main orchestrator — copy-files.sh, setup-hooks.sh,
+│   │                     apply-repo-settings.sh, then the generic
+│   │                     apply-rulesets.sh (not part of this skill;
+│   │                     home-manager deploys it to ~/.local/bin)
+│   ├── copy-files.sh     template + .github/rulesets/*.json copy, placeholder
+│   │                     substitution, drops the Firmware context without
+│   │                     --with-firmware, verify_declaration safety check
 │   ├── apply-repo-settings.sh  gh api PATCH repo merge settings
 │   └── setup-hooks.sh    git config core.hooksPath
 └── reference/

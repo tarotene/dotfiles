@@ -71,10 +71,12 @@ Discussion #46752 <https://github.com/orgs/community/discussions/46752>
 symlink で共有)は `check` job に `name: PR Title` を固定するため、連結名は
 常に `"PR Title / PR title"` になる。「最初の利用リポジトリへの展開時に
 実機で確認する」という手動手順は、`.github/workflows/pr-title.yml`
-(reusable workflow)の最終 step `scripts/pr-title-context-check` による
-実行時の自己照合に置き換えた — run のたびに自分自身の check 名を Actions
-API から実測し、有効な branch ruleset の required_status_checks と比較
-して不一致なら CI を red にする。
+(reusable workflow)の最終 step `scripts/rulesets-context-check` による
+実行時の自己照合に置き換えた — ADR-0000-rulesets-declaration-in-repo により
+「PR title」1 context だけでなく、呼び出し元リポジトリの
+`.github/rulesets/quality.json` 宣言および live な required_status_checks
+の全 context を対象に一般化されている。run のたびに実際の job 名を Actions
+API から実測し、宣言・live の双方と比較して不一致なら CI を red にする。
 
 ## revert の扱い
 

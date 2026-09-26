@@ -14,6 +14,7 @@ CANONICAL_CRATE=""
 CLI_CRATE=""
 DEST=""
 WITH_FIRMWARE=false
+WITH_REVIEW=false
 DRY_RUN=false
 SKIP_RULESETS=false
 SKIP_FILES=false
@@ -36,6 +37,9 @@ Options:
   --msrv VERSION            MSRV short form, e.g. 1.88 [default: 1.88]
   --msrv-full VERSION       MSRV full form, e.g. 1.88.0 [default: 1.88.0]
   --with-firmware           Include firmware.yml workflow (embedded projects only)
+  --with-review             Also seed the opt-in Review ruleset declaration
+                             (Copilot code review + required conversation
+                             resolution, ADR-0021 in tarotene/dotfiles)
   --skip-rulesets           Skip Ruleset creation via gh api
   --skip-files              Skip template file copy
   --skip-settings           Skip repository settings update
@@ -74,6 +78,7 @@ while [[ $# -gt 0 ]]; do
     --cli-crate)        CLI_CRATE="$2";       shift 2 ;;
     --dest)             DEST="$2";            shift 2 ;;
     --with-firmware)    WITH_FIRMWARE=true;   shift ;;
+    --with-review)      WITH_REVIEW=true;     shift ;;
     --skip-rulesets)    SKIP_RULESETS=true;   shift ;;
     --skip-files)       SKIP_FILES=true;      shift ;;
     --skip-settings)    SKIP_SETTINGS=true;   shift ;;
@@ -124,6 +129,7 @@ COMMON_ARGS=(
   --cli-crate "$CLI_CRATE"
 )
 [[ "$WITH_FIRMWARE" == "true" ]] && COMMON_ARGS+=(--with-firmware)
+[[ "$WITH_REVIEW" == "true" ]]   && COMMON_ARGS+=(--with-review)
 [[ "$DRY_RUN" == "true" ]]       && COMMON_ARGS+=(--dry-run)
 
 # Step 1: Copy template files
@@ -153,10 +159,25 @@ else
 fi
 
 # Step 4: Create GitHub Rulesets
+#
+# ADR-0000-rulesets-declaration-in-repo: required context の正本は
+# 対象リポジトリ自身の .github/rulesets/*.json(Step 1 で既にコピー済み)
+# であり、apply はどのリポジトリに対しても同じ汎用スクリプトで済む
+# (D4「還元」— 型ごとの apply-rulesets.sh はもう存在しない)。ここでは
+# まだ 1 回も CI が走っていない(required context を実測で検証できない)
+# ため --unverified-contexts を明示する — CI が 1 回走った後の再適用は
+# `apply-rulesets.sh <owner>/<repo> --reconcile` で検証付きに切り替わる。
 if [[ "$SKIP_RULESETS" == "false" ]]; then
   echo ""
   echo "── Step 4/4: Create GitHub Rulesets ────────────────────"
-  bash "$SCRIPT_DIR/apply-rulesets.sh" "${COMMON_ARGS[@]}"
+  APPLY_RULESETS_BIN="${GOVERNANCE_APPLY_RULESETS_BIN:-apply-rulesets.sh}"
+  if ! command -v "$APPLY_RULESETS_BIN" >/dev/null 2>&1; then
+    echo "ERROR: '$APPLY_RULESETS_BIN' not found on PATH (tarotene/dotfiles home-manager が ~/.local/bin に配備)"
+    exit 1
+  fi
+  APPLY_ARGS=("$OWNER/$REPO" --from-dir "$DEST/.github/rulesets" --unverified-contexts)
+  [[ "$DRY_RUN" == "true" ]] && APPLY_ARGS+=(--dry-run)
+  "$APPLY_RULESETS_BIN" "${APPLY_ARGS[@]}"
 else
   echo "── Step 4/4: (skipped) GitHub Rulesets"
 fi
@@ -175,4 +196,7 @@ echo "     set secrets RELEASER_APP_ID and RELEASER_APP_PRIVATE_KEY."
 echo "  3. Register crates.io Trusted Publishing entries."
 echo "  4. git -C $DEST config --local core.hooksPath .githooks"
 echo "  5. Commit files and push to trigger CI."
+echo "  6. Once CI has run once on that first PR, re-run:"
+echo "     apply-rulesets.sh $OWNER/$REPO --reconcile"
+echo "     to switch from --unverified-contexts to a verified apply."
 echo "════════════════════════════════════════════════════════"

@@ -151,9 +151,11 @@ Copy `.github/workflows/ci.yml` from this Skill's `templates/`. The 4-job
 structure replaces any existing single-job CI.
 
 **Key invariant:** the `name:` field of each job must exactly match the
-`context` string in `rulesets/quality.json`. These strings are static (no
-placeholders) — they are "Format & Lint (Biome)", "Content lint", "Unit tests",
-"Build". Do not rename jobs without updating the Ruleset.
+`context` string in `.github/rulesets/quality.json`. These strings are
+static (no placeholders) — they are "Format & Lint (Biome)", "Content lint",
+"Unit tests", "Build". Do not rename jobs without updating the Ruleset —
+`apply-rulesets.sh` refuses to apply a context that isn't actually reported
+by a real run (ADR-0000-rulesets-declaration-in-repo).
 
 If your project has **no custom content-lint scripts** (no `npm run check`
 beyond `astro check`), remove the "Content lint" job AND its Ruleset entry.
@@ -218,7 +220,9 @@ rm cog.toml
 rm release-please-config.json .release-please-manifest.json
 rm .github/workflows/release-please.yml
 
-# Delete Rulesets via gh api
+# Delete Rulesets via gh api (crates/rulesets-write-guard denies this from a
+# Claude session — pass RULESETS_WRITE_GUARD_BYPASS=1 if deliberately doing
+# this by hand, or just run it as the human operator)
 gh api repos/OWNER/REPO/rulesets --jq '.[].id' | while read id; do
   gh api -X DELETE "repos/OWNER/REPO/rulesets/$id"
 done

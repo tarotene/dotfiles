@@ -1,0 +1,374 @@
+#!/usr/bin/env bash
+# rulesets-context-check — required check の context 文字列が、この PR の
+# head で実際に走る job 名として報告されるかを required check
+# (.github/workflows/pr-title.yml の最終 step)として検査する
+# (ADR-0000-rulesets-declaration-in-repo)。
+#
+# `scripts/pr-title-context-check`(ADR-0031 Amendment 2026-09-26)の
+# 一般化版。あちらは「PR title」1 context だけを自己照合したが、この
+# script は宣言(<repo>/.github/rulesets/quality.json)と live な branch
+# ruleset の required_status_checks を丸ごと対象にする — required context
+# の正本を対象リポジトリ自身の宣言に一本化した以上(D1)、実測との整合を
+# 検査する対象も PR title だけに留める理由が無い。
+#
+# 判定ロジックは新設しない: repos/{owner}/{repo}/contents/.github/rulesets/
+# quality.json、repos/{owner}/{repo}/rules/branches/{branch}、
+# repos/{owner}/{repo}/actions/runs(head_sha フィルタ)を読むだけの薄い層で、
+# scripts/github-audit の fetch_head_sha_job_names() を source して再利用
+# する(ADR-0035 D1「単一正本 > 複写+同期」)。
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./github-audit
+source "$SCRIPT_DIR/github-audit"
+
+RULESETS_CONTEXT_CHECK_TIMEOUT="${RULESETS_CONTEXT_CHECK_TIMEOUT:-90}"
+RULESETS_CONTEXT_CHECK_INTERVAL="${RULESETS_CONTEXT_CHECK_INTERVAL:-10}"
+
+usage() {
+  cat <<'EOF'
+usage: rulesets-context-check <owner>/<repo> <head_sha> <default_branch>
+       rulesets-context-check --selftest
+
+<head_sha> が実際に報告する job 名(Actions API、head_sha フィルタで複数
+run を合算)を実測し、次の 2 つと突合する:
+
+  - 宣言: <owner>/<repo>@<head_sha> の .github/rulesets/quality.json の
+    required_status_checks[].context
+  - live: <default_branch> に有効な branch ruleset の
+    required_status_checks[].context
+
+判定:
+  - live の context に <head_sha> が報告しない ものがあれば FAIL
+    (remedy: 宣言を merge 後 `apply-rulesets.sh <owner>/<repo> --reconcile`)。
+  - 宣言の context に <head_sha> が報告しない ものがあれば FAIL。
+  - 宣言 ≠ live(どちらも実測で満たされている)なら WARN(apply pending)。
+  - 宣言が存在しない(まだ播いていない)場合は live 側だけを検査し、
+    宣言欠落は warning に留める(github-audit の
+    rulesets-declaration-missing が該当)。
+  - API 取得に失敗した場合は fail-closed。
+EOF
+}
+
+# $1=owner/repo $2=sha -> quality.json の required_status_checks[].context
+# の JSON 配列、無ければ(404)"null"、それ以外の取得失敗は空文字 + exit 1。
+# 404 と「その他の失敗」を区別する — 前者は「まだ播いていない」という
+# 正常な状態(github-audit の rulesets-declaration-missing が担当)であり、
+# fail-closed にすべきではない。
+fetch_declared_contexts() {
+  local owner_repo="$1" sha="$2"
+  local repo="${owner_repo#*/}" owner="${owner_repo%%/*}"
+  local content rc=0 err_file
+  err_file="$(mktemp)"
+  content="$("$GH_BIN" api "repos/$owner/$repo/contents/.github/rulesets/quality.json" -X GET -F "ref=$sha" \
+    --jq '.content' 2>"$err_file")" || rc=$?
+  if ((rc != 0)); then
+    if grep -qE '404|Not Found' "$err_file" 2>/dev/null; then
+      rm -f "$err_file"
+      printf 'null'
+      return 0
+    fi
+    rm -f "$err_file"
+    printf ''
+    return 1
+  fi
+  rm -f "$err_file"
+  if [[ -z "$content" ]]; then
+    printf 'null'
+    return 0
+  fi
+  base64 -d <<<"$content" 2>/dev/null | jq -c '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique'
+}
+
+# $1=owner/repo $2=branch -> required_status_checks[].context の JSON 配列
+fetch_live_required_contexts() {
+  local owner_repo="$1" branch="$2"
+  local repo="${owner_repo#*/}" owner="${owner_repo%%/*}" rules
+  rules="$("$GH_BIN" api "repos/$owner/$repo/rules/branches/$branch" 2>/dev/null)" || { printf ''; return 1; }
+  [[ -n "$rules" ]] || { printf ''; return 1; }
+  jq -c '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$rules"
+}
+
+# $1=owner/repo $2=sha $3=wanted_contexts_json -> wanted が実測 job 名に
+# 全て現れるまで(または timeout まで)poll し、最終的な実測 job 名を返す。
+poll_job_names() {
+  local owner_repo="$1" sha="$2" wanted="$3"
+  local repo="${owner_repo#*/}" jobs elapsed=0
+  while true; do
+    jobs="$(fetch_head_sha_job_names "$repo" "$sha")"
+    if [[ "$(jq -c --argjson jobs "$jobs" '. - $jobs | length' <<<"$wanted")" == "0" ]]; then
+      printf '%s' "$jobs"
+      return 0
+    fi
+    if ((elapsed >= RULESETS_CONTEXT_CHECK_TIMEOUT)); then
+      printf '%s' "$jobs"
+      return 0
+    fi
+    sleep "$RULESETS_CONTEXT_CHECK_INTERVAL"
+    elapsed=$((elapsed + RULESETS_CONTEXT_CHECK_INTERVAL))
+  done
+}
+
+# $1=declared(json array or "null") $2=live(json array) $3=jobs(json array)
+# -> stdout に判定メッセージ、exit 0=OK/WARN, 1=FAIL
+judge() {
+  local declared="$1" live="$2" jobs="$3" missing_declared missing_live n
+
+  if [[ "$declared" != "null" ]]; then
+    missing_declared="$(jq -c --argjson jobs "$jobs" '. - $jobs' <<<"$declared")"
+    n="$(jq 'length' <<<"$missing_declared")"
+    if ((n > 0)); then
+      printf 'rulesets-context-check: 宣言(.github/rulesets/quality.json)の required context がこの head で報告されていません:\n' >&2
+      jq -r '.[] | "  - \(.)"' <<<"$missing_declared" >&2
+      return 1
+    fi
+  else
+    printf '::warning::rulesets-context-check: .github/rulesets/quality.json が見つかりません(未播き — github-audit の rulesets-declaration-missing が該当)。\n'
+  fi
+
+  missing_live="$(jq -c --argjson jobs "$jobs" '. - $jobs' <<<"$live")"
+  n="$(jq 'length' <<<"$missing_live")"
+  if ((n > 0)); then
+    printf 'rulesets-context-check: live な required_status_checks の context がこの head で報告されていません:\n' >&2
+    jq -r '.[] | "  - \(.)"' <<<"$missing_live" >&2
+    printf '  宣言を merge した後、apply-rulesets.sh <owner>/<repo> --reconcile で live を宣言に合わせてください。\n' >&2
+    return 1
+  fi
+
+  if [[ "$declared" != "null" ]] && [[ "$(jq -c -S . <<<"$declared")" != "$(jq -c -S . <<<"$live")" ]]; then
+    printf '::warning::rulesets-context-check: 宣言と live の required context が一致しません(apply pending — apply-rulesets.sh <owner>/<repo> --reconcile を実行してください)。\n'
+    return 0
+  fi
+
+  printf 'rulesets-context-check: OK\n'
+  return 0
+}
+
+check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
+  local owner_repo="$1" sha="$2" branch="$3" declared live jobs
+
+  declared="$(fetch_declared_contexts "$owner_repo" "$sha")" || {
+    printf 'rulesets-context-check: %s@%s の宣言取得に失敗しました(fail-closed)\n' "$owner_repo" "$sha" >&2
+    return 1
+  }
+
+  live="$(fetch_live_required_contexts "$owner_repo" "$branch")" || {
+    printf 'rulesets-context-check: %s の branch ruleset 取得に失敗しました(fail-closed)\n' "$owner_repo" >&2
+    return 1
+  }
+
+  local wanted
+  if [[ "$declared" != "null" ]]; then
+    wanted="$(jq -c -n --argjson a "$declared" --argjson b "$live" '($a + $b) | unique')"
+  else
+    wanted="$live"
+  fi
+
+  jobs="$(poll_job_names "$owner_repo" "$sha" "$wanted")"
+  judge "$declared" "$live" "$jobs"
+}
+
+# D3-3 の一般化版: repo-governance-common テンプレートの caller job name +
+# reusable job name の連結が 4 seed の quality.json に含まれ、かつ
+# dotfiles 自身の .github/rulesets/quality.json が reusable job の name を
+# 含むことを検査する(check_consistency は selftest 経由でのみ実行)。
+check_consistency() {
+  local repo_root common_job caller_job connected want_files ok=true
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+  common_job="$(sed -n 's/^ *name: *//p' \
+    "$repo_root/config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml" | head -1)"
+  caller_job="$(sed -n '/^jobs:/,$ { s/^ *name: *//p }' "$repo_root/.github/workflows/pr-title.yml" | head -1)"
+  connected="${common_job} / ${caller_job}"
+
+  want_files=(
+    "config/claude/skills/rust-repo-governance/templates/.github/rulesets/quality.json"
+    "config/claude/skills/typst-repo-governance/templates/.github/rulesets/quality.json"
+    "config/claude/skills/astro-site-governance/templates/.github/rulesets/quality.json"
+    "config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json"
+  )
+  local f
+  for f in "${want_files[@]}"; do
+    if jq -e --arg c "$connected" \
+      '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | index($c) != null' \
+      "$repo_root/$f" >/dev/null 2>&1; then
+      echo "ok   consistency: $f has context \"$connected\""
+    else
+      echo "FAIL consistency: $f does not have context \"$connected\"" >&2
+      ok=false
+    fi
+  done
+
+  if jq -e --arg c "$caller_job" \
+    '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | index($c) != null' \
+    "$repo_root/.github/rulesets/quality.json" >/dev/null 2>&1; then
+    echo "ok   consistency: .github/rulesets/quality.json has context \"$caller_job\""
+  else
+    echo "FAIL consistency: .github/rulesets/quality.json does not have context \"$caller_job\"" >&2
+    ok=false
+  fi
+
+  [[ "$ok" == true ]]
+}
+
+selftest() {
+  local fails=0 tmp
+
+  check() { # $1=名前 $2=owner/repo $3=sha $4=branch $5=declared-json(空=404) $6=live-rules-json $7=jobs-json $8=期待exit $9=期待するstdout/stderrの文字列
+    local name="$1" owner_repo="$2" sha="$3" branch="$4" declared_json="$5" rules_json="$6" jobs_json="$7" want="$8" grep_for="${9:-}"
+    local repo="${owner_repo#*/}" rc=0
+
+    mkdir -p "$tmp/fixtures"
+    if [[ -n "$declared_json" ]]; then
+      local content
+      content="$(base64 -w0 <<<"$declared_json")"
+      printf '{"content":"%s"}' "$content" >"$tmp/fixtures/repos_${owner_repo//\//_}_contents_.github_rulesets_quality.json.json"
+    else
+      rm -f "$tmp/fixtures/repos_${owner_repo//\//_}_contents_.github_rulesets_quality.json.json"
+    fi
+    printf '%s' "$rules_json" >"$tmp/fixtures/repos_${owner_repo//\//_}_rules_branches_${branch}.json"
+    printf '{"workflow_runs":[{"id":1}]}' >"$tmp/fixtures/repos_${owner_repo//\//_}_actions_runs.json"
+    printf '{"jobs":%s}' "$jobs_json" >"$tmp/fixtures/repos_${owner_repo//\//_}_actions_runs_1_jobs.json"
+
+    check_run "$owner_repo" "$sha" "$branch" >"$tmp/out.log" 2>"$tmp/err.log" || rc=$?
+    if [[ "$rc" != "$want" ]]; then
+      echo "FAIL $name (expected rc=$want got rc=$rc)" >&2
+      cat "$tmp/out.log" "$tmp/err.log" >&2
+      fails=$((fails + 1))
+      return
+    fi
+    if [[ -n "$grep_for" ]] && ! grep -qF "$grep_for" "$tmp/out.log" "$tmp/err.log"; then
+      echo "FAIL $name (expected output to contain: $grep_for)" >&2
+      cat "$tmp/out.log" "$tmp/err.log" >&2
+      fails=$((fails + 1))
+      return
+    fi
+    echo "ok   $name"
+  }
+
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp/bin" "$tmp/fixtures"
+
+  # github-audit の selftest と同じ gh スタブ規則(path→file, '/' を '_' に、
+  # '-F' 等の値は path 選択には使わない)。
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$(dirname "$0")"
+fixtures="$dir/../fixtures"
+if [[ -f "$dir/fail" ]]; then
+  exit 1
+fi
+[[ "$1" == api ]] || exit 1
+shift
+path="$1"
+shift
+jqfilter=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --jq) jqfilter="$2"; shift 2 ;;
+    -X | -F) shift 2 ;;
+    *) shift ;;
+  esac
+done
+key="$(printf '%s' "$path" | tr '/' '_')"
+if [[ -f "$dir/fail-$key" ]]; then
+  exit 1
+fi
+if [[ ! -f "$fixtures/$key.json" ]]; then
+  case "$path" in
+    */contents/.github/rulesets/quality.json)
+      echo "gh: Not Found (HTTP 404)" >&2
+      ;;
+  esac
+  exit 1
+fi
+if [[ -n "$jqfilter" ]]; then
+  # 実 gh api --jq は top-level scalar を raw output で返す(jq -r 相当、
+  # apply-rulesets.sh の同じスタブのコメント参照)。
+  jq -rc "$jqfilter" "$fixtures/$key.json"
+else
+  cat "$fixtures/$key.json"
+fi
+STUB
+  chmod +x "$tmp/bin/gh"
+  GH_BIN="$tmp/bin/gh"
+  RULESETS_CONTEXT_CHECK_INTERVAL=0
+  RULESETS_CONTEXT_CHECK_TIMEOUT=0
+
+  local quality_ok='{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"PR Title / PR title"}]}}]}'
+  local live_ok='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"PR Title / PR title"}]}}]'
+  local jobs_ok='[{"name":"test"},{"name":"PR Title / PR title"}]'
+
+  check "1 一致(declared=live=jobs)" "tarotene/all-ok" "abc" "main" \
+    "$quality_ok" "$live_ok" "$jobs_ok" \
+    0 'OK'
+
+  check "2 live の context 未報告" "tarotene/live-missing" "abc" "main" \
+    "$quality_ok" '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Tools ( CLI clippy + tests)"}]}}]' "$jobs_ok" \
+    1 'live'
+
+  local quality_extra='{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Ghost"}]}}]}'
+  check "3 宣言の context 未報告" "tarotene/declared-missing" "abc" "main" \
+    "$quality_extra" "$live_ok" "$jobs_ok" \
+    1 '宣言'
+
+  check "4 宣言なし + live 全報告" "tarotene/no-declaration" "abc" "main" \
+    "" "$live_ok" "$jobs_ok" \
+    0 'warning'
+
+  local live_diff='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"}]}}]'
+  check "5 宣言≠live 両方報告済み" "tarotene/apply-pending" "abc" "main" \
+    "$quality_ok" "$live_diff" "$jobs_ok" \
+    0 'pending'
+
+  check "6 dotfiles 自己適用(PR title 単一名)" "tarotene/dotfiles" "abc" "main" \
+    '{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"PR title"}]}}]}' \
+    '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"PR title"}]}}]' \
+    '[{"name":"PR title"}]' \
+    0 'OK'
+
+  check "7 jobs 空(timeout)" "tarotene/no-jobs" "abc" "main" \
+    "$quality_ok" "$live_ok" '[]' \
+    1 ''
+
+  touch "$tmp/bin/fail-repos_tarotene_unreachable_rules_branches_main"
+  check "8 rules/branches 取得失敗(fail-closed)" "tarotene/unreachable" "abc" "main" \
+    "$quality_ok" "$live_ok" "$jobs_ok" \
+    1 ''
+  rm -f "$tmp/bin/fail-repos_tarotene_unreachable_rules_branches_main"
+
+  check "9 check / PR title 型(旧テンプレ)は unnamed job としてそのまま不一致になる" "tarotene/unnamed-caller" "abc" "main" \
+    "$quality_ok" "$live_ok" '[{"name":"check / PR title"},{"name":"test"}]' \
+    1 ''
+
+  check_consistency || fails=$((fails + 1))
+
+  rm -rf "$tmp"
+  if ((fails > 0)); then
+    echo "selftest: ${fails} 件失敗" >&2
+    return 1
+  fi
+  echo "selftest: all passed"
+}
+
+main() {
+  case "${1:-}" in
+    --selftest) selftest ;;
+    -h | --help | '')
+      usage
+      [[ "${1:-}" == -h || "${1:-}" == --help ]]
+      ;;
+    *)
+      if [[ $# -ne 3 ]]; then
+        usage >&2
+        return 2
+      fi
+      check_run "$1" "$2" "$3"
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

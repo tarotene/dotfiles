@@ -14,6 +14,7 @@ TYPST_VERSION="0.14.2"
 MIN_TYPST="0.14.0"
 ATS_EMAIL=""
 DEST=""
+WITH_REVIEW=false
 DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
@@ -25,12 +26,13 @@ while [[ $# -gt 0 ]]; do
     --min-typst)       MIN_TYPST="$2";       shift 2 ;;
     --ats-email)       ATS_EMAIL="$2";       shift 2 ;;
     --dest)            DEST="$2";            shift 2 ;;
+    --with-review)     WITH_REVIEW=true;     shift ;;
     --dry-run)         DRY_RUN=true;         shift ;;
     *)                 echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
-for v in OWNER REPO ATS_EMAIL DEST; do
+for v in OWNER REPO ATS_EMAIL DEST MIN_TYPST; do
   [[ -z "${!v}" ]] && echo "ERROR: --${v,,} is required (got empty)" && exit 1
 done
 
@@ -57,6 +59,19 @@ apply_substitutions() {
     -e "s/__MIN_TYPST__/${E_MIN}/g" \
     -e "s/__ATS_EMAIL__/${E_EMAIL}/g" \
     "$file" > "$tmpfile" && mv "$tmpfile" "$file"
+}
+
+# ADR-0000-rulesets-declaration-in-repo D6: 置換後に __X__ 形式の
+# placeholder が残っている場合を、ruleset 宣言ファイルについて検査する
+# (apply-rulesets.sh 側の check_no_placeholders と二重に守る)。
+verify_declaration() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  if grep -qE '__[A-Z_]+__' "$file"; then
+    echo "ERROR: $file still has an unreplaced placeholder (__X__) after substitution." >&2
+    grep -oE '__[A-Z_]+__' "$file" | sort -u >&2
+    exit 1
+  fi
 }
 
 TS="$(date +%Y%m%dT%H%M%S)"
@@ -121,6 +136,22 @@ copy_file "scripts/check-nav-docs.sh"
 # repo-charter skill (tarotene/dotfiles) fills in the charter itself.
 copy_file "AGENTS.md"
 copy_file "CLAUDE.md"
+
+# ADR-0000-rulesets-declaration-in-repo: required context の正本を対象
+# リポジトリ自身の .github/rulesets/*.json に置く。security/workflow は
+# repo-governance-common と共有(1本化済み)、quality は typst 固有の
+# job 名を持つためこの skill 自身のテンプレートから。
+copy_file ".github/rulesets/security.json"
+copy_file ".github/rulesets/quality.json"
+copy_file ".github/rulesets/workflow.json"
+[[ "$WITH_REVIEW" == "true" ]] && copy_file ".github/rulesets/review.json"
+
+if [[ "$DRY_RUN" == "false" ]]; then
+  verify_declaration "$DEST/.github/rulesets/security.json"
+  verify_declaration "$DEST/.github/rulesets/quality.json"
+  verify_declaration "$DEST/.github/rulesets/workflow.json"
+  [[ "$WITH_REVIEW" == "true" ]] && verify_declaration "$DEST/.github/rulesets/review.json"
+fi
 
 if [[ "$DRY_RUN" == "false" ]]; then
   chmod +x \

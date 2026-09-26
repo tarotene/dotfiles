@@ -74,9 +74,12 @@ Key locations:
 | `cliff.toml` | `tag_pattern` if your CalVer scheme differs from `vYYYY.MM[.P]` |
 | `renovate.json` | Scheduling preferences; add repo-specific package rules if needed |
 
-**Key invariant**: the `name:` field of each workflow job in `quality.json` `required_status_checks`
-MUST exactly equal the `context` string. seed.sh substitutes `__MIN_TYPST__` in both files
-simultaneously. If you rename a job manually, update the Ruleset context too.
+**Key invariant**: the `name:` field of each workflow job in
+`.github/rulesets/quality.json` `required_status_checks` MUST exactly equal
+the `context` string. seed.sh substitutes `__MIN_TYPST__` in both files
+simultaneously. If you rename a job manually, update the Ruleset context
+too — `apply-rulesets.sh` refuses to apply a context that isn't actually
+reported by a real run (ADR-0000-rulesets-declaration-in-repo).
 
 **Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
 calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
@@ -92,7 +95,8 @@ and missed that #337's rollout had seeded a context the then-unnamed
 caller job could never satisfy — ADR-0031's 2026-09-26 Amendment.)
 `.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
 re-verifies the match at runtime on every PR via
-`scripts/pr-title-context-check`.
+`scripts/rulesets-context-check` — which checks every declared and live
+`required_status_checks` context, not just this one.
 
 ---
 
@@ -129,9 +133,11 @@ If `Min Typst` fails, bump `compiler` in `typst.toml` + `--min-typst` flag + `qu
 ~/.claude/skills/typst-repo-governance/scripts/apply-repo-settings.sh \
   --owner OWNER --repo REPO
 
-# Create the 3 GitHub Rulesets
-~/.claude/skills/typst-repo-governance/scripts/apply-rulesets.sh \
-  --owner OWNER --repo REPO --min-typst X.Y.Z
+# Create the GitHub Rulesets — the generic apply script (not part of this
+# skill) reads OWNER/REPO's own .github/rulesets/*.json declaration and
+# verifies every context against the PR that just went green, so
+# --reconcile (not --unverified-contexts) is appropriate here:
+apply-rulesets.sh OWNER/REPO --reconcile
 ```
 
 Squash-merge the PR. GitHub signs the squash commit, satisfying `required_signatures`.

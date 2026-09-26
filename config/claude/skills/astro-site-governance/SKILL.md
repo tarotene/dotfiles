@@ -19,7 +19,10 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    forcing that review round trip on every commit of an early-stage or
    pre-release repository was judged excessive and noisy (ADR-0021 in
    tarotene/dotfiles). Opt in once the repository is past that phase, or
-   strip it back out of an already-governed repository with `--remove-review`.
+   strip it back out of an already-governed repository — remove
+   `.github/rulesets/review.json` from the declaration, then
+   `apply-rulesets.sh OWNER/REPO --delete-ruleset Review` (see "Removing the
+   review layer" below).
 4. Guides you through the manual steps that require browser flows (GitHub Pages
    setup, optional GitHub App for release-please).
 
@@ -89,9 +92,10 @@ Individual sub-scripts can be run independently (useful for re-runs):
   --owner OWNER --repo REPO --package-name NAME \
   --dest /path/to/repo
 
-# Create Rulesets only (files already copied):
-~/.claude/skills/astro-site-governance/scripts/apply-rulesets.sh \
-  --owner OWNER --repo REPO
+# Create Rulesets only (files already copied — the generic apply script,
+# not part of this skill, reads OWNER/REPO's own .github/rulesets/*.json;
+# ADR-0000-rulesets-declaration-in-repo):
+apply-rulesets.sh OWNER/REPO --unverified-contexts
 
 # Apply repo settings only:
 ~/.claude/skills/astro-site-governance/scripts/apply-repo-settings.sh \
@@ -113,7 +117,7 @@ comment. The most important locations:
 |------|----------------|
 | `package.json` | Merge scripts/devDependencies snippet (shown by copy-files.sh); run `npm install` |
 | `mise.toml` | Add `cocogitto = "latest"` to `[tools]`; run `mise install` |
-| `.github/workflows/ci.yml` | If project has NO MDX content-lint scripts, remove the `content-lint` job AND its context from `rulesets/quality.json` (they are a pair) |
+| `.github/workflows/ci.yml` | If project has NO MDX content-lint scripts, remove the `content-lint` job AND its context from `.github/rulesets/quality.json` (they are a pair) |
 | `release-please-config.json` | Verify `package-name` is correct |
 | `.release-please-manifest.json` | Verify version matches current `package.json` |
 | `renovate.json` | Adjust `packageRules` grouping for your actual dependencies |
@@ -121,14 +125,18 @@ comment. The most important locations:
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
 
 **Key invariant:** The `name:` field of each workflow job in `ci.yml` must
-exactly match the `context` string in `rulesets/quality.json`. These four
-strings are static and pre-matched:
+exactly match the `context` string in `.github/rulesets/quality.json`. These
+four strings are static and pre-matched:
 - `"Format & Lint (Biome)"` ↔ `biome` job
 - `"Content lint"` ↔ `content-lint` job
 - `"Unit tests"` ↔ `unit-tests` job
 - `"Build"` ↔ `build` job
 
-If you rename a job, update the Ruleset context string at the same time.
+If you rename a job, update the Ruleset context string at the same time —
+`apply-rulesets.sh` refuses to apply a context that isn't actually reported
+by a real run (ADR-0000-rulesets-declaration-in-repo), so a rename that
+forgets the other side fails loudly at apply time instead of leaving a
+required check permanently "Expected".
 
 **Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
 calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
@@ -144,7 +152,8 @@ that #337's rollout had seeded a context the then-unnamed caller job
 could never satisfy — ADR-0031's 2026-09-26 Amendment.)
 `.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
 re-verifies the match at runtime on every PR via
-`scripts/pr-title-context-check`.
+`scripts/rulesets-context-check` — which checks every declared and live
+`required_status_checks` context, not just this one.
 If you remove `"Content lint"` (no MDX scripts), remove it from BOTH files.
 
 ---
@@ -165,7 +174,7 @@ Follow `./reference/manual-steps.md` for:
 ### Local sanity
 ```bash
 # Validate Ruleset JSONs
-jq -e . ~/.claude/skills/astro-site-governance/rulesets/*.json
+jq -e . ~/.claude/skills/astro-site-governance/templates/.github/rulesets/*.json
 
 # Check hooks are wired
 git -C /path/to/repo config --local core.hooksPath
@@ -201,14 +210,17 @@ gh api repos/OWNER/REPO \
 
 ### Removing the review layer (ADR-0021)
 
-`apply-rulesets.sh --owner OWNER --repo REPO --remove-review [--dry-run]`
-handles the two layouts it can meet: a standalone `Review` ruleset (this
-skill's own `review.json` layout) is deleted outright; `copilot_code_review`
-or `required_review_thread_resolution: true` bundled into some *other*
-active branch ruleset is stripped out via a fetch-modify-`PUT` round trip
-(the update endpoint takes the same shape as create, not a partial patch).
-An irregular layout the script won't recognize needs manual removal via
-`gh api repos/OWNER/REPO/rulesets/<id>` + a hand-built `PUT`.
+Remove `.github/rulesets/review.json` from the repository first (the
+declaration is the source of truth — ADR-0000-rulesets-declaration-in-repo),
+commit that, then run `apply-rulesets.sh OWNER/REPO --delete-ruleset Review
+[--dry-run]` — it refuses to run while `review.json` is still declared, so
+the order above is enforced, not just recommended. It only handles the
+standalone `Review` ruleset shape (this skill's own `review.json` layout);
+`copilot_code_review` or `required_review_thread_resolution: true` bundled
+into some *other* active branch ruleset needs manual removal via
+`gh api repos/OWNER/REPO/rulesets/<id>` + a hand-built `PUT`
+(`crates/rulesets-write-guard` denies this from a Claude session — pass
+`RULESETS_WRITE_GUARD_BYPASS=1` if you're deliberately doing this by hand).
 
 ---
 
@@ -236,16 +248,20 @@ An irregular layout the script won't recognize needs manual removal via
 │       ├── commit-msg                    cog verify (Conventional Commits)
 │       ├── pre-commit                    biome check --staged (fast)
 │       └── pre-push                      npm run check + npm test
-├── rulesets/                              (core layer applied by default; Review is opt-in — ADR-0021)
-│   ├── security.json                     deletion + non_fast_forward
-│   ├── quality.json                      signatures + linear history + 5 status checks
-│   ├── workflow.json                     squash-only (core; thread resolution NOT required here)
-│   └── review.json                       Copilot code review + required thread resolution (opt-in addin)
+│   ├── .github/rulesets/                   (declaration copied into the target repo —
+│   │   │                                    ADR-0000-rulesets-declaration-in-repo)
+│   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
+│   │   ├── quality.json     astro-specific: signatures + linear history + 4 status checks
+│   │   ├── workflow.json    shared with repo-governance-common: squash-only (core)
+│   │   └── review.json      shared with repo-governance-common: Copilot code review +
+│   │                        required thread resolution (opt-in, --with-review only)
 ├── scripts/
-│   ├── seed.sh                           main orchestrator
-│   ├── copy-files.sh                     template copy + placeholder substitution
-│   ├── apply-rulesets.sh                 gh api POST the core 3 Rulesets (+ Review with
-│   │                                      --with-review; --remove-review strips it back out)
+│   ├── seed.sh                           main orchestrator — copy-files.sh, setup-hooks.sh,
+│   │                                      apply-repo-settings.sh, then the generic
+│   │                                      apply-rulesets.sh (not part of this skill;
+│   │                                      home-manager deploys it to ~/.local/bin)
+│   ├── copy-files.sh                     template + .github/rulesets/*.json copy, placeholder
+│   │                                      substitution, verify_declaration safety check
 │   ├── apply-repo-settings.sh            gh api PATCH repo merge settings
 │   └── setup-hooks.sh                    git config core.hooksPath
 └── reference/

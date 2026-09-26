@@ -45,8 +45,8 @@ gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_reb
 ```
 
 **Key invariant:** The `name:` strings in `templates/.github/workflows/ci.yml`
-and the `context` strings in `rulesets/quality.json` must be byte-identical.
-The four static strings are:
+and the `context` strings in `.github/rulesets/quality.json` must be
+byte-identical. The four static strings are:
 - `"Format & Lint (Biome)"`
 - `"Content lint"`
 - `"Unit tests"`
@@ -68,7 +68,8 @@ that #337's rollout had seeded a context the then-unnamed caller job
 could never satisfy — ADR-0031's 2026-09-26 Amendment.)
 `.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
 re-verifies the match at runtime on every PR via
-`scripts/pr-title-context-check`.
+`scripts/rulesets-context-check` — which checks every declared and live
+`required_status_checks` context, not just this one.
 
 ### Adapting for projects without MDX content lint
 
@@ -76,9 +77,9 @@ If your Astro project does NOT have custom MDX content-lint scripts
 (no `npm run check` beyond `astro check`):
 
 1. Remove the `content-lint` job from `ci.yml`.
-2. Remove the `"Content lint"` entry from `rulesets/quality.json`.
-3. Re-run `apply-rulesets.sh` to update the Ruleset (delete the old one first
-   if it already exists).
+2. Remove the `"Content lint"` entry from `.github/rulesets/quality.json`.
+3. Commit both, then re-run `apply-rulesets.sh OWNER/REPO --reconcile` to
+   update the live Ruleset to match.
 
 ---
 

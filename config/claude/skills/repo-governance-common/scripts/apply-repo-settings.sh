@@ -23,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --no-dependabot) ENABLE_DEPENDABOT=false; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --with-firmware) shift ;; # see setup-hooks.sh: rust's one 0-arg ecosystem flag
+    --with-review) shift ;; # ADR-0000-rulesets-declaration-in-repo: shared 0-arg flag, all 3 skills
     --*) shift 2 ;; # every other ecosystem-specific flag is `--flag value`
     *) echo "Unknown option: $1"; exit 1 ;;
   esac

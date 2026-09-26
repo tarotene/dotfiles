@@ -67,11 +67,13 @@ repository from view entirely, and CI never gets a reason to exist —
 minimal CI-seeding PR / a CI-seeding Issue / an exempt} for a human to pick.
 
 **Why judgement is by rule-type union, not ruleset name/count.** The
-`*-repo-governance` skills' `rulesets/*.json` templates describe a 3-file
-core layout — Security, Quality, Workflow — with byte-identical
-Security/Quality rule types across skills (plus a 4th, opt-in `review.json`
-file — see below). It was tempting to judge a repository by "does it have
-exactly these rulesets, by name". Checking the actual account (2026-09-10)
+`*-repo-governance` skills' `templates/.github/rulesets/*.json` files
+describe a 3-file core layout — Security, Quality, Workflow — with
+byte-identical Security/Workflow content across skills (plus a 4th,
+opt-in `review.json` file — see below; Quality differs per ecosystem's
+job names, ADR-0000-rulesets-declaration-in-repo). It was tempting to
+judge a repository by "does it have exactly these rulesets, by name".
+Checking the actual account (2026-09-10)
 showed that would produce false positives: some repositories split
 `copilot_code_review` into its own ruleset instead of bundling it into
 Workflow as the skill templates used to; others cover every baseline rule
@@ -445,11 +447,14 @@ there is no CI to register a required check against, the same convention
 `renovate` uses.
 
 `.github/workflows/pr-title.yml` (the reusable workflow) also carries its
-own runtime self-check (`scripts/pr-title-context-check`) as a required
-check step, independent of this (manually run) audit domain: it compares
-its own run's actual job name against the live branch ruleset on every PR,
-so a mismatch fails CI immediately instead of only showing up the next
-time someone runs `github-audit titles` by hand.
+own runtime self-check (`scripts/rulesets-context-check`,
+ADR-0000-rulesets-declaration-in-repo — a generalization of the
+PR-title-only check this domain historically covered) as a required check
+step, independent of this (manually run) audit domain: it compares the
+caller repository's declared and live `required_status_checks` contexts
+against job names actually reported by the PR's head commit, so a
+mismatch fails CI immediately instead of only showing up the next time
+someone runs `github-audit titles`/`rulesets` by hand.
 
 ### renovate
 

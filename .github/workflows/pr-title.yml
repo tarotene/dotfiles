@@ -15,8 +15,11 @@ name: PR Title
 # を作った)。呼び出し側テンプレート(config/claude/skills/
 # repo-governance-common/templates/.github/workflows/pr-title.yml)は
 # job に `name: PR Title` を固定しているため、連結名は常に
-# "PR Title / PR title" になる。末尾の `Validate required-check context`
-# step がこれを実行時に自己照合する。
+# "PR Title / PR title" になる。末尾の `Validate required-check contexts`
+# step がこれを実行時に自己照合する — ADR-0000-rulesets-declaration-in-repo
+# により、対象は「PR title」1 context だけでなく、呼び出し元リポジトリの
+# `.github/rulesets/quality.json` 宣言および live な required_status_checks
+# の全 context に一般化されている。
 on:
   workflow_call:
     inputs:
@@ -49,9 +52,11 @@ jobs:
       # このジョブは実際には何も書き込まない — 読み取りのためだけに
       # write を要求する GitHub 側の仕様上の制約。
       contents: write
-      # 末尾の `Validate required-check context` step が自 run の jobs を
-      # 読むために必要(scripts/pr-title-context-check、ADR-0031 Amendment
-      # 2026-09-26)。workflow_call 経由の呼び出しでは、呼び出し側テンプレート
+      # 末尾の `Validate required-check contexts` step が自 run の jobs を
+      # 読むために必要(scripts/rulesets-context-check、
+      # ADR-0000-rulesets-declaration-in-repo、ADR-0031 Amendment
+      # 2026-09-26 が対象を PR title 1 本に限っていたのを一般化した)。
+      # workflow_call 経由の呼び出しでは、呼び出し側テンプレート
       # の job 側でも同じ scope を明示しないとこの job 自体が
       # startup_failure になる(bleep#33 で実測 — 呼び出し側の permissions
       # 宣言が無いとリポジトリ既定に丸められ、既定が read だと足りない)。
@@ -77,7 +82,7 @@ jobs:
             scripts/pr-title-check
             scripts/github-audit
             scripts/pr-merge-settings-check
-            scripts/pr-title-context-check
+            scripts/rulesets-context-check
           sparse-checkout-cone-mode: false
 
       - name: Validate PR title
@@ -104,19 +109,22 @@ jobs:
           chmod +x scripts/pr-merge-settings-check
           ./scripts/pr-merge-settings-check "${{ github.repository }}"
 
-      # ADR-0031 Amendment(2026-09-26): #337 の播きで required check の
-      # context 文字列が実際の check 名と一致せず、15 リポジトリで required
-      # check が永久に "Expected" のまま merge を止めた事故の再発防止。
-      # 「最初の PR で Checks タブを目視確認する」という手動手順に頼らず、
-      # 呼び出し元(caller)の run のたびに自分自身の check 名を実測し、
-      # 有効な branch ruleset の required_status_checks と自己照合する。
-      - name: Validate required-check context
+      # ADR-0031 Amendment(2026-09-26)で「PR title」1 context に限って
+      # 実装した実測照合(#337 の事故の再発防止)を、
+      # ADR-0000-rulesets-declaration-in-repo が全 required_status_checks
+      # context に一般化した。呼び出し元(caller)リポジトリの
+      # `.github/rulesets/quality.json` 宣言と live な branch ruleset の
+      # 両方を、この PR の head で実際に報告される job 名(Actions API)と
+      # 突合する — 宣言側の不一致は required context が対象リポジトリの
+      # 実際のジョブ名と一致しないまま播かれる BLOCKED 事故と同型、live 側の
+      # 不一致は #337 の "Expected" 固定事故と同型で、どちらもここで検出する。
+      - name: Validate required-check contexts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          chmod +x scripts/pr-title-context-check
-          ./scripts/pr-title-context-check \
+          chmod +x scripts/rulesets-context-check
+          ./scripts/rulesets-context-check \
             "${{ github.repository }}" \
-            "${{ github.run_id }}" \
+            "${{ github.event.pull_request.head.sha }}" \
             "${{ github.event.repository.default_branch }}"
