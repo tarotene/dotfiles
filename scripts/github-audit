@@ -291,6 +291,21 @@ fetch_head_sha_job_names() { # $1=repo $2=head_sha -> JSON array of unique job n
   printf '%s' "$names"
 }
 
+# rulesets ドメイン(ADR-0000-rulesets-declaration-in-repo)用: 最新 PR
+# (state=all, updated 降順)の head SHA が報告した job 名。PR が 1 つも無い
+# リポジトリ(播いたばかり)は ground truth が存在しないので
+# judge_rulesets() 側で required-context-unreportable を立てない([] を返す
+# — apply-rulesets.sh の resolve_verify_sha と同じ「最新 PR の head」選択、
+# D14: default branch の squash commit 自体には pull_request 系の run が
+# 存在しないため)。
+fetch_latest_pr_head_job_names() { # $1=repo -> JSON array, [] if no PR yet or unfetchable
+  local sha
+  sha="$("$GH_BIN" api "repos/$OWNER/$1/pulls" -X GET -F state=all -F sort=updated -F direction=desc -F per_page=1 \
+    --jq '.[0].head.sha // empty' 2>/dev/null)" || sha=''
+  [[ -n "$sha" ]] || { printf '[]'; return; }
+  fetch_head_sha_job_names "$1" "$sha"
+}
+
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
   [[ -f $OVERRIDES_FILE ]] || return 0
   grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE" || true
@@ -342,6 +357,11 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
       flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
       workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
+      rulesetsDir: object(expression: \"HEAD:.github/rulesets\") { ... on Tree { entries { name } } }
+      declSecurity: object(expression: \"HEAD:.github/rulesets/security.json\") { ... on Blob { text } }
+      declQuality: object(expression: \"HEAD:.github/rulesets/quality.json\") { ... on Blob { text } }
+      declWorkflow: object(expression: \"HEAD:.github/rulesets/workflow.json\") { ... on Blob { text } }
+      declReview: object(expression: \"HEAD:.github/rulesets/review.json\") { ... on Blob { text } }
       renovateJson: object(expression: \"HEAD:renovate.json\") { ... on Blob { text } }
       renovateJson5: object(expression: \"HEAD:renovate.json5\") { ... on Blob { text } }
       ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") { ... on Blob { text } }
@@ -424,15 +444,37 @@ default_branch_rulesets() {
   printf '%s' "$arr"
 }
 
-judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding object (no repo/language wrapper)
-  local repo="$1" has_workflows="${2:-true}" arr count types t pr_params thread_ok squash_ok checks
+judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optional) $4=job_names(json array,optional) -> one JSON finding object (no repo/language wrapper)
+  local repo="$1" has_workflows="${2:-true}"
+  # NB: "${3:-{}}" mis-parses in bash — the parameter expansion closes at
+  # the first unescaped "}" inside the default value, silently appending
+  # a stray literal "}" after whatever $3 resolves to (reproduced: `f() {
+  # local x="${1:-{}}"; }; f '{"a":1}'` yields x=`{"a":1}}`). Use a plain
+  # fallback assignment instead of embedding "{}"/"[]" in ${VAR:-...}.
+  local repo_gql="${3:-}"
+  [[ -n "$repo_gql" ]] || repo_gql='{}'
+  local job_names="${4:-}"
+  [[ -n "$job_names" ]] || job_names='[]'
+  local arr count types t pr_params thread_ok squash_ok checks
   local -a missing=()
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
   if [[ $count -eq 0 ]]; then
-    jq -n '{verdict: "ungoverned", missing: [], status_checks: [], review_layer: "absent"}'
+    # ADR-0000-rulesets-declaration-in-repo: declaration-presence/drift/
+    # unreportable-context checks below need a live ruleset to compare
+    # against, so they are scoped to the governed (count>0) path — a
+    # totally ungoverned repo (no live ruleset at all) keeps reporting
+    # plain "ungoverned", unchanged from before this ADR.
+    jq -n '{verdict: "ungoverned", missing: [], status_checks: [], review_layer: "absent", declaration: "not-judged"}'
     return
   fi
+
+  # ADR-0000-rulesets-declaration-in-repo: does <repo>/.github/rulesets/
+  # declare the 3 core files? (review.json stays optional — ADR-0021.)
+  local has_declaration=false
+  jq -e '(.declSecurity != null) and (.declQuality != null) and (.declWorkflow != null)' \
+    <<<"$repo_gql" >/dev/null 2>&1 && has_declaration=true
+  [[ $has_declaration == true ]] || missing+=("rulesets-declaration-missing")
 
   types="$(jq -c '[.[].rules[]?.type] | unique' <<<"$arr")"
 
@@ -521,14 +563,64 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) -> one JSON finding ob
 
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
 
+  # ADR-0000-rulesets-declaration-in-repo: declared vs live drift, one
+  # token per ruleset name (Security/Quality/Workflow/Review). Both sides
+  # are normalized to {name,target,enforcement,conditions,bypass_actors,
+  # rules:(rules sorted by type)} before comparing — live carries extra
+  # server-assigned fields (id, source, created_at, ...) that a
+  # hand-written declaration never has. This normalization is coarse and
+  # may need tuning after the first real-account audit (GitHub fills some
+  # rule parameters with defaults server-side that a declaration omits).
+  if [[ $has_declaration == true ]]; then
+    local decl_name decl_field decl_text live_detail norm_decl norm_live
+    for decl_name in Security Quality Workflow Review; do
+      case "$decl_name" in
+        Security) decl_field=declSecurity ;;
+        Quality) decl_field=declQuality ;;
+        Workflow) decl_field=declWorkflow ;;
+        Review) decl_field=declReview ;;
+      esac
+      decl_text="$(jq -r --arg f "$decl_field" '.[$f].text // empty' <<<"$repo_gql")"
+      [[ -n "$decl_text" ]] || continue # review.json is optional (ADR-0021) — absence is not drift
+      if ! norm_decl="$(jq -c '{name,target,enforcement,conditions,bypass_actors,rules:(.rules|sort_by(.type))}' <<<"$decl_text" 2>/dev/null)"; then
+        missing+=("rulesets-declaration-drift:${decl_name}") # unparseable declaration counts as drift
+        continue
+      fi
+      live_detail="$(jq -c --arg n "$decl_name" '[.[] | select(.name == $n)] | .[0] // null' <<<"$arr")"
+      if [[ "$live_detail" == "null" ]]; then
+        missing+=("rulesets-declaration-drift:${decl_name}") # declared but no matching live ruleset by name
+        continue
+      fi
+      norm_live="$(jq -c '{name,target,enforcement,conditions,bypass_actors,rules:(.rules|sort_by(.type))}' <<<"$live_detail")"
+      [[ "$(jq -S -c . <<<"$norm_decl")" == "$(jq -S -c . <<<"$norm_live")" ]] ||
+        missing+=("rulesets-declaration-drift:${decl_name}")
+    done
+  fi
+
+  # ADR-0000-rulesets-declaration-in-repo: a live required_status_checks
+  # context that no job of the latest PR's head actually reports — the
+  # #337 "permanently Expected" failure mode. $job_names == [] means no PR
+  # exists yet to check against (unverifiable, not unreportable) — skip.
+  if [[ "$(jq 'length' <<<"$job_names")" -gt 0 ]]; then
+    local unreportable ctx
+    unreportable="$(jq -c --argjson jobs "$job_names" '. - $jobs' <<<"$checks")"
+    while IFS= read -r ctx; do
+      [[ -n "$ctx" ]] || continue
+      missing+=("required-context-unreportable:${ctx}")
+    done < <(jq -r '.[]?' <<<"$unreportable")
+  fi
+
+  local declaration_field
+  declaration_field="$([[ $has_declaration == true ]] && echo present || echo missing)"
+
   if ((${#missing[@]} == 0)); then
-    jq -n --argjson checks "$checks" --arg rl "$review_layer" \
-      '{verdict: "ok", missing: [], status_checks: $checks, review_layer: $rl}'
+    jq -n --argjson checks "$checks" --arg rl "$review_layer" --arg decl "$declaration_field" \
+      '{verdict: "ok", missing: [], status_checks: $checks, review_layer: $rl, declaration: $decl}'
   else
     local missing_json
     missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
-    jq -n --argjson missing "$missing_json" --argjson checks "$checks" --arg rl "$review_layer" \
-      '{verdict: "drifted", missing: $missing, status_checks: $checks, review_layer: $rl}'
+    jq -n --argjson missing "$missing_json" --argjson checks "$checks" --arg rl "$review_layer" --arg decl "$declaration_field" \
+      '{verdict: "drifted", missing: $missing, status_checks: $checks, review_layer: $rl, declaration: $decl}'
   fi
 }
 
@@ -1371,15 +1463,21 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0 need_ruleset_jobs=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
     # charters/renovate's file-existence checks. titles (ADR-0031) needs
     # the same workflowsDir data to detect the pr-title.yml caller. releaser
     # needs it too, to detect the release-plz.yml/release-please.yml caller.
+    # rulesets ALSO now needs it for the declaration text fields
+    # (ADR-0000-rulesets-declaration-in-repo).
     [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
+    # rulesets' required-context-unreportable check (ADR-0000-rulesets-
+    # declaration-in-repo) needs the REST-only latest-PR job names — same
+    # lazy-fetch pattern as titles' need_title_jobs below.
+    [[ $d == rulesets ]] && need_ruleset_jobs=1
     # settings (ADR-0031 extension) needs the REST-only squash commit title/
     # message fields (see fetch_repo_settings() comment).
     [[ $d == settings ]] && need_repo_rest=1
@@ -1446,7 +1544,10 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
           rulesets)
             if ((need_rulesets)); then
               has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
-              entry="$(judge_rulesets "$repo" "$has_workflows")"
+              local ruleset_jobs='[]'
+              ((need_ruleset_jobs)) && [[ $has_workflows == true ]] && ruleset_jobs="$(fetch_latest_pr_head_job_names "$repo")"
+              [[ "$repo" == "all-ok" ]] && printf '%s' "$repo_gql" > /tmp/dbg_repo_gql_$$.json
+              entry="$(judge_rulesets "$repo" "$has_workflows" "$repo_gql" "$ruleset_jobs")"
             fi
             ;;
           charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
@@ -1568,21 +1669,54 @@ EOF
 {"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK"}
 EOF
 
+  # ADR-0000-rulesets-declaration-in-repo: split into the canonical named
+  # 3-file layout (Security/Quality/Workflow, Review bundled into Workflow
+  # here rather than split out — has_declaration only requires the 3 core
+  # names) so this fixture can ALSO carry a matching declaration below and
+  # stay "ok" under the new declared-vs-live check, not just the
+  # pre-existing rule-type-union check.
   cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets.json" <<'EOF'
-[{"id": 1, "target": "branch", "enforcement": "active"}]
+[
+  {"id": 1, "name": "Security", "target": "branch", "enforcement": "active"},
+  {"id": 10, "name": "Quality", "target": "branch", "enforcement": "active"},
+  {"id": 11, "name": "Workflow", "target": "branch", "enforcement": "active"}
+]
 EOF
   cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets_1.json" <<'EOF'
 {
+  "name": "Security",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}],
+  "bypass_actors": []
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets_10.json" <<'EOF'
+{
+  "name": "Quality",
+  "target": "branch",
+  "enforcement": "active",
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
   "rules": [
-    {"type": "deletion"},
-    {"type": "non_fast_forward"},
     {"type": "required_signatures"},
     {"type": "required_linear_history"},
-    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}}
+  ],
+  "bypass_actors": []
+}
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_all-ok_rulesets_11.json" <<'EOF'
+{
+  "name": "Workflow",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
     {"type": "copilot_code_review"},
     {"type": "pull_request", "parameters": {"required_review_thread_resolution": true, "allowed_merge_methods": ["squash"]}}
-  ]
+  ],
+  "bypass_actors": []
 }
 EOF
 
@@ -1723,6 +1857,11 @@ EOF
       "pyprojectToml": null,
       "goMod": null,
       "workflowsDir": {"entries": [{"name": "ci.yml"}]},
+      "rulesetsDir": {"entries": [{"name": "security.json"}, {"name": "quality.json"}, {"name": "workflow.json"}]},
+      "declSecurity": {"text": "{\"name\":\"Security\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"deletion\"},{\"type\":\"non_fast_forward\"}],\"bypass_actors\":[]}"},
+      "declQuality": {"text": "{\"name\":\"Quality\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"required_signatures\"},{\"type\":\"required_linear_history\"},{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"CI\"}]}}],\"bypass_actors\":[]}"},
+      "declWorkflow": {"text": "{\"name\":\"Workflow\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"copilot_code_review\"},{\"type\":\"pull_request\",\"parameters\":{\"required_review_thread_resolution\":true,\"allowed_merge_methods\":[\"squash\"]}}],\"bypass_actors\":[]}"},
+      "declReview": null,
       "renovateJson": {"text": "{\"extends\": [\":dependencyDashboard\"]}"},
       "renovateJson5": null,
       "ghRenovateJson": null,
@@ -1992,6 +2131,26 @@ EOF
 }
 EOF
 
+  # Fixture for the judge_rulesets() declaration drift / unreportable-
+  # context direct-call checks below (ADR-0000-rulesets-declaration-in-
+  # repo). Live "Quality" ruleset requires two contexts, one of which
+  # ("Ghost") no real job will ever report.
+  cat >"$tmp/fixtures/repos_tarotene_ruleset-decl-test_rulesets.json" <<'EOF'
+[{"id": 20, "name": "Quality", "target": "branch", "enforcement": "active"}]
+EOF
+  cat >"$tmp/fixtures/repos_tarotene_ruleset-decl-test_rulesets_20.json" <<'EOF'
+{
+  "name": "Quality",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}, {"context": "Ghost"}]}}
+  ],
+  "bypass_actors": []
+}
+EOF
+
   # Fixtures for the judge_titles() direct-call checks below (ADR-0031).
   # "titles-ok" has the required check context registered on its default-
   # branch ruleset; "titles-missing-check" has an active ruleset but
@@ -2195,8 +2354,13 @@ EOF
     printf 'FAIL: all-ok rulesets should be review_layer=complete\n' >&2
     return 1
   }
-  jq -e '.[] | select(.repo=="rulesets-core-only") | .domains.rulesets.verdict == "ok" and .domains.rulesets.review_layer == "absent"' <<<"$out" >/dev/null || {
-    printf 'FAIL: rulesets-core-only should be ok with review_layer=absent\n' >&2
+  # ADR-0000-rulesets-declaration-in-repo: this fixture has no
+  # .github/rulesets/ declaration in its GraphQL data, so it now also
+  # surfaces rulesets-declaration-missing — genuinely correct, not a
+  # regression: a repo with only a live ruleset and no declaration is
+  # exactly the "not yet migrated" case this ADR wants to flag.
+  jq -e '.[] | select(.repo=="rulesets-core-only") | .domains.rulesets.verdict == "drifted" and .domains.rulesets.review_layer == "absent" and (.domains.rulesets.missing == ["rulesets-declaration-missing"])' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-core-only should be drifted (declaration missing) with review_layer=absent: %s\n' "$(jq -c '.[] | select(.repo=="rulesets-core-only") | .domains.rulesets' <<<"$out")" >&2
     return 1
   }
   jq -e '.[] | select(.repo=="rulesets-partial-review") | .domains.rulesets.verdict == "drifted" and .domains.rulesets.review_layer == "partial-drift"' <<<"$out" >/dev/null || {
@@ -2214,8 +2378,12 @@ EOF
 
   # rulesets domain (ADR-0021: aggregation across TWO active rulesets, not
   # just multiple pull_request rules on one — the shape Stage 2 produces)
-  jq -e '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.verdict == "ok" and .domains.rulesets.review_layer == "complete" and (.domains.rulesets.missing | length == 0)' <<<"$out" >/dev/null || {
-    printf 'FAIL: rulesets-review-split should be ok/complete with no missing (cross-ruleset OR + intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets' <<<"$out")" >&2
+  # ADR-0000-rulesets-declaration-in-repo: same "no declaration in this
+  # fixture's GraphQL data" reasoning as rulesets-core-only above — the
+  # cross-ruleset OR/intersection aggregation this block actually tests is
+  # unaffected (review_layer stays complete, no duplicate-ruleset flagged).
+  jq -e '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets.verdict == "drifted" and .domains.rulesets.review_layer == "complete" and (.domains.rulesets.missing == ["rulesets-declaration-missing"])' <<<"$out" >/dev/null || {
+    printf 'FAIL: rulesets-review-split should be drifted (declaration missing) but complete/no other missing (cross-ruleset OR + intersection): %s\n' "$(jq -c '.[] | select(.repo=="rulesets-review-split") | .domains.rulesets' <<<"$out")" >&2
     return 1
   }
   jq -e '.[] | select(.repo=="rulesets-squash-conflict") | .domains.rulesets.verdict == "drifted" and (.domains.rulesets.missing | index("pull_request.allowed_merge_methods"))' <<<"$out" >/dev/null || {
@@ -2288,7 +2456,8 @@ EOF
   # rulesets domain isolated: only requested domain runs judge_rulesets
   out="$("$SELF" --json rulesets 2>&1)" || true
   jq -e '.[] | select(.repo=="all-ok") | .domains.rulesets.verdict == "ok"' <<<"$out" >/dev/null || {
-    printf 'FAIL: rulesets-only run should still judge all-ok as ok\n' >&2
+    printf 'FAIL: rulesets-only run should still judge all-ok as ok: %s\n' \
+      "$(jq -c '.[] | select(.repo=="all-ok") | .domains.rulesets' <<<"$out")" >&2
     return 1
   }
   jq -e '.[] | select(.repo=="all-ok") | (.domains | keys) == ["rulesets"]' <<<"$out" >/dev/null || {
@@ -2313,6 +2482,63 @@ EOF
   jq -e '.verdict == "drifted" and (.missing | index("required_status_checks")) and (.missing | index("ci-absent") | not)' \
     <<<"$(judge_rulesets ruleset-ci-test true)" >/dev/null || {
     printf 'FAIL: judge_rulesets(has_workflows=true) should report required_status_checks, not ci-absent\n' >&2
+    return 1
+  }
+
+  # ADR-0000-rulesets-declaration-in-repo: declaration missing when
+  # $3 (repo_gql) is omitted entirely (default "{}").
+  jq -e '.missing | index("rulesets-declaration-missing")' \
+    <<<"$(judge_rulesets ruleset-decl-test true)" >/dev/null || {
+    printf 'FAIL: judge_rulesets with no repo_gql should report rulesets-declaration-missing\n' >&2
+    return 1
+  }
+
+  # declared vs live drift: enforcement differs ("active" live vs
+  # "disabled" declared) while everything else matches. Built via jq -n
+  # (not hand-escaped string literals) so the declQuality/declSecurity/
+  # declWorkflow shape ({"text": "<file content>"}) exactly matches what
+  # the real GraphQL Blob field returns.
+  local decl_mismatch decl_ok
+  local quality_mismatch_text quality_ok_text
+  quality_mismatch_text='{"name":"Quality","target":"branch","enforcement":"disabled","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI"},{"context":"Ghost"}]}}],"bypass_actors":[]}'
+  quality_ok_text='{"name":"Quality","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI"},{"context":"Ghost"}]}}],"bypass_actors":[]}'
+  decl_mismatch="$(jq -n -c --arg q "$quality_mismatch_text" \
+    '{declSecurity: {text: "{}"}, declQuality: {text: $q}, declWorkflow: {text: "{}"}}')"
+  jq -e '.missing | index("rulesets-declaration-drift:Quality")' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_mismatch")" >/dev/null || {
+    printf 'FAIL: judge_rulesets should report rulesets-declaration-drift:Quality on enforcement mismatch: %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_mismatch")" >&2
+    return 1
+  }
+
+  # declared == live (after normalization) -> no drift token for Quality,
+  # even though Security/Workflow are still reported missing (this repo's
+  # live rulesets don't have those names at all).
+  decl_ok="$(jq -n -c --arg q "$quality_ok_text" \
+    '{declSecurity: {text: "{}"}, declQuality: {text: $q}, declWorkflow: {text: "{}"}}')"
+  jq -e '.missing | index("rulesets-declaration-drift:Quality") | not' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_ok")" >/dev/null || {
+    printf 'FAIL: judge_rulesets should NOT report drift when declared == live (normalized): %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_ok")" >&2
+    return 1
+  }
+
+  # required-context-unreportable: live requires "CI" and "Ghost"; only
+  # "CI" is ever actually reported by a job -> "Ghost" is unreportable.
+  jq -e '.missing | index("required-context-unreportable:Ghost")' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_ok" '["CI"]')" >/dev/null || {
+    printf 'FAIL: judge_rulesets should report required-context-unreportable:Ghost: %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_ok" '["CI"]')" >&2
+    return 1
+  }
+
+  # job_names == [] (no PR yet, unverifiable) -> no unreportable-context
+  # token at all, even though the same "Ghost" context would be flagged
+  # once a real PR exists.
+  jq -e '.missing | map(select(startswith("required-context-unreportable:"))) | length == 0' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_ok" '[]')" >/dev/null || {
+    printf 'FAIL: judge_rulesets with job_names=[] should not flag any required-context-unreportable: %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_ok" '[]')" >&2
     return 1
   }
 

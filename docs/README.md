@@ -283,6 +283,11 @@
   Issue 起票できるようにする配管。判定を下したツール自身が記録し
   (tarotene/bleep 側は別 PR)、`crates/verdict-escalate` がセッション単位・
   fingerprint 単位に集約する。
+- [ADR-0000-rulesets-declaration-in-repo](adr/0000-rulesets-declaration-in-repo.md) —
+  required status check の正本を対象リポジトリ外のテンプレートから、
+  リポジトリ自身の `.github/rulesets/*.json` へ一本化する。apply 前に
+  context を実測 job 名と突合して拒否する検証を追加し、`gh api` での
+  直接書換は `crates/rulesets-write-guard` が deny する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

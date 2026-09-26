@@ -407,7 +407,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ "$method" != "GET" ]]; then
-  name="$(printf '%s' "${body:-{}}" | jq -r '.name // empty' 2>/dev/null || true)"
+  # NB: "${body:-{}}" mis-parses in bash — the parameter expansion closes
+  # at the first unescaped "}" inside the default value, silently
+  # appending a stray literal "}" after whatever $body resolves to. Use a
+  # plain fallback assignment instead of embedding "{}" in ${VAR:-...}.
+  body_or_empty="${body:-}"
+  [[ -n "$body_or_empty" ]] || body_or_empty='{}'
+  name="$(printf '%s' "$body_or_empty" | jq -r '.name // empty' 2>/dev/null || true)"
   printf '%s %s %s\n' "$method" "$path" "$name" >>"$STUB_LOG"
   if [[ -f "$dir/write-fail" ]]; then
     exit 1
