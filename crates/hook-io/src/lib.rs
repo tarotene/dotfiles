@@ -13,12 +13,20 @@
 //! | E `CLAUDE_PROJECT_DIR` / `.cwd` 解決 | [`input::HookInput::project_dir`] |
 //! | F `git rev-parse --git-common-dir` | [`git::git_common_dir`] |
 //! | G `state_file()`(session_id サニタイズ) | [`ledger::SessionLedger`] |
+//! | H 最小 POSIX シェル語分割 | [`shell::split`] |
+//!
+//! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
+//! `crates/rulesets-write-guard`(ADR-0000-rulesets-declaration-in-repo)も
+//! 同じ「gh コマンド文字列を静的に解析して deny/pass を決める」形の hook
+//! で、判定に使えない入力を素通しに倒す同じ語分割ロジックを要求したため
+//! ここへ引き上げた(ADR-0035 D1「単一正本 > 複写+同期」)。
 
 pub mod decision;
 pub mod git;
 pub mod input;
 pub mod ledger;
 pub mod plan;
+pub mod shell;
 
 pub use decision::{Decision, PermissionDecision};
 pub use input::{Agent, HookInput};

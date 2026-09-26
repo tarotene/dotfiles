@@ -581,20 +581,22 @@ jobs:
       - name: github-audit --selftest
         run: ./scripts/github-audit --selftest
 
-      # github-rulesets-apply (#153) is a thin dispatcher over the
-      # governance skills' apply-rulesets.sh for the rust/typst/astro types,
-      # and over this repository's own scripts/apply-rulesets.sh for the
-      # dotfiles type (#349, no $SKILLS_DIR involved) — the selftest stubs
-      # both paths to verify the type→script mapping, multi-repo looping,
-      # and flag passthrough without shelling out to gh.
+      # github-rulesets-apply (ADR-0000-rulesets-declaration-in-repo, #153)
+      # is a thin multi-repo loop over scripts/apply-rulesets.sh — 対象
+      # リポジトリの「型」は引数に取らない(旧: rust/typst/astro/core/
+      # dotfiles の 5 型 + 型ごとの apply-rulesets.sh、D4「還元」で撤去)。
+      # selftest は apply-rulesets.sh をスタブし、複数 repo ループとフラグ
+      # 透過、1 repo の失敗が他を止めないことを検証する。
       - name: github-rulesets-apply --selftest
         run: ./scripts/github-rulesets-apply --selftest
 
-      # apply-rulesets.sh (#349): dotfiles 自身の Security/Quality/Workflow
-      # ruleset を rulesets/*.json の具体値から適用する。--reconcile 対応
-      # (既存 ruleset を名前一致で PUT)。config/claude/skills/*-repo-
-      # governance の配布テンプレート版とは別物 — dotfiles は Shell/Nix で
-      # どの言語 skill にも属さないための専用スクリプト。
+      # apply-rulesets.sh (ADR-0000-rulesets-declaration-in-repo): 任意の
+      # リポジトリ自身が持つ宣言(<repo>/.github/rulesets/*.json)を、その
+      # リポジトリの live な branch ruleset に適用する。PUT/POST 直前に
+      # quality.json の required_status_checks[].context を実測 job 名
+      # (Actions API)と突合し、報告不能な context があれば拒否する(D5)。
+      # config/claude/skills/*-repo-governance の配布テンプレートはもう
+      # apply ロジックを持たず、宣言のコピー(seed)だけを担う。
       - name: apply-rulesets.sh --selftest
         run: ./scripts/apply-rulesets.sh --selftest
 

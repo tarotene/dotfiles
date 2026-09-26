@@ -443,6 +443,11 @@ let
   # 直接書くと、ビルドのたびに command 文字列が変わり、完全一致で存在判定
   # する registerHooks が旧エントリを残し続けるため。
   ghEditAllowCmd = "'${hooksDir}/gh-edit-allow'";
+  # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7):
+  # `gh api` による ruleset(required_status_checks 等)の直接書換を deny
+  # する。gh-edit-allow と同じ理由(判定に既存の巨大 bash 資産を source
+  # する必要が無い)で ADR-0024 の既定どおり Rust。
+  rulesetsWriteGuardCmd = "'${hooksDir}/rulesets-write-guard'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -649,6 +654,7 @@ let
     external_send_guard="$1";    shift
     adr_number="$1";             shift
     gh_edit_allow="$1";          shift
+    rulesets_write_guard="$1";   shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -789,6 +795,10 @@ let
     # — git-worktree-allow と同じ理由付け。
     register PostToolUse Bash "$gh_edit_allow" 10
     register PreToolUse Bash "$gh_edit_allow" 10 "Bash(gh *)"
+    # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7): deny
+    # のみ返す(判定しない入力は素通し)ので、gh-edit-allow の PreToolUse と
+    # 同じ if で gh 呼び出しに絞ってよい。
+    register PreToolUse Bash "$rulesets_write_guard" 10 "Bash(gh *)"
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -1141,6 +1151,10 @@ in
   # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
   # flake.nix の rustOverlay)への安定パスの symlink。
   home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
+  # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7): crates/
+  # rulesets-write-guard のビルド成果物への安定パスの symlink(gh-edit-allow
+  # と同じ理由付け)。
+  home.file.".claude/hooks/rulesets-write-guard".source = "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -1766,7 +1780,8 @@ in
       ${lib.escapeShellArg decisionColocationGuardCmd} \
       ${lib.escapeShellArg externalSendGuardCmd} \
       ${lib.escapeShellArg adrNumberCmd} \
-      ${lib.escapeShellArg ghEditAllowCmd}
+      ${lib.escapeShellArg ghEditAllowCmd} \
+      ${lib.escapeShellArg rulesetsWriteGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
