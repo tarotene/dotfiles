@@ -271,6 +271,25 @@ fetch_latest_pr_title_job_names() { # $1=repo -> JSON array, [] if no run yet or
   fetch_run_job_names "$1" "$run_id"
 }
 
+# rulesets 宣言(ADR-0000-rulesets-declaration-in-repo)用: 特定コミット
+# (head_sha)に紐づく、あらゆる workflow の run が実際に報告した job 名の
+# 和集合。fetch_run_job_names() が単一 run 限定なのに対し、この関数は
+# 「そのコミットに対して起動した run が複数の workflow に渡ることがある」
+# 実態(reusable workflow・matrix・複数 push トリガーの workflow が同じ
+# コミットで並走する)を吸収する。scripts/apply-rulesets.sh と
+# scripts/rulesets-context-check の両方がこれを source して使う。
+fetch_head_sha_job_names() { # $1=repo $2=head_sha -> JSON array of unique job names, [] on failure
+  local repo="$1" sha="$2" run_ids run_id names='[]' names_batch
+  run_ids="$("$GH_BIN" api "repos/$OWNER/$repo/actions/runs" -X GET -F "head_sha=$sha" -F per_page=100 \
+    --jq '[.workflow_runs[].id]' 2>/dev/null || printf '[]')"
+  while IFS= read -r run_id; do
+    [[ -n "$run_id" ]] || continue
+    names_batch="$(fetch_run_job_names "$repo" "$run_id")"
+    names="$(jq -c -n --argjson a "$names" --argjson b "$names_batch" '($a + $b) | unique')"
+  done < <(jq -r '.[]?' <<<"$run_ids")
+  printf '%s' "$names"
+}
+
 read_overrides() { # print: <repo TAB domain TAB directive>, comments/blanks dropped
   [[ -f $OVERRIDES_FILE ]] || return 0
   grep -Ev '^[[:space:]]*(#|$)' "$OVERRIDES_FILE" || true

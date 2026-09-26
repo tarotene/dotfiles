@@ -321,6 +321,11 @@ Design and rationale for the hooks and commands deployed from
   (Rust, #392): validated programmatic allow for `gh pr|issue edit` /
   `gh issue create` on PRs/Issues this session itself created, via a
   session ledger fed from `gh … create` output — never a wildcard rule.
+- [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
+  hook (Rust, ADR-0000-rulesets-declaration-in-repo): denies `gh api`
+  writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
+  forcing all applies through `scripts/apply-rulesets.sh`'s context
+  verification.
 - [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
 - [`public-publish-guard.md`](claude/public-publish-guard.md) — dotfiles-side

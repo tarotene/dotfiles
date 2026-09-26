@@ -169,7 +169,7 @@ mod tests {
     use super::*;
 
     fn w(s: &str) -> Vec<String> {
-        crate::shell::split(s).unwrap()
+        hook_io::shell::split(s).unwrap()
     }
 
     #[test]

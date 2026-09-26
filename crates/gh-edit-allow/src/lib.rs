@@ -14,10 +14,9 @@
 //! ネットワークには出ない。台帳に無い番号は、編集対象として表現できない。
 
 pub mod gh;
-pub mod shell;
 
 use gh::{GhCommand, Kind, Verb};
-use hook_io::{HookInput, PermissionDecision, SessionLedger};
+use hook_io::{shell, HookInput, PermissionDecision, SessionLedger};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 

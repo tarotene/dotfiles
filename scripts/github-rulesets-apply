@@ -1,138 +1,85 @@
 #!/usr/bin/env bash
-# github-rulesets-apply — seed the standard GitHub rulesets onto one or more
-# repositories by driving the matching *-repo-governance skill's
-# apply-rulesets.sh (#153). This script owns no ruleset logic of its own —
-# rulesets/*.json under each skill stays the single source of truth
-# (ADR-0021's core/review layer split) — it only resolves which skill a
-# repository type maps to and loops apply-rulesets.sh over one or more repos.
+# github-rulesets-apply — apply the declared rulesets
+# (.github/rulesets/{security,quality,workflow}[,review].json) of one or
+# more repositories, by driving scripts/apply-rulesets.sh for each.
 #
-# Auto-apply wiring: the repo-charter skill (config/claude/skills/repo-charter/
-# SKILL.md §7) calls this right after `gh repo create`, since gh itself has no
-# create-time hook mechanism to attach to.
-#
-# dotfiles 自身への適用(#349)は他の型と種類が違う: `rust`/`typst`/`astro`
-# は「他リポジトリに播く配布テンプレート」(placeholder 置換を持つ)を
-# $SKILLS_DIR 配下の governance skill から呼ぶが、dotfiles は Shell/Nix
-# リポジトリでどの言語 skill にも属さない。`dotfiles` 型は SKILLS_DIR を
-# 経由せず、このリポジトリ自身の `scripts/apply-rulesets.sh`(プレースホルダ
-# の無い具体値、--reconcile 対応、docs/github-audit.md「rulesets」節)を
-# 直接呼ぶ。
-#
-# `core` 型(#337)は「rust/typst/astro のどれにも属さないがガバナンスは
-# 要る」リポジトリ向け。ADR-0021 の core 層(Security/Quality/Workflow)を
-# 言語非依存の最小構成で適用する — Quality の required_status_check は
-# `PR title` のみで、ビルド/テストジョブ名は一切仮定しない(対象リポの
-# CI 構成を知らないため)。実体は $SKILLS_DIR を経由せず
-# repo-governance-common 自身の scripts/apply-rulesets.sh を呼ぶ(SELF 型と
-# 同じ「$SKILLS_DIR を経由しない」扱いだが、dotfiles 自身ではなく他の任意の
-# リポジトリに向けて実行する点が異なる)。
+# ADR-0000-rulesets-declaration-in-repo(段3で改番)以前は、対象リポジトリの
+# 「型」(rust/typst/astro/core/dotfiles)を引数に取り、型ごとに別の
+# apply-rulesets.sh(*-repo-governance skill 側、プレースホルダ置換入り)
+# を呼び分ける 5 型構成だった。正本を対象リポジトリ自身の
+# `.github/rulesets/*.json` に一本化した結果、型を問わず同じ
+# scripts/apply-rulesets.sh を呼べば足りる(D4「還元」)。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILLS_DIR="${GITHUB_RULESETS_APPLY_SKILLS_DIR:-$HOME/.claude/skills}"
 SELF_APPLY_SCRIPT="${GITHUB_RULESETS_APPLY_SELF_SCRIPT:-$SCRIPT_DIR/apply-rulesets.sh}"
 
 usage() {
   cat <<'EOF'
-usage: github-rulesets-apply [--with-review] [--dry-run] <rust|typst|astro|core|dotfiles> <owner/repo>... [-- <passthrough args>]
+usage: github-rulesets-apply [--ref REF] [--reconcile] [--dry-run]
+                              [--unverified-contexts] <owner/repo>...
+                              [-- <passthrough args>]
        github-rulesets-apply --selftest
 
-Seeds the standard Security/Quality/Workflow rulesets (core layer, ADR-0021)
-onto every given repository by calling the matching governance skill's
-apply-rulesets.sh:
+対象リポジトリごとに scripts/apply-rulesets.sh <owner/repo> を呼び、その
+リポジトリ自身の .github/rulesets/*.json 宣言を live な branch ruleset に
+適用する。
 
-  rust      -> rust-repo-governance
-  typst     -> typst-repo-governance
-  astro     -> astro-site-governance
-  core      -> repo-governance-common (#337): language-agnostic baseline
-               for a repository that matches none of the three ecosystems
-               above — its Quality ruleset requires only the `PR title`
-               check, no build/test job name is assumed
-  dotfiles  -> this repository's own scripts/apply-rulesets.sh (#349,
-               no --with-review support; pass `-- --reconcile` to update
-               existing rulesets in place instead of skipping them)
+--ref/--reconcile/--dry-run/--unverified-contexts は全 repo に共通で渡す。
+`--` 以降は apply-rulesets.sh へそのまま渡す(例: `-- --verify-sha <sha>`)。
 
---with-review is passed through to also apply the opt-in review layer
-(copilot_code_review + required conversation resolution). Anything after a
-bare `--` is passed through verbatim to apply-rulesets.sh for each repo
-(e.g. `-- --msrv 1.90`, or `-- --reconcile` for the dotfiles type).
-
-Failures are collected across all repos and reported at the end — one bad
-repo does not stop the rest. Exit 1 if any repo failed or the invocation
-itself is malformed.
+失敗した repo があっても他の repo の適用は続け、最後にまとめて報告する
+(1 つの失敗が全体を止めない)。呼び出し自体が不正な場合、または失敗した
+repo が 1 つでもあれば exit 1。
 EOF
 }
 
-skill_for() {
-  case "$1" in
-    rust) printf '%s\n' rust-repo-governance ;;
-    typst) printf '%s\n' typst-repo-governance ;;
-    astro) printf '%s\n' astro-site-governance ;;
-    core) printf '%s\n' repo-governance-common ;;
-    dotfiles) printf '%s\n' SELF ;;
-    *) return 1 ;;
-  esac
-}
-
 apply_one() {
-  local skill="$1" owner_repo="$2" with_review="$3" dry_run="$4"
-  shift 4
-  local -a passthrough=("$@")
-  local owner="${owner_repo%%/*}" repo="${owner_repo#*/}"
-  local apply_script
-  if [[ "$skill" == "SELF" ]]; then
-    apply_script="$SELF_APPLY_SCRIPT"
-  else
-    apply_script="$SKILLS_DIR/$skill/scripts/apply-rulesets.sh"
-  fi
+  local owner_repo="$1"
+  shift
+  local -a args=("$owner_repo" "$@")
 
-  if [[ ! -x "$apply_script" ]]; then
-    echo "ERROR: $apply_script not found or not executable (home-manager 未配備の可能性)" >&2
+  if [[ ! -x "$SELF_APPLY_SCRIPT" ]]; then
+    echo "ERROR: $SELF_APPLY_SCRIPT not found or not executable (home-manager 未配備の可能性)" >&2
     return 1
   fi
 
-  local -a args=(--owner "$owner" --repo "$repo")
-  # dotfiles 自身の apply-rulesets.sh は --with-review を持たない
-  # (Review 層は dotfiles では未採用、ADR-0021 opt-in のまま)。
-  [[ "$with_review" == 1 && "$skill" != "SELF" ]] && args+=(--with-review)
-  [[ "$dry_run" == 1 ]] && args+=(--dry-run)
-  args+=("${passthrough[@]}")
-
-  bash "$apply_script" "${args[@]}"
+  bash "$SELF_APPLY_SCRIPT" "${args[@]}"
 }
 
 main() {
-  local with_review=0 dry_run=0 type='' owner_repo_arg_seen=0
+  local ref='' reconcile=0 dry_run=0 unverified=0 owner_repo_arg_seen=0
   local -a repos=() passthrough=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --with-review) with_review=1; shift ;;
+      --ref) ref="$2"; shift 2 ;;
+      --reconcile) reconcile=1; shift ;;
       --dry-run) dry_run=1; shift ;;
+      --unverified-contexts) unverified=1; shift ;;
       --) shift; passthrough=("$@"); break ;;
       -*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
       *)
-        if [[ -z "$type" ]]; then
-          type="$1"
-        else
-          [[ "$1" == */* ]] || { echo "ERROR: '$1' is not owner/repo" >&2; exit 2; }
-          repos+=("$1")
-          owner_repo_arg_seen=1
-        fi
+        [[ "$1" == */* ]] || { echo "ERROR: '$1' is not owner/repo" >&2; exit 2; }
+        repos+=("$1")
+        owner_repo_arg_seen=1
         shift
         ;;
     esac
   done
 
-  [[ -n "$type" ]] || { usage >&2; exit 2; }
-  local skill
-  skill="$(skill_for "$type")" || { echo "ERROR: unknown type '$type' (want rust|typst|astro|core|dotfiles)" >&2; exit 2; }
-  ((owner_repo_arg_seen)) || { echo "ERROR: at least one owner/repo is required" >&2; exit 2; }
+  ((owner_repo_arg_seen)) || { echo "ERROR: at least one owner/repo is required" >&2; usage >&2; exit 2; }
+
+  local -a common_args=()
+  [[ -n "$ref" ]] && common_args+=(--ref "$ref")
+  ((reconcile)) && common_args+=(--reconcile)
+  ((dry_run)) && common_args+=(--dry-run)
+  ((unverified)) && common_args+=(--unverified-contexts)
 
   local -a failed=()
   local r
   for r in "${repos[@]}"; do
-    if ! apply_one "$skill" "$r" "$with_review" "$dry_run" "${passthrough[@]}"; then
+    if ! apply_one "$r" "${common_args[@]}" "${passthrough[@]}"; then
       failed+=("$r")
     fi
   done
@@ -158,33 +105,19 @@ selftest() {
   trap cleanup_selftest EXIT
   tmp="$SELFTEST_TMP"
 
-  # Stub layout mirrors the real skill tree:
-  # $tmp/skills/<skill>/scripts/apply-rulesets.sh
-  local skill
-  for skill in rust-repo-governance typst-repo-governance astro-site-governance repo-governance-common; do
-    mkdir -p "$tmp/skills/$skill/scripts"
-    cat > "$tmp/skills/$skill/scripts/apply-rulesets.sh" <<'EOF'
+  cat >"$tmp/self-apply-rulesets.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'CALLED %s: %s\n' "$(basename "$(dirname "$(dirname "$0")")")" "$*" >> "$STUB_LOG"
-EOF
-    chmod +x "$tmp/skills/$skill/scripts/apply-rulesets.sh"
-  done
-
-  export GITHUB_RULESETS_APPLY_SKILLS_DIR="$tmp/skills"
-  export STUB_LOG="$tmp/calls.log"
-
-  # dotfiles 型は SKILLS_DIR を経由しない(このリポジトリ自身の
-  # scripts/apply-rulesets.sh を直接呼ぶ)ので、別の env var で個別にスタブする。
-  cat > "$tmp/self-apply-rulesets.sh" <<'EOF'
-#!/usr/bin/env bash
-printf 'CALLED SELF: %s\n' "$*" >> "$STUB_LOG"
+if [[ -n "${STUB_FAIL_REPO:-}" && "$1" == "$STUB_FAIL_REPO" ]]; then
+  printf 'CALLED SELF(fail): %s\n' "$*" >>"$STUB_LOG"
+  exit 1
+fi
+printf 'CALLED SELF: %s\n' "$*" >>"$STUB_LOG"
 EOF
   chmod +x "$tmp/self-apply-rulesets.sh"
   export GITHUB_RULESETS_APPLY_SELF_SCRIPT="$tmp/self-apply-rulesets.sh"
+  export STUB_LOG="$tmp/calls.log"
 
   expect_contains() { # $1=ラベル $2=期待する部分文字列
-    # `--` はパターンが `--owner ...` のようにハイフンで始まるとき grep に
-    # オプションと誤認させないための区切り(実測で踏んだ)。
     grep -qF -- "$2" "$STUB_LOG" 2>/dev/null || {
       echo "FAIL($1): ログに含まれない: $2" >&2
       echo "  --- log ---" >&2
@@ -195,97 +128,54 @@ EOF
   expect_fail() { # $1=ラベル $2..=コマンド
     local label="$1"
     shift
-    if "$SELF" "$@" > /dev/null 2>&1; then
+    if "$SELF" "$@" >/dev/null 2>&1; then
       echo "FAIL($label: 失敗を期待したが成功した): $*" >&2
       fails=$((fails + 1))
     fi
   }
-  expect_not_contains_for_self() { # $1=ラベル $2=含まれてはいけない部分文字列
-    grep -qF -- "$2" "$STUB_LOG" 2>/dev/null && {
-      echo "FAIL($1): ログに含まれてはいけない: $2" >&2
-      echo "  --- log ---" >&2
-      cat "$STUB_LOG" 2>/dev/null >&2 || echo "  (empty)" >&2
-      fails=$((fails + 1))
-    }
-    return 0
-  }
 
-  # 1: 型→skill マッピング + --owner/--repo 分解
-  : > "$STUB_LOG"
-  "$SELF" rust tarotene/dotfiles > /dev/null
-  expect_contains "1 rust→rust-repo-governance" "CALLED rust-repo-governance: --owner tarotene --repo dotfiles"
-
-  # 実在するリポジトリ名は使わない(bleep の denylist との衝突・
-  # public リポジトリへの意図しない参照混入を避けるため)。
-  : > "$STUB_LOG"
-  "$SELF" typst tarotene/example-typst-repo > /dev/null
-  expect_contains "1 typst→typst-repo-governance" "CALLED typst-repo-governance: --owner tarotene --repo example-typst-repo"
-
-  : > "$STUB_LOG"
-  "$SELF" astro tarotene/example-astro-site > /dev/null
-  expect_contains "1 astro→astro-site-governance" "CALLED astro-site-governance: --owner tarotene --repo example-astro-site"
-
-  : > "$STUB_LOG"
-  "$SELF" core tarotene/example-plain-repo > /dev/null
-  expect_contains "1 core→repo-governance-common" "CALLED repo-governance-common: --owner tarotene --repo example-plain-repo"
+  # 1: 単一 repo
+  : >"$STUB_LOG"
+  "$SELF" tarotene/example-repo >/dev/null
+  expect_contains "1 単一 repo" "CALLED SELF: tarotene/example-repo"
 
   # 2: 複数 repo で複数回呼ばれる
-  : > "$STUB_LOG"
-  "$SELF" rust tarotene/a tarotene/b tarotene/c > /dev/null
-  expect_contains "2 repo a" "--owner tarotene --repo a"
-  expect_contains "2 repo b" "--owner tarotene --repo b"
-  expect_contains "2 repo c" "--owner tarotene --repo c"
-  if [[ "$(wc -l < "$STUB_LOG")" -ne 3 ]]; then
-    echo "FAIL(2 呼び出し回数): 期待=3 実際=$(wc -l < "$STUB_LOG")" >&2
+  : >"$STUB_LOG"
+  "$SELF" tarotene/a tarotene/b tarotene/c >/dev/null
+  expect_contains "2 repo a" "CALLED SELF: tarotene/a"
+  expect_contains "2 repo b" "CALLED SELF: tarotene/b"
+  expect_contains "2 repo c" "CALLED SELF: tarotene/c"
+  if [[ "$(wc -l <"$STUB_LOG")" -ne 3 ]]; then
+    echo "FAIL(2 呼び出し回数): 期待=3 実際=$(wc -l <"$STUB_LOG")" >&2
     fails=$((fails + 1))
   fi
 
-  # 3: --with-review passthrough
-  : > "$STUB_LOG"
-  "$SELF" --with-review rust tarotene/dotfiles > /dev/null
-  expect_contains "3 --with-review" "--with-review"
+  # 3: --ref/--reconcile/--dry-run/--unverified-contexts の透過
+  : >"$STUB_LOG"
+  "$SELF" --ref feat --reconcile --dry-run --unverified-contexts tarotene/example-repo >/dev/null
+  expect_contains "3 --ref" "--ref feat"
+  expect_contains "3 --reconcile" "--reconcile"
+  expect_contains "3 --dry-run" "--dry-run"
+  expect_contains "3 --unverified-contexts" "--unverified-contexts"
 
-  # 3c: core 型にも --with-review が付与される(SELF 型と違い制限しない)
-  : > "$STUB_LOG"
-  "$SELF" --with-review core tarotene/example-plain-repo > /dev/null
-  expect_contains "3c core --with-review" "--with-review"
+  # 4: -- 以降の passthrough
+  : >"$STUB_LOG"
+  "$SELF" tarotene/example-repo -- --verify-sha deadbeef >/dev/null
+  expect_contains "4 -- passthrough" "--verify-sha deadbeef"
 
-  # 3b: --dry-run passthrough
-  : > "$STUB_LOG"
-  "$SELF" --dry-run rust tarotene/dotfiles > /dev/null
-  expect_contains "3b --dry-run" "--dry-run"
+  # 5: エラー系
+  expect_fail "5 owner/repo 形式違反" example-repo
+  expect_fail "5 repo 引数無し"
 
-  # 4: エラー系
-  expect_fail "4 未知の型" ghost tarotene/dotfiles
-  expect_fail "4 owner/repo 形式違反" rust dotfiles
-  expect_fail "4 repo 引数無し" rust
-  expect_fail "4 型引数無し"
-
-  # 4b: skill 不在(GITHUB_RULESETS_APPLY_SKILLS_DIR を空ディレクトリに向ける)
-  local empty_dir="$tmp/empty"
-  mkdir -p "$empty_dir"
-  GITHUB_RULESETS_APPLY_SKILLS_DIR="$empty_dir" "$SELF" rust tarotene/dotfiles > /dev/null 2>&1 &&
-    { echo "FAIL(4b skill 不在で成功した)" >&2; fails=$((fails + 1)); }
-
-  # 5: -- 以降の passthrough
-  : > "$STUB_LOG"
-  "$SELF" rust tarotene/dotfiles -- --msrv 1.90 > /dev/null
-  expect_contains "5 -- passthrough" "--msrv 1.90"
-
-  # 6: dotfiles 型 → SKILLS_DIR を経由せず自身の apply-rulesets.sh を呼ぶ(#349)
-  : > "$STUB_LOG"
-  "$SELF" dotfiles tarotene/dotfiles > /dev/null
-  expect_contains "6 dotfiles→SELF" "CALLED SELF: --owner tarotene --repo dotfiles"
-
-  # 6b: --reconcile は -- passthrough で渡す(dotfiles 型固有のフラグ)
-  : > "$STUB_LOG"
-  "$SELF" dotfiles tarotene/dotfiles -- --reconcile > /dev/null
-  expect_contains "6b --reconcile passthrough" "--reconcile"
-
-  # 6c: --with-review は dotfiles 型には付与されない(サポートしていないため)
-  : > "$STUB_LOG"
-  "$SELF" --with-review dotfiles tarotene/dotfiles > /dev/null
-  expect_not_contains_for_self "6c --with-review は dotfiles 型に付かない" "--with-review"
+  # 6: 1 repo が失敗しても他は呼ばれ、全体は exit 1
+  : >"$STUB_LOG"
+  STUB_FAIL_REPO="tarotene/b" "$SELF" tarotene/a tarotene/b tarotene/c >/dev/null 2>&1 && {
+    echo "FAIL(6 1repo失敗で全体成功した)" >&2
+    fails=$((fails + 1))
+  }
+  expect_contains "6 a は呼ばれる" "CALLED SELF: tarotene/a"
+  expect_contains "6 b は失敗として呼ばれる" "CALLED SELF(fail): tarotene/b"
+  expect_contains "6 c も呼ばれる" "CALLED SELF: tarotene/c"
 
   if ((fails > 0)); then
     echo "selftest: ${fails} 件失敗" >&2
