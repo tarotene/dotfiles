@@ -73,7 +73,7 @@ After `seed.sh --dry-run` or `seed.sh` completes, open each file that has a
 | `renovate.json` | `cargo.managerFilePatterns` — add excluded crate paths; embedded HAL package list |
 | `release-plz.toml` | `[[package]]` list — add your crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Feature flag combos in `clippy-tools` and `mcp-test`; smoke test assertions |
-| `rulesets/quality.json` | Remove `Firmware (cross-compile nRF52840-DK)` context if not using firmware; the `PR Title / PR title` context is a fixed value (the caller template pins its job's `name: PR Title`), not a best-effort guess to confirm — see `.github/workflows/pr-title.yml` (it calls tarotene/dotfiles' reusable workflow, ADR-0031; nothing in that file itself needs adjusting) |
+| `.github/rulesets/quality.json` | `copy-files.sh` already drops the `Firmware (cross-compile nRF52840-DK)` context when `--with-firmware` is not given, so this is usually nothing to adjust manually. The `PR Title / PR title` context is a fixed value (the caller template pins its job's `name: PR Title`), not a best-effort guess to confirm — see `.github/workflows/pr-title.yml` (it calls tarotene/dotfiles' reusable workflow, ADR-0031; nothing in that file itself needs adjusting) |
 
 ---
 

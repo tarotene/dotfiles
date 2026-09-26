@@ -47,10 +47,12 @@ extra = ["bootstrap.sh"]
 # 由来だが root escape hatch なので上の [[excluded]] 側。
 #
 # 59 = 上記 58 + grill-me セッション(ADR-0031 Amendment, 2026-09-26)で
-# 追加した scripts/pr-title-context-check の 1 件。scripts/pr-merge-
-# settings-check(#57 の追加)と同じ理由 — github-audit の
-# fetch_run_job_names() を source して再利用する設計上、判定ロジックの
-# 単一正本を保つために bash のまま追加した。
+# 追加した scripts/pr-title-context-check の 1 件(件数は同じセッションの
+# 別 stacked PR で scripts/rulesets-context-check に改称・一般化 —
+# ADR-0000-rulesets-declaration-in-repo。scripts/pr-merge-settings-check
+# (#57 の追加)と同じ理由 — github-audit の fetch_head_sha_job_names() を
+# source して再利用する設計上、判定ロジックの単一正本を保つために bash の
+# まま追加した。
 max_remaining = 59
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
@@ -85,7 +87,7 @@ path = "scripts/pr-merge-settings-check"
 stage = "4a"
 
 [[target]]
-path = "scripts/pr-title-context-check"
+path = "scripts/rulesets-context-check"
 stage = "4a"
 
 [[target]]

@@ -14,6 +14,7 @@ PACKAGE_VERSION="0.1.0"
 SITE_BASE=""
 PAGES_URL=""
 DEST=""
+WITH_REVIEW=false
 DRY_RUN=false
 SKIP_RULESETS=false
 SKIP_FILES=false
@@ -36,6 +37,9 @@ Options:
   --package-version VER    Current package.json version for manifest [default: 0.1.0]
   --site-base PATH         Astro base path, e.g. /my-site (docs only) [default: ""]
   --pages-url URL          Deployed Pages URL (docs only) [default: ""]
+  --with-review            Also seed the opt-in Review ruleset declaration
+                            (Copilot code review + required conversation
+                            resolution, ADR-0021 in tarotene/dotfiles)
   --skip-rulesets          Skip Ruleset creation via gh api
   --skip-files             Skip template file copy
   --skip-settings          Skip repository settings update
@@ -68,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --site-base)        SITE_BASE="$2";         shift 2 ;;
     --pages-url)        PAGES_URL="$2";         shift 2 ;;
     --dest)             DEST="$2";              shift 2 ;;
+    --with-review)      WITH_REVIEW=true;       shift ;;
     --skip-rulesets)    SKIP_RULESETS=true;     shift ;;
     --skip-files)       SKIP_FILES=true;        shift ;;
     --skip-settings)    SKIP_SETTINGS=true;     shift ;;
@@ -118,7 +123,8 @@ COMMON_ARGS=(
   --site-base "$SITE_BASE"
   --pages-url "$PAGES_URL"
 )
-[[ "$DRY_RUN" == "true" ]] && COMMON_ARGS+=(--dry-run)
+[[ "$WITH_REVIEW" == "true" ]] && COMMON_ARGS+=(--with-review)
+[[ "$DRY_RUN" == "true" ]]     && COMMON_ARGS+=(--dry-run)
 
 # Step 1: Copy template files
 if [[ "$SKIP_FILES" == "false" ]]; then
@@ -147,10 +153,22 @@ else
 fi
 
 # Step 4: Create GitHub Rulesets
+#
+# ADR-0000-rulesets-declaration-in-repo: required context の正本は対象
+# リポジトリ自身の .github/rulesets/*.json(Step 1 で既にコピー済み)で
+# あり、apply はどのリポジトリに対しても同じ汎用スクリプトで済む。まだ
+# CI が 1 回も走っていないため --unverified-contexts を明示する。
 if [[ "$SKIP_RULESETS" == "false" ]]; then
   echo ""
   echo "── Step 4/4: Create GitHub Rulesets ────────────────────"
-  bash "$SCRIPT_DIR/apply-rulesets.sh" "${COMMON_ARGS[@]}"
+  APPLY_RULESETS_BIN="${GOVERNANCE_APPLY_RULESETS_BIN:-apply-rulesets.sh}"
+  if ! command -v "$APPLY_RULESETS_BIN" >/dev/null 2>&1; then
+    echo "ERROR: '$APPLY_RULESETS_BIN' not found on PATH (tarotene/dotfiles home-manager が ~/.local/bin に配備)"
+    exit 1
+  fi
+  APPLY_ARGS=("$OWNER/$REPO" --from-dir "$DEST/.github/rulesets" --unverified-contexts)
+  [[ "$DRY_RUN" == "true" ]] && APPLY_ARGS+=(--dry-run)
+  "$APPLY_RULESETS_BIN" "${APPLY_ARGS[@]}"
 else
   echo "── Step 4/4: (skipped) GitHub Rulesets"
 fi
@@ -169,6 +187,9 @@ echo "  3. Run: git -C $DEST config --local core.hooksPath .githooks"
 echo "  4. Review all '# ADJUST:' comments in copied files."
 echo "  5. Enable GitHub Pages: Settings → Pages → Source: GitHub Actions."
 echo "  6. Commit all files and push to trigger CI."
-echo "  7. (Optional) Create GitHub App for release-please to run full CI"
+echo "  7. Once CI has run once on that first PR, re-run:"
+echo "     apply-rulesets.sh $OWNER/$REPO --reconcile"
+echo "     to switch from --unverified-contexts to a verified apply."
+echo "  8. (Optional) Create GitHub App for release-please to run full CI"
 echo "     on release PRs — see reference/manual-steps.md."
 echo "════════════════════════════════════════════════════════"

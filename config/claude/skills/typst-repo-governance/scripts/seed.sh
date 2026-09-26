@@ -12,6 +12,7 @@ TYPST_VERSION="0.14.2"
 MIN_TYPST="0.14.0"
 ATS_EMAIL=""
 DEST=""
+WITH_REVIEW=false
 DRY_RUN=false
 SKIP_RULESETS=false
 SKIP_FILES=false
@@ -32,6 +33,9 @@ Options:
   --default-branch BRANCH   Default branch name [default: main]
   --typst-version VERSION   Typst version to pin in CI (e.g. 0.14.2) [default: 0.14.2]
   --min-typst VERSION       Minimum supported Typst version (e.g. 0.14.0) [default: 0.14.0]
+  --with-review             Also seed the opt-in Review ruleset declaration
+                             (Copilot code review + required conversation
+                             resolution, ADR-0021 in tarotene/dotfiles)
   --skip-rulesets           Skip Ruleset creation via gh api
   --skip-files              Skip template file copy
   --skip-settings           Skip repository settings update
@@ -64,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --min-typst)       MIN_TYPST="$2";       shift 2 ;;
     --ats-email)       ATS_EMAIL="$2";       shift 2 ;;
     --dest)            DEST="$2";            shift 2 ;;
+    --with-review)     WITH_REVIEW=true;     shift ;;
     --skip-rulesets)   SKIP_RULESETS=true;   shift ;;
     --skip-files)      SKIP_FILES=true;      shift ;;
     --skip-settings)   SKIP_SETTINGS=true;   shift ;;
@@ -110,7 +115,8 @@ COMMON_ARGS=(
   --min-typst "$MIN_TYPST"
   --ats-email "$ATS_EMAIL"
 )
-[[ "$DRY_RUN" == "true" ]] && COMMON_ARGS+=(--dry-run)
+[[ "$WITH_REVIEW" == "true" ]] && COMMON_ARGS+=(--with-review)
+[[ "$DRY_RUN" == "true" ]]     && COMMON_ARGS+=(--dry-run)
 
 # Step 1: Copy template files
 if [[ "$SKIP_FILES" == "false" ]]; then
@@ -139,10 +145,22 @@ else
 fi
 
 # Step 4: Create GitHub Rulesets
+#
+# ADR-0000-rulesets-declaration-in-repo: required context の正本は対象
+# リポジトリ自身の .github/rulesets/*.json(Step 1 で既にコピー済み)で
+# あり、apply はどのリポジトリに対しても同じ汎用スクリプトで済む。まだ
+# CI が 1 回も走っていないため --unverified-contexts を明示する。
 if [[ "$SKIP_RULESETS" == "false" ]]; then
   echo ""
   echo "── Step 4/4: Create GitHub Rulesets ────────────────────"
-  bash "$SCRIPT_DIR/apply-rulesets.sh" "${COMMON_ARGS[@]}"
+  APPLY_RULESETS_BIN="${GOVERNANCE_APPLY_RULESETS_BIN:-apply-rulesets.sh}"
+  if ! command -v "$APPLY_RULESETS_BIN" >/dev/null 2>&1; then
+    echo "ERROR: '$APPLY_RULESETS_BIN' not found on PATH (tarotene/dotfiles home-manager が ~/.local/bin に配備)"
+    exit 1
+  fi
+  APPLY_ARGS=("$OWNER/$REPO" --from-dir "$DEST/.github/rulesets" --unverified-contexts)
+  [[ "$DRY_RUN" == "true" ]] && APPLY_ARGS+=(--dry-run)
+  "$APPLY_RULESETS_BIN" "${APPLY_ARGS[@]}"
 else
   echo "── Step 4/4: (skipped) GitHub Rulesets"
 fi
@@ -160,5 +178,8 @@ echo "  2. Install Mend Renovate GitHub App on $OWNER/$REPO."
 echo "  3. Set up commit signing (GPG or SSH) for 'required_signatures'."
 echo "  4. Run: git -C $DEST config --local core.hooksPath .githooks"
 echo "  5. Commit files, push branch, open PR — all 5 checks should go green."
-echo "  6. After merge: apply-rulesets.sh and apply-repo-settings.sh."
+echo "  6. Once CI has run once on that first PR, re-run:"
+echo "     apply-rulesets.sh $OWNER/$REPO --reconcile"
+echo "     to switch from --unverified-contexts to a verified apply, then"
+echo "     also run apply-repo-settings.sh."
 echo "════════════════════════════════════════════════════════"

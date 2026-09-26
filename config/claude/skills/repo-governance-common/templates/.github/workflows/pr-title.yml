@@ -25,9 +25,11 @@ name: PR Title
 # "PR Title / PR title" that quality.json requires, so no manual
 # confirmation against the Checks tab on the first PR is needed anymore.
 # `tarotene/dotfiles/.github/workflows/pr-title.yml`'s own last step
-# (`scripts/pr-title-context-check`) re-verifies this against the live
-# branch ruleset on every run, so a future mismatch fails loudly instead of
-# leaving the required check permanently "Expected".
+# (`scripts/rulesets-context-check`) re-verifies this — and every other
+# required_status_checks context this repository declares in
+# `.github/rulesets/quality.json` (ADR-0000-rulesets-declaration-in-repo)
+# — against the live branch ruleset on every run, so a future mismatch
+# fails loudly instead of leaving a required check permanently "Expected".
 #
 # As a side effect: since this check only fires on pull_request events, it
 # will never be reported for direct pushes to __DEFAULT_BRANCH__ — those are

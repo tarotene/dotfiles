@@ -266,7 +266,7 @@ GitHub より緩くても厳しくても、どちらも嘘になる。
 ### required job が job-level `if:` で skipped になる場合
 
 `nix.yml` の `build vega`/`build arcturus`/`build altair`/`rust workspace`
-は `rulesets/quality.json` 上 required だが、`stack-position` gate job が
+は `.github/rulesets/quality.json` 上 required だが、`stack-position` gate job が
 job-level `if:` で skip することがある(中間段は ADR-468、変更 path が
 build/rust の入力に触れない PR は Amendment 2026-09-26、
 `docs/adr/468-stack-aware-heavy-ci.md`)。この skip は `gh pr checks

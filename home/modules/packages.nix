@@ -268,29 +268,25 @@
     executable = true;
   };
 
-  # github-rulesets-apply: seeds the standard Security/Quality/Workflow
-  # rulesets (ADR-0021 core layer) onto one or more repositories by driving
-  # the matching *-repo-governance skill's apply-rulesets.sh (#153). Owns no
-  # ruleset logic itself — a thin dispatcher over the skills' rulesets/*.json.
-  # Manual command, no timer.
+  # github-rulesets-apply(ADR-0000-rulesets-declaration-in-repo): a thin
+  # multi-repo loop over apply-rulesets.sh — it owns no ruleset logic and no
+  # longer takes a repository "type" (rust/typst/astro/core/dotfiles); the
+  # declaration lives in each target repository's own
+  # `.github/rulesets/*.json`. Manual command, no timer.
   home.file.".local/bin/github-rulesets-apply" = {
     source = ../../scripts/github-rulesets-apply;
     executable = true;
   };
 
-  # apply-rulesets.sh(#349)自身の PATH 配備(#417)。配備前は
-  # `github-rulesets-apply dotfiles ...` が呼ぶ既定 self-apply script
-  # ($SCRIPT_DIR/apply-rulesets.sh)が存在せず必ず失敗していた。
-  # rulesets/*.json(下の xdg.configFile)も併せて配備しないと、
-  # デプロイ先には REPO_ROOT/rulesets が存在しないため RULESETS_DIR の
-  # 解決先が無くなる(スクリプト側の 3 段フォールバックに対応)。
+  # apply-rulesets.sh(ADR-0000-rulesets-declaration-in-repo)自身の PATH
+  # 配備。宣言(.github/rulesets/*.json)は remote(contents API)または
+  # --from-dir から読むため、この repo 自身の宣言を別途 xdg.configFile で
+  # 配備する必要はもう無い(旧: RULESETS_DIR の 3 段フォールバック・
+  # dotfiles/rulesets/*.json の複写。単一正本 > 複写+同期)。
   home.file.".local/bin/apply-rulesets.sh" = {
     source = ../../scripts/apply-rulesets.sh;
     executable = true;
   };
-  xdg.configFile."dotfiles/rulesets/security.json".source = ../../rulesets/security.json;
-  xdg.configFile."dotfiles/rulesets/quality.json".source = ../../rulesets/quality.json;
-  xdg.configFile."dotfiles/rulesets/workflow.json".source = ../../rulesets/workflow.json;
 
   # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
   # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that

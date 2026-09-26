@@ -321,13 +321,30 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 サイクルトピック(`lifecycle-timeboxed` / `lifecycle-study`)を選んだ場合は
 `--add-topic` にもう 1 つ追加する(ADR-0026、`naming-*` とは独立に 0〜1 個)。
 
-**新規作成の場合、続けて標準 ruleset を播く**(#153)。`gh` 自体には
-`repo create` 直後に走るフック機構が無いため、この手順が事実上の自動適用に
-なる。リポジトリの型が rust/typst/astro のいずれかで該当 governance skill を
-持つ場合:
+**新規作成の場合、続けて標準 governance を播く**(#153、
+ADR-0000-rulesets-declaration-in-repo)。`gh` 自体には `repo create` 直後に
+走るフック機構が無いため、この手順が事実上の自動適用になる。required
+status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
+一本化されている(`apply-rulesets.sh` は型を引数に取らない)。リポジトリの
+型が rust/typst/astro のいずれかで該当 governance skill を持つ場合:
 
 ```bash
-github-rulesets-apply <rust|typst|astro> <owner>/<repo>
+~/.claude/skills/<rust-repo-governance|typst-repo-governance|astro-site-governance>/scripts/seed.sh \
+  --owner <owner> --repo <repo> --dest <ローカルの checkout パス> [エコシステム固有オプション]
+```
+
+(`seed.sh` が template ファイルのコピーと `.github/rulesets/*.json` の
+apply を両方行う。まだ CI が 1 度も走っていないため apply は
+`--unverified-contexts` で行われる — CI が 1 回走った後、
+`apply-rulesets.sh <owner>/<repo> --reconcile` で検証付きに切り替える。)
+
+いずれの governance skill にも属さない場合(`core` 型、#337)は:
+
+```bash
+~/.claude/skills/repo-governance-common/scripts/copy-files.sh \
+  --owner <owner> --repo <repo> --dest <ローカルの checkout パス>
+# commit + push してから:
+apply-rulesets.sh <owner>/<repo> --from-dir <ローカルの checkout パス>/.github/rulesets --unverified-contexts
 ```
 
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり

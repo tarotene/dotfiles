@@ -21,10 +21,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dest) DEST="$2"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
-    # The one ecosystem flag that takes no value (rust's manual-invocation
-    # firmware addin, never sent by seed.sh's own COMMON_ARGS — kept as an
-    # explicit exception so it isn't mis-parsed as a value-taking flag).
+    # The flags that take no value (rust's manual-invocation firmware
+    # addin, and ADR-0000-rulesets-declaration-in-repo's shared
+    # --with-review) — kept as explicit exceptions so they aren't
+    # mis-parsed as value-taking flags by the `--*` catch-all below.
     --with-firmware) shift ;;
+    --with-review) shift ;;
     # Every other ecosystem-specific flag seed.sh passes through from its
     # own COMMON_ARGS is a `--flag value` pair (rust's --msrv/--msrv-full/
     # --canonical-crate/--cli-crate, astro's --node-version/--package-name/

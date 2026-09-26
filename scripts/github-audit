@@ -254,8 +254,9 @@ fetch_repo_secrets() { # $1=repo -> JSON array of secret names, or [] on failure
 # 宣言値)と、実測した check 名(GitHub が run 時に付ける ground truth)を
 # 突き合わせるのに使う — #337 で両者が一致しないまま播かれ、required check
 # が永久に "Expected" のまま merge を止めた事故の再発防止(judge_titles()
-# の pr-title-context-mismatch)。scripts/pr-title-context-check も同じ
-# ヘルパーを source して再利用する(ADR-0035 D1)。
+# の pr-title-context-mismatch)。scripts/rulesets-context-check(旧
+# pr-title-context-check の一般化版、ADR-0000-rulesets-declaration-in-repo)
+# も同じヘルパーを source して再利用する(ADR-0035 D1)。
 fetch_run_job_names() { # $1=repo $2=run_id -> JSON array of job names, [] on failure
   "$GH_BIN" api "repos/$OWNER/$1/actions/runs/$2/jobs" --jq '[.jobs[].name]' 2>/dev/null || printf '[]'
 }

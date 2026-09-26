@@ -59,7 +59,7 @@ jobs:
   #     intermediate stage whose synthesized tree gets re-checked later?
   #   - path axis (Amendment 2026-09-26): did the PR actually touch a file
   #     build-host/rust reads? home-manager only *copies* config/**,
-  #     scripts/**, rulesets/**, packages/** via `home.file`/`xdg.configFile`
+  #     scripts/**, packages/** via `home.file`/`xdg.configFile`
   #     `source =` (no `runCommand`/`writeShellApplication` processes them at
   #     build time other than nixgl.nix's wrapper) — a change confined to
   #     those trees cannot break activationPackage in a way `nix flake check
@@ -98,7 +98,7 @@ jobs:
           # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
           # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも
           # 載っていないものを「未分類」として検出するための宣言。
-          COPY_ONLY: "config/ scripts/ rulesets/ packages/"
+          COPY_ONLY: "config/ scripts/ packages/"
         run: |
           set -uo pipefail
           # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル

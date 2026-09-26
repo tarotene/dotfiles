@@ -94,5 +94,5 @@ If you want Release PRs to trigger full CI:
        token: ${{ steps.app-token.outputs.token }}
        ...
    ```
-4. Remove the admin `bypass_actors` entry from `rulesets/quality.json` if
-   you want release PRs to be enforced like any other PR.
+4. Remove the admin `bypass_actors` entry from `.github/rulesets/quality.json`
+   if you want release PRs to be enforced like any other PR.

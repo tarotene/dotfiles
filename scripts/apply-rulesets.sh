@@ -423,7 +423,11 @@ if [[ -f "$dir/fail-$key" ]]; then
 fi
 [[ -f "$fixtures/$key.json" ]] || { echo "no fixture for: $key" >&2; exit 1; }
 if [[ -n "$jqfilter" ]]; then
-  jq -c "$jqfilter" "$fixtures/$key.json"
+  # 実 `gh api --jq` は top-level scalar(文字列等)を jq -r 相当の raw
+  # output で返す(go-gh の EvaluateFormatted / jsonScalarToString、
+  # 2026-09-26 取得)。array/object はそのまま JSON エンコードされる —
+  # `jq -rc` が同じ挙動(scalar は raw、それ以外は compact JSON)。
+  jq -rc "$jqfilter" "$fixtures/$key.json"
 else
   cat "$fixtures/$key.json"
 fi
@@ -483,6 +487,23 @@ STUB
   expect_contains "1 Security POST" "POST repos/tarotene/x/rulesets Security"
   expect_contains "1 Quality POST" "POST repos/tarotene/x/rulesets Quality"
   expect_contains "1 Workflow POST" "POST repos/tarotene/x/rulesets Workflow"
+
+  # 1c) --from-dir 無し(remote fetch 経路): contents API 一覧 + 各ファイル
+  #     取得で --from-dir と同じ結果になることを確認する(load_declarations
+  #     の gh api --jq '.content' は top-level scalar を raw output で返す
+  #     ため、選択的に -r 相当の解釈をスタブ側でも正しく再現できている
+  #     ことを検証する回帰テスト)。
+  printf '[{"name":"security.json"},{"name":"quality.json"},{"name":"workflow.json"}]' \
+    >"$tmp/fixtures/repos_tarotene_x_contents_.github_rulesets.json"
+  local rname
+  for rname in security quality workflow; do
+    printf '{"content":"%s"}' "$(base64 -w0 <"$tmp/decl/$rname.json")" \
+      >"$tmp/fixtures/repos_tarotene_x_contents_.github_rulesets_${rname}.json.json"
+  done
+  : >"$STUB_LOG"
+  rc=0; main tarotene/x --ref main --verify-sha abc >/dev/null 2>"$tmp/err1c.log" || rc=$?
+  check "1c remote fetch rc=0" 0 "$rc"
+  expect_contains "1c remote Quality POST" "POST repos/tarotene/x/rulesets Quality"
 
   # 2) 既存 Quality あり・--reconcile 無し → skip / 有り → PUT
   printf '[{"id": 1, "name": "Quality", "target": "branch"}]' >"$tmp/fixtures/repos_tarotene_x_rulesets.json"

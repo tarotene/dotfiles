@@ -87,13 +87,18 @@ description・topics・settings フィールド・ファイルツリー・open I
     のいずれか)が無い(ADR-0031 2026-09-26 Amendment で完全一致化。旧・
     接尾辞後方一致の判定は #337 の事故 — 呼び出し側 job に `name:` が無い
     テンプレートの実際の check 名 `"check / PR title"` を誤って ok と
-    判定し続けていた — を受けて廃止した)。対応する `*-repo-governance`
-    skill(rust/typst/astro)または `core`(該当エコシステムが無いリポジトリ、
-    `config/claude/skills/repo-governance-common/scripts/apply-rulesets.sh`)
-    の `apply-rulesets.sh --reconcile` を適用する提案として表に書く
-    (`--reconcile` が無いと既存 ruleset は skip されて追加されない、#337
-    で判明)。**dotfiles 自身と同じ手動 `gh api PUT` は使わない** — 3 skill
-    + core の `apply-rulesets.sh` が持つ `--reconcile` に統一する。
+    判定し続けていた — を受けて廃止した)。対象リポジトリに
+    `.github/rulesets/quality.json` 宣言が無ければ、対応する
+    `*-repo-governance` skill(rust/typst/astro)の `copy-files.sh` または
+    `repo-governance-common` の `copy-files.sh`(該当エコシステムが無い
+    リポジトリ、`core` 型)で宣言を播く提案を先に書く
+    (ADR-0000-rulesets-declaration-in-repo、`rulesets-declaration-missing`
+    が該当)。宣言は既にあり live だけが古い場合は、
+    `apply-rulesets.sh <owner>/<repo> --reconcile` を適用する提案として
+    表に書く(`--reconcile` が無いと既存 ruleset は skip されて追加されない、
+    #337 で判明。型を問わず同じ汎用スクリプト 1 本)。**dotfiles 自身と
+    同じ手動 `gh api PUT` は使わない** — `crates/rulesets-write-guard` が
+    deny する。
   - `pr-title-context-mismatch` — ruleset の required context 文字列は
     正しいが、最新の `pr-title.yml` run が実際に報告した job 名と一致しない
     (ground-truth 突き合わせ、ADR-0031 2026-09-26 Amendment)。原因は
@@ -141,14 +146,24 @@ description・topics・settings フィールド・ファイルツリー・open I
   `<dir>/README.md` 数> 件新設」のように定量的に書く。
 - rulesets ドメインは `review_layer`(ADR-0021)を読んで扱いを分ける。
   `missing` のコア層項目(`deletion`/`pull_request.allowed_merge_methods`
-  等)は対象の `*-repo-governance` スキルの `apply-rulesets.sh`(デフォルト
-  引数、コア 3 ファイルのみ)適用提案として表に書く。`review_layer=
-  partial-drift`(`missing` に `review_layer.*` が立つ)は、`--with-review`
-  で完備させるか `--remove-review` で剥がすかの二択として表に書き、
-  低確信フラグ相当として**起草せず人間裁定に回す**(片方だけ入った経緯が
-  読み取れないため)。`review_layer=absent` は drift ではないので表に
-  出さない — 既存の低速シグナル(`ungoverned`)と同様、レビュー層は
-  opt-in であって欠落ではない。
+  等)は `apply-rulesets.sh <owner>/<repo> --reconcile`(型を問わず同じ
+  汎用スクリプト、宣言済みのコア 3 ファイルのみ)適用提案として表に書く。
+  `review_layer=partial-drift`(`missing` に `review_layer.*` が立つ)は、
+  対応する skill の `copy-files.sh --with-review` で `review.json` 宣言を
+  足してから apply するか、`apply-rulesets.sh <owner>/<repo>
+  --delete-ruleset Review`(宣言から `review.json` を先に外しておく必要
+  がある)で剥がすかの二択として表に書き、低確信フラグ相当として
+  **起草せず人間裁定に回す**(片方だけ入った経緯が読み取れないため)。
+  `review_layer=absent` は drift ではないので表に出さない — 既存の低速
+  シグナル(`ungoverned`)と同様、レビュー層は opt-in であって欠落ではない。
+  `rulesets-declaration-missing`(宣言そのものが無い)・
+  `rulesets-declaration-drift:<name>`(宣言 ≠ live)・
+  `required-context-unreportable:<context>`(live の context がこの
+  リポジトリのどの job も報告しない)は
+  ADR-0000-rulesets-declaration-in-repo で追加された機械判定 — それぞれ
+  「該当 skill の `copy-files.sh` で宣言を播く」「`apply-rulesets.sh
+  --reconcile` で live を宣言に合わせる」「宣言または対象リポジトリの
+  workflow のどちらを直すべきかを人間裁定に回す」提案として表に書く。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
