@@ -16,6 +16,15 @@ Google Calendar の読み書きも、候補日程一覧の取得元固有の読�
 として分離している — 判定コア(`judge` サブコマンド)は常に年月日確定
 済みの構造化 JSON だけを受け取る。
 
+裁定後の確定化(候補日程一覧の相手側が最終的に選んだ枠を Google
+Calendar に反映する)は `finalize` サブコマンドが担う。確定枠の集合と
+既存の自マーカー集合(`judge`/`build_plan` が作った `【調整中】...` の
+一覧)を突き合わせ、同日かつ区間が重なる自マーカーを `update`、対応する
+自マーカーの無い確定枠を `create`、どの確定枠とも重ならない自マーカーを
+`delete` に振り分けた計画 JSON を出す。自マーカーでないイベント(接頭辞
+不一致、または候補日程一覧の URL が説明欄に無いもの)は判定対象に含めず
+一切変更しない。
+
 標準ライブラリのみで動く(python3.11+、tomllib を使うため)。
 
 設定ファイル(TOML)のスキーマ:
@@ -378,6 +387,158 @@ def render_table(candidates: list[Candidate], judgments: list[tuple[str, str]]) 
     return summary + "\n\n" + "\n".join(lines)
 
 
+@dataclass
+class DecidedSlot:
+    day: date
+    slot_name: str
+    start: datetime
+    end: datetime
+
+
+@dataclass
+class OwnMarker:
+    id: str
+    start: datetime
+    end: datetime
+    calendar: str
+    title: str
+
+
+def resolve_decided(items: list[dict], config: Config) -> list[DecidedSlot]:
+    """確定枠の構造化 JSON(`judge` の `--candidates` と同じ入力契約)を、
+    コマ区間まで解決した `DecidedSlot` のリストに変換する。任意の開始・
+    終了時刻は受け付けず、必ずコマ(config.slots)の区間に丸める —
+    `judge` の候補パースと同じ閉語彙の入力契約を再利用する。"""
+    candidates = parse_structured_candidates(items)
+    out = []
+    for c in candidates:
+        slot_name = match_slot(c.slot_time, config.slots)
+        slot = config.slots[slot_name]
+        start_dt = datetime.combine(c.day, slot.start, config.tz)
+        end_dt = datetime.combine(c.day, slot.end, config.tz)
+        out.append(DecidedSlot(c.day, slot_name, start_dt, end_dt))
+    return out
+
+
+def parse_own_markers(markers_data: dict, config: Config, source_url: str) -> list[OwnMarker]:
+    """list_events の生レスポンス(`{"events": [...]}`)から、このスキルが
+    作った自マーカー(件名が `marker_prefix` で始まり、`source_url` が
+    説明欄に含まれるもの)だけを抽出する。`classify_events` の自マーカー
+    識別条件と同じ判定を使う — 接頭辞不一致・URL 不一致のイベントは
+    finalize の対象に含めず、一切変更しない。"""
+    out = []
+    for ev in markers_data.get("events", []):
+        if ev.get("status") == "cancelled":
+            continue
+        title = ev.get("summary", "") or ""
+        if not title.startswith(config.marker_prefix):
+            continue
+        description = ev.get("description", "") or ""
+        if source_url and source_url not in description:
+            continue
+        start = ev.get("start", {})
+        end = ev.get("end", {})
+        if "dateTime" not in start or "dateTime" not in end:
+            continue  # 終日の自マーカーは finalize の対象外
+        s = datetime.fromisoformat(start["dateTime"])
+        e = datetime.fromisoformat(end["dateTime"])
+        out.append(OwnMarker(id=ev["id"], start=s, end=e, calendar=config.marker_calendar, title=title))
+    return out
+
+
+def build_finalize_plan(
+    decided: list[DecidedSlot],
+    own_markers: list[OwnMarker],
+    event_title: str,
+    marker_calendar: str,
+    source_url: str,
+    today: date,
+    venue: str,
+) -> tuple[dict, list[tuple[DecidedSlot, str, OwnMarker | None]]]:
+    description_lines = [
+        f"場所: {venue}({today.isoformat()} 時点)",
+        f"裁定: {today.isoformat()}(主催者側で確定)",
+    ]
+    if source_url:
+        description_lines.append(f"候補日程一覧: {source_url}")
+    description = "\n".join(description_lines)
+
+    pool = list(own_markers)
+    updates: list[dict] = []
+    creates: list[dict] = []
+    rows: list[tuple[DecidedSlot, str, OwnMarker | None]] = []
+
+    for d in decided:
+        match = next((m for m in pool if m.start < d.end and m.end > d.start), None)
+        if match is not None:
+            pool.remove(match)
+            updates.append(
+                {
+                    "id": match.id,
+                    "calendar": match.calendar,
+                    "title": event_title,
+                    "start": d.start.isoformat(),
+                    "end": d.end.isoformat(),
+                    "description": description,
+                }
+            )
+            rows.append((d, "update", match))
+        else:
+            creates.append(
+                {
+                    "calendar": marker_calendar,
+                    "title": event_title,
+                    "start": d.start.isoformat(),
+                    "end": d.end.isoformat(),
+                    "description": description,
+                }
+            )
+            rows.append((d, "create", None))
+
+    deletes = [
+        {"id": m.id, "calendar": m.calendar, "start": m.start.isoformat(), "end": m.end.isoformat(), "title": m.title}
+        for m in pool
+    ]
+
+    plan = {"update": updates, "create": creates, "delete": deletes}
+    return plan, rows
+
+
+def render_finalize_table(rows: list[tuple[DecidedSlot, str, OwnMarker | None]], deletes: list[dict]) -> str:
+    lines = ["| 裁定枠 | 操作 | 対象マーカー |", "|---|---|---|"]
+    for d, op, marker in rows:
+        cell = "-" if marker is None else f"{marker.title} {fmt_hm(marker.start)}–{fmt_hm(marker.end)}"
+        lines.append(f"| {d.day.isoformat()} {fmt_hm(d.start)}–{fmt_hm(d.end)}({d.slot_name}) | {op} | {cell} |")
+    for m in deletes:
+        lines.append(f"| — | delete | {m['title']} {m['start']}–{m['end']} |")
+    summary = f"update:{sum(1 for _, op, _ in rows if op == 'update')} create:{sum(1 for _, op, _ in rows if op == 'create')} delete:{len(deletes)}"
+    return summary + "\n\n" + "\n".join(lines)
+
+
+def run_finalize(
+    config_path: Path,
+    decided_path: Path,
+    markers_path: Path,
+    event_title: str,
+    source_url: str,
+    today_str: str,
+    venue: str,
+    out_plan: Path | None,
+) -> str:
+    config = Config.load(config_path)
+    decided = resolve_decided(json.loads(decided_path.read_text(encoding="utf-8")), config)
+    markers_data = json.loads(markers_path.read_text(encoding="utf-8"))
+    own_markers = parse_own_markers(markers_data, config, source_url)
+    today = date.fromisoformat(today_str)
+
+    plan, rows = build_finalize_plan(decided, own_markers, event_title, config.marker_calendar, source_url, today, venue)
+    if out_plan:
+        out_plan.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    table = render_finalize_table(rows, plan["delete"])
+    return table + "\n\n---\nplan.json:\n" + json.dumps(plan, ensure_ascii=False, indent=2)
+
+
 def run(
     config_path: Path,
     candidates_path: Path,
@@ -545,7 +706,53 @@ def run_selftest() -> None:
         except SlotHitError:
             pass
 
-    print("OK: slot-hit.py 自己検査 11 項目すべて通過")
+    # 12) finalize: 一致マーカーの update / 候補外枠の create / 時刻ズレの
+    # update / 非対応マーカーの delete / 他イベント(接頭辞不一致)は
+    # 一切触らない、の5点を1シナリオでまとめて検証する。
+    url2 = "https://chouseisan.com/s?h=example"
+    m1 = _ev_timed("2026-11-15T13:00:00+09:00", "2026-11-15T17:00:00+09:00", "【調整中】Oboe concerto合わせ", description=f"候補日程一覧: {url2}")
+    m1["id"] = "m1-match"
+    m2 = _ev_timed("2026-12-19T19:00:00+09:00", "2026-12-19T21:00:00+09:00", "【調整中】Oboe concerto合わせ", description=f"候補日程一覧: {url2}")
+    m2["id"] = "m2-shifted"
+    m3 = _ev_timed("2026-10-18T18:00:00+09:00", "2026-10-18T21:00:00+09:00", "【調整中】Oboe concerto合わせ", description=f"候補日程一覧: {url2}")
+    m3["id"] = "m3-unmatched"
+    m4 = _ev_timed("2026-11-15T09:00:00+09:00", "2026-11-15T12:00:00+09:00", "別件の予定", description="関係ない説明")
+    m4["id"] = "m4-foreign"
+    markers_data = {"events": [m1, m2, m3, m4]}
+
+    decided_items = [
+        {"date": "2026-11-15", "time": "13:00"},  # m1 と一致 -> update
+        {"date": "2026-12-19", "time": "18:00"},  # m2(19:00開始)と区間重複 -> update(18:00開始に書き換え)
+        {"date": "2026-12-05", "time": "18:00"},  # 対応マーカー無し -> create
+    ]
+    decided = resolve_decided(decided_items, config)
+    own_markers = parse_own_markers(markers_data, config, url2)
+    assert {m.id for m in own_markers} == {"m1-match", "m2-shifted", "m3-unmatched"}, own_markers  # m4 は接頭辞不一致で対象外
+
+    plan, rows = build_finalize_plan(decided, own_markers, "Oboe concerto合わせ", config.marker_calendar, url2, date(2026, 9, 26), "未定")
+
+    update_ids = {u["id"] for u in plan["update"]}
+    assert update_ids == {"m1-match", "m2-shifted"}, update_ids
+    m2_update = next(u for u in plan["update"] if u["id"] == "m2-shifted")
+    assert m2_update["start"] == "2026-12-19T18:00:00+09:00", m2_update["start"]  # 時刻ズレを確定枠側に合わせる
+    assert m2_update["title"] == "Oboe concerto合わせ", m2_update["title"]  # 接頭辞・[△] を落とす
+
+    assert len(plan["create"]) == 1, plan["create"]
+    assert plan["create"][0]["start"] == "2026-12-05T18:00:00+09:00", plan["create"][0]
+
+    delete_ids = {d["id"] for d in plan["delete"]}
+    assert delete_ids == {"m3-unmatched"}, delete_ids  # 対応する確定枠が無いマーカーだけ delete
+
+    for entry in plan["update"] + plan["create"]:
+        assert "場所: 未定(2026-09-26 時点)" in entry["description"]
+        assert "裁定: 2026-09-26(主催者側で確定)" in entry["description"]
+        assert url2 in entry["description"]
+
+    assert not any(e["id"] == "m4-foreign" for e in plan["update"]), "他イベントは touch しない"
+    table = render_finalize_table(rows, plan["delete"])
+    assert "update:2" in table and "create:1" in table
+
+    print("OK: slot-hit.py 自己検査 12 項目すべて通過")
 
 
 def main() -> int:
@@ -569,6 +776,19 @@ def main() -> int:
     infer_p.add_argument("--day", type=int, required=True)
     infer_p.add_argument("--weekday", type=str, required=True, choices=list(WEEKDAY_JA))
     infer_p.add_argument("--today", type=str, required=True, help="YYYY-MM-DD")
+
+    finalize_p = sub.add_parser(
+        "finalize",
+        help="裁定結果を反映する: 確定枠 × 既存の自マーカー → update/create/delete 計画を出す",
+    )
+    finalize_p.add_argument("--config", type=Path, required=True)
+    finalize_p.add_argument("--decided", type=Path, required=True, help="構造化 JSON: [{\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}, ...](確定枠)")
+    finalize_p.add_argument("--markers", type=Path, required=True, help="list_events の生レスポンス JSON(自マーカーを含む一覧)")
+    finalize_p.add_argument("--event-title", type=str, required=True, help="確定予定の件名(接頭辞・[△] は付けない)")
+    finalize_p.add_argument("--source-url", type=str, default="", help="候補日程一覧の URL(自マーカー識別・説明欄記載に使用)")
+    finalize_p.add_argument("--today", type=str, required=True, help="YYYY-MM-DD(裁定日)")
+    finalize_p.add_argument("--venue", type=str, default="未定", help="場所(未確定なら既定のまま)")
+    finalize_p.add_argument("--out-plan", type=Path, default=None, help="update/create/delete 計画 JSON の出力先")
 
     args = parser.parse_args()
 
@@ -601,7 +821,25 @@ def main() -> int:
         print(output)
         return 0
 
-    parser.error("--selftest か、judge/infer-year いずれかのサブコマンドを指定してください")
+    if args.command == "finalize":
+        try:
+            output = run_finalize(
+                args.config,
+                args.decided,
+                args.markers,
+                args.event_title,
+                args.source_url,
+                args.today,
+                args.venue,
+                args.out_plan,
+            )
+        except SlotHitError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(output)
+        return 0
+
+    parser.error("--selftest か、judge/infer-year/finalize いずれかのサブコマンドを指定してください")
     return 2
 
 
