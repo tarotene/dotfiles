@@ -154,13 +154,17 @@ jobs:
       # workflow (#390): a selftest CI never runs is not an oracle, and the Rust
       # migration (ADR-0024, #389) relies on these selftests as its correctness
       # oracle. Any mention of `--selftest` counts: in these directories it
-      # only ever appears in files that implement one (bash, POSIX sh, perl).
+      # only ever appears in files that implement one (bash, POSIX sh, perl,
+      # python). `config/claude/skills/*/scripts` (not the whole skills tree)
+      # is deliberately scoped to skill code directories — SKILL.md docs
+      # elsewhere under config/claude/skills mention `--selftest` in prose
+      # without implementing a dispatcher, which would false-positive here.
       - name: Every --selftest is wired into CI
         run: |
           missing=0
           for f in $(grep -rl -- --selftest \
               config/claude/hooks config/claude/statusline config/codex/hooks \
-              config/copilot/hooks config/git/hooks scripts); do
+              config/copilot/hooks config/git/hooks config/claude/skills/*/scripts scripts); do
             if ! grep -qF -- "$f --selftest" .github/workflows/ci.yml; then
               echo "::error file=$f::has a --selftest dispatcher but ci.yml never runs it"
               missing=1
@@ -363,6 +367,15 @@ jobs:
       # 対して直接判定関数へ通す (docs/claude/scope-inventory.md)。
       - name: plan-scope-gate.sh --selftest
         run: bash ./config/claude/hooks/plan-scope-gate.sh --selftest
+
+      # slot-hit.py is the deterministic judgment core behind the
+      # slot-availability skill (docs/claude/slot-availability.md): matching
+      # candidate slots against calendar busy/soft-day events, and (finalize)
+      # reconciling a decided subset against existing markers into an
+      # update/create/delete plan. No network, no filesystem writes other
+      # than --out-plan.
+      - name: slot-hit.py --selftest
+        run: python3 ./config/claude/skills/slot-availability/scripts/slot-hit.py --selftest
 
       # plan-fresh-gate is deterministic shell + git + jq end to end, no gh/network:
       # the pristine-ff-then-deny path, the dirty/non-pristine no-move path, the
