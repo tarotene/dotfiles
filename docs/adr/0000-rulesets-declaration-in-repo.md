@@ -99,7 +99,8 @@ context を機械判定する 3 種の finding を追加する(D8)。GitHub App 
   declaration-missing/drift/unreportable-context 判定
 - `crates/rulesets-write-guard/` — `gh api` ruleset 書込みの PreToolUse deny
 - `.github/workflows/pr-title.yml` — `rulesets-context-check` の呼び出し
-- `.github/rulesets/{security,quality,workflow}.json` — dotfiles 自身の宣言
+- `.github/rulesets/security.json` — dotfiles 自身の宣言
+  (`quality.json`/`workflow.json` も同ディレクトリに同居)
 - `config/claude/skills/rust-repo-governance/scripts/copy-files.sh` —
   宣言の播種 + placeholder 検証 + Firmware context の自動除去
 - `config/claude/skills/repo-governance-common/scripts/copy-files.sh` —
