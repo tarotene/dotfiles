@@ -1,4 +1,4 @@
-# ADR-0000 — required status check の正本を対象リポジトリ自身の宣言に一本化する
+# ADR-503 — required status check の正本を対象リポジトリ自身の宣言に一本化する
 
 - Status: Accepted
 - Date: 2026-09-26

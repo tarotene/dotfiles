@@ -283,7 +283,7 @@
   Issue 起票できるようにする配管。判定を下したツール自身が記録し
   (tarotene/bleep 側は別 PR)、`crates/verdict-escalate` がセッション単位・
   fingerprint 単位に集約する。
-- [ADR-0000-rulesets-declaration-in-repo](adr/0000-rulesets-declaration-in-repo.md) —
+- [ADR-503](adr/503-rulesets-declaration-in-repo.md) —
   required status check の正本を対象リポジトリ外のテンプレートから、
   リポジトリ自身の `.github/rulesets/*.json` へ一本化する。apply 前に
   context を実測 job 名と突合して拒否する検証を追加し、`gh api` での
@@ -327,7 +327,7 @@ Design and rationale for the hooks and commands deployed from
   `gh issue create` on PRs/Issues this session itself created, via a
   session ledger fed from `gh … create` output — never a wildcard rule.
 - [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
-  hook (Rust, ADR-0000-rulesets-declaration-in-repo): denies `gh api`
+  hook (Rust, ADR-503): denies `gh api`
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
   forcing all applies through `scripts/apply-rulesets.sh`'s context
   verification.
