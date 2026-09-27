@@ -193,3 +193,45 @@ merge 済みのはずの dotfiles 側決定が再現なく再適用される。�
 - `scripts/hms.sh` — override 判定ロジック(`wrapper_locked_dotfiles_rev`
   / `dotfiles_override_opts`)と適用フローへの組み込み、`--selftest`
 - `.github/workflows/ci.yml` — `hms.sh --selftest` の CI 配線
+
+## Amendment (2026-09-27 — hms はローカル適用を既定で wrapper 経由にする)
+
+Consequences が定めた `hms .`/`hms <path>`(dotfiles worktree の直接適用)
+は、この文書ではこれまで「private 実値込みで worktree を検証したい場合は
+直叩きが必要」という**検証の劣化**としてのみ記述していた。実際には
+それ以上のことが起きる: wrapper が private wrapper flake の各モジュールで
+供給している値には、bleep(ADR-0034 Amendment 2026-09-24)の denylist 設定
+そのものが含まれる。`hms .` は検証を劣化させるだけでなく、この安全装置を
+**警告なく無効化する**。
+
+実例(2026-09-27): wrapper 経由の `hms` で `~/.config/bleep/orgs.txt` が
+再生成された直後に、同じホストで手動の `hms .` を実行したところ、
+その1回の適用で `orgs.txt`/`repos.txt` の symlink が撤去された。結果として
+`bleep` は「未設定」の ask を返すようになり、その状態を引き継いだ別
+セッションのエージェントが、退避されていた `.backup` ファイルから
+自分の判断で `orgs.txt` を手で復元してしまう事故につながった
+(denylist の中身は人間が決めるべき値であり、たとえ既存の `.backup` から
+のコピーであっても、エージェントがその判断を代行すべきではない)。
+
+- `local_apply_plan`(純関数、`scripts/hms.sh`)が、ローカルパス ref を
+  wrapper 経由に振り替えるべきかを判定する。判定は次の全てを満たすときに
+  「route」を返す: (a) このホストに wrapper が登録されている
+  (`resolve_default_ref` が `$DEFAULT_REF` 以外を返す)、(b) 適用対象の
+  ref がローカルパスである、(c) その ref 自身が wrapper flake ではない
+  (`dotfiles` input を持たない — 持つ場合は 2026-09-25 Amendment の
+  lock-override 経路が既に扱う)、(d) `--public-only` が指定されていない。
+- 「route」と判定されたときは、Consequences が手動手順として案内していた
+  呼び出しを `hms` 自身が組み立てて実行する:
+  `home-manager switch --flake <wrapper>#$(hostname) --override-input
+  dotfiles path:<絶対パス> --no-write-lock-file -b backup`。
+- `--public-only` は、private 実値抜きでこのチェックアウト単体を適用したい
+  ときの明示的な opt-out として残す(旧来の `hms .` の挙動そのもの)。
+- Consequences の「`hms .` は検証が劣化する」という記述は撤回しない
+  (`--public-only` を使えばこの劣化は今も起こる)。今回変えたのは
+  **既定**を「劣化かつ無警告で安全装置も落ちる」側から「wrapper 込みで
+  適用する」側へ倒しただけ。
+
+### 執行点
+
+- `scripts/hms.sh` — `local_apply_plan`(判定の純関数)と `--public-only`
+  フラグ、適用フローへの組み込み、`--selftest` へのケース追加

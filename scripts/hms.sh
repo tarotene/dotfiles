@@ -3,12 +3,19 @@ set -euo pipefail
 
 # hms — home-manager switch, the canonical apply (docs/operations.md).
 #
-# Usage: hms [flake-ref]
+# Usage: hms [flake-ref] [--public-only]
 #   hms          apply pushed main (github:tarotene/dotfiles), or a private
 #                wrapper flake instead if one is registered (see
 #                resolve_default_ref below, ADR-0034)
-#   hms .        apply the current checkout/worktree (pre-push verification)
-#   hms <path>   apply an arbitrary local checkout
+#   hms .        apply the current checkout/worktree (pre-push verification).
+#                On a host with a registered wrapper flake, this is routed
+#                through that wrapper with `dotfiles` overridden to this
+#                checkout (see local_apply_plan below, ADR-0034 Amendment
+#                2026-09-27) rather than applying the checkout alone.
+#   hms <path>   apply an arbitrary local checkout (same routing as `hms .`)
+#   hms . --public-only   apply the checkout alone even on a wrapper host —
+#                every private value module the wrapper adds is dropped for
+#                this one apply
 #   hms --selftest   run the offline, network-free unit tests below and exit
 #
 # One command = the whole apply runbook:
@@ -29,13 +36,26 @@ set -euo pipefail
 # isn't a path on disk) we force a refresh before switching, and print the
 # revision actually applied so a stale apply leaves a trace instead of none.
 #
-# `hms .` degrades on a host with a registered private wrapper flake
-# (ADR-0034): it applies this PUBLIC worktree alone, so every private value
-# module the wrapper flake adds is dropped for that one apply. hms itself
-# takes only a single flake-ref argument (no flag passthrough), so verifying
-# a worktree together with the private values needs a direct call instead:
+# `hms .`/`hms <path>` on a host with a registered private wrapper flake
+# (ADR-0034) used to apply this PUBLIC checkout alone, silently dropping
+# every private value module the wrapper adds for that one apply —
+# including bleep's own denylist config (orgs.txt/repos.txt), when a wrapper
+# module supplies it (ADR-0034 Amendment 2026-09-24). That is not just a
+# verification degradation as originally documented here: it switches off a
+# safety mechanism for the apply, with no warning. It was hit for real
+# (2026-09-27): a manual `hms .` on a wrapper-registered host dropped the
+# bleep config it had just regenerated one `hms` run earlier, and the
+# resulting missing orgs.txt then led an agent to hand-restore it from a
+# stale backup instead of re-running `hms` — see ADR-0034 Amendment
+# (2026-09-27 — hms routes a local apply through the wrapper by default).
+#
+# So `local_apply_plan` below now makes this the default instead of a
+# manual escape hatch: applying a local path on a wrapper-registered host
+# routes through that wrapper with `dotfiles` overridden to the local path
+# (equivalent to the manual call this comment used to document):
 #   home-manager switch --flake <private-hub-ref>#$(hostname) \
-#     --override-input dotfiles path:$PWD -b backup
+#     --override-input dotfiles path:<abs-path> --no-write-lock-file -b backup
+# `--public-only` opts back out to the old plain-checkout behavior.
 #
 # Applying a wrapper flake has the same #48-shaped staleness problem one
 # layer down: the wrapper's own flake.lock pins `dotfiles` to whatever rev it
@@ -52,6 +72,45 @@ set -euo pipefail
 
 DEFAULT_REF="github:tarotene/dotfiles"
 FCITX5_UNIT="app-fcitx5@autostart.service"
+
+# local_apply_plan: decides whether a local-path apply should be routed
+# through a registered wrapper flake instead of applying that path alone.
+# Pure function (no I/O) so it can be unit-tested below without a real
+# checkout or network access.
+#
+# Args:
+#   $1 = wrapper_ref  — resolve_default_ref's result
+#   $2 = default_ref  — $DEFAULT_REF, to detect "no wrapper registered"
+#   $3 = ref_is_local  — "1" if the ref being applied is a path on disk
+#        (`-e "$ref"`), "0" otherwise
+#   $4 = ref_is_wrapper — "1" if the ref being applied is itself a wrapper
+#        flake (its own flake.lock pins a `dotfiles` input — i.e. the
+#        existing wrapper-lock-override path below already handles it),
+#        "0" otherwise
+#   $5 = public_only — "1" if `--public-only` was passed, "0" otherwise
+# Prints exactly one line: "route" (apply $1 with `dotfiles` overridden to
+# the local path) or "asis" (apply the given ref unchanged, the pre-existing
+# behavior).
+local_apply_plan() {
+    local wrapper_ref="$1" default_ref="$2" ref_is_local="$3" ref_is_wrapper="$4" public_only="$5"
+    if [[ "$public_only" == "1" ]]; then
+        printf 'asis\n'
+        return 0
+    fi
+    if [[ "$wrapper_ref" == "$default_ref" ]]; then
+        printf 'asis\n' # no wrapper registered on this host
+        return 0
+    fi
+    if [[ "$ref_is_local" != "1" ]]; then
+        printf 'asis\n' # a remote ref already resolved through the wrapper (or was explicit)
+        return 0
+    fi
+    if [[ "$ref_is_wrapper" == "1" ]]; then
+        printf 'asis\n' # an explicit wrapper checkout — the existing lock-override path applies
+        return 0
+    fi
+    printf 'route\n'
+}
 
 # Reads a `nix flake metadata --json` document on stdin and, if its root
 # flake's `dotfiles` input is a plain (non-follows) input — i.e. the flake
@@ -130,6 +189,34 @@ selftest() {
         "90db04baaa54c598a2b5ba847adbb9451d2bc798" 4
     check_opts "5 empty revision -> no output" "" 0
 
+    check_plan() { # $1=名前 $2=wrapper_ref $3=default_ref $4=ref_is_local $5=ref_is_wrapper $6=public_only $7=期待する出力
+        local name="$1" wrapper_ref="$2" default_ref="$3" ref_is_local="$4" ref_is_wrapper="$5" public_only="$6" want="$7" got
+        got="$(local_apply_plan "$wrapper_ref" "$default_ref" "$ref_is_local" "$ref_is_wrapper" "$public_only")"
+        if [[ "$got" == "$want" ]]; then
+            echo "ok   $name"
+        else
+            echo "FAIL $name (want '$want' got '$got')" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    echo "local_apply_plan:"
+    check_plan "6 wrapper host + local public path -> route" \
+        "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 1 0 0 \
+        "route"
+    check_plan "7 no wrapper registered -> asis" \
+        "github:tarotene/dotfiles" "github:tarotene/dotfiles" 1 0 0 \
+        "asis"
+    check_plan "8 --public-only -> asis even on a wrapper host" \
+        "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 1 0 1 \
+        "asis"
+    check_plan "9 ref is itself the wrapper checkout -> asis (lock-override path handles it)" \
+        "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 1 1 0 \
+        "asis"
+    check_plan "10 non-local ref on a wrapper host -> asis" \
+        "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 0 0 0 \
+        "asis"
+
     if [[ $fails -ne 0 ]]; then
         return 1
     fi
@@ -163,21 +250,28 @@ resolve_default_ref() {
     echo "$DEFAULT_REF"
 }
 
-ref="$(resolve_default_ref)"
+wrapper_ref="$(resolve_default_ref)"
+ref="$wrapper_ref"
+public_only=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --help|-h)
-            echo "Usage: hms [flake-ref]"
+            echo "Usage: hms [flake-ref] [--public-only]"
             echo ""
             echo "Apply the home-manager configuration for this host."
             echo "  hms          apply pushed main (${ref})"
-            echo "  hms .        apply the current checkout/worktree (pre-push verification;"
-            echo "               drops private value modules if ${ref} is a private wrapper flake)"
-            echo "  hms <path>   apply an arbitrary local checkout"
+            echo "  hms .        apply the current checkout/worktree (pre-push verification)."
+            if [[ "$wrapper_ref" != "$DEFAULT_REF" ]]; then
+                echo "               Routed through ${wrapper_ref} with dotfiles overridden to"
+                echo "               this checkout — pass --public-only to apply it alone instead."
+            fi
+            echo "  hms <path>   apply an arbitrary local checkout (same routing as \`hms .\`)"
+            echo "  hms . --public-only   apply the checkout alone, dropping private value modules"
             echo "  hms --selftest   run offline unit tests and exit"
             exit 0
             ;;
+        --public-only) public_only=1; shift ;;
         -*) echo "Error: Unknown option: $1" >&2; exit 1 ;;
         *)
             ref="$1"
@@ -296,10 +390,33 @@ else
     ref_meta_json="$(nix flake metadata --json "$ref" 2>/dev/null || true)"
 fi
 
+ref_is_local=0
+[[ -e "$ref" ]] && ref_is_local=1
+ref_is_wrapper=0
+if [[ -n "$ref_meta_json" ]] \
+    && [[ -n "$(printf '%s' "$ref_meta_json" | wrapper_locked_dotfiles_rev)" ]]; then
+    ref_is_wrapper=1
+fi
+apply_plan="$(local_apply_plan "$wrapper_ref" "$DEFAULT_REF" "$ref_is_local" "$ref_is_wrapper" "$public_only")"
+
+# Local-apply routing (ADR-0034 Amendment, 2026-09-27): a local path applied
+# on a wrapper-registered host goes through the wrapper with `dotfiles`
+# overridden to that path, instead of applying the path alone and dropping
+# every private value module (including bleep's own denylist config).
+apply_ref="$ref"
+if [[ "$apply_plan" == "route" ]]; then
+    local_dotfiles_path="$(realpath -m "$ref")"
+    apply_ref="$wrapper_ref"
+    extra_opts+=(--override-input dotfiles "path:${local_dotfiles_path}" --no-write-lock-file)
+fi
+
 # Wrapper-lock override (ADR-0034 Amendment, 2026-09-25): if the flake being
 # applied has a `dotfiles` input (a wrapper, remote or local), pin it to
 # pushed main's resolved revision instead of trusting the wrapper's lock.
-if [[ -n "$ref_meta_json" ]]; then
+# Mutually exclusive with the routing above — that already pins `dotfiles`
+# to the local path on purpose, so pushed main's revision has nothing to do
+# here.
+if [[ "$apply_plan" != "route" && -n "$ref_meta_json" ]]; then
     locked_dotfiles_rev="$(printf '%s' "$ref_meta_json" | wrapper_locked_dotfiles_rev)"
     if [[ -n "$locked_dotfiles_rev" ]]; then
         if dotfiles_meta_json="$(nix flake metadata --refresh --json "$DEFAULT_REF" 2>/dev/null)" \
@@ -319,9 +436,9 @@ if [[ -n "$ref_meta_json" ]]; then
     fi
 fi
 
-echo "==> home-manager switch --flake ${ref}#${host} -b backup"
+echo "==> home-manager switch --flake ${apply_ref}#${host} -b backup ${extra_opts[*]}"
 rc=0
-home-manager switch --flake "${ref}#${host}" -b backup "${extra_opts[@]}" || rc=$?
+home-manager switch --flake "${apply_ref}#${host}" -b backup "${extra_opts[@]}" || rc=$?
 if [[ $rc -ne 0 ]]; then
     check_generation_consistency
     exit "$rc"

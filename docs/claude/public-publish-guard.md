@@ -80,7 +80,9 @@ wrapper flake が `~/.config/dotfiles/private-hub` マーカー経由で生成�
 Decision 6 と同型 — 正本は wrapper flake 側、ここはスキーマ・手順だけを
 記す)。`allow-stopwords.txt` の各行は「実際には CLI ツール名としての
 言及であり private リポジトリ名との衝突ではない」と判断した文字列を、
-コメントで理由を添えて 1 行ずつ追記する(#431)。
+コメントで理由を添えて 1 行ずつ追記する(#431)。`hms .` でこの3ファイルが
+撤去される事故は、ADR-0034 の 2026-09-27 Amendment により解消済み
+(wrapper 登録ホストでのローカル適用は既定で wrapper 経由になる)。
 
 ## 未検証の前提
 
