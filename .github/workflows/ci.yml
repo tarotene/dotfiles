@@ -420,6 +420,14 @@ jobs:
       - name: handoff.sh --selftest
         run: bash ./config/claude/skills/handoff/scripts/handoff.sh --selftest
 
+      # routines-plan.sh is deterministic bash + jq end to end, no network:
+      # the 7-way classification (in-sync/declared-ahead/live-drift/conflict/
+      # suspended/refuse/new), unmanaged-cron detection, and the run-once/
+      # webhook rejection (cron_utc required) are all exercised against
+      # placeholder fixtures built inline (docs/claude/claude-routines.md).
+      - name: routines-plan.sh --selftest
+        run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
+
       # sign-prewarm is deterministic shell + a stubbed gpg end to end: the
       # cwd-independent global-config gating, the field-15 on-disk/card/stub
       # classification, the warm/cold branch, and the local-override
