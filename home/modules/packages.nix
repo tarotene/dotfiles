@@ -306,6 +306,10 @@
   xdg.configFile."github-audit/descriptive-species.tsv".source =
     ../../config/github-audit/descriptive-species.tsv;
   xdg.configFile."github-audit/site-domains.tsv".source = ../../config/github-audit/site-domains.tsv;
+  # routines ドメイン(ADR-0000-routines-declaration-in-repo)の auditor
+  # sources 列(PUBLIC repos only — 同じ PUBLIC/PRIVATE 分離)。
+  xdg.configFile."github-audit/routines-auditor-sources.tsv".source =
+    ../../config/github-audit/routines-auditor-sources.tsv;
 
   # gh-stack 拡張(stacked-pr スキルが使う `gh stack link` の提供元、#124)を
   # 宣言的に管理する。`gh extension install` は ~/.local/share/gh/extensions/

@@ -1,11 +1,12 @@
 # github-audit: unified cross-repository GitHub audit
 
-Read-only audit across eight domains — reports drift for every one of
+Read-only audit across nine domains — reports drift for every one of
 tarotene's owned repositories without applying or modifying anything.
 Unifies the former sibling scripts `github-audit-rulesets` (#130) and
-`github-audit-charters` (ADR-0013), and has since grown five more domains:
+`github-audit-charters` (ADR-0013), and has since grown six more domains:
 naming (ADR-0014), settings, renovate, titles (ADR-0031), lifecycle (#275,
-ADR-0023), and releaser (grill-me セッション調べ). Its findings feed the
+ADR-0023), releaser (grill-me セッション調べ), and routines
+(ADR-0000-routines-declaration-in-repo). Its findings feed the
 `github-audit-triage` skill
 (`docs/claude/github-audit-triage.md`), which is the only place an LLM
 enters this loop — this script never calls one.
@@ -644,6 +645,37 @@ Setup and rotation live in `config/claude/skills/repo-governance-common/
 reference/releaser-app.md`, referenced by every `*-repo-governance` skill
 that ships a releaser workflow template.
 
+### routines
+
+Detects Claude Code routine (scheduled cloud agent) declarations
+(`.claude/routines/*.json`, `docs/claude/claude-routines.md`) that the
+weekly self-audit routine's `sources` list doesn't cover — the same
+declaration-visible-but-unreconciled gap the `rulesets` domain's
+`rulesets-declaration-missing`/drift findings close for required status
+checks, but for routines instead (ADR-0000-routines-declaration-in-repo).
+
+A repository is `not-applicable` unless its `.claude/routines/` directory
+contains at least one `*.json` entry (checked via the same shared
+`routinesDir` GraphQL field the other file-existence domains use — no
+extra API call). For repositories that do declare a routine, the domain
+checks whether `<owner>/<repo>` appears in the self-audit routine's
+declared `sources` (a necessarily private list — the auditor's own
+declaration lives in a private person-state repository, `docs/claude/
+claude-routines.md`). Absent from `sources` means the weekly auditor never
+clones this repository, so its declaration silently never gets
+reconciled — reported as `routines-sources-missing`.
+
+Same PUBLIC/PRIVATE `.tsv` pair shape as the naming domain's closed
+vocabularies (`config/github-audit/routines-auditor-sources.tsv`, repo-
+tracked but in practice always empty since dotfiles itself never declares
+a routine, plus a `routines-auditor-sources.local.tsv` sibling that is
+never committed). This domain deliberately does **not** re-derive the
+declaration ⇄ live comparison itself — that is `routines-plan.sh`'s job,
+run by the auditor routine, not this cross-repo audit (same "audit stays
+read-only, doesn't re-check what another mechanism already checks"
+boundary `titles` draws between enforcement presence and individual PR
+conformance).
+
 ## Usage
 
 ```console
@@ -686,7 +718,7 @@ repository/domain pair is reported as `exempt` and is never judged.
 
 ## Scope
 
-In scope: read-only inventory + drift detection across the six domains
+In scope: read-only inventory + drift detection across the nine domains
 above. Out of scope, tracked for a follow-up (wrap-up inbox / #153):
 
 - **Applying** a fix to a drifted/ungoverned repository — that's the

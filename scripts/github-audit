@@ -37,6 +37,15 @@ SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/sit
 # description text matching is a heuristic candidate signal, not a closed
 # assignment, so there is no PRIVATE-only entry list to protect yet.
 LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifecycle-species.tsv}"
+# routines domain (ADR-0000-routines-declaration-in-repo D-github-audit):
+# the self-audit routine's declared `sources` list is inherently private
+# (it names every repo that has a `.claude/routines/` declaration), so —
+# same reasoning as the naming-domain closed vocabularies above — this is a
+# PUBLIC/PRIVATE .tsv pair. In practice the repo-tracked file stays empty
+# (dotfiles itself never declares a routine) and every real entry lives in
+# the .local.tsv sibling.
+ROUTINES_AUDITOR_SOURCES_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_FILE:-$CONFIG_DIR/routines-auditor-sources.tsv}"
+ROUTINES_AUDITOR_SOURCES_LOCAL_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOCAL_FILE:-$CONFIG_DIR/routines-auditor-sources.local.tsv}"
 
 # ADR-0020: repositories created on/before this instant are grandfathered
 # under the loose ADR-0014 pattern check; only repositories created after it
@@ -45,7 +54,7 @@ LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifec
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines)
 
 # lifecycle domain (#275, ADR-0023): decision-theory thresholds for the
 # dormancy-scoring signals, deliberately simple and documented so a human
@@ -163,6 +172,12 @@ judges the requested domains (default: all of them):
              secret presence only — install status is not checked (a
              missing install fails loudly on the next release push, so
              this domain does not duplicate that detection)
+  routines   Claude Code routine (scheduled cloud agent) declarations
+             (ADR-0000-routines-declaration-in-repo): for repos with a
+             `.claude/routines/*.json`, checks the repo is listed in the
+             self-audit routine's declared `sources` — otherwise its
+             declarations are invisible to the weekly reconcile.
+             not-applicable for repos with no `.claude/routines/` entries
 
 Without options, prints a human-readable report and exits 1 if any
 non-exempt repository is drifted/ungoverned in any judged domain
@@ -191,6 +206,14 @@ site-domains}.tsv (repo-tracked, PUBLIC repos only) plus a
 / GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE /
 GITHUB_AUDIT_DESCRIPTIVE_SPECIES_FILE / GITHUB_AUDIT_SITE_DOMAINS_FILE /
 GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE.
+
+The routines domain's auditor-sources list lives in
+$XDG_CONFIG_HOME/github-audit/routines-auditor-sources.tsv (PUBLIC repos,
+repo-tracked; in practice always empty) plus a
+routines-auditor-sources.local.tsv sibling (PRIVATE repos, never
+committed) — same PUBLIC/PRIVATE pair shape as the naming domain's closed
+vocabularies. Override with GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_FILE /
+GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOCAL_FILE.
 EOF
 }
 
@@ -351,6 +374,7 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       agentsMd: object(expression: \"HEAD:AGENTS.md\") { ... on Blob { text } }
       rootTree: object(expression: \"HEAD:\") { ... on Tree { entries { name type } } }
       claudeSkillsDir: object(expression: \"HEAD:.claude/skills\") { ... on Tree { entries { name type mode } } }
+      routinesDir: object(expression: \"HEAD:.claude/routines\") { ... on Tree { entries { name type } } }
       cargoToml: object(expression: \"HEAD:Cargo.toml\") { ... on Blob { id } }
       packageJson: object(expression: \"HEAD:package.json\") { ... on Blob { id } }
       pyprojectToml: object(expression: \"HEAD:pyproject.toml\") { ... on Blob { id } }
@@ -1288,6 +1312,39 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
 }
 
 # ---------------------------------------------------------------------------
+# routines domain (ADR-0000-routines-declaration-in-repo): a repo can carry
+# `.claude/routines/*.json` declarations, but the weekly self-audit routine
+# only reconciles repos listed in its own (necessarily private) `sources`.
+# A declaration in a repo the auditor never clones is invisible drift — the
+# repo's PR review enforces the declaration's shape, but nothing ever
+# checks it against live. This domain closes that gap: presence-detection
+# only (does the repo have `.claude/routines/`, is it in the auditor's
+# sources), never the declaration ⇄ live comparison itself (that is
+# `routines-plan.sh`'s job, run by the auditor, not this cross-repo audit —
+# same "audit stays read-only, doesn't re-derive an existing check's
+# verdict" boundary as titles' presence-vs-conformance split above).
+# ---------------------------------------------------------------------------
+
+judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "owner/repo") -> finding
+  local repo="$1" gql="$2" sources="$3" has_declarations
+
+  has_declarations="$(jq -e '
+    (.routinesDir.entries // []) | any(.name | endswith(".json"))
+  ' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+
+  if [[ $has_declarations != true ]]; then
+    jq -n '{verdict: "not-applicable", missing: []}'
+    return
+  fi
+
+  if jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$sources" >/dev/null 2>&1; then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    jq -n '{verdict: "drifted", missing: ["routines-sources-missing"]}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # titles domain (ADR-0031): presence-detection only — whether the PR-title
 # commit-message contract's enforcement mechanism exists, not whether any
 # individual open PR's title currently conforms (that is the client guard's
@@ -1472,7 +1529,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # needs it too, to detect the release-plz.yml/release-please.yml caller.
     # rulesets ALSO now needs it for the declaration text fields
     # (ADR-0000-rulesets-declaration-in-repo).
-    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser ]] && need_graphql=1
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
     # rulesets' required-context-unreportable check (ADR-0000-rulesets-
     # declaration-in-repo) needs the REST-only latest-PR job names — same
@@ -1512,6 +1569,8 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   site_json="$(read_closed_set_json "$SITE_DOMAINS_FILE" "$SITE_DOMAINS_LOCAL_FILE")"
   # ADR-0026: no PRIVATE-only sibling (see LIFECYCLE_SPECIES_FILE comment).
   lifecycle_species_json="$(read_closed_set_json "$LIFECYCLE_SPECIES_FILE" /dev/null)"
+  local routines_sources_json
+  routines_sources_json="$(read_closed_set_json "$ROUTINES_AUDITOR_SOURCES_FILE" "$ROUTINES_AUDITOR_SOURCES_LOCAL_FILE")"
 
   local repo lang vis description topics_json topic_count meta domains_obj entry created_at pushed_at repo_gql has_workflows is_archived
   while IFS= read -r meta; do
@@ -1585,6 +1644,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
               entry="$(judge_releaser "$has_releaser_workflow" "$secret_names")"
             fi
             ;;
+          routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -2090,6 +2150,7 @@ STUB
   printf 'regcode\tfixture\t2020-01-01\n' >"$tmp/config/codename-registry.tsv"
   printf 'known.site\t2020-01-01\n' >"$tmp/config/site-domains.tsv"
   printf 'study\nresearch\nexam\n' >"$tmp/config/lifecycle-species.tsv"
+  printf 'tarotene/routines-ok\n' >"$tmp/config/routines-auditor-sources.tsv"
 
   export GITHUB_AUDIT_OWNER=tarotene \
     GITHUB_AUDIT_GH_BIN="$tmp/bin/gh" \
@@ -2101,7 +2162,9 @@ STUB
     GITHUB_AUDIT_CODENAME_REGISTRY_LOCAL_FILE="$tmp/config/codename-registry.local.tsv" \
     GITHUB_AUDIT_SITE_DOMAINS_FILE="$tmp/config/site-domains.tsv" \
     GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE="$tmp/config/site-domains.local.tsv" \
-    GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE="$tmp/config/lifecycle-species.tsv"
+    GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE="$tmp/config/lifecycle-species.tsv" \
+    GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_FILE="$tmp/config/routines-auditor-sources.tsv" \
+    GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOCAL_FILE="$tmp/config/routines-auditor-sources.local.tsv"
 
   # judge_rulesets()/judge_naming() below are called directly (this process
   # already has them defined, being the same script) rather than through a
@@ -2915,6 +2978,41 @@ EOF
     <<<"$(judge_releaser true '["RELEASER_APP_ID"]')" >/dev/null || {
     printf 'FAIL: 片方だけ揃っている場合も releaser-app-secrets-missing になるべき: %s\n' \
       "$(judge_releaser true '["RELEASER_APP_ID"]')" >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # routines domain (ADR-0000-routines-declaration-in-repo): 自己監査
+  # routine の sources 網羅性検出。judge_routines() の直接呼び出しテスト、
+  # releaser と同じスタイル。$tmp/config/routines-auditor-sources.tsv には
+  # "tarotene/routines-ok" だけが入っている(export ブロック参照)。
+  # ---------------------------------------------------------------------
+
+  local routines_sources
+  routines_sources="$(read_closed_set_json "$GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_FILE" "$GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOCAL_FILE")"
+
+  jq -e '.verdict == "not-applicable" and (.missing | length == 0)' \
+    <<<"$(judge_routines "no-routines-dir" '{}' "$routines_sources")" >/dev/null || {
+    printf 'FAIL: .claude/routines/ を持たない repo は not-applicable になるべき: %s\n' \
+      "$(judge_routines "no-routines-dir" '{}' "$routines_sources")" >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_routines "routines-dir-no-json" '{"routinesDir":{"entries":[{"name":"README.md","type":"blob"}]}}' "$routines_sources")" >/dev/null || {
+    printf 'FAIL: .claude/routines/ はあるが *.json が無い repo も not-applicable になるべき: %s\n' \
+      "$(judge_routines "routines-dir-no-json" '{"routinesDir":{"entries":[{"name":"README.md","type":"blob"}]}}' "$routines_sources")" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok" and (.missing | length == 0)' \
+    <<<"$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources")" >/dev/null || {
+    printf 'FAIL: 宣言を持ち auditor の sources にも含まれる repo は ok になるべき: %s\n' \
+      "$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources")" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("routines-sources-missing"))' \
+    <<<"$(judge_routines "routines-orphaned" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources")" >/dev/null || {
+    printf 'FAIL: 宣言を持つが auditor の sources に無い repo は routines-sources-missing になるべき: %s\n' \
+      "$(judge_routines "routines-orphaned" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources")" >&2
     return 1
   }
 

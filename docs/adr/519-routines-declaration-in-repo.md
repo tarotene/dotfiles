@@ -151,9 +151,9 @@ name が名前空間キーの形であること、prompt 最終行が
 - `docs/claude/claude-routines.md` — 決定表・実測の記録
 - `crates/routines-write-guard/` — D7 の PreToolUse guard(段2)
 - `docs/claude/routines-write-guard.md` — guard の設計根拠(段2)
-
-段3(`scripts/github-audit` の routines ドメイン)の執行点は、その段の
-PR でこの節に追記する。
+- `scripts/github-audit` — routines ドメイン(sources 網羅性検出、段3)
+- `config/github-audit/routines-auditor-sources.tsv` — 段3 の PUBLIC 側入力
+- `docs/github-audit.md` — routines ドメインの記録(段3)
 
 ## Verification
 
