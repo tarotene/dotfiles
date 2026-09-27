@@ -414,6 +414,12 @@ jobs:
       - name: issue-index.sh --selftest
         run: bash ./config/claude/hooks/issue-index.sh --selftest
 
+      # handoff.sh is deterministic shell + a stubbed gh end to end: labels-missing/
+      # create-labels/block, including the issue number → id resolution the
+      # dependencies API requires (docs/claude/handoff.md).
+      - name: handoff.sh --selftest
+        run: bash ./config/claude/skills/handoff/scripts/handoff.sh --selftest
+
       # sign-prewarm is deterministic shell + a stubbed gpg end to end: the
       # cwd-independent global-config gating, the field-15 on-disk/card/stub
       # classification, the warm/cold branch, and the local-override
