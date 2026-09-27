@@ -328,6 +328,47 @@ judgement が 1 つ増えたぶん、`PR_GATE_MAX_BLOCKS` の既定を 3 から 
 最後の 1 回が escalate に化ける。相乗りのおかげでこの連鎖は実際には起きにくいが、
 上限は最悪ケースで決める。
 
+## 中断ハンドオフ(`Handoff: #N`)— G_link / G_CI の緩和条件
+
+`handoff` skill(`docs/claude/handoff.md`)がユーザーの指示で作業を打ち切るとき、
+WIP を commit → push → Draft PR にする。この Draft PR は closing keyword を
+書けない(親 Issue に `Closes` を書くと、再開後に子タスクの一部だけ終えて
+マージしたとき親まで閉じてしまう — tracking-issue スキルの「全 sub-issue
+closed で親を閉じる」条件に反する)し、CI が赤や pending のまま止めるのが
+普通にある。この 2 点をそのまま `G_link` / `G_CI` に通すと、中断の度に
+block され続ける。
+
+判定は `isDraft == true` かつ本文(`strip_code_spans` 済み)に `Handoff: #N`
+行があり、かつ `gh issue view` でその Issue が `OPEN` であることの 3 点が
+揃ったときだけ成立する(「Handoff 成立」)。成立時に緩めるのは 2 つ:
+
+- `G_link`: `MISSING` でも block せず、LINKED 相当として advisory に回す。
+- `G_CI`: `EMPTY`/`MISSING`/`FAILED`/`PENDING`/`API_FAILURE` のいずれでも
+  block せず、`G_CI_STATUS` を advisory の rider に載せるだけにする。
+
+判定の 3 点のいずれかが取得できない(isDraft 不明、Handoff 行が無い、
+参照先 Issue が closed または取得失敗)ときは、緩めずに従来どおりの判定に
+落ちる(fail-closed)。全ゲートを外す `~/.claude/pr-gate/skip` の代替として
+使われることを防ぐため。
+
+### 参照先 Issue の実在確認をする理由(上の節との対比)
+
+上の「参照先 Issue の実在確認をしない理由」は `Closes #N` の N が正しい
+Issue を指しているかまでは見ない、という判断だった。`Handoff:` はこれとは
+性質が違う——`Closes` の誤りは検出力が低いだけで実害は「Issue が誤って
+閉じない」程度だが、`Handoff:` は **G_CI という block そのものを解除する
+スイッチ**なので、存在確認をしないと「適当な番号を書いた Draft PR が
+CI 未検証のまま Stop を素通りする」という抜け道になる。ここでは検出力の
+議論ではなく、block を解除する条件を宣言的に閉じておく話なので、API 呼び出し
+1 本のコストを払う。
+
+### なぜ Draft 単体では緩めないのか
+
+`isDraft` だけを見て緩める案は、「Draft にすれば CI 待ちを回避できる」と
+いう恒常的な抜け道になる(中断のたび新設する一時的なマーカーではなく、
+誰でも常時使える汎用の逃げ道になってしまう)。`Handoff: #N` という中断固有の
+宣言を併置させることで、緩和が「今回だけの中断」に閉じる。
+
 ## G_visual — なぜ「Before/After の視覚証跡」を block するのか
 
 ### 直そうとしている事故

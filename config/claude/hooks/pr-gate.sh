@@ -19,6 +19,11 @@
 #   G_base     : origin/<base> に対する ahead/behind            → advisory
 #   G_wt       : 未コミット件数                                 → advisory
 #
+# 中断ハンドオフ(docs/claude/pr-gate.md「中断ハンドオフ」節、handoff skill):
+# Draft PR かつ本文に `Handoff: #N`(N が open Issue)があるときだけ、G_link の
+# MISSING と G_CI の非 PASS を block ではなく advisory に落とす(judge_handoff)。
+# 判定不能なら緩めない(fail-closed)。
+#
 # G_stack(ADR-0027、docs/claude/pr-gate.md「G_stack」節): セッション内の
 # 複数 PR は常に作成順の単一チェーンに積む(uncertainty-first stacking)。
 # 現在の PR を起点に open PR の base チェーンを両方向(祖先・子孫)へたどり
@@ -122,6 +127,8 @@
 #     commit あり) / G_pr(push 済み・PR 無し・ahead>0) / G_link 欠落 /
 #     G_visual 欠落 / G_stack(chain 2 以上・未リンク・拡張/API 利用可能) /
 #     G_CI が揃わない・失敗・pending
+#     (ただし中断ハンドオフ成立時は G_link 欠落 / G_CI 不揃いを advisory に
+#     降格 — 上記「中断ハンドオフ」節)
 #
 # `stop_hook_active` は見ない。wrapup-stop-gate.sh と同じ即 exit 0 にすると、
 # G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
@@ -355,6 +362,43 @@ judge_link() { # judge_link <body> ; echo LINKED|NO_ISSUE|MISSING
     printf 'NO_ISSUE'
   else
     printf 'MISSING'
+  fi
+}
+
+# --- 中断ハンドオフ(Handoff: #N): G_link / G_CI の緩和条件 --------------------
+#
+# handoff skill(docs/claude/handoff.md)が作る WIP の Draft PR は、まだ
+# closing keyword を書けない(親 Issue に `Closes` を書くと、再開後に子の
+# 一部だけ終えてマージしたときに親まで閉じてしまう — tracking-issue の
+# 「全 sub-issue closed で親を閉じる」条件に反する)。かつ CI が赤/pending
+# のまま中断することが普通にある。
+#
+# `isDraft == true` かつ本文に `Handoff: #N`(N が open な Issue)があるとき
+# だけ「Handoff 成立」とみなし、G_link は LINKED 相当・G_CI の block は
+# advisory に緩める。判定に使う外部状態(isDraft・Issue の open/closed)が
+# 取得できないときは、緩めずに従来どおりの判定に落とす(fail-closed —
+# 全ゲートを外す skip ファイルの代替として使われないため)。
+HANDOFF_RE='^[[:space:]]*Handoff:[[:space:]]*#([0-9]+)[[:space:]]*$'
+
+judge_handoff() { # judge_handoff <body> <nwo> ; echo "OK <issue#>"|NONE|UNVERIFIED
+  local body="$1" nwo="$2" line num state
+  line="$(grep -Eim1 -- "$HANDOFF_RE" <<<"$(strip_code_spans "$body")")" || {
+    printf 'NONE'
+    return
+  }
+  num="$(grep -Eo '[0-9]+' <<<"$line")"
+  [[ -n "$num" ]] || {
+    printf 'NONE'
+    return
+  }
+  state="$(gh issue view "$num" -R "$nwo" --json state -q .state 2>/dev/null)" || {
+    printf 'UNVERIFIED'
+    return
+  }
+  if [[ "$state" == "OPEN" ]]; then
+    printf 'OK %s' "$num"
+  else
+    printf 'UNVERIFIED'
   fi
 }
 
@@ -855,7 +899,7 @@ cmd_stop() {
 
   local pr_json pr_num
   pr_json="$(gh pr list -R "$nwo" --head "$branch" --state open --limit 1 \
-    --json number,baseRefName,headRefOid,body 2>/dev/null)" || pr_json=""
+    --json number,baseRefName,headRefOid,body,isDraft 2>/dev/null)" || pr_json=""
   [[ -n "$pr_json" ]] || pr_json='[]'
   pr_num="$(jq -r '.[0].number // empty' <<<"$pr_json")"
 
@@ -944,15 +988,31 @@ ${hygiene}"
   advisory="base 追従: ahead ${ahead} / behind ${behind}
 未コミット: ${wt_count} ファイル"
 
+  # 中断ハンドオフ(Handoff: #N) — G_link / G_CI の緩和条件。判定不能なら
+  # 緩めない(fail-closed)。詳細: judge_handoff 定義部のコメント、
+  # docs/claude/pr-gate.md「中断ハンドオフ」節。
+  local body is_draft handoff_verdict handoff_issue=""
+  body="$(jq -r '.[0].body // ""' <<<"$pr_json")"
+  is_draft="$(jq -r '.[0].isDraft // false' <<<"$pr_json")"
+  if [[ "$is_draft" == "true" ]]; then
+    handoff_verdict="$(judge_handoff "$body" "$nwo")"
+    [[ "$handoff_verdict" == OK\ * ]] && handoff_issue="${handoff_verdict#OK }"
+  fi
+
   # G_link — 判定だけ先に済ませ、block は最後に回す。G_push / G_CI が止める場面
   # では、その block メッセージに相乗りさせる($rider)。本文の修正は CI を待たずに
   # 済むので、単独で 1 往復を消費させる理由がない。
-  local body link_verdict link_msg="" link_blocks=0 default_br
-  body="$(jq -r '.[0].body // ""' <<<"$pr_json")"
+  local link_verdict link_msg="" link_blocks=0 default_br
   link_verdict="$(judge_link "$body")"
   default_br="$(default_branch "$project")"
 
-  if [[ "$link_verdict" == "MISSING" ]]; then
+  if [[ "$link_verdict" == "MISSING" && -n "$handoff_issue" ]]; then
+    advisory="${advisory}
+Handoff: #${handoff_issue}(open)を検出したため、closing keyword 省略を中断
+ハンドオフとして許容します。再開時は完了する子 Issue の \`Closes #…\` に
+書き換えてください(親 #${handoff_issue} への Closes は、その merge で親の
+全 sub-issue が closed になり親の完了定義も満たすときだけ)。"
+  elif [[ "$link_verdict" == "MISSING" ]]; then
     link_blocks=1
     link_msg="PR #${pr_num} の本文が Issue を閉じません(closing keyword なし)。
 
@@ -961,6 +1021,7 @@ ${hygiene}"
 
   Closes #<番号>          — 対応する Issue がある場合(複数なら各行に)
   No-Issue: <理由>        — 対応する Issue が本当に無い場合
+  Handoff: #<番号>        — 中断ハンドオフの Draft PR で、対応する Issue が open な場合
 
   gh pr edit ${pr_num} --body-file <file>
 
@@ -1063,23 +1124,31 @@ push してから終了してください。
 ${rider}"
   fi
 
-  # G_CI
+  # G_CI — Handoff 成立時は block ではなく advisory の rider に回す(中断中の
+  # WIP に CI green を要求しないため)。判定不能(API_FAILURE)も同様に緩める
+  # — Handoff の成立自体は既に fail-closed で判定済みなので、ここでの緩和は
+  # 「揃っていない集合を緑と読む」ことにはならない(CI を評価しないだけ)。
   if ! run_g_ci "$nwo" "$pr_num" "$base"; then
-    case "$G_CI_STATUS" in
-      EMPTY)
-        block_or_escalate "$sid" "CI のチェックがまだ 1 件も報告されていません。
+    if [[ -n "$handoff_issue" ]]; then
+      advisory="${advisory}
+G_CI: ${G_CI_STATUS}(Handoff: #${handoff_issue} により advisory — 再開して
+      \`gh pr ready\` するまで CI green は要求しません)"
+    else
+      case "$G_CI_STATUS" in
+        EMPTY)
+          block_or_escalate "$sid" "CI のチェックがまだ 1 件も報告されていません。
 gh pr checks で確認してから終わってください。
 
 ${rider}"
-        ;;
-      MISSING)
-        block_or_escalate "$sid" "CI のチェックが揃っていません。未出現: ${G_CI_DETAIL}
+          ;;
+        MISSING)
+          block_or_escalate "$sid" "CI のチェックが揃っていません。未出現: ${G_CI_DETAIL}
 gh pr checks --watch で待ってから終わってください。
 
 ${rider}"
-        ;;
-      API_FAILURE)
-        block_or_escalate "$sid" "required チェック集合の取得に失敗しました(gh api の呼び出しエラー、
+          ;;
+        API_FAILURE)
+          block_or_escalate "$sid" "required チェック集合の取得に失敗しました(gh api の呼び出しエラー、
 または応答のパースに失敗)。ネットワーク・認証・API レート制限等の一時的な
 障害の可能性があります。required が実在しないと確定できないまま quiesce
 判定に倒すと、揃っていないチェック集合を緑と読みかねません。
@@ -1089,21 +1158,22 @@ ${rider}"
 で手動確認するか、しばらく待って再実行してください。
 
 ${rider}"
-        ;;
-      FAILED)
-        block_or_escalate "$sid" "CI が赤です。PR #${pr_num} (head ${head_oid:0:7})
+          ;;
+        FAILED)
+          block_or_escalate "$sid" "CI が赤です。PR #${pr_num} (head ${head_oid:0:7})
 
 $(render_failed_checks "$pr_num" "$nwo")
 修正して push してから終わってください。
 
 ${rider}"
-        ;;
-      *)
-        block_or_escalate "$sid" "CI がまだ pending です。gh pr checks --watch で待ってから終わってください。
+          ;;
+        *)
+          block_or_escalate "$sid" "CI がまだ pending です。gh pr checks --watch で待ってから終わってください。
 
 ${rider}"
-        ;;
-    esac
+          ;;
+      esac
+    fi
   fi
 
   if [[ "$G_CI_STATUS" == "PASS" && -n "$G_CI_DETAIL" ]]; then
@@ -1184,6 +1254,11 @@ if [[ "${1:-}" == "--selftest" ]]; then
   # PR_GATE_STUB_STACKS_FILE        : gh api repos/<nwo>/stacks の応答
   #   (未指定なら [])
   # PR_GATE_STUB_STACKS_RC          : 同 API の exit code(既定 0)
+  # PR_GATE_STUB_DRAFT              : gh pr list が返す isDraft(既定 false)
+  # PR_GATE_STUB_HANDOFF_STATE      : gh issue view --json state -q .state の
+  #   応答(既定 OPEN。judge_handoff 用)
+  # PR_GATE_STUB_HANDOFF_FAIL=1     : 同呼び出しを非ゼロ終了させる(判定不能
+  #   → fail-closed の検査用)
   mkdir -p "$dir/bin"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -1215,7 +1290,8 @@ case "$1" in
             --arg head "${PR_GATE_STUB_HEAD_OID:-0000000000000000000000000000000000000000}" \
             --arg body "${PR_GATE_STUB_PR_BODY-Closes #1
 No-Visual: selftest 既定本文}" \
-            '[{number:($num|tonumber), baseRefName:$base, headRefOid:$head, body:$body}]'
+            --argjson draft "${PR_GATE_STUB_DRAFT:-false}" \
+            '[{number:($num|tonumber), baseRefName:$base, headRefOid:$head, body:$body, isDraft:$draft}]'
         fi
         ;;
       checks)
@@ -1227,6 +1303,18 @@ No-Visual: selftest 既定本文}" \
         else
           echo '[]'
         fi
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  issue)
+    case "$2" in
+      view)
+        # judge_handoff 用: gh issue view <num> -R <nwo> --json state -q .state
+        if [[ "${PR_GATE_STUB_HANDOFF_FAIL:-0}" == "1" ]]; then
+          exit 1
+        fi
+        printf '%s\n' "${PR_GATE_STUB_HANDOFF_STATE:-OPEN}"
         ;;
       *) exit 1 ;;
     esac
@@ -1620,6 +1708,65 @@ No-Visual: selftest" \
     <<<"$(hookinput link-nohead-sid)" >"$dir/out" 2>"$dir/err" || rc=$?
   check "origin/HEAD 不明: exit 0" 0 "$rc"
   check "origin/HEAD 不明: 発火しない旨は出さない" 0 "$(grep -Fc '発火しません' "$dir/err")"
+
+  echo "中断ハンドオフ(Handoff: #N — G_link / G_CI の緩和):"
+
+  # 以降は CI が揃っていない(checks-empty.json、G_CI 単独なら block)状態で回し、
+  # Handoff 成立時だけそれが advisory に落ちることを検査する。
+  ghandoff() { # ghandoff <sid> <body> [追加の env=val ...]
+    local sid="$1" body="$2"
+    shift 2
+    env PR_GATE_STUB_HEAD_OID="$real_head" PR_GATE_STUB_CHECKS_FILE="$dir/checks-empty.json" \
+      PR_GATE_STUB_PR_BODY="$body" "$@" \
+      PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" stop \
+      <<<"$(hookinput "$sid")" >"$dir/out" 2>"$dir/err"
+  }
+
+  rc=0
+  ghandoff handoff-ok-sid "作業ログ。
+
+Handoff: #1
+No-Visual: selftest" PR_GATE_STUB_DRAFT=true || rc=$?
+  errtext="$(cat "$dir/err")"
+  check "draft+Handoff+open: 素通り(exit 0)" 0 "$rc"
+  check_grep "closing keyword 省略を許容する advisory" "中断" "$errtext"
+  check_grep "G_CI も advisory に落ちる" "G_CI: EMPTY" "$errtext"
+
+  rc=0
+  ghandoff handoff-nondraft-sid "作業ログ。
+
+Handoff: #1
+No-Visual: selftest" || rc=$?
+  check "非 draft + Handoff: 緩和されず block(exit 2)" 2 "$rc"
+
+  rc=0
+  ghandoff handoff-closed-sid "作業ログ。
+
+Handoff: #1
+No-Visual: selftest" PR_GATE_STUB_DRAFT=true PR_GATE_STUB_HANDOFF_STATE=CLOSED || rc=$?
+  check "draft+Handoff+参照先が closed: 判定不能扱いで block(exit 2)" 2 "$rc"
+
+  rc=0
+  ghandoff handoff-apifail-sid "作業ログ。
+
+Handoff: #1
+No-Visual: selftest" PR_GATE_STUB_DRAFT=true PR_GATE_STUB_HANDOFF_FAIL=1 || rc=$?
+  check "draft+Handoff+gh issue view 失敗: fail-closed で block(exit 2)" 2 "$rc"
+
+  rc=0
+  ghandoff handoff-fenced-sid "本文。
+
+Closes #30
+No-Visual: selftest
+
+\`\`\`
+Handoff: #1
+\`\`\`" PR_GATE_STUB_DRAFT=true || rc=$?
+  check "fenced code block 内の Handoff は数えない(G_CI が block、exit 2)" 2 "$rc"
+
+  rc=0
+  ghandoff handoff-none-sid "本文にはどの Issue への言及も無い。" PR_GATE_STUB_DRAFT=true || rc=$?
+  check "draft だが Handoff 行自体が無い: G_link が block(exit 2)" 2 "$rc"
 
   echo "G_visual (PR 本文の Before/After 視覚証跡):"
 
