@@ -149,9 +149,11 @@ name が名前空間キーの形であること、prompt 最終行が
 - `config/claude/skills/claude-routines/auditor.md` — クラウド自己監査
   routine の汎用手順(D6 の執行点)
 - `docs/claude/claude-routines.md` — 決定表・実測の記録
+- `crates/routines-write-guard/` — D7 の PreToolUse guard(段2)
+- `docs/claude/routines-write-guard.md` — guard の設計根拠(段2)
 
-段2(`crates/routines-write-guard`)・段3(`scripts/github-audit` の
-routines ドメイン)の執行点は、それぞれの段の PR でこの節に追記する。
+段3(`scripts/github-audit` の routines ドメイン)の執行点は、その段の
+PR でこの節に追記する。
 
 ## Verification
 
