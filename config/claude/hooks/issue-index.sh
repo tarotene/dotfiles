@@ -31,7 +31,9 @@
 #   失敗   → stderr 1 行: 前提が揃っているのに採用しようとした側の Search が失敗
 #            (両方失敗の AND では判定しない — @me が 0 件で全体側だけが失敗した場合を
 #            見落とすため、常に「採用しようとした側」を見る)
-#   部分縮退 → 黙って省略: PR 取得・起票者(viewer login)の取得はその行/装飾だけ落ちる
+#   部分縮退 → 黙って省略: PR 取得・起票者(viewer login)の取得・着手可能な
+#            handoff:ai(label:handoff:ai の Search、ラベル不在/0件/失敗いずれも)
+#            はその行/節だけ落ちる
 #
 # 使い方:
 #   hook として: settings.json の SessionStart から stdin JSON で呼ばれる
@@ -70,11 +72,12 @@ owner_repo() {
 # $4=me(login、空なら起票者注記を出さない) $5=branch(空可)
 # $6=pr_status("ok"=取得成功/"failed"=取得失敗/空="現ブランチ"自体が無い)
 # $7=pr_json_file($6=ok のときだけ意味を持つ)
+# $8=handoff_file(label:handoff:ai の Search API 応答。空/取得失敗なら節ごと省略)
 #
 # pr_status を分けているのは「PR が無い」(ok かつ配列が空 → 行に「なし」と書く)と
 # 「PR の有無が分からない」(failed → 行そのものを出さない)を混同しないため。
 build_context() {
-  local nwo="$1" scope="$2" src="$3" me="$4" branch="$5" pr_status="$6" pr_file="${7:-}"
+  local nwo="$1" scope="$2" src="$3" me="$4" branch="$5" pr_status="$6" pr_file="${7:-}" handoff_file="${8:-}"
   local total incomplete shown omitted lead count_sentence items_text pr_line pr_summary
 
   total="$(jq -r '.total_count // 0' "$src")"
@@ -133,6 +136,22 @@ build_context() {
     fi
   fi
 
+  # 着手可能な handoff:ai — 中断ハンドオフ(docs/claude/handoff.md)で振られた
+  # AI タスクのうち、blocked_by(open な blocker)が 0 のものだけを拾う。@me の
+  # 枠とは独立に常に出す(@me が 1 件以上あると全体一覧が消える既存挙動 — 上の
+  # scope 分岐 — の影響を受けさせないため)。ラベルが存在しないリポジトリ・
+  # 検索 0 件・取得失敗はどれも黙って省略する(新しい縮退経路を増やさない)。
+  local handoff_text=""
+  if [[ -n "$handoff_file" && -f "$handoff_file" ]]; then
+    handoff_text="$(jq -r '
+      def sanitize: gsub("[[:cntrl:]]"; "") | .[0:120];
+      [.items[]? | select(.issue_dependencies_summary.blocked_by == 0)]
+      | .[0:10][]
+      | ((.title // "") | sanitize) as $t
+      | "#\(.number) \($t)"
+    ' "$handoff_file" 2>/dev/null)" || handoff_text=""
+  fi
+
   if [[ "$incomplete" == "true" ]]; then
     echo "[issue-index] Search API の結果が不完全でした(incomplete_results=true): 総数・省略件数の表示は近似値です" >&2
   fi
@@ -150,6 +169,13 @@ ${items_text}"
     ctx="${ctx}
 
 ${pr_summary}"
+  fi
+
+  if [[ -n "$handoff_text" ]]; then
+    ctx="${ctx}
+
+着手可能な handoff:ai(中断ハンドオフの引き継ぎ先。blocked_by が無い open Issue):
+${handoff_text}"
   fi
 
   jq -n --arg ctx "$ctx" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
@@ -171,8 +197,8 @@ if [[ "${1:-}" == "--selftest" ]]; then
     fi
   }
 
-  # gh スタブ: ISSUE_INDEX_STUB_{MINE,ALL,PR,WHO}_{FILE,RC,ERR} で挙動を制御する。
-  # *_FILE は JSON を書いたファイルへのパス(未指定なら 0 件の既定応答)。
+  # gh スタブ: ISSUE_INDEX_STUB_{MINE,ALL,PR,WHO,HANDOFF}_{FILE,RC,ERR} で挙動を
+  # 制御する。*_FILE は JSON を書いたファイルへのパス(未指定なら 0 件の既定応答)。
   mkdir -p "$dir/bin"
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -197,6 +223,10 @@ case "$1" in
         ;;
       *"assignee:@me"*)
         emit ISSUE_INDEX_STUB_MINE_FILE ISSUE_INDEX_STUB_MINE_RC ISSUE_INDEX_STUB_MINE_ERR \
+          '{"total_count":0,"incomplete_results":false,"items":[]}'
+        ;;
+      *"handoff:ai"*)
+        emit ISSUE_INDEX_STUB_HANDOFF_FILE ISSUE_INDEX_STUB_HANDOFF_RC ISSUE_INDEX_STUB_HANDOFF_ERR \
           '{"total_count":0,"incomplete_results":false,"items":[]}'
         ;;
       *)
@@ -417,6 +447,59 @@ STUB
   check "viewer login 取得失敗でも注入は成功する" 0 "$rc"
   check "viewer login 取得失敗: 起票者注記が一切出ない" 0 "$(grep -Fc '(起票:' <<<"$ctx")"
 
+  echo "着手可能な handoff:ai:"
+
+  jq -n '{total_count:2,incomplete_results:false,items:[
+    {number:910,title:"着手可能なタスク",issue_dependencies_summary:{blocked_by:0}},
+    {number:911,title:"blocker 未 close のタスク",issue_dependencies_summary:{blocked_by:1}}
+  ]}' >"$dir/handoff-mixed.json"
+  rc=0
+  ISSUE_INDEX_STUB_MINE_FILE="$dir/zero.json" ISSUE_INDEX_STUB_ALL_FILE="$dir/all12of12.json" \
+    ISSUE_INDEX_STUB_HANDOFF_FILE="$dir/handoff-mixed.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "blocked_by=0 の Issue だけ着手可能として出る" 1 "$(grep -Fc '#910 着手可能なタスク' <<<"$ctx")"
+  check "blocked_by が残る Issue は出ない" 0 "$(grep -Fc '#911' <<<"$ctx")"
+  check "見出しが出る" 1 "$(grep -Fc '着手可能な handoff:ai' <<<"$ctx")"
+
+  rc=0
+  ISSUE_INDEX_STUB_MINE_FILE="$dir/zero.json" ISSUE_INDEX_STUB_ALL_FILE="$dir/all12of12.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "handoff:ai 0件(ラベル不在相当): 節ごと沈黙" 0 "$(grep -Fc '着手可能な handoff:ai' <<<"$ctx")"
+
+  # issue_dependencies_summary 自体が欠けている場合、未知を「ブロックなし」と
+  # 誤読しない(fail-closed)。`// 0` のような既定値フォールバックを使わない設計の
+  # 回帰対象。
+  jq -n '{total_count:1,incomplete_results:false,
+    items:[{number:912,title:"summary フィールド無し"}]}' >"$dir/handoff-nosummary.json"
+  rc=0
+  ISSUE_INDEX_STUB_MINE_FILE="$dir/zero.json" ISSUE_INDEX_STUB_ALL_FILE="$dir/all12of12.json" \
+    ISSUE_INDEX_STUB_HANDOFF_FILE="$dir/handoff-nosummary.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "issue_dependencies_summary 欠落: 着手可能扱いにしない(fail-closed)" 0 \
+    "$(grep -Fc '#912' <<<"$ctx")"
+
+  rc=0
+  ISSUE_INDEX_STUB_MINE_FILE="$dir/zero.json" ISSUE_INDEX_STUB_ALL_FILE="$dir/all12of12.json" \
+    ISSUE_INDEX_STUB_HANDOFF_RC=1 \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "handoff:ai 検索失敗でも注入は成功する" 0 "$rc"
+  check "handoff:ai 検索失敗: 節ごと沈黙(mine/all の失敗経路とは独立)" 0 \
+    "$(grep -Fc '着手可能な handoff:ai' <<<"$ctx")"
+
+  rc=0
+  ISSUE_INDEX_STUB_MINE_FILE="$dir/mine15of68.json" \
+    ISSUE_INDEX_STUB_HANDOFF_FILE="$dir/handoff-mixed.json" \
+    PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" bash "$self" <<<'{}' >"$dir/out" 2>"$dir/err" || rc=$?
+  ctx="$(jq -r '.hookSpecificOutput.additionalContext' <"$dir/out")"
+  check "@me 枠と併存する(@me 15件 + 着手可能な handoff:ai)" 1 \
+    "$(grep -Fc '#910 着手可能なタスク' <<<"$ctx")"
+  check "@me 枠自体も出続ける" 1 \
+    "$(grep -Fc '68 件のうち、更新の新しい 15 件を示す(53 件を省略)' <<<"$ctx")"
+
   echo "PR 行:"
 
   git -C "$repo" checkout -qb feature/x
@@ -485,6 +568,13 @@ gh api graphql -f query='{viewer{login}}' --jq .data.viewer.login \
   >"$tmp/who.txt" 2>/dev/null &
 pid_who=$!
 
+# 着手可能な handoff:ai(docs/claude/issue-index.md「着手可能な handoff:ai」節)。
+# mine/all とは独立の Search で、失敗・0件はどちらも黙って省略する(build_context
+# 側の縮退)ので rc は待つだけで分岐には使わない。
+gh api "search/issues?q=${q_common}+label:%22handoff:ai%22+sort:updated-desc&per_page=15" \
+  >"$tmp/handoff.json" 2>"$tmp/handoff.err" &
+pid_handoff=$!
+
 rc_mine=0
 wait "$pid_mine" || rc_mine=$?
 rc_all=0
@@ -496,6 +586,8 @@ if [[ -n "$pid_pr" ]]; then
 fi
 rc_who=0
 wait "$pid_who" || rc_who=$?
+rc_handoff=0
+wait "$pid_handoff" || rc_handoff=$?
 
 fail() {
   printf '[issue-index] Issue 索引の取得に失敗しました: %s\n' "${1:-不明なエラー}" >&2
@@ -535,4 +627,7 @@ if [[ -n "$branch" ]]; then
   fi
 fi
 
-build_context "$nwo" "$scope" "$src" "$me" "$branch" "$pr_status" "$pr_file"
+handoff_file=""
+[[ "$rc_handoff" -eq 0 ]] && handoff_file="$tmp/handoff.json"
+
+build_context "$nwo" "$scope" "$src" "$me" "$branch" "$pr_status" "$pr_file" "$handoff_file"
