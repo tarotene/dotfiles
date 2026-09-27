@@ -1,12 +1,13 @@
 ---
 name: performance-planning
-description: 演奏本番(アマオケ・室内楽・ソロ)の練習計画提案・合わせ調整の統合・当日タイムテーブルと遠征の Calendar dispatch を行う判断知識。演奏本番・練習計画・合わせ確定・当日スケジュール・遠征ロジ・キャパ確認・マイルストーン確認、といった文脈で使う。practice plan, rehearsal confirmation, day-of timetable, travel logistics for a concert、といった英語の文脈でも使う。データの正本(演目・共演者・キャパ宣言値)は別の private な person-state リポジトリの `state/performances/` にあり、このスキルはそこへの読み書き手順を持つ。候補日程一覧 × カレンダーの当たり判定そのものは slot-availability に委譲する(本スキルはその上位で「本番」単位のデータと結びつける)。
+description: 演奏本番(アマオケ・室内楽・ソロ)の練習計画提案・合わせ調整の統合・会場確保の委譲・タイムスケジュール資料の取り込み・付随作業(会場確保・ドレスコード・宿泊)の確認・当日タイムテーブルと遠征の Calendar dispatch を行う判断知識。演奏本番・練習計画・合わせ確定・会場が決まった・当日スケジュール・遠征ロジ・キャパ確認・マイルストーン確認・タイムスケジュール表・付随作業の確認、といった文脈で使う。practice plan, rehearsal confirmation, venue confirmed, day-of timetable, travel logistics for a concert, incoming time-schedule sheet、といった英語の文脈でも使う。データの正本(演目・共演者・キャパ宣言値・合わせ/当日の確定時刻・付随作業の事実)は別の private な person-state リポジトリの `state/performances/` にあり、このスキルはそこへの読み書き手順を持つ。候補日程一覧 × カレンダーの当たり判定は slot-availability に、会場探しそのものは venue-search に委譲する(本スキルはその上位で「本番」単位のデータと結びつける)。
 ---
 
 演奏本番の練習・合わせ・当日ロジを本番のたびに場当たり的に組まないための
 判断知識。データモデルの決定根拠は別の private な person-state リポジトリ
-側の `docs/adr/0009-performance-planning-data-model.md`(出典は private
-リポジトリ側のため、ここでは決定の存在だけを参照する)、設計動機は
+側の `docs/adr/0010-performance-planning-data-model.md`(合わせ・当日の
+確定時刻の射影は ADR-0014、付随作業の定型化は ADR-0015 — いずれも出典は
+private リポジトリ側のため、ここでは決定の存在だけを参照する)、設計動機は
 `docs/claude/performance-planning.md` を参照。
 
 ## 前提: ハブの解決
@@ -14,7 +15,7 @@ description: 演奏本番(アマオケ・室内楽・ソロ)の練習計画提�
 `performance-hub`(home-manager でデプロイ、PATH 上で呼べる)で person-state
 リポジトリのチェックアウトパスを解決する。未設定ならユーザーに設定してもらう
 (`docs/claude/performance-planning.md` 参照)。以降、このパスを `$HUB` と
-書く。
+書く。venue-search スキルも同じハブを使う。
 
 ```
 HUB="$(performance-hub)" || exit 1
@@ -55,49 +56,123 @@ JSON 化してから jq で処理する。**書き込み**は yq の TOML エン
 (手順は同スキルの SKILL.md を参照)。本スキルが追加するのは、確定後に
 person-state リポジトリ側の `[[rehearsals]]` へ反映する手順のみ。
 
+`rehearsal` の `status`(negotiating/confirmed/done)は ADR-0014 により
+保存されなくなった — `start`/`end` の有無と `end` が過去かどうかから導出
+される。以降の手順は「`status` を書き換える」ではなく「`start`/`end` を
+追記する」ことで確定を表す。
+
 1. 対象 performance ファイルを JSON 化し、`coordination_url` が一致し
-   `status == "negotiating"` の rehearsal 要素のインデックスを特定する:
+   `start` キーを持たない(= まだ交渉中の)rehearsal 要素の `key` を
+   特定する:
    ```
    yq -p toml -o json "$HUB/state/performances/<id>.toml" \
      | jq --arg url "<候補日程一覧の URL>" \
-       '.rehearsals | to_entries | map(select(.value.coordination_url == $url and .value.status == "negotiating"))'
+       '.rehearsals | map(select(.coordination_url == $url and (has("start") | not)))'
    ```
    複数件ヒットした場合(同時に複数の合わせ候補が調整中)は、日付や
    `purpose` で本人に確認してから対象を1件に絞る — 自動で1件目を選んで
    はいけない。
 2. slot-availability の `finalize` を実行し、Calendar 側のマーカーを
    確定させる(同スキルの手順どおり)。
-3. Edit ツールで、手順1 で特定した rehearsal 要素を書き換える:
-   `status = "negotiating"` → `"confirmed"`、`calendar_event` を確定した
-   Google Calendar のイベント ID に設定する。既存のコメント・他の
-   フィールドはそのまま残す(yq の TOML 書き込みを使わない理由がここ —
-   全体を再生成すると手書きの `★ TODO` コメント等が失われる)。
+3. Edit ツールで、手順1 で特定した rehearsal 要素に確定した日時を
+   `start`/`end`(`{date}` または `{dateTime, timeZone}`)として追記する。
+   会場が既に分かっていれば `location` も追記する(未定なら「3. 会場確保」
+   へ進む)。既存のコメント・他のフィールドはそのまま残す(yq の TOML
+   書き込みを使わない理由がここ — 全体を再生成すると手書きの `★ TODO`
+   コメント等が失われる)。
 4. 対応する `appearances[].milestones` にまだ触れない — 合わせの確定は
    マイルストーン(D8)とは別軸であり、自動で段階を進めない。
 
-## 3. 当日タイムテーブル・遠征の Calendar dispatch
+## 3. 会場確保
 
-`day_timetable`・`travel.legs` の相対時刻の表記は実例がまだ乏しく、決定的
-パーサ化は時期尚早(YAGNI、`docs/claude/performance-planning.md` 参照)。
-以下は Claude が対話的に行う手順:
+会場探しそのもの(候補サービスの列挙・空き確認・候補提示)は
+`config/claude/skills/venue-search/` に委譲する。本スキルが持つのは
+「いつ委譲すべきか」「見つかった結果をどこに書き戻すか」の判断だけ。
+
+1. 対象 rehearsal の `venue_by` を確認する(既定は `self`)。
+   - `organizer`: 主催者が用意するため venue-search には委譲しない。
+     主催者から会場が伝わったら `location` に書くだけでよい。
+   - `self`/`partner`: 「6. 付随作業」の `venue-booking` が OPEN なら
+     venue-search に委譲する対象。
+2. venue-search スキルに、対象 rehearsal の `area`(あれば)・
+   `venue_needs`(グランドピアノ等)を渡して候補を出してもらう。
+3. 人間が予約したら、確定した会場名を Edit ツールで対象 rehearsal の
+   `location` に追記する(`venue-booking` はこれで完了になる)。
+
+## 4. 資料の取り込み
+
+主催者からタイムスケジュールのシートが払い出されることがあるが、これを
+前提にした専用パーサは持たない(相対時刻の表記も資料の形式も主催者ごとに
+バラバラで、実例がまだ乏しい — YAGNI、`docs/claude/performance-planning.md`
+参照)。資料が無い演奏でも、下記の対応表と同じ項目を対話で埋める。
+
+対応表(資料に出てくる典型項目 → フィールド):
+
+| 資料の項目 | フィールド |
+|---|---|
+| 開場・開演・終演見込み(本番当日) | トップレベル `start`/`end` |
+| 各回の合わせ日程・会場 | `rehearsals[].start`/`end`/`location` |
+| ドレスコード | トップレベル `dress_code`(無ければ `"none"`) |
+| 宿泊の要否・宿泊先 | `travel.lodging.decision`/`name` |
+| 集合時刻・搬入等(相対時刻) | `day_timetable`(「5. 当日タイムテーブル」参照) |
+
+1. 資料(PDF・スプレッドシート・メール本文など、形式は問わない)を読み、
+   上の対応表に沿って値を拾う。
+2. 現在の TOML との差分(追加・更新するフィールドと値)を提示し、
+   AskUserQuestion で承認を取る。
+3. 承認後、Edit ツールで反映する(TOML 書き込みの分担は「前提」のとおり)。
+
+## 5. 当日タイムテーブル・遠征の Calendar dispatch
+
+`day_timetable` の相対時刻の表記は実例がまだ乏しく、決定的パーサ化は
+時期尚早(YAGNI、`docs/claude/performance-planning.md` 参照)。以下は
+Claude が対話的に行う手順:
 
 1. 対象 performance ファイルを JSON 化し、`day_timetable`・`travel` の
    中身を読む。`★ TODO` のプレースホルダが残っている項目は、Calendar へ
    の登録対象から除外し、埋まっていないことを本人に伝える。
-2. 本番の開始時刻(このスキーマにはフィールドが無いため、まだ未確定なら
-   本人に確認する)を基準に、`day_timetable` の各エントリの相対時刻を
-   絶対時刻へ変換する。
+2. 本番の開始時刻(トップレベル `start` が確定していればそれ、まだ
+   未確定なら本人に確認する)を基準に、`day_timetable` の各エントリの
+   相対時刻を絶対時刻へ変換する。
 3. `travel.legs` の各区間について、確定済みの日時があればそのまま、
    無ければ「要確定」として一覧に残す(勝手に時刻を仮定しない)。
+   `travel.lodging` は「6. 付随作業」の `lodging-decision`/
+   `lodging-booking` が完了しているかどうかで扱いを分ける(未完了なら
+   Calendar への登録対象にしない)。
 4. 組み立てた Calendar 下書き予定の一覧(件名・開始・終了・説明)を
    提示し、AskUserQuestion で承認を取る。
 5. 承認後、`create_event` で登録する。送り先は主カレンダー
    (`tarotene@gmail.com`)に一本化する — 「Claude プロジェクト管理」
    カレンダーは新規予定の送付先として使わない(person-state リポジトリ
    側の裁定、`docs/claude/performance-planning.md` 参照)。
-6. 確定した Calendar イベント ID を、手順3で対応する `travel.legs[].
-   calendar_event` / `travel.lodging.calendar_event` に Edit ツールで
+6. `travel.legs[]`/`travel.lodging` に対応する確定情報を Edit ツールで
    書き戻す(TOML 書き込みの分担は上記「前提」のとおり)。
+
+## 6. 付随作業(会場確保・ドレスコード・宿泊)の確認
+
+会場確保・ドレスコード確認・スーツ準備/クリーニング・宿泊要否判断/予約は
+保存レコードではなく、演奏データから毎回導出するビュー(ADR-0015)。
+
+```
+bash "$HUB/state/performances/scripts/obligations.sh"
+```
+
+出力の OPEN(未完了)/OVERDUE(期限超過)な項目ごとに対応する:
+
+- `venue-booking`: 「3. 会場確保」へ。
+- `dress-code-confirm`: 本人にドレスコードの有無を確認し、`dress_code`
+  に記入する(無ければ `"none"` を明記する — キー省略は「未確認」を
+  意味するため、区別する)。
+- `attire-prep`/`attire-cleaning`: 本人が完了したら `attire.prep`/
+  `attire.cleaning` を `done`(または不要なら `not-needed`)に書き換える。
+- `lodging-decision`: 本人に宿泊するかどうかを確認し、
+  `travel.lodging.decision` に `stay`/`day-trip` を記入する。
+- `lodging-booking`: `decision = "stay"` の演奏について、宿泊先が決まったら
+  `travel.lodging.name` に記入する(予約自体は人間が行う)。
+
+これらのフィールドを埋めるだけで、対応する期限イベントが Calendar から
+自動で消える(`obligations.sh` は導出ビューなので、保存されたレコードを
+別途消す操作は不要)。
 
 ## 外部サービスへの書き込みはサニタイズ対象
 
