@@ -1,0 +1,11 @@
+# routines 自己監査 routine の宣言 sources(ADR-0000-routines-declaration-
+# in-repo)。github-audit の routines ドメインが「`.claude/routines/` を
+# 持つのに auditor の sources に無い repo」を検出するための正本。
+#
+# ここには PUBLIC repo だけを書く(dotfiles 自身は routine を宣言しない
+# ため、実際には常に空)。PRIVATE repo のエントリは
+# routines-auditor-sources.local.tsv(このファイルと同じディレクトリ、
+# 未コミット)に書く — ADR-0020 の naming ドメイン閉語彙(codename-
+# registry.tsv 等)と同じ PUBLIC/PRIVATE 分離。
+#
+# 書式: 1 行 1 repo、"owner/repo" 形式(TSV の列1)。
