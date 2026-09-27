@@ -57,6 +57,21 @@ touches the wrapper's own `flake.lock` file — that pin now only matters for
 the wrapper flake's own `nix flake check`, not for what `hms` actually
 applies.
 
+Both override paths above (the local-apply routing and this lock override)
+pass `--override-input`, which implies `--no-write-lock-file` — so nix
+prints `warning: not writing modified lock file of flake '<ref>':` plus the
+input diff on every such switch. This is expected, not a sign of breakage:
+it is the visible trace of the override actually taking effect, and there is
+no nix flag to silence only this warning without also hiding unrelated
+warnings or breaking the progress display. `hms` prints a one-line note
+right before the `home-manager switch` line whenever this warning is coming,
+so it doesn't look unexplained. Keeping the wrapper's own `flake.lock`
+current (e.g. via Renovate's `lockFileMaintenance`, tracked in the private
+wrapper flake itself, [#466](https://github.com/tarotene/dotfiles/issues/466))
+is a separate concern — it only affects the wrapper's own `nix flake check`,
+and does not make this warning go away, since `hms .` always pins `dotfiles`
+to a local path (never something a lock file could already match).
+
 ## `~/Downloads` is not storage
 
 `home/modules/downloads.nix` deploys a daily cleanup (`systemd.user.tmpfiles`
@@ -725,8 +740,10 @@ does this repo need the **rule** (a derivation procedure with a placeholder,
 public, this repo) or the **value itself** (private, the wrapper flake,
 [ADR-0034](adr/0034-machine-state-wrapper-flake.md))? This repo never
 names the wrapper flake — see `scripts/hms.sh`'s `private-hub` marker. Note
-that `hms .` on a host with that marker registered applies this PUBLIC
-worktree alone, dropping every private value module for that one apply.
+that `hms .` on a host with that marker registered now routes through the
+wrapper by default (ADR-0034 Amendment, 2026-09-27), so every private value
+module still applies; `hms . --public-only` is the explicit opt-out that
+applies this PUBLIC worktree alone, dropping them.
 
 ### Ad-hoc installers must never prepend to PATH
 

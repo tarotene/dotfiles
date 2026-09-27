@@ -69,6 +69,17 @@ set -euo pipefail
 # ADR-0034 Amendment (2026-09-25 — hms overrides the wrapper's dotfiles
 # input). The wrapper's own `flake.lock` entry for `dotfiles` is then only a
 # hygiene pin for `nix flake check`, not what gets applied.
+#
+# Both override paths above pass `--override-input`, which nix's own
+# `--help` documents as implying `--no-write-lock-file`. That combination
+# makes nix print `warning: not writing modified lock file of flake '<ref>':`
+# plus the input diff on every such switch — this is expected, not a sign of
+# breakage: it is the visible trace of the override actually taking effect,
+# and there is no nix flag to silence only this warning (confirmed against
+# nix's flake-lock messages) without also hiding unrelated warnings or
+# breaking the progress display. `lock_warning_expected` below detects this
+# case so hms can say so before nix's own output appears, rather than
+# leaving the warning to look unexplained.
 
 DEFAULT_REF="github:tarotene/dotfiles"
 FCITX5_UNIT="app-fcitx5@autostart.service"
@@ -110,6 +121,27 @@ local_apply_plan() {
         return 0
     fi
     printf 'route\n'
+}
+
+# lock_warning_expected: decides whether the `home-manager switch` call
+# about to run carries `--override-input` and will therefore make nix print
+# its "not writing modified lock file" warning (see the header comment
+# above). Pure function (no I/O) so it can be unit-tested below.
+#
+# Args: the `extra_opts` array elements to be passed to `home-manager
+#   switch`, one per positional arg.
+# Prints exactly one line: "1" (the warning is expected) or "0" (it is not —
+# no `--override-input` in this call, e.g. `--public-only` or a plain remote
+# apply with the wrapper's lock already current).
+lock_warning_expected() {
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--override-input" ]]; then
+            printf '1\n'
+            return 0
+        fi
+    done
+    printf '0\n'
 }
 
 # Reads a `nix flake metadata --json` document on stdin and, if its root
@@ -272,6 +304,24 @@ selftest() {
     check_guard "14 --public-only の明示指定 -> ok(意図的な opt-out)" \
         1 "github:tarotene/dotfiles" "github:tarotene/dotfiles" 1 \
         "ok"
+
+    check_lock_warning() { # $1=名前 $2=期待する出力 -- $3..=extra_opts
+        local name="$1" want="$2" got
+        shift 2
+        got="$(lock_warning_expected "$@")"
+        if [[ "$got" == "$want" ]]; then
+            echo "ok   $name"
+        else
+            echo "FAIL $name (want '$want' got '$got')" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    echo "lock_warning_expected:"
+    check_lock_warning "15 --override-input present -> 1" "1" \
+        --override-input dotfiles "path:/x" --no-write-lock-file
+    check_lock_warning "16 --option warn-dirty false only -> 0" "0" \
+        --option warn-dirty false
 
     if [[ $fails -ne 0 ]]; then
         return 1
@@ -526,6 +576,13 @@ if [[ "$apply_plan" != "route" && -n "$ref_meta_json" ]]; then
             echo "==> could not resolve ${DEFAULT_REF} (offline?); applying the wrapper's lock as-is (dotfiles ${locked_dotfiles_rev})" >&2
         fi
     fi
+fi
+
+# See the header comment's `--override-input` note above: warn ahead of
+# nix's own "not writing modified lock file" output rather than leaving it
+# unexplained.
+if [[ "$(lock_warning_expected "${extra_opts[@]}")" == "1" ]]; then
+    echo "==> note: a nix \"warning: not writing modified lock file\" below is expected — dotfiles is overridden for this switch only; the wrapper's flake.lock is intentionally left untouched (ADR-0034)"
 fi
 
 echo "==> home-manager switch --flake ${apply_ref}#${host} -b backup ${extra_opts[*]}"
