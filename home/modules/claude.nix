@@ -370,6 +370,17 @@
 #    新設、blocked_by の設定)は `scripts/handoff.sh` の決定論的サブコマンドに
 #    寄せる(番号→id の解決を含む)。詳細は docs/claude/handoff.md。
 #
+# 28) claude-routines(個人スキル、ADR-519-routines-declaration-in-repo):
+#    Claude Code routine(claude.ai の scheduled cloud agent)の設定・
+#    prompt を対象リポジトリ自身の `.claude/routines/<name>.{json,md}` に
+#    正本化する。差分計算(7分類 + unmanaged 検出)は
+#    `scripts/routines-plan.sh`(bash + jq、決定的)に固定し、ローカルの
+#    セッションはその出力(create/update body)を `RemoteTrigger` に
+#    1:1 で中継するだけにする(SKILL.md)。クラウドの自己監査 routine
+#    向けの汎用手順は `auditor.md`(dotfiles の clone から
+#    `scripts/routines-plan.sh` を直接呼ぶ、`gh` CLI ではなく
+#    `mcp__github__*` を使う)。詳細は docs/claude/claude-routines.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -1481,6 +1492,25 @@ in
     source = repoConfig + "/claude/skills/handoff/scripts/handoff.sh";
     executable = true;
   };
+  # claude-routines: Claude Code routine を対象リポジトリ自身の
+  # `.claude/routines/<name>.{json,md}` へ as-code 化する判断知識。ローカル
+  # session 向けは SKILL.md、クラウド自己監査 routine 向けは auditor.md。
+  # 差分コアは scripts/routines-plan.sh(bash + jq)。詳細は
+  # docs/claude/claude-routines.md。
+  home.file.".claude/skills/claude-routines/SKILL.md".source =
+    repoConfig + "/claude/skills/claude-routines/SKILL.md";
+  home.file.".claude/skills/claude-routines/auditor.md".source =
+    repoConfig + "/claude/skills/claude-routines/auditor.md";
+  home.file.".claude/skills/claude-routines/scripts/routines-plan.sh" = {
+    source = repoConfig + "/claude/skills/claude-routines/scripts/routines-plan.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/claude-routines/scripts/selftest.sh" = {
+    source = repoConfig + "/claude/skills/claude-routines/scripts/selftest.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/claude-routines/scripts/lib.jq".source =
+    repoConfig + "/claude/skills/claude-routines/scripts/lib.jq";
   # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
   # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
   # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
@@ -1620,6 +1650,20 @@ in
     source = repoConfig + "/claude/skills/handoff/scripts/handoff.sh";
     executable = true;
   };
+  home.file.".agents/skills/claude-routines/SKILL.md".source =
+    repoConfig + "/claude/skills/claude-routines/SKILL.md";
+  home.file.".agents/skills/claude-routines/auditor.md".source =
+    repoConfig + "/claude/skills/claude-routines/auditor.md";
+  home.file.".agents/skills/claude-routines/scripts/routines-plan.sh" = {
+    source = repoConfig + "/claude/skills/claude-routines/scripts/routines-plan.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/claude-routines/scripts/selftest.sh" = {
+    source = repoConfig + "/claude/skills/claude-routines/scripts/selftest.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/claude-routines/scripts/lib.jq".source =
+    repoConfig + "/claude/skills/claude-routines/scripts/lib.jq";
   home.file.".agents/skills/stacked-pr/SKILL.md".source =
     repoConfig + "/claude/skills/stacked-pr/SKILL.md";
   home.file.".agents/skills/scope-inventory/SKILL.md".source =

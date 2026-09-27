@@ -291,6 +291,9 @@
   リポジトリ自身の `.github/rulesets/*.json` へ一本化する。apply 前に
   context を実測 job 名と突合して拒否する検証を追加し、`gh api` での
   直接書換は `crates/rulesets-write-guard` が deny する。
+- [ADR-519](adr/519-routines-declaration-in-repo.md) — Claude Code
+  routine(scheduled cloud agent)の設定・prompt の正本を、対象
+  リポジトリ自身の `.claude/routines/*.{json,md}` へ一本化する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -310,6 +313,10 @@ Design and rationale for the hooks and commands deployed from
 - [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate.sh の中断ハンドオフ節 +
   issue-index.sh の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
   打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
+- [`claude-routines.md`](claude/claude-routines.md) — 個人スキル:
+  Claude Code routine(scheduled cloud agent)の設定・prompt を対象
+  リポジトリ自身の `.claude/routines/` へ as-code 化する。差分コアは
+  bash + jq の決定的 CLI(ADR-519-routines-declaration-in-repo)。
 - [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
   the git-signing passphrase cache.
 - [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
