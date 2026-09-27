@@ -360,6 +360,16 @@
 #    への実際の書き込みは Claude が Edit ツールで行う分担にしている。
 #    詳細は docs/claude/performance-planning.md。
 #
+# 27) handoff(個人スキル)+ pr-gate.sh の中断ハンドオフ節 + issue-index.sh の
+#    着手可能な handoff:ai 節:
+#    ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human/AI 双方に
+#    振り分けて GitHub Issue に起票し、後で再開できる状態にする。WIP は
+#    commit → push → Draft PR(本文に `Handoff: #N`)、担当は閉語彙ラベル
+#    `handoff:human`/`handoff:ai`、順序は GitHub ネイティブの Issue
+#    dependencies(blocked_by)で表す。誤りやすい API 操作(ラベル確認・
+#    新設、blocked_by の設定)は `scripts/handoff.sh` の決定論的サブコマンドに
+#    寄せる(番号→id の解決を含む)。詳細は docs/claude/handoff.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -1169,7 +1179,8 @@ in
   # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7): crates/
   # rulesets-write-guard のビルド成果物への安定パスの symlink(gh-edit-allow
   # と同じ理由付け)。
-  home.file.".claude/hooks/rulesets-write-guard".source = "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
+  home.file.".claude/hooks/rulesets-write-guard".source =
+    "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -1460,6 +1471,16 @@ in
   # docs/claude/tracking-issue.md。
   home.file.".claude/skills/tracking-issue/SKILL.md".source =
     repoConfig + "/claude/skills/tracking-issue/SKILL.md";
+  # handoff: ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human / AI
+  # 双方に振り分けて起票し、後で再開できる状態にする判断知識(WIP は Draft PR、
+  # 担当は閉語彙ラベル handoff:human/handoff:ai、順序は Issue dependencies)。
+  # pr-gate.sh の中断ハンドオフ節・issue-index.sh の着手可能な handoff:ai 節と
+  # 組で動く。詳細は docs/claude/handoff.md。
+  home.file.".claude/skills/handoff/SKILL.md".source = repoConfig + "/claude/skills/handoff/SKILL.md";
+  home.file.".claude/skills/handoff/scripts/handoff.sh" = {
+    source = repoConfig + "/claude/skills/handoff/scripts/handoff.sh";
+    executable = true;
+  };
   # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
   # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
   # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
@@ -1582,6 +1603,11 @@ in
     repoConfig + "/claude/skills/issue-hygiene/SKILL.md";
   home.file.".agents/skills/tracking-issue/SKILL.md".source =
     repoConfig + "/claude/skills/tracking-issue/SKILL.md";
+  home.file.".agents/skills/handoff/SKILL.md".source = repoConfig + "/claude/skills/handoff/SKILL.md";
+  home.file.".agents/skills/handoff/scripts/handoff.sh" = {
+    source = repoConfig + "/claude/skills/handoff/scripts/handoff.sh";
+    executable = true;
+  };
   home.file.".agents/skills/stacked-pr/SKILL.md".source =
     repoConfig + "/claude/skills/stacked-pr/SKILL.md";
   home.file.".agents/skills/scope-inventory/SKILL.md".source =

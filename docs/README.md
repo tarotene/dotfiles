@@ -307,6 +307,9 @@ Design and rationale for the hooks and commands deployed from
   二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
+- [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate.sh の中断ハンドオフ節 +
+  issue-index.sh の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
+  打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
 - [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
   the git-signing passphrase cache.
 - [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
