@@ -7,11 +7,12 @@
 ため、ここでは内容ではなく決定の存在だけを参照する)
 
 演奏本番(アマオケ・室内楽・ソロ)の練習計画提案・合わせ調整の統合・
+会場確保の委譲・タイムスケジュール資料の取り込み・付随作業の確認・
 当日タイムテーブル/遠征の Calendar dispatch を行うスキル。データの正本
-(`state/performances/*.toml`、演目・共演者情報を含む)は、この dotfiles
-とは別の private な person-state リポジトリに置く裁定になっている
-(slot-availability の個人設定と同じ理由)。dotfiles 側はそのデータを
-読み書きする手順だけを持つ。
+(`state/performances/*.toml`、演目・共演者・合わせ/当日の確定時刻・
+付随作業の事実を含む)は、この dotfiles とは別の private な person-state
+リポジトリに置く裁定になっている(slot-availability の個人設定と同じ
+理由)。dotfiles 側はそのデータを読み書きする手順だけを持つ。
 
 ## ハブの解決
 
@@ -42,7 +43,7 @@
 ではない)。決定的スクリプトは「どの要素を更新すべきか」を JSON で示す
 ところまでを担い、実際のファイル編集は手順内で Claude が行う。
 
-## 3つの機能
+## 6つの機能
 
 ### 1. 練習計画提案
 
@@ -60,9 +61,39 @@ slot-availability(`config/claude/skills/slot-availability/`)の
 `judge`/`finalize` をそのまま呼ぶ。追加するのは「確定後、person-state
 リポジトリ側の `[[rehearsals]]` のどの要素を更新すべきか」を決定的に
 示す jq クエリのみ(TOML 書き込み自体は上記の制約により Claude が Edit
-で行う)。
+で行う)。ADR-0014 により `rehearsal.status` が保存されなくなったため、
+「交渉中」の判定は `status == "negotiating"` ではなく `start` キーの
+不在で行う(person-state リポジトリ側で `status` フィールド自体が
+スキーマから削除された)。
 
-### 3. 当日タイムテーブル・遠征の Calendar dispatch
+### 3. 会場確保(venue-search への委譲)
+
+会場探しそのもの(候補サービスの列挙・空き確認・候補提示)は
+`config/claude/skills/venue-search/` が持つ。本スキルは「合わせが確定
+していて会場未定なら委譲する」「見つかった会場を `rehearsal.location` に
+書き戻す」の2点だけを担い、会場探しの判断知識を重複して持たない
+(還元性 — 個人練習のスタジオ予約からも venue-search を呼べるように、
+演奏本番のスキルに閉じない設計、`docs/claude/venue-search.md` 参照)。
+
+### 4. タイムスケジュール資料の取り込み
+
+主催者から払い出されるタイムスケジュールのシートは形式が主催者ごとに
+バラバラで、実例もまだ乏しいため、専用パーサは持たない。資料の項目と
+person-state リポジトリ側のフィールドの対応表を SKILL.md に持ち、資料の
+有無によらず同じ項目を埋める手順にした(データモデルが資料の存在を
+前提にしないようにする — 依頼にあった「それの存在を前提にはしない」を
+反映)。
+
+### 5. 付随作業の確認
+
+会場確保・ドレスコード確認・スーツ準備/クリーニング・宿泊要否判断/予約は
+person-state リポジトリ側の `state/performances/scripts/obligations.sh`
+が演奏データから導出するビュー(ADR-0015)。このスキル側に対応する新規
+スクリプトは無く、出力をそのまま読んで対応する手順のみを持つ
+(「1. 練習計画提案」が capacity-check.sh/milestone-check.sh の出力を
+そのまま読むのと同じ設計)。
+
+### 6. 当日タイムテーブル・遠征の Calendar dispatch
 
 `day_timetable`(相対時刻)・`travel.legs`(区間、確定日時なし)は、本番
 開始時刻という追加情報が要る上、相対時刻の表記(スキーマ上は自由記述)が
@@ -88,11 +119,14 @@ person-state リポジトリ側の裁定により、下書き予定の送り先�
 
 ## 参照
 
-- person-state リポジトリ側の `docs/adr/0009-performance-planning-data-model.md`
-  (このスキルが読み書きするデータモデルの決定文書。出典は private
-  リポジトリ側のため、ここでは決定の存在だけを参照する)
+- person-state リポジトリ側の `docs/adr/0010-performance-planning-data-model.md`
+  (このスキルが読み書きするデータモデルの決定文書)、`docs/adr/0014-
+  performance-events-projection.md`(合わせ・当日の確定時刻の射影)、
+  `docs/adr/0015-performance-obligations.md`(付随作業の定型化)。出典は
+  いずれも private リポジトリ側のため、ここでは決定の存在だけを参照する。
 - person-state リポジトリ側の `state/performances/README.md`(スキーマ・
   検証スクリプトのポインタ)
 - `docs/claude/writing-style.md`(マーカー方式の先行例)
 - `docs/claude/slot-availability.md`(判定コアの分離・bash+yq+jq 移植の
   先行例、YAGNI 判断の先例)
+- `docs/claude/venue-search.md`(会場探しの委譲先。ハブを共有する設計)
