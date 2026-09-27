@@ -272,7 +272,10 @@
   block する非対称性(GitHub Docs)を根拠にする。required 宣言
   (`rulesets/quality.json`、#420)を live に反映する運用も併記。Amendment
   (2026-09-26)で第 2 の軸を追加: 変更 path が build/rust の入力に含まれない
-  PR は bottom 段でも skip する。
+  PR は bottom 段でも skip する。Amendment(2026-09-27)で
+  `build vega`/`build arcturus` の required 昇格を撤回: matrix job は
+  skip 時に per-host 名を展開しないため required context が永久に
+  unreportable になる(`rust workspace` は単一 job なので対象外)。
 - [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) —
   カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
   出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。

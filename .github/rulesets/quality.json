@@ -21,8 +21,6 @@
           { "context": "Escape-hatch dry-run" },
           { "context": "nix flake check" },
           { "context": "rust workspace" },
-          { "context": "build vega" },
-          { "context": "build arcturus" },
           { "context": "PR title" }
         ]
       }

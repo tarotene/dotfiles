@@ -265,13 +265,16 @@ GitHub より緩くても厳しくても、どちらも嘘になる。
 
 ### required job が job-level `if:` で skipped になる場合
 
-`nix.yml` の `build vega`/`build arcturus`/`build altair`/`rust workspace`
-は `.github/rulesets/quality.json` 上 required だが、`stack-position` gate job が
-job-level `if:` で skip することがある(中間段は ADR-468、変更 path が
-build/rust の入力に触れない PR は Amendment 2026-09-26、
-`docs/adr/468-stack-aware-heavy-ci.md`)。この skip は `gh pr checks
---json bucket` で `bucket: "skipping"`(GitHub の check-run `state` が
-`SKIPPED`/`NEUTRAL`)として報告される。
+`nix.yml` の `rust workspace` は `.github/rulesets/quality.json` 上
+required だが、`stack-position` gate job が job-level `if:` で skip
+することがある(中間段は ADR-468、変更 path が build/rust の入力に
+触れない PR は Amendment 2026-09-26、`docs/adr/468-stack-aware-heavy-ci.md`)。
+この skip は `gh pr checks --json bucket` で `bucket: "skipping"`
+(GitHub の check-run `state` が `SKIPPED`/`NEUTRAL`)として報告される。
+`build vega`/`build arcturus`/`build altair` は required ではない
+——matrix job は skip 時に per-host 名を展開せず未展開のテンプレート
+文字列 1 本を報告するため、per-host 名を required context にすると
+永久に unreportable になる(ADR-468 Amendment 2026-09-27)。
 
 `reported_checks()` が読む `bucket` の判定は `pass`/`skipping`/
 `fail`/`cancel`/`pending` の 5 種(`cli/cli` の
