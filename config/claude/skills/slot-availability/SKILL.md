@@ -14,7 +14,8 @@ description: 人から提示された候補日程一覧(調整さん等の日程
 
 候補一覧の取得元は調整さんに限らない(LINE アンケート・Spir・TimeRex・
 口頭やチャットでの自由文など、さまざまな形で来る)。判定コア
-(`scripts/slot-hit.py` の `judge` サブコマンド)は取得元を問わない構造化
+(`scripts/slot-hit.sh` の `judge` サブコマンド。bash + yq + jq のみで動く
+— ADR-0009〔private な person-state リポジトリ〕D13)は取得元を問わない構造化
 JSON だけを入力に取るため、下記「汎用手順」はどの取得元でも共通に使える。
 取得元ごとに異なるのは「候補一覧をどう読み取り構造化するか」と「判定後の
 回答をどう書き戻すか」の2点だけで、これを個別の節(現時点では調整さん
@@ -35,7 +36,8 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
 を含むため。既定の読み込み先は `~/.config/slot-availability/config.toml`。
 存在しなければ、どこに置くか・どう作るかをユーザーに確認する(個人の主
 カレンダーに無断で書き込まないのと同じ理由)。設定スキーマは
-`scripts/slot-hit.py --help` と `docs/claude/slot-availability.md` を参照。
+`docs/claude/slot-availability.md` を参照(スキーマの正本は
+`config.toml` を読む `slot-hit.sh`/`lib.jq` の実装そのもの)。
 
 ## 汎用手順
 
@@ -50,11 +52,11 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
    候補期間を覆う範囲で各カレンダーを `list_events`(`timeZone` を設定の
    `timezone` に、`pageSize` は大きめ)する。1 レスポンスがサイズ超過で
    ファイル保存になった場合はそのファイルパスをそのまま次の手順に渡す。
-3. 判定は `scripts/slot-hit.py judge` に任せる。手で ○△× を組み立てない
+3. 判定は `scripts/slot-hit.sh judge` に任せる。手で ○△× を組み立てない
    — バッファ・終日イベントの扱いなど、その場の判断にブレが出やすい
    要素を全てスクリプトに閉じているため。
    ```
-   python3 scripts/slot-hit.py judge --config <config.toml> \
+   bash scripts/slot-hit.sh judge --config <config.toml> \
      --candidates <candidates.json> --events-dir <dir> \
      --event-title <イベント名> --source-url <候補日程一覧の URL> \
      --out-plan <plan.json>
@@ -89,7 +91,7 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
 候補日程一覧の相手側が最終的な枠(1つとは限らない)を裁定したら、その
 枠だけを残して他の仮マーカーを片付け、確定した予定として書き換える。
 この対応付け(既存マーカー × 確定枠 → update/create/delete)は手で
-組み立てず `scripts/slot-hit.py finalize` に任せる — 「確定枠が候補日程
+組み立てず `scripts/slot-hit.sh finalize` に任せる — 「確定枠が候補日程
 一覧に無かった枠だった」「候補と裁定で開始時刻が僅かにずれた」といった
 エッジケースは会話判断に戻すとブレるため、判定コアに固定してある。
 
@@ -103,7 +105,7 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
    `finalize` 側が対応関係を解決する。
 3. `finalize` を実行する:
    ```
-   python3 scripts/slot-hit.py finalize --config <config.toml> \
+   bash scripts/slot-hit.sh finalize --config <config.toml> \
      --decided <decided.json> --markers <markers.json> \
      --event-title <イベント名> --source-url <候補日程一覧の URL> \
      --today <YYYY-MM-DD> --venue <場所、未定なら省略可> \
@@ -136,7 +138,7 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
 
 **手順1(候補一覧の取得・構造化)**: ブラウザで開き、日程候補の表を
 1 列ずつ読む。表記は `M/D(曜) H:MM〜` で年を含まない。年は
-`scripts/slot-hit.py infer-year --month <M> --day <D> --weekday <曜> \
+`scripts/slot-hit.sh infer-year --month <M> --day <D> --weekday <曜> \
 --today <YYYY-MM-DD>` で解決する(今日以降で最初に曜日が一致する年を
 1 行で返す)。手で曜日と年の対応を数えない — 閏年・年末年始をまたぐ候補が
 混ざると誤りやすいため、必ずこのコマンドに委ねる。

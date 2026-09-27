@@ -245,6 +245,16 @@
     executable = true;
   };
 
+  # performance-hub: resolves another private person-state repository's
+  # absolute path (same marker-file/env-var indirection as writing-style-hub
+  # above) for the performance-planning skill.
+  # docs/claude/performance-planning.md has the design (that repository's
+  # own ADR-0009).
+  home.file.".local/bin/performance-hub" = {
+    source = ../../scripts/performance-hub;
+    executable = true;
+  };
+
   # update-own-tools (ADR-0025, #276): builds self-authored, not-yet-released
   # CLIs from origin/<branch> per a host-local registry
   # (~/.config/update-own-tools/registry.toml — never in this repo). Rust,
