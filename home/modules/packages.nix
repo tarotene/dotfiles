@@ -249,7 +249,7 @@
   # absolute path (same marker-file/env-var indirection as writing-style-hub
   # above) for the performance-planning skill.
   # docs/claude/performance-planning.md has the design (that repository's
-  # own ADR-0009).
+  # own ADR-0010).
   home.file.".local/bin/performance-hub" = {
     source = ../../scripts/performance-hub;
     executable = true;

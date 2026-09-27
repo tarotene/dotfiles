@@ -374,7 +374,7 @@ jobs:
       # reconciling a decided subset against existing markers into an
       # update/create/delete plan. bash + yq + jq only (no Python runtime —
       # a design revisited via a private person-state repository's own
-      # ADR-0009 D13). No network, no filesystem writes other than
+      # ADR-0010 D13). No network, no filesystem writes other than
       # --out-plan.
       - name: Install yq (single static binary, version-pinned)
         run: |
@@ -389,7 +389,7 @@ jobs:
       # performance-hub resolves another private person-state repository's
       # path for the performance-planning skill
       # (docs/claude/performance-planning.md, that repository's own
-      # ADR-0009). Same marker-file/env-var indirection as writing-style-hub;
+      # ADR-0010). Same marker-file/env-var indirection as writing-style-hub;
       # its selftest is deterministic shell only, isolated from the real
       # $HOME/$XDG_CONFIG_HOME, no network.
       - name: performance-hub --selftest

@@ -5,7 +5,7 @@
 # 設計と根拠: docs/claude/performance-planning.md（このリポジトリ内）
 #
 # 演奏本番の計画データ(`state/performances/`、その person-state リポジトリ
-# 側の ADR-0009)の正本は、この dotfiles とは別の private な person-state
+# 側の ADR-0010)の正本は、この dotfiles とは別の private な person-state
 # リポジトリに置く裁定になっている(slot-availability の個人設定と同じ
 # 理由 — 本番の演目・共演者情報を public な dotfiles には置けない)。
 # dotfiles 側はその場所への薄いポインタだけを持つ。writing-style-hub

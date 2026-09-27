@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selftest.sh — slot-hit.sh の自己検査本体(旧 Python 版 slot-hit.py の
 # selftest dispatcher が持っていた12項目を bash + yq + jq へ移植したもの、
-# ADR-0009 D13)。slot-hit.sh の selftest サブコマンドから起動される。
+# ADR-0010 D13)。slot-hit.sh の selftest サブコマンドから起動される。
 # ネットワーク・外部ファイルには一切依存しない。
 set -euo pipefail
 

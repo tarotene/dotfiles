@@ -113,12 +113,12 @@ Calendar 側 1 箇所を正本にし、確定した時点で書き換える。
 判定コアは当初 Python 3.11+(標準ライブラリのみ、`tomllib` 使用)で書いた
 `scripts/slot-hit.py` だったが、別の private な person-state リポジトリ
 (出典は private リポジトリ側のため、ここでは決定の存在だけを参照する)
-に置かれた演奏本番計画データモデル(ADR-0009)の grilling セッションで、
+に置かれた演奏本番計画データモデル(ADR-0010)の grilling セッションで、
 ユーザーから「このスキルに Python が入ったこと自体が心外だった」という
 明示的なフィードバックを受けた。dotfiles の `config/claude/skills/` は bash が
 支配的(このコミット時点で bash 19 本に対し Python は本スクリプト 1 本
 のみ)であり、単一目的のためだけに汎用言語ランタイムを増やす選択を
-問い直した(ADR-0009 D13、`selection-grounding` の 表現不可能性→還元性→
+問い直した(ADR-0010 D13、`selection-grounding` の 表現不可能性→還元性→
 先進性の軸)。
 
 実測(2026-09-26、`[[calendars]]` 配列オブテーブル・複数行配列・

@@ -55,7 +55,7 @@ extra = ["bootstrap.sh"]
 # まま追加した。
 #
 # 60 = 上記 59 + 別の private な person-state リポジトリ側の grilling
-# セッション(ADR-0009)で追加した scripts/performance-hub の 1 件。
+# セッション(ADR-0010)で追加した scripts/performance-hub の 1 件。
 # scripts/writing-style-hub と同じマーカーファイル/環境変数間接参照の
 # 薄いポインタスクリプトであり、同じ理由で bash のまま追加した — 移植
 # するほどの複雑さがなく、既存の writing-style-hub と一貫した扱いにする。

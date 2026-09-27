@@ -335,7 +335,7 @@
 #    調整さん等の候補日程一覧を Google Calendar の空き状況と突き合わせ、
 #    朝・昼・夜の3コマ単位で当たり判定(○/△/×)を決定的なスクリプト
 #    (scripts/slot-hit.sh、bash + yq + jq。判定コアは judge.jq/finalize.jq、
-#    共通関数は lib.jq。別の private な person-state リポジトリ側の ADR-0009
+#    共通関数は lib.jq。別の private な person-state リポジトリ側の ADR-0010
 #    D13 により旧 slot-hit.py〔Python〕から移植)に委譲する。終日イベント
 #    (試験本番等)を見落として
 #    実際は拘束される日を ○ と誤判定しないよう、`soft_day_prefixes` に一致
@@ -353,7 +353,7 @@
 #    マイルストーン到来の確認)・合わせ調整の統合(slot-availability の
 #    judge/finalize に委譲し、確定後を person-state リポジトリ側の TOML へ
 #    反映)・当日タイムテーブル/遠征の Calendar dispatch を行う。データの
-#    正本(`state/performances/`、ADR-0009)は別の private な person-state
+#    正本(`state/performances/`、ADR-0010)は別の private な person-state
 #    リポジトリに置き、`scripts/performance-hub`(writing-style-hub と
 #    同型のマーカーファイル/環境変数間接参照)でパスを解決する。yq の
 #    TOML エンコーダが配列・テーブルの書き込みをサポートしないため、TOML
@@ -1544,7 +1544,7 @@ in
   # performance-planning: 演奏本番の練習計画提案・合わせ調整の統合・当日
   # タイムテーブル/遠征の Calendar dispatch。詳細は
   # docs/claude/performance-planning.md(別の private な person-state
-  # リポジトリ側の ADR-0009)。
+  # リポジトリ側の ADR-0010)。
   home.file.".claude/skills/performance-planning/SKILL.md".source =
     repoConfig + "/claude/skills/performance-planning/SKILL.md";
 
