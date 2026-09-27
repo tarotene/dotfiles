@@ -2,7 +2,7 @@
 # slot-hit.sh — 候補日程一覧(調整さん等、人から提示される空き日程の
 # 問い合わせ全般)と Google Calendar の予定を突き合わせ、朝・昼・夜の3コマ
 # 単位で当たり判定(○/△/×)を出す判定コア。bash + yq(TOML→JSON 変換)+ jq
-# のみで動く(ADR-0009 D13、private な person-state リポジトリ の判定)。旧 slot-hit.py
+# のみで動く(ADR-0010 D13、private な person-state リポジトリ の判定)。旧 slot-hit.py
 # (Python)の移植。判定ロジック自体(classify_events/judge/build_plan)は
 # judge.jq、裁定後の確定化(finalize)は finalize.jq、共通関数は lib.jq に
 # 持つ — このファイルは TOML→JSON 変換・events-dir の読み込み・引数パース

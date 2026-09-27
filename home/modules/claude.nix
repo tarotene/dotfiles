@@ -1565,9 +1565,21 @@ in
   # performance-planning: 演奏本番の練習計画提案・合わせ調整の統合・当日
   # タイムテーブル/遠征の Calendar dispatch。詳細は
   # docs/claude/performance-planning.md(別の private な person-state
-  # リポジトリ側の ADR-0009)。
+  # リポジトリ側の ADR-0010)。
   home.file.".claude/skills/performance-planning/SKILL.md".source =
     repoConfig + "/claude/skills/performance-planning/SKILL.md";
+  # venue-search: 合わせ・個人練習の会場探し(空き確認は機械、予約は人間)。
+  # ハブは performance-planning の performance-hub を流用する。詳細は
+  # docs/claude/venue-search.md(別の private な person-state リポジトリ
+  # 側の ADR-0015)。
+  home.file.".claude/skills/venue-search/SKILL.md".source =
+    repoConfig + "/claude/skills/venue-search/SKILL.md";
+  home.file.".claude/skills/venue-search/scripts/venue-urls.sh" = {
+    source = repoConfig + "/claude/skills/venue-search/scripts/venue-urls.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/venue-search/scripts/noah-chart.js".source =
+    repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1648,6 +1660,14 @@ in
     repoConfig + "/claude/skills/slot-availability/scripts/finalize.jq";
   home.file.".agents/skills/performance-planning/SKILL.md".source =
     repoConfig + "/claude/skills/performance-planning/SKILL.md";
+  home.file.".agents/skills/venue-search/SKILL.md".source =
+    repoConfig + "/claude/skills/venue-search/SKILL.md";
+  home.file.".agents/skills/venue-search/scripts/venue-urls.sh" = {
+    source = repoConfig + "/claude/skills/venue-search/scripts/venue-urls.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/venue-search/scripts/noah-chart.js".source =
+    repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に

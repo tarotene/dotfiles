@@ -374,7 +374,7 @@ jobs:
       # reconciling a decided subset against existing markers into an
       # update/create/delete plan. bash + yq + jq only (no Python runtime —
       # a design revisited via a private person-state repository's own
-      # ADR-0009 D13). No network, no filesystem writes other than
+      # ADR-0010 D13). No network, no filesystem writes other than
       # --out-plan.
       - name: Install yq (single static binary, version-pinned)
         run: |
@@ -389,11 +389,20 @@ jobs:
       # performance-hub resolves another private person-state repository's
       # path for the performance-planning skill
       # (docs/claude/performance-planning.md, that repository's own
-      # ADR-0009). Same marker-file/env-var indirection as writing-style-hub;
+      # ADR-0010). Same marker-file/env-var indirection as writing-style-hub;
       # its selftest is deterministic shell only, isolated from the real
       # $HOME/$XDG_CONFIG_HOME, no network.
       - name: performance-hub --selftest
         run: ./scripts/performance-hub --selftest
+
+      # venue-urls.sh is the deterministic candidate-service enumerator behind
+      # the venue-search skill (docs/claude/venue-search.md): reads a fixture
+      # state/places.toml, no network, and checks the needs=grand-piano
+      # branching (SpaceMarket/Instabase included only then), the
+      # registered-only facility filter, and the url:null fallback for an
+      # unknown service/system.
+      - name: venue-urls.sh --selftest
+        run: bash ./config/claude/skills/venue-search/scripts/venue-urls.sh --selftest
 
       # plan-fresh-gate is deterministic shell + git + jq end to end, no gh/network:
       # the pristine-ff-then-deny path, the dirty/non-pristine no-move path, the
