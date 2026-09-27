@@ -104,7 +104,7 @@ Issue」に見せる方が悪いため)。
 |---|---|---|
 | 対象外 | `jq`/`gh` 不在、git repo でない、GitHub remote が解決できない、採用した scope の Search が `total_count=0` | 完全沈黙(stdout・stderr とも空) |
 | 失敗 | 前提が揃っているのに、採用しようとした側の Search が非 0 で終了(認証切れ・rate limit・ネットワーク不通など) | stderr に 1 行、stdout は空 |
-| 部分縮退 | 現ブランチの PR 取得、または起票者(viewer login)の取得だけが失敗 | その行/装飾だけを落とし、索引自体は注入する |
+| 部分縮退 | 現ブランチの PR 取得、起票者(viewer login)の取得、または `label:handoff:ai` Search の取得だけが失敗 | その行/節だけを落とし、索引自体は注入する |
 | 不完全 | 採用した側が `incomplete_results: true` | 索引は注入するが件数の文を「不正確」に差し替え、stderr にも 1 行 |
 
 git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査のみで、
@@ -120,6 +120,29 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 「PR が無い」(問い合わせは成功したが配列が空 → 「なし」と書く)と「PR の有無が
 分からない」(問い合わせ自体が失敗 → 行を出さない)を区別する。混同すると、実は
 問い合わせが失敗しているのに「なし」と確信度高く誤報することになる。
+
+## 着手可能な handoff:ai
+
+`handoff` skill(`docs/claude/handoff.md`)が中断ハンドオフで振った AI タスク
+(`handoff:ai` ラベル)のうち、GitHub Issue dependencies の `blocked_by`
+(open な blocker 数)が 0 のものだけを、@me の枠とは独立の節として常に出す。
+
+独立にする理由: `@me に assign された open Issue` の枠は `assignee:@me` が
+1 件以上ある時点で repo 全体スコープへのフォールバック(上の「なぜ
+`--author @me` を使わないか」)が起きない——つまり @me の Issue が多いユーザー
+では、@me に無関係な `handoff:ai` タスクが全体一覧に混ざる機会そのものが
+無くなる。別の Search(`label:%22handoff:ai%22`)を mine/all と並列で叩き、
+`mine`/`all` の scope 選択に関わらず常に評価する。
+
+`blocked_by` の値は Search API の応答に含まれる `issue_dependencies_summary`
+フィールドをそのまま読む(2026-09-27 時点で `gh api search/issues` の実地
+確認済み — 素の GET と同じフィールドが載る)。判定は `.issue_dependencies_summary.blocked_by
+== 0`(`// 0` のような既定値フォールバックを使わない)——フィールド自体が
+将来のスキーマ変更等で欠ければ `null == 0` は false になり、その Issue は
+「着手可能」に含めない。未知を「ブロックなし」と誤読しない fail-closed。
+
+ラベルが存在しないリポジトリ・検索 0 件・取得失敗はどれも節ごと黙って省略する
+(新しい縮退経路を増やさない——上の「縮退」表に 1 行を足しただけ)。
 
 ## `clear` を外し `compact` を含める理由
 
