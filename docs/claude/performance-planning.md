@@ -2,7 +2,7 @@
 
 スクリプト: `scripts/performance-hub`
 スキル: `config/claude/skills/performance-planning/SKILL.md`
-関連: 別の private な person-state リポジトリ側の ADR-0009
+関連: 別の private な person-state リポジトリ側の ADR-0010
 (`state/performances/` のデータモデル。出典は private リポジトリ側の
 ため、ここでは内容ではなく決定の存在だけを参照する)
 
