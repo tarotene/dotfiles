@@ -1578,6 +1578,8 @@ in
     source = repoConfig + "/claude/skills/venue-search/scripts/venue-urls.sh";
     executable = true;
   };
+  home.file.".claude/skills/venue-search/scripts/noah-chart.js".source =
+    repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1664,6 +1666,8 @@ in
     source = repoConfig + "/claude/skills/venue-search/scripts/venue-urls.sh";
     executable = true;
   };
+  home.file.".agents/skills/venue-search/scripts/noah-chart.js".source =
+    repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に

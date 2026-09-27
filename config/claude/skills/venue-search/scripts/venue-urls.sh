@@ -61,7 +61,7 @@ run_main() {
         '{service: $service, branch: $branch,
           url: "https://www.grandpiano.jp/noahweb/webs/chart/",
           login_required: false,
-          note: "週表示はログイン不要(実測 2026-09-27)。Web予約は毎月末17:00に4か月先の月末まで開く。2名の個人練習料金枠は前日21:00から。店舗を選んで空きを確認する。"}')"
+          note: "週表示はログイン不要(実測 2026-09-27)。Web予約は毎月末17:00に4か月先の月末まで開く。2名の個人練習料金枠は前日21:00から。店舗を選んで空きを確認する。表示可能な週は今日から約13週先まで(実測 2026-09-28)。操作手順は SKILL.md 3.1・scripts/noah-chart.js を参照。"}')"
     else
       add "$(jq -n --arg service "$service" --arg branch "$branch" \
         '{service: $service, branch: $branch, url: null, login_required: null,
