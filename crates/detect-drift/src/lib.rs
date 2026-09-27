@@ -263,6 +263,16 @@ pub fn exit_code(any_drift: bool, outcome: FileIssueOutcome) -> u8 {
     }
 }
 
+/// `gh repo view <repo> --json visibility --jq .visibility` の出力が、
+/// ad-hoc install の在庫(machine-state の実値)を書き込んでよい宛先かを
+/// 判定する。PRIVATE のみ許可する fail-closed な純関数 —
+/// ADR-0034「規則は public・実値は private」により、`--file-issue` の
+/// 宛先は private リポジトリに限る。判定不能な入力(取得失敗・
+/// INTERNAL・空文字列)はすべて拒否側に倒す。
+pub fn visibility_permits_filing(visibility: &str) -> bool {
+    visibility.trim() == "PRIVATE"
+}
+
 /// 自動起票する GitHub Issue の title/body を組み立てる(純粋関数、
 /// 副作用なし)。`drifts` は `filter_registry_excluded` を通した後のもの
 /// でなければならない — この関数自身は ADR-0025 のフィルタを行わない。
@@ -377,6 +387,23 @@ mod registry_tests {
     fn exit_code_failed_is_always_nonzero_regardless_of_drift() {
         assert_eq!(exit_code(false, FileIssueOutcome::Failed), 3);
         assert_eq!(exit_code(true, FileIssueOutcome::Failed), 3);
+    }
+
+    #[test]
+    fn visibility_permits_filing_only_for_private() {
+        assert!(visibility_permits_filing("PRIVATE"));
+    }
+
+    #[test]
+    fn visibility_permits_filing_rejects_public_internal_and_empty() {
+        assert!(!visibility_permits_filing("PUBLIC"));
+        assert!(!visibility_permits_filing("INTERNAL"));
+        assert!(!visibility_permits_filing(""));
+    }
+
+    #[test]
+    fn visibility_permits_filing_trims_surrounding_whitespace() {
+        assert!(visibility_permits_filing("PRIVATE\n"));
     }
 }
 
