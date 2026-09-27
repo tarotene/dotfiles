@@ -14,7 +14,7 @@ use detect_drift::{
     compose_issue_report, compute_baseline_from_history, diff_apt, diff_cargo, diff_npm, diff_pipx,
     exit_code, filter_registry_excluded, parse_apt_baseline, parse_apt_declared,
     parse_apt_installed, parse_cargo_installed, parse_history_log_installs, parse_npm_global,
-    parse_pipx_venvs, FileIssueOutcome, LayerDrift,
+    parse_pipx_venvs, visibility_permits_filing, FileIssueOutcome, LayerDrift,
 };
 
 const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<repo>]\n\
@@ -27,11 +27,15 @@ Without --porcelain: human-readable OK/WARN lines, exit 0 if clean, 1 if\n\
 drift was found.\n\
 --porcelain: machine-readable TSV (layer\\tname\\tnix-attr-candidate).\n\
 --file-issue <owner>/<repo>: on drift, file (or comment on) a `drift`-\n\
-labelled GitHub Issue via `gh`. Excludes any cargo/npm/pipx name registered\n\
-in update-own-tools' registry.toml (ADR-0025) — fails closed (files\n\
-nothing) if that registry exists but cannot be parsed. Exit code reflects\n\
-delivery, not drift presence: 0 = delivered (issue filed/commented, or\n\
-nothing to report after ADR-0025 filtering), 3 = delivery failed.\n\n\
+labelled GitHub Issue via `gh`. <owner>/<repo> must be a PRIVATE\n\
+repository (ADR-0034: machine-state inventory is a real value, never\n\
+written to a public source) — fails closed (files nothing) if `gh repo\n\
+view` fails or reports any visibility other than PRIVATE. Excludes any\n\
+cargo/npm/pipx name registered in update-own-tools' registry.toml\n\
+(ADR-0025) — also fails closed if that registry exists but cannot be\n\
+parsed. Exit code reflects delivery, not drift presence: 0 = delivered\n\
+(issue filed/commented, or nothing to report after ADR-0025 filtering),\n\
+3 = delivery failed.\n\n\
 apt-baseline (#445): manage the host-local apt seed baseline that excludes\n\
 Pop!_OS's distinst post-install packages (`apt-mark showmanual` reports\n\
 them as manual, but they were never an ad-hoc install) from apt drift.\n\
@@ -130,12 +134,34 @@ fn main() -> ExitCode {
     ExitCode::from(exit_code(any_drift, outcome))
 }
 
-/// `--file-issue`: レジストリで ADR-0025 対象を除外してから、`drift`
-/// ラベルの open Issue を探し、無ければ新規起票・あればコメント追記する。
-/// レジストリファイルが存在するのにパースできない場合は fail-closed で
-/// 何もしない(存在しない場合は「登録ゼロ」として続行する — ADR-0005 の
-/// binary/config-existence gating と同じ扱い)。
+/// `--file-issue`: 宛先の visibility を確認してから、レジストリで ADR-0025
+/// 対象を除外し、`drift` ラベルの open Issue を探して無ければ新規起票・
+/// あればコメント追記する。レジストリファイルが存在するのにパースできない
+/// 場合は fail-closed で何もしない(存在しない場合は「登録ゼロ」として
+/// 続行する — ADR-0005 の binary/config-existence gating と同じ扱い)。
+///
+/// visibility 確認は最優先(レジストリ読込より前)で行う — machine-state の
+/// 実値は public リポジトリに書いてはならない(ADR-0034)ため、宛先が
+/// private であることを他のどの処理より先に確定させる。`gh repo view` の
+/// 失敗、または PRIVATE 以外の返答は fail-closed で拒否する。
 fn file_issue(owner_repo: &str, drifts: &[LayerDrift]) -> Result<(), String> {
+    let visibility = run_gh(&[
+        "repo",
+        "view",
+        owner_repo,
+        "--json",
+        "visibility",
+        "--jq",
+        ".visibility",
+    ])
+    .map_err(|e| format!("gh repo view {owner_repo} に失敗({e}) — ADR-0034 により fail-closed"))?;
+    if !visibility_permits_filing(&visibility) {
+        return Err(format!(
+            "{owner_repo} の visibility は '{}' — PRIVATE リポジトリのみ許可(ADR-0034)",
+            visibility.trim()
+        ));
+    }
+
     let registry = match update_own_tools::xdg_dir("XDG_CONFIG_HOME", ".config") {
         Some(base) => {
             let path = base.join("update-own-tools/registry.toml");

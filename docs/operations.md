@@ -622,22 +622,30 @@ Decision flow for adding a tool, per
 
 A tool that already slipped in ad hoc (apt / `cargo install` / `npm -g` /
 pipx) should be reclaimed into the right layer. `detect-drift`(#4, Layer 2,
-`crates/detect-drift`)reports these automatically — weekly via a
-systemd/launchd timer (`home/modules/drift.nix`), or on demand:
+`crates/detect-drift`)reports these on demand:
 
 ```bash
-detect-drift                                   # human-readable report, exit 1 if drift found
-detect-drift --porcelain                       # TSV: layer, name, nixpkgs attribute candidate
-detect-drift --file-issue tarotene/dotfiles     # file/comment on a `drift`-labelled Issue
+detect-drift                                       # human-readable report, exit 1 if drift found
+detect-drift --porcelain                           # TSV: layer, name, nixpkgs attribute candidate
+detect-drift --file-issue <private-owner>/<private-repo>   # file/comment on a `drift`-labelled Issue
 ```
+
+The inventory `--file-issue` reports is a machine-state real value (ADR-0034),
+so its destination must be a **PRIVATE** repository — `detect-drift` checks
+`gh repo view <repo> --json visibility` itself and fails closed (exit 3,
+files nothing) on anything else, including the public `tarotene/dotfiles`.
+The weekly systemd/launchd timer (`home/modules/drift.nix`) only exists when
+`dotfiles.detectDrift.issueRepo` is set — this repo's own source never sets
+it (the value is real, ADR-0034), so on a host with no private wrapper flake
+module for it, the timer is simply absent and detection is manual-only.
 
 The `--file-issue` exit code reflects delivery, not drift presence: 0 =
 delivered (issue filed/commented, or nothing to report after ADR-0025
-filtering), 3 = delivery failed. This differs from the plain/`--porcelain`
-contract (0 = clean, 1 = drift) because cargo/npm/pipx have no declaration
-file, so every installed package is a drift candidate — treating drift
-presence as unit failure would make the weekly timer's `detect-drift.service`
-fail permanently.
+filtering), 3 = delivery failed (including the visibility check). This
+differs from the plain/`--porcelain` contract (0 = clean, 1 = drift) because
+cargo/npm/pipx have no declaration file, so every installed package is a
+drift candidate — treating drift presence as unit failure would make the
+weekly timer's `detect-drift.service` fail permanently.
 
 The apt layer needs a host-local baseline (`detect-drift apt-baseline
 --init` at provisioning time, or `--from-history` to retrofit an existing
