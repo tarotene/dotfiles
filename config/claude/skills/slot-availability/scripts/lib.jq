@@ -140,9 +140,11 @@ def resolve_year($month; $day; $weekday_ja; $today):
       [range(0; 4)]
       | map(
           ($today_year + .) as $year
-          | ($year | tostring) + "-" +
-            ($month | tostring | if length == 1 then "0" + . else . end) + "-" +
-            ($day | tostring | if length == 1 then "0" + . else . end) as $ymd
+          | (
+              ($year | tostring) + "-" +
+              ($month | tostring | if length == 1 then "0" + . else . end) + "-" +
+              ($day | tostring | if length == 1 then "0" + . else . end)
+            ) as $ymd
           | ($ymd + "T00:00:00Z" | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) as $epoch
           | ($epoch | strftime("%Y-%m-%d")) as $actual_ymd
           | select($actual_ymd == $ymd)

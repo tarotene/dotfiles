@@ -53,7 +53,13 @@ extra = ["bootstrap.sh"]
 # (#57 の追加)と同じ理由 — github-audit の fetch_head_sha_job_names() を
 # source して再利用する設計上、判定ロジックの単一正本を保つために bash の
 # まま追加した。
-max_remaining = 59
+#
+# 60 = 上記 59 + 別の private な person-state リポジトリ側の grilling
+# セッション(ADR-0009)で追加した scripts/performance-hub の 1 件。
+# scripts/writing-style-hub と同じマーカーファイル/環境変数間接参照の
+# 薄いポインタスクリプトであり、同じ理由で bash のまま追加した — 移植
+# するほどの複雑さがなく、既存の writing-style-hub と一貫した扱いにする。
+max_remaining = 60
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -252,6 +258,10 @@ stage = "4e"
 
 [[target]]
 path = "scripts/writing-style-hub"
+stage = "4e"
+
+[[target]]
+path = "scripts/performance-hub"
 stage = "4e"
 
 [[target]]

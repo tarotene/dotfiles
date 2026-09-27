@@ -119,7 +119,7 @@ def judge_one($day; $slot_name; $config; $busies; $soft_markers; $soft_days):
           | if ($sm | length) > 0 then
               {
                 verdict: "△",
-                reason: "別候補日程のマーカーと重複: " + ($sm | map(.calendar + ": " + .summary) | join("; "))
+                reason: ("別候補日程のマーカーと重複: " + ($sm | map(.calendar + ": " + .summary) | join("; ")))
               }
             elif ($soft_days | index($day) != null) then
               {verdict: "△", reason: "試験日等のため保守的に判定(直接の重複・近接予定なし)"}
@@ -144,8 +144,8 @@ def build_plan($candidates_resolved; $judgments; $config; $event_title; $source_
                 $config.marker_prefix + $event_title +
                 (if $j.verdict == "△" then " [△]" else "" end)
               ),
-              start: (($s + $config.tz_offset_seconds) | strftime("%Y-%m-%dT%H:%M:%S")) + $tzoff,
-              end: (($e + $config.tz_offset_seconds) | strftime("%Y-%m-%dT%H:%M:%S")) + $tzoff,
+              start: ((($s + $config.tz_offset_seconds) | strftime("%Y-%m-%dT%H:%M:%S")) + $tzoff),
+              end: ((($e + $config.tz_offset_seconds) | strftime("%Y-%m-%dT%H:%M:%S")) + $tzoff),
               description: (
                 [
                   (if $source_url != "" then "候補日程一覧: " + $source_url else "候補日程一覧より仮押さえ" end)
