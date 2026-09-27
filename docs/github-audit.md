@@ -162,6 +162,43 @@ exempt from this check whenever `review_layer_present` is true, because
 the two-ruleset split described just above (core + review) is the
 *intended* shape, not drift.
 
+### Declaration as source of truth (ADR-0000-rulesets-declaration-in-repo)
+
+Required status check drift used to be undetectable by this domain — the
+"why judgement is by rule-type union, not ruleset name/count" note above
+explicitly says `required_status_checks`' actual check-name list is
+project-specific and only reported for a human to read, never
+machine-judged. Since the required context declaration now lives in the
+target repository itself (`.github/rulesets/{security,quality,workflow}
+[,review].json`, not a *-repo-governance skill template outside the
+repository), the rulesets domain can machine-judge three more things:
+
+- `rulesets-declaration-missing` — the repository has a live governed
+  ruleset but no `.github/rulesets/quality.json` (etc.) declaration at
+  HEAD. Remedy: seed one via the matching `*-repo-governance` skill's
+  `copy-files.sh` (or `repo-governance-common`'s, for the `core` type).
+- `rulesets-declaration-drift:<name>` — the declared and live ruleset
+  (matched by name: Security/Quality/Workflow/Review) differ after
+  normalizing both to `{name,target,enforcement,conditions,bypass_actors,
+  rules:(rules sorted by type)}`. Remedy: `apply-rulesets.sh <owner>/
+  <repo> --reconcile` once the declaration change has merged. This
+  normalization is coarse — GitHub fills some rule parameters with
+  server-side defaults a hand-written declaration omits — and may need
+  tuning as real-account audits surface false positives.
+- `required-context-unreportable:<context>` — a live required_status_checks
+  context that no job actually reported on the repository's most recent
+  PR's head commit (the same "#337 permanently Expected" failure mode
+  `titles`' `pr-title-context-mismatch` catches, generalized to every
+  context, not just "PR title"). Skipped (not judged) when the repository
+  has no PR yet to check against — that is "unverifiable", not
+  "unreportable". Remedy depends on which side is wrong: either the
+  declaration/live ruleset still names an old job, or the workflow job
+  itself was renamed without updating the ruleset.
+
+The `declaration` field on each rulesets finding is `present`, `missing`,
+or `not-judged` (the pre-existing `ungoverned` verdict, where there is no
+live ruleset to compare a declaration against in the first place).
+
 ### charters (ADR-0013 + ADR-0016 + ADR-0017)
 
 Reports which repositories lack a machine-checkable "why this repository

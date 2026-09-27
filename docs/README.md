@@ -272,7 +272,10 @@
   block する非対称性(GitHub Docs)を根拠にする。required 宣言
   (`rulesets/quality.json`、#420)を live に反映する運用も併記。Amendment
   (2026-09-26)で第 2 の軸を追加: 変更 path が build/rust の入力に含まれない
-  PR は bottom 段でも skip する。
+  PR は bottom 段でも skip する。Amendment(2026-09-27)で
+  `build vega`/`build arcturus` の required 昇格を撤回: matrix job は
+  skip 時に per-host 名を展開しないため required context が永久に
+  unreportable になる(`rust workspace` は単一 job なので対象外)。
 - [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) —
   カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
   出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。
@@ -283,6 +286,11 @@
   Issue 起票できるようにする配管。判定を下したツール自身が記録し
   (tarotene/bleep 側は別 PR)、`crates/verdict-escalate` がセッション単位・
   fingerprint 単位に集約する。
+- [ADR-503](adr/503-rulesets-declaration-in-repo.md) —
+  required status check の正本を対象リポジトリ外のテンプレートから、
+  リポジトリ自身の `.github/rulesets/*.json` へ一本化する。apply 前に
+  context を実測 job 名と突合して拒否する検証を追加し、`gh api` での
+  直接書換は `crates/rulesets-write-guard` が deny する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -322,7 +330,7 @@ Design and rationale for the hooks and commands deployed from
   `gh issue create` on PRs/Issues this session itself created, via a
   session ledger fed from `gh … create` output — never a wildcard rule.
 - [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
-  hook (Rust, ADR-0000-rulesets-declaration-in-repo): denies `gh api`
+  hook (Rust, ADR-503): denies `gh api`
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
   forcing all applies through `scripts/apply-rulesets.sh`'s context
   verification.

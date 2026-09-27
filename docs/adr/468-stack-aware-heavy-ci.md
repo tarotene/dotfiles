@@ -242,6 +242,70 @@ Decision 1〜3 の stack 軸は、bottom 段(base=main)を常に `heavy=true` �
   ——drift 検査は「未分類」しか検出せず、「本当は copy-only でない」
   という誤分類は検出しない。
 
+## Amendment (2026-09-27 — matrix job は skip 時に展開されないため `build vega`/`build arcturus` の required 昇格を撤回する)
+
+`.github/rulesets/quality.json`(#500 で `rulesets/quality.json` から
+改名・改番)を実際に対象リポジトリ自身に適用しようとした際(#503、
+`rulesets-context-check` の実行時検証)、`build vega` / `build arcturus`
+がこの PR(docs のみ、build-host の入力を触れていない)の head SHA で
+一度も報告されないことが判明した。
+
+事実(2026-09-27 実測。`gh api repos/tarotene/dotfiles/commits/<sha>/
+check-runs` で確認):
+
+- `build-host` job(`strategy.matrix.include` に `vega`/`arcturus`/
+  `altair` を静的列挙、`name: build ${{ matrix.host }}`)が
+  `stack-position` の path 軸により skip されると、check-run は
+  matrix ごとに 3 本展開されず、未展開のテンプレート文字列
+  `build ${{ matrix.host }}` 1 本が `conclusion: skipped` で報告される。
+  `vega`/`arcturus`/`altair` それぞれの名前を持つ check-run は
+  そもそも作られない。
+- Decision 1・Amendment(2026-09-26)が根拠にした GitHub Docs
+  "Successful check statuses are `success`, `skipped`, and `neutral`"
+  は、job 自身が報告する **その job の実際の名前**に対して成立する。
+  matrix 展開前に skip された job は、per-matrix 名を一度も名乗らない
+  ため、`build vega`/`build arcturus` を required context に指定すると
+  その check は「一度も作られない」——ADR-468 が区別した「job-level
+  `if:` skip(安全)」と「workflow 単位の path filter skip(`Pending` の
+  まま block)」の中間に、意図せず後者と同じ結果になる第三のケースが
+  存在した。
+- `rust` job は matrix を持たない単一 job(`name: rust workspace` は
+  リテラル)なので、この問題の対象外。skip 時も自身の実名で
+  `skipped` を報告できる——#420 の `rust workspace` required 昇格は
+  そのまま有効。
+
+### Decision
+
+1. `.github/rulesets/quality.json` の required_status_checks から
+   `build vega` / `build arcturus` を削除する(`rust workspace` /
+   `PR title` 等の非 matrix job はそのまま required に残す)。#420 の
+   「`build vega`/`build arcturus` を required に昇格する」裁定は撤回する
+   ——`--reconcile` を実行していなかったため、live には実害が出ていない。
+2. matrix job(`build vega`/`build arcturus`/`build altair`)を required
+   にする経路は、本 Amendment の時点では設計しない(Alternatives
+   considered に追記)。将来必要になれば「matrix 全体の完了を待つ単一の
+   集約 job(例: `needs: build-host` の `if: always()` job)を required
+   にする」設計を別途検討する。
+
+### Alternatives considered
+
+- **集約 job を今 追加する**: matrix 全体の pass/skip を単一の静的名の
+  job にまとめれば required 化できる。今回はスコープ外(このリポジトリ
+  自身の宣言修正が主目的であり、新しい job を増やす設計変更は独立の
+  決定に値する)として見送り、上記 Decision 2 に将来課題として残す。
+- **required から `build vega`/`build arcturus` を外さず、
+  `rulesets-context-check` 側で「skip される可能性がある matrix job は
+  fail にしない」という特例を入れる**: 判定側に「この context は matrix
+  展開由来だから緩める」という対象リポジトリ固有の知識を持たせることに
+  なり、`scripts/rulesets-context-check` が汎用ツールでなくなる
+  (還元性に反する)。宣言側(このリポジトリの `quality.json`)を実態に
+  合わせる方が安い。
+
+### 執行点
+
+- `.github/rulesets/quality.json` — `build vega`/`build arcturus` を
+  required_status_checks から削除(本 PR で変更)
+
 ### Alternatives considered
 
 - **push イベントにも同じ判定をゲートで行い、`push.paths` を削って単一
