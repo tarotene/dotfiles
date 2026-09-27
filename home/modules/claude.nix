@@ -484,6 +484,12 @@ let
   # する。gh-edit-allow と同じ理由(判定に既存の巨大 bash 資産を source
   # する必要が無い)で ADR-0024 の既定どおり Rust。
   rulesetsWriteGuardCmd = "'${hooksDir}/rulesets-write-guard'";
+  # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+  # 宣言外の cron routine create/update(RemoteTrigger)を deny する。
+  # rulesets-write-guard と同じ理由で Rust だが、判定対象が Bash コマンド
+  # 文字列ではないため env var による bypass は持たない(crates/
+  # routines-write-guard/src/lib.rs 参照)。
+  routinesWriteGuardCmd = "'${hooksDir}/routines-write-guard'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -691,6 +697,7 @@ let
     adr_number="$1";             shift
     gh_edit_allow="$1";          shift
     rulesets_write_guard="$1";   shift
+    routines_write_guard="$1";   shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -835,6 +842,13 @@ let
     # のみ返す(判定しない入力は素通し)ので、gh-edit-allow の PreToolUse と
     # 同じ if で gh 呼び出しに絞ってよい。
     register PreToolUse Bash "$rulesets_write_guard" 10 "Bash(gh *)"
+    # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+    # RemoteTrigger は Bash ではないため、Bash 専用の permission-rule 構文
+    # (`Bash(gh *)` のような if narrowing)は使えない — matcher で
+    # RemoteTrigger 呼び出し全体を hook に渡し、対象外のアクション/body は
+    # バイナリ自身が None を返して素通しする(external-send-guard の
+    # "mcp__.*" と同じ「広い matcher + バイナリ内部判定」形)。
+    register PreToolUse RemoteTrigger "$routines_write_guard" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -1192,6 +1206,11 @@ in
   # と同じ理由付け)。
   home.file.".claude/hooks/rulesets-write-guard".source =
     "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
+  # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+  # crates/routines-write-guard のビルド成果物への安定パスの symlink
+  # (gh-edit-allow と同じ理由付け)。
+  home.file.".claude/hooks/routines-write-guard".source =
+    "${pkgs.dotfiles-tools}/bin/routines-write-guard";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -1896,7 +1915,8 @@ in
       ${lib.escapeShellArg externalSendGuardCmd} \
       ${lib.escapeShellArg adrNumberCmd} \
       ${lib.escapeShellArg ghEditAllowCmd} \
-      ${lib.escapeShellArg rulesetsWriteGuardCmd}
+      ${lib.escapeShellArg rulesetsWriteGuardCmd} \
+      ${lib.escapeShellArg routinesWriteGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

@@ -344,6 +344,11 @@ Design and rationale for the hooks and commands deployed from
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
   forcing all applies through `scripts/apply-rulesets.sh`'s context
   verification.
+- [`routines-write-guard.md`](claude/routines-write-guard.md) — PreToolUse
+  hook (Rust, ADR-0000-routines-declaration-in-repo): denies a cron-bearing
+  `RemoteTrigger` create/update whose body lacks the namespace-key name and
+  `routine-spec` annotation that `claude-routines`' `routines-plan.sh`
+  always produces.
 - [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
 - [`public-publish-guard.md`](claude/public-publish-guard.md) — dotfiles-side
