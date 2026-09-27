@@ -13,8 +13,8 @@
 
 候補日程一覧の取得(Web ページの読み取り)・カレンダーの読み書き(MCP)・
 合意形成(判定表の提示と承認)は文脈判断を要し、機械的なフックでは代替
-できない。判定ロジック自体は decidable なので `scripts/slot-hit.py` に
-切り出し、skill はその前後の I/O 手順を統括する。
+できない。判定ロジック自体は decidable なので `scripts/slot-hit.sh`(bash
++ yq + jq)に切り出し、skill はその前後の I/O 手順を統括する。
 
 既存の `external-call-scheduling` は「Claude が代行できないハンドオフ作業」
 が発火条件で、調整さんへの回答は Claude 自身が実行できる作業のため発火
@@ -68,7 +68,7 @@ dotfiles に露出するため、この symlink 作成だけは nix 管理に含
 `[[calendars]]` は判定元カレンダーの allowlist(`id` は `list_calendars` が
 返す ID)、`[all_day]` の `ignore_prefixes`/`soft_day_prefixes` は終日
 イベントのタイトル前方一致リスト。スキーマの正本はスクリプト本体の
-docstring(`scripts/slot-hit.py` 冒頭)— ここでは重複させない。
+コメント(`scripts/slot-hit.sh` 冒頭)— ここでは重複させない。
 
 ## カレンダーの正規化を skill の手順に組み込んだ理由
 
@@ -107,6 +107,74 @@ Google Calendar 側もある程度自明な事実に沿って正規化されて�
 確定予定の説明欄には「場所: 未定(裁定日 時点)」のように未確定要素を
 明記する — 上記「カレンダーの正規化」と同じ理由で、場所という事実も
 Calendar 側 1 箇所を正本にし、確定した時点で書き換える。
+
+## Python から bash + yq + jq への移植(2026-09-27 追記)
+
+判定コアは当初 Python 3.11+(標準ライブラリのみ、`tomllib` 使用)で書いた
+`scripts/slot-hit.py` だったが、別の private な person-state リポジトリ
+(出典は private リポジトリ側のため、ここでは決定の存在だけを参照する)
+に置かれた演奏本番計画データモデル(ADR-0009)の grilling セッションで、
+ユーザーから「このスキルに Python が入ったこと自体が心外だった」という
+明示的なフィードバックを受けた。dotfiles の `config/claude/skills/` は bash が
+支配的(このコミット時点で bash 19 本に対し Python は本スクリプト 1 本
+のみ)であり、単一目的のためだけに汎用言語ランタイムを増やす選択を
+問い直した(ADR-0009 D13、`selection-grounding` の 表現不可能性→還元性→
+先進性の軸)。
+
+実測(2026-09-26、`[[calendars]]` 配列オブテーブル・複数行配列・
+インラインテーブル・日本語文字列を含む TOML で比較): `yq -p toml -o json`
+(v4.50.1)と Python `tomllib` の出力は完全一致した — TOML→JSON 変換の
+正確性は同点。還元性では bash + yq(TOML→JSON 変換専用)+ jq(処理、既に
+このリポジトリの必須依存)が勝る。手書き bash/awk での TOML パースは
+コメント・引用符・配列オブテーブル等のエッジケースで静かに誤読する
+リスクがあり、感触で外した(分析的な却下ではない)。
+
+構成は判定コア(`judge.jq`)・確定化コア(`finalize.jq`)・共通関数
+(`lib.jq`)・オーケストレーション層(`slot-hit.sh`、TOML→JSON 変換・
+events-dir 読み込み・引数パースのみ)に分割した。移行に伴う既知の落とし穴:
+
+- **TOML の裸日付リテラルは非対応。** `yq -p toml` は `2027-01-23` のような
+  引用符なし日付を `unsupported type LocalDate` として拒否する。日付は
+  必ず引用符付き文字列で書く(config.toml 自体には元々日付フィールドが
+  無かったため実害は無いが、この判定コアを読む側〔別の private な
+  person-state リポジトリ側の `state/performances/`〕のデータは全て
+  文字列日付で統一している)。
+- **jq の `any(generator; cond)` の `cond` 内の `.` は generator の要素を
+  指さない。** `$title | startswith(.)` のように書くと `.` は
+  パイプ左辺(`$title` 自身)を指してしまい、常に prefix 一致が真になる
+  誤動作を起こす(実装中に発見、`. as $p | $title | startswith($p)` の形に
+  修正して解消)。jq の関数引数式は「呼び出し時点の `.`」を継承する
+  static scoping であり、レキシカルに generator の要素を指すわけではない。
+- **jq の `empty` をパイプの途中で返すと、それ以降のパイプ全体が空スト
+  リームになる。** 検証関数(`validate_soft_days` 相当)を「問題なければ
+  何も返さない」設計にすると、後続のパイプ処理が一切実行されなくなる
+  (エラーも出ずに黙って空出力になる、最も気づきにくい失敗モード)。
+  検証専用の関数は必ず `null` を返し、呼び出し側で `as $_` として受ける。
+- **glibc のデフォルト TZDIR 検索パスは nix ビルドの coreutils では
+  システムの `/usr/share/zoneinfo` を含まない。** `TZ="Asia/Tokyo" date
+  +%z` は解決に失敗しても**エラーにならず黙って UTC(+0000)にフォール
+  バックする**。tzdata ファイルの実在を複数の候補ディレクトリ(nix
+  store 配下含む)から自分で探し、見つかったファイルへの絶対パスで
+  `TZ=":<path>"` として呼ぶ方式に倒した(`slot-hit.sh` の
+  `resolve_tz_offset`)。
+- **`as` 束縛やオブジェクトリテラルの値に `+` を含む複合式を丸括弧なしで
+  書くと、jq のバージョンによって解釈が変わる。** ローカル開発機の
+  jq v1.8.2 では `A + B + C as $x | ...` が意図どおり `$x` に文字列結合
+  結果を束縛したが、GitHub Actions ランナー標準の jq v1.7.1 では `$x` が
+  最後の項 `C` だけを受け取る(`as` の優先順位が異なる)。同様に
+  `{key: "文字列" + (パイプ式)}` という書き方は jq v1.7.1 では
+  `syntax error, unexpected '+', expecting '}'` になる。**`as` で束縛する
+  式、およびオブジェクトリテラルの値のうち `+` を含むものは、常に全体を
+  丸括弧で囲む**(`(A + B + C) as $x`、`{key: ("文字列" + (...))}`)。
+  この落とし穴は CI(GitHub Actions ランナーの jq v1.7.1)で初めて顕在化
+  し、ローカル(jq v1.8.2)の selftest だけでは検出できなかった —
+  jq スクリプトを書いたら、ローカルの jq バージョンだけで満足せず、CI が
+  実際に使うバージョンでも動かして確認する。
+
+自己検査は Python 版の 12 項目(match_slot・resolve_year・バッファ境界・
+soft_day・ignore_prefixes・自マーカー識別・transparent・MCP 終日イベント
+形式・候補パース異常系・finalize の5点チェック)を全て `selftest.sh` に
+移植し、全項目が同じ結果を返すことを確認した上で切り替えた。
 
 ## 運用
 

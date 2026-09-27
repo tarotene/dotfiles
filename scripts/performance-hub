@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# performance-hub — resolve the absolute path to another private
+# person-state repository, for the performance-planning skill.
+#
+# 設計と根拠: docs/claude/performance-planning.md（このリポジトリ内）
+#
+# 演奏本番の計画データ(`state/performances/`、その person-state リポジトリ
+# 側の ADR-0009)の正本は、この dotfiles とは別の private な person-state
+# リポジトリに置く裁定になっている(slot-availability の個人設定と同じ
+# 理由 — 本番の演目・共演者情報を public な dotfiles には置けない)。
+# dotfiles 側はその場所への薄いポインタだけを持つ。writing-style-hub
+# (docs/claude/writing-style.md)と同型のマーカー方式を踏襲する
+# (ADR-0019 のホスト・マーカー方式が先行例)。
+#
+# 解決順序:
+#   1. $PERFORMANCE_HUB(環境変数、セッション限定の上書き用)
+#   2. ${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/performance-hub の中身(1行、絶対パス)
+#
+# 縮退: マーカーが無い / 指すパスが存在しない / state/performances/README.md
+# が無い、いずれも明示的なメッセージを stderr に出して非 0 で終わる
+# (writing-style-hub と同じ binary-existence gating。無音失敗にしない)。
+#
+# 使い方:
+#   パス解決:   performance-hub            → 成功時 stdout にハブの絶対パスを1行
+#   自己検査:   performance-hub --selftest
+set -euo pipefail
+
+MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/performance-hub"
+
+resolve() { # stdout=解決したパス(末尾改行なし); 失敗時は非0 + stderr にメッセージ
+  local hub=""
+  if [[ -n "${PERFORMANCE_HUB:-}" ]]; then
+    hub="$PERFORMANCE_HUB"
+  elif [[ -r "$MARKER" ]]; then
+    hub="$(head -n1 -- "$MARKER" 2> /dev/null || true)"
+  fi
+
+  if [[ -z "$hub" ]]; then
+    echo "performance-hub: 演奏本番データのハブが未設定です。次のいずれかで設定してください:" >&2
+    echo "  echo /path/to/person-state-repo > '$MARKER'" >&2
+    echo "  export PERFORMANCE_HUB=/path/to/person-state-repo" >&2
+    return 1
+  fi
+  if [[ ! -d "$hub" ]]; then
+    echo "performance-hub: ハブのパスが存在しません: $hub" >&2
+    return 1
+  fi
+  if [[ ! -r "$hub/state/performances/README.md" ]]; then
+    echo "performance-hub: $hub/state/performances/README.md が読めません(ハブのレイアウトが想定と違う可能性)。" >&2
+    return 1
+  fi
+
+  printf '%s' "$hub"
+}
+
+# ---------------------------------------------------------------------------
+# selftest
+# ---------------------------------------------------------------------------
+
+if [[ "${1:-}" == "--selftest" ]]; then
+  fail=0
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' EXIT
+
+  check() { # $1=label $2=expected-exit $3=actual-exit
+    if [[ "$2" == "$3" ]]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1 (expected exit $2, got $3)" >&2
+      fail=1
+    fi
+  }
+
+  self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+  fake_home="$dir/home"
+  marker="$fake_home/.config/dotfiles/performance-hub"
+  mkdir -p "$(dirname -- "$marker")"
+
+  hub_ok="$dir/hub-ok"
+  mkdir -p "$hub_ok/state/performances"
+  printf '# state/performances/\n' > "$hub_ok/state/performances/README.md"
+
+  hub_no_readme="$dir/hub-no-readme"
+  mkdir -p "$hub_no_readme/state/performances"
+
+  # 1) マーカー未設定・環境変数も無し → 失敗 + 明示メッセージ
+  rc=0
+  out="$(HOME="$fake_home" env -u PERFORMANCE_HUB -u XDG_CONFIG_HOME \
+    bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "マーカー未設定は非0で終わる" 1 "$rc"
+  [[ "$out" == *"未設定"* ]] && echo "ok   マーカー未設定は明示メッセージを出す" || {
+    echo "FAIL マーカー未設定は明示メッセージを出す: $out" >&2
+    fail=1
+  }
+
+  # 2) マーカーが正しいハブを指す → 成功してパスを stdout に出す
+  printf '%s\n' "$hub_ok" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u PERFORMANCE_HUB -u XDG_CONFIG_HOME bash "$self")" || rc=$?
+  check "マーカーが有効なら成功する" 0 "$rc"
+  check "マーカーが有効なら解決先を stdout に出す" "$hub_ok" "$out"
+
+  # 3) 環境変数がマーカーより優先される
+  rc=0
+  out="$(HOME="$fake_home" PERFORMANCE_HUB="$hub_ok/../hub-ok" env -u XDG_CONFIG_HOME bash "$self")" || rc=$?
+  check "環境変数がマーカーより優先される" 0 "$rc"
+
+  # 4) マーカーが存在しないパスを指す → 失敗
+  printf '%s\n' "$dir/does-not-exist" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u PERFORMANCE_HUB -u XDG_CONFIG_HOME bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "存在しないパスは非0で終わる" 1 "$rc"
+  [[ "$out" == *"存在しません"* ]] && echo "ok   存在しないパスは明示メッセージを出す" || {
+    echo "FAIL 存在しないパスは明示メッセージを出す: $out" >&2
+    fail=1
+  }
+
+  # 5) ハブは存在するが state/performances/README.md が無い → 失敗
+  printf '%s\n' "$hub_no_readme" > "$marker"
+  rc=0
+  out="$(HOME="$fake_home" env -u PERFORMANCE_HUB -u XDG_CONFIG_HOME bash "$self" 2>&1 1>/dev/null)" || rc=$?
+  check "README 欠如は非0で終わる" 1 "$rc"
+
+  [[ "$fail" == 0 ]] && echo "selftest: all passed"
+  exit "$fail"
+fi
+
+resolve

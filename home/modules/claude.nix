@@ -334,7 +334,10 @@
 # 25) slot-availability(個人スキル):
 #    調整さん等の候補日程一覧を Google Calendar の空き状況と突き合わせ、
 #    朝・昼・夜の3コマ単位で当たり判定(○/△/×)を決定的なスクリプト
-#    (scripts/slot-hit.py)に委譲する。終日イベント(試験本番等)を見落として
+#    (scripts/slot-hit.sh、bash + yq + jq。判定コアは judge.jq/finalize.jq、
+#    共通関数は lib.jq。別の private な person-state リポジトリ側の ADR-0009
+#    D13 により旧 slot-hit.py〔Python〕から移植)に委譲する。終日イベント
+#    (試験本番等)を見落として
 #    実際は拘束される日を ○ と誤判定しないよう、`soft_day_prefixes` に一致
 #    する終日イベントの日に時間指定の確定予定が無ければ実行を止める。調べて
 #    判明した拘束時間は設定ファイルではなく Google Calendar 側に時間指定の
@@ -344,6 +347,18 @@
 #    等は private な person-state リポジトリに置き、既定パス
 #    `~/.config/slot-availability/config.toml` へ手動シンボリックリンクで
 #    接続する(dotfiles には置かない)。詳細は docs/claude/slot-availability.md。
+#
+# 26) performance-planning(個人スキル):
+#    演奏本番(アマオケ・室内楽・ソロ)の練習計画提案(需要 vs 供給・
+#    マイルストーン到来の確認)・合わせ調整の統合(slot-availability の
+#    judge/finalize に委譲し、確定後を person-state リポジトリ側の TOML へ
+#    反映)・当日タイムテーブル/遠征の Calendar dispatch を行う。データの
+#    正本(`state/performances/`、ADR-0009)は別の private な person-state
+#    リポジトリに置き、`scripts/performance-hub`(writing-style-hub と
+#    同型のマーカーファイル/環境変数間接参照)でパスを解決する。yq の
+#    TOML エンコーダが配列・テーブルの書き込みをサポートしないため、TOML
+#    への実際の書き込みは Claude が Edit ツールで行う分担にしている。
+#    詳細は docs/claude/performance-planning.md。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
@@ -1512,10 +1527,26 @@ in
   # 詳細は docs/claude/slot-availability.md。
   home.file.".claude/skills/slot-availability/SKILL.md".source =
     repoConfig + "/claude/skills/slot-availability/SKILL.md";
-  home.file.".claude/skills/slot-availability/scripts/slot-hit.py" = {
-    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.py";
+  home.file.".claude/skills/slot-availability/scripts/slot-hit.sh" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.sh";
     executable = true;
   };
+  home.file.".claude/skills/slot-availability/scripts/selftest.sh" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/selftest.sh";
+    executable = true;
+  };
+  home.file.".claude/skills/slot-availability/scripts/lib.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/lib.jq";
+  home.file.".claude/skills/slot-availability/scripts/judge.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/judge.jq";
+  home.file.".claude/skills/slot-availability/scripts/finalize.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/finalize.jq";
+  # performance-planning: 演奏本番の練習計画提案・合わせ調整の統合・当日
+  # タイムテーブル/遠征の Calendar dispatch。詳細は
+  # docs/claude/performance-planning.md(別の private な person-state
+  # リポジトリ側の ADR-0009)。
+  home.file.".claude/skills/performance-planning/SKILL.md".source =
+    repoConfig + "/claude/skills/performance-planning/SKILL.md";
 
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
@@ -1575,10 +1606,22 @@ in
     repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
   home.file.".agents/skills/slot-availability/SKILL.md".source =
     repoConfig + "/claude/skills/slot-availability/SKILL.md";
-  home.file.".agents/skills/slot-availability/scripts/slot-hit.py" = {
-    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.py";
+  home.file.".agents/skills/slot-availability/scripts/slot-hit.sh" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/slot-hit.sh";
     executable = true;
   };
+  home.file.".agents/skills/slot-availability/scripts/selftest.sh" = {
+    source = repoConfig + "/claude/skills/slot-availability/scripts/selftest.sh";
+    executable = true;
+  };
+  home.file.".agents/skills/slot-availability/scripts/lib.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/lib.jq";
+  home.file.".agents/skills/slot-availability/scripts/judge.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/judge.jq";
+  home.file.".agents/skills/slot-availability/scripts/finalize.jq".source =
+    repoConfig + "/claude/skills/slot-availability/scripts/finalize.jq";
+  home.file.".agents/skills/performance-planning/SKILL.md".source =
+    repoConfig + "/claude/skills/performance-planning/SKILL.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
