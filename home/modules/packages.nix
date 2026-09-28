@@ -112,6 +112,35 @@
       # docs/adr/0035-selection-grounding.md の3軸)。
       comma
       nix-index
+
+      # Reclaimed from ad-hoc cargo installs: each of these has a tagged,
+      # stable nixpkgs entry, so ADR-0025's pre-release-only exception
+      # doesn't apply — they belong in home.packages like bat/zellij above,
+      # not the update-own-tools registry.
+      just
+      delta # git-delta; binary is `delta` (git.nix's pager config expects it)
+      skim # binary: `sk`
+      mdbook
+      mdbook-mermaid
+      cargo-llvm-cov
+      cargo-machete
+      cargo-binstall
+      cocogitto # binary: `cog`
+      typstyle
+
+      # Reclaimed from ad-hoc apt/npm installs: unprivileged user-space
+      # CLIs with no system-service/root/kernel dependency, so
+      # home-manager is the right layer (ADR-0001), same rationale as the
+      # "Core CLIs" group above. cmake in particular is only a build
+      # orchestrator — the apt-managed system libraries it links against
+      # on this host (vega.nix's -dev headers group) stay apt, but cmake
+      # itself has no such tie.
+      cmake
+      glow
+      tmux
+      whois
+      ffmpeg
+      git-lfs
     ]
     # X11 clipboard CLI — meaningless on darwin (pbcopy/pbpaste are the OS
     # equivalent and already on PATH). Not referenced by anything under
@@ -128,6 +157,23 @@
       # through osascript/terminal-notifier, not libnotify), so this stays
       # Linux-only like xsel above.
       pkgs.libnotify
+
+      # release-plz: nixpkgs marks it `meta.broken = true` on aarch64-darwin
+      # at this pin (verified: `nix eval` on the aarch64-darwin legacyPackages
+      # for this flake's pinned nixpkgs rev raises "Refusing to evaluate
+      # package 'release-plz-...' ... broken: This package is broken.",
+      # caught by dotfiles' own `build altair` CI). x86_64-linux and
+      # aarch64-linux are unaffected — scope the exclusion to darwin only,
+      # not a blanket Linux-only guard, so a future aarch64-linux host still
+      # gets it.
+      pkgs.release-plz
+
+      # Reclaimed from ad-hoc apt installs: both are meaningless on darwin
+      # the same way xsel is above — wl-clipboard is Wayland-specific
+      # (pbcopy/pbpaste cover macOS), and zenity is a GTK dialog front-end
+      # for Linux desktop scripts.
+      pkgs.wl-clipboard
+      pkgs.zenity
     ];
 
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
