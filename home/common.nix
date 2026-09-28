@@ -14,6 +14,7 @@
     ./modules/atuin.nix
     ./modules/git.nix
     ./modules/gpg.nix
+    ./modules/due-remind.nix
     ./modules/packages.nix
     ./modules/tailscale.nix
     ./modules/desktop.nix
