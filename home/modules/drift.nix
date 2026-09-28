@@ -50,11 +50,12 @@ in
 
   config = {
     # Rust、crates/detect-drift(ADR-0024)経由で pkgs.dotfiles-tools から配備。
-    # 宣言ファイル(packages/declarative/apt-packages.txt)も配備する —
     # 実行ファイルは `~/.local/bin` に置かれるため checkout 相対の解決が
     # できず、`apply-rulesets.sh`(#417)と同じ理由で配備先を必要とする。
+    # 宣言ファイル(`~/.config/dotfiles/apt-packages.txt`)自体は
+    # `home/modules/apt.nix`(#3、共通ファイル + host 固有 extras の連結)
+    # が配備する — このモジュールは detect-drift 本体の配備にだけ責務を持つ。
     home.file.".local/bin/detect-drift".source = "${pkgs.dotfiles-tools}/bin/detect-drift";
-    xdg.configFile."dotfiles/apt-packages.txt".source = ../../packages/declarative/apt-packages.txt;
 
     # 週次実行(#4 の設計どおり)。毎分実行の git-audit-worktrees と違い、
     # apt-mark/cargo/npm/pipx の照会はネットワーク I/O や比較的重い
