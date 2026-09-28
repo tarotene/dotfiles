@@ -350,6 +350,10 @@ Design and rationale for the hooks and commands deployed from
   なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
   単位・fingerprint 単位に集約し、閾値超えの候補を `repo`/`go:"ask"` 付きで
   wrap-up inbox に追記する。
+- [`promotion-detect.md`](claude/promotion-detect.md) — ADR-543 段4:
+  日次 timer(Rust)。同じ規範・skill を指す feedback Issue の再発、
+  SKILL.md コードブロックの逐語反復実行、gate skip ファイルの滞留・多発を
+  検出し、Q2(LLM/散文 → 決定論への昇格)の候補を wrap-up inbox に追記する。
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
