@@ -44,6 +44,13 @@ pub fn default_branch(repo: &Path) -> Option<String> {
     Some(r.strip_prefix("origin/").unwrap_or(&r).to_string())
 }
 
+/// 現在の worktree の作業ツリー先頭(`git rev-parse --show-toplevel`)。
+/// `git_common_dir` と異なり worktree ごとに異なるパスを返す — ADR-543
+/// (`crates/new-tool-guard`)の session ledger キーはこちらを使う。
+pub fn toplevel(dir: &Path) -> Option<PathBuf> {
+    git_stdout(dir, &["rev-parse", "--show-toplevel"]).map(PathBuf::from)
+}
+
 /// クラスタ F: 絶対パスの `--git-common-dir`(worktree 間で共有される .git)。
 ///
 /// 吸収元: `pr-gate.sh:191` / `worktree-fresh-base.sh:42` /
@@ -148,6 +155,13 @@ mod tests {
             ],
         );
         assert_eq!(default_branch(d.path()).as_deref(), Some("trunk"));
+    }
+
+    #[test]
+    fn toplevel_is_worktree_root() {
+        let d = repo();
+        assert_eq!(toplevel(d.path()), Some(d.path().to_path_buf()));
+        assert_eq!(toplevel(Path::new("/")), None);
     }
 
     #[test]
