@@ -629,6 +629,12 @@ jobs:
       - name: adr-number.sh --selftest
         run: bash ./config/claude/hooks/adr-number.sh --selftest
 
+      # feedback-target-guard.sh (ADR-543 段3) is deterministic bash + jq
+      # end to end, no network involved — sources attribution-guard.sh for
+      # its heredoc-splitting tokenizer the same way adr-number.sh does.
+      - name: feedback-target-guard.sh --selftest
+        run: bash ./config/claude/hooks/feedback-target-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema

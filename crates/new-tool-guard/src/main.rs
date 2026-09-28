@@ -74,6 +74,7 @@ fn cmd_hook() {
         return;
     }
     if skipped() {
+        record_gate_event("skip");
         return;
     }
     let Some(file_path) = input
@@ -108,7 +109,17 @@ fn cmd_hook() {
     if new_tool_guard::ledger_has_record(&records, file_path) {
         return;
     }
+    record_gate_event("deny");
     PermissionDecision::deny(new_tool_guard::deny_message(file_path)).emit(Agent::Claude);
+}
+
+/// ADR-543 段3: 降格候補検出(段4 の promotion-detect)の入力になる
+/// deny/skip イベントを記録する。記録の成否は判定に影響させない
+/// (best-effort — `hook_io::gate_event::record` のエラーは黙って握り潰す)。
+fn record_gate_event(decision: &str) {
+    if let Some(path) = hook_io::gate_event::default_path() {
+        let _ = hook_io::gate_event::record(&path, "new-tool-guard", decision);
+    }
 }
 
 /// `${NEW_TOOL_GUARD_DIR:-$HOME/.claude/new-tool-guard}/state/<key>.ledger`

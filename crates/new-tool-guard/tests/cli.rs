@@ -49,6 +49,11 @@ fn run_hook(repo: &Path, home: &Path, stdin_json: &str) -> std::process::Output 
     let mut child = Command::new(bin())
         .current_dir(repo)
         .env("HOME", home)
+        // gate_event::default_path() は XDG_STATE_HOME を $HOME より優先する
+        // ため、テストの外側(この開発機の実環境)にある実際の
+        // XDG_STATE_HOME をここで確実に見えなくする(そうしないと
+        // gate-events.jsonl がテスト用の tempdir ではなく実環境に書かれる)。
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -133,6 +138,12 @@ fn hook_denies_new_unregistered_tool_unit() {
         "{stdout}"
     );
     assert!(stdout.contains("既存手段の前倒し接地"), "{stdout}");
+
+    // ADR-543 段3: deny 時に gate-events.jsonl へ記録される。
+    let events = fs::read_to_string(home.path().join(".local/state/claude/gate-events.jsonl"))
+        .expect("gate-events.jsonl が書かれているはず");
+    assert!(events.contains("\"gate\":\"new-tool-guard\""), "{events}");
+    assert!(events.contains("\"decision\":\"deny\""), "{events}");
 }
 
 #[test]
@@ -199,6 +210,7 @@ fn skip_switch_bypasses_hook() {
         .current_dir(repo.path())
         .env("HOME", home.path())
         .env("SKIP_NEW_TOOL_GUARD", "1")
+        .env_remove("XDG_STATE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -211,6 +223,12 @@ fn skip_switch_bypasses_hook() {
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.stdout.is_empty());
+
+    // ADR-543 段3: skip 時にも gate-events.jsonl へ記録される(降格候補検出
+    // の入力 — skip の多用そのものが「見直し候補」の兆候になる)。
+    let events = fs::read_to_string(home.path().join(".local/state/claude/gate-events.jsonl"))
+        .expect("gate-events.jsonl が書かれているはず");
+    assert!(events.contains("\"decision\":\"skip\""), "{events}");
 }
 
 #[test]

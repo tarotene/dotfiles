@@ -14,6 +14,8 @@
 //! | F `git rev-parse --git-common-dir` | [`git::git_common_dir`] |
 //! | G `state_file()`(session_id サニタイズ) | [`ledger::SessionLedger`] |
 //! | H 最小 POSIX シェル語分割 | [`shell::split`] |
+//! | I コマンド正規化+ハッシュ(ADR-543 段3) | [`cmd_hash`] |
+//! | J gate の deny/skip イベント記録(ADR-543 段3) | [`gate_event`] |
 //!
 //! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
 //! `crates/rulesets-write-guard`(ADR-0000-rulesets-declaration-in-repo)も
@@ -21,7 +23,9 @@
 //! で、判定に使えない入力を素通しに倒す同じ語分割ロジックを要求したため
 //! ここへ引き上げた(ADR-0035 D1「単一正本 > 複写+同期」)。
 
+pub mod cmd_hash;
 pub mod decision;
+pub mod gate_event;
 pub mod git;
 pub mod input;
 pub mod ledger;

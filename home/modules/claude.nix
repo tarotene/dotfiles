@@ -426,6 +426,30 @@
 #    小さな作業でもこの hook が発火する。Claude Code 専用(#531、Codex/
 #    Copilot 展開は別 Issue)。
 #
+# 31) feedback-target-guard(PreToolUse, matcher: Bash(gh *)、ADR-543、
+#    2026-09-28、段3/4):
+#    Q2(LLM/散文 → 決定論への昇格)の兆候の1つ「同じ規範・skill を指す
+#    feedback Issue の再発」を機械的に集計できるようにする。`gh issue
+#    create --label feedback`(カンマ区切りの複数ラベルも可)を検出し、
+#    本文に `Target: skill/<name>` / `Target: agents-md/<節見出し>` /
+#    `Target: hook/<name>` のいずれかが無い、またはその実体が存在しない
+#    場合に deny する。コマンド解析(heredoc 分離・トークナイザ)は
+#    attribution-guard.sh を source して再利用する(ADR-0024 の Rust 既定
+#    に対する例外 — stack-base-guard.sh / adr-number.sh / pr-title-
+#    guard.sh と同じ「既存の bash 資産を source する」理由、
+#    rust-migration.toml で追跡)。
+#
+# 32) cmd-hash-log(PostToolUse, matcher: Bash、ADR-543、2026-09-28、段3/4):
+#    Q2 の兆候の2つ目「同じコードブロックが改変なしに繰り返し実行されて
+#    いる」(逐語反復)を検出するための入力を記録する。実行された Bash
+#    コマンドの正規化(空白圧縮・行末継続結合)+ハッシュ(FNV-1a、依存
+#    ゼロ)だけを `~/.local/state/claude/cmd-hashes.jsonl` に1行1レコード
+#    で追記する——コマンド本文そのものはどこにも書かない(ADR-0011 の
+#    プライバシー規約 `agent-turn-log.sh` をさらに強めた形)。判定は返さ
+#    ず、記録が失敗しても常に exit 0(fail-open)。正規化+ハッシュ関数は
+#    `hook_io::cmd_hash` が単一正本で、段4 の promotion-detect が SKILL.md
+#    のコードブロックを同じ関数でハッシュして照合する。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -553,6 +577,18 @@ let
   # 無い)で ADR-0024 の既定どおり Rust。Claude Code 専用(#531、Codex/
   # Copilot への展開は別 Issue の主題)。
   newToolGuardCmd = "'${hooksDir}/new-tool-guard'";
+  # feedback-target-guard(ADR-543 段3): `gh issue create --label feedback` に
+  # `Target:` 行を要求する。attribution-guard.sh の heredoc 分離・トークナイザ
+  # を source して再利用する(rulesets-write-guard/pkexec-guard とは逆に、
+  # ADR-0024 の Rust 既定に対する例外 — stack-base-guard.sh / adr-number.sh /
+  # pr-title-guard.sh と同じ理由、rust-migration.toml 参照)。
+  feedbackTargetGuardCmd = "bash '${hooksDir}/feedback-target-guard.sh'";
+  # cmd-hash-log(ADR-543 段3): 実行された Bash コマンドの正規化ハッシュ
+  # だけを記録する(コマンド本文は書かない、ADR-0011 のプライバシー規約を
+  # 踏襲)。逐語反復検出(段4 の promotion-detect)の入力。何も判定しない
+  # ため ADR-0024 の既定どおり Rust だが、他 hook を deny/allow させる
+  # 種類のものではない。
+  cmdHashLogCmd = "'${hooksDir}/cmd-hash-log'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -763,6 +799,8 @@ let
     routines_write_guard="$1";   shift
     pkexec_guard="$1";           shift
     new_tool_guard="$1";         shift
+    feedback_target_guard="$1";  shift
+    cmd_hash_log="$1";           shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -927,6 +965,15 @@ let
     # 内部でさらに「新規ファイルか」「新しい道具・単位の述語に合致するか」
     # を判定する。Rust 製で起動が速いため timeout は他の Rust hook 並み。
     register PreToolUse Write "$new_tool_guard" 10
+    # feedback-target-guard(ADR-543 段3): gh-edit-allow/rulesets-write-guard
+    # と同じ理由で "Bash(gh *)" に絞る(コマンド文字列が "gh " で始まる場合
+    # のみ発火。複合コマンドの2番目以降に gh が来るケースは対象外 — 既存の
+    # gh-edit-allow/rulesets-write-guard と同じ既知のトレードオフ)。
+    register PreToolUse Bash "$feedback_target_guard" 10 "Bash(gh *)"
+    # cmd-hash-log(ADR-543 段3): 判定を返さないので matcher を絞らず全
+    # Bash 実行を対象にする(記録漏れが検出の精度を下げるため)。Rust 製で
+    # 起動が速く、成功しても失敗しても即 exit するので timeout は最短。
+    register PostToolUse Bash "$cmd_hash_log" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -1289,6 +1336,12 @@ in
     source = repoConfig + "/claude/hooks/stack-base-guard.sh";
     executable = true;
   };
+  # feedback-target-guard(ADR-543 段3): 同じ理由で attribution-guard.sh と
+  # 同じ階層(~/.claude/hooks/ 直下)に配置する。
+  home.file.".claude/hooks/feedback-target-guard.sh" = {
+    source = repoConfig + "/claude/hooks/feedback-target-guard.sh";
+    executable = true;
+  };
   # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
   # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
   # source しない。
@@ -1327,6 +1380,9 @@ in
   # symlink(gh-edit-allow と同じ理由付け)。`register` サブコマンドも
   # このパスから手動 Bash 実行される(deny メッセージが案内する)。
   home.file.".claude/hooks/new-tool-guard".source = "${pkgs.dotfiles-tools}/bin/new-tool-guard";
+  # cmd-hash-log(ADR-543 段3、crates/cmd-hash-log): gh-edit-allow と同じ
+  # 理由付けの安定パス symlink。
+  home.file.".claude/hooks/cmd-hash-log".source = "${pkgs.dotfiles-tools}/bin/cmd-hash-log";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -2072,7 +2128,9 @@ in
       ${lib.escapeShellArg rulesetsWriteGuardCmd} \
       ${lib.escapeShellArg routinesWriteGuardCmd} \
       ${lib.escapeShellArg pkexecGuardCmd} \
-      ${lib.escapeShellArg newToolGuardCmd}
+      ${lib.escapeShellArg newToolGuardCmd} \
+      ${lib.escapeShellArg feedbackTargetGuardCmd} \
+      ${lib.escapeShellArg cmdHashLogCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

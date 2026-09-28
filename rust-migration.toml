@@ -59,7 +59,14 @@ extra = ["bootstrap.sh"]
 # scripts/writing-style-hub と同じマーカーファイル/環境変数間接参照の
 # 薄いポインタスクリプトであり、同じ理由で bash のまま追加した — 移植
 # するほどの複雑さがなく、既存の writing-style-hub と一貫した扱いにする。
-max_remaining = 60
+#
+# 61 = 上記 60 + grill-me セッション(ADR-543、段3/4)で追加した
+# config/claude/hooks/feedback-target-guard.sh の 1 件。attribution-
+# guard.sh の heredoc 分離・トークナイザ(split_heredoc/tokenize/decide)を
+# source して再利用する設計上、stack-base-guard.sh / adr-number.sh /
+# pr-title-guard.sh と同じ理由(判定ロジックの単一正本を保つ)で bash の
+# まま追加した。stage は同じ 4a グループに寄せる。
+max_remaining = 61
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -82,6 +89,10 @@ stage = "4a"
 
 [[target]]
 path = "config/claude/hooks/adr-number.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/feedback-target-guard.sh"
 stage = "4a"
 
 [[target]]
