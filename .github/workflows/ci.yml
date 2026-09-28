@@ -526,6 +526,12 @@ jobs:
       - name: git-stash-guard.sh --selftest
         run: bash ./config/claude/hooks/git-stash-guard.sh --selftest
 
+      # ADR-0032 Amendment (#531): the Codex adapter sources the engine above
+      # and translates Codex's PreToolUse I/O the same way attribution-guard's
+      # adapter does.
+      - name: git-stash-guard.sh (codex adapter) --selftest
+        run: bash ./config/codex/hooks/git-stash-guard.sh --selftest
+
       - name: git-worktree-allow.sh --selftest
         run: bash ./config/claude/hooks/git-worktree-allow.sh --selftest
 
@@ -564,6 +570,12 @@ jobs:
       # network involved.
       - name: stack-base-guard.sh --selftest
         run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
+
+      # ADR-0027/ADR-0032 Amendment (#531): Codex adapter, same minimalist
+      # smoke test as the pr-title-guard/attribution-guard Codex adapters
+      # (exhaustive decision coverage stays in the Claude selftest above).
+      - name: stack-base-guard.sh (codex adapter) --selftest
+        run: bash ./config/codex/hooks/stack-base-guard.sh --selftest
 
       # decision-colocation-guard (ADR-396, docs/claude/decision-colocation.md)
       # sources attribution-guard.sh's command-position/tokenizer engine the
@@ -650,6 +662,11 @@ jobs:
       # through cases (docs/claude/repo-create-guard.md).
       - name: repo-create-guard.sh --selftest
         run: bash ./config/claude/hooks/repo-create-guard.sh --selftest
+
+      # ADR-380/ADR-0032 Amendment (#531): Codex adapter, same minimalist
+      # smoke test as the other Codex adapters above.
+      - name: adr-number.sh (codex adapter) --selftest
+        run: bash ./config/codex/hooks/adr-number.sh --selftest
 
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
