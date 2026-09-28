@@ -171,10 +171,16 @@ detect-drift apt-baseline --from-history
 ```
 
 This computes baseline = `apt-mark showmanual` **minus** every package name
-recovered from a logged `apt`/`apt-get install` commandline (`sudo`-prefixed
-included; flags and `=version` pins are stripped). Two known limitations,
-both inherent to reconstructing history after the fact rather than a defect
-to fix here:
+recovered from a logged `apt`/`apt-get install` commandline whose block also
+has a `Requested-By:` line (#3). apt itself only writes `Requested-By:` when
+`SUDO_UID`/`PKEXEC_UID`/`PACKAGEKIT_CALLER_UID` is set — i.e. when a human
+ran the command interactively (directly or via `sudo`). Pop!_OS's `distinst`
+post-install and `pop-upgrade` invoke `apt-get` directly as a non-interactive
+root process, so their install blocks never get a `Requested-By:` line and
+are correctly left in the baseline as seed, without needing the manual
+triage this section used to require for that class of noise. Two known
+limitations remain, both inherent to reconstructing history after the fact
+rather than a defect to fix here:
 
 - `logrotate` keeps 12 monthly generations of `history.log`
   (`/etc/logrotate.d/apt`), so installs from more than a year ago are
@@ -182,19 +188,23 @@ to fix here:
   they were seed) — the safe-side error for this direction, since it just
   means a few genuinely old ad-hoc packages get treated as baseline instead
   of drift.
-- Conversely, a literal `apt install <pkg...>` run to **reinstall or repair
-  a seed package** (not to add a new one) also shows up as a logged
-  install, so it gets excluded from the reconstructed baseline and still
-  reports as drift. On a host with a long, hands-on troubleshooting
-  history this can leave a non-trivial residue of WARN lines even after
-  `--from-history` (observed on `vega`, 2026-09-25: 551 showmanual entries,
-  256-entry reconstructed baseline, still tens of WARN lines for what are
-  clearly desktop/toolchain seed packages like `cosmic-term`/`e2fsprogs`).
-  Triage the residue by hand once: for each WARN line that's genuinely
-  seed, either add it to `packages/declarative/apt-packages.txt` (if it
-  should be tracked going forward) or accept it into the baseline by
+- A literal `apt install <pkg...>` run **interactively** to reinstall or
+  repair a seed package (not to add a new one) still carries a
+  `Requested-By:` line, so it gets excluded from the reconstructed baseline
+  and still reports as drift. For a batch of packages pulled in by a single
+  script run under one's own session (e.g. `npx playwright install-deps`,
+  which shells out to `apt-get install` as the invoking user) this can
+  produce a burst of WARN lines that are really one event, not individually
+  chosen tools. Triage the residue by hand once: for each WARN line that's
+  genuinely seed, either add it to `packages/declarative/apt-packages.txt`
+  (if it should be tracked going forward) or accept it into the baseline by
   appending its name to `apt-baseline.txt` directly (host-local file, not
-  committed). This is a one-time cleanup per retrofitted host, not a
+  committed) — group same-event packages under one `#` comment line naming
+  the date and the source (`detect-drift apt-baseline --init`/
+  `--from-history` never re-read or touch existing comments, and
+  `detect-drift`'s own baseline parser treats `#`-prefixed lines the same
+  way `packages/declarative/apt-packages.txt` does, so the annotation
+  survives). This is a one-time cleanup per retrofitted host, not a
   recurring chore — after it, `detect-drift`'s apt layer stays clean going
   forward the same way `--init` keeps a freshly-provisioned host clean.
 
