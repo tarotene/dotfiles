@@ -300,6 +300,15 @@ selftest() {
   git init -q --bare "$tmp/remote.git"
   git -C "$repo" remote add origin "$tmp/remote.git"
   git -C "$repo" push -q origin main
+  # A bare repo's HEAD follows whatever `init.defaultBranch` the runner has
+  # configured (still "master" on a stock CI image), independent of what
+  # branch this fixture actually pushes ("main", pinned above via `init -b`).
+  # Pin it explicitly so a later `git clone` of this remote (the shallow
+  # fixture below) resolves a real branch instead of silently producing an
+  # empty, non-shallow checkout ("You appear to have cloned an empty
+  # repository") when the two defaults disagree — caught by CI, not by this
+  # sandbox's own git config, which already happened to have init.defaultBranch=main.
+  git -C "$tmp/remote.git" symbolic-ref HEAD refs/heads/main
 
   # Stub herdr for the whole run: `worktree list --cwd` reports no open
   # workspace for any path (so scan_orphaned can proceed past the "can't
