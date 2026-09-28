@@ -30,6 +30,10 @@
 #     いれば、`本命:` と `対抗馬:` が両方揃っているかを見る(節内整合性の
 #     みで、この重い欄を書くべきだったかどうかの発火判定はしない — それは
 #     selection-grounding スキルの内容判断で lens A に委ねる)。
+#   - 重い欄が発火している Dn は `既存手段:`(採用|拡張|自前、ADR-0000
+#     「既存手段の前倒し接地と、決定論への昇格導線」)も必須。`自前` を
+#     選んだ場合のみ `却下:`/`探索:` の理由を必須にする(節内整合性のみ、
+#     自前を選ぶべきだったかの内容判断は lens A に委ねる)。
 #   - allow は決して返さない。問題が無ければ何も決定しない(exit 0)。
 #
 # 既知の限界(意図的な選択):
@@ -95,6 +99,12 @@ AXIS_RE='軸:[[:space:]]*(表現不可能|還元|検出のみ)'
 HONMEI_RE='本命:[[:space:]]*[^[:space:]]'
 TAIKOUBA_RE='対抗馬:[[:space:]]*[^[:space:]]'
 HAZUSHITA_RE='外した候補:[[:space:]]*[^[:space:]]'
+# ADR-0000: 重い欄が発火する Dn には「自前で作る前に既存手段を検討したか」
+# (既存手段:)も必須。3値の閉語彙のうち「自前」を選んだときだけ却下/探索の
+# 理由が要る(「簡単だから自前」を通さない)。
+KIZON_RE='既存手段:[[:space:]]*[^[:space:]]'
+KIZON_JIMAE_RE='既存手段:[[:space:]]*.*自前'
+KIZON_REASON_RE='(却下|探索):[[:space:]]*[^[:space:]]'
 
 # そのまま貼れば書式検査を通る完全な例文ブロック。deny メッセージ末尾と
 # --check の指摘あり出力に同梱する(2026-09-21 実測: 本 gate の deny の
@@ -120,13 +130,21 @@ example_block() {
 - D2: <採った設計判断を1文で>
   先行例なし: <どこを・何のキーワードで・一次/二次のどちらまで探したか>
   軸: 表現不可能 | 還元 | 検出のみ — <1句>
+- D3: <外部依存の新設・置換・撤去を伴う設計判断を1文で>
+  本命: 憧れ駆動 | なし — <理由>
+  対抗馬: <候補> (<本命と共通の評価軸>)
+  既存手段: <path> — 採用: <ツール名/URL> | 拡張: <既存パス> | 自前 — 却下: <候補> (<理由>) | 探索: <どこを・何のキーワードで>
+  先行例: <著者/組織, タイトル> https://example.com/doc (取得 ${today})
+  差分: 一致
+  軸: 表現不可能 | 還元 | 検出のみ — <1句>
 
 \`軸:\` は全 Dn に必須(precedent-grounding スキル §3、selection-grounding
 スキル参照)。出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス
 でも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・
 仕組みの選択で外部依存の新設・置換・撤去、または撤収コストが導入コストを
-上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」も
-書く(selection-grounding スキル参照)。設計判断を含まないプランなら、
+上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」
+「既存手段:」(自前なら却下:/探索: 必須、ADR-0000)も書く
+(selection-grounding スキル参照)。設計判断を含まないプランなら、
 節の代わりに次の1行だけ:
 
 先行例: 該当なし — <理由(例: typo 修正で設計判断を含まない)>
@@ -176,9 +194,24 @@ check_dn_block() {
   # selection-grounding: 重い欄(本命/対抗馬/外した候補)はどれか1つでも
   # 書かれていれば本命/対抗馬が両方揃っていることだけを見る(発火判定は
   # しない — lens A の職責)。
+  local has_heavy=0
   if grep -Eq "$HONMEI_RE|$TAIKOUBA_RE|$HAZUSHITA_RE" <<< "$block"; then
+    has_heavy=1
     grep -Eq "$HONMEI_RE" <<< "$block" || printf 'D%s: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 本命: が欠落しています\n' "$id"
     grep -Eq "$TAIKOUBA_RE" <<< "$block" || printf 'D%s: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 対抗馬: が欠落しています\n' "$id"
+  fi
+
+  # ADR-0000: 重い欄が発火する Dn は「既存手段:」も必須。自前を選んだ
+  # ときだけ却下/探索の理由が要る(節内整合性のみを見る — 自前を選ぶべき
+  # だったかの内容判断は lens A の職責)。
+  if ((has_heavy)); then
+    if grep -Eq "$KIZON_RE" <<< "$block"; then
+      if grep -Eq "$KIZON_JIMAE_RE" <<< "$block"; then
+        grep -Eq "$KIZON_REASON_RE" <<< "$block" || printf 'D%s: 既存手段: が「自前」なのに却下:/探索: の理由がありません\n' "$id"
+      fi
+    else
+      printf 'D%s: 既存手段:(採用|拡張|自前)の記載がありません(ADR-0000)\n' "$id"
+    fi
   fi
 }
 
@@ -415,21 +448,53 @@ selftest() {
   out="$(judge_precedent "$plan_axis_kenshutsu")"
   expect_empty "$out" "軸: 検出のみ 単体で pass"
 
-  # --- selection-grounding: 重い欄が揃っている(本命+対抗馬) → pass ---
+  # --- selection-grounding: 重い欄が揃っている(本命+対抗馬+既存手段) → pass ---
   local plan_heavy_ok
-  plan_heavy_ok=$'## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  先行例: https://example.com/x (取得 2026-09-23)\n  差分: 一致\n  軸: 表現不可能 — 理由\n'
+  plan_heavy_ok=$'## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 採用: jq\n  先行例: https://example.com/x (取得 2026-09-23)\n  差分: 一致\n  軸: 表現不可能 — 理由\n'
   out="$(judge_precedent "$plan_heavy_ok")"
   expect_empty "$out" "重い欄が揃っている"
 
   # --- selection-grounding: 対抗馬だけあって本命が無い → deny ---
   local plan_heavy_incomplete
-  plan_heavy_incomplete=$'## 先行例との対比\n\n- D1: 判断\n  対抗馬: 候補A (同じ軸)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  plan_heavy_incomplete=$'## 先行例との対比\n\n- D1: 判断\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 採用: jq\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_heavy_incomplete")"
   expect_nonempty "$out" "重い欄の片方欠落(対抗馬のみ)"
   grep -q '本命' <<< "$out" || {
     echo "FAIL(重い欄の片方欠落): 本命欠落への言及が無い: [${out}]" >&2
     fails=$((fails + 1))
   }
+
+  # --- ADR-0000: 重い欄はあるが既存手段: が無い → deny ---
+  local plan_kizon_missing
+  plan_kizon_missing=$'## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  out="$(judge_precedent "$plan_kizon_missing")"
+  expect_nonempty "$out" "既存手段: 欠落"
+  grep -q '既存手段' <<< "$out" || {
+    echo "FAIL(既存手段: 欠落): 既存手段への言及が無い: [${out}]" >&2
+    fails=$((fails + 1))
+  }
+
+  # --- ADR-0000: 既存手段: 自前 なのに却下:/探索: が無い → deny ---
+  local plan_kizon_jimae_no_reason
+  plan_kizon_jimae_no_reason=$'## 先行例との対比\n\n- D1: 判断\n  本命: なし — 理由\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 自前\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  out="$(judge_precedent "$plan_kizon_jimae_no_reason")"
+  expect_nonempty "$out" "既存手段: 自前なのに理由なし"
+  grep -q '却下.*探索' <<< "$out" || {
+    echo "FAIL(既存手段: 自前なのに理由なし): 却下/探索への言及が無い: [${out}]" >&2
+    fails=$((fails + 1))
+  }
+
+  # --- ADR-0000: 既存手段: 自前 — 却下: 理由あり → pass ---
+  local plan_kizon_jimae_ok
+  plan_kizon_jimae_ok=$'## 先行例との対比\n\n- D1: 判断\n  本命: なし — 理由\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 自前 — 却下: jq (要件を満たせない)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  out="$(judge_precedent "$plan_kizon_jimae_ok")"
+  expect_empty "$out" "既存手段: 自前 — 却下: 理由ありで pass"
+
+  # --- ADR-0000: 重い欄が無い Dn には既存手段: を要求しない ---
+  local plan_no_heavy_no_kizon
+  plan_no_heavy_no_kizon=$'## 先行例との対比\n\n- D1: 判断\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
+  out="$(judge_precedent "$plan_no_heavy_no_kizon")"
+  expect_empty "$out" "重い欄が無ければ既存手段: 不要"
 
   # --- extract_precedent_section: 次の見出しで止まる ---
   local sec

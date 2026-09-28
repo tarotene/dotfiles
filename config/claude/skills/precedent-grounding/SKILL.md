@@ -59,7 +59,9 @@ grounding-over-prompted-adversarial-review.md` と
 (ツール・ライブラリの採否、hook/skill の要否)を含む `Dn` は、外部依存の
 新設・置換・撤去、または撤収コストが導入コストを上回る選択のときに限り
 `本命:`/`対抗馬:`/`外した候補:` も書く。軸の定義・duality 閉集合・
-重い欄の詳しい書き方は `selection-grounding` スキルを参照。
+重い欄の詳しい書き方は `selection-grounding` スキルを参照。重い欄を持つ
+`Dn` にはさらに `既存手段:` 行(ADR-0000)も必須になる — 書式は
+selection-grounding スキル §6 を参照。
 
 - `Dn` は要求インベントリの `Rn` と同じ発想の ID。設計判断 1 つ = 1 行。
   重複させない。
