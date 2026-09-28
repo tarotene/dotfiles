@@ -158,15 +158,54 @@ ADR-0034 節と同じ精神)による。導入されたホストで実パスを�
 - **同一 uid からの Secret Service 読み取り**(#348/ADR-0003 Amendment 5)
   は、この guard の対象外——sudo askpass 経路の再導入を防ぐだけで、
   pinentry を直接叩く他の経路そのものは(#421 の対処後も)残っている。
-- **実機検証で判明した未解決点**: `/usr/bin/pkexec /usr/bin/systemctl
-  --version` を agent から実行したところ、目視できる新規の認証ダイアログ
-  なしに成功した(`pkcheck --action-id org.freedesktop.policykit.exec
-  --process $$ --allow-user-interaction` も即座に rc=0)。`sudo -n true`
-  は別途パスワードを要求するため、sudo 自体がパスワード無しというわけでは
-  ない——polkit 側に何らかの cache/grant(`auth_admin_keep` 相当、または
-  このホスト固有の polkit ルール)が効いている可能性がある。原因は未調査。
-  利用者自身の環境でこの cache の有無・スコープを確認し、想定外に広ければ
-  `polkit-1/rules.d` 側で締める判断が必要。
+- **agent の Bash ツールは認証ダイアログを観測できない**(既知の限界では
+  なく仕様上の事実)。次節「認証フローの実態」参照。
+
+## 認証フローの実態(実機調査、2026-09-28)
+
+実機検証中、`/usr/bin/pkexec /usr/bin/systemctl --version` を agent から
+実行したところ、tool 出力に目視できる新規の認証ダイアログが一切現れずに
+成功した(`pkcheck --action-id org.freedesktop.policykit.exec --process $$
+--allow-user-interaction` も即座に rc=0)。`sudo -n true` は別途パスワード
+を要求するため sudo 自体がパスワード無しというわけではなく、当初は
+polkit 側の cache/grant(`auth_admin_keep` 相当や、このホスト固有の
+polkit ルール)を疑ったが、`journalctl -b` を調べた結果、**キャッシュでは
+なく毎回の正規認証だった**ことを確認した:
+
+```
+polkitd[1090]: Operator of unix-session:3 successfully authenticated as
+unix-user:tarotene to gain ONE-SHOT authorization for action
+org.freedesktop.policykit.exec for unix-process:... [...eval
+'/usr/bin/pkexec /usr/bin/systemctl --version' ...]
+```
+
+- `ONE-SHOT` は polkit の用語で「キャッシュ・保持なし」を意味する
+  (`auth_admin_keep` のような保持型とは異なる)。実際、2 回の独立した
+  `pkexec` 呼び出しそれぞれについて、独立した `successfully authenticated`
+  ログが出ていた——1 回目の認証を 2 回目が使い回した形跡はない。
+- PAM 側(`/usr/lib/pam.d/polkit-1` → `@include common-auth` →
+  `/etc/pam.d/common-auth` の `pam_unix.so nullok`)にも、パスワード無しで
+  通す仕組み(生体認証モジュール等)は設定されていない。`nullok` は
+  「アカウントのパスワードハッシュ自体が空なら許す」という意味で、この
+  アカウントには該当しない。
+- `49-ubuntu-admin.rules`/`50-default.rules`(`/usr/share/polkit-1/
+  rules.d/`)の `polkit.addAdminRule` は「`unix-group:sudo` を admin
+  identity として扱う」という定義であり、認証そのものを省略する設定では
+  ない。
+
+結論: **agent の Bash ツールには制御端末が無いため、polkit の認証
+ダイアログ(COSMIC では `cosmic-osd`)を agent 自身は一切見ることも
+操作することもできない**。しかし、その認証ダイアログは agent とは別の
+経路(GUI セッション)で実際に人間に提示され、人間がそこへ入力して初めて
+`pkexec` が成功している——journalctl のログはその入力が本物の PAM
+認証(パスワード等)を経て成立したことを裏付けている。「新規ダイアログ
+なしに成功した」ように見えたのは、agent 側にダイアログの可視性が無いこと
+による見かけ上の現象であり、認証そのものがスキップされたわけではない。
+
+この構造は、この guard が前提とする「認証ダイアログを唯一の人間の関所に
+する」設計と矛盾しない——むしろ `ONE-SHOT`(非保持)であることは、
+`sudo` の timestamp キャッシュより強い性質(毎回人間の入力を要求する)を
+意味する。
 
 ## 先行例との差分
 
