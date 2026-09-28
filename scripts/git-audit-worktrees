@@ -8,11 +8,17 @@ GHR_DIR="${GIT_WORKTREE_AUDIT_GHR_DIR:-$HOME/.ghr}"
 HERDR_DIR="${GIT_WORKTREE_AUDIT_HERDR_DIR:-$HOME/.herdr/worktrees}"
 STATE_DIR="${GIT_WORKTREE_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-worktree-audit}"
 HERDR_BIN="${GIT_WORKTREE_AUDIT_HERDR_BIN:-herdr}"
+GH_BIN="${GIT_WORKTREE_AUDIT_GH_BIN:-gh}"
 TEST_TMP=''
+# gh_closed_heads の呼び出し結果を repo(owner/repo slug)ごとに1回だけ
+# 計算してキャッシュする。--evidence は1回の実行で同じ repo を worktree
+# 行・branch 行の両方から照会しうるため、キャッシュが無いと gh を2回叩く。
+declare -A GH_PR_CACHE_DONE=()
+declare -A GH_PR_CACHE_DATA=()
 
 usage() {
   cat <<'EOF'
-usage: git audit-worktrees [--notify|--context|--porcelain|--selftest]
+usage: git audit-worktrees [--notify|--context|--porcelain|--evidence|--selftest]
 
 Without options, report stale findings and exit 1 when any exist. Two
 independent classes are detected:
@@ -25,7 +31,20 @@ independent classes are detected:
 --context emits SessionStart hook JSON.
 --porcelain emits the raw class-tagged TSV (for git-prune-worktrees).
 
-Detection only, never deletes — for either class, run `git prune-worktrees`.
+--evidence emits a separate TSV of worktrees/branches backed by *content-
+preservation* evidence, for unattended deletion (git prune-worktrees --auto /
+git prune-branches --auto), not upstream-tracking state:
+  C1      prunable registration (checkout already gone — nothing to preserve)
+  C2      tip is an ancestor of the repo's default branch (already in main)
+  C3:#N   tip equals a MERGED or CLOSED PR's head commit (recoverable via
+          refs/pull/N/head even after local deletion)
+Rows: kind(worktree|branch)  common  repo  path  branch  sha  evidence
+Calls `gh` once per repo (only for --evidence, never for the other modes);
+a repo whose origin isn't github.com, or whose `gh pr list` call fails, is
+simply skipped for C3 (fail closed — never asserted, never guessed).
+
+Detection only, never deletes — for either class, run `git prune-worktrees`
+or `git prune-branches`.
 EOF
 }
 
@@ -102,6 +121,39 @@ herdr_open_paths() {
   jq -r '.result.worktrees[]? | select(has("open_workspace_id")) | .path' <<<"$json" 2>/dev/null
 }
 
+# worktree_closed_and_clean: the "is this worktree even safe to look at"
+# guard shared by scan_orphaned (upstream-tracking based detection) and
+# evidence_worktrees (content-evidence based detection, --evidence) — single
+# source for the checks both must apply before either goes on to its own
+# classification (ADR-0024/D3 "単一正本"): not the main checkout, checkout
+# directory present, Herdr reachable and not reporting it open, not Herdr's
+# own control worktree, no uncommitted changes, no active `git shelve`.
+#
+# Deliberately does NOT reject a detached HEAD — scan_orphaned rejects that
+# itself afterward (it has no class for a branchless worktree), but
+# evidence_worktrees' C3 works off the commit sha regardless of branch, so a
+# detached worktree can still carry valid evidence.
+#
+# $5 names an associative array (in the caller's scope) of Herdr-open paths,
+# passed explicitly via `local -n` rather than relied on implicitly — this
+# function is called from two different scan functions and an implicit
+# same-named local would be an easy thing for either to silently break by
+# renaming its own variable.
+worktree_closed_and_clean() {
+  local wt="$1" common="$2" main_root="$3" herdr_ok="$4"
+  local -n open_path_ref="$5"
+  local br
+  [[ $wt != "$main_root" ]] || return 1 # the main checkout, never a candidate
+  [[ -d $wt ]] || return 1 # missing checkout is scan_prunable's/C1's job
+  [[ $herdr_ok -eq 1 ]] || return 1 # can't confirm closed in Herdr — skip
+  [[ -z ${open_path_ref[$wt]+x} ]] || return 1 # still open — never a candidate
+  br="$(git -C "$wt" branch --show-current 2>/dev/null)" || br=""
+  [[ $br != HERDR ]] || return 1 # Herdr's own control worktree
+  [[ "$(uncommitted_count "$wt")" == 0 ]] || return 1 # dirty may be real WIP
+  ! is_shelved "$wt" "$common" || return 1
+  return 0
+}
+
 # scan_prunable: registrations whose checkout directory is gone. Emits TSV
 # rows: common, repo, path, branch, class=prunable, reason (git's own
 # "prunable <reason>" text).
@@ -154,15 +206,9 @@ scan_orphaned() {
   fi
   while IFS= read -r wt; do
     [[ -n $wt ]] || continue
-    [[ $wt != "$main_root" ]] || continue # the main checkout, never a candidate
-    [[ -d $wt ]] || continue # missing checkout is scan_prunable's job
-    [[ $herdr_ok -eq 1 ]] || continue # can't confirm closed in Herdr — skip
-    [[ -z ${open_path[$wt]+x} ]] || continue # still open — never a candidate
+    worktree_closed_and_clean "$wt" "$common" "$main_root" "$herdr_ok" open_path || continue
     br="$(git -C "$wt" branch --show-current 2>/dev/null)" || br=""
     [[ -n $br ]] || continue # detached HEAD — not a class we judge here
-    [[ $br != HERDR ]] || continue # Herdr's own control worktree
-    [[ "$(uncommitted_count "$wt")" == 0 ]] || continue # dirty may be real WIP
-    is_shelved "$wt" "$common" && continue
     IFS=$'\t' read -r upstream track < <(
       git -C "$wt" for-each-ref --format='%(upstream)%09%(upstream:track)' "refs/heads/$br" 2>/dev/null
     )
@@ -197,6 +243,183 @@ scan() { # print TSV: common, repo, path, branch, class, reason
     [[ -n $common ]] || continue
     scan_prunable "$common" "$repo"
     scan_orphaned "$common" "$repo"
+  done < <(discover_repositories)
+}
+
+# resolve_compare_base: the first of origin/<default> / <default> that
+# actually resolves in this repo — same fallback scan_orphaned already uses,
+# kept here as its own function since classify_evidence needs it independent
+# of any single worktree checkout (it only ever reads $common, never a
+# worktree path — shallow-ness and refs are both common-dir-scoped).
+resolve_compare_base() {
+  local common="$1" default_branch="$2" ref
+  ref="refs/remotes/origin/${default_branch}"
+  if git --git-dir="$common" rev-parse --verify -q "$ref" >/dev/null 2>&1; then
+    printf '%s' "$ref"
+    return 0
+  fi
+  ref="refs/heads/${default_branch}"
+  if git --git-dir="$common" rev-parse --verify -q "$ref" >/dev/null 2>&1; then
+    printf '%s' "$ref"
+    return 0
+  fi
+  return 1
+}
+
+# resolve_github_slug: "owner/repo" from origin's URL, or failure if origin
+# isn't a github.com remote (ssh, https, or ssh:// form) — --evidence's C3
+# only ever asks GitHub, never guesses at another forge's PR semantics.
+resolve_github_slug() {
+  local common="$1" url
+  url="$(git --git-dir="$common" remote get-url origin 2>/dev/null)" || return 1
+  case "$url" in
+    git@github.com:*) url="${url#git@github.com:}" ;;
+    ssh://git@github.com/*) url="${url#ssh://git@github.com/}" ;;
+    https://github.com/*) url="${url#https://github.com/}" ;;
+    *) return 1 ;;
+  esac
+  url="${url%.git}"
+  [[ -n $url ]] || return 1
+  printf '%s' "$url"
+}
+
+# gh_closed_heads: TSV "<headRefOid> TAB <PR number>" for every non-OPEN
+# (MERGED or CLOSED) PR of the given "owner/repo" slug — cached per slug per
+# process (GH_PR_CACHE_DONE/DATA, declared at top) since one evidence() run
+# can ask about the same repo from both evidence_worktrees and
+# evidence_branches. A successful call with zero matching PRs still caches
+# as "ok" with empty data — that's a legitimate answer, not a failure.
+# Returns non-zero only when the `gh` call itself could not be completed
+# (auth, network, rate limit, non-github origin already filtered upstream by
+# resolve_github_slug) — classify_evidence treats that as "can't ask", the
+# same fail-closed bias as an unreachable Herdr.
+gh_closed_heads() {
+  local slug="$1" out
+  if [[ -z ${GH_PR_CACHE_DONE[$slug]+x} ]]; then
+    if out="$("$GH_BIN" pr list -R "$slug" --state all --limit 5000 \
+      --json number,state,headRefOid \
+      --jq '.[] | select(.state != "OPEN") | "\(.headRefOid)\t\(.number)"' 2>/dev/null)"; then
+      GH_PR_CACHE_DATA[$slug]="$out"
+      GH_PR_CACHE_DONE[$slug]=ok
+    else
+      GH_PR_CACHE_DONE[$slug]=fail
+    fi
+  fi
+  [[ ${GH_PR_CACHE_DONE[$slug]} == ok ]] || return 1
+  printf '%s' "${GH_PR_CACHE_DATA[$slug]}"
+}
+
+# classify_evidence: print C2 or C3:#<N> for the given commit sha, or fail
+# (print nothing) if neither content-preservation class applies. Only reads
+# $common (never a worktree path) — shallow-ness, refs, and remotes are all
+# common-dir-scoped, so this works identically for a live worktree's HEAD
+# and a checkout-less branch's tip (evidence_branches).
+classify_evidence() {
+  local common="$1" repo="$2" sha="$3" default_branch="$4"
+  local compare_base slug heads h n
+  if [[ -n $default_branch ]] &&
+    [[ "$(git --git-dir="$common" rev-parse --is-shallow-repository 2>/dev/null)" != true ]] &&
+    compare_base="$(resolve_compare_base "$common" "$default_branch")" &&
+    git --git-dir="$common" merge-base --is-ancestor "$sha" "$compare_base" 2>/dev/null; then
+    printf 'C2'
+    return 0
+  fi
+  if slug="$(resolve_github_slug "$common")" && heads="$(gh_closed_heads "$slug")"; then
+    while IFS=$'\t' read -r h n; do
+      [[ -n $h ]] || continue
+      [[ $h == "$sha" ]] || continue
+      printf 'C3:#%s' "$n"
+      return 0
+    done <<<"$heads"
+  fi
+  return 1
+}
+
+# evidence_worktrees: emits `worktree` rows carrying a content-preservation
+# evidence class (C1/C2/C3), for unattended deletion. Reuses the porcelain
+# block shape scan_prunable already parses, extended with the HEAD sha and
+# `locked` flag neither scan_prunable nor scan_orphaned needed.
+#
+# C1 (prunable) skips worktree_closed_and_clean entirely — there is no
+# checkout left to protect, so there is nothing the guard could tell us that
+# would change the answer. C2/C3 candidates go through the same guard
+# scan_orphaned uses, plus a lock check scan_orphaned has never needed (its
+# own deletions always go through git-prune-worktrees' own re-validation,
+# but a locked worktree signals explicit intent to keep it, independent of
+# clean/open state, so --evidence excludes it up front rather than letting a
+# downstream `git worktree remove` merely fail on it).
+evidence_worktrees() {
+  local common="$1" repo="$2"
+  local -A open_path=()
+  local p herdr_ok=1 main_root="${common%/.git}" herdr_paths default_branch
+  local line path head branch locked reason ev
+  default_branch="$(resolve_default_branch "$common")"
+  if herdr_paths="$(herdr_open_paths "$repo")"; then
+    while IFS= read -r p; do
+      [[ -n $p ]] && open_path[$p]=1
+    done <<<"$herdr_paths"
+  else
+    herdr_ok=0
+  fi
+  path='' head='' branch='' locked=0 reason=''
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ -z $line ]]; then
+      if [[ -n $path ]]; then
+        if [[ -n $reason ]]; then
+          printf 'worktree\t%s\t%s\t%s\t%s\t%s\tC1\n' "$common" "$repo" "$path" "$branch" "$head"
+        elif [[ $locked -eq 0 ]] &&
+          worktree_closed_and_clean "$path" "$common" "$main_root" "$herdr_ok" open_path &&
+          ev="$(classify_evidence "$common" "$repo" "$head" "$default_branch")"; then
+          printf 'worktree\t%s\t%s\t%s\t%s\t%s\t%s\n' "$common" "$repo" "$path" "$branch" "$head" "$ev"
+        fi
+      fi
+      path='' head='' branch='' locked=0 reason=''
+      continue
+    fi
+    case "$line" in
+      worktree\ *) path="${line#worktree }" ;;
+      HEAD\ *) head="${line#HEAD }" ;;
+      branch\ *)
+        branch="${line#branch }"
+        branch="${branch#refs/heads/}"
+        ;;
+      locked*) locked=1 ;;
+      prunable\ *) reason="${line#prunable }" ;;
+    esac
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null; printf '\n')
+}
+
+# evidence_branches: emits `branch` rows for local branches that are not
+# checked out in *any* worktree of this repo (a checked-out branch is
+# git-prune-worktrees' concern via its worktree row, never deleted directly
+# out from under a checkout) and whose tip carries C2/C3 evidence. No
+# herdr/dirty/shelve guard applies here — those are properties of a
+# worktree's working tree, not of a bare branch ref.
+evidence_branches() {
+  local common="$1" repo="$2" default_branch b sha ev line
+  local -A checked_out=()
+  default_branch="$(resolve_default_branch "$common")"
+  while IFS= read -r line; do
+    case "$line" in
+      branch\ refs/heads/*) checked_out["${line#branch refs/heads/}"]=1 ;;
+    esac
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null)
+  while IFS= read -r b; do
+    [[ -n $b ]] || continue
+    [[ $b != "$default_branch" ]] || continue # the default branch itself is never a candidate
+    [[ -z ${checked_out[$b]+x} ]] || continue # git-prune-worktrees' concern, not ours
+    sha="$(git --git-dir="$common" rev-parse -q --verify "refs/heads/$b" 2>/dev/null)" || continue
+    ev="$(classify_evidence "$common" "$repo" "$sha" "$default_branch")" || continue
+    printf 'branch\t%s\t%s\t\t%s\t%s\t%s\n' "$common" "$repo" "$b" "$sha" "$ev"
+  done < <(git --git-dir="$common" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
+}
+
+evidence() { # print TSV: kind, common, repo, path, branch, sha, evidence
+  local common repo
+  while IFS=$'\t' read -r common repo; do
+    [[ -n $common ]] || continue
+    evidence_worktrees "$common" "$repo"
+    evidence_branches "$common" "$repo"
   done < <(discover_repositories)
 }
 
@@ -508,6 +731,252 @@ STUB
   printf 'selftest: OK\n'
 }
 
+# selftest_evidence: covers `--evidence` — the content-preservation classes
+# (C1/C2/C3) a later stage uses for unattended deletion. Kept separate from
+# selftest() above (its own tmp dir, its own trap) since that one only ever
+# exercises the pre-existing upstream-tracking classes (prunable/orphaned)
+# and is already long.
+selftest_evidence() {
+  local tmp repo out wt_c2 wt_c3 wt_open wt_none wt_dirty wt_locked wt_detached
+  local c3_sha open_sha row
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/ghr/github.com/acme/repo"
+  mkdir -p "$repo" "$tmp/herdr" "$tmp/bin" "$tmp/state"
+  git -C "$repo" init -qb main
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+
+  git init -q --bare "$tmp/remote.git"
+  git -C "$repo" remote add origin "$tmp/remote.git"
+  git -C "$repo" push -q origin main
+  # See selftest()'s identical line for why this is needed: a bare repo's
+  # HEAD follows the runner's init.defaultBranch, not the branch actually
+  # pushed, and the shallow-clone fixture below needs it to resolve.
+  git -C "$tmp/remote.git" symbolic-ref HEAD refs/heads/main
+
+  # Herdr stub: no worktree is ever reported open, so every fixture below
+  # clears that half of worktree_closed_and_clean.
+  cat >"$tmp/bin/herdr" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "worktree list" ]]; then
+  printf '{"result":{"worktrees":[]}}\n'
+  exit 0
+fi
+exit 1
+STUB
+  chmod +x "$tmp/bin/herdr"
+
+  # gh stub: finds the --jq expression classify_evidence actually passes and
+  # runs the real `jq` with it against a canned PR-list fixture — this
+  # exercises gh_closed_heads' own filter (state != OPEN), not a hand-rolled
+  # reimplementation of it. $GH_STUB_FAIL, when present, makes it fail
+  # outright (simulating an unreachable/unauthenticated gh).
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+jqexpr=""
+prev=""
+for a in "$@"; do
+  if [[ $prev == "--jq" ]]; then jqexpr="$a"; fi
+  prev="$a"
+done
+[[ -n $jqexpr ]] || exit 1
+[[ -f "$GH_STUB_FIXTURE" ]] || exit 1
+[[ ! -e "${GH_STUB_FAIL:-/nonexistent}" ]] || exit 1
+jq -r "$jqexpr" "$GH_STUB_FIXTURE"
+STUB
+  chmod +x "$tmp/bin/gh"
+
+  export GIT_WORKTREE_AUDIT_GHR_DIR="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_DIR="$tmp/herdr" \
+    GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" \
+    GIT_WORKTREE_AUDIT_GH_BIN="$tmp/bin/gh" GH_STUB_FIXTURE="$tmp/prs.json"
+
+  # C2: branch tip == default branch tip (a trivial ancestor).
+  wt_c2="$tmp/wt-c2"
+  git -C "$repo" worktree add -q "$wt_c2" -b worktree/c2
+
+  # C3: a commit that is NOT an ancestor of main; its sha is registered below
+  # as a MERGED PR's head.
+  wt_c3="$tmp/wt-c3"
+  git -C "$repo" worktree add -q "$wt_c3" -b worktree/c3
+  git -C "$wt_c3" commit --allow-empty -qm 'c3 commit'
+  c3_sha="$(git -C "$wt_c3" rev-parse HEAD)"
+
+  # OPEN PR: a distinct commit registered as an OPEN (not MERGED/CLOSED) PR
+  # head — must never be picked up.
+  wt_open="$tmp/wt-open"
+  git -C "$repo" worktree add -q "$wt_open" -b worktree/open-pr
+  git -C "$wt_open" commit --allow-empty -qm 'open pr commit'
+  open_sha="$(git -C "$wt_open" rev-parse HEAD)"
+
+  # No evidence at all: neither an ancestor of main nor any PR's head.
+  wt_none="$tmp/wt-none"
+  git -C "$repo" worktree add -q "$wt_none" -b worktree/none
+  git -C "$wt_none" commit --allow-empty -qm 'no evidence commit'
+
+  # Dirty: same shape as C2 (ancestor) but dirty — content evidence alone is
+  # never enough, the common guard must still exclude it.
+  wt_dirty="$tmp/wt-dirty"
+  git -C "$repo" worktree add -q "$wt_dirty" -b worktree/dirty
+  touch "$wt_dirty/dirty.txt"
+
+  # Locked: same shape as C2 but locked — an explicit "keep me" that
+  # --evidence must respect even though the checkout is clean.
+  wt_locked="$tmp/wt-locked"
+  git -C "$repo" worktree add -q "$wt_locked" -b worktree/locked
+  git -C "$repo" worktree lock "$wt_locked" --reason 'kept on purpose'
+
+  # Detached HEAD at the C3 sha — must still be detected via C3, unlike
+  # scan_orphaned's upstream-tracking classes which need a live branch.
+  wt_detached="$tmp/wt-detached"
+  git -C "$repo" worktree add -q --detach "$wt_detached" "$c3_sha"
+
+  # Loose branches (no worktree at all) — evidence_branches' own candidates.
+  git -C "$repo" branch worktree/loose-c2 main
+  git -C "$repo" branch worktree/loose-c3 "$c3_sha"
+
+  cat >"$tmp/prs.json" <<JSON
+[
+  {"number": 10, "state": "MERGED", "headRefOid": "$c3_sha"},
+  {"number": 11, "state": "OPEN", "headRefOid": "$open_sha"}
+]
+JSON
+
+  # classify_evidence's C3 only ever asks GitHub — fake the origin slug so
+  # it takes that path. The push/fetch above already happened against the
+  # real bare remote; rewriting the URL afterward touches no ref.
+  git -C "$repo" remote set-url origin git@github.com:acme/repo.git
+
+  out="$("$SELF" --evidence)"
+
+  row="$(awk -F'\t' -v p="$wt_c2" '$4==p' <<<"$out")"
+  [[ ${row##*$'\t'} == C2 ]] || {
+    printf 'FAIL(evidence): C2(ancestor) を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+  row="$(awk -F'\t' -v p="$wt_c3" '$4==p' <<<"$out")"
+  [[ ${row##*$'\t'} == "C3:#10" ]] || {
+    printf 'FAIL(evidence): C3(MERGED PR head) を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+  row="$(awk -F'\t' -v p="$wt_detached" '$4==p' <<<"$out")"
+  [[ ${row##*$'\t'} == "C3:#10" ]] || {
+    printf 'FAIL(evidence): detached HEAD の C3 を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+  [[ -z $(awk -F'\t' -v p="$wt_open" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): OPEN な PR の head を証拠として拾った\n' >&2
+    return 1
+  }
+  [[ -z $(awk -F'\t' -v p="$wt_none" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): 証拠の無い worktree を拾った\n' >&2
+    return 1
+  }
+  [[ -z $(awk -F'\t' -v p="$wt_dirty" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): dirty な worktree を拾った(C2 の形でも guard が優先されるべき)\n' >&2
+    return 1
+  }
+  [[ -z $(awk -F'\t' -v p="$wt_locked" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): locked な worktree を拾った\n' >&2
+    return 1
+  }
+  row="$(awk -F'\t' -v k=branch -v b=worktree/loose-c2 '$1==k && $5==b' <<<"$out")"
+  [[ ${row##*$'\t'} == C2 ]] || {
+    printf 'FAIL(evidence): worktree の無い branch の C2 を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+  row="$(awk -F'\t' -v k=branch -v b=worktree/loose-c3 '$1==k && $5==b' <<<"$out")"
+  [[ ${row##*$'\t'} == "C3:#10" ]] || {
+    printf 'FAIL(evidence): worktree の無い branch の C3 を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+
+  # C1: registration survives after the checkout directory disappeared —
+  # --evidence must still surface it (no herdr/clean/lock guard applies,
+  # there is no checkout left to protect).
+  local wt_gone
+  wt_gone="$tmp/wt-gone"
+  git -C "$repo" worktree add -q "$wt_gone" -b worktree/gone-registration
+  rm -rf "$wt_gone"
+  out="$("$SELF" --evidence)"
+  row="$(awk -F'\t' -v p="$wt_gone" '$4==p' <<<"$out")"
+  [[ ${row##*$'\t'} == C1 ]] || {
+    printf 'FAIL(evidence): C1(prunable) を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+  git -C "$repo" worktree prune --verbose --expire=now
+
+  # Herdr unreachable: every `worktree` row must disappear (fail closed);
+  # `branch` rows are unaffected (they carry no herdr/clean concept).
+  cat >"$tmp/bin/herdr" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+  out="$("$SELF" --evidence)"
+  [[ -z $(awk -F'\t' '$1=="worktree"' <<<"$out") ]] || {
+    printf 'FAIL(evidence): herdr 到達不能なのに worktree 行が残った\n' >&2
+    return 1
+  }
+  [[ -n $(awk -F'\t' '$1=="branch"' <<<"$out") ]] || {
+    printf 'FAIL(evidence): herdr 到達不能で branch 行まで消えた(herdr に依存しないはず)\n' >&2
+    return 1
+  }
+  cat >"$tmp/bin/herdr" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "worktree list" ]]; then
+  printf '{"result":{"worktrees":[]}}\n'
+  exit 0
+fi
+exit 1
+STUB
+
+  # gh 呼び出し失敗: C3 は消えるが C2 は残る(gh に依存しない証拠)。
+  touch "$tmp/gh-fail"
+  export GH_STUB_FAIL="$tmp/gh-fail"
+  out="$("$SELF" --evidence)"
+  unset GH_STUB_FAIL
+  rm -f "$tmp/gh-fail"
+  row="$(awk -F'\t' -v p="$wt_c2" '$4==p' <<<"$out")"
+  [[ ${row##*$'\t'} == C2 ]] || {
+    printf 'FAIL(evidence): gh 失敗時に C2 まで消えた\n' >&2
+    return 1
+  }
+  [[ -z $(awk -F'\t' -v p="$wt_c3" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): gh 失敗時に C3 が残った(gh を叩けないのに断定した)\n' >&2
+    return 1
+  }
+
+  # Shallow clone: C2(祖先)判定を丸ごとスキップする。file:// を使うのは
+  # ローカルパスへの clone だと git が "local clone" 最適化で --depth を
+  # 無視し、オブジェクトストアを丸ごと hardlink してしまうため。
+  local shallow_repo wt_shallow
+  shallow_repo="$tmp/ghr/github.com/acme/shallow-repo"
+  mkdir -p "$shallow_repo"
+  git clone -q --depth 1 "file://$tmp/remote.git" "$shallow_repo"
+  git -C "$shallow_repo" config core.hooksPath /dev/null
+  git -C "$shallow_repo" config commit.gpgsign false
+  git -C "$shallow_repo" config user.name test
+  git -C "$shallow_repo" config user.email test@example.invalid
+  [[ "$(git -C "$shallow_repo" rev-parse --is-shallow-repository)" == true ]] || {
+    printf 'FAIL(evidence): shallow fixture 自体が shallow にならなかった\n' >&2
+    return 1
+  }
+  wt_shallow="$tmp/wt-shallow"
+  git -C "$shallow_repo" worktree add -q "$wt_shallow" -b worktree/shallow-loose
+  out="$("$SELF" --evidence)"
+  [[ -z $(awk -F'\t' -v p="$wt_shallow" '$4==p' <<<"$out") ]] || {
+    printf 'FAIL(evidence): shallow リポジトリで C2 を検出してしまった\n' >&2
+    return 1
+  }
+  git -C "$shallow_repo" worktree remove --force "$wt_shallow"
+
+  printf 'selftest(evidence): OK\n'
+}
+
 main() {
   local mode=report findings
   while [[ $# -gt 0 ]]; do
@@ -515,8 +984,9 @@ main() {
       --notify) mode=notify ;;
       --context) mode=context ;;
       --porcelain) mode=porcelain ;;
+      --evidence) mode=evidence ;;
       --selftest)
-        selftest
+        selftest && selftest_evidence
         return
         ;;
       -h | --help)
@@ -530,6 +1000,15 @@ main() {
     esac
     shift
   done
+  # --evidence has its own scan (evidence(), which calls `gh`) and returns
+  # early — it must never run scan()/scan_prunable()/scan_orphaned(), the
+  # path --notify/--context/--porcelain (the 1-minute timer) take, so those
+  # never end up shelling out to `gh` even indirectly.
+  if [[ $mode == evidence ]]; then
+    findings="$(evidence)"
+    [[ -z $findings ]] || printf '%s\n' "$findings"
+    return 0
+  fi
   findings="$(scan)"
   case "$mode" in
     report)
