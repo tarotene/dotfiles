@@ -508,10 +508,14 @@ jobs:
 
       # A deleted checkout must be detected without deleting its branch; hook
       # registration must remain idempotent beside Herdr's own Codex hook.
+      # git-audit-worktrees/git-prune-worktrees each run two selftest
+      # functions internally (upstream-tracking + --evidence/--auto);
+      # git-prune-branches --selftest is new here (ADR, auto-prune).
       - name: Worktree lifecycle self-tests
         run: |
           ./scripts/git-audit-worktrees --selftest
           ./scripts/git-prune-worktrees --selftest
+          ./scripts/git-prune-branches --selftest
           ./scripts/git-worktree-create-guard --selftest
           ./scripts/register-codex-hooks --selftest
           ./scripts/register-copilot-hooks --selftest

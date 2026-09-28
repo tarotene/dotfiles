@@ -22,54 +22,411 @@ set -euo pipefail
 # branch out from under it is not something to do without looking at that
 # worktree first. Run `git prune-worktrees` first to clear those checkouts,
 # then this command's own [gone] filter naturally covers their branches too.
+#
+# --auto (added alongside git prune-worktrees --auto, docs/worktree-
+# lifecycle.md) is a second, independent judgement from the default [gone]
+# path above: it consumes `git audit-worktrees --evidence`'s `branch` rows
+# (C2/C3 content-preservation classes) across every repository the audit
+# scans, not just the one this script happens to be run from, and needs no
+# confirmation — every row it acts on already carries a content-
+# preservation proof, so a `[gone]` upstream is not part of its judgement at
+# all. It uses `git --git-dir=<common> branch -D` (not plain `git branch
+# -D`, which the default path relies on being run from inside the target
+# repo) so it can act on any repo the evidence scan found.
 
-git fetch --prune origin
+SELF="$(realpath "$0")"
+AUDIT_BIN="${GIT_PRUNE_BRANCHES_AUDIT_BIN:-git-audit-worktrees}"
+LOG_DIR="${GIT_PRUNE_BRANCHES_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-auto-prune}"
+LOG_FILE="$LOG_DIR/log.tsv"
+TEST_TMP=''
 
-checked_out=$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')
+usage() {
+  cat <<'EOF'
+usage: git prune-branches [--dry-run|--auto|--selftest]
 
-gone=$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads \
-    | awk '$2 == "[gone]" {print $1}')
+Without options: delete local branches (in the current repository) whose
+upstream is [gone] — a real `fetch --prune` marks this once the PR's remote
+branch is actually gone (merged, or removed on purpose), never from a local
+ancestry heuristic (see this script's own header comment for why `[gone]` +
+`branch -D`, not `--merged`). Lists them, confirms once (y/N), then
+`git branch -D`s each. A branch checked out in another worktree is reported
+separately and never touched — remove that worktree first
+(`git prune-worktrees`), then re-run.
 
-if [[ -z "$gone" ]]; then
-    echo "prune-branches: no [gone] branches."
-    exit 0
-fi
+--dry-run  list [gone] branches (and worktree-blocked ones), delete nothing
+--auto     unattended deletion, for a scheduled timer: consumes
+           `git audit-worktrees --evidence`'s `branch` rows (C2/C3
+           content-preservation classes, docs/worktree-lifecycle.md)
+           across every repository the audit scans, instead of [gone]
+           tracking state in the current repository alone. Skips the
+           confirmation prompt, re-validates against a fresh `--evidence`
+           scan right before deleting (TOCTOU), and appends every deletion
+           to $XDG_STATE_HOME/git-auto-prune/log.tsv (the same file
+           `git prune-worktrees --auto` writes to). Combine with --dry-run
+           to preview.
+EOF
+}
 
-to_delete=""
-in_use=""
-while IFS= read -r b; do
-    [[ -z "$b" ]] && continue
+# log_auto_prune: append one line to the shared auto-prune log (also written
+# by git-prune-worktrees --auto). Columns: timestamp, kind=branch, common,
+# repo, path(always empty for a branch row), branch, sha, evidence.
+log_auto_prune() {
+  mkdir -p "$LOG_DIR"
+  printf '%s\tbranch\t%s\t%s\t\t%s\t%s\t%s\n' \
+    "$(date +%Y-%m-%dT%H:%M:%S%z)" "$1" "$2" "$3" "$4" "$5" >>"$LOG_FILE"
+}
+
+# gone_branches: TSV "<branch> TAB <in_use 0|1>" for every local branch (in
+# the current repository) whose upstream is [gone] — in_use=1 means it's
+# checked out in some worktree (git branch -D would refuse it anyway; kept
+# separate so the caller can report it instead of silently dropping it).
+gone_branches() {
+  local checked_out gone_list b
+  checked_out="$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')"
+  gone_list="$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads \
+    | awk '$2 == "[gone]" {print $1}')"
+  while IFS= read -r b; do
+    [[ -n $b ]] || continue
     if printf '%s\n' "$checked_out" | grep -qxF "$b"; then
-        in_use="${in_use}${b}"$'\n'
+      printf '%s\t1\n' "$b"
     else
-        to_delete="${to_delete}${b}"$'\n'
+      printf '%s\t0\n' "$b"
     fi
-done <<<"$gone"
+  done <<<"$gone_list"
+}
 
-if [[ -n "$in_use" ]]; then
+# run_gone: the default, [gone]-tracking-state path — this repository only.
+run_gone() {
+  local dry="$1" rows b flag in_use='' to_delete='' ans
+  git fetch --prune origin
+  rows="$(gone_branches)"
+  if [[ -z $rows ]]; then
+    echo "prune-branches: no [gone] branches."
+    return 0
+  fi
+  while IFS=$'\t' read -r b flag; do
+    [[ -n $b ]] || continue
+    if [[ $flag == 1 ]]; then
+      in_use="${in_use}${b}"$'\n'
+    else
+      to_delete="${to_delete}${b}"$'\n'
+    fi
+  done <<<"$rows"
+
+  if [[ -n $in_use ]]; then
     echo "prune-branches: [gone] but checked out in a worktree — remove the worktree first:"
     printf '%s' "$in_use" | sed 's/^/  /'
-fi
-
-if [[ -z "$to_delete" ]]; then
+  fi
+  if [[ -z $to_delete ]]; then
     echo "prune-branches: nothing left to delete."
-    exit 0
-fi
+    return 0
+  fi
 
-echo "prune-branches: will delete these [gone] branches:"
-printf '%s' "$to_delete" | sed 's/^/  /'
+  echo "prune-branches: will delete these [gone] branches:"
+  printf '%s' "$to_delete" | sed 's/^/  /'
 
-ans=""
-read -r -p "Delete? [y/N] " ans || true
-case "$ans" in
+  if [[ $dry == true ]]; then
+    echo "(--dry-run: 削除はしていません)"
+    return 0
+  fi
+
+  ans=""
+  read -r -p "Delete? [y/N] " ans || true
+  case "$ans" in
     y | Y | yes | YES) ;;
     *)
-        echo "prune-branches: aborted."
-        exit 0
-        ;;
-esac
+      echo "prune-branches: aborted."
+      return 0
+      ;;
+  esac
 
-while IFS= read -r b; do
-    [[ -z "$b" ]] && continue
+  while IFS= read -r b; do
+    [[ -n $b ]] || continue
     git branch -D -- "$b"
-done <<<"$to_delete"
+  done <<<"$to_delete"
+}
+
+# NOTE on field splitting: `IFS=$'\t' read` looks like the obvious way to
+# consume a tab-separated row, but bash classifies tab as "IFS whitespace"
+# regardless of what else is in IFS, so `read` silently collapses
+# *consecutive* tabs — every `branch`-kind evidence row has an empty path
+# column (see git-audit-worktrees' evidence_branches), which would merge
+# into the following field and shift everything after it by one.
+# `tr '\t' $'\x1f'` first, then `IFS=$'\x1f' read`, sidesteps this: unit
+# separator (0x1F) is never "IFS whitespace" and is never a legitimate byte
+# in a repo/branch/sha/evidence value, so consecutive occurrences correctly
+# produce an empty field instead of collapsing (verified against bash's
+# actual behavior, not just its documentation, while debugging this).
+render_evidence_branches() {
+  local findings="$1" kind common repo path branch sha ev count=0
+  while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
+    [[ -n $branch ]] || continue
+    count=$((count + 1))
+    printf 'evidence branch: repo=%s branch=%s sha=%s evidence=%s\n' "$repo" "$branch" "$sha" "$ev"
+  done < <(tr '\t' $'\x1f' <<<"$findings")
+  [[ $count -eq 0 ]] || printf 'total: %d evidence-backed branch(es)\n' "$count"
+}
+
+# auto_prune_branches: the --auto path. Consumes `git audit-worktrees
+# --evidence`'s `branch` rows (already excludes anything checked out in a
+# worktree at scan time — that is that scan's own job, not this function's)
+# across every repository the audit found, and needs no human confirmation.
+# Re-validates against a fresh `--evidence` scan right before acting (same
+# TOCTOU seam git-prune-worktrees --auto uses) — an exact row match also
+# re-covers "not checked out anywhere", since a branch that got checked out
+# in the window between the two scans simply drops out of the fresh one.
+auto_prune_branches() {
+  local dry="$1" listing fresh kind common repo path branch sha ev line err
+  local removed=0 skipped=0
+  listing="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "branch"')"
+  if [[ -z $listing ]]; then
+    printf 'auto: 削除対象の branch はありません。\n'
+    return 0
+  fi
+  render_evidence_branches "$listing"
+  if [[ $dry == true ]]; then
+    printf '(--dry-run: 削除はしていません)\n'
+    return 0
+  fi
+
+  if [[ -n "${GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK-}" ]]; then
+    eval "$GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK"
+  fi
+  fresh="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "branch"')"
+
+  while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
+    [[ -n $branch ]] || continue
+    line="$kind"$'\t'"$common"$'\t'"$repo"$'\t'"$path"$'\t'"$branch"$'\t'"$sha"$'\t'"$ev"
+    if ! grep -qxF "$line" <<<"$fresh"; then
+      printf 'skip(状態が変化したため見送り): %s\n' "$branch" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if err="$(git --git-dir="$common" branch -D -- "$branch" 2>&1)"; then
+      printf 'removed(%s): %s\n' "$ev" "$branch"
+      log_auto_prune "$common" "$repo" "$branch" "$sha" "$ev"
+      removed=$((removed + 1))
+    else
+      printf 'skip(git が拒否): %s: %s\n' "$branch" "$err" >&2
+      skipped=$((skipped + 1))
+    fi
+  done < <(tr '\t' $'\x1f' <<<"$listing")
+
+  printf 'auto: removed=%d skipped=%d\n' "$removed" "$skipped"
+}
+
+selftest() {
+  local tmp repo remote out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -qb main
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+
+  remote="$tmp/remote.git"
+  git init -q --bare "$remote"
+  git -C "$repo" remote add origin "$remote"
+  git -C "$repo" push -q origin main
+
+  # [gone] fixture: push a branch, then delete it on the remote — a real
+  # push/delete-on-remote/fetch-prune cycle, not a hand-crafted ref.
+  git -C "$repo" branch gone-a
+  git -C "$repo" push -q -u origin gone-a
+  git -C "$repo" push -q origin --delete gone-a
+
+  # A second [gone] branch that stays checked out in a worktree — must be
+  # reported separately and never deleted.
+  local wt
+  wt="$tmp/wt-inuse"
+  git -C "$repo" worktree add -q "$wt" -b gone-in-use
+  git -C "$repo" push -q -u origin gone-in-use
+  git -C "$repo" push -q origin --delete gone-in-use
+
+  # A live branch, never pushed at all — must never be touched.
+  git -C "$repo" branch untouched
+
+  # --dry-run: lists but deletes nothing, prompts nothing.
+  out="$(cd "$repo" && bash "$SELF" --dry-run </dev/null 2>&1)"
+  grep -qF 'gone-a' <<<"$out" || {
+    printf 'FAIL(dry-run): gone-a が一覧に出なかった\n' >&2
+    return 1
+  }
+  grep -qF -- '--dry-run' <<<"$out" || {
+    printf 'FAIL(dry-run): dry-run の案内が出なかった\n' >&2
+    return 1
+  }
+  git -C "$repo" show-ref --verify --quiet refs/heads/gone-a || {
+    printf 'FAIL(dry-run): gone-a が削除された\n' >&2
+    return 1
+  }
+
+  # Default path, declined: an empty/non-y answer must abort without
+  # deleting anything.
+  out="$(cd "$repo" && printf '\n' | bash "$SELF" 2>&1)"
+  grep -qF 'aborted' <<<"$out" || {
+    printf 'FAIL: 確認を断ったのに aborted が出なかった\n' >&2
+    return 1
+  }
+  git -C "$repo" show-ref --verify --quiet refs/heads/gone-a || {
+    printf 'FAIL: 確認を断ったのに削除された\n' >&2
+    return 1
+  }
+
+  # Default path, accepted: gone-a is deleted; gone-in-use is reported
+  # separately and left alone (still checked out); untouched is untouched.
+  out="$(cd "$repo" && printf 'y\n' | bash "$SELF" 2>&1)"
+  git -C "$repo" show-ref --verify --quiet refs/heads/gone-a && {
+    printf 'FAIL: y で確認したのに gone-a が残った\n' >&2
+    return 1
+  }
+  git -C "$repo" show-ref --verify --quiet refs/heads/gone-in-use || {
+    printf 'FAIL: worktree で checkout 中の gone-in-use まで削除された\n' >&2
+    return 1
+  }
+  grep -qF 'remove the worktree first' <<<"$out" || {
+    printf 'FAIL: worktree ブロックの案内が出なかった\n' >&2
+    return 1
+  }
+  git -C "$repo" show-ref --verify --quiet refs/heads/untouched || {
+    printf 'FAIL: 無関係な untouched ブランチが削除された\n' >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt"
+  git -C "$repo" branch -D gone-in-use
+
+  printf 'selftest: OK\n'
+}
+
+# selftest_auto: covers --auto, the evidence-driven cross-repository path —
+# kept separate from selftest() above (its own tmp dir, its own stub) since
+# that one only ever exercises the default, current-repository [gone] path.
+# The stub answers `--evidence` from a file this test rewrites between
+# phases, the same trick git-prune-worktrees' own selftest_auto uses.
+selftest_auto() {
+  local tmp repo common out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+  common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)"
+
+  cat >"$tmp/audit-stub" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "--evidence" ]]; then
+  cat "$GIT_PRUNE_BRANCHES_TEST_EVIDENCE_FILE"
+fi
+STUB
+  chmod +x "$tmp/audit-stub"
+  export GIT_PRUNE_BRANCHES_AUDIT_BIN="$tmp/audit-stub"
+  export GIT_PRUNE_BRANCHES_LOG_DIR="$tmp/state/git-auto-prune"
+  export GIT_PRUNE_BRANCHES_TEST_EVIDENCE_FILE="$tmp/evidence.tsv"
+
+  # C2 fixture: a loose branch (no worktree) carrying C2 evidence — deleted
+  # via `--git-dir`, without the script being run from inside $repo.
+  git -C "$repo" branch worktree/loose-c2
+  local sha_c2
+  sha_c2="$(git -C "$repo" rev-parse worktree/loose-c2)"
+  printf 'branch\t%s\t%s\t\tworktree/loose-c2\t%s\tC2\n' "$common" "$repo" "$sha_c2" >"$tmp/evidence.tsv"
+  out="$(bash "$SELF" --auto 2>&1)"
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/loose-c2 && {
+    printf 'FAIL(auto): C2 の branch が削除されなかった\n' >&2
+    return 1
+  }
+  grep -qF 'removed(C2): worktree/loose-c2' <<<"$out" || {
+    printf 'FAIL(auto): C2 の removed メッセージが出なかった: %s\n' "$out" >&2
+    return 1
+  }
+  grep -qF $'\tC2' "$tmp/state/git-auto-prune/log.tsv" || {
+    printf 'FAIL(auto): log.tsv に C2 の記録が無い\n' >&2
+    return 1
+  }
+
+  # --dry-run: nothing deleted, nothing logged.
+  git -C "$repo" branch worktree/loose-dry
+  local sha_dry loglines_before
+  sha_dry="$(git -C "$repo" rev-parse worktree/loose-dry)"
+  printf 'branch\t%s\t%s\t\tworktree/loose-dry\t%s\tC2\n' "$common" "$repo" "$sha_dry" >"$tmp/evidence.tsv"
+  loglines_before="$(wc -l <"$tmp/state/git-auto-prune/log.tsv")"
+  out="$(bash "$SELF" --auto --dry-run 2>&1)"
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/loose-dry || {
+    printf 'FAIL(auto --dry-run): 削除してしまった\n' >&2
+    return 1
+  }
+  grep -qF -- '--dry-run' <<<"$out" || {
+    printf 'FAIL(auto --dry-run): dry-run の案内が出なかった\n' >&2
+    return 1
+  }
+  [[ "$(wc -l <"$tmp/state/git-auto-prune/log.tsv")" == "$loglines_before" ]] || {
+    printf 'FAIL(auto --dry-run): dry-run なのに log.tsv に書き込まれた\n' >&2
+    return 1
+  }
+  git -C "$repo" branch -D worktree/loose-dry
+
+  # TOCTOU: listing 時点にはあった行が削除直前の再スキャンで消えている場合、
+  # 削除せず見送ることを確認する。
+  git -C "$repo" branch worktree/loose-toctou
+  local sha_toctou
+  sha_toctou="$(git -C "$repo" rev-parse worktree/loose-toctou)"
+  printf 'branch\t%s\t%s\t\tworktree/loose-toctou\t%s\tC2\n' "$common" "$repo" "$sha_toctou" >"$tmp/evidence.tsv"
+  export GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK=": >'$tmp/evidence.tsv'"
+  out="$(bash "$SELF" --auto 2>&1)"
+  unset GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/loose-toctou || {
+    printf 'FAIL(auto TOCTOU): 状態変化を検知せず削除した\n' >&2
+    return 1
+  }
+  grep -qF 'skip(状態が変化したため見送り)' <<<"$out" || {
+    printf 'FAIL(auto TOCTOU): skip メッセージが出なかった: %s\n' "$out" >&2
+    return 1
+  }
+  git -C "$repo" branch -D worktree/loose-toctou
+
+  unset GIT_PRUNE_BRANCHES_AUDIT_BIN GIT_PRUNE_BRANCHES_LOG_DIR GIT_PRUNE_BRANCHES_TEST_EVIDENCE_FILE
+
+  printf 'selftest(auto): OK\n'
+}
+
+main() {
+  local dry=false auto=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry=true ;;
+      --auto) auto=true ;;
+      --selftest)
+        selftest && selftest_auto
+        return
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  if [[ $auto == true ]]; then
+    auto_prune_branches "$dry"
+    return 0
+  fi
+
+  run_gone "$dry"
+}
+
+main "$@"

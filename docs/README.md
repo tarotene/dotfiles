@@ -297,6 +297,12 @@
 - [ADR-528](adr/528-due-remind-timer.md) — 別の private リポジトリが
   持つ平文 due-index の二キー契約だけを知る汎用 reader を
   `crates/due-remind` として実装し、Herdr 通知の hourly timer から呼ぶ。
+- [ADR-544](adr/544-auto-prune-by-content-evidence.md) — worktree/branch
+  の無人削除の根拠を `[gone]` ではなく「内容保全の証拠」(C1: prunable
+  登録 / C2: default branch の祖先 / C3: closed・merged PR の head と
+  一致)の閉集合にする。`git audit-worktrees --evidence` が検出し、
+  `git prune-worktrees --auto` / `git prune-branches --auto` が
+  hourly timer から削除する(この ADR は導入 PR の番号に改番される予定)。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
