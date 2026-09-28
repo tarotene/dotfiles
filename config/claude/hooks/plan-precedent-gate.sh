@@ -30,7 +30,7 @@
 #     いれば、`本命:` と `対抗馬:` が両方揃っているかを見る(節内整合性の
 #     みで、この重い欄を書くべきだったかどうかの発火判定はしない — それは
 #     selection-grounding スキルの内容判断で lens A に委ねる)。
-#   - 重い欄が発火している Dn は `既存手段:`(採用|拡張|自前、ADR-0000
+#   - 重い欄が発火している Dn は `既存手段:`(採用|拡張|自前、ADR-543
 #     「既存手段の前倒し接地と、決定論への昇格導線」)も必須。`自前` を
 #     選んだ場合のみ `却下:`/`探索:` の理由を必須にする(節内整合性のみ、
 #     自前を選ぶべきだったかの内容判断は lens A に委ねる)。
@@ -99,7 +99,7 @@ AXIS_RE='軸:[[:space:]]*(表現不可能|還元|検出のみ)'
 HONMEI_RE='本命:[[:space:]]*[^[:space:]]'
 TAIKOUBA_RE='対抗馬:[[:space:]]*[^[:space:]]'
 HAZUSHITA_RE='外した候補:[[:space:]]*[^[:space:]]'
-# ADR-0000: 重い欄が発火する Dn には「自前で作る前に既存手段を検討したか」
+# ADR-543: 重い欄が発火する Dn には「自前で作る前に既存手段を検討したか」
 # (既存手段:)も必須。3値の閉語彙のうち「自前」を選んだときだけ却下/探索の
 # 理由が要る(「簡単だから自前」を通さない)。
 KIZON_RE='既存手段:[[:space:]]*[^[:space:]]'
@@ -143,7 +143,7 @@ example_block() {
 でも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・
 仕組みの選択で外部依存の新設・置換・撤去、または撤収コストが導入コストを
 上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」
-「既存手段:」(自前なら却下:/探索: 必須、ADR-0000)も書く
+「既存手段:」(自前なら却下:/探索: 必須、ADR-543)も書く
 (selection-grounding スキル参照)。設計判断を含まないプランなら、
 節の代わりに次の1行だけ:
 
@@ -201,7 +201,7 @@ check_dn_block() {
     grep -Eq "$TAIKOUBA_RE" <<< "$block" || printf 'D%s: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 対抗馬: が欠落しています\n' "$id"
   fi
 
-  # ADR-0000: 重い欄が発火する Dn は「既存手段:」も必須。自前を選んだ
+  # ADR-543: 重い欄が発火する Dn は「既存手段:」も必須。自前を選んだ
   # ときだけ却下/探索の理由が要る(節内整合性のみを見る — 自前を選ぶべき
   # だったかの内容判断は lens A の職責)。
   if ((has_heavy)); then
@@ -210,7 +210,7 @@ check_dn_block() {
         grep -Eq "$KIZON_REASON_RE" <<< "$block" || printf 'D%s: 既存手段: が「自前」なのに却下:/探索: の理由がありません\n' "$id"
       fi
     else
-      printf 'D%s: 既存手段:(採用|拡張|自前)の記載がありません(ADR-0000)\n' "$id"
+      printf 'D%s: 既存手段:(採用|拡張|自前)の記載がありません(ADR-543)\n' "$id"
     fi
   fi
 }
@@ -464,7 +464,7 @@ selftest() {
     fails=$((fails + 1))
   }
 
-  # --- ADR-0000: 重い欄はあるが既存手段: が無い → deny ---
+  # --- ADR-543: 重い欄はあるが既存手段: が無い → deny ---
   local plan_kizon_missing
   plan_kizon_missing=$'## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_kizon_missing")"
@@ -474,7 +474,7 @@ selftest() {
     fails=$((fails + 1))
   }
 
-  # --- ADR-0000: 既存手段: 自前 なのに却下:/探索: が無い → deny ---
+  # --- ADR-543: 既存手段: 自前 なのに却下:/探索: が無い → deny ---
   local plan_kizon_jimae_no_reason
   plan_kizon_jimae_no_reason=$'## 先行例との対比\n\n- D1: 判断\n  本命: なし — 理由\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 自前\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_kizon_jimae_no_reason")"
@@ -484,13 +484,13 @@ selftest() {
     fails=$((fails + 1))
   }
 
-  # --- ADR-0000: 既存手段: 自前 — 却下: 理由あり → pass ---
+  # --- ADR-543: 既存手段: 自前 — 却下: 理由あり → pass ---
   local plan_kizon_jimae_ok
   plan_kizon_jimae_ok=$'## 先行例との対比\n\n- D1: 判断\n  本命: なし — 理由\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 自前 — 却下: jq (要件を満たせない)\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_kizon_jimae_ok")"
   expect_empty "$out" "既存手段: 自前 — 却下: 理由ありで pass"
 
-  # --- ADR-0000: 重い欄が無い Dn には既存手段: を要求しない ---
+  # --- ADR-543: 重い欄が無い Dn には既存手段: を要求しない ---
   local plan_no_heavy_no_kizon
   plan_no_heavy_no_kizon=$'## 先行例との対比\n\n- D1: 判断\n  先行例なし: 探索範囲\n  軸: 還元 — 理由\n'
   out="$(judge_precedent "$plan_no_heavy_no_kizon")"

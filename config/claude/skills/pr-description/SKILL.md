@@ -16,7 +16,7 @@ Stack: <段番号>/<総段数> (base: #<親PR番号>)  ← stacked PR のとき�
 
 ## 解決策
 採用案 + 棄却した代替案とのトレードオフ
-既存手段: <path> — 採用|拡張|自前 — ...  ← 新しい道具・単位を追加したときだけ(ADR-0000、書式は selection-grounding スキル §4)
+既存手段: <path> — 採用|拡張|自前 — ...  ← 新しい道具・単位を追加したときだけ(ADR-543、書式は selection-grounding スキル §4)
 
 ## Before / After
 画像(--attach)またはコードブロック対比。なければ No-Visual: <理由>
@@ -30,7 +30,7 @@ Claude が引き続き担当する残作業はここに入れず「検証」ま�
 説明に書く。両方とも無ければセクションごと省略
 ```
 
-1行目(`Closes #N` / `No-Issue:`)は既存の pr-gate(`G_link`)が機械的に強制する。`## Before / After` の証跡有無は `G_visual` が機械的に強制する(いずれもこのリポジトリの `config/claude/hooks/pr-gate.sh`)。それ以外(課題・解決策・検証・要確認の中身、および `Stack:` 行)はゲートの検査対象ではなく、この本文スケルトンが唯一の規律。`Stack:` 行は stacked PR のときだけ書く(手順は `stacked-pr` スキルを参照。ADR-0027 によりセッション内 2 本目以降の PR は既定でこれに該当する)。最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。`既存手段:` 行も現時点ではこの本文スケルトンだけが規律で、機械強制(pr-gate への `G_prior` 追加)は ADR-0000 の後続段で実装する。
+1行目(`Closes #N` / `No-Issue:`)は既存の pr-gate(`G_link`)が機械的に強制する。`## Before / After` の証跡有無は `G_visual` が機械的に強制する(いずれもこのリポジトリの `config/claude/hooks/pr-gate.sh`)。それ以外(課題・解決策・検証・要確認の中身、および `Stack:` 行)はゲートの検査対象ではなく、この本文スケルトンが唯一の規律。`Stack:` 行は stacked PR のときだけ書く(手順は `stacked-pr` スキルを参照。ADR-0027 によりセッション内 2 本目以降の PR は既定でこれに該当する)。最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。`既存手段:` 行も現時点ではこの本文スケルトンだけが規律で、機械強制(pr-gate への `G_prior` 追加)は ADR-543 の後続段で実装する。
 
 ## 2. Visual の範囲
 

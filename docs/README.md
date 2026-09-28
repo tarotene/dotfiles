@@ -303,7 +303,7 @@
   一致)の閉集合にする。`git audit-worktrees --evidence` が検出し、
   `git prune-worktrees --auto` / `git prune-branches --auto` が
   hourly timer から削除する(この ADR は導入 PR の番号に改番される予定)。
-- [ADR-0000(起草中)](adr/0000-existing-means-and-deterministic-promotion.md)
+- [ADR-543](adr/543-existing-means-and-deterministic-promotion.md)
   — 「既存手段で足りないか」(Q1)と「決定論に置き換えられないか」(Q2)を
   日々の開発フローに埋め込む決定。撤収コストと昇格コストの非対称性から、
   Q1 は新しい道具・単位の誕生を発火点にした前倒し型、Q2 は規範違反の
