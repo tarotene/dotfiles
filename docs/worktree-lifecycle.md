@@ -40,7 +40,7 @@ worktree → branch の順で畳む: `git prune-worktrees` が checkout を消�
 対話確認つきの既定モードは upstream tracking 状態(`[gone]`、unique
 commit 数)を根拠にする。`--auto` は別の判断軸(内容保全の証拠、下記)を
 根拠にし、確認なしで timer から動く — 根拠の閉集合とその選定理由は
-「worktree/branch の無人削除を『内容保全の証拠』で判定する」ADR を参照。
+[ADR-544](adr/544-auto-prune-by-content-evidence.md) を参照。
 
 ## 検出: `git audit-worktrees`
 
@@ -160,8 +160,7 @@ prune-branches の対象に入るため)。1分間隔の検出 timer とは別�
 にしているのは、`gh` を呼ぶ経路を検出専用の経路から分離するため。
 
 設計判断の全体(なぜ `[gone]` を根拠にしないか、gh-poi との比較、ROI)は
-「worktree/branch の無人削除を『内容保全の証拠』で判定する」ADR
-(`docs/adr/`)を参照。
+[ADR-544](adr/544-auto-prune-by-content-evidence.md) を参照。
 
 ## 確認
 

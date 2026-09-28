@@ -1,4 +1,4 @@
-# ADR-0000 — worktree/branch の無人削除を「内容保全の証拠」で判定する
+# ADR-544 — worktree/branch の無人削除を「内容保全の証拠」で判定する
 
 - Status: Accepted
 - Date: 2026-09-28
