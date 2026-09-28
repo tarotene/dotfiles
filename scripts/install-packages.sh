@@ -18,7 +18,18 @@ set -euo pipefail
 # Usage: ./install-packages.sh [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APT_FILE="${SCRIPT_DIR}/../packages/declarative/apt-packages.txt"
+# Prefer the home-manager-deployed file (#3): it is the shared list plus
+# this host's `dotfiles.apt.extraPackages` (home/modules/apt.nix), the same
+# resolution order detect-drift's `apt_declared_path()` uses (deployed path
+# first, checkout-relative as a bootstrap-time fallback before the first
+# `hms` has ever run).
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+DEPLOYED_APT_FILE="${XDG_CONFIG_HOME}/dotfiles/apt-packages.txt"
+if [[ -f "$DEPLOYED_APT_FILE" ]]; then
+    APT_FILE="$DEPLOYED_APT_FILE"
+else
+    APT_FILE="${SCRIPT_DIR}/../packages/declarative/apt-packages.txt"
+fi
 DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
