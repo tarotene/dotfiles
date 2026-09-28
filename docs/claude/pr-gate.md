@@ -487,6 +487,47 @@ orphan PR(base 宣言の不整合)自体は発生しない —— base チェー
 だと最後の 1 回が escalate に化けるため、4→5 に上げた `G_pr` 追加時と
 同じ論法で 6 に上げた。
 
+## G_prior — なぜ「既存手段: 記載の欠落」を block するのか(ADR-543)
+
+### 直そうとしている事故
+
+「同じことをフルスクラッチではなく既存の枯れた技術で実現できないか」
+という問いは、気付いたとき・思い出したときに提起するのでは間に合わない
+(`docs/adr/543-existing-means-and-deterministic-promotion.md` Context)。
+Plan mode を経ない作業(直接編集・小修正)は `plan-precedent-gate.sh` の
+チェックを一切通らないため、Plan を経由しない新設コードが無審査のまま
+PR に載る経路が残る。`G_prior` はその最後の関門として、PR に**新しい
+道具・単位**が追加されているのに本文へ `既存手段:` の記載が無い状態を
+「あとは終わるだけ」の一点で block する。
+
+### 判定エンジンは `new-tool-guard classify` を単一正本にする
+
+「新しい道具・単位」の述語(shebang 付き新規ファイル・`bin`/`scripts`/
+`hooks`/`cmd` を含む新規パス・パッケージマニフェストの新設)は
+`crates/new-tool-guard` の `classify` サブコマンドが単一正本で、
+Write 時の hook(`new-tool-guard` 自身、着手の瞬間の前倒し gate)と
+この `G_prior`(PR 時点の事後確認)の両方から呼ばれる。`compute_added_
+files()` が `origin/<base>...HEAD` の merge-base diff から追加ファイル
+(`--diff-filter=A`)だけを取り出し、`(cd "$project" && new-tool-guard
+classify "$f")` の終了コードで判定する。base の ref が手元に無い(fetch
+に失敗する)場合は判定不能として完全に沈黙する(断定に変えない —
+`default_branch()` が origin/HEAD 未設定を空で返すのと同じ縮退)。
+
+### 本文照合はパスの接頭辞衝突を避ける
+
+`既存手段: <path> — ...` の `<path>` は正規表現エスケープした上で、
+直後に空白+ダッシュ(`-`/`—`/`–` のいずれか)+空白が続くことまで
+要求する(`body_has_kizon_for()`)。単純な部分文字列一致だと
+`既存手段: scripts/foo.sh.bak — ...` が `scripts/foo.sh` へのクエリにも
+誤って一致してしまう——ダッシュ境界を要求することで、この接頭辞衝突を
+防いでいる。
+
+### block の位置と直し方
+
+`G_link`/`G_visual`/`G_stack` と同じ「あとは終わるだけ」の一点で、同じ
+block メッセージに合流させる。案内文は `## 解決策` 節への `既存手段:`
+追記と `gh pr edit --body-file` を示す(pr-description スキル)。
+
 ## `stop_hook_active` を見ない理由
 
 既存の `wrapup-stop-gate.sh` は `stop_hook_active == true` を見て即 `exit 0` する

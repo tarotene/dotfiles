@@ -305,6 +305,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "new-tool-guard"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

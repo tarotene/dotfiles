@@ -15,6 +15,7 @@
 #   G_link     : PR 本文に closing keyword または No-Issue:     → block
 #   G_visual   : PR 本文に Before/After の視覚証跡 or No-Visual: → block
 #   G_stack    : stacked PR チェーンが GitHub 上の stack に未リンク → block
+#   G_prior    : 新設した「新しい道具・単位」に既存手段: 記載が無い → block
 #   G_CI       : 期待される check がすべて pass/skipping        → block
 #   G_base     : origin/<base> に対する ahead/behind            → advisory
 #   G_wt       : 未コミット件数                                 → advisory
@@ -449,6 +450,62 @@ default_branch() {
   local ref
   ref="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" || return 0
   printf '%s' "${ref#origin/}"
+}
+
+# --- G_prior: PR で新設した「新しい道具・単位」に既存手段: 記載があるか -------
+# (ADR-543「既存手段の前倒し接地と、決定論への昇格導線」D1)
+#
+# 判定エンジンは crates/new-tool-guard の `classify` サブコマンドを単一正本
+# として呼ぶ(ADR-0024「hook と呼び出し元が同じ判定エンジンを共有する」型 —
+# decision-colocation-check / config/claude/hooks/decision-colocation-
+# guard.sh と同型)。base 側の ref が手元に無いクローンでは判定不能として
+# 完全に沈黙する(断定に変えない)。
+
+NEW_TOOL_GUARD_BIN="${NEW_TOOL_GUARD_BIN:-$HOME/.claude/hooks/new-tool-guard}"
+
+# $1=project $2=base ; base ブランチの tip だけを軽く fetch してから
+# merge-base 起点の追加ファイル(--diff-filter=A)一覧を返す。取得できない
+# 場合は何も出さない。
+compute_added_files() {
+  local project="$1" base="$2"
+  git -C "$project" fetch -q origin "$base" 2>/dev/null || true
+  git -C "$project" diff --name-status --diff-filter=A "origin/${base}...HEAD" -- . 2>/dev/null \
+    | cut -f2- || true
+}
+
+# $1=project $2=repo相対パス ; 0=新しい道具・単位に該当。バイナリが無い/
+# 判定できない場合は非該当として扱う(fail-open — この gate は deny する
+# ものではなく PR 本文の記載を求めるだけなので、判定不能を block に倒さない)。
+is_new_tool_unit_at() {
+  command -v "$NEW_TOOL_GUARD_BIN" > /dev/null 2>&1 || return 1
+  (cd "$1" && "$NEW_TOOL_GUARD_BIN" classify "$2") > /dev/null 2>&1
+}
+
+# $1=path ; ERE の特殊文字をエスケープする(パスに含まれ得るのはほぼ
+# `.`/`-`/`/` のみだが網羅的に)。
+kizon_re_escape() {
+  printf '%s' "$1" | sed -e 's/[][\.^$*+?(){}|/]/\\&/g'
+}
+
+# $1=strip_code_spans 済み本文 $2=path ; 完全一致に近い形で `既存手段:` 行を
+# 探す(前後を空白+ダッシュで区切ることで、他パスの接頭辞への誤マッチを防ぐ
+# — plan-precedent-gate.sh の CITATION_RE と同じダッシュ種の許容)。
+body_has_kizon_for() {
+  local esc
+  esc="$(kizon_re_escape "$2")"
+  grep -Eq "既存手段:[[:space:]]*${esc}[[:space:]]+[—–-][[:space:]]" <<< "$1"
+}
+
+# $1=project $2=本文(生) $3=追加ファイル一覧(改行区切り) ; 既存手段: 記載が
+# 欠けているパスを1行1件で出力(無ければ何も出さない)。
+judge_prior() {
+  local project="$1" body="$2" files="$3" stripped f
+  stripped="$(strip_code_spans "$body")"
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    is_new_tool_unit_at "$project" "$f" || continue
+    body_has_kizon_for "$stripped" "$f" || printf '%s\n' "$f"
+  done <<< "$files"
 }
 
 # --- G_stack: chain 検出と GitHub stack リンク判定(ADR-0027) -----------------
@@ -1094,7 +1151,37 @@ stack: stacks API の取得に失敗しました(拡張は導入済み)。ネッ
     fi
   fi
 
+  # G_prior(ADR-543)— G_link / G_visual と同じ「判定だけ先に済ませ、block は
+  # 最後に回す」形。base ref が手元に無い等で判定不能なら何も起きない
+  # (compute_added_files / is_new_tool_unit_at が黙って空/非該当を返す)。
+  local prior_msg="" prior_blocks=0 added_files missing_kizon
+  added_files="$(compute_added_files "$project" "$base")"
+  if [[ -n "$added_files" ]]; then
+    missing_kizon="$(judge_prior "$project" "$body" "$added_files")"
+    if [[ -n "$missing_kizon" ]]; then
+      prior_blocks=1
+      prior_msg="PR #${pr_num} で新しい道具・単位を追加していますが、本文に
+\`既存手段:\` の記載がありません(ADR-543「既存手段の前倒し接地と、決定論
+への昇格導線」):
+
+$(printf '  - %s\n' "$missing_kizon")
+
+既存の枯れた技術で足りないか検討し、次のいずれかの形式で本文の
+\`## 解決策\` 節に1行ずつ追記してから再試行してください(pr-description
+スキル):
+
+  既存手段: <path> — 採用: <ツール名/URL>
+  既存手段: <path> — 拡張: <既存パス>
+  既存手段: <path> — 自前 — 却下: <候補> (<理由>)
+
+  gh pr edit ${pr_num} --body-file <file>"
+    fi
+  fi
+
   local rider="$advisory"
+  [[ -n "$prior_msg" ]] && rider="${prior_msg}
+
+${rider}"
   [[ -n "$visual_msg" ]] && rider="${visual_msg}
 
 ${rider}"
@@ -1181,12 +1268,12 @@ ${rider}"
 ${G_CI_DETAIL}"
   fi
 
-  # G_link / G_visual / G_stack を単独で block するのはここ — push も CI も
-  # 通っている、つまり「あとは終わるだけ」の一点。まさに本文の不備・stack
-  # リンク忘れが見落とされる瞬間なので、この位置で止める。上の block 経路を
-  # 通った場合は既に $rider として伝えてある。欠けているものが複数あれば
-  # 1 つの block メッセージに合流させ、まとめて 1 往復で直せるようにする
-  # (いずれも CI を再走させない修正のため)。
+  # G_link / G_visual / G_stack / G_prior を単独で block するのはここ — push
+  # も CI も通っている、つまり「あとは終わるだけ」の一点。まさに本文の不備・
+  # stack リンク忘れ・既存手段: 記載漏れが見落とされる瞬間なので、この位置で
+  # 止める。上の block 経路を通った場合は既に $rider として伝えてある。
+  # 欠けているものが複数あれば 1 つの block メッセージに合流させ、まとめて
+  # 1 往復で直せるようにする(いずれも CI を再走させない修正のため)。
   local body_msg=""
   ((link_blocks)) && body_msg="$link_msg"
   if ((visual_blocks)); then
@@ -1198,6 +1285,11 @@ ${G_CI_DETAIL}"
     body_msg="${body_msg:+${body_msg}
 
 }${stack_msg}"
+  fi
+  if ((prior_blocks)); then
+    body_msg="${body_msg:+${body_msg}
+
+}${prior_msg}"
   fi
   if [[ -n "$body_msg" ]]; then
     block_or_escalate "$sid" "${body_msg}
@@ -1233,6 +1325,43 @@ if [[ "${1:-}" == "--selftest" ]]; then
       fail=1
     fi
   }
+
+  # --- G_prior(ADR-543)の純粋関数部分 — gh/git スタブ不要 ---
+  # `is_new_tool_unit_at`(new-tool-guard バイナリ呼び出し)は環境依存なので
+  # ここでは検査しない。ここで固定するのは「本文中の既存手段: 行をパスの
+  # 接頭辞衝突なく照合できるか」という、この gate 固有の正規表現ロジック。
+  kizon_body="既存手段: scripts/foo.sh — 採用: jq"
+  if body_has_kizon_for "$kizon_body" "scripts/foo.sh"; then
+    echo "ok   G_prior: 完全一致で照合"
+  else
+    echo "FAIL G_prior: 完全一致のはずが不一致" >&2
+    fail=1
+  fi
+  if body_has_kizon_for "$kizon_body" "scripts/foo.sh.bak"; then
+    echo "FAIL G_prior: 接頭辞衝突(長い方のパス)を誤って照合した" >&2
+    fail=1
+  else
+    echo "ok   G_prior: 接頭辞衝突(長い方)を誤照合しない"
+  fi
+  if body_has_kizon_for "既存手段: scripts/foo.sh.bak — 採用: jq" "scripts/foo.sh"; then
+    echo "FAIL G_prior: 接頭辞衝突(短い方のパス)を誤って照合した" >&2
+    fail=1
+  else
+    echo "ok   G_prior: 接頭辞衝突(短い方)を誤照合しない"
+  fi
+  # ダッシュ種違い(em/en/ASCII)をすべて許容する。
+  for dash in "—" "–" "-"; do
+    if body_has_kizon_for "既存手段: bin/x ${dash} 自前 — 却下: なし" "bin/x"; then
+      echo "ok   G_prior: ダッシュ種 [${dash}] を許容"
+    else
+      echo "FAIL G_prior: ダッシュ種 [${dash}] を許容しない" >&2
+      fail=1
+    fi
+  done
+  # 記載が無いパスは何も返さない(judge_prior は is_new_tool_unit_at が
+  # false を返す限り常に非該当 — バイナリ不在環境での fail-open を兼ねる)。
+  kizon_out="$(judge_prior "$PWD" "" "")"
+  check "G_prior: 空入力は何も出さない" "" "$kizon_out"
 
   # --- gh スタブ ---
   # PR_GATE_STUB_NO_PR=1            : gh pr list が [] を返す

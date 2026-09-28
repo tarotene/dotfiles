@@ -407,6 +407,25 @@
 #    確認を求める(auto mode でも分類器より先に評価される)。詳細は
 #    docs/claude/pkexec-guard.md。
 #
+# 30) new-tool-guard(PreToolUse, matcher: Write、ADR-543「既存手段の前倒し
+#    接地と、決定論への昇格導線」、2026-09-28、段2/4):
+#    「同じことをフルスクラッチではなく既存の枯れた技術で実現できないか」
+#    (Q1)を、気付いたときではなく新しい道具・単位を Write する着手の瞬間
+#    に前倒しで問う。対象は shebang(`#!`)で始まる新規ファイル、
+#    `bin`/`scripts`/`hooks`/`cmd` を構成要素に含む新規パスの新規ファイル、
+#    パッケージマニフェスト(`Cargo.toml`/`package.json`/`pyproject.toml`/
+#    `go.mod`/`flake.nix`)の新設のいずれか(判定は crates/new-tool-guard
+#    の `classify` サブコマンドが単一正本、pr-gate.sh の `judge_prior` も
+#    同じ判定を呼ぶ)。テスト・fixture・scratchpad 配下と、ディスク上に
+#    既に存在するファイル(上書き)は対象外。該当かつ、現在の worktree の
+#    session ledger(git toplevel キー、`~/.claude/new-tool-guard/state/`)
+#    にそのパスの `既存手段:` 行が未登録なら deny する——deny メッセージが
+#    `register` コマンドの完全形を同梱するので、登録して再試行すれば通る。
+#    段1(ADR-543)の `## 先行例との対比` 節側の `既存手段:` 必須化との
+#    使い分けは「着手前に Plan を書いたか」で決まらない: Plan を書かない
+#    小さな作業でもこの hook が発火する。Claude Code 専用(#531、Codex/
+#    Copilot 展開は別 Issue)。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -526,6 +545,14 @@ let
   pkexecGuardCmd = "'${hooksDir}/pkexec-guard'";
   pkexecGuardCodexCmd = "'${hooksDir}/pkexec-guard' --agent codex";
   pkexecGuardCopilotCmd = "'${hooksDir}/pkexec-guard' --agent copilot";
+  # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
+  # promotion.md D1): 新しい道具・単位(shebang 付き新規ファイル、
+  # bin/scripts/hooks/cmd 配下の新規ファイル、パッケージマニフェストの
+  # 新設)を Write する前に、`既存手段:` の session ledger 登録を要求する。
+  # pkexec-guard と同じ理由(判定に既存の bash 資産を source する必要が
+  # 無い)で ADR-0024 の既定どおり Rust。Claude Code 専用(#531、Codex/
+  # Copilot への展開は別 Issue の主題)。
+  newToolGuardCmd = "'${hooksDir}/new-tool-guard'";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -735,6 +762,7 @@ let
     rulesets_write_guard="$1";   shift
     routines_write_guard="$1";   shift
     pkexec_guard="$1";           shift
+    new_tool_guard="$1";         shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -893,6 +921,12 @@ let
     # 絞り込みは常にバイナリ内部の早期 exit に置く。Rust 製で起動が速いため
     # timeout は atuin/gh-edit-allow 並みの短さでよい。
     register PreToolUse Bash "$pkexec_guard" 10
+    # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
+    # promotion.md D1): deny のみ返す(判定しない入力は素通し)。matcher を
+    # "Write" に絞る — 対象イベントは常に PreToolUse(Write) で、バイナリ
+    # 内部でさらに「新規ファイルか」「新しい道具・単位の述語に合致するか」
+    # を判定する。Rust 製で起動が速いため timeout は他の Rust hook 並み。
+    register PreToolUse Write "$new_tool_guard" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -1288,6 +1322,11 @@ in
   # 呼ぶ(per-agent の別コピーは持たない、pkexecGuardCodexCmd/
   # pkexecGuardCopilotCmd 参照)。
   home.file.".claude/hooks/pkexec-guard".source = "${pkgs.dotfiles-tools}/bin/pkexec-guard";
+  # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
+  # promotion.md): crates/new-tool-guard のビルド成果物への安定パスの
+  # symlink(gh-edit-allow と同じ理由付け)。`register` サブコマンドも
+  # このパスから手動 Bash 実行される(deny メッセージが案内する)。
+  home.file.".claude/hooks/new-tool-guard".source = "${pkgs.dotfiles-tools}/bin/new-tool-guard";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -2032,7 +2071,8 @@ in
       ${lib.escapeShellArg ghEditAllowCmd} \
       ${lib.escapeShellArg rulesetsWriteGuardCmd} \
       ${lib.escapeShellArg routinesWriteGuardCmd} \
-      ${lib.escapeShellArg pkexecGuardCmd}
+      ${lib.escapeShellArg pkexecGuardCmd} \
+      ${lib.escapeShellArg newToolGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
