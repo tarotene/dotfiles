@@ -92,3 +92,43 @@ ADR-0016(リポジトリ単位の AGENTS.md/CLAUDE.md 二層)を supersede せ�
 - `~/.claude/CLAUDE.md` の 1 行目が `@~/.agents/AGENTS.md` である。
 - 新規 Claude Code セッションで共有 AGENTS.md の内容(例: rebase 規約)が
   常時コンテキストに含まれることを確認する。
+
+## Amendment (2026-09-28 — Codex CLI にも analogous 機構を展開する, #531)
+
+Decision 4 は「Codex/Copilot にこれらの adapter は存在しない」と書いたが、
+Claude 高額利用者が 1 週間 Codex CLI 代替で仕事をする社内検証への備えとして、
+この非対称の一部を解除する(#531、4段の stacked PR で段階的に実施)。
+
+- `stack-base-guard.sh` / `pr-gate.sh` / `wrapup-stop-gate.sh` /
+  `agent-turn-log.sh` は、attribution-guard/pr-title-guard と同じ「判定
+  エンジン1本 + 薄い adapter」の型で Codex CLI にも展開する
+  (`config/codex/hooks/`、段2〜3)。判定エンジン側は環境変数
+  (`AGENT_NAME` 等)で agent 名・footer 文言を差し替え可能にし、Claude
+  からの既定呼び出しは変えない。
+- Plan Mode の承認点(ExitPlanMode)は Codex CLI に存在しないため、
+  Codex の Stop hook として `codex-plan-gate.sh` を新設する(段4)。これは
+  Codex の応答に含まれる `<proposed_plan>` ブロックを検出し、既存の
+  `plan-scope-gate.sh --check-plan` / `plan-precedent-gate.sh --check` を
+  そのまま呼ぶ薄い adapter である(新しい判定ロジックは増やさない)。
+  無限 block 対策は `pr-gate.sh` と同じ「`stop_hook_active` を見ず独自
+  カウンタで上限到達時に1回 escalate する」型(docs/claude/copilot-plan-
+  review.md の「第二次の非収束」を回避するため)。詳細:
+  docs/claude/codex-plan-gate.md(段4)。
+- Plan の `## 先行例との対比` 節の書式そのもの、および ExitPlanMode 直前の
+  自己検査を「呼び出せ」という指示文は、依然 Claude Code 固有の
+  `~/.claude/CLAUDE.md` 側に残る(Codex には ExitPlanMode という UI 概念が
+  無く、`<proposed_plan>` を出す判断自体はモデルの応答に委ねられるため)。
+  Codex 側の analogous な指示は `config/codex/AGENTS.codex.md`
+  (ADR-0032 Decision 2 の3箇所マウントとは別に、Codex 専用節として
+  共有 AGENTS.md に build 時結合する新規ファイル、本段(段1)で新設済み)
+  に置く。
+- decision-colocation-guard・external-send-guard・git-worktree-allow・
+  gh-edit-allow・routines-write-guard・plan-view・copilot-plan-review・
+  plan-fresh-gate・`atuin hook claude-code` は対象外のまま残す
+  (decision-colocation-guard は ADR-396 により CI backstop、他は
+  Claude Code の runtime API・UI 概念に依存するため Codex に移植不能)。
+
+### 執行点
+
+- home/modules/claude.nix
+- config/codex/AGENTS.codex.md

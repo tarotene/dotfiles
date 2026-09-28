@@ -48,6 +48,18 @@ declaration; updates go through `claude update`, which the zsh wrapper
 (`config/zsh/modules/53-tools-claude.zsh`) follows with `claude-plan-model
 sync` so the Opus Plan Mode model pin never trails the installed binary.
 
+Note on `codex`: same ADR-0001 scoped exception as `claude` (ADR-457
+Amendment, #531) — the native installer (`~/.local/bin/codex`) is the
+source of truth, and `~/.codex/config.toml` is not managed at all, since
+Codex itself writes hook-trust hashes, project trust, and model selection
+back into it at runtime. What home-manager *does* deploy is
+`~/.codex/AGENTS.md` (build-time merge of the shared `config/agents/
+AGENTS.md` canon with `config/codex/AGENTS.codex.md`, Codex-specific
+wiring) and hook registrations into `~/.codex/hooks.json`
+(`config/codex/hooks/`, adapters over the same decision engines Claude
+uses — see ADR-0032 Amendment). A newly registered hook needs a one-time
+manual trust via Codex's `/hooks` TUI command after `home-manager switch`.
+
 ## Project Structure
 
 Top-level layout, roughly: the flake + home-manager modules (the source of
