@@ -1,7 +1,7 @@
 //! due-remind [--dry-run]
 //!
 //! 別の private リポジトリが持つ `docs/adr/333-due-index-contract.md`
-//! (`docs/adr/0000-due-remind-timer.md` 参照)が定める
+//! (`docs/adr/528-due-remind-timer.md` 参照)が定める
 //! `${XDG_STATE_HOME:-~/.local/state}/claude/<domain>/<repo-slug>/due.jsonl` を
 //! すべて読み、7日以内(超過側は無期限)の期限があれば `herdr notification show`
 //! で1件のトーストにまとめて出す。systemd --user / launchd のタイマー

@@ -294,10 +294,9 @@
 - [ADR-519](adr/519-routines-declaration-in-repo.md) — Claude Code
   routine(scheduled cloud agent)の設定・prompt の正本を、対象
   リポジトリ自身の `.claude/routines/*.{json,md}` へ一本化する。
-- [ADR-0000](adr/0000-due-remind-timer.md) — 別の private リポジトリが
+- [ADR-528](adr/528-due-remind-timer.md) — 別の private リポジトリが
   持つ平文 due-index の二キー契約だけを知る汎用 reader を
-  `crates/due-remind` として実装し、Herdr 通知の hourly timer から呼ぶ
-  (PR 作成後に番号を確定)。
+  `crates/due-remind` として実装し、Herdr 通知の hourly timer から呼ぶ。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

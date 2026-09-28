@@ -2,7 +2,7 @@
 //!
 //! `${XDG_STATE_HOME:-~/.local/state}/claude/<domain>/<repo-slug>/due.jsonl` という
 //! 契約(別の private リポジトリが持つ `docs/adr/333-due-index-contract.md`。
-//! `docs/adr/0000-due-remind-timer.md` 参照)を読む側。このクレート自身は
+//! `docs/adr/528-due-remind-timer.md` 参照)を読む側。このクレート自身は
 //! 「行が2キー(`slug`/`due`)を持つ JSON Lines」という形しか知らず、どの domain が
 //! どんな record を持つかは一切知らない — 新しい domain が増えてもここは変更不要
 //! (同 ADR 決定1)。ファイル探索・プロセス起動・exit code は main.rs が担い、

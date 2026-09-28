@@ -1,4 +1,4 @@
-# ADR-0000 — a generic reader for another repository's local due-index, on an hourly Herdr-notified timer
+# ADR-528 — a generic reader for another repository's local due-index, on an hourly Herdr-notified timer
 
 - Status: Accepted
 - Date: 2026-09-28
