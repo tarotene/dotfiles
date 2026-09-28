@@ -401,6 +401,11 @@ Design and rationale for the hooks and commands deployed from
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
   `scripts/pr-title-check`。
+- [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-543 D2: PR 本文の
+  `## 要確認` の各項目に、閉語彙のブロッキング理由・番号手順・完了確認: 行が
+  揃っているかを `gh pr create/edit` の呼び出し時に機械検査する
+  (`pr-confirm-guard.sh`)。散文(`pr-description` スキル §6)だけでは
+  同種の不備が2度再発したための昇格。
 - [`adr-numbering.md`](claude/adr-numbering.md) — ADR-380: ADR 番号をローカル
   連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に

@@ -66,7 +66,14 @@ extra = ["bootstrap.sh"]
 # source して再利用する設計上、stack-base-guard.sh / adr-number.sh /
 # pr-title-guard.sh と同じ理由(判定ロジックの単一正本を保つ)で bash の
 # まま追加した。stage は同じ 4a グループに寄せる。
-max_remaining = 61
+#
+# 62 = 上記 61 + grill-me セッション(ADR-543 D2 の昇格判断、
+# docs/claude/pr-confirm-guard.md)で追加した
+# config/claude/hooks/pr-confirm-guard.sh の 1 件。attribution-guard.sh の
+# heredoc 分離・トークナイザを source して再利用する設計上、
+# pr-title-guard.sh と同じ理由で bash のまま追加した。stage は同じ 4a
+# グループに寄せる。
+max_remaining = 62
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -93,6 +100,10 @@ stage = "4a"
 
 [[target]]
 path = "config/claude/hooks/feedback-target-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/claude/hooks/pr-confirm-guard.sh"
 stage = "4a"
 
 [[target]]

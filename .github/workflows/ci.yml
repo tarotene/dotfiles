@@ -612,6 +612,13 @@ jobs:
       - name: pr-title-guard.sh (copilot adapter) --selftest
         run: bash ./config/copilot/hooks/pr-title-guard.sh --selftest
 
+      # pr-confirm-guard (ADR-543 D2, docs/claude/pr-confirm-guard.md) sources
+      # attribution-guard.sh's command-position/tokenizer engine the same way
+      # pr-title-guard does. Deterministic bash + jq/awk end to end over
+      # fixture `## 要確認` bodies — no gh/network involved.
+      - name: pr-confirm-guard.sh --selftest
+        run: bash ./config/claude/hooks/pr-confirm-guard.sh --selftest
+
       # external-send-guard (docs/claude/external-send-guard.md) is
       # deterministic bash + jq end to end against fixture MCP tool_input
       # JSON — no gh/network involved. Covers the self-vs-external address
