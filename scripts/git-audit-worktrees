@@ -75,10 +75,19 @@ uncommitted_count() {
 # stash stack (scripts/git-shelve tags the message with the worktree's
 # absolute path — see that script's header). Never treat a shelved worktree
 # as orphaned: it carries WIP the owner asked to keep.
+# Uses a bash builtin substring match rather than `grep -qF` so this keeps
+# working in a minimal PATH that has no grep (systemd's Environment= only
+# carries what worktree.nix lists explicitly — a missing grep silently made
+# this always report "not shelved" instead of failing loudly, since a broken
+# pipeline component still lets `-o pipefail`-less code exit 0 via the tail
+# of the pipe). If `stash list` itself fails, fail closed: assume shelved so
+# a shelved worktree is never misclassified as orphaned just because git
+# couldn't be asked.
 is_shelved() {
-  local wt="$1" common="$2" tag
+  local wt="$1" common="$2" tag list
   tag="shelve:${wt}:"
-  git --git-dir="$common" stash list --format='%gs' 2>/dev/null | grep -qF "$tag"
+  list="$(git --git-dir="$common" stash list --format='%gs' 2>/dev/null)" || return 0
+  [[ $list == *"$tag"* ]]
 }
 
 # herdr_open_paths: newline-separated worktree paths Herdr currently reports
@@ -125,11 +134,24 @@ scan_prunable() {
 scan_orphaned() {
   local common="$1" repo="$2" wt br upstream track default_branch compare_base unique
   local -A open_path=()
-  local p herdr_ok=1 main_root="${common%/.git}"
+  local p herdr_ok=1 main_root="${common%/.git}" herdr_paths
   default_branch="$(resolve_default_branch "$common")"
-  while IFS= read -r p; do
-    [[ -n $p ]] && open_path[$p]=1
-  done < <(herdr_open_paths "$repo") || herdr_ok=0
+  # herdr_open_paths runs inside a command substitution (not the process
+  # substitution the old `done < <(...) || herdr_ok=0` used) so its exit
+  # status actually reaches `||` here. The old form silently discarded that
+  # status — bash never propagates a failure from inside `<(...)` to the
+  # `while` it feeds, so herdr_ok stayed 1 (Herdr "reachable") even when
+  # herdr_open_paths had already failed and printed nothing. That turned
+  # "Herdr is down" into "no worktree is open", which is the opposite of
+  # this function's own stated bias (line 121: ambiguity must drop a
+  # worktree from consideration, never wave it through).
+  if herdr_paths="$(herdr_open_paths "$repo")"; then
+    while IFS= read -r p; do
+      [[ -n $p ]] && open_path[$p]=1
+    done <<<"$herdr_paths"
+  else
+    herdr_ok=0
+  fi
   while IFS= read -r wt; do
     [[ -n $wt ]] || continue
     [[ $wt != "$main_root" ]] || continue # the main checkout, never a candidate
@@ -150,6 +172,14 @@ scan_orphaned() {
     fi
     [[ -z $upstream ]] || continue # a real, non-gone upstream — leave alone
     [[ -n $default_branch ]] || continue # nothing to compare against
+    # A shallow clone's ancestry graph is truncated at the fetch depth, so
+    # both `merge-base --is-ancestor` and `rev-list --count` can report a
+    # branch as having 0 unique commits when it actually has some outside
+    # the shallow window (observed: ~/.ghr's dotfiles checkout went shallow
+    # once and one worktree's unique count read 155 instead of 0). Skip the
+    # comparison entirely rather than trust a number a shallow graph cannot
+    # back up.
+    [[ "$(git -C "$wt" rev-parse --is-shallow-repository 2>/dev/null)" != true ]] || continue
     compare_base="refs/remotes/origin/${default_branch}"
     git -C "$wt" rev-parse --verify -q "$compare_base" >/dev/null 2>&1 || compare_base="refs/heads/${default_branch}"
     git -C "$wt" rev-parse --verify -q "$compare_base" >/dev/null 2>&1 || continue
@@ -325,6 +355,91 @@ STUB
     return 1
   }
   git -C "$repo" worktree remove --force "$wt_empty"
+
+  # is_shelved フェイルセーフ: `git stash list` 自体が失敗したとき、
+  # fail-closed(shelved 扱い = orphaned から除外)になることを確認する。
+  # PATH の先頭に `git stash list` だけ失敗させる薄いラッパーを挟み、他の
+  # git 呼び出しは本物の git に委譲する。
+  local real_git stash_fail_flag
+  real_git="$(command -v git)"
+  stash_fail_flag="$tmp/fail-stash"
+  cat >"$tmp/bin/git" <<STUB
+#!/usr/bin/env bash
+# is_shelved invokes this as \`git --git-dir=<common> stash list --format=…\`,
+# so "stash list" is never \$1/\$2 — match against the whole argv instead.
+if [[ " \$* " == *" stash list "* && -e "$stash_fail_flag" ]]; then
+  exit 1
+fi
+exec "$real_git" "\$@"
+STUB
+  chmod +x "$tmp/bin/git"
+  wt_empty="$tmp/orphan-stashfail"
+  git -C "$repo" worktree add -q "$wt_empty" -b worktree/orphan-stashfail
+  touch "$stash_fail_flag"
+  out="$(PATH="$tmp/bin:$PATH" "$SELF" --porcelain)" || true
+  rm -f "$stash_fail_flag"
+  grep -qF "$wt_empty" <<<"$out" && {
+    printf 'FAIL: stash list 失敗時に fail-closed(shelved 扱い)にならなかった\n' >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt_empty"
+
+  # shallow リポジトリでは unique commit 比較をスキップすることを確認する。
+  # このブランチの形(upstream 未設定・先端が origin/main と同じ)は、上の
+  # orphan-empty 検証では実際に orphaned と判定される形 —— shallow の場合に
+  # だけ検出されないことが、この skip ガードそのものを検証している。
+  local shallow_repo wt_shallow
+  shallow_repo="$tmp/ghr/github.com/acme/shallow-repo"
+  mkdir -p "$shallow_repo"
+  # file:// (not a bare local path) forces a real shallow transfer — a plain
+  # local path triggers Git's "local clone" optimization, which silently
+  # ignores --depth and hardlinks the full object store instead.
+  git clone -q --depth 1 "file://$tmp/remote.git" "$shallow_repo"
+  git -C "$shallow_repo" config core.hooksPath /dev/null
+  git -C "$shallow_repo" config commit.gpgsign false
+  git -C "$shallow_repo" config user.name test
+  git -C "$shallow_repo" config user.email test@example.invalid
+  [[ "$(git -C "$shallow_repo" rev-parse --is-shallow-repository)" == true ]] || {
+    printf 'FAIL: shallow fixture 自体が shallow にならなかった\n' >&2
+    return 1
+  }
+  wt_shallow="$tmp/orphan-shallow"
+  git -C "$shallow_repo" worktree add -q "$wt_shallow" -b worktree/orphan-shallow
+  out="$("$SELF" --porcelain)" || true
+  grep -qF "$wt_shallow" <<<"$out" && {
+    printf 'FAIL: shallow リポジトリで unique commit 比較をスキップしなかった\n' >&2
+    return 1
+  }
+  git -C "$shallow_repo" worktree remove --force "$wt_shallow"
+
+  # Herdr 到達不能時、fail-closed で orphaned が 0 件になることを確認する
+  # (プロセス置換の終了コードが `||` に届かず fail-open していた回帰の
+  # 再発防止 — 2026-09-28 のプランレビュー指摘)。
+  cat >"$tmp/bin/herdr" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+  chmod +x "$tmp/bin/herdr"
+  wt_empty="$tmp/orphan-herdrdown"
+  git -C "$repo" worktree add -q "$wt_empty" -b worktree/orphan-herdrdown
+  out="$("$SELF" --porcelain)" || true
+  grep -qF "$wt_empty" <<<"$out" && {
+    printf 'FAIL: herdr 到達不能時に orphaned と判定してしまった(fail-open)\n' >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt_empty"
+  cat >"$tmp/bin/herdr" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "worktree list" ]]; then
+  printf '{"result":{"worktrees":[]}}\n'
+  exit 0
+fi
+printf '%s\n' call >>"$GIT_WORKTREE_AUDIT_TEST_CALLS"
+reason="$(cat "$GIT_WORKTREE_AUDIT_TEST_REASON")"
+if [[ $reason == shown ]]; then shown=true; else shown=false; fi
+printf '{"result":{"shown":%s,"reason":"%s"}}\n' "$shown" "$reason"
+STUB
+  chmod +x "$tmp/bin/herdr"
 
   # [gone] fixture: a real push/delete-on-remote/fetch-prune cycle, and its
   # exemption when shelved.
