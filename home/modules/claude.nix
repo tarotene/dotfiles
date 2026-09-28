@@ -381,6 +381,32 @@
 #    `scripts/routines-plan.sh` を直接呼ぶ、`gh` CLI ではなく
 #    `mcp__github__*` を使う)。詳細は docs/claude/claude-routines.md。
 #
+# 29) pkexec-guard(PreToolUse, matcher: Bash、PR #326 のグリルセッション、
+#    2026-09-28):
+#    agent セッションが root 権限のコマンドを実行するとき、polkit
+#    (`pkexec`)の認証ダイアログに全文が表示される範囲だけを通す。
+#    PR #326 は当初 `SUDO_ASKPASS` helper が pinentry に生の Assuan で
+#    `GETPIN` を発行し、得たパスワードを stdout に平文で返す方式だった
+#    が、#348(pinentry への直接呼び出しが人間の操作なしに実パスワードを
+#    返した事故)→ #421(ADR-0003 Amendment 5: 同一 uid からの pinentry
+#    直叩きは gpg-agent 側では塞げない残余リスクと確定)を踏まえ、その
+#    方式は不採用と裁定し直した。代わりに polkit を使う——パスワードは
+#    root 側の polkit-agent-helper-1 が検証するだけで agent の出力には
+#    一切出ない。判定は Rust(crates/pkexec-guard、ADR-0024)の閉じた
+#    許可リスト: 単純な 1 コマンド `/usr/bin/pkexec <絶対パス> <引数…>`
+#    のみを通し、複合コマンド・展開・80 文字超(pkexec 自身のダイアログ
+#    `cmdline_short` の省略なし表示上限)・許可リスト外・root 非所有また
+#    は group/other 書き込み可能なパスはすべて deny する。裸の `pkexec`
+#    も deny する(`~/.local/bin`・`~/bin` は PATH 先頭にあり、ユーザーが
+#    書き込める場所に同名の偽 pkexec を置けてしまうため)。`sudo -A`/
+#    `-S`/`--askpass`/`--stdin`/`SUDO_ASKPASS` の再導入も全 Agent 共通で
+#    deny する。Codex CLI / Copilot CLI からは pkexec を一切許さない
+#    (明示 ask ルールが auto 系モードでも確認を強制することを確認できて
+#    いるのは Claude Code のみ)。`permissions.ask` の
+#    `Bash(/usr/bin/pkexec *)` が、guard を通過したコマンドに改めて人間の
+#    確認を求める(auto mode でも分類器より先に評価される)。詳細は
+#    docs/claude/pkexec-guard.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -490,6 +516,16 @@ let
   # 文字列ではないため env var による bypass は持たない(crates/
   # routines-write-guard/src/lib.rs 参照)。
   routinesWriteGuardCmd = "'${hooksDir}/routines-write-guard'";
+  # pkexec-guard(29番、docs/claude/pkexec-guard.md、PR #326 のグリルセッション
+  # で SUDO_ASKPASS 方式を不採用に裁定し直した結果の設計): rulesets-write-guard
+  # と同じ理由(判定に既存の bash 資産を source する必要が無い)で ADR-0024
+  # の既定どおり Rust。3 エージェントから同じ 1 バイナリを呼ぶ(bash の
+  # `source` に相当する仕組みが Rust に無いため、attribution-guard のような
+  # per-agent adapter ファイルは作らず、`--agent` フラグで出力形式を切り替える
+  # — crates/pkexec-guard/src/main.rs)。
+  pkexecGuardCmd = "'${hooksDir}/pkexec-guard'";
+  pkexecGuardCodexCmd = "'${hooksDir}/pkexec-guard' --agent codex";
+  pkexecGuardCopilotCmd = "'${hooksDir}/pkexec-guard' --agent copilot";
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
@@ -698,6 +734,7 @@ let
     gh_edit_allow="$1";          shift
     rulesets_write_guard="$1";   shift
     routines_write_guard="$1";   shift
+    pkexec_guard="$1";           shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
     register Stop "" "$wrapup_stop" ""
@@ -849,6 +886,13 @@ let
     # バイナリ自身が None を返して素通しする(external-send-guard の
     # "mcp__.*" と同じ「広い matcher + バイナリ内部判定」形)。
     register PreToolUse RemoteTrigger "$routines_write_guard" 10
+    # pkexec-guard(29番、docs/claude/pkexec-guard.md): deny のみを返す
+    # (判定しない入力は素通し)が、git-stash-guard/bleep と同じ理由で if を
+    # 付けない — 対象の "pkexec"/"sudo" トークンはコマンド文字列のどこにでも
+    # 現れうるため、"Bash(pkexec *)" のような先頭一致の if では絞れず、
+    # 絞り込みは常にバイナリ内部の早期 exit に置く。Rust 製で起動が速いため
+    # timeout は atuin/gh-edit-allow 並みの短さでよい。
+    register PreToolUse Bash "$pkexec_guard" 10
   '';
 
   # settings.json の statusLine を宣言に合わせる。
@@ -909,6 +953,13 @@ let
   # Claude Code CLI 自体との並行書き込みに対する lost-update 窓がルール数分だけ
   # 反復される(#61)。retire/allow の全ルールを 1 回の jq 呼び出しにまとめ、
   # mktemp+mv も 1 回に減らして窓の反復回数を減らす。
+  # pkexec-guard(29番、docs/claude/pkexec-guard.md)向けに `--retire-ask`/
+  # `--ask` の2セクションを追加した。`.permissions.ask` は明示 ask ルールで、
+  # auto mode の分類器より先に評価され常に確認を強制する(公式ドキュメント、
+  # docs/claude/pkexec-guard.md 参照)。allow と違い「常に許可」を意味しない
+  # ため、#461 の中間ワイルドカード strip(検出のみで表現不可能にできない
+  # 理由はそちらのコメント参照)は ask には適用しない — 末尾 `*` のみの
+  # 単純なルールしか今のところ書いていない。
   registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
     set -eu
     settings="$1"
@@ -923,15 +974,19 @@ let
     mode=""
     retire_args=()
     allow_args=()
+    retire_ask_args=()
+    ask_args=()
     for arg in "$@"; do
       case "$arg" in
-        --retire|--allow) mode="$arg"; continue ;;
+        --retire|--allow|--retire-ask|--ask) mode="$arg"; continue ;;
       esac
       case "$mode" in
         --retire) retire_args+=("$arg") ;;
         --allow) allow_args+=("$arg") ;;
+        --retire-ask) retire_ask_args+=("$arg") ;;
+        --ask) ask_args+=("$arg") ;;
         *)
-          echo "register-claude-permissions: --retire/--allow より前にルールが来た: $arg" >&2
+          echo "register-claude-permissions: --retire/--allow/--retire-ask/--ask より前にルールが来た: $arg" >&2
           exit 1
           ;;
       esac
@@ -939,6 +994,8 @@ let
 
     retire_json="$("$jq" -n --args '$ARGS.positional' "''${retire_args[@]}")"
     allow_json="$("$jq" -n --args '$ARGS.positional' "''${allow_args[@]}")"
+    retire_ask_json="$("$jq" -n --args '$ARGS.positional' "''${retire_ask_args[@]}")"
+    ask_json="$("$jq" -n --args '$ARGS.positional' "''${ask_args[@]}")"
 
     # #461: 中間 `*` を含む allow rule を settings.json の実体からも一律 strip
     # する(宣言側は permissionRules の nix eval 時 assert で表現不可能にして
@@ -951,11 +1008,16 @@ let
 
     tmp="$(mktemp)"
     "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" \
+      --argjson retireAsk "$retire_ask_json" --argjson ask "$ask_json" \
       --arg midWildcardRe "$mid_wildcard_re" '
       .permissions.allow = (
         (((.permissions.allow // []) - $retire)
           | map(select(test($midWildcardRe) | not))) as $kept
         | $kept + ($allow | map(select(. as $r | ($kept | index($r)) | not)))
+      )
+      | .permissions.ask = (
+        ((.permissions.ask // []) - $retireAsk) as $keptAsk
+        | $keptAsk + ($ask | map(select(. as $r | ($keptAsk | index($r)) | not)))
       )
     ' "$settings" > "$tmp"
     mv "$tmp" "$settings"
@@ -1039,6 +1101,15 @@ let
     assert lib.assertMsg (lib.all (r: !hasMidWildcard r) permissionRules_)
       "home/modules/claude.nix permissionRules に中間 `*` を含むルールがあります: ${lib.concatStringsSep ", " (lib.filter hasMidWildcard permissionRules_)} — 値受け取り位置への任意オプション挿入を素通しするため書けません(#461)。個別ルールに絞るか、検証付きの allow hook を追加してください。";
     permissionRules_;
+
+  # pkexec-guard(29番)向けの明示 ask ルール。`.permissions.allow` と違い
+  # 「常に許可」ではなく「auto mode でも必ず確認を出す」ことが目的
+  # (公式ドキュメント "auto mode config" — 明示 ask ルールは分類器より先に
+  # 評価される、docs/claude/pkexec-guard.md 参照)。guard 自身が通すのは
+  # `/usr/bin/pkexec <許可リスト> ...` の形だけなので、ここも同じ絶対パスで
+  # 揃える(裸の `pkexec` はこのルールに一致せず、guard が deny する)。
+  askRules = [ "Bash(/usr/bin/pkexec *)" ];
+  retiredAskRules = [ ];
 
   # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
   # `Bash(git -C * add *)` 等の中間ワイルドカードを含む撤回は、もう個別に
@@ -1211,6 +1282,12 @@ in
   # (gh-edit-allow と同じ理由付け)。
   home.file.".claude/hooks/routines-write-guard".source =
     "${pkgs.dotfiles-tools}/bin/routines-write-guard";
+  # pkexec-guard(29番、docs/claude/pkexec-guard.md): crates/pkexec-guard の
+  # ビルド成果物への安定パスの symlink(gh-edit-allow と同じ理由付け)。
+  # Codex/Copilot もこの同じ store path を `--agent codex|copilot` 付きで
+  # 呼ぶ(per-agent の別コピーは持たない、pkexecGuardCodexCmd/
+  # pkexecGuardCopilotCmd 参照)。
+  home.file.".claude/hooks/pkexec-guard".source = "${pkgs.dotfiles-tools}/bin/pkexec-guard";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
   # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
@@ -1392,6 +1469,24 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg copilotPrTitleGuardCmd} 10
+      '';
+
+  # pkexec-guard(29番)の Codex/Copilot 展開: 判定ロジックは持たず、`pkexec`
+  # を含む Bash コマンドを常に deny する(docs/claude/pkexec-guard.md「Codex /
+  # Copilot からは pkexec を一切許さない」)。attribution-guard/pr-title-guard
+  # と同じ lost-update 対策で、その後ろに明示的に順序付ける。
+  home.activation.registerCodexPkexecGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPrTitleGuardHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg pkexecGuardCodexCmd} 10
+      '';
+
+  home.activation.registerCopilotPkexecGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPrTitleGuardHooks" ]
+      ''
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          preToolUse ${lib.escapeShellArg pkexecGuardCopilotCmd} 10
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
@@ -1936,7 +2031,8 @@ in
       ${lib.escapeShellArg adrNumberCmd} \
       ${lib.escapeShellArg ghEditAllowCmd} \
       ${lib.escapeShellArg rulesetsWriteGuardCmd} \
-      ${lib.escapeShellArg routinesWriteGuardCmd}
+      ${lib.escapeShellArg routinesWriteGuardCmd} \
+      ${lib.escapeShellArg pkexecGuardCmd}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -1957,15 +2053,19 @@ in
       ${pkgs.bash}/bin/bash ${planModelScript} sync
   '';
 
-  # settings.json の permissions.allow を冪等に拡充する。registerClaudeHooks と同じ
-  # DAG 位置(writeBoundary の後)で、独立した activation script として走らせる —
-  # 片方が既存の hooks 登録ロジックを壊さないようにするため、jq マージの責務を
-  # 混ぜない。
+  # settings.json の permissions.allow/permissions.ask を冪等に拡充する。
+  # registerClaudeHooks と同じ DAG 位置(writeBoundary の後)で、独立した
+  # activation script として走らせる — 片方が既存の hooks 登録ロジックを
+  # 壊さないようにするため、jq マージの責務を混ぜない。
   home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerPermissions} "$HOME/.claude/settings.json" \
       --retire \
       ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredPermissionRules} \
       --allow \
-      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules}
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules} \
+      --retire-ask \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredAskRules} \
+      --ask \
+      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg askRules}
   '';
 }

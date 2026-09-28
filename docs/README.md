@@ -322,6 +322,9 @@ Design and rationale for the hooks and commands deployed from
   bash + jq の決定的 CLI(ADR-519-routines-declaration-in-repo)。
 - [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
   the git-signing passphrase cache.
+- [`pkexec-guard.md`](claude/pkexec-guard.md) — PreToolUse hook: agent
+  セッションが root 権限のコマンドを実行するとき、polkit(`pkexec`)の
+  認証ダイアログに全文が表示される範囲だけを通す(PR #326 の裁定し直し)。
 - [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
   in-progress plan to HTML in Chrome.
 - [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
