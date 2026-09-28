@@ -7,6 +7,11 @@
 }:
 let
   auditPath = "${config.home.homeDirectory}/.local/bin/git-audit-worktrees";
+  prunePath = "${config.home.homeDirectory}/.local/bin/git-prune-worktrees";
+  # git-prune-branches itself is deployed by home/modules/packages.nix (it
+  # predates this module and needs no interpolation of its own), but the
+  # auto-prune timer below has to reference its path too.
+  pruneBranchesPath = "${config.home.homeDirectory}/.local/bin/git-prune-branches";
   guardPath = "${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard";
   guardCmd = "bash '${guardPath}'";
   contextCmd = "bash '${auditPath}' --context";
@@ -30,6 +35,43 @@ let
   # scripts/git-audit-worktrees needs no changes either way, `flock` just
   # resolves to whichever provider is on PATH per platform.
   flockPkg = if pkgs.stdenv.isDarwin then pkgs.flock else pkgs.util-linux;
+
+  # launchd has no "list value becomes duplicate keys" equivalent — a
+  # LaunchAgent's ProgramArguments is one flat argv, not a systemd-style
+  # sequence of independent ExecStart= commands. Rather than add a wrapper
+  # script just to run `git-prune-worktrees --auto` and `git-prune-branches
+  # --auto` in a row (a new inline `writeShellScript ''...''` body, which
+  # rust-migration.toml's scan tracks as debt on sight, for two lines that
+  # don't need to be a script), these are two independent LaunchAgents
+  # instead (below). They can race on the very first RunAtLoad tick, but
+  # recover within the hour either way — deleting a worktree before its
+  # branch is a (usually free) efficiency, not a correctness requirement:
+  # `git branch -D` on a branch some other run hasn't yet freed just no-ops
+  # into next hour's candidate list, same as any other skipped row.
+  autoPruneAgent = path: {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        path
+        "--auto"
+      ];
+      StartInterval = 3600;
+      RunAtLoad = true;
+      EnvironmentVariables.PATH = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.gawk
+        pkgs.git
+        pkgs.jq
+        pkgs.flock
+        pkgs.herdr
+        pkgs.gh
+      ];
+    };
+  };
 in
 {
   home.packages = [ flockPkg ];
@@ -41,8 +83,9 @@ in
   # git-prune-worktrees: the checkout-deleting half of the pair (docs/worktree-lifecycle.md).
   # Deployed as a plain ~/.local/bin executable — same "no alias needed"
   # placement as git-shelve/git-prune-branches (home/modules/packages.nix) —
-  # rather than here as one more xdg.configFile, since it's a user-invoked
-  # command, not something the audit timer or a Claude/Codex hook calls.
+  # rather than here as one more xdg.configFile, since its default
+  # (confirmation-prompting) mode is user-invoked. Its --auto mode is what
+  # the git-auto-prune timer below calls; that mode has no prompt.
   home.file.".local/bin/git-prune-worktrees" = {
     source = ../../scripts/git-prune-worktrees;
     executable = true;
@@ -191,4 +234,68 @@ in
       ];
     };
   };
+
+  # git-auto-prune: unattended deletion of content-preservation-evidence-
+  # backed worktrees/branches (C1/C2/C3, docs/worktree-lifecycle.md) — a
+  # separate, hourly timer from git-audit-worktrees' 1-minute read-only scan
+  # above, deliberately: this one shells out to `gh` (per repo with a
+  # candidate) and actually deletes, neither of which the 1-minute detection
+  # loop may do. Worktrees first, then branches — a worktree's branch can't
+  # be `-D`'d while checked out, so pruning the worktree first is what lets
+  # that branch become a prune-branches candidate in the same run
+  # (docs/worktree-lifecycle.md's "worktree → branch の順で畳む").
+  #
+  # Two ExecStart= lines, not a wrapper script: home-manager's systemd
+  # module renders a list value as duplicate keys (`listsAsDuplicateKeys`),
+  # which is exactly systemd's own native "run these in order" — no new
+  # script to add to rust-migration.toml's scan, no inline shell either.
+  systemd.user.services.git-auto-prune = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Delete worktrees/branches backed by content-preservation evidence (C1/C2/C3)";
+    Service = {
+      Type = "oneshot";
+      ExecStart = [
+        "${prunePath} --auto"
+        "${pruneBranchesPath} --auto"
+      ];
+      Environment = "PATH=${
+        lib.makeBinPath [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.gawk
+          pkgs.git
+          pkgs.jq
+          pkgs.util-linux
+          pkgs.herdr
+          pkgs.gh
+        ]
+      }";
+    };
+  };
+
+  systemd.user.timers.git-auto-prune = lib.mkIf pkgs.stdenv.isLinux {
+    Unit.Description = "Run git-auto-prune every hour";
+    Timer = {
+      # OnCalendar=, not OnBootSec=/OnUnitActiveSec= alone: Persistent= only
+      # does anything for a calendar timer (home/modules/herdr.nix's #442
+      # comment has the same lesson) — this one should still catch up after
+      # the machine was asleep/off, unlike the 1-minute detection timer
+      # above (a missed detection cycle is harmless; catching up here means
+      # evidence that has been sitting deletable for a while actually gets
+      # deleted promptly on resume, instead of waiting for the next natural
+      # hourly tick).
+      OnCalendar = "hourly";
+      RandomizedDelaySec = "5min";
+      Persistent = true;
+      Unit = "git-auto-prune.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  launchd.agents.git-auto-prune-worktrees = lib.mkIf pkgs.stdenv.isDarwin (autoPruneAgent prunePath);
+  launchd.agents.git-auto-prune-branches = lib.mkIf pkgs.stdenv.isDarwin (
+    autoPruneAgent pruneBranchesPath
+  );
 }

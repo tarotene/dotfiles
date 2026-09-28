@@ -25,7 +25,7 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
 | `rebase.updateRefs = true` | stacked PR([`docs/claude/stacked-pr.md`](claude/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語は無いが、効果はまさにこれ) |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
-| `git prune-branches`(`scripts/git-prune-branches`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除 |
+| `git prune-branches`(`scripts/git-prune-branches`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除。`--auto` は内容保全の証拠を根拠に `git-auto-prune` timer から確認なしで削除(`docs/worktree-lifecycle.md`) |
 | `git shelve` / `git unshelve`(`scripts/git-shelve` / `scripts/git-unshelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
 | `config/git/hooks/pre-push` の bleep(旧 publish-guard)`scan-push` 統合 | 公開リポジトリへ company/private リポジトリ名等を含む差分を push してしまう(#196) | push する差分+ログを denylist で走査し、ヒットで block。回避は `BLEEP_ALLOW=1`。詳細は `docs/claude/public-publish-guard.md` |
 
@@ -50,6 +50,13 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
    checkout 中のブランチの削除を拒否するので、黙って失敗させない)
 
 `main` は upstream が `[gone]` にならないので、判定に触れることすらない。
+
+上記は対話確認つきの既定モード(このリポジトリだけを対象にする)。`--auto`
+は別の判断軸(`[gone]` ではなく、内容が `origin/<default>` に入っている、
+または closed/merged な PR の head と一致するという「内容保全の証拠」)を
+根拠にし、`git audit-worktrees --evidence` がリポジトリ横断で検出した
+branch 行を確認なしで削除する — `git-auto-prune` timer から呼ばれ、
+`docs/worktree-lifecycle.md` の「無人削除」節を参照。
 
 ## `GIT_ALLOW_MAIN_COMMIT`
 

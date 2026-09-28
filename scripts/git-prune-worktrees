@@ -33,11 +33,13 @@
 set -euo pipefail
 
 AUDIT_BIN="${GIT_PRUNE_WORKTREES_AUDIT_BIN:-git-audit-worktrees}"
+LOG_DIR="${GIT_PRUNE_WORKTREES_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/git-auto-prune}"
+LOG_FILE="$LOG_DIR/log.tsv"
 TEST_TMP=''
 
 usage() {
   cat <<'EOF'
-usage: git prune-worktrees [--dry-run|--yes|--force|--selftest]
+usage: git prune-worktrees [--dry-run|--yes|--force|--auto|--selftest]
 
 Lists every stale worktree finding from `git audit-worktrees` — both
 prunable (registration only, checkout already gone) and orphaned (checkout
@@ -55,6 +57,20 @@ Branches are left alone; run `git prune-branches` afterward.
 --yes      skip the confirmation prompt (required for non-interactive use)
 --force    also override Git's own delete refusal for orphaned checkouts
            (e.g. dirty content) — re-validation still applies and can skip
+
+--auto     unattended deletion, for a scheduled timer: consumes
+           `git audit-worktrees --evidence` (C1/C2/C3 content-preservation
+           classes, docs/worktree-lifecycle.md) instead of the
+           upstream-tracking prunable/orphaned classes above, and skips the
+           confirmation prompt entirely (no --yes needed). Still re-
+           validates right before acting. Plain `git worktree remove` only
+           (no submodule --force retry) — a worktree Git refuses to remove
+           is skipped and reported, not overridden. Every deletion is
+           appended to $XDG_STATE_HOME/git-auto-prune/log.tsv (repo, path,
+           sha, evidence class) so a mistaken class can be traced back and
+           the content recovered (C2's sha is on origin's default branch
+           already; C3's sha is recoverable via refs/pull/<N>/head even
+           after local deletion). Combine with --dry-run to preview.
 EOF
 }
 
@@ -121,8 +137,109 @@ prune_prunable() {
   done < <(cut -f1 <<<"$prunable" | LC_ALL=C sort -u)
 }
 
+# log_auto_prune: append one line to the shared auto-prune log (also written
+# by git-prune-branches --auto) — the recovery trail for an unattended
+# deletion. $XDG_STATE_HOME/git-auto-prune/log.tsv, not a Herdr notification:
+# ADR (auto-prune ADR, "自動化しない範囲"/ROI 節) chose a trail over a
+# per-deletion alert on purpose — the whole point of --auto is to stop
+# needing a human to look at every stale worktree.
+log_auto_prune() {
+  mkdir -p "$LOG_DIR"
+  printf '%s\tworktree\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date +%Y-%m-%dT%H:%M:%S%z)" "$1" "$2" "$3" "$4" "$5" "$6" >>"$LOG_FILE"
+}
+
+# NOTE on field splitting throughout this file: `IFS=$'\t' read` looks like
+# the obvious way to consume a tab-separated row, but bash classifies tab as
+# "IFS whitespace" regardless of what else is in IFS, so `read` silently
+# collapses *consecutive* tabs and drops the empty field between them — a
+# detached-HEAD worktree's empty branch column, or a `branch`-kind evidence
+# row's always-empty path column, would each shift every field after it by
+# one. `tr '\t' $'\x1f'` first, then `IFS=$'\x1f' read`, sidesteps this: unit
+# separator (0x1F) is never "IFS whitespace" and is never a legitimate byte
+# in a path/branch/sha/evidence value, so consecutive occurrences correctly
+# produce an empty field instead of collapsing (verified against bash's
+# actual behavior, not just its documentation, while debugging this).
+render_evidence() {
+  local findings="$1" kind common repo path branch sha ev count=0
+  while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
+    [[ -n $path ]] || continue
+    count=$((count + 1))
+    printf 'evidence worktree: repo=%s path=%s branch=%s sha=%s evidence=%s\n' \
+      "$repo" "$path" "${branch:-(detached)}" "$sha" "$ev"
+  done < <(tr '\t' $'\x1f' <<<"$findings")
+  [[ $count -eq 0 ]] || printf 'total: %d evidence-backed worktree(s)\n' "$count"
+}
+
+# auto_prune: the --auto path. Unlike the interactive prunable/orphaned
+# path above, this consumes `git audit-worktrees --evidence`'s `worktree`
+# rows (kind, common, repo, path, branch, sha, evidence) and needs no human
+# confirmation — every row it acts on already carries a content-preservation
+# proof (C1/C2/C3). Still re-validates immediately before acting (the same
+# TOCTOU seam the orphaned path uses, `GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK`
+# included), because "no human is waiting" does not mean "no time passes" —
+# the two `--evidence` scans below (`gh` included) are not instantaneous.
+auto_prune() {
+  local dry="$1" listing fresh kind common repo path branch sha ev line
+  local removed=0 skipped=0
+  listing="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "worktree"')"
+  if [[ -z $listing ]]; then
+    printf 'auto: 削除対象の worktree はありません。\n'
+    return 0
+  fi
+  render_evidence "$listing"
+  if [[ $dry == true ]]; then
+    printf '(--dry-run: 削除はしていません)\n'
+    return 0
+  fi
+
+  if [[ -n "${GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK-}" ]]; then
+    eval "$GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK"
+  fi
+  fresh="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "worktree"')"
+
+  # C1: registration-only, dedup by common dir. `git worktree prune` itself
+  # re-evaluates prunability the moment it runs (same rationale as
+  # prune_prunable above), so this needs no per-row re-validation against
+  # `$fresh` — a checkout that reappeared between the two scans is simply
+  # left alone by git, not by us.
+  while IFS= read -r common; do
+    [[ -n $common ]] || continue
+    git --git-dir="$common" worktree prune --verbose --expire=now
+  done < <(awk -F'\t' '$7 == "C1" { print $2 }' <<<"$listing" | LC_ALL=C sort -u)
+  while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
+    [[ -n $path && $ev == C1 ]] || continue
+    log_auto_prune "$common" "$repo" "$path" "$branch" "$sha" "$ev"
+    removed=$((removed + 1))
+  done < <(tr '\t' $'\x1f' <<<"$listing")
+
+  # C2/C3: live checkouts — re-validate against the fresh scan (exact row
+  # match) right before acting, exactly like the interactive orphaned path.
+  while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
+    [[ -n $path && $ev != C1 ]] || continue
+    line="$kind"$'\t'"$common"$'\t'"$repo"$'\t'"$path"$'\t'"$branch"$'\t'"$sha"$'\t'"$ev"
+    if ! grep -qxF "$line" <<<"$fresh"; then
+      printf 'skip(状態が変化したため見送り): %s\n' "$path" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if err="$(git -C "$repo" worktree remove -- "$path" 2>&1)"; then
+      printf 'removed(%s): %s (%s)\n' "$ev" "$path" "${branch:-(detached)}"
+      log_auto_prune "$common" "$repo" "$path" "$branch" "$sha" "$ev"
+      removed=$((removed + 1))
+    else
+      printf 'skip(git が拒否): %s: %s\n' "$path" "$err" >&2
+      skipped=$((skipped + 1))
+    fi
+  done < <(tr '\t' $'\x1f' <<<"$listing")
+
+  printf 'auto: removed=%d skipped=%d\n' "$removed" "$skipped"
+  [[ $removed -eq 0 ]] || printf '[gone] ブランチが残っていれば git prune-branches --auto で確認・削除してください。\n'
+}
+
 main() {
-  local dry=false assume_yes=false force=false findings prunable orphaned fresh answer
+  local dry=false assume_yes=false force=false auto=false
+  local findings prunable orphaned fresh answer
   local removed=0 skipped=0
   local common repo path branch class reason err
   while [[ $# -gt 0 ]]; do
@@ -130,8 +247,9 @@ main() {
       --dry-run) dry=true ;;
       --yes) assume_yes=true ;;
       --force) force=true ;;
+      --auto) auto=true ;;
       --selftest)
-        selftest
+        selftest && selftest_auto
         return
         ;;
       -h | --help)
@@ -145,6 +263,14 @@ main() {
     esac
     shift
   done
+
+  # --auto has its own scan (--evidence, not --porcelain) and its own
+  # confirmation-free flow — dispatch before touching any of the interactive
+  # state below.
+  if [[ $auto == true ]]; then
+    auto_prune "$dry"
+    return 0
+  fi
 
   findings="$(candidates)"
   prunable="$(prunable_candidates <<<"$findings")"
@@ -421,6 +547,152 @@ STUB
   unset GIT_PRUNE_WORKTREES_AUDIT_BIN
 
   printf 'selftest: OK\n'
+}
+
+# selftest_auto: covers --auto, the evidence-driven unattended path — kept
+# separate from selftest() above (its own tmp dir, its own stub) since that
+# one only ever exercises the interactive prunable/orphaned path against
+# --porcelain. The stub here answers `--evidence` from a file this test
+# rewrites between phases, the same trick selftest()'s own TOCTOU fixture
+# uses (a marker file that changes stub output between the two calls
+# auto_prune makes).
+selftest_auto() {
+  local tmp repo common out
+  tmp="$(mktemp -d)"
+  TEST_TMP="$tmp"
+  trap 'rm -rf "$TEST_TMP"' EXIT
+  repo="$tmp/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" config core.hooksPath /dev/null
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config user.name test
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" commit --allow-empty -qm initial
+  common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)"
+
+  cat >"$tmp/audit-stub" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "--evidence" ]]; then
+  cat "$GIT_PRUNE_WORKTREES_TEST_EVIDENCE_FILE"
+fi
+STUB
+  chmod +x "$tmp/audit-stub"
+  export GIT_PRUNE_WORKTREES_AUDIT_BIN="$tmp/audit-stub"
+  export GIT_PRUNE_WORKTREES_LOG_DIR="$tmp/state/git-auto-prune"
+  export GIT_PRUNE_WORKTREES_TEST_EVIDENCE_FILE="$tmp/evidence.tsv"
+
+  # C2: a live worktree carrying C2 evidence — plain `git worktree remove`.
+  local wt_c2 sha_c2
+  wt_c2="$tmp/wt-c2"
+  git -C "$repo" worktree add -q "$wt_c2" -b worktree/c2
+  sha_c2="$(git -C "$wt_c2" rev-parse HEAD)"
+  printf 'worktree\t%s\t%s\t%s\tworktree/c2\t%s\tC2\n' "$common" "$repo" "$wt_c2" "$sha_c2" >"$tmp/evidence.tsv"
+  out="$(bash "$0" --auto 2>&1)"
+  [[ ! -d $wt_c2 ]] || {
+    printf 'FAIL(auto): C2 の worktree が削除されなかった\n' >&2
+    return 1
+  }
+  grep -qF "removed(C2): $wt_c2" <<<"$out" || {
+    printf 'FAIL(auto): C2 の removed メッセージが出なかった: %s\n' "$out" >&2
+    return 1
+  }
+  grep -qF $'\tC2' "$tmp/state/git-auto-prune/log.tsv" || {
+    printf 'FAIL(auto): log.tsv に C2 の記録が無い\n' >&2
+    return 1
+  }
+
+  # C1: a prunable registration (checkout already gone) — `worktree prune`,
+  # branch kept.
+  local wt_c1 sha_c1
+  wt_c1="$tmp/wt-c1"
+  git -C "$repo" worktree add -q "$wt_c1" -b worktree/c1
+  sha_c1="$(git -C "$wt_c1" rev-parse HEAD)"
+  rm -rf "$wt_c1"
+  printf 'worktree\t%s\t%s\t%s\tworktree/c1\t%s\tC1\n' "$common" "$repo" "$wt_c1" "$sha_c1" >"$tmp/evidence.tsv"
+  bash "$0" --auto >/dev/null
+  git --git-dir="$common" worktree list --porcelain | grep -qF "worktree $wt_c1" && {
+    printf 'FAIL(auto): C1 の登録メタデータが残った\n' >&2
+    return 1
+  }
+  git -C "$repo" show-ref --verify --quiet refs/heads/worktree/c1 || {
+    printf 'FAIL(auto): C1 で branch まで削除された\n' >&2
+    return 1
+  }
+  grep -qF $'\tC1' "$tmp/state/git-auto-prune/log.tsv" || {
+    printf 'FAIL(auto): log.tsv に C1 の記録が無い\n' >&2
+    return 1
+  }
+
+  # --dry-run: list only, nothing removed, nothing logged.
+  local wt_dry sha_dry loglines_before
+  wt_dry="$tmp/wt-dry"
+  git -C "$repo" worktree add -q "$wt_dry" -b worktree/dry
+  sha_dry="$(git -C "$wt_dry" rev-parse HEAD)"
+  printf 'worktree\t%s\t%s\t%s\tworktree/dry\t%s\tC2\n' "$common" "$repo" "$wt_dry" "$sha_dry" >"$tmp/evidence.tsv"
+  loglines_before="$(wc -l <"$tmp/state/git-auto-prune/log.tsv")"
+  out="$(bash "$0" --auto --dry-run 2>&1)"
+  [[ -d $wt_dry ]] || {
+    printf 'FAIL(auto --dry-run): 削除してしまった\n' >&2
+    return 1
+  }
+  grep -qF -- '--dry-run' <<<"$out" || {
+    printf 'FAIL(auto --dry-run): dry-run の案内が出なかった\n' >&2
+    return 1
+  }
+  [[ "$(wc -l <"$tmp/state/git-auto-prune/log.tsv")" == "$loglines_before" ]] || {
+    printf 'FAIL(auto --dry-run): dry-run なのに log.tsv に書き込まれた\n' >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt_dry"
+
+  # Detached HEAD: the evidence row's branch column is empty (no branch, C3
+  # works off the sha alone) — an empty field in the *middle* of the row,
+  # which is exactly the shape that a naive `IFS=$'\t' read` mis-parses
+  # (bash treats tab as "IFS whitespace" and collapses consecutive
+  # delimiters, silently shifting every field after the empty one).
+  local wt_detached sha_detached
+  wt_detached="$tmp/wt-detached"
+  git -C "$repo" worktree add -q --detach "$wt_detached" HEAD
+  sha_detached="$(git -C "$wt_detached" rev-parse HEAD)"
+  printf 'worktree\t%s\t%s\t%s\t\t%s\tC3:#7\n' "$common" "$repo" "$wt_detached" "$sha_detached" >"$tmp/evidence.tsv"
+  out="$(bash "$0" --auto 2>&1)"
+  [[ ! -d $wt_detached ]] || {
+    printf 'FAIL(auto): detached HEAD(branch 列が空)の worktree が削除されなかった: %s\n' "$out" >&2
+    return 1
+  }
+  grep -qF 'removed(C3:#7): ' <<<"$out" || {
+    printf 'FAIL(auto): detached HEAD の removed メッセージが出なかった(フィールドがずれた可能性): %s\n' "$out" >&2
+    return 1
+  }
+  grep -qF $'\tC3:#7' "$tmp/state/git-auto-prune/log.tsv" || {
+    printf 'FAIL(auto): log.tsv に detached HEAD(C3)の記録が無い\n' >&2
+    return 1
+  }
+
+  # TOCTOU: listing 時点にはあった行が、削除直前の再スキャンでは消えている
+  # (状態が変化した)場合、削除せず見送ることを確認する。
+  local wt_toctou sha_toctou
+  wt_toctou="$tmp/wt-toctou"
+  git -C "$repo" worktree add -q "$wt_toctou" -b worktree/toctou
+  sha_toctou="$(git -C "$wt_toctou" rev-parse HEAD)"
+  printf 'worktree\t%s\t%s\t%s\tworktree/toctou\t%s\tC2\n' "$common" "$repo" "$wt_toctou" "$sha_toctou" >"$tmp/evidence.tsv"
+  export GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK=": >'$tmp/evidence.tsv'"
+  out="$(bash "$0" --auto 2>&1)"
+  unset GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK
+  [[ -d $wt_toctou ]] || {
+    printf 'FAIL(auto TOCTOU): 状態変化を検知せず削除した\n' >&2
+    return 1
+  }
+  grep -qF 'skip(状態が変化したため見送り)' <<<"$out" || {
+    printf 'FAIL(auto TOCTOU): skip メッセージが出なかった: %s\n' "$out" >&2
+    return 1
+  }
+  git -C "$repo" worktree remove --force "$wt_toctou"
+
+  unset GIT_PRUNE_WORKTREES_AUDIT_BIN GIT_PRUNE_WORKTREES_LOG_DIR GIT_PRUNE_WORKTREES_TEST_EVIDENCE_FILE
+
+  printf 'selftest(auto): OK\n'
 }
 
 main "$@"

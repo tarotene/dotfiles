@@ -177,10 +177,13 @@
   };
 
   # git-prune-branches: delete local branches whose upstream is [gone]
-  # (docs/git-sync.md). Same "executable in ~/.local/bin, no alias needed"
-  # placement as git-shelve/git-unshelve above — used to be a
-  # `config/git/hooks/prune-branches.sh` + `alias.prune-branches` pair, but
-  # it isn't a git hook and doesn't need core.hooksPath's indirection.
+  # (docs/git-sync.md), or (--auto) branches backed by content-preservation
+  # evidence (C2/C3, docs/worktree-lifecycle.md) — the latter is what
+  # home/modules/worktree.nix's git-auto-prune timer calls, hourly and
+  # unattended. Same "executable in ~/.local/bin, no alias needed" placement
+  # as git-shelve/git-unshelve above — used to be a `config/git/hooks/
+  # prune-branches.sh` + `alias.prune-branches` pair, but it isn't a git
+  # hook and doesn't need core.hooksPath's indirection.
   home.file.".local/bin/git-prune-branches" = {
     source = ../../scripts/git-prune-branches;
     executable = true;
