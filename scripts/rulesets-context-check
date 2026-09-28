@@ -147,6 +147,16 @@ judge() {
 check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
   local owner_repo="$1" sha="$2" branch="$3" declared live jobs
 
+  # poll_job_names() -> fetch_head_sha_job_names()/fetch_run_job_names()
+  # (scripts/github-audit)はどちらも repos/$OWNER/... を組み立てる際に
+  # このグローバル変数を参照する。$OWNER は github-audit 側の既定値
+  # (tarotene)を持ったまま source されているため、owner_repo の owner が
+  # tarotene 以外だと実測 job 名の取得先が違うリポジトリになり、常に
+  # ground truth が空(=jobs 未報告)に見えてしまう。scripts/
+  # pr-merge-settings-check・scripts/apply-rulesets.sh も同じ理由で呼び出し
+  # 直後に OWNER を設定している(D8, ADR-0035 表現不可能性)。
+  OWNER="${owner_repo%%/*}"
+
   declared="$(fetch_declared_contexts "$owner_repo" "$sha")" || {
     printf 'rulesets-context-check: %s@%s の宣言取得に失敗しました(fail-closed)\n' "$owner_repo" "$sha" >&2
     return 1
@@ -341,6 +351,15 @@ STUB
   check "9 check / PR title 型(旧テンプレ)は unnamed job としてそのまま不一致になる" "tarotene/unnamed-caller" "abc" "main" \
     "$quality_ok" "$live_ok" '[{"name":"check / PR title"},{"name":"test"}]' \
     1 ''
+
+  # 10: owner が tarotene 以外の呼び出し元(reusable workflow を他 owner の
+  # リポジトリから呼ぶ場合、D8)。fixture 自体は repos_acme_x_... に正しく
+  # 揃っているので、OWNER を owner_repo から正しく設定できていれば 1 と
+  # 同じ結果(OK)になる。設定が漏れて既定の tarotene 側を見に行くと
+  # fixture が見つからず jobs=[] のまま timeout し FAIL する。
+  check "10 owner が tarotene 以外(D8: OWNER は owner_repo から設定する)" "acme/x" "abc" "main" \
+    "$quality_ok" "$live_ok" "$jobs_ok" \
+    0 'OK'
 
   check_consistency || fails=$((fails + 1))
 
