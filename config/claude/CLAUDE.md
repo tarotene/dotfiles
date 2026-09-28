@@ -66,6 +66,22 @@ commit → push → `gh pr create` を、途中で確認を挟まず一続きで
 「PR を作成しますか?」と聞かない。Stop hook(`G_pr` in pr-gate.sh)がこの
 漏れを検査する。
 
+## 既存手段の前倒し接地と決定論への昇格(ADR-543)
+
+共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で
+昇格させる」の原則は共有 AGENTS.md に従う。Claude Code での書式・形式
+検査の配線:
+
+- `既存手段:` 行は `## 先行例との対比` 節の重い欄(`本命:`/`対抗馬:`)を
+  持つ `Dn` に必須(precedent-grounding / selection-grounding スキル
+  参照)。自己検査は同じ `plan-precedent-gate.sh --check` コマンド
+  1 本でまとめて行う(新しい gate は呼ばない)。
+- 新しい道具・単位(shebang 付き新規ファイル、`bin/scripts/hooks/cmd`
+  配下の新規ファイル、パッケージマニフェストの新設)を Write する前
+  倒しの機械強制、PR 本文での `既存手段:` 照合、決定論化の昇格・降格
+  候補の検出は後続の段で実装する(ADR-543 参照)。実装済みの範囲は
+  ADR-543 の `## 執行点` を参照。
+
 ## GitHub 投稿の生成元明示(Claude Code のフッター文言)
 
 共有 AGENTS.md の規範における「自分自身のエージェント名と URL」は、
