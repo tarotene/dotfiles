@@ -450,6 +450,18 @@
 #    `hook_io::cmd_hash` が単一正本で、段4 の promotion-detect が SKILL.md
 #    のコードブロックを同じ関数でハッシュして照合する。
 #
+# 33) pr-confirm-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-543 D2、
+#    docs/claude/pr-confirm-guard.md、2026-09-29):
+#    PR 本文の `## 要確認` の各項目に、閉語彙のブロッキング理由
+#    (資格情報|ハードウェア|secrets 衛生|GUI|判断)・インデントされた番号
+#    手順・`完了確認:` 行がすべて揃っているかを `gh pr create/edit` の
+#    呼び出し時に機械検査する。pr-description スキル §6 の散文だけでは
+#    「要確認の手順が迷う」失敗が2度再発した(tarotene/dotfiles#239、および
+#    別リポジトリでの secrets 登録手順)ため、G_visual と同じ「機械的下限は
+#    ゲート、手順の妥当性はスキル」の二層分担へ昇格させた。owner が
+#    tarotene のリポジトリのみで発火し(pr-title-guard.sh と同じ理由)、
+#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -534,6 +546,11 @@ let
   # に置く。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
+  # pr-confirm-guard(ADR-543 D2 の昇格判断、docs/claude/pr-confirm-guard.md)
+  # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
+  # は decision-colocation-guard と同じ理由で作らない(Claude Code の Plan
+  # mode セッションが書く PR 本文に対象を限る)。
+  prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
   # decision-colocation-guard(ADR-396, docs/claude/decision-colocation.md)
   # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
   # は意図的に作らない — CI required check が全エージェント共通の
@@ -791,6 +808,7 @@ let
     atuin_hook_claude_code="$1"; shift
     stack_base_guard="$1";       shift
     pr_title_guard="$1";         shift
+    pr_confirm_guard="$1";       shift
     decision_colocation_guard="$1"; shift
     external_send_guard="$1";    shift
     adr_number="$1";             shift
@@ -916,6 +934,10 @@ let
     # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
     # 持たないため timeout は短め。
     register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
+    # pr-confirm-guard(ADR-543 D2): pr-title-guard と同じ複合 matcher・
+    # 同じ owner scoping。本文の節切り出し・項目分割は jq/gh API を使わない
+    # 純粋な文字列処理なので timeout は同じ短さでよい。
+    register PreToolUse "Bash|mcp__.*" "$pr_confirm_guard" 10
     # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
     # pr-title-guard と同じ複合 matcher。scripts/decision-colocation-check
     # 1 往復(git diff + ファイル読み取りのみ、gh API 往復は持たない)なので
@@ -1417,6 +1439,17 @@ in
   };
   home.file.".copilot/hooks/pr-title-guard.sh" = {
     source = repoConfig + "/copilot/hooks/pr-title-guard.sh";
+    executable = true;
+  };
+
+  # pr-confirm-guard(ADR-543 D2 の昇格判断、docs/claude/pr-confirm-guard.md):
+  # PR 本文の `## 要確認` の各項目に、閉語彙のブロッキング理由・番号手順・
+  # `完了確認:` 行があることを作成時に機械強制する。attribution-guard.sh を
+  # 同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
+  # decision-colocation-guard と同じ理由で Codex/Copilot adapter は作らない
+  # (対象は Claude Code の Plan mode セッションが書く PR 本文に限る)。
+  home.file.".claude/hooks/pr-confirm-guard.sh" = {
+    source = repoConfig + "/claude/hooks/pr-confirm-guard.sh";
     executable = true;
   };
 
@@ -2121,6 +2154,7 @@ in
       ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
       ${lib.escapeShellArg stackBaseGuardCmd} \
       ${lib.escapeShellArg prTitleGuardCmd} \
+      ${lib.escapeShellArg prConfirmGuardCmd} \
       ${lib.escapeShellArg decisionColocationGuardCmd} \
       ${lib.escapeShellArg externalSendGuardCmd} \
       ${lib.escapeShellArg adrNumberCmd} \
