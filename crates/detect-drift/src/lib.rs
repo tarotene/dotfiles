@@ -74,45 +74,90 @@ pub fn diff_apt(
     }
 }
 
-/// baseline ファイルの解析。`apt-mark showmanual` の出力と同じ 1行1
-/// パッケージ名の形式なので `parse_apt_installed` をそのまま使う。
+/// baseline ファイルの解析。宣言ファイル(`packages/declarative/
+/// apt-packages.txt`)と同じ書式 — `#` コメント行・空行を許す(#3)。
+/// これにより、Playwright `install-deps` のような一括インストールが
+/// 入れた lib 群を「なぜ baseline に入っているか」の理由付きブロックと
+/// して残せる。`parse_apt_declared` をそのまま使う(パーサは1つ、
+/// duplicate しない)。
 pub fn parse_apt_baseline(text: &str) -> BTreeSet<String> {
-    parse_apt_installed(text)
+    parse_apt_declared(text)
+}
+
+/// `Commandline:` 1行から `apt`/`apt-get install <pkg...>`(`sudo` 経由も
+/// 可)のインストール対象パッケージ名を抽出する。install 以外の
+/// サブコマンド(upgrade/remove/autoremove 等)は空集合を返す。
+/// `pkg=version` 形式のバージョン指定は名前部分だけを残す。フラグ
+/// (`-y` 等)は無視する。
+fn parse_install_commandline(cmd: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut tokens: Vec<&str> = cmd.split_whitespace().collect();
+    if tokens.first() == Some(&"sudo") {
+        tokens.remove(0);
+    }
+    let Some(bin) = tokens.first() else {
+        return names;
+    };
+    if !(bin.ends_with("apt") || bin.ends_with("apt-get")) {
+        return names;
+    }
+    if tokens.get(1) != Some(&"install") {
+        return names;
+    }
+    for tok in &tokens[2..] {
+        if tok.starts_with('-') {
+            continue;
+        }
+        let name = tok.split('=').next().unwrap_or(tok);
+        if !name.is_empty() {
+            names.insert(name.to_string());
+        }
+    }
+    names
 }
 
 /// `/var/log/apt/history.log*`(複数世代、展開済みテキストとして連結した
-/// もの)の `Commandline:` 行から、人間が `apt`/`apt-get install <pkg...>`
-/// (`sudo` 経由も可)で明示的に入れたパッケージ名を復元する(#445)。
-/// upgrade/remove/autoremove 等 install 以外のサブコマンドは無視する。
-/// `pkg=version` 形式のバージョン指定は名前部分だけを残す。フラグ
-/// (`-y` 等)は無視する。
+/// もの)から、**人間が対話的に打った** `apt`/`apt-get install <pkg...>`
+/// で明示的に入れたパッケージ名を復元する(#445)。
+///
+/// ブロック(`Start-Date:` 〜 `End-Date:`)ごとに `Requested-By:` 行の
+/// 有無を見る。apt 自身が `Requested-By:` を書くのは `SUDO_UID` /
+/// `PKEXEC_UID` / `PACKAGEKIT_CALLER_UID` のいずれかが設定されている
+/// ときだけ(apt upstream `apt-pkg/deb/dpkgpm.cc` の
+/// `AptHistoryRequestingUser()`)。Pop!_OS の `distinst` post-install や
+/// `pop-upgrade` は root の非対話プロセスとして直接 `apt-get` を呼ぶため
+/// これらの環境変数を持たず、`Requested-By:` が書かれない — 結果として
+/// この関数はそれらの seed install を「人間の ad-hoc」から除外できる
+/// (対話シェルからの `sudo apt install` は `SUDO_UID` が立つため区別
+/// できる)。`Requested-By:` を持たないブロックは無視する。
 pub fn parse_history_log_installs(text: &str) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for line in text.lines() {
-        let Some(cmd) = line.strip_prefix("Commandline: ") else {
-            continue;
-        };
-        let mut tokens: Vec<&str> = cmd.split_whitespace().collect();
-        if tokens.first() == Some(&"sudo") {
-            tokens.remove(0);
-        }
-        let Some(bin) = tokens.first() else { continue };
-        if !(bin.ends_with("apt") || bin.ends_with("apt-get")) {
-            continue;
-        }
-        if tokens.get(1) != Some(&"install") {
-            continue;
-        }
-        for tok in &tokens[2..] {
-            if tok.starts_with('-') {
-                continue;
-            }
-            let name = tok.split('=').next().unwrap_or(tok);
-            if !name.is_empty() {
-                names.insert(name.to_string());
+    fn flush(cmd: Option<&str>, requested_by: bool, out: &mut BTreeSet<String>) {
+        if requested_by {
+            if let Some(cmd) = cmd {
+                out.extend(parse_install_commandline(cmd));
             }
         }
     }
+
+    let mut names = BTreeSet::new();
+    let mut block_cmd: Option<&str> = None;
+    let mut block_requested_by = false;
+
+    for line in text.lines() {
+        if let Some(cmd) = line.strip_prefix("Commandline: ") {
+            block_cmd = Some(cmd);
+        } else if line.starts_with("Requested-By:") {
+            block_requested_by = true;
+        } else if line.starts_with("End-Date:") {
+            flush(block_cmd, block_requested_by, &mut names);
+            block_cmd = None;
+            block_requested_by = false;
+        }
+    }
+    // 末尾のブロックが `End-Date:` を欠いたまま切れている場合(logrotate
+    // の境界等)も拾う。
+    flush(block_cmd, block_requested_by, &mut names);
+
     names
 }
 
@@ -156,7 +201,10 @@ pub fn diff_cargo(installed: &BTreeSet<String>) -> LayerDrift {
 
 /// `npm ls -g --depth=0 --json` の出力から `.dependencies` のキー(パッケージ
 /// 名)を抽出する。`npm` 自身は常に存在し ad-hoc install の対象ではないため
-/// 除外する。壊れた JSON は空集合を返す(呼び出し側が WARN として扱う)。
+/// 除外する。`corepack` も同様に除外する(#3) — Node 配布物(mise の node
+/// tarball 等、ADR-0002)に同梱される同梱物であり、`npm -g` の一覧に載る
+/// ものの人間が ad-hoc install したものではない。壊れた JSON は空集合を
+/// 返す(呼び出し側が WARN として扱う)。
 pub fn parse_npm_global(json_text: &str) -> BTreeSet<String> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json_text) else {
         return BTreeSet::new();
@@ -165,7 +213,7 @@ pub fn parse_npm_global(json_text: &str) -> BTreeSet<String> {
         return BTreeSet::new();
     };
     deps.keys()
-        .filter(|k| k.as_str() != "npm")
+        .filter(|k| !matches!(k.as_str(), "npm" | "corepack"))
         .cloned()
         .collect()
 }
@@ -479,24 +527,55 @@ mod tests {
     }
 
     #[test]
-    fn parse_history_log_installs_extracts_install_targets() {
+    fn parse_apt_baseline_skips_comment_blocks() {
+        // #3: 一括インストールスクリプト由来の lib 群を理由コメント付き
+        // ブロックとして baseline に残せることの確認。
+        let text = "\
+# 2026-01-14 playwright install-deps
+libasound2t64
+libatk1.0-0t64
+
+# 2025-12-23 一括(cabextract/samba/winbind/spacenavd 等)
+cabextract
+samba
+";
+        let got = parse_apt_baseline(text);
+        assert_eq!(
+            got,
+            BTreeSet::from([
+                "libasound2t64".to_string(),
+                "libatk1.0-0t64".to_string(),
+                "cabextract".to_string(),
+                "samba".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_history_log_installs_extracts_install_targets_when_requested_by_present() {
+        // apt は SUDO_UID/PKEXEC_UID/PACKAGEKIT_CALLER_UID のいずれかが
+        // 立っているときだけ Requested-By: を書く(対話的な人間の実行)。
         let text = "\
 Start-Date: 2026-08-01  10:00:00
 Commandline: apt install gh pandoc
+Requested-By: tarotene (1000)
 Install: gh:amd64 (2.0.0), pandoc:amd64 (3.0.0)
 End-Date: 2026-08-01  10:00:05
 
 Start-Date: 2026-08-02  09:00:00
 Commandline: sudo apt-get install -y solaar=1.1.10-1
+Requested-By: tarotene (1000)
 Install: solaar:amd64 (1.1.10-1)
 End-Date: 2026-08-02  09:00:02
 
 Start-Date: 2026-08-03  08:00:00
 Commandline: apt-get autoremove
+Requested-By: tarotene (1000)
 End-Date: 2026-08-03  08:00:01
 
 Start-Date: 2026-08-04  07:00:00
 Commandline: apt upgrade
+Requested-By: tarotene (1000)
 End-Date: 2026-08-04  07:01:00
 ";
         let got = parse_history_log_installs(text);
@@ -508,8 +587,44 @@ End-Date: 2026-08-04  07:01:00
 
     #[test]
     fn parse_history_log_installs_empty_on_no_install_commands() {
-        let text = "Start-Date: 2026-08-01\nCommandline: apt update\nEnd-Date: 2026-08-01\n";
+        let text = "Start-Date: 2026-08-01\nCommandline: apt update\nRequested-By: tarotene (1000)\nEnd-Date: 2026-08-01\n";
         assert_eq!(parse_history_log_installs(text), BTreeSet::new());
+    }
+
+    #[test]
+    fn parse_history_log_installs_excludes_blocks_without_requested_by() {
+        // #445/#3 の追加要件: distinst の post-install や pop-upgrade は
+        // root の非対話プロセスとして apt-get を直接呼ぶため
+        // Requested-By: を持たない — これは seed install であり drift
+        // 候補にしない(見た目は同じ `apt-get install` でも人間が打った
+        // ものではないため)。
+        let text = "\
+Start-Date: 2026-08-01  10:00:00
+Commandline: apt-get install -y pop-desktop cosmic-term
+Install: pop-desktop:amd64 (1.0), cosmic-term:amd64 (1.0)
+End-Date: 2026-08-01  10:00:05
+
+Start-Date: 2026-08-02  09:00:00
+Commandline: apt install gh
+Requested-By: tarotene (1000)
+Install: gh:amd64 (2.0.0)
+End-Date: 2026-08-02  09:00:02
+";
+        let got = parse_history_log_installs(text);
+        assert_eq!(got, BTreeSet::from(["gh".to_string()]));
+    }
+
+    #[test]
+    fn parse_history_log_installs_flushes_trailing_block_without_end_date() {
+        // logrotate の境界などで末尾ブロックが End-Date: を欠くケース。
+        let text = "\
+Start-Date: 2026-08-01  10:00:00
+Commandline: apt install gh
+Requested-By: tarotene (1000)
+Install: gh:amd64 (2.0.0)
+";
+        let got = parse_history_log_installs(text);
+        assert_eq!(got, BTreeSet::from(["gh".to_string()]));
     }
 
     #[test]
@@ -578,6 +693,21 @@ ghr v1.2.3 (/home/x/.ghr/some/path):
             got,
             BTreeSet::from(["typescript".to_string(), "eslint".to_string()])
         );
+    }
+
+    #[test]
+    fn parse_npm_global_excludes_corepack_as_node_bundled() {
+        // #3: corepack は mise 配布の node tarball に同梱される(ADR-0002)
+        // ため、npm -g の一覧には載るが ad-hoc install ではない。
+        let json = r#"{
+          "dependencies": {
+            "npm": {"version": "10.0.0"},
+            "corepack": {"version": "0.34.1"},
+            "backlog.md": {"version": "1.50.1"}
+          }
+        }"#;
+        let got = parse_npm_global(json);
+        assert_eq!(got, BTreeSet::from(["backlog.md".to_string()]));
     }
 
     #[test]
