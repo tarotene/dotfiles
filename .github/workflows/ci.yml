@@ -368,6 +368,14 @@ jobs:
       - name: plan-scope-gate.sh --selftest
         run: bash ./config/claude/hooks/plan-scope-gate.sh --selftest
 
+      # codex-plan-gate (ADR-0032 Amendment #531, docs/claude/
+      # codex-plan-gate.md) is Codex's Stop-hook analogue of ExitPlanMode:
+      # it detects a `<proposed_plan>` block in the prior assistant message
+      # and calls the two gates above against stubbed versions of them —
+      # no new judgment logic, no gh/network.
+      - name: codex-plan-gate.sh --selftest
+        run: bash ./config/codex/hooks/codex-plan-gate.sh --selftest
+
       # slot-hit.sh is the deterministic judgment core behind the
       # slot-availability skill (docs/claude/slot-availability.md): matching
       # candidate slots against calendar busy/soft-day events, and (finalize)

@@ -588,6 +588,56 @@ Fax… > enter the printer's IP address directly (protocol: AirPrint or IPP).
    backup section above — the sync remote and the backup remote stay
    separate either way).
 
+## Switching to Codex CLI for a week
+
+For the ADR-0032 Amendment (#531) social experiment ("1 week Claude-off,
+Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
+(ADR-457 Amendment) — the native installer is the source of truth, and
+`~/.codex/config.toml` is not managed by home-manager at all.
+
+1. **Apply the latest hooks.** `hms` (or `hms .` from a topic worktree)
+   deploys `~/.codex/AGENTS.md` (the build-time merge, see
+   `docs/claude/global-agents-md.md`) and registers every hook this repo
+   owns into `~/.codex/hooks.json`.
+2. **Trust the newly registered hooks once.** Codex persists hook trust as
+   a hash per `(hooks.json path, event, index)` in `~/.codex/config.toml`'s
+   `[hooks.state]` table (see the dump in this repo's own herdr integration
+   notes) — a hook this repo just added is untrusted until approved
+   interactively. Run `codex` and use the `/hooks` TUI command; it lists
+   every registered hook and lets you trust them in bulk. Skipping this
+   step does not break anything silently — an untrusted hook simply never
+   runs, so the Codex-side parity this repo built (stack-base-guard,
+   pr-gate, codex-plan-gate, …) is a no-op until trusted.
+3. **Sanity-check the wiring without a real session:**
+
+   ```bash
+   echo '{"tool_name":"Bash","cwd":"'"$PWD"'","tool_input":{"command":"git stash pop"}}' \
+     | bash ~/.codex/hooks/git-stash-guard.sh   # expect a deny JSON
+   echo '{"hook_event_name":"Stop","session_id":"smoke","last_assistant_message":"no plan"}' \
+     | bash ~/.codex/hooks/codex-plan-gate.sh   # expect no output (no <proposed_plan>)
+   ```
+
+   For an end-to-end pass through Codex's own harness (not just the hook
+   script directly), `codex exec --dangerously-bypass-hook-trust` runs a
+   one-shot prompt with hook trust bypassed — useful to confirm a hook
+   actually fires and its JSON is accepted, but it skips the trust step
+   above, so also verify step 2 separately before relying on it day to day.
+4. **During the week:** the same completion definition applies (commit →
+   push → `gh pr create` in one motion, PR body skeleton, attribution
+   footer) — `pr-gate.sh` / `attribution-guard.sh` / `pr-title-guard.sh`
+   now gate Codex the same way they gate Claude. `config/codex/
+   AGENTS.codex.md` carries the Codex-specific wording for the
+   instruction-level half of this (the self-check commands to run before
+   emitting a `<proposed_plan>`).
+5. **Switching back:** nothing to revert — the hooks stay registered
+   permanently (they are agent-scoped by which `hooks.json`/`settings.json`
+   they live in, not by a toggle), so a future Codex session picks up
+   exactly where this one left off. If a hook's behavior needs to be
+   paused without waiting for a PR, every hook in this family has its own
+   escape hatch (e.g. `SKIP_STACK_BASE_GUARD=1`,
+   `touch ~/.codex/codex-plan-gate/skip` — see each hook's own doc under
+   `docs/claude/`).
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per

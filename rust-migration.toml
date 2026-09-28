@@ -86,7 +86,11 @@ extra = ["bootstrap.sh"]
 # attribution-guard/pr-title-guard の Codex adapter(既存の 4a エントリ)と
 # 同じ理由。#534 のリベース追従(main が 60→63 に進んでいた)で 63→66 に
 # 付け直した。
-max_remaining = 66
+#
+# 67 = 上記 66 + 同セッション段4で追加した codex-plan-gate.sh の 1 件。
+# plan-scope-gate.sh/plan-precedent-gate.sh をそのまま呼ぶだけの adapter
+# であり、同じ理由で bash のまま追加した。
+max_remaining = 67
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -194,6 +198,14 @@ stage = "4b"
 
 [[target]]
 path = "config/claude/hooks/copilot-plan-review.sh"
+stage = "4b"
+
+# ADR-0032 Amendment (#531): Codex's Stop-hook analogue of the ExitPlanMode
+# plan-gate family above — no single Claude-side file it mirrors 1:1 (it
+# calls plan-scope-gate.sh / plan-precedent-gate.sh directly), so it is
+# grouped with them by category instead.
+[[target]]
+path = "config/codex/hooks/codex-plan-gate.sh"
 stage = "4b"
 
 # --- Stage 4c ---
