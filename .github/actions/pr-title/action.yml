@@ -78,6 +78,15 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
+        # ADR-591 の集約 job `CI passed` は `needs:` で束ねた重い job
+        # (build-host 等、実測で数分)が全て完了するまで自身の check-run
+        # すら報告しない。既定のポーリング窓(90s)はこの待ち時間より短く、
+        # PR #596 で実際に「宣言の required context が報告されていない」
+        # 誤検知(false failure — CI passed 自体は後で success する)を
+        # 起こした。この呼び出しに限り窓を広げる(rulesets-context-check
+        # 自体の既定値は他の呼び出し元のために変えない)。
+        RULESETS_CONTEXT_CHECK_TIMEOUT: "1200"
+        RULESETS_CONTEXT_CHECK_INTERVAL: "20"
       run: |
         set -euo pipefail
         chmod +x .pr-title-tools/scripts/rulesets-context-check
