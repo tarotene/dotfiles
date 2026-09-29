@@ -1,0 +1,62 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "tarotene account-wide Renovate automerge policy. Referenced by other repos as github>tarotene/dotfiles//renovate/policy (floating default branch, never tag-pinned — docs/adr/0000-renovate-automerge-shared-preset.md D4).",
+    "D1: non-major updates automerge (0.x minor excluded); major and 0.x-minor stay human-merged PRs.",
+    "D2: merge executor is GitHub native auto-merge (platformAutomerge); safety depends on the consuming repo's rulesets required_status_checks.",
+    "D3: minimumReleaseAge 3 days for everything; vulnerabilityAlerts fixes are exempt (0 days) and automerge.",
+    "internalChecksFilter=strict (default, restated for clarity): a version younger than minimumReleaseAge is filtered out entirely, so no PR exists until it ages past the wait — platform auto-merge cannot fire on a pending version."
+  ],
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitTypeAll(chore)",
+    ":timezone(Asia/Tokyo)"
+  ],
+  "schedule": ["before 6am on monday"],
+  "commitMessagePrefix": "chore(deps):",
+  "labels": ["dependencies"],
+  "rebaseWhen": "behind-base-branch",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+  "github-actions": {
+    "enabled": true,
+    "pinDigests": true,
+    "managerFilePatterns": ["/\\.github/workflows/[^/]+\\.ya?ml$/"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null,
+    "automerge": true,
+    "labels": ["dependencies", "security"]
+  },
+  "packageRules": [
+    {
+      "description": "D1: patch/pin/digest automerge for every dependency (0.x included — a patch bump is non-breaking under caret semantics)",
+      "matchUpdateTypes": ["patch", "pin", "digest", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "D1: minor automerge only from >=1.0.0 (0.x minor may be breaking under caret semantics, so it stays a human-merged PR). v-prefix tolerant for GitHub Action release tags.",
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "!/^v?0\\./",
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions: one grouped PR per run; the group automerges only when every member matches the rules above (a major bump in the group holds the whole group for a human)",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "labels": ["dependencies", "ci"]
+    }
+  ]
+}
