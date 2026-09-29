@@ -554,6 +554,10 @@ Design and rationale for the hooks and commands deployed from
   時間とユーザーの空き時間を突き合わせてカレンダーに反映する判断知識。
   「トークスクリプトを渡して終わり」がユーザーの自発的な想起に賭ける
   設計だった問題への対処。
+- [`browser-login-handoff.md`](claude/browser-login-handoff.md) — 個人
+  スキル: Playwright MCP・claude-in-chrome でのブラウザ操作中に未ログイン
+  を検知したときのハンドオフ手順(#562)。パスワード・二段階認証の入力を
+  Claude が代行しないよう、都度その場で組み立てていた手順を型化した。
 
 ## Investigation records
 

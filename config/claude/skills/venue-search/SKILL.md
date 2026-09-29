@@ -60,6 +60,9 @@ bash scripts/venue-urls.sh --hub "$HUB" --needs grand-piano
   一覧等)は Playwright を使う。
 - `login_required` が文字列(条件付き・未確認)のものは、まずそのページ
   自体を一度見て、ログイン無しでどこまで見えるかを確かめてから続ける。
+  ログインが避けられないと判明した場合のハンドオフ手順は
+  `browser-login-handoff` skill を参照(このスキル自体は基本的に
+  ログイン不要な範囲に限定する設計)。
 - `note` に書かれた利用規約上の注意(例: Instabase の robots.txt が
   クエリ付き検索 URL を Disallow にし 60 秒間隔を求めている)を守る —
   個別ページを間隔を空けて見る、検索フォームへの連続リクエストはしない。

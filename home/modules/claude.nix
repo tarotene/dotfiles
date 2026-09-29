@@ -1989,6 +1989,12 @@ in
   # 判断知識。詳細は docs/claude/external-call-scheduling.md。
   home.file.".claude/skills/external-call-scheduling/SKILL.md".source =
     repoConfig + "/claude/skills/external-call-scheduling/SKILL.md";
+  # browser-login-handoff(#562): Playwright MCP・claude-in-chrome での
+  # ブラウザ操作中に未ログインを検知したときのハンドオフ手順。両ツールとも
+  # Claude Code 固有のため .agents/skills/ へはミラーしない(external-call-
+  # scheduling と同じ理由)。詳細は docs/claude/browser-login-handoff.md。
+  home.file.".claude/skills/browser-login-handoff/SKILL.md".source =
+    repoConfig + "/claude/skills/browser-login-handoff/SKILL.md";
   # slot-availability: 候補日程一覧 × Google Calendar の3コマ当たり判定。
   # 詳細は docs/claude/slot-availability.md。
   home.file.".claude/skills/slot-availability/SKILL.md".source =
