@@ -401,6 +401,11 @@ check_herdr_staleness() {
 check_generation_consistency() {
     local profile_link="${1:-$HOME/.local/state/nix/profiles/home-manager}"
     local current_home_link="${2:-$HOME/.local/state/home-manager/gcroots/current-home}"
+    # $3: whether *this run's own* switch already failed by the time this is
+    # called (line 525's post-failure call passes true) — the closing
+    # sentence otherwise claims "this switch will resolve it" right after
+    # that same switch just failed to.
+    local switch_already_failed="${3:-false}"
 
     [[ -e "$profile_link" && -e "$current_home_link" ]] || return 0
 
@@ -413,8 +418,13 @@ check_generation_consistency() {
         echo "  profile (${profile_link}): ${profile_target}" >&2
         echo "  current-home (${current_home_link}): ${current_home_target}" >&2
         echo "  A previous activation likely failed partway through, leaving the" >&2
-        echo "  generation pointer ahead of what is actually applied. A successful" >&2
-        echo "  switch (this one) will resolve it." >&2
+        echo "  generation pointer ahead of what is actually applied." >&2
+        if [[ "$switch_already_failed" == true ]]; then
+            echo "  This switch also failed, so the mismatch remains — fix the error" >&2
+            echo "  above and rerun; a successful switch will then resolve it." >&2
+        else
+            echo "  A successful switch (this one) will resolve it." >&2
+        fi
     fi
 }
 
@@ -522,7 +532,7 @@ echo "==> home-manager switch --flake ${apply_ref}#${host} -b backup ${extra_opt
 rc=0
 home-manager switch --flake "${apply_ref}#${host}" -b backup "${extra_opts[@]}" || rc=$?
 if [[ $rc -ne 0 ]]; then
-    check_generation_consistency
+    check_generation_consistency "" "" true
     exit "$rc"
 fi
 

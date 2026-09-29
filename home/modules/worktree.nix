@@ -57,19 +57,30 @@ let
       ];
       StartInterval = 3600;
       RunAtLoad = true;
-      EnvironmentVariables.PATH = lib.makeBinPath [
-        pkgs.bash
-        pkgs.coreutils
-        pkgs.findutils
-        pkgs.gnugrep
-        pkgs.gnused
-        pkgs.gawk
-        pkgs.git
-        pkgs.jq
-        pkgs.flock
-        pkgs.herdr
-        pkgs.gh
-      ];
+      # Same env-override injection as the systemd unit above (this
+      # function's EnvironmentVariables.PATH is the darwin analogue of that
+      # unit's closed nix-store PATH, with the identical gap): both scripts
+      # read only the one var matching their own name, so setting both here
+      # unconditionally is harmless — it lets one `autoPruneAgent` body serve
+      # both LaunchAgents without branching on which `path` it was called
+      # with.
+      EnvironmentVariables = {
+        GIT_PRUNE_WORKTREES_AUDIT_BIN = auditPath;
+        GIT_PRUNE_BRANCHES_AUDIT_BIN = auditPath;
+        PATH = lib.makeBinPath [
+          pkgs.bash
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.gawk
+          pkgs.git
+          pkgs.jq
+          pkgs.flock
+          pkgs.herdr
+          pkgs.gh
+        ];
+      };
     };
   };
 in
@@ -257,21 +268,36 @@ in
         "${prunePath} --auto"
         "${pruneBranchesPath} --auto"
       ];
-      Environment = "PATH=${
-        lib.makeBinPath [
-          pkgs.bash
-          pkgs.coreutils
-          pkgs.findutils
-          pkgs.gnugrep
-          pkgs.gnused
-          pkgs.gawk
-          pkgs.git
-          pkgs.jq
-          pkgs.util-linux
-          pkgs.herdr
-          pkgs.gh
-        ]
-      }";
+      # GIT_PRUNE_{WORKTREES,BRANCHES}_AUDIT_BIN=${auditPath}: both scripts
+      # otherwise resolve `git-audit-worktrees` off PATH (their AUDIT_BIN
+      # default), but this unit's PATH= below is a closed nix-store list that
+      # deliberately excludes ~/.local/bin — every `git-*` binary that
+      # dotfiles deploys reaches PATH via `git-<subcommand>` (git's own
+      # dispatch), not by adding the user's bin dir here. Passing the
+      # absolute path through the env override both scripts already support
+      # (used by their own selftests to inject a stub) is the actual
+      # injection point, not a wider PATH. Its absence here made both
+      # `--auto` invocations exit 127 on every hourly tick since #544 landed
+      # (2026-09-29, arcturus).
+      Environment = [
+        "GIT_PRUNE_WORKTREES_AUDIT_BIN=${auditPath}"
+        "GIT_PRUNE_BRANCHES_AUDIT_BIN=${auditPath}"
+        "PATH=${
+          lib.makeBinPath [
+            pkgs.bash
+            pkgs.coreutils
+            pkgs.findutils
+            pkgs.gnugrep
+            pkgs.gnused
+            pkgs.gawk
+            pkgs.git
+            pkgs.jq
+            pkgs.util-linux
+            pkgs.herdr
+            pkgs.gh
+          ]
+        }"
+      ];
     };
   };
 

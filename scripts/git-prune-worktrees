@@ -182,7 +182,7 @@ render_evidence() {
 auto_prune() {
   local dry="$1" listing fresh kind common repo path branch sha ev line
   local removed=0 skipped=0
-  listing="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "worktree"')"
+  listing="$("$AUDIT_BIN" --evidence | awk -F'\t' '$1 == "worktree"')"
   if [[ -z $listing ]]; then
     printf 'auto: 削除対象の worktree はありません。\n'
     return 0
@@ -196,7 +196,7 @@ auto_prune() {
   if [[ -n "${GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK-}" ]]; then
     eval "$GIT_PRUNE_WORKTREES_TEST_PRE_ACT_HOOK"
   fi
-  fresh="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "worktree"')"
+  fresh="$("$AUDIT_BIN" --evidence | awk -F'\t' '$1 == "worktree"')"
 
   # C1: registration-only, dedup by common dir. `git worktree prune` itself
   # re-evaluates prunability the moment it runs (same rationale as
