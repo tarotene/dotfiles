@@ -1244,9 +1244,16 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
 # renovate domain
 # ---------------------------------------------------------------------------
 
-judge_renovate() { # $1=gql-data-json -> finding
-  local gql="$1" has_manifest has_workflows has_config
+judge_renovate() { # $1=gql-data-json $2=primary-language(optional) -> finding
+  local gql="$1" primary_language="${2:-}" has_manifest has_workflows has_config
   has_manifest="$(jq -e '(.cargoToml != null) or (.packageJson != null) or (.pyprojectToml != null) or (.goMod != null) or (.flakeNix != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
+  # Typst repos have no dependency-manifest file of their own (no
+  # Cargo.toml/package.json/pyproject.toml/go.mod/flake.nix) — GitHub's
+  # linguist-detected primaryLanguage is the only applicability signal
+  # available without fetching every Typst source file. This was a false
+  # not-applicable for every typst-repo-governance-seeded repository until
+  # this stage.
+  [[ $has_manifest != true && $primary_language == "Typst" ]] && has_manifest=true
   has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
 
   if [[ $has_manifest != true || $has_workflows != true ]]; then
@@ -1277,6 +1284,20 @@ judge_renovate() { # $1=gql-data-json -> finding
       .ghRenovateJson5.text // .renovaterc.text // "")
   ' <<<"$gql")"
   dashboard_disabled="$(jq -e '.dependencyDashboard == false' <<<"$config_text" > /dev/null 2>&1 && echo true || echo false)"
+  if [[ $dashboard_disabled != true ]]; then
+    # Renovate's `:disableDependencyDashboard` preset shorthand
+    # (https://docs.renovatebot.com/presets-default/#disabledependencydashboard,
+    # confirmed 2026-09-29) achieves the same effect as a literal
+    # `dependencyDashboard: false` without that key ever appearing —
+    # missing this produced a false-positive renovate-dashboard-missing
+    # on any repository using the shorthand. Same structured-then-quoted-
+    # substring pattern as the policy-preset check below.
+    jq -e '(.extends // []) | index(":disableDependencyDashboard") != null' <<<"$config_text" >/dev/null 2>&1 &&
+      dashboard_disabled=true
+  fi
+  if [[ $dashboard_disabled != true ]]; then
+    grep -qF -- '":disableDependencyDashboard"' <<<"$config_text" && dashboard_disabled=true
+  fi
   dashboard_count="$(jq -r '.renovateDashboard.totalCount // 0' <<<"$gql")"
 
   # D4: config must extend the shared automerge policy preset. `extends`
@@ -1641,7 +1662,6 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
               has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
               local ruleset_jobs='[]'
               ((need_ruleset_jobs)) && [[ $has_workflows == true ]] && ruleset_jobs="$(fetch_latest_pr_head_job_names "$repo")"
-              [[ "$repo" == "all-ok" ]] && printf '%s' "$repo_gql" > /tmp/dbg_repo_gql_$$.json
               entry="$(judge_rulesets "$repo" "$has_workflows" "$repo_gql" "$ruleset_jobs")"
             fi
             ;;
@@ -1655,7 +1675,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ((need_repo_rest)) && repo_rest="$(fetch_repo_settings "$repo")"
             entry="$(judge_settings "$meta" "$repo_rest")"
             ;;
-          renovate) entry="$(judge_renovate "$repo_gql")" ;;
+          renovate) entry="$(judge_renovate "$repo_gql" "$lang")" ;;
           titles)
             local title_jobs='[]'
             local has_pr_title_caller
@@ -2719,6 +2739,43 @@ EOF
   jq -e '.verdict == "drifted" and (.missing | index("renovate-policy-preset-missing"))' \
     <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy#v1\"]}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
     printf 'FAIL: judge_renovate(tag-pinned preset ref) should be renovate-policy-preset-missing (D4 forbids pinning)\n' >&2
+    return 1
+  }
+  # (a) 隣接負債: `:disableDependencyDashboard` プリセット省略形は
+  # `dependencyDashboard: false` という literal key を一度も書かないので、
+  # 素の key チェックだけでは検知できず偽陽性 renovate-dashboard-missing に
+  # なっていた。extends 配列にこの文字列があれば Dashboard 無しを正常
+  # 扱いにする。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\":disableDependencyDashboard\", \"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(extends :disableDependencyDashboard, no dashboard issue) should be ok\n' >&2
+    return 1
+  }
+  # 同じ判定を、JSON5 コメント付きでパース不能な config でも文字列
+  # フォールバックで拾えることを確認する。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson5": {"text": "{ // comment\n  \"extends\": [\":disableDependencyDashboard\", \"github>tarotene/dotfiles//renovate/policy\"]\n}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(extends :disableDependencyDashboard via JSON5 grep fallback) should be ok\n' >&2
+    return 1
+  }
+
+  # (b) 隣接負債: Typst repo は Cargo.toml 等の manifest を持たないため
+  # has_manifest が常に false になり、renovate.json が実在し App が実際に
+  # 動いていても not-applicable という偽陰性になっていた。
+  # primaryLanguage == "Typst" を manifest 相当の signal として扱う。
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}' "TeX")" >/dev/null || {
+    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=TeX, not Typst) should stay not-applicable\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-config-missing"))' \
+    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}' "Typst")" >/dev/null || {
+    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=Typst, no config) should be drifted:renovate-config-missing, not not-applicable\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 1}}' "Typst")" >/dev/null || {
+    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=Typst, config extends preset, dashboard exists) should be ok\n' >&2
     return 1
   }
 
