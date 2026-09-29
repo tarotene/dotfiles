@@ -178,7 +178,7 @@ render_evidence_branches() {
 auto_prune_branches() {
   local dry="$1" listing fresh kind common repo path branch sha ev line err
   local removed=0 skipped=0
-  listing="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "branch"')"
+  listing="$("$AUDIT_BIN" --evidence | awk -F'\t' '$1 == "branch"')"
   if [[ -z $listing ]]; then
     printf 'auto: 削除対象の branch はありません。\n'
     return 0
@@ -192,7 +192,7 @@ auto_prune_branches() {
   if [[ -n "${GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK-}" ]]; then
     eval "$GIT_PRUNE_BRANCHES_TEST_PRE_ACT_HOOK"
   fi
-  fresh="$("$AUDIT_BIN" --evidence 2>/dev/null | awk -F'\t' '$1 == "branch"')"
+  fresh="$("$AUDIT_BIN" --evidence | awk -F'\t' '$1 == "branch"')"
 
   while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
     [[ -n $branch ]] || continue
