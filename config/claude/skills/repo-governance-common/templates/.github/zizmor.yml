@@ -1,0 +1,17 @@
+# zizmor 設定(#491)。zizmor v1.20.0 以降の既定は blanket hash-pin
+# policy("*": hash-pin) で、symbolic ref(@main 等)への uses: をすべて
+# unpinned-uses(severity high)として red にする。このリポジトリの
+# pr-title.yml テンプレートは呼び出し側から
+# `tarotene/dotfiles/.github/workflows/pr-title.yml@__DEFAULT_BRANCH__`
+# を参照する(ADR-0031、docs/claude/pr-title-contract.md)ため、
+# tarotene 名義の呼び出しだけを ref-pin まで緩める。他の owner/repo への
+# uses: は既定の hash-pin のまま(緩めない)。
+#
+# schema/例: zizmorcore/zizmor
+# crates/zizmor/tests/integration/test-data/unpinned-uses/configs/
+# (composite.yml, ref-pin-everything.yml) を参照(取得 2026-09-29)。
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "tarotene/*": ref-pin

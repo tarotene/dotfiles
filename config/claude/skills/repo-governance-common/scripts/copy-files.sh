@@ -101,6 +101,7 @@ echo "Copying core-type templates to: $DEST"
 echo ""
 
 copy_file ".github/workflows/pr-title.yml"
+copy_file ".github/zizmor.yml"
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"
 copy_file ".github/rulesets/workflow.json"

@@ -114,6 +114,7 @@ comment. The table below lists the most important locations:
 | `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path passed to typstyle-action |
 | `.github/workflows/min-typst.yml` | `PATTERNS` regex |
 | `.github/workflows/pr-title.yml` | Nothing to adjust — it calls tarotene/dotfiles' reusable workflow (ADR-0031), which owns the type list. Confirm the actual required-check context on the first PR (see the CI gates section below) |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 | `.github/workflows/release.yml` | PDF filenames in the `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body; **delete this file** if not a CV project |
 | `cliff.toml` | `tag_pattern` if your CalVer tag scheme differs |

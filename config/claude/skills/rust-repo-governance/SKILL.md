@@ -121,6 +121,7 @@ comment. The table below lists the most important locations:
 | `release-plz.toml` | `[[package]]` entries — add your workspace crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Smoke test assertions in `host-pty-smoke`; feature combos in `clippy-tools` and `mcp-test` |
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 
 **Key invariant**: The `name:` field of each workflow job **must exactly match**
 the `context` string in `.github/rulesets/quality.json`. The `__MSRV__` and
