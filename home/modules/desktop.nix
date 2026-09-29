@@ -84,18 +84,19 @@ in
         #     libEGL_mesa / libgallium; `--use-gl` is no longer `disabled` and the
         #     MESA-LOADER/eglInitialize errors are gone.
         #   Slack  — same signature: 6 /dev/dri fds, 11 mesa GL mappings.
-        #   Zoom   — NOT verified, and deliberately kept wrapped anyway. zoom does
-        #     not start on this host at all: it exits 0 with no output, wrapped and
-        #     unwrapped alike, even for `zoom --version`. That is a pre-existing
-        #     defect unrelated to GL (see #24), so there was nothing to measure in
-        #     either direction. It stays wrapped because the GL closure is already
-        #     paid for by the other two — not because it shares their engine: zoom
-        #     is Qt + a bundled Chromium Embedded Framework (`ZoomWebviewHost`),
-        #     not the same Electron/Chromium stack as Chrome/Slack (corrected
-        #     2026-09-25 — see #24 for the vega diagnosis this note was wrong on).
+        #   Zoom   — no longer wrapped here at all (#24). `pkgs.zoom-us` is the
+        #     bwrap-sandboxed FHS build, and it never starts on any host tried:
+        #     exits 0 with no output, wrapped and unwrapped alike, even for
+        #     `zoom --version`. Log analysis (~/.zoom/logs) traced the real cause:
+        #     `qglx_findConfig: Failed to finding matching FBConfig` →
+        #     `Could not initialize GLX` → SIGABRT, swallowed by the bwrap launcher
+        #     — nix's mesa/glvnd cannot bridge into the FHS sandbox's GLX resolution
+        #     at all, a 2+ year stale non-NixOS defect upstream
+        #     (NixOS/nixpkgs#267663). See home/modules/flatpak.nix for the
+        #     replacement: Flatpak's own self-contained GL runtime sidesteps the
+        #     mismatch entirely instead of trying to fix the nixGL/bwrap bridge.
         (nixGLWrap pkgs.google-chrome)
         (nixGLWrap pkgs.slack)
-        (nixGLWrap pkgs.zoom-us)
 
         # The nixGL wrapper itself, as an escape hatch: `nixGLIntel <cmd>` makes an
         # ad-hoc `nix run nixpkgs#...` GL application work, and is the one-line way

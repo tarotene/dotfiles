@@ -54,6 +54,14 @@
     # crates, not serde & co. (docs/rust-workspace-measurements.md). crane has
     # no flake inputs of its own, so there is nothing to `follows`.
     crane.url = "github:ipetkov/crane";
+
+    # Flatpak declarations for home-manager (ADR-0001 4th escape hatch, #24).
+    # home-manager has no built-in flatpak module; this is the de facto
+    # standard one (searched: no official home-manager module exists as of
+    # 2026-09-29). `follows` is not applicable — this module only shells out
+    # to the system's own `flatpak` binary at activation time, it never
+    # dlopens anything nixpkgs builds.
+    nix-flatpak.url = "github:gmodena/nix-flatpak";
   };
 
   outputs =
@@ -65,6 +73,7 @@
       nixgl,
       bleep,
       crane,
+      nix-flatpak,
       ...
     }:
     let
@@ -239,7 +248,11 @@
         system: hostModule: extraModules:
         home-manager.lib.homeManagerConfiguration {
           pkgs = pkgsFor.${system};
-          modules = [ hostModule ] ++ extraModules;
+          modules = [
+            hostModule
+            nix-flatpak.homeManagerModules.nix-flatpak
+          ]
+          ++ extraModules;
           # bleep is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
           # claude.nix only needs its store path for home.file.source, not a

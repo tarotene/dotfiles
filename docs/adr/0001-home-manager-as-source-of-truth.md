@@ -153,3 +153,52 @@ evaluates the attribute at all" — otherwise identical to herdr's.
 
 Issue #91 tracks dropping this overlay entry once `nixpkgs.gh` on
 `nixos-26.05` reaches >= 2.99.0, the same way Issue #42 tracks herdr.
+
+## Amendment (2026-09-29 — Flatpak joins the escape-hatch pattern for proprietary GUI apps with self-contained GL, #24)
+
+`pkgs.zoom-us` (the nixGL-wrapped bwrap/FHS build) never starts on any host
+tried: exits 0 with no output, wrapped and unwrapped alike, even for `zoom
+--version`. Log analysis (`~/.zoom/logs`, this repo's own working copy, never
+committed) traced the real cause: `qglx_findConfig: Failed to finding
+matching FBConfig` → `Could not initialize GLX` → SIGABRT, silently swallowed
+by the bwrap launcher. nix's own mesa/glvnd (what nixGL wraps GUI apps with,
+Amendment above / ADR-0006) cannot bridge into the FHS sandbox's GLX
+resolution at all — a non-NixOS defect open upstream for 2+ years with no
+fix in sight (NixOS/nixpkgs#267663, filed 2023-11, still open/stale as of
+2026-09-29).
+
+Rather than keep waiting on that upstream fix, or dropping Zoom's native
+client entirely (giving up its features to gain nothing else), this
+Amendment adds Flatpak as a **third kind of GUI app delivery**, alongside
+the existing two (a plain nixGL-wrapped nix package; an apt package for
+anything that must integrate with the system display stack directly):
+
+- **Zoom now installs as a Flatpak app** (`us.zoom.Zoom`), declared via
+  `services.flatpak.packages` (the `nix-flatpak` home-manager module,
+  `home/modules/flatpak.nix`) instead of `home.packages` +
+  `nixGLWrap`. Flatpak's own runtime (`org.freedesktop.Platform.GL`) is
+  self-contained — it ships its own GL stack rather than relying on the
+  host's, sidestepping the nixGL/bwrap bridging problem entirely instead of
+  trying to fix it.
+- **The Flatpak *selection* stays home-manager's decision** (which apps,
+  same declarative-source-of-truth reasoning as `home.packages`), but the
+  Flatpak *runtime* itself — a D-Bus system service and an
+  `xdg-desktop-portal` registration — is root-owned system integration that
+  home-manager cannot provide. `flatpak` (the apt package) joins
+  `packages/declarative/apt-packages.txt` as a new system-layer entry, the
+  same class of thing as `scdaemon`/`tailscale` there already: a
+  binary/daemon this repo's `home.packages` layer structurally cannot own.
+- 既存手段: 採用(`gmodena/nix-flatpak`)。home-manager に公式の flatpak
+  モジュールは存在しない(2026-09-29 に NixOS Discourse で確認)ため、
+  事実上のデファクトを採用した。自前実装は検討していない(Flatpak
+  自体の宣言的管理という枯れた要件に対して自前で書く理由がない)。
+
+### 執行点
+
+- `flake.nix` — `nix-flatpak` input、`mkHome` への
+  `homeManagerModules.nix-flatpak` の追加
+- `home/modules/flatpak.nix` — `services.flatpak.packages` の宣言(新設)
+- `home/common.nix` — 上記モジュールの import
+- `home/modules/desktop.nix` — `home.packages` から `(nixGLWrap
+  pkgs.zoom-us)` を撤去
+- `packages/declarative/apt-packages.txt` — `flatpak` を新規エントリとして追加

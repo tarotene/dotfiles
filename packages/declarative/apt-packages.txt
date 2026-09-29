@@ -57,3 +57,13 @@ scdaemon
 # every network (café or home).
 tailscale
 ufw
+
+# --- Flatpak runtime (ADR-0001 4th escape hatch, #24) ---
+#
+# flatpak itself is root-owned system integration (D-Bus system service,
+# xdg-desktop-portal registration) — home-manager cannot provide this, only
+# declare which Flatpak apps to install on top of it (home/modules/
+# flatpak.nix, ADR-0001 Amendment). Already present on this host as an
+# ad-hoc install before this line was added; declaring it here just gives
+# detect-drift a declaration to match against.
+flatpak
