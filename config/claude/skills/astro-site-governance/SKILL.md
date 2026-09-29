@@ -117,45 +117,31 @@ comment. The most important locations:
 |------|----------------|
 | `package.json` | Merge scripts/devDependencies snippet (shown by copy-files.sh); run `npm install` |
 | `mise.toml` | Add `cocogitto = "latest"` to `[tools]`; run `mise install` |
-| `.github/workflows/ci.yml` | If project has NO MDX content-lint scripts, remove the `content-lint` job AND its context from `.github/rulesets/quality.json` (they are a pair) |
+| `.github/workflows/ci.yml` | If project has NO MDX content-lint scripts, remove the `content-lint` job AND its entry in `ci-passed`'s `needs:` (they are a pair) |
 | `release-please-config.json` | Verify `package-name` is correct |
 | `.release-please-manifest.json` | Verify version matches current `package.json` |
 | `renovate.json` | Adjust `packageRules` grouping for your actual dependencies |
 | `biome.json` | Check `files.includes` globs match your TS/CSS paths; **never add `.mdx` or `.astro`** |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
-| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the composite action's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 
-**Key invariant:** The `name:` field of each workflow job in `ci.yml` must
-exactly match the `context` string in `.github/rulesets/quality.json`. These
-four strings are static and pre-matched:
-- `"Format & Lint (Biome)"` ↔ `biome` job
-- `"Content lint"` ↔ `content-lint` job
-- `"Unit tests"` ↔ `unit-tests` job
-- `"Build"` ↔ `build` job
+**Key invariant:** The `name:` field of each workflow job in `ci.yml`
+**must exactly match** the entries in `ci-passed`'s `needs:` (job *id*, not
+`name:`) — the Ruleset only ever requires `CI passed`/`PR title`
+(ADR-591), so the four individual job `name:` values (`Format & Lint
+(Biome)`, `Content lint`, `Unit tests`, `Build`) are display labels and no
+longer need to match anything in `.github/rulesets/quality.json`.
+`workflow-naming-check` (tarotene/dotfiles, a required check on every PR)
+verifies this `needs:` coverage automatically.
 
-If you rename a job, update the Ruleset context string at the same time —
-`apply-rulesets.sh` refuses to apply a context that isn't actually reported
-by a real run (ADR-0000-rulesets-declaration-in-repo), so a rename that
-forgets the other side fails loudly at apply time instead of leaving a
-required check permanently "Expected".
-
-**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
-calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
-reported check context is GitHub's own concatenation of the **caller
-job's** `name:` and the called job's `name:` ("PR Title / PR title"). The
-`repo-governance-common/templates/.github/workflows/pr-title.yml`
-template (this skill's copy is a symlink to it) pins the caller job's
-`name: PR Title`, so this string is a fixed value, not a best-effort
-guess — no manual confirmation against the Checks tab is needed. (An
-earlier version of this note said to confirm the string on the first real
-PR; that assumed the wrong half of the concatenation was fixed and missed
-that #337's rollout had seeded a context the then-unnamed caller job
-could never satisfy — ADR-0031's 2026-09-26 Amendment.)
-`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
-re-verifies the match at runtime on every PR via
-`scripts/rulesets-context-check` — which checks every declared and live
-`required_status_checks` context, not just this one.
-If you remove `"Content lint"` (no MDX scripts), remove it from BOTH files.
+**`pr-title.yml`** has no `workflow_call` concatenation to worry about
+(ADR-591 replaced the old reusable-workflow form with a composite action,
+docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
+check context is simply this job's own `name: PR title`, pinned by the
+`repo-governance-common/templates/.github/workflows/pr-title.yml` template
+(this skill's copy is a symlink to it).
+If you remove `"content-lint"` (no MDX scripts), remove it from `ci.yml`
+(the job) and from `ci-passed`'s `needs:` in the same file.
 
 ---
 
@@ -201,7 +187,7 @@ gh api repos/OWNER/REPO/rulesets --jq '.[].name'
 # Required checks contexts in Quality Ruleset:
 gh api repos/OWNER/REPO/rulesets \
   --jq '.[] | select(.name=="Quality") | .rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
-# → Format & Lint (Biome) / Content lint / Unit tests / Build
+# → CI passed / PR title
 
 # Repo merge settings:
 gh api repos/OWNER/REPO \
@@ -242,9 +228,12 @@ into some *other* active branch ruleset needs manual removal via
 │   ├── .github/
 │   │   ├── CODEOWNERS                    * @__OWNER__
 │   │   └── workflows/
-│   │       ├── ci.yml                    4-job CI (Biome / Content lint / Tests / Build)
+│   │       ├── ci.yml                    required: CI passed (aggregate of biome/
+│   │       │                             content-lint/unit-tests/build via
+│   │       │                             needs:, ADR-591 in tarotene/dotfiles)
 │   │       ├── release-please.yml        automated CHANGELOG + Release
-│   │       └── pr-title.yml              required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
+│   │       └── pr-title.yml              required: PR title (calls tarotene/dotfiles'
+│   │                                     composite action, ADR-0031/ADR-591)
 │   └── .githooks/
 │       ├── commit-msg                    cog verify (Conventional Commits)
 │       ├── pre-commit                    biome check --staged (fast)
@@ -252,7 +241,8 @@ into some *other* active branch ruleset needs manual removal via
 │   ├── .github/rulesets/                   (declaration copied into the target repo —
 │   │   │                                    ADR-0000-rulesets-declaration-in-repo)
 │   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
-│   │   ├── quality.json     astro-specific: signatures + linear history + 4 status checks
+│   │   ├── quality.json     astro-specific (bypass_actors only): signatures +
+│   │   │                    linear history + the fixed pair CI passed/PR title (ADR-591)
 │   │   ├── workflow.json    shared with repo-governance-common: squash-only (core)
 │   │   └── review.json      shared with repo-governance-common: Copilot code review +
 │   │                        required thread resolution (opt-in, --with-review only)

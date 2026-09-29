@@ -69,17 +69,17 @@ After `seed.sh --dry-run` or `seed.sh` completes, open each file that has a
 
 | File | What to adjust |
 |------|----------------|
-| `.github/workflows/host.yml` | PATTERNS regex — crate directory names |
-| `.github/workflows/tools.yml` | PATTERNS regex — crate directory names |
-| `.github/workflows/msrv.yml` | PATTERNS regex — all workspace paths |
-| `.github/workflows/firmware.yml` | Chip name, target triple, example path (or delete if no embedded) |
+| `.github/workflows/ci.yml` — `host` job | PATTERNS regex — crate directory names |
+| `.github/workflows/ci.yml` — `tools` job | PATTERNS regex — crate directory names |
+| `.github/workflows/ci.yml` — `msrv` job | PATTERNS regex — all workspace paths |
+| `.github/workflows/ci.yml` — `firmware` job | Chip name, target triple, example path — or delete the whole job (and its entry in `ci-passed`'s `needs:`) if your project has no embedded firmware |
 | `.github/workflows/release-plz.yml` | `host-pty-server` git-only package name; additional excluded crates |
 | `.github/workflows/release-binaries.yml` | License file names, README path |
-| `.github/workflows/release-nudge.yml` | AGENTS.md anchor URL |
+| `.github/workflows/release-reminder.yml` | AGENTS.md anchor URL |
 | `renovate.json` | `cargo.managerFilePatterns` — add excluded crate paths; embedded HAL package list. `cargo.rangeStrategy: "bump"` needs no adjustment — it exists so an in-range dependency update changes `Cargo.toml` itself (not just `Cargo.lock`), keeping it distinct from the monthly `lockFileMaintenance` PR instead of duplicating it (#474) |
 | `release-plz.toml` | `[[package]]` list — add your crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Feature flag combos in `clippy-tools` and `mcp-test`; smoke test assertions |
-| `.github/rulesets/quality.json` | `copy-files.sh` already drops the `Firmware (cross-compile nRF52840-DK)` context when `--with-firmware` is not given, so this is usually nothing to adjust manually. The `PR Title / PR title` context is a fixed value (the caller template pins its job's `name: PR Title`), not a best-effort guess to confirm — see `.github/workflows/pr-title.yml` (it calls tarotene/dotfiles' reusable workflow, ADR-0031; nothing in that file itself needs adjusting) |
+| `.github/rulesets/quality.json` | Nothing to adjust — required contexts are the fixed pair `CI passed`/`PR title` (ADR-591 in tarotene/dotfiles), shared with every other governed repository regardless of workspace layout |
 
 ---
 

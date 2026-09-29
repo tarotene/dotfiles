@@ -5,8 +5,11 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
 
 ## What this Skill does
 
-1. Copies parameterised CI/CD templates (6 workflows, including a per-file
-   language-mixing check — `lang-mix.yml` — + composite action + CODEOWNERS)
+1. Copies parameterised CI/CD templates (a consolidated `ci.yml` — every PR
+   gate job plus the `CI passed` aggregate required check, ADR-591 in
+   tarotene/dotfiles — + `pr-title.yml`, `release.yml`,
+   `metrics-reminder.yml`, a per-file language-mixing check `lang-mix.yml`,
+   `nav-docs.yml` + composite action + CODEOWNERS)
    and config files (renovate.json, cliff.toml, .yamllint, Justfile, git hooks,
    AGENTS.md/CLAUDE.md routing skeleton — ADR-0016 in tarotene/dotfiles)
    into the target repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
@@ -26,8 +29,9 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    Mend Renovate App installation, commit-signing setup, first-PR green-check.
 
 This skill is the **Typst/document counterpart** of `rust-repo-governance`.
-It covers the same governance goals (signing, linear history, squash-merge, 5 required
-CI checks, dependency automation) using Typst-appropriate tooling instead of Cargo/clippy.
+It covers the same governance goals (signing, linear history, squash-merge, a
+`CI passed`/`PR title` required-check pair, dependency automation) using
+Typst-appropriate tooling instead of Cargo/clippy.
 
 ---
 
@@ -110,42 +114,30 @@ comment. The table below lists the most important locations:
 | File | What to update |
 |------|----------------|
 | `Justfile` | `COMPILE_FLAGS`, `SRC_*`, `OUT_*`, and `verify` DOCS table |
-| `.github/workflows/build.yml` | `PATTERNS` regex — match your source directory layout |
-| `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path passed to typstyle-action |
-| `.github/workflows/min-typst.yml` | `PATTERNS` regex |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — it calls tarotene/dotfiles' reusable workflow (ADR-0031), which owns the type list. Confirm the actual required-check context on the first PR (see the CI gates section below) |
-| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
+| `.github/workflows/ci.yml` — `build` job | `PATTERNS` regex — match your source directory layout |
+| `.github/workflows/ci.yml` — `fmt` job | `PATTERNS` regex; `inputs:` path passed to typstyle-action |
+| `.github/workflows/ci.yml` — `min-typst` job | `PATTERNS` regex |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — it calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the composite action's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 | `.github/workflows/release.yml` | PDF filenames in the `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body; **delete this file** if not a CV project |
 | `cliff.toml` | `tag_pattern` if your CalVer tag scheme differs |
 | `renovate.json` | Typst toolchain group, custom manager — scheduling/grouping/automerge live in the shared preset it extends |
 
-**Key invariant**: the `name:` field of each workflow job MUST exactly match
-the `context` string in `.github/rulesets/quality.json`. The `__MIN_TYPST__`
-placeholder is substituted in both places simultaneously by seed.sh,
-preserving this match. If you rename a job manually, update the Ruleset
-context too — `apply-rulesets.sh` refuses to apply a context that isn't
-actually reported by a real run (ADR-0000-rulesets-declaration-in-repo), so a
-rename that forgets the other side fails loudly at apply time instead of
-leaving a required check permanently "Expected".
+**Key invariant**: the `name:` field of each workflow job in `ci.yml`
+**must exactly match** the entries in `ci-passed`'s `needs:` (job *id*, not
+`name:`) — the Ruleset only ever requires `CI passed`/`PR title`
+(ADR-591), so individual job `name:` values are display labels and no
+longer need to match anything in `.github/rulesets/quality.json`.
+`workflow-naming-check` (tarotene/dotfiles, a required check on every PR)
+verifies this `needs:` coverage automatically.
 
-**Exception: `pr-title.yml`.** It calls tarotene/dotfiles' reusable
-`pr-title.yml` via `workflow_call` instead of defining its own job, so
-there is no local job `name:` of its own to keep in sync. The reported
-check context is GitHub's own concatenation of the **caller job's**
-`name:` and the called job's `name:` ("PR Title / PR title"). The
-`repo-governance-common/templates/.github/workflows/pr-title.yml`
-template (this skill's copy is a symlink to it) pins the caller job's
-`name: PR Title`, so this string is a fixed value, not a best-effort
-guess — no manual confirmation against the Checks tab is needed. (An
-earlier version of this note said to confirm the string on the first real
-PR; that assumed the wrong half of the concatenation was fixed and missed
-that #337's rollout had seeded a context the then-unnamed caller job
-could never satisfy — ADR-0031's 2026-09-26 Amendment.)
-`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
-re-verifies the match at runtime on every PR via
-`scripts/rulesets-context-check` — which checks every declared and live
-`required_status_checks` context, not just this one.
+**`pr-title.yml`** has no `workflow_call` concatenation to worry about
+(ADR-591 replaced the old reusable-workflow form with a composite action,
+docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
+check context is simply this job's own `name: PR title`, pinned by the
+`repo-governance-common/templates/.github/workflows/pr-title.yml` template
+(this skill's copy is a symlink to it).
 
 ---
 
@@ -155,7 +147,8 @@ Follow `./reference/manual-steps.md` for:
 
 1. **Renovate** — nothing to do per repository; the App is installed account-wide (see `repo-governance-common/reference/renovate-app.md`).
 2. **Commit signing** — SSH or GPG signing for `required_signatures` Ruleset.
-3. **First PR** — push the bootstrapped branch, open PR, wait for 5 green checks.
+3. **First PR** — push the bootstrapped branch, open PR, wait for both
+   required checks (`CI passed`, `PR title`) to go green.
 4. **Apply Rulesets + settings** — run apply-rulesets.sh and apply-repo-settings.sh
    after the first PR is green.
 
@@ -190,11 +183,8 @@ gh api repos/OWNER/REPO/rulesets --jq '.[].name'
 # Required checks in Quality Ruleset:
 gh api repos/OWNER/REPO/rulesets \
   --jq '.[]|select(.name=="Quality")|.rules[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
-# → Build
-# → Format check
-# → Lint
-# → Min Typst (X.Y.Z)
-# → PR Title / PR title   (fixed string — see the Exception note above)
+# → CI passed
+# → PR title
 
 # Repo merge settings:
 gh api repos/OWNER/REPO \
@@ -218,12 +208,16 @@ into some *other* active branch ruleset needs manual removal via
 
 ### CI gates
 
-All 5 required checks should turn green on the first PR.
+The two required checks (`CI passed`, `PR title`) should turn green on the
+first PR. `CI passed` aggregates every job in `ci.yml` (`build`, `fmt`,
+`lint`, `min-typst`) via `needs:` — check the individual job's own logs
+(not the Ruleset context string) to diagnose a red PR.
 
 If `Format check` fails with typstyle errors: run `just fmt` to auto-fix, commit, push.
 If `Min Typst (X.Y.Z)` fails: the project uses features from a Typst version newer than
-`__MIN_TYPST__`. Bump `--min-typst`, update `compiler` in `typst.toml`, and update the
-Ruleset context string to match (all three must stay in sync).
+`__MIN_TYPST__`. Bump `--min-typst` and update `compiler` in `typst.toml`
+(both are substituted into `ci.yml`'s `min-typst` job in sync by
+`copy-files.sh`).
 
 ---
 
@@ -237,11 +231,11 @@ Ruleset context string to match (all three must stay in sync).
 │   │   ├── CODEOWNERS
 │   │   ├── actions/typst-setup/action.yml   typst + fonts + poppler + just
 │   │   └── workflows/
-│   │       ├── build.yml          required: Build         (just build + just verify)
-│   │       ├── fmt.yml            required: Format check   (typstyle --check + yamllint)
-│   │       ├── lint.yml           required: Lint           (actionlint + zizmor)
-│   │       ├── min-typst.yml      required: Min Typst (X.Y.Z)
-│   │       ├── pr-title.yml       required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
+│   │       ├── ci.yml             required: CI passed (aggregate of build/
+│   │       │                      fmt/lint/min-typst via needs:, ADR-591
+│   │       │                      in tarotene/dotfiles)
+│   │       ├── pr-title.yml       required: PR title (calls tarotene/dotfiles'
+│   │       │                      composite action, ADR-0031/ADR-591)
 │   │       ├── release.yml        release: tag + git-cliff + gh-release w/ PDFs
 │   │       └── metrics-reminder.yml  maintenance: monthly CV metrics issue
 │   ├── .githooks/{commit-msg,pre-commit,pre-push}
@@ -253,7 +247,8 @@ Ruleset context string to match (all three must stay in sync).
 │   ├── .github/rulesets/            (declaration copied into the target repo —
 │   │   │                             ADR-0000-rulesets-declaration-in-repo)
 │   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
-│   │   ├── quality.json     typst-specific: signatures + linear history + 5 status checks
+│   │   ├── quality.json     symlink to repo-governance-common: signatures + linear
+│   │   │                    history + the fixed pair CI passed/PR title (ADR-591)
 │   │   ├── workflow.json    shared with repo-governance-common: squash-only (core)
 │   │   └── review.json      shared with repo-governance-common: Copilot code review +
 │   │                        required thread resolution (opt-in, --with-review only)

@@ -15,7 +15,6 @@ MSRV_FULL="1.88.0"
 CANONICAL_CRATE=""
 CLI_CRATE=""
 DEST=""
-WITH_FIRMWARE=false
 WITH_REVIEW=false
 DRY_RUN=false
 # #222: constraints.rust (renovate.json) は "実在する MSRV pin" を表明する
@@ -34,7 +33,6 @@ while [[ $# -gt 0 ]]; do
     --canonical-crate)  CANONICAL_CRATE="$2"; shift 2 ;;
     --cli-crate)        CLI_CRATE="$2";       shift 2 ;;
     --dest)             DEST="$2";            shift 2 ;;
-    --with-firmware)    WITH_FIRMWARE=true;   shift ;;
     --with-review)      WITH_REVIEW=true;     shift ;;
     --dry-run)          DRY_RUN=true;         shift ;;
     *)                  echo "Unknown option: $1"; exit 1 ;;
@@ -125,14 +123,10 @@ echo ""
 # .github
 copy_file ".github/CODEOWNERS"
 copy_file ".github/actions/rust-setup/action.yml"
-copy_file ".github/workflows/fmt.yml"
-copy_file ".github/workflows/host.yml"
-copy_file ".github/workflows/tools.yml"
-copy_file ".github/workflows/msrv.yml"
-[[ "$WITH_FIRMWARE" == "true" ]] && copy_file ".github/workflows/firmware.yml"
+copy_file ".github/workflows/ci.yml"
 copy_file ".github/workflows/release-plz.yml"
 copy_file ".github/workflows/release-binaries.yml"
-copy_file ".github/workflows/release-nudge.yml"
+copy_file ".github/workflows/release-reminder.yml"
 copy_file ".github/workflows/lang-mix.yml"
 copy_file ".github/workflows/nav-docs.yml"
 copy_file ".github/workflows/pr-title.yml"
@@ -168,28 +162,13 @@ copy_file "AGENTS.md"
 copy_file "CLAUDE.md"
 
 # ADR-0000-rulesets-declaration-in-repo: required context の正本を対象
-# リポジトリ自身の .github/rulesets/*.json に置く。security/workflow は
-# repo-governance-common と共有(1本化済み)、quality は rust 固有の
-# job 名を持つためこの skill 自身のテンプレートから。
+# リポジトリ自身の .github/rulesets/*.json に置く。ADR-591(集約 job
+# `CI passed` + `PR title` のみ required)以降、quality.json も
+# security/workflow と同じく repo-governance-common と共有(symlink)。
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"
 copy_file ".github/rulesets/workflow.json"
 [[ "$WITH_REVIEW" == "true" ]] && copy_file ".github/rulesets/review.json"
-
-if [[ "$WITH_FIRMWARE" != "true" && "$DRY_RUN" == "false" && -f "$DEST/.github/rulesets/quality.json" ]]; then
-  # Firmware(cross-compile nRF52840-DK)は組み込みプロジェクト固有の
-  # workflow(--with-firmware で初めてコピーされる)。--with-firmware
-  # 無しではその workflow 自体が存在せず、required context として残すと
-  # 永久に報告されない BLOCKED 事故になる(ADR-0000-rulesets-declaration-
-  # in-repo が修正した事故クラスそのもの)。
-  tmpfile="$(mktemp)"
-  jq '.rules |= map(
-        if .type == "required_status_checks"
-        then .parameters.required_status_checks |= map(select((.context | startswith("Firmware (")) | not))
-        else . end)' \
-    "$DEST/.github/rulesets/quality.json" >"$tmpfile" && mv "$tmpfile" "$DEST/.github/rulesets/quality.json"
-  echo "  (no --with-firmware given: dropped the Firmware required context from quality.json)"
-fi
 
 if [[ "$DRY_RUN" == "false" ]]; then
   verify_declaration "$DEST/.github/rulesets/security.json"

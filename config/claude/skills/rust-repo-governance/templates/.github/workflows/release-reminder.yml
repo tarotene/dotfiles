@@ -1,4 +1,4 @@
-name: Release Nudge
+name: Release reminder
 
 on:
   schedule:
