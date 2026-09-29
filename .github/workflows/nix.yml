@@ -25,6 +25,8 @@ on:
       - "crates/**"
       - "rust-migration.toml"
       - "scripts/**"
+      - "renovate.json"
+      - "renovate/**"
       - ".github/workflows/nix.yml"
   pull_request:
     # Default activity types are opened/synchronize/reopened only (GitHub
@@ -213,6 +215,19 @@ jobs:
       # The corresponding aarch64-darwin build.host matrix row below is the
       # real build coverage for that system.
       - run: nix flake check --all-systems --no-build --print-build-logs
+
+      # docs/adr/0000-renovate-automerge-shared-preset.md D4: the shared
+      # preset (renovate/policy.json) and this repo's own renovate.json
+      # (which extends it) are the only Renovate config in this repo — the
+      # governance skill templates are structurally similar but not valid
+      # standalone config (they carry placeholder tokens), so they are not
+      # validated here. --no-global tells the validator these are repo
+      # config files, not a self-hosted global config; --strict also fails
+      # on migration warnings (e.g. a deprecated option).
+      - run: |
+          nix shell --inputs-from . nixpkgs#renovate -c \
+            renovate-config-validator --strict --no-global \
+              renovate/policy.json renovate.json
 
   # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
   # clippy (--deny warnings) and rustfmt run as crane derivations from

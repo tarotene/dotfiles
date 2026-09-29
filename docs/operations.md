@@ -141,17 +141,19 @@ Notes:
 - If the switch regresses, roll back via generations (see
   [`cutover-runbook.md`](cutover-runbook.md#rollback)).
 - **`renovate.json`'s `nix` manager** (beta, opt-in;
-  <https://docs.renovatebot.com/modules/manager/nix/>) opens a weekly
-  `flake.lock` PR via `lockFileMaintenance`, so drift no longer accumulates
-  silently between manual runs of the command above — this manual routine is
-  now the fallback for out-of-cadence bumps (a specific input regressing, or
-  wanting an update sooner than the weekly PR), not the sole mechanism
+  <https://docs.renovatebot.com/modules/manager/nix/>) is *intended* to open
+  a monthly `flake.lock` PR via `lockFileMaintenance` (see
+  `renovate/policy.json`, `docs/adr/0000-renovate-automerge-shared-preset.md`)
+  once the Mend Renovate App's repository access covers this repo — as of
+  2026-09-29 it does not (0 Renovate PRs against dotfiles to date, confirmed
+  via `gh search prs --author 'app/renovate'`), so the manual routine above
+  remains the *sole* mechanism until the App's access is widened to "All
+  repositories" (a manual runbook step, D5). Once the App runs here, review
+  and merge the Renovate PR the same way as any other — `nix.yml`'s CI still
+  gates it, and a non-major `flake.lock` bump automerges on green checks
   ([#3](https://github.com/tarotene/dotfiles/issues/3)). The GitHub App
   token + `DeterminateSystems/update-flake-lock` route #3 originally
-  proposed was dropped in favor of Renovate, which is already installed on
-  this account and needs no new App/secrets: see #3's resolution comment.
-  Review and merge the Renovate PR the same way as any other — `nix.yml`'s
-  CI still gates it.
+  proposed was dropped in favor of Renovate: see #3's resolution comment.
 - **`nixpkgs-unstable` moves faster than the pinned stable channel it sits
   beside** (ADR-0001 Amendment 2026-08 for `herdr`, 2026-09 for `gh`). Bump it
   explicitly and separately when regressions land there — `nix flake update

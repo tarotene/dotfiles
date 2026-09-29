@@ -309,6 +309,12 @@
   Q1 は新しい道具・単位の誕生を発火点にした前倒し型、Q2 は規範違反の
   再発・コードブロックの逐語反復といった安定の兆候で問う昇格型に分ける
   (段1: `既存手段:` 語彙の新設と `plan-precedent-gate.sh` への必須化)。
+- [ADR-0000](adr/0000-renovate-automerge-shared-preset.md) — Renovate の
+  自動マージ方針(非 major automerge・GitHub ネイティブ auto-merge・
+  minimumReleaseAge 3 日)を単一の共有 preset(`renovate/policy.json`)に
+  一本化し、Dependabot security updates を OFF にして修正 PR の経路を
+  Renovate の `vulnerabilityAlerts` へ一本化する。Self-host との比較と
+  発火条件も記録(PR 作成後に導入 PR 番号へ改番される予定)。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
