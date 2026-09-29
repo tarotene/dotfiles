@@ -141,6 +141,37 @@ dotfiles_override_opts() { # $1=dotfiles revision to pin (pushed main's HEAD)
         --no-write-lock-file
 }
 
+# private_hub_downgrade_guard: decides whether this apply would silently
+# drop a wrapper's private value modules that the *previous* generation
+# already had deployed (#567). Pure function (no I/O) so it can be
+# unit-tested below.
+#
+# Args:
+#   $1 = had_marker_prev_gen — "1" if the current (about-to-be-superseded)
+#        generation's home-files already deployed
+#        `.config/dotfiles/private-hub` (i.e. it was applied through a
+#        wrapper, per home/modules/private-hub.nix), "0" otherwise
+#   $2 = wrapper_ref  — resolve_default_ref's result for *this* apply
+#   $3 = default_ref  — $DEFAULT_REF, to detect "no wrapper registered now"
+#   $4 = public_only  — "1" if `--public-only` was passed, "0" otherwise
+# Prints exactly one line: "ok" or "abort".
+private_hub_downgrade_guard() {
+    local had_marker="$1" wrapper_ref="$2" default_ref="$3" public_only="$4"
+    if [[ "$public_only" == "1" ]]; then
+        printf 'ok\n' # explicit opt-out — the caller knows what they are doing
+        return 0
+    fi
+    if [[ "$wrapper_ref" != "$default_ref" ]]; then
+        printf 'ok\n' # a wrapper is registered for this apply too — no downgrade
+        return 0
+    fi
+    if [[ "$had_marker" == "1" ]]; then
+        printf 'abort\n' # was registered last generation, unregistered now — silent downgrade
+        return 0
+    fi
+    printf 'ok\n' # never had a wrapper registered — nothing to downgrade from
+}
+
 selftest() {
     local fails=0
 
@@ -216,6 +247,31 @@ selftest() {
     check_plan "10 non-local ref on a wrapper host -> asis" \
         "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 0 0 0 \
         "asis"
+
+    check_guard() { # $1=名前 $2=had_marker $3=wrapper_ref $4=default_ref $5=public_only $6=期待する出力
+        local name="$1" had_marker="$2" wrapper_ref="$3" default_ref="$4" public_only="$5" want="$6" got
+        got="$(private_hub_downgrade_guard "$had_marker" "$wrapper_ref" "$default_ref" "$public_only")"
+        if [[ "$got" == "$want" ]]; then
+            echo "ok   $name"
+        else
+            echo "FAIL $name (want '$want' got '$got')" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    echo "private_hub_downgrade_guard:"
+    check_guard "11 前世代にマーカー有り、今回未登録 -> abort(#567 の実際の事故)" \
+        1 "github:tarotene/dotfiles" "github:tarotene/dotfiles" 0 \
+        "abort"
+    check_guard "12 前世代にマーカー有り、今回も登録済み -> ok" \
+        1 "git+https://example.invalid/wrapper" "github:tarotene/dotfiles" 0 \
+        "ok"
+    check_guard "13 前世代にマーカー無し -> ok(そもそも降格ではない)" \
+        0 "github:tarotene/dotfiles" "github:tarotene/dotfiles" 0 \
+        "ok"
+    check_guard "14 --public-only の明示指定 -> ok(意図的な opt-out)" \
+        1 "github:tarotene/dotfiles" "github:tarotene/dotfiles" 1 \
+        "ok"
 
     if [[ $fails -ne 0 ]]; then
         return 1
@@ -363,6 +419,32 @@ check_generation_consistency() {
 }
 
 check_generation_consistency
+
+# private-hub 降格 guard (#567): このホストの直前の generation が既に
+# wrapper 経由で適用済み(home-files に .config/dotfiles/private-hub が
+# 存在する)なのに、今回の resolve_default_ref() が DEFAULT_REF(未登録)
+# に縮退していて、かつ --public-only の明示指定も無いなら、wrapper が配る
+# 私的な value module(bleep の denylist config 等)を無警告で撤去する
+# 適用になる。実際にこの手順で起きた事故(2026-09-29、#567)を機械的に
+# 検知して止める。
+profile_link="$HOME/.local/state/nix/profiles/home-manager"
+had_marker_prev_gen=0
+if [[ -e "$profile_link" ]]; then
+    prev_gen_path="$(readlink -f "$profile_link")"
+    [[ -e "${prev_gen_path}/home-files/.config/dotfiles/private-hub" ]] && had_marker_prev_gen=1
+fi
+guard_verdict="$(private_hub_downgrade_guard "$had_marker_prev_gen" "$wrapper_ref" "$DEFAULT_REF" "$public_only")"
+if [[ "$guard_verdict" == "abort" ]]; then
+    echo "Error: 直前の generation は private wrapper flake 経由で適用済みでしたが、" >&2
+    echo "  今回は ~/.config/dotfiles/private-hub マーカーが見つからず、public" >&2
+    echo "  単体(${DEFAULT_REF})に縮退します。このまま進めると wrapper が配った" >&2
+    echo "  私的な value module(bleep の denylist config 等)が無警告で撤去されます" >&2
+    echo "  (#567、2026-09-29 に実際に発生)。" >&2
+    echo "  意図的な public 単体適用なら --public-only を明示してください。" >&2
+    echo "  wrapper へ戻すなら次でマーカーを復旧してから再実行してください:" >&2
+    echo "    mkdir -p ~/.config/dotfiles && printf '%s\n' '<wrapper flake ref>' > ~/.config/dotfiles/private-hub" >&2
+    exit 1
+fi
 
 extra_opts=()
 

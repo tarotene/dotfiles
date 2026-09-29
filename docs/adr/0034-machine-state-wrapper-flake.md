@@ -235,3 +235,49 @@ Consequences が定めた `hms .`/`hms <path>`(dotfiles worktree の直接適用
 
 - `scripts/hms.sh` — `local_apply_plan`(判定の純関数)と `--public-only`
   フラグ、適用フローへの組み込み、`--selftest` へのケース追加
+
+## Amendment (2026-09-29 — private-hub marker を wrapper 側の宣言で配備し、hms に降格 guard を足す、#567)
+
+2026-09-27 Amendment は「wrapper 経由の `hms .` が既定になった」ことは保証したが、
+「wrapper 経由の適用が起きたのに `~/.config/dotfiles/private-hub` マーカーが
+設置される」ことまでは保証していなかった。マーカーは Decision 3 のとおり手置き
+専用(home-manager 管理外)のままで、wrapper flake のローカル checkout を
+明示パスで適用しても、それだけではこのファイルは作られない。
+
+実例(2026-09-29、arcturus): wrapper flake の PR マージ直後、そのローカル
+checkout を明示パスで `hms` 適用した(gen 85)。マーカーは未設置のままだった。
+次に別セッションが素の `hms`(引数無し)を実行したところ(gen 86)、
+`resolve_default_ref()` は未登録として `DEFAULT_REF`(public 単体)に**無警告で**
+縮退し、home-manager の orphan cleanup が gen 85 で配られた bleep の
+`orgs.txt`/`repos.txt` symlink を撤去した。2026-09-27 Amendment が対処した
+「`hms .` を直接叩く」経路ではなく、「wrapper 経由で適用したのに登録が
+完了しない」という別の経路から、同じ安全装置の無警告な脱落が再発した。
+
+- マーカーの正本を home-manager の宣言に移す。`home/modules/wrapper-hub.nix`
+  が `dotfiles.privateHub.ref`(`nullOr str`、既定 `null`)を公開する
+  「口だけを公開する extensible option」(`dotfiles.detectDrift.issueRepo`
+  と同型、`home/modules/drift.nix`)。既定 `null` のときは何も配備しない。
+  実値は private wrapper flake の extraModules が
+  `dotfiles.privateHub.ref = "<実際の flake ref>";` として注入する — この
+  public リポジトリのソースツリー自体は一切値を持たない(Decision 3 は
+  変わらない: 実値は private 側)。wrapper 経由の適用が成功すれば、
+  マーカーの設置はその適用の**副作用として自動的に**起きるようになり、
+  「適用したのに登録を忘れる」という中間状態が構造的に作れなくなる。
+  - ファイル名は `private-hub.nix` ではなく `wrapper-hub.nix` にした
+    (`.gitignore` の `*private*` 行——秘密情報の取りこぼし防止用の
+    ブロックリスト——に一致してしまい、コミット対象から静かに除外される
+    ため)。オプション名・マーカーのパス自体は既存の呼称(`private-hub`)
+    をそのまま使う。
+- `scripts/hms.sh` に `private_hub_downgrade_guard`(純関数)を追加し、適用
+  フローに組み込む: 直前の generation の home-files に `.config/dotfiles/
+  private-hub` が存在する(=前回は wrapper 経由で適用済み)のに、今回の
+  `resolve_default_ref()` が `$DEFAULT_REF` に縮退していて、かつ
+  `--public-only` の明示指定も無いなら、適用前に abort する。意図的な
+  public 単体適用は `--public-only` で明示することで通せる。
+
+### 執行点
+
+- `home/modules/wrapper-hub.nix` — `dotfiles.privateHub.ref` option の新設
+- `home/common.nix` — 上記モジュールの import
+- `scripts/hms.sh` — `private_hub_downgrade_guard`(判定の純関数)、適用
+  フローへの組み込み、`--selftest` へのケース追加
