@@ -701,6 +701,47 @@ read-only, doesn't re-check what another mechanism already checks"
 boundary `titles` draws between enforcement presence and individual PR
 conformance).
 
+### workflows
+
+Detects drift from the CI workflow naming basis established by a
+`/grill-me` session (`docs/adr/0000-ci-workflow-naming.md`). Unlike
+`titles`/`renovate`/`rulesets`, a repository with **no** `.github/
+workflows` at all is `drifted` here, not `not-applicable` — every
+repository should eventually carry a `ci.yml` (`ci-yml-missing`).
+
+Checks (via the shared `workflowsDir` GraphQL field, plus two new blob-text
+fields — `declCi`/`declPrTitle`, the `ci.yml`/`pr-title.yml` contents at
+`HEAD`):
+
+- **Filenames**: every `.github/workflows/*` entry must end in `.yml`
+  (`file-not-yml`) and be kebab-case (`file-not-kebab`).
+- **`ci-passed` aggregate job**: `ci.yml` must have a job whose id is
+  `ci-passed`, and every other job in the file must appear in that job's
+  `needs:` array (`ci-passed-job-missing`, `ci-passed-needs-missing`,
+  `ci-passed-needs-incomplete:<job-id>`) — GitHub has no `needs: *`, so
+  this coverage is not otherwise checkable at the platform level.
+- **`name:` presence and casing**: both the workflow-level `name:` and
+  every job's `name:` must be present (`workflow-name-missing`,
+  `job-name-missing:<job-id>`) and must not start with a lowercase ASCII
+  letter (`workflow-name-lowercase`, `job-name-lowercase:<job-id>`).
+- **`quality.json` required_status_checks canonical match**
+  (`quality-json-not-canonical`): compared against the single source of
+  truth — this repository's own `config/claude/skills/repo-governance-
+  common/templates/.github/rulesets/quality.json`, read from disk at
+  audit time, not a hardcoded duplicate (ADR-0035 単一正本 > 複写+同期).
+  A repository with no `quality.json` at all is not double-reported here
+  — that is the `rulesets` domain's `rulesets-declaration-missing`.
+- **Legacy reusable-workflow call** (`legacy-reusable-pr-title-call`): a
+  still-live `uses: tarotene/dotfiles/.github/workflows/pr-title.yml@`
+  in `pr-title.yml`, superseded by the composite-action caller form.
+
+`ci.yml`'s job structure is parsed with a line-based `awk` scan (2-space
+indent, `jobs:` last in the file — the shape this repository's own
+templates control), not a general YAML parser: no existing script in this
+repository's `rulesets`/`github-audit` family depends on `yq`, and a
+general structural YAML parser would do more work than this narrowly-
+scoped check needs (ADR-543 Q1 — existing means checked first).
+
 ## Usage
 
 ```console

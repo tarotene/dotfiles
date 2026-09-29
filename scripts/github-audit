@@ -54,6 +54,13 @@ LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifec
 ROUTINES_AUDITOR_SOURCES_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_FILE:-$CONFIG_DIR/routines-auditor-sources.tsv}"
 ROUTINES_AUDITOR_SOURCES_LOCAL_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOCAL_FILE:-$CONFIG_DIR/routines-auditor-sources.local.tsv}"
 
+# workflows domain (CI workflow naming — grill セッション由来 ADR、D12): the
+# single canonical source for required_status_checks contexts is this
+# repository's own repo-governance-common template file, read at runtime —
+# not a hardcoded duplicate (単一正本 > 複写+同期, ADR-0035). Overridable so
+# selftest() can point it at a hermetic fixture instead of the live checkout.
+WORKFLOWS_CANONICAL_QUALITY_FILE="${GITHUB_AUDIT_WORKFLOWS_CANONICAL_QUALITY_FILE:-$(dirname "$SELF")/../config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json}"
+
 # ADR-0020: repositories created on/before this instant are grandfathered
 # under the loose ADR-0014 pattern check; only repositories created after it
 # face the closed-vocabulary strict grammar (species set / site domain set).
@@ -61,7 +68,7 @@ ROUTINES_AUDITOR_SOURCES_LOCAL_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOC
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines workflows)
 
 # renovate domain (docs/adr/0000-renovate-automerge-shared-preset.md D4):
 # the exact, unpinned preset ref every repo's renovate.json should extend.
@@ -191,6 +198,19 @@ judges the requested domains (default: all of them):
              self-audit routine's declared `sources` — otherwise its
              declarations are invisible to the weekly reconcile.
              not-applicable for repos with no `.claude/routines/` entries
+  workflows  CI workflow naming basis (grill セッション由来 ADR): reserved
+             `ci.yml` presence, a single `ci-passed` aggregate job whose
+             `needs:` covers every other job in ci.yml, `name:` present and
+             not lowercase-initial on both the workflow and every job,
+             `.yml`/kebab-case filenames, and `.github/rulesets/quality.json`
+             required_status_checks matching the single canonical source
+             (this repository's own repo-governance-common template, read
+             at runtime). Unlike titles/renovate/rulesets, a repo with NO
+             `.github/workflows` at all is drifted here (ci-yml-missing),
+             not not-applicable — every repo should eventually carry a
+             ci.yml. Also flags a still-live legacy reusable-workflow call
+             to `tarotene/dotfiles/.github/workflows/pr-title.yml@` in
+             pr-title.yml (superseded by the composite-action caller form)
 
 Without options, prints a human-readable report and exits 1 if any
 non-exempt repository is drifted/ungoverned in any judged domain
@@ -411,6 +431,8 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
       flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
       workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
+      declCi: object(expression: \"HEAD:.github/workflows/ci.yml\") { ... on Blob { text } }
+      declPrTitle: object(expression: \"HEAD:.github/workflows/pr-title.yml\") { ... on Blob { text } }
       rulesetsDir: object(expression: \"HEAD:.github/rulesets\") { ... on Tree { entries { name } } }
       declSecurity: object(expression: \"HEAD:.github/rulesets/security.json\") { ... on Blob { text } }
       declQuality: object(expression: \"HEAD:.github/rulesets/quality.json\") { ... on Blob { text } }
@@ -1495,6 +1517,167 @@ judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=ru
 }
 
 # ---------------------------------------------------------------------------
+# workflows domain (CI workflow naming — grill セッション由来 ADR).
+#
+# job 構造の抽出は yq を新規依存させず、awk の行ベース走査 + jq で行う
+# (ADR-543 Q1: 既存手段 — scripts/rulesets-context-check 含め、このリポジトリの
+# rulesets/github-audit 系スクリプトはどれも yq を使わない。jq だけで
+# required_status_checks 相当を扱えている以上、YAML 全体を構造的に読む
+# 汎用パーサは必要な仕事以上をする)。対象は自リポジトリのテンプレートで
+# 書式を統制できる ci.yml に限定し、2 スペース刻みのインデント・`jobs:`
+# セクションが末尾という前提を置く(この前提を崩す変更は、workflows
+# ドメイン自身の selftest が壊れて検出する)。
+parse_ci_yaml() { # stdin=ci.yml のテキスト -> JSON {workflow_name, jobs:[{id,name}], ci_passed_needs}
+  local records
+  records="$(awk '
+    BEGIN { in_jobs = 0; job = ""; wf_seen = 0 }
+    !in_jobs && wf_seen == 0 && /^name:[ \t]*/ {
+      v = $0
+      sub(/^name:[ \t]*/, "", v)
+      gsub(/^"|"$/, "", v)
+      wf_seen = 1
+      print "WFNAME\t" v
+      next
+    }
+    /^jobs:[ \t]*$/ { in_jobs = 1; next }
+    in_jobs && /^  [A-Za-z0-9_-]+:[ \t]*$/ {
+      j = $0
+      sub(/^  /, "", j)
+      sub(/:.*/, "", j)
+      job = j
+      print "JOB\t" job
+      next
+    }
+    in_jobs && job != "" && /^    name:[ \t]*/ {
+      v = $0
+      sub(/^    name:[ \t]*/, "", v)
+      gsub(/^"|"$/, "", v)
+      print "NAME\t" job "\t" v
+      next
+    }
+    in_jobs && job == "ci-passed" && /^    needs:[ \t]*\[/ {
+      v = $0
+      sub(/^    needs:[ \t]*\[/, "", v)
+      sub(/\].*/, "", v)
+      print "NEEDS\t" v
+      next
+    }
+  ')"
+  jq -R -s '
+    (split("\n") | map(select(length > 0) | split("\t"))) as $r
+    | ($r | map(select(.[0] == "WFNAME") | .[1]) | .[0] // null) as $wfname
+    | ($r | map(select(.[0] == "JOB") | .[1])) as $job_ids
+    | ($r | map(select(.[0] == "NAME") | {(.[1]): .[2]}) | add // {}) as $job_names
+    | ($r | map(select(.[0] == "NEEDS") | .[1]) | .[0] // null) as $needs_raw
+    | {
+        workflow_name: $wfname,
+        jobs: ($job_ids | map({id: ., name: ($job_names[.] // null)})),
+        ci_passed_needs: (
+          if $needs_raw == null then null
+          else ($needs_raw | split(",") | map(gsub("^[ \t]+|[ \t]+$"; "")) | map(select(length > 0)))
+          end
+        )
+      }
+  ' <<<"$records"
+}
+
+judge_workflows() { # $1=repo $2=repo-gql-json -> finding
+  local repo="$1" gql="$2" entries has_ci ci_text parsed
+  local -a missing=()
+
+  entries="$(jq -c '(.workflowsDir.entries // [])' <<<"$gql")"
+
+  # basis 7 (titles/renovate/rulesets とは異なり not-applicable にしない):
+  # workflow を1本も持たないリポジトリも ci.yml を持つべきなので drift。
+  has_ci="$(jq -e 'any(.[]; .name == "ci.yml")' <<<"$entries" >/dev/null 2>&1 && echo true || echo false)"
+  [[ $has_ci == true ]] || missing+=("ci-yml-missing")
+
+  # 予約名 .yml / kebab-case のファイル名規律(基準5)。
+  local f
+  while IFS= read -r f; do
+    [[ -n $f ]] && missing+=("file-not-yml:${f}")
+  done < <(jq -r '.[] | select(.name | endswith(".yml") | not) | .name' <<<"$entries")
+  while IFS= read -r f; do
+    [[ -n $f ]] && missing+=("file-not-kebab:${f}.yml")
+  done < <(jq -r '.[] | .name | select(endswith(".yml")) | sub("\\.yml$"; "") | select(test("^[a-z0-9]+(-[a-z0-9]+)*$") | not)' <<<"$entries")
+
+  if [[ $has_ci == true ]]; then
+    ci_text="$(jq -r '.declCi.text // empty' <<<"$gql")"
+    if [[ -z $ci_text ]]; then
+      missing+=("ci-yml-unreadable")
+    else
+      parsed="$(parse_ci_yaml <<<"$ci_text")"
+
+      if jq -e '.workflow_name == null' <<<"$parsed" >/dev/null 2>&1; then
+        missing+=("workflow-name-missing")
+      elif jq -e '.workflow_name | test("^[a-z]")' <<<"$parsed" >/dev/null 2>&1; then
+        missing+=("workflow-name-lowercase")
+      fi
+
+      local ci_passed_present
+      ci_passed_present="$(jq -e '.jobs | any(.id == "ci-passed")' <<<"$parsed" >/dev/null 2>&1 && echo true || echo false)"
+      [[ $ci_passed_present == true ]] || missing+=("ci-passed-job-missing")
+
+      local job_id job_name
+      while IFS=$'\t' read -r job_id job_name; do
+        [[ -n $job_id ]] || continue
+        if [[ -z $job_name || $job_name == "null" ]]; then
+          missing+=("job-name-missing:${job_id}")
+        elif [[ $job_name =~ ^[a-z] ]]; then
+          missing+=("job-name-lowercase:${job_id}")
+        fi
+      done < <(jq -r '.jobs[] | [.id, (.name // "null")] | @tsv' <<<"$parsed")
+
+      if [[ $ci_passed_present == true ]]; then
+        local needs_json other_count
+        needs_json="$(jq -c '.ci_passed_needs // []' <<<"$parsed")"
+        other_count="$(jq '[.jobs[] | select(.id != "ci-passed")] | length' <<<"$parsed")"
+        if [[ "$other_count" -gt 0 && "$(jq 'length' <<<"$needs_json")" -eq 0 ]]; then
+          missing+=("ci-passed-needs-missing")
+        else
+          local j
+          while IFS= read -r j; do
+            [[ -n $j ]] && missing+=("ci-passed-needs-incomplete:${j}")
+          done < <(jq -r --argjson needs "$needs_json" \
+            '[.jobs[] | select(.id != "ci-passed") | .id] - $needs | .[]' <<<"$parsed")
+        fi
+      fi
+    fi
+  fi
+
+  # quality.json ≡ 単一正本(D12: repo-governance-common テンプレート、
+  # 実行時に読む — quality.json 自体が無い repo は rulesets ドメインの
+  # rulesets-declaration-missing が既に拾うのでここでは二重に報告しない)。
+  if [[ -r $WORKFLOWS_CANONICAL_QUALITY_FILE ]]; then
+    local canonical_json quality_text
+    canonical_json="$(jq -c '[.rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?] | sort_by(.context)' \
+      "$WORKFLOWS_CANONICAL_QUALITY_FILE" 2>/dev/null || printf '[]')"
+    quality_text="$(jq -r '.declQuality.text // empty' <<<"$gql")"
+    if [[ -n $quality_text ]]; then
+      local repo_quality_json
+      repo_quality_json="$(jq -c '[.rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?] | sort_by(.context)' \
+        <<<"$quality_text" 2>/dev/null || printf 'null')"
+      [[ "$repo_quality_json" == "$canonical_json" ]] || missing+=("quality-json-not-canonical")
+    fi
+  fi
+
+  # legacy reusable pr-title.yml 呼び出し形(D4/Stage 6 の検証対象)。
+  local pr_title_text
+  pr_title_text="$(jq -r '.declPrTitle.text // empty' <<<"$gql")"
+  if [[ -n $pr_title_text ]] && grep -qE 'uses:[[:space:]]*tarotene/dotfiles/\.github/workflows/pr-title\.yml@' <<<"$pr_title_text"; then
+    missing+=("legacy-reusable-pr-title-call")
+  fi
+
+  if ((${#missing[@]} == 0)); then
+    jq -n '{verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # lifecycle domain (#275, ADR-0023): dormancy candidate scoring.
 #
 # 性質が他 5 ドメインと違う(#261 の裁定)。他ドメインは「あるべき設定から
@@ -1610,7 +1793,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # needs it too, to detect the release-plz.yml/release-please.yml caller.
     # rulesets ALSO now needs it for the declaration text fields
     # (ADR-0000-rulesets-declaration-in-repo).
-    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines ]] && need_graphql=1
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines || $d == workflows ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
     # rulesets' required-context-unreportable check (ADR-0000-rulesets-
     # declaration-in-repo) needs the REST-only latest-PR job names — same
@@ -1725,6 +1908,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             fi
             ;;
           routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
+          workflows) entry="$(judge_workflows "$repo" "$repo_gql")" ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -3099,6 +3283,126 @@ EOF
   jq -e '(.missing | index("pr-title-context-mismatch")) | not' \
     <<<"$(judge_titles titles-ok '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '["PR title"]')" >/dev/null || {
     printf 'FAIL: judge_titles should not flag pr-title-context-mismatch for dotfiles self-apply'"'"'s unconnected "PR title" job name\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # workflows domain(CI workflow naming — grill セッション由来 ADR):
+  # judge_workflows() / parse_ci_yaml() の直接呼び出しテスト。titles と
+  # 同じ理由(repo_gql を直接組み立てられ、live gh 呼び出しが要らない)で
+  # 同じスタイル。WORKFLOWS_CANONICAL_QUALITY_FILE は selftest 専用の
+  # 固定フィクスチャに差し替える(ライブの repo-governance-common テンプレの
+  # 現在の中身に依存させない — 前者が変わっても後者のテストは壊れない)。
+  # ---------------------------------------------------------------------
+
+  cat >"$tmp/fixtures/workflows-canonical-quality.json" <<'EOF'
+{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed","integration_id":15368},{"context":"PR title","integration_id":15368}]}}]}
+EOF
+  WORKFLOWS_CANONICAL_QUALITY_FILE="$tmp/fixtures/workflows-canonical-quality.json"
+
+  local wf_ok_ci wf_bad_ci wf_incomplete_needs
+  wf_ok_ci='name: CI
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    name: Secret scan (gitleaks)
+    steps:
+      - run: echo hi
+  ci-passed:
+    runs-on: ubuntu-latest
+    name: CI passed
+    needs: [gitleaks]
+    if: always()
+    steps:
+      - run: echo done
+'
+  wf_bad_ci='name: ci
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+  shellcheck:
+    runs-on: ubuntu-latest
+    name: shell check
+    steps:
+      - run: echo hi
+'
+  wf_incomplete_needs='name: CI
+jobs:
+  a:
+    name: A
+    steps: []
+  b:
+    name: B
+    steps: []
+  ci-passed:
+    name: CI passed
+    needs: [a]
+    steps: []
+'
+
+  jq -e '.verdict == "drifted" and (.missing | index("ci-yml-missing"))' \
+    <<<"$(judge_workflows workflows-no-ci '{"workflowsDir": {"entries": []}}')" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag ci-yml-missing for a repo with no ci.yml (basis 7: not not-applicable)\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("file-not-yml:deploy.yaml")) and (.missing | index("file-not-kebab:Build.yml"))' \
+    <<<"$(judge_workflows workflows-bad-filenames '{"workflowsDir": {"entries": [{"name": "Build.yml"}, {"name": "deploy.yaml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag non-.yml and non-kebab filenames\n' >&2
+    return 1
+  }
+  local wf_ok_gql wf_ok_result
+  wf_ok_gql="$(jq -n --arg t "$wf_ok_ci" \
+    --arg q '{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed","integration_id":15368},{"context":"PR title","integration_id":15368}]}}]}' \
+    '{workflowsDir: {entries: [{name: "ci.yml"}]}, declCi: {text: $t}, declQuality: {text: $q}}')"
+  wf_ok_result="$(judge_workflows workflows-ok "$wf_ok_gql")"
+  jq -e '.verdict == "ok" and (.missing | length == 0)' <<<"$wf_ok_result" >/dev/null || {
+    printf 'FAIL: judge_workflows should be ok for a canonical ci.yml + matching quality.json: %s\n' "$wf_ok_result" >&2
+    return 1
+  }
+
+  local wf_bad_gql wf_bad_result
+  wf_bad_gql="$(jq -n --arg t "$wf_bad_ci" '{workflowsDir: {entries: [{name: "ci.yml"}]}, declCi: {text: $t}}')"
+  wf_bad_result="$(judge_workflows workflows-bad "$wf_bad_gql")"
+  jq -e '.missing | index("workflow-name-lowercase")' <<<"$wf_bad_result" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag workflow-name-lowercase for `name: ci`: %s\n' "$wf_bad_result" >&2
+    return 1
+  }
+  jq -e '.missing | index("ci-passed-job-missing")' <<<"$wf_bad_result" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag ci-passed-job-missing when no ci-passed job exists: %s\n' "$wf_bad_result" >&2
+    return 1
+  }
+  jq -e '.missing | index("job-name-missing:gitleaks")' <<<"$wf_bad_result" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag job-name-missing for a job without a name field: %s\n' "$wf_bad_result" >&2
+    return 1
+  }
+  jq -e '.missing | index("job-name-lowercase:shellcheck")' <<<"$wf_bad_result" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag job-name-lowercase for `name: shell check`: %s\n' "$wf_bad_result" >&2
+    return 1
+  }
+
+  local wf_needs_gql
+  wf_needs_gql="$(jq -n --arg t "$wf_incomplete_needs" '{workflowsDir: {entries: [{name: "ci.yml"}]}, declCi: {text: $t}}')"
+  jq -e '.missing | index("ci-passed-needs-incomplete:b")' \
+    <<<"$(judge_workflows workflows-needs "$wf_needs_gql")" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag ci-passed-needs-incomplete for a job missing from ci-passed.needs\n' >&2
+    return 1
+  }
+
+  jq -e '.missing | index("quality-json-not-canonical")' \
+    <<<"$(judge_workflows workflows-old-quality '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declQuality": {"text": "{\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"PR Title / PR title\"}]}}]}"}}')" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag quality-json-not-canonical when required_status_checks differs from the canonical template\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("legacy-reusable-pr-title-call")' \
+    <<<"$(judge_workflows workflows-legacy-reusable '{"workflowsDir": {"entries": [{"name": "pr-title.yml"}]}, "declPrTitle": {"text": "jobs:\n  check:\n    uses: tarotene/dotfiles/.github/workflows/pr-title.yml@main\n"}}')" >/dev/null || {
+    printf 'FAIL: judge_workflows should flag legacy-reusable-pr-title-call for the pre-composite-action reusable form\n' >&2
+    return 1
+  }
+  jq -e '(.missing | index("legacy-reusable-pr-title-call")) | not' \
+    <<<"$(judge_workflows workflows-composite-call '{"workflowsDir": {"entries": [{"name": "pr-title.yml"}]}, "declPrTitle": {"text": "jobs:\n  pr-title:\n    steps:\n      - uses: tarotene/dotfiles/.github/actions/pr-title@main\n"}}')" >/dev/null || {
+    printf 'FAIL: judge_workflows should NOT flag legacy-reusable-pr-title-call for the composite-action caller form\n' >&2
     return 1
   }
 
