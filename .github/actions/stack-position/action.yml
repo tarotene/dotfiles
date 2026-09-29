@@ -129,6 +129,15 @@ runs:
               esac
             done
           done
+          # build_touched/rust_touched はグローバル変数で伝える(関数の
+          # 終了ステータスは使わない)。この関数を呼び出す文自体が bare
+          # statement(if/while 条件の外)なので、内部の最後の case 分岐が
+          # 不一致で false を返すとそのまま関数の終了ステータスになり、
+          # set -e がそれを検出して composite action 全体を即死させる —
+          # 同じループを top-level script(旧 nix.yml)で書いていたときは
+          # 起きなかった bash の挙動差(関数化して初めて表面化した、
+          # ADR-591 移行時に実測)。`return 0` で切り離す。
+          return 0
         }
         if case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
           path_reason="label ci:full"
