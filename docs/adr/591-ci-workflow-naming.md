@@ -1,4 +1,4 @@
-# ADR-0000 — 全リポジトリの CI workflow 命名基準を統一する
+# ADR-591 — 全リポジトリの CI workflow 命名基準を統一する
 
 - Status: Accepted
 - Date: 2026-09-30
