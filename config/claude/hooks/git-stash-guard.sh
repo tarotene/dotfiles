@@ -313,8 +313,13 @@ selftest() {
   echo "selftest: OK"
 }
 
-if [[ ${1-} == "--selftest" ]]; then
-  selftest
-else
-  main
+# source 時にこのディスパッチが暴発しないよう、直接実行時のみに限定する
+# (attribution-guard.sh 等と同じイディオム。#531 で Codex adapter から
+# source する際に必要になった)。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  if [[ ${1-} == "--selftest" ]]; then
+    selftest
+  else
+    main
+  fi
 fi

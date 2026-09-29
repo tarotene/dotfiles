@@ -78,7 +78,15 @@ extra = ["bootstrap.sh"]
 # config/claude/hooks/repo-create-guard.sh の 1 件。同じ理由(attribution-
 # guard.sh のコマンド解析エンジンを source して再利用する設計)で bash の
 # まま追加した。stage は同じ 4a グループに寄せる。
-max_remaining = 63
+#
+# 66 = 上記 63 + grill-me セッション(ADR-0032 Amendment、#531)段2で追加
+# した Codex CLI adapter 3本(config/codex/hooks/{stack-base-guard,
+# adr-number,git-stash-guard}.sh)。既存の Claude 側 bash 資産(source する
+# 判定エンジン)を単一正本のまま再利用する設計上、bash のまま追加した —
+# attribution-guard/pr-title-guard の Codex adapter(既存の 4a エントリ)と
+# 同じ理由。#534 のリベース追従(main が 60→63 に進んでいた)で 63→66 に
+# 付け直した。
+max_remaining = 66
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -155,6 +163,18 @@ stage = "4a"
 path = "config/copilot/hooks/pr-title-guard.sh"
 stage = "4a"
 
+# ADR-0032 Amendment (#531): Codex adapter, mirrors its Claude counterpart's
+# stage above (stack-base-guard.sh / adr-number.sh, both 4a) — same
+# precedent as the attribution-guard/pr-title-guard Codex adapters just
+# above.
+[[target]]
+path = "config/codex/hooks/stack-base-guard.sh"
+stage = "4a"
+
+[[target]]
+path = "config/codex/hooks/adr-number.sh"
+stage = "4a"
+
 # --- Stage 4b ---
 [[target]]
 path = "config/claude/hooks/plan-scope-gate.sh"
@@ -179,6 +199,12 @@ stage = "4b"
 # --- Stage 4c ---
 [[target]]
 path = "config/claude/hooks/git-stash-guard.sh"
+stage = "4c"
+
+# ADR-0032 Amendment (#531): Codex adapter, mirrors its Claude counterpart's
+# stage above.
+[[target]]
+path = "config/codex/hooks/git-stash-guard.sh"
 stage = "4c"
 
 [[target]]

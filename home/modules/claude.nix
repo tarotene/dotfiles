@@ -554,6 +554,17 @@ let
   # は decision-colocation-guard と同じ理由で作らない(Claude Code の Plan
   # mode セッションが書く PR 本文に対象を限る)。
   prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
+  # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
+  # Amendment #531)。attribution-guard/pr-title-guard の Codex adapter と
+  # 同じく相対 source パスの都合で ~/.codex/hooks/ 直下固定。
+  codexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
+  codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
+  codexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
+  # rulesets-write-guard(Rust)は Claude/Codex で入出力形が同一
+  # (crates/hook-io の Agent::Claude | Agent::Codex が同じ JSON 形を emit
+  # すると確認済み — crates/hook-io/src/decision.rs)なので adapter を
+  # 挟まず、Claude と同じバイナリを直接 Codex にも登録する。
+  codexRulesetsWriteGuardCmd = "'${config.home.homeDirectory}/.claude/hooks/rulesets-write-guard'";
   # decision-colocation-guard(ADR-396, docs/claude/decision-colocation.md)
   # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
   # は意図的に作らない — CI required check が全エージェント共通の
@@ -1478,6 +1489,27 @@ in
     executable = true;
   };
 
+  # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
+  # Codex CLI 版 adapter — 相対パスで ~/.claude/hooks/git-stash-guard.sh を
+  # 辿るため配置は ~/.codex/hooks/ 直下で固定。Copilot 版は未展開(#161、
+  # MCP tool 名の命名規則が未確認なため attribution-guard 系のみ先行)。
+  home.file.".codex/hooks/git-stash-guard.sh" = {
+    source = repoConfig + "/codex/hooks/git-stash-guard.sh";
+    executable = true;
+  };
+
+  # stack-base-guard(ADR-0027 Amendment #531): Codex CLI 版 adapter。
+  home.file.".codex/hooks/stack-base-guard.sh" = {
+    source = repoConfig + "/codex/hooks/stack-base-guard.sh";
+    executable = true;
+  };
+
+  # adr-number(ADR-380 Amendment #531): Codex CLI 版 adapter。
+  home.file.".codex/hooks/adr-number.sh" = {
+    source = repoConfig + "/codex/hooks/adr-number.sh";
+    executable = true;
+  };
+
   # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
   # 追加を執行点と同じ PR に機械強制する(docs/claude/decision-colocation.md)。
   # attribution-guard.sh を同ディレクトリから source するので、配置は
@@ -1640,6 +1672,38 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg pkexecGuardCopilotCmd} 10
+      '';
+
+  # ADR-0032 Amendment #531 段2: 入力が Claude と同形の PreToolUse/
+  # PostToolUse adapter 群(git-stash-guard/stack-base-guard/adr-number)+
+  # rulesets-write-guard(Rust、直接登録)を Codex CLI に展開する。同じ
+  # lost-update 対策で(この段の時点で最後尾だった)pr-title-guard の登録
+  # ではなく、後から main に入った pkexec-guard の登録の後ろに明示的に
+  # 順序付ける(#534 のリベース追従時に発見 — 同じ registerCodexHooks 対象
+  # ファイルを書く2系統を並行させないため)。
+  home.activation.registerCodexStagedHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPkexecGuardHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexStackBaseGuardCmd} 20 \
+          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexRulesetsWriteGuardCmd} 10 \
+          PostToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexAdrNumberCmd} 10
+      '';
+
+  # ADR-0032 Amendment #531 段2: SessionStart 系は入力が cwd のみで
+  # agent-agnostic なため、adapter を挟まず Claude 版スクリプトをそのまま
+  # Codex にも直接登録する(herdr-codex-metadata.sh とは違い、別スクリプトを
+  # 新設しない点に注意 — こちらは判定ロジックの単一正本を保つのが目的)。
+  home.activation.registerCodexSessionStartHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
+          SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
+          SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
