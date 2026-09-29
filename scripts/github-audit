@@ -56,6 +56,12 @@ NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
 ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines)
 
+# renovate domain (docs/adr/0000-renovate-automerge-shared-preset.md D4):
+# the exact, unpinned preset ref every repo's renovate.json should extend.
+# A `#tag`-pinned or missing reference is drift (judge_renovate()) — D4's
+# whole point is a single floating source of truth, so a pin defeats it.
+RENOVATE_POLICY_PRESET="${GITHUB_AUDIT_RENOVATE_POLICY_PRESET:-github>tarotene/dotfiles//renovate/policy}"
+
 # lifecycle domain (#275, ADR-0023): decision-theory thresholds for the
 # dormancy-scoring signals, deliberately simple and documented so a human
 # reviewing a candidate list can reconstruct why a repo scored the way it
@@ -1215,6 +1221,15 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
     missing+=("squash-title-not-pr-title")
   jq -e '.squash_merge_commit_message == "BLANK"' <<<"$rest" >/dev/null 2>&1 ||
     missing+=("squash-message-not-blank")
+  # docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b: automerge
+  # safety depends on GitHub-native auto-merge being enabled, and the
+  # fix-PR channel must be Renovate alone (Dependabot security updates
+  # off). Both fields are REST-only, same $rest object as the squash
+  # fields above — no extra fetch.
+  jq -e '.allow_auto_merge == true' <<<"$rest" >/dev/null 2>&1 ||
+    missing+=("auto-merge-disabled")
+  jq -e '.security_and_analysis.dependabot_security_updates.status == "disabled"' <<<"$rest" >/dev/null 2>&1 ||
+    missing+=("dependabot-security-updates-enabled")
 
   if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
@@ -1264,10 +1279,31 @@ judge_renovate() { # $1=gql-data-json -> finding
   dashboard_disabled="$(jq -e '.dependencyDashboard == false' <<<"$config_text" > /dev/null 2>&1 && echo true || echo false)"
   dashboard_count="$(jq -r '.renovateDashboard.totalCount // 0' <<<"$gql")"
 
-  if [[ $dashboard_disabled != true && $dashboard_count -eq 0 ]]; then
-    jq -n '{verdict: "drifted", missing: ["renovate-dashboard-missing"]}'
-  else
+  # D4: config must extend the shared automerge policy preset. `extends`
+  # is a JSON array in valid JSON5/JSONC too, so the structured jq check
+  # covers the common case; a fixed-string fallback catches a config_text
+  # that jq cannot parse (JSON5 comments, trailing commas). The fallback
+  # matches the ref wrapped in its own JSON string quotes (a full string
+  # token), not a bare substring — a bare substring match would also
+  # "match" inside a `#tag`-pinned variant (the pin-free ref is itself a
+  # prefix of the pinned one), silently defeating D4's ban on pinning.
+  local preset_ok=false
+  jq -e --arg p "$RENOVATE_POLICY_PRESET" '(.extends // []) | index($p) != null' <<<"$config_text" >/dev/null 2>&1 &&
+    preset_ok=true
+  if [[ $preset_ok != true ]]; then
+    grep -qF -- "\"${RENOVATE_POLICY_PRESET}\"" <<<"$config_text" && preset_ok=true
+  fi
+
+  local -a missing=()
+  [[ $dashboard_disabled != true && $dashboard_count -eq 0 ]] && missing+=("renovate-dashboard-missing")
+  [[ $preset_ok == true ]] || missing+=("renovate-policy-preset-missing")
+
+  if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
   fi
 }
 
@@ -1726,7 +1762,7 @@ EOF
   # message check). Plain `gh api repos/OWNER/REPO` — not the /rulesets
   # sub-path — so the fixture file has no trailing segment.
   cat >"$tmp/fixtures/repos_tarotene_all-ok.json" <<'EOF'
-{"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK"}
+{"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK", "allow_auto_merge": true, "security_and_analysis": {"dependabot_security_updates": {"status": "disabled"}}}
 EOF
 
   # ADR-0000-rulesets-declaration-in-repo: split into the canonical named
@@ -1922,7 +1958,7 @@ EOF
       "declQuality": {"text": "{\"name\":\"Quality\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"required_signatures\"},{\"type\":\"required_linear_history\"},{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"CI\"}]}}],\"bypass_actors\":[]}"},
       "declWorkflow": {"text": "{\"name\":\"Workflow\",\"target\":\"branch\",\"enforcement\":\"active\",\"conditions\":{\"ref_name\":{\"include\":[\"~DEFAULT_BRANCH\"],\"exclude\":[]}},\"rules\":[{\"type\":\"copilot_code_review\"},{\"type\":\"pull_request\",\"parameters\":{\"required_review_thread_resolution\":true,\"allowed_merge_methods\":[\"squash\"]}}],\"bypass_actors\":[]}"},
       "declReview": null,
-      "renovateJson": {"text": "{\"extends\": [\":dependencyDashboard\"]}"},
+      "renovateJson": {"text": "{\"extends\": [\":dependencyDashboard\", \"github>tarotene/dotfiles//renovate/policy\"]}"},
       "renovateJson5": null,
       "ghRenovateJson": null,
       "ghRenovateJson5": null,
@@ -2314,6 +2350,18 @@ EOF
     printf 'FAIL: all-drifted settings should flag default-branch-not-main\n' >&2
     return 1
   }
+  # all-drifted has no repos_tarotene_all-drifted.json REST fixture, so the
+  # stub gh returns `[]` — jq indexing an array with a string errors, which
+  # the `||` fallback correctly treats as "field absent" for both new
+  # settings codes (docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b).
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("auto-merge-disabled")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted settings should flag auto-merge-disabled\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("dependabot-security-updates-enabled")' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted settings should flag dependabot-security-updates-enabled\n' >&2
+    return 1
+  }
 
   # renovate domain
   jq -e '.[] | select(.repo=="all-ok") | .domains.renovate.verdict == "ok"' <<<"$out" >/dev/null || {
@@ -2614,39 +2662,63 @@ EOF
     return 1
   }
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(flakeNix present, renovate.json present, dashboard exists) should be ok\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(flakeNix present, renovate.json extends the preset, dashboard exists) should be ok\n' >&2
     return 1
   }
 
   # #465: renovate.json はあるのに Dependency Dashboard Issue が一度も
   # 作られていない(App の install 漏れ等によるサイレント失敗)場合は
   # drifted:renovate-dashboard-missing を報告する。
-  jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing"))' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(renovate.json present, dashboard totalCount=0) should be renovate-dashboard-missing\n' >&2
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing")) and (.missing | index("renovate-policy-preset-missing") | not)' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(extends the preset, dashboard totalCount=0) should be renovate-dashboard-missing only\n' >&2
     return 1
   }
   # renovateDashboard フィールド自体が無い(GraphQL 側の欠落)場合も
   # totalCount 0 と同じ扱いで drift 側に倒す(fail-safe デフォルト)。
   jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing"))' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(renovate.json present, renovateDashboard field missing) should be renovate-dashboard-missing\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(extends the preset, renovateDashboard field missing) should be renovate-dashboard-missing\n' >&2
     return 1
   }
   # config が明示的に dependencyDashboard: false としているリポジトリは
   # Dashboard が無くて正常なので、drift にしない。
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"dependencyDashboard\": false}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(dependencyDashboard: false, no dashboard issue) should be ok\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"dependencyDashboard\": false, \"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(dependencyDashboard: false, extends the preset, no dashboard issue) should be ok\n' >&2
     return 1
   }
   # JSON5(コメント付き)等パース不能な config テキストでも Dashboard
   # totalCount が非0なら ok(dashboard_disabled の判定失敗をどちらに
-  # 倒しても、Dashboard が実在するなら drift にならないことを確認)。
+  # 倒しても、Dashboard が実在するなら drift にならないことを確認)。preset
+  # 参照はコメント付きで構造的にパース不能でも文字列一致フォールバックで
+  # 拾えることを、同じフィクスチャで確認する。
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson5": {"text": "{ // comment\n}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
-    printf 'FAIL: judge_renovate(unparseable renovate.json5, dashboard exists) should be ok\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson5": {"text": "{ // comment\n  \"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]\n}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(unparseable renovate.json5 but preset ref present via grep fallback, dashboard exists) should be ok\n' >&2
+    return 1
+  }
+
+  # D4: extends を持たない(preset を参照しない)config は
+  # renovate-policy-preset-missing 単独で drifted になる(Dashboard は
+  # 存在するので renovate-dashboard-missing は立たない)。
+  jq -e '.verdict == "drifted" and (.missing == ["renovate-policy-preset-missing"])' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(renovate.json without extends, dashboard exists) should be renovate-policy-preset-missing only\n' >&2
+    return 1
+  }
+  # Dashboard も無ければ両方の code が同時に立つ。
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-dashboard-missing")) and (.missing | index("renovate-policy-preset-missing"))' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{}"}, "renovateDashboard": {"totalCount": 0}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(renovate.json without extends, no dashboard) should report both codes\n' >&2
+    return 1
+  }
+  # D4: preset を #tag でピン留めした参照は「浮動でなければならない」に
+  # 違反するので drift 扱い(完全一致のみ ok とする)。
+  jq -e '.verdict == "drifted" and (.missing | index("renovate-policy-preset-missing"))' \
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy#v1\"]}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(tag-pinned preset ref) should be renovate-policy-preset-missing (D4 forbids pinning)\n' >&2
     return 1
   }
 
@@ -2844,11 +2916,11 @@ EOF
   # ---------------------------------------------------------------------
 
   local meta_ok='{"squashMergeAllowed":true,"mergeCommitAllowed":false,"rebaseMergeAllowed":false,"deleteBranchOnMerge":true,"defaultBranchRef":{"name":"main"},"hasWikiEnabled":false,"hasProjectsEnabled":false}'
-  local rest_ok='{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}'
-  local rest_drift='{"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}'
+  local rest_ok='{"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}'
+  local rest_drift='{"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","allow_auto_merge":false,"security_and_analysis":{"dependabot_security_updates":{"status":"enabled"}}}'
 
   jq -e '.verdict == "ok"' <<<"$(judge_settings "$meta_ok" "$rest_ok")" >/dev/null || {
-    printf 'FAIL: judge_settings should be ok when every field (incl. squash title/message) matches\n' >&2
+    printf 'FAIL: judge_settings should be ok when every field (incl. squash title/message, auto-merge, Dependabot security updates) matches\n' >&2
     return 1
   }
   jq -e '.missing | index("squash-title-not-pr-title")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
@@ -2859,9 +2931,20 @@ EOF
     printf 'FAIL: judge_settings should flag squash-message-not-blank when squash_merge_commit_message != BLANK\n' >&2
     return 1
   }
-  jq -e '.verdict == "drifted" and (.missing | index("squash-title-not-pr-title")) and (.missing | index("squash-message-not-blank")) and (.missing | index("merge-not-squash-only") | not)' \
+  # docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b: automerge
+  # safety needs GitHub-native auto-merge on, and Dependabot's own fix-PR
+  # generation off (Renovate is the single fix-PR channel).
+  jq -e '.missing | index("auto-merge-disabled")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag auto-merge-disabled when allow_auto_merge is false\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("dependabot-security-updates-enabled")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag dependabot-security-updates-enabled when the status is "enabled"\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("squash-title-not-pr-title")) and (.missing | index("squash-message-not-blank")) and (.missing | index("auto-merge-disabled")) and (.missing | index("dependabot-security-updates-enabled")) and (.missing | index("merge-not-squash-only") | not)' \
     <<<"$(judge_settings "$meta_ok" '{}')" >/dev/null || {
-    printf 'FAIL: judge_settings with an unfetchable REST response ({}) should report the squash fields as drifted (fail-open to drift, not silently pass) without also misreporting the otherwise-compliant GraphQL-sourced fields\n' >&2
+    printf 'FAIL: judge_settings with an unfetchable REST response ({}) should report every REST-sourced field as drifted (fail-open to drift, not silently pass) without also misreporting the otherwise-compliant GraphQL-sourced fields\n' >&2
     return 1
   }
 

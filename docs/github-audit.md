@@ -414,7 +414,7 @@ not new signal. `naming` is the sole domain that consults `isArchived`.
 
 ### settings
 
-Reports GitHub repository-settings drift against six baseline
+Reports GitHub repository-settings drift against nine baseline
 expectations:
 
 - `merge-not-squash-only` — squash merges not exclusively allowed (`gh repo
@@ -436,6 +436,15 @@ expectations:
   reported drifted on these two tokens (fail-open to drift, the same
   convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
   never silently treated as compliant.
+- `auto-merge-disabled` / `dependabot-security-updates-enabled`
+  (`docs/adr/0000-renovate-automerge-shared-preset.md` D2/D5b) — same REST
+  object as the two squash fields above (`.allow_auto_merge`,
+  `.security_and_analysis.dependabot_security_updates.status`), no extra
+  fetch. Automerge safety depends on GitHub-native auto-merge being
+  enabled (D2); Dependabot's own fix-PR generation must stay off so
+  Renovate's `vulnerabilityAlerts` is the single fix-PR channel for a
+  given advisory (D5b). Same fail-open-to-drift convention as the squash
+  fields.
 
 ### titles (ADR-0031)
 
@@ -516,11 +525,13 @@ Mend App installation status (which repositories the App's *repository
 access* is scoped to) is still not checked directly — GitHub's REST API
 does not expose it deterministically for a user's own OAuth token
 (`/user/installations` needs a user-to-server token and returns 403
-otherwise, confirmed 2026-09-25); that stays a manual step documented in
-the relevant `*-repo-governance` skill. Since #465 (2026-09-25), the
-domain instead detects a proxy signal for that failure mode: when config
-is present, `dependencyDashboard` is not explicitly disabled in it, and no
-open Issue titled by Renovate's Dependency Dashboard feature exists
+otherwise, confirmed 2026-09-25). As of ADR-0000 D5 the App's access is
+account-wide ("All repositories"), documented as the runbook in
+`config/claude/skills/repo-governance-common/reference/renovate-app.md`.
+Since #465 (2026-09-25), the domain detects a proxy signal for the case
+where the App has not (yet) run on a repository: when config is present,
+`dependencyDashboard` is not explicitly disabled in it, and no open Issue
+titled by Renovate's Dependency Dashboard feature exists
 (`renovate[bot]`-authored, via a GraphQL `filterBy: {createdBy:
 "renovate[bot]"}` query), the domain reports `drifted:
 renovate-dashboard-missing`. This is not gated by Renovate's `schedule`
@@ -531,8 +542,22 @@ unconditionally at the end of every repository run regardless of
 `schedule`, so a repository whose config has landed and whose App access
 is correctly scoped gets a Dashboard Issue within its next run
 (observed same-day to 2-day latency across this account's other
-repositories) — install-scope gaps are the dominant remaining explanation
-for one never appearing.
+repositories) — a first run simply not having happened yet is now the
+dominant remaining explanation for one never appearing (with the App
+account-wide, an install-scope gap is no longer the default assumption).
+
+Since ADR-0000 D4 (2026-09-29), the domain also reports `drifted:
+renovate-policy-preset-missing` when config is present but its `extends`
+array does not contain the exact, unpinned shared-preset reference
+(`github>tarotene/dotfiles//renovate/policy` by default, overridable via
+`GITHUB_AUDIT_RENOVATE_POLICY_PRESET`). The check first tries a structured
+`jq` array-membership test, then falls back to a fixed-string search for
+the ref wrapped in its own JSON string quotes (`"<ref>"`) so a JSON5/JSONC
+config with comments still matches — deliberately not a bare substring
+search, since the pin-free ref is itself a prefix of any `#tag`-pinned
+variant of it, and D4 requires the reference to stay unpinned (floating on
+the preset's default branch). Both `renovate-dashboard-missing` and
+`renovate-policy-preset-missing` can be reported together.
 
 ### lifecycle (#275, ADR-0023)
 
