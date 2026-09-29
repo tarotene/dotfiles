@@ -100,6 +100,26 @@ gcloud projects create <tool>-<github-username>
 gcloud services enable <api-1> <api-2> --project=<tool>-<github-username>
 ```
 
+### IaC(宣言的な構成管理ツール)で管理できる範囲
+
+上記の gcloud コマンドは手動実行の例だが、同じ操作は OpenTofu 等の IaC
+ツールでも宣言できる。個人の GCP アカウント全体を IaC 化した private
+リポジトリでの運用実績(具体的なリポジトリ名は書かない、パターンのみ
+記す)から、次の範囲が宣言的管理下に置けることを確認済み:
+
+- プロジェクトの作成・請求先アカウントへの紐付け(no-org アカウントでは
+  サービスアカウントによるプロジェクト作成は不可 — 人間による ADC
+  (Application Default Credentials)実行が前提になる)
+- 有効化する API の宣言
+- IAM の追加的な権限付与(`*_iam_member` 相当の加算型。既存の
+  `roles/owner` を巻き込んで消しうる authoritative な上書き型
+  (`*_iam_policy`)は避ける)
+- API キーの発行と、そのキーが使える API の制限
+
+一方、OAuth 同意画面・OAuth クライアント ID の作成は、上述のとおり
+Google が該当 API を廃止しているため、恒久的にコンソール手動操作の
+ままである(IaC 側でも自動化できない)。
+
 ## 出典
 
 - Google 公式「Using OAuth 2.0 to Access Google APIs」§Refresh token

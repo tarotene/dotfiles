@@ -81,3 +81,19 @@ CI は base を問わず走る。一方 ruleset `Ephemeral Initial` の条件は
 `required_status_checks` が適用されない(`gh api rules/branches/<非 main>`
 は `[]` を返す、2026-09-09 実測)。つまり前提は正しく、「対象外」と
 「報告されない」を区別せず読める書き方だっただけだった。
+
+## #319 の実害を dotfiles 側でも再現(2026-09-29、#539/#566)
+
+#539(`codex-parity/4-plan-gate`、#531 の stacked PR 最終段)で
+`gh stack link 534 535 537 539` を実行した直後から、そのブランチへの
+通常の `git push`(force push・空コミット含む)が `pull_request` イベントの
+workflow run を一切トリガーしなくなった。`workflow_dispatch` での手動起動は
+正常。`gh api -X PUT repos/.../pulls/<N>/update-branch` は
+`"Updating a stacked PR's branch via this endpoint is not supported."` を
+返し、GitHub がこの PR を stack として特別扱いしていることが確認できる。
+`gh stack unstack <stack-id>` で解除した直後、同じブランチへの push で CI が
+即座に復帰した。
+
+対応: `stacked-pr` skill §3 手順5に「content-final → push → CI green確認 →
+最後に1回だけ link」という回避順序を明記した(#566)。恒久的な修正は
+upstream(github/gh-stack#319)側にしかできない。

@@ -728,6 +728,25 @@ repository, with a `domains` map) instead of the table. A ledger snapshot
 `$XDG_STATE_HOME/github-audit/ledger.json`
 (`GITHUB_AUDIT_STATE_DIR` overrides the directory).
 
+### Running against another owner (#533)
+
+`GITHUB_AUDIT_OWNER` already accepts any owner, but the default `gh repo
+list --limit 500` truncates a large org (e.g. a company org with 1000+
+repos), and there is no way to narrow the result to only the repos this
+account administers. Two env vars close both gaps:
+
+```console
+$ GITHUB_AUDIT_OWNER=<other-org> GITHUB_AUDIT_VIEWER_PERMISSION=ADMIN \
+    GITHUB_AUDIT_REPO_LIMIT=2000 github-audit
+```
+
+`GITHUB_AUDIT_VIEWER_PERMISSION` filters the repo list to a single
+`viewerPermission` value (`ADMIN`/`WRITE`/`READ`/`TRIAGE`/`MAINTAIN`,
+per `gh repo list --json viewerPermission`) before any domain runs.
+`GITHUB_AUDIT_REPO_LIMIT` raises `gh repo list`'s own `--limit` (default
+`500`) — `gh` paginates internally up to that limit, so no wrapper script
+is needed just to page through more repos.
+
 ### Exempting a repository
 
 ```

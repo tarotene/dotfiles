@@ -79,7 +79,14 @@ description: セッション内で複数の PR を作るとき、依存関係を
 5. 全段の PR ができたら `gh stack link <PR番号1> <PR番号2> ... <PR番号N>`
    (最下段から順)で GitHub 上の stack にまとめる(§5 参照)。**この実行は
    完了の一部** — `pr-gate.sh` の `G_stack` が未リンクのまま終わろうとする
-   のを block する(ADR-0027、§8 参照)。
+   のを block する(ADR-0027、§8 参照)。**ただし upstream の既知バグ
+   (github/gh-stack#319、§5 参照)により、link した瞬間からそのブランチ
+   への `pull_request` イベントが一切発火しなくなる。実行順は必ず
+   「全段の内容を確定 → push → `gh pr checks` で CI green を確認 →
+   最後に1回だけ `gh stack link` → 以後そのブランチには push しない」
+   にする。** link 後に修正が必要になった場合は `gh stack unstack
+   <stack-id>` で解除 → push → CI 確認 → 再度 `gh stack link` の順を
+   繰り返す(unstack すると即座に CI が復帰することを実測済み)。
 
 ## 4. 下位段への修正が入ったときの追従
 

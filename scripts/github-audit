@@ -19,6 +19,13 @@ CONFIG_DIR="${GITHUB_AUDIT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-
 STATE_DIR="${GITHUB_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit}"
 OVERRIDES_FILE="${GITHUB_AUDIT_OVERRIDES_FILE:-$CONFIG_DIR/overrides.tsv}"
 GH_BIN="${GITHUB_AUDIT_GH_BIN:-gh}"
+# #533: running against an owner this account does not administer (e.g. a
+# company org) needs two knobs that `gh repo list` itself already supports —
+# neither existed here, so a one-off GITHUB_AUDIT_GH_BIN wrapper was the only
+# way to narrow the result set. `gh` paginates internally up to --limit, so
+# raising this is enough; no manual paging loop is needed here.
+REPO_LIMIT="${GITHUB_AUDIT_REPO_LIMIT:-500}"
+VIEWER_PERMISSION="${GITHUB_AUDIT_VIEWER_PERMISSION:-}"
 TEST_TMP=''
 
 # ADR-0020: closed vocabularies for the naming domain's generative grammar.
@@ -197,6 +204,16 @@ This audit only reports drift — it never applies a fix. Use the
 github-audit-triage skill (or the relevant *-repo-governance skill / gh
 directly) to fix what it finds.
 
+Running against an owner this account does not administer (a company org,
+say) commonly needs two knobs (#533): GITHUB_AUDIT_VIEWER_PERMISSION
+narrows the repo list to a single `viewerPermission` value (e.g. `ADMIN`)
+before any domain is judged, and GITHUB_AUDIT_REPO_LIMIT raises the
+`gh repo list --limit` past its 500 default for orgs with more repos than
+that (gh itself paginates up to the given limit, so no manual loop is
+needed here). Example:
+  GITHUB_AUDIT_OWNER=<other-org> GITHUB_AUDIT_VIEWER_PERMISSION=ADMIN \
+    GITHUB_AUDIT_REPO_LIMIT=2000 github-audit
+
 Exempt a repository from one domain (or all of them) by adding a line
 "<repo><TAB><domain-or-*><TAB>exempt" to
 $XDG_CONFIG_HOME/github-audit/overrides.tsv (override with
@@ -236,10 +253,17 @@ list_repos_meta() { # print: JSON array of repo metadata objects
   # judged an archived (read-only) repo's drift anyway; audit() reports
   # `not-applicable` for them on archived repos instead of silently
   # excluding those repos from the run entirely (see judge dispatch below).
-  "$GH_BIN" repo list "$OWNER" --source --limit 500 --json \
+  local repos_json filter
+  repos_json="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json \
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
-hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived 2>/dev/null
+hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission 2>/dev/null)"
+  if [[ -n $VIEWER_PERMISSION ]]; then
+    filter='[.[] | select(.viewerPermission == $p)]'
+    jq --arg p "$VIEWER_PERMISSION" "$filter" <<< "$repos_json"
+  else
+    printf '%s' "$repos_json"
+  fi
 }
 
 # CI の成否(#275, lifecycle domain)。有無(workflowsDir の存在)は他ドメイン
@@ -3247,6 +3271,47 @@ ARCHGQL
   }
   jq -e '.[] | select(.repo=="archived-repo") | .domains.naming.verdict == "ok" and (.domains.naming.lifecycle_candidates | any(startswith("lifecycle-study-candidate:")))' <<<"$out_archived" >/dev/null || {
     printf 'FAIL: archived repo should still be judged by naming and surface a lifecycle-study candidate from its description: %s\n' "$(jq -c '.[] | select(.repo=="archived-repo") | .domains.naming' <<<"$out_archived")" >&2
+    return 1
+  }
+
+  # #533: GITHUB_AUDIT_VIEWER_PERMISSION / GITHUB_AUDIT_REPO_LIMIT を
+  # list_repos_meta() 単体で検査する(audit() 全体を通す上の巨大な
+  # fixture フローには乗せず、対象の関数だけを source して直接叩く)。
+  local viewer_log viewer_stub_out
+  viewer_log="$tmp/gh-viewer.log"
+  cat >"$tmp/bin/gh-viewer-stub" <<'VSTUB'
+#!/usr/bin/env bash
+if [[ "$1" == "repo" && "$2" == "list" ]]; then
+  printf '%s\n' "$*" >>"$GH_VIEWER_STUB_LOG"
+  printf '[{"name":"admin-repo","viewerPermission":"ADMIN"},{"name":"write-repo","viewerPermission":"WRITE"}]\n'
+else
+  exit 1
+fi
+VSTUB
+  chmod +x "$tmp/bin/gh-viewer-stub"
+
+  viewer_stub_out="$(
+    GITHUB_AUDIT_GH_BIN="$tmp/bin/gh-viewer-stub" \
+      GITHUB_AUDIT_VIEWER_PERMISSION="ADMIN" \
+      GH_VIEWER_STUB_LOG="$viewer_log" \
+      bash -c 'source "$1"; list_repos_meta' _ "$SELF"
+  )"
+  jq -e '. == [{"name":"admin-repo","viewerPermission":"ADMIN"}]' <<<"$viewer_stub_out" >/dev/null || {
+    printf 'FAIL: GITHUB_AUDIT_VIEWER_PERMISSION がフィルタしなかった: %s\n' "$viewer_stub_out" >&2
+    return 1
+  }
+  grep -qF -- '--limit 500' "$viewer_log" || {
+    printf 'FAIL: GITHUB_AUDIT_REPO_LIMIT の既定値(500)が渡らなかった: %s\n' "$(cat "$viewer_log")" >&2
+    return 1
+  }
+
+  : >"$viewer_log"
+  GITHUB_AUDIT_GH_BIN="$tmp/bin/gh-viewer-stub" \
+    GITHUB_AUDIT_REPO_LIMIT="37" \
+    GH_VIEWER_STUB_LOG="$viewer_log" \
+    bash -c 'source "$1"; list_repos_meta' _ "$SELF" >/dev/null
+  grep -qF -- '--limit 37' "$viewer_log" || {
+    printf 'FAIL: GITHUB_AUDIT_REPO_LIMIT=37 が --limit に反映されなかった: %s\n' "$(cat "$viewer_log")" >&2
     return 1
   }
 

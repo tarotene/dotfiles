@@ -121,6 +121,7 @@ copy_file ".github/workflows/release-please.yml"
 copy_file ".github/workflows/lang-mix.yml"
 copy_file ".github/workflows/nav-docs.yml"
 copy_file ".github/workflows/pr-title.yml"
+copy_file ".github/zizmor.yml"
 
 # .githooks
 copy_file ".githooks/commit-msg"

@@ -123,6 +123,7 @@ comment. The most important locations:
 | `renovate.json` | Adjust `packageRules` grouping for your actual dependencies |
 | `biome.json` | Check `files.includes` globs match your TS/CSS paths; **never add `.mdx` or `.astro`** |
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 
 **Key invariant:** The `name:` field of each workflow job in `ci.yml` must
 exactly match the `context` string in `.github/rulesets/quality.json`. These
