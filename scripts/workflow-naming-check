@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# workflow-naming-check — CI workflow 命名基準(docs/adr/591-ci-workflow-
+# naming.md)の drift を、対象リポジトリの PR head に対して required check
+# として検査する(.github/actions/pr-title の一 step)。
+#
+# 判定ロジックは新設しない: scripts/github-audit の judge_workflows() を
+# source して再利用する(scripts/rulesets-context-check が
+# fetch_head_sha_job_names() を source する型と同じ、ADR-0035 D1
+# 「単一正本 > 複写+同期」)。この script が足すのは REST API から
+# judge_workflows() が期待する JSON 形(GraphQL バッチクエリの repo_gql と
+# 同じ形)を組み立てる薄い層だけ。
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./github-audit
+source "$SCRIPT_DIR/github-audit"
+
+# 呼び出しのたびに解決する(--selftest の *_GH_BIN 差し替えが効くように、
+# rulesets-context-check と同じ理由)。
+GH_BIN="${WORKFLOW_NAMING_CHECK_GH_BIN:-gh}"
+
+usage() {
+  cat <<'EOF'
+usage: workflow-naming-check <owner>/<repo> [--ref REF]
+       workflow-naming-check --selftest
+
+judge_workflows()(scripts/github-audit)を対象リポジトリの REST API 実測
+データに対して実行し、CI workflow 命名基準(docs/adr/591-ci-workflow-
+naming.md)から drift していれば非0で終了する。
+
+--ref を省略すると対象リポジトリの default branch を検査する。PR の head
+を検査したいときは呼び出し側(.github/actions/pr-title)が
+github.event.pull_request.head.sha を明示的に渡す。
+EOF
+}
+
+# $1=owner/repo $2=ref -> judge_workflows() が期待する repo_gql 形の JSON
+fetch_repo_shape() {
+  local owner_repo="$1" ref="$2" entries decl_ci decl_pr_title decl_quality
+
+  entries="$("$GH_BIN" api "repos/$owner_repo/contents/.github/workflows" -X GET -F "ref=$ref" \
+    --jq '[.[] | select(.type == "file") | {name: .name}]' 2>/dev/null || printf '[]')"
+
+  decl_ci="$(fetch_content_text "$owner_repo" ".github/workflows/ci.yml" "$ref")"
+  decl_pr_title="$(fetch_content_text "$owner_repo" ".github/workflows/pr-title.yml" "$ref")"
+  decl_quality="$(fetch_content_text "$owner_repo" ".github/rulesets/quality.json" "$ref")"
+
+  jq -n --argjson entries "$entries" --arg ci "$decl_ci" --arg pt "$decl_pr_title" --arg q "$decl_quality" '
+    {
+      workflowsDir: {entries: $entries},
+      declCi: (if $ci == "" then null else {text: $ci} end),
+      declPrTitle: (if $pt == "" then null else {text: $pt} end),
+      declQuality: (if $q == "" then null else {text: $q} end)
+    }
+  '
+}
+
+# $1=owner/repo $2=path(.github/... 形) $3=ref -> ファイル内容(無ければ空文字)
+fetch_content_text() {
+  local owner_repo="$1" path="$2" ref="$3" content
+  content="$("$GH_BIN" api "repos/$owner_repo/contents/$path" -X GET -F "ref=$ref" \
+    --jq '.content' 2>/dev/null || printf '')"
+  [[ -n "$content" ]] || {
+    printf ''
+    return
+  }
+  base64 -d <<<"$content" 2>/dev/null || printf ''
+}
+
+main() {
+  local owner_repo='' ref=''
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --selftest)
+        selftest
+        return
+        ;;
+      --ref)
+        ref="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      -*)
+        usage >&2
+        return 2
+        ;;
+      *)
+        owner_repo="$1"
+        shift
+        ;;
+    esac
+  done
+  [[ -n "$owner_repo" ]] || {
+    usage >&2
+    return 2
+  }
+
+  if [[ -z "$ref" ]]; then
+    ref="$("$GH_BIN" api "repos/$owner_repo" --jq '.default_branch' 2>/dev/null)" || {
+      printf 'workflow-naming-check: %s の default branch 取得に失敗しました(fail-closed)\n' "$owner_repo" >&2
+      return 1
+    }
+  fi
+
+  # OWNER は github-audit 側の既定値(tarotene)を持ったまま source されて
+  # いるため、owner_repo の owner が異なると judge_workflows() 自体には
+  # 影響しない(judge_workflows は $2 の JSON だけを見る)が、将来
+  # judge_workflows() が github-audit の他ヘルパーを呼ぶようになったとき
+  # のために、rulesets-context-check / apply-rulesets.sh と同じ防御を
+  # 先に入れておく(D8, ADR-0035 表現不可能性)。
+  OWNER="${owner_repo%%/*}"
+
+  local gql result verdict
+  gql="$(fetch_repo_shape "$owner_repo" "$ref")"
+  result="$(judge_workflows "$owner_repo" "$gql")"
+  verdict="$(jq -r '.verdict' <<<"$result")"
+  if [[ "$verdict" == drifted ]]; then
+    printf 'workflow-naming-check: %s@%s has drifted from the CI workflow naming basis (docs/adr/591-ci-workflow-naming.md):\n' "$owner_repo" "$ref" >&2
+    jq -r '.missing[] | "  - \(.)"' <<<"$result" >&2
+    return 1
+  fi
+  printf 'workflow-naming-check: OK\n'
+}
+
+selftest() {
+  local fails=0 tmp
+
+  check() { # $1=名前 $2=owner/repo $3=ref $4=entries-json $5=ci-yml-text(空=無し) $6=pr-title-yml-text(空=無し) $7=quality-json-text(空=無し) $8=期待exit $9=期待する文字列
+    local name="$1" owner_repo="$2" ref="$3" entries_json="$4" ci_text="$5" pt_text="$6" quality_text="$7" want="$8" grep_for="${9:-}"
+    local rc=0
+
+    mkdir -p "$tmp/fixtures"
+    printf '%s' "$entries_json" >"$tmp/fixtures/$(fixture_key "repos/$owner_repo/contents/.github/workflows").json"
+    write_content_fixture "$owner_repo" ".github/workflows/ci.yml" "$ci_text"
+    write_content_fixture "$owner_repo" ".github/workflows/pr-title.yml" "$pt_text"
+    write_content_fixture "$owner_repo" ".github/rulesets/quality.json" "$quality_text"
+
+    main "$owner_repo" --ref "$ref" >"$tmp/out.log" 2>"$tmp/err.log" || rc=$?
+    if [[ "$rc" != "$want" ]]; then
+      echo "FAIL $name (expected rc=$want got rc=$rc)" >&2
+      cat "$tmp/out.log" "$tmp/err.log" >&2
+      fails=$((fails + 1))
+      return
+    fi
+    if [[ -n "$grep_for" ]] && ! grep -qF "$grep_for" "$tmp/out.log" "$tmp/err.log"; then
+      echo "FAIL $name (expected output to contain: $grep_for)" >&2
+      cat "$tmp/out.log" "$tmp/err.log" >&2
+      fails=$((fails + 1))
+      return
+    fi
+    echo "ok   $name"
+  }
+
+  fixture_key() { # $1=gh api path(先頭 repos/... の完全形) -> gh スタブと同じ key
+    tr '/.' '__' <<<"$1"
+  }
+
+  write_content_fixture() { # $1=owner/repo $2=.github/... 形の path $3=text(空=fixture作らない=404扱い)
+    local owner_repo="$1" rel_path="$2" text="$3"
+    local file="$tmp/fixtures/$(fixture_key "repos/$owner_repo/contents/$rel_path").json"
+    if [[ -z "$text" ]]; then
+      rm -f "$file"
+      return
+    fi
+    local content
+    content="$(base64 -w0 <<<"$text")"
+    printf '{"content":"%s"}' "$content" >"$file"
+  }
+
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp/bin" "$tmp/fixtures"
+
+  # github-audit / rulesets-context-check の selftest と同じ gh スタブ規則
+  # (path → file, '/' と '.' を '_' に、-F の値は path 選択には使わない)。
+  cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+dir="$(dirname "$0")"
+fixtures="$dir/../fixtures"
+[[ "$1" == api ]] || exit 1
+shift
+path="$1"
+shift
+jqfilter=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --jq) jqfilter="$2"; shift 2 ;;
+    -X | -F) shift 2 ;;
+    *) shift ;;
+  esac
+done
+key="$(printf '%s' "$path" | tr '/.' '__')"
+if [[ ! -f "$fixtures/$key.json" ]]; then
+  echo "gh: Not Found (HTTP 404)" >&2
+  exit 1
+fi
+if [[ -n "$jqfilter" ]]; then
+  jq -rc "$jqfilter" "$fixtures/$key.json"
+else
+  cat "$fixtures/$key.json"
+fi
+STUB
+  chmod +x "$tmp/bin/gh"
+  # WORKFLOW_NAMING_CHECK_GH_BIN ではなく GH_BIN 自体を直接差し替える —
+  # GH_BIN は起動時(このスクリプトのトップレベル)に一度だけ解決済みの
+  # グローバル変数なので、ここで環境変数を設定し直しても遅すぎる
+  # (WORKFLOWS_CANONICAL_QUALITY_FILE で踏んだのと同じ穴)。
+  GH_BIN="$tmp/bin/gh"
+
+  # judge_workflows() の quality-json-not-canonical 判定を、ライブの
+  # repo-governance-common テンプレートの現在の中身から切り離す
+  # (scripts/github-audit --selftest と同じ理由)。
+  cat >"$tmp/fixtures/canonical-quality.json" <<'EOF'
+{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed"},{"context":"PR title"}]}}]}
+EOF
+  WORKFLOWS_CANONICAL_QUALITY_FILE="$tmp/fixtures/canonical-quality.json"
+
+  local ci_ok='name: CI
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    name: Secret scan (gitleaks)
+    steps:
+      - run: echo hi
+  ci-passed:
+    runs-on: ubuntu-latest
+    name: CI passed
+    needs: [gitleaks]
+    if: always()
+    steps:
+      - run: echo done
+'
+  local quality_ok='{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed"},{"context":"PR title"}]}}]}'
+  local entries_ok='[{"name":"ci.yml","type":"file"},{"name":"pr-title.yml","type":"file"}]'
+
+  check "1 適合フィクスチャ: ok" "tarotene/wf-ok" "abc" \
+    "$entries_ok" "$ci_ok" "" "$quality_ok" \
+    0 'OK'
+
+  check "2 workflows dir 無し: ci-yml-missing" "tarotene/wf-no-dir" "abc" \
+    '[]' "" "" "" \
+    1 'ci-yml-missing'
+
+  local ci_bad='name: ci
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+'
+  check "3 name 欠落 + workflow-name-lowercase" "tarotene/wf-bad-names" "abc" \
+    '[{"name":"ci.yml","type":"file"}]' "$ci_bad" "" "" \
+    1 'job-name-missing:gitleaks'
+
+  local pt_legacy='jobs:
+  check:
+    uses: tarotene/dotfiles/.github/workflows/pr-title.yml@main
+'
+  check "4 legacy reusable 呼び出しを検出" "tarotene/wf-legacy" "abc" \
+    "$entries_ok" "$ci_ok" "$pt_legacy" "$quality_ok" \
+    1 'legacy-reusable-pr-title-call'
+
+  rm -rf "$tmp"
+  if ((fails > 0)); then
+    echo "selftest: $fails failure(s)" >&2
+    return 1
+  fi
+  echo "selftest: OK"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

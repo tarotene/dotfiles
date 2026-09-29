@@ -1,0 +1,111 @@
+name: 'PR title contract'
+description: >-
+  PR タイトルの commit-message 契約(ADR-0031, docs/claude/pr-title-
+  contract.md)を強制する required check の実体。ADR-591(docs/adr/591-
+  ci-workflow-naming.md D3)により、以前の `workflow_call` reusable
+  workflow から composite action へ置換した — reusable は必ず
+  「呼び出し側 job 名 / 呼ばれる job 名」の連結名を作り、この連結ルールの
+  誤解が required check context の不一致事故(#337)とテンプレートの
+  権限・pin 不具合(#491)を生んだ。composite action はこの連結が発生
+  しない(呼び出し側 job の `name:` だけが required check context になる)
+  ため、その事故の型自体が構造的に無くなる。
+
+  判定ロジックは全て tarotene/dotfiles の scripts/ 配下(pr-title-check /
+  pr-merge-settings-check / rulesets-context-check / workflow-naming-
+  check)に一元化されており、この action はその呼び出しに徹する。呼び出し
+  元リポジトリの checkout 状態には依存しない — 常に別途 dotfiles を
+  sparse-checkout する(dotfiles 自身の PR ではこの PR 自身の head SHA、
+  他リポジトリでは main の安定版)。
+
+inputs:
+  title:
+    description: 検査対象の PR タイトル(通常は github.event.pull_request.title)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # 文法検査・宣言検査の単一ソース(scripts/*)を取得する。dotfiles 自身
+    # のトリガー(github.repository == tarotene/dotfiles)では、この PR
+    # 自身の head SHA から取得する — checker 自体を変更する PR を、まだ
+    # main に乗っていない版で検査できる(旧 reusable workflow から引き継ぐ
+    # 挙動、docs/claude/pr-title-contract.md 参照)。path をリポジトリ直下
+    # ではなく専用ディレクトリにする — 呼び出し元リポジトリ自身の
+    # checkout 内容(既に checkout 済みのはず)を上書きしないため。
+    - uses: actions/checkout@v4
+      with:
+        repository: tarotene/dotfiles
+        ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
+        sparse-checkout: |
+          scripts/pr-title-check
+          scripts/github-audit
+          scripts/pr-merge-settings-check
+          scripts/rulesets-context-check
+          scripts/workflow-naming-check
+        sparse-checkout-cone-mode: false
+        path: .pr-title-tools
+
+    - name: Validate PR title
+      shell: bash
+      env:
+        TITLE: ${{ inputs.title }}
+      run: |
+        set -euo pipefail
+        chmod +x .pr-title-tools/scripts/pr-title-check
+        .pr-title-tools/scripts/pr-title-check "$TITLE"
+
+    # ADR-0031 Amendment: PR タイトル契約は squash merge 設定の上に乗った
+    # proxy であり、その設定が drift すると契約全体が無声でバイパスされる。
+    # ここで前提の生存を required check として検査する(旧 reusable
+    # workflow から引き継ぐ挙動)。GITHUB_TOKEN の contents:write が要る
+    # (呼び出し元ワークフロー側の job permissions で明示する必要がある —
+    # 下記コメント参照)。
+    - name: Validate merge settings prerequisite
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        chmod +x .pr-title-tools/scripts/pr-merge-settings-check
+        .pr-title-tools/scripts/pr-merge-settings-check "${{ github.repository }}"
+
+    # ADR-0000-rulesets-declaration-in-repo: 呼び出し元(caller)リポジトリ
+    # の .github/rulesets/quality.json 宣言と live な branch ruleset の
+    # 両方を、この PR の head で実際に報告される job 名(Actions API)と
+    # 突合する。`actions: read` が呼び出し元ワークフロー側の job
+    # permissions に必要(下記コメント参照)。
+    - name: Validate required-check contexts
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        chmod +x .pr-title-tools/scripts/rulesets-context-check
+        .pr-title-tools/scripts/rulesets-context-check \
+          "${{ github.repository }}" \
+          "${{ github.event.pull_request.head.sha }}" \
+          "${{ github.event.repository.default_branch }}"
+
+    # ADR-591(docs/adr/591-ci-workflow-naming.md): CI workflow 命名基準
+    # (集約 job・name: casing・ファイル名・quality.json 正本一致)の drift
+    # を、この PR の head に対して検査する。
+    - name: Validate workflow naming
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        chmod +x .pr-title-tools/scripts/workflow-naming-check
+        .pr-title-tools/scripts/workflow-naming-check \
+          "${{ github.repository }}" \
+          --ref "${{ github.event.pull_request.head.sha }}"
+
+# 呼び出し元ワークフロー側で必要な job permissions(この composite action
+# 自体は permissions を宣言できない — job 単位でしか宣言できないため、
+# caller テンプレート(config/claude/skills/repo-governance-common/
+# templates/.github/workflows/pr-title.yml)側にコメントで明記する):
+#   contents: write  — merge 設定フィールドの読み取り(GitHub REST API の
+#                      仕様上、contents:read だけでは squash_merge_commit_
+#                      title 等がレスポンスから欠落する)
+#   actions: read    — Validate required-check contexts / Validate
+#                      workflow naming が自 run の jobs を読むために必要
