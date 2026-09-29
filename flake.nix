@@ -37,9 +37,13 @@
     # Renamed from tarotene/publish-guard (github#28). This rev additionally
     # carries the orgs.txt fail-loud fix (tarotene/bleep#31): scan* now
     # returns ask instead of silently passing when the org denylist is
-    # unconfigured (ADR-0034 Amendment).
+    # unconfigured (ADR-0034 Amendment). Bumped past the judgement ledger
+    # (tarotene/bleep#32) and the `cd ~/...`/`git -C ~/...` HOME expansion
+    # fix (tarotene/bleep#39, tarotene/bleep#40) — cd/git -C with a tilde no
+    # longer produces a nonexistent push_dir that escalated push-diff checks
+    # to ask regardless of the actual diff content.
     bleep = {
-      url = "github:tarotene/bleep/74ba946bd5f46fd6622de333d5020bfbb1207ae8";
+      url = "github:tarotene/bleep/766f516ede807a30548f771eb2bd72359f5af201";
       flake = false;
     };
 
