@@ -50,21 +50,25 @@ run_main() {
   }
 
   # --- 常用スタジオ(ノア等、state/places.toml の preferred_venues) ---
-  local n_pref i pv service branch
+  # id(あれば)をそのまま通す — performance-planning 側の venue_policy.venue
+  # (private な person-state リポジトリ側 ADR-0017)と突き合わせるための
+  # 参照キー。id を持たない古い places.toml でも動く(null のまま通す)。
+  local n_pref i pv service branch id
   n_pref="$(jq -r '(.preferred_venues // []) | length' <<<"$places_json")"
   for ((i = 0; i < n_pref; i++)); do
     pv="$(jq -c ".preferred_venues[$i]" <<<"$places_json")"
+    id="$(jq -r '.id // empty' <<<"$pv")"
     service="$(jq -r '.service' <<<"$pv")"
     branch="$(jq -r '.branch' <<<"$pv")"
     if [[ "$service" == "ピアノスタジオノア" ]]; then
-      add "$(jq -n --arg service "$service" --arg branch "$branch" \
-        '{service: $service, branch: $branch,
+      add "$(jq -n --arg id "$id" --arg service "$service" --arg branch "$branch" \
+        '{id: (if $id == "" then null else $id end), service: $service, branch: $branch,
           url: "https://www.grandpiano.jp/noahweb/webs/chart/",
           login_required: false,
           note: "週表示はログイン不要(実測 2026-09-27)。Web予約は毎月末17:00に4か月先の月末まで開く。2名の個人練習料金枠は前日21:00から。店舗を選んで空きを確認する。表示可能な週は今日から約13週先まで(実測 2026-09-28)。操作手順は SKILL.md 3.1・scripts/noah-chart.js を参照。"}')"
     else
-      add "$(jq -n --arg service "$service" --arg branch "$branch" \
-        '{service: $service, branch: $branch, url: null, login_required: null,
+      add "$(jq -n --arg id "$id" --arg service "$service" --arg branch "$branch" \
+        '{id: (if $id == "" then null else $id end), service: $service, branch: $branch, url: null, login_required: null,
           note: "この service 向けの既知 URL が無い。手動で確認する。"}')"
     fi
   done
@@ -139,6 +143,7 @@ municipality = "どこか区"
 status = "not-registered"
 
 [[preferred_venues]]
+id = "test-noah"
 service = "ピアノスタジオノア"
 branch = "秋葉原"
 
@@ -157,6 +162,10 @@ TOML
     "$(jq '[.[] | select(.service == "未登録システム")] | length' <<<"$out_no_needs")"
   check "未知の service は url:null で列挙される" "null" \
     "$(jq -r '.[] | select(.service == "未知のサービス") | .url' <<<"$out_no_needs")"
+  check "id ありの preferred_venues は id を通す" "test-noah" \
+    "$(jq -r '.[] | select(.service == "ピアノスタジオノア") | .id' <<<"$out_no_needs")"
+  check "id 無しの preferred_venues は id:null で列挙される" "null" \
+    "$(jq -r '.[] | select(.service == "未知のサービス") | .id' <<<"$out_no_needs")"
 
   out_piano="$(bash "$self" --hub "$dir/hub" --needs grand-piano)"
   check "needs=grand-piano で SpaceMarket/Instabase を含む" 2 \

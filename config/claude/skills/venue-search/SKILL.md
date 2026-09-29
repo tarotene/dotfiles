@@ -27,9 +27,15 @@ HUB="$(performance-hub)" || exit 1
 ## 1. 要件を集める
 
 - 日時(合わせ・練習の候補日、または探したい期間)
-- 希望エリア(`state/performances/*.toml` の対象 rehearsal に `area` が
-  あればそれ、無ければ `state/places.toml` の `home`/`work` の駅を起点に
-  する)
+- 希望エリア。対象 rehearsal の `venue-booking` 付随作業の `stage`
+  (`performance-planning` スキルの手順で `obligations.sh --json` から
+  読む、person-state リポジトリ側の決定 — 存在だけ参照する)で分岐する:
+  - `book`(`area` 合意済み): rehearsal の `area` を起点にする。
+  - `propose`/`confirm-first`(既定会場のポリシーあり): `proposal.venue`
+    (`state/places.toml` の `preferred_venues[].id`)が指す店舗そのもの
+    を起点にする — 自宅・職場起点の代わりにこれを使う。
+  - `agree-area`(既定なし): 従来どおり `state/places.toml` の
+    `home`/`work` の駅を起点にする。
 - 会場要件(`venue_needs` の閉語彙。現状 `grand-piano`/`upright-piano`)
 
 ## 2. 候補サービスを機械的に列挙する
@@ -42,8 +48,10 @@ HUB="$(performance-hub)" || exit 1
 bash scripts/venue-urls.sh --hub "$HUB" --needs grand-piano
 ```
 
-出力の各要素は `service`/`branch`/`url`/`login_required`/`note`。`url` が
-`null` のものは、このスクリプトが既知の URL を持たない(手動で確認する)。
+出力の各要素は `id`/`service`/`branch`/`url`/`login_required`/`note`。
+`url` が `null` のものは、このスクリプトが既知の URL を持たない(手動で
+確認する)。手順1で `stage` が `propose`/`confirm-first` だった場合は、
+`id` が `proposal.venue` と一致する要素だけに絞ってよい。
 
 ## 3. 空き状況を確認する
 
@@ -93,8 +101,17 @@ DOM セレクタと抽出関数は `scripts/noah-chart.js` に切り出してあ
 
 日時ごとに 2〜3 案を目安に、各案へ会場名・料金(分かれば)・ピアノの機種・
 予約方法(Web/電話/要利用者登録)・リンクを添えて提示する。複数回の合わせ
-をまとめて依頼された場合は、回ごとに表を分ける。相手に会場の希望を尋ねる
-必要がある場合(area が未合意)は、その旨を提案文に含める。
+をまとめて依頼された場合は、回ごとに表を分ける。
+
+相手向けの提案文は `stage`(手順1参照)で分ける:
+
+- `propose`: 既定会場をそのまま提示する。
+- `confirm-first`: 会場を出す前に、合わせの前後の予定(移動)に支障が
+  無いかを相手に尋ね、問題なければ既定会場を提示する。
+- `agree-area`: 会場の希望を相手に尋ねる旨を含める(area が未合意)。
+
+いずれの場合も、なぜその会場を既定にしているか(相手側の事情)は本人が
+口頭で扱う判断であり、提案文には書かない。
 
 ## 5. 予約は人間が行う
 

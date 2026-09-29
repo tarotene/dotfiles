@@ -75,6 +75,14 @@ slot-availability(`config/claude/skills/slot-availability/`)の
 (還元性 — 個人練習のスタジオ予約からも venue-search を呼べるように、
 演奏本番のスキルに閉じない設計、`docs/claude/venue-search.md` 参照)。
 
+「委譲すべきか」「委譲する前に何を確認するか」は person-state リポジトリ
+側の ADR-0017 が `obligations.sh` の閉じた `stage`(`book`/`propose`/
+`confirm-first`/`agree-area`)として導出済みで返す。このスキルは
+`stage` を読んで venue-search 呼び出しの前段(相手への確認要否)を
+分岐するだけで、規則(既定会場・コマ別の確認要否)そのものはここに
+複写しない(出典は private リポジトリ側のため、ここでは決定の存在だけ
+を参照する)。
+
 ### 4. タイムスケジュール資料の取り込み
 
 主催者から払い出されるタイムスケジュールのシートは形式が主催者ごとに
@@ -122,8 +130,10 @@ person-state リポジトリ側の裁定により、下書き予定の送り先�
 - person-state リポジトリ側の `docs/adr/0010-performance-planning-data-model.md`
   (このスキルが読み書きするデータモデルの決定文書)、`docs/adr/0014-
   performance-events-projection.md`(合わせ・当日の確定時刻の射影)、
-  `docs/adr/0015-performance-obligations.md`(付随作業の定型化)。出典は
-  いずれも private リポジトリ側のため、ここでは決定の存在だけを参照する。
+  `docs/adr/0015-performance-obligations.md`(付随作業の定型化)、
+  `docs/adr/0017-rehearsal-venue-proposal-policy.md`(合わせ会場の提示
+  方針)。出典はいずれも private リポジトリ側のため、ここでは決定の
+  存在だけを参照する。
 - person-state リポジトリ側の `state/performances/README.md`(スキーマ・
   検証スクリプトのポインタ)
 - `docs/claude/writing-style.md`(マーカー方式の先行例)
