@@ -1,4 +1,4 @@
-# ADR-0000 — Renovate の自動マージ方針を単一の共有 preset に一本化し、Dependabot の修正経路を閉じる
+# ADR-568 — Renovate の自動マージ方針を単一の共有 preset に一本化し、Dependabot の修正経路を閉じる
 
 - Status: Accepted
 - Date: 2026-09-29
