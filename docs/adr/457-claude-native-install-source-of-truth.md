@@ -115,3 +115,36 @@ PR #317 の裁定)は「`.local/bin` の `claude` は意図的な shadow で、�
   `claude-plan-model sync` を実行する関数 `claude()`
 - `docs/cutover-runbook.md` — 「Removing an ad-hoc native Claude Code
   install」を「Installing Claude Code (native installer)」に反転
+
+## Amendment (2026-09-28 — codex を同型の scoped exception にする, #531)
+
+Claude 高額利用者が 1 週間 Codex CLI 代替で仕事をする社内検証への備えで
+Codex CLI のホスト管理方針を確認した結果、home-manager は `codex` バイナリ
+も `~/.codex/config.toml` も管理していないことが判明した。この ADR と同型の
+ADR-0001 scoped exception として、codex についても明文化する。
+
+- **バイナリ**: `~/.local/bin/codex`(native installer)が正本。更新は
+  `codex update`。claude と異なり `claude-plan-model sync` のような
+  インストール直後追従作業を持たないため、zsh wrapper 関数は不要
+  (還元性: 同じ仕事を担う機構が無いところに機構を増やさない)。
+- **`~/.codex/config.toml`**: home-manager では**一切管理しない**。
+  Codex 自身が hook trust hash(`hooks.state`)・project trust・モデル
+  選択を実行時に書き戻す runtime 所有ファイルであり、`home.file` で
+  read-only symlink 配備すると、Codex が新しい hook を信頼するたびに
+  書き込みが失敗し、hook trust が毎回リセットされる不正な状態を作って
+  しまう。対抗馬として検討した nixpkgs の `codex` パッケージでの管理は
+  pin 固定という表現不可能性の利点はあるが、stable channel の遅れが
+  claude と同じ理由(ADR-457 Context 参照)で検証週の最新版要件に直撃する
+  ため還元性で劣る。
+- 新規登録した hook(`config/codex/hooks/` 配下)を Codex に認識させるには、
+  home-manager 適用後に一度だけ Codex TUI の `/hooks` で手動 trust する
+  必要がある(`config.toml` の `hooks.state.*.trusted_hash` に記録される)。
+  手順は docs/operations.md の Codex 切替節に記載。
+
+### 執行点
+
+- `AGENTS.md` — 「Note on codex」で codex を home-manager で管理しない旨を明文化
+- `home/modules/claude.nix` — codex 向けに home-manager が実際に配備するのは
+  hooks.json への登録と `~/.codex/AGENTS.md` のみで、`config.toml` は
+  含まれないことの実体
+- `docs/operations.md` — Codex 切替手順(`/hooks` trust 含む、段4で追記予定)

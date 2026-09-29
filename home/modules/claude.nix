@@ -171,18 +171,21 @@
 #    「検証可能な不確実性が現れたら情報源(Slack/Drive/GitHub/公式ドキュメント/
 #    文献)を参照するか明示的に判断せよ」「発明する前に先行例を確認せよ」という
 #    agent 非依存の調査規律・PR 運用・生成元明示の方針は共有 AGENTS.md が正本を
-#    持ち、Codex CLI(~/.codex/AGENTS.md)・Copilot CLI
-#    (~/.copilot/copilot-instructions.md)にも同一ソースをマウントする
-#    (リポジトリ単位の ADR-0016「AGENTS.md = canon、CLAUDE.md = router」と
-#    同型構造をグローバル階層に適用)。~/.claude/CLAUDE.md は `@~/.agents/AGENTS.md`
-#    を import する 1 行 + Claude Code 固有の施行配線(gate スクリプト・
-#    ExitPlanMode・AskUserQuestion まわり)だけを持つ。hook 注入(issue-index
-#    方式)は動的生成が要らない静的方針には過剰、スキルは呼び出し起点が要るため
-#    常時適用の方針には不向きなので、いずれも home.file で配備する。store
-#    symlink による read-only 配布なので、セッション中の `#` メモ追記
-#    ショートカットは書き込み失敗する — 知見の永続化は skill-gardening の PR
-#    フローに乗せる想定であり、意図的な設計。詳細は docs/claude/global-claude-md.md
-#    と docs/claude/global-agents-md.md。
+#    持ち、Copilot CLI(~/.copilot/copilot-instructions.md)には同一ソースを
+#    そのままマウントする(リポジトリ単位の ADR-0016「AGENTS.md = canon、
+#    CLAUDE.md = router」と同型構造をグローバル階層に適用)。~/.claude/CLAUDE.md
+#    は `@~/.agents/AGENTS.md` を import する 1 行 + Claude Code 固有の施行配線
+#    (gate スクリプト・ExitPlanMode・AskUserQuestion まわり)だけを持つ。
+#    ~/.codex/AGENTS.md は同一ソースの単純マウントではなく、共有 AGENTS.md +
+#    config/codex/AGENTS.codex.md(Codex 固有配線)を nix 評価時に結合した
+#    派生物(ADR-0032 Amendment #531、Codex が `@import` 構文を持たないため)。
+#    hook 注入(issue-index 方式)は動的生成が要らない静的方針には過剰、スキルは
+#    呼び出し起点が要るため常時適用の方針には不向きなので、いずれも home.file で
+#    配備する。store symlink による read-only 配布なので、セッション中の `#`
+#    メモ追記ショートカットは書き込み失敗する — 知見の永続化は skill-gardening
+#    の PR フローに乗せる想定であり、意図的な設計。詳細は
+#    docs/claude/global-claude-md.md と docs/claude/global-agents-md.md、
+#    docs/adr/0032-global-agent-instructions-canon.md の Amendment。
 #
 # 15) scope-inventory(個人スキル、global CLAUDE.md の 1 節)+ plan-scope-gate
 #     (PreToolUse / ExitPlanMode):
@@ -2132,8 +2135,19 @@ in
   # ~/.agents/skills/ のクロスツールルーティング(コメント索引 14) 付近)と
   # 同型。詳細は docs/claude/global-agents-md.md。
   home.file.".agents/AGENTS.md".source = repoConfig + "/agents/AGENTS.md";
-  home.file.".codex/AGENTS.md".source = repoConfig + "/agents/AGENTS.md";
   home.file.".copilot/copilot-instructions.md".source = repoConfig + "/agents/AGENTS.md";
+
+  # ~/.codex/AGENTS.md: 共有 AGENTS.md(正本) + Codex 固有の施行配線
+  # (config/codex/AGENTS.codex.md)を nix 評価時に結合した派生物。Codex は
+  # `@import` 構文を持たないため、Claude Code の `~/.claude/CLAUDE.md` =
+  # `@~/.agents/AGENTS.md` importと同じ「単一正本 + router」構造を、
+  # build 時のファイル結合で実現する(ADR-0032 Amendment #531)。正本は
+  # 依然 2 ファイル(共有 AGENTS.md・AGENTS.codex.md)のままで、結合物
+  # そのものは手で複写せず nix が毎回生成する。
+  home.file.".codex/AGENTS.md".text =
+    builtins.readFile (repoConfig + "/agents/AGENTS.md")
+    + "\n"
+    + builtins.readFile (repoConfig + "/codex/AGENTS.codex.md");
 
   # グローバル CLAUDE.md: 上記共有 AGENTS.md を @import する router +
   # Claude Code 固有の施行配線(gate/ExitPlanMode/AskUserQuestion まわり)。
