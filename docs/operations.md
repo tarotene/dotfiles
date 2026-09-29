@@ -85,10 +85,20 @@ systemd-tmpfiles --user --clean --dry-run
 Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let
 this PUBLIC repository's source stay unaware of host-specific or private
 values (ADR-0034 D5: the *schema* is public, the *values* are not).
-`private-hub` and `style-hub` are never home-manager-managed — declaring
-either there would put the value back into a managed, store-symlinked file,
-defeating the indirection — so they stay hand-placed indefinitely. `host` is
-different: each star-codename host module declares its own marker via
+`style-hub` is never home-manager-managed — declaring it there would put
+the value back into a managed, store-symlinked file, defeating the
+indirection — so it stays hand-placed indefinitely. `private-hub` used to
+follow the same rule, but a hand-placed-only marker left a gap (#567,
+2026-09-29 Amendment to ADR-0034): applying the private wrapper flake by
+its local path doesn't itself place the marker, so a later plain `hms` (no
+wrapper registered yet) silently downgrades to the public-only apply and
+drops whatever the wrapper was supplying. `private-hub` is now exposed as
+a public *option* (`dotfiles.privateHub.ref`, `home/modules/wrapper-hub.nix`)
+whose value only the wrapper's `extraModules` set — the value still never
+lives in this repository's source — so placing the marker becomes a side
+effect of applying through the wrapper, and `hms` also refuses to silently
+downgrade away from a host that had it registered last generation. `host`
+is different: each star-codename host module declares its own marker via
 `xdg.configFile."dotfiles/host"` (ADR-0019 D3), so after a host's first
 switch under its new name, that declaration is the marker's source of
 truth. On Linux it doesn't even need hand-placing: the rename runbook (see
@@ -102,7 +112,7 @@ or a Linux host being switched before its OS hostname is renamed:
 | marker | consumer | required? | fallback when unset |
 |---|---|---|---|
 | `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
-| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034) | optional, always hand-placed | `github:tarotene/dotfiles` (public-only apply) |
+| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034, #567) | optional; placed as a side effect of applying through a registered wrapper (`dotfiles.privateHub.ref`, home-manager-managed from then on) | `github:tarotene/dotfiles` (public-only apply) |
 | `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
 
 Run `dotfiles-doctor` (deployed to `~/.local/bin` by

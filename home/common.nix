@@ -9,6 +9,7 @@
     ./modules/herdr.nix
     ./modules/worktree.nix
     ./modules/drift.nix
+    ./modules/wrapper-hub.nix
     ./modules/apt.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
