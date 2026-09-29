@@ -70,7 +70,13 @@ description・topics・settings フィールド・ファイルツリー・open I
   exempt、判断が割れる場合は Issue 起票を既定の推奨にする。
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
-  として表に書く。
+  として表に書く。`auto-merge-disabled` / `dependabot-security-updates-
+  enabled`(docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b)は
+  `apply-repo-settings.sh --owner <owner> --repo <repo>` の再実行で両方
+  一度に直る。`renovate-policy-preset-missing`(同 ADR D4)は対象 repo の
+  `renovate.json` の `extends` に `github>tarotene/dotfiles//renovate/
+  policy` を追記する提案にする — テンプレート全体で上書きしない(repo
+  固有の `packageRules` を消さないため)。
 - titles ドメイン(ADR-0031、#337)は `missing` トークンごとに機械的に
   決まる:
   - `pr-title-workflow-missing` — `.github/workflows/pr-title.yml`
