@@ -600,6 +600,13 @@ let
   # ADR-0024 の Rust 既定に対する例外 — stack-base-guard.sh / adr-number.sh /
   # pr-title-guard.sh と同じ理由、rust-migration.toml 参照)。
   feedbackTargetGuardCmd = "bash '${hooksDir}/feedback-target-guard.sh'";
+  # repo-create-guard(ADR-0013 Amendment 2026-09-29, docs/claude/repo-create-
+  # guard.md): `gh repo create` / `gh api -X POST user/repos`・`orgs/*/repos`
+  # を deny し、repo-charter スキルの手順に強制的に載せる。attribution-
+  # guard.sh のコマンド解析エンジンを source して再利用する(stack-base-
+  # guard.sh/feedback-target-guard.sh と同じ ADR-0024 の Rust 既定に対する
+  # 例外)。
+  repoCreateGuardCmd = "bash '${hooksDir}/repo-create-guard.sh'";
   # cmd-hash-log(ADR-543 段3): 実行された Bash コマンドの正規化ハッシュ
   # だけを記録する(コマンド本文は書かない、ADR-0011 のプライバシー規約を
   # 踏襲)。逐語反復検出(段4 の promotion-detect)の入力。何も判定しない
@@ -818,6 +825,7 @@ let
     pkexec_guard="$1";           shift
     new_tool_guard="$1";         shift
     feedback_target_guard="$1";  shift
+    repo_create_guard="$1";      shift
     cmd_hash_log="$1";           shift
 
     register PreToolUse ExitPlanMode "$plan_review" 300
@@ -992,6 +1000,14 @@ let
     # のみ発火。複合コマンドの2番目以降に gh が来るケースは対象外 — 既存の
     # gh-edit-allow/rulesets-write-guard と同じ既知のトレードオフ)。
     register PreToolUse Bash "$feedback_target_guard" 10 "Bash(gh *)"
+    # repo-create-guard(ADR-0013 Amendment 2026-09-29): stack-base-guard/
+    # decision-colocation-guard と同じ複合 matcher "Bash|mcp__.*" に並ぶ
+    # (gh-edit-allow/rulesets-write-guard/feedback-target-guard の
+    # "Bash(gh *)" if 絞り込みと違い、`git push && gh repo create …` の
+    # ような複合コマンドの2番目以降に対象コマンドが来るケースも拾う必要が
+    # あるため、この if 絞り込みは使わない)。判定は文字列処理のみで gh API
+    # 往復を持たないため timeout は pr-title-guard 並みでよい。
+    register PreToolUse "Bash|mcp__.*" "$repo_create_guard" 15
     # cmd-hash-log(ADR-543 段3): 判定を返さないので matcher を絞らず全
     # Bash 実行を対象にする(記録漏れが検出の精度を下げるため)。Rust 製で
     # 起動が速く、成功しても失敗しても即 exit するので timeout は最短。
@@ -1362,6 +1378,12 @@ in
   # 同じ階層(~/.claude/hooks/ 直下)に配置する。
   home.file.".claude/hooks/feedback-target-guard.sh" = {
     source = repoConfig + "/claude/hooks/feedback-target-guard.sh";
+    executable = true;
+  };
+  # repo-create-guard(ADR-0013 Amendment 2026-09-29): 同じ理由で
+  # attribution-guard.sh と同じ階層(~/.claude/hooks/ 直下)に配置する。
+  home.file.".claude/hooks/repo-create-guard.sh" = {
+    source = repoConfig + "/claude/hooks/repo-create-guard.sh";
     executable = true;
   };
   # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
@@ -2164,6 +2186,7 @@ in
       ${lib.escapeShellArg pkexecGuardCmd} \
       ${lib.escapeShellArg newToolGuardCmd} \
       ${lib.escapeShellArg feedbackTargetGuardCmd} \
+      ${lib.escapeShellArg repoCreateGuardCmd} \
       ${lib.escapeShellArg cmdHashLogCmd}
   '';
 

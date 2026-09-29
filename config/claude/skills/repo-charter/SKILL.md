@@ -338,9 +338,14 @@ apply を両方行う。まだ CI が 1 度も走っていないため apply は
 `--unverified-contexts` で行われる — CI が 1 回走った後、
 `apply-rulesets.sh <owner>/<repo> --reconcile` で検証付きに切り替える。)
 
-いずれの governance skill にも属さない場合(`core` 型、#337)は:
+いずれの governance skill にも属さない場合(`core` 型、#337)は、rust/typst/
+astro の `seed.sh` と同じ呼び出し順(settings → files → rulesets)で
+`apply-repo-settings.sh` を先に呼ぶ(この呼び出しを省くと settings ドメイン
+が drift したまま残る — ADR-0013 Amendment 2026-09-29 の実例参照):
 
 ```bash
+~/.claude/skills/repo-governance-common/scripts/apply-repo-settings.sh \
+  --owner <owner> --repo <repo>
 ~/.claude/skills/repo-governance-common/scripts/copy-files.sh \
   --owner <owner> --repo <repo> --dest <ローカルの checkout パス>
 # commit + push してから:

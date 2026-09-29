@@ -642,6 +642,15 @@ jobs:
       - name: feedback-target-guard.sh --selftest
         run: bash ./config/claude/hooks/feedback-target-guard.sh --selftest
 
+      # repo-create-guard.sh (ADR-0013 Amendment 2026-09-29) is deterministic
+      # bash end to end, no network involved — sources attribution-guard.sh
+      # for its command-position tokenizer the same way feedback-target-
+      # guard.sh does. Covers gh repo create / gh api -X POST user/repos
+      # detection and the settings-PATCH/rulesets-POST/GET-listing pass-
+      # through cases (docs/claude/repo-create-guard.md).
+      - name: repo-create-guard.sh --selftest
+        run: bash ./config/claude/hooks/repo-create-guard.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema
