@@ -36,6 +36,15 @@ in
   programs.zsh = {
     enable = true;
 
+    # Pin the pre-25.11 legacy default explicitly (upstream now warns when
+    # `home.stateVersion` is below "26.05" and this isn't set) — every zsh
+    # module under config/zsh/modules assumes dotfiles live directly in
+    # $HOME, so this fixes today's actual behavior rather than adopting the
+    # new XDG-config-dir default. Moving to that default is a separate,
+    # deliberate migration (it would relocate `.zshrc`/`.zprofile` etc. and
+    # needs its own plan), not a side effect of silencing this warning.
+    dotDir = config.home.homeDirectory;
+
     # Orchestrate init: source every literal module under zsh/modules in
     # numerical order, then the machine-local file if present.
     initContent = ''
