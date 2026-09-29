@@ -101,6 +101,17 @@ jobs:
       # ここで前提の生存を required check として検査し、drift を検出では
       # なく防止に変える。GITHUB_TOKEN の contents:write(上記 permissions
       # 参照)で merge 設定フィールドが返ることを実測済み。
+      #
+      # 例外: `security_and_analysis`(Dependabot security updates の状態)
+      # だけは repository admin 権限が無いと GitHub REST API のレスポンス
+      # から丸ごと欠落する(GitHub Docs "Get a repository" — "you must
+      # have admin permissions for the repository"、取得 2026-09-29)。
+      # `GITHUB_TOKEN` に付与できる permission の一覧に `administration`
+      # は存在しない(GitHub Docs "Workflow syntax for GitHub Actions"、
+      # 同日取得)ため、この permissions ブロックをどう足しても直らない
+      # ——足そうとして時間を使わないこと。scripts/pr-merge-settings-check
+      # はこの1項目だけを検査対象から除外している(理由はスクリプト冒頭の
+      # コメント参照)。
       - name: Validate merge settings prerequisite
         env:
           GH_TOKEN: ${{ github.token }}

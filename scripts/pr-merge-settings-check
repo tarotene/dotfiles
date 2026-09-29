@@ -21,7 +21,26 @@
 # audit(手動実行、検出のみ)とは違い、このスクリプトは fail-closed —
 # 設定取得に失敗した場合も red にする。契約の前提が確認できないまま
 # merge を通さないことが目的で、再実行で復旧できる。
+#
+# 例外: `dependabot-security-updates-enabled`(judge_settings() が
+# `.security_and_analysis.dependabot_security_updates.status` から出す
+# missing コード)はここでは検査しない。GitHub REST API の `GET
+# /repos/{owner}/{repo}` は `security_and_analysis` ブロックを
+# repository admin 権限を持つ token でしか返さない(GitHub Docs
+# "Get a repository" — "you must have admin permissions for the
+# repository" — 取得 2026-09-29)。`GITHUB_TOKEN`(このワークフローが
+# 使う token)に付与できる permission の一覧に `administration` は
+# 存在しない(GitHub Docs "Workflow syntax for GitHub Actions" の
+# permissions テーブル、取得 2026-09-29)ため、この token では
+# `security_and_analysis` が構造的に永久に読めない — 再実行やキャッシュ
+# 伝播待ちでは直らない。この項目のライブ drift 検出は
+# `scripts/github-audit` の settings ドメイン(人間の個人 token で実行)
+# に任せ、ここでは対象外にする。
 set -euo pipefail
+
+# judge_settings() の missing 配列のうち、GITHUB_TOKEN では構造的に
+# 検証不能なコード(上のコメント参照)。
+UNVERIFIABLE_BY_GITHUB_TOKEN=(dependabot-security-updates-enabled)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./github-audit
@@ -67,11 +86,15 @@ check_repo() { # $1=owner/repo -> exit 0(ok)/1(drifted or fetch failed)
 
   meta="$(rest_to_graphql_meta "$rest")"
   result="$(judge_settings "$meta" "$rest")"
-  verdict="$(jq -r '.verdict' <<<"$result")"
 
-  if [[ "$verdict" != "ok" ]]; then
+  local exclude_json missing
+  exclude_json="$(printf '%s\n' "${UNVERIFIABLE_BY_GITHUB_TOKEN[@]}" | jq -R . | jq -s .)"
+  missing="$(jq -c --argjson exclude "$exclude_json" \
+    '.missing - $exclude' <<<"$result")"
+
+  if [[ "$(jq 'length' <<<"$missing")" -gt 0 ]]; then
     printf 'pr-merge-settings-check: %s の merge 設定が ADR-0031 の前提から drift しています: %s\n' \
-      "$owner_repo" "$(jq -r '.missing | join(", ")' <<<"$result")" >&2
+      "$owner_repo" "$(jq -r 'join(", ")' <<<"$missing")" >&2
     return 1
   fi
 
@@ -132,6 +155,21 @@ STUB
   touch "$tmp/bin/fail"
   check "4 取得失敗(gh api 非ゼロ終了、fail-closed)" "tarotene/unreachable" '{}' 1
   rm -f "$tmp/bin/fail"
+
+  # GITHUB_TOKEN 実測相当: security_and_analysis ブロックが丸ごと欠落
+  # (admin 権限が無いレスポンス)していても、他の全項目が満たされていれば
+  # ok にする(dependabot-security-updates-enabled は除外対象)。
+  check "5 security_and_analysis 欠落(GITHUB_TOKEN相当)でも他が全OKならok" "tarotene/no-admin-scope" \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":true}' \
+    0
+
+  # security_and_analysis 欠落と、除外対象ではない実際の drift
+  # (auto-merge-disabled)が同時にあるケース — 除外は
+  # dependabot-security-updates-enabled 単体のみで、他の drift は
+  # 引き続き red にする。
+  check "6 security_and_analysis 欠落 + 別の実 drift は red のまま" "tarotene/no-admin-scope-plus-drift" \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false}' \
+    1
 
   rm -rf "$tmp"
   [[ "$fails" == 0 ]] && printf 'selftest: all passed\n'
