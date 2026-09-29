@@ -569,6 +569,11 @@ let
   codexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
   codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
   codexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
+  # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
+  # Codex の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook。
+  # 独立ファイル(他 hook を source しない)なので配置は
+  # ~/.codex/hooks/ 直下のみで足りる。
+  codexPlanGateCmd = "bash '${config.home.homeDirectory}/.codex/hooks/codex-plan-gate.sh'";
   # rulesets-write-guard(Rust)は Claude/Codex で入出力形が同一
   # (crates/hook-io の Agent::Claude | Agent::Codex が同じ JSON 形を emit
   # すると確認済み — crates/hook-io/src/decision.rs)なので adapter を
@@ -1522,6 +1527,13 @@ in
     executable = true;
   };
 
+  # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
+  # 他 hook を source しない独立ファイル。
+  home.file.".codex/hooks/codex-plan-gate.sh" = {
+    source = repoConfig + "/codex/hooks/codex-plan-gate.sh";
+    executable = true;
+  };
+
   # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
   # 追加を執行点と同じ PR に機械強制する(docs/claude/decision-colocation.md)。
   # attribution-guard.sh を同ディレクトリから source するので、配置は
@@ -1731,6 +1743,18 @@ in
           Stop "" ${lib.escapeShellArg codexPrGateStopCmd} 600 \
           UserPromptSubmit "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10 \
           Stop "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10
+      '';
+
+  # ADR-0032 Amendment #531 段4: codex-plan-gate(docs/claude/
+  # codex-plan-gate.md)。同じ lost-update 対策で Stop hook 登録の後ろに
+  # 明示的に順序付ける。plan-scope-gate.sh / plan-precedent-gate.sh 自体は
+  # 呼び出すだけで Codex 用に配備しない(~/.claude/hooks/ 配下の既存パスを
+  # そのまま参照する)。
+  home.activation.registerCodexPlanGateHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStopHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          Stop "" ${lib.escapeShellArg codexPlanGateCmd} 20
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
