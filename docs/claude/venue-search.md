@@ -65,11 +65,23 @@ Claude Code(Playwright/WebFetch)はログインが要るページの先を見に
 (ノア側の表示可能範囲の上限)ことも分かった。この事実は「空きが無い」
 と混同すると誤報告になるため、SKILL.md の手順6に明文化した。
 
+## 提示規則は person-state リポジトリ側に一元化した(ADR-0017)
+
+「合わせが確定していて会場未定のとき、何を・どう相手に提示するか」という
+規則(例: 既定会場をコマによってそのまま提示するか、前後の予定を確認して
+から提示するか)は、`state/performances/scripts/obligations.sh` が
+`venue-booking` の閉じた導出フィールド `stage`(`book`/`propose`/
+`confirm-first`/`agree-area`)として既に計算済みで返す。このスキルは
+`stage` の値で分岐するだけで、規則そのものをここで再導出しない —
+規則の正本を 2 箇所に持たない設計(`slot-availability` の判定コアを
+person-state 側に置かない、という既存の分担の裏返し)。
+
 ## 参照
 
-- person-state リポジトリ側の ADR-0015(演奏企画の付随作業の定型化。
-  このスキルが読み書きするデータモデルの決定文書。出典は private
-  リポジトリ側のため、ここでは決定の存在だけを参照する)
+- person-state リポジトリ側の ADR-0015(演奏企画の付随作業の定型化)・
+  ADR-0017(合わせ会場の提示方針)。このスキルが読み書きするデータモデル
+  の決定文書。出典は private リポジトリ側のため、ここでは決定の存在だけ
+  を参照する。
 - person-state リポジトリ側の `state/places.toml`(会場探しの起点データ)
 - `docs/claude/performance-planning.md`(ハブ解決の流用元)
 - `docs/claude/slot-availability.md`(判定コアの分離という同型の設計判断)

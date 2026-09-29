@@ -94,9 +94,18 @@ person-state リポジトリ側の `[[rehearsals]]` へ反映する手順のみ�
      主催者から会場が伝わったら `location` に書くだけでよい。
    - `self`/`partner`: 「6. 付随作業」の `venue-booking` が OPEN なら
      venue-search に委譲する対象。
-2. venue-search スキルに、対象 rehearsal の `area`(あれば)・
+2. `obligations.sh --json` で当該 rehearsal の `venue-booking` の `stage`
+   を読む(閉語彙 `book`/`propose`/`confirm-first`/`agree-area` —
+   規則そのものは person-state リポジトリ側の決定〔ADR、存在だけ参照〕に
+   あり、このスキルは `stage` で分岐するだけで規則を再導出しない)。
+   - `propose`/`confirm-first`: venue-search に `proposal`(既定会場)を
+     渡して提案文を作ってもらう。相手が合意したら Edit ツールで `area`
+     (駅名)を追記する(→ `book` に進む)。
+   - `agree-area`: 相手にエリアの希望を尋ねる(venue-search の従来手順)。
+   - `book`: 次の手順(候補提示・予約)へ進む。
+3. venue-search スキルに、対象 rehearsal の `area`(あれば)・
    `venue_needs`(グランドピアノ等)を渡して候補を出してもらう。
-3. 人間が予約したら、確定した会場名を Edit ツールで対象 rehearsal の
+4. 人間が予約したら、確定した会場名を Edit ツールで対象 rehearsal の
    `location` に追記する(`venue-booking` はこれで完了になる)。
 
 ## 4. 資料の取り込み
@@ -159,7 +168,7 @@ bash "$HUB/state/performances/scripts/obligations.sh"
 
 出力の OPEN(未完了)/OVERDUE(期限超過)な項目ごとに対応する:
 
-- `venue-booking`: 「3. 会場確保」へ。
+- `venue-booking`: `stage` に応じて「3. 会場確保」の該当手順へ。
 - `dress-code-confirm`: 本人にドレスコードの有無を確認し、`dress_code`
   に記入する(無ければ `"none"` を明記する — キー省略は「未確認」を
   意味するため、区別する)。
