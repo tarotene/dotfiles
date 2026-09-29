@@ -24,7 +24,7 @@ near-zero manual steps. Migrated from the old procedural shell-script installer
 | Layer | Owns | Managed by | ADR |
 |-------|------|------------|-----|
 | **User environment** (source of truth) | shell, git, terminal, user-space CLIs, fonts, prompts, per-user services, GPG agent, GUI apps, **fcitx5 daemon + mozc**, **herdr (binary + sidebar config)** | home-manager | ADR-0001 (+ Amendment) |
-| **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback | apt (`scripts/install-packages.sh`) | ADR-0001 (+ Amendment) |
+| **System layer** (escape hatch) | root, a system service, kernel/driver integration, **or code loaded into an apt-installed process**: build toolchain, cross C toolchain, `scdaemon`, fcitx5 *immodules* (`fcitx5-frontend-all`), login-shell fallback, the Flatpak runtime itself (D-Bus system service + portal, `flatpak`) | apt (`scripts/install-packages.sh`) | ADR-0001 (+ Amendment) |
 | **Per-project runtimes** (escape hatch) | language toolchains, project-local versions | `mise` / `direnv` / `rustup` launchers (installed by home-manager; toolchains stay project-scoped) | ADR-0002 |
 
 Note on graphics: the driver stack itself is root-owned and stays in the system

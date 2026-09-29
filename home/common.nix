@@ -22,6 +22,7 @@
     ./modules/tailscale.nix
     ./modules/desktop.nix
     ./modules/downloads.nix
+    ./modules/flatpak.nix
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix
   ];
