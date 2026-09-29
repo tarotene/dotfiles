@@ -303,6 +303,26 @@ fn mentions_pkexec(cmd: &str, words: Option<&[String]>) -> bool {
     }
 }
 
+const CODEX_COPILOT_DENY_REASON: &str =
+    "pkexec は Codex CLI / Copilot CLI からは常に deny — 明示的な ask \
+     ルールが auto 系モードでも確認を強制することを確認できているのは \
+     Claude Code のみ(docs/claude/pkexec-guard.md)";
+
+/// #548: 複合コマンド(`;`/`&&`/`||`/`|`/`&`/改行区切り)を文単位で判定する。
+/// 単一コマンド(`shell::split_segments` が1文しか返さない場合)は旧来と
+/// 完全に同じ経路(`shell::split` + [`mentions_pkexec`] + [`validate_pkexec`])
+/// を通し、挙動を一切変えない。
+///
+/// 複合コマンドでは、解析できた文(`words: Some`)の語配列に `pkexec`/
+/// `PKEXEC_PATH` が完全一致で現れる文があれば「実際の呼び出しに見える文が
+/// 複合コマンドの中にある」として deny する(不変条件1: polkit の
+/// ダイアログは pkexec に渡された argv しか表示せず、同じ Bash 呼び出し内の
+/// 他の文は承認の目に入らず実行される)。解析できない文(`words: None`)が
+/// 語境界一致で `pkexec` を含む場合も、リダイレクト等で偽装された呼び出し
+/// である可能性を排除できないため同様に deny する(軸: 検出のみ、安全側を
+/// 維持)。緩めるのは、複合コマンドの**どの文にもこの2種の mention が
+/// 一切無い**場合だけ——地の文の言及がクォート内に収まって正しく解析できた
+/// 文の一部になっているケース(#548 の実際の誤検知)がこれに当たる。
 fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<PermissionDecision> {
     let cmd = input.bash_command()?;
 
@@ -310,32 +330,62 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
         return Some(PermissionDecision::deny(reason));
     }
 
-    let words = shell::split(cmd);
-    if !mentions_pkexec(cmd, words.as_deref()) {
+    let segments = shell::split_segments(cmd);
+
+    if segments.len() <= 1 {
+        let words = shell::split(cmd);
+        if !mentions_pkexec(cmd, words.as_deref()) {
+            return None;
+        }
+        if agent != Agent::Claude {
+            return Some(PermissionDecision::deny(CODEX_COPILOT_DENY_REASON));
+        }
+        let Some(words) = words else {
+            return Some(PermissionDecision::deny(
+                "pkexec を含むコマンドが複合コマンド・展開・引用符・改行を含むため \
+                 静的に解析できません。解析できない場合は fail closed で deny します \
+                 — 単純な `/usr/bin/pkexec <絶対パス> <引数…>` のみ許可します \
+                 (docs/claude/pkexec-guard.md)",
+            ));
+        };
+        return match validate_pkexec(&words, fs) {
+            Ok(()) => None,
+            Err(reason) => Some(PermissionDecision::deny(reason)),
+        };
+    }
+
+    let any_exact_mention = segments.iter().any(|seg| {
+        seg.words
+            .as_deref()
+            .is_some_and(|words| words.iter().any(|w| w == "pkexec" || w == PKEXEC_PATH))
+    });
+    let any_fuzzy_mention = segments
+        .iter()
+        .any(|seg| seg.words.is_none() && contains_pkexec_word(&seg.text));
+
+    if !any_exact_mention && !any_fuzzy_mention {
         return None;
     }
 
     if agent != Agent::Claude {
+        return Some(PermissionDecision::deny(CODEX_COPILOT_DENY_REASON));
+    }
+
+    if any_exact_mention {
         return Some(PermissionDecision::deny(
-            "pkexec は Codex CLI / Copilot CLI からは常に deny — 明示的な ask \
-             ルールが auto 系モードでも確認を強制することを確認できているのは \
-             Claude Code のみ(docs/claude/pkexec-guard.md)",
+            "複合コマンドの中に pkexec の呼び出しに見える文が含まれています。 \
+             polkit の認証ダイアログは pkexec に渡された argv しか表示しないため、 \
+             同じ Bash 呼び出し内の他の文が承認の目に入らず実行されます — deny \
+             (docs/claude/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
         ));
     }
 
-    let Some(words) = words else {
-        return Some(PermissionDecision::deny(
-            "pkexec を含むコマンドが複合コマンド・展開・引用符・改行を含むため \
-             静的に解析できません。解析できない場合は fail closed で deny します \
-             — 単純な `/usr/bin/pkexec <絶対パス> <引数…>` のみ許可します \
-             (docs/claude/pkexec-guard.md)",
-        ));
-    };
-
-    match validate_pkexec(&words, fs) {
-        Ok(()) => None,
-        Err(reason) => Some(PermissionDecision::deny(reason)),
-    }
+    Some(PermissionDecision::deny(
+        "複合コマンドの中に、pkexec を含むが静的に解析できない文(展開・ \
+         リダイレクト等)があります。リダイレクトで偽装された呼び出しの \
+         可能性を排除できないため fail closed で deny します \
+         (docs/claude/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
+    ))
 }
 
 /// PreToolUse: deny するなら理由付きの判定を返す。判定しない(deny しない)
@@ -531,11 +581,43 @@ mod tests {
     }
 
     #[test]
-    fn denies_pkexec_mention_inside_unrelated_but_unparseable_command() {
-        // "pkexec" が引用符内に現れるだけの複合コマンドも、判定できないので
-        // fail closed で deny する。
+    fn allows_pkexec_mention_fully_inside_a_parseable_quoted_segment() {
+        // #548 で仕様変更: クォート内の "pkexec" は、その文自体が(展開・
+        // リダイレクト無しで)正しく解析できるなら、複合コマンドであっても
+        // fail closed にしない——引用符全体が1つの語になり "pkexec" 単体とは
+        // 完全一致しないため、実際の呼び出しに見える文が無いと判定できる。
+        // (旧テスト名 denies_pkexec_mention_inside_unrelated_but_unparseable_
+        // command。実装時に shell::split_segments を導入した結果、この文は
+        // そもそも「解析不能」ではなく「解析できたが完全一致しない」に
+        // 分類が変わったため、期待値も allow に反転した。)
         let fs = FakeFs::new();
-        assert!(check_claude("echo 'never call pkexec' && true", &fs).is_some());
+        assert!(check_claude("echo 'never call pkexec' && true", &fs).is_none());
+    }
+
+    #[test]
+    fn still_denies_when_the_unparseable_segment_is_the_only_one_in_a_compound() {
+        // any_fuzzy のみ(解析できた文には mention 無し、解析できない文が
+        // 語境界一致で pkexec を含む)場合は、リダイレクト等で偽装された
+        // 呼び出しを排除できないため、依然 fail closed で deny する。
+        let fs = FakeFs::new();
+        assert!(check_claude("echo hi; /usr/bin/pkexec>file", &fs).is_some());
+    }
+
+    #[test]
+    fn allows_compound_when_no_segment_mentions_pkexec_at_all() {
+        let fs = FakeFs::new();
+        assert!(check_claude("echo a; echo b && echo c", &fs).is_none());
+    }
+
+    #[test]
+    fn still_denies_compound_with_a_genuine_pkexec_invocation_segment() {
+        // #548 は誤検知の解消であり、不変条件1(複合コマンド中の実際の
+        // pkexec 呼び出しはダイアログの目に入らない他の文を隠しうる)は
+        // 変えない——validate_pkexec が通る文でも、複合の中にある限り deny。
+        let fs = FakeFs::new();
+        assert!(
+            check_claude("/usr/bin/pkexec /usr/bin/systemctl status; echo done", &fs).is_some()
+        );
     }
 
     #[test]
@@ -635,6 +717,5 @@ mod tests {
         // 一方、"pkexec" が独立した語として現れる compound は引き続き
         // fail closed で deny する(安全網、軸: 検出のみ)。
         assert!(check_claude("cd /tmp && pkexec /usr/bin/apt-get update", &fs).is_some());
-        assert!(check_claude("echo 'never call pkexec' && true", &fs).is_some());
     }
 }
