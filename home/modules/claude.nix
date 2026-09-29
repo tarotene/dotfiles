@@ -509,9 +509,27 @@ let
   # で自己解決するため、旧 claude-adapter.sh と違い CLAUDE_PLUGIN_ROOT の
   # 明示注入が不要になった(home.file 配備でも plugin 配布でも同じ
   # 呼び出し形で動く)。
-  bleepClaudeCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
-  bleepCodexCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
-  bleepCopilotCmd = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
+  # #561: bleep.sh の main() は BLEEP_HOOK_BIN を見つけて exec するだけで
+  # BLEEP_LEX_BIN は自分では伝播しない(bleep 本体の cmd_scan_bash_command
+  # が使う継ぎ目は別で、見つからなければ素の `bleep-hook`(PATH 解決、
+  # ~/.cargo/bin にフォールバック)に縮退する) — 継ぎ目は2箇所あるので
+  # 両方をこの呼び出し元で明示的に pin する。どちらも同じ flake input
+  # `bleep`(pin 済み rev)から crane でビルドした
+  # ${hooksDir}/bleep-hook(下の home.file)を指すので、bash 本体
+  # (hooks/bleep.sh 経由)と Rust バイナリが常に同一 rev から導出され、
+  # `~/.cargo/bin` の手動 install 経由での版ずれが構造的に起きなくなる。
+  bleepHookBinPath = "${hooksDir}/bleep-hook";
+  bleepEnvPrefix = "BLEEP_HOOK_BIN='${bleepHookBinPath}' BLEEP_LEX_BIN='${bleepHookBinPath}'";
+  bleepClaudeCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
+  bleepCodexCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
+  bleepCopilotCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
+  # #561 で env prefix を足す前の command 文字列。register() は完全一致でしか
+  # 既存登録を見つけられないため(claude.nix 内の register() 定義のコメント
+  # 参照)、これを先に --retire/completely-remove してからでないと、新旧
+  # 2本が settings.json に同時に残ってしまう。
+  legacyBleepClaudeCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
+  legacyBleepCodexCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
+  legacyBleepCopilotCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
   # 旧(別リポジトリ切り出し前)の command 文字列。settings.json から完全一致
   # 削除するためだけに残す(下の retiredHookEntries)。
   legacyPublicPublishGuardCmd = "bash '${hooksDir}/public-publish-guard.sh'";
@@ -703,6 +721,12 @@ let
     {
       event = "PreToolUse";
       command = legacyPublishGuardClaudeAdapterCmd;
+    }
+    # #561: bleep-hook(Rust)の版ずれ対策で BLEEP_HOOK_BIN/BLEEP_LEX_BIN の
+    # env prefix を追加した。旧(prefix 無し)の command 文字列を先に削除する。
+    {
+      event = "PreToolUse";
+      command = legacyBleepClaudeCmdUnprefixed;
     }
   ];
 
@@ -1612,6 +1636,13 @@ in
   home.file.".claude/hooks/bleep" = {
     source = bleep;
   };
+  # bleep-hook(Rust、#561): flake.nix の bleepHookOverlay が同じ `bleep`
+  # input から crane でビルドする。gh-edit-allow(1436行目付近)と同じ
+  # 「store path を安定パスへ home.file で配備」型 — bleepClaudeCmd 等の
+  # BLEEP_HOOK_BIN/BLEEP_LEX_BIN が指す先はこのパス。
+  home.file.".claude/hooks/bleep-hook" = {
+    source = "${pkgs.bleep-hook}/bin/bleep-hook";
+  };
 
   # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
   # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /
@@ -1635,6 +1666,7 @@ in
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyPublishGuardCodexAdapterCmd} \
+          --retire PreToolUse ${lib.escapeShellArg legacyBleepCodexCmdUnprefixed} \
           --register \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg bleepCodexCmd} 20
       '';
@@ -1644,6 +1676,7 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           --retire preToolUse ${lib.escapeShellArg legacyPublishGuardCopilotAdapterCmd} \
+          --retire preToolUse ${lib.escapeShellArg legacyBleepCopilotCmdUnprefixed} \
           --register \
           preToolUse ${lib.escapeShellArg bleepCopilotCmd} 20
       '';
