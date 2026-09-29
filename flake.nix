@@ -179,6 +179,35 @@
         dotfiles-tools = (rustWorkspace final).package;
       };
 
+      # bleep-hook (#561): the `bleep` input's bash body (`hooks/bleep`) is
+      # pin-fixed above, but the Rust adapter/lexer it shells out to
+      # (`bleep-hook`, resolved via `~/.cargo/bin` by `hooks/bleep.sh`'s
+      # `find_hook_bin`) had no nix-managed counterpart — it depended on a
+      # manual `cargo install --path <bleep checkout>` that silently drifted
+      # from the pinned bash version (real incident, 2026-09-29: the two
+      # disagreed on `hash`'s output format after a pin bump). Building it
+      # from the same `bleep` input here ties both to one pin: bumping
+      # `inputs.bleep` moves the bash body and this binary together.
+      # `crateNameFromCargoToml` reads pname/version straight from bleep's
+      # own Cargo.toml rather than hardcoding them, so a future rename/bump
+      # never needs a matching edit here (same crane placeholder-avoidance
+      # as `rustWorkspace` above).
+      bleepHookOverlay =
+        final: _prev:
+        let
+          craneLib = crane.mkLib final;
+        in
+        {
+          bleep-hook = craneLib.buildPackage (
+            (craneLib.crateNameFromCargoToml { cargoToml = "${bleep}/Cargo.toml"; })
+            // {
+              src = bleep;
+              strictDeps = true;
+              doCheck = false;
+            }
+          );
+        };
+
       mkPkgs =
         system:
         import nixpkgs {
@@ -187,6 +216,7 @@
           overlays = [
             (herdrOverlay system)
             rustOverlay
+            bleepHookOverlay
           ]
           ++ lib.optionals (lib.hasSuffix "-linux" system) [ nixglOverlay ];
         };

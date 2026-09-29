@@ -31,13 +31,23 @@ D7 と同型)。
   それ以上の配慮は要らない。
 - 登録する command:
   ```
-  bash '$HOME/.claude/hooks/bleep/hooks/bleep.sh' --host=claude
+  BLEEP_HOOK_BIN='$HOME/.claude/hooks/bleep-hook' BLEEP_LEX_BIN='$HOME/.claude/hooks/bleep-hook' bash '$HOME/.claude/hooks/bleep/hooks/bleep.sh' --host=claude
   ```
   旧 `claude-adapter.sh` は plugin マーケットプレイス経由のインストール
   時に Claude Code が自動設定する `CLAUDE_PLUGIN_ROOT` に依存していたため、
   `home.file` による直接配備ではこの env var を明示的に前置する必要が
   あった。`hooks/bleep.sh`(#25-28 の Rust hook cutover で旧 3 adapter を
   統合した単一 shim)は自己解決するため、この配慮そのものが不要になった。
+  代わりに BLEEP_HOOK_BIN/BLEEP_LEX_BIN の2変数を前置する(#561):
+  bleep(bash 本体)が呼ぶ Rust バイナリの継ぎ目は2箇所あり
+  (`hooks/bleep.sh` の adapter 起動と、`bleep` 本体の
+  `cmd_scan_bash_command` が使う字句解析)、どちらも既定では
+  `~/.cargo/bin/bleep-hook`(手動 `cargo install` 経由、pin された
+  `bleep` flake input とは無関係に更新される)にフォールバックしうる。
+  `flake.nix` の `bleepHookOverlay` が同じ `bleep` input から crane で
+  ビルドし `~/.claude/hooks/bleep-hook` に配備した実体を両変数で指すことで、
+  bash 本体と Rust バイナリが常に同一 pin から導出されるようになり、
+  手動 install 経由の版ずれが構造的に起きなくなる。
 - matcher は複合1本 `"Bash|mcp__.*"`。`register()`(この nix ファイル内)の
   存在判定は command 文字列の完全一致だけで matcher を見ないため、Bash と
   MCP を2つの hook エントリに分けると2回目の登録が早期 return し、MCP
