@@ -1,28 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommitTypeAll(chore)",
-    ":timezone(Asia/Tokyo)"
-  ],
-  "schedule": ["before 6am on monday"],
-  "commitMessagePrefix": "chore(deps):",
-  "rangeStrategy": "auto",
-  "rebaseWhen": "behind-base-branch",
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 2,
-  "labels": ["dependencies"],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 6am on the first day of the month"]
-  },
+  "extends": ["github>tarotene/dotfiles//renovate/policy"],
   "npm": { "enabled": true },
-  "github-actions": {
-    "enabled": true,
-    "pinDigests": true,
-    "managerFilePatterns": ["/\\.github/workflows/[^/]+\\.ya?ml$/"]
-  },
   "packageRules": [
     {
       "description": "Astro core + integrations grouped",
@@ -48,12 +27,6 @@
       "matchManagers": ["npm"],
       "matchPackageNames": ["katex", "rehype-katex", "remark-math"],
       "groupName": "math rendering"
-    },
-    {
-      "description": "GitHub Actions — digest-pinned, grouped",
-      "matchManagers": ["github-actions"],
-      "groupName": "github-actions",
-      "labels": ["dependencies", "ci"]
     },
     {
       "description": "Freeze Node version updates (managed via mise.toml)",

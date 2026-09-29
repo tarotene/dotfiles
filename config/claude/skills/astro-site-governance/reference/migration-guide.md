@@ -129,12 +129,15 @@ git config --local core.hooksPath .githooks
 
 ### 4. Add Renovate
 
-Copy `renovate.json` from this Skill's `templates/`. Adjust the `packageRules`
-grouping to match your project's dependency structure (Astro/Tailwind/math
-rendering are grouped by default; add or remove groups as appropriate).
+Copy `renovate.json` from this Skill's `templates/` — it extends the shared
+automerge policy preset (`repo-governance-common/reference/renovate-app.md`)
+and adds only this ecosystem's `packageRules`. Adjust the grouping to match
+your project's dependency structure (Astro/Tailwind/math rendering are
+grouped by default; add or remove groups as appropriate).
 
-Renovate is self-service — install the [Renovate GitHub App](https://github.com/apps/renovate)
-on your repository. No CI workflow is needed.
+Nothing to install per repository — the Mend Renovate App is account-wide
+(see `repo-governance-common/reference/renovate-app.md`). No CI workflow
+is needed.
 
 ### 5. Add release-please
 
