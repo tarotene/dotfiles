@@ -1,0 +1,641 @@
+#!/usr/bin/env bash
+# github-app-snapshot — the only script in this repository allowed to hold
+# GitHub App PEMs / fine-grained PATs (ADR-0000-github-app-as-code D3/D5).
+# It writes a read-only snapshot (app-snapshot.json) of each owned App's
+# registration (permissions/events) and install-target repositories, plus
+# each fine-grained PAT's reachable-repository set, to
+# $XDG_STATE_HOME/github-audit/app-snapshot.json. `scripts/github-audit`
+# and `scripts/github-app-registry-check` read that file lazily and never
+# see a secret themselves (ADR-436 D4 is preserved, not reopened).
+#
+# Secrets live in a Bitwarden Secrets Manager project (`github-apps`); a
+# read-only machine account's access token is the only thing this script
+# stores locally, in the GNOME Keyring (same shape as `scripts/
+# obsidian-backup`'s `configure_token()`/`keyring_token()`, deliberately
+# not shared with obsidian-backup's own machine account — least privilege
+# per app, 2026-09-30 user decision recorded in the ADR).
+#
+# Full setup + rotation + `/web-setup` wiring: docs/github-app-snapshot.md
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+OWNER="${GITHUB_APP_SNAPSHOT_OWNER:-tarotene}"
+CONFIG_DIR="${GITHUB_APP_SNAPSHOT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-app-snapshot}"
+# Same state directory as github-audit (docs/github-audit.md): this is the
+# file github-audit reads lazily, not a separate namespace.
+STATE_DIR="${GITHUB_APP_SNAPSHOT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit}"
+MANIFESTS_DIR="${GITHUB_APP_SNAPSHOT_MANIFESTS_DIR:-$CONFIG_DIR/manifests}"
+PAT_PROBES_FILE="${GITHUB_APP_SNAPSHOT_PAT_PROBES_FILE:-$CONFIG_DIR/pat-probes.tsv}"
+PAT_PROBES_LOCAL_FILE="${GITHUB_APP_SNAPSHOT_PAT_PROBES_LOCAL_FILE:-$CONFIG_DIR/pat-probes.local.tsv}"
+REPO_LIMIT="${GITHUB_APP_SNAPSHOT_REPO_LIMIT:-500}"
+
+BWS_BIN="${GITHUB_APP_SNAPSHOT_BWS_BIN:-bws}"
+SECRET_TOOL_BIN="${GITHUB_APP_SNAPSHOT_SECRET_TOOL_BIN:-secret-tool}"
+CURL_BIN="${GITHUB_APP_SNAPSHOT_CURL_BIN:-curl}"
+GH_BIN="${GITHUB_APP_SNAPSHOT_GH_BIN:-gh}"
+OPENSSL_BIN="${GITHUB_APP_SNAPSHOT_OPENSSL_BIN:-openssl}"
+JQ_BIN="${GITHUB_APP_SNAPSHOT_JQ_BIN:-jq}"
+ENV_BIN="${GITHUB_APP_SNAPSHOT_ENV_BIN:-env}"
+
+KEYRING_ATTRIBUTE_APP="github-app-snapshot"
+KEYRING_ATTRIBUTE_KIND="bws-access-token"
+
+GITHUB_API="https://api.github.com"
+
+usage() {
+  cat << 'EOF'
+usage:
+  github-app-snapshot configure-token
+  github-app-snapshot clear-token
+  github-app-snapshot manifest-form <name> [--out FILE]
+  github-app-snapshot convert <name> <code>
+  github-app-snapshot run [--out FILE]
+  github-app-snapshot exec -- <cmd...>
+  github-app-snapshot --selftest
+
+The Bitwarden Secrets Manager machine account must have read-only access to
+a project holding, per owned App <name>: GITHUB_APP_<NAME>_ID,
+GITHUB_APP_<NAME>_PEM (NAME = <name> upper-cased, '-' -> '_'), plus one
+CLAUDE_WEB_PAT-style secret per config/github-app-snapshot/pat-probes.tsv
+row. The bws access token is stored only in GNOME Keyring.
+
+Full setup + rotation + `/web-setup` wiring: docs/github-app-snapshot.md
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# keyring (machine token for Bitwarden Secrets Manager, obsidian-backup 同型)
+# ---------------------------------------------------------------------------
+
+keyring_token() {
+  local token
+  token="$(
+    "$SECRET_TOOL_BIN" lookup \
+      application "$KEYRING_ATTRIBUTE_APP" \
+      credential "$KEYRING_ATTRIBUTE_KIND"
+  )"
+  if [[ -z $token ]]; then
+    printf 'github-app-snapshot: Bitwarden machine token is missing from the login keyring\n' >&2
+    printf 'run: github-app-snapshot configure-token\n' >&2
+    return 1
+  fi
+  printf '%s' "$token"
+}
+
+configure_token() {
+  local token
+  printf 'Bitwarden Secrets Manager access token: ' > /dev/tty
+  IFS= read -r -s token < /dev/tty
+  printf '\n' > /dev/tty
+  if [[ -z $token ]]; then
+    printf 'github-app-snapshot: refusing to store an empty access token\n' >&2
+    return 1
+  fi
+  printf '%s' "$token" |
+    "$SECRET_TOOL_BIN" store \
+      --label="github-app-snapshot Bitwarden machine token" \
+      application "$KEYRING_ATTRIBUTE_APP" \
+      credential "$KEYRING_ATTRIBUTE_KIND"
+  unset token
+}
+
+clear_token() {
+  "$SECRET_TOOL_BIN" clear \
+    application "$KEYRING_ATTRIBUTE_APP" \
+    credential "$KEYRING_ATTRIBUTE_KIND"
+}
+
+# ---------------------------------------------------------------------------
+# JWT (GitHub Docs, "Generating a JSON Web Token (JWT) for a GitHub App",
+# 取得 2026-09-29: RS256, iat 60s in the past, exp <= 10min in the future,
+# iss = App ID)
+# ---------------------------------------------------------------------------
+
+base64url_encode() { # stdin -> base64url on stdout, no trailing newline
+  "$OPENSSL_BIN" base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+build_jwt() { # $1=app_id $2=pem_file -> JWT on stdout
+  local id="$1" pem_file="$2" now iat exp header payload h_b64 p_b64 signing_input sig_b64
+  now="$(date +%s)"
+  iat=$((now - 60))
+  exp=$((now + 540))
+  header='{"alg":"RS256","typ":"JWT"}'
+  payload="$("$JQ_BIN" -nc --argjson iat "$iat" --argjson exp "$exp" --arg iss "$id" \
+    '{iat: $iat, exp: $exp, iss: $iss}')"
+  h_b64="$(printf '%s' "$header" | base64url_encode)"
+  p_b64="$(printf '%s' "$payload" | base64url_encode)"
+  signing_input="${h_b64}.${p_b64}"
+  sig_b64="$(printf '%s' "$signing_input" | "$OPENSSL_BIN" dgst -sha256 -sign "$pem_file" -binary | base64url_encode)"
+  printf '%s.%s' "$signing_input" "$sig_b64"
+}
+
+# ---------------------------------------------------------------------------
+# HTTP (curl と gh の両方をこの 2 関数に閉じ、--selftest の stub 差し替えを
+# 1 箇所にする)
+# ---------------------------------------------------------------------------
+
+http_get() { # $1=url $2=bearer_token -> body on stdout ('' on failure)
+  "$CURL_BIN" -sS -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
+}
+
+http_post_empty_body() { # $1=url $2=bearer_token -> body on stdout ('' on failure)
+  "$CURL_BIN" -sS -X POST -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
+}
+
+# ---------------------------------------------------------------------------
+# owned-App registration + install-target snapshot (D2/D3)
+# ---------------------------------------------------------------------------
+
+fetch_app_registration() { # $1=app_id $2=pem_file -> {permissions, events, slug, name}
+  local jwt body
+  jwt="$(build_jwt "$1" "$2")"
+  body="$(http_get "$GITHUB_API/app" "$jwt")"
+  "$JQ_BIN" -c '{slug: (.slug // ""), app_name: (.name // ""), permissions: (.permissions // {}), events: (.events // [])}' <<< "$body"
+}
+
+fetch_installation_repos() { # $1=installation_id $2=jwt -> JSON array of "owner/repo" full names
+  local token body page repos='[]' batch batch_len
+  token="$("$JQ_BIN" -r '.token // empty' <<< "$(http_post_empty_body "$GITHUB_API/app/installations/$1/access_tokens" "$2")")"
+  [[ -n $token ]] || {
+    printf '[]'
+    return
+  }
+  page=1
+  while :; do
+    body="$(http_get "$GITHUB_API/installation/repositories?per_page=100&page=$page" "$token")"
+    batch="$("$JQ_BIN" -c '[.repositories[]?.full_name]' <<< "$body")"
+    batch_len="$("$JQ_BIN" 'length' <<< "$batch")"
+    repos="$("$JQ_BIN" -c --argjson a "$repos" --argjson b "$batch" '$a + $b' <<< '{}')"
+    ((batch_len < 100)) && break
+    ((page++))
+  done
+  printf '%s' "$repos"
+}
+
+fetch_app_installations() { # $1=app_id $2=pem_file -> JSON array of {id, account, repository_selection, repositories}
+  local jwt body
+  jwt="$(build_jwt "$1" "$2")"
+  body="$(http_get "$GITHUB_API/app/installations" "$jwt")"
+  local out='[]' inst id account selection repos
+  while IFS= read -r inst; do
+    id="$("$JQ_BIN" -r '.id' <<< "$inst")"
+    account="$("$JQ_BIN" -r '.account.login // ""' <<< "$inst")"
+    selection="$("$JQ_BIN" -r '.repository_selection // ""' <<< "$inst")"
+    repos="$(fetch_installation_repos "$id" "$jwt")"
+    out="$("$JQ_BIN" -c --argjson o "$out" --arg id "$id" --arg account "$account" \
+      --arg selection "$selection" --argjson repos "$repos" \
+      '$o + [{id: ($id | tonumber), account: $account, repository_selection: $selection, repositories: $repos}]' <<< '{}')"
+  done < <("$JQ_BIN" -c '.[]?' <<< "$body")
+  printf '%s' "$out"
+}
+
+snapshot_apps() { # -> JSON array of {name, id, slug, app_name, permissions, events, installations}
+  local out='[]' manifest name name_upper id_var pem_var id pem reg installs
+  [[ -d $MANIFESTS_DIR ]] || {
+    printf '[]'
+    return
+  }
+  for manifest in "$MANIFESTS_DIR"/*.json; do
+    [[ -f $manifest ]] || continue
+    name="$(basename "$manifest" .json)"
+    name_upper="$(tr '[:lower:]-' '[:upper:]_' <<< "$name")"
+    id_var="GITHUB_APP_${name_upper}_ID"
+    pem_var="GITHUB_APP_${name_upper}_PEM"
+    id="${!id_var:-}"
+    pem="${!pem_var:-}"
+    if [[ -z $id || -z $pem ]]; then
+      printf 'github-app-snapshot: %s has no GITHUB_APP_%s_ID/_PEM in the environment — skipping (store them in the github-apps Secrets Manager project)\n' \
+        "$name" "$name_upper" >&2
+      continue
+    fi
+    local pem_file
+    pem_file="$(mktemp)"
+    chmod 600 "$pem_file"
+    printf '%s' "$pem" > "$pem_file"
+    reg="$(fetch_app_registration "$id" "$pem_file")"
+    installs="$(fetch_app_installations "$id" "$pem_file")"
+    "$OPENSSL_BIN" rand -out "$pem_file" 1 2> /dev/null || true # best-effort overwrite before unlink
+    rm -f "$pem_file"
+    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --arg id "$id" --argjson reg "$reg" --argjson installs "$installs" \
+      '$o + [{name: $name, id: ($id | tonumber), slug: $reg.slug, app_name: $reg.app_name, permissions: $reg.permissions, events: $reg.events, installations: $installs}]' <<< '{}')"
+  done
+  printf '%s' "$out"
+}
+
+# ---------------------------------------------------------------------------
+# fine-grained PAT reach snapshot (D4): push permission on GET
+# /repos/{owner}/{repo}, not a bare 200 — a fine-grained PAT always reads
+# public repos read-only regardless of its selected-repositories scope
+# (GitHub Docs, "Managing your personal access tokens", 取得 2026-09-29).
+# ---------------------------------------------------------------------------
+
+read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC ∪ PRIVATE
+  local f
+  for f in "$PAT_PROBES_FILE" "$PAT_PROBES_LOCAL_FILE"; do
+    [[ -f $f ]] || continue
+    grep -Ev '^[[:space:]]*(#|$)' "$f" || true
+  done
+}
+
+probe_pat_reach() { # $1=pat -> JSON array of "owner/repo" the PAT can push to
+  local pat="$1" repo_names repo body reachable='[]' can_push
+  repo_names="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json name --jq '.[].name' 2> /dev/null || true)"
+  while IFS= read -r repo; do
+    [[ -n $repo ]] || continue
+    body="$(http_get "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
+    can_push="$("$JQ_BIN" -r '.permissions.push // false' <<< "$body")"
+    [[ $can_push == true ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
+  done <<< "$repo_names"
+  printf '%s' "$reachable"
+}
+
+snapshot_pat_probes() { # -> JSON array of {name, repositories}
+  local out='[]' name secret_name pat repos
+  while IFS=$'\t' read -r name secret_name; do
+    [[ -n $name ]] || continue
+    pat="${!secret_name:-}"
+    if [[ -z $pat ]]; then
+      printf 'github-app-snapshot: %s has no %s in the environment — skipping (store it in the github-apps Secrets Manager project)\n' \
+        "$name" "$secret_name" >&2
+      continue
+    fi
+    repos="$(probe_pat_reach "$pat")"
+    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" '$o + [{name: $name, repositories: $repos}]' <<< '{}')"
+  done < <(read_pat_probes)
+  printf '%s' "$out"
+}
+
+# ---------------------------------------------------------------------------
+# run (snapshot) / exec — both go through Bitwarden Secrets Manager
+# ---------------------------------------------------------------------------
+
+do_snapshot() { # $1=out_path
+  local out_path="$1" apps pat_probes tmp
+  apps="$(snapshot_apps)"
+  pat_probes="$(snapshot_pat_probes)"
+  mkdir -p "$(dirname "$out_path")"
+  tmp="$(mktemp "$(dirname "$out_path")/app-snapshot.json.XXXXXX")"
+  "$JQ_BIN" -n --argjson apps "$apps" --argjson pat_probes "$pat_probes" --arg generated_at "$(date --iso-8601=seconds)" \
+    '{schema: 1, generated_at: $generated_at, apps: $apps, pat_probes: $pat_probes}' > "$tmp"
+  mv "$tmp" "$out_path"
+  printf 'github-app-snapshot: wrote %s\n' "$out_path"
+}
+
+run_inner() { # $1=operation, [args...] — runs inside the bws-injected environment
+  local operation="$1"
+  shift
+  case "$operation" in
+    snapshot)
+      local out_path="$STATE_DIR/app-snapshot.json"
+      if [[ ${1:-} == --out ]]; then
+        out_path="$2"
+      fi
+      do_snapshot "$out_path"
+      ;;
+    exec)
+      (($# > 0)) || {
+        usage >&2
+        return 2
+      }
+      exec "$@"
+      ;;
+    *)
+      printf 'github-app-snapshot: unknown inner operation: %s\n' "$operation" >&2
+      return 2
+      ;;
+  esac
+}
+
+run_with_bitwarden() { # $1=operation, [args...]
+  local operation="$1"
+  shift
+  local token rc
+  if ! token="$(keyring_token)"; then
+    return 1
+  fi
+  set +e
+  BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- \
+    "$ENV_BIN" \
+    "HOME=$HOME" \
+    "PATH=$PATH" \
+    "GITHUB_APP_SNAPSHOT_OWNER=$OWNER" \
+    "GITHUB_APP_SNAPSHOT_STATE_DIR=$STATE_DIR" \
+    "GITHUB_APP_SNAPSHOT_MANIFESTS_DIR=$MANIFESTS_DIR" \
+    "GITHUB_APP_SNAPSHOT_PAT_PROBES_FILE=$PAT_PROBES_FILE" \
+    "GITHUB_APP_SNAPSHOT_PAT_PROBES_LOCAL_FILE=$PAT_PROBES_LOCAL_FILE" \
+    "GITHUB_APP_SNAPSHOT_REPO_LIMIT=$REPO_LIMIT" \
+    "GITHUB_APP_SNAPSHOT_CURL_BIN=$CURL_BIN" \
+    "GITHUB_APP_SNAPSHOT_GH_BIN=$GH_BIN" \
+    "GITHUB_APP_SNAPSHOT_OPENSSL_BIN=$OPENSSL_BIN" \
+    "GITHUB_APP_SNAPSHOT_JQ_BIN=$JQ_BIN" \
+    "$SELF" __run "$operation" "$@"
+  rc=$?
+  set -e
+  unset token
+  return "$rc"
+}
+
+# ---------------------------------------------------------------------------
+# Manifest flow (D2: registration の正本は config/github-app-manifests/*.json)
+# ---------------------------------------------------------------------------
+
+manifest_form() { # $1=name [--out FILE]
+  local name="$1" out="" manifest_file manifest_json state html
+  shift
+  if [[ ${1:-} == --out ]]; then
+    out="$2"
+  fi
+  manifest_file="$MANIFESTS_DIR/$name.json"
+  [[ -f $manifest_file ]] || {
+    printf 'github-app-snapshot: no manifest at %s\n' "$manifest_file" >&2
+    return 1
+  }
+  manifest_json="$(cat "$manifest_file")"
+  state="$(head -c16 /dev/urandom | "$OPENSSL_BIN" base64 -A | tr -dc 'a-zA-Z0-9' | head -c16)"
+  [[ -n $out ]] || out="$(mktemp --suffix=.html)"
+  "$JQ_BIN" -n -r --arg m "$manifest_json" --arg s "$state" '
+    "<!doctype html><html><body><form id=f action=\"https://github.com/settings/apps/new?state=" + $s + "\" method=post>" +
+    "<input type=hidden name=manifest value=" + ($m | @html) + "></form>" +
+    "<script>document.getElementById('f').submit()</script></body></html>"
+  ' > "$out"
+  printf 'github-app-snapshot: wrote %s (state=%s) — open it in a browser, click "Create GitHub App", then copy the `code` query parameter from the redirect URL\n' "$out" "$state"
+}
+
+convert_manifest() { # $1=name $2=code
+  local name="$1" code="$2" body id slug client_id pem_file name_upper
+  body="$(http_post_empty_body "$GITHUB_API/app-manifests/$code/conversions" '')"
+  # unauthenticated endpoint (GitHub Docs, "Registering a GitHub App from a
+  # manifest", 取得 2026-09-29) — an empty bearer token is fine, curl sends
+  # an empty Authorization header GitHub ignores for this one endpoint.
+  id="$("$JQ_BIN" -r '.id // empty' <<< "$body")"
+  slug="$("$JQ_BIN" -r '.slug // empty' <<< "$body")"
+  client_id="$("$JQ_BIN" -r '.client_id // empty' <<< "$body")"
+  [[ -n $id ]] || {
+    printf 'github-app-snapshot: manifest conversion failed: %s\n' "$body" >&2
+    return 1
+  }
+  name_upper="$(tr '[:lower:]-' '[:upper:]_' <<< "$name")"
+  pem_file="${XDG_RUNTIME_DIR:-/tmp}/github-app-snapshot-$name.pem"
+  (
+    umask 077
+    "$JQ_BIN" -r '.pem' <<< "$body" > "$pem_file"
+  )
+  cat << EOF
+github-app-snapshot: converted "$name" — id=$id slug=$slug client_id=$client_id
+
+Store these two secrets in the Bitwarden Secrets Manager "github-apps" project:
+  GITHUB_APP_${name_upper}_ID  = $id
+  GITHUB_APP_${name_upper}_PEM = <contents of $pem_file>
+
+Then discard the local PEM copy:
+  shred -u $pem_file
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# --selftest
+# ---------------------------------------------------------------------------
+
+run_selftest() (
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  # -------------------------------------------------------------------
+  # build_jwt(): real openssl, no network. Verifies the three RFC 7519
+  # claims GitHub requires (iss/iat/exp with exp-iat <= 600s) and that
+  # the RS256 signature actually verifies against the matching pubkey —
+  # not just that a 3-segment string was produced.
+  # -------------------------------------------------------------------
+  local priv="$tmp/test.pem" pub="$tmp/test.pub"
+  openssl genrsa -out "$priv" 2048 > /dev/null 2>&1
+  openssl rsa -in "$priv" -pubout -out "$pub" > /dev/null 2>&1
+
+  local jwt header_b64 payload_b64 sig_b64 signing_input header payload
+  jwt="$(OPENSSL_BIN=openssl JQ_BIN=jq build_jwt "123456" "$priv")"
+  IFS='.' read -r header_b64 payload_b64 sig_b64 <<< "$jwt"
+
+  b64url_decode() { # $1=base64url -> raw bytes on stdout
+    local s="$1" pad
+    s="$(tr -- '-_' '+/' <<< "$s")"
+    pad=$((4 - ${#s} % 4))
+    ((pad == 4)) && pad=0
+    s="$s$(printf '%*s' "$pad" '' | tr ' ' '=')"
+    printf '%s' "$s" | openssl base64 -d -A
+  }
+
+  header="$(b64url_decode "$header_b64")"
+  payload="$(b64url_decode "$payload_b64")"
+
+  jq -e '.alg == "RS256" and .typ == "JWT"' <<< "$header" > /dev/null || {
+    printf 'FAIL: JWT header is not {alg:RS256,typ:JWT}: %s\n' "$header" >&2
+    return 1
+  }
+  jq -e '.iss == "123456"' <<< "$payload" > /dev/null || {
+    printf 'FAIL: JWT payload iss mismatch: %s\n' "$payload" >&2
+    return 1
+  }
+  jq -e '(.exp - .iat) <= 600 and (.exp - .iat) > 0' <<< "$payload" > /dev/null || {
+    printf 'FAIL: JWT exp-iat window is not (0,600]: %s\n' "$payload" >&2
+    return 1
+  }
+  jq -e '.iat < now' <<< "$payload" > /dev/null || {
+    printf 'FAIL: JWT iat is not in the past (clock-drift protection): %s\n' "$payload" >&2
+    return 1
+  }
+
+  signing_input="${header_b64}.${payload_b64}"
+  b64url_decode "$sig_b64" > "$tmp/sig.bin"
+  printf '%s' "$signing_input" > "$tmp/signing_input.bin"
+  if ! openssl dgst -sha256 -verify "$pub" -signature "$tmp/sig.bin" "$tmp/signing_input.bin" > /dev/null 2>&1; then
+    printf 'FAIL: JWT RS256 signature does not verify against the matching public key\n' >&2
+    return 1
+  fi
+
+  # -------------------------------------------------------------------
+  # do_snapshot(): stubbed curl/gh, no network. Exercises the app +
+  # PAT-probe assembly and the resulting JSON shape (no PEM/PAT leaked
+  # into the output).
+  # -------------------------------------------------------------------
+  mkdir -p "$tmp/manifests" "$tmp/state"
+  cat > "$tmp/manifests/releaser.json" << 'EOF'
+{"name": "tarotene-releaser", "url": "https://example.invalid", "hook_attributes": {"url": "https://example.invalid", "active": false}}
+EOF
+
+  local fake_curl="$tmp/curl" fake_gh="$tmp/gh"
+  cat > "$fake_curl" << 'CURLSTUB'
+#!/usr/bin/env bash
+set -euo pipefail
+url="${*: -1}"
+case "$url" in
+  */app) printf '{"slug":"tarotene-releaser","name":"tarotene-releaser","permissions":{"contents":"write","issues":"write","pull_requests":"write","metadata":"read"},"events":[]}' ;;
+  */app/installations) printf '[{"id":111,"account":{"login":"tarotene"},"repository_selection":"selected"}]' ;;
+  */app/installations/111/access_tokens) printf '{"token":"fake-install-token"}' ;;
+  */installation/repositories\?per_page=100\&page=1) printf '{"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
+  */installation/repositories\?per_page=100\&page=2) printf '{"repositories":[]}' ;;
+  */repos/tarotene/reachable-repo) printf '{"permissions":{"push":true}}' ;;
+  */repos/tarotene/unreachable-repo) printf '{"permissions":{"push":false}}' ;;
+  *) printf '{}' ;;
+esac
+CURLSTUB
+  chmod +x "$fake_curl"
+
+  cat > "$fake_gh" << 'GHSTUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'reachable-repo\nunreachable-repo\n'
+GHSTUB
+  chmod +x "$fake_gh"
+
+  printf 'claude-web\tCLAUDE_WEB_PAT\n' > "$tmp/pat-probes.tsv"
+
+  local out
+  out="$(
+    MANIFESTS_DIR="$tmp/manifests" \
+      PAT_PROBES_FILE="$tmp/pat-probes.tsv" \
+      PAT_PROBES_LOCAL_FILE=/dev/null \
+      CURL_BIN="$fake_curl" \
+      GH_BIN="$fake_gh" \
+      OWNER=tarotene \
+      OPENSSL_BIN=openssl \
+      JQ_BIN=jq \
+      REPO_LIMIT=500 \
+      GITHUB_APP_RELEASER_ID=999 \
+      GITHUB_APP_RELEASER_PEM="$(cat "$priv")" \
+      CLAUDE_WEB_PAT=fake-pat \
+      run_inner snapshot --out "$tmp/state/app-snapshot.json"
+  )"
+  [[ $out == *"wrote $tmp/state/app-snapshot.json"* ]] || {
+    printf 'FAIL: do_snapshot did not report writing the output file: %s\n' "$out" >&2
+    return 1
+  }
+
+  jq -e '.schema == 1' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot schema field missing\n' >&2
+    return 1
+  }
+  jq -e '.apps[0].name == "releaser" and .apps[0].permissions.contents == "write"' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot apps[0] does not match the releaser fixture: %s\n' "$(jq -c '.apps' "$tmp/state/app-snapshot.json")" >&2
+    return 1
+  }
+  jq -e '.apps[0].installations[0].repositories == ["tarotene/telepath","tarotene/bleep"]' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot installations[0].repositories does not match the fixture (pagination stop or shape wrong): %s\n' \
+      "$(jq -c '.apps[0].installations' "$tmp/state/app-snapshot.json")" >&2
+    return 1
+  }
+  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot pat_probes does not match the push-permission fixture (reachable-repo only): %s\n' \
+      "$(jq -c '.pat_probes' "$tmp/state/app-snapshot.json")" >&2
+    return 1
+  }
+  if grep -qF 'BEGIN' "$tmp/state/app-snapshot.json"; then
+    printf 'FAIL: snapshot output must never contain a PEM\n' >&2
+    return 1
+  fi
+  if grep -qF 'fake-pat' "$tmp/state/app-snapshot.json"; then
+    printf 'FAIL: snapshot output must never contain a PAT value\n' >&2
+    return 1
+  fi
+
+  # -------------------------------------------------------------------
+  # missing app secret env: skipped, not fatal (bws not yet configured)
+  # -------------------------------------------------------------------
+  local out_missing
+  out_missing="$(
+    MANIFESTS_DIR="$tmp/manifests" \
+      PAT_PROBES_FILE=/dev/null \
+      PAT_PROBES_LOCAL_FILE=/dev/null \
+      CURL_BIN="$fake_curl" \
+      GH_BIN="$fake_gh" \
+      OWNER=tarotene \
+      OPENSSL_BIN=openssl \
+      JQ_BIN=jq \
+      run_inner snapshot --out "$tmp/state/app-snapshot-empty.json" 2>&1
+  )"
+  [[ $out_missing == *'no GITHUB_APP_RELEASER_ID'* ]] || {
+    printf 'FAIL: missing app secret should warn and skip, not abort: %s\n' "$out_missing" >&2
+    return 1
+  }
+  jq -e '.apps == []' "$tmp/state/app-snapshot-empty.json" > /dev/null || {
+    printf 'FAIL: skipped app should leave apps empty, not error out: %s\n' "$(cat "$tmp/state/app-snapshot-empty.json")" >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # keyring wiring: missing token -> exit 1 with guidance, never a stack
+  # trace or a network call.
+  # -------------------------------------------------------------------
+  if SECRET_TOOL_BIN=false GITHUB_APP_SNAPSHOT_SECRET_TOOL_BIN=false "$SELF" run > /dev/null 2>&1; then
+    printf 'FAIL: missing keyring token should fail run, not succeed\n' >&2
+    return 1
+  fi
+
+  printf 'github-app-snapshot selftest passed\n'
+)
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+main() {
+  if [[ ${1:-} == --selftest ]]; then
+    run_selftest
+    return
+  fi
+  case "${1:-}" in
+    configure-token)
+      configure_token
+      ;;
+    clear-token)
+      clear_token
+      ;;
+    manifest-form)
+      shift
+      (($# >= 1)) || {
+        usage >&2
+        return 2
+      }
+      manifest_form "$@"
+      ;;
+    convert)
+      shift
+      (($# == 2)) || {
+        usage >&2
+        return 2
+      }
+      convert_manifest "$@"
+      ;;
+    run)
+      shift
+      run_with_bitwarden snapshot "$@"
+      ;;
+    exec)
+      shift
+      [[ ${1:-} == -- ]] || {
+        usage >&2
+        return 2
+      }
+      shift
+      (($# > 0)) || {
+        usage >&2
+        return 2
+      }
+      run_with_bitwarden exec "$@"
+      ;;
+    __run)
+      shift
+      (($# > 0)) || {
+        usage >&2
+        return 2
+      }
+      run_inner "$@"
+      ;;
+    *)
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"
