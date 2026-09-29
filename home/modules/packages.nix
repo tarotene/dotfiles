@@ -355,6 +355,12 @@
   xdg.configFile."github-audit/descriptive-species.tsv".source =
     ../../config/github-audit/descriptive-species.tsv;
   xdg.configFile."github-audit/site-domains.tsv".source = ../../config/github-audit/site-domains.tsv;
+  # lifecycle ドメイン(ADR-0026)の closed set(PUBLIC repos only — 同じ
+  # PUBLIC/PRIVATE 分離)。#524: 他の *.tsv と同じ配線が欠けていたため、
+  # 新規マシンでは `scripts/github-audit` が存在しないファイルを読んで
+  # closed set が無警告で空集合に縮退していた。
+  xdg.configFile."github-audit/lifecycle-species.tsv".source =
+    ../../config/github-audit/lifecycle-species.tsv;
   # routines ドメイン(ADR-0000-routines-declaration-in-repo)の auditor
   # sources 列(PUBLIC repos only — 同じ PUBLIC/PRIVATE 分離)。
   xdg.configFile."github-audit/routines-auditor-sources.tsv".source =
