@@ -1,5 +1,6 @@
-# Shared Bitwarden Secrets Manager (bws) wiring (ADR-0000-github-app-as-code
-# D10). Split out of obsidian.nix, which was the sole consumer until
+# Shared Bitwarden Secrets Manager (bws) wiring, backing ADR-590 D5's
+# Secrets Manager storage decision. Split out of obsidian.nix, which was
+# the sole consumer until
 # github-apps.nix needed the exact same bws + libsecret + `bws/config`
 # triple for a second, deliberately separate machine account (least
 # privilege per Secrets Manager project — obsidian-backup's token never

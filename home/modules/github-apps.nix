@@ -1,4 +1,4 @@
-# github-app-snapshot deployment (ADR-0000-github-app-as-code D3/D5/D10).
+# github-app-snapshot deployment (ADR-590 D3/D5).
 # vega-only for now (imported from home/hosts/vega.nix only) — the only
 # host this snapshot has actually been run from; add to another host's
 # import list once that host also needs to run it.

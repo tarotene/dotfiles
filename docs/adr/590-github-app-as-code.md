@@ -1,4 +1,4 @@
-# ADR-0000 — GitHub App の登録・install 先・secret 配布を 3 層すべて宣言 → 検出の対象にする
+# ADR-590 — GitHub App の登録・install 先・secret 配布を 3 層すべて宣言 → 検出の対象にする
 
 - Status: Accepted
 - Date: 2026-09-30

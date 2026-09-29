@@ -7,7 +7,7 @@ targets, plus each fine-grained PAT's reachable-repository set, to
 `$XDG_STATE_HOME/github-audit/app-snapshot.json` — the file `scripts/
 github-audit` (`releaser`/`routines` domains) and `scripts/
 github-app-registry-check` read lazily. Neither of those two ever sees a
-secret; only this script does (ADR-0000-github-app-as-code D3, preserving
+secret; only this script does (ADR-590 D3, preserving
 `docs/adr/436-single-releaser-github-app.md` D4 — github-audit requires no
 secret).
 
@@ -30,7 +30,7 @@ secret).
 
 2. Create a machine account with **read-only** access to that one project
    and no other. This is a **separate** machine account from
-   `obsidian-backup`'s (2026-09-30 decision, ADR-0000-github-app-as-code
+   `obsidian-backup`'s (2026-09-30 decision, ADR-590
    D5) — least privilege per Secrets Manager project, not a shared token.
    Generate an access token for this host.
 3. Store only that revocable machine token in the login keyring:
@@ -48,7 +48,7 @@ secret).
 ## Creating an owned App from its Manifest
 
 The App's registration source of truth is `config/github-app-manifests/
-<name>.json` (ADR-0000-github-app-as-code D2). To create the App GitHub-side
+<name>.json` (ADR-590 D2). To create the App GitHub-side
 from that declaration:
 
 ```bash

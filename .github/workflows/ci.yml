@@ -719,7 +719,7 @@ jobs:
       - name: github-audit --selftest
         run: ./scripts/github-audit --selftest
 
-      # github-app-snapshot (ADR-0000-github-app-as-code D3): the only
+      # github-app-snapshot (ADR-590 D3): the only
       # script allowed to hold GitHub App PEMs / fine-grained PATs. Its
       # selftest builds a real RS256 JWT with openssl and verifies the
       # signature against a matching pubkey, plus a stubbed-curl/gh
