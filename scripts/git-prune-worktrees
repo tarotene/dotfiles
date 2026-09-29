@@ -109,18 +109,29 @@ strictly_clean() {
   [[ -z "$(git -C "$1" status --porcelain --ignore-submodules=none 2>&1)" ]]
 }
 
+# NOTE on field splitting throughout this file: `IFS=$'\t' read` looks like
+# the obvious way to consume a tab-separated row, but bash classifies tab as
+# "IFS whitespace" regardless of what else is in IFS, so `read` silently
+# collapses *consecutive* tabs and drops the empty field between them — a
+# detached-HEAD worktree's empty branch column, or a `branch`-kind evidence
+# row's always-empty path column, would each shift every field after it by
+# one. `tr '\t' $'\x1f'` first, then `IFS=$'\x1f' read`, sidesteps this: unit
+# separator (0x1F) is never "IFS whitespace" and is never a legitimate byte
+# in a path/branch/sha/evidence value, so consecutive occurrences correctly
+# produce an empty field instead of collapsing (verified against bash's
+# actual behavior, not just its documentation, while debugging this).
 render() {
   local prunable="$1" orphaned="$2" common repo path branch class reason count=0
-  while IFS=$'\t' read -r common repo path branch class reason; do
+  while IFS=$'\x1f' read -r common repo path branch class reason; do
     [[ -n $path ]] || continue
     count=$((count + 1))
     printf 'prunable worktree: repo=%s path=%s branch=%s reason=%s\n' "$repo" "$path" "${branch:-(detached)}" "$reason"
-  done <<<"$prunable"
-  while IFS=$'\t' read -r repo path branch reason; do
+  done < <(tr '\t' $'\x1f' <<<"$prunable")
+  while IFS=$'\x1f' read -r repo path branch reason; do
     [[ -n $path ]] || continue
     count=$((count + 1))
     printf 'orphaned worktree: repo=%s path=%s branch=%s reason=%s\n' "$repo" "$path" "$branch" "$reason"
-  done <<<"$orphaned"
+  done < <(tr '\t' $'\x1f' <<<"$orphaned")
   [[ $count -eq 0 ]] || printf 'total: %d stale worktree(s)\n' "$count"
 }
 
@@ -149,17 +160,6 @@ log_auto_prune() {
     "$(date +%Y-%m-%dT%H:%M:%S%z)" "$1" "$2" "$3" "$4" "$5" "$6" >>"$LOG_FILE"
 }
 
-# NOTE on field splitting throughout this file: `IFS=$'\t' read` looks like
-# the obvious way to consume a tab-separated row, but bash classifies tab as
-# "IFS whitespace" regardless of what else is in IFS, so `read` silently
-# collapses *consecutive* tabs and drops the empty field between them — a
-# detached-HEAD worktree's empty branch column, or a `branch`-kind evidence
-# row's always-empty path column, would each shift every field after it by
-# one. `tr '\t' $'\x1f'` first, then `IFS=$'\x1f' read`, sidesteps this: unit
-# separator (0x1F) is never "IFS whitespace" and is never a legitimate byte
-# in a path/branch/sha/evidence value, so consecutive occurrences correctly
-# produce an empty field instead of collapsing (verified against bash's
-# actual behavior, not just its documentation, while debugging this).
 render_evidence() {
   local findings="$1" kind common repo path branch sha ev count=0
   while IFS=$'\x1f' read -r kind common repo path branch sha ev; do
@@ -454,6 +454,25 @@ STUB
     printf 'FAIL(prunable): branch まで削除された\n' >&2
     return 1
   }
+
+  # detached HEAD な prunable ケース(#547): branch 列が空文字になる行を
+  # render() に渡し、`IFS=$'\t' read` の連続タブ畳み込みで列がずれない
+  # ことを確認する。ずれれば reason 列に本来 class("prunable")が来て
+  # `(detached)` が出ず、"gitdir file points" が reason として出ない。
+  local wt4
+  wt4="$tmp/prunable-detached"
+  git -C "$repo" worktree add -q --detach "$wt4"
+  rm -rf "$wt4"
+  cat >"$tmp/audit-stub" <<STUB
+#!/usr/bin/env bash
+printf '%s\t%s\t%s\t\tprunable\tgitdir file points to non-existent location\n' '$common' '$repo' '$wt4'
+STUB
+  out="$(bash "$0" --dry-run 2>&1)"
+  grep -qF 'branch=(detached) reason=gitdir file points to non-existent location' <<<"$out" || {
+    printf 'FAIL(prunable, detached): 列がずれた: %s\n' "$out" >&2
+    return 1
+  }
+  git --git-dir="$common" worktree prune --verbose --expire=now >/dev/null 2>&1 || true
 
   # submodule ケース: plain remove が submodule 入りを無条件拒否する状況を
   # 再現する。同じリポジトリを使わず別の sub/repo_sub を用意するのは、
