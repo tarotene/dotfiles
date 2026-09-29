@@ -60,6 +60,14 @@ jobs:
       contents: write
       actions: read
     steps:
+      # ローカルの composite action(`uses: ./...`)を解決するには、その
+      # 定義ファイル自体がこのジョブの workspace 上に無ければならない —
+      # composite action 自身が行う checkout(tarotene/dotfiles を別
+      # ディレクトリへ)とは別に、まずこのリポジトリ自身を素の checkout
+      # する必要がある(実測: これを忘れると "Can't find 'action.yml' ...
+      # under '.../.github/actions/pr-title'" で startup_failure になる、
+      # PR #596)。
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/pr-title
         with:
           title: ${{ github.event.pull_request.title }}
