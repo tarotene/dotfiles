@@ -95,3 +95,34 @@ topics も調査した範囲の全リポジトリで未設定だった。
   適合化はここに含まれない)。
 - `shellcheck -S error` が `scripts/github-audit-charters` を通る。
 - `nix flake check` — 3 ホストとも green。
+
+## Amendment (2026-09-29)
+
+Decision 2 の「Issue 起票時にリトマス照合を自動で行う hook…は今回は見送る
+(スコープ外、第 2 弾候補)」を、`gh repo create` の作成時点に限って撤回する
+(Issue 起票時の照合そのものは引き続き見送る — 意味判断が要る点は変わって
+いない)。
+
+ある private リポジトリの新規作成セッションで、`repo-charter` スキル §8 の
+`core` 型手順が `apply-repo-settings.sh`(squash-only 化・delete-branch-on-
+merge 等の repository settings 適用)の呼び出しを欠いたまま実行され、実際に
+settings drift が発生した(2026-09-28 実例、実名は書かない — ADR-0034)。
+この手順書き漏れ自体は `repo-charter` SKILL.md 側の修正で直したが、
+「散文的手順を読み飛ばせば常に起こりうる」という構造は残る。`gh repo
+create` / `gh api -X POST user/repos`・`orgs/*/repos` は存在チェックや
+文字列一致のような決定的な判定だけで deny できる(意味判断を要しない)ため、
+Decision 2 が LLM なしでは無理と判断した範囲には当たらない。
+
+3 つ目の強制点として `config/claude/hooks/repo-create-guard.sh`
+(PreToolUse hook)を追加する。`gh` 経由の作成コマンドをコマンド位置で
+検出して deny し、`repo-charter` スキルの手順(§1 命名インタビュー → §8
+GitHub メタデータ反映・governance 播種)を踏むよう促す。`curl` で直接
+GitHub API を叩く経路・Web UI からの作成はこの hook の対象外のまま
+(軸: 検出のみ、詳細は hook 自身のコメントと `docs/claude/repo-create-
+guard.md` を参照)。
+
+### 執行点
+
+- `config/claude/hooks/repo-create-guard.sh` — 本 Amendment の判定エンジン。
+- `config/claude/skills/repo-charter/SKILL.md` — §8 `core` 型手順に
+  `apply-repo-settings.sh` の呼び出しを追加(今回の drift の直接原因を修正)。

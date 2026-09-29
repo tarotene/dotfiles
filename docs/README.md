@@ -416,6 +416,12 @@ Design and rationale for the hooks and commands deployed from
   `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
   判定エンジンは `scripts/decision-colocation-check`(CI required check +
   client guard `decision-colocation-guard.sh` が共有)。
+- [`repo-create-guard.md`](claude/repo-create-guard.md) — PreToolUse hook
+  (ADR-0013 Amendment 2026-09-29): `gh repo create` / `gh api -X POST
+  user/repos`・`orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの
+  手順(命名インタビュー → GitHub メタデータ反映 → governance 播種)に
+  強制的に載せる。attribution-guard.sh のコマンド解析エンジンを source
+  して再利用する。
 - [`claude-permissions.md`](claude/claude-permissions.md) —
   `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
 - [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s
