@@ -59,6 +59,11 @@ JSON body を組み立てない。
 3. その body をそのまま `RemoteTrigger`(action: create)に渡す。
    加工しない — 決定的 CLI の出力を信じる。
 4. 応答の `trigger.id` を宣言ファイルの `id` に書き戻し、同じ commit に含める。
+5. この repo が Claude のクラウド sandbox から実際に到達可能か確認する
+   (`docs/claude/claude-routines.md`「クラウド到達範囲」節)。到達しない
+   場合は `CLAUDE_WEB_PAT` の selected repositories にこの repo を追加する
+   — `scripts/github-audit` の routines ドメインが `routines-cloud-
+   access-missing` として検出する。
 
 ## 既存の routine を宣言に取り込む(adopt)
 
