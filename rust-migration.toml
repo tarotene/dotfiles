@@ -96,7 +96,14 @@ extra = ["bootstrap.sh"]
 # adapter で、attribution-guard/pr-title-guard の Codex adapter と同じ
 # 前例(単一正本の判定エンジンを source するだけ)のため bash のまま
 # 追加した。
-max_remaining = 68
+#
+# 69 = 上記 68 + grill-me セッション(ADR-591, docs/adr/591-ci-workflow-
+# naming.md)で追加した scripts/workflow-naming-check の 1 件。
+# scripts/rulesets-context-check と同型 — scripts/github-audit の
+# judge_workflows() を source して再利用する設計上、判定ロジックの単一
+# 正本を保つために bash のまま追加した(github-audit 自体が Rust 化される
+# までは同じ扱いにする、#57 の pr-merge-settings-check と同じ理由)。
+max_remaining = 69
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -147,6 +154,10 @@ stage = "4a"
 
 [[target]]
 path = "scripts/adr-number-check"
+stage = "4a"
+
+[[target]]
+path = "scripts/workflow-naming-check"
 stage = "4a"
 
 [[target]]
