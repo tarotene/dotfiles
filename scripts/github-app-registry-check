@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# github-app-registry-check — account-level drift check between each owned
+# App's Manifest declaration (config/github-app-manifests/<name>.json,
+# ADR-590 D2) and its live registration, as last observed by
+# `scripts/github-app-snapshot` (ADR-590 D3, ADR-436 Amendment
+# 2026-09-30). Deterministic, no LLM, no secrets — reads only the
+# snapshot file github-app-snapshot already wrote.
+#
+# This is intentionally NOT a domain inside scripts/github-audit: that
+# script's data model is per-repository (repo x domain -> verdict), and an
+# account-level registration has no repository to attach to. Same
+# "read-only, doesn't re-derive an existing check's verdict" boundary as
+# github-audit's own domains draw against each other (docs/github-audit.md).
+set -euo pipefail
+
+SELF="$(realpath "$0")"
+MANIFESTS_DIR="${GITHUB_APP_REGISTRY_CHECK_MANIFESTS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-app-snapshot/manifests}"
+SNAPSHOT_FILE="${GITHUB_APP_REGISTRY_CHECK_SNAPSHOT_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit/app-snapshot.json}"
+JQ_BIN="${GITHUB_APP_REGISTRY_CHECK_JQ_BIN:-jq}"
+
+usage() {
+  cat << 'EOF'
+usage: github-app-registry-check [--manifests-dir DIR] [--snapshot FILE] [--json]
+       github-app-registry-check --selftest
+EOF
+}
+
+judge_app() { # $1=manifest_json $2=snapshot_apps_json(array) -> {app, verdict, missing}
+  local manifest="$1" snapshot_apps="$2" name live missing_json
+  name="$("$JQ_BIN" -r '.name' <<< "$manifest")"
+  live="$("$JQ_BIN" -c --arg name "$name" '[.[] | select(.app_name == $name)] | first // null' <<< "$snapshot_apps")"
+
+  if [[ $live == null ]]; then
+    "$JQ_BIN" -n --arg app "$name" '{app: $app, verdict: "drifted", missing: ["app-registry-missing-in-snapshot"]}'
+    return
+  fi
+
+  missing_json="$("$JQ_BIN" -n \
+    --argjson manifest "$manifest" --argjson live "$live" '
+    [
+      (if ($manifest.default_permissions // {}) != ($live.permissions // {}) then "app-registry-permissions-drift" else empty end),
+      (if (($manifest.default_events // []) | sort) != (($live.events // []) | sort) then "app-registry-events-drift" else empty end)
+    ]
+  ')"
+
+  if "$JQ_BIN" -e '(. | length) == 0' <<< "$missing_json" > /dev/null; then
+    "$JQ_BIN" -n --arg app "$name" '{app: $app, verdict: "ok", missing: []}'
+  else
+    "$JQ_BIN" -n --arg app "$name" --argjson missing "$missing_json" '{app: $app, verdict: "drifted", missing: $missing}'
+  fi
+}
+
+run_check() { # -> JSON array of {app, verdict, missing}
+  local snapshot_apps='[]' manifest_file name results='[]' entry
+  if [[ -f $SNAPSHOT_FILE ]]; then
+    snapshot_apps="$("$JQ_BIN" -c '.apps // []' "$SNAPSHOT_FILE")"
+  fi
+  [[ -d $MANIFESTS_DIR ]] || {
+    printf '[]'
+    return
+  }
+  for manifest_file in "$MANIFESTS_DIR"/*.json; do
+    [[ -f $manifest_file ]] || continue
+    if [[ ! -f $SNAPSHOT_FILE ]]; then
+      name="$("$JQ_BIN" -r '.name' "$manifest_file")"
+      entry="$("$JQ_BIN" -n --arg app "$name" '{app: $app, verdict: "drifted", missing: ["app-snapshot-missing"]}')"
+    else
+      entry="$(judge_app "$(cat "$manifest_file")" "$snapshot_apps")"
+    fi
+    results="$("$JQ_BIN" -c --argjson r "$results" --argjson e "$entry" '$r + [$e]' <<< '{}')"
+  done
+  printf '%s' "$results"
+}
+
+render_report() {
+  local findings="$1"
+  "$JQ_BIN" -r '.[] | "app=\(.app) verdict=\(.verdict)" + (if (.missing | length) > 0 then " missing=" + (.missing | join(",")) else "" end)' <<< "$findings"
+  local total ok drifted
+  total="$("$JQ_BIN" 'length' <<< "$findings")"
+  ok="$("$JQ_BIN" '[.[] | select(.verdict == "ok")] | length' <<< "$findings")"
+  drifted="$("$JQ_BIN" '[.[] | select(.verdict == "drifted")] | length' <<< "$findings")"
+  printf 'total: %d app(s), ok=%d drifted=%d\n' "$total" "$ok" "$drifted"
+}
+
+any_drift() {
+  "$JQ_BIN" -e '[.[] | select(.verdict != "ok")] | length == 0' <<< "$1" > /dev/null
+}
+
+run_selftest() (
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  mkdir -p "$tmp/manifests"
+
+  cat > "$tmp/manifests/releaser.json" << 'EOF'
+{"name": "tarotene-releaser", "url": "https://example.invalid", "hook_attributes": {"url": "https://example.invalid", "active": false}, "default_permissions": {"contents": "write", "issues": "write", "pull_requests": "write", "metadata": "read"}, "default_events": []}
+EOF
+  cat > "$tmp/manifests/drifted.json" << 'EOF'
+{"name": "tarotene-drifted", "url": "https://example.invalid", "hook_attributes": {"url": "https://example.invalid", "active": false}, "default_permissions": {"contents": "write", "metadata": "read"}, "default_events": []}
+EOF
+  cat > "$tmp/manifests/unregistered.json" << 'EOF'
+{"name": "tarotene-unregistered", "url": "https://example.invalid", "hook_attributes": {"url": "https://example.invalid", "active": false}, "default_permissions": {"metadata": "read"}, "default_events": []}
+EOF
+
+  # --- no snapshot file at all -> every manifest is app-snapshot-missing ---
+  local out_nosnap
+  out_nosnap="$(MANIFESTS_DIR="$tmp/manifests" SNAPSHOT_FILE="$tmp/no-such-file.json" JQ_BIN=jq run_check)"
+  jq -e '[.[] | select(.verdict == "drifted" and (.missing | index("app-snapshot-missing")))] | length == 3' <<< "$out_nosnap" > /dev/null || {
+    printf 'FAIL: missing snapshot file should mark every manifest app-snapshot-missing: %s\n' "$out_nosnap" >&2
+    return 1
+  }
+
+  # --- snapshot present: releaser matches, drifted differs, unregistered absent ---
+  cat > "$tmp/snapshot.json" << 'EOF'
+{"schema": 1, "generated_at": "2026-09-30T00:00:00Z", "apps": [
+  {"name": "releaser", "id": 1, "slug": "tarotene-releaser", "app_name": "tarotene-releaser", "permissions": {"contents": "write", "issues": "write", "pull_requests": "write", "metadata": "read"}, "events": []},
+  {"name": "drifted", "id": 2, "slug": "tarotene-drifted", "app_name": "tarotene-drifted", "permissions": {"contents": "write", "issues": "write", "metadata": "read"}, "events": ["push"]}
+], "pat_probes": []}
+EOF
+
+  local out
+  out="$(MANIFESTS_DIR="$tmp/manifests" SNAPSHOT_FILE="$tmp/snapshot.json" JQ_BIN=jq run_check)"
+
+  jq -e '.[] | select(.app == "tarotene-releaser") | .verdict == "ok" and (.missing | length == 0)' <<< "$out" > /dev/null || {
+    printf 'FAIL: matching manifest/snapshot should be ok: %s\n' "$(jq -c '.[] | select(.app == "tarotene-releaser")' <<< "$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.app == "tarotene-drifted") | .verdict == "drifted" and (.missing | index("app-registry-permissions-drift")) and (.missing | index("app-registry-events-drift"))' <<< "$out" > /dev/null || {
+    printf 'FAIL: mismatched permissions+events should report both drift codes: %s\n' "$(jq -c '.[] | select(.app == "tarotene-drifted")' <<< "$out")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.app == "tarotene-unregistered") | .verdict == "drifted" and (.missing | index("app-registry-missing-in-snapshot"))' <<< "$out" > /dev/null || {
+    printf 'FAIL: manifest absent from snapshot should be app-registry-missing-in-snapshot: %s\n' "$(jq -c '.[] | select(.app == "tarotene-unregistered")' <<< "$out")" >&2
+    return 1
+  }
+
+  if any_drift "$out"; then
+    printf 'FAIL: any_drift() should report drift for this fixture set\n' >&2
+    return 1
+  fi
+
+  # --- fully clean fixture set: any_drift() reports no drift ---
+  local out_clean
+  out_clean="$(jq -c '[.[] | select(.app == "tarotene-releaser")]' <<< "$out")"
+  any_drift "$out_clean" || {
+    printf 'FAIL: any_drift() should report no drift for an all-ok fixture set: %s\n' "$out_clean" >&2
+    return 1
+  }
+
+  # --- no manifests dir at all -> empty result, not an error ---
+  local out_empty
+  out_empty="$(MANIFESTS_DIR="$tmp/no-such-dir" SNAPSHOT_FILE="$tmp/snapshot.json" JQ_BIN=jq run_check)"
+  [[ $out_empty == '[]' ]] || {
+    printf 'FAIL: missing manifests dir should produce an empty result, not error: %s\n' "$out_empty" >&2
+    return 1
+  }
+
+  printf 'github-app-registry-check selftest passed\n'
+)
+
+main() {
+  if [[ ${1:-} == --selftest ]]; then
+    run_selftest
+    return
+  fi
+  local mode=report
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --manifests-dir)
+        MANIFESTS_DIR="$2"
+        shift 2
+        ;;
+      --snapshot)
+        SNAPSHOT_FILE="$2"
+        shift 2
+        ;;
+      --json)
+        mode=json
+        shift
+        ;;
+      -h | --help)
+        usage
+        return
+        ;;
+      *)
+        usage >&2
+        return 2
+        ;;
+    esac
+  done
+
+  local findings
+  findings="$(run_check)"
+  case "$mode" in
+    report) render_report "$findings" ;;
+    json) printf '%s\n' "$findings" ;;
+  esac
+  any_drift "$findings"
+}
+
+main "$@"

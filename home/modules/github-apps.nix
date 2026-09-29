@@ -13,6 +13,14 @@
     executable = true;
   };
 
+  # github-app-registry-check (ADR-436 Amendment 2026-09-30): account-level
+  # Manifest ⇔ live-registration drift check, reads the snapshot
+  # github-app-snapshot writes. No secrets, same as github-audit itself.
+  home.file.".local/bin/github-app-registry-check" = {
+    source = ../../scripts/github-app-registry-check;
+    executable = true;
+  };
+
   # D2: the registration source of truth (permissions/events), never the
   # PEM — see config/github-app-manifests/*.json's own header for what this
   # is and isn't.

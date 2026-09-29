@@ -61,6 +61,16 @@ ROUTINES_AUDITOR_SOURCES_LOCAL_FILE="${GITHUB_AUDIT_ROUTINES_AUDITOR_SOURCES_LOC
 # selftest() can point it at a hermetic fixture instead of the live checkout.
 WORKFLOWS_CANONICAL_QUALITY_FILE="${GITHUB_AUDIT_WORKFLOWS_CANONICAL_QUALITY_FILE:-$(dirname "$SELF")/../config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json}"
 
+# ADR-590 D3/D4, ADR-436 Amendment 2026-09-30: `scripts/github-app-snapshot`
+# writes this file; github-audit only ever reads it (never touches a
+# secret itself, ADR-436 D4). Missing file -> releaser/routines fall back
+# to their pre-Amendment secret-only/sources-only judgement (see the
+# "no app-snapshot.json" stderr note in audit() below), same "file absent
+# = empty" regime as read_overrides()/read_tsv_col1() use elsewhere here.
+APP_SNAPSHOT_FILE="${GITHUB_AUDIT_APP_SNAPSHOT_FILE:-$STATE_DIR/app-snapshot.json}"
+RELEASER_APP_NAME="${GITHUB_AUDIT_RELEASER_APP_NAME:-releaser}"
+CLAUDE_PAT_PROBE_NAME="${GITHUB_AUDIT_CLAUDE_PAT_PROBE_NAME:-claude-web}"
+
 # ADR-0020: repositories created on/before this instant are grandfathered
 # under the loose ADR-0014 pattern check; only repositories created after it
 # face the closed-vocabulary strict grammar (species set / site domain set).
@@ -1375,29 +1385,43 @@ judge_renovate() { # $1=gql-data-json $2=primary-language(optional) -> finding
 }
 
 # ---------------------------------------------------------------------------
-# releaser domain (grill-me セッション調べ, ADR pending): releaser GitHub App
-# (release-plz/release-please 用)の secret 配線を検出する。App の登録・
-# install 状態そのものは検出しない — install が漏れていれば
-# actions/create-github-app-token が次の release push で即座に失敗する
-# (loud failure)ため、二重に検出する機構を持たない。個人アカウントには
-# account-level の Actions secret が存在しないため(repo/environment/org の
-# みで org secret も Free プランでは private repo から読めない)、App を
-# 1 個に集約しても RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY の repo ごとの
-# コピーは還元できず、ここだけが drift しうる。
+# releaser domain (grill-me セッション調べ, ADR-436 + Amendment 2026-09-30):
+# releaser GitHub App(release-plz/release-please 用)の secret 配線に加え、
+# install 有無を検出する。install 検出は `scripts/github-app-snapshot` が
+# 書く app-snapshot.json(ADR-590 D3)が無ければ、従来どおり secret 配線
+# のみの判定にフォールバックする — この domain 自身は秘密を要求しない
+# (ADR-436 D4)。個人アカウントには account-level の Actions secret が
+# 存在しないため(repo/environment/org のみで org secret も Free プラン
+# では private repo から読めない)、App を 1 個に集約しても
+# RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY の repo ごとのコピーは還元
+# できず、そこも引き続き drift しうる。
 # ---------------------------------------------------------------------------
 
-judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) -> finding
-  local has_workflow="$1" secrets="$2" has_id has_key has_legacy_id has_legacy_key
+judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) $3=snapshot_present(true/false, default false) $4=installed(true/false, default false) -> finding
+  local has_workflow="$1" secrets="$2" snapshot_present="${3:-false}" installed="${4:-false}"
+  local has_id has_key has_legacy_id has_legacy_key not_installed_code=()
+
+  [[ $snapshot_present == true && $installed != true ]] && not_installed_code=("releaser-app-not-installed")
 
   if [[ $has_workflow != true ]]; then
-    jq -n '{verdict: "not-applicable", missing: []}'
+    # #506/#588 の姉妹判定: release workflow が無いのに snapshot 上は
+    # install 済み(過剰付与)なら info 級 advisory で可視化する。
+    if [[ $snapshot_present == true && $installed == true ]]; then
+      jq -n '{verdict: "advisory", missing: ["releaser-app-installed-unclaimed"]}'
+    else
+      jq -n '{verdict: "not-applicable", missing: []}'
+    fi
     return
   fi
 
   has_id="$(jq -e 'any(. == "RELEASER_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   has_key="$(jq -e 'any(. == "RELEASER_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   if [[ $has_id == true && $has_key == true ]]; then
-    jq -n '{verdict: "ok", missing: []}'
+    if ((${#not_installed_code[@]} > 0)); then
+      jq -n --argjson missing "$(printf '%s\n' "${not_installed_code[@]}" | jq -R . | jq -s .)" '{verdict: "drifted", missing: $missing}'
+    else
+      jq -n '{verdict: "ok", missing: []}'
+    fi
     return
   fi
 
@@ -1407,43 +1431,61 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
   has_legacy_id="$(jq -e 'any(. == "RELEASE_PLZ_APP_ID" or . == "RELEASE_PLEASE_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   has_legacy_key="$(jq -e 'any(. == "RELEASE_PLZ_APP_PRIVATE_KEY" or . == "RELEASE_PLEASE_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   if [[ $has_legacy_id == true && $has_legacy_key == true ]]; then
-    jq -n '{verdict: "drifted", missing: ["releaser-secret-name-legacy"]}'
+    jq -n --argjson missing "$(printf 'releaser-secret-name-legacy\n%s\n' "${not_installed_code[@]}" | jq -R . | jq -s . | jq 'map(select(length > 0))')" \
+      '{verdict: "drifted", missing: $missing}'
     return
   fi
 
-  jq -n '{verdict: "drifted", missing: ["releaser-app-secrets-missing"]}'
+  jq -n --argjson missing "$(printf 'releaser-app-secrets-missing\n%s\n' "${not_installed_code[@]}" | jq -R . | jq -s . | jq 'map(select(length > 0))')" \
+    '{verdict: "drifted", missing: $missing}'
 }
 
 # ---------------------------------------------------------------------------
-# routines domain (ADR-0000-routines-declaration-in-repo): a repo can carry
-# `.claude/routines/*.json` declarations, but the weekly self-audit routine
-# only reconciles repos listed in its own (necessarily private) `sources`.
-# A declaration in a repo the auditor never clones is invisible drift — the
-# repo's PR review enforces the declaration's shape, but nothing ever
+# routines domain (ADR-0000-routines-declaration-in-repo, + ADR-590 D4 /
+# ADR-436 Amendment 2026-09-30): a repo can carry `.claude/routines/
+# *.json` declarations, but the weekly self-audit routine only reconciles
+# repos listed in its own (necessarily private) `sources`, and Claude's
+# GitHub App can only reach repos its `CLAUDE_WEB_PAT` fine-grained PAT
+# was granted push access to. A declaration in a repo the auditor never
+# clones — or a repo `CLAUDE_WEB_PAT` never reaches — is invisible drift:
+# the repo's PR review enforces the declaration's shape, but nothing ever
 # checks it against live. This domain closes that gap: presence-detection
 # only (does the repo have `.claude/routines/`, is it in the auditor's
-# sources), never the declaration ⇄ live comparison itself (that is
-# `routines-plan.sh`'s job, run by the auditor, not this cross-repo audit —
-# same "audit stays read-only, doesn't re-derive an existing check's
-# verdict" boundary as titles' presence-vs-conformance split above).
+# sources, does the PAT reach it), never the declaration ⇄ live comparison
+# itself (that is `routines-plan.sh`'s job, run by the auditor, not this
+# cross-repo audit — same "audit stays read-only, doesn't re-derive an
+# existing check's verdict" boundary as titles' presence-vs-conformance
+# split above). The PAT-reach half falls back to sources-only judgement
+# when `scripts/github-app-snapshot` hasn't written app-snapshot.json yet
+# — this domain requires no secret itself.
 # ---------------------------------------------------------------------------
 
-judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "owner/repo") -> finding
-  local repo="$1" gql="$2" sources="$3" has_declarations
+judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "owner/repo") $4=snapshot_present(true/false, default false) $5=reach(true/false, default false) -> finding
+  local repo="$1" gql="$2" sources="$3" snapshot_present="${4:-false}" reach="${5:-false}" has_declarations
 
   has_declarations="$(jq -e '
     (.routinesDir.entries // []) | any(.name | endswith(".json"))
   ' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
 
   if [[ $has_declarations != true ]]; then
-    jq -n '{verdict: "not-applicable", missing: []}'
+    if [[ $snapshot_present == true && $reach == true ]]; then
+      jq -n '{verdict: "advisory", missing: ["routines-cloud-access-unclaimed"]}'
+    else
+      jq -n '{verdict: "not-applicable", missing: []}'
+    fi
     return
   fi
 
-  if jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$sources" >/dev/null 2>&1; then
+  local -a missing=()
+  jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$sources" >/dev/null 2>&1 || missing+=("routines-sources-missing")
+  [[ $snapshot_present == true && $reach != true ]] && missing+=("routines-cloud-access-missing")
+
+  if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
   else
-    jq -n '{verdict: "drifted", missing: ["routines-sources-missing"]}'
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
   fi
 }
 
@@ -1784,7 +1826,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   repos_meta="$(list_repos_meta)"
   overrides="$(read_overrides)"
 
-  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0 need_ruleset_jobs=0
+  local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0 need_ruleset_jobs=0 need_app_snapshot=0
   for d in "${DOMAINS[@]}"; do
     # ADR-0020: rulesets also needs GraphQL now, for workflowsDir (CI
     # presence) — required_status_checks is derived from it, not just
@@ -1815,6 +1857,12 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # gated on has_caller (see the titles) case below) so repos without a
     # pr-title.yml caller never pay the extra REST calls.
     [[ $d == titles ]] && need_title_jobs=1
+    # releaser/routines' install-state / cloud-reach checks (ADR-590,
+    # ADR-436 Amendment 2026-09-30) read app-snapshot.json once for the
+    # whole run — no per-repo REST call, unlike the need_releaser/
+    # need_repo_rest/need_ci_conclusion/need_title_jobs lazy-fetch flags
+    # above.
+    [[ $d == releaser || $d == routines ]] && need_app_snapshot=1
   done
 
   local repo_names_json gql_batch='{}'
@@ -1835,6 +1883,36 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
   lifecycle_species_json="$(read_closed_set_json "$LIFECYCLE_SPECIES_FILE" /dev/null)"
   local routines_sources_json
   routines_sources_json="$(read_closed_set_json "$ROUTINES_AUDITOR_SOURCES_FILE" "$ROUTINES_AUDITOR_SOURCES_LOCAL_FILE")"
+
+  # ADR-590 D3/D4, ADR-436 Amendment 2026-09-30: read once for the whole
+  # run, never per-repo. Absence of the file (github-app-snapshot never
+  # run, or bws not yet configured) is not an error — releaser/routines
+  # both fall back to their pre-Amendment judgement in that case, and this
+  # domain still requires no secret of its own.
+  local releaser_snapshot_present=false releaser_installs_json='[]' \
+    pat_snapshot_present=false pat_reach_json='[]'
+  if ((need_app_snapshot)); then
+    if [[ -f $APP_SNAPSHOT_FILE ]]; then
+      local app_snapshot_json
+      app_snapshot_json="$(cat "$APP_SNAPSHOT_FILE")"
+      if jq -e --arg n "$RELEASER_APP_NAME" '(.apps // []) | any(.name == $n)' <<<"$app_snapshot_json" >/dev/null 2>&1; then
+        releaser_snapshot_present=true
+        releaser_installs_json="$(jq -c --arg n "$RELEASER_APP_NAME" \
+          '[(.apps // [])[] | select(.name == $n) | (.installations // [])[] | (.repositories // [])[]]' <<<"$app_snapshot_json")"
+      fi
+      if jq -e --arg n "$CLAUDE_PAT_PROBE_NAME" '(.pat_probes // []) | any(.name == $n)' <<<"$app_snapshot_json" >/dev/null 2>&1; then
+        pat_snapshot_present=true
+        pat_reach_json="$(jq -c --arg n "$CLAUDE_PAT_PROBE_NAME" \
+          '[(.pat_probes // [])[] | select(.name == $n) | (.repositories // [])[]]' <<<"$app_snapshot_json")"
+      fi
+    fi
+    # Missing file (github-app-snapshot never run yet, or bws not
+    # configured) is a silent fallback, same "file absent = empty" quiet
+    # regime as read_overrides()/fetch_repo_secrets() elsewhere in this
+    # script — not printed to stderr, which would otherwise corrupt every
+    # `"$SELF" --json 2>&1`-style capture this selftest (and any caller
+    # piping stdout+stderr together) relies on staying pure JSON.
+  fi
 
   local repo lang vis description topics_json topic_count meta domains_obj entry created_at pushed_at repo_gql has_workflows is_archived
   while IFS= read -r meta; do
@@ -1898,16 +1976,25 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ;;
           releaser)
             if ((need_releaser)); then
-              local has_releaser_workflow secret_names
+              local has_releaser_workflow secret_names installed=false
               has_releaser_workflow="$(jq -e '
                 (.workflowsDir.entries // []) | any(.name == "release-plz.yml" or .name == "release-please.yml")
               ' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
               secret_names='[]'
               [[ $has_releaser_workflow == true ]] && secret_names="$(fetch_repo_secrets "$repo")"
-              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names")"
+              [[ $releaser_snapshot_present == true ]] \
+                && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$releaser_installs_json" >/dev/null 2>&1 \
+                && installed=true
+              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names" "$releaser_snapshot_present" "$installed")"
             fi
             ;;
-          routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
+          routines)
+            local reach=false
+            [[ $pat_snapshot_present == true ]] \
+              && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$pat_reach_json" >/dev/null 2>&1 \
+              && reach=true
+            entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json" "$pat_snapshot_present" "$reach")"
+            ;;
           workflows) entry="$(judge_workflows "$repo" "$repo_gql")" ;;
         esac
       fi
@@ -1943,7 +2030,7 @@ render_report() {
   total="$(jq '[.[].domains | to_entries[]] | length' <<<"$findings")"
   printf 'total: %d finding(s) across %d repo(s)\n' "$total" "$(jq 'length' <<<"$findings")"
   local verdict
-  for verdict in ok drifted ungoverned exempt not-applicable dormancy-candidate; do
+  for verdict in ok drifted ungoverned exempt not-applicable dormancy-candidate advisory; do
     local count
     count="$(jq --arg v "$verdict" '[.[].domains | to_entries[] | select(.value.verdict == $v)] | length' <<<"$findings")"
     printf '  %s=%d\n' "$verdict" "$count"
@@ -1955,7 +2042,11 @@ any_drift() { # $1=findings -> exit 0 if any non-exempt/non-ok/non-not-applicabl
   # it is a candidate LIST, not a drift judgement (#261 裁定) — a dormant
   # repository is not "wrong", so it must never fail the audit's exit code
   # or count toward github-audit-triage's usual "propose a fix PR" flow.
-  jq -e '[.[].domains | to_entries[] | select(.value.verdict != "ok" and .value.verdict != "exempt" and .value.verdict != "not-applicable" and .value.verdict != "dormancy-candidate")] | length == 0' <<<"$1" >/dev/null
+  # advisory (releaser/routines over-grant, ADR-436 Amendment 2026-09-30)
+  # is the same shape of exclusion, generalized beyond lifecycle: a repo
+  # an App/PAT reaches without a claiming declaration is worth surfacing,
+  # not worth failing the run over.
+  jq -e '[.[].domains | to_entries[] | select(.value.verdict != "ok" and .value.verdict != "exempt" and .value.verdict != "not-applicable" and .value.verdict != "dormancy-candidate" and .value.verdict != "advisory")] | length == 0' <<<"$1" >/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -3483,6 +3574,114 @@ jobs:
       "$(judge_routines "routines-orphaned" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources")" >&2
     return 1
   }
+
+  # ---------------------------------------------------------------------
+  # releaser/routines domains + app-snapshot.json (ADR-590, ADR-436
+  # Amendment 2026-09-30): install/reach-state direct-call tests. Both
+  # judges default $3.../$4../$5.. to false when omitted (verified above,
+  # pre-Amendment call sites), so these are additive cases only.
+  # ---------------------------------------------------------------------
+
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-app-secrets-missing") | not) and (.missing | index("releaser-app-not-installed"))' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >/dev/null || {
+    printf 'FAIL: secret 完備でも snapshot 上 install 無しなら releaser-app-not-installed になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok" and (.missing | length == 0)' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >/dev/null || {
+    printf 'FAIL: secret 完備かつ snapshot 上 install 済みなら ok のままであるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "advisory" and (.missing | index("releaser-app-installed-unclaimed"))' \
+    <<<"$(judge_releaser false '[]' true true)" >/dev/null || {
+    printf 'FAIL: release workflow 無しで snapshot 上 install 済みなら advisory/releaser-app-installed-unclaimed になるべき: %s\n' \
+      "$(judge_releaser false '[]' true true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_releaser false '[]' true false)" >/dev/null || {
+    printf 'FAIL: release workflow 無しで snapshot 上も install 無しなら not-applicable のままであるべき: %s\n' \
+      "$(judge_releaser false '[]' true false)" >&2
+    return 1
+  }
+
+  jq -e '.verdict == "drifted" and (.missing | index("routines-sources-missing") | not) and (.missing | index("routines-cloud-access-missing"))' \
+    <<<"$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true false)" >/dev/null || {
+    printf 'FAIL: sources には含まれるが PAT が到達しない場合 routines-cloud-access-missing になるべき: %s\n' \
+      "$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true false)" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok" and (.missing | length == 0)' \
+    <<<"$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true true)" >/dev/null || {
+    printf 'FAIL: sources にも含まれ PAT も到達するなら ok のままであるべき: %s\n' \
+      "$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "advisory" and (.missing | index("routines-cloud-access-unclaimed"))' \
+    <<<"$(judge_routines "no-routines-dir" '{}' "$routines_sources" true true)" >/dev/null || {
+    printf 'FAIL: 宣言が無いのに PAT が到達する repo は advisory/routines-cloud-access-unclaimed になるべき: %s\n' \
+      "$(judge_routines "no-routines-dir" '{}' "$routines_sources" true true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_routines "no-routines-dir" '{}' "$routines_sources" true false)" >/dev/null || {
+    printf 'FAIL: 宣言が無く PAT も到達しない repo は not-applicable のままであるべき: %s\n' \
+      "$(judge_routines "no-routines-dir" '{}' "$routines_sources" true false)" >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # app-snapshot.json 有無の全パイプライン battery: audit() が
+  # GITHUB_AUDIT_APP_SNAPSHOT_FILE を実際に読み、releaser/routines の
+  # verdict に反映することを確認する(direct-call テストは judge_*() 自体
+  # の分岐、ここは audit() 配線側の検証)。
+  # ---------------------------------------------------------------------
+
+  cat >"$tmp/fixtures/repo-list.json" <<'SNAPFIX'
+[
+  {"name": "snap-installed", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "snap-not-installed", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
+]
+SNAPFIX
+  cat >"$tmp/fixtures/graphql-response.json" <<'SNAPGQL'
+{
+  "data": {
+    "r1": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r2": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null}
+  }
+}
+SNAPGQL
+  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-installed_actions_secrets.json"
+  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-not-installed_actions_secrets.json"
+
+  cat >"$tmp/state/app-snapshot.json" <<'SNAPSTATE'
+{"schema": 1, "generated_at": "2026-09-30T00:00:00Z",
+ "apps": [{"name": "releaser", "id": 1, "slug": "tarotene-releaser", "app_name": "tarotene-releaser",
+           "permissions": {}, "events": [],
+           "installations": [{"id": 1, "account": "tarotene", "repository_selection": "selected",
+                               "repositories": ["tarotene/snap-installed"]}]}],
+ "pat_probes": []}
+SNAPSTATE
+
+  local out_snap
+  out_snap="$(GITHUB_AUDIT_APP_SNAPSHOT_FILE="$tmp/state/app-snapshot.json" "$SELF" --json releaser 2>&1)" || true
+  jq -e '.[] | select(.repo=="snap-installed") | .domains.releaser.verdict == "ok"' <<<"$out_snap" >/dev/null || {
+    printf 'FAIL: snapshot 上 install 済みの snap-installed は releaser=ok になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="snap-installed") | .domains.releaser' <<<"$out_snap")" >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="snap-not-installed") | .domains.releaser.verdict == "drifted" and (.domains.releaser.missing | index("releaser-app-not-installed"))' <<<"$out_snap" >/dev/null || {
+    printf 'FAIL: snapshot 上 install されていない snap-not-installed は releaser-app-not-installed になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="snap-not-installed") | .domains.releaser' <<<"$out_snap")" >&2
+    return 1
+  }
+  # 後続の battery は「app-snapshot.json 無し」の secret-only フォール
+  # バックを前提にしている — GITHUB_AUDIT_STATE_DIR ($tmp/state) 直下に
+  # 書いたこのフィクスチャを残すと、以後 GITHUB_AUDIT_APP_SNAPSHOT_FILE
+  # を明示しない全パイプライン呼び出しがこれを拾ってしまう。
+  rm -f "$tmp/state/app-snapshot.json"
 
   # ---------------------------------------------------------------------
   # releaser domain: REST 経由の secret 名取得($GH_BIN 越し)を含む配線を
