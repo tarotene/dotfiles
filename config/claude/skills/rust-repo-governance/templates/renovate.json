@@ -9,7 +9,8 @@
     "managerFilePatterns": [
       "/Cargo\\.toml$/",
       "/tools/__CLI_CRATE__/Cargo\\.toml$/"
-    ]
+    ],
+    "rangeStrategy": "bump"
   },
   "packageRules": [
     {

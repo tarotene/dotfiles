@@ -5,7 +5,8 @@
     "D1: non-major updates automerge (0.x minor excluded); major and 0.x-minor stay human-merged PRs.",
     "D2: merge executor is GitHub native auto-merge (platformAutomerge); safety depends on the consuming repo's rulesets required_status_checks.",
     "D3: minimumReleaseAge 3 days for everything; vulnerabilityAlerts fixes are exempt (0 days) and automerge.",
-    "internalChecksFilter=strict (default, restated for clarity): a version younger than minimumReleaseAge is filtered out entirely, so no PR exists until it ages past the wait — platform auto-merge cannot fire on a pending version."
+    "internalChecksFilter=strict (default, restated for clarity): a version younger than minimumReleaseAge is filtered out entirely, so no PR exists until it ages past the wait — platform auto-merge cannot fire on a pending version.",
+    "github-actions.managerFilePatterns has no override (#474): an earlier per-template override narrowed it to workflows only, which silently excluded composite actions (.github/actions/*/action.yml) from digest-pin updates. Renovate's own default already covers both — restated here, not re-narrowed."
   ],
   "extends": [
     "config:recommended",
@@ -26,8 +27,7 @@
   "automergeStrategy": "squash",
   "github-actions": {
     "enabled": true,
-    "pinDigests": true,
-    "managerFilePatterns": ["/\\.github/workflows/[^/]+\\.ya?ml$/"]
+    "pinDigests": true
   },
   "lockFileMaintenance": {
     "enabled": true,
