@@ -9,12 +9,18 @@
 # mirrors Herdr's own already-installed SessionStart entry. Accepts any number
 # of (event, bash-command, timeoutSec) triples.
 #
-# Optional leading `--retire <event> <command>`... pairs (terminated by
-# `--register` or end of args) remove bash-exact-match entries first — same
-# retire-then-register order as register-codex-hooks, added when the bleep
+# Optional leading `--retire <event> <command>` pairs, each with its own
+# `--retire` token (terminated by `--register` or end of args), remove
+# bash-exact-match entries first — same retire-then-register order and
+# per-pair-prefixed shape as register-codex-hooks, added when the bleep
 # rename (tarotene/bleep, formerly publish-guard) orphaned the old adapter
 # command strings this script had registered (#160/#27 upstream cutover left
-# no way to remove a stale entry from this file).
+# no way to remove a stale entry from this file). A caller retiring more than
+# one command (home/modules/claude.nix's bleep-hook cutover, #576) repeats
+# `--retire <event> <command>` once per pair rather than writing a single
+# `--retire` ahead of several bare pairs — main() below only accepts that
+# per-pair form; a bare-pairs run (or any arg count that doesn't divide into
+# whole register tuples) is a usage error (exit 2), not a silent no-op.
 set -euo pipefail
 TEST_TMP=''
 
@@ -58,13 +64,19 @@ main() {
     mkdir -p "$(dirname "$settings")"
     printf '{}\n' > "$settings"
   fi
-  if [[ "${1-}" == --retire ]]; then
+  while [[ "${1-}" == --retire ]]; do
     shift
-    while (( $# > 0 )) && [[ "$1" != --register ]]; do
-      retire "$settings" "$1" "$2"
-      shift 2
-    done
-    [[ "${1-}" == --register ]] && shift
+    if (( $# < 2 )); then
+      printf 'register-copilot-hooks: --retire requires an <event> <command> pair\n' >&2
+      exit 2
+    fi
+    retire "$settings" "$1" "$2"
+    shift 2
+  done
+  [[ "${1-}" == --register ]] && shift
+  if (( $# > 0 )) && (( $# % 3 != 0 )); then
+    printf 'register-copilot-hooks: register tuples must come in groups of 3 (event command timeout), got %d leftover arg(s)\n' "$#" >&2
+    exit 2
   fi
   while (( $# > 0 )); do
     register "$settings" "$1" "$2" "$3"
@@ -117,6 +129,40 @@ selftest() {
   ' "$settings" >/dev/null
   # Retiring the only entry under an event key collapses that key entirely.
   jq -e '(.hooks | has("agentStop")) | not' "$settings" >/dev/null
+
+  # The real caller (home/modules/claude.nix's bleep-hook cutover, #576)
+  # repeats `--retire <event> <command>` once per pair rather than writing a
+  # single leading `--retire` ahead of several bare pairs — main() must
+  # accept that per-pair-prefixed shape and still register afterward (a
+  # regression here previously shifted every subsequent arg by one, either
+  # silently no-op'ing the register call or hitting an unbound-variable
+  # error, #hms-arcturus-2026-09-29).
+  main "$settings" \
+    --retire userPromptSubmitted report-cmd \
+    --retire sessionStart new-report-cmd \
+    --register \
+    userPromptSubmitted final-cmd 10
+  jq -e '
+    ([.hooks.userPromptSubmitted[]? | select(.bash == "report-cmd")] | length) == 0
+    and (([.hooks.sessionStart[]? | select(.bash == "new-report-cmd")] | length) == 0)
+    and (([.hooks.userPromptSubmitted[]? | select(.bash == "final-cmd")] | length) == 1)
+    and (([.hooks.SessionStart[]? | select(.bash == "herdr-existing")] | length) == 1)
+  ' "$settings" >/dev/null
+
+  # An arg list that doesn't divide into whole register tuples is a usage
+  # error (exit 2), not a silent no-op or an unbound-variable crash.
+  local arity_settings arity_rc
+  arity_settings="$tmp/arity.json"
+  printf '{}\n' > "$arity_settings"
+  if ( main "$arity_settings" sessionStart only-two-args ) 2>/dev/null; then
+    arity_rc=0
+  else
+    arity_rc=$?
+  fi
+  [[ $arity_rc -eq 2 ]] || {
+    printf 'FAIL: leftover arg count not a multiple of 3 should exit 2, got %d\n' "$arity_rc" >&2
+    exit 1
+  }
 
   printf 'selftest: OK\n'
 }
