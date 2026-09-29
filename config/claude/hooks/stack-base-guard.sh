@@ -497,7 +497,21 @@ main() {
 
   tool="$(jq -r '.tool_name // empty' <<< "$input" 2> /dev/null)" || exit 0
   SESSION_ID="$(jq -r '.session_id // "unknown"' <<< "$input" 2> /dev/null)" || SESSION_ID="unknown"
-  project="${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<< "$input" 2> /dev/null)}" || project=""
+
+  # project 解決(#538): 実際の呼び出し cwd (`input.cwd`) を優先する。
+  # `CLAUDE_PROJECT_DIR` はセッション全体で固定なので、同一セッション内で
+  # 別リポジトリを scratchpad 等に clone してそこで --repo/-R 無しの
+  # `gh pr create` を実行すると、CLAUDE_PROJECT_DIR 優先では常に元の
+  # プロジェクトのリモートへ誤解決していた(実測、2026-09-28)。cwd が
+  # 存在しない・git work tree でない場合だけ CLAUDE_PROJECT_DIR に
+  # フォールバックする(cwd を渡さない呼び出し元との互換のため)。
+  local cwd
+  cwd="$(jq -r '.cwd // empty' <<< "$input" 2> /dev/null)" || cwd=""
+  if [[ -n $cwd ]] && git -C "$cwd" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+    project="$cwd"
+  else
+    project="${CLAUDE_PROJECT_DIR:-}"
+  fi
   [[ -n $project ]] || exit 0
   git -C "$project" rev-parse --is-inside-work-tree > /dev/null 2>&1 || exit 0
 
@@ -579,7 +593,20 @@ case "$1" in
     case "$2" in
       list)
         [[ "${STACK_STUB_PR_LIST_RC:-0}" == "0" ]] || exit 1
-        if [[ -n "${STACK_STUB_PR_LIST_FILE:-}" && -f "${STACK_STUB_PR_LIST_FILE:-}" ]]; then
+        # #538 テスト用: -R の値が STACK_STUB_PR_LIST_NWO と一致するときだけ
+        # STACK_STUB_PR_LIST_FILE を返す(未設定なら従来どおり無条件で返す)。
+        nwo_arg=""
+        shift 2
+        while [[ $# -gt 0 ]]; do
+          if [[ "$1" == "-R" ]]; then
+            nwo_arg="$2"
+            break
+          fi
+          shift
+        done
+        if [[ -n "${STACK_STUB_PR_LIST_NWO:-}" && "$nwo_arg" != "${STACK_STUB_PR_LIST_NWO}" ]]; then
+          echo '[]'
+        elif [[ -n "${STACK_STUB_PR_LIST_FILE:-}" && -f "${STACK_STUB_PR_LIST_FILE:-}" ]]; then
           cat "${STACK_STUB_PR_LIST_FILE}"
         else
           echo '[]'
@@ -649,6 +676,21 @@ STUB
   printf '[{"number":1,"headRefName":"stage1","headRefOid":"%s","baseRefName":"main"},{"number":2,"headRefName":"stage2","headRefOid":"%s","baseRefName":"stage1"}]\n' \
     "$stage1_sha" "$stage2_sha" > "$tmp/prs-stage1-stage2.json"
   printf '[]\n' > "$tmp/prs-empty.json"
+
+  # #538 テスト用: 別 owner/repo を持つ第2リポジトリ(CLAUDE_PROJECT_DIR とは
+  # 別に scratchpad 等へ clone された状況を再現する)。chain 状態は無く、
+  # 独自ブランチ1本のみ。
+  repo2="$tmp/repo2"
+  mkdir -p "$repo2"
+  git -C "$repo2" init -q
+  git -C "$repo2" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m base2
+  git -C "$repo2" remote add origin https://github.com/other-owner/other-repo.git
+  git -C "$repo2" update-ref refs/remotes/origin/main "$(git -C "$repo2" rev-parse HEAD)"
+  git -C "$repo2" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$repo2" switch -c feature -q
+  git -C "$repo2" -c core.hooksPath=/dev/null -c user.email=t@example.com -c user.name=t \
+    commit --allow-empty -q -m f1
 
   export STACK_BASE_GUARD_DIR="$tmp/state-root"
   export SESSION_ID="selftest-sid"
@@ -812,6 +854,29 @@ STUB
   else
     check "15 deny 期待" "deny" "pass"
   fi
+
+  # 16: #538 — CLAUDE_PROJECT_DIR ($repo, example/example, stage1/stage2 の
+  #     chain が既に存在) とは別に clone された $repo2(other-owner/
+  #     other-repo, feature ブランチ1本のみ・chain なし)で --repo/-R 無しの
+  #     gh pr create を実行する。project 解決が input.cwd ($repo2) を優先
+  #     すれば nwo=other-owner/other-repo に解決され、スタブは(空の)
+  #     PR一覧を返す(初回PRなので pass)。project を CLAUDE_PROJECT_DIR
+  #     ($repo, stage2 checkout)のまま解決する旧実装なら、nwo=example/
+  #     example に解決されてスタブが stage1/stage2 の chain を返し、
+  #     $repo のブランチ(stage2)を stage1 の祖先ありと誤判定して deny
+  #     する(テスト1と同型)— この回帰を検知する。
+  reset_state
+  git -C "$repo" switch stage2 -q
+  rc=0
+  out="$(PATH="$stub_path" CLAUDE_PROJECT_DIR="$repo" \
+    STACK_STUB_PR_LIST_NWO="example/example" \
+    STACK_STUB_PR_LIST_FILE="$tmp/prs-stage1-stage2.json" \
+    bash "$self" \
+    <<< "$(jq -n --arg cwd "$repo2" --arg cmd "gh pr create --base main --title t --body b" \
+      '{session_id:"selftest-sid-538",tool_name:"Bash",cwd:$cwd,tool_input:{command:$cmd}}')" \
+    2> "$tmp/err16")" || rc=$?
+  check "16 別 clone(cwd優先)は pass" "0" "$rc"
+  check "16 別 clone(cwd優先)は無出力" "" "$out"
 
   if [[ $fails -gt 0 ]]; then
     echo "selftest: ${fails} 件失敗" >&2
