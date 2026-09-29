@@ -103,7 +103,20 @@ extra = ["bootstrap.sh"]
 # judge_workflows() を source して再利用する設計上、判定ロジックの単一
 # 正本を保つために bash のまま追加した(github-audit 自体が Rust 化される
 # までは同じ扱いにする、#57 の pr-merge-settings-check と同じ理由)。
-max_remaining = 69
+#
+# 71 = 上記 69 + ADR-590(GitHub App as-a-code)セッションで追加する
+# scripts/github-app-snapshot・scripts/github-app-registry-check の 2 件
+# (stacked PR の異なる段で追加するため、この行の書き換えは
+# stacked-pr スキル §2「同じ行を2段以上が書き換えない」に従い今段のみで
+# 済ませ、2 件分をまとめて計上する。main の 67→69 進行に対する origin/main
+# rebase 追従で 69→71 に付け直した)。両スクリプトとも
+# `scripts/obsidian-backup` の bws + keyring machine-token パターンや
+# `scripts/github-audit` の jq ベース judge/selftest パターンを踏襲する
+# 薄い bash であり、既存の巨大な bash 資産(github-audit)と判定ロジックを
+# 共有する設計上、github-audit 自体が Rust 化されるまでは同じ理由で bash
+# のまま追加した — `pr-merge-settings-check`/`pr-title-context-check` と
+# 同型の判断。
+max_remaining = 71
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -382,6 +395,10 @@ stage = "4e"
 
 [[target]]
 path = "scripts/tailscale-prefs"
+stage = "4e"
+
+[[target]]
+path = "scripts/github-app-snapshot"
 stage = "4e"
 
 # --- inline activation scripts (Stage 4e) ---
