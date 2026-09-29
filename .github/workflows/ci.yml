@@ -676,6 +676,14 @@ jobs:
       - name: adr-number.sh (codex adapter) --selftest
         run: bash ./config/codex/hooks/adr-number.sh --selftest
 
+      # apply-repo-settings.sh (docs/adr/0000-renovate-automerge-shared-
+      # preset.md D5b) is deterministic bash end to end against a stubbed
+      # gh — covers the default (PATCH + vulnerability-alerts PUT +
+      # automated-security-fixes DELETE), --no-dependabot (both Dependabot
+      # calls skipped), and --dry-run (no gh api calls at all) paths.
+      - name: apply-repo-settings.sh --selftest
+        run: bash ./config/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema

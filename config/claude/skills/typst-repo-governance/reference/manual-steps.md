@@ -5,24 +5,18 @@ that cannot be scripted from a CI context.
 
 ---
 
-## 1. Install the Mend Renovate GitHub App
+## 1. Renovate
 
-Renovate tracks GitHub Actions version pins **and** the Typst compiler version pin
-(`typst-version: X.Y.Z` annotated with `# renovate: datasource=github-releases depName=typst/typst`).
-This is the only automated tool that covers both.
+Nothing to do here per repository. The Mend Renovate App is installed
+account-wide ("All repositories") — see
+`config/claude/skills/repo-governance-common/reference/renovate-app.md`
+for the one-time setup, how to confirm the App is actually running on
+this repository, and the shared automerge policy preset that
+`seed.sh`'s copy of `renovate.json` extends.
 
-**Steps:**
-1. Navigate to https://github.com/apps/renovate and click **Install**.
-2. Choose your personal account or organisation.
-3. Under "Repository access", select **Only select repositories** → choose `OWNER/REPO`.
-4. Click **Save**.
-
-Renovate will open an onboarding PR within minutes. Merge it (or let it auto-close if you
-already have a `renovate.json` — seed.sh copies one).
-
-**What Renovate will do:**
+**What Renovate will do here:**
 - Pin all `uses: foo/bar@vX.Y` actions to their SHA digest (`# vX.Y` comment preserved)
-- Open weekly PRs for GitHub Actions updates (grouped)
+- Open PRs for GitHub Actions updates (grouped, automerge on green checks per the shared policy)
 - Open PRs when `typst/typst` cuts a new release (annotation in workflow YAML required)
 
 ---

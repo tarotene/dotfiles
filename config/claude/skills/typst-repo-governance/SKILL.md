@@ -117,7 +117,7 @@ comment. The table below lists the most important locations:
 | `.github/workflows/release.yml` | PDF filenames in the `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body; **delete this file** if not a CV project |
 | `cliff.toml` | `tag_pattern` if your CalVer tag scheme differs |
-| `renovate.json` | Scheduling, grouping rules |
+| `renovate.json` | Typst toolchain group, custom manager — scheduling/grouping/automerge live in the shared preset it extends |
 
 **Key invariant**: the `name:` field of each workflow job MUST exactly match
 the `context` string in `.github/rulesets/quality.json`. The `__MIN_TYPST__`
@@ -152,7 +152,7 @@ re-verifies the match at runtime on every PR via
 
 Follow `./reference/manual-steps.md` for:
 
-1. **Mend Renovate App** — install on your repo (tracks Actions pins + Typst version).
+1. **Renovate** — nothing to do per repository; the App is installed account-wide (see `repo-governance-common/reference/renovate-app.md`).
 2. **Commit signing** — SSH or GPG signing for `required_signatures` Ruleset.
 3. **First PR** — push the bootstrapped branch, open PR, wait for 5 green checks.
 4. **Apply Rulesets + settings** — run apply-rulesets.sh and apply-repo-settings.sh

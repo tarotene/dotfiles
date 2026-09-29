@@ -58,6 +58,12 @@ by release-plz + the excluded CLI crate published by the separate step).
 
 ## 3. Post-copy adjustments
 
+Renovate: nothing to install per repository — the Mend Renovate App is
+account-wide (see
+[`repo-governance-common/reference/renovate-app.md`](../../repo-governance-common/reference/renovate-app.md)).
+`renovate.json` extends the shared automerge policy preset; only this
+ecosystem's `packageRules` (below) are repo-specific.
+
 After `seed.sh --dry-run` or `seed.sh` completes, open each file that has a
 `# ADJUST:` comment and edit as needed. Key locations:
 
