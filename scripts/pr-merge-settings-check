@@ -118,15 +118,15 @@ STUB
   GH_BIN="$tmp/bin/gh"
 
   check "1 全項目 OK" "tarotene/all-ok" \
-    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}' \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}' \
     0
 
   check "2 squash title drift(単一 commit PR での実例相当)" "tarotene/single-commit-drift" \
-    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"}' \
+    '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES","allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}' \
     1
 
   check "3 merge-not-squash-only drift" "tarotene/merge-allowed" \
-    '{"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"}' \
+    '{"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}' \
     1
 
   touch "$tmp/bin/fail"
