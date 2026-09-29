@@ -21,7 +21,14 @@
 # passed as a command-line argument. It stays inside jq's own JSON pipeline
 # end to end (read from the stdin file, `--slurpfile`'d back in, embedded
 # via jq's own escaping) for exactly that reason.
+#
+# ADR-0032 Amendment (#531): registered directly for Codex CLI too (same
+# script, no adapter file — its own I/O is agent-agnostic already), with
+# AGENT_NAME=codex prefixed into the Codex-side command string. Default
+# stays "claude-code" so the Claude registration is unchanged.
 set -uo pipefail
+
+AGENT_NAME="${AGENT_NAME:-claude-code}"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -57,13 +64,14 @@ case "$event" in
     fi
     jq -nc \
       --arg ts "$ts" \
+      --arg agent "$AGENT_NAME" \
       --arg session_id "$session_id" \
       --arg prompt_id "$prompt_id" \
       --arg cwd "$cwd" \
       --slurpfile payload "$hook_input_file" \
       '{
          kind: "prompt",
-         agent: "claude-code",
+         agent: $agent,
          ts: $ts,
          session_id: $session_id,
          prompt_id: $prompt_id,
@@ -74,8 +82,9 @@ case "$event" in
   Stop)
     jq -nc \
       --arg ts "$ts" \
+      --arg agent "$AGENT_NAME" \
       --arg session_id "$session_id" \
-      '{kind: "turn_end", agent: "claude-code", ts: $ts, session_id: $session_id}' \
+      '{kind: "turn_end", agent: $agent, ts: $ts, session_id: $session_id}' \
       >>"$out_file" 2>/dev/null || true
     ;;
 esac

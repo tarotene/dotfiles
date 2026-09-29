@@ -63,6 +63,14 @@
 # ファイルの mtime(`find -newer`、GNU/BSD 両対応で epoch 文字列を扱わない)。
 set -euo pipefail
 
+# attribution-guard.sh(config/claude/hooks/attribution-guard.sh)と同じ
+# 変数名・既定値。「Filed from」フッターは attribution-guard.sh 自身の
+# 「Generated with」フッターと役割が同じ(生成元明示)なので、エージェント名/
+# URL の正本を1組の環境変数に揃える(ADR-0032 Amendment #531)。Codex
+# adapter がこの2変数だけを差し替えて Claude 版を呼ぶ。
+ATTRIBUTION_AGENT_NAME="${ATTRIBUTION_AGENT_NAME:-Claude Code}"
+ATTRIBUTION_AGENT_URL="${ATTRIBUTION_AGENT_URL:-https://claude.com/claude-code}"
+
 state_root() {
   printf '%s/claude/wrapup' "${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"
 }
@@ -699,7 +707,7 @@ if [[ -s "$inbox" ]]; then
   4. 本文は detail を会話の文脈で補って書き、末尾に次の 1 行を付ける
      (inbox 由来を後から grep で絞るための出自フッターが、
      attribution-guard.sh が要求する生成元表示を兼ねる):
-       「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」
+       「🤖 Filed from [${ATTRIBUTION_AGENT_NAME}](${ATTRIBUTION_AGENT_URL}) wrap-up inbox」
   5. 起票に成功した行、重複でスキップした行、または手順3で「今回は起票
      しない」を選んだ行だけを bash '${self}' --mark-filed '${inbox}'
      '<その行そのまま>' で削除する。gh issue create に失敗した行には

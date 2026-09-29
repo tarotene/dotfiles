@@ -485,12 +485,21 @@ let
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
   planReviewCmd = "bash '${hooksDir}/copilot-plan-review.sh'";
   wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
+  # Codex 向けは同じファイルを、フッターの agent 名/URL だけ環境変数で
+  # 差し替えて直接登録する(adapter ファイルを新設しない — ADR-0032
+  # Amendment #531、D8)。attribution-guard の Codex adapter と同じ
+  # 定数値。
+  codexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "bash '${hooksDir}/plan-view.sh'";
   issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
+  # pr-gate.sh の判定(G_pr/G_link/G_visual/G_stack)は agent 名を一切
+  # 参照しないため、Codex にも同じファイルを adapter 無しで直接登録する
+  # (ADR-0032 Amendment #531)。
+  codexPrGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
   # 上流(tarotene/bleep、旧 tarotene/publish-guard、ADR-0009)は #25-28
@@ -638,6 +647,9 @@ let
   # 別リポジトリ(daily-report)がそのまま読む契約なので、フィールド名は
   # 変更しないこと。
   agentTurnLogCmd = "bash '${hooksDir}/agent-turn-log.sh'";
+  # Codex 向けは同じファイルを AGENT_NAME=codex だけ差し替えて直接登録する
+  # (adapter ファイルを新設しない — ADR-0032 Amendment #531、D8)。
+  codexAgentTurnLogCmd = "AGENT_NAME=codex bash '${hooksDir}/agent-turn-log.sh'";
   # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
   # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
   # history.db に記録する。`atuin hook install claude-code` は settings.json
@@ -1704,6 +1716,21 @@ in
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30
+      '';
+
+  # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate.sh は
+  # agent 名を参照しないため同じ command 文字列をそのまま(D8 参照)、
+  # wrapup-stop-gate.sh/agent-turn-log.sh は環境変数だけ差し替えた command
+  # 文字列を登録する — いずれも adapter ファイルは新設しない。同じ
+  # lost-update 対策で SessionStart の登録の後ろに明示的に順序付ける。
+  home.activation.registerCodexStopHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexSessionStartHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          Stop "" ${lib.escapeShellArg codexWrapupStopCmd} 10 \
+          Stop "" ${lib.escapeShellArg codexPrGateStopCmd} 600 \
+          UserPromptSubmit "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10 \
+          Stop "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
