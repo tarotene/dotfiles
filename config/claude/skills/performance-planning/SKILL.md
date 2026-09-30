@@ -56,6 +56,12 @@ JSON 化してから jq で処理する。**書き込み**は yq の TOML エン
 (手順は同スキルの SKILL.md を参照)。本スキルが追加するのは、確定後に
 person-state リポジトリ側の `[[rehearsals]]` へ反映する手順のみ。
 
+こちらから合わせを打診する(発行側)場合の候補の出し方とマーカーの扱いは、
+slot-availability の SKILL.md「発行側の打診」に従う。予約型サービスを
+使うときは `【調整中】` マーカーを作らないので、下の手順2(`finalize`)は
+通らない — 相手が予約して確定した予定から、手順3 の `start`/`end` を追記
+する。
+
 `rehearsal` の `status`(negotiating/confirmed/done)は ADR-0014 により
 保存されなくなった — `start`/`end` の有無と `end` が過去かどうかから導出
 される。以降の手順は「`status` を書き換える」ではなく「`start`/`end` を
