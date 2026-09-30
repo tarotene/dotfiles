@@ -315,6 +315,13 @@
   一本化し、Dependabot security updates を OFF にして修正 PR の経路を
   Renovate の `vulnerabilityAlerts` へ一本化する。Self-host との比較と
   発火条件も記録。
+- [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow
+  命名基準の統一。required check は集約 job `CI passed` + `PR title` に
+  固定して quality.json を単一正本化し(ADR-468 Amendment の先送りを
+  解消)、PR title 検査を reusable workflow から composite action へ
+  置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
+  `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
+  sentence case。
 - [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
