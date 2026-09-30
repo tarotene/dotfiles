@@ -304,9 +304,15 @@ if [[ "${1:-}" == "--check-dup" ]]; then
   repo="${3:-}"
   repo_args=()
   [[ -n "$repo" ]] && repo_args=(-R "$repo")
-  if ! json="$(gh issue list "${repo_args[@]}" --state open --search "in:title $title" --json title 2>/dev/null)"; then
+  # #606: 判定不能(exit 3)でも理由は stderr に残す。捨てると、レート制限
+  # のような一過性の失敗が毎ターン同じ案内を繰り返す原因を追えない。
+  err_file="$(mktemp)"
+  if ! json="$(gh issue list "${repo_args[@]}" --state open --search "in:title $title" --json title 2>"$err_file")"; then
+    printf 'check-dup: gh issue list failed: %s\n' "$(tr '\n' ' ' <"$err_file")" >&2
+    rm -f "$err_file"
     exit 3
   fi
+  rm -f "$err_file"
   if jq -e --arg t "$title" 'any(.[]; .title == $t)' >/dev/null <<<"$json"; then
     exit 1
   fi
@@ -382,6 +388,10 @@ if [[ "${1:-}" == "--selftest" ]]; then
   cat >"$dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$WRAPUP_GH_ARGS_LOG" 2>/dev/null || true
+if [[ "${WRAPUP_STUB_FAIL:-0}" == "1" ]]; then
+  echo 'GraphQL: API rate limit already exceeded' >&2
+  exit 1
+fi
 if [[ "${WRAPUP_STUB_DUP:-0}" == "1" ]]; then
   echo '[{"title":"dup title"}]'
 else
@@ -555,6 +565,13 @@ STUB
   rc=0
   PATH="$stub_path" bash "$self" --check-dup "dup title" || rc=$?
   check "--check-dup は非ヒット時 exit 0" 0 "$rc"
+
+  # --- --check-dup: gh 失敗は exit 3 で、理由が stderr に出る(#606) ---
+  rc=0
+  fail_err="$(PATH="$stub_path" WRAPUP_STUB_FAIL=1 bash "$self" --check-dup "dup title" 2>&1 >/dev/null)" || rc=$?
+  check "--check-dup は gh 失敗時 exit 3" 3 "$rc"
+  check "--check-dup は gh 失敗の理由を stderr に出す" 0 \
+    "$(grep -q 'rate limit already exceeded' <<<"$fail_err"; echo $?)"
 
   # --- --check-dup [repo]: repo 引数が gh に -R として渡る(ADR-478) ---
   : >"$WRAPUP_GH_ARGS_LOG"
