@@ -211,6 +211,36 @@ err="$(bash "$SCRIPT_DIR/slot-hit.sh" judge --config "$tmpd/config.toml" --candi
 check_error_contains "13c active が boolean でなければエラー" "boolean" "$rc" "$err"
 rm -rf "$tmpd"
 
+# 14) enumerate_candidates: 候補一覧が無いとき、期間 × 全コマを judge の入力
+#     契約として列挙する。2026-10-03 は土曜、10-04 は日曜。
+enum() { # $1=from $2=to $3=weekdays(JSON) $4=slots(JSON)
+  jq -nc -L"$SCRIPT_DIR" --argjson config "$CONFIG" --arg from "$1" --arg to "$2" \
+    --argjson weekdays "${3:-[]}" --argjson slots "${4:-[]}" \
+    'include "lib"; enumerate_candidates($config; $from; $to; $weekdays; $slots)' 2>&1
+}
+check "14a 3 日 × 3 コマ = 9 件、コマは開始時刻順" \
+  '[{"date":"2026-10-03","time":"09:00"},{"date":"2026-10-03","time":"13:00"},{"date":"2026-10-03","time":"18:00"}]' \
+  "$(enum 2026-10-03 2026-10-05 | jq -c '.[0:3]')"
+check "14b 件数" "9" "$(enum 2026-10-03 2026-10-05 | jq 'length')"
+check "14c 曜日で絞る(土日のみ)" '["2026-10-03","2026-10-04","2026-10-10","2026-10-11"]' \
+  "$(enum 2026-10-03 2026-10-11 '[0,6]' '["evening"]' | jq -c '[.[].date]')"
+check "14d コマ名で絞る" '["18:00"]' "$(enum 2026-10-03 2026-10-03 '[]' '["evening"]' | jq -c '[.[].time]')"
+rc=0; err="$(enum 2026-10-05 2026-10-03)" || rc=$?
+check_error_contains "14e from > to はエラー" "より後" "$rc" "$err"
+rc=0; err="$(enum 2026-10-03 2026-10-05 '[]' '["nope"]')" || rc=$?
+check_error_contains "14f 設定に無いコマ名はエラー" "設定に無いコマ名" "$rc" "$err"
+rc=0; err="$(enum 2026-10-03 2026-10-05 '[9]')" || rc=$?
+check_error_contains "14g 範囲外の曜日はエラー" "--weekdays" "$rc" "$err"
+rc=0; err="$(enum 2026-10-03 2028-10-05)" || rc=$?
+check_error_contains "14h 400 日超はエラー" "400 日" "$rc" "$err"
+# 列挙した候補をそのまま judge に流せる(判定コアは 1 つのまま)。夕方に
+# 予定がある日の 3 コマは、朝 ○ / 昼 △(バッファ 60 分ちょうど) / 夕 ×。
+cands="$(enum 2026-10-18 2026-10-18)"
+out=$(run_judge \
+  '[{"calendar_id":"primary","calendar_summary":"本体","ev":{"status":"confirmed","start":{"dateTime":"2026-10-18T18:00:00+09:00"},"end":{"dateTime":"2026-10-18T21:00:00+09:00"},"summary":"会食"}}]' \
+  "$cands")
+check "14i 列挙 → judge(朝○ 昼△ 夕×)" '["○","△","×"]' "$(jq -c '.plan.answers' <<<"$out")"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 if [[ "$fail" -eq 0 ]]; then
