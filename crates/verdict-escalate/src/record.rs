@@ -35,6 +35,8 @@ pub enum ReasonId {
     PushDiffFailed,
     /// 判定エンジン自体が起動できない、または入力を読めない。
     EngineUnavailable,
+    /// 未展開のシェル変数参照を含み、宛先を静的に確定できない(bleep#34)。
+    UnresolvedVar,
 }
 
 /// `match_class` フィールド。マッチしなかった判定(fail-loud な ask 等)は
