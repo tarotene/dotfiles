@@ -7,8 +7,9 @@
 # しないため、収集と起票を分離する:
 #
 #   収集 : wrapup-session-start.sh が「気づきは inbox(JSONL)に追記せよ」と注入
-#   起票 : この hook が inbox 非空なら exit 2 + stderr 指示でゲートし、
-#          フルコンテキストを持つ本体 Claude に gh issue create させる
+#   起票 : この hook が inbox 非空なら exit 2 + stderr の短いポインタでゲートし、
+#          フルコンテキストを持つ本体 Claude に --procedure の手順で
+#          gh issue create させる
 #
 # inbox は作業ツリーを汚さないよう state 領域に置く:
 #   ${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl
@@ -41,6 +42,9 @@
 #                   exit 0 = 重複なし / 1 = 同名 open Issue あり / 3 = 判定不能(gh 失敗)
 #   起票済み削除: wrapup-stop-gate.sh --mark-filed <inbox> '<json1行>'
 #                   (行全体の完全一致で先頭の 1 行だけ削除)
+#   起票手順書:   wrapup-stop-gate.sh --procedure <inbox>
+#                   (Stop 本体は 2 行のポインタだけを出し、手順書はエージェントが
+#                   これで取りに行く。Stop 出力はユーザーにも表示されるため)
 #   inbox パス解決: wrapup-stop-gate.sh --inbox-path <project-dir>
 #                   (repo_slug 解決後の inbox パスを stdout に出すだけ。副作用なし)
 #   自己修復移行:  wrapup-stop-gate.sh --migrate <project-dir>
@@ -208,6 +212,48 @@ self_path() {
 if [[ "${1:-}" == "--inbox-path" ]]; then
   project="${2:?usage: wrapup-stop-gate.sh --inbox-path <project-dir>}"
   inbox_for "$project"
+  exit 0
+fi
+
+# --- サブコマンド: --procedure <inbox> ------------------------------------------
+# inbox の起票手順書を stdout に出す。Stop hook の出力はどの経路でもユーザーの
+# transcript に表示されるため、Stop 本体は 2 行のポインタだけを出し、静的な
+# 手順書はエージェントがこのサブコマンドで取りに行く(LLM 向け hook 出力の
+# 書式は ADR-625: <hook-directive> 外枠 + 英語本文、照合語は原文のまま)。
+if [[ "${1:-}" == "--procedure" ]]; then
+  inbox="${2:?usage: wrapup-stop-gate.sh --procedure <inbox>}"
+  self="$(self_path)"
+  cat <<EOF
+<hook-directive source="wrapup-stop-gate" kind="procedure">
+Each line of ${inbox} is one JSONL item (ts/title/detail, optionally repo/go).
+Process the lines one by one:
+  1. Run bash '${self}' --check-dup "<title>" [repo] (pass repo if the line
+     has one; otherwise the target is this project's repository).
+     exit 1 means an open Issue with the same title already exists (duplicate).
+     exit 3 means the check could not be made — skip that line this time and
+     leave it in the inbox.
+  2. If the line has no "go":"ask" and is not a duplicate, file it with
+     gh issue create [-R <repo>] --title "<title>" --body "<body>".
+  3. If the line has "go":"ask" (auto-aggregated from the verdict ledger,
+     ADR-478), do not file it right away even when it is not a duplicate.
+     Show title, detail, and repo (the default target) via AskUserQuestion with
+     the choices 「このまま <repo> に起票する」「別のリポジトリに振り直す」
+     「今回は起票しない」, then act on the answer (re-routing only changes the
+     -R target). gh-edit-allow may auto-allow gh issue create based on earlier
+     creations in the same session, so the absence of a permission prompt is
+     not a GO — always confirm with AskUserQuestion.
+  4. Write the body from detail plus the conversation context, and end it with
+     this line (the provenance footer, grep-able for inbox-origin Issues, also
+     serves as the attribution that attribution-guard.sh requires):
+       「🤖 Filed from [${ATTRIBUTION_AGENT_NAME}](${ATTRIBUTION_AGENT_URL}) wrap-up inbox」
+  5. Remove only the lines that were filed, skipped as duplicates, or declined
+     with 「今回は起票しない」 in step 3, using
+     bash '${self}' --mark-filed '${inbox}' '<the line verbatim>'.
+     If gh issue create fails, do not call --mark-filed; the line stays in the
+     inbox for a retry on the next turn.
+Do not edit the inbox directly (always go through --add / --mark-filed).
+</hook-directive>
+EOF
   exit 0
 fi
 
@@ -384,6 +430,21 @@ STUB
   PATH="$stub_path" bash "$self" <<<"$hookinput" 2>"$errfile" || rc=$?
   check "非空 inbox でゲート発動" 2 "$rc"
   check "ゲートは stderr に指示を出す" 0 "$([[ -s "$errfile" ]]; echo $?)"
+  check "Stop 出力は hook-directive 外枠 4 行に収まる" 4 "$(wc -l <"$errfile")"
+
+  # --procedure: Stop 出力が示すコマンドをそのまま実行するとフッターが届く。
+  # Codex adapter の env 差し替えも、示されたコマンド経由で引き継がれる。
+  proc_cmd="$(sed -n 's/^Run `\(.*\)` and follow its output\.$/\1/p' "$errfile")"
+  check "Stop 出力から --procedure コマンドを抽出できる" 0 "$([[ -n "$proc_cmd" ]]; echo $?)"
+  check "--procedure は既定フッターを含む" 0 \
+    "$(bash -c "$proc_cmd" | grep -Fq 'Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox'; echo $?)"
+  rc=0
+  errfile_codex="$dir/stderr-codex.txt"
+  PATH="$stub_path" ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://example.com/codex' \
+    bash "$self" <<<"$hookinput" 2>"$errfile_codex" || rc=$?
+  proc_cmd="$(sed -n 's/^Run `\(.*\)` and follow its output\.$/\1/p' "$errfile_codex")"
+  check "--procedure は差し替えフッターを引き継ぐ" 0 \
+    "$(env -u ATTRIBUTION_AGENT_NAME -u ATTRIBUTION_AGENT_URL bash -c "$proc_cmd" | grep -Fq 'Filed from [Codex CLI](https://example.com/codex) wrap-up inbox'; echo $?)"
 
   # gh 不在 → 素通り(gh だけを欠いた最小 PATH を合成する)
   mkdir -p "$dir/nogh"
@@ -533,8 +594,10 @@ STUB
     WRAPUP_VERDICT_ESCALATE_BIN="$dir/bin/verdict-escalate" \
     bash "$self" <<<"$ve_hookinput" 2>"$ve_errfile" || rc=$?
   check "verdict-escalate が追記した行だけでもゲート発動" 2 "$rc"
-  check "指示文に go:ask の扱いが含まれる" 0 \
-    "$(grep -Fq '"go":"ask"' "$ve_errfile"; echo $?)"
+  check "Stop 出力は --procedure へのポインタを含む" 0 \
+    "$(grep -Fq -- '--procedure' "$ve_errfile"; echo $?)"
+  check "手順書に go:ask の扱いが含まれる" 0 \
+    "$(bash "$self" --procedure "$dir/x.jsonl" | grep -Fq '"go":"ask"'; echo $?)"
   rm -f "$dir/bin/verdict-escalate"
 
   # WRAPUP_VERDICT_ESCALATE_BIN 未指定・実体も無い既定解決先では、
@@ -555,7 +618,7 @@ STUB
   check "session-start は additionalContext を返す" 0 \
     "$(jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null <<<"$out"; echo $?)"
   check "session-start は未処理件数を報告する" 0 \
-    "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" | grep -q "未処理 2 件"; echo $?)"
+    "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$out" | grep -q "2 unprocessed item(s)"; echo $?)"
 
   # --- #328: feedback 型 auto memory の未起票検査 ---
   fb_repo="$dir/fb_repo"
@@ -687,32 +750,15 @@ msg=""
 
 if [[ -s "$inbox" ]]; then
   count="$(wc -l <"$inbox")"
+  # エージェントが叩く --procedure にも Stop 起動時と同じフッター(Codex adapter
+  # は env で差し替える)が届くよう、env を明示的に前置したコマンドを示す。
+  procedure_cmd="$(printf 'ATTRIBUTION_AGENT_NAME=%q ATTRIBUTION_AGENT_URL=%q bash %q --procedure %q' \
+    "$ATTRIBUTION_AGENT_NAME" "$ATTRIBUTION_AGENT_URL" "$self" "$inbox")"
   msg+="$(cat <<EOF
-[wrapup-inbox] 未起票の気づきが ${count} 件残っています: ${inbox}
-各行は JSONL(ts/title/detail、任意で repo/go)です。行ごとに次の手順で処理してください:
-  1. bash '${self}' --check-dup "<title>" [repo] を実行する(行に repo が
-     あれば渡す。無ければこのプロジェクトのリポジトリが対象)。
-     exit 1 なら同名の open Issue が既にある(重複)。exit 3 なら判定不能 —
-     その行は今回スキップして inbox に残す。
-  2. 行に "go":"ask" が無ければ、重複でない場合そのまま
-     gh issue create [-R <repo>] --title "<title>" --body "<本文>" で起票する。
-  3. 行に "go":"ask" がある場合(判定レッジャーからの自動集約行、ADR-478)は、
-     重複でなくても直ちに起票してはいけません。AskUserQuestion で
-     title・detail・repo(既定の起票先)を提示し、「このまま <repo> に起票する」
-     「別のリポジトリに振り直す」「今回は起票しない」を選んでもらってから、
-     選択に従ってください(振り直しは -R で指定先リポジトリを変えるだけ)。
-     gh-edit-allow が同セッション内の作成実績から gh issue create を自動
-     allow することがあるため、許可プロンプトの有無を GO の代わりにしない
-     こと — 必ず AskUserQuestion で確認する。
-  4. 本文は detail を会話の文脈で補って書き、末尾に次の 1 行を付ける
-     (inbox 由来を後から grep で絞るための出自フッターが、
-     attribution-guard.sh が要求する生成元表示を兼ねる):
-       「🤖 Filed from [${ATTRIBUTION_AGENT_NAME}](${ATTRIBUTION_AGENT_URL}) wrap-up inbox」
-  5. 起票に成功した行、重複でスキップした行、または手順3で「今回は起票
-     しない」を選んだ行だけを bash '${self}' --mark-filed '${inbox}'
-     '<その行そのまま>' で削除する。gh issue create に失敗した行には
-     --mark-filed を呼ばず、inbox に残す(次ターンで再試行)。
-inbox を直接編集してはいけません(必ず --add / --mark-filed 経由)。
+<hook-directive source="wrapup-stop-gate" event="Stop">
+${count} unfiled item(s) in the wrap-up inbox: ${inbox}
+Run \`${procedure_cmd}\` and follow its output.
+</hook-directive>
 EOF
 )"
 fi
@@ -721,15 +767,17 @@ if [[ -n "$unlinked" ]]; then
   [[ -n "$msg" ]] && msg+=$'\n\n'
   fcount="$(wc -l <<<"$unlinked")"
   msg+="$(cat <<EOF
-[feedback-memory] 今セッション中に更新された type: feedback の auto memory が
-${fcount} 件、Issue 番号(#N)の参照を持たずに残っています:
+<hook-directive source="wrapup-stop-gate" kind="feedback-memory">
+${fcount} type: feedback auto memory file(s) updated in this session have no Issue
+reference (#N):
 $(sed 's/^/  - /' <<<"$unlinked")
-汎用的な作業方針フィードバック(プロジェクト固有でなく、センシティブでないもの)は
-既定で GitHub Issue として起票し、起票したら該当メモリファイルの本文に #N を
-追記してください(共有 AGENTS.md「ユーザーからのフィードバックは不可視な
-ローカルメモに閉じ込めない」節、config/claude/CLAUDE.md「フィードバックの
-Issue 化」節)。プロジェクト固有で汎用化できない、またはセキュリティ・個人情報
-等センシティブな内容はこの限りではありません。
+File general working-policy feedback (not project-specific, not sensitive) as a
+GitHub Issue by default, then add #N to the body of the memory file (shared
+AGENTS.md 「ユーザーからのフィードバックは不可視なローカルメモに閉じ込めない」,
+config/claude/CLAUDE.md 「フィードバックの Issue 化」). Project-specific content
+that does not generalize, or sensitive content (security, personal data), is
+exempt.
+</hook-directive>
 EOF
 )"
 fi

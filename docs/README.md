@@ -331,6 +331,10 @@
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
   転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する。
+- [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook
+  出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式の
+  試験導入。Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
+  `--procedure` で取りに行く。範囲は wrapup 系のみ。
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
   先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
   (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用スクリプト
