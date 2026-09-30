@@ -72,8 +72,20 @@ audit ドメインを作らない。
 
 ## スコープ外(意図的)
 
-- 他リポジトリへの播き — 播種先リポジトリは `docs/adr/` を持たず検査対象が
-  存在しない。将来必要になったら「検査が配線されているか」の presence
-  detection のみを `github-audit` に足す(`judge_titles` と同型)。
+- `github-audit` での配線 presence detection — 検査が播かれているかを
+  横断監査で見るのは、必要になったら `judge_titles` と同型で足す。
 - 既存の連番衝突(ADR-0020→0021)のバックフィル — ADR-0008 の immutable
   原則により、事後の一括改番はしない。
+
+## 他リポジトリへの播種
+
+checker は `config/claude/skills/repo-governance-common/templates/scripts/adr-number-check`
+が単一ソースで、このリポジトリの `scripts/adr-number-check` はその symlink。
+`adr-number.yml`(CI workflow)と合わせて、`repo-governance-common` の core 型と
+typst/rust/astro の各 `copy-files.sh` が播く。`docs/adr/` を持たない
+リポジトリでは何も検査せず通過する。
+
+索引ファイルの検査(全 ADR が索引にリンクされている)は環境変数
+`ADR_INDEX` で切り替える: 未設定は `docs/README.md`(このリポジトリの
+既定)、空文字は無効化、パスを渡すとそのファイル。播種される workflow は
+索引を持たないリポジトリを想定して既定を空にしている。

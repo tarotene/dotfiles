@@ -9,7 +9,8 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    gate job plus the `CI passed` aggregate required check, ADR-591 in
    tarotene/dotfiles — + `pr-title.yml`, `release-plz.yml`,
    `release-binaries.yml`, `release-reminder.yml`, a per-file
-   language-mixing check `lang-mix.yml`, `nav-docs.yml` + composite action
+   language-mixing check `lang-mix.yml`, `nav-docs.yml` + composite action,
+   an ADR-number check `adr-number.yml` — ADR-380 in tarotene/dotfiles —
    + CODEOWNERS)
    and config files (renovate.json, release-plz.toml, cog.toml, rust-toolchain.toml, Justfile, git hooks,
    AGENTS.md/CLAUDE.md routing skeleton — ADR-0016 in tarotene/dotfiles)
