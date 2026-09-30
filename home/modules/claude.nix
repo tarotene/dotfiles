@@ -453,17 +453,17 @@
 #    `hook_io::cmd_hash` が単一正本で、段4 の promotion-detect が SKILL.md
 #    のコードブロックを同じ関数でハッシュして照合する。
 #
-# 33) pr-confirm-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-543 D2、
-#    docs/claude/pr-confirm-guard.md、2026-09-29):
-#    PR 本文の `## 要確認` の各項目に、閉語彙のブロッキング理由
-#    (資格情報|ハードウェア|secrets 衛生|GUI|判断)・インデントされた番号
-#    手順・`完了確認:` 行がすべて揃っているかを `gh pr create/edit` の
-#    呼び出し時に機械検査する。pr-description スキル §6 の散文だけでは
-#    「要確認の手順が迷う」失敗が2度再発した(tarotene/dotfiles#239、および
-#    別リポジトリでの secrets 登録手順)ため、G_visual と同じ「機械的下限は
-#    ゲート、手順の妥当性はスキル」の二層分担へ昇格させた。owner が
-#    tarotene のリポジトリのみで発火し(pr-title-guard.sh と同じ理由)、
-#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。
+# 33) pr-confirm-guard(PreToolUse, matcher: "Bash|mcp__.*"、
+#    docs/claude/pr-confirm-guard.md、2026-09-30 改定):
+#    PR 本文に (i) 未チェックの task list(`- [ ]`)、または (ii) `## 要確認`
+#    に Issue 参照(`#N` または issues URL)を持たない項目があれば
+#    `gh pr create/edit` の呼び出し時に deny する。人の確認が要る残作業は
+#    後続 Issue へ払い出し、「要確認」はその Issue へのポインタだけを書く
+#    節に転換した(社内の別リポジトリで観測された、未チェック task list を
+#    残したままマージされた実例が動機)。全リポジトリで発火する(owner スコープ
+#    を持たない — attribution-guard.sh と同じ「書き手側の規律」の類型)。
+#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。Codex 版 adapter あり(下記
+#    registerCodexPrConfirmGuardHooks)。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
@@ -576,11 +576,14 @@ let
   # に置く。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
-  # pr-confirm-guard(ADR-543 D2 の昇格判断、docs/claude/pr-confirm-guard.md)
-  # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
-  # は decision-colocation-guard と同じ理由で作らない(Claude Code の Plan
-  # mode セッションが書く PR 本文に対象を限る)。
+  # pr-confirm-guard(docs/claude/pr-confirm-guard.md)も attribution-guard.sh
+  # を source するので同階層。
   prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
+  # Codex 版 pr-confirm-guard adapter(pr-title-guard.sh と同じ型)。相対
+  # source(config/codex/hooks/pr-confirm-guard.sh)が ../../claude/hooks/
+  # pr-confirm-guard.sh を辿れる前提の配置パスなので ~/.codex/hooks/ 直下に
+  # 置く。Copilot adapter は作らない(依頼は Codex のみ、#3962 相当)。
+  codexPrConfirmGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-confirm-guard.sh'";
   # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
   # Amendment #531)。attribution-guard/pr-title-guard の Codex adapter と
   # 同じく相対 source パスの都合で ~/.codex/hooks/ 直下固定。
@@ -997,9 +1000,10 @@ let
     # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
     # 持たないため timeout は短め。
     register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
-    # pr-confirm-guard(ADR-543 D2): pr-title-guard と同じ複合 matcher・
-    # 同じ owner scoping。本文の節切り出し・項目分割は jq/gh API を使わない
-    # 純粋な文字列処理なので timeout は同じ短さでよい。
+    # pr-confirm-guard: pr-title-guard と同じ複合 matcher。owner スコープを
+    # 持たず全リポジトリで発火する。本文の task list 検査・節切り出し・
+    # 項目分割は jq/gh API を使わない純粋な文字列処理なので timeout は
+    # 同じ短さでよい。
     register PreToolUse "Bash|mcp__.*" "$pr_confirm_guard" 10
     # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
     # pr-title-guard と同じ複合 matcher。scripts/decision-colocation-check
@@ -1519,14 +1523,19 @@ in
     executable = true;
   };
 
-  # pr-confirm-guard(ADR-543 D2 の昇格判断、docs/claude/pr-confirm-guard.md):
-  # PR 本文の `## 要確認` の各項目に、閉語彙のブロッキング理由・番号手順・
-  # `完了確認:` 行があることを作成時に機械強制する。attribution-guard.sh を
-  # 同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
-  # decision-colocation-guard と同じ理由で Codex/Copilot adapter は作らない
-  # (対象は Claude Code の Plan mode セッションが書く PR 本文に限る)。
+  # pr-confirm-guard(docs/claude/pr-confirm-guard.md): PR 本文に未チェック
+  # の task list を残さない・`## 要確認` の各項目に Issue 参照を持たせる
+  # ことを作成時に機械強制する。attribution-guard.sh を同ディレクトリから
+  # source するので、配置は必ず ~/.claude/hooks/ 直下。
   home.file.".claude/hooks/pr-confirm-guard.sh" = {
     source = repoConfig + "/claude/hooks/pr-confirm-guard.sh";
+    executable = true;
+  };
+  # Codex 版 adapter(pr-title-guard.sh と同じ型)。相対パスで
+  # ~/.claude/hooks/pr-confirm-guard.sh を辿るため配置は ~/.codex/hooks/
+  # 直下で固定。Copilot adapter は作らない(依頼は Codex のみ)。
+  home.file.".codex/hooks/pr-confirm-guard.sh" = {
+    source = repoConfig + "/codex/hooks/pr-confirm-guard.sh";
     executable = true;
   };
 
@@ -1788,6 +1797,15 @@ in
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           Stop "" ${lib.escapeShellArg codexPlanGateCmd} 20
+      '';
+
+  # pr-confirm-guard の Codex 展開。同じ lost-update 対策で、この段の時点で
+  # 最後尾だった registerCodexPlanGateHooks の後ろに明示的に順序付ける。
+  home.activation.registerCodexPrConfirmGuardHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPlanGateHooks" ]
+      ''
+        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrConfirmGuardCmd} 10
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
