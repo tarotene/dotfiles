@@ -1,0 +1,8 @@
+# fine-grained PAT probes for github-app-snapshot (ADR-590
+# D4). Each row is <name><TAB><bws_secret_name> — the PAT itself lives in
+# Bitwarden Secrets Manager under bws_secret_name, never in this file. The
+# name column doubles as the github-audit judge_routines() probe key
+# (GITHUB_AUDIT_CLAUDE_PAT_PROBE_NAME). A .local.tsv sibling (never
+# committed) holds any PRIVATE-repo-only probes, same PUBLIC/PRIVATE split
+# as github-audit's other closed-vocabulary .tsv files.
+claude-web	CLAUDE_WEB_PAT

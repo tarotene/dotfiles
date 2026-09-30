@@ -1,0 +1,17 @@
+{
+  "name": "tarotene-releaser",
+  "url": "https://github.com/tarotene/dotfiles",
+  "hook_attributes": {
+    "url": "https://github.com/settings/apps",
+    "active": false
+  },
+  "redirect_url": "https://github.com/settings/apps",
+  "public": false,
+  "default_permissions": {
+    "contents": "write",
+    "issues": "write",
+    "pull_requests": "write",
+    "metadata": "read"
+  },
+  "default_events": []
+}

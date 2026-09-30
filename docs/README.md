@@ -37,6 +37,11 @@
 - [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
   自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
   OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
+- [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
+  install 先・secret 配布(3 層)のうち、秘密(PEM・fine-grained PAT)を
+  読み書きする唯一のスクリプト `scripts/github-app-snapshot` のセットアップ・
+  Manifest フローでの新規 App 作成・secret 配布・ローテーション手順
+  (ADR-590)。
 
 ## Architecture Decision Records ([`adr/`](adr/))
 
@@ -326,6 +331,13 @@
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
   転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する。
+- [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
+  先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
+  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用スクリプト
+  `scripts/github-app-snapshot` がスナップショットを書き `github-audit` は
+  lazy に読むだけ(github-audit は秘密を要求しないという ADR-436 D4 を
+  維持)。第三者 App(Claude)の到達は fine-grained PAT の push 権限 probe で
+  観測する。PEM・PAT は Bitwarden Secrets Manager に保管する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
