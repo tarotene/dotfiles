@@ -96,7 +96,12 @@ load_config_json() {
 }
 
 # events-dir 配下の <calendar-id>.json(list_events の生レスポンス)を
-# config.calendars の allowlist ぶんだけ読み、
+# config.calendars の allowlist ぶんだけ読み、`active = false` のエントリは
+# 読まずに飛ばす(エントリ自体は設定に残る。参加・不参加が流動的な
+# カレンダーを allowlist から消さずに判定から外すための、有効/無効の切り
+# 替え)。`active` を省略したエントリは有効。boolean 以外は誤記(例:
+# "false" の文字列は `!= false` を素通りして有効扱いになる)なのでエラー
+# にする。
 # [{"calendar_id","calendar_summary","ev": <生イベント>}, ...] にフラット化
 # する。見つからないカレンダーは警告してスキップする(slot-hit.py と同じ
 # 挙動)。
@@ -104,6 +109,11 @@ load_events_json() {
   local config_json="$1" events_dir="$2"
   local acc="[]"
   local cal cal_id cal_summary f cal_events
+  if ! jq -e '[.calendars[]? | .active | select(. != null and type != "boolean")] | length == 0' \
+    <<<"$config_json" >/dev/null; then
+    echo "error: [[calendars]] の active は true/false(boolean)で指定してください" >&2
+    exit 2
+  fi
   while IFS= read -r cal; do
     [[ -z "$cal" ]] && continue
     cal_id="$(jq -r '.id' <<<"$cal")"
@@ -116,7 +126,7 @@ load_events_json() {
     cal_events="$(jq --arg cid "$cal_id" --arg cs "$cal_summary" \
       '(.events // []) | map({calendar_id: $cid, calendar_summary: $cs, ev: .})' "$f")"
     acc="$(jq -n --argjson acc "$acc" --argjson add "$cal_events" '$acc + $add')"
-  done < <(jq -c '.calendars[]?' <<<"$config_json")
+  done < <(jq -c '.calendars[]? | select(.active != false)' <<<"$config_json")
   printf '%s' "$acc"
 }
 

@@ -66,7 +66,8 @@ dotfiles に露出するため、この symlink 作成だけは nix 管理に含
 
 `SKILL.md` の説明のとおり TOML。`[slots]` は名前をキーにした区間の辞書、
 `[[calendars]]` は判定元カレンダーの allowlist(`id` は `list_calendars` が
-返す ID)、`[all_day]` の `ignore_prefixes`/`soft_day_prefixes` は終日
+返す ID。`active = false` を書くとエントリを残したまま判定から外せる。
+省略は有効、boolean 以外はエラー)、`[all_day]` の `ignore_prefixes`/`soft_day_prefixes` は終日
 イベントのタイトル前方一致リスト。スキーマの正本はスクリプト本体の
 コメント(`scripts/slot-hit.sh` 冒頭)— ここでは重複させない。
 
