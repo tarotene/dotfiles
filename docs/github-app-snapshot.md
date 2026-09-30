@@ -20,6 +20,7 @@ secret).
    |---|---|
    | `GITHUB_APP_<NAME>_ID` | The App's numeric ID (`<NAME>` = `<name>` upper-cased, `-` → `_`, e.g. `RELEASER`) |
    | `GITHUB_APP_<NAME>_PEM` | The App's private key (PEM, full contents) |
+   | `GITHUB_APP_<NAME>_CLIENT_ID` | The App's Client ID (`Iv…`; not read by `github-app-snapshot run` itself — it is what `gh secret set RELEASER_APP_CLIENT_ID` distributes, since `actions/create-github-app-token`'s `app-id` input is deprecated in favour of `client-id`, #615) |
 
 2. Create a machine account with **read-only** access to that one project
    and no other. This is a **separate** machine account from
@@ -59,8 +60,8 @@ github-app-snapshot convert releaser <code>
 ```
 
 This prints the new App's `id`/`slug`/`client_id`, writes its PEM to a
-`0600` file under `$XDG_RUNTIME_DIR`, and prints exactly which two secrets
-to store where (`GITHUB_APP_RELEASER_ID`/`GITHUB_APP_RELEASER_PEM` in the
+`0600` file under `$XDG_RUNTIME_DIR`, and prints exactly which three secrets
+to store where (`GITHUB_APP_RELEASER_ID`/`GITHUB_APP_RELEASER_PEM`/`GITHUB_APP_RELEASER_CLIENT_ID` in the
 `github-apps` Secrets Manager project). Discard the local PEM copy with
 `shred -u <path>` once it's stored — the `code` itself expires after one
 hour (GitHub Docs, "Registering a GitHub App from a manifest", 取得
@@ -79,13 +80,13 @@ cannot auto-repair it.
 Install the App on a repository through `https://github.com/settings/apps`
 (**Install App**, not a new App creation — see `config/claude/skills/
 repo-governance-common/reference/releaser-app.md` for the releaser App's
-full per-repo checklist). Then distribute the two repo secrets straight
+full per-repo checklist). Then distribute the two repo secrets (`RELEASER_APP_CLIENT_ID`, `RELEASER_APP_PRIVATE_KEY`) straight
 from Secrets Manager, without ever landing the PEM on disk outside the
 `convert` step above:
 
 ```bash
 github-app-snapshot exec -- sh -c \
-  'gh secret set RELEASER_APP_ID --repo tarotene/telepath --body "$GITHUB_APP_RELEASER_ID"'
+  'gh secret set RELEASER_APP_CLIENT_ID --repo tarotene/telepath --body "$GITHUB_APP_RELEASER_CLIENT_ID"'
 github-app-snapshot exec -- sh -c \
   'gh secret set RELEASER_APP_PRIVATE_KEY --repo tarotene/telepath --body "$GITHUB_APP_RELEASER_PEM"'
 ```

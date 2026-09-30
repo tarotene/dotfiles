@@ -11,7 +11,7 @@ operations. Complete them after running `seed.sh`.
 See [`repo-governance-common/reference/releaser-app.md`](../../repo-governance-common/reference/releaser-app.md)
 (in this Claude skills directory) — the releaser App is shared across
 every repository, not created per repository. Install the existing App on
-this repository and set `RELEASER_APP_ID`/`RELEASER_APP_PRIVATE_KEY`.
+this repository and set `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY`.
 
 ---
 

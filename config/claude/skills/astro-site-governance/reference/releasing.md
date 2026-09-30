@@ -78,7 +78,7 @@ If you want Release PRs to trigger full CI:
    Do not create a new App; this one is shared across every repository.
 2. Set two repository secrets:
    ```bash
-   gh secret set RELEASER_APP_ID          --repo OWNER/REPO --body "<numeric-id>"
+   gh secret set RELEASER_APP_CLIENT_ID   --repo OWNER/REPO --body "<client-id>"
    gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
    ```
 3. Update `release-please.yml` to generate a token from the App:
@@ -86,7 +86,7 @@ If you want Release PRs to trigger full CI:
    - uses: actions/create-github-app-token@v1
      id: app-token
      with:
-       app-id: ${{ secrets.RELEASER_APP_ID }}
+       client-id: ${{ secrets.RELEASER_APP_CLIENT_ID }}
        private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
    
    - uses: googleapis/release-please-action@v4

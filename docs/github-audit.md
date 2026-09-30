@@ -656,11 +656,17 @@ Workflow-content verdict (#613):
   the `RELEASER_APP_*` repo secrets exist, because the workflow does not
   actually use them.
 
-Secret-presence verdicts (unchanged since the domain's original design):
+Secret-presence verdicts:
 
-- `releaser-app-secrets-missing` — neither `RELEASER_APP_ID` nor
+- `releaser-app-secrets-missing` — neither `RELEASER_APP_CLIENT_ID` nor
   `RELEASER_APP_PRIVATE_KEY` (or only one of the pair) is set as a repo
   secret.
+- `releaser-app-id-deprecated` — the repository still carries the numeric
+  `RELEASER_APP_ID` (the value `actions/create-github-app-token`'s
+  deprecated `app-id` input took) next to `RELEASER_APP_PRIVATE_KEY`, but
+  no `RELEASER_APP_CLIENT_ID` yet (#615). Not yet migrated, as opposed to
+  missing. A leftover `RELEASER_APP_ID` next to a complete
+  `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` pair is ignored.
 - `releaser-secret-name-legacy` — the repository still carries a complete
   pre-consolidation pair under the old tool-specific names
   (`RELEASE_PLZ_APP_ID`/`RELEASE_PLZ_APP_PRIVATE_KEY` for the rust
