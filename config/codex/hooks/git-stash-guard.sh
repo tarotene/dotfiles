@@ -20,7 +20,16 @@
 set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_GIT_STASH_GUARD="$SELF_DIR/../../claude/hooks/git-stash-guard.sh"
+# 配備先(~/.codex/hooks, ~/.copilot/hooks)には ../../claude/hooks という
+# 兄弟ディレクトリが無い(#602)ので、CLAUDE_HOOKS_DIR → ソースツリー相対 →
+# $HOME/.claude/hooks の順に、最初に存在したものを使う。
+CLAUDE_GIT_STASH_GUARD=""
+for _d in "${CLAUDE_HOOKS_DIR:-}" "$SELF_DIR/../../claude/hooks" "$HOME/.claude/hooks"; do
+  if [[ -n $_d && -f $_d/git-stash-guard.sh ]]; then
+    CLAUDE_GIT_STASH_GUARD="$_d/git-stash-guard.sh"
+    break
+  fi
+done
 # shellcheck source=../../claude/hooks/git-stash-guard.sh
 source "$CLAUDE_GIT_STASH_GUARD"
 

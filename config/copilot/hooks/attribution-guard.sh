@@ -38,7 +38,16 @@ ATTRIBUTION_AGENT_NAME="GitHub Copilot CLI"
 ATTRIBUTION_AGENT_URL="https://docs.github.com/en/copilot/how-tos/copilot-cli"
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_ATTRIBUTION_GUARD="$SELF_DIR/../../claude/hooks/attribution-guard.sh"
+# 配備先(~/.codex/hooks, ~/.copilot/hooks)には ../../claude/hooks という
+# 兄弟ディレクトリが無い(#602)ので、CLAUDE_HOOKS_DIR → ソースツリー相対 →
+# $HOME/.claude/hooks の順に、最初に存在したものを使う。
+CLAUDE_ATTRIBUTION_GUARD=""
+for _d in "${CLAUDE_HOOKS_DIR:-}" "$SELF_DIR/../../claude/hooks" "$HOME/.claude/hooks"; do
+  if [[ -n $_d && -f $_d/attribution-guard.sh ]]; then
+    CLAUDE_ATTRIBUTION_GUARD="$_d/attribution-guard.sh"
+    break
+  fi
+done
 # shellcheck source=../../claude/hooks/attribution-guard.sh
 source "$CLAUDE_ATTRIBUTION_GUARD"
 

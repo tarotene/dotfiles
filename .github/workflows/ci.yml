@@ -988,6 +988,23 @@ jobs:
           nix build \
             ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
             --print-build-logs --no-link
+      # #602: the Codex/Copilot adapters `source` the Claude hook engines.
+      # Running their --selftest from the source tree cannot catch a broken
+      # source path, because there ../../claude/hooks exists; in the deployed
+      # home-files layout it does not (~/.codex/hooks vs ~/.claude/hooks are
+      # flat siblings). Run them from the built activationPackage with HOME
+      # pointed at its home-files, i.e. the deployed shape.
+      - name: Adapter selftests in the deployed layout
+        run: |
+          set -euo pipefail
+          out="$(nix build \
+            ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
+            --no-link --print-out-paths)"
+          for f in "$out"/home-files/.codex/hooks/*.sh "$out"/home-files/.copilot/hooks/*.sh; do
+            [ -e "$f" ] || continue
+            echo "== $f"
+            HOME="$out/home-files" bash "$f" --selftest
+          done
       # cache-nix-action does not create GC roots itself (its own README:
       # "users must manage this separately"), so anything without a root is
       # collected before the cache is saved. Rather than hand-listing every

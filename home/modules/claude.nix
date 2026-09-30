@@ -547,11 +547,11 @@ let
   registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
     builtins.readFile ../../scripts/register-copilot-hooks
   );
-  # attribution-guard の Codex/Copilot adapter(#192)。相対 source
-  # (config/codex/hooks/attribution-guard.sh 等)が ../../claude/hooks/
-  # attribution-guard.sh を辿れる前提の配置パスなので、この2つは必ず
-  # ~/.codex/hooks/・~/.copilot/hooks/ 直下に置く(herdr-{codex,copilot}-
-  # metadata.sh と同じ配置)。
+  # attribution-guard の Codex/Copilot adapter(#192)。adapter は
+  # CLAUDE_HOOKS_DIR → ソースツリー相対 → $HOME/.claude/hooks の順で
+  # attribution-guard.sh を探す(#602: 配備先に ../../claude/hooks は無い)
+  # ので、この2つは ~/.codex/hooks/・~/.copilot/hooks/ 直下に置く
+  # (herdr-{codex,copilot}-metadata.sh と同じ配置)。
   codexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
   copilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
@@ -569,24 +569,23 @@ let
   stackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
   # pr-title-guard(ADR-0031)も同じ理由で attribution-guard.sh と同階層。
   prTitleGuardCmd = "bash '${hooksDir}/pr-title-guard.sh'";
-  # Codex/Copilot 版 pr-title-guard adapter(#192 の型を踏襲)。相対 source
-  # (config/{codex,copilot}/hooks/pr-title-guard.sh)が ../../claude/hooks/
-  # pr-title-guard.sh を辿れる前提の配置パスなので、attribution-guard の
-  # Codex/Copilot adapter と同じく ~/.codex/hooks/・~/.copilot/hooks/ 直下
-  # に置く。
+  # Codex/Copilot 版 pr-title-guard adapter(#192 の型を踏襲)。
+  # attribution-guard の Codex/Copilot adapter と同じく ~/.codex/hooks/・
+  # ~/.copilot/hooks/ 直下に置き、pr-title-guard.sh は $HOME/.claude/hooks
+  # 経由で解決される(#602)。
   codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
   # pr-confirm-guard(docs/claude/pr-confirm-guard.md)も attribution-guard.sh
   # を source するので同階層。
   prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
-  # Codex 版 pr-confirm-guard adapter(pr-title-guard.sh と同じ型)。相対
-  # source(config/codex/hooks/pr-confirm-guard.sh)が ../../claude/hooks/
-  # pr-confirm-guard.sh を辿れる前提の配置パスなので ~/.codex/hooks/ 直下に
-  # 置く。Copilot adapter は作らない(依頼は Codex のみ、#3962 相当)。
+  # Codex 版 pr-confirm-guard adapter(pr-title-guard.sh と同じ型)。
+  # ~/.codex/hooks/ 直下に置き、pr-confirm-guard.sh は $HOME/.claude/hooks
+  # 経由で解決される(#602)。Copilot adapter は作らない(依頼は Codex のみ、
+  # #3962 相当)。
   codexPrConfirmGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-confirm-guard.sh'";
   # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
   # Amendment #531)。attribution-guard/pr-title-guard の Codex adapter と
-  # 同じく相対 source パスの都合で ~/.codex/hooks/ 直下固定。
+  # 同じく ~/.codex/hooks/ 直下に置く(source 先の解決は #602 を参照)。
   codexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
   codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
   codexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
@@ -1492,8 +1491,8 @@ in
   # の register とは別の消費経路)。
   home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
   # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
-  # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 — 相対
-  # パスで辿るため配置は ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。
+  # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 —
+  # source 先は $HOME/.claude/hooks 経由で解決される(#602)。
   home.file.".codex/hooks/attribution-guard.sh" = {
     source = repoConfig + "/codex/hooks/attribution-guard.sh";
     executable = true;
@@ -1511,9 +1510,8 @@ in
     source = repoConfig + "/claude/hooks/pr-title-guard.sh";
     executable = true;
   };
-  # Codex CLI / Copilot CLI 版 adapter(#192 の型を踏襲)。相対パスで
-  # ~/.claude/hooks/pr-title-guard.sh を辿るため配置は
-  # ~/.codex/hooks/・~/.copilot/hooks/ 直下で固定。
+  # Codex CLI / Copilot CLI 版 adapter(#192 の型を踏襲)。
+  # ~/.claude/hooks/pr-title-guard.sh を $HOME 基準で辿る(#602)。
   home.file.".codex/hooks/pr-title-guard.sh" = {
     source = repoConfig + "/codex/hooks/pr-title-guard.sh";
     executable = true;
@@ -1531,17 +1529,17 @@ in
     source = repoConfig + "/claude/hooks/pr-confirm-guard.sh";
     executable = true;
   };
-  # Codex 版 adapter(pr-title-guard.sh と同じ型)。相対パスで
-  # ~/.claude/hooks/pr-confirm-guard.sh を辿るため配置は ~/.codex/hooks/
-  # 直下で固定。Copilot adapter は作らない(依頼は Codex のみ)。
+  # Codex 版 adapter(pr-title-guard.sh と同じ型)。
+  # ~/.claude/hooks/pr-confirm-guard.sh を $HOME 基準で辿る(#602)。
+  # Copilot adapter は作らない(依頼は Codex のみ)。
   home.file.".codex/hooks/pr-confirm-guard.sh" = {
     source = repoConfig + "/codex/hooks/pr-confirm-guard.sh";
     executable = true;
   };
 
   # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
-  # Codex CLI 版 adapter — 相対パスで ~/.claude/hooks/git-stash-guard.sh を
-  # 辿るため配置は ~/.codex/hooks/ 直下で固定。Copilot 版は未展開(#161、
+  # Codex CLI 版 adapter — ~/.claude/hooks/git-stash-guard.sh を $HOME 基準
+  # で辿る(#602)。Copilot 版は未展開(#161、
   # MCP tool 名の命名規則が未確認なため attribution-guard 系のみ先行)。
   home.file.".codex/hooks/git-stash-guard.sh" = {
     source = repoConfig + "/codex/hooks/git-stash-guard.sh";
