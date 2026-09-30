@@ -372,8 +372,9 @@ exit status, not by this listing.
 All hosts are now cut over. Phase 4 (#218) retired the legacy procedural
 installers (the symlink installer, the dev-tool installer, and their config
 file — see git history) and replaced the old script-centric CI with nix-centric
-checks (`nix flake check` + per-host activation build in `nix.yml`, plus a slim
-shellcheck/dry-run pass in `ci.yml`).
+checks (`nix flake check` + per-host activation build, plus a slim
+shellcheck/dry-run pass — both consolidated into a single `ci.yml` by
+ADR-591, docs/adr/591-ci-workflow-naming.md).
 
 ### Granting `altair`'s `~/Downloads` cleanup access to Full Disk Access
 

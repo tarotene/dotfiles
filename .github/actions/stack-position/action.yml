@@ -1,0 +1,182 @@
+name: 'Stack-aware + path-aware heavy-CI gate'
+description: >-
+  ADR-468(docs/adr/468-stack-aware-heavy-ci.md, #419; Amendment
+  2026-09-26 added the path axis)。判定は「この PR は stack の
+  bottom/tip か、それとも後で synthesized tree が再検査される
+  intermediate 段か」(stack axis)と「build-host/rust が実際に読む
+  パスをこの PR は触ったか」(path axis)の2軸の AND。ADR-591
+  (docs/adr/591-ci-workflow-naming.md)で `.github/workflows/nix.yml`
+  から `ci.yml`(vega/arcturus)と `darwin-build.yml`(altair、advisory)
+  の両方が呼べるようこの composite action へ抽出した — 元は nix.yml 内の
+  単一 job のインライン step だった。
+
+  Skipping a JOB via `if:` is safe for required checks in a way that
+  skipping a WORKFLOW via `pull_request.paths` is not: GitHub Docs,
+  "Troubleshooting required status checks"(取得 2026-09-25)—
+  "Successful check statuses are `success`, `skipped`, and `neutral`",
+  whereas a workflow skipped by path/branch filtering leaves its check
+  "Pending" forever and blocks merging. That asymmetry is why both
+  `ci.yml`/`darwin-build.yml`'s `pull_request` triggers carry no path
+  filter — this gate uses `needs:`/`if:` on individual jobs instead.
+
+  push イベントの path 軸は `github.event.before`/`github.sha` の
+  `git diff` で判定する(rust/typst-repo-governance テンプレートの
+  「Detect relevant changes」step と同じ手法) — 旧 `nix.yml` は
+  `on.push.paths` という workflow 単位のフィルタでこれを担っていたが、
+  ADR-591 で `ci.yml` に統合したことで gitleaks/shellcheck/dry-run
+  (常時実行が要件)と同じ workflow の push フィルタを共有できなくなった
+  ため、job 単位の判定に置き換えた。呼び出し元は `actions/checkout@v4`
+  を `fetch-depth: 0` で、この action を呼ぶ前に実行しておくこと。
+
+outputs:
+  build_host:
+    description: "'false' means build-host jobs (vega/arcturus/altair) may safely be skipped"
+    value: ${{ steps.judge.outputs.build_host }}
+  rust:
+    description: "'false' means the rust workspace job may safely be skipped"
+    value: ${{ steps.judge.outputs.rust }}
+
+runs:
+  using: composite
+  steps:
+    - id: judge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        BEFORE_SHA: ${{ github.event.before }}
+        AFTER_SHA: ${{ github.sha }}
+        LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        # build-host が実際に読む(コピーではなく評価・ビルドに使う)
+        # トップレベル項目。末尾 `/` はディレクトリ prefix、それ以外は
+        # 完全一致。ci.yml の drift 検査ステップ「stack-position action
+        # covers every path the nix code reads」がこの行を grep するので、
+        # `BUILD_INPUTS: "..."` の形は変えない。
+        BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock rust-migration.toml .github/actions/stack-position/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
+        # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。
+        RUST_EXTRA_INPUTS: "config/claude/hooks/ config/claude/statusline/ config/codex/hooks/ config/copilot/hooks/ config/git/hooks/ scripts/ bootstrap.sh"
+        # build の入力から意図的に外した「コピーされるだけ」の集合。
+        # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
+        # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも
+        # 載っていないものを「未分類」として検出するための宣言。
+        COPY_ONLY: "config/ scripts/ packages/"
+      run: |
+        set -uo pipefail
+        # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル
+        # → 子 PR 件数(この PR の head を base にした open PR が無ければ
+        # tip)。gh api 失敗は fail-open。stack_heavy=false になるのは
+        # 「非 bottom かつ非 tip かつ ci:full 無し」の一本道だけ。
+        stack_heavy=true
+        stack_reason=""
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          stack_reason="event=$EVENT_NAME"
+        elif [ "$BASE_REF" = "$DEFAULT_BRANCH" ]; then
+          stack_reason="bottom"
+        elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
+          stack_reason="label ci:full"
+        else
+          # `if children=$(...); then` で終了コードを見る — `gh api` は
+          # 401/404 等でも(--jq がそのレスポンスに適用できないと)エラー
+          # JSON を stdout に出して非 0 終了することがあるため、`-z` での
+          # 空文字判定は fail-open を保証しない(実測 2026-09-25: Bad
+          # credentials 応答が children に入り、誤って intermediate 扱い
+          # = fail-closed になった)。終了コードのみを判定根拠にする。
+          if children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"; then
+            if [ "$children" -eq 0 ]; then
+              stack_reason="tip (children=0)"
+            else
+              stack_heavy=false
+              stack_reason="intermediate (children=$children)"
+            fi
+          else
+            stack_reason="api-failure (fail-open)"
+          fi
+        fi
+
+        # path 軸: ci:full ラベルは stack 軸と同じ理由で常に触れた扱い。
+        # pull_request は変更ファイル一覧(REST の 1 PR あたり上限 3000 件、
+        # GitHub Docs "List pull requests files" 取得 2026-09-26)を、push
+        # は github.event.before/github.sha の git diff(rust/typst-repo-
+        # governance テンプレートの「Detect relevant changes」step と同じ
+        # 手法 — 呼び出し元が fetch-depth: 0 で checkout 済みである前提)
+        # を使い、どちらも BUILD_INPUTS / RUST_EXTRA_INPUTS への
+        # prefix/完全一致で build_touched / rust_touched を決める。それ
+        # 以外のイベント(workflow_dispatch 等)は常に触れた扱い。
+        # gh api 失敗・一覧打ち切り・diff 不能は fail-open(既存の stack 軸
+        # と同じ方針)。
+        build_touched=true
+        rust_touched=true
+        path_reason=""
+        classify_files() { # stdin=変更ファイル一覧 -> build_touched/rust_touched を更新
+          build_touched=false
+          rust_touched=false
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            for prefix in $BUILD_INPUTS; do
+              case "$prefix" in
+                */) case "$p" in "$prefix"*) build_touched=true; rust_touched=true ;; esac ;;
+                *) [ "$p" = "$prefix" ] && { build_touched=true; rust_touched=true; } ;;
+              esac
+            done
+            for prefix in $RUST_EXTRA_INPUTS; do
+              case "$prefix" in
+                */) case "$p" in "$prefix"*) rust_touched=true ;; esac ;;
+                *) [ "$p" = "$prefix" ] && rust_touched=true ;;
+              esac
+            done
+          done
+          # build_touched/rust_touched はグローバル変数で伝える(関数の
+          # 終了ステータスは使わない)。この関数を呼び出す文自体が bare
+          # statement(if/while 条件の外)なので、内部の最後の case 分岐が
+          # 不一致で false を返すとそのまま関数の終了ステータスになり、
+          # set -e がそれを検出して composite action 全体を即死させる —
+          # 同じループを top-level script(旧 nix.yml)で書いていたときは
+          # 起きなかった bash の挙動差(関数化して初めて表面化した、
+          # ADR-591 移行時に実測)。`return 0` で切り離す。
+          return 0
+        }
+        if case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
+          path_reason="label ci:full"
+        elif [ "$EVENT_NAME" = "pull_request" ]; then
+          if files="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' 2>/dev/null)"; then
+            n_files="$(printf '%s\n' "$files" | grep -c . || true)"
+            if [ "$n_files" -ge 3000 ]; then
+              path_reason="file-list-truncated (fail-open, n=$n_files)"
+            else
+              classify_files <<<"$files"
+              path_reason="n=$n_files files, build=$build_touched rust=$rust_touched"
+            fi
+          else
+            path_reason="api-failure (fail-open)"
+          fi
+        elif [ "$EVENT_NAME" = "push" ]; then
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            path_reason="new-branch-or-force-push (fail-open)"
+          elif files="$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" 2>/dev/null)"; then
+            n_files="$(printf '%s\n' "$files" | grep -c . || true)"
+            classify_files <<<"$files"
+            path_reason="n=$n_files files (push diff), build=$build_touched rust=$rust_touched"
+          else
+            path_reason="git-diff-failure (fail-open)"
+          fi
+        else
+          path_reason="event=$EVENT_NAME"
+        fi
+
+        if [ "$stack_heavy" = "false" ] || [ "$build_touched" = "false" ]; then
+          build_out=false
+        else
+          build_out=true
+        fi
+        if [ "$stack_heavy" = "false" ] || [ "$rust_touched" = "false" ]; then
+          rust_out=false
+        else
+          rust_out=true
+        fi
+        echo "build_host=$build_out rust=$rust_out (stack: $stack_reason; paths: $path_reason)"
+        echo "build_host=$build_out" >>"$GITHUB_OUTPUT"
+        echo "rust=$rust_out" >>"$GITHUB_OUTPUT"

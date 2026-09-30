@@ -5,29 +5,38 @@ name: PR Title
 # されており、この workflow はその呼び出しに徹する(文法は checker 側にしか
 # 存在しない)。
 #
-# dotfiles 自身は下の pull_request トリガーで直接自己適用する — job 名が
-# そのまま required check context "PR title" になる。他リポジトリは
-# `workflow_call` からこの workflow を呼ぶ(#325 Stage 5/6、播きの準備)。
-# その場合の連結名は「呼び出し側 **job** の name / 呼び出される job の
-# name」(呼び出し側 **workflow** の name ではない — telepath#243 で実測、
-# 2026-09-26。当初「呼び出し側 workflow の name」という誤った理論で
-# ADR-0031 D2 追補を書き、#337 の播きが満たせない required check context
-# を作った)。呼び出し側テンプレート(config/claude/skills/
-# repo-governance-common/templates/.github/workflows/pr-title.yml)は
-# job に `name: PR Title` を固定しているため、連結名は常に
-# "PR Title / PR title" になる。末尾の `Validate required-check contexts`
-# step がこれを実行時に自己照合する — ADR-0000-rulesets-declaration-in-repo
-# により、対象は「PR title」1 context だけでなく、呼び出し元リポジトリの
-# `.github/rulesets/quality.json` 宣言および live な required_status_checks
-# の全 context に一般化されている。
+# ADR-591(docs/adr/591-ci-workflow-naming.md D3)以降、dotfiles 自身は
+# `pr-title`(下の第2 job)が `.github/actions/pr-title` composite action
+# を直接呼んで自己適用する — connected-name concatenation が構造的に発生
+# しない(job 自身の `name: PR title` がそのまま required check context)。
+#
+# `check`(この下の job)は他リポジトリからの `workflow_call` 専用として
+# 残す(#325 Stage 5/6、播きの準備 — 全リポジトリの移行が終わるまでの
+# 互換レイヤー、ADR-591 Stage 6 で撤去予定)。連結名は「呼び出し側 **job**
+# の name / 呼び出される job の name」(呼び出し側 **workflow** の name
+# ではない — telepath#243 で実測、2026-09-26。当初「呼び出し側 workflow
+# の name」という誤った理論で ADR-0031 D2 追補を書き、#337 の播きが満たせ
+# ない required check context を作った)。呼び出し側テンプレート
+# (config/claude/skills/repo-governance-common/templates/.github/
+# workflows/pr-title.yml)は job に `name: PR Title` を固定しているため、
+# 連結名は常に "PR Title / PR title" になる。末尾の `Validate required-
+# check contexts` step がこれを実行時に自己照合する — ADR-0000-rulesets-
+# declaration-in-repo により、対象は「PR title」1 context だけでなく、
+# 呼び出し元リポジトリの `.github/rulesets/quality.json` 宣言および live
+# な required_status_checks の全 context に一般化されている。
+#
+# As a side effect: since this check only fires on pull_request events, it
+# will never be reported for direct pushes to __DEFAULT_BRANCH__ — those are
+# blocked by the Quality Ruleset's required_status_checks instead (context
+# never reported → push rejected). This effectively enforces a PR-only
+# workflow.
+
 on:
   workflow_call:
     inputs:
       title:
         description: >-
-          検査対象の PR タイトル。省略時はこの workflow を直接トリガーした
-          pull_request イベント自身のタイトルを使う(dotfiles 自己適用時の
-          既定経路)。他リポジトリから呼ぶ場合は呼び出し側の
+          検査対象の PR タイトル。呼び出し側の
           github.event.pull_request.title を明示的に渡す。
         required: false
         type: string
@@ -39,7 +48,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # dotfiles 自身の required check(ADR-591 D3)。composite action 自身が
+  # `github.repository == 'tarotene/dotfiles'` かを判定して checkout ref
+  # を選ぶため(.github/actions/pr-title/action.yml 参照)、この job 側は
+  # そこを気にする必要がない。
+  pr-title:
+    if: github.repository == 'tarotene/dotfiles'
+    runs-on: ubuntu-latest
+    name: PR title
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      # ローカルの composite action(`uses: ./...`)を解決するには、その
+      # 定義ファイル自体がこのジョブの workspace 上に無ければならない —
+      # composite action 自身が行う checkout(tarotene/dotfiles を別
+      # ディレクトリへ)とは別に、まずこのリポジトリ自身を素の checkout
+      # する必要がある(実測: これを忘れると "Can't find 'action.yml' ...
+      # under '.../.github/actions/pr-title'" で startup_failure になる、
+      # PR #596)。
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pr-title
+        with:
+          title: ${{ github.event.pull_request.title }}
+
+  # 他リポジトリからの workflow_call 専用(ADR-591 Stage 6 で撤去予定 —
+  # 全リポジトリが composite action へ移行し終えたら削除する)。
   check:
+    if: github.repository != 'tarotene/dotfiles'
     runs-on: ubuntu-latest
     name: PR title
     permissions:
@@ -62,22 +98,16 @@ jobs:
       # 宣言が無いとリポジトリ既定に丸められ、既定が read だと足りない)。
       actions: read
     steps:
-      # 文法検査の単一ソース(scripts/pr-title-check)を取得する。dotfiles
-      # 自身のトリガー(github.repository == tarotene/dotfiles)では、この
-      # PR 自身の head SHA から取得する — pr-title-check 自体を変更する PR
-      # を、まだ main に乗っていない版で検査できる(これをしないと main に
-      # checker が乗るまでどの自己適用 PR も「ファイルが無い」で fail する
-      # 鶏卵問題になる、Stage 3 実装時に実測)。workflow_call 経由の他
-      # リポジトリでは常に main の安定版を使う — 呼び出し元の checkout とは
-      # 独立させ、判定根拠が全リポジトリで揃うことを保証する。scripts/
-      # github-audit / scripts/pr-merge-settings-check(ADR-0031 Amendment、
-      # 2026-09-24)も同じ理由でここに含める — pr-merge-settings-check は
-      # github-audit の judge_settings() を re-source するため、単独では
-      # 動かない。
+      # 文法検査の単一ソース(scripts/pr-title-check)を取得する。呼び出し元
+      # では常に main の安定版を使う — 呼び出し元の checkout とは独立させ、
+      # 判定根拠が全リポジトリで揃うことを保証する。scripts/github-audit /
+      # scripts/pr-merge-settings-check(ADR-0031 Amendment、2026-09-24)も
+      # 同じ理由でここに含める — pr-merge-settings-check は github-audit の
+      # judge_settings() を re-source するため、単独では動かない。
       - uses: actions/checkout@v4
         with:
           repository: tarotene/dotfiles
-          ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
+          ref: main
           sparse-checkout: |
             scripts/pr-title-check
             scripts/github-audit

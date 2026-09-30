@@ -1,9 +1,13 @@
 name: CI
 
-# Minimal checks for the surviving escape-hatch shell layer. The declarative
-# core (flake evaluation + per-host activation build) is validated separately by
-# nix.yml; this workflow only lints and dry-runs the shell scripts that remain
-# outside home-manager (bootstrap + system-layer installer + SOPS/SSH helpers).
+# ADR-591(docs/adr/591-ci-workflow-naming.md)がこのリポジトリ自身に
+# 移行させた統合 workflow: escape-hatch shell 層のチェック(gitleaks/
+# shellcheck/dry-run — 常時実行が要件)と、旧 `.github/workflows/nix.yml`
+# の宣言的コア検証(flake 評価・per-host activation build・rust
+# workspace)を1本にまとめ、`ci-passed` 集約 job だけを required status
+# check にする(個別 job は required から外れる)。macOS(altair)の
+# ビルドは advisory として `darwin-build.yml` に分離している —
+# `.github/actions/stack-position` を両ファイルで共有する。
 on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
@@ -11,7 +15,14 @@ on:
   # status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required check
   # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
   # that PR's Stop gate permanently blocked on a check that will never exist.
+  #
+  # `labeled` is added (旧 nix.yml から引き継ぐ) so the `ci:full` manual
+  # escape hatch (stack-position job below) actually re-triggers this
+  # workflow when applied to an already-open PR — without it, labeling a
+  # stale-heavy intermediate stage would leave the heavy jobs stuck at
+  # their last (skipped) conclusion.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -172,23 +183,24 @@ jobs:
           done
           exit "$missing"
 
-      # nix.yml path gate covers every path the nix code reads (ADR-468
-      # Amendment 2026-09-26, docs/adr/468-stack-aware-heavy-ci.md): a change
-      # confined to build_host/rust's declared "safe to skip" set can only
-      # stay safe as long as flake.nix / home/**/*.nix never start reading a
-      # new top-level path without that path being added to nix.yml's
-      # `BUILD_INPUTS`/`COPY_ONLY` declarations. This scans every non-comment
-      # `../`/`./` relative-path literal in those files, resolves it against
-      # the referencing file's own directory, and fails if the resulting
-      # top-level repo path is covered by neither list — the same
+      # stack-position action path gate covers every path the nix code reads
+      # (ADR-468 Amendment 2026-09-26, docs/adr/468-stack-aware-heavy-ci.md;
+      # moved from nix.yml into .github/actions/stack-position by ADR-591):
+      # a change confined to build_host/rust's declared "safe to skip" set
+      # can only stay safe as long as flake.nix / home/**/*.nix never start
+      # reading a new top-level path without that path being added to the
+      # action's `BUILD_INPUTS`/`COPY_ONLY` declarations. This scans every
+      # non-comment `../`/`./` relative-path literal in those files, resolves
+      # it against the referencing file's own directory, and fails if the
+      # resulting top-level repo path is covered by neither list — the same
       # "referenced but not wired in" shape as the --selftest check above.
       # `./.`  (crane's cleanCargoSource taking the whole repo tree as a
       # Cargo source) is a deliberate, explained skip, not a silent one.
-      - name: nix.yml path gate covers every path the nix code reads
+      - name: stack-position action path gate covers every path the nix code reads
         run: |
           set -uo pipefail
-          build_inputs="$(grep -oP '(?<=BUILD_INPUTS: ")[^"]*' .github/workflows/nix.yml)"
-          copy_only="$(grep -oP '(?<=COPY_ONLY: ")[^"]*' .github/workflows/nix.yml)"
+          build_inputs="$(grep -oP '(?<=BUILD_INPUTS: ")[^"]*' .github/actions/stack-position/action.yml)"
+          copy_only="$(grep -oP '(?<=COPY_ONLY: ")[^"]*' .github/actions/stack-position/action.yml)"
           covered="$build_inputs $copy_only"
 
           fail=0
@@ -215,7 +227,7 @@ jobs:
                 esac
               done
               if [ "$ok" -eq 0 ]; then
-                echo "::error file=$f::references '$tok' (-> $resolved) which nix.yml's BUILD_INPUTS/COPY_ONLY does not cover"
+                echo "::error file=$f::references '$tok' (-> $resolved) which stack-position action's BUILD_INPUTS/COPY_ONLY does not cover"
                 fail=1
               fi
             done < <(grep -vE '^[[:space:]]*#' "$f" | grep -oE '(\.\./)+[A-Za-z0-9_./-]+|\./[A-Za-z0-9_./-]+')
@@ -793,3 +805,221 @@ jobs:
             echo "::error::dry-run accepted a missing package"
             exit 1
           fi
+
+  # 以下、旧 .github/workflows/nix.yml から ADR-591 で統合した4 job
+  # (stack-position/flake-check/rust/build-host)。ジョブ本体は変更なし
+  # (stack-position の判定ロジックのみ .github/actions/stack-position
+  # へ抽出)。
+
+  stack-position:
+    runs-on: ubuntu-latest
+    name: Stack position
+    permissions:
+      pull-requests: read
+    outputs:
+      build_host: ${{ steps.judge.outputs.build_host }}
+      rust: ${{ steps.judge.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: judge
+        uses: ./.github/actions/stack-position
+
+  flake-check:
+    runs-on: ubuntu-latest
+    name: Nix flake check
+    steps:
+      - uses: actions/checkout@v4
+      # Determinate Systems installer (ADR-0001).
+      - uses: DeterminateSystems/nix-installer-action@main
+      # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
+      # in Feb 2025. We rely on cache.nixos.org substituters here; a FlakeHub
+      # cache action can be added later once a token is provisioned.
+      #
+      # --no-build: `checks.${system}` (flake.nix) maps every host to its
+      # activationPackage, so a full `nix flake check` here would rebuild all
+      # hosts a second time — build-host below already does that as a
+      # matrix. This job stays evaluation-only (module type errors, missing
+      # source paths, ...); the real build coverage lives in build-host.
+      #
+      # --all-systems: darwin (altair, ADR-0018) has no runner here — this is
+      # the cheap eval-only check that catches a darwin module type error
+      # (e.g. an unguarded Linux-only option) without needing a macOS runner.
+      # The corresponding aarch64-darwin build.host matrix row lives in
+      # darwin-build.yml (advisory) and is the real build coverage for that
+      # system.
+      - run: nix flake check --all-systems --no-build --print-build-logs
+
+      # docs/adr/0000-renovate-automerge-shared-preset.md D4: the shared
+      # preset (renovate/policy.json) and this repo's own renovate.json
+      # (which extends it) are the only Renovate config in this repo — the
+      # governance skill templates are structurally similar but not valid
+      # standalone config (they carry placeholder tokens), so they are not
+      # validated here. --no-global tells the validator these are repo
+      # config files, not a self-hosted global config; --strict also fails
+      # on migration warnings (e.g. a deprecated option).
+      - run: |
+          nix shell --inputs-from . nixpkgs#renovate -c \
+            renovate-config-validator --strict --no-global \
+              renovate/policy.json renovate.json
+
+  # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
+  # clippy (--deny warnings) and rustfmt run as crane derivations from
+  # flake.nix's checks, in the build sandbox. cargo test runs through
+  # `nix develop` instead, outside the sandbox: crates/fixture-oracle executes
+  # the bash originals (#!/usr/bin/env bash, jq, the rest of the repo tree),
+  # and migration-audit reads config/, scripts/ and home/ — neither is
+  # available inside a crane derivation's cleaned cargo source.
+  rust:
+    runs-on: ubuntu-latest
+    name: Rust workspace
+    needs: stack-position
+    # `!= 'false'` (not `== 'true'`) + `!cancelled()`: if stack-position
+    # itself fails or is cancelled, `needs.*.outputs.rust` comes back empty,
+    # and `needs:`'s own default (skip when a dependency job failed) would
+    # otherwise silently turn this into fail-closed — the opposite of the
+    # gate's own fail-open branch (ADR-468).
+    if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build package + clippy + rustfmt (crane)
+        run: |
+          nix build --print-build-logs --no-link \
+            .#checks.x86_64-linux.dotfiles-tools \
+            .#checks.x86_64-linux.dotfiles-tools-clippy \
+            .#checks.x86_64-linux.dotfiles-tools-fmt
+      - name: cargo test (fixture oracles + allowlist audit)
+        run: nix develop --command cargo test --workspace --locked
+
+  build-host:
+    runs-on: ${{ matrix.runner }}
+    name: Build ${{ matrix.host }}
+    # cache-nix-action's purge-created/purge-last-accessed need `actions:
+    # write` on the token to delete caches via the REST API (action README,
+    # 取得 2026-09-23) — the repo default (no permissions: block anywhere
+    # else in this repo) doesn't grant it, so purge attempts fail with
+    # "Resource not accessible by integration" and stale caches accumulate
+    # silently. contents: read keeps actions/checkout working.
+    permissions:
+      contents: read
+      actions: write
+    needs: stack-position
+    # Same fail-open rationale as the `rust` job above.
+    if: ${{ !cancelled() && needs.stack-position.outputs.build_host != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: vega
+            runner: ubuntu-latest
+          - host: arcturus
+            runner: ubuntu-latest
+          # altair (2022 M2 MacBook Air, aarch64-darwin — ADR-0018) builds
+          # in darwin-build.yml instead (advisory, ADR-591 Q13: dotfiles'
+          # own required checks stay Linux-only so a bottleneck in the
+          # shared macOS runner queue never blocks a merge).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      # cache.nixos.org never substitutes two classes of package this repo
+      # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
+      # Amendment, invalidates the substitutable derivation) and bws
+      # (Bitwarden Secrets Manager CLI, unfree — Hydra never builds unfree
+      # packages, so no substitutable output can ever exist upstream;
+      # vega (the personal host) only, via home/modules/obsidian.nix). Both are
+      # permanent per-run costs unless this cache actually retains them.
+      #
+      # The primary-key hashes home/** and config/** (the same set that
+      # gates nix.yml's own `push.paths` above) in addition to the flake
+      # inputs, and includes matrix.host: a key that only tracks
+      # flake.lock/flake.nix/patches/** stays byte-identical across changes
+      # to home/modules/obsidian.nix, so cache-nix-action's own "exact hit
+      # on primary-key -> skip saving" rule (nix-community/cache-nix-action
+      # README, 取得 2026-09-23) silently discarded every bws build this
+      # cache ever produced. A host-scoped key additionally stops
+      # vega's bws-bearing closure and arcturus's bws-less closure from
+      # overwriting each other under one shared key.
+      #
+      # A key that changes on every home/** edit is not a regression:
+      # restore-prefixes-first-match still restores the nearest prior cache
+      # for this host, so bws comes back from the store instead of
+      # rebuilding — a key miss is not a cache miss.
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
+          restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
+          gc-max-store-size-linux: 1G
+          gc-max-store-size-macos: 1G
+          purge: true
+          purge-prefixes: nix-${{ matrix.host }}-${{ runner.os }}-
+          purge-primary-key: never
+          # ISO 8601 durations (nix-community/cache-nix-action README, 取得
+          # 2026-09-23: "a non-negative number or a string in the ISO 8601
+          # duration format" — plain "30d"/"14d" is neither and was silently
+          # treated as an immediate cutoff in testing).
+          purge-created: P30D
+          purge-last-accessed: P14D
+      - name: Build activation package
+        run: |
+          nix build \
+            ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
+            --print-build-logs --no-link
+      # cache-nix-action does not create GC roots itself (its own README:
+      # "users must manage this separately"), so anything without a root is
+      # collected before the cache is saved. Rather than hand-listing every
+      # non-substitutable package (the herdr-only root here is exactly how
+      # bws went unnoticed), derive the set from fact: every store path this
+      # runner actually compiled (`ultimate: true`) that the just-built
+      # activationPackage or herdr still reference. New non-substitutable
+      # packages are covered automatically, with no list to remember to edit.
+      #
+      # `home-manager-generation` (the activationPackage's own top-level
+      # output) is itself always `ultimate: true` — it is host-specific glue,
+      # never substitutable — but its closure IS the entire user environment
+      # (~8.5 GiB locally). A GC root is closure-transitive by Nix's own
+      # semantics, so rooting it verbatim would protect (and upload) the
+      # whole environment instead of just bws/herdr. Filter by each
+      # candidate's OWN closure size: bws/herdr sit under 100 MiB, the
+      # aggregate output sits in the GiB range, so a generous threshold well
+      # below "whole environment" and well above "one compiled package"
+      # separates them without naming either by hand.
+      - name: Root every locally built, non-aggregate path still in the closure
+        run: |
+          set -euo pipefail
+          nix path-info --json --all \
+            | jq -r 'to_entries[] | select(.value.ultimate == true) | .key' \
+            | sort > /tmp/ultimate.txt
+          nix-store -qR \
+            "$(nix eval --raw ".#homeConfigurations.${{ matrix.host }}.activationPackage.outPath")" \
+            "$(nix eval --raw ".#herdr.outPath")" \
+            | sort > /tmp/closure.txt
+          mkdir -p /tmp/nix-gcroots
+          max_closure_bytes=$((500 * 1024 * 1024))
+          i=0
+          while read -r p; do
+            [ -n "$p" ] || continue
+            size=$(nix path-info -S "$p" | awk '{print $2}')
+            if [ "$size" -gt "$max_closure_bytes" ]; then
+              echo "skipping $p (own closure ${size} bytes, looks like an aggregate output)"
+              continue
+            fi
+            nix-store --add-root "/tmp/nix-gcroots/$i" --indirect --realise "$p" >/dev/null
+            i=$((i + 1))
+          done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
+          echo "rooted $i locally built paths"
+
+  # 集約 required check(ADR-591)。上の job を1つでも追加・削除したら
+  # needs: をここで同期させること — workflow-naming-check(tarotene/
+  # dotfiles 自身の composite action 経由、この PR で新規配線)が
+  # この不変条件を機械検査する。
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [gitleaks, shellcheck, dry-run, stack-position, flake-check, rust, build-host]
+    if: always()
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

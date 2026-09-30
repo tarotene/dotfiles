@@ -163,9 +163,10 @@ ADR-0008(記録の器の選択規約)はこのスキル自身の執筆にも適�
 
 ## 中間段では重い CI が既定で skip される(ADR-468)
 
-`nix.yml` は stacked PR の中間段(bottom でも tip でもない段)で
-`rust workspace` / `build vega` / `build arcturus` / `build altair` を
-skip する(gate job `stack-position`、#419)。§4 の「下位段への修正が
+`ci.yml`(旧 `nix.yml`、ADR-591 で統合)と `darwin-build.yml` は stacked PR
+の中間段(bottom でも tip でもない段)で `Rust workspace` / `Build vega` /
+`Build arcturus` / `Build altair` を skip する(共有 composite action
+`.github/actions/stack-position` の判定、#419)。§4 の「下位段への修正が
 入ったときの追従」どおり全上位段を rebase すれば、tip の合成木で
 改めて検査されるので実害は無い。rebase せずにその段を単独でマージする
 場合だけ `ci:full` ラベルを貼って heavy を手動で走らせる — この場合を

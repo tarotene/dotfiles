@@ -265,16 +265,19 @@ GitHub より緩くても厳しくても、どちらも嘘になる。
 
 ### required job が job-level `if:` で skipped になる場合
 
-`nix.yml` の `rust workspace` は `.github/rulesets/quality.json` 上
-required だが、`stack-position` gate job が job-level `if:` で skip
-することがある(中間段は ADR-468、変更 path が build/rust の入力に
-触れない PR は Amendment 2026-09-26、`docs/adr/468-stack-aware-heavy-ci.md`)。
-この skip は `gh pr checks --json bucket` で `bucket: "skipping"`
-(GitHub の check-run `state` が `SKIPPED`/`NEUTRAL`)として報告される。
-`build vega`/`build arcturus`/`build altair` は required ではない
-——matrix job は skip 時に per-host 名を展開せず未展開のテンプレート
-文字列 1 本を報告するため、per-host 名を required context にすると
-永久に unreportable になる(ADR-468 Amendment 2026-09-27)。
+ADR-591(docs/adr/591-ci-workflow-naming.md)以降、required なのは集約
+job `CI passed`(`.github/workflows/ci.yml`)と `PR title` の2本だけで、
+`Rust workspace`/`Build vega`/`Build arcturus` のような個別 job 名は
+required ではない(`Build altair` は `darwin-build.yml` に分離した
+advisory)。`CI passed` は `needs:` で束ねた個別 job のいずれかが job-level
+`if:` で skip されても(中間段は ADR-468、変更 path が build/rust の
+入力に触れない PR は Amendment 2026-09-26、`docs/adr/468-stack-aware-
+heavy-ci.md`、判定は共有 composite action `.github/actions/
+stack-position`)、GitHub の required check 意味論どおり skipped=success
+として `CI passed` 自身を green にする。matrix job(`Build vega`/`Build
+arcturus`)が skip 時に per-host 名を展開しない問題(ADR-468 Amendment
+2026-09-27)は、個別 job 名がそもそも required でなくなったことで
+構造的に解消した。
 
 `reported_checks()` が読む `bucket` の判定は `pass`/`skipping`/
 `fail`/`cancel`/`pending` の 5 種(`cli/cli` の
