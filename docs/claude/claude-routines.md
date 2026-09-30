@@ -62,11 +62,13 @@ Claude のクラウド sandbox がその repo に実際に到達できるかは�
 `.claude/routines/*.json` を置く repo は、この PAT の selected
 repositories に含める。検出は `scripts/github-audit` の `routines`
 ドメインが行う — `scripts/github-app-snapshot` が書く
-`app-snapshot.json` の PAT probe 結果(`GET /repos/{owner}/{repo}` の
-`permissions.push`)を宣言と突合し、宣言はあるが到達しない repo を
-`routines-cloud-access-missing`、到達するが宣言が無い repo を info 級の
-`routines-cloud-access-unclaimed` として報告する。詳細:
-`docs/github-audit.md` の routines ドメイン節。
+`app-snapshot.json` の PAT probe 結果(private リポジトリに対する
+`GET /repos/{owner}/{repo}` の HTTP 200/404)を宣言と突合し、宣言はあるが
+到達しない private repo を `routines-cloud-access-missing`、到達するが宣言が
+無い private repo を info 級の `routines-cloud-access-unclaimed` として報告する。
+public repo は fine-grained PAT が常に読め、書き込み範囲を API で観測できない
+ため判定しない(ADR-590 の Amendment)。詳細: `docs/github-audit.md` の
+routines ドメイン節。
 
 先行例・各判断の対比は `docs/adr/519-routines-declaration-in-repo.md`
 「先行例との対比」を参照(precedent-grounding/selection-grounding スキル)。

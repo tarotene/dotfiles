@@ -1460,7 +1460,11 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
 # — this domain requires no secret itself.
 # ---------------------------------------------------------------------------
 
-judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "owner/repo") $4=snapshot_present(true/false, default false) $5=reach(true/false, default false) -> finding
+judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "owner/repo") $4=snapshot_present(true/false, default false) $5=reach(true/false/unknown, default false) -> finding
+  # reach=unknown: a PUBLIC repo — a fine-grained PAT always reads public repos
+  # and GitHub does not expose its write reach there, so neither
+  # routines-cloud-access-missing nor -unclaimed can be judged (ADR-590 D4,
+  # revised 2026-09-30). Only a definite false (private repo, 404) is "missing".
   local repo="$1" gql="$2" sources="$3" snapshot_present="${4:-false}" reach="${5:-false}" has_declarations
 
   has_declarations="$(jq -e '
@@ -1478,7 +1482,7 @@ judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "
 
   local -a missing=()
   jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$sources" >/dev/null 2>&1 || missing+=("routines-sources-missing")
-  [[ $snapshot_present == true && $reach != true ]] && missing+=("routines-cloud-access-missing")
+  [[ $snapshot_present == true && $reach == false ]] && missing+=("routines-cloud-access-missing")
 
   if ((${#missing[@]} == 0)); then
     jq -n '{verdict: "ok", missing: []}'
@@ -1990,9 +1994,12 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ;;
           routines)
             local reach=false
-            [[ $pat_snapshot_present == true ]] \
-              && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$pat_reach_json" >/dev/null 2>&1 \
-              && reach=true
+            if [[ $vis == PUBLIC ]]; then
+              reach=unknown
+            elif [[ $pat_snapshot_present == true ]] \
+              && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$pat_reach_json" >/dev/null 2>&1; then
+              reach=true
+            fi
             entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json" "$pat_snapshot_present" "$reach")"
             ;;
           workflows) entry="$(judge_workflows "$repo" "$repo_gql")" ;;
@@ -3623,6 +3630,18 @@ jobs:
     <<<"$(judge_routines "no-routines-dir" '{}' "$routines_sources" true true)" >/dev/null || {
     printf 'FAIL: 宣言が無いのに PAT が到達する repo は advisory/routines-cloud-access-unclaimed になるべき: %s\n' \
       "$(judge_routines "no-routines-dir" '{}' "$routines_sources" true true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok" and (.missing | length == 0)' \
+    <<<"$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true unknown)" >/dev/null || {
+    printf 'FAIL: PUBLIC repo(reach=unknown)は routines-cloud-access-missing にしない: %s\n' \
+      "$(judge_routines "routines-ok" '{"routinesDir":{"entries":[{"name":"nightly-check.json","type":"blob"}]}}' "$routines_sources" true unknown)" >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_routines "no-routines-dir" '{}' "$routines_sources" true unknown)" >/dev/null || {
+    printf 'FAIL: 宣言が無い PUBLIC repo(reach=unknown)は advisory にせず not-applicable: %s\n' \
+      "$(judge_routines "no-routines-dir" '{}' "$routines_sources" true unknown)" >&2
     return 1
   }
   jq -e '.verdict == "not-applicable"' \

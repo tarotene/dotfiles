@@ -143,6 +143,17 @@ http_post_empty_body() { # $1=url $2=bearer_token -> body on stdout ('' on failu
   "$CURL_BIN" -sS -X POST -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
 }
 
+http_post_unauthenticated() { # $1=url -> body on stdout ('' on failure)
+  # POST /app-manifests/{code}/conversions takes no credentials, and GitHub
+  # rejects an empty `Authorization: Bearer ` header with 401 Bad credentials
+  # — the header must be absent, not empty.
+  "$CURL_BIN" -sS -X POST -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
+}
+
+http_status() { # $1=url $2=bearer_token -> HTTP status code ('000' on transport failure)
+  "$CURL_BIN" -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '000'
+}
+
 # ---------------------------------------------------------------------------
 # owned-App registration + install-target snapshot (D2/D3)
 # ---------------------------------------------------------------------------
@@ -224,10 +235,8 @@ snapshot_apps() { # -> JSON array of {name, id, slug, app_name, permissions, eve
 }
 
 # ---------------------------------------------------------------------------
-# fine-grained PAT reach snapshot (D4): push permission on GET
-# /repos/{owner}/{repo}, not a bare 200 — a fine-grained PAT always reads
-# public repos read-only regardless of its selected-repositories scope
-# (GitHub Docs, "Managing your personal access tokens", 取得 2026-09-29).
+# fine-grained PAT reach snapshot (D4, revised 2026-09-30): private
+# repositories only, judged by HTTP 200 vs 404 — see probe_pat_reach().
 # ---------------------------------------------------------------------------
 
 read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC ∪ PRIVATE
@@ -238,14 +247,26 @@ read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC �
   done
 }
 
-probe_pat_reach() { # $1=pat -> JSON array of "owner/repo" the PAT can push to
-  local pat="$1" repo_names repo body reachable='[]' can_push
-  repo_names="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json name --jq '.[].name' 2> /dev/null || true)"
+probe_pat_reach() { # $1=pat -> JSON array of "owner/repo": PRIVATE repos the PAT can read
+  # Only private repositories can be judged. A fine-grained PAT always reads
+  # every public repository, and `permissions.push` on GET /repos/{o}/{r}
+  # reports the *owner's* role, not the token's (verified 2026-09-30: a public
+  # repo outside the token's selection still reported push=true), so write
+  # reach on a public repo is not observable without writing. For a private
+  # repo outside the selection GitHub answers 404; inside it, 200.
+  # Repositories are listed over REST (not `gh repo list`, which is GraphQL
+  # and fails under rate limiting) and a listing failure is an error, never
+  # an empty result.
+  local pat="$1" repo_names repo status reachable='[]'
+  repo_names="$("$GH_BIN" api --paginate "user/repos?affiliation=owner&per_page=100" \
+    --jq '.[] | select(.private and (.fork | not)) | .name' 2> /dev/null)" || {
+    printf 'github-app-snapshot: could not list private repositories for %s\n' "$OWNER" >&2
+    return 1
+  }
   while IFS= read -r repo; do
     [[ -n $repo ]] || continue
-    body="$(http_get "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
-    can_push="$("$JQ_BIN" -r '.permissions.push // false' <<< "$body")"
-    [[ $can_push == true ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
+    status="$(http_status "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
+    [[ $status == 200 ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
   done <<< "$repo_names"
   printf '%s' "$reachable"
 }
@@ -260,8 +281,12 @@ snapshot_pat_probes() { # -> JSON array of {name, repositories}
         "$name" "$secret_name" >&2
       continue
     fi
-    repos="$(probe_pat_reach "$pat")"
-    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" '$o + [{name: $name, repositories: $repos}]' <<< '{}')"
+    repos="$(probe_pat_reach "$pat")" || {
+      printf 'github-app-snapshot: %s probe skipped (repository listing failed)\n' "$name" >&2
+      continue
+    }
+    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" \
+      '$o + [{name: $name, scope: "private-only", repositories: $repos}]' <<< '{}')"
   done < <(read_pat_probes)
   printf '%s' "$out"
 }
@@ -307,6 +332,16 @@ run_inner() { # $1=operation, [args...] — runs inside the bws-injected environ
   esac
 }
 
+sh_quote_words() { # args... -> one POSIX-sh-safe line (single-quote each word)
+  # Not `printf %q`: for multi-line words bash emits $'...\n...', which dash
+  # (what `bws run` re-parses with) does not understand.
+  local w out=""
+  for w in "$@"; do
+    out+="'${w//\'/\'\\\'\'}' "
+  done
+  printf '%s' "$out"
+}
+
 run_with_bitwarden() { # $1=operation, [args...]
   local operation="$1"
   shift
@@ -314,8 +349,11 @@ run_with_bitwarden() { # $1=operation, [args...]
   if ! token="$(keyring_token)"; then
     return 1
   fi
-  set +e
-  BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- \
+  # `bws run` joins everything after `--` with spaces and re-parses it with
+  # a shell, so quoting is lost (`sh -c 'a b'` arrives as `sh -c a b`).
+  # Hand it exactly one already-quoted string instead.
+  local cmd
+  cmd="$(sh_quote_words \
     "$ENV_BIN" \
     "HOME=$HOME" \
     "PATH=$PATH" \
@@ -329,7 +367,9 @@ run_with_bitwarden() { # $1=operation, [args...]
     "GITHUB_APP_SNAPSHOT_GH_BIN=$GH_BIN" \
     "GITHUB_APP_SNAPSHOT_OPENSSL_BIN=$OPENSSL_BIN" \
     "GITHUB_APP_SNAPSHOT_JQ_BIN=$JQ_BIN" \
-    "$SELF" __run "$operation" "$@"
+    "$SELF" __run "$operation" "$@")"
+  set +e
+  BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- "$cmd"
   rc=$?
   set -e
   unset token
@@ -354,20 +394,25 @@ manifest_form() { # $1=name [--out FILE]
   manifest_json="$(cat "$manifest_file")"
   state="$(head -c16 /dev/urandom | "$OPENSSL_BIN" base64 -A | tr -dc 'a-zA-Z0-9' | head -c16)"
   [[ -n $out ]] || out="$(mktemp --suffix=.html)"
-  "$JQ_BIN" -n -r --arg m "$manifest_json" --arg s "$state" '
-    "<!doctype html><html><body><form id=f action=\"https://github.com/settings/apps/new?state=" + $s + "\" method=post>" +
-    "<input type=hidden name=manifest value=" + ($m | @html) + "></form>" +
-    "<script>document.getElementById('f').submit()</script></body></html>"
+  # The jq program is bash single-quoted, so it cannot contain a literal
+  # single quote (an unescaped one here once closed the quote early and left
+  # `getElementById(f)`, a ReferenceError that silently stopped the
+  # auto-submit) — pass it in as $q instead. The value attribute must also be
+  # double-quoted: the manifest JSON contains spaces, and an unquoted
+  # attribute value ends at the first one.
+  "$JQ_BIN" -n -r --arg m "$manifest_json" --arg s "$state" --arg q "'" '
+    "<!doctype html><html><body><form id=\"f\" action=\"https://github.com/settings/apps/new?state=" + $s + "\" method=\"post\">" +
+    "<input type=\"hidden\" name=\"manifest\" value=\"" + ($m | @html) + "\"></form>" +
+    "<script>document.getElementById(" + $q + "f" + $q + ").submit()</script></body></html>"
   ' > "$out"
   printf 'github-app-snapshot: wrote %s (state=%s) — open it in a browser, click "Create GitHub App", then copy the `code` query parameter from the redirect URL\n' "$out" "$state"
 }
 
 convert_manifest() { # $1=name $2=code
   local name="$1" code="$2" body id slug client_id pem_file name_upper
-  body="$(http_post_empty_body "$GITHUB_API/app-manifests/$code/conversions" '')"
   # unauthenticated endpoint (GitHub Docs, "Registering a GitHub App from a
-  # manifest", 取得 2026-09-29) — an empty bearer token is fine, curl sends
-  # an empty Authorization header GitHub ignores for this one endpoint.
+  # manifest", 取得 2026-09-29): send no Authorization header at all.
+  body="$(http_post_unauthenticated "$GITHUB_API/app-manifests/$code/conversions")"
   id="$("$JQ_BIN" -r '.id // empty' <<< "$body")"
   slug="$("$JQ_BIN" -r '.slug // empty' <<< "$body")"
   client_id="$("$JQ_BIN" -r '.client_id // empty' <<< "$body")"
@@ -474,8 +519,8 @@ case "$url" in
   */app/installations/111/access_tokens) printf '{"token":"fake-install-token"}' ;;
   */installation/repositories\?per_page=100\&page=1) printf '{"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
   */installation/repositories\?per_page=100\&page=2) printf '{"repositories":[]}' ;;
-  */repos/tarotene/reachable-repo) printf '{"permissions":{"push":true}}' ;;
-  */repos/tarotene/unreachable-repo) printf '{"permissions":{"push":false}}' ;;
+  */repos/tarotene/reachable-repo) printf '200' ;;
+  */repos/tarotene/unreachable-repo) printf '404' ;;
   *) printf '{}' ;;
 esac
 CURLSTUB
@@ -484,6 +529,7 @@ CURLSTUB
   cat > "$fake_gh" << 'GHSTUB'
 #!/usr/bin/env bash
 set -euo pipefail
+# `gh api --paginate user/repos ... --jq ...` (private, non-fork names)
 printf 'reachable-repo\nunreachable-repo\n'
 GHSTUB
   chmod +x "$fake_gh"
@@ -524,8 +570,8 @@ GHSTUB
       "$(jq -c '.apps[0].installations' "$tmp/state/app-snapshot.json")" >&2
     return 1
   }
-  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
-    printf 'FAIL: snapshot pat_probes does not match the push-permission fixture (reachable-repo only): %s\n' \
+  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].scope == "private-only" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot pat_probes must list only the private repo answering HTTP 200 (404 excluded): %s\n' \
       "$(jq -c '.pat_probes' "$tmp/state/app-snapshot.json")" >&2
     return 1
   }
@@ -537,6 +583,27 @@ GHSTUB
     printf 'FAIL: snapshot output must never contain a PAT value\n' >&2
     return 1
   fi
+
+  # -------------------------------------------------------------------
+  # a failing repository listing must skip the probe with a warning, never
+  # yield an empty-but-successful result (that hid a rate-limit failure).
+  # -------------------------------------------------------------------
+  local fail_gh="$tmp/fail-gh" out_fail
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$fail_gh"
+  chmod +x "$fail_gh"
+  out_fail="$(
+    MANIFESTS_DIR="$tmp/no-manifests" PAT_PROBES_FILE="$tmp/pat-probes.tsv" PAT_PROBES_LOCAL_FILE=/dev/null \
+      CURL_BIN="$fake_curl" GH_BIN="$fail_gh" OWNER=tarotene OPENSSL_BIN=openssl JQ_BIN=jq CLAUDE_WEB_PAT=x \
+      run_inner snapshot --out "$tmp/state/app-snapshot-listfail.json" 2>&1
+  )"
+  [[ $out_fail == *'repository listing failed'* ]] || {
+    printf 'FAIL: repository listing failure must be reported, not swallowed: %s\n' "$out_fail" >&2
+    return 1
+  }
+  jq -e '.pat_probes == []' "$tmp/state/app-snapshot-listfail.json" > /dev/null || {
+    printf 'FAIL: failed probe must not appear as an empty reach set\n' >&2
+    return 1
+  }
 
   # -------------------------------------------------------------------
   # missing app secret env: skipped, not fatal (bws not yet configured)
@@ -559,6 +626,88 @@ GHSTUB
   }
   jq -e '.apps == []' "$tmp/state/app-snapshot-empty.json" > /dev/null || {
     printf 'FAIL: skipped app should leave apps empty, not error out: %s\n' "$(cat "$tmp/state/app-snapshot-empty.json")" >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # manifest_form(): the generated page must actually submit. A browser
+  # only auto-submits if (a) the manifest attribute is double-quoted (its
+  # JSON contains spaces) and decodes back to the exact manifest, and
+  # (b) the inline script is syntactically valid (quoted element id).
+  # -------------------------------------------------------------------
+  local form="$tmp/form.html" decoded
+  MANIFESTS_DIR="$tmp/manifests" JQ_BIN=jq OPENSSL_BIN=openssl manifest_form releaser --out "$form" > /dev/null
+  grep -qF 'method="post"' "$form" || {
+    printf 'FAIL: form method attribute must be present and quoted\n' >&2
+    return 1
+  }
+  grep -qF "document.getElementById('f').submit()" "$form" || {
+    printf 'FAIL: auto-submit script must quote the element id: %s\n' "$(grep -o '<script>.*</script>' "$form")" >&2
+    return 1
+  }
+  decoded="$(tr -d '\n' < "$form" | sed -E 's/.*name="manifest" value="([^"]*)".*/\1/; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g')"
+  jq -e --slurpfile want "$tmp/manifests/releaser.json" '. == $want[0]' <<< "$decoded" > /dev/null || {
+    printf 'FAIL: manifest attribute does not round-trip to the manifest JSON: %s\n' "$decoded" >&2
+    return 1
+  }
+  grep -q 'action="https://github.com/settings/apps/new?state=[A-Za-z0-9]\{16\}"' "$form" || {
+    printf 'FAIL: form action must be the quoted apps/new URL with a 16-char state\n' >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # convert_manifest(): the conversions endpoint is unauthenticated, so the
+  # request must carry no Authorization header (an empty one is a 401), and
+  # the PEM must land in a 0600 file.
+  # -------------------------------------------------------------------
+  local conv_curl="$tmp/conv-curl" conv_args="$tmp/conv-args" conv_out
+  cat > "$conv_curl" << 'CONVSTUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$CONV_ARGS"
+printf '{"id":42,"slug":"tarotene-releaser","client_id":"Iv1.test","pem":"-----BEGIN TEST-----"}'
+CONVSTUB
+  chmod +x "$conv_curl"
+  conv_out="$(CONV_ARGS="$conv_args" CURL_BIN="$conv_curl" JQ_BIN=jq XDG_RUNTIME_DIR="$tmp" convert_manifest releaser testcode)"
+  if grep -qi 'authorization' "$conv_args"; then
+    printf 'FAIL: manifest conversion must send no Authorization header: %s\n' "$(cat "$conv_args")" >&2
+    return 1
+  fi
+  grep -q '/app-manifests/testcode/conversions' "$conv_args" || {
+    printf 'FAIL: conversion URL wrong: %s\n' "$(cat "$conv_args")" >&2
+    return 1
+  }
+  [[ $(stat -c %a "$tmp/github-app-snapshot-releaser.pem") == 600 ]] || {
+    printf 'FAIL: converted PEM file must be mode 0600\n' >&2
+    return 1
+  }
+  [[ $conv_out == *GITHUB_APP_RELEASER_ID* ]] || {
+    printf 'FAIL: convert output must name the secrets to store: %s\n' "$conv_out" >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # run_with_bitwarden(): real `bws run` re-parses the joined args with a
+  # shell, so quoting must survive. This stub mimics that (sh -c "$*").
+  # -------------------------------------------------------------------
+  local q_bws="$tmp/q-bws" q_st="$tmp/q-secret-tool" q_out
+  cat > "$q_st" << 'QSTUB'
+#!/usr/bin/env bash
+printf 'tok'
+QSTUB
+  cat > "$q_bws" << 'QSTUB'
+#!/usr/bin/env bash
+# usage: bws run --no-inherit-env -- <args...>  (joins args like the real one)
+shift 3
+export GITHUB_APP_RELEASER_ID=777
+exec sh -c "$*"
+QSTUB
+  chmod +x "$q_bws" "$q_st"
+  q_out="$(BWS_BIN="$q_bws" SECRET_TOOL_BIN="$q_st" run_with_bitwarden exec sh -c '
+    printf "[%s|%s]" "$1" "$GITHUB_APP_RELEASER_ID"' _ "a b'c
+d")"
+  [[ $q_out == "[a b'c
+d|777]" ]] || {
+    printf 'FAIL: exec must preserve argument quoting through bws run and inject secrets: got %s\n' "$q_out" >&2
     return 1
   }
 
