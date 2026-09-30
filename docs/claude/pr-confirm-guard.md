@@ -3,8 +3,8 @@
 判定エンジン: `config/claude/hooks/pr-confirm-guard.sh`(Codex 版 adapter:
 `config/codex/hooks/pr-confirm-guard.sh`)
 規約側: `config/claude/skills/pr-description/SKILL.md` §1・§6
-設計判断: ADR-0000「PR 本文の人待ちチェックボックスを廃し、人の確認を
-後続 Issue へ払い出す」(番号は導入 PR で改番される)
+設計判断: ADR-598「PR 本文の人待ちチェックボックスを廃し、人の確認を
+後続 Issue へ払い出す」
 Issue: No-Issue(セッション内の会話から直接起票)
 
 `pr-description` スキル §6 はもともと「要確認」を人間にしかできない

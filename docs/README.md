@@ -315,11 +315,10 @@
   一本化し、Dependabot security updates を OFF にして修正 PR の経路を
   Renovate の `vulnerabilityAlerts` へ一本化する。Self-host との比較と
   発火条件も記録。
-- [ADR-0000](adr/0000-pr-pending-work-to-issues.md) — PR 本文の未チェック
+- [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
-  転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する(この
-  ADR は導入 PR の番号に改番される予定)。
+  転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
@@ -412,7 +411,7 @@ Design and rationale for the hooks and commands deployed from
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
   `scripts/pr-title-check`。
-- [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-0000: PR 本文に
+- [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する
   (`pr-confirm-guard.sh`、Codex 版 adapter あり)。全リポジトリで発火する。
