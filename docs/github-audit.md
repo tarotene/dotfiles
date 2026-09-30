@@ -728,29 +728,12 @@ read-only, doesn't re-check what another mechanism already checks"
 boundary `titles` draws between enforcement presence and individual PR
 conformance).
 
-**Cloud-reach verdicts (ADR-590 D4 and its Amendment, ADR-436 Amendment 2026-09-30)**:
-the `sources` check above answers "does the weekly auditor clone this repo",
-but Claude's cloud sandbox also needs the fine-grained `CLAUDE_WEB_PAT` to
-actually reach it. `scripts/github-app-snapshot` probes that PAT against
-every **private** repository (`GET /repos/{owner}/{repo}`: HTTP 200 =
-selected, 404 = not selected) and writes the reachable set into the same
-`app-snapshot.json` the `releaser` domain reads. Public repositories are
-deliberately not judged: a fine-grained PAT always reads them, and the
-`permissions.push` field reports the owner's role rather than the token's,
-so the PAT's write reach on a public repo cannot be observed without writing.
-`github-audit` adds:
-
-- `routines-cloud-access-missing` — a private repository has a
-  `.claude/routines/*.json` declaration, but the PAT gets a 404 for it
-  (`drifted`, alongside `routines-sources-missing` when both apply).
-- `routines-cloud-access-unclaimed` — the PAT *does* reach a private
-  repository that has no `.claude/routines/` declaration at all
-  (`advisory` — an over-grant worth a look, not a broken state).
-
-A public repository is `unknown` for both, so neither verdict is reported.
-Same fallback as `releaser`: no `app-snapshot.json` yet means both verdicts
-above are silently skipped, falling back to the original `sources`-only
-judgement. No secret required here either.
+**Cloud reach is not audited here.** Claude's cloud sandbox reaches a
+repository through the Claude GitHub App's install list or a `/web-setup`
+token, neither of which this domain can read (ADR-590 Amendment
+2026-10-01). An earlier design that probed a fine-grained PAT was withdrawn:
+`/web-setup` does not accept fine-grained PATs, and `permissions.push` on a
+public repository reports the owner's role, not the token's.
 
 ### workflows
 

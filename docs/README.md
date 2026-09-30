@@ -38,7 +38,7 @@
   自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
   OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
 - [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
-  install 先・secret 配布(3 層)のうち、秘密(PEM・fine-grained PAT)を
+  install 先・secret 配布(3 層)のうち、秘密(PEM)を
   読み書きする唯一のスクリプト `scripts/github-app-snapshot` のセットアップ・
   Manifest フローでの新規 App 作成・secret 配布・ローテーション手順
   (ADR-590)。
@@ -336,8 +336,9 @@
   (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用スクリプト
   `scripts/github-app-snapshot` がスナップショットを書き `github-audit` は
   lazy に読むだけ(github-audit は秘密を要求しないという ADR-436 D4 を
-  維持)。第三者 App(Claude)の到達は fine-grained PAT の push 権限 probe で
-  観測する。PEM・PAT は Bitwarden Secrets Manager に保管する。
+  維持)。PEM は Bitwarden Secrets Manager に保管する。第三者 App(Claude)
+  の到達範囲は、fine-grained PAT が `/web-setup` で使えないため、Claude
+  GitHub App の install 先(Only select repositories)で絞る方針に改めた。
 
 ## Claude Code tooling ([`claude/`](claude/))
 

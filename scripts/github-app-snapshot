@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # github-app-snapshot — the only script in this repository allowed to hold
-# GitHub App PEMs / fine-grained PATs (ADR-590 D3/D5).
+# GitHub App PEMs (ADR-590 D3/D5).
 # It writes a read-only snapshot (app-snapshot.json) of each owned App's
-# registration (permissions/events) and install-target repositories, plus
-# each fine-grained PAT's reachable-repository set, to
+# registration (permissions/events) and install-target repositories to
 # $XDG_STATE_HOME/github-audit/app-snapshot.json. `scripts/github-audit`
 # and `scripts/github-app-registry-check` read that file lazily and never
 # see a secret themselves (ADR-436 D4 is preserved, not reopened).
@@ -15,7 +14,7 @@
 # not shared with obsidian-backup's own machine account — least privilege
 # per app, 2026-09-30 user decision recorded in the ADR).
 #
-# Full setup + rotation + `/web-setup` wiring: docs/github-app-snapshot.md
+# Full setup + rotation: docs/github-app-snapshot.md
 set -euo pipefail
 
 SELF="$(realpath "$0")"
@@ -25,14 +24,10 @@ CONFIG_DIR="${GITHUB_APP_SNAPSHOT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/
 # file github-audit reads lazily, not a separate namespace.
 STATE_DIR="${GITHUB_APP_SNAPSHOT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/github-audit}"
 MANIFESTS_DIR="${GITHUB_APP_SNAPSHOT_MANIFESTS_DIR:-$CONFIG_DIR/manifests}"
-PAT_PROBES_FILE="${GITHUB_APP_SNAPSHOT_PAT_PROBES_FILE:-$CONFIG_DIR/pat-probes.tsv}"
-PAT_PROBES_LOCAL_FILE="${GITHUB_APP_SNAPSHOT_PAT_PROBES_LOCAL_FILE:-$CONFIG_DIR/pat-probes.local.tsv}"
-REPO_LIMIT="${GITHUB_APP_SNAPSHOT_REPO_LIMIT:-500}"
 
 BWS_BIN="${GITHUB_APP_SNAPSHOT_BWS_BIN:-bws}"
 SECRET_TOOL_BIN="${GITHUB_APP_SNAPSHOT_SECRET_TOOL_BIN:-secret-tool}"
 CURL_BIN="${GITHUB_APP_SNAPSHOT_CURL_BIN:-curl}"
-GH_BIN="${GITHUB_APP_SNAPSHOT_GH_BIN:-gh}"
 OPENSSL_BIN="${GITHUB_APP_SNAPSHOT_OPENSSL_BIN:-openssl}"
 JQ_BIN="${GITHUB_APP_SNAPSHOT_JQ_BIN:-jq}"
 ENV_BIN="${GITHUB_APP_SNAPSHOT_ENV_BIN:-env}"
@@ -55,11 +50,10 @@ usage:
 
 The Bitwarden Secrets Manager machine account must have read-only access to
 a project holding, per owned App <name>: GITHUB_APP_<NAME>_ID,
-GITHUB_APP_<NAME>_PEM (NAME = <name> upper-cased, '-' -> '_'), plus one
-CLAUDE_WEB_PAT-style secret per config/github-app-snapshot/pat-probes.tsv
-row. The bws access token is stored only in GNOME Keyring.
+GITHUB_APP_<NAME>_PEM (NAME = <name> upper-cased, '-' -> '_'). The bws
+access token is stored only in GNOME Keyring.
 
-Full setup + rotation + `/web-setup` wiring: docs/github-app-snapshot.md
+Full setup + rotation: docs/github-app-snapshot.md
 EOF
 }
 
@@ -150,10 +144,6 @@ http_post_unauthenticated() { # $1=url -> body on stdout ('' on failure)
   "$CURL_BIN" -sS -X POST -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
 }
 
-http_status() { # $1=url $2=bearer_token -> HTTP status code ('000' on transport failure)
-  "$CURL_BIN" -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '000'
-}
-
 # ---------------------------------------------------------------------------
 # owned-App registration + install-target snapshot (D2/D3)
 # ---------------------------------------------------------------------------
@@ -235,74 +225,16 @@ snapshot_apps() { # -> JSON array of {name, id, slug, app_name, permissions, eve
 }
 
 # ---------------------------------------------------------------------------
-# fine-grained PAT reach snapshot (D4, revised 2026-09-30): private
-# repositories only, judged by HTTP 200 vs 404 — see probe_pat_reach().
-# ---------------------------------------------------------------------------
-
-read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC ∪ PRIVATE
-  local f
-  for f in "$PAT_PROBES_FILE" "$PAT_PROBES_LOCAL_FILE"; do
-    [[ -f $f ]] || continue
-    grep -Ev '^[[:space:]]*(#|$)' "$f" || true
-  done
-}
-
-probe_pat_reach() { # $1=pat -> JSON array of "owner/repo": PRIVATE repos the PAT can read
-  # Only private repositories can be judged. A fine-grained PAT always reads
-  # every public repository, and `permissions.push` on GET /repos/{o}/{r}
-  # reports the *owner's* role, not the token's (verified 2026-09-30: a public
-  # repo outside the token's selection still reported push=true), so write
-  # reach on a public repo is not observable without writing. For a private
-  # repo outside the selection GitHub answers 404; inside it, 200.
-  # Repositories are listed over REST (not `gh repo list`, which is GraphQL
-  # and fails under rate limiting) and a listing failure is an error, never
-  # an empty result.
-  local pat="$1" repo_names repo status reachable='[]'
-  repo_names="$("$GH_BIN" api --paginate "user/repos?affiliation=owner&per_page=100" \
-    --jq '.[] | select(.private and (.fork | not)) | .name' 2> /dev/null)" || {
-    printf 'github-app-snapshot: could not list private repositories for %s\n' "$OWNER" >&2
-    return 1
-  }
-  while IFS= read -r repo; do
-    [[ -n $repo ]] || continue
-    status="$(http_status "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
-    [[ $status == 200 ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
-  done <<< "$repo_names"
-  printf '%s' "$reachable"
-}
-
-snapshot_pat_probes() { # -> JSON array of {name, repositories}
-  local out='[]' name secret_name pat repos
-  while IFS=$'\t' read -r name secret_name; do
-    [[ -n $name ]] || continue
-    pat="${!secret_name:-}"
-    if [[ -z $pat ]]; then
-      printf 'github-app-snapshot: %s has no %s in the environment — skipping (store it in the github-apps Secrets Manager project)\n' \
-        "$name" "$secret_name" >&2
-      continue
-    fi
-    repos="$(probe_pat_reach "$pat")" || {
-      printf 'github-app-snapshot: %s probe skipped (repository listing failed)\n' "$name" >&2
-      continue
-    }
-    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" \
-      '$o + [{name: $name, scope: "private-only", repositories: $repos}]' <<< '{}')"
-  done < <(read_pat_probes)
-  printf '%s' "$out"
-}
-
-# ---------------------------------------------------------------------------
 # run (snapshot) / exec — both go through Bitwarden Secrets Manager
 # ---------------------------------------------------------------------------
 
 do_snapshot() { # $1=out_path
-  local out_path="$1" apps pat_probes tmp
+  local out_path="$1" apps tmp
   apps="$(snapshot_apps)"
-  pat_probes="$(snapshot_pat_probes)"
   mkdir -p "$(dirname "$out_path")"
   tmp="$(mktemp "$(dirname "$out_path")/app-snapshot.json.XXXXXX")"
-  "$JQ_BIN" -n --argjson apps "$apps" --argjson pat_probes "$pat_probes" --arg generated_at "$(date --iso-8601=seconds)" \
-    '{schema: 1, generated_at: $generated_at, apps: $apps, pat_probes: $pat_probes}' > "$tmp"
+  "$JQ_BIN" -n --argjson apps "$apps" --arg generated_at "$(date --iso-8601=seconds)" \
+    '{schema: 1, generated_at: $generated_at, apps: $apps}' > "$tmp"
   mv "$tmp" "$out_path"
   printf 'github-app-snapshot: wrote %s\n' "$out_path"
 }
@@ -360,11 +292,7 @@ run_with_bitwarden() { # $1=operation, [args...]
     "GITHUB_APP_SNAPSHOT_OWNER=$OWNER" \
     "GITHUB_APP_SNAPSHOT_STATE_DIR=$STATE_DIR" \
     "GITHUB_APP_SNAPSHOT_MANIFESTS_DIR=$MANIFESTS_DIR" \
-    "GITHUB_APP_SNAPSHOT_PAT_PROBES_FILE=$PAT_PROBES_FILE" \
-    "GITHUB_APP_SNAPSHOT_PAT_PROBES_LOCAL_FILE=$PAT_PROBES_LOCAL_FILE" \
-    "GITHUB_APP_SNAPSHOT_REPO_LIMIT=$REPO_LIMIT" \
     "GITHUB_APP_SNAPSHOT_CURL_BIN=$CURL_BIN" \
-    "GITHUB_APP_SNAPSHOT_GH_BIN=$GH_BIN" \
     "GITHUB_APP_SNAPSHOT_OPENSSL_BIN=$OPENSSL_BIN" \
     "GITHUB_APP_SNAPSHOT_JQ_BIN=$JQ_BIN" \
     "$SELF" __run "$operation" "$@")"
@@ -499,8 +427,8 @@ run_selftest() (
   fi
 
   # -------------------------------------------------------------------
-  # do_snapshot(): stubbed curl/gh, no network. Exercises the app +
-  # PAT-probe assembly and the resulting JSON shape (no PEM/PAT leaked
+  # do_snapshot(): stubbed curl, no network. Exercises the app and
+  # installation assembly and the resulting JSON shape (no PEM leaked
   # into the output).
   # -------------------------------------------------------------------
   mkdir -p "$tmp/manifests" "$tmp/state"
@@ -508,7 +436,7 @@ run_selftest() (
 {"name": "tarotene-releaser", "url": "https://example.invalid", "hook_attributes": {"url": "https://example.invalid", "active": false}}
 EOF
 
-  local fake_curl="$tmp/curl" fake_gh="$tmp/gh"
+  local fake_curl="$tmp/curl"
   cat > "$fake_curl" << 'CURLSTUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -519,37 +447,20 @@ case "$url" in
   */app/installations/111/access_tokens) printf '{"token":"fake-install-token"}' ;;
   */installation/repositories\?per_page=100\&page=1) printf '{"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
   */installation/repositories\?per_page=100\&page=2) printf '{"repositories":[]}' ;;
-  */repos/tarotene/reachable-repo) printf '200' ;;
-  */repos/tarotene/unreachable-repo) printf '404' ;;
   *) printf '{}' ;;
 esac
 CURLSTUB
   chmod +x "$fake_curl"
 
-  cat > "$fake_gh" << 'GHSTUB'
-#!/usr/bin/env bash
-set -euo pipefail
-# `gh api --paginate user/repos ... --jq ...` (private, non-fork names)
-printf 'reachable-repo\nunreachable-repo\n'
-GHSTUB
-  chmod +x "$fake_gh"
-
-  printf 'claude-web\tCLAUDE_WEB_PAT\n' > "$tmp/pat-probes.tsv"
-
   local out
   out="$(
     MANIFESTS_DIR="$tmp/manifests" \
-      PAT_PROBES_FILE="$tmp/pat-probes.tsv" \
-      PAT_PROBES_LOCAL_FILE=/dev/null \
       CURL_BIN="$fake_curl" \
-      GH_BIN="$fake_gh" \
       OWNER=tarotene \
       OPENSSL_BIN=openssl \
       JQ_BIN=jq \
-      REPO_LIMIT=500 \
       GITHUB_APP_RELEASER_ID=999 \
       GITHUB_APP_RELEASER_PEM="$(cat "$priv")" \
-      CLAUDE_WEB_PAT=fake-pat \
       run_inner snapshot --out "$tmp/state/app-snapshot.json"
   )"
   [[ $out == *"wrote $tmp/state/app-snapshot.json"* ]] || {
@@ -570,51 +481,17 @@ GHSTUB
       "$(jq -c '.apps[0].installations' "$tmp/state/app-snapshot.json")" >&2
     return 1
   }
-  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].scope == "private-only" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
-    printf 'FAIL: snapshot pat_probes must list only the private repo answering HTTP 200 (404 excluded): %s\n' \
-      "$(jq -c '.pat_probes' "$tmp/state/app-snapshot.json")" >&2
-    return 1
-  }
   if grep -qF 'BEGIN' "$tmp/state/app-snapshot.json"; then
     printf 'FAIL: snapshot output must never contain a PEM\n' >&2
     return 1
   fi
-  if grep -qF 'fake-pat' "$tmp/state/app-snapshot.json"; then
-    printf 'FAIL: snapshot output must never contain a PAT value\n' >&2
-    return 1
-  fi
-
-  # -------------------------------------------------------------------
-  # a failing repository listing must skip the probe with a warning, never
-  # yield an empty-but-successful result (that hid a rate-limit failure).
-  # -------------------------------------------------------------------
-  local fail_gh="$tmp/fail-gh" out_fail
-  printf '#!/usr/bin/env bash\nexit 1\n' > "$fail_gh"
-  chmod +x "$fail_gh"
-  out_fail="$(
-    MANIFESTS_DIR="$tmp/no-manifests" PAT_PROBES_FILE="$tmp/pat-probes.tsv" PAT_PROBES_LOCAL_FILE=/dev/null \
-      CURL_BIN="$fake_curl" GH_BIN="$fail_gh" OWNER=tarotene OPENSSL_BIN=openssl JQ_BIN=jq CLAUDE_WEB_PAT=x \
-      run_inner snapshot --out "$tmp/state/app-snapshot-listfail.json" 2>&1
-  )"
-  [[ $out_fail == *'repository listing failed'* ]] || {
-    printf 'FAIL: repository listing failure must be reported, not swallowed: %s\n' "$out_fail" >&2
-    return 1
-  }
-  jq -e '.pat_probes == []' "$tmp/state/app-snapshot-listfail.json" > /dev/null || {
-    printf 'FAIL: failed probe must not appear as an empty reach set\n' >&2
-    return 1
-  }
-
   # -------------------------------------------------------------------
   # missing app secret env: skipped, not fatal (bws not yet configured)
   # -------------------------------------------------------------------
   local out_missing
   out_missing="$(
     MANIFESTS_DIR="$tmp/manifests" \
-      PAT_PROBES_FILE=/dev/null \
-      PAT_PROBES_LOCAL_FILE=/dev/null \
       CURL_BIN="$fake_curl" \
-      GH_BIN="$fake_gh" \
       OWNER=tarotene \
       OPENSSL_BIN=openssl \
       JQ_BIN=jq \

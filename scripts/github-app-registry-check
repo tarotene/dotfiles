@@ -115,7 +115,7 @@ EOF
 {"schema": 1, "generated_at": "2026-09-30T00:00:00Z", "apps": [
   {"name": "releaser", "id": 1, "slug": "tarotene-releaser", "app_name": "tarotene-releaser", "permissions": {"contents": "write", "issues": "write", "pull_requests": "write", "metadata": "read"}, "events": []},
   {"name": "drifted", "id": 2, "slug": "tarotene-drifted", "app_name": "tarotene-drifted", "permissions": {"contents": "write", "issues": "write", "metadata": "read"}, "events": ["push"]}
-], "pat_probes": []}
+]}
 EOF
 
   local out

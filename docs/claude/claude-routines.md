@@ -50,25 +50,24 @@ routine の汎用手順〕、決定論的な差分コアは `scripts/routines-pl
   `list_triggers` がある(ローカルの `RemoteTrigger` ツールには無い)。
   delete を使わない設計判断(D8)はこの発見後も維持した。
 
-## クラウド到達範囲(ADR-590 D4、ADR-436 Amendment 2026-09-30)
+## クラウド到達範囲(ADR-590 の Amendment 2026-10-01)
 
 `.claude/routines/*.json` の宣言が「実行すべき routine」を表す一方、
-Claude のクラウド sandbox がその repo に実際に到達できるかは別問題 —
-到達範囲の正本は Claude の GitHub App ではなく、専用の fine-grained PAT
-(`CLAUDE_WEB_PAT`、selected repositories、Bitwarden Secrets Manager
-保管)の選択範囲そのものである。この PAT を `/web-setup` に注入する手順は
-`docs/github-app-snapshot.md` を参照。
+Claude のクラウド sandbox がその repo に到達できるかは、GitHub の接続方法で
+決まり、この repo の宣言では固定できない。
 
-`.claude/routines/*.json` を置く repo は、この PAT の selected
-repositories に含める。検出は `scripts/github-audit` の `routines`
-ドメインが行う — `scripts/github-app-snapshot` が書く
-`app-snapshot.json` の PAT probe 結果(private リポジトリに対する
-`GET /repos/{owner}/{repo}` の HTTP 200/404)を宣言と突合し、宣言はあるが
-到達しない private repo を `routines-cloud-access-missing`、到達するが宣言が
-無い private repo を info 級の `routines-cloud-access-unclaimed` として報告する。
-public repo は fine-grained PAT が常に読め、書き込み範囲を API で観測できない
-ため判定しない(ADR-590 の Amendment)。詳細: `docs/github-audit.md` の
-routines ドメイン節。
+- **Claude GitHub App**(ブラウザで claude.ai/code から接続): public は常に、
+  private は App が install された repo にだけ届く。install は
+  **Only select repositories** で絞る。到達範囲を絞れるのはこの方法だけで、
+  推奨する。
+- **`/web-setup`**: `gh` のトークンを Anthropic に送り、そのトークンが触れる
+  全リポジトリに届く。fine-grained PAT は使えない(classic の `repo` スコープ
+  が必須、2026-10-01 実測)。
+
+`.claude/routines/*.json` を置く private repo は、Claude GitHub App の
+install 先に含める。到達範囲の機械的な検出は未実装で、別 Issue で扱う
+(`github-audit` は Claude App の install 先を読めない)。詳細:
+`docs/github-app-snapshot.md`「Claude's cloud sandbox reach」節。
 
 先行例・各判断の対比は `docs/adr/519-routines-declaration-in-repo.md`
 「先行例との対比」を参照(precedent-grounding/selection-grounding スキル)。

@@ -720,10 +720,10 @@ jobs:
         run: ./scripts/github-audit --selftest
 
       # github-app-snapshot (ADR-590 D3): the only
-      # script allowed to hold GitHub App PEMs / fine-grained PATs. Its
+      # script allowed to hold GitHub App PEMs. Its
       # selftest builds a real RS256 JWT with openssl and verifies the
       # signature against a matching pubkey, plus a stubbed-curl/gh
-      # snapshot-assembly pass asserting no PEM/PAT ever lands in the
+      # snapshot-assembly pass asserting no PEM ever lands in the
       # output JSON — network-free.
       - name: github-app-snapshot --selftest
         run: ./scripts/github-app-snapshot --selftest
