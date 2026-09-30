@@ -38,6 +38,8 @@ usage() {
   slot-hit.sh judge --config <path> --candidates <path> --events-dir <dir>
               [--event-title <str>] [--source-url <str>] [--out-plan <path>]
   slot-hit.sh infer-year --month <N> --day <N> --weekday <字> --today <YYYY-MM-DD>
+  slot-hit.sh enumerate --config <path> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+              [--weekdays <0-6,...>] [--slots <名前,...>] [--out <path>]
   slot-hit.sh finalize --config <path> --decided <path> --markers <path>
               --event-title <str> [--source-url <str>] --today <YYYY-MM-DD>
               [--venue <str>] [--out-plan <path>]
@@ -200,6 +202,47 @@ cmd_infer_year() {
   echo "$out"
 }
 
+# 期間 × 設定の全コマを、judge の入力契約の候補 JSON として列挙する。
+# 候補一覧が無いとき(「いつ空いてる?」への応答)に、判定は既存の judge に
+# 任せたまま候補集合だけを機械生成するための入口。判定は行わない。
+cmd_enumerate() {
+  local config="" from="" to="" weekdays="" slots="" out=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config) config="$2"; shift 2 ;;
+      --from) from="$2"; shift 2 ;;
+      --to) to="$2"; shift 2 ;;
+      --weekdays) weekdays="$2"; shift 2 ;;
+      --slots) slots="$2"; shift 2 ;;
+      --out) out="$2"; shift 2 ;;
+      *) echo "error: 不明なオプション: $1" >&2; usage; exit 2 ;;
+    esac
+  done
+  if [[ -z "$config" || -z "$from" || -z "$to" ]]; then
+    echo "error: enumerate には --config --from --to が必須です" >&2
+    exit 2
+  fi
+
+  local config_json weekdays_json slots_json result
+  config_json="$(load_config_json "$config")"
+  weekdays_json="$(jq -cn --arg s "$weekdays" '$s | split(",") | map(select(length > 0) | tonumber? // "invalid")')"
+  slots_json="$(jq -cn --arg s "$slots" '$s | split(",") | map(select(length > 0))')"
+
+  if ! result="$(jq -n -L"$SCRIPT_DIR" \
+    --argjson config "$config_json" --arg from "$from" --arg to "$to" \
+    --argjson weekdays "$weekdays_json" --argjson slots "$slots_json" \
+    'include "lib"; enumerate_candidates($config; $from; $to; $weekdays; $slots)' 2>&1)"; then
+    echo "error: ${result#*error: }" >&2
+    exit 2
+  fi
+
+  if [[ -n "$out" ]]; then
+    printf '%s\n' "$result" > "$out"
+  else
+    printf '%s\n' "$result"
+  fi
+}
+
 cmd_finalize() {
   local config="" decided="" markers="" event_title="" source_url="" today="" venue="未定" out_plan=""
   while [[ $# -gt 0 ]]; do
@@ -259,9 +302,10 @@ main() {
   case "$command" in
     judge) cmd_judge "$@" ;;
     infer-year) cmd_infer_year "$@" ;;
+    enumerate) cmd_enumerate "$@" ;;
     finalize) cmd_finalize "$@" ;;
     *)
-      echo "error: --selftest か、judge/infer-year/finalize いずれかのサブコマンドを指定してください" >&2
+      echo "error: --selftest か、judge/infer-year/enumerate/finalize いずれかのサブコマンドを指定してください" >&2
       usage
       exit 2
       ;;

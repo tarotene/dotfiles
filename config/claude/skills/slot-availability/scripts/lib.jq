@@ -161,3 +161,34 @@ def resolve_year($month; $day; $weekday_ja; $today):
         "見つかりません(3年先まで探索)。候補日程一覧の表記を確認してください。"
       )
     end;
+
+# 期間 [$from, $to](両端含む)× 設定の全コマを、judge の入力契約
+# [{"date": "YYYY-MM-DD", "time": "HH:MM"}] として列挙する(候補一覧が
+# 無く、自分のカレンダーの空きコマを数え上げて相手に提示するとき用)。
+# 判定のロジックは持たない — 出力をそのまま judge に流せば、既存の
+# ○/△/× 判定がそのまま使える(判定コアを 1 つに保つ)。time は各コマの
+# 開始時刻で、match_slot がそのコマに解決する。
+#   $weekdays: 空なら全曜日。それ以外は曜日番号(0=日〜6=土)で絞る。
+#   $slots:    空なら全コマ。それ以外はコマ名で絞る(設定に無い名前はエラー)。
+def enumerate_candidates($config; $from; $to; $weekdays; $slots):
+  if (valid_iso_date($from) | not) or (valid_iso_date($to) | not) then
+    error("--from / --to は実在する YYYY-MM-DD で指定してください")
+  elif ($from | date_to_epoch_days) > ($to | date_to_epoch_days) then
+    error("--from が --to より後です")
+  elif (($to | date_to_epoch_days) - ($from | date_to_epoch_days)) > 400 then
+    error("期間が 400 日を超えています(--from / --to を狭めてください)")
+  elif any($weekdays[]; type != "number" or . < 0 or . > 6 or . != floor) then
+    error("--weekdays は 0(日)〜6(土)の整数のカンマ区切りで指定してください")
+  elif (($slots - ($config.slots | keys)) | length) > 0 then
+    error("設定に無いコマ名です: \(($slots - ($config.slots | keys)) | join(","))")
+  else
+    ($config.slots | to_entries | sort_by(.value.start | hm_to_minutes)
+      | map(select(($slots | length) == 0 or (.key as $k | $slots | index($k) != null)))) as $entries
+    | [
+        range(($from | date_to_epoch_days); ($to | date_to_epoch_days) + 1) as $n
+        | select(($weekdays | length) == 0 or (($n + 4) % 7 | . as $w | $weekdays | index($w) != null))
+        | ($n | epoch_days_to_date) as $d
+        | $entries[]
+        | {date: $d, time: (.value.start | hm_to_minutes | minutes_to_hm)}
+      ]
+  end;
