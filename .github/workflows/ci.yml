@@ -728,6 +728,13 @@ jobs:
       - name: github-app-snapshot --selftest
         run: ./scripts/github-app-snapshot --selftest
 
+      # github-app-registry-check (ADR-436 Amendment 2026-09-30):
+      # account-level Manifest ⇔ live-registration drift, reading only the
+      # snapshot github-app-snapshot already wrote — no secrets, no
+      # network in its selftest.
+      - name: github-app-registry-check --selftest
+        run: ./scripts/github-app-registry-check --selftest
+
       # github-rulesets-apply (ADR-0000-rulesets-declaration-in-repo, #153)
       # is a thin multi-repo loop over scripts/apply-rulesets.sh — 対象
       # リポジトリの「型」は引数に取らない(旧: rust/typst/astro/core/

@@ -11,6 +11,13 @@ ADR-0023), releaser (grill-me セッション調べ), and routines
 (`docs/claude/github-audit-triage.md`), which is the only place an LLM
 enters this loop — this script never calls one.
 
+The `releaser`/`routines` domains additionally read a snapshot
+`scripts/github-app-snapshot` writes (ADR-590, ADR-436 Amendment
+2026-09-30) to detect GitHub App install-state / cloud-reach drift, and a
+separate account-level sibling script, `scripts/github-app-registry-check`,
+checks App *registration* drift the same way — see each domain's own
+section below, and the account-level section after `routines`.
+
 ## Why this lives in dotfiles, not a dedicated inventory repo
 
 A separate personal repository already called itself the "canonical
@@ -635,7 +642,7 @@ single shared App). No file in this repository lists which repositories
 that App is installed on or holds its private key — see the next
 paragraph for why.
 
-Two verdicts, both about secret presence only:
+Secret-presence verdicts (unchanged since the domain's original design):
 
 - `releaser-app-secrets-missing` — neither `RELEASER_APP_ID` nor
   `RELEASER_APP_PRIVATE_KEY` (or only one of the pair) is set as a repo
@@ -646,16 +653,32 @@ Two verdicts, both about secret presence only:
   skill, or `RELEASE_PLEASE_APP_ID`/`RELEASE_PLEASE_APP_PRIVATE_KEY` for
   the astro skill) instead of the tool-neutral `RELEASER_APP_*` pair.
 
-What this domain deliberately does **not** check: whether the App is
-actually *installed* on the repository. A missing install is not a silent
-failure — the next release-triggering push fails loudly, because
-`actions/create-github-app-token` cannot mint a token for a repository the
-App isn't installed on. Duplicating that detection here would just be a
-second, slower way to learn the same thing GitHub Actions already reports
-immediately. Secret presence has no such backstop (a repository can sit
-indefinitely with the wrong or missing secret names, as `bleep` (then
-`publish-guard`) did before this domain existed), which is why only that
-half is audited.
+**Install-state verdicts (ADR-436 Amendment 2026-09-30)**: the domain
+originally deliberately skipped install-state detection, reasoning that a
+missing install fails loudly on the next release-triggering push
+(`actions/create-github-app-token` cannot mint a token for a repository
+the App isn't installed on) and duplicating that here would just be a
+second, slower way to learn the same thing. That reasoning held only while
+install state was expensive to observe. `scripts/github-app-snapshot`
+(ADR-590) now writes `$XDG_STATE_HOME/github-audit/app-snapshot.json` —
+the releaser App's live `GET /app/installations` result, JWT-authenticated,
+no repo-by-repo REST cost — so `github-audit` reads it lazily (one file
+read for the whole run, not a per-repo call) and reports:
+
+- `releaser-app-not-installed` — a release workflow exists, secrets are
+  present, but the snapshot's install-target list doesn't include this
+  repository (`drifted`).
+- `releaser-app-installed-unclaimed` — the snapshot's install-target list
+  *does* include this repository, but it has no release workflow at all
+  (`advisory` — an info-level verdict, excluded from `any_drift()`; an
+  over-grant worth a look, not a broken state to fail the run over).
+
+If `app-snapshot.json` doesn't exist yet (`github-app-snapshot` never run,
+or its Bitwarden Secrets Manager machine account not yet configured —
+`docs/github-app-snapshot.md`), both verdicts above are silently skipped
+and the domain falls back to its original secret-only judgement. This
+domain still requires no secret of its own (ADR-436 D4) — it only ever
+reads a file another script already wrote.
 
 There is also no repository-listing "registry" file for this domain to
 read against — unlike the naming domain's closed vocabularies, the
@@ -664,11 +687,15 @@ applicable-repository set here is derived purely from `workflowsDir`
 static list. A prior decision (`docs/adr/0025-update-own-tools-local-
 registry.md`) already rejected statically enumerating repository names in
 this PUBLIC repository for a structurally identical reason: doing so would
-itself leak which private repositories exist.
+itself leak which private repositories exist. The App's *registration*
+(permissions/events) has its own separate account-level drift check —
+`scripts/github-app-registry-check`, below.
 
-Setup and rotation live in `config/claude/skills/repo-governance-common/
-reference/releaser-app.md`, referenced by every `*-repo-governance` skill
-that ships a releaser workflow template.
+Setup and rotation live in `docs/github-app-snapshot.md` (Manifest flow,
+secret distribution, rotation) and `config/claude/skills/
+repo-governance-common/reference/releaser-app.md` (per-repo install
+checklist), referenced by every `*-repo-governance` skill that ships a
+releaser workflow template.
 
 ### routines
 
@@ -700,6 +727,28 @@ run by the auditor routine, not this cross-repo audit (same "audit stays
 read-only, doesn't re-check what another mechanism already checks"
 boundary `titles` draws between enforcement presence and individual PR
 conformance).
+
+**Cloud-reach verdicts (ADR-590 D4, ADR-436 Amendment 2026-09-30)**: the
+`sources` check above answers "does the weekly auditor clone this repo",
+but Claude's cloud sandbox also needs the fine-grained `CLAUDE_WEB_PAT` to
+actually reach it. `scripts/github-app-snapshot` probes that PAT's push
+permission against every owned repository (`GET /repos/{owner}/{repo}`'s
+`permissions.push`, not a bare 200 — a fine-grained PAT always reads
+public repos regardless of its selected-repositories scope) and writes the
+reachable set into the same `app-snapshot.json` the `releaser` domain
+reads. `github-audit` adds:
+
+- `routines-cloud-access-missing` — a `.claude/routines/*.json`
+  declaration exists, but the PAT's reachable-repository set (per the
+  snapshot) doesn't include this repo (`drifted`, alongside
+  `routines-sources-missing` when both apply).
+- `routines-cloud-access-unclaimed` — the PAT *does* reach this
+  repository, but it has no `.claude/routines/` declaration at all
+  (`advisory` — an over-grant worth a look, not a broken state).
+
+Same fallback as `releaser`: no `app-snapshot.json` yet means both
+verdicts above are silently skipped, falling back to the original
+`sources`-only judgement. No secret required here either.
 
 ### workflows
 
@@ -741,6 +790,33 @@ templates control), not a general YAML parser: no existing script in this
 repository's `rulesets`/`github-audit` family depends on `yq`, and a
 general structural YAML parser would do more work than this narrowly-
 scoped check needs (ADR-543 Q1 — existing means checked first).
+
+## Account-level: `scripts/github-app-registry-check` (ADR-436 Amendment 2026-09-30)
+
+A sibling script, not a `github-audit` domain — an owned App's
+*registration* (permissions/events) is an account-level fact with no
+repository to attach a `repo x domain` finding to, unlike everything
+above. It compares each `config/github-app-manifests/<name>.json`
+declaration (ADR-590 D2) against `app-snapshot.json`'s matching entry and
+reports, per App:
+
+- `app-snapshot-missing` — no `app-snapshot.json` exists at all (run
+  `github-app-snapshot` first).
+- `app-registry-missing-in-snapshot` — the manifest's declared App name
+  has no matching entry in the snapshot (its Secrets Manager `ID`/`PEM`
+  secrets aren't configured yet, so `github-app-snapshot` skipped it).
+- `app-registry-permissions-drift` / `app-registry-events-drift` — the
+  live `permissions`/`events` no longer match the Manifest.
+
+It cannot auto-repair drift it finds — GitHub's REST API has no endpoint
+to modify an existing App's permissions/events (`docs/github-app-
+snapshot.md`), only the creation-time Manifest flow.
+
+```console
+$ github-app-registry-check
+app=tarotene-releaser verdict=ok
+total: 1 app(s), ok=1 drifted=0
+```
 
 ## Usage
 

@@ -401,6 +401,10 @@ stage = "4e"
 path = "scripts/github-app-snapshot"
 stage = "4e"
 
+[[target]]
+path = "scripts/github-app-registry-check"
+stage = "4e"
+
 # --- inline activation scripts (Stage 4e) ---
 [[inline]]
 name = "register-claude-hooks"

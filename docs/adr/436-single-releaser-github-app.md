@@ -181,3 +181,41 @@ secret 名統一(D6)・手順書の一本化(D7)・4 App の統合(D1 の実運�
 ## Alternatives considered
 
 Decision 各節の「対抗馬」「外した候補」を参照。
+
+## Amendment (2026-09-30 — install 有無を検出対象に加え、PEM の保管を Secrets Manager に昇格する, #588)
+
+D5「App の install 有無は検出しない」の前提(「二重に検出する機構を持た
+ない」というコスト論)は、`scripts/github-app-snapshot`(ADR-590 D3)が
+`GET /app/installations` を JWT だけで安価に取得できるようになった時点で
+崩れる。同じスナップショットを読むだけで `github-audit` にも
+`releaser-app-not-installed` を追加できる以上、"loud failure に任せる"を
+理由に検出を避ける理由がなくなった。D5 をここで覆す:
+
+- `judge_releaser()` に、release workflow がありスナップショットにも
+  App のエントリがあるのに install 先 repo に含まれない場合の
+  `releaser-app-not-installed`(`drifted`)を追加する。
+- 逆方向(release workflow が無いのに install されている、過剰付与)は
+  `releaser-app-installed-unclaimed` として新設の `advisory` verdict
+  (`any_drift()` から除外、`ok`/`drifted` のどちらでもない)で可視化
+  する。error 級には扱わない — 過剰付与は「今すぐ直すべき壊れた状態」
+  ではなく、レビューの余地がある注意喚起。
+- `routines` ドメインにも同型の `routines-cloud-access-missing`
+  (`drifted`)/`routines-cloud-access-unclaimed`(`advisory`)を追加する
+  (第三者 App の到達範囲、ADR-590 D4)。
+- スナップショットファイルが無ければ(`github-app-snapshot` 未実行・
+  bws 未設定)、両ドメインとも現行の secret-only / sources-only 判定に
+  フォールバックする。`github-audit` 自身が秘密を要求しないという D4 の
+  不変条件はこの Amendment でも維持する — スナップショットは読むだけの
+  別ファイルであり、D4 が禁じた「github-audit 自身が bws run で PEM を
+  取る」経路には該当しない。
+
+D3「秘密鍵は Bitwarden vault item(Secure Note)に保管する」も、当時
+「将来 apply を自動化する時点で SM へ昇格する」としていた保留を、
+`github-app-snapshot`(その自動化にあたる)の新設に合わせて執行する。
+Secure Note と Secrets Manager の二重保管はしない — 詳細は ADR-590 D5。
+
+### 執行点
+
+- `scripts/github-audit`
+- `scripts/github-app-registry-check`
+- `docs/github-audit.md`
