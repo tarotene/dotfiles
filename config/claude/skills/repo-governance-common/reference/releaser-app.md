@@ -15,35 +15,61 @@ single shared one. This consolidated the 4 App registrations that had
 accumulated on the personal account before each `*-repo-governance` skill
 minted its own (`docs/adr/436-single-releaser-github-app.md`).
 
+The App's registration (permissions/events) source of truth is
+`config/github-app-manifests/releaser.json` (ADR-590 D2) — not a note
+anywhere in the GitHub UI. `scripts/github-app-registry-check` detects
+drift between that Manifest and the App's live registration.
 `scripts/github-audit`'s `releaser` domain (`docs/github-audit.md`)
 detects repositories whose `RELEASER_APP_ID`/`RELEASER_APP_PRIVATE_KEY`
-secrets are missing or still under a pre-consolidation tool-specific name
-— run it after onboarding a repository to confirm the wiring took.
+secrets are missing or still under a pre-consolidation tool-specific name,
+**and** — once `scripts/github-app-snapshot` has been run — whether the
+App is actually installed on the repository. Run both after onboarding a
+repository to confirm the wiring took.
+
+## Creating the App (once, from its Manifest)
+
+Only needed if the shared App doesn't exist yet, or is being recreated
+from scratch. Full walkthrough: `docs/github-app-snapshot.md`. In short:
+
+```bash
+github-app-snapshot manifest-form releaser
+# open the resulting HTML page in a browser, click "Create GitHub App",
+# then copy the `code` query parameter from the redirect URL
+github-app-snapshot convert releaser <code>
+# store the two secrets it prints in the "github-apps" Secrets Manager
+# project, then shred the local PEM copy it names
+```
 
 ## Install the existing App on a new repository
 
 1. Go to `https://github.com/settings/apps` and open the shared releaser
-   App (App ID and PEM live in the Bitwarden vault item for it — see
-   below, not on this page).
+   App (App ID and PEM live in the Bitwarden Secrets Manager `github-apps`
+   project — see below, not on this page).
 2. **Install App** → select the repository to add. Do not create a new
    App.
 
-Required permissions (already set on the App — nothing to configure per
-repository): Contents R/W · Issues R/W (for the `release` label on PRs) ·
-Pull requests R/W · Webhook disabled.
+Required permissions (already set on the App per its Manifest — nothing to
+configure per repository): Contents R/W · Issues R/W (for the `release`
+label on PRs) · Pull requests R/W · Webhook disabled.
 
 ## Add secrets to the repository
 
-Retrieve the App ID and private key from the Bitwarden vault item (Secure
-Note) named for this App, then:
+Distribute the two repo secrets straight from Secrets Manager — never land
+the PEM on disk outside `github-app-snapshot convert`'s own step:
 
-```
-gh secret set RELEASER_APP_ID          --repo OWNER/REPO --body "<numeric-app-id>"
-gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat <path-to>.pem)"
+```bash
+github-app-snapshot exec -- sh -c \
+  'gh secret set RELEASER_APP_ID --repo OWNER/REPO --body "$GITHUB_APP_RELEASER_ID"'
+github-app-snapshot exec -- sh -c \
+  'gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$GITHUB_APP_RELEASER_PEM"'
 ```
 
-Discard the local copy of the PEM file once both secrets are set — the
-vault item is the single source of truth, not a working copy on disk.
+Then confirm the wiring took:
+
+```bash
+github-app-snapshot run
+github-audit releaser
+```
 
 ## Reference this from a release workflow
 
@@ -66,10 +92,13 @@ GitHub allows at most 25 private keys per App (they never expire on their
 own; deletion is manual), and key generation/deletion is UI-only — there
 is no REST endpoint for it.
 
-To rotate: generate a new key in the App's settings, update the Bitwarden
-vault item, then re-run `gh secret set RELEASER_APP_PRIVATE_KEY --repo
-OWNER/REPO --body "$(cat <path-to>.pem)"` against every repository the App
-is installed on (`scripts/github-audit --json releaser` lists which
-repositories currently carry the secrets, so you can enumerate the
-targets from its output rather than guessing). Delete the old key from
-the App's settings once every repository is confirmed on the new one.
+To rotate: generate a new key in the App's settings, update
+`GITHUB_APP_RELEASER_PEM` in the Secrets Manager `github-apps` project,
+then re-run the `github-app-snapshot exec -- gh secret set
+RELEASER_APP_PRIVATE_KEY` distribution above against every repository the
+App is installed on (`github-app-snapshot run` then `github-audit --json
+releaser` lists which repositories currently carry the secrets, so you can
+enumerate the targets from its output rather than guessing). Confirm with
+`github-app-registry-check` that the registration itself hasn't drifted,
+then delete the old key from the App's settings once every repository is
+confirmed on the new one.

@@ -50,5 +50,23 @@ routine の汎用手順〕、決定論的な差分コアは `scripts/routines-pl
   `list_triggers` がある(ローカルの `RemoteTrigger` ツールには無い)。
   delete を使わない設計判断(D8)はこの発見後も維持した。
 
+## クラウド到達範囲(ADR-590 D4、ADR-436 Amendment 2026-09-30)
+
+`.claude/routines/*.json` の宣言が「実行すべき routine」を表す一方、
+Claude のクラウド sandbox がその repo に実際に到達できるかは別問題 —
+到達範囲の正本は Claude の GitHub App ではなく、専用の fine-grained PAT
+(`CLAUDE_WEB_PAT`、selected repositories、Bitwarden Secrets Manager
+保管)の選択範囲そのものである。この PAT を `/web-setup` に注入する手順は
+`docs/github-app-snapshot.md` を参照。
+
+`.claude/routines/*.json` を置く repo は、この PAT の selected
+repositories に含める。検出は `scripts/github-audit` の `routines`
+ドメインが行う — `scripts/github-app-snapshot` が書く
+`app-snapshot.json` の PAT probe 結果(`GET /repos/{owner}/{repo}` の
+`permissions.push`)を宣言と突合し、宣言はあるが到達しない repo を
+`routines-cloud-access-missing`、到達するが宣言が無い repo を info 級の
+`routines-cloud-access-unclaimed` として報告する。詳細:
+`docs/github-audit.md` の routines ドメイン節。
+
 先行例・各判断の対比は `docs/adr/519-routines-declaration-in-repo.md`
 「先行例との対比」を参照(precedent-grounding/selection-grounding スキル)。
