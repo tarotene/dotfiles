@@ -1,11 +1,10 @@
 # github-app-snapshot
 
 `scripts/github-app-snapshot` is the only script in this repository allowed
-to hold GitHub App PEMs or fine-grained personal access tokens (PATs). It
-writes a read-only snapshot of each owned App's registration and install
-targets, plus each fine-grained PAT's reachable-repository set, to
+to hold GitHub App PEMs. It writes a read-only snapshot of each owned App's
+registration and install targets to
 `$XDG_STATE_HOME/github-audit/app-snapshot.json` — the file `scripts/
-github-audit` (`releaser`/`routines` domains) and `scripts/
+github-audit` (`releaser` domain) and `scripts/
 github-app-registry-check` read lazily. Neither of those two ever sees a
 secret; only this script does (ADR-590 D3, preserving
 `docs/adr/436-single-releaser-github-app.md` D4 — github-audit requires no
@@ -21,12 +20,6 @@ secret).
    |---|---|
    | `GITHUB_APP_<NAME>_ID` | The App's numeric ID (`<NAME>` = `<name>` upper-cased, `-` → `_`, e.g. `RELEASER`) |
    | `GITHUB_APP_<NAME>_PEM` | The App's private key (PEM, full contents) |
-
-   Plus, per row in `config/github-app-snapshot/pat-probes.tsv`:
-
-   | Secret | Value |
-   |---|---|
-   | `CLAUDE_WEB_PAT` | A fine-grained PAT, selected repositories = every repo Claude's cloud sandbox should reach |
 
 2. Create a machine account with **read-only** access to that one project
    and no other. This is a **separate** machine account from
@@ -113,31 +106,39 @@ Writes `$XDG_STATE_HOME/github-audit/app-snapshot.json`: for each owned
 App's manifest present in `config/github-app-manifests/`, its live
 `permissions`/`events`/`slug` and every installation's `repository_selection`
 + repository list (via JWT → installation token → `GET /installation/
-repositories`, paginated); for each `config/github-app-snapshot/
-pat-probes.tsv` row, the **private** repositories that PAT can read (`GET
-/repos/{owner}/{repo}` answers 200 for a selected repository and 404 for the
-rest). Public repositories are not judged — a fine-grained PAT always reads
-them, and `permissions.push` reports your own role, not the token's
-(ADR-590 Amendment).
-No PEM, PAT, or installation token ever lands in this file — only names,
-IDs, and permission/event strings.
+repositories`, paginated). No PEM or installation token ever lands in this
+file — only names, IDs, and permission/event strings.
 
 Then run the detectors that read it:
 
 ```bash
 github-app-registry-check
-github-audit releaser routines
+github-audit releaser
 ```
 
-An App whose Secrets Manager secrets aren't set yet (or a PAT probe with no
-matching secret) is skipped with a warning on stderr, not a hard failure —
-`run` still writes a snapshot for every App/probe it *can* observe.
+An App whose Secrets Manager secrets aren't set yet is skipped with a
+warning on stderr, not a hard failure — `run` still writes a snapshot for
+every App it *can* observe.
 
-## `/web-setup` and the Claude cloud sandbox
+## Claude's cloud sandbox reach (not managed by this script)
 
-<!-- Filled in from the 段4 M8 実機検証(2026-09-30 セッション以降)結果:
-     GH_TOKEN injection via github-app-snapshot exec, whether claude picks
-     it up for /web-setup, and the non-PAT-scope repo clone-failure check. -->
+How far Claude's cloud sandbox (`claude --cloud`, cloud routines) reaches is
+decided by how GitHub was connected, not by anything in this repository
+(Claude Code docs, "Use Claude Code in the cloud", 取得 2026-10-01):
+
+- **Claude GitHub App** (connect in the browser at claude.ai/code): sessions
+  reach any public repository, and private repositories the App is installed
+  on. Install it with **Only select repositories** to keep the reach narrow.
+  This is the recommended way (ADR-590 Amendment 2026-10-01).
+- **`/web-setup`**: sends your `gh` CLI token to Anthropic; sessions then
+  reach every repository that token can access. A fine-grained PAT cannot be
+  used here — `/web-setup` requires the classic `repo` scope and fails with
+  "GitHub token could not be validated" (verified 2026-10-01). Do not run it
+  with a broader token than you intend to grant.
+
+`github-audit` does not detect this reach yet: the Claude App's install
+targets are not readable with a `gh` OAuth token, and the classic-PAT route
+is untested (see the follow-up Issue referenced from ADR-590's Amendment).
 
 ## Rotation
 
@@ -148,11 +149,6 @@ matching secret) is skipped with a warning on stderr, not a hard failure —
   Manager, re-run the `exec -- gh secret set` distribution above against
   every installed repository, confirm with `github-audit releaser`, then
   delete the old key from the App's settings.
-- **Fine-grained PAT**: GitHub Docs, "Managing your personal access
-  tokens" (取得 2026-09-29) caps a fine-grained PAT's lifetime at 366 days
-  unless an org policy shortens it further. Create a replacement PAT before
-  expiry, update `CLAUDE_WEB_PAT` in Secrets Manager, re-verify
-  `/web-setup` (above), then revoke the old PAT.
 - **Machine token**: `github-app-snapshot clear-token`, revoke in
   Bitwarden, issue a replacement, `github-app-snapshot configure-token`.
   Set the Bitwarden access token's own Expiration to roughly one year —

@@ -190,3 +190,26 @@ D4 は fine-grained PAT の到達を `GET /repos/{owner}/{repo}` の `permission
 
 - `scripts/github-app-snapshot`
 - `scripts/github-audit`
+
+## Amendment (2026-10-01 — fine-grained PAT による第三者 App の到達管理を撤回する)
+
+D4 と直前の Amendment は、Claude のクラウド sandbox の到達範囲を、専用の fine-grained PAT(`CLAUDE_WEB_PAT`)の選択範囲で宣言し、`github-app-snapshot` の probe で検出するとしていた。実機で `/web-setup` にこの PAT を `GH_TOKEN` として渡したところ、`GitHub token could not be validated ... includes the 'repo' scope` で失敗した。`/web-setup` は `gh auth token` の出力を Anthropic に送るもので、検証に classic の `repo` スコープを要求する。fine-grained PAT にはこのスコープが無く、この経路では使えない。
+
+出典: Claude Code docs, "Use Claude Code in the cloud" と "Get started with Claude Code in the cloud"(取得 2026-10-01)—「`/web-setup` ... sends your local `gh` CLI token」「Any repository your `gh` token can access」。GitHub App 経由の接続は「private repositories that the Claude GitHub App is installed on」に届く。
+
+このため次のとおり改める。
+
+- 到達範囲を絞る手段は Claude GitHub App の install(**Only select repositories**)とする。`/web-setup` は到達範囲が `gh` トークンの全権限になるため、範囲を絞りたい用途では使わない。
+- `github-app-snapshot` から PAT probe(`pat-probes.tsv`、`CLAUDE_WEB_PAT`、private の HTTP 200/404 判定)を撤去する。`app-snapshot.json` は所有 App の登録と install 先だけを持つ。
+- `github-audit` の `routines` ドメインから `routines-cloud-access-missing` / `routines-cloud-access-unclaimed` を撤去し、ADR-436 の Amendment にある同項目も撤回する。`releaser` ドメインの install 検出(`releaser-app-not-installed` など)は変更しない。
+- D5 のうち、PAT を Secrets Manager に保管する部分は失効する。PEM の保管は変更しない。
+- Claude App の install 先の機械的な検出は、GitHub の `gh` OAuth トークンでは読めず、classic PAT での読み取りも未検証のため、別 Issue で扱う。
+
+軸: 検出のみ — 到達の実体は Anthropic 側の接続にあり、この repo からは宣言も固定もできない。読めない状態を読めるふりをしない。
+
+### 執行点
+
+- `scripts/github-app-snapshot`
+- `scripts/github-audit`
+- `home/modules/github-apps.nix`
+

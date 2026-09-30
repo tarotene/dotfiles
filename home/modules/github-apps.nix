@@ -26,10 +26,4 @@
   # is and isn't.
   xdg.configFile."github-app-snapshot/manifests/releaser.json".source =
     ../../config/github-app-manifests/releaser.json;
-
-  # D4 PAT probe declarations (PUBLIC-only; a .local.tsv sibling for
-  # PRIVATE-repo-only probes is never committed, same split as
-  # github-audit's own closed-vocabulary .tsv files).
-  xdg.configFile."github-app-snapshot/pat-probes.tsv".source =
-    ../../config/github-app-snapshot/pat-probes.tsv;
 }
