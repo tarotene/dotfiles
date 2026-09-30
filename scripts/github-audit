@@ -283,10 +283,15 @@ list_repos_meta() { # print: JSON array of repo metadata objects
   # `not-applicable` for them on archived repos instead of silently
   # excluding those repos from the run entirely (see judge dispatch below).
   local repos_json filter
-  repos_json="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json \
+  if ! repos_json="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json \
     name,primaryLanguage,visibility,description,repositoryTopics,defaultBranchRef,\
 squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge,\
-hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission 2>/dev/null)"
+hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission)"; then
+    # #614: a failed listing (e.g. GraphQL rate limit) must not look like
+    # "0 repos, all clean" — same abort shape as fetch_graphql_batch.
+    printf 'github-audit: aborting — gh repo list failed (not treating as 0 repos)\n' >&2
+    return 1
+  fi
   if [[ -n $VIEWER_PERMISSION ]]; then
     filter='[.[] | select(.viewerPermission == $p)]'
     jq --arg p "$VIEWER_PERMISSION" "$filter" <<< "$repos_json"
@@ -1806,7 +1811,7 @@ parse_domains() { # $@=args -> sets DOMAINS array, echoes remaining unrecognized
 
 audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibility, domains: {...}}
   local repos_meta overrides results='[]'
-  repos_meta="$(list_repos_meta)"
+  repos_meta="$(list_repos_meta)" || return 1
   overrides="$(read_overrides)"
 
   local need_graphql=0 need_rulesets=0 need_repo_rest=0 need_ci_conclusion=0 need_releaser=0 need_title_jobs=0 need_ruleset_jobs=0 need_app_snapshot=0
@@ -3760,6 +3765,23 @@ VSTUB
     bash -c 'source "$1"; list_repos_meta' _ "$SELF" >/dev/null
   grep -qF -- '--limit 37' "$viewer_log" || {
     printf 'FAIL: GITHUB_AUDIT_REPO_LIMIT=37 が --limit に反映されなかった: %s\n' "$(cat "$viewer_log")" >&2
+    return 1
+  }
+
+  # #614: gh repo list の失敗は「0 repo で正常終了」ではなく abort になる。
+  cat >"$tmp/bin/gh-list-fail-stub" <<'FSTUB'
+#!/usr/bin/env bash
+printf 'GraphQL: API rate limit already exceeded\n' >&2
+exit 1
+FSTUB
+  chmod +x "$tmp/bin/gh-list-fail-stub"
+  if GITHUB_AUDIT_GH_BIN="$tmp/bin/gh-list-fail-stub" \
+    bash -c 'source "$1"; list_repos_meta' _ "$SELF" >/dev/null 2>"$tmp/list-fail.err"; then
+    printf 'FAIL: gh repo list の失敗で list_repos_meta が成功扱いになった\n' >&2
+    return 1
+  fi
+  grep -qF 'rate limit already exceeded' "$tmp/list-fail.err" && grep -qF 'aborting' "$tmp/list-fail.err" || {
+    printf 'FAIL: gh repo list 失敗の理由と abort が stderr に出なかった: %s\n' "$(cat "$tmp/list-fail.err")" >&2
     return 1
   }
 
