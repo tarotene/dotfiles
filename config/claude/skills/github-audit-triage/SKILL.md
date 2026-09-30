@@ -170,6 +170,57 @@ description・topics・settings フィールド・ファイルツリー・open I
   「該当 skill の `copy-files.sh` で宣言を播く」「`apply-rulesets.sh
   --reconcile` で live を宣言に合わせる」「宣言または対象リポジトリの
   workflow のどちらを直すべきかを人間裁定に回す」提案として表に書く。
+- workflows ドメイン(ADR-591、docs/adr/591-ci-workflow-naming.md)は
+  `missing` トークンごとに機械的に決まる。`ci.yml` は対象リポジトリ
+  固有の実ステップを持つため titles ドメインの `pr-title.yml` と違い
+  **丸ごとテンプレートで上書きしない** — 既存の job 本体(ステップ)は
+  そのまま残し、構造(集約 job・`needs:`・`name:` 大小文字)だけを
+  外科的に直す。
+  - `ci-yml-missing` — 対象リポジトリの言語に対応する `*-repo-governance`
+    skill があれば、その `templates/.github/workflows/ci.yml` を土台に
+    `# ADJUST:` 箇所を埋めて起草する。対応する skill が無い(rust/typst/
+    astro のいずれでもない)場合はテンプレートが無いので低確信フラグに
+    回す(§3)。
+  - `file-not-yml:<name>` / `file-not-kebab:<name>` — 該当ファイルを
+    `.yml` 拡張子・kebab-case にリネームする(内容は変更しない)。
+  - `workflow-name-missing` / `workflow-name-lowercase` — `ci.yml` 先頭の
+    `name:` を追加・先頭大文字化する(sentence case、`CI`/`PR`/`MSRV` 等の
+    固有表記はそのまま保持)。
+  - `ci-passed-job-missing` — 対象リポジトリの `ci.yml` に集約 job
+    `ci-passed`(`name: CI passed`)を追加する。job 本体はいずれかの
+    `*-repo-governance` テンプレート(または本リポジトリ自身の
+    `.github/workflows/ci.yml`)の `ci-passed` job をそのまま流用する
+    (`needs:` を除き全リポジトリでバイト同一)。`needs:` には対象
+    リポジトリの `ci.yml` に実在する job id を(`ci-passed` 自身を除き)
+    漏れなく列挙する。
+  - `ci-passed-needs-missing` / `ci-passed-needs-incomplete:<job-id>` —
+    既存の `ci-passed` job の `needs:` 配列に、抜けている job id を
+    追加する(他の job には触れない)。
+  - `job-name-missing:<job-id>` / `job-name-lowercase:<job-id>` — 該当
+    job に `name:` を追加・先頭大文字化する(意味を変えない範囲の
+    sentence case)。
+  - `quality-json-not-canonical` — 対象リポジトリの `.github/rulesets/
+    quality.json` の `required_status_checks` を、
+    `repo-governance-common/templates/.github/rulesets/quality.json`
+    (単一正本)と同じ `[{"context":"CI passed","integration_id":15368},
+    {"context":"PR title","integration_id":15368}]` に更新する提案を
+    表に書く。GO 後、PR の作成(§6)に続けて `apply-rulesets.sh
+    <owner>/<repo> --ref <このPRのブランチ> --verify-sha <このPRの head
+    SHA> --reconcile` を実行する — **`--ref main`
+    や省略値では未マージの宣言・実測が読めず必ず失敗する**(実測: PR
+    作成直後は `CI passed`/`PR title` 自体がまだ report されておらず
+    `--verify-sha` に PR の最新 head を明示しないと「required context が
+    走っていません」で拒否される、grill-me セッション 2026-09-30)。
+    reconcile は対象リポジトリの他の open PR にも影響する外向き操作
+    なので、一括レビュー表の段階でどのリポジトリに reconcile を伴うかを
+    明記し、実行前にユーザーに確認する。
+  - `legacy-reusable-pr-title-call` — `.github/workflows/pr-title.yml`
+    を `repo-governance-common/templates/.github/workflows/pr-title.yml`
+    (単一正本)でまるごと置き換える(titles ドメインの
+    `pr-title-workflow-missing` と同じ扱い — この 1 ファイルは元々
+    リポジトリ固有の中身を持たない)。
+  - `ci-yml-unreadable` は fetch 失敗によるものなので起草せず低確信
+    フラグに回す(§3)。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
