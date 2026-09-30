@@ -196,8 +196,11 @@ judges the requested domains (default: all of them):
              exit code, and the final Maintain/Archive/Delete call stays
              a human decision (docs/repo-lifecycle.md)
   releaser   releaser GitHub App secret wiring (release-plz/release-please),
-             for repos with a release-plz.yml or release-please.yml
-             workflow. Checks RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY repo
+             for repos that claim the releaser App: a release-plz.yml or
+             release-please.yml workflow, OR any workflow whose
+             actions/create-github-app-token step reads a RELEASE*-named
+             secret/var (#613 — the claim follows the workflow's content,
+             not just its file name). Checks RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY repo
              secret presence only — install status is not checked (a
              missing install fails loudly on the next release push, so
              this domain does not duplicate that detection)
@@ -444,7 +447,7 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       pyprojectToml: object(expression: \"HEAD:pyproject.toml\") { ... on Blob { id } }
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
       flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
-      workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name } } }
+      workflowsDir: object(expression: \"HEAD:.github/workflows\") { ... on Tree { entries { name object { ... on Blob { text } } } } }
       declCi: object(expression: \"HEAD:.github/workflows/ci.yml\") { ... on Blob { text } }
       declPrTitle: object(expression: \"HEAD:.github/workflows/pr-title.yml\") { ... on Blob { text } }
       rulesetsDir: object(expression: \"HEAD:.github/rulesets\") { ... on Tree { entries { name } } }
@@ -1401,11 +1404,44 @@ judge_renovate() { # $1=gql-data-json $2=primary-language(optional) -> finding
 # できず、そこも引き続き drift しうる。
 # ---------------------------------------------------------------------------
 
-judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) $3=snapshot_present(true/false, default false) $4=installed(true/false, default false) -> finding
-  local has_workflow="$1" secrets="$2" snapshot_present="${3:-false}" installed="${4:-false}"
+# Names a releaser workflow may read without being flagged (#613). Anything
+# else that looks like a releaser credential (releaser_workflow_refs() only
+# reports RELEASE*-named ones) is `releaser-workflow-refs-nonstandard`:
+# e.g. a repo-variable `vars.RELEASE_APP_ID`, or a `RELEASE_APP_*` secret
+# name that predates the RELEASER_APP_* unification. The pre-unification
+# RELEASE_PLZ_APP_*/RELEASE_PLEASE_APP_* names are tolerated here because
+# judge_releaser() already reports them as `releaser-secret-name-legacy`.
+RELEASER_CANONICAL_REFS=(
+  secrets.RELEASER_APP_ID
+  secrets.RELEASER_APP_PRIVATE_KEY
+  secrets.RELEASE_PLZ_APP_ID
+  secrets.RELEASE_PLZ_APP_PRIVATE_KEY
+  secrets.RELEASE_PLEASE_APP_ID
+  secrets.RELEASE_PLEASE_APP_PRIVATE_KEY
+)
+
+releaser_workflow_refs() { # $1=repo_gql -> JSON array of "secrets.X"/"vars.Y" that create-github-app-token steps read, RELEASE*-named only
+  jq -c '
+    [ (.workflowsDir.entries // [])[]
+      | (.object.text // empty)
+      | select(test("actions/create-github-app-token"))
+      | scan("(?:app-id|client-id|private-key):[ \\t]*\\$\\{\\{[ \\t]*((?:secrets|vars)\\.[A-Za-z0-9_]+)[ \\t]*\\}\\}")
+      | .[0]
+      | select(test("RELEASE"; "i")) ]
+    | unique' <<<"$1"
+}
+
+judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) $3=snapshot_present(true/false, default false) $4=installed(true/false, default false) $5=workflow-refs-json(from releaser_workflow_refs, default []) -> finding
+  local has_workflow="$1" secrets="$2" snapshot_present="${3:-false}" installed="${4:-false}" refs="${5:-[]}"
   local has_id has_key has_legacy_id has_legacy_key not_installed_code=()
 
   [[ $snapshot_present == true && $installed != true ]] && not_installed_code=("releaser-app-not-installed")
+  if [[ $has_workflow == true ]]; then
+    local canonical_json
+    canonical_json="$(printf '%s\n' "${RELEASER_CANONICAL_REFS[@]}" | jq -R . | jq -s .)"
+    jq -e --argjson ok "$canonical_json" 'any(.[]; . as $r | ($ok | index($r)) == null)' <<<"$refs" >/dev/null 2>&1 \
+      && not_installed_code+=("releaser-workflow-refs-nonstandard")
+  fi
 
   if [[ $has_workflow != true ]]; then
     # #506/#588 の姉妹判定: release workflow が無いのに snapshot 上は
@@ -1959,15 +1995,23 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
           releaser)
             if ((need_releaser)); then
               local has_releaser_workflow secret_names installed=false
-              has_releaser_workflow="$(jq -e '
-                (.workflowsDir.entries // []) | any(.name == "release-plz.yml" or .name == "release-please.yml")
+              local workflow_refs
+              workflow_refs="$(releaser_workflow_refs "$repo_gql")"
+              # ADR-436 D2 + #613: claim = the conventional file names OR a
+              # workflow that actually reads a RELEASE*-named credential for
+              # actions/create-github-app-token (a repo may call its release
+              # workflow release-pr.yml / release.yml, and the file name was
+              # never the thing being claimed).
+              has_releaser_workflow="$(jq -e --argjson refs "$workflow_refs" '
+                ($refs | length > 0)
+                or ((.workflowsDir.entries // []) | any(.name == "release-plz.yml" or .name == "release-please.yml"))
               ' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
               secret_names='[]'
               [[ $has_releaser_workflow == true ]] && secret_names="$(fetch_repo_secrets "$repo")"
               [[ $releaser_snapshot_present == true ]] \
                 && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$releaser_installs_json" >/dev/null 2>&1 \
                 && installed=true
-              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names" "$releaser_snapshot_present" "$installed")"
+              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names" "$releaser_snapshot_present" "$installed" "$workflow_refs")"
             fi
             ;;
           routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
@@ -3551,6 +3595,23 @@ jobs:
     return 1
   }
 
+  # #613: claim / nonstandard-refs の direct-call テスト。
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-workflow-refs-nonstandard"))' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["vars.RELEASE_APP_ID","secrets.RELEASE_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 標準外の参照(vars.RELEASE_APP_ID 等)は secret が揃っていても releaser-workflow-refs-nonstandard になるべき\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["secrets.RELEASER_APP_ID","secrets.RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 標準の参照だけなら ok のままであるべき\n' >&2
+    return 1
+  }
+  local refs_gql='{"workflowsDir":{"entries":[{"name":"ci.yml","object":{"text":"jobs: {}"}},{"name":"other.yml","object":{"text":"uses: actions/create-github-app-token@v2\n with:\n  app-id: ${{ secrets.OTHER_APP_ID }}\n  private-key: ${{ secrets.OTHER_APP_KEY }}"}}]}}'
+  [[ "$(releaser_workflow_refs "$refs_gql")" == '[]' ]] || {
+    printf 'FAIL: RELEASE を含まない別 App の create-github-app-token は claim に数えないべき: %s\n' "$(releaser_workflow_refs "$refs_gql")" >&2
+    return 1
+  }
+
   # ---------------------------------------------------------------------
   # releaser domain + app-snapshot.json (ADR-590, ADR-436 Amendment
   # 2026-09-30): install-state direct-call tests. judge_releaser() defaults
@@ -3646,7 +3707,8 @@ SNAPSTATE
   {"name": "releaser-ok", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "releaser-legacy", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
   {"name": "releaser-missing", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
-  {"name": "releaser-na", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
+  {"name": "releaser-na", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"},
+  {"name": "releaser-renamed", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "", "repositoryTopics": [], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z"}
 ]
 RELFIX
   cat >"$tmp/fixtures/graphql-response.json" <<'RELGQL'
@@ -3655,7 +3717,8 @@ RELFIX
     "r1": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
     "r2": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-please.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
     "r3": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
-    "r4": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null}
+    "r4": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r5": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "release-pr.yml", "object": {"text": "steps:\n  - uses: actions/create-github-app-token@v2\n    with:\n      app-id: ${{ vars.RELEASE_APP_ID }}\n      private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}\n"}}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null}
   }
 }
 RELGQL
@@ -3665,6 +3728,7 @@ RELGQL
   # フォールバック([])がそのまま「secret 無し」の実運用と一致する。
   printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-ok_actions_secrets.json"
   printf '["RELEASE_PLEASE_APP_ID","RELEASE_PLEASE_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-legacy_actions_secrets.json"
+  printf '["RELEASE_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-renamed_actions_secrets.json"
 
   local out_releaser
   out_releaser="$("$SELF" --json 2>&1)" || true
@@ -3681,6 +3745,14 @@ RELGQL
   jq -e '.[] | select(.repo=="releaser-missing") | .domains.releaser.verdict == "drifted" and (.domains.releaser.missing | index("releaser-app-secrets-missing"))' <<<"$out_releaser" >/dev/null || {
     printf 'FAIL: releaser-missing は drifted/releaser-app-secrets-missing になるべき: %s\n' \
       "$(jq -c '.[] | select(.repo=="releaser-missing") | .domains.releaser' <<<"$out_releaser")" >&2
+    return 1
+  }
+  # #613: release-plz.yml/release-please.yml 以外の名前の release workflow
+  # (release-pr.yml)でも、create-github-app-token が RELEASE* の資格情報を
+  # 読んでいれば claim として検出し、標準外の参照と secret 欠落を報告する。
+  jq -e '.[] | select(.repo=="releaser-renamed") | .domains.releaser.verdict == "drifted" and (.domains.releaser.missing | index("releaser-workflow-refs-nonstandard")) and (.domains.releaser.missing | index("releaser-app-secrets-missing"))' <<<"$out_releaser" >/dev/null || {
+    printf 'FAIL: release-pr.yml の releaser-renamed は claim として検出され drifted になるべき: %s\n' \
+      "$(jq -c '.[] | select(.repo=="releaser-renamed") | .domains.releaser' <<<"$out_releaser")" >&2
     return 1
   }
   jq -e '.[] | select(.repo=="releaser-na") | .domains.releaser.verdict == "not-applicable"' <<<"$out_releaser" >/dev/null || {

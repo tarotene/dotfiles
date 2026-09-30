@@ -219,3 +219,39 @@ Secure Note と Secrets Manager の二重保管はしない — 詳細は ADR-59
 - `scripts/github-audit`
 - `scripts/github-app-registry-check`
 - `docs/github-audit.md`
+
+## Amendment (2026-10-01 — claim を workflow の中身で導出する, #613)
+
+D2 は「`release-plz.yml` または `release-please.yml` が存在する repo が
+対象」とファイル名で claim を導出していた。#587 の棚卸しで、ある repo が
+`release-pr.yml` / `release-tag.yml` / `release.yml` という別名の workflow
+で `actions/create-github-app-token` に `vars.RELEASE_APP_ID` と
+`secrets.RELEASE_APP_PRIVATE_KEY` を渡して App token を発行していると
+分かり、この導出が `not-applicable` を誤判定することが確かめられた。
+
+D2 の「宣言の正本は workflow であり、写しを持たない」という方針は維持し、
+導出の仕方だけを改める:
+
+- claim = 従来のファイル名 **または** `actions/create-github-app-token`
+  の `app-id` / `client-id` / `private-key` 入力が `RELEASE` を含む名前の
+  `secrets.*` / `vars.*` を読んでいる workflow。`RELEASE` を含まない名前
+  (別の App の token 発行)は claim に数えない。
+- workflow 本文は既存の GraphQL バッチ(`workflowsDir` の `entries`)に
+  `object { ... on Blob { text } }` を足して取り、追加の REST 呼び出しは
+  しない。
+- 読んでいる名前が標準(`secrets.RELEASER_APP_ID` /
+  `secrets.RELEASER_APP_PRIVATE_KEY`、移行前の旧名は `releaser-secret-name-
+  legacy` が別に扱うので許容)から外れていれば、`judge_releaser()` が
+  新しい `releaser-workflow-refs-nonstandard`(`drifted`)を返す。repo の
+  secret が揃っていても、workflow が実際には別の名前を読んでいるなら
+  drift である。
+
+先行例: D2 自身(ファイルの存在で判定する型)を、存在から中身へ一般化
+したもの。`judge_renovate()` も `renovate.json` の存在だけでなく中身を
+読んで判定している。
+
+### 執行点
+
+- `scripts/github-audit`(`releaser_workflow_refs()` / `judge_releaser()` /
+  `build_graphql_query()`)
+- `docs/github-audit.md`
