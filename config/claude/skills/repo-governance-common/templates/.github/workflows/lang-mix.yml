@@ -1,0 +1,28 @@
+name: Language mix
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lang-mix:
+    name: Per-file language mixing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check tracked markdown files for language mixing
+        env:
+          # ADJUST: 検査対象の git pathspec(空白区切り)。空なら全 tracked
+          # markdown。日本語が正本の文書群を持つリポジトリは、単一言語を
+          # 義務づける文書だけを書く(例: "README.md CONTRIBUTING.md")。
+          LANG_MIX_PATHS: ""
+        run: bash scripts/check-language-mixing.sh

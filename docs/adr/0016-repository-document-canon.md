@@ -166,3 +166,33 @@ README 内 Issue litmus は standard-readme・GitHub 公式・Art of README の
   報告することを確認(段5、自己検証)。
 - `hms .` 適用後、Claude Code が `~/.claude/skills/` 経由、Codex/Copilot
   が `~/.agents/skills/` 経由で同一 skill を認識することを確認。
+
+## Amendment (2026-10-01 — per-repo CI の検査対象を宣言で絞れるようにする)
+
+Decision 4 の「リポジトリ内の全 markdown の言語混在検査は各リポジトリの
+per-repo CI に置く」は、日本語が正本の文書群(実装者本人向けの状態記録・
+ADR など、日本語の本文に英語の識別子が混じる文書)を多く持つリポジトリで
+は、播種した初回から大半のファイルが fail して成立しない。実測(2026-09-30)
+で、あるリポジトリでは tracked markdown 77 件中 52 件が fail した。
+
+per-repo CI の検査対象を、環境変数 `LANG_MIX_PATHS`(空白区切りの git
+pathspec)で宣言的に絞れるようにする。未設定は従来どおり全 tracked
+markdown で、Decision 4 の既定は変わらない。絞るリポジトリは、単一言語を
+義務づけている README・CONTRIBUTING を含める。この 2 本は横断監査
+(`github-audit`)も別に判定するため、絞っても取りこぼさない。指定した
+pathspec が 1 件も markdown に当たらないときは、typo で検査が黙って空振り
+しないよう失敗させる。
+
+同時に、判定スクリプトの CJK 文字クラスから範囲指定のハイフンが抜けており
+(`\x{4E00}\x{9FFF}` が 2 文字だけを数えていた)、漢字が数えられていなかった
+バグを直した。この修正で漢字を多く含む文書の CJK 文字数が増えるため、
+播種済みのリポジトリで新たに混在と判定されるファイルが出うる。
+
+### 執行点
+
+- `config/claude/skills/repo-governance-common/templates/scripts/check-language-mixing.sh`
+  — `LANG_MIX_PATHS` の解釈、空振りの検出、CJK 文字クラスの修正、
+  `--selftest`(7 ケース)。
+- `config/claude/skills/repo-governance-common/templates/.github/workflows/lang-mix.yml`
+  — 播種される workflow が `LANG_MIX_PATHS` を渡す。
+- `.github/workflows/ci.yml` — `check-language-mixing.sh --selftest` を CI で走らせる。
