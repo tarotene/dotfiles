@@ -178,45 +178,38 @@ check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
   judge "$declared" "$live" "$jobs"
 }
 
-# D3-3 の一般化版: repo-governance-common テンプレートの caller job name +
-# reusable job name の連結が 4 seed の quality.json に含まれ、かつ
-# dotfiles 自身の .github/rulesets/quality.json が reusable job の name を
-# 含むことを検査する(check_consistency は selftest 経由でのみ実行)。
+# ADR-591(docs/adr/591-ci-workflow-naming.md D3)の一般化版: composite
+# action への置換で workflow_call の連結名(caller job name / callee job
+# name)という概念自体が無くなったため、この検査は「repo-governance-common
+# テンプレートの caller job name(= 全リポ共通の PR title required
+# context)が、4 seed の quality.json と dotfiles 自身の
+# .github/rulesets/quality.json の両方に含まれているか」だけを見る
+# (check_consistency は selftest 経由でのみ実行)。
 check_consistency() {
-  local repo_root common_job caller_job connected want_files ok=true
+  local repo_root caller_job want_files ok=true
   repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-  common_job="$(sed -n 's/^ *name: *//p' \
+  caller_job="$(sed -n '/^jobs:/,$ { s/^ *name: *//p }' \
     "$repo_root/config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml" | head -1)"
-  caller_job="$(sed -n '/^jobs:/,$ { s/^ *name: *//p }' "$repo_root/.github/workflows/pr-title.yml" | head -1)"
-  connected="${common_job} / ${caller_job}"
 
   want_files=(
     "config/claude/skills/rust-repo-governance/templates/.github/rulesets/quality.json"
     "config/claude/skills/typst-repo-governance/templates/.github/rulesets/quality.json"
     "config/claude/skills/astro-site-governance/templates/.github/rulesets/quality.json"
     "config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json"
+    ".github/rulesets/quality.json"
   )
   local f
   for f in "${want_files[@]}"; do
-    if jq -e --arg c "$connected" \
+    if jq -e --arg c "$caller_job" \
       '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | index($c) != null' \
       "$repo_root/$f" >/dev/null 2>&1; then
-      echo "ok   consistency: $f has context \"$connected\""
+      echo "ok   consistency: $f has context \"$caller_job\""
     else
-      echo "FAIL consistency: $f does not have context \"$connected\"" >&2
+      echo "FAIL consistency: $f does not have context \"$caller_job\"" >&2
       ok=false
     fi
   done
-
-  if jq -e --arg c "$caller_job" \
-    '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | index($c) != null' \
-    "$repo_root/.github/rulesets/quality.json" >/dev/null 2>&1; then
-    echo "ok   consistency: .github/rulesets/quality.json has context \"$caller_job\""
-  else
-    echo "FAIL consistency: .github/rulesets/quality.json does not have context \"$caller_job\"" >&2
-    ok=false
-  fi
 
   [[ "$ok" == true ]]
 }

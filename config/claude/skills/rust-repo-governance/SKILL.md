@@ -5,8 +5,12 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
 
 ## What this Skill does
 
-1. Copies parameterised CI/CD templates (9 workflows, including a
-   per-file language-mixing check — `lang-mix.yml` — + composite action + CODEOWNERS)
+1. Copies parameterised CI/CD templates (a consolidated `ci.yml` — every PR
+   gate job plus the `CI passed` aggregate required check, ADR-591 in
+   tarotene/dotfiles — + `pr-title.yml`, `release-plz.yml`,
+   `release-binaries.yml`, `release-reminder.yml`, a per-file
+   language-mixing check `lang-mix.yml`, `nav-docs.yml` + composite action
+   + CODEOWNERS)
    and config files (renovate.json, release-plz.toml, cog.toml, rust-toolchain.toml, Justfile, git hooks,
    AGENTS.md/CLAUDE.md routing skeleton — ADR-0016 in tarotene/dotfiles)
    into the target repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
@@ -36,12 +40,12 @@ Before running anything, confirm the following values with the user:
 | GitHub owner | `--owner` | `acme` |
 | Repository name | `--repo` | `my-lib` |
 | Default branch | `--default-branch` | `main` (default) |
-| MSRV (short) | `--msrv` | `1.88` (default; used by `msrv.yml` regardless of Renovate pin status) |
+| MSRV (short) | `--msrv` | `1.88` (default; used by `ci.yml`'s `msrv` job regardless of Renovate pin status) |
 | MSRV (full) | `--msrv-full` | 適用先が実際に `Cargo.toml` の `rust-version` や CI で特定バージョンを固定している場合のみ渡す(例 `1.88.0`)。省略すると `renovate.json` の `constraints.rust` ブロックと対応する保護用 packageRule は丸ごと省略される(#222 — `dtolnay/rust-toolchain@stable` のようなチャンネル名運用に架空の MSRV pin を作り込まない) |
 | Canonical crate | `--canonical-crate` | `my-lib-core` — the crate that owns the git tag |
 | CLI crate | `--cli-crate` | `my-cli` — the excluded crate under `tools/` |
 | Target repo path | `--dest` | `/home/user/src/my-lib` |
-| Firmware? | `--with-firmware` | pass flag if project has embedded firmware |
+| Firmware? | (no flag — manual) | `ci.yml`'s `firmware` job is always copied; delete it (and its entry in `ci-passed`'s `needs:`) manually if the project has no embedded firmware — see `reference/manual-steps.md`. ADR-591 removed the old `--with-firmware` flag: required contexts no longer vary per job, so there is nothing left for the flag to gate |
 | Review layer? | `--with-review` | pass flag to also apply the Review ruleset (Copilot code review + required conversation resolution — ADR-0021). Ask whether the repository is past its early-development phase before defaulting this on. |
 
 If any value is unclear, ask the user before proceeding.
@@ -110,44 +114,37 @@ comment. The table below lists the most important locations:
 
 | File | What to update |
 |------|----------------|
-| `.github/workflows/host.yml` | `PATTERNS` regex — replace `telepath-(wire\|server\|...)` with your crate names |
-| `.github/workflows/tools.yml` | `PATTERNS` regex; feature flags in `clippy-tools` and `mcp-test` Justfile recipes |
-| `.github/workflows/msrv.yml` | `PATTERNS` regex — all workspace + excluded crate paths |
-| `.github/workflows/firmware.yml` | Chip name, target triple, example path. **Delete this file** if no embedded firmware — `copy-files.sh` already drops the `Firmware (cross-compile nRF52840-DK)` entry from `.github/rulesets/quality.json` automatically when `--with-firmware` is not given |
+| `.github/workflows/ci.yml` — `host` job | `PATTERNS` regex — replace `telepath-(wire\|server\|...)` with your crate names |
+| `.github/workflows/ci.yml` — `tools` job | `PATTERNS` regex; feature flags in `clippy-tools` and `mcp-test` Justfile recipes |
+| `.github/workflows/ci.yml` — `msrv` job | `PATTERNS` regex — all workspace + excluded crate paths |
+| `.github/workflows/ci.yml` — `firmware` job | Chip name, target triple, example path. **Delete this whole job** (and its entry in `ci-passed`'s `needs:`) if no embedded firmware |
 | `.github/workflows/release-plz.yml` | `host-pty-server` git-only package name; additional excluded crates in TREE_PAYLOAD |
 | `.github/workflows/release-binaries.yml` | License file names (`LICENSE-MIT`, `LICENSE-APACHE`), README path |
-| `.github/workflows/release-nudge.yml` | AGENTS.md anchor URL |
+| `.github/workflows/release-reminder.yml` | AGENTS.md anchor URL |
 | `renovate.json` | `cargo.managerFilePatterns` — add your excluded crate paths; adjust embedded HAL package list |
 | `release-plz.toml` | `[[package]]` entries — add your workspace crates, remove `host-pty-server` if not applicable |
 | `Justfile` | Smoke test assertions in `host-pty-smoke`; feature combos in `clippy-tools` and `mcp-test` |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
-| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the reusable `pr-title.yml` call's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
+| `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the composite action's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 
-**Key invariant**: The `name:` field of each workflow job **must exactly match**
-the `context` string in `.github/rulesets/quality.json`. The `__MSRV__` and
-`__CLI_CRATE__` placeholders are replaced in both places simultaneously by
-`seed.sh`, preserving this match. But if you rename a job manually, update the
-Ruleset context too — `apply-rulesets.sh` refuses to apply a context that
-isn't actually reported by a real run (ADR-0000-rulesets-declaration-in-repo),
-so a rename that forgets the other side fails loudly at apply time instead of
-leaving a required check permanently "Expected".
+**Key invariant**: The `name:` field of each workflow job in `ci.yml`
+**must exactly match** the entries in `ci-passed`'s `needs:` (job *id*, not
+`name:`) — the Ruleset only ever requires `CI passed`/`PR title`
+(ADR-591), so individual job `name:` values are display labels and no
+longer need to match anything in `.github/rulesets/quality.json`.
+`workflow-naming-check` (tarotene/dotfiles, a required check on every PR)
+verifies this `needs:` coverage automatically.
 
-**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
-calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
-reported check context is GitHub's own concatenation of the **caller
-job's** `name:` and the called job's `name:` ("PR Title / PR title").
-The `repo-governance-common/templates/.github/workflows/pr-title.yml`
-template (this skill's copy is a symlink to it) pins the caller job's
-`name: PR Title`, so this string is a fixed value, not a best-effort
-guess — no manual confirmation against the Checks tab is needed. (An
-earlier version of this note said to confirm the string on the first real
-PR; that assumed the wrong half of the concatenation was the fixed one and
-missed that #337's rollout had seeded a context the then-unnamed caller
-job could never satisfy — ADR-0031's 2026-09-26 Amendment.)
-`.github/workflows/pr-title.yml` (dotfiles' reusable workflow) re-verifies
-the match at runtime on every PR via `scripts/rulesets-context-check` — which
-checks every declared and live `required_status_checks` context, not just
-this one.
+**`pr-title.yml`** has no `workflow_call` concatenation to worry about
+(ADR-591 replaced the old reusable-workflow form with a composite action,
+docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
+check context is simply this job's own `name: PR title`, pinned by the
+`repo-governance-common/templates/.github/workflows/pr-title.yml` template
+(this skill's copy is a symlink to it). `tarotene/dotfiles/.github/
+actions/pr-title` re-verifies the match at runtime on every PR via
+`scripts/rulesets-context-check` (every declared and live
+`required_status_checks` context) and `scripts/workflow-naming-check`
+(the `ci.yml` `needs:` coverage and `name:` casing basis, ADR-591).
 
 ---
 
@@ -226,9 +223,11 @@ write to this endpoint from a Claude session — run it yourself, or pass
 
 ### CI gates
 
-All 6 (or 5 without firmware) required checks should turn green on the first PR.
-If `MSRV (X.Y)` or `Tools (my-cli CLI ...)` fail with "context not found",
-verify job `name:` in the workflow files matches the Ruleset context strings exactly.
+The two required checks (`CI passed`, `PR title`) should turn green on the
+first PR. `CI passed` aggregates every job in `ci.yml` (`fmt`, `host`,
+`msrv`, `firmware`, `tools`) via `needs:` — if one of those individual jobs
+fails, `CI passed` fails with it, so check the individual job's own logs
+(not the Ruleset context string) to diagnose a red PR.
 
 ---
 
@@ -242,19 +241,19 @@ verify job `name:` in the workflow files matches the Ruleset context strings exa
 │   │   ├── CODEOWNERS
 │   │   ├── actions/rust-setup/action.yml
 │   │   └── workflows/
-│   │       ├── fmt.yml            required: Format check
-│   │       ├── host.yml           required: Host (clippy + test + smoke)
-│   │       ├── tools.yml          required: Tools (__CLI_CRATE__ CLI clippy + tests)
-│   │       ├── msrv.yml           required: MSRV (__MSRV__)
-│   │       ├── firmware.yml       optional: Firmware (cross-compile nRF52840-DK)
+│   │       ├── ci.yml             required: CI passed (aggregate of fmt/
+│   │       │                      host/msrv/firmware/tools via needs:,
+│   │       │                      ADR-591 in tarotene/dotfiles)
 │   │       ├── release-plz.yml    release: tag + crates.io publish
 │   │       ├── release-binaries.yml  release: 4-target binary builds
-│   │       ├── release-nudge.yml  maintenance: weekly stale PR nudge
-│   │       └── pr-title.yml       required: PR Title / PR title (calls tarotene/dotfiles' reusable workflow, ADR-0031)
+│   │       ├── release-reminder.yml  maintenance: weekly stale PR nudge
+│   │       └── pr-title.yml       required: PR title (calls tarotene/dotfiles'
+│   │                              composite action, ADR-0031/ADR-591)
 │   ├── .github/rulesets/            (declaration copied into the target repo —
 │   │   │                             ADR-0000-rulesets-declaration-in-repo)
 │   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
-│   │   ├── quality.json     rust-specific: signatures + linear history + up to 6 status checks
+│   │   ├── quality.json     symlink to repo-governance-common: signatures + linear
+│   │   │                    history + the fixed pair CI passed/PR title (ADR-591)
 │   │   ├── workflow.json    shared with repo-governance-common: squash-only (core)
 │   │   └── review.json      shared with repo-governance-common: Copilot code review +
 │   │                        required thread resolution (opt-in, --with-review only)
@@ -267,8 +266,7 @@ verify job `name:` in the workflow files matches the Ruleset context strings exa
 │   │                     apply-rulesets.sh (not part of this skill;
 │   │                     home-manager deploys it to ~/.local/bin)
 │   ├── copy-files.sh     template + .github/rulesets/*.json copy, placeholder
-│   │                     substitution, drops the Firmware context without
-│   │                     --with-firmware, verify_declaration safety check
+│   │                     substitution, verify_declaration safety check
 │   ├── apply-repo-settings.sh  gh api PATCH repo merge settings
 │   └── setup-hooks.sh    git config core.hooksPath
 └── reference/

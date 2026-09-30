@@ -33,43 +33,29 @@ gh api repos/OWNER/REPO/rulesets --jq '.[].name'
 # Required status check contexts in Quality:
 gh api repos/OWNER/REPO/rulesets \
   --jq '.[] | select(.name=="Quality") | .rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
-# → Format & Lint (Biome)
-# → Content lint
-# → Unit tests
-# → Build
-# → PR Title / PR title   (fixed string — see the Exception note below)
+# → CI passed
+# → PR title
 
 # Merge settings:
 gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, delete_branch_on_merge}'
 # → {"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true}
 ```
 
-**Key invariant:** The `name:` strings in `templates/.github/workflows/ci.yml`
-and the `context` strings in `.github/rulesets/quality.json` must be
-byte-identical. The four static strings are:
-- `"Format & Lint (Biome)"`
-- `"Content lint"`
-- `"Unit tests"`
-- `"Build"`
+**Key invariant:** The `name:` field of each job in
+`templates/.github/workflows/ci.yml` **must exactly match** the entries in
+`ci-passed`'s `needs:` (job *id*, not `name:`) — the Ruleset only ever
+requires `CI passed`/`PR title` (ADR-591), so individual job `name:`
+values (`Format & Lint (Biome)`, `Content lint`, `Unit tests`, `Build`) are
+display labels and no longer need to match anything in `.github/rulesets/
+quality.json`. `workflow-naming-check` (tarotene/dotfiles, a required
+check on every PR) verifies this `needs:` coverage automatically.
 
-If you rename a CI job, update the Ruleset context string in the same edit.
-
-**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
-calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
-reported check context is GitHub's own concatenation of the **caller
-job's** `name:` and the called job's `name:` ("PR Title / PR title"). The
-`repo-governance-common/templates/.github/workflows/pr-title.yml`
-template (this skill's copy is a symlink to it) pins the caller job's
-`name: PR Title`, so this string is a fixed value, not a best-effort
-guess — no manual confirmation against the Checks tab is needed. (An
-earlier version of this note said to confirm the string on the first real
-PR; that assumed the wrong half of the concatenation was fixed and missed
-that #337's rollout had seeded a context the then-unnamed caller job
-could never satisfy — ADR-0031's 2026-09-26 Amendment.)
-`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
-re-verifies the match at runtime on every PR via
-`scripts/rulesets-context-check` — which checks every declared and live
-`required_status_checks` context, not just this one.
+**`pr-title.yml`** has no `workflow_call` concatenation to worry about
+(ADR-591 replaced the old reusable-workflow form with a composite action,
+docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
+check context is simply this job's own `name: PR title`, pinned by the
+`repo-governance-common/templates/.github/workflows/pr-title.yml` template
+(this skill's copy is a symlink to it).
 
 ### Adapting for projects without MDX content lint
 
@@ -77,9 +63,10 @@ If your Astro project does NOT have custom MDX content-lint scripts
 (no `npm run check` beyond `astro check`):
 
 1. Remove the `content-lint` job from `ci.yml`.
-2. Remove the `"Content lint"` entry from `.github/rulesets/quality.json`.
-3. Commit both, then re-run `apply-rulesets.sh OWNER/REPO --reconcile` to
-   update the live Ruleset to match.
+2. Remove its entry (`content-lint`) from `ci-passed`'s `needs:` in the
+   same file.
+3. Commit, then re-verify (`workflow-naming-check` will flag a missed
+   `needs:` entry if you forget step 2).
 
 ---
 
@@ -108,14 +95,15 @@ command -v cog && cog --version
 
 After all files are committed and pushed, open a test PR to verify CI:
 
-1. `Format & Lint (Biome)` should turn green.
-2. `Content lint` should turn green (or is absent if you removed it).
-3. `Unit tests` should turn green.
-4. `Build` should turn green.
+1. `CI passed` should turn green (this aggregates `biome`, `content-lint`
+   — if present — `unit-tests`, and `build` via `needs:`; check the
+   individual job's own logs, not this context, to diagnose a red PR).
+2. `PR title` should turn green.
 
-If `context not found` appears in the Quality Ruleset, the job `name:` in
-`ci.yml` does not match the context string in `quality.json`. Fix both in
-the same commit.
+If `context not found` appears in the Quality Ruleset, `ci-passed`'s
+`needs:` in `ci.yml` is probably missing an entry for a job you added, or
+`quality.json` doesn't match the canonical `CI passed`/`PR title` pair —
+`workflow-naming-check` (a required check on every PR) flags both cases.
 
 ---
 

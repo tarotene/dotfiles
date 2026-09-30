@@ -147,8 +147,10 @@ copy_file "CLAUDE.md"
 
 # ADR-0000-rulesets-declaration-in-repo: required context の正本を対象
 # リポジトリ自身の .github/rulesets/*.json に置く。security/workflow は
-# repo-governance-common と共有(1本化済み)、quality は astro 固有の
-# job 名を持つためこの skill 自身のテンプレートから。
+# repo-governance-common と共有(1本化済み)。quality は required_status_
+# checks(ADR-591 以降 CI passed/PR title の固定ペア)は他スキルと同じだが、
+# bypass_actors(PR bypass の RepositoryRole)が astro 固有のためこの
+# skill 自身のテンプレートに残す(symlink しない)。
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"
 copy_file ".github/rulesets/workflow.json"

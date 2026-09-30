@@ -59,38 +59,33 @@ Key locations:
 | File | What to adjust |
 |------|----------------|
 | `Justfile` | `COMPILE_FLAGS`, `SRC_*`, `OUT_*` variables; `verify` DOCS table |
-| `.github/workflows/build.yml` | `PATTERNS` regex — add your source directories |
-| `.github/workflows/fmt.yml` | `PATTERNS` regex; `inputs:` path to typstyle-action |
-| `.github/workflows/min-typst.yml` | `PATTERNS` regex |
-| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' reusable workflow (ADR-0031); the reported check context is fixed (see the Exception below), no manual confirmation needed |
+| `.github/workflows/ci.yml` — `build` job | `PATTERNS` regex — add your source directories |
+| `.github/workflows/ci.yml` — `fmt` job | `PATTERNS` regex; `inputs:` path to typstyle-action |
+| `.github/workflows/ci.yml` — `min-typst` job | `PATTERNS` regex |
+| `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
 | `.github/workflows/release.yml` | PDF filenames in `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body checklist; remove if not a CV |
 | `cliff.toml` | `tag_pattern` if your CalVer scheme differs from `vYYYY.MM[.P]` |
 | `renovate.json` | Scheduling preferences; add repo-specific package rules if needed |
 
-**Key invariant**: the `name:` field of each workflow job in
-`.github/rulesets/quality.json` `required_status_checks` MUST exactly equal
-the `context` string. seed.sh substitutes `__MIN_TYPST__` in both files
-simultaneously. If you rename a job manually, update the Ruleset context
-too — `apply-rulesets.sh` refuses to apply a context that isn't actually
-reported by a real run (ADR-0000-rulesets-declaration-in-repo).
+**Key invariant**: the `name:` field of each workflow job in `ci.yml`
+**must exactly match** the entries in `ci-passed`'s `needs:` (job *id*, not
+`name:`) — the Ruleset only ever requires `CI passed`/`PR title`
+(ADR-591), so individual job `name:` values are display labels and no
+longer need to match anything in `.github/rulesets/quality.json`.
+`workflow-naming-check` (tarotene/dotfiles, a required check on every PR)
+verifies this `needs:` coverage automatically.
 
-**Exception: `pr-title.yml`.** It has no local job `name:` of its own — it
-calls tarotene/dotfiles' reusable workflow via `workflow_call`, and the
-reported context is GitHub's own concatenation of the **caller job's**
-`name:` and the called job's `name:` ("PR Title / PR title"). The
-`repo-governance-common/templates/.github/workflows/pr-title.yml`
-template (this skill's copy is a symlink to it) pins the caller job's
-`name: PR Title`, so this string is a fixed value, not a best-effort
-guess — no manual confirmation against the Checks tab is needed. (An
-earlier version of this note said to confirm the string on the first real
-PR (step 4); that assumed the wrong half of the concatenation was fixed
-and missed that #337's rollout had seeded a context the then-unnamed
-caller job could never satisfy — ADR-0031's 2026-09-26 Amendment.)
-`.github/workflows/pr-title.yml` (dotfiles' reusable workflow)
-re-verifies the match at runtime on every PR via
-`scripts/rulesets-context-check` — which checks every declared and live
-`required_status_checks` context, not just this one.
+**`pr-title.yml`** has no `workflow_call` concatenation to worry about
+(ADR-591 replaced the old reusable-workflow form with a composite action,
+docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
+check context is simply this job's own `name: PR title`, pinned by the
+`repo-governance-common/templates/.github/workflows/pr-title.yml` template
+(this skill's copy is a symlink to it). `tarotene/dotfiles/.github/
+actions/pr-title` re-verifies the match at runtime on every PR via
+`scripts/rulesets-context-check` (every declared and live
+`required_status_checks` context) and `scripts/workflow-naming-check`
+(the `ci.yml` `needs:` coverage and `name:` casing basis, ADR-591).
 
 ---
 
@@ -105,15 +100,14 @@ git add .github/ .githooks/ Justfile renovate.json cliff.toml .yamllint CODEOWNE
 git commit -m "feat(governance): add CI workflows, Rulesets, and developer tooling"
 git push -u origin feat/governance-bootstrap
 gh pr create --title "feat(governance): add CI workflows, Rulesets, and developer tooling" \
-  --body "Bootstrap typst-repo-governance: 5 CI checks, 3 GitHub Rulesets, Renovate, git hooks."
+  --body "Bootstrap typst-repo-governance: 2 required CI checks, 3 GitHub Rulesets, Renovate, git hooks."
 ```
 
-Wait for all 5 status checks to go green:
-- `Build`
-- `Format check`
-- `Lint`
-- `Min Typst (X.Y.Z)`
-- `PR Title / PR title` (fixed string — see the Exception note above)
+Wait for both required status checks to go green:
+- `CI passed` (aggregates `build`/`fmt`/`lint`/`min-typst` via `needs:`,
+  ADR-591 — check the individual job's own logs, not this context, to
+  diagnose a red PR)
+- `PR title`
 
 If `Format check` fails, run `just fmt` to auto-fix, commit, push.
 If `Min Typst` fails, bump `compiler` in `typst.toml` + `--min-typst` flag + `quality.json` context.
@@ -145,14 +139,11 @@ Squash-merge the PR. GitHub signs the squash commit, satisfying `required_signat
 gh api repos/OWNER/REPO/rulesets --jq '.[].name'
 # → Security, Quality, Workflow
 
-# Required checks registered (contexts must match job names exactly):
+# Required checks registered:
 gh api repos/OWNER/REPO/rulesets \
   --jq '.[]|select(.name=="Quality")|.rules[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
-# → Build
-# → Format check
-# → Lint
-# → Min Typst (X.Y.Z)
-# → PR Title / PR title
+# → CI passed
+# → PR title
 
 # Repo merge settings:
 gh api repos/OWNER/REPO --jq '{allow_squash_merge,allow_merge_commit,delete_branch_on_merge}'

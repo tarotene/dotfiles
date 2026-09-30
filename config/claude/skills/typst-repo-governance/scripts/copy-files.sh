@@ -107,10 +107,7 @@ echo ""
 # .github
 copy_file ".github/CODEOWNERS"
 copy_file ".github/actions/typst-setup/action.yml"
-copy_file ".github/workflows/build.yml"
-copy_file ".github/workflows/fmt.yml"
-copy_file ".github/workflows/lint.yml"
-copy_file ".github/workflows/min-typst.yml"
+copy_file ".github/workflows/ci.yml"
 copy_file ".github/workflows/pr-title.yml"
 copy_file ".github/zizmor.yml"
 copy_file ".github/workflows/release.yml"
@@ -139,9 +136,9 @@ copy_file "AGENTS.md"
 copy_file "CLAUDE.md"
 
 # ADR-0000-rulesets-declaration-in-repo: required context の正本を対象
-# リポジトリ自身の .github/rulesets/*.json に置く。security/workflow は
-# repo-governance-common と共有(1本化済み)、quality は typst 固有の
-# job 名を持つためこの skill 自身のテンプレートから。
+# リポジトリ自身の .github/rulesets/*.json に置く。ADR-591(集約 job
+# `CI passed` + `PR title` のみ required)以降、quality.json も
+# security/workflow と同じく repo-governance-common と共有(symlink)。
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"
 copy_file ".github/rulesets/workflow.json"

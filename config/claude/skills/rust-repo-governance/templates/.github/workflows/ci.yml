@@ -1,0 +1,392 @@
+name: CI
+
+# ADR-591(tarotene/dotfiles, docs/adr/591-ci-workflow-naming.md): 全 PR
+# ゲート job をこの1ファイルにインラインし、`ci-passed` 集約 job(全 job を
+# `needs:` で束ねる)だけを required status check にする。個別 job は
+# required から外れるので、rename・matrix 展開・path-skip による required
+# context 不一致は構造的に起きない。
+#
+# `ci-passed` を除く全ての job を追加・削除したら、`ci-passed` の `needs:`
+# も必ず同期させること(この不変条件は tarotene/dotfiles の
+# `workflow-naming-check` required check が機械検査する)。
+#
+# OPTIONAL: 組み込み firmware を持たないプロジェクトでは、`firmware` job
+# 全体と `ci-passed.needs` からの `firmware` エントリを削除してよい
+# (reference/manual-steps.md 参照)。
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      # Skip if no Rust source or fmt-related config changed.
+      # The job always runs so the required status check is always reported.
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # rustfmt is independent of Cargo.toml; only .rs source and config files matter.
+          PATTERNS='^(.*\.rs$|rust-toolchain\.toml$|Justfile$|\.github/(workflows/ci\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No fmt-relevant changes; skipping."
+          fi
+
+      - name: Install Rust stable toolchain
+        if: steps.guard.outputs.run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install just
+        if: steps.guard.outputs.run == 'true'
+        uses: taiki-e/install-action@3d832235cb306500b868c2632a137d48634568cd # v2
+        with:
+          tool: just
+
+      - name: Check formatting
+        if: steps.guard.outputs.run == 'true'
+        run: just fmt-check
+
+  host:
+    name: Host (clippy + test + smoke)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ADJUST: Update this regex to match your workspace crate directories and layout.
+          # The pattern below mirrors telepath's workspace (wire/server/client/macros + host example).
+          # Root Cargo.{toml,lock} anchored to repo root; crate-level manifests via directory prefix.
+          PATTERNS='^(telepath-(wire|server|client|macros)/|examples/host-pty-server/|Cargo\.(toml|lock)$|Justfile$|rust-toolchain\.toml$|\.github/(workflows/ci\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No host-relevant changes; skipping."
+          fi
+
+      - name: Setup Rust environment
+        if: steps.guard.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          components: clippy
+          cache-key: host-stable
+          # ADJUST: Set install-libudev to 'true' if your dependency tree includes
+          # the `serialport` crate or any other crate that links libudev on Linux.
+          install-libudev: 'true'
+
+      - name: Assert no Cargo manifest warnings
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          out=$(cargo metadata --locked --format-version=1 2>&1 >/dev/null || true)
+          if echo "$out" | grep -qE "^warning:"; then
+            echo "$out" | grep -E "^warning:"
+            echo "::error::Cargo manifest emitted warnings (will become hard errors in a future Cargo release)."
+            exit 1
+          fi
+
+      - name: Clippy (workspace)
+        if: steps.guard.outputs.run == 'true'
+        run: just clippy-workspace
+
+      - name: Run tests
+        if: steps.guard.outputs.run == 'true'
+        run: just test
+
+      # ADJUST: Replace host-pty-smoke with your own integration smoke test recipe,
+      # or remove this step if you do not have a hardware-free end-to-end smoke test.
+      - name: Smoke test host-pty-server
+        if: steps.guard.outputs.run == 'true'
+        run: just host-pty-smoke
+
+  msrv:
+    name: MSRV (__MSRV__)
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "__MSRV_FULL__"
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ADJUST: MSRV check covers all manifest groups. Update paths to match your
+          # workspace members, excluded crates, and embedded examples.
+          PATTERNS='^(telepath-(wire|server|client|macros)/|examples/(host-pty-server|nrf52840-ping)/|tools/__CLI_CRATE__/|Cargo\.(toml|lock)$|Justfile$|rust-toolchain\.toml$|\.github/(workflows/ci\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No MSRV-relevant changes; skipping."
+          fi
+
+      - name: Setup Rust environment (MSRV __MSRV_FULL__)
+        if: steps.guard.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          toolchain: '__MSRV_FULL__'
+          # ADJUST: Remove thumbv7em-none-eabi if not doing embedded cross-compilation.
+          targets: thumbv7em-none-eabi
+          cache-key: msrv-__MSRV_FULL__
+          install-libudev: 'true'
+
+      # ADJUST: The check-all recipe must compile everything under MSRV.
+      # Update the Justfile check-all recipe to include/exclude sub-builds as needed.
+      - name: Verify MSRV builds (workspace + cli + firmware)
+        if: steps.guard.outputs.run == 'true'
+        run: just check-all
+
+  # OPTIONAL: Delete this entire job (and its entry in `ci-passed.needs`
+  # below, and the "Firmware" row from reference/manual-steps.md) if your
+  # project does not include embedded firmware. If you use a different MCU,
+  # update the job `name:` to match your target board.
+  firmware:
+    name: Firmware (cross-compile nRF52840-DK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ADJUST: Update crate directory names and the embedded example path.
+          # Root Cargo.{toml,lock} intentionally excluded: the firmware example is a
+          # separate workspace and is unaffected by root manifest changes.
+          PATTERNS='^(telepath-(wire|server|macros)/|examples/nrf52840-ping/|rust-toolchain\.toml$|\.github/(workflows/ci\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No firmware-relevant changes; skipping."
+          fi
+
+      - name: Setup Rust environment (embedded target)
+        if: steps.guard.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          # ADJUST: Update target triple for your MCU (e.g. thumbv6m-none-eabi for Cortex-M0).
+          targets: thumbv7em-none-eabi
+          cache-key: firmware-nrf52840
+          # ADJUST: Update to your firmware example directory path.
+          cache-workspaces: examples/nrf52840-ping
+
+      # ADJUST: Update the working directory to your firmware example path.
+      - name: Build firmware (release)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: examples/nrf52840-ping
+        run: cargo build --release
+
+  tools:
+    name: Tools (__CLI_CRATE__ CLI clippy + tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "$BASE" --depth=1 2>/dev/null || true
+          MERGE_BASE="$(git merge-base "$BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$MERGE_BASE" ]]; then
+            echo "::warning::merge-base unavailable; defaulting to run."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$MERGE_BASE" "$HEAD" 2>/dev/null || echo '')"
+          if [[ -z "$CHANGED" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ADJUST: Update crate directory names and the tools/ path to match your workspace.
+          # The tools/__CLI_CRATE__/ path is the excluded CLI crate under tools/.
+          PATTERNS='^(telepath-(wire|client|macros)/|tools/__CLI_CRATE__/|Cargo\.(toml|lock)$|Justfile$|rust-toolchain\.toml$|\.github/(workflows/ci\.yml|actions/rust-setup/))'
+          if echo "$CHANGED" | grep -qE "$PATTERNS"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No tools-relevant changes; skipping."
+          fi
+
+      - name: Setup Rust environment
+        if: steps.guard.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          components: clippy
+          cache-key: tools-__CLI_CRATE__
+          cache-workspaces: tools/__CLI_CRATE__
+          install-libudev: 'true'
+
+      # ADJUST: Update the step name and recipe if your CLI crate has different feature combinations.
+      - name: Clippy (tools/__CLI_CRATE__ — all feature combos)
+        if: steps.guard.outputs.run == 'true'
+        run: just clippy-tools
+
+      # ADJUST: Update the step name and recipe to match your CLI crate's test targets.
+      - name: Test CLI tool (default + additional feature combos)
+        if: steps.guard.outputs.run == 'true'
+        run: just mcp-test
+
+  # 集約 required check(ADR-591)。上の job を1つでも追加・削除したら
+  # needs: をここで同期させること — tarotene/dotfiles の
+  # workflow-naming-check がこの不変条件を機械検査する。
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [fmt, host, msrv, firmware, tools]
+    if: always()
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
