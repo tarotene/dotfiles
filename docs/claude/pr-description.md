@@ -97,6 +97,17 @@ Claude 自身が(その場、またはマージ後に)実行できるものだ�
 hardware-bound な manual step と切り分けた判断)を先行例とし、同じ切り分け
 基準を PR の残作業一般に一般化したもの。
 
+**2026-09-30 の転換: ブロッキング項目 = 後続 Issue へ払い出し、節はポインタ
+専用。** 社内の別リポジトリで観測された実例(実機確認を `## Test plan` の
+未チェック `- [ ]` として本文に残したままマージした)を機に、「要確認」は
+手順・完了確認を書く節ではなく、既に払い出した後続 Issue へのポインタ
+(`- #N — <一言>`)だけを書く節に転換した。手順・完了条件は Issue 本文
+(`handoff` スキル §5 の Human テンプレ)が持つ。PR 本文に未チェックの
+task list を残せないこと・「要確認」の各項目に Issue 参照があることは
+`pr-confirm-guard.sh` が機械強制する(詳細: ADR-598「PR 本文の人待ち
+チェックボックスを廃し、人の確認を後続 Issue へ払い出す」、
+`docs/claude/pr-confirm-guard.md`)。
+
 ## `diagramming` / `living-description` との関係
 
 `diagramming` は作図全般の処方、`living-description` は Issue/PR 本文を正本として

@@ -90,7 +90,13 @@ extra = ["bootstrap.sh"]
 # 67 = 上記 66 + 同セッション段4で追加した codex-plan-gate.sh の 1 件。
 # plan-scope-gate.sh/plan-precedent-gate.sh をそのまま呼ぶだけの adapter
 # であり、同じ理由で bash のまま追加した。
-max_remaining = 67
+#
+# 68 = 上記 67 + PR #598 で追加した config/codex/hooks/pr-confirm-guard.sh
+# の 1 件。claude 側 pr-confirm-guard.sh(既存の 4a エントリ)の薄い Codex
+# adapter で、attribution-guard/pr-title-guard の Codex adapter と同じ
+# 前例(単一正本の判定エンジンを source するだけ)のため bash のまま
+# 追加した。
+max_remaining = 68
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -157,6 +163,12 @@ stage = "4a"
 
 [[target]]
 path = "config/codex/hooks/pr-title-guard.sh"
+stage = "4a"
+
+# attribution-guard/pr-title-guard の Codex adapter と同じ前例(既存の
+# claude 側 pr-confirm-guard.sh に対応する薄い adapter)。
+[[target]]
+path = "config/codex/hooks/pr-confirm-guard.sh"
 stage = "4a"
 
 [[target]]

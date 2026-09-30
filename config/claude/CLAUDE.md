@@ -66,6 +66,11 @@ commit → push → `gh pr create` を、途中で確認を挟まず一続きで
 「PR を作成しますか?」と聞かない。Stop hook(`G_pr` in pr-gate.sh)がこの
 漏れを検査する。
 
+PR 本文に未チェックの task list を残さない・人の確認を後続 Issue に払い
+出す原則の形式検査は `pr-confirm-guard.sh`(PreToolUse deny、全リポジト
+リで発火)が担う。gate に当たる前に自発的に Issue 化すること — gate は
+漏れを拾うためのもので、一次的な手段ではない。
+
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で
