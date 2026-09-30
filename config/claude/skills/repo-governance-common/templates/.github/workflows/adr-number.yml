@@ -1,0 +1,43 @@
+name: ADR number
+
+# ADR-380(tarotene/dotfiles docs/adr/380-adr-number-by-pr.md): ADR の番号を
+# ローカル連番でなく導入 PR の番号にし、採番衝突を構造的に不可能にする。
+# 判定エンジンは scripts/adr-number-check(repo-governance-common が単一
+# ソース)。docs/adr/ を持たないリポジトリでは何も検査せず通過する。
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  adr-number:
+    name: ADR number check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: adr-number-check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # ADJUST: ADR の索引ファイル(全 ADR がここからリンクされていることを
+          # 検査する)。既定は索引検査なし。索引を持つリポジトリは
+          # docs/README.md 等に変える。
+          ADR_INDEX: ""
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_SHA" --depth=1
+            ./scripts/adr-number-check --base "$BASE_SHA" --pr "$PR_NUMBER"
+          else
+            ./scripts/adr-number-check
+          fi

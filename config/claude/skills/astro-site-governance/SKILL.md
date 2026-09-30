@@ -6,7 +6,8 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
 ## What this Skill does
 
 1. Copies parameterised templates (CI workflows including a per-file
-   language-mixing check — `lang-mix.yml` —, git hooks, Biome/Vitest/cog/Renovate/
+   language-mixing check — `lang-mix.yml` —, an ADR-number check —
+   `adr-number.yml`, ADR-380 in tarotene/dotfiles —, git hooks, Biome/Vitest/cog/Renovate/
    release-please configs, CODEOWNERS, AGENTS.md/CLAUDE.md routing skeleton
    — ADR-0016 in tarotene/dotfiles) into the target repository, substituting
    `__PLACEHOLDER__` values for your repo's specifics.

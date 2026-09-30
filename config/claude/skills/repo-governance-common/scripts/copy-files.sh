@@ -6,6 +6,8 @@
 # with placeholder substitution — Quality's required_status_checks is
 # `PR Title / PR title` only, no build/test job name is assumed (this
 # repository's CI shape is unknown to the skill).
+# The ADR-number check (ADR-380) is seeded too: adr-number.yml plus its
+# scripts/adr-number-check engine.
 #
 # Unlike rust/typst/astro, this type has no seed.sh: the caller runs this
 # script, commits + pushes the result, then applies the ruleset with
@@ -101,6 +103,8 @@ echo "Copying core-type templates to: $DEST"
 echo ""
 
 copy_file ".github/workflows/pr-title.yml"
+copy_file ".github/workflows/adr-number.yml"
+copy_file "scripts/adr-number-check"
 copy_file ".github/zizmor.yml"
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"
@@ -112,6 +116,10 @@ if [[ "$DRY_RUN" == "false" ]]; then
   verify_declaration "$DEST/.github/rulesets/quality.json"
   verify_declaration "$DEST/.github/rulesets/workflow.json"
   [[ "$WITH_REVIEW" == "true" ]] && verify_declaration "$DEST/.github/rulesets/review.json"
+fi
+
+if [[ "$DRY_RUN" == "false" ]]; then
+  chmod +x "$DEST/scripts/adr-number-check" 2>/dev/null || true
 fi
 
 echo ""
