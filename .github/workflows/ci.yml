@@ -619,6 +619,14 @@ jobs:
       - name: rulesets-context-check --selftest
         run: ./scripts/rulesets-context-check --selftest
 
+      # workflow-naming-check(ADR-591, docs/adr/591-ci-workflow-naming.md):
+      # judge_workflows()(scripts/github-audit)を REST API 実測データに
+      # 対して呼び出す薄い層。judge_workflows() 自体のロジックテストは
+      # github-audit --selftest 側にある — ここは REST→JSON 組み立てと
+      # exit code のみを検査する。
+      - name: workflow-naming-check --selftest
+        run: ./scripts/workflow-naming-check --selftest
+
       # pr-title-guard (ADR-0031) sources attribution-guard.sh's
       # command-position/tokenizer engine the same way stack-base-guard does,
       # and stubs the checker binary to exercise the owner-scope, escape
