@@ -50,7 +50,9 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
    構造化 JSON に揃える(判定コアはこの形式以外を受け付けない)。
 2. 設定の `[[calendars]]` allowlist を `list_calendars` で ID 解決し、
    候補期間を覆う範囲で各カレンダーを `list_events`(`timeZone` を設定の
-   `timezone` に、`pageSize` は大きめ)する。1 レスポンスがサイズ超過で
+   `timezone` に、`pageSize` は大きめ)する。`active = false` のエントリは
+   判定に使わないので `list_events` しない(参加が流動的なカレンダーを
+   allowlist から消さずに外すための切り替え。省略は有効)。1 レスポンスがサイズ超過で
    ファイル保存になった場合はそのファイルパスをそのまま次の手順に渡す。
 3. 判定は `scripts/slot-hit.sh judge` に任せる。手で ○△× を組み立てない
    — バッファ・終日イベントの扱いなど、その場の判断にブレが出やすい

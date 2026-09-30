@@ -167,6 +167,50 @@ check "12g m4-foreign untouched" "true" "$(jq '([.plan.update, .plan.create] | f
 check "12h description has venue/decision" "true" \
   "$(jq '([.plan.update, .plan.create] | flatten | all(.description | contains("場所: 未定(2026-09-26 時点)") and contains("裁定: 2026-09-26(主催者側で確定)") and contains("'"$url2"'")))' <<<"$out")"
 
+# 13) [[calendars]] の active = false は判定から外れる(エントリは残る)。
+#     設定 TOML → events-dir の読み込み(load_events_json)→ judge を通した
+#     エンドツーエンドで確認する。無効カレンダーだけが 19:00 と重なる予定を
+#     持つので、active を外すと ○、有効にすると × になる。
+tmpd="$(mktemp -d)"
+mkdir -p "$tmpd/events"
+cat > "$tmpd/config.toml" <<'TOML'
+timezone = "Asia/Tokyo"
+buffer_minutes = 60
+marker_prefix = "【調整中】"
+marker_calendar = "a"
+
+[slots]
+morning = { start = "09:00", end = "12:00" }
+noon    = { start = "13:00", end = "17:00" }
+evening = { start = "18:00", end = "21:00" }
+
+[[calendars]]
+id      = "a"
+summary = "有効"
+
+[[calendars]]
+id      = "b"
+summary = "無効"
+active  = false
+TOML
+printf '{"events":[]}' > "$tmpd/events/a.json"
+printf '%s' '{"events":[{"status":"confirmed","start":{"dateTime":"2026-10-18T18:00:00+09:00"},"end":{"dateTime":"2026-10-18T21:00:00+09:00"},"summary":"無効側の予定"}]}' > "$tmpd/events/b.json"
+printf '[{"date":"2026-10-18","time":"19:00"}]' > "$tmpd/cands.json"
+judge_answer() {
+  bash "$SCRIPT_DIR/slot-hit.sh" judge --config "$tmpd/config.toml" --candidates "$tmpd/cands.json" \
+    --events-dir "$tmpd/events" --out-plan "$tmpd/plan.json" > /dev/null
+  jq -r '.answers[0]' "$tmpd/plan.json"
+}
+check "13a active=false のカレンダーの予定は判定に効かない->○" "○" "$(judge_answer)"
+sed -i 's/^active  = false$/active  = true/' "$tmpd/config.toml"
+check "13b active=true なら予定が効く->×" "×" "$(judge_answer)"
+sed -i 's/^active  = true$/active  = "false"/' "$tmpd/config.toml"
+rc=0
+err="$(bash "$SCRIPT_DIR/slot-hit.sh" judge --config "$tmpd/config.toml" --candidates "$tmpd/cands.json" \
+  --events-dir "$tmpd/events" 2>&1 >/dev/null)" || rc=$?
+check_error_contains "13c active が boolean でなければエラー" "boolean" "$rc" "$err"
+rm -rf "$tmpd"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 if [[ "$fail" -eq 0 ]]; then
