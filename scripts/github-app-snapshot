@@ -354,10 +354,16 @@ manifest_form() { # $1=name [--out FILE]
   manifest_json="$(cat "$manifest_file")"
   state="$(head -c16 /dev/urandom | "$OPENSSL_BIN" base64 -A | tr -dc 'a-zA-Z0-9' | head -c16)"
   [[ -n $out ]] || out="$(mktemp --suffix=.html)"
-  "$JQ_BIN" -n -r --arg m "$manifest_json" --arg s "$state" '
-    "<!doctype html><html><body><form id=f action=\"https://github.com/settings/apps/new?state=" + $s + "\" method=post>" +
-    "<input type=hidden name=manifest value=" + ($m | @html) + "></form>" +
-    "<script>document.getElementById('f').submit()</script></body></html>"
+  # The jq program is bash single-quoted, so it cannot contain a literal
+  # single quote (an unescaped one here once closed the quote early and left
+  # `getElementById(f)`, a ReferenceError that silently stopped the
+  # auto-submit) — pass it in as $q instead. The value attribute must also be
+  # double-quoted: the manifest JSON contains spaces, and an unquoted
+  # attribute value ends at the first one.
+  "$JQ_BIN" -n -r --arg m "$manifest_json" --arg s "$state" --arg q "'" '
+    "<!doctype html><html><body><form id=\"f\" action=\"https://github.com/settings/apps/new?state=" + $s + "\" method=\"post\">" +
+    "<input type=\"hidden\" name=\"manifest\" value=\"" + ($m | @html) + "\"></form>" +
+    "<script>document.getElementById(" + $q + "f" + $q + ").submit()</script></body></html>"
   ' > "$out"
   printf 'github-app-snapshot: wrote %s (state=%s) — open it in a browser, click "Create GitHub App", then copy the `code` query parameter from the redirect URL\n' "$out" "$state"
 }
@@ -559,6 +565,32 @@ GHSTUB
   }
   jq -e '.apps == []' "$tmp/state/app-snapshot-empty.json" > /dev/null || {
     printf 'FAIL: skipped app should leave apps empty, not error out: %s\n' "$(cat "$tmp/state/app-snapshot-empty.json")" >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # manifest_form(): the generated page must actually submit. A browser
+  # only auto-submits if (a) the manifest attribute is double-quoted (its
+  # JSON contains spaces) and decodes back to the exact manifest, and
+  # (b) the inline script is syntactically valid (quoted element id).
+  # -------------------------------------------------------------------
+  local form="$tmp/form.html" decoded
+  MANIFESTS_DIR="$tmp/manifests" JQ_BIN=jq OPENSSL_BIN=openssl manifest_form releaser --out "$form" > /dev/null
+  grep -qF 'method="post"' "$form" || {
+    printf 'FAIL: form method attribute must be present and quoted\n' >&2
+    return 1
+  }
+  grep -qF "document.getElementById('f').submit()" "$form" || {
+    printf 'FAIL: auto-submit script must quote the element id: %s\n' "$(grep -o '<script>.*</script>' "$form")" >&2
+    return 1
+  }
+  decoded="$(tr -d '\n' < "$form" | sed -E 's/.*name="manifest" value="([^"]*)".*/\1/; s/&quot;/"/g; s/&#39;/'"'"'/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g')"
+  jq -e --slurpfile want "$tmp/manifests/releaser.json" '. == $want[0]' <<< "$decoded" > /dev/null || {
+    printf 'FAIL: manifest attribute does not round-trip to the manifest JSON: %s\n' "$decoded" >&2
+    return 1
+  }
+  grep -q 'action="https://github.com/settings/apps/new?state=[A-Za-z0-9]\{16\}"' "$form" || {
+    printf 'FAIL: form action must be the quoted apps/new URL with a 16-char state\n' >&2
     return 1
   }
 
