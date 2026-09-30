@@ -114,9 +114,11 @@ App's manifest present in `config/github-app-manifests/`, its live
 `permissions`/`events`/`slug` and every installation's `repository_selection`
 + repository list (via JWT → installation token → `GET /installation/
 repositories`, paginated); for each `config/github-app-snapshot/
-pat-probes.tsv` row, the repositories that PAT can push to (`GET /repos/
-{owner}/{repo}`'s `permissions.push`, not a bare 200 — a fine-grained PAT
-always reads public repos regardless of its selected-repositories scope).
+pat-probes.tsv` row, the **private** repositories that PAT can read (`GET
+/repos/{owner}/{repo}` answers 200 for a selected repository and 404 for the
+rest). Public repositories are not judged — a fine-grained PAT always reads
+them, and `permissions.push` reports your own role, not the token's
+(ADR-590 Amendment).
 No PEM, PAT, or installation token ever lands in this file — only names,
 IDs, and permission/event strings.
 

@@ -150,6 +150,10 @@ http_post_unauthenticated() { # $1=url -> body on stdout ('' on failure)
   "$CURL_BIN" -sS -X POST -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
 }
 
+http_status() { # $1=url $2=bearer_token -> HTTP status code ('000' on transport failure)
+  "$CURL_BIN" -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '000'
+}
+
 # ---------------------------------------------------------------------------
 # owned-App registration + install-target snapshot (D2/D3)
 # ---------------------------------------------------------------------------
@@ -231,10 +235,8 @@ snapshot_apps() { # -> JSON array of {name, id, slug, app_name, permissions, eve
 }
 
 # ---------------------------------------------------------------------------
-# fine-grained PAT reach snapshot (D4): push permission on GET
-# /repos/{owner}/{repo}, not a bare 200 — a fine-grained PAT always reads
-# public repos read-only regardless of its selected-repositories scope
-# (GitHub Docs, "Managing your personal access tokens", 取得 2026-09-29).
+# fine-grained PAT reach snapshot (D4, revised 2026-09-30): private
+# repositories only, judged by HTTP 200 vs 404 — see probe_pat_reach().
 # ---------------------------------------------------------------------------
 
 read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC ∪ PRIVATE
@@ -245,14 +247,26 @@ read_pat_probes() { # -> TSV lines "name\tsecret_name" from both files, PUBLIC �
   done
 }
 
-probe_pat_reach() { # $1=pat -> JSON array of "owner/repo" the PAT can push to
-  local pat="$1" repo_names repo body reachable='[]' can_push
-  repo_names="$("$GH_BIN" repo list "$OWNER" --source --limit "$REPO_LIMIT" --json name --jq '.[].name' 2> /dev/null || true)"
+probe_pat_reach() { # $1=pat -> JSON array of "owner/repo": PRIVATE repos the PAT can read
+  # Only private repositories can be judged. A fine-grained PAT always reads
+  # every public repository, and `permissions.push` on GET /repos/{o}/{r}
+  # reports the *owner's* role, not the token's (verified 2026-09-30: a public
+  # repo outside the token's selection still reported push=true), so write
+  # reach on a public repo is not observable without writing. For a private
+  # repo outside the selection GitHub answers 404; inside it, 200.
+  # Repositories are listed over REST (not `gh repo list`, which is GraphQL
+  # and fails under rate limiting) and a listing failure is an error, never
+  # an empty result.
+  local pat="$1" repo_names repo status reachable='[]'
+  repo_names="$("$GH_BIN" api --paginate "user/repos?affiliation=owner&per_page=100" \
+    --jq '.[] | select(.private and (.fork | not)) | .name' 2> /dev/null)" || {
+    printf 'github-app-snapshot: could not list private repositories for %s\n' "$OWNER" >&2
+    return 1
+  }
   while IFS= read -r repo; do
     [[ -n $repo ]] || continue
-    body="$(http_get "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
-    can_push="$("$JQ_BIN" -r '.permissions.push // false' <<< "$body")"
-    [[ $can_push == true ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
+    status="$(http_status "$GITHUB_API/repos/$OWNER/$repo" "$pat")"
+    [[ $status == 200 ]] && reachable="$("$JQ_BIN" -c --argjson r "$reachable" --arg full "$OWNER/$repo" '$r + [$full]' <<< '{}')"
   done <<< "$repo_names"
   printf '%s' "$reachable"
 }
@@ -267,8 +281,12 @@ snapshot_pat_probes() { # -> JSON array of {name, repositories}
         "$name" "$secret_name" >&2
       continue
     fi
-    repos="$(probe_pat_reach "$pat")"
-    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" '$o + [{name: $name, repositories: $repos}]' <<< '{}')"
+    repos="$(probe_pat_reach "$pat")" || {
+      printf 'github-app-snapshot: %s probe skipped (repository listing failed)\n' "$name" >&2
+      continue
+    }
+    out="$("$JQ_BIN" -c --argjson o "$out" --arg name "$name" --argjson repos "$repos" \
+      '$o + [{name: $name, scope: "private-only", repositories: $repos}]' <<< '{}')"
   done < <(read_pat_probes)
   printf '%s' "$out"
 }
@@ -501,8 +519,8 @@ case "$url" in
   */app/installations/111/access_tokens) printf '{"token":"fake-install-token"}' ;;
   */installation/repositories\?per_page=100\&page=1) printf '{"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
   */installation/repositories\?per_page=100\&page=2) printf '{"repositories":[]}' ;;
-  */repos/tarotene/reachable-repo) printf '{"permissions":{"push":true}}' ;;
-  */repos/tarotene/unreachable-repo) printf '{"permissions":{"push":false}}' ;;
+  */repos/tarotene/reachable-repo) printf '200' ;;
+  */repos/tarotene/unreachable-repo) printf '404' ;;
   *) printf '{}' ;;
 esac
 CURLSTUB
@@ -511,6 +529,7 @@ CURLSTUB
   cat > "$fake_gh" << 'GHSTUB'
 #!/usr/bin/env bash
 set -euo pipefail
+# `gh api --paginate user/repos ... --jq ...` (private, non-fork names)
 printf 'reachable-repo\nunreachable-repo\n'
 GHSTUB
   chmod +x "$fake_gh"
@@ -551,8 +570,8 @@ GHSTUB
       "$(jq -c '.apps[0].installations' "$tmp/state/app-snapshot.json")" >&2
     return 1
   }
-  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
-    printf 'FAIL: snapshot pat_probes does not match the push-permission fixture (reachable-repo only): %s\n' \
+  jq -e '.pat_probes[0].name == "claude-web" and .pat_probes[0].scope == "private-only" and .pat_probes[0].repositories == ["tarotene/reachable-repo"]' "$tmp/state/app-snapshot.json" > /dev/null || {
+    printf 'FAIL: snapshot pat_probes must list only the private repo answering HTTP 200 (404 excluded): %s\n' \
       "$(jq -c '.pat_probes' "$tmp/state/app-snapshot.json")" >&2
     return 1
   }
@@ -564,6 +583,27 @@ GHSTUB
     printf 'FAIL: snapshot output must never contain a PAT value\n' >&2
     return 1
   fi
+
+  # -------------------------------------------------------------------
+  # a failing repository listing must skip the probe with a warning, never
+  # yield an empty-but-successful result (that hid a rate-limit failure).
+  # -------------------------------------------------------------------
+  local fail_gh="$tmp/fail-gh" out_fail
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$fail_gh"
+  chmod +x "$fail_gh"
+  out_fail="$(
+    MANIFESTS_DIR="$tmp/no-manifests" PAT_PROBES_FILE="$tmp/pat-probes.tsv" PAT_PROBES_LOCAL_FILE=/dev/null \
+      CURL_BIN="$fake_curl" GH_BIN="$fail_gh" OWNER=tarotene OPENSSL_BIN=openssl JQ_BIN=jq CLAUDE_WEB_PAT=x \
+      run_inner snapshot --out "$tmp/state/app-snapshot-listfail.json" 2>&1
+  )"
+  [[ $out_fail == *'repository listing failed'* ]] || {
+    printf 'FAIL: repository listing failure must be reported, not swallowed: %s\n' "$out_fail" >&2
+    return 1
+  }
+  jq -e '.pat_probes == []' "$tmp/state/app-snapshot-listfail.json" > /dev/null || {
+    printf 'FAIL: failed probe must not appear as an empty reach set\n' >&2
+    return 1
+  }
 
   # -------------------------------------------------------------------
   # missing app secret env: skipped, not fatal (bws not yet configured)

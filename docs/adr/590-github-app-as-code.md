@@ -167,3 +167,26 @@ D5「App の install 有無は検出しない(loud failure に任せる)」は�
 ## Alternatives considered
 
 Decision 各節の「対抗馬」「外した候補」を参照。
+
+## Amendment (2026-09-30 — PAT の到達判定を private リポジトリの HTTP 200/404 に改める)
+
+D4 は fine-grained PAT の到達を `GET /repos/{owner}/{repo}` の `permissions.push` で判定するとしていた。実機で検証した結果、この判定は成立しない。
+
+- 選択外の public リポジトリでも `permissions.push` は `true` になる。この値は PAT の範囲ではなく、アカウント所有者自身の権限を返す。全 repo が「到達」と判定され、`routines-cloud-access-unclaimed` が全 repo で誤発火する。
+- fine-grained PAT は public リポジトリを常に読めるため、`GET /user/repos` にも選択外の public が含まれる。public リポジトリに対する PAT の書き込み範囲は、書き込まずに観測する手段が API に無い。
+- 一方、private リポジトリは、選択外なら 404、選択内なら 200 になる(実測)。
+
+このため判定を次のように改める。
+
+- `github-app-snapshot` は private かつ非 fork のリポジトリだけを対象に、`GET /repos/{owner}/{repo}` が HTTP 200 を返すものを到達集合とする。リポジトリの列挙は REST(`user/repos`)で行い、失敗した場合は空の成功として扱わず、その probe を警告付きでスキップする(GraphQL の `gh repo list` はレート制限で黙って空になった)。
+- `github-audit` の `routines` ドメインは、到達を `true` / `false` / `unknown` の3値で扱う。public リポジトリは `unknown` とし、`routines-cloud-access-missing` も `routines-cloud-access-unclaimed` も判定しない。`missing` は private で 404 が確定した場合だけ。
+- 元案(#506)の `GET /user/repos` での一覧化も、public を含むため採らない。
+
+出典: GitHub Docs, "Managing your personal access tokens"(「Tokens always include read-only access to all public repositories on GitHub」、取得 2026-09-29)と、2026-09-30 の実機実測(public の選択外リポジトリで `permissions.push` が `true`、private の選択外で 404)。
+
+軸: 検出のみ — 到達の実体は GitHub 側にしか無く、観測できる範囲(private のみ)で検出する。
+
+### 執行点
+
+- `scripts/github-app-snapshot`
+- `scripts/github-audit`

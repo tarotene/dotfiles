@@ -728,27 +728,29 @@ read-only, doesn't re-check what another mechanism already checks"
 boundary `titles` draws between enforcement presence and individual PR
 conformance).
 
-**Cloud-reach verdicts (ADR-590 D4, ADR-436 Amendment 2026-09-30)**: the
-`sources` check above answers "does the weekly auditor clone this repo",
+**Cloud-reach verdicts (ADR-590 D4 and its Amendment, ADR-436 Amendment 2026-09-30)**:
+the `sources` check above answers "does the weekly auditor clone this repo",
 but Claude's cloud sandbox also needs the fine-grained `CLAUDE_WEB_PAT` to
-actually reach it. `scripts/github-app-snapshot` probes that PAT's push
-permission against every owned repository (`GET /repos/{owner}/{repo}`'s
-`permissions.push`, not a bare 200 — a fine-grained PAT always reads
-public repos regardless of its selected-repositories scope) and writes the
-reachable set into the same `app-snapshot.json` the `releaser` domain
-reads. `github-audit` adds:
+actually reach it. `scripts/github-app-snapshot` probes that PAT against
+every **private** repository (`GET /repos/{owner}/{repo}`: HTTP 200 =
+selected, 404 = not selected) and writes the reachable set into the same
+`app-snapshot.json` the `releaser` domain reads. Public repositories are
+deliberately not judged: a fine-grained PAT always reads them, and the
+`permissions.push` field reports the owner's role rather than the token's,
+so the PAT's write reach on a public repo cannot be observed without writing.
+`github-audit` adds:
 
-- `routines-cloud-access-missing` — a `.claude/routines/*.json`
-  declaration exists, but the PAT's reachable-repository set (per the
-  snapshot) doesn't include this repo (`drifted`, alongside
-  `routines-sources-missing` when both apply).
-- `routines-cloud-access-unclaimed` — the PAT *does* reach this
-  repository, but it has no `.claude/routines/` declaration at all
+- `routines-cloud-access-missing` — a private repository has a
+  `.claude/routines/*.json` declaration, but the PAT gets a 404 for it
+  (`drifted`, alongside `routines-sources-missing` when both apply).
+- `routines-cloud-access-unclaimed` — the PAT *does* reach a private
+  repository that has no `.claude/routines/` declaration at all
   (`advisory` — an over-grant worth a look, not a broken state).
 
-Same fallback as `releaser`: no `app-snapshot.json` yet means both
-verdicts above are silently skipped, falling back to the original
-`sources`-only judgement. No secret required here either.
+A public repository is `unknown` for both, so neither verdict is reported.
+Same fallback as `releaser`: no `app-snapshot.json` yet means both verdicts
+above are silently skipped, falling back to the original `sources`-only
+judgement. No secret required here either.
 
 ### workflows
 
