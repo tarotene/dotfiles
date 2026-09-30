@@ -264,6 +264,11 @@ in
     Unit.Description = "Delete worktrees/branches backed by content-preservation evidence (C1/C2/C3)";
     Service = {
       Type = "oneshot";
+      # #586: a hard ceiling so a hung `gh` can never pile an hourly tick
+      # on top of a still-running previous one. --evidence asks GitHub once
+      # per candidate sha (not once per PR), so a healthy run takes seconds;
+      # 15 min is generous headroom, not an expected duration.
+      TimeoutStartSec = "15min";
       ExecStart = [
         "${prunePath} --auto"
         "${pruneBranchesPath} --auto"

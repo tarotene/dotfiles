@@ -138,8 +138,10 @@ git prune-branches --auto         # --evidence の branch 行を確認なしで�
 git prune-branches --auto --dry-run
 ```
 
-`--evidence` は C3 判定のために `gh pr list` をリポジトリごとに1回呼ぶ
-(結果はプロセス内でキャッシュする)。`--notify`/`--context`/`--porcelain`
+`--evidence` は C3 判定のために、候補コミットごとに
+`gh api repos/<slug>/commits/<sha>/pulls` を1回呼ぶ(結果はプロセス内で
+キャッシュする。呼び出し回数は候補数に比例し、リポジトリの PR 総数には
+依存しない — 全 PR を列挙していた旧実装は大規模リポジトリで1時間近くかかった、#586)。`--notify`/`--context`/`--porcelain`
 (1分間隔の検出 timer が使う経路)は `gh` を一切呼ばない。origin が
 github.com でないリポジトリ、または `gh` 呼び出し自体が失敗した
 リポジトリでは、C3 判定を単に行わない(fail closed)。
