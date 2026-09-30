@@ -201,6 +201,19 @@ stack 全体が 1 つの Issue に対応する場合も、複数の独立 Issue 
 stack に積まれる場合も、この書き分けは変わらない — PR の依存関係と
 Issue の依存関係は別問題である。
 
+**`Closes #N` が実際に Issue を閉じるのは、merge 時に走る
+`close-linked-issues.yml` のおかげである**(#609)。GitHub 自身の closing
+keyword は、default branch を向いた PR でしか働かない。stack の 2 段目以降
+は作成時の base が親のブランチなので、親の merge 後に GitHub が base を
+default branch に付け替えても、本文は再評価されず `closingIssuesReferences`
+は空のまま残る(tarotene/bleep の 5 段 stack で 4 件の Issue が閉じなかった)。
+この workflow は PR が merge されたときに本文の closing keyword(コード
+スパン・フェンス内は除外、他リポジトリの `owner/repo#N` も除外)を拾って
+`gh issue close` する。配布元は `repo-governance-common/templates/
+.github/workflows/close-linked-issues.yml` で、各 governance の
+`copy-files.sh` がリポジトリに播く。この workflow を持たないリポジトリ
+では、最終段の merge 後に `gh issue close` を手で実行する。
+
 ## 7. 本文の `Stack:` 行
 
 `pr-description` スキルの本文スケルトンの 1 行目の隣に、次の形式で
