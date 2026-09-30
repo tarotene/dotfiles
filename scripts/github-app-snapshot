@@ -143,6 +143,13 @@ http_post_empty_body() { # $1=url $2=bearer_token -> body on stdout ('' on failu
   "$CURL_BIN" -sS -X POST -H "Authorization: Bearer $2" -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
 }
 
+http_post_unauthenticated() { # $1=url -> body on stdout ('' on failure)
+  # POST /app-manifests/{code}/conversions takes no credentials, and GitHub
+  # rejects an empty `Authorization: Bearer ` header with 401 Bad credentials
+  # — the header must be absent, not empty.
+  "$CURL_BIN" -sS -X POST -H 'Accept: application/vnd.github+json' "$1" 2> /dev/null || printf '{}'
+}
+
 # ---------------------------------------------------------------------------
 # owned-App registration + install-target snapshot (D2/D3)
 # ---------------------------------------------------------------------------
@@ -370,10 +377,9 @@ manifest_form() { # $1=name [--out FILE]
 
 convert_manifest() { # $1=name $2=code
   local name="$1" code="$2" body id slug client_id pem_file name_upper
-  body="$(http_post_empty_body "$GITHUB_API/app-manifests/$code/conversions" '')"
   # unauthenticated endpoint (GitHub Docs, "Registering a GitHub App from a
-  # manifest", 取得 2026-09-29) — an empty bearer token is fine, curl sends
-  # an empty Authorization header GitHub ignores for this one endpoint.
+  # manifest", 取得 2026-09-29): send no Authorization header at all.
+  body="$(http_post_unauthenticated "$GITHUB_API/app-manifests/$code/conversions")"
   id="$("$JQ_BIN" -r '.id // empty' <<< "$body")"
   slug="$("$JQ_BIN" -r '.slug // empty' <<< "$body")"
   client_id="$("$JQ_BIN" -r '.client_id // empty' <<< "$body")"
@@ -591,6 +597,36 @@ GHSTUB
   }
   grep -q 'action="https://github.com/settings/apps/new?state=[A-Za-z0-9]\{16\}"' "$form" || {
     printf 'FAIL: form action must be the quoted apps/new URL with a 16-char state\n' >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # convert_manifest(): the conversions endpoint is unauthenticated, so the
+  # request must carry no Authorization header (an empty one is a 401), and
+  # the PEM must land in a 0600 file.
+  # -------------------------------------------------------------------
+  local conv_curl="$tmp/conv-curl" conv_args="$tmp/conv-args" conv_out
+  cat > "$conv_curl" << 'CONVSTUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$CONV_ARGS"
+printf '{"id":42,"slug":"tarotene-releaser","client_id":"Iv1.test","pem":"-----BEGIN TEST-----"}'
+CONVSTUB
+  chmod +x "$conv_curl"
+  conv_out="$(CONV_ARGS="$conv_args" CURL_BIN="$conv_curl" JQ_BIN=jq XDG_RUNTIME_DIR="$tmp" convert_manifest releaser testcode)"
+  if grep -qi 'authorization' "$conv_args"; then
+    printf 'FAIL: manifest conversion must send no Authorization header: %s\n' "$(cat "$conv_args")" >&2
+    return 1
+  fi
+  grep -q '/app-manifests/testcode/conversions' "$conv_args" || {
+    printf 'FAIL: conversion URL wrong: %s\n' "$(cat "$conv_args")" >&2
+    return 1
+  }
+  [[ $(stat -c %a "$tmp/github-app-snapshot-releaser.pem") == 600 ]] || {
+    printf 'FAIL: converted PEM file must be mode 0600\n' >&2
+    return 1
+  }
+  [[ $conv_out == *GITHUB_APP_RELEASER_ID* ]] || {
+    printf 'FAIL: convert output must name the secrets to store: %s\n' "$conv_out" >&2
     return 1
   }
 
