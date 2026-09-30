@@ -3,17 +3,17 @@
     "bleep": {
       "flake": false,
       "locked": {
-        "lastModified": 1790640737,
-        "narHash": "sha256-t8oQSICkOoY+4nMNCB4R+aE6zeH71eIdDRrjDijojzI=",
+        "lastModified": 1790778074,
+        "narHash": "sha256-erFiHAihRjmJrn2qsgQI3xzP+WwMu5iFGOVVle/s3pM=",
         "owner": "tarotene",
         "repo": "bleep",
-        "rev": "766f516ede807a30548f771eb2bd72359f5af201",
+        "rev": "5ed7b80243592384b4547405bf1f3439d6b3922b",
         "type": "github"
       },
       "original": {
         "owner": "tarotene",
         "repo": "bleep",
-        "rev": "766f516ede807a30548f771eb2bd72359f5af201",
+        "rev": "5ed7b80243592384b4547405bf1f3439d6b3922b",
         "type": "github"
       }
     },
