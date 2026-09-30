@@ -331,7 +331,7 @@
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
   転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する。
-- [ADR-0000](adr/0000-llm-facing-hook-message-format.md) — LLM 向け hook
+- [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook
   出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式の
   試験導入。Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
   `--procedure` で取りに行く。範囲は wrapup 系のみ。

@@ -1,4 +1,4 @@
-# ADR-0000 — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
+# ADR-625 — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
 
 - Status: Accepted(試験導入 — wrapup 系のみ。展開可否は後続 Issue で判断)
 - Date: 2026-10-01

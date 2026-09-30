@@ -219,7 +219,7 @@ fi
 # inbox の起票手順書を stdout に出す。Stop hook の出力はどの経路でもユーザーの
 # transcript に表示されるため、Stop 本体は 2 行のポインタだけを出し、静的な
 # 手順書はエージェントがこのサブコマンドで取りに行く(LLM 向け hook 出力の
-# 書式は ADR-0000: <hook-directive> 外枠 + 英語本文、照合語は原文のまま)。
+# 書式は ADR-625: <hook-directive> 外枠 + 英語本文、照合語は原文のまま)。
 if [[ "${1:-}" == "--procedure" ]]; then
   inbox="${2:?usage: wrapup-stop-gate.sh --procedure <inbox>}"
   self="$(self_path)"

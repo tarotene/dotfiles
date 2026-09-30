@@ -14,7 +14,7 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 | 部品 | イベント | 役割 |
 |------|----------|------|
 | `wrapup-session-start.sh` | SessionStart | 「気づきは inbox に `--add` で追記せよ」を `additionalContext` で注入。未処理件数も掲示 |
-| `wrapup-stop-gate.sh` | Stop | inbox 非空かつ起票可能なら exit 2 + stderr の短いポインタで、本体 Claude に `--procedure` の手順書を取りに行かせて起票させる(Stop 出力は人にも見えるため手順書本体は出さない。書式は ADR-0000) |
+| `wrapup-stop-gate.sh` | Stop | inbox 非空かつ起票可能なら exit 2 + stderr の短いポインタで、本体 Claude に `--procedure` の手順書を取りに行かせて起票させる(Stop 出力は人にも見えるため手順書本体は出さない。書式は ADR-625) |
 
 配備は `home/modules/claude.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通。

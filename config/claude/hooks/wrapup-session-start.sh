@@ -5,7 +5,7 @@
 #
 # グローバル CLAUDE.md を home-manager の store symlink にすると Claude Code の
 # `#` メモリ追記が書き込み失敗で壊れるため、常時指示は additionalContext 注入で届ける。
-# 注入内容(LLM 向け hook 出力の書式は ADR-0000: <hook-directive> 外枠 + 英語本文):
+# 注入内容(LLM 向け hook 出力の書式は ADR-625: <hook-directive> 外枠 + 英語本文):
 #   - スコープ外の気づきは wrapup-stop-gate.sh --add で inbox(JSONL)に追記せよ
 #   - inbox に未処理行が残っていれば未処理件数を掲示(遅延フラッシュ)
 #
