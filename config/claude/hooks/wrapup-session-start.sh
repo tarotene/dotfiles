@@ -5,9 +5,9 @@
 #
 # グローバル CLAUDE.md を home-manager の store symlink にすると Claude Code の
 # `#` メモリ追記が書き込み失敗で壊れるため、常時指示は additionalContext 注入で届ける。
-# 注入内容:
+# 注入内容(LLM 向け hook 出力の書式は ADR-0000: <hook-directive> 外枠 + 英語本文):
 #   - スコープ外の気づきは wrapup-stop-gate.sh --add で inbox(JSONL)に追記せよ
-#   - inbox に未処理行が残っていれば「未処理 N 件」を掲示(遅延フラッシュ)
+#   - inbox に未処理行が残っていれば未処理件数を掲示(遅延フラッシュ)
 #
 # inbox のパス計算(repo_slug/自己修復マージ)は wrapup-stop-gate.sh に一本化
 # されている(--inbox-path / --migrate サブコマンド)。ここでは source せず
@@ -37,17 +37,20 @@ bash "$gate" --stamp-feedback-session "$session_id" 2>/dev/null || true
 pending=0
 [[ -s "$inbox" ]] && pending="$(wc -l <"$inbox")"
 
-ctx="[wrapup-inbox] このプロジェクトの wrap-up inbox: ${inbox}
-今回のタスクのスコープ外だが Issue 起票の価値がある気づき(バグの兆候、負債、改善案など)が
-出たら、その時点で次のコマンドで 1 気づき = 1 行を追記すること:
-  bash '${gate}' --add '${inbox}' '{\"ts\": \"<ISO8601>\", \"title\": \"<Issue タイトル>\", \"detail\": \"<内容と文脈>\"}'
-inbox を直接編集してはいけない(必ず --add 経由)。追記した項目はターン終了時の
-Stop hook が起票を案内する。"
+ctx="<hook-directive source=\"wrapup-session-start\" event=\"SessionStart\">
+wrap-up inbox for this project: ${inbox}
+When something outside the current task's scope is worth an Issue (a sign of a
+bug, debt, an improvement idea), append it right then as one line per finding:
+  bash '${gate}' --add '${inbox}' '{\"ts\": \"<ISO8601>\", \"title\": \"<Issue title>\", \"detail\": \"<what and why>\"}'
+Do not edit the inbox directly (always go through --add). The Stop hook at the
+end of the turn points to the filing procedure for appended items."
 
 if [[ "$pending" -gt 0 ]]; then
   ctx+="
-現在この inbox には未処理 ${pending} 件が残っている(過去セッションの残骸を含む)。"
+The inbox currently holds ${pending} unprocessed item(s) (including leftovers from past sessions)."
 fi
+ctx+="
+</hook-directive>"
 
 jq -n --arg ctx "$ctx" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
