@@ -314,6 +314,16 @@ run_inner() { # $1=operation, [args...] — runs inside the bws-injected environ
   esac
 }
 
+sh_quote_words() { # args... -> one POSIX-sh-safe line (single-quote each word)
+  # Not `printf %q`: for multi-line words bash emits $'...\n...', which dash
+  # (what `bws run` re-parses with) does not understand.
+  local w out=""
+  for w in "$@"; do
+    out+="'${w//\'/\'\\\'\'}' "
+  done
+  printf '%s' "$out"
+}
+
 run_with_bitwarden() { # $1=operation, [args...]
   local operation="$1"
   shift
@@ -321,8 +331,11 @@ run_with_bitwarden() { # $1=operation, [args...]
   if ! token="$(keyring_token)"; then
     return 1
   fi
-  set +e
-  BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- \
+  # `bws run` joins everything after `--` with spaces and re-parses it with
+  # a shell, so quoting is lost (`sh -c 'a b'` arrives as `sh -c a b`).
+  # Hand it exactly one already-quoted string instead.
+  local cmd
+  cmd="$(sh_quote_words \
     "$ENV_BIN" \
     "HOME=$HOME" \
     "PATH=$PATH" \
@@ -336,7 +349,9 @@ run_with_bitwarden() { # $1=operation, [args...]
     "GITHUB_APP_SNAPSHOT_GH_BIN=$GH_BIN" \
     "GITHUB_APP_SNAPSHOT_OPENSSL_BIN=$OPENSSL_BIN" \
     "GITHUB_APP_SNAPSHOT_JQ_BIN=$JQ_BIN" \
-    "$SELF" __run "$operation" "$@"
+    "$SELF" __run "$operation" "$@")"
+  set +e
+  BWS_ACCESS_TOKEN="$token" "$BWS_BIN" run --no-inherit-env -- "$cmd"
   rc=$?
   set -e
   unset token
@@ -627,6 +642,32 @@ CONVSTUB
   }
   [[ $conv_out == *GITHUB_APP_RELEASER_ID* ]] || {
     printf 'FAIL: convert output must name the secrets to store: %s\n' "$conv_out" >&2
+    return 1
+  }
+
+  # -------------------------------------------------------------------
+  # run_with_bitwarden(): real `bws run` re-parses the joined args with a
+  # shell, so quoting must survive. This stub mimics that (sh -c "$*").
+  # -------------------------------------------------------------------
+  local q_bws="$tmp/q-bws" q_st="$tmp/q-secret-tool" q_out
+  cat > "$q_st" << 'QSTUB'
+#!/usr/bin/env bash
+printf 'tok'
+QSTUB
+  cat > "$q_bws" << 'QSTUB'
+#!/usr/bin/env bash
+# usage: bws run --no-inherit-env -- <args...>  (joins args like the real one)
+shift 3
+export GITHUB_APP_RELEASER_ID=777
+exec sh -c "$*"
+QSTUB
+  chmod +x "$q_bws" "$q_st"
+  q_out="$(BWS_BIN="$q_bws" SECRET_TOOL_BIN="$q_st" run_with_bitwarden exec sh -c '
+    printf "[%s|%s]" "$1" "$GITHUB_APP_RELEASER_ID"' _ "a b'c
+d")"
+  [[ $q_out == "[a b'c
+d|777]" ]] || {
+    printf 'FAIL: exec must preserve argument quoting through bws run and inject secrets: got %s\n' "$q_out" >&2
     return 1
   }
 
