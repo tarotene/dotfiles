@@ -252,6 +252,5 @@ D2 の「宣言の正本は workflow であり、写しを持たない」とい�
 
 ### 執行点
 
-- `scripts/github-audit`(`releaser_workflow_refs()` / `judge_releaser()` /
-  `build_graphql_query()`)
+- `scripts/github-audit`
 - `docs/github-audit.md`
