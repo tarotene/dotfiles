@@ -48,6 +48,8 @@ pub enum MatchClass {
     WordHard,
     /// 裸の org 名の単語境界一致。
     WordWarn,
+    /// 裸のリポジトリ名の単語境界一致だが、名前が短いため ask に降格されたもの(tarotene/bleep#44)。
+    WordSoft,
     #[serde(rename = "none")]
     NoneMatchClass,
 }
