@@ -106,7 +106,7 @@ plan-review の BLOCKER 指摘で実測して訂正した。
 
 [E] 側の対象判定は [S] と非対称である。[S] は `git config` という宣言的な
 「対象かどうか」の情報源を持つが、[E] にはそれが無いため、代わりに
-`scripts/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
+`crates/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
 `XDG_CONFIG_HOME` → `$HOME/.config`)で求めた token.gpg の**実在**そのものを
 ゲートにする(ADR-0005 のファイル存在ゲートと同じ考え方)。company ホストや
 #252 ロールアウト前の personal-pop では token.gpg が存在しないため、この

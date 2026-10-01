@@ -310,6 +310,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "esa-mcp-launcher"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "tempfile",
+]
+
+[[package]]
 name = "external-send-guard"
 version = "0.1.0"
 dependencies = [

@@ -1,7 +1,7 @@
 # esa-mcp — esa.io MCP サーバのトークン供給
 
 esa.io MCP サーバ(`@esaio/esa-mcp-server`)を全セッションから動く状態に保つ
-仕組み。実装は `scripts/esa-mcp-launcher`(配備先
+仕組み。実装は `crates/esa-mcp-launcher`(Rust、旧 `scripts/esa-mcp-launcher` を #414 / ADR-0024 Stage 4e で移植。配備先
 `~/.local/libexec/esa-mcp-launcher`)+ `home/modules/esa.nix` が populate する
 `dotfiles.claude.mcpServers.esa`(登録の仕組み自体は
 [`claude-mcp-servers.md`](claude-mcp-servers.md) の共通機構)。裁定の経緯と
@@ -23,7 +23,7 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
 そのため `${VAR}` 展開そのものは使わず、MCP サーバ起動時だけ復号する
 専用 launcher を command に据える設計にした(詳細は ADR-0022 の Context)。
 
-## launcher の契約(`scripts/esa-mcp-launcher`)
+## launcher の契約(`crates/esa-mcp-launcher`)
 
 - 入力: 環境変数 `ESA_TOKEN_FILE`(省略時 `~/.config/esa/token.gpg`)。
 - 正常系: `gpg --quiet --batch --decrypt "$ESA_TOKEN_FILE"` の出力を
@@ -41,10 +41,12 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
   「対象外なら無出力で exit 0」という ADR-0005 系の silent no-op を守るが、
   この launcher は意図的に逆を行く。silent に Unauthorized のまま動き続ける
   状態こそが、この機構が解決しようとしている事故そのものだから。
-- `--selftest`: `gpg`/`npx` をスタブ(固定文字列を返す/受け取ったトークンを
-  そのまま出力する)し、5 ケース(トークン欠如・復号失敗・空トークン・
-  npx 不在・token handoff)をネットワークなしで検査する。CI(`ci.yml`)が
-  毎回実行する。
+- テスト(`crates/esa-mcp-launcher/tests/launch.rs`、`cargo test --workspace`):
+  `gpg`/`npx` を PATH 上のスタブ(固定文字列を返す/受け取ったトークンを
+  そのまま出力する)にし、旧 `--selftest` の 5 ケース(トークン欠如・復号失敗・
+  空トークン・npx 不在・token handoff)をネットワークなしで検査する。診断に
+  トークンを出さないことも固定している。bash 版の `--selftest` 引数は無く、
+  全引数は npx へ素通しする。CI の rust ジョブが毎回実行する。
 
 ## パスフレーズプロンプトについて(#252, ADR-0003 Amendment 4)
 

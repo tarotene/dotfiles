@@ -401,14 +401,6 @@ jobs:
       - name: routines-plan.sh --selftest
         run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
 
-      # esa-mcp-launcher is deterministic shell end to end against stubbed
-      # gpg/npx: the missing-token-file diagnostic, decrypt failure, empty
-      # token, missing npx, and the ESA_ACCESS_TOKEN handoff to the exec'd
-      # server are exercised without network or real credentials
-      # (docs/claude/esa-mcp.md).
-      - name: esa-mcp-launcher --selftest
-        run: ./scripts/esa-mcp-launcher --selftest
-
       # obsidian-backup is exercised end to end against stubbed
       # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
       # restic invocations, the unsafe-relative-path rejection, the

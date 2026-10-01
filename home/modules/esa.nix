@@ -9,7 +9,7 @@
 # 一度も存在しなかったこと。この変数をログインシェル起動時に毎回復号・export
 # する形は ADR-0010 が明示的に退役させたパターン(シェル起動時の GPG PIN
 # プロンプト)そのものなので採らない。代わりに、MCP サーバー起動というただ一点
-# でだけ復号する専用 launcher(`scripts/esa-mcp-launcher`)を command に据え、
+# でだけ復号する専用 launcher(`crates/esa-mcp-launcher`)を command に据え、
 # env 展開自体を使わない。
 #
 # `~/.claude.json` への登録は `home/modules/claude-mcp-servers.nix` が公開する
@@ -23,15 +23,15 @@
 # [E] サブ鍵に解決する、ADR-0003 Amendment)で、company ホストのカードでは
 # 復号できないため、company に配ると毎セッション必ず失敗する MCP 登録だけが
 # 残る。詳細は docs/claude/esa-mcp.md、手動プロビジョニングは docs/setup.md。
-{ config, ... }:
+{ config, pkgs, ... }:
 let
   launcherPath = "${config.home.homeDirectory}/.local/libexec/esa-mcp-launcher";
 in
 {
-  home.file.".local/libexec/esa-mcp-launcher" = {
-    source = ../../scripts/esa-mcp-launcher;
-    executable = true;
-  };
+  # Rust 実装(crates/esa-mcp-launcher、#414)。配備先パスは bash 版と同じなので
+  # ~/.claude.json 側の command は変わらない。
+  home.file.".local/libexec/esa-mcp-launcher".source =
+    "${pkgs.dotfiles-tools}/bin/esa-mcp-launcher";
 
   # LANG=ja は旧 private リポジトリの .mcp.json が持っていた実績値をそのまま
   # 引き継ぐ。

@@ -47,7 +47,7 @@ pub fn key_is_on_disk(listing: &str, key: &str) -> bool {
 }
 
 /// esa MCP の token.gpg のパス(`ESA_TOKEN_FILE` → `XDG_CONFIG_HOME` →
-/// `$HOME/.config`、いずれも空文字は未設定扱い)。scripts/esa-mcp-launcher と同じ規則。
+/// `$HOME/.config`、いずれも空文字は未設定扱い)。crates/esa-mcp-launcher と同じ規則。
 pub fn esa_token_file() -> PathBuf {
     let nonempty = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
     if let Some(f) = nonempty("ESA_TOKEN_FILE") {

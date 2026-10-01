@@ -185,7 +185,7 @@ which bat rg fd nvim claude alacritty
 alacritty --version                      # launches; FiraCode NF renders (Font Book → search "FiraCode Nerd Font")
 launchctl list | grep git-audit-worktrees   # the launchd agent (ADR-0018) is loaded
 ./bootstrap.sh --dry-run                 # re-running bootstrap is a no-op, nothing destructive
-~/.local/libexec/esa-mcp-launcher --selftest  # or: start a Claude Code session and confirm the esa MCP tools are listed
+# start a Claude Code session and confirm the esa MCP tools are listed
 ```
 
 A Claude Code hook that shells out to `flock` (e.g. the wrap-up inbox gate)

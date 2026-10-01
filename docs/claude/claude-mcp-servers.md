@@ -92,7 +92,7 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
   `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
   スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
-  (`home/modules/esa.nix` + `scripts/esa-mcp-launcher`、
+  (`home/modules/esa.nix` + `crates/esa-mcp-launcher`、
   [`esa-mcp.md`](esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
   トークン(例: 別プロセスが供給する company workspace のトークン)なら
   `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。

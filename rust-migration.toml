@@ -149,10 +149,6 @@ path = "scripts/obsidian-backup"
 stage = "4e"
 
 [[target]]
-path = "scripts/esa-mcp-launcher"
-stage = "4e"
-
-[[target]]
 path = "scripts/hms.sh"
 stage = "4e"
 
