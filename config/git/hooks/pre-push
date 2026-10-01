@@ -25,7 +25,7 @@ if [[ "$git_dir" != "$common_dir" && "$is_herdr_worktree" -eq 0 ]]; then
     echo "  Worktree branches are for local development only." >&2
     echo "  Merge back to your parent branch first, then push from there." >&2
     echo "" >&2
-    echo "  Override: git push --no-verify" >&2
+    echo "  詳細: docs/git-sync.md「pre-push の worktree ガード」を参照してください。" >&2
     exit 1
 fi
 
@@ -37,6 +37,13 @@ fi
 # (ask) is treated the same as exit 2 (deny): this hook has no interactive
 # prompt to route an "ask" to.
 #
+# 範囲は git が pre-push の stdin に渡す
+# `<local-ref> <local-sha> <remote-ref> <remote-sha>` の行で決まる
+# (bleep ADR-0003)。コマンド文字列から範囲を推測しないので、新規ブランチ・
+# 別 worktree・shallow clone でも範囲を求め損ねない。stdin は 1 度しか読めない
+# のに bleep と repo-local hook の両方が要るので、一時ファイルに退避して
+# 両方へ渡す(旧実装は `scan-push < /dev/null` で捨て、互換経路を呼んでいた)。
+#
 # BLEEP_HOST=git-pre-push tags this call site in bleep's own judgment ledger
 # (ADR-478, tarotene/dotfiles) so an escalated fingerprint can be told apart
 # from PreToolUse hook denies. The deny text below deliberately does not
@@ -46,9 +53,13 @@ fi
 # violated that policy by printing `BLEEP_ALLOW=1` directly in the message
 # an agent reads; anyone who legitimately needs the bypass finds it
 # documented for humans in docs/claude/public-publish-guard.md instead.
+stdin_file="$(mktemp)"
+trap 'rm -f "$stdin_file"' EXIT
+cat > "$stdin_file"
+
 bleep="${HOME}/.claude/hooks/bleep/bleep"
 if [[ -x "$bleep" ]]; then
-    if ! reason="$(BLEEP_HOST=git-pre-push "$bleep" scan-push < /dev/null)"; then
+    if ! reason="$(BLEEP_HOST=git-pre-push "$bleep" scan-push --pre-push "${1-}" "${2-}" < "$stdin_file")"; then
         echo "error: Push blocked by bleep" >&2
         [[ -n "$reason" ]] && echo "  ${reason}" >&2
         echo "" >&2
@@ -60,5 +71,6 @@ fi
 # Chain to repo-local pre-push hook (core.hooksPath skips .git/hooks/)
 local_hook="${common_dir}/hooks/pre-push"
 if [[ -x "$local_hook" ]]; then
-    exec "$local_hook" "$@"
+    "$local_hook" "$@" < "$stdin_file"
+    exit $?
 fi

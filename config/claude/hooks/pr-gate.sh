@@ -1205,8 +1205,9 @@ CI の緑は古い head (${head_oid:0:7}) の結果です。
 
 push してから終了してください。
 注: herdr worktree からの push は pre-push の例外です(#39)。手動で切った
-    worktree の場合のみ阻まれるので、その場合は --no-verify を使う前に
-    ユーザーに確認してください。
+    worktree の場合のみ阻まれるので、その場合は親ブランチへ戻してから push
+    するか、ユーザーに確認してください(--no-verify など pre-push を無効に
+    する形は bleep が deny します。docs/git-sync.md)。
 
 ${rider}"
   fi
@@ -1547,7 +1548,7 @@ STUB
   errtext="$(cat "$dir/err")"
   check "未push で block: exit 2" 2 "$rc"
   check_grep "未push で block: メッセージに '未 push'" "未 push" "$errtext"
-  check_grep "未push で block: --no-verify の注意" "--no-verify" "$errtext"
+  check_grep "未push で block: pre-push 迂回は bleep が deny する旨" "bleep が deny" "$errtext"
 
   echo "G_unpushed (PR がまだ無いときの push 忘れ):"
 
