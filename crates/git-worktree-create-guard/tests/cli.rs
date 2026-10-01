@@ -106,3 +106,12 @@ fn degenerate_inputs_are_silent_exit_0() {
         assert_eq!((out.as_str(), code), ("", 0), "stdin: {stdin}");
     }
 }
+
+/// タブは JSON 上で `\t` にエスケープされる。生テキストで絞り込むと
+/// `worktree<TAB>add` が素通りする(#637)。
+#[test]
+fn deny_tab_separated() {
+    expect_deny("git\tworktree\tadd /tmp/wt");
+    expect_deny("git worktree\tadd /tmp/wt");
+    expect_deny("git\t-C\t/r\tworktree\tadd\t/tmp/wt");
+}

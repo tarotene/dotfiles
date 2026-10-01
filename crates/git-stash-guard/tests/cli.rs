@@ -96,6 +96,20 @@ fn deny_compound_commands() {
     }
 }
 
+/// タブは JSON 上で `\t` にエスケープされる。生テキストで単語を絞り込むと
+/// `git<TAB>stash` が素通りする(#637)。
+#[test]
+fn deny_tab_separated() {
+    for c in [
+        "git\tstash pop",
+        "git stash\tpop",
+        "git\tstash\tpop",
+        "git\t-C\t/some/worktree\tstash\tclear",
+    ] {
+        expect_deny(c);
+    }
+}
+
 #[test]
 fn pass_allowed_forms() {
     let apply = format!("git stash apply {SHA}");

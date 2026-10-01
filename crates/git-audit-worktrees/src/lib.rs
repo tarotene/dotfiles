@@ -7,8 +7,6 @@
 //! state ファイルは bash 版と byte 互換。
 //!
 //! 互換のために意図して残している bash 版の癖:
-//! - `IFS=$'\t' read` は連続タブを 1 つの区切りに潰すので、branch が空の行
-//!   (detached の prunable)は [`ifs_tab_split`] で同じように列がずれる。
 //! - `context` の `\n` は bash のダブルクォート内なので改行ではなく
 //!   バックスラッシュ+n の 2 文字として JSON に入る。
 //! - `$HERDR_BIN notification show` はクォートされていないので空白で分割される。
@@ -385,8 +383,12 @@ pub fn render_report(findings: &[String]) -> String {
     let mut o = String::new();
     let mut count = 0usize;
     for row in findings {
-        let f = ifs_tab_split(row, 6);
-        let (repo, path, branch, class, reason) = (&f[1], &f[2], &f[3], &f[4], &f[5]);
+        // 連続タブを潰さない単純な分割。branch 列が空の行(detached の
+        // prunable)でも列がずれない(#637)。
+        let f: Vec<&str> = row.splitn(6, '\t').collect();
+        let [_, repo, path, branch, class, reason] = f[..] else {
+            continue;
+        };
         if path.is_empty() {
             continue;
         }

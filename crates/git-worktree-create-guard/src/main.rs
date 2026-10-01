@@ -9,10 +9,9 @@ fn main() {
     if std::io::stdin().read_to_string(&mut raw).is_err() {
         return;
     }
-    // jq を呼ぶ前の最速フィルタ(bash 版と同じく生の入力に対して見る)。
-    if !git_worktree_create_guard::has_worktree_add(&raw) {
-        return;
-    }
+    // 事前フィルタは `decide` がパース後の command に対して行う。生の JSON に
+    // 対して見ると、タブが `\t` にエスケープされて `worktree<TAB>add` が
+    // 素通りする(#637)。
     let Some(input) = HookInput::parse(&raw) else {
         return;
     };
