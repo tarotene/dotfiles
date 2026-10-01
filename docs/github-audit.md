@@ -657,6 +657,18 @@ Workflow-content verdict (#613):
   the `RELEASER_APP_*` repo secrets exist, because the workflow does not
   actually use them.
 
+Release-run verdict (#673):
+
+- `releaser-release-failing` — the latest completed run of the repository's
+  `release-plz.yml` / `release-please.yml` concluded `failure`. The
+  `lifecycle` domain's `ci-failing` signal cannot see this: it looks only at
+  the single most recently completed run across *all* workflows, so a
+  succeeding `CI` run hides a failing release run (the #659 incident: a
+  release job failed for two days while `CI` kept passing). It is reported
+  even when the `RELEASER_APP_*` secrets exist, and it is added to any other
+  releaser finding rather than replacing it. A repository with no completed
+  release run (or an unreadable one) is not flagged.
+
 Secret-presence verdicts:
 
 - `releaser-app-secrets-missing` — neither `RELEASER_APP_CLIENT_ID` nor

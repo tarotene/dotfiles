@@ -101,16 +101,39 @@ fn cmd_hook() {
     let Some(ledger) = default_ledger() else {
         return;
     };
-    let cwd = input.project_dir().unwrap_or_default();
-    let Some(key) = ledger_key(&cwd) else {
+    // キーは `CLAUDE_PROJECT_DIR`(並列 worktree のサブエージェントでは親の
+    // リポジトリを指しうる)ではなく、書き込み先ファイルが属する worktree の
+    // toplevel にする。`register` は cwd の toplevel をキーにするので、
+    // 書き込み先と同じ worktree から register していれば必ず同じキーになる
+    // (#661)。
+    let fallback = input.project_dir().unwrap_or_default();
+    let Some(root) = write_target_toplevel(file_path, &fallback) else {
         return;
     };
-    let records = ledger.records(&key);
-    if new_tool_guard::ledger_has_record(&records, file_path) {
+    let Some(key) = root.to_str() else {
+        return;
+    };
+    let records = ledger.records(key);
+    if new_tool_guard::ledger_has_record(&records, &root, file_path) {
         return;
     }
     record_gate_event("deny");
-    PermissionDecision::deny(new_tool_guard::deny_message(file_path)).emit(Agent::Claude);
+    let shown = new_tool_guard::normalize_path(&root, file_path);
+    PermissionDecision::deny(new_tool_guard::deny_message(&shown)).emit(Agent::Claude);
+}
+
+/// 新規ファイル `file_path` が属する worktree の git toplevel。ファイルも
+/// 親ディレクトリもまだ無いことがあるので、実在する最も近い祖先で解決する。
+/// 見つからなければ `fallback`(hook 入力の project dir)で解決する。
+fn write_target_toplevel(file_path: &str, fallback: &Path) -> Option<PathBuf> {
+    let mut dir = Path::new(file_path).parent();
+    while let Some(d) = dir {
+        if d.is_dir() {
+            return hook_io::git::toplevel(d).or_else(|| hook_io::git::toplevel(fallback));
+        }
+        dir = d.parent();
+    }
+    hook_io::git::toplevel(fallback)
 }
 
 /// ADR-543 段3: 降格候補検出(段4 の promotion-detect)の入力になる

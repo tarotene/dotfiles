@@ -107,11 +107,30 @@ pub fn record_path(record: &str) -> Option<String> {
     (!p.is_empty()).then(|| p.to_string())
 }
 
-/// ledger の全レコードのうち、指定パスについて既に登録済みか。
-pub fn ledger_has_record(records: &[String], path: &str) -> bool {
+/// `path` を `root`(git toplevel)からの相対パスに正規化する。絶対パスなら
+/// `root` の接頭辞を外し、相対パスなら先頭の `./` を外す。`root` の外の
+/// 絶対パスはそのまま返す(`pr-gate.sh` の G_prior が repo 相対で照合するのと
+/// 同じ書式に揃える — #661)。
+pub fn normalize_path(root: &std::path::Path, path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() {
+        if let Ok(rel) = p.strip_prefix(root) {
+            return rel.to_string_lossy().into_owned();
+        }
+        return path.to_string();
+    }
+    path.strip_prefix("./").unwrap_or(path).to_string()
+}
+
+/// ledger の全レコードのうち、`file_path`(絶対でも相対でもよい)について既に
+/// 登録済みか。レコード側のパスも `root` 相対に正規化して比べるので、
+/// 絶対パスで register しても相対パスで register しても一致する。
+pub fn ledger_has_record(records: &[String], root: &std::path::Path, file_path: &str) -> bool {
+    let want = normalize_path(root, file_path);
     records
         .iter()
-        .any(|r| record_path(r).as_deref() == Some(path))
+        .filter_map(|r| record_path(r))
+        .any(|rp| normalize_path(root, &rp) == want)
 }
 
 /// deny メッセージ(register コマンドの完全形を同梱し、往復を1回で終える —
@@ -218,12 +237,27 @@ mod tests {
 
     #[test]
     fn ledger_lookup() {
+        let root = std::path::Path::new("/repo");
         let records = vec![
             "既存手段: scripts/x.sh — 採用: jq".to_string(),
             "既存手段: bin/y — 自前 — 却下: なし (理由)".to_string(),
         ];
-        assert!(ledger_has_record(&records, "scripts/x.sh"));
-        assert!(ledger_has_record(&records, "bin/y"));
-        assert!(!ledger_has_record(&records, "bin/z"));
+        assert!(ledger_has_record(&records, root, "scripts/x.sh"));
+        assert!(ledger_has_record(&records, root, "bin/y"));
+        assert!(!ledger_has_record(&records, root, "bin/z"));
+    }
+
+    #[test]
+    fn ledger_lookup_normalizes_absolute_and_relative() {
+        let root = std::path::Path::new("/repo");
+        // 相対で register → 絶対の Write と一致する
+        let rel = vec!["既存手段: crates/x/Cargo.toml — 採用: cargo".to_string()];
+        assert!(ledger_has_record(&rel, root, "/repo/crates/x/Cargo.toml"));
+        // 絶対で register → 相対(./ 付き含む)の照合と一致する
+        let abs = vec!["既存手段: /repo/crates/x/Cargo.toml — 採用: cargo".to_string()];
+        assert!(ledger_has_record(&abs, root, "crates/x/Cargo.toml"));
+        assert!(ledger_has_record(&abs, root, "./crates/x/Cargo.toml"));
+        // 別の worktree の絶対パスは一致しない
+        assert!(!ledger_has_record(&abs, root, "/other/crates/x/Cargo.toml"));
     }
 }

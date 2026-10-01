@@ -238,3 +238,119 @@ fn register_rejects_invalid_grammar() {
     let out = run_register(repo.path(), home.path(), "既存手段: p — 自前");
     assert!(!out.status.success());
 }
+
+/// `run_hook` に環境変数を足せる版。
+fn run_hook_env(
+    repo: &Path,
+    home: &Path,
+    stdin_json: &str,
+    env: &[(&str, &Path)],
+) -> std::process::Output {
+    use std::io::Write;
+    let mut cmd = Command::new(bin());
+    cmd.current_dir(repo)
+        .env("HOME", home)
+        .env_remove("XDG_STATE_HOME")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let mut child = cmd.spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin_json.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+/// #661: 並列 worktree のサブエージェントでは `CLAUDE_PROJECT_DIR` が親の
+/// リポジトリを指す。register は worktree の cwd から行うので、hook が
+/// `CLAUDE_PROJECT_DIR` をキーにすると別の ledger を見て、register 済みの
+/// Write を拒否してしまう。書き込み先の toplevel をキーにしていれば通る。
+#[test]
+fn hook_passes_after_register_in_parallel_worktree_with_parent_project_dir() {
+    let parent = init_repo();
+    let home = tempfile::tempdir().unwrap();
+    let wt_base = tempfile::tempdir().unwrap();
+    let wt = wt_base.path().join("agent-1");
+    git(
+        parent.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "agent-1",
+            wt.to_str().unwrap(),
+        ],
+    );
+    let wt = wt.canonicalize().unwrap();
+
+    // 新しい crate の Cargo.toml(親ではなく worktree 側へ書く)。
+    let target = wt.join("crates/new-crate/Cargo.toml");
+    let target_str = target.to_str().unwrap();
+
+    // worktree の cwd から、絶対パスで register する。
+    let reg = run_register(
+        &wt,
+        home.path(),
+        &format!("既存手段: {target_str} — 採用: cargo"),
+    );
+    assert!(reg.status.success(), "{:?}", reg);
+
+    let stdin = hook_stdin(&wt, target_str, "[package]\nname = \"new-crate\"\n");
+    let out = run_hook_env(
+        &wt,
+        home.path(),
+        &stdin,
+        &[("CLAUDE_PROJECT_DIR", parent.path())],
+    );
+    assert!(
+        out.stdout.is_empty(),
+        "register 済みなのに deny された: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+/// #661: 相対パスで register しても、絶対パスの Write と一致する。deny 文の
+/// 例も repo 相対で出る(pr-gate.sh の G_prior と同じ書式)。
+#[test]
+fn hook_matches_relative_register_and_shows_relative_path_in_deny() {
+    let repo = init_repo();
+    let home = tempfile::tempdir().unwrap();
+    let repo_path = repo.path().canonicalize().unwrap();
+    let target = repo_path.join("scripts/new.sh");
+
+    // 未登録 → deny、メッセージの例は repo 相対。
+    let stdin = hook_stdin(
+        &repo_path,
+        target.to_str().unwrap(),
+        "#!/usr/bin/env bash\n",
+    );
+    let out = run_hook(&repo_path, home.path(), &stdin);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("deny"), "{stdout}");
+    assert!(
+        stdout.contains("register '既存手段: scripts/new.sh —"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains(repo_path.to_str().unwrap()), "{stdout}");
+
+    // 相対パスで register → 絶対パスの Write が通る。
+    let reg = run_register(
+        &repo_path,
+        home.path(),
+        "既存手段: scripts/new.sh — 採用: jq",
+    );
+    assert!(reg.status.success(), "{:?}", reg);
+    let out = run_hook(&repo_path, home.path(), &stdin);
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
