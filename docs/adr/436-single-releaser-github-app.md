@@ -288,3 +288,17 @@ message: Use 'client-id' instead.` の警告が出るようになった。GitHub
 - `scripts/github-app-snapshot`
 - `config/claude/skills/rust-repo-governance/templates/.github/workflows/release-plz.yml`
 - `docs/github-audit.md`
+
+## Amendment (2026-10-01 — 旧 RELEASER_APP_ID の残存を advisory で見せる, #633)
+
+#615 の Amendment は、`RELEASER_APP_CLIENT_ID` + `RELEASER_APP_PRIVATE_KEY`
+の組が揃った repo を、旧 `RELEASER_APP_ID` が残っていても `ok` としていた。
+これでは移行手順の最後(旧 secret の削除)をやったかどうかを監査で確かめ
+られない。組が揃っていて旧 `RELEASER_APP_ID` も残っている repo は、新コード
+`releaser-app-id-leftover` を `advisory` で報告する。移行 PR の merge 前は
+workflow がまだ旧名を読むので、`drifted`(fail)にはしない。
+
+### 執行点
+
+- `scripts/github-audit`
+- `docs/github-audit.md`

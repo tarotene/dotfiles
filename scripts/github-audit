@@ -1445,7 +1445,8 @@ RELEASER_CANONICAL_REFS=(
   # `client-id`, so the canonical ID secret is RELEASER_APP_CLIENT_ID.
   # secrets.RELEASER_APP_ID above stays tolerated as a read name;
   # judge_releaser() reports the repo-secret side as
-  # `releaser-app-id-deprecated`.
+  # `releaser-app-id-deprecated` (not migrated yet) or, once
+  # RELEASER_APP_CLIENT_ID exists, `releaser-app-id-leftover` (advisory, #633).
   secrets.RELEASER_APP_CLIENT_ID
 )
 
@@ -1486,8 +1487,15 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
   has_id="$(jq -e 'any(. == "RELEASER_APP_CLIENT_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   has_key="$(jq -e 'any(. == "RELEASER_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   if [[ $has_id == true && $has_key == true ]]; then
+    # #633: 移行済み(CLIENT_ID あり)でも旧 RELEASER_APP_ID が残っていれば
+    # advisory で見せる。移行 PR の merge 前は workflow がまだ旧名を読むので
+    # drifted にはしない(fail させない)が、削除し忘れを ok に埋もれさせない。
+    local leftover=()
+    jq -e 'any(. == "RELEASER_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && leftover=("releaser-app-id-leftover")
     if ((${#not_installed_code[@]} > 0)); then
-      jq -n --argjson missing "$(printf '%s\n' "${not_installed_code[@]}" | jq -R . | jq -s .)" '{verdict: "drifted", missing: $missing}'
+      jq -n --argjson missing "$(printf '%s\n' "${not_installed_code[@]}" "${leftover[@]}" | jq -R . | jq -s . | jq 'map(select(length > 0))')" '{verdict: "drifted", missing: $missing}'
+    elif ((${#leftover[@]} > 0)); then
+      jq -n '{verdict: "advisory", missing: ["releaser-app-id-leftover"]}'
     else
       jq -n '{verdict: "ok", missing: []}'
     fi
@@ -3823,9 +3831,17 @@ jobs:
       "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
     return 1
   }
-  jq -e '.verdict == "ok"' \
+  # #633: 移行済みでも旧 RELEASER_APP_ID が残っていれば advisory(fail はさせない)。
+  jq -e '.verdict == "advisory" and .missing == ["releaser-app-id-leftover"]' \
     <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
-    printf 'FAIL: 移行済み(CLIENT_ID あり)なら旧 RELEASER_APP_ID が残っていても ok であるべき\n' >&2
+    printf 'FAIL: 移行済み(CLIENT_ID あり)で旧 RELEASER_APP_ID が残っていれば advisory/releaser-app-id-leftover になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-app-not-installed")) and (.missing | index("releaser-app-id-leftover"))' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >/dev/null || {
+    printf 'FAIL: 未 install(drifted)のときも releaser-app-id-leftover を併記するべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >&2
     return 1
   }
 
