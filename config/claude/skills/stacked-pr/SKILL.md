@@ -75,7 +75,10 @@ description: セッション内で複数の PR を作るとき、依存関係を
    内でブランチを切り替えるだけ)。
 4. 各段ごとに `git push -u origin <branch>` →
    `gh pr create --base <直前の段のブランチ>`(最下段だけ `--base main`)。
-   全段を作り終えるまで止まらない。
+   全段を作り終えるまで止まらない。`git commit` と `gh pr create` は
+   **別の Bash 呼び出し**にする — `stack-base-guard.sh` は PreToolUse で
+   実行前の HEAD を見て判定するので、`git commit && gh pr create` を
+   1 回で流すと commit 前の HEAD で判定されて止められる(#657)。
 5. 全段の PR ができたら `gh stack link <PR番号1> <PR番号2> ... <PR番号N>`
    (最下段から順)で GitHub 上の stack にまとめる(§5 参照)。**この実行は
    完了の一部** — `pr-gate.sh` の `G_stack` が未リンクのまま終わろうとする
@@ -220,11 +223,13 @@ default branch に付け替えても、本文は再評価されず `closingIssue
 1 行を追加する:
 
 ```
-Stack: <段番号>/<総段数> (base: #<親PR番号>)
+Stack: base #<親PR番号>
 ```
 
-最下段は `Stack: 1/3 (base: main)` のように親を `main` と書く。この行は
-`pr-gate.sh` の検査対象ではない(人間とレビュアーのための注記)。
+最下段は `Stack: base main` と書く。段番号・総段数は書かない — 総段数は
+後から段が増えるたびに古くなり、作成済みの全段を書き直す役が居ないため
+(#657)。段の全体像は `gh stack link` が作る GitHub の stack map に任せる。
+この行は `pr-gate.sh` の検査対象ではない(人間とレビュアーのための注記)。
 
 ## 8. 機械強制(ADR-0027)
 

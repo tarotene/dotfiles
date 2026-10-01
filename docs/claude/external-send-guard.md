@@ -115,6 +115,11 @@ bypass を再実行できてしまうため。この bypass の存在自体は�
   Saltzer & Schroeder の complete mediation の限界(bleep README が引く
   のと同じ根拠)がここでも成立する — この hook が仲介するのは Gmail/Slack
   の MCP tool だけであり、それ以外の経路は一切見ない。
+- **本人の記録システム**(勤怠・工数・本人のカレンダー)への書き込みは、
+  規約上そもそも下書き止まりの対象外(`config/agents/AGENTS.md`「外部発信は
+  既定で下書き止まりにする」、#656)。他人に通知が飛ぶ確定操作(申請・
+  提出・本人以外の招待)だけを本人に残すが、その判定は tool 名からは
+  一般化できないため、この hook は Calendar 等を見ない。
 
 ## テスト
 

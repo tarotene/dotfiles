@@ -666,8 +666,13 @@ Secret-presence verdicts:
   `RELEASER_APP_ID` (the value `actions/create-github-app-token`'s
   deprecated `app-id` input took) next to `RELEASER_APP_PRIVATE_KEY`, but
   no `RELEASER_APP_CLIENT_ID` yet (#615). Not yet migrated, as opposed to
-  missing. A leftover `RELEASER_APP_ID` next to a complete
-  `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` pair is ignored.
+  missing.
+- `releaser-app-id-leftover` (`advisory`) — a complete
+  `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` pair is set, but the
+  old `RELEASER_APP_ID` secret is still there (#633). Advisory, not
+  drifted: until the repo's migration PR merges, its workflow may still
+  read the old name. It surfaces a forgotten deletion that `ok` used to
+  hide.
 - `releaser-secret-name-legacy` — the repository still carries a complete
   pre-consolidation pair under the old tool-specific names
   (`RELEASE_PLZ_APP_ID`/`RELEASE_PLZ_APP_PRIVATE_KEY` for the rust
