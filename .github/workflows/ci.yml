@@ -1003,7 +1003,10 @@ jobs:
           for f in "$out"/home-files/.codex/hooks/*.sh "$out"/home-files/.copilot/hooks/*.sh; do
             [ -e "$f" ] || continue
             echo "== $f"
-            HOME="$out/home-files" bash "$f" --selftest
+            # PATH gets the deployed ~/.local/bin too: pr-title-guard's
+            # adapters resolve `pr-title-check` from there (the source-tree
+            # relative candidate does not exist in this layout).
+            HOME="$out/home-files" PATH="$out/home-files/.local/bin:$PATH" bash "$f" --selftest
           done
       # cache-nix-action does not create GC roots itself (its own README:
       # "users must manage this separately"), so anything without a root is
