@@ -55,7 +55,7 @@ main_codex() {
   command_ran_pr_create "$cmd" || exit 0
 
   local adr_check
-  adr_check="$(resolve_adr_number_check)"
+  adr_check="$(resolve_adr_number_check "$project")"
   [[ -n $adr_check && -x $adr_check ]] || exit 0
 
   have gh || exit 0
@@ -83,8 +83,10 @@ selftest_codex() {
   trap 'rm -rf "$ADR_NUMBER_ADAPTER_SELFTEST_TMP"' RETURN
   local tmp="$ADR_NUMBER_ADAPTER_SELFTEST_TMP"
   repo="$tmp/repo"
-  mkdir -p "$repo/docs/adr"
+  mkdir -p "$repo/docs/adr" "$repo/scripts"
   git -C "$repo" init -q
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/scripts/adr-number-check"
+  chmod +x "$repo/scripts/adr-number-check"
   cat > "$repo/docs/adr/0000-draft.md" << 'EOF'
 # ADR-0000 — draft
 EOF
@@ -113,6 +115,18 @@ SCRIPT
   out_other="$(PATH="$tmp:$PATH" bash "$self" <<< "$input_other")"
   if [[ -n $out_other ]]; then
     echo "FAIL(pass 期待、出力あり): 出力=$out_other" >&2
+    fails=$((fails + 1))
+  fi
+
+  # opt-in: scripts/adr-number-check の無い repo では ADR_NUMBER_CHECK_BIN が
+  # あっても何もしない。
+  local repo3="$tmp/repo3" out3
+  mkdir -p "$repo3/docs/adr"
+  git -C "$repo3" init -q
+  printf '# ADR-0000 — template\n' > "$repo3/docs/adr/0000-template.md"
+  out3="$(PATH="$tmp:$PATH" ADR_NUMBER_CHECK_BIN="$tmp/adr-number-check" bash "$self" <<< "$(jq -nc --arg cwd "$repo3" '{tool_name:"Bash",cwd:$cwd,tool_input:{command:"gh pr create --title x"}}')")"
+  if [[ -n $out3 ]]; then
+    echo "FAIL(opt-in 外 repo で出力あり): 出力=$out3" >&2
     fails=$((fails + 1))
   fi
 

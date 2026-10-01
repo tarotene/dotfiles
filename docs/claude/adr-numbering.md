@@ -38,7 +38,10 @@ ADR の `Issue:` 欄は `No-Issue(...)` が最頻であり、Issue 番号方式�
 1. `docs/adr/0000-<slug>.md` を書く(本文 H1 も `# ADR-0000 — ...`)
 2. commit → push → `gh pr create`
 3. `<PR番号>-<slug>.md` へ改番し、本文 H1 も書き換える
-   - 段 3 が着地していれば PostToolUse hook が自動でやる
+   - 段 3 が着地していれば PostToolUse hook が自動でやる。hook は opt-in:
+     対象プロジェクトが自前の `scripts/adr-number-check`(governance
+     テンプレートが播く複製)を持つときだけ動き、無ければ何もしない
+     (PATH 上のバイナリや dotfiles 側の複製は適用判定に使わない)
    - まだなら手動: `adr-number-check --fix <PR番号>`
 4. commit + push(この時点で CI が green になる)
 

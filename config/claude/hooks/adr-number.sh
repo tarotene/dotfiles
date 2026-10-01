@@ -8,6 +8,8 @@
 # additionalContext で伝え、忘れても CI が red になって気づける(段2で
 # 担保済み)。単体で revert しても安全。
 #
+# opt-in: 対象プロジェクトに scripts/adr-number-check が無ければ何もしない。
+#
 # 早期 exit: docs/adr/0000-*.md が無ければ、stdin の JSON すら読まずに
 # 即 exit 0 にする(常時コストほぼゼロ)。$CLAUDE_PROJECT_DIR が未設定の
 # 場合だけ stdin 側の解決結果で改めて判定する。
@@ -35,28 +37,30 @@ source "$GUARD_SELF_DIR/attribution-guard.sh"
 
 have() { command -v "$1" > /dev/null 2>&1; }
 
-# 呼び出しのたびに解決する(--selftest の ADR_NUMBER_CHECK_BIN 差し替えが
-# 効くように)。
+# 対象プロジェクト自身の scripts/adr-number-check を解決する。呼び出しの
+# たびに解決する(--selftest の ADR_NUMBER_CHECK_BIN 差し替えが効くように)。
 #
-# ADR_NUMBER_CHECK_BIN が明示的に set されているときは最終決定として扱い、
-# 実行不能なら PATH フォールバックせずに解決失敗とする(#430 と同型の穴 —
-# pr-title-guard.sh 側の理由を参照)。env が unset のときだけ、source tree
-# からの相対パス → PATH 上の配備済みバイナリの順にフォールバックする。
+# ADR-380 の PR 番号採番は opt-in: プロジェクトが自前の
+# scripts/adr-number-check(governance テンプレートが播く複製)を持つときだけ
+# 適用対象とする。PATH 上の配備済みバイナリや dotfiles source tree への
+# フォールバックは適用判定に使わない(使うと ADR-380 方式でないリポジトリの
+# docs/adr/0000-template.md まで改番してしまう)。
+# ADR_NUMBER_CHECK_BIN が set のときはテスト用の差し替えとして最終決定扱い。
 resolve_adr_number_check() {
+  local project="${1:-}"
   if [[ -n ${ADR_NUMBER_CHECK_BIN:-} ]]; then
     [[ -x $ADR_NUMBER_CHECK_BIN ]] && printf '%s\n' "$ADR_NUMBER_CHECK_BIN"
-    return
-  fi
-  local candidate="$GUARD_SELF_DIR/../../../scripts/adr-number-check"
-  if [[ -x $candidate ]]; then
-    printf '%s\n' "$candidate"
     return 0
   fi
-  command -v adr-number-check 2> /dev/null
+  [[ -n $project && -x $project/scripts/adr-number-check ]] || return 0
+  printf '%s\n' "$project/scripts/adr-number-check"
 }
 
+# 適用対象か: 起草中 ADR があり、かつプロジェクトが自前の
+# scripts/adr-number-check を持つ(opt-in)。
 has_draft() {
   local project="$1"
+  [[ -x $project/scripts/adr-number-check ]] || return 1
   compgen -G "$project/docs/adr/0000-*.md" > /dev/null 2>&1
 }
 
@@ -132,7 +136,7 @@ main() {
   command_ran_pr_create "$cmd" || exit 0
 
   local adr_check
-  adr_check="$(resolve_adr_number_check)"
+  adr_check="$(resolve_adr_number_check "$project")"
   [[ -n $adr_check && -x $adr_check ]] || exit 0
 
   have gh || exit 0
@@ -218,6 +222,9 @@ STUB
   mkdir -p "$repo/docs/adr"
   git -C "$repo" init -q
   printf '# ADR-0000 — x\n' > "$repo/docs/adr/0000-x.md"
+  mkdir -p "$repo/scripts"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/scripts/adr-number-check"
+  chmod +x "$repo/scripts/adr-number-check"
 
   run() { # $1=PATH の先頭に足すディレクトリ($tmp/bin か $tmp/binでない) $2=input json
     PATH="$1:$PATH" bash "$GUARD_SELF_DIR/adr-number.sh" <<< "$2"
@@ -252,12 +259,28 @@ STUB
 
   echo "2: draft が無い → 早期 exit(gh も adr-number-check も呼ばれない)"
   local repo2="$tmp/repo2"
-  mkdir -p "$repo2/docs/adr"
+  mkdir -p "$repo2/docs/adr" "$repo2/scripts"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo2/scripts/adr-number-check"
+  chmod +x "$repo2/scripts/adr-number-check"
   git -C "$repo2" init -q
   : > "$ADR_FIX_LOG"
   out="$(CLAUDE_PROJECT_DIR="$repo2" run "$tmp/bin" "$(jq -n --arg cwd "$repo2" '{tool_name:"Bash", tool_input:{command:"gh pr create --title x"}, cwd:$cwd}')")"
   check "2a 出力なし" "" "$out"
   check "2b adr-number-check は呼ばれない" "" "$(cat "$ADR_FIX_LOG")"
+
+  echo "2c: scripts/adr-number-check を持たない repo に 0000-template.md → 何もしない(opt-in)"
+  local repo3="$tmp/repo3"
+  mkdir -p "$repo3/docs/adr"
+  git -C "$repo3" init -q
+  printf '# ADR-0000 — template\n' > "$repo3/docs/adr/0000-template.md"
+  : > "$ADR_FIX_LOG"
+  out="$(CLAUDE_PROJECT_DIR="$repo3" run "$tmp/bin" "$(jq -n --arg cwd "$repo3" '{tool_name:"Bash", tool_input:{command:"gh pr create --title x"}, cwd:$cwd}')")"
+  check "2c 出力なし" "" "$out"
+  check "2d adr-number-check は呼ばれない" "" "$(cat "$ADR_FIX_LOG")"
+  check "2e 0000-template.md は改番されない" "yes" "$([[ -f $repo3/docs/adr/0000-template.md ]] && echo yes)"
+  out="$(unset CLAUDE_PROJECT_DIR; run "$tmp/bin" "$(jq -n --arg cwd "$repo3" '{tool_name:"Bash", tool_input:{command:"gh pr create --title x"}, cwd:$cwd}')")"
+  check "2f CLAUDE_PROJECT_DIR 未設定(cwd 解決)でも出力なし" "" "$out"
+  check "2g 同上 adr-number-check は呼ばれない" "" "$(cat "$ADR_FIX_LOG")"
 
   echo "3: draft はあるが gh pr create でないコマンド → 何もしない"
   : > "$ADR_FIX_LOG"
