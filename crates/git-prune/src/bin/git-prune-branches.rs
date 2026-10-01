@@ -1,4 +1,4 @@
-//! `git prune-branches` — upstream が [gone] のローカルブランチを確認つきで
+//! `git prune-branches` — upstream が `[gone]` のローカルブランチを確認つきで
 //! 削除する(`--auto` は `git audit-worktrees --evidence` の `branch` 行を
 //! 確認なしで消す)。`scripts/git-prune-branches` の Rust 移植(ADR-0024)。
 //!
@@ -78,7 +78,7 @@ fn run(args: &[String]) -> Exit {
     run_gone(dry)
 }
 
-/// 現在の repo のローカル branch のうち upstream が [gone] のもの。
+/// 現在の repo のローカル branch のうち upstream が `[gone]` のもの。
 /// `(branch, 他の worktree で checkout 中か)`。
 fn gone_branches() -> Result<Vec<(String, bool)>, i32> {
     let wl = git_stdout(&["worktree", "list", "--porcelain"])?;
@@ -102,7 +102,7 @@ fn gone_branches() -> Result<Vec<(String, bool)>, i32> {
     Ok(rows)
 }
 
-/// 既定の経路: [gone] tracking state(この repo のみ)。
+/// 既定の経路: `[gone]` tracking state(この repo のみ)。
 fn run_gone(dry: bool) -> Exit {
     git_inherit(&["fetch", "--prune", "origin"])?;
     let rows = gone_branches()?;

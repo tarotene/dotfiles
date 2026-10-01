@@ -16,12 +16,9 @@ fn run_raw(args: &[&str], stdin: &str) -> (String, i32) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // 未知の host など、stdin を読む前に終了するケースでは EPIPE になりうる。
+    // 判定には関係しないので、書き込みの失敗は無視する。
+    let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
     let out = child.wait_with_output().unwrap();
     (
         String::from_utf8(out.stdout).unwrap(),
