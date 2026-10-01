@@ -68,7 +68,7 @@ fn text(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
 
-/// 1) トークンファイル欠如 → exit 1 + プロビジョニング誘導
+/// selftest: トークンファイル欠如 → exit 1 + プロビジョニング誘導
 #[test]
 fn missing_token_file() {
     let t = T::new();
@@ -80,7 +80,7 @@ fn missing_token_file() {
     assert!(err.contains(t.p("absent.gpg").to_str().unwrap()));
 }
 
-/// 2) 復号失敗 → exit 1
+/// selftest: 復号失敗 → exit 1
 #[test]
 fn decrypt_failure() {
     let t = T::new();
@@ -90,7 +90,7 @@ fn decrypt_failure() {
     assert!(text(&o.stderr).contains("復号に失敗した"));
 }
 
-/// 3) 空トークン → exit 1(トークン内容は診断に出さない)
+/// selftest: 空トークン → exit 1(トークン内容は診断に出さない)
 #[test]
 fn empty_token() {
     let t = T::new();
@@ -100,7 +100,7 @@ fn empty_token() {
     assert!(text(&o.stderr).contains("復号結果が空だった"));
 }
 
-/// 4) npx 不在 → exit 1
+/// selftest: npx 不在 → exit 1
 #[test]
 fn missing_npx() {
     let t = T::new();
@@ -113,8 +113,8 @@ fn missing_npx() {
     }
 }
 
-/// 5) 正常系 → exec された(スタブ)npx が ESA_ACCESS_TOKEN と固定引数を受け取る。
-/// 末尾改行は落ちる(`$(...)` と同じ)。
+/// selftest 5: 正常系 → exec された(スタブ)npx が ESA_ACCESS_TOKEN と固定引数を受け取る。
+/// なお末尾改行は落ちる(`$(...)` と同じ)。
 #[test]
 fn token_handoff_and_args() {
     let t = T::new();
