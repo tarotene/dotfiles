@@ -12,7 +12,4 @@
 //! 両方に向けることで、転記ミスというバグ源を持ち込まない。
 
 /// fixture を bash 版に向けている hook/CLI(bin 名, リポジトリ相対パス)。
-pub const BASH_ORACLES: &[(&str, &str)] = &[(
-    "claude-statusline",
-    "config/claude/statusline/claude-statusline.sh",
-)];
+pub const BASH_ORACLES: &[(&str, &str)] = &[];

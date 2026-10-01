@@ -14,10 +14,7 @@ fn target() -> Command {
     if let Some(o) = std::env::var_os("CLAUDE_USAGE_ORACLE") {
         return Command::new(o);
     }
-    Command::new(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../config/claude/statusline/claude-usage.sh"),
-    )
+    Command::new(env!("CARGO_BIN_EXE_claude-usage"))
 }
 
 struct TempDir(PathBuf);
@@ -409,7 +406,7 @@ impl Env {
 }
 
 /// state file(`{"last_fetch":N,"last_line":"..."}` 固定形)の最小限の読み書き。
-/// fixture-oracle は依存を持たないので serde_json を使わない。
+/// テスト側は依存を足さずに文字列で扱う。
 mod serde_like {
     pub struct State {
         pub last_fetch: String,

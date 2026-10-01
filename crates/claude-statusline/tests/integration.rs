@@ -18,12 +18,7 @@ fn target() -> Command {
         c.arg(o);
         return c;
     }
-    let mut c = Command::new("bash");
-    c.arg(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../config/claude/statusline/claude-statusline.sh"),
-    );
-    c
+    Command::new(env!("CARGO_BIN_EXE_claude-statusline"))
 }
 
 struct TempDir(PathBuf);
@@ -66,12 +61,8 @@ fn run(stdin: &str, envs: &[(&str, &str)]) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // 早期 exit 経路では BrokenPipe になりうるので書き込み失敗は無視する。
+    let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
     child.wait_with_output().unwrap()
 }
 
