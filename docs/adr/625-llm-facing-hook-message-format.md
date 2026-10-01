@@ -1,6 +1,6 @@
 # ADR-625 — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
 
-- Status: Accepted(試験導入 — wrapup 系のみ。展開可否は後続 Issue で判断)
+- Status: Accepted(wrapup 系 4 出力に範囲を確定。他 hook へは展開しない — Amendment 2026-10-02、#624)
 - Date: 2026-10-01
 - Issue: No-Issue(セッション内の会話から直接起票)
 
@@ -94,3 +94,38 @@ LLM 向けの hook 出力(人間が読むことを主目的としない出力)�
 - `bash config/claude/hooks/wrapup-stop-gate.sh --selftest` — Stop 出力が
   外枠 4 行に収まること、示された `--procedure` コマンドの出力に go:ask の
   扱いと(差し替え後の)フッターが含まれることを検査する。
+
+## Amendment (2026-10-02 — 試験導入の評価と範囲の確定, #624)
+
+試験導入の評価観点(#624)を、実績に当てて評価した。**評価に足る実績が無かった**
+ので、その事実を残したうえで、展開しない側に倒して範囲を確定する。
+
+### 評価
+
+調べた範囲: この開発機の Claude Code のセッション記録(`~/.claude/projects/`)と
+gate-events(`~/.local/state/claude/gate-events.jsonl`)。取得日 2026-10-02。
+
+- **応答言語のドリフト**: 観測できなかった。`<hook-directive source=…>` を hook 出力として
+  実際に受け取ったセッションは 0 件(記録に現れるのは、この ADR や Issue を読んだ
+  セッションだけ)。この機体は試験導入の書式が入った世代を `hms` で適用する前だった。
+- **手順の取りこぼし**: 観測できなかった(同上)。`"go":"ask"` 行を AskUserQuestion なしで
+  起票した、`--procedure` を取りに行かずに起票した、といった事例は記録に無い。
+- **体感ノイズ**: 観測できなかった(同上)。設計上は、inbox 非空時の Stop 出力は外枠込み
+  4 行。
+
+### 決定
+
+- 試験導入の範囲(wrapup 系の 4 出力: Stop の inbox ポインタ、`--procedure` の手順書、
+  Stop の feedback-memory ブロック、SessionStart の inbox 案内)を、そのまま恒久の範囲に
+  確定する(試験の注記は外す)。
+- **他 hook(`pr-gate`、PreToolUse の deny 理由群、各 SessionStart)へは展開しない。**
+  理由は元の Decision と同じ — 英語化の効果は小さく決定的でないこと、文言依存の
+  selftest(約 70 箇所)の移行コストに対して証拠が弱いこと。評価で効果を示す実績が
+  得られなかったので、この判断は覆らない。
+- 再評価の条件: wrapup 系で、応答言語のドリフトまたは手順の取りこぼしが実際に観測された
+  ら、Issue を立てて書式を見直す(ADR を Superseded にするかを判断する)。逆に、展開を
+  望む具体的な根拠(精度・トークンの測定)が出たら、展開の Issue を立てる。
+
+### 執行点
+
+- `crates/wrapup-stop-gate/tests/directive_scope.rs`
