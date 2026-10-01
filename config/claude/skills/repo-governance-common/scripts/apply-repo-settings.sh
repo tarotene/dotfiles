@@ -7,7 +7,7 @@
 # echo. This file drops both (see setup-hooks.sh, deployed alongside this
 # file, for the identical rationale on the flag-discarding pattern).
 #
-# docs/adr/0000-renovate-automerge-shared-preset.md D5b: Dependabot alerts
+# docs/adr/568-renovate-automerge-shared-preset.md D5b: Dependabot alerts
 # stay on (they feed Renovate's vulnerabilityAlerts), but Dependabot's own
 # fix-PR generation (security updates) is disabled — Renovate is the single
 # fix-PR channel, so the two mechanisms stop racing each other on the same
@@ -171,6 +171,6 @@ if [[ "$ENABLE_DEPENDABOT" == "true" ]]; then
     gh api -X PUT "repos/$OWNER/$REPO/vulnerability-alerts" 2>/dev/null || true
     echo "  ✓  Dependabot vulnerability alerts enabled"
     gh api -X DELETE "repos/$OWNER/$REPO/automated-security-fixes" 2>/dev/null || true
-    echo "  ✓  Dependabot security updates disabled (Renovate vulnerabilityAlerts is the single fix-PR channel, ADR-0000)"
+    echo "  ✓  Dependabot security updates disabled (Renovate vulnerabilityAlerts is the single fix-PR channel, ADR-568)"
   fi
 fi

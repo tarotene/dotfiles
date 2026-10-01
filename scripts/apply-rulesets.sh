@@ -3,7 +3,7 @@
 # (<repo>/.github/rulesets/{security,quality,workflow}[,review].json) to
 # that same repository's live branch rulesets.
 #
-# 設計と根拠(ADR-0000-rulesets-declaration-in-repo — 段3で改番):
+# 設計と根拠(ADR-503):
 # required_status_checks の正本を「対象リポジトリの外(このリポジトリの
 # *-repo-governance skill テンプレート)」に置いていたことが telepath#243
 # を含む複数リポジトリの BLOCKED 事故の直接原因だった — テンプレートの

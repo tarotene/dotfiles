@@ -3,7 +3,7 @@
 # (.github/rulesets/{security,quality,workflow}[,review].json) of one or
 # more repositories, by driving scripts/apply-rulesets.sh for each.
 #
-# ADR-0000-rulesets-declaration-in-repo(段3で改番)以前は、対象リポジトリの
+# ADR-503 以前は、対象リポジトリの
 # 「型」(rust/typst/astro/core/dotfiles)を引数に取り、型ごとに別の
 # apply-rulesets.sh(*-repo-governance skill 側、プレースホルダ置換入り)
 # を呼び分ける 5 型構成だった。正本を対象リポジトリ自身の

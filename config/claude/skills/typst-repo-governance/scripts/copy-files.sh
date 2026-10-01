@@ -138,7 +138,7 @@ copy_file "scripts/check-nav-docs.sh"
 copy_file "AGENTS.md"
 copy_file "CLAUDE.md"
 
-# ADR-0000-rulesets-declaration-in-repo: required context の正本を対象
+# ADR-503: required context の正本を対象
 # リポジトリ自身の .github/rulesets/*.json に置く。ADR-591(集約 job
 # `CI passed` + `PR title` のみ required)以降、quality.json も
 # security/workflow と同じく repo-governance-common と共有(symlink)。
