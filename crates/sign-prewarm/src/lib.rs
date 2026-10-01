@@ -4,13 +4,13 @@
 //!
 //! 設計と根拠は docs/claude/sign-prewarm.md。判定の要点:
 //!
-//! - [S] は cwd に依存しない: scope なしの `git config --get` をリポジトリ外の
+//! - `[S]` は cwd に依存しない: scope なしの `git config --get` をリポジトリ外の
 //!   一時ディレクトリから読む(`--global` は使わない)。
-//! - [S] の対象はオンディスクの鍵だけ(`gpg --list-secret-keys --with-colons`
+//! - `[S]` の対象はオンディスクの鍵だけ(`gpg --list-secret-keys --with-colons`
 //!   の field 15 が `+`)。card-backed(token S/N)・simple stub(`#`)は温めない。
 //! - 冷えているかは `--pinentry-mode error` の試し操作で判定する(プロンプトを
 //!   出さない)。温めるのは `--pinentry-mode ask` を 90 秒で刈る 1 回だけ。
-//! - [S] / [E] は独立。一方の対象外・失敗が他方を妨げない。
+//! - `[S]` / `[E]` は独立。一方の対象外・失敗が他方を妨げない。
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -239,7 +239,7 @@ impl Prewarm {
         run_with_timeout(&mut c, self.warmup_timeout)
     }
 
-    /// [S] の温め(bash の `warm_sign_if_configured`)。
+    /// `[S]` の温め(bash の `warm_sign_if_configured`)。
     pub fn warm_sign_if_configured(&self) {
         let Some(probe) = ProbeDir::new() else {
             return;
@@ -267,7 +267,7 @@ impl Prewarm {
         }
     }
 
-    /// [E] の温め(bash の `warm_decrypt_if_present`)。
+    /// `[E]` の温め(bash の `warm_decrypt_if_present`)。
     pub fn warm_decrypt_if_present(&self) {
         let token = esa_token_file();
         if !token.is_file() {

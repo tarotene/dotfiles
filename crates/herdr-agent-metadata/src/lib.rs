@@ -7,7 +7,7 @@
 //! - `config/copilot/hooks/herdr-copilot-metadata.sh` — model(settings.json 由来)
 //!   (+ branch/oshi)。action は argv(`report` / `clear`)
 //!
-//! 入力の差は [`hook_io::Agent`] で選ぶ [`plan`] の分岐に閉じ込め、socket 送信は
+//! 入力の差は [`hook_io::Agent`] で選ぶ `plan` の分岐に閉じ込め、socket 送信は
 //! [`hook_io::herdr`] に任せる。送信 JSON は python 版 `json.dumps(request)` と
 //! バイト一致させる([`pyjson`]、ensure_ascii と `", "` / `": "` 区切り)。
 //! 詳細は docs/claude/herdr-sidebar-metadata.md。

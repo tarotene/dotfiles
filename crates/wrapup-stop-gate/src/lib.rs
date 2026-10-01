@@ -8,7 +8,7 @@
 //! bash 版との差は 1 点だけ: 指示文(`--procedure`・Stop の `procedure_cmd`・
 //! SessionStart の `--add` 例)が示すコマンドの `bash ` 前置を外した。配備物が
 //! ELF バイナリになり、`bash <path>` では起動できないため。パスはどちらも
-//! 自分の argv[0] 由来(symlink を辿らない — 配備先 `~/.claude/hooks/` は nix
+//! 自分の `argv[0]` 由来(symlink を辿らない — 配備先 `~/.claude/hooks/` は nix
 //! store への symlink で、指示文には世代を跨いで安定な symlink 側を出したい)。
 //!
 //! 実行時依存だった jq / flock / awk / grep / find は使わない(flock は
@@ -131,9 +131,9 @@ fn is_executable(p: &Path) -> bool {
     fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-/// bash 版 `self_path` の再現: argv[0] を symlink を辿らずに絶対化する
+/// bash 版 `self_path` の再現: `argv[0]` を symlink を辿らずに絶対化する
 /// (`$(cd "$(dirname "$0")" && pwd)/$(basename "$0")`)。PATH 経由で起動された
-/// (argv[0] に `/` が無い)ときは PATH 上の実体を探す。
+/// (`argv[0]` に `/` が無い)ときは PATH 上の実体を探す。
 pub fn self_path_from_argv0(argv0: &OsStr) -> String {
     let a = argv0.to_string_lossy().into_owned();
     let a = if a.contains('/') {
