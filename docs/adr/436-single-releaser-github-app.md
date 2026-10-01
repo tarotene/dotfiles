@@ -254,3 +254,37 @@ D2 の「宣言の正本は workflow であり、写しを持たない」とい�
 
 - `scripts/github-audit`
 - `docs/github-audit.md`
+
+## Amendment (2026-10-01 — ID の secret を RELEASER_APP_CLIENT_ID に改める, #615)
+
+D6 は secret 名を `RELEASER_APP_ID` / `RELEASER_APP_PRIVATE_KEY` に統一した。
+その後 `actions/create-github-app-token` の `app-id` 入力が非推奨になり、
+release workflow の実行ログに `Input 'app-id' has been deprecated with
+message: Use 'client-id' instead.` の警告が出るようになった。GitHub Docs
+"Generating a JSON Web Token (JWT) for a GitHub App"
+(https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app、
+取得 2026-10-01)も JWT の `iss` に数値の App ID でなく Client ID を使う
+ことを推奨している。D6 を次のように改める:
+
+- ID の repo secret は `RELEASER_APP_CLIENT_ID`(値は App の Client ID、
+  `Iv…`)とし、workflow は `client-id: ${{ secrets.RELEASER_APP_CLIENT_ID }}`
+  を渡す。秘密鍵の `RELEASER_APP_PRIVATE_KEY` は変えない。
+- Client ID は秘密ではないので repo variable にする案もあったが、secret の
+  ままとした。`github-audit` が既に secret 名の一覧を取っていて(追加の
+  API 呼び出しが要らない)、配布も既存の `gh secret set` の経路に乗り、
+  `RELEASER_APP_ID` からの置換が 1 対 1 になるため。
+- Secrets Manager の `github-apps` プロジェクトには `GITHUB_APP_<NAME>_CLIENT_ID`
+  を足す(`github-app-snapshot convert` の出力に含めた)。`run` はこれを
+  読まない — JWT の `iss` は従来の数値 ID のまま動く。
+- `judge_releaser()` は `RELEASER_APP_CLIENT_ID` + `RELEASER_APP_PRIVATE_KEY`
+  の組を正とし、旧 `RELEASER_APP_ID` だけが残る repo は新コード
+  `releaser-app-id-deprecated`(`drifted`、移行待ち)で報告する。workflow
+  が読む名前の標準集合(`RELEASER_CANONICAL_REFS`)にも
+  `secrets.RELEASER_APP_CLIENT_ID` を追記した。
+
+### 執行点
+
+- `scripts/github-audit`
+- `scripts/github-app-snapshot`
+- `config/claude/skills/rust-repo-governance/templates/.github/workflows/release-plz.yml`
+- `docs/github-audit.md`

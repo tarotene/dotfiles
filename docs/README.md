@@ -258,7 +258,7 @@
 - [ADR-436](adr/436-single-releaser-github-app.md) — releaser 用 GitHub
   App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
   個人アカウントには account-level の Actions secret が存在しないため、
-  `RELEASER_APP_ID`/`RELEASER_APP_PRIVATE_KEY` の repo ごとのコピーだけは
+  `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` の repo ごとのコピーだけは
   還元できず、そこを `scripts/github-audit` の `releaser` ドメインが検出
   する。対象 repo を列挙する registry ファイルは持たない(ADR-0025 と同じ
   理由)— 宣言の正本は release workflow ファイルの存在に還元する。

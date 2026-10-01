@@ -50,8 +50,9 @@ usage:
 
 The Bitwarden Secrets Manager machine account must have read-only access to
 a project holding, per owned App <name>: GITHUB_APP_<NAME>_ID,
-GITHUB_APP_<NAME>_PEM (NAME = <name> upper-cased, '-' -> '_'). The bws
-access token is stored only in GNOME Keyring.
+GITHUB_APP_<NAME>_PEM (NAME = <name> upper-cased, '-' -> '_'), and — for
+distribution to repo secrets, not read by `run` — GITHUB_APP_<NAME>_CLIENT_ID.
+The bws access token is stored only in GNOME Keyring.
 
 Full setup + rotation: docs/github-app-snapshot.md
 EOF
@@ -357,9 +358,10 @@ convert_manifest() { # $1=name $2=code
   cat << EOF
 github-app-snapshot: converted "$name" — id=$id slug=$slug client_id=$client_id
 
-Store these two secrets in the Bitwarden Secrets Manager "github-apps" project:
-  GITHUB_APP_${name_upper}_ID  = $id
-  GITHUB_APP_${name_upper}_PEM = <contents of $pem_file>
+Store these three secrets in the Bitwarden Secrets Manager "github-apps" project:
+  GITHUB_APP_${name_upper}_ID        = $id
+  GITHUB_APP_${name_upper}_PEM       = <contents of $pem_file>
+  GITHUB_APP_${name_upper}_CLIENT_ID = $client_id
 
 Then discard the local PEM copy:
   shred -u $pem_file
@@ -559,6 +561,12 @@ CONVSTUB
   }
   [[ $conv_out == *GITHUB_APP_RELEASER_ID* ]] || {
     printf 'FAIL: convert output must name the secrets to store: %s\n' "$conv_out" >&2
+    return 1
+  }
+  # #615: the Client ID is what actions/create-github-app-token's `client-id`
+  # input wants (`app-id` is deprecated), so convert must hand it over too.
+  [[ $conv_out == *'GITHUB_APP_RELEASER_CLIENT_ID = Iv1.test'* ]] || {
+    printf 'FAIL: convert output must name GITHUB_APP_<NAME>_CLIENT_ID with the returned client_id: %s\n' "$conv_out" >&2
     return 1
   }
 

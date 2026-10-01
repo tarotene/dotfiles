@@ -21,7 +21,7 @@ jobs:
           #
           # ADJUST: To have release PRs trigger full CI, install the shared
           # releaser App (repo-governance-common/reference/releaser-app.md —
-          # do not create a new one), set RELEASER_APP_ID +
+          # do not create a new one), set RELEASER_APP_CLIENT_ID +
           # RELEASER_APP_PRIVATE_KEY secrets, and use a token generated from
           # that App here instead.
           token: ${{ secrets.GITHUB_TOKEN }}

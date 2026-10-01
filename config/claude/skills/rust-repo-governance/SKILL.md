@@ -164,7 +164,7 @@ Follow `./reference/manual-steps.md` (in this Skill directory) for:
 1. **GitHub App** — install the existing shared releaser App on this
    repository (do not create a new one — see
    `repo-governance-common/reference/releaser-app.md`), set
-   `RELEASER_APP_ID` and `RELEASER_APP_PRIVATE_KEY` as repo secrets.
+   `RELEASER_APP_CLIENT_ID` and `RELEASER_APP_PRIVATE_KEY` as repo secrets.
 2. **crates.io Trusted Publishing** — register each published crate with
    owner/repo/workflow=`release-plz.yml`.
 3. **Bootstrap first publish** — one-time `publish-new` token for crates that
@@ -172,7 +172,7 @@ Follow `./reference/manual-steps.md` (in this Skill directory) for:
 
 Short version of the secrets:
 ```
-gh secret set RELEASER_APP_ID --repo OWNER/REPO --body "<numeric-id>"
+gh secret set RELEASER_APP_CLIENT_ID --repo OWNER/REPO --body "<client-id>"
 gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$(cat key.pem)"
 ```
 

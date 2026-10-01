@@ -20,7 +20,7 @@ The App's registration (permissions/events) source of truth is
 anywhere in the GitHub UI. `scripts/github-app-registry-check` detects
 drift between that Manifest and the App's live registration.
 `scripts/github-audit`'s `releaser` domain (`docs/github-audit.md`)
-detects repositories whose `RELEASER_APP_ID`/`RELEASER_APP_PRIVATE_KEY`
+detects repositories whose `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY`
 secrets are missing or still under a pre-consolidation tool-specific name,
 **and** — once `scripts/github-app-snapshot` has been run — whether the
 App is actually installed on the repository. Run both after onboarding a
@@ -59,7 +59,7 @@ the PEM on disk outside `github-app-snapshot convert`'s own step:
 
 ```bash
 github-app-snapshot exec -- sh -c \
-  'gh secret set RELEASER_APP_ID --repo OWNER/REPO --body "$GITHUB_APP_RELEASER_ID"'
+  'gh secret set RELEASER_APP_CLIENT_ID --repo OWNER/REPO --body "$GITHUB_APP_RELEASER_CLIENT_ID"'
 github-app-snapshot exec -- sh -c \
   'gh secret set RELEASER_APP_PRIVATE_KEY --repo OWNER/REPO --body "$GITHUB_APP_RELEASER_PEM"'
 ```
@@ -78,7 +78,7 @@ github-audit releaser
   id: generate-token
   uses: actions/create-github-app-token@<pinned-sha> # vN
   with:
-    app-id: ${{ secrets.RELEASER_APP_ID }}
+    client-id: ${{ secrets.RELEASER_APP_CLIENT_ID }}
     private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
 ```
 

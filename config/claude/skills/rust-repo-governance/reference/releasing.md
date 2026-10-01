@@ -20,7 +20,7 @@ for the App itself (shared across every repository — install it, don't
 create a new one) and the secrets it needs:
 
 ```
-gh secret set RELEASER_APP_ID --repo __OWNER__/__REPO__ --body "<id>"
+gh secret set RELEASER_APP_CLIENT_ID --repo __OWNER__/__REPO__ --body "<client-id>"
 gh secret set RELEASER_APP_PRIVATE_KEY --repo __OWNER__/__REPO__ --body "$(cat key.pem)"
 ```
 

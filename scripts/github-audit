@@ -212,8 +212,8 @@ judges the requested domains (default: all of them):
              release-please.yml workflow, OR any workflow whose
              actions/create-github-app-token step reads a RELEASE*-named
              secret/var (#613 — the claim follows the workflow's content,
-             not just its file name). Checks RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY repo
-             secret presence only — install status is not checked (a
+             not just its file name). Checks RELEASER_APP_CLIENT_ID/
+             RELEASER_APP_PRIVATE_KEY repo secret presence only — install status is not checked (a
              missing install fails loudly on the next release push, so
              this domain does not duplicate that detection)
   routines   Claude Code routine (scheduled cloud agent) declarations
@@ -1423,7 +1423,7 @@ judge_renovate() { # $1=gql-data-json $2=primary-language(optional) -> finding
 # (ADR-436 D4)。個人アカウントには account-level の Actions secret が
 # 存在しないため(repo/environment/org のみで org secret も Free プラン
 # では private repo から読めない)、App を 1 個に集約しても
-# RELEASER_APP_ID/RELEASER_APP_PRIVATE_KEY の repo ごとのコピーは還元
+# RELEASER_APP_CLIENT_ID/RELEASER_APP_PRIVATE_KEY の repo ごとのコピーは還元
 # できず、そこも引き続き drift しうる。
 # ---------------------------------------------------------------------------
 
@@ -1441,6 +1441,12 @@ RELEASER_CANONICAL_REFS=(
   secrets.RELEASE_PLZ_APP_PRIVATE_KEY
   secrets.RELEASE_PLEASE_APP_ID
   secrets.RELEASE_PLEASE_APP_PRIVATE_KEY
+  # #615: actions/create-github-app-token deprecated `app-id` in favour of
+  # `client-id`, so the canonical ID secret is RELEASER_APP_CLIENT_ID.
+  # secrets.RELEASER_APP_ID above stays tolerated as a read name;
+  # judge_releaser() reports the repo-secret side as
+  # `releaser-app-id-deprecated`.
+  secrets.RELEASER_APP_CLIENT_ID
 )
 
 releaser_workflow_refs() { # $1=repo_gql -> JSON array of "secrets.X"/"vars.Y" that create-github-app-token steps read, RELEASE*-named only
@@ -1477,7 +1483,7 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
     return
   fi
 
-  has_id="$(jq -e 'any(. == "RELEASER_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
+  has_id="$(jq -e 'any(. == "RELEASER_APP_CLIENT_ID")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   has_key="$(jq -e 'any(. == "RELEASER_APP_PRIVATE_KEY")' <<<"$secrets" >/dev/null 2>&1 && echo true || echo false)"
   if [[ $has_id == true && $has_key == true ]]; then
     if ((${#not_installed_code[@]} > 0)); then
@@ -1485,6 +1491,15 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
     else
       jq -n '{verdict: "ok", missing: []}'
     fi
+    return
+  fi
+
+  # #615: 数値 ID の RELEASER_APP_ID(actions/create-github-app-token の
+  # `app-id` 入力用、同 action で非推奨)だけが残っていて、Client ID の
+  # RELEASER_APP_CLIENT_ID が無い repo は「まだ移行していないだけ」。
+  if jq -e 'any(. == "RELEASER_APP_ID")' <<<"$secrets" >/dev/null 2>&1 && [[ $has_key == true ]]; then
+    jq -n --argjson missing "$(printf 'releaser-app-id-deprecated\n%s\n' "${not_installed_code[@]}" | jq -R . | jq -s . | jq 'map(select(length > 0))')" \
+      '{verdict: "drifted", missing: $missing}'
     return
   fi
 
@@ -3737,9 +3752,9 @@ jobs:
     return 1
   }
   jq -e '.verdict == "ok" and (.missing | length == 0)' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
     printf 'FAIL: 新 secret 名が揃っていれば ok になるべき: %s\n' \
-      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
+      "$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
     return 1
   }
   jq -e '.verdict == "drifted" and (.missing | index("releaser-secret-name-legacy"))' \
@@ -3761,9 +3776,9 @@ jobs:
     return 1
   }
   jq -e '.verdict == "drifted" and (.missing | index("releaser-app-secrets-missing"))' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID"]')" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID"]')" >/dev/null || {
     printf 'FAIL: 片方だけ揃っている場合も releaser-app-secrets-missing になるべき: %s\n' \
-      "$(judge_releaser true '["RELEASER_APP_ID"]')" >&2
+      "$(judge_releaser true '["RELEASER_APP_CLIENT_ID"]')" >&2
     return 1
   }
 
@@ -3802,14 +3817,28 @@ jobs:
     return 1
   }
 
+  # #615: 数値 ID の RELEASER_APP_ID だけが残っている repo は
+  # releaser-app-id-deprecated(Client ID への移行待ち)。
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-app-id-deprecated")) and (.missing | index("releaser-app-secrets-missing") | not)' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: RELEASER_APP_ID + PRIVATE_KEY だけの repo は releaser-app-id-deprecated になるべき: %s\n' \
+      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]')" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    printf 'FAIL: 移行済み(CLIENT_ID あり)なら旧 RELEASER_APP_ID が残っていても ok であるべき\n' >&2
+    return 1
+  }
+
   # #613: claim / nonstandard-refs の direct-call テスト。
   jq -e '.verdict == "drifted" and (.missing | index("releaser-workflow-refs-nonstandard"))' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["vars.RELEASE_APP_ID","secrets.RELEASE_APP_PRIVATE_KEY"]')" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["vars.RELEASE_APP_ID","secrets.RELEASE_APP_PRIVATE_KEY"]')" >/dev/null || {
     printf 'FAIL: 標準外の参照(vars.RELEASE_APP_ID 等)は secret が揃っていても releaser-workflow-refs-nonstandard になるべき\n' >&2
     return 1
   }
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["secrets.RELEASER_APP_ID","secrets.RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["secrets.RELEASER_APP_CLIENT_ID","secrets.RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
     printf 'FAIL: 標準の参照だけなら ok のままであるべき\n' >&2
     return 1
   }
@@ -3827,15 +3856,15 @@ jobs:
   # ---------------------------------------------------------------------
 
   jq -e '.verdict == "drifted" and (.missing | index("releaser-app-secrets-missing") | not) and (.missing | index("releaser-app-not-installed"))' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >/dev/null || {
     printf 'FAIL: secret 完備でも snapshot 上 install 無しなら releaser-app-not-installed になるべき: %s\n' \
-      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >&2
+      "$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true false)" >&2
     return 1
   }
   jq -e '.verdict == "ok" and (.missing | length == 0)' \
-    <<<"$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >/dev/null || {
+    <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >/dev/null || {
     printf 'FAIL: secret 完備かつ snapshot 上 install 済みなら ok のままであるべき: %s\n' \
-      "$(judge_releaser true '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >&2
+      "$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' true true)" >&2
     return 1
   }
   jq -e '.verdict == "advisory" and (.missing | index("releaser-app-installed-unclaimed"))' \
@@ -3872,8 +3901,8 @@ SNAPFIX
   }
 }
 SNAPGQL
-  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-installed_actions_secrets.json"
-  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-not-installed_actions_secrets.json"
+  printf '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-installed_actions_secrets.json"
+  printf '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_snap-not-installed_actions_secrets.json"
 
   cat >"$tmp/state/app-snapshot.json" <<'SNAPSTATE'
 {"schema": 1, "generated_at": "2026-09-30T00:00:00Z",
@@ -3933,7 +3962,7 @@ RELGQL
   # 形をそのまま置く — fetch_repo_settings() 用の repos_tarotene_all-ok.json
   # と同じ約束)。releaser-missing は意図的に置かない — mock の既定
   # フォールバック([])がそのまま「secret 無し」の実運用と一致する。
-  printf '["RELEASER_APP_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-ok_actions_secrets.json"
+  printf '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-ok_actions_secrets.json"
   printf '["RELEASE_PLEASE_APP_ID","RELEASE_PLEASE_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-legacy_actions_secrets.json"
   printf '["RELEASE_APP_PRIVATE_KEY"]' >"$tmp/fixtures/repos_tarotene_releaser-renamed_actions_secrets.json"
 
