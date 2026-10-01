@@ -1,0 +1,9 @@
+# selftest 19 gmail create_draft は引き続き非対象 → pass
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__create_draft","tool_input":{"to":["stranger@example.com"]}}'
+status.code = 0
+stdout = ""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }
