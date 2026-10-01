@@ -77,7 +77,19 @@ RELEASER_APP_NAME="${GITHUB_AUDIT_RELEASER_APP_NAME:-releaser}"
 # see judge_naming(). This is ADR-0020's own acceptance date, end-of-day.
 NAMING_STRICT_CUTOFF='2026-09-19T23:59:59Z'
 
-ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines workflows)
+ALL_DOMAINS=(rulesets charters naming settings renovate titles lifecycle releaser routines workflows docs)
+
+# docs domain (ADR-640 D3): the closed manifest -> composite-action table.
+# This array IS the single source of which stacks must build their standard
+# API docs; a stack absent from it is not-applicable, never drift. Add a row
+# here (plus the .github/actions/docs-<stack> action and a docs_stacks_for()
+# detection arm) to enable a new stack. stack|action name under
+# tarotene/dotfiles/.github/actions/.
+DOCS_STACK_ACTIONS=(
+  'rust|docs-rust'
+  'python|docs-python'
+  'typescript|docs-typescript'
+)
 
 # renovate domain (docs/adr/0000-renovate-automerge-shared-preset.md D4):
 # the exact, unpinned preset ref every repo's renovate.json should extend.
@@ -220,6 +232,17 @@ judges the requested domains (default: all of them):
              ci.yml. Also flags a still-live legacy reusable-workflow call
              to `tarotene/dotfiles/.github/workflows/pr-title.yml@` in
              pr-title.yml (superseded by the composite-action caller form)
+  docs      stack-standard API docs build (ADR-640): for repos whose
+             manifests match the closed table (Cargo.toml -> rust,
+             pyproject.toml -> python, a package.json declaring
+             exports/main/types -> typescript), ci.yml must call the matching
+             tarotene/dotfiles/.github/actions/docs-<stack>@main composite
+             action (missing=docs-absent:<stack>, or docs-wrong-ref:<stack>
+             when pinned to something other than @main). A PRIVATE repo with
+             GitHub Pages enabled is drifted too (private-pages-enabled): on a
+             personal account the site is public. That the docs job is in
+             ci-passed.needs is judged by the workflows domain, not here.
+             not-applicable for stacks absent from the table
 
 Without options, prints a human-readable report and exits 1 if any
 non-exempt repository is drifted/ungoverned in any judged domain
@@ -435,7 +458,7 @@ build_graphql_query() { # $1=JSON array of repo names -> GraphQL query string
       claudeSkillsDir: object(expression: \"HEAD:.claude/skills\") { ... on Tree { entries { name type mode } } }
       routinesDir: object(expression: \"HEAD:.claude/routines\") { ... on Tree { entries { name type } } }
       cargoToml: object(expression: \"HEAD:Cargo.toml\") { ... on Blob { id } }
-      packageJson: object(expression: \"HEAD:package.json\") { ... on Blob { id } }
+      packageJson: object(expression: \"HEAD:package.json\") { ... on Blob { id text } }
       pyprojectToml: object(expression: \"HEAD:pyproject.toml\") { ... on Blob { id } }
       goMod: object(expression: \"HEAD:go.mod\") { ... on Blob { id } }
       flakeNix: object(expression: \"HEAD:flake.nix\") { ... on Blob { id } }
@@ -1703,6 +1726,77 @@ judge_workflows() { # $1=repo $2=repo-gql-json -> finding
 }
 
 # ---------------------------------------------------------------------------
+# docs domain (ADR-640): stack-standard API docs must build strictly in CI.
+# ---------------------------------------------------------------------------
+
+# $1=repo-gql-json -> newline-separated stack names the closed table says
+# apply (empty = not-applicable). Manifest detection mirrors the table in
+# ADR-640 D3: Cargo.toml -> rust, pyproject.toml -> python, a package.json
+# that declares a library entry (exports / main / types) -> typescript. An
+# unparseable package.json is treated as non-library — a false negative is
+# preferable to flagging an Astro site or an app as missing API docs.
+docs_stacks_for() {
+  local gql="$1"
+  jq -e '.cargoToml != null' <<<"$gql" >/dev/null 2>&1 && echo rust
+  jq -e '.pyprojectToml != null' <<<"$gql" >/dev/null 2>&1 && echo python
+  jq -e '(.packageJson.text // "") | fromjson? | (type == "object") and (has("exports") or has("main") or has("types"))' \
+    <<<"$gql" >/dev/null 2>&1 && echo typescript
+  return 0
+}
+
+# $1=repo $2=visibility(PUBLIC/PRIVATE/INTERNAL) $3=repo-gql-json $4=repo-rest-json(optional; only
+# fetched for PRIVATE repos) -> finding. The `needs:` coverage of the docs
+# job is NOT judged here — the workflows domain already requires every ci.yml
+# job to be in ci-passed.needs (ADR-591 D1), so this domain only checks that
+# ci.yml calls the composite action at all.
+judge_docs() {
+  local repo="$1" vis="$2" gql="$3" rest="${4:-{\}}"
+  local -a missing=()
+  local ci stack action row calls
+  ci="$(jq -r '.declCi.text // ""' <<<"$gql")"
+  while IFS= read -r stack; do
+    [[ -n $stack ]] || continue
+    action=''
+    for row in "${DOCS_STACK_ACTIONS[@]}"; do
+      [[ ${row%%|*} == "$stack" ]] && action="${row#*|}"
+    done
+    # tarotene/dotfiles applies its own copy of the action by relative path
+    # (a PR that changes the action is then checked by that same PR); every
+    # other repository must reference it at @main (ADR-640 D2: the strict
+    # criteria live in one place, changed for all repos at once).
+    if [[ $repo == dotfiles ]]; then
+      calls="$(grep -cE "uses:[[:space:]]*\./\.github/actions/${action}([[:space:]]|\$)" <<<"$ci" || true)"
+      ((calls > 0)) || missing+=("docs-absent:$stack")
+    elif grep -qE "uses:[[:space:]]*tarotene/dotfiles/\.github/actions/${action}@main([[:space:]]|\$)" <<<"$ci"; then
+      :
+    elif grep -qE "uses:[[:space:]]*tarotene/dotfiles/\.github/actions/${action}@" <<<"$ci"; then
+      missing+=("docs-wrong-ref:$stack")
+    else
+      missing+=("docs-absent:$stack")
+    fi
+  done < <(docs_stacks_for "$gql")
+
+  # A private repository's Pages site is public on a personal account
+  # (ADR-640 D7), so an enabled site is a disclosure risk regardless of
+  # which stacks the repo has.
+  if [[ $vis == PRIVATE ]] && jq -e '.has_pages == true' <<<"$rest" >/dev/null 2>&1; then
+    missing+=("private-pages-enabled")
+  fi
+
+  if ((${#missing[@]} == 0)); then
+    if [[ -z "$(docs_stacks_for "$gql")" ]]; then
+      jq -n '{verdict: "not-applicable", missing: []}'
+    else
+      jq -n '{verdict: "ok", missing: []}'
+    fi
+  else
+    local missing_json
+    missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
+    jq -n --argjson missing "$missing_json" '{verdict: "drifted", missing: $missing}'
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # lifecycle domain (#275, ADR-0023): dormancy candidate scoring.
 #
 # 性質が他 5 ドメインと違う(#261 の裁定)。他ドメインは「あるべき設定から
@@ -1818,7 +1912,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # needs it too, to detect the release-plz.yml/release-please.yml caller.
     # rulesets ALSO now needs it for the declaration text fields
     # (ADR-0000-rulesets-declaration-in-repo).
-    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines || $d == workflows ]] && need_graphql=1
+    [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines || $d == workflows || $d == docs ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
     # rulesets' required-context-unreportable check (ADR-0000-rulesets-
     # declaration-in-repo) needs the REST-only latest-PR job names — same
@@ -1967,6 +2061,13 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ;;
           routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
           workflows) entry="$(judge_workflows "$repo" "$repo_gql")" ;;
+          docs)
+            # Pages state is REST-only and matters only for PRIVATE repos
+            # (ADR-640 D7), so the extra call is paid only by them.
+            local docs_rest='{}'
+            [[ $vis == PRIVATE ]] && docs_rest="$(fetch_repo_settings "$repo")"
+            entry="$(judge_docs "$repo" "$vis" "$repo_gql" "$docs_rest")"
+            ;;
         esac
       fi
       domains_obj="$(jq -c --arg d "$d" --argjson e "$entry" '. + {($d): $e}' <<<"$domains_obj")"
@@ -2054,6 +2155,12 @@ EOF
   cat >"$tmp/fixtures/repos_tarotene_all-ok.json" <<'EOF'
 {"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK", "allow_auto_merge": true, "security_and_analysis": {"dependabot_security_updates": {"status": "disabled"}}}
 EOF
+
+  # docs domain (ADR-640 D7): all-drifted is PRIVATE with Pages enabled. The
+  # fixture carries only has_pages, so the settings-domain expectations on
+  # all-drifted below (auto-merge-disabled etc., which rely on those REST
+  # fields being absent) are unaffected.
+  printf '{"has_pages": true}' >"$tmp/fixtures/repos_tarotene_all-drifted.json"
 
   # ADR-0000-rulesets-declaration-in-repo: split into the canonical named
   # 3-file layout (Security/Quality/Workflow, Review bundled into Workflow
@@ -2650,6 +2757,17 @@ EOF
   }
   jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("dependabot-security-updates-enabled")' <<<"$out" >/dev/null || {
     printf 'FAIL: all-drifted settings should flag dependabot-security-updates-enabled\n' >&2
+    return 1
+  }
+  # docs domain end-to-end (GraphQL cargoToml -> docs_stacks_for, REST
+  # has_pages only fetched for PRIVATE): both fixtures have a Cargo.toml and
+  # no docs call in ci.yml; only the PRIVATE one has Pages enabled.
+  jq -e '.[] | select(.repo=="all-ok") | .domains.docs | .verdict == "drifted" and (.missing | index("docs-absent:rust")) and ((.missing | index("private-pages-enabled")) | not)' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-ok docs should flag docs-absent:rust but not private-pages-enabled (PUBLIC)\n' >&2
+    return 1
+  }
+  jq -e '.[] | select(.repo=="all-drifted") | .domains.docs.missing | (index("docs-absent:rust") and index("private-pages-enabled"))' <<<"$out" >/dev/null || {
+    printf 'FAIL: all-drifted docs should flag docs-absent:rust and private-pages-enabled (PRIVATE, Pages on)\n' >&2
     return 1
   }
 
@@ -3465,6 +3583,95 @@ jobs:
   jq -e '(.missing | index("legacy-reusable-pr-title-call")) | not' \
     <<<"$(judge_workflows workflows-composite-call '{"workflowsDir": {"entries": [{"name": "pr-title.yml"}]}, "declPrTitle": {"text": "jobs:\n  pr-title:\n    steps:\n      - uses: tarotene/dotfiles/.github/actions/pr-title@main\n"}}')" >/dev/null || {
     printf 'FAIL: judge_workflows should NOT flag legacy-reusable-pr-title-call for the composite-action caller form\n' >&2
+    return 1
+  }
+
+  # ---------------------------------------------------------------------
+  # docs domain (ADR-640): judge_docs() / docs_stacks_for() の直接呼び出し
+  # テスト。repo_gql を直接組み立てられ live gh が要らないので、titles/
+  # workflows と同じスタイル。
+  # ---------------------------------------------------------------------
+
+  local docs_ci_rust='{"declCi": {"text": "jobs:\n  docs:\n    steps:\n      - uses: tarotene/dotfiles/.github/actions/docs-rust@main\n"}}'
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_docs docs-none PUBLIC '{"declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should be not-applicable when no manifest in the closed table matches\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_docs docs-rust-ok PUBLIC "$(jq -c '. + {cargoToml: {id: "x"}}' <<<"$docs_ci_rust")")" >/dev/null || {
+    printf 'FAIL: judge_docs should be ok for a Cargo.toml repo whose ci.yml calls docs-rust@main\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("docs-absent:rust"))' \
+    <<<"$(judge_docs docs-rust-absent PUBLIC '{"cargoToml": {"id": "x"}, "declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should flag docs-absent:rust when ci.yml has no docs call\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("docs-absent:rust"))' \
+    <<<"$(judge_docs docs-rust-no-ci PUBLIC '{"cargoToml": {"id": "x"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should flag docs-absent:rust when the repo has no ci.yml at all\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("docs-wrong-ref:rust")' \
+    <<<"$(judge_docs docs-rust-ref PUBLIC '{"cargoToml": {"id": "x"}, "declCi": {"text": "      - uses: tarotene/dotfiles/.github/actions/docs-rust@v1\n"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should flag docs-wrong-ref:rust when the action is not referenced at @main\n' >&2
+    return 1
+  }
+  # dotfiles は自身の action を相対パスで適用する(ADR-640 D2)。他リポの相対
+  # パス参照は、その repo に action が無いので drift。
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_docs dotfiles PUBLIC '{"cargoToml": {"id": "x"}, "declCi": {"text": "      - uses: ./.github/actions/docs-rust\n"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should accept the relative-path call for tarotene/dotfiles itself\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("docs-absent:rust")' \
+    <<<"$(judge_docs docs-rust-relative PUBLIC '{"cargoToml": {"id": "x"}, "declCi": {"text": "      - uses: ./.github/actions/docs-rust\n"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should not accept the relative-path call for a repo other than dotfiles\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("docs-absent:python")' \
+    <<<"$(judge_docs docs-python PUBLIC '{"pyprojectToml": {"id": "x"}, "declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should flag docs-absent:python for a pyproject.toml repo without docs-python\n' >&2
+    return 1
+  }
+  # package.json は exports / main / types のいずれかを宣言するライブラリだけが
+  # typescript 行の対象。Astro サイト等(どれも無い)・壊れた JSON は n/a。
+  jq -e '.missing | index("docs-absent:typescript")' \
+    <<<"$(judge_docs docs-ts-lib PUBLIC '{"packageJson": {"id": "x", "text": "{\"name\":\"a\",\"types\":\"i.d.ts\"}"}, "declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should treat a package.json declaring types as a TypeScript library\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_docs docs-ts-site PUBLIC '{"packageJson": {"id": "x", "text": "{\"name\":\"site\",\"type\":\"module\"}"}, "declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should be not-applicable for a package.json with no library entry (Astro site)\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_docs docs-ts-garbage PUBLIC '{"packageJson": {"id": "x", "text": "{not json"}, "declCi": {"text": "jobs: {}"}}')" >/dev/null || {
+    printf 'FAIL: judge_docs should be not-applicable (not error) for an unparseable package.json\n' >&2
+    return 1
+  }
+  # 複数スタック: 片方だけ呼んでいれば、足りない方だけが drift。
+  jq -e '(.missing | index("docs-absent:python")) and ((.missing | index("docs-absent:rust")) | not)' \
+    <<<"$(judge_docs docs-multi PUBLIC "$(jq -c '. + {cargoToml: {id: "x"}, pyprojectToml: {id: "y"}}' <<<"$docs_ci_rust")")" >/dev/null || {
+    printf 'FAIL: judge_docs should flag only the stack whose action call is missing\n' >&2
+    return 1
+  }
+  # PRIVATE の Pages 有効は、スタックの有無に関わらず drift(ADR-640 D7)。
+  jq -e '.verdict == "drifted" and (.missing | index("private-pages-enabled"))' \
+    <<<"$(judge_docs docs-private-pages PRIVATE '{"declCi": {"text": "jobs: {}"}}' '{"has_pages": true}')" >/dev/null || {
+    printf 'FAIL: judge_docs should flag private-pages-enabled for a PRIVATE repo with Pages on\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_docs docs-public-pages PUBLIC '{"declCi": {"text": "jobs: {}"}}' '{"has_pages": true}')" >/dev/null || {
+    printf 'FAIL: judge_docs should not flag Pages on a PUBLIC repo\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' \
+    <<<"$(judge_docs docs-private-nopages PRIVATE '{"declCi": {"text": "jobs: {}"}}' '{"has_pages": false}')" >/dev/null || {
+    printf 'FAIL: judge_docs should not flag a PRIVATE repo whose Pages is off\n' >&2
     return 1
   }
 

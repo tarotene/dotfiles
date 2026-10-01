@@ -1,12 +1,13 @@
 # github-audit: unified cross-repository GitHub audit
 
-Read-only audit across nine domains — reports drift for every one of
+Read-only audit across eleven domains — reports drift for every one of
 tarotene's owned repositories without applying or modifying anything.
 Unifies the former sibling scripts `github-audit-rulesets` (#130) and
-`github-audit-charters` (ADR-0013), and has since grown six more domains:
+`github-audit-charters` (ADR-0013), and has since grown eight more domains:
 naming (ADR-0014), settings, renovate, titles (ADR-0031), lifecycle (#275,
-ADR-0023), releaser (grill-me セッション調べ), and routines
-(ADR-0000-routines-declaration-in-repo). Its findings feed the
+ADR-0023), releaser (grill-me セッション調べ), routines
+(ADR-0000-routines-declaration-in-repo), workflows (ADR-591), and docs
+(ADR-640). Its findings feed the
 `github-audit-triage` skill
 (`docs/claude/github-audit-triage.md`), which is the only place an LLM
 enters this loop — this script never calls one.
@@ -775,6 +776,48 @@ templates control), not a general YAML parser: no existing script in this
 repository's `rulesets`/`github-audit` family depends on `yq`, and a
 general structural YAML parser would do more work than this narrowly-
 scoped check needs (ADR-543 Q1 — existing means checked first).
+
+### docs (ADR-640)
+
+Detects repositories that should build their stack-standard API docs in CI
+but do not. Applicability is decided by a **closed manifest → tool table**
+(`DOCS_STACK_ACTIONS` at the top of the script is its single source; ADR-640
+D3), not by the repository's primary language:
+
+| Manifest at the repo root | Stack | Composite action |
+|---|---|---|
+| `Cargo.toml` | `rust` | `docs-rust` |
+| `pyproject.toml` | `python` | `docs-python` |
+| `package.json` declaring `exports` / `main` / `types` | `typescript` | `docs-typescript` |
+
+A repository that matches no row is `not-applicable` (Astro sites, Nix,
+Go, Typst, GAS, config-only repos) — never drift. An unparseable
+`package.json` is also treated as non-library: a false negative is
+preferable to flagging an app or a site as missing API docs. Adding a stack
+means adding a row, the `.github/actions/docs-<stack>` action, and a
+`docs_stacks_for()` detection arm.
+
+Checks (via the shared `cargoToml` / `pyprojectToml` / `packageJson` /
+`declCi` GraphQL fields — `packageJson` now also fetches its `text`):
+
+- **`docs-absent:<stack>`**: `ci.yml` has no `uses:` of
+  `tarotene/dotfiles/.github/actions/docs-<stack>@main`. A repository with no
+  `ci.yml` at all is reported the same way (the `workflows` domain reports
+  `ci-yml-missing` separately). `tarotene/dotfiles` itself applies its own copy
+  by relative path (`./.github/actions/docs-<stack>`), so a PR that changes
+  the action is checked by that same PR.
+- **`docs-wrong-ref:<stack>`**: the action is called but not at `@main`
+  (ADR-640 D2 — the strict criteria live in one place and change for every
+  repository at once).
+- **`private-pages-enabled`**: a `PRIVATE` repository has GitHub Pages
+  enabled. On a personal account a private repository's Pages site is
+  public, so this is a disclosure risk regardless of stack (ADR-640 D7). The
+  REST `has_pages` field is fetched only for `PRIVATE` repositories, so other
+  repositories never pay the extra call.
+
+That the docs job is in `ci-passed.needs` is **not** judged here — the
+`workflows` domain already requires every `ci.yml` job to appear there
+(ADR-591 D1), and duplicating that check would give two sources of truth.
 
 ## Account-level: `scripts/github-app-registry-check` (ADR-436 Amendment 2026-09-30)
 
