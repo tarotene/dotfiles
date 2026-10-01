@@ -1307,7 +1307,7 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
     missing+=("squash-title-not-pr-title")
   jq -e '.squash_merge_commit_message == "BLANK"' <<<"$rest" >/dev/null 2>&1 ||
     missing+=("squash-message-not-blank")
-  # docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b: automerge
+  # docs/adr/568-renovate-automerge-shared-preset.md D2/D5b: automerge
   # safety depends on GitHub-native auto-merge being enabled, and the
   # fix-PR channel must be Renovate alone (Dependabot security updates
   # off). Both fields are REST-only, same $rest object as the squash
