@@ -374,14 +374,9 @@ jobs:
       - name: slot-hit.sh --selftest
         run: bash ./config/claude/skills/slot-availability/scripts/slot-hit.sh --selftest
 
-      # performance-hub resolves another private person-state repository's
-      # path for the performance-planning skill
-      # (docs/claude/performance-planning.md, that repository's own
-      # ADR-0010). Same marker-file/env-var indirection as writing-style-hub;
-      # its selftest is deterministic shell only, isolated from the real
-      # $HOME/$XDG_CONFIG_HOME, no network.
-      - name: performance-hub --selftest
-        run: ./scripts/performance-hub --selftest
+      # performance-hub / writing-style-hub / detach-open are Rust now (#414,
+      # ADR-0024 Stage 4e, crates/hub-resolve and crates/detach-open); their
+      # former --selftest cases run as `cargo test --workspace` in the rust job.
 
       # venue-urls.sh is the deterministic candidate-service enumerator behind
       # the venue-search skill (docs/claude/venue-search.md): reads a fixture
@@ -413,11 +408,6 @@ jobs:
       # (docs/claude/esa-mcp.md).
       - name: esa-mcp-launcher --selftest
         run: ./scripts/esa-mcp-launcher --selftest
-
-      # ポインタ整合検査(#115): マーカー未設定・存在しないパス・レイアウト
-      # 不一致のいずれも無音で失敗せず明示メッセージを出すことを検査する。
-      - name: writing-style-hub --selftest
-        run: ./scripts/writing-style-hub --selftest
 
       # obsidian-backup is exercised end to end against stubbed
       # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's

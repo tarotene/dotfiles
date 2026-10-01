@@ -251,6 +251,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "detach-open"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "tempfile",
+]
+
+[[package]]
 name = "detect-drift"
 version = "0.1.0"
 dependencies = [
@@ -463,6 +471,13 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "hub-resolve"
+version = "0.1.0"
+dependencies = [
  "tempfile",
 ]
 

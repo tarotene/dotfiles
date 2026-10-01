@@ -218,7 +218,7 @@ pandoc は skylighting の CSS を一切出さず、テストが空振りする�
   バイナリ存在ゲートを `.app` バンドルの存在に読み替えた形)。
 - `open_window()`: darwin では `open -a "<Chrome.app>" --args --app=<url>
   --window-size=<size>` で起動する。macOS の `open` は LaunchServices に
-  処理を渡してすぐ戻る(`scripts/detach-open.sh` が同じ事実を記録している)
+  処理を渡してすぐ戻る(`crates/detach-open` が同じ事実を記録している)
   ため、Linux 版のような `setsid` での明示的な切り離しは不要。
 
 selftest は `PLAN_VIEW_UNAME_OVERRIDE=Darwin` で実機非依存に darwin 分岐を

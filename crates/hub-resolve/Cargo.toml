@@ -1,0 +1,21 @@
+[package]
+name = "hub-resolve"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "writing-style-hub / performance-hub(scripts/ 配下の bash 版の Rust 移植、ADR-0024)"
+
+# 2 本は同じ「マーカーファイル + 環境変数で private ハブの絶対パスを解決する」
+# 薄いポインタで、差分は環境変数名・マーカー名・存在確認する README・文言だけ
+# (bash 版は片方をコピーして作られていた)。1 クレートに 2 bin にして単一正本にする。
+[[bin]]
+name = "writing-style-hub"
+path = "src/bin/writing-style-hub.rs"
+
+[[bin]]
+name = "performance-hub"
+path = "src/bin/performance-hub.rs"
+
+[dev-dependencies]
+tempfile = "3.27.0"

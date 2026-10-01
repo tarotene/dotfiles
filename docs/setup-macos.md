@@ -215,7 +215,7 @@ rendered plan.
   switching. If Japanese input is ever needed here, add it as a system
   Input Source, not through home-manager.
 - `open`/`xdg-open` are **not** shadowed — the OS's own `/usr/bin/open`
-  already returns immediately, so `scripts/detach-open.sh`'s COSMIC-specific
+  already returns immediately, so `crates/detach-open`'s COSMIC-specific
   foreground-blocking workaround does not apply and is not deployed here.
 - Alacritty runs unwrapped (no nixGL) — macOS provides its own native GL
   stack.

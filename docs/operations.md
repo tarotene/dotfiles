@@ -128,7 +128,7 @@ or a Linux host being switched before its OS hostname is renamed:
 |---|---|---|---|
 | `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
 | `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034, #567) | optional; placed as a side effect of applying through a registered wrapper (`dotfiles.privateHub.ref`, home-manager-managed from then on) | `github:tarotene/dotfiles` (public-only apply) |
-| `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
+| `style-hub` | `writing-style-hub` (`crates/hub-resolve`), for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
 
 Run `dotfiles-doctor` (deployed to `~/.local/bin` by
 `home/modules/packages.nix`) to see the current status of all three at

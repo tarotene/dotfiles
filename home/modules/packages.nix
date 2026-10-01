@@ -193,19 +193,19 @@
   # browse and anything else honoring $BROWSER wait for it to exit, so it
   # needs the same detaching behavior.
   #
-  # Linux-only, deliberately: detach-open.sh hardcodes `setsid -f
+  # Rust 実装(crates/detach-open、#414)。
+  #
+  # Linux-only, deliberately: detach-open hardcodes `setsid -f
   # /usr/bin/xdg-open`, neither of which exists on darwin. macOS's own
   # `/usr/bin/open` already returns immediately (it hands off to
   # LaunchServices and exits), so there is no foreground-blocking problem to
   # work around there — shadowing it would only risk breaking a tool that
   # already works.
   home.file.".local/bin/open" = lib.mkIf pkgs.stdenv.isLinux {
-    source = ../../scripts/detach-open.sh;
-    executable = true;
+    source = "${pkgs.dotfiles-tools}/bin/detach-open";
   };
   home.file.".local/bin/xdg-open" = lib.mkIf pkgs.stdenv.isLinux {
-    source = ../../scripts/detach-open.sh;
-    executable = true;
+    source = "${pkgs.dotfiles-tools}/bin/detach-open";
   };
 
   # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
@@ -275,20 +275,15 @@
   # writing-style-hub: resolves the private style-guide hub's absolute path
   # (marker file or env var indirection — never hardcoded, #115) for the
   # writing-style skill. docs/claude/writing-style.md has the design.
-  home.file.".local/bin/writing-style-hub" = {
-    source = ../../scripts/writing-style-hub;
-    executable = true;
-  };
+  # Rust 実装(crates/hub-resolve、#414)の bin を指す。
+  home.file.".local/bin/writing-style-hub".source = "${pkgs.dotfiles-tools}/bin/writing-style-hub";
 
   # performance-hub: resolves another private person-state repository's
   # absolute path (same marker-file/env-var indirection as writing-style-hub
   # above) for the performance-planning skill.
   # docs/claude/performance-planning.md has the design (that repository's
   # own ADR-0009).
-  home.file.".local/bin/performance-hub" = {
-    source = ../../scripts/performance-hub;
-    executable = true;
-  };
+  home.file.".local/bin/performance-hub".source = "${pkgs.dotfiles-tools}/bin/performance-hub";
 
   # update-own-tools (ADR-0025, #276): builds self-authored, not-yet-released
   # CLIs from origin/<branch> per a host-local registry

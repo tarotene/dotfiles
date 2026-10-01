@@ -1,6 +1,6 @@
 # writing-style — 執筆規約への薄いポインタ
 
-スクリプト: `scripts/writing-style-hub`
+実装: `crates/hub-resolve`(bin `writing-style-hub`、旧 `scripts/writing-style-hub` を #414 / ADR-0024 Stage 4e で Rust へ移植)
 スキル: `config/claude/skills/writing-style/SKILL.md`
 Issue: #115
 
@@ -47,7 +47,7 @@ public-publish-guard.md` が扱う脅威モデルと同種)。そのため ADR-0
 
 ## CI selftest
 
-`writing-style-hub --selftest`(`.github/workflows/ci.yml` に配線)は
+`crates/hub-resolve/tests/hub.rs`(`cargo test --workspace`、CI の rust ジョブ)は
 上記の縮退経路すべてと、環境変数がマーカーより優先されることを、
 実機の `$HOME`/`$XDG_CONFIG_HOME` から隔離した一時ディレクトリで検査する。
 ネットワーク・実際の private リポジトリへのアクセスは不要。

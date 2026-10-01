@@ -1,6 +1,6 @@
 # performance-planning — 演奏本番の練習・合わせ・当日ロジ支援
 
-スクリプト: `scripts/performance-hub`
+実装: `crates/hub-resolve`(bin `performance-hub`、旧 `scripts/performance-hub` を #414 / ADR-0024 Stage 4e で Rust へ移植)
 スキル: `config/claude/skills/performance-planning/SKILL.md`
 関連: 別の private な person-state リポジトリ側の ADR-0010
 (`state/performances/` のデータモデル。出典は private リポジトリ側の
@@ -17,7 +17,7 @@
 ## ハブの解決
 
 `writing-style-hub`(docs/claude/writing-style.md)と同型のマーカー方式。
-`scripts/performance-hub` が `state/performances/` を含む person-state
+`performance-hub` が `state/performances/` を含む person-state
 リポジトリのチェックアウトパスを解決する。
 
 - `$PERFORMANCE_HUB`(環境変数)
@@ -120,7 +120,7 @@ person-state リポジトリ側の裁定により、下書き予定の送り先�
 
 ## CI selftest
 
-`performance-hub --selftest`(`.github/workflows/ci.yml` に配線)は
+`crates/hub-resolve/tests/hub.rs`(`cargo test --workspace`、CI の rust ジョブ)は
 縮退経路すべてと、環境変数がマーカーより優先されることを、実機の
 `$HOME`/`$XDG_CONFIG_HOME` から隔離した一時ディレクトリで検査する。
 ネットワーク・実際の person-state リポジトリへのアクセスは不要。

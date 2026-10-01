@@ -361,7 +361,7 @@
 #    judge/finalize に委譲し、確定後を person-state リポジトリ側の TOML へ
 #    反映)・当日タイムテーブル/遠征の Calendar dispatch を行う。データの
 #    正本(`state/performances/`、ADR-0009)は別の private な person-state
-#    リポジトリに置き、`scripts/performance-hub`(writing-style-hub と
+#    リポジトリに置き、`performance-hub`(crates/hub-resolve、writing-style-hub と
 #    同型のマーカーファイル/環境変数間接参照)でパスを解決する。yq の
 #    TOML エンコーダが配列・テーブルの書き込みをサポートしないため、TOML
 #    への実際の書き込みは Claude が Edit ツールで行う分担にしている。
@@ -2156,7 +2156,7 @@ in
   home.file.".claude/skills/repo-charter/cases.md".source =
     repoConfig + "/claude/skills/repo-charter/cases.md";
   # writing-style: 執筆規約の正本(別 private リポジトリの docs/style/)への
-  # 薄いポインタ(#115)。scripts/writing-style-hub がマーカーファイル/環境
+  # 薄いポインタ(#115)。writing-style-hub(crates/hub-resolve)がマーカーファイル/環境
   # 変数からハブの絶対パスを解決する。
   home.file.".claude/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
