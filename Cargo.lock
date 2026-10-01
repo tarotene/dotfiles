@@ -982,6 +982,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "stack-base-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
