@@ -59,12 +59,18 @@ main_codex() {
   [[ -n $adr_check && -x $adr_check ]] || exit 0
 
   have gh || exit 0
-  local pr_number
-  pr_number="$(cd "$project" && gh pr view --json number --jq '.number' 2> /dev/null)" || exit 0
+  # PR 番号と base ブランチ名(差分内の ADR-0000 参照を書き換える範囲、#644)。
+  local pr_info pr_number pr_base fix_args
+  pr_info="$(cd "$project" && gh pr view --json number,baseRefName --jq '"\(.number) \(.baseRefName)"' 2> /dev/null)" || exit 0
+  read -r pr_number pr_base <<< "$pr_info"
   [[ $pr_number =~ ^[0-9]+$ ]] || exit 0
+  fix_args=(--fix "$pr_number")
+  if [[ -n ${pr_base:-} ]]; then
+    fix_args+=(--base "origin/$pr_base")
+  fi
 
   local fix_out
-  fix_out="$(cd "$project" && "$adr_check" --fix "$pr_number" 2>&1)" || exit 0
+  fix_out="$(cd "$project" && "$adr_check" "${fix_args[@]}" 2>&1)" || exit 0
 
   emit_context "$pr_number" "$fix_out"
   exit 0
