@@ -552,7 +552,7 @@ Exit node selection is declared, not run by hand on every session:
 `home/identities/{personal,company}.nix` write a small closed-vocabulary
 prefs file (`~/.config/dotfiles/tailscale-prefs`: `exit_node`,
 `exit_node_allow_lan_access`, `shields_up`), and `hms` applies it via
-`tailscale-prefs apply` (`scripts/tailscale-prefs`, `home/modules/
+`tailscale-prefs apply` (`crates/tailscale-prefs`, `home/modules/
 tailscale.nix`) after every switch — warn-only, so a missing/unauthenticated
 Tailscale install never fails the switch. Personal devices stay on the
 Mullvad exit node at all times (no per-location toggle); `arcturus` stays

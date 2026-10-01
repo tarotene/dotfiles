@@ -6,7 +6,7 @@
 
 ADR-503 は、required status check の正本を
 対象リポジトリ自身の `.github/rulesets/*.json` に一本化し、
-`scripts/apply-rulesets.sh` が PUT/POST 直前に「宣言した context が実測
+`apply-rulesets.sh`(`crates/apply-rulesets`、#414)が PUT/POST 直前に「宣言した context が実測
 job 名として報告されるか」を検証するようにした(D5)。しかし Claude
 セッションが `gh api -X PUT repos/O/R/rulesets/<id>` を直接叩けば、この
 検証を素通りしてリポジトリ外の値をそのまま live ruleset に書き込める —
@@ -32,11 +32,11 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
 - **deny のみ返す**(allow/ask は一切出さない)。不一致は通常の確認フローに
   そのまま落ちる。
 - **bypass**: コマンド文字列の先頭に `RULESETS_WRITE_GUARD_BYPASS=<非空値>`
-  という env var 代入があれば判定しない。`scripts/apply-rulesets.sh` は
-  自分自身の `gh api` 呼び出しの前に `export RULESETS_WRITE_GUARD_BYPASS=1`
-  するが、これは別プロセス(`bash scripts/apply-rulesets.sh ...` という
+  という env var 代入があれば判定しない。`apply-rulesets.sh` は
+  自分自身の `gh api` 呼び出しの子プロセスに `RULESETS_WRITE_GUARD_BYPASS=1`
+  を立てるが、これは別プロセス(`apply-rulesets.sh ...` という
   1 回の Bash tool 呼び出しの内側)なのでこの hook 自体はそもそも見ない —
-  この export は文書化目的であり、bypass が実際に効くのは Claude が
+  この環境変数は文書化目的であり、bypass が実際に効くのは Claude が
   `RULESETS_WRITE_GUARD_BYPASS=1 gh api ...` を直接 1 コマンドとして
   発行した場合だけである。
 

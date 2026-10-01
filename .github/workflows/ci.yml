@@ -423,15 +423,6 @@ jobs:
       - name: gpg-subkey --selftest
         run: ./scripts/gpg-subkey --selftest
 
-      # tailscale-prefs (ADR-471) is deterministic shell end to end: the
-      # pure build_set_args core (valid/empty/comment/unknown-key/malformed/
-      # missing-file cases) plus apply()'s three warn-only skip paths
-      # (missing prefs file, tailscale absent from PATH, tailscale present
-      # but not logged in via a stub binary) — no network, no real
-      # tailscaled involved.
-      - name: tailscale-prefs --selftest
-        run: ./scripts/tailscale-prefs --selftest
-
       # A mode here is a *pair* (plan side / execution side), so the interesting
       # failures are combinations: a transition that leaves the other half
       # behind, a .model guard that fires after the write (which is how an
@@ -454,11 +445,6 @@ jobs:
       # 不一致のいずれも無音で失敗せず明示メッセージを出すことを検査する。
       - name: writing-style-hub --selftest
         run: ./scripts/writing-style-hub --selftest
-
-      # ホストローカル・マーカー(host/private-hub/style-hub)の欠落検出器
-      # (#368)。実値は書かない、検出のみ。
-      - name: dotfiles-doctor --selftest
-        run: ./scripts/dotfiles-doctor --selftest
 
       # obsidian-backup is exercised end to end against stubbed
       # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
@@ -546,25 +532,6 @@ jobs:
       # network in its selftest.
       - name: github-app-registry-check --selftest
         run: ./scripts/github-app-registry-check --selftest
-
-      # github-rulesets-apply (ADR-503, #153)
-      # is a thin multi-repo loop over scripts/apply-rulesets.sh — 対象
-      # リポジトリの「型」は引数に取らない(旧: rust/typst/astro/core/
-      # dotfiles の 5 型 + 型ごとの apply-rulesets.sh、D4「還元」で撤去)。
-      # selftest は apply-rulesets.sh をスタブし、複数 repo ループとフラグ
-      # 透過、1 repo の失敗が他を止めないことを検証する。
-      - name: github-rulesets-apply --selftest
-        run: ./scripts/github-rulesets-apply --selftest
-
-      # apply-rulesets.sh (ADR-503): 任意の
-      # リポジトリ自身が持つ宣言(<repo>/.github/rulesets/*.json)を、その
-      # リポジトリの live な branch ruleset に適用する。PUT/POST 直前に
-      # quality.json の required_status_checks[].context を実測 job 名
-      # (Actions API)と突合し、報告不能な context があれば拒否する(D5)。
-      # config/claude/skills/*-repo-governance の配布テンプレートはもう
-      # apply ロジックを持たず、宣言のコピー(seed)だけを担う。
-      - name: apply-rulesets.sh --selftest
-        run: ./scripts/apply-rulesets.sh --selftest
 
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs

@@ -410,8 +410,8 @@ Design and rationale for the hooks and commands deployed from
 - [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
   hook (Rust, ADR-503): denies `gh api`
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
-  forcing all applies through `scripts/apply-rulesets.sh`'s context
-  verification.
+  forcing all applies through `apply-rulesets.sh`'s context
+  verification (Rust, `crates/apply-rulesets`).
 - [`routines-write-guard.md`](claude/routines-write-guard.md) — PreToolUse
   hook (Rust, ADR-519): denies a cron-bearing
   `RemoteTrigger` create/update whose body lacks the namespace-key name and

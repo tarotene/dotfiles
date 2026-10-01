@@ -308,30 +308,31 @@
   # dotfiles/private-hub ADR-0034, dotfiles/style-hub #115/#368) without
   # ever writing a real value itself (ADR-0034 D5: schema is public, values
   # are private). Detector only, manual command, no timer.
-  home.file.".local/bin/dotfiles-doctor" = {
-    source = ../../scripts/dotfiles-doctor;
-    executable = true;
-  };
+  # Rust、crates/dotfiles-doctor(ADR-0024、#414)経由で pkgs.dotfiles-tools から配備。
+  home.file.".local/bin/dotfiles-doctor".source = "${pkgs.dotfiles-tools}/bin/dotfiles-doctor";
 
   # github-rulesets-apply(ADR-503): a thin
   # multi-repo loop over apply-rulesets.sh — it owns no ruleset logic and no
   # longer takes a repository "type" (rust/typst/astro/core/dotfiles); the
   # declaration lives in each target repository's own
   # `.github/rulesets/*.json`. Manual command, no timer.
-  home.file.".local/bin/github-rulesets-apply" = {
-    source = ../../scripts/github-rulesets-apply;
-    executable = true;
-  };
+  # Rust、crates/apply-rulesets(ADR-0024、#414)の bin。呼び先の
+  # `apply-rulesets` は自分の隣(同じ dotfiles-tools の bin/)から探す。
+  home.file.".local/bin/github-rulesets-apply".source =
+    "${pkgs.dotfiles-tools}/bin/github-rulesets-apply";
 
   # apply-rulesets.sh(ADR-503)自身の PATH
   # 配備。宣言(.github/rulesets/*.json)は remote(contents API)または
   # --from-dir から読むため、この repo 自身の宣言を別途 xdg.configFile で
   # 配備する必要はもう無い(旧: RULESETS_DIR の 3 段フォールバック・
   # dotfiles/rulesets/*.json の複写。単一正本 > 複写+同期)。
-  home.file.".local/bin/apply-rulesets.sh" = {
-    source = ../../scripts/apply-rulesets.sh;
-    executable = true;
-  };
+  #
+  # Rust 化(ADR-0024、#414)後の実体は crates/apply-rulesets の
+  # `apply-rulesets` だが、各 *-repo-governance skill の seed.sh(配布テンプレート)
+  # と docs が PATH 上の `apply-rulesets.sh` という名前を参照している
+  # (`GOVERNANCE_APPLY_RULESETS_BIN` の既定値)ので、配備先の名前は旧名の
+  # まま保つ。配布先の bash を書き換えずに済ませるための互換名。
+  home.file.".local/bin/apply-rulesets.sh".source = "${pkgs.dotfiles-tools}/bin/apply-rulesets";
 
   # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
   # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that
