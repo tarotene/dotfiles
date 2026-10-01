@@ -66,7 +66,8 @@ impl Env {
             cmd.env(k, v);
         }
         let mut child = cmd.spawn().unwrap();
-        child.stdin.take().unwrap().write_all(stdin).unwrap();
+        // 対象外の入力では子が stdin を読み切らずに終わることがあるので BrokenPipe は無視する。
+        let _ = child.stdin.take().unwrap().write_all(stdin);
         let out = child.wait_with_output().unwrap();
         assert_eq!(out.status.code(), Some(0), "常に exit 0(fail-open)");
         assert!(out.stdout.is_empty(), "stdout には何も出さない");
