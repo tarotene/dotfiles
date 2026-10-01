@@ -3,6 +3,11 @@
 Per-host migration from the procedural dotfiles to the home-manager environment.
 Tracked by #217.
 
+New or revised sections follow the runbook format in
+[`cloud-artifacts-and-runbooks.md`](cloud-artifacts-and-runbooks.md) §2
+(`[機械]`/`[人]` markers, a values table, one operation per human step);
+existing sections are brought over as they are touched, not rewritten in bulk.
+
 ## Prerequisites
 
 - Nix installed (the `bootstrap.sh` script handles this for greenfield hosts).
