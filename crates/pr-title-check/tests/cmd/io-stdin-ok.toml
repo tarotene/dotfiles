@@ -1,0 +1,4 @@
+# stdin 経路(引数省略): 末尾改行は落ちて適合
+bin.name = "pr-title-check"
+stdin = "feat: 追加する\n\n"
+status.code = 0

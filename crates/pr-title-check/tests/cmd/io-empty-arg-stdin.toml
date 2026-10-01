@@ -1,0 +1,5 @@
+# 引数が空文字列なら stdin を読む(bash の `-z $title` 分岐)
+bin.name = "pr-title-check"
+args = [""]
+stdin = "fix: 直す\n"
+status.code = 0

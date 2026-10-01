@@ -1,0 +1,4 @@
+# bash selftest 7
+bin.name = "pr-title-check"
+args = ["revert: 署名検証の早期 return を戻す"]
+status.code = 0

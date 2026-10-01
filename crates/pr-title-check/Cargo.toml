@@ -1,0 +1,14 @@
+[package]
+name = "pr-title-check"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 依存ゼロ(標準ライブラリのみ)が条件: 他リポジトリの required check
+# (.github/actions/pr-title)がこのクレート 1 つだけを sparse-checkout して
+# `cargo build` する。依存を足すとその build が重く・壊れやすくなる。
+[dependencies]
+
+[dev-dependencies]
+trycmd = "1.2.1"

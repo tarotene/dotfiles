@@ -1,0 +1,4 @@
+# bash selftest 8
+bin.name = "pr-title-check"
+args = ["chore: x"]
+status.code = 0

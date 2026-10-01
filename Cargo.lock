@@ -672,6 +672,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pr-title-check"
+version = "0.1.0"
+dependencies = [
+ "trycmd",
+]
+
+[[package]]
+name = "pr-title-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "pr-title-check",
+ "tempfile",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
