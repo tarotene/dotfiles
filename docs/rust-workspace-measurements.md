@@ -78,6 +78,38 @@ hyperfine(`-N`、`--input` で stdin JSON を与える)の結果:
 Rust の最大値 8.3ms でも予算の 1/6 に収まる。ADR-0024 の PoC 値(1.2ms)とも
 整合する。
 
+## 4. statusline / claude-usage の起動時間(Stage 4d、#413)
+
+statusline はストリーミング中 ~300ms 毎、claude-usage は herdr のタブバーから
+60 秒毎に起動される。bash 版と Rust 版を同じ入力で比べた。
+
+- 取得日: 2026-10-01
+- 環境: x86_64-linux(Pop!_OS、Intel Core Ultra 7 268V、8 スレッド)、
+  rustc 1.95.0、Determinate Nix 3.21.5(nix 2.34.8)、hyperfine 1.20.0、
+  jq 1.8.2(bash 版が使う)
+- 手順: `cargo build --release` の bin と bash 版を
+  `hyperfine -N --warmup 5 --runs 200` で比べた。statusline は `--input` で
+  statusline JSON(model / ctx / cost / effort / project_dir あり)を与え、
+  bash 版は配備と同じく `bash <path>` で、claude-usage は shebang
+  (`/bin/sh` = dash)で起動した
+
+| 対象 | 経路 | 平均 [ms] | 最小 [ms] | 最大 [ms] |
+|---|---|---:|---:|---:|
+| `claude-statusline.sh`(bash) | Herdr 外、リポ名キャッシュ温 | 14.9 ± 1.9 | 10.4 | 22.1 |
+| `claude-statusline`(Rust) | Herdr 外、リポ名キャッシュ温 | 0.9 ± 0.3 | 0.5 | 2.0 |
+| `claude-statusline.sh`(bash) | Herdr 内、同値で送信抑止 | 17.8 ± 4.1 | 11.8 | 39.7 |
+| `claude-statusline`(Rust) | Herdr 内、同値で送信抑止 | 1.0 ± 0.3 | 0.5 | 2.1 |
+| `claude-usage.sh`(sh) | `__render`(limits 2 件) | 46.3 ± 6.8 | 33.1 | 96.5 |
+| `claude-usage`(Rust) | `__render`(limits 2 件) | 1.9 ± 0.8 | 1.0 | 7.4 |
+| `claude-usage.sh`(sh) | 30 秒ガード(state が新しい) | 15.6 ± 2.6 | 10.7 | 26.3 |
+| `claude-usage`(Rust) | 30 秒ガード(state が新しい) | 1.1 ± 0.4 | 0.5 | 3.0 |
+
+- 「Herdr 内」の bash 版の数値は本体の終了までで、`( ... ) &` で切り離した
+  python3(送信抑止の判定を含む)の時間は入っていない。Rust 版は抑止判定を
+  本体で行い、送るときだけ子プロセスを切り離す。
+- claude-usage の通常経路は curl による fetch(`--max-time 5`)が支配的で、
+  ネットワークに依存するため計測していない。
+
 ## 判断
 
 どの数値も許容範囲内だった。
