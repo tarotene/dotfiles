@@ -226,7 +226,7 @@ macOS never keys off `hostname` in the first place.
 "Alternatives considered"
 (`docs/adr/0019-star-codename-hosts-and-marker-resolution.md`) rejected
 *relying on* `scutil --set HostName` as the resolution mechanism on macOS —
-not renaming the OS hostname on Linux. `resolve_host()` in `scripts/hms.sh` /
+not renaming the OS hostname on Linux. `resolve_host()` in `crates/hms` /
 `bootstrap.sh` still reads the `dotfiles/host` marker first, but on Linux the
 simplest way to make that marker resolve correctly *and* end up with a
 `hostname` that matches is to change the OS hostname itself, then let the
@@ -316,8 +316,8 @@ Or, to switch to a specific older generation:
 **`--rollback` re-executes the activation script baked into the target
 generation, not the current one.** For most modules that is invisible — the
 target generation's `home.file` / `home.packages` are exactly what you get.
-But for the imperative `~/.claude/settings.json` merge (`registerHooks` /
-`registerPermissions` / `syncStatusLine` in `home/modules/claude.nix`), it
+But for the imperative `~/.claude/settings.json` merge (`settings-reconcile claude-hooks` /
+`claude-permissions` / `claude-statusline`, wired in `home/modules/claude.nix`), it
 means a rollback to a generation that predates a hook's declarative retirement
 cannot retire it — the old activation never learned about the retirement.
 `home.file` still removes the now-unmanaged script, so you can end up with a

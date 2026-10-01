@@ -311,10 +311,11 @@ Claude 版と違い statusline 相当のチャネルが無いので、reporter �
 hook payload の `.model` から、branch は `.cwd` から git 呼び出しで取る。
 `agent_id` が付くサブアージェントイベントは親ペイン共有のため無視する。
 
-登録は `scripts/register-codex-hooks`(variadic な `(event, matcher, command,
-timeout)` タプルを何個でも受け取る idempotent jq マージャー。旧
-`register-codex-worktree-hooks` を一般化・改名したもので、`home/modules/worktree.nix`
-の worktree guard/context hooks もこの同じスクリプトを使う)。書き込み先が
+登録は `settings-reconcile codex-hooks`(`crates/settings-reconcile`、#414。variadic な
+`(event, matcher, command, timeout)` タプルを何個でも受け取る冪等 reconcile。
+旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
+後継で、`home/modules/worktree.nix` の worktree guard/context hooks も同じ
+サブコマンドを使う)。書き込み先が
 `home/modules/worktree.nix` の activation と同じ `~/.codex/hooks.json` なので、
 `home/modules/herdr.nix` の `registerCodexHerdrMetadataHooks` はその後ろに
 `entryAfter` で明示的に順序付けている(lost-update 対策、#61 と同種)。
@@ -337,7 +338,7 @@ Copilot CLI の hook payload には event 名も model も乗らない(公式リ
   (Copilot CLI 自身が永続化する現在のモデル設定)から読む。`/model` 直後は
   Copilot 側の書き込みタイミング次第で遅延しうるが、表示専用なので許容する。
 
-登録は新規の `scripts/register-copilot-hooks`。Copilot の native hook 形は
+登録は `settings-reconcile copilot-hooks`(旧 `scripts/register-copilot-hooks`)。Copilot の native hook 形は
 Claude/Codex の `{matcher?, hooks:[...]}` ネストと違い `{type, bash,
 timeoutSec}` を camelCase イベント配列に直置きする形なので(herdr 自身が
 `~/.copilot/settings.json` の `.hooks.SessionStart` に入れている既存エントリと
@@ -443,11 +444,11 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
 ## 既知の制約・運用ノート
 
 - **statusline の巻き戻り**: `~/.claude/settings.json` の `statusLine` は activation
-  (`registerClaudeStatusLine` → `syncStatusLine`)が宣言値に合わせるので、
+  (`registerClaudeStatusLine` → `settings-reconcile claude-statusline`)が宣言値に合わせるので、
   `/statusline` で手動変更しても次の `home-manager switch` で戻る。変更はこの
   リポジトリの `crates/claude-statusline` を編集すること。
-- **hook / statusLine の撤回は forward switch でのみ効く**: `registerHooks` /
-  `syncStatusLine` は `retiredHookEntries` / `retiredStatusLineCommands`
+- **hook / statusLine の撤回は forward switch でのみ効く**: `settings-reconcile` の
+  `claude-hooks` / `claude-statusline` は `retiredHookEntries` / `retiredStatusLineCommands`
   (`home/modules/claude.nix`)に載っている command を完全一致で settings.json から
   削除する。これが効くのは新しい generation への **forward** switch だけで、
   home-manager generation の `--rollback` では効かない — rollback 先の世代の
@@ -456,7 +457,7 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
   home-manager の generation モデル一般の制約)。緊急 rollback 後は
   `docs/operations.md` の孤児チェックを走らせること。
 - **herdr 統合 hook との共存**: herdr は自分の `herdr-agent-state.sh`(編集禁止、
-  integration 更新で上書き)を settings.json に登録する。registerHooks は command
+  integration 更新で上書き)を settings.json に登録する。settings-reconcile は command
   文字列が異なるエントリに触れず、herdr も自ファイル以外に触れないので衝突しない
   (herdr の書き込みは `.hooks.SessionStart` の自ファイルと `~/.claude/hooks/`,
   `~/.codex/`, `~/.copilot/hooks/`, `~/.config/devin/` への統合ファイル配備だけで、

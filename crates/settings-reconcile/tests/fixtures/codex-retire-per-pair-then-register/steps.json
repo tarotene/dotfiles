@@ -1,0 +1,16 @@
+[
+ [
+  "codex-hooks",
+  "--retire",
+  "UserPromptSubmit",
+  "report-cmd",
+  "--retire",
+  "PreToolUse",
+  "new-guard-command",
+  "--register",
+  "UserPromptSubmit",
+  "",
+  "final-cmd",
+  "10"
+ ]
+]

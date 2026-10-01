@@ -29,12 +29,10 @@
   ...
 }:
 let
-  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
-    builtins.readFile ../../scripts/register-codex-hooks
-  );
-  registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
-    builtins.readFile ../../scripts/register-copilot-hooks
-  );
+  # hooks.json / settings.json への冪等 reconcile(crates/settings-reconcile、#414)。
+  settingsReconcile = "${pkgs.dotfiles-tools}/bin/settings-reconcile";
+  registerCodexHooks = "${settingsReconcile} codex-hooks";
+  registerCopilotHooks = "${settingsReconcile} copilot-hooks";
   # #413 (ADR-0024 Stage 4d): Codex/Copilot 版は Claude 版と同じ Rust バイナリ
   # (crates/herdr-agent-metadata、home/modules/claude.nix が ~/.claude/hooks/ に
   # 配備)を --agent で呼ぶ。旧 `sh '….sh'` の command は --retire で完全一致削除する。

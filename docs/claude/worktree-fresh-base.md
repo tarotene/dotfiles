@@ -76,7 +76,7 @@ hook を並列実行するため逐次実行は保証できない
 
 ## 使い方
 
-- hook として: `home/modules/claude.nix` の `registerHooks` が SessionStart
+- hook として: `home/modules/claude.nix` の `claudeHookDeclarations`(`settings-reconcile`)が SessionStart
   (`startup|resume`)に登録する。matcher に `compact` を含めないのは
   sign-prewarm と同じ理由 — 同一プロセス内の再発火に価値がない。
 - 自己検査: `worktree-fresh-base.sh --selftest`(6 ケース: FF 成功 / dirty /

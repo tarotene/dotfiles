@@ -89,7 +89,7 @@ in
   # treats Mullvad only as a fallback and a known upstream bug can pick an
   # unreachable one (see docs/operations.md's "Café Wi-Fi" section).
   #
-  # scripts/tailscale-prefs (run from `hms`) turns this into `tailscale set`
+  # crates/tailscale-prefs (run from `hms`) turns this into `tailscale set`
   # flags; it is a closed vocabulary (unknown keys fail its own selftest).
   #
   # <mullvad-exit-node-name> is a placeholder (ADR-0034 — this repo is
@@ -97,7 +97,7 @@ in
   # Replace it locally with the output of `tailscale exit-node list` after
   # enabling the add-on (docs/operations.md's "Café Wi-Fi" section) — until
   # then `tailscale set` simply fails on this one flag and
-  # scripts/tailscale-prefs downgrades that to a warning, never failing hms.
+  # crates/tailscale-prefs downgrades that to a warning, never failing hms.
   xdg.configFile."dotfiles/tailscale-prefs".text = ''
     exit_node=<mullvad-exit-node-name>
     exit_node_allow_lan_access=true

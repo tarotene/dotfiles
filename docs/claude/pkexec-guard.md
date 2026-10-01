@@ -164,9 +164,10 @@ ADR-0034 節と同じ精神)による。導入されたホストで実パスを�
 
 ## `permissions.ask` の拡張
 
-`home/modules/claude.nix` の `registerPermissions` は、この PR まで
-`.permissions.allow` しか冪等更新していなかった。`--retire-ask <r>… --ask
-<a>…` の2セクションを追加し、`.permissions.ask` も同じ retire/add パターンで
+`settings-reconcile claude-permissions`(旧 `home/modules/claude.nix` の
+`registerPermissions`)は、この PR まで `.permissions.allow` しか冪等更新して
+いなかった。`retire_ask` / `ask`(旧 bash では `--retire-ask <r>… --ask <a>…`)の
+2 欄を追加し、`.permissions.ask` も同じ retire/add パターンで
 更新するようにした。`askRules = [ "Bash(/usr/bin/pkexec *)" ];` が唯一の
 エントリ。
 

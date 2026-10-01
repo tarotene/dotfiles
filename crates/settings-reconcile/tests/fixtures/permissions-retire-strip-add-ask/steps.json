@@ -1,0 +1,21 @@
+[
+ [
+  "claude-permissions",
+  {
+   "retire_allow": [
+    "Bash(old *)"
+   ],
+   "allow": [
+    "Bash(keep *)",
+    "Bash(new *)",
+    "Bash(git * )"
+   ],
+   "retire_ask": [
+    "Bash(old ask *)"
+   ],
+   "ask": [
+    "Bash(sudo *)"
+   ]
+  }
+ ]
+]

@@ -1,12 +1,12 @@
 # github-app-snapshot
 
-`scripts/github-app-snapshot` is the only script in this repository allowed
-to hold GitHub App PEMs. It writes a read-only snapshot of each owned App's
+`github-app-snapshot` (Rust, `crates/github-app-snapshot`; ported from the
+former bash `scripts/github-app-snapshot`, #414) is the only command in this
+repository allowed to hold GitHub App PEMs. It writes a read-only snapshot of each owned App's
 registration and install targets to
-`$XDG_STATE_HOME/github-audit/app-snapshot.json` — the file `scripts/
-github-audit` (`releaser` domain) and `scripts/
-github-app-registry-check` read lazily. Neither of those two ever sees a
-secret; only this script does (ADR-590 D3, preserving
+`$XDG_STATE_HOME/github-audit/app-snapshot.json` — the file `github-audit`
+(`releaser` domain) and `github-app-registry-check` read lazily. Neither of
+those two ever sees a secret; only this command does (ADR-590 D3, preserving
 `docs/adr/436-single-releaser-github-app.md` D4 — github-audit requires no
 secret).
 
@@ -71,7 +71,7 @@ hour (GitHub Docs, "Registering a GitHub App from a manifest", 取得
 GitHub Docs, "Modifying a GitHub App registration" (取得 2026-09-29) — an
 App's permissions/events can only be changed through the UI afterward, no
 REST endpoint exists. `manifest-form`/`convert` only ever apply at
-creation; `scripts/github-app-registry-check` (docs/github-audit.md)
+creation; `github-app-registry-check` (docs/github-audit.md)
 detects drift between the Manifest and the live registration afterward but
 cannot auto-repair it.
 
@@ -93,7 +93,7 @@ github-app-snapshot exec -- sh -c \
 
 (`exec -- <cmd>` runs `<cmd>` with every Secrets Manager secret injected as
 an environment variable via `bws run --no-inherit-env`, the same
-never-materialize-an-env-file pattern `scripts/obsidian-backup` uses — a
+never-materialize-an-env-file pattern `crates/obsidian-backup` uses — a
 bare `gh secret set ... --body "$GITHUB_APP_RELEASER_PEM"` at the outer
 shell would not see the variable, hence the `sh -c` wrapper.)
 
@@ -121,7 +121,7 @@ An App whose Secrets Manager secrets aren't set yet is skipped with a
 warning on stderr, not a hard failure — `run` still writes a snapshot for
 every App it *can* observe.
 
-## Claude's cloud sandbox reach (not managed by this script)
+## Claude's cloud sandbox reach (not managed by this command)
 
 How far Claude's cloud sandbox (`claude --cloud`, cloud routines) reaches is
 decided by how GitHub was connected, not by anything in this repository

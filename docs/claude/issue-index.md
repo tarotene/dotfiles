@@ -151,12 +151,15 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 `autoCompactEnabled: false` の設定では発火は手動 `/compact` 時のみ。`fork` は元セッション
 の文脈を引き継ぐので不要。
 
-## `register` の既知の制約
+## hook 登録の reconcile(旧「既知の制約」は解消済み)
 
-`home/modules/claude.nix` の `registerHooks` は command の一致だけで存在判定する
-冪等マージなので、**matcher を後から変えても既存エントリは更新されない**。
-matcher を変更する場合は `~/.claude/settings.json` の該当エントリを手で消してから
-`home-manager switch` する。
+`home/modules/claude.nix` の `claudeHookDeclarations` を `settings-reconcile claude-hooks`
+(`crates/settings-reconcile`、#414)が `(event, command)` をキーに**宣言を正として**
+反映する。かつての `registerHooks` は command の一致だけで存在判定していたため
+matcher を後から変えても既存エントリが更新されなかったが、今は `matcher` / `if` /
+`timeout` の変更も次の `home-manager switch` で既存エントリに反映される。
+(command 文字列そのものを変える場合は別キーなので、旧文字列を
+`retiredHookEntries` に移す運用は従来どおり。)
 
 ## 検証
 

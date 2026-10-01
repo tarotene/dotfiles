@@ -1,0 +1,1 @@
+{"schema": 1, "apps": [{"name": "releaser", "installations": [{"repositories": ["tarotene/regcode", "tarotene/pj-x2"]}, {"repositories": null}]}, {"name": "other"}]}

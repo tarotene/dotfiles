@@ -3,7 +3,7 @@
 herdr worktree を**外から**駆動する `git -C <worktree> <サブコマンド>` を、
 permission rule ではなく PreToolUse hook でプログラム的に許可する。
 実装は `crates/git-worktree-allow`(配備先 `~/.claude/hooks/`)、
-登録は `home/modules/claude.nix` の `registerHooks`。
+登録は `home/modules/claude.nix` の `claudeHookDeclarations`(`settings-reconcile`)。
 
 ## なぜルールではなく hook か
 
@@ -61,7 +61,7 @@ deny ルールを上書きしない(最も制限的な決定が勝つ)ので、�
 
 ## 登録形
 
-`registerHooks` の `register()` に省略可能な第 5 引数 `if` を追加し、
-`PreToolUse` / matcher `Bash` / `"if": "Bash(git -C *)"` で登録する。`if` は
+`claudeHookDeclarations`(`home/modules/claude.nix`)の省略可能な `"if"` 欄に
+`Bash(git -C *)` を書き、`PreToolUse` / matcher `Bash` で登録する。`if` は
 ハンドラレベルの絞り込み(正式仕様)で、`git -C` 以外の Bash 呼び出しでは
 hook プロセス自体が spawn されない。

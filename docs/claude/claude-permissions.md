@@ -3,13 +3,13 @@
 `~/.claude/settings.json` の `permissions.allow` は、Claude Code が自分の判断で
 "許可プロンプトを毎回出さずに実行してよいコマンド" を宣言する場所。手で書いた
 ルールは他機の同期対象にならず、`home-manager switch` のたびに検証されないので、
-`registerHooks`（`docs/claude/copilot-plan-review.md`）と同じ「activation 時の冪等 jq マージ」
+hook 登録（`docs/claude/copilot-plan-review.md`）と同じ「activation 時の冪等マージ」
 パターンを allow にも敷いた。
 
-配備は `home/modules/claude.nix` の `registerPermissions` / `permissionRules` /
-`home.activation.registerClaudePermissions`。`registerClaudeHooks` とは別の
-activation script として `writeBoundary` の後に並べており、片方のロジックが
-壊れても他方に影響しない。
+配備は `home/modules/claude.nix` の `permissionRules` /
+`home.activation.registerClaudePermissions`(実体は `settings-reconcile
+claude-permissions`、`crates/settings-reconcile`、#414)。`registerClaudeHooks` とは別の
+activation として `writeBoundary` の後に並べており、片方が失敗しても他方に影響しない。
 
 ## ルール構文
 
@@ -20,7 +20,7 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 ## ルールの撤回: `retiredPermissionRules`
 
 追加の存在判定は `.permissions.allow` に**同一文字列**が含まれているかだけ
-（`registerHooks` の「command 一致だけの存在判定」と同型）。かつては「ルール
+（hook 登録の `(event, command)` キーによる存在判定と同型）。かつては「ルール
 文字列を直すと旧ルールが残り続ける」が既知の制約で、手動 jq が必要だったが、
 現在は削除も宣言的に行える:
 
@@ -60,7 +60,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 - **宣言リスト**(`permissionRules`): `home/modules/claude.nix` の
   `hasMidWildcard` で `nix flake check`/`nix build` の eval 時に
   `assert` する。中間 `*` を含むルールはそもそも書けない(表現不可能)。
-- **settings.json の実体**: `registerPermissions` の jq が
+- **settings.json の実体**: `settings-reconcile claude-permissions` が
   `.permissions.allow` から中間 `*` を含むルールを一律 strip する
   (Claude Code 自身の「常に許可」プロンプトが書く分も含む — こちらは
   検出が上限で、宣言側のような表現不可能化はできない)。
@@ -68,8 +68,8 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
   即 `false` にする(以降のどの固定プレフィックス一致パターンにも
   昇格させない)。
 
-同じ撤回パターンを `.hooks.<event>` にも敷いたのが `registerHooks` の
-`retiredHookEntries`、`statusLine` にも敷いたのが `syncStatusLine` の
+同じ撤回パターンを `.hooks.<event>` にも敷いたのが `claude-hooks` の
+`retiredHookEntries`、`statusLine` にも敷いたのが `claude-statusline` の
 `retiredStatusLineCommands`(いずれも `home/modules/claude.nix`。詳細は
 `docs/claude/herdr-sidebar-metadata.md`)。この文書の「削除も宣言的に行える」は
 **forward switch にしか効かない**ことに注意: `home-manager switch --rollback`

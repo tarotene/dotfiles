@@ -2,12 +2,13 @@
 
 `~/.claude.json` の `.mcpServers` は Claude Code が `claude mcp add` で実行時に
 書き換える(`~/.claude/settings.json` と同じ制約)。したがって
-`registerHooks` / `registerPermissions`(`docs/claude/claude-permissions.md`)と
-同じ「activation 時の冪等 jq 書き換え」パターンを敷く。
+hook 登録 / permissions(`docs/claude/claude-permissions.md`)と
+同じ「activation 時の冪等書き換え」パターンを敷く。実体は 3 つとも
+`settings-reconcile`(`crates/settings-reconcile`、#414)のサブコマンド。
 
 配備は独立モジュール `home/modules/claude-mcp-servers.nix`(`home/modules/quarantine.nix`
 と同じ「1 option = 1 ファイル」の粒度、`home/common.nix` の imports に追加)の
-`registerMcpServers` / `options.dotfiles.claude.mcpServers` /
+`options.dotfiles.claude.mcpServers` /
 `home.activation.registerClaudeMcpServers`。
 
 ## 宣言集合が user scope の完全状態である(reconcile)
@@ -41,7 +42,7 @@ home-manager 自身の宣言モデル(宣言 = 望ましい完全状態。`home.
    callbackPort)を switch のたびに剥がし、再認証を強いる。宣言した field 自体は
    毎回上書きされるので「宣言が正」は変わらない。
 3. **削除は activation ログに出す。** 不可逆操作で、しかも野良サーバーで実験して
-   いた場合は何が消えたかがそこにしか残らないため、`register-claude-mcp-servers:
+   いた場合は何が消えたかがそこにしか残らないため、`settings-reconcile:
    宣言外の MCP サーバーを削除します: <name>` を stderr に出す。
 
 **reconcile の対象は user scope だけ**である。project scope(リポジトリの
@@ -91,7 +92,7 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
   `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
   スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
-  (`home/modules/esa.nix` + `scripts/esa-mcp-launcher`、
+  (`home/modules/esa.nix` + `crates/esa-mcp-launcher`、
   [`esa-mcp.md`](esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
   トークン(例: 別プロセスが供給する company workspace のトークン)なら
   `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。

@@ -203,5 +203,4 @@ crates/git-audit-worktrees --selftest
 crates/git-prune --selftest
 crates/git-prune --selftest
 crates/git-worktree-create-guard --selftest
-scripts/register-codex-hooks --selftest
 ```

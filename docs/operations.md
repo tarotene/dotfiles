@@ -5,7 +5,7 @@ see [`cutover-runbook.md`](cutover-runbook.md).
 
 ## Applying the configuration
 
-The canonical apply is `hms` (from `scripts/hms.sh`, deployed to
+The canonical apply is `hms` (from `crates/hms`, deployed to
 `~/.local/bin` by `home/modules/packages.nix`), runnable from any directory:
 
 ```bash
@@ -126,9 +126,9 @@ or a Linux host being switched before its OS hostname is renamed:
 
 | marker | consumer | required? | fallback when unset |
 |---|---|---|---|
-| `host` | `scripts/hms.sh`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
-| `private-hub` | `scripts/hms.sh`'s `resolve_default_ref()` (ADR-0034, #567) | optional; placed as a side effect of applying through a registered wrapper (`dotfiles.privateHub.ref`, home-manager-managed from then on) | `github:tarotene/dotfiles` (public-only apply) |
-| `style-hub` | `scripts/writing-style-hub`, for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
+| `host` | `crates/hms`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
+| `private-hub` | `crates/hms`'s `resolve_default_ref()` (ADR-0034, #567) | optional; placed as a side effect of applying through a registered wrapper (`dotfiles.privateHub.ref`, home-manager-managed from then on) | `github:tarotene/dotfiles` (public-only apply) |
+| `style-hub` | `writing-style-hub` (`crates/hub-resolve`), for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
 
 Run `dotfiles-doctor` (deployed to `~/.local/bin` by
 `home/modules/packages.nix`) to see the current status of all three at
@@ -255,7 +255,7 @@ it.
 
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
-`registerHooks` / `syncStatusLine`'s declarative retirement
+`settings-reconcile`'s declarative retirement (`claude-hooks` / `claude-statusline`)
 (`retiredHookEntries` / `retiredStatusLineCommands` in `home/modules/claude.nix`)
 only runs as part of the activation script baked into a given home-manager
 generation. A **forward** `hms` picks it up; a `home-manager switch --rollback`
@@ -313,7 +313,7 @@ but it makes the update cadence above load-bearing for Japanese input.
 
 ## Rotating a machine-local GPG [S] signing subkey
 
-`scripts/gpg-subkey` (deployed to `~/.local/bin/gpg-subkey`) generates and
+`gpg-subkey` (`crates/gpg-subkey`, deployed to `~/.local/bin/gpg-subkey`) generates and
 rotates the on-disk `[S]` subkey each identity's primary card-backed key
 signs Git commits with (ADR-0003 Amendment 2). It was absorbed from the
 now-archived private predecessor tool, stripped of that tool's
@@ -552,7 +552,7 @@ Exit node selection is declared, not run by hand on every session:
 `home/identities/{personal,company}.nix` write a small closed-vocabulary
 prefs file (`~/.config/dotfiles/tailscale-prefs`: `exit_node`,
 `exit_node_allow_lan_access`, `shields_up`), and `hms` applies it via
-`tailscale-prefs apply` (`scripts/tailscale-prefs`, `home/modules/
+`tailscale-prefs apply` (`crates/tailscale-prefs`, `home/modules/
 tailscale.nix`) after every switch — warn-only, so a missing/unauthenticated
 Tailscale install never fails the switch. Personal devices stay on the
 Mullvad exit node at all times (no per-location toggle); `arcturus` stays
@@ -641,7 +641,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
    echo '{"tool_name":"Bash","cwd":"'"$PWD"'","tool_input":{"command":"git stash pop"}}' \
      | bash ~/.codex/hooks/git-stash-guard.sh   # expect a deny JSON
    echo '{"hook_event_name":"Stop","session_id":"smoke","last_assistant_message":"no plan"}' \
-     | bash ~/.codex/hooks/codex-plan-gate.sh   # expect no output (no <proposed_plan>)
+     | ~/.codex/hooks/codex-plan-gate   # expect no output (no <proposed_plan>)
    ```
 
    For an end-to-end pass through Codex's own harness (not just the hook
@@ -739,7 +739,7 @@ concrete value (a bucket name, a project ID, a ping URL, a PRIVATE repo name):
 does this repo need the **rule** (a derivation procedure with a placeholder,
 public, this repo) or the **value itself** (private, the wrapper flake,
 [ADR-0034](adr/0034-machine-state-wrapper-flake.md))? This repo never
-names the wrapper flake — see `scripts/hms.sh`'s `private-hub` marker. Note
+names the wrapper flake — see `crates/hms`'s `private-hub` marker. Note
 that `hms .` on a host with that marker registered now routes through the
 wrapper by default (ADR-0034 Amendment, 2026-09-27), so every private value
 module still applies; `hms . --public-only` is the explicit opt-out that
@@ -786,7 +786,7 @@ to ADR-0001). It is a symlink into `~/.local/share/claude/versions/…`, kept
 live by the CLI's own self-updater (background auto-update disabled by
 declaration, manual `claude update` re-syncs the model pin —
 `docs/cutover-runbook.md`'s "Installing Claude Code" section);
-`scripts/claude-plan-model` resolves concrete model IDs from that *installed*
+`claude-plan-model` (`crates/claude-plan-model`) resolves concrete model IDs from that *installed*
 binary's baked-in model catalog, so a Nix-managed copy trailing upstream by
 dozens of patches would silently swap the binary `claude-plan-model` depends
 on ([#313](https://github.com/tarotene/dotfiles/issues/313)).

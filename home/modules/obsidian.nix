@@ -32,9 +32,7 @@ let
         "PATH=${servicePath}"
         "OBSIDIAN_BACKUP_BWS_BIN=${pkgs.bws}/bin/bws"
         "OBSIDIAN_BACKUP_ENV_BIN=${pkgs.coreutils}/bin/env"
-        "OBSIDIAN_BACKUP_FIND_BIN=${pkgs.findutils}/bin/find"
         "OBSIDIAN_BACKUP_HERDR_BIN=${pkgs.herdr}/bin/herdr"
-        "OBSIDIAN_BACKUP_JQ_BIN=${pkgs.jq}/bin/jq"
         "OBSIDIAN_BACKUP_RESTIC_BIN=${pkgs.restic}/bin/restic"
         "OBSIDIAN_BACKUP_SECRET_TOOL_BIN=${pkgs.libsecret}/bin/secret-tool"
         "OBSIDIAN_BACKUP_VAULT=${vaultPath}"
@@ -54,10 +52,10 @@ in
     pkgs.restic
   ];
 
-  home.file.".local/bin/obsidian-backup" = {
-    source = ../../scripts/obsidian-backup;
-    executable = true;
-  };
+  # Rust 実装(crates/obsidian-backup、#414)。jq / find / cmp は内部化したので
+  # OBSIDIAN_BACKUP_{JQ,FIND}_BIN は廃止(servicePath の findutils/jq/diffutils/bash も
+  # 不要だが、PATH は restic など外部コマンドの解決にそのまま渡るので触らない)。
+  home.file.".local/bin/obsidian-backup".source = "${pkgs.dotfiles-tools}/bin/obsidian-backup";
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {

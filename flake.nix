@@ -279,7 +279,7 @@
     in
     {
       # Keyed by logical hostname (ADR-0019 star-codename, resolved via a
-      # marker file — see scripts/hms.sh / bootstrap.sh `resolve_host`, not
+      # marker file — see crates/hms / bootstrap.sh `resolve_host`, not
       # the OS `hostname`). All three Linux hosts moved off the old
       # `<identity>-pop[-<generation>]` convention (#207 / stage1-prep) to
       # star codenames in #214: personal-pop → vega, company-pop-new →
@@ -365,6 +365,12 @@
               pkgs.git
               pkgs.bashInteractive
               pkgs.hyperfine
+              # crates/gpg-subkey のテストは実 GnuPG を一時 GNUPGHOME で走らせる
+              # (addkey/revkey の command-file の仕組みそのものが検証対象、#414)。
+              pkgs.gnupg
+              # crates/github-app-snapshot のテストは実 openssl で RS256 JWT を
+              # 署名・検証する(bash 版 selftest と同じ前提、#414)。
+              pkgs.openssl
             ];
           };
         }

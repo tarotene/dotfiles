@@ -1,0 +1,13 @@
+[package]
+name = "codex-plan-gate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Codex CLI の Stop hook(config/codex/hooks/codex-plan-gate.sh の Rust 移植、ADR-0024 / ADR-0032 Amendment)"
+
+[dependencies]
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

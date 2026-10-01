@@ -18,7 +18,7 @@ selection-grounding スキル(`~/.agents/skills/`)に従う。
 振って処分(実装する段、または閉じたタグ)を書く(scope-inventory スキル)。
 
 `<proposed_plan>` を出す前に、次の2本を自分で実行して指摘ゼロを確認する
-(Stop hook `codex-plan-gate.sh` の block を待たない — gate は漏れを拾う
+(Stop hook `codex-plan-gate` の block を待たない — gate は漏れを拾う
 ためのもので、一次的な手段ではない):
 
 ```

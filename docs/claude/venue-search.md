@@ -34,7 +34,7 @@
 
 `state/places.toml` は演奏企画のデータ(`state/performances/`)と同じ
 person-state リポジトリに置く裁定になっている。このスキル専用のハブ
-マーカーを新設せず、`performance-planning` の `scripts/performance-hub`
+マーカーを新設せず、`performance-planning` の `performance-hub`(`crates/hub-resolve`)
 をそのまま流用する — 同じリポジトリを指すマーカー方式を2つ持つ理由が
 無い(還元性、`docs/claude/writing-style.md` のマーカー方式と同じ設計
 判断の型)。

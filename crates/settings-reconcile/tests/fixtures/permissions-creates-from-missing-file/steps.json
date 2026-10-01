@@ -1,0 +1,10 @@
+[
+ [
+  "claude-permissions",
+  {
+   "allow": [
+    "Bash(a)"
+   ]
+  }
+ ]
+]

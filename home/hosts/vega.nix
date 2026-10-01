@@ -1,7 +1,7 @@
 # Instance layer — personal Pop!_OS host (star-codename: vega, #214).
 #
 # Star-codename (ADR-0019) instead of the old `personal-pop` <identity>-pop
-# convention — resolved via scripts/hms.sh / bootstrap.sh's resolve_host(),
+# convention — resolved via crates/hms / bootstrap.sh's resolve_host(),
 # not the OS hostname. Renamed from personal-pop; content otherwise
 # unchanged (signing key, imports, ROS host module carried over verbatim).
 { lib, ... }:

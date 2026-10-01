@@ -5,7 +5,7 @@ stash スタックは git ではリポジトリ単位で、herdr が worktree �
 ——それらは全て同じ stash スタックを共有する。素の `git stash pop` / `git stash apply`
 （SHA 無し）は、直前に別セッションが積んだ WIP を自分のものと取り違えて適用する。
 実装は `crates/git-stash-guard`(配備先 `~/.claude/hooks/`)、
-登録は `home/modules/claude.nix` の `registerHooks`。
+登録は `home/modules/claude.nix` の `claudeHookDeclarations`(`settings-reconcile`)。
 
 deny 側の代替として `git shelve` / `git unshelve`(`crates/git-shelve` /
 `crates/git-shelve`、配備先 `~/.local/bin/`)を用意している。worktree の絶対パス
@@ -32,9 +32,9 @@ spawn されず、その場合は単に「許可を出さない」だけなの�
 spawn されなければ、それは「検査されず素通りする」——つまり**この hook が防ごうとしている
 事故そのもの**になる。`git -C <worktree> stash pop` を捕まえるには `if` を
 `Bash(git -C *)` にすれば足りるように見えるが、それでは `git stash pop`(`-C` 無し)の
-形を落とす。両方を `if` で同時に絞ることもできない —— `registerHooks` の存在判定は
-event + command 文字列の完全一致だけなので、**同一スクリプトを 2 つの `if` で
-二重登録することもできない**(2 回目の `register` が 1 回目を見つけてスキップする)。
+形を落とす。両方を `if` で同時に絞ることもできない —— hook 宣言の一意キーは
+event + command 文字列なので、**同一スクリプトを 2 つの `if` で二重登録する
+こともできない**(`settings-reconcile` は 2 つ目の宣言を警告して無視する)。
 
 よって `if` は素の `Bash(git *)` まで広げ、絞り込みを hook 内部の早期 exit に移した:
 
@@ -158,7 +158,7 @@ deny 理由文はこれらを案内するが、第一選択は常に `git shelve
 
 ## 登録形
 
-`registerHooks` の `register()` に第 5 引数 `if` を渡し、`PreToolUse` / matcher `Bash` /
-`"if": "Bash(git *)"` で登録する。`if` はハンドラレベルの絞り込み(正式仕様)で、
+`claudeHookDeclarations`(`home/modules/claude.nix`)に `"if" = "Bash(git *)"` を付けた
+`PreToolUse` / matcher `Bash` のエントリとして登録する。`if` はハンドラレベルの絞り込み(正式仕様)で、
 非一致の Bash 呼び出しでは hook プロセス自体が spawn されない —— 上の「なぜ if を
 広げたか」で説明した理由により、この hook では意図的に絞り込みを最小化している。

@@ -109,7 +109,7 @@ fi
 
 # --- 4. home-manager activation ---
 # Resolve the logical host name: a marker file first, `hostname` as fallback
-# (ADR-0019, mirrors scripts/hms.sh's resolve_host — kept duplicated rather
+# (ADR-0019, mirrors crates/hms's resolve_host — kept duplicated rather
 # than shared since the two scripts are independently distributed). The
 # marker lets a host carry a star-codename (e.g. "altair", "vega");
 # resolution never depends on the OS hostname. On Linux the rename runbook

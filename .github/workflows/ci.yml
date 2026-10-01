@@ -240,13 +240,11 @@ jobs:
             config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml \
             .github/workflows/close-linked-issues.yml
 
-      # hms.sh (docs/adr/0034-machine-state-wrapper-flake.md Amendment
-      # 2026-09-25): private wrapper flake 経由の適用でも、wrapper の
-      # flake.lock が古い dotfiles rev を pin していれば override して
-      # pushed main を適用する判定ロジックの selftest。ネットワーク不使用
-      # (フィクスチャの `nix flake metadata --json` 相当を直接与える)。
-      - name: hms.sh --selftest
-        run: ./scripts/hms.sh --selftest
+      # hms (docs/adr/0034-machine-state-wrapper-flake.md Amendment
+      # 2026-09-25) is Rust now (#414, ADR-0024 Stage 4e, crates/hms); the
+      # wrapper-lock override / local-routing / downgrade-guard judgments
+      # and the stubbed-PATH apply flow run as `cargo test --workspace` in
+      # the rust job. No network (nix/home-manager/systemctl are stubs).
 
       # setup-firewall.sh (ADR-471): the Linux branch is the one this
       # runner can actually exercise; the darwin branch is only shellchecked
@@ -352,13 +350,9 @@ jobs:
       - name: copilot-plan-review output schema is valid JSON
         run: jq empty config/claude/assets/copilot-plan-review.schema.json
 
-      # codex-plan-gate (ADR-0032 Amendment #531, docs/claude/
-      # codex-plan-gate.md) is Codex's Stop-hook analogue of ExitPlanMode:
-      # it detects a `<proposed_plan>` block in the prior assistant message
-      # and calls plan-scope-gate / plan-precedent-gate (Rust, #412) against
-      # stubbed versions of them — no new judgment logic, no gh/network.
-      - name: codex-plan-gate.sh --selftest
-        run: bash ./config/codex/hooks/codex-plan-gate.sh --selftest
+      # codex-plan-gate (ADR-0032 Amendment #531) is Rust now (#389, ADR-0024
+      # Stage 4b); its former --selftest cases run as `cargo test --workspace`
+      # in the rust job (crates/codex-plan-gate/tests/gate.rs).
 
       # slot-hit.sh is the deterministic judgment core behind the
       # slot-availability skill (docs/claude/slot-availability.md): matching
@@ -378,14 +372,9 @@ jobs:
       - name: slot-hit.sh --selftest
         run: bash ./config/claude/skills/slot-availability/scripts/slot-hit.sh --selftest
 
-      # performance-hub resolves another private person-state repository's
-      # path for the performance-planning skill
-      # (docs/claude/performance-planning.md, that repository's own
-      # ADR-0010). Same marker-file/env-var indirection as writing-style-hub;
-      # its selftest is deterministic shell only, isolated from the real
-      # $HOME/$XDG_CONFIG_HOME, no network.
-      - name: performance-hub --selftest
-        run: ./scripts/performance-hub --selftest
+      # performance-hub / writing-style-hub / detach-open are Rust now (#414,
+      # ADR-0024 Stage 4e, crates/hub-resolve and crates/detach-open); their
+      # former --selftest cases run as `cargo test --workspace` in the rust job.
 
       # venue-urls.sh is the deterministic candidate-service enumerator behind
       # the venue-search skill (docs/claude/venue-search.md): reads a fixture
@@ -410,76 +399,15 @@ jobs:
       - name: routines-plan.sh --selftest
         run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
 
-      # gpg-subkey (absorbed from an archived private predecessor tool) is
-      # exercised against real GnuPG operations in an isolated
-      # GNUPGHOME with a throwaway empty-passphrase fixture key — not a
-      # stubbed gpg — since the addkey/revkey --command-file mechanics are
-      # exactly what needs validating. Covers generate, rotate --revoke-old,
-      # status, remind's threshold/exit-code contract, export's diff
-      # detection + next-step message, and sync's drift detection/--fix
-      # convergence against GitHub + keys.openpgp.org (`gh`/`curl` are
-      # stubbed for sync specifically — this step must never touch a real
-      # GitHub account or the real keyserver) (docs/operations.md).
-      - name: gpg-subkey --selftest
-        run: ./scripts/gpg-subkey --selftest
-
-      # tailscale-prefs (ADR-471) is deterministic shell end to end: the
-      # pure build_set_args core (valid/empty/comment/unknown-key/malformed/
-      # missing-file cases) plus apply()'s three warn-only skip paths
-      # (missing prefs file, tailscale absent from PATH, tailscale present
-      # but not logged in via a stub binary) — no network, no real
-      # tailscaled involved.
-      - name: tailscale-prefs --selftest
-        run: ./scripts/tailscale-prefs --selftest
-
-      # A mode here is a *pair* (plan side / execution side), so the interesting
-      # failures are combinations: a transition that leaves the other half
-      # behind, a .model guard that fires after the write (which is how an
-      # "inert" switch silently rewrote every request), a `sync` that drags a
-      # deliberate mode back to the default. The catalog is stubbed so the test
-      # does not depend on which claude is installed
-      # (docs/claude/opusplan-model-aliases.md).
-      - name: claude-plan-model --selftest
-        run: ./scripts/claude-plan-model --selftest
-
-      # esa-mcp-launcher is deterministic shell end to end against stubbed
-      # gpg/npx: the missing-token-file diagnostic, decrypt failure, empty
-      # token, missing npx, and the ESA_ACCESS_TOKEN handoff to the exec'd
-      # server are exercised without network or real credentials
-      # (docs/claude/esa-mcp.md).
-      - name: esa-mcp-launcher --selftest
-        run: ./scripts/esa-mcp-launcher --selftest
-
-      # ポインタ整合検査(#115): マーカー未設定・存在しないパス・レイアウト
-      # 不一致のいずれも無音で失敗せず明示メッセージを出すことを検査する。
-      - name: writing-style-hub --selftest
-        run: ./scripts/writing-style-hub --selftest
-
-      # ホストローカル・マーカー(host/private-hub/style-hub)の欠落検出器
-      # (#368)。実値は書かない、検出のみ。
-      - name: dotfiles-doctor --selftest
-        run: ./scripts/dotfiles-doctor --selftest
-
-      # obsidian-backup is exercised end to end against stubbed
-      # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
-      # restic invocations, the unsafe-relative-path rejection, the
-      # missing-keyring-token fail-closed path, and the notify_failure
-      # warning for herdr's toast-disabled response are all covered without
-      # touching a real Backblaze B2 repository or Bitwarden Secrets Manager
-      # account (docs/operations.md).
-      - name: obsidian-backup --selftest
-        run: ./scripts/obsidian-backup --selftest
-
-      # Hook registration must remain idempotent beside Herdr's own Codex hook.
       # The git/worktree CLIs and hooks that used to be tested here
       # (git-audit-worktrees, git-prune-{worktrees,branches}, git-worktree-
       # create-guard, git-stash-guard, git-worktree-allow, worktree-fresh-base,
       # git-checkout-freshness, git-shelve/unshelve) are Rust now (#416, ADR-0024
       # Stage 4c); their cases run as `cargo test --workspace` in the rust job.
-      - name: Hook registration self-tests
-        run: |
-          ./scripts/register-codex-hooks --selftest
-          ./scripts/register-copilot-hooks --selftest
+      # The hook/settings registrars (register-{codex,copilot}-hooks and the
+      # inline register-claude-* / sync-claude-statusline) are Rust too
+      # (crates/settings-reconcile, #414): its fixtures, including the
+      # idempotence check beside Herdr's own entries, run in the same job.
 
       # attribution-guard (docs/claude/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.
@@ -531,41 +459,6 @@ jobs:
       # staying green (docs/github-audit.md).
       - name: github-audit --selftest
         run: ./scripts/github-audit --selftest
-
-      # github-app-snapshot (ADR-590 D3): the only
-      # script allowed to hold GitHub App PEMs. Its
-      # selftest builds a real RS256 JWT with openssl and verifies the
-      # signature against a matching pubkey, plus a stubbed-curl/gh
-      # snapshot-assembly pass asserting no PEM ever lands in the
-      # output JSON — network-free.
-      - name: github-app-snapshot --selftest
-        run: ./scripts/github-app-snapshot --selftest
-
-      # github-app-registry-check (ADR-436 Amendment 2026-09-30):
-      # account-level Manifest ⇔ live-registration drift, reading only the
-      # snapshot github-app-snapshot already wrote — no secrets, no
-      # network in its selftest.
-      - name: github-app-registry-check --selftest
-        run: ./scripts/github-app-registry-check --selftest
-
-      # github-rulesets-apply (ADR-503, #153)
-      # is a thin multi-repo loop over scripts/apply-rulesets.sh — 対象
-      # リポジトリの「型」は引数に取らない(旧: rust/typst/astro/core/
-      # dotfiles の 5 型 + 型ごとの apply-rulesets.sh、D4「還元」で撤去)。
-      # selftest は apply-rulesets.sh をスタブし、複数 repo ループとフラグ
-      # 透過、1 repo の失敗が他を止めないことを検証する。
-      - name: github-rulesets-apply --selftest
-        run: ./scripts/github-rulesets-apply --selftest
-
-      # apply-rulesets.sh (ADR-503): 任意の
-      # リポジトリ自身が持つ宣言(<repo>/.github/rulesets/*.json)を、その
-      # リポジトリの live な branch ruleset に適用する。PUT/POST 直前に
-      # quality.json の required_status_checks[].context を実測 job 名
-      # (Actions API)と突合し、報告不能な context があれば拒否する(D5)。
-      # config/claude/skills/*-repo-governance の配布テンプレートはもう
-      # apply ロジックを持たず、宣言のコピー(seed)だけを担う。
-      - name: apply-rulesets.sh --selftest
-        run: ./scripts/apply-rulesets.sh --selftest
 
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs

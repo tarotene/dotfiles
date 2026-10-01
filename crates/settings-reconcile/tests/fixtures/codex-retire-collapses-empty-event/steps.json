@@ -1,0 +1,20 @@
+[
+ [
+  "codex-hooks",
+  "--retire",
+  "PreToolUse",
+  "guard-command",
+  "--register"
+ ],
+ [
+  "codex-hooks",
+  "--retire",
+  "SessionStart",
+  "report-cmd",
+  "--register",
+  "PreToolUse",
+  "Bash",
+  "new-guard-command",
+  "10"
+ ]
+]

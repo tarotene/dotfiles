@@ -106,7 +106,7 @@ plan-review の BLOCKER 指摘で実測して訂正した。
 
 [E] 側の対象判定は [S] と非対称である。[S] は `git config` という宣言的な
 「対象かどうか」の情報源を持つが、[E] にはそれが無いため、代わりに
-`scripts/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
+`crates/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
 `XDG_CONFIG_HOME` → `$HOME/.config`)で求めた token.gpg の**実在**そのものを
 ゲートにする(ADR-0005 のファイル存在ゲートと同じ考え方)。company ホストや
 #252 ロールアウト前の personal-pop では token.gpg が存在しないため、この
@@ -171,12 +171,11 @@ exit 0」という設計)。
 | 温める | 対象かつ cold([S]/[E] それぞれ独立に判定) | その対象について本番の gpg 呼び出しを 1 回だけ行う |
 | 失敗 | 温め呼び出しが刈られた/キャンセルされた | 対象ごとに stderr へ 1 行、stdout は空 |
 
-## `register` の既知の制約
+## 登録の更新(旧「既知の制約」は解消済み)
 
-`home/modules/claude.nix` の `registerHooks` は command の一致だけで存在判定する
-冪等マージなので、**matcher や timeout を後から変えても既存エントリは更新されない**。
-変更する場合は `~/.claude/settings.json` の該当エントリを手で消してから
-`home-manager switch` する。
+`home/modules/claude.nix` の `claudeHookDeclarations` を `settings-reconcile claude-hooks`
+(#414)が宣言を正として反映するので、**matcher や timeout を後から変えても**
+次の `home-manager switch` で既存エントリが更新される(手で消す必要は無い)。
 
 ## 検証
 

@@ -1,0 +1,13 @@
+[package]
+name = "esa-mcp-launcher"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "esa.io MCP サーバの起動ラッパー(scripts/esa-mcp-launcher の Rust 移植、ADR-0022 / ADR-0024)"
+
+[dependencies]
+hook-io = { version = "0.1.0", path = "../hook-io" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

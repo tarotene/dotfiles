@@ -156,7 +156,7 @@ Consequences の優先順位ヒューリスティック(「jq 密度 × 行数�
 
 ## Amendment 3 (2026-10-02 — 他リポジトリの CI が実行する配布物は対象外, #415)
 
-Stage 4a の移植(#415)で、`scripts/` の 4 本が **他リポジトリの CI から実行時に
+Stage 4a の移植(#415)で、`scripts/` の 5 本が **他リポジトリの CI から実行時に
 使われている**ことが分かった。当初の対象外(Context の「他リポジトリへ配布する
 skills の templates/scripts」)と同じ性質で、播種先に Rust ツールチェインも nix も
 無く、`dotfiles-tools` のバイナリを配る手段が無い。
@@ -168,8 +168,12 @@ skills の templates/scripts」)と同じ性質で、播種先に Rust ツール
   `scripts/workflow-naming-check` — 他リポジトリの CI が `.github/actions/pr-title`
   経由で dotfiles を sparse-checkout して実行する。3 本とも `scripts/github-audit` の
   bash 関数を `source` する。
+- `scripts/github-audit` — 上の 3 本が `source` する共有部品(bash)。デプロイされる
+  CLI は `crates/github-audit`(Rust)に移したので、bash 版は「3 本の共有部品」としてだけ
+  残る。二重実装のずれは `crates/github-audit/tests/differential.rs`(両者を同じ fixture・
+  gh スタブで流して出力を比べる)が検出する。
 
-この 4 本を `rust-migration.toml` の `[[excluded]]` に理由付きで移し、`max_remaining`
+この 5 本を `rust-migration.toml` の `[[excluded]]` に理由付きで移し、`max_remaining`
 の計数から外す。**撤回条件**: 播種先へバイナリを配る仕組み(release 添付、または
 `pr-title-check` のように依存の無い crate を sparse-checkout して `cargo build` する形)が
 入ったら、対象に戻して移植する。

@@ -91,7 +91,7 @@ CI では push イベント(base/PR 番号が無い)は A のみ、pull_request
 
 ## `github-audit` にドメインを作らない理由
 
-`scripts/github-audit` の `judge_titles` は「個別 PR の適合性は client
+`github-audit`(`crates/github-audit`)の `judge_titles` は「個別 PR の適合性は client
 guard と required check の仕事であり、audit がそれを見ると CI が green
 なのに drift を報告する状態になる」と既に明記している(ADR-0031)。ADR
 番号の重複はまさにその instance conformance に当たるため、同じ原則で

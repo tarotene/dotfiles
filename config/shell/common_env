@@ -79,7 +79,7 @@ export COLOR_NC='\033[0m' # No Color
 [ -z "$EDITOR" ] && export EDITOR="vim"
 [ -z "$VISUAL" ] && export VISUAL="$EDITOR"
 
-# Non-blocking opener (scripts/detach-open.sh, deployed as ~/.local/bin/open).
+# Non-blocking opener (crates/detach-open, deployed as ~/.local/bin/open).
 # gh browse etc. wait for $BROWSER to exit; the system xdg-open blocks in the
 # foreground on COSMIC. Linux-only shim (home/modules/packages.nix guards its
 # deployment the same way) — macOS's own /usr/bin/open already returns

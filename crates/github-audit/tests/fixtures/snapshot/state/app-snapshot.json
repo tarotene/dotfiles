@@ -1,0 +1,5 @@
+{"schema": 1, "generated_at": "2026-09-30T00:00:00Z",
+ "apps": [{"name": "releaser", "id": 1, "slug": "tarotene-releaser", "app_name": "tarotene-releaser",
+           "permissions": {}, "events": [],
+           "installations": [{"id": 1, "account": "tarotene", "repository_selection": "selected",
+                               "repositories": ["tarotene/snap-installed"]}]}]}

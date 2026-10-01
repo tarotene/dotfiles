@@ -1,0 +1,13 @@
+[
+ [
+  "codex-hooks",
+  "PreToolUse",
+  "Bash",
+  "guard-command",
+  "10",
+  "SessionStart",
+  "startup|resume",
+  "context-command",
+  "30"
+ ]
+]

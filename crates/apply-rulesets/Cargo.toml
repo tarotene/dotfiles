@@ -1,0 +1,14 @@
+[package]
+name = "apply-rulesets"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "apply-rulesets / github-rulesets-apply (scripts/apply-rulesets.sh と scripts/github-rulesets-apply の Rust 移植、ADR-503 / ADR-0024)"
+
+[dependencies]
+hook-io = { path = "../hook-io" }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

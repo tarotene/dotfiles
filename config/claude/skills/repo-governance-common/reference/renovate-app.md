@@ -28,7 +28,7 @@ GitHub App is installed on (`/user/installations` needs a user-to-server
 token; the usual `gh` token gets a 403). The observable proxy is the
 **Dependency Dashboard issue**: Renovate opens one unconditionally at the
 end of every repository run, before any schedule gating
-(`scripts/github-audit`'s `renovate` domain, #465). If a repository has
+(`github-audit`'s `renovate` domain, `crates/github-audit`, #465). If a repository has
 `renovate.json` but no Dependency Dashboard issue has ever been opened,
 either the App does not (yet) have access, or its first run has not
 happened yet.

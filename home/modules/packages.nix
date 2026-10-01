@@ -179,10 +179,9 @@
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
   # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
   # point is not depending on being inside a checkout.
-  home.file.".local/bin/hms" = {
-    source = ../../scripts/hms.sh;
-    executable = true;
-  };
+  # Rust 実装(crates/hms、#414)。シェル状態を呼び出し元に残す処理は無い独立の
+  # 実行ファイルなので全体を移した。
+  home.file.".local/bin/hms".source = "${pkgs.dotfiles-tools}/bin/hms";
 
   # Shadow the system `open`/`xdg-open` (both resolve to xdg-utils 1.1.3,
   # which blocks in the foreground on COSMIC — unrecognized DE → generic
@@ -193,19 +192,19 @@
   # browse and anything else honoring $BROWSER wait for it to exit, so it
   # needs the same detaching behavior.
   #
-  # Linux-only, deliberately: detach-open.sh hardcodes `setsid -f
+  # Rust 実装(crates/detach-open、#414)。
+  #
+  # Linux-only, deliberately: detach-open hardcodes `setsid -f
   # /usr/bin/xdg-open`, neither of which exists on darwin. macOS's own
   # `/usr/bin/open` already returns immediately (it hands off to
   # LaunchServices and exits), so there is no foreground-blocking problem to
   # work around there — shadowing it would only risk breaking a tool that
   # already works.
   home.file.".local/bin/open" = lib.mkIf pkgs.stdenv.isLinux {
-    source = ../../scripts/detach-open.sh;
-    executable = true;
+    source = "${pkgs.dotfiles-tools}/bin/detach-open";
   };
   home.file.".local/bin/xdg-open" = lib.mkIf pkgs.stdenv.isLinux {
-    source = ../../scripts/detach-open.sh;
-    executable = true;
+    source = "${pkgs.dotfiles-tools}/bin/detach-open";
   };
 
   # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
@@ -260,35 +259,29 @@
   home.file.".local/bin/decision-colocation-check".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-check";
 
   # github-audit: read-only cross-repository GitHub audit, unified across
-  # nine domains (rulesets/#130, charters, naming, settings, renovate,
-  # titles/ADR-0031, lifecycle/#275, releaser, routines — ADR-0015;
-  # docs/github-audit.md). Replaces the former sibling scripts
+  # eleven domains (rulesets/#130, charters, naming, settings, renovate,
+  # titles/ADR-0031, lifecycle/#275, releaser, routines, workflows, docs —
+  # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
   # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's
-  # systemd.user.services pattern.
-  home.file.".local/bin/github-audit" = {
-    source = ../../scripts/github-audit;
-    executable = true;
-  };
+  # systemd.user.services pattern. Rust, from crates/github-audit via
+  # pkgs.dotfiles-tools (ADR-0024, #414); scripts/github-audit stays in the
+  # repo only as the library its bash dependents still source.
+  home.file.".local/bin/github-audit".source = "${pkgs.dotfiles-tools}/bin/github-audit";
 
   # writing-style-hub: resolves the private style-guide hub's absolute path
   # (marker file or env var indirection — never hardcoded, #115) for the
   # writing-style skill. docs/claude/writing-style.md has the design.
-  home.file.".local/bin/writing-style-hub" = {
-    source = ../../scripts/writing-style-hub;
-    executable = true;
-  };
+  # Rust 実装(crates/hub-resolve、#414)の bin を指す。
+  home.file.".local/bin/writing-style-hub".source = "${pkgs.dotfiles-tools}/bin/writing-style-hub";
 
   # performance-hub: resolves another private person-state repository's
   # absolute path (same marker-file/env-var indirection as writing-style-hub
   # above) for the performance-planning skill.
   # docs/claude/performance-planning.md has the design (that repository's
   # own ADR-0009).
-  home.file.".local/bin/performance-hub" = {
-    source = ../../scripts/performance-hub;
-    executable = true;
-  };
+  home.file.".local/bin/performance-hub".source = "${pkgs.dotfiles-tools}/bin/performance-hub";
 
   # update-own-tools (ADR-0025, #276): builds self-authored, not-yet-released
   # CLIs from origin/<branch> per a host-local registry
@@ -308,30 +301,31 @@
   # dotfiles/private-hub ADR-0034, dotfiles/style-hub #115/#368) without
   # ever writing a real value itself (ADR-0034 D5: schema is public, values
   # are private). Detector only, manual command, no timer.
-  home.file.".local/bin/dotfiles-doctor" = {
-    source = ../../scripts/dotfiles-doctor;
-    executable = true;
-  };
+  # Rust、crates/dotfiles-doctor(ADR-0024、#414)経由で pkgs.dotfiles-tools から配備。
+  home.file.".local/bin/dotfiles-doctor".source = "${pkgs.dotfiles-tools}/bin/dotfiles-doctor";
 
   # github-rulesets-apply(ADR-503): a thin
   # multi-repo loop over apply-rulesets.sh — it owns no ruleset logic and no
   # longer takes a repository "type" (rust/typst/astro/core/dotfiles); the
   # declaration lives in each target repository's own
   # `.github/rulesets/*.json`. Manual command, no timer.
-  home.file.".local/bin/github-rulesets-apply" = {
-    source = ../../scripts/github-rulesets-apply;
-    executable = true;
-  };
+  # Rust、crates/apply-rulesets(ADR-0024、#414)の bin。呼び先の
+  # `apply-rulesets` は自分の隣(同じ dotfiles-tools の bin/)から探す。
+  home.file.".local/bin/github-rulesets-apply".source =
+    "${pkgs.dotfiles-tools}/bin/github-rulesets-apply";
 
   # apply-rulesets.sh(ADR-503)自身の PATH
   # 配備。宣言(.github/rulesets/*.json)は remote(contents API)または
   # --from-dir から読むため、この repo 自身の宣言を別途 xdg.configFile で
   # 配備する必要はもう無い(旧: RULESETS_DIR の 3 段フォールバック・
   # dotfiles/rulesets/*.json の複写。単一正本 > 複写+同期)。
-  home.file.".local/bin/apply-rulesets.sh" = {
-    source = ../../scripts/apply-rulesets.sh;
-    executable = true;
-  };
+  #
+  # Rust 化(ADR-0024、#414)後の実体は crates/apply-rulesets の
+  # `apply-rulesets` だが、各 *-repo-governance skill の seed.sh(配布テンプレート)
+  # と docs が PATH 上の `apply-rulesets.sh` という名前を参照している
+  # (`GOVERNANCE_APPLY_RULESETS_BIN` の既定値)ので、配備先の名前は旧名の
+  # まま保つ。配布先の bash を書き換えずに済ませるための互換名。
+  home.file.".local/bin/apply-rulesets.sh".source = "${pkgs.dotfiles-tools}/bin/apply-rulesets";
 
   # ADR-0020 closed vocabularies for github-audit's naming domain (PUBLIC
   # repos only — PRIVATE-repo entries live in a *.local.tsv sibling that
@@ -343,7 +337,7 @@
   xdg.configFile."github-audit/site-domains.tsv".source = ../../config/github-audit/site-domains.tsv;
   # lifecycle ドメイン(ADR-0026)の closed set(PUBLIC repos only — 同じ
   # PUBLIC/PRIVATE 分離)。#524: 他の *.tsv と同じ配線が欠けていたため、
-  # 新規マシンでは `scripts/github-audit` が存在しないファイルを読んで
+  # 新規マシンでは `github-audit` が存在しないファイルを読んで
   # closed set が無警告で空集合に縮退していた。
   xdg.configFile."github-audit/lifecycle-species.tsv".source =
     ../../config/github-audit/lifecycle-species.tsv;

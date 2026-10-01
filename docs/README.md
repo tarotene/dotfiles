@@ -27,6 +27,9 @@
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
   別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
   (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
+- [`settings-reconcile.md`](settings-reconcile.md) — `settings.json` /
+  `hooks.json` / `~/.claude.json` への宣言 reconcile(hook・permissions・
+  statusLine・MCP server)の Rust 実装(`crates/settings-reconcile`、#414)。
 - [`update-own-tools.md`](update-own-tools.md) — 自作 pre-release CLI を
   ホストローカルのレジストリに従って `origin/main` からビルドする
   `update-own-tools` のスキーマ・動作・退出手順(ADR-0025、#276)。
@@ -43,7 +46,7 @@
   導出規則の型を一般化したもの(#505)。
 - [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
   install 先・secret 配布(3 層)のうち、秘密(PEM)を
-  読み書きする唯一のスクリプト `scripts/github-app-snapshot` のセットアップ・
+  読み書きする唯一のコマンド `github-app-snapshot`(`crates/github-app-snapshot`)のセットアップ・
   Manifest フローでの新規 App 作成・secret 配布・ローテーション手順
   (ADR-590)。
 
@@ -263,13 +266,13 @@
   App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
   個人アカウントには account-level の Actions secret が存在しないため、
   `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` の repo ごとのコピーだけは
-  還元できず、そこを `scripts/github-audit` の `releaser` ドメインが検出
+  還元できず、そこを `github-audit`(`crates/github-audit`)の `releaser` ドメインが検出
   する。対象 repo を列挙する registry ファイルは持たない(ADR-0025 と同じ
   理由)— 宣言の正本は release workflow ファイルの存在に還元する。
 - [ADR-457](adr/457-claude-native-install-source-of-truth.md) — Claude
   Code 本体は nixpkgs の `claude-code` でなく native installer
   (`~/.local/bin/claude`)を正本とする決定(ADR-0001 への scoped
-  exception、ADR-0025 と同型)。`scripts/claude-plan-model` がインストール
+  exception、ADR-0025 と同型)。`claude-plan-model`(`crates/claude-plan-model`)がインストール
   済みバイナリの model catalog を読むため、実体は 1 つでなければならない。
   自動更新は宣言で OFF にし、更新は `claude update`(zsh 関数が
   `claude-plan-model sync` を直後に実行)の 1 経路に絞る。
@@ -341,8 +344,8 @@
   `--procedure` で取りに行く。範囲は wrapup 系のみ。
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
   先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
-  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用スクリプト
-  `scripts/github-app-snapshot` がスナップショットを書き `github-audit` は
+  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用コマンド
+  `github-app-snapshot` がスナップショットを書き `github-audit` は
   lazy に読むだけ(github-audit は秘密を要求しないという ADR-436 D4 を
   維持)。PEM は Bitwarden Secrets Manager に保管する。第三者 App(Claude)
   の到達範囲は、fine-grained PAT が `/web-setup` で使えないため、Claude
@@ -407,8 +410,8 @@ Design and rationale for the hooks and commands deployed from
 - [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
   hook (Rust, ADR-503): denies `gh api`
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
-  forcing all applies through `scripts/apply-rulesets.sh`'s context
-  verification.
+  forcing all applies through `apply-rulesets.sh`'s context
+  verification (Rust, `crates/apply-rulesets`).
 - [`routines-write-guard.md`](claude/routines-write-guard.md) — PreToolUse
   hook (Rust, ADR-519): denies a cron-bearing
   `RemoteTrigger` create/update whose body lacks the namespace-key name and

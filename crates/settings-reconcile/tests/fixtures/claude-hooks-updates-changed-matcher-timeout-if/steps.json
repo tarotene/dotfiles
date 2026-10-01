@@ -1,0 +1,20 @@
+[
+ [
+  "claude-hooks",
+  {
+   "register": [
+    {
+     "event": "Stop",
+     "command": "pr-gate",
+     "timeout": 600
+    },
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash|mcp__.*",
+     "command": "guard",
+     "timeout": 10
+    }
+   ]
+  }
+ ]
+]

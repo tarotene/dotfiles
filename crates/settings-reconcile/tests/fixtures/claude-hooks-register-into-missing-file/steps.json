@@ -1,0 +1,48 @@
+[
+ [
+  "claude-hooks",
+  {
+   "retire": [
+    {
+     "event": "PostToolUse",
+     "command": "old-cmd"
+    }
+   ],
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "ExitPlanMode",
+     "command": "plan-review",
+     "timeout": 300
+    },
+    {
+     "event": "Stop",
+     "command": "wrapup-stop"
+    },
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash",
+     "command": "wt-allow",
+     "timeout": 10,
+     "if": "Bash(git -C *)"
+    },
+    {
+     "event": "SessionStart",
+     "command": "herdr-meta",
+     "timeout": 10
+    },
+    {
+     "event": "UserPromptSubmit",
+     "command": "herdr-meta",
+     "timeout": 10
+    },
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash|mcp__.*",
+     "command": "bleep",
+     "timeout": 20
+    }
+   ]
+  }
+ ]
+]

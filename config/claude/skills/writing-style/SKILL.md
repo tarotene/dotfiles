@@ -4,8 +4,8 @@ description: ブログ・教材・技術記事など公開向けの長文を執�
 ---
 
 ブログ記事・教材・技術記事など公開向けの長文を書き始める前に、
-`scripts/writing-style-hub`(home-manager でデプロイ、`writing-style-hub`
-として PATH 上で呼べる)を実行してスタイルガイドのハブを解決し、そこの
+`writing-style-hub`(`crates/hub-resolve`、home-manager でデプロイ、
+PATH 上で呼べる)を実行してスタイルガイドのハブを解決し、そこの
 `docs/style/README.md` の「Consumer contract」節に従う。
 
 ```bash

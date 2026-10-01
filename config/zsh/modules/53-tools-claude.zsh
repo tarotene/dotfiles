@@ -5,7 +5,7 @@
 # (~/.local/bin/claude), not a Nix package (ADR-457, a scoped exception to
 # ADR-0001). Automatic background updates are disabled by declaration
 # (DISABLE_AUTOUPDATER, home/modules/claude.nix) — the only update path is
-# running `claude update` yourself. `scripts/claude-plan-model` resolves its
+# running `claude update` yourself. `claude-plan-model` (crates/claude-plan-model) resolves its
 # concrete model IDs from the *installed* binary's baked-in catalog, so a
 # manual update can silently leave the pin one generation behind until
 # `claude-plan-model` is run by hand. This wrapper closes that gap: running

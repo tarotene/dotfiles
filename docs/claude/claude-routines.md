@@ -10,7 +10,7 @@ Plan agent による敵対的レビュー(replan)を経て、対象リポジト�
 session での create/adopt/apply〕と `auditor.md`〔クラウドの自己監査
 routine の汎用手順〕、決定論的な差分コアは `scripts/routines-plan.sh` +
 `scripts/lib.jq`)。機構側は `crates/routines-write-guard`(段2)と
-`scripts/github-audit` の routines ドメイン(段3)。詳しい設計判断の一覧は
+`github-audit`(`crates/github-audit`)の routines ドメイン(段3)。詳しい設計判断の一覧は
 `docs/adr/519-routines-declaration-in-repo.md` を参照。
 
 ## 決定表
@@ -28,7 +28,7 @@ routine の汎用手順〕、決定論的な差分コアは `scripts/routines-pl
 | auditor の権限 | update のみ。create はしない(未マージの書き戻し PR がある間の重複 create を避ける — delete API が無い)。自分自身の宣言は report のみ |
 | 廃止 | `state: retired` で `enabled:false` 固定。宣言ファイルは残す(delete API が無い) |
 | ローカルの宣言外書き込み | `crates/routines-write-guard`(PreToolUse)が、名前空間キー + routine-spec 注記という構造を満たさない `RemoteTrigger` create/update を deny する(bypass なし) |
-| sources 網羅性 | `scripts/github-audit` の routines ドメインが、`.claude/routines/` を持つのに auditor の宣言に含まれない repo を検出する |
+| sources 網羅性 | `github-audit`(`crates/github-audit`)の routines ドメインが、`.claude/routines/` を持つのに auditor の宣言に含まれない repo を検出する |
 
 ## 実測(2026-09-27、`RemoteTrigger` + 段0 プローブ)
 

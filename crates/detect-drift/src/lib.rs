@@ -4,7 +4,7 @@
 //! `cargo install` / `npm -g` / `pipx` を経由した ad-hoc install は宣言と
 //! 無関係に蓄積し、気づく仕組みが無かった(Issue #4)。このクレートは
 //! **検出専用** — 宣言と実機在庫の diff を報告するだけで、一切変更しない
-//! (`crates/git-audit-worktrees` / `scripts/dotfiles-doctor` と同じ
+//! (`crates/git-audit-worktrees` / `crates/dotfiles-doctor` と同じ
 //! detector-only の型)。
 //!
 //! ADR-0029(PATH 優先順位)がカバーする「順序由来の shadow」はここでは

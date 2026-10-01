@@ -1,0 +1,1 @@
+{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed","integration_id":15368},{"context":"PR title","integration_id":15368}]}}]}

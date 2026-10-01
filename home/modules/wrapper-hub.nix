@@ -1,6 +1,6 @@
 # private wrapper flake の marker(#567、ADR-0034 Amendment)。
 #
-# `scripts/hms.sh` の `resolve_default_ref()` は
+# `crates/hms` の `resolve_default_ref()` は
 # `~/.config/dotfiles/private-hub` を読んで、この host に private wrapper
 # flake が登録されているかを判定する。ADR-0034 の元の設計はこのマーカーを
 # 「home-manager が書かない手置きファイル」としていた — dotfiles(この

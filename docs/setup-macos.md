@@ -51,7 +51,7 @@ mkdir -p ~/.config/dotfiles
 echo altair > ~/.config/dotfiles/host
 ```
 
-The marker is what `resolve_host()` (in `scripts/hms.sh` and
+The marker is what `resolve_host()` (in `crates/hms` and
 `bootstrap.sh`) reads to select the `altair` homeConfiguration — macOS's own
 `hostname` is never consulted (ADR-0019). `home/hosts/altair.nix` declares
 this same marker via `xdg.configFile`, so after the first successful
@@ -82,7 +82,7 @@ anything.
 Generation happens on a host that already holds the primary key (e.g. an
 existing Pop!_OS host) with the YubiKey inserted — the primary key's own [C]
 (certify) capability signs the new subkey's binding signature, and that
-operation lives on the card. Use `scripts/gpg-subkey` (deployed to
+operation lives on the card. Use `gpg-subkey` (`crates/gpg-subkey`, deployed to
 `~/.local/bin`), not raw `gpg --edit-key`: it reuses the same
 addkey/revoke-key mechanics already validated in production for the company
 identity's [S] subkey rotations (2025-12, 2026-07).
@@ -185,7 +185,7 @@ which bat rg fd nvim claude alacritty
 alacritty --version                      # launches; FiraCode NF renders (Font Book → search "FiraCode Nerd Font")
 launchctl list | grep git-audit-worktrees   # the launchd agent (ADR-0018) is loaded
 ./bootstrap.sh --dry-run                 # re-running bootstrap is a no-op, nothing destructive
-~/.local/libexec/esa-mcp-launcher --selftest  # or: start a Claude Code session and confirm the esa MCP tools are listed
+# start a Claude Code session and confirm the esa MCP tools are listed
 ```
 
 A Claude Code hook that shells out to `flock` (e.g. the wrap-up inbox gate)
@@ -215,7 +215,7 @@ rendered plan.
   switching. If Japanese input is ever needed here, add it as a system
   Input Source, not through home-manager.
 - `open`/`xdg-open` are **not** shadowed — the OS's own `/usr/bin/open`
-  already returns immediately, so `scripts/detach-open.sh`'s COSMIC-specific
+  already returns immediately, so `crates/detach-open`'s COSMIC-specific
   foreground-blocking workaround does not apply and is not deployed here.
 - Alacritty runs unwrapped (no nixGL) — macOS provides its own native GL
   stack.

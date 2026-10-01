@@ -86,7 +86,7 @@ private リポジトリ名を通す `allow-stopwords.txt`(bleep README
 tarotene/bleep#15 → PR #19 で決着)は、いずれも実値を含むため PUBLIC な
 この dotfiles リポジトリには置かない(ADR-0034)。3 ファイルとも private
 wrapper flake が `~/.config/dotfiles/private-hub` マーカー経由で生成する
-(`scripts/hms.sh` の `resolve_default_ref()` と同じ間接参照。ADR-0034
+(`crates/hms` の `resolve_default_ref()` と同じ間接参照。ADR-0034
 Decision 6 と同型 — 正本は wrapper flake 側、ここはスキーマ・手順だけを
 記す)。`allow-stopwords.txt` の各行は「実際には CLI ツール名としての
 言及であり private リポジトリ名との衝突ではない」と判断した文字列を、

@@ -1,0 +1,19 @@
+[
+ [
+  "copilot-hooks",
+  "--retire",
+  "sessionEnd",
+  "clear-cmd",
+  "--register"
+ ],
+ [
+  "copilot-hooks",
+  "--retire",
+  "agentStop",
+  "report-cmd",
+  "--register",
+  "sessionStart",
+  "new-report-cmd",
+  "10"
+ ]
+]
