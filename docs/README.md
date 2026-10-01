@@ -37,6 +37,10 @@
 - [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
   自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
   OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
+- [`cloud-artifacts-and-runbooks.md`](cloud-artifacts-and-runbooks.md) —
+  GCP 以外のクラウド成果物(Calendar・Drive 等)の命名規則と、人手を要する
+  手順書(runbook)の書式。`personal-cloud-projects.md` と同じ決定論的な
+  導出規則の型を一般化したもの(#505)。
 - [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
   install 先・secret 配布(3 層)のうち、秘密(PEM)を
   読み書きする唯一のスクリプト `scripts/github-app-snapshot` のセットアップ・

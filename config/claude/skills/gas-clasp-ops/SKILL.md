@@ -41,6 +41,10 @@ clasp v3 の `run-function` はスクリプトと同じ Google Cloud プロジ�
 繰り返し使う前提なので、Cloud プロジェクトと OAuth クライアントは
 **GAS プロジェクトごとではなく個人で 1 つ**を使い回す。
 
+手順をユーザーに案内する前に必ず `docs/personal-cloud-projects.md` を引く
+(標準が既にあるのに引き忘れて「何でもいい」と案内した再現ケース、#505)。
+手順書の書式は `docs/cloud-artifacts-and-runbooks.md` に従う。
+
 命名・設定値は都度考えず、`docs/personal-cloud-projects.md`(個人ツールの
 自前クラウドプロジェクト命名・設定ポリシー)の「適用例2: 個人用 GAS 自動化
 スクリプト群(gas-clasp-ops)」から機械的に導出する。この場合の `<tool>` は
