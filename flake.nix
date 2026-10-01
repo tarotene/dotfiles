@@ -48,9 +48,17 @@
     # the cwd repo and let a private-cwd post to a public repo through
     # unchecked — plus the unresolved-shell-variable ask (#34, reason_id
     # `unresolved-var`, recorded by verdict-escalate since #573), the
-    # word-boundary fix (#35), and `bleep doctor` (#56).
+    # word-boundary fix (#35), and `bleep doctor` (#56). Bumped again (#675,
+    # 2026-10-02) to pick up bleep ADR-0003 (tarotene/bleep#74, #75): push is
+    # judged from git's pre-push stdin (`scan-push --pre-push`, wired by
+    # config/git/hooks/pre-push) instead of guessing a range from the command
+    # string, PreToolUse only denies the forms that disable pre-push
+    # (`push-hook-bypass`), and gh posts must be in the canonical form
+    # (literal `-R OWNER/REPO` + `--body-file <absolute path>`, otherwise
+    # `gh-noncanonical`). The pre-push wiring, the verdict schema and the skill
+    # examples move in the same PR so the pin and its call sites switch together.
     bleep = {
-      url = "github:tarotene/bleep/5ed7b80243592384b4547405bf1f3439d6b3922b";
+      url = "github:tarotene/bleep/bd6213c135414e8d7f9c63aa70be0456b345d055";
       flake = false;
     };
 
