@@ -259,17 +259,16 @@
   home.file.".local/bin/decision-colocation-check".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-check";
 
   # github-audit: read-only cross-repository GitHub audit, unified across
-  # nine domains (rulesets/#130, charters, naming, settings, renovate,
-  # titles/ADR-0031, lifecycle/#275, releaser, routines — ADR-0015;
-  # docs/github-audit.md). Replaces the former sibling scripts
+  # eleven domains (rulesets/#130, charters, naming, settings, renovate,
+  # titles/ADR-0031, lifecycle/#275, releaser, routines, workflows, docs —
+  # ADR-0015; docs/github-audit.md). Replaces the former sibling scripts
   # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's
-  # systemd.user.services pattern.
-  home.file.".local/bin/github-audit" = {
-    source = ../../scripts/github-audit;
-    executable = true;
-  };
+  # systemd.user.services pattern. Rust, from crates/github-audit via
+  # pkgs.dotfiles-tools (ADR-0024, #414); scripts/github-audit stays in the
+  # repo only as the library its bash dependents still source.
+  home.file.".local/bin/github-audit".source = "${pkgs.dotfiles-tools}/bin/github-audit";
 
   # writing-style-hub: resolves the private style-guide hub's absolute path
   # (marker file or env var indirection — never hardcoded, #115) for the
@@ -338,7 +337,7 @@
   xdg.configFile."github-audit/site-domains.tsv".source = ../../config/github-audit/site-domains.tsv;
   # lifecycle ドメイン(ADR-0026)の closed set(PUBLIC repos only — 同じ
   # PUBLIC/PRIVATE 分離)。#524: 他の *.tsv と同じ配線が欠けていたため、
-  # 新規マシンでは `scripts/github-audit` が存在しないファイルを読んで
+  # 新規マシンでは `github-audit` が存在しないファイルを読んで
   # closed set が無警告で空集合に縮退していた。
   xdg.configFile."github-audit/lifecycle-species.tsv".source =
     ../../config/github-audit/lifecycle-species.tsv;

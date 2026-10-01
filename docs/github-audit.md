@@ -19,6 +19,17 @@ separate account-level sibling script, `scripts/github-app-registry-check`,
 checks App *registration* drift the same way — see each domain's own
 section below, and the account-level section after `routines`.
 
+**Implementation (#414, ADR-0024 Stage 4e).** The deployed `github-audit`
+command is the Rust crate `crates/github-audit` (a library plus a thin
+binary, shipped through `pkgs.dotfiles-tools`). Its output — the `--json`
+findings array, the human report and the ledger — is byte-identical to the
+former bash implementation, which `crates/github-audit/tests/differential.rs`
+checks by running both on the same fixtures. `scripts/github-audit` itself
+stays in the repository only until the bash scripts that `source` it
+(`scripts/rulesets-context-check`, `scripts/workflow-naming-check`,
+`scripts/pr-merge-settings-check`, `scripts/apply-rulesets.sh`) are ported;
+they should call the library API listed at the end of this document instead.
+
 ## Why this lives in dotfiles, not a dedicated inventory repo
 
 A separate personal repository already called itself the "canonical
@@ -105,7 +116,7 @@ short of exempting the whole `rulesets` domain (losing coverage of
 `deletion`/`non_fast_forward`/etc. too). The baseline is now two layers:
 
 - **Core layer** — always required, unconditionally. `BASELINE_RULE_TYPES`
-  in the script:
+  in `crates/github-audit/src/domains/rulesets.rs`:
 
   ```
   deletion, non_fast_forward, required_signatures, required_linear_history,
@@ -558,7 +569,7 @@ renovate-policy-preset-missing` when config is present but its `extends`
 array does not contain the exact, unpinned shared-preset reference
 (`github>tarotene/dotfiles//renovate/policy` by default, overridable via
 `GITHUB_AUDIT_RENOVATE_POLICY_PRESET`). The check first tries a structured
-`jq` array-membership test, then falls back to a fixed-string search for
+array-membership test on the parsed JSON, then falls back to a fixed-string search for
 the ref wrapped in its own JSON string quotes (`"<ref>"`) so a JSON5/JSONC
 config with comments still matches — deliberately not a bare substring
 search, since the pin-free ref is itself a prefix of any `#tag`-pinned
@@ -605,8 +616,8 @@ Each triggered signal is a token in `missing` (`stale-push:<n>d`,
 `stale-release:<n>d`, `stale-issues:<n>d`, `ci-absent`/`ci-failing`) and
 contributes to an integer `score`. Thresholds
 (`LIFECYCLE_STALE_PUSH_DAYS_WARN`/`_HIGH`, `LIFECYCLE_STALE_RELEASE_DAYS`,
-`LIFECYCLE_STALE_ISSUE_DAYS`, `LIFECYCLE_CANDIDATE_SCORE_THRESHOLD` in the
-script) are deliberately simple constants, not a tuned model, so a human
+`LIFECYCLE_STALE_ISSUE_DAYS`, `LIFECYCLE_CANDIDATE_SCORE_THRESHOLD` in
+`crates/github-audit/src/domains/lifecycle.rs`) are deliberately simple constants, not a tuned model, so a human
 reading a candidate list can reconstruct exactly why a repository scored
 the way it did.
 
@@ -806,7 +817,8 @@ fields — `declCi`/`declPrTitle`, the `ci.yml`/`pr-title.yml` contents at
   still-live `uses: tarotene/dotfiles/.github/workflows/pr-title.yml@`
   in `pr-title.yml`, superseded by the composite-action caller form.
 
-`ci.yml`'s job structure is parsed with a line-based `awk` scan (2-space
+`ci.yml`'s job structure is parsed with a line-based scan (`parse_ci_yaml`,
+a port of the bash version's `awk` scan; 2-space
 indent, `jobs:` last in the file — the shape this repository's own
 templates control), not a general YAML parser: no existing script in this
 repository's `rulesets`/`github-audit` family depends on `yq`, and a
@@ -817,7 +829,8 @@ scoped check needs (ADR-543 Q1 — existing means checked first).
 
 Detects repositories that should build their stack-standard API docs in CI
 but do not. Applicability is decided by a **closed manifest → tool table**
-(`DOCS_STACK_ACTIONS` at the top of the script is its single source; ADR-640
+(`DOCS_STACK_ACTIONS` in `crates/github-audit/src/domains/docs.rs` is its
+single source; ADR-640
 D3), not by the repository's primary language:
 
 | Manifest at the repo root | Stack | Composite action |
@@ -972,3 +985,64 @@ Which repositories were found drifted, and any one repository's own
 follow-up on its own issue tracker, are intentionally omitted from this
 document — see `docs/claude/public-publish-guard.md` for why dotfiles
 never names private/company repositories in its own tree.
+
+## Library API (ライブラリ API)
+
+`crates/github-audit` is a library first (#414): every judgement and fetch
+the bash version exposed as a sourceable function is a `pub` Rust function
+with typed inputs and outputs, so the bash scripts that still `source
+scripts/github-audit` can be ported onto it without re-implementing any
+judgement (ADR-0035 D1, a single source of truth). Inputs are the serde
+types in `github_audit::model` (`RepoMeta` = one `gh repo list --json`
+element, `RepoGql` = one repository's slice of the GraphQL batch with the
+query's aliases as fields, `RepoRest` = the REST `repos/OWNER/REPO` fields
+the judges read); every judge returns a `Finding` (`verdict`, `missing`,
+and a per-domain `Detail`), whose `to_j()` is the exact JSON object the
+bash version printed.
+
+Where the bash version read a global (`OWNER`, `GH_BIN`, the `.tsv` paths,
+`RENOVATE_POLICY_PRESET`, `WORKFLOWS_CANONICAL_QUALITY_FILE`,
+`GITHUB_AUDIT_LIFECYCLE_NOW`), the Rust function takes it as a parameter —
+`Config::from_env()` reads the same `GITHUB_AUDIT_*` variables, and a
+caller that used to overwrite `OWNER` builds its own `Gh::new(bin, owner)`.
+
+| bash function | Rust (`github_audit::…`) |
+|---|---|
+| globals (`OWNER`, `GH_BIN`, paths) | `Config::from_env()`, `Config::gh()`, `Gh::new(bin, owner)` |
+| `list_repos_meta` | `Gh::list_repos_meta(limit, viewer_permission) -> Result<Vec<RepoMeta>, FetchError>` |
+| `fetch_latest_run_conclusion` | `Gh::fetch_latest_run_conclusion(repo) -> String` |
+| `fetch_latest_release_run_conclusion` | `Gh::fetch_latest_release_run_conclusion(repo, workflow_file) -> String` |
+| `fetch_repo_settings` | `Gh::fetch_repo_settings(repo) -> RepoRest`; raw JSON: `Gh::fetch_repo_settings_raw(repo) -> serde_json::Value` |
+| `fetch_repo_secrets` | `Gh::fetch_repo_secrets(repo) -> Vec<String>` |
+| `fetch_run_job_names` | `Gh::fetch_run_job_names(repo, run_id) -> Vec<String>` |
+| `fetch_latest_pr_title_job_names` | `Gh::fetch_latest_pr_title_job_names(repo) -> Vec<String>` |
+| `fetch_head_sha_job_names` | `Gh::fetch_head_sha_job_names(repo, sha) -> Vec<String>` |
+| `fetch_latest_pr_head_job_names` | `Gh::fetch_latest_pr_head_job_names(repo) -> Vec<String>` |
+| `fetch_rulesets_list` / `fetch_ruleset_detail` | `Gh::fetch_rulesets_list(repo)` / `Gh::fetch_ruleset_detail(repo, id)` (`Option<String>`, raw) |
+| `default_branch_rulesets` | `Gh::default_branch_rulesets(repo) -> Vec<serde_json::Value>` |
+| `build_graphql_query` | `gh::build_graphql_query(owner, names) -> String` |
+| `fetch_graphql_batch` | `Gh::fetch_graphql_batch(names) -> Result<HashMap<String, RepoGql>, FetchError>` |
+| `read_overrides` / `read_tsv_col1` / `read_closed_set_json` / `is_exempt` | `vocab::read_overrides(path)` / `vocab::read_tsv_col1(path)` / `vocab::read_closed_set(file, Option<local_file>)` / `vocab::is_exempt(repo, Domain, &overrides)` |
+| `judge_rulesets` | `domains::rulesets::judge_rulesets(&Gh, repo, has_workflows, &RepoGql, &job_names)`; pure core `judge_rulesets_with(&rulesets, …)`; `required_contexts(&rulesets)` |
+| `extract_purpose` / `first_sentence` / `normalize_text` / `strip_for_lang` / `count_cjk` / `is_cjk_present` / `doc_headings` | same names in `domains::charters` |
+| `nav_doc_path_tokens` / `nav_doc_scan` | same names in `domains::navdoc` |
+| `judge_charters` | `domains::charters::judge_charters(description, topic_count, &RepoGql)` |
+| `judge_naming` | `domains::naming::judge_naming(repo, &topics, created_at, &NamingVocab, description, is_archived)` |
+| `judge_settings` | `domains::settings::judge_settings(&RepoMeta, &RepoRest)` |
+| `judge_renovate` | `domains::renovate::judge_renovate(&RepoGql, primary_language, preset)` |
+| `releaser_workflow_refs` / `judge_releaser` | `domains::releaser::releaser_workflow_refs(&RepoGql)`, `has_releaser_workflow(&RepoGql, &refs)`, `judge_releaser(&ReleaserInput)` |
+| `judge_routines` | `domains::routines::judge_routines(owner, repo, &RepoGql, &sources)` |
+| `judge_titles` | `domains::titles::judge_titles(&Gh, repo, &RepoGql, &run_jobs)`; pure core `judge_titles_with(&rulesets, …)` |
+| `parse_ci_yaml` / `judge_workflows` | `domains::workflows::parse_ci_yaml(text) -> CiYaml`, `quality_status_checks(text)`, `judge_workflows(&RepoGql, canonical_quality_file)` |
+| `docs_stacks_for` / `judge_docs` | `domains::docs::docs_stacks_for(&RepoGql)`, `judge_docs(repo, visibility, &RepoGql, &RepoRest)` |
+| `lifecycle_days_since` / `judge_lifecycle` | `domains::lifecycle::lifecycle_days_since(ts, now)`, `judge_lifecycle(pushed_at, has_workflows, &RepoGql, ci_conclusion, now)` |
+| `parse_domains` / `audit` | `parse_domains(&args)`, `audit(&Config, &domains) -> Result<Vec<RepoFindings>, FetchError>` |
+| `write_ledger` / `render_report` / `any_drift` | `write_ledger(state_dir, &findings)`, `render_report(&findings) -> String`, `any_drift(&findings) -> bool` (true **when drift exists** — the bash function's exit status was the inverse) |
+| (findings JSON) | `findings_to_json(&findings)` (the `--json` line), `findings_from_json(text)`, `Finding::to_j()` |
+
+Arguments the bash functions accepted but never read (`judge_charters`'
+and `judge_workflows`' `$1=repo`, `judge_lifecycle`'s `$1=repo`) are
+dropped. The bash `--selftest` lives on as `cargo test -p github-audit`:
+`tests/pipeline.rs` and `tests/judges.rs` carry each of its 178 checks one
+to one (tagged `bash#N`), and `tests/differential.rs` compares both
+implementations byte for byte while the bash version still exists.

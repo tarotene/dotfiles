@@ -4,7 +4,7 @@
 checker(単一ソース): `crates/pr-title-check`(`check_title()`、依存ゼロの lib + bin)
 client guard: `crates/pr-title-guard`(Claude/Codex/Copilot 共通の 1 バイナリ)
 サーバ側 required check: `.github/workflows/pr-title.yml`(reusable workflow)
-audit: `scripts/github-audit` の `settings` ドメイン拡張 + 新設 `titles` ドメイン
+audit: `github-audit`(`crates/github-audit`)の `settings` ドメイン拡張 + 新設 `titles` ドメイン
 Issue: tarotene/dotfiles#325
 
 squash-only 運用(`allow_squash_merge=true`、`squash_merge_commit_title=

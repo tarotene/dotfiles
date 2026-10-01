@@ -15,7 +15,7 @@ prompt が指す、汎用の実行手順。private 側の宣言(person-state rep
   そのまま実行できる(dotfiles の clone から相対パスで呼ぶ)。
 - GitHub アクセスは routine の `sources` に scope される。この auditor の
   宣言の `sources` に無い repo は読めない — 新しい家 repo を足したら
-  `sources` にも追加する必要がある(検出は `scripts/github-audit` の
+  `sources` にも追加する必要がある(検出は `github-audit`(`crates/github-audit`)の
   routines ドメインが行う、段3)。
 - `RemoteTrigger` に相当する meta connector(`Claude_Code_Remote`)は
   `get_trigger`/`update_trigger`/`list_triggers` を持つ。**`create_trigger`/

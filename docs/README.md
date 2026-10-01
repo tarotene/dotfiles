@@ -266,7 +266,7 @@
   App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
   個人アカウントには account-level の Actions secret が存在しないため、
   `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` の repo ごとのコピーだけは
-  還元できず、そこを `scripts/github-audit` の `releaser` ドメインが検出
+  還元できず、そこを `github-audit`(`crates/github-audit`)の `releaser` ドメインが検出
   する。対象 repo を列挙する registry ファイルは持たない(ADR-0025 と同じ
   理由)— 宣言の正本は release workflow ファイルの存在に還元する。
 - [ADR-457](adr/457-claude-native-install-source-of-truth.md) — Claude
