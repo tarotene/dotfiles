@@ -4,7 +4,7 @@
 //!
 //! 使い方:
 //!   hook として: stdin JSON(PreToolUse、matcher: "Bash|mcp__.*")
-//!   手動 e2e:   decision-colocation-guard --check '<コマンド文字列>' [<project-dir>]
+//!   手動 e2e:   decision-colocation-guard --check '<コマンド文字列>' (省略可: `<project-dir>`)
 //!               deny なら `deny: <理由>` を出して exit 1、通すなら `pass`
 //!
 //! 縮退(ADR-0005 の binary-existence gating に倣う): stdin が読めない・

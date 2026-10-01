@@ -3,7 +3,7 @@
 //! ソース、ADR-396)。bash 版 `scripts/decision-colocation-check` の移植。
 //!
 //! 使い方:
-//!   decision-colocation-check --base <ref>   # 判定
+//!   decision-colocation-check --base `<ref>`   # 判定
 //!   (自己検査 `--selftest` は `cargo test -p decision-colocation` に移った)
 //!
 //! 終了コード: 0 = 適合, 1 = 非適合, 2 = 判定不能(使い方誤り等)。

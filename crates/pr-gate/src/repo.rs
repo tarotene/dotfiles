@@ -139,7 +139,7 @@ fn gone_count(project: &Path) -> usize {
     }
 }
 
-/// [gone] ブランチ本数の行。0 なら空文字。
+/// `[gone]` ブランチ本数の行。0 なら空文字。
 pub fn gone_branches_line(project: &Path) -> String {
     match gone_count(project) {
         0 => String::new(),
@@ -147,7 +147,7 @@ pub fn gone_branches_line(project: &Path) -> String {
     }
 }
 
-/// [gone] かつ未変更の worktree 数の行。0 なら空文字。dirty な worktree は本物の
+/// `[gone]` かつ未変更の worktree 数の行。0 なら空文字。dirty な worktree は本物の
 /// 作業中の可能性があるので数えない(false positive を出さない側に倒す)。
 pub fn stale_worktrees_line(project: &Path) -> String {
     let list = match git(project, &["worktree", "list", "--porcelain"]) {
@@ -189,7 +189,7 @@ pub fn stale_worktrees_line(project: &Path) -> String {
 // だけを見る。解消は git push 1 回(push.autoSetupRemote が upstream を自動で
 // 張るので --set-upstream の指定は要らない) — 履歴改変は伴わない。
 
-/// upstream(無ければ origin/<branch>、それも無ければ origin/<default>)に対して
+/// upstream(無ければ origin/`<branch>`、それも無ければ origin/`<default>`)に対して
 /// 未 push のコミット数。比較先が決まらなければ "?"。
 pub fn unpushed_count(project: &Path, branch: &str) -> String {
     let mut upstream = git_ok(
