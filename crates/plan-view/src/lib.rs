@@ -41,7 +41,7 @@ pub struct Config {
     pub css_override: String,
     pub darwin_chrome_app: String,
     pub uname_override: String,
-    /// bash の `SCRIPT_DIR`(argv[0] のディレクトリ。シンボリックリンクは解決しない)。
+    /// bash の `SCRIPT_DIR`(`argv[0]` のディレクトリ。シンボリックリンクは解決しない)。
     pub script_dir: PathBuf,
     pub home: PathBuf,
 }

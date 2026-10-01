@@ -8,10 +8,10 @@
 //!
 //! 使い方:
 //!   hook として:      PreToolUse (matcher: ExitPlanMode) から stdin JSON で呼ばれる
-//!   advisory として:  copilot-plan-review --advisory <plan.md> [cwd]
+//!   advisory として:  `copilot-plan-review --advisory <plan.md> [cwd]`
 //!
 //! bash 版との差: `--selftest` は `cargo test` に移した。書式 gate precheck の
-//! sibling の既定パスは argv[0] と同じディレクトリの `plan-precedent-gate` /
+//! sibling の既定パスは `argv[0]` と同じディレクトリの `plan-precedent-gate` /
 //! `plan-scope-gate`(拡張子なし、Rust 版の配備名)で、`bash` を介さず直接起動する。
 
 pub mod judge;
