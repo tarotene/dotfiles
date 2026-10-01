@@ -133,8 +133,9 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
 
 ## 執行点
 
-- `config/claude/hooks/plan-precedent-gate.sh` — D3 の執行点(重い欄を
-  持つ `Dn` への `既存手段:` 必須化、selftest 追加)。
+- `crates/plan-precedent-gate` — D3 の執行点(重い欄を
+  持つ `Dn` への `既存手段:` 必須化、selftest 追加)。#412 で
+  `config/claude/hooks/plan-precedent-gate.sh` から移植した。
 
 ## Verification
 

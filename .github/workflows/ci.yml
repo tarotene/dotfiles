@@ -351,15 +351,13 @@ jobs:
       - name: fcitx5-key-trace.pl --selftest
         run: perl ./scripts/fcitx5-key-trace.pl --selftest
 
-      # The plan-review gate's acceptance decision is deterministic shell +
-      # jq, so it is testable without calling GitHub Copilot CLI. The selftest
-      # runs the judge over fixtures and drives the hook end to end against a
-      # fake copilot in a throwaway REVIEW_DIR (docs/claude/copilot-plan-review.md).
+      # The plan-review gate's critic output contract (a document; the hook
+      # validates the structure itself). The ExitPlanMode plan hooks
+      # (copilot-plan-review, plan-view, plan-precedent-gate, plan-scope-gate,
+      # plan-fresh-gate) are Rust now (#412, ADR-0024 Stage 4b); their former
+      # --selftest cases run as `cargo test --workspace` in the rust job.
       - name: copilot-plan-review output schema is valid JSON
         run: jq empty config/claude/assets/copilot-plan-review.schema.json
-
-      - name: copilot-plan-review.sh --selftest
-        run: bash ./config/claude/hooks/copilot-plan-review.sh --selftest
 
       # The wrap-up inbox gate is deterministic shell + jq end to end: the
       # degradation gates, the flock-guarded --add/--mark-filed mutations, and
@@ -369,38 +367,11 @@ jobs:
       - name: wrapup-stop-gate.sh --selftest
         run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
 
-      # plan-view only renders and launches, so its selftest drives the hook and
-      # CLI paths against a fake browser in a throwaway view dir.  The invariant
-      # it guards is that the hook never writes to stdout (anything there would
-      # be read as a permissionDecision and would interfere with the approval
-      # dialog), plus the CSS ordering that keeps light-theme code readable
-      # (docs/claude/plan-view.md).  Cases needing pandoc skip themselves when the
-      # runner has none, so this step does not depend on the image's tool list.
-      - name: plan-view.sh --selftest
-        run: bash ./config/claude/hooks/plan-view.sh --selftest
-
-      # plan-precedent-gate is deterministic shell + jq end to end, no gh/network:
-      # the section-vs-exemption-line branch, the per-Dn required-element checks
-      # (citation token, retrieval date, diff verdict), and duplicate-Dn
-      # detection are all exercised directly against the judge function
-      # (docs/adr/0012-precedent-grounding-over-prompted-adversarial-review.md,
-      # docs/claude/precedent-grounding.md).
-      - name: plan-precedent-gate.sh --selftest
-        run: bash ./config/claude/hooks/plan-precedent-gate.sh --selftest
-
-      # plan-scope-gate is deterministic shell + jq end to end, no gh/network
-      # (gh is stubbed): 経路A(Issue起点、sub-issues→checkboxフォールバックの
-      # 順で子項目を集めて処分の有無を検査)と経路B(`## 要求インベントリ` 内の
-      # 各 Rn に処分があるか・タグが妥当か・重複がないか)の両方を、fixtures に
-      # 対して直接判定関数へ通す (docs/claude/scope-inventory.md)。
-      - name: plan-scope-gate.sh --selftest
-        run: bash ./config/claude/hooks/plan-scope-gate.sh --selftest
-
       # codex-plan-gate (ADR-0032 Amendment #531, docs/claude/
       # codex-plan-gate.md) is Codex's Stop-hook analogue of ExitPlanMode:
       # it detects a `<proposed_plan>` block in the prior assistant message
-      # and calls the two gates above against stubbed versions of them —
-      # no new judgment logic, no gh/network.
+      # and calls plan-scope-gate / plan-precedent-gate (Rust, #412) against
+      # stubbed versions of them — no new judgment logic, no gh/network.
       - name: codex-plan-gate.sh --selftest
         run: bash ./config/codex/hooks/codex-plan-gate.sh --selftest
 
@@ -439,16 +410,6 @@ jobs:
       # unknown service/system.
       - name: venue-urls.sh --selftest
         run: bash ./config/claude/skills/venue-search/scripts/venue-urls.sh --selftest
-
-      # plan-fresh-gate is deterministic shell + git + jq end to end, no gh/network:
-      # the pristine-ff-then-deny path, the dirty/non-pristine no-move path, the
-      # branch==base no-move path, the denied-SHA session-state convergence (same
-      # SHA re-allows, base advancing re-checks only the increment), the
-      # full-path/basename intersection match, and the no-truncation guarantee
-      # over a 250-file diff are all exercised against throwaway fixture repos
-      # (docs/claude/plan-fresh-gate.md).
-      - name: plan-fresh-gate.sh --selftest
-        run: bash ./config/claude/hooks/plan-fresh-gate.sh --selftest
 
       # issue-index is deterministic shell + jq end to end against a stub gh:
       # the git-only/binary-existence gates, the mine→all fallback with its

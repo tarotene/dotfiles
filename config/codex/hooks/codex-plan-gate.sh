@@ -10,8 +10,10 @@
 # として現れる(Codex TUI バイナリの文字列リテラルで確認、2026-09-28)。この
 # hook は Stop イベントで直前の応答(`last_assistant_message`)から
 # `<proposed_plan>` を検出し、見つかったときだけ既存の
-# plan-scope-gate.sh --check-plan / plan-precedent-gate.sh --check を
-# そのまま呼ぶ。新しい判定ロジックは一切持たない(D1)。
+# plan-scope-gate --check-plan / plan-precedent-gate --check を
+# そのまま呼ぶ。新しい判定ロジックは一切持たない(D1)。両者は Rust バイナリ
+# (crates/plan-scope-gate・crates/plan-precedent-gate、#412)なので `bash` を
+# 介さず直接実行する。
 #
 # 無限 block 対策(D2): config/claude/hooks/pr-gate.sh と同じ設計 —
 # `stop_hook_active` は見ず、session_id ごとの独自カウンタが上限
@@ -21,7 +23,7 @@
 # (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。
 #
 # 縮退(ADR-0005 の binary-existence gating に倣う):
-#   jq 不在 / plan-scope-gate.sh・plan-precedent-gate.sh 不在 / 判定不能な
+#   jq 不在 / plan-scope-gate・plan-precedent-gate 不在 / 判定不能な
 #   stdin は黙って exit 0(判定不能を deny に変えない)。
 #
 # エスケープハッチ: touch ~/.codex/codex-plan-gate/skip または
@@ -39,8 +41,8 @@ STATE_DIR="$STATE_ROOT/state"
 MAX_BLOCKS="${CODEX_PLAN_GATE_MAX_BLOCKS:-4}"
 
 CLAUDE_HOOKS_DIR="${CODEX_PLAN_GATE_CLAUDE_HOOKS_DIR:-$HOME/.claude/hooks}"
-PLAN_SCOPE_GATE="$CLAUDE_HOOKS_DIR/plan-scope-gate.sh"
-PLAN_PRECEDENT_GATE="$CLAUDE_HOOKS_DIR/plan-precedent-gate.sh"
+PLAN_SCOPE_GATE="$CLAUDE_HOOKS_DIR/plan-scope-gate"
+PLAN_PRECEDENT_GATE="$CLAUDE_HOOKS_DIR/plan-precedent-gate"
 
 emit_block() { # $1=reason
   jq -n --arg reason "$1" '{decision: "block", reason: $reason}'
@@ -91,8 +93,8 @@ main() {
   printf '%s\n' "$plan_body" > "$plan_file"
 
   local out1 out2 rc1=0 rc2=0
-  out1="$(bash "$PLAN_SCOPE_GATE" --check-plan "$plan_file" 2>&1)" || rc1=$?
-  out2="$(bash "$PLAN_PRECEDENT_GATE" --check "$plan_file" 2>&1)" || rc2=$?
+  out1="$("$PLAN_SCOPE_GATE" --check-plan "$plan_file" 2>&1)" || rc1=$?
+  out2="$("$PLAN_PRECEDENT_GATE" --check "$plan_file" 2>&1)" || rc2=$?
 
   if [[ $rc1 -eq 0 && $rc2 -eq 0 ]]; then
     exit 0
@@ -123,8 +125,8 @@ selftest() {
 
   claude_hooks="$tmp/claude-hooks"
   mkdir -p "$claude_hooks"
-  scope_bin="$claude_hooks/plan-scope-gate.sh"
-  precedent_bin="$claude_hooks/plan-precedent-gate.sh"
+  scope_bin="$claude_hooks/plan-scope-gate"
+  precedent_bin="$claude_hooks/plan-precedent-gate"
 
   local ok_or_fail
   ok_or_fail="$tmp/mode" # ファイルの有無で stub の pass/fail を切り替える

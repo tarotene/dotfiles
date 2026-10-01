@@ -6,8 +6,8 @@
 決定と文献根拠は `docs/adr/0012-precedent-grounding-over-prompted-
 adversarial-review.md`。実装は `config/claude/CLAUDE.md`(規律の短文)、
 `config/claude/skills/precedent-grounding/SKILL.md`(書き方)、
-`config/claude/hooks/copilot-plan-review.sh` の lens A(批評)、
-`config/claude/hooks/plan-precedent-gate.sh`(形式検査、段2で追加)。
+`crates/copilot-plan-review` の lens A(批評)、
+`crates/plan-precedent-gate`(形式検査、段2で追加)。
 
 ## なぜ「敵対的に見よ」という指示に変換しなかったか
 
@@ -45,11 +45,11 @@ network-safe は別の境界」がすでに確立している境界(`web_fetch` 
 
 ## なぜ形式は機械 gate、内容は critic の報告にしたか
 
-`scope-inventory` / `plan-scope-gate.sh` と同じ二層構造:
+`scope-inventory` / `plan-scope-gate` と同じ二層構造:
 
 - **形式**(節または免除行が存在するか、各 `Dn` に出典トークン・取得日・
   差分の全要素があるか)は LLM を呼ばない決定論的な judge(段2で追加
-  する `plan-precedent-gate.sh`)が検査する。BAITBENCH 的な知見(指示
+  する `plan-precedent-gate`)が検査する。BAITBENCH 的な知見(指示
   文だけでは平均 50% 超がショートカットする)は scope-inventory の
   設計時点で既に踏まえており、同じ理由がここにも当てはまる。
 - **内容**(引用が本当に主張を支えているか、「先行例なし」の探索範囲が
@@ -88,9 +88,9 @@ Anthropic 公式ドキュメント(`code.claude.com/docs/en/best-practices`)
 あり、本仕組みの射程には含めていない。今後同様の依頼が増えれば、別途
 検討する(wrap-up inbox 参照)。
 
-## 形式検査(plan-precedent-gate.sh)
+## 形式検査(plan-precedent-gate)
 
-`config/claude/hooks/plan-precedent-gate.sh` は `plan-scope-gate.sh` と同型の
+`crates/plan-precedent-gate` は `plan-scope-gate` と同型の
 決定論的 judge で、LLM も `gh` も呼ばない(jq とテキスト処理だけ)。
 `plan-review` / `plan-view` / `plan-scope-gate` と同じ ExitPlanMode matcher に
 4 つ目のエントリとして並ぶ。
@@ -117,7 +117,7 @@ deny する。allow は返さない。問題が無ければ何も決定せず、
 - **取得日の妥当性は検査しない。** 未来日付や捏造された日付を機械的には
   見分けられない。ここは `precedent-grounding` スキルの「アンチパターン」
   節が指示文として塞ぐ領域。
-- **checkbox フォールバックは無い。** `plan-scope-gate.sh` の Issue 子項目
+- **checkbox フォールバックは無い。** `plan-scope-gate` の Issue 子項目
   カバレッジ検査とは異なり、この gate は Issue/GitHub 状態を一切参照しない
   ため、対象は常に「今書かれているプラン本文」だけ。
 
@@ -136,7 +136,7 @@ dotfiles 系セッションのトランスクリプト(プランセッション 
 まで 1 往復では収束せず、無駄なコンテキスト再送を招いていた。この実測に
 基づき、`example_block()` で「そのまま写せば通る」例文ブロックを deny 文
 末尾に同梱した(書式要求自体は変えていない)。加えて
-`plan-precedent-gate.sh --check <プランファイル>` による ExitPlanMode 前の
+`plan-precedent-gate --check <プランファイル>` による ExitPlanMode 前の
 自己検査導線を CLAUDE.md とスキルに追記した。
 
 ## この節を selection-grounding と共有する設計になった経緯
@@ -146,8 +146,8 @@ dotfiles 系セッションのトランスクリプト(プランセッション 
 この `## 先行例との対比` 節に `軸:` トークンを 1 つ足す形で実装した。
 理由は selection-grounding 自身の還元性の軸(その仕組みは、より安い手段
 では担えない仕事をしているか)に規範自身が従うため — `ExitPlanMode` の
-gate はすでに `plan-scope-gate.sh`・`plan-precedent-gate.sh`・
-`plan-fresh-gate.sh` の 3 本があり、4 本目を建てる正当化ができなかった。
+gate はすでに `plan-scope-gate`・`plan-precedent-gate`・
+`plan-fresh-gate` の 3 本があり、4 本目を建てる正当化ができなかった。
 発動条件(「妥当な代替が複数ある場面」)が precedent-grounding のそれと
 完全に一致していたことも、器を共有できた直接の理由。
 

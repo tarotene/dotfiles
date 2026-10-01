@@ -4,7 +4,7 @@
 
 ## 動機
 
-`copilot-plan-review.sh` の critic は `COPILOT_PLAN_REVIEW_MODEL` で `gpt-5.6-sol` を明示 pin していた(#80 の Codex → Copilot CLI 移行時に導入)。「Copilot Review Hook をアップデートしてほしい」という依頼を受けて `gpt-6-astra`(2026-09-04 GA)へ bump した際、変更対象は次の3種にまたがっていた:
+`copilot-plan-review` の critic は `COPILOT_PLAN_REVIEW_MODEL` で `gpt-5.6-sol` を明示 pin していた(#80 の Codex → Copilot CLI 移行時に導入)。「Copilot Review Hook をアップデートしてほしい」という依頼を受けて `gpt-6-astra`(2026-09-04 GA)へ bump した際、変更対象は次の3種にまたがっていた:
 
 1. 呼び出し本体の既定値(env var フォールバック)
 2. selftest 内の固定値 3箇所(既知値へ固定し直すブロック・偽 copilot が検証する契約値・チェックのラベル文字列そのもの)
@@ -18,7 +18,7 @@
 
 ## 内容の抽象化について
 
-SKILL.md 本文は `copilot-plan-review.sh` 固有の記述を避け、「呼び出し本体 / selftest / ドキュメント」という一般化した3分類と、CLI 非依存の検証パターン(無効モデル ID は送信前に即時エラーになることを利用したスラッグ確認)で書いている。初出の実例(gpt-5.6-sol → gpt-6-astra)だけを `home/modules/claude.nix` のコメントに残し、スキル本体が特定の hook に縛られないようにした。
+SKILL.md 本文は `copilot-plan-review` 固有の記述を避け、「呼び出し本体 / selftest / ドキュメント」という一般化した3分類と、CLI 非依存の検証パターン(無効モデル ID は送信前に即時エラーになることを利用したスラッグ確認)で書いている。初出の実例(gpt-5.6-sol → gpt-6-astra)だけを `home/modules/claude.nix` のコメントに残し、スキル本体が特定の hook に縛られないようにした。
 
 ## 運用
 

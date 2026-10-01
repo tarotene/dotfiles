@@ -135,7 +135,7 @@ duality 閉集合の中身(§2)と、(b) 技術・仕組みの選択に限って
 precedent-grounding と共有の gate をそのまま使う:
 
 ```bash
-~/.claude/hooks/plan-precedent-gate.sh --check <プランファイル>
+~/.claude/hooks/plan-precedent-gate --check <プランファイル>
 ```
 
 `OK:` が出るまで修正してから ExitPlanMode を呼ぶ。gate は `軸:` の

@@ -55,7 +55,7 @@ change or bug fix CL, though." と裁量の余地を残している。ただし�
 追加した — 後からレビュー・監査する側が「意図した同梱」と「スコープの
 なし崩し的な混入」を区別できるようにするため。
 
-機械 gate(`plan-scope-gate.sh` / `pr-gate.sh` への検査追加)は今回作らない。
+機械 gate(`plan-scope-gate` / `pr-gate.sh` への検査追加)は今回作らない。
 `AskUserQuestion` の選択肢空間は機械検査に向かないうえ、§8「なぜ
 pr-gate.sh を触らないか」の既存裁定(判定できる場合だけ踏み込む、実測が
 出てから block 化を検討する)にそのまま従う。

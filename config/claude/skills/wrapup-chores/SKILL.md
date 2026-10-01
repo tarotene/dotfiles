@@ -98,8 +98,8 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
   `User-Excluded:` のいずれか 1 つ
 - `## 先行例との対比` — §3 の返値から `Dn` 行を組み立てる
 - 自己検査 2 本を走らせて指摘ゼロを確認してから `ExitPlanMode`:
-  - `~/.claude/hooks/plan-scope-gate.sh --check-plan <プランファイル>`
-  - `~/.claude/hooks/plan-precedent-gate.sh --check <プランファイル>`
+  - `~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>`
+  - `~/.claude/hooks/plan-precedent-gate --check <プランファイル>`
 
 **`ExitPlanMode` が GO を兼ねる。** 個別の裁定は §4 で既に済んでいるので、
 Plan 提示後に会話上で改めて表を出して GO を取り直すことはしない。
@@ -159,7 +159,7 @@ inbox 行を 1 行ずつ `--mark-filed` で削除する。行は完全一致で�
 
 - 母集団の全件が `## 要求インベントリ` にちょうど 1 回ずつ現れ、処分を持つ
   (発見漏れゼロ)
-- `plan-scope-gate.sh --check-plan` と `plan-precedent-gate.sh --check` が
+- `plan-scope-gate --check-plan` と `plan-precedent-gate --check` が
   指摘ゼロ
 - 全段の PR が作成済み(`stacked-pr` の完了定義に従う)
 - 対処した項目の `Closes #N` が段ごとに 1:1 対応している(inbox 直接消化分は

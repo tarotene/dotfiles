@@ -161,7 +161,7 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   effort, or session length are never valid reasons to drop an item.
   A referenced Issue that isn't an implementation target gets
   `Reference-Only: #N — <reason>` instead of being silently ignored.
-- The `PreToolUse`/`ExitPlanMode` hook (`plan-scope-gate.sh`) enforces this:
+- The `PreToolUse`/`ExitPlanMode` hook (`plan-scope-gate`) enforces this:
   it cross-checks referenced Issues' sub-issues (or unchecked task-list items
   as a fallback) against the plan's inventory, and separately checks the
   inventory section's internal consistency (every `Rn` has a disposition,

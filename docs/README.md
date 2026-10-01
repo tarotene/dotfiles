@@ -247,7 +247,7 @@
   変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで
   `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` /
   `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由
-  から外す。検査器は新設せず `plan-scope-gate.sh` を再利用し、大物も裁定
+  から外す。検査器は新設せず `plan-scope-gate` を再利用し、大物も裁定
   対象にして選ばれたものは ADR-0027 の stacked PR の段として受ける。
 - [ADR-396](adr/396-decision-colocation.md) — 決定成果物(ADR/設計文書/
   skill)の新規追加、または既存 ADR への `## Amendment` 追加に、その決定を
@@ -317,7 +317,7 @@
   日々の開発フローに埋め込む決定。撤収コストと昇格コストの非対称性から、
   Q1 は新しい道具・単位の誕生を発火点にした前倒し型、Q2 は規範違反の
   再発・コードブロックの逐語反復といった安定の兆候で問う昇格型に分ける
-  (段1: `既存手段:` 語彙の新設と `plan-precedent-gate.sh` への必須化)。
+  (段1: `既存手段:` 語彙の新設と `plan-precedent-gate` への必須化)。
 - [ADR-568](adr/568-renovate-automerge-shared-preset.md) — Renovate の
   自動マージ方針(非 major automerge・GitHub ネイティブ auto-merge・
   minimumReleaseAge 3 日)を単一の共有 preset(`renovate/policy.json`)に
@@ -551,18 +551,18 @@ Design and rationale for the hooks and commands deployed from
 - [`scope-inventory.md`](claude/scope-inventory.md) — グローバル CLAUDE.md
   ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
   子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。
-  gate: `plan-scope-gate.sh`。
+  gate: `plan-scope-gate`。
 - [`precedent-grounding.md`](claude/precedent-grounding.md) — グローバル
   CLAUDE.md ルール + 個人スキル: Plan の非自明な設計判断ごとに先行例との
   対比(`D1..Dn`)を成果物に残す書き方。プロンプトでの「敵対的レビュー」
   「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
-  copilot-plan-review の lens A、形式検査は `plan-precedent-gate.sh`(gh/LLM
+  copilot-plan-review の lens A、形式検査は `plan-precedent-gate`(gh/LLM
   を呼ばない決定論的 judge)。
 - [`selection-grounding.md`](claude/selection-grounding.md) — ADR-0035:
   「クリーンかつ先進的な技術選定を好む」という自認を、
   `## 先行例との対比` 節にトークンを 1 つ足すだけで検証可能な 3 軸
   (表現不可能性 → 還元性 → 先進性の辞書式順序)に変換した設計記録。
-  独立した plan 節・専用 gate を新設せず `plan-precedent-gate.sh` への
+  独立した plan 節・専用 gate を新設せず `plan-precedent-gate` への
   加算で済ませた理由(還元性)も記録。
 - [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
   README/CONTRIBUTING.md に machine-checkable な charter(目的1文・

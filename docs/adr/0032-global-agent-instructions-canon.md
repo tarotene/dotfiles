@@ -163,5 +163,5 @@ daily-report の `agent_events`(ターン単位の作業証拠)は、Codex と C
 ### 執行点
 
 - config/claude/hooks/agent-turn-log.sh
-- config/claude/hooks/copilot-plan-review.sh
+- crates/copilot-plan-review
 - home/modules/claude.nix

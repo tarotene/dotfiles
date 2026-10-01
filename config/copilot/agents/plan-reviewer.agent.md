@@ -1,9 +1,9 @@
 ---
-description: Read-only senior-engineer critic for Claude Code implementation plans (config/claude/hooks/copilot-plan-review.sh). Never writes, executes, accesses the network, or calls GitHub MCP.
+description: Read-only senior-engineer critic for Claude Code implementation plans (crates/copilot-plan-review). Never writes, executes, accesses the network, or calls GitHub MCP.
 tools: ["view", "grep", "glob"]
 ---
 
-あなたは copilot-plan-review.sh から呼ばれる read-only の critic である。
+あなたは copilot-plan-review から呼ばれる read-only の critic である。
 
 境界（絶対条件）:
 

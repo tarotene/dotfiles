@@ -195,8 +195,8 @@
 #    Rn の ID)を置く」という短い規律を追加し、scope-inventory スキルがその作り方
 #    (gh graphql での sub-issues 列挙・閉じた棄却タグ Blocked-Upstream/Obsolete/
 #    User-Excluded・参照 Issue を Reference-Only: で書き分ける手順)を持つ。
-#    plan-scope-gate.sh は指示文だけでは足りない部分(BAITBENCH: 明示的に禁止しても
-#    ショートカット使用率は平均50%超)を機械検査で塞ぐ — LLM を呼ばず、jq/grep/gh
+#    plan-scope-gate(crates/plan-scope-gate)は指示文だけでは足りない部分(BAITBENCH: 明示的に禁止しても
+#    ショートカット使用率は平均50%超)を機械検査で塞ぐ — LLM を呼ばず、文字列と gh
 #    だけで判定する純粋な judge。plan-review / plan-view と同じ matcher に 3 つ目の
 #    エントリとして並ぶ。経路A(ユーザー発言から参照 Issue を抽出し、子 sub-issues
 #    のカバレッジを検査)と経路B(`## 要求インベントリ` 節内の処分の整合性を検査)の
@@ -213,7 +213,7 @@
 #    著者が接地し既存の文脈を切った critic(lens A)が監査する形にした。新規の
 #    独立 lens は立てず lens A に統合し、premium request は増やさない。形式検査
 #    (節または免除行の存在、各 Dn の出典・取得日・差分の要素)は LLM を呼ばない
-#    機械 gate(plan-precedent-gate.sh)が担う。plan-review / plan-view /
+#    機械 gate(crates/plan-precedent-gate)が担う。plan-review / plan-view /
 #    plan-scope-gate と同じ ExitPlanMode matcher に 4 つ目のエントリとして並ぶ。
 #    詳細は docs/adr/0012-precedent-grounding-over-prompted-adversarial-review.md
 #    と docs/claude/precedent-grounding.md。
@@ -483,7 +483,13 @@
 let
   repoConfig = ../../config;
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
-  planReviewCmd = "bash '${hooksDir}/copilot-plan-review.sh'";
+  # #412 (ADR-0024 Stage 4b): ExitPlanMode の plan hook 5 本(copilot-plan-review /
+  # plan-view / plan-scope-gate / plan-precedent-gate / plan-fresh-gate)は Rust
+  # バイナリ(crates/<name>、pkgs.dotfiles-tools)になり、下の home.file が
+  # ~/.claude/hooks/<name>(拡張子無し)として配備する。bash を介さず直接起動
+  # する。旧 `bash '….sh'` の command は retiredHookEntries で完全一致削除する
+  # (legacyPlan*Cmd)。
+  planReviewCmd = "'${hooksDir}/copilot-plan-review'";
   wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
   # Codex 向けは同じファイルを、フッターの agent 名/URL だけ環境変数で
   # 差し替えて直接登録する(adapter ファイルを新設しない — ADR-0032
@@ -491,7 +497,7 @@ let
   # 定数値。
   codexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
-  planViewCmd = "bash '${hooksDir}/plan-view.sh'";
+  planViewCmd = "'${hooksDir}/plan-view'";
   issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
@@ -570,9 +576,14 @@ let
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
   worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
-  planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
-  planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
-  planFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
+  planScopeGateCmd = "'${hooksDir}/plan-scope-gate'";
+  planPrecedentGateCmd = "'${hooksDir}/plan-precedent-gate'";
+  planFreshGateCmd = "'${hooksDir}/plan-fresh-gate'";
+  legacyPlanReviewCmd = "bash '${hooksDir}/copilot-plan-review.sh'";
+  legacyPlanViewCmd = "bash '${hooksDir}/plan-view.sh'";
+  legacyPlanScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
+  legacyPlanPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
+  legacyPlanFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
   attributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
   # stack-base-guard(ADR-0027)は attribution-guard.sh を source するので
   # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
@@ -769,6 +780,27 @@ let
     {
       event = "SessionStart";
       command = legacyWorktreeAuditContextCmd;
+    }
+    # #412 (ADR-0024 Stage 4b): ExitPlanMode の plan hook 5 本の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyPlanReviewCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyPlanViewCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyPlanScopeGateCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyPlanPrecedentGateCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyPlanFreshGateCmd;
     }
   ];
 
@@ -1366,9 +1398,10 @@ in
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
   # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
   # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
-  # し、ラウンドも 2 に絞る。gate 本体(copilot-plan-review.sh)は触らない — closer
+  # し、ラウンドも 2 に絞る。gate 本体(crates/copilot-plan-review)は触らない — closer
   # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
-  # (`${3-$GATE_SEVERITIES}` のコロンなしデフォルト)に影響しないよう、値は env 経由
+  # (bash 版では `${3-$GATE_SEVERITIES}` のコロンなしデフォルト、Rust 版では
+  # judge へ渡す空の gate 集合)に影響しないよう、値は env 経由
   # でのみ渡す。sessionVariables は次回ログインから効く。詳細は
   # docs/claude/copilot-plan-review.md の環境変数節。
   #
@@ -1385,10 +1418,8 @@ in
     DISABLE_AUTOUPDATER = "1";
   };
 
-  home.file.".claude/hooks/copilot-plan-review.sh" = {
-    source = repoConfig + "/claude/hooks/copilot-plan-review.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/copilot-plan-review".source =
+    "${pkgs.dotfiles-tools}/bin/copilot-plan-review";
 
   # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
   # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
@@ -1400,7 +1431,7 @@ in
   home.file.".claude/hooks/copilot-plan-review.schema.json".source =
     repoConfig + "/claude/assets/copilot-plan-review.schema.json";
 
-  # plan-reviewer: copilot-plan-review.sh が `--agent plan-reviewer` で呼ぶ
+  # plan-reviewer: copilot-plan-review が `--agent plan-reviewer` で呼ぶ
   # read-only custom agent。tools は view/grep/glob だけで、
   # write/execute/web/GitHub MCP は与えない(docs/claude/copilot-plan-review.md)。
   home.file.".copilot/agents/plan-reviewer.agent.md".source =
@@ -1418,14 +1449,12 @@ in
   };
 
   # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
-  # スクリプトは CSS を自身のディレクトリ相対で解決するので、配備先では schema
-  # と同じく 2 ファイルを ~/.claude/hooks/ に並べて置く。ソースツリー上は
-  # config/claude/assets/ に分離しているが、plan-view.sh の find_css() が
-  # SCRIPT_DIR/../assets/ も探すので、リポジトリ直接実行でも解決する(ADR-0007)。
-  home.file.".claude/hooks/plan-view.sh" = {
-    source = repoConfig + "/claude/hooks/plan-view.sh";
-    executable = true;
-  };
+  # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
+  # 解決しない)のディレクトリ相対で解決するので、配備先では 2 ファイルを
+  # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/claude/assets/ に
+  # 分離している(ADR-0007)。$HOME/.claude/hooks/plan-view.css も最後の候補として
+  # 探すので、~/.local/bin/plan-view からの起動でも解決する。
+  home.file.".claude/hooks/plan-view".source = "${pkgs.dotfiles-tools}/bin/plan-view";
   home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
 
   # agent-turn-log: UserPromptSubmit / Stop の1ターン境界を JSONL 追記する
@@ -1437,25 +1466,17 @@ in
 
   # plan-scope-gate: 要求インベントリ(scope-inventory、15番)の脱落を機械検査する。
   # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-scope-gate.sh" = {
-    source = repoConfig + "/claude/hooks/plan-scope-gate.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/plan-scope-gate".source = "${pkgs.dotfiles-tools}/bin/plan-scope-gate";
 
   # plan-precedent-gate: 先行例との対比(precedent-grounding、16番、ADR-0012)の
   # 脱落を機械検査する。同じ matcher に 4 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-precedent-gate.sh" = {
-    source = repoConfig + "/claude/hooks/plan-precedent-gate.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/plan-precedent-gate".source =
+    "${pkgs.dotfiles-tools}/bin/plan-precedent-gate";
 
   # plan-fresh-gate: ExitPlanMode 直前に origin/<base> の進行を検出し、プラン
   # 参照ファイルと交差するときだけ deny する(docs/claude/plan-fresh-gate.md)。
   # 同じ matcher に 5 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-fresh-gate.sh" = {
-    source = repoConfig + "/claude/hooks/plan-fresh-gate.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/plan-fresh-gate".source = "${pkgs.dotfiles-tools}/bin/plan-fresh-gate";
 
   # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
   # フッターを強制する(docs/claude/attribution-guard.md)。判定は純関数群に
@@ -1830,7 +1851,7 @@ in
 
   # ADR-0032 Amendment #531 段4: codex-plan-gate(docs/claude/
   # codex-plan-gate.md)。同じ lost-update 対策で Stop hook 登録の後ろに
-  # 明示的に順序付ける。plan-scope-gate.sh / plan-precedent-gate.sh 自体は
+  # 明示的に順序付ける。plan-scope-gate / plan-precedent-gate 自体は
   # 呼び出すだけで Codex 用に配備しない(~/.claude/hooks/ 配下の既存パスを
   # そのまま参照する)。
   home.activation.registerCodexPlanGateHooks =
@@ -1856,14 +1877,9 @@ in
   '';
 
   # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
-  # 本体を 2 箇所に置くと ~/.local/bin 側から CSS に届かないので、exec で寄せる。
-  home.file.".local/bin/plan-view" = {
-    text = ''
-      #!/usr/bin/env bash
-      exec bash "$HOME/.claude/hooks/plan-view.sh" "$@"
-    '';
-    executable = true;
-  };
+  # 同じバイナリを置く(CSS は $HOME/.claude/hooks/plan-view.css へのフォール
+  # バックで解決する、上の plan-view 節参照)。
+  home.file.".local/bin/plan-view".source = "${pkgs.dotfiles-tools}/bin/plan-view";
 
   # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
   # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
@@ -1993,13 +2009,13 @@ in
   # scope-inventory: Tracking Issue 等の複数項目の依頼を計画に起こすとき、子タスク
   # を黙って落とさせないための要求インベントリの作り方(gh graphql での sub-issues
   # 列挙、閉じた棄却タグ、Reference-Only: での参照 Issue の書き分け)。強制は
-  # plan-scope-gate.sh(段2)が担う。詳細は docs/claude/scope-inventory.md。
+  # plan-scope-gate(段2)が担う。詳細は docs/claude/scope-inventory.md。
   home.file.".claude/skills/scope-inventory/SKILL.md".source =
     repoConfig + "/claude/skills/scope-inventory/SKILL.md";
   # precedent-grounding: Plan に非自明な設計判断を書くとき、確立されたやり方
   # (先行例・文献)と照合した結果を `## 先行例との対比` 節として成果物に残す
   # 書き方(出典・取得日・差分の書式、免除行の条件)。批評(lens A)が何を監査
-  # するかもここに持つ。形式検査は plan-precedent-gate.sh(段2)が担う。詳細は
+  # するかもここに持つ。形式検査は plan-precedent-gate(段2)が担う。詳細は
   # docs/claude/precedent-grounding.md、コメント索引 16) 参照。
   home.file.".claude/skills/precedent-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/precedent-grounding/SKILL.md";
@@ -2007,7 +2023,7 @@ in
   # 要否・置き換え)を表現不可能性 → 還元性 → 先進性の3軸の辞書式順序で評価し、
   # precedent-grounding が確立した `## 先行例との対比` 節に `軸:` トークンと
   # (該当時)`本命:`/`対抗馬:`/`外した候補:` を追加する書き方(ADR-0035)。
-  # 形式検査は plan-precedent-gate.sh(precedent-grounding と共有、新規 gate は
+  # 形式検査は plan-precedent-gate(precedent-grounding と共有、新規 gate は
   # 作らない)。詳細は docs/claude/selection-grounding.md。
   home.file.".claude/skills/selection-grounding/SKILL.md".source =
     repoConfig + "/claude/skills/selection-grounding/SKILL.md";

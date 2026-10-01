@@ -497,7 +497,7 @@ orphan PR(base 宣言の不整合)自体は発生しない —— base チェー
 「同じことをフルスクラッチではなく既存の枯れた技術で実現できないか」
 という問いは、気付いたとき・思い出したときに提起するのでは間に合わない
 (`docs/adr/543-existing-means-and-deterministic-promotion.md` Context)。
-Plan mode を経ない作業(直接編集・小修正)は `plan-precedent-gate.sh` の
+Plan mode を経ない作業(直接編集・小修正)は `plan-precedent-gate` の
 チェックを一切通らないため、Plan を経由しない新設コードが無審査のまま
 PR に載る経路が残る。`G_prior` はその最後の関門として、PR に**新しい
 道具・単位**が追加されているのに本文へ `既存手段:` の記載が無い状態を

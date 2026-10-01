@@ -116,7 +116,10 @@ extra = ["bootstrap.sh"]
 # 共有する設計上、github-audit 自体が Rust 化されるまでは同じ理由で bash
 # のまま追加した — `pr-merge-settings-check`/`pr-title-context-check` と
 # 同型の判断。
-max_remaining = 60
+#
+# 55 = #412(Stage 4b)で ExitPlanMode の plan hook 5 本を Rust へ移植し、
+# bash 版を削除した(60 → 55)。
+max_remaining = 55
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -216,30 +219,11 @@ path = "config/codex/hooks/adr-number.sh"
 stage = "4a"
 
 # --- Stage 4b ---
-[[target]]
-path = "config/claude/hooks/plan-scope-gate.sh"
-stage = "4b"
-
-[[target]]
-path = "config/claude/hooks/plan-precedent-gate.sh"
-stage = "4b"
-
-[[target]]
-path = "config/claude/hooks/plan-fresh-gate.sh"
-stage = "4b"
-
-[[target]]
-path = "config/claude/hooks/plan-view.sh"
-stage = "4b"
-
-[[target]]
-path = "config/claude/hooks/copilot-plan-review.sh"
-stage = "4b"
-
 # ADR-0032 Amendment (#531): Codex's Stop-hook analogue of the ExitPlanMode
-# plan-gate family above — no single Claude-side file it mirrors 1:1 (it
-# calls plan-scope-gate.sh / plan-precedent-gate.sh directly), so it is
-# grouped with them by category instead.
+# plan-gate family — no single Claude-side file it mirrors 1:1 (it calls
+# plan-scope-gate / plan-precedent-gate directly), so it is grouped with them
+# by category instead. The family itself (copilot-plan-review, plan-view,
+# plan-scope-gate, plan-precedent-gate, plan-fresh-gate) is Rust since #412.
 [[target]]
 path = "config/codex/hooks/codex-plan-gate.sh"
 stage = "4b"

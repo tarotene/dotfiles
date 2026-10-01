@@ -2,7 +2,7 @@
 
 `config/claude/CLAUDE.md` の「複数項目の依頼は要求インベントリで受ける」節、
 `config/claude/skills/scope-inventory/SKILL.md`、`config/claude/hooks/
-plan-scope-gate.sh`(段 2)の 3 点セットの設計根拠。`pr-description` が skill
+plan-scope-gate`(段 2)の 3 点セットの設計根拠。`pr-description` が skill
 と `G_visual` を 1 文書で扱っている前例に倣い、skill と gate を 1 文書に
 まとめる。
 
@@ -72,7 +72,7 @@ Cursor・Aider いずれのドキュメント/upstream にも見つからなか�
   タグの使い分け、`Reference-Only:` の書き方)
 - 「機械的に検査・強制できる違反」→ hook(段 2)
 
-`copilot-plan-review.sh` の lens A(スコープ判定)を拡張する選択肢は採らない
+`copilot-plan-review` の lens A(スコープ判定)を拡張する選択肢は採らない
 ——lens A は「非スコープが明確か」を見る観点で、依頼に含まれない隣接事項の
 非スコープ宣言を*加点*する。これは今回塞ぎたい失敗そのものと衝突する
 (下記参照)。critic はネットワークも `gh` も使えず元 Issue を読めないため、
@@ -95,7 +95,7 @@ Cursor・Aider いずれのドキュメント/upstream にも見つからなか�
 節、`docs/claude/worktree-fresh-base.md` の「スコープ外(別 Issue)」節)、
 マーカーは「依頼に含まれていたのに落とした項目」と「依頼に含まれない項目の
 非スコープ宣言」を区別できない。`home/modules/claude.nix` が
-`copilot-plan-review.sh` の gate 対象 severity を `BLOCKER,MAJOR` から
+`copilot-plan-review` の gate 対象 severity を `BLOCKER,MAJOR` から
 `BLOCKER` に、ラウンド数を 3 から 2 に絞った経緯(実測 deny 率 69%、review の
 価値より摩擦が勝っていたため)を再現するだけになる。
 
@@ -129,7 +129,7 @@ Cursor・Aider いずれのドキュメント/upstream にも見つからなか�
 ## Issue 単位の `Reference-Only:` — プランレビューの BLOCKER 指摘に基づく設計
 
 初版の gate 設計は、ユーザーが書いた `#N` を無条件に実装要求とみなし、その
-子 Issue 全件をインベントリに要求していた。`copilot-plan-review.sh` の
+子 Issue 全件をインベントリに要求していた。`copilot-plan-review` の
 プランレビュー(lens A, id: R1-A-1)がこれを BLOCKER として指摘: 「#10 の設計を
 参考に、今回は設定項目 A だけ追加して」のように、参照だけの Issue も同じ扱いに
 なり、依頼されていない子項目まで列挙・処分させる誤検知が生じる。**参照と
@@ -155,10 +155,10 @@ Claude Code のみ。Codex(`~/.codex/`)・Copilot(`~/.copilot/`)には現時点�
 新しいセッションで複数項目の依頼を投げ、`## 要求インベントリ` が自発的に
 書かれるかを観察する。弱ければ文面を PR で調整する。
 
-## `plan-scope-gate.sh`(段 2: 決定論的検査)
+## `plan-scope-gate`(段 2: 決定論的検査)
 
 指示文・skill だけでは足りない(BAITBENCH の知見、上述)ため、`ExitPlanMode` 時に
-機械検査する hook を追加した。`copilot-plan-review.sh` の critic/judge/oracle
+機械検査する hook を追加した。`copilot-plan-review` の critic/judge/oracle
 分離とは違い、この gate は **LLM を一切呼ばない** — jq/grep/gh だけで判定する
 純粋な judge。プランレビューの読み取り専用エージェントには `gh` もネットワークも
 無く元 Issue を読めないため、この判定を lens A へ足すことはできない(前述)。
