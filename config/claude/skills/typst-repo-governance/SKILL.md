@@ -14,6 +14,11 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    and config files (renovate.json, cliff.toml, .yamllint, Justfile, git hooks,
    AGENTS.md/CLAUDE.md routing skeleton — ADR-0016 in tarotene/dotfiles)
    into the target repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
+   No API-docs job is seeded: `github-audit`'s `docs` domain (ADR-640 in
+   tarotene/dotfiles) is `not-applicable` for a Typst/document repository — the site/document is
+   itself the build artifact. If the repo is also a TypeScript library (its
+   `package.json` declares `exports`/`main`/`types`), the audit will ask for
+   `tarotene/dotfiles/.github/actions/docs-typescript@main` in `ci.yml`.
 2. Applies repository merge settings (squash-only, delete-on-merge, wiki/projects disabled — same
    baseline `github-audit`'s `settings` domain judges, ADR-0015 in tarotene/dotfiles) via `gh api`.
 3. Creates the core GitHub Rulesets (Security / Quality / Workflow) that enforce

@@ -15,6 +15,13 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    and config files (renovate.json, release-plz.toml, cog.toml, rust-toolchain.toml, Justfile, git hooks,
    AGENTS.md/CLAUDE.md routing skeleton — ADR-0016 in tarotene/dotfiles)
    into the target repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
+   The `ci.yml` template includes a `docs` job (`API docs`) that calls
+   `tarotene/dotfiles/.github/actions/docs-rust@main` — the strict
+   (`-D warnings` + doctest) stack-standard API doc build, ADR-640 in
+   tarotene/dotfiles — and lists it in `ci-passed.needs`. GitHub Pages deploy
+   (`docs-pages.yml`) and the weekly external link check
+   (`docs-linkcheck.yml`) are opt-in templates under `repo-governance-common`
+   — see `github-audit-triage` for when to add them.
 2. Applies repository merge settings (squash-only, delete-on-merge, wiki/projects disabled — same
    baseline `github-audit`'s `settings` domain judges, ADR-0015 in tarotene/dotfiles) via `gh api`.
 3. Creates the core GitHub Rulesets (Security / Quality / Workflow) that enforce

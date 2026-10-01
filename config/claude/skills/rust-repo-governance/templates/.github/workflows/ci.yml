@@ -378,13 +378,29 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         run: just mcp-test
 
+  # スタック標準の API doc ビルド必須化(tarotene/dotfiles ADR-640)。strict の
+  # 基準(RUSTDOCFLAGS=-D warnings の cargo doc + cargo test --doc)は
+  # composite action が単一正本で、このリポジトリ側では緩められない。
+  # tarotene/dotfiles の github-audit `docs` ドメインが、この呼び出しの
+  # 有無(@main 参照)を横断で検査する。
+  # ADJUST: workspace が libudev 等のシステムライブラリに依存するクレートを
+  # 含む場合は、この step の前に apt-get install を足す(host job と同じ)。
+  docs:
+    name: API docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: tarotene/dotfiles/.github/actions/docs-rust@main
+        with:
+          upload: 'false'
+
   # 集約 required check(ADR-591)。上の job を1つでも追加・削除したら
   # needs: をここで同期させること — tarotene/dotfiles の
   # workflow-naming-check がこの不変条件を機械検査する。
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
-    needs: [fmt, host, msrv, firmware, tools]
+    needs: [fmt, host, msrv, firmware, tools, docs]
     if: always()
     steps:
       - name: Fail if any required job failed or was cancelled

@@ -179,6 +179,8 @@ ADR-0015 / ADR-591 D8 と同じ経路。新規リポジトリは `*-repo-governa
 - config/claude/skills/repo-governance-common/templates/.github/workflows/docs-linkcheck.yml
 - scripts/github-audit
 - docs/github-audit.md
+- config/claude/skills/github-audit-triage/SKILL.md
+- config/claude/skills/rust-repo-governance/templates/.github/workflows/ci.yml
 
 ## Verification
 
