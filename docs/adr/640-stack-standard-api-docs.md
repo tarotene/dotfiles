@@ -133,8 +133,8 @@ lychee を週次 cron で回し(`docs-linkcheck.yml`)、壊れていれば Issue
 `github-audit` に `docs` ドメインを追加する(閉表による適用判定、`ci.yml` に
 `docs-<stack>` を `uses:` するジョブの有無、PRIVATE の Pages 有効)。`needs:`
 の網羅検査は `judge_workflows()` が既に担うので二重に実装しない。軸: 還元。
-**この ADR を導入する PR では action・テンプレート・fixture・dotfiles 自身の
-CI を着地させ、`docs` ドメインの実装は後続の段で入れる。**
+`docs` ドメインの実装は、この ADR と同じ stacked PR チェーンの、action・
+テンプレート・fixture を着地させる段より後の段に置く。
 
 ### D10: 既存リポジトリへの展開は `github-audit-triage` の一括 PR で行う
 
@@ -164,8 +164,9 @@ ADR-0015 / ADR-591 D8 と同じ経路。新規リポジトリは `*-repo-governa
   Renovate の `github-actions` マネージャの対象外で、追従は手動(各 action の
   `*_PIN` コメントを目印にする)。composite action 内の action の SHA pin は
   標準の `github-actions` マネージャが追う。
-- 後続の段で、`github-audit` の `docs` ドメインと、`github-audit-triage` の
-  docs 起草手順、`*-repo-governance` テンプレートへの `docs` job 追加を入れる。
+- 同じ stacked PR チェーンの後続の段で、`github-audit` の `docs` ドメインと、
+  `github-audit-triage` の docs 起草手順、`*-repo-governance` テンプレートへの
+  `docs` job 追加を入れる。
 
 ## 執行点
 
