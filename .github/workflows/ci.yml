@@ -918,12 +918,22 @@ jobs:
             if [ "$got" = "$2" ]; then echo "ok   $1 -> ${got:-pass}"; else
               echo "::error::canary '$1': expected '${2:-pass}', got '${got:-pass}'"; fail=1; fi
           }
-          expect "gh -R before subcommand" deny '{"tool_name":"Bash","tool_input":{"command":"gh -R pub/repo issue create --title t --body \"acme/secret-project\""}}'
-          expect "gh -R after subcommand" deny '{"tool_name":"Bash","tool_input":{"command":"gh issue create -R pub/repo --title t --body \"acme/secret-project\""}}'
-          expect "gh --repo after subcommand" deny '{"tool_name":"Bash","tool_input":{"command":"gh pr create --repo pub/repo --title t --body \"acme/secret-project\""}}'
+          # bleep ADR-0003 (#675): gh posts are accepted only in the canonical
+          # form (literal -R + an absolute --body-file), so the denylist match
+          # must be exercised through a body file; an inline --body is denied
+          # by the grammar before any content is looked at.
+          printf 'acme/secret-project\n' > "$T/body-secret.md"
+          printf 'nothing sensitive\n' > "$T/body-clean.md"
+          bash_cmd() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
+          expect "gh -R before subcommand" deny "$(bash_cmd "gh -R pub/repo issue create --title t --body-file $T/body-secret.md")"
+          expect "gh -R after subcommand" deny "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-secret.md")"
+          expect "gh --repo after subcommand" deny "$(bash_cmd "gh pr create --repo pub/repo --title t --body-file $T/body-secret.md")"
           expect "MCP GitHub post" deny '{"tool_name":"mcp__github__create_issue","tool_input":{"owner":"pub","repo":"repo","title":"t","body":"acme/secret-project"}}'
-          expect "unresolved shell variable" ask '{"tool_name":"Bash","tool_input":{"command":"gh issue create -R $TARGET --title t --body x"}}'
-          expect "unrelated command" "" '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
+          expect "inline --body is outside the canonical form" deny "$(bash_cmd 'gh issue create -R pub/repo --title t --body "x"')"
+          expect "unresolved shell variable is outside the canonical form" deny "$(bash_cmd "gh issue create -R \$TARGET --title t --body-file $T/body-clean.md")"
+          expect "canonical post with a clean body" "" "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-clean.md")"
+          expect "push that disables pre-push" deny "$(bash_cmd 'git push --no-verify origin x')"
+          expect "unrelated command" "" "$(bash_cmd 'ls -la')"
           exit $fail
       # cache-nix-action does not create GC roots itself (its own README:
       # "users must manage this separately"), so anything without a root is

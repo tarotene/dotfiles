@@ -226,6 +226,7 @@ mod tests {
             match_class: MatchClass::Plain,
             term_hash: Some(term_hash.into()),
             tool_name: "Bash".into(),
+            detail: None,
         }
     }
 

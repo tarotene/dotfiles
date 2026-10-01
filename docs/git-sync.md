@@ -58,6 +58,23 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 branch 行を確認なしで削除する — `git-auto-prune` timer から呼ばれ、
 `docs/worktree-lifecycle.md` の「無人削除」節を参照。
 
+## pre-push の worktree ガード
+
+`config/git/hooks/pre-push` は、手動で切った linked worktree(herdr が
+`~/.herdr/worktrees/` に切ったものを除く)からの push を止める。herdr の
+worktree は「PR ブランチをそこから直接 push する」のが通常の運用なので例外に
+している(#39)。
+
+- 手動で切った worktree の push が止まったら、親ブランチへ戻してから push する。
+  worktree のブランチをそのまま公開したいときは、ユーザーに確認する。
+- 人間が意図して押すときの回避は `git push --no-verify`。**エージェントの Bash
+  では使えない**: bleep が pre-push を無効にする形(`--no-verify`、
+  `-c core.hooksPath=…`)を `push-hook-bypass` で deny する(bleep ADR-0003)。
+  push の公開検査は、この hook が `bleep scan-push --pre-push` に渡す pre-push の
+  stdin(`<local-ref> <local-sha> <remote-ref> <remote-sha>`)で範囲を決める。
+  stdin は bleep と repo-local の pre-push の両方が要るので、一時ファイルに
+  退避して両方へ渡す。
+
 ## `GIT_ALLOW_MAIN_COMMIT`
 
 `config/git/hooks/pre-commit` の protected-branch ガードは `--no-verify` を回避手段に

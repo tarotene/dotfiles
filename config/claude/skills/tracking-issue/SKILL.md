@@ -13,9 +13,12 @@ description: 複数の子作業を束ねる親 Issue(Tracking Issue)を起票・
 
 親子関係は GitHub の sub-issues 機能で表現する。
 
-- 子を作りながら紐付ける: `gh issue create --parent <親番号>`
-- 既存 Issue を後から紐付ける: `gh issue edit <親番号> --add-sub-issue <子番号>[,<子番号>...]`
-- 親を外す: `gh issue edit <子番号> --remove-parent`
+- 子を作りながら紐付ける: `gh issue create -R OWNER/REPO --parent <親番号> --body-file <絶対パス>`
+- 既存 Issue を後から紐付ける: `gh issue edit <親番号> -R OWNER/REPO --add-sub-issue <子番号>[,<子番号>...]`
+- 親を外す: `gh issue edit <子番号> -R OWNER/REPO --remove-parent`
+
+`-R` は bleep の正準形で必須(cwd の origin からは推測されない)、本文は Write で
+ファイルにして `--body-file <絶対パス>` で渡す(`pr-description` スキル §0)。
 - 進捗確認: `gh issue view <親番号> --json subIssuesSummary,parent`
 
 GraphQL の `addSubIssue` mutation を直接叩く必要はない(`gh` 2.94.0 以降で上記フラグが使える)。

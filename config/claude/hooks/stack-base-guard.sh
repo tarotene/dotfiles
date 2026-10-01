@@ -785,6 +785,35 @@ STUB
   check "7 heredoc 本文の Independent-PR は pass" "1" "$rc"
   git -C "$repo" switch stage2 -q
 
+  # 7b: bleep の正準形(ADR-0003)は本文を --body-file の絶対パスだけで渡す。
+  #     インラインの --body は bleep が先に deny するので、実運用で効くのは
+  #     こちら(#675)。タグあり=pass、タグ無し=deny。
+  printf 'Independent-PR: 緊急hotfixのため\n' > "$tmp/indep-body.md"
+  printf '本文だけ\n' > "$tmp/plain-body.md"
+  reset_state
+  git -C "$repo" switch stage1 -q
+  STACK_STUB_PR_LIST_FILE="$tmp/prs-empty.json" \
+    run_decide "gh pr create --base main --title t --body b" "$repo" > /dev/null || true
+  git -C "$repo" switch unrelated -q
+  rc=0
+  STACK_STUB_PR_LIST_FILE="$tmp/prs-stage1-only.json" \
+    run_decide "gh pr create -R example/example --base main --title t --body-file $tmp/indep-body.md" "$repo" \
+    > /dev/null || rc=$?
+  check "7b --body-file の Independent-PR タグは pass" "1" "$rc"
+  reset_state
+  git -C "$repo" switch stage1 -q
+  STACK_STUB_PR_LIST_FILE="$tmp/prs-empty.json" \
+    run_decide "gh pr create --base main --title t --body b" "$repo" > /dev/null || true
+  git -C "$repo" switch unrelated -q
+  out=""
+  if out="$(STACK_STUB_PR_LIST_FILE="$tmp/prs-stage1-only.json" \
+    run_decide "gh pr create -R example/example --base main --title t --body-file $tmp/plain-body.md" "$repo")"; then
+    check_contains "7b --body-file にタグ無しは deny" "Independent-PR" "$out"
+  else
+    check "7b deny 期待" "deny" "pass"
+  fi
+  git -C "$repo" switch stage2 -q
+
   # 8: 非コマンド位置(echo の引数内)は発火しない
   reset_state
   rc=0
