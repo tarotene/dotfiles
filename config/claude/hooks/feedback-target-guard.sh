@@ -322,6 +322,26 @@ selftest() {
   footer_cmd="$(printf "gh issue create --label feedback --body \"\$(cat <<%sEOF%s\nTarget: skill/precedent-grounding\nEOF\n)\"" "'" "'")"
   expect_pass "heredoc 本体に Target: がある" "$footer_cmd"
 
+  # bleep の正準形(ADR-0003)は本文を --body-file の絶対パスだけで渡す。
+  # インラインの --body は bleep が先に deny するので、実運用で効くのはこちら(#675)。
+  printf 'Target: skill/precedent-grounding\n\n本文\n' > "$tmp/with-target.md"
+  printf '本文だけ\n' > "$tmp/no-target.md"
+  printf 'Target: skill/nonexistent\n' > "$tmp/bad-target.md"
+
+  expect_pass "--body-file に Target: がある" \
+    "gh issue create -R tarotene/dotfiles --label feedback --body-file $tmp/with-target.md"
+
+  expect_deny "--body-file に Target: が無い" \
+    "gh issue create -R tarotene/dotfiles --label feedback --body-file $tmp/no-target.md" \
+    "Target: 行がありません"
+
+  expect_deny "--body-file の Target: が実在しない" \
+    "gh issue create -R tarotene/dotfiles --label feedback --body-file $tmp/bad-target.md" \
+    "実在しません"
+
+  expect_pass "--body-file=<path> 形式でも読む" \
+    "gh issue create -R tarotene/dotfiles --label feedback --body-file=$tmp/with-target.md"
+
   if ((fails > 0)); then
     echo "selftest: ${fails} 件失敗" >&2
     exit 1
