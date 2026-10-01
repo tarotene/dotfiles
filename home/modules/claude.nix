@@ -1643,15 +1643,6 @@ in
   # (gh-edit-allow と同じ理由付け)。Codex/Copilot もこの同じパスを
   # `--agent codex|copilot` 付きで呼ぶ。
   home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
-  # bash 版の判定エンジン。hook としては登録しないが、stack-base-guard.sh /
-  # (旧 bash 版の判定エンジンを source していた guard は、stack-base-guard.sh を
-  # 除いて #415 で Rust に移した)が
-  # 同ディレクトリから `source` するので、それらの Rust 移植(guard-core の
-  # 上に載せる、docs/claude/guard-core.md)が済むまで配備を続ける。
-  home.file.".claude/hooks/attribution-guard.sh" = {
-    source = repoConfig + "/claude/hooks/attribution-guard.sh";
-    executable = true;
-  };
   # stack-base-guard(ADR-0027): セッション内の複数 PR を常時単一チェーンに
   # 積むことを作成時に機械強制する(docs/claude/stack-base-guard.md)。#415 で
   # Rust バイナリ(crates/stack-base-guard)への安定パスの symlink になった

@@ -483,14 +483,6 @@ jobs:
 
       # attribution-guard (docs/claude/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.
-      # The hook itself now runs as the Rust crates/attribution-guard (#415,
-      # tested by the nix.yml rust job); this bash engine stays because the
-      # other gh guards below still `source` it, and its selftest guards that.
-      # The Codex / Copilot bash adapters (#192) were folded into the Rust
-      # binary's --agent flag and deleted.
-      - name: attribution-guard.sh --selftest
-        run: bash ./config/claude/hooks/attribution-guard.sh --selftest
-
       # stack-base-guard (ADR-0027) is now the Rust crates/stack-base-guard
       # (#415); its tests (the old Claude + Codex adapter selftests) run in the
       # nix.yml rust job.

@@ -127,26 +127,6 @@ max_remaining = 44
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
 # --- Stage 4a ---
-[[target]]
-path = "config/claude/hooks/attribution-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "scripts/pr-merge-settings-check"
-stage = "4a"
-
-[[target]]
-path = "scripts/rulesets-context-check"
-stage = "4a"
-
-[[target]]
-path = "scripts/adr-number-check"
-stage = "4a"
-
-[[target]]
-path = "scripts/workflow-naming-check"
-stage = "4a"
-
 # attribution-guard/pr-title-guard の Codex adapter と同じ前例(既存の
 # claude 側 pr-confirm-guard.sh に対応する薄い adapter)。
 # ADR-0032 Amendment (#531): Codex adapter, mirrors its Claude counterpart's
@@ -250,6 +230,27 @@ name = "sync-claude-statusline"
 stage = "4e"
 
 # --- 対象外 ---
+# --- ADR-0024 Amendment 3(#415): 他リポジトリの CI が実行時に取得・複製する配布物 ---
+# 播種先には Rust ツールチェインも nix も無く、dotfiles-tools のバイナリを配る手段が
+# 無い。dependency-free の crate を sparse-checkout して cargo build する形で移せた
+# pr-title-check(.github/actions/pr-title)と違い、これらは複数 crate / 外部依存を要する、
+# またはテンプレートとして各リポジトリへ複製される。配布の仕組みが入るまで bash のまま。
+[[excluded]]
+path = "scripts/adr-number-check"
+reason = "governance テンプレート(repo-governance-common/templates/scripts/ への symlink)で、各リポジトリへ複製され、その CI(adr-number.yml)が直接実行する(ADR-0024 Amendment 3)"
+
+[[excluded]]
+path = "scripts/pr-merge-settings-check"
+reason = "他リポジトリの CI が .github/actions/pr-title 経由で dotfiles を sparse-checkout して実行する配布物。github-audit の bash 関数を source する(ADR-0024 Amendment 3)"
+
+[[excluded]]
+path = "scripts/rulesets-context-check"
+reason = "他リポジトリの CI が .github/actions/pr-title 経由で dotfiles を sparse-checkout して実行する配布物。github-audit の bash 関数を source する(ADR-0024 Amendment 3)"
+
+[[excluded]]
+path = "scripts/workflow-naming-check"
+reason = "他リポジトリの CI が .github/actions/pr-title 経由で dotfiles を sparse-checkout して実行する配布物。github-audit の bash 関数を source する(ADR-0024 Amendment 3)"
+
 [[excluded]]
 path = "bootstrap.sh"
 reason = "escape hatch: Nix 導入前に動く greenfield 入口(ADR-0001・ADR-0024 スコープ外)"

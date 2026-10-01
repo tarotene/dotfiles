@@ -2,7 +2,7 @@
 
 実装: `crates/attribution-guard`(Rust、3 エージェント共通の 1 バイナリ、`--agent claude|codex|copilot`)
 コマンド解析エンジン: `crates/guard-core`(公開 API は [`guard-core.md`](guard-core.md))
-旧 bash 判定エンジン: `config/claude/hooks/attribution-guard.sh`(hook としては登録しない。他の gh guard が `source` しているため、それらの移植が済むまで残す)
+旧 bash 判定エンジン: `config/claude/hooks/attribution-guard.sh`(#415 で削除。他の gh guard が `source` する共有エンジンだったが、全 guard が `crates/guard-core` に移ったため不要になった)
 規約側: `config/claude/CLAUDE.md`「GitHub に投稿するテキストには生成元を明示する」
 Issue: #190、#192(Codex CLI / Copilot CLI への展開)、#415(Rust 移植、ADR-0024 Stage 4a)
 
@@ -288,15 +288,11 @@ MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認�
 Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*`
 前提)は `--agent claude` のときだけ呼ぶ。
 
-### bash 版エンジンを残している理由
+### bash 版エンジンの削除
 
-`config/claude/hooks/attribution-guard.sh` は hook としては登録しないが、
-stack-base-guard.sh がまだ同ディレクトリから `source` している(それ以外の guard は
-#415 で Rust に移した)。それを
-`crates/guard-core` の上に移植し終えるまで、配備(`~/.claude/hooks/
-attribution-guard.sh`)と CI の `--selftest` を残す。末尾の実行時ディスパッチは
-`source` 時に暴発しないよう `[[ "${BASH_SOURCE[0]}" == "$0" ]]` で直接実行時
-のみに限定してある。
+`config/claude/hooks/attribution-guard.sh` は、7 本の bash guard が `source` する共有エンジンとして、
+他の guard の移植が済むまで残していた。全 guard が `crates/guard-core` の上に移ったので、#415 で削除した
+(配備 `~/.claude/hooks/attribution-guard.sh` と CI の `--selftest` も同時に消した)。
 
 ## 縮退と検査
 
@@ -304,8 +300,7 @@ attribution-guard.sh`)と CI の `--selftest` を残す。末尾の実行時デ�
 - `crates/attribution-guard/tests/cmd/` の trycmd fixture が、bash 版
   `--selftest` のケース 1〜33(45 アサーション、`st*.toml`)・旧 Codex/Copilot
   adapter の selftest(各 4 件)・Claude の hook 入出力の追加ケース(`hook-*.toml`)を
-  ネットワーク無しに検査する(期待値は bash 版から生成した)。bash 版の
-  `attribution-guard.sh --selftest` も、他の guard が source する間は CI で残す。
+  ネットワーク無しに検査する(期待値は bash 版から生成した。bash 版は #415 で削除した)。
   ケース 1〜33 の内訳:うち 3 件は Copilot plan review の指摘 R1-B-1 の
   回帰ケース（`&&` 連結での取り違え / 手前の `echo` からの混入 / 閉じクォートを
   理由と誤認）、1 件は「Markdown 箇条書きで本文が切れて全 deny になる」false
