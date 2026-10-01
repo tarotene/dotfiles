@@ -63,7 +63,9 @@ ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check-plan
 ## 実装タスクの完了定義の形式検査
 
 commit → push → `gh pr create` を、途中で確認を挟まず一続きで実行する。
-「PR を作成しますか?」と聞かない。Stop hook(`G_pr` in pr-gate.sh)がこの
+「PR を作成しますか?」と聞かない。`gh` の投稿は本文を Write でファイルにして
+から `-R OWNER/REPO … --body-file <絶対パス>` で渡す(bleep の正準形。
+`pr-description` スキル §0)。Stop hook(`G_pr` in pr-gate.sh)がこの
 漏れを検査する。
 
 PR 本文に未チェックの task list を残さない・人の確認を後続 Issue に払い

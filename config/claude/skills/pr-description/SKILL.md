@@ -5,6 +5,26 @@ description: PRの本文(Description)を標準スケルトンで書き、見た�
 
 PRの本文は、リポジトリごとにまちまちな自由記述ではなく、次の標準スケルトンで書く。リポジトリ固有の `PULL_REQUEST_TEMPLATE.md` がある場合は、その見出し構造に従いつつ、下記の内容要素を漏れなく埋める(見出しは譲るが、内容要素は譲らない)。
 
+## 0. 投稿の正準形(bleep の文法)
+
+`gh` で本文を投稿するときは、次の形だけが通る(`tarotene/bleep` の ADR-0003。
+文法の外は PreToolUse で deny され、理由文が書き直し方を案内する):
+
+1. 本文を **Write ツールでファイルにする**(絶対パス。セッションの scratchpad
+   など)。heredoc やコマンド置換で本文を組み立てない。
+2. 宛先を **リテラルの `-R OWNER/REPO`** で書く(`pr|issue` は PR/Issue の URL でも
+   よい)。cwd の origin からの推測や変数は使えない。
+3. 本文は **`--body-file <絶対パス>`**(release は `--notes-file`)で渡す。
+   `--body`・`-b`・`close|reopen` の `--comment`・stdin(`-`)・相対パス・`~`・
+   変数・コマンド置換は文法の外。
+
+```
+gh pr create -R OWNER/REPO --base main --title "..." --body-file /abs/path/pr-body.md
+```
+
+本文ファイルは `git commit` と同様、`gh` を呼ぶ前に別の呼び出しで作っておく
+(複合コマンドの 1 本目が deny されると前段の生成も消える。#668)。
+
 ## 1. 本文スケルトン
 
 ```
@@ -46,7 +66,7 @@ Claude が引き続き担当する残作業はここに入れず「検証」ま�
 制約: 画像・動画のみ(画像は10MB上限)、対象リポジトリへの write 権限が必要、GitHub.com / GitHub Enterprise Cloud のみ(GHES 非対応)。プライベートリポジトリの添付 URL は閲覧に認証が必要(public リポジトリでは無関係)。
 
 ```
-gh pr create --title "..." --body "..." \
+gh pr create -R OWNER/REPO --title "..." --body-file /abs/path/pr-body.md \
   --attach './before.png#Before' --attach './after.png#After'
 ```
 
@@ -102,9 +122,10 @@ PR 作成後に残作業(マージ後の適用・外部サービスでの操作�
 4. **ブロッキング項目ごとに後続 Issue を1件起票する**(`handoff` スキル §5
    の「残タスク1件 = 子Issue1件」と同じ発想):
    ```
-   gh issue create [-R <owner/repo>] --title "<やること>" \
-     --body "$(...)" [--label handoff:human] [--assignee <確認者>]
+   gh issue create -R <owner/repo> --title "<やること>" \
+     --body-file <絶対パス> [--label handoff:human] [--assignee <確認者>]
    ```
+   本文は Write でファイルにしてから渡す(§0)。
    本文は `handoff` スキル §5 の Human テンプレ(`## やること` / `## なぜ
    人手か` / `## 手順` / `## 完了条件`)を使い、生成元フッターを付ける。
    `handoff:human` ラベルは、対象リポジトリに存在するときだけ付ける

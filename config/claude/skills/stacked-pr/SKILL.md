@@ -74,7 +74,9 @@ description: セッション内で複数の PR を作るとき、依存関係を
    (`git switch -c <branch>`。`git worktree add` ではない — 同一 worktree
    内でブランチを切り替えるだけ)。
 4. 各段ごとに `git push -u origin <branch>` →
-   `gh pr create --base <直前の段のブランチ>`(最下段だけ `--base main`)。
+   `gh pr create -R OWNER/REPO --base <直前の段のブランチ> --body-file <絶対パス>`
+   (最下段だけ `--base main`。本文は Write でファイルにしてから渡す —
+   `pr-description` スキル §0)。
    全段を作り終えるまで止まらない。`git commit` と `gh pr create` は
    **別の Bash 呼び出し**にする — `stack-base-guard.sh` は PreToolUse で
    実行前の HEAD を見て判定するので、`git commit && gh pr create` を
@@ -215,7 +217,8 @@ default branch に付け替えても、本文は再評価されず `closingIssue
 `gh issue close` する。配布元は `repo-governance-common/templates/
 .github/workflows/close-linked-issues.yml` で、各 governance の
 `copy-files.sh` がリポジトリに播く。この workflow を持たないリポジトリ
-では、最終段の merge 後に `gh issue close` を手で実行する。
+では、最終段の merge 後に `gh issue close <N> -R OWNER/REPO` を手で実行する
+(`--comment` は bleep の正準形の外なので付けない)。
 
 ## 7. 本文の `Stack:` 行
 
