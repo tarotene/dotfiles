@@ -1,6 +1,6 @@
 # repo-create-guard — `gh repo create` を作成時点で repo-charter 手順に載せる PreToolUse hook
 
-判定エンジン: `config/claude/hooks/repo-create-guard.sh`
+実装: `crates/repo-create-guard`(Rust。bash 版は #415、ADR-0024 Stage 4a で置き換えた)
 決定: `docs/adr/0013-repo-charter-schema.md` の Amendment (2026-09-29)
 規約側: `config/claude/skills/repo-charter/SKILL.md`
 
@@ -43,17 +43,16 @@ guard.md`)と同じ — docs やコミットメッセージに例として書い
 | `gh repo edit`/`gh repo view` 等 | 対象外(通す) |
 
 `gh api -X PATCH repos/<owner>/<repo>`(`apply-repo-settings.sh` 自身が使う
-形)を誤って deny しないことを selftest で確認している — これを塞ぐと
+形)を誤って deny しないことをテストで確認している — これを塞ぐと
 repo-charter の手順自体が実行不能になる。
 
 ## コマンド解析エンジンを共有する
 
 対象コマンドの検出(コマンド位置判定)・heredoc 本体の分離・クォート解釈
-トークナイザは `config/claude/hooks/attribution-guard.sh` を `source` して
-再利用する(`stack-base-guard.sh`/`feedback-target-guard.sh`/`decision-
-colocation-guard.sh` と同じ型)。`is_target_at`/`decide_tokens`/
-`decide_api_tokens`/`main`/`selftest` を `source` の後に再定義することで
-上書きする — bash の関数解決は最後の定義が勝つ。
+トークナイザは `crates/guard-core` を使う(`docs/claude/guard-core.md`。bash
+時代は `attribution-guard.sh` を `source` して `is_target_at`/`decide_tokens`/
+`decide_api_tokens` を後勝ちで上書きしていた)。この crate が持つのは対象
+コマンド(`gh repo create`、`gh api`)・エンドポイント判定・deny 文言だけ。
 
 ## deny の理由文
 
@@ -63,7 +62,7 @@ colocation-guard.sh` と同じ型)。`is_target_at`/`decide_tokens`/
 
 ## 縮退・バイパス
 
-判定不能はすべて fail-open(通す)— `jq` 不在、`tool_name` が `Bash` 以外、
+判定不能はすべて fail-open(通す)— 不正な入力 JSON、`tool_name` が `Bash` 以外、
 `command` が空、のいずれも完全沈黙で通す。
 
 バイパス: `REPO_CREATE_GUARD_BYPASS=1`(`crates/rulesets-write-guard` の
@@ -80,8 +79,9 @@ colocation-guard.sh` と同じ型)。`is_target_at`/`decide_tokens`/
 
 ## 検査
 
-- `repo-create-guard.sh --selftest` がネットワーク無しに全ケースを検査する。
-- CI の `--selftest` 検査ジョブ(`.github/workflows/ci.yml`)から呼ばれる。
+- `crates/repo-create-guard/tests/cli.rs` が、bash 版 `--selftest` の全 9 ケースを
+  ネットワーク無しに実バイナリへ固定している(`cargo test --workspace`、nix.yml の
+  rust ジョブ)。
 
 ## 登録形
 

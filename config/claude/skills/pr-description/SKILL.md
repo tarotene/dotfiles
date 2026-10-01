@@ -153,8 +153,8 @@ PR 作成後に残作業(マージ後の適用・外部サービスでの操作�
    拾っていない宙に浮いた作業」に見えないようにする。
 
 `## 要確認` の各項目に Issue 参照(`#N` または issues URL)があること、
-本文全体に未チェックの task list(`- [ ]`)が無いことは `pr-confirm-guard.sh`
-が `gh pr create/edit` の呼び出し時に機械検査する——払い出し先の Issue が
+本文全体に未チェックの task list(`- [ ]`)が無いことは `pr-confirm-guard`
+(`crates/pr-confirm-guard`)が `gh pr create/edit` の呼び出し時に機械検査する——払い出し先の Issue が
 妥当か・手順が実際に正しいかまでは検査しない(`G_visual` と同じ二層分担)。
 
 この規律に違反した実例(粒度): esa MCP のトークン供給を切り替えた PR

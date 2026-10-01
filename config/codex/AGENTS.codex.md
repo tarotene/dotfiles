@@ -45,8 +45,8 @@ ADR-0032 Amendment 参照)。gate ではなく CI が拾うため、push 後に�
 点に留意する。
 
 PR 本文に未チェックの task list を残さず、人の確認が要る残作業は後続
-Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard.sh`
-の Codex adapter(`config/codex/hooks/pr-confirm-guard.sh`、PreToolUse deny、
+Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard`
+(`crates/pr-confirm-guard` を `--agent codex` で登録、PreToolUse deny、
 全リポジトリで発火)が担う。
 
 ### GitHub 投稿の生成元明示

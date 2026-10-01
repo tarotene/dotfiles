@@ -1,7 +1,7 @@
 # pr-confirm-guard — PR 本文に未チェック task list を残さず、人の確認は Issue へ払い出す
 
-判定エンジン: `config/claude/hooks/pr-confirm-guard.sh`(Codex 版 adapter:
-`config/codex/hooks/pr-confirm-guard.sh`)
+実装: `crates/pr-confirm-guard`(Rust、`--agent claude|codex`。bash 版と
+Codex adapter は #415、ADR-0024 Stage 4a で置き換えた)
 規約側: `config/claude/skills/pr-description/SKILL.md` §1・§6
 設計判断: ADR-598「PR 本文の人待ちチェックボックスを廃し、人の確認を
 後続 Issue へ払い出す」
@@ -44,7 +44,7 @@ Issue: No-Issue(セッション内の会話から直接起票)
 ## なぜ Stop hook(`G_visual`)ではなく PreToolUse か
 
 `pr-gate` の `G_visual`/`G_link` は Stop hook で、PR 作成後にセッション
-終了時点で検査する。`pr-confirm-guard.sh` はそれより早い `gh pr create/edit`
+終了時点で検査する。`pr-confirm-guard` はそれより早い `gh pr create/edit`
 の呼び出しそのものを deny する — `pr-title-guard.sh` と同じ理由で、本文の
 不備を「呼び出しをもう一度正しく書く」形で1回で直させる。`pr-gate` の
 allowlist(既定 `tarotene/dotfiles` のみ)に入っていないリポジトリでも発火
@@ -98,18 +98,26 @@ Draft PR や `Handoff: #N` のような本文タグ型の例外は設けない �
 (Issue への払い出し)が常に実行可能なため、例外を許すとチェックボックスと
 同じ抜け道が復活する。
 
-## 既存手段(ADR-543)
+## 既存手段(ADR-543)と実装
 
-判定エンジンは `config/claude/hooks/attribution-guard.sh` の
-`split_heredoc`/`tokenize`/`is_sep`/`CMD_SEPS`(コマンド位置判定・heredoc
-分離・クォート解釈)を `source` して再利用する。本文抽出
-(`extract_body`)は `decide_tokens()` の本文抽出部分と同じ形だが、マーカー
-判定はせず本文テキストをそのまま返す。フェンス・インラインコードスパンの
-除去(`strip_code_spans`)は `pr-gate.sh` の同名関数と同じ簡略化を、この
-ファイル内に複製した(`pr-gate.sh` 自体を source すると `cmd_stop` 等の
-無関係な処理まで巻き込むため)。ADR-0024 は新規 hook の既定を Rust とする
-が、この判定は既存の実戦検証済みエンジンの上に成り立ち、複製実装すると
-単一正本が割れる(ADR-0035 D1)ため、`pr-title-guard.sh`/`stack-base-
-guard.sh`/`feedback-target-guard.sh` と同じ bash 例外を採用した。Codex 版
-adapter は `pr-title-guard.sh` (Codex adapter) と同じ「判定ロジックを持たず
-source するだけ」の型。
+実装は `crates/pr-confirm-guard`(Rust、ADR-0024 Stage 4a、#415)。bash 時代は
+`config/claude/hooks/attribution-guard.sh` を `source` して再利用していたが、
+そのコマンド解析(コマンド位置判定・heredoc 分離・クォート解釈・本文フラグの
+抽出 `extract_body`)は共有ライブラリ `crates/guard-core` に移った
+(`docs/claude/guard-core.md`)。ここには本文の判定(未チェック task list・
+`## 要確認` の節切り出し・項目分割・Issue 参照)だけがある。フェンス・
+インラインコードスパンの除去(`strip_code_spans`)は `pr-gate` の同名関数と
+同じ簡略化を持つ(pr-gate の本文処理を巻き込まないため別実装)。
+
+bash 版の Codex adapter(`config/codex/hooks/pr-confirm-guard.sh`)は廃止し、
+同じバイナリを `--agent codex` で登録する(`attribution-guard` と同じ型)。
+`--agent` で変わるのは project の決め方だけ — Claude は `CLAUDE_PROJECT_DIR`
+(空なら `.cwd`)、Codex は `.cwd`。project は git 作業ツリーの内側かの確認に
+しか使わない。
+
+## 検査
+
+`crates/pr-confirm-guard/tests/cli.rs` が bash 版 `--selftest` の 19 ケースと
+Codex adapter の 3 ケースを実バイナリに固定している(`cargo test
+--workspace`)。手動確認は `pr-confirm-guard --check '<コマンド文字列>'`
+(deny なら `deny: <理由>` と終了コード 1、通れば `pass`)。

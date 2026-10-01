@@ -532,32 +532,6 @@ jobs:
       - name: workflow-naming-check --selftest
         run: ./scripts/workflow-naming-check --selftest
 
-      # pr-confirm-guard (docs/claude/pr-confirm-guard.md) sources
-      # attribution-guard.sh's command-position/tokenizer engine the same way
-      # pr-title-guard does. Deterministic bash + jq/awk end to end over
-      # fixture PR bodies (unchecked task lists, `## 要確認` Issue refs) —
-      # no gh/network involved.
-      - name: pr-confirm-guard.sh --selftest
-        run: bash ./config/claude/hooks/pr-confirm-guard.sh --selftest
-
-      - name: pr-confirm-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/pr-confirm-guard.sh --selftest
-
-      # feedback-target-guard.sh (ADR-543 段3) is deterministic bash + jq
-      # end to end, no network involved — sources attribution-guard.sh for
-      # its heredoc-splitting tokenizer the same way pr-title-guard.sh does.
-      - name: feedback-target-guard.sh --selftest
-        run: bash ./config/claude/hooks/feedback-target-guard.sh --selftest
-
-      # repo-create-guard.sh (ADR-0013 Amendment 2026-09-29) is deterministic
-      # bash end to end, no network involved — sources attribution-guard.sh
-      # for its command-position tokenizer the same way feedback-target-
-      # guard.sh does. Covers gh repo create / gh api -X POST user/repos
-      # detection and the settings-PATCH/rulesets-POST/GET-listing pass-
-      # through cases (docs/claude/repo-create-guard.md).
-      - name: repo-create-guard.sh --selftest
-        run: bash ./config/claude/hooks/repo-create-guard.sh --selftest
-
       # apply-repo-settings.sh (docs/adr/568-renovate-automerge-shared-preset.md D5b) is deterministic bash end to end against a stubbed
       # gh — covers the default (PATCH + vulnerability-alerts PUT +
       # automated-security-fixes DELETE), --no-dependabot (both Dependabot

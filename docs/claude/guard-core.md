@@ -1,8 +1,11 @@
 # guard-core — gh 投稿系 guard の共通判定エンジン(Rust)
 
 実装: `crates/guard-core`(ライブラリ)
-最初の利用者: `crates/attribution-guard`([`attribution-guard.md`](attribution-guard.md))
-2 番目の利用者: `crates/decision-colocation`([`decision-colocation.md`](decision-colocation.md))
+利用者(`gh` 投稿系の guard すべて): `crates/attribution-guard`([`attribution-guard.md`](attribution-guard.md))、
+`crates/decision-colocation`([`decision-colocation.md`](decision-colocation.md))、
+`crates/adr-number`([`adr-numbering.md`](adr-numbering.md))、`crates/pr-title-guard`、
+`crates/pr-confirm-guard`([`pr-confirm-guard.md`](pr-confirm-guard.md))、
+`crates/feedback-target-guard`、`crates/repo-create-guard`([`repo-create-guard.md`](repo-create-guard.md))
 Issue: #415(ADR-0024 Stage 4a)、#391(members 分割・`--agent` で 1 バイナリ化)
 
 bash 版 `config/claude/hooks/attribution-guard.sh` は「1 つの判定エンジン」で、
@@ -33,7 +36,7 @@ repo-create-guard.sh がそれを `source` し、`is_target_at` / `decide_tokens
 | `--body`/`-b`/`--body=`/`--body-file`/`-F`/`--body-file=` のループ | `gh::BodyFlags::scan(&[String]) -> BodyFlags { have_flag, texts }` | |
 | `[[ -f $p && -r $p ]] && "$(cat -- "$p")"` | `gh::read_body_file(&str) -> Option<String>` | 末尾改行を落とす |
 | `text="$(printf '%s\n' …)"` 以降(heredoc 追加・`$(`/`` ` `` で判定不能・空白のみで判定不能) | `gh::assemble_body_text(texts, has_hd, heredoc_bodies) -> Option<String>` | |
-| pr-confirm-guard.sh `extract_body` | `gh::extract_body(tokens, heredoc_bodies) -> Option<String>` | `BodyFlags` + `assemble_body_text` |
+| pr-confirm-guard.sh `extract_body` / feedback-target-guard.sh `decide_tokens` 前半 | `gh::extract_body(tokens, heredoc_bodies) -> Option<String>` | `BodyFlags` + `assemble_body_text`(2 guard が共有) |
 | `parse_pr_title_tokens` / `parse_tokens`(`--title`/`--base`/`--repo` 等) | `gh::scan_value_flags(tokens, &[ValueFlag { names, eq_prefix }]) -> Vec<FlagValue { present, value }>` | 1 パス・後勝ち。下記の注意 |
 | `-X` / `--method` / `--method=` | `gh::api_method(&[String]) -> Option<String>` | 大文字化は呼び出し側(`${method^^}`) |
 | `t="/${tok[i]#/}"; [[ $t =~ $RE ]]` | `gh::api_path(tokens, is_judged: FnMut(&str) -> bool) -> Option<String>` | |
@@ -48,7 +51,7 @@ repo-create-guard.sh がそれを `source` し、`is_target_at` / `decide_tokens
 | `emit_deny`(`jq -n` の整形)/ Copilot の `emit_deny_copilot` | `hook::deny_output(agent, reason) -> String` | 末尾改行込み、jq と同じバイト列 |
 | adapter の `--agent` 相当 | `hook::agent_from_args(&[String]) -> hook_io::Agent` | 既定は Claude |
 | `has_marker` / `deny_reason` / `decide_tokens` / `decide_api_tokens` / `decide` / `decide_mcp`(attribution 固有) | `attribution_guard::Attribution` のメソッド | guard-core ではなく `crates/attribution-guard` |
-| `is_target_at`(attribution 版: cli/api) | `attribution_guard::is_target_at` / `TargetKind` | repo-create-guard の api 判定の参考に |
+| `is_target_at`(attribution 版: cli/api) | `attribution_guard::is_target_at` / `TargetKind` | `repo_create_guard::is_target_at` が同じ型で api を分ける |
 
 ## 後続の移植の型
 

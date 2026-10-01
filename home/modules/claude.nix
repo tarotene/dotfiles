@@ -439,11 +439,9 @@
 #    create --label feedback`(カンマ区切りの複数ラベルも可)を検出し、
 #    本文に `Target: skill/<name>` / `Target: agents-md/<節見出し>` /
 #    `Target: hook/<name>` のいずれかが無い、またはその実体が存在しない
-#    場合に deny する。コマンド解析(heredoc 分離・トークナイザ)は
-#    attribution-guard.sh を source して再利用する(ADR-0024 の Rust 既定
-#    に対する例外 — stack-base-guard.sh / pr-title-
-#    guard.sh と同じ「既存の bash 資産を source する」理由、
-#    rust-migration.toml で追跡)。
+#    場合に deny する。判定は Rust(crates/feedback-target-guard、ADR-0024
+#    Stage 4a #415)で、コマンド解析(heredoc 分離・トークナイザ・本文抽出)
+#    は crates/guard-core を共有する。
 #
 # 32) cmd-hash-log(PostToolUse, matcher: Bash、ADR-543、2026-09-28、段3/4):
 #    Q2 の兆候の2つ目「同じコードブロックが改変なしに繰り返し実行されて
@@ -465,8 +463,9 @@
 #    節に転換した(社内の別リポジトリで観測された、未チェック task list を
 #    残したままマージされた実例が動機)。全リポジトリで発火する(owner スコープ
 #    を持たない — attribution-guard.sh と同じ「書き手側の規律」の類型)。
-#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。Codex 版 adapter あり(下記
-#    registerCodexPrConfirmGuardHooks)。
+#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。判定は Rust(crates/
+#    pr-confirm-guard、ADR-0024 Stage 4a #415)で、Codex にも同じバイナリを
+#    `--agent codex` で登録する(下記 registerCodexPrConfirmGuardHooks)。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
@@ -635,14 +634,18 @@ let
   legacyPrTitleGuardCmd = "bash '${hooksDir}/pr-title-guard.sh'";
   legacyCodexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
   legacyCopilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
-  # pr-confirm-guard(docs/claude/pr-confirm-guard.md)も attribution-guard.sh
-  # を source するので同階層。
-  prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
-  # Codex 版 pr-confirm-guard adapter(pr-title-guard.sh と同じ型)。
-  # ~/.codex/hooks/ 直下に置き、pr-confirm-guard.sh は $HOME/.claude/hooks
-  # 経由で解決される(#602)。Copilot adapter は作らない(依頼は Codex のみ、
-  # #3962 相当)。
-  codexPrConfirmGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-confirm-guard.sh'";
+  # pr-confirm-guard(docs/claude/pr-confirm-guard.md): #415(ADR-0024 Stage 4a)
+  # で Rust バイナリ(crates/pr-confirm-guard、判定エンジンは crates/guard-core)
+  # になり、下の home.file が ~/.claude/hooks/pr-confirm-guard(拡張子無し)として
+  # 配備する。旧 `bash '….sh'` の command は retiredHookEntries で完全一致削除する。
+  prConfirmGuardCmd = "'${hooksDir}/pr-confirm-guard'";
+  legacyPrConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
+  # Codex 展開も同じバイナリを `--agent codex` で直接呼ぶ(bash 時代の
+  # ~/.codex/hooks/pr-confirm-guard.sh adapter は廃止、attribution-guard の
+  # codexAttributionGuardCmd と同じ型)。旧 command は register-codex-hooks の
+  # --retire で完全一致削除する。Copilot adapter は元から無い(依頼は Codex のみ)。
+  codexPrConfirmGuardCmd = "'${hooksDir}/pr-confirm-guard' --agent codex";
+  legacyCodexPrConfirmGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-confirm-guard.sh'";
   # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
   # Amendment #531)。attribution-guard/pr-title-guard の Codex adapter と
   # 同じく ~/.codex/hooks/ 直下に置く(source 先の解決は #602 を参照)。
@@ -716,18 +719,20 @@ let
   # Copilot への展開は別 Issue の主題)。
   newToolGuardCmd = "'${hooksDir}/new-tool-guard'";
   # feedback-target-guard(ADR-543 段3): `gh issue create --label feedback` に
-  # `Target:` 行を要求する。attribution-guard.sh の heredoc 分離・トークナイザ
-  # を source して再利用する(rulesets-write-guard/pkexec-guard とは逆に、
-  # ADR-0024 の Rust 既定に対する例外 — stack-base-guard.sh /
-  # pr-title-guard.sh と同じ理由、rust-migration.toml 参照)。
-  feedbackTargetGuardCmd = "bash '${hooksDir}/feedback-target-guard.sh'";
+  # `Target:` 行を要求する。#415(ADR-0024 Stage 4a)で Rust バイナリ(crates/
+  # feedback-target-guard、判定エンジンは crates/guard-core)になり、下の
+  # home.file が ~/.claude/hooks/feedback-target-guard として配備する。旧
+  # `bash '….sh'` の command は retiredHookEntries で完全一致削除する。
+  feedbackTargetGuardCmd = "'${hooksDir}/feedback-target-guard'";
+  legacyFeedbackTargetGuardCmd = "bash '${hooksDir}/feedback-target-guard.sh'";
   # repo-create-guard(ADR-0013 Amendment 2026-09-29, docs/claude/repo-create-
   # guard.md): `gh repo create` / `gh api -X POST user/repos`・`orgs/*/repos`
-  # を deny し、repo-charter スキルの手順に強制的に載せる。attribution-
-  # guard.sh のコマンド解析エンジンを source して再利用する(stack-base-
-  # guard.sh/feedback-target-guard.sh と同じ ADR-0024 の Rust 既定に対する
-  # 例外)。
-  repoCreateGuardCmd = "bash '${hooksDir}/repo-create-guard.sh'";
+  # を deny し、repo-charter スキルの手順に強制的に載せる。#415(ADR-0024
+  # Stage 4a)で Rust バイナリ(crates/repo-create-guard、判定エンジンは
+  # crates/guard-core)になり、下の home.file が ~/.claude/hooks/repo-create-guard
+  # として配備する。旧 `bash '….sh'` の command は retiredHookEntries で完全一致削除する。
+  repoCreateGuardCmd = "'${hooksDir}/repo-create-guard'";
+  legacyRepoCreateGuardCmd = "bash '${hooksDir}/repo-create-guard.sh'";
   # cmd-hash-log(ADR-543 段3): 実行された Bash コマンドの正規化ハッシュ
   # だけを記録する(コマンド本文は書かない、ADR-0011 のプライバシー規約を
   # 踏襲)。逐語反復検出(段4 の promotion-detect)の入力。何も判定しない
@@ -933,6 +938,20 @@ let
     {
       event = "PreToolUse";
       command = legacyPrTitleGuardCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): pr-confirm-guard / feedback-target-guard /
+    # repo-create-guard の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyPrConfirmGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyFeedbackTargetGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyRepoCreateGuardCmd;
     }
   ];
 
@@ -1613,8 +1632,8 @@ in
   # `--agent codex|copilot` 付きで呼ぶ。
   home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
   # bash 版の判定エンジン。hook としては登録しないが、stack-base-guard.sh /
-  # pr-title-guard.sh / pr-confirm-guard.sh / feedback-target-guard.sh /
-  # repo-create-guard.sh が
+  # (旧 bash 版の判定エンジンを source していた guard は、stack-base-guard.sh を
+  # 除いて #415 で Rust に移した)が
   # 同ディレクトリから `source` するので、それらの Rust 移植(guard-core の
   # 上に載せる、docs/claude/guard-core.md)が済むまで配備を続ける。
   home.file.".claude/hooks/attribution-guard.sh" = {
@@ -1629,18 +1648,15 @@ in
     source = repoConfig + "/claude/hooks/stack-base-guard.sh";
     executable = true;
   };
-  # feedback-target-guard(ADR-543 段3): 同じ理由で attribution-guard.sh と
-  # 同じ階層(~/.claude/hooks/ 直下)に配置する。
-  home.file.".claude/hooks/feedback-target-guard.sh" = {
-    source = repoConfig + "/claude/hooks/feedback-target-guard.sh";
-    executable = true;
-  };
-  # repo-create-guard(ADR-0013 Amendment 2026-09-29): 同じ理由で
-  # attribution-guard.sh と同じ階層(~/.claude/hooks/ 直下)に配置する。
-  home.file.".claude/hooks/repo-create-guard.sh" = {
-    source = repoConfig + "/claude/hooks/repo-create-guard.sh";
-    executable = true;
-  };
+  # feedback-target-guard(ADR-543 段3): #415 で Rust バイナリ(crates/
+  # feedback-target-guard)への安定パスの symlink になった(attribution-guard と
+  # 同じ理由付け)。
+  home.file.".claude/hooks/feedback-target-guard".source =
+    "${pkgs.dotfiles-tools}/bin/feedback-target-guard";
+  # repo-create-guard(ADR-0013 Amendment 2026-09-29): #415 で Rust バイナリ
+  # (crates/repo-create-guard)への安定パスの symlink になった。
+  home.file.".claude/hooks/repo-create-guard".source =
+    "${pkgs.dotfiles-tools}/bin/repo-create-guard";
   # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
   # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
   # source しない。
@@ -1693,19 +1709,10 @@ in
 
   # pr-confirm-guard(docs/claude/pr-confirm-guard.md): PR 本文に未チェック
   # の task list を残さない・`## 要確認` の各項目に Issue 参照を持たせる
-  # ことを作成時に機械強制する。attribution-guard.sh を同ディレクトリから
-  # source するので、配置は必ず ~/.claude/hooks/ 直下。
-  home.file.".claude/hooks/pr-confirm-guard.sh" = {
-    source = repoConfig + "/claude/hooks/pr-confirm-guard.sh";
-    executable = true;
-  };
-  # Codex 版 adapter(pr-title-guard.sh と同じ型)。
-  # ~/.claude/hooks/pr-confirm-guard.sh を $HOME 基準で辿る(#602)。
-  # Copilot adapter は作らない(依頼は Codex のみ)。
-  home.file.".codex/hooks/pr-confirm-guard.sh" = {
-    source = repoConfig + "/codex/hooks/pr-confirm-guard.sh";
-    executable = true;
-  };
+  # ことを作成時に機械強制する。#415 で Rust バイナリ(crates/pr-confirm-guard)
+  # への安定パスの symlink になった。Codex もこの同じパスを `--agent codex`
+  # 付きで呼ぶ(bash 時代の ~/.codex/hooks/ の adapter は廃止)。
+  home.file.".claude/hooks/pr-confirm-guard".source = "${pkgs.dotfiles-tools}/bin/pr-confirm-guard";
 
   # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
   # Codex 用の adapter ファイルは #416 で廃止し、Rust バイナリを --host codex
@@ -1973,6 +1980,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPlanGateHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire PreToolUse ${lib.escapeShellArg legacyCodexPrConfirmGuardCmd} \
+          --register \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrConfirmGuardCmd} 10
       '';
 

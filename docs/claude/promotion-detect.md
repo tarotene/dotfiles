@@ -10,7 +10,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
 ## 検出する4種類の候補
 
 1. **再発(昇格候補)**: `tarotene/dotfiles` の `feedback` ラベル付き
-   Issue のうち、同じ `Target:`(`feedback-target-guard.sh` が要求する
+   Issue のうち、同じ `Target:`(`feedback-target-guard`(`crates/feedback-target-guard`)が要求する
    閉語彙)を持つものが2件以上。同じ規範・skill への feedback が繰り返し
    起票されているので、gate 化を検討する合図。
 2. **逐語反復(昇格候補)**: `~/.local/state/claude/cmd-hashes.jsonl`

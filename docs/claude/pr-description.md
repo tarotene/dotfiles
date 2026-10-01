@@ -104,7 +104,7 @@ hardware-bound な manual step と切り分けた判断)を先行例とし、同
 (`- #N — <一言>`)だけを書く節に転換した。手順・完了条件は Issue 本文
 (`handoff` スキル §5 の Human テンプレ)が持つ。PR 本文に未チェックの
 task list を残せないこと・「要確認」の各項目に Issue 参照があることは
-`pr-confirm-guard.sh` が機械強制する(詳細: ADR-598「PR 本文の人待ち
+`pr-confirm-guard` が機械強制する(詳細: ADR-598「PR 本文の人待ち
 チェックボックスを廃し、人の確認を後続 Issue へ払い出す」、
 `docs/claude/pr-confirm-guard.md`)。
 

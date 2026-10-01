@@ -70,7 +70,7 @@ commit → push → `gh pr create` を、途中で確認を挟まず一続きで
 漏れを検査する。
 
 PR 本文に未チェックの task list を残さない・人の確認を後続 Issue に払い
-出す原則の形式検査は `pr-confirm-guard.sh`(PreToolUse deny、全リポジト
+出す原則の形式検査は `pr-confirm-guard`(Rust、PreToolUse deny、全リポジト
 リで発火)が担う。gate に当たる前に自発的に Issue 化すること — gate は
 漏れを拾うためのもので、一次的な手段ではない。
 
