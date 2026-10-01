@@ -41,9 +41,16 @@
     # (tarotene/bleep#32) and the `cd ~/...`/`git -C ~/...` HOME expansion
     # fix (tarotene/bleep#39, tarotene/bleep#40) — cd/git -C with a tilde no
     # longer produces a nonexistent push_dir that escalated push-diff checks
-    # to ask regardless of the actual diff content.
+    # to ask regardless of the actual diff content. Bumped again (#604,
+    # 2026-10-01) to pick up the `gh -R` position-independent destination
+    # detection (tarotene/bleep#23, #43 via #45) — the previous pin only read
+    # `gh -R X issue create`, so `gh issue create -R X` resolved the target to
+    # the cwd repo and let a private-cwd post to a public repo through
+    # unchecked — plus the unresolved-shell-variable ask (#34, reason_id
+    # `unresolved-var`, recorded by verdict-escalate since #573), the
+    # word-boundary fix (#35), and `bleep doctor` (#56).
     bleep = {
-      url = "github:tarotene/bleep/766f516ede807a30548f771eb2bd72359f5af201";
+      url = "github:tarotene/bleep/5ed7b80243592384b4547405bf1f3439d6b3922b";
       flake = false;
     };
 
