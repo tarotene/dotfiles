@@ -1,8 +1,8 @@
 //! `scripts/dotfiles-doctor --selftest` の全 4 シナリオ(10 アサーション)を
 //! 移した統合テスト(#414)。bash の selftest は `~/.local/bin` を外した安全な
 //! PATH と、兄弟の無い隔離コピーで「writing-style-hub が本当に無い」状態を
-//! 作っていた。ここでは PATH を stub だけの一時ディレクトリにし、バイナリ
-//! (cargo の target/ 配下で兄弟に writing-style-hub が無い)で同じ状態を作る。
+//! 作っていた。ここでは PATH を stub だけの一時ディレクトリにし、バイナリを
+//! 兄弟の無い一時ディレクトリへコピーして同じ状態を作る。
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -14,14 +14,32 @@ fn stub(dir: &Path, name: &str, body: &str) {
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+/// バイナリを兄弟の無い一時ディレクトリへコピーして実行する。dotfiles-doctor は
+/// `writing-style-hub` を PATH → 実行ファイルの隣の順に探すので、ワークスペース
+/// 全体をビルドして target/ に `writing-style-hub` が並んでいても、「兄弟が無い」
+/// 状態をテストが自分で作る(bash 版の「兄弟の無い隔離コピー」と同じ)。
 fn run(home: &Path, path: &Path) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_dotfiles-doctor"))
-        .env_remove("XDG_CONFIG_HOME")
-        .env_remove("WRITING_STYLE_HUB")
-        .env("HOME", home)
-        .env("PATH", path)
-        .output()
-        .unwrap()
+    let iso = tempfile::tempdir().unwrap();
+    let exe = iso.path().join("dotfiles-doctor");
+    std::fs::copy(env!("CARGO_BIN_EXE_dotfiles-doctor"), &exe).unwrap();
+    // コピー直後は、並列テストが fork した子が書き込み fd を継いでいる間
+    // exec が ETXTBSY(26)になりうる。fd が閉じるまで短く再試行する。
+    for _ in 0..50 {
+        let r = Command::new(&exe)
+            .env_remove("XDG_CONFIG_HOME")
+            .env_remove("WRITING_STYLE_HUB")
+            .env("HOME", home)
+            .env("PATH", path)
+            .output();
+        match r {
+            Ok(o) => return o,
+            Err(e) if e.raw_os_error() == Some(26) => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(e) => panic!("{e}"),
+        }
+    }
+    panic!("dotfiles-doctor を起動できませんでした(ETXTBSY が解消しない)");
 }
 
 fn fixture() -> (tempfile::TempDir, std::path::PathBuf, tempfile::TempDir) {
