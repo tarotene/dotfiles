@@ -445,10 +445,10 @@ Design and rationale for the hooks and commands deployed from
   attribution-guard.sh のコマンド解析エンジンを source して再利用する。
 - [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
   運用では PR タイトルがそのまま `main` の commit subject になるため、
-  client guard(`pr-title-guard.sh`)・server required check
+  client guard(`pr-title-guard`)・server required check
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
-  `scripts/pr-title-check`。
+  `crates/pr-title-check`(Rust)。
 - [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する

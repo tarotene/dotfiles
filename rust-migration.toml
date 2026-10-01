@@ -136,10 +136,6 @@ path = "config/claude/hooks/stack-base-guard.sh"
 stage = "4a"
 
 [[target]]
-path = "config/claude/hooks/pr-title-guard.sh"
-stage = "4a"
-
-[[target]]
 path = "config/claude/hooks/feedback-target-guard.sh"
 stage = "4a"
 
@@ -149,10 +145,6 @@ stage = "4a"
 
 [[target]]
 path = "config/claude/hooks/repo-create-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "scripts/pr-title-check"
 stage = "4a"
 
 [[target]]
@@ -171,18 +163,10 @@ stage = "4a"
 path = "scripts/workflow-naming-check"
 stage = "4a"
 
-[[target]]
-path = "config/codex/hooks/pr-title-guard.sh"
-stage = "4a"
-
 # attribution-guard/pr-title-guard の Codex adapter と同じ前例(既存の
 # claude 側 pr-confirm-guard.sh に対応する薄い adapter)。
 [[target]]
 path = "config/codex/hooks/pr-confirm-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "config/copilot/hooks/pr-title-guard.sh"
 stage = "4a"
 
 # ADR-0032 Amendment (#531): Codex adapter, mirrors its Claude counterpart's

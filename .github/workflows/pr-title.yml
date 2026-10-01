@@ -1,7 +1,7 @@
 name: PR Title
 
 # PR タイトルを commit-message 契約(ADR-0031, docs/claude/pr-title-contract.md)
-# として強制する required check。判定は scripts/pr-title-check 1 本に一元化
+# として強制する required check。判定は crates/pr-title-check 1 本に一元化
 # されており、この workflow はその呼び出しに徹する(文法は checker 側にしか
 # 存在しない)。
 #
@@ -97,7 +97,7 @@ jobs:
       # 宣言が無いとリポジトリ既定に丸められ、既定が read だと足りない)。
       actions: read
     steps:
-      # 文法検査の単一ソース(scripts/pr-title-check)を取得する。呼び出し元
+      # 文法検査の単一ソース(crates/pr-title-check、Rust)を取得する。呼び出し元
       # では常に main の安定版を使う — 呼び出し元の checkout とは独立させ、
       # 判定根拠が全リポジトリで揃うことを保証する。scripts/github-audit /
       # scripts/pr-merge-settings-check(ADR-0031 Amendment、2026-09-24)も
@@ -107,8 +107,11 @@ jobs:
         with:
           repository: tarotene/dotfiles
           ref: main
+          # /Cargo.toml + /crates/pr-title-check/ は .github/actions/pr-title
+          # と同じ理由(workspace root と、依存ゼロの checker クレート)。
           sparse-checkout: |
-            scripts/pr-title-check
+            /Cargo.toml
+            /crates/pr-title-check/
             scripts/github-audit
             scripts/pr-merge-settings-check
             scripts/rulesets-context-check
@@ -119,8 +122,8 @@ jobs:
           TITLE: ${{ inputs.title || github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          chmod +x scripts/pr-title-check
-          ./scripts/pr-title-check "$TITLE"
+          cargo build --release --quiet -p pr-title-check
+          ./target/release/pr-title-check "$TITLE"
 
       # ADR-0031 Amendment(2026-09-24): PR タイトル契約は「squash merge
       # した結果、PR タイトルがそのまま main の commit subject になる」と

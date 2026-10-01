@@ -505,13 +505,6 @@ jobs:
       - name: stack-base-guard.sh (codex adapter) --selftest
         run: bash ./config/codex/hooks/stack-base-guard.sh --selftest
 
-      # pr-title-check (ADR-0031, docs/claude/pr-title-contract.md) is the
-      # single-source grammar checker shared by the client guard and the
-      # required check below — its selftest is grep + bash string matching
-      # end to end, no gh/network involved.
-      - name: pr-title-check --selftest
-        run: ./scripts/pr-title-check --selftest
-
       # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
       # scripts/github-audit's judge_settings()/fetch_repo_settings() (no
       # new judgement logic) and stubs GH_BIN to exercise the ok/drifted/
@@ -538,19 +531,6 @@ jobs:
       # exit code のみを検査する。
       - name: workflow-naming-check --selftest
         run: ./scripts/workflow-naming-check --selftest
-
-      # pr-title-guard (ADR-0031) sources attribution-guard.sh's
-      # command-position/tokenizer engine the same way stack-base-guard does,
-      # and stubs the checker binary to exercise the owner-scope, escape
-      # hatch, and degradation paths without gh/network.
-      - name: pr-title-guard.sh --selftest
-        run: bash ./config/claude/hooks/pr-title-guard.sh --selftest
-
-      - name: pr-title-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/pr-title-guard.sh --selftest
-
-      - name: pr-title-guard.sh (copilot adapter) --selftest
-        run: bash ./config/copilot/hooks/pr-title-guard.sh --selftest
 
       # pr-confirm-guard (docs/claude/pr-confirm-guard.md) sources
       # attribution-guard.sh's command-position/tokenizer engine the same way
@@ -839,10 +819,7 @@ jobs:
           for f in "$out"/home-files/.codex/hooks/*.sh "$out"/home-files/.copilot/hooks/*.sh; do
             [ -e "$f" ] || continue
             echo "== $f"
-            # PATH gets the deployed ~/.local/bin too: pr-title-guard's
-            # adapters resolve `pr-title-check` from there (the source-tree
-            # relative candidate does not exist in this layout).
-            HOME="$out/home-files" PATH="$out/home-files/.local/bin:$PATH" bash "$f" --selftest
+            HOME="$out/home-files" bash "$f" --selftest
           done
       # #604: the flake.lock pin of `bleep` decides which hook is deployed,
       # but nothing exercised the *deployed* artifacts (the bash body under

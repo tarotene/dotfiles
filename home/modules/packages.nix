@@ -227,16 +227,13 @@
   home.file.".local/bin/git-prune-branches".source = "${pkgs.dotfiles-tools}/bin/git-prune-branches";
 
   # pr-title-check: checker 単一ソース for the PR-title commit-message
-  # contract (ADR-0031, docs/claude/pr-title-contract.md). Both
-  # config/claude/hooks/pr-title-guard.sh (client-side PreToolUse deny) and
-  # .github/workflows/pr-title.yml (server-side required check) call this
-  # one script, so the grammar never drifts between the two enforcement
-  # points. Same "executable in ~/.local/bin, no alias needed" placement as
-  # git-prune-branches/github-audit above.
-  home.file.".local/bin/pr-title-check" = {
-    source = ../../scripts/pr-title-check;
-    executable = true;
-  };
+  # contract (ADR-0031, docs/claude/pr-title-contract.md). Rust 実装
+  # (crates/pr-title-check、#415)の bin を指す。client-side guard
+  # (crates/pr-title-guard)は同じ crate の check_title を直接リンクして
+  # 呼び、サーバ側 required check(.github/actions/pr-title)は同じ crate を
+  # build して呼ぶ — 文法は 1 箇所にしか存在しない。手元で
+  # `pr-title-check "<title>"` と打てるようにするために配備する。
+  home.file.".local/bin/pr-title-check".source = "${pkgs.dotfiles-tools}/bin/pr-title-check";
 
   # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
   # docs/claude/adr-numbering.md — 番号を導入 PR の番号にすることで採番

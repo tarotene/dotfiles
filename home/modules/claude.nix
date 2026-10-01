@@ -281,13 +281,14 @@
 #    PR タイトルを commit-message 契約として作成時に機械強制する。squash-only
 #    運用では PR タイトルが main の commit subject になる唯一のテキストであり、
 #    `gh pr create --title` / `gh pr edit --title` が Conventional Commits +
-#    Angular 慣行の 11 type 閉集合(scripts/pr-title-check が判定エンジンの
-#    単一ソース)に非適合なら deny する。発火は owner が tarotene のリポジトリ
-#    限定(会社ホストにも common 層として配備されるため)。判定不能・checker
-#    不在・非 tarotene owner はすべて fail-open。一時解除は環境変数
-#    PR_TITLE_GUARD_ALLOW=1。attribution-guard.sh/stack-base-guard.sh と同じ
-#    「判定エンジンを source して is_target_at を上書きする」型。Codex/Copilot
-#    にも同じ判定エンジンを展開する(#192 の型を踏襲)。詳細は
+#    Angular 慣行の 11 type 閉集合(crates/pr-title-check の check_title が
+#    判定エンジンの単一ソース)に非適合なら deny する。発火は owner が tarotene
+#    のリポジトリ限定(会社ホストにも common 層として配備されるため)。判定不能・
+#    非 tarotene owner はすべて fail-open。一時解除は環境変数
+#    PR_TITLE_GUARD_ALLOW=1。判定は Rust(crates/pr-title-guard、ADR-0024
+#    Stage 4a #415)で、3 エージェントから同じ 1 バイナリを
+#    `--agent claude|codex|copilot` で呼ぶ(#391、attribution-guard と同じ型)。
+#    詳細は
 #    docs/adr/0031-pr-title-as-commit-message-contract.md と
 #    docs/claude/pr-title-contract.md。
 #
@@ -621,14 +622,19 @@ let
   # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
   # "$(dirname ...)/attribution-guard.sh" が解決できる配置)。
   stackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
-  # pr-title-guard(ADR-0031)も同じ理由で attribution-guard.sh と同階層。
-  prTitleGuardCmd = "bash '${hooksDir}/pr-title-guard.sh'";
-  # Codex/Copilot 版 pr-title-guard adapter(#192 の型を踏襲)。
-  # attribution-guard の Codex/Copilot adapter と同じく ~/.codex/hooks/・
-  # ~/.copilot/hooks/ 直下に置き、pr-title-guard.sh は $HOME/.claude/hooks
-  # 経由で解決される(#602)。
-  codexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
-  copilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
+  # pr-title-guard(ADR-0031)は #415(ADR-0024 Stage 4a)で Rust バイナリ
+  # (crates/pr-title-guard、判定エンジンは crates/guard-core と crates/
+  # pr-title-check)になり、下の home.file が ~/.claude/hooks/pr-title-guard
+  # (拡張子無し)として配備する。Codex/Copilot も同じパスを
+  # `--agent codex|copilot` 付きで直接登録する(attribution-guard と同じ型)。
+  # 旧 `bash '….sh'` の command は retiredHookEntries / register-{codex,
+  # copilot}-hooks の --retire で完全一致削除する(legacy*)。
+  prTitleGuardCmd = "'${hooksDir}/pr-title-guard'";
+  codexPrTitleGuardCmd = "'${hooksDir}/pr-title-guard' --agent codex";
+  copilotPrTitleGuardCmd = "'${hooksDir}/pr-title-guard' --agent copilot";
+  legacyPrTitleGuardCmd = "bash '${hooksDir}/pr-title-guard.sh'";
+  legacyCodexPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-title-guard.sh'";
+  legacyCopilotPrTitleGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/pr-title-guard.sh'";
   # pr-confirm-guard(docs/claude/pr-confirm-guard.md)も attribution-guard.sh
   # を source するので同階層。
   prConfirmGuardCmd = "bash '${hooksDir}/pr-confirm-guard.sh'";
@@ -922,6 +928,11 @@ let
     {
       event = "PreToolUse";
       command = legacyDecisionColocationGuardCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): pr-title-guard の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyPrTitleGuardCmd;
     }
   ];
 
@@ -1675,22 +1686,10 @@ in
 
   # pr-title-guard(ADR-0031): PR タイトルを commit-message 契約として
   # 作成時に機械強制する(docs/claude/pr-title-contract.md)。
-  # attribution-guard.sh を同ディレクトリから source するので、配置は
-  # 必ず ~/.claude/hooks/ 直下。
-  home.file.".claude/hooks/pr-title-guard.sh" = {
-    source = repoConfig + "/claude/hooks/pr-title-guard.sh";
-    executable = true;
-  };
-  # Codex CLI / Copilot CLI 版 adapter(#192 の型を踏襲)。
-  # ~/.claude/hooks/pr-title-guard.sh を $HOME 基準で辿る(#602)。
-  home.file.".codex/hooks/pr-title-guard.sh" = {
-    source = repoConfig + "/codex/hooks/pr-title-guard.sh";
-    executable = true;
-  };
-  home.file.".copilot/hooks/pr-title-guard.sh" = {
-    source = repoConfig + "/copilot/hooks/pr-title-guard.sh";
-    executable = true;
-  };
+  # #415 で Rust バイナリ(crates/pr-title-guard)への安定パスの symlink に
+  # なった(attribution-guard と同じ)。Codex/Copilot もこの同じパスを
+  # `--agent codex|copilot` 付きで呼ぶ(bash 時代の per-agent adapter は廃止)。
+  home.file.".claude/hooks/pr-title-guard".source = "${pkgs.dotfiles-tools}/bin/pr-title-guard";
 
   # pr-confirm-guard(docs/claude/pr-confirm-guard.md): PR 本文に未チェック
   # の task list を残さない・`## 要確認` の各項目に Issue 参照を持たせる
@@ -1850,6 +1849,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexAttributionGuardHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire PreToolUse ${lib.escapeShellArg legacyCodexPrTitleGuardCmd} \
+          --register \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrTitleGuardCmd} 10
       '';
 
@@ -1857,6 +1858,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAttributionGuardHooks" ]
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          --retire preToolUse ${lib.escapeShellArg legacyCopilotPrTitleGuardCmd} \
+          --register \
           preToolUse ${lib.escapeShellArg copilotPrTitleGuardCmd} 10
       '';
 

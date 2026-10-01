@@ -651,7 +651,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
    above, so also verify step 2 separately before relying on it day to day.
 4. **During the week:** the same completion definition applies (commit →
    push → `gh pr create` in one motion, PR body skeleton, attribution
-   footer) — `pr-gate` / `attribution-guard.sh` / `pr-title-guard.sh`
+   footer) — `pr-gate` / `attribution-guard` / `pr-title-guard`
    now gate Codex the same way they gate Claude. `config/codex/
    AGENTS.codex.md` carries the Codex-specific wording for the
    instruction-level half of this (the self-check commands to run before
