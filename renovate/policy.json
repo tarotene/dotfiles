@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
-    "tarotene account-wide Renovate automerge policy. Referenced by other repos as github>tarotene/dotfiles//renovate/policy (floating default branch, never tag-pinned — docs/adr/0000-renovate-automerge-shared-preset.md D4).",
+    "tarotene account-wide Renovate automerge policy. Referenced by other repos as github>tarotene/dotfiles//renovate/policy (floating default branch, never tag-pinned — docs/adr/568-renovate-automerge-shared-preset.md D4).",
     "D1: non-major updates automerge (0.x minor excluded); major and 0.x-minor stay human-merged PRs.",
     "D2: merge executor is GitHub native auto-merge (platformAutomerge); safety depends on the consuming repo's rulesets required_status_checks.",
     "D3: minimumReleaseAge 3 days for everything; vulnerabilityAlerts fixes are exempt (0 days) and automerge.",

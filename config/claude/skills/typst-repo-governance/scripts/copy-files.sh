@@ -61,7 +61,7 @@ apply_substitutions() {
     "$file" > "$tmpfile" && mv "$tmpfile" "$file"
 }
 
-# ADR-0000-rulesets-declaration-in-repo D6: 置換後に __X__ 形式の
+# ADR-503 D6: 置換後に __X__ 形式の
 # placeholder が残っている場合を、ruleset 宣言ファイルについて検査する
 # (apply-rulesets.sh 側の check_no_placeholders と二重に守る)。
 verify_declaration() {

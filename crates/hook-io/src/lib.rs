@@ -18,7 +18,7 @@
 //! | J gate の deny/skip イベント記録(ADR-543 段3) | [`gate_event`] |
 //!
 //! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
-//! `crates/rulesets-write-guard`(ADR-0000-rulesets-declaration-in-repo)も
+//! `crates/rulesets-write-guard`(ADR-503)も
 //! 同じ「gh コマンド文字列を静的に解析して deny/pass を決める」形の hook
 //! で、判定に使えない入力を素通しに倒す同じ語分割ロジックを要求したため
 //! ここへ引き上げた(ADR-0035 D1「単一正本 > 複写+同期」)。

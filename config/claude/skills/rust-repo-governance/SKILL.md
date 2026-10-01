@@ -105,7 +105,7 @@ Individual sub-scripts can be run independently (useful for re-runs):
 
 # Create Rulesets only (files already copied — the generic apply script,
 # not part of this skill, reads OWNER/REPO's own .github/rulesets/*.json;
-# ADR-0000-rulesets-declaration-in-repo):
+# ADR-503):
 apply-rulesets.sh OWNER/REPO --unverified-contexts
 
 # Apply repo settings only:
@@ -211,7 +211,7 @@ gh api repos/OWNER/REPO --jq '{allow_squash_merge, allow_merge_commit, allow_reb
 ### Removing the review layer (ADR-0021)
 
 Remove `.github/rulesets/review.json` from the repository first (the
-declaration is the source of truth — ADR-0000-rulesets-declaration-in-repo),
+declaration is the source of truth — ADR-503),
 commit that, then run:
 
 ```bash
@@ -259,7 +259,7 @@ fails, `CI passed` fails with it, so check the individual job's own logs
 │   │       └── pr-title.yml       required: PR title (calls tarotene/dotfiles'
 │   │                              composite action, ADR-0031/ADR-591)
 │   ├── .github/rulesets/            (declaration copied into the target repo —
-│   │   │                             ADR-0000-rulesets-declaration-in-repo)
+│   │   │                             ADR-503)
 │   │   ├── security.json    shared with repo-governance-common: deletion + non_fast_forward
 │   │   ├── quality.json     symlink to repo-governance-common: signatures + linear
 │   │   │                    history + the fixed pair CI passed/PR title (ADR-591)

@@ -6,7 +6,7 @@ Unifies the former sibling scripts `github-audit-rulesets` (#130) and
 `github-audit-charters` (ADR-0013), and has since grown eight more domains:
 naming (ADR-0014), settings, renovate, titles (ADR-0031), lifecycle (#275,
 ADR-0023), releaser (grill-me セッション調べ), routines
-(ADR-0000-routines-declaration-in-repo), workflows (ADR-591), and docs
+(ADR-519), workflows (ADR-591), and docs
 (ADR-640). Its findings feed the
 `github-audit-triage` skill
 (`docs/claude/github-audit-triage.md`), which is the only place an LLM
@@ -80,7 +80,7 @@ minimal CI-seeding PR / a CI-seeding Issue / an exempt} for a human to pick.
 describe a 3-file core layout — Security, Quality, Workflow — with
 byte-identical Security/Workflow content across skills (plus a 4th,
 opt-in `review.json` file — see below; Quality differs per ecosystem's
-job names, ADR-0000-rulesets-declaration-in-repo). It was tempting to
+job names, ADR-503). It was tempting to
 judge a repository by "does it have exactly these rulesets, by name".
 Checking the actual account (2026-09-10)
 showed that would produce false positives: some repositories split
@@ -171,7 +171,7 @@ exempt from this check whenever `review_layer_present` is true, because
 the two-ruleset split described just above (core + review) is the
 *intended* shape, not drift.
 
-### Declaration as source of truth (ADR-0000-rulesets-declaration-in-repo)
+### Declaration as source of truth (ADR-503)
 
 Required status check drift used to be undetectable by this domain — the
 "why judgement is by rule-type union, not ruleset name/count" note above
@@ -445,7 +445,7 @@ expectations:
   convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
   never silently treated as compliant.
 - `auto-merge-disabled` / `dependabot-security-updates-enabled`
-  (`docs/adr/0000-renovate-automerge-shared-preset.md` D2/D5b) — same REST
+  (`docs/adr/568-renovate-automerge-shared-preset.md` D2/D5b) — same REST
   object as the two squash fields above (`.allow_auto_merge`,
   `.security_and_analysis.dependabot_security_updates.status`), no extra
   fetch. Automerge safety depends on GitHub-native auto-merge being
@@ -503,7 +503,7 @@ there is no CI to register a required check against, the same convention
 
 `.github/workflows/pr-title.yml` (the reusable workflow) also carries its
 own runtime self-check (`scripts/rulesets-context-check`,
-ADR-0000-rulesets-declaration-in-repo — a generalization of the
+ADR-503 — a generalization of the
 PR-title-only check this domain historically covered) as a required check
 step, independent of this (manually run) audit domain: it compares the
 caller repository's declared and live `required_status_checks` contexts
@@ -533,7 +533,7 @@ Mend App installation status (which repositories the App's *repository
 access* is scoped to) is still not checked directly — GitHub's REST API
 does not expose it deterministically for a user's own OAuth token
 (`/user/installations` needs a user-to-server token and returns 403
-otherwise, confirmed 2026-09-25). As of ADR-0000 D5 the App's access is
+otherwise, confirmed 2026-09-25). As of ADR-568 D5 the App's access is
 account-wide ("All repositories"), documented as the runbook in
 `config/claude/skills/repo-governance-common/reference/renovate-app.md`.
 Since #465 (2026-09-25), the domain detects a proxy signal for the case
@@ -554,7 +554,7 @@ repositories) — a first run simply not having happened yet is now the
 dominant remaining explanation for one never appearing (with the App
 account-wide, an install-scope gap is no longer the default assumption).
 
-Since ADR-0000 D4 (2026-09-29), the domain also reports `drifted:
+Since ADR-568 D4 (2026-09-29), the domain also reports `drifted:
 renovate-policy-preset-missing` when config is present but its `extends`
 array does not contain the exact, unpinned shared-preset reference
 (`github>tarotene/dotfiles//renovate/policy` by default, overridable via
@@ -725,7 +725,7 @@ Detects Claude Code routine (scheduled cloud agent) declarations
 weekly self-audit routine's `sources` list doesn't cover — the same
 declaration-visible-but-unreconciled gap the `rulesets` domain's
 `rulesets-declaration-missing`/drift findings close for required status
-checks, but for routines instead (ADR-0000-routines-declaration-in-repo).
+checks, but for routines instead (ADR-519).
 
 A repository is `not-applicable` unless its `.claude/routines/` directory
 contains at least one `*.json` entry (checked via the same shared
@@ -759,7 +759,7 @@ public repository reports the owner's role, not the token's.
 ### workflows
 
 Detects drift from the CI workflow naming basis established by a
-`/grill-me` session (`docs/adr/0000-ci-workflow-naming.md`). Unlike
+`/grill-me` session (`docs/adr/591-ci-workflow-naming.md`). Unlike
 `titles`/`renovate`/`rulesets`, a repository with **no** `.github/
 workflows` at all is `drifted` here, not `not-applicable` — every
 repository should eventually carry a `ci.yml` (`ci-yml-missing`).

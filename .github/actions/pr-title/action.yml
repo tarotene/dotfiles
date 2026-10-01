@@ -69,7 +69,7 @@ runs:
         chmod +x .pr-title-tools/scripts/pr-merge-settings-check
         .pr-title-tools/scripts/pr-merge-settings-check "${{ github.repository }}"
 
-    # ADR-0000-rulesets-declaration-in-repo: 呼び出し元(caller)リポジトリ
+    # ADR-503: 呼び出し元(caller)リポジトリ
     # の .github/rulesets/quality.json 宣言と live な branch ruleset の
     # 両方を、この PR の head で実際に報告される job 名(Actions API)と
     # 突合する。`actions: read` が呼び出し元ワークフロー側の job

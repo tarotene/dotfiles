@@ -318,7 +318,7 @@
     executable = true;
   };
 
-  # github-rulesets-apply(ADR-0000-rulesets-declaration-in-repo): a thin
+  # github-rulesets-apply(ADR-503): a thin
   # multi-repo loop over apply-rulesets.sh — it owns no ruleset logic and no
   # longer takes a repository "type" (rust/typst/astro/core/dotfiles); the
   # declaration lives in each target repository's own
@@ -328,7 +328,7 @@
     executable = true;
   };
 
-  # apply-rulesets.sh(ADR-0000-rulesets-declaration-in-repo)自身の PATH
+  # apply-rulesets.sh(ADR-503)自身の PATH
   # 配備。宣言(.github/rulesets/*.json)は remote(contents API)または
   # --from-dir から読むため、この repo 自身の宣言を別途 xdg.configFile で
   # 配備する必要はもう無い(旧: RULESETS_DIR の 3 段フォールバック・
@@ -352,7 +352,7 @@
   # closed set が無警告で空集合に縮退していた。
   xdg.configFile."github-audit/lifecycle-species.tsv".source =
     ../../config/github-audit/lifecycle-species.tsv;
-  # routines ドメイン(ADR-0000-routines-declaration-in-repo)の auditor
+  # routines ドメイン(ADR-519)の auditor
   # sources 列(PUBLIC repos only — 同じ PUBLIC/PRIVATE 分離)。
   xdg.configFile."github-audit/routines-auditor-sources.tsv".source =
     ../../config/github-audit/routines-auditor-sources.tsv;

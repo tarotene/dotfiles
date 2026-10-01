@@ -410,7 +410,7 @@ Design and rationale for the hooks and commands deployed from
   forcing all applies through `scripts/apply-rulesets.sh`'s context
   verification.
 - [`routines-write-guard.md`](claude/routines-write-guard.md) — PreToolUse
-  hook (Rust, ADR-0000-routines-declaration-in-repo): denies a cron-bearing
+  hook (Rust, ADR-519): denies a cron-bearing
   `RemoteTrigger` create/update whose body lacks the namespace-key name and
   `routine-spec` annotation that `claude-routines`' `routines-plan.sh`
   always produces.

@@ -16,7 +16,7 @@
 #                        own self-updater symlink (~/.local/share/claude/
 #                        versions/...) — not a shadow of a nix package, since
 #                        nix's own `claude` is intentionally undeclared
-#                        (ADR-0000, a scoped exception to ADR-0001):
+#                        (ADR-457, a scoped exception to ADR-0001):
 #                        scripts/claude-plan-model reads that installed
 #                        binary's baked-in model catalog, so the native,
 #                        self-updated copy is the only correct one here

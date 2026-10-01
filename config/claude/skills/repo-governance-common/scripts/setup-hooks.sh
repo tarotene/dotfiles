@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
     --dest) DEST="$2"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     # The flags that take no value (rust's manual-invocation firmware
-    # addin, and ADR-0000-rulesets-declaration-in-repo's shared
+    # addin, and ADR-503's shared
     # --with-review) — kept as explicit exceptions so they aren't
     # mis-parsed as value-taking flags by the `--*` catch-all below.
     --with-firmware) shift ;;

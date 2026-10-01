@@ -2,13 +2,12 @@
 
 `renovate.json` in a repository is inert without the Mend Renovate
 GitHub App actually running against that repository — the config file
-and the App installation are two independent things (`docs/adr/0000-
-renovate-automerge-shared-preset.md` Context: a 2026-09-29 audit found
+and the App installation are two independent things (`docs/adr/568-renovate-automerge-shared-preset.md` Context: a 2026-09-29 audit found
 10 repositories with `renovate.json` but zero Renovate PRs ever, because
 the App was never installed on them).
 
 **Install the App once, account-wide.** Do not install it per
-repository. As of ADR-0000 D5, the App's repository access is set to
+repository. As of ADR-568 D5, the App's repository access is set to
 "All repositories" — a newly created repository is covered automatically,
 with nothing to remember per repository.
 
@@ -47,7 +46,7 @@ repository, referenced as:
 A repository's own `renovate.json` should contain only ecosystem-specific
 `packageRules` (dependency groups, an MSRV-protect rule, a custom
 manager) on top of that `extends`. See
-`docs/adr/0000-renovate-automerge-shared-preset.md` D4 for why.
+`docs/adr/568-renovate-automerge-shared-preset.md` D4 for why.
 
 ## Dependabot stays alert-only
 

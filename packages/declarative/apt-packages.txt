@@ -44,7 +44,7 @@ fcitx5-frontend-all
 # --- Smartcard / YubiKey (scdaemon CCID, no pcscd) ---
 scdaemon
 
-# --- Network: mesh VPN daemon + host firewall (ADR-0000) ---
+# --- Network: mesh VPN daemon + host firewall (ADR-471) ---
 #
 # tailscale: `tailscaled` runs as a root systemd system service (Tailscale's
 # own upstream guidance — nixpkgs' tailscale package is for the CLI only and

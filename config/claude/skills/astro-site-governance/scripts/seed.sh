@@ -154,7 +154,7 @@ fi
 
 # Step 4: Create GitHub Rulesets
 #
-# ADR-0000-rulesets-declaration-in-repo: required context の正本は対象
+# ADR-503: required context の正本は対象
 # リポジトリ自身の .github/rulesets/*.json(Step 1 で既にコピー済み)で
 # あり、apply はどのリポジトリに対しても同じ汎用スクリプトで済む。まだ
 # CI が 1 回も走っていないため --unverified-contexts を明示する。
