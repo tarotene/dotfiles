@@ -1,10 +1,10 @@
 # attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
 
-判定エンジン: `config/claude/hooks/attribution-guard.sh`
-Codex CLI adapter: `config/codex/hooks/attribution-guard.sh`
-Copilot CLI adapter: `config/copilot/hooks/attribution-guard.sh`
+実装: `crates/attribution-guard`(Rust、3 エージェント共通の 1 バイナリ、`--agent claude|codex|copilot`)
+コマンド解析エンジン: `crates/guard-core`(公開 API は [`guard-core.md`](guard-core.md))
+旧 bash 判定エンジン: `config/claude/hooks/attribution-guard.sh`(#415 で削除。他の gh guard が `source` する共有エンジンだったが、全 guard が `crates/guard-core` に移ったため不要になった)
 規約側: `config/claude/CLAUDE.md`「GitHub に投稿するテキストには生成元を明示する」
-Issue: #190、#192(Codex CLI / Copilot CLI への展開)
+Issue: #190、#192(Codex CLI / Copilot CLI への展開)、#415(Rust 移植、ADR-0024 Stage 4a)
 
 Claude Code / Codex CLI / Copilot CLI が GitHub に書く外向きテキスト（PR / Issue の
 `create`・`edit`、Issue / PR コメント、`gh pr review` のレビュー本体)に attribution
@@ -21,18 +21,18 @@ system-reminder）由来である。そのため 2 つの穴があった。
    `gh pr review --body` で Claude が投稿したテキストは、GitHub 上では人間の発言と
    区別が付かない。mention を含むコメントは相手に直接通知が飛ぶため、人間の発言と
    誤読されるコストが最も高い面である。
-2. **PR / Issue 本文側も保証されていない。** `pr-gate.sh` は `G_link`（closing
+2. **PR / Issue 本文側も保証されていない。** `pr-gate` は `G_link`（closing
    keyword）と `G_visual`（視覚証跡）を検査するが attribution は見ていない。harness
    の指示が変わる・欠ける・セッションによって注入されないと、repo 側は何も気付かずに
    静かに落ちる。
 
-規約（自発的に付ける）+ 機械 gate（漏れを拾う）の二層にした。`pr-gate.sh` の
+規約（自発的に付ける）+ 機械 gate（漏れを拾う）の二層にした。`pr-gate` の
 `No-Issue:` / `No-Visual:` と同じ設計思想 — 沈黙を決定に変え、抜けた事実と理由を
 grep 可能な形で残す。
 
 ## なぜ Stop hook ではなく PreToolUse か
 
-コメント投稿は通知が飛ぶ**不可逆操作**で、事後に怒っても取り返せない。`pr-gate.sh`
+コメント投稿は通知が飛ぶ**不可逆操作**で、事後に怒っても取り返せない。`pr-gate`
 が Stop で成立するのは、PR の本文は後から `gh pr edit` で直せるからである。投稿
 そのものを止められる位置は PreToolUse しかない。
 
@@ -65,7 +65,7 @@ deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。b
 いるが、あちらは漏洩防止で、抜け道を教えると自分で抜けてしまう。`No-Attribution:` は
 正当な判断であり、Claude が使えないと意味がない。
 
-`No-Attribution:` は理由を伴って初めて成立する（`pr-gate.sh` の `NO_ISSUE_RE` と
+`No-Attribution:` は理由を伴って初めて成立する（`pr-gate` の `NO_ISSUE_RE` と
 同型）。空の `No-Attribution:` を通すと、沈黙を決定に変える目的が崩れる。
 
 ## 検査範囲の切り出し — ここが一番の勘所
@@ -113,8 +113,11 @@ allow 側で「諦める = 許可を出さない = 安全側」。deny 側では
 1. **heredoc 本体を分離する**（`split_heredoc`）。本体の各行は改行の直後に来るので、
    分離しないと本体に書いた例文がコマンド位置に見える。分離した本体は捨てずに
    `HD_BODIES` に保持し、`--body "$(cat <<'TAG' … TAG)"` の本文候補として使う。
-   `<<<`（herestring）は `<<` の次が `<` なのでタグの正規表現にマッチせず、自動的に
-   除外される。
+   bash 版のコメントは「`<<<`(herestring)はタグの正規表現にマッチせず除外される」と
+   書いていたが、実際には `<<<EOF` / `<<< "x"` も 2 文字目からの `<<` で一致し
+   heredoc として扱われる。Rust 移植(#415)は bash の実挙動を保った
+   (`crates/guard-core/src/shell.rs` のテストで固定、[`guard-core.md`](guard-core.md)
+   「bash の挙動が疑わしい箇所」)。
 2. **残りをトークン化し、コマンド位置の `gh` 呼び出しだけを対象とする**。コマンド位置 =
    トークン列の先頭、または区切りトークン（`;` `|` `&` `(` `)` 改行）の直後。クォート
    された文字列は 1 トークンになるのでコマンド位置には来ない。
@@ -182,14 +185,17 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 
 | 経路 | 倒し方 | 理由 |
 |------|--------|------|
-| heredoc（`<<`）を含む | 範囲文字列全体を検査 | 本体が `command` 文字列内に実在する |
+| heredoc（`<<`）を含む | 抽出した本文に heredoc 本体を足して検査 | 本体が `command` 文字列内に実在する |
 | コマンド置換のみ（`$(` / `` ` ``） | 判定不能 → 通す | 中身が不明。deny に倒すと `--body "$(cat body.md)"` が常に弾かれる |
 | 本文フラグが無い | 判定不能 → 通す | `gh pr edit --add-label` を誤検知しない |
-| トークナイザが unmatched quote | 範囲文字列全体を検査 | heredoc と同じ |
+| トークナイザが unmatched quote | 判定不能 → 通す | トークン列が空になる |
 
-「判定できない場合は断定に変えず素通す」は `pr-gate.sh:32-34` の縮退表と同じ思想。
-ただし heredoc だけは素通しではなく範囲全体の検索に落とす — 本体が実在するので
+「判定できない場合は断定に変えず素通す」は `crates/pr-gate`(`src/lib.rs` 冒頭)の縮退表と同じ思想。
+ただし heredoc だけは素通しではなく本体を本文候補に加える — 本体が実在するので
 判定材料がある。
+
+初版の設計記録は heredoc と unmatched quote を「範囲文字列全体を検査」と書いていたが、
+bash 実装は当初から上表のとおりだった(Rust 移植 #415 で実装に合わせて表を直した)。
 
 ## `gh api` の判定（#195）
 
@@ -241,17 +247,17 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 エージェントが生成したか」を本文だけで判別できることを、grep 対象の
 一元化より優先する。
 
-判定エンジン(`decide`/`decide_tokens`/`decide_api_tokens`/`has_marker`/
-`emit_deny` 等)はエージェント非依存のまま `config/claude/hooks/
-attribution-guard.sh` に残し、`config/codex/hooks/attribution-guard.sh` と
-`config/copilot/hooks/attribution-guard.sh` がこれを `source` して薄い
-I/O adapter だけを持つ。`tarotene/bleep`(当時 `publish-guard`)の「1つの
-判定エンジン + per-agent adapter」という既存の型(`adapters/{codex,
-copilot}-adapter.sh`、bleep 自身は #25-28 で単一 shim `hooks/bleep.sh
---host=<name>` に統合済み)をそのまま踏襲した。
+判定はエージェント非依存で、3 エージェントから同じ 1 バイナリ
+`crates/attribution-guard` を `--agent claude|codex|copilot` で呼ぶ(#415、
+#391)。bash 時代は `config/claude/hooks/attribution-guard.sh` の判定エンジンを
+`config/{codex,copilot}/hooks/attribution-guard.sh` が `source` して薄い I/O
+adapter だけを持つ型(`tarotene/bleep` の旧 `adapters/{codex,copilot}-adapter.sh`
+を踏襲)だったが、Rust には `source` が無いので、bleep 自身が #25-28 で
+単一 shim `hooks/bleep.sh --host=<name>` に統合したのと同じ形にした。
 
-エージェントごとに変わるのは `ATTRIBUTION_AGENT_NAME` / `ATTRIBUTION_AGENT_URL`
-の2変数だけ(adapter が `source` 前に上書きする)。フッターは
+エージェントごとに変わるのはフッターのエージェント名と URL だけ
+(`Attribution::for_agent`。bash 版では adapter が `ATTRIBUTION_AGENT_NAME` /
+`ATTRIBUTION_AGENT_URL` を `source` 前に上書きしていた)。フッターは
 `🤖 Generated with [<エージェント名>](<URL>)` の形で統一する:
 
 | エージェント | 名前 | URL |
@@ -260,11 +266,11 @@ copilot}-adapter.sh`、bleep 自身は #25-28 で単一 shim `hooks/bleep.sh
 | Codex CLI | `Codex CLI` | `https://learn.chatgpt.com/docs/codex/cli`(取得 2026-09-21。`developers.openai.com/codex/cli` は 308 でこの URL へ転送されるため転送先を直接使う) |
 | GitHub Copilot CLI | `GitHub Copilot CLI` | `https://docs.github.com/en/copilot/how-tos/copilot-cli`(取得 2026-09-21) |
 
-### I/O adapter が違いを吸収する
+### `--agent` が入出力の違いを吸収する
 
 Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
 `tarotene/bleep` の同種 adapter が実機で確認済みの事実をそのまま
-引き継いでいる:
+引き継いでいる(`guard_core::hook::ToolCall` / `deny_output`):
 
 | | 入力 | tool 名 | 出力 |
 |---|---|---|---|
@@ -273,31 +279,29 @@ Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
 | Copilot CLI | `toolArgs.command` | `bash`(小文字) | ラップしない直下の JSON |
 
 Copilot CLI の `preToolUse` には matcher が無く全 tool call で無条件発火
-するため、`toolName=="bash"` 以外は adapter 内部で早期 exit する。
+するため、`toolName=="bash"` 以外はバイナリ内部で早期 exit する。
 
 ### スコープ外にしたもの
 
 MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま
 (#161 が同じ課題を bleep について記録している)。この展開では
 Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*`
-前提)は Codex/Copilot の adapter から呼ばない。
+前提)は `--agent claude` のときだけ呼ぶ。
 
-### ソース元を安全に共有する
+### bash 版エンジンの削除
 
-`config/claude/hooks/attribution-guard.sh` は他ファイルから `source`
-される前提で末尾の実行時ディスパッチを
-`[[ "${BASH_SOURCE[0]}" == "$0" ]]` で直接実行時のみに限定してある
-(標準的な bash の「source か実行か」判定イディオム)。Codex/Copilot の
-adapter は相対パス(`../../claude/hooks/attribution-guard.sh`)でこれを
-辿るため、配置は `~/.codex/hooks/`・`~/.copilot/hooks/` 直下で固定
-(herdr サイドバー用の `herdr-{codex,copilot}-metadata.sh` と同じ配置
-パターン)。
+`config/claude/hooks/attribution-guard.sh` は、7 本の bash guard が `source` する共有エンジンとして、
+他の guard の移植が済むまで残していた。全 guard が `crates/guard-core` の上に移ったので、#415 で削除した
+(配備 `~/.claude/hooks/attribution-guard.sh` と CI の `--selftest` も同時に消した)。
 
 ## 縮退と検査
 
-- `jq` 不在・stdin 不正は黙って `exit 0`（ADR-0005 の binary-existence gating）。
-- `attribution-guard.sh --selftest` がケース 1〜33(45 アサーション)を
-  ネットワーク無しに検査する。うち 3 件は Copilot plan review の指摘 R1-B-1 の
+- stdin 不正は黙って `exit 0`（ADR-0005 の binary-existence gating に倣う縮退）。
+- `crates/attribution-guard/tests/cmd/` の trycmd fixture が、bash 版
+  `--selftest` のケース 1〜33(45 アサーション、`st*.toml`)・旧 Codex/Copilot
+  adapter の selftest(各 4 件)・Claude の hook 入出力の追加ケース(`hook-*.toml`)を
+  ネットワーク無しに検査する(期待値は bash 版から生成した。bash 版は #415 で削除した)。
+  ケース 1〜33 の内訳:うち 3 件は Copilot plan review の指摘 R1-B-1 の
   回帰ケース（`&&` 連結での取り違え / 手前の `echo` からの混入 / 閉じクォートを
   理由と誤認）、1 件は「Markdown 箇条書きで本文が切れて全 deny になる」false
   deny の回帰ケース、3 件は「コマンド位置にない投稿コマンドの綴りで発火する」
@@ -306,7 +310,8 @@ adapter は相対パス(`../../claude/hooks/attribution-guard.sh`)でこれを
   対象パス judge/deny・インライン除外・`--input` ファイル/stdin・PATCH 編集・
   GET 通過・非対象パス(`rulesets`)素通りの回帰。
   **false deny 系が落ちると gate は実用上使えない。**
-- `attribution-guard.sh --check '<コマンド文字列>'` で手動 e2e ができる。
+- `attribution-guard [--agent <a>] --check '<コマンド文字列>'` で手動 e2e ができる
+  (deny なら `deny: <理由>` で exit 1、通すなら `pass`)。
 
 ## 登録形
 
@@ -328,7 +333,11 @@ Codex CLI（`~/.codex/hooks.json`、`home/modules/claude.nix` の
 
 ```
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
+command: '~/.claude/hooks/attribution-guard' --agent codex
 ```
+
+旧 bash adapter の command は `--retire` で完全一致削除してから登録する。
+新しい command は Codex 側で一度 `/hooks` から trust し直す必要がある。
 
 Copilot CLI（`~/.copilot/settings.json`、同モジュールの
 `registerCopilotAttributionGuardHooks`、bleep の Copilot 登録の
@@ -336,4 +345,5 @@ Copilot CLI（`~/.copilot/settings.json`、同モジュールの
 
 ```
 preToolUse / matcher なし（Copilot 自体が対応していない）/ timeoutSec 10
+command: '~/.claude/hooks/attribution-guard' --agent copilot
 ```

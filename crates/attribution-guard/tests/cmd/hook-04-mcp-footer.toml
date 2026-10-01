@@ -1,0 +1,6 @@
+# 追加: MCP 書き込み系 tool の body にフッター付きは pass
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"mcp__github__add_issue_comment\", \"tool_input\": {\"body\": \"ok 🤖 Generated with [Claude Code](https://claude.com/claude-code)\"}}"
+status.code = 0
+stdout = ""

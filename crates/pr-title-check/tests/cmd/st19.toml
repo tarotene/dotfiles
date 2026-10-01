@@ -1,0 +1,5 @@
+# bash selftest 19
+bin.name = "pr-title-check"
+args = ["feat(Claude): 追加する"]
+status.code = 1
+stderr = "pr-title-check: 非適合 — 'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください: feat(Claude): 追加する\n"

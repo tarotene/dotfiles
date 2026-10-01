@@ -1,0 +1,6 @@
+# 追加: MCP の読み取り系 tool は対象外
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"mcp__github__get_issue\", \"tool_input\": {\"body\": \"no footer\"}}"
+status.code = 0
+stdout = ""

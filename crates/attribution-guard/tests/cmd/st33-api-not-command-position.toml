@@ -1,0 +1,8 @@
+# bash selftest「33 api コマンド位置外」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "echo 'gh api repos/o/r/issues -f body=x'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

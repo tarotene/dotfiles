@@ -458,8 +458,7 @@ expectations:
 
 Presence-detection for the PR-title commit-message contract's enforcement
 mechanism — **not** a re-check of any individual open PR's title. That
-distinction matters: the client guard (`config/claude/hooks/
-pr-title-guard.sh`) and the required check (`.github/workflows/
+distinction matters: the client guard (`crates/pr-title-guard`) and the required check (`.github/workflows/
 pr-title.yml`) already judge individual titles; if this domain re-judged
 them too, a repository could show `drifted` here while every open PR is
 green, or vice versa, with no way to tell which layer to trust

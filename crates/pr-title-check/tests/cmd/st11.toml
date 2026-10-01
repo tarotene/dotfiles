@@ -1,0 +1,5 @@
+# bash selftest 11
+bin.name = "pr-title-check"
+args = ["misc: 何か"]
+status.code = 1
+stderr = "pr-title-check: 非適合 — 'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください: misc: 何か\n"

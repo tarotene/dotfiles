@@ -290,9 +290,11 @@ jobs:
       # 判定エンジン。base ref は adr-number-check のステップで既に fetch
       # 済み。push イベント(base が無い)では比較対象が無いため skip する
       # — この検査は PR の diff に対してのみ意味を持つ。
-      - name: decision-colocation-check --selftest
-        run: ./scripts/decision-colocation-check --selftest
-
+      # #415(ADR-0024 Stage 4a)で Rust(crates/decision-colocation)になった。
+      # required check はこの job なので、ここで同じバイナリを build して呼ぶ
+      # (ubuntu-latest の既定の stable cargo で足りる。依存は hook-io /
+      # guard-core のみで build は数十秒)。旧 --selftest の全ケースは rust job
+      # の `cargo test --workspace` が走らせる。
       - name: decision-colocation-check
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -300,7 +302,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            ./scripts/decision-colocation-check --base "$BASE_SHA"
+            cargo run --locked --quiet -p decision-colocation \
+              --bin decision-colocation-check -- --base "$BASE_SHA"
           else
             echo "decision-colocation-check: push イベントには base が無いため skip"
           fi
@@ -478,56 +481,11 @@ jobs:
           ./scripts/register-codex-hooks --selftest
           ./scripts/register-copilot-hooks --selftest
 
-      # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
-      # invariant is "never read an incomplete check set as green" against a
-      # stub gh, including the R2 regression where `gh pr checks --watch`
-      # exits 0 early on a partial subset (cli/cli#9973) — the selftest
-      # re-fetches --json and judges with jq regardless of --watch's exit
-      # code, so this step is what actually guards that invariant.
-      - name: pr-gate.sh --selftest
-        run: bash ./config/claude/hooks/pr-gate.sh --selftest
-
       # attribution-guard (docs/claude/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.
-      - name: attribution-guard.sh --selftest
-        run: bash ./config/claude/hooks/attribution-guard.sh --selftest
-
-      # The Codex / Copilot adapters (#192) translate each agent's PreToolUse
-      # payload and decision output around the shared engine above.
-      - name: attribution-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/attribution-guard.sh --selftest
-
-      - name: attribution-guard.sh (copilot adapter) --selftest
-        run: bash ./config/copilot/hooks/attribution-guard.sh --selftest
-
-      # stack-base-guard (ADR-0027, docs/claude/stack-base-guard.md) sources
-      # attribution-guard.sh's command-position/tokenizer engine and adds its
-      # own gh stub against a throwaway git repo with real commits (ancestry
-      # checks need real objects for `git merge-base --is-ancestor`) — no
-      # network involved.
-      - name: stack-base-guard.sh --selftest
-        run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
-
-      # ADR-0027/ADR-0032 Amendment (#531): Codex adapter, same minimalist
-      # smoke test as the pr-title-guard/attribution-guard Codex adapters
-      # (exhaustive decision coverage stays in the Claude selftest above).
-      - name: stack-base-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/stack-base-guard.sh --selftest
-
-      # decision-colocation-guard (ADR-396, docs/claude/decision-colocation.md)
-      # sources attribution-guard.sh's command-position/tokenizer engine the
-      # same way stack-base-guard/pr-title-guard do, and stubs the checker
-      # binary to exercise base resolution, the escape hatch, and degradation
-      # paths without gh/network.
-      - name: decision-colocation-guard.sh --selftest
-        run: bash ./config/claude/hooks/decision-colocation-guard.sh --selftest
-
-      # pr-title-check (ADR-0031, docs/claude/pr-title-contract.md) is the
-      # single-source grammar checker shared by the client guard and the
-      # required check below — its selftest is grep + bash string matching
-      # end to end, no gh/network involved.
-      - name: pr-title-check --selftest
-        run: ./scripts/pr-title-check --selftest
+      # stack-base-guard (ADR-0027) is now the Rust crates/stack-base-guard
+      # (#415); its tests (the old Claude + Codex adapter selftests) run in the
+      # nix.yml rust job.
 
       # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
       # scripts/github-audit's judge_settings()/fetch_repo_settings() (no
@@ -555,58 +513,6 @@ jobs:
       # exit code のみを検査する。
       - name: workflow-naming-check --selftest
         run: ./scripts/workflow-naming-check --selftest
-
-      # pr-title-guard (ADR-0031) sources attribution-guard.sh's
-      # command-position/tokenizer engine the same way stack-base-guard does,
-      # and stubs the checker binary to exercise the owner-scope, escape
-      # hatch, and degradation paths without gh/network.
-      - name: pr-title-guard.sh --selftest
-        run: bash ./config/claude/hooks/pr-title-guard.sh --selftest
-
-      - name: pr-title-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/pr-title-guard.sh --selftest
-
-      - name: pr-title-guard.sh (copilot adapter) --selftest
-        run: bash ./config/copilot/hooks/pr-title-guard.sh --selftest
-
-      # pr-confirm-guard (docs/claude/pr-confirm-guard.md) sources
-      # attribution-guard.sh's command-position/tokenizer engine the same way
-      # pr-title-guard does. Deterministic bash + jq/awk end to end over
-      # fixture PR bodies (unchecked task lists, `## 要確認` Issue refs) —
-      # no gh/network involved.
-      - name: pr-confirm-guard.sh --selftest
-        run: bash ./config/claude/hooks/pr-confirm-guard.sh --selftest
-
-      - name: pr-confirm-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/pr-confirm-guard.sh --selftest
-
-      # adr-number.sh (ADR-380, docs/claude/adr-numbering.md) is
-      # deterministic bash + jq end to end with gh/adr-number-check both
-      # stubbed — no network involved. Covers the early-exit-without-draft
-      # path, gh pr create detection at command position, gh pr view
-      # failure (no crash), and the non-Bash-tool passthrough.
-      - name: adr-number.sh --selftest
-        run: bash ./config/claude/hooks/adr-number.sh --selftest
-
-      # feedback-target-guard.sh (ADR-543 段3) is deterministic bash + jq
-      # end to end, no network involved — sources attribution-guard.sh for
-      # its heredoc-splitting tokenizer the same way adr-number.sh does.
-      - name: feedback-target-guard.sh --selftest
-        run: bash ./config/claude/hooks/feedback-target-guard.sh --selftest
-
-      # repo-create-guard.sh (ADR-0013 Amendment 2026-09-29) is deterministic
-      # bash end to end, no network involved — sources attribution-guard.sh
-      # for its command-position tokenizer the same way feedback-target-
-      # guard.sh does. Covers gh repo create / gh api -X POST user/repos
-      # detection and the settings-PATCH/rulesets-POST/GET-listing pass-
-      # through cases (docs/claude/repo-create-guard.md).
-      - name: repo-create-guard.sh --selftest
-        run: bash ./config/claude/hooks/repo-create-guard.sh --selftest
-
-      # ADR-380/ADR-0032 Amendment (#531): Codex adapter, same minimalist
-      # smoke test as the other Codex adapters above.
-      - name: adr-number.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/adr-number.sh --selftest
 
       # apply-repo-settings.sh (docs/adr/568-renovate-automerge-shared-preset.md D5b) is deterministic bash end to end against a stubbed
       # gh — covers the default (PATCH + vulnerability-alerts PUT +
@@ -869,10 +775,7 @@ jobs:
           for f in "$out"/home-files/.codex/hooks/*.sh "$out"/home-files/.copilot/hooks/*.sh; do
             [ -e "$f" ] || continue
             echo "== $f"
-            # PATH gets the deployed ~/.local/bin too: pr-title-guard's
-            # adapters resolve `pr-title-check` from there (the source-tree
-            # relative candidate does not exist in this layout).
-            HOME="$out/home-files" PATH="$out/home-files/.local/bin:$PATH" bash "$f" --selftest
+            HOME="$out/home-files" bash "$f" --selftest
           done
       # #604: the flake.lock pin of `bleep` decides which hook is deployed,
       # but nothing exercised the *deployed* artifacts (the bash body under

@@ -3,11 +3,11 @@
 作業を途中で打ち切りたいとき、残タスクを揮発させずに再開可能な状態へ
 落とし込む正規の経路が無かった。`docs/claude/scope-inventory.md` は
 「実行段階の途中打ち切り」を明示的にスコープ外にしており、
-`pr-gate.sh` は途中状態の PR でも `G_link`(closing keyword 必須)・
+`pr-gate` は途中状態の PR でも `G_link`(closing keyword 必須)・
 `G_CI`(CI green 必須)で Stop を block し続け、抜け道は全ゲートを
 外す skip ファイルしか無かった。実装は `config/claude/skills/handoff/`
 (手順は `SKILL.md`、決定論的サブコマンドは `scripts/handoff.sh`)、
-機構側の変更は `config/claude/hooks/pr-gate.sh`(中断ハンドオフ節、
+機構側の変更は `crates/pr-gate`(中断ハンドオフ節、
 `docs/claude/pr-gate.md` 参照)と `crates/issue-index`
 (着手可能な `handoff:ai` 節、`docs/claude/issue-index.md` 参照)。
 
@@ -86,5 +86,5 @@ AI が自発的に手を止める失敗様式(見積り膨張・判断の丸投�
 ## 検証
 
 - `bash config/claude/skills/handoff/scripts/handoff.sh --selftest`
-- `bash config/claude/hooks/pr-gate.sh --selftest`(中断ハンドオフ節)
+- `cargo test -p pr-gate`(`crates/pr-gate/tests/stop.rs` の中断ハンドオフ節)
 - `nix develop --command cargo test -p issue-index`(着手可能な handoff:ai 節)

@@ -55,7 +55,7 @@ change or bug fix CL, though." と裁量の余地を残している。ただし�
 追加した — 後からレビュー・監査する側が「意図した同梱」と「スコープの
 なし崩し的な混入」を区別できるようにするため。
 
-機械 gate(`plan-scope-gate` / `pr-gate.sh` への検査追加)は今回作らない。
+機械 gate(`plan-scope-gate` / `pr-gate` への検査追加)は今回作らない。
 `AskUserQuestion` の選択肢空間は機械検査に向かないうえ、§8「なぜ
 pr-gate.sh を触らないか」の既存裁定(判定できる場合だけ踏み込む、実測が
 出てから block 化を検討する)にそのまま従う。
@@ -99,14 +99,14 @@ true` で残りを吸収する形にした。
 **この節の裁定は ADR-0027 によって上書きされた。** 以下は当時の記録として
 残すが、現在の規律は「保留条項の発火と ADR-0027」節を参照。
 
-`pr-gate.sh` は既に PR の `baseRefName` を見て動作しており、`G_link` に
+`pr-gate` は既に PR の `baseRefName` を見て動作しており、`G_link` に
 stacked 用の advisory(base が default branch でないときは closing keyword
 が発火しない旨を注記)、`G_CI` に quiesce フォールバック(stacked PR で
 required check が 0 件のときの縮退経路)を持つ。つまり stacked PR で完全に
 沈黙するわけではない。
 
 「親のコミットを含むのに base が default branch」という取り違えを機械的に
-block する案(`G_stack`)も検討したが、`pr-gate.sh` の既存の設計原則
+block する案(`G_stack`)も検討したが、`pr-gate` の既存の設計原則
 (「判定できる場合だけ踏み込む」、`docs/claude/pr-gate.md` 参照)に倣い、
 今回は指示文とスキルの運用を先に確立し、実際に取り違えが起きてから block
 化を検討することにした。誘発の実測が無いまま `MAX_BLOCKS` を引き上げて
@@ -129,8 +129,8 @@ PR を大きくする判断はしない。
 判定条件 (a)/(b) に基づく依存予測は LLM 判断に委ねられており、セッション中
 に系統的に外れた。`ADR-0027`(uncertainty-first stacking)は、この予測を
 「積むか否か」の判定からは廃止し、セッション内の複数 PR は常に作成順の
-単一チェーンに積むことを、作成時 PreToolUse hook(`stack-base-guard.sh`)と
-完了時 Stop judgement(`G_stack`、`pr-gate.sh`)の両端で機械強制する決定を
+単一チェーンに積むことを、作成時 PreToolUse hook(`stack-base-guard`)と
+完了時 Stop judgement(`G_stack`、`pr-gate`)の両端で機械強制する決定を
 下した。詳細な設計根拠は ADR-0027 本文および `docs/claude/
 stack-base-guard.md` / `docs/claude/pr-gate.md` を参照。
 
@@ -153,8 +153,8 @@ UI からも stack だった履歴が消える。1 行のコストで
 の一覧を全 PR に書き戻すツールを持たない以上、ずれる値そのものを消す方を
 採った(2026-10-01)。親番号は作成時に決まって変わらない。段の全体像は
 `gh stack link` の stack map が正本になる。自動書き換えの CLI を新設する
-案と、`stack-base-guard.sh` に base を自動補正させる案は見送った。
-`pr-gate.sh` はこの行を検査しない(人間とレビュアーのための注記であり、
+案と、`stack-base-guard` に base を自動補正させる案は見送った。
+`pr-gate` はこの行を検査しない(人間とレビュアーのための注記であり、
 機械強制の対象ではない)。
 
 ## `stacked-pr` と `pr-description` / ADR-0008 との関係
@@ -178,7 +178,7 @@ ADR-0008(記録の器の選択規約)はこのスキル自身の執筆にも適�
 入ったときの追従」どおり全上位段を rebase すれば、tip の合成木で
 改めて検査されるので実害は無い。rebase せずにその段を単独でマージする
 場合だけ `ci:full` ラベルを貼って heavy を手動で走らせる — この場合を
-自動検出する仕組み(`pull_request: edited` での再発火や `pr-gate.sh` 側の
+自動検出する仕組み(`pull_request: edited` での再発火や `pr-gate` 側の
 検出)はコストに見合わないため意図的に追加していない(ADR-468
 Alternatives considered)。
 

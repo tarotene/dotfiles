@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "adr-number"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "agent-turn-log"
 version = "0.1.0"
 dependencies = [
@@ -67,6 +77,15 @@ dependencies = [
  "anstyle",
  "once_cell_polyfill",
  "windows-sys",
+]
+
+[[package]]
+name = "attribution-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "trycmd",
 ]
 
 [[package]]
@@ -175,6 +194,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
+name = "decision-colocation"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "tempfile",
+]
+
+[[package]]
 name = "defmt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -269,6 +297,16 @@ name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
+
+[[package]]
+name = "feedback-target-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "filetime"
@@ -368,6 +406,15 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "guard-core"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "hashbrown"
@@ -624,6 +671,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "pr-confirm-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "pr-gate"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "new-tool-guard",
+ "regex",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "pr-title-check"
+version = "0.1.0"
+dependencies = [
+ "trycmd",
+]
+
+[[package]]
+name = "pr-title-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "pr-title-check",
+ "tempfile",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,6 +791,16 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "repo-create-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "routines-write-guard"
@@ -884,6 +979,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed4a172e483585ebbc7c7f7d1705ca7e3f94f606ed78caa14805673189fd5455"
 dependencies = [
  "anstream",
+]
+
+[[package]]
+name = "stack-base-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

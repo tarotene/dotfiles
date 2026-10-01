@@ -1,0 +1,6 @@
+# copilot adapter selftest 2: Copilot のフッター付きは pass
+bin.name = "attribution-guard"
+args = ["--agent", "copilot"]
+stdin = "{\"sessionId\": \"s\", \"cwd\": \"/x\", \"toolName\": \"bash\", \"toolArgs\": {\"command\": \"gh pr comment 1 --body '確認しました。🤖 Generated with [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli)'\"}}"
+status.code = 0
+stdout = ""

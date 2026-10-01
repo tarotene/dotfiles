@@ -10,9 +10,10 @@ description: >-
   しない(呼び出し側 job の `name:` だけが required check context になる)
   ため、その事故の型自体が構造的に無くなる。
 
-  判定ロジックは全て tarotene/dotfiles の scripts/ 配下(pr-title-check /
+  判定ロジックは全て tarotene/dotfiles に一元化されており(PR タイトル
+  文法は crates/pr-title-check の Rust 実装、残りは scripts/ 配下の
   pr-merge-settings-check / rulesets-context-check / workflow-naming-
-  check)に一元化されており、この action はその呼び出しに徹する。呼び出し
+  check)、この action はその呼び出しに徹する。呼び出し
   元リポジトリの checkout 状態には依存しない — 常に別途 dotfiles を
   sparse-checkout する(dotfiles 自身の PR ではこの PR 自身の head SHA、
   他リポジトリでは main の安定版)。
@@ -36,8 +37,13 @@ runs:
       with:
         repository: tarotene/dotfiles
         ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
+        # Cargo.toml は cargo が workspace root を見つけるために必要。
+        # crates/* は glob メンバーなので、sparse で crates/pr-title-check
+        # だけを取っても workspace は解決できる(存在するメンバーだけが
+        # 対象になる)。pr-title-check は依存ゼロなので registry へ出ない。
         sparse-checkout: |
-          scripts/pr-title-check
+          /Cargo.toml
+          /crates/pr-title-check/
           scripts/github-audit
           scripts/pr-merge-settings-check
           scripts/rulesets-context-check
@@ -45,14 +51,23 @@ runs:
         sparse-checkout-cone-mode: false
         path: .pr-title-tools
 
+    # PR タイトル文法の検査(ADR-0031)。単一正本は crates/pr-title-check
+    # (#415 で bash の scripts/pr-title-check から Rust へ移植)。
+    # GitHub-hosted の ubuntu runner には cargo が入っている。無い runner
+    # (self-hosted 等)では、黙って検査を飛ばさず明示的に落とす。
     - name: Validate PR title
       shell: bash
       env:
         TITLE: ${{ inputs.title }}
       run: |
         set -euo pipefail
-        chmod +x .pr-title-tools/scripts/pr-title-check
-        .pr-title-tools/scripts/pr-title-check "$TITLE"
+        if ! command -v cargo > /dev/null 2>&1; then
+          echo "::error::cargo が見つかりません。PR タイトル検査(crates/pr-title-check)は Rust ツールチェーンを必要とします" >&2
+          exit 1
+        fi
+        cargo build --release --quiet \
+          --manifest-path .pr-title-tools/Cargo.toml -p pr-title-check
+        .pr-title-tools/target/release/pr-title-check "$TITLE"
 
     # ADR-0031 Amendment: PR タイトル契約は squash merge 設定の上に乗った
     # proxy であり、その設定が drift すると契約全体が無声でバイパスされる。

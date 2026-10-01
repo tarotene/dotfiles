@@ -30,7 +30,7 @@ git 操作という agent に依存しない規範を、Claude 専用ファイ�
 グリルで確定した分割方針は「原則は agent 非依存、施行手段は Claude
 Code 固有」。例えば stacked PR(ADR-0027)は「同一セッションの複数 PR は
 単一チェーンに積む」という原則自体はどの agent が作業していても成立する
-規範だが、`stack-base-guard.sh`(PreToolUse deny)・`pr-gate.sh` の
+規範だが、`stack-base-guard`(PreToolUse deny)・`pr-gate` の
 `G_stack`(Stop block)という具体的な強制手段は Claude Code の hook
 イベントに紐づく実装であり、Codex/Copilot に対応する adapter は存在
 しない。同様に Plan mode の `## 先行例との対比` 節の書式や

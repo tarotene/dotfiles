@@ -1,0 +1,6 @@
+# copilot adapter selftest 4: toolName!=bash は無視
+bin.name = "attribution-guard"
+args = ["--agent", "copilot"]
+stdin = "{\"sessionId\": \"s\", \"cwd\": \"/x\", \"toolName\": \"str_replace_editor\", \"toolArgs\": {\"new_str\": \"no footer here\"}}"
+status.code = 0
+stdout = ""

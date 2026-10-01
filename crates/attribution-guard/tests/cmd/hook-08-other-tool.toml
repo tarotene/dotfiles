@@ -1,0 +1,6 @@
+# 追加: Bash/mcp__github* 以外の tool は対象外
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"Write\", \"tool_input\": {\"content\": \"gh pr comment 1 --body x\"}}"
+status.code = 0
+stdout = ""

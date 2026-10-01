@@ -53,7 +53,7 @@
       pandoc
 
       # Terminal-look capture for PR Before/After evidence (pr-description
-      # skill, docs/claude/pr-description.md — G_visual in pr-gate.sh enforces
+      # skill, docs/claude/pr-description.md — G_visual in pr-gate enforces
       # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
       # stable) because freeze renders ANSI text piped on stdin
       # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
@@ -227,21 +227,18 @@
   home.file.".local/bin/git-prune-branches".source = "${pkgs.dotfiles-tools}/bin/git-prune-branches";
 
   # pr-title-check: checker 単一ソース for the PR-title commit-message
-  # contract (ADR-0031, docs/claude/pr-title-contract.md). Both
-  # config/claude/hooks/pr-title-guard.sh (client-side PreToolUse deny) and
-  # .github/workflows/pr-title.yml (server-side required check) call this
-  # one script, so the grammar never drifts between the two enforcement
-  # points. Same "executable in ~/.local/bin, no alias needed" placement as
-  # git-prune-branches/github-audit above.
-  home.file.".local/bin/pr-title-check" = {
-    source = ../../scripts/pr-title-check;
-    executable = true;
-  };
+  # contract (ADR-0031, docs/claude/pr-title-contract.md). Rust 実装
+  # (crates/pr-title-check、#415)の bin を指す。client-side guard
+  # (crates/pr-title-guard)は同じ crate の check_title を直接リンクして
+  # 呼び、サーバ側 required check(.github/actions/pr-title)は同じ crate を
+  # build して呼ぶ — 文法は 1 箇所にしか存在しない。手元で
+  # `pr-title-check "<title>"` と打てるようにするために配備する。
+  home.file.".local/bin/pr-title-check".source = "${pkgs.dotfiles-tools}/bin/pr-title-check";
 
   # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
   # docs/claude/adr-numbering.md — 番号を導入 PR の番号にすることで採番
   # 衝突を構造的に不可能にする決定). Both .github/workflows/ci.yml's
-  # required check and (once wired) config/claude/hooks/adr-number.sh call
+  # required check and the adr-number hook (crates/adr-number) call
   # this one script, so the rule never drifts between the two enforcement
   # points. Same "executable in ~/.local/bin, no alias needed" placement as
   # pr-title-check/git-prune-branches above.
@@ -253,16 +250,14 @@
   # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
   # colocation rule (docs/claude/decision-colocation.md — 決定成果物
   # (ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment`
-  # 追加に、その決定を執行する実ファイルの同梱を要求する決定). Both
-  # config/claude/hooks/decision-colocation-guard.sh (client-side PreToolUse
-  # deny) and .github/workflows/ci.yml's required check call this one
-  # script, so the rule never drifts between the two enforcement points.
-  # Same "executable in ~/.local/bin, no alias needed" placement as
-  # pr-title-check/adr-number-check above.
-  home.file.".local/bin/decision-colocation-check" = {
-    source = ../../scripts/decision-colocation-check;
-    executable = true;
-  };
+  # 追加に、その決定を執行する実ファイルの同梱を要求する決定). Since #415
+  # (ADR-0024 Stage 4a) it is a Rust binary (crates/decision-colocation);
+  # the client-side PreToolUse deny (decision-colocation-guard) calls the same
+  # library function, and .github/workflows/ci.yml's required check builds and
+  # runs this binary, so the rule never drifts between the two enforcement
+  # points. Same "executable in ~/.local/bin, no alias needed" placement as
+  # git-prune-branches above.
+  home.file.".local/bin/decision-colocation-check".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-check";
 
   # github-audit: read-only cross-repository GitHub audit, unified across
   # nine domains (rulesets/#130, charters, naming, settings, renovate,

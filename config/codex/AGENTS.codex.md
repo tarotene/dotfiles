@@ -29,24 +29,24 @@ selection-grounding スキル(`~/.agents/skills/`)に従う。
 ### PR 運用(セッション内チェーン・完了定義)
 
 同一セッション・同一 worktree で複数の PR を作るときは、常に作成順の単一
-チェーン(stacked PR)に積む(ADR-0027)。作成時 `stack-base-guard.sh`
-(PreToolUse deny)と完了時 `pr-gate.sh` の `G_stack`(Stop block)が
+チェーン(stacked PR)に積む(ADR-0027)。作成時 `stack-base-guard`
+(PreToolUse deny)と完了時 `pr-gate` の `G_stack`(Stop block)が
 Codex にも効く。
 
 コード変更を伴うタスクは commit → push → `gh pr create` を、途中で確認を
 挟まず一続きで実行する。「PR を作成しますか?」と聞かない。Stop hook
-(`pr-gate.sh` の `G_pr`)がこの漏れを検査する。
+(`pr-gate` の `G_pr`)がこの漏れを検査する。
 
 決定成果物(ADR・設計文書・skill)の執行点を同じ PR に出す原則(ADR-396)
 は Codex にも適用されるが、その形式検査は CI required check
-(`scripts/decision-colocation-check`)のみが担う(PreToolUse deny の
-`decision-colocation-guard.sh` は Codex には移植していない — 対象範囲は
+(`decision-colocation-check`、`crates/decision-colocation`)のみが担う
+(PreToolUse deny の `decision-colocation-guard` は Codex には登録しない — 対象範囲は
 ADR-0032 Amendment 参照)。gate ではなく CI が拾うため、push 後に気づく
 点に留意する。
 
 PR 本文に未チェックの task list を残さず、人の確認が要る残作業は後続
-Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard.sh`
-の Codex adapter(`config/codex/hooks/pr-confirm-guard.sh`、PreToolUse deny、
+Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard`
+(`crates/pr-confirm-guard` を `--agent codex` で登録、PreToolUse deny、
 全リポジトリで発火)が担う。
 
 ### GitHub 投稿の生成元明示
@@ -58,5 +58,5 @@ Codex CLI では固定でこの1行:
 🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)
 ```
 
-形式検査は `config/codex/hooks/attribution-guard.sh`(PreToolUse)が行う。
+形式検査は `attribution-guard --agent codex`(PreToolUse、`crates/attribution-guard`)が行う。
 gate に当たる前に自発的に付けること。

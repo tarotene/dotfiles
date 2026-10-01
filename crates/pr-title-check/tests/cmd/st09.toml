@@ -1,0 +1,4 @@
+# bash selftest 9
+bin.name = "pr-title-check"
+args = ["fix(v2): 直す"]
+status.code = 0

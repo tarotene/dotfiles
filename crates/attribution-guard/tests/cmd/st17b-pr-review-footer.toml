@@ -1,0 +1,8 @@
+# bash selftest「17 pr review+footer」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr review 1 --approve --body 'LGTM 🤖 Generated with [Claude Code](https://claude.com/claude-code)'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

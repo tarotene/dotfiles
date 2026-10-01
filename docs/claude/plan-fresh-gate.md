@@ -42,7 +42,7 @@ BLOCKER 指摘で修正した設計上の教訓)。ファイル数に対して�
 でプラン本文中に現れたパターン(フルパス + basename の集合)を洗い出し、
 `awk` 1 回でどの変更ファイルがその集合と交差するかを求める。
 
-## pr-gate.sh の advisory 方針からの意図的な逸脱
+## pr-gate の advisory 方針からの意図的な逸脱
 
 [`pr-gate.md`](pr-gate.md) の `G_base` は同種の base 遅れを advisory に
 留めている。その根拠は「block すると rebase → force-push ループに誘導して

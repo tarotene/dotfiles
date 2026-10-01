@@ -7,7 +7,7 @@ name: PR title
 # title therefore enforces the entire commit history convention without
 # per-commit pre-push hooks.
 #
-# The grammar itself lives in exactly one place — scripts/pr-title-check in
+# The grammar itself lives in exactly one place — crates/pr-title-check in
 # tarotene/dotfiles — invoked here via a composite action
 # (tarotene/dotfiles/.github/actions/pr-title) so this repository never
 # carries its own copy of the type list / regex. See docs/claude/

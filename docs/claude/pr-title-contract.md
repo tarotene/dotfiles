@@ -1,8 +1,8 @@
 # pr-title-contract — PR タイトルを commit-message 契約として機械強制する
 
 設計判断の記録: `docs/adr/0031-pr-title-as-commit-message-contract.md`
-checker(単一ソース): `scripts/pr-title-check`
-client guard: `config/claude/hooks/pr-title-guard.sh`
+checker(単一ソース): `crates/pr-title-check`(`check_title()`、依存ゼロの lib + bin)
+client guard: `crates/pr-title-guard`(Claude/Codex/Copilot 共通の 1 バイナリ)
 サーバ側 required check: `.github/workflows/pr-title.yml`(reusable workflow)
 audit: `scripts/github-audit` の `settings` ドメイン拡張 + 新設 `titles` ドメイン
 Issue: tarotene/dotfiles#325
@@ -17,12 +17,27 @@ client 側の作成時 deny・サーバ側の CI red・監査側の drift 検出
 
 | 層 | 何を見るか | 強制の形 | 実装 |
 |---|---|---|---|
-| client guard | ローカルで打つ `gh pr create`/`gh pr edit --title` | PreToolUse deny(作成前に止める) | `pr-title-guard.sh` |
+| client guard | ローカルで打つ `gh pr create`/`gh pr edit --title` | PreToolUse deny(作成前に止める) | `pr-title-guard` |
 | required check | PR の現在のタイトル + merge 設定の前提(下記「前提設定の自己防衛」) | CI red(squash merge をブロック) | `pr-title.yml` |
 | audit | 「仕組みが存在するか」(呼び出し workflow・required check context) | drift 報告(`github-audit titles`) | `github-audit` |
 
-3 層とも `scripts/pr-title-check` の 1 つの正規表現を最終的な判定根拠に
-する。文法を変えるときはこのファイルだけを直せばよい。
+3 層とも `crates/pr-title-check` の `check_title()` を最終的な判定根拠に
+する。文法を変えるときはこのクレートだけを直せばよい。
+
+- client guard は `pr-title-check` クレートに lib として依存し、`check_title()`
+  を直接呼ぶ(bash 時代は `scripts/pr-title-check` を子プロセスで呼び、
+  source tree 相対 → PATH の順に解決していた。#415 で関数共有に替えたので、
+  「checker が見つからない」状態と `PR_TITLE_CHECK_BIN` による差し替えは
+  なくなった)。
+- required check は同じクレートの `pr-title-check` バイナリを CI 上で
+  `cargo build` して呼ぶ(`.github/actions/pr-title/action.yml`、他
+  リポジトリ向けの reusable workflow `pr-title.yml` の `check` job も同じ)。
+  `/Cargo.toml` と `/crates/pr-title-check/` だけを sparse-checkout する —
+  `crates/*` は glob メンバーなので他のクレートが無くても workspace は
+  解決でき、`pr-title-check` は依存ゼロなので registry にも出ない。
+  cargo が無い runner では黙って検査を飛ばさず、明示的に落とす。
+- 検証は `cargo test -p pr-title-check`(bash 版 `--selftest` 全 20 ケースの
+  trycmd fixture + 入出力経路)と `cargo test -p pr-title-guard`。
 
 ## 文法
 
@@ -52,7 +67,7 @@ type(scope)?!?: subject
 
 dotfiles 自身は `pr-title.yml` に直接 `pull_request` トリガーを持たせて
 自己適用する — job 名がそのまま required check context `PR title` になり、
-連結の曖昧さがない。checkout する `scripts/pr-title-check` の ref は
+連結の曖昧さがない。checkout する `crates/pr-title-check` の ref は
 `github.repository == 'tarotene/dotfiles'` の場合だけ `main` ではなく
 自身の head SHA にする(checker 自体を変更する自己適用 PR が「main に
 まだ乗っていない」ために fail する鶏卵問題の実測込みの回避、Stage 3 で
@@ -125,7 +140,7 @@ merge 自体を CI red で止める。判定ロジックは新設せず、`scrip
 pr-merge-settings-check` が `scripts/github-audit` の `judge_settings()`
 を re-source して再利用する(判定の単一正本は `github-audit` 側のまま)。
 API 取得に失敗した場合は fail-closed(red)にする — client guard
-(`pr-title-guard.sh`)の fail-open とは逆で、契約の前提が確認できない
+(`pr-title-guard`)の fail-open とは逆で、契約の前提が確認できない
 まま merge を通さないことを優先する。
 
 ## スコープ外(意図的)

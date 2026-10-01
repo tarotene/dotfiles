@@ -1,0 +1,8 @@
+# bash selftest「27 api inline pulls/comments/N(編集)」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh api -X PATCH repos/o/r/pulls/comments/9 -f body='inline 編集'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

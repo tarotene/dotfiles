@@ -1,0 +1,6 @@
+bin.name = "pr-title-check"
+stdin = "PR タイトルを直す\n"
+status.code = 1
+stderr = """
+pr-title-check: 非適合 — 'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください: PR タイトルを直す
+"""

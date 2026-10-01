@@ -1,0 +1,8 @@
+# bash selftest「25 api issue comment +footer」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh api repos/o/r/issues/1/comments -f body=\"確認しました 🤖 Generated with [Claude Code](https://claude.com/claude-code)\""]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

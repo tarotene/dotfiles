@@ -1,0 +1,8 @@
+# bash selftest「13 Markdown 箇条書き」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr comment 1 --body '## 見出し\n\n- item1\n- item2\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

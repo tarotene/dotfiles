@@ -177,7 +177,7 @@
   約 10 PR を作った際、依存予測に基づく判定条件が外れて base 宣言と実体が
   不整合になり(汚染 diff・orphan PR)、`docs/claude/stacked-pr.md` の
   保留条項が発火した。離脱は閉じたタグ `Independent-PR:` のみとし、
-  作成時 PreToolUse hook(`stack-base-guard.sh`)と完了時 Stop judgement
+  作成時 PreToolUse hook(`stack-base-guard`)と完了時 Stop judgement
   (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
   「積むか否か」の判定としては supersede。
 - [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README
@@ -256,8 +256,8 @@
   うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは
   「非 `.md` かつ `docs/` 配下でない」の 2 述語のみで、パス分類台帳を持た
   ない。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格
-  側に倒して検算)。判定エンジンは `scripts/decision-colocation-check`
-  (CI required check + client guard が共有)。`gh pr create` 後に番号を
+  側に倒して検算)。判定エンジンは `crates/decision-colocation` の
+  `check::run_check`(CI required check + client guard が共有)。`gh pr create` 後に番号を
   導入 PR の番号へ改番する(ADR-380)。
 - [ADR-436](adr/436-single-releaser-github-app.md) — releaser 用 GitHub
   App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
@@ -334,7 +334,7 @@
 - [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
-  転換し、`pr-confirm-guard.sh` を全リポジトリで発火する形に拡張する。
+  転換し、`pr-confirm-guard` を全リポジトリで発火する形に拡張する。
 - [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook
   出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式の
   試験導入。Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
@@ -368,7 +368,7 @@ Design and rationale for the hooks and commands deployed from
   二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
-- [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate.sh の中断ハンドオフ節 +
+- [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate の中断ハンドオフ節 +
   issue-index の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
   打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
 - [`claude-routines.md`](claude/claude-routines.md) — 個人スキル:
@@ -427,6 +427,11 @@ Design and rationale for the hooks and commands deployed from
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
   Covers the two holes left by the harness-supplied footer: comments never got
   one, and the PR/Issue body side had no repo-side enforcement at all.
+- [`guard-core.md`](claude/guard-core.md) — `crates/guard-core`: the command
+  analysis engine (heredoc split, quote-aware tokenizer, command-position
+  ranges, `gh` flag extraction, `owner/repo`, deny output) that the bash
+  `attribution-guard.sh` used to provide by `source`. Public API and the
+  bash-function → Rust mapping for porting the remaining gh guards (#415).
 - [`external-send-guard.md`](claude/external-send-guard.md) — PreToolUse hook:
   Gmail MCP tool 経由の外部(自分以外)宛メール直接送信を deny し、
   `create_draft` へ誘導する。実在するアドレスでも「何の窓口か」の文脈判定は
@@ -437,27 +442,29 @@ Design and rationale for the hooks and commands deployed from
   複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
   状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
-  attribution-guard.sh のコマンド解析エンジンを source して再利用する。
+  Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
+  Claude/Codex 共通の 1 バイナリ、#415)。
 - [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
   運用では PR タイトルがそのまま `main` の commit subject になるため、
-  client guard(`pr-title-guard.sh`)・server required check
+  client guard(`pr-title-guard`)・server required check
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
-  `scripts/pr-title-check`。
+  `crates/pr-title-check`(Rust)。
 - [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する
-  (`pr-confirm-guard.sh`、Codex 版 adapter あり)。全リポジトリで発火する。
+  (`crates/pr-confirm-guard`、`--agent codex` で Codex にも登録)。全リポジトリで発火する。
 - [`adr-numbering.md`](claude/adr-numbering.md) — ADR-380: ADR 番号をローカル
   連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
   不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
-  + `--fix` + 段3の PostToolUse hook `adr-number.sh` が共有)。
+  + `--fix` + 段3の PostToolUse hook `crates/adr-number` が共有)。
 - [`decision-colocation.md`](claude/decision-colocation.md) — ADR-396:
   決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
   `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
-  判定エンジンは `scripts/decision-colocation-check`(CI required check +
-  client guard `decision-colocation-guard.sh` が共有)。
+  判定エンジンは `crates/decision-colocation` の `check::run_check`(CI
+  required check の `decision-colocation-check` + client guard
+  `decision-colocation-guard` が共有)。
 - [`repo-create-guard.md`](claude/repo-create-guard.md) — PreToolUse hook
   (ADR-0013 Amendment 2026-09-29): `gh repo create` / `gh api -X POST
   user/repos`・`orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの

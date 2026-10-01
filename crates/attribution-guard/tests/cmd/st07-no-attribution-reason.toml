@@ -1,0 +1,8 @@
+# bash selftest「7 No-Attribution+理由」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr comment 1 --body 'ユーザーの原文です。No-Attribution: 本文はユーザーの逐語'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

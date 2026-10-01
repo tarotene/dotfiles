@@ -1,0 +1,6 @@
+bin.name = "pr-title-check"
+stdin = ""
+status.code = 2
+stderr = """
+pr-title-check: 判定不能(タイトルが空)
+"""

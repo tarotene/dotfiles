@@ -1,0 +1,18 @@
+[package]
+name = "decision-colocation"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# bin は 2 本(どちらも src/bin/ の自動検出):
+# - decision-colocation-guard: PreToolUse hook(`gh pr create` の作成時検査)
+# - decision-colocation-check: CI required check の判定エンジン(ADR-396 の
+#   「単一ソース」)。guard と同じライブラリ関数 `check::run_check` を呼ぶ。
+
+[dependencies]
+guard-core = { version = "0.1.0", path = "../guard-core" }
+hook-io = { version = "0.1.0", path = "../hook-io" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -1,0 +1,6 @@
+# 追加: MCP の本文でも No-Attribution: <理由> で抜けられる
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"mcp__github__update_pull_request\", \"tool_input\": {\"body\": \"x No-Attribution: ユーザーの逐語\"}}"
+status.code = 0
+stdout = ""

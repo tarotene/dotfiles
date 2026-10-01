@@ -1,0 +1,4 @@
+# bash selftest 6
+bin.name = "pr-title-check"
+args = ["docs: update README"]
+status.code = 0

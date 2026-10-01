@@ -1,0 +1,6 @@
+# 追加: stdin が不正 JSON なら黙って通す
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{not json"
+status.code = 0
+stdout = ""

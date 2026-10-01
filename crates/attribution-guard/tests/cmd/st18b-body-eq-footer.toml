@@ -1,0 +1,8 @@
+# bash selftest「18 --body= 形+footer」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh issue create --title t --body=\"本文 🤖 Generated with [Claude Code](https://claude.com/claude-code)\""]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

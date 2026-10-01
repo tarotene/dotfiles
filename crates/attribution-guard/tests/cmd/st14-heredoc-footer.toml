@@ -1,0 +1,8 @@
+# bash selftest「14 heredoc」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr comment 1 --body \"$(cat <<'EOF'\n本文; セミコロン入り\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)\""]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

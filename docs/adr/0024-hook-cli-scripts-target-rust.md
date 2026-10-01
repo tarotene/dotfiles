@@ -153,3 +153,34 @@ Consequences の優先順位ヒューリスティック(「jq 密度 × 行数�
 根拠と実測は `docs/rust-migration.md` と `docs/rust-workspace-measurements.md`
 にある。「jq 密度 × 行数」自体は廃止しない。共通クレート以後の各移植の順序付けに、
 そのまま使う。
+
+## Amendment 3 (2026-10-02 — 他リポジトリの CI が実行する配布物は対象外, #415)
+
+Stage 4a の移植(#415)で、`scripts/` の 4 本が **他リポジトリの CI から実行時に
+使われている**ことが分かった。当初の対象外(Context の「他リポジトリへ配布する
+skills の templates/scripts」)と同じ性質で、播種先に Rust ツールチェインも nix も
+無く、`dotfiles-tools` のバイナリを配る手段が無い。
+
+- `scripts/adr-number-check` — governance テンプレート(`repo-governance-common/
+  templates/scripts/` への symlink)で、各リポジトリへ複製され、その CI
+  (`adr-number.yml`)が直接実行する。
+- `scripts/pr-merge-settings-check` / `scripts/rulesets-context-check` /
+  `scripts/workflow-naming-check` — 他リポジトリの CI が `.github/actions/pr-title`
+  経由で dotfiles を sparse-checkout して実行する。3 本とも `scripts/github-audit` の
+  bash 関数を `source` する。
+
+この 4 本を `rust-migration.toml` の `[[excluded]]` に理由付きで移し、`max_remaining`
+の計数から外す。**撤回条件**: 播種先へバイナリを配る仕組み(release 添付、または
+`pr-title-check` のように依存の無い crate を sparse-checkout して `cargo build` する形)が
+入ったら、対象に戻して移植する。
+
+同じ問題を持っていた `scripts/pr-title-check` は、依存ゼロの crate
+(`crates/pr-title-check`)にして、composite action(`.github/actions/pr-title`)が
+その crate だけを sparse-checkout して `cargo build` する形で移せた。同じ型が
+他の 4 本にも使える可能性はあるが、`github-audit` 本体(外部依存あり、複数 crate)を
+含む形になるため、ここでは移植せず、別途の判断とする。
+
+### 執行点
+
+- `rust-migration.toml`
+- `crates/migration-audit/tests/allowlist.rs`

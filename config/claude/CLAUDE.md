@@ -37,15 +37,16 @@ memory/*.md`、`metadata.type: feedback`)にこの種のフィードバックを
 ## セッション内 PR チェーンの形式検査(ADR-0027)
 
 stacked PR に積む原則そのものは共有 AGENTS.md に従う。形式検査は作成時
-`stack-base-guard.sh`(PreToolUse deny)と完了時 `pr-gate.sh` の `G_stack`
+`stack-base-guard`(PreToolUse deny)と完了時 `pr-gate` の `G_stack`
 (Stop block)が担う。gate に当たる前に自発的に積むこと — gate は漏れを
 拾うためのもので、一次的な手段ではない。
 
 ## 決定成果物の執行点の形式検査(ADR-396)
 
 決定成果物と執行点を同じ PR に出す原則そのものは共有 AGENTS.md に従う。
-形式検査は作成時 `decision-colocation-guard.sh`(PreToolUse deny)と CI
-required check(`scripts/decision-colocation-check`、単一ソース)が担う。
+形式検査は作成時 `decision-colocation-guard`(PreToolUse deny)と CI
+required check(`decision-colocation-check`、どちらも `crates/decision-colocation`
+の同じ判定関数 = 単一ソース)が担う。
 gate に当たる前に自発的に執行点を含めること — gate は漏れを拾うためのもので、
 一次的な手段ではない。**「実装を後続 Issue に分離する」という選択肢は
 実行不能なので、`AskUserQuestion` の選択肢に出さない。**
@@ -65,11 +66,11 @@ ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check-plan
 commit → push → `gh pr create` を、途中で確認を挟まず一続きで実行する。
 「PR を作成しますか?」と聞かない。`gh` の投稿は本文を Write でファイルにして
 から `-R OWNER/REPO … --body-file <絶対パス>` で渡す(bleep の正準形。
-`pr-description` スキル §0)。Stop hook(`G_pr` in pr-gate.sh)がこの
+`pr-description` スキル §0)。Stop hook(`G_pr` in pr-gate)がこの
 漏れを検査する。
 
 PR 本文に未チェックの task list を残さない・人の確認を後続 Issue に払い
-出す原則の形式検査は `pr-confirm-guard.sh`(PreToolUse deny、全リポジト
+出す原則の形式検査は `pr-confirm-guard`(Rust、PreToolUse deny、全リポジト
 リで発火)が担う。gate に当たる前に自発的に Issue 化すること — gate は
 漏れを拾うためのもので、一次的な手段ではない。
 
@@ -98,5 +99,5 @@ Claude Code では固定でこの 1 行:
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-形式検査は attribution-guard.sh が PreToolUse で行う。gate に当たる前に
+形式検査は attribution-guard が PreToolUse で行う。gate に当たる前に
 自発的に付けること — gate は漏れを拾うためのもので、一次的な手段ではない。

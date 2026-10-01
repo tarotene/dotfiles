@@ -3,7 +3,7 @@
 設計判断の記録: `docs/adr/380-adr-number-by-pr.md`(Amends ADR-0008)
 checker(単一ソース): `scripts/adr-number-check`
 サーバ側 required check: `.github/workflows/ci.yml` の `dry-run` job
-人間層(利便性): `config/claude/hooks/adr-number.sh`(PostToolUse、段 3)
+人間層(利便性): `crates/adr-number`(Rust、PostToolUse、段 3。判定は `crates/guard-core`)
 
 ADR の採番衝突がこのリポジトリで 2 回起きた(2026-09-19 の ADR-0020→0021、
 2026-09-23 の ADR-0033 二重)。原因は連番が分散システム(並列 worktree・
@@ -64,7 +64,8 @@ ADR を最大 1 本しか追加できない(B 系統の項目 5)ので、その 
 - 採番済み ADR を別番号へ付け替える `--fix <PR番号> <file>` では、旧番号の
   参照が正当な場合があるので書き換えない。
 - 採番の仕組みを説明・検査するファイル(この文書、`adr-number-check`、
-  `adr-number.sh`)は `ADR-0000` を正当に含むので除外する。除外リストは
+  hook の実装 `crates/adr-number/src/lib.rs` と `tests/hook.rs`)は
+  `ADR-0000` を正当に含むので除外する。除外リストは
   環境変数 `ADR_REF_ALLOW`(リポジトリ相対パスの空白区切り、既定値は
   `adr-number-check` の `ADR_REF_ALLOW_DEFAULT`)で上書きできる。
 
@@ -102,6 +103,24 @@ audit ドメインを作らない。
   横断監査で見るのは、必要になったら `judge_titles` と同型で足す。
 - 既存の連番衝突(ADR-0020→0021)のバックフィル — ADR-0008 の immutable
   原則により、事後の一括改番はしない。
+
+## hook の実装(Rust)と checker が bash のままの理由
+
+hook は #415(ADR-0024 Stage 4a)で bash から Rust(`crates/adr-number`、
+`adr-number --agent claude|codex`)になった。Claude 版と Codex adapter は
+1 バイナリに統合され、違いは「プロジェクト dir を示す環境変数」
+(`CLAUDE_PROJECT_DIR` / `CODEX_PROJECT_DIR`)だけ。`gh pr create` の検出は
+`guard-core` の `command::parse` + `gh_command_at`(対応表は
+`guard-core.md`)。挙動は旧 `adr-number.sh --selftest` の全ケースを
+`crates/adr-number/tests/hook.rs` に写し、bash 版にも同じテストを流して
+一致を確認した。
+
+一方 **checker `adr-number-check` は bash のまま**にした。上の「他リポジトリへの
+播種」のとおり単一ソースのテンプレートが他リポジトリへ複製され、そこでは
+その複製が CI(`adr-number.yml`)と hook の両方から直接実行される。Rust 化
+すると播種先に dotfiles のバイナリを要求することになり、governance
+テンプレートが自己完結しなくなる。hook は従来どおり対象プロジェクトの
+`scripts/adr-number-check` を子プロセスとして呼ぶ(opt-in 判定も同じ)。
 
 ## 他リポジトリへの播種
 

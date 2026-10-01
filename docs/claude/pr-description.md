@@ -2,7 +2,7 @@
 
 `config/claude/skills/pr-description/SKILL.md` — PR の本文(Description)を標準
 スケルトンで書き、見た目に影響する変更には Before/After 証跡を必ず添える習慣を
-持つスキル。強制側は `config/claude/hooks/pr-gate.sh` の `G_visual`(設計は
+持つスキル。強制側は `crates/pr-gate` の `G_visual`(設計は
 `docs/claude/pr-gate.md`)。
 
 ## 動機
@@ -23,7 +23,7 @@ PR の本文がリポジトリごと・セッションごとにまちまちで�
 - **スキル(`pr-description`)**: 本文スケルトンそのもの、Before の撮り方、面ごとの
   撮影手段、そして「意味的完成」の基準 —— Before と After が実際にペアで揃って
   いること。全リポジトリで有効(判断知識なので発動に allowlist は関係ない)。
-- **ゲート(`pr-gate.sh` の `G_visual`)**: 「視覚証跡が本文に存在するか」だけを
+- **ゲート(`pr-gate` の `G_visual`)**: 「視覚証跡が本文に存在するか」だけを
   機械的に検査する下限。3 択の OR(画像 / Before-After 見出し配下の fenced code
   block / `No-Visual: <理由>`)。`~/.claude/pr-gate-repos` の allowlist 内(既定は
   このリポジトリのみ)でのみ block する。
@@ -104,7 +104,7 @@ hardware-bound な manual step と切り分けた判断)を先行例とし、同
 (`- #N — <一言>`)だけを書く節に転換した。手順・完了条件は Issue 本文
 (`handoff` スキル §5 の Human テンプレ)が持つ。PR 本文に未チェックの
 task list を残せないこと・「要確認」の各項目に Issue 参照があることは
-`pr-confirm-guard.sh` が機械強制する(詳細: ADR-598「PR 本文の人待ち
+`pr-confirm-guard` が機械強制する(詳細: ADR-598「PR 本文の人待ち
 チェックボックスを廃し、人の確認を後続 Issue へ払い出す」、
 `docs/claude/pr-confirm-guard.md`)。
 
