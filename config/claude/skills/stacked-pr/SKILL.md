@@ -31,7 +31,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
 
 作成時は `config/claude/hooks/stack-base-guard.sh` が base の取り違えを
 機械的に deny する(`docs/claude/stack-base-guard.md`)。完了時は
-`pr-gate.sh` の `G_stack` が `gh stack link` の実行忘れを block する
+`pr-gate` の `G_stack` が `gh stack link` の実行忘れを block する
 (`docs/claude/pr-gate.md`)。§8 参照。
 
 ## 2. 分割の設計原則
@@ -83,7 +83,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
    1 回で流すと commit 前の HEAD で判定されて止められる(#657)。
 5. 全段の PR ができたら `gh stack link <PR番号1> <PR番号2> ... <PR番号N>`
    (最下段から順)で GitHub 上の stack にまとめる(§5 参照)。**この実行は
-   完了の一部** — `pr-gate.sh` の `G_stack` が未リンクのまま終わろうとする
+   完了の一部** — `pr-gate` の `G_stack` が未リンクのまま終わろうとする
    のを block する(ADR-0027、§8 参照)。**ただし upstream の既知バグ
    (github/gh-stack#319、§5 参照)により、link した瞬間からそのブランチ
    への `pull_request` イベントが一切発火しなくなる。実行順は必ず
@@ -232,7 +232,7 @@ Stack: base #<親PR番号>
 最下段は `Stack: base main` と書く。段番号・総段数は書かない — 総段数は
 後から段が増えるたびに古くなり、作成済みの全段を書き直す役が居ないため
 (#657)。段の全体像は `gh stack link` が作る GitHub の stack map に任せる。
-この行は `pr-gate.sh` の検査対象ではない(人間とレビュアーのための注記)。
+この行は `pr-gate` の検査対象ではない(人間とレビュアーのための注記)。
 
 ## 8. 機械強制(ADR-0027)
 
@@ -245,7 +245,7 @@ Stack: base #<親PR番号>
   タグでも抜けられない — 物理的必然のため)。セッション内 2 本目以降で
   チェーン外のブランチから PR を作ろうとした場合は、`Independent-PR:
   <理由>` が無ければ deny する。
-- **完了時**: `pr-gate.sh` の `G_stack`(Stop)が、chain size 2 以上の
+- **完了時**: `pr-gate` の `G_stack`(Stop)が、chain size 2 以上の
   stacked PR が GitHub 上の stack(`gh stack link`)にリンクされていなけ
   れば block する。`gh-stack` 拡張不在・API 取得不能は advisory に降格
   する。

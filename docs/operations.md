@@ -185,7 +185,7 @@ Notes:
   nixpkgs-unstable` — rather than assuming the weekly `nix flake update` sweep
   is safe for both channels at once. This bump now moves **both** `herdr` and
   `gh` together (same overlay entry, same input) — a `gh` regression from
-  unstable is higher-stakes than it looks, since `pr-gate.sh` / `issue-index`
+  unstable is higher-stakes than it looks, since `pr-gate` / `issue-index`
   / `wrapup-stop-gate` all shell out to `gh` unconditionally. If either
   package regresses after an update, roll back just that input by reverting
   `flake.lock`'s `nixpkgs-unstable` node (or the whole generation, per the
@@ -651,7 +651,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
    above, so also verify step 2 separately before relying on it day to day.
 4. **During the week:** the same completion definition applies (commit →
    push → `gh pr create` in one motion, PR body skeleton, attribution
-   footer) — `pr-gate.sh` / `attribution-guard.sh` / `pr-title-guard.sh`
+   footer) — `pr-gate` / `attribution-guard.sh` / `pr-title-guard.sh`
    now gate Codex the same way they gate Claude. `config/codex/
    AGENTS.codex.md` carries the Codex-specific wording for the
    instruction-level half of this (the self-check commands to run before

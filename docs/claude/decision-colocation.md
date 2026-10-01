@@ -111,9 +111,9 @@ PreToolUse の deny は Bash 呼び出し全体に効く。そのため「PR 本
 横断適用できない。`adr-numbering.md` が同じ理由で `github-audit` ドメイン
 を作らなかったのと同型。
 
-## `pr-gate.sh` に新判定を足さない理由
+## `pr-gate` に新判定を足さない理由
 
-`pr-gate.sh` の既存 `G_CI` 判定が「required check が失敗していれば Stop を
+`pr-gate` の既存 `G_CI` 判定が「required check が失敗していれば Stop を
 ブロックする」という仕事を既に持つ。`decision-colocation-check` が CI
 required check として登録されていれば、それだけで `G_CI` 経由で Stop も
 ブロックされる — 新しい `G_*` を足す仕事が無い(還元性)。

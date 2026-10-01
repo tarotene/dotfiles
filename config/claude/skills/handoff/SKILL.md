@@ -39,7 +39,7 @@ git push
 - `Closes #P` は書かない(親 Issue はこの PR では閉じない。書くと、
   再開後に子タスクの一部だけ終えてマージしたとき親まで閉じてしまう)。
 - 1 行目に `Handoff: #P`(P は §4 で作る親 Issue の番号)を書く。
-  `pr-gate.sh` はこの行と Draft 状態が揃っているときだけ、closing
+  `pr-gate` はこの行と Draft 状態が揃っているときだけ、closing
   keyword 省略と CI 未完了を advisory に緩める(詳細:
   `docs/claude/pr-gate.md`「中断ハンドオフ」節)。
 
@@ -146,10 +146,10 @@ Issue 番号を `<blocked番号>`、Human 側を `<blocker番号>` にする。
 2. `gh pr checkout <番号>` で Draft PR のブランチに乗る。
 3. PR 本文の `Handoff: #P` 行を、**この PR で完了する子 Issue だけ**の
    `Closes #…` 行に置き換える(fenced code block やインラインコードの
-   中に書かない — `pr-gate.sh` の `G_link` は GitHub の解釈と同じ判定を
+   中に書かない — `pr-gate` の `G_link` は GitHub の解釈と同じ判定を
    する)。親 #P への `Closes` は、この merge で親の全 sub-issue が
    closed になり、かつ親の完了定義も満たすときだけ追加で書く
    (`tracking-issue` スキルのクローズ条件)。
 4. 作業を続け、CI を通す。
-5. `gh pr ready` で Draft を解除する。以降は通常どおり `pr-gate.sh` の
+5. `gh pr ready` で Draft を解除する。以降は通常どおり `pr-gate` の
    全ゲートが効く。

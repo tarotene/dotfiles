@@ -3,7 +3,7 @@
 判定エンジン: `config/claude/hooks/stack-base-guard.sh`
 決定: `docs/adr/0027-uncertainty-first-stacking.md`
 規約側: `config/claude/skills/stacked-pr/SKILL.md`
-完了時の対: `config/claude/hooks/pr-gate.sh` の `G_stack`(`docs/claude/pr-gate.md`)
+完了時の対: `crates/pr-gate` の `G_stack`(`docs/claude/pr-gate.md`)
 
 セッション内で複数の PR を作成するとき、後続の PR は常に直前の PR の head
 branch を `base` にすることを、`gh pr create` / `gh pr edit --base`(および
@@ -66,7 +66,7 @@ open PR の `headRefOid` それぞれについて、ローカルに実在する�
   各 branch が現在も open PR として実在するか `gh pr list` の結果と
   照合し、実在しない行は無視する(create が実際には失敗していた場合の
   自己修復)。
-- 離脱は本文 `Independent-PR: <理由>` のみ(`pr-gate.sh` の `No-Issue:` /
+- 離脱は本文 `Independent-PR: <理由>` のみ(`pr-gate` の `No-Issue:` /
   `attribution-guard.sh` の `No-Attribution:` と同じ「理由必須の閉じた
   タグ」家系)。理由が空なら成立しない。
 - 新しいセッションは記録が空なので新しいチェーンを開始できる
@@ -148,12 +148,12 @@ gating と同じ縮退方針。
 
 抜け道: `SKIP_STACK_BASE_GUARD=1`、または
 `${STACK_BASE_GUARD_DIR:-~/.claude/stack-base-guard}/skip` ファイルの
-存在(`pr-gate.sh` の skip ファイルと同型)。
+存在(`pr-gate` の skip ファイルと同型)。
 
-## 完了時の対 — `pr-gate.sh` の `G_stack`
+## 完了時の対 — `pr-gate` の `G_stack`
 
 この hook は作成時の base 宣言だけを見る。GitHub 上の stack オブジェクト
-への実際のリンク(`gh stack link`)は完了時に `pr-gate.sh` の `G_stack`
+への実際のリンク(`gh stack link`)は完了時に `pr-gate` の `G_stack`
 judgement が要求する(`docs/claude/pr-gate.md` 参照)。両者は独立に
 縮退する — `stack-base-guard.sh` は `gh` CLI の引数検査だけで完結する
 ため、`gh-stack` 拡張の有無に関わらず全環境で base チェーンの正しさを
@@ -165,7 +165,7 @@ judgement が要求する(`docs/claude/pr-gate.md` 参照)。両者は独立に
   検査する。gh スタブと、実コミットを持つ使い捨て git リポジトリ
   (main ← stage1 ← stage2、main から直接切った unrelated ブランチ)を
   組み合わせる — 祖先検査は `git merge-base --is-ancestor` に実オブジェクト
-  を要求するため、pr-gate.sh の selftest と同じ「real_head」パターンを
+  を要求するため、pr-gate の統合テスト(`crates/pr-gate/tests/`、旧 selftest)と同じ「real_head」パターンを
   踏襲する。
 - `stack-base-guard.sh --check '<コマンド文字列>' [<project-dir>]` で
   手動 e2e ができる。

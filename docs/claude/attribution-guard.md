@@ -21,18 +21,18 @@ system-reminder）由来である。そのため 2 つの穴があった。
    `gh pr review --body` で Claude が投稿したテキストは、GitHub 上では人間の発言と
    区別が付かない。mention を含むコメントは相手に直接通知が飛ぶため、人間の発言と
    誤読されるコストが最も高い面である。
-2. **PR / Issue 本文側も保証されていない。** `pr-gate.sh` は `G_link`（closing
+2. **PR / Issue 本文側も保証されていない。** `pr-gate` は `G_link`（closing
    keyword）と `G_visual`（視覚証跡）を検査するが attribution は見ていない。harness
    の指示が変わる・欠ける・セッションによって注入されないと、repo 側は何も気付かずに
    静かに落ちる。
 
-規約（自発的に付ける）+ 機械 gate（漏れを拾う）の二層にした。`pr-gate.sh` の
+規約（自発的に付ける）+ 機械 gate（漏れを拾う）の二層にした。`pr-gate` の
 `No-Issue:` / `No-Visual:` と同じ設計思想 — 沈黙を決定に変え、抜けた事実と理由を
 grep 可能な形で残す。
 
 ## なぜ Stop hook ではなく PreToolUse か
 
-コメント投稿は通知が飛ぶ**不可逆操作**で、事後に怒っても取り返せない。`pr-gate.sh`
+コメント投稿は通知が飛ぶ**不可逆操作**で、事後に怒っても取り返せない。`pr-gate`
 が Stop で成立するのは、PR の本文は後から `gh pr edit` で直せるからである。投稿
 そのものを止められる位置は PreToolUse しかない。
 
@@ -65,7 +65,7 @@ deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。b
 いるが、あちらは漏洩防止で、抜け道を教えると自分で抜けてしまう。`No-Attribution:` は
 正当な判断であり、Claude が使えないと意味がない。
 
-`No-Attribution:` は理由を伴って初めて成立する（`pr-gate.sh` の `NO_ISSUE_RE` と
+`No-Attribution:` は理由を伴って初めて成立する（`pr-gate` の `NO_ISSUE_RE` と
 同型）。空の `No-Attribution:` を通すと、沈黙を決定に変える目的が崩れる。
 
 ## 検査範囲の切り出し — ここが一番の勘所
@@ -190,7 +190,7 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 | 本文フラグが無い | 判定不能 → 通す | `gh pr edit --add-label` を誤検知しない |
 | トークナイザが unmatched quote | 判定不能 → 通す | トークン列が空になる |
 
-「判定できない場合は断定に変えず素通す」は `pr-gate.sh:32-34` の縮退表と同じ思想。
+「判定できない場合は断定に変えず素通す」は `crates/pr-gate`(`src/lib.rs` 冒頭)の縮退表と同じ思想。
 ただし heredoc だけは素通しではなく本体を本文候補に加える — 本体が実在するので
 判定材料がある。
 

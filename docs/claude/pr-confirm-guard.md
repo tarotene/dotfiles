@@ -43,10 +43,10 @@ Issue: No-Issue(セッション内の会話から直接起票)
 
 ## なぜ Stop hook(`G_visual`)ではなく PreToolUse か
 
-`pr-gate.sh` の `G_visual`/`G_link` は Stop hook で、PR 作成後にセッション
+`pr-gate` の `G_visual`/`G_link` は Stop hook で、PR 作成後にセッション
 終了時点で検査する。`pr-confirm-guard.sh` はそれより早い `gh pr create/edit`
 の呼び出しそのものを deny する — `pr-title-guard.sh` と同じ理由で、本文の
-不備を「呼び出しをもう一度正しく書く」形で1回で直させる。`pr-gate.sh` の
+不備を「呼び出しをもう一度正しく書く」形で1回で直させる。`pr-gate` の
 allowlist(既定 `tarotene/dotfiles` のみ)に入っていないリポジトリでも発火
 させたい、というのも理由の一つ(下記「発火範囲」参照)。
 

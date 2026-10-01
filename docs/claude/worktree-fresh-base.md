@@ -3,7 +3,7 @@
 herdr の Workspace Fork(≒新規 worktree の作成)は親チェックアウトの HEAD を
 そのまま使い、fetch を挟まない。親を開いたまま何度も fork すると、新しい
 worktree が origin より何コミットも遅れた base から生まれる。既存の
-`pr-gate.sh` はこれを SessionStart の advisory(「base 追従: origin/main から
+`pr-gate` はこれを SessionStart の advisory(「base 追従: origin/main から
 N コミット遅れています」)で伝えるが、**ブランチ自体は動かさない** —
 履行歴を持つブランチを無断で動かすのは事故なので、これは意図した非対称
 だった。
@@ -39,7 +39,7 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 実測(2026-09-23)時点で 2 クラスタ・計 6 箇所:
 
 - **byte-identical(4 箇所)**: `crates/worktree-fresh-base`、
-  `crates/plan-fresh-gate`、`config/claude/hooks/pr-gate.sh`、
+  `crates/plan-fresh-gate`、`crates/pr-gate`、
   `crates/git-checkout-freshness`。いずれも
   `git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD` を素の
   `${ref#origin/}` で剥がすだけの実装。
@@ -59,11 +59,11 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 (clone 時に張られる既定の fetch refspec `+refs/heads/*:refs/remotes/origin/*`
 に `<base>` が含まれるため)。fetch 済みかどうかは共通 git ディレクトリの
 `FETCH_HEAD` の mtime を TTL(既定 600 秒、`WORKTREE_FRESH_BASE_FETCH_TTL` で
-上書き可)として判定し、pr-gate.sh の SessionStart と同じパターンを踏む。
+上書き可)として判定し、pr-gate の SessionStart と同じパターンを踏む。
 
 ## 順序について: pr-gate との実行順は保証されない
 
-「この hook が先に origin/`<base>` へ揃えてから pr-gate.sh SessionStart の
+「この hook が先に origin/`<base>` へ揃えてから pr-gate SessionStart の
 base 追従 advisory を計算する」のが理想だが、Claude Code は同一イベントの
 hook を並列実行するため逐次実行は保証できない
 (`home/modules/claude.nix` の plan-view の項に同じ注記がある)。

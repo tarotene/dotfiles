@@ -4,7 +4,7 @@
 adapter: `config/codex/hooks/codex-plan-gate.sh`
 決定: `docs/adr/0032-global-agent-instructions-canon.md` の Amendment(#531)
 Claude 側の対: `crates/plan-scope-gate` / `plan-precedent-gate`(ExitPlanMode の PreToolUse hook)
-無限 block 対策の型: `config/claude/hooks/pr-gate.sh`(同じ escalate カウンタ設計)
+無限 block 対策の型: `crates/pr-gate`(同じ escalate カウンタ設計)
 
 ## なぜ必要だったか
 
@@ -59,14 +59,14 @@ plan-precedent-gate --check <file>
 
 ## 無限 block 対策
 
-`pr-gate.sh`(`docs/claude/pr-gate.md`)と同じ設計を踏襲する:
+`pr-gate`(`docs/claude/pr-gate.md`)と同じ設計を踏襲する:
 `stop_hook_active` は見ず、`session_id` ごとの独自カウンタ
 (`~/.codex/codex-plan-gate/state/<sid>.count`)が
 `${CODEX_PLAN_GATE_MAX_BLOCKS:-4}` に達したら 1 回だけ
 `<sid>.escalated` を touch し、以後そのセッションは無条件で通す。
 
 `stop_hook_active` を見て即座に素通す設計(`wrapup-stop-gate` 型)を
-採らない理由も pr-gate.sh と同じ: block した直後の再呼び出しでも判定に
+採らない理由も pr-gate と同じ: block した直後の再呼び出しでも判定に
 到達させたい(素通しにすると「block → 続行 → 素通り」で1回も再検査され
 ない)。
 

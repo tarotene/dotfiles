@@ -30,12 +30,12 @@ selection-grounding スキル(`~/.agents/skills/`)に従う。
 
 同一セッション・同一 worktree で複数の PR を作るときは、常に作成順の単一
 チェーン(stacked PR)に積む(ADR-0027)。作成時 `stack-base-guard.sh`
-(PreToolUse deny)と完了時 `pr-gate.sh` の `G_stack`(Stop block)が
+(PreToolUse deny)と完了時 `pr-gate` の `G_stack`(Stop block)が
 Codex にも効く。
 
 コード変更を伴うタスクは commit → push → `gh pr create` を、途中で確認を
 挟まず一続きで実行する。「PR を作成しますか?」と聞かない。Stop hook
-(`pr-gate.sh` の `G_pr`)がこの漏れを検査する。
+(`pr-gate` の `G_pr`)がこの漏れを検査する。
 
 決定成果物(ADR・設計文書・skill)の執行点を同じ PR に出す原則(ADR-396)
 は Codex にも適用されるが、その形式検査は CI required check

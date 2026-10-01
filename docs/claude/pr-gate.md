@@ -5,7 +5,8 @@ herdr の並行 worktree セッションで起きる事故のうち、ローカ�
 作らないまま終わる／PR を Issue に繋がないまま終わる／見た目の変更なのに視覚証跡が
 無いまま終わる／stacked PR チェーンを GitHub 上の stack にリンクしないまま終わる)を
 Stop hook で hard gate する仕組みの設計記録。実装は
-`config/claude/hooks/pr-gate.sh`、デプロイは
+`crates/pr-gate`(Rust。旧 `config/claude/hooks/pr-gate.sh` を #415 /
+ADR-0024 Stage 4a で移植)、デプロイは
 `home/modules/claude.nix`。main が進んだことに気づかない件と未コミット変更は
 advisory に留める。
 
@@ -200,7 +201,7 @@ merged PR 21 本のうち `Closes #N` を持つのは 4 本（**19%**）。
 本文チェックの job もその期待集合に入る。すると「本文に 1 行足す」で直る話に、
 push → check 出現待ち → 再判定という CI ラウンドトリップを丸ごと 1 回払わせることになる。
 
-Stop hook なら `gh pr edit --body` で即座に直り、`pr-gate.sh` が既に持っている
+Stop hook なら `gh pr edit --body` で即座に直り、`pr-gate` が既に持っている
 allowlist・縮退・block 上限・selftest の枠組みにそのまま乗る。settings.json も
 CLAUDE.md も膨らまない。
 
@@ -281,7 +282,7 @@ arcturus`)が skip 時に per-host 名を展開しない問題(ADR-468 Amendment
 
 `reported_checks()` が読む `bucket` の判定は `pass`/`skipping`/
 `fail`/`cancel`/`pending` の 5 種(`cli/cli` の
-`pkg/cmd/pr/checks/aggregate.go`)で、`pr-gate.sh` が `PENDING`/`失敗` に
+`pkg/cmd/pr/checks/aggregate.go`)で、`pr-gate` が `PENDING`/`失敗` に
 数えるのは `fail`・`cancel`・`pending` の 3 種だけ(本文書「G_CI_STATUS」
 節の判定)。つまり `skipping` は「未報告」ではなく「報告済みで
 pending/failed のどちらでもない」扱いになり、gate はこれを待たない。
@@ -314,7 +315,7 @@ API 呼び出しが 1 本増えると下の縮退表がその分太る。`origin
 `gh issue view` で実在確認するか、というと採らない。捕まえられるのは「存在しない番号」
 だけで、**より起きやすい「存在するが別の Issue」は捕まえられない**。検出力が低い一方で
 API 呼び出しが 1 本増え、縮退経路（未ログイン・API 失敗時の fail-open）も 1 本増える。
-`pr-gate.sh` は縮退の一覧を明示して不変条件を守っている作りなので、利得の小さい判定の
+`pr-gate` は縮退の一覧を明示して不変条件を守っている作りなので、利得の小さい判定の
 ために縮退表を太らせるのは割に合わない。
 
 ### block の位置と `MAX_BLOCKS` の引き上げ
@@ -462,7 +463,7 @@ chain size が 1(他の PR と base チェーンで繋がっていない)なら 
 
 `gh api repos/<nwo>/stacks` が返す配列から、`open: true` かつ
 `pull_requests[].number` が chain の PR 番号集合を包含する要素があるかを
-jq で判定する。`gh stack view --json` は「current stack」を前提とした
+判定する(`crates/pr-gate/src/gates/stack.rs`)。`gh stack view --json` は「current stack」を前提とした
 ローカル追跡状態への依存が排除できないため採用しなかった
 (`docs/stacked-pr-github-native.md` の実測、2026-09-09・2026-09-21 再確認)。
 
@@ -503,16 +504,18 @@ PR に載る経路が残る。`G_prior` はその最後の関門として、PR �
 道具・単位**が追加されているのに本文へ `既存手段:` の記載が無い状態を
 「あとは終わるだけ」の一点で block する。
 
-### 判定エンジンは `new-tool-guard classify` を単一正本にする
+### 判定エンジンは `new-tool-guard` の `is_new_tool_unit` を単一正本にする
 
 「新しい道具・単位」の述語(shebang 付き新規ファイル・`bin`/`scripts`/
 `hooks`/`cmd` を含む新規パス・パッケージマニフェストの新設)は
-`crates/new-tool-guard` の `classify` サブコマンドが単一正本で、
-Write 時の hook(`new-tool-guard` 自身、着手の瞬間の前倒し gate)と
-この `G_prior`(PR 時点の事後確認)の両方から呼ばれる。`compute_added_
-files()` が `origin/<base>...HEAD` の merge-base diff から追加ファイル
-(`--diff-filter=A`)だけを取り出し、`(cd "$project" && new-tool-guard
-classify "$f")` の終了コードで判定する。base の ref が手元に無い(fetch
+`crates/new-tool-guard` の `is_new_tool_unit` が単一正本で、
+Write 時の hook(`new-tool-guard` 自身、着手の瞬間の前倒し gate)・
+`classify` サブコマンド・この `G_prior`(PR 時点の事後確認)が同じ関数を
+使う。`repo::added_files()` が `origin/<base>...HEAD` の merge-base diff から
+追加ファイル(`--diff-filter=A`)だけを取り出し、`gates::prior` が
+`is_new_tool_unit` を直接呼んで判定する(bash 版は `new-tool-guard classify`
+を外部コマンドとして呼び、バイナリが無ければ非該当にしていた。Rust 版は
+同じクレートをリンクするのでこの縮退は無い)。base の ref が手元に無い(fetch
 に失敗する)場合は判定不能として完全に沈黙する(断定に変えない —
 `default_branch()` が origin/HEAD 未設定を空で返すのと同じ縮退)。
 
@@ -624,15 +627,15 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
    区別不要 — どちらも「required 無し」として quiesce(3.)で近似する。(c) は
    一時的な API 障害を「required 無し」と誤読しうる経路で、required が実在
    する状態のほうが誤読の害が大きいため、`expected_contexts()`
-   (`config/claude/hooks/pr-gate.sh`)は (c) を戻り値 1 で区別し、
-   `run_g_ci()` は quiesce に縮退させず `G_CI_STATUS=API_FAILURE` として
+   (`crates/pr-gate/src/gates/ci.rs`)は (c) を `Err` で区別し、
+   `ci::run()` は quiesce に縮退させず `Status::ApiFailure` として
    block する(#135)。
 2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ（出現待ち）
 3. E が空（stacked PR）なら、E の代わりに **quiescence**（報告件数が一定時間増えない）
    で「揃った」を近似する
 4. `gh pr checks [--required] --watch --fail-fast` で terminal state まで待つ
    （**待つだけ**。この exit code は使わない）
-5. **`--json` を取り直し、jq が判定する**: E の全 context が R にあり、かつ
+5. **`--json` を取り直して判定する**: E の全 context が R にあり、かつ
    fail/cancel が無く、かつ pending が無いときだけ PASS
 
 どの経路でも「0 件」も「部分集合」も PASS には落ちない。stacked PR で required が
@@ -654,7 +657,7 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 |---|---|---|
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
-| `PR_GATE_MAX_BLOCKS` | `5` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
+| `PR_GATE_MAX_BLOCKS` | `6` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5、G_stack 追加時に 5→6 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
 | `PR_GATE_CI_TIMEOUT` | `300` | `gh pr checks --watch` の timeout(秒) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
@@ -676,10 +679,12 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 ### 自己検査
 
 ```bash
-bash config/claude/hooks/pr-gate.sh --selftest
+cargo test -p pr-gate
 ```
 
-`gh` をスタブして hook 経路を end-to-end に駆動する。回帰テストとして特に重要なのは:
+`gh` をスタブ(`crates/pr-gate/tests/common/mod.rs`、PATH の先頭に置く)して
+hook 経路を end-to-end に駆動する。旧 `pr-gate.sh --selftest` の 111 件の check を
+`tests/{stop,session_start}.rs` と unit test に 1 対 1 で移してある。回帰テストとして特に重要なのは:
 
 - **PASS 経路が到達可能であること**（`docs/claude/copilot-plan-review.md` の「第二次の非収束」と
   同種の穴——ゲートが弾くだけで一度も通さない実装になっていないかの検査）
