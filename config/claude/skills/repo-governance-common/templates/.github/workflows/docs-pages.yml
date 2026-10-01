@@ -1,0 +1,62 @@
+name: Docs pages
+
+# API ドキュメントを GitHub Pages へ deploy する(ADR-640 stack-standard-
+# api-docs D7)。対象は「PUBLIC かつ docs.rs / pkg.go.dev の対象外」のリポ
+# ジトリだけ:
+#   - crates.io 公開済みの crate は docs.rs が自動でビルドするため、ここでは
+#     deploy しない(重複)。
+#   - PRIVATE リポジトリには置かない。個人アカウントでは private repo の
+#     Pages サイトも公開される(GitHub Docs, "Changing the visibility of your
+#     GitHub Pages site" — サイトの閲覧制限は GitHub Enterprise Cloud の組織
+#     所有リポジトリ限定)。github-audit の docs ドメインは PRIVATE で Pages
+#     が有効なリポジトリを `private-pages-enabled` として drift 報告する。
+#
+# ビルドは PR ゲート(ci.yml の docs job)と同じ composite action を使うので、
+# ゲートで通ったものがそのまま公開される。これは PR ゲートではない(main への
+# push でのみ走る)ため、ci.yml の `ci-passed.needs` には入れない。
+#
+# 使うときは `__DOCS_ACTION__` を docs-rust / docs-python / docs-typescript の
+# いずれかに置換する。Pages 自体は Settings → Pages で Source を
+# "GitHub Actions" にして有効化する(この workflow は有効化しない — 意図せず
+# 公開しないため、deploy は Pages 未有効なら失敗するのが正しい挙動)。
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - id: docs
+        uses: tarotene/dotfiles/.github/actions/__DOCS_ACTION__@main
+        with:
+          upload: 'false'
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: ${{ steps.docs.outputs.site-dir }}
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
