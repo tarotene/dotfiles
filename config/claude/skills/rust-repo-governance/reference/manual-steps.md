@@ -17,6 +17,21 @@ this repository and set `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY`.
 
 ## 2. crates.io Trusted Publishing
 
+**Skip this whole section unless the repository actually distributes crates on
+crates.io.** The `release-plz.toml` template ships `publish = false` at the
+`[workspace]` level, so a freshly seeded repository does not publish — and
+cannot fail trying to. Leave it that way for anything consumed only through a
+flake, a git dependency, or a prebuilt binary.
+
+Turning publishing on is a deliberate, ordered act. Doing it out of order is
+what broke `tarotene/bleep` (tarotene/dotfiles#659): the repository was seeded
+publish-enabled for a crate that did not exist on crates.io, so every release
+run failed, and the green CI run next to it hid the failure for two days.
+
+1. Do the bootstrap publish below (the crate must exist first).
+2. Register the Trusted Publishing entry below.
+3. Only then remove `publish = false` from `release-plz.toml`.
+
 Trusted Publishing lets the CI workflow publish to crates.io via short-lived
 OIDC tokens — no long-lived `CARGO_REGISTRY_TOKEN` needed.
 

@@ -35,7 +35,11 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    review.json` from the declaration, then `apply-rulesets.sh OWNER/REPO
    --delete-ruleset Review` (see "Removing the review layer" below).
 4. Points you to `reference/manual-steps.md` for the steps that require browser flows:
-   GitHub App creation, crates.io Trusted Publishing entry registration, first bootstrap publish.
+   GitHub App creation, and — only for repositories that actually distribute on
+   crates.io — the bootstrap publish and Trusted Publishing registration.
+   Publishing is opt-in: the `release-plz.toml` template ships
+   `publish = false`, so a seeded repository tags and releases on GitHub but
+   does not touch crates.io until someone deliberately turns it on.
 
 ---
 
@@ -165,10 +169,12 @@ Follow `./reference/manual-steps.md` (in this Skill directory) for:
    repository (do not create a new one — see
    `repo-governance-common/reference/releaser-app.md`), set
    `RELEASER_APP_CLIENT_ID` and `RELEASER_APP_PRIVATE_KEY` as repo secrets.
-2. **crates.io Trusted Publishing** — register each published crate with
-   owner/repo/workflow=`release-plz.yml`.
-3. **Bootstrap first publish** — one-time `publish-new` token for crates that
-   don't yet exist on crates.io.
+2. **crates.io publishing (opt-in, skip by default)** — only for repositories
+   that distribute crates on crates.io. In this order: bootstrap first publish
+   with a one-time `publish-new` token, register the Trusted Publishing entry
+   (owner/repo/workflow=`release-plz.yml`), *then* drop `publish = false` from
+   `release-plz.toml`. Out of order, every release run fails and a green CI run
+   hides it (tarotene/dotfiles#659).
 
 Short version of the secrets:
 ```

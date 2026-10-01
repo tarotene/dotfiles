@@ -1,4 +1,19 @@
 [workspace]
+# crates.io への publish は opt-in。播いた直後は false のままにする。
+#
+# Trusted Publishing は crate が既に crates.io に存在することを要求するので
+# (reference/manual-steps.md「First publish (bootstrap — one time per
+# crate)」)、まだ存在しない crate を publish 可能なまま播くと、release job が
+# 毎回失敗し続ける。CI job が緑だとこの失敗は一覧で埋もれる
+# (tarotene/dotfiles#659 の実例: 失敗に気づくまで 2 日)。
+#
+# ADJUST: crates.io で配布する repo では、(1) manual-steps.md の bootstrap
+# publish を済ませ、(2) Trusted Publishing を登録してから、この行を消す
+# (既定の true に戻る)。publish しない repo ではこの行をそのまま残す —
+# release-plz は publish = false でも git tag と GitHub Release を作る
+# (release-plz docs "Configuration" https://release-plz.dev/docs/config、
+# 取得 2026-10-01)。
+publish = false
 git_release_enable = false
 git_tag_enable = false
 git_release_name = "v{{ version }}"
@@ -41,9 +56,11 @@ git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
 
-# ADJUST: If you have a workspace member that should NOT be published to crates.io
-# (e.g. a binary example crate or integration test harness), add it here.
-# Remove this block entirely if all workspace members publish.
+# ADJUST: Only needed once you have removed the workspace-level
+# `publish = false` above (i.e. this repository does distribute on crates.io)
+# and one member should still stay off the registry — e.g. a binary example
+# crate or an integration test harness. While the workspace-level default is
+# false, this block is redundant; delete it.
 [[package]]
 name = "host-pty-server"
 publish = false

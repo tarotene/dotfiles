@@ -2307,9 +2307,8 @@ in
   # templates/.github/rulesets/{security,workflow,review}.json はバイト
   # 単位で完全一致だったため同様に1本化した。quality.json と
   # copy-files.sh/seed.sh はエコシステム固有差分が実在するため各 skill 側
-  # に残る(apply 自体は ADR-503 D4 により
-  # スクリプト側の型分岐そのものを撤去したので、共有コアを source する
-  # 層はもう無い)。
+  # に残る(apply 自体は ADR-503 D4 によりスクリプト側の型分岐そのものを
+  # 撤去したので、共有コアを source する層はもう無い)。
   #
   # まずディレクトリ自体を上と同じ recursive マウントで配る。次に、各
   # governance skill の recursive マウントは「そのスキルの**自分の**
