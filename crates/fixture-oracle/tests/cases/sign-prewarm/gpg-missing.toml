@@ -1,0 +1,8 @@
+# GPG_BIN が解決できなければ完全沈黙(stdin は読み捨てる)
+bin.name = "sign-prewarm"
+stdin = '{"session_id":"s1","cwd":"/","hook_event_name":"SessionStart","source":"startup"}'
+status.code = 0
+stdout = ""
+stderr = ""
+[env]
+add = { GPG_BIN = "/nonexistent/fixture-oracle/gpg", ESA_TOKEN_FILE = "/nonexistent/fixture-oracle/token.gpg" }

@@ -1,0 +1,2 @@
+[sign-prewarm] 署名鍵 57B25182FB450B06570860488608A3F925E329CC を温められませんでした(キャンセルまたはタイムアウト)。最初の git commit で pinentry が出ます。
+[sign-prewarm] esa MCP の token.gpg (<TMP>/token.gpg) を温められませんでした(キャンセルまたはタイムアウト)。MCP 起動時に pinentry が出ます。

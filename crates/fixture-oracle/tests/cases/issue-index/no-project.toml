@@ -1,0 +1,8 @@
+# CLAUDE_PROJECT_DIR も .cwd も無ければ完全沈黙(不正 JSON も同じ)
+bin.name = "issue-index"
+stdin = '{'
+status.code = 0
+stdout = ""
+stderr = ""
+[env]
+remove = ["CLAUDE_PROJECT_DIR"]
