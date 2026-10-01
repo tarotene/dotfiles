@@ -313,7 +313,7 @@ but it makes the update cadence above load-bearing for Japanese input.
 
 ## Rotating a machine-local GPG [S] signing subkey
 
-`scripts/gpg-subkey` (deployed to `~/.local/bin/gpg-subkey`) generates and
+`gpg-subkey` (`crates/gpg-subkey`, deployed to `~/.local/bin/gpg-subkey`) generates and
 rotates the on-disk `[S]` subkey each identity's primary card-backed key
 signs Git commits with (ADR-0003 Amendment 2). It was absorbed from the
 now-archived private predecessor tool, stripped of that tool's

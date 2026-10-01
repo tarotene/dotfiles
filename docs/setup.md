@@ -84,7 +84,7 @@ means re-encrypting to add that host's [E] as a recipient — see
 of this re-encryption.
 
 **Card-free decryption (recommended, #252)**: run
-`scripts/gpg-subkey generate --key <personal-fingerprint> --usage encrypt`
+`gpg-subkey generate --key <personal-fingerprint> --usage encrypt`
 once per host to cut a per-machine on-disk [E] subkey (mirrors the existing
 on-disk [S] subkey this repo already uses for signing). Without this step,
 decryption still works but requires the YubiKey inserted every time

@@ -8,7 +8,7 @@
 //!
 //! card/stub の合成入力(`gpg --list-secret-keys --with-colons --with-fingerprint`
 //! の実機出力を雛形にした field 15 の 3 値)は bash selftest のものをそのまま使う
-//! — `scripts/gpg-subkey` の selftest も同じ手法を参照している。
+//! — `crates/gpg-subkey` の on-disk/card-backed フィルタの回帰テストも同じ手法を参照している。
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

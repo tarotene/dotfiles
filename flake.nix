@@ -365,6 +365,9 @@
               pkgs.git
               pkgs.bashInteractive
               pkgs.hyperfine
+              # crates/gpg-subkey のテストは実 GnuPG を一時 GNUPGHOME で走らせる
+              # (addkey/revkey の command-file の仕組みそのものが検証対象、#414)。
+              pkgs.gnupg
             ];
           };
         }

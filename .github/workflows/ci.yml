@@ -410,19 +410,6 @@ jobs:
       - name: routines-plan.sh --selftest
         run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
 
-      # gpg-subkey (absorbed from an archived private predecessor tool) is
-      # exercised against real GnuPG operations in an isolated
-      # GNUPGHOME with a throwaway empty-passphrase fixture key — not a
-      # stubbed gpg — since the addkey/revkey --command-file mechanics are
-      # exactly what needs validating. Covers generate, rotate --revoke-old,
-      # status, remind's threshold/exit-code contract, export's diff
-      # detection + next-step message, and sync's drift detection/--fix
-      # convergence against GitHub + keys.openpgp.org (`gh`/`curl` are
-      # stubbed for sync specifically — this step must never touch a real
-      # GitHub account or the real keyserver) (docs/operations.md).
-      - name: gpg-subkey --selftest
-        run: ./scripts/gpg-subkey --selftest
-
       # esa-mcp-launcher is deterministic shell end to end against stubbed
       # gpg/npx: the missing-token-file diagnostic, decrypt failure, empty
       # token, missing npx, and the ESA_ACCESS_TOKEN handoff to the exec'd

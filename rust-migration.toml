@@ -149,10 +149,6 @@ path = "scripts/github-audit"
 stage = "4e"
 
 [[target]]
-path = "scripts/gpg-subkey"
-stage = "4e"
-
-[[target]]
 path = "scripts/obsidian-backup"
 stage = "4e"
 

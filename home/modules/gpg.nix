@@ -128,13 +128,11 @@ in
 
   # gpg-subkey: generate/rotate a machine-local [S] subkey and refresh
   # keys/<identity>.pub (absorbed from a now-archived private predecessor
-  # tool — see the script's own header for why; it never writes git config,
+  # tool — see crates/gpg-subkey's header for why; it never writes git config,
   # `programs.git.signing.key` above stays the sole declared source of truth
-  # per ADR-0003).
-  home.file.".local/bin/gpg-subkey" = {
-    source = repoRoot + "/scripts/gpg-subkey";
-    executable = true;
-  };
+  # per ADR-0003). Rust since #414 (ADR-0024 Stage 4e); the interactive
+  # `gpg --edit-key` calls still go through the operator's pinentry.
+  home.file.".local/bin/gpg-subkey".source = "${pkgs.dotfiles-tools}/bin/gpg-subkey";
 
   # Newly taken under home-manager management here — same `.backup` collision
   # quarantine (#64) as herdr's config.toml above; see quarantine.nix for why
@@ -155,9 +153,6 @@ in
       ExecStart = "${subkeyPath} remind --notify";
       Environment = "PATH=${
         lib.makeBinPath [
-          pkgs.bash
-          pkgs.coreutils
-          pkgs.gawk
           pkgs.gnupg
           pkgs.herdr
         ]
@@ -193,9 +188,6 @@ in
         }
       ];
       EnvironmentVariables.PATH = lib.makeBinPath [
-        pkgs.bash
-        pkgs.coreutils
-        pkgs.gawk
         pkgs.gnupg
         pkgs.herdr
       ];

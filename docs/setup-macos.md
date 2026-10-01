@@ -82,7 +82,7 @@ anything.
 Generation happens on a host that already holds the primary key (e.g. an
 existing Pop!_OS host) with the YubiKey inserted — the primary key's own [C]
 (certify) capability signs the new subkey's binding signature, and that
-operation lives on the card. Use `scripts/gpg-subkey` (deployed to
+operation lives on the card. Use `gpg-subkey` (`crates/gpg-subkey`, deployed to
 `~/.local/bin`), not raw `gpg --edit-key`: it reuses the same
 addkey/revoke-key mechanics already validated in production for the company
 identity's [S] subkey rotations (2025-12, 2026-07).
