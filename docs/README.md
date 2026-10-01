@@ -427,6 +427,11 @@ Design and rationale for the hooks and commands deployed from
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
   Covers the two holes left by the harness-supplied footer: comments never got
   one, and the PR/Issue body side had no repo-side enforcement at all.
+- [`guard-core.md`](claude/guard-core.md) — `crates/guard-core`: the command
+  analysis engine (heredoc split, quote-aware tokenizer, command-position
+  ranges, `gh` flag extraction, `owner/repo`, deny output) that the bash
+  `attribution-guard.sh` used to provide by `source`. Public API and the
+  bash-function → Rust mapping for porting the remaining gh guards (#415).
 - [`external-send-guard.md`](claude/external-send-guard.md) — PreToolUse hook:
   Gmail MCP tool 経由の外部(自分以外)宛メール直接送信を deny し、
   `create_draft` へ誘導する。実在するアドレスでも「何の窓口か」の文脈判定は

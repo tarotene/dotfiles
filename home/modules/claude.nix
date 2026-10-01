@@ -235,11 +235,12 @@
 #    詳細は docs/claude/attribution-guard.md。
 #
 #    Codex CLI / Copilot CLI にも同じ判定エンジンを展開する(#192)。
-#    bleep の「1つの判定エンジン + 薄い per-agent adapter」の型を
-#    踏襲し、config/codex/hooks/・config/copilot/hooks/ の adapter が
-#    config/claude/hooks/attribution-guard.sh を `source` してフッターの
-#    エージェント名だけを差し替える。登録は bleep の Codex/Copilot
-#    登録ブロック(下方)と同じ lost-update 対策の順序付けに続ける。
+#    判定は Rust(crates/attribution-guard、ADR-0024 Stage 4a #415)で、
+#    3 エージェントから同じ 1 バイナリを `--agent claude|codex|copilot`
+#    で呼ぶ(#391、pkexec-guard と同じ型)— bash 時代の per-agent adapter
+#    (config/{codex,copilot}/hooks/attribution-guard.sh)は廃止した。
+#    登録は bleep の Codex/Copilot 登録ブロック(下方)と同じ lost-update
+#    対策の順序付けに続ける。
 #
 # 18) plan-fresh-gate(PreToolUse / ExitPlanMode):
 #    herdr worktree を並行 Plan モードでパイプライン駆動する運用では、先発の
@@ -574,13 +575,15 @@ let
   registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
     builtins.readFile ../../scripts/register-copilot-hooks
   );
-  # attribution-guard の Codex/Copilot adapter(#192)。adapter は
-  # CLAUDE_HOOKS_DIR → ソースツリー相対 → $HOME/.claude/hooks の順で
-  # attribution-guard.sh を探す(#602: 配備先に ../../claude/hooks は無い)
-  # ので、この2つは ~/.codex/hooks/・~/.copilot/hooks/ 直下に置く
-  # (herdr-{codex,copilot}-metadata.sh と同じ配置)。
-  codexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
-  copilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
+  # attribution-guard の Codex/Copilot 展開(#192)。#415(ADR-0024 Stage 4a)で
+  # Rust バイナリ(crates/attribution-guard)になり、Claude と同じ
+  # ~/.claude/hooks/attribution-guard を `--agent codex|copilot` 付きで直接
+  # 登録する(pkexecGuardCodexCmd と同じ型)。旧 bash adapter の command は
+  # register-{codex,copilot}-hooks の --retire で完全一致削除する(legacy*)。
+  codexAttributionGuardCmd = "'${hooksDir}/attribution-guard' --agent codex";
+  copilotAttributionGuardCmd = "'${hooksDir}/attribution-guard' --agent copilot";
+  legacyCodexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
+  legacyCopilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
   # #413: herdr metadata は Claude/Codex/Copilot の 3 本を 1 バイナリ
   # (crates/herdr-agent-metadata、--agent で入力差を吸収)にまとめた。Codex/
   # Copilot 側の登録は home/modules/herdr.nix。
@@ -599,7 +602,14 @@ let
   legacyPlanScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
   legacyPlanPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
   legacyPlanFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
-  attributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
+  # #415(ADR-0024 Stage 4a): attribution-guard は Rust バイナリ(crates/
+  # attribution-guard、判定エンジンは crates/guard-core)になり、下の
+  # home.file が ~/.claude/hooks/attribution-guard(拡張子無し)として配備する。
+  # 旧 `bash '….sh'` の command は retiredHookEntries で完全一致削除する。
+  # bash 版 attribution-guard.sh 自体は、下の stack-base-guard.sh 等がまだ
+  # `source` するので配備を続ける(hook としては登録しない)。
+  attributionGuardCmd = "'${hooksDir}/attribution-guard'";
+  legacyAttributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
   # stack-base-guard(ADR-0027)は attribution-guard.sh を source するので
   # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
   # "$(dirname ...)/attribution-guard.sh" が解決できる配置)。
@@ -870,6 +880,11 @@ let
     {
       event = "PreToolUse";
       command = legacyExternalSendGuardCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): attribution-guard の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyAttributionGuardCmd;
     }
   ];
 
@@ -1543,8 +1558,16 @@ in
   home.file.".claude/hooks/plan-fresh-gate".source = "${pkgs.dotfiles-tools}/bin/plan-fresh-gate";
 
   # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
-  # フッターを強制する(docs/claude/attribution-guard.md)。判定は純関数群に
-  # 切り出してあり --selftest がネットワーク無しに 26 ケースを検査する。
+  # フッターを強制する(docs/claude/attribution-guard.md)。#415 で Rust
+  # バイナリ(crates/attribution-guard)への安定パスの symlink になった
+  # (gh-edit-allow と同じ理由付け)。Codex/Copilot もこの同じパスを
+  # `--agent codex|copilot` 付きで呼ぶ。
+  home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
+  # bash 版の判定エンジン。hook としては登録しないが、stack-base-guard.sh /
+  # pr-title-guard.sh / pr-confirm-guard.sh / feedback-target-guard.sh /
+  # decision-colocation-guard.sh / adr-number.sh / repo-create-guard.sh が
+  # 同ディレクトリから `source` するので、それらの Rust 移植(guard-core の
+  # 上に載せる、docs/claude/guard-core.md)が済むまで配備を続ける。
   home.file.".claude/hooks/attribution-guard.sh" = {
     source = repoConfig + "/claude/hooks/attribution-guard.sh";
     executable = true;
@@ -1613,17 +1636,6 @@ in
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
   # の register とは別の消費経路)。
   home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
-  # Codex CLI / Copilot CLI 版 adapter(#192)。判定エンジンは持たず、上の
-  # .claude/hooks/attribution-guard.sh を `source` するだけの薄い層 —
-  # source 先は $HOME/.claude/hooks 経由で解決される(#602)。
-  home.file.".codex/hooks/attribution-guard.sh" = {
-    source = repoConfig + "/codex/hooks/attribution-guard.sh";
-    executable = true;
-  };
-  home.file.".copilot/hooks/attribution-guard.sh" = {
-    source = repoConfig + "/copilot/hooks/attribution-guard.sh";
-    executable = true;
-  };
 
   # pr-title-guard(ADR-0031): PR タイトルを commit-message 契約として
   # 作成時に機械強制する(docs/claude/pr-title-contract.md)。
@@ -1794,6 +1806,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexBleepHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire PreToolUse ${lib.escapeShellArg legacyCodexAttributionGuardCmd} \
+          --register \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexAttributionGuardCmd} 10
       '';
 
@@ -1801,6 +1815,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotBleepHooks" ]
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          --retire preToolUse ${lib.escapeShellArg legacyCopilotAttributionGuardCmd} \
+          --register \
           preToolUse ${lib.escapeShellArg copilotAttributionGuardCmd} 10
       '';
 

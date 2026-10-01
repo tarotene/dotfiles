@@ -188,10 +188,6 @@ path = "scripts/decision-colocation-check"
 stage = "4a"
 
 [[target]]
-path = "config/codex/hooks/attribution-guard.sh"
-stage = "4a"
-
-[[target]]
 path = "config/codex/hooks/pr-title-guard.sh"
 stage = "4a"
 
@@ -199,10 +195,6 @@ stage = "4a"
 # claude 側 pr-confirm-guard.sh に対応する薄い adapter)。
 [[target]]
 path = "config/codex/hooks/pr-confirm-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "config/copilot/hooks/attribution-guard.sh"
 stage = "4a"
 
 [[target]]

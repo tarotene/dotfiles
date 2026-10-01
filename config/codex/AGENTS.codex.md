@@ -58,5 +58,5 @@ Codex CLI では固定でこの1行:
 🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)
 ```
 
-形式検査は `config/codex/hooks/attribution-guard.sh`(PreToolUse)が行う。
+形式検査は `attribution-guard --agent codex`(PreToolUse、`crates/attribution-guard`)が行う。
 gate に当たる前に自発的に付けること。

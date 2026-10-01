@@ -98,5 +98,5 @@ Claude Code では固定でこの 1 行:
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-形式検査は attribution-guard.sh が PreToolUse で行う。gate に当たる前に
+形式検査は attribution-guard が PreToolUse で行う。gate に当たる前に
 自発的に付けること — gate は漏れを拾うためのもので、一次的な手段ではない。
