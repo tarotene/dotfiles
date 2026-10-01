@@ -671,7 +671,11 @@ let
   # Codex の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook。
   # 独立ファイル(他 hook を source しない)なので配置は
   # ~/.codex/hooks/ 直下のみで足りる。
-  codexPlanGateCmd = "bash '${config.home.homeDirectory}/.codex/hooks/codex-plan-gate.sh'";
+  # #389 (ADR-0024 Stage 4b): Rust バイナリ(crates/codex-plan-gate)になり、
+  # 下の home.file が ~/.codex/hooks/codex-plan-gate(拡張子無し)として配備する。
+  # 旧 `bash '….sh'` の command は --retire で完全一致削除する。
+  codexPlanGateCmd = "'${config.home.homeDirectory}/.codex/hooks/codex-plan-gate'";
+  legacyCodexPlanGateCmd = "bash '${config.home.homeDirectory}/.codex/hooks/codex-plan-gate.sh'";
   # rulesets-write-guard(Rust)は Claude/Codex で入出力形が同一
   # (crates/hook-io の Agent::Claude | Agent::Codex が同じ JSON 形を emit
   # すると確認済み — crates/hook-io/src/decision.rs)なので adapter を
@@ -1724,10 +1728,7 @@ in
 
   # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
   # 他 hook を source しない独立ファイル。
-  home.file.".codex/hooks/codex-plan-gate.sh" = {
-    source = repoConfig + "/codex/hooks/codex-plan-gate.sh";
-    executable = true;
-  };
+  home.file.".codex/hooks/codex-plan-gate".source = "${pkgs.dotfiles-tools}/bin/codex-plan-gate";
 
   # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
   # 追加を執行点と同じ PR に機械強制する(docs/claude/decision-colocation.md)。
@@ -1969,6 +1970,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStopHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire Stop ${lib.escapeShellArg legacyCodexPlanGateCmd} \
+          --register \
           Stop "" ${lib.escapeShellArg codexPlanGateCmd} 20
       '';
 

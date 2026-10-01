@@ -1,7 +1,7 @@
 # codex-plan-gate — Codex CLI の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook
 
 判定エンジン: `crates/plan-scope-gate` / `plan-precedent-gate`(再利用、新規ロジックなし)
-adapter: `config/codex/hooks/codex-plan-gate.sh`
+adapter: `crates/codex-plan-gate`(Rust、旧 `config/codex/hooks/codex-plan-gate.sh` を #389 / ADR-0024 Stage 4b で移植。配備先 `~/.codex/hooks/codex-plan-gate`)
 決定: `docs/adr/0032-global-agent-instructions-canon.md` の Amendment(#531)
 Claude 側の対: `crates/plan-scope-gate` / `plan-precedent-gate`(ExitPlanMode の PreToolUse hook)
 無限 block 対策の型: `crates/pr-gate`(同じ escalate カウンタ設計)
@@ -37,7 +37,7 @@ hook として実装し、直前の応答(`last_assistant_message`)から
 
 ## 判定は 1 つも増やさない
 
-`codex-plan-gate.sh` は `<proposed_plan>` ブロックの中身を一時ファイルに
+`codex-plan-gate` は `<proposed_plan>` ブロックの中身を一時ファイルに
 書き出し、既存の
 
 ```
@@ -92,4 +92,4 @@ ADR-0005 の binary-existence gating に倣い、次はすべて黙って exit 0
   倒れない)。
 - 1 ターンに `<proposed_plan>` が複数回出ることは Codex の設計上想定され
   ていない(TUI 文字列リテラル: 新しい `<proposed_plan>` は「complete
-  replacement」)ため、`extract_plan()` は最初の1ブロックのみを対象にする。
+  replacement」)ため、`extract_plan` は最初の1ブロックのみを対象にする。

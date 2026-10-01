@@ -352,13 +352,9 @@ jobs:
       - name: copilot-plan-review output schema is valid JSON
         run: jq empty config/claude/assets/copilot-plan-review.schema.json
 
-      # codex-plan-gate (ADR-0032 Amendment #531, docs/claude/
-      # codex-plan-gate.md) is Codex's Stop-hook analogue of ExitPlanMode:
-      # it detects a `<proposed_plan>` block in the prior assistant message
-      # and calls plan-scope-gate / plan-precedent-gate (Rust, #412) against
-      # stubbed versions of them — no new judgment logic, no gh/network.
-      - name: codex-plan-gate.sh --selftest
-        run: bash ./config/codex/hooks/codex-plan-gate.sh --selftest
+      # codex-plan-gate (ADR-0032 Amendment #531) is Rust now (#389, ADR-0024
+      # Stage 4b); its former --selftest cases run as `cargo test --workspace`
+      # in the rust job (crates/codex-plan-gate/tests/gate.rs).
 
       # slot-hit.sh is the deterministic judgment core behind the
       # slot-availability skill (docs/claude/slot-availability.md): matching

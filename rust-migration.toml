@@ -139,10 +139,6 @@ max_remaining = 44
 # plan-scope-gate / plan-precedent-gate directly), so it is grouped with them
 # by category instead. The family itself (copilot-plan-review, plan-view,
 # plan-scope-gate, plan-precedent-gate, plan-fresh-gate) is Rust since #412.
-[[target]]
-path = "config/codex/hooks/codex-plan-gate.sh"
-stage = "4b"
-
 # --- Stage 4e ---
 [[target]]
 path = "scripts/github-audit"
