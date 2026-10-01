@@ -29,6 +29,18 @@ pub fn write_exec(path: &Path, script: &str) {
     let mut perm = fs::metadata(path).unwrap().permissions();
     perm.set_mode(0o755);
     fs::set_permissions(path, perm).unwrap();
+    // 書いた直後は、並列テストが fork した子が書き込み fd を継いでいる間
+    // exec が ETXTBSY(26)になりうる(ワークスペース全体の並列実行でだけ落ちる)。
+    // 引数に合致しない呼び出しは何もしないスタブなので、実行できるように
+    // なるまで空打ちして待つ。
+    for _ in 0..400 {
+        match std::process::Command::new(path).arg("__probe__").output() {
+            Err(e) if e.raw_os_error() == Some(26) => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            _ => break,
+        }
+    }
 }
 
 /// bash 版 selftest の `$tmp/bin/gh`。FIXTURES は呼び出し元プロセスの環境に
