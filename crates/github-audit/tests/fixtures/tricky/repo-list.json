@@ -1,0 +1,149 @@
+[
+ {
+  "name": "tricky-docs",
+  "primaryLanguage": null,
+  "visibility": "PUBLIC",
+  "description": "A **tool** for [x things](http://y) here.  ",
+  "repositoryTopics": [
+   {
+    "name": "naming-descriptive"
+   }
+  ],
+  "defaultBranchRef": {
+   "name": "main"
+  },
+  "squashMergeAllowed": true,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": false,
+  "hasProjectsEnabled": false,
+  "createdAt": "2027-01-01T00:00:00Z",
+  "pushedAt": "2025-01-01T00:00:00Z"
+ },
+ {
+  "name": "pj-x",
+  "primaryLanguage": {
+   "name": "Rust"
+  },
+  "visibility": "PRIVATE",
+  "description": "Exam STUDY guide\n",
+  "repositoryTopics": [
+   {
+    "name": "naming-pj"
+   },
+   {
+    "name": "lifecycle-timeboxed"
+   }
+  ],
+  "defaultBranchRef": {
+   "name": "main"
+  },
+  "squashMergeAllowed": null,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": false,
+  "hasProjectsEnabled": false,
+  "createdAt": "2020-01-01T00:00:00Z",
+  "pushedAt": "2026-09-01T00:00:00Z"
+ },
+ {
+  "name": "regcode",
+  "primaryLanguage": {
+   "name": "Rust"
+  },
+  "visibility": "PUBLIC",
+  "description": "日本語の説明。続き",
+  "repositoryTopics": [
+   {
+    "name": "naming-codename"
+   },
+   {
+    "name": "lifecycle-study"
+   }
+  ],
+  "defaultBranchRef": {
+   "name": "main"
+  },
+  "squashMergeAllowed": true,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": false,
+  "hasProjectsEnabled": false,
+  "createdAt": "2020-01-01T00:00:00Z",
+  "pushedAt": "2026-03-01T12:00:00+09:00"
+ },
+ {
+  "name": "known.site",
+  "primaryLanguage": {
+   "name": "Rust"
+  },
+  "visibility": "PRIVATE",
+  "description": "",
+  "repositoryTopics": [
+   {
+    "name": "naming-site"
+   }
+  ],
+  "defaultBranchRef": {
+   "name": "main"
+  },
+  "squashMergeAllowed": true,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": false,
+  "hasProjectsEnabled": false,
+  "createdAt": "2027-01-01T00:00:00Z"
+ },
+ {
+  "name": "old-thing",
+  "primaryLanguage": {
+   "name": "Rust"
+  },
+  "visibility": "PUBLIC",
+  "description": "",
+  "repositoryTopics": [
+   {
+    "name": "naming-pj"
+   },
+   {
+    "name": "lifecycle-timeboxed"
+   }
+  ],
+  "defaultBranchRef": {
+   "name": "main"
+  },
+  "squashMergeAllowed": true,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": false,
+  "hasProjectsEnabled": false,
+  "createdAt": "2020-01-01T00:00:00Z",
+  "isArchived": true
+ },
+ {
+  "name": "weird",
+  "primaryLanguage": {
+   "name": "Rust"
+  },
+  "visibility": null,
+  "description": "",
+  "repositoryTopics": [
+   {
+    "name": "naming-other"
+   }
+  ],
+  "defaultBranchRef": null,
+  "squashMergeAllowed": true,
+  "mergeCommitAllowed": false,
+  "rebaseMergeAllowed": false,
+  "deleteBranchOnMerge": true,
+  "hasWikiEnabled": true,
+  "hasProjectsEnabled": false,
+  "createdAt": "2020-01-01T00:00:00Z"
+ }
+]

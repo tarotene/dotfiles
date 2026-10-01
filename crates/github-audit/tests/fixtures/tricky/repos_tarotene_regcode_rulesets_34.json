@@ -1,0 +1,1 @@
+{"name": "Excluded", "conditions": {"ref_name": {"include": ["~ALL"], "exclude": ["~DEFAULT_BRANCH"]}}, "rules": [{"type": "required_linear_history"}]}

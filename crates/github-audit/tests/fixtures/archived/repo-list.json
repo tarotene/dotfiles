@@ -1,0 +1,3 @@
+[
+  {"name": "archived-repo", "primaryLanguage": {"name": "Rust"}, "visibility": "PUBLIC", "description": "old research notes for my exam prep", "repositoryTopics": [{"name": "naming-descriptive"}], "defaultBranchRef": {"name": "main"}, "squashMergeAllowed": true, "mergeCommitAllowed": false, "rebaseMergeAllowed": false, "deleteBranchOnMerge": true, "hasWikiEnabled": false, "hasProjectsEnabled": false, "createdAt": "2020-01-01T00:00:00Z", "isArchived": true}
+]

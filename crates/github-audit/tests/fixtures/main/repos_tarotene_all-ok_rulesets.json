@@ -1,0 +1,5 @@
+[
+  {"id": 1, "name": "Security", "target": "branch", "enforcement": "active"},
+  {"id": 10, "name": "Quality", "target": "branch", "enforcement": "active"},
+  {"id": 11, "name": "Workflow", "target": "branch", "enforcement": "active"}
+]

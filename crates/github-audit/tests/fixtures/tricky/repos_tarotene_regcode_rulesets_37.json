@@ -1,0 +1,1 @@
+{"name": "Review", "target": "branch", "enforcement": "active", "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"]}}, "rules": [], "bypass_actors": null}

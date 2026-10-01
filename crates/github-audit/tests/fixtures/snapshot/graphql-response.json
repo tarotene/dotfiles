@@ -1,0 +1,6 @@
+{
+  "data": {
+    "r1": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null},
+    "r2": {"readme": null, "contributing": null, "claudeMd": null, "agentsMd": null, "rootTree": null, "claudeSkillsDir": null, "cargoToml": null, "packageJson": null, "pyprojectToml": null, "goMod": null, "workflowsDir": {"entries": [{"name": "release-plz.yml"}]}, "renovateJson": null, "renovateJson5": null, "ghRenovateJson": null, "ghRenovateJson5": null, "renovaterc": null}
+  }
+}

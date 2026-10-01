@@ -1,0 +1,11 @@
+{
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_signatures"},
+    {"type": "required_linear_history"},
+    {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "CI"}]}},
+    {"type": "pull_request", "parameters": {"required_review_thread_resolution": false, "allowed_merge_methods": ["squash"]}}
+  ]
+}

@@ -1,0 +1,249 @@
+{
+ "data": {
+  "r1": {
+   "readme": {
+    "text": "# tricky-docs\n\nA __tool__ for x things here. Second sentence.\ncontinued line\n\n## Background\n\n```\n# not a heading\n.\n├── a\n```\n\nこれはテストです。`日本語のコード` https://例え.jp/パス\n\n## FAQ\n\n## Install\n\nx\n\n## Usage\n## Scope\n\nSee `a/b`, `c.md`, `https://x/y.md`, `dir/`, `/`, ``, `x y.md`, `bad.MD`.\n\n## Development\n## License\n## Issue litmus \n"
+   },
+   "contributing": {
+    "text": "# Contributing\n\n## Issues\n\nok\n\n## Pull requests\n\n## Expectations\n\n## Extra\n"
+   },
+   "agentsMd": {
+    "text": "# Agents\n\n<!-- nav-doc-exempt: path-inventory — kept for history -->\n- `one/a` `two/b` `three/c` `four/d` `five.md`\n\n<!-- nav-doc-exempt: path-inventory — unused one -->\nplain\n\n  <!-- nav-doc-exempt: tree-fence — -->\n<!-- nav-doc-exempt: bogus — reason -->\n<!-- nav-doc-exempt:tree-fence — reason-->\n```\n├ x\n```\n\n### Sub\theading\n```\n  indented/path\nfirst/word rest\nx.toml\n```\n`p/q` `r/s`\n"
+   },
+   "claudeMd": {
+    "text": "@AGENTS.md  \r\n\n## C\n<!-- nav-doc-exempt: tree-fence — r -->\n```\nno tree\n"
+   },
+   "rootTree": {
+    "entries": [
+     {
+      "name": "README.md",
+      "type": "blob"
+     },
+     {
+      "name": "NOTES.md",
+      "type": "blob"
+     },
+     {
+      "name": "LICENSE-MIT.md",
+      "type": "blob"
+     },
+     {
+      "name": "x.MD",
+      "type": "blob"
+     },
+     {
+      "name": "docs.md",
+      "type": "tree"
+     },
+     {
+      "name": "Z.md",
+      "type": "blob"
+     }
+    ]
+   },
+   "claudeSkillsDir": {
+    "entries": [
+     {
+      "name": "a",
+      "mode": 40960
+     },
+     {
+      "name": "b",
+      "mode": "100644"
+     },
+     {
+      "name": "c",
+      "mode": null
+     },
+     {
+      "name": "d",
+      "mode": "120000"
+     }
+    ]
+   },
+   "cargoToml": {
+    "id": "x"
+   },
+   "packageJson": {
+    "id": "y",
+    "text": "{\"main\": \"i.js\"}"
+   },
+   "pyprojectToml": null,
+   "goMod": null,
+   "flakeNix": null,
+   "workflowsDir": {
+    "entries": [
+     {
+      "name": "ci.yml",
+      "object": {
+       "text": "name: \"CI\"\non: push\njobs:\n  build:\n    name: \"build it\"\n    steps: []\n  lint:\n    name: null\n  test_x:\n    steps: []\n  ci-passed:\n    name: CI passed\n    needs: [ build ,lint,, ]\n"
+      }
+     },
+     {
+      "name": "release-plz.yml",
+      "object": {
+       "text": "- uses: actions/create-github-app-token@v2\n  with:\n    client-id: ${{ secrets.RELEASER_APP_CLIENT_ID }}\n    private-key:\t${{\tvars.Release_Key }}\n    app-id: ${{ secrets.OTHER }}\n"
+      }
+     },
+     {
+      "name": "Bad_Name.yml",
+      "object": null
+     },
+     {
+      "name": "x.yaml",
+      "object": {}
+     },
+     {
+      "name": ".yml"
+     }
+    ]
+   },
+   "declCi": {
+    "text": "name: \"CI\"\non: push\njobs:\n  build:\n    name: \"build it\"\n    steps: []\n  lint:\n    name: null\n  test_x:\n    steps: []\n  ci-passed:\n    name: CI passed\n    needs: [ build ,lint,, ]\n"
+   },
+   "declQuality": {
+    "text": "{\"rules\": [{\"type\": \"required_status_checks\", \"parameters\": {\"required_status_checks\": [{\"integration_id\": 15368, \"context\": \"PR title\"}, {\"context\": \"CI passed\", \"integration_id\": 15368}]}}, {\"type\": \"deletion\"}]}"
+   },
+   "declPrTitle": {
+    "text": "jobs:\n  a:\n    uses:\ttarotene/dotfiles/.github/workflows/pr-title.yml@v2\n"
+   },
+   "renovateJson5": {
+    "text": "{\n // c\n extends: [\"github>tarotene/dotfiles//renovate/policy#v1\"],\n \"note\": \"github>tarotene/dotfiles//renovate/policy\"\n}"
+   },
+   "renovateDashboard": {
+    "totalCount": 0
+   },
+   "latestRelease": {
+    "nodes": [
+     {
+      "createdAt": "2024-01-01T00:00:00Z"
+     }
+    ]
+   },
+   "openIssueActivity": {
+    "totalCount": 2,
+    "nodes": [
+     {
+      "updatedAt": "2025-06-01T00:00:00Z"
+     }
+    ]
+   },
+   "routinesDir": {
+    "entries": [
+     {
+      "name": "a.json"
+     }
+    ]
+   }
+  },
+  "r2": {
+   "readme": {
+    "text": "\n\n"
+   },
+   "contributing": {
+    "text": "## Issues\n## Pull requests\n## Issues\n"
+   },
+   "claudeMd": {
+    "text": "nothing\n"
+   },
+   "agentsMd": {
+    "text": "\n"
+   },
+   "rootTree": null,
+   "claudeSkillsDir": {},
+   "pyprojectToml": {
+    "id": "p"
+   },
+   "workflowsDir": {
+    "entries": [
+     {
+      "name": "ci.yml"
+     },
+     {
+      "name": "pr-title.yml"
+     }
+    ]
+   },
+   "declCi": {
+    "text": "\n"
+   },
+   "renovateJson": {
+    "text": "{\"extends\": \":disableDependencyDashboard github>tarotene/dotfiles//renovate/policy\"}"
+   },
+   "declSecurity": {
+    "text": "{}"
+   },
+   "declQuality": {},
+   "declWorkflow": {
+    "text": "\n"
+   },
+   "latestRelease": {
+    "nodes": []
+   },
+   "openIssueActivity": {
+    "totalCount": 0,
+    "nodes": []
+   }
+  },
+  "r3": {
+   "readme": {
+    "text": "Intro without h1\n# regcode\n#start\n"
+   },
+   "contributing": {
+    "text": "x"
+   },
+   "rootTree": {
+    "entries": []
+   },
+   "workflowsDir": {
+    "entries": [
+     {
+      "name": "ci.yml"
+     },
+     {
+      "name": "pr-title.yml"
+     },
+     {
+      "name": "release-plz.yml"
+     },
+     {
+      "name": "release-please.yml"
+     }
+    ]
+   },
+   "declSecurity": {
+    "text": "{\"name\": \"Security\", \"target\": \"branch\", \"enforcement\": \"active\", \"conditions\": {\"ref_name\": {\"include\": [\"~ALL\"], \"exclude\": []}}, \"rules\": [{\"type\": \"non_fast_forward\"}, {\"type\": \"deletion\"}], \"bypass_actors\": []}"
+   },
+   "declQuality": {
+    "text": "[1,2]"
+   },
+   "declWorkflow": {
+    "text": "{\"name\": \"Workflow\", \"rules\": [{\"type\": \"pull_request\"}]}"
+   },
+   "declReview": {
+    "text": "{\"name\": \"Review\", \"target\": \"branch\", \"enforcement\": \"active\", \"conditions\": null, \"bypass_actors\": null, \"rules\": []}"
+   },
+   "declCi": {
+    "text": "name: ci\njobs:\n  only:\n    name: Only\n"
+   },
+   "routinesDir": {
+    "entries": [
+     {
+      "name": "x.json"
+     }
+    ]
+   }
+  },
+  "r4": {
+   "readme": {
+    "text": "# known.site\n\n**Known** site.\n"
+   },
+   "workflowsDir": null,
+   "packageJson": {
+    "text": "[1]"
+   }
+  },
+  "r5": {},
+  "r6": null
+ }
+}

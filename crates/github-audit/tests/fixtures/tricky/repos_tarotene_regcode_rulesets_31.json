@@ -1,0 +1,1 @@
+{"id": 31, "name": "Security", "target": "branch", "enforcement": "active", "source": "x", "conditions": {"ref_name": {"include": ["~ALL"], "exclude": []}}, "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}], "bypass_actors": []}
