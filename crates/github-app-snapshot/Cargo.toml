@@ -1,0 +1,17 @@
+[package]
+name = "github-app-snapshot"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# jq の値の読み書き(キー順を保つ parse_ordered / j_get)は github-audit の
+# jq モジュールを再利用する(複製しない)。出力 JSON のキー順は bash 版の
+# `jq -c` と一致させる必要があり、serde_json::Value は辞書順に並べ替えるため。
+[dependencies]
+github-audit = { version = "0.1.0", path = "../github-audit" }
+hook-io = { version = "0.1.0", path = "../hook-io" }
+tempfile = "3.27.0"
+
+[dev-dependencies]
+serde_json = "1.0.151"
