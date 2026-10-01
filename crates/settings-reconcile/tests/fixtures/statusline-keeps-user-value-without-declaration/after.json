@@ -1,0 +1,7 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "mine",
+    "padding": 2
+  }
+}

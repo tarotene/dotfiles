@@ -1,0 +1,15 @@
+[
+ [
+  "claude-hooks",
+  {
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "Edit",
+     "command": "guard",
+     "timeout": 15
+    }
+   ]
+  }
+ ]
+]

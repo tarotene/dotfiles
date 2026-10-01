@@ -1,0 +1,24 @@
+[
+ [
+  "claude-mcp-servers",
+  {
+   "remote": {
+    "type": "http",
+    "url": "https://new.example.invalid"
+   },
+   "esa": {
+    "command": "esa",
+    "args": [
+     "b",
+     "c"
+    ],
+    "env": {
+     "K": "V"
+    }
+   },
+   "added": {
+    "command": "z"
+   }
+  }
+ ]
+]

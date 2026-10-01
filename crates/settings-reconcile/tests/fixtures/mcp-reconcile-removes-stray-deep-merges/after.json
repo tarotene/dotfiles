@@ -1,0 +1,34 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "remote": {
+      "type": "http",
+      "url": "https://new.example.invalid",
+      "oauth": {
+        "token": "t"
+      }
+    },
+    "esa": {
+      "command": "esa",
+      "args": [
+        "b",
+        "c"
+      ],
+      "env": {
+        "K": "V"
+      }
+    },
+    "added": {
+      "command": "z"
+    }
+  },
+  "projects": {
+    "/p": {
+      "mcpServers": {
+        "proj": {
+          "command": "y"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+[
+ [
+  "copilot-hooks",
+  "sessionStart",
+  "report-cmd",
+  "10",
+  "userPromptSubmitted",
+  "report-cmd",
+  "10",
+  "agentStop",
+  "report-cmd",
+  "10",
+  "sessionEnd",
+  "clear-cmd",
+  "10"
+ ]
+]

@@ -1,0 +1,14 @@
+[
+ [
+  "claude-hooks",
+  {
+   "retire": [
+    {
+     "event": "Stop",
+     "command": "gone"
+    }
+   ],
+   "register": []
+  }
+ ]
+]

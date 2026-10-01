@@ -1,0 +1,11 @@
+[
+ [
+  "claude-statusline",
+  {
+   "desired": "",
+   "retired": [
+    "old-sl"
+   ]
+  }
+ ]
+]

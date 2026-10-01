@@ -1,0 +1,7 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "sl-cmd",
+    "padding": 2
+  }
+}

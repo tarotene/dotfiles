@@ -1,0 +1,14 @@
+[
+ [
+  "claude-hooks",
+  {
+   "register": [
+    {
+     "event": "Stop",
+     "command": "a",
+     "timeout": 10
+    }
+   ]
+  }
+ ]
+]

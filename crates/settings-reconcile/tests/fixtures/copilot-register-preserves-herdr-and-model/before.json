@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "bash": "herdr-existing",
+        "timeoutSec": 10
+      }
+    ]
+  },
+  "model": "claude-opus-5"
+}

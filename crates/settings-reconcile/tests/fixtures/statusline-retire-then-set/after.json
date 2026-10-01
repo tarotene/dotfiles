@@ -1,0 +1,7 @@
+{
+  "model": "x",
+  "statusLine": {
+    "type": "command",
+    "command": "sl-cmd"
+  }
+}

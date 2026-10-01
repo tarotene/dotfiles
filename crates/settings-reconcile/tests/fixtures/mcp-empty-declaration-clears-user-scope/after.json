@@ -1,0 +1,13 @@
+{
+  "numStartups": 3,
+  "mcpServers": {},
+  "projects": {
+    "/p": {
+      "mcpServers": {
+        "proj": {
+          "command": "y"
+        }
+      }
+    }
+  }
+}

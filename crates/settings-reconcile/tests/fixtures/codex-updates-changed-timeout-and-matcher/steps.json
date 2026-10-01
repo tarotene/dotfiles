@@ -1,0 +1,9 @@
+[
+ [
+  "codex-hooks",
+  "PreToolUse",
+  "Bash|mcp__.*",
+  "guard",
+  "20"
+ ]
+]

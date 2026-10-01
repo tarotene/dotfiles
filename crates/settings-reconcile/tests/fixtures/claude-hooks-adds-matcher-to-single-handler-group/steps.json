@@ -1,0 +1,15 @@
+[
+ [
+  "claude-hooks",
+  {
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash",
+     "command": "guard",
+     "timeout": 10
+    }
+   ]
+  }
+ ]
+]

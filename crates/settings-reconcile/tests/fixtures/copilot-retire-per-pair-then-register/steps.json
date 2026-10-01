@@ -1,0 +1,15 @@
+[
+ [
+  "copilot-hooks",
+  "--retire",
+  "userPromptSubmitted",
+  "report-cmd",
+  "--retire",
+  "sessionStart",
+  "new-report-cmd",
+  "--register",
+  "userPromptSubmitted",
+  "final-cmd",
+  "10"
+ ]
+]

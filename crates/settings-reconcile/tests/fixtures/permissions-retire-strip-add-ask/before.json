@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(old *)",
+      "Bash(keep *)",
+      "Bash(git -C * add *)",
+      "Bash(git *)"
+    ],
+    "deny": [
+      "Bash(rm *)"
+    ],
+    "ask": [
+      "Bash(old ask *)"
+    ]
+  },
+  "model": "x"
+}

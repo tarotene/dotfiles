@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "guard",
+        "timeoutSec": 20
+      }
+    ]
+  },
+  "model": "m"
+}

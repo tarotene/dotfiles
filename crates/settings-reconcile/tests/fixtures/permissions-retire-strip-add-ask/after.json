@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(keep *)",
+      "Bash(git *)",
+      "Bash(new *)",
+      "Bash(git * )"
+    ],
+    "deny": [
+      "Bash(rm *)"
+    ],
+    "ask": [
+      "Bash(sudo *)"
+    ]
+  },
+  "model": "x"
+}
