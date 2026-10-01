@@ -12,14 +12,7 @@
 //! 両方に向けることで、転記ミスというバグ源を持ち込まない。
 
 /// fixture を bash 版に向けている hook/CLI(bin 名, リポジトリ相対パス)。
-pub const BASH_ORACLES: &[(&str, &str)] = &[
-    (
-        "external-send-guard",
-        "config/claude/hooks/external-send-guard.sh",
-    ),
-    (
-        "plan-precedent-gate",
-        "config/claude/hooks/plan-precedent-gate.sh",
-    ),
-    ("plan-scope-gate", "config/claude/hooks/plan-scope-gate.sh"),
-];
+pub const BASH_ORACLES: &[(&str, &str)] = &[(
+    "external-send-guard",
+    "config/claude/hooks/external-send-guard.sh",
+)];
