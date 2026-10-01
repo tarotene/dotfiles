@@ -35,6 +35,11 @@ HEAD(`gh pr create` の場合)または編集対象 PR の head(`gh pr edit --ba
 の場合)が、他の open PR のコミットを祖先として含むなら、`base` はその
 PR の head branch でなければならない。
 
+HEAD は PreToolUse の時点、つまり Bash コマンドを**実行する前**に読む。
+`git commit ... && gh pr create ...` を 1 回の呼び出しで流すと、commit
+前の HEAD で判定されるため、意図と違う判定になりうる。commit と
+`gh pr create` は別の呼び出しにする(`stacked-pr` スキル §3、#657)。
+
 この検査は**セッション状態を一切持たない** — `gh pr list` で取得した
 open PR の `headRefOid` それぞれについて、ローカルに実在すること
 (`git cat-file -e`)を確かめた上で `git merge-base --is-ancestor` で

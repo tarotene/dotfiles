@@ -200,8 +200,9 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   later change references an earlier PR's output, or edits the same section
   of the same file, base it on the parent branch instead. Full rationale +
   how-to: the `stacked-pr` skill's design doc and the skill itself.
-  A `Stack: <n>/<total> (base: #<parent>)` line goes next to `Closes #N` /
-  `No-Issue:` when stacking; the PR-completion gate does not check it.
+  A `Stack: base #<parent>` line (no stage count — it goes stale, #657)
+  goes next to `Closes #N` / `No-Issue:` when stacking; the PR-completion
+  gate does not check it.
 - Every PR body follows a 5-section skeleton (full rationale + how-to: the
   `pr-description` skill's design doc and the skill itself):
   ```

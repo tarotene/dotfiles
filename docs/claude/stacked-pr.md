@@ -141,11 +141,19 @@ stack-base-guard.md` / `docs/claude/pr-gate.md` を参照。
 
 ## `Stack:` 行を `pr-description` のスケルトンに追加した理由
 
-stack の位置(第 k/N 段、親は #M)は GitHub の PR 画面が base branch として
-表示するので、本来は省略できる。しかし親 PR がマージされて auto-retarget
-された後は、UI からも stack だった履歴が消える。1 行のコストで
-`Stack: <段番号>/<総段数> (base: #<親PR番号>)` を残すことで、レビュー時と
-マージ後の両方で stack の全体像が本文だけから読み取れるようにした。
+stack の親(#M)は GitHub の PR 画面が base branch として表示するので、
+本来は省略できる。しかし親 PR がマージされて auto-retarget された後は、
+UI からも stack だった履歴が消える。1 行のコストで
+`Stack: base #<親PR番号>` を残すことで、マージ後も親をたどれるようにした。
+
+当初は `Stack: <段番号>/<総段数> (base: #<親PR番号>)` と段番号・総段数も
+書いていたが、総段数は後から段が増えるたびに古くなり、作成済みの段の
+本文を毎回手で書き直すことになった(#657、8 段の stack で 1 本が土台を
+取り違えた)。git-town の proposal-breadcrumb や ghstack のように、総段数入り
+の一覧を全 PR に書き戻すツールを持たない以上、ずれる値そのものを消す方を
+採った(2026-10-01)。親番号は作成時に決まって変わらない。段の全体像は
+`gh stack link` の stack map が正本になる。自動書き換えの CLI を新設する
+案と、`stack-base-guard.sh` に base を自動補正させる案は見送った。
 `pr-gate.sh` はこの行を検査しない(人間とレビュアーのための注記であり、
 機械強制の対象ではない)。
 
