@@ -500,8 +500,19 @@ let
   # 参照しないため、Codex にも同じファイルを adapter 無しで直接登録する
   # (ADR-0032 Amendment #531)。
   codexPrGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
-  gitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
-  gitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
+  # #416 (ADR-0024 Stage 4c): git/worktree 系の hook は Rust バイナリ
+  # (crates/git-worktree-allow など、pkgs.dotfiles-tools)になり、下の
+  # home.file が ~/.claude/hooks/<name>(拡張子無し)として配備する。bash を
+  # 介さず直接起動する。旧 `bash '….sh'` の command は retiredHookEntries /
+  # --retire で完全一致削除する(legacy*Cmd)。
+  gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
+  gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
+  legacyGitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
+  legacyGitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
+  legacyCodexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
+  legacyWorktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
+  legacyWorktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
+  legacyWorktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   # 上流(tarotene/bleep、旧 tarotene/publish-guard、ADR-0009)は #25-28
   # (Rust hook cutover + rename)で旧 3 adapter(claude-adapter.sh/
   # adapters/{codex,copilot}-adapter.sh)を廃止し、単一 shim
@@ -556,9 +567,9 @@ let
   copilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
   herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
   statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
-  worktreeFreshBaseCmd = "bash '${hooksDir}/worktree-fresh-base.sh'";
-  worktreeCreateGuardCmd = "bash '${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
-  worktreeAuditContextCmd = "bash '${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
+  worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
+  worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
+  worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "bash '${hooksDir}/plan-scope-gate.sh'";
   planPrecedentGateCmd = "bash '${hooksDir}/plan-precedent-gate.sh'";
   planFreshGateCmd = "bash '${hooksDir}/plan-fresh-gate.sh'";
@@ -586,7 +597,9 @@ let
   # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
   # Amendment #531)。attribution-guard/pr-title-guard の Codex adapter と
   # 同じく ~/.codex/hooks/ 直下に置く(source 先の解決は #602 を参照)。
-  codexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
+  # #416: Codex adapter(bash)は廃止し、同じ Rust バイナリを --host codex で
+  # 直接登録する。
+  codexGitStashGuardCmd = "'${hooksDir}/git-stash-guard' --host codex";
   codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
   codexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
   # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
@@ -729,6 +742,29 @@ let
     {
       event = "PreToolUse";
       command = legacyBleepClaudeCmdUnprefixed;
+    }
+    # #416 (ADR-0024 Stage 4c): git/worktree 系 hook の bash 版 → Rust 版。
+    # register() の存在判定は command の完全一致だけなので、旧 command を
+    # 先に削除しないと旧エントリが消えたパスを指したまま残る。
+    {
+      event = "PreToolUse";
+      command = legacyGitWorktreeAllowCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyGitStashGuardCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacyWorktreeFreshBaseCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyWorktreeCreateGuardCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacyWorktreeAuditContextCmd;
     }
   ];
 
@@ -1538,13 +1574,9 @@ in
   };
 
   # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
-  # Codex CLI 版 adapter — ~/.claude/hooks/git-stash-guard.sh を $HOME 基準
-  # で辿る(#602)。Copilot 版は未展開(#161、
+  # Codex 用の adapter ファイルは #416 で廃止し、Rust バイナリを --host codex
+  # で直接登録する(codexGitStashGuardCmd)。Copilot 版は未展開(#161、
   # MCP tool 名の命名規則が未確認なため attribution-guard 系のみ先行)。
-  home.file.".codex/hooks/git-stash-guard.sh" = {
-    source = repoConfig + "/codex/hooks/git-stash-guard.sh";
-    executable = true;
-  };
 
   # stack-base-guard(ADR-0027 Amendment #531): Codex CLI 版 adapter。
   home.file.".codex/hooks/stack-base-guard.sh" = {
@@ -1613,10 +1645,8 @@ in
 
   # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
   # fast-forward する SessionStart hook。
-  home.file.".claude/hooks/worktree-fresh-base.sh" = {
-    source = repoConfig + "/claude/hooks/worktree-fresh-base.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/worktree-fresh-base".source =
+    "${pkgs.dotfiles-tools}/bin/worktree-fresh-base";
 
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
@@ -1625,15 +1655,10 @@ in
     executable = true;
   };
   # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
-  home.file.".claude/hooks/git-worktree-allow.sh" = {
-    source = repoConfig + "/claude/hooks/git-worktree-allow.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/git-worktree-allow".source =
+    "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
-  home.file.".claude/hooks/git-stash-guard.sh" = {
-    source = repoConfig + "/claude/hooks/git-stash-guard.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
   # bleep(旧 publish-guard): 会社/private リポジトリの実名が PUBLIC な面に
   # 漏れるのを防ぐ PreToolUse hook。上流を別リポジトリ tarotene/bleep に
   # 切り出し(ADR-0009)、flake input(pinned rev)からツリーごと配備する。
@@ -1749,6 +1774,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPkexecGuardHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire PreToolUse ${lib.escapeShellArg legacyCodexGitStashGuardCmd} \
+          --register \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexStackBaseGuardCmd} 20 \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexRulesetsWriteGuardCmd} 10 \
@@ -1763,6 +1790,8 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
+          --register \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \

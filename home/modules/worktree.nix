@@ -13,8 +13,15 @@ let
   # auto-prune timer below has to reference its path too.
   pruneBranchesPath = "${config.home.homeDirectory}/.local/bin/git-prune-branches";
   guardPath = "${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard";
-  guardCmd = "bash '${guardPath}'";
-  contextCmd = "bash '${auditPath}' --context";
+  # The Rust ports (#416, crates/git-audit-worktrees and
+  # crates/git-worktree-create-guard) are native executables, so these hook
+  # commands run them directly rather than through `bash`.
+  guardCmd = "'${guardPath}'";
+  contextCmd = "'${auditPath}' --context";
+  # 旧(bash 経由)の command 文字列。register は command の完全一致で存在判定
+  # するので、先に --retire で消さないと旧エントリが残る。
+  legacyGuardCmd = "bash '${guardPath}'";
+  legacyContextCmd = "bash '${auditPath}' --context";
 
   registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
     builtins.readFile ../../scripts/register-codex-hooks
@@ -32,7 +39,7 @@ let
   # flock(1): Linux ships it via util-linux (already pulled in below). darwin
   # has no native flock, so pkgs.flock (discoteq/flock, a portable C
   # reimplementation, meta.platforms = platforms.all) is added there instead —
-  # scripts/git-audit-worktrees needs no changes either way, `flock` just
+  # crates/git-audit-worktrees needs no changes either way, `flock` just
   # resolves to whichever provider is on PATH per platform.
   flockPkg = if pkgs.stdenv.isDarwin then pkgs.flock else pkgs.util-linux;
 
@@ -87,38 +94,37 @@ in
 {
   home.packages = [ flockPkg ];
 
-  home.file.".local/bin/git-audit-worktrees" = {
-    source = ../../scripts/git-audit-worktrees;
-    executable = true;
-  };
+  # The three CLIs below and the guard are Rust (ADR-0024, #416): the stable
+  # ~/.local/bin / ~/.local/libexec paths the systemd units, launchd agents
+  # and git's `git-<subcommand>` lookup rely on stay, but now point at the
+  # crane-built binary in pkgs.dotfiles-tools instead of a bash script.
+  home.file.".local/bin/git-audit-worktrees".source =
+    "${pkgs.dotfiles-tools}/bin/git-audit-worktrees";
   # git-prune-worktrees: the checkout-deleting half of the pair (docs/worktree-lifecycle.md).
   # Deployed as a plain ~/.local/bin executable — same "no alias needed"
   # placement as git-shelve/git-prune-branches (home/modules/packages.nix) —
   # rather than here as one more xdg.configFile, since its default
   # (confirmation-prompting) mode is user-invoked. Its --auto mode is what
   # the git-auto-prune timer below calls; that mode has no prompt.
-  home.file.".local/bin/git-prune-worktrees" = {
-    source = ../../scripts/git-prune-worktrees;
-    executable = true;
-  };
-  home.file.".local/libexec/git-worktree-create-guard" = {
-    source = ../../scripts/git-worktree-create-guard;
-    executable = true;
-  };
+  home.file.".local/bin/git-prune-worktrees".source =
+    "${pkgs.dotfiles-tools}/bin/git-prune-worktrees";
+  home.file.".local/libexec/git-worktree-create-guard".source =
+    "${pkgs.dotfiles-tools}/bin/git-worktree-create-guard";
   # git-checkout-freshness: fetch + `merge --ff-only` a parent checkout onto
   # origin/<base> when clean and on the default branch (docs/claude/
   # git-checkout-freshness.md) — the one-level-up companion to
-  # config/claude/hooks/worktree-fresh-base.sh, which does the same for a
+  # worktree-fresh-base (crates/worktree-fresh-base), which does the same for a
   # pristine *worktree*.
-  home.file.".local/bin/git-checkout-freshness" = {
-    source = ../../scripts/git-checkout-freshness;
-    executable = true;
-  };
+  home.file.".local/bin/git-checkout-freshness".source =
+    "${pkgs.dotfiles-tools}/bin/git-checkout-freshness";
 
   # Codex owns hooks.json at runtime, as Herdr's integration does. Merge only
   # our two commands and preserve all unrelated entries.
   home.activation.registerCodexWorktreeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+      --retire PreToolUse ${lib.escapeShellArg legacyGuardCmd} \
+      --retire SessionStart ${lib.escapeShellArg legacyContextCmd} \
+      --register \
       PreToolUse Bash ${lib.escapeShellArg guardCmd} 10 \
       SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg contextCmd} 30
   '';
@@ -142,7 +148,7 @@ in
           pkgs.coreutils
           pkgs.findutils
           pkgs.git
-          pkgs.gnused # scripts/git-audit-worktrees の `sed -n 's#^worktree ##p'`
+          pkgs.gnused # crates/git-audit-worktrees の `sed -n 's#^worktree ##p'`
           pkgs.jq
           pkgs.util-linux
           pkgs.herdr

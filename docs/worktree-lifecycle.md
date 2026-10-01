@@ -199,9 +199,9 @@ C1/C2/C3・`--dry-run`・TOCTOU・log.tsv への記録を確認する `selftest_
 の2関数を続けて実行する。
 
 ```bash
-scripts/git-audit-worktrees --selftest
-scripts/git-prune-worktrees --selftest
-scripts/git-prune-branches --selftest
-scripts/git-worktree-create-guard --selftest
+crates/git-audit-worktrees --selftest
+crates/git-prune --selftest
+crates/git-prune --selftest
+crates/git-worktree-create-guard --selftest
 scripts/register-codex-hooks --selftest
 ```

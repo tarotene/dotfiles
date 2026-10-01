@@ -2,7 +2,7 @@
 
 herdr worktree を**外から**駆動する `git -C <worktree> <サブコマンド>` を、
 permission rule ではなく PreToolUse hook でプログラム的に許可する。
-実装は `config/claude/hooks/git-worktree-allow.sh`(配備先 `~/.claude/hooks/`)、
+実装は `crates/git-worktree-allow`(配備先 `~/.claude/hooks/`)、
 登録は `home/modules/claude.nix` の `registerHooks`。
 
 ## なぜルールではなく hook か

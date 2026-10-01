@@ -4,11 +4,11 @@ stash スタックは git ではリポジトリ単位で、herdr が worktree �
 単位ではない**。実測で dotfiles だけで 9 個の herdr worktree が同時に存在していた
 ——それらは全て同じ stash スタックを共有する。素の `git stash pop` / `git stash apply`
 （SHA 無し）は、直前に別セッションが積んだ WIP を自分のものと取り違えて適用する。
-実装は `config/claude/hooks/git-stash-guard.sh`(配備先 `~/.claude/hooks/`)、
+実装は `crates/git-stash-guard`(配備先 `~/.claude/hooks/`)、
 登録は `home/modules/claude.nix` の `registerHooks`。
 
-deny 側の代替として `git shelve` / `git unshelve`(`scripts/git-shelve` /
-`scripts/git-unshelve`、配備先 `~/.local/bin/`)を用意している。worktree の絶対パス
+deny 側の代替として `git shelve` / `git unshelve`(`crates/git-shelve` /
+`crates/git-shelve`、配備先 `~/.local/bin/`)を用意している。worktree の絶対パス
 をタグとして自分の entry だけを解決するラッパーで、詳細は下の「舗装路: `git
 shelve` / `git unshelve`」を参照。
 
@@ -115,7 +115,7 @@ Claude 自身が生成するコマンドなので許容している。
 deny 案内が当初示していた公認フロー(list → SHA 確認 → apply → drop)は、
 `git stash drop <SHA>` を git 自身が拒否するために**成立しない**(上の
 「deny / 通す の境界」の注意参照)。ガードは正しく安全側に倒れているが、
-安全な代替が事実上無かった。`scripts/git-shelve` / `scripts/git-unshelve`
+安全な代替が事実上無かった。`crates/git-shelve` / `crates/git-shelve`
 (配備先 `~/.local/bin/`、`home/modules/packages.nix`)はこの穴を埋める:
 
 - `git shelve [<メモ>]` — `git stash push -u -m "shelve:<worktree絶対パス>:

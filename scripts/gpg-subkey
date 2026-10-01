@@ -927,7 +927,7 @@ cmd_remind() {
 # against a throwaway, empty-passphrase primary key in an isolated GNUPGHOME —
 # not stubbed, since the addkey/revkey command-file mechanics are exactly
 # what needs validating (same "real operations in a fixture dir" precedent
-# as scripts/git-audit-worktrees' --selftest uses real git repos). The one
+# as crates/git-audit-worktrees' --selftest uses real git repos). The one
 # exception is the on-disk/card-backed filter regression test (#252,
 # R1-B-1): a real smartcard can't be faked in a fixture, so that check feeds
 # synthetic `--with-colons` text through a stub gpg binary instead — the

@@ -542,40 +542,16 @@ jobs:
       - name: obsidian-backup --selftest
         run: ./scripts/obsidian-backup --selftest
 
-      # A deleted checkout must be detected without deleting its branch; hook
-      # registration must remain idempotent beside Herdr's own Codex hook.
-      # git-audit-worktrees/git-prune-worktrees each run two selftest
-      # functions internally (upstream-tracking + --evidence/--auto);
-      # git-prune-branches --selftest is new here (ADR, auto-prune).
-      - name: Worktree lifecycle self-tests
+      # Hook registration must remain idempotent beside Herdr's own Codex hook.
+      # The git/worktree CLIs and hooks that used to be tested here
+      # (git-audit-worktrees, git-prune-{worktrees,branches}, git-worktree-
+      # create-guard, git-stash-guard, git-worktree-allow, worktree-fresh-base,
+      # git-checkout-freshness, git-shelve/unshelve) are Rust now (#416, ADR-0024
+      # Stage 4c); their cases run as `cargo test --workspace` in the rust job.
+      - name: Hook registration self-tests
         run: |
-          ./scripts/git-audit-worktrees --selftest
-          ./scripts/git-prune-worktrees --selftest
-          ./scripts/git-prune-branches --selftest
-          ./scripts/git-worktree-create-guard --selftest
           ./scripts/register-codex-hooks --selftest
           ./scripts/register-copilot-hooks --selftest
-
-      # Git/worktree PreToolUse and SessionStart hooks plus the parent-checkout
-      # freshness timer (#390). Each selftest builds its own throwaway git
-      # repositories (or a HERDR_WORKTREES_DIR fixture) — no network involved.
-      - name: git-stash-guard.sh --selftest
-        run: bash ./config/claude/hooks/git-stash-guard.sh --selftest
-
-      # ADR-0032 Amendment (#531): the Codex adapter sources the engine above
-      # and translates Codex's PreToolUse I/O the same way attribution-guard's
-      # adapter does.
-      - name: git-stash-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/git-stash-guard.sh --selftest
-
-      - name: git-worktree-allow.sh --selftest
-        run: bash ./config/claude/hooks/git-worktree-allow.sh --selftest
-
-      - name: worktree-fresh-base.sh --selftest
-        run: bash ./config/claude/hooks/worktree-fresh-base.sh --selftest
-
-      - name: git-checkout-freshness --selftest
-        run: ./scripts/git-checkout-freshness --selftest
 
       # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
       # invariant is "never read an incomplete check set as green" against a

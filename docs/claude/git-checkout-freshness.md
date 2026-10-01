@@ -1,7 +1,7 @@
 # 親チェックアウトの鮮度を保つ systemd user timer
 
 herdr の Workspace Fork(≒新規 worktree の作成)は親チェックアウトの HEAD を
-そのまま使い、fetch を挟まない。`config/claude/hooks/worktree-fresh-base.sh`
+そのまま使い、fetch を挟まない。`crates/worktree-fresh-base`
 はこの問題の一段下 — 「まだ何も積んでいない pristine な worktree」を
 SessionStart で origin/`<base>` へ fast-forward する — を既に解決している
 (`docs/claude/worktree-fresh-base.md`)。この doc が説明するのはその一段上、
@@ -50,6 +50,6 @@ worktree-fresh-base.sh と同じ: fetch とチェックの間に何かコミッ�
 ## 参照
 
 - 一段下(worktree 側)の対応: `docs/claude/worktree-fresh-base.md`
-- 実装: `scripts/git-checkout-freshness`(`--selftest` あり)
+- 実装: `crates/git-checkout-freshness`(`--selftest` あり)
 - 配線: `home/modules/worktree.nix`(systemd.user.services/timers、
   darwin 向けの launchd.agents も同一ファイルに定義)

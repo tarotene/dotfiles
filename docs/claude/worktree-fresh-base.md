@@ -9,7 +9,7 @@ N コミット遅れています」)で伝えるが、**ブランチ自体は動
 だった。
 
 一方で「まだ何も積んでいない、正真正銘そのままの worktree」は履行歴を持たず、
-動かしても失うものが無い。この hook(`config/claude/hooks/worktree-fresh-base.sh`,
+動かしても失うものが無い。この hook(`crates/worktree-fresh-base`,
 SessionStart)はその一点だけを能動的に解消する: 条件を満たす worktree に限り
 `git merge --ff-only` で origin/`<base>` へ黙って揃える。
 
@@ -38,9 +38,9 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 
 実測(2026-09-23)時点で 2 クラスタ・計 6 箇所:
 
-- **byte-identical(4 箇所)**: `config/claude/hooks/worktree-fresh-base.sh`、
+- **byte-identical(4 箇所)**: `crates/worktree-fresh-base`、
   `config/claude/hooks/plan-fresh-gate.sh`、`config/claude/hooks/pr-gate.sh`、
-  `scripts/git-checkout-freshness`。いずれも
+  `crates/git-checkout-freshness`。いずれも
   `git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD` を素の
   `${ref#origin/}` で剥がすだけの実装。
 - **variant(2 箇所)**: `config/claude/hooks/stack-base-guard.sh`、

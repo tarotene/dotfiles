@@ -1,0 +1,20 @@
+[package]
+name = "git-shelve"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# git-shelve / git-unshelve は同じタグ書式(`shelve:<toplevel>:`)と同じ
+# ロックファイル(`claude-shelve.lock`)を共有するので 1 クレートに 2 bin
+# (git が `git shelve` / `git unshelve` として解決する)。
+[[bin]]
+name = "git-shelve"
+path = "src/bin/git-shelve.rs"
+
+[[bin]]
+name = "git-unshelve"
+path = "src/bin/git-unshelve.rs"
+
+[dev-dependencies]
+tempfile = "3.27.0"

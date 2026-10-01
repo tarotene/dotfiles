@@ -130,8 +130,8 @@ GitHub の状態に依存する)。そのため取り戻し経路(C2 は main �
 
 ### D8: 実装は新しい Rust crate ではなく既存の bash 3本を拡張する
 
-`scripts/git-audit-worktrees` / `scripts/git-prune-worktrees` /
-`scripts/git-prune-branches` を拡張する。ADR-0024 は新規の hook/CLI に
+`crates/git-audit-worktrees` / `crates/git-prune` /
+`crates/git-prune` を拡張する。ADR-0024 は新規の hook/CLI に
 Rust を既定とするが、既存スクリプトは個別の移行 Issue が消化するまで
 bash のまま残るという漸進方針(`docs/adr/0024-hook-cli-scripts-target-rust.md`)
 に従う。Rust に複写すると、ガード(herdr open・shelve・dirty)の
@@ -154,12 +154,12 @@ bash のまま残るという漸進方針(`docs/adr/0024-hook-cli-scripts-target
 
 ## Consequences
 
-- `scripts/git-audit-worktrees`: `--evidence` モードを追加(C1/C2/C3
+- `crates/git-audit-worktrees`: `--evidence` モードを追加(C1/C2/C3
   検出、`gh` 呼び出しはここに限定)。既存の `is_shelved` の grep 依存・
   Herdr 到達性ガードの fail-open バグも同時に修正した(段1)。
-- `scripts/git-prune-worktrees`: `--auto` モードを追加(`--evidence` の
+- `crates/git-prune`: `--auto` モードを追加(`--evidence` の
   worktree 行を消費し、確認なしで削除)。
-- `scripts/git-prune-branches`: `--auto`/`--dry-run`/`--selftest` を
+- `crates/git-prune`: `--auto`/`--dry-run`/`--selftest` を
   新規に追加(元は無条件・無テストの1本スクリプトだった)。
 - `home/modules/worktree.nix`: `git-auto-prune` の systemd timer
   (Linux)と 2 本の launchd agent(darwin、worktree 用・branch 用を
@@ -178,18 +178,18 @@ bash のまま残るという漸進方針(`docs/adr/0024-hook-cli-scripts-target
 
 ## 執行点
 
-- scripts/git-audit-worktrees
-- scripts/git-prune-worktrees
-- scripts/git-prune-branches
+- crates/git-audit-worktrees
+- crates/git-prune
+- crates/git-prune
 - home/modules/worktree.nix
 
 ## Verification
 
-- `scripts/git-audit-worktrees --selftest`(`selftest` + `selftest_evidence`
+- `crates/git-audit-worktrees --selftest`(`selftest` + `selftest_evidence`
   の2関数、C1/C2/C3・herdr 到達不能・gh 失敗・shallow・detached HEAD を
   網羅)。
-- `scripts/git-prune-worktrees --selftest`(`selftest` + `selftest_auto`)。
-- `scripts/git-prune-branches --selftest`(`selftest` + `selftest_auto`、
+- `crates/git-prune --selftest`(`selftest` + `selftest_auto`)。
+- `crates/git-prune --selftest`(`selftest` + `selftest_auto`、
   新規)。
 - `nix flake check --all-systems --no-build` で vega/arcturus/altair
   いずれの評価も通ることを確認済み。

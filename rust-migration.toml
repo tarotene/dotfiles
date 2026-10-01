@@ -116,7 +116,7 @@ extra = ["bootstrap.sh"]
 # 共有する設計上、github-audit 自体が Rust 化されるまでは同じ理由で bash
 # のまま追加した — `pr-merge-settings-check`/`pr-title-context-check` と
 # 同型の判断。
-max_remaining = 71
+max_remaining = 60
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -243,53 +243,6 @@ stage = "4b"
 [[target]]
 path = "config/codex/hooks/codex-plan-gate.sh"
 stage = "4b"
-
-# --- Stage 4c ---
-[[target]]
-path = "config/claude/hooks/git-stash-guard.sh"
-stage = "4c"
-
-# ADR-0032 Amendment (#531): Codex adapter, mirrors its Claude counterpart's
-# stage above.
-[[target]]
-path = "config/codex/hooks/git-stash-guard.sh"
-stage = "4c"
-
-[[target]]
-path = "config/claude/hooks/git-worktree-allow.sh"
-stage = "4c"
-
-[[target]]
-path = "config/claude/hooks/worktree-fresh-base.sh"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-worktree-create-guard"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-checkout-freshness"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-audit-worktrees"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-prune-worktrees"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-prune-branches"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-shelve"
-stage = "4c"
-
-[[target]]
-path = "scripts/git-unshelve"
-stage = "4c"
 
 # --- Stage 4d ---
 [[target]]
