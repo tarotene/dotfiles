@@ -256,8 +256,8 @@
   うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは
   「非 `.md` かつ `docs/` 配下でない」の 2 述語のみで、パス分類台帳を持た
   ない。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格
-  側に倒して検算)。判定エンジンは `scripts/decision-colocation-check`
-  (CI required check + client guard が共有)。`gh pr create` 後に番号を
+  側に倒して検算)。判定エンジンは `crates/decision-colocation` の
+  `check::run_check`(CI required check + client guard が共有)。`gh pr create` 後に番号を
   導入 PR の番号へ改番する(ADR-380)。
 - [ADR-436](adr/436-single-releaser-github-app.md) — releaser 用 GitHub
   App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
@@ -461,8 +461,9 @@ Design and rationale for the hooks and commands deployed from
 - [`decision-colocation.md`](claude/decision-colocation.md) — ADR-396:
   決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
   `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
-  判定エンジンは `scripts/decision-colocation-check`(CI required check +
-  client guard `decision-colocation-guard.sh` が共有)。
+  判定エンジンは `crates/decision-colocation` の `check::run_check`(CI
+  required check の `decision-colocation-check` + client guard
+  `decision-colocation-guard` が共有)。
 - [`repo-create-guard.md`](claude/repo-create-guard.md) — PreToolUse hook
   (ADR-0013 Amendment 2026-09-29): `gh repo create` / `gh api -X POST
   user/repos`・`orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの

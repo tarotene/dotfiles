@@ -2,6 +2,7 @@
 
 実装: `crates/guard-core`(ライブラリ)
 最初の利用者: `crates/attribution-guard`([`attribution-guard.md`](attribution-guard.md))
+2 番目の利用者: `crates/decision-colocation`([`decision-colocation.md`](decision-colocation.md))
 Issue: #415(ADR-0024 Stage 4a)、#391(members 分割・`--agent` で 1 バイナリ化)
 
 bash 版 `config/claude/hooks/attribution-guard.sh` は「1 つの判定エンジン」で、

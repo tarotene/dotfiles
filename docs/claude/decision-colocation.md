@@ -1,9 +1,13 @@
 # decision-colocation — 決定成果物と執行点を同じ PR に強制する
 
 設計判断の記録: `docs/adr/<番号>-decision-colocation.md`
-checker(単一ソース): `scripts/decision-colocation-check`
+checker(単一ソース): `crates/decision-colocation` の `check::run_check`
+(bin `decision-colocation-check`。bash 版 `scripts/decision-colocation-check`
+の Rust 移植、ADR-0024 Stage 4a / #415)
 サーバ側 required check: `.github/workflows/ci.yml` の `dry-run` job
-client guard: `config/claude/hooks/decision-colocation-guard.sh`(段2)
+client guard: `crates/decision-colocation` の bin `decision-colocation-guard`
+(段2。bash 版 `config/claude/hooks/decision-colocation-guard.sh` の移植。
+コマンド解析は `crates/guard-core`、[`guard-core.md`](guard-core.md))
 規範: `config/agents/AGENTS.md`「決定成果物は執行点と同じ PR に出す」(段2)
 
 「ADR だけ残して実装を後続 Issue に先送りする」判断をエージェントができない
@@ -95,7 +99,7 @@ CI required check が「実装を後続 Issue に分離する」という選択�
 
 ## 複合コマンドの deny は部分的にできない(#668)
 
-`decision-colocation-guard.sh` は `gh pr create` の範囲だけを判定するが、
+`decision-colocation-guard` は `gh pr create` の範囲だけを判定するが、
 PreToolUse の deny は Bash 呼び出し全体に効く。そのため「PR 本文ファイルを
 生成して、続けて `gh pr create`」の複合コマンドが deny されると、前段の
 生成も実行されない。`pkexec-guard` の #548 は、無関係な文まで誤って deny
@@ -103,6 +107,26 @@ PreToolUse の deny は Bash 呼び出し全体に効く。そのため「PR 本
 同じ直し方は当てはまらない。deny を部分的にかけることは仕組み上できないため、
 `gh pr create` より前に文がある場合は、deny 文で前段も実行されていないこと
 と、別の呼び出しに分けて再実行することを警告する(軸: 検出のみ)。
+
+## 実装(Rust)
+
+- `check::run_check(repo_root, base) -> Vec<String>` が違反メッセージを出力順に
+  返す(空 = 適合)。`decision-colocation-check --base <ref>` は違反を stderr に
+  出して rc=1、適合なら stdout に `decision-colocation-check: OK` で rc=0、
+  使い方誤りは rc=2。`--base` が解決できない(git の diff が失敗する)ときは
+  空の diff として適合にする(fail-open)。
+- guard は子プロセスで checker を呼ばず、同じクレートの `run_check` を直接
+  呼ぶ(`DECISION_COLOCATION_CHECK_BIN` や PATH 解決は無くなった)。判定の
+  単一ソースはクレートの関数 1 つ。
+- CI の required check(`dry-run` job)は `cargo run --locked -p
+  decision-colocation --bin decision-colocation-check -- --base "$BASE_SHA"`
+  で同じバイナリを build して呼ぶ。`--selftest` は無くなり、bash 版の selftest
+  全ケース(checker 16 + guard 11)は `cargo test -p decision-colocation` の
+  実 git repo を使う統合テストに 1 対 1 で移した(rust job が走らせる)。
+- 配備: home-manager が `~/.local/bin/decision-colocation-check` と
+  `~/.claude/hooks/decision-colocation-guard` を `pkgs.dotfiles-tools` の
+  バイナリへの symlink にする。旧 `bash '….sh'` の hook command は
+  `retiredHookEntries` で完全一致削除する。
 
 ## `github-audit` にドメインを作らない理由
 

@@ -290,9 +290,11 @@ jobs:
       # 判定エンジン。base ref は adr-number-check のステップで既に fetch
       # 済み。push イベント(base が無い)では比較対象が無いため skip する
       # — この検査は PR の diff に対してのみ意味を持つ。
-      - name: decision-colocation-check --selftest
-        run: ./scripts/decision-colocation-check --selftest
-
+      # #415(ADR-0024 Stage 4a)で Rust(crates/decision-colocation)になった。
+      # required check はこの job なので、ここで同じバイナリを build して呼ぶ
+      # (ubuntu-latest の既定の stable cargo で足りる。依存は hook-io /
+      # guard-core のみで build は数十秒)。旧 --selftest の全ケースは rust job
+      # の `cargo test --workspace` が走らせる。
       - name: decision-colocation-check
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -300,7 +302,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            ./scripts/decision-colocation-check --base "$BASE_SHA"
+            cargo run --locked --quiet -p decision-colocation \
+              --bin decision-colocation-check -- --base "$BASE_SHA"
           else
             echo "decision-colocation-check: push イベントには base が無いため skip"
           fi
@@ -501,14 +504,6 @@ jobs:
       # (exhaustive decision coverage stays in the Claude selftest above).
       - name: stack-base-guard.sh (codex adapter) --selftest
         run: bash ./config/codex/hooks/stack-base-guard.sh --selftest
-
-      # decision-colocation-guard (ADR-396, docs/claude/decision-colocation.md)
-      # sources attribution-guard.sh's command-position/tokenizer engine the
-      # same way stack-base-guard/pr-title-guard do, and stubs the checker
-      # binary to exercise base resolution, the escape hatch, and degradation
-      # paths without gh/network.
-      - name: decision-colocation-guard.sh --selftest
-        run: bash ./config/claude/hooks/decision-colocation-guard.sh --selftest
 
       # pr-title-check (ADR-0031, docs/claude/pr-title-contract.md) is the
       # single-source grammar checker shared by the client guard and the

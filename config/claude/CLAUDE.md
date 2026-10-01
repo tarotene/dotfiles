@@ -44,8 +44,9 @@ stacked PR に積む原則そのものは共有 AGENTS.md に従う。形式検�
 ## 決定成果物の執行点の形式検査(ADR-396)
 
 決定成果物と執行点を同じ PR に出す原則そのものは共有 AGENTS.md に従う。
-形式検査は作成時 `decision-colocation-guard.sh`(PreToolUse deny)と CI
-required check(`scripts/decision-colocation-check`、単一ソース)が担う。
+形式検査は作成時 `decision-colocation-guard`(PreToolUse deny)と CI
+required check(`decision-colocation-check`、どちらも `crates/decision-colocation`
+の同じ判定関数 = 単一ソース)が担う。
 gate に当たる前に自発的に執行点を含めること — gate は漏れを拾うためのもので、
 一次的な手段ではない。**「実装を後続 Issue に分離する」という選択肢は
 実行不能なので、`AskUserQuestion` の選択肢に出さない。**

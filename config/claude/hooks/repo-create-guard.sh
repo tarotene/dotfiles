@@ -16,8 +16,9 @@
 #
 # コマンド解析エンジン(split_heredoc / tokenize / is_sep / TOK / CMD_SEPS /
 # emit_deny)は attribution-guard.sh を source して再利用する(adr-number.sh
-# / pr-title-guard.sh / stack-base-guard.sh / feedback-target-guard.sh /
-# decision-colocation-guard.sh と同じ「1つの判定エンジンを source する」型
+# / pr-title-guard.sh / stack-base-guard.sh / feedback-target-guard.sh
+# (と、Rust へ移った旧 decision-colocation-guard.sh)と同じ「1つの判定
+# エンジンを source する」型
 # — 既存手段: config/claude/hooks/attribution-guard.sh — 拡張: heredoc 分離・
 # 引用符解釈込みのトークナイザ・コマンド位置判定の骨格を自前で再実装しない)。
 # `is_target_at` / `decide_tokens` / `decide_api_tokens` / `main` /

@@ -172,14 +172,6 @@ path = "scripts/workflow-naming-check"
 stage = "4a"
 
 [[target]]
-path = "config/claude/hooks/decision-colocation-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "scripts/decision-colocation-check"
-stage = "4a"
-
-[[target]]
 path = "config/codex/hooks/pr-title-guard.sh"
 stage = "4a"
 

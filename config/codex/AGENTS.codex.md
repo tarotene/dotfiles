@@ -39,8 +39,8 @@ Codex にも効く。
 
 決定成果物(ADR・設計文書・skill)の執行点を同じ PR に出す原則(ADR-396)
 は Codex にも適用されるが、その形式検査は CI required check
-(`scripts/decision-colocation-check`)のみが担う(PreToolUse deny の
-`decision-colocation-guard.sh` は Codex には移植していない — 対象範囲は
+(`decision-colocation-check`、`crates/decision-colocation`)のみが担う
+(PreToolUse deny の `decision-colocation-guard` は Codex には登録しない — 対象範囲は
 ADR-0032 Amendment 参照)。gate ではなく CI が拾うため、push 後に気づく
 点に留意する。
 

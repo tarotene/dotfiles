@@ -292,7 +292,7 @@ Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__githu
 
 `config/claude/hooks/attribution-guard.sh` は hook としては登録しないが、
 stack-base-guard.sh / pr-title-guard.sh / pr-confirm-guard.sh /
-feedback-target-guard.sh / decision-colocation-guard.sh / adr-number.sh /
+feedback-target-guard.sh / adr-number.sh /
 repo-create-guard.sh がまだ同ディレクトリから `source` している。それらを
 `crates/guard-core` の上に移植し終えるまで、配備(`~/.claude/hooks/
 attribution-guard.sh`)と CI の `--selftest` を残す。末尾の実行時ディスパッチは

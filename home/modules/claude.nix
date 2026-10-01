@@ -324,15 +324,16 @@
 # 24) decision-colocation-guard(PreToolUse, matcher: "Bash|mcp__.*", ADR-396):
 #    決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
 #    `## Amendment` 追加を、その決定を執行する実ファイルの同梱なしに `gh pr
-#    create` させない。判定は scripts/decision-colocation-check(判定エンジン
-#    単一ソース、CI required check と共有)に委譲する。執行点として認める
-#    パスは「非 .md かつ docs/ 配下でない」の 2 述語のみ。実在するが無変更の
-#    パスの併記だけでは合格しない(ADR-387 を意図的に不合格側に倒して検算
-#    — docs/claude/decision-colocation.md 参照)。attribution-guard.sh/
-#    stack-base-guard.sh/pr-title-guard.sh と同じ「判定エンジンを source
-#    して is_target_at を上書きする」型。Codex/Copilot adapter は作らない
-#    — CI required check が全エージェント共通の backstop になるため。一時
-#    解除は環境変数 SKIP_DECISION_COLOCATION_GUARD=1。詳細は
+#    create` させない。判定は Rust(crates/decision-colocation、ADR-0024
+#    Stage 4a #415)の check::run_check 1 本で、CI required check
+#    (decision-colocation-check bin)と同じ関数を共有する(単一ソース)。
+#    執行点として認めるパスは「非 .md かつ docs/ 配下でない」の 2 述語のみ。
+#    実在するが無変更のパスの併記だけでは合格しない(ADR-387 を意図的に
+#    不合格側に倒して検算 — docs/claude/decision-colocation.md 参照)。
+#    コマンド解析は crates/guard-core(bash 時代の「attribution-guard.sh を
+#    source して is_target_at を上書きする」型の置き換え)。Codex/Copilot
+#    adapter は作らない — CI required check が全エージェント共通の backstop
+#    になるため。一時解除は環境変数 SKIP_DECISION_COLOCATION_GUARD=1。詳細は
 #    docs/adr/396-decision-colocation.md と docs/claude/decision-colocation.md。
 #
 # 25) slot-availability(個人スキル):
@@ -658,11 +659,15 @@ let
   # すると確認済み — crates/hook-io/src/decision.rs)なので adapter を
   # 挟まず、Claude と同じバイナリを直接 Codex にも登録する。
   codexRulesetsWriteGuardCmd = "'${config.home.homeDirectory}/.claude/hooks/rulesets-write-guard'";
-  # decision-colocation-guard(ADR-396, docs/claude/decision-colocation.md)
-  # も attribution-guard.sh を source するので同階層。Codex/Copilot adapter
-  # は意図的に作らない — CI required check が全エージェント共通の
-  # backstop として機能するため(ADR-396 の非目標に明記)。
-  decisionColocationGuardCmd = "bash '${hooksDir}/decision-colocation-guard.sh'";
+  # decision-colocation-guard(ADR-396, docs/claude/decision-colocation.md)は
+  # #415(ADR-0024 Stage 4a)で Rust バイナリ(crates/decision-colocation)に
+  # なり、下の home.file が ~/.claude/hooks/decision-colocation-guard(拡張子
+  # 無し)として配備する。旧 `bash '….sh'` の command は retiredHookEntries で
+  # 完全一致削除する。Codex/Copilot adapter は意図的に作らない — CI required
+  # check が全エージェント共通の backstop として機能するため(ADR-396 の
+  # 非目標に明記)。
+  decisionColocationGuardCmd = "'${hooksDir}/decision-colocation-guard'";
+  legacyDecisionColocationGuardCmd = "bash '${hooksDir}/decision-colocation-guard.sh'";
   # adr-number(ADR-380, docs/claude/adr-numbering.md): 段3(利便性層)のみ —
   # deny は一切しない。#415 で Rust バイナリ(crates/adr-number、判定は
   # crates/guard-core)になり、下の home.file が ~/.claude/hooks/adr-number
@@ -912,6 +917,11 @@ let
     {
       event = "PostToolUse";
       command = legacyAdrNumberCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): decision-colocation-guard の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyDecisionColocationGuardCmd;
     }
   ];
 
@@ -1189,9 +1199,10 @@ let
     # 同じ短さでよい。
     register PreToolUse "Bash|mcp__.*" "$pr_confirm_guard" 10
     # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
-    # pr-title-guard と同じ複合 matcher。scripts/decision-colocation-check
-    # 1 往復(git diff + ファイル読み取りのみ、gh API 往復は持たない)なので
-    # timeout は stack-base-guard 並みでよい。
+    # pr-title-guard と同じ複合 matcher。checker(crates/decision-colocation の
+    # check::run_check)は git diff + ファイル読み取りのみで、gh API 往復は
+    # 持たない(base の default branch 解決で gh repo view に落ちる場合を
+    # 除く)ので timeout は stack-base-guard 並みでよい。
     register PreToolUse "Bash|mcp__.*" "$decision_colocation_guard" 20
     # external-send-guard(docs/claude/external-send-guard.md): Gmail/Slack
     # の送信系 MCP tool だけが対象なので matcher は "mcp__.*" のみでよい
@@ -1592,7 +1603,7 @@ in
   home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
   # bash 版の判定エンジン。hook としては登録しないが、stack-base-guard.sh /
   # pr-title-guard.sh / pr-confirm-guard.sh / feedback-target-guard.sh /
-  # decision-colocation-guard.sh / repo-create-guard.sh が
+  # repo-create-guard.sh が
   # 同ディレクトリから `source` するので、それらの Rust 移植(guard-core の
   # 上に載せる、docs/claude/guard-core.md)が済むまで配備を続ける。
   home.file.".claude/hooks/attribution-guard.sh" = {
@@ -1717,13 +1728,10 @@ in
 
   # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
   # 追加を執行点と同じ PR に機械強制する(docs/claude/decision-colocation.md)。
-  # attribution-guard.sh を同ディレクトリから source するので、配置は
-  # 必ず ~/.claude/hooks/ 直下。Codex/Copilot adapter は意図的に作らない
-  # (CI required check が全エージェント共通の backstop になるため)。
-  home.file.".claude/hooks/decision-colocation-guard.sh" = {
-    source = repoConfig + "/claude/hooks/decision-colocation-guard.sh";
-    executable = true;
-  };
+  # #415 で Rust バイナリ(crates/decision-colocation)への安定パスの symlink
+  # になった(gh-edit-allow と同じ理由付け)。Codex/Copilot adapter は意図的に
+  # 作らない(CI required check が全エージェント共通の backstop になるため)。
+  home.file.".claude/hooks/decision-colocation-guard".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-guard";
 
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index".source = "${pkgs.dotfiles-tools}/bin/issue-index";
