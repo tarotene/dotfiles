@@ -156,7 +156,7 @@ Consequences の優先順位ヒューリスティック(「jq 密度 × 行数�
 
 ## Amendment 3 (2026-10-02 — 他リポジトリの CI が実行する配布物は対象外, #415)
 
-Stage 4a の移植(#415)で、`scripts/` の 5 本が **他リポジトリの CI から実行時に
+Stage 4a の移植(#415)で、`scripts/` の 4 本が **他リポジトリの CI から実行時に
 使われている**ことが分かった。当初の対象外(Context の「他リポジトリへ配布する
 skills の templates/scripts」)と同じ性質で、播種先に Rust ツールチェインも nix も
 無く、`dotfiles-tools` のバイナリを配る手段が無い。
