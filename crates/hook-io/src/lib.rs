@@ -16,6 +16,8 @@
 //! | H 最小 POSIX シェル語分割 | [`shell::split`] |
 //! | I コマンド正規化+ハッシュ(ADR-543 段3) | [`cmd_hash`] |
 //! | J gate の deny/skip イベント記録(ADR-543 段3) | [`gate_event`] |
+//! | K jq 互換の挿入順 JSON 出力(Stage 4b) | [`jqfmt`] |
+//! | L `timeout(1)` / `date(1)` / `command -v`(Stage 4b) | [`proc`] |
 //!
 //! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
 //! `crates/rulesets-write-guard`(ADR-503)も
@@ -28,8 +30,10 @@ pub mod decision;
 pub mod gate_event;
 pub mod git;
 pub mod input;
+pub mod jqfmt;
 pub mod ledger;
 pub mod plan;
+pub mod proc;
 pub mod shell;
 
 pub use decision::{Decision, PermissionDecision};
