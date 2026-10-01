@@ -39,8 +39,8 @@
 #    判定対象は ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリの
 #    み)で、それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読ま
 #    ないこと」— 期待される required check をサーバの ruleset から取り、
-#    `gh pr checks --watch` の exit code ではなく取り直した --json を jq で判定
-#    する。視覚証跡(G_visual)は 12) の pr-description スキルが定める本文スケルト
+#    `gh pr checks --watch` の exit code ではなく取り直した --json で判定
+#    する。実体は crates/pr-gate(#415、ADR-0024 Stage 4a)。視覚証跡(G_visual)は 12) の pr-description スキルが定める本文スケルト
 #    ンの `## Before / After` 節を検査し、証跡の有無だけを機械強制する(対比の完全
 #    性はスキル側の責務)。詳細は docs/claude/pr-gate.md。
 #
@@ -87,7 +87,7 @@
 #    新しい worktree が古い base から生まれることがある。まだ何も積んでいない
 #    pristine な worktree(作業ツリークリーン かつ ahead==0 かつ behind>0)に限り、
 #    fetch 後に `git merge --ff-only` で origin/<base> へ黙って揃える。履行歴を
-#    持つブランチは動かさない — 既存 pr-gate.sh の base 追従 advisory とは非対称に
+#    持つブランチは動かさない — 既存 pr-gate の base 追従 advisory とは非対称に
 #    「本当に何もない」ケースだけを能動的に解消する。詳細は
 #    docs/claude/worktree-fresh-base.md。
 #
@@ -223,9 +223,9 @@
 #    コメント、gh pr review のレビュー本体)に attribution フッターが載って
 #    いることを保証する。PR 本文のフッターは harness 側の attribution 指示
 #    由来なので、(a) コメント投稿には一切付かず、(b) 本文側も repo に強制が
-#    無い(pr-gate.sh は G_link / G_visual しか見ない)という 2 つの穴があった。
+#    無い(pr-gate は G_link / G_visual しか見ない)という 2 つの穴があった。
 #    投稿は通知が飛ぶ不可逆操作なので Stop hook では取り返せず、PreToolUse で
-#    deny する。抜け道は本文マーカー No-Attribution: <理由>(pr-gate.sh の
+#    deny する。抜け道は本文マーカー No-Attribution: <理由>(pr-gate の
 #    No-Issue: と同型、理由必須で grep 可能)。
 #
 #    matcher は bleep と同じ複合 1 本 "Bash|mcp__.*" — MCP GitHub は
@@ -250,7 +250,7 @@
 #    中の drift はノーガードだった。この hook が ExitPlanMode 承認点そのもので
 #    その隙間を塞ぐ: 常に fetch し、pristine(worktree-fresh-base.sh と同じ
 #    5 条件)なら ff-only で追従、origin/<base> の進行分がプラン参照ファイルと
-#    交差するときだけ deny する。pr-gate.sh の G_base は同種の drift を
+#    交差するときだけ deny する。pr-gate の G_base は同種の drift を
 #    advisory に留めるが、その根拠(block が rebase → force-push ループを
 #    誘発する)はここでは成立しない — 要求するのは履歴改変ではなく「再読 +
 #    再 ExitPlanMode」だけで、deny 済み SHA のセッション state 記録により
@@ -268,7 +268,7 @@
 #    ブランチは本文 `Independent-PR: <理由>` を要求する)の 2 層で判定する。
 #    判定不能はすべて fail-open。attribution-guard.sh の判定エンジン
 #    (split_heredoc/tokenize/is_sep)を source して再利用する。完了時の
-#    対になる強制(`gh stack link` の要求)は pr-gate.sh の G_stack が担う。
+#    対になる強制(`gh stack link` の要求)は pr-gate の G_stack が担う。
 #    詳細は docs/adr/0027-uncertainty-first-stacking.md と
 #    docs/claude/stack-base-guard.md。
 #
@@ -364,7 +364,7 @@
 #    への実際の書き込みは Claude が Edit ツールで行う分担にしている。
 #    詳細は docs/claude/performance-planning.md。
 #
-# 27) handoff(個人スキル)+ pr-gate.sh の中断ハンドオフ節 + issue-index の
+# 27) handoff(個人スキル)+ pr-gate の中断ハンドオフ節 + issue-index の
 #    着手可能な handoff:ai 節:
 #    ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human/AI 双方に
 #    振り分けて GitHub Issue に起票し、後で再開できる状態にする。WIP は
@@ -419,8 +419,8 @@
 #    `bin`/`scripts`/`hooks`/`cmd` を構成要素に含む新規パスの新規ファイル、
 #    パッケージマニフェスト(`Cargo.toml`/`package.json`/`pyproject.toml`/
 #    `go.mod`/`flake.nix`)の新設のいずれか(判定は crates/new-tool-guard
-#    の `classify` サブコマンドが単一正本、pr-gate.sh の `judge_prior` も
-#    同じ判定を呼ぶ)。テスト・fixture・scratchpad 配下と、ディスク上に
+#    の `is_new_tool_unit` が単一正本で、`classify` サブコマンドと
+#    pr-gate の G_prior が同じ関数を使う)。テスト・fixture・scratchpad 配下と、ディスク上に
 #    既に存在するファイル(上書き)は対象外。該当かつ、現在の worktree の
 #    session ledger(git toplevel キー、`~/.claude/new-tool-guard/state/`)
 #    にそのパスの `既存手段:` 行が未登録なら deny する——deny メッセージが
@@ -511,12 +511,18 @@ let
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   signPrewarmCmd = "'${hooksDir}/sign-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
-  prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
-  prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
-  # pr-gate.sh の判定(G_pr/G_link/G_visual/G_stack)は agent 名を一切
+  # #415 (ADR-0024 Stage 4a): pr-gate は Rust バイナリ(crates/pr-gate、
+  # pkgs.dotfiles-tools)になり、下の home.file が ~/.claude/hooks/pr-gate
+  # (拡張子無し)として配備する。旧 `bash '….sh'` の command は
+  # retiredHookEntries / --retire で完全一致削除する(legacyPrGate*Cmd)。
+  prGateSessionStartCmd = "'${hooksDir}/pr-gate' session-start";
+  prGateStopCmd = "'${hooksDir}/pr-gate' stop";
+  legacyPrGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
+  legacyPrGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
+  # pr-gate の判定(G_pr/G_link/G_visual/G_stack)は agent 名を一切
   # 参照しないため、Codex にも同じファイルを adapter 無しで直接登録する
   # (ADR-0032 Amendment #531)。
-  codexPrGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
+  codexPrGateStopCmd = prGateStopCmd;
   # #416 (ADR-0024 Stage 4c): git/worktree 系の hook は Rust バイナリ
   # (crates/git-worktree-allow など、pkgs.dotfiles-tools)になり、下の
   # home.file が ~/.claude/hooks/<name>(拡張子無し)として配備する。bash を
@@ -844,6 +850,15 @@ let
     {
       event = "SessionStart";
       command = legacyIssueIndexCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): pr-gate の bash 版 → Rust 版。
+    {
+      event = "SessionStart";
+      command = legacyPrGateSessionStartCmd;
+    }
+    {
+      event = "Stop";
+      command = legacyPrGateStopCmd;
     }
     {
       event = "SessionStart";
@@ -1737,10 +1752,7 @@ in
 
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
-  home.file.".claude/hooks/pr-gate.sh" = {
-    source = repoConfig + "/claude/hooks/pr-gate.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/pr-gate".source = "${pkgs.dotfiles-tools}/bin/pr-gate";
   # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
   home.file.".claude/hooks/git-worktree-allow".source =
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
@@ -1898,6 +1910,7 @@ in
           --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyWrapupSessionStartCmd} \
           --retire SessionStart ${lib.escapeShellArg legacySignPrewarmCmd} \
+          --retire SessionStart ${lib.escapeShellArg legacyPrGateSessionStartCmd} \
           --register \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
@@ -1906,7 +1919,7 @@ in
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30
       '';
 
-  # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate.sh は
+  # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate は
   # agent 名を参照しないため同じ command 文字列をそのまま(D8 参照)、
   # wrapup-stop-gate/agent-turn-log は環境変数だけ差し替えた command
   # 文字列を登録する — いずれも adapter ファイルは新設しない。同じ
@@ -1916,6 +1929,7 @@ in
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire Stop ${lib.escapeShellArg legacyCodexWrapupStopCmd} \
+          --retire Stop ${lib.escapeShellArg legacyPrGateStopCmd} \
           --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
           --retire Stop ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
           --register \
@@ -1947,7 +1961,7 @@ in
       '';
 
   home.file.".claude/pr-gate-repos".text = ''
-    # pr-gate.sh が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
+    # pr-gate が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
     # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
     tarotene/dotfiles
   '';
@@ -2020,7 +2034,7 @@ in
   home.file.".claude/skills/issue-ref-freshness/SKILL.md".source =
     repoConfig + "/claude/skills/issue-ref-freshness/SKILL.md";
   # pr-description: PR 本文の標準スケルトンと Before/After 視覚証跡の判断知識。
-  # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate.sh の
+  # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate の
   # G_visual(~/.claude/pr-gate-repos の allowlist 内のみ)が担う。cases.md は
   # 追記型の失敗事例集。
   home.file.".claude/skills/pr-description/SKILL.md".source =
@@ -2051,7 +2065,7 @@ in
   # handoff: ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human / AI
   # 双方に振り分けて起票し、後で再開できる状態にする判断知識(WIP は Draft PR、
   # 担当は閉語彙ラベル handoff:human/handoff:ai、順序は Issue dependencies)。
-  # pr-gate.sh の中断ハンドオフ節・issue-index の着手可能な handoff:ai 節と
+  # pr-gate の中断ハンドオフ節・issue-index の着手可能な handoff:ai 節と
   # 組で動く。詳細は docs/claude/handoff.md。
   home.file.".claude/skills/handoff/SKILL.md".source = repoConfig + "/claude/skills/handoff/SKILL.md";
   home.file.".claude/skills/handoff/scripts/handoff.sh" = {

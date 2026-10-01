@@ -136,10 +136,6 @@ path = "config/claude/hooks/stack-base-guard.sh"
 stage = "4a"
 
 [[target]]
-path = "config/claude/hooks/pr-gate.sh"
-stage = "4a"
-
-[[target]]
 path = "config/claude/hooks/pr-title-guard.sh"
 stage = "4a"
 

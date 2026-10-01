@@ -478,15 +478,6 @@ jobs:
           ./scripts/register-codex-hooks --selftest
           ./scripts/register-copilot-hooks --selftest
 
-      # pr-gate is the PR completion barrier (docs/claude/pr-gate.md): its central
-      # invariant is "never read an incomplete check set as green" against a
-      # stub gh, including the R2 regression where `gh pr checks --watch`
-      # exits 0 early on a partial subset (cli/cli#9973) — the selftest
-      # re-fetches --json and judges with jq regardless of --watch's exit
-      # code, so this step is what actually guards that invariant.
-      - name: pr-gate.sh --selftest
-        run: bash ./config/claude/hooks/pr-gate.sh --selftest
-
       # attribution-guard (docs/claude/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.
       # The hook itself now runs as the Rust crates/attribution-guard (#415,

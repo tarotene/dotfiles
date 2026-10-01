@@ -53,7 +53,7 @@
       pandoc
 
       # Terminal-look capture for PR Before/After evidence (pr-description
-      # skill, docs/claude/pr-description.md — G_visual in pr-gate.sh enforces
+      # skill, docs/claude/pr-description.md — G_visual in pr-gate enforces
       # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
       # stable) because freeze renders ANSI text piped on stdin
       # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
