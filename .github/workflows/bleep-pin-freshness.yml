@@ -1,0 +1,49 @@
+name: bleep pin freshness
+
+# #628: flake.nix の `bleep` 入力は commit SHA で固定してあり、bleep の main が
+# 先へ進んでも、誰かが気づいて手で bump するまで古い hook が配備され続ける
+# (#604 では 12 コミット遅れで、`gh` の後置 `-R` などの修正が未配備だった)。
+# bleep には tag 運用が無く、dotfiles では Renovate がまだ一度も PR を出して
+# いない(#465 / #589)ので、まず外部に依存しない検知を置く。
+#
+# advisory: ADR-591 D7 に従い、非ブロッキングの検査は `ci.yml`(`ci-passed` の
+# needs に束ねられる側)の外に置く。遅れが閾値を超えると `::warning::` の
+# annotation を出すだけで、job は失敗させない。Renovate の nix manager が
+# rev 固定の入力を digest 更新できるようになったら、この workflow は外す。
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # pin が bleep の main からこれより多く遅れたら警告する(コミット数)。
+  BLEEP_PIN_MAX_BEHIND: "10"
+
+jobs:
+  freshness:
+    name: bleep pin freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the flake.lock pin with bleep main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rev="$(jq -er '.nodes.bleep.locked.rev' flake.lock)"
+          behind="$(gh api "repos/tarotene/bleep/compare/${rev}...main" --jq '.ahead_by')"
+          echo "bleep pin ${rev} is ${behind} commit(s) behind main (threshold ${BLEEP_PIN_MAX_BEHIND})"
+          {
+            echo "### bleep pin freshness"
+            echo
+            echo "- pin: \`${rev}\`"
+            echo "- behind main: ${behind} commit(s) (threshold ${BLEEP_PIN_MAX_BEHIND})"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$behind" -gt "$BLEEP_PIN_MAX_BEHIND" ]; then
+            echo "::warning title=bleep pin is stale::flake.nix / flake.lock pin ${rev} is ${behind} commits behind tarotene/bleep main. Bump it (see the bleep input in flake.nix)."
+          fi

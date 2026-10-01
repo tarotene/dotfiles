@@ -202,9 +202,8 @@ fn herdr_open_workspace_protects_worktree() {
 }
 
 #[test]
-fn detached_prunable_collapses_empty_branch_field_like_bash() {
-    // bash 版の `IFS=$'\t' read` は連続タブを潰すので、branch が空の行は
-    // 列が 1 つずつずれる。互換のため同じ見た目を保つ(オラクルテスト参照)。
+fn detached_prunable_shows_detached_branch() {
+    // branch 列が空の行でも列がずれず、`branch=(detached)` と表示される(#637)。
     let fx = Fx::new(HERDR_NOTIFY_STUB);
     let wt = fx.root.join("detached-gone");
     git(
@@ -216,7 +215,7 @@ fn detached_prunable_collapses_empty_branch_field_like_bash() {
     assert_eq!(o.code, 1);
     assert!(
         o.stdout.contains(&format!(
-            "path={} branch=prunable class=gitdir file points to non-existent location reason=\n",
+            "path={} branch=(detached) class=prunable reason=gitdir file points to non-existent location\n",
             wt.display()
         )),
         "{}",

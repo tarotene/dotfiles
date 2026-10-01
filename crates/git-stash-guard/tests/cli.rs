@@ -16,12 +16,9 @@ fn run_raw(args: &[&str], stdin: &str) -> (String, i32) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // 未知の host など、stdin を読む前に終了するケースでは EPIPE になりうる。
+    // 判定には関係しないので、書き込みの失敗は無視する。
+    let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
     let out = child.wait_with_output().unwrap();
     (
         String::from_utf8(out.stdout).unwrap(),
@@ -91,6 +88,20 @@ fn deny_compound_commands() {
         "git stash pop && echo done",
         "git stash pop | cat",
         "git stash apply $(evil)",
+    ] {
+        expect_deny(c);
+    }
+}
+
+/// タブは JSON 上で `\t` にエスケープされる。生テキストで単語を絞り込むと
+/// `git<TAB>stash` が素通りする(#637)。
+#[test]
+fn deny_tab_separated() {
+    for c in [
+        "git\tstash pop",
+        "git stash\tpop",
+        "git\tstash\tpop",
+        "git\t-C\t/some/worktree\tstash\tclear",
     ] {
         expect_deny(c);
     }

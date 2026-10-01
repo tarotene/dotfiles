@@ -1,0 +1,10 @@
+{
+  "name": "docs-typescript-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "docs-typescript action が隔離ディレクトリに入れるツール。Renovate の npm manager がこのファイルと package-lock.json を追う(#645)。typedoc の peerDependencies が typescript の範囲を決める(0.28 は <= 6.0.x)ので、lockfile を更新する時点で npm の依存解決が組み合わせを検証する。",
+  "dependencies": {
+    "typedoc": "0.28.20",
+    "typescript": "6.0.3"
+  }
+}
