@@ -161,9 +161,9 @@ ADR-0015 / ADR-591 D8 と同じ経路。新規リポジトリは `*-repo-governa
 - `@main` 参照のため、この action の変更は全リポジトリに即時に効く。dotfiles
   の `docs-actions` job が防波堤になる。
 - ツール本体の pin(Sphinx 9.1.0、TypeDoc 0.28.20、TypeScript 6.0.3)は
-  Renovate の `github-actions` マネージャの対象外で、追従は手動(各 action の
-  `*_PIN` コメントを目印にする)。composite action 内の action の SHA pin は
-  標準の `github-actions` マネージャが追う。
+  Renovate の `github-actions` マネージャの対象外。composite action 内の
+  action の SHA pin は標準の `github-actions` マネージャが追う。ツール版の追従は
+  下の Amendment 2026-10-01 で、ネイティブ manager に任せる形に改めた。
 - 同じ stacked PR チェーンの後続の段で、`github-audit` の `docs` ドメインと、
   `github-audit-triage` の docs 起草手順、`*-repo-governance` テンプレートへの
   `docs` job 追加を入れる。
@@ -190,3 +190,24 @@ ADR-0015 / ADR-591 D8 と同じ経路。新規リポジトリは `*-repo-governa
   なること。この ADR を導入する PR 自身がその自己適用の実測になる。
 - `docs-rust` の `docsrs: 'true'` 経路(nightly)は `Docs actions (fixtures)`
   job でのみ実行される(ローカルに nightly が無いため)。
+
+## Amendment 2026-10-01 (#645): ツール pin をネイティブ manager が追うファイルへ移す
+
+D6 の「`--save-exact` で入れる」と Sphinx の `pip install "sphinx==…"` は、
+`run:` の中に版を直書きするため Renovate のどの manager も追えなかった。
+版は action の隣のファイルに移した(軸: 表現不可能 — peer 制約を lockfile の
+解決で守らせる)。
+
+- `.github/actions/docs-python/requirements.txt` — Sphinx。Renovate の
+  `pip_requirements` manager が追う。
+- `.github/actions/docs-typescript/package.json` + `package-lock.json` —
+  TypeDoc と TypeScript。action は `$RUNNER_TEMP` にコピーして `npm ci` する。
+  Renovate の `npm` manager が追い、`renovate.json` の `packageRules` で
+  2 つを同じ PR にまとめる。TypeDoc の peerDependencies に合わない組み合わせは、
+  lockfile の更新時に npm の依存解決が弾く。
+
+検討した他案: 公式 preset `customManagers:githubActionsVersions`(版を env 変数に
+移し `# renovate:` 注釈で追う)は peer 制約を表現できず、壊れる組み合わせの PR も
+作られる。自前の regex customManager は感触で外した(独自 regex は壊れやすそう)。
+先行例: Renovate Docs, "Custom Manager Support using Regex"
+(<https://docs.renovatebot.com/modules/manager/regex/>、2026-10-01 取得)。

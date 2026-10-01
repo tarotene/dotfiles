@@ -3,5 +3,12 @@
   "extends": ["github>tarotene/dotfiles//renovate/policy"],
   "nix": {
     "enabled": true
-  }
+  },
+  "packageRules": [
+    {
+      "description": "docs-typescript action の typedoc と typescript は peer 制約があるので同じ PR で上げる(#645)",
+      "matchFileNames": [".github/actions/docs-typescript/package.json"],
+      "groupName": "docs-typescript tools"
+    }
+  ]
 }

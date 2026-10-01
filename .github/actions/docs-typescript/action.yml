@@ -56,15 +56,18 @@ runs:
           echo "no lockfile; skipping dependency install"
         fi
 
-    # TYPEDOC_PIN / TYPESCRIPT_PIN: typedoc 0.28 の peer は typescript <= 6.0.x。
-    # 上げるときは両方を揃え、fixture(tests/docs-fixtures/typescript)で確認する。
+    # TypeDoc と TypeScript の版は、この action の隣の package.json と
+    # package-lock.json に pin してある(Renovate の npm manager が追う、#645)。
+    # typedoc 0.28 の peer は typescript <= 6.0.x で、組み合わせの検証は lockfile
+    # の更新時に npm が行う。上げるときは fixture(tests/docs-fixtures/typescript)で確認する。
     - name: Install TypeDoc (isolated, pinned)
       shell: bash
       run: |
         set -euo pipefail
         tools="${RUNNER_TEMP}/typedoc-tools"
         mkdir -p "$tools"
-        (cd "$tools" && npm init -y >/dev/null && npm install --save-exact typedoc@0.28.20 typescript@6.0.3)
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$tools/"
+        (cd "$tools" && npm ci --ignore-scripts --no-audit --no-fund)
         echo "TYPEDOC_BIN=$tools/node_modules/.bin/typedoc" >> "$GITHUB_ENV"
 
     - name: Build docs (warnings are errors)

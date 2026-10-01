@@ -48,7 +48,8 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        python -m pip install --quiet "sphinx==9.1.0" # SPHINX_PIN: bump together with docs-python fixtures
+        # Sphinx の版は requirements.txt に pin してある(Renovate が追う、#645)。
+        python -m pip install --quiet -r "$GITHUB_ACTION_PATH/requirements.txt"
         python -m pip install --quiet -e .
 
     - name: Build docs (warnings are errors) and run doctests
