@@ -221,6 +221,64 @@ description・topics・settings フィールド・ファイルツリー・open I
     リポジトリ固有の中身を持たない)。
   - `ci-yml-unreadable` は fetch 失敗によるものなので起草せず低確信
     フラグに回す(§3)。
+- docs ドメイン(ADR-640、docs/adr/640-stack-standard-api-docs.md)は
+  「そのスタックの標準 API doc を strict にビルドする job を `ci.yml` に
+  置き、`ci-passed.needs` に入れる」までが一続きの修正。`workflows`
+  ドメインと同じく `ci.yml` は丸ごと上書きせず、job の追加と `needs:` の
+  追記だけを外科的に行う。`missing` トークンごとに:
+  - `docs-absent:<stack>` — `ci.yml` に次の job を追加し、`ci-passed.needs`
+    に job id を足す。`<stack>` は `rust` / `python` / `typescript` で、
+    `uses:` の action 名は `docs-<stack>`:
+    ```yaml
+      docs:
+        name: API docs
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@<既存 job と同じ SHA>
+          - uses: tarotene/dotfiles/.github/actions/docs-<stack>@main
+            with:
+              upload: 'false'
+    ```
+    スタックを複数持つリポジトリは job id を `docs-<stack>` で分ける。
+    rust の `*-repo-governance` テンプレート(`rust-repo-governance/
+    templates/.github/workflows/ci.yml`)の `docs` job が実例。
+  - `docs-wrong-ref:<stack>` — `uses:` の参照を `@main` に直す(他の行は
+    触れない)。SHA や tag に固定しているのは意図的な pin の可能性が
+    あるので、変更理由が読み取れなければ低確信フラグに回す(§3)。
+  - **既存の doc 警告の修正も同じ PR に含める。** strict ビルドは
+    `-D warnings` / `sphinx-build -W -n` / `--treatWarningsAsErrors` なので、
+    これまで警告を抱えていたリポジトリは job を足すだけでは `CI passed` が
+    赤くなる。起草の前に、対象リポジトリで同じコマンドを手元で実行して
+    (`RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace` など、
+    `.github/actions/docs-<stack>/action.yml` のコマンド)警告の有無を確認し、
+    見つかったものは doc コメントの修正として同じ PR に入れる。警告が
+    多数(目安: 20 件超)で機械的に直せない場合は、起草せず低確信フラグに
+    回す(§3)— 警告を `#[allow]` や lint 無効化で黙らせない。
+  - python では `docs/conf.py` が無くても job は動く(action が
+    `sphinx-apidoc` で最小構成を生成する)ので、Sphinx の設定ファイルを
+    新規に起草しない。docstring の相互参照が nitpicky(`-n`)で警告に
+    なる場合は、参照を直すか `docs/conf.py` に `nitpick_ignore` を足す。
+  - 公開(Pages)は別の判断で、`missing` には出ない。**PUBLIC かつ
+    docs.rs / pkg.go.dev の対象外**(crates.io 未公開の Rust、PyPI/npm 公開の
+    有無は問わない)のリポジトリに限り、`repo-governance-common/templates/
+    .github/workflows/docs-pages.yml` を `__DOCS_ACTION__` / `__DEFAULT_
+    BRANCH__` を置換して `.github/workflows/docs-pages.yml` にコピーする
+    提案を、表の「処分案」に**選択肢として**書く(既定では提案しない —
+    公開は取り消しづらい外向きの操作なので、一括レビューで GO が出た
+    ものだけ)。Settings → Pages の Source を「GitHub Actions」にする
+    手順は人手の作業なので、後続 Issue に払い出す(PR 本文の `## 要確認`
+    にはそのポインタだけを書く)。`docs-linkcheck.yml`(週次の外部リンク
+    検査)も同様に、docs job を足すリポジトリに任意で付ける提案にする。
+  - `private-pages-enabled` — PRIVATE リポジトリで Pages が有効。個人
+    アカウントでは private repo の Pages も公開されるので、**起草では
+    直せない**(Settings → Pages の操作)。表には「Pages を無効化する」を
+    処分案として書き、実行はユーザーに依頼する(外向きの設定変更で、
+    公開済みの内容を取り戻せるわけでもない)。依頼の手順は後続 Issue に
+    払い出す。
+  - `not-applicable` のスタック(Astro サイト・Nix・Go・Typst・GAS・設定のみ)
+    には何も提案しない。`package.json` が `exports`/`main`/`types` を
+    持つのに API doc が不要なライブラリ(内部ツールなど)は、`exempt`
+    (§7)で理由付きに外す。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
@@ -250,8 +308,9 @@ drifted な組全体を、chat 本文の表ではなく **`Artifact` ツール�
 charters ドメインは「起草した purpose 文 / Scope 要約 / judging question」
 に加え、`nav-doc-*` が起因の場合は「nav-doc: <削除した節数> 節削除、
 <新設した `<dir>/README.md` 数> 件新設」(§2 参照)を併記する。naming は
-「提案クラス」、settings/renovate は「適用するテンプレート差分」を要約欄に
-書く。低確信フラグの組は要約欄を空にし、処分案を「repo-charter へ
+「提案クラス」、settings/renovate は「適用するテンプレート差分」、docs は
+「追加する job / 修正する doc 警告の件数 / Pages deploy を併せて提案するか」
+を要約欄に書く。低確信フラグの組は要約欄を空にし、処分案を「repo-charter へ
 送る」と書く。ユーザーはリポジトリ×ドメイン単位で **GO / 修正 / 除外 /
 exempt** を返す。確認はこの 1 回だけで、GO 後は項目ごとに止まらない
 (`wrapup-chores` と同じ「一括 triage → GO 1 回 → 一括処理」の型)。
