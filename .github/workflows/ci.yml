@@ -470,16 +470,15 @@ jobs:
       - name: obsidian-backup --selftest
         run: ./scripts/obsidian-backup --selftest
 
-      # Hook registration must remain idempotent beside Herdr's own Codex hook.
       # The git/worktree CLIs and hooks that used to be tested here
       # (git-audit-worktrees, git-prune-{worktrees,branches}, git-worktree-
       # create-guard, git-stash-guard, git-worktree-allow, worktree-fresh-base,
       # git-checkout-freshness, git-shelve/unshelve) are Rust now (#416, ADR-0024
       # Stage 4c); their cases run as `cargo test --workspace` in the rust job.
-      - name: Hook registration self-tests
-        run: |
-          ./scripts/register-codex-hooks --selftest
-          ./scripts/register-copilot-hooks --selftest
+      # The hook/settings registrars (register-{codex,copilot}-hooks and the
+      # inline register-claude-* / sync-claude-statusline) are Rust too
+      # (crates/settings-reconcile, #414): its fixtures, including the
+      # idempotence check beside Herdr's own entries, run in the same job.
 
       # attribution-guard (docs/claude/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.

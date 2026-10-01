@@ -189,14 +189,6 @@ path = "scripts/detach-open.sh"
 stage = "4e"
 
 [[target]]
-path = "scripts/register-codex-hooks"
-stage = "4e"
-
-[[target]]
-path = "scripts/register-copilot-hooks"
-stage = "4e"
-
-[[target]]
 path = "scripts/dotfiles-doctor"
 stage = "4e"
 
@@ -210,23 +202,6 @@ stage = "4e"
 
 [[target]]
 path = "scripts/github-app-registry-check"
-stage = "4e"
-
-# --- inline activation scripts (Stage 4e) ---
-[[inline]]
-name = "register-claude-hooks"
-stage = "4e"
-
-[[inline]]
-name = "register-claude-permissions"
-stage = "4e"
-
-[[inline]]
-name = "register-claude-mcp-servers"
-stage = "4e"
-
-[[inline]]
-name = "sync-claude-statusline"
 stage = "4e"
 
 # --- 対象外 ---

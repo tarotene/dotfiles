@@ -23,9 +23,8 @@ let
   legacyGuardCmd = "bash '${guardPath}'";
   legacyContextCmd = "bash '${auditPath}' --context";
 
-  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
-    builtins.readFile ../../scripts/register-codex-hooks
-  );
+  # hooks.json への冪等 reconcile(crates/settings-reconcile、#414)。
+  registerCodexHooks = "${pkgs.dotfiles-tools}/bin/settings-reconcile codex-hooks";
 
   # #78: parent checkouts that herdr's Workspace Fork reads HEAD from
   # without fetching first. Explicit allowlist rather than a directory

@@ -70,7 +70,7 @@
 #    取り違えて pop/apply する事故につながる。git-worktree-allow(allow 側)とは
 #    非対称: allow 側は if 不一致でも安全(単に許可を出さないだけ)だが、この
 #    hook は deny 側なので if 不一致は検査されない素通り = 事故そのものになる。
-#    かつ registerHooks は command 文字列の完全一致でしか存在判定しないため、
+#    かつ hook 宣言の一意キーは (event, command 文字列) なので、
 #    同一スクリプトを 2 つの if で二重登録することもできない。よって if は
 #    "Bash(git *)" まで広げ、絞り込みは hook 内部の早期 exit(grep → jq)に移した。
 #    詳細は docs/claude/git-stash-guard.md。
@@ -577,12 +577,14 @@ let
   legacyPublishGuardClaudeAdapterCmd = "CLAUDE_PLUGIN_ROOT='${hooksDir}/publish-guard' bash '${hooksDir}/publish-guard/hooks/claude-adapter.sh'";
   legacyPublishGuardCodexAdapterCmd = "bash '${hooksDir}/publish-guard/adapters/codex-adapter.sh'";
   legacyPublishGuardCopilotAdapterCmd = "bash '${hooksDir}/publish-guard/adapters/copilot-adapter.sh'";
-  registerCodexHooks = pkgs.writeShellScript "register-codex-hooks" (
-    builtins.readFile ../../scripts/register-codex-hooks
-  );
-  registerCopilotHooks = pkgs.writeShellScript "register-copilot-hooks" (
-    builtins.readFile ../../scripts/register-copilot-hooks
-  );
+  # settings.json / hooks.json 系への「宣言 → 実体」の冪等 reconcile は 1 つの
+  # Rust バイナリ(crates/settings-reconcile、ADR-0024 / #414)。かつては
+  # scripts/register-{codex,copilot}-hooks と、この下の writeShellScript に埋め込んだ
+  # jq に分かれていた。サブコマンドごとに引数の形が違う(codex/copilot は旧 bash と
+  # 同じ argv、claude-* は `builtins.toJSON` で作った宣言 JSON)。
+  settingsReconcile = "${pkgs.dotfiles-tools}/bin/settings-reconcile";
+  registerCodexHooks = "${settingsReconcile} codex-hooks";
+  registerCopilotHooks = "${settingsReconcile} copilot-hooks";
   # attribution-guard の Codex/Copilot 展開(#192)。#415(ADR-0024 Stage 4a)で
   # Rust バイナリ(crates/attribution-guard)になり、Claude と同じ
   # ~/.claude/hooks/attribution-guard を `--agent codex|copilot` 付きで直接
@@ -694,7 +696,7 @@ let
   # gh-edit-allow、ADR-0024)。bash を挟まず実行ファイルを直接呼ぶ。配置は
   # 他の hook と同じ ~/.claude/hooks/ の安定パス — store path を command に
   # 直接書くと、ビルドのたびに command 文字列が変わり、完全一致で存在判定
-  # する registerHooks が旧エントリを残し続けるため。
+  # する settings-reconcile が旧エントリを残し続けるため。
   ghEditAllowCmd = "'${hooksDir}/gh-edit-allow'";
   # rulesets-write-guard(ADR-503 D7):
   # `gh api` による ruleset(required_status_checks 等)の直接書換を deny
@@ -967,7 +969,7 @@ let
     }
   ];
 
-  # かつて配って撤回した statusLine。syncStatusLine が .statusLine.command との
+  # かつて配って撤回した statusLine。settings-reconcile claude-statusline が .statusLine.command との
   # 完全一致でキーを削除する対象(その後 statusLineCmd を set するので、置き換えにも
   # 使える)。#413: bash 版 claude-statusline.sh → Rust 版の置き換え。将来この機能
   # 自体を取り下げるときは statusLineCmd もここへ移す。
@@ -1002,195 +1004,160 @@ let
     pkgs.gnused
   ];
 
-  registerHooks = pkgs.writeShellScript "register-claude-hooks" ''
-    set -eu
-    settings="$1"
-    shift
-    jq=${pkgs.jq}/bin/jq
-
-    if [ ! -f "$settings" ]; then
-      mkdir -p "$(dirname "$settings")"
-      printf '{}\n' > "$settings"
-    fi
-
-    # tmp は settings.json と同じディレクトリに作る。mktemp の既定($TMPDIR か
-    # /tmp)は $HOME と別 fs になり得て、その場合 mv は rename(2) ではなく
-    # copy+unlink に落ちる(非原子的で、途中で落ちれば settings.json が壊れる)。
-    # mode も mktemp の 0600 決め打ちではなく元ファイルに合わせる。
-    write_back() {
-      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
-      mv "$1" "$settings"
+  # settings.json に登録する hook の宣言(順序がそのまま settings.json 上の並び)。
+  # settings-reconcile claude-hooks が (event, command) をキーに、宣言を正として
+  # matcher / if / timeout まで合わせる(かつての register() は command 一致だけで
+  # 存在判定し、これらを後から変えても既存エントリが更新されなかった — #414)。
+  # matcher / timeout / if は省略するとフィールド自体を出力しない。if はハンドラ
+  # レベルの絞り込み(permission rule 構文、例: "Bash(git -C *)")で、マッチしない
+  # 呼び出しでは hook プロセス自体が spawn されない。
+  claudeHookDeclarations = [
+    {
+      event = "PreToolUse";
+      matcher = "ExitPlanMode";
+      command = planReviewCmd;
+      timeout = 300;
     }
-
-    # retire <event> <cmd>: そのイベント配下から command 完全一致のハンドラだけを
-    # 外す。空になった matcher グループとイベントキーも畳む。該当ゼロなら読むだけで
-    # 書かない(定常状態では settings.json に触らない)。他ツールのエントリ(herdr の
-    # herdr-agent-state.sh、ローカルの public-publish-guard.sh / pr-body-guard.sh)は
-    # command が一致しない限り触れない。
-    retire() {
-      event="$1" cmd="$2"
-      if ! "$jq" -e --arg event "$event" --arg cmd "$cmd" \
-          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
-          "$settings" >/dev/null; then
-        return 0
-      fi
-      tmp="$(mktemp "$settings.hm.XXXXXX")"
-      "$jq" --arg event "$event" --arg cmd "$cmd" '
-        .hooks[$event] = ( (.hooks[$event] // [])
-          | map( if any(.hooks[]?; .command == $cmd)
-                 then (.hooks |= map(select(.command != $cmd)))
-                 else . end )
-          | map(select((.hooks? == null) or ((.hooks | length) > 0))) )
-        | (if ((.hooks[$event] // []) | length) == 0 then del(.hooks[$event]) else . end)
-      ' "$settings" > "$tmp"
-      write_back "$tmp"
+    {
+      event = "Stop";
+      command = wrapupStopCmd;
     }
-
-    # register <event> <matcher> <cmd> <timeout> [<if>]
-    #   matcher / timeout / if は空文字(または省略)ならフィールド自体を出力しない。
-    #   if はハンドラレベルの絞り込み(permission rule 構文、例: "Bash(git -C *)")で、
-    #   マッチしない呼び出しでは hook プロセス自体が spawn されない。
-    #   存在判定は command の一致だけで足りる(hook のパスがエントリを一意に定める)。
-    register() {
-      event="$1" matcher="$2" cmd="$3" timeout="$4" if_rule="''${5-}"
-      if "$jq" -e --arg event "$event" --arg cmd "$cmd" \
-          '[.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length > 0' \
-          "$settings" >/dev/null; then
-        return 0
-      fi
-      tmp="$(mktemp "$settings.hm.XXXXXX")"
-      "$jq" --arg event "$event" --arg matcher "$matcher" \
-            --arg cmd "$cmd" --arg timeout "$timeout" --arg ifrule "$if_rule" '
-        .hooks[$event] = ((.hooks[$event] // []) + [
-          (if $matcher == "" then {} else { matcher: $matcher } end)
-          + { hooks: [
-              { type: "command", command: $cmd }
-              + (if $ifrule == "" then {} else { "if": $ifrule } end)
-              + (if $timeout == "" then {} else { timeout: ($timeout | tonumber) } end)
-            ] }
-        ])' "$settings" > "$tmp"
-      write_back "$tmp"
+    {
+      event = "SessionStart";
+      command = wrapupSessionStartCmd;
     }
-
-    if [ "''${1-}" = "--retire" ]; then
-      shift
-      while [ "$#" -gt 0 ] && [ "$1" != "--register" ]; do
-        retire "$1" "$2"
-        shift 2
-      done
-    fi
-    if [ "''${1-}" != "--register" ]; then
-      echo "register-claude-hooks: --register が必要" >&2
-      exit 1
-    fi
-    shift
-
-    plan_review="$1";           shift
-    wrapup_stop="$1";           shift
-    wrapup_session_start="$1";  shift
-    plan_view="$1";             shift
-    issue_index="$1";           shift
-    sign_prewarm="$1";          shift
-    pr_gate_session_start="$1"; shift
-    pr_gate_stop="$1";          shift
-    git_worktree_allow="$1";    shift
-    git_stash_guard="$1";       shift
-    bleep_claude="$1";          shift
-    herdr_metadata="$1";        shift
-    worktree_fresh_base="$1";   shift
-    worktree_create_guard="$1"; shift
-    worktree_audit_context="$1"; shift
-    plan_scope_gate="$1";        shift
-    plan_precedent_gate="$1";    shift
-    plan_fresh_gate="$1";        shift
-    attribution_guard="$1";      shift
-    agent_turn_log="$1";         shift
-    atuin_hook_claude_code="$1"; shift
-    stack_base_guard="$1";       shift
-    pr_title_guard="$1";         shift
-    pr_confirm_guard="$1";       shift
-    decision_colocation_guard="$1"; shift
-    external_send_guard="$1";    shift
-    adr_number="$1";             shift
-    gh_edit_allow="$1";          shift
-    rulesets_write_guard="$1";   shift
-    routines_write_guard="$1";   shift
-    pkexec_guard="$1";           shift
-    new_tool_guard="$1";         shift
-    feedback_target_guard="$1";  shift
-    repo_create_guard="$1";      shift
-    cmd_hash_log="$1";           shift
-
-    register PreToolUse ExitPlanMode "$plan_review" 300
-    register Stop "" "$wrapup_stop" ""
-    register SessionStart "" "$wrapup_session_start" ""
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
     # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
     # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
-    register PreToolUse ExitPlanMode "$plan_view" 15
+    {
+      event = "PreToolUse";
+      matcher = "ExitPlanMode";
+      command = planViewCmd;
+      timeout = 15;
+    }
     # plan-scope-gate も同じ matcher に 3 つ目のエントリとして並ぶ。gh api graphql
     # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
-    register PreToolUse ExitPlanMode "$plan_scope_gate" 20
+    {
+      event = "PreToolUse";
+      matcher = "ExitPlanMode";
+      command = planScopeGateCmd;
+      timeout = 20;
+    }
     # plan-precedent-gate(ADR-0012)も同じ matcher に 4 つ目のエントリとして並ぶ。
     # gh/ネットワークを一切呼ばず jq とテキスト処理だけなので timeout は最短。
-    register PreToolUse ExitPlanMode "$plan_precedent_gate" 10
+    {
+      event = "PreToolUse";
+      matcher = "ExitPlanMode";
+      command = planPrecedentGateCmd;
+      timeout = 10;
+    }
     # plan-fresh-gate も同じ matcher に 5 つ目のエントリとして並ぶ。fetch 1 回
     # (timeout 15s)+ diff/grep/awk のみで gh は呼ばない。
-    register PreToolUse ExitPlanMode "$plan_fresh_gate" 30
+    {
+      event = "PreToolUse";
+      matcher = "ExitPlanMode";
+      command = planFreshGateCmd;
+      timeout = 30;
+    }
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
     # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
     # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
     # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
     # 引き継ぐので不要。
-    register SessionStart "startup|resume|compact" "$issue_index" 10
+    {
+      event = "SessionStart";
+      matcher = "startup|resume|compact";
+      command = issueIndexCmd;
+      timeout = 10;
+    }
     # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
     # キャッシュはすでに温まっているか、そもそもまだ温まっていないかのどちらか
     # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
     # ない。resume は別ログインからの再開があり得るので含める。
-    register SessionStart "startup|resume" "$sign_prewarm" 120
+    {
+      event = "SessionStart";
+      matcher = "startup|resume";
+      command = signPrewarmCmd;
+      timeout = 120;
+    }
     # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
     # fast-forward する。pr-gate の SessionStart advisory(base 追従)より先に
     # 列挙しているが、Claude Code は同一イベントの hook を並列実行するため
     # 逐次を保証しない — レースは許容し、動かした場合だけこの hook 自身が
     # additionalContext で報告する(docs/claude/worktree-fresh-base.md)。
-    register SessionStart "startup|resume" "$worktree_fresh_base" 30
+    {
+      event = "SessionStart";
+      matcher = "startup|resume";
+      command = worktreeFreshBaseCmd;
+      timeout = 30;
+    }
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
-    # それより長く確保する(既知の罠: registerHooks は command 一致だけで存在判定
-    # するので、matcher/timeout を後から変えても既存エントリは更新されない —
-    # docs/claude/issue-index.md。だから timeout は最初から余裕を持たせておく)。
-    register SessionStart "" "$pr_gate_session_start" 10
-    register Stop "" "$pr_gate_stop" 600
+    # それより長く確保する(かつては command 一致だけで存在判定していたので
+    # matcher/timeout を後から変えても既存エントリが更新されなかったが、今は
+    # settings-reconcile が宣言に合わせて直す — docs/claude/issue-index.md、#414)。
+    {
+      event = "SessionStart";
+      command = prGateSessionStartCmd;
+      timeout = 10;
+    }
+    {
+      event = "Stop";
+      command = prGateStopCmd;
+      timeout = 600;
+    }
     # git-worktree-allow: if で "Bash(git -C *)" に絞る — それ以外の Bash 呼び出しでは
     # hook プロセス自体が起動しない。判定はすべて hook 側(パス実在・許可サブコマンド・
     # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
     # フォールスルーする。
-    register PreToolUse Bash "$git_worktree_allow" 10 "Bash(git -C *)"
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = gitWorktreeAllowCmd;
+      timeout = 10;
+      "if" = "Bash(git -C *)";
+    }
     # git-stash-guard: if を worktree-allow よりずっと広い "Bash(git *)" にする
     # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
-    register PreToolUse Bash "$git_stash_guard" 10 "Bash(git *)"
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = gitStashGuardCmd;
+      timeout = 10;
+      "if" = "Bash(git *)";
+    }
     # bleep(旧 publish-guard、上流分離、ADR-0009): 会社/private リポジトリの
     # 実名が git push・gh pr/issue の create/edit/comment・MCP tool call 経由で
     # PUBLIC な面に漏れるのを防ぐ(docs/claude/public-publish-guard.md)。
     # matcher は複合1本 "Bash|mcp__.*" — Bash と MCP を2つの hook エントリに
-    # 分けない。register() の存在判定は command 文字列の完全一致だけで
-    # matcher を見ないため、同一 command を2つの matcher で登録しようとすると
-    # 2回目が早期 return し、MCP 経路が無検査のまま残ってしまう(旧実装が
-    # matcher "Bash" 単体だったために持っていた最大の機能欠陥そのもの)。
+    # 分けない。(event, command) が宣言の一意キーなので、同一 command を
+    # 2つの matcher で宣言しても 2つ目は無視され(settings-reconcile が警告する)、
+    # MCP 経路が無検査のまま残ってしまう(旧実装が matcher "Bash" 単体だった
+    # ために持っていた最大の機能欠陥そのもの)。
     # if は付けない(Bash(*) のような permission rule 構文は MCP の tool 名
     # には一致しないため) — git-stash-guard と同じ理由(deny/ask 側は
     # matcher/if 不一致 = 素通りが事故になる)で、絞り込みは hook 内部の
     # 早期 exit に置く。gh api の生呼び出しの往復も想定してタイムアウトは
     # やや長め。
-    register PreToolUse "Bash|mcp__.*" "$bleep_claude" 20
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = bleepClaudeCmd;
+      timeout = 20;
+    }
     # attribution-guard: bleep と同じ外向き投稿面(gh pr/issue の
     # create/edit/comment・gh pr review・MCP tool call)を見るが、判定の向きが
     # 逆 — あちらは「社名が現れる」ことの検出、こちらは「attribution が無い」
     # ことの検出。matcher も同じ複合 1 本にする(上と同じ理由: Bash 単体だと
     # MCP 経路が無検査のまま残る)。gh api の往復は無いのでタイムアウトは短い。
-    register PreToolUse "Bash|mcp__.*" "$attribution_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = attributionGuardCmd;
+      timeout = 10;
+    }
     # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
     # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
     # SessionStart=初期値+残留上書き / UserPromptSubmit=アイドル中の Shift+Tab を
@@ -1200,101 +1167,222 @@ let
     # PreToolUse と同情報で遅延だけ悪いので登録しない(旧イテレーションは
     # PostToolUse に登録していたので retiredHookEntries で外す)。Herdr 外では
     # 即 no-op。
-    register SessionStart "" "$herdr_metadata" 10
-    register UserPromptSubmit "" "$herdr_metadata" 10
-    register PreToolUse "" "$herdr_metadata" 10
-    register Stop "" "$herdr_metadata" 10
-    register SessionEnd "" "$herdr_metadata" 10
+    {
+      event = "SessionStart";
+      command = herdrMetadataCmd;
+      timeout = 10;
+    }
+    {
+      event = "UserPromptSubmit";
+      command = herdrMetadataCmd;
+      timeout = 10;
+    }
+    {
+      event = "PreToolUse";
+      command = herdrMetadataCmd;
+      timeout = 10;
+    }
+    {
+      event = "Stop";
+      command = herdrMetadataCmd;
+      timeout = 10;
+    }
+    {
+      event = "SessionEnd";
+      command = herdrMetadataCmd;
+      timeout = 10;
+    }
     # Direct worktree creation can outlive an agent's temporary checkout cleanup.
     # Herdr owns both lifecycle ends, so reject every Bash spelling here.
-    register PreToolUse Bash "$worktree_create_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = worktreeCreateGuardCmd;
+      timeout = 10;
+    }
     # The timer is the primary detector; SessionStart also exposes pending state
     # directly to the agent that is in a position to clean it up.
-    register SessionStart "startup|resume" "$worktree_audit_context" 30
+    {
+      event = "SessionStart";
+      matcher = "startup|resume";
+      command = worktreeAuditContextCmd;
+      timeout = 30;
+    }
     # agent-turn-log(docs/adr/0011): 純粋なロガーで判定を持たないため matcher/if
     # は不要。UserPromptSubmit/Stop の両方に同一 command で登録し、スクリプト側が
     # `.hook_event_name` で分岐する(herdr-agent-metadata と同じ形)。
-    register UserPromptSubmit "" "$agent_turn_log" 10
-    register Stop "" "$agent_turn_log" 10
+    {
+      event = "UserPromptSubmit";
+      command = agentTurnLogCmd;
+      timeout = 10;
+    }
+    {
+      event = "Stop";
+      command = agentTurnLogCmd;
+      timeout = 10;
+    }
     # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
     # フックを、Bash tool の PreToolUse/PostToolUse/PostToolUseFailure 3 イベント
     # すべてに同一 command で登録する(成功/失敗どちらの exit code も history.db
     # に残すため、PostToolUse だけでは足りない)。matcher は Claude Code 標準の
     # tool 名一致("Bash")であり、他 hook が使う permission-rule 構文の `if`
     # ではない。
-    register PreToolUse Bash "$atuin_hook_claude_code" 10
-    register PostToolUse Bash "$atuin_hook_claude_code" 10
-    register PostToolUseFailure Bash "$atuin_hook_claude_code" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = atuinHookClaudeCodeCmd;
+      timeout = 10;
+    }
+    {
+      event = "PostToolUse";
+      matcher = "Bash";
+      command = atuinHookClaudeCodeCmd;
+      timeout = 10;
+    }
+    {
+      event = "PostToolUseFailure";
+      matcher = "Bash";
+      command = atuinHookClaudeCodeCmd;
+      timeout = 10;
+    }
     # stack-base-guard(ADR-0027): bleep/attribution-guard と同じ
     # 複合 matcher "Bash|mcp__.*" に並ぶ(Bash 単体だと MCP 接続の瞬間に
     # 無検査になる、同じ理由の繰り返し)。gh pr list 1 往復 + ローカル git
     # 走査のみなので timeout は attribution-guard 並みでよいが、往復を含む
     # ため若干長めに確保する。
-    register PreToolUse "Bash|mcp__.*" "$stack_base_guard" 20
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = stackBaseGuardCmd;
+      timeout = 20;
+    }
     # pr-title-guard(ADR-0031): attribution-guard/stack-base-guard と同じ
     # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
     # 持たないため timeout は短め。
-    register PreToolUse "Bash|mcp__.*" "$pr_title_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = prTitleGuardCmd;
+      timeout = 10;
+    }
     # pr-confirm-guard: pr-title-guard と同じ複合 matcher。owner スコープを
     # 持たず全リポジトリで発火する。本文の task list 検査・節切り出し・
     # 項目分割は jq/gh API を使わない純粋な文字列処理なので timeout は
     # 同じ短さでよい。
-    register PreToolUse "Bash|mcp__.*" "$pr_confirm_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = prConfirmGuardCmd;
+      timeout = 10;
+    }
     # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
     # pr-title-guard と同じ複合 matcher。checker(crates/decision-colocation の
     # check::run_check)は git diff + ファイル読み取りのみで、gh API 往復は
     # 持たない(base の default branch 解決で gh repo view に落ちる場合を
     # 除く)ので timeout は stack-base-guard 並みでよい。
-    register PreToolUse "Bash|mcp__.*" "$decision_colocation_guard" 20
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = decisionColocationGuardCmd;
+      timeout = 20;
+    }
     # external-send-guard(docs/claude/external-send-guard.md): Gmail/Slack
     # の送信系 MCP tool だけが対象なので matcher は "mcp__.*" のみでよい
     # (bleep/attribution-guard と違い Bash 経由の送信は原理的に検出できない
     # ため、Bash|mcp__.* にする理由がない)。
     # jq/文字列処理のみで往復が無いので timeout は最短。
-    register PreToolUse "mcp__.*" "$external_send_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "mcp__.*";
+      command = externalSendGuardCmd;
+      timeout = 10;
+    }
     # adr-number(ADR-380): `gh pr create` 直後に ADR-478 を PR 番号へ自動
     # 改番する段3(利便性層)。deny は一切しないため他の "Bash|mcp__.*" 系
     # guard と揃える必要が無く、atuin と同じ単純な Bash matcher でよい。
     # docs/adr/0000-*.md が無ければ stdin すら読まず即 exit するので常時
     # コストはほぼゼロ — timeout は atuin と同じ短さでよい。
-    register PostToolUse Bash "$adr_number" 10
+    {
+      event = "PostToolUse";
+      matcher = "Bash";
+      command = adrNumberCmd;
+      timeout = 10;
+    }
     # gh-edit-allow(#392): 1 バイナリで記録役と判定役を兼ね、hook_event_name で
     # 分岐する(herdr-claude-metadata と同じ「同一 command を複数イベントに」形)。
     # PostToolUse は `git push && gh pr create …` のような複合コマンドの成功も
     # 拾うため if を付けない(Rust 製で起動 ~1ms、非該当は即 exit)。PreToolUse は
     # allow しか返さない(不一致は素通し)ので、if で gh 呼び出しに絞ってよい
     # — git-worktree-allow と同じ理由付け。
-    register PostToolUse Bash "$gh_edit_allow" 10
-    register PreToolUse Bash "$gh_edit_allow" 10 "Bash(gh *)"
+    {
+      event = "PostToolUse";
+      matcher = "Bash";
+      command = ghEditAllowCmd;
+      timeout = 10;
+    }
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = ghEditAllowCmd;
+      timeout = 10;
+      "if" = "Bash(gh *)";
+    }
     # rulesets-write-guard(ADR-503 D7): deny
     # のみ返す(判定しない入力は素通し)ので、gh-edit-allow の PreToolUse と
     # 同じ if で gh 呼び出しに絞ってよい。
-    register PreToolUse Bash "$rulesets_write_guard" 10 "Bash(gh *)"
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = rulesetsWriteGuardCmd;
+      timeout = 10;
+      "if" = "Bash(gh *)";
+    }
     # routines-write-guard(28番、ADR-519 D7):
     # RemoteTrigger は Bash ではないため、Bash 専用の permission-rule 構文
     # (`Bash(gh *)` のような if narrowing)は使えない — matcher で
     # RemoteTrigger 呼び出し全体を hook に渡し、対象外のアクション/body は
     # バイナリ自身が None を返して素通しする(external-send-guard の
     # "mcp__.*" と同じ「広い matcher + バイナリ内部判定」形)。
-    register PreToolUse RemoteTrigger "$routines_write_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "RemoteTrigger";
+      command = routinesWriteGuardCmd;
+      timeout = 10;
+    }
     # pkexec-guard(29番、docs/claude/pkexec-guard.md): deny のみを返す
     # (判定しない入力は素通し)が、git-stash-guard/bleep と同じ理由で if を
     # 付けない — 対象の "pkexec"/"sudo" トークンはコマンド文字列のどこにでも
     # 現れうるため、"Bash(pkexec *)" のような先頭一致の if では絞れず、
     # 絞り込みは常にバイナリ内部の早期 exit に置く。Rust 製で起動が速いため
     # timeout は atuin/gh-edit-allow 並みの短さでよい。
-    register PreToolUse Bash "$pkexec_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = pkexecGuardCmd;
+      timeout = 10;
+    }
     # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
     # promotion.md D1): deny のみ返す(判定しない入力は素通し)。matcher を
     # "Write" に絞る — 対象イベントは常に PreToolUse(Write) で、バイナリ
     # 内部でさらに「新規ファイルか」「新しい道具・単位の述語に合致するか」
     # を判定する。Rust 製で起動が速いため timeout は他の Rust hook 並み。
-    register PreToolUse Write "$new_tool_guard" 10
+    {
+      event = "PreToolUse";
+      matcher = "Write";
+      command = newToolGuardCmd;
+      timeout = 10;
+    }
     # feedback-target-guard(ADR-543 段3): gh-edit-allow/rulesets-write-guard
     # と同じ理由で "Bash(gh *)" に絞る(コマンド文字列が "gh " で始まる場合
     # のみ発火。複合コマンドの2番目以降に gh が来るケースは対象外 — 既存の
     # gh-edit-allow/rulesets-write-guard と同じ既知のトレードオフ)。
-    register PreToolUse Bash "$feedback_target_guard" 10 "Bash(gh *)"
+    {
+      event = "PreToolUse";
+      matcher = "Bash";
+      command = feedbackTargetGuardCmd;
+      timeout = 10;
+      "if" = "Bash(gh *)";
+    }
     # repo-create-guard(ADR-0013 Amendment 2026-09-29): stack-base-guard/
     # decision-colocation-guard と同じ複合 matcher "Bash|mcp__.*" に並ぶ
     # (gh-edit-allow/rulesets-write-guard/feedback-target-guard の
@@ -1302,140 +1390,59 @@ let
     # ような複合コマンドの2番目以降に対象コマンドが来るケースも拾う必要が
     # あるため、この if 絞り込みは使わない)。判定は文字列処理のみで gh API
     # 往復を持たないため timeout は pr-title-guard 並みでよい。
-    register PreToolUse "Bash|mcp__.*" "$repo_create_guard" 15
+    {
+      event = "PreToolUse";
+      matcher = "Bash|mcp__.*";
+      command = repoCreateGuardCmd;
+      timeout = 15;
+    }
     # cmd-hash-log(ADR-543 段3): 判定を返さないので matcher を絞らず全
     # Bash 実行を対象にする(記録漏れが検出の精度を下げるため)。Rust 製で
     # 起動が速く、成功しても失敗しても即 exit するので timeout は最短。
-    register PostToolUse Bash "$cmd_hash_log" 10
-  '';
-
-  # settings.json の statusLine を宣言に合わせる。
-  # 使い方: sync-claude-statusline <settings> <desired-or-empty> [<retired>…]
-  #   retired を先に処理し、.statusLine.command が retired のいずれかに完全一致
-  #   したときだけキーを削除する。無条件 del にしないのは、/statusline で本人が
-  #   設定した値を「宣言なし」の switch で奪わないため — retiredPermissionRules が
-  #   「かつて自分が配った文字列」だけを消すのと同型。desired が非空なら最後に
-  #   set-if-different するので、retire→set の順で set が勝つ。
-  syncStatusLine = pkgs.writeShellScript "sync-claude-statusline" ''
-    set -eu
-    settings="$1"
-    desired="$2"
-    shift 2
-    jq=${pkgs.jq}/bin/jq
-
-    if [ ! -f "$settings" ]; then
-      mkdir -p "$(dirname "$settings")"
-      printf '{}\n' > "$settings"
-    fi
-
-    write_back() {
-      chmod --reference="$settings" "$1" 2>/dev/null || chmod 600 "$1"
-      mv "$1" "$settings"
+    {
+      event = "PostToolUse";
+      matcher = "Bash";
+      command = cmdHashLogCmd;
+      timeout = 10;
     }
+  ];
 
-    current="$("$jq" -r '.statusLine.command // ""' "$settings")"
+  claudeHooksSpec = builtins.toJSON {
+    retire = retiredHookEntries;
+    register = claudeHookDeclarations;
+  };
 
-    for retired in "$@"; do
-      [ "$current" = "$retired" ] || continue
-      tmp="$(mktemp "$settings.hm.XXXXXX")"
-      # null 代入ではなくキーの削除。「この機能を入れる前の形に戻す」が撤回の
-      # 意味であり、これで /statusline による後からの設定も素直に効く。
-      "$jq" 'del(.statusLine)' "$settings" > "$tmp"
-      write_back "$tmp"
-      current=""
-      break
-    done
-
-    if [ -n "$desired" ] && [ "$current" != "$desired" ]; then
-      tmp="$(mktemp "$settings.hm.XXXXXX")"
-      "$jq" --arg cmd "$desired" \
-        '.statusLine = { type: "command", command: $cmd }' "$settings" > "$tmp"
-      write_back "$tmp"
-    fi
-  '';
-
-  # settings.json の permissions.allow を要素単位で冪等に同期する。
-  # 使い方: register-claude-permissions <settings> --retire <r>… --allow <a>…
-  #   --retire 以降のルールは allow から削除(無ければ何もしない)、--allow 以降は
-  #   追加(既に同一文字列があれば何もしない)。ルール文字列を後から書き換えるときは
-  #   旧文字列を retiredPermissionRules に移す — これで全ホストが次回の switch で旧
-  #   ルールを掃除する(かつては「旧ルールが残り続ける」が既知の制約だった —
-  #   docs/claude/claude-permissions.md)。permissions.defaultMode や allow 以外の
-  #   キーには一切触らない。
-  # ルール1件ごとに mktemp+jq+mv の read-modify-write サイクルを回すと(かつては
-  # retiredPermissionRules + permissionRules で最大 53 回)、herdr-agent-state.sh や
-  # Claude Code CLI 自体との並行書き込みに対する lost-update 窓がルール数分だけ
-  # 反復される(#61)。retire/allow の全ルールを 1 回の jq 呼び出しにまとめ、
-  # mktemp+mv も 1 回に減らして窓の反復回数を減らす。
-  # pkexec-guard(29番、docs/claude/pkexec-guard.md)向けに `--retire-ask`/
-  # `--ask` の2セクションを追加した。`.permissions.ask` は明示 ask ルールで、
-  # auto mode の分類器より先に評価され常に確認を強制する(公式ドキュメント、
-  # docs/claude/pkexec-guard.md 参照)。allow と違い「常に許可」を意味しない
-  # ため、#461 の中間ワイルドカード strip(検出のみで表現不可能にできない
-  # 理由はそちらのコメント参照)は ask には適用しない — 末尾 `*` のみの
-  # 単純なルールしか今のところ書いていない。
-  registerPermissions = pkgs.writeShellScript "register-claude-permissions" ''
-    set -eu
-    settings="$1"
-    shift
-    jq=${pkgs.jq}/bin/jq
-
-    if [ ! -f "$settings" ]; then
-      mkdir -p "$(dirname "$settings")"
-      printf '{}\n' > "$settings"
-    fi
-
-    mode=""
-    retire_args=()
-    allow_args=()
-    retire_ask_args=()
-    ask_args=()
-    for arg in "$@"; do
-      case "$arg" in
-        --retire|--allow|--retire-ask|--ask) mode="$arg"; continue ;;
-      esac
-      case "$mode" in
-        --retire) retire_args+=("$arg") ;;
-        --allow) allow_args+=("$arg") ;;
-        --retire-ask) retire_ask_args+=("$arg") ;;
-        --ask) ask_args+=("$arg") ;;
-        *)
-          echo "register-claude-permissions: --retire/--allow/--retire-ask/--ask より前にルールが来た: $arg" >&2
-          exit 1
-          ;;
-      esac
-    done
-
-    retire_json="$("$jq" -n --args '$ARGS.positional' "''${retire_args[@]}")"
-    allow_json="$("$jq" -n --args '$ARGS.positional' "''${allow_args[@]}")"
-    retire_ask_json="$("$jq" -n --args '$ARGS.positional' "''${retire_ask_args[@]}")"
-    ask_json="$("$jq" -n --args '$ARGS.positional' "''${ask_args[@]}")"
-
-    # #461: 中間 `*` を含む allow rule を settings.json の実体からも一律 strip
-    # する(宣言側は permissionRules の nix eval 時 assert で表現不可能にして
-    # あるが、settings.json は Claude Code 自身の「常に許可」プロンプトや
-    # /promote-permissions からも書かれる実行時の可変状態なので、宣言側の
-    # 防御だけでは届かない — こちらは検出のみが上限)。正規表現は
-    # `hasMidWildcard`(claude.nix)と同じ意図: `(` か空白の直後の `*` に、
-    # 空白を挟んで `)` 以外の文字が続くパターン。
-    mid_wildcard_re='(\(| )\*[[:space:]]+[^)]'
-
-    tmp="$(mktemp)"
-    "$jq" --argjson retire "$retire_json" --argjson allow "$allow_json" \
-      --argjson retireAsk "$retire_ask_json" --argjson ask "$ask_json" \
-      --arg midWildcardRe "$mid_wildcard_re" '
-      .permissions.allow = (
-        (((.permissions.allow // []) - $retire)
-          | map(select(test($midWildcardRe) | not))) as $kept
-        | $kept + ($allow | map(select(. as $r | ($kept | index($r)) | not)))
-      )
-      | .permissions.ask = (
-        ((.permissions.ask // []) - $retireAsk) as $keptAsk
-        | $keptAsk + ($ask | map(select(. as $r | ($keptAsk | index($r)) | not)))
-      )
-    ' "$settings" > "$tmp"
-    mv "$tmp" "$settings"
-  '';
+  # statusLine / permissions の reconcile も settings-reconcile(crates/
+  # settings-reconcile、#414)。かつてここに writeShellScript で埋め込んでいた
+  # jq の設計メモ(振る舞いは Rust 版のコメントと fixture に引き継いだ):
+  #
+  # - claude-statusline: retired を先に処理し、.statusLine.command が retired の
+  #   いずれかに完全一致したときだけキーを削除する。無条件 del にしないのは、
+  #   /statusline で本人が設定した値を「宣言なし」の switch で奪わないため —
+  #   retiredPermissionRules が「かつて自分が配った文字列」だけを消すのと同型。
+  #   desired が非空なら最後に set-if-different するので、retire→set の順で
+  #   set が勝つ。
+  # - claude-permissions: permissions.allow / ask を要素単位で冪等に同期する。
+  #   retire_* のルールは削除(無ければ何もしない)、allow / ask は無ければ追加。
+  #   ルール文字列を後から書き換えるときは旧文字列を retiredPermissionRules に
+  #   移す — これで全ホストが次回の switch で旧ルールを掃除する
+  #   (docs/claude/claude-permissions.md)。permissions.defaultMode や
+  #   allow / ask 以外のキーには一切触らない。ルール1件ごとに read-modify-write
+  #   を回すと、herdr-agent-state.sh や Claude Code CLI 自体との並行書き込みに
+  #   対する lost-update 窓がルール数分だけ反復される(#61)ので、全ルールを
+  #   1 回の読み書きにまとめる。pkexec-guard(29番、docs/claude/pkexec-guard.md)
+  #   向けに ask 側(`retire_ask` / `ask`)もある。`.permissions.ask` は明示 ask
+  #   ルールで、auto mode の分類器より先に評価され常に確認を強制する。allow と
+  #   違い「常に許可」を意味しないため、#461 の中間ワイルドカード strip(検出
+  #   のみで表現不可能にできない理由はそちらのコメント参照)は ask には適用
+  #   しない — 末尾 `*` のみの単純なルールしか今のところ書いていない。
+  # - #461: 中間 `*` を含む allow rule は settings.json の実体からも一律 strip
+  #   する(宣言側は permissionRules の nix eval 時 assert で表現不可能にして
+  #   あるが、settings.json は Claude Code 自身の「常に許可」プロンプトや
+  #   /promote-permissions からも書かれる実行時の可変状態なので、宣言側の防御
+  #   だけでは届かない — こちらは検出のみが上限)。判定は `hasMidWildcard`
+  #   (下)と同じ意図: `(` か空白の直後の `*` に、空白を挟んで `)` 以外の文字が
+  #   続くパターン。
 
   # Claude Code の permission rule 構文は `Tool(specifier)`(裸のコマンド文字列では
   # 認識されない)。Add / Commit / Create PR で毎回止まる直接原因はこの 4 件。
@@ -1455,8 +1462,8 @@ let
   # `-C`/`-p`/`--prefix` のような値受け取り位置への任意オプション挿入を素通しし、
   # #453/#460/#461 で3回、個別撤回を繰り返すことになった。個別撤回の代わりに、
   # 宣言する側は `permissionRules_` の下の assert で nix eval 時に拒否し
-  # (表現不可能)、settings.json という実行時の可変状態は registerPermissions
-  # の jq が一律 strip する(検出のみが上限、上のコメント参照)。
+  # (表現不可能)、settings.json という実行時の可変状態は settings-reconcile
+  # claude-permissions が一律 strip する(検出のみが上限、上のコメント参照)。
   hasMidWildcard = rule: builtins.match ".*(\\(| )\\*[[:space:]]+[^)]+.*" rule != null;
 
   permissionRules_ = [
@@ -1527,7 +1534,7 @@ let
 
   # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
   # `Bash(git -C * add *)` 等の中間ワイルドカードを含む撤回は、もう個別に
-  # ここへ列挙する必要が無い(#461) — registerPermissions の jq が
+  # ここへ列挙する必要が無い(#461) — settings-reconcile claude-permissions が
   # settings.json 上の中間ワイルドカードルールを出自(宣言/promote/実行時
   # プロンプトのどれか)を問わず一律 strip するようになった。このリストに
   # 残す/追加するのは、中間ワイルドカード**以外**の理由で退役したルールだけ。
@@ -1795,8 +1802,8 @@ in
   # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
   # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /
   # Copilot CLI (~/.copilot/settings.json) には ADR-0009 決定7で明示的に
-  # 対象外としたまま配線していなかった。register-codex-hooks /
-  # register-copilot-hooks は worktree.nix / herdr.nix が同じ対象ファイルを
+  # 対象外としたまま配線していなかった。settings-reconcile の
+  # codex-hooks / copilot-hooks は worktree.nix / herdr.nix が同じ対象ファイルを
   # 書き換える registrar なので、lost-update 窓(#61 と同種)を避けるため
   # それらの後ろに明示的に順序付ける。#25-28(Rust hook cutover + bleep
   # 改名)で旧 adapters/{codex,copilot}-adapter.sh が upstream から削除された
@@ -2499,59 +2506,20 @@ in
   # docs/claude/global-claude-md.md。
   home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
 
-  # --retire は retiredHookEntries が空でも末尾に `\` が残らないよう
-  # concatMapStrings(区切り文字列を要素ごとに前置)で組む — concatMapStringsSep
-  # だと空リストで区切りだけが浮く。
+  # 宣言(claudeHookDeclarations / retiredHookEntries)は JSON で 1 引数に渡す。
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${registerHooks} "$HOME/.claude/settings.json" \
-      --retire${
-        lib.concatMapStrings (
-          e: " \\\n      " + lib.escapeShellArg e.event + " " + lib.escapeShellArg e.command
-        ) retiredHookEntries
-      } \
-      --register \
-      ${lib.escapeShellArg planReviewCmd} \
-      ${lib.escapeShellArg wrapupStopCmd} \
-      ${lib.escapeShellArg wrapupSessionStartCmd} \
-      ${lib.escapeShellArg planViewCmd} \
-      ${lib.escapeShellArg issueIndexCmd} \
-      ${lib.escapeShellArg signPrewarmCmd} \
-      ${lib.escapeShellArg prGateSessionStartCmd} \
-      ${lib.escapeShellArg prGateStopCmd} \
-      ${lib.escapeShellArg gitWorktreeAllowCmd} \
-      ${lib.escapeShellArg gitStashGuardCmd} \
-      ${lib.escapeShellArg bleepClaudeCmd} \
-      ${lib.escapeShellArg herdrMetadataCmd} \
-      ${lib.escapeShellArg worktreeFreshBaseCmd} \
-      ${lib.escapeShellArg worktreeCreateGuardCmd} \
-      ${lib.escapeShellArg worktreeAuditContextCmd} \
-      ${lib.escapeShellArg planScopeGateCmd} \
-      ${lib.escapeShellArg planPrecedentGateCmd} \
-      ${lib.escapeShellArg planFreshGateCmd} \
-      ${lib.escapeShellArg attributionGuardCmd} \
-      ${lib.escapeShellArg agentTurnLogCmd} \
-      ${lib.escapeShellArg atuinHookClaudeCodeCmd} \
-      ${lib.escapeShellArg stackBaseGuardCmd} \
-      ${lib.escapeShellArg prTitleGuardCmd} \
-      ${lib.escapeShellArg prConfirmGuardCmd} \
-      ${lib.escapeShellArg decisionColocationGuardCmd} \
-      ${lib.escapeShellArg externalSendGuardCmd} \
-      ${lib.escapeShellArg adrNumberCmd} \
-      ${lib.escapeShellArg ghEditAllowCmd} \
-      ${lib.escapeShellArg rulesetsWriteGuardCmd} \
-      ${lib.escapeShellArg routinesWriteGuardCmd} \
-      ${lib.escapeShellArg pkexecGuardCmd} \
-      ${lib.escapeShellArg newToolGuardCmd} \
-      ${lib.escapeShellArg feedbackTargetGuardCmd} \
-      ${lib.escapeShellArg repoCreateGuardCmd} \
-      ${lib.escapeShellArg cmdHashLogCmd}
+    run ${settingsReconcile} claude-hooks "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg claudeHooksSpec}
   '';
 
   home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${syncStatusLine} "$HOME/.claude/settings.json" \
-      ${lib.escapeShellArg statusLineCmd}${
-        lib.concatMapStrings (c: " \\\n      " + lib.escapeShellArg c) retiredStatusLineCommands
-      }
+    run ${settingsReconcile} claude-statusline "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg (
+        builtins.toJSON {
+          desired = statusLineCmd;
+          retired = retiredStatusLineCommands;
+        }
+      )}
   '';
 
   # 今のモード(Fable / Opus)は保ったまま、その具体モデル ID だけを claude バイナリの
@@ -2570,14 +2538,14 @@ in
   # activation script として走らせる — 片方が既存の hooks 登録ロジックを
   # 壊さないようにするため、jq マージの責務を混ぜない。
   home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${registerPermissions} "$HOME/.claude/settings.json" \
-      --retire \
-      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredPermissionRules} \
-      --allow \
-      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg permissionRules} \
-      --retire-ask \
-      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg retiredAskRules} \
-      --ask \
-      ${lib.concatMapStringsSep " \\\n      " lib.escapeShellArg askRules}
+    run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
+      ${lib.escapeShellArg (
+        builtins.toJSON {
+          retire_allow = retiredPermissionRules;
+          allow = permissionRules;
+          retire_ask = retiredAskRules;
+          ask = askRules;
+        }
+      )}
   '';
 }
