@@ -169,7 +169,12 @@ skills の templates/scripts」)と同じ性質で、播種先に Rust ツール
   経由で dotfiles を sparse-checkout して実行する。3 本とも `scripts/github-audit` の
   bash 関数を `source` する。
 
-この 4 本を `rust-migration.toml` の `[[excluded]]` に理由付きで移し、`max_remaining`
+あわせて、3 本が `source` する `scripts/github-audit` の bash も、同じ理由で残す。デプロイされる
+CLI は `crates/github-audit`(Rust)に移したので、bash 版は「3 本の共有部品」としてだけ残る。
+二重実装のずれは `crates/github-audit/tests/differential.rs`(両者を同じ fixture・gh スタブで流して
+出力を比べる)が検出する。
+
+この 5 本を `rust-migration.toml` の `[[excluded]]` に理由付きで移し、`max_remaining`
 の計数から外す。**撤回条件**: 播種先へバイナリを配る仕組み(release 添付、または
 `pr-title-check` のように依存の無い crate を sparse-checkout して `cargo build` する形)が
 入ったら、対象に戻して移植する。

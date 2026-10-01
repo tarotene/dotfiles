@@ -122,7 +122,13 @@ extra = ["bootstrap.sh"]
 #
 # 44 = #413(Stage 4d)で session/表示系の 11 本を Rust へ移植し、
 # bash 版を削除した(55 → 44)。
-max_remaining = 44
+#
+# 0 = #414(Stage 4e)で CLI 15 本と inline 4 本を Rust へ移植し、#415(Stage 4a)の
+# 残りと合わせて [[target]] / [[inline]] が空になった。他リポジトリの CI が実行時に
+# 使う配布物 5 本(adr-number-check / pr-merge-settings-check / rulesets-context-check /
+# workflow-naming-check と、それらが source する github-audit の bash)は
+# ADR-0024 Amendment 3 で [[excluded]] に移した(撤回条件: 播種先へバイナリを配る仕組み)。
+max_remaining = 0
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -140,16 +146,16 @@ max_remaining = 44
 # by category instead. The family itself (copilot-plan-review, plan-view,
 # plan-scope-gate, plan-precedent-gate, plan-fresh-gate) is Rust since #412.
 # --- Stage 4e ---
-[[target]]
-path = "scripts/github-audit"
-stage = "4e"
-
 # --- 対象外 ---
 # --- ADR-0024 Amendment 3(#415): 他リポジトリの CI が実行時に取得・複製する配布物 ---
 # 播種先には Rust ツールチェインも nix も無く、dotfiles-tools のバイナリを配る手段が
 # 無い。dependency-free の crate を sparse-checkout して cargo build する形で移せた
 # pr-title-check(.github/actions/pr-title)と違い、これらは複数 crate / 外部依存を要する、
 # またはテンプレートとして各リポジトリへ複製される。配布の仕組みが入るまで bash のまま。
+[[excluded]]
+path = "scripts/github-audit"
+reason = "pr-merge-settings-check / rulesets-context-check / workflow-naming-check(他リポジトリの CI が実行する配布物)が bash 関数を source する共有部品で、.github/actions/pr-title が sparse-checkout の対象に列挙している。デプロイされる CLI は crates/github-audit(Rust)で、tests/differential.rs が両者の出力の一致を検査する(ADR-0024 Amendment 3)"
+
 [[excluded]]
 path = "scripts/adr-number-check"
 reason = "governance テンプレート(repo-governance-common/templates/scripts/ への symlink)で、各リポジトリへ複製され、その CI(adr-number.yml)が直接実行する(ADR-0024 Amendment 3)"
