@@ -624,11 +624,16 @@ finished" rather than any code change.
 ### releaser
 
 Detects drift in the releaser GitHub App's secret wiring for repositories
-that use `release-plz` or `release-please` (checked by filename — a
-`release-plz.yml` or `release-please.yml` caller workflow — against the
-same `workflowsDir` GraphQL data the `renovate`/`titles` domains read).
-Repositories with neither workflow are `not-applicable`, the same
-convention `renovate`/`titles` use.
+that claim the releaser App. A repository is a claim when it has a
+`release-plz.yml` or `release-please.yml` caller workflow, **or** any
+workflow whose `actions/create-github-app-token` step reads a
+`RELEASE*`-named credential (`secrets.RELEASE_APP_PRIVATE_KEY`,
+`vars.RELEASE_APP_ID`, ...) — the content is read from the same
+`workflowsDir` GraphQL data the `renovate`/`titles` domains read, so a
+release workflow named `release-pr.yml` or `release.yml` is no longer
+missed (#613, ADR-436 Amendment 2026-10-01). A step that mints a token
+for some other App (no `RELEASE*` name) is not a claim. Repositories with
+no claim are `not-applicable`, the same convention `renovate`/`titles` use.
 
 Background: a `grill-me` session (2026-09-24) found that the releaser App
 had been created **per repository** (`config/claude/skills/
@@ -642,6 +647,15 @@ so per-repo Apps bought no additional blast-radius containment over a
 single shared App). No file in this repository lists which repositories
 that App is installed on or holds its private key — see the next
 paragraph for why.
+
+Workflow-content verdict (#613):
+
+- `releaser-workflow-refs-nonstandard` — a claiming workflow reads a
+  `RELEASE*`-named credential outside the canonical set (for example a
+  repo variable `vars.RELEASE_APP_ID`, or a `secrets.RELEASE_APP_PRIVATE_KEY`
+  that predates the `RELEASER_APP_*` unification). It is reported even when
+  the `RELEASER_APP_*` repo secrets exist, because the workflow does not
+  actually use them.
 
 Secret-presence verdicts (unchanged since the domain's original design):
 
