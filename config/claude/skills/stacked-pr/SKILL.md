@@ -29,7 +29,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
 同じ「理由必須の閉じたタグ」家系)を書いたときだけ成立する。依存の有無を
 先読みして自発的にチェーンから外れることはしない。
 
-作成時は `config/claude/hooks/stack-base-guard.sh` が base の取り違えを
+作成時は `stack-base-guard`(`crates/stack-base-guard`)が base の取り違えを
 機械的に deny する(`docs/claude/stack-base-guard.md`)。完了時は
 `pr-gate` の `G_stack` が `gh stack link` の実行忘れを block する
 (`docs/claude/pr-gate.md`)。§8 参照。
@@ -78,7 +78,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
    (最下段だけ `--base main`。本文は Write でファイルにしてから渡す —
    `pr-description` スキル §0)。
    全段を作り終えるまで止まらない。`git commit` と `gh pr create` は
-   **別の Bash 呼び出し**にする — `stack-base-guard.sh` は PreToolUse で
+   **別の Bash 呼び出し**にする — `stack-base-guard` は PreToolUse で
    実行前の HEAD を見て判定するので、`git commit && gh pr create` を
    1 回で流すと commit 前の HEAD で判定されて止められる(#657)。
 5. 全段の PR ができたら `gh stack link <PR番号1> <PR番号2> ... <PR番号N>`
@@ -239,7 +239,7 @@ Stack: base #<親PR番号>
 §1 の常時単一チェーンは指示文だけに頼らず、両端で機械強制する
 (2026-09-21、`docs/adr/0027-uncertainty-first-stacking.md`)。
 
-- **作成時**: `config/claude/hooks/stack-base-guard.sh`(PreToolUse)が
+- **作成時**: `stack-base-guard`(`crates/stack-base-guard`、PreToolUse)が
   `gh pr create` / `gh pr edit --base` を検査する。HEAD が他の open PR の
   コミットを祖先として含むのに base が違えば deny する(`Independent-PR:`
   タグでも抜けられない — 物理的必然のため)。セッション内 2 本目以降で

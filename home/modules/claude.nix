@@ -266,8 +266,9 @@
 #    含むなら base はその PR の head でなければならない — タグでも抜けられ
 #    ない)と、層(ii) セッション ID 単位の状態(2 本目以降のチェーン外
 #    ブランチは本文 `Independent-PR: <理由>` を要求する)の 2 層で判定する。
-#    判定不能はすべて fail-open。attribution-guard.sh の判定エンジン
-#    (split_heredoc/tokenize/is_sep)を source して再利用する。完了時の
+#    判定不能はすべて fail-open。判定は Rust(crates/stack-base-guard、
+#    コマンド解析は crates/guard-core、ADR-0024 Stage 4a #415)で、Claude と
+#    Codex から同じ 1 バイナリを `--agent claude|codex` で呼ぶ。完了時の
 #    対になる強制(`gh stack link` の要求)は pr-gate の G_stack が担う。
 #    詳細は docs/adr/0027-uncertainty-first-stacking.md と
 #    docs/claude/stack-base-guard.md。
@@ -617,10 +618,12 @@ let
   # `source` するので配備を続ける(hook としては登録しない)。
   attributionGuardCmd = "'${hooksDir}/attribution-guard'";
   legacyAttributionGuardCmd = "bash '${hooksDir}/attribution-guard.sh'";
-  # stack-base-guard(ADR-0027)は attribution-guard.sh を source するので
-  # 同じ ~/.claude/hooks/ ディレクトリに置く(相対 source パス
-  # "$(dirname ...)/attribution-guard.sh" が解決できる配置)。
-  stackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
+  # stack-base-guard(ADR-0027): #415(ADR-0024 Stage 4a)で Rust バイナリ
+  # (crates/stack-base-guard)になり、下の home.file が
+  # ~/.claude/hooks/stack-base-guard(拡張子無し)として配備する。旧 `bash
+  # '….sh'` の command は retiredHookEntries で完全一致削除する。
+  stackBaseGuardCmd = "'${hooksDir}/stack-base-guard'";
+  legacyStackBaseGuardCmd = "bash '${hooksDir}/stack-base-guard.sh'";
   # pr-title-guard(ADR-0031)は #415(ADR-0024 Stage 4a)で Rust バイナリ
   # (crates/pr-title-guard、判定エンジンは crates/guard-core と crates/
   # pr-title-check)になり、下の home.file が ~/.claude/hooks/pr-title-guard
@@ -652,7 +655,11 @@ let
   # #416: Codex adapter(bash)は廃止し、同じ Rust バイナリを --host codex で
   # 直接登録する。
   codexGitStashGuardCmd = "'${hooksDir}/git-stash-guard' --host codex";
-  codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
+  # #415: stack-base-guard の Codex adapter(bash)も廃止し、Claude と同じ
+  # Rust バイナリを --agent codex で直接登録する。旧 command は --retire で
+  # 完全一致削除する。
+  codexStackBaseGuardCmd = "'${hooksDir}/stack-base-guard' --agent codex";
+  legacyCodexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
   # #415(ADR-0024 Stage 4a): adr-number も Rust バイナリ(crates/adr-number)に
   # なり、bash の Codex adapter は廃止。Claude と同じ ~/.claude/hooks/adr-number
   # を `--agent codex` 付きで直接登録し、旧 command は --retire で完全一致削除する。
@@ -923,6 +930,11 @@ let
     {
       event = "PreToolUse";
       command = legacyAttributionGuardCmd;
+    }
+    # #415 (ADR-0024 Stage 4a): stack-base-guard の bash 版 → Rust 版。
+    {
+      event = "PreToolUse";
+      command = legacyStackBaseGuardCmd;
     }
     # #415: adr-number の bash 版 → Rust 版。
     {
@@ -1641,13 +1653,11 @@ in
     executable = true;
   };
   # stack-base-guard(ADR-0027): セッション内の複数 PR を常時単一チェーンに
-  # 積むことを作成時に機械強制する(docs/claude/stack-base-guard.md)。
-  # attribution-guard.sh を同ディレクトリから source するので、配置は
-  # 必ず ~/.claude/hooks/ 直下(上の attribution-guard.sh と同じ階層)。
-  home.file.".claude/hooks/stack-base-guard.sh" = {
-    source = repoConfig + "/claude/hooks/stack-base-guard.sh";
-    executable = true;
-  };
+  # 積むことを作成時に機械強制する(docs/claude/stack-base-guard.md)。#415 で
+  # Rust バイナリ(crates/stack-base-guard)への安定パスの symlink になった
+  # (attribution-guard と同じ理由付け)。Codex もこの同じパスを
+  # `--agent codex` 付きで呼ぶ。
+  home.file.".claude/hooks/stack-base-guard".source = "${pkgs.dotfiles-tools}/bin/stack-base-guard";
   # feedback-target-guard(ADR-543 段3): #415 で Rust バイナリ(crates/
   # feedback-target-guard)への安定パスの symlink になった(attribution-guard と
   # 同じ理由付け)。
@@ -1719,11 +1729,9 @@ in
   # で直接登録する(codexGitStashGuardCmd)。Copilot 版は未展開(#161、
   # MCP tool 名の命名規則が未確認なため attribution-guard 系のみ先行)。
 
-  # stack-base-guard(ADR-0027 Amendment #531): Codex CLI 版 adapter。
-  home.file.".codex/hooks/stack-base-guard.sh" = {
-    source = repoConfig + "/codex/hooks/stack-base-guard.sh";
-    executable = true;
-  };
+  # stack-base-guard(ADR-0027 Amendment #531)の Codex 版 adapter ファイルは
+  # #415 で廃止し、Rust バイナリを --agent codex で直接登録する
+  # (codexStackBaseGuardCmd)。
 
   # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
   # 他 hook を source しない独立ファイル。
@@ -1913,6 +1921,7 @@ in
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexGitStashGuardCmd} \
+          --retire PreToolUse ${lib.escapeShellArg legacyCodexStackBaseGuardCmd} \
           --retire PostToolUse ${lib.escapeShellArg legacyCodexAdrNumberCmd} \
           --register \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \

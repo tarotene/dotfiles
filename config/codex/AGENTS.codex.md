@@ -29,7 +29,7 @@ selection-grounding スキル(`~/.agents/skills/`)に従う。
 ### PR 運用(セッション内チェーン・完了定義)
 
 同一セッション・同一 worktree で複数の PR を作るときは、常に作成順の単一
-チェーン(stacked PR)に積む(ADR-0027)。作成時 `stack-base-guard.sh`
+チェーン(stacked PR)に積む(ADR-0027)。作成時 `stack-base-guard`
 (PreToolUse deny)と完了時 `pr-gate` の `G_stack`(Stop block)が
 Codex にも効く。
 

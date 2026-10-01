@@ -280,7 +280,7 @@ open な Issue の一覧は SessionStart の issue-index が注入していま�
         if !gh::stack_extension_available() {
             advisory.push_str(
                 "\nstack: gh-stack 拡張が無いため `gh stack link` できません(base チェーン
-       自体は stack-base-guard.sh が別途強制しています)。導入するには
+       自体は stack-base-guard が別途強制しています)。導入するには
        `gh extension install github/gh-stack`。",
             );
         } else {
@@ -302,7 +302,7 @@ GitHub 上の stack にリンクされていません。最下段から順に PR
                 None => advisory.push_str(
                     "\nstack: stacks API の取得に失敗しました(拡張は導入済み)。ネットワーク・
        認証・機能撤収のいずれかの可能性があります。base チェーン自体は
-       stack-base-guard.sh が別途強制しています。",
+       stack-base-guard が別途強制しています。",
                 ),
             }
         }

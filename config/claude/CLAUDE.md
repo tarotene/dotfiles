@@ -37,7 +37,7 @@ memory/*.md`、`metadata.type: feedback`)にこの種のフィードバックを
 ## セッション内 PR チェーンの形式検査(ADR-0027)
 
 stacked PR に積む原則そのものは共有 AGENTS.md に従う。形式検査は作成時
-`stack-base-guard.sh`(PreToolUse deny)と完了時 `pr-gate` の `G_stack`
+`stack-base-guard`(PreToolUse deny)と完了時 `pr-gate` の `G_stack`
 (Stop block)が担う。gate に当たる前に自発的に積むこと — gate は漏れを
 拾うためのもので、一次的な手段ではない。
 

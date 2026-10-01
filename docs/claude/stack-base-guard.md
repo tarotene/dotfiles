@@ -1,6 +1,8 @@
 # stack-base-guard — セッション内 PR を常時単一チェーンに積む PreToolUse hook
 
-判定エンジン: `config/claude/hooks/stack-base-guard.sh`
+判定エンジン: `crates/stack-base-guard`(Rust、コマンド解析は `crates/guard-core`、
+ADR-0024 Stage 4a #415。旧 bash 版 `config/claude/hooks/stack-base-guard.sh`
+と Codex adapter を `--agent claude|codex` の 1 バイナリにまとめた)
 決定: `docs/adr/0027-uncertainty-first-stacking.md`
 規約側: `config/claude/skills/stacked-pr/SKILL.md`
 完了時の対: `crates/pr-gate` の `G_stack`(`docs/claude/pr-gate.md`)
@@ -75,18 +77,16 @@ open PR の `headRefOid` それぞれについて、ローカルに実在する�
 ## コマンド解析エンジンを共有する
 
 対象コマンドの検出(コマンド位置判定)・heredoc 本体の分離・クォート
-解釈トークナイザは `config/claude/hooks/attribution-guard.sh` を
-`source` して再利用する。`split_heredoc` / `tokenize` / `is_sep` /
-`CMD_SEPS` は attribution-guard.sh 側の定義をそのまま使い、
-`is_target_at`(`gh pr create`/`edit` の検出に差し替える必要がある)は
-`source` の後に再定義することで上書きする — bash の関数解決は最後の
-定義が勝つ。attribution-guard.sh 自身の `decide`/`main`/末尾ディスパッチ
-は `[[ "${BASH_SOURCE[0]}" == "$0" ]]` で直接実行時のみに限定されている
-ため、`source` しても暴発しない(#192 の Codex/Copilot adapter と同じ
-安全策)。
+解釈トークナイザは attribution-guard と同じ `crates/guard-core` を使う
+(`docs/claude/guard-core.md`)。`gh pr create`/`edit` の検出は
+`guard_core::command::first_deny` に渡す対象判定関数(bash 版で
+attribution-guard.sh を `source` して上書きしていた `is_target_at` に
+当たる)で差し替える。`--base`/`--head`/`--repo`/本文/読み飛ばすフラグ/
+位置引数を 1 ループで読む `parse_pr_tokens` は `guard_core::gh` の
+`read_body_file`/`has_heredoc` を部品にしてこのクレートが持つ。
 
 この共有により、コマンド文字列全体を正規表現で見て docs やコミット
-メッセージの記述で誤発火する、という attribution-guard.sh が実際に
+メッセージの記述で誤発火する、という attribution-guard が実際に
 踏んだ罠(`docs/claude/attribution-guard.md`「対象コマンドの検出は
 『コマンド位置』に限る」節)を再度踏まずに済む。
 
@@ -138,7 +138,7 @@ gating と同じ縮退方針。
 
 | 条件 | 挙動 |
 |---|---|
-| `jq`/`gh`/`git` のいずれかが不在 | 完全沈黙で通す |
+| `gh`/`git` のいずれかが不在(起動できない) | 完全沈黙で通す |
 | プロジェクトディレクトリが git リポジトリでない | 完全沈黙で通す |
 | `gh pr list` が失敗(未認証・オフライン等) | 判定不能で通す |
 | default branch が解決できない(`--base` 省略時) | 判定不能で通す |
@@ -155,20 +155,22 @@ gating と同じ縮退方針。
 この hook は作成時の base 宣言だけを見る。GitHub 上の stack オブジェクト
 への実際のリンク(`gh stack link`)は完了時に `pr-gate` の `G_stack`
 judgement が要求する(`docs/claude/pr-gate.md` 参照)。両者は独立に
-縮退する — `stack-base-guard.sh` は `gh` CLI の引数検査だけで完結する
+縮退する — `stack-base-guard` は `gh` CLI の引数検査だけで完結する
 ため、`gh-stack` 拡張の有無に関わらず全環境で base チェーンの正しさを
 維持する。
 
 ## 検査
 
-- `stack-base-guard.sh --selftest` がネットワーク無しに 15 ケースを
-  検査する。gh スタブと、実コミットを持つ使い捨て git リポジトリ
+- `cargo test -p stack-base-guard` がネットワーク無しに検査する
+  (`crates/stack-base-guard/tests/selftest.rs`: 旧 bash 版 `--selftest` の
+  Claude 18 ケース・Codex adapter 2 ケースに、MCP・skip・出力形・台帳互換の
+  ケースを足したもの)。gh スタブと、実コミットを持つ使い捨て git リポジトリ
   (main ← stage1 ← stage2、main から直接切った unrelated ブランチ)を
   組み合わせる — 祖先検査は `git merge-base --is-ancestor` に実オブジェクト
-  を要求するため、pr-gate の統合テスト(`crates/pr-gate/tests/`、旧 selftest)と同じ「real_head」パターンを
-  踏襲する。
-- `stack-base-guard.sh --check '<コマンド文字列>' [<project-dir>]` で
-  手動 e2e ができる。
+  を要求するため、pr-gate の統合テスト(`crates/pr-gate/tests/`)と同じ
+  「real_head」パターンを踏襲する。
+- `stack-base-guard --check '<コマンド文字列>' [<project-dir>]` で手動 e2e が
+  できる(セッション ID は環境変数 `SESSION_ID`、無ければ `unknown`)。
 
 ## 登録形
 
@@ -179,3 +181,11 @@ PreToolUse / matcher: "Bash|mcp__.*" / timeout 20
 `bleep`/`attribution-guard` と同じ複合 matcher 1 本(Bash 単体
 だと MCP 接続の瞬間に無検査になる、同じ理由の繰り返し)。`gh pr list`
 1 往復を含むため、attribution-guard(timeout 10)よりやや長めに確保する。
+
+Claude は `~/.claude/hooks/stack-base-guard`、Codex は同じバイナリを
+`--agent codex` 付きで登録する(`home/modules/claude.nix`)。Codex 側は
+`.cwd` だけでプロジェクトを解決し、MCP tool 名の命名規則が未確認(#161)
+なので `Bash` だけを見る(旧 Codex adapter と同じ)。セッション台帳
+(`state/<sid>.chain`)は Claude と Codex で共有する — session_id で区切ら
+れるため衝突しない。保存形式は bash 版と同じなので、移行前に書かれた台帳を
+そのまま読む。

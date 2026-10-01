@@ -491,19 +491,9 @@ jobs:
       - name: attribution-guard.sh --selftest
         run: bash ./config/claude/hooks/attribution-guard.sh --selftest
 
-      # stack-base-guard (ADR-0027, docs/claude/stack-base-guard.md) sources
-      # attribution-guard.sh's command-position/tokenizer engine and adds its
-      # own gh stub against a throwaway git repo with real commits (ancestry
-      # checks need real objects for `git merge-base --is-ancestor`) — no
-      # network involved.
-      - name: stack-base-guard.sh --selftest
-        run: bash ./config/claude/hooks/stack-base-guard.sh --selftest
-
-      # ADR-0027/ADR-0032 Amendment (#531): Codex adapter, same minimalist
-      # smoke test as the pr-title-guard/attribution-guard Codex adapters
-      # (exhaustive decision coverage stays in the Claude selftest above).
-      - name: stack-base-guard.sh (codex adapter) --selftest
-        run: bash ./config/codex/hooks/stack-base-guard.sh --selftest
+      # stack-base-guard (ADR-0027) is now the Rust crates/stack-base-guard
+      # (#415); its tests (the old Claude + Codex adapter selftests) run in the
+      # nix.yml rust job.
 
       # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
       # scripts/github-audit's judge_settings()/fetch_repo_settings() (no

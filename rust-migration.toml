@@ -132,10 +132,6 @@ path = "config/claude/hooks/attribution-guard.sh"
 stage = "4a"
 
 [[target]]
-path = "config/claude/hooks/stack-base-guard.sh"
-stage = "4a"
-
-[[target]]
 path = "scripts/pr-merge-settings-check"
 stage = "4a"
 
@@ -157,10 +153,6 @@ stage = "4a"
 # stage above (stack-base-guard.sh / adr-number.sh, both 4a) — same
 # precedent as the attribution-guard/pr-title-guard Codex adapters just
 # above.
-[[target]]
-path = "config/codex/hooks/stack-base-guard.sh"
-stage = "4a"
-
 # --- Stage 4b ---
 # ADR-0032 Amendment (#531): Codex's Stop-hook analogue of the ExitPlanMode
 # plan-gate family — no single Claude-side file it mirrors 1:1 (it calls

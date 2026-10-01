@@ -439,7 +439,7 @@ Context、`docs/claude/stacked-pr.md`「保留条項の発火」節)。当時こ
 stacked-pr.md` 旧「なぜ pr-gate.sh を触らなかったか」節)。上記の
 インシデントはその保留条項の発火そのものである。
 
-作成時の base 宣言の正しさは `config/claude/hooks/stack-base-guard.sh`
+作成時の base 宣言の正しさは `stack-base-guard`(`crates/stack-base-guard`)
 (`docs/claude/stack-base-guard.md`)が別途・PreToolUse で強制する。
 `G_stack` が塞ぐのはその先 —— base が正しく積まれていても、GitHub 上の
 stack オブジェクトへのリンク(`gh stack link`)自体を忘れたまま終わる
@@ -473,7 +473,7 @@ chain size が 1(他の PR と base チェーンで繋がっていない)なら 
 API 自体が取得できない(機能撤収・ネットワーク障害のいずれか区別しない)
 場合は、`G_stack` を block ではなく advisory に降格する。この縮退でも
 orphan PR(base 宣言の不整合)自体は発生しない —— base チェーンの正しさは
-`stack-base-guard.sh` が `gh` CLI の引数検査だけで完結させており、
+`stack-base-guard` が `gh` CLI の引数検査だけで完結させており、
 `gh-stack` 拡張や `stacks` API の可用性に依存しないため。
 
 ### block の位置と PR 番号を指定する理由

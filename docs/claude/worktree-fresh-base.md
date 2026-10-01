@@ -43,11 +43,10 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
   `crates/git-checkout-freshness`。いずれも
   `git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD` を素の
   `${ref#origin/}` で剥がすだけの実装。
-- **variant(2 箇所)**: `config/claude/hooks/stack-base-guard.sh`、
-  `crates/guard-core`(`repo::default_branch_or_gh`。旧
-  `decision-colocation-guard.sh` の `default_branch()` の移植で、
-  `crates/decision-colocation` が使う)。`$1=project $2=nwo` を取り、
-  symbolic-ref が失敗したら `gh repo view -R "$nwo" --json
+- **variant(1 箇所)**: `crates/guard-core`(`repo::default_branch_or_gh`。旧
+  `stack-base-guard.sh` / `decision-colocation-guard.sh` の `default_branch()` の
+  移植で、`crates/stack-base-guard` と `crates/decision-colocation` が使う)。
+  `$1=project $2=nwo` を取り、symbolic-ref が失敗したら `gh repo view -R "$nwo" --json
   defaultBranchRef` にフォールバックする 2 引数版。
 
 変更時はこの列挙をまず更新し、そのうえで各実装を揃える。根本解決(hook-io

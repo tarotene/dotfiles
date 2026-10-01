@@ -79,7 +79,8 @@ if let Some(r) = reason { print!("{}", hook::deny_output(agent, &r)); }
   `--title -R` の `-R` を `--repo` と誤読するなど bash と結果が変わる。
   stack-base-guard.sh の `parse_pr_tokens`(本文・値フラグ・読み飛ばしリスト・
   位置引数 `F_TARGET` を 1 ループで扱う)は `scan_value_flags` に収まらないので、
-  `BodyFlags` / `read_body_file` を部品にして自前のループで移すこと。
+  `read_body_file` / `has_heredoc` を部品にして自前のループで移した
+  (`crates/stack-base-guard` の `parse_pr_tokens`。位置引数を拾う guard の参考に)。
 - **オラクル**: `crates/attribution-guard/tests/cmd/` の 64 件(bash 版から生成)が、
   heredoc・コマンド位置・本文抽出・`gh api` の境界を固定している。
 - 依存は `hook-io` と `serde_json` だけ(起動時間を損なわない、regex 無し)。

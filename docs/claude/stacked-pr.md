@@ -129,7 +129,7 @@ PR を大きくする判断はしない。
 判定条件 (a)/(b) に基づく依存予測は LLM 判断に委ねられており、セッション中
 に系統的に外れた。`ADR-0027`(uncertainty-first stacking)は、この予測を
 「積むか否か」の判定からは廃止し、セッション内の複数 PR は常に作成順の
-単一チェーンに積むことを、作成時 PreToolUse hook(`stack-base-guard.sh`)と
+単一チェーンに積むことを、作成時 PreToolUse hook(`stack-base-guard`)と
 完了時 Stop judgement(`G_stack`、`pr-gate`)の両端で機械強制する決定を
 下した。詳細な設計根拠は ADR-0027 本文および `docs/claude/
 stack-base-guard.md` / `docs/claude/pr-gate.md` を参照。
@@ -153,7 +153,7 @@ UI からも stack だった履歴が消える。1 行のコストで
 の一覧を全 PR に書き戻すツールを持たない以上、ずれる値そのものを消す方を
 採った(2026-10-01)。親番号は作成時に決まって変わらない。段の全体像は
 `gh stack link` の stack map が正本になる。自動書き換えの CLI を新設する
-案と、`stack-base-guard.sh` に base を自動補正させる案は見送った。
+案と、`stack-base-guard` に base を自動補正させる案は見送った。
 `pr-gate` はこの行を検査しない(人間とレビュアーのための注記であり、
 機械強制の対象ではない)。
 

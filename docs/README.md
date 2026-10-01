@@ -177,7 +177,7 @@
   約 10 PR を作った際、依存予測に基づく判定条件が外れて base 宣言と実体が
   不整合になり(汚染 diff・orphan PR)、`docs/claude/stacked-pr.md` の
   保留条項が発火した。離脱は閉じたタグ `Independent-PR:` のみとし、
-  作成時 PreToolUse hook(`stack-base-guard.sh`)と完了時 Stop judgement
+  作成時 PreToolUse hook(`stack-base-guard`)と完了時 Stop judgement
   (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
   「積むか否か」の判定としては supersede。
 - [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README
@@ -442,7 +442,8 @@ Design and rationale for the hooks and commands deployed from
   複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
   状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
-  attribution-guard.sh のコマンド解析エンジンを source して再利用する。
+  Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
+  Claude/Codex 共通の 1 バイナリ、#415)。
 - [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
   運用では PR タイトルがそのまま `main` の commit subject になるため、
   client guard(`pr-title-guard`)・server required check
