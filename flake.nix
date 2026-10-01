@@ -368,6 +368,9 @@
               # crates/gpg-subkey のテストは実 GnuPG を一時 GNUPGHOME で走らせる
               # (addkey/revkey の command-file の仕組みそのものが検証対象、#414)。
               pkgs.gnupg
+              # crates/github-app-snapshot のテストは実 openssl で RS256 JWT を
+              # 署名・検証する(bash 版 selftest と同じ前提、#414)。
+              pkgs.openssl
             ];
           };
         }

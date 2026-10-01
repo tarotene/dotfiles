@@ -144,14 +144,6 @@ max_remaining = 44
 path = "scripts/github-audit"
 stage = "4e"
 
-[[target]]
-path = "scripts/github-app-snapshot"
-stage = "4e"
-
-[[target]]
-path = "scripts/github-app-registry-check"
-stage = "4e"
-
 # --- 対象外 ---
 # --- ADR-0024 Amendment 3(#415): 他リポジトリの CI が実行時に取得・複製する配布物 ---
 # 播種先には Rust ツールチェインも nix も無く、dotfiles-tools のバイナリを配る手段が

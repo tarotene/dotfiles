@@ -46,7 +46,7 @@
   導出規則の型を一般化したもの(#505)。
 - [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
   install 先・secret 配布(3 層)のうち、秘密(PEM)を
-  読み書きする唯一のスクリプト `scripts/github-app-snapshot` のセットアップ・
+  読み書きする唯一のコマンド `github-app-snapshot`(`crates/github-app-snapshot`)のセットアップ・
   Manifest フローでの新規 App 作成・secret 配布・ローテーション手順
   (ADR-590)。
 
@@ -344,8 +344,8 @@
   `--procedure` で取りに行く。範囲は wrapup 系のみ。
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
   先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
-  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用スクリプト
-  `scripts/github-app-snapshot` がスナップショットを書き `github-audit` は
+  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用コマンド
+  `github-app-snapshot` がスナップショットを書き `github-audit` は
   lazy に読むだけ(github-audit は秘密を要求しないという ADR-436 D4 を
   維持)。PEM は Bitwarden Secrets Manager に保管する。第三者 App(Claude)
   の到達範囲は、fine-grained PAT が `/web-setup` で使えないため、Claude

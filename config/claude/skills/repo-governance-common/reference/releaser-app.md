@@ -17,12 +17,12 @@ minted its own (`docs/adr/436-single-releaser-github-app.md`).
 
 The App's registration (permissions/events) source of truth is
 `config/github-app-manifests/releaser.json` (ADR-590 D2) — not a note
-anywhere in the GitHub UI. `scripts/github-app-registry-check` detects
+anywhere in the GitHub UI. `github-app-registry-check` (`crates/github-app-registry-check`) detects
 drift between that Manifest and the App's live registration.
 `github-audit`'s `releaser` domain (`crates/github-audit`, `docs/github-audit.md`)
 detects repositories whose `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY`
 secrets are missing or still under a pre-consolidation tool-specific name,
-**and** — once `scripts/github-app-snapshot` has been run — whether the
+**and** — once `github-app-snapshot` has been run — whether the
 App is actually installed on the repository. Run both after onboarding a
 repository to confirm the wiring took.
 

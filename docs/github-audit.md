@@ -13,9 +13,9 @@ ADR-0023), releaser (grill-me セッション調べ), routines
 enters this loop — this script never calls one.
 
 The `releaser`/`routines` domains additionally read a snapshot
-`scripts/github-app-snapshot` writes (ADR-590, ADR-436 Amendment
+`github-app-snapshot` writes (ADR-590, ADR-436 Amendment
 2026-09-30) to detect GitHub App install-state / cloud-reach drift, and a
-separate account-level sibling script, `scripts/github-app-registry-check`,
+separate account-level sibling command, `github-app-registry-check`,
 checks App *registration* drift the same way — see each domain's own
 section below, and the account-level section after `routines`.
 
@@ -707,7 +707,7 @@ missing install fails loudly on the next release-triggering push
 (`actions/create-github-app-token` cannot mint a token for a repository
 the App isn't installed on) and duplicating that here would just be a
 second, slower way to learn the same thing. That reasoning held only while
-install state was expensive to observe. `scripts/github-app-snapshot`
+install state was expensive to observe. `github-app-snapshot`
 (ADR-590) now writes `$XDG_STATE_HOME/github-audit/app-snapshot.json` —
 the releaser App's live `GET /app/installations` result, JWT-authenticated,
 no repo-by-repo REST cost — so `github-audit` reads it lazily (one file
@@ -737,7 +737,7 @@ registry.md`) already rejected statically enumerating repository names in
 this PUBLIC repository for a structurally identical reason: doing so would
 itself leak which private repositories exist. The App's *registration*
 (permissions/events) has its own separate account-level drift check —
-`scripts/github-app-registry-check`, below.
+`github-app-registry-check`, below.
 
 Setup and rotation live in `docs/github-app-snapshot.md` (Manifest flow,
 secret distribution, rotation) and `config/claude/skills/
@@ -868,9 +868,11 @@ That the docs job is in `ci-passed.needs` is **not** judged here — the
 `workflows` domain already requires every `ci.yml` job to appear there
 (ADR-591 D1), and duplicating that check would give two sources of truth.
 
-## Account-level: `scripts/github-app-registry-check` (ADR-436 Amendment 2026-09-30)
+## Account-level: `github-app-registry-check` (ADR-436 Amendment 2026-09-30)
 
-A sibling script, not a `github-audit` domain — an owned App's
+A sibling command (Rust, `crates/github-app-registry-check`; it calls no
+`github-audit` function, so it does not depend on that crate — #414), not a
+`github-audit` domain — an owned App's
 *registration* (permissions/events) is an account-level fact with no
 repository to attach a `repo x domain` finding to, unlike everything
 above. It compares each `config/github-app-manifests/<name>.json`

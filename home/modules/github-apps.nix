@@ -8,18 +8,18 @@
 
   home.packages = [ pkgs.openssl ];
 
-  home.file.".local/bin/github-app-snapshot" = {
-    source = ../../scripts/github-app-snapshot;
-    executable = true;
-  };
+  # Rust, from crates/github-app-snapshot via pkgs.dotfiles-tools (ADR-0024,
+  # #414). It still shells out to openssl (RS256 signing), curl, bws and
+  # secret-tool, so pkgs.openssl above and the bitwarden.nix import stay.
+  home.file.".local/bin/github-app-snapshot".source =
+    "${pkgs.dotfiles-tools}/bin/github-app-snapshot";
 
   # github-app-registry-check (ADR-436 Amendment 2026-09-30): account-level
   # Manifest ⇔ live-registration drift check, reads the snapshot
   # github-app-snapshot writes. No secrets, same as github-audit itself.
-  home.file.".local/bin/github-app-registry-check" = {
-    source = ../../scripts/github-app-registry-check;
-    executable = true;
-  };
+  # Rust, from crates/github-app-registry-check (#414).
+  home.file.".local/bin/github-app-registry-check".source =
+    "${pkgs.dotfiles-tools}/bin/github-app-registry-check";
 
   # D2: the registration source of truth (permissions/events), never the
   # PEM — see config/github-app-manifests/*.json's own header for what this

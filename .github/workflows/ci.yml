@@ -460,22 +460,6 @@ jobs:
       - name: github-audit --selftest
         run: ./scripts/github-audit --selftest
 
-      # github-app-snapshot (ADR-590 D3): the only
-      # script allowed to hold GitHub App PEMs. Its
-      # selftest builds a real RS256 JWT with openssl and verifies the
-      # signature against a matching pubkey, plus a stubbed-curl/gh
-      # snapshot-assembly pass asserting no PEM ever lands in the
-      # output JSON — network-free.
-      - name: github-app-snapshot --selftest
-        run: ./scripts/github-app-snapshot --selftest
-
-      # github-app-registry-check (ADR-436 Amendment 2026-09-30):
-      # account-level Manifest ⇔ live-registration drift, reading only the
-      # snapshot github-app-snapshot already wrote — no secrets, no
-      # network in its selftest.
-      - name: github-app-registry-check --selftest
-        run: ./scripts/github-app-registry-check --selftest
-
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs
       # in that repo's own CI — this repo no longer carries the source, so
