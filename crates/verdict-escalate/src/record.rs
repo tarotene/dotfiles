@@ -37,6 +37,20 @@ pub enum ReasonId {
     EngineUnavailable,
     /// 未展開のシェル変数参照を含み、宛先を静的に確定できない(bleep#34)。
     UnresolvedVar,
+    /// `bleep-hook` の lex 出力形式が bleep 本体と一致しない(版ずれ)。
+    LexProtocolMismatch,
+    /// gh の本文の入力元を静的に確定できない(tarotene/bleep ADR-0003 で
+    /// 正準形の外 = `gh-noncanonical` になり、新規には書かれない。過去の
+    /// レコードを読めるよう、閉語彙には残す)。
+    BodySourceUnresolved,
+    /// gh の本文の入力元ファイルを読めない。
+    BodySourceUnreadable,
+    /// `git push` が pre-push hook を無効にする形(`--no-verify`、
+    /// `-c core.hooksPath=…`)になっている(tarotene/bleep ADR-0003)。
+    PushHookBypass,
+    /// gh の投稿が正準形の文法の外にある(tarotene/bleep ADR-0003)。理由は
+    /// `detail` の閉語彙(`inline-body` など)に残る。
+    GhNoncanonical,
 }
 
 /// `match_class` フィールド。マッチしなかった判定(fail-loud な ask 等)は
@@ -92,4 +106,10 @@ pub struct VerdictRecord {
     /// 呼ばれたツール名(例: `"Bash"`、MCP ツール名)。git pre-push など
     /// ツール呼び出しを経ない経路では空文字列。
     pub tool_name: String,
+    /// 失敗・拒否の理由コード。閉じた語彙 `[a-z][a-z-]*` だけが書かれる
+    /// (自由文・パス・git の stderr は書かれない — tarotene/bleep#54)。
+    /// 理由が無い判定では欄自体が書かれない。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(regex(pattern = r"^[a-z][a-z-]*$"))]
+    pub detail: Option<String>,
 }

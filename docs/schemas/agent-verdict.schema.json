@@ -16,6 +16,14 @@
     "verdict"
   ],
   "properties": {
+    "detail": {
+      "description": "失敗・拒否の理由コード。閉じた語彙 `[a-z][a-z-]*` だけが書かれる (自由文・パス・git の stderr は書かれない — tarotene/bleep#54)。 理由が無い判定では欄自体が書かれない。",
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-z][a-z-]*$"
+    },
     "host": {
       "$ref": "#/definitions/Host"
     },
@@ -176,6 +184,41 @@
           "type": "string",
           "enum": [
             "unresolved-var"
+          ]
+        },
+        {
+          "description": "`bleep-hook` の lex 出力形式が bleep 本体と一致しない(版ずれ)。",
+          "type": "string",
+          "enum": [
+            "lex-protocol-mismatch"
+          ]
+        },
+        {
+          "description": "gh の本文の入力元を静的に確定できない(tarotene/bleep ADR-0003 で 正準形の外 = `gh-noncanonical` になり、新規には書かれない。過去の レコードを読めるよう、閉語彙には残す)。",
+          "type": "string",
+          "enum": [
+            "body-source-unresolved"
+          ]
+        },
+        {
+          "description": "gh の本文の入力元ファイルを読めない。",
+          "type": "string",
+          "enum": [
+            "body-source-unreadable"
+          ]
+        },
+        {
+          "description": "`git push` が pre-push hook を無効にする形(`--no-verify`、 `-c core.hooksPath=…`)になっている(tarotene/bleep ADR-0003)。",
+          "type": "string",
+          "enum": [
+            "push-hook-bypass"
+          ]
+        },
+        {
+          "description": "gh の投稿が正準形の文法の外にある(tarotene/bleep ADR-0003)。理由は `detail` の閉語彙(`inline-body` など)に残る。",
+          "type": "string",
+          "enum": [
+            "gh-noncanonical"
           ]
         }
       ]
