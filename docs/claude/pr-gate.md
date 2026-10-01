@@ -533,7 +533,7 @@ block メッセージに合流させる。案内文は `## 解決策` 節への 
 
 ## `stop_hook_active` を見ない理由
 
-既存の `wrapup-stop-gate.sh` は `stop_hook_active == true` を見て即 `exit 0` する
+既存の `wrapup-stop-gate` は `stop_hook_active == true` を見て即 `exit 0` する
 （無限ループガード）。pr-gate に同じ形を持ち込むと、1 回目の block（例: 未 push）で
 Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=true` で即座に素通りし、
 **CI の判定に一度も到達しない**。

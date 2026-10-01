@@ -369,7 +369,7 @@ Design and rationale for the hooks and commands deployed from
 - [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
 - [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate.sh の中断ハンドオフ節 +
-  issue-index.sh の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
+  issue-index の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
   打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
 - [`claude-routines.md`](claude/claude-routines.md) — 個人スキル:
   Claude Code routine(scheduled cloud agent)の設定・prompt を対象
@@ -389,7 +389,7 @@ Design and rationale for the hooks and commands deployed from
   triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO として stacked
   PR で一括対処する `/wrapup-chores` の手順(ADR-387)。
 - [`verdict-escalate.md`](claude/verdict-escalate.md) — ADR-478:
-  `wrapup-stop-gate.sh` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
+  `wrapup-stop-gate` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
   なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
   単位・fingerprint 単位に集約し、閾値超えの候補を `repo`/`go:"ask"` 付きで
   wrap-up inbox に追記する。

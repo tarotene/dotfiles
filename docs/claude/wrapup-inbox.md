@@ -13,8 +13,8 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 
 | 部品 | イベント | 役割 |
 |------|----------|------|
-| `wrapup-session-start.sh` | SessionStart | 「気づきは inbox に `--add` で追記せよ」を `additionalContext` で注入。未処理件数も掲示 |
-| `wrapup-stop-gate.sh` | Stop | inbox 非空かつ起票可能なら exit 2 + stderr の短いポインタで、本体 Claude に `--procedure` の手順書を取りに行かせて起票させる(Stop 出力は人にも見えるため手順書本体は出さない。書式は ADR-625) |
+| `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ」を `additionalContext` で注入。未処理件数も掲示 |
+| `wrapup-stop-gate` | Stop | inbox 非空かつ起票可能なら exit 2 + stderr の短いポインタで、本体 Claude に `--procedure` の手順書を取りに行かせて起票させる(Stop 出力は人にも見えるため手順書本体は出さない。書式は ADR-625) |
 
 配備は `home/modules/claude.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通。
@@ -50,7 +50,7 @@ Claude に起票させられる。起票の実行主体が LLM 本体なので�
 ## inbox の整合性(Codex レビューで確定)
 
 inbox の書き込みを LLM の自由編集に任せると、重複起票・失敗行の誤削除・並行セッション
-との競合を検証できない。そこでリスクのある操作をすべて `wrapup-stop-gate.sh` の
+との競合を検証できない。そこでリスクのある操作をすべて `wrapup-stop-gate` の
 決定論的サブコマンドに寄せ、selftest(CI)で回帰テストする:
 
 - `--add <inbox> <json1行>` — `mkdir -p` + JSON 検証 + flock 追記。初回利用時の
@@ -81,7 +81,7 @@ worktree の数だけ分散し、worktree 削除後は誰も読まない orphan 
 なら従来の絶対パス slug にフォールバックする。
 
 過去に書かれた旧 slug の inbox を回収するため、`--migrate <project-dir>`
-サブコマンド(Stop hook 本体と `wrapup-session-start.sh` の双方が毎回呼ぶ)が
+サブコマンド(Stop hook 本体と `wrapup-session-start` の双方が毎回呼ぶ)が
 自己修復マージを行う。安全性はこのリポジトリの inbox 整合性モデル(上記
 「inbox の整合性」節)を壊さないことを最優先に設計している:
 
@@ -109,7 +109,7 @@ worktree の数だけ分散し、worktree 削除後は誰も読まない orphan 
 
 ## 検証
 
-- `bash config/claude/hooks/wrapup-stop-gate.sh --selftest` — 縮退ゲート・
+- `nix develop --command cargo test -p wrapup-stop-gate` — 縮退ゲート・
   `--add`/`--mark-filed`/`--check-dup`・SessionStart 注入の回帰テスト(CI の
   `ci.yml` でも実行)。
 - 手動 E2E は inbox にダミー行を `--add` して新しいセッションを開始する:
@@ -124,10 +124,10 @@ Code の auto memory(`~/.claude/projects/*/memory/*.md`、frontmatter
 (2026-09-23)では、ローカル auto memory の `type: feedback` ファイル 17 件中
 14 件が Issue 化されずローカルに閉じたままだった。
 
-`wrapup-stop-gate.sh` の同じ Stop 本体に、inbox とは独立した第二の検査を
+`wrapup-stop-gate` の同じ Stop 本体に、inbox とは独立した第二の検査を
 足した: 今セッション中に更新された `type: feedback` メモリで `#N`(Issue
 番号)参照が無いものを検出し、inbox が空でも単独でゲートを発火させる。
-「今セッション」の境界は `wrapup-session-start.sh` が touch する stamp
+「今セッション」の境界は `wrapup-session-start` が touch する stamp
 ファイル(`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)
 の mtime を基準に `find -newer` で判定する(GNU/BSD 両対応、epoch 文字列を
 扱わない)。stamp が無い(SessionStart 未実行など)場合は判定不能として
@@ -153,7 +153,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
   `verdict-escalate` が書く行には必ず付く。このフィールドが無い行(通常の
   スコープ外の気づき)は従来どおり重複確認だけで起票してよい。
 
-`go:"ask"` を付ける理由: `wrapup-stop-gate.sh` の既存 Stop 指示は重複確認の
+`go:"ask"` を付ける理由: `wrapup-stop-gate` の既存 Stop 指示は重複確認の
 直後に `gh issue create` を実行させ、人間の承認を挟む段階が無い。permission
 prompt も境界にならない — `gh-edit-allow` が同セッション内の作成実績がある
 リポジトリへの `gh issue create` を自動 allow するため。そこで `go:"ask"`

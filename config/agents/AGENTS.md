@@ -292,7 +292,7 @@ Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発
 - Claude Code では、Slack MCP tool の送信系(`send_message` /
   `reply` / `schedule_message` / `post_message`)を PreToolUse hook が
   deny し、draft 系ツールへ誘導することで決定論的に担保する
-  (`external-send-guard.sh`、`docs/claude/external-send-guard.md`)。
+  (`crates/external-send-guard`、`docs/claude/external-send-guard.md`)。
   この機械強制はツールごとの運用規約側の責務であり、本節はその方針を
   宣言するだけに留める。
 

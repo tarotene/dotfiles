@@ -16,7 +16,7 @@ delivery = "herdr"
 [theme]
 # Match the alacritty palette (Catppuccin Mocha) so panes and chrome read as
 # one UI. See docs/claude/herdr-sidebar-metadata.md for the full role→color
-# table shared by this file, claude-statusline.sh and alacritty.toml.
+# table shared by this file, crates/claude-statusline and alacritty.toml.
 name = "catppuccin"
 
 [theme.custom]
@@ -54,13 +54,13 @@ pane_gaps = true
 # 状態は色だけでなく形でも区別する(色覚多様性対策)。
 status_indicators = "symbols"
 # タブバー右側: Claude の usage(5h / 週間 rate limit)+ どのマシン/時刻かを常時表示。
-# usage セグメントは ~/.claude/hooks/claude-usage.sh(home/modules/claude.nix が
+# usage セグメントは ~/.claude/hooks/claude-usage(home/modules/claude.nix が
 # 配備、Claude Code hook ではない)が非公開 API(/usage コマンドの内部エンドポイント)
 # から取る。壊れたときの症状は「タブバーからこのセグメントが消える」だけ(herdr の
 # command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
 # docs/claude/claude-usage.md。
 tab_bar_right = [
-  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage.sh\"", interval_seconds = 60, timeout_seconds = 10 },
+  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage\"", interval_seconds = 60, timeout_seconds = 10 },
   { type = "hostname" },
   { type = "datetime", format = "%H:%M" },
 ]
@@ -79,16 +79,15 @@ rows = [
   ["branch", "git_status"],
 ]
 
-# Claude ペインのサイドバー行。$mode_* は config/claude/hooks/herdr-claude-metadata.sh、
-# $model/$ctx/$cost/$effort は config/claude/statusline/claude-statusline.sh、$branch も
-# herdr-claude-metadata.sh が(git 由来で)pane.report_metadata で注入する。トークンの
+# Claude ペインのサイドバー行。$mode_* は crates/herdr-agent-metadata(--agent claude)、
+# $model/$ctx/$cost/$effort は crates/claude-statusline、$branch も
+# herdr-agent-metadata が(git 由来で)pane.report_metadata で注入する。トークンの
 # 色は静的指定しかできないので、permission mode の色分けは「モード毎に別トークン +
 # 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
 # 値を持つのは常に 1 つ)。
 #
 # Codex / Copilot ペインの $branch/$model は
-# config/codex/hooks/herdr-codex-metadata.sh /
-# config/copilot/hooks/herdr-copilot-metadata.sh がそれぞれ報告する
+# crates/herdr-agent-metadata の --agent codex / --agent copilot がそれぞれ報告する
 # (mode/ctx/cost/effort 相当は無い — 確実に取れるデータだけに絞っている。
 # 詳細・見送った理由は docs/claude/herdr-sidebar-metadata.md)。
 #

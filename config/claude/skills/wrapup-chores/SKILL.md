@@ -13,7 +13,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 
 ## 1. 候補収集
 
-- **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `bash ~/.claude/hooks/wrapup-stop-gate.sh --inbox-path "$PWD"` で解決する(slug の計算方法は gate 側に一本化されている — 原則リポジトリ単位、remote なし・git repo 外はプロジェクト絶対パス由来にフォールバック)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
+- **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `~/.claude/hooks/wrapup-stop-gate --inbox-path "$PWD"` で解決する(slug の計算方法は gate 側に一本化されている — 原則リポジトリ単位、remote なし・git repo 外はプロジェクト絶対パス由来にフォールバック)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
 - **母集団は open Issue 全件 + inbox 行全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
   ```
   gh issue list --state open --limit 500 --json number,title,body,labels \

@@ -5,7 +5,7 @@
 # skill/hook/AGENTS.md section, verbatim-repeated SKILL.md code blocks,
 # stale gate skip files, and skip-heavy gate-events.jsonl entries) and
 # writes candidates into this repo's own wrap-up inbox via
-# wrapup-stop-gate.sh --check-dup/--add; this module only wires the timer.
+# wrapup-stop-gate --check-dup/--add; this module only wires the timer.
 #
 # Daily cadence (not hourly like due-remind): unlike a missed deadline,
 # missing one day's detection run has no real cost — the underlying
@@ -22,19 +22,13 @@
 let
   storePath = "${pkgs.dotfiles-tools}/bin/promotion-detect";
   deployedPath = "${config.home.homeDirectory}/.local/bin/promotion-detect";
-  # flock(1): same platform switch as worktree.nix's git-audit-worktrees
-  # (wrapup-stop-gate.sh, which this binary shells out to, uses flock to
-  # serialize inbox writes).
-  flockPkg = if pkgs.stdenv.isDarwin then pkgs.flock else pkgs.util-linux;
+  # wrapup-stop-gate (Rust since #413, crates/wrapup-stop-gate), which this
+  # binary execs, takes its inbox lock with flock(2) itself and no longer
+  # needs bash/jq/flock(1)/grep/awk; it still shells out to git and gh.
   servicePath = lib.makeBinPath [
-    pkgs.bash # to exec wrapup-stop-gate.sh
     pkgs.coreutils
-    pkgs.gnugrep
-    pkgs.gawk
     pkgs.git
-    pkgs.jq
     pkgs.gh
-    flockPkg
   ];
 in
 {
@@ -69,7 +63,7 @@ in
 
   # launchd twin (ADR-0018). EnvironmentVariables.PATH replaces (rather than
   # extends) launchd's PATH, so every binary promotion-detect or the
-  # wrapup-stop-gate.sh it shells out to needs must be listed explicitly
+  # wrapup-stop-gate it shells out to needs must be listed explicitly
   # (same reasoning as git-audit-worktrees' launchd agent).
   launchd.agents.promotion-detect = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;

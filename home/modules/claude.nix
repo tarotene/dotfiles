@@ -363,7 +363,7 @@
 #    への実際の書き込みは Claude が Edit ツールで行う分担にしている。
 #    詳細は docs/claude/performance-planning.md。
 #
-# 27) handoff(個人スキル)+ pr-gate.sh の中断ハンドオフ節 + issue-index.sh の
+# 27) handoff(個人スキル)+ pr-gate.sh の中断ハンドオフ節 + issue-index の
 #    着手可能な handoff:ai 節:
 #    ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human/AI 双方に
 #    振り分けて GitHub Issue に起票し、後で再開できる状態にする。WIP は
@@ -448,7 +448,7 @@
 #    コマンドの正規化(空白圧縮・行末継続結合)+ハッシュ(FNV-1a、依存
 #    ゼロ)だけを `~/.local/state/claude/cmd-hashes.jsonl` に1行1レコード
 #    で追記する——コマンド本文そのものはどこにも書かない(ADR-0011 の
-#    プライバシー規約 `agent-turn-log.sh` をさらに強めた形)。判定は返さ
+#    プライバシー規約 `agent-turn-log` をさらに強めた形)。判定は返さ
 #    ず、記録が失敗しても常に exit 0(fail-open)。正規化+ハッシュ関数は
 #    `hook_io::cmd_hash` が単一正本で、段4 の promotion-detect が SKILL.md
 #    のコードブロックを同じ関数でハッシュして照合する。
@@ -490,16 +490,26 @@ let
   # する。旧 `bash '….sh'` の command は retiredHookEntries で完全一致削除する
   # (legacyPlan*Cmd)。
   planReviewCmd = "'${hooksDir}/copilot-plan-review'";
-  wrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
+  # #413 (ADR-0024 Stage 4d): session/表示系の hook は Rust バイナリ
+  # (crates/wrapup-stop-gate など、pkgs.dotfiles-tools)になり、下の home.file が
+  # ~/.claude/hooks/<name>(拡張子無し、ADR-0007)として配備する。bash を介さず
+  # 直接起動する。旧 `bash '….sh'` の command は retiredHookEntries / --retire で
+  # 完全一致削除する(legacy*Cmd、#638 と同じ形)。
+  wrapupStopCmd = "'${hooksDir}/wrapup-stop-gate'";
+  legacyWrapupStopCmd = "bash '${hooksDir}/wrapup-stop-gate.sh'";
   # Codex 向けは同じファイルを、フッターの agent 名/URL だけ環境変数で
   # 差し替えて直接登録する(adapter ファイルを新設しない — ADR-0032
   # Amendment #531、D8)。attribution-guard の Codex adapter と同じ
   # 定数値。
-  codexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
-  wrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
+  codexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' '${hooksDir}/wrapup-stop-gate'";
+  legacyCodexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
+  wrapupSessionStartCmd = "'${hooksDir}/wrapup-session-start'";
+  legacyWrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "'${hooksDir}/plan-view'";
-  issueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
-  signPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
+  issueIndexCmd = "'${hooksDir}/issue-index'";
+  legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
+  signPrewarmCmd = "'${hooksDir}/sign-prewarm'";
+  legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   prGateSessionStartCmd = "bash '${hooksDir}/pr-gate.sh' session-start";
   prGateStopCmd = "bash '${hooksDir}/pr-gate.sh' stop";
   # pr-gate.sh の判定(G_pr/G_link/G_visual/G_stack)は agent 名を一切
@@ -571,8 +581,13 @@ let
   # (herdr-{codex,copilot}-metadata.sh と同じ配置)。
   codexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
   copilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
-  herdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
-  statusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
+  # #413: herdr metadata は Claude/Codex/Copilot の 3 本を 1 バイナリ
+  # (crates/herdr-agent-metadata、--agent で入力差を吸収)にまとめた。Codex/
+  # Copilot 側の登録は home/modules/herdr.nix。
+  herdrMetadataCmd = "'${hooksDir}/herdr-agent-metadata'";
+  legacyHerdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
+  statusLineCmd = "'${hooksDir}/claude-statusline'";
+  legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
   worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
@@ -688,21 +703,25 @@ let
   # external-send-guard(22番、docs/claude/external-send-guard.md): 外部宛
   # メールの直接送信を deny し create_draft へ誘導する。他 hook を source
   # しない独立ファイルだが、配置ディレクトリは揃えておく。
-  externalSendGuardCmd = "bash '${hooksDir}/external-send-guard.sh'";
+  externalSendGuardCmd = "'${hooksDir}/external-send-guard'";
+  legacyExternalSendGuardCmd = "bash '${hooksDir}/external-send-guard.sh'";
   # agent-turn-log(UserPromptSubmit + Stop、docs/adr/0011): 1 スクリプトが
   # 2 イベントに同一 command で登録され、`.hook_event_name` で分岐する
-  # (herdr-claude-metadata.sh と同じ形)。出力は
+  # (herdr-agent-metadata と同じ形)。出力は
   # ${XDG_STATE_HOME:-~/.local/state}/daily-report/agent-events.jsonl —
   # 別リポジトリ(daily-report)がそのまま読む契約なので、フィールド名は
   # 変更しないこと。
-  agentTurnLogCmd = "bash '${hooksDir}/agent-turn-log.sh'";
+  agentTurnLogCmd = "'${hooksDir}/agent-turn-log'";
+  legacyAgentTurnLogCmd = "bash '${hooksDir}/agent-turn-log.sh'";
   # Codex 向けは同じファイルを AGENT_NAME=codex だけ差し替えて直接登録する
   # (adapter ファイルを新設しない — ADR-0032 Amendment #531、D8)。
-  codexAgentTurnLogCmd = "AGENT_NAME=codex bash '${hooksDir}/agent-turn-log.sh'";
+  codexAgentTurnLogCmd = "AGENT_NAME=codex '${hooksDir}/agent-turn-log'";
+  legacyCodexAgentTurnLogCmd = "AGENT_NAME=codex bash '${hooksDir}/agent-turn-log.sh'";
   # Copilot 向けも同様(ADR-0032 Amendment 2026-10-01)。イベント名は PascalCase
   # (UserPromptSubmit/Stop)で登録する — camelCase だと payload が別形(sessionId、
-  # hook_event_name なし)になり agent-turn-log.sh が読めない。
-  copilotAgentTurnLogCmd = "AGENT_NAME=copilot bash '${hooksDir}/agent-turn-log.sh'";
+  # hook_event_name なし)になり agent-turn-log が読めない。
+  copilotAgentTurnLogCmd = "AGENT_NAME=copilot '${hooksDir}/agent-turn-log'";
+  legacyCopilotAgentTurnLogCmd = "AGENT_NAME=copilot bash '${hooksDir}/agent-turn-log.sh'";
   # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
   # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
   # history.db に記録する。`atuin hook install claude-code` は settings.json
@@ -728,7 +747,7 @@ let
     # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
     {
       event = "PostToolUse";
-      command = herdrMetadataCmd;
+      command = legacyHerdrMetadataCmd;
     }
     # Codex → Copilot 移行(docs/claude/copilot-plan-review.md)。旧 command 文字列を
     # PreToolUse/ExitPlanMode から完全一致削除してから、新 planReviewCmd を登録する。
@@ -802,12 +821,63 @@ let
       event = "PreToolUse";
       command = legacyPlanFreshGateCmd;
     }
+    # #413 (ADR-0024 Stage 4d): session/表示系 hook の bash 版 → Rust 版。理由は
+    # 上の #416 と同じ(register() の存在判定が command の完全一致だけ)。
+    {
+      event = "Stop";
+      command = legacyWrapupStopCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacyWrapupSessionStartCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacyIssueIndexCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacySignPrewarmCmd;
+    }
+    {
+      event = "SessionStart";
+      command = legacyHerdrMetadataCmd;
+    }
+    {
+      event = "UserPromptSubmit";
+      command = legacyHerdrMetadataCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyHerdrMetadataCmd;
+    }
+    {
+      event = "Stop";
+      command = legacyHerdrMetadataCmd;
+    }
+    {
+      event = "SessionEnd";
+      command = legacyHerdrMetadataCmd;
+    }
+    {
+      event = "UserPromptSubmit";
+      command = legacyAgentTurnLogCmd;
+    }
+    {
+      event = "Stop";
+      command = legacyAgentTurnLogCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = legacyExternalSendGuardCmd;
+    }
   ];
 
   # かつて配って撤回した statusLine。syncStatusLine が .statusLine.command との
-  # 完全一致でキーを削除する対象。今回は herdr-sidebar-metadata を新規導入するので
-  # 空 — 将来この機能自体を取り下げるときに statusLineCmd をここへ移す。
-  retiredStatusLineCommands = [ ];
+  # 完全一致でキーを削除する対象(その後 statusLineCmd を set するので、置き換えにも
+  # 使える)。#413: bash 版 claude-statusline.sh → Rust 版の置き換え。将来この機能
+  # 自体を取り下げるときは statusLineCmd もここへ移す。
+  retiredStatusLineCommands = [ legacyStatusLineCmd ];
 
   # Opus Plan Mode のモデル実体 — 具体値は scripts/claude-plan-model が持つ。
   #
@@ -1049,7 +1119,7 @@ let
     register SessionStart "startup|resume" "$worktree_audit_context" 30
     # agent-turn-log(docs/adr/0011): 純粋なロガーで判定を持たないため matcher/if
     # は不要。UserPromptSubmit/Stop の両方に同一 command で登録し、スクリプト側が
-    # `.hook_event_name` で分岐する(herdr-claude-metadata.sh と同じ形)。
+    # `.hook_event_name` で分岐する(herdr-agent-metadata と同じ形)。
     register UserPromptSubmit "" "$agent_turn_log" 10
     register Stop "" "$agent_turn_log" 10
     # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
@@ -1439,14 +1509,11 @@ in
 
   # wrap-up inbox の 2 hook。session-start は stop-gate と同じパス計算を使い、
   # 同じディレクトリに並んでいることを前提に stop-gate のパスを指示文に埋める。
-  home.file.".claude/hooks/wrapup-stop-gate.sh" = {
-    source = repoConfig + "/claude/hooks/wrapup-stop-gate.sh";
-    executable = true;
-  };
-  home.file.".claude/hooks/wrapup-session-start.sh" = {
-    source = repoConfig + "/claude/hooks/wrapup-session-start.sh";
-    executable = true;
-  };
+  # #413: どちらも crates/wrapup-stop-gate の bin。指示文に埋める自身のパスは argv[0]
+  # 由来(store path ではなくこの安定パス)。
+  home.file.".claude/hooks/wrapup-stop-gate".source = "${pkgs.dotfiles-tools}/bin/wrapup-stop-gate";
+  home.file.".claude/hooks/wrapup-session-start".source =
+    "${pkgs.dotfiles-tools}/bin/wrapup-session-start";
 
   # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
   # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
@@ -1459,10 +1526,7 @@ in
 
   # agent-turn-log: UserPromptSubmit / Stop の1ターン境界を JSONL 追記する
   # 純粋なロガー(ゲートではない)。出力契約は docs/adr/0011。
-  home.file.".claude/hooks/agent-turn-log.sh" = {
-    source = repoConfig + "/claude/hooks/agent-turn-log.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/agent-turn-log".source = "${pkgs.dotfiles-tools}/bin/agent-turn-log";
 
   # plan-scope-gate: 要求インベントリ(scope-inventory、15番)の脱落を機械検査する。
   # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
@@ -1508,10 +1572,8 @@ in
   # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
   # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
   # source しない。
-  home.file.".claude/hooks/external-send-guard.sh" = {
-    source = repoConfig + "/claude/hooks/external-send-guard.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/external-send-guard".source =
+    "${pkgs.dotfiles-tools}/bin/external-send-guard";
   # adr-number(ADR-380, docs/claude/adr-numbering.md): PostToolUse で
   # ADR-478 を PR 番号へ自動改番する段3(利便性層)。attribution-guard.sh
   # を同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
@@ -1547,7 +1609,7 @@ in
   # 理由付けの安定パス symlink。
   home.file.".claude/hooks/cmd-hash-log".source = "${pkgs.dotfiles-tools}/bin/cmd-hash-log";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
-  # ないので register には乗せない — wrapup-stop-gate.sh が同じディレクトリから
+  # ないので register には乗せない — wrapup-stop-gate が同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
   # の register とは別の消費経路)。
   home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
@@ -1633,40 +1695,28 @@ in
   };
 
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
-  home.file.".claude/hooks/issue-index.sh" = {
-    source = repoConfig + "/claude/hooks/issue-index.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/issue-index".source = "${pkgs.dotfiles-tools}/bin/issue-index";
 
   # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
-  home.file.".claude/hooks/sign-prewarm.sh" = {
-    source = repoConfig + "/claude/hooks/sign-prewarm.sh";
-    executable = true;
-  };
+  home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";
 
   # herdr-sidebar-metadata: permission mode(hook)とモデル・メトリクス(statusline)
   # を Herdr サイドバーのカスタムトークンに流す 2 チャネル構成。表示側の行定義は
   # config/herdr/config.toml(home/modules/herdr.nix が配備)。herdr が自動
   # インストールする統合 hook(herdr-agent-state.sh、herdr 管理)の隣に並ぶが、
   # 互いに自分のエントリしか触らないので衝突しない。
-  home.file.".claude/hooks/herdr-claude-metadata.sh" = {
-    source = repoConfig + "/claude/hooks/herdr-claude-metadata.sh";
-    executable = true;
-  };
-  home.file.".claude/hooks/claude-statusline.sh" = {
-    source = repoConfig + "/claude/statusline/claude-statusline.sh";
-    executable = true;
-  };
+  # #413: Claude/Codex/Copilot 共通の 1 バイナリ(--agent)。Codex/Copilot の登録
+  # (home/modules/herdr.nix)もこのパスを指す。
+  home.file.".claude/hooks/herdr-agent-metadata".source =
+    "${pkgs.dotfiles-tools}/bin/herdr-agent-metadata";
+  home.file.".claude/hooks/claude-statusline".source = "${pkgs.dotfiles-tools}/bin/claude-statusline";
 
   # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
   # hook ではない — settings.json には登録しない)。呼び出し側は
   # config/herdr/config.toml。詳細は docs/claude/claude-usage.md。
-  # ソースツリー上は config/claude/statusline/ に分離しているが(ADR-0007)、
-  # 配備先は herdr のハードコード実行パスに合わせて引き続き ~/.claude/hooks/。
-  home.file.".claude/hooks/claude-usage.sh" = {
-    source = repoConfig + "/claude/statusline/claude-usage.sh";
-    executable = true;
-  };
+  # 実体は crates/claude-usage(#413)。配備先は herdr のハードコード実行パスに
+  # 合わせて引き続き ~/.claude/hooks/(拡張子は ADR-0007 に従い落とした)。
+  home.file.".claude/hooks/claude-usage".source = "${pkgs.dotfiles-tools}/bin/claude-usage";
 
   # worktree-fresh-base: pristine な worktree だけを origin/<base> へ黙って
   # fast-forward する SessionStart hook。
@@ -1794,6 +1844,9 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPkexecGuardHooks" ]
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          --retire UserPromptSubmit ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
+          --retire Stop ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
+          --register \
           UserPromptSubmit ${lib.escapeShellArg copilotAgentTurnLogCmd} 10 \
           Stop ${lib.escapeShellArg copilotAgentTurnLogCmd} 10
       '';
@@ -1819,13 +1872,16 @@ in
 
   # ADR-0032 Amendment #531 段2: SessionStart 系は入力が cwd のみで
   # agent-agnostic なため、adapter を挟まず Claude 版スクリプトをそのまま
-  # Codex にも直接登録する(herdr-codex-metadata.sh とは違い、別スクリプトを
+  # Codex にも直接登録する(herdr metadata の旧 Codex 版とは違い、別スクリプトを
   # 新設しない点に注意 — こちらは判定ロジックの単一正本を保つのが目的)。
   home.activation.registerCodexSessionStartHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
+          --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
+          --retire SessionStart ${lib.escapeShellArg legacyWrapupSessionStartCmd} \
+          --retire SessionStart ${lib.escapeShellArg legacySignPrewarmCmd} \
           --register \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
@@ -1836,13 +1892,17 @@ in
 
   # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate.sh は
   # agent 名を参照しないため同じ command 文字列をそのまま(D8 参照)、
-  # wrapup-stop-gate.sh/agent-turn-log.sh は環境変数だけ差し替えた command
+  # wrapup-stop-gate/agent-turn-log は環境変数だけ差し替えた command
   # 文字列を登録する — いずれも adapter ファイルは新設しない。同じ
   # lost-update 対策で SessionStart の登録の後ろに明示的に順序付ける。
   home.activation.registerCodexStopHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexSessionStartHooks" ]
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
+          --retire Stop ${lib.escapeShellArg legacyCodexWrapupStopCmd} \
+          --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
+          --retire Stop ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
+          --register \
           Stop "" ${lib.escapeShellArg codexWrapupStopCmd} 10 \
           Stop "" ${lib.escapeShellArg codexPrGateStopCmd} 600 \
           UserPromptSubmit "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10 \
@@ -1953,7 +2013,7 @@ in
     repoConfig + "/claude/skills/pr-description/cases.md";
   # wrapup-chores: wrap-up inbox のうち判断を要さない軽微な項目を、未起票の inbox
   # 行と起票済みの wrapup 由来 Issue の両方からまとめて triage し、1 回の確認後に
-  # 1 つの chores PR で一括対処する判断知識。hook 側(wrapup-stop-gate.sh)には
+  # 1 つの chores PR で一括対処する判断知識。hook 側(wrapup-stop-gate)には
   # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
   home.file.".claude/skills/wrapup-chores/SKILL.md".source =
     repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
@@ -1975,7 +2035,7 @@ in
   # handoff: ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human / AI
   # 双方に振り分けて起票し、後で再開できる状態にする判断知識(WIP は Draft PR、
   # 担当は閉語彙ラベル handoff:human/handoff:ai、順序は Issue dependencies)。
-  # pr-gate.sh の中断ハンドオフ節・issue-index.sh の着手可能な handoff:ai 節と
+  # pr-gate.sh の中断ハンドオフ節・issue-index の着手可能な handoff:ai 節と
   # 組で動く。詳細は docs/claude/handoff.md。
   home.file.".claude/skills/handoff/SKILL.md".source = repoConfig + "/claude/skills/handoff/SKILL.md";
   home.file.".claude/skills/handoff/scripts/handoff.sh" = {

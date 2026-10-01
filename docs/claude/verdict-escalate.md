@@ -19,7 +19,7 @@
 
 ## 仕組み
 
-- `crates/verdict-escalate` (Rust)。`config/claude/hooks/wrapup-stop-gate.sh`
+- `crates/verdict-escalate` (Rust)。`crates/wrapup-stop-gate`
   の Stop 本体が、inbox を読む**前に**逐次呼ぶ(`~/.claude/hooks/verdict-escalate`
   を絶対パスで実行、`WRAPUP_VERDICT_ESCALATE_BIN` で上書き可能)。**hook として
   register はしない** — 判定(allow/deny/ask)を一切返さないため、他の hook と
@@ -34,10 +34,10 @@
   マッチ語では群化しない** — bleep が守ろうとしている値そのものだから。
 - 候補ごとに、セッション×fingerprint の stamp 台帳
   (`~/.claude/verdict-escalate/state/<session_id>.stamped`、`hook_io::SessionLedger`)
-  に無ければ、`wrapup-stop-gate.sh --add <inbox> <json>`(サブプロセス)を
+  に無ければ、`wrapup-stop-gate --add <inbox> <json>`(サブプロセス)を
   呼んで inbox に 1 行追記し、成功したら stamp する。**inbox への追記ロジック
   (flock・`jq -ce` での compact 化)は再実装しない** — 唯一の実装
-  (`wrapup-stop-gate.sh`)を呼ぶだけ。
+  (`wrapup-stop-gate`)を呼ぶだけ。
 - 追記する行は `{"ts","title","detail","repo","go":"ask"}`。`repo` はレコードの
   `repo` フィールド(既定の起票先)、`go:"ask"` は「起票前に人間の明示的な GO
   が要る」印。`detail` には fingerprint・件数・`session_id`・ローカルレッジャー
@@ -74,10 +74,10 @@
 ## 縮退
 
 - `WRAPUP_VERDICT_ESCALATE_BIN`(または既定解決先)にバイナリが無い →
-  `wrapup-stop-gate.sh` 側が何もせずスキップ。
-- レッジャー dir が読めない・stamp 台帳が作れない・`wrapup-stop-gate.sh`
+  `wrapup-stop-gate` 側が何もせずスキップ。
+- レッジャー dir が読めない・stamp 台帳が作れない・`wrapup-stop-gate`
   が見つからない → `verdict_escalate::run()` は何もせず `0` を返す。
-- `wrapup-stop-gate.sh --add` が失敗した候補は stamp しない(次回 Stop で
+- `wrapup-stop-gate --add` が失敗した候補は stamp しない(次回 Stop で
   再試行する)。
 
 ## 検証
@@ -87,5 +87,5 @@
   trycmd テスト)。
 - `cargo test -p verdict-escalate --test schema`(`docs/schemas/agent-verdict.schema.json`
   が `record::VerdictRecord` からの生成物と一致していること)。
-- `bash config/claude/hooks/wrapup-stop-gate.sh --selftest`(Stop 本体が
+- `nix develop --command cargo test -p wrapup-stop-gate`(Stop 本体が
   inbox 読み取り前に呼ぶ配線・`--check-dup` の repo 引数)。

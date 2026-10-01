@@ -1,6 +1,6 @@
 # external-send-guard — 外部宛メール・Slack 送信を下書きへ誘導する PreToolUse hook
 
-判定エンジン: `config/claude/hooks/external-send-guard.sh`
+判定エンジン: `crates/external-send-guard`
 規約側: `config/agents/AGENTS.md`「外部発信は下書き止まり」節(#463。方針の
 宣言はそちらが正、機械強制はこの hook 単体が担う)
 
@@ -123,7 +123,7 @@ bypass を再実行できてしまうため。この bypass の存在自体は�
 
 ## テスト
 
-`external-send-guard.sh --selftest` がネットワーク不使用で以下を検査する:
+`nix develop --command cargo test -p external-send-guard` がネットワーク不使用で以下を検査する:
 
 - Gmail: 自分宛 send_message(通す)/ 外部宛 send_message(deny)/ cc への
   外部宛混入(deny)/ reply 宛先暗黙(deny)/ reply 自分宛明示(通す)/ reply
