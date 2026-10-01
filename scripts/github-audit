@@ -335,6 +335,16 @@ fetch_latest_run_conclusion() { # $1=repo -> "success"|"failure"|""(実行なし
     --jq '.workflow_runs[0].conclusion // empty' 2>/dev/null || printf ''
 }
 
+# release 系 workflow(release-plz.yml / release-please.yml)の最新の完了実行の
+# 成否(#673)。fetch_latest_run_conclusion() は全 workflow のうち最後に完了した
+# 1 件しか見ないので、同時刻に走った CI が成功していると release の失敗が
+# 隠れる(#659 の実例: Release-plz release が 2 日失敗していたが一覧では
+# 分からなかった)。こちらは workflow をファイル名で特定して引く。
+fetch_latest_release_run_conclusion() { # $1=repo $2=workflow file name -> "success"|"failure"|...|""(実行なし/取得不能)
+  "$GH_BIN" api "repos/$OWNER/$1/actions/workflows/$2/runs" -X GET -F per_page=1 -F status=completed \
+    --jq '.workflow_runs[0].conclusion // empty' 2>/dev/null || printf ''
+}
+
 # squash_merge_commit_title/squash_merge_commit_message (ADR-0031) are REST-
 # only fields — `gh repo list --json` is backed by GraphQL, and the
 # Repository GraphQL type does not expose them (confirmed 2026-09-22: `gh
@@ -1461,8 +1471,8 @@ releaser_workflow_refs() { # $1=repo_gql -> JSON array of "secrets.X"/"vars.Y" t
     | unique' <<<"$1"
 }
 
-judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) $3=snapshot_present(true/false, default false) $4=installed(true/false, default false) $5=workflow-refs-json(from releaser_workflow_refs, default []) -> finding
-  local has_workflow="$1" secrets="$2" snapshot_present="${3:-false}" installed="${4:-false}" refs="${5:-[]}"
+judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(array of strings) $3=snapshot_present(true/false, default false) $4=installed(true/false, default false) $5=workflow-refs-json(from releaser_workflow_refs, default []) $6=release_conclusion(release workflow の最新の完了実行の conclusion、default "") -> finding
+  local has_workflow="$1" secrets="$2" snapshot_present="${3:-false}" installed="${4:-false}" refs="${5:-[]}" release_conclusion="${6:-}"
   local has_id has_key has_legacy_id has_legacy_key not_installed_code=()
 
   [[ $snapshot_present == true && $installed != true ]] && not_installed_code=("releaser-app-not-installed")
@@ -1471,6 +1481,9 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
     canonical_json="$(printf '%s\n' "${RELEASER_CANONICAL_REFS[@]}" | jq -R . | jq -s .)"
     jq -e --argjson ok "$canonical_json" 'any(.[]; . as $r | ($ok | index($r)) == null)' <<<"$refs" >/dev/null 2>&1 \
       && not_installed_code+=("releaser-workflow-refs-nonstandard")
+    # #673: release workflow の最新の完了実行が失敗している。secret が揃って
+    # いても ok にしない(CI が成功していると失敗が隠れる問題の検出)。
+    [[ $release_conclusion == failure ]] && not_installed_code+=("releaser-release-failing")
   fi
 
   if [[ $has_workflow != true ]]; then
@@ -2127,7 +2140,18 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
               [[ $releaser_snapshot_present == true ]] \
                 && jq -e --arg full "$OWNER/$repo" 'any(. == $full)' <<<"$releaser_installs_json" >/dev/null 2>&1 \
                 && installed=true
-              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names" "$releaser_snapshot_present" "$installed" "$workflow_refs")"
+              # #673: release 系 workflow(実在するファイルだけ)の最新の完了実行。
+              # どれか 1 つでも failure なら failure。REST は workflow がある repo
+              # だけが払う(secret の fetch と同じ遅延 fetch)。
+              local release_conclusion='' release_wf wf_conclusion
+              if [[ $has_releaser_workflow == true ]]; then
+                while IFS= read -r release_wf; do
+                  [[ -n $release_wf ]] || continue
+                  wf_conclusion="$(fetch_latest_release_run_conclusion "$repo" "$release_wf")"
+                  [[ $wf_conclusion == failure ]] && release_conclusion=failure
+                done < <(jq -r '(.workflowsDir.entries // [])[] | .name | select(. == "release-plz.yml" or . == "release-please.yml")' <<<"$repo_gql")
+              fi
+              entry="$(judge_releaser "$has_releaser_workflow" "$secret_names" "$releaser_snapshot_present" "$installed" "$workflow_refs" "$release_conclusion")"
             fi
             ;;
           routines) entry="$(judge_routines "$repo" "$repo_gql" "$routines_sources_json")" ;;
@@ -3854,6 +3878,33 @@ jobs:
   jq -e '.verdict == "ok"' \
     <<<"$(judge_releaser true '["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]' false false '["secrets.RELEASER_APP_CLIENT_ID","secrets.RELEASER_APP_PRIVATE_KEY"]')" >/dev/null || {
     printf 'FAIL: 標準の参照だけなら ok のままであるべき\n' >&2
+    return 1
+  }
+
+  # #673: release workflow の最新の完了実行が failure なら、secret が揃って
+  # いても ok にならない。success / 実行なし("")なら従来どおり ok。
+  local ok_secrets='["RELEASER_APP_CLIENT_ID","RELEASER_APP_PRIVATE_KEY"]'
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-release-failing"))' \
+    <<<"$(judge_releaser true "$ok_secrets" false false '[]' failure)" >/dev/null || {
+    printf 'FAIL: release workflow の最新実行が failure なら releaser-release-failing(drifted)になるべき: %s\n' \
+      "$(judge_releaser true "$ok_secrets" false false '[]' failure)" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_releaser true "$ok_secrets" false false '[]' success)" >/dev/null || {
+    printf 'FAIL: release workflow の最新実行が success なら ok のままであるべき\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_releaser true "$ok_secrets" false false '[]' '')" >/dev/null || {
+    printf 'FAIL: release workflow の実行が無い(取得不能)なら ok のままであるべき(断定しない)\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("releaser-release-failing")) and (.missing | index("releaser-app-secrets-missing"))' \
+    <<<"$(judge_releaser true '[]' false false '[]' failure)" >/dev/null || {
+    printf 'FAIL: secret 欠落と release 失敗は併記されるべき: %s\n' "$(judge_releaser true '[]' false false '[]' failure)" >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' <<<"$(judge_releaser false '[]' false false '[]' failure)" >/dev/null || {
+    printf 'FAIL: release workflow が無い repo は failure が渡されても not-applicable であるべき\n' >&2
     return 1
   }
   local refs_gql='{"workflowsDir":{"entries":[{"name":"ci.yml","object":{"text":"jobs: {}"}},{"name":"other.yml","object":{"text":"uses: actions/create-github-app-token@v2\n with:\n  app-id: ${{ secrets.OTHER_APP_ID }}\n  private-key: ${{ secrets.OTHER_APP_KEY }}"}}]}}'
