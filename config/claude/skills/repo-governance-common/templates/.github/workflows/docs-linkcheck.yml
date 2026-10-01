@@ -41,10 +41,15 @@ jobs:
       - id: lychee
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
+          # output / format は lychee-action の専用 input で渡す。args にも
+          # `--output` / `--format` を書くと「'output' is set in args as well as
+          # in the action configuration」で step が落ち、起票まで進まない
+          # (#646 の実行検証で判明)。
           args: >-
             --no-progress --cache --max-cache-age 1d --exclude-mail
-            --format markdown --output lychee-report.md
             '${{ steps.docs.outputs.site-dir }}' './**/*.md'
+          format: markdown
+          output: lychee-report.md
           fail: false
 
       - name: File or update the broken-link issue
