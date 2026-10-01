@@ -203,6 +203,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "external-send-guard"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "trycmd",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
