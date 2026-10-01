@@ -1,7 +1,7 @@
 name: Docs link check
 
 # 生成した API ドキュメントとリポジトリの Markdown の外部リンクを、週次で
-# lychee で検査する(ADR-0000 stack-standard-api-docs D8)。
+# lychee で検査する(ADR-640 stack-standard-api-docs D8)。
 #
 # 必須チェックにしない — 外部サイトの一時的な不調で PR が赤くなるのを避ける
 # ため、PR ゲートではなく cron で回し、壊れたリンクが見つかったときだけ Issue

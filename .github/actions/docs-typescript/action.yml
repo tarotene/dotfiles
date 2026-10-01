@@ -2,7 +2,7 @@ name: 'API docs (TypeScript)'
 description: >-
   TypeScript ライブラリ(package.json に exports / main / types を持つもの)の
   API ドキュメントを TypeDoc で警告をエラー(`--treatWarningsAsErrors`)として
-  strict にビルドする(スタック標準の docs 必須化、ADR-0000 stack-standard-
+  strict にビルドする(スタック標準の docs 必須化、ADR-640 stack-standard-
   api-docs)。composite action である理由と checkout の前提は docs-rust と同じ。
 
   TypeDoc と TypeScript は、リポジトリ自身の node_modules ではなくこの action

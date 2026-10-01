@@ -1032,7 +1032,7 @@ jobs:
           done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
           echo "rooted $i locally built paths"
 
-  # スタック標準の API doc ビルド必須化(ADR-0000 stack-standard-api-docs)。
+  # スタック標準の API doc ビルド必須化(ADR-640 stack-standard-api-docs)。
   # dotfiles 自身の Cargo workspace(crates/*)に docs-rust composite action
   # を適用する — 全リポジトリへ強制する規則を、まずこのリポジトリ自身が
   # 満たす。stack-position の heavy 判定は使わない(doc ビルドは軽く、

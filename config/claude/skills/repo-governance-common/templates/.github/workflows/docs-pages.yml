@@ -1,6 +1,6 @@
 name: Docs pages
 
-# API ドキュメントを GitHub Pages へ deploy する(ADR-0000 stack-standard-
+# API ドキュメントを GitHub Pages へ deploy する(ADR-640 stack-standard-
 # api-docs D7)。対象は「PUBLIC かつ docs.rs / pkg.go.dev の対象外」のリポ
 # ジトリだけ:
 #   - crates.io 公開済みの crate は docs.rs が自動でビルドするため、ここでは

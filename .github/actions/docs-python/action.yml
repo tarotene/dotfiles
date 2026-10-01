@@ -2,7 +2,7 @@ name: 'API docs (Python)'
 description: >-
   Python パッケージの API ドキュメントを Sphinx + autodoc で警告をエラー
   (`-W -n`)として strict にビルドし、doctest も実行する(スタック標準の docs
-  必須化、ADR-0000 stack-standard-api-docs)。composite action である理由と
+  必須化、ADR-640 stack-standard-api-docs)。composite action である理由と
   checkout の前提は docs-rust と同じ。
 
   `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を

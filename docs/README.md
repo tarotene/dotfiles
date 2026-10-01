@@ -343,7 +343,7 @@
   維持)。PEM は Bitwarden Secrets Manager に保管する。第三者 App(Claude)
   の到達範囲は、fine-grained PAT が `/web-setup` で使えないため、Claude
   GitHub App の install 先(Only select repositories)で絞る方針に改めた。
-- [ADR-0000](adr/0000-stack-standard-api-docs.md) — 技術スタック標準の API
+- [ADR-640](adr/640-stack-standard-api-docs.md) — 技術スタック標準の API
   ドキュメント(rustdoc / Sphinx / TypeDoc)の strict ビルドを、`ci.yml` の
   docs job と `CI passed` の `needs` で全リポジトリに必須化する決定。実体は
   pr-title と同形の composite action(ADR-591 D3)で、マニフェスト → ツールの

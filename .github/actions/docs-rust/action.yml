@@ -1,7 +1,7 @@
 name: 'API docs (Rust)'
 description: >-
   Rust workspace の API ドキュメントを警告をエラーとして strict にビルドし、
-  doctest も実行する(スタック標準の docs 必須化、ADR-0000 stack-standard-
+  doctest も実行する(スタック標準の docs 必須化、ADR-640 stack-standard-
   api-docs)。ADR-591 D3(pr-title と同じ理由)により reusable workflow では
   なく composite action にしている — 呼び出し側 job の `name:` だけが required
   check の context になり、連結名の不一致事故が構造的に起きない。strict の
