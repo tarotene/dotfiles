@@ -20,12 +20,9 @@ const USAGE: &str = "usage: pr-title-check <title>\n";
 
 fn main() -> ExitCode {
     let arg: Option<OsString> = std::env::args_os().nth(1);
-    match arg.as_ref().and_then(|a| a.to_str()) {
-        Some("--help" | "-h") => {
-            print!("{USAGE}");
-            return ExitCode::SUCCESS;
-        }
-        _ => {}
+    if let Some("--help" | "-h") = arg.as_ref().and_then(|a| a.to_str()) {
+        print!("{USAGE}");
+        return ExitCode::SUCCESS;
     }
 
     let mut title: Vec<u8> = arg.map(OsStringExt::into_vec).unwrap_or_default();
