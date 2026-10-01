@@ -20,7 +20,7 @@
 //!
 //! 1 コマンド = 適用 runbook 全体:
 //!
-//! 1. home-manager switch --flake <ref>#<host> -b backup
+//! 1. home-manager switch --flake `<ref>`#`<host>` -b backup
 //! 2. systemctl --user daemon-reload
 //! 3. 生成された fcitx5 autostart unit を restart — switch で ExecStart の store
 //!    path は動くが、daemon-reload だけでは generated unit は再起動されず旧バイナリが
@@ -43,7 +43,7 @@
 //! 復元した)ため、`local_apply_plan` が既定で wrapper 経由にする:
 //!
 //! ```text
-//! home-manager switch --flake <private-hub-ref>#<host> \
+//! home-manager switch --flake <private-hub-ref>#`<host>` \
 //!   --override-input dotfiles path:<abs-path> --no-write-lock-file -b backup
 //! ```
 //!
@@ -405,7 +405,7 @@ fn refreshed_revision(flake: &str) -> Option<(String, String)> {
     (!rev.is_empty()).then_some((json, rev))
 }
 
-/// 引数(argv[0] を除く)を処理して終了コードを返す。
+/// 引数(`argv[0]` を除く)を処理して終了コードを返す。
 pub fn run(args: &[String]) -> i32 {
     let wrapper_ref = resolve_default_ref();
     let mut r#ref = wrapper_ref.clone();

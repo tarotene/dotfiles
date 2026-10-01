@@ -1,13 +1,13 @@
-//! gpg-subkey — card-backed primary 鍵の下に、機体ローカルの ed25519/cv25519 の [S]/[E]
+//! gpg-subkey — card-backed primary 鍵の下に、機体ローカルの ed25519/cv25519 の `[S]`/`[E]`
 //! (署名/暗号化)subkey を生成・ローテーションし、失効を監視し、リポジトリがコミット
 //! する公開鍵 export を更新する(旧 `scripts/gpg-subkey`、ADR-0024 Stage 4e、#414)。
 //!
 //! 由来: アーカイブ済みの private な前身ツールの generate-machine-subkey.sh /
 //! rotate-machine-subkey.sh を吸収したもの(dotfiles GPG tooling review、2026-09-19)。
 //! その `--command-file --expert --edit-key` による addkey/revkey のバッチ手順を再利用
-//! する(本番で検証済み — company identity の [S] subkey が 2025-12 と 2026-07 にこれで
+//! する(本番で検証済み — company identity の `[S]` subkey が 2025-12 と 2026-07 にこれで
 //! ローテーションされた)が、git config を書く副作用は意図的に落とした。
-//! [E] 対応(#252、ADR-0003 Amendment 4)は同じ addkey/revkey の仕組みをメニュー番号だけ
+//! `[E]` 対応(#252、ADR-0003 Amendment 4)は同じ addkey/revkey の仕組みをメニュー番号だけ
 //! 変えて再利用する(sign-only ではなく encrypt-only ECC)。実際の GnuPG との対話で
 //! (2026-09-20)確認してからここに符号化した。
 //! `home/modules/gpg.nix` のヘッダと `hosts/<host>.nix` の `programs.git.signing.key` が、
@@ -25,15 +25,15 @@
 //! gpg-subkey remind   [--threshold 30] [--notify]
 //! ```
 //!
-//! generate/rotate はカードの挿入が必要: primary 鍵自身の [C](certify)能力が新しい
+//! generate/rotate はカードの挿入が必要: primary 鍵自身の `[C]`(certify)能力が新しい
 //! subkey の binding signature に署名し、その操作は YubiKey 上にある(ADR-0003)。
 //! `--key` は `gpg --list-secret-keys` がちょうど 1 つの primary 鍵に解決するもの
 //! (fingerprint・keyid・メールの部分文字列)を受ける。`--usage` の既定は後方互換の
-//! ため `sign`、`encrypt` は同じ addkey メニューで encrypt-only の cv25519 [E] を作る
+//! ため `sign`、`encrypt` は同じ addkey メニューで encrypt-only の cv25519 `[E]` を作る
 //! (メニュー番号は 10 の代わりに 12 — どちらも同じ「どの楕円曲線か」の追問が出る。
 //! 実 GnuPG 2.4.9 で確認済み、2026-09-20)。
 //!
-//! rotate の generate+revoke は唯一の不可逆な手順で、その後ろ — keys/<identity>.pub、
+//! rotate の generate+revoke は唯一の不可逆な手順で、その後ろ — keys/`<identity>`.pub、
 //! GitHub に登録された GPG 鍵、keys.openpgp.org — はローカル鍵束の状態の *コピー* に
 //! すぎず、それぞれ独立に、またローカルともずれうる(実際に 1 度起きた)。`sync` は
 //! ローカル鍵束との drift を検出し、`--fix` ですべてのコピーを収束させる。前回の試行が
@@ -41,7 +41,7 @@
 //! 不一致は報告するだけで、`export` が引く境界と同じ。
 //!
 //! rotate は同じ usage の card-backed subkey を決して revoke しない(#252、ADR-0003
-//! Amendment 4 — [E] の元の card-backed subkey は、on-disk の [E] が日常の復号を担った
+//! Amendment 4 — `[E]` の元の card-backed subkey は、on-disk の `[E]` が日常の復号を担った
 //! 後も fallback/災害復旧経路として意図的に live のまま残す)。「現在どの subkey が有効か」
 //! の解決も rotate の revoke 候補収集も、on-disk の秘密素材(GnuPG `--with-colons` 欄 15
 //! == "+"、`crates/sign-prewarm` の key_is_on_disk と同じ判定)に限る — card-backed
@@ -247,8 +247,8 @@ impl Cfg {
     /// 倒れる。
     ///
     /// on-disk 限定の理由(#252, R1-B-1): 「現行」を card-backed/stub まで含めて解決すると、
-    /// generate/rotate 直後の新規鍵の特定を誤ったり、sync がカード専用の [E] を「現行」と
-    /// 誤認したりする。card-backed な同一 usage の subkey(元 [E] 等)は意図して残置される
+    /// generate/rotate 直後の新規鍵の特定を誤ったり、sync がカード専用の `[E]` を「現行」と
+    /// 誤認したりする。card-backed な同一 usage の subkey(元 `[E]` 等)は意図して残置される
     /// 既知の状態であり、これを「現行」扱いしないことは設計そのもの(ADR-0003 Amendment 4)。
     pub fn extract_latest_usage_keyid(&self, cap: char, selector: &str) -> String {
         latest_keyid(&self.usage_subkeys(cap, selector, true))
@@ -619,7 +619,7 @@ fn cmd_revoke(cfg: &Cfg, args: &[String]) -> i32 {
 
 // --- export / sync ----------------------------------------------------------
 
-/// keys/<identity>.pub の primary fingerprint。読めなければ stderr に理由を出して Err。
+/// keys/`<identity>`.pub の primary fingerprint。読めなければ stderr に理由を出して Err。
 fn repo_identity_fpr(cfg: &Cfg, repo: &str, identity: &str) -> Result<String, ()> {
     let pubfile = format!("{repo}/keys/{identity}.pub");
     if !Path::new(&pubfile).is_file() {
@@ -770,11 +770,11 @@ fn keyserver_has(colons: &str, keyid: &str, needle: &str) -> bool {
 /// `home/hosts/<host>.nix` の `programs.git.signing.key` は報告するだけで編集しない
 /// — `export` が引く境界と同じ。
 ///
-/// [S] と [E] で監査対象が違う(#252, ADR-0003 Amendment 4): GitHub の GPG 登録は署名検証
-/// 用途なので [S] のみ照合する。hosts/*.nix の programs.git.signing.key も [S] の宣言専用。
-/// export(主鍵の armored 一括 export)と keys.openpgp.org は [S]/[E] 両方を含む/照合する
-/// — 主鍵の export は元々両方の subkey を含むため usage で分岐する必要がない。on-disk [E]
-/// がまだ無いホスト(#252 ロールアウト前)では [E] 関連チェックを無音でスキップする —
+/// `[S]` と `[E]` で監査対象が違う(#252, ADR-0003 Amendment 4): GitHub の GPG 登録は署名検証
+/// 用途なので `[S]` のみ照合する。hosts/*.nix の programs.git.signing.key も `[S]` の宣言専用。
+/// export(主鍵の armored 一括 export)と keys.openpgp.org は `[S]`/`[E]` 両方を含む/照合する
+/// — 主鍵の export は元々両方の subkey を含むため usage で分岐する必要がない。on-disk `[E]`
+/// がまだ無いホスト(#252 ロールアウト前)では `[E]` 関連チェックを無音でスキップする —
 /// カードのみの運用も引き続き妥当な状態のため。
 fn cmd_sync(cfg: &Cfg, args: &[String]) -> i32 {
     let (mut repo, mut identity, mut fix, mut yes) = (String::new(), String::new(), false, false);
@@ -1160,7 +1160,7 @@ fn fix_github(gh_json: &serde_json::Value, primary_short: &str, current_export: 
 
 // --- status / remind --------------------------------------------------------
 
-/// [S]/[E] 両方の行。repo が空なら全 secret 鍵、あれば keys/*.pub の fingerprint に限る。
+/// `[S]`/`[E]` 両方の行。repo が空なら全 secret 鍵、あれば keys/*.pub の fingerprint に限る。
 fn status_rows(cfg: &Cfg, repo: &str) -> Vec<Sub> {
     if repo.is_empty() {
         return ['s', 'e']

@@ -5,7 +5,7 @@
 //!
 //! - 入力: [`RepoMeta`](`gh repo list --json` の 1 要素)、[`RepoGql`]
 //!   (GraphQL バッチの 1 リポジトリ分)、[`RepoRest`](`gh api repos/O/R`)
-//! - 出力: [`Finding`](ドメインごとの判定)、[`RepoFindings`](1 リポジトリ分)
+//! - 出力: [`Finding`] (ドメインごとの判定)、[`RepoFindings`](1 リポジトリ分)
 //!
 //! 出力 JSON のキー順・形は bash 版とバイト単位で一致させる([`Finding::to_j`])。
 //! `github-audit --json` や ledger を読む側(github-audit-triage スキル等)が
