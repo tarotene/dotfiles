@@ -1,9 +1,9 @@
 //! `verdict_escalate::run()` の統合テスト: レッジャー dir → inbox 追記 →
-//! stamp 台帳までの一連の副作用。`wrapup-stop-gate.sh --add` は
+//! stamp 台帳までの一連の副作用。`wrapup-stop-gate --add` は
 //! `WRAPUP_STOP_GATE_BIN` で差し替えた最小スタブ(受け取った行のタイムスタンプ
 //! を固定文字列に正規化してから追記する)で代替する — 実体は
-//! `config/claude/hooks/wrapup-stop-gate.sh --add`(flock + jq -ce での
-//! compact 化)そのものを別途 shellcheck/selftest で検証している。
+//! `crates/wrapup-stop-gate` の `--add`(flock + jq -ce 相当の
+//! compact 化)そのものを別途 crates/wrapup-stop-gate のテストで検証している。
 //!
 //! 各テストは環境変数(プロセスグローバル)を触るため、`serial_test` を
 //! 使わずシングルスレッド実行を強制する(`--test-threads=1`)代わりに、

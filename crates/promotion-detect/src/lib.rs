@@ -3,7 +3,7 @@
 //! 「既存手段の前倒し接地と、決定論への昇格導線」段4)。
 //!
 //! 判定ロジックはすべてこのモジュールに閉じる(純粋関数 + `#[test]`)。
-//! `main.rs` は `gh`/ファイル探索・`wrapup-stop-gate.sh` の起動だけを担う。
+//! `main.rs` は `gh`/ファイル探索・`wrapup-stop-gate` の起動だけを担う。
 //!
 //! 兆候は3種類(ADR-543 D4・D6):
 //! - 再発: 同じ `Target:` を持つ feedback Issue が [`RECURRENCE_THRESHOLD`]
@@ -232,12 +232,12 @@ pub fn detect_demotion_candidates(
 }
 
 // ---------------------------------------------------------------------------
-// wrap-up inbox のパス(wrapup-stop-gate.sh `normalize_remote_url` と同じ
+// wrap-up inbox のパス(wrapup-stop-gate `normalize_remote_url` と同じ
 // 正規化規則。owner/repo は github.com 固定でよい — このバイナリは
 // tarotene/dotfiles 自身の inbox にしか書かないため)。
 // ---------------------------------------------------------------------------
 
-/// `owner/repo` → `github-com-owner-repo`(`wrapup-stop-gate.sh` の
+/// `owner/repo` → `github-com-owner-repo`(`wrapup-stop-gate` の
 /// `normalize_remote_url` と同じ規則: 小文字化 → `/`・`.` を `-` に置換)。
 pub fn repo_slug(nwo: &str) -> String {
     format!("github.com/{nwo}")
@@ -249,7 +249,7 @@ pub fn repo_slug(nwo: &str) -> String {
 // wrap-up inbox 向けの文面組み立て
 // ---------------------------------------------------------------------------
 
-/// `wrapup-stop-gate.sh --add` に渡す1行JSON。
+/// `wrapup-stop-gate --add` に渡す1行JSON。
 pub fn inbox_line(title: &str, detail: &str) -> String {
     serde_json::json!({ "title": title, "detail": detail }).to_string()
 }

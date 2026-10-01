@@ -1,4 +1,4 @@
-//! CLI エントリポイント。`wrapup-stop-gate.sh` が Stop の stdin JSON を
+//! CLI エントリポイント。`wrapup-stop-gate` が Stop の stdin JSON を
 //! そのまま渡して呼ぶ(hook 登録はしない — 詳細は lib.rs /
 //! docs/claude/verdict-escalate.md)。
 //!
