@@ -1,5 +1,5 @@
 # codex adapter selftest 3: 非対象コマンド
-bin.name = "attribution-guard-codex"
+bin.name = "attribution-guard"
 args = ["--agent", "codex"]
 stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"git status\"}}"
 status.code = 0

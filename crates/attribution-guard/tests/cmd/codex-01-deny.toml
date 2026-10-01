@@ -1,5 +1,5 @@
 # codex adapter selftest 1: フッター無しのコメントは deny
-bin.name = "attribution-guard-codex"
+bin.name = "attribution-guard"
 args = ["--agent", "codex"]
 stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"gh pr comment 1 --body '確認しました。'\"}}"
 status.code = 0
