@@ -182,15 +182,7 @@ fn target() -> Command {
             c.arg(script);
             c
         }
-        // 段 1-2: Rust 版はまだ無いので、既定も bash 版に向ける。
-        None => {
-            let mut c = Command::new(which("bash"));
-            c.arg(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../config/claude/hooks/issue-index.sh"
-            ));
-            c
-        }
+        None => Command::new(env!("CARGO_BIN_EXE_issue-index")),
     }
 }
 
@@ -202,12 +194,9 @@ fn run_with_stdin(mut cmd: Command, stdin: &str) -> Out {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // 早期 exit する経路(gh 不在など)では子が stdin を読まずに閉じることが
+    // あるので、BrokenPipe は無視する。
+    let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
     let o = child.wait_with_output().unwrap();
     Out {
         code: o.status.code().unwrap_or(-1),

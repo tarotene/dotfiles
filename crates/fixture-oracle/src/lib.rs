@@ -12,7 +12,4 @@
 //! 両方に向けることで、転記ミスというバグ源を持ち込まない。
 
 /// fixture を bash 版に向けている hook/CLI(bin 名, リポジトリ相対パス)。
-pub const BASH_ORACLES: &[(&str, &str)] = &[
-    ("issue-index", "config/claude/hooks/issue-index.sh"),
-    ("sign-prewarm", "config/claude/hooks/sign-prewarm.sh"),
-];
+pub const BASH_ORACLES: &[(&str, &str)] = &[];

@@ -125,15 +125,7 @@ fn target() -> Command {
             c.arg(script);
             c
         }
-        // 段 1-2: Rust 版はまだ無いので、既定も bash 版に向ける。
-        None => {
-            let mut c = Command::new("bash");
-            c.arg(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../config/claude/hooks/sign-prewarm.sh"
-            ));
-            c
-        }
+        None => Command::new(env!("CARGO_BIN_EXE_sign-prewarm")),
     }
 }
 
