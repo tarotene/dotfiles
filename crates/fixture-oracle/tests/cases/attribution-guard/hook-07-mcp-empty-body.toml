@@ -1,0 +1,6 @@
+# 追加: MCP の本文が空なら判定不能で通す
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"mcp__github__create_issue\", \"tool_input\": {\"body\": \"\"}}"
+status.code = 0
+stdout = ""

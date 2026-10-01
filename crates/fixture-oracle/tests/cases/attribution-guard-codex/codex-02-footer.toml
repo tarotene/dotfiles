@@ -1,0 +1,6 @@
+# codex adapter selftest 2: Codex のフッター付きは pass
+bin.name = "attribution-guard-codex"
+args = ["--agent", "codex"]
+stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"gh pr comment 1 --body '確認しました。🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)'\"}}"
+status.code = 0
+stdout = ""

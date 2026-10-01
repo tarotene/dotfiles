@@ -1,0 +1,8 @@
+# bash selftest「30 api PATCH 編集 -footer」: deny 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh api -X PATCH repos/o/r/issues/comments/9 -f body='編集'"]
+fs.cwd = "files"
+status.code = 1
+stdout = """
+deny: GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「🤖 Generated with [Claude Code](https://claude.com/claude-code)」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。
+"""

@@ -1,0 +1,6 @@
+# codex adapter selftest 4: MCP は対象外(#161)
+bin.name = "attribution-guard-codex"
+args = ["--agent", "codex"]
+stdin = "{\"tool_name\": \"mcp__github__create_issue\", \"tool_input\": {\"body\": \"no footer\"}}"
+status.code = 0
+stdout = ""

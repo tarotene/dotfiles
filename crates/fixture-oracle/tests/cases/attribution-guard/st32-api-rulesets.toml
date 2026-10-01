@@ -1,0 +1,8 @@
+# bash selftest「32 api 非対象パス(rulesets)」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh api -X POST repos/o/r/rulesets --input api-without.json"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

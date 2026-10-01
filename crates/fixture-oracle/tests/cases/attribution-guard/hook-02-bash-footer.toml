@@ -1,0 +1,6 @@
+# 追加: Claude hook 経路、Bash のフッター付きは pass
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"gh pr comment 1 --body 'x 🤖 Generated with [Claude Code](https://claude.com/claude-code)'\"}}"
+status.code = 0
+stdout = ""

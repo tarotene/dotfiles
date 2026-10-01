@@ -1,0 +1,8 @@
+# bash selftest「29 api --input - + heredoc footer 無し」: deny 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh api repos/o/r/issues --input - <<'EOF'\n{\"body\": \"本文だけ\"}\nEOF"]
+fs.cwd = "files"
+status.code = 1
+stdout = """
+deny: GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「🤖 Generated with [Claude Code](https://claude.com/claude-code)」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。
+"""

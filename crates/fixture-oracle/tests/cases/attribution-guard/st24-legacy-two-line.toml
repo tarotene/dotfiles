@@ -1,0 +1,8 @@
+# bash selftest「24 旧 2 行形式(回帰)」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh issue create --title t --body '本文\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n🤖 Filed from Claude Code wrap-up inbox'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

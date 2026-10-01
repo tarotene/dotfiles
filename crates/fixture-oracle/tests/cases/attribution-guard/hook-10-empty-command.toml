@@ -1,0 +1,6 @@
+# 追加: Bash の command が空なら通す
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"\"}}"
+status.code = 0
+stdout = ""

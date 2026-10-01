@@ -1,0 +1,14 @@
+# 追加: MCP 書き込み系 tool の body にフッター無しは deny
+bin.name = "attribution-guard"
+args = ["--agent", "claude"]
+stdin = "{\"tool_name\": \"mcp__github__create_issue\", \"tool_input\": {\"title\": \"t\", \"body\": \"no footer\"}}"
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「🤖 Generated with [Claude Code](https://claude.com/claude-code)」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。"
+  }
+}
+"""

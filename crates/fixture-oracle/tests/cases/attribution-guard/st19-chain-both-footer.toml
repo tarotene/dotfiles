@@ -1,0 +1,8 @@
+# bash selftest「19 複合で両方に footer」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr create --title t --body '本文 🤖 Generated with [Claude Code](https://claude.com/claude-code)' && gh pr comment 1 --body 'x 🤖 Generated with [Claude Code](https://claude.com/claude-code)'"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

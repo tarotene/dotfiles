@@ -1,0 +1,6 @@
+# copilot adapter selftest 3: 非対象コマンド
+bin.name = "attribution-guard-copilot"
+args = ["--agent", "copilot"]
+stdin = "{\"sessionId\": \"s\", \"cwd\": \"/x\", \"toolName\": \"bash\", \"toolArgs\": {\"command\": \"git status\"}}"
+status.code = 0
+stdout = ""

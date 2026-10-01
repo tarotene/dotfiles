@@ -1,0 +1,8 @@
+# bash selftest「16 非対象(gh 参照系)」: pass 期待(--check 経路)
+bin.name = "attribution-guard"
+args = ["--check", "gh pr view 1 --json body"]
+fs.cwd = "files"
+status.code = 0
+stdout = """
+pass
+"""

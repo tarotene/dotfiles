@@ -12,4 +12,8 @@
 //! 両方に向けることで、転記ミスというバグ源を持ち込まない。
 
 /// fixture を bash 版に向けている hook/CLI(bin 名, リポジトリ相対パス)。
-pub const BASH_ORACLES: &[(&str, &str)] = &[];
+pub const BASH_ORACLES: &[(&str, &str)] = &[
+    ("attribution-guard", "config/claude/hooks/attribution-guard.sh"),
+    ("attribution-guard-codex", "config/codex/hooks/attribution-guard.sh"),
+    ("attribution-guard-copilot", "config/copilot/hooks/attribution-guard.sh"),
+];

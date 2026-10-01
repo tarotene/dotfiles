@@ -1,0 +1,14 @@
+# codex adapter selftest 1: フッター無しのコメントは deny
+bin.name = "attribution-guard-codex"
+args = ["--agent", "codex"]
+stdin = "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"gh pr comment 1 --body '確認しました。'\"}}"
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。"
+  }
+}
+"""
