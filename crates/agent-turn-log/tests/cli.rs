@@ -24,8 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn bin() -> PathBuf {
     match std::env::var_os("AGENT_TURN_LOG_ORACLE") {
         Some(p) if !p.is_empty() => PathBuf::from(p),
-        _ => Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../config/claude/hooks/agent-turn-log.sh"),
+        _ => PathBuf::from(env!("CARGO_BIN_EXE_agent-turn-log")),
     }
 }
 
