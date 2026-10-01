@@ -20,7 +20,16 @@
 set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_PR_TITLE_GUARD="$SELF_DIR/../../claude/hooks/pr-title-guard.sh"
+# 配備先(~/.codex/hooks, ~/.copilot/hooks)には ../../claude/hooks という
+# 兄弟ディレクトリが無い(#602)ので、CLAUDE_HOOKS_DIR → ソースツリー相対 →
+# $HOME/.claude/hooks の順に、最初に存在したものを使う。
+CLAUDE_PR_TITLE_GUARD=""
+for _d in "${CLAUDE_HOOKS_DIR:-}" "$SELF_DIR/../../claude/hooks" "$HOME/.claude/hooks"; do
+  if [[ -n $_d && -f $_d/pr-title-guard.sh ]]; then
+    CLAUDE_PR_TITLE_GUARD="$_d/pr-title-guard.sh"
+    break
+  fi
+done
 # shellcheck source=../../claude/hooks/pr-title-guard.sh
 source "$CLAUDE_PR_TITLE_GUARD"
 

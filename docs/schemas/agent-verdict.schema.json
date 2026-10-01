@@ -170,6 +170,13 @@
           "enum": [
             "engine-unavailable"
           ]
+        },
+        {
+          "description": "未展開のシェル変数参照を含み、宛先を静的に確定できない(bleep#34)。",
+          "type": "string",
+          "enum": [
+            "unresolved-var"
+          ]
         }
       ]
     },

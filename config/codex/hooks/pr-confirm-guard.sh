@@ -20,7 +20,16 @@
 set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_PR_CONFIRM_GUARD="$SELF_DIR/../../claude/hooks/pr-confirm-guard.sh"
+# 配備先(~/.codex/hooks, ~/.copilot/hooks)には ../../claude/hooks という
+# 兄弟ディレクトリが無い(#602)ので、CLAUDE_HOOKS_DIR → ソースツリー相対 →
+# $HOME/.claude/hooks の順に、最初に存在したものを使う。
+CLAUDE_PR_CONFIRM_GUARD=""
+for _d in "${CLAUDE_HOOKS_DIR:-}" "$SELF_DIR/../../claude/hooks" "$HOME/.claude/hooks"; do
+  if [[ -n $_d && -f $_d/pr-confirm-guard.sh ]]; then
+    CLAUDE_PR_CONFIRM_GUARD="$_d/pr-confirm-guard.sh"
+    break
+  fi
+done
 # shellcheck source=../../claude/hooks/pr-confirm-guard.sh
 source "$CLAUDE_PR_CONFIRM_GUARD"
 

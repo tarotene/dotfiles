@@ -10,8 +10,8 @@ STATE_DIR="${GIT_WORKTREE_AUDIT_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}
 HERDR_BIN="${GIT_WORKTREE_AUDIT_HERDR_BIN:-herdr}"
 GH_BIN="${GIT_WORKTREE_AUDIT_GH_BIN:-gh}"
 TEST_TMP=''
-# gh_closed_heads の呼び出し結果を repo(owner/repo slug)ごとに1回だけ
-# 計算してキャッシュする。--evidence は1回の実行で同じ repo を worktree
+# gh_closed_pr の呼び出し結果を repo(owner/repo slug)+ sha ごとに1回だけ
+# 計算してキャッシュする。--evidence は1回の実行で同じ sha を worktree
 # 行・branch 行の両方から照会しうるため、キャッシュが無いと gh を2回叩く。
 declare -A GH_PR_CACHE_DONE=()
 declare -A GH_PR_CACHE_DATA=()
@@ -39,9 +39,11 @@ git prune-branches --auto), not upstream-tracking state:
   C3:#N   tip equals a MERGED or CLOSED PR's head commit (recoverable via
           refs/pull/N/head even after local deletion)
 Rows: kind(worktree|branch)  common  repo  path  branch  sha  evidence
-Calls `gh` once per repo (only for --evidence, never for the other modes);
-a repo whose origin isn't github.com, or whose `gh pr list` call fails, is
-simply skipped for C3 (fail closed — never asserted, never guessed).
+Calls `gh api repos/<slug>/commits/<sha>/pulls` once per candidate sha
+(only for --evidence, never for the other modes; #586 — the call count
+follows the number of candidates, not the number of PRs in the repo); a
+repo whose origin isn't github.com, or whose `gh` call fails, is simply
+skipped for C3 (fail closed — never asserted, never guessed).
 
 Detection only, never deletes — for either class, run `git prune-worktrees`
 or `git prune-branches`.
@@ -283,30 +285,34 @@ resolve_github_slug() {
   printf '%s' "$url"
 }
 
-# gh_closed_heads: TSV "<headRefOid> TAB <PR number>" for every non-OPEN
-# (MERGED or CLOSED) PR of the given "owner/repo" slug — cached per slug per
-# process (GH_PR_CACHE_DONE/DATA, declared at top) since one evidence() run
-# can ask about the same repo from both evidence_worktrees and
-# evidence_branches. A successful call with zero matching PRs still caches
-# as "ok" with empty data — that's a legitimate answer, not a failure.
-# Returns non-zero only when the `gh` call itself could not be completed
-# (auth, network, rate limit, non-github origin already filtered upstream by
-# resolve_github_slug) — classify_evidence treats that as "can't ask", the
-# same fail-closed bias as an unreachable Herdr.
-gh_closed_heads() {
-  local slug="$1" out
-  if [[ -z ${GH_PR_CACHE_DONE[$slug]+x} ]]; then
-    if out="$("$GH_BIN" pr list -R "$slug" --state all --limit 5000 \
-      --json number,state,headRefOid \
-      --jq '.[] | select(.state != "OPEN") | "\(.headRefOid)\t\(.number)"' 2>/dev/null)"; then
-      GH_PR_CACHE_DATA[$slug]="$out"
-      GH_PR_CACHE_DONE[$slug]=ok
+# gh_closed_pr: print the number of a non-OPEN (MERGED or CLOSED) PR of the
+# given "owner/repo" slug whose head is exactly <sha>, via the per-commit
+# endpoint (#586: the old `gh pr list --limit 5000` walked every PR of the
+# repo — over an hour on a large one — while the number of candidate shas
+# is small and independent of repo size). Results are cached per slug+sha
+# (GH_PR_CACHE_DONE/DATA, declared at top) since one evidence() run can ask
+# about the same sha from both evidence_worktrees and evidence_branches.
+# Returns 0 with the number on stdout, 1 when the answer is "no such PR"
+# (a legitimate answer, cached), 2 when the `gh` call itself could not be
+# completed (auth, network, rate limit, sha unknown to GitHub) —
+# classify_evidence treats 2 like 1 (no C3 claimed), the same fail-closed
+# bias as an unreachable Herdr.
+gh_closed_pr() {
+  local slug="$1" sha="$2" key out
+  key="$slug@$sha"
+  [[ $sha =~ ^[0-9a-f]{7,64}$ ]] || return 2
+  if [[ -z ${GH_PR_CACHE_DONE[$key]+x} ]]; then
+    if out="$("$GH_BIN" api "repos/$slug/commits/$sha/pulls" --paginate \
+      --jq ".[] | select(.state != \"open\" and .head.sha == \"$sha\") | .number" 2>/dev/null)"; then
+      GH_PR_CACHE_DATA[$key]="${out%%$'\n'*}"
+      GH_PR_CACHE_DONE[$key]=ok
     else
-      GH_PR_CACHE_DONE[$slug]=fail
+      GH_PR_CACHE_DONE[$key]=fail
     fi
   fi
-  [[ ${GH_PR_CACHE_DONE[$slug]} == ok ]] || return 1
-  printf '%s' "${GH_PR_CACHE_DATA[$slug]}"
+  [[ ${GH_PR_CACHE_DONE[$key]} == ok ]] || return 2
+  [[ -n ${GH_PR_CACHE_DATA[$key]} ]] || return 1
+  printf '%s' "${GH_PR_CACHE_DATA[$key]}"
 }
 
 # classify_evidence: print C2 or C3:#<N> for the given commit sha, or fail
@@ -316,7 +322,7 @@ gh_closed_heads() {
 # and a checkout-less branch's tip (evidence_branches).
 classify_evidence() {
   local common="$1" repo="$2" sha="$3" default_branch="$4"
-  local compare_base slug heads h n
+  local compare_base slug n
   if [[ -n $default_branch ]] &&
     [[ "$(git --git-dir="$common" rev-parse --is-shallow-repository 2>/dev/null)" != true ]] &&
     compare_base="$(resolve_compare_base "$common" "$default_branch")" &&
@@ -324,13 +330,9 @@ classify_evidence() {
     printf 'C2'
     return 0
   fi
-  if slug="$(resolve_github_slug "$common")" && heads="$(gh_closed_heads "$slug")"; then
-    while IFS=$'\t' read -r h n; do
-      [[ -n $h ]] || continue
-      [[ $h == "$sha" ]] || continue
-      printf 'C3:#%s' "$n"
-      return 0
-    done <<<"$heads"
+  if slug="$(resolve_github_slug "$common")" && n="$(gh_closed_pr "$slug" "$sha")"; then
+    printf 'C3:#%s' "$n"
+    return 0
   fi
   return 1
 }
@@ -389,6 +391,34 @@ evidence_worktrees() {
   done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null; printf '\n')
 }
 
+# worktree_owner_branches: print the branch each live linked worktree was
+# created on (its "owner" branch), one per line. Two independent sources,
+# unioned (protecting extra is the safe direction):
+#   1. the worktree's own HEAD reflog — the first `checkout: moving from X
+#      to Y` entry names X, the branch it started on;
+#   2. herdr's naming convention: <...>/worktree-<name> owns
+#      worktree/<name> (see docs/worktree-lifecycle.md). Needed when the
+#      reflog is absent (core.logAllRefUpdates=false) or expired.
+worktree_owner_branches() {
+  local common="$1" log line path base
+  for log in "$common"/worktrees/*/logs/HEAD; do
+    [[ -f $log ]] || continue
+    line="$(grep -m1 -E 'checkout: moving from [^ ]+ to ' "$log" 2>/dev/null)" || continue
+    line="${line#*checkout: moving from }"
+    printf '%s\n' "${line%% to *}"
+  done
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *)
+        path="${line#worktree }"
+        base="${path##*/}"
+        [[ $base == worktree-?* ]] && printf 'worktree/%s\n' "${base#worktree-}"
+        ;;
+    esac
+  done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null)
+  return 0
+}
+
 # evidence_branches: emits `branch` rows for local branches that are not
 # checked out in *any* worktree of this repo (a checked-out branch is
 # git-prune-worktrees' concern via its worktree row, never deleted directly
@@ -404,6 +434,13 @@ evidence_branches() {
       branch\ refs/heads/*) checked_out["${line#branch refs/heads/}"]=1 ;;
     esac
   done < <(git --git-dir="$common" worktree list --porcelain 2>/dev/null)
+  # #610: a live worktree's *owner* branch (worktree/<name>) is not checked
+  # out while the session has `git switch -c`'d onto a stacked-PR branch,
+  # but deleting it would pull the rug from under the worktree. Protect it.
+  local owner
+  while IFS= read -r owner; do
+    [[ -n $owner ]] && checked_out[$owner]=1
+  done < <(worktree_owner_branches "$common")
   while IFS= read -r b; do
     [[ -n $b ]] || continue
     [[ $b != "$default_branch" ]] || continue # the default branch itself is never a candidate
@@ -771,29 +808,37 @@ exit 1
 STUB
   chmod +x "$tmp/bin/herdr"
 
-  # gh stub: finds the --jq expression classify_evidence actually passes and
-  # runs the real `jq` with it against a canned PR-list fixture — this
-  # exercises gh_closed_heads' own filter (state != OPEN), not a hand-rolled
-  # reimplementation of it. $GH_STUB_FAIL, when present, makes it fail
-  # outright (simulating an unreachable/unauthenticated gh).
+  # gh stub: mimics `gh api repos/<slug>/commits/<sha>/pulls --jq EXPR` —
+  # the PRs "associated with" <sha> (here: head.sha == <sha>) from a canned
+  # fixture in the REST shape (lowercase state, head.sha), then runs the
+  # real `jq` with the --jq expression gh_closed_pr actually passes. This
+  # exercises its own filter (state != open, exact head), not a hand-rolled
+  # reimplementation of it. Every call is logged to $GH_STUB_CALLS (#586:
+  # the number of calls must follow the candidate count). $GH_STUB_FAIL,
+  # when present, makes it fail outright (simulating an unreachable or
+  # unauthenticated gh).
   cat >"$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >>"${GH_STUB_CALLS:-/dev/null}"
 jqexpr=""
 prev=""
 for a in "$@"; do
   if [[ $prev == "--jq" ]]; then jqexpr="$a"; fi
   prev="$a"
 done
+[[ $1 == api && $2 =~ ^repos/[^/]+/[^/]+/commits/([0-9a-f]+)/pulls$ ]] || exit 1
+sha="${BASH_REMATCH[1]}"
 [[ -n $jqexpr ]] || exit 1
 [[ -f "$GH_STUB_FIXTURE" ]] || exit 1
 [[ ! -e "${GH_STUB_FAIL:-/nonexistent}" ]] || exit 1
-jq -r "$jqexpr" "$GH_STUB_FIXTURE"
+jq --arg sha "$sha" '[.[] | select(.head.sha == $sha)]' "$GH_STUB_FIXTURE" | jq -r "$jqexpr"
 STUB
   chmod +x "$tmp/bin/gh"
 
   export GIT_WORKTREE_AUDIT_GHR_DIR="$tmp/ghr" GIT_WORKTREE_AUDIT_HERDR_DIR="$tmp/herdr" \
     GIT_WORKTREE_AUDIT_STATE_DIR="$tmp/state" GIT_WORKTREE_AUDIT_HERDR_BIN="$tmp/bin/herdr" \
-    GIT_WORKTREE_AUDIT_GH_BIN="$tmp/bin/gh" GH_STUB_FIXTURE="$tmp/prs.json"
+    GIT_WORKTREE_AUDIT_GH_BIN="$tmp/bin/gh" GH_STUB_FIXTURE="$tmp/prs.json" \
+    GH_STUB_CALLS="$tmp/gh-calls.log"
 
   # C2: branch tip == default branch tip (a trivial ancestor).
   wt_c2="$tmp/wt-c2"
@@ -835,14 +880,29 @@ STUB
   wt_detached="$tmp/wt-detached"
   git -C "$repo" worktree add -q --detach "$wt_detached" "$c3_sha"
 
+  # #610: an in-use herdr worktree whose session moved off its owner branch
+  # (`git switch -c <stack-stage>`). worktree/owner-moved is then checked
+  # out nowhere, but it is the worktree's owner — it must never surface as
+  # a deletable `branch` row. (Its tip is a C2 ancestor of main, so without
+  # the protection it would be reported.)
+  wt_owner="$tmp/worktree-owner-moved"
+  git -C "$repo" worktree add -q "$wt_owner" -b worktree/owner-moved
+  git -C "$wt_owner" switch -q -c stack/stage-1
+  # Same, but with the reflog gone: only herdr's naming convention
+  # (<dir>/worktree-<name> owns worktree/<name>) can still protect it.
+  wt_owner_nolog="$tmp/worktree-owner-nolog"
+  git -C "$repo" worktree add -q "$wt_owner_nolog" -b worktree/owner-nolog
+  git -C "$wt_owner_nolog" switch -q -c stack/stage-nolog
+  rm -f "$(git -C "$wt_owner_nolog" rev-parse --git-dir)/logs/HEAD"
+
   # Loose branches (no worktree at all) — evidence_branches' own candidates.
   git -C "$repo" branch worktree/loose-c2 main
   git -C "$repo" branch worktree/loose-c3 "$c3_sha"
 
   cat >"$tmp/prs.json" <<JSON
 [
-  {"number": 10, "state": "MERGED", "headRefOid": "$c3_sha"},
-  {"number": 11, "state": "OPEN", "headRefOid": "$open_sha"}
+  {"number": 10, "state": "closed", "head": {"sha": "$c3_sha"}},
+  {"number": 11, "state": "open", "head": {"sha": "$open_sha"}}
 ]
 JSON
 
@@ -892,6 +952,24 @@ JSON
   row="$(awk -F'\t' -v k=branch -v b=worktree/loose-c3 '$1==k && $5==b' <<<"$out")"
   [[ ${row##*$'\t'} == "C3:#10" ]] || {
     printf 'FAIL(evidence): worktree の無い branch の C3 を検出しなかった: %s\n' "$row" >&2
+    return 1
+  }
+
+  [[ -z $(awk -F'\t' -v k=branch '$1==k && $5 ~ /^worktree\/owner-/' <<<"$out") ]] || {
+    printf 'FAIL(evidence): 使用中 worktree の持ち主ブランチを branch 行として報告した(#610): %s\n' \
+      "$(awk -F'\t' -v k=branch '$1==k && $5 ~ /^worktree\/owner-/' <<<"$out")" >&2
+    return 1
+  }
+
+  # #586: gh is asked once per candidate sha (and only for candidates that
+  # C2 could not settle), never once per PR of the repo.
+  calls="$(wc -l <"$tmp/gh-calls.log" | tr -d ' ')"
+  if grep -qv '^api repos/acme/repo/commits/[0-9a-f]*/pulls ' "$tmp/gh-calls.log"; then
+    printf 'FAIL(evidence): commits/<sha>/pulls 以外の gh 呼び出しがあった(#586): %s\n' "$(cat "$tmp/gh-calls.log")" >&2
+    return 1
+  fi
+  [[ $calls -ge 1 && $calls -le 12 ]] || {
+    printf 'FAIL(evidence): gh 呼び出し回数が候補数に見合わない(%s 回)\n' "$calls" >&2
     return 1
   }
 
