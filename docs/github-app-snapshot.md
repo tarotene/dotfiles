@@ -93,7 +93,7 @@ github-app-snapshot exec -- sh -c \
 
 (`exec -- <cmd>` runs `<cmd>` with every Secrets Manager secret injected as
 an environment variable via `bws run --no-inherit-env`, the same
-never-materialize-an-env-file pattern `scripts/obsidian-backup` uses — a
+never-materialize-an-env-file pattern `crates/obsidian-backup` uses — a
 bare `gh secret set ... --body "$GITHUB_APP_RELEASER_PEM"` at the outer
 shell would not see the variable, hence the `sh -c` wrapper.)
 

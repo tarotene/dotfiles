@@ -401,16 +401,6 @@ jobs:
       - name: routines-plan.sh --selftest
         run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
 
-      # obsidian-backup is exercised end to end against stubbed
-      # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
-      # restic invocations, the unsafe-relative-path rejection, the
-      # missing-keyring-token fail-closed path, and the notify_failure
-      # warning for herdr's toast-disabled response are all covered without
-      # touching a real Backblaze B2 repository or Bitwarden Secrets Manager
-      # account (docs/operations.md).
-      - name: obsidian-backup --selftest
-        run: ./scripts/obsidian-backup --selftest
-
       # The git/worktree CLIs and hooks that used to be tested here
       # (git-audit-worktrees, git-prune-{worktrees,branches}, git-worktree-
       # create-guard, git-stash-guard, git-worktree-allow, worktree-fresh-base,
