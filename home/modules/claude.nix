@@ -91,7 +91,7 @@
 #    「本当に何もない」ケースだけを能動的に解消する。詳細は
 #    docs/claude/worktree-fresh-base.md。
 #
-# 11) Opus Plan Mode のモデル実体(scripts/claude-plan-model + settings.json):
+# 11) Opus Plan Mode のモデル実体(crates/claude-plan-model + settings.json):
 #    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
 #    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
 #    settings.json の env で別に宣言できる。したがってモードは常に
@@ -975,7 +975,7 @@ let
   # 自体を取り下げるときは statusLineCmd もここへ移す。
   retiredStatusLineCommands = [ legacyStatusLineCmd ];
 
-  # Opus Plan Mode のモデル実体 — 具体値は scripts/claude-plan-model が持つ。
+  # Opus Plan Mode のモデル実体 — 具体値は claude-plan-model(crates/claude-plan-model)が持つ。
   #
   # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
   # 解決する。各エイリアスの解決先は settings.json の
@@ -993,16 +993,7 @@ let
   # home-manager は上書きしない。
   #
   # 詳細は docs/claude/opusplan-model-aliases.md。
-  planModelScript = ../../scripts/claude-plan-model;
-
-  # activation の PATH には jq も ~/.local/bin(claude 本体の置き場。自己更新する
-  # ので nix 管理外)も載っていない。sync はその両方を読むので明示的に足す。
-  planModelSyncPath = lib.makeBinPath [
-    pkgs.jq
-    pkgs.coreutils
-    pkgs.gnugrep
-    pkgs.gnused
-  ];
+  planModelBin = "${pkgs.dotfiles-tools}/bin/claude-plan-model";
 
   # settings.json に登録する hook の宣言(順序がそのまま settings.json 上の並び)。
   # settings-reconcile claude-hooks が (event, command) をキーに、宣言を正として
@@ -2007,11 +1998,9 @@ in
   # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
   # git-prune-branches と同じ「PATH で解決される実行可能ファイル」扱い(ADR-0007 に
   # 従い配備名から .sh を落とす)。activation はこの配備物ではなく store 上の同じ
-  # ファイルを `sync` で呼ぶ。
-  home.file.".local/bin/claude-plan-model" = {
-    source = planModelScript;
-    executable = true;
-  };
+  # 実体を `sync` で呼ぶ(Rust 版、#414。bash 版が要した jq・coreutils 等の PATH
+  # は不要になった)。
+  home.file.".local/bin/claude-plan-model".source = planModelBin;
 
   # コマンドファイルは @home@ プレースホルダを config.home.homeDirectory に
   # 展開する(ADR-0002: literal + 1 変数の replaceVars パターン、
@@ -2529,8 +2518,7 @@ in
   # claude が未インストールなら(bootstrap 直後)何も書かずに終わる — 起動する claude が
   # 無いのに env だけ置いても意味が無く、中途半端な model 設定のほうが有害だから。
   home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run env PATH=${planModelSyncPath}:"$HOME/.local/bin":"$PATH" \
-      ${pkgs.bash}/bin/bash ${planModelScript} sync
+    run env PATH="$HOME/.local/bin":"$PATH" ${planModelBin} sync
   '';
 
   # settings.json の permissions.allow/permissions.ask を冪等に拡充する。

@@ -786,7 +786,7 @@ to ADR-0001). It is a symlink into `~/.local/share/claude/versions/…`, kept
 live by the CLI's own self-updater (background auto-update disabled by
 declaration, manual `claude update` re-syncs the model pin —
 `docs/cutover-runbook.md`'s "Installing Claude Code" section);
-`scripts/claude-plan-model` resolves concrete model IDs from that *installed*
+`claude-plan-model` (`crates/claude-plan-model`) resolves concrete model IDs from that *installed*
 binary's baked-in model catalog, so a Nix-managed copy trailing upstream by
 dozens of patches would silently swap the binary `claude-plan-model` depends
 on ([#313](https://github.com/tarotene/dotfiles/issues/313)).

@@ -423,16 +423,6 @@ jobs:
       - name: gpg-subkey --selftest
         run: ./scripts/gpg-subkey --selftest
 
-      # A mode here is a *pair* (plan side / execution side), so the interesting
-      # failures are combinations: a transition that leaves the other half
-      # behind, a .model guard that fires after the write (which is how an
-      # "inert" switch silently rewrote every request), a `sync` that drags a
-      # deliberate mode back to the default. The catalog is stubbed so the test
-      # does not depend on which claude is installed
-      # (docs/claude/opusplan-model-aliases.md).
-      - name: claude-plan-model --selftest
-        run: ./scripts/claude-plan-model --selftest
-
       # esa-mcp-launcher is deterministic shell end to end against stubbed
       # gpg/npx: the missing-token-file diagnostic, decrypt failure, empty
       # token, missing npx, and the ESA_ACCESS_TOKEN handoff to the exec'd

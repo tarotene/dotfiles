@@ -17,7 +17,7 @@ Sonnet」と説明されるが、実際に固定されているのは**モデル
 
 `opus` エイリアスを差し替えると副作用として `/model opus` も Fable になる。つまり
 Fable 固有のリミットが枯れたとき、セッション内から Opus へ戻る道が塞がる。その
-往復路が `scripts/claude-plan-model`(`~/.local/bin/claude-plan-model`)である。
+往復路が `claude-plan-model`(`crates/claude-plan-model`、`~/.local/bin/claude-plan-model`)である。
 
 ```
 claude-plan-model              # 巡回 (fable/sonnet -> opus/sonnet -> fable/opus -> ...)
@@ -25,7 +25,6 @@ claude-plan-model fable/opus   # 明示指定(冪等)。旧名 fable / opus も�
 claude-plan-model status       # 現在のモードを見るだけ
 claude-plan-model sync         # モードは保ったまま具体 ID を引き直す(activation 用)
 claude-plan-model --force ...  # .model が "opusplan" でなくても強行する
-claude-plan-model --selftest   # 状態機械の self-test(CI で走る)
 ```
 
 引数なしを 3 モードの巡回にしているのは、「1 コマンドで倒す」という使い方を
@@ -267,8 +266,13 @@ Opus に化けないのは、この線を引いているからである。
 
 モードがペアになった時点で、面白い壊れ方は「片方だけ書き換わって相方が残る」
 「ガードが書き込みの後に出る」「`sync` が意図的なモードを既定へ引き戻す」の
-ような**組み合わせ**になった。そこで `claude-plan-model --selftest` が状態機械を
-直接回す(CI の self-test 群に載せてある)。
+ような**組み合わせ**になった。そこで
+`crates/claude-plan-model/tests/selftest.rs`(`cargo test`、CI の rust ジョブ)が
+状態機械を実バイナリで直接回す。bash 版の `--selftest` 41 アサーションを同じラベル
+(`1a`〜`10a`)で 1 対 1 に移したもので、`CLAUDE_PLAN_MODEL_ORACLE` に旧 bash 版の
+パスを入れると同じケースを bash 版に向けて走らせられる(移植時の基準線確認用)。
+settings.json は jq の代わりに挿入順を保つ最小パーサで読み書きするので、利用者の
+キー順は書き換えのたびに保たれる。
 
 テスト用のシームは 2 つだけ:
 

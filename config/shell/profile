@@ -17,7 +17,7 @@
 #                        versions/...) — not a shadow of a nix package, since
 #                        nix's own `claude` is intentionally undeclared
 #                        (ADR-457, a scoped exception to ADR-0001):
-#                        scripts/claude-plan-model reads that installed
+#                        claude-plan-model (crates/claude-plan-model) reads that installed
 #                        binary's baked-in model catalog, so the native,
 #                        self-updated copy is the only correct one here
 #                        (#313) — must stay in front.
