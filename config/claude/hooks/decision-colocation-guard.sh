@@ -226,6 +226,11 @@ decide_colocation() {
     if ((i + 1 < m)); then e=${starts[i + 1]}; else e=$n; fi
     reason="$(judge_range "$project" "${TOK[@]:s:e - s}")" && {
       printf '%s' "$reason"
+      # PreToolUse の deny は Bash 呼び出し全体に効く。gh pr create より前に
+      # 文があれば(本文ファイルの生成など)それも実行されていない(#668)。
+      if ((s > 0)); then
+        printf '\n%s' "注意: この Bash 呼び出しは全体が実行されていません。gh pr create より前の文(PR 本文ファイルの生成など)も実行されていないので、指摘を直したうえで、前段の文と gh pr create を別の呼び出しに分けて再実行してください。"
+      fi
       return 0
     }
   done
@@ -389,6 +394,26 @@ STUB
   rc=0
   run_decide "gh pr create -R tarotene/dotfiles --base ok-base --title t --body b" "$repo" > /dev/null || rc=$?
   check "9 -R と --base の共存は正しく適合判定" "1" "$rc"
+
+  # 10: gh pr create の前に別の文がある複合コマンド -> deny 文に前段消失の警告
+  out=""
+  if out="$(run_decide "printf x > /tmp/body.md && gh pr create --base main --title t --body-file /tmp/body.md" "$repo")"; then
+    check_contains "10 複合コマンドは前段が実行されていない旨を警告" "別の呼び出しに分けて" "$out"
+  else
+    check "10 deny 期待" "deny" "pass"
+  fi
+
+  # 11: gh pr create 単独の deny には警告を付けない
+  out=""
+  if out="$(run_decide "gh pr create --base main --title t --body b" "$repo")"; then
+    if [[ $out == *"別の呼び出しに分けて"* ]]; then
+      check "11 単独コマンドに前段警告を付けない" "no-warning" "warning"
+    else
+      check "11 単独コマンドに前段警告を付けない" "ok" "ok"
+    fi
+  else
+    check "11 deny 期待" "deny" "pass"
+  fi
 
   if [[ $fails -gt 0 ]]; then
     echo "selftest: ${fails} 件失敗" >&2

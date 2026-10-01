@@ -143,14 +143,41 @@ extract_paths() {
   done
 }
 
+# stdin=節本文 -> 1 行に複数のパスを書いた箇条書き行を、原文のまま 1 行ずつ出す。
+# extract_paths は行の最初のトークンしか読まないので、`a`, `b` のような行は
+# カンマ付きの `a,` が「実在しないパス」になってしまう(#668)。原因を
+# 「実在しない」ではなく「1 行 1 パス違反」と名指しするための検出。
+#   (1) 最初のトークンが , 、 ， で終わる
+#   (2) バッククォートで囲んだパスが、説明語を挟まず 2 つ続く
+multi_path_lines() {
+  local line text token
+  while IFS= read -r line; do
+    [[ $line =~ ^[[:space:]]*[-*][[:space:]]+(.*)$ ]] || continue
+    text="${BASH_REMATCH[1]}"
+    token="${text//\`/}"
+    token="${token%% *}"
+    if [[ $token == *[,、，] ]] ||
+      [[ $text =~ ^\`[^\`]+\`[[:space:]]+\`[^\`]+\` ]]; then
+      printf '%s\n' "$line"
+    fi
+  done
+}
+
 # $1=ラベル(メッセージ用) $2=repo_root $3=changed_files(改行区切り)
 # stdin=節本文。全パス実在 + 非.md非docs かつ diff 内のパスが1つ以上。
 judge_execution_points() {
   local label="$1" repo_root="$2" changed_files="$3"
-  local body paths=() p ok_exec=0 fails=0
+  local body paths=() p ok_exec=0 fails=0 line
   body="$(cat)"
   if [[ -z $body ]]; then
     echo "decision-colocation-check: ${label} が空です" >&2
+    return 1
+  fi
+  local multi
+  multi="$(multi_path_lines <<< "$body")"
+  if [[ -n $multi ]]; then
+    echo "decision-colocation-check: ${label} の箇条書きは 1 行 1 パスで書いてください。1 行に複数のパスがある行があります(パスが実在しないのではありません):" >&2
+    while IFS= read -r line; do echo "  $line" >&2; done <<< "$multi"
     return 1
   fi
   mapfile -t paths < <(extract_paths <<< "$body")
@@ -434,9 +461,36 @@ selftest() {
   commit_all "$repo" "amend reusing unchanged existing file"
   check "13 ADR-387相当(既存機構の無変更宣言のみ)は不合格" 1 run_check "$repo" "$base_sha"
 
+  echo "1 行 1 パス(#668):"
+
+  check_msg() { # $1=名前 $2=出力に含まれるべき文字列 -- $3..=関数呼び出し
+    local name="$1" want="$2" out
+    shift 2
+    out="$("$@" 2>&1 || true)"
+    if [[ $out == *"$want"* ]]; then
+      echo "ok   $name"
+    else
+      echo "FAIL $name (出力に '$want' が無い: $out)" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  reset_to_base
+  {
+    echo "# ADR-0106 — 1 行に 2 パス"
+    echo
+    echo "## 執行点"
+    echo '- `config/claude/hooks/new-a.sh`, `config/claude/hooks/new-b.sh`'
+  } > "$repo/docs/adr/0106-multi-path.md"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/new-a.sh"
+  printf '#!/usr/bin/env bash\ntrue\n' > "$repo/config/claude/hooks/new-b.sh"
+  commit_all "$repo" "add adr with two paths on one line"
+  check "14 1 行 2 パス(カンマ区切り)は不合格" 1 run_check "$repo" "$base_sha"
+  check_msg "15 1 行 2 パスは原因を名指しする(実在しないと言わない)" "1 行 1 パス" run_check "$repo" "$base_sha"
+
   echo "縮退:"
 
-  check "14 --base に不正な ref は fail-open で通過" 0 run_check "$repo" "not-a-real-ref"
+  check "16 --base に不正な ref は fail-open で通過" 0 run_check "$repo" "not-a-real-ref"
 
   rm -rf "$tmp"
 
