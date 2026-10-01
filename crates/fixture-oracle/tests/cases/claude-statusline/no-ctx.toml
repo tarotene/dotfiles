@@ -1,0 +1,10 @@
+# selftest "no-ctx": cost=0 は $0.00 で出す
+bin.name = "claude-statusline"
+stdin = '{"model":{"display_name":"Fable 5"},"cost":{"total_cost_usd":0},"effort":{"level":"high"},"workspace":{"project_dir":"/nonexistent/fixture-oracle/a"}}'
+status.code = 0
+stdout = """
+◆ \u001B[1;38;2;245;194;231mFable 5\u001B[0m \u001B[38;2;108;112;134m·\u001B[0m \u001B[38;2;148;226;213m$0.00\u001B[0m
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

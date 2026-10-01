@@ -1,0 +1,10 @@
+# selftest "no-ctx-no-cost": 起動直後でも effort/project_dir がずれない(#305)
+bin.name = "claude-statusline"
+stdin = '{"model":{"display_name":"Fable 5"},"effort":{"level":"low"},"workspace":{"project_dir":"/nonexistent/fixture-oracle/a"}}'
+status.code = 0
+stdout = """
+◆ \u001B[1;38;2;245;194;231mFable 5\u001B[0m \u001B[38;2;108;112;134m·\u001B[0m ↯ \u001B[38;2;180;190;254mlow\u001B[0m
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

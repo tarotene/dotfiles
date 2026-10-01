@@ -1,0 +1,10 @@
+# null 入力は全フィールド空(fast=0)で空行
+bin.name = "claude-statusline"
+stdin = 'null'
+status.code = 0
+stdout = """
+
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

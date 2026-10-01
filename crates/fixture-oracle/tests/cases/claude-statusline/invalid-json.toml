@@ -1,0 +1,8 @@
+# 不正 JSON は何も出さない
+bin.name = "claude-statusline"
+stdin = '{"model":'
+status.code = 0
+stdout = ""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

@@ -1,0 +1,10 @@
+# context 80% 以上は赤(79.5 は round で 80)
+bin.name = "claude-statusline"
+stdin = '{"model":{"display_name":"M"},"context_window":{"used_percentage":79.5}}'
+status.code = 0
+stdout = """
+◆ \u001B[1;38;2;245;194;231mM\u001B[0m \u001B[38;2;108;112;134m·\u001B[0m ◐ \u001B[38;2;243;139;168m80%\u001B[0m
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

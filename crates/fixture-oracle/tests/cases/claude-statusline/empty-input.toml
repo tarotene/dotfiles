@@ -1,0 +1,10 @@
+# 空 stdin は空行(fast も空)
+bin.name = "claude-statusline"
+stdin = ''
+status.code = 0
+stdout = """
+
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }
