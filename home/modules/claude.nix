@@ -439,7 +439,7 @@
 #    `Target: hook/<name>` のいずれかが無い、またはその実体が存在しない
 #    場合に deny する。コマンド解析(heredoc 分離・トークナイザ)は
 #    attribution-guard.sh を source して再利用する(ADR-0024 の Rust 既定
-#    に対する例外 — stack-base-guard.sh / adr-number.sh / pr-title-
+#    に対する例外 — stack-base-guard.sh / pr-title-
 #    guard.sh と同じ「既存の bash 資産を source する」理由、
 #    rust-migration.toml で追跡)。
 #
@@ -643,7 +643,11 @@ let
   # 直接登録する。
   codexGitStashGuardCmd = "'${hooksDir}/git-stash-guard' --host codex";
   codexStackBaseGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/stack-base-guard.sh'";
-  codexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
+  # #415(ADR-0024 Stage 4a): adr-number も Rust バイナリ(crates/adr-number)に
+  # なり、bash の Codex adapter は廃止。Claude と同じ ~/.claude/hooks/adr-number
+  # を `--agent codex` 付きで直接登録し、旧 command は --retire で完全一致削除する。
+  codexAdrNumberCmd = "'${hooksDir}/adr-number' --agent codex";
+  legacyCodexAdrNumberCmd = "bash '${config.home.homeDirectory}/.codex/hooks/adr-number.sh'";
   # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
   # Codex の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook。
   # 独立ファイル(他 hook を source しない)なので配置は
@@ -659,9 +663,12 @@ let
   # は意図的に作らない — CI required check が全エージェント共通の
   # backstop として機能するため(ADR-396 の非目標に明記)。
   decisionColocationGuardCmd = "bash '${hooksDir}/decision-colocation-guard.sh'";
-  # adr-number(ADR-380, docs/claude/adr-numbering.md)も attribution-guard.sh
-  # を source するので同階層。段3(利便性層)のみ — deny は一切しない。
-  adrNumberCmd = "bash '${hooksDir}/adr-number.sh'";
+  # adr-number(ADR-380, docs/claude/adr-numbering.md): 段3(利便性層)のみ —
+  # deny は一切しない。#415 で Rust バイナリ(crates/adr-number、判定は
+  # crates/guard-core)になり、下の home.file が ~/.claude/hooks/adr-number
+  # (拡張子無し)として配備する。旧 `bash '….sh'` は retiredHookEntries で削除。
+  adrNumberCmd = "'${hooksDir}/adr-number'";
+  legacyAdrNumberCmd = "bash '${hooksDir}/adr-number.sh'";
   # gh-edit-allow(#392, docs/claude/gh-edit-allow.md): Rust 製(crates/
   # gh-edit-allow、ADR-0024)。bash を挟まず実行ファイルを直接呼ぶ。配置は
   # 他の hook と同じ ~/.claude/hooks/ の安定パス — store path を command に
@@ -700,7 +707,7 @@ let
   # feedback-target-guard(ADR-543 段3): `gh issue create --label feedback` に
   # `Target:` 行を要求する。attribution-guard.sh の heredoc 分離・トークナイザ
   # を source して再利用する(rulesets-write-guard/pkexec-guard とは逆に、
-  # ADR-0024 の Rust 既定に対する例外 — stack-base-guard.sh / adr-number.sh /
+  # ADR-0024 の Rust 既定に対する例外 — stack-base-guard.sh /
   # pr-title-guard.sh と同じ理由、rust-migration.toml 参照)。
   feedbackTargetGuardCmd = "bash '${hooksDir}/feedback-target-guard.sh'";
   # repo-create-guard(ADR-0013 Amendment 2026-09-29, docs/claude/repo-create-
@@ -900,6 +907,11 @@ let
     {
       event = "PreToolUse";
       command = legacyAttributionGuardCmd;
+    }
+    # #415: adr-number の bash 版 → Rust 版。
+    {
+      event = "PostToolUse";
+      command = legacyAdrNumberCmd;
     }
   ];
 
@@ -1580,7 +1592,7 @@ in
   home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
   # bash 版の判定エンジン。hook としては登録しないが、stack-base-guard.sh /
   # pr-title-guard.sh / pr-confirm-guard.sh / feedback-target-guard.sh /
-  # decision-colocation-guard.sh / adr-number.sh / repo-create-guard.sh が
+  # decision-colocation-guard.sh / repo-create-guard.sh が
   # 同ディレクトリから `source` するので、それらの Rust 移植(guard-core の
   # 上に載せる、docs/claude/guard-core.md)が済むまで配備を続ける。
   home.file.".claude/hooks/attribution-guard.sh" = {
@@ -1613,12 +1625,10 @@ in
   home.file.".claude/hooks/external-send-guard".source =
     "${pkgs.dotfiles-tools}/bin/external-send-guard";
   # adr-number(ADR-380, docs/claude/adr-numbering.md): PostToolUse で
-  # ADR-478 を PR 番号へ自動改番する段3(利便性層)。attribution-guard.sh
-  # を同ディレクトリから source するので、配置は必ず ~/.claude/hooks/ 直下。
-  home.file.".claude/hooks/adr-number.sh" = {
-    source = repoConfig + "/claude/hooks/adr-number.sh";
-    executable = true;
-  };
+  # ADR-478 を PR 番号へ自動改番する段3(利便性層)。#415 で Rust バイナリ
+  # (crates/adr-number)への安定パスの symlink になった(gh-edit-allow と
+  # 同じ理由付け)。Codex もこの同じパスを `--agent codex` 付きで呼ぶ。
+  home.file.".claude/hooks/adr-number".source = "${pkgs.dotfiles-tools}/bin/adr-number";
   # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
   # flake.nix の rustOverlay)への安定パスの symlink。
   home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
@@ -1695,12 +1705,6 @@ in
   # stack-base-guard(ADR-0027 Amendment #531): Codex CLI 版 adapter。
   home.file.".codex/hooks/stack-base-guard.sh" = {
     source = repoConfig + "/codex/hooks/stack-base-guard.sh";
-    executable = true;
-  };
-
-  # adr-number(ADR-380 Amendment #531): Codex CLI 版 adapter。
-  home.file.".codex/hooks/adr-number.sh" = {
-    source = repoConfig + "/codex/hooks/adr-number.sh";
     executable = true;
   };
 
@@ -1891,6 +1895,7 @@ in
       ''
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexGitStashGuardCmd} \
+          --retire PostToolUse ${lib.escapeShellArg legacyCodexAdrNumberCmd} \
           --register \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexStackBaseGuardCmd} 20 \

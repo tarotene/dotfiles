@@ -25,7 +25,7 @@ repo-create-guard.sh がそれを `source` し、`is_target_at` / `decide_tokens
 | `is_target_at`(上書き)+ starts/kinds ループ | `ParsedCommand::ranges(is_target_at) -> Vec<Range<K>>` | `is_target_at: FnMut(&[String], usize) -> Option<K>`。`K` が `TARGET_KIND` |
 | `decide` / `decide_stack` / `decide_pr_title` / `decide_colocation` の範囲ループ | `command::first_deny(cmd, is_target_at, judge) -> Option<String>` | `judge: FnMut(&Range<K>) -> Option<String>`(最初の deny を返す) |
 | `TOK[@]:s:e - s` / `s > 0`(#668 の注意書き) | `Range { kind, start, tokens, heredoc_bodies }` | |
-| `adr-number.sh` の `command_ran_pr_create` | `!parse(cmd)?.ranges(f).is_empty()` | |
+| `adr-number.sh` の `command_ran_pr_create` | `!parse(cmd)?.ranges(f).is_empty()` | 移植済み: `crates/adr-number` |
 | `base="${TOK[i]##*/}"; [[ $base == gh ]]` | `command::is_gh(&str)` | |
 | `is_target_at` の定型(`gh pr create` 等) | `command::gh_command_at(tokens, i, &["pr", "create"])` | 語が足りなければ偽(bash の `((i + k < n))`) |
 | `[[ ${tok[i]} == *'<<'* ]]`(`has_hd`) | `gh::has_heredoc(&[String])` | |

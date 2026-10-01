@@ -457,7 +457,7 @@ Design and rationale for the hooks and commands deployed from
   連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
   不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
-  + `--fix` + 段3の PostToolUse hook `adr-number.sh` が共有)。
+  + `--fix` + 段3の PostToolUse hook `crates/adr-number` が共有)。
 - [`decision-colocation.md`](claude/decision-colocation.md) — ADR-396:
   決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
   `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。

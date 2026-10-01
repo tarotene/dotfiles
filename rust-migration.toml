@@ -140,10 +140,6 @@ path = "config/claude/hooks/pr-title-guard.sh"
 stage = "4a"
 
 [[target]]
-path = "config/claude/hooks/adr-number.sh"
-stage = "4a"
-
-[[target]]
 path = "config/claude/hooks/feedback-target-guard.sh"
 stage = "4a"
 
@@ -203,10 +199,6 @@ stage = "4a"
 # above.
 [[target]]
 path = "config/codex/hooks/stack-base-guard.sh"
-stage = "4a"
-
-[[target]]
-path = "config/codex/hooks/adr-number.sh"
 stage = "4a"
 
 # --- Stage 4b ---

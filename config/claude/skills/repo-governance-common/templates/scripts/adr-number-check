@@ -3,9 +3,9 @@
 # 改番する、docs/adr/380-adr-number-by-pr.md)の判定エンジン単一ソース。
 #
 # CI の required check(.github/workflows/ci.yml の dry-run job)と、
-# 手動実行・段3の PostToolUse hook(将来 config/claude/hooks/adr-number.sh
-# から呼ばれる)の両方がこのスクリプトを呼ぶ — 判定ロジックは 1 箇所にしか
-# 存在しない(ADR-0031 の scripts/pr-title-check と同型)。
+# 手動実行・段3の PostToolUse hook(dotfiles では crates/adr-number。対象
+# プロジェクトのこのスクリプトを子プロセスで呼ぶ)の両方がこのスクリプトを
+# 呼ぶ — 判定ロジックは 1 箇所にしか存在しない(ADR-0031 の scripts/pr-title-check と同型)。
 #
 # 番号帯: n < 0100 は grandfathered 連番(重複のみ検査)、n >= 0100 は
 # PR-number era(導入 PR の番号と一致必須)、0000 は起草中で main に
@@ -166,7 +166,7 @@ check_added_adrs() {
 # ---- 起草中の参照(ADR-0000)---------------------------------------------
 
 # 採番の仕組みを説明・検査するファイルは ADR-0000 を正当に含む。
-ADR_REF_ALLOW_DEFAULT="scripts/adr-number-check config/claude/skills/repo-governance-common/templates/scripts/adr-number-check config/claude/hooks/adr-number.sh config/codex/hooks/adr-number.sh docs/claude/adr-numbering.md"
+ADR_REF_ALLOW_DEFAULT="scripts/adr-number-check config/claude/skills/repo-governance-common/templates/scripts/adr-number-check config/claude/hooks/adr-number.sh config/codex/hooks/adr-number.sh crates/adr-number/src/lib.rs crates/adr-number/tests/hook.rs docs/claude/adr-numbering.md"
 
 # base と作業ツリーの diff で追加された行のうち、起草中の参照を含むものを
 # `path<TAB>行番号<TAB>本文` で出す(ADR_REF_ALLOW のファイルは除く)。追加行
