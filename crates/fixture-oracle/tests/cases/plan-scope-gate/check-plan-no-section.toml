@@ -1,0 +1,9 @@
+# --check-plan: 節なしも OK
+bin.name = "plan-scope-gate"
+args = ["--check-plan", "plan.md"]
+status.code = 0
+stdout = """
+OK: 要求インベントリの節内整合性の検査を通過しました(経路Aの Issue 照合は --check <plan.md> <issue-ref> で別途確認してください)。
+"""
+stderr = ""
+fs.sandbox = true

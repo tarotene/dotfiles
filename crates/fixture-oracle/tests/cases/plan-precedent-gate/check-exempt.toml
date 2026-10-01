@@ -1,0 +1,9 @@
+# --check: 免除行だけのプランも OK
+bin.name = "plan-precedent-gate"
+args = ["--check", "plan.md"]
+status.code = 0
+stdout = """
+OK: 先行例との対比の検査を通過しました。
+"""
+stderr = ""
+fs.sandbox = true

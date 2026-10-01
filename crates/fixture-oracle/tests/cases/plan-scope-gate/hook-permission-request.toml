@@ -1,0 +1,20 @@
+# hook: PermissionRequest では decision.behavior 形で deny
+bin.name = "plan-scope-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PermissionRequest", "tool_input": {"plan": "## 要求インベントリ\n\n- R1: 段1で実装\n- R1: 段2でも実装\n- R2: Conflicts: 何か\n- R3: よくわからない項目\n"}}'''
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PermissionRequest",
+    "decision": {
+      "behavior": "deny",
+      "message": "要求インベントリの検査で問題が見つかりました。scope-inventory スキルの手順に従って計画を修正してください。/n/nR1 が複数回処分されています/nR2: 閉じたタグ集合に無い棄却タグ(Conflicts:)が使われています/nR3: 処分(実装する段、または棄却タグ)が未記載です/n/nそのまま構造を写し、山括弧の中身だけ事実に置き換えれば書式検査は通ります:/n/n## 要求インベントリ/n/n- R1: <依頼文からの逐語の要求項目> — 段1で実装/n- R2: <逐語項目> — Blocked-Upstream: <upstream 未修正など、外部にブロックされている理由>/n- R3: <逐語項目> — Obsolete: <既に別の変更で解消済みである理由>/n- R4: <逐語項目> — User-Excluded: <ユーザーが依頼文で明示的に除外した文言>/n/n参照 Issue の子 #番号 を実装対象に含める行は、その行内に段の指定/n(例: - R5: #137 <子タイトル逐語> — 段2で実装)か閉じたタグを書く。/n参照しただけで実装対象でない Issue は本文のどこかに1行:/n/nReference-Only: #<番号> — <参照しただけである理由>"
+    }
+  }
+}
+"""
+[env.add]
+CLAUDE_PLAN_SCOPE_GATE_DIR = "/nonexistent/plan-scope-gate"
+[env]
+remove = ["SKIP_PLAN_SCOPE_GATE"]

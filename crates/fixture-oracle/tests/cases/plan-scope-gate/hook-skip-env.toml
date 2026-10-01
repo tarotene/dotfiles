@@ -1,0 +1,9 @@
+# hook: SKIP_PLAN_SCOPE_GATE=1 → 何も出さない
+bin.name = "plan-scope-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_input": {"plan": "## 要求インベントリ\n\n- R1: 段1で実装\n- R1: 段2でも実装\n- R2: Conflicts: 何か\n- R3: よくわからない項目\n"}}'''
+status.code = 0
+stdout = ""
+[env.add]
+CLAUDE_PLAN_SCOPE_GATE_DIR = "/nonexistent/plan-scope-gate"
+SKIP_PLAN_SCOPE_GATE = "1"

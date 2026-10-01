@@ -1,0 +1,10 @@
+# hook: 節あり・全項目適合 → 素通し
+bin.name = "plan-precedent-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_name": "ExitPlanMode", "tool_input": {"plan": "## 先行例との対比\n\n- D1: 三層構成で規律を配置する\n  先行例: 自リポジトリ scope-inventory — config/claude/CLAUDE.md (取得 2026-09-15)\n  差分: 一致\n  軸: 還元 — 既存語彙で足りる\n- D2: 別の判断\n  先行例なし: 公式ドキュメントと社内 ADR を検索したが見つからなかった\n  軸: 検出のみ — 実行時にしか判定できないため\n"}}'''
+status.code = 0
+stdout = ""
+[env.add]
+CLAUDE_PLAN_PRECEDENT_GATE_DIR = "/nonexistent/plan-precedent-gate"
+[env]
+remove = ["SKIP_PLAN_PRECEDENT_GATE"]

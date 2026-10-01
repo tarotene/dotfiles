@@ -1,0 +1,18 @@
+# hook: 複数 Dn の複合不足 → deny(全件・順序)
+bin.name = "plan-precedent-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_name": "ExitPlanMode", "tool_input": {"plan": "## 先行例との対比\n\n- D2: 後に書いた判断\n  先行例: なし\n- D1: 判断\n  本命: x\n  先行例なし: y\n- D2: 重複\n  先行例: #12 (取得 2026-01-01)\n  差分: 異なる — 理由\n## 次の節\n- D3: 節外なので見ない\n"}}'''
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "先行例との対比の検査で問題が見つかりました。precedent-grounding スキルの手順に従って計画を修正してください。/n/nD2 が複数回出現しています(重複)/nD2: 先行例の記載に不足があります — 軸:(表現不可能|還元|検出のみ)/nD1: 先行例の記載に不足があります — 軸:(表現不可能|還元|検出のみ)/nD1: 重い欄(本命/対抗馬/外した候補)の一部だけがあります — 対抗馬: が欠落しています/nD1: 既存手段:(採用|拡張|自前)の記載がありません(ADR-543)/n/nそのまま構造を写し、山括弧の中身だけ事実に置き換えれば書式検査は通ります:/n/n## 先行例との対比/n/n- D1: <採った設計判断を1文で>/n  先行例: <著者/組織, タイトル> https://example.com/doc (取得 [..])/n  差分: 一致/n  軸: 表現不可能 | 還元 | 検出のみ — <1句>/n- D2: <採った設計判断を1文で>/n  先行例なし: <どこを・何のキーワードで・一次/二次のどちらまで探したか>/n  軸: 表現不可能 | 還元 | 検出のみ — <1句>/n- D3: <外部依存の新設・置換・撤去を伴う設計判断を1文で>/n  本命: 憧れ駆動 | なし — <理由>/n  対抗馬: <候補> (<本命と共通の評価軸>)/n  既存手段: <path> — 採用: <ツール名/URL> | 拡張: <既存パス> | 自前 — 却下: <候補> (<理由>) | 探索: <どこを・何のキーワードで>/n  先行例: <著者/組織, タイトル> https://example.com/doc (取得 [..])/n  差分: 一致/n  軸: 表現不可能 | 還元 | 検出のみ — <1句>/n/n`軸:` は全 Dn に必須(precedent-grounding スキル §3、selection-grounding/nスキル参照)。出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス/nでも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・/n仕組みの選択で外部依存の新設・置換・撤去、または撤収コストが導入コストを/n上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」/n「既存手段:」(自前なら却下:/探索: 必須、ADR-543)も書く/n(selection-grounding スキル参照)。設計判断を含まないプランなら、/n節の代わりに次の1行だけ:/n/n先行例: 該当なし — <理由(例: typo 修正で設計判断を含まない)>"
+  }
+}
+"""
+[env.add]
+CLAUDE_PLAN_PRECEDENT_GATE_DIR = "/nonexistent/plan-precedent-gate"
+[env]
+remove = ["SKIP_PLAN_PRECEDENT_GATE"]

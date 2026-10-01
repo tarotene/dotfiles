@@ -1,0 +1,10 @@
+# hook: 重い欄が揃っている → 素通し
+bin.name = "plan-precedent-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_name": "ExitPlanMode", "tool_input": {"plan": "## 先行例との対比\n\n- D1: 判断\n  本命: 憧れ駆動 — 先に決まっていた\n  対抗馬: 候補A (同じ軸)\n  既存手段: crates/foo — 採用: jq\n  先行例: https://example.com/x (取得 2026-09-23)\n  差分: 一致\n  軸: 表現不可能 — 理由\n"}}'''
+status.code = 0
+stdout = ""
+[env.add]
+CLAUDE_PLAN_PRECEDENT_GATE_DIR = "/nonexistent/plan-precedent-gate"
+[env]
+remove = ["SKIP_PLAN_PRECEDENT_GATE"]

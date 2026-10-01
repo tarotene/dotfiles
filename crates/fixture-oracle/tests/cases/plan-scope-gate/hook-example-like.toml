@@ -1,0 +1,10 @@
+# hook: 例文ブロック相当 → 素通し
+bin.name = "plan-scope-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_name": "ExitPlanMode", "tool_input": {"plan": "## 要求インベントリ\n\n- R1: <依頼文からの逐語の要求項目> — 段1で実装\n- R2: <逐語項目> — Blocked-Upstream: <理由>\n- R3: <逐語項目> — Obsolete: <理由>\n- R4: <逐語項目> — User-Excluded: <文言>\n\nReference-Only: #<番号> — <理由>\n"}}'''
+status.code = 0
+stdout = ""
+[env.add]
+CLAUDE_PLAN_SCOPE_GATE_DIR = "/nonexistent/plan-scope-gate"
+[env]
+remove = ["SKIP_PLAN_SCOPE_GATE"]

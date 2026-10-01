@@ -1,0 +1,9 @@
+# --check: 存在しないファイル → stderr、exit 1(gh は呼ばない)
+bin.name = "plan-scope-gate"
+args = ["--check", "nope.md", "o/r#1"]
+status.code = 1
+stdout = ""
+stderr = """
+plan file not found: nope.md
+"""
+fs.sandbox = true

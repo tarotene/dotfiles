@@ -1,0 +1,9 @@
+# --check-plan: 引数なし → stderr、exit 1
+bin.name = "plan-scope-gate"
+args = ["--check-plan"]
+status.code = 1
+stdout = ""
+stderr = """
+plan file not found: 
+"""
+fs.sandbox = true
