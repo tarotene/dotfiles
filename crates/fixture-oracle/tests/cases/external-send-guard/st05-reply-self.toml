@@ -1,0 +1,9 @@
+# selftest 5 reply 自分宛明示 → pass
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__reply","tool_input":{"messageId":"abc","to":["alt@example.com"]}}'
+status.code = 0
+stdout = ""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }

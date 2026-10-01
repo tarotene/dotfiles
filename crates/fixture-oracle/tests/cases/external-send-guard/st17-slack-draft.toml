@@ -1,0 +1,9 @@
+# selftest 17 slack draft は非対象 → pass
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__slack__slack_draft_message","tool_input":{"channel":"C123","text":"hi"}}'
+status.code = 0
+stdout = ""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }

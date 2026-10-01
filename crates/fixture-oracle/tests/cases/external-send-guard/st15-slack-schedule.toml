@@ -1,0 +1,17 @@
+# selftest 15 slack schedule_message → deny
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__slack__slack_schedule_message","tool_input":{"channel":"C123","text":"hi","post_at":123}}'
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Slack への直接送信は行わず、下書き系 tool(例: slack_draft_message / send_message_draft。接続先の MCP サーバーに存在しない場合は本文をチャットに出力し、ユーザー自身が Slack へ貼り付けてください)を使ってください(deny)。下書きを作成/提示したら、ユーザーが内容を確認・編集して送信します。"
+  }
+}
+"""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }
