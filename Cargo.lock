@@ -299,6 +299,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "feedback-target-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "filetime"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -661,6 +671,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pr-confirm-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "pr-gate"
 version = "0.1.0"
 dependencies = [
@@ -771,6 +791,16 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "repo-create-guard"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "routines-write-guard"
