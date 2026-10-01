@@ -240,6 +240,16 @@ jobs:
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
+      # close-linked-issues.yml (#609): GitHub Actions cannot follow a symlink
+      # for a workflow file, so this repo carries a real copy of the template
+      # that the governance skills distribute (docs/claude/stacked-pr.md).
+      # Keep the two byte-identical.
+      - name: close-linked-issues template is in sync
+        run: |
+          diff -u \
+            config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml \
+            .github/workflows/close-linked-issues.yml
+
       # hms.sh (docs/adr/0034-machine-state-wrapper-flake.md Amendment
       # 2026-09-25): private wrapper flake 経由の適用でも、wrapper の
       # flake.lock が古い dotfiles rev を pin していれば override して

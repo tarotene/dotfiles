@@ -173,3 +173,27 @@ ADR-0008(記録の器の選択規約)はこのスキル自身の執筆にも適�
 自動検出する仕組み(`pull_request: edited` での再発火や `pr-gate.sh` 側の
 検出)はコストに見合わないため意図的に追加していない(ADR-468
 Alternatives considered)。
+
+## merge 時に closing keyword を処理する workflow(#609, 2026-10-01)
+
+stacked PR の `Closes #N` が Issue を閉じないという報告(tarotene/bleep の
+5 段 stack で、squash merge した 4 件の Issue が自動クローズされず、全段の
+`closingIssuesReferences` が空だった)を受けて、`pull_request: closed` かつ
+merged のときに本文の closing keyword を拾って `gh issue close` する
+workflow を置いた(`.github/workflows/close-linked-issues.yml`、配布元は
+`config/claude/skills/repo-governance-common/templates/.github/workflows/`)。
+
+- 根拠: GitHub Docs "Linking a pull request to an issue"
+  (https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue、
+  取得 2026-10-01)は、PR が default branch を向くときだけキーワードを処理すると
+  述べる。親 merge 後の base 付け替えで本文が再評価されるかは Docs に記載が
+  なく、#609 の実測では再評価されなかった。bleep#59 のように base が
+  `main` の最下段でも空だった原因は未切り分け — この workflow は base や
+  stack の状態に依存しないので、原因が何であっても効く。
+- 規則は GitHub に揃えた(コードスパン・フェンス内のキーワードは無視、
+  他リポジトリへの参照は無視、既に閉じている Issue は触らない)ので、
+  GitHub 自身の自動クローズが働いた場合は no-op になる。
+- dotfiles 自身の `.github/workflows/close-linked-issues.yml` は配布元
+  テンプレートのコピーで、GitHub Actions は workflow のシンボリックリンクを
+  扱えないため実体を置く。両者が食い違わないことは ci.yml の
+  `close-linked-issues template is in sync` step が検査する。
