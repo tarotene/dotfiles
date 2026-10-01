@@ -1,0 +1,12 @@
+[package]
+name = "git-prune"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "git prune-worktrees / git prune-branches (scripts/git-prune-worktrees, scripts/git-prune-branches の Rust 移植、ADR-0024)"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3.27.0"

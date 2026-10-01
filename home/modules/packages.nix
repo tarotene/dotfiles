@@ -212,15 +212,9 @@
   # ラッパー(docs/claude/git-stash-guard.md)。~/.local/bin に置くだけで
   # git のサブコマンド解決に乗り、`git shelve` / `git unshelve` と呼べる
   # (alias 不要)。config/claude/hooks/git-stash-guard.sh の deny 案内が
-  # ここへ誘導する。
-  home.file.".local/bin/git-shelve" = {
-    source = ../../scripts/git-shelve;
-    executable = true;
-  };
-  home.file.".local/bin/git-unshelve" = {
-    source = ../../scripts/git-unshelve;
-    executable = true;
-  };
+  # ここへ誘導する。Rust 実装(crates/git-shelve、#416)の bin を指す。
+  home.file.".local/bin/git-shelve".source = "${pkgs.dotfiles-tools}/bin/git-shelve";
+  home.file.".local/bin/git-unshelve".source = "${pkgs.dotfiles-tools}/bin/git-unshelve";
 
   # git-prune-branches: delete local branches whose upstream is [gone]
   # (docs/git-sync.md), or (--auto) branches backed by content-preservation
@@ -230,10 +224,7 @@
   # as git-shelve/git-unshelve above — used to be a `config/git/hooks/
   # prune-branches.sh` + `alias.prune-branches` pair, but it isn't a git
   # hook and doesn't need core.hooksPath's indirection.
-  home.file.".local/bin/git-prune-branches" = {
-    source = ../../scripts/git-prune-branches;
-    executable = true;
-  };
+  home.file.".local/bin/git-prune-branches".source = "${pkgs.dotfiles-tools}/bin/git-prune-branches";
 
   # pr-title-check: checker 単一ソース for the PR-title commit-message
   # contract (ADR-0031, docs/claude/pr-title-contract.md). Both
