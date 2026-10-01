@@ -1,7 +1,7 @@
 # Instance layer — company Pop!_OS host (star-codename: arcturus, #214).
 #
 # Star-codename (ADR-0019) instead of the old `company-pop-new` <identity>-
-# pop convention — resolved via scripts/hms.sh / bootstrap.sh's
+# pop convention — resolved via crates/hms / bootstrap.sh's
 # resolve_host(), not the OS hostname. Renamed from company-pop-new;
 # content otherwise unchanged (signing key, imports carried over verbatim).
 # The retired `company-pop-old` host was deleted outright rather than

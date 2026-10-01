@@ -279,7 +279,7 @@
     in
     {
       # Keyed by logical hostname (ADR-0019 star-codename, resolved via a
-      # marker file — see scripts/hms.sh / bootstrap.sh `resolve_host`, not
+      # marker file — see crates/hms / bootstrap.sh `resolve_host`, not
       # the OS `hostname`). All three Linux hosts moved off the old
       # `<identity>-pop[-<generation>]` convention (#207 / stage1-prep) to
       # star codenames in #214: personal-pop → vega, company-pop-new →

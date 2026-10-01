@@ -2,7 +2,7 @@
 #
 # First darwin host (ADR-0018). Star-codename (ADR-0019) instead of the
 # <identity>-pop convention the three Linux hosts use — resolved via
-# scripts/hms.sh / bootstrap.sh's resolve_host(), not the OS hostname.
+# crates/hms / bootstrap.sh's resolve_host(), not the OS hostname.
 { ... }:
 {
   imports = [

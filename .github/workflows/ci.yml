@@ -240,13 +240,11 @@ jobs:
             config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml \
             .github/workflows/close-linked-issues.yml
 
-      # hms.sh (docs/adr/0034-machine-state-wrapper-flake.md Amendment
-      # 2026-09-25): private wrapper flake 経由の適用でも、wrapper の
-      # flake.lock が古い dotfiles rev を pin していれば override して
-      # pushed main を適用する判定ロジックの selftest。ネットワーク不使用
-      # (フィクスチャの `nix flake metadata --json` 相当を直接与える)。
-      - name: hms.sh --selftest
-        run: ./scripts/hms.sh --selftest
+      # hms (docs/adr/0034-machine-state-wrapper-flake.md Amendment
+      # 2026-09-25) is Rust now (#414, ADR-0024 Stage 4e, crates/hms); the
+      # wrapper-lock override / local-routing / downgrade-guard judgments
+      # and the stubbed-PATH apply flow run as `cargo test --workspace` in
+      # the rust job. No network (nix/home-manager/systemctl are stubs).
 
       # setup-firewall.sh (ADR-471): the Linux branch is the one this
       # runner can actually exercise; the darwin branch is only shellchecked

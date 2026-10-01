@@ -226,7 +226,7 @@ macOS never keys off `hostname` in the first place.
 "Alternatives considered"
 (`docs/adr/0019-star-codename-hosts-and-marker-resolution.md`) rejected
 *relying on* `scutil --set HostName` as the resolution mechanism on macOS —
-not renaming the OS hostname on Linux. `resolve_host()` in `scripts/hms.sh` /
+not renaming the OS hostname on Linux. `resolve_host()` in `crates/hms` /
 `bootstrap.sh` still reads the `dotfiles/host` marker first, but on Linux the
 simplest way to make that marker resolve correctly *and* end up with a
 `hostname` that matches is to change the OS hostname itself, then let the

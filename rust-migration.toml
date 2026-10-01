@@ -145,10 +145,6 @@ path = "scripts/github-audit"
 stage = "4e"
 
 [[target]]
-path = "scripts/hms.sh"
-stage = "4e"
-
-[[target]]
 path = "scripts/github-app-snapshot"
 stage = "4e"
 

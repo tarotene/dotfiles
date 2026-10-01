@@ -51,7 +51,7 @@ mkdir -p ~/.config/dotfiles
 echo altair > ~/.config/dotfiles/host
 ```
 
-The marker is what `resolve_host()` (in `scripts/hms.sh` and
+The marker is what `resolve_host()` (in `crates/hms` and
 `bootstrap.sh`) reads to select the `altair` homeConfiguration — macOS's own
 `hostname` is never consulted (ADR-0019). `home/hosts/altair.nix` declares
 this same marker via `xdg.configFile`, so after the first successful

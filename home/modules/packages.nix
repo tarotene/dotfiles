@@ -179,10 +179,9 @@
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
   # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
   # point is not depending on being inside a checkout.
-  home.file.".local/bin/hms" = {
-    source = ../../scripts/hms.sh;
-    executable = true;
-  };
+  # Rust 実装(crates/hms、#414)。シェル状態を呼び出し元に残す処理は無い独立の
+  # 実行ファイルなので全体を移した。
+  home.file.".local/bin/hms".source = "${pkgs.dotfiles-tools}/bin/hms";
 
   # Shadow the system `open`/`xdg-open` (both resolve to xdg-utils 1.1.3,
   # which blocks in the foreground on COSMIC — unrecognized DE → generic
