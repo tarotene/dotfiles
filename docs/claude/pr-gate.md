@@ -516,6 +516,22 @@ classify "$f")` の終了コードで判定する。base の ref が手元に無
 に失敗する)場合は判定不能として完全に沈黙する(断定に変えない —
 `default_branch()` が origin/HEAD 未設定を空で返すのと同じ縮退)。
 
+### ledger のキーは書き込み先の toplevel、パスは repo 相対(#661)
+
+Write 時の hook は ledger のキーに `CLAUDE_PROJECT_DIR` ではなく、書き込み
+先ファイルが属する worktree の git toplevel を使う。並列 worktree
+(`.claude/worktrees/agent-*`)のサブエージェントでは `CLAUDE_PROJECT_DIR`
+が親のリポジトリを指しうるので、cwd の toplevel をキーにする `register`
+と別の ledger を見てしまい、register 済みの Write を拒否していた。
+照合はレコードのパスも Write のパスも toplevel からの相対に正規化して
+比べる(`G_prior` が repo 相対で照合するのと同じ書式)ので、絶対パスで
+register しても相対パスで register しても一致する。
+
+Bash の `printf >` や heredoc でファイルを作る経路は検出しない。これは
+ADR-543 D1(軸: 検出のみ)が最初から認めている残余で、作成経路を問わず
+PR 作成時に追加ファイルの diff を見る `G_prior` が拾う。Write 時の hook は
+「着手の瞬間に気づかせる」前倒しで、強制の最終手段ではない。
+
 ### 本文照合はパスの接頭辞衝突を避ける
 
 `既存手段: <path> — ...` の `<path>` は正規表現エスケープした上で、
