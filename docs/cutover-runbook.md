@@ -316,8 +316,8 @@ Or, to switch to a specific older generation:
 **`--rollback` re-executes the activation script baked into the target
 generation, not the current one.** For most modules that is invisible — the
 target generation's `home.file` / `home.packages` are exactly what you get.
-But for the imperative `~/.claude/settings.json` merge (`registerHooks` /
-`registerPermissions` / `syncStatusLine` in `home/modules/claude.nix`), it
+But for the imperative `~/.claude/settings.json` merge (`settings-reconcile claude-hooks` /
+`claude-permissions` / `claude-statusline`, wired in `home/modules/claude.nix`), it
 means a rollback to a generation that predates a hook's declarative retirement
 cannot retire it — the old activation never learned about the retirement.
 `home.file` still removes the now-unmanaged script, so you can end up with a

@@ -43,7 +43,7 @@ GitHub のクローリングをしないまま計画を書き切ってしまう�
 
 - **hook**(`issue-index` のような SessionStart + additionalContext)は、
   そのセッション固有の動的な値(open Issue 一覧など)を生成する仕組みであり、
-  今回のような静的な行動方針には過剰で、hook 登録(`registerHooks` への
+  今回のような静的な行動方針には過剰で、hook 登録(`claudeHookDeclarations` への
   event/command 追加)という余分な複雑さを持ち込む。
 - **スキル**(`~/.claude/skills/`)は呼び出し(トリガー)を起点に発動する
   仕組みで、常時・受動的に効かせたい方針には向かない。

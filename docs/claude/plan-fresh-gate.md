@@ -92,7 +92,7 @@ Claude Code のみ。Codex CLI / Copilot CLI には Plan モード / ExitPlanMod
 
 ## 使い方
 
-- hook として: `home/modules/claude.nix` の `registerHooks` が
+- hook として: `home/modules/claude.nix` の `claudeHookDeclarations`(`settings-reconcile`)が
   `PreToolUse`(matcher: `ExitPlanMode`)に登録する。plan-review / plan-view
   / plan-scope-gate / plan-precedent-gate と同じ matcher に 5 つ目のエント
   リとして並ぶ(並列実行、順序は保証されない)。

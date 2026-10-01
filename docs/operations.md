@@ -255,7 +255,7 @@ it.
 
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
-`registerHooks` / `syncStatusLine`'s declarative retirement
+`settings-reconcile`'s declarative retirement (`claude-hooks` / `claude-statusline`)
 (`retiredHookEntries` / `retiredStatusLineCommands` in `home/modules/claude.nix`)
 only runs as part of the activation script baked into a given home-manager
 generation. A **forward** `hms` picks it up; a `home-manager switch --rollback`
