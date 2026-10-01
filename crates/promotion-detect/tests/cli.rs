@@ -1,5 +1,5 @@
-//! main.rs のワイヤリング(gh/wrapup-stop-gate.sh の呼び出し・ファイル探索)
-//! を、偽の `gh`/`wrapup-stop-gate.sh` を使った結合テストで検査する
+//! main.rs のワイヤリング(gh/wrapup-stop-gate の呼び出し・ファイル探索)
+//! を、偽の `gh`/`wrapup-stop-gate` を使った結合テストで検査する
 //! (`due-remind`/`git-audit-worktrees` の「本物の代わりに固定応答を返す
 //! スタブ」と同型)。純粋な検出ロジックは lib.rs の単体テストで検査済み。
 
@@ -31,7 +31,7 @@ fn write_fake_gh(dir: &Path, issues_json: &str) {
 }
 
 /// `--check-dup` は常に非重複(exit 0)を返し、`--add` は呼び出し引数を
-/// ログファイルに1行追記する偽 `wrapup-stop-gate.sh`。
+/// ログファイルに1行追記する偽 `wrapup-stop-gate`。
 fn write_fake_wrapup(path: &Path, log: &Path) {
     let script = format!(
         "#!/bin/sh\ncase \"$1\" in\n  --check-dup) exit 0 ;;\n  --add) echo \"$2 $3\" >> '{}' ;;\nesac\n",
@@ -71,7 +71,7 @@ fn dry_run_reports_recurrence_candidate_without_calling_wrapup() {
     fs::create_dir_all(&state_dir).unwrap();
     let inbox = tmp.path().join("inbox.jsonl");
     let wrapup_log = tmp.path().join("wrapup.log");
-    let wrapup_bin = tmp.path().join("wrapup-stop-gate.sh");
+    let wrapup_bin = tmp.path().join("wrapup-stop-gate");
     write_fake_wrapup(&wrapup_bin, &wrapup_log);
 
     let out = run(
@@ -106,7 +106,7 @@ fn writes_to_inbox_via_wrapup_when_not_dry_run() {
     fs::create_dir_all(&state_dir).unwrap();
     let inbox = tmp.path().join("inbox.jsonl");
     let wrapup_log = tmp.path().join("wrapup.log");
-    let wrapup_bin = tmp.path().join("wrapup-stop-gate.sh");
+    let wrapup_bin = tmp.path().join("wrapup-stop-gate");
     write_fake_wrapup(&wrapup_bin, &wrapup_log);
 
     let out = run(

@@ -8,8 +8,8 @@ Herdr が自前で検出するのは agent_status(working/blocked/…)とター�
 
 これを Herdr の **pane metadata**(`pane.report_metadata` API + サイドバー行の
 `$name` トークン)で埋める。表示側の行定義は `config/herdr/config.toml`、報告側は
-Claude Code の hook(`config/claude/hooks/herdr-claude-metadata.sh`)と
-statusline スクリプト(`config/claude/statusline/claude-statusline.sh`)の 2 本。
+Claude Code の hook(`crates/herdr-agent-metadata`)と
+statusline スクリプト(`crates/claude-statusline`)の 2 本。
 
 ## なぜ 2 チャネルか
 
@@ -20,13 +20,13 @@ Claude Code は必要な情報を 1 か所で公開していない:
 | `permission_mode` | ✅ あり | ❌ 無い(mode 変更時に再実行はされる) |
 | model / context% / cost / effort | ❌ 無い | ✅ あり(プリ計算済み) |
 
-そのため `herdr-claude-metadata.sh`(hook、source=`claude-hook`)が mode を、
-`claude-statusline.sh`(statusline、source=`claude-statusline`)がモデルとメトリクス
+そのため `herdr-agent-metadata`(hook、source=`claude-hook`)が mode を、
+`claude-statusline`(statusline、source=`claude-statusline`)がモデルとメトリクス
 を、それぞれ独立に報告する。トークン名は source 間で完全に分離してあり
 (`mode_*` vs `model`/`ctx`/`cost`/`effort`)、Herdr 側のマージ仕様がどちらでも
 壊れない。実測では source を跨いでトークン名単位でマージされる(0.7.5、未再検証)。
 
-`herdr-claude-metadata.sh` はもう一つ、hook input JSON の `.cwd` から
+`herdr-agent-metadata` はもう一つ、hook input JSON の `.cwd` から
 `git branch --show-current` を取った `branch` トークンも同じ source で報告する
 (`worktree/` プレフィクスは表示幅節約のため落とす)。git 失敗時・非 git cwd では
 空 = `null` を送るだけで、herdr 外でも無害。mode の変更検知でスキップする経路
@@ -57,7 +57,7 @@ named color は不可)+ `bold`/`dim` のみで、`bg` は指定できない。
 ## 配色: Catppuccin Mocha の役割トークン
 
 Dracula から Catppuccin Mocha への着せ替え(2026-09)で、`config/herdr/config.toml`
-/ `claude-statusline.sh` / `config/alacritty/alacritty.toml` の 3 ファイルが共有する
+/ `claude-statusline` / `config/alacritty/alacritty.toml` の 3 ファイルが共有する
 role→color 対応表。hex は ADR-0002 に従い各ファイルにリテラルで置く(共通定義
 ファイルは持たない)ので、色を変える際は 3 箇所とも手で揃えること。
 
@@ -135,8 +135,8 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   basename)であって branch 名ではない。branch は作業中に `feat/...` 等へ
   リネームされることがあり(実例あり)、`$branch` トークンと違って本トークンは
   worktree 生成時の値を指し続ける必要があるため。
-- **3 reporter すべてが同じ lookup を行う**: `herdr-claude-metadata.sh` /
-  `herdr-codex-metadata.sh` / `herdr-copilot-metadata.sh` が、それぞれの
+- **3 reporter すべてが同じ lookup を行う**: `herdr-agent-metadata` /
+  `herdr-agent-metadata --agent codex` / `herdr-agent-metadata --agent copilot` が、それぞれの
   branch 取得ロジックのすぐ後で `worktree-*-*` パターンにマッチしたときだけ
   `awk` で TSV を引き、`tokens.oshi` として同じ `pane.report_metadata` 送信に
   同乗させる(SessionEnd/clear では他トークンと同様 null)。
@@ -177,7 +177,7 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   `command` エントリはグローバルに 1 枠しかなく、リポジトリ単位にならない。
 - **古い値の消え方**: ローカルキャッシュは持たず、`ttl_ms` = 15 分(タイマー
   間隔の 3 周期)だけに任せる。タイマーが止まれば herdr 自身が値を消す。
-  tab bar の `claude-usage.sh` が stale-if-error キャッシュを持つのは「command
+  tab bar の `claude-usage` が stale-if-error キャッシュを持つのは「command
   の失敗 = 即表示クリア」という tab bar の仕様のためで、workspace metadata は
   ttl まで値を保持するので二重の状態は要らない。
 - **exit code**: 配信の成否だけを表す(detect-drift と同じ考え方、#442)。
@@ -188,7 +188,7 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   `data` が入るので、成否は終了コードでなく応答の中身で判断している。
 - **対象外**: herdr が `worktree` 情報を付けない workspace(git 外で開いた
   もの)と、GitHub remote の無いリポジトリ。remote は `origin` を優先し、
-  無ければ最初の github.com remote を使う(`issue-index.sh` の `owner_repo()`
+  無ければ最初の github.com remote を使う(`issue-index` の `owner_repo()`
   と同じ判定だが、リポジトリ名の `.` を許す点だけ異なる)。
 - **CLI の引数順**: herdr 0.8.2 の `workspace report-metadata` は workspace ID を
   先に置かないと `--source <ID>` の値を未知のオプションとして弾く(2026-09-24
@@ -226,22 +226,24 @@ $ printf 'SessionStart\t\t0\t/tmp/x' | { IFS="$(printf '\t')" read -r a b c d; e
 [SessionStart][0][/tmp/x][]
 ```
 
-現在は 3 本とも `parse_payload()`(jq が 1 フィールド 1 行を出し、逐次
-`read` する)に統一し、`--selftest` を CI に接続している。`mode` / `model` が
-空でも `branch` / `oshi` は送り、モード表示トークンだけを落とす。
+bash 版は 3 本とも `parse_payload()`(jq が 1 フィールド 1 行を出し、逐次
+`read` する)に統一し、`--selftest` を CI に接続していた。#413 で 3 本を
+`crates/herdr-agent-metadata` の 1 バイナリ(`--agent`)へ移し、payload は
+serde で読むようになった。`--selftest` の全ケースは統合テストに移してある。
+`mode` / `model` が空でも `branch` / `oshi` は送り、モード表示トークンだけを
+落とす。
 
-- `config/claude/hooks/herdr-claude-metadata.sh --selftest`
-- `config/codex/hooks/herdr-codex-metadata.sh --selftest`
-- `config/claude/statusline/claude-statusline.sh --selftest`
+- `nix develop --command cargo test -p herdr-agent-metadata`
+- `nix develop --command cargo test -p claude-statusline`
 
-`config/copilot/hooks/herdr-copilot-metadata.sh` は最初からフィールド毎に
+Copilot 版(bash 時代の `herdr-copilot-metadata.sh`、現 `--agent copilot`)は最初からフィールド毎に
 `jq` を呼んでいたため無傷だった — 切り分けでは「copilot ペインだけ `oshi` が
 入っている」が最初の手がかりになった。こちらは payload に event/model を
 持たないため `parse_payload()` 型ではなく、action 判定・cwd 抽出・
 `settings.json` の model 読み取り・推しマーク照合を関数に切り出して
 `--selftest` で検査し、同じく CI に接続している(#390)。
 
-- `config/copilot/hooks/herdr-copilot-metadata.sh --selftest`
+- `nix develop --command cargo test -p herdr-agent-metadata`
 
 ### 系統 B — 値はあるが見えない(表示層)
 
@@ -301,7 +303,7 @@ openai/codex ソース、docs.github.com hooks-reference、2026-09 時点)を確
 Claude 版と違い statusline 相当のチャネルが無いので、reporter は各ツールにつき
 1 本(単チャネル)。
 
-### Codex: `config/codex/hooks/herdr-codex-metadata.sh`
+### Codex: `crates/herdr-agent-metadata`(`--agent codex`)
 
 `~/.codex/hooks.json` の SessionStart / UserPromptSubmit / Stop / SessionEnd に
 登録(PreToolUse には登録しない — model が変わる頻度は低く、他 3 イベントで
@@ -323,7 +325,7 @@ timeout)` タプルを何個でも受け取る idempotent jq マージャー。�
 新しいエントリ自体は初回、Codex 側で `/hooks` から対話的に trust するまで
 無音で発火しない — 各ホストで switch 後に一度だけ手作業が要る。
 
-### Copilot: `config/copilot/hooks/herdr-copilot-metadata.sh`
+### Copilot: `crates/herdr-agent-metadata`(`--agent copilot`)
 
 Copilot CLI の hook payload には event 名も model も乗らない(公式リファレンス
 確認済み: 全イベント共通で `sessionId`/`timestamp`/`cwd` のみ)。そのため:
@@ -443,7 +445,7 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
 - **statusline の巻き戻り**: `~/.claude/settings.json` の `statusLine` は activation
   (`registerClaudeStatusLine` → `syncStatusLine`)が宣言値に合わせるので、
   `/statusline` で手動変更しても次の `home-manager switch` で戻る。変更はこの
-  リポジトリの `config/claude/statusline/claude-statusline.sh` を編集すること。
+  リポジトリの `crates/claude-statusline` を編集すること。
 - **hook / statusLine の撤回は forward switch でのみ効く**: `registerHooks` /
   `syncStatusLine` は `retiredHookEntries` / `retiredStatusLineCommands`
   (`home/modules/claude.nix`)に載っている command を完全一致で settings.json から

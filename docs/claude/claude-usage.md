@@ -2,7 +2,7 @@
 
 `/usage` を毎回打たないと、5h セッション窓や Fable の週間上限にあとどれくらいで
 到達するか、到達後いつ復活するかが分からない。この機能は Herdr の**タブバー
-右端**にその数値を常時表示する。表示場所がサイドバー(`herdr-claude-metadata.sh`
+右端**にその数値を常時表示する。表示場所がサイドバー(`herdr-agent-metadata`
 等、[`herdr-sidebar-metadata.md`](herdr-sidebar-metadata.md))ではなくタブバーな
 のは、usage がペイン単位ではなくアカウント全体の値だから — グローバルな情報は
 グローバルな場所に置く。
@@ -47,7 +47,7 @@ interval_seconds = 60, timeout_seconds = 10 }` を追加した。Herdr の comma
 リファレンス確認済み)。ANSI エスケープシーケンスは herdr 側で除去される
 (詳細は後述)ため、出力は常にプレーンテキスト 1 行にしている。
 
-`~/.claude/hooks/claude-usage.sh`(`home/modules/claude.nix` が配備)がこの
+`~/.claude/hooks/claude-usage`(`home/modules/claude.nix` が配備)がこの
 command の実体。**Claude Code hook ではない**ので `settings.json` には一切登録
 しない — herdr が直接 `/bin/sh -lc` で呼ぶだけの独立スクリプト。
 
@@ -245,7 +245,7 @@ hostname・時計)が **all-or-nothing で丸ごと** 非表示になる。セ�
 
 切り分け方: usage だけでなく同じ右端の hostname・時計も同時に消えていれば
 このレイアウト譲歩(herdr 仕様どおり)。usage だけが消えて hostname・時計
-は残っていれば、`claude-usage.sh` 側の縮退(上記表のいずれか)を疑う。
+は残っていれば、`claude-usage` 側の縮退(上記表のいずれか)を疑う。
 
 なお `ui.mobile_width_threshold`(既定 64 列)を境にモバイル単一カラム
 レイアウトへの切替もあるが、半画面表示程度で 64 列を割ることは通常なく、
@@ -254,7 +254,7 @@ hostname・時計)が **all-or-nothing で丸ごと** 非表示になる。セ�
 ## 自己検査
 
 ```sh
-sh config/claude/statusline/claude-usage.sh --selftest
+nix develop --command cargo test -p claude-usage
 ```
 
 ネットワーク・実 credentials に依存せず、以下を検証する:
@@ -277,7 +277,7 @@ sh config/claude/statusline/claude-usage.sh --selftest
   空出力・state クリアで応答すること
 - 30 秒の再取得ガード(curl が 1 回しか呼ばれないこと)
 
-内部専用の隠しサブコマンド `claude-usage.sh __render <usage_json_file>
+内部専用の隠しサブコマンド `claude-usage __render <usage_json_file>
 <state_file> <now_epoch>` が fetch を挟まずレンダリングだけを行う — selftest は
 これでフィクスチャを直接叩く。決定的にするため `TZ=UTC` 固定・`now` は実行時刻
 に依存しない固定 epoch を使う。実運用では herdr の command がホストのローカル

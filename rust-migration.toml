@@ -119,7 +119,10 @@ extra = ["bootstrap.sh"]
 #
 # 55 = #412(Stage 4b)で ExitPlanMode の plan hook 5 本を Rust へ移植し、
 # bash 版を削除した(60 → 55)。
-max_remaining = 55
+#
+# 44 = #413(Stage 4d)で session/表示系の 11 本を Rust へ移植し、
+# bash 版を削除した(55 → 44)。
+max_remaining = 44
 
 # stage は #389 配下の移植 Issue(Stage 4a〜4e)との対応。
 
@@ -227,51 +230,6 @@ stage = "4a"
 [[target]]
 path = "config/codex/hooks/codex-plan-gate.sh"
 stage = "4b"
-
-# --- Stage 4d ---
-[[target]]
-path = "config/claude/hooks/herdr-claude-metadata.sh"
-stage = "4d"
-
-[[target]]
-path = "config/codex/hooks/herdr-codex-metadata.sh"
-stage = "4d"
-
-[[target]]
-path = "config/copilot/hooks/herdr-copilot-metadata.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/statusline/claude-statusline.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/statusline/claude-usage.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/sign-prewarm.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/issue-index.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/wrapup-session-start.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/wrapup-stop-gate.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/agent-turn-log.sh"
-stage = "4d"
-
-[[target]]
-path = "config/claude/hooks/external-send-guard.sh"
-stage = "4d"
 
 # --- Stage 4e ---
 [[target]]

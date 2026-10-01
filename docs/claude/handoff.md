@@ -8,7 +8,7 @@
 外す skip ファイルしか無かった。実装は `config/claude/skills/handoff/`
 (手順は `SKILL.md`、決定論的サブコマンドは `scripts/handoff.sh`)、
 機構側の変更は `config/claude/hooks/pr-gate.sh`(中断ハンドオフ節、
-`docs/claude/pr-gate.md` 参照)と `config/claude/hooks/issue-index.sh`
+`docs/claude/pr-gate.md` 参照)と `crates/issue-index`
 (着手可能な `handoff:ai` 節、`docs/claude/issue-index.md` 参照)。
 
 ## 決定表(/grill-me で確定)
@@ -87,4 +87,4 @@ AI が自発的に手を止める失敗様式(見積り膨張・判断の丸投�
 
 - `bash config/claude/skills/handoff/scripts/handoff.sh --selftest`
 - `bash config/claude/hooks/pr-gate.sh --selftest`(中断ハンドオフ節)
-- `bash config/claude/hooks/issue-index.sh --selftest`(着手可能な handoff:ai 節)
+- `nix develop --command cargo test -p issue-index`(着手可能な handoff:ai 節)

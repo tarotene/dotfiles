@@ -41,7 +41,7 @@ Issue が積み上がるだけで着手されず、`git prune-branches` や `git
 「どれが判断無しで対処できるか」の triage はモデルの判断そのものであり、機械的な
 条件だけでは決められない(skill-gardening の器の判断基準そのもの)。hook に落とせる
 のは「JSONL の整合性を守る」ような決定論的操作だけで、それは既存の
-`wrapup-stop-gate.sh` の `--add` / `--mark-filed` がすでに担っている。このスキルは
+`wrapup-stop-gate` の `--add` / `--mark-filed` がすでに担っている。このスキルは
 hook のその契約に完全に乗っかり、hook 自体には一切手を入れない。
 
 ## 内部構成の意図

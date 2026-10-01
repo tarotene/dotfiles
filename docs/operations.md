@@ -185,8 +185,8 @@ Notes:
   nixpkgs-unstable` — rather than assuming the weekly `nix flake update` sweep
   is safe for both channels at once. This bump now moves **both** `herdr` and
   `gh` together (same overlay entry, same input) — a `gh` regression from
-  unstable is higher-stakes than it looks, since `pr-gate.sh` / `issue-index.sh`
-  / `wrapup-stop-gate.sh` all shell out to `gh` unconditionally. If either
+  unstable is higher-stakes than it looks, since `pr-gate.sh` / `issue-index`
+  / `wrapup-stop-gate` all shell out to `gh` unconditionally. If either
   package regresses after an update, roll back just that input by reverting
   `flake.lock`'s `nixpkgs-unstable` node (or the whole generation, per the
   rollback note above) — there is no way to roll back only one of the two

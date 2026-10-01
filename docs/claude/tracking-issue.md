@@ -34,7 +34,7 @@
 
 `issue-hygiene` を起こした時点の doc には「既存の `tracking` ラベルは廃止せず併用する」と書かれていたが、これは誤りだった。2026-09-09 に確認した時点で `tarotene/dotfiles` に `tracking` ラベルは存在せず(実ラベルは `bug`/`documentation`/`enhancement`/`good first issue`/`help wanted`/`invalid`/`question`/`wontfix`/`phase-5`/`phase-6a`/`phase-6b`/`blocked-by-upstream`/`deferred` のみ)、スキルを起こした別のリポジトリの記述がそのまま残っていたものと判明した。
 
-親子構造は SessionStart の Issue 索引(`issue-index.sh`、Search API のメタデータのみを注入する軽量索引で、本文も sub-issues も読まない)には現れない。ラベルは索引にそのまま出るため、`tracking` ラベルを新設して findability を担保した(`gh label create tracking --repo tarotene/dotfiles` で作成)。ラベル体系全体の宣言的管理・台帳化は別の課題(組織全体のラベル運用衛生)であり、このスキルのスコープには含めない。
+親子構造は SessionStart の Issue 索引(`issue-index`、Search API のメタデータのみを注入する軽量索引で、本文も sub-issues も読まない)には現れない。ラベルは索引にそのまま出るため、`tracking` ラベルを新設して findability を担保した(`gh label create tracking --repo tarotene/dotfiles` で作成)。ラベル体系全体の宣言的管理・台帳化は別の課題(組織全体のラベル運用衛生)であり、このスキルのスコープには含めない。
 
 ## gh CLI のフラグに更新した理由
 

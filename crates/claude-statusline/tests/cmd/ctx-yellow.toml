@@ -1,0 +1,10 @@
+# context 60-79% は黄
+bin.name = "claude-statusline"
+stdin = '{"model":{"display_name":"M"},"context_window":{"used_percentage":65}}'
+status.code = 0
+stdout = """
+◆ \u001B[1;38;2;245;194;231mM\u001B[0m \u001B[38;2;108;112;134m·\u001B[0m ◐ \u001B[38;2;249;226;175m65%\u001B[0m
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

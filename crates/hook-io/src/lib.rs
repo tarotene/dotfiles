@@ -18,6 +18,7 @@
 //! | J gate の deny/skip イベント記録(ADR-543 段3) | [`gate_event`] |
 //! | K jq 互換の挿入順 JSON 出力(Stage 4b) | [`jqfmt`] |
 //! | L `timeout(1)` / `date(1)` / `command -v`(Stage 4b) | [`proc`] |
+//! | M herdr socket への `pane.report_metadata` 送信(#413) | [`herdr`] |
 //!
 //! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
 //! `crates/rulesets-write-guard`(ADR-503)も
@@ -29,6 +30,7 @@ pub mod cmd_hash;
 pub mod decision;
 pub mod gate_event;
 pub mod git;
+pub mod herdr;
 pub mod input;
 pub mod jqfmt;
 pub mod ledger;

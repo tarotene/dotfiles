@@ -129,7 +129,7 @@ echo 'gh issue comment 1 --body x'
 
 ### wrap-up inbox の出自フッターは生成元表示を兼ねる
 
-`wrapup-stop-gate.sh` の起票手順は出自フッター
+`wrapup-stop-gate` の起票手順は出自フッター
 `🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox` を
 要求する。当初は「生成元表示」と「inbox 由来を grep で絞る出自フッター」を
 別行で 2 本付けていたが、出自フッター自体に `Claude Code` へのリンクを含めれば

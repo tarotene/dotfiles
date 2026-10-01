@@ -9,7 +9,7 @@ Unverified が付かないようにするため。パスフレーズ入力その
 |------|----------|------|
 | `home/modules/gpg.nix` の `defaultCacheTtl`/`maxCacheTtl` | (agent 設定) | パスフレーズの再入力を「ログインに 1 回」まで落とす |
 | `home/modules/gpg.nix` の `home.activation.assertNoLinger` | (activation) | 「agent の寿命 = ログインセッション」という前提を検査する |
-| `sign-prewarm.sh` | SessionStart(`startup\|resume`) | 残る「その 1 回」を、利用者が画面を見ている安全な瞬間に前倒しする |
+| `sign-prewarm` | SessionStart(`startup\|resume`) | 残る「その 1 回」を、利用者が画面を見ている安全な瞬間に前倒しする |
 
 配備は `home/modules/claude.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。
@@ -66,7 +66,7 @@ SessionStart 時の cwd で「署名 repo かどうか」を判定すると、�
 ディレクトリで開始したセッションが、同一セッション内で署名 repo に移動してコミット
 する経路を取りこぼす——本来温めるべきだったのに温めない。
 
-代わりに `sign-prewarm.sh` は常に `git -C <mktemp -d> config --get <key>` で
+代わりに `sign-prewarm` は常に `git -C <mktemp -d> config --get <key>` で
 **scope なしのグローバル値だけ**を読む。結果、ルールは「そのホストで署名が有効なら、
 ログイン後最初に Claude を開いたとき 1 回聞かれる」という cwd に依存しない予測可能
 な形になる。`--global` は使わない —— 移行前の残骸 `~/.gitconfig` が home-manager の
@@ -180,7 +180,7 @@ exit 0」という設計)。
 
 ## 検証
 
-- `bash config/claude/hooks/sign-prewarm.sh --selftest` — [S] 側は cwd 非依存の
+- `nix develop --command cargo test -p sign-prewarm` — [S] 側は cwd 非依存の
   gating・field 15 の 3 値判定・温度判定の分岐・本番失敗時の縮退・ローカル
   上書きに引っ張られない回帰テスト、[E] 側は token.gpg の実在ゲート・温度
   判定・本番失敗時の縮退、そして [S]/[E] が独立に温まることの回帰テスト

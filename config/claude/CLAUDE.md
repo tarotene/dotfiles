@@ -30,7 +30,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 memory/*.md`、`metadata.type: feedback`)にこの種のフィードバックを保存
 するときは、Issue 化するまでの一時メモに限定し、Issue 化したら本文に
 その Issue 番号(`#N`)を書く(Issue へのポインタで足り、内容を重複させない)。
-形式検査は `wrapup-stop-gate.sh`(Stop hook、wrap-up inbox と同じ経路)が
+形式検査は `wrapup-stop-gate`(Stop hook、wrap-up inbox と同じ経路)が
 担う — 今セッション中に更新された `type: feedback` メモリで `#N` 参照が
 無いものを検出して促す。gate に当たる前に自発的に Issue 化すること。
 

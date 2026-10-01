@@ -8,7 +8,7 @@
 
 | 部品 | イベント | 役割 |
 |------|----------|------|
-| `issue-index.sh` | SessionStart(`startup\|resume\|compact`) | 自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)と現ブランチの PR を `additionalContext` で注入 |
+| `issue-index` | SessionStart(`startup\|resume\|compact`) | 自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)と現ブランチの PR を `additionalContext` で注入 |
 
 配備は `home/modules/claude.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通・repo 非依存。
@@ -160,11 +160,11 @@ matcher を変更する場合は `~/.claude/settings.json` の該当エントリ
 
 ## 検証
 
-- `bash config/claude/hooks/issue-index.sh --selftest` — 縮退ゲート・
+- `nix develop --command cargo test -p issue-index` — 縮退ゲート・
   mine→all フォールバックの非対称な失敗判定・`incomplete_results` の扱い・
   タイトルの sanitize・起票者注記・PR 行の状態区別の回帰テスト(CI の `ci.yml`
   でも実行)。
-- 手動 E2E: `printf '{"cwd":"%s"}' "$PWD" | bash config/claude/hooks/issue-index.sh`
+- 手動 E2E: `printf '{"cwd":"%s"}' "$PWD" | nix develop --command cargo run -q -p issue-index`
   で実際のリポジトリに対する索引を確認できる。新しいセッションを開いて
   system reminder に `[issue-index]` ブロックが入ることも確認する(fail-open は
   壊れても気付きにくいため)。

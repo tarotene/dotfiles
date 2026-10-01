@@ -1,0 +1,10 @@
+# model が数値なら jq の tostring(リテラル保持)で出す
+bin.name = "claude-statusline"
+stdin = '{"model":{"display_name":1.50}}'
+status.code = 0
+stdout = """
+◆ \u001B[1;38;2;245;194;231m1.50\u001B[0m
+"""
+[env]
+remove = ["HERDR_ENV", "HERDR_SOCKET_PATH", "HERDR_PANE_ID"]
+add = { XDG_RUNTIME_DIR = "/nonexistent/fixture-oracle", COLUMNS = "80" }

@@ -54,7 +54,7 @@
 # decryption). Every "which subkey is currently active" resolution and every
 # rotate revoke-candidate collection in this script is restricted to
 # on-disk secret material (GnuPG `--with-colons` field 15 == "+", same test
-# as config/claude/hooks/sign-prewarm.sh's key_is_on_disk) — card-backed
+# as crates/sign-prewarm's key_is_on_disk) — card-backed
 # (token serial) and stub (#) entries are never candidates.
 set -euo pipefail
 
@@ -157,7 +157,7 @@ primary_uid() {
 # "s"/"e"). Scans every secret primary when selector is empty. A non-empty
 # 4th argument additionally restricts to on-disk secret material only
 # (`--with-colons` field 15 == "+", GnuPG DETAILS doc; same判定 as
-# sign-prewarm.sh's key_is_on_disk) — card-backed (token S/N) and stub (#)
+# crates/sign-prewarm's key_is_on_disk) — card-backed (token S/N) and stub (#)
 # entries are excluded.
 usage_subkeys() {
   local cap="$1" selector="${2:-}" ondisk_only="${3:-}"
@@ -931,8 +931,8 @@ cmd_remind() {
 # exception is the on-disk/card-backed filter regression test (#252,
 # R1-B-1): a real smartcard can't be faked in a fixture, so that check feeds
 # synthetic `--with-colons` text through a stub gpg binary instead — the
-# same technique config/claude/hooks/sign-prewarm.sh's --selftest already
-# uses for its own card/stub/on-disk field-15 coverage.
+# same technique crates/sign-prewarm's tests already
+# use for its own card/stub/on-disk field-15 coverage.
 selftest() {
   local dir fail=0
   dir="$(mktemp -d)"
@@ -1076,7 +1076,7 @@ selftest() {
   # 実カードは fixture 内で偽装できないため、合成した --with-colons 出力を
   # スタブ gpg 経由で usage_subkeys/extract_latest_usage_keyid に直接通し、
   # card-backed な subkey が「現行」判定にも revoke 候補にも入らないことを
-  # 検証する(sign-prewarm.sh --selftest の card/stub 合成入力と同じ手法)。
+  # 検証する(crates/sign-prewarm のテストの card/stub 合成入力と同じ手法)。
   echo "on-disk フィルタ(合成 card-backed 入力、R1-B-1):"
 
   cat >"$dir/list-mixed-e.txt" <<'EOF'

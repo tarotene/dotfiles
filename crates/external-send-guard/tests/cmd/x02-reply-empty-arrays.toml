@@ -1,0 +1,9 @@
+# selftest (追加)reply で空配列を明示 → 判定不能で pass
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__reply","tool_input":{"messageId":"m","to":[]}}'
+status.code = 0
+stdout = ""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }

@@ -30,7 +30,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
 
 ## 出口は wrap-up inbox(公開 Issue 化は人間レビュー経由)
 
-候補は `wrapup-stop-gate.sh --check-dup` で重複を避けたうえで
+候補は `wrapup-stop-gate --check-dup` で重複を避けたうえで
 `--add` により dotfiles 自身の wrap-up inbox
 (`~/.local/state/claude/wrapup/github-com-tarotene-dotfiles.jsonl`)に
 1候補1行で流す。新しい出口は作らず、既存の「気付き → inbox → Stop hook /

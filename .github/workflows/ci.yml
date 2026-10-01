@@ -91,18 +91,6 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
-      # config/claude/statusline/ holds claude-statusline.sh and
-      # claude-usage.sh, split out of config/claude/hooks/ for source-tree
-      # purity (ADR-0007) since neither is a Claude Code hook. Same exclusion
-      # reason as the step above, so it gets its own scandir too.
-      - name: ShellCheck Claude Code statusline scripts
-        uses: ludeeus/action-shellcheck@2.0.0
-        with:
-          scandir: './config/claude/statusline'
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
       # config/ is excluded above for the same reason as the Claude Code hooks
       # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
       # pre-commit chain), so it gets its own pass with the exclusion lifted.
@@ -114,10 +102,12 @@ jobs:
         env:
           SHELLCHECK_OPTS: -e SC1091
 
-      # config/codex/hooks/ and config/copilot/hooks/ hold the herdr sidebar
-      # metadata reporters for Codex CLI / Copilot CLI panes
-      # (docs/claude/herdr-sidebar-metadata.md) — genuine POSIX sh, excluded
-      # above for the same reason as the other config/ subdirectories.
+      # config/codex/hooks/ and config/copilot/hooks/ hold the Codex CLI /
+      # Copilot CLI hook adapters (the herdr sidebar metadata reporters that
+      # used to live here are Rust since #413, crates/herdr-agent-metadata),
+      # excluded above for the same reason as the other config/ subdirectories.
+      # The Stage 4d hooks/statusline removed from the selftest steps below
+      # (#413) run as `cargo test --workspace` in the nix.yml rust job.
       - name: ShellCheck Codex CLI hooks
         uses: ludeeus/action-shellcheck@2.0.0
         with:
@@ -174,7 +164,7 @@ jobs:
         run: |
           missing=0
           for f in $(grep -rl -- --selftest \
-              config/claude/hooks config/claude/statusline config/codex/hooks \
+              config/claude/hooks config/codex/hooks \
               config/copilot/hooks config/git/hooks config/claude/skills/*/scripts scripts); do
             if ! grep -qF -- "$f --selftest" .github/workflows/ci.yml; then
               echo "::error file=$f::has a --selftest dispatcher but ci.yml never runs it"
@@ -359,14 +349,6 @@ jobs:
       - name: copilot-plan-review output schema is valid JSON
         run: jq empty config/claude/assets/copilot-plan-review.schema.json
 
-      # The wrap-up inbox gate is deterministic shell + jq end to end: the
-      # degradation gates, the flock-guarded --add/--mark-filed mutations, and
-      # the --check-dup verdict (against a stub gh) are all exercised in a
-      # throwaway state dir, plus the SessionStart injection it pairs with
-      # (docs/claude/wrapup-inbox.md).
-      - name: wrapup-stop-gate.sh --selftest
-        run: bash ./config/claude/hooks/wrapup-stop-gate.sh --selftest
-
       # codex-plan-gate (ADR-0032 Amendment #531, docs/claude/
       # codex-plan-gate.md) is Codex's Stop-hook analogue of ExitPlanMode:
       # it detects a `<proposed_plan>` block in the prior assistant message
@@ -411,15 +393,6 @@ jobs:
       - name: venue-urls.sh --selftest
         run: bash ./config/claude/skills/venue-search/scripts/venue-urls.sh --selftest
 
-      # issue-index is deterministic shell + jq end to end against a stub gh:
-      # the git-only/binary-existence gates, the mine→all fallback with its
-      # asymmetric failure classification (R2-C-2: "whichever side was
-      # adopted" rather than "both failed"), incomplete_results handling
-      # (R2-C-1), title sanitization, and the PR-row status distinction are
-      # all exercised in a throwaway fixture repo (docs/claude/issue-index.md).
-      - name: issue-index.sh --selftest
-        run: bash ./config/claude/hooks/issue-index.sh --selftest
-
       # handoff.sh is deterministic shell + a stubbed gh end to end: labels-missing/
       # create-labels/block, including the issue number → id resolution the
       # dependencies API requires (docs/claude/handoff.md).
@@ -433,15 +406,6 @@ jobs:
       # placeholder fixtures built inline (docs/claude/claude-routines.md).
       - name: routines-plan.sh --selftest
         run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
-
-      # sign-prewarm is deterministic shell + a stubbed gpg end to end: the
-      # cwd-independent global-config gating, the field-15 on-disk/card/stub
-      # classification, the warm/cold branch, and the local-override
-      # regression (starting from a repo with commit.gpgsign=false locally
-      # must not suppress warming when the global value is enabled) are all
-      # exercised against a throwaway HOME (docs/claude/sign-prewarm.md).
-      - name: sign-prewarm.sh --selftest
-        run: bash ./config/claude/hooks/sign-prewarm.sh --selftest
 
       # gpg-subkey (absorbed from an archived private predecessor tool) is
       # exercised against real GnuPG operations in an isolated
@@ -616,15 +580,6 @@ jobs:
       - name: pr-confirm-guard.sh (codex adapter) --selftest
         run: bash ./config/codex/hooks/pr-confirm-guard.sh --selftest
 
-      # external-send-guard (docs/claude/external-send-guard.md) is
-      # deterministic bash + jq end to end against fixture MCP tool_input
-      # JSON — no gh/network involved. Covers the self-vs-external address
-      # match, cc/bcc leakage, reply's implicit-recipient deny, non-target
-      # tools (create_draft, get_thread), case-insensitive matching, and
-      # the fail-closed default when self.txt is absent.
-      - name: external-send-guard.sh --selftest
-        run: bash ./config/claude/hooks/external-send-guard.sh --selftest
-
       # adr-number.sh (ADR-380, docs/claude/adr-numbering.md) is
       # deterministic bash + jq end to end with gh/adr-number-check both
       # stubbed — no network involved. Covers the early-exit-without-draft
@@ -710,41 +665,6 @@ jobs:
       # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs
       # in that repo's own CI — this repo no longer carries the source, so
       # there is nothing to selftest here.
-
-      # claude-usage is not a Claude Code hook (herdr's tab_bar_right command
-      # runs it) but lives in config/claude/statusline/ alongside
-      # claude-statusline.sh, covered by the shellcheck step above.
-      # The selftest exercises label mapping over limits[], the burn-rate
-      # prediction (endpoint slope, min-span, reset-crossing), series reset on
-      # resets_at change / percent drop, and the token-never-leaks assertion —
-      # all against fixtures and a stubbed curl, without network or real
-      # credentials (docs/claude/claude-usage.md).
-      - name: claude-usage.sh --selftest
-        run: sh ./config/claude/statusline/claude-usage.sh --selftest
-
-      # The Claude and Codex Herdr metadata producers read their JSON payload
-      # through a shared parse_payload() shape.  They used to read a single-line
-      # `@tsv` row with one `read`, which silently collapsed consecutive tabs
-      # (a tab is IFS whitespace in POSIX) and shifted every field by one as
-      # soon as an optional field was empty — that is what killed $branch and
-      # $oshi on every Claude pane (#305).  Each selftest feeds synthetic
-      # payloads with missing/empty optional fields and asserts the
-      # field-to-variable mapping, so the regression cannot come back quietly.
-      - name: herdr-claude-metadata.sh --selftest
-        run: sh ./config/claude/hooks/herdr-claude-metadata.sh --selftest
-
-      - name: herdr-codex-metadata.sh --selftest
-        run: sh ./config/codex/hooks/herdr-codex-metadata.sh --selftest
-
-      # The Copilot producer gets its action from argv and its model from
-      # ~/.copilot/settings.json (no event/model in the payload), so its
-      # selftest covers the action filter, cwd extraction, settings read, and
-      # the worktree-name -> oshi-mark lookup instead.
-      - name: herdr-copilot-metadata.sh --selftest
-        run: sh ./config/copilot/hooks/herdr-copilot-metadata.sh --selftest
-
-      - name: claude-statusline.sh --selftest
-        run: sh ./config/claude/statusline/claude-statusline.sh --selftest
 
       # Build a fixture package so the dry-run really reads package metadata
       # with dpkg-deb.  Pointing --package at a path that does not exist made

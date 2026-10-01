@@ -65,7 +65,7 @@ plan-precedent-gate --check <file>
 `${CODEX_PLAN_GATE_MAX_BLOCKS:-4}` に達したら 1 回だけ
 `<sid>.escalated` を touch し、以後そのセッションは無条件で通す。
 
-`stop_hook_active` を見て即座に素通す設計(`wrapup-stop-gate.sh` 型)を
+`stop_hook_active` を見て即座に素通す設計(`wrapup-stop-gate` 型)を
 採らない理由も pr-gate.sh と同じ: block した直後の再呼び出しでも判定に
 到達させたい(素通しにすると「block → 続行 → 素通り」で1回も再検査され
 ない)。
