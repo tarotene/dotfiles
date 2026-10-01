@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "adr-number"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "agent-turn-log"
 version = "0.1.0"
 dependencies = [
