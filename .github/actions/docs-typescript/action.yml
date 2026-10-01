@@ -1,0 +1,86 @@
+name: 'API docs (TypeScript)'
+description: >-
+  TypeScript ライブラリ(package.json に exports / main / types を持つもの)の
+  API ドキュメントを TypeDoc で警告をエラー(`--treatWarningsAsErrors`)として
+  strict にビルドする(スタック標準の docs 必須化、ADR-0000 stack-standard-
+  api-docs)。composite action である理由と checkout の前提は docs-rust と同じ。
+
+  TypeDoc と TypeScript は、リポジトリ自身の node_modules ではなくこの action
+  が隔離ディレクトリに pin して入れる。リポジトリが TypeScript 7 系を使って
+  いると TypeDoc 0.28 は起動時に TypeError で落ちる(peerDependencies が
+  `5.0.x … 6.0.x`、fixture で実測)ため、リポジトリ側の TS バージョンに
+  strict の成否を依存させない。entry point は TypeDoc が package.json の
+  exports / main から推論する。
+
+inputs:
+  working-directory:
+    description: package.json があるディレクトリ
+    required: false
+    default: '.'
+  node-version:
+    description: setup-node に渡すバージョン
+    required: false
+    default: 'lts/*'
+  upload:
+    description: 成果物を workflow artifact として残すか('true' / 'false')
+    required: false
+    default: 'true'
+
+outputs:
+  site-dir:
+    description: Pages に載せる静的サイトのディレクトリ
+    value: ${{ steps.build.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # リポジトリの依存(型定義の解決に要る)をロックファイルどおりに入れる。
+    - name: Install project dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ -f pnpm-lock.yaml ]; then
+          corepack enable
+          pnpm install --frozen-lockfile
+        elif [ -f package-lock.json ]; then
+          npm ci
+        elif [ -f yarn.lock ]; then
+          corepack enable
+          yarn install --immutable
+        else
+          echo "no lockfile; skipping dependency install"
+        fi
+
+    # TYPEDOC_PIN / TYPESCRIPT_PIN: typedoc 0.28 の peer は typescript <= 6.0.x。
+    # 上げるときは両方を揃え、fixture(tests/docs-fixtures/typescript)で確認する。
+    - name: Install TypeDoc (isolated, pinned)
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools="${RUNNER_TEMP}/typedoc-tools"
+        mkdir -p "$tools"
+        (cd "$tools" && npm init -y >/dev/null && npm install --save-exact typedoc@0.28.20 typescript@6.0.3)
+        echo "TYPEDOC_BIN=$tools/node_modules/.bin/typedoc" >> "$GITHUB_ENV"
+
+    - name: Build docs (warnings are errors)
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        site="$PWD/.docs-site"
+        rm -rf "$site"
+        "$TYPEDOC_BIN" --treatWarningsAsErrors --out "$site"
+        echo "dir=$site" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      if: inputs.upload == 'true'
+      with:
+        name: docs-typescript
+        path: ${{ steps.build.outputs.dir }}
+        retention-days: 7

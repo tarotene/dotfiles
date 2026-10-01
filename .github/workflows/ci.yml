@@ -1032,6 +1032,102 @@ jobs:
           done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
           echo "rooted $i locally built paths"
 
+  # スタック標準の API doc ビルド必須化(ADR-0000 stack-standard-api-docs)。
+  # dotfiles 自身の Cargo workspace(crates/*)に docs-rust composite action
+  # を適用する — 全リポジトリへ強制する規則を、まずこのリポジトリ自身が
+  # 満たす。stack-position の heavy 判定は使わない(doc ビルドは軽く、
+  # stacked PR の中間段でも壊れた doc を検出したい)。
+  docs:
+    runs-on: ubuntu-latest
+    name: API docs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/docs-rust
+        with:
+          upload: 'false'
+
+  # docs-{rust,python,typescript} composite action 自体の回帰試験。
+  # `@main` 参照で全リポジトリへ即時に届くため、strict の基準を変える PR が
+  # 他リポジトリの CI を一斉に壊さないよう、tests/docs-fixtures の正常系が
+  # 成功し、壊したコピー(未解決リンク)が失敗することをここで固定する。
+  docs-actions:
+    runs-on: ubuntu-latest
+    name: Docs actions (fixtures)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # --- Rust ---
+      - name: Rust fixture builds
+        uses: ./.github/actions/docs-rust
+        with:
+          working-directory: tests/docs-fixtures/rust
+          upload: 'false'
+      - name: Rust fixture builds with docsrs cfg
+        uses: ./.github/actions/docs-rust
+        with:
+          working-directory: tests/docs-fixtures/rust
+          docsrs: 'true'
+          upload: 'false'
+      - name: Break the Rust fixture (unresolved intra-doc link)
+        run: |
+          # backticks below are literal rst/rustdoc syntax, not command substitution
+          # shellcheck disable=SC2016
+          sed -i 's|^pub fn add|/// See [`nope`].\npub fn add|' tests/docs-fixtures/rust/src/lib.rs
+      - name: Broken Rust fixture is rejected
+        id: rust_broken
+        continue-on-error: true
+        uses: ./.github/actions/docs-rust
+        with:
+          working-directory: tests/docs-fixtures/rust
+          upload: 'false'
+      - name: Assert the broken Rust fixture failed
+        env:
+          OUTCOME: ${{ steps.rust_broken.outcome }}
+        run: test "$OUTCOME" = failure
+
+      # --- Python ---
+      - name: Python fixture builds
+        uses: ./.github/actions/docs-python
+        with:
+          working-directory: tests/docs-fixtures/python
+          upload: 'false'
+      - name: Break the Python fixture (unresolved nitpicky reference)
+        run: |
+          # backticks below are literal rst/rustdoc syntax, not command substitution
+          # shellcheck disable=SC2016
+          sed -i 's|Add two numbers.|Add two numbers, see :py:func:`docs_fixture.nope`.|' tests/docs-fixtures/python/src/docs_fixture/__init__.py
+      - name: Broken Python fixture is rejected
+        id: python_broken
+        continue-on-error: true
+        uses: ./.github/actions/docs-python
+        with:
+          working-directory: tests/docs-fixtures/python
+          upload: 'false'
+      - name: Assert the broken Python fixture failed
+        env:
+          OUTCOME: ${{ steps.python_broken.outcome }}
+        run: test "$OUTCOME" = failure
+
+      # --- TypeScript ---
+      - name: TypeScript fixture builds
+        uses: ./.github/actions/docs-typescript
+        with:
+          working-directory: tests/docs-fixtures/typescript
+          upload: 'false'
+      - name: Break the TypeScript fixture (unresolved link)
+        run: sed -i 's|/\*\* Add two numbers. \*/|/** Add two numbers, see {@link nope}. */|' tests/docs-fixtures/typescript/src/index.ts
+      - name: Broken TypeScript fixture is rejected
+        id: typescript_broken
+        continue-on-error: true
+        uses: ./.github/actions/docs-typescript
+        with:
+          working-directory: tests/docs-fixtures/typescript
+          upload: 'false'
+      - name: Assert the broken TypeScript fixture failed
+        env:
+          OUTCOME: ${{ steps.typescript_broken.outcome }}
+        run: test "$OUTCOME" = failure
+
   # 集約 required check(ADR-591)。上の job を1つでも追加・削除したら
   # needs: をここで同期させること — workflow-naming-check(tarotene/
   # dotfiles 自身の composite action 経由、この PR で新規配線)が
@@ -1039,7 +1135,7 @@ jobs:
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
-    needs: [gitleaks, shellcheck, dry-run, stack-position, flake-check, rust, build-host]
+    needs: [gitleaks, shellcheck, dry-run, stack-position, flake-check, rust, build-host, docs, docs-actions]
     if: always()
     steps:
       - name: Fail if any required job failed or was cancelled

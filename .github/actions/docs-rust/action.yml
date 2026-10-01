@@ -1,0 +1,119 @@
+name: 'API docs (Rust)'
+description: >-
+  Rust workspace の API ドキュメントを警告をエラーとして strict にビルドし、
+  doctest も実行する(スタック標準の docs 必須化、ADR-0000 stack-standard-
+  api-docs)。ADR-591 D3(pr-title と同じ理由)により reusable workflow では
+  なく composite action にしている — 呼び出し側 job の `name:` だけが required
+  check の context になり、連結名の不一致事故が構造的に起きない。strict の
+  基準(-D warnings)はこの action が単一正本で、呼び出し側リポジトリは緩め
+  られない。
+
+  呼び出し側は先に actions/checkout を実行しておくこと(この action は checkout
+  しない — 対象リポジトリのソースが要るため)。成果物は `site-dir` 出力(Pages
+  deploy 用)と workflow artifact(`upload: true` のとき)の両方で残る。
+
+inputs:
+  working-directory:
+    description: Cargo workspace のルート(リポジトリ直下でなければ指定する)
+    required: false
+    default: '.'
+  docsrs:
+    description: >-
+      'true' のとき nightly で `--cfg docsrs` を付けてビルドする。docs.rs が
+      [package.metadata.docs.rs] 付きで走らせる条件を再現するための opt-in
+      (`#![cfg_attr(docsrs, feature(doc_cfg))]` のような nightly 専用機能を
+      使う crate 向け)。既定は stable。
+    required: false
+    default: 'false'
+  upload:
+    description: 成果物を workflow artifact として残すか('true' / 'false')
+    required: false
+    default: 'true'
+
+outputs:
+  site-dir:
+    description: Pages に載せる静的サイトのディレクトリ(クレート一覧の index.html 付き)
+    value: ${{ steps.site.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      with:
+        workspaces: ${{ inputs.working-directory }}
+
+    - name: Select toolchain
+      id: toolchain
+      shell: bash
+      env:
+        DOCSRS: ${{ inputs.docsrs }}
+      run: |
+        set -euo pipefail
+        if [ "$DOCSRS" = "true" ]; then
+          rustup toolchain install nightly --profile minimal
+          echo "cargo=cargo +nightly" >> "$GITHUB_OUTPUT"
+          echo "flags=--cfg docsrs -D warnings" >> "$GITHUB_OUTPUT"
+        else
+          echo "cargo=cargo" >> "$GITHUB_OUTPUT"
+          echo "flags=-D warnings" >> "$GITHUB_OUTPUT"
+        fi
+
+    # 警告をエラー扱い(broken_intra_doc_links / invalid_html_tags / bare_urls
+    # など rustdoc の既定 warn lint が全て error になる。The rustdoc book
+    # "Lints", https://doc.rust-lang.org/rustdoc/lints.html)。カバレッジ
+    # (missing_docs)は要求しない — 各リポジトリの lint 設定に任せる。
+    - name: cargo doc (warnings are errors)
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RUSTDOCFLAGS: ${{ steps.toolchain.outputs.flags }}
+        CARGO: ${{ steps.toolchain.outputs.cargo }}
+      run: |
+        set -euo pipefail
+        $CARGO doc --no-deps --workspace
+
+    # lib ターゲットが無い workspace(bin のみ)では `cargo test --doc` が
+    # "no library targets found" で失敗するため、lib の有無で分岐する。
+    - name: cargo test --doc
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CARGO: ${{ steps.toolchain.outputs.cargo }}
+      run: |
+        set -euo pipefail
+        if cargo metadata --no-deps --format-version 1 \
+          | jq -e '[.packages[].targets[] | select(.kind | index("lib"))] | length > 0' >/dev/null; then
+          $CARGO test --doc --workspace
+        else
+          echo "no library targets; skipping doctests"
+        fi
+
+    # rustdoc はワークスペース直下に index.html を作らない(クレートごとの
+    # ディレクトリだけ)。Pages に載せられるよう、クレート一覧の index を
+    # 生成する。
+    - name: Assemble site
+      id: site
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        target_dir="$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)"
+        site="$PWD/.docs-site"
+        rm -rf "$site"
+        cp -r "$target_dir/doc" "$site"
+        {
+          echo '<!doctype html><meta charset="utf-8"><title>API docs</title><ul>'
+          for d in "$site"/*/; do
+            name="$(basename "$d")"
+            [ -f "$d/index.html" ] && echo "<li><a href=\"$name/index.html\">$name</a></li>"
+          done
+          echo '</ul>'
+        } > "$site/index.html"
+        echo "dir=$site" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      if: inputs.upload == 'true'
+      with:
+        name: docs-rust
+        path: ${{ steps.site.outputs.dir }}
+        retention-days: 7

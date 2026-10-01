@@ -1,0 +1,62 @@
+name: Docs link check
+
+# 生成した API ドキュメントとリポジトリの Markdown の外部リンクを、週次で
+# lychee で検査する(ADR-0000 stack-standard-api-docs D8)。
+#
+# 必須チェックにしない — 外部サイトの一時的な不調で PR が赤くなるのを避ける
+# ため、PR ゲートではなく cron で回し、壊れたリンクが見つかったときだけ Issue
+# に起票(既に open なら追記)する。内部リンクは ci.yml の docs job が
+# strict ビルド(-D warnings / sphinx -W / TypeDoc --treatWarningsAsErrors)
+# で既に検出する。
+#
+# lychee-action の運用(cron + --cache --max-cache-age 1d で、再実行時の
+# 無駄な再取得とレート制限を避ける)は upstream の README に従う:
+# https://github.com/lycheeverse/lychee-action
+#
+# 使うときは `__DOCS_ACTION__` を docs-rust / docs-python / docs-typescript の
+# いずれかに置換する。
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linkcheck:
+    name: Link check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - id: docs
+        uses: tarotene/dotfiles/.github/actions/__DOCS_ACTION__@main
+        with:
+          upload: 'false'
+
+      - id: lychee
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: >-
+            --no-progress --cache --max-cache-age 1d --exclude-mail
+            --format markdown --output lychee-report.md
+            '${{ steps.docs.outputs.site-dir }}' './**/*.md'
+          fail: false
+
+      - name: File or update the broken-link issue
+        if: steps.lychee.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="docs: broken external links"
+          existing="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file lychee-report.md
+          else
+            gh issue create --title "$title" --body-file lychee-report.md
+          fi

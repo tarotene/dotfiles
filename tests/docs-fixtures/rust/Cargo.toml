@@ -1,0 +1,8 @@
+[package]
+name = "docs-fixture"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# 親の Cargo workspace(crates/*)に取り込まれないようにする。
+[workspace]

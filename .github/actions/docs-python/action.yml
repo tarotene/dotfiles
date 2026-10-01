@@ -1,0 +1,94 @@
+name: 'API docs (Python)'
+description: >-
+  Python パッケージの API ドキュメントを Sphinx + autodoc で警告をエラー
+  (`-W -n`)として strict にビルドし、doctest も実行する(スタック標準の docs
+  必須化、ADR-0000 stack-standard-api-docs)。composite action である理由と
+  checkout の前提は docs-rust と同じ。
+
+  `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を
+  生成する(リポジトリ側に Sphinx の設定を強要しない)。生成した conf.py は
+  `doctest_global_setup` でパッケージを import する — sphinx.ext.doctest は
+  autodoc 対象モジュールを自動 import しないため、これが無いと docstring の
+  doctest が NameError で落ちる(fixture で実測)。
+
+inputs:
+  working-directory:
+    description: pyproject.toml があるディレクトリ
+    required: false
+    default: '.'
+  package-dir:
+    description: >-
+      sphinx-apidoc に渡すパッケージのディレクトリ。空なら `src/<pkg>`、無ければ
+      直下の `__init__.py` を持つディレクトリを自動検出する。
+    required: false
+    default: ''
+  python-version:
+    description: setup-python に渡すバージョン
+    required: false
+    default: '3.x'
+  upload:
+    description: 成果物を workflow artifact として残すか('true' / 'false')
+    required: false
+    default: 'true'
+
+outputs:
+  site-dir:
+    description: Pages に載せる静的サイトのディレクトリ
+    value: ${{ steps.build.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install project and Sphinx
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        python -m pip install --quiet "sphinx==9.1.0" # SPHINX_PIN: bump together with docs-python fixtures
+        python -m pip install --quiet -e .
+
+    - name: Build docs (warnings are errors) and run doctests
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGE_DIR: ${{ inputs.package-dir }}
+      run: |
+        set -euo pipefail
+        src="docs"
+        if [ ! -f docs/conf.py ]; then
+          pkg="$PACKAGE_DIR"
+          if [ -z "$pkg" ]; then
+            if [ -d src ]; then
+              pkg="$(find src -mindepth 2 -maxdepth 2 -name __init__.py -printf '%h\n' | sort | head -n1)"
+            else
+              pkg="$(find . -mindepth 2 -maxdepth 2 -name __init__.py -not -path './.*' -printf '%h\n' | sort | head -n1)"
+            fi
+          fi
+          if [ -z "$pkg" ] || [ ! -d "$pkg" ]; then
+            echo "::error::package directory not found; set the package-dir input" >&2
+            exit 1
+          fi
+          src=".docs-gen"
+          rm -rf "$src"
+          name="$(basename "$pkg")"
+          sphinx-apidoc --full --ext-doctest -H "$name" -A "$name" -o "$src" "$pkg"
+          printf '\ndoctest_global_setup = "from %s import *"\n' "$name" >> "$src/conf.py"
+        fi
+        site="$PWD/.docs-site"
+        rm -rf "$site"
+        # -W: 警告をエラー、-n: nitpicky(未解決参照を警告にする)。
+        sphinx-build -W -n -b html "$src" "$site"
+        sphinx-build -W -b doctest "$src" "$PWD/.docs-doctest"
+        echo "dir=$site" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      if: inputs.upload == 'true'
+      with:
+        name: docs-python
+        path: ${{ steps.build.outputs.dir }}
+        retention-days: 7
