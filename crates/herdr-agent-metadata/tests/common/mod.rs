@@ -19,7 +19,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-pub const DEFAULT_ORACLE: &str = "bash";
+pub const DEFAULT_ORACLE: &str = "rust";
 
 pub const PANE: &str = "pane-1";
 
