@@ -161,7 +161,7 @@ settings.json 側の hook timeout(120)に到達すると Claude Code がプロ�
 
 すべて exit 0(SessionStart は exit 2 でもブロックできない)。additionalContext は
 一切出さない——この hook は副作用(キャッシュを温める)だけが目的で、承認フローや
-コンテキストに干渉しない(`plan-view.sh` と同じ「表示/副作用専用ツールは無音で
+コンテキストに干渉しない(`plan-view` と同じ「表示/副作用専用ツールは無音で
 exit 0」という設計)。
 
 | 分類 | 条件 | 挙動 |

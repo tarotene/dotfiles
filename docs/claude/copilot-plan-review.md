@@ -1,7 +1,7 @@
 # プランレビューは critic を黙らせるのではなく、受入基準で閉じる
 
 Claude Code の plan mode で書いたプランを、Approve 直前に GitHub Copilot CLI が
-自動レビューする仕組みの設計記録。実装は `config/claude/hooks/copilot-plan-review.sh` と
+自動レビューする仕組みの設計記録。実装は `crates/copilot-plan-review` と
 `config/claude/assets/copilot-plan-review.schema.json`、read-only custom agent は
 `config/copilot/agents/plan-reviewer.agent.md`、デプロイは `home/modules/claude.nix`。
 
@@ -355,9 +355,9 @@ GitHub Copilot CLI には Codex の `exec --output-schema` に相当する、モ
 特定の JSON スキーマに強制する機構が無い。そこで:
 
 - `copilot-plan-review.schema.json` は**契約文書**として残す。プロンプト
-  (`config/claude/hooks/copilot-plan-review.sh` の `prompt_preamble`)にも同じ形を
+  (`crates/copilot-plan-review/src/prompts.rs` の `PREAMBLE`)にも同じ形を
   インラインで明記し、モデルに直接守らせる。
-- 実際の検証は hook 内の `CRITIC_SCHEMA_JQ`(jq)が行う。top-level keys の完全一致
+- 実際の検証は hook 内の critic スキーマ検証(bash 版の `CRITIC_SCHEMA_JQ` を写した `crates/copilot-plan-review/src/judge.rs` の `valid_critic`)が行う。top-level keys の完全一致
   (`readiness` / `findings` / `carryover` 以外を許さない)、`readiness` の 4 boolean、
   `findings` / `carryover` の各要素の必須キー・型・enum・想定外キー禁止を検証する。
 - コードフェンス付き応答(`` ```json ... ``` ``)や末尾に説明文が付いた応答は、
@@ -438,7 +438,7 @@ redaction は入れていない。プラン本文の任意テキストから秘�
 ### 自己検査
 
 ```bash
-bash config/claude/hooks/copilot-plan-review.sh --selftest
+nix develop --command cargo test -p copilot-plan-review
 ```
 
 judge を fixture で回し、hook 経路を偽 copilot(実機の 1.0.82 の引数形(1.0.83 でも
@@ -529,7 +529,7 @@ critic は起動せずラウンド state にも触れない。sibling 不在・t
   最終応答は `--silent` 付きの通常出力(stdout)から取る。
 - **Copilot CLI には `--output-schema` に相当する機構が無い。** 最終応答の形式は
   プロンプトで指示するだけで、CLI 側の強制力は無い。だから
-  `copilot-plan-review.sh` の `CRITIC_SCHEMA_JQ` が hook 側の唯一の構造ゲートに
+  `copilot-plan-review` の critic スキーマ検証(旧 `CRITIC_SCHEMA_JQ`)が hook 側の唯一の構造ゲートに
   なっている(「Copilot への移行」節)。
 - `copilot -p` は非 TTY で待ち続ける可能性があるため `</dev/null` を維持する
   （Codex 時代からの既知バグ対策を踏襲）。

@@ -12,7 +12,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 または `先行例なし:` と探した範囲)で書く。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。書式は precedent-grounding
 スキルに従い、**ExitPlanMode を呼ぶ前に
-`~/.claude/hooks/plan-precedent-gate.sh --check <プランファイル>` で
+`~/.claude/hooks/plan-precedent-gate --check <プランファイル>` で
 自己検査して指摘ゼロを確認する**(gate の deny 往復を待たない)。
 
 各 `Dn` には、上記に加えて `軸:`(`表現不可能` / `還元` / `検出のみ` の
@@ -20,7 +20,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 先進性の順で決める」節に対応)を書く。技術・仕組みの選択を含む `Dn` で、
 外部依存の新設・置換・撤去、または撤収コストが導入コストを上回るときは
 `本命:`/`対抗馬:`/`外した候補:` も書く。書式は selection-grounding
-スキルに従い、自己検査は同じ `plan-precedent-gate.sh --check` コマンド
+スキルに従い、自己検査は同じ `plan-precedent-gate --check` コマンド
 1 本でまとめて行う(新しい gate は呼ばない)。
 
 ## フィードバックの Issue 化(auto memory 固有の配線)
@@ -55,7 +55,7 @@ gate に当たる前に自発的に執行点を含めること — gate は漏�
 計画冒頭に `## 要求インベントリ` を置き、依頼文と参照 Issue の子項目を
 逐語で 1 行 1 項目・`R1..Rn` の ID 付きで列挙してから設計に入る。列挙は
 本線で行う(Plan/Explore サブエージェントは CLAUDE.md を読み飛ばす)。
-ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate.sh --check-plan
+ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check-plan
 <プランファイル>` で節内整合性(処分・タグ)を自己検査する。実装中に
 見つかった隣接負債は AskUserQuestion で stack か wrap-up inbox かを聞く。
 手順は scope-inventory スキルに従う。
@@ -79,7 +79,7 @@ PR 本文に未チェックの task list を残さない・人の確認を後続
 
 - `既存手段:` 行は `## 先行例との対比` 節の重い欄(`本命:`/`対抗馬:`)を
   持つ `Dn` に必須(precedent-grounding / selection-grounding スキル
-  参照)。自己検査は同じ `plan-precedent-gate.sh --check` コマンド
+  参照)。自己検査は同じ `plan-precedent-gate --check` コマンド
   1 本でまとめて行う(新しい gate は呼ばない)。
 - 新しい道具・単位(shebang 付き新規ファイル、`bin/scripts/hooks/cmd`
   配下の新規ファイル、パッケージマニフェストの新設)を Write する前

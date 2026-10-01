@@ -18,9 +18,35 @@ pub fn plan_text(input: &HookInput) -> Option<String> {
 
 /// [`plan_text`] の plans ディレクトリを注入可能にした版(テスト用)。
 pub fn plan_text_in(input: &HookInput, plans_dir: Option<&Path>) -> Option<String> {
+    match plan_source_in(input, plans_dir)? {
+        PlanSource::Inline(t) => Some(t),
+        PlanSource::File(p) => fs::read_to_string(p).ok(),
+    }
+}
+
+/// plan 本文の出どころ。本文そのものではなく**ファイルのパス**を別プロセスに
+/// 渡す hook(`copilot-plan-review` は critic にパスを読ませる)が使う。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanSource {
+    /// `tool_input.plan`(非空)。
+    Inline(String),
+    /// `tool_input.planFilePath`(実在するファイル)か、最新の `plans/*.md`。
+    File(PathBuf),
+}
+
+/// [`plan_text`] と同じ 3 段フォールバックで、本文の出どころを返す。
+pub fn plan_source(input: &HookInput) -> Option<PlanSource> {
+    let plans_dir = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude/plans"));
+    plan_source_in(input, plans_dir.as_deref())
+}
+
+/// [`plan_source`] の plans ディレクトリを注入可能にした版(テスト用)。
+pub fn plan_source_in(input: &HookInput, plans_dir: Option<&Path>) -> Option<PlanSource> {
     if let Some(t) = input.tool_input.get("plan").and_then(|v| v.as_str()) {
-        if !t.is_empty() {
-            return Some(t.to_string());
+        // bash 版は `$(jq -r '.tool_input.plan // empty')` で取っていたため、
+        // 末尾の改行は落ちる — 改行だけの本文は空として次の段へ落とす。
+        if !t.trim_end_matches('\n').is_empty() {
+            return Some(PlanSource::Inline(t.to_string()));
         }
     }
     if let Some(p) = input
@@ -29,14 +55,11 @@ pub fn plan_text_in(input: &HookInput, plans_dir: Option<&Path>) -> Option<Strin
         .and_then(|v| v.as_str())
     {
         let p = Path::new(p);
-        if !p.as_os_str().is_empty() && p.is_file() {
-            if let Ok(s) = fs::read_to_string(p) {
-                return Some(s);
-            }
+        if !p.as_os_str().is_empty() && p.is_file() && fs::read_to_string(p).is_ok() {
+            return Some(PlanSource::File(p.to_path_buf()));
         }
     }
-    let latest = latest_markdown(plans_dir?)?;
-    fs::read_to_string(latest).ok()
+    latest_markdown(plans_dir?).map(PlanSource::File)
 }
 
 /// `ls -t dir/*.md | head -1` 相当: 更新時刻が最新の `.md`。
@@ -98,6 +121,35 @@ mod tests {
             .unwrap();
         let i = input(json!({"planFilePath":"/nonexistent"}));
         assert_eq!(plan_text_in(&i, Some(d.path())).as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn source_variants() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("p.md");
+        fs::write(&f, "x").unwrap();
+        assert_eq!(
+            plan_source_in(&input(json!({"plan":"inline"})), None),
+            Some(PlanSource::Inline("inline".into()))
+        );
+        assert_eq!(
+            plan_source_in(&input(json!({"plan":"","planFilePath": f})), None),
+            Some(PlanSource::File(f.clone()))
+        );
+        assert_eq!(
+            plan_source_in(&input(json!({})), Some(d.path())),
+            Some(PlanSource::File(f))
+        );
+        assert_eq!(plan_source_in(&input(json!({})), None), None);
+    }
+
+    #[test]
+    fn newline_only_plan_is_empty() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("p.md");
+        fs::write(&f, "from-file").unwrap();
+        let i = input(json!({"plan":"\n\n","planFilePath": f}));
+        assert_eq!(plan_text_in(&i, None).as_deref(), Some("from-file"));
     }
 
     #[test]

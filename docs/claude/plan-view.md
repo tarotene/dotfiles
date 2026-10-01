@@ -7,7 +7,7 @@ repo のプランは 1 万字前後（`~/.claude/plans/` の実測で 161 本、
 
 | 部品 | 役割 |
 |------|------|
-| `config/claude/hooks/plan-view.sh` | hook / CLI / `--selftest` を兼ねる 1 本 |
+| `crates/plan-view` | hook / CLI を兼ねる 1 本(旧 `--selftest` のケースは `tests/cli.rs`) |
 | `config/claude/assets/plan-view.css` | 見た目。pandoc の `--include-in-header` に `<style>` で包んで渡される |
 | `config/claude/commands/plan-view.md` | `/plan-view`（執筆中のプランを手動で飛ばす） |
 | `~/.local/bin/plan-view` | hook を持たないエージェント・素のシェルからの入口 |
@@ -154,7 +154,7 @@ pandoc は skylighting の CSS を一切出さず、テストが空振りする�
 
 ## プラン本文とタイトル
 
-本文の取得は既存 `copilot-plan-review.sh` と同じ 3 段:
+本文の取得は既存 `copilot-plan-review` と同じ 3 段:
 
 1. `tool_input.plan`
 2. `tool_input.planFilePath`
@@ -229,8 +229,7 @@ selftest は `PLAN_VIEW_UNAME_OVERRIDE=Darwin` で実機非依存に darwin 分�
 ## 検証
 
 ```bash
-bash config/claude/hooks/plan-view.sh --selftest
-shellcheck -e SC1091 -S error config/claude/hooks/plan-view.sh
+nix develop --command cargo test -p plan-view
 nix flake check
 nix build .#homeConfigurations."$(hostname)".activationPackage --no-link
 home-manager switch --flake .#"$(hostname)" -b backup

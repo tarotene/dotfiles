@@ -656,7 +656,7 @@ STUB
   check "feedback: stamp 未設定・空 inbox は素通り" 0 "$rc"
 
   # --stamp-feedback-session でスタンプを打ち、既存メモリより確実に古くなる
-  # よう 1 時間前にバックデートする(sleep を避ける、plan-view.sh の
+  # よう 1 時間前にバックデートする(sleep を避ける、plan-view の
   # `touch -d '40 days ago'` と同じ型)
   bash "$self" --stamp-feedback-session "fbsid"
   # feedback_stamp_file() はスクリプト先頭で一度だけ評価される

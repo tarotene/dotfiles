@@ -34,7 +34,7 @@ Code 固有」。例えば stacked PR(ADR-0027)は「同一セッションの複
 `G_stack`(Stop block)という具体的な強制手段は Claude Code の hook
 イベントに紐づく実装であり、Codex/Copilot に対応する adapter は存在
 しない。同様に Plan mode の `## 先行例との対比` 節の書式や
-`plan-precedent-gate.sh` の自己検査は ExitPlanMode という Claude Code
+`plan-precedent-gate` の自己検査は ExitPlanMode という Claude Code
 専用ツールに紐づく。
 
 この分割線に従い、以下は共有 AGENTS.md 側に移した:

@@ -22,8 +22,8 @@ selection-grounding スキル(`~/.agents/skills/`)に従う。
 ためのもので、一次的な手段ではない):
 
 ```
-bash ~/.claude/hooks/plan-precedent-gate.sh --check <このターンで書いたPlan本文のファイル>
-bash ~/.claude/hooks/plan-scope-gate.sh --check-plan <同上>
+~/.claude/hooks/plan-precedent-gate --check <このターンで書いたPlan本文のファイル>
+~/.claude/hooks/plan-scope-gate --check-plan <同上>
 ```
 
 ### PR 運用(セッション内チェーン・完了定義)

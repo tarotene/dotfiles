@@ -8,7 +8,7 @@ Plan して走らせ、終わったら次を Exit Plan する、という一種�
 
 既存の鮮度担保は [`worktree-fresh-base.sh`](worktree-fresh-base.md)
 (SessionStart 限定の pristine ff-only 追従)のみで、長い Plan セッション中
-の drift はノーガードだった。この hook(`config/claude/hooks/plan-fresh-gate.sh`,
+の drift はノーガードだった。この hook(`crates/plan-fresh-gate`,
 PreToolUse / ExitPlanMode)はプラン承認の直前でその隙間を塞ぐ。
 
 ## 判定は 2 段
@@ -96,7 +96,7 @@ Claude Code のみ。Codex CLI / Copilot CLI には Plan モード / ExitPlanMod
   `PreToolUse`(matcher: `ExitPlanMode`)に登録する。plan-review / plan-view
   / plan-scope-gate / plan-precedent-gate と同じ matcher に 5 つ目のエント
   リとして並ぶ(並列実行、順序は保証されない)。
-- 自己検査: `plan-fresh-gate.sh --selftest`(10 ケース: pristine+交差あり →
+- 自己検査: `nix develop --command cargo test -p plan-fresh-gate`(旧 `--selftest` の 10 ケース: pristine+交差あり →
   ff+deny+state 記録 / pristine+交差なし → ff+allow / dirty+交差あり →
   未ff+deny / deny 後の同一 SHA 収束 / deny 後に base がさらに進んだ増分再
   deny / behind==0 / branch==base / basename のみ一致 / origin/HEAD 未設定

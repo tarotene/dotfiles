@@ -69,14 +69,14 @@ hook のその契約に完全に乗っかり、hook 自体には一切手を入�
 ### なぜ triage 専用の検査器を新設しないか
 
 `## 要求インベントリ` 形式で書いた triage 結果は、既存の
-`config/claude/hooks/plan-scope-gate.sh` にそのまま検査させる。この hook は
+`crates/plan-scope-gate` にそのまま検査させる。この hook は
 本来「依頼の要求項目」を入れる器として作られたもので、「open Issue 全件」を
 入れる使い方は前例がないが、閉じたタグ集合(`Blocked-Upstream` /
 `Obsolete` / `User-Excluded`)と「全項目が段またはタグを 1 つ持つ」という
 節内整合性の検査そのものは、母集団が「依頼の要求項目」であろうと
 「open Issue 全件」であろうと変わらない。
 
-- **本命**: 既存 `plan-scope-gate.sh` を `## 要求インベントリ` 形式のまま
+- **本命**: 既存 `plan-scope-gate` を `## 要求インベントリ` 形式のまま
   再利用する。検査器は増えず、閉語彙の正本は 1 つのまま。
 - **対抗馬**: wrapup 専用検査器(例 `wrapup-triage-check.sh`)を新設し、
   `Blocked-Dependency: #N` や `Tracking-Parent:` のような、wrapup の文脈に
@@ -138,7 +138,7 @@ title / detail をそのまま列挙することで監査可能性を担保し�
   兼ねる。**`ExitPlanMode` 以降は項目ごとの確認を一切挟まず**、全段の PR
   作成まで進む(このスキルの存在理由は変わらない — 毎回止まるならスキル化
   する意味がない)。Plan 提示前に、母集団全件が `## 要求インベントリ` に
-  1 回ずつ現れ処分を持っていることを `plan-scope-gate.sh` で自己検査する
+  1 回ずつ現れ処分を持っていることを `plan-scope-gate` で自己検査する
   (発見漏れゼロ)。
 - 裁定で「今回は除外」または「今回対象外」と決まった項目にはそれ以上手を
   付けない。inbox 行は次回セッションの通常の Stop ゲートフローに委ね、

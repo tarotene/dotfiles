@@ -31,7 +31,7 @@
 # PascalCase event names so it receives Claude's snake_case payload with
 # `hook_event_name` (GitHub Docs, "GitHub Copilot Hooks Reference", retrieved
 # 2026-10-01). Codex's payload carries `turn_id` rather than `prompt_id`; both
-# are read. AGENT_TURN_LOG=0 makes this a no-op — set by copilot-plan-review.sh
+# are read. AGENT_TURN_LOG=0 makes this a no-op — set by copilot-plan-review
 # when it launches Copilot, because those runs are machine-started and not the
 # owner's work (about four in five Copilot sessions on the owner's host).
 set -uo pipefail

@@ -489,7 +489,7 @@ kizon_re_escape() {
 
 # $1=strip_code_spans 済み本文 $2=path ; 完全一致に近い形で `既存手段:` 行を
 # 探す(前後を空白+ダッシュで区切ることで、他パスの接頭辞への誤マッチを防ぐ
-# — plan-precedent-gate.sh の CITATION_RE と同じダッシュ種の許容)。
+# — plan-precedent-gate の CITATION_RE と同じダッシュ種の許容)。
 body_has_kizon_for() {
   local esc
   esc="$(kizon_re_escape "$2")"

@@ -1,15 +1,15 @@
 # codex-plan-gate — Codex CLI の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook
 
-判定エンジン: `config/claude/hooks/plan-scope-gate.sh` / `plan-precedent-gate.sh`(再利用、新規ロジックなし)
+判定エンジン: `crates/plan-scope-gate` / `plan-precedent-gate`(再利用、新規ロジックなし)
 adapter: `config/codex/hooks/codex-plan-gate.sh`
 決定: `docs/adr/0032-global-agent-instructions-canon.md` の Amendment(#531)
-Claude 側の対: `config/claude/hooks/plan-scope-gate.sh` / `plan-precedent-gate.sh`(ExitPlanMode の PreToolUse hook)
+Claude 側の対: `crates/plan-scope-gate` / `plan-precedent-gate`(ExitPlanMode の PreToolUse hook)
 無限 block 対策の型: `config/claude/hooks/pr-gate.sh`(同じ escalate カウンタ設計)
 
 ## なぜ必要だったか
 
 ADR-0032 の Decision 4 は「Plan の `## 先行例との対比` 節の書式、
-`plan-precedent-gate.sh` / `plan-scope-gate.sh` の自己検査手順は Claude
+`plan-precedent-gate` / `plan-scope-gate` の自己検査手順は Claude
 Code の Plan Mode / hook に固有の運用のため、Codex/Copilot にこれらの
 adapter は存在しない」と明示的に据え置いていた。
 
@@ -22,7 +22,7 @@ Codex 週の間 Plan の要求インベントリ・先行例接地チェック�
 ## Codex に ExitPlanMode という執行点は無い
 
 Claude Code の Plan mode は `ExitPlanMode` という明示的なツールコールで
-終わり、そこに PreToolUse hook(`plan-scope-gate.sh` 等)を挟める。Codex
+終わり、そこに PreToolUse hook(`plan-scope-gate` 等)を挟める。Codex
 CLI の Plan mode(TUI バイナリの文字列リテラルで確認: 「Plan Mode
 (Conversational)」)にはこれに相当するツールコールが無く、モデルは応答
 本文に `<proposed_plan>...</proposed_plan>` ブロックを埋め込むだけで
@@ -41,19 +41,19 @@ hook として実装し、直前の応答(`last_assistant_message`)から
 書き出し、既存の
 
 ```
-plan-scope-gate.sh --check-plan <file>
-plan-precedent-gate.sh --check <file>
+plan-scope-gate --check-plan <file>
+plan-precedent-gate --check <file>
 ```
 
 をそのまま呼ぶだけで、新しい判定ロジックは一切持たない。両方が exit 0
 (「OK: ...」)なら無出力で通す。どちらかが非 0(指摘あり)なら、両方の
 出力を連結して `{"decision":"block","reason":"..."}` を返す。
 
-`plan-fresh-gate.sh`(worktree の drift 検査)は今回の対象外 — 入力が
+`plan-fresh-gate`(worktree の drift 検査)は今回の対象外 — 入力が
 プラン参照ファイルの一覧など Claude Code の worktree 運用に依存する部分が
 大きく、SessionStart の `worktree-fresh-base.sh`(Codex にも段2で展開済み)
-がカバーする範囲で足りると判断した。`plan-view.sh`(Chrome 表示)・
-`copilot-plan-review.sh`(Copilot 批評)は元々ブラウザ操作/別 CLI 呼び出し
+がカバーする範囲で足りると判断した。`plan-view`(Chrome 表示)・
+`copilot-plan-review`(Copilot 批評)は元々ブラウザ操作/別 CLI 呼び出し
 を伴い、Codex 週の premium request/ブラウザ操作を増やさないため対象外の
 まま(ADR-0032 Amendment 参照)。
 
@@ -79,7 +79,7 @@ plan-precedent-gate.sh --check <file>
 
 ADR-0005 の binary-existence gating に倣い、次はすべて黙って exit 0(判定
 不能を deny に変えない):
-`jq` 不在 / `plan-scope-gate.sh`・`plan-precedent-gate.sh` が実行可能でない /
+`jq` 不在 / `plan-scope-gate`・`plan-precedent-gate` が実行可能でない /
 `hook_event_name != "Stop"` / `last_assistant_message` が空 /
 `<proposed_plan>` タグが無い。
 

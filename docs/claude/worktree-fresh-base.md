@@ -39,7 +39,7 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 実測(2026-09-23)時点で 2 クラスタ・計 6 箇所:
 
 - **byte-identical(4 箇所)**: `crates/worktree-fresh-base`、
-  `config/claude/hooks/plan-fresh-gate.sh`、`config/claude/hooks/pr-gate.sh`、
+  `crates/plan-fresh-gate`、`config/claude/hooks/pr-gate.sh`、
   `crates/git-checkout-freshness`。いずれも
   `git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD` を素の
   `${ref#origin/}` で剥がすだけの実装。
@@ -91,7 +91,7 @@ user timer で定期 fetch + ff-only pull する)案は、全リポジトリへ�
 という別議論が要るため、この hook のスコープには含めない。
 
 長い Plan セッション中の drift(この hook は SessionStart 限定なので対象外)
-は `plan-fresh-gate.sh`(PreToolUse / ExitPlanMode)が別途担う。移動条件
+は `plan-fresh-gate`(PreToolUse / ExitPlanMode)が別途担う。移動条件
 (pristine 5 条件 + ff-only)はこの hook と同じだが、移動できない場合でも
 deny 判定は独立に行う点が異なる。詳細は
 [`docs/claude/plan-fresh-gate.md`](plan-fresh-gate.md)。

@@ -6,15 +6,15 @@
 設計記録。決定は `docs/adr/0035-selection-grounding.md`。実装は
 `config/agents/AGENTS.md`(規律の短文)、`config/claude/CLAUDE.md`
 (形式検査の配線)、`config/claude/skills/selection-grounding/SKILL.md`
-(書き方)、`config/claude/hooks/plan-precedent-gate.sh`(形式検査、
-既存 gate への加算)、`config/claude/hooks/copilot-plan-review.sh` の
+(書き方)、`crates/plan-precedent-gate`(形式検査、
+既存 gate への加算)、`crates/copilot-plan-review` の
 lens A(監査項目の追加)。
 
 ## なぜ独立した plan 節・独立した gate にしなかったか
 
 `## 技術選定` という新しい節と専用の `plan-tech-gate.sh` を作る案を最初に
-検討したが、`ExitPlanMode` の gate はすでに `plan-scope-gate.sh`・
-`plan-precedent-gate.sh`・`plan-fresh-gate.sh` の 3 本があり、4 本目を
+検討したが、`ExitPlanMode` の gate はすでに `plan-scope-gate`・
+`plan-precedent-gate`・`plan-fresh-gate` の 3 本があり、4 本目を
 建てることは本設計自身の軸 2(還元性: その仕組みは、より安い手段では
 担えない仕事をしているか)に反する。技術選定の判断は precedent-grounding
 が拾う設計判断の部分集合(「妥当な代替が複数ある場面」という発火条件が
@@ -87,9 +87,9 @@ selftest・本ドキュメント・`docs/adr/0012` の Amendment)に対して、
 "Known weakness, accepted... so it does not need re-litigating later." と
 明記していたのに倣い、本ドキュメントに受容した弱点として記録するに留めた。
 
-## 形式検査(plan-precedent-gate.sh への加算)
+## 形式検査(plan-precedent-gate への加算)
 
-新しい gate は作らず、既存の `plan-precedent-gate.sh` に検査項目を足す。
+新しい gate は作らず、既存の `plan-precedent-gate` に検査項目を足す。
 
 1. `軸:` トークン(`表現不可能|還元|検出のみ`)が各 `Dn` に存在するか。
    `先行例なし:` の枝でも必須 — 還元性の判定は先行例の有無と独立。

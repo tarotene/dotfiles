@@ -59,7 +59,7 @@ owner_repo() {
   printf '%s\n' "$out"
 }
 
-# $1=session_id -> セッション状態ファイルのパス(plan-fresh-gate.sh の
+# $1=session_id -> セッション状態ファイルのパス(plan-fresh-gate の
 # state_file() と同型のサニタイズ)。
 state_file() {
   local sid="$1"

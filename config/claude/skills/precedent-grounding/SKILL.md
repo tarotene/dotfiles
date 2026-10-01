@@ -80,7 +80,7 @@ selection-grounding スキル §6 を参照。
 
 ## 4. 批評者(lens A)が監査すること
 
-`copilot-plan-review.sh` の lens A は、この節の各 `Dn` について:
+`copilot-plan-review` の lens A は、この節の各 `Dn` について:
 
 - 出典(リポジトリ内パスや Issue/PR は実際に読む)が主張を実際に支えて
   いるか
@@ -116,7 +116,7 @@ BLOCKER。
 プランファイルを書き終えたら、ExitPlanMode の前に必ず:
 
 ```bash
-~/.claude/hooks/plan-precedent-gate.sh --check <プランファイル>
+~/.claude/hooks/plan-precedent-gate --check <プランファイル>
 ```
 
 `OK:` が出るまで修正してから抜ける。gate の deny を書式検査代わりに使わない

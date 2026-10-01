@@ -86,7 +86,7 @@ ADR-0027)。今のセッションでやるなら stacked PR の一段として�
 プランファイルを書き終えたら、ExitPlanMode の前に必ず:
 
 ```bash
-~/.claude/hooks/plan-scope-gate.sh --check-plan <プランファイル>
+~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>
 ```
 
 `OK:` が出るまで修正してから抜ける(節内整合性=経路Bだけの検査。参照
