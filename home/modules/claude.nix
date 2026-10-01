@@ -676,6 +676,10 @@ let
   # Codex 向けは同じファイルを AGENT_NAME=codex だけ差し替えて直接登録する
   # (adapter ファイルを新設しない — ADR-0032 Amendment #531、D8)。
   codexAgentTurnLogCmd = "AGENT_NAME=codex bash '${hooksDir}/agent-turn-log.sh'";
+  # Copilot 向けも同様(ADR-0032 Amendment 2026-10-01)。イベント名は PascalCase
+  # (UserPromptSubmit/Stop)で登録する — camelCase だと payload が別形(sessionId、
+  # hook_event_name なし)になり agent-turn-log.sh が読めない。
+  copilotAgentTurnLogCmd = "AGENT_NAME=copilot bash '${hooksDir}/agent-turn-log.sh'";
   # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
   # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
   # history.db に記録する。`atuin hook install claude-code` は settings.json
@@ -1738,6 +1742,16 @@ in
       ''
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg pkexecGuardCopilotCmd} 10
+      '';
+
+  # agent-turn-log の Copilot 展開(ADR-0032 Amendment 2026-10-01)。同じ
+  # lost-update 対策で、最後尾の pkexec-guard の登録の後ろに明示的に順序付ける。
+  home.activation.registerCopilotAgentTurnLogHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPkexecGuardHooks" ]
+      ''
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          UserPromptSubmit ${lib.escapeShellArg copilotAgentTurnLogCmd} 10 \
+          Stop ${lib.escapeShellArg copilotAgentTurnLogCmd} 10
       '';
 
   # ADR-0032 Amendment #531 段2: 入力が Claude と同形の PreToolUse/

@@ -132,3 +132,36 @@ Claude 高額利用者が 1 週間 Codex CLI 代替で仕事をする社内検�
 
 - home/modules/claude.nix
 - config/codex/AGENTS.codex.md
+
+## Amendment (2026-10-01 — agent-turn-log を Copilot CLI にも展開する)
+
+daily-report の `agent_events`(ターン単位の作業証拠)は、Codex と Copilot の
+ターンを取れていなかった。Codex の hook は上の Amendment で宣言済みだが、Copilot は
+未配線で、Codex も初回の信頼(`/hooks`)が未了のため一行も書かれていない。
+
+- **`agent-turn-log.sh` を Copilot の `UserPromptSubmit`/`Stop` にも登録する**
+  (`AGENT_NAME=copilot`、adapter は新設しない)。Copilot は大文字始まりのイベント名で
+  登録すると Claude と同じ snake_case の payload(`hook_event_name` あり)を渡す。小文字
+  始まり(`userPromptSubmitted`/`agentStop`)は別形の payload になり、このスクリプトは
+  読めない。出典: GitHub Docs, "GitHub Copilot Hooks Reference"
+  (https://docs.github.com/en/copilot/reference/hooks-configuration, 取得 2026-10-01)。
+- **Codex の識別子**: payload に `prompt_id` は無く `turn_id` がある。`prompt_id // turn_id`
+  で読み、`date+pid` の合成 ID に落ちるのを避ける。出典: OpenAI, "Codex Hooks"
+  (https://learn.chatgpt.com/docs/hooks, 取得 2026-10-01)。
+- **機械起動のセッションを除く**: Copilot のセッションのうち約 8 割は `copilot-plan-review.sh`
+  が Claude の hook から起動するもので、本人の作業ではない。`AGENT_TURN_LOG=0` なら
+  `agent-turn-log.sh` は何も書かずに終わり、`copilot-plan-review.sh` は Copilot を起動する
+  ときにこれを立てる。環境変数による opt-out は機械起動を「表現不可能」にするものではなく
+  「検出して外す」ものである。Copilot が hook に呼び出し元の環境変数を渡すかは文書化されて
+  いないので、実機で確かめる(下の検証)。
+- **棄却**: 各エージェントのセッションログの事後取り込み(形式が文書化されていない)、
+  Codex の `notify`(ターン完了だけで開始時刻が取れない)、atuin のコマンド span だけで代替
+  (話して読むだけのターンが見えない)。
+- daily-report 側は変更不要(`agent` をそのまま通す)。対の文書は
+  sugimoto-kentaro-sandbox の `daily-report/docs/adr/0020` Amendment。
+
+### 執行点
+
+- config/claude/hooks/agent-turn-log.sh
+- config/claude/hooks/copilot-plan-review.sh
+- home/modules/claude.nix

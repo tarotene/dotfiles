@@ -441,7 +441,9 @@ run_critic() {
         *) add_dir_args=(--add-dir "$plan_dir") ;;
       esac
     fi
-    timeout "$COPILOT_TIMEOUT" "$COPILOT_BIN" -p "$prompt" \
+    # AGENT_TURN_LOG=0: this run is machine-started, not the owner's work, so
+    # agent-turn-log.sh must not record it as a Copilot turn (ADR-0032 Amendment).
+    AGENT_TURN_LOG=0 timeout "$COPILOT_TIMEOUT" "$COPILOT_BIN" -p "$prompt" \
       --agent "$COPILOT_AGENT" --model "$COPILOT_MODEL" \
       --silent --no-custom-instructions --disable-builtin-mcps --no-ask-user \
       "${add_dir_args[@]}" </dev/null > "$out" 2>/dev/null
