@@ -975,6 +975,8 @@ dependencies = [
 name = "wrapup-stop-gate"
 version = "0.1.0"
 dependencies = [
+ "hook-io",
+ "serde",
  "serde_json",
  "tempfile",
  "trycmd",

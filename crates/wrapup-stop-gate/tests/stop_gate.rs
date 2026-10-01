@@ -35,7 +35,7 @@ fn stop_inbox_block(count: usize, inbox: &str, name_q: &str, url_q: &str) -> Str
     format!(
         "<hook-directive source=\"wrapup-stop-gate\" event=\"Stop\">\n\
          {count} unfiled item(s) in the wrap-up inbox: {inbox}\n\
-         Run `ATTRIBUTION_AGENT_NAME={name_q} ATTRIBUTION_AGENT_URL={url_q} bash {gate} --procedure {inbox}` and follow its output.\n\
+         Run `ATTRIBUTION_AGENT_NAME={name_q} ATTRIBUTION_AGENT_URL={url_q} {gate} --procedure {inbox}` and follow its output.\n\
          </hook-directive>",
         gate = gate.display()
     )
@@ -69,7 +69,7 @@ fn procedure_text(inbox: &str, name: &str, url: &str) -> String {
         r#"<hook-directive source="wrapup-stop-gate" kind="procedure">
 Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
 Process the lines one by one:
-  1. Run bash '{gate}' --check-dup "<title>" [repo] (pass repo if the line
+  1. Run '{gate}' --check-dup "<title>" [repo] (pass repo if the line
      has one; otherwise the target is this project's repository).
      exit 1 means an open Issue with the same title already exists (duplicate).
      exit 3 means the check could not be made — skip that line this time and
@@ -90,7 +90,7 @@ Process the lines one by one:
        「🤖 Filed from [{name}]({url}) wrap-up inbox」
   5. Remove only the lines that were filed, skipped as duplicates, or declined
      with 「今回は起票しない」 in step 3, using
-     bash '{gate}' --mark-filed '{inbox}' '<the line verbatim>'.
+     '{gate}' --mark-filed '{inbox}' '<the line verbatim>'.
      If gh issue create fails, do not call --mark-filed; the line stays in the
      inbox for a retry on the next turn.
 Do not edit the inbox directly (always go through --add / --mark-filed).

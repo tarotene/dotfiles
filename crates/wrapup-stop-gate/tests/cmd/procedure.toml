@@ -7,7 +7,7 @@ stdout = """
 <hook-directive source="wrapup-stop-gate" kind="procedure">
 Each line of /x/inbox.jsonl is one JSONL item (ts/title/detail, optionally repo/go).
 Process the lines one by one:
-  1. Run bash '[..]' --check-dup "<title>" [repo] (pass repo if the line
+  1. Run '[..]' --check-dup "<title>" [repo] (pass repo if the line
      has one; otherwise the target is this project's repository).
      exit 1 means an open Issue with the same title already exists (duplicate).
      exit 3 means the check could not be made — skip that line this time and
@@ -28,7 +28,7 @@ Process the lines one by one:
        「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」
   5. Remove only the lines that were filed, skipped as duplicates, or declined
      with 「今回は起票しない」 in step 3, using
-     bash '[..]' --mark-filed '/x/inbox.jsonl' '<the line verbatim>'.
+     '[..]' --mark-filed '/x/inbox.jsonl' '<the line verbatim>'.
      If gh issue create fails, do not call --mark-filed; the line stays in the
      inbox for a retry on the next turn.
 Do not edit the inbox directly (always go through --add / --mark-filed).

@@ -14,7 +14,7 @@ fn expected_json(inbox: &str, pending: usize) -> String {
          wrap-up inbox for this project: {inbox}\n\
          When something outside the current task's scope is worth an Issue (a sign of a\n\
          bug, debt, an improvement idea), append it right then as one line per finding:\n\
-         \x20 bash '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<Issue title>\", \"detail\": \"<what and why>\"}}'\n\
+         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<Issue title>\", \"detail\": \"<what and why>\"}}'\n\
          Do not edit the inbox directly (always go through --add). The Stop hook at the\n\
          end of the turn points to the filing procedure for appended items.",
         gate = gate.display()

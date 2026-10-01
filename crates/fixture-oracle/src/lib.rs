@@ -13,6 +13,4 @@
 
 /// fixture を bash 版に向けている hook/CLI(bin 名, リポジトリ相対パス)。
 pub const BASH_ORACLES: &[(&str, &str)] = &[(
-    "wrapup-stop-gate",
-    "config/claude/hooks/wrapup-stop-gate.sh",
-)];
+pub const BASH_ORACLES: &[(&str, &str)] = &[];
