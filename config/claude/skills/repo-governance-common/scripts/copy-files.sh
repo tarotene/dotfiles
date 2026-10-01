@@ -12,7 +12,7 @@
 # Unlike rust/typst/astro, this type has no seed.sh: the caller runs this
 # script, commits + pushes the result, then applies the ruleset with
 # `apply-rulesets.sh <owner>/<repo> --from-dir <dest>/.github/rulesets
-# --unverified-contexts` (ADR-0000-rulesets-declaration-in-repo).
+# --unverified-contexts` (ADR-503).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,7 +59,7 @@ apply_substitutions() {
     "$file" > "$tmpfile" && mv "$tmpfile" "$file"
 }
 
-# ADR-0000-rulesets-declaration-in-repo D6: 置換後に __X__ 形式の
+# ADR-503 D6: 置換後に __X__ 形式の
 # placeholder が残っている場合を、ruleset 宣言ファイルについて検査する
 # (apply-rulesets.sh 側の check_no_placeholders と二重に守る)。
 verify_declaration() {

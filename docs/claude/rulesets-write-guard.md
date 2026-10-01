@@ -1,11 +1,10 @@
 # rulesets-write-guard — GitHub ruleset の直接書換を deny する
 
-`crates/rulesets-write-guard`(Rust、ADR-0024)の設計根拠(ADR-0000-
-rulesets-declaration-in-repo D7)。
+`crates/rulesets-write-guard`(Rust、ADR-0024)の設計根拠(ADR-503 D7)。
 
 ## 動機
 
-ADR-0000-rulesets-declaration-in-repo は、required status check の正本を
+ADR-503 は、required status check の正本を
 対象リポジトリ自身の `.github/rulesets/*.json` に一本化し、
 `scripts/apply-rulesets.sh` が PUT/POST 直前に「宣言した context が実測
 job 名として報告されるか」を検証するようにした(D5)。しかし Claude

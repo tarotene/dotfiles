@@ -1,5 +1,4 @@
-# routines 自己監査 routine の宣言 sources(ADR-0000-routines-declaration-
-# in-repo)。github-audit の routines ドメインが「`.claude/routines/` を
+# routines 自己監査 routine の宣言 sources(ADR-519)。github-audit の routines ドメインが「`.claude/routines/` を
 # 持つのに auditor の sources に無い repo」を検出するための正本。
 #
 # ここには PUBLIC repo だけを書く(dotfiles 自身は routine を宣言しない

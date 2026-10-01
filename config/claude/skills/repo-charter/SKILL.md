@@ -322,7 +322,7 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 `--add-topic` にもう 1 つ追加する(ADR-0026、`naming-*` とは独立に 0〜1 個)。
 
 **新規作成の場合、続けて標準 governance を播く**(#153、
-ADR-0000-rulesets-declaration-in-repo)。`gh` 自体には `repo create` 直後に
+ADR-503)。`gh` 自体には `repo create` 直後に
 走るフック機構が無いため、この手順が事実上の自動適用になる。required
 status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
 一本化されている(`apply-rulesets.sh` は型を引数に取らない)。リポジトリの

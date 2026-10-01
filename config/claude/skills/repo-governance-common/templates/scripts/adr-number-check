@@ -26,12 +26,23 @@
 #      5. 追加された docs/adr/*.md は最大 1 本
 #      6. 追加された ADR の番号が n >= 0100 なら n == PR 番号
 #         (--pr 無指定なら skip)。n < 0100 なら緩衝帯として通過させる
+#      7. base との diff の追加行に起草中の参照(ADR-0000 / docs/adr/0000-)が
+#         無い(--fix は ADR のファイル名しか直さないため、他ファイルからの
+#         参照は改番されずに main へ残っていた、#644)。採番の仕組みを説明する
+#         ファイルは ADR_REF_ALLOW(下記)で除外する
 #
 # 使い方:
 #   adr-number-check [--base <ref>] [--pr <N>]   # 判定(--base 省略時は A のみ)
-#   adr-number-check --fix <PR番号> [<file>]      # git mv + H1 書き換え
-#                                                 # (<file> 省略時は 0000-*.md を対象)
+#   adr-number-check --fix <PR番号> [<file>] [--base <ref>]
+#                                                 # git mv + H1 書き換え + 差分内の
+#                                                 # ADR-0000 参照の書き換え
+#                                                 # (<file> 省略時は 0000-*.md を対象。
+#                                                 # --base 省略時は origin/HEAD)
 #   adr-number-check --selftest                  # ネットワーク不使用の自己検査
+#
+# 環境変数 ADR_REF_ALLOW: 項目 7 と --fix の書き換えから除外するファイル
+# (リポジトリ相対パス、空白区切り)。既定は採番の仕組みを説明・検査する
+# ファイル。空文字にすると除外なし。
 #
 # 他リポジトリへの播種: このファイルは repo-governance-common の
 # templates/scripts/ が単一ソースで、dotfiles 自身の scripts/adr-number-check
@@ -43,7 +54,7 @@ set -euo pipefail
 usage() {
   cat << 'EOF'
 usage: adr-number-check [--base <ref>] [--pr <N>]
-       adr-number-check --fix <PR番号> [<file>]
+       adr-number-check --fix <PR番号> [<file>] [--base <ref>]
        adr-number-check --selftest
 EOF
 }
@@ -152,12 +163,66 @@ check_added_adrs() {
   return 0
 }
 
+# ---- 起草中の参照(ADR-0000)---------------------------------------------
+
+# 採番の仕組みを説明・検査するファイルは ADR-0000 を正当に含む。
+ADR_REF_ALLOW_DEFAULT="scripts/adr-number-check config/claude/skills/repo-governance-common/templates/scripts/adr-number-check config/claude/hooks/adr-number.sh config/codex/hooks/adr-number.sh docs/claude/adr-numbering.md"
+
+# base と作業ツリーの diff で追加された行のうち、起草中の参照を含むものを
+# `path<TAB>行番号<TAB>本文` で出す(ADR_REF_ALLOW のファイルは除く)。追加行
+# だけを見るので、base に既にある行(説明文など)は拾わない。
+added_draft_refs() {
+  local repo_root="$1" base_ref="$2" allow path line text
+  allow=" ${ADR_REF_ALLOW-$ADR_REF_ALLOW_DEFAULT} "
+  git -C "$repo_root" diff -U0 --no-color --no-ext-diff --diff-filter=ACMR "$base_ref" -- 2> /dev/null \
+    | awk '
+        /^\+\+\+ / { f = ($0 == "+++ /dev/null") ? "" : substr($0, 7); next }
+        /^@@/ { match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
+        /^\+/ {
+          if (f != "" && ($0 ~ /ADR-0000/ || $0 ~ /docs\/adr\/0000-/)) printf "%s\t%d\t%s\n", f, n, substr($0, 2)
+          n++
+        }
+      ' \
+    | while IFS=$'\t' read -r path line text; do
+      [[ $allow == *" $path "* ]] && continue
+      printf '%s\t%s\t%s\n' "$path" "$line" "$text"
+    done
+}
+
+check_no_draft_refs() {
+  local repo_root="$1" base_ref="$2" hits path line text
+  hits="$(added_draft_refs "$repo_root" "$base_ref")"
+  [[ -z $hits ]] && return 0
+  echo "adr-number-check: 起草中の参照(ADR-0000 / docs/adr/0000-)が追加されています。PR 番号へ書き換えてください(--fix <PR番号> が差分内の参照も書き換えます):" >&2
+  while IFS=$'\t' read -r path line text; do
+    echo "  $path:$line: $text" >&2
+  done <<< "$hits"
+  return 1
+}
+
+# 差分に追加された起草中の参照を PR 番号へ書き換える。1 PR = 最大 1 ADR
+# なので、その PR の ADR-0000 は必ず改番した ADR を指す。
+rewrite_draft_refs() {
+  local repo_root="$1" base_ref="$2" pr_number="$3" slug="$4" hits path line count=0
+  hits="$(added_draft_refs "$repo_root" "$base_ref")"
+  [[ -n $hits ]] || return 0
+  while IFS=$'\t' read -r path line _; do
+    sed -i -E \
+      -e "${line}s#ADR-0000-${slug}#ADR-${pr_number}#g" \
+      -e "${line}s#docs/adr/0000-#docs/adr/${pr_number}-#g" \
+      -e "${line}s#ADR-0000#ADR-${pr_number}#g" \
+      "$repo_root/$path"
+    count=$((count + 1))
+  done <<< "$hits"
+  echo "adr-number-check: ${count} 行の起草中の参照を ADR-${pr_number} へ書き換えました"
+}
+
 # ---- --fix ---------------------------------------------------------------
 
 cmd_fix() {
-  local repo_root="$1" adr_dir="$2" pr_number="${3-}" file="${4-}"
+  local repo_root="$1" adr_dir="$2" pr_number="${3-}" file="${4-}" base_ref="${5-}"
   if [[ -z $pr_number ]]; then
-    echo "usage: adr-number-check --fix <PR番号> [<file>]" >&2
+    echo "usage: adr-number-check --fix <PR番号> [<file>] [--base <ref>]" >&2
     return 2
   fi
   if [[ ! $pr_number =~ ^[0-9]+$ ]]; then
@@ -194,6 +259,19 @@ cmd_fix() {
   git -C "$repo_root" mv "$file" "$new"
   sed -i "1s/^# ADR-${old_num}/# ADR-${pr_number}/" "$new"
   echo "adr-number-check: $(basename "$file") -> $(basename "$new")"
+
+  # 起草中(0000)の改番のときだけ、差分内の参照も書き換える。採番済みの
+  # ADR を別番号へ付け替える用途では、旧番号の参照が正当な場合があるので触らない。
+  if [[ $old_num =~ ^0+$ ]]; then
+    if [[ -z $base_ref ]]; then
+      base_ref="$(git -C "$repo_root" symbolic-ref -q --short refs/remotes/origin/HEAD 2> /dev/null || true)"
+    fi
+    if [[ -n $base_ref ]]; then
+      rewrite_draft_refs "$repo_root" "$base_ref" "$pr_number" "${slug%.md}"
+    else
+      echo "adr-number-check: base が分からないので ADR-0000 参照の書き換えは skip しました(--base <ref> で指定できます)" >&2
+    fi
+  fi
   return 0
 }
 
@@ -334,6 +412,51 @@ selftest() {
     echo "ok   16 --fix は PR番号必須"
   fi
 
+  # --- 起草中の参照(ADR-0000)の検出と --fix による書き換え(#644) ---
+  echo "起草中の参照:"
+  local refrepo="$tmp/ref"
+  mkdir -p "$refrepo/docs/claude" "$refrepo/docs/adr"
+  git -C "$refrepo" init -q -b main
+  git -C "$refrepo" config core.hooksPath /dev/null
+  git -C "$refrepo" config user.email test@example.com
+  git -C "$refrepo" config user.name test
+  printf 'ADR-0000 は起草中の番号(base に既にある説明文)\n' > "$refrepo/docs/notes.md"
+  printf 'x\n' > "$refrepo/docs/claude/adr-numbering.md"
+  git -C "$refrepo" add -A
+  git -C "$refrepo" commit -qm base
+  local ref_base
+  ref_base="$(git -C "$refrepo" rev-parse HEAD)"
+  check "20 参照が追加されていなければ通過" 0 check_no_draft_refs "$refrepo" "$ref_base"
+
+  printf '# ADR-0000 — new decision\n' > "$refrepo/docs/adr/0000-new-decision.md"
+  printf 'see ADR-0000-new-decision and docs/adr/0000-new-decision.md\nunrelated\n' > "$refrepo/docs/other.md"
+  printf 'x\nADR-0000 の説明(許可リストのファイル)\n' > "$refrepo/docs/claude/adr-numbering.md"
+  git -C "$refrepo" add -A
+  git -C "$refrepo" commit -qm "add refs"
+  check "21 追加された参照を検出" 1 check_no_draft_refs "$refrepo" "$ref_base"
+  local refs_out
+  refs_out="$(check_no_draft_refs "$refrepo" "$ref_base" 2>&1 || true)"
+  if grep -qF 'docs/other.md:1:' <<< "$refs_out" \
+    && ! grep -qF 'adr-numbering.md' <<< "$refs_out" \
+    && ! grep -qF 'notes.md' <<< "$refs_out"; then
+    echo "ok   22 検出は追加行だけで、許可リストと base の既存行は拾わない"
+  else
+    echo "FAIL 22 検出は追加行だけで、許可リストと base の既存行は拾わない: $refs_out" >&2
+    fails=$((fails + 1))
+  fi
+
+  cmd_fix "$refrepo" "$refrepo/docs/adr" "777" "" "$ref_base" > /dev/null 2>&1 || true
+  if grep -qxF 'see ADR-777 and docs/adr/777-new-decision.md' "$refrepo/docs/other.md" \
+    && grep -qF 'ADR-0000 の説明' "$refrepo/docs/claude/adr-numbering.md" \
+    && grep -qF 'ADR-0000 は起草中' "$refrepo/docs/notes.md" \
+    && [[ -f "$refrepo/docs/adr/777-new-decision.md" ]]; then
+    echo "ok   23 --fix が差分内の参照だけを書き換える"
+  else
+    echo "FAIL 23 --fix が差分内の参照だけを書き換える" >&2
+    fails=$((fails + 1))
+  fi
+  check "24 書き換え後は検出されない" 0 check_no_draft_refs "$refrepo" "$ref_base"
+
   rm -rf "$tmp"
 
   if [[ $fails -gt 0 ]]; then
@@ -355,7 +478,21 @@ main() {
       local repo_root adr_dir
       repo_root="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
       adr_dir="$repo_root/docs/adr"
-      cmd_fix "$repo_root" "$adr_dir" "$@"
+      local fix_pr="${1-}" fix_file="" fix_base=""
+      shift || true
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --base)
+            fix_base="${2-}"
+            shift 2 || break
+            ;;
+          *)
+            fix_file="$1"
+            shift
+            ;;
+        esac
+      done
+      cmd_fix "$repo_root" "$adr_dir" "$fix_pr" "$fix_file" "$fix_base"
       return $?
       ;;
   esac
@@ -395,6 +532,7 @@ main() {
 
   if [[ -n $base ]]; then
     check_added_adrs "$repo_root" "$base" "$pr" || fails=1
+    check_no_draft_refs "$repo_root" "$base" || fails=1
   fi
 
   if [[ $fails -ne 0 ]]; then

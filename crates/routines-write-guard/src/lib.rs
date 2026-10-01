@@ -1,6 +1,6 @@
 //! routines-write-guard — deny a cron-bearing `RemoteTrigger` create/update
 //! whose body doesn't carry the structure that `claude-routines`'
-//! `routines-plan.sh` always produces (ADR-0000-routines-declaration-in-repo
+//! `routines-plan.sh` always produces (ADR-519
 //! D7).
 //!
 //! `RemoteTrigger` は Bash ツールではないため、`rulesets-write-guard` が

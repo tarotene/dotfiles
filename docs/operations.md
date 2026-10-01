@@ -168,7 +168,7 @@ Notes:
 - **`renovate.json`'s `nix` manager** (beta, opt-in;
   <https://docs.renovatebot.com/modules/manager/nix/>) is *intended* to open
   a monthly `flake.lock` PR via `lockFileMaintenance` (see
-  `renovate/policy.json`, `docs/adr/0000-renovate-automerge-shared-preset.md`)
+  `renovate/policy.json`, `docs/adr/568-renovate-automerge-shared-preset.md`)
   once the Mend Renovate App's repository access covers this repo — as of
   2026-09-29 it does not (0 Renovate PRs against dotfiles to date, confirmed
   via `gh search prs --author 'app/renovate'`), so the manual routine above

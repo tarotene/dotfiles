@@ -20,8 +20,7 @@ name: PR Title
 # (config/claude/skills/repo-governance-common/templates/.github/
 # workflows/pr-title.yml)は job に `name: PR Title` を固定しているため、
 # 連結名は常に "PR Title / PR title" になる。末尾の `Validate required-
-# check contexts` step がこれを実行時に自己照合する — ADR-0000-rulesets-
-# declaration-in-repo により、対象は「PR title」1 context だけでなく、
+# check contexts` step がこれを実行時に自己照合する — ADR-503 により、対象は「PR title」1 context だけでなく、
 # 呼び出し元リポジトリの `.github/rulesets/quality.json` 宣言および live
 # な required_status_checks の全 context に一般化されている。
 #
@@ -90,7 +89,7 @@ jobs:
       contents: write
       # 末尾の `Validate required-check contexts` step が自 run の jobs を
       # 読むために必要(scripts/rulesets-context-check、
-      # ADR-0000-rulesets-declaration-in-repo、ADR-0031 Amendment
+      # ADR-503、ADR-0031 Amendment
       # 2026-09-26 が対象を PR title 1 本に限っていたのを一般化した)。
       # workflow_call 経由の呼び出しでは、呼び出し側テンプレート
       # の job 側でも同じ scope を明示しないとこの job 自体が
@@ -152,7 +151,7 @@ jobs:
 
       # ADR-0031 Amendment(2026-09-26)で「PR title」1 context に限って
       # 実装した実測照合(#337 の事故の再発防止)を、
-      # ADR-0000-rulesets-declaration-in-repo が全 required_status_checks
+      # ADR-503 が全 required_status_checks
       # context に一般化した。呼び出し元(caller)リポジトリの
       # `.github/rulesets/quality.json` 宣言と live な branch ruleset の
       # 両方を、この PR の head で実際に報告される job 名(Actions API)と

@@ -1,6 +1,5 @@
 //! rulesets-write-guard — deny `gh api` writes to a repository's branch
-//! rulesets endpoint from a raw Bash command (ADR-0000-rulesets-declaration-
-//! in-repo D7).
+//! rulesets endpoint from a raw Bash command (ADR-503 D7).
 //!
 //! required_status_checks の正本を対象リポジトリ自身の
 //! `.github/rulesets/*.json` に一本化した(D1)。その不変条件(宣言 ⊆

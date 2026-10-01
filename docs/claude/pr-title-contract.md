@@ -72,7 +72,7 @@ symlink で共有)は `check` job に `name: PR Title` を固定するため、�
 常に `"PR Title / PR title"` になる。「最初の利用リポジトリへの展開時に
 実機で確認する」という手動手順は、`.github/workflows/pr-title.yml`
 (reusable workflow)の最終 step `scripts/rulesets-context-check` による
-実行時の自己照合に置き換えた — ADR-0000-rulesets-declaration-in-repo により
+実行時の自己照合に置き換えた — ADR-503 により
 「PR title」1 context だけでなく、呼び出し元リポジトリの
 `.github/rulesets/quality.json` 宣言および live な required_status_checks
 の全 context を対象に一般化されている。run のたびに実際の job 名を Actions

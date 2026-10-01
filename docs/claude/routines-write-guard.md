@@ -1,11 +1,11 @@
 # routines-write-guard — 宣言外の cron routine 作成/更新を deny する
 
 `crates/routines-write-guard`(Rust、ADR-0024)の設計根拠
-(ADR-0000-routines-declaration-in-repo D7)。
+(ADR-519 D7)。
 
 ## 動機
 
-ADR-0000-routines-declaration-in-repo は、Claude Code routine(claude.ai の
+ADR-519 は、Claude Code routine(claude.ai の
 scheduled cloud agent)の設定・prompt の正本を対象リポジトリ自身の
 `.claude/routines/*.{json,md}` に一本化した。しかし Claude セッションが
 `RemoteTrigger`(action: create/update)を直接呼べば、この宣言を経ずに

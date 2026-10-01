@@ -69,7 +69,7 @@ apply_substitutions() {
     "$file" > "$tmpfile" && mv "$tmpfile" "$file"
 }
 
-# ADR-0000-rulesets-declaration-in-repo D6: 置換後に __X__ 形式の
+# ADR-503 D6: 置換後に __X__ 形式の
 # placeholder が残っている、または値が空のまま置換された(例: CLI_CRATE
 # が空文字列で "Tools ( CLI clippy + tests)" のような不完全な context に
 # なる)ケースを、ruleset 宣言ファイルについてだけ厳密に検査する

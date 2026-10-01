@@ -136,12 +136,18 @@ main() {
   [[ -n $adr_check && -x $adr_check ]] || exit 0
 
   have gh || exit 0
-  local pr_number
-  pr_number="$(cd "$project" && gh pr view --json number --jq '.number' 2> /dev/null)" || exit 0
+  # PR 番号と base ブランチ名(差分内の ADR-0000 参照を書き換える範囲、#644)。
+  local pr_info pr_number pr_base fix_args
+  pr_info="$(cd "$project" && gh pr view --json number,baseRefName --jq '"\(.number) \(.baseRefName)"' 2> /dev/null)" || exit 0
+  read -r pr_number pr_base <<< "$pr_info"
   [[ $pr_number =~ ^[0-9]+$ ]] || exit 0
+  fix_args=(--fix "$pr_number")
+  if [[ -n ${pr_base:-} ]]; then
+    fix_args+=(--base "origin/$pr_base")
+  fi
 
   local fix_out
-  fix_out="$(cd "$project" && "$adr_check" --fix "$pr_number" 2>&1)" || exit 0
+  fix_out="$(cd "$project" && "$adr_check" "${fix_args[@]}" 2>&1)" || exit 0
 
   emit_context "$pr_number" "$fix_out"
   exit 0
@@ -226,6 +232,23 @@ STUB
   out="$(CLAUDE_PROJECT_DIR="$repo" run "$tmp/bin" "$input_create")"
   check_contains "1a additionalContext に PR番号を含む" "999" "$out"
   check_contains "1b --fix が呼ばれた" "--fix 999" "$(cat "$ADR_FIX_LOG")"
+
+  echo "1c: gh が base ブランチ名も返す → --fix に --base origin/<base> を渡す"
+  local basebin="$tmp/basebin"
+  mkdir -p "$basebin"
+  cat > "$basebin/gh" << 'STUB'
+#!/usr/bin/env bash
+if [[ "$1 $2" == "pr view" ]]; then
+  echo "999 stack/prev"
+  exit 0
+fi
+exit 1
+STUB
+  chmod +x "$basebin/gh"
+  ln -sf "$tmp/bin/adr-number-check" "$basebin/adr-number-check"
+  : > "$ADR_FIX_LOG"
+  out="$(CLAUDE_PROJECT_DIR="$repo" run "$basebin" "$input_create")"
+  check_contains "1c --base origin/stack/prev が渡された" "--fix 999 --base origin/stack/prev" "$(cat "$ADR_FIX_LOG")"
 
   echo "2: draft が無い → 早期 exit(gh も adr-number-check も呼ばれない)"
   local repo2="$tmp/repo2"

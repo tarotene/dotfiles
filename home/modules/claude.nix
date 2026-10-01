@@ -626,12 +626,12 @@ let
   # 直接書くと、ビルドのたびに command 文字列が変わり、完全一致で存在判定
   # する registerHooks が旧エントリを残し続けるため。
   ghEditAllowCmd = "'${hooksDir}/gh-edit-allow'";
-  # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7):
+  # rulesets-write-guard(ADR-503 D7):
   # `gh api` による ruleset(required_status_checks 等)の直接書換を deny
   # する。gh-edit-allow と同じ理由(判定に既存の巨大 bash 資産を source
   # する必要が無い)で ADR-0024 の既定どおり Rust。
   rulesetsWriteGuardCmd = "'${hooksDir}/rulesets-write-guard'";
-  # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+  # routines-write-guard(28番、ADR-519 D7):
   # 宣言外の cron routine create/update(RemoteTrigger)を deny する。
   # rulesets-write-guard と同じ理由で Rust だが、判定対象が Bash コマンド
   # 文字列ではないため env var による bypass は持たない(crates/
@@ -1069,11 +1069,11 @@ let
     # — git-worktree-allow と同じ理由付け。
     register PostToolUse Bash "$gh_edit_allow" 10
     register PreToolUse Bash "$gh_edit_allow" 10 "Bash(gh *)"
-    # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7): deny
+    # rulesets-write-guard(ADR-503 D7): deny
     # のみ返す(判定しない入力は素通し)ので、gh-edit-allow の PreToolUse と
     # 同じ if で gh 呼び出しに絞ってよい。
     register PreToolUse Bash "$rulesets_write_guard" 10 "Bash(gh *)"
-    # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+    # routines-write-guard(28番、ADR-519 D7):
     # RemoteTrigger は Bash ではないため、Bash 専用の permission-rule 構文
     # (`Bash(gh *)` のような if narrowing)は使えない — matcher で
     # RemoteTrigger 呼び出し全体を hook に渡し、対象外のアクション/body は
@@ -1501,12 +1501,12 @@ in
   # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
   # flake.nix の rustOverlay)への安定パスの symlink。
   home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
-  # rulesets-write-guard(ADR-0000-rulesets-declaration-in-repo D7): crates/
+  # rulesets-write-guard(ADR-503 D7): crates/
   # rulesets-write-guard のビルド成果物への安定パスの symlink(gh-edit-allow
   # と同じ理由付け)。
   home.file.".claude/hooks/rulesets-write-guard".source =
     "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
-  # routines-write-guard(28番、ADR-0000-routines-declaration-in-repo D7):
+  # routines-write-guard(28番、ADR-519 D7):
   # crates/routines-write-guard のビルド成果物への安定パスの symlink
   # (gh-edit-allow と同じ理由付け)。
   home.file.".claude/hooks/routines-write-guard".source =

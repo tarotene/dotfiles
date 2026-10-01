@@ -44,7 +44,7 @@ SITE_DOMAINS_LOCAL_FILE="${GITHUB_AUDIT_SITE_DOMAINS_LOCAL_FILE:-$CONFIG_DIR/sit
 # description text matching is a heuristic candidate signal, not a closed
 # assignment, so there is no PRIVATE-only entry list to protect yet.
 LIFECYCLE_SPECIES_FILE="${GITHUB_AUDIT_LIFECYCLE_SPECIES_FILE:-$CONFIG_DIR/lifecycle-species.tsv}"
-# routines domain (ADR-0000-routines-declaration-in-repo D-github-audit):
+# routines domain (ADR-519 D-github-audit):
 # the self-audit routine's declared `sources` list is inherently private
 # (it names every repo that has a `.claude/routines/` declaration), so —
 # same reasoning as the naming-domain closed vocabularies above — this is a
@@ -91,7 +91,7 @@ DOCS_STACK_ACTIONS=(
   'typescript|docs-typescript'
 )
 
-# renovate domain (docs/adr/0000-renovate-automerge-shared-preset.md D4):
+# renovate domain (docs/adr/568-renovate-automerge-shared-preset.md D4):
 # the exact, unpinned preset ref every repo's renovate.json should extend.
 # A `#tag`-pinned or missing reference is drift (judge_renovate()) — D4's
 # whole point is a single floating source of truth, so a pin defeats it.
@@ -217,7 +217,7 @@ judges the requested domains (default: all of them):
              missing install fails loudly on the next release push, so
              this domain does not duplicate that detection)
   routines   Claude Code routine (scheduled cloud agent) declarations
-             (ADR-0000-routines-declaration-in-repo): for repos with a
+             (ADR-519): for repos with a
              `.claude/routines/*.json`, checks the repo is listed in the
              self-audit routine's declared `sources` — otherwise its
              declarations are invisible to the weekly reconcile.
@@ -368,7 +368,7 @@ fetch_repo_secrets() { # $1=repo -> JSON array of secret names, or [] on failure
 # 突き合わせるのに使う — #337 で両者が一致しないまま播かれ、required check
 # が永久に "Expected" のまま merge を止めた事故の再発防止(judge_titles()
 # の pr-title-context-mismatch)。scripts/rulesets-context-check(旧
-# pr-title-context-check の一般化版、ADR-0000-rulesets-declaration-in-repo)
+# pr-title-context-check の一般化版、ADR-503)
 # も同じヘルパーを source して再利用する(ADR-0035 D1)。
 fetch_run_job_names() { # $1=repo $2=run_id -> JSON array of job names, [] on failure
   "$GH_BIN" api "repos/$OWNER/$1/actions/runs/$2/jobs" --jq '[.jobs[].name]' 2>/dev/null || printf '[]'
@@ -385,7 +385,7 @@ fetch_latest_pr_title_job_names() { # $1=repo -> JSON array, [] if no run yet or
   fetch_run_job_names "$1" "$run_id"
 }
 
-# rulesets 宣言(ADR-0000-rulesets-declaration-in-repo)用: 特定コミット
+# rulesets 宣言(ADR-503)用: 特定コミット
 # (head_sha)に紐づく、あらゆる workflow の run が実際に報告した job 名の
 # 和集合。fetch_run_job_names() が単一 run 限定なのに対し、この関数は
 # 「そのコミットに対して起動した run が複数の workflow に渡ることがある」
@@ -404,7 +404,7 @@ fetch_head_sha_job_names() { # $1=repo $2=head_sha -> JSON array of unique job n
   printf '%s' "$names"
 }
 
-# rulesets ドメイン(ADR-0000-rulesets-declaration-in-repo)用: 最新 PR
+# rulesets ドメイン(ADR-503)用: 最新 PR
 # (state=all, updated 降順)の head SHA が報告した job 名。PR が 1 つも無い
 # リポジトリ(播いたばかり)は ground truth が存在しないので
 # judge_rulesets() 側で required-context-unreportable を立てない([] を返す
@@ -576,7 +576,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
   if [[ $count -eq 0 ]]; then
-    # ADR-0000-rulesets-declaration-in-repo: declaration-presence/drift/
+    # ADR-503: declaration-presence/drift/
     # unreportable-context checks below need a live ruleset to compare
     # against, so they are scoped to the governed (count>0) path — a
     # totally ungoverned repo (no live ruleset at all) keeps reporting
@@ -585,7 +585,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
     return
   fi
 
-  # ADR-0000-rulesets-declaration-in-repo: does <repo>/.github/rulesets/
+  # ADR-503: does <repo>/.github/rulesets/
   # declare the 3 core files? (review.json stays optional — ADR-0021.)
   local has_declaration=false
   jq -e '(.declSecurity != null) and (.declQuality != null) and (.declWorkflow != null)' \
@@ -679,7 +679,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
 
   checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
 
-  # ADR-0000-rulesets-declaration-in-repo: declared vs live drift, one
+  # ADR-503: declared vs live drift, one
   # token per ruleset name (Security/Quality/Workflow/Review). Both sides
   # are normalized to {name,target,enforcement,conditions,bypass_actors,
   # rules:(rules sorted by type)} before comparing — live carries extra
@@ -713,7 +713,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
     done
   fi
 
-  # ADR-0000-rulesets-declaration-in-repo: a live required_status_checks
+  # ADR-503: a live required_status_checks
   # context that no job of the latest PR's head actually reports — the
   # #337 "permanently Expected" failure mode. $job_names == [] means no PR
   # exists yet to check against (unverifiable, not unreportable) — skip.
@@ -1519,7 +1519,7 @@ judge_releaser() { # $1=has_releaser_workflow(true/false) $2=secret-names-json(a
 }
 
 # ---------------------------------------------------------------------------
-# routines domain (ADR-0000-routines-declaration-in-repo): a repo can carry
+# routines domain (ADR-519): a repo can carry
 # `.claude/routines/*.json` declarations, but the weekly self-audit routine
 # only reconciles repos listed in its own (necessarily private) `sources`.
 # A declaration in a repo the auditor never clones is invisible drift — the
@@ -1967,11 +1967,10 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
     # the same workflowsDir data to detect the pr-title.yml caller. releaser
     # needs it too, to detect the release-plz.yml/release-please.yml caller.
     # rulesets ALSO now needs it for the declaration text fields
-    # (ADR-0000-rulesets-declaration-in-repo).
+    # (ADR-503).
     [[ $d == charters || $d == renovate || $d == rulesets || $d == titles || $d == lifecycle || $d == releaser || $d == routines || $d == workflows || $d == docs ]] && need_graphql=1
     [[ $d == rulesets ]] && need_rulesets=1
-    # rulesets' required-context-unreportable check (ADR-0000-rulesets-
-    # declaration-in-repo) needs the REST-only latest-PR job names — same
+    # rulesets' required-context-unreportable check (ADR-503) needs the REST-only latest-PR job names — same
     # lazy-fetch pattern as titles' need_title_jobs below.
     [[ $d == rulesets ]] && need_ruleset_jobs=1
     # settings (ADR-0031 extension) needs the REST-only squash commit title/
@@ -2226,7 +2225,7 @@ EOF
   # fields being absent) are unaffected.
   printf '{"has_pages": true}' >"$tmp/fixtures/repos_tarotene_all-drifted.json"
 
-  # ADR-0000-rulesets-declaration-in-repo: split into the canonical named
+  # ADR-503: split into the canonical named
   # 3-file layout (Security/Quality/Workflow, Review bundled into Workflow
   # here rather than split out — has_declaration only requires the 3 core
   # names) so this fixture can ALSO carry a matching declaration below and
@@ -2692,8 +2691,7 @@ EOF
 EOF
 
   # Fixture for the judge_rulesets() declaration drift / unreportable-
-  # context direct-call checks below (ADR-0000-rulesets-declaration-in-
-  # repo). Live "Quality" ruleset requires two contexts, one of which
+  # context direct-call checks below (ADR-503). Live "Quality" ruleset requires two contexts, one of which
   # ("Ghost") no real job will ever report.
   cat >"$tmp/fixtures/repos_tarotene_ruleset-decl-test_rulesets.json" <<'EOF'
 [{"id": 20, "name": "Quality", "target": "branch", "enforcement": "active"}]
@@ -2814,7 +2812,7 @@ EOF
   # all-drifted has no repos_tarotene_all-drifted.json REST fixture, so the
   # stub gh returns `[]` — jq indexing an array with a string errors, which
   # the `||` fallback correctly treats as "field absent" for both new
-  # settings codes (docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b).
+  # settings codes (docs/adr/568-renovate-automerge-shared-preset.md D2/D5b).
   jq -e '.[] | select(.repo=="all-drifted") | .domains.settings.missing | index("auto-merge-disabled")' <<<"$out" >/dev/null || {
     printf 'FAIL: all-drifted settings should flag auto-merge-disabled\n' >&2
     return 1
@@ -2937,7 +2935,7 @@ EOF
     printf 'FAIL: all-ok rulesets should be review_layer=complete\n' >&2
     return 1
   }
-  # ADR-0000-rulesets-declaration-in-repo: this fixture has no
+  # ADR-503: this fixture has no
   # .github/rulesets/ declaration in its GraphQL data, so it now also
   # surfaces rulesets-declaration-missing — genuinely correct, not a
   # regression: a repo with only a live ruleset and no declaration is
@@ -2961,7 +2959,7 @@ EOF
 
   # rulesets domain (ADR-0021: aggregation across TWO active rulesets, not
   # just multiple pull_request rules on one — the shape Stage 2 produces)
-  # ADR-0000-rulesets-declaration-in-repo: same "no declaration in this
+  # ADR-503: same "no declaration in this
   # fixture's GraphQL data" reasoning as rulesets-core-only above — the
   # cross-ruleset OR/intersection aggregation this block actually tests is
   # unaffected (review_layer stays complete, no duplicate-ruleset flagged).
@@ -3068,7 +3066,7 @@ EOF
     return 1
   }
 
-  # ADR-0000-rulesets-declaration-in-repo: declaration missing when
+  # ADR-503: declaration missing when
   # $3 (repo_gql) is omitted entirely (default "{}").
   jq -e '.missing | index("rulesets-declaration-missing")' \
     <<<"$(judge_rulesets ruleset-decl-test true)" >/dev/null || {
@@ -3440,7 +3438,7 @@ EOF
     printf 'FAIL: judge_settings should flag squash-message-not-blank when squash_merge_commit_message != BLANK\n' >&2
     return 1
   }
-  # docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b: automerge
+  # docs/adr/568-renovate-automerge-shared-preset.md D2/D5b: automerge
   # safety needs GitHub-native auto-merge on, and Dependabot's own fix-PR
   # generation off (Renovate is the single fix-PR channel).
   jq -e '.missing | index("auto-merge-disabled")' <<<"$(judge_settings "$meta_ok" "$rest_drift")" >/dev/null || {
@@ -3783,7 +3781,7 @@ jobs:
   }
 
   # ---------------------------------------------------------------------
-  # routines domain (ADR-0000-routines-declaration-in-repo): 自己監査
+  # routines domain (ADR-519): 自己監査
   # routine の sources 網羅性検出。judge_routines() の直接呼び出しテスト、
   # releaser と同じスタイル。$tmp/config/routines-auditor-sources.tsv には
   # "tarotene/routines-ok" だけが入っている(export ブロック参照)。

@@ -611,7 +611,7 @@ jobs:
       - name: pr-merge-settings-check --selftest
         run: ./scripts/pr-merge-settings-check --selftest
 
-      # rulesets-context-check (ADR-0000-rulesets-declaration-in-repo,
+      # rulesets-context-check (ADR-503,
       # generalizing ADR-0031 Amendment 2026-09-26's PR-title-only check)
       # sources scripts/github-audit's fetch_head_sha_job_names() (no new
       # judgement logic) and stubs GH_BIN to exercise the match/mismatch/
@@ -692,8 +692,7 @@ jobs:
       - name: adr-number.sh (codex adapter) --selftest
         run: bash ./config/codex/hooks/adr-number.sh --selftest
 
-      # apply-repo-settings.sh (docs/adr/0000-renovate-automerge-shared-
-      # preset.md D5b) is deterministic bash end to end against a stubbed
+      # apply-repo-settings.sh (docs/adr/568-renovate-automerge-shared-preset.md D5b) is deterministic bash end to end against a stubbed
       # gh — covers the default (PATCH + vulnerability-alerts PUT +
       # automated-security-fixes DELETE), --no-dependabot (both Dependabot
       # calls skipped), and --dry-run (no gh api calls at all) paths.
@@ -727,7 +726,7 @@ jobs:
       - name: github-app-registry-check --selftest
         run: ./scripts/github-app-registry-check --selftest
 
-      # github-rulesets-apply (ADR-0000-rulesets-declaration-in-repo, #153)
+      # github-rulesets-apply (ADR-503, #153)
       # is a thin multi-repo loop over scripts/apply-rulesets.sh — 対象
       # リポジトリの「型」は引数に取らない(旧: rust/typst/astro/core/
       # dotfiles の 5 型 + 型ごとの apply-rulesets.sh、D4「還元」で撤去)。
@@ -736,7 +735,7 @@ jobs:
       - name: github-rulesets-apply --selftest
         run: ./scripts/github-rulesets-apply --selftest
 
-      # apply-rulesets.sh (ADR-0000-rulesets-declaration-in-repo): 任意の
+      # apply-rulesets.sh (ADR-503): 任意の
       # リポジトリ自身が持つ宣言(<repo>/.github/rulesets/*.json)を、その
       # リポジトリの live な branch ruleset に適用する。PUT/POST 直前に
       # quality.json の required_status_checks[].context を実測 job 名
@@ -859,7 +858,7 @@ jobs:
       # system.
       - run: nix flake check --all-systems --no-build --print-build-logs
 
-      # docs/adr/0000-renovate-automerge-shared-preset.md D4: the shared
+      # docs/adr/568-renovate-automerge-shared-preset.md D4: the shared
       # preset (renovate/policy.json) and this repo's own renovate.json
       # (which extends it) are the only Renovate config in this repo — the
       # governance skill templates are structurally similar but not valid

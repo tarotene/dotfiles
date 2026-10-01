@@ -2,7 +2,7 @@
 # rulesets-context-check — required check の context 文字列が、この PR の
 # head で実際に走る job 名として報告されるかを required check
 # (.github/workflows/pr-title.yml の最終 step)として検査する
-# (ADR-0000-rulesets-declaration-in-repo)。
+# (ADR-503)。
 #
 # `scripts/pr-title-context-check`(ADR-0031 Amendment 2026-09-26)の
 # 一般化版。あちらは「PR title」1 context だけを自己照合したが、この

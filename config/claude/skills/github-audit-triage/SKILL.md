@@ -71,7 +71,7 @@ description・topics・settings フィールド・ファイルツリー・open I
 - settings/renovate ドメインは、対象の `*-repo-governance` スキルの
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。`auto-merge-disabled` / `dependabot-security-updates-
-  enabled`(docs/adr/0000-renovate-automerge-shared-preset.md D2/D5b)は
+  enabled`(docs/adr/568-renovate-automerge-shared-preset.md D2/D5b)は
   `apply-repo-settings.sh --owner <owner> --repo <repo>` の再実行で両方
   一度に直る。`renovate-policy-preset-missing`(同 ADR D4)は対象 repo の
   `renovate.json` の `extends` に `github>tarotene/dotfiles//renovate/
@@ -98,7 +98,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     `*-repo-governance` skill(rust/typst/astro)の `copy-files.sh` または
     `repo-governance-common` の `copy-files.sh`(該当エコシステムが無い
     リポジトリ、`core` 型)で宣言を播く提案を先に書く
-    (ADR-0000-rulesets-declaration-in-repo、`rulesets-declaration-missing`
+    (ADR-503、`rulesets-declaration-missing`
     が該当)。宣言は既にあり live だけが古い場合は、
     `apply-rulesets.sh <owner>/<repo> --reconcile` を適用する提案として
     表に書く(`--reconcile` が無いと既存 ruleset は skip されて追加されない、
@@ -166,7 +166,7 @@ description・topics・settings フィールド・ファイルツリー・open I
   `rulesets-declaration-drift:<name>`(宣言 ≠ live)・
   `required-context-unreportable:<context>`(live の context がこの
   リポジトリのどの job も報告しない)は
-  ADR-0000-rulesets-declaration-in-repo で追加された機械判定 — それぞれ
+  ADR-503 で追加された機械判定 — それぞれ
   「該当 skill の `copy-files.sh` で宣言を播く」「`apply-rulesets.sh
   --reconcile` で live を宣言に合わせる」「宣言または対象リポジトリの
   workflow のどちらを直すべきかを人間裁定に回す」提案として表に書く。

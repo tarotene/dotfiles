@@ -158,7 +158,7 @@ structure replaces any existing single-job CI.
 static (no placeholders) — they are "Format & Lint (Biome)", "Content lint",
 "Unit tests", "Build". Do not rename jobs without updating the Ruleset —
 `apply-rulesets.sh` refuses to apply a context that isn't actually reported
-by a real run (ADR-0000-rulesets-declaration-in-repo).
+by a real run (ADR-503).
 
 If your project has **no custom content-lint scripts** (no `npm run check`
 beyond `astro check`), remove the "Content lint" job AND its Ruleset entry.
