@@ -211,3 +211,12 @@ D6 の「`--save-exact` で入れる」と Sphinx の `pip install "sphinx==…"
 作られる。自前の regex customManager は感触で外した(独自 regex は壊れやすそう)。
 先行例: Renovate Docs, "Custom Manager Support using Regex"
 (<https://docs.renovatebot.com/modules/manager/regex/>、2026-10-01 取得)。
+
+### 執行点
+
+- .github/actions/docs-python/requirements.txt
+- .github/actions/docs-python/action.yml
+- .github/actions/docs-typescript/package.json
+- .github/actions/docs-typescript/package-lock.json
+- .github/actions/docs-typescript/action.yml
+- renovate.json
