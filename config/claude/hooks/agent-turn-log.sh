@@ -26,7 +26,17 @@
 # script, no adapter file — its own I/O is agent-agnostic already), with
 # AGENT_NAME=codex prefixed into the Codex-side command string. Default
 # stays "claude-code" so the Claude registration is unchanged.
+#
+# ADR-0032 Amendment (2026-10-01): Copilot CLI too, registered under the
+# PascalCase event names so it receives Claude's snake_case payload with
+# `hook_event_name` (GitHub Docs, "GitHub Copilot Hooks Reference", retrieved
+# 2026-10-01). Codex's payload carries `turn_id` rather than `prompt_id`; both
+# are read. AGENT_TURN_LOG=0 makes this a no-op — set by copilot-plan-review.sh
+# when it launches Copilot, because those runs are machine-started and not the
+# owner's work (about four in five Copilot sessions on the owner's host).
 set -uo pipefail
+
+[ "${AGENT_TURN_LOG:-1}" = "0" ] && exit 0
 
 AGENT_NAME="${AGENT_NAME:-claude-code}"
 
@@ -58,7 +68,7 @@ cwd="$(jq -r '.cwd // empty' "$hook_input_file" 2>/dev/null)"
 
 case "$event" in
   UserPromptSubmit)
-    prompt_id="$(jq -r '.prompt_id // empty' "$hook_input_file" 2>/dev/null)"
+    prompt_id="$(jq -r '.prompt_id // .turn_id // empty' "$hook_input_file" 2>/dev/null)"
     if [ -z "$prompt_id" ]; then
       prompt_id="$(date +%s%N 2>/dev/null || date +%s)-$$"
     fi
