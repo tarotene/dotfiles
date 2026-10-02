@@ -532,6 +532,14 @@ let
   # --retire で完全一致削除する(legacy*Cmd)。
   gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
   gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
+  # main-checkout-guard(docs/claude/main-checkout-guard.md): 本物の checkout
+  # (main worktree)を変更させない。pre = PreToolUse(deny + baseline 記録)、
+  # stop = Stop(baseline からの事後検出)。判定エンジンは 1 つで、Codex にも
+  # 同じバイナリを --agent codex で直接登録する。
+  mainCheckoutGuardPreCmd = "'${hooksDir}/main-checkout-guard' pre";
+  mainCheckoutGuardStopCmd = "'${hooksDir}/main-checkout-guard' stop";
+  codexMainCheckoutGuardPreCmd = "'${hooksDir}/main-checkout-guard' --agent codex pre";
+  codexMainCheckoutGuardStopCmd = "'${hooksDir}/main-checkout-guard' --agent codex stop";
   legacyGitWorktreeAllowCmd = "bash '${hooksDir}/git-worktree-allow.sh'";
   legacyGitStashGuardCmd = "bash '${hooksDir}/git-stash-guard.sh'";
   legacyCodexGitStashGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/git-stash-guard.sh'";
@@ -1122,6 +1130,23 @@ let
       command = gitStashGuardCmd;
       timeout = 10;
       "if" = "Bash(git *)";
+    }
+    # main-checkout-guard: 本物の checkout への Write/Edit と変更系 git を deny し、
+    # 触れた checkout の baseline を記録する(Read/Grep/Glob は記録だけ)。
+    # deny 側なので matcher/if の不一致 = 素通りが事故になる。if は付けず、
+    # 絞り込みは hook 内部の早期 exit に置く(git-stash-guard と同じ理由)。
+    {
+      event = "PreToolUse";
+      matcher = "Bash|Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob";
+      command = mainCheckoutGuardPreCmd;
+      timeout = 10;
+    }
+    # 事後検出: Bash の sed -i やリダイレクトなど、字面からは書き込みと
+    # 分からない迂回(#661)を、触れた checkout の状態差分で捕まえる。
+    {
+      event = "Stop";
+      command = mainCheckoutGuardStopCmd;
+      timeout = 30;
     }
     # bleep(旧 publish-guard、上流分離、ADR-0009): 会社/private リポジトリの
     # 実名が git push・gh pr/issue の create/edit/comment・MCP tool call 経由で
@@ -1774,6 +1799,9 @@ in
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
+  # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
+  home.file.".claude/hooks/main-checkout-guard".source =
+    "${pkgs.dotfiles-tools}/bin/main-checkout-guard";
   # bleep(旧 publish-guard): 会社/private リポジトリの実名が PUBLIC な面に
   # 漏れるのを防ぐ PreToolUse hook。上流を別リポジトリ tarotene/bleep に
   # 切り出し(ADR-0009)、flake input(pinned rev)からツリーごと配備する。
@@ -1950,6 +1978,8 @@ in
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \
           PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexStackBaseGuardCmd} 20 \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexRulesetsWriteGuardCmd} 10 \
+          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexMainCheckoutGuardPreCmd} 10 \
+          Stop "" ${lib.escapeShellArg codexMainCheckoutGuardStopCmd} 30 \
           PostToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexAdrNumberCmd} 10
       '';
 
