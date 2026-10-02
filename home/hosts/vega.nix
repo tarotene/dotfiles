@@ -4,7 +4,11 @@
 # convention — resolved via crates/hms / bootstrap.sh's resolve_host(),
 # not the OS hostname. Renamed from personal-pop; content otherwise
 # unchanged (signing key, imports, ROS host module carried over verbatim).
-{ lib, ... }:
+{ lib, pkgs, ... }:
+let
+  # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix.
+  nixGLWrap = import ../modules/nixgl.nix { inherit pkgs; };
+in
 {
   imports = [
     ../common.nix
@@ -20,6 +24,12 @@
   # needs the YubiKey touch/PIN, done separately) — its signature history
   # stays verifiable either way.
   programs.git.signing.key = "464382A473897DEBF8BCB369F7F5798C1372F95D";
+
+  # MuseScore: Qt Quick (OpenGL) renderer, so it needs the nixGL wrap like
+  # the other nix GUI apps (ADR-0006). vega-only: installed for this PC, not
+  # shared with the other hosts. Fallback if GL/audio fails under nixGL:
+  # declare org.musescore.MuseScore in flatpak.nix instead (zoom precedent).
+  home.packages = [ (nixGLWrap pkgs.musescore) ];
 
   # ROS is scoped to the personal host only (#215 / ADR-0002): place the
   # host-scoped zsh module and source it after the shared modules. home-manager
