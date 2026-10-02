@@ -344,12 +344,7 @@ impl Fx {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
+        child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
         let o = child.wait_with_output().unwrap();
         Run {
             code: o.status.code().unwrap_or(-1),

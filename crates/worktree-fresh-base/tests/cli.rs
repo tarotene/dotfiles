@@ -74,12 +74,7 @@ fn run_hook(stdin: &str, project_env: Option<&Path>) -> (String, i32) {
         c.env("CLAUDE_PROJECT_DIR", p);
     }
     let mut child = c.spawn().unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
     let out = child.wait_with_output().unwrap();
     (
         String::from_utf8(out.stdout).unwrap(),

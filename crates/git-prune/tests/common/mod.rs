@@ -161,7 +161,7 @@ pub fn run(bin: &str, args: &[&str], cwd: &Path, env: &[(&str, &str)], stdin: Op
     let mut child = cmd.spawn().unwrap();
     if let Some(s) = stdin {
         let mut si = child.stdin.take().unwrap();
-        si.write_all(s.as_bytes()).unwrap();
+        si.write_all(s.as_bytes()).ok();
     }
     finish(child.wait_with_output().unwrap())
 }

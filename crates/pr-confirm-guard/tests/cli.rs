@@ -196,11 +196,7 @@ fn run_hook(args: &[&str], stdin: &str, envs: &[(&str, &str)]) -> Output {
         c.env(k, v);
     }
     let mut ch = c.spawn().unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    ch.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
     ch.wait_with_output().unwrap()
 }
 

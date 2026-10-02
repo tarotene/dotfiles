@@ -15,11 +15,7 @@ fn run_env(cmd_json: &str, bypass: Option<&str>) -> Option<String> {
         None => c.env_remove("REPO_CREATE_GUARD_BYPASS"),
     };
     let mut ch = c.spawn().unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(cmd_json.as_bytes())
-        .unwrap();
+    ch.stdin.take().unwrap().write_all(cmd_json.as_bytes()).ok();
     let o = ch.wait_with_output().unwrap();
     assert_eq!(o.status.code(), Some(0));
     if o.stdout.is_empty() {

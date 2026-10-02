@@ -146,12 +146,7 @@ impl Harness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = c.spawn().unwrap();
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
+        child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
         let out = child.wait_with_output().unwrap();
         // hook は応答を待ってから終わるので、終了時点で行は届いている。
         let mut lines = Vec::new();

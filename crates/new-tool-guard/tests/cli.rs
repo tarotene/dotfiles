@@ -64,7 +64,7 @@ fn run_hook(repo: &Path, home: &Path, stdin_json: &str) -> std::process::Output 
         .take()
         .unwrap()
         .write_all(stdin_json.as_bytes())
-        .unwrap();
+        .ok();
     child.wait_with_output().unwrap()
 }
 
@@ -215,12 +215,7 @@ fn skip_switch_bypasses_hook() {
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
     let out = child.wait_with_output().unwrap();
     assert!(out.stdout.is_empty());
 
@@ -263,7 +258,7 @@ fn run_hook_env(
         .take()
         .unwrap()
         .write_all(stdin_json.as_bytes())
-        .unwrap();
+        .ok();
     child.wait_with_output().unwrap()
 }
 

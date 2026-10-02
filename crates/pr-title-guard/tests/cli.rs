@@ -86,12 +86,7 @@ fn hook(args: &[&str], stdin: &str, envs: &[(&str, &str)]) -> String {
     }
     let mut child = c.spawn().unwrap();
     use std::io::Write;
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
     let o = child.wait_with_output().unwrap();
     assert_eq!(o.status.code(), Some(0));
     String::from_utf8(o.stdout).unwrap()

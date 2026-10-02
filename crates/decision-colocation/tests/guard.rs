@@ -220,12 +220,7 @@ fn run_hook(cmd: &mut Command, stdin: &str) -> (i32, String) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
     let out = child.wait_with_output().unwrap();
     (
         out.status.code().unwrap(),
