@@ -8,6 +8,34 @@
 let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix.
   nixGLWrap = import ../modules/nixgl.nix { inherit pkgs; };
+
+  # MuseScore opens ALSA's "default" PCM. nix's alsa-lib reads the *host's*
+  # /etc/alsa/conf.d, whose 99-pipewire-default.conf routes "default" to the
+  # `pipewire` plugin — but nixpkgs' musescore wrapper pins ALSA_PLUGIN_DIR to
+  # nix's alsa-plugins, which has no pipewire plugin (only pulse/jack/...), so
+  # the open fails with ENXIO ("No such device or address", err code -6) and
+  # playback is silent. A standalone config (it must not include alsa.conf:
+  # conf.d is loaded after the main file and would override "default" again)
+  # that routes "default" through the pulse plugin — which nix's alsa-plugins
+  # does ship, served by pipewire-pulse — avoids the missing plugin.
+  alsaPulseConf = pkgs.writeText "musescore-asound.conf" ''
+    pcm.!default {
+      type pulse
+      hint { show on description "PulseAudio (PipeWire)" }
+    }
+    ctl.!default { type pulse }
+  '';
+
+  # Applied *before* nixGLWrap so the desktop entry and both binaries
+  # (mscore, musescore) go through it.
+  musescorePulse = pkgs.symlinkJoin {
+    name = "${pkgs.musescore.name}-alsa-pulse";
+    paths = [ pkgs.musescore ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/mscore --set ALSA_CONFIG_PATH ${alsaPulseConf}
+    '';
+  };
 in
 {
   imports = [
@@ -26,10 +54,11 @@ in
   programs.git.signing.key = "464382A473897DEBF8BCB369F7F5798C1372F95D";
 
   # MuseScore: Qt Quick (OpenGL) renderer, so it needs the nixGL wrap like
-  # the other nix GUI apps (ADR-0006). vega-only: installed for this PC, not
-  # shared with the other hosts. Fallback if GL/audio fails under nixGL:
-  # declare org.musescore.MuseScore in flatpak.nix instead (zoom precedent).
-  home.packages = [ (nixGLWrap pkgs.musescore) ];
+  # the other nix GUI apps (ADR-0006), plus the ALSA→pulse routing above for
+  # audio. vega-only: installed for this PC, not shared with the other hosts.
+  # Fallback if this keeps breaking: declare org.musescore.MuseScore in
+  # flatpak.nix instead (zoom precedent).
+  home.packages = [ (nixGLWrap musescorePulse) ];
 
   # ROS is scoped to the personal host only (#215 / ADR-0002): place the
   # host-scoped zsh module and source it after the shared modules. home-manager
