@@ -334,6 +334,10 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-0000](adr/0000-main-checkout-guard.md) — 本物の checkout(main
+  worktree)を変更させない。Write/Edit と変更系 git を PreToolUse で deny し、
+  触れた checkout の baseline を記録して Stop で状態の差分を検出する(Bash 経由の
+  迂回を字面でなく状態で捕まえる)。逃げ道なし、Claude と Codex 共通。
 - [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
   強制する。出口(inbox → Issue)は wrap-up inbox と共有し、入口(閉語彙の
   構造化記録 + 決定論的な出来事との突き合わせ)と強制を `wrapup-stop-gate` に
@@ -408,6 +412,9 @@ Design and rationale for the hooks and commands deployed from
   日次 timer(Rust)。同じ規範・skill を指す feedback Issue の再発、
   SKILL.md コードブロックの逐語反復実行、gate skip ファイルの滞留・多発を
   検出し、Q2(LLM/散文 → 決定論への昇格)の候補を wrap-up inbox に追記する。
+- [`main-checkout-guard.md`](claude/main-checkout-guard.md) — PreToolUse +
+  Stop hook(Rust): 本物の checkout への Write/Edit・変更系 git を deny し、
+  触れた checkout の状態差分を Stop で検出する。
 - [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.

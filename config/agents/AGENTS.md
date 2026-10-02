@@ -218,6 +218,30 @@ ADR・設計文書・skill のような決定成果物を追加するときは�
   stacked-pr スキルに従う。この節は「他ブランチを最新化する」という
   より一般的な場面を対象にする。
 
+# 本物の checkout は変更せず、作業単位は worktree で切る
+
+どのリポジトリでも、本物の checkout(main worktree。`git rev-parse` の
+`--git-dir` と `--git-common-dir` が一致するもの)には変更を入れず、
+作業単位ごとに worktree を切って、その中で作業する。自リポジトリとよその
+リポジトリを区別しない。作業の途中で別のリポジトリへ移るときも、セッション
+を本物の checkout で始めてしまったときも同じ。
+
+- 理由: 独立した作業単位を切るとき、herdr は親 checkout の HEAD を土台に
+  使う。親 checkout が main でクリーンであることを保証できる場が、この
+  前提を支える。本物の checkout で編集や `git switch -c` をすると、その
+  保証が失われる。
+- worktree は `herdr worktree create --cwd <repo> --branch <name>` で作り、
+  以降は worktree の絶対パス、または `git -C <worktree>` で操作する。
+- 読み取り(Read/Grep/Glob、`git log` `git status` など)、`git fetch`、
+  `git pull --ff-only` は本物の checkout に対してやってよい。
+- 本物の checkout を直接変更したいときは、本人が `!` 付きのコマンドで
+  操作する。エージェントが自分で抜ける手段は設けない。
+
+形式検査は `main-checkout-guard`(PreToolUse の deny + Stop の事後検出)が
+担う。gate に当たる前に自発的に worktree を切ること — gate は漏れを拾う
+ためのもので、一次的な手段ではない。設計は
+`docs/claude/main-checkout-guard.md`。
+
 # GitHub に投稿するテキストには生成元を明示する
 
 GitHub に書く外向きのテキストには、経路を問わず末尾に次の形式で
