@@ -1340,6 +1340,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "trycmd",
+ "verdict-escalate",
 ]
 
 [[package]]
