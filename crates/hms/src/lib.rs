@@ -30,6 +30,15 @@
 //! 既定 ref はリモート main(どのローカル checkout のブランチ・dirty 状態にも依存
 //! しない)。worktree の適用は明示の `hms .` だけ。
 //!
+//! リモート適用(`hms`)は、適用対象 flake が pin する bleep(`flake = false` の
+//! source tree 入力)も main の最新に追従させる: `nix flake prefetch --refresh` で
+//! main の revision を解決し、lock の pin と違えば `--override-input bleep …`(wrapper
+//! 経由は `dotfiles/bleep`)を付けて **事前に `nix build` で activationPackage を
+//! 組む**。配備された hook の canary(home.checks)を通れば override を採用し、通ら
+//! なければ(bleep 側の破壊的変更に dotfiles の配線が未追従)警告して lock の pin の
+//! まま適用する。`hms .` / `hms <path>` は checkout の pin をそのまま検証する場なので
+//! override しない。
+//!
 //! nix は github: 形式の flake ref の解決を tarball-ttl(既定 1h)キャッシュする。
 //! マージ直後に `hms` が 1 時間前の main を黙って適用して "Done." を出す(#48)ので、
 //! 非ローカル ref は switch 前に `--refresh` し、実際に適用する revision を表示して
@@ -161,6 +170,62 @@ pub fn dotfiles_override_opts(main_rev: &str) -> Vec<String> {
         "--override-input".into(),
         "dotfiles".into(),
         format!("github:tarotene/dotfiles/{main_rev}"),
+        "--no-write-lock-file".into(),
+    ]
+}
+
+pub const BLEEP_REF: &str = "github:tarotene/bleep";
+
+/// 適用対象 flake の lock が pin している bleep(`flake = false` の source tree 入力)。
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct BleepPin {
+    /// `--override-input` に渡す入力名。public 単体は `bleep`、wrapper 経由は
+    /// `dotfiles/bleep`(wrapper が `dotfiles` を入力に持ち、その先に bleep がある)。
+    pub input: String,
+    pub rev: String,
+}
+
+/// `nix flake metadata --json` の lock から bleep の pin を読む。ルート直下の `bleep`
+/// を先に、無ければ `dotfiles` ノード配下の `bleep` を見る。どちらも素のノード参照
+/// (文字列)でないとき(`follows` の配列・欠如)は None — override する対象が無い。
+pub fn bleep_pin(json: &str) -> Option<BleepPin> {
+    let doc: Value = serde_json::from_str(json).ok()?;
+    let nodes = &doc["locks"]["nodes"];
+    let rev_of = |node: &str| -> Option<String> {
+        let r = jq_r_or_empty(nodes[node]["locked"].get("rev"));
+        (!r.is_empty()).then_some(r)
+    };
+    if let Some(Value::String(node)) = nodes["root"]["inputs"].get("bleep") {
+        return rev_of(node).map(|rev| BleepPin {
+            input: "bleep".into(),
+            rev,
+        });
+    }
+    if let Some(Value::String(dot)) = nodes["root"]["inputs"].get("dotfiles") {
+        if let Some(Value::String(node)) = nodes[dot.as_str()]["inputs"].get("bleep") {
+            return rev_of(node).map(|rev| BleepPin {
+                input: "dotfiles/bleep".into(),
+                rev,
+            });
+        }
+    }
+    None
+}
+
+/// `nix flake prefetch --json` の `.locked.rev`(`nix flake metadata` は flake.nix の
+/// 無い bleep では失敗するので、source tree 入力の main の解決にはこちらを使う)。
+pub fn prefetch_revision(json: &str) -> String {
+    serde_json::from_str::<Value>(json)
+        .map(|v| jq_r_or_empty(v["locked"].get("rev")))
+        .unwrap_or_default()
+}
+
+/// bleep を main の解決済み revision に pin する `home-manager switch` / `nix build` 引数。
+pub fn bleep_override_opts(input: &str, main_rev: &str) -> Vec<String> {
+    vec![
+        "--override-input".into(),
+        input.into(),
+        format!("{BLEEP_REF}/{main_rev}"),
         "--no-write-lock-file".into(),
     ]
 }
@@ -388,6 +453,8 @@ fn print_help(r#ref: &str, wrapper_ref: &str) {
     println!();
     println!("Apply the home-manager configuration for this host.");
     println!("  hms          apply pushed main ({})", r#ref);
+    println!("               bleep is taken at its main, verified by a pre-build; if that");
+    println!("               fails, the locked pin is applied instead.");
     println!("  hms .        apply the current checkout/worktree (pre-push verification).");
     if wrapper_ref != DEFAULT_REF {
         println!("               Routed through {wrapper_ref} with dotfiles overridden to");
@@ -403,6 +470,14 @@ fn refreshed_revision(flake: &str) -> Option<(String, String)> {
         capture(Command::new("nix").args(["flake", "metadata", "--refresh", "--json", flake]))?;
     let rev = metadata_revision(&json);
     (!rev.is_empty()).then_some((json, rev))
+}
+
+/// bleep main の解決済み revision(`nix flake prefetch --refresh`。解決できなければ None)。
+fn refreshed_bleep_revision() -> Option<String> {
+    let json =
+        capture(Command::new("nix").args(["flake", "prefetch", "--refresh", "--json", BLEEP_REF]))?;
+    let rev = prefetch_revision(&json);
+    (!rev.is_empty()).then_some(rev)
 }
 
 /// 引数(`argv[0]` を除く)を処理して終了コードを返す。
@@ -542,11 +617,65 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
+    // bleep を main の最新に追従させる(リモート適用のみ — `hms .` は checkout の pin を
+    // そのまま検証する場)。flake.lock の pin は「検証済みの既知良好版」で、ここでの
+    // override は適用時だけ。bleep 側の破壊的変更で dotfiles の配線と噛み合わなく
+    // なる版は、配備された hook の canary(home.checks、home/modules/claude.nix)で
+    // generation の build 自体が失敗するので、事前 build で確かめて pin に戻す。
+    if !ref_is_local && plan != ApplyPlan::Route {
+        if let Some(pin) = bleep_pin(&ref_meta_json) {
+            match refreshed_bleep_revision() {
+                Some(main_rev) if main_rev == pin.rev => {
+                    println!(
+                        "==> bleep revision {main_rev} (lock already at this revision)"
+                    );
+                }
+                Some(main_rev) => {
+                    let opts = bleep_override_opts(&pin.input, &main_rev);
+                    println!(
+                        "==> nix build {apply_ref}#homeConfigurations.{host}.activationPackage (bleep {main_rev}; verifying before switch)"
+                    );
+                    let rc = run_inherit(
+                        Command::new("nix")
+                            .args(["build", "--no-link"])
+                            .arg(format!(
+                                "{apply_ref}#homeConfigurations.{host}.activationPackage"
+                            ))
+                            .args(&extra_opts)
+                            .args(&opts),
+                    );
+                    if rc == 0 {
+                        println!(
+                            "==> bleep revision {main_rev} (overriding the lock pin {}; canary passed)",
+                            pin.rev
+                        );
+                        extra_opts.extend(opts);
+                    } else {
+                        eprintln!(
+                            "Warning: bleep main {main_rev} failed to build or failed the deployed-hook canary; applying the locked pin {} instead.",
+                            pin.rev
+                        );
+                        eprintln!(
+                            "  dotfiles likely needs to follow a breaking bleep change — bump the pin in a PR"
+                        );
+                        eprintln!(
+                            "  together with its call sites (see the bleep input comment in flake.nix)."
+                        );
+                    }
+                }
+                None => eprintln!(
+                    "==> could not resolve {BLEEP_REF} (offline?); applying the locked bleep pin as-is (bleep {})",
+                    pin.rev
+                ),
+            }
+        }
+    }
+
     // ファイル冒頭の `--override-input` の注記を参照: nix 自身の "not writing modified
     // lock file" 出力の前に、説明なしで残さず警告する。
     if lock_warning_expected(&extra_opts) {
         println!(
-            "==> note: a nix \"warning: not writing modified lock file\" below is expected — dotfiles is overridden for this switch only; the wrapper's flake.lock is intentionally left untouched (ADR-0034)"
+            "==> note: a nix \"warning: not writing modified lock file\" below is expected — an input is overridden for this switch only; the flake.lock is intentionally left untouched (ADR-0034)"
         );
     }
 
@@ -832,6 +961,71 @@ mod tests {
     fn lock_16_warn_dirty_only_is_not() {
         assert!(!lock_warning_expected(&["--option", "warn-dirty", "false"]));
         assert!(!lock_warning_expected::<&str>(&[]));
+    }
+
+    // bleep_pin / prefetch_revision / bleep_override_opts
+
+    #[test]
+    fn bleep_pin_direct_input() {
+        let json = r#"{"locks":{"nodes":{
+            "root":{"inputs":{"bleep":"bleep"}},
+            "bleep":{"locked":{"rev":"abc"}}}}}"#;
+        assert_eq!(
+            bleep_pin(json),
+            Some(BleepPin {
+                input: "bleep".into(),
+                rev: "abc".into()
+            })
+        );
+    }
+
+    #[test]
+    fn bleep_pin_through_wrapper_dotfiles() {
+        let json = r#"{"locks":{"nodes":{
+            "root":{"inputs":{"dotfiles":"dotfiles"}},
+            "dotfiles":{"inputs":{"bleep":"bleep_2"}},
+            "bleep_2":{"locked":{"rev":"def"}}}}}"#;
+        assert_eq!(
+            bleep_pin(json),
+            Some(BleepPin {
+                input: "dotfiles/bleep".into(),
+                rev: "def".into()
+            })
+        );
+    }
+
+    #[test]
+    fn bleep_pin_absent_follows_or_garbage_is_none() {
+        assert_eq!(
+            bleep_pin(r#"{"locks":{"nodes":{"root":{"inputs":{}}}}}"#),
+            None
+        );
+        let follows = r#"{"locks":{"nodes":{
+            "root":{"inputs":{"dotfiles":"dotfiles"}},
+            "dotfiles":{"inputs":{"bleep":["x","bleep"]}}}}}"#;
+        assert_eq!(bleep_pin(follows), None);
+        assert_eq!(bleep_pin("not json"), None);
+        assert_eq!(bleep_pin(""), None);
+    }
+
+    #[test]
+    fn prefetch_revision_semantics() {
+        assert_eq!(prefetch_revision(r#"{"locked":{"rev":"abc"}}"#), "abc");
+        assert_eq!(prefetch_revision(r#"{"locked":{}}"#), "");
+        assert_eq!(prefetch_revision("oops"), "");
+    }
+
+    #[test]
+    fn bleep_override_opts_shape() {
+        assert_eq!(
+            bleep_override_opts("dotfiles/bleep", "abc"),
+            [
+                "--override-input",
+                "dotfiles/bleep",
+                "github:tarotene/bleep/abc",
+                "--no-write-lock-file"
+            ]
+        );
     }
 
     #[test]

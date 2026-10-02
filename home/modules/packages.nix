@@ -256,7 +256,8 @@
   # runs this binary, so the rule never drifts between the two enforcement
   # points. Same "executable in ~/.local/bin, no alias needed" placement as
   # git-prune-branches above.
-  home.file.".local/bin/decision-colocation-check".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-check";
+  home.file.".local/bin/decision-colocation-check".source =
+    "${pkgs.dotfiles-tools}/bin/decision-colocation-check";
 
   # github-audit: read-only cross-repository GitHub audit, unified across
   # eleven domains (rulesets/#130, charters, naming, settings, renovate,

@@ -51,6 +51,7 @@ impl T {
         exe(
             &s.join("nix"),
             r#"printf 'nix %s\n' "$*" >> "$STUB_DIR/calls.log"
+[[ $1 == build ]] && exit "${BUILD_RC:-0}"
 ref="${*: -1}"
 f="$STUB_DIR/meta/$(printf %s "$ref" | tr '/:+' '___')"
 [[ -f $f ]] && { cat "$f"; exit 0; }
@@ -278,6 +279,115 @@ fn unresolvable_revision_warns_and_continues() {
         "==> could not resolve a revision for {MAIN} (offline?); continuing with whatever switch resolves"
     )));
     assert!(t.hm_call().is_some());
+}
+
+const BLEEP: &str = "github:tarotene/bleep";
+const PUBLIC_META: &str = r#"{"revision":"mrev","locks":{"nodes":{
+    "root":{"inputs":{"bleep":"bleep"}},
+    "bleep":{"locked":{"rev":"oldbleep","type":"github"}}}}}"#;
+
+fn bleep_main(t: &T, rev: &str) {
+    t.meta(
+        BLEEP,
+        &format!(r#"{{"locked":{{"rev":"{rev}","type":"github"}}}}"#),
+    );
+}
+
+/// bleep main が lock の pin より先 + 事前 build 成功 → `--override-input bleep` で適用。
+#[test]
+fn bleep_main_is_overridden_after_a_passing_prebuild() {
+    let t = T::new();
+    t.meta(MAIN, PUBLIC_META);
+    bleep_main(&t, "newbleep");
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains(
+        "==> bleep revision newbleep (overriding the lock pin oldbleep; canary passed)\n"
+    ));
+    let calls = t.calls();
+    let build = calls.iter().find(|l| l.starts_with("nix build ")).unwrap();
+    assert!(build.contains("--override-input bleep github:tarotene/bleep/newbleep"));
+    assert_eq!(
+        t.hm_call().unwrap(),
+        format!(
+            "home-manager switch --flake {MAIN}#testhost -b backup --override-input bleep github:tarotene/bleep/newbleep --no-write-lock-file"
+        )
+    );
+}
+
+/// 事前 build が落ちる(canary 不通過)→ 警告して lock の pin のまま適用。
+#[test]
+fn bleep_main_falls_back_to_the_pin_when_prebuild_fails() {
+    let t = T::new();
+    t.meta(MAIN, PUBLIC_META);
+    bleep_main(&t, "newbleep");
+    let o = t.run(&[], &[("BUILD_RC", "1")]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(err(&o).contains("Warning: bleep main newbleep failed to build or failed the deployed-hook canary; applying the locked pin oldbleep instead."));
+    assert_eq!(
+        t.hm_call().unwrap(),
+        format!("home-manager switch --flake {MAIN}#testhost -b backup")
+    );
+}
+
+/// lock が既に main と同じ → build も override も無い。
+#[test]
+fn bleep_lock_already_current_does_not_build() {
+    let t = T::new();
+    t.meta(MAIN, PUBLIC_META);
+    bleep_main(&t, "oldbleep");
+    let o = t.run(&[], &[]);
+    assert!(out(&o).contains("==> bleep revision oldbleep (lock already at this revision)\n"));
+    assert!(!t.calls().iter().any(|l| l.starts_with("nix build ")));
+}
+
+/// wrapper 経由は入力名が `dotfiles/bleep`。
+#[test]
+fn bleep_override_goes_through_the_wrapper_input() {
+    let t = T::new();
+    t.marker("private-hub", WRAPPER);
+    t.meta(
+        WRAPPER,
+        r#"{"revision":"wrev","locks":{"nodes":{
+            "root":{"inputs":{"dotfiles":"dotfiles"}},
+            "dotfiles":{"inputs":{"bleep":"bleep"},"locked":{"rev":"oldrev","type":"github"}},
+            "bleep":{"locked":{"rev":"oldbleep","type":"github"}}}}}"#,
+    );
+    t.meta(MAIN, r#"{"revision":"oldrev"}"#);
+    bleep_main(&t, "newbleep");
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(t
+        .hm_call()
+        .unwrap()
+        .contains("--override-input dotfiles/bleep github:tarotene/bleep/newbleep"));
+}
+
+/// `hms .` / `hms <path>` は checkout の pin をそのまま検証する — bleep を触らない。
+#[test]
+fn local_apply_does_not_touch_bleep() {
+    let t = T::new();
+    bleep_main(&t, "newbleep");
+    let d = t.checkout();
+    let o = t.run(&[d.to_str().unwrap()], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(!t
+        .calls()
+        .iter()
+        .any(|l| l.contains("prefetch") || l.starts_with("nix build ")));
+    assert!(!t.hm_call().unwrap().contains("bleep"));
+}
+
+/// bleep main を解決できない(offline)→ 警告して lock の pin のまま。
+#[test]
+fn bleep_unresolvable_applies_the_pin() {
+    let t = T::new();
+    t.meta(MAIN, PUBLIC_META);
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(err(&o).contains(
+        "==> could not resolve github:tarotene/bleep (offline?); applying the locked bleep pin as-is (bleep oldbleep)"
+    ));
 }
 
 /// 降格 guard(#567): 前世代に private-hub マーカーがあるのに今回未登録 → 中止。

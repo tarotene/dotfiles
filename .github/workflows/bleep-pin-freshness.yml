@@ -5,6 +5,9 @@ name: bleep pin freshness
 # (#604 では 12 コミット遅れで、`gh` の後置 `-R` などの修正が未配備だった)。
 # bleep には tag 運用が無く、dotfiles では Renovate がまだ一度も PR を出して
 # いない(#465 / #589)ので、まず外部に依存しない検知を置く。
+# `hms`(リモート適用)は bleep main を canary 通過時だけ override して適用する
+# (crates/hms)ので、この pin は fallback と `hms .`・CI の版になる。pin が大きく
+# 遅れているのは「main が canary を通らず、dotfiles の追従待ち」の可能性が高い。
 #
 # advisory: ADR-591 D7 に従い、非ブロッキングの検査は `ci.yml`(`ci-passed` の
 # needs に束ねられる側)の外に置く。遅れが閾値を超えると `::warning::` の

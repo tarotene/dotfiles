@@ -30,8 +30,7 @@ in
 {
   # Rust 実装(crates/esa-mcp-launcher、#414)。配備先パスは bash 版と同じなので
   # ~/.claude.json 側の command は変わらない。
-  home.file.".local/libexec/esa-mcp-launcher".source =
-    "${pkgs.dotfiles-tools}/bin/esa-mcp-launcher";
+  home.file.".local/libexec/esa-mcp-launcher".source = "${pkgs.dotfiles-tools}/bin/esa-mcp-launcher";
 
   # LANG=ja は旧 private リポジトリの .mcp.json が持っていた実績値をそのまま
   # 引き継ぐ。
