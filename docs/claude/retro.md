@@ -3,7 +3,7 @@
 PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを
 求める。出口(inbox → Issue 化 → `/wrapup-chores`)は [wrap-up inbox](wrapup-inbox.md) と
 共有し、入口と強制だけが別。決定の理由と代替案は
-[ADR-697](../adr/0000-retro-stop-gate.md)。
+[ADR-697](../adr/697-retro-stop-gate.md)。
 
 ## 流れ
 

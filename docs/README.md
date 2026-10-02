@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-697](adr/0000-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
+- [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
   強制する。出口(inbox → Issue)は wrap-up inbox と共有し、入口(閉語彙の
   構造化記録 + 決定論的な出来事との突き合わせ)と強制を `wrapup-stop-gate` に
   足す。重複した inbox 行は再発コメントとして積む。
