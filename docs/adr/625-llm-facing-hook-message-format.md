@@ -130,9 +130,9 @@ gate-events(`~/.local/state/claude/gate-events.jsonl`)。取得日 2026-10-02。
 
 - `crates/wrapup-stop-gate/tests/directive_scope.rs`
 
-## Amendment (2026-10-02 — レトロの出力を範囲に加える, ADR-0000)
+## Amendment (2026-10-02 — レトロの出力を範囲に加える, ADR-697)
 
-作業終了時のレトロ(ADR-0000)が、wrapup 系に次の 2 つの出力を足す: Stop の
+作業終了時のレトロ(ADR-697)が、wrapup 系に次の 2 つの出力を足す: Stop の
 `kind="retro"` ポインタと、`--retro-procedure` の手順書(`kind="retro-procedure"`)。
 どちらも `crates/wrapup-stop-gate` の中にあり、書式は元の Decision のとおり
 (`<hook-directive>` 外枠 + 英語本文、Stop 出力は短いポインタ、詳細は

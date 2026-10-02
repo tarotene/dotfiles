@@ -1,4 +1,4 @@
-# ADR-0000 — 作業終了時のレトロスペクティブを Stop hook で強制する
+# ADR-697 — 作業終了時のレトロスペクティブを Stop hook で強制する
 
 - Status: Accepted
 - Date: 2026-10-02

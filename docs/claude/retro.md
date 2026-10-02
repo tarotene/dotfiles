@@ -1,9 +1,9 @@
-# 作業終了時のレトロ(ADR-0000)
+# 作業終了時のレトロ(ADR-697)
 
 PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを
 求める。出口(inbox → Issue 化 → `/wrapup-chores`)は [wrap-up inbox](wrapup-inbox.md) と
 共有し、入口と強制だけが別。決定の理由と代替案は
-[ADR-0000](../adr/0000-retro-stop-gate.md)。
+[ADR-697](../adr/0000-retro-stop-gate.md)。
 
 ## 流れ
 

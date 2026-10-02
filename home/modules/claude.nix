@@ -2104,7 +2104,7 @@ in
   # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
   home.file.".claude/skills/wrapup-chores/SKILL.md".source =
     repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
-  # retro: 作業終了時のレトロ(ADR-0000)。PR を作ったセッションは wrapup-stop-gate が
+  # retro: 作業終了時のレトロ(ADR-697)。PR を作ったセッションは wrapup-stop-gate が
   # Stop で求め、PR の無いセッションではこのスキルで手動に同じ手順を踏む。手順の正本は
   # `wrapup-stop-gate --retro-procedure` の出力で、スキルはその呼び方と判断の目安だけを持つ。
   home.file.".claude/skills/retro/SKILL.md".source = repoConfig + "/claude/skills/retro/SKILL.md";
