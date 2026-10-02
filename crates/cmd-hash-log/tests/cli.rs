@@ -54,7 +54,7 @@ fn run(repo: &Path, log_path: &Path, stdin_json: &str) -> std::process::Output {
         .take()
         .unwrap()
         .write_all(stdin_json.as_bytes())
-        .unwrap();
+        .ok();
     child.wait_with_output().unwrap()
 }
 

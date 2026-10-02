@@ -36,11 +36,7 @@ fn run(home: Option<&Path>, cmd: &str) -> Option<String> {
         None => c.env_remove("HOME"),
     };
     let mut ch = c.spawn().unwrap();
-    ch.stdin
-        .take()
-        .unwrap()
-        .write_all(input.as_bytes())
-        .unwrap();
+    ch.stdin.take().unwrap().write_all(input.as_bytes()).ok();
     let o = ch.wait_with_output().unwrap();
     assert_eq!(o.status.code(), Some(0));
     if o.stdout.is_empty() {
@@ -271,11 +267,7 @@ fn degraded_inputs_and_missing_home() {
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        ch.stdin
-            .take()
-            .unwrap()
-            .write_all(stdin.as_bytes())
-            .unwrap();
+        ch.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
         let o = ch.wait_with_output().unwrap();
         assert_eq!(o.status.code(), Some(0), "{stdin}");
         assert!(o.stdout.is_empty(), "{stdin}");

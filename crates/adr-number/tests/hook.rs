@@ -112,12 +112,7 @@ impl Fx {
         }
         let mut child = c.spawn().unwrap();
         use std::io::Write;
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(input.as_bytes())
-            .unwrap();
+        child.stdin.take().unwrap().write_all(input.as_bytes()).ok();
         let out = child.wait_with_output().unwrap();
         assert!(out.status.success(), "exit {:?}", out.status);
         String::from_utf8(out.stdout).unwrap()
