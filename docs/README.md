@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-main-checkout-guard.md) — 本物の checkout(main
+- [ADR-705](adr/705-main-checkout-guard.md) — 本物の checkout(main
   worktree)を変更させない。Write/Edit と変更系 git を PreToolUse で deny し、
   触れた checkout の baseline を記録して Stop で状態の差分を検出する(Bash 経由の
   迂回を字面でなく状態で捕まえる)。逃げ道なし、Claude と Codex 共通。

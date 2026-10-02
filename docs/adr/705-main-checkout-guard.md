@@ -1,4 +1,4 @@
-# ADR-0000 — 本物の checkout(main worktree)を変更させない
+# ADR-705 — 本物の checkout(main worktree)を変更させない
 
 - Status: Accepted
 - Date: 2026-10-02

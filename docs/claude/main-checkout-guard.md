@@ -1,6 +1,6 @@
 # main-checkout-guard — 本物の checkout を変更させない PreToolUse + Stop hook
 
-設計判断の記録: `docs/adr/0000-main-checkout-guard.md`
+設計判断の記録: `docs/adr/705-main-checkout-guard.md`
 実装: `crates/main-checkout-guard`(配備先 `~/.claude/hooks/main-checkout-guard`)
 配線: `home/modules/claude.nix`(Claude の PreToolUse + Stop、Codex の同じ 2 つ)
 
