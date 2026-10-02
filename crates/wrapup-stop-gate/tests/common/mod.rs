@@ -83,7 +83,7 @@ if [[ "${WRAPUP_STUB_FAIL:-0}" == "1" ]]; then
   exit 1
 fi
 if [[ "${WRAPUP_STUB_DUP:-0}" == "1" ]]; then
-  echo '[{"title":"dup title"}]'
+  echo '[{"number":42,"title":"dup title"}]'
 else
   echo '[]'
 fi

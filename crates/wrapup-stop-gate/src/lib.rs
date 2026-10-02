@@ -437,7 +437,8 @@ pub fn mark_filed(inbox: &str, line: &str) -> Code {
     }
 }
 
-/// `--check-dup <title> [repo]`: 0 = 重複なし / 1 = 同名 open Issue あり /
+/// `--check-dup <title> [repo]`: 0 = 重複なし / 1 = 同名 open Issue あり
+/// (その Issue 番号を stdout に 1 行出す。再発コメントの宛先) /
 /// 3 = 判定不能(gh 失敗。理由は stderr、#606)。
 pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
     let mut c = Command::new("gh");
@@ -451,7 +452,7 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
         "--search",
         &format!("in:title {title}"),
         "--json",
-        "title",
+        "number,title",
     ]);
     let out = match c.stdin(Stdio::inherit()).output() {
         Ok(o) => o,
@@ -471,6 +472,7 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
         return 0;
     };
     let mut last = None;
+    let mut dup_number = None;
     for v in &vals {
         let items: Vec<&J> = match v {
             J::Arr(a) => a.iter().collect(),
@@ -478,10 +480,14 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
             _ => return 0, // `.[]` できない → jq エラー
         };
         let mut hit = false;
+        dup_number = None;
         for it in items {
             match it.index("title") {
                 Ok(J::Str(s)) if s == title => {
                     hit = true;
+                    if let Ok(J::Num(n)) = it.index("number") {
+                        dup_number = Some(n.clone());
+                    }
                     break;
                 }
                 Ok(_) => {}
@@ -491,6 +497,9 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
         last = Some(hit);
     }
     if last == Some(true) {
+        if let Some(n) = dup_number {
+            println!("{n}");
+        }
         1
     } else {
         0
@@ -630,11 +639,20 @@ Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
 Process the lines one by one:
   1. Run '{self_path}' --check-dup "<title>" [repo] (pass repo if the line
      has one; otherwise the target is this project's repository).
-     exit 1 means an open Issue with the same title already exists (duplicate).
+     exit 1 means an open Issue with the same title already exists (duplicate);
+     its number is printed on stdout (when known) as <N>.
      exit 3 means the check could not be made — skip that line this time and
      leave it in the inbox.
   2. If the line has no "go":"ask" and is not a duplicate, file it with
      gh issue create [-R <repo>] --title "<title>" --body "<body>".
+     If it is a duplicate, do not just drop it: record the recurrence on the
+     existing Issue with gh issue comment <N> [-R <repo>] --body "<body>"
+     (date, what happened this time from detail, and where it was seen), ending
+     the comment with the same provenance footer as step 4. If <N> was not
+     printed, find it with gh issue list --search "in:title <title>". The count
+     of such comments is the signal ADR-543 uses to promote a rule to a script
+     or gate. Do this for a "go":"ask" line too, after the AskUserQuestion
+     answer of step 3 is to file it.
   3. If the line has "go":"ask" (auto-aggregated from the verdict ledger,
      ADR-478), do not file it right away even when it is not a duplicate.
      Show title, detail, and repo (the default target) via AskUserQuestion with
@@ -647,7 +665,7 @@ Process the lines one by one:
      this line (the provenance footer, grep-able for inbox-origin Issues, also
      serves as the attribution that attribution-guard.sh requires):
        「🤖 Filed from [{name}]({url}) wrap-up inbox」
-  5. Remove only the lines that were filed, skipped as duplicates, or declined
+  5. Remove only the lines that were filed, commented on as duplicates, or declined
      with 「今回は起票しない」 in step 3, using
      '{self_path}' --mark-filed '{inbox}' '<the line verbatim>'.
      If gh issue create fails, do not call --mark-filed; the line stays in the
