@@ -16,6 +16,7 @@
 //! 両実装が混在しても排他が成立する)。git と gh は外部コマンドのまま。
 
 pub mod json;
+pub mod retro;
 pub mod shquote;
 
 use json::J;
@@ -573,6 +574,16 @@ fn has_issue_ref(content: &[u8]) -> bool {
 /// を、find と同じ順(ディレクトリの読み出し順・前順)で列挙する。stamp が無い・
 /// root が無ければ空(判定不能は黙って何もしない側に倒す)。
 pub fn unlinked_feedback_memories(session_id: &str) -> Vec<String> {
+    feedback_memories(session_id, true)
+}
+
+/// 今セッション中に更新された `type: feedback` の auto memory(`#N` の有無を問わない)。
+/// レトロが「更新した feedback memory は行に引かれているか」を突き合わせるのに使う。
+pub fn updated_feedback_memories(session_id: &str) -> Vec<String> {
+    feedback_memories(session_id, false)
+}
+
+fn feedback_memories(session_id: &str, only_unlinked: bool) -> Vec<String> {
     let stamp = feedback_stamp_file(session_id);
     if !Path::new(&stamp).is_file() {
         return Vec::new();
@@ -588,7 +599,7 @@ pub fn unlinked_feedback_memories(session_id: &str) -> Vec<String> {
     walk(&root, &mut |path, md| {
         if md.is_file() && memory_md_path(path) && md.modified().is_ok_and(|t| t > since) {
             if let Ok(content) = fs::read(path) {
-                if has_feedback_type(&content) && !has_issue_ref(&content) {
+                if has_feedback_type(&content) && (!only_unlinked || !has_issue_ref(&content)) {
                     out.push(path.to_string());
                 }
             }
@@ -786,6 +797,17 @@ fn git_ok(project: &str, args: &[&str]) -> Option<Vec<u8>> {
 /// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
 pub fn stop_hook(self_path: &str, input: &str) -> Code {
     let h = HookJson::parse(input);
+    // レトロは stop_hook_active で抜けない(複数往復が要る。上限はセッション単位の
+    // カウンタ)。PR を作っていないセッションでは台帳を 1 つ読むだけで何も起きない。
+    {
+        let sid = h.session_id();
+        let proj = h.project().unwrap_or_default();
+        let transcript = h.get("transcript_path", None).unwrap_or_default();
+        if let Some(msg) = retro::stop_check(self_path, &sid, &proj, &transcript) {
+            let _ = writeln!(std::io::stderr(), "{msg}");
+            return 2;
+        }
+    }
     if h.stop_hook_active() {
         return 0;
     }
@@ -897,6 +919,24 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
             "--check-dup" => {
                 let title = need(1, "usage: wrapup-stop-gate.sh --check-dup <title> [repo]")?;
                 check_dup(self_path, title, arg(2))
+            }
+            "--retro-add" => {
+                let u = "usage: wrapup-stop-gate --retro-add <session_id> <json>";
+                let sid = need(1, u)?;
+                let line = need(2, u)?;
+                retro::retro_add(sid, line)
+            }
+            "--retro-procedure" => {
+                let sid = need(1, "usage: wrapup-stop-gate --retro-procedure <session_id>")?;
+                print!("{}", retro::procedure_text(self_path, sid));
+                0
+            }
+            "--retro-close" => {
+                let u =
+                    "usage: wrapup-stop-gate --retro-close <session_id> <comment-url|none:reason>";
+                let sid = need(1, u)?;
+                let target = need(2, u)?;
+                retro::retro_close(sid, target)
             }
             "--mark-filed" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;

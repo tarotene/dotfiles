@@ -2104,6 +2104,10 @@ in
   # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
   home.file.".claude/skills/wrapup-chores/SKILL.md".source =
     repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
+  # retro: 作業終了時のレトロ(ADR-0000)。PR を作ったセッションは wrapup-stop-gate が
+  # Stop で求め、PR の無いセッションではこのスキルで手動に同じ手順を踏む。手順の正本は
+  # `wrapup-stop-gate --retro-procedure` の出力で、スキルはその呼び方と判断の目安だけを持つ。
+  home.file.".claude/skills/retro/SKILL.md".source = repoConfig + "/claude/skills/retro/SKILL.md";
   # copilot-model-bump: 外部 AI CLI(Copilot CLI 等)に固定 pin した具体モデル ID を、
   # ベンダー側の GA・廃止サイクルに追従して更新する手順の判断知識。pin 箇所の棚卸し
   # (既定値・selftest 期待値・docs)・上流確認・スラッグ実機確認・完了条件を定型化する
@@ -2282,6 +2286,7 @@ in
     repoConfig + "/claude/skills/pr-description/cases.md";
   home.file.".agents/skills/wrapup-chores/SKILL.md".source =
     repoConfig + "/claude/skills/wrapup-chores/SKILL.md";
+  home.file.".agents/skills/retro/SKILL.md".source = repoConfig + "/claude/skills/retro/SKILL.md";
   home.file.".agents/skills/copilot-model-bump/SKILL.md".source =
     repoConfig + "/claude/skills/copilot-model-bump/SKILL.md";
   home.file.".agents/skills/issue-hygiene/SKILL.md".source =
