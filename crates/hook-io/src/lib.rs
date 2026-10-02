@@ -37,6 +37,7 @@ pub mod ledger;
 pub mod plan;
 pub mod proc;
 pub mod shell;
+pub mod transcript;
 
 pub use decision::{Decision, PermissionDecision};
 pub use input::{Agent, HookInput};

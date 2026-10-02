@@ -13,8 +13,8 @@
 
 use hook_io::jqfmt;
 use plan_scope_gate::{
-    deny_message, extract_issue_refs, extract_user_text, fetch_children, judge_inventory,
-    judge_issue, missing_lines, resolve_owner_repo, trim_newlines, IssueJudgement, EXAMPLE_BLOCK,
+    deny_message, extract_issue_refs, fetch_children, judge_inventory, judge_issue, missing_lines,
+    resolve_owner_repo, trim_newlines, IssueJudgement, EXAMPLE_BLOCK,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -112,7 +112,9 @@ fn hook() -> ExitCode {
         .unwrap_or_default();
     if !transcript.is_empty() && Path::new(&transcript).is_file() {
         let raw = std::fs::read(&transcript).unwrap_or_default();
-        let user_text = trim_newlines(extract_user_text(&String::from_utf8_lossy(&raw)));
+        let user_text = trim_newlines(hook_io::transcript::extract_user_text(
+            &String::from_utf8_lossy(&raw),
+        ));
         let owner_repo = resolve_owner_repo(&cwd);
         for r in extract_issue_refs(&user_text, &owner_repo) {
             let Some(children) = fetch_children(&r) else {
