@@ -71,11 +71,20 @@ Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
 Process the lines one by one:
   1. Run '{gate}' --check-dup "<title>" [repo] (pass repo if the line
      has one; otherwise the target is this project's repository).
-     exit 1 means an open Issue with the same title already exists (duplicate).
+     exit 1 means an open Issue with the same title already exists (duplicate);
+     its number is printed on stdout (when known) as <N>.
      exit 3 means the check could not be made — skip that line this time and
      leave it in the inbox.
   2. If the line has no "go":"ask" and is not a duplicate, file it with
      gh issue create [-R <repo>] --title "<title>" --body "<body>".
+     If it is a duplicate, do not just drop it: record the recurrence on the
+     existing Issue with gh issue comment <N> [-R <repo>] --body "<body>"
+     (date, what happened this time from detail, and where it was seen), ending
+     the comment with the same provenance footer as step 4. If <N> was not
+     printed, find it with gh issue list --search "in:title <title>". The count
+     of such comments is the signal ADR-543 uses to promote a rule to a script
+     or gate. Do this for a "go":"ask" line too, after the AskUserQuestion
+     answer of step 3 is to file it.
   3. If the line has "go":"ask" (auto-aggregated from the verdict ledger,
      ADR-478), do not file it right away even when it is not a duplicate.
      Show title, detail, and repo (the default target) via AskUserQuestion with
@@ -88,7 +97,7 @@ Process the lines one by one:
      this line (the provenance footer, grep-able for inbox-origin Issues, also
      serves as the attribution that attribution-guard.sh requires):
        「🤖 Filed from [{name}]({url}) wrap-up inbox」
-  5. Remove only the lines that were filed, skipped as duplicates, or declined
+  5. Remove only the lines that were filed, commented on as duplicates, or declined
      with 「今回は起票しない」 in step 3, using
      '{gate}' --mark-filed '{inbox}' '<the line verbatim>'.
      If gh issue create fails, do not call --mark-filed; the line stays in the
@@ -536,7 +545,9 @@ fn check_dup() {
     let e = Env::new();
     let mut c = e.gate();
     c.env("WRAPUP_STUB_DUP", "1");
-    assert_eq!(run_args(c, &["--check-dup", "dup title"]).code, 1);
+    // 重複時は一致した Issue 番号を stdout に出す(再発コメントの宛先)
+    let r = run_args(c, &["--check-dup", "dup title"]);
+    assert_eq!((r.code, r.stdout.as_str()), (1, "42\n"));
     let mut c = e.gate();
     c.env("WRAPUP_STUB_DUP", "1");
     assert_eq!(run_args(c, &["--check-dup", "dup"]).code, 0);
@@ -544,9 +555,9 @@ fn check_dup() {
     assert_eq!((r.code, r.stdout.as_str(), r.stderr.as_str()), (0, "", ""));
     assert_eq!(
         read(&e.gh_log()),
-        "issue list --state open --search in:title dup title --json title\n\
-         issue list --state open --search in:title dup --json title\n\
-         issue list --state open --search in:title dup title --json title\n"
+        "issue list --state open --search in:title dup title --json number,title\n\
+         issue list --state open --search in:title dup --json number,title\n\
+         issue list --state open --search in:title dup title --json number,title\n"
     );
 
     let mut c = e.gate();
@@ -563,14 +574,14 @@ fn check_dup() {
     assert_eq!(r.code, 0);
     assert_eq!(
         read(&e.gh_log()),
-        "issue list -R acme/bleep --state open --search in:title dup title --json title\n"
+        "issue list -R acme/bleep --state open --search in:title dup title --json number,title\n"
     );
     // repo が空文字なら -R を付けない
     std::fs::write(e.gh_log(), "").unwrap();
     run_args(e.gate(), &["--check-dup", "t", ""]);
     assert_eq!(
         read(&e.gh_log()),
-        "issue list --state open --search in:title t --json title\n"
+        "issue list --state open --search in:title t --json number,title\n"
     );
 }
 
