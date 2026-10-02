@@ -1658,8 +1658,7 @@ in
     "${pkgs.dotfiles-tools}/bin/feedback-target-guard";
   # repo-create-guard(ADR-0013 Amendment 2026-09-29): #415 で Rust バイナリ
   # (crates/repo-create-guard)への安定パスの symlink になった。
-  home.file.".claude/hooks/repo-create-guard".source =
-    "${pkgs.dotfiles-tools}/bin/repo-create-guard";
+  home.file.".claude/hooks/repo-create-guard".source = "${pkgs.dotfiles-tools}/bin/repo-create-guard";
   # external-send-guard(docs/claude/external-send-guard.md): 外部宛メールの
   # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
   # source しない。
@@ -1735,7 +1734,8 @@ in
   # #415 で Rust バイナリ(crates/decision-colocation)への安定パスの symlink
   # になった(gh-edit-allow と同じ理由付け)。Codex/Copilot adapter は意図的に
   # 作らない(CI required check が全エージェント共通の backstop になるため)。
-  home.file.".claude/hooks/decision-colocation-guard".source = "${pkgs.dotfiles-tools}/bin/decision-colocation-guard";
+  home.file.".claude/hooks/decision-colocation-guard".source =
+    "${pkgs.dotfiles-tools}/bin/decision-colocation-guard";
 
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index".source = "${pkgs.dotfiles-tools}/bin/issue-index";
@@ -1790,6 +1790,39 @@ in
   home.file.".claude/hooks/bleep-hook" = {
     source = "${pkgs.bleep-hook}/bin/bleep-hook";
   };
+  # 配備された bleep hook の canary(#604)。bleep 入力の pin が決める hook の実体を、
+  # 登録コマンドと同じ環境で実際に動かして判定を確かめる。home.checks は失敗すると
+  # generation の build 自体が失敗し、closure には残らない — つまり bleep 側の破壊的
+  # 変更に dotfiles の配線が追従していない pin は、lock でも `hms`(bleep main への
+  # override、crates/hms)でも `hms .` でも CI でも、配備される前に弾かれる。
+  # 検査対象は home-files(配備後のレイアウトそのもの)。
+  home.checks = [
+    (pkgs.runCommand "bleep-canary"
+      {
+        nativeBuildInputs = with pkgs; [
+          bash
+          coreutils
+          gnugrep
+          gnused
+          jq
+          git
+        ];
+      }
+      ''
+        # nix のサンドボックスには /usr/bin/env が無く、bleep-hook が exec する bleep 本体
+        # (#!/usr/bin/env bash)が起動できない。配備された実体と同じ内容のコピーの
+        # shebang だけ store の bash に直して検査する(判定ロジックには触れない)。
+        hooks="$TMPDIR/hooks"
+        mkdir -p "$hooks"
+        ln -s ${config.home-files}/.claude/hooks/bleep-hook "$hooks/bleep-hook"
+        cp -rL ${config.home-files}/.claude/hooks/bleep "$hooks/bleep"
+        chmod -R u+w "$hooks/bleep"
+        patchShebangs "$hooks/bleep"
+        bash ${repoConfig}/claude/bleep-canary.sh "$hooks"
+        touch $out
+      ''
+    )
+  ];
 
   # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
   # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /

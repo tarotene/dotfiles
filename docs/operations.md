@@ -72,6 +72,32 @@ is a separate concern — it only affects the wrapper's own `nix flake check`,
 and does not make this warning go away, since `hms .` always pins `dotfiles`
 to a local path (never something a lock file could already match).
 
+### `hms` applies bleep at its main, verified before the switch
+
+`flake.lock` pins `bleep` (the PreToolUse guard's upstream, a `flake = false`
+source tree) to a commit, so without help a stale pin keeps deploying an old
+hook until someone bumps it by hand (#604, #628). On a remote apply (`hms`,
+not `hms .`), `hms` therefore resolves bleep's main with `nix flake prefetch
+--refresh` and, when it differs from the lock pin, **pre-builds** the
+activation package with `--override-input bleep github:tarotene/bleep/<rev>`
+(`dotfiles/bleep` on a wrapper host) before switching. The build runs the
+deployed-hook canary (`config/claude/bleep-canary.sh`, wired as a
+`home.checks` derivation in `home/modules/claude.nix`): the *deployed* bash
+body and `bleep-hook` are fed canary hook inputs and must still deny/pass as
+dotfiles' wiring expects. A failing canary fails the build, so:
+
+- canary passes → `hms` prints `==> bleep revision <rev> (overriding the lock
+  pin <locked>; canary passed)` and switches with the override;
+- canary or build fails (bleep made a breaking change dotfiles has not
+  followed yet, e.g. #675's pre-push/canonical-`gh` change) → `hms` prints a
+  warning and applies the **locked pin** instead. Fix it the usual way: bump
+  the pin in a PR together with the call sites it changes.
+
+`hms .` / `hms <path>` never override bleep — they verify the checkout's own
+pin, which is what a pin-bump PR needs. The override only exists at apply time;
+`flake.lock` is not written. The canary is also what CI runs, since the
+activation-package build includes `home.checks`.
+
 ## `~/Downloads` is not storage
 
 `home/modules/downloads.nix` deploys a daily cleanup (`systemd.user.tmpfiles`

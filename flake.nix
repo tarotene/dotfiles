@@ -30,8 +30,14 @@
     # public-publish-guard's upstream (ADR-0009): a plain source tree, not a
     # flake (`flake = false`) — we only take `home.file.source` from it, never
     # evaluate it as a flake. Pinned to a commit SHA rather than a branch name
-    # so `flake.lock` fully determines the content; bump this rev by hand when
-    # tarotene/bleep cuts a new release. No `follows` needed: it is
+    # so `flake.lock` fully determines the content. This pin is the last
+    # known-good rev, not the one `hms` applies: `hms` (remote apply) pre-builds
+    # with `--override-input bleep` at bleep's main and applies that only if the
+    # deployed-hook canary (`home.checks`, home/modules/claude.nix) passes,
+    # otherwise it falls back to this pin (crates/hms). `hms .` and CI use
+    # this pin as-is. Bump it by hand — together with the call sites it
+    # changes — when bleep makes a breaking change the canary rejects.
+    # No `follows` needed: it is
     # only ever `exec`'d as standalone bash, never `dlopen`'d into another
     # package's process (same reasoning as herdr's overlay entry above).
     # Renamed from tarotene/publish-guard (github#28). This rev additionally

@@ -670,67 +670,10 @@ jobs:
             echo "== $f"
             HOME="$out/home-files" bash "$f" --selftest
           done
-      # #604: the flake.lock pin of `bleep` decides which hook is deployed,
-      # but nothing exercised the *deployed* artifacts (the bash body under
-      # .claude/hooks/bleep/ plus the crane-built .claude/hooks/bleep-hook),
-      # so a stale pin — the pre-bump one read only `gh -R X issue create`,
-      # and knew nothing of unresolved shell variables — went unnoticed.
-      # Feed the deployed hook the same env the registered command sets
-      # (bleepEnvPrefix in home/modules/claude.nix) with an isolated
-      # denylist and a stub gh (every repo a private cwd, except pub/repo).
-      - name: Deployed bleep hook canary
-        run: |
-          set -euo pipefail
-          out="$(nix build \
-            ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
-            --no-link --print-out-paths)"
-          H="$out/home-files/.claude/hooks"
-          T="$(mktemp -d)"
-          mkdir -p "$T/config" "$T/state" "$T/cwd"
-          printf 'acme\n' > "$T/config/orgs.txt"
-          printf 'acme/secret-project\n' > "$T/config/repos.txt"
-          cat > "$T/bin-gh" <<'STUB'
-          #!/usr/bin/env bash
-          case "$1 $2" in
-            "repo list") printf 'my-private-tool\n' ;;
-            "repo view") if [[ "$*" == *pub/repo* ]]; then printf 'PUBLIC'; else printf 'PRIVATE'; fi ;;
-            "api user") printf 'test-owner' ;;
-            *) exit 1 ;;
-          esac
-          STUB
-          chmod +x "$T/bin-gh"
-          decide() {
-            (cd "$T/cwd" && \
-              BLEEP_HOOK_BIN="$H/bleep-hook" BLEEP_LEX_BIN="$H/bleep-hook" \
-              BLEEP_CONFIG_DIR="$T/config" BLEEP_STATE_DIR="$T/state" \
-              BLEEP_ORGS_FILE="$T/config/orgs.txt" BLEEP_REPOS_FILE="$T/config/repos.txt" \
-              BLEEP_OWNER=test-owner BLEEP_GH_BIN="$T/bin-gh" BLEEP_LEDGER_DIR="$T/ledger" \
-              bash "$H/bleep/hooks/bleep.sh" --host=claude <<<"$1") \
-              | sed -n 's/.*"permissionDecision":"\([a-z]*\)".*/\1/p'
-          }
-          fail=0
-          expect() { # $1=label $2=expected decision ("" = pass) $3=hook input JSON
-            got="$(decide "$3")"
-            if [ "$got" = "$2" ]; then echo "ok   $1 -> ${got:-pass}"; else
-              echo "::error::canary '$1': expected '${2:-pass}', got '${got:-pass}'"; fail=1; fi
-          }
-          # bleep ADR-0003 (#675): gh posts are accepted only in the canonical
-          # form (literal -R + an absolute --body-file), so the denylist match
-          # must be exercised through a body file; an inline --body is denied
-          # by the grammar before any content is looked at.
-          printf 'acme/secret-project\n' > "$T/body-secret.md"
-          printf 'nothing sensitive\n' > "$T/body-clean.md"
-          bash_cmd() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
-          expect "gh -R before subcommand" deny "$(bash_cmd "gh -R pub/repo issue create --title t --body-file $T/body-secret.md")"
-          expect "gh -R after subcommand" deny "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-secret.md")"
-          expect "gh --repo after subcommand" deny "$(bash_cmd "gh pr create --repo pub/repo --title t --body-file $T/body-secret.md")"
-          expect "MCP GitHub post" deny '{"tool_name":"mcp__github__create_issue","tool_input":{"owner":"pub","repo":"repo","title":"t","body":"acme/secret-project"}}'
-          expect "inline --body is outside the canonical form" deny "$(bash_cmd 'gh issue create -R pub/repo --title t --body "x"')"
-          expect "unresolved shell variable is outside the canonical form" deny "$(bash_cmd "gh issue create -R \$TARGET --title t --body-file $T/body-clean.md")"
-          expect "canonical post with a clean body" "" "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-clean.md")"
-          expect "push that disables pre-push" deny "$(bash_cmd 'git push --no-verify origin x')"
-          expect "unrelated command" "" "$(bash_cmd 'ls -la')"
-          exit $fail
+      # #604: the deployed bleep hook canary is no longer a step here — it is a
+      # `home.checks` derivation (home/modules/claude.nix, config/claude/
+      # bleep-canary.sh), so the build above already fails on a bleep pin the
+      # wiring cannot live with, and so does `hms` before it switches.
       # cache-nix-action does not create GC roots itself (its own README:
       # "users must manage this separately"), so anything without a root is
       # collected before the cache is saved. Rather than hand-listing every
