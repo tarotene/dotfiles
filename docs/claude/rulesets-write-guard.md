@@ -32,13 +32,12 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
 - **deny のみ返す**(allow/ask は一切出さない)。不一致は通常の確認フローに
   そのまま落ちる。
 - **bypass**: コマンド文字列の先頭に `RULESETS_WRITE_GUARD_BYPASS=<非空値>`
-  という env var 代入があれば判定しない。`apply-rulesets.sh` は
-  自分自身の `gh api` 呼び出しの子プロセスに `RULESETS_WRITE_GUARD_BYPASS=1`
-  を立てるが、これは別プロセス(`apply-rulesets.sh ...` という
-  1 回の Bash tool 呼び出しの内側)なのでこの hook 自体はそもそも見ない —
-  この環境変数は文書化目的であり、bypass が実際に効くのは Claude が
-  `RULESETS_WRITE_GUARD_BYPASS=1 gh api ...` を直接 1 コマンドとして
-  発行した場合だけである。
+  という env var 代入があれば判定しない。使うのは、本人が `!` で
+  `RULESETS_WRITE_GUARD_BYPASS=1 gh api ...` を手動で叩くときだけである。
+  `apply-rulesets` の呼び出し(1 回の Bash tool 呼び出し)はそもそも
+  この hook の deny に一致しないので、前置は不要で、`apply-rulesets` 自身も
+  子プロセスに立てない(立てても hook は子の環境変数を見ない)。auto モードでは
+  前置した形が分類器に safety bypass と判定されて拒否される(#707)。
 
 ## 先行例との差分
 

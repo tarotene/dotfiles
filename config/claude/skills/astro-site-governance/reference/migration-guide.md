@@ -224,8 +224,8 @@ rm release-please-config.json .release-please-manifest.json
 rm .github/workflows/release-please.yml
 
 # Delete Rulesets via gh api (crates/rulesets-write-guard denies this from a
-# Claude session — pass RULESETS_WRITE_GUARD_BYPASS=1 if deliberately doing
-# this by hand, or just run it as the human operator)
+# Claude session. The human types it with `!` (with RULESETS_WRITE_GUARD_BYPASS=1
+# if needed); an agent must not prefix the variable — auto mode rejects it, #707)
 gh api repos/OWNER/REPO/rulesets --jq '.[].id' | while read id; do
   gh api -X DELETE "repos/OWNER/REPO/rulesets/$id"
 done
