@@ -355,8 +355,26 @@ fetch_latest_release_run_conclusion() { # $1=repo $2=workflow file name -> "succ
 # ruleset — silently reported as drift rather than aborting the whole run
 # (unlike the GraphQL batch fetch, a single repo's REST failure does not
 # risk blanket false-positive drift across every repo).
+#
+# Private repositories: the repo object omits `security_and_analysis` (GitHub
+# returns it for public repositories and for private ones with the paid
+# code-scanning add-on), so `dependabot_security_updates.status` was always absent and
+# `judge_settings` reported `dependabot-security-updates-enabled` forever, even
+# after the setting was switched off (#678, confirmed 2026-10-05 by reading both
+# endpoints on the same private repositories). When the status is absent, ask the
+# dedicated endpoint (`GET repos/O/R/automated-security-fixes` → `{"enabled": bool}`)
+# and fold the answer back in. If that fetch fails too, the field stays absent and
+# the repository is reported drifted — fail-open to drift, as above.
 fetch_repo_settings() { # $1=repo -> JSON (REST repo object) or {} on failure
-  "$GH_BIN" api "repos/$OWNER/$1" 2>/dev/null || printf '{}'
+  local rest sec status
+  rest="$("$GH_BIN" api "repos/$OWNER/$1" 2>/dev/null)" || { printf '{}'; return 0; }
+  if ! jq -e '.security_and_analysis.dependabot_security_updates.status' <<<"$rest" >/dev/null 2>&1; then
+    sec="$("$GH_BIN" api "repos/$OWNER/$1/automated-security-fixes" 2>/dev/null)" || sec=''
+    if status="$(jq -er 'if type == "object" and (.enabled | type) == "boolean" then (if .enabled then "enabled" else "disabled" end) else empty end' <<<"$sec" 2>/dev/null)"; then
+      rest="$(jq --arg s "$status" '.security_and_analysis.dependabot_security_updates.status = $s' <<<"$rest")"
+    fi
+  fi
+  printf '%s' "$rest"
 }
 
 # releaser ドメイン用: repo の Actions secret 名一覧。secret の値ではなく名前
@@ -3484,6 +3502,48 @@ EOF
   jq -e '.verdict == "drifted" and (.missing | index("squash-title-not-pr-title")) and (.missing | index("squash-message-not-blank")) and (.missing | index("auto-merge-disabled")) and (.missing | index("dependabot-security-updates-enabled")) and (.missing | index("merge-not-squash-only") | not)' \
     <<<"$(judge_settings "$meta_ok" '{}')" >/dev/null || {
     printf 'FAIL: judge_settings with an unfetchable REST response ({}) should report every REST-sourced field as drifted (fail-open to drift, not silently pass) without also misreporting the otherwise-compliant GraphQL-sourced fields\n' >&2
+    return 1
+  }
+
+  # #678: private repositories omit `security_and_analysis` from the repo object;
+  # fetch_repo_settings falls back to the automated-security-fixes endpoint.
+  local fs_dir="$tmp/fs-stub"
+  mkdir -p "$fs_dir"
+  cat >"$fs_dir/gh" <<'FSSTUB'
+#!/usr/bin/env bash
+# $1=api $2=path
+case "$2" in
+  repos/o/private-off/automated-security-fixes) printf '{"enabled":false,"paused":false}' ;;
+  repos/o/private-on/automated-security-fixes) printf '{"enabled":true,"paused":false}' ;;
+  repos/o/private-unreadable/automated-security-fixes) exit 1 ;;
+  repos/o/public-on) printf '{"allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"enabled"}}}' ;;
+  repos/o/private-*) printf '{"allow_auto_merge":true}' ;;
+  *) exit 1 ;;
+esac
+FSSTUB
+  chmod +x "$fs_dir/gh"
+  local fs_status
+  fs_status() { # $1=repo -> status string, or "absent"
+    GH_BIN="$fs_dir/gh" OWNER=o fetch_repo_settings "$1" | jq -r '.security_and_analysis.dependabot_security_updates.status // "absent"'
+  }
+  [[ "$(fs_status private-off)" == disabled ]] || {
+    printf 'FAIL: fetch_repo_settings should fold automated-security-fixes enabled=false into status "disabled" for a private repo\n' >&2
+    return 1
+  }
+  [[ "$(fs_status private-on)" == enabled ]] || {
+    printf 'FAIL: fetch_repo_settings should fold automated-security-fixes enabled=true into status "enabled" for a private repo\n' >&2
+    return 1
+  }
+  [[ "$(fs_status private-unreadable)" == absent ]] || {
+    printf 'FAIL: fetch_repo_settings must leave the status absent (drift) when the dedicated endpoint is unreadable\n' >&2
+    return 1
+  }
+  [[ "$(fs_status public-on)" == enabled ]] || {
+    printf 'FAIL: fetch_repo_settings must keep the repo object status when security_and_analysis is present\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' <<<"$(judge_settings "$meta_ok" "$(GH_BIN="$fs_dir/gh" OWNER=o fetch_repo_settings private-off | jq '. + {squash_merge_commit_title:"PR_TITLE",squash_merge_commit_message:"BLANK"}')")" >/dev/null || {
+    printf 'FAIL: a private repo with the fix-PR generation off must judge ok on that token\n' >&2
     return 1
   }
 
