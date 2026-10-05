@@ -174,6 +174,11 @@
       # for Linux desktop scripts.
       pkgs.wl-clipboard
       pkgs.zenity
+
+      # xvfb-run (#687): a virtual X display for headless draw.io export
+      # (`xvfb-run -a drawio -x ...`, see desktop.nix). Linux-only: macOS has no X
+      # server to fake, and drawio draws without one there.
+      pkgs.xvfb-run
     ];
 
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
