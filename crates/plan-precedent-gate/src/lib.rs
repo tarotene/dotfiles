@@ -52,8 +52,11 @@ static TAIKOUBA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"対抗馬:\s
 static HEAVY_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"本命:\s*\S|対抗馬:\s*\S|外した候補:\s*\S").unwrap());
 static KIZON_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"既存手段:\s*\S").unwrap());
+// 3 値の選択としての「自前」だけに一致させる(#714)。書式は
+// `既存手段: <path> — 採用: … | 拡張: … | 自前 — 却下: …` で、選択は `— ` の直後に
+// 来る。採用側の説明文に含まれる語(例: 「自前 derivation は書かない」)は選択ではない。
 static KIZON_JIMAE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"既存手段:\s*.*自前").unwrap());
+    LazyLock::new(|| Regex::new(r"既存手段:\s*(?:[^—\n]*—\s*)?自前(?:\s*—|\s*$)").unwrap());
 static KIZON_REASON_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(却下|探索):\s*\S").unwrap());
 static SECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s*先行例との対比").unwrap());
@@ -258,5 +261,37 @@ mod tests {
                 "D1 には「先行例:」または「先行例なし:」の記載がありません".to_string()
             ]
         );
+    }
+
+    fn plan_with(kizon: &str) -> String {
+        format!(
+            "## 先行例との対比\n- D1: x\n  本命: なし — 比較した\n  対抗馬: y (同じ軸)\n  {kizon}\n  先行例なし: 探した範囲\n  軸: 還元 — 1句\n"
+        )
+    }
+
+    #[test]
+    fn jimae_word_inside_adopt_description_is_not_a_choice() {
+        let p = plan_with(
+            "既存手段: home/modules/nixgl.nix — 採用: nixpkgs musescore + 既存 nixGLWrap(自前 derivation は書かない)",
+        );
+        assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
+    }
+
+    #[test]
+    fn jimae_choice_without_reason_still_fails() {
+        let p = plan_with("既存手段: home/modules/x.nix — 自前");
+        assert!(judge_precedent(&p)
+            .iter()
+            .any(|m| m.contains("「自前」なのに却下:/探索: の理由がありません")));
+        let p = plan_with("既存手段: 自前 — 理由なし");
+        assert!(judge_precedent(&p)
+            .iter()
+            .any(|m| m.contains("「自前」なのに却下:/探索: の理由がありません")));
+    }
+
+    #[test]
+    fn jimae_choice_with_reason_passes() {
+        let p = plan_with("既存手段: home/modules/x.nix — 自前 — 却下: foo (重い)");
+        assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
     }
 }

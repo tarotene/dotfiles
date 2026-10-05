@@ -345,6 +345,9 @@ SKILL.md §9 と同じ作法)。
    人間裁定なしの merge・メタデータ反映は正本を直接書き換えることになり、
    判断ループの設計と矛盾する)。ruleset で CI 待ちになるリポジトリも、
    単に「PR 作成済み、merge 待ち」として最終報告に列挙するだけでよい。
+   rulesets の適用(`apply-rulesets.sh ...`)は rulesets-write-guard の対象外で、
+   `RULESETS_WRITE_GUARD_BYPASS=1` を前置してはいけない — auto モードの分類器が
+   safety bypass と判定して拒否し、適用が止まる(#707)。素のコマンドで実行する。
 5. 一括適用が完了したら、**別ファイル**(`github-audit-triage-record.html`
    のように review とは異なるファイル名 → 別 URL)で作業記録 artifact を
    新規 publish する。中身の骨子:

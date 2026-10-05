@@ -211,7 +211,9 @@ standalone `Review` ruleset shape (this skill's own `review.json` layout);
 into some *other* active branch ruleset needs manual removal via
 `gh api repos/OWNER/REPO/rulesets/<id>` + a hand-built `PUT`
 (`crates/rulesets-write-guard` denies this from a Claude session — pass
-`RULESETS_WRITE_GUARD_BYPASS=1` if you're deliberately doing this by hand).
+`RULESETS_WRITE_GUARD_BYPASS=1` only when the human types it themselves with `!`; an
+agent must not prefix it — auto mode rejects that as a safety bypass, and `apply-rulesets`
+needs no prefix, #707).
 
 ### CI gates
 

@@ -98,6 +98,18 @@ in
         (nixGLWrap pkgs.google-chrome)
         (nixGLWrap pkgs.slack)
 
+        # draw.io (#687): an Electron GUI, wrapped like Chrome/Slack so a GUI launch
+        # uses nix's mesa instead of silently falling back to CPU rendering. The same
+        # binary is the CLI: headless export needs a display, supplied by `xvfb-run`
+        # (packages.nix). Measured 2026-10-02 on x86_64-linux with the unwrapped
+        # package; nixGLIntel only sets environment variables and execs, so it does
+        # not get in the way of the Xvfb run:
+        #   xvfb-run -a drawio --no-sandbox -x -f svg -p 3 -b 10 --theme light \
+        #     -o out.svg in.drawio
+        # `--theme light` is needed: `auto` renders on a dark background. `-p` is a
+        # 1-based page number.
+        (nixGLWrap pkgs.drawio)
+
         # The nixGL wrapper itself, as an escape hatch: `nixGLIntel <cmd>` makes an
         # ad-hoc `nix run nixpkgs#...` GL application work, and is the one-line way
         # to tell "this app has no GL driver" apart from any other startup failure.
@@ -309,6 +321,10 @@ in
         pkgs.alacritty
         pkgs.nerd-fonts.fira-code
         pkgs.udev-gothic-nf
+
+        # draw.io (#687): unwrapped like alacritty above. No xvfb-run here — macOS
+        # draws without an X server, so the headless-export helper is Linux-only.
+        pkgs.drawio
       ];
 
       xdg.configFile."alacritty/alacritty.toml".source = repoConfig + "/alacritty/alacritty.toml";

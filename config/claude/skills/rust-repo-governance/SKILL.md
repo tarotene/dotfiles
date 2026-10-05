@@ -234,7 +234,9 @@ inspect, then a hand-built `PUT` with `copilot_code_review` dropped from
 `rules` and `required_review_thread_resolution` set to `false` on every
 `pull_request` rule (`crates/rulesets-write-guard` denies a raw `gh api`
 write to this endpoint from a Claude session — run it yourself, or pass
-`RULESETS_WRITE_GUARD_BYPASS=1` if you're deliberately doing this by hand).
+`RULESETS_WRITE_GUARD_BYPASS=1` only when the human types it themselves with `!`; an
+agent must not prefix it — auto mode rejects that as a safety bypass, and `apply-rulesets`
+needs no prefix, #707).
 
 ### CI gates
 

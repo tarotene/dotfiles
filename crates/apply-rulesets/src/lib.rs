@@ -74,8 +74,11 @@ pull_request 系の run が存在しないため)。--unverified-contexts で拒
   を剥がすときに使う: review.json を宣言から消してから
   `--delete-ruleset Review` を実行する)。
 
-書込み系の gh api 呼び出しは PreToolUse hook(crates/rulesets-write-guard)
-の対象になるため、直前に RULESETS_WRITE_GUARD_BYPASS=1 を export する。
+rulesets-write-guard(PreToolUse hook)が deny するのは、Claude が直に発行する
+`gh api -X POST/PUT/PATCH/DELETE repos/O/R/rulesets[/id]` だけである。この
+コマンド自体(`apply-rulesets ...` の 1 回の呼び出し)は guard の対象外なので、
+RULESETS_WRITE_GUARD_BYPASS=1 を前置する必要はない。auto モードでは、前置すると
+分類器が safety bypass と判定して拒否する(#707)。
 ";
 
 // ---------------------------------------------------------------------------
@@ -115,14 +118,13 @@ impl Gh {
         serde_json::from_str(&self.read(args)?).ok()
     }
 
-    /// 書込み系(POST/PUT/DELETE)。`RULESETS_WRITE_GUARD_BYPASS=1` を子にだけ
-    /// 立てる(bash 版の `VAR=1 cmd` 前置と同じ)。失敗は gh の終了コードを返す
-    /// (bash 版は `set -e` でそのコードのまま落ちていた)。stderr は素通し。
+    /// 書込み系(POST/PUT/DELETE)。失敗は gh の終了コードを返す(bash 版は
+    /// `set -e` でそのコードのまま落ちていた)。stderr は素通し。
+    /// guard の bypass 用環境変数は立てない: guard は Claude の Bash 呼び出しの
+    /// コマンド文字列だけを見るので、この子プロセスの環境変数は誰にも読まれない(#707)。
     fn write(&self, method: &str, path: &str, body: Option<&str>) -> Result<String, i32> {
         let mut cmd = Command::new(&self.bin);
-        cmd.args(["api", "-X", method, path])
-            .env("RULESETS_WRITE_GUARD_BYPASS", "1")
-            .stdout(Stdio::piped());
+        cmd.args(["api", "-X", method, path]).stdout(Stdio::piped());
         if body.is_some() {
             cmd.args(["--input", "-"]).stdin(Stdio::piped());
         } else {
