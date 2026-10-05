@@ -128,4 +128,14 @@ in
     source = repoConfig + "/git/hooks/pre-commit";
     executable = true;
   };
+
+  # herdr creates a worktree with a plain `git worktree add`, so git's
+  # post-checkout (null-ref $1, flag $3 = 1) is the one-shot "just created"
+  # signal. Runs a repository-declared `.config/post-worktree.sh` in a linked
+  # worktree of a repository the user opted in (#702, docs/worktree-lifecycle.md),
+  # then chains to the repo-local hook like the two above.
+  xdg.configFile."git/hooks/post-checkout" = {
+    source = repoConfig + "/git/hooks/post-checkout";
+    executable = true;
+  };
 }

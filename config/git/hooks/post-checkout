@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Post-create step for a fresh linked worktree (#702): run the repository's own
+# declared setup script, `.config/post-worktree.sh`, once, right after
+# `git worktree add` — which is what `herdr worktree create` shells out to.
+# A repository whose AGENTS.md says "run this fetch script once after clone"
+# (an external source tree the build needs, say) otherwise surfaces the missing
+# step only at the first commit, buried in a build error.
+#
+# Why post-checkout: git runs it after `git worktree add` (unless
+# --no-checkout) with the all-zero null ref as $1 and flag $3 = 1
+# (githooks(5), "post-checkout"), with the new worktree root as cwd. The
+# repository-side declaration is the same idea as worktrunk's `[post-create]`
+# hook in `.config/wt.toml` (https://worktrunk.dev/hook/), reduced to one
+# executable shell file.
+#
+# Safety: a global hook that runs a script out of the repository would run
+# arbitrary code on any `git clone` of a hostile repository. So it runs only
+#   1. in a LINKED worktree (git-dir != common-dir) — never on clone, and
+#   2. in a repository the user has opted in, per repository, in its own
+#      .git/config (which cloned content cannot write):
+#          git config dotfiles.postWorktreeTrusted true
+# Without the opt-in the hook prints a one-line hint and runs nothing.
+#
+# A failing script does not fail the hook (post-checkout cannot undo the
+# checkout); the failure is printed so the user can run it by hand.
+#
+# core.hooksPath makes git ignore .git/hooks/ entirely, so the repo-local
+# post-checkout hook is chained to at the end, resolved through
+# --git-common-dir so it works from any linked worktree — the same chain
+# pre-commit and pre-push in this directory use.
+
+DECLARED=".config/post-worktree.sh"
+
+is_null_ref() {
+    [[ "$1" =~ ^0+$ ]]
+}
+
+is_linked_worktree() {
+    local git_dir common_dir
+    git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null) || return 1
+    common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+    [[ "$git_dir" != "$common_dir" ]]
+}
+
+run_declared() {
+    [[ -f "$DECLARED" ]] || return 0
+    if [[ "$(git config --type=bool --get dotfiles.postWorktreeTrusted 2>/dev/null || true)" != true ]]; then
+        echo "post-checkout: this repository declares ${DECLARED}, not run." >&2
+        echo "  To run it on every new worktree of this repository, opt in once:" >&2
+        echo "    git config dotfiles.postWorktreeTrusted true" >&2
+        return 0
+    fi
+    echo "post-checkout: running ${DECLARED}" >&2
+    local rc=0
+    bash "$DECLARED" || rc=$?
+    if [[ "$rc" != 0 ]]; then
+        echo "post-checkout: ${DECLARED} failed (exit ${rc}); the worktree exists, run it by hand." >&2
+    fi
+    return 0
+}
+
+selftest() {
+    local tmp fails=0 r self
+    tmp=$(mktemp -d)
+    # pre-commit in this directory blocks commits on main; the selftest repo is scratch.
+    export GIT_ALLOW_MAIN_COMMIT=1
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+    check() { # $1=name $2=want $3=got
+        if [[ "$2" == "$3" ]]; then
+            echo "ok   $1"
+        else
+            echo "FAIL $1 (want $2 got $3)" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    git init -q -b main "$tmp/repo"
+    git -C "$tmp/repo" config user.email test@example.com
+    git -C "$tmp/repo" config user.name test
+    git -C "$tmp/repo" config commit.gpgsign false
+    # Hooks of this repo come from core.hooksPath pointing at this directory.
+    git -C "$tmp/repo" config core.hooksPath "$(dirname "$self")"
+    mkdir -p "$tmp/repo/.config"
+    printf '#!/usr/bin/env bash\ntouch "$PWD/.post-worktree-ran"\n' > "$tmp/repo/.config/post-worktree.sh"
+    git -C "$tmp/repo" add -A
+    git -C "$tmp/repo" commit -q -m base
+
+    # 1: not opted in -> declared script is not run (hint only)
+    git -C "$tmp/repo" worktree add -q -b wt1 "$tmp/wt1" 2> "$tmp/err1"
+    [[ -e "$tmp/wt1/.post-worktree-ran" ]] && r=1 || r=0
+    check "1 opt-in 無しでは実行しない" 0 "$r"
+    grep -q 'postWorktreeTrusted' "$tmp/err1" && r=1 || r=0
+    check "2 opt-in の案内を stderr に出す" 1 "$r"
+
+    # 3: opted in -> runs in the new worktree
+    git -C "$tmp/repo" config dotfiles.postWorktreeTrusted true
+    git -C "$tmp/repo" worktree add -q -b wt2 "$tmp/wt2" 2> /dev/null
+    [[ -e "$tmp/wt2/.post-worktree-ran" ]] && r=1 || r=0
+    check "3 opt-in 済みの worktree 作成で実行する" 1 "$r"
+
+    # 4: a plain branch switch (previous ref is not null) does not run it
+    rm -f "$tmp/wt2/.post-worktree-ran"
+    git -C "$tmp/wt2" switch -q -c other 2> /dev/null
+    git -C "$tmp/wt2" switch -q wt2 2> /dev/null
+    [[ -e "$tmp/wt2/.post-worktree-ran" ]] && r=1 || r=0
+    check "4 通常のブランチ切替では実行しない" 0 "$r"
+
+    # 5: a clone (git-dir == common-dir) never runs it, even when the clone
+    # carries the file and the opt-in key is set
+    git clone -q -c core.hooksPath="$(dirname "$self")" -c dotfiles.postWorktreeTrusted=true \
+        "$tmp/repo" "$tmp/clone" 2> /dev/null
+    [[ -e "$tmp/clone/.post-worktree-ran" ]] && r=1 || r=0
+    check "5 clone では実行しない" 0 "$r"
+
+    # 6: a failing script does not fail the hook / worktree creation
+    printf '#!/usr/bin/env bash\nexit 7\n' > "$tmp/repo/.config/post-worktree.sh"
+    git -C "$tmp/repo" commit -q -am fail
+    git -C "$tmp/repo" worktree add -q -b wt3 "$tmp/wt3" 2> "$tmp/err3" && r=0 || r=1
+    check "6 失敗するスクリプトでも worktree 作成は成功する" 0 "$r"
+    grep -q 'failed (exit 7)' "$tmp/err3" && r=1 || r=0
+    check "7 失敗は stderr に出る" 1 "$r"
+
+    # 8: the repo-local post-checkout hook is chained to
+    printf '#!/usr/bin/env bash\ntouch "$PWD/.local-hook-ran"\n' > "$tmp/repo/.git/hooks/post-checkout"
+    chmod +x "$tmp/repo/.git/hooks/post-checkout"
+    git -C "$tmp/repo" worktree add -q -b wt4 "$tmp/wt4" 2> /dev/null
+    [[ -e "$tmp/wt4/.local-hook-ran" ]] && r=1 || r=0
+    check "8 repo-local の post-checkout にチェーンする" 1 "$r"
+
+    rm -rf "$tmp"
+    if [[ "$fails" != 0 ]]; then
+        echo "selftest: ${fails} 件失敗" >&2
+        return 1
+    fi
+    echo "selftest: OK"
+}
+
+main() {
+    if [[ "${1:-}" == --selftest ]]; then
+        selftest
+        return $?
+    fi
+
+    local prev="${1:-}" flag="${3:-}"
+    if [[ "$flag" == 1 && -n "$prev" ]] && is_null_ref "$prev" && is_linked_worktree; then
+        run_declared
+    fi
+
+    local common_dir local_hook
+    common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+    local_hook="${common_dir}/hooks/post-checkout"
+    if [[ -x "$local_hook" ]]; then
+        exec "$local_hook" "$@"
+    fi
+}
+
+main "$@"
