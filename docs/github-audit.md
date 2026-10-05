@@ -465,6 +465,28 @@ expectations:
   given advisory (D5b). Same fail-open-to-drift convention as the squash
   fields.
 
+  **Reading the token name.** `dependabot-security-updates-enabled` means
+  "Dependabot's fix-PR generation is *enabled*" — that is the drift. It was
+  misread as "should be enabled" in #678's original text (2026-10-01), which
+  then described the fix as turning them on. The fix is to turn them **off**:
+  `gh api -X DELETE repos/OWNER/REPO/automated-security-fixes` (or
+  `apply-repo-settings.sh`, which also re-applies the merge settings and sets
+  `has_wiki`/`has_projects` to false — prefer the single call when only this token
+  drifted). Dependabot *alerts* stay on; they feed Renovate's
+  `vulnerabilityAlerts`. Turn the fix-PR generation off only where Renovate is
+  actually running (the `renovate` domain reports neither
+  `renovate-dashboard-missing` nor `renovate-config-missing`) or the repository
+  has nothing for Renovate to update (`not-applicable`); otherwise a vulnerable
+  dependency would have no fix-PR channel at all.
+
+  **Private repositories.** The repo object omits `security_and_analysis` for
+  private repositories (GitHub returns it for public ones and for private ones
+  that have the paid code-scanning add-on), so the status was always absent and the token stayed
+  drifted after the setting was switched off (#678, 2026-10-05). When absent,
+  `fetch_repo_settings` asks `GET repos/OWNER/REPO/automated-security-fixes`
+  (`{"enabled": bool}`) and folds it in; if that is unreadable too, the repository
+  is still reported drifted.
+
 ### titles (ADR-0031)
 
 Presence-detection for the PR-title commit-message contract's enforcement
