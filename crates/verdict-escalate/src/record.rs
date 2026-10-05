@@ -49,7 +49,8 @@ pub enum ReasonId {
     /// `-c core.hooksPath=…`)になっている(tarotene/bleep ADR-0003)。
     PushHookBypass,
     /// gh の投稿が正準形の文法の外にある(tarotene/bleep ADR-0003)。理由は
-    /// `detail` の閉語彙(`inline-body` など)に残る。
+    /// `detail` の閉語彙(`inline-body`、本文ファイルを持つ投稿が
+    /// 単独のコマンドでない `not-alone`(ADR-0004)など)に残る。
     GhNoncanonical,
 }
 

@@ -63,8 +63,16 @@
     # (literal `-R OWNER/REPO` + `--body-file <absolute path>`, otherwise
     # `gh-noncanonical`). The pre-push wiring, the verdict schema and the skill
     # examples move in the same PR so the pin and its call sites switch together.
+    # Bumped again (#689, #712, 2026-10-05) to pick up ADR-0004 / LEX_PROTOCOL 5
+    # (tarotene/bleep#79: a gh post that reads a body file must stand alone as one
+    # command, else `gh-noncanonical` / detail `not-alone`), ADR-0005
+    # (tarotene/bleep#82: code vs data position by shell syntax structure) and
+    # tarotene/bleep#86 (the body-file path is not scanned — an agent scratchpad
+    # path that embeds a private project name no longer blocks a public post — and
+    # the deny reason names where the match was). Pinned to the #86 head commit;
+    # re-pin to the squash commit on main once that PR lands.
     bleep = {
-      url = "github:tarotene/bleep/bd6213c135414e8d7f9c63aa70be0456b345d055";
+      url = "github:tarotene/bleep/bb30e960768ac446d0ed0e4e54deb6ccf091b864";
       flake = false;
     };
 
