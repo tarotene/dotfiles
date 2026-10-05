@@ -86,7 +86,9 @@ description・topics・settings フィールド・ファイルツリー・open I
 - titles ドメイン(ADR-0031、#337)は `missing` トークンごとに機械的に
   決まる:
   - `pr-title-workflow-missing` — `.github/workflows/pr-title.yml`
-    (dotfiles の reusable workflow を呼ぶ caller)が無い。対象リポジトリの
+    (dotfiles の composite action を呼ぶ caller。reusable workflow を呼ぶ
+    旧形は ADR-591 D3 で退役し、`legacy-reusable-pr-title-call` が検出する)
+    が無い。対象リポジトリの
     言語に対応する `*-repo-governance` skill があれば、その
     `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
     テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
@@ -186,7 +188,12 @@ description・topics・settings フィールド・ファイルツリー・open I
     skill があれば、その `templates/.github/workflows/ci.yml` を土台に
     `# ADJUST:` 箇所を埋めて起草する。対応する skill が無い(rust/typst/
     astro のいずれでもない)場合はテンプレートが無いので低確信フラグに
-    回す(§3)。
+    回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
+    リポジトリは、それらを `ci.yml` に統合する。このとき既存 job の
+    `name:` は変えない: live の ruleset の必須 check は旧 job 名のままで、
+    名前を変えると reconcile の前に必須 check が「Expected」のまま PR を
+    止める(#337 の循環)。`ci-passed.needs` は統合後の実在する job id を
+    漏れなく列挙する。
   - `file-not-yml:<name>` / `file-not-kebab:<name>` — 該当ファイルを
     `.yml` 拡張子・kebab-case にリネームする(内容は変更しない)。
   - `workflow-name-missing` / `workflow-name-lowercase` — `ci.yml` 先頭の
@@ -224,7 +231,16 @@ description・topics・settings フィールド・ファイルツリー・open I
     を `repo-governance-common/templates/.github/workflows/pr-title.yml`
     (単一正本)でまるごと置き換える(titles ドメインの
     `pr-title-workflow-missing` と同じ扱い — この 1 ファイルは元々
-    リポジトリ固有の中身を持たない)。
+    リポジトリ固有の中身を持たない)。**同じ PR で、`.github/rulesets/
+    quality.json` の宣言が無いリポジトリには宣言を播く**(対応する
+    `*-repo-governance` skill の `copy-files.sh`、無ければ
+    `repo-governance-common/templates/.github/rulesets/` から)。live の ruleset
+    が旧 context `PR Title / PR title` を必須にしている repo では、置換した瞬間
+    head がその context を報告しなくなる。宣言が無いと `apply-rulesets --ref
+    <branch> --verify-sha <head> --reconcile` で live を直す正本が無く、PR が
+    緑にならない(workflows ドメインは「宣言があれば比較」なので、宣言の欠落は
+    ここでは検出されない)。順序は PR 作成 → head で新 context の報告を待つ →
+    reconcile → `PR title` の再実行 → merge(ADR-591 D8)。
   - `ci-yml-unreadable` は fetch 失敗によるものなので起草せず低確信
     フラグに回す(§3)。
 - docs ドメイン(ADR-640、docs/adr/640-stack-standard-api-docs.md)は
