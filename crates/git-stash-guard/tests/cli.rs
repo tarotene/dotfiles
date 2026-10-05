@@ -153,8 +153,14 @@ fn regression_hyphenated_git_stash_is_not_an_invocation() {
     expect_pass("man git-stash 2>/dev/null | col -b");
     expect_pass("echo stash > /tmp/f");
     expect_pass("cat ~/.claude/hooks/git-stash-guard.sh > /tmp/out");
-    // リダイレクト付きでも実際の呼び出しなら deny。
+    // リダイレクトを除いて見る: 読み取り系(list / show)は通す。
+    expect_pass("git stash list 2>/dev/null | head -0");
+    expect_pass("git stash show -p > /tmp/x");
+    expect_pass("git stash list 2>&1");
+    // リダイレクト付きでも変更系の呼び出しなら deny。
     expect_deny("git stash pop > /tmp/log");
+    expect_deny("git stash apply $(evil)");
+    expect_deny("git stash push -u -m tag 2>&1");
     expect_deny("git -C /some/worktree stash pop 2>&1 | tee /tmp/log");
 }
 
