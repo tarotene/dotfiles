@@ -207,3 +207,7 @@ reason = "git hooks は ADR-0024 スコープ外(repo-local hook へ chain す�
 [[excluded]]
 path = "config/git/hooks/pre-push"
 reason = "git hooks は ADR-0024 スコープ外(repo-local hook へ chain する薄い入口)"
+
+[[excluded]]
+path = "config/git/hooks/post-checkout"
+reason = "git hooks は ADR-0024 スコープ外(repo-local hook へ chain する薄い入口。#702)"

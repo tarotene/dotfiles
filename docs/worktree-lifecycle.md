@@ -164,6 +164,53 @@ prune-branches の対象に入るため)。1分間隔の検出 timer とは別�
 設計判断の全体(なぜ `[gone]` を根拠にしないか、gh-poi との比較、ROI)は
 [ADR-544](adr/544-auto-prune-by-content-evidence.md) を参照。
 
+## 作成直後: `post-checkout` と `.config/post-worktree.sh`(#702)
+
+リポジトリが「clone / worktree 作成後に 1 回流す」手順を AGENTS.md に定めているとき
+(ビルドに要る外部ソースの取得スクリプトなど)、worktree を作るたびに思い出して流す
+必要があった。忘れると最初の `git commit` で pre-commit のビルドが落ち、原因が
+エラーの奥にあって分かりにくい。
+
+herdr は worktree を素の `git worktree add` で作る(herdrdev/herdr `src/worktree.rs`、
+取得 2026-10-05)。herdr 自体には作成後フックの設定が無い(`[worktrees]` は
+`directory` のみ。upstream への機能追加は CONTRIBUTING で受けない)。そこで git 標準の
+`post-checkout` を使う: `git worktree add` の直後に、第 1 引数が全桁 0 の null-ref、
+第 3 引数が 1 で呼ばれ、cwd は新しい worktree の root になる
+(git 公式 githooks(5)「post-checkout」、取得 2026-10-05)。
+
+`config/git/hooks/post-checkout`(`core.hooksPath` 配下、`pre-commit` / `pre-push` と同じ
+配備)が、リポジトリの `.config/post-worktree.sh` があれば 1 回だけ実行する。宣言の形は
+worktrunk の `.config/wt.toml` の `[post-create]`(https://worktrunk.dev/hook/、取得
+2026-10-05)と同じで、TOML でなく実行可能な shell 1 本に絞った。
+
+| 条件 | 動作 |
+|---|---|
+| clone 直後(git-dir と common-dir が同じ) | 実行しない |
+| リンク worktree の作成直後で、宣言ファイルが無い | 何もしない |
+| 宣言ファイルがあり、リポジトリが opt-in 済み | `bash .config/post-worktree.sh` を実行する |
+| 宣言ファイルがあり、opt-in していない | 実行せず、opt-in の方法を stderr に 1 回出す |
+| スクリプトが失敗した | 失敗を stderr に出し、worktree 作成は成功のまま(post-checkout は作成を取り消せない) |
+
+**opt-in は repository ごと、`.git/config` に 1 回**:
+
+```bash
+git config dotfiles.postWorktreeTrusted true
+```
+
+リポジトリの中身は clone した相手が書けるので、宣言ファイルだけで実行すると、悪意ある
+リポジトリを clone しただけで任意のコードが走る。opt-in はそのリポジトリの
+`.git/config`(clone した中身からは書けない)に置くので、信頼する判断が本人に残る。
+リンク worktree に限るのも同じ理由(worktree を足せるのは、既に clone 済みの
+リポジトリだけ)。
+
+最後に repo-local の `post-checkout`(`git rev-parse --git-common-dir` 配下)へ chain する。
+`core.hooksPath` は `.git/hooks/` を無効にするため、他のリポジトリの hook を落とさない
+ための `pre-commit` と同じ規約。
+
+宣言ファイル自体は各リポジトリ側に置く(この dotfiles の外)。回帰テストは
+`config/git/hooks/post-checkout --selftest`(opt-in の有無・clone・通常のブランチ切替・
+失敗・chain の 8 ケース)で、CI が実行する。
+
 ## 確認
 
 ```bash

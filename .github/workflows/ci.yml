@@ -262,6 +262,12 @@ jobs:
       - name: adr-number-check --selftest
         run: ./scripts/adr-number-check --selftest
 
+      # post-checkout hook (#702): linked-worktree-only, per-repository opt-in,
+      # clone never runs the declared script. Needs a git that has
+      # `rev-parse --path-format=absolute` (2.31+) — the runner's is newer.
+      - name: post-checkout --selftest
+        run: ./config/git/hooks/post-checkout --selftest
+
       # check-language-mixing.sh の selftest(ADR-0016 Amendment 2026-10-01):
       # LANG_MIX_PATHS による対象指定と、CJK 統合漢字の範囲指定の回帰を
       # 固定する。ネットワーク不使用。
