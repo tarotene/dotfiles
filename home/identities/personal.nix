@@ -94,4 +94,13 @@ in
   # `exit_node=` is empty and crates/tailscale-prefs just clears the exit node.
   # The node is a pin from `tailscale exit-node list`, not `auto:any` — see
   # docs/operations.md's "Café Wi-Fi" section.
+  #
+  # Tailscale SSH server (the ACL's `ssh` section, config/tailscale/
+  # policy.hujson): on for Linux personal hosts only. The macOS Standalone app
+  # cannot be a Tailscale SSH server — only the open-source tailscaled can,
+  # and that variant cannot use an exit node (Tailscale KB 1065, accessed
+  # 2026-10-05) — so altair keeps Standalone for the exit node and stays off.
+  # Declared by platform rather than a per-host override, so `tailscale set
+  # --ssh` is never attempted where it cannot work.
+  dotfiles.tailscale.ssh = lib.mkDefault pkgs.stdenv.isLinux;
 }

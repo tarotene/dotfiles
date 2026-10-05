@@ -139,3 +139,35 @@ Decision は信頼境界を ACL policy(`config/tailscale/policy.hujson`)で宣�
 
 - `config/tailscale/policy.hujson`
 - `docs/operations.md`
+
+## Amendment (2026-10-05 — Tailscale SSH server は prefs で宣言し、darwin Standalone は SSH server を持たない)
+
+Decision の darwin 節は「Tailscale SSH server は Tailscale.app 内の userspace
+netstack で着信を受ける」と書き、`Brewfile` と `docs/operations.md` は
+「Standalone は SSH server を持つ」としていた。これは誤りだった。Tailscale の
+macOS 変種の比較表(https://tailscale.com/kb/1065/macos-variants、取得
+2026-10-05)は、SSH server になれるのは open-source の `tailscaled` だけで、
+App Store 版と Standalone 版は不可と示す。逆に `tailscaled` は出口ノードを
+「広告はできるが使えない」。
+
+- altair は Standalone のまま、SSH server を持たない。カフェ対策の本題である
+  出口ノード利用を、SSH server より優先する。darwin の firewall(ALF の
+  block-all)が SSH server を妨げない、という Decision の記述は、そもそも
+  SSH server が無いので意味を持たない。
+- Linux の個人端末(vega)は SSH server を持つ。有効化は prefs の閉語彙に
+  `ssh` を足して宣言し(`dotfiles.tailscale.ssh`)、`hms` が
+  `tailscale set --ssh` へ収束させる。personal identity は Linux のときだけ
+  真、company identity は偽。OS による宣言にして、動かせない host で
+  `--ssh` を試みる状態を作らない。
+- ACL の `ssh` 節は個人端末間を許すが、server を持つのは Linux のみなので、
+  実効するのは Linux 端末が宛先のときに限る。
+
+### 執行点
+
+- `crates/tailscale-prefs/src/lib.rs`
+- `crates/tailscale-prefs/tests/selftest.rs`
+- `home/modules/tailscale.nix`
+- `home/identities/personal.nix`
+- `home/identities/company.nix`
+- `packages/declarative/Brewfile`
+- `docs/operations.md`

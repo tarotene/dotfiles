@@ -32,10 +32,11 @@ fn stub_tailscale(dir: &Path, body: &str) {
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-const VALID: &str = "exit_node=mullvad-nrt-1\nexit_node_allow_lan_access=true\nshields_up=false\n";
+const VALID: &str =
+    "exit_node=mullvad-nrt-1\nexit_node_allow_lan_access=true\nshields_up=false\nssh=true\n";
 
 #[test]
-fn valid_prefs_build_three_flags() {
+fn valid_prefs_build_four_flags() {
     let d = tempfile::tempdir().unwrap();
     let f = write(d.path(), "valid", VALID);
     assert_eq!(
@@ -43,9 +44,17 @@ fn valid_prefs_build_three_flags() {
         [
             "--exit-node=mullvad-nrt-1",
             "--exit-node-allow-lan-access=true",
-            "--shields-up=false"
+            "--shields-up=false",
+            "--ssh=true"
         ]
     );
+}
+
+#[test]
+fn ssh_false_emits_disabling_flag() {
+    let d = tempfile::tempdir().unwrap();
+    let f = write(d.path(), "p", "ssh=false\n");
+    assert_eq!(build_set_args(&f).unwrap(), ["--ssh=false"]);
 }
 
 #[test]
@@ -156,7 +165,7 @@ fn apply_happy_path_runs_tailscale_set() {
     );
     assert_eq!(
         std::fs::read_to_string(&log).unwrap().trim(),
-        "--exit-node=mullvad-nrt-1 --exit-node-allow-lan-access=true --shields-up=false"
+        "--exit-node=mullvad-nrt-1 --exit-node-allow-lan-access=true --shields-up=false --ssh=true"
     );
 }
 
