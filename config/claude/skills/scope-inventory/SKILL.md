@@ -16,9 +16,15 @@ Tracking Issue のような複数項目を含む依頼を丸ごと Plan Mode に
 1. 依頼文そのものから、逐語で要求項目を抜き出す。言い換えない。
 2. 依頼が参照する Issue について、子 Issue の有無を確認する:
    ```bash
-   gh api graphql -f query='query{repository(owner:"OWNER",name:"REPO"){issue(number:N){subIssues(first:100){totalCount nodes{number title}}}}}'
+   gh api repos/OWNER/REPO/issues/N/sub_issues --jq 'length'
+   gh api repos/OWNER/REPO/issues/N/sub_issues --jq '.[] | "#\(.number) \(.title)"'
    ```
-   `totalCount` が 0 のときだけ、本文の**未チェック** task-list
+   GraphQL の `subIssues` 照会は使わない: 会社・非公開リポジトリ宛てだと
+   bleep の repo-ref denylist が拒否する(#717)。REST の `sub_issues` は
+   通り、件数は GraphQL の `totalCount` と一致する。`plan-scope-gate` 自身
+   が内部で行う GraphQL 照会は Rust バイナリが直接 `gh` を呼ぶので
+   PreToolUse の対象外で、この食い違いは起きない。
+   件数が 0 のときだけ、本文の**未チェック** task-list
    (`- [ ]` で始まる行)を子とみなす。チェック済み項目は既に決着済みなので
    拾わない。
 3. 各項目に `R1`, `R2`, ... の ID を振る。
