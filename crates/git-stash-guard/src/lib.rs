@@ -117,6 +117,36 @@ fn has_git_stash_invocation(seg: &str) -> bool {
     })
 }
 
+/// リダイレクトのトークン(`>file` `2>&1` `2>/dev/null` `<file`、および
+/// `>` `>>` `<` 単独で次のトークンが宛先になる形)を取り除く。
+fn strip_redirects(seg: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let mut skip_next = false;
+    for t in tokens(seg) {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if t.contains('>') || t.contains('<') {
+            // 演算子で終わるトークンは宛先が次のトークンに分かれている。
+            skip_next = t.ends_with('>') || t.ends_with('<');
+            continue;
+        }
+        out.push(t);
+    }
+    out.join(" ")
+}
+
+/// `git [-C dir] stash list|show ...` か(読み取り系だけ通す)。
+fn is_read_only_stash(seg: &str) -> bool {
+    let tok = tokens(seg);
+    if tok.first() != Some(&"git") {
+        return false;
+    }
+    let idx = if tok.get(1) == Some(&"-C") { 3 } else { 1 };
+    tok.get(idx) == Some(&"stash") && matches!(tok.get(idx + 1), Some(&"list") | Some(&"show"))
+}
+
 /// Bash ツールのコマンド文字列全体。deny なら理由文。
 pub fn decide(cmd: &str) -> Option<String> {
     if !contains_word(cmd, "stash") {
@@ -130,8 +160,19 @@ pub fn decide(cmd: &str) -> Option<String> {
         if seg.is_empty() {
             continue;
         }
-        if seg.contains("$(") || seg.contains('`') || seg.contains('>') || seg.contains('<') {
+        if seg.contains("$(") || seg.contains('`') {
             if has_git_stash_invocation(seg) {
+                return Some(format!(
+                    "複合コマンドの中に git stash が含まれています(deny): {seg}"
+                ));
+            }
+            continue;
+        }
+        if seg.contains('>') || seg.contains('<') {
+            // リダイレクトだけを除いて見る。読み取り系(list / show)なら通し、
+            // 変更系や判別できない呼び出しは従来どおり deny に倒す。
+            let stripped = strip_redirects(seg);
+            if has_git_stash_invocation(&stripped) && !is_read_only_stash(&stripped) {
                 return Some(format!(
                     "複合コマンドの中に git stash が含まれています(deny): {seg}"
                 ));
