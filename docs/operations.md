@@ -587,10 +587,15 @@ off it by default. One-time setup and the manual override for `arcturus`:
 1. In the [Tailscale admin console](https://login.tailscale.com/admin),
    enable the Mullvad exit-node add-on (currently $5/month for 5 devices).
 2. Run `tailscale exit-node list` to see the available Mullvad nodes, then
-   replace the `<mullvad-exit-node-name>` placeholder in
-   `home/identities/personal.nix`'s `tailscale-prefs` declaration with the
-   chosen node's name (do not use `auto:any` — it can fall back to a
-   Mullvad node that is not currently reachable) and re-run `hms`.
+   declare the chosen node's name as `dotfiles.tailscale.exitNode`
+   (`home/modules/tailscale.nix`) in the private wrapper flake's
+   `extraModules` (ADR-0034) — the node name is a private machine-state
+   value, so this repository carries only the option, never the value. Do
+   not use `auto:any` — it can fall back to a Mullvad node that is not
+   currently reachable. Then re-run `hms`; a local edit of
+   `~/.config/dotfiles/tailscale-prefs` would not survive, because the next
+   switch rewrites it from the declaration. The option must already exist on
+   pushed main before the wrapper sets it, or the wrapper's evaluation fails.
    `exit_node_allow_lan_access=true` keeps directly-connected subnets (e.g.
    the home LAN printer) reachable while the exit node is active.
 3. On `arcturus` (company), select an exit node manually only while

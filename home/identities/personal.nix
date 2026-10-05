@@ -83,24 +83,15 @@ in
 
   # Tailscale prefs (ADR-471): personal devices stay on the Mullvad exit
   # node at all times, not just on café Wi-Fi — there is no per-location
-  # toggle to remember or forget. `--exit-node-allow-lan-access` keeps the
-  # home LAN printer reachable while the exit node is active. The node name
-  # is a pin, not `auto:any` — Tailscale's own "Recommended exit nodes" KB
-  # treats Mullvad only as a fallback and a known upstream bug can pick an
-  # unreachable one (see docs/operations.md's "Café Wi-Fi" section).
+  # toggle to remember or forget. The module's defaults already carry the
+  # person-level values (`exitNodeAllowLanAccess = true` keeps the home LAN
+  # printer reachable while the exit node is active; `shieldsUp = false`).
   #
-  # crates/tailscale-prefs (run from `hms`) turns this into `tailscale set`
-  # flags; it is a closed vocabulary (unknown keys fail its own selftest).
-  #
-  # <mullvad-exit-node-name> is a placeholder (ADR-0034 — this repo is
-  # PUBLIC, the real value only exists once the Mullvad add-on is enabled).
-  # Replace it locally with the output of `tailscale exit-node list` after
-  # enabling the add-on (docs/operations.md's "Café Wi-Fi" section) — until
-  # then `tailscale set` simply fails on this one flag and
-  # crates/tailscale-prefs downgrades that to a warning, never failing hms.
-  xdg.configFile."dotfiles/tailscale-prefs".text = ''
-    exit_node=<mullvad-exit-node-name>
-    exit_node_allow_lan_access=true
-    shields_up=false
-  '';
+  # The exit node's real name is deliberately NOT set here (ADR-0034 — this
+  # repo is PUBLIC, and the value only exists once the Mullvad add-on is
+  # enabled). The private wrapper flake's extraModules set
+  # `dotfiles.tailscale.exitNode` (home/modules/tailscale.nix); until it does,
+  # `exit_node=` is empty and crates/tailscale-prefs just clears the exit node.
+  # The node is a pin from `tailscale exit-node list`, not `auto:any` — see
+  # docs/operations.md's "Café Wi-Fi" section.
 }
