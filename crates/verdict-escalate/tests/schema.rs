@@ -80,6 +80,10 @@ fn bleep_adr_0003_reason_ids_and_detail_deserialize() {
     let r: VerdictRecord =
         serde_json::from_str(&base("gh-noncanonical", Some("inline-body"))).unwrap();
     assert_eq!(r.detail.as_deref(), Some("inline-body"));
+    // ADR-0004: 本文ファイルを持つ投稿が単独のコマンドでないときの detail。
+    let r: VerdictRecord =
+        serde_json::from_str(&base("gh-noncanonical", Some("not-alone"))).unwrap();
+    assert_eq!(r.detail.as_deref(), Some("not-alone"));
     // detail が無いレコードは None。書き戻しても欄は出ない。
     let r: VerdictRecord = serde_json::from_str(&base("push-hook-bypass", None)).unwrap();
     assert!(r.detail.is_none());

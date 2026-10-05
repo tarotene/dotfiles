@@ -141,6 +141,8 @@ fn cases_1_to_11() {
     );
 
     // 10: gh pr create の前に別の文がある複合コマンド -> deny 文に前段消失の警告(#668)
+    // この複合の形は、bleep が `not-alone`(ADR-0004)で deny する形でもある。ここで
+    // 確かめるのは guard の警告文だけなので、入力は複合のまま残す(#689)。
     let out = decide(
         false,
         "printf x > /tmp/body.md && gh pr create --base main --title t --body-file /tmp/body.md",
