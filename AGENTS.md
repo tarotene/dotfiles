@@ -152,6 +152,21 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   scripts, the installer scripts' `--dry-run` paths, a zsh module syntax
   check, every script's `--selftest`, and a full-history gitleaks scan.
 
+### Tool-adoption Issues (#688)
+- Before filing an Issue that proposes adding a tool to home-manager (the
+  `feat(packages)` kind), try it on the host without any permanent change:
+  `nix shell nixpkgs#<pkg> -c <cmd>`, `nix run`, or a temporary directory.
+- Run it on the real input and take it through to the real output; a
+  `--version` alone is not a check.
+- Put a "手元での実現可能性の確認" section in the Issue body: date, platform,
+  command, result, and anything that tripped (warnings, option quirks,
+  default-behaviour differences). #687 is the model.
+- If it could not be tried (no such host, no permission), say that in the
+  section and give the reason.
+- Scope: tool-adoption proposals to this repo only — not investigation-only
+  Issues or other repos. Whether prose is enough or an Issue-template field
+  is warranted is decided by whether the same miss repeats (ADR-543).
+
 ### Scope inventory (Claude Code only)
 - A request with multiple items (a Tracking Issue with sub-issues, a bulleted
   ask) gets a `## 要求インベントリ` (requirement inventory) at the top of its
