@@ -7,10 +7,13 @@
 cask "google-chrome"
 
 # Tailscale standalone app (ADR-471). The Standalone variant (System
-# Extension, no Apple ID) is required rather than the App Store variant: only
-# Standalone (and the open-source tailscaled) support running a Tailscale SSH
-# server — the App Store variant is client-only there
-# (https://tailscale.com/kb/1065/macos-variants, accessed 2026-09-25).
+# Extension, no Apple ID) is what Tailscale tells users to start with, and it
+# can use an exit node — the point of this setup. It cannot be a Tailscale SSH
+# server: per the comparison table at
+# https://tailscale.com/kb/1065/macos-variants (accessed 2026-10-05) only the
+# open-source tailscaled can, and that variant cannot use exit nodes. altair
+# keeps Standalone and runs no SSH server (dotfiles.tailscale.ssh is off on
+# darwin, home/identities/personal.nix).
 # First launch needs a one-time manual approval of the system extension in
 # System Settings > Privacy & Security (see docs/operations.md).
 cask "tailscale-app"

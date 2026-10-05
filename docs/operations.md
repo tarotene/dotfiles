@@ -556,10 +556,13 @@ Rationale and the two-stage (cloud-now, home-later) shape:
    install — a login URL is printed; open it in a browser to authorize the
    device. Re-running the script later is a no-op for this step.
 2. **macOS (`altair`):** `./scripts/install-packages-darwin.sh` installs the
-   `tailscale-app` cask (Standalone variant — required for the Tailscale SSH
-   server). First launch needs a one-time manual approval of its system
-   extension: System Settings > Privacy & Security > allow the Tailscale
-   extension, then open Tailscale.app and log in.
+   `tailscale-app` cask (Standalone variant — it can use an exit node, which
+   is the point of this setup). First launch needs a one-time manual approval
+   of its system extension: System Settings > Privacy & Security > allow the
+   Tailscale extension, then open Tailscale.app and log in. It cannot run the
+   Tailscale SSH server — only the open-source `tailscaled` can, and that
+   variant cannot use an exit node (Tailscale KB 1065) — so `altair` is
+   reachable by SSH from nowhere over the tailnet; it is an SSH client only.
 3. **Phone (iOS/Android):** install the official Tailscale app from the
    App Store / Play Store and log in with the same account. No repo config
    applies to a phone — it participates in the ACL policy below purely by
@@ -575,9 +578,12 @@ invoking `sudo`.
 ### Mullvad exit node (until the home Raspberry Pi/K8s stack exists)
 
 Exit node selection is declared, not run by hand on every session:
-`home/identities/{personal,company}.nix` write a small closed-vocabulary
-prefs file (`~/.config/dotfiles/tailscale-prefs`: `exit_node`,
-`exit_node_allow_lan_access`, `shields_up`), and `hms` applies it via
+`home/modules/tailscale.nix` writes a small closed-vocabulary prefs file
+(`~/.config/dotfiles/tailscale-prefs`: `exit_node`,
+`exit_node_allow_lan_access`, `shields_up`, `ssh`) from its
+`dotfiles.tailscale.*` options — the identity modules set the person-level
+values, and the private wrapper flake supplies `exit_node` — and `hms` applies
+it via
 `tailscale-prefs apply` (`crates/tailscale-prefs`, `home/modules/
 tailscale.nix`) after every switch — warn-only, so a missing/unauthenticated
 Tailscale install never fails the switch. Personal devices stay on the
@@ -616,8 +622,11 @@ off it by default. One-time setup and the manual override for `arcturus`:
 
 `config/tailscale/policy.hujson` is the source of truth for the tailnet's
 access boundary (personal devices reach each other and the internet exit;
-`arcturus` reaches only the internet exit). Paste its contents into the
-admin console's Access Controls editor (Policy File) after any change —
+`arcturus` reaches only the internet exit). Its `ssh` section lets personal
+devices SSH to each other, but only a Linux host runs the SSH server
+(`dotfiles.tailscale.ssh`, on for Linux personal hosts and off on `arcturus`
+and `altair`), so in practice it applies between Linux hosts. Paste its
+contents into the admin console's Access Controls editor (Policy File) after any change —
 this repository has no API credential to push it automatically, and no
 private tailnet name/email is ever written into this file (ADR-0034).
 

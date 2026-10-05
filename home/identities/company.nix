@@ -60,4 +60,9 @@
   # company traffic routing through a personal exit IP by default is not this
   # repo's call to make.
   dotfiles.tailscale.shieldsUp = true;
+
+  # No Tailscale SSH server on the company host: a tagged device cannot SSH
+  # into a user-owned device regardless (Tailscale tags KB), and the ACL's
+  # `ssh` section deliberately omits tag:company.
+  dotfiles.tailscale.ssh = false;
 }

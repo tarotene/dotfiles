@@ -58,6 +58,19 @@ in
         devices. The company identity sets this; personal devices accept them.
       '';
     };
+
+    ssh = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        `--ssh`: run the Tailscale SSH server on this host, so other tailnet
+        devices can reach it per the ACL's `ssh` section
+        (config/tailscale/policy.hujson). Off by default; a host that cannot
+        run the server must stay off. The macOS Standalone app cannot — only
+        the open-source tailscaled can (Tailscale KB 1065) — which is why
+        the personal identity enables it on Linux only.
+      '';
+    };
   };
 
   config = {
@@ -70,6 +83,7 @@ in
       exit_node=${cfg.exitNode}
       exit_node_allow_lan_access=${boolText cfg.exitNodeAllowLanAccess}
       shields_up=${boolText cfg.shieldsUp}
+      ssh=${boolText cfg.ssh}
     '';
 
     # Same `.backup` collision quarantine as gpg-subkey/detect-drift

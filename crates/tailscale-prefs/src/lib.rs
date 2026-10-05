@@ -2,13 +2,15 @@
 //! (ADR-471、`home/modules/tailscale.nix`)を `tailscale set` で収束させる。
 //! `scripts/tailscale-prefs` の Rust 移植(ADR-0024、#414)。
 //!
-//! prefs ファイルは `key=value` 行の閉語彙で、`xdg.configFile` が
-//! `home/identities/{personal,company}.nix` から書く:
+//! prefs ファイルは `key=value` 行の閉語彙で、`home/modules/tailscale.nix` が
+//! `dotfiles.tailscale.*` option(identity が person-level の値、private wrapper
+//! flake が `exit_node` の実値を宣言する)から生成する:
 //!
 //! ```text
 //! exit_node=<mullvad-node-name-or-empty>
 //! exit_node_allow_lan_access=true|false
 //! shields_up=true|false
+//! ssh=true|false
 //! ```
 //!
 //! `exit_node` の空値は意図的(company identity は既定で exit node 無し。
@@ -26,14 +28,19 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub const KNOWN_KEYS: [&str; 3] = ["exit_node", "exit_node_allow_lan_access", "shields_up"];
+pub const KNOWN_KEYS: [&str; 4] = [
+    "exit_node",
+    "exit_node_allow_lan_access",
+    "shields_up",
+    "ssh",
+];
 
 const USAGE: &str = "\
 Usage: tailscale-prefs apply [--prefs-file <path>]
        tailscale-prefs --selftest
 
 Apply the declared Tailscale prefs (exit_node, exit_node_allow_lan_access,
-shields_up) via `tailscale set`. Warn-only: a missing tailscale binary, an
+shields_up, ssh) via `tailscale set`. Warn-only: a missing tailscale binary, an
 unauthenticated device, or a missing prefs file never fails the caller (hms).
 ";
 
@@ -86,7 +93,11 @@ pub fn build_set_args(prefs_file: &Path) -> Result<Vec<String>, BuildError> {
         out.push(match key {
             "exit_node" => format!("--exit-node={value}"),
             "exit_node_allow_lan_access" => format!("--exit-node-allow-lan-access={value}"),
-            _ => format!("--shields-up={value}"),
+            "shields_up" => format!("--shields-up={value}"),
+            "ssh" => format!("--ssh={value}"),
+            // KNOWN_KEYS 検査を通ったキーだけがここへ来る。語彙にキーを足して
+            // この match を直し忘れたら、暗黙に別の flag へ流れず落ちる。
+            other => unreachable!("key {other} is in KNOWN_KEYS but has no flag mapping"),
         });
     }
     Ok(out)
