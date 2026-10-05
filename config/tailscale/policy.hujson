@@ -39,6 +39,22 @@
     },
   ],
 
+  // Which devices may use the Mullvad exit-node add-on (each device takes one
+  // of the add-on's slots, five per license). Declared here, not by clicking
+  // "Add devices" in the admin console: Tailscale's Mullvad KB states the two
+  // ways of managing this access cannot be mixed, and this file is already the
+  // single source for the tailnet's access boundary. tag:company is included
+  // because `arcturus` selects an exit node manually while on café Wi-Fi
+  // (docs/operations.md's "Café Wi-Fi" section); the `acls` grant above still
+  // limits it to the internet exit and nothing else. A device that has not
+  // joined the tailnet takes no slot.
+  "nodeAttrs": [
+    {
+      "target": ["autogroup:member", "tag:company"],
+      "attr": ["mullvad"],
+    },
+  ],
+
   // Tailscale SSH: personal devices only (vega <-> altair <-> phone).
   // tag:company is deliberately absent — a tagged device cannot SSH into a
   // user-owned device regardless (Tailscale's own tags KB), and this repo

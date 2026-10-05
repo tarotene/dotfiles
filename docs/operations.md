@@ -585,7 +585,12 @@ Mullvad exit node at all times (no per-location toggle); `arcturus` stays
 off it by default. One-time setup and the manual override for `arcturus`:
 
 1. In the [Tailscale admin console](https://login.tailscale.com/admin),
-   enable the Mullvad exit-node add-on (currently $5/month for 5 devices).
+   enable the Mullvad exit-node add-on (currently $5/month for 5 devices):
+   General settings > Mullvad VPN > Configure, through checkout. Do **not**
+   press "Add devices" — which devices may use Mullvad is declared by the
+   `nodeAttrs` section of `config/tailscale/policy.hujson` (paste it as
+   described in "ACL policy" below), and Tailscale does not allow managing
+   that access from the admin console and the policy file at the same time.
 2. Run `tailscale exit-node list` to see the available Mullvad nodes, then
    declare the chosen node's name as `dotfiles.tailscale.exitNode`
    (`home/modules/tailscale.nix`) in the private wrapper flake's

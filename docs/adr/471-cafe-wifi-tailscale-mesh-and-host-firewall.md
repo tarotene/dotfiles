@@ -118,3 +118,24 @@ CUPS docs、Apple Support(いずれも取得 2026-09-25)。
   適用する warn-only CLI
 - `scripts/hms.sh` — switch 後に `tailscale-prefs apply` を呼ぶ
 - `config/tailscale/policy.hujson` — 新規。ACL policy の正本
+
+## Amendment (2026-10-05 — Mullvad 端末許可を policy file で宣言する)
+
+Decision は信頼境界を ACL policy(`config/tailscale/policy.hujson`)で宣言
+するとしたが、Mullvad 出口ノード add-on の「どの端末が使えるか」(1 ライセンス
+5 台の枠)は ACL の範囲外で、admin console の Add devices か policy file の
+`nodeAttrs` のどちらかで管理する。Tailscale の Mullvad KB
+(https://tailscale.com/kb/1258/mullvad-exit-nodes、取得 2026-09-25)は両者を
+混用できないと明記する。
+
+- 端末許可は `nodeAttrs` で宣言する。`autogroup:member`(個人端末)と
+  `tag:company`(`arcturus`)を対象に `mullvad` 属性を付ける。`arcturus` が出口を
+  手動選択するにはこの属性が要る。到達範囲は `acls` の出口利用のみが引き続き
+  縮小する。
+- admin console の Add devices は使わない。ACL と端末許可を同じ正本に
+  置くことで、console 側にだけ残る状態を作らない。
+
+### 執行点
+
+- `config/tailscale/policy.hujson`
+- `docs/operations.md`
