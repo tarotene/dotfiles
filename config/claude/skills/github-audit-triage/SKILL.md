@@ -31,6 +31,12 @@ merge・merge 後のメタデータ反映まで自動で行っていたが、そ
 `verdict` が `drifted` または `ungoverned` のリポジトリ×ドメインの組が
 作業リストになる。
 
+対象 owner が個人アカウント以外(org)のときは、実行の前に
+`~/.config/github-audit/<org>/overrides.tsv` の有無を確かめる。あれば
+`GITHUB_AUDIT_OWNER` / `GITHUB_AUDIT_VIEWER_PERMISSION` とあわせて
+`GITHUB_AUDIT_OVERRIDES_FILE=<そのパス>` で渡す。渡さないと、過去に exempt
+裁定済みの組が drifted として再び出る(#708)。
+
 ## 2. 一括起草
 
 drifted な (repo, domain) の組ごとに background subagent へ委譲する。各
