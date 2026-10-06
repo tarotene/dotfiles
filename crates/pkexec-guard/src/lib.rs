@@ -47,10 +47,9 @@ use std::path::Path;
 const PKEXEC_PATH: &str = "/usr/bin/pkexec";
 
 /// root で実行してよい対象バイナリの閉じた許可リスト(絶対パス)。実装時に
-/// このホスト(vega)で実在を確認済み。`tailscale` は `command -v tailscale`
-/// が実装時に見つからず(このホストには未インストール)、実在しないパスを
-/// 書かない方針(docs/claude/pkexec-guard.md)により今回は見送った——
-/// 導入されたホストで実パスを確認したうえで、レビューを経て追加する。
+/// このホスト(vega)で実在を確認済み。`tailscale` は載せない: 導入後に
+/// 実パス(/usr/bin/tailscale)を確認したが、`--operator` 設定済みで日常の
+/// 操作に root が要らないため(docs/claude/pkexec-guard.md、2026-10-07)。
 const ALLOWED_TARGETS: &[&str] = &[
     "/usr/bin/apt-get",
     "/usr/bin/apt",

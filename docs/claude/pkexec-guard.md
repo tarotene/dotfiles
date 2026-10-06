@@ -101,9 +101,17 @@ PreToolUse(`Bash`、matcher のみで `if` は付けない — 後述)専用。
 `tailscale` は当初の裁定(Q2)で候補だったが、実装時にこのホストへ
 未インストールだった(`command -v tailscale` が失敗)ため見送った。
 「実装時に実在パスを確認し、実在しないものは載せない」方針(AGENTS.md の
-ADR-0034 節と同じ精神)による。導入されたホストで実パスを確認したうえで、
-`crates/pkexec-guard/src/lib.rs` の `ALLOWED_TARGETS` に PR レビューを
-経て追加する。
+ADR-0034 節と同じ精神)による。
+
+**その後(2026-10-07、vega に導入後)も、足さないと裁定した。** 実パスは
+`/usr/bin/tailscale`(root:root 0755)と確認できたが、導入手順
+(`scripts/install-packages.sh`)が `tailscale up --operator=$USER` を 1 度だけ
+root で実行するため、以後の `tailscale set` や `tailscale status` は root
+なしで通る。実際に `hms` の `tailscale-prefs apply`(`crates/tailscale-prefs`)
+は sudo なしで `tailscale set` を成功させている。root が要る操作が日常に無い
+のに許可リストへ足すと、agent が root で tailscale(ネットワーク設定の変更や
+ログイン先の差し替えを含む)を叩ける範囲だけが広がる。**root の tailscale が
+日常で要る場面が実際に出たら、そのときに再検討する。**
 
 ### 検出粒度: 部分一致ではなく語単位
 
