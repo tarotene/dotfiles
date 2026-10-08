@@ -409,6 +409,35 @@ fn existing_id(existing: &[Value], name: &str) -> Option<String> {
         .map(|r| raw(r.get("id")))
 }
 
+/// `--reconcile --dry-run` で、live の required context と宣言の差分を `- live にだけある` /
+/// `+ 宣言にだけある` で出す(#744)。`would PUT` だけでは、ADR-591 D8 の旧 context →
+/// 新 context の置き換えが実際に何を変えるか、事前確認のために宣言と live を比べる
+/// 別のスクリプトが要った。live を読めなければ、読めなかったと言う(差分なしと区別する)。
+fn print_context_diff(gh: &Gh, owner_repo: &str, id: &str, declared_body: &str) {
+    let Some(live) = gh.read_json(&[&format!("repos/{owner_repo}/rulesets/{id}")]) else {
+        println!("      (live の ruleset を読めず、required context の差分は未確認)");
+        return;
+    };
+    let live_ctx = declared_contexts(&live.to_string());
+    let decl_ctx = declared_contexts(declared_body);
+    if live_ctx.is_empty() && decl_ctx.is_empty() {
+        return;
+    }
+    let removed: Vec<_> = live_ctx.iter().filter(|c| !decl_ctx.contains(c)).collect();
+    let added: Vec<_> = decl_ctx.iter().filter(|c| !live_ctx.contains(c)).collect();
+    if removed.is_empty() && added.is_empty() {
+        println!("      required context: 宣言と live は同じ");
+        return;
+    }
+    println!("      required context(- live にだけある / + 宣言にだけある):");
+    for c in removed {
+        println!("      - {c}");
+    }
+    for c in added {
+        println!("      + {c}");
+    }
+}
+
 fn apply_one_ruleset(
     gh: &Gh,
     owner_repo: &str,
@@ -439,6 +468,7 @@ fn apply_one_ruleset(
     }
     if opts.dry_run {
         println!("  DRY-RUN: would PUT '{name}' (id={id})");
+        print_context_diff(gh, owner_repo, &id, body);
     } else {
         gh.write(
             "PUT",
