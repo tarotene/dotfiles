@@ -241,6 +241,22 @@ description・topics・settings フィールド・ファイルツリー・open I
     緑にならない(workflows ドメインは「宣言があれば比較」なので、宣言の欠落は
     ここでは検出されない)。順序は PR 作成 → head で新 context の報告を待つ →
     reconcile → `PR title` の再実行 → merge(ADR-591 D8)。
+  - **rollout PR の `PR title` は reconcile まで必ず赤い(#744)。** live の
+    ruleset がまだ旧 context `PR Title / PR title` を必須にしていると、
+    head はその context を報告しないので、撒いた直後の PR は全部 `PR title`
+    が赤になる。ADR-591 D8 の設計どおりで、壊れているのではない。本人が
+    「どの PR も CI が full pass していない」と受け取った実例(2026-10-06、
+    9 本)があるので、次を一続きの手順にする:
+    1. 一括レビュー表と**各 PR 本文の `## 要確認`** に、「作成直後の `PR title` の赤は
+       reconcile 待ちで想定内」と書く。
+    2. PR 作成後、head で新 context の報告を待つ。
+    3. `apply-rulesets.sh <owner>/<repo> --ref <ブランチ> --verify-sha <head>
+       --reconcile --dry-run` を実行し、**宣言と live の required context の差分**
+       (`-` が live にだけある旧 context、`+` が宣言にだけある新 context)を
+       PR 本文に貼る。別の比較スクリプトは要らない。
+    4. 本人の GO(reconcile は他の open PR にも影響する外向き操作)で
+       `--dry-run` を外して reconcile し、`gh run rerun` で `PR title` を
+       再実行して、緑になったことを読み戻してから報告する。
   - `ci-yml-unreadable` は fetch 失敗によるものなので起草せず低確信
     フラグに回す(§3)。
 - docs ドメイン(ADR-640、docs/adr/640-stack-standard-api-docs.md)は
