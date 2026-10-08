@@ -76,6 +76,7 @@ static COST_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 static BACKTICK_SPAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`[^`\n]*`").unwrap());
+// 節名は 3 軸で同点のため据え置く(ADR-0035 D4。2026-10-08 に白紙から裁定し直した、#750)。
 static SECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s*先行例との対比").unwrap());
 static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s").unwrap());
 
