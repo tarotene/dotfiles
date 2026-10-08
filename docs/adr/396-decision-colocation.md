@@ -178,3 +178,28 @@ Programmer*, 1999)。ADR-0024 で言えば、Rust 移植を 1 本だけ同梱す
 - `config/claude/hooks/decision-colocation-guard.sh --selftest`(段2)。
 - 本 ADR 自身の導入 PR で CI の `decision-colocation-check` required check
   が green になることを自己適用の実測として確認する。
+
+## Amendment (2026-10-08 — #736)
+
+D1 の「`docs/adr/` 配下の新規 `.md` を新規 ADR とみなす」を、**`docs/adr/` 直下の
+`<数字>-*.md` だけ**に狭める。
+
+- **起きたこと。** ADR を新設するリポジトリで ADR の雛形(`0000-template.md`)と
+  索引(`README.md`)を足したところ、どちらも ADR ではないのに `## 執行点` 節を
+  要求されて `gh pr create` が止まった。判定が `docs/adr/*.md` の全部を ADR と
+  みなしていた。
+- **新しい判定。** 名前が数字で始まり、その直後が `-` で、`docs/adr/` の直下に
+  あるものだけが ADR。採番規約(`scripts/adr-number-check` の `^[0-9]+`)に
+  合わせた。索引(`README.md`)・番号で始まらない雛形(`template.md`)・
+  サブディレクトリは対象から外れる。例外の台帳は持たない(D3 と同じ姿勢)。
+- **`0000-*` は除外しない。** ADR-380 の二相フローでは、`gh pr create` の時点で
+  新規 ADR は必ず `0000-<slug>.md` である。この名前を除外すると、手元の層では
+  全ての新規 ADR が検査を素通りする。
+- **雛形の名前。** 雛形を `0000-template.md` と名付けると、ADR-380 の「`0000-*.md`
+  は main に載せない」に別途引っかかる。雛形は `template.md` のような数字で
+  始まらない名前にする。
+- **D8 との関係。** 判定を狭めるだけで、既存 ADR の扱いは変わらない。
+
+### 執行点
+
+- crates/decision-colocation/src/check.rs

@@ -67,9 +67,17 @@ pub fn is_execution_point_path(p: &str) -> bool {
     !(p.ends_with(".md") || p.starts_with("docs/"))
 }
 
-/// `docs/adr/*.md`(新規 ADR のパス)。
+/// `docs/adr/<数字>-*.md`(新規 ADR のパス、直下のみ)。採番規約
+/// (`scripts/adr-number-check` の `^[0-9]+`)に合わせ、番号で始まらない
+/// 雛形(`template.md`)・索引(`README.md`)・サブディレクトリは ADR とみなさない
+/// (#736、ADR-396 Amendment)。起草中の `0000-<slug>.md` は数字で始まるので
+/// 今までどおり検査される。
 pub fn is_new_adr_path(p: &str) -> bool {
-    p.starts_with("docs/adr/") && p.ends_with(".md")
+    let Some(name) = p.strip_prefix("docs/adr/") else {
+        return false;
+    };
+    let digits = name.chars().take_while(char::is_ascii_digit).count();
+    digits > 0 && !name.contains('/') && name[digits..].starts_with('-') && name.ends_with(".md")
 }
 
 /// `docs/claude/*` / `config/claude/skills/*`(ADR 以外の決定成果物)。
@@ -466,9 +474,16 @@ mod tests {
         // docs/ 配下は拡張子に関係なく執行点でない
         assert!(!is_execution_point_path("docs/tool/run.sh"));
         assert!(is_new_adr_path("docs/adr/0100-x.md"));
-        // `case` の `*` は `/` にも一致する
-        assert!(is_new_adr_path("docs/adr/sub/x.md"));
+        // 起草中の ADR(PR 番号への改番前)も対象に残る
+        // 起草中の参照を弾く adr-number-check に当たらないよう、実行時に組み立てる
+        assert!(is_new_adr_path(&format!("docs/adr/{}-x.md", "0000")));
+        assert!(is_new_adr_path("docs/adr/751-sunk-cost.md"));
         assert!(!is_new_adr_path("docs/adr/x.txt"));
+        // 索引・雛形・サブディレクトリは ADR ではない(#736)
+        assert!(!is_new_adr_path("docs/adr/README.md"));
+        assert!(!is_new_adr_path("docs/adr/template.md"));
+        assert!(!is_new_adr_path("docs/adr/sub/0100-x.md"));
+        assert!(!is_new_adr_path("docs/adr/0100.md"));
         assert!(is_non_adr_artifact_path("config/claude/skills/a/SKILL.md"));
         assert!(!is_non_adr_artifact_path("docs/adr/x.md"));
     }
