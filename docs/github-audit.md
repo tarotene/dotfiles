@@ -201,7 +201,10 @@ repository), the rulesets domain can machine-judge three more things:
   (matched by name: Security/Quality/Workflow/Review) differ after
   normalizing both to `{name,target,enforcement,conditions,bypass_actors,
   rules:(rules sorted by type)}`. Remedy: `apply-rulesets.sh <owner>/
-  <repo> --reconcile` once the declaration change has merged. This
+  <repo> --reconcile` once the declaration change has merged. Add
+  `--dry-run` first to see the required-context difference between the
+  declaration and the live ruleset (`-` only live, `+` only declared) instead
+  of just `would PUT` (#744). This
   normalization is coarse — GitHub fills some rule parameters with
   server-side defaults a hand-written declaration omits — and may need
   tuning as real-account audits surface false positives.
