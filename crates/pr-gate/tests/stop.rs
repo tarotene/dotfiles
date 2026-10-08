@@ -325,6 +325,18 @@ fn g_link_accepted_forms() {
 }
 
 #[test]
+fn g_link_keyword_list_blocks_and_names_the_dropped_refs() {
+    // `Closes #30 #31` は #30 しか閉じない(1 keyword 1 Issue、#722)。
+    // keyword 自体はあるので「なし」とは別の理由で block する。
+    let fx = Fx::new();
+    let r = fx.glink("link-list-sid", "Closes #30 #31\nNo-Visual: selftest");
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "番号を並べた書き方")); // ok   理由を名指しする
+    assert!(has(&r.stderr, "#31")); // ok   閉じられない参照を挙げる
+    assert!(!has(&r.stderr, "closing keyword なし")); // ok   「keyword なし」とは区別する
+}
+
+#[test]
 fn g_link_rejected_forms() {
     let fx = Fx::new();
     let cases = [
