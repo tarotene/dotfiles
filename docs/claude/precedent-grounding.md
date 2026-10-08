@@ -178,3 +178,11 @@ jq -r '.judged.findings[]? | select(.summary | test("先行例|precedent"))' \
 
 効きが弱ければ `config/claude/CLAUDE.md` の追記文か
 `precedent-grounding` スキルの文面を PR で調整する。
+
+## テストの取得日は環境変数で固定する(#752)
+
+deny 文面の例文ブロックには実行日が `(取得 YYYY-MM-DD)` として入る。ゴールデン
+(`crates/plan-precedent-gate/tests/cmd/*.toml`)は `tests/cli.rs` が
+`PLAN_PRECEDENT_GATE_TODAY=2000-01-01` を渡して固定日で比べる。`TRYCMD=overwrite`
+で期待値を更新しても実行日は入り込まない(ワイルドカードの `[..]` を書き戻す
+手作業は要らない)。本番では未設定なので、従来どおり外部 `date` の値になる。
