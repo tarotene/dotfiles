@@ -50,27 +50,3 @@ flake: rewrite everything as Nix DSL, or keep files literal.
 - Shell-extension modules deployed literally under this hybrid scheme gate on
   binary existence only, never on auth credentials (e.g. `GITHUB_TOKEN`) — see
   ADR-0005. A token-gated loader breaks in the token-less home-manager session.
-
-## Amendment (2026-10-08 — #750)
-
-Decision の「動いている設定ファイルはリテラルのまま置き、補間が効く所だけ Nix DSL を
-使う」には理由が書かれておらず、Consequences の「battle-tested な設定がそのまま動く」
-が実質の根拠になっていた。これは過去の動作実績を理由にする書き方で、ADR-751 の
-前提(歴史的経緯と書き直しの作業量を除く)と食い違う。コード 0 行から選ぶとしたら
-何を採るか、の問いで 3 軸の評価をやり直した。**決定は維持する。理由を書き直す。**
-
-1. **表現不可能性。** リテラルのファイルは、補間が無い限りそれ自体が単一正本で、
-   それを検査する道具(`zsh -n`、shellcheck)がそのまま効く。Nix DSL に翻訳すると、正本が DSL に移り、道具が見るのは生成物に
-   なるので、構文の誤りを書いた場所で検出できなくなる。補間が効く所(ホスト・
-   identity ごとの値)は DSL が単一正本になるので、この軸でも DSL が勝つ — 決定の
-   後半と一致する。
-2. **還元性。** 補間の無い所を DSL にしても、層が 1 つ増えるだけで、リテラルでは
-   できない仕事をしない。`programs.*` モジュールが定型を除ける所は、その仕事がある
-   ので DSL を使う。
-3. **先進性。** 同点。
-
-プロジェクトの `AGENTS.md` の「Hybrid translation」節は、同じ理由に書き換えてある。
-
-### 執行点
-
-- AGENTS.md
