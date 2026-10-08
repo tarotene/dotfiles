@@ -684,7 +684,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
 
    ```bash
    echo '{"tool_name":"Bash","cwd":"'"$PWD"'","tool_input":{"command":"git stash pop"}}' \
-     | bash ~/.codex/hooks/git-stash-guard.sh   # expect a deny JSON
+     | ~/.claude/hooks/git-stash-guard --host codex   # expect a deny JSON
    echo '{"hook_event_name":"Stop","session_id":"smoke","last_assistant_message":"no plan"}' \
      | ~/.codex/hooks/codex-plan-gate   # expect no output (no <proposed_plan>)
    ```
