@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から
+- [ADR-751](adr/751-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から
   歴史的経緯と書き直しの作業量を除く。コード 0 行の白紙から 3 軸で選び、
   戻せないもの(データ・外部契約・人手)だけを数える。完全に同点なら現職を維持し、
   裁定と実行を分ける。`plan-precedent-gate` が閉語彙のコスト語を deny する。
