@@ -455,6 +455,9 @@ jobs:
       - name: apply-repo-settings.sh --selftest
         run: bash ./config/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh --selftest
 
+      - name: create-repo.sh --selftest
+        run: bash ./config/claude/skills/repo-charter/scripts/create-repo.sh --selftest
+
       # github-audit (ADR-0015) is deterministic shell + jq end to end
       # against a stubbed gh (repo list, REST rulesets API, and GraphQL
       # batch): rule-type union judgement, the README/CONTRIBUTING schema

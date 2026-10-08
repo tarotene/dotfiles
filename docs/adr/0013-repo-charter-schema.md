@@ -126,3 +126,35 @@ guard.md` を参照)。
 - `config/claude/hooks/repo-create-guard.sh` — 本 Amendment の判定エンジン。
 - `config/claude/skills/repo-charter/SKILL.md` — §8 `core` 型手順に
   `apply-repo-settings.sh` の呼び出しを追加(今回の drift の直接原因を修正)。
+
+## Amendment (2026-10-08 — #754)
+
+上の Amendment(2026-09-29)の hook は、素の `gh repo create` を例外なく deny する
+一方、`repo-charter` スキル §8 自身がその `gh repo create` を手順として指示していた。
+deny 文言が唯一の出口として示す `REPO_CREATE_GUARD_BYPASS=1` は、auto モードの分類器に
+safety bypass と判定されて拒否される。本人が承認した「private リポジトリの作成」という
+計画の 1 手が、エージェントには実行できなかった(本人がチャットで迂回を許可して初めて
+通った)。
+
+**手順そのものを実行するスクリプトを、正規の入口にする。**
+`config/claude/skills/repo-charter/scripts/create-repo.sh` が、§1 の閉語彙チェック →
+`gh repo create` → `gh repo edit --add-topic` → 型別の governance 播種を 1 本で行う。
+hook が強制したいのは「手順に載せること」なので、手順を実行するスクリプトを通れば
+意図は満たされる。hook は Bash のコマンド文字列しか見ないため、スクリプト内の
+`gh repo create` は deny に当たらず、バイパスを使わずに済む(`rulesets-write-guard`
+に対する `apply-rulesets` と同じ形、#707)。
+
+- 語彙チェックはスクリプト側に移り、通らなければ `gh` を 1 回も呼ばずに止まる
+  (作成してから `github-audit naming` に指摘される順序を逆にする)。
+- スクリプトは既存の `seed.sh` / `apply-repo-settings.sh` / `copy-files.sh` を
+  呼ぶだけで、播種のロジックは持たない。
+- hook の deny 文言は、バイパスではなくこのスクリプトを案内する。バイパスは
+  本人が `!` 付きで実行するときのものと書く。
+- 以前の Amendment の執行点 `config/claude/hooks/repo-create-guard.sh` は、Rust 版
+  (`crates/repo-create-guard`)に置き換わっている。
+
+### 執行点
+
+- config/claude/skills/repo-charter/scripts/create-repo.sh
+- crates/repo-create-guard/src/lib.rs
+- config/claude/skills/repo-charter/SKILL.md

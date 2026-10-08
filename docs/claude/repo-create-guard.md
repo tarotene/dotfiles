@@ -56,9 +56,21 @@ repo-charter の手順自体が実行不能になる。
 
 ## deny の理由文
 
-`repo-charter` SKILL.md §1(命名インタビュー・閉語彙チェック)と §8
-(`gh repo create` → `gh repo edit --add-topic` → 型別 governance 播種)の
-手順をそのまま指す。バイパス手段(下記)も理由文に含める。
+`repo-charter` SKILL.md §8 の作成スクリプト `scripts/create-repo.sh`(§1 の閉語彙
+チェック → `gh repo create` → `gh repo edit --add-topic` → 型別 governance 播種を
+1 本で実行する)を指す。バイパス手段(下記)も理由文に含めるが、「本人が `!` 付きで
+実行するとき用で、エージェントが前置しても auto モードの分類器に拒否される」と書く。
+
+### 正規の入口は作成スクリプト(#754)
+
+hook が強制したいのは「手順に載せること」であって `gh repo create` という文字列を
+禁じることではない。以前は deny 文言が唯一の出口としてバイパス env var を示し、
+auto モードの分類器がそれを safety bypass と判定して拒否したため、本人が承認した
+作成の 1 手がエージェントには実行できなかった。`create-repo.sh` は手順そのものを
+実行するので、これを通れば hook の意図は満たされる。hook は Bash のコマンド文字列
+しか見ず、スクリプト内の `gh repo create` はコマンド位置に現れないため deny に当たらない
+(`rulesets-write-guard` に対する `apply-rulesets` と同じ形、#707)。語彙チェックを
+作成の前に行うので、`github-audit naming` に後から指摘される順序も逆転する。
 
 ## 縮退・バイパス
 
@@ -79,6 +91,9 @@ repo-charter の手順自体が実行不能になる。
 
 ## 検査
 
+- `config/claude/skills/repo-charter/scripts/create-repo.sh --selftest`(スタブの `gh`
+  と播種スクリプトに対して、閉語彙チェックの合否・topic 必須・既存リポジトリの再開・
+  `--dry-run` で `gh` を呼ばないこと等を固定。ci.yml が実行する)。
 - `crates/repo-create-guard/tests/cli.rs` が、bash 版 `--selftest` の全 9 ケースを
   ネットワーク無しに実バイナリへ固定している(`cargo test --workspace`、nix.yml の
   rust ジョブ)。

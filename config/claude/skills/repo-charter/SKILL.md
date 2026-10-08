@@ -303,14 +303,33 @@ ln -s ../../.agents/skills/<name> .claude/skills/<name>
 
 ## 8. GitHub メタデータへの反映
 
-**新規作成の場合、`gh repo create` の前に手順 2 の閉じた語彙チェックが
-通っていることを確認する**(ADR-0020)— `naming-codename` を選んだのに
-レジストリ未登録のまま `gh repo create` すると、直後の `github-audit
-naming` が `codename-not-registered` で即 drift 報告する。
+**新規作成は `scripts/create-repo.sh` で行う**(#754)。素の `gh repo create` は
+repo-create-guard が deny する。guard が強制したいのは「この手順に載せること」
+なので、手順そのもの(閉語彙チェック → `gh repo create` → `--add-topic` →
+governance 播種)を 1 本で実行するスクリプトが正規の入口で、バイパス用の環境変数
+(`REPO_CREATE_GUARD_BYPASS=1`)は要らない — auto モードの分類器は、これを
+safety bypass と判定して拒否する。guard は Bash のコマンド文字列しか見ないので、
+スクリプト内の `gh repo create` は deny に当たらない(`apply-rulesets` と同じ形、#707)。
 
 ```bash
-gh repo create <owner>/<repo> --private --description "<目的 1 文>"   # 新規時
-gh repo edit <owner>/<repo> --description "<目的 1 文>"                # 既存の適合化時
+~/.claude/skills/repo-charter/scripts/create-repo.sh \
+  --owner <owner> --repo <repo> --description "<目的 1 文>" \
+  --class <naming-クラス> --topic <topic> [--topic <topic2> ...] \
+  [--lifecycle <lifecycle-timeboxed|lifecycle-study>] [--public] \
+  --type <rust|typst|astro|core> --dest <ローカルの checkout パス> [-- <seed.sh のオプション>]
+# まず --dry-run で、検査の結果と走らせるコマンドを確かめる
+```
+
+スクリプトは作成の**前に**手順 2 の閉じた語彙チェックを行い(ADR-0020)、通らなければ
+`gh` を 1 回も呼ばずに止まる — `naming-codename` を選んだのにレジストリ未登録のまま
+作成すると、直後の `github-audit naming` が `codename-not-registered` で即 drift 報告
+する。リポジトリが既に存在すれば作成を飛ばして topic の反映と播種へ進むので、途中で
+止まっても同じコマンドで再開できる。
+
+既存リポジトリの適合化(新規作成ではない)は、従来どおり直接 `gh repo edit` する:
+
+```bash
+gh repo edit <owner>/<repo> --description "<目的 1 文>"
 gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 ```
 
@@ -322,9 +341,10 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 `--add-topic` にもう 1 つ追加する(ADR-0026、`naming-*` とは独立に 0〜1 個)。
 
 **新規作成の場合、続けて標準 governance を播く**(#153、
-ADR-503)。`gh` 自体には `repo create` 直後に
-走るフック機構が無いため、この手順が事実上の自動適用になる。required
-status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
+ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `repo create` 直後に
+走るフック機構が無いため、この手順が事実上の自動適用になる)。以下はスクリプトが
+内部で呼ぶ個々のコマンドで、スクリプトが失敗したときのフォールバック手順でもある。
+required status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
 一本化されている(`apply-rulesets.sh` は型を引数に取らない)。リポジトリの
 型が rust/typst/astro のいずれかで該当 governance skill を持つ場合:
 

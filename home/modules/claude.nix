@@ -2222,6 +2222,13 @@ in
     repoConfig + "/claude/skills/repo-charter/SKILL.md";
   home.file.".claude/skills/repo-charter/cases.md".source =
     repoConfig + "/claude/skills/repo-charter/cases.md";
+  # create-repo.sh: §8 の「閉語彙チェック → gh repo create → topic → governance
+  # 播種」を 1 本にまとめた正規の入口。素の `gh repo create` は
+  # repo-create-guard が deny するので、エージェントはこれを使う(#754)。
+  home.file.".claude/skills/repo-charter/scripts/create-repo.sh" = {
+    source = repoConfig + "/claude/skills/repo-charter/scripts/create-repo.sh";
+    executable = true;
+  };
   # writing-style: 執筆規約の正本(別 private リポジトリの docs/style/)への
   # 薄いポインタ(#115)。writing-style-hub(crates/hub-resolve)がマーカーファイル/環境
   # 変数からハブの絶対パスを解決する。

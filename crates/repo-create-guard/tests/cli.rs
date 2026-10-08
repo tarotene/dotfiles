@@ -84,7 +84,8 @@ fn selftest_cases() {
 #[test]
 fn reason_texts_are_verbatim() {
     let cli = deny("cli", "gh repo create x", "REPO_CREATE_GUARD_BYPASS=1");
-    assert!(cli.starts_with("素の `gh repo create` は使わないでください。\n\nrepo-charter スキルの手順(config/claude/skills/repo-charter/SKILL.md)\nを経由してください:\n\n  1. §1 の命名インタビュー"));
+    assert!(cli.starts_with("素の `gh repo create` は使わないでください。\n\nrepo-charter スキルの作成スクリプトを使ってください\n(config/claude/skills/repo-charter/SKILL.md §8):\n\n  ~/.claude/skills/repo-charter/scripts/create-repo.sh"));
+    assert!(cli.contains("エージェントが自分で前置しても auto モードの分類器に拒否されます"));
     assert!(cli.ends_with("(ADR-0013 Amendment 2026-09-29 参照)。"));
     let api = deny("api", "gh api -X POST /orgs/acme/repos", "");
     assert!(api.starts_with("`gh api` での repo 作成(/orgs/acme/repos)は使わないでください。\n\n"));

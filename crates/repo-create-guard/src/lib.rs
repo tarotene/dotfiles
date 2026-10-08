@@ -50,17 +50,20 @@ pub fn is_target_at(tokens: &[String], i: usize) -> Option<TargetKind> {
     gh_command_at(tokens, i, &["repo", "create"]).then_some(TargetKind::Cli)
 }
 
-const DENY_HINT: &str = "repo-charter スキルの手順(config/claude/skills/repo-charter/SKILL.md)
-を経由してください:
+const DENY_HINT: &str = "repo-charter スキルの作成スクリプトを使ってください
+(config/claude/skills/repo-charter/SKILL.md §8):
 
-  1. §1 の命名インタビュー(閉語彙チェック — naming-codename/naming-descriptive
-     等のクラス確定)を先に済ませる。
-  2. §8 の手順どおり `gh repo create` → `gh repo edit --add-topic <クラス>`
-     → 型別の governance 播種(rust/typst/astro は各 seed.sh、それ以外は
-     `repo-governance-common/scripts/apply-repo-settings.sh` +
-     `copy-files.sh` + `apply-rulesets.sh`)まで一式で行う。
+  ~/.claude/skills/repo-charter/scripts/create-repo.sh --owner <owner> --repo <repo> \\
+    --description \"<目的 1 文>\" --class <naming-クラス> --topic <topic> \\
+    --type <rust|typst|astro|core> --dest <ローカルの checkout>
+  (--dry-run で、検査の結果と走らせるコマンドを先に確かめられます)
 
-判定不能な事情があれば REPO_CREATE_GUARD_BYPASS=1 で一時的に迂回できます
+スクリプトは §1 の閉語彙チェック(naming-codename/naming-descriptive 等のクラス確定)
+→ `gh repo create` → `gh repo edit --add-topic <クラス>` → 型別の governance 播種まで
+一式で行います。スクリプト経由なら迂回用の環境変数は要りません。
+
+REPO_CREATE_GUARD_BYPASS=1 は、本人が `!` 付きで実行するときのためのものです。
+エージェントが自分で前置しても auto モードの分類器に拒否されます(#754)
 (ADR-0013 Amendment 2026-09-29 参照)。";
 
 fn deny_reason_repo_create() -> String {
