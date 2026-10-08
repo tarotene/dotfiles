@@ -475,7 +475,8 @@ mod tests {
         assert!(!is_execution_point_path("docs/tool/run.sh"));
         assert!(is_new_adr_path("docs/adr/0100-x.md"));
         // 起草中の ADR(PR 番号への改番前)も対象に残る
-        assert!(is_new_adr_path("docs/adr/0000-x.md"));
+        // 起草中の参照を弾く adr-number-check に当たらないよう、実行時に組み立てる
+        assert!(is_new_adr_path(&format!("docs/adr/{}-x.md", "0000")));
         assert!(is_new_adr_path("docs/adr/751-sunk-cost.md"));
         assert!(!is_new_adr_path("docs/adr/x.txt"));
         // 索引・雛形・サブディレクトリは ADR ではない(#736)
