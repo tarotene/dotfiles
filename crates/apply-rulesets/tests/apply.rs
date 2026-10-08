@@ -266,6 +266,52 @@ fn t2_existing_ruleset_is_skipped_without_reconcile_and_put_with_it() {
 }
 
 #[test]
+fn reconcile_dry_run_shows_the_required_context_diff() {
+    // ADR-591 D8: live はまだ旧 context を必須にしている(#744)。
+    let fx = Fx::new();
+    fx.fixture(
+        "repos_tarotene_x_rulesets",
+        r#"[{"id": 1, "name": "Quality", "target": "branch"}]"#,
+    );
+    fx.fixture(
+        "repos_tarotene_x_rulesets_1",
+        r#"{"id": 1, "name": "Quality", "rules": [{"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "test"}, {"context": "PR Title / PR title (old)"}]}}]}"#,
+    );
+    let o = fx.apply(&["--reconcile", "--dry-run", "--unverified-contexts"]);
+    assert_eq!(rc(&o), 0, "{}", err(&o));
+    let s = out(&o);
+    assert!(s.contains("DRY-RUN: would PUT 'Quality' (id=1)"), "{s}");
+    assert!(s.contains("      - PR Title / PR title (old)"), "{s}");
+    assert!(s.contains("      + PR Title / PR title"), "{s}");
+    assert!(!s.contains("      - test"), "{s}");
+    assert_eq!(fx.log(), "", "dry-run なのに書込みが発生した");
+}
+
+#[test]
+fn reconcile_dry_run_says_when_nothing_differs_or_live_is_unreadable() {
+    let fx = Fx::new();
+    fx.fixture(
+        "repos_tarotene_x_rulesets",
+        r#"[{"id": 1, "name": "Quality", "target": "branch"}]"#,
+    );
+    fx.fixture("repos_tarotene_x_rulesets_1", QUALITY);
+    let o = fx.apply(&["--reconcile", "--dry-run", "--unverified-contexts"]);
+    assert!(
+        out(&o).contains("required context: 宣言と live は同じ"),
+        "{}",
+        out(&o)
+    );
+    // live を読めないときは「差分なし」と言わない
+    fx.rm_fixture("repos_tarotene_x_rulesets_1");
+    let o = fx.apply(&["--reconcile", "--dry-run", "--unverified-contexts"]);
+    assert!(
+        out(&o).contains("live の ruleset を読めず、required context の差分は未確認"),
+        "{}",
+        out(&o)
+    );
+}
+
+#[test]
 fn t3_unreportable_context_exits_4_with_zero_writes_and_unverified_overrides() {
     let fx = Fx::new();
     fx.jobs(r#"[{"name":"unrelated"}]"#);
