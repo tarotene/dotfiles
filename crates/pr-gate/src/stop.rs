@@ -252,6 +252,26 @@ open な Issue の一覧は SessionStart の issue-index が注入していま�
         _ => {}
     }
 
+    // G_link(1 keyword 1 Issue、#722): `Closes #1 #2` は #1 しか閉じない。
+    let listed = body::unclosed_listed_refs(&pr_body);
+    if !listed.is_empty() {
+        let msg = format!(
+            "PR #{pr_num} の本文に、1 つの closing keyword の後ろに番号を並べた書き方があります。
+GitHub は keyword 直後の 1 件しか閉じないため、次は閉じられずに open のまま残ります:
+
+  {}
+
+keyword は Issue ごとに書いてください(各行に `Closes #<番号>`)。
+
+  gh pr edit {pr_num} --body-file <file>",
+            listed.join(" ")
+        );
+        f.link = Some(match f.link.take() {
+            Some(prev) => format!("{prev}\n\n{msg}"),
+            None => msg,
+        });
+    }
+
     // G_visual
     if body::judge_visual(&pr_body) == Visual::Missing {
         f.visual = Some(format!(

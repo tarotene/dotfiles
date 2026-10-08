@@ -22,6 +22,20 @@ static CLOSING_KEYWORD_RE: LazyLock<Regex> = LazyLock::new(|| {
     .expect("CLOSING_KEYWORD_RE")
 });
 
+/// closing keyword の直後に番号を並べた形(`Closes #1 #2`、`Closes #1, #2`、
+/// `Closes #1 and #2`)。GitHub は keyword 直後の 1 件しか閉じず、残りは黙って
+/// open のまま残る(1 keyword 1 Issue が規則。出典: docs.github.com「Linking a
+/// pull request to an issue」、#722)。
+static KEYWORD_LIST_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]+(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+(?:(?:[[:space:]]*,|[[:space:]]+and|[[:space:]]*&)?[[:space:]]+(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+)+",
+    )
+    .expect("KEYWORD_LIST_RE")
+});
+static ISSUE_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+").expect("ISSUE_REF_RE")
+});
+
 /// `No-Issue:` は理由を伴って初めて成立する。空の `No-Issue:` を通すと、沈黙を
 /// 決定に変えるという G_link の目的が失われ、ただのおまじないになる。
 static NO_ISSUE_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -112,6 +126,25 @@ pub fn judge_link(body: &str) -> Link {
     }
 }
 
+/// keyword の後ろに並べられ、GitHub が閉じない参照(先頭の 1 件を除いた残り)。
+/// コード内の記述は GitHub が解釈しないので `strip_code_spans` を通してから見る。
+/// 重複は最初の出現だけ残す。
+pub fn unclosed_listed_refs(body: &str) -> Vec<String> {
+    let s = strip_code_spans(body);
+    let mut out: Vec<String> = Vec::new();
+    for line in s.split('\n') {
+        for m in KEYWORD_LIST_RE.find_iter(line) {
+            for r in ISSUE_REF_RE.find_iter(m.as_str()).skip(1) {
+                let r = r.as_str().to_string();
+                if !out.contains(&r) {
+                    out.push(r);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// コード外の最初の `Handoff: #N` 行の N(`grep -m1` の 1 行目)。
 pub fn handoff_issue(body: &str) -> Option<String> {
     let s = strip_code_spans(body);
@@ -185,6 +218,32 @@ pub fn body_has_kizon_for(stripped: &str, path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- 1 keyword 1 Issue(#722) ---
+
+    #[test]
+    fn unclosed_listed_refs_names_everything_after_the_first() {
+        let body =
+            "Closes #1 #2 #3\nCloses #4, #5\nFixes #6\nCloses #7 and #8\nCloses o/r#9 o/r#10";
+        assert_eq!(
+            unclosed_listed_refs(body),
+            ["#2", "#3", "#5", "#8", "o/r#10"]
+        );
+    }
+
+    #[test]
+    fn unclosed_listed_refs_accepts_one_keyword_per_issue() {
+        assert!(unclosed_listed_refs("Closes #1\nCloses #2\nFixes #3").is_empty());
+        // keyword を挟めば別の参照
+        assert!(unclosed_listed_refs("Closes #1 Fixes #2").is_empty());
+        assert!(unclosed_listed_refs("Closes #1 (see #2)").is_empty());
+    }
+
+    #[test]
+    fn unclosed_listed_refs_ignores_code() {
+        assert!(unclosed_listed_refs("`Closes #1 #2`").is_empty());
+        assert!(unclosed_listed_refs("```\nCloses #1 #2\n```").is_empty());
+    }
 
     // --- 旧 selftest「G_prior(ADR-543)の純粋関数部分」の 6 ケース ---
 

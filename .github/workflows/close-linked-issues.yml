@@ -47,6 +47,26 @@ jobs:
           refs="$(printf '%s\n' "$text" \
             | grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' \
             | awk '{ print $NF }' || true)"
+          # GitHub closes only the issue right after a keyword: `Closes #1 #2`
+          # closes #1 and nothing else, one keyword per issue is the rule. The
+          # rest of such a list would be dropped silently, so name it instead
+          # (tarotene/dotfiles#722).
+          ref_re='([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+'
+          dropped="$(printf '%s\n' "$text" \
+            | grep -oiE "\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+${ref_re}(([[:space:]]*,|[[:space:]]+and|[[:space:]]*&)?[[:space:]]+${ref_re})+" \
+            | while IFS= read -r chain; do
+                printf '%s\n' "$chain" | grep -oE "$ref_re" | tail -n +2
+              done || true)"
+          if [ -n "$dropped" ]; then
+            list="$(printf '%s\n' "$dropped" | sort -u | paste -sd ' ' -)"
+            echo "::warning::not closed (a closing keyword covers only the issue right after it; write one keyword per issue): $list"
+            {
+              echo "### Issues not closed by this workflow"
+              echo
+              echo "A closing keyword covers only the issue right after it. These were listed after another one and were skipped: $list"
+              echo "Write one keyword per issue (\`Closes #1\` / \`Closes #2\`) or close them by hand."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          fi
           closed=0
           while IFS= read -r ref; do
             [ -n "$ref" ] || continue

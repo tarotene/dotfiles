@@ -228,6 +228,20 @@ feature 作業で、閉じるべき Issue が存在しない。ここで「毎�
 
 理由の無い裸の `No-Issue:` は受理しない。それを通すと、ただのおまじないになって狙いが消える。
 
+### keyword の後ろに番号を並べた本文も block する(#722)
+
+`Closes #1 #2 #3` や `Closes #4, #5` のように 1 つの keyword の後ろへ番号を並べても、
+GitHub が閉じるのは keyword 直後の 1 件だけで、残りは黙って open のまま残る
+(1 keyword 1 Issue が規則。出典: GitHub Docs「Linking a pull request to an issue」、
+取得 2026-10-08)。keyword があるので「keyword なし」とは別の事故で、`G_link` と同じ
+性質(その場では何も壊れず、後から取りこぼしが見つかる)を持つ。
+
+`body::unclosed_listed_refs` が、コード外の本文から「並べられた 2 件目以降」の参照を
+挙げ、`G_link` の block メッセージに載せる。マージ後の保険として、
+`close-linked-issues.yml` も閉じられなかった番号を警告とステップサマリに出す
+(こちらは検出のみ。ワークフローは GitHub の規則に合わせて、並んだ番号を閉じる
+側には広げない)。
+
 ### 「言及はあるが keyword が無い」だけを見ない理由
 
 一見すると「本文が `#N` に言及しているのに closing keyword が無い」ケースだけを弾くのが
