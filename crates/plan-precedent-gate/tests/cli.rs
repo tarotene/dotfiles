@@ -7,7 +7,10 @@
 
 #[test]
 fn cli() {
+    // 例文の取得日は固定する。`TRYCMD=overwrite` で更新しても実行日が
+    // ゴールデンに入り込まない(#752)。
     trycmd::TestCases::new()
+        .env("PLAN_PRECEDENT_GATE_TODAY", "2000-01-01")
         .register_bin(
             "plan-precedent-gate",
             trycmd::cargo::cargo_bin!("plan-precedent-gate"),

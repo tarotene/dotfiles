@@ -106,3 +106,12 @@ Claude Code では固定でこの 1 行:
 
 形式検査は attribution-guard が PreToolUse で行う。gate に当たる前に
 自発的に付けること — gate は漏れを拾うためのもので、一次的な手段ではない。
+
+## attribution の案内はハーネス由来(opusplan で署名が変わる)
+
+commit / PR の署名(`Co-Authored-By: Claude <モデル名> …`)の案内は、Claude Code
+自身が `system-reminder` として出す。ツール出力に付いて届くことがあり、ユーザー
+の発言ではない。`model` が `opusplan` のとき、Plan mode と実行でモデルが切り
+替わるたびに、その時点のモデル名で案内が出し直される。したがって、**最新の
+案内に従う**。Plan と実行で署名のモデル名が違うのは想定内で、異常ではない
+(発生源の特定: #719、`docs/claude/opusplan-model-aliases.md`)。

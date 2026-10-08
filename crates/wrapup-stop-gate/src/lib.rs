@@ -672,7 +672,12 @@ Process the lines one by one:
      -R target). gh-edit-allow may auto-allow gh issue create based on earlier
      creations in the same session, so the absence of a permission prompt is
      not a GO — always confirm with AskUserQuestion.
-  4. Write the body from detail plus the conversation context, and end it with
+  4. Before writing the body, check whether the target repository is public:
+     gh repo view [-R <repo>] --json visibility. If it is public, write only
+     the minimal facts needed to reproduce — no internal repository names,
+     project names, or confidential terms from the conversation context
+     (the PreToolUse denylist rejects them, costing a round trip).
+     Write the body from detail plus the conversation context, and end it with
      this line (the provenance footer, grep-able for inbox-origin Issues, also
      serves as the attribution that attribution-guard.sh requires):
        「🤖 Filed from [{name}]({url}) wrap-up inbox」

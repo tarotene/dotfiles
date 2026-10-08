@@ -298,3 +298,20 @@ settings.json は jq の代わりに挿入順を保つ最小パーサで読み�
 settings.json は据え置かれ、警告だけが出る(pin が固まるだけで、設定が消えたり
 壊れたりはしない)。挙動が怪しくなったら、上の `--settings` を使った手順で
 実測を取り直すのが最短の確認手順。
+
+## 副作用: attribution の案内がモデル切り替えのたびに出し直される(#719)
+
+`model` を `opusplan` にすると、Plan mode と実行でモデルが切り替わる。Claude Code
+はそのたびに、commit / PR の署名(`Co-Authored-By: Claude <モデル名> …`)の案内を
+その時点のモデル名で `system-reminder` として出し直し、ツール結果に付けて届ける。
+2026-10-05 のセッションで、署名が `Sonnet 5.5` と `Fable 5.1` の間で揺れる案内が
+繰り返し届き、偽の指示の混入と疑われた(#719)。
+
+- 発生源: ハーネス(Claude Code)自身。このリポジトリの hook・MCP は
+  `Co-Authored-By` も `Attribution` も出力しない(`crates/*`・`config/claude`・
+  `docs` と `~/.claude/settings.json` を検索して確かめた、2026-10-08)。
+  ハーネス内部の実装そのものは未確認。
+- 扱い: 最新の案内に従う。`attribution-guard` は commit の署名を検査しない
+  (PR / Issue の投稿のフッターだけを見る)ので、モデル名を照合する検査は
+  足していない — opusplan では正しいモデル名が正当に変わるため、足すと正しい
+  挙動を誤検知する。

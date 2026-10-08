@@ -135,6 +135,12 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 - 最新の default branch から作業ブランチを切る(`Closes` が効くのは default
   branch 向き PR だけなので、ベースブランチを必ず確認する)。
 - 項目ごとに 1 commit。Issue に対応する項目は commit message に `#N` を含める。
+- 他リポジトリで作業する段は、`github-audit-triage` §6 の手順 1・2 に従う。
+  scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
+  <clone> --branch <名前>` で切った worktree で編集・commit する
+  (main-checkout-guard が clone への編集を deny する、#734)。
+- サブエージェントへ段や repo を委譲するときは、`github-audit-triage` §6a の
+  委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
 - 各段の PR 本文はリポジトリの `pr-description` スケルトンに従う:
   - その段で対処した Issue はすべて `Closes #N` として列挙する
   - inbox 由来で対応する Issue が無い項目は、**新たに起票しない**(起票して

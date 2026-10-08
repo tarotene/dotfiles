@@ -370,7 +370,10 @@ pub fn record_touch(ledger: &SessionLedger, session_id: &str, top: &Path) -> Opt
         format!(
             "{} is a main checkout that is not clean on the default branch (branch: {}). \
              Do not start a new unit of work here; create a worktree with \
-             `herdr worktree create --cwd {} --branch <name>` and work there.",
+             `herdr worktree create --cwd {} --branch <name>` and work there. The worktree is based on the \
+             parent checkout's HEAD, so if the parent is not on the default branch, check \
+             after creating it: \
+             `git merge-base --is-ancestor origin/<default> HEAD`, and align it with `origin/<default>` if it fails.",
             top.display(),
             snap.branch,
             top.display(),
@@ -427,7 +430,9 @@ pub fn deny_reason(top: &Path) -> String {
     format!(
         "{} は本物の checkout(main worktree)です。ここは変更せず、作業単位は worktree で切ってください: \
          `herdr worktree create --cwd {} --branch <name>` で作り、以降は worktree の絶対パス、または \
-         `git -C <worktree>` で操作します。本物の checkout を直接変更したいときは、本人が `!` 付きのコマンドで \
+         `git -C <worktree>` で操作します。worktree の土台は親 checkout の HEAD なので、親が default ブランチでない\
+         ときは作成後に `git merge-base --is-ancestor origin/<default> HEAD` で確かめ、外れていれば \
+         `origin/<default>` に揃えます。本物の checkout を直接変更したいときは、本人が `!` 付きのコマンドで \
          操作します。詳細: docs/claude/main-checkout-guard.md",
         top.display(),
         top.display(),

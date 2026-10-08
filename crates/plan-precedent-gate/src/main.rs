@@ -39,6 +39,16 @@ fn trim_newlines(mut s: String) -> String {
     s
 }
 
+/// 例文に埋める取得日(`YYYY-MM-DD`)。テストは `PLAN_PRECEDENT_GATE_TODAY` で
+/// 固定する — ゴールデンに実行日が入り込む経路そのものを無くすため(#752、
+/// due-remind の `DUE_REMIND_TODAY` と同形)。本番は外部 `date` に委ねる。
+fn today() -> String {
+    std::env::var("PLAN_PRECEDENT_GATE_TODAY")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| hook_io::proc::date("%Y-%m-%d"))
+}
+
 fn cmd_check(plan_file: &str) -> ExitCode {
     let Some(plan) = read_plan_file(plan_file) else {
         eprintln!("plan file not found: {plan_file}");
@@ -53,7 +63,7 @@ fn cmd_check(plan_file: &str) -> ExitCode {
     for p in &problems {
         let _ = writeln!(out, "{p}");
     }
-    let _ = writeln!(out, "\n{}", example_block(&hook_io::proc::date("%Y-%m-%d")));
+    let _ = writeln!(out, "\n{}", example_block(&today()));
     ExitCode::from(1)
 }
 
@@ -75,7 +85,7 @@ fn hook() -> ExitCode {
     if problems.is_empty() {
         return ExitCode::SUCCESS;
     }
-    let msg = deny_message(&problems, &hook_io::proc::date("%Y-%m-%d"));
+    let msg = deny_message(&problems, &today());
     print!("{}", jqfmt::deny_for_event(&input.hook_event_name, &msg));
     ExitCode::SUCCESS
 }

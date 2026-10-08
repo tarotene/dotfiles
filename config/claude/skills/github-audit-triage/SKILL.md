@@ -353,8 +353,13 @@ SKILL.md §9 と同じ作法)。
 
 ## 6. 一括適用(GO 分のみ、リポジトリ×ドメインごとに)
 
-1. scratchpad へ shallow clone(`git clone --depth 1`)
-2. 作業ブランチを切り、対象ドメインの修正を適用する
+1. scratchpad へ shallow clone(`git clone --depth 1`)。この clone は
+   main-checkout-guard(ADR-705)の言う「本物の checkout」なので、**読み取り
+   だけ**に使う(編集・commit は deny される、#734)
+2. `herdr worktree create --cwd <clone> --branch <名前>` で worktree を切り、
+   以降はその `checkout_path` で対象ドメインの修正を適用する。worktree の
+   土台は親 clone の HEAD なので、clone 直後の既定ブランチの先頭であることを
+   `git merge-base --is-ancestor origin/<default> HEAD` で確かめる
 3. commit → push → `gh pr create`(そのリポジトリの PR 本文規約に従う。
    このリポジトリ自身が対象なら `pr-description` スキルの 5 節スケルトン)
 4. **merge はしない。PR 作成までがこのスキルの完了定義**(ADR-0015 —
@@ -387,7 +392,22 @@ SKILL.md §9 と同じ作法)。
    発生しない。改名を伴う場合(`naming-pj` への移行など)は改名 PR の
    merge を待つ。
 
-## 6a. rulesets ドメインの ci-absent 適用(GO 分のみ)
+## 6a. サブエージェントへの委譲の運用(複数リポジトリを並列で回すとき)
+
+`wrapup-chores` §7 も同じ運用に従う(#735)。10 repo ぶんを 10 本のサブ
+エージェントに 1 度に渡したところ、セッション上限で 3 件が commit も push も
+無いまま止まり、作業が残らなかった実例がある。
+
+- **波に分ける。** 1 度に起動する並列数は 4 件以内にし、波が終わってから
+  次を起動する。
+- **止まる前に残す。** 各担当に「止まる前に commit と push を済ませる」
+  「途中の状態(clone・worktree・ブランチ・PR)があれば作り直さず再利用する」
+  を指示に含める。
+- **指示をファイルに置く。** 共通の指示は scratchpad のファイルに書き、
+  担当ごとの指示はそのファイルへのポインタ + 担当固有の値(repo・ブランチ名)
+  だけにする。再起動のときも同じファイルを指せば足りる。
+
+## 6b. rulesets ドメインの ci-absent 適用(GO 分のみ)
 
 - {最小 CI 播種 PR} 選択: 対象リポジトリに最小の CI ワークフローを追加する
   PR を、そのリポジトリの通常の PR フローで作成する(merge は待つ —
