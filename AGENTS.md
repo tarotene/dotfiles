@@ -114,7 +114,10 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
 ### Hybrid translation (ADR-0002)
 - **Keep working config files literal** and deploy them via `xdg.configFile` /
   `home.file` (the zsh modules, starship, alacritty, sheldon configs, ...).
-  Do not rewrite battle-tested config into Nix DSL wholesale.
+  Do not translate a literal file into Nix DSL where nothing is interpolated:
+  the literal file is already the single source and stays checkable by its own
+  tools (`zsh -n`, shellcheck), so the DSL would add a layer that carries no
+  value (ADR-0035 axes 1–2; rewrite effort is not a reason, ADR-0000).
 - **Use Nix DSL only where interpolation pays** — per-host/identity values, or
   where a `programs.*` module removes real boilerplate.
 - Track literal configs worth nixifying later in the nixification roadmap doc.

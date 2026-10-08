@@ -142,3 +142,15 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
 - `config/claude/hooks/plan-precedent-gate.sh --selftest`(重い欄あり・
   `既存手段:` 無しの `Dn` が deny、ありは pass)。
 - `nix fmt`。
+
+## Amendment (2026-10-08 — ADR-0000)
+
+技術選定の裁定では書き直しの作業量を 0 とみなす(ADR-0000)。この擬制は
+「何を採るか」の裁定にだけ使い、この ADR の D1(Q1 を着手の瞬間に問う)が
+前提にする「自前実装は育つほど撤収の作業が増える」という手順の設計には
+使わない。両者は補い合う: 白紙の裁定で「既存手段の方が良い」と決まったのに
+移行されない状態の積み上がりを、前倒しの問いが抑える。D1・D2 は変更しない。
+
+### 執行点
+
+- `crates/plan-precedent-gate/src/lib.rs`
