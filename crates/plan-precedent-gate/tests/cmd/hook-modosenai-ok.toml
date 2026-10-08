@@ -1,0 +1,10 @@
+# hook: コスト語は 戻せない: 行(閉語彙)にだけ書ける → 素通し
+bin.name = "plan-precedent-gate"
+stdin = '''
+{"session_id": "s1", "cwd": "/", "hook_event_name": "PreToolUse", "tool_name": "ExitPlanMode", "tool_input": {"plan": "## 先行例との対比\n\n- D1: 判断\n  先行例なし: 探索範囲\n  戻せない: データ — 移行すると学習履歴が失われる\n  軸: 還元 — 理由\n"}}'''
+status.code = 0
+stdout = ""
+[env.add]
+CLAUDE_PLAN_PRECEDENT_GATE_DIR = "/nonexistent/plan-precedent-gate"
+[env]
+remove = ["SKIP_PLAN_PRECEDENT_GATE"]

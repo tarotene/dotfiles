@@ -21,6 +21,10 @@
 //!   - `本命:`/`対抗馬:`/`外した候補:`(重い欄)のいずれかがあれば、`本命:` と
 //!     `対抗馬:` が揃っていること、`既存手段:`(ADR-543)があること、`自前` なら
 //!     `却下:`/`探索:` の理由があること。
+//!   - コストを理由にした語(書き直しコスト・移行コスト・撤収コスト・battle-tested
+//!     等、閉じた語彙)が Dn ブロックにあれば deny(新 ADR sunk-cost-exclusion、
+//!     バッククォートで囲んだ語は数えない)。コストを理由にしてよいのは
+//!     `戻せない:(データ|外部契約|人手) — <内容>` の行だけ。
 //!   - allow は決して返さない。問題が無ければ何も決定しない(exit 0)。
 //!
 //! メッセージ文面はスキル文書(precedent-grounding / selection-grounding)と
@@ -59,6 +63,19 @@ static KIZON_JIMAE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"既存手段:\s*(?:[^—\n]*—\s*)?自前(?:\s*—|\s*$)").unwrap());
 static KIZON_REASON_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(却下|探索):\s*\S").unwrap());
+static MODOSENAI_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"戻せない:\s*(データ|外部契約|人手)").unwrap());
+static MODOSENAI_ANY_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"戻せない:\s*\S").unwrap());
+// 技術選定の裁定に持ち込まない、作業量・歴史的経緯を理由にする語の閉語彙。
+// 既存の裁定(ADR-0035 D4 / 543 / 568 / 625 / 0033 / 0002)が実際に使った表現から採った。
+// 英語の語は入れない(先行例の書誌に含まれる語、例えば論文名の `sunk cost`、を誤検知するため)。
+static COST_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"書き直しコスト|書き直す手間|移行コスト|移行の手間|撤収コスト|波及コスト|乗り換えコスト|battle-tested|歴史的経緯",
+    )
+    .unwrap()
+});
+static BACKTICK_SPAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`[^`\n]*`").unwrap());
 static SECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s*先行例との対比").unwrap());
 static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s").unwrap());
 
@@ -89,15 +106,21 @@ pub fn example_block(today: &str) -> String {
   既存手段: <path> — 採用: <ツール名/URL> | 拡張: <既存パス> | 自前 — 却下: <候補> (<理由>) | 探索: <どこを・何のキーワードで>
   先行例: <著者/組織, タイトル> https://example.com/doc (取得 {today})
   差分: 一致
+  戻せない: データ | 外部契約 | 人手 — <内容。戻せないものが無ければこの行ごと省く>
   軸: 表現不可能 | 還元 | 検出のみ — <1句>
 
 `軸:` は全 Dn に必須(precedent-grounding スキル §3、selection-grounding
 スキル参照)。出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス
 でも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・
-仕組みの選択で外部依存の新設・置換・撤去、または撤収コストが導入コストを
-上回るときは、加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」
+仕組みの選択で外部依存の新設・置換・撤去、新しい道具・単位の実装言語の選択、
+または戻せないもの(データの損失・外部契約・人手の作業)が生じるときは、
+加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」
 「既存手段:」(自前なら却下:/探索: 必須、ADR-543)も書く
-(selection-grounding スキル参照)。設計判断を含まないプランなら、
+(selection-grounding スキル参照)。裁定は「コード 0 行の白紙から選ぶなら
+何を採るか」だけで下し、書き直しの作業量と過去の経緯は理由にしない。
+戻せないものがあるときだけ「戻せない: データ | 外部契約 | 人手 — <内容>」の
+1 行で書く(これ以外の書き方でコストを理由にすると deny)。設計判断を含まない
+プランなら、
 節の代わりに次の1行だけ:
 
 先行例: 該当なし — <理由(例: typo 修正で設計判断を含まない)>"
@@ -122,6 +145,30 @@ pub fn extract_precedent_section(plan: &str) -> Vec<&str> {
         }
     }
     out
+}
+
+/// 作業量・歴史的経緯を理由にした語(閉語彙)を Dn ブロックから拾う。コストを
+/// 理由にしてよいのは `戻せない:(データ|外部契約|人手)` の行だけ。バッククォートで
+/// 囲んだ語は引用なので数えない。`戻せない:` の値が閉語彙の外なら、それも指摘する。
+fn check_cost_reasons(id: &str, block: &str, out: &mut Vec<String>) {
+    for line in block.lines() {
+        if MODOSENAI_RE.is_match(line) {
+            continue;
+        }
+        if MODOSENAI_ANY_RE.is_match(line) {
+            out.push(format!(
+                "D{id}: 「戻せない:」の値は データ|外部契約|人手 のいずれかで始めてください"
+            ));
+            continue;
+        }
+        let stripped = BACKTICK_SPAN_RE.replace_all(line, "");
+        if let Some(m) = COST_WORD_RE.find(&stripped) {
+            out.push(format!(
+                "D{id}: 「{}」は書き直しの作業量・歴史的経緯を理由にする語です。裁定は「コード 0 行の白紙から選ぶなら何を採るか」だけで下します。戻せないもの(データの損失・外部契約・人手の作業)があるときだけ「戻せない: データ|外部契約|人手 — <内容>」の行で書いてください(selection-grounding スキル)",
+                m.as_str()
+            ));
+        }
+    }
 }
 
 /// 1 つの Dn ブロック(Dn 行と後続行)を検査し、問題を 1 行 1 件で返す。
@@ -155,6 +202,8 @@ fn check_dn_block(id: &str, block: &str, out: &mut Vec<String>) {
             missing.join("、")
         ));
     }
+
+    check_cost_reasons(id, block, out);
 
     let has_heavy = grep(&HEAVY_RE, block);
     if has_heavy {
@@ -293,5 +342,45 @@ mod tests {
     fn jimae_choice_with_reason_passes() {
         let p = plan_with("既存手段: home/modules/x.nix — 自前 — 却下: foo (重い)");
         assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
+    }
+
+    fn plan_with_line(line: &str) -> String {
+        format!(
+            "## 先行例との対比\n- D1: x\n  先行例なし: 探した範囲\n  {line}\n  軸: 還元 — 1句\n"
+        )
+    }
+
+    #[test]
+    fn cost_word_is_denied() {
+        let p = plan_with_line("差分: 移行コストが高いので現状を維持する");
+        assert!(judge_precedent(&p)
+            .iter()
+            .any(|m| m.contains("「移行コスト」") && m.contains("戻せない:")));
+    }
+
+    #[test]
+    fn cost_word_inside_backticks_is_a_quotation() {
+        let p = plan_with_line("説明: 既存の `撤収コスト` という語を取り除く");
+        assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
+    }
+
+    #[test]
+    fn modosenai_line_may_mention_cost() {
+        let p = plan_with_line("戻せない: データ — 移行コストではなく mozc の学習履歴が失われる");
+        assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
+    }
+
+    #[test]
+    fn modosenai_with_open_value_is_denied() {
+        let p = plan_with_line("戻せない: 手間がかかる");
+        assert!(judge_precedent(&p)
+            .iter()
+            .any(|m| m.contains("「戻せない:」の値は")));
+    }
+
+    #[test]
+    fn english_sunk_cost_in_a_citation_is_not_flagged() {
+        let p = "## 先行例との対比\n- D1: x\n  先行例: Arkes & Blumer, The psychology of sunk cost, https://doi.org/10.1016/0749-5978(85)90049-4 (取得 2026-10-08)\n  差分: 一致\n  軸: 還元 — 1句\n";
+        assert!(judge_precedent(p).is_empty(), "{:?}", judge_precedent(p));
     }
 }
