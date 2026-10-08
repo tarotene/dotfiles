@@ -353,8 +353,13 @@ SKILL.md §9 と同じ作法)。
 
 ## 6. 一括適用(GO 分のみ、リポジトリ×ドメインごとに)
 
-1. scratchpad へ shallow clone(`git clone --depth 1`)
-2. 作業ブランチを切り、対象ドメインの修正を適用する
+1. scratchpad へ shallow clone(`git clone --depth 1`)。この clone は
+   main-checkout-guard(ADR-705)の言う「本物の checkout」なので、**読み取り
+   だけ**に使う(編集・commit は deny される、#734)
+2. `herdr worktree create --cwd <clone> --branch <名前>` で worktree を切り、
+   以降はその `checkout_path` で対象ドメインの修正を適用する。worktree の
+   土台は親 clone の HEAD なので、clone 直後の既定ブランチの先頭であることを
+   `git merge-base --is-ancestor origin/<default> HEAD` で確かめる
 3. commit → push → `gh pr create`(そのリポジトリの PR 本文規約に従う。
    このリポジトリ自身が対象なら `pr-description` スキルの 5 節スケルトン)
 4. **merge はしない。PR 作成までがこのスキルの完了定義**(ADR-0015 —
