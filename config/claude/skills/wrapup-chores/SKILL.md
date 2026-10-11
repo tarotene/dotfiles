@@ -139,6 +139,18 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
   <clone> --branch <名前>` で切った worktree で編集・commit する
   (main-checkout-guard が clone への編集を deny する、#734)。
+- **Issue の置き場と対処先の可視性が違うとき**は、§3 の起草の時点で
+  `gh repo view <OWNER/REPO> --json visibility` で両方を調べ、裁定の選択肢に
+  載せる前に扱いを決める。Issue が private で、対処先が public のリポジトリなら:
+  - `gh issue transfer` は選択肢に出さない(private から public への移管は
+    `Old issue cannot be transferred from private repository to public repository`
+    で失敗する)。
+  - public 側の commit・PR 本文に private リポジトリの名前・Issue 番号を書かない
+    (公開ガードが止める)。PR は `No-Issue:` で理由を書き、理由に private の
+    参照を入れない。`Closes <private>#N` も使えない。
+  - private 側の Issue には、PR の URL をコメントして open のままにし、PR の
+    マージ後に手で閉じる。閉じ忘れを拾えるよう、private 側の段の PR の
+    `## 要確認` か本人への報告にポインタを置く(public 側の PR には書けない)。
 - サブエージェントへ段や repo を委譲するときは、`github-audit-triage` §6a の
   委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
 - 各段の PR 本文はリポジトリの `pr-description` スケルトンに従う:
