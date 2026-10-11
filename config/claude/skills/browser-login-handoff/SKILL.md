@@ -1,6 +1,6 @@
 ---
 name: browser-login-handoff
-description: Playwright MCP・claude-in-chrome 等でブラウザを操作していて対象アカウントが未ログインだったとき、パスワード・二段階認証はユーザーに委ね、ログイン完了を確認してから作業を再開する手順。未ログイン・ログイン画面・ログインして・認証して欲しい・ブラウザでログインが必要、といった文脈で使う。not logged in, sign-in required, needs authentication, please log in、といった英語の文脈でも使う。
+description: Playwright MCP・claude-in-chrome 等でブラウザを操作していて対象アカウントが未ログインだったとき、パスワード・二段階認証はユーザーに委ね、ログイン完了を確認してから作業を再開する手順。未ログイン・ログイン画面・ログインして・認証して欲しい・ブラウザでログインが必要・保存ボタン・フォーム送信・確認ダイアログ、といった文脈で使う。not logged in, sign-in required, needs authentication, please log in、といった英語の文脈でも使う。
 ---
 
 Playwright MCP・claude-in-chrome でブラウザ操作するスキル全般に共通する
@@ -63,3 +63,22 @@ Playwright MCP は既定で persistent profile(ログイン状態をディスク
 何が表示されたら完了か)は、共有 `AGENTS.md`「人に依頼する手順は、場所を
 問わず『フル』で書く」の 5 要素で書く。「ログインしてください」だけで
 済ませない。
+
+## 6. ログイン後の入力と保存(フォーム単位で操作する)
+
+ログイン後に設定画面などへ入力して保存するときは、1 つの画面に複数のフォームが
+並ぶことがある(例: 連絡先と通知設定が別フォーム)。別フォームの保存ボタンを
+押すと、意図しない設定が確定する。
+
+1. 入力した欄の ref から snapshot を祖先方向にたどり、所属するフォームを特定する。
+2. 保存の前に、そのフォームの見出しを読み、入力内容と一致することを確認する。
+3. 保存ボタンは、特定したフォームの中の要素で押す。画面全体のテキスト一致
+   (「保存」という文字列を持つ最初のボタン等)で押さない。
+4. 確認ダイアログが出たら、確定の前に文面を読む。「変更できない期間」「取り消せない」
+   等があれば、本人に示して承認を得てから確定する。
+5. 保存後に、画面の表示または再取得した状態で、入力内容が反映されたことを読み戻す。
+
+根拠: HTML のフォーム所属は、祖先の `form` 要素または `form` 属性で決まる。
+WHATWG, HTML Living Standard §4.10.18.3 "Association of controls and forms"
+https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#association-of-controls-and-forms
+(取得 2026-10-11)。

@@ -80,6 +80,14 @@ subagent への指示・返値の契約:
   が正本 / ADR-0034: 実値は private wrapper flake)。実値を含むものは public
   リポに書けないので、private wrapper flake 行きの案として立てる
 - 依存を持つ項目(§2 末尾)は「先行を刈った場合」「刈らなかった場合」を別案として出す
+- 対処先が別リポジトリの案では、先に `gh repo view <owner/repo> --json visibility`
+  で両側の可視性を読む。母集団が private で対処先が public のとき、`gh issue transfer`
+  は失敗する(`Old issue cannot be transferred from private repository to public
+  repository`)ので選択肢に出さない。代わりに「public 側に匿名化した Issue を新規起票し、
+  その番号を `Closes` に書く」か「private 側の Issue はマージ後に手で閉じる」を案に書き、
+  §4 の裁定で決める。根拠: GitHub Docs "Transferring an issue to another repository"
+  https://docs.github.com/en/issues/tracking-your-work-with-issues/administering-issues/transferring-an-issue-to-another-repository
+  (取得 2026-10-11)
 
 先行例と軸をここで取らせることで、§5 の Plan の `## 先行例との対比` がほぼ
 組み立て済みになる。
@@ -135,6 +143,8 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 - 最新の default branch から作業ブランチを切る(`Closes` が効くのは default
   branch 向き PR だけなので、ベースブランチを必ず確認する)。
 - 項目ごとに 1 commit。Issue に対応する項目は commit message に `#N` を含める。
+- GO 後に `gh issue transfer` を試さない(§3)。public 側に起票する Issue は、private 側の
+  リポジトリ名・Issue 番号を書かない。
 - 他リポジトリで作業する段は、`github-audit-triage` §6 の手順 1・2 に従う。
   scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
   <clone> --branch <名前>` で切った worktree で編集・commit する
