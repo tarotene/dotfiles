@@ -45,6 +45,10 @@ pub fn decide_segment(segment: &str) -> Option<&'static str> {
 
 /// Bash ツールのコマンド文字列全体。deny なら理由文。
 pub fn decide(command: &str) -> Option<&'static str> {
+    // heredoc の本文はコマンドではない(`python3 - <<'E'` の本文の行頭に
+    // `git worktree add` があっても実行されない)。判定の前に本文を落とす。
+    let command = guard_core::shell::split_heredoc(command).command;
+    let command = command.as_str();
     if !has_worktree_add(command) {
         return None;
     }

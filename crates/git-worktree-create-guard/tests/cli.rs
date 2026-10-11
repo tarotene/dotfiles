@@ -62,6 +62,15 @@ fn pass_forms() {
 }
 
 #[test]
+fn regression_heredoc_body_is_not_a_command() {
+    // heredoc の本文の行頭にあるだけの `git worktree add` は実行されない。
+    expect_pass("python3 - <<'E'\ngit worktree add ../x\nE");
+    // 本文の後ろの実コマンドは従来どおり見る。
+    expect_deny("python3 - <<'E'\nprint(1)\nE\ngit worktree add ../x");
+    expect_deny("git worktree add ../x");
+}
+
+#[test]
 fn main_path_json_in_json_out() {
     // bash 版 selftest 末尾の 2 ケース(main 経由)。
     let (out, code) = run_raw(
