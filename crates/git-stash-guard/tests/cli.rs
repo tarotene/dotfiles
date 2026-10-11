@@ -149,6 +149,15 @@ fn regression_multiline_paths_with_stash_word() {
 }
 
 #[test]
+fn regression_heredoc_body_is_not_a_command() {
+    // heredoc の本文にあるだけの `git stash pop` は実行されない。
+    expect_pass("python3 - <<'E'\ngit stash pop\nE");
+    // 本文の後ろの実コマンドは従来どおり見る。
+    expect_deny("python3 - <<'E'\nprint(1)\nE\ngit stash pop");
+    expect_deny("git stash pop");
+}
+
+#[test]
 fn regression_hyphenated_git_stash_is_not_an_invocation() {
     expect_pass("man git-stash 2>/dev/null | col -b");
     expect_pass("echo stash > /tmp/f");
