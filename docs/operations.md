@@ -258,6 +258,12 @@ switch it compares the store path the running `herdr server` process resolves
 to against the store path the new generation's `herdr` points at, and prints
 the restart instructions above if they differ (#200).
 
+At the start of each session, the `herdr-status-advisory` SessionStart hook reads
+`herdr status --json` and says so up front when the client and server protocols
+no longer match, before `herdr worktree create` fails with `protocol_mismatch`
+(`docs/claude/herdr-status-advisory.md`). It only tells you; stopping the server
+ends every pane, so the restart stays a manual step.
+
 ### `hms` fails at `checkLinkTargets` with a `.backup` clobber error
 
 ```
