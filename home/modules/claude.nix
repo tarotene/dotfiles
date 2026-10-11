@@ -468,6 +468,15 @@
 #    pr-confirm-guard、ADR-0024 Stage 4a #415)で、Codex にも同じバイナリを
 #    `--agent codex` で登録する(下記 registerCodexPrConfirmGuardHooks)。
 #
+# 34) herdr-status-advisory(SessionStart, matcher: startup|resume、
+#    docs/claude/herdr-status-advisory.md):
+#    herdr の client だけが更新され server が古い版のまま残ると、
+#    `herdr worktree create` が `protocol_mismatch` で失敗し、別リポジトリでの
+#    作業が止まる。気づくのが作業ツリーを切る瞬間になってからで、server の
+#    再起動は全ペインのプロセスを終了させるのでエージェントは復旧できない。
+#    `herdr status --json` が示す食い違い(またはその前兆)を、セッション開始時に
+#    additionalContext で先に伝える。復旧は何も実行しない。fail-open。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -610,6 +619,7 @@ let
   statusLineCmd = "'${hooksDir}/claude-statusline'";
   legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
+  herdrStatusAdvisoryCmd = "'${hooksDir}/herdr-status-advisory'";
   worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "'${hooksDir}/plan-scope-gate'";
@@ -1094,6 +1104,15 @@ let
       matcher = "startup|resume";
       command = worktreeFreshBaseCmd;
       timeout = 30;
+    }
+    # herdr-status-advisory: herdr の client と server の版が食い違っているときだけ、
+    # 作業ツリーを切れなくなる前に additionalContext で知らせる。`herdr status
+    # --json` を呼んで読むだけで、何も実行しない(docs/claude/herdr-status-advisory.md)。
+    {
+      event = "SessionStart";
+      matcher = "startup|resume";
+      command = herdrStatusAdvisoryCmd;
+      timeout = 10;
     }
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
@@ -1791,6 +1810,11 @@ in
   home.file.".claude/hooks/worktree-fresh-base".source =
     "${pkgs.dotfiles-tools}/bin/worktree-fresh-base";
 
+  # herdr-status-advisory: herdr の client と server の版の食い違いを、
+  # セッション開始時に知らせる SessionStart hook。
+  home.file.".claude/hooks/herdr-status-advisory".source =
+    "${pkgs.dotfiles-tools}/bin/herdr-status-advisory";
+
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
   home.file.".claude/hooks/pr-gate".source = "${pkgs.dotfiles-tools}/bin/pr-gate";
@@ -2001,7 +2025,8 @@ in
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30 \
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg herdrStatusAdvisoryCmd} 10
       '';
 
   # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate は

@@ -530,6 +530,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "herdr-status-advisory"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "hms"
 version = "0.1.0"
 dependencies = [
