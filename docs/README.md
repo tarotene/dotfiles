@@ -530,6 +530,9 @@ Design and rationale for the hooks and commands deployed from
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
+- [`herdr-protocol-check.md`](claude/herdr-protocol-check.md) — SessionStart
+  hook: herdr の client/server protocol 不一致・再起動要を、`herdr worktree
+  create` が失敗する前に伝える。
 - [`git-checkout-freshness.md`](claude/git-checkout-freshness.md) —
   home-manager 管理の systemd user timer: 親チェックアウト自身を
   origin/`<base>` へ定期的に fast-forward する(worktree-fresh-base.md の

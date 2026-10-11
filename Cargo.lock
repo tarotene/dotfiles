@@ -532,6 +532,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "herdr-protocol-check"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "hms"
 version = "0.1.0"
 dependencies = [

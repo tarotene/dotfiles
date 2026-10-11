@@ -468,6 +468,15 @@
 #    pr-confirm-guard、ADR-0024 Stage 4a #415)で、Codex にも同じバイナリを
 #    `--agent codex` で登録する(下記 registerCodexPrConfirmGuardHooks)。
 #
+# 34) herdr-protocol-check(SessionStart, matcher: startup|resume):
+#    herdr のクライアントとサーバの protocol が食い違うと、`herdr worktree
+#    create` が protocol_mismatch で失敗する。サーバの再起動はペインの
+#    プロセスを終了させる副作用があるので、エージェントが自分で再起動せず
+#    本人に先に伝えられるよう、セッション開始時に `herdr status --json` を
+#    読んで警告を additionalContext に出す。herdr が無い・読めないときは
+#    無出力(fail-open)。Codex にも同じバイナリを登録する。詳細は
+#    docs/claude/herdr-protocol-check.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -610,6 +619,7 @@ let
   statusLineCmd = "'${hooksDir}/claude-statusline'";
   legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
+  herdrProtocolCheckCmd = "'${hooksDir}/herdr-protocol-check'";
   worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "'${hooksDir}/plan-scope-gate'";
@@ -1094,6 +1104,14 @@ let
       matcher = "startup|resume";
       command = worktreeFreshBaseCmd;
       timeout = 30;
+    }
+    # herdr-protocol-check: herdr の client/server protocol 不一致を先に伝える
+    # (docs/claude/herdr-protocol-check.md)。herdr が無ければ無出力。
+    {
+      event = "SessionStart";
+      matcher = "startup|resume";
+      command = herdrProtocolCheckCmd;
+      timeout = 10;
     }
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
     # --watch --fail-fast を timeout 300s 付きで自前で回すので、hook の timeout は
@@ -1791,6 +1809,11 @@ in
   home.file.".claude/hooks/worktree-fresh-base".source =
     "${pkgs.dotfiles-tools}/bin/worktree-fresh-base";
 
+  # herdr-protocol-check: herdr の client/server protocol 不一致を伝える
+  # SessionStart hook。
+  home.file.".claude/hooks/herdr-protocol-check".source =
+    "${pkgs.dotfiles-tools}/bin/herdr-protocol-check";
+
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
   home.file.".claude/hooks/pr-gate".source = "${pkgs.dotfiles-tools}/bin/pr-gate";
@@ -2001,7 +2024,8 @@ in
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30 \
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg herdrProtocolCheckCmd} 10
       '';
 
   # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate は
