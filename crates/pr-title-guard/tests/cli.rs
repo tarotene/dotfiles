@@ -146,6 +146,47 @@ fn st6_other_owner_passes() {
     );
 }
 
+/// 契約の workflow(`repo-governance-common` が播く `pr-title.yml`)を持つ会社側のリポジトリ。
+fn other_with_workflow() -> TempDir {
+    let d = other();
+    let dir = d.path().join(".github/workflows");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("pr-title.yml"), "name: PR title\n").unwrap();
+    d
+}
+
+#[test]
+fn workflow_in_this_repo_fires_for_a_non_tarotene_owner() {
+    // 2026-10-13: 会社リポの最下段 PR のタイトルが CI で落ちた。そこには契約の
+    // workflow があり、tarotene 限定の guard は何も言わなかった(ADR-0031 D4 の追補)。
+    let r = other_with_workflow();
+    assert_deny(&format!("gh pr create --title '{BAD}'"), r.path());
+    assert_deny(&format!("gh pr edit 3 --title '{BAD}'"), r.path());
+    assert_deny(
+        &format!("gh pr create -R example/example --title '{BAD}'"),
+        r.path(),
+    );
+    assert_pass("gh pr create --title 'feat(x): y'", r.path());
+}
+
+#[test]
+fn workflow_in_a_subdirectory_checkout_is_still_found() {
+    let r = other_with_workflow();
+    let sub = r.path().join("a/b");
+    std::fs::create_dir_all(&sub).unwrap();
+    assert_deny(&format!("gh pr create --title '{BAD}'"), &sub);
+}
+
+#[test]
+fn a_repo_flag_at_another_repo_is_not_judged_by_this_repos_workflow() {
+    // `-R` が別リポジトリなら、そこに workflow があるかは分からない: 発火しない。
+    let r = other_with_workflow();
+    assert_pass(
+        &format!("gh pr create -R someone/else --title '{BAD}'"),
+        r.path(),
+    );
+}
+
 #[test]
 fn st7_repo_flag_overrides_project_owner() {
     assert_deny(

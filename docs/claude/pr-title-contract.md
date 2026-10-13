@@ -54,10 +54,18 @@ type(scope)?!?: subject
 
 ## client guard の範囲
 
-`tarotene/*` のリポジトリでのみ発火する(owner を `--repo`/`-R` または
+次のどちらかのときだけ発火する(owner を `--repo`/`-R` または
 `git remote get-url origin` から解決。解決不能なら fail-open)。
+
+- owner が `tarotene` のリポジトリ。
+- **いま居るリポジトリ自身が**契約の workflow(`.github/workflows/pr-title.yml`)を
+  持つ場合(2026-10-13 の追補)。`-R` が別のリポジトリを指しているときは、その
+  中身を見られないので、この条件では発火しない。
+
 `home/modules/claude.nix` の hooks は common 層で会社ホストにも配備される
-ため、会社リポの別慣行と衝突しないようスコープする(ADR-0031 D4)。
+ため、会社リポの別慣行と衝突しないようスコープする(ADR-0031 D4)。契約の
+workflow を持つリポジトリは、サーバ側の required check が同じ文法で既に
+判定しているので、client で先に止めても慣行とは衝突しない。
 
 一時的に無効化したいときは `PR_TITLE_GUARD_ALLOW=1` を立てる(`No-Issue:`
 のような本文タグ型 escape hatch ではない — 理由を本文に残す恒久的な決定
