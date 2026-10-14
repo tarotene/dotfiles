@@ -99,7 +99,7 @@ pub fn decide(cmd: &str, project: &Path, allow: bool) -> Option<String> {
         // がある場合だけ発火する。`-R` で別のリポジトリを指しているときは、その
         // リポジトリの中身を見られないので workflow の有無では発火させない。
         let in_this_repo = owner_repo(project).as_deref() == Some(nwo.as_str());
-        if !is_tarotene_owned(&nwo) && !(in_this_repo && has_pr_title_workflow(project)) {
+        if !(is_tarotene_owned(&nwo) || (in_this_repo && has_pr_title_workflow(project))) {
             return None;
         }
         // タイトルが分からない(--title 未指定 = --web でエディタ入力等)場合は
