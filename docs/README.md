@@ -527,6 +527,11 @@ Design and rationale for the hooks and commands deployed from
   pace-at-reset projection (average pace since window start → projected % at
   reset), from the undocumented `/usage` API (fail-soft: the segment just
   disappears).
+- [`herdr-tab-bar-local.md`](claude/herdr-tab-bar-local.md) — Herdr tab bar:
+  a host-local extension slot. The public config only names a mechanism
+  (`~/.config/herdr/tab-bar-right.local`); what that file runs lives on each
+  host, outside git (ADR-0025's registry shape, ADR-0034's boundary). A missing
+  file just clears the segment, which is also why a broken one is silent.
 - [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
