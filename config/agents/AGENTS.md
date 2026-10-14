@@ -26,6 +26,20 @@ Slack・Google Drive(コネクタが接続されている場合)、GitHub(gh CLI
 と断定しない — 別の節が同じ値から閾値を決めていて、運用の値が文書内で
 併存していることがある(#743)。
 
+一次資料を読むツールの返値が、見本・切り詰め・先頭シートのみで返ったとき
+(ツール自身が「大きいファイルでは不完全になりうる」と宣言しているものを含む)は、
+全文を取る手(別形式での書き出し、別のツール、全シートの走査)を尽くしてから
+「読めていない」と書く。ツールが返さなかったことと、資料にその内容が無いことは
+別である。答えがその資料に実在すると分かっているなら、見本が返った時点で止めない。
+Google Drive の表(Spreadsheet)の場合は、`read_file_content` が各シートの先頭
+だけを返したら、`download_file_content` で xlsx
+(`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)に書き出し、
+保存されたファイルを全シート読む。csv・tsv の書き出しは先頭シートだけなので、
+全シートが要るときは使わない(Google, "Export MIME types for Google Workspace
+documents", https://developers.google.com/workspace/drive/api/guides/ref-export-formats、
+最終更新 2026-09-03、取得 2026-10-14)。書き出しの返値がファイルとして保存されるか
+文字列で返るかは環境で違いうるので、確かめていないうちは「未確認」と書く。
+
 切り分けは、断定の前に A/B で実測する。原因の候補(「VPN のせいか」等)が
 会話に出たら、その候補を変数として動かす A/B(オン/オフの切り替え等)を
 1 回行ってから結論を言う。疎通の確認だけで「無関係」と言い切らない。
