@@ -149,6 +149,10 @@ fn is_read_only_stash(seg: &str) -> bool {
 
 /// Bash ツールのコマンド文字列全体。deny なら理由文。
 pub fn decide(cmd: &str) -> Option<String> {
+    // heredoc の本文はコマンドではない(`python3 - <<'E'` の本文に
+    // `git stash pop` があっても実行されない)。判定の前に本文を落とす。
+    let cmd = guard_core::shell::split_heredoc(cmd).command;
+    let cmd = cmd.as_str();
     if !contains_word(cmd, "stash") {
         return None;
     }

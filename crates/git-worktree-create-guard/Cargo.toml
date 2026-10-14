@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+guard-core = { version = "0.1.0", path = "../guard-core" }
 hook-io = { version = "0.1.0", path = "../hook-io" }
 
 [dev-dependencies]
