@@ -59,8 +59,14 @@ status_indicators = "symbols"
 # から取る。壊れたときの症状は「タブバーからこのセグメントが消える」だけ(herdr の
 # command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
 # docs/claude/claude-usage.md。
+# 2 つ目の command はホストローカルの拡張スロット: ~/.config/herdr/
+# tab-bar-right.local(git 管理外の実行ファイル)が出す 1 行を表示する。無い
+# ホストでは command が失敗するので、herdr の仕様どおりこのセグメントだけが消える
+# (hostname・時計は残る)。実体の置き場と撤去条件は
+# docs/claude/herdr-tab-bar-local.md。
 tab_bar_right = [
   { type = "command", command = "\"$HOME/.claude/hooks/claude-usage\"", interval_seconds = 60, timeout_seconds = 10 },
+  { type = "command", command = "\"$HOME/.config/herdr/tab-bar-right.local\"", interval_seconds = 60, timeout_seconds = 10 },
   { type = "hostname" },
   { type = "datetime", format = "%H:%M" },
 ]
