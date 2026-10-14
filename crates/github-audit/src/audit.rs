@@ -130,6 +130,13 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
         let is_archived = meta.is_archived == Some(true);
         let topics = meta.topics();
         let visibility = meta.visibility_str();
+        // `plan-free-private` の宣言は「非公開」を含意する。公開リポジトリに残った
+        // トピックは通常判定に戻し、stale は settings ドメインが報告する
+        // (docs/claude/free-plan-private.md)。
+        let plan_free_private = visibility == "PRIVATE"
+            && topics
+                .iter()
+                .any(|t| t == crate::model::PLAN_FREE_PRIVATE_TOPIC);
         let lang = meta.language();
         let empty = RepoGql::default();
         let gql = gql_batch.get(repo).unwrap_or(&empty);
@@ -154,7 +161,14 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                         } else {
                             Vec::new()
                         };
-                        rulesets::judge_rulesets(&gh, repo, has_workflows, gql, &jobs)
+                        rulesets::judge_rulesets(
+                            &gh,
+                            repo,
+                            has_workflows,
+                            gql,
+                            &jobs,
+                            plan_free_private,
+                        )
                     }
                     Domain::Charters => charters::judge_charters(&description, topics.len(), gql),
                     Domain::Naming => naming::judge_naming(
@@ -178,7 +192,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                         } else {
                             Vec::new()
                         };
-                        titles::judge_titles(&gh, repo, gql, &jobs)
+                        titles::judge_titles(&gh, repo, gql, &jobs, plan_free_private)
                     }
                     Domain::Lifecycle => {
                         let has_workflows = gql.has_workflows();

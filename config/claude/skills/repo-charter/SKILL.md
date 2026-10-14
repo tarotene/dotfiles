@@ -326,6 +326,16 @@ safety bypass と判定して拒否する。guard は Bash のコマンド文字
 する。リポジトリが既に存在すれば作成を飛ばして topic の反映と播種へ進むので、途中で
 止まっても同じコマンドで再開できる。
 
+**無料プランの非公開リポジトリ。** 所有者のプランが `free` で、リポジトリが非公開のとき、
+自動マージと rulesets は使えない。`create-repo.sh` は所有者のプランを検出し(`--plan
+auto|free|paid`、既定は `auto`)、該当すればトピック `plan-free-private` を播く。この宣言が
+あると、`pr-title` の検査と `github-audit` は、成り立たない前提(自動マージの有効化、live の
+branch ruleset)だけを外す。Team に切り替えたら宣言を外せば元に戻る(workflow の編集は不要)。
+宣言が実態と食い違えば `plan-free-private-stale` で監査が検出する。判定の中身、宣言の付け方、
+Team 切替の手順は `docs/claude/free-plan-private.md`。プランを検出できなかったときは注意が
+出るので、無料の非公開リポジトリなら `--plan free` を付けて同じコマンドを再実行する(作成は
+飛ばされる)。
+
 既存リポジトリの適合化(新規作成ではない)は、従来どおり直接 `gh repo edit` する:
 
 ```bash

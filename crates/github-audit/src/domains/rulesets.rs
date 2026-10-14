@@ -104,12 +104,14 @@ pub fn judge_rulesets(
     has_workflows: bool,
     repo_gql: &RepoGql,
     job_names: &[String],
+    plan_free_private: bool,
 ) -> Finding {
     judge_rulesets_with(
         &gh.default_branch_rulesets(repo),
         has_workflows,
         repo_gql,
         job_names,
+        plan_free_private,
     )
 }
 
@@ -119,7 +121,27 @@ pub fn judge_rulesets_with(
     has_workflows: bool,
     repo_gql: &RepoGql,
     job_names: &[String],
+    plan_free_private: bool,
 ) -> Finding {
+    // `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-private.md):
+    // この環境では rulesets を作れない(REST は 403)ので、live が無いことは
+    // drift ではない。宣言ファイル(.github/rulesets/*.json)は Team 切替で
+    // そのまま適用できるよう播いたままにする。一方で live の ruleset が存在する
+    // なら宣言が嘘なので、トピックの外し忘れとして報告する。
+    if plan_free_private {
+        if arr.is_empty() {
+            return Finding::not_applicable();
+        }
+        return Finding {
+            verdict: Verdict::Drifted,
+            missing: vec!["plan-free-private-stale".into()],
+            detail: Detail::Rulesets {
+                status_checks: Vec::new(),
+                review_layer: ReviewLayer::Absent,
+                declaration: Declaration::NotJudged,
+            },
+        };
+    }
     if arr.is_empty() {
         // ADR-503 の宣言・unreportable 検査は比較対象の live ruleset が要る
         // ので governed(count>0)の経路だけ。完全に ungoverned な repo は

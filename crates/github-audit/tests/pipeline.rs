@@ -52,6 +52,24 @@ fn main_fixture_pipeline() {
         "bash#5"
     );
 
+    // plan-free-private 宣言(docs/claude/free-plan-private.md): 非公開かつ無料
+    // プランでは自動マージも rulesets も無いが、宣言があれば drift にしない。
+    // 宣言が実態と食い違えば(自動マージが有効)stale を出す。
+    assert_eq!(
+        f("plan-free", Domain::Settings).verdict,
+        Verdict::Ok,
+        "plan-free: settings"
+    );
+    assert_eq!(
+        f("plan-free", Domain::Rulesets).verdict,
+        Verdict::NotApplicable,
+        "plan-free: rulesets"
+    );
+    assert!(
+        f("plan-free-stale", Domain::Settings).has("plan-free-private-stale"),
+        "plan-free-stale: settings"
+    );
+
     // settings
     assert_eq!(f("all-ok", Domain::Settings).verdict, Verdict::Ok, "bash#6");
     let s = f("all-drifted", Domain::Settings);
@@ -230,7 +248,11 @@ fn main_fixture_pipeline() {
     let ledger = fx.p("state/ledger.json");
     assert!(ledger.is_file(), "bash#43");
     let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&ledger).unwrap()).unwrap();
-    assert_eq!(v["repos"].as_array().map(Vec::len), Some(11), "bash#44");
+    assert_eq!(
+        v["repos"].as_array().map(Vec::len),
+        Some(13),
+        "bash#44(plan-free の 2 件を足して 11 → 13)"
+    );
 
     let rep = fx.rust(&[], &[]);
     assert_ne!(rep.code, 0, "bash#45");

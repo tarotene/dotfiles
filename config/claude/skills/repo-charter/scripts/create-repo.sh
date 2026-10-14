@@ -20,7 +20,7 @@ usage() {
 usage: create-repo.sh --owner OWNER --repo REPO --description TEXT --class naming-CLASS
                       --topic TOPIC [--topic TOPIC ...] [--lifecycle lifecycle-CLASS]
                       [--public] [--type rust|typst|astro|core --dest PATH]
-                      [--dry-run] [-- <seed.sh に渡すオプション>]
+                      [--plan auto|free|paid] [--dry-run] [-- <seed.sh に渡すオプション>]
        create-repo.sh --selftest
 
   --description   charter の目的 1 文(≤120 字)。README の H1 直後の段落と一字一句同じにする
@@ -30,6 +30,9 @@ usage: create-repo.sh --owner OWNER --repo REPO --description TEXT --class namin
   --type          governance の型。rust/typst/astro は各 seed.sh、core は apply-repo-settings.sh
                   + copy-files.sh。--type を付けたら --dest(ローカルの checkout)も要る
   --public        公開リポジトリにする(既定は --private)
+  --plan          所有者のプラン(既定 auto = gh api で検出)。非公開かつ free のとき、
+                  トピック plan-free-private を播く(自動マージ・rulesets が使えない環境の
+                  宣言。github-audit と CI の検査がこれを読む。docs/claude/free-plan-private.md)
   --dry-run       gh を呼ばず、検査の結果と、走らせるコマンドを表示する
 EOF
 }
@@ -37,6 +40,21 @@ EOF
 die() {
   echo "create-repo.sh: $*" >&2
   exit 2
+}
+
+# ---- 所有者のプラン検出(docs/claude/free-plan-private.md) -----------------
+
+# $1=owner -> free | paid | unknown(標準出力)。組織は /orgs、ユーザーは /users の
+# `.plan.name`。他人のユーザーアカウントのプランは API が返さない(unknown)。
+detect_plan() {
+  local owner="$1" name=""
+  name="$("$GH" api "/orgs/$owner" --jq '.plan.name' 2> /dev/null)" || name=""
+  case "$name" in "" | null) name="$("$GH" api "/users/$owner" --jq '.plan.name' 2> /dev/null)" || name="" ;; esac
+  case "$name" in
+    free) echo free ;;
+    "" | null) echo unknown ;;
+    *) echo paid ;;
+  esac
 }
 
 # ---- 閉語彙チェック(repo-charter §1、ADR-0020 / ADR-0026) ---------------
@@ -94,7 +112,7 @@ run() {
 }
 
 main() {
-  local owner="" repo="" desc="" class="" lifecycle="" type="" dest="" visibility="--private"
+  local owner="" repo="" desc="" class="" lifecycle="" type="" dest="" visibility="--private" plan="auto"
   local -a topics=() passthrough=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -107,6 +125,7 @@ main() {
       --type) type="${2:?}"; shift 2 ;;
       --dest) dest="${2:?}"; shift 2 ;;
       --public) visibility="--public"; shift ;;
+      --plan) plan="${2:?}"; shift 2 ;;
       --dry-run) DRY=true; shift ;;
       -h | --help) usage; exit 0 ;;
       --) shift; passthrough=("$@"); break ;;
@@ -126,6 +145,10 @@ main() {
     "" | rust | typst | astro | core) ;;
     *) die "--type は rust | typst | astro | core のどれかです: $type" ;;
   esac
+  case "$plan" in
+    auto | free | paid) ;;
+    *) die "--plan は auto | free | paid のどれかです: $plan" ;;
+  esac
   { [ -z "$type" ] || [ -n "$dest" ]; } || die "--type を付けるときは --dest(ローカルの checkout)も要ります"
 
   vocab_check "$repo" "$class"
@@ -138,8 +161,23 @@ main() {
     run "$GH" repo create "$slug" "$visibility" --description "$desc"
   fi
 
+  # 所有者のプラン。非公開かつ free のときだけ宣言トピックを播く(公開リポジトリは
+  # 無料プランでも自動マージ・rulesets を使える)。--dry-run は gh を呼ばないので、
+  # --plan の明示がなければ検出しない。
+  local plan_free_private=false
+  if [ "$plan" = auto ]; then
+    if $DRY; then plan=unknown; else plan="$(detect_plan "$owner")"; fi
+  fi
+  if [ "$visibility" = "--private" ] && [ "$plan" = free ]; then
+    plan_free_private=true
+    echo "note: $owner は無料プラン・$slug は非公開 — 自動マージと rulesets が使えないので plan-free-private を宣言します(docs/claude/free-plan-private.md)"
+  elif [ "$plan" = unknown ]; then
+    echo "note: $owner のプランを検出できませんでした。無料プランの非公開リポジトリなら --plan free を付けて同じコマンドを再実行してください(作成は飛ばされます)"
+  fi
+
   local -a edit=("$GH" repo edit "$slug" --add-topic "$class")
   [ -z "$lifecycle" ] || edit+=(--add-topic "$lifecycle")
+  ! $plan_free_private || edit+=(--add-topic plan-free-private)
   local t
   for t in "${topics[@]}"; do edit+=(--add-topic "$t"); done
   run "${edit[@]}"
@@ -150,12 +188,18 @@ main() {
       local skill="$type-repo-governance"
       [ "$type" != astro ] || skill="astro-site-governance"
       run "$SKILLS_DIR/$skill/scripts/seed.sh" --owner "$owner" --repo "$repo" --dest "$dest" "${passthrough[@]}"
+      ! $plan_free_private || echo "note: rulesets は適用できません(無料プランの非公開)。seed.sh が rulesets の適用で失敗しても想定内です。Team に切り替えるときの手順: docs/claude/free-plan-private.md"
       ;;
     core)
       run "$SKILLS_DIR/repo-governance-common/scripts/apply-repo-settings.sh" --owner "$owner" --repo "$repo"
       run "$SKILLS_DIR/repo-governance-common/scripts/copy-files.sh" --owner "$owner" --repo "$repo" --dest "$dest"
       echo "next: $dest で commit + push してから、"
-      echo "      apply-rulesets.sh $slug --from-dir $dest/.github/rulesets --unverified-contexts"
+      if $plan_free_private; then
+        echo "      rulesets は適用できません(無料プランの非公開)。宣言ファイル(.github/rulesets/*.json)は Team 切替用に残ります。"
+        echo "      Team に切り替えるときの手順: docs/claude/free-plan-private.md"
+      else
+        echo "      apply-rulesets.sh $slug --from-dir $dest/.github/rulesets --unverified-contexts"
+      fi
       ;;
   esac
   echo "next: 'github-audit charters naming' が $slug で ok になることを確かめる(repo-charter §9)"
@@ -176,6 +220,7 @@ selftest() {
 #!/usr/bin/env bash
 printf 'gh %s\n' "$*" >> "$STUB_LOG"
 [ "$1 $2" = "repo view" ] && exit "${STUB_VIEW_RC:-1}"
+[ "$1" = api ] && { [ -z "${STUB_PLAN:-}" ] || printf '%s\n' "$STUB_PLAN"; exit 0; }
 exit 0
 STUB
   local s
@@ -224,6 +269,34 @@ STUB
     --repo acme --class naming-codename --type rust --dest "$tmp" "${base[@]}" -- --canonical-crate c
   case_run "--type needs --dest" 2 "!gh repo" --repo acme --class naming-codename --type core "${base[@]}"
   case_run "dry-run calls no gh" 0 "!gh repo" --repo acme --class naming-codename --dry-run "${base[@]}"
+
+  # 所有者のプラン(docs/claude/free-plan-private.md): 非公開かつ free のときだけ
+  # plan-free-private を播く。
+  STUB_PLAN=free case_run "plan free + private: plan-free-private is added" 0 "add-topic plan-free-private" \
+    --repo acme --class naming-codename "${base[@]}"
+  STUB_PLAN=team case_run "plan paid + private: no plan-free-private" 0 "!plan-free-private" \
+    --repo acme --class naming-codename "${base[@]}"
+  STUB_PLAN=free case_run "plan free + public: no plan-free-private" 0 "!plan-free-private" \
+    --repo acme --class naming-codename --public "${base[@]}"
+  case_run "plan undetectable: no plan-free-private, still created" 0 "gh repo create o/acme" \
+    --repo acme --class naming-codename "${base[@]}"
+  case_run "--plan free overrides detection" 0 "add-topic plan-free-private" \
+    --repo acme --class naming-codename --plan free "${base[@]}"
+  case_run "--plan paid overrides detection" 0 "!plan-free-private" \
+    --repo acme --class naming-codename --plan paid "${base[@]}"
+  case_run "--plan rejects an unknown value" 2 "!gh repo" --repo acme --class naming-codename --plan gold "${base[@]}"
+  case_run "dry-run with --plan free still declares (no gh call to detect)" 0 "!gh api" \
+    --repo acme --class naming-codename --plan free --dry-run "${base[@]}"
+  STUB_PLAN=free case_run "core + free: settings still applied" 0 "apply-repo-settings.sh --owner o --repo acme" \
+    --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
+  if STUB_PLAN=free STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
+    GITHUB_AUDIT_CONFIG_DIR="$tmp/audit" bash "$SELF" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}" 2>&1 \
+    | grep -q "apply-rulesets.sh"; then
+    echo "FAIL core + free: next: must not suggest apply-rulesets.sh"
+    fails=$((fails + 1))
+  else
+    echo "ok   core + free: next: does not suggest apply-rulesets.sh"
+  fi
 
   # 既存リポジトリ(gh repo view が成功)では作成を飛ばし、topic の反映へ進む
   : > "$tmp/log"

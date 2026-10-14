@@ -41,7 +41,16 @@ pub fn judge_settings(meta: &RepoMeta, rest: &RepoRest) -> Finding {
     }
     // ADR-568 D2/D5b: automerge の安全性は GitHub-native auto-merge が前提で、
     // fix-PR の経路は Renovate だけ(Dependabot security updates は off)。
-    if rest.allow_auto_merge != Some(true) {
+    //
+    // ただし `plan-free-private` が宣言された(非公開かつ無料プランで、自動マージが
+    // 使えない)リポジトリでは、この期待を外す。宣言が実態と食い違った(公開に
+    // なった、または自動マージが有効になった)ときは `plan-free-private-stale` を
+    // 出し、トピックの外し忘れを必ず検出する(docs/claude/free-plan-private.md)。
+    if rest.plan_free_private_declared() {
+        if rest.private == Some(false) || rest.allow_auto_merge == Some(true) {
+            missing.push("plan-free-private-stale".into());
+        }
+    } else if rest.allow_auto_merge != Some(true) {
         missing.push("auto-merge-disabled".into());
     }
     if rest.dependabot_security_updates_status.as_deref() != Some("disabled") {

@@ -334,6 +334,11 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-0000](adr/0000-free-plan-private-declaration.md) — 無料プランの非公開
+  リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査
+  (自動マージの有効化、live の branch ruleset の照合)だけを外す。宣言が実態と
+  食い違えば `plan-free-private-stale` で監査が検出し、`create-repo.sh` が所有者の
+  プランを検出して宣言を播く。Team に切り替えるときは宣言を外すだけで検査が戻る。
 - [ADR-751](adr/751-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から
   歴史的経緯と書き直しの作業量を除く。コード 0 行の白紙から 3 軸で選び、
   戻せないもの(データ・外部契約・人手)だけを数える。完全に同点なら現職を維持し、
@@ -466,6 +471,9 @@ Design and rationale for the hooks and commands deployed from
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
   Claude/Codex 共通の 1 バイナリ、#415)。
+- [`free-plan-private.md`](claude/free-plan-private.md) — ADR-0000: 無料プランの
+  非公開リポジトリで成り立たない前提(自動マージ、live の ruleset)を、トピック
+  `plan-free-private` の宣言で外す手順と、Team 切替で戻す手順。
 - [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
   運用では PR タイトルがそのまま `main` の commit subject になるため、
   client guard(`pr-title-guard`)・server required check

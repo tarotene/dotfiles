@@ -41,19 +41,19 @@ fn rulesets_direct() {
     let none = RepoGql::default();
 
     // ADR-0020: CI の有無が ci-absent / required_status_checks を決める。
-    let f = judge_rulesets(&gh, "ruleset-ci-test", false, &none, &[]);
+    let f = judge_rulesets(&gh, "ruleset-ci-test", false, &none, &[], false);
     assert!(
         f.verdict == Verdict::Drifted && f.has("ci-absent") && !f.has("required_status_checks"),
         "bash#49: {f:?}"
     );
-    let f = judge_rulesets(&gh, "ruleset-ci-test", true, &none, &[]);
+    let f = judge_rulesets(&gh, "ruleset-ci-test", true, &none, &[], false);
     assert!(
         f.verdict == Verdict::Drifted && f.has("required_status_checks") && !f.has("ci-absent"),
         "bash#50: {f:?}"
     );
 
     // ADR-503: repo_gql 省略(既定 {})なら宣言なし。
-    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &none, &[]);
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &none, &[], false);
     assert!(f.has("rulesets-declaration-missing"), "bash#51: {f:?}");
 
     let quality = |enforcement: &str| {
@@ -65,7 +65,7 @@ fn rulesets_direct() {
         )
     };
     let mismatch = decl(quality("disabled"));
-    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &mismatch, &[]);
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &mismatch, &[], false);
     assert!(
         f.has("rulesets-declaration-drift:Quality"),
         "bash#52: {f:?}"
@@ -74,21 +74,21 @@ fn rulesets_direct() {
     // 正規化後に一致すれば Quality の drift は出ない(Security/Workflow は
     // 同名の live が無いので出る)。
     let ok = decl(quality("active"));
-    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &[]);
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &[], false);
     assert!(
         !f.has("rulesets-declaration-drift:Quality"),
         "bash#53: {f:?}"
     );
 
     // live は CI と Ghost を要求、報告されるのは CI だけ → Ghost が報告不能。
-    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &s(&["CI"]));
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &s(&["CI"]), false);
     assert!(
         f.has("required-context-unreportable:Ghost"),
         "bash#54: {f:?}"
     );
 
     // job_names=[](PR がまだ無い)なら判定しない。
-    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &[]);
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &[], false);
     assert!(
         !f.missing
             .iter()
@@ -433,6 +433,84 @@ fn settings_direct() {
     );
 }
 
+/// `plan-free-private` 宣言(docs/claude/free-plan-private.md): 非公開かつ無料
+/// プランの環境では自動マージ・rulesets が使えない。宣言があれば期待を外し、
+/// 宣言が実態と食い違えば `plan-free-private-stale` で必ず検出する。
+/// bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。
+#[test]
+fn settings_plan_free_private() {
+    let meta: RepoMeta = serde_json::from_str(r#"{"squashMergeAllowed":true,"mergeCommitAllowed":false,"rebaseMergeAllowed":false,"deleteBranchOnMerge":true,"defaultBranchRef":{"name":"main"},"hasWikiEnabled":false,"hasProjectsEnabled":false}"#).unwrap();
+    let rest = |v: Value| RepoRest::from_value(&v);
+    let free_ok = json!({"topics":["plan-free-private"],"private":true,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}});
+
+    // 宣言あり・自動マージ無効・非公開 → ok
+    let f = judge_settings(&meta, &rest(free_ok.clone()));
+    assert_eq!(f.verdict, Verdict::Ok, "{f:?}");
+
+    // 宣言あり・自動マージが有効(Team 切替後の外し忘れ)→ stale。auto-merge-disabled は出ない。
+    let mut v = free_ok.clone();
+    v["allow_auto_merge"] = json!(true);
+    let f = judge_settings(&meta, &rest(v));
+    assert!(
+        f.has("plan-free-private-stale") && !f.has("auto-merge-disabled"),
+        "{f:?}"
+    );
+
+    // 宣言あり・公開リポジトリ → stale
+    let mut v = free_ok.clone();
+    v["private"] = json!(false);
+    assert!(judge_settings(&meta, &rest(v)).has("plan-free-private-stale"));
+
+    // 宣言なしなら従来どおり auto-merge-disabled
+    let mut v = free_ok;
+    v.as_object_mut().unwrap().remove("topics");
+    let f = judge_settings(&meta, &rest(v));
+    assert!(
+        f.has("auto-merge-disabled") && !f.has("plan-free-private-stale"),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn rulesets_plan_free_private() {
+    let fx = Fx::new();
+    let gh = fx.gh();
+    let none = RepoGql::default();
+    // 宣言なし・live の ruleset 無し → ungoverned(従来どおり)。
+    assert_eq!(
+        judge_rulesets(&gh, "plan-free-norulesets", true, &none, &[], false).verdict,
+        Verdict::Ungoverned
+    );
+    // 宣言あり・live の ruleset 無し → not-applicable(drift にしない)。
+    assert_eq!(
+        judge_rulesets(&gh, "plan-free-norulesets", true, &none, &[], true).verdict,
+        Verdict::NotApplicable
+    );
+    // 宣言あり・live の ruleset がある → 宣言が嘘なので stale。
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &none, &[], true);
+    assert!(
+        f.verdict == Verdict::Drifted && f.missing == ["plan-free-private-stale"],
+        "{f:?}"
+    );
+}
+
+#[test]
+fn titles_plan_free_private() {
+    let fx = Fx::new();
+    let gh = fx.gh();
+    let both =
+        gql(r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}"#);
+    let ci_only = gql(r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#);
+    // required に載っていない(live が作れない)ことは drift にしない。
+    let f = judge_titles(&gh, "titles-missing-check", &both, &[], true);
+    assert_eq!(f.verdict, Verdict::Ok, "{f:?}");
+    // 呼び出し側 workflow の有無は引き続き判定する。
+    assert!(
+        judge_titles(&gh, "titles-missing-check", &ci_only, &[], true)
+            .has("pr-title-workflow-missing")
+    );
+}
+
 #[test]
 fn titles_direct() {
     let fx = Fx::new();
@@ -440,7 +518,7 @@ fn titles_direct() {
     let both =
         gql(r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}"#);
     let ci_only = gql(r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#);
-    let t = |repo: &str, g: &RepoGql, jobs: &[&str]| judge_titles(&gh, repo, g, &s(jobs));
+    let t = |repo: &str, g: &RepoGql, jobs: &[&str]| judge_titles(&gh, repo, g, &s(jobs), false);
 
     assert_eq!(
         t("no-ci-repo", &gql(r#"{"workflowsDir": null}"#), &[]).verdict,

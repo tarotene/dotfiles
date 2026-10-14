@@ -80,6 +80,16 @@ fetch_declared_contexts() {
   base64 -d <<<"$content" 2>/dev/null | jq -c '[.rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique'
 }
 
+# $1=owner/repo -> `plan-free-private` トピックが付いていれば exit 0。
+# 取得に失敗したときは宣言なし(exit 1)として扱う — 従来どおり live を
+# 取りに行き、取れなければ fail-closed になる。
+repo_declares_plan_free_private() {
+  local owner_repo="$1" repo="${1#*/}" owner="${1%%/*}" rest
+  rest="$("$GH_BIN" api "repos/$owner/$repo" 2>/dev/null)" || return 1
+  [[ -n "$rest" ]] || return 1
+  plan_free_private_declared "$rest"
+}
+
 # $1=owner/repo $2=branch -> required_status_checks[].context の JSON 配列
 fetch_live_required_contexts() {
   local owner_repo="$1" branch="$2"
@@ -112,7 +122,7 @@ poll_job_names() {
 # $1=declared(json array or "null") $2=live(json array) $3=jobs(json array)
 # -> stdout に判定メッセージ、exit 0=OK/WARN, 1=FAIL
 judge() {
-  local declared="$1" live="$2" jobs="$3" missing_declared missing_live n
+  local declared="$1" live="$2" jobs="$3" plan_free="${4:-false}" missing_declared missing_live n
 
   if [[ "$declared" != "null" ]]; then
     missing_declared="$(jq -c --argjson jobs "$jobs" '. - $jobs' <<<"$declared")"
@@ -124,6 +134,11 @@ judge() {
     fi
   else
     printf '::warning::rulesets-context-check: .github/rulesets/quality.json が見つかりません(未播き — github-audit の rulesets-declaration-missing が該当)。\n'
+  fi
+
+  if [[ "$plan_free" == true ]]; then
+    printf 'rulesets-context-check: OK (plan-free-private: live の照合なし)\n'
+    return 0
   fi
 
   missing_live="$(jq -c --argjson jobs "$jobs" '. - $jobs' <<<"$live")"
@@ -162,10 +177,21 @@ check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
     return 1
   }
 
-  live="$(fetch_live_required_contexts "$owner_repo" "$branch")" || {
-    printf 'rulesets-context-check: %s の branch ruleset 取得に失敗しました(fail-closed)\n' "$owner_repo" >&2
-    return 1
-  }
+  # `plan-free-private` 宣言(docs/claude/free-plan-private.md): この環境では
+  # branch ruleset を作れず、取得は 403 になる。live を取りに行かず空として
+  # 扱い、宣言(quality.json)の context が head で報告されているかだけを
+  # 検査する。宣言を外せば(Team 切替)live の照合が元に戻る。
+  local plan_free=false
+  if repo_declares_plan_free_private "$owner_repo"; then
+    plan_free=true
+    live='[]'
+    printf '::notice::rulesets-context-check: plan-free-private が宣言されているため、live の branch ruleset の照合は行いません(宣言の context の報告のみ検査)。\n'
+  else
+    live="$(fetch_live_required_contexts "$owner_repo" "$branch")" || {
+      printf 'rulesets-context-check: %s の branch ruleset 取得に失敗しました(fail-closed)\n' "$owner_repo" >&2
+      return 1
+    }
+  fi
 
   local wanted
   if [[ "$declared" != "null" ]]; then
@@ -175,7 +201,7 @@ check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
   fi
 
   jobs="$(poll_job_names "$owner_repo" "$sha" "$wanted")"
-  judge "$declared" "$live" "$jobs"
+  judge "$declared" "$live" "$jobs" "$plan_free"
 }
 
 # ADR-591(docs/adr/591-ci-workflow-naming.md D3)の一般化版: composite
@@ -353,6 +379,26 @@ STUB
   check "10 owner が tarotene 以外(D8: OWNER は owner_repo から設定する)" "acme/x" "abc" "main" \
     "$quality_ok" "$live_ok" "$jobs_ok" \
     0 'OK'
+
+  # 11〜13: `plan-free-private` 宣言(docs/claude/free-plan-private.md)。
+  # 無料プランの非公開リポジトリでは branch ruleset の取得が 403 になる。
+  printf '{"topics":["naming-descriptive","plan-free-private"],"private":true}' >"$tmp/fixtures/repos_acme_free.json"
+  printf '{"topics":["naming-descriptive"],"private":true}' >"$tmp/fixtures/repos_acme_paid.json"
+
+  touch "$tmp/bin/fail-repos_acme_free_rules_branches_main"
+  check "11 plan-free-private: live が 403 でも、宣言の context が報告されていれば OK" "acme/free" "abc" "main" \
+    "$quality_ok" "$live_ok" "$jobs_ok" \
+    0 'plan-free-private'
+  check "12 plan-free-private: 宣言の context が未報告なら red のまま" "acme/free" "abc" "main" \
+    "$quality_extra" "$live_ok" "$jobs_ok" \
+    1 '宣言'
+  rm -f "$tmp/bin/fail-repos_acme_free_rules_branches_main"
+
+  touch "$tmp/bin/fail-repos_acme_paid_rules_branches_main"
+  check "13 宣言なし(トピック無し): live が取れなければ fail-closed のまま" "acme/paid" "abc" "main" \
+    "$quality_ok" "$live_ok" "$jobs_ok" \
+    1 '取得に失敗'
+  rm -f "$tmp/bin/fail-repos_acme_paid_rules_branches_main"
 
   check_consistency || fails=$((fails + 1))
 
