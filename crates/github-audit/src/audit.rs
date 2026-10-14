@@ -132,7 +132,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
         let visibility = meta.visibility_str();
         // `plan-free-private` の宣言は「非公開」を含意する。公開リポジトリに残った
         // トピックは通常判定に戻し、stale は settings ドメインが報告する
-        // (docs/claude/free-plan-private.md)。
+        // (docs/claude/free-plan-declaration.md)。
         let plan_free_private = visibility == "PRIVATE"
             && topics
                 .iter()

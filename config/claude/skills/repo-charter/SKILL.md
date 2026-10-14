@@ -332,7 +332,7 @@ auto|free|paid`、既定は `auto`)、該当すればトピック `plan-free-pri
 あると、`pr-title` の検査と `github-audit` は、成り立たない前提(自動マージの有効化、live の
 branch ruleset)だけを外す。Team に切り替えたら宣言を外せば元に戻る(workflow の編集は不要)。
 宣言が実態と食い違えば `plan-free-private-stale` で監査が検出する。判定の中身、宣言の付け方、
-Team 切替の手順は `docs/claude/free-plan-private.md`。プランを検出できなかったときは注意が
+Team 切替の手順は `docs/claude/free-plan-declaration.md`。プランを検出できなかったときは注意が
 出るので、無料の非公開リポジトリなら `--plan free` を付けて同じコマンドを再実行する(作成は
 飛ばされる)。
 

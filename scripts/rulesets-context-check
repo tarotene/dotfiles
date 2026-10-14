@@ -177,7 +177,7 @@ check_run() { # $1=owner/repo $2=head_sha $3=default_branch -> exit 0/1
     return 1
   }
 
-  # `plan-free-private` 宣言(docs/claude/free-plan-private.md): この環境では
+  # `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): この環境では
   # branch ruleset を作れず、取得は 403 になる。live を取りに行かず空として
   # 扱い、宣言(quality.json)の context が head で報告されているかだけを
   # 検査する。宣言を外せば(Team 切替)live の照合が元に戻る。
@@ -380,7 +380,7 @@ STUB
     "$quality_ok" "$live_ok" "$jobs_ok" \
     0 'OK'
 
-  # 11〜13: `plan-free-private` 宣言(docs/claude/free-plan-private.md)。
+  # 11〜13: `plan-free-private` 宣言(docs/claude/free-plan-declaration.md)。
   # 無料プランの非公開リポジトリでは branch ruleset の取得が 403 になる。
   printf '{"topics":["naming-descriptive","plan-free-private"],"private":true}' >"$tmp/fixtures/repos_acme_free.json"
   printf '{"topics":["naming-descriptive"],"private":true}' >"$tmp/fixtures/repos_acme_paid.json"

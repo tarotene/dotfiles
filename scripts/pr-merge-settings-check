@@ -171,7 +171,7 @@ STUB
     '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false}' \
     1
 
-  # 7〜10: `plan-free-private` 宣言(docs/claude/free-plan-private.md)。
+  # 7〜10: `plan-free-private` 宣言(docs/claude/free-plan-declaration.md)。
   # 無料プランの非公開リポジトリでは自動マージを有効にできない。宣言があれば
   # auto-merge-disabled を要求せず、宣言が実態と食い違えば stale として red。
   local base='"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"'

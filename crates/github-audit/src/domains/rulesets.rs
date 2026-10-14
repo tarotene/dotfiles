@@ -123,7 +123,7 @@ pub fn judge_rulesets_with(
     job_names: &[String],
     plan_free_private: bool,
 ) -> Finding {
-    // `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-private.md):
+    // `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-declaration.md):
     // この環境では rulesets を作れない(REST は 403)ので、live が無いことは
     // drift ではない。宣言ファイル(.github/rulesets/*.json)は Team 切替で
     // そのまま適用できるよう播いたままにする。一方で live の ruleset が存在する

@@ -458,7 +458,7 @@ expectations:
   reported drifted on these two tokens (fail-open to drift, the same
   convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
   never silently treated as compliant.
-- `plan-free-private-stale` (`docs/claude/free-plan-private.md`) — the
+- `plan-free-private-stale` (`docs/claude/free-plan-declaration.md`) — the
   `plan-free-private` topic declares "private and on a plan without
   auto-merge or rulesets", and while it is declared the `auto-merge-disabled`
   expectation below is not applied (the `rulesets` and `titles` domains

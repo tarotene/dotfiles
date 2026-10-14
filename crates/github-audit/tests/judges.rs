@@ -433,7 +433,7 @@ fn settings_direct() {
     );
 }
 
-/// `plan-free-private` 宣言(docs/claude/free-plan-private.md): 非公開かつ無料
+/// `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): 非公開かつ無料
 /// プランの環境では自動マージ・rulesets が使えない。宣言があれば期待を外し、
 /// 宣言が実態と食い違えば `plan-free-private-stale` で必ず検出する。
 /// bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。

@@ -32,7 +32,7 @@ usage: create-repo.sh --owner OWNER --repo REPO --description TEXT --class namin
   --public        公開リポジトリにする(既定は --private)
   --plan          所有者のプラン(既定 auto = gh api で検出)。非公開かつ free のとき、
                   トピック plan-free-private を播く(自動マージ・rulesets が使えない環境の
-                  宣言。github-audit と CI の検査がこれを読む。docs/claude/free-plan-private.md)
+                  宣言。github-audit と CI の検査がこれを読む。docs/claude/free-plan-declaration.md)
   --dry-run       gh を呼ばず、検査の結果と、走らせるコマンドを表示する
 EOF
 }
@@ -42,7 +42,7 @@ die() {
   exit 2
 }
 
-# ---- 所有者のプラン検出(docs/claude/free-plan-private.md) -----------------
+# ---- 所有者のプラン検出(docs/claude/free-plan-declaration.md) -----------------
 
 # $1=owner -> free | paid | unknown(標準出力)。組織は /orgs、ユーザーは /users の
 # `.plan.name`。他人のユーザーアカウントのプランは API が返さない(unknown)。
@@ -170,7 +170,7 @@ main() {
   fi
   if [ "$visibility" = "--private" ] && [ "$plan" = free ]; then
     plan_free_private=true
-    echo "note: $owner は無料プラン・$slug は非公開 — 自動マージと rulesets が使えないので plan-free-private を宣言します(docs/claude/free-plan-private.md)"
+    echo "note: $owner は無料プラン・$slug は非公開 — 自動マージと rulesets が使えないので plan-free-private を宣言します(docs/claude/free-plan-declaration.md)"
   elif [ "$plan" = unknown ]; then
     echo "note: $owner のプランを検出できませんでした。無料プランの非公開リポジトリなら --plan free を付けて同じコマンドを再実行してください(作成は飛ばされます)"
   fi
@@ -188,7 +188,7 @@ main() {
       local skill="$type-repo-governance"
       [ "$type" != astro ] || skill="astro-site-governance"
       run "$SKILLS_DIR/$skill/scripts/seed.sh" --owner "$owner" --repo "$repo" --dest "$dest" "${passthrough[@]}"
-      ! $plan_free_private || echo "note: rulesets は適用できません(無料プランの非公開)。seed.sh が rulesets の適用で失敗しても想定内です。Team に切り替えるときの手順: docs/claude/free-plan-private.md"
+      ! $plan_free_private || echo "note: rulesets は適用できません(無料プランの非公開)。seed.sh が rulesets の適用で失敗しても想定内です。Team に切り替えるときの手順: docs/claude/free-plan-declaration.md"
       ;;
     core)
       run "$SKILLS_DIR/repo-governance-common/scripts/apply-repo-settings.sh" --owner "$owner" --repo "$repo"
@@ -196,7 +196,7 @@ main() {
       echo "next: $dest で commit + push してから、"
       if $plan_free_private; then
         echo "      rulesets は適用できません(無料プランの非公開)。宣言ファイル(.github/rulesets/*.json)は Team 切替用に残ります。"
-        echo "      Team に切り替えるときの手順: docs/claude/free-plan-private.md"
+        echo "      Team に切り替えるときの手順: docs/claude/free-plan-declaration.md"
       else
         echo "      apply-rulesets.sh $slug --from-dir $dest/.github/rulesets --unverified-contexts"
       fi
@@ -270,7 +270,7 @@ STUB
   case_run "--type needs --dest" 2 "!gh repo" --repo acme --class naming-codename --type core "${base[@]}"
   case_run "dry-run calls no gh" 0 "!gh repo" --repo acme --class naming-codename --dry-run "${base[@]}"
 
-  # 所有者のプラン(docs/claude/free-plan-private.md): 非公開かつ free のときだけ
+  # 所有者のプラン(docs/claude/free-plan-declaration.md): 非公開かつ free のときだけ
   # plan-free-private を播く。
   STUB_PLAN=free case_run "plan free + private: plan-free-private is added" 0 "add-topic plan-free-private" \
     --repo acme --class naming-codename "${base[@]}"

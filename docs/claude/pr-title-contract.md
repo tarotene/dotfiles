@@ -170,4 +170,4 @@ API 取得に失敗した場合は fail-closed(red)にする — client guard
 前提検査(`pr-merge-settings-check` の `auto-merge-disabled`、`rulesets-context-check` の live
 照合)が構造的に満たせない。トピック `plan-free-private` で宣言すると、この 2 つだけが外れ、
 タイトルの文法・squash のみの設定・宣言ファイルの context の報告は引き続き検査される。
-詳細と Team 切替の手順は `docs/claude/free-plan-private.md`。
+詳細と Team 切替の手順は `docs/claude/free-plan-declaration.md`。

@@ -62,7 +62,7 @@ pub fn judge_titles_with(
     if !has_caller {
         missing.push("pr-title-workflow-missing".into());
     }
-    // `plan-free-private` 宣言(docs/claude/free-plan-private.md): live の ruleset が
+    // `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): live の ruleset が
     // 作れない環境なので、required に載っていないことも、live の context と run の
     // job 名の突合も判定できない。workflow の有無(上)だけが判定対象として残る。
     if !plan_free_private {

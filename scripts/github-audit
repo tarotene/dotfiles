@@ -603,7 +603,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
   local -a missing=()
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
-  # `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-private.md):
+  # `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-declaration.md):
   # この環境では rulesets を作れない(REST は 403)ので、live が無いことは
   # drift ではない。宣言ファイル(.github/rulesets/*.json)は Team 切替で
   # そのまま適用できるよう播いたままにする。一方で live の ruleset が存在
@@ -1332,7 +1332,7 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
 # settings domain
 # ---------------------------------------------------------------------------
 
-# `plan-free-private` トピックの宣言(docs/claude/free-plan-private.md)。
+# `plan-free-private` トピックの宣言(docs/claude/free-plan-declaration.md)。
 # $1=repo-rest-json(REST の `.topics` を読む)-> 宣言ありなら exit 0。
 # NB: "${1:-{}}" は閉じ括弧を誤解析する(judge_rulesets の注記を参照)ので、
 # 既定値は代入で与える。
@@ -1370,7 +1370,7 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
   # `.topics` から読むので、CI(GITHUB_TOKEN)からも同じ値が見える。宣言が
   # 実態と食い違った(公開になった、または自動マージが有効になった)ときは
   # `plan-free-private-stale` を出し、トピックの外し忘れを必ず検出する。
-  # 手順: docs/claude/free-plan-private.md
+  # 手順: docs/claude/free-plan-declaration.md
   if plan_free_private_declared "$rest"; then
     jq -e '.private == false or .allow_auto_merge == true' <<<"$rest" >/dev/null 2>&1 &&
       missing+=("plan-free-private-stale")
@@ -1670,7 +1670,7 @@ judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=ru
   has_caller="$(jq -e '(.workflowsDir.entries // []) | any(.name == "pr-title.yml")' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
   [[ $has_caller == true ]] || missing+=("pr-title-workflow-missing")
 
-  # `plan-free-private` 宣言(docs/claude/free-plan-private.md): live の
+  # `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): live の
   # ruleset が作れない環境なので、required に載っていないことも、live の
   # context と run の job 名の突合も、判定できない。workflow の有無
   # (pr-title-workflow-missing)だけが判定対象として残る。
@@ -3553,7 +3553,7 @@ EOF
     return 1
   }
 
-  # `plan-free-private` 宣言(docs/claude/free-plan-private.md): 非公開かつ無料
+  # `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): 非公開かつ無料
   # プランの環境では自動マージ・rulesets が使えない。宣言があれば期待を外し、
   # 宣言が実態と食い違えば plan-free-private-stale で必ず検出する。
   local rest_free_ok='{"topics":["plan-free-private"],"private":true,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}'

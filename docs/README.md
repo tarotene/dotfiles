@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-free-plan-private-declaration.md) — 無料プランの非公開
+- [ADR-0000](adr/0000-free-plan-declaration.md) — 無料プランの非公開
   リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査
   (自動マージの有効化、live の branch ruleset の照合)だけを外す。宣言が実態と
   食い違えば `plan-free-private-stale` で監査が検出し、`create-repo.sh` が所有者の
@@ -471,7 +471,7 @@ Design and rationale for the hooks and commands deployed from
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
   Claude/Codex 共通の 1 バイナリ、#415)。
-- [`free-plan-private.md`](claude/free-plan-private.md) — ADR-0000: 無料プランの
+- [`free-plan-declaration.md`](claude/free-plan-declaration.md) — ADR-0000: 無料プランの
   非公開リポジトリで成り立たない前提(自動マージ、live の ruleset)を、トピック
   `plan-free-private` の宣言で外す手順と、Team 切替で戻す手順。
 - [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only

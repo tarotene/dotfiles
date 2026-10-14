@@ -576,12 +576,12 @@ impl RepoRest {
     }
 
     /// `plan-free-private` トピックが宣言されているか(bash:
-    /// `plan_free_private_declared`。docs/claude/free-plan-private.md)。
+    /// `plan_free_private_declared`。docs/claude/free-plan-declaration.md)。
     pub fn plan_free_private_declared(&self) -> bool {
         self.topics.iter().any(|t| t == PLAN_FREE_PRIVATE_TOPIC)
     }
 }
 
 /// 「非公開かつ無料プランのため、自動マージと rulesets が使えない」ことを
-/// 宣言するトピック(docs/claude/free-plan-private.md)。
+/// 宣言するトピック(docs/claude/free-plan-declaration.md)。
 pub const PLAN_FREE_PRIVATE_TOPIC: &str = "plan-free-private";
