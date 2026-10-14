@@ -1,6 +1,6 @@
 # free-plan-declaration — 無料プランの非公開リポジトリを、宣言 1 つで前提検査から外す
 
-設計判断の記録: `docs/adr/0000-free-plan-declaration.md`
+設計判断の記録: `docs/adr/792-free-plan-declaration.md`
 宣言: リポジトリのトピック `plan-free-private`
 読む側: `scripts/github-audit`・`crates/github-audit`(settings・rulesets・titles ドメイン)、
 `scripts/pr-merge-settings-check`、`scripts/rulesets-context-check`
