@@ -380,3 +380,32 @@ required context があるのに一致しなければ CI を red にする(手�
 - `config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml`
 - `.github/workflows/pr-title.yml`
 - `scripts/github-audit`
+
+## Amendment (2026-10-13 — D4 の追補: 契約の workflow を持つリポジトリでも client guard を発火させる)
+
+D4 は client guard の発火を owner が `tarotene` のリポジトリに限った。理由は、会社リポには別の
+PR タイトル慣行がありうることだった。実際には、会社側のリポジトリにも `repo-governance-common`
+のテンプレートが `pr-title.yml` を播いており、サーバ側の required check が同じ文法
+(`pr-title-check`)で判定している。2026-10-13 に、そうしたリポジトリで 15 段の stacked PR を
+作ったところ、最下段の PR のタイトルが CI で落ち、全段をやり直す往復が出た。client guard は
+`tarotene/*` 限定のため何も言わなかった。
+
+追補: guard は、次のどちらかのときに発火する。
+
+1. owner が `tarotene`(D4 のまま)。
+2. **いま居るリポジトリ自身**が `.github/workflows/pr-title.yml` を持つ(作業ディレクトリが
+   属する work tree の最上位で見る)。`-R` が別のリポジトリを指しているときは、その中身を
+   見られないので、この条件では発火しない。
+
+契約の workflow があるリポジトリでは、サーバ側が既に同じ文法で判定しているので、client で
+先に止めても別慣行とは衝突しない。workflow を持たない会社リポは従来どおり対象外。escape hatch
+(`PR_TITLE_GUARD_ALLOW=1`)は変わらない。push 前に ruff などの整形を回す hook は、CI が既に検出して
+いるので今回は作らない(散文で足し、同じ見落としが再発したら昇格させる — ADR-543)。
+
+### 執行点
+
+- `crates/pr-title-guard/src/lib.rs`
+- `crates/pr-title-guard/tests/cli.rs`
+- `docs/claude/pr-title-contract.md`
+- `config/claude/skills/stacked-pr/SKILL.md`
+- `config/claude/skills/pr-description/SKILL.md`

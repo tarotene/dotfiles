@@ -11,8 +11,10 @@
 //! 単一正本、client guard とサーバ側 required check が同じ判定根拠を共有)
 //! が、Rust では同じ判定関数を共有すれば足りる。
 //!
-//! 発火は owner が tarotene のリポジトリに限定する(ADR-0031 D4)。owner が
-//! 解決できない場合は fail-open(通す)。
+//! 発火は owner が tarotene のリポジトリ、または**呼び出し先リポジトリ自身が
+//! PR タイトル契約の workflow(`.github/workflows/pr-title.yml`)を持つ**場合に
+//! 限定する(ADR-0031 D4 と、その 2026-10-13 の追補)。owner が解決できない場合は
+//! fail-open(通す)。
 //!
 //! escape hatch: 環境変数 `PR_TITLE_GUARD_ALLOW=1` で一時的に無効化する
 //! (`No-Issue:` のような本文タグ型ではない — 単発の緊急対応向けの一時解除
@@ -39,6 +41,30 @@ pub fn is_target_at(tokens: &[String], i: usize) -> Option<Kind> {
 /// `owner/repo`(または repo 単体)の owner が tarotene か。
 fn is_tarotene_owned(nwo: &str) -> bool {
     nwo.split('/').next() == Some("tarotene")
+}
+
+/// 作業ディレクトリが属するリポジトリが、PR タイトル契約の workflow を自分で
+/// 持っているか(ADR-0031 D4 の追補、2026-10-13)。`repo-governance-common` の
+/// テンプレートが播く `pr-title.yml` は、サーバ側の required check と同じ文法
+/// (`pr-title-check`)を呼ぶ。それがあるリポジトリでは、最下段の PR タイトルが
+/// CI で落ちる前に client で止めてよい。リポジトリ外・解決不能は `false`。
+fn has_pr_title_workflow(project: &Path) -> bool {
+    let top = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project)
+        .args(["rev-parse", "--show-toplevel"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    match top {
+        Some(top) if !top.is_empty() => Path::new(&top)
+            .join(".github/workflows/pr-title.yml")
+            .is_file(),
+        _ => false,
+    }
 }
 
 /// コマンド文字列全体を判定する(`decide_pr_title`)。deny なら理由を返す。
@@ -69,7 +95,11 @@ pub fn decide(cmd: &str, project: &Path, allow: bool) -> Option<String> {
         } else {
             repo.value.clone()
         };
-        if !is_tarotene_owned(&nwo) {
+        // owner が tarotene か、対象が「いま居るリポジトリ」でそこに契約の workflow
+        // がある場合だけ発火する。`-R` で別のリポジトリを指しているときは、その
+        // リポジトリの中身を見られないので workflow の有無では発火させない。
+        let in_this_repo = owner_repo(project).as_deref() == Some(nwo.as_str());
+        if !(is_tarotene_owned(&nwo) || (in_this_repo && has_pr_title_workflow(project))) {
             return None;
         }
         // タイトルが分からない(--title 未指定 = --web でエディタ入力等)場合は

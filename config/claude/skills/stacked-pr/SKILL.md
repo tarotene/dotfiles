@@ -81,6 +81,14 @@ description: セッション内で複数の PR を作るとき、依存関係を
 3. 2 段目以降は、直前の段のブランチから切って実装 → commit
    (`git switch -c <branch>`。`git worktree add` ではない — 同一 worktree
    内でブランチを切り替えるだけ)。
+   **push の前に、その段が触ったパッケージの lint と整形を手元で回す。**
+   多段の PR を作ると、1 つの整形漏れが全段の CI を落とし、全段を整形して
+   rebase し直す往復になる(15 段で実際に起きた)。Python のパッケージなら
+   `uv run ruff check . && uv run ruff format --check .`、Rust なら
+   `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
+   を、触ったディレクトリごとに。PR タイトルの type も確かめる
+   (`pr-description` スキル §0 の語彙)。CI が検出できることを、push 前に
+   1 回だけ先に検出するだけの手順で、結果は PR 本文の「検証」に書く。
 4. 各段ごとに `git push -u origin <branch>` →
    `gh pr create -R OWNER/REPO --base <直前の段のブランチ> --body-file <絶対パス>`
    (最下段だけ `--base main`。本文は Write でファイルにしてから渡す —

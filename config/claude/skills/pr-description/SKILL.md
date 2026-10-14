@@ -27,6 +27,12 @@ PRの本文は、リポジトリごとにまちまちな自由記述ではなく
 gh pr create -R OWNER/REPO --base main --title "..." --body-file /abs/path/pr-body.md
 ```
 
+`--title` は `type(scope)?!?: subject` の形で、type は
+`feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert` のいずれか
+(ADR-0031)。契約の workflow(`.github/workflows/pr-title.yml`)を持つリポジトリ
+では、`pr-title-guard` がこれを作成時に検査する。stacked PR の最下段で
+外れると全段がやり直しになるので、`gh pr create` の前に確かめる。
+
 本文ファイルは `git commit` と同様、`gh` を呼ぶ前に別の呼び出しで作っておく
 (複合コマンドの 1 本目が deny されると前段の生成も消える。#668)。
 
