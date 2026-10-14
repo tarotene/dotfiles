@@ -588,8 +588,8 @@ default_branch_rulesets() {
   printf '%s' "$arr"
 }
 
-judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optional) $4=job_names(json array,optional) -> one JSON finding object (no repo/language wrapper)
-  local repo="$1" has_workflows="${2:-true}"
+judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optional) $4=job_names(json array,optional) $5=plan_free_private(true/false,optional) -> one JSON finding object (no repo/language wrapper)
+  local repo="$1" has_workflows="${2:-true}" plan_free_private="${5:-false}"
   # NB: "${3:-{}}" mis-parses in bash — the parameter expansion closes at
   # the first unescaped "}" inside the default value, silently appending
   # a stray literal "}" after whatever $3 resolves to (reproduced: `f() {
@@ -603,6 +603,19 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
   local -a missing=()
   arr="$(default_branch_rulesets "$repo")"
   count="$(jq 'length' <<<"$arr")"
+  # `plan-free-private` 宣言(非公開かつ無料プラン。docs/claude/free-plan-declaration.md):
+  # この環境では rulesets を作れない(REST は 403)ので、live が無いことは
+  # drift ではない。宣言ファイル(.github/rulesets/*.json)は Team 切替で
+  # そのまま適用できるよう播いたままにする。一方で live の ruleset が存在
+  # するなら宣言が嘘なので、トピックの外し忘れとして報告する。
+  if [[ $plan_free_private == true ]]; then
+    if [[ $count -eq 0 ]]; then
+      jq -n '{verdict: "not-applicable", missing: []}'
+    else
+      jq -n '{verdict: "drifted", missing: ["plan-free-private-stale"], status_checks: [], review_layer: "absent", declaration: "not-judged"}'
+    fi
+    return
+  fi
   if [[ $count -eq 0 ]]; then
     # ADR-503: declaration-presence/drift/
     # unreportable-context checks below need a live ruleset to compare
@@ -1319,6 +1332,16 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
 # settings domain
 # ---------------------------------------------------------------------------
 
+# `plan-free-private` トピックの宣言(docs/claude/free-plan-declaration.md)。
+# $1=repo-rest-json(REST の `.topics` を読む)-> 宣言ありなら exit 0。
+# NB: "${1:-{}}" は閉じ括弧を誤解析する(judge_rulesets の注記を参照)ので、
+# 既定値は代入で与える。
+plan_free_private_declared() {
+  local rest="${1:-}"
+  [[ -n "$rest" ]] || rest='{}'
+  jq -e '(.topics // []) | index("plan-free-private") != null' <<<"$rest" >/dev/null 2>&1
+}
+
 judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional) -> finding
   local meta="$1" rest="${2:-{\}}"
   local -a missing=()
@@ -1340,8 +1363,21 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
   # fix-PR channel must be Renovate alone (Dependabot security updates
   # off). Both fields are REST-only, same $rest object as the squash
   # fields above — no extra fetch.
-  jq -e '.allow_auto_merge == true' <<<"$rest" >/dev/null 2>&1 ||
-    missing+=("auto-merge-disabled")
+  #
+  # ただし `plan-free-private` トピックで「非公開かつ無料プランのため自動マージが
+  # 使えない」と宣言されたリポジトリでは、この期待を外す(公式文書は非公開
+  # リポジトリの自動マージを Pro/Team/Enterprise に限る)。宣言は REST の
+  # `.topics` から読むので、CI(GITHUB_TOKEN)からも同じ値が見える。宣言が
+  # 実態と食い違った(公開になった、または自動マージが有効になった)ときは
+  # `plan-free-private-stale` を出し、トピックの外し忘れを必ず検出する。
+  # 手順: docs/claude/free-plan-declaration.md
+  if plan_free_private_declared "$rest"; then
+    jq -e '.private == false or .allow_auto_merge == true' <<<"$rest" >/dev/null 2>&1 &&
+      missing+=("plan-free-private-stale")
+  else
+    jq -e '.allow_auto_merge == true' <<<"$rest" >/dev/null 2>&1 ||
+      missing+=("auto-merge-disabled")
+  fi
   jq -e '.security_and_analysis.dependabot_security_updates.status == "disabled"' <<<"$rest" >/dev/null 2>&1 ||
     missing+=("dependabot-security-updates-enabled")
 
@@ -1619,8 +1655,8 @@ judge_routines() { # $1=repo $2=repo-gql-json $3=auditor-sources-json(array of "
 REQUIRED_PR_TITLE_CONTEXT_SELF='PR title'
 REQUIRED_PR_TITLE_CONTEXT_CONNECTED='PR Title / PR title'
 
-judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=run未実行/取得不能, 既定'[]') -> finding
-  local repo="$1" gql="$2" run_jobs="${3:-[]}" has_workflows has_caller arr checks
+judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=run未実行/取得不能, 既定'[]') $4=plan_free_private(true/false,optional) -> finding
+  local repo="$1" gql="$2" run_jobs="${3:-[]}" plan_free_private="${4:-false}" has_workflows has_caller arr checks
   has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
   # ADR-0020 の grandfathering 型と同じ: CI を持たないリポジトリには
   # required check を要求する土台自体が無いため not-applicable にする
@@ -1634,17 +1670,23 @@ judge_titles() { # $1=repo $2=repo-gql-json $3=latest-run-job-names-json('[]'=ru
   has_caller="$(jq -e '(.workflowsDir.entries // []) | any(.name == "pr-title.yml")' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
   [[ $has_caller == true ]] || missing+=("pr-title-workflow-missing")
 
-  arr="$(default_branch_rulesets "$repo")"
-  checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
-  jq -e --arg self "$REQUIRED_PR_TITLE_CONTEXT_SELF" --arg connected "$REQUIRED_PR_TITLE_CONTEXT_CONNECTED" \
-    'any(.[]; . == $self or . == $connected)' <<<"$checks" >/dev/null 2>&1 ||
-    missing+=("pr-title-check-not-required")
+  # `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): live の
+  # ruleset が作れない環境なので、required に載っていないことも、live の
+  # context と run の job 名の突合も、判定できない。workflow の有無
+  # (pr-title-workflow-missing)だけが判定対象として残る。
+  if [[ $plan_free_private != true ]]; then
+    arr="$(default_branch_rulesets "$repo")"
+    checks="$(jq -c '[.[].rules[]? | select(.type=="required_status_checks") | .parameters.required_status_checks[]?.context] | unique' <<<"$arr")"
+    jq -e --arg self "$REQUIRED_PR_TITLE_CONTEXT_SELF" --arg connected "$REQUIRED_PR_TITLE_CONTEXT_CONNECTED" \
+      'any(.[]; . == $self or . == $connected)' <<<"$checks" >/dev/null 2>&1 ||
+      missing+=("pr-title-check-not-required")
+  fi
 
   # ground truth 突き合わせ(ADR-0031 Amendment, 2026-09-26): run が一度も
   # 走っていない([]) 場合は判定材料が無いので何もしない(#337 の事故は
   # 「run はあったが誰も見なかった」ケースなので、run が無いリポジトリまで
   # drift 扱いにする必要はない — pr-title-workflow-missing が既に拾う)。
-  if [[ $has_caller == true && "$run_jobs" != "[]" ]]; then
+  if [[ $plan_free_private != true && $has_caller == true && "$run_jobs" != "[]" ]]; then
     jq -e --argjson jobs "$run_jobs" \
       'any(.[]; . as $ctx | $jobs | index($ctx) != null)' <<<"$checks" >/dev/null 2>&1 ||
       missing+=("pr-title-context-mismatch")
@@ -2112,7 +2154,11 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
               has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
               local ruleset_jobs='[]'
               ((need_ruleset_jobs)) && [[ $has_workflows == true ]] && ruleset_jobs="$(fetch_latest_pr_head_job_names "$repo")"
-              entry="$(judge_rulesets "$repo" "$has_workflows" "$repo_gql" "$ruleset_jobs")"
+              # 宣言は「非公開」を含意する。公開リポジトリに残ったトピックは
+              # 通常判定に戻し、stale は settings ドメインが報告する。
+              local plan_free_private=false
+              [[ $vis == PRIVATE ]] && jq -e 'index("plan-free-private") != null' <<<"$topics_json" >/dev/null 2>&1 && plan_free_private=true
+              entry="$(judge_rulesets "$repo" "$has_workflows" "$repo_gql" "$ruleset_jobs" "$plan_free_private")"
             fi
             ;;
           charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
@@ -2131,7 +2177,9 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             local has_pr_title_caller
             has_pr_title_caller="$(jq -e '(.workflowsDir.entries // []) | any(.name == "pr-title.yml")' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
             ((need_title_jobs)) && [[ $has_pr_title_caller == true ]] && title_jobs="$(fetch_latest_pr_title_job_names "$repo")"
-            entry="$(judge_titles "$repo" "$repo_gql" "$title_jobs")"
+            local titles_plan_free=false
+            [[ $vis == PRIVATE ]] && jq -e 'index("plan-free-private") != null' <<<"$topics_json" >/dev/null 2>&1 && titles_plan_free=true
+            entry="$(judge_titles "$repo" "$repo_gql" "$title_jobs" "$titles_plan_free")"
             ;;
           lifecycle)
             has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$repo_gql" >/dev/null 2>&1 && echo true || echo false)"
@@ -3502,6 +3550,56 @@ EOF
   jq -e '.verdict == "drifted" and (.missing | index("squash-title-not-pr-title")) and (.missing | index("squash-message-not-blank")) and (.missing | index("auto-merge-disabled")) and (.missing | index("dependabot-security-updates-enabled")) and (.missing | index("merge-not-squash-only") | not)' \
     <<<"$(judge_settings "$meta_ok" '{}')" >/dev/null || {
     printf 'FAIL: judge_settings with an unfetchable REST response ({}) should report every REST-sourced field as drifted (fail-open to drift, not silently pass) without also misreporting the otherwise-compliant GraphQL-sourced fields\n' >&2
+    return 1
+  }
+
+  # `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): 非公開かつ無料
+  # プランの環境では自動マージ・rulesets が使えない。宣言があれば期待を外し、
+  # 宣言が実態と食い違えば plan-free-private-stale で必ず検出する。
+  local rest_free_ok='{"topics":["plan-free-private"],"private":true,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false,"security_and_analysis":{"dependabot_security_updates":{"status":"disabled"}}}'
+  jq -e '.verdict == "ok"' <<<"$(judge_settings "$meta_ok" "$rest_free_ok")" >/dev/null || {
+    printf 'FAIL: judge_settings should be ok for a declared plan-free-private repo with auto-merge off: %s\n' \
+      "$(judge_settings "$meta_ok" "$rest_free_ok")" >&2
+    return 1
+  }
+  jq -e '(.missing | index("plan-free-private-stale")) and (.missing | index("auto-merge-disabled") | not)' \
+    <<<"$(judge_settings "$meta_ok" "$(jq '.allow_auto_merge = true' <<<"$rest_free_ok")")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag plan-free-private-stale (and not auto-merge-disabled) when a declared repo has auto-merge enabled\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("plan-free-private-stale")' \
+    <<<"$(judge_settings "$meta_ok" "$(jq '.private = false' <<<"$rest_free_ok")")" >/dev/null || {
+    printf 'FAIL: judge_settings should flag plan-free-private-stale when a declared repo is public\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("auto-merge-disabled")' \
+    <<<"$(judge_settings "$meta_ok" "$(jq 'del(.topics)' <<<"$rest_free_ok")")" >/dev/null || {
+    printf 'FAIL: judge_settings must keep flagging auto-merge-disabled when plan-free-private is not declared\n' >&2
+    return 1
+  }
+  # rulesets / titles: live ruleset が作れない環境では「無い」ことを drift にしない。
+  jq -e '.verdict == "ungoverned"' <<<"$(judge_rulesets plan-free-norulesets true '{}' '[]' false)" >/dev/null || {
+    printf 'FAIL: judge_rulesets without a declaration should stay ungoverned when no live ruleset exists\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable"' <<<"$(judge_rulesets plan-free-norulesets true '{}' '[]' true)" >/dev/null || {
+    printf 'FAIL: judge_rulesets with plan-free-private should be not-applicable when no live ruleset exists\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing == ["plan-free-private-stale"])' \
+    <<<"$(judge_rulesets ruleset-decl-test true '{}' '[]' true)" >/dev/null || {
+    printf 'FAIL: judge_rulesets with plan-free-private should report plan-free-private-stale when a live ruleset exists: %s\n' \
+      "$(judge_rulesets ruleset-decl-test true '{}' '[]' true)" >&2
+    return 1
+  }
+  jq -e '.verdict == "ok"' \
+    <<<"$(judge_titles titles-missing-check '{"workflowsDir": {"entries": [{"name": "ci.yml"}, {"name": "pr-title.yml"}]}}' '[]' true)" >/dev/null || {
+    printf 'FAIL: judge_titles with plan-free-private should not require the live PR title check\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("pr-title-workflow-missing")' \
+    <<<"$(judge_titles titles-missing-check '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}' '[]' true)" >/dev/null || {
+    printf 'FAIL: judge_titles with plan-free-private must still require the pr-title.yml caller workflow\n' >&2
     return 1
   }
 

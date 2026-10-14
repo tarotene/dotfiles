@@ -26,17 +26,34 @@ pub const REQUIRED_PR_TITLE_CONTEXT_CONNECTED: &str = "PR Title / PR title";
 
 /// bash: `judge_titles`。`run_jobs` は pr-title.yml の最新 run の job 名
 /// (空 = run 未実行・取得不能)。
-pub fn judge_titles(gh: &Gh, repo: &str, gql: &RepoGql, run_jobs: &[String]) -> Finding {
+pub fn judge_titles(
+    gh: &Gh,
+    repo: &str,
+    gql: &RepoGql,
+    run_jobs: &[String],
+    plan_free_private: bool,
+) -> Finding {
     // CI を持たない repo には required check を要求する土台が無い(renovate と
     // 同じ判定)。ruleset の取得もしない。
     if !gql.has_workflows() {
         return Finding::not_applicable();
     }
-    judge_titles_with(&gh.default_branch_rulesets(repo), gql, run_jobs)
+    // plan-free-private では live の ruleset が作れず、取得も 403 になる。
+    let rulesets = if plan_free_private {
+        Vec::new()
+    } else {
+        gh.default_branch_rulesets(repo)
+    };
+    judge_titles_with(&rulesets, gql, run_jobs, plan_free_private)
 }
 
 /// `judge_titles` の純粋部分(default branch の ruleset 詳細を受け取る)。
-pub fn judge_titles_with(rulesets: &[Value], gql: &RepoGql, run_jobs: &[String]) -> Finding {
+pub fn judge_titles_with(
+    rulesets: &[Value],
+    gql: &RepoGql,
+    run_jobs: &[String],
+    plan_free_private: bool,
+) -> Finding {
     if !gql.has_workflows() {
         return Finding::not_applicable();
     }
@@ -45,17 +62,21 @@ pub fn judge_titles_with(rulesets: &[Value], gql: &RepoGql, run_jobs: &[String])
     if !has_caller {
         missing.push("pr-title-workflow-missing".into());
     }
-    let checks = required_contexts(rulesets);
-    if !checks
-        .iter()
-        .any(|c| c == REQUIRED_PR_TITLE_CONTEXT_SELF || c == REQUIRED_PR_TITLE_CONTEXT_CONNECTED)
-    {
-        missing.push("pr-title-check-not-required".into());
-    }
-    // ground truth との突き合わせ: run が一度も無ければ判定材料が無いので
-    // 何もしない(#337 は「run はあったが誰も見なかった」ケース)。
-    if has_caller && !run_jobs.is_empty() && !checks.iter().any(|c| run_jobs.contains(c)) {
-        missing.push("pr-title-context-mismatch".into());
+    // `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): live の ruleset が
+    // 作れない環境なので、required に載っていないことも、live の context と run の
+    // job 名の突合も判定できない。workflow の有無(上)だけが判定対象として残る。
+    if !plan_free_private {
+        let checks = required_contexts(rulesets);
+        if !checks.iter().any(|c| {
+            c == REQUIRED_PR_TITLE_CONTEXT_SELF || c == REQUIRED_PR_TITLE_CONTEXT_CONNECTED
+        }) {
+            missing.push("pr-title-check-not-required".into());
+        }
+        // ground truth との突き合わせ: run が一度も無ければ判定材料が無いので
+        // 何もしない(#337 は「run はあったが誰も見なかった」ケース)。
+        if has_caller && !run_jobs.is_empty() && !checks.iter().any(|c| run_jobs.contains(c)) {
+            missing.push("pr-title-context-mismatch".into());
+        }
     }
     Finding::ok_or_drifted(missing)
 }

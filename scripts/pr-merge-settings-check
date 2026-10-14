@@ -171,6 +171,23 @@ STUB
     '{"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK","allow_auto_merge":false}' \
     1
 
+  # 7〜10: `plan-free-private` 宣言(docs/claude/free-plan-declaration.md)。
+  # 無料プランの非公開リポジトリでは自動マージを有効にできない。宣言があれば
+  # auto-merge-disabled を要求せず、宣言が実態と食い違えば stale として red。
+  local base='"allow_squash_merge":true,"allow_merge_commit":false,"allow_rebase_merge":false,"delete_branch_on_merge":true,"default_branch":"main","has_wiki":false,"has_projects":false,"squash_merge_commit_title":"PR_TITLE","squash_merge_commit_message":"BLANK"'
+  check "7 plan-free-private 宣言あり・自動マージ無効・非公開 → ok" "acme/free" \
+    "{$base,\"private\":true,\"topics\":[\"plan-free-private\"],\"allow_auto_merge\":false}" \
+    0
+  check "8 宣言なし・自動マージ無効 → auto-merge-disabled で red(従来どおり)" "acme/undeclared" \
+    "{$base,\"private\":true,\"topics\":[\"naming-descriptive\"],\"allow_auto_merge\":false}" \
+    1
+  check "9 宣言あり・自動マージが有効 → plan-free-private-stale で red(Team 切替後の外し忘れ)" "acme/upgraded" \
+    "{$base,\"private\":true,\"topics\":[\"plan-free-private\"],\"allow_auto_merge\":true}" \
+    1
+  check "10 宣言あり・公開リポジトリ → plan-free-private-stale で red" "acme/now-public" \
+    "{$base,\"private\":false,\"topics\":[\"plan-free-private\"],\"allow_auto_merge\":false}" \
+    1
+
   rm -rf "$tmp"
   [[ "$fails" == 0 ]] && printf 'selftest: all passed\n'
   return "$fails"

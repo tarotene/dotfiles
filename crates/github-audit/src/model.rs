@@ -542,6 +542,10 @@ pub struct RepoRest {
     pub allow_auto_merge: Option<bool>,
     pub dependabot_security_updates_status: Option<String>,
     pub has_pages: Option<bool>,
+    /// `.private`(`plan-free-private` 宣言の stale 判定に使う)。
+    pub private: Option<bool>,
+    /// `.topics`(REST の repo オブジェクトが返すトピック名)。
+    pub topics: Vec<String>,
 }
 
 impl RepoRest {
@@ -557,6 +561,27 @@ impl RepoRest {
                 .and_then(Value::as_str)
                 .map(str::to_string),
             has_pages: b("has_pages"),
+            private: b("private"),
+            topics: v
+                .get("topics")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
+
+    /// `plan-free-private` トピックが宣言されているか(bash:
+    /// `plan_free_private_declared`。docs/claude/free-plan-declaration.md)。
+    pub fn plan_free_private_declared(&self) -> bool {
+        self.topics.iter().any(|t| t == PLAN_FREE_PRIVATE_TOPIC)
+    }
 }
+
+/// 「非公開かつ無料プランのため、自動マージと rulesets が使えない」ことを
+/// 宣言するトピック(docs/claude/free-plan-declaration.md)。
+pub const PLAN_FREE_PRIVATE_TOPIC: &str = "plan-free-private";

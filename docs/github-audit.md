@@ -458,6 +458,16 @@ expectations:
   reported drifted on these two tokens (fail-open to drift, the same
   convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
   never silently treated as compliant.
+- `plan-free-private-stale` (`docs/claude/free-plan-declaration.md`) — the
+  `plan-free-private` topic declares "private and on a plan without
+  auto-merge or rulesets", and while it is declared the `auto-merge-disabled`
+  expectation below is not applied (the `rulesets` and `titles` domains
+  likewise stop requiring a live ruleset). This token fires when the
+  declaration contradicts reality: the repository is public, or
+  `allow_auto_merge` is `true` (the `rulesets` domain reports it when a live
+  default-branch ruleset exists). Remove the topic after upgrading the plan.
+  The declaration is read from the same REST object (`.topics`, `.private`) —
+  no extra fetch, and CI (`GITHUB_TOKEN`) sees the same value.
 - `auto-merge-disabled` / `dependabot-security-updates-enabled`
   (`docs/adr/568-renovate-automerge-shared-preset.md` D2/D5b) — same REST
   object as the two squash fields above (`.allow_auto_merge`,
