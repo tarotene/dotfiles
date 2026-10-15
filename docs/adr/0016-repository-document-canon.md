@@ -196,3 +196,13 @@ pathspec が 1 件も markdown に当たらないときは、typo で検査が�
 - `config/claude/skills/repo-governance-common/templates/.github/workflows/lang-mix.yml`
   — 播種される workflow が `LANG_MIX_PATHS` を渡す。
 - `.github/workflows/ci.yml` — `check-language-mixing.sh --selftest` を CI で走らせる。
+
+## Amendment (2026-10-16 — 日本語が正本のリポジトリは宣言で CJK 検査を外せる)
+
+Decision 4 の「英語の原文 1 本」と CJK の存在検査には、読者が日本語話者に限られる
+リポジトリで前提が成り立たない例外がある。トピック `lang-ja` で正本言語が
+日本語であることを宣言したリポジトリは、`readme-cjk-present` と
+`contributing-cjk-present` を報告しない。宣言が実態と食い違えば
+`lang-ja-stale` で検出する。既定は変わらない。決定は ADR-0000
+(`docs/adr/0000-lang-ja-declaration.md`)、手順は
+`docs/claude/lang-ja-declaration.md`。

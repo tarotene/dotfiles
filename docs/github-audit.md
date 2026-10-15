@@ -288,6 +288,15 @@ Judged items:
   presence alone is drift — Latin content does not need to co-occur. This
   only judges the two files this audit fetches, not every markdown file in
   the repository — the rest is each repository's own per-repo CI's job.
+  **Declared exception (ADR-0000, `docs/claude/lang-ja-declaration.md`).** A
+  repository carrying the topic `lang-ja` declares Japanese as the canonical
+  language of README/CONTRIBUTING, and neither token is reported for it; every
+  other check (heading literals, section order, purpose match, nav-doc) is
+  unchanged.
+- `lang-ja-stale` (ADR-0000) — the topic `lang-ja` is declared but the README
+  has a CJK count below `CJK_PRESENCE_THRESHOLD`, i.e. the declaration no
+  longer matches the document. Remove the topic (or restore the Japanese
+  README).
 - `no-topics` — `repositoryTopics` is empty.
 - `root-doc-not-allowlisted:<names>` — a root-level `*.md` file outside
   `README.md` / `CONTRIBUTING.md` / `CHANGELOG.md` / `AGENTS.md` /

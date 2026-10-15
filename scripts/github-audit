@@ -1071,8 +1071,13 @@ nav_doc_scan() {
   return 0
 }
 
-judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> finding
-  local repo="$1" description="$2" topics="$3" gql="$4"
+judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json $5=topics-json(optional) -> finding
+  local repo="$1" description="$2" topics="$3" gql="$4" topics_json="${5:-[]}"
+  # `lang-ja` トピック(docs/claude/lang-ja-declaration.md): README/CONTRIBUTING の
+  # 正本言語が日本語であることの宣言。宣言があれば CJK の存在を drift にしない。
+  # 宣言が嘘(README に CJK が無い)なら lang-ja-stale で検出する。
+  local lang_ja=false
+  jq -e 'index("lang-ja") != null' <<<"$topics_json" >/dev/null 2>&1 && lang_ja=true
   local readme contributing claude_md agents_md has_agents_md root_tree claude_skills_dir
   local -a missing=()
 
@@ -1117,7 +1122,11 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
 
     grep -qE '^## Issue litmus([[:space:]]|$)' <<<"$readme" && missing+=("litmus-not-migrated")
 
-    is_cjk_present "$readme" && missing+=("readme-cjk-present")
+    if is_cjk_present "$readme"; then
+      [[ $lang_ja == true ]] || missing+=("readme-cjk-present")
+    elif [[ $lang_ja == true ]]; then
+      missing+=("lang-ja-stale")
+    fi
 
     while IFS= read -r finding; do
       [[ -n $finding ]] && missing+=("$finding")
@@ -1144,7 +1153,9 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json -> fi
       echo "${c_stray[*]}"
     )")
 
-    is_cjk_present "$contributing" && missing+=("contributing-cjk-present")
+    if is_cjk_present "$contributing" && [[ $lang_ja != true ]]; then
+      missing+=("contributing-cjk-present")
+    fi
 
     while IFS= read -r finding; do
       [[ -n $finding ]] && missing+=("$finding")
@@ -2161,7 +2172,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
               entry="$(judge_rulesets "$repo" "$has_workflows" "$repo_gql" "$ruleset_jobs" "$plan_free_private")"
             fi
             ;;
-          charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql")" ;;
+          charters) entry="$(judge_charters "$repo" "$description" "$topic_count" "$repo_gql" "$topics_json")" ;;
           naming)
             entry="$(judge_naming "$repo" "$topics_json" "$created_at" "$species_json" "$registry_json" "$site_json" \
               "$lifecycle_species_json" "$description" "$is_archived")"
@@ -3642,6 +3653,34 @@ FSSTUB
   }
   jq -e '.verdict == "ok"' <<<"$(judge_settings "$meta_ok" "$(GH_BIN="$fs_dir/gh" OWNER=o fetch_repo_settings private-off | jq '. + {squash_merge_commit_title:"PR_TITLE",squash_merge_commit_message:"BLANK"}')")" >/dev/null || {
     printf 'FAIL: a private repo with the fix-PR generation off must judge ok on that token\n' >&2
+    return 1
+  }
+
+  # `lang-ja` 宣言(docs/claude/lang-ja-declaration.md): 日本語が正本の README/
+  # CONTRIBUTING は、宣言があれば CJK の存在を drift にしない。宣言が嘘
+  # (README に CJK が無い)なら lang-ja-stale で必ず検出する。
+  local lj_ja_gql='{"readme":{"text":"# r\n\n日本語の目的を書いた文です。\n"},"contributing":{"text":"# Contributing\n\n日本語で書いた案内です。\n"}}'
+  local lj_en_gql='{"readme":{"text":"# r\n\nAn English purpose sentence.\n"},"contributing":{"text":"# Contributing\n\nAn English guide.\n"}}'
+  jq -e '(.missing | index("readme-cjk-present")) and (.missing | index("contributing-cjk-present")) and ((.missing | index("lang-ja-stale")) | not)' \
+    <<<"$(judge_charters lj 'd' 1 "$lj_ja_gql" '["automation"]')" >/dev/null || {
+    printf 'FAIL: judge_charters without lang-ja must keep flagging CJK in README and CONTRIBUTING: %s\n' \
+      "$(judge_charters lj 'd' 1 "$lj_ja_gql" '["automation"]')" >&2
+    return 1
+  }
+  jq -e '((.missing | index("readme-cjk-present")) | not) and ((.missing | index("contributing-cjk-present")) | not) and ((.missing | index("lang-ja-stale")) | not)' \
+    <<<"$(judge_charters lj 'd' 1 "$lj_ja_gql" '["automation","lang-ja"]')" >/dev/null || {
+    printf 'FAIL: judge_charters with lang-ja must not flag CJK in README or CONTRIBUTING: %s\n' \
+      "$(judge_charters lj 'd' 1 "$lj_ja_gql" '["automation","lang-ja"]')" >&2
+    return 1
+  }
+  jq -e '.missing | index("lang-ja-stale")' \
+    <<<"$(judge_charters lj 'd' 1 "$lj_en_gql" '["automation","lang-ja"]')" >/dev/null || {
+    printf 'FAIL: judge_charters must flag lang-ja-stale when lang-ja is declared but the README has no CJK\n' >&2
+    return 1
+  }
+  jq -e '(.missing | index("lang-ja-stale")) | not' \
+    <<<"$(judge_charters lj 'd' 1 "$lj_en_gql" '["automation"]')" >/dev/null || {
+    printf 'FAIL: judge_charters must not flag lang-ja-stale when lang-ja is not declared\n' >&2
     return 1
   }
 
