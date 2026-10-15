@@ -27,3 +27,15 @@ if command -v claude &>/dev/null; then
         return $rc
     }
 fi
+
+# Claude Code's Bash tool runs commands in this zsh (via a shell snapshot that
+# restores the options set here). zsh does not field-split unquoted parameter
+# expansions, so `set -- $var` and `for x in $var` that work in bash silently
+# yield one word, and a batch loop fails once. Give *only* Claude Code's shell
+# bash-like splitting: CLAUDECODE=1 is set inside the Bash tool, so an
+# interactive terminal keeps zsh's default (SH_WORD_SPLIT off).
+# zsh manual, "Options", SH_WORD_SPLIT:
+# https://zsh.sourceforge.io/Doc/Release/Options.html (retrieved 2026-10-15).
+# Whether CLAUDECODE is already set while the snapshot is generated is
+# unverified — read it back in the Bash tool: `[[ -o shwordsplit ]] && echo on`.
+[[ -n ${CLAUDECODE-} ]] && setopt SH_WORD_SPLIT
