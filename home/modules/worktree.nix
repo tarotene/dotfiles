@@ -30,10 +30,13 @@ let
   # without fetching first. Explicit allowlist rather than a directory
   # scan (ghr's ~/.ghr tree can contain many repos this host has no
   # opinion about keeping fresh) — this dotfiles checkout is the only
-  # entry today; add more paths here as the need arises.
+  # entry this public repo carries itself; further paths (private repos)
+  # come from `dotfiles.checkoutFreshness.extraPaths`
+  # (home/modules/checkout-freshness.nix), injected by the private wrapper flake.
   checkoutFreshnessPaths = [
     "${config.home.homeDirectory}/.ghr/github.com/tarotene/dotfiles"
-  ];
+  ]
+  ++ config.dotfiles.checkoutFreshness.extraPaths;
   checkoutFreshnessPath = "${config.home.homeDirectory}/.local/bin/git-checkout-freshness";
   # flock(1): Linux ships it via util-linux (already pulled in below). darwin
   # has no native flock, so pkgs.flock (discoteq/flock, a portable C

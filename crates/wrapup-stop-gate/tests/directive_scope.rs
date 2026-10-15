@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 外枠を出してよいクレート(ディレクトリ名)。
-const ALLOWED: &[&str] = &["wrapup-stop-gate"];
+const ALLOWED: &[&str] = &["wrapup-stop-gate", "esa-index"];
 
 fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = fs::read_dir(dir) else { return };

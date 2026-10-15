@@ -10,6 +10,8 @@
     ./modules/worktree.nix
     ./modules/drift.nix
     ./modules/wrapper-hub.nix
+    ./modules/esa-index.nix
+    ./modules/checkout-freshness.nix
     ./modules/apt.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
