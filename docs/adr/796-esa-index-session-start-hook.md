@@ -1,4 +1,4 @@
-# ADR-0000 — 社内 wiki のミラーの所在を SessionStart hook で注入する(esa-index)
+# ADR-796 — 社内 wiki のミラーの所在を SessionStart hook で注入する(esa-index)
 
 - Status: Accepted
 - Date: 2026-10-15

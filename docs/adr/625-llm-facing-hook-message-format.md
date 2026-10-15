@@ -146,7 +146,7 @@ gate-events(`~/.local/state/claude/gate-events.jsonl`)。取得日 2026-10-02。
 ## Amendment (2026-10-15 — esa-index を範囲に加える)
 
 新規 crate の `esa-index`(SessionStart、社内 wiki のミラーの所在・引用形式・鮮度の注入。
-`docs/claude/esa-index.md`)は `<hook-directive>` 外枠 + 英語本文で
+ADR-796 esa-index、`docs/claude/esa-index.md`)は `<hook-directive>` 外枠 + 英語本文で
 出す。元の Decision が他 hook へ展開しないとした理由は「文言依存の selftest(約 70 箇所)の
 移行コスト」で、これは既存 hook の書き換えに固有の理由である。新規 crate には書き換える
 文言が無く、当てはまらない。LLM 向け出力の形式は 1 つに揃える方が、独自接頭辞(`[esa-index]`)
