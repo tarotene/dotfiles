@@ -488,6 +488,12 @@
 #    `<hook-directive>` 形式。fetch はせず、鮮度の維持は git-checkout-freshness
 #    タイマー(dotfiles.checkoutFreshness.extraPaths)に任せる。
 #
+# 36) inbox-adjudication(個人スキル、docs/claude/inbox-adjudication.md):
+#    溜まった受信箱の処理を、既読化からでなく返信と判断の裁定から始める判断知識。
+#    未読を全件読み、返信が要るものは下書きを非公開ページにまとめて本人が裁定し、
+#    確定事項を予定と記録に反映し、フィルタにできる差出人を標準ルールに積み、
+#    受信箱の整理は最後にする。送信・削除・退会は本人の操作。事例は cases.md。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -2344,6 +2350,13 @@ in
   home.file.".claude/skills/venue-search/scripts/noah-chart.js".source =
     repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
 
+  # inbox-adjudication: 溜まった受信箱を、返信の裁定から処理する判断知識。
+  # 詳細は docs/claude/inbox-adjudication.md。
+  home.file.".claude/skills/inbox-adjudication/SKILL.md".source =
+    repoConfig + "/claude/skills/inbox-adjudication/SKILL.md";
+  home.file.".claude/skills/inbox-adjudication/cases.md".source =
+    repoConfig + "/claude/skills/inbox-adjudication/cases.md";
+
   # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
   # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
   # Copilot CLI がネイティブ読取)。上の .claude/skills/ 配下の各スキルと
@@ -2446,6 +2459,10 @@ in
   };
   home.file.".agents/skills/venue-search/scripts/noah-chart.js".source =
     repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
+  home.file.".agents/skills/inbox-adjudication/SKILL.md".source =
+    repoConfig + "/claude/skills/inbox-adjudication/SKILL.md";
+  home.file.".agents/skills/inbox-adjudication/cases.md".source =
+    repoConfig + "/claude/skills/inbox-adjudication/cases.md";
 
   # rust-repo-governance / typst-repo-governance / astro-site-governance:
   # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
