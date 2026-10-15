@@ -334,6 +334,10 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-796](adr/796-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在・
+  引用形式・鮮度を、SessionStart hook `esa-index` で注入する。ミラーのパスと対象 org は
+  private wrapper flake が option 経由で注入し、公開側は口だけを持つ。鮮度は既存の
+  `git-checkout-freshness` タイマーに任せ、出力は ADR-625 の形式。
 - [ADR-792](adr/792-free-plan-declaration.md) — 無料プランの非公開
   リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査
   (自動マージの有効化、live の branch ruleset の照合)だけを外す。宣言が実態と
