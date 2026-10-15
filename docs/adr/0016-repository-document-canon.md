@@ -206,3 +206,9 @@ Decision 4 の「英語の原文 1 本」と CJK の存在検査には、読者�
 `lang-ja-stale` で検出する。既定は変わらない。決定は ADR-805
 (`docs/adr/805-lang-ja-declaration.md`)、手順は
 `docs/claude/lang-ja-declaration.md`。
+
+### 執行点
+
+- `scripts/github-audit` — charters ドメインが `lang-ja` を読み、CJK の 2 検査を外す。`lang-ja-stale` を出す。`--selftest` に 4 ケース。
+- `crates/github-audit/src/domains/charters.rs` — Rust 版の同じ判定。
+- `crates/github-audit/tests/judges.rs` — Rust 版の `charters_lang_ja`。
