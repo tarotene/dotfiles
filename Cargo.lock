@@ -327,6 +327,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "esa-index"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "esa-mcp-launcher"
 version = "0.1.0"
 dependencies = [

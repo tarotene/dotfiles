@@ -79,7 +79,7 @@ documents", https://developers.google.com/workspace/drive/api/guides/ref-export-
 1. 一次情報源: 公式ドキュメント・upstream のソース/spec・学術文献
    (論文・既存研究)— アルゴリズム・手法など研究的性質を持つ問題では
    文献が本命
-2. 組織内の先行実装・過去議論(GitHub org、Slack、Drive)
+2. 組織内の先行実装・過去議論(GitHub org、Slack、Drive、社内 wiki — ローカルミラーがあればまずそれを grep する)
 3. 二次情報(ブログ等)は 1–2 の裏取りがある場合のみ
 
 非自明な設計判断を書くときは、判断を確認して回るのではなく成果物に

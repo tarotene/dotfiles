@@ -477,6 +477,17 @@
 #    `herdr status --json` が示す食い違い(またはその前兆)を、セッション開始時に
 #    additionalContext で先に伝える。復旧は何も実行しない。fail-open。
 #
+# 35) esa-index(SessionStart, matcher: startup|resume|compact、
+#    docs/claude/esa-index.md):
+#    エージェントが社内 wiki(esa)を見に行かなくなる問題への対処。指示文だけでは
+#    実行がモデル任せになるので、日次 mirror のローカル clone の所在・検索手順・
+#    引用形式・鮮度を additionalContext で運ぶ。発火は設定ファイル
+#    (~/.config/esa-index/config.json、home/modules/esa-index.nix が option から
+#    描画し、実値は private wrapper flake が注入する)と、cwd の origin owner が
+#    設定の org に含まれることの AND。どちらかが欠ければ無音。出力は ADR-625 の
+#    `<hook-directive>` 形式。fetch はせず、鮮度の維持は git-checkout-freshness
+#    タイマー(dotfiles.checkoutFreshness.extraPaths)に任せる。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -520,6 +531,7 @@ let
   planViewCmd = "'${hooksDir}/plan-view'";
   issueIndexCmd = "'${hooksDir}/issue-index'";
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
+  esaIndexCmd = "'${hooksDir}/esa-index'";
   signPrewarmCmd = "'${hooksDir}/sign-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   # #415 (ADR-0024 Stage 4a): pr-gate は Rust バイナリ(crates/pr-gate、
@@ -1082,6 +1094,14 @@ let
       event = "SessionStart";
       matcher = "startup|resume|compact";
       command = issueIndexCmd;
+      timeout = 10;
+    }
+    # esa-index も同じ matcher: compact では要約で所在の注入が落ちている可能性が
+    # 高く、再注入の価値が最も高い(根拠は上の issue-index と同じ)。
+    {
+      event = "SessionStart";
+      matcher = "startup|resume|compact";
+      command = esaIndexCmd;
       timeout = 10;
     }
     # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
@@ -1784,6 +1804,9 @@ in
   # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
   home.file.".claude/hooks/issue-index".source = "${pkgs.dotfiles-tools}/bin/issue-index";
 
+  # esa-index: 社内 wiki の mirror の所在・検索手順・引用形式・鮮度を SessionStart で注入する。
+  home.file.".claude/hooks/esa-index".source = "${pkgs.dotfiles-tools}/bin/esa-index";
+
   # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
   home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";
 
@@ -2022,6 +2045,7 @@ in
           --retire SessionStart ${lib.escapeShellArg legacyPrGateSessionStartCmd} \
           --register \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
+          SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg esaIndexCmd} 10 \
           SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
