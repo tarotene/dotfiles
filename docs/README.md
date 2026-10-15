@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-lang-ja-declaration.md) — 日本語が正本のリポジトリは、
+- [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、
   トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査
   (`readme-cjk-present`・`contributing-cjk-present`)だけを外す。宣言が実態と
   食い違えば `lang-ja-stale` で監査が検出する。見出しのリテラル・節の順序・
@@ -480,7 +480,7 @@ Design and rationale for the hooks and commands deployed from
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
   Claude/Codex 共通の 1 バイナリ、#415)。
-- [`lang-ja-declaration.md`](claude/lang-ja-declaration.md) — ADR-0000: 日本語が正本の
+- [`lang-ja-declaration.md`](claude/lang-ja-declaration.md) — ADR-805: 日本語が正本の
   リポジトリを、トピック `lang-ja` の宣言で CJK 検査から外す手順と、嘘になったときの
   検出(`lang-ja-stale`)。
 - [`free-plan-declaration.md`](claude/free-plan-declaration.md) — ADR-792: 無料プランの

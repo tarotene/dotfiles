@@ -146,7 +146,7 @@ H1 より上に置く**(H1 と目的 1 文の間に挟まない) — `extract_pu
 description と照合するため、URL やバージョン番号のような埋め込みピリオドを
 目的 1 文の中に書くと途中で切れて `purpose-mismatch` になる。
 
-### 日本語が正本のリポジトリ(ADR-0000)
+### 日本語が正本のリポジトリ(ADR-805)
 
 README と CONTRIBUTING の読者が日本語話者に限られ、英語の原文を読める人が
 実質的にいないリポジトリ(団体の運営など)は、日本語を正本にしてよい。
@@ -360,7 +360,7 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 サイクルトピック(`lifecycle-timeboxed` / `lifecycle-study`)を選んだ場合は
 `--add-topic` にもう 1 つ追加する(ADR-0026、`naming-*` とは独立に 0〜1 個)。
 README と CONTRIBUTING の正本言語を日本語にするなら、`--add-topic lang-ja` も
-付ける(ADR-0000)。
+付ける(ADR-805)。
 
 **新規作成の場合、続けて標準 governance を播く**(#153、
 ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `repo create` 直後に

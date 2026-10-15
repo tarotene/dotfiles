@@ -1,4 +1,4 @@
-# ADR-0000 — 日本語が正本のリポジトリは、トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査だけを外す
+# ADR-805 — 日本語が正本のリポジトリは、トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査だけを外す
 
 - Status: Accepted
 - Date: 2026-10-16

@@ -1,6 +1,6 @@
 # lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から外す
 
-設計判断の記録: `docs/adr/0000-lang-ja-declaration.md`
+設計判断の記録: `docs/adr/805-lang-ja-declaration.md`
 宣言: リポジトリのトピック `lang-ja`
 読む側: `scripts/github-audit`・`crates/github-audit`(charters ドメイン)
 付ける側: `config/claude/skills/repo-charter/SKILL.md`(charter インタビュー)
