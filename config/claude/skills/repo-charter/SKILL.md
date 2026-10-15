@@ -146,6 +146,16 @@ H1 より上に置く**(H1 と目的 1 文の間に挟まない) — `extract_pu
 description と照合するため、URL やバージョン番号のような埋め込みピリオドを
 目的 1 文の中に書くと途中で切れて `purpose-mismatch` になる。
 
+### 日本語が正本のリポジトリ(ADR-805)
+
+README と CONTRIBUTING の読者が日本語話者に限られ、英語の原文を読める人が
+実質的にいないリポジトリ(団体の運営など)は、日本語を正本にしてよい。
+見出しのリテラルは英語のまま(上の固定スキーマ)、本文を日本語で書き、
+トピック `lang-ja` を付ける(§8)。宣言があると、監査は
+`readme-cjk-present` / `contributing-cjk-present` を出さない。README を
+英語に直したのにトピックを外し忘れると `lang-ja-stale` で検出される。
+手順は `docs/claude/lang-ja-declaration.md`。
+
 ## 3. CONTRIBUTING.md への反映(ADR-0013 部分 supersede、固定スキーマは ADR-0017)
 
 CONTRIBUTING.md は GitHub が Issue/PR 作成画面で自動リンク表示する標準ファイル
@@ -349,6 +359,8 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 リポジトリの技術領域・ドメインを表す topic を最低 1 つ。手順 3 でライフ
 サイクルトピック(`lifecycle-timeboxed` / `lifecycle-study`)を選んだ場合は
 `--add-topic` にもう 1 つ追加する(ADR-0026、`naming-*` とは独立に 0〜1 個)。
+README と CONTRIBUTING の正本言語を日本語にするなら、`--add-topic lang-ja` も
+付ける(ADR-805)。
 
 **新規作成の場合、続けて標準 governance を播く**(#153、
 ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `repo create` 直後に

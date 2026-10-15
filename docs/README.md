@@ -334,6 +334,11 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、
+  トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査
+  (`readme-cjk-present`・`contributing-cjk-present`)だけを外す。宣言が実態と
+  食い違えば `lang-ja-stale` で監査が検出する。見出しのリテラル・節の順序・
+  目的文の一致は宣言があっても変わらない。
 - [ADR-795](adr/795-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在・
   引用形式・鮮度を、SessionStart hook `esa-index` で注入する。ミラーのパスと対象 org は
   private wrapper flake が option 経由で注入し、公開側は口だけを持つ。鮮度は既存の
@@ -475,6 +480,9 @@ Design and rationale for the hooks and commands deployed from
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
   Claude/Codex 共通の 1 バイナリ、#415)。
+- [`lang-ja-declaration.md`](claude/lang-ja-declaration.md) — ADR-805: 日本語が正本の
+  リポジトリを、トピック `lang-ja` の宣言で CJK 検査から外す手順と、嘘になったときの
+  検出(`lang-ja-stale`)。
 - [`free-plan-declaration.md`](claude/free-plan-declaration.md) — ADR-792: 無料プランの
   非公開リポジトリで成り立たない前提(自動マージ、live の ruleset)を、トピック
   `plan-free-private` の宣言で外す手順と、Team 切替で戻す手順。

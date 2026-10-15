@@ -170,7 +170,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                             plan_free_private,
                         )
                     }
-                    Domain::Charters => charters::judge_charters(&description, topics.len(), gql),
+                    Domain::Charters => charters::judge_charters(&description, &topics, gql),
                     Domain::Naming => naming::judge_naming(
                         repo,
                         &topics,

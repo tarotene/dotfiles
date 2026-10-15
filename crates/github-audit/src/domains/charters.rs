@@ -34,6 +34,9 @@ pub const ROOT_ALLOWLIST_EXACT: [&str; 5] = [
 /// README/CONTRIBUTING は英語原文 1 本(ADR-0016 Decision 4)なので、CJK が
 /// この下限以上あればそれだけで drift(ADR-0017)。
 pub const CJK_PRESENCE_THRESHOLD: usize = 5;
+/// README/CONTRIBUTING の正本言語が日本語であることを宣言するトピック
+/// (docs/claude/lang-ja-declaration.md)。
+pub const LANG_JA_TOPIC: &str = "lang-ja";
 
 /// bash: `extract_purpose`。最初の `# ` 見出しの後の、最初の非空段落。
 pub fn extract_purpose(readme: &str) -> String {
@@ -207,8 +210,13 @@ fn grep_line(text: &str, f: impl Fn(&str) -> bool) -> bool {
     text.split('\n').any(f)
 }
 
-/// bash: `judge_charters`。`topic_count` は `repositoryTopics` の件数。
-pub fn judge_charters(description: &str, topic_count: usize, gql: &RepoGql) -> Finding {
+/// bash: `judge_charters`。`topics` は `repositoryTopics` の名前。
+///
+/// `lang-ja`(docs/claude/lang-ja-declaration.md)が宣言されていれば、README/
+/// CONTRIBUTING の CJK を drift にしない。宣言が嘘(README に CJK が無い)なら
+/// `lang-ja-stale` を出す。
+pub fn judge_charters(description: &str, topics: &[String], gql: &RepoGql) -> Finding {
+    let lang_ja = topics.iter().any(|t| t == LANG_JA_TOPIC);
     let readme = blob_text(&gql.readme);
     let contributing = blob_text(&gql.contributing);
     let claude_md = blob_text(&gql.claude_md);
@@ -242,7 +250,11 @@ pub fn judge_charters(description: &str, topic_count: usize, gql: &RepoGql) -> F
             missing.push("litmus-not-migrated".into());
         }
         if is_cjk_present(&readme) {
-            missing.push("readme-cjk-present".into());
+            if !lang_ja {
+                missing.push("readme-cjk-present".into());
+            }
+        } else if lang_ja {
+            missing.push("lang-ja-stale".into());
         }
         missing.extend(nav_doc_scan("README.md", &readme));
     }
@@ -261,7 +273,7 @@ pub fn judge_charters(description: &str, topic_count: usize, gql: &RepoGql) -> F
         if !stray.is_empty() {
             missing.push(format!("contributing-stray-heading:{}", echo_join(&stray)));
         }
-        if is_cjk_present(&contributing) {
+        if is_cjk_present(&contributing) && !lang_ja {
             missing.push("contributing-cjk-present".into());
         }
         missing.extend(nav_doc_scan("CONTRIBUTING.md", &contributing));
@@ -270,7 +282,7 @@ pub fn judge_charters(description: &str, topic_count: usize, gql: &RepoGql) -> F
     missing.extend(nav_doc_scan("AGENTS.md", &agents_md));
     missing.extend(nav_doc_scan("CLAUDE.md", &claude_md));
 
-    if topic_count < 1 {
+    if topics.is_empty() {
         missing.push("no-topics".into());
     }
 

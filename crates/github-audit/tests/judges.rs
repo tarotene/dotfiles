@@ -4,6 +4,7 @@
 mod common;
 
 use common::Fx;
+use github_audit::domains::charters::judge_charters;
 use github_audit::domains::docs::judge_docs;
 use github_audit::domains::lifecycle::judge_lifecycle;
 use github_audit::domains::naming::{judge_naming, NamingVocab};
@@ -932,4 +933,42 @@ fn releaser_and_routines_direct() {
         Verdict::NotApplicable,
         "bash#162"
     );
+}
+
+/// `lang-ja` 宣言(docs/claude/lang-ja-declaration.md): 日本語が正本の README/
+/// CONTRIBUTING は、宣言があれば CJK の存在を drift にしない。宣言が嘘
+/// (README に CJK が無い)なら `lang-ja-stale` で検出する。
+/// bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。
+#[test]
+fn charters_lang_ja() {
+    let ja = gql(
+        r##"{"readme":{"text":"# r\n\n日本語の目的を書いた文です。\n"},"contributing":{"text":"# Contributing\n\n日本語で書いた案内です。\n"}}"##,
+    );
+    let en = gql(
+        r##"{"readme":{"text":"# r\n\nAn English purpose sentence.\n"},"contributing":{"text":"# Contributing\n\nAn English guide.\n"}}"##,
+    );
+
+    // 宣言なし → CJK は従来どおり drift。
+    let f = judge_charters("d", &s(&["automation"]), &ja);
+    assert!(
+        f.has("readme-cjk-present") && f.has("contributing-cjk-present") && !f.has("lang-ja-stale"),
+        "{f:?}"
+    );
+
+    // 宣言あり・README と CONTRIBUTING が日本語 → CJK を drift にしない。
+    let f = judge_charters("d", &s(&["automation", "lang-ja"]), &ja);
+    assert!(
+        !f.has("readme-cjk-present")
+            && !f.has("contributing-cjk-present")
+            && !f.has("lang-ja-stale"),
+        "{f:?}"
+    );
+
+    // 宣言あり・README に CJK が無い → 宣言が嘘なので stale。
+    let f = judge_charters("d", &s(&["automation", "lang-ja"]), &en);
+    assert!(f.has("lang-ja-stale"), "{f:?}");
+
+    // 宣言なし・英語 → stale は出ない。
+    let f = judge_charters("d", &s(&["automation"]), &en);
+    assert!(!f.has("lang-ja-stale"), "{f:?}");
 }
