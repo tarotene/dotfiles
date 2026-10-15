@@ -34,11 +34,15 @@ worktree-fresh-base.sh と同じ: fetch とチェックの間に何かコミッ�
 
 ## allowlist は明示リスト
 
-`home/modules/worktree.nix` の `checkoutFreshnessPaths` に列挙する。
+`home/modules/worktree.nix` の `checkoutFreshnessPaths` に列挙する。公開リポジトリが
+固定で持つのは dotfiles 自身だけで、私的なリポジトリのパスは
+`dotfiles.checkoutFreshness.extraPaths`(`home/modules/checkout-freshness.nix`)に
+private wrapper flake が注入する(ADR-0034)。
 `~/.ghr` 配下をディレクトリスキャンする設計は採らなかった — ghr の管理下には
 このホストが鮮度を保つ責務を持たない他の repo も多数あり得るため、対象を
-明示的に選ぶ方が事故が少ない。現状の唯一のエントリはこの dotfiles 自身の
-親チェックアウト(`~/.ghr/github.com/tarotene/dotfiles`)。
+明示的に選ぶ方が事故が少ない。このリポジトリが持つエントリはこの dotfiles 自身の
+親チェックアウト(`~/.ghr/github.com/tarotene/dotfiles`)だけ。社内 wiki のミラー
+(`docs/claude/esa-index.md`)の clone は option 経由で足される。
 
 ## タイマー間隔: 10 分
 
