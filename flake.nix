@@ -69,10 +69,14 @@
     # (tarotene/bleep#82: code vs data position by shell syntax structure) and
     # tarotene/bleep#86 (the body-file path is not scanned — an agent scratchpad
     # path that embeds a private project name no longer blocks a public post — and
-    # the deny reason names where the match was). Pinned to the #86 head commit;
-    # re-pin to the squash commit on main once that PR lands.
+    # the deny reason names where the match was). That bump pinned the #86 head
+    # commit. Re-pinned (2026-10-15) to bleep main d23af90, the #86 squash commit,
+    # which also carries tarotene/bleep#93: a substitution inside double quotes
+    # (`"$(… '"\(.x)"' …)"`) is no longer cut at an inner quote or operator, so a
+    # read-only `gh … --jq` with a double-quoted jq string is not rejected as an
+    # unclosed quote.
     bleep = {
-      url = "github:tarotene/bleep/bb30e960768ac446d0ed0e4e54deb6ccf091b864";
+      url = "github:tarotene/bleep/d23af90f2bef4cbeef76255abfd09c3b3a269224";
       flake = false;
     };
 
