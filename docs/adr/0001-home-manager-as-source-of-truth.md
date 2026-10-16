@@ -202,3 +202,43 @@ anything that must integrate with the system display stack directly):
 - `home/modules/desktop.nix` — `home.packages` から `(nixGLWrap
   pkgs.zoom-us)` を撤去
 - `packages/declarative/apt-packages.txt` — `flatpak` を新規エントリとして追加
+
+## Amendment (2026-10 — the same escape hatch also carries `mise`, version-capped, #823)
+
+Every new `herdr` worktree asked for `mise trust`. `mise` evaluates fine on the
+pinned stable channel, at 2026.5.12; what is missing is two upstream fixes,
+the same *version-capped* shape as the `gh` amendment above:
+
+- 2026.6.6 (jdx/mise#10360): a `mise.toml` whose `[tools]` hold only plain
+  version strings loads without trust.
+- 2026.7.5 (jdx/mise#10890): a config in a linked git worktree is trusted when
+  the same path in the main checkout is trusted.
+
+A/B measurement (2026-10-17, state directories isolated, only the main
+checkout trusted, then the worktree inspected):
+
+| mise | `mise current node` in the worktree (no tty) | `mise trust --show` in the worktree |
+|---|---|---|
+| 2026.5.12 (stable) | fails: config files are not trusted | untrusted |
+| 2026.9.18 (nixpkgs-unstable) | returns the node version | trusted |
+
+So the fix is the version, not a setting. The alternative that works on the
+old version, `trusted_config_paths = ["~/.herdr/worktrees"]` (or a
+`post-checkout` hook running `mise trust`), trusts every worktree of every
+repository, including repositories whose main checkout was never trusted.
+upstream's rule keeps trust a property of the repository; the path-wide
+setting replaces it with a coarser one.
+
+`mise` meets both properties of the herdr criterion: it is only `exec`'d
+(shell activation evals its output, never `dlopen`s it), so no
+`inputs.nixpkgs.follows`, and it shares the herdr overlay's `legacyPackages`
+instantiation. Removal criterion: stable ships mise >= 2026.7.5. Issue #823
+tracks dropping the entry.
+
+既存手段: 採用(upstream の修正をそのまま使う。自前の仕組みは足さない)。
+
+### 執行点
+
+- `flake.nix` — `herdrOverlay` に `mise` を追加
+- `home/modules/runtimes.nix` — `mise` が overlay 由来である旨のコメント
+- `docs/operations.md` — unstable の入口が `herdr` と `mise` を一緒に動かす旨

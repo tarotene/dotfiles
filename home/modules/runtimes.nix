@@ -15,6 +15,8 @@
   home.packages = with pkgs; [
     # Runtime meta-tools; their shell hooks come from the zsh modules
     # (43-dev-mise, 44-dev-uv, 45-dev-deno). Java/Go consolidate into mise.
+    # mise comes from the nixpkgs-unstable overlay (flake.nix, #823): worktree
+    # trust sharing needs >= 2026.7.5, the stable channel has 2026.5.12.
     mise
     uv
     deno
