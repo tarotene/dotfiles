@@ -65,7 +65,12 @@ esac
   printf 'agent_turn_log=%s\n' "${AGENT_TURN_LOG-unset}"
 } > "$FAKE_COPILOT_DIR/last-invocation-$lens.txt" 2>/dev/null
 printf '%s' "$prompt" > "$FAKE_COPILOT_DIR/last-prompt-$lens.txt"
-[ -e "$FAKE_COPILOT_DIR/$lens.fail" ] && exit 1
+if [ -e "$FAKE_COPILOT_DIR/$lens.fail" ]; then
+  # 実 copilot が catalog に無いモデルで返す Error: ... のように、stderr に理由を出して落ちる
+  [ -e "$FAKE_COPILOT_DIR/$lens.stderr" ] && cat "$FAKE_COPILOT_DIR/$lens.stderr" >&2
+  exit 1
+fi
+[ -e "$FAKE_COPILOT_DIR/$lens.sleep" ] && sleep 30
 if [ -e "$FAKE_COPILOT_DIR/$lens.fence" ]; then
   printf '```json\n'
   cat "$FAKE_COPILOT_DIR/$lens.json"
@@ -461,6 +466,85 @@ fn precheck_broken_stub_fails_open() {
     golden("critics_failed", &e.mask(&out));
 }
 
+/// critic が stderr に理由を出して落ちたとき、fail-open の systemMessage にその先頭行が
+/// 載る(利用不可のモデル名等が「タイムアウト・未ログイン…」に埋もれない)。
+#[test]
+fn critics_failed_surfaces_stderr_first_line() {
+    let e = Env::new();
+    e.touch_fake("M.fail");
+    // 先頭の空行と制御文字(ANSI エスケープ)は落とし、2 行目以降は載せない。
+    e.write_fake(
+        "M.stderr",
+        "\n\x1b[31mError: Model \"gpt-x\" from --model flag is not available.\x1b[0m\nsecond line\n",
+    );
+    let out = run(
+        &e,
+        "selftest-stderr",
+        &[("COPILOT_PLAN_REVIEW_PARALLEL", "0")],
+    );
+    assert_eq!(decision(&out), "none");
+    let msg = system_message(&out);
+    assert!(msg.contains("実行に失敗しました"), "{msg}");
+    assert!(
+        msg.contains(
+            "原因(copilot の stderr 先頭行): lens M: Error: Model \"gpt-x\" from --model flag is not available."
+        ),
+        "{msg}"
+    );
+    assert!(
+        !msg.contains('\x1b') && !msg.contains("second line"),
+        "{msg}"
+    );
+    assert!(!e.state("selftest-stderr.count").exists());
+    // 一時ファイルは残さない(review_dir 直下の .copilot-err.*)。
+    let leftovers: Vec<_> = fs::read_dir(&e.review)
+        .unwrap()
+        .flatten()
+        .filter(|f| f.file_name().to_string_lossy().starts_with(".copilot-"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+/// stderr が長い行でも 200 文字で切る。
+#[test]
+fn critics_failed_stderr_line_is_truncated() {
+    let e = Env::new();
+    e.touch_fake("M.fail");
+    e.write_fake("M.stderr", &format!("{}\n", "あ".repeat(500)));
+    let out = run(
+        &e,
+        "selftest-stderr-long",
+        &[("COPILOT_PLAN_REVIEW_PARALLEL", "0")],
+    );
+    let msg = system_message(&out);
+    assert!(
+        msg.contains(&format!("lens M: {}", "あ".repeat(200))),
+        "{msg}"
+    );
+    assert!(!msg.contains(&"あ".repeat(201)), "{msg}");
+}
+
+/// タイムアウトで落ちたときは、秒数を原因として載せる。
+#[test]
+fn critics_timeout_surfaces_reason() {
+    let e = Env::new();
+    e.touch_fake("M.sleep");
+    let out = run(
+        &e,
+        "selftest-timeout",
+        &[
+            ("COPILOT_PLAN_REVIEW_PARALLEL", "0"),
+            ("COPILOT_PLAN_REVIEW_TIMEOUT", "1"),
+        ],
+    );
+    let msg = system_message(&out);
+    assert!(
+        msg.contains("原因(copilot の stderr 先頭行): lens M: タイムアウト (1s)"),
+        "{msg}"
+    );
+    assert!(!e.state("selftest-timeout.count").exists());
+}
+
 /// 実 sibling(テスト対象と同じディレクトリにある plan-precedent-gate /
 /// plan-scope-gate、bash 版なら `.sh`)との統合。無ければ skip。
 #[test]
@@ -841,6 +925,32 @@ fn advisory(e: &Env, args: &[&str], extra: &[(&str, &str)]) -> (i32, String, Str
         String::from_utf8(out.stdout).unwrap(),
         String::from_utf8(out.stderr).unwrap(),
     )
+}
+
+#[test]
+fn advisory_failure_surfaces_stderr_first_line() {
+    let e = Env::new();
+    let plan = e.work.join("plan.md");
+    fs::write(&plan, "# plan\n").unwrap();
+    e.touch_fake("M.fail");
+    e.write_fake(
+        "M.stderr",
+        "Error: Model \"gpt-x\" from --model flag is not available.\n",
+    );
+    let (rc, out, err) = advisory(
+        &e,
+        &[plan.to_str().unwrap()],
+        &[
+            ("COPILOT_BIN", &e.copilot()),
+            ("COPILOT_PLAN_REVIEW_PARALLEL", "0"),
+        ],
+    );
+    assert_eq!(rc, 1);
+    assert_eq!(out, "");
+    assert_eq!(
+        err,
+        "copilot レビューの実行に失敗しました（タイムアウト・未ログイン・モデル利用不可・ネットワーク等）。\n原因(copilot の stderr 先頭行): lens M: Error: Model \"gpt-x\" from --model flag is not available.\n"
+    );
 }
 
 #[test]

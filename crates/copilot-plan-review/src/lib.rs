@@ -348,15 +348,59 @@ fn lexical(base: &Path, rel: &Path) -> PathBuf {
     out
 }
 
-/// critic を 1 本回す。終了コード 0 なら true。
+/// ANSI の CSI シーケンス(`ESC [ … 終端バイト`)と残りの制御文字を落とす。
+fn strip_terminal_escapes(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
+            chars.next();
+            for t in chars.by_ref() {
+                if ('\x40'..='\x7e').contains(&t) {
+                    break;
+                }
+            }
+        } else if !c.is_control() {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// copilot の stderr から、失敗理由として見せる先頭の非空行を取り出す。
+/// 端末へ流れる systemMessage に入るため、端末制御は落として 200 文字で切る。
+fn first_stderr_line(path: &str) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    let line = text
+        .lines()
+        .map(|l| strip_terminal_escapes(l).trim().to_string())
+        .find(|l| !l.is_empty())?;
+    Some(line.chars().take(200).collect())
+}
+
+/// critic 1 本の結果。`reason` は失敗したときだけ、見せられる原因があれば入る。
+struct CriticExit {
+    ok: bool,
+    reason: Option<String>,
+}
+
+impl CriticExit {
+    fn failed(reason: Option<String>) -> Self {
+        CriticExit { ok: false, reason }
+    }
+}
+
+/// critic を 1 本回す。終了コード 0 なら `ok`。失敗の原因は stderr の先頭行
+/// (タイムアウトなら経過秒数)として `reason` に載せる。
 fn run_critic(
     cfg: &Config,
     lens: &str,
     plan_file: &str,
     workdir: &str,
     out: &str,
+    err: Option<&str>,
     open: &[Value],
-) -> bool {
+) -> CriticExit {
     let prompt = build_prompt(lens, plan_file, open);
     let cwd0 = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let cur_dir = if Path::new(workdir).is_dir() {
@@ -364,7 +408,7 @@ fn run_critic(
     } else if Path::new(&home()).is_dir() {
         lexical(&cwd0, Path::new(&home()))
     } else {
-        return false;
+        return CriticExit::failed(None);
     };
     let plan_parent = Path::new(plan_file)
         .parent()
@@ -380,8 +424,11 @@ fn run_critic(
         }
     }
     let Ok(out_file) = File::create(out) else {
-        return false;
+        return CriticExit::failed(None);
     };
+    let err_stdio = err
+        .and_then(|p| OpenOptions::new().write(true).truncate(true).open(p).ok())
+        .map_or_else(Stdio::null, Stdio::from);
     let mut cmd = Command::new(&cfg.copilot_bin);
     cmd.current_dir(&cur_dir)
         .env("AGENT_TURN_LOG", "0")
@@ -397,18 +444,44 @@ fn run_critic(
         .args(&add_dir)
         .stdin(Stdio::null())
         .stdout(out_file)
-        .stderr(Stdio::null());
-    let Ok(mut child) = spawn_group(&mut cmd) else {
-        return false;
+        .stderr(err_stdio);
+    let mut child = match spawn_group(&mut cmd) {
+        Ok(c) => c,
+        Err(e) => return CriticExit::failed(Some(format!("copilot を起動できません: {e}"))),
     };
-    wait_with_timeout(&mut child, cfg.timeout).is_some_and(|s| s.success())
+    match wait_with_timeout(&mut child, cfg.timeout) {
+        Some(st) if st.success() => CriticExit {
+            ok: true,
+            reason: None,
+        },
+        Some(_) => CriticExit::failed(err.and_then(first_stderr_line)),
+        None => CriticExit::failed(Some(format!("タイムアウト ({}s)", cfg.timeout_raw))),
+    }
 }
 
 /// `run_critics` の結果: 成功した critic(`{lens, data}`)と失敗 lens。
+/// `reasons` は失敗 lens のうち原因(copilot の stderr 先頭行・タイムアウト)を
+/// 取れたものの `(lens, 原因)`。応答が空・不正 JSON・スキーマ不適合の lens には無い。
 #[derive(Debug, Default)]
 pub struct CriticRun {
     pub critics: Vec<Value>,
     pub failed: Vec<String>,
+    pub reasons: Vec<(String, String)>,
+}
+
+impl CriticRun {
+    /// fail-open の文言に続ける原因の行。原因が 1 件も無ければ空文字列。
+    pub fn reasons_text(&self) -> String {
+        if self.reasons.is_empty() {
+            return String::new();
+        }
+        let items: Vec<String> = self
+            .reasons
+            .iter()
+            .map(|(lens, reason)| format!("lens {lens}: {reason}"))
+            .collect();
+        format!("\n原因(copilot の stderr 先頭行): {}", items.join(" / "))
+    }
 }
 
 pub fn run_critics(
@@ -422,32 +495,35 @@ pub fn run_critics(
         .iter()
         .map(|_| mktemp(&cfg.review_dir, ".copilot-out.", ""))
         .collect();
-    let rcs: Vec<bool> = if cfg.parallel == "1" && lenses.len() > 1 {
+    let errs: Vec<Option<String>> = lenses
+        .iter()
+        .map(|_| mktemp(&cfg.review_dir, ".copilot-err.", ""))
+        .collect();
+    let exec = move |lens: &str, out: &Option<String>, err: &Option<String>| match out.as_deref() {
+        Some(o) => run_critic(cfg, lens, plan_file, workdir, o, err.as_deref(), open),
+        None => CriticExit::failed(None),
+    };
+    let exits: Vec<CriticExit> = if cfg.parallel == "1" && lenses.len() > 1 {
         std::thread::scope(|s| {
             let hs: Vec<_> = lenses
                 .iter()
-                .zip(&outs)
-                .map(|(lens, out)| {
-                    s.spawn(move || {
-                        out.as_deref()
-                            .is_some_and(|o| run_critic(cfg, lens, plan_file, workdir, o, open))
-                    })
-                })
+                .zip(outs.iter().zip(&errs))
+                .map(|(lens, (out, err))| s.spawn(move || exec(lens, out, err)))
                 .collect();
-            hs.into_iter().map(|h| h.join().unwrap_or(false)).collect()
+            hs.into_iter()
+                .map(|h| h.join().unwrap_or_else(|_| CriticExit::failed(None)))
+                .collect()
         })
     } else {
         lenses
             .iter()
-            .zip(&outs)
-            .map(|(lens, out)| {
-                out.as_deref()
-                    .is_some_and(|o| run_critic(cfg, lens, plan_file, workdir, o, open))
-            })
+            .zip(outs.iter().zip(&errs))
+            .map(|(lens, (out, err))| exec(lens, out, err))
             .collect()
     };
     let mut run = CriticRun::default();
-    for ((lens, out), ok) in lenses.iter().zip(&outs).zip(rcs) {
+    for (((lens, out), err), exit) in lenses.iter().zip(&outs).zip(&errs).zip(exits) {
+        let ok = exit.ok;
         let data = out
             .as_deref()
             .and_then(|o| fs::read_to_string(o).ok())
@@ -458,10 +534,15 @@ pub fn run_critics(
             Some(d) if ok && judge::valid_critic(&d) => {
                 run.critics.push(json!({"lens": lens, "data": d}));
             }
-            _ => run.failed.push(lens.to_string()),
+            _ => {
+                run.failed.push(lens.to_string());
+                if let Some(reason) = exit.reason {
+                    run.reasons.push((lens.to_string(), reason));
+                }
+            }
         }
-        if let Some(o) = out {
-            let _ = fs::remove_file(o);
+        for f in [out, err].into_iter().flatten() {
+            let _ = fs::remove_file(f);
         }
     }
     run
@@ -503,7 +584,7 @@ pub fn advisory(cfg: &Config, args: &[String]) -> i32 {
     };
     let run = run_critics(cfg, plan, &workdir, &[], lenses);
     if run.critics.is_empty() {
-        eprintln!("copilot レビューの実行に失敗しました（タイムアウト・未ログイン・モデル利用不可・ネットワーク等）。");
+        eprintln!("copilot レビューの実行に失敗しました（タイムアウト・未ログイン・モデル利用不可・ネットワーク等）。{}", run.reasons_text());
         return 1;
     }
     let j = judge::judge("1", &[], &cfg.gate_severities, &run.critics);
@@ -836,8 +917,9 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
     }
     if run.critics.is_empty() {
         return pass_through(&format!(
-            "Copilot プランレビュー: 実行に失敗しました（タイムアウト {}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。",
-            cfg.timeout_raw
+            "Copilot プランレビュー: 実行に失敗しました（タイムアウト {}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。{}",
+            cfg.timeout_raw,
+            run.reasons_text()
         ));
     }
     let round_s = round.to_string();
