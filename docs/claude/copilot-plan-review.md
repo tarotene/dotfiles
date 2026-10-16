@@ -310,7 +310,7 @@ read-only は「書き込まない」だけでは不十分である。リポジ�
 
 ```
 copilot -p "<prompt>" \
-  --agent plan-reviewer --model gpt-6-astra \
+  --agent plan-reviewer --model gpt-6.1-sol \
   --silent --no-custom-instructions --disable-builtin-mcps --no-ask-user \
   [--add-dir <plan file の親ディレクトリ>]
 ```
@@ -332,11 +332,24 @@ copilot -p "<prompt>" \
 
 ### モデル固定と premium request
 
-`COPILOT_PLAN_REVIEW_MODEL`(既定 `gpt-6-astra`)で固定する。調査時点(2026-09-08、
-GPT-6 Astra は同年 09-04 に Copilot CLI で GA)で critic に適する具体モデル ID を選び、
-model catalog の変更で利用不可になった場合は fail-open するが、warn として critic
-failure が記録されるのでログで気づける。過去の固定先は `gpt-5.6-sol`(#80 移行時点)
-だった。モデル追従の手順は `copilot-model-bump` スキルにまとめてある。
+`COPILOT_PLAN_REVIEW_MODEL`(既定 `gpt-6.1-sol`)で固定する。調査時点(2026-10-16)で
+critic に適する具体モデル ID を選び、model catalog の変更で利用不可になった場合は
+fail-open するが、warn として critic failure が記録されるのでログで気づける。
+過去の固定先は次のとおり。
+
+- `gpt-6-astra`(2026-09-04 GA)。2026-09-29 以降、このアカウントの Copilot CLI の
+  catalog から消え(`Model "gpt-6-astra" from --model flag is not available.`)、
+  hook は 2 週間半 fail-open のまま素通りしていた。公式の supported-models 表には
+  GA のまま載っていたので、撤退告知は無い。同時期の upstream 報告は
+  github/gh-aw#64566(2026-09-29 に catalog が 43 → 31 モデル)と
+  github/copilot-cli#4896(2026-09-17 の障害以降 Astra だけ戻らない、open)。
+- `gpt-5.6-sol`(#80 移行時点)。
+
+選定の根拠は GitHub Changelog "OpenAI's GPT-6 Sol and GPT-6 Luna now available"
+(2026-09-22)。`gpt-6.1-sol` は同系の最新 GA で、Astra と同じ Pro+ 以上の tier。
+実機の slug 確認(2026-10-16)では `gpt-6.1-sol` / `gpt-6-sol` / `gpt-6-luna` /
+`gpt-5.6-*` が通り、`gpt-6` / `gpt-6-pro` / `gpt-5.5` / `gpt-5.4` は不可だった。
+モデル追従の手順は `copilot-model-bump` スキルにまとめてある。
 
 Copilot CLI の呼び出し 1 回が premium request を 1 回消費する。ラウンド 1 は
 lens A / B の並列 2 critic なので、その回だけ 2 回分を消費する。それ以外の
@@ -371,7 +384,9 @@ GitHub Copilot CLI には Codex の `exec --output-schema` に相当する、モ
 
 pinned nixpkgs の `github-copilot-cli` は 1.0.61 だが、実機で read-only custom agent
 の非対話実行を確認したのは native install の 1.0.82 であり、1.0.83 + `gpt-6-astra`
-でも同じ引数形で再確認済み(2026-09-08)。
+でも同じ引数形で再確認済み(2026-09-08)。1.0.98 + `gpt-6.1-sol` でも、同じ引数形の
+`--advisory`(lens A / B の 2 critic)がスキーマ適合の応答を返すことを再確認した
+(2026-10-16)。
 新しい GPT モデルとの互換性を優先し、パッケージ管理(`home/modules/packages.nix` への
 追加や `nixpkgs-unstable` オーバーレイの要否検討)は本 PR の範囲に含めない。
 `copilot` バイナリが無いマシンでは ADR-0005 のバイナリ存在ゲートにより黙って
@@ -386,7 +401,7 @@ no-op になるので、導入前のホストにも安全にデプロイでき�
 |---|---|---|
 | `COPILOT_BIN` | `copilot` | バイナリ名。不在ならサイレント no-op |
 | `MAX_PLAN_REVIEWS` | `3` | セッションあたりのレビューラウンド上限。**最終ラウンドは closer（lens Z）になる**ので、発見ラウンドは `MAX-1` 本。`1` に絞った場合だけ closer 化せず従来の単発 critic に落ちる |
-| `COPILOT_PLAN_REVIEW_MODEL` | `gpt-6-astra` | critic に固定する具体モデル ID |
+| `COPILOT_PLAN_REVIEW_MODEL` | `gpt-6.1-sol` | critic に固定する具体モデル ID |
 | `COPILOT_PLAN_REVIEW_AGENT` | `plan-reviewer` | `--agent` に渡す read-only custom agent 名(`~/.copilot/agents/<name>.agent.md`) |
 | `COPILOT_PLAN_REVIEW_TIMEOUT` | `280` | critic 1 本あたりの timeout（hook 側 300s より短く保つ） |
 | `COPILOT_PLAN_REVIEW_GATE_SEVERITIES` | `BLOCKER,MAJOR` | deny を張る severity |

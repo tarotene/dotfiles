@@ -108,7 +108,7 @@ impl Config {
             gate_severities: env_or("COPILOT_PLAN_REVIEW_GATE_SEVERITIES", "BLOCKER,MAJOR"),
             parallel: env_or("COPILOT_PLAN_REVIEW_PARALLEL", "1"),
             retention_days: env_or("COPILOT_PLAN_REVIEW_RETENTION_DAYS", "30"),
-            model: env_or("COPILOT_PLAN_REVIEW_MODEL", "gpt-6-astra"),
+            model: env_or("COPILOT_PLAN_REVIEW_MODEL", "gpt-6.1-sol"),
             agent: env_or("COPILOT_PLAN_REVIEW_AGENT", "plan-reviewer"),
             precedent_bin: env_or(
                 "PLAN_PRECEDENT_GATE_BIN",

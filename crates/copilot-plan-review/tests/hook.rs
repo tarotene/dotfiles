@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ "$agent" != "${FAKE_COPILOT_EXPECT_AGENT:-plan-reviewer}" ]; then exit 98; fi
-if [ "$model" != "${FAKE_COPILOT_EXPECT_MODEL:-gpt-6-astra}" ]; then exit 97; fi
+if [ "$model" != "${FAKE_COPILOT_EXPECT_MODEL:-gpt-6.1-sol}" ]; then exit 97; fi
 if [ "$saw_silent$saw_no_custom$saw_disable_mcps$saw_no_ask_user" != "1111" ]; then exit 96; fi
 lens=M
 case "$prompt" in
@@ -729,7 +729,7 @@ fn copilot_contract() {
         &[("COPILOT_PLAN_REVIEW_PARALLEL", "0")],
     );
     assert_eq!(invocation_line(&e, 0), "agent=plan-reviewer");
-    assert_eq!(invocation_line(&e, 1), "model=gpt-6-astra");
+    assert_eq!(invocation_line(&e, 1), "model=gpt-6.1-sol");
     assert_eq!(invocation_line(&e, 2), "silent=1 custom=1 mcps=1 askuser=1");
     // plan file(REVIEW_DIR 配下)は workdir の外なので親ディレクトリだけ --add-dir
     assert!(invocation_line(&e, 3).starts_with(&format!("add_dirs={}", e.review.display())));
