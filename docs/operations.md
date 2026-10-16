@@ -206,17 +206,17 @@ Notes:
   token + `DeterminateSystems/update-flake-lock` route #3 originally
   proposed was dropped in favor of Renovate: see #3's resolution comment.
 - **`nixpkgs-unstable` moves faster than the pinned stable channel it sits
-  beside** (ADR-0001 Amendment 2026-08 for `herdr`, 2026-09 for `gh`). Bump it
+  beside** (ADR-0001 Amendment 2026-08 for `herdr`, 2026-10 for `mise`; the
+  2026-09 `gh` entry was dropped once stable caught up, #91). Bump it
   explicitly and separately when regressions land there — `nix flake update
   nixpkgs-unstable` — rather than assuming the weekly `nix flake update` sweep
-  is safe for both channels at once. This bump now moves **both** `herdr` and
-  `gh` together (same overlay entry, same input) — a `gh` regression from
-  unstable is higher-stakes than it looks, since `pr-gate` / `issue-index`
-  / `wrapup-stop-gate` all shell out to `gh` unconditionally. If either
-  package regresses after an update, roll back just that input by reverting
-  `flake.lock`'s `nixpkgs-unstable` node (or the whole generation, per the
-  rollback note above) — there is no way to roll back only one of the two
-  packages while keeping the other's update, since they share a single input.
+  is safe for both channels at once. This bump moves **both** `herdr` and
+  `mise` together (same overlay, same input). If either package regresses
+  after an update, roll back the input by reverting `flake.lock`'s
+  `nixpkgs-unstable` node (or the whole generation, per the rollback note
+  above) — there is no way to roll back only one of the two packages while
+  keeping the other's update, since they share a single input. The `mise`
+  entry is dropped once stable ships mise >= 2026.7.5 (#823).
 - `herdr`'s overlay entry also carries `patches/herdr-worktree-names.patch`
   (a personal-taste patch renaming generated worktrees after hololive
   talents instead of the built-in adjective-noun list) via `overrideAttrs`.

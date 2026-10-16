@@ -172,12 +172,23 @@
       # tarotene/dotfiles#449, 2026-09-25): the word list backs the herdr
       # sidebar's `$oshi` fan-mark feature, so dropping it would drop that
       # feature, not just revert cosmetic naming.
+      #
+      # mise rides the same overlay (ADR-0001 Amendment 2026-10, #823): the
+      # pinned stable channel ships 2026.5.12, which asks for `mise trust` in
+      # every new worktree. Two upstream fixes cure that — 2026.6.6
+      # (jdx/mise#10360: a `[tools]`-only mise.toml loads without trust) and
+      # 2026.7.5 (jdx/mise#10890: a linked worktree inherits the trust of the
+      # same path in the main checkout). Like herdr it is only ever `exec`'d,
+      # never `dlopen`'d, so no `follows`; no override, so it is a
+      # binary-cache fetch. Drop the entry once stable ships mise >= 2026.7.5
+      # (#823).
       herdrOverlay =
         system:
         (_final: _prev: {
           herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
           });
+          mise = nixpkgs-unstable.legacyPackages.${system}.mise;
         });
 
       # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024 / #391),
