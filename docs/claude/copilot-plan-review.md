@@ -334,8 +334,12 @@ copilot -p "<prompt>" \
 
 `COPILOT_PLAN_REVIEW_MODEL`(既定 `gpt-6.1-sol`)で固定する。調査時点(2026-10-16)で
 critic に適する具体モデル ID を選び、model catalog の変更で利用不可になった場合は
-fail-open するが、warn として critic failure が記録されるのでログで気づける。
-過去の固定先は次のとおり。
+fail-open する。fail-open の systemMessage(`--advisory` は stderr)には、copilot の
+stderr の先頭の非空行(端末制御を落として 200 文字まで。タイムアウトなら経過秒数)を
+`原因(copilot の stderr 先頭行): lens M: Error: Model "…" from --model flag is not
+available.` の形で載せるので、「タイムアウト・未ログイン・ネットワーク」と区別して
+気づける。応答が空・不正 JSON・スキーマ不適合で落ちた lens には stderr の理由が無いので、
+この行は付かない。過去の固定先は次のとおり。
 
 - `gpt-6-astra`(2026-09-04 GA)。2026-09-29 以降、このアカウントの Copilot CLI の
   catalog から消え(`Model "gpt-6-astra" from --model flag is not available.`)、
