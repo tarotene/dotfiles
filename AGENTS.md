@@ -41,24 +41,21 @@ never `dlopen`'d into another package's process, so a second glibc in its
 closure is harmless. (`gh`'s own version-capped escape hatch on this same
 overlay was dropped once stable shipped >= 2.99.0, see #91.)
 
-Note on `claude`: not managed via nix at all — the native installer
-(`~/.local/bin/claude`) is the source of truth on every host (ADR-457, a
-scoped exception to ADR-0001). Background auto-update is disabled by
-declaration; updates go through `claude update`, which the zsh wrapper
-(`config/zsh/modules/53-tools-claude.zsh`) follows with `claude-plan-model
-sync` so the Opus Plan Mode model pin never trails the installed binary.
+Note on `claude`: not managed via nix at all — the native installer is the
+source of truth on every host (ADR-457, a scoped exception to ADR-0001).
+Background auto-update is disabled by declaration; updates go through
+`claude update`, which the zsh wrapper follows with a sync of the Opus Plan
+Mode model pin, so the pin never trails the installed binary.
 
 Note on `codex`: same ADR-0001 scoped exception as `claude` (ADR-457
-Amendment, #531) — the native installer (`~/.local/bin/codex`) is the
-source of truth, and `~/.codex/config.toml` is not managed at all, since
-Codex itself writes hook-trust hashes, project trust, and model selection
-back into it at runtime. What home-manager *does* deploy is
-`~/.codex/AGENTS.md` (build-time merge of the shared `config/agents/
-AGENTS.md` canon with `config/codex/AGENTS.codex.md`, Codex-specific
-wiring) and hook registrations into `~/.codex/hooks.json`
-(`config/codex/hooks/`, adapters over the same decision engines Claude
-uses — see ADR-0032 Amendment). A newly registered hook needs a one-time
-manual trust via Codex's `/hooks` TUI command after `home-manager switch`.
+Amendment, #531) — the native installer is the source of truth, and Codex's
+own config file is not managed at all, since Codex itself writes hook-trust
+hashes, project trust, and model selection back into it at runtime. What
+home-manager *does* deploy is Codex's global instructions (a build-time merge
+of the shared canon with a Codex-specific file, ADR-0032) and the hook
+registrations (adapters over the same decision engines Claude uses — see
+ADR-0032 Amendment). A newly registered hook needs a one-time manual trust
+via Codex's `/hooks` TUI command after `home-manager switch`.
 
 ## Project Structure
 
