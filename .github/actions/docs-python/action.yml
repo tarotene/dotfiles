@@ -6,7 +6,8 @@ description: >-
   checkout の前提は docs-rust と同じ。
 
   `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を
-  生成する(リポジトリ側に Sphinx の設定を強要しない)。生成した conf.py は
+  生成する(リポジトリ側に Sphinx の設定を強要しない)。生成する構成には、
+  標準ライブラリの型参照を解決する intersphinx(Python 公式の目録)を含める。生成した conf.py は
   `doctest_global_setup` でパッケージを import する — sphinx.ext.doctest は
   autodoc 対象モジュールを自動 import しないため、これが無いと docstring の
   doctest が NameError で落ちる(fixture で実測)。
@@ -23,7 +24,10 @@ inputs:
     required: false
     default: ''
   python-version:
-    description: setup-python に渡すバージョン
+    description: >-
+      setup-python に渡すバージョン。既定の '3.x' は最新の Python を選ぶので、
+      pyproject.toml の requires-python が上限を持つリポジトリは、範囲に入る
+      バージョンを渡す(渡さないと `pip install -e .` が落ちる)。
     required: false
     default: '3.x'
   upload:
@@ -79,6 +83,11 @@ runs:
           name="$(basename "$pkg")"
           sphinx-apidoc --full --ext-doctest -H "$name" -A "$name" -o "$src" "$pkg"
           printf '\ndoctest_global_setup = "from %s import *"\n' "$name" >> "$src/conf.py"
+          # nitpicky(-n)は標準ライブラリの型(pathlib.Path など)も未解決参照として
+          # 警告にする。sphinx-apidoc の最小構成は intersphinx を持たないので、
+          # 型注釈に標準ライブラリの型を書いただけで strict ビルドが落ちる(2026-10-18、
+          # 実リポジトリで 42 件中 36 件がこれ)。Python 公式の目録を引いて解決する。
+          printf '\nextensions.append("sphinx.ext.intersphinx")\nintersphinx_mapping = {"python": ("https://docs.python.org/3", None)}\n' >> "$src/conf.py"
         fi
         site="$PWD/.docs-site"
         rm -rf "$site"

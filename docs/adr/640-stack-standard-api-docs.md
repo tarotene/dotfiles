@@ -220,3 +220,26 @@ D6 の「`--save-exact` で入れる」と Sphinx の `pip install "sphinx==…"
 - .github/actions/docs-typescript/package-lock.json
 - .github/actions/docs-typescript/action.yml
 - renovate.json
+
+## Amendment 2026-10-18: docs-python が生成する Sphinx の構成に、標準ライブラリの目録(intersphinx)を含める
+
+`/github-audit-triage` で Python の docs job を実リポジトリに足そうとしたところ、型注釈に
+`pathlib.Path` や `argparse.Namespace` を書いたリポジトリが、nitpicky(`-n`)の strict ビルドで
+落ちた。実測で、あるリポジトリの 42 件の警告のうち 36 件が標準ライブラリの型の未解決参照だった。
+sphinx-apidoc の最小構成は intersphinx を持たないため、docstring を直しても解消しない。
+
+決定: action が生成する `conf.py` に `sphinx.ext.intersphinx` と Python 公式の目録を足す。
+`docs/conf.py` を持つリポジトリは対象外で、従来どおりその設定を使う。サードパーティの型
+(例: 他のライブラリのクラス)は目録に無いので、リポジトリ側で参照を直すか `nitpick_ignore` を持つ。
+
+あわせて `python-version` 入力の説明に、`requires-python` が上限を持つリポジトリは範囲内の版を
+渡す旨を書いた(既定の `3.x` は最新を選び、`pip install -e .` が落ちるため)。
+
+代替案: 生成する構成で nitpicky を外す案は、未解決参照を見逃すので採らない(ADR の
+Decision が strict を要求している)。`nitpick_ignore_regex` で標準ライブラリの名前を並べる案は、
+一覧の保守が要るため、単一正本の目録を引く方を採った。
+
+### 執行点
+
+- .github/actions/docs-python/action.yml
+- tests/docs-fixtures/python/src/docs_fixture/__init__.py
