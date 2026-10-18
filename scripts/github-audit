@@ -1270,7 +1270,11 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
 
   local class='' pattern=''
   if ((${#naming_topics[@]} == 0)); then
-    missing+=("class-undeclared")
+    # An archived repository cannot have its topics rewritten
+    # (docs/repo-lifecycle.md), so a missing declaration is not demanded of it —
+    # the same reason the other domains report not-applicable for archived
+    # repositories (#278). Lifecycle candidates below are still computed.
+    [[ $is_archived == true ]] || missing+=("class-undeclared")
   elif ((${#naming_topics[@]} > 1)); then
     missing+=("class-ambiguous")
   else
@@ -1348,8 +1352,12 @@ judge_naming() { # $1=repo $2=topics-json $3=createdAt $4=species-json $5=codena
   lifecycle_candidates_json="$(printf '%s\n' "${lifecycle_candidates[@]}" | jq -R . | jq -s 'map(select(length > 0))')"
 
   if ((${#missing[@]} == 0)); then
-    jq -n --arg class "$class" --argjson lc "$lifecycle_candidates_json" \
-      '{verdict: "ok", missing: [], class: $class, lifecycle_candidates: $lc}'
+    # No class and nothing missing only happens for an archived repository
+    # with no naming-* topic (see above): not-applicable, not ok.
+    local naming_verdict=ok
+    [[ -z $class ]] && naming_verdict=not-applicable
+    jq -n --arg v "$naming_verdict" --arg class "$class" --argjson lc "$lifecycle_candidates_json" \
+      '{verdict: $v, missing: [], class: $class, lifecycle_candidates: $lc}'
   else
     local missing_json
     missing_json="$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)"
@@ -3494,6 +3502,31 @@ EOF
   jq -e '.lifecycle_candidates | index("lifecycle-timeboxed-removal-candidate") | not' \
     <<<"$(judge_naming pj-live '["naming-pj","lifecycle-timeboxed"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
     printf 'FAIL: non-archived naming-pj repo carrying the topic should not suggest removal\n' >&2
+    return 1
+  }
+
+  # Archived repositories cannot have their topics rewritten, so a missing
+  # naming-* declaration is not demanded of them: not-applicable instead of
+  # class-undeclared, with lifecycle candidates still computed. A live repo
+  # without the declaration, and an archived repo with two classes, still drift.
+  jq -e '.verdict == "not-applicable" and (.missing | length == 0)' \
+    <<<"$(judge_naming old-notes '[]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" true)" >/dev/null || {
+    printf 'FAIL: archived repo without a naming-* topic should be not-applicable, not class-undeclared\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "not-applicable" and (.lifecycle_candidates | index("lifecycle-study-candidate:study"))' \
+    <<<"$(judge_naming old-notes '[]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "My graduate school study notes" true)" >/dev/null || {
+    printf 'FAIL: archived repo without a naming-* topic should still report lifecycle candidates\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("class-undeclared"))' \
+    <<<"$(judge_naming live-tool '[]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" false)" >/dev/null || {
+    printf 'FAIL: non-archived repo without a naming-* topic should still be class-undeclared\n' >&2
+    return 1
+  }
+  jq -e '.verdict == "drifted" and (.missing | index("class-ambiguous"))' \
+    <<<"$(judge_naming old-two '["naming-pj","naming-descriptive"]' "$pre" "$species" "$registry" "$domains" "$lifespecies" "" true)" >/dev/null || {
+    printf 'FAIL: archived repo with two naming-* topics should still be class-ambiguous\n' >&2
     return 1
   }
 

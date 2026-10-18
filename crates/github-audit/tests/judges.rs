@@ -375,6 +375,54 @@ fn naming_direct() {
     );
 }
 
+/// アーカイブ済みはトピックを書き換えられないので、naming-* の宣言の欠落を
+/// 要求しない(not-applicable)。lifecycle の候補は残す。生きているリポジトリの
+/// 欠落と、アーカイブ済みでも 2 クラス宣言は従来どおり drift。
+#[test]
+fn naming_archived_without_class_is_not_applicable() {
+    let v = NamingVocab {
+        lifecycle_species: s(&["study", "research"]),
+        ..Default::default()
+    };
+    let pre = "2020-01-01T00:00:00Z";
+    let f = judge_naming("old-notes", &[], pre, &v, "", true);
+    assert!(
+        f.verdict == Verdict::NotApplicable && f.missing.is_empty(),
+        "archived + 宣言なし: {f:?}"
+    );
+    let f = judge_naming(
+        "old-notes",
+        &[],
+        pre,
+        &v,
+        "My graduate school study notes",
+        true,
+    );
+    assert!(
+        f.verdict == Verdict::NotApplicable
+            && matches!(&f.detail, Detail::Naming { lifecycle_candidates, .. }
+                if lifecycle_candidates.iter().any(|c| c.starts_with("lifecycle-study-candidate:"))),
+        "候補は残る: {f:?}"
+    );
+    let f = judge_naming("live-tool", &[], pre, &v, "", false);
+    assert!(
+        f.verdict == Verdict::Drifted && f.has("class-undeclared"),
+        "生きているリポジトリは従来どおり: {f:?}"
+    );
+    let f = judge_naming(
+        "old-two",
+        &s(&["naming-pj", "naming-descriptive"]),
+        pre,
+        &v,
+        "",
+        true,
+    );
+    assert!(
+        f.verdict == Verdict::Drifted && f.has("class-ambiguous"),
+        "2 クラス宣言は archived でも drift: {f:?}"
+    );
+}
+
 fn score(f: &Finding) -> i64 {
     match f.detail {
         Detail::Lifecycle { score } => score,
