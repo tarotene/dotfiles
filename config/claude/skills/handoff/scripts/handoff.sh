@@ -9,11 +9,12 @@
 #
 # サブコマンド:
 #   labels-missing <owner/repo>
-#     handoff:human / handoff:ai のうち、そのリポジトリに存在しないラベル名を
-#     改行区切りで stdout に出す(両方存在すれば何も出さず exit 0)。
+#     handoff:human / handoff:ai / handoff:light のうち、そのリポジトリに存在
+#     しないラベル名を改行区切りで stdout に出す(すべて存在すれば何も出さず
+#     exit 0)。
 #   create-labels <owner/repo> <label>...
-#     指定ラベル(handoff:human / handoff:ai のみ受理)を固定の色・説明で
-#     作成する(--force なので既存でも上書きして冪等)。
+#     指定ラベル(handoff:human / handoff:ai / handoff:light のみ受理)を固定の
+#     色・説明で作成する(--force なので既存でも上書きして冪等)。
 #   block <owner/repo> <blocked番号> <blocker番号>
 #     blocked 側の Issue に blocker 側を blocked_by として追加する。GitHub の
 #     issue dependencies API は issue **id**(番号ではない)を要求するため、
@@ -36,6 +37,9 @@ label_meta() { # label_meta <label名> ; 色と説明を1行ずつ出す(未知�
     handoff:ai)
       printf '%s\n%s\n' "BFD4F2" "中断ハンドオフ: 後続セッションの AI が着手できるタスク"
       ;;
+    handoff:light)
+      printf '%s\n%s\n' "FEF2C0" "中断ハンドオフ: 軽い人手タスク(1 回で完結・現地 2 時間以内・費用 3,000 円以内)"
+      ;;
     *)
       return 1
       ;;
@@ -44,7 +48,7 @@ label_meta() { # label_meta <label名> ; 色と説明を1行ずつ出す(未知�
 
 cmd_labels_missing() {
   local repo="${1:?repo required}"
-  local existing want=(handoff:human handoff:ai) w
+  local existing want=(handoff:human handoff:ai handoff:light) w
   existing="$(gh label list -R "$repo" --json name -q '.[].name' 2>/dev/null)" || {
     echo "labels-missing: gh label list に失敗しました(${repo})" >&2
     return 1
@@ -64,7 +68,7 @@ cmd_create_labels() {
   local name meta color desc
   for name in "$@"; do
     meta="$(label_meta "$name")" || {
-      echo "create-labels: 未知のラベル名です(handoff:human / handoff:ai のみ受理): ${name}" >&2
+      echo "create-labels: 未知のラベル名です(handoff:human / handoff:ai / handoff:light のみ受理): ${name}" >&2
       return 1
     }
     color="$(sed -n '1p' <<<"$meta")"
@@ -174,21 +178,24 @@ STUB
 
   rc=0
   out="$(PATH="$stub_path" bash "$self" labels-missing example/example 2>"$dir/err")" || rc=$?
-  check "両方欠落: exit 0" 0 "$rc"
-  check "両方欠落: 2行(handoff:human)" 1 "$(grep -Fc 'handoff:human' <<<"$out")"
-  check "両方欠落: 2行(handoff:ai)" 1 "$(grep -Fc 'handoff:ai' <<<"$out")"
+  check "全欠落: exit 0" 0 "$rc"
+  check "全欠落: handoff:human が出る" 1 "$(grep -Fc 'handoff:human' <<<"$out")"
+  check "全欠落: handoff:ai が出る" 1 "$(grep -Fc 'handoff:ai' <<<"$out")"
+  check "全欠落: handoff:light が出る" 1 "$(grep -Fc 'handoff:light' <<<"$out")"
 
   rc=0
   out="$(HANDOFF_STUB_LABEL_LIST_TEXT="handoff:human
 bug" PATH="$stub_path" bash "$self" labels-missing example/example 2>"$dir/err")" || rc=$?
-  check "片方存在: exit 0" 0 "$rc"
-  check "片方存在: handoff:ai だけが出る" "handoff:ai" "$out"
+  check "一部存在: exit 0" 0 "$rc"
+  check "一部存在: 欠けた handoff:ai と handoff:light だけが出る" "handoff:ai
+handoff:light" "$out"
 
   rc=0
   out="$(HANDOFF_STUB_LABEL_LIST_TEXT="handoff:human
-handoff:ai" PATH="$stub_path" bash "$self" labels-missing example/example 2>"$dir/err")" || rc=$?
-  check "両方存在: exit 0" 0 "$rc"
-  check "両方存在: 出力なし" "" "$out"
+handoff:ai
+handoff:light" PATH="$stub_path" bash "$self" labels-missing example/example 2>"$dir/err")" || rc=$?
+  check "すべて存在: exit 0" 0 "$rc"
+  check "すべて存在: 出力なし" "" "$out"
 
   rc=0
   out="$(HANDOFF_STUB_LABEL_LIST_FAIL=1 PATH="$stub_path" bash "$self" labels-missing example/example 2>"$dir/err")" || rc=$?
@@ -200,10 +207,11 @@ handoff:ai" PATH="$stub_path" bash "$self" labels-missing example/example 2>"$di
   rc=0
   : >"$dir/create.log"
   HANDOFF_STUB_LABEL_CREATE_LOG="$dir/create.log" PATH="$stub_path" \
-    bash "$self" create-labels example/example handoff:human handoff:ai 2>"$dir/err" || rc=$?
-  check "両方作成: exit 0" 0 "$rc"
+    bash "$self" create-labels example/example handoff:human handoff:ai handoff:light 2>"$dir/err" || rc=$?
+  check "全作成: exit 0" 0 "$rc"
   check_grep "handoff:human の色・説明が渡る" "C2E0C6" "$(cat "$dir/create.log")"
   check_grep "handoff:ai の色・説明が渡る" "BFD4F2" "$(cat "$dir/create.log")"
+  check_grep "handoff:light の色・説明が渡る" "FEF2C0" "$(cat "$dir/create.log")"
 
   rc=0
   out="$(PATH="$stub_path" bash "$self" create-labels example/example bug 2>"$dir/err")" || rc=$?

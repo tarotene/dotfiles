@@ -32,6 +32,10 @@ case "$1" in
       *graphql*)
         emit ISSUE_INDEX_STUB_WHO_FILE ISSUE_INDEX_STUB_WHO_RC ISSUE_INDEX_STUB_WHO_ERR 'tester'
         ;;
+      *"handoff:human"*)
+        emit ISSUE_INDEX_STUB_HUMAN_FILE ISSUE_INDEX_STUB_HUMAN_RC ISSUE_INDEX_STUB_HUMAN_ERR \
+          '{"total_count":0,"incomplete_results":false,"items":[]}'
+        ;;
       *"assignee:@me"*)
         emit ISSUE_INDEX_STUB_MINE_FILE ISSUE_INDEX_STUB_MINE_RC ISSUE_INDEX_STUB_MINE_ERR \
           '{"total_count":0,"incomplete_results":false,"items":[]}'
@@ -247,6 +251,7 @@ fn all12() -> Value {
 const MINE: &str = "ISSUE_INDEX_STUB_MINE_FILE";
 const ALL: &str = "ISSUE_INDEX_STUB_ALL_FILE";
 const HANDOFF: &str = "ISSUE_INDEX_STUB_HANDOFF_FILE";
+const HUMAN: &str = "ISSUE_INDEX_STUB_HUMAN_FILE";
 
 #[test]
 fn out_of_scope_is_silent() {
@@ -579,6 +584,96 @@ fn handoff_ai_section() {
         "@me 枠自体も出続ける"
     );
     snap("handoff-with-mine", &o);
+}
+
+#[test]
+fn handoff_human_section() {
+    let fx = Fx::new();
+    // viewer(スタブの既定 "tester")と同じ owner のリポジトリ。
+    let repo = fx.repo("repo", Some("https://github.com/tester/example.git"));
+    let other = fx.repo("other", Some("https://github.com/example/example.git"));
+    let zero = fx.json("zero.json", &zero());
+    let all12 = fx.json("all12of12.json", &all12());
+    let mixed = fx.json(
+        "human-mixed.json",
+        &json!({"total_count":3,"incomplete_results":false,"items":[
+            {"number":7,"title":"着手可能な人手タスク",
+             "repository_url":"https://api.github.com/repos/tester/lab",
+             "issue_dependencies_summary":{"blocked_by":0}},
+            {"number":8,"title":"blocker 未 close の人手タスク",
+             "repository_url":"https://api.github.com/repos/tester/lab",
+             "issue_dependencies_summary":{"blocked_by":1}},
+            {"number":9,"title":"別リポジトリの人手タスク",
+             "repository_url":"https://api.github.com/repos/tester/other",
+             "issue_dependencies_summary":{"blocked_by":0}}
+        ]}),
+    );
+    let nosummary = fx.json(
+        "human-nosummary.json",
+        &json!({"total_count":1,"incomplete_results":false,
+            "items":[{"number":10,"title":"summary フィールド無し",
+                      "repository_url":"https://api.github.com/repos/tester/lab"}]}),
+    );
+    let section = "着手可能な軽い人手タスク";
+
+    let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &all12), (HUMAN, &mixed)]);
+    let ctx = o.ctx();
+    assert_eq!(count(&ctx, "tester/lab#7 着手可能な人手タスク"), 1);
+    assert_eq!(
+        count(&ctx, "tester/other#9 別リポジトリの人手タスク"),
+        1,
+        "作業中の repo と別の repo の Issue も出る"
+    );
+    assert_eq!(
+        count(&ctx, "blocker 未 close の人手タスク"),
+        0,
+        "blocked_by が 1 以上は出さない"
+    );
+    assert_eq!(count(&ctx, section), 1);
+    snap("handoff-human-mixed", &o);
+
+    let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &all12)]);
+    assert_eq!(count(&o.ctx(), section), 0, "0件: 節ごと沈黙");
+
+    let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &all12), (HUMAN, &nosummary)]);
+    assert_eq!(
+        count(&o.ctx(), "summary フィールド無し"),
+        0,
+        "summary 欠落: fail-closed"
+    );
+
+    let o = fx.run_stub(
+        &repo,
+        &[
+            (MINE, &zero),
+            (ALL, &all12),
+            ("ISSUE_INDEX_STUB_HUMAN_RC", Path::new("1")),
+        ],
+    );
+    assert_eq!(o.code, 0, "人手タスクの検索失敗でも注入は成功する");
+    assert_eq!(count(&o.ctx(), section), 0);
+
+    let o = fx.run_stub(&other, &[(MINE, &zero), (ALL, &all12), (HUMAN, &mixed)]);
+    assert_eq!(
+        count(&o.ctx(), section),
+        0,
+        "owner が viewer と別(会社など): 個人の予定に流さない"
+    );
+
+    let o = fx.run_stub(
+        &repo,
+        &[
+            (MINE, &zero),
+            (ALL, &all12),
+            (HUMAN, &mixed),
+            ("ISSUE_INDEX_STUB_WHO_RC", Path::new("1")),
+        ],
+    );
+    assert_eq!(
+        count(&o.ctx(), section),
+        0,
+        "viewer が不明: owner と照合できないので出さない"
+    );
 }
 
 #[test]
