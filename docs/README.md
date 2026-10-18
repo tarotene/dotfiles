@@ -334,6 +334,12 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスク(1 回で完結・
+  現地の作業が 2 時間以内・費用 3,000 円以内・取り消せない確定操作を含まない)は、
+  閉じたラベル `handoff:light` で宣言し、issue-index が owner 全体の検索で着手可能な
+  ものを SessionStart に出す。見えたセッションは `handoff` スキル §7 で、その日の
+  うちに予定化する。cwd の owner が viewer 自身のときだけ使い、会社など別 owner の
+  セッションには出さない。
 - [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、
   トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査
   (`readme-cjk-present`・`contributing-cjk-present`)だけを外す。宣言が実態と
