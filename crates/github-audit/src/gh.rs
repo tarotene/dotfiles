@@ -171,9 +171,27 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
     /// bash: `fetch_repo_settings` の生 JSON。squash_merge_commit_title 等は
     /// REST にしか無い(GraphQL の Repository 型に無い、2026-09-22 確認)。
     /// 失敗は `{}`(drift 側に倒れる)、JSON として読めない出力は null。
+    ///
+    /// 非公開リポジトリの repo オブジェクトは `security_and_analysis` を含まない
+    /// ので、Dependabot の状態が無いときは専用 endpoint
+    /// (`GET repos/O/R/automated-security-fixes` → `{"enabled": bool}`)に
+    /// 引き直し、答えを `status` へ畳み込む(bash 版 #678)。引き直しも失敗
+    /// したら欠落のまま残し、drift 側に倒す。
     pub fn fetch_repo_settings_raw(&self, repo: &str) -> Value {
-        let out = self.quiet_or(&["api", &self.repo_path(repo, "")], "{}");
-        serde_json::from_str(&out).unwrap_or(Value::Null)
+        let r = self.run(&["api", &self.repo_path(repo, "")], false);
+        let ok = r.ok;
+        let out = if ok { r.stdout } else { r.stdout + "{}" };
+        let mut rest: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
+        if ok && rest.is_object() && !has_dependabot_status(&rest) {
+            let sec = self.quiet_or(
+                &["api", &self.repo_path(repo, "/automated-security-fixes")],
+                "",
+            );
+            if let Some(status) = dependabot_status_from_endpoint(&sec) {
+                set_dependabot_status(&mut rest, status);
+            }
+        }
+        rest
     }
 
     /// bash: `fetch_repo_settings`(判定に使うフィールドだけの型)。
@@ -373,6 +391,42 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
         }
         Ok(merged)
     }
+}
+
+/// bash: `jq -e '.security_and_analysis.dependabot_security_updates.status'`。
+fn has_dependabot_status(rest: &Value) -> bool {
+    rest.pointer("/security_and_analysis/dependabot_security_updates/status")
+        .and_then(Value::as_str)
+        .is_some()
+}
+
+/// `automated-security-fixes` endpoint の応答 `{"enabled": bool}` を、repo
+/// オブジェクトと同じ語彙(`enabled` / `disabled`)に直す。boolean でなければ None。
+fn dependabot_status_from_endpoint(out: &str) -> Option<&'static str> {
+    let v: Value = serde_json::from_str(out).ok()?;
+    match v.get("enabled")?.as_bool()? {
+        true => Some("enabled"),
+        false => Some("disabled"),
+    }
+}
+
+/// `.security_and_analysis.dependabot_security_updates.status = $s`(途中の
+/// オブジェクトが無ければ作り、兄弟のキーは残す)。
+fn set_dependabot_status(rest: &mut Value, status: &str) {
+    let Some(root) = rest.as_object_mut() else {
+        return;
+    };
+    let mut cur = root;
+    for key in ["security_and_analysis", "dependabot_security_updates"] {
+        let entry = cur
+            .entry(key)
+            .or_insert_with(|| Value::Object(Default::default()));
+        if !entry.is_object() {
+            *entry = Value::Object(Default::default());
+        }
+        cur = entry.as_object_mut().expect("just made an object");
+    }
+    cur.insert("status".into(), Value::String(status.into()));
 }
 
 fn parse_strings(out: &str) -> Vec<String> {

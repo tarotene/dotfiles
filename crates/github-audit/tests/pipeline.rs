@@ -436,3 +436,58 @@ fn list_failure_aborts() {
     );
     assert!(!fx.p("state/ledger.json").exists());
 }
+
+/// #678 / #793 / #806: 非公開リポジトリの repo オブジェクトは
+/// `security_and_analysis` を含まない。Dependabot の状態は専用 endpoint
+/// (`automated-security-fixes`)から引き直す。bash 版 selftest の
+/// `fetch_repo_settings` の 4 ケース(private-off / private-on /
+/// private-unreadable / public-on)と対にする。
+#[test]
+fn fetch_repo_settings_folds_automated_security_fixes() {
+    let fx = Fx::new();
+    let stub = fx.p("bin/gh-settings-stub");
+    write_exec(
+        &stub,
+        r#"#!/usr/bin/env bash
+case "$2" in
+  repos/tarotene/private-off/automated-security-fixes) printf '{"enabled":false,"paused":false}' ;;
+  repos/tarotene/private-on/automated-security-fixes) printf '{"enabled":true,"paused":false}' ;;
+  repos/tarotene/private-unreadable/automated-security-fixes) exit 1 ;;
+  repos/tarotene/public-on) printf '{"allow_auto_merge":true,"security_and_analysis":{"dependabot_security_updates":{"status":"enabled"}}}' ;;
+  repos/tarotene/private-*) printf '{"allow_auto_merge":true}' ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    let gh = github_audit::Gh::new(stub.to_str().unwrap(), "tarotene");
+    let status = |repo: &str| {
+        gh.fetch_repo_settings(repo)
+            .dependabot_security_updates_status
+    };
+
+    assert_eq!(
+        status("private-off").as_deref(),
+        Some("disabled"),
+        "private で enabled=false は disabled に畳む"
+    );
+    assert_eq!(
+        status("private-on").as_deref(),
+        Some("enabled"),
+        "private で enabled=true は enabled に畳む"
+    );
+    assert_eq!(
+        status("private-unreadable"),
+        None,
+        "endpoint も読めなければ欠落のまま(drift 側に倒す)"
+    );
+    assert_eq!(
+        status("public-on").as_deref(),
+        Some("enabled"),
+        "repo オブジェクトに status があれば引き直さない"
+    );
+    // 兄弟のキーを壊さない。
+    assert_eq!(
+        gh.fetch_repo_settings("private-off").allow_auto_merge,
+        Some(true)
+    );
+}
