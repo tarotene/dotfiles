@@ -66,6 +66,10 @@ pub fn judge_naming(
 
     let mut class = String::new();
     match naming_topics.len() {
+        // アーカイブ済みはトピックを書き換えられない(docs/repo-lifecycle.md)ので、
+        // 宣言の欠落を要求しない。他 5 ドメインが archived を not-applicable に
+        // するのと同じ理由(docs/github-audit.md、Issue 278)。
+        0 if is_archived => {}
         0 => missing.push("class-undeclared".into()),
         1 => {
             class = naming_topics[0].clone();
@@ -129,10 +133,14 @@ pub fn judge_naming(
     }
 
     Finding {
-        verdict: if missing.is_empty() {
-            Verdict::Ok
-        } else {
+        verdict: if !missing.is_empty() {
             Verdict::Drifted
+        } else if class.is_empty() {
+            // アーカイブ済みで宣言が無い(上の `0 if is_archived`)。ok とも
+            // drifted とも言わず、lifecycle の候補だけ残す。
+            Verdict::NotApplicable
+        } else {
+            Verdict::Ok
         },
         missing,
         detail: Detail::Naming {

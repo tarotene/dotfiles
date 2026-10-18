@@ -334,6 +334,11 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-0000](adr/0000-archived-naming-not-applicable.md) — アーカイブ済みの
+  リポジトリには、naming の宣言の欠落(`class-undeclared`)を要求せず
+  `not-applicable` にする。アーカイブするとトピックを書き換えられず、
+  直す手段が状態の往復しか無いため。`lifecycle-*` の候補検出と、
+  2 クラス宣言・パターン不一致の検査は変えない。
 - [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスク(1 回で完結・
   現地の作業が 2 時間以内・費用 3,000 円以内・取り消せない確定操作を含まない)は、
   閉じたラベル `handoff:light` で宣言し、issue-index が owner 全体の検索で着手可能な
