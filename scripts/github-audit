@@ -588,6 +588,24 @@ default_branch_rulesets() {
   printf '%s' "$arr"
 }
 
+# #816: is every key the declaration ($1) writes present in live ($2) with an
+# equal value? Objects: recursive over the declaration's keys (keys only live has
+# are ignored). Arrays: same length, element-wise. Anything else: equal. GitHub
+# fills rule parameters the declaration omits with server-side defaults
+# (e.g. pull_request's require_extra_approval_for_unattributed_changes), so
+# equality would report a freshly applied declaration as drifted.
+declared_subset_of_live() { # $1=declaration(json) $2=live(json) -> exit 0 if subset
+  jq -n -e --argjson d "$1" --argjson l "$2" '
+    def sub($l; $d):
+      if ($d | type) == "object" and ($l | type) == "object" then
+        $d | to_entries | all(.key as $k | .value as $dv | ($l | has($k)) and sub($l[$k]; $dv))
+      elif ($d | type) == "array" and ($l | type) == "array" then
+        ($d | length) == ($l | length)
+        and ([range(0; $d | length)] | all(. as $i | sub($l[$i]; $d[$i])))
+      else $l == $d end;
+    sub($l; $d)' >/dev/null 2>&1
+}
+
 judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optional) $4=job_names(json array,optional) $5=plan_free_private(true/false,optional) -> one JSON finding object (no repo/language wrapper)
   local repo="$1" has_workflows="${2:-true}" plan_free_private="${5:-false}"
   # NB: "${3:-{}}" mis-parses in bash — the parameter expansion closes at
@@ -725,9 +743,10 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
   # are normalized to {name,target,enforcement,conditions,bypass_actors,
   # rules:(rules sorted by type)} before comparing — live carries extra
   # server-assigned fields (id, source, created_at, ...) that a
-  # hand-written declaration never has. This normalization is coarse and
-  # may need tuning after the first real-account audit (GitHub fills some
-  # rule parameters with defaults server-side that a declaration omits).
+  # hand-written declaration never has. GitHub also fills rule parameters the
+  # declaration omits with server-side defaults, so the comparison is "every
+  # key the declaration writes is present in live with an equal value"
+  # (declared_subset_of_live, #816), not equality.
   if [[ $has_declaration == true ]]; then
     local decl_name decl_field decl_text live_detail norm_decl norm_live
     for decl_name in Security Quality Workflow Review; do
@@ -749,7 +768,7 @@ judge_rulesets() { # $1=repo $2=has_workflows(true/false) $3=repo_gql(json,optio
         continue
       fi
       norm_live="$(jq -c '{name,target,enforcement,conditions,bypass_actors,rules:(.rules|sort_by(.type))}' <<<"$live_detail")"
-      [[ "$(jq -S -c . <<<"$norm_decl")" == "$(jq -S -c . <<<"$norm_live")" ]] ||
+      declared_subset_of_live "$norm_decl" "$norm_live" ||
         missing+=("rulesets-declaration-drift:${decl_name}")
     done
   fi
@@ -3210,6 +3229,39 @@ EOF
     <<<"$(judge_rulesets ruleset-decl-test true "$decl_ok")" >/dev/null || {
     printf 'FAIL: judge_rulesets should NOT report drift when declared == live (normalized): %s\n' \
       "$(judge_rulesets ruleset-decl-test true "$decl_ok")" >&2
+    return 1
+  }
+
+  # #816: the declaration is compared as a subset of live. A live rule that
+  # carries parameters the declaration never wrote (GitHub's server-side
+  # defaults) is not drift; a declaration that writes a key live lacks, or a
+  # different rule-type set, still is.
+  local quality_silent_text quality_extra_text quality_norules_text decl_silent decl_extra decl_norules
+  quality_silent_text='{"name":"Quality","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{}}],"bypass_actors":[]}'
+  quality_extra_text='{"name":"Quality","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI"},{"context":"Ghost"}],"strict_required_status_checks_policy":true}}],"bypass_actors":[]}'
+  quality_norules_text='{"name":"Quality","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[],"bypass_actors":[]}'
+  decl_silent="$(jq -n -c --arg q "$quality_silent_text" \
+    '{declSecurity: {text: "{}"}, declQuality: {text: $q}, declWorkflow: {text: "{}"}}')"
+  decl_extra="$(jq -n -c --arg q "$quality_extra_text" \
+    '{declSecurity: {text: "{}"}, declQuality: {text: $q}, declWorkflow: {text: "{}"}}')"
+  decl_norules="$(jq -n -c --arg q "$quality_norules_text" \
+    '{declSecurity: {text: "{}"}, declQuality: {text: $q}, declWorkflow: {text: "{}"}}')"
+  jq -e '.missing | index("rulesets-declaration-drift:Quality") | not' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_silent")" >/dev/null || {
+    printf 'FAIL: judge_rulesets should NOT report drift when live only adds keys the declaration omits (#816): %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_silent")" >&2
+    return 1
+  }
+  jq -e '.missing | index("rulesets-declaration-drift:Quality")' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_extra")" >/dev/null || {
+    printf 'FAIL: judge_rulesets should report drift when the declaration writes a key live lacks (#816): %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_extra")" >&2
+    return 1
+  }
+  jq -e '.missing | index("rulesets-declaration-drift:Quality")' \
+    <<<"$(judge_rulesets ruleset-decl-test true "$decl_norules")" >/dev/null || {
+    printf 'FAIL: judge_rulesets should report drift when the rule-type set differs (#816): %s\n' \
+      "$(judge_rulesets ruleset-decl-test true "$decl_norules")" >&2
     return 1
   }
 

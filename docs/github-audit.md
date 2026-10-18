@@ -204,10 +204,16 @@ repository), the rulesets domain can machine-judge three more things:
   <repo> --reconcile` once the declaration change has merged. Add
   `--dry-run` first to see the required-context difference between the
   declaration and the live ruleset (`-` only live, `+` only declared) instead
-  of just `would PUT` (#744). This
-  normalization is coarse — GitHub fills some rule parameters with
-  server-side defaults a hand-written declaration omits — and may need
-  tuning as real-account audits surface false positives.
+  of just `would PUT` (#744). The comparison is "the declaration is a subset of
+  live" (#816), not equality: every key the declaration writes must be present
+  in live with an equal value, and keys only live has are ignored. GitHub fills
+  rule parameters a hand-written declaration omits with server-side defaults
+  (a freshly applied `pull_request` rule came back with
+  `require_extra_approval_for_unattributed_changes: true`, observed
+  2026-10-16), so equality reported correct declarations as drifted. Arrays are
+  compared element-wise at the same length, so the set of rule types and the
+  list of required status checks stay exact. The cost: a hand edit to a live key
+  the declaration never wrote is not detected.
 - `required-context-unreportable:<context>` — a live required_status_checks
   context that no job actually reported on the repository's most recent
   PR's head commit (the same "#337 permanently Expected" failure mode

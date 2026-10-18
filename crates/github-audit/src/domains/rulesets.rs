@@ -89,6 +89,29 @@ fn normalize(v: &Value) -> Option<Value> {
     Some(Value::Object(out))
 }
 
+/// 宣言(`decl`)が live の部分集合か(#816)。
+///
+/// GitHub は宣言が省略したパラメータをサーバ側の既定値で埋める
+/// (例: `pull_request` の `require_extra_approval_for_unattributed_changes`)。
+/// 宣言に既定値を複写して追従する代わりに、宣言が書いたキーだけを比べる。
+///
+/// - オブジェクト: 宣言の全キーが live にあり、値が再帰的に部分集合であること。
+///   live にだけあるキーは見ない。
+/// - 配列: 長さが同じで、要素ごとに部分集合であること(規則の型の集合や
+///   `required_status_checks` の件数は厳密なまま)。
+/// - それ以外: 等しいこと。
+fn is_declared_subset(live: &Value, decl: &Value) -> bool {
+    match (live, decl) {
+        (Value::Object(l), Value::Object(d)) => d
+            .iter()
+            .all(|(k, dv)| l.get(k).is_some_and(|lv| is_declared_subset(lv, dv))),
+        (Value::Array(l), Value::Array(d)) => {
+            l.len() == d.len() && l.iter().zip(d).all(|(lv, dv)| is_declared_subset(lv, dv))
+        }
+        _ => live == decl,
+    }
+}
+
 /// bash: `judge_rulesets`。
 ///
 /// - `has_workflows`: `.github/workflows` の有無。無ければ
@@ -284,8 +307,9 @@ pub fn judge_rulesets_with(
     // ADR-503: 宣言と live の差分(Security/Quality/Workflow/Review の名前ごと)。
     // 両側を {name,target,enforcement,conditions,bypass_actors,rules(type 順)}
     // に正規化して比べる — live にはサーバ側の付加フィールド(id, source,
-    // created_at, ...)がある。粗い正規化なので、実アカウント監査で偽陽性が
-    // 出れば調整が要る(GitHub が宣言の省略したパラメータを既定値で埋める)。
+    // created_at, ...)がある。GitHub は宣言が省略したパラメータを既定値で
+    // 埋めるので、等価ではなく「宣言が書いたキーが live に含まれるか」で
+    // 比べる(`is_declared_subset`、#816)。
     if has_declaration {
         for (decl_name, blob) in [
             ("Security", &repo_gql.decl_security),
@@ -316,7 +340,7 @@ pub fn judge_rulesets_with(
             };
             // bash 版では live の正規化が jq エラーになると監査全体が落ちた
             // (set -e)。ここでは drift として数える。
-            if normalize(live).as_ref() != Some(&norm_decl) {
+            if !normalize(live).is_some_and(|l| is_declared_subset(&l, &norm_decl)) {
                 missing.push(drift);
             }
         }

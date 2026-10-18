@@ -81,6 +81,37 @@ fn rulesets_direct() {
         "bash#53: {f:?}"
     );
 
+    // #816: 宣言は live の部分集合として比べる。宣言が書かなかったキーを live が
+    // 持っていても(サーバ側の既定値)drift ではない。宣言が書いたキーを live が
+    // 持たない、または規則の型の集合が違うなら drift。
+    let quality_with = |rules: Value| {
+        json!({"name":"Quality","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":rules,"bypass_actors":[]}).to_string()
+    };
+    let silent = decl(quality_with(
+        json!([{"type":"required_status_checks","parameters":{}}]),
+    ));
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &silent, &[], false);
+    assert!(
+        !f.has("rulesets-declaration-drift:Quality"),
+        "#816 live だけが持つキーは drift でない: {f:?}"
+    );
+    let extra = decl(quality_with(
+        json!([{"type":"required_status_checks","parameters":{
+        "required_status_checks":[{"context":"CI"},{"context":"Ghost"}],
+        "strict_required_status_checks_policy":true}}]),
+    ));
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &extra, &[], false);
+    assert!(
+        f.has("rulesets-declaration-drift:Quality"),
+        "#816 宣言が書いたキーを live が持たなければ drift: {f:?}"
+    );
+    let norules = decl(quality_with(json!([])));
+    let f = judge_rulesets(&gh, "ruleset-decl-test", true, &norules, &[], false);
+    assert!(
+        f.has("rulesets-declaration-drift:Quality"),
+        "#816 規則の型の集合が違えば drift: {f:?}"
+    );
+
     // live は CI と Ghost を要求、報告されるのは CI だけ → Ghost が報告不能。
     let f = judge_rulesets(&gh, "ruleset-decl-test", true, &ok, &s(&["CI"]), false);
     assert!(
