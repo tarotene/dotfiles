@@ -749,10 +749,11 @@ fn hook_mcp_update_pull() {
     );
 }
 
-/// 台帳の保存形式は bash 版と互換(`<dir>/state/<sid>.chain` に 1 行 1 ブランチ)。
-/// bash 版が書いた既存の台帳をそのまま読める。
+/// 台帳は `<dir>/state/<sid>.chain` に 1 行 1 記録。新しい記録は `owner/repo:branch`
+/// だが、区切りの無い旧形式の行(bash 版が書いたもの)もそのまま読める(リポジトリ
+/// 不明なので、どのリポジトリにも一致するとみなす)。
 #[test]
-fn ledger_format_is_bash_compatible() {
+fn ledger_reads_legacy_unqualified_rows() {
     let fx = Fx::new();
     fx.reset_state();
     let state = fx.state_root().join("state");
@@ -777,6 +778,59 @@ fn ledger_format_is_bash_compatible() {
     assert!(r.passed(), "{}", r.stdout);
     assert_eq!(
         std::fs::read_to_string(state.join("selftest-sid.chain")).unwrap(),
-        "stage1\nunrelated\n"
+        "stage1\nexample/example:unrelated\n"
     );
+}
+
+/// 複数リポジトリを並行して直すセッションでは、別リポジトリに同名のブランチが
+/// ある。その記録が対象リポジトリの open PR と名前で一致しても、「直前の段」に
+/// してはいけない(記録は `owner/repo:branch`、判定は対象リポジトリの行だけ)。
+#[test]
+fn chain_ignores_same_named_branch_of_another_repo() {
+    let fx = Fx::new();
+    fx.reset_state();
+    let state = fx.state_root().join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    // 別リポジトリで作った PR の head が `stage1`。このリポジトリにも open PR
+    // `stage1` があるが、この記録とは無関係。
+    std::fs::write(state.join("selftest-sid.chain"), "other/repo:stage1\n").unwrap();
+    fx.switch("unrelated");
+    let r = fx.decide(
+        "prs-stage1-only.json",
+        "gh pr create --base main --title t --body b",
+        &fx.repo,
+        &[],
+    );
+    assert!(
+        r.passed(),
+        "別リポジトリの記録で deny してはいけない: {}",
+        r.stdout
+    );
+    assert_eq!(
+        std::fs::read_to_string(state.join("selftest-sid.chain")).unwrap(),
+        "other/repo:stage1\nexample/example:unrelated\n"
+    );
+}
+
+/// 同じリポジトリの記録は従来どおり「直前の段」になる。
+#[test]
+fn chain_uses_own_repo_records() {
+    let fx = Fx::new();
+    fx.reset_state();
+    let state = fx.state_root().join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    std::fs::write(
+        state.join("selftest-sid.chain"),
+        "other/repo:unrelated\nexample/example:stage1\n",
+    )
+    .unwrap();
+    fx.switch("unrelated");
+    let r = fx.decide(
+        "prs-stage1-only.json",
+        "gh pr create --base main --title t --body b",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.denied(), "{}", r.stdout);
+    assert!(r.stdout.contains("PR(stage1)"), "{}", r.stdout);
 }

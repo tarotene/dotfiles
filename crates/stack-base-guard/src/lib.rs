@@ -384,6 +384,18 @@ fn open_prs(nwo: &str) -> Option<String> {
 // 判定本体
 // ---------------------------------------------------------------------------
 
+/// 台帳の 1 行 `owner/repo:branch` の区切り(ブランチ名に `:` は使えない)。
+const CHAIN_SEP: char = ':';
+
+/// 台帳の 1 行から、`nwo` のリポジトリのブランチ名を取り出す。別リポジトリの行は
+/// None、区切りの無い行(リポジトリ不明の旧形式)はそのままブランチ名として返す。
+fn chain_branch_for(record: &str, nwo: &str) -> Option<String> {
+    match record.split_once(CHAIN_SEP) {
+        Some((repo, branch)) => (repo == nwo).then(|| branch.to_string()),
+        None => Some(record.to_string()),
+    }
+}
+
 /// セッション状態(bash の `STACK_BASE_GUARD_DIR` / `SESSION_ID`)。
 #[derive(Debug, Clone)]
 pub struct Guard {
@@ -430,11 +442,18 @@ impl Guard {
 
     /// 楽観的にセッション状態へ追記する(pass した head を記録)。失敗しても
     /// 致命的ではない(次回の判定は state 無しとして扱われるだけ)。
-    fn record_chain_head(&self, branch: &str) {
+    ///
+    /// 記録は `owner/repo:branch`。ブランチ名だけだと、別リポジトリの同名
+    /// ブランチ(複数リポジトリを並行して直すセッションで `chore/foo` が重なる)が
+    /// 対象リポジトリの open PR と照合で一致し、「直前の段」を取り違える。
+    /// git のブランチ名に `:` は使えないので、区切りは曖昧にならない。
+    fn record_chain_head(&self, nwo: &str, branch: &str) {
         if branch.is_empty() {
             return;
         }
-        let _ = self.ledger().append(self.sid(), branch);
+        let _ = self
+            .ledger()
+            .append(self.sid(), &format!("{nwo}{CHAIN_SEP}{branch}"));
     }
 
     /// bash の `decide_stack`: コマンド文字列全体から `gh pr create|edit` の
@@ -491,16 +510,17 @@ impl Guard {
                     "HEAD は open PR #{parent_num}({parent_head})のコミットを含んでいます。base を {declared_base} にすると先行 PR の差分がこの PR に混入します。`gh pr create --base {parent_head}` で作成してください。この積み方は依存の有無によらず常時とります(ADR-0027)。"
                 ));
             }
-            self.record_chain_head(&head_branch);
+            self.record_chain_head(nwo, &head_branch);
             return None;
         }
 
         // --- 層(ii): セッション内チェーン状態 ---
-        self.judge_session_chain(prs, &head_branch, &declared_base, f)
+        self.judge_session_chain(nwo, prs, &head_branch, &declared_base, f)
     }
 
     fn judge_session_chain(
         &self,
+        nwo: &str,
         prs: &str,
         head_branch: &str,
         declared_base: &str,
@@ -508,22 +528,25 @@ impl Guard {
     ) -> Option<String> {
         let ledger = self.ledger();
         if !ledger.path(self.sid()).is_file() {
-            self.record_chain_head(head_branch);
+            self.record_chain_head(nwo, head_branch);
             return None; // このセッションでの初回 PR -> 通す
         }
 
+        // 対象リポジトリの記録だけを読む。区切りの無い行は、この記録形式より前に
+        // 書かれたもの(リポジトリ不明)で、どのリポジトリにも一致するとみなす。
         let live: Vec<String> = ledger
             .records(self.sid())
-            .into_iter()
+            .iter()
+            .filter_map(|r| chain_branch_for(r, nwo))
             .filter(|b| has_head(prs, b))
             .collect();
         let Some(last) = live.last() else {
-            self.record_chain_head(head_branch);
+            self.record_chain_head(nwo, head_branch);
             return None; // 記録済みの PR が全て閉じている/実在しない -> 新チェーン扱い
         };
 
         if declared_base == last {
-            self.record_chain_head(head_branch);
+            self.record_chain_head(nwo, head_branch);
             return None;
         }
 
@@ -534,7 +557,7 @@ impl Guard {
             return None; // 本文が読めない(コマンド置換等) -> 通す
         }
         if has_reasoned_tag(&f.body_text, INDEPENDENT_TAG) {
-            self.record_chain_head(head_branch);
+            self.record_chain_head(nwo, head_branch);
             return None;
         }
 
