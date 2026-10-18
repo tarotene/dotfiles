@@ -1,4 +1,4 @@
-# ADR-0000 — アーカイブ済みのリポジトリには、naming の宣言の欠落(`class-undeclared`)を要求しない
+# ADR-833 — アーカイブ済みのリポジトリには、naming の宣言の欠落(`class-undeclared`)を要求しない
 
 - Status: Accepted
 - Date: 2026-10-18

@@ -334,7 +334,7 @@
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-archived-naming-not-applicable.md) — アーカイブ済みの
+- [ADR-833](adr/833-archived-naming-not-applicable.md) — アーカイブ済みの
   リポジトリには、naming の宣言の欠落(`class-undeclared`)を要求せず
   `not-applicable` にする。アーカイブするとトピックを書き換えられず、
   直す手段が状態の往復しか無いため。`lifecycle-*` の候補検出と、

@@ -358,7 +358,7 @@ classes as of ADR-0026 (it split the original four-class ADR-0014 system's
 match that class's pattern.
 
 - `class-undeclared` — zero `naming-*` topics. Not reported for an archived
-  repository (ADR-0000): its topics are read-only, so the only way to satisfy
+  repository (ADR-833): its topics are read-only, so the only way to satisfy
   it is an unarchive / re-archive round trip. The finding is `not-applicable`
   and its lifecycle candidates are still computed. A live repository, and an
   archived one with two classes (`class-ambiguous`) or one class that fails
@@ -453,7 +453,7 @@ drift on a read-only repository will never be fixed, and `lifecycle`
 (#275) because an already-archived repository has already been triaged:
 scoring it as a fresh "dormancy candidate" would just be redundant noise,
 not new signal. `naming` is the sole domain that consults `isArchived`, for
-the lifecycle candidates above and, since ADR-0000, to waive `class-undeclared`.
+the lifecycle candidates above and, since ADR-833, to waive `class-undeclared`.
 
 ### settings
 
