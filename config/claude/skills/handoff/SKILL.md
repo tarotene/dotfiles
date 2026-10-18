@@ -21,6 +21,14 @@ GitHub ネイティブの機能に寄せるか)は `docs/claude/handoff.md` を�
   (GUI 操作・認証・物理作業・判断・外部連絡)のどれかに当たれば
   Human、それ以外は AI。曖昧なら Human 側に倒す(AI が「たぶんできる」
   と過信して着手不能なタスクを AI 側に残すより安全)。
+- Human 担当のうち、次の 4 つをすべて満たすものは「軽い人手タスク」として
+  `handoff:light` も付ける。基準の正本は ADR「軽い人手タスクは着手可能に
+  なった日のうちに予定化する」(`docs/adr/*-actionable-light-human-tasks.md`)。
+  - 1 回で完結する
+  - 現地の作業が 2 時間以内(移動を除く)
+  - 費用が 3,000 円以内
+  - 取り消せない確定操作を含まない(申請の送信は含めない)
+  4 つのどれかが怪しければ付けない(付けるのは、予定化を急ぐ印だから)。
 
 ## 2. WIP を Draft PR にする
 
@@ -52,13 +60,13 @@ Issue の起票だけ行う。
 bash config/claude/skills/handoff/scripts/handoff.sh labels-missing <owner/repo>
 ```
 
-`handoff:human` / `handoff:ai` のうち欠けているものが出力される。1 つでも
+`handoff:human` / `handoff:ai` / `handoff:light` のうち欠けているものが出力される。1 つでも
 出力されたら、そのリポジトリで初回だけ `AskUserQuestion` でラベル新設を
 確認する(共有リポジトリの他の人にも見える設定変更のため、ここだけは
 確認を挟む)。承認されたら:
 
 ```
-bash config/claude/skills/handoff/scripts/handoff.sh create-labels <owner/repo> handoff:human handoff:ai
+bash config/claude/skills/handoff/scripts/handoff.sh create-labels <owner/repo> handoff:human handoff:ai handoff:light
 ```
 
 拒否されたら、その旨を報告してこのリポジトリでの中断ハンドオフを打ち切る
@@ -91,6 +99,10 @@ GUI 操作 | 認証 | 物理作業 | 判断 | 外部連絡 のいずれか + 一
 ## 完了条件
 <この Issue を close してよい条件>
 ```
+
+`handoff:light` を付けるときは、本文に `## 見積り` 節を足し、現地の作業時間・
+費用・回数を 1 行ずつ書く(判定の根拠を残すため。検知はラベルだけで行い、
+この節は読まない)。
 
 将来 #505(人手を要する runbook 書式の横断標準化)が決着したら、この
 最小テンプレを追従させる。
@@ -131,6 +143,20 @@ Issue 番号を `<blocked番号>`、Human 側を `<blocker番号>` にする。
 電話・窓口対応など営業時間の制約があるものは、Issue を起票するだけで
 終わらせず `external-call-scheduling` スキルにも回し、カレンダーへの
 反映まで行う。
+
+**軽い人手タスク(`handoff:light`)は、時間帯制約の有無によらず**、着手可能
+(`blocked_by` が 0)になった日のうちに予定へ入れる。issue-index が
+SessionStart で「着手可能な軽い人手タスク」として出すので、見えたら、その
+セッションで次を行う。
+
+1. `slot-availability` で、最も早く空く枠を探す(外部の営業時間・受付規則が
+   あれば先に当てる)。
+2. 外部の承認や予約が要るものは、確定前の仮押さえとして主カレンダーに
+   `【調整中】` で直書きする(`slot-availability` スキルの仮押さえと同じ扱い)。予約の確定後、
+   予定データ(私的な person-state リポジトリ側)へ取り込む PR を出して仮予定を消す。
+3. 外部へ送る文面は下書き止まりにし、予約の申請などの確定操作は本人と
+   同期的に 1 手順ずつ進める。
+4. その日のうちに枠が取れない理由があれば、Issue にコメントで残す。
 
 ## 8. 報告
 

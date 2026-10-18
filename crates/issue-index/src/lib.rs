@@ -123,6 +123,10 @@ pub struct Context<'a> {
     pub pr: PrStatus<'a>,
     /// label:handoff:ai の Search 応答(取得失敗なら None)。
     pub handoff: Option<&'a str>,
+    /// owner 全体の `handoff:human` かつ `handoff:light` の Search 応答。
+    /// 取得失敗、viewer が不明、owner が viewer と別(会社の owner など)のときは None
+    /// (個人の予定に他人の作業を流さない。判定は main.rs が行う)。
+    pub human: Option<&'a str>,
 }
 
 /// `items_text` の 1 行(jq の `"#\(.number) \($t)" + labels + 起票者`)。
@@ -185,8 +189,10 @@ fn pr_line(raw: &str) -> Option<String> {
     Some(s)
 }
 
-/// 着手可能な handoff:ai(`blocked_by == 0` のものだけ、最大 10 件)。
-fn handoff_text(raw: &str) -> String {
+/// `blocked_by == 0` のものだけ、最大 10 件。`with_repo` なら `owner/repo#N` の形で出す
+/// (owner 全体の検索は、番号だけでは Issue を特定できない)。
+/// `issue_dependencies_summary.blocked_by` が欠けたものは含めない(fail-closed)。
+fn actionable_lines(raw: &str, with_repo: bool) -> String {
     let Ok(v) = serde_json::from_str::<Value>(raw) else {
         return String::new();
     };
@@ -200,14 +206,33 @@ fn handoff_text(raw: &str) -> String {
         })
         .take(10)
         .map(|it| {
+            let repo = if with_repo {
+                it.get("repository_url")
+                    .and_then(Value::as_str)
+                    .and_then(|u| u.rsplit_once("/repos/"))
+                    .map(|(_, r)| sanitize(r))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             format!(
-                "#{} {}",
+                "{repo}#{} {}",
                 interp(it.get("number").unwrap_or(&Value::Null)),
                 sanitize(it.get("title").and_then(Value::as_str).unwrap_or(""))
             )
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// 着手可能な handoff:ai(`blocked_by == 0` のものだけ、最大 10 件)。
+fn handoff_text(raw: &str) -> String {
+    actionable_lines(raw, false)
+}
+
+/// 着手可能な軽い人手タスク(`blocked_by == 0` のものだけ、最大 10 件、リポジトリ付き)。
+fn human_text(raw: &str) -> String {
+    actionable_lines(raw, true)
 }
 
 /// `build_context()`。戻り値は (stdout 全体, stderr に出す警告行)。
@@ -251,6 +276,7 @@ pub fn build(c: &Context) -> (String, Option<String>) {
     };
 
     let handoff = c.handoff.map(handoff_text).unwrap_or_default();
+    let human = c.human.map(human_text).unwrap_or_default();
 
     let warn = incomplete.then(|| {
         "[issue-index] Search API の結果が不完全でした(incomplete_results=true): 総数・省略件数の表示は近似値です".to_string()
@@ -267,6 +293,10 @@ pub fn build(c: &Context) -> (String, Option<String>) {
     if !handoff.is_empty() {
         ctx.push_str("\n\n着手可能な handoff:ai(中断ハンドオフの引き継ぎ先。blocked_by が無い open Issue):\n");
         ctx.push_str(&handoff);
+    }
+    if !human.is_empty() {
+        ctx.push_str("\n\n着手可能な軽い人手タスク(handoff:human かつ handoff:light で、自分に assign され、blocked_by が無い open Issue。着手可能になった日のうちに、handoff スキル §7 で予定に入れる):\n");
+        ctx.push_str(&human);
     }
     (session_start_json(&ctx), warn)
 }

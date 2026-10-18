@@ -104,7 +104,7 @@ Issue」に見せる方が悪いため)。
 |---|---|---|
 | 対象外 | `jq`/`gh` 不在、git repo でない、GitHub remote が解決できない、採用した scope の Search が `total_count=0` | 完全沈黙(stdout・stderr とも空) |
 | 失敗 | 前提が揃っているのに、採用しようとした側の Search が非 0 で終了(認証切れ・rate limit・ネットワーク不通など) | stderr に 1 行、stdout は空 |
-| 部分縮退 | 現ブランチの PR 取得、起票者(viewer login)の取得、または `label:handoff:ai` Search の取得だけが失敗 | その行/節だけを落とし、索引自体は注入する |
+| 部分縮退 | 現ブランチの PR 取得、起票者(viewer login)の取得、`label:handoff:ai` Search の取得、または軽い人手タスクの Search の取得だけが失敗 | その行/節だけを落とし、索引自体は注入する |
 | 不完全 | 採用した側が `incomplete_results: true` | 索引は注入するが件数の文を「不正確」に差し替え、stderr にも 1 行 |
 
 git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査のみで、
@@ -143,6 +143,25 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 
 ラベルが存在しないリポジトリ・検索 0 件・取得失敗はどれも節ごと黙って省略する
 (新しい縮退経路を増やさない——上の「縮退」表に 1 行を足しただけ)。
+
+## 着手可能な軽い人手タスク
+
+`handoff:human` と `handoff:light` の両方を持ち、自分に assign され、`blocked_by` が 0 の open Issue を、
+@me の枠・`handoff:ai` の節とは独立の節として出す(ADR「軽い人手タスクは着手可能になった日のうちに
+予定化する」)。節の見出しに「着手可能になった日のうちに、handoff スキル §7 で予定に入れる」と添え、
+見えたセッションが予定化まで進める。
+
+`handoff:ai` の節との違いは 2 つある。
+
+- 検索の単位が owner 全体(`owner:<cwd の owner>`)で、リポジトリ単位ではない。人手タスクは作業中の
+  リポジトリと無関係な場所で起きるので、行は `owner/repo#N タイトル` の形で出す。
+- cwd の owner が viewer 自身のときだけ使う。会社など別 owner のリポジトリで開いたセッションには出さない
+  (個人の予定に他人の作業を流さない)。viewer login が取れないときも出さない(fail-closed)。
+
+`blocked_by` の読み方と、ラベルなし・0 件・取得失敗が節ごと黙って省かれることは、`handoff:ai` の節と同じ。
+
+既知の限界: 節は索引の一部として注入されるので、cwd のリポジトリに open Issue が 1 件も無いセッション
+(索引自体が沈黙する)では出ない。
 
 ## `clear` を外し `compact` を含める理由
 

@@ -132,7 +132,7 @@ fn main() {
         })
         .unwrap_or_default();
 
-    // 5 本の gh を並列に起動する(bash 版の `&` + `wait`)。
+    // 6 本の gh を並列に起動する(bash 版の `&` + `wait`)。
     let q_common = format!("repo:{nwo}+is:issue+is:open");
     let mine = gh(
         &[
@@ -188,11 +188,26 @@ fn main() {
         true,
     );
 
+    // 個人 owner 全体の軽い人手タスク。リポジトリ単位でなく owner 単位で引くのは、人手タスクが
+    // 作業中のリポジトリと無関係な場所で起きるため。owner が viewer と別(会社など)なら、
+    // 結果は使わない(下の `human_raw`)。
+    let owner = nwo.split('/').next().unwrap_or("").to_string();
+    let human = gh(
+        &[
+            "api",
+            &format!(
+                "search/issues?q=owner:{owner}+is:issue+is:open+assignee:@me+label:%22handoff:human%22+label:%22handoff:light%22+sort:updated-desc&per_page=15"
+            ),
+        ],
+        true,
+    );
+
     let mine = wait(mine);
     let all = wait(all);
     let pr = pr.map(wait);
     let who = wait(who);
     let handoff = wait(handoff);
+    let human = wait(human);
 
     if !mine.ok {
         fail(&mine.stderr);
@@ -219,6 +234,10 @@ fn main() {
         String::new()
     };
 
+    // owner が viewer 自身のときだけ使う(viewer が不明なら使わない: fail-closed)。
+    let human_raw = (human.ok && !me.is_empty() && owner.eq_ignore_ascii_case(&me))
+        .then_some(human.stdout.as_str());
+
     let pr_status = match &pr {
         None => PrStatus::NoBranch,
         Some(r) if r.ok => PrStatus::Ok(&r.stdout),
@@ -233,6 +252,7 @@ fn main() {
         branch: &branch,
         pr: pr_status,
         handoff: handoff.ok.then_some(handoff.stdout.as_str()),
+        human: human_raw,
     };
     let (stdout, warn) = build(&ctx);
     if let Some(w) = warn {
