@@ -52,6 +52,14 @@
       # home-manager layer). ~/.nix-profile/bin precedes /usr/bin on PATH.
       pandoc
 
+      # Slide decks from a speaker script (talk-script skill,
+      # docs/claude/talk-script.md). The script lives in HTML comments of one
+      # Markdown file; `marp --notes` derives the plain-text script from it and
+      # plain `marp` renders the HTML deck (presenter view on `p`). Chosen over
+      # Slidev / reveal.js because only Marp CLI exports the notes alone as text.
+      # PDF/PPTX export needs a browser and is only used when asked.
+      marp-cli
+
       # Terminal-look capture for PR Before/After evidence (pr-description
       # skill, docs/claude/pr-description.md — G_visual in pr-gate enforces
       # that evidence exists). Binary: `freeze`. Chosen over termshot (also in

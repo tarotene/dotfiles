@@ -80,6 +80,22 @@
       flake = false;
     };
 
+    # frontend-slides: a third-party skill that builds visually distinctive
+    # single-file HTML decks (https://github.com/zarazhangrui/frontend-slides,
+    # MIT). Plain source tree like bleep, pinned to a rev. It is deliberately
+    # NOT placed under ~/.claude/skills/: its description ("Use when the user
+    # wants to build a presentation … slides for a talk") would fire on every
+    # slide request and compete with the talk-script skill, which writes the
+    # speaker script first. It lands in ~/.local/share/frontend-slides/ (outside
+    # the skills scan) and talk-script reads its SKILL.md only when the user
+    # explicitly asks for a visually elaborate HTML deck. It has no speaker-notes
+    # output, so it is a rendering-layer candidate, not the source of truth
+    # (docs/claude/talk-script.md). Pinned at main HEAD 9906a34 (2026-06-23).
+    frontend-slides = {
+      url = "github:zarazhangrui/frontend-slides/9906a34d640d2111f724544cbc50f7f130569ae1";
+      flake = false;
+    };
+
     # Rust workspace builder for the hook/CLI migration (ADR-0024, #391).
     # crane over rustPlatform.buildRustPackage because buildDepsOnly caches the
     # whole workspace's dependency graph as one derivation shared by every
@@ -105,6 +121,7 @@
       home-manager,
       nixgl,
       bleep,
+      frontend-slides,
       crane,
       nix-flatpak,
       ...
@@ -300,9 +317,10 @@
           # bleep is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
           # claude.nix only needs its store path for home.file.source, not a
-          # package derivation (ADR-0009).
+          # package derivation (ADR-0009). frontend-slides is threaded the same
+          # way (home.file.source only, docs/claude/talk-script.md).
           extraSpecialArgs = {
-            inherit bleep;
+            inherit bleep frontend-slides;
           };
         };
     in

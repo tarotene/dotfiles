@@ -50,6 +50,23 @@
         "type": "github"
       }
     },
+    "frontend-slides": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782245298,
+        "narHash": "sha256-qp2oCn5+YbMZrWCnN7zt/ee1nm/vBGsdb+AIUjIldyY=",
+        "owner": "zarazhangrui",
+        "repo": "frontend-slides",
+        "rev": "9906a34d640d2111f724544cbc50f7f130569ae1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zarazhangrui",
+        "repo": "frontend-slides",
+        "rev": "9906a34d640d2111f724544cbc50f7f130569ae1",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -143,6 +160,7 @@
       "inputs": {
         "bleep": "bleep",
         "crane": "crane",
+        "frontend-slides": "frontend-slides",
         "home-manager": "home-manager",
         "nix-flatpak": "nix-flatpak",
         "nixgl": "nixgl",
