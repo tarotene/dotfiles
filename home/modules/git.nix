@@ -112,6 +112,15 @@ in
 
       # Claude local settings
       "**/.claude/settings.local.json"
+
+      # Shell-substitution literals. A path such as `$(mktemp -d)/` means a
+      # command string was handed to a program without being expanded (a
+      # headless browser's --user-data-dir, for one). It is never a real
+      # artifact, so make `git add` skip it in every repository; only
+      # `git add -f` can still add it.
+      "*$(*"
+      "*\${*"
+      "*`*"
     ];
   };
 
