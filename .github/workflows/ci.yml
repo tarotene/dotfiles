@@ -786,6 +786,11 @@ jobs:
         with:
           working-directory: tests/docs-fixtures/python
           upload: 'false'
+      - name: Python fixture with a docs extra builds (MyST page)
+        uses: ./.github/actions/docs-python
+        with:
+          working-directory: tests/docs-fixtures/python-myst
+          upload: 'false'
       - name: Break the Python fixture (unresolved nitpicky reference)
         run: |
           # backticks below are literal rst/rustdoc syntax, not command substitution

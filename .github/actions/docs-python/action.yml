@@ -5,6 +5,10 @@ description: >-
   必須化、ADR-640 stack-standard-api-docs)。composite action である理由と
   checkout の前提は docs-rust と同じ。
 
+  `pyproject.toml` の `[project.optional-dependencies]` に `docs` があれば
+  `pip install -e '.[docs]'` で入れる(myst-parser やテーマなど、docs/conf.py
+  が使う拡張の依存をリポジトリ側で宣言するため)。無ければ `-e .` のまま。
+
   `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を
   生成する(リポジトリ側に Sphinx の設定を強要しない)。生成する構成には、
   標準ライブラリの型参照を解決する intersphinx(Python 公式の目録)を含める。生成した conf.py は
@@ -54,7 +58,14 @@ runs:
         set -euo pipefail
         # Sphinx の版は requirements.txt に pin してある(Renovate が追う、#645)。
         python -m pip install --quiet -r "$GITHUB_ACTION_PATH/requirements.txt"
-        python -m pip install --quiet -e .
+        # pyproject.toml に `docs` extra があれば、それも入れる。docs/conf.py が
+        # Sphinx 拡張(myst-parser など)やテーマを使うリポジトリの依存の正本は
+        # pyproject.toml の 1 か所で、この action に入力を増やさない。
+        extra=""
+        if python -c 'import sys, tomllib; d = tomllib.load(open("pyproject.toml", "rb")); sys.exit(0 if "docs" in d.get("project", {}).get("optional-dependencies", {}) else 1)'; then
+          extra="[docs]"
+        fi
+        python -m pip install --quiet -e ".${extra}"
 
     - name: Build docs (warnings are errors) and run doctests
       id: build
