@@ -589,6 +589,10 @@ Design and rationale for the hooks and commands deployed from
   の PR フローへ)。
 - [`diagramming.md`](claude/diagramming.md) — 個人スキル: 作図時に内容の型に
   合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
+- [`talk-script.md`](claude/talk-script.md) — 個人スキル: 発表のスライドを
+  作るとき、発表原稿(単独で練習できるプレインテキスト)を正本として先に全文書き、
+  スライドを補助資料として派生させる。正本は Marp Markdown 1 ファイルで、
+  frontend-slides を丸ごと採らなかった判断も持つ。
 - [`skill-gardening.md`](claude/skill-gardening.md) — 個人スキル: 知見を
   この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
   公開リポジトリ向けサニタイズ規則の正本)。

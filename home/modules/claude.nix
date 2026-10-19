@@ -157,6 +157,15 @@
 #    docs/claude/issue-hygiene.md、docs/claude/tracking-issue.md、
 #    docs/claude/stacked-pr.md
 #    (腐る事実は docs/stacked-pr-github-native.md に切り出す、ADR-0008)。
+#    talk-script は発表のスライドを作るとき、発表原稿(単独で練習でき、
+#    ホワイトボードで話しても成り立つプレインテキスト)を正本として先に全文書き、
+#    スライドをその補助資料として派生させる手順を持つ。正本は Marp Markdown 1
+#    ファイルで、語りは各スライド末尾のコメントに置き、練習用の原稿は
+#    `marp --notes` で導出する。見た目に凝った HTML だけを出す第三者スキル
+#    frontend-slides はスピーカーノートを持たないため、スキルとしては置かず
+#    (description の発火衝突を避ける)、rev 固定で ~/.local/share/frontend-slides/
+#    に配備して、本人が明示したときだけ talk-script が呼ぶ。詳細は
+#    docs/claude/talk-script.md。
 #
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
@@ -507,6 +516,7 @@
   lib,
   pkgs,
   bleep,
+  frontend-slides,
   ...
 }:
 let
@@ -2289,6 +2299,18 @@ in
   # 変数からハブの絶対パスを解決する。
   home.file.".claude/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  # talk-script: 発表原稿を正本にしてスライドを派生させる手順(設計は
+  # docs/claude/talk-script.md)。
+  home.file.".claude/skills/talk-script/SKILL.md".source =
+    repoConfig + "/claude/skills/talk-script/SKILL.md";
+  home.file.".claude/skills/talk-script/cases.md".source =
+    repoConfig + "/claude/skills/talk-script/cases.md";
+  # frontend-slides: 見た目に凝った単一 HTML を作る第三者スキル(rev 固定、
+  # flake input)。skills の走査対象外の ~/.local/share/ に置くのが要点 —
+  # ~/.claude/skills/ に置くと description が「スライドを作るとき」全般に発火して
+  # talk-script と衝突する。talk-script が本人の明示指示のときだけ SKILL.md を読む。
+  home.file.".local/share/frontend-slides".source =
+    "${frontend-slides}/plugins/frontend-slides/skills/frontend-slides";
   # gas-clasp-ops: Google Apps Script (GAS) を clasp CLI で操作する判断知識
   # (ADR-0030)。初回 GCP セットアップ・ログイン・日常操作・スクリプト側の
   # 規約を持つ。GAS コード自体の正本は各利用リポジトリに分散配置し、ここには
@@ -2427,6 +2449,10 @@ in
     repoConfig + "/claude/skills/repo-charter/cases.md";
   home.file.".agents/skills/writing-style/SKILL.md".source =
     repoConfig + "/claude/skills/writing-style/SKILL.md";
+  home.file.".agents/skills/talk-script/SKILL.md".source =
+    repoConfig + "/claude/skills/talk-script/SKILL.md";
+  home.file.".agents/skills/talk-script/cases.md".source =
+    repoConfig + "/claude/skills/talk-script/cases.md";
   home.file.".agents/skills/gas-clasp-ops/SKILL.md".source =
     repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
   home.file.".agents/skills/gpg-subkey-rotation/SKILL.md".source =
