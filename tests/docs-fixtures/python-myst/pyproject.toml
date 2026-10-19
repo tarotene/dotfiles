@@ -1,0 +1,11 @@
+[project]
+name = "docs-myst-fixture"
+version = "0.0.0"
+
+[project.optional-dependencies]
+# docs/conf.py が myst_parser を使う。docs-python action がこの extra を入れる。
+docs = ["myst-parser==5.1.0"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
