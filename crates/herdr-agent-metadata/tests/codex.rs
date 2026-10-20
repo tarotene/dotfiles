@@ -6,10 +6,20 @@
 mod common;
 use common::*;
 
+/// `mode_bypass` が null の行(bypass でないとき、常に送って前の値を消す)。
 fn line(model: &str, branch: &str, oshi: &str, ttl: bool) -> String {
+    line_with_mode(NULL, model, branch, oshi, ttl)
+}
+
+fn line_with_mode(mode_bypass: &str, model: &str, branch: &str, oshi: &str, ttl: bool) -> String {
     expected(
         "codex-hook",
-        &[("model", model), ("branch", branch), ("oshi", oshi)],
+        &[
+            ("mode_bypass", mode_bypass),
+            ("model", model),
+            ("branch", branch),
+            ("oshi", oshi),
+        ],
         ttl,
     )
 }
@@ -181,4 +191,76 @@ fn send_failure_is_silent() {
     c.env("HERDR_SOCKET_PATH", h.path("none.sock"));
     let r = h.run_cmd(c, r#"{"hook_event_name":"Stop","model":"gpt-5"}"#);
     assert_quiet(&r);
+}
+
+// --- permission mode(bypass のときだけ出す) ---
+
+#[test]
+fn bypass_permissions_sets_mode_bypass() {
+    // Codex は承認方針が never のときだけ bypassPermissions を出す。
+    for ev in ["SessionStart", "UserPromptSubmit", "Stop"] {
+        let h = Harness::new();
+        let r = h.run(
+            "codex",
+            &[],
+            &format!(
+                r#"{{"hook_event_name":"{ev}","model":"gpt-5","permission_mode":"bypassPermissions"}}"#
+            ),
+        );
+        assert_quiet(&r);
+        assert_eq!(
+            r.lines,
+            vec![line_with_mode(BYPASS, &s("gpt-5"), NULL, NULL, true)],
+            "event {ev}"
+        );
+    }
+}
+
+#[test]
+fn non_bypass_modes_clear_mode_bypass() {
+    // default は on-request も untrusted も含む粗い値なので出さず、null で
+    // 前の bypass 表示を消す。未知の値・欠落・空も同じ。
+    for mode in [
+        r#","permission_mode":"default""#,
+        r#","permission_mode":"acceptEdits""#,
+        r#","permission_mode":"plan""#,
+        r#","permission_mode":"""#,
+        r#","permission_mode":null"#,
+        "",
+    ] {
+        let h = Harness::new();
+        let r = h.run(
+            "codex",
+            &[],
+            &format!(r#"{{"hook_event_name":"Stop","model":"gpt-5"{mode}}}"#),
+        );
+        assert_quiet(&r);
+        assert_eq!(r.lines, vec![line(&s("gpt-5"), NULL, NULL, true)], "{mode}");
+    }
+}
+
+#[test]
+fn session_end_never_sets_mode_bypass() {
+    // SessionEnd の payload に permission_mode は無いが、あっても出さない
+    // (終了したペインに赤い bypass を残さない)。
+    let h = Harness::new();
+    let r = h.run(
+        "codex",
+        &[],
+        r#"{"hook_event_name":"SessionEnd","model":"gpt-5","permission_mode":"bypassPermissions"}"#,
+    );
+    assert_quiet(&r);
+    assert_eq!(r.lines, vec![line(&s("gpt-5"), NULL, NULL, false)]);
+}
+
+#[test]
+fn subagent_bypass_is_ignored() {
+    let h = Harness::new();
+    let r = h.run(
+        "codex",
+        &[],
+        r#"{"hook_event_name":"Stop","model":"gpt-5","agent_id":"x","permission_mode":"bypassPermissions"}"#,
+    );
+    assert_quiet(&r);
+    assert!(r.lines.is_empty());
 }

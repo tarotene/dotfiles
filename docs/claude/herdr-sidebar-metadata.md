@@ -288,27 +288,78 @@ family の弱いエイリアスにも勝ってしまい `fc-match monospace` が
 ## Codex / Copilot ペイン
 
 Claude 以外のエージェントペインも同じ `pane.report_metadata` API で埋められる。
-ただし表示は `$branch` + `$model` の 2 トークンだけに絞っている — mode/ctx/cost/
-effort に相当するものは、upstream の一次情報(developers.openai.com/codex/hooks +
-openai/codex ソース、docs.github.com hooks-reference、2026-09 時点)を確認した
-うえで **確実に取れないため意図的に見送った**。
+Codex は Claude と同じ 4 行構成(`$branch` / `$mode_bypass`+`$model` /
+`terminal_title_stripped`)、Copilot は `$branch` + `$model` だけ。
 
-| データ | Codex CLI | Copilot CLI |
-|---|---|---|
-| model | hook payload に documented(SessionEnd 以外の全イベント必須フィールド) | payload に無い |
-| cwd(→branch) | hook payload に documented | hook payload に documented |
-| permission/approval | payload の `permission_mode` は **lossy**(実測では `bypassPermissions` か `default` の 2 値しか出ない)→ 表示しない | 無し |
-| reasoning effort | hooks に無い(config.toml か undocumented な rollout JSONL のみ) | n/a |
+### 取得経路の調査(Codex 0.160.0、取得 2026-10-20)
 
-Claude 版と違い statusline 相当のチャネルが無いので、reporter は各ツールにつき
-1 本(単チャネル)。
+2026-09 の調査(Codex 0.153.2)は「hook から確実に取れない」として mode・ctx・effort・
+rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `rust-v0.160.0` を
+読み比べて調べ直した。hook の入力スキーマ(`codex-rs/hooks/schema/generated/*.command.input.schema.json`、
+6 イベント)は 2 版でキー集合・required とも同じで、差は SessionStart の `source` に
+`"fork"` が増えたことだけ。
+
+| データ | hook(documented) | rollout JSONL | Codex の端末タイトル(`tui.terminal_title`) |
+|---|---|---|---|
+| mode | `permission_mode` が取れるが **粗い**(下記) | 取れる(undocumented) | 出せない |
+| sandbox | 取れない | 取れる(undocumented) | 出せない |
+| reasoning effort | 取れない | 取れる(undocumented) | `reasoning` で出せる |
+| context 使用率 | 取れない | 取れる(undocumented) | `context-used` で出せる |
+| 5h / 週の rate limit | 取れない | 取れる(undocumented) | `five-hour-limit` / `weekly-limit` で出せる |
+| cost | 取れない | 取れない | Enterprise のみ(`estimated-thread-cost`) |
+
+- **hook の `permission_mode` が粗い理由**: スキーマ上の enum は 5 値だが、値を作る
+  `codex-rs/core/src/hook_runtime.rs:1032-1040`(v0.160.0)は承認方針が `never` のときだけ
+  `bypassPermissions` にし、それ以外(on-request も untrusted も)をすべて `default` にする。
+  SessionEnd の payload には無い。
+- **rollout JSONL を使わない理由**: 公式の hooks ページが「transcript の形式は hook の
+  stable な interface ではない」と明言している(https://learn.chatgpt.com/docs/hooks、
+  取得 2026-10-20)。形式が変わると誤った値を出しうる。
+- **端末タイトルを採った理由**: 設定キー `tui.terminal_title` は documented
+  (https://learn.chatgpt.com/docs/config-file/config-reference)で、項目 ID は上流が
+  「改名・削除は設定ファイルの破壊的変更」と扱う
+  (`codex-rs/tui/src/bottom_pane/title_setup.rs`、v0.160.0)。Codex が組み立てた文字列を
+  herdr が `terminal_title_stripped` として受け取り、そのまま表示するので、こちらは
+  文字列を解釈しない。書式が変わっても見た目が変わるだけで、誤った値は出ない。
+- **Claude の statusLine に相当する仕組み**(JSON を stdin に渡して外部コマンドを周期実行)は
+  Codex に無い(`tui.status_line` / `tui.terminal_title` はどちらも組み込みの項目 ID を並べる
+  だけ、`codex-rs/config/src/types.rs`、v0.160.0)。
+
+### 表示の決め方
+
+- **mode は bypass のときだけ**赤で出す(`$mode_bypass`、Claude と同じ `▲ bypass`)。
+  `default` は on-request も untrusted も含む粗い値で、出すと実際より多くを知っている
+  ように見えるので出さない。bypass でない payload でも `mode_bypass` を null で送り、
+  bypass から戻ったペインに前の値が残らないようにする。
+- **端末タイトルの項目**は `home/modules/herdr.nix` の `codexConfigSpec` が宣言する
+  (`activity` / `context-used` / `reasoning` / `five-hour-limit` / `weekly-limit`)。
+  `project-name` は workspace 列と重なり、`thread-name` は文字列が長くなって
+  末尾の rate limit が切れやすくなるので外している。`~/.codex/config.toml` への反映は
+  `settings-reconcile codex-config`(宣言したキーだけを書式を保って合わせる。
+  ADR-457 Amendment 2026-10-20)。
+- **rate limit は tab-bar ではなくペインのタイトル**に出す。Codex のペインが開いて
+  いる間だけ見える(ペイン非依存の常時表示ではない)。常時表示が要るなら
+  #117 のとおり `codex app-server` の `account/rateLimits/read` を叩く command が要るが、
+  そのコマンド自体が experimental のままなので採っていない(メソッド単体は
+  `#[experimental]` が付かず documented、`codex-rs/app-server-protocol/src/protocol/common.rs:1309`、
+  https://learn.chatgpt.com/docs/app-server)。
+
+### Copilot の取得経路
+
+| データ | Copilot CLI |
+|---|---|
+| model | payload に無い(`~/.copilot/settings.json` の `.model` から読む) |
+| cwd(→branch) | hook payload に documented |
+| permission/approval | 無し |
+| reasoning effort | n/a |
 
 ### Codex: `crates/herdr-agent-metadata`(`--agent codex`)
 
 `~/.codex/hooks.json` の SessionStart / UserPromptSubmit / Stop / SessionEnd に
 登録(PreToolUse には登録しない — model が変わる頻度は低く、他 3 イベントで
 十分足りるため、Claude 版のような debounce キャッシュも持たない)。model は
-hook payload の `.model` から、branch は `.cwd` から git 呼び出しで取る。
+hook payload の `.model` から、mode は `.permission_mode`(`bypassPermissions` のときだけ)
+から、branch は `.cwd` から git 呼び出しで取る。
 `agent_id` が付くサブアージェントイベントは親ペイン共有のため無視する。
 
 登録は `settings-reconcile codex-hooks`(`crates/settings-reconcile`、#414。variadic な
@@ -347,13 +398,12 @@ timeoutSec}` を camelCase イベント配列に直置きする形なので(herd
 共存する)。`~/.copilot/settings.json` を activation で書くのはこれだけなので
 `entryAfter [ "writeBoundary" ]` で足りる。
 
-### 見送った表示: tab-bar usage
+### 見送った表示: Copilot の tab-bar usage
 
-Codex の rate-limit(`/status` 相当)・Copilot の premium request quota も
-同じ調査で洗ったが、いずれも安定した取得手段が無い(Codex はセッションの
-rollout JSONL や experimental な app-server API、Copilot は 2026-06 の
-billing 移行で legacy 化予定の REST エンドポイントのみ)。tab-bar 拡張は
-実装せず、調査メモを添えて別 Issue(#117)に切り出した。
+Copilot の premium request quota には安定した取得手段が無い(2026-06 の billing 移行で
+legacy 化予定の REST エンドポイントのみ)。tab-bar 拡張は実装していない。調査メモは
+別 Issue(#117)にある。Codex の rate limit は上の「表示の決め方」のとおり、ペインの
+端末タイトル経由で出している。
 
 ## アクティブ行の視認性(`[theme.custom]`)
 

@@ -92,10 +92,16 @@ rows = [
 # 非アクティブは reporter 側で null クリア」で表現する(1 行に 4 トークン並ぶが、
 # 値を持つのは常に 1 つ)。
 #
-# Codex / Copilot ペインの $branch/$model は
-# crates/herdr-agent-metadata の --agent codex / --agent copilot がそれぞれ報告する
-# (mode/ctx/cost/effort 相当は無い — 確実に取れるデータだけに絞っている。
-# 詳細・見送った理由は docs/claude/herdr-sidebar-metadata.md)。
+# Codex ペインは Claude と同じ 4 行構成。$branch/$model/$mode_bypass は
+# crates/herdr-agent-metadata の --agent codex が報告する($mode_bypass は
+# hook の permission_mode が bypassPermissions のときだけ。Codex の
+# permission_mode は never=bypass / それ以外=default の 2 値しか無く、default は
+# 出さない)。4 行目の terminal_title_stripped は Codex 自身が描く端末タイトルで、
+# context 使用率・reasoning effort・5h/週の rate limit が入る。その項目は
+# home/modules/herdr.nix が ~/.codex/config.toml の tui.terminal_title に宣言する
+# (ADR-457 Amendment)。ctx/cost の hook 経路が無い理由・調べた範囲は
+# docs/claude/herdr-sidebar-metadata.md。
+# Copilot ペインは $branch/$model だけ(mode/ctx/cost/effort 相当は確実に取れない)。
 #
 # $oshi(推しマーク絵文字)は 3 エージェントすべての metadata hook が、
 # worktree ディレクトリ名(worktree-<name>-<hex4>、
@@ -140,11 +146,12 @@ claude = [
 ]
 codex = [
   ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
+  [ { token = "$branch", fg = "#A6ADC8" } ],
   [
-    { token = "$branch", fg = "#A6ADC8" },
-    { token = "terminal_title_stripped", fg = "#A6ADC8" },
+    { token = "$mode_bypass", fg = "#F38BA8", bold = true },
+    { token = "$model", fg = "#F5C2E7" },
   ],
-  [ { token = "$model", fg = "#F5C2E7" } ],
+  [ { token = "terminal_title_stripped", fg = "#A6ADC8" } ],
 ]
 copilot = [
   ["state_icon", "workspace", { token = "$oshi", fg = "#CDD6F4" }, "tab"],
