@@ -49,17 +49,19 @@ let
   # 上流で破壊的変更として扱われる。取得 2026-10-20、rust-v0.160.0。
   #   activity         — 動作中のスピナー / 承認待ちの表示
   #   context-used     — context window の使用率
-  #   reasoning        — reasoning effort
   #   five-hour-limit  — 5h rate limit の残り
-  #   weekly-limit     — 週次 rate limit の残り
-  # project-name は workspace 列と、thread-name は切り詰めのために外している。
+  # サイドバーに見えるのは約 36 桁(`Context 0% used | medium | 5h ...` で切れた
+  # 実機の表示からの推定、2026-10-20。幅そのものは herdr の API から取れていない)。
+  # Codex が組む文字列は、context と 5h だけなら `Context 0% used | 5h 100% left`
+  # (31 文字)で収まり、reasoning と weekly-limit を足すと 58 文字で 5h・週の値が
+  # 切れる。上流の言い回し
+  # (`Context … used` / `… left`)は短くできないので、項目の数で収める。
+  # project-name は workspace 列と重なるので外している。
   codexConfigSpec = builtins.toJSON {
     "tui.terminal_title" = [
       "activity"
       "context-used"
-      "reasoning"
       "five-hour-limit"
-      "weekly-limit"
     ];
   };
 

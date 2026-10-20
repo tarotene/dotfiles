@@ -97,7 +97,7 @@ rows = [
 # hook の permission_mode が bypassPermissions のときだけ。Codex の
 # permission_mode は never=bypass / それ以外=default の 2 値しか無く、default は
 # 出さない)。4 行目の terminal_title_stripped は Codex 自身が描く端末タイトルで、
-# context 使用率・reasoning effort・5h/週の rate limit が入る。その項目は
+# context 使用率と 5h の rate limit が入る(サイドバー幅に収まる 2 項目まで)。その項目は
 # home/modules/herdr.nix が ~/.codex/config.toml の tui.terminal_title に宣言する
 # (ADR-457 Amendment)。ctx/cost の hook 経路が無い理由・調べた範囲は
 # docs/claude/herdr-sidebar-metadata.md。
