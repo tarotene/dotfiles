@@ -199,6 +199,17 @@
       # never `dlopen`'d, so no `follows`; no override, so it is a
       # binary-cache fetch. Drop the entry once stable ships mise >= 2026.7.5
       # (#823).
+      #
+      # spotify-player rides it too (#861): the pinned stable channel ships
+      # 0.23.0, which cannot parse the Web API responses of a newly created
+      # developer app (`missing field followers` / `available_markets`, plus
+      # endless "Unknown playback item" warnings). The fix is the rspotify 0.16
+      # migration (aome510/spotify-player#973), first released in v0.25.0; the
+      # locked unstable rev ships 0.25.1. Like herdr it is only ever `exec`'d,
+      # so no `follows`. No override here — the Linux audio backend is chosen
+      # in home/modules/spotify-player.nix, because that override is the one
+      # that forces a from-source build. Drop the entry once stable ships
+      # spotify-player >= 0.25.0 (#861).
       herdrOverlay =
         system:
         (_final: _prev: {
@@ -206,6 +217,7 @@
             patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
           });
           mise = nixpkgs-unstable.legacyPackages.${system}.mise;
+          spotify-player = nixpkgs-unstable.legacyPackages.${system}.spotify-player;
         });
 
       # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024 / #391),
