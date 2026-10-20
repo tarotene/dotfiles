@@ -196,7 +196,7 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   right above the registration everywhere else. A pointer that is missing or
   points nowhere fails the nix evaluation (hook declarations) or `cargo test`
   (everything else). Manual CLIs and skills are drawn as `auto = false` nodes and
-  need no pointer. Rules and rationale: ADR-0000.
+  need no pointer. Rules and rationale: ADR-872.
 
 ### Pull request descriptions
 - A coding task is **not done** until the PR exists: commit → push →
