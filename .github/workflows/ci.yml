@@ -234,12 +234,14 @@ jobs:
       # close-linked-issues.yml (#609): GitHub Actions cannot follow a symlink
       # for a workflow file, so this repo carries a real copy of the template
       # that the governance skills distribute (docs/claude/stacked-pr.md).
-      # Keep the two byte-identical.
+      # Keep the two byte-identical, except for this repo's own `pipeline-node:`
+      # pointer line (ADR-872): the template is distributed to other repos, so
+      # the pointer to this repo's pipeline-map.toml lives only in the copy.
       - name: close-linked-issues template is in sync
         run: |
           diff -u \
-            config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml \
-            .github/workflows/close-linked-issues.yml
+            <(grep -v '^# pipeline-node:' config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml) \
+            <(grep -v '^# pipeline-node:' .github/workflows/close-linked-issues.yml)
 
       # hms (docs/adr/0034-machine-state-wrapper-flake.md Amendment
       # 2026-09-25) is Rust now (#414, ADR-0024 Stage 4e, crates/hms); the
