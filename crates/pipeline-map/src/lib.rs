@@ -58,6 +58,13 @@ pub struct Lane {
     /// (hook の event)。図ではハブのコンテナの中に描き、ハブとの間のエッジは描かない。
     #[serde(default)]
     pub session: bool,
+    /// 概観図の段(1 = セッションと一連の流れ、2 = 常駐・手動・外部)。省略時は 1。
+    #[serde(default = "one")]
+    pub row: u32,
+}
+
+fn one() -> u32 {
+    1
 }
 
 #[derive(Debug, Deserialize)]
@@ -541,7 +548,14 @@ pub fn audit(root: &Path, m: &Manifest) -> Report {
             ));
         }
     }
+    let session_rows: BTreeSet<u32> = m.lane.iter().filter(|l| l.session).map(|l| l.row).collect();
+    if session_rows.len() > 1 {
+        p.push("session = true のレーンが複数の row にまたがっている(同じ row に置く)".into());
+    }
     for l in &m.lane {
+        if l.row == 0 {
+            p.push(format!("lane `{}`: row は 1 以上", l.id));
+        }
         if !is_id(&l.id) {
             p.push(format!("lane `{}`: id の綴りが不正", l.id));
         }
@@ -983,6 +997,26 @@ label = "blocks"
         assert!(
             p.iter()
                 .any(|x| x.contains("session = true のレーンに属している")),
+            "{p:#?}"
+        );
+    }
+
+    #[test]
+    fn session_lanes_must_share_a_row() {
+        let d = repo();
+        let m = MANIFEST_OK
+            .replace(
+                "id = \"tool-call\"\nlabel = \"Tool call\"\norder = 1\n",
+                "id = \"tool-call\"\nlabel = \"Tool call\"\norder = 1\nsession = true\n",
+            )
+            .replace(
+                "id = \"timer\"\nlabel = \"Timer\"\norder = 2\n",
+                "id = \"timer\"\nlabel = \"Timer\"\norder = 2\nsession = true\nrow = 2\n",
+            );
+        write(d.path(), MANIFEST, &m);
+        let p = problems(d.path());
+        assert!(
+            p.iter().any(|x| x.contains("複数の row にまたがっている")),
             "{p:#?}"
         );
     }

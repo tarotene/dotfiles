@@ -21,7 +21,8 @@
 # 概観図のレーン = 発火のきっかけ。order が左→右(セッションの時間軸、後半は常駐系)。
 # session = true のレーンは、hub(エージェントセッション)の中で発火する(hook の event)。
 # 図ではハブのコンテナの中に描き、ハブとそのレーン内のノードの間のエッジは描かない
-# (deny を持つノードは枠の色で示す)。
+# (deny を持つノードは枠の色で示す)。row は概観図の段(1 = セッションと一連の流れ、
+# 2 = 常駐・手動・外部。省略時は 1)。
 lane = [
   { id = "session-start", label = "SessionStart", order = 1, session = true },
   { id = "plan-approval", label = "Plan approval", order = 2, session = true },
@@ -29,10 +30,10 @@ lane = [
   { id = "stop", label = "Turn end / Stop", order = 4, session = true },
   { id = "git-hook", label = "git hooks", order = 5 },
   { id = "ci", label = "CI (GitHub Actions)", order = 6 },
-  { id = "timer", label = "Timers / periodic", order = 7 },
-  { id = "cloud", label = "Cloud / LLM", order = 8 },
-  { id = "manual", label = "Manual / skills", order = 9 },
-  { id = "external", label = "Sessions / services / state", order = 10 },
+  { id = "timer", label = "Timers / periodic", order = 7, row = 2 },
+  { id = "cloud", label = "Cloud / LLM", order = 8, row = 2 },
+  { id = "manual", label = "Manual / skills", order = 9, row = 2 },
+  { id = "external", label = "Sessions / services / state", order = 10, row = 2 },
 ]
 
 # ------------------------------------------------------------ pipelines
