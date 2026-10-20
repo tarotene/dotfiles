@@ -450,6 +450,13 @@ pub fn overview(m: &Manifest) -> String {
     for f in &flow {
         out.push_str(f);
     }
+    // 段を縦に積む(辺が無いと、ELK は段を横に並べて図が横長になる)。
+    for w in rows.windows(2) {
+        out.push_str(&format!(
+            "row{} -> row{}: {{\n  style.opacity: 0\n}}\n",
+            w[0], w[1]
+        ));
+    }
     out.push('\n');
     overview_legend(m, &lanes, &mut out);
     out
