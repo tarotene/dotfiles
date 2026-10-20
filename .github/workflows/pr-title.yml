@@ -30,6 +30,7 @@ name: PR Title
 # never reported → push rejected). This effectively enforces a PR-only
 # workflow.
 
+# pipeline-node: pr-title-check
 on:
   workflow_call:
     inputs:

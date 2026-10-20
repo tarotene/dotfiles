@@ -644,6 +644,7 @@ let
   # Copilot 側の登録は home/modules/herdr.nix。
   herdrMetadataCmd = "'${hooksDir}/herdr-agent-metadata'";
   legacyHerdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
+  # pipeline-node: claude-statusline
   statusLineCmd = "'${hooksDir}/claude-statusline'";
   legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
@@ -1055,16 +1056,19 @@ let
   claudeHookDeclarations = [
     {
       event = "PreToolUse";
+      node = "copilot-plan-review";
       matcher = "ExitPlanMode";
       command = planReviewCmd;
       timeout = 300;
     }
     {
       event = "Stop";
+      node = "wrapup-stop-gate";
       command = wrapupStopCmd;
     }
     {
       event = "SessionStart";
+      node = "wrapup-session-start";
       command = wrapupSessionStartCmd;
     }
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
@@ -1073,6 +1077,7 @@ let
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
     {
       event = "PreToolUse";
+      node = "plan-view";
       matcher = "ExitPlanMode";
       command = planViewCmd;
       timeout = 15;
@@ -1081,6 +1086,7 @@ let
     # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
     {
       event = "PreToolUse";
+      node = "plan-scope-gate";
       matcher = "ExitPlanMode";
       command = planScopeGateCmd;
       timeout = 20;
@@ -1089,6 +1095,7 @@ let
     # gh/ネットワークを一切呼ばず jq とテキスト処理だけなので timeout は最短。
     {
       event = "PreToolUse";
+      node = "plan-precedent-gate";
       matcher = "ExitPlanMode";
       command = planPrecedentGateCmd;
       timeout = 10;
@@ -1097,6 +1104,7 @@ let
     # (timeout 15s)+ diff/grep/awk のみで gh は呼ばない。
     {
       event = "PreToolUse";
+      node = "plan-fresh-gate";
       matcher = "ExitPlanMode";
       command = planFreshGateCmd;
       timeout = 30;
@@ -1108,6 +1116,7 @@ let
     # 引き継ぐので不要。
     {
       event = "SessionStart";
+      node = "issue-index";
       matcher = "startup|resume|compact";
       command = issueIndexCmd;
       timeout = 10;
@@ -1116,6 +1125,7 @@ let
     # 高く、再注入の価値が最も高い(根拠は上の issue-index と同じ)。
     {
       event = "SessionStart";
+      node = "esa-index";
       matcher = "startup|resume|compact";
       command = esaIndexCmd;
       timeout = 10;
@@ -1126,6 +1136,7 @@ let
     # ない。resume は別ログインからの再開があり得るので含める。
     {
       event = "SessionStart";
+      node = "sign-prewarm";
       matcher = "startup|resume";
       command = signPrewarmCmd;
       timeout = 120;
@@ -1137,6 +1148,7 @@ let
     # additionalContext で報告する(docs/claude/worktree-fresh-base.md)。
     {
       event = "SessionStart";
+      node = "worktree-fresh-base";
       matcher = "startup|resume";
       command = worktreeFreshBaseCmd;
       timeout = 30;
@@ -1146,6 +1158,7 @@ let
     # --json` を呼んで読むだけで、何も実行しない(docs/claude/herdr-status-advisory.md)。
     {
       event = "SessionStart";
+      node = "herdr-status-advisory";
       matcher = "startup|resume";
       command = herdrStatusAdvisoryCmd;
       timeout = 10;
@@ -1157,11 +1170,13 @@ let
     # settings-reconcile が宣言に合わせて直す — docs/claude/issue-index.md、#414)。
     {
       event = "SessionStart";
+      node = "pr-gate-session-start";
       command = prGateSessionStartCmd;
       timeout = 10;
     }
     {
       event = "Stop";
+      node = "pr-gate-stop";
       command = prGateStopCmd;
       timeout = 600;
     }
@@ -1171,6 +1186,7 @@ let
     # フォールスルーする。
     {
       event = "PreToolUse";
+      node = "git-worktree-allow";
       matcher = "Bash";
       command = gitWorktreeAllowCmd;
       timeout = 10;
@@ -1181,6 +1197,7 @@ let
     # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
     {
       event = "PreToolUse";
+      node = "git-stash-guard";
       matcher = "Bash";
       command = gitStashGuardCmd;
       timeout = 10;
@@ -1192,6 +1209,7 @@ let
     # 絞り込みは hook 内部の早期 exit に置く(git-stash-guard と同じ理由)。
     {
       event = "PreToolUse";
+      node = "main-checkout-guard-pre";
       matcher = "Bash|Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob";
       command = mainCheckoutGuardPreCmd;
       timeout = 10;
@@ -1200,6 +1218,7 @@ let
     # 分からない迂回(#661)を、触れた checkout の状態差分で捕まえる。
     {
       event = "Stop";
+      node = "main-checkout-guard-stop";
       command = mainCheckoutGuardStopCmd;
       timeout = 30;
     }
@@ -1218,6 +1237,7 @@ let
     # やや長め。
     {
       event = "PreToolUse";
+      node = "bleep";
       matcher = "Bash|mcp__.*";
       command = bleepClaudeCmd;
       timeout = 20;
@@ -1229,6 +1249,7 @@ let
     # MCP 経路が無検査のまま残る)。gh api の往復は無いのでタイムアウトは短い。
     {
       event = "PreToolUse";
+      node = "attribution-guard";
       matcher = "Bash|mcp__.*";
       command = attributionGuardCmd;
       timeout = 10;
@@ -1244,26 +1265,31 @@ let
     # 即 no-op。
     {
       event = "SessionStart";
+      node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
       timeout = 10;
     }
     {
       event = "UserPromptSubmit";
+      node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
       timeout = 10;
     }
     {
       event = "PreToolUse";
+      node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
       timeout = 10;
     }
     {
       event = "Stop";
+      node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
       timeout = 10;
     }
     {
       event = "SessionEnd";
+      node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
       timeout = 10;
     }
@@ -1271,6 +1297,7 @@ let
     # Herdr owns both lifecycle ends, so reject every Bash spelling here.
     {
       event = "PreToolUse";
+      node = "worktree-create-guard";
       matcher = "Bash";
       command = worktreeCreateGuardCmd;
       timeout = 10;
@@ -1279,6 +1306,7 @@ let
     # directly to the agent that is in a position to clean it up.
     {
       event = "SessionStart";
+      node = "worktree-audit-context";
       matcher = "startup|resume";
       command = worktreeAuditContextCmd;
       timeout = 30;
@@ -1288,11 +1316,13 @@ let
     # `.hook_event_name` で分岐する(herdr-agent-metadata と同じ形)。
     {
       event = "UserPromptSubmit";
+      node = "agent-turn-log";
       command = agentTurnLogCmd;
       timeout = 10;
     }
     {
       event = "Stop";
+      node = "agent-turn-log";
       command = agentTurnLogCmd;
       timeout = 10;
     }
@@ -1304,18 +1334,21 @@ let
     # ではない。
     {
       event = "PreToolUse";
+      node = "atuin-history";
       matcher = "Bash";
       command = atuinHookClaudeCodeCmd;
       timeout = 10;
     }
     {
       event = "PostToolUse";
+      node = "atuin-history";
       matcher = "Bash";
       command = atuinHookClaudeCodeCmd;
       timeout = 10;
     }
     {
       event = "PostToolUseFailure";
+      node = "atuin-history";
       matcher = "Bash";
       command = atuinHookClaudeCodeCmd;
       timeout = 10;
@@ -1327,6 +1360,7 @@ let
     # ため若干長めに確保する。
     {
       event = "PreToolUse";
+      node = "stack-base-guard";
       matcher = "Bash|mcp__.*";
       command = stackBaseGuardCmd;
       timeout = 20;
@@ -1336,6 +1370,7 @@ let
     # 持たないため timeout は短め。
     {
       event = "PreToolUse";
+      node = "pr-title-guard";
       matcher = "Bash|mcp__.*";
       command = prTitleGuardCmd;
       timeout = 10;
@@ -1346,6 +1381,7 @@ let
     # 同じ短さでよい。
     {
       event = "PreToolUse";
+      node = "pr-confirm-guard";
       matcher = "Bash|mcp__.*";
       command = prConfirmGuardCmd;
       timeout = 10;
@@ -1357,6 +1393,7 @@ let
     # 除く)ので timeout は stack-base-guard 並みでよい。
     {
       event = "PreToolUse";
+      node = "decision-colocation-guard";
       matcher = "Bash|mcp__.*";
       command = decisionColocationGuardCmd;
       timeout = 20;
@@ -1368,6 +1405,7 @@ let
     # jq/文字列処理のみで往復が無いので timeout は最短。
     {
       event = "PreToolUse";
+      node = "external-send-guard";
       matcher = "mcp__.*";
       command = externalSendGuardCmd;
       timeout = 10;
@@ -1379,6 +1417,7 @@ let
     # コストはほぼゼロ — timeout は atuin と同じ短さでよい。
     {
       event = "PostToolUse";
+      node = "adr-number";
       matcher = "Bash";
       command = adrNumberCmd;
       timeout = 10;
@@ -1391,12 +1430,14 @@ let
     # — git-worktree-allow と同じ理由付け。
     {
       event = "PostToolUse";
+      node = "gh-edit-allow-record";
       matcher = "Bash";
       command = ghEditAllowCmd;
       timeout = 10;
     }
     {
       event = "PreToolUse";
+      node = "gh-edit-allow-judge";
       matcher = "Bash";
       command = ghEditAllowCmd;
       timeout = 10;
@@ -1407,6 +1448,7 @@ let
     # 同じ if で gh 呼び出しに絞ってよい。
     {
       event = "PreToolUse";
+      node = "rulesets-write-guard";
       matcher = "Bash";
       command = rulesetsWriteGuardCmd;
       timeout = 10;
@@ -1420,6 +1462,7 @@ let
     # "mcp__.*" と同じ「広い matcher + バイナリ内部判定」形)。
     {
       event = "PreToolUse";
+      node = "routines-write-guard";
       matcher = "RemoteTrigger";
       command = routinesWriteGuardCmd;
       timeout = 10;
@@ -1432,6 +1475,7 @@ let
     # timeout は atuin/gh-edit-allow 並みの短さでよい。
     {
       event = "PreToolUse";
+      node = "pkexec-guard";
       matcher = "Bash";
       command = pkexecGuardCmd;
       timeout = 10;
@@ -1443,6 +1487,7 @@ let
     # を判定する。Rust 製で起動が速いため timeout は他の Rust hook 並み。
     {
       event = "PreToolUse";
+      node = "new-tool-guard";
       matcher = "Write";
       command = newToolGuardCmd;
       timeout = 10;
@@ -1453,6 +1498,7 @@ let
     # gh-edit-allow/rulesets-write-guard と同じ既知のトレードオフ)。
     {
       event = "PreToolUse";
+      node = "feedback-target-guard";
       matcher = "Bash";
       command = feedbackTargetGuardCmd;
       timeout = 10;
@@ -1467,6 +1513,7 @@ let
     # 往復を持たないため timeout は pr-title-guard 並みでよい。
     {
       event = "PreToolUse";
+      node = "repo-create-guard";
       matcher = "Bash|mcp__.*";
       command = repoCreateGuardCmd;
       timeout = 15;
@@ -1476,15 +1523,32 @@ let
     # 起動が速く、成功しても失敗しても即 exit するので timeout は最短。
     {
       event = "PostToolUse";
+      node = "cmd-hash-log";
       matcher = "Bash";
       command = cmdHashLogCmd;
       timeout = 10;
     }
   ];
 
+  # 各宣言の `node` は pipeline-map.toml(自動発火する機構の地図、docs/pipeline-map.md)
+  # のノード id を指すポインタ。nix の評価時に「node がある」「manifest に定義済み」を
+  # 保証するので、ポインタの無い hook 宣言は適用(hms)に至らない。settings-reconcile の
+  # 宣言(Register)は未知のキーを拒否するため、`node` は渡す前に取り除く。逆向き(auto な
+  # ノードに登録が 1 つも無い)は crates/pipeline-map の cargo test が見る。
+  pipelineMap = builtins.fromTOML (builtins.readFile ../../pipeline-map.toml);
+  pipelineNodeIds = map (n: n.id) pipelineMap.node;
+  declareHook =
+    d:
+    assert lib.assertMsg (
+      d ? node
+    ) "claudeHookDeclarations: node が無い宣言がある (event = ${d.event}, command = ${d.command})";
+    assert lib.assertMsg (builtins.elem d.node pipelineNodeIds)
+      "claudeHookDeclarations: node `${d.node}` が pipeline-map.toml に定義されていない";
+    builtins.removeAttrs d [ "node" ];
+
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
-    register = claudeHookDeclarations;
+    register = map declareHook claudeHookDeclarations;
   };
 
   # statusLine / permissions の reconcile も settings-reconcile(crates/
@@ -1935,6 +1999,7 @@ in
         "registerCodexHerdrMetadataHooks"
       ]
       ''
+        # pipeline-node: bleep
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyPublishGuardCodexAdapterCmd} \
           --retire PreToolUse ${lib.escapeShellArg legacyBleepCodexCmdUnprefixed} \
@@ -1945,6 +2010,7 @@ in
   home.activation.registerCopilotBleepHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
       ''
+        # pipeline-node: bleep
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           --retire preToolUse ${lib.escapeShellArg legacyPublishGuardCopilotAdapterCmd} \
           --retire preToolUse ${lib.escapeShellArg legacyBleepCopilotCmdUnprefixed} \
@@ -1957,6 +2023,7 @@ in
   home.activation.registerCodexAttributionGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexBleepHooks" ]
       ''
+        # pipeline-node: attribution-guard
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexAttributionGuardCmd} \
           --register \
@@ -1966,6 +2033,7 @@ in
   home.activation.registerCopilotAttributionGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotBleepHooks" ]
       ''
+        # pipeline-node: attribution-guard
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           --retire preToolUse ${lib.escapeShellArg legacyCopilotAttributionGuardCmd} \
           --register \
@@ -1977,6 +2045,7 @@ in
   home.activation.registerCodexPrTitleGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexAttributionGuardHooks" ]
       ''
+        # pipeline-node: pr-title-guard
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexPrTitleGuardCmd} \
           --register \
@@ -1986,6 +2055,7 @@ in
   home.activation.registerCopilotPrTitleGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAttributionGuardHooks" ]
       ''
+        # pipeline-node: pr-title-guard
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           --retire preToolUse ${lib.escapeShellArg legacyCopilotPrTitleGuardCmd} \
           --register \
@@ -1999,6 +2069,7 @@ in
   home.activation.registerCodexPkexecGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPrTitleGuardHooks" ]
       ''
+        # pipeline-node: pkexec-guard
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg pkexecGuardCodexCmd} 10
       '';
@@ -2006,6 +2077,7 @@ in
   home.activation.registerCopilotPkexecGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPrTitleGuardHooks" ]
       ''
+        # pipeline-node: pkexec-guard
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           preToolUse ${lib.escapeShellArg pkexecGuardCopilotCmd} 10
       '';
@@ -2015,6 +2087,7 @@ in
   home.activation.registerCopilotAgentTurnLogHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPkexecGuardHooks" ]
       ''
+        # pipeline-node: agent-turn-log
         run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
           --retire UserPromptSubmit ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
           --retire Stop ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
@@ -2033,6 +2106,7 @@ in
   home.activation.registerCodexStagedHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPkexecGuardHooks" ]
       ''
+        # pipeline-node: git-stash-guard, stack-base-guard, rulesets-write-guard, main-checkout-guard-pre, main-checkout-guard-stop, adr-number
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexGitStashGuardCmd} \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexStackBaseGuardCmd} \
@@ -2053,6 +2127,7 @@ in
   home.activation.registerCodexSessionStartHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
       ''
+        # pipeline-node: issue-index, esa-index, wrapup-session-start, sign-prewarm, pr-gate-session-start, worktree-fresh-base, herdr-status-advisory
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
@@ -2077,6 +2152,7 @@ in
   home.activation.registerCodexStopHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexSessionStartHooks" ]
       ''
+        # pipeline-node: wrapup-stop-gate, pr-gate-stop, agent-turn-log
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire Stop ${lib.escapeShellArg legacyCodexWrapupStopCmd} \
           --retire Stop ${lib.escapeShellArg legacyPrGateStopCmd} \
@@ -2097,6 +2173,7 @@ in
   home.activation.registerCodexPlanGateHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStopHooks" ]
       ''
+        # pipeline-node: codex-plan-gate
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire Stop ${lib.escapeShellArg legacyCodexPlanGateCmd} \
           --register \
@@ -2108,6 +2185,7 @@ in
   home.activation.registerCodexPrConfirmGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPlanGateHooks" ]
       ''
+        # pipeline-node: pr-confirm-guard
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire PreToolUse ${lib.escapeShellArg legacyCodexPrConfirmGuardCmd} \
           --register \

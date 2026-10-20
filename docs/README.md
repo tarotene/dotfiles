@@ -394,6 +394,14 @@
   pr-title と同形の composite action(ADR-591 D3)で、マニフェスト → ツールの
   閉表で適用を判定し、PUBLIC かつ docs.rs 対象外だけ Pages へ deploy する。
 
+- [ADR-0000](adr/0000-pipeline-map.md) — 自動発火する機構(hook・timer・
+  workflow・git hook・herdr の周期コマンド)の地図を、root の
+  `pipeline-map.toml` を単一正本にして持つ決定。登録箇所からノードを指す
+  ポインタ(Claude hook の宣言は nix 属性 `node`、それ以外は直前のコメント
+  `pipeline-node:`)の漏れ・未定義 ID・登録の無い自動ノードを、nix の評価と
+  `cargo test`(`crates/pipeline-map`)が落とす。図は D2 で manifest から
+  生成する。
+
 ## Claude Code tooling ([`claude/`](claude/))
 
 Design and rationale for the hooks and commands deployed from

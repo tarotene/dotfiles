@@ -86,6 +86,7 @@ in
   home.activation.registerCodexHerdrMetadataHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexWorktreeHooks" ]
       ''
+        # pipeline-node: herdr-agent-metadata
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire SessionStart ${lib.escapeShellArg legacyCodexMetadataCmd} \
           --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexMetadataCmd} \
@@ -112,6 +113,7 @@ in
   # writeBoundary だけで足りる。イベント名は Copilot CLI の native camelCase
   # (herdr 自身の PascalCase エントリと共存する — herdr-sidebar-metadata.md 参照)。
   home.activation.registerCopilotHerdrMetadataHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # pipeline-node: herdr-agent-metadata
     run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
       --retire sessionStart ${lib.escapeShellArg "${legacyCopilotMetadataCmd} report"} \
       --retire userPromptSubmitted ${lib.escapeShellArg "${legacyCopilotMetadataCmd} report"} \
@@ -155,6 +157,7 @@ in
 
   # Persistent= は書かない — OnCalendar= にしか効かない死んだ宣言になる
   # (drift.nix の #442 の教訓、systemd.timer(5))。
+  # pipeline-node: herdr-issue-counts
   systemd.user.timers.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Refresh Herdr sidebar issue counts every 5 minutes";
     Timer = {
@@ -167,6 +170,7 @@ in
   };
 
   # launchd 版(ADR-0018)。RunAtLoad が systemd の OnBootSec に相当する。
+  # pipeline-node: herdr-issue-counts
   launchd.agents.herdr-issue-counts = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

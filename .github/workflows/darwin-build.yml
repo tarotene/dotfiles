@@ -10,6 +10,7 @@ name: Darwin build
 # `.github/actions/stack-position` を `ci.yml` と共有する — stack-aware
 # skip(ADR-468)は required/advisory を問わず同じ判定を使う。
 
+# pipeline-node: darwin-build
 on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]

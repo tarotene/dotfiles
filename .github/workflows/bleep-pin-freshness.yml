@@ -14,6 +14,7 @@ name: bleep pin freshness
 # annotation を出すだけで、job は失敗させない。Renovate の nix manager が
 # rev 固定の入力を digest 更新できるようになったら、この workflow は外す。
 
+# pipeline-node: bleep-pin-freshness
 on:
   push:
     branches: [ main ]

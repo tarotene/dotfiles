@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# pipeline-node: git-pre-commit
 set -euo pipefail
 
 # Protected-branch guard: block a direct commit onto main/master. herdr

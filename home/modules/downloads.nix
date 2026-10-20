@@ -27,6 +27,7 @@
   # systemd.user.tmpfiles.rules は home-manager が Linux のみに実体化する
   # (assertPlatform)ため isLinux ガードは必須ではないが、drift.nix の書式に
   # 揃えて明示する。
+  # pipeline-node: downloads-clean
   systemd.user.tmpfiles.rules = lib.mkIf pkgs.stdenv.isLinux [
     "d %h/Downloads - - - 14d"
   ];
@@ -38,6 +39,7 @@
   # tmpfiles の既定(3 種のタイムスタンプのいずれか新しければ延命)を find の
   # 論理積(AND)で写す。初回のみ TCC 権限付与が要る(docs/cutover-runbook.md
   # の Post-cutover 手順)。
+  # pipeline-node: downloads-clean
   launchd.agents.downloads-clean = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

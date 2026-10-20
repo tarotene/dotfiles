@@ -52,6 +52,7 @@ in
 
   # OnCalendar= のみを使うので Persistent= は生きた宣言になる(#442 の教訓 —
   # OnBootSec=/OnUnitActiveSec= だけの herdr-issue-counts では書かない)。
+  # pipeline-node: due-remind
   systemd.user.timers.due-remind = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Check due-indexes hourly, 09:00-19:00";
     Timer = {
@@ -66,6 +67,7 @@ in
   # StartCalendarInterval を時間毎に11エントリ並べる(gpg-subkey-remind の
   # 1エントリ版と同型)。EnvironmentVariables.PATH は launchd が PATH を
   # 置換するので、呼び出す全バイナリを列挙する。
+  # pipeline-node: due-remind
   launchd.agents.due-remind = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

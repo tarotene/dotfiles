@@ -1,0 +1,307 @@
+# 自動発火する機構の地図(manifest)。図(docs/pipeline-map.md と docs/assets/pipeline-map/)は
+# このファイルだけから作る。手描きの複写を持たない。
+#
+# 検査(crates/pipeline-map、`cargo test` の tests/coverage.rs が走らせる):
+#   - 登録箇所からのポインタ: Claude Code の hook 宣言(home/modules/claude.nix の
+#     claudeHookDeclarations)は nix 属性 `node = "<id>";`(nix 評価時にも検査される)。
+#     それ以外の登録箇所(Codex/Copilot の登録呼び出し・timer / launchd agent・workflow・
+#     git hook・herdr の command 行・statusline の定義)は、直前のコメント
+#     `pipeline-node: <id>`。
+#   - auto = true のノードは登録箇所から 1 つ以上ポインタされていること。
+#     auto = false のノード(skill・手動 CLI・外部サービス・状態ファイル)は
+#     hand-off 先として描くだけで、ポインタを要求しない(ポインタされていたら fail)。
+#   - label は ASCII のみ(図のフォントは CJK を持たない。日本語の説明は md の散文に書く)。
+#
+# 実値の扱い(ADR-0034): このリポジトリは公開。private なリポジトリ名・bucket 名などの
+# 実値は書かず、役割で呼ぶ(private-issue-repo など)。
+#
+# 自動発火する機構を足したら: ここにノードを足し(auto = true)、登録箇所にポインタを書く。
+
+# ---------------------------------------------------------------- lanes
+# 概観図のレーン = 発火のきっかけ。order が左→右(セッションの時間軸、後半は常駐系)。
+lane = [
+  { id = "session-start", label = "SessionStart", order = 1 },
+  { id = "plan-approval", label = "Plan approval", order = 2 },
+  { id = "tool-call", label = "Tool call", order = 3 },
+  { id = "stop", label = "Turn end / Stop", order = 4 },
+  { id = "git-hook", label = "git hooks", order = 5 },
+  { id = "ci", label = "CI (GitHub Actions)", order = 6 },
+  { id = "timer", label = "Timers / periodic", order = 7 },
+  { id = "cloud", label = "Cloud / LLM", order = 8 },
+  { id = "manual", label = "Manual / skills", order = 9 },
+  { id = "external", label = "Sessions / services / state", order = 10 },
+]
+
+# ------------------------------------------------------------ pipelines
+# 詳細図の単位。1 つのノードは複数に属してよい(bleep は実装→PR と気づき→Issue の両方)。
+pipeline = [
+  { id = "plan-approval", label = "Plan approval", order = 1 },
+  { id = "implement-to-pr", label = "Implement to PR", order = 2 },
+  { id = "wrapup-to-issue", label = "Findings to Issue", order = 3 },
+  { id = "repo-governance", label = "Repo governance", order = 4 },
+  { id = "routines", label = "Cloud routines", order = 5 },
+  { id = "host-hygiene", label = "Host hygiene and UI", order = 6 },
+  { id = "evidence", label = "Activity evidence", order = 7 },
+]
+
+# ---------------------------------------------------------------- nodes
+node = [
+  # --- SessionStart: 文脈の注入と前提の整備
+  { id = "wrapup-session-start", label = "wrapup-session-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/wrapup-stop-gate", doc = "docs/claude/wrapup-inbox.md", auto = true },
+  { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/claude/issue-index.md", auto = true },
+  { id = "esa-index", label = "esa-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/esa-index", doc = "docs/claude/esa-index.md", auto = true },
+  { id = "pr-gate-session-start", label = "pr-gate (start)", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/claude/pr-gate.md", auto = true },
+  { id = "herdr-status-advisory", label = "herdr-status-advisory", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-status-advisory", doc = "docs/claude/herdr-status-advisory.md", auto = true },
+  { id = "sign-prewarm", label = "sign-prewarm", lane = "session-start", group = "session-prep", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/sign-prewarm", doc = "docs/claude/sign-prewarm.md", auto = true },
+  { id = "worktree-fresh-base", label = "worktree-fresh-base", lane = "session-start", group = "session-prep", stack = "rust", pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/worktree-fresh-base", doc = "docs/claude/worktree-fresh-base.md", auto = true },
+  { id = "worktree-audit-context", label = "git-audit-worktrees --context", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-audit-worktrees", doc = "docs/worktree-lifecycle.md", auto = true },
+
+  # --- Plan approval: ExitPlanMode で並列に走る gate 群
+  { id = "copilot-plan-review", label = "copilot-plan-review", lane = "plan-approval", group = "plan-critic", stack = "rust", llm = true, pipelines = ["plan-approval"], entity = "crates/copilot-plan-review", doc = "docs/claude/copilot-plan-review.md", auto = true },
+  { id = "plan-view", label = "plan-view", lane = "plan-approval", group = "plan-display", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-view", doc = "docs/claude/plan-view.md", auto = true },
+  { id = "plan-scope-gate", label = "plan-scope-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-scope-gate", doc = "docs/claude/scope-inventory.md", auto = true },
+  { id = "plan-precedent-gate", label = "plan-precedent-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-precedent-gate", doc = "docs/claude/precedent-grounding.md", auto = true },
+  { id = "plan-fresh-gate", label = "plan-fresh-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-fresh-gate", doc = "docs/claude/plan-fresh-gate.md", auto = true },
+
+  # --- Tool call: PreToolUse / PostToolUse の guard 群
+  { id = "git-worktree-allow", label = "git-worktree-allow", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-worktree-allow", doc = "docs/claude/git-worktree-allow.md", auto = true },
+  { id = "git-stash-guard", label = "git-stash-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-stash-guard", doc = "docs/claude/git-stash-guard.md", auto = true },
+  { id = "main-checkout-guard-pre", label = "main-checkout-guard (pre)", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/claude/main-checkout-guard.md", auto = true },
+  { id = "worktree-create-guard", label = "worktree-create-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/git-worktree-create-guard", doc = "docs/worktree-lifecycle.md", auto = true },
+  { id = "pkexec-guard", label = "pkexec-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/pkexec-guard", doc = "docs/claude/pkexec-guard.md", auto = true },
+  { id = "new-tool-guard", label = "new-tool-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/new-tool-guard", auto = true },
+  { id = "bleep", label = "bleep", lane = "tool-call", group = "leak-guards", stack = "external", pipelines = ["implement-to-pr", "wrapup-to-issue"], doc = "docs/claude/public-publish-guard.md", auto = true },
+  { id = "external-send-guard", label = "external-send-guard", lane = "tool-call", group = "leak-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/external-send-guard", doc = "docs/claude/external-send-guard.md", auto = true },
+  { id = "attribution-guard", label = "attribution-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/attribution-guard", doc = "docs/claude/attribution-guard.md", auto = true },
+  { id = "pr-title-guard", label = "pr-title-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-title-guard", doc = "docs/claude/pr-title-contract.md", auto = true },
+  { id = "pr-confirm-guard", label = "pr-confirm-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-confirm-guard", doc = "docs/claude/pr-confirm-guard.md", auto = true },
+  { id = "decision-colocation-guard", label = "decision-colocation-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/decision-colocation", doc = "docs/claude/decision-colocation.md", auto = true },
+  { id = "stack-base-guard", label = "stack-base-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/stack-base-guard", doc = "docs/claude/stack-base-guard.md", auto = true },
+  { id = "feedback-target-guard", label = "feedback-target-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/feedback-target-guard", auto = true },
+  { id = "gh-edit-allow-record", label = "gh-edit-allow (record)", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/gh-edit-allow", doc = "docs/claude/gh-edit-allow.md", auto = true },
+  { id = "gh-edit-allow-judge", label = "gh-edit-allow (judge)", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/gh-edit-allow", doc = "docs/claude/gh-edit-allow.md", auto = true },
+  { id = "adr-number", label = "adr-number", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/adr-number", doc = "docs/claude/adr-numbering.md", auto = true },
+  { id = "repo-create-guard", label = "repo-create-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["repo-governance"], entity = "crates/repo-create-guard", doc = "docs/claude/repo-create-guard.md", auto = true },
+  { id = "rulesets-write-guard", label = "rulesets-write-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["repo-governance"], entity = "crates/rulesets-write-guard", doc = "docs/claude/rulesets-write-guard.md", auto = true },
+  { id = "routines-write-guard", label = "routines-write-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["routines"], entity = "crates/routines-write-guard", doc = "docs/claude/routines-write-guard.md", auto = true },
+  { id = "cmd-hash-log", label = "cmd-hash-log", lane = "tool-call", group = "telemetry", stack = "rust", pipelines = ["evidence", "wrapup-to-issue"], entity = "crates/cmd-hash-log", auto = true },
+  { id = "atuin-history", label = "atuin hook", lane = "tool-call", group = "telemetry", stack = "external", pipelines = ["evidence"], auto = true },
+  { id = "herdr-agent-metadata", label = "herdr-agent-metadata", lane = "tool-call", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-agent-metadata", doc = "docs/claude/herdr-sidebar-metadata.md", auto = true },
+
+  # --- Turn end / Stop
+  { id = "wrapup-stop-gate", label = "wrapup-stop-gate", lane = "stop", group = "stop-gates", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/wrapup-stop-gate", doc = "docs/claude/wrapup-inbox.md", auto = true },
+  { id = "pr-gate-stop", label = "pr-gate (stop)", lane = "stop", group = "stop-gates", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/claude/pr-gate.md", auto = true },
+  { id = "main-checkout-guard-stop", label = "main-checkout-guard (stop)", lane = "stop", group = "stop-gates", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/claude/main-checkout-guard.md", auto = true },
+  { id = "codex-plan-gate", label = "codex-plan-gate", lane = "stop", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/codex-plan-gate", doc = "docs/claude/codex-plan-gate.md", auto = true },
+  { id = "agent-turn-log", label = "agent-turn-log", lane = "stop", group = "telemetry", stack = "rust", pipelines = ["evidence"], entity = "crates/agent-turn-log", auto = true },
+  { id = "claude-statusline", label = "claude-statusline", lane = "stop", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/claude-statusline", doc = "docs/claude/herdr-sidebar-metadata.md", auto = true },
+
+  # --- git hooks
+  { id = "git-pre-commit", label = "pre-commit", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr"], entity = "config/git/hooks/pre-commit", doc = "docs/git-sync.md", auto = true },
+  { id = "git-pre-push", label = "pre-push", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr", "wrapup-to-issue"], entity = "config/git/hooks/pre-push", doc = "docs/git-sync.md", auto = true },
+  { id = "git-post-checkout", label = "post-checkout", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr"], entity = "config/git/hooks/post-checkout", doc = "docs/git-sync.md", auto = true },
+
+  # --- CI
+  { id = "ci", label = "ci.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr", "repo-governance"], entity = ".github/workflows/ci.yml", auto = true },
+  { id = "darwin-build", label = "darwin-build.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr"], entity = ".github/workflows/darwin-build.yml", auto = true },
+  { id = "pr-title-check", label = "pr-title.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr", "repo-governance"], entity = ".github/workflows/pr-title.yml", auto = true },
+  { id = "close-linked-issues", label = "close-linked-issues.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr"], entity = ".github/workflows/close-linked-issues.yml", auto = true },
+  { id = "bleep-pin-freshness", label = "bleep-pin-freshness.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/bleep-pin-freshness.yml", auto = true },
+
+  # --- Timers / periodic
+  { id = "git-audit-worktrees", label = "git-audit-worktrees (1 min)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-audit-worktrees", doc = "docs/worktree-lifecycle.md", auto = true },
+  { id = "git-checkout-freshness", label = "git-checkout-freshness (10 min)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-checkout-freshness", doc = "docs/claude/git-checkout-freshness.md", auto = true },
+  { id = "git-auto-prune", label = "git-auto-prune (hourly)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-prune", doc = "docs/worktree-lifecycle.md", auto = true },
+  { id = "herdr-issue-counts", label = "herdr-issue-counts (5 min)", lane = "timer", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-issue-counts", auto = true },
+  { id = "claude-usage", label = "claude-usage (60 s)", lane = "timer", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/claude-usage", doc = "docs/claude/claude-usage.md", auto = true },
+  { id = "herdr-tab-bar-right-local", label = "tab-bar-right.local (60 s)", lane = "timer", group = "herdr-feeds", stack = "herdr", pipelines = ["host-hygiene"], doc = "docs/claude/herdr-tab-bar-local.md", auto = true },
+  { id = "due-remind", label = "due-remind (hourly)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/due-remind", auto = true },
+  { id = "gpg-subkey-remind", label = "gpg-subkey remind (daily)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/gpg-subkey", auto = true },
+  { id = "detect-drift", label = "detect-drift (weekly)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/detect-drift", auto = true },
+  { id = "promotion-detect", label = "promotion-detect (daily)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["wrapup-to-issue", "evidence"], entity = "crates/promotion-detect", doc = "docs/claude/promotion-detect.md", auto = true },
+  { id = "obsidian-backup", label = "obsidian-backup (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "obsidian-backup-maintenance", label = "obsidian-backup maintenance (weekly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "obsidian-backup-restore-test", label = "obsidian-backup restore-test (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "downloads-clean", label = "downloads-clean (14 days)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/downloads.nix", auto = true },
+
+  # --- Cloud / LLM(auto = false: 登録箇所を持たない)
+  { id = "copilot-cli-critic", label = "Copilot CLI (plan critic)", lane = "cloud", group = "plan-critic", stack = "cloud-llm", llm = true, pipelines = ["plan-approval"], auto = false },
+  { id = "cloud-routine-auditor", label = "Cloud routine (weekly auditor)", lane = "cloud", group = "routines", stack = "cloud-llm", llm = true, pipelines = ["routines"], doc = "docs/claude/claude-routines.md", auto = false },
+
+  # --- Manual / skills(LLM が手順書を読んで動く)
+  { id = "scope-inventory", label = "skill: scope-inventory", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["plan-approval"], entity = "config/claude/skills/scope-inventory", doc = "docs/claude/scope-inventory.md", auto = false },
+  { id = "precedent-grounding", label = "skill: precedent-grounding", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["plan-approval"], entity = "config/claude/skills/precedent-grounding", doc = "docs/claude/precedent-grounding.md", auto = false },
+  { id = "selection-grounding", label = "skill: selection-grounding", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["plan-approval"], entity = "config/claude/skills/selection-grounding", doc = "docs/claude/selection-grounding.md", auto = false },
+  { id = "stacked-pr", label = "skill: stacked-pr", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["implement-to-pr"], entity = "config/claude/skills/stacked-pr", doc = "docs/claude/stacked-pr.md", auto = false },
+  { id = "pr-description", label = "skill: pr-description", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["implement-to-pr"], entity = "config/claude/skills/pr-description", doc = "docs/claude/pr-description.md", auto = false },
+  { id = "handoff", label = "skill: handoff", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["implement-to-pr"], entity = "config/claude/skills/handoff", doc = "docs/claude/handoff.md", auto = false },
+  { id = "retro", label = "skill: retro", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["wrapup-to-issue"], entity = "config/claude/skills/retro", doc = "docs/claude/retro.md", auto = false },
+  { id = "wrapup-chores", label = "skill: wrapup-chores", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["wrapup-to-issue"], entity = "config/claude/skills/wrapup-chores", doc = "docs/claude/wrapup-chores.md", auto = false },
+  { id = "repo-charter", label = "skill: repo-charter", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["repo-governance"], entity = "config/claude/skills/repo-charter", doc = "docs/claude/repo-charter.md", auto = false },
+  { id = "github-audit-triage", label = "skill: github-audit-triage", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["repo-governance"], entity = "config/claude/skills/github-audit-triage", doc = "docs/claude/github-audit-triage.md", auto = false },
+  { id = "claude-routines", label = "skill: claude-routines", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["routines"], entity = "config/claude/skills/claude-routines", doc = "docs/claude/claude-routines.md", auto = false },
+  { id = "gpg-subkey-rotation", label = "skill: gpg-subkey-rotation", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["host-hygiene"], entity = "config/claude/skills/gpg-subkey-rotation", doc = "docs/claude/gpg-subkey-rotation.md", auto = false },
+
+  # --- Manual CLIs(決定論)
+  { id = "verdict-escalate", label = "verdict-escalate", lane = "manual", group = "cli", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/verdict-escalate", doc = "docs/claude/verdict-escalate.md", auto = false },
+  { id = "github-audit", label = "github-audit", lane = "manual", group = "cli", stack = "rust", pipelines = ["repo-governance", "routines"], entity = "crates/github-audit", doc = "docs/github-audit.md", auto = false },
+  { id = "apply-rulesets", label = "apply-rulesets", lane = "manual", group = "cli", stack = "rust", pipelines = ["repo-governance"], entity = "crates/apply-rulesets", auto = false },
+  { id = "hms", label = "hms (apply)", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/hms", doc = "docs/operations.md", auto = false },
+  { id = "settings-reconcile", label = "settings-reconcile", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/settings-reconcile", doc = "docs/settings-reconcile.md", auto = false },
+
+  # --- Sessions / services / state(auto = false)
+  { id = "agent-session", label = "Agent session (Claude / Codex / Copilot)", lane = "external", group = "sessions", stack = "cloud-llm", llm = true, pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene", "evidence"], auto = false },
+  { id = "user", label = "You", lane = "external", group = "sessions", stack = "external", pipelines = ["plan-approval", "wrapup-to-issue", "host-hygiene"], auto = false },
+  { id = "github", label = "GitHub (Issues / PRs / rulesets / checks)", lane = "external", group = "services", stack = "external", pipelines = ["implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene"], auto = false },
+  { id = "herdr", label = "herdr (sidebar / toast / tab bar)", lane = "external", group = "services", stack = "herdr", pipelines = ["host-hygiene"], auto = false },
+  { id = "private-issue-repo", label = "Private Issue repo", lane = "external", group = "services", stack = "external", pipelines = ["host-hygiene"], auto = false },
+  { id = "backblaze", label = "Backblaze B2", lane = "external", group = "services", stack = "external", pipelines = ["host-hygiene"], auto = false },
+  { id = "daily-report", label = "daily-report (other repo)", lane = "external", group = "services", stack = "external", pipelines = ["evidence"], auto = false },
+  { id = "due-index", label = "due-index (other repo)", lane = "external", group = "state", stack = "store", pipelines = ["host-hygiene"], auto = false },
+  { id = "wrapup-inbox", label = "wrap-up inbox", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
+  { id = "verdict-ledger", label = "verdict ledger", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
+]
+
+# ---------------------------------------------------------------- edges
+# kind: deny(行為を止める)/ context(文脈・情報を渡す)/ file(ファイル・状態に書く)/
+#       issue(Issue を作る・閉じる)/ pr(PR を作る)/ notify(通知・表示)/ invoke(呼ぶ・導く)
+# pipelines を省略すると、両端のノードが共通に属するパイプラインすべてに現れる。
+edge = [
+  # === Plan approval
+  { from = "agent-session", to = "copilot-plan-review", kind = "invoke", label = "ExitPlanMode", pipelines = ["plan-approval"] },
+  { from = "agent-session", to = "plan-scope-gate", kind = "invoke", label = "ExitPlanMode", pipelines = ["plan-approval"] },
+  { from = "agent-session", to = "plan-precedent-gate", kind = "invoke", label = "ExitPlanMode", pipelines = ["plan-approval"] },
+  { from = "agent-session", to = "plan-fresh-gate", kind = "invoke", label = "ExitPlanMode", pipelines = ["plan-approval"] },
+  { from = "agent-session", to = "plan-view", kind = "invoke", label = "ExitPlanMode", pipelines = ["plan-approval"] },
+  { from = "copilot-plan-review", to = "copilot-cli-critic", kind = "invoke", label = "review round", pipelines = ["plan-approval"] },
+  { from = "copilot-cli-critic", to = "copilot-plan-review", kind = "context", label = "findings", pipelines = ["plan-approval"] },
+  { from = "copilot-plan-review", to = "agent-session", kind = "deny", label = "BLOCKER / MAJOR", pipelines = ["plan-approval"] },
+  { from = "plan-scope-gate", to = "agent-session", kind = "deny", label = "missing R-item", pipelines = ["plan-approval"] },
+  { from = "plan-precedent-gate", to = "agent-session", kind = "deny", label = "missing Dn / axis", pipelines = ["plan-approval"] },
+  { from = "plan-fresh-gate", to = "agent-session", kind = "deny", label = "base moved", pipelines = ["plan-approval"] },
+  { from = "plan-view", to = "user", kind = "notify", label = "HTML window", pipelines = ["plan-approval"] },
+  { from = "user", to = "agent-session", kind = "context", label = "GO / feedback", pipelines = ["plan-approval"] },
+  { from = "scope-inventory", to = "plan-scope-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },
+  { from = "precedent-grounding", to = "plan-precedent-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },
+  { from = "selection-grounding", to = "plan-precedent-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },
+  { from = "codex-plan-gate", to = "plan-scope-gate", kind = "invoke", label = "reuses", pipelines = ["plan-approval"] },
+  { from = "codex-plan-gate", to = "plan-precedent-gate", kind = "invoke", label = "reuses", pipelines = ["plan-approval"] },
+  { from = "codex-plan-gate", to = "agent-session", kind = "deny", label = "Codex plan check", pipelines = ["plan-approval"] },
+
+  # === Implement to PR: SessionStart の文脈
+  { from = "issue-index", to = "agent-session", kind = "context", label = "open Issues", pipelines = ["implement-to-pr"] },
+  { from = "esa-index", to = "agent-session", kind = "context", label = "wiki mirror", pipelines = ["implement-to-pr"] },
+  { from = "wrapup-session-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
+  { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
+  { from = "worktree-fresh-base", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },
+  { from = "sign-prewarm", to = "user", kind = "notify", label = "pinentry once", pipelines = ["implement-to-pr"] },
+  { from = "worktree-audit-context", to = "agent-session", kind = "context", label = "stale worktrees", pipelines = ["host-hygiene"] },
+  { from = "herdr-status-advisory", to = "agent-session", kind = "context", label = "client / server mismatch", pipelines = ["host-hygiene"] },
+
+  # === Implement to PR: tool call の guard(止めるものだけを描く)
+  { from = "git-stash-guard", to = "agent-session", kind = "deny", label = "bare stash", pipelines = ["implement-to-pr"] },
+  { from = "git-worktree-allow", to = "agent-session", kind = "context", label = "allow git -C", pipelines = ["implement-to-pr"] },
+  { from = "main-checkout-guard-pre", to = "agent-session", kind = "deny", label = "write to main checkout", pipelines = ["implement-to-pr"] },
+  { from = "main-checkout-guard-stop", to = "agent-session", kind = "deny", label = "leftover change", pipelines = ["implement-to-pr"] },
+  { from = "worktree-create-guard", to = "agent-session", kind = "deny", label = "unmanaged worktree", pipelines = ["implement-to-pr", "host-hygiene"] },
+  { from = "new-tool-guard", to = "agent-session", kind = "deny", label = "no existing-means", pipelines = ["implement-to-pr"] },
+  { from = "bleep", to = "agent-session", kind = "deny", label = "private name leak", pipelines = ["implement-to-pr"] },
+  { from = "external-send-guard", to = "agent-session", kind = "deny", label = "non-self send", pipelines = ["implement-to-pr"] },
+  { from = "attribution-guard", to = "agent-session", kind = "deny", label = "no footer", pipelines = ["implement-to-pr"] },
+  { from = "pr-title-guard", to = "agent-session", kind = "deny", label = "bad title", pipelines = ["implement-to-pr"] },
+  { from = "pr-confirm-guard", to = "agent-session", kind = "deny", label = "unchecked tasks", pipelines = ["implement-to-pr"] },
+  { from = "decision-colocation-guard", to = "agent-session", kind = "deny", label = "no enforcement point", pipelines = ["implement-to-pr"] },
+  { from = "stack-base-guard", to = "agent-session", kind = "deny", label = "base is not parent", pipelines = ["implement-to-pr"] },
+  { from = "adr-number", to = "agent-session", kind = "context", label = "ADR renumbered", pipelines = ["implement-to-pr"] },
+  { from = "gh-edit-allow-record", to = "gh-edit-allow-judge", kind = "file", label = "session ledger", pipelines = ["implement-to-pr"] },
+  { from = "gh-edit-allow-judge", to = "agent-session", kind = "context", label = "allow own edit", pipelines = ["implement-to-pr"] },
+  { from = "agent-session", to = "github", kind = "pr", label = "gh pr create", pipelines = ["implement-to-pr"] },
+  { from = "stacked-pr", to = "stack-base-guard", kind = "invoke", label = "chain rule", pipelines = ["implement-to-pr"] },
+  { from = "pr-description", to = "pr-gate-stop", kind = "invoke", label = "link / visual", pipelines = ["implement-to-pr"] },
+  { from = "handoff", to = "pr-gate-stop", kind = "invoke", label = "Draft + Handoff", pipelines = ["implement-to-pr"] },
+  { from = "handoff", to = "issue-index", kind = "context", label = "handoff:ai label", pipelines = ["implement-to-pr"] },
+
+  # === Implement to PR: git hook と CI と Stop
+  { from = "git-pre-commit", to = "agent-session", kind = "deny", label = "commit on main", pipelines = ["implement-to-pr"] },
+  { from = "git-pre-push", to = "bleep", kind = "invoke", label = "scan-push", pipelines = ["implement-to-pr"] },
+  { from = "git-pre-push", to = "agent-session", kind = "deny", label = "leak / non-herdr", pipelines = ["implement-to-pr"] },
+  { from = "git-post-checkout", to = "agent-session", kind = "file", label = "worktree setup", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "ci", kind = "invoke", label = "PR event", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "darwin-build", kind = "invoke", label = "PR event", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "pr-title-check", kind = "invoke", label = "PR event", pipelines = ["implement-to-pr", "repo-governance"] },
+  { from = "github", to = "close-linked-issues", kind = "invoke", label = "PR closed", pipelines = ["implement-to-pr"] },
+  { from = "ci", to = "github", kind = "notify", label = "required checks", pipelines = ["implement-to-pr", "repo-governance"] },
+  { from = "darwin-build", to = "github", kind = "notify", label = "advisory check", pipelines = ["implement-to-pr"] },
+  { from = "pr-title-check", to = "github", kind = "notify", label = "title check", pipelines = ["implement-to-pr", "repo-governance"] },
+  { from = "close-linked-issues", to = "github", kind = "issue", label = "close Issues", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "pr-gate-stop", kind = "context", label = "checks / rules", pipelines = ["implement-to-pr"] },
+  { from = "pr-gate-stop", to = "agent-session", kind = "deny", label = "PR not done", pipelines = ["implement-to-pr"] },
+
+  # === Findings to Issue
+  { from = "agent-session", to = "wrapup-inbox", kind = "file", label = "--add finding", pipelines = ["wrapup-to-issue"] },
+  { from = "wrapup-inbox", to = "wrapup-stop-gate", kind = "file", label = "pending lines", pipelines = ["wrapup-to-issue"] },
+  { from = "wrapup-stop-gate", to = "agent-session", kind = "deny", label = "file Issues / retro", pipelines = ["wrapup-to-issue"] },
+  { from = "agent-session", to = "github", kind = "issue", label = "gh issue create", pipelines = ["wrapup-to-issue"] },
+  { from = "bleep", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
+  { from = "git-pre-push", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
+  { from = "wrapup-stop-gate", to = "verdict-escalate", kind = "invoke", label = "before gate", pipelines = ["wrapup-to-issue"] },
+  { from = "verdict-ledger", to = "verdict-escalate", kind = "file", label = "repeated deny", pipelines = ["wrapup-to-issue"] },
+  { from = "verdict-escalate", to = "wrapup-inbox", kind = "file", label = "escalation line", pipelines = ["wrapup-to-issue"] },
+  { from = "retro", to = "wrapup-stop-gate", kind = "invoke", label = "--retro-add", pipelines = ["wrapup-to-issue"] },
+  { from = "cmd-hash-log", to = "promotion-detect", kind = "file", label = "command hashes", pipelines = ["wrapup-to-issue", "evidence"] },
+  { from = "promotion-detect", to = "wrapup-inbox", kind = "file", label = "promotion candidates", pipelines = ["wrapup-to-issue"] },
+  { from = "github", to = "promotion-detect", kind = "context", label = "feedback Issues", pipelines = ["wrapup-to-issue"] },
+  { from = "feedback-target-guard", to = "agent-session", kind = "deny", label = "no Target:", pipelines = ["wrapup-to-issue"] },
+  { from = "wrapup-chores", to = "wrapup-inbox", kind = "file", label = "sweep", pipelines = ["wrapup-to-issue"] },
+  { from = "wrapup-chores", to = "github", kind = "pr", label = "chores PRs", pipelines = ["wrapup-to-issue"] },
+
+  # === Repo governance
+  { from = "github", to = "github-audit", kind = "context", label = "REST / GraphQL", pipelines = ["repo-governance"] },
+  { from = "github-audit", to = "github-audit-triage", kind = "context", label = "findings", pipelines = ["repo-governance"] },
+  { from = "github-audit-triage", to = "github", kind = "pr", label = "fix PRs", pipelines = ["repo-governance"] },
+  { from = "github-audit-triage", to = "apply-rulesets", kind = "invoke", label = "ruleset fixes", pipelines = ["repo-governance"] },
+  { from = "apply-rulesets", to = "github", kind = "file", label = "ruleset PUT", pipelines = ["repo-governance"] },
+  { from = "rulesets-write-guard", to = "agent-session", kind = "deny", label = "raw ruleset write", pipelines = ["repo-governance"] },
+  { from = "rulesets-write-guard", to = "apply-rulesets", kind = "invoke", label = "redirects to", pipelines = ["repo-governance"] },
+  { from = "repo-create-guard", to = "agent-session", kind = "deny", label = "gh repo create", pipelines = ["repo-governance"] },
+  { from = "repo-create-guard", to = "repo-charter", kind = "invoke", label = "redirects to", pipelines = ["repo-governance"] },
+  { from = "bleep-pin-freshness", to = "github", kind = "notify", label = "annotation", pipelines = ["repo-governance"] },
+
+  # === Cloud routines
+  { from = "claude-routines", to = "routines-write-guard", kind = "invoke", label = "RemoteTrigger", pipelines = ["routines"] },
+  { from = "routines-write-guard", to = "agent-session", kind = "deny", label = "undeclared cron", pipelines = ["routines"] },
+  { from = "claude-routines", to = "cloud-routine-auditor", kind = "invoke", label = "create / update", pipelines = ["routines"] },
+  { from = "cloud-routine-auditor", to = "github", kind = "issue", label = "drift Issues", pipelines = ["routines"] },
+  { from = "github-audit", to = "cloud-routine-auditor", kind = "context", label = "sources coverage", pipelines = ["routines"] },
+
+  # === Host hygiene and UI
+  { from = "hms", to = "settings-reconcile", kind = "invoke", label = "activation", pipelines = ["host-hygiene"] },
+  { from = "settings-reconcile", to = "agent-session", kind = "file", label = "registers hooks", pipelines = ["host-hygiene"] },
+  { from = "pkexec-guard", to = "agent-session", kind = "deny", label = "root command", pipelines = ["host-hygiene"] },
+  { from = "git-audit-worktrees", to = "herdr", kind = "notify", label = "stale toast", pipelines = ["host-hygiene"] },
+  { from = "github", to = "git-auto-prune", kind = "context", label = "merge evidence", pipelines = ["host-hygiene"] },
+  { from = "github", to = "git-checkout-freshness", kind = "context", label = "fetch", pipelines = ["host-hygiene"] },
+  { from = "github", to = "herdr-issue-counts", kind = "context", label = "open Issue counts", pipelines = ["host-hygiene"] },
+  { from = "herdr-issue-counts", to = "herdr", kind = "notify", label = "issues token", pipelines = ["host-hygiene"] },
+  { from = "claude-usage", to = "herdr", kind = "notify", label = "usage in tab bar", pipelines = ["host-hygiene"] },
+  { from = "herdr-tab-bar-right-local", to = "herdr", kind = "notify", label = "host slot", pipelines = ["host-hygiene"] },
+  { from = "herdr-agent-metadata", to = "herdr", kind = "notify", label = "sidebar tokens", pipelines = ["host-hygiene"] },
+  { from = "claude-statusline", to = "herdr", kind = "notify", label = "model / ctx / cost", pipelines = ["host-hygiene"] },
+  { from = "due-index", to = "due-remind", kind = "file", label = "due.jsonl", pipelines = ["host-hygiene"] },
+  { from = "due-remind", to = "herdr", kind = "notify", label = "daily toast", pipelines = ["host-hygiene"] },
+  { from = "gpg-subkey-remind", to = "herdr", kind = "notify", label = "expiry toast", pipelines = ["host-hygiene"] },
+  { from = "gpg-subkey-remind", to = "gpg-subkey-rotation", kind = "invoke", label = "rotate", pipelines = ["host-hygiene"] },
+  { from = "detect-drift", to = "private-issue-repo", kind = "issue", label = "drift Issue", pipelines = ["host-hygiene"] },
+  { from = "obsidian-backup", to = "backblaze", kind = "file", label = "restic backup", pipelines = ["host-hygiene"] },
+  { from = "obsidian-backup-maintenance", to = "backblaze", kind = "file", label = "prune / check", pipelines = ["host-hygiene"] },
+  { from = "obsidian-backup-restore-test", to = "backblaze", kind = "context", label = "restore", pipelines = ["host-hygiene"] },
+  { from = "obsidian-backup", to = "herdr", kind = "notify", label = "failure toast", pipelines = ["host-hygiene"] },
+  { from = "herdr", to = "user", kind = "notify", label = "sidebar / toast", pipelines = ["host-hygiene"] },
+
+  # === Activity evidence
+  { from = "agent-turn-log", to = "daily-report", kind = "file", label = "agent-events.jsonl", pipelines = ["evidence"] },
+  { from = "atuin-history", to = "daily-report", kind = "file", label = "shell history", pipelines = ["evidence"] },
+  { from = "agent-session", to = "agent-turn-log", kind = "invoke", label = "prompt / stop", pipelines = ["evidence"] },
+  { from = "agent-session", to = "atuin-history", kind = "invoke", label = "Bash calls", pipelines = ["evidence"] },
+  { from = "agent-session", to = "cmd-hash-log", kind = "invoke", label = "Bash calls", pipelines = ["evidence"] },
+]

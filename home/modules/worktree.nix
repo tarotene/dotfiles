@@ -123,6 +123,7 @@ in
   # Codex owns hooks.json at runtime, as Herdr's integration does. Merge only
   # our two commands and preserve all unrelated entries.
   home.activation.registerCodexWorktreeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # pipeline-node: worktree-create-guard, worktree-audit-context
     run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
       --retire PreToolUse ${lib.escapeShellArg legacyGuardCmd} \
       --retire SessionStart ${lib.escapeShellArg legacyContextCmd} \
@@ -159,6 +160,7 @@ in
     };
   };
 
+  # pipeline-node: git-audit-worktrees
   systemd.user.timers.git-audit-worktrees = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Check for stale Git worktrees every minute";
     Timer = {
@@ -174,6 +176,7 @@ in
   # launchd equivalent of the systemd timer+service pair above. StartInterval
   # (seconds) is launchd's OnUnitActiveSec; RunAtLoad covers OnBootSec (fires
   # once when the agent is first loaded, then every StartInterval thereafter).
+  # pipeline-node: git-audit-worktrees
   launchd.agents.git-audit-worktrees = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
@@ -228,6 +231,7 @@ in
     };
   };
 
+  # pipeline-node: git-checkout-freshness
   systemd.user.timers.git-checkout-freshness = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Keep parent Git checkouts fresh every 10 minutes";
     Timer = {
@@ -240,6 +244,7 @@ in
     Install.WantedBy = [ "timers.target" ];
   };
 
+  # pipeline-node: git-checkout-freshness
   launchd.agents.git-checkout-freshness = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
@@ -314,6 +319,7 @@ in
     };
   };
 
+  # pipeline-node: git-auto-prune
   systemd.user.timers.git-auto-prune = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Run git-auto-prune every hour";
     Timer = {
@@ -333,7 +339,9 @@ in
     Install.WantedBy = [ "timers.target" ];
   };
 
+  # pipeline-node: git-auto-prune
   launchd.agents.git-auto-prune-worktrees = lib.mkIf pkgs.stdenv.isDarwin (autoPruneAgent prunePath);
+  # pipeline-node: git-auto-prune
   launchd.agents.git-auto-prune-branches = lib.mkIf pkgs.stdenv.isDarwin (
     autoPruneAgent pruneBranchesPath
   );

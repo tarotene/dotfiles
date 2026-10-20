@@ -8,6 +8,7 @@ name: CI
 # check にする(個別 job は required から外れる)。macOS(altair)の
 # ビルドは advisory として `darwin-build.yml` に分離している —
 # `.github/actions/stack-position` を両ファイルで共有する。
+# pipeline-node: ci
 on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
