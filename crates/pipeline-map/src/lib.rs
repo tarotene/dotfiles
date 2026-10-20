@@ -20,6 +20,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+pub mod render;
+
+/// 生成した図(`.d2` と `.svg`)の置き場所(repo root 相対、ADR-0028)。
+pub const ASSET_DIR: &str = "docs/assets/pipeline-map";
+
 /// 実装スタック(ノードの色分け)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -467,6 +472,47 @@ pub fn scan(root: &Path) -> Scan {
     scan_git_hooks(root, &mut s);
     scan_herdr(root, &mut s);
     s
+}
+
+// --------------------------------------------------------------- assets
+
+/// `render_all` の出力と、コミット済みの `.d2` / `.svg` の食い違いを返す(空なら一致)。
+/// `.d2` は内容まで、`.svg` は存在だけを見る(SVG の再生成差分は CI が `d2` で検査する)。
+pub fn asset_problems(root: &Path, m: &Manifest) -> Vec<String> {
+    let dir = root.join(ASSET_DIR);
+    let mut problems = Vec::new();
+    let mut expected: BTreeSet<String> = BTreeSet::new();
+    for (stem, d2) in render::render_all(m) {
+        let (d2_name, svg_name) = (format!("{stem}.d2"), format!("{stem}.svg"));
+        match fs::read_to_string(dir.join(&d2_name)) {
+            Ok(have) if have == d2 => {}
+            Ok(_) => problems.push(format!(
+                "{ASSET_DIR}/{d2_name}: manifest から作った内容と違う(`pipeline-map render` で作り直す)"
+            )),
+            Err(_) => problems.push(format!(
+                "{ASSET_DIR}/{d2_name}: 無い(`pipeline-map render` で作る)"
+            )),
+        }
+        if !dir.join(&svg_name).is_file() {
+            problems.push(format!(
+                "{ASSET_DIR}/{svg_name}: 無い(`pipeline-map render` で作る)"
+            ));
+        }
+        expected.insert(d2_name);
+        expected.insert(svg_name);
+    }
+    if let Ok(rd) = fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            if let Some(name) = e.file_name().to_str() {
+                if (name.ends_with(".d2") || name.ends_with(".svg")) && !expected.contains(name) {
+                    problems.push(format!(
+                        "{ASSET_DIR}/{name}: manifest から作られない古い図(消す)"
+                    ));
+                }
+            }
+        }
+    }
+    problems
 }
 
 // --------------------------------------------------------------- audit

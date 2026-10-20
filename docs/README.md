@@ -1,9 +1,17 @@
 # docs/ index
 
+[![Map of every mechanism that fires without being typed, laid out by trigger lane: colour is the implementation stack, a hexagon marks an LLM taking part, and a P number marks the pipeline](assets/pipeline-map/overview.svg)](pipeline-map.md)
+
+What runs automatically, when, and on which stack: see the [pipeline map](pipeline-map.md).
+
 ## Operations
 
 - [`operations.md`](operations.md) — the canonical apply (`hms`), routine
   flake update, and the tool-layer decision flow for new tools.
+- [`pipeline-map.md`](pipeline-map.md) — the map of every mechanism that
+  fires without being typed (hooks, timers, workflows, git hooks): when it
+  runs, what it hands to the next one, and the stack it runs on, with one
+  diagram per pipeline. Generated from the repository-root manifest.
 - [`setup.md`](setup.md) — step-by-step host setup guide (moved from root
   `SETUP.md`, ADR-0016 root-document allowlist).
 - [`setup-macos.md`](setup-macos.md) — macOS (darwin) host setup guide:

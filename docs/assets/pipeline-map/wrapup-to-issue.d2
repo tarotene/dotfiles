@@ -1,0 +1,376 @@
+# 自動生成: `pipeline-map render`。pipeline-map.toml から作る。手で直さない。
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+
+classes: {
+  s_rust: {
+    style: {
+      fill: "#E69F00"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_nix: {
+    style: {
+      fill: "#56B4E9"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_yaml: {
+    style: {
+      fill: "#009E73"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_cloud_llm: {
+    style: {
+      fill: "#CC79A7"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_external: {
+    style: {
+      fill: "#BBBBBB"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_skill: {
+    style: {
+      fill: "#F0E442"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_git: {
+    style: {
+      fill: "#0072B2"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_herdr: {
+    style: {
+      fill: "#D55E00"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_store: {
+    style: {
+      fill: "#FFFFFF"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+      stroke-dash: 3
+    }
+  }
+  e_deny: {
+    style: {
+      stroke: "#D55E00"
+      font-color: "#D55E00"
+      font-size: 11
+      stroke-dash: 4
+    }
+  }
+  e_context: {
+    style: {
+      stroke: "#0072B2"
+      font-color: "#0072B2"
+      font-size: 11
+      stroke-dash: 2
+    }
+  }
+  e_file: {
+    style: {
+      stroke: "#444444"
+      font-color: "#444444"
+      font-size: 11
+    }
+  }
+  e_issue: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+    }
+  }
+  e_pr: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+      stroke-width: 3
+    }
+  }
+  e_notify: {
+    style: {
+      stroke: "#888888"
+      font-color: "#888888"
+      font-size: 11
+    }
+  }
+  e_invoke: {
+    style: {
+      stroke: "#000000"
+      font-color: "#000000"
+      font-size: 11
+      stroke-width: 1
+    }
+  }
+  lane: {
+    style: {
+      fill: "#F4F6F8"
+      stroke: "#9AA5B1"
+      font-size: 15
+      bold: true
+    }
+  }
+  session: {
+    style: {
+      fill: "#FBF3F8"
+      stroke: "#B05A8E"
+      font-size: 17
+      bold: true
+    }
+  }
+  plain: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#555555"
+      font-size: 12
+    }
+  }
+  invisible: {
+    style: {
+      stroke-width: 0
+      fill: transparent
+    }
+  }
+}
+
+n_agent_session: "Agent session (Claude / Codex / Copilot)" {
+  class: session
+  l_session_start: "SessionStart" {
+    class: lane
+    n_wrapup_session_start: "wrapup-session-start" {
+      class: s_rust
+    }
+  }
+  l_tool_call: "Tool call" {
+    class: lane
+    n_bleep: "bleep" {
+      class: s_external
+    }
+    n_feedback_target_guard: "feedback-target-guard" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_cmd_hash_log: "cmd-hash-log" {
+      class: s_rust
+    }
+  }
+  l_session_start -> l_tool_call: {
+    style.opacity: 0
+  }
+  l_stop: "Turn end / Stop" {
+    class: lane
+    n_wrapup_stop_gate: "wrapup-stop-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+  }
+  l_tool_call -> l_stop: {
+    style.opacity: 0
+  }
+}
+
+l_git_hook: "git hooks" {
+  class: lane
+  n_git_pre_push: "pre-push" {
+    class: s_git
+  }
+}
+
+l_timer: "Timers / periodic" {
+  class: lane
+  n_promotion_detect: "promotion-detect (daily)" {
+    class: s_rust
+  }
+}
+
+l_manual: "Manual / skills" {
+  class: lane
+  n_retro: "skill: retro" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_wrapup_chores: "skill: wrapup-chores" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_verdict_escalate: "verdict-escalate" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
+}
+
+l_external: "Sessions / services / state" {
+  class: lane
+  n_user: "You" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_github: "GitHub (Issues / PRs / rulesets / checks)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_wrapup_inbox: "wrap-up inbox" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
+  n_verdict_ledger: "verdict ledger" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
+}
+
+n_agent_session -> l_external.n_wrapup_inbox: "--add finding" {
+  class: e_file
+}
+l_external.n_wrapup_inbox -> n_agent_session.l_stop.n_wrapup_stop_gate: "pending lines" {
+  class: e_file
+}
+n_agent_session -> l_external.n_github: "gh issue create" {
+  class: e_issue
+}
+n_agent_session.l_tool_call.n_bleep -> l_external.n_verdict_ledger: "verdicts" {
+  class: e_file
+}
+l_git_hook.n_git_pre_push -> l_external.n_verdict_ledger: "verdicts" {
+  class: e_file
+}
+n_agent_session.l_stop.n_wrapup_stop_gate -> l_manual.n_verdict_escalate: "before gate" {
+  class: e_invoke
+}
+l_external.n_verdict_ledger -> l_manual.n_verdict_escalate: "repeated deny" {
+  class: e_file
+}
+l_manual.n_verdict_escalate -> l_external.n_wrapup_inbox: "escalation line" {
+  class: e_file
+}
+l_manual.n_retro -> n_agent_session.l_stop.n_wrapup_stop_gate: "--retro-add" {
+  class: e_invoke
+}
+n_agent_session.l_tool_call.n_cmd_hash_log -> l_timer.n_promotion_detect: "command hashes" {
+  class: e_file
+}
+l_timer.n_promotion_detect -> l_external.n_wrapup_inbox: "promotion candidates" {
+  class: e_file
+}
+l_external.n_github -> l_timer.n_promotion_detect: "feedback Issues" {
+  class: e_context
+}
+l_manual.n_wrapup_chores -> l_external.n_wrapup_inbox: "sweep" {
+  class: e_file
+}
+l_manual.n_wrapup_chores -> l_external.n_github: "chores PRs" {
+  class: e_pr
+}
+
+legend: "Legend" {
+  near: bottom-center
+  class: lane
+  grid-columns: 4
+  grid-gap: 8
+  lg_s_rust: "Rust crate" {
+    class: s_rust
+  }
+  lg_s_cloud_llm: "LLM session / cloud" {
+    class: s_cloud_llm
+  }
+  lg_s_external: "external tool / service" {
+    class: s_external
+  }
+  lg_s_skill: "skill (LLM follows a procedure)" {
+    class: s_skill
+  }
+  lg_s_git: "git hook" {
+    class: s_git
+  }
+  lg_s_store: "state file" {
+    class: s_store
+  }
+  lg_llm: "hexagon: an LLM takes part in the decision" {
+    class: s_cloud_llm
+    shape: hexagon
+  }
+  lg_deny_mark: "red thick border: can stop the agent's action" {
+    class: s_rust
+    style.stroke: "#D55E00"
+    style.stroke-width: 4
+  }
+  lg_manual: "dashed border: not fired by itself (skill, CLI, service)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  lg_e_context: "edge context: passes information" {
+    class: plain
+    style.stroke: "#0072B2"
+    style.font-color: "#0072B2"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+    style.stroke-dash: 2
+  }
+  lg_e_file: "edge file: writes a file or state" {
+    class: plain
+    style.stroke: "#444444"
+    style.font-color: "#444444"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_issue: "edge issue: creates or closes an Issue" {
+    class: plain
+    style.stroke: "#009E73"
+    style.font-color: "#009E73"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_pr: "edge pr: creates a PR" {
+    class: plain
+    style.stroke: "#009E73"
+    style.font-color: "#009E73"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_invoke: "edge invoke: calls or redirects to" {
+    class: plain
+    style.stroke: "#000000"
+    style.font-color: "#000000"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+}

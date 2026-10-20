@@ -1,0 +1,327 @@
+# 自動生成: `pipeline-map render`。pipeline-map.toml から作る。手で直さない。
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+
+classes: {
+  s_rust: {
+    style: {
+      fill: "#E69F00"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_nix: {
+    style: {
+      fill: "#56B4E9"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_yaml: {
+    style: {
+      fill: "#009E73"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_cloud_llm: {
+    style: {
+      fill: "#CC79A7"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_external: {
+    style: {
+      fill: "#BBBBBB"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_skill: {
+    style: {
+      fill: "#F0E442"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_git: {
+    style: {
+      fill: "#0072B2"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_herdr: {
+    style: {
+      fill: "#D55E00"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_store: {
+    style: {
+      fill: "#FFFFFF"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+      stroke-dash: 3
+    }
+  }
+  e_deny: {
+    style: {
+      stroke: "#D55E00"
+      font-color: "#D55E00"
+      font-size: 11
+      stroke-dash: 4
+    }
+  }
+  e_context: {
+    style: {
+      stroke: "#0072B2"
+      font-color: "#0072B2"
+      font-size: 11
+      stroke-dash: 2
+    }
+  }
+  e_file: {
+    style: {
+      stroke: "#444444"
+      font-color: "#444444"
+      font-size: 11
+    }
+  }
+  e_issue: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+    }
+  }
+  e_pr: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+      stroke-width: 3
+    }
+  }
+  e_notify: {
+    style: {
+      stroke: "#888888"
+      font-color: "#888888"
+      font-size: 11
+    }
+  }
+  e_invoke: {
+    style: {
+      stroke: "#000000"
+      font-color: "#000000"
+      font-size: 11
+      stroke-width: 1
+    }
+  }
+  lane: {
+    style: {
+      fill: "#F4F6F8"
+      stroke: "#9AA5B1"
+      font-size: 15
+      bold: true
+    }
+  }
+  session: {
+    style: {
+      fill: "#FBF3F8"
+      stroke: "#B05A8E"
+      font-size: 17
+      bold: true
+    }
+  }
+  plain: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#555555"
+      font-size: 12
+    }
+  }
+  invisible: {
+    style: {
+      stroke-width: 0
+      fill: transparent
+    }
+  }
+}
+
+n_agent_session: "Agent session (Claude / Codex / Copilot)" {
+  class: session
+  l_plan_approval: "Plan approval" {
+    class: lane
+    n_copilot_plan_review: "copilot-plan-review" {
+      class: s_rust
+      shape: hexagon
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_plan_view: "plan-view" {
+      class: s_rust
+    }
+    n_plan_scope_gate: "plan-scope-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_plan_precedent_gate: "plan-precedent-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_plan_fresh_gate: "plan-fresh-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+  }
+  l_stop: "Turn end / Stop" {
+    class: lane
+    n_codex_plan_gate: "codex-plan-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+  }
+  l_plan_approval -> l_stop: {
+    style.opacity: 0
+  }
+}
+
+l_cloud: "Cloud / LLM" {
+  class: lane
+  n_copilot_cli_critic: "Copilot CLI (plan critic)" {
+    class: s_cloud_llm
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+}
+
+l_manual: "Manual / skills" {
+  class: lane
+  n_scope_inventory: "skill: scope-inventory" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_precedent_grounding: "skill: precedent-grounding" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_selection_grounding: "skill: selection-grounding" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+}
+
+l_external: "Sessions / services / state" {
+  class: lane
+  n_user: "You" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+}
+
+n_agent_session.l_plan_approval.n_copilot_plan_review -> l_cloud.n_copilot_cli_critic: "review round" {
+  class: e_invoke
+}
+l_cloud.n_copilot_cli_critic -> n_agent_session.l_plan_approval.n_copilot_plan_review: "findings" {
+  class: e_context
+}
+n_agent_session.l_plan_approval.n_plan_view -> l_external.n_user: "HTML window" {
+  class: e_notify
+}
+l_external.n_user -> n_agent_session: "GO / feedback" {
+  class: e_context
+}
+l_manual.n_scope_inventory -> n_agent_session.l_plan_approval.n_plan_scope_gate: "self-check" {
+  class: e_invoke
+}
+l_manual.n_precedent_grounding -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "self-check" {
+  class: e_invoke
+}
+l_manual.n_selection_grounding -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "self-check" {
+  class: e_invoke
+}
+n_agent_session.l_stop.n_codex_plan_gate -> n_agent_session.l_plan_approval.n_plan_scope_gate: "reuses" {
+  class: e_invoke
+}
+n_agent_session.l_stop.n_codex_plan_gate -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "reuses" {
+  class: e_invoke
+}
+
+legend: "Legend" {
+  near: bottom-center
+  class: lane
+  grid-columns: 4
+  grid-gap: 8
+  lg_s_rust: "Rust crate" {
+    class: s_rust
+  }
+  lg_s_cloud_llm: "LLM session / cloud" {
+    class: s_cloud_llm
+  }
+  lg_s_external: "external tool / service" {
+    class: s_external
+  }
+  lg_s_skill: "skill (LLM follows a procedure)" {
+    class: s_skill
+  }
+  lg_llm: "hexagon: an LLM takes part in the decision" {
+    class: s_cloud_llm
+    shape: hexagon
+  }
+  lg_deny_mark: "red thick border: can stop the agent's action" {
+    class: s_rust
+    style.stroke: "#D55E00"
+    style.stroke-width: 4
+  }
+  lg_manual: "dashed border: not fired by itself (skill, CLI, service)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  lg_e_context: "edge context: passes information" {
+    class: plain
+    style.stroke: "#0072B2"
+    style.font-color: "#0072B2"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+    style.stroke-dash: 2
+  }
+  lg_e_notify: "edge notify: toast, display, check" {
+    class: plain
+    style.stroke: "#888888"
+    style.font-color: "#888888"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_invoke: "edge invoke: calls or redirects to" {
+    class: plain
+    style.stroke: "#000000"
+    style.font-color: "#000000"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+}

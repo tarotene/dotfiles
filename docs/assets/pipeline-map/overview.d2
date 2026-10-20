@@ -1,0 +1,410 @@
+# 自動生成: `pipeline-map render`。pipeline-map.toml から作る。手で直さない。
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: down
+
+classes: {
+  s_rust: {
+    style: {
+      fill: "#E69F00"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_nix: {
+    style: {
+      fill: "#56B4E9"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_yaml: {
+    style: {
+      fill: "#009E73"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_cloud_llm: {
+    style: {
+      fill: "#CC79A7"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_external: {
+    style: {
+      fill: "#BBBBBB"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_skill: {
+    style: {
+      fill: "#F0E442"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_git: {
+    style: {
+      fill: "#0072B2"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_herdr: {
+    style: {
+      fill: "#D55E00"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_store: {
+    style: {
+      fill: "#FFFFFF"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+      stroke-dash: 3
+    }
+  }
+  e_deny: {
+    style: {
+      stroke: "#D55E00"
+      font-color: "#D55E00"
+      font-size: 11
+      stroke-dash: 4
+    }
+  }
+  e_context: {
+    style: {
+      stroke: "#0072B2"
+      font-color: "#0072B2"
+      font-size: 11
+      stroke-dash: 2
+    }
+  }
+  e_file: {
+    style: {
+      stroke: "#444444"
+      font-color: "#444444"
+      font-size: 11
+    }
+  }
+  e_issue: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+    }
+  }
+  e_pr: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+      stroke-width: 3
+    }
+  }
+  e_notify: {
+    style: {
+      stroke: "#888888"
+      font-color: "#888888"
+      font-size: 11
+    }
+  }
+  e_invoke: {
+    style: {
+      stroke: "#000000"
+      font-color: "#000000"
+      font-size: 11
+      stroke-width: 1
+    }
+  }
+  lane: {
+    style: {
+      fill: "#F4F6F8"
+      stroke: "#9AA5B1"
+      font-size: 15
+      bold: true
+    }
+  }
+  session: {
+    style: {
+      fill: "#FBF3F8"
+      stroke: "#B05A8E"
+      font-size: 17
+      bold: true
+    }
+  }
+  plain: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#555555"
+      font-size: 12
+    }
+  }
+  invisible: {
+    style: {
+      stroke-width: 0
+      fill: transparent
+    }
+  }
+}
+
+row1: "" {
+  class: invisible
+  grid-columns: 3
+  grid-gap: 40
+  session: "Agent session (Claude / Codex / Copilot)" {
+    class: session
+    grid-columns: 4
+    grid-gap: 20
+    l_session_start: "1  SessionStart" {
+      class: lane
+      grid-columns: 1
+      grid-gap: 10
+      g_session_context: "session-context (6)  P2,P3,P6" {
+        class: s_rust
+      }
+      g_session_prep: "session-prep (2)  P2,P6" {
+        class: s_rust
+      }
+    }
+    l_plan_approval: "2  Plan approval" {
+      class: lane
+      grid-columns: 1
+      grid-gap: 10
+      g_plan_critic: "copilot-plan-review  P1" {
+        class: s_rust
+        shape: hexagon
+      }
+      g_plan_display: "plan-view  P1" {
+        class: s_rust
+      }
+      g_plan_gates: "plan-gates (3)  P1" {
+        class: s_rust
+      }
+    }
+    l_tool_call: "3  Tool call" {
+      class: lane
+      grid-columns: 1
+      grid-gap: 10
+      g_git_guards: "git-guards (6)  P2,P6" {
+        class: s_rust
+      }
+      g_leak_guards: "leak-guards (2)  P2,P3" {
+        class: s_external
+      }
+      g_gh_guards: "gh-guards (9)  P2,P3" {
+        class: s_rust
+      }
+      g_governance_guards: "governance-guards (3)  P4,P5" {
+        class: s_rust
+      }
+      g_telemetry: "telemetry (2)  P3,P7" {
+        class: s_rust
+      }
+      g_herdr_feeds: "herdr-agent-metadata  P6" {
+        class: s_rust
+      }
+    }
+    l_stop: "4  Turn end / Stop" {
+      class: lane
+      grid-columns: 1
+      grid-gap: 10
+      g_stop_gates: "stop-gates (3)  P2,P3" {
+        class: s_rust
+      }
+      g_plan_gates: "codex-plan-gate  P1" {
+        class: s_rust
+      }
+      g_telemetry: "agent-turn-log  P7" {
+        class: s_rust
+      }
+      g_herdr_feeds: "claude-statusline  P6" {
+        class: s_rust
+      }
+    }
+  }
+  l_git_hook: "5  git hooks" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_git_hooks: "git-hooks (3)  P2,P3" {
+      class: s_git
+    }
+  }
+  l_ci: "6  CI (GitHub Actions)" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_ci: "ci (5)  P2,P4" {
+      class: s_yaml
+    }
+  }
+}
+
+row2: "" {
+  class: invisible
+  grid-columns: 4
+  grid-gap: 40
+  l_timer: "7  Timers / periodic" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_worktree_hygiene: "worktree-hygiene (3)  P6" {
+      class: s_rust
+    }
+    g_herdr_feeds: "herdr-feeds (3)  P6" {
+      class: s_rust
+    }
+    g_reminders: "reminders (4)  P3,P6,P7" {
+      class: s_rust
+    }
+    g_backup: "backup (4)  P6" {
+      class: s_nix
+    }
+  }
+  l_cloud: "8  Cloud / LLM" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_plan_critic: "Copilot CLI (plan critic)  P1" {
+      class: s_cloud_llm
+      shape: hexagon
+    }
+    g_routines: "Cloud routine (weekly auditor)  P5" {
+      class: s_cloud_llm
+      shape: hexagon
+    }
+  }
+  l_manual: "9  Manual / skills" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_skills: "skills (12)  P1,P2,P3,P4,P5,P6" {
+      class: s_skill
+      shape: hexagon
+    }
+    g_cli: "cli (5)  P3,P4,P5,P6" {
+      class: s_rust
+    }
+  }
+  l_external: "10  Sessions / services / state" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_sessions: "You  P1,P2,P3,P6" {
+      class: s_external
+    }
+    g_services: "services (5)  P2,P3,P4,P5,P6,P7" {
+      class: s_external
+    }
+    g_state: "state (3)  P3,P6" {
+      class: s_store
+      shape: cylinder
+    }
+  }
+}
+
+row1.session.l_session_start -> row1.session.l_plan_approval: {
+  style: {
+    stroke: "#555555"
+    stroke-width: 3
+  }
+}
+row1.session.l_plan_approval -> row1.session.l_tool_call: {
+  style: {
+    stroke: "#555555"
+    stroke-width: 3
+  }
+}
+row1.session.l_tool_call -> row1.session.l_stop: {
+  style: {
+    stroke: "#555555"
+    stroke-width: 3
+  }
+}
+row1.session -> row1.l_git_hook: {
+  style: {
+    stroke: "#555555"
+    stroke-width: 3
+  }
+}
+row1.l_git_hook -> row1.l_ci: {
+  style: {
+    stroke: "#555555"
+    stroke-width: 3
+  }
+}
+
+legend: "Legend" {
+  near: bottom-center
+  class: lane
+  grid-columns: 4
+  grid-gap: 8
+  lg_s_rust: "Rust crate" {
+    class: s_rust
+  }
+  lg_s_nix: "nix / home-manager" {
+    class: s_nix
+  }
+  lg_s_yaml: "GitHub Actions workflow" {
+    class: s_yaml
+  }
+  lg_s_cloud_llm: "LLM session / cloud" {
+    class: s_cloud_llm
+  }
+  lg_s_external: "external tool / service" {
+    class: s_external
+  }
+  lg_s_skill: "skill (LLM follows a procedure)" {
+    class: s_skill
+  }
+  lg_s_git: "git hook" {
+    class: s_git
+  }
+  lg_s_store: "state file" {
+    class: s_store
+  }
+  lg_llm: "hexagon: an LLM takes part" {
+    class: s_cloud_llm
+    shape: hexagon
+  }
+  lg_p1: "P1  Plan approval" {
+    class: plain
+  }
+  lg_p2: "P2  Implement to PR" {
+    class: plain
+  }
+  lg_p3: "P3  Findings to Issue" {
+    class: plain
+  }
+  lg_p4: "P4  Repo governance" {
+    class: plain
+  }
+  lg_p5: "P5  Cloud routines" {
+    class: plain
+  }
+  lg_p6: "P6  Host hygiene and UI" {
+    class: plain
+  }
+  lg_p7: "P7  Activity evidence" {
+    class: plain
+  }
+}

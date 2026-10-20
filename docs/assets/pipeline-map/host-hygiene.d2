@@ -1,0 +1,441 @@
+# 自動生成: `pipeline-map render`。pipeline-map.toml から作る。手で直さない。
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+
+classes: {
+  s_rust: {
+    style: {
+      fill: "#E69F00"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_nix: {
+    style: {
+      fill: "#56B4E9"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_yaml: {
+    style: {
+      fill: "#009E73"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_cloud_llm: {
+    style: {
+      fill: "#CC79A7"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_external: {
+    style: {
+      fill: "#BBBBBB"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_skill: {
+    style: {
+      fill: "#F0E442"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_git: {
+    style: {
+      fill: "#0072B2"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_herdr: {
+    style: {
+      fill: "#D55E00"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_store: {
+    style: {
+      fill: "#FFFFFF"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+      stroke-dash: 3
+    }
+  }
+  e_deny: {
+    style: {
+      stroke: "#D55E00"
+      font-color: "#D55E00"
+      font-size: 11
+      stroke-dash: 4
+    }
+  }
+  e_context: {
+    style: {
+      stroke: "#0072B2"
+      font-color: "#0072B2"
+      font-size: 11
+      stroke-dash: 2
+    }
+  }
+  e_file: {
+    style: {
+      stroke: "#444444"
+      font-color: "#444444"
+      font-size: 11
+    }
+  }
+  e_issue: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+    }
+  }
+  e_pr: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+      stroke-width: 3
+    }
+  }
+  e_notify: {
+    style: {
+      stroke: "#888888"
+      font-color: "#888888"
+      font-size: 11
+    }
+  }
+  e_invoke: {
+    style: {
+      stroke: "#000000"
+      font-color: "#000000"
+      font-size: 11
+      stroke-width: 1
+    }
+  }
+  lane: {
+    style: {
+      fill: "#F4F6F8"
+      stroke: "#9AA5B1"
+      font-size: 15
+      bold: true
+    }
+  }
+  session: {
+    style: {
+      fill: "#FBF3F8"
+      stroke: "#B05A8E"
+      font-size: 17
+      bold: true
+    }
+  }
+  plain: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#555555"
+      font-size: 12
+    }
+  }
+  invisible: {
+    style: {
+      stroke-width: 0
+      fill: transparent
+    }
+  }
+}
+
+n_agent_session: "Agent session (Claude / Codex / Copilot)" {
+  class: session
+  l_session_start: "SessionStart" {
+    class: lane
+    n_herdr_status_advisory: "herdr-status-advisory" {
+      class: s_rust
+    }
+    n_worktree_fresh_base: "worktree-fresh-base" {
+      class: s_rust
+    }
+    n_worktree_audit_context: "git-audit-worktrees --context" {
+      class: s_rust
+    }
+  }
+  l_tool_call: "Tool call" {
+    class: lane
+    n_worktree_create_guard: "worktree-create-guard" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_pkexec_guard: "pkexec-guard" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_herdr_agent_metadata: "herdr-agent-metadata" {
+      class: s_rust
+    }
+  }
+  l_session_start -> l_tool_call: {
+    style.opacity: 0
+  }
+  l_stop: "Turn end / Stop" {
+    class: lane
+    n_claude_statusline: "claude-statusline" {
+      class: s_rust
+    }
+  }
+  l_tool_call -> l_stop: {
+    style.opacity: 0
+  }
+}
+
+l_timer: "Timers / periodic" {
+  class: lane
+  n_git_audit_worktrees: "git-audit-worktrees (1 min)" {
+    class: s_rust
+  }
+  n_git_checkout_freshness: "git-checkout-freshness (10 min)" {
+    class: s_rust
+  }
+  n_git_auto_prune: "git-auto-prune (hourly)" {
+    class: s_rust
+  }
+  n_herdr_issue_counts: "herdr-issue-counts (5 min)" {
+    class: s_rust
+  }
+  n_claude_usage: "claude-usage (60 s)" {
+    class: s_rust
+  }
+  n_herdr_tab_bar_right_local: "tab-bar-right.local (60 s)" {
+    class: s_herdr
+  }
+  n_due_remind: "due-remind (hourly)" {
+    class: s_rust
+  }
+  n_gpg_subkey_remind: "gpg-subkey remind (daily)" {
+    class: s_rust
+  }
+  n_detect_drift: "detect-drift (weekly)" {
+    class: s_rust
+  }
+  n_obsidian_backup: "obsidian-backup (daily)" {
+    class: s_nix
+  }
+  n_obsidian_backup_maintenance: "obsidian-backup maintenance (weekly)" {
+    class: s_nix
+  }
+  n_obsidian_backup_restore_test: "obsidian-backup restore-test (monthly)" {
+    class: s_nix
+  }
+  n_downloads_clean: "downloads-clean (14 days)" {
+    class: s_nix
+  }
+}
+
+l_manual: "Manual / skills" {
+  class: lane
+  n_gpg_subkey_rotation: "skill: gpg-subkey-rotation" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_hms: "hms (apply)" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
+  n_settings_reconcile: "settings-reconcile" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
+}
+
+l_external: "Sessions / services / state" {
+  class: lane
+  n_user: "You" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_github: "GitHub (Issues / PRs / rulesets / checks)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_herdr: "herdr (sidebar / toast / tab bar)" {
+    class: s_herdr
+    style.stroke-dash: 4
+  }
+  n_private_issue_repo: "Private Issue repo" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_backblaze: "Backblaze B2" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  n_due_index: "due-index (other repo)" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
+}
+
+l_manual.n_hms -> l_manual.n_settings_reconcile: "activation" {
+  class: e_invoke
+}
+l_manual.n_settings_reconcile -> n_agent_session: "registers hooks" {
+  class: e_file
+}
+l_timer.n_git_audit_worktrees -> l_external.n_herdr: "stale toast" {
+  class: e_notify
+}
+l_external.n_github -> l_timer.n_git_auto_prune: "merge evidence" {
+  class: e_context
+}
+l_external.n_github -> l_timer.n_git_checkout_freshness: "fetch" {
+  class: e_context
+}
+l_external.n_github -> l_timer.n_herdr_issue_counts: "open Issue counts" {
+  class: e_context
+}
+l_timer.n_herdr_issue_counts -> l_external.n_herdr: "issues token" {
+  class: e_notify
+}
+l_timer.n_claude_usage -> l_external.n_herdr: "usage in tab bar" {
+  class: e_notify
+}
+l_timer.n_herdr_tab_bar_right_local -> l_external.n_herdr: "host slot" {
+  class: e_notify
+}
+n_agent_session.l_tool_call.n_herdr_agent_metadata -> l_external.n_herdr: "sidebar tokens" {
+  class: e_notify
+}
+n_agent_session.l_stop.n_claude_statusline -> l_external.n_herdr: "model / ctx / cost" {
+  class: e_notify
+}
+l_external.n_due_index -> l_timer.n_due_remind: "due.jsonl" {
+  class: e_file
+}
+l_timer.n_due_remind -> l_external.n_herdr: "daily toast" {
+  class: e_notify
+}
+l_timer.n_gpg_subkey_remind -> l_external.n_herdr: "expiry toast" {
+  class: e_notify
+}
+l_timer.n_gpg_subkey_remind -> l_manual.n_gpg_subkey_rotation: "rotate" {
+  class: e_invoke
+}
+l_timer.n_detect_drift -> l_external.n_private_issue_repo: "drift Issue" {
+  class: e_issue
+}
+l_timer.n_obsidian_backup -> l_external.n_backblaze: "restic backup" {
+  class: e_file
+}
+l_timer.n_obsidian_backup_maintenance -> l_external.n_backblaze: "prune / check" {
+  class: e_file
+}
+l_timer.n_obsidian_backup_restore_test -> l_external.n_backblaze: "restore" {
+  class: e_context
+}
+l_timer.n_obsidian_backup -> l_external.n_herdr: "failure toast" {
+  class: e_notify
+}
+l_external.n_herdr -> l_external.n_user: "sidebar / toast" {
+  class: e_notify
+}
+
+legend: "Legend" {
+  near: bottom-center
+  class: lane
+  grid-columns: 4
+  grid-gap: 8
+  lg_s_rust: "Rust crate" {
+    class: s_rust
+  }
+  lg_s_nix: "nix / home-manager" {
+    class: s_nix
+  }
+  lg_s_cloud_llm: "LLM session / cloud" {
+    class: s_cloud_llm
+  }
+  lg_s_external: "external tool / service" {
+    class: s_external
+  }
+  lg_s_skill: "skill (LLM follows a procedure)" {
+    class: s_skill
+  }
+  lg_s_herdr: "herdr" {
+    class: s_herdr
+  }
+  lg_s_store: "state file" {
+    class: s_store
+  }
+  lg_llm: "hexagon: an LLM takes part in the decision" {
+    class: s_cloud_llm
+    shape: hexagon
+  }
+  lg_deny_mark: "red thick border: can stop the agent's action" {
+    class: s_rust
+    style.stroke: "#D55E00"
+    style.stroke-width: 4
+  }
+  lg_manual: "dashed border: not fired by itself (skill, CLI, service)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  lg_e_context: "edge context: passes information" {
+    class: plain
+    style.stroke: "#0072B2"
+    style.font-color: "#0072B2"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+    style.stroke-dash: 2
+  }
+  lg_e_file: "edge file: writes a file or state" {
+    class: plain
+    style.stroke: "#444444"
+    style.font-color: "#444444"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_issue: "edge issue: creates or closes an Issue" {
+    class: plain
+    style.stroke: "#009E73"
+    style.font-color: "#009E73"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_notify: "edge notify: toast, display, check" {
+    class: plain
+    style.stroke: "#888888"
+    style.font-color: "#888888"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_invoke: "edge invoke: calls or redirects to" {
+    class: plain
+    style.stroke: "#000000"
+    style.font-color: "#000000"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+}

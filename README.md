@@ -6,6 +6,10 @@ Flake-based home-manager config that reproduces one user environment identically
 
 home-manager is the single source of truth for the user environment; a thin apt layer and per-project runtime launchers (`mise`/`direnv`/`rustup`) stay outside it as deliberate escape hatches (ADR-0001, ADR-0002). The full architecture record lives in [`docs/adr/`](docs/adr/), indexed at [`docs/README.md`](docs/README.md).
 
+Everything that fires without being typed (hooks, timers, workflows, git hooks) is mapped by trigger, stack and pipeline in the [pipeline map](docs/pipeline-map.md).
+
+[![Map of the automatically fired mechanisms, laid out by trigger lane](docs/assets/pipeline-map/overview.svg)](docs/pipeline-map.md)
+
 Further reading: the [home-manager manual](https://nix-community.github.io/home-manager/) and its [standalone-flakes section](https://nix-community.github.io/home-manager/index.xhtml#sec-flakes-standalone); this repo's YubiKey + GPG operating model follows <https://fuwa.dev/posts/yubikey/>.
 
 ## Install
