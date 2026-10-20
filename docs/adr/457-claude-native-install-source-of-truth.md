@@ -148,3 +148,55 @@ ADR-0001 scoped exception として、codex についても明文化する。
   hooks.json への登録と `~/.codex/AGENTS.md` のみで、`config.toml` は
   含まれないことの実体
 - `docs/operations.md` — Codex 切替手順(`/hooks` trust 含む、段4で追記予定)
+
+## Amendment (2026-10-20 — codex の config.toml は宣言したキーだけを合わせる)
+
+上の Amendment の「`~/.codex/config.toml`: home-manager では**一切管理しない**」を
+改める。**ファイル全体は引き続き管理しない**(read-only symlink にしない)。変わるのは
+次の 1 点だけで、宣言したキーに限り、activation が書式を保ったまま冪等に宣言値へ
+合わせる。宣言していないキー・コメント・並び・空行には触らない。
+
+理由: herdr のサイドバーが Codex ペインの context 使用率・reasoning effort・5h/週の
+rate limit を出すには、Codex 自身に端末タイトルとして描かせる設定(`tui.terminal_title`)
+が要る。この値は Codex の hook からも documented な API からも取れない(Codex 0.160.0、
+`docs/claude/herdr-sidebar-metadata.md` の「Codex / Copilot ペイン」節)。設定が各ホスト
+に手で入っている前提にすると、ゼロ手作業を憲章にしたこのリポジトリの前提(README)に
+反する。
+
+- **宣言**: `home/modules/herdr.nix` の `codexConfigSpec`(「ドット区切りのキー → 値」の
+  JSON)が唯一の正本。現在の宣言は `tui.terminal_title` の 1 キー。
+- **適用**: `settings-reconcile codex-config`(`crates/settings-reconcile/src/codex_config.rs`)
+  が `toml_edit` で読み、宣言値と違うときだけ同じディレクトリの一時ファイル経由で
+  rename する。値が意味として同じなら(空白・クォートの違いは無視)書かず、mtime も
+  変えない。ファイルが無ければ宣言キーだけで作る(mode 0600)。
+- **宣言値と違うとき**: 適用のたびに宣言値へ戻す。TUI の `/title` での変更は次の
+  `home-manager switch` で戻る。変えたいときはリポジトリを編集する(herdr の
+  `config.toml` と同じ運用)。
+
+### 対抗馬
+
+- **zsh の `codex()` ラッパーが `-c tui.terminal_title=…` を渡す**: ADR-457 本文の
+  「claude のようなラッパーは要らない」(還元性)を保てる。ただし効くのは zsh から
+  起動したときだけで、herdr がペインを復元して起動する経路で効くかは未確認。経路を問わず
+  効くのは activation 案。
+- **`~/.codex/managed_config.toml` を `home.file` で配る**: 上流で legacy 扱い
+  (openai/codex rust-v0.160.0、`codex-rs/config/src/loader/layer_io.rs:231`、取得
+  2026-10-20)。しかも強制層なので TUI からの変更が効かなくなる。
+- **nixpkgs の `toml-cli` を activation から呼ぶ**: 結果を標準出力に出すだけなので、
+  同値なら書かない判定と原子的な置き換えがシェル側の手続きになる。型付きの spec と
+  fixture テストで固定できる `settings-reconcile` の拡張を採った。
+
+### 残るリスク
+
+Codex が動作中に `config.toml` を書き戻す瞬間と、activation の読み書きが重なると、
+どちらかの書き込みが失われうる(read-modify-write の窓)。書き込みは rename で原子的なので
+ファイルが壊れることはない。`hooks.json` を `settings-reconcile codex-hooks` が書くときと
+同じ種類のリスクで、窓は数 ms。Codex の hook trust(`hooks.state.*`)を失った場合は、
+Codex の `/hooks` で信頼し直す。
+
+### 執行点
+
+- `home/modules/herdr.nix` — 宣言(`codexConfigSpec`)と activation(`reconcileCodexTerminalTitle`)
+- `crates/settings-reconcile/src/codex_config.rs` — 宣言キーだけを合わせる実装
+- `crates/settings-reconcile/tests/codex_config.rs` — 書式保持・冪等・不正入力の試験
+- `AGENTS.md` — 「Note on `codex`」を本 Amendment に合わせた記述

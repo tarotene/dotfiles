@@ -12,13 +12,16 @@
 //! settings-reconcile claude-permissions <settings.json> <spec-json>
 //! settings-reconcile claude-statusline  <settings.json> <spec-json>
 //! settings-reconcile claude-mcp-servers <claude.json>   <servers-json>
-//! settings-reconcile codex-hooks   <hooks.json>     [--retire <event> <command>]... [--register] [<event> <matcher> <command> <timeout>]...
+//! settings-reconcile codex-config       <config.toml>   <spec-json>
+//! settings-reconcile codex-hooks  <hooks.json>     [--retire <event> <command>]... [--register] [<event> <matcher> <command> <timeout>]...
 //! settings-reconcile copilot-hooks <settings.json>  [--retire <event> <command>]... [--register] [<event> <command> <timeoutSec>]...
 //! ```
 //!
 //! spec の JSON スキーマは `hooks::HooksSpec` / `settings::PermissionsSpec` /
-//! `settings::StatusLineSpec`。nix 側は `builtins.toJSON` で作って引数で渡す。
+//! `settings::StatusLineSpec`(`codex-config` は `codex_config` のドキュメント)。
+//! nix 側は `builtins.toJSON` で作って引数で渡す。
 
+pub mod codex_config;
 pub mod hooks;
 pub mod json;
 pub mod settings;
@@ -53,6 +56,7 @@ usage: settings-reconcile <subcommand> <file> ...
   claude-permissions <settings.json> <spec-json>
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
+  codex-config <config.toml> <spec-json>
   codex-hooks <hooks.json> [--retire <event> <command>]... [--register] <event> <matcher> <command> <timeout> [...]
   copilot-hooks <settings.json> [--retire <event> <command>]... [--register] <event> <command> <timeoutSec> [...]";
 
@@ -70,6 +74,12 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
         }
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
+        "codex-config" => {
+            let [file, spec] = rest else {
+                return Err(usage(USAGE));
+            };
+            codex_config::apply(Path::new(file), spec).map_err(fail)
+        }
         "codex-hooks" => argv_hooks(rest, Flavor::Nested),
         "copilot-hooks" => argv_hooks(rest, Flavor::Flat),
         _ => Err(usage(USAGE)),
