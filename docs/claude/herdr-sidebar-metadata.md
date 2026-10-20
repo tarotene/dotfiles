@@ -332,9 +332,14 @@ rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `r
   ように見えるので出さない。bypass でない payload でも `mode_bypass` を null で送り、
   bypass から戻ったペインに前の値が残らないようにする。
 - **端末タイトルの項目**は `home/modules/herdr.nix` の `codexConfigSpec` が宣言する
-  (`activity` / `context-used` / `reasoning` / `five-hour-limit` / `weekly-limit`)。
-  `project-name` は workspace 列と重なり、`thread-name` は文字列が長くなって
-  末尾の rate limit が切れやすくなるので外している。`~/.codex/config.toml` への反映は
+  (`activity` / `context-used` / `five-hour-limit`)。サイドバーに見えるのは約 36 桁
+  (`Context 0% used | medium | 5h ...` で切れた実機の表示からの推定。幅そのものは
+  herdr の API から取れていない)。最初は `reasoning` と `weekly-limit` も入れていたが、
+  58 文字(`Context 0% used | medium | 5h 100% left | weekly 100% left`)になって 5h・
+  週の値が切れた(2026-10-20)ので、context と 5h の 2 項目(31 文字)に絞った。上流の
+  言い回しは短くできないので、項目の数で収める。`reasoning` と `weekly-limit` は
+  上の表のとおり出せる項目で、幅に余裕ができれば足せる。`project-name` は workspace 列と
+  重なるので外している。`~/.codex/config.toml` への反映は
   `settings-reconcile codex-config`(宣言したキーだけを書式を保って合わせる。
   ADR-457 Amendment 2026-10-20)。
 - **rate limit は tab-bar ではなくペインのタイトル**に出す。Codex のペインが開いて
