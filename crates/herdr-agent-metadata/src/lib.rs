@@ -173,11 +173,14 @@ pub enum Plan {
     Send(Report),
 }
 
+/// Claude と Codex で共通の bypass 表示(サイドバーでは赤)。
+const BYPASS_LABEL: &str = "\u{25b2} bypass";
+
 const LABELS: [(&str, &str, &str); 4] = [
     ("plan", "mode_plan", "\u{25c7} plan"),
     ("default", "mode_default", "\u{25c6} default"),
     ("acceptEdits", "mode_accept", "\u{2713} accept"),
-    ("bypassPermissions", "mode_bypass", "\u{25b2} bypass"),
+    ("bypassPermissions", "mode_bypass", BYPASS_LABEL),
 ];
 
 /// Claude: permission mode をモード別トークンに振り分ける。
@@ -236,9 +239,25 @@ fn set(tokens: &mut [(&'static str, Option<String>)], name: &str, v: String) {
     }
 }
 
-/// Codex: model(+ branch/oshi)。debounce は持たない。
+/// Codex の hook payload の `permission_mode`。
+///
+/// 値は粗い: Codex は承認方針が `never` のときだけ `bypassPermissions` を出し、
+/// それ以外(on-request も untrusted も)は `default` にする(openai/codex
+/// rust-v0.160.0、codex-rs/core/src/hook_runtime.rs:1032-1040、取得 2026-10-20)。
+/// SessionEnd の payload には無い。
+pub fn codex_permission_mode(payload: &Value) -> String {
+    flatten(jq_field(payload, "permission_mode"))
+}
+
+/// Codex: bypass(+ model、branch/oshi)。debounce は持たない。
+///
+/// mode は `bypassPermissions` のときだけ `mode_bypass` に出し、それ以外は
+/// null(Claude と違い default を出さない: `default` は on-request・untrusted を
+/// 区別しない粗い値で、出すと実際より多くを知っているように見える)。
+/// null も常に送るので、bypass から戻ったペインに前の値が残らない。
 pub fn plan_codex(
     f: &Fields,
+    mode: &str,
     branch: impl FnOnce() -> String,
     oshi: impl FnOnce() -> String,
 ) -> Plan {
@@ -255,10 +274,12 @@ pub fn plan_codex(
     } else {
         (branch(), oshi())
     };
+    let bypass = (!end && mode == "bypassPermissions").then(|| BYPASS_LABEL.to_string());
     // bash 版の挙動のまま: SessionEnd でも payload の model は送る。
     Plan::Send(Report {
         source: "codex-hook",
         tokens: vec![
+            ("mode_bypass", bypass),
             ("model", opt(f.value.clone())),
             ("branch", opt(b)),
             ("oshi", opt(o)),
@@ -378,8 +399,9 @@ pub fn run(agent: Agent, action: &str, input: &str) {
         Agent::Codex => {
             let Some(p) = payload else { return };
             let f = fields(&p, "model");
+            let mode = codex_permission_mode(&p);
             let cwd = f.cwd.clone();
-            plan_codex(&f, || branch_for(&cwd), || oshi_for(&cwd))
+            plan_codex(&f, &mode, || branch_for(&cwd), || oshi_for(&cwd))
         }
         Agent::Copilot => plan_copilot(
             action,
