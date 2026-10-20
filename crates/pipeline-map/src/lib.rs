@@ -482,6 +482,13 @@ fn check_ascii(label: &str, what: &str, problems: &mut Vec<String>) {
         problems.push(format!(
             "{what}: label `{label}` が ASCII でない(図のフォントは CJK を持たない。日本語は md の散文に書く)"
         ));
+    } else if label
+        .chars()
+        .any(|c| c == '"' || c == '\\' || c.is_control())
+    {
+        problems.push(format!(
+            "{what}: label `{label}` に `\"`・`\\`・制御文字は使えない(D2 のソースに埋めるため)"
+        ));
     }
 }
 
@@ -566,6 +573,15 @@ pub fn audit(root: &Path, m: &Manifest) -> Report {
         for x in &eff {
             if !pipes.contains(x.as_str()) {
                 p.push(format!("{what}: 未定義の pipeline `{x}`"));
+            }
+            for end in [&e.from, &e.to] {
+                if let Some(n) = nodes.get(end.as_str()) {
+                    if !n.pipelines.contains(x) {
+                        p.push(format!(
+                            "{what}: pipeline `{x}` に描くが、node `{end}` はその pipeline に属さない"
+                        ));
+                    }
+                }
             }
         }
     }
@@ -877,6 +893,34 @@ label = "blocks"
             &MANIFEST_OK.replace("auto = false", "auto = false\nextra = 1"),
         );
         assert!(load(d.path()).is_err());
+    }
+
+    #[test]
+    fn edge_pipeline_must_contain_both_endpoints() {
+        let d = repo();
+        // guard-a は p1 だけに属するので、p2 を足した edge は両端が描けない。
+        let m = MANIFEST_OK
+            .replace("[[pipeline]]\nid = \"p1\"\nlabel = \"P1\"\norder = 1\n", "[[pipeline]]\nid = \"p1\"\nlabel = \"P1\"\norder = 1\n[[pipeline]]\nid = \"p2\"\nlabel = \"P2\"\norder = 2\n")
+            .replace("label = \"blocks\"", "label = \"blocks\"\npipelines = [\"p2\"]");
+        write(d.path(), MANIFEST, &m);
+        let p = problems(d.path());
+        assert!(
+            p.iter()
+                .any(|x| x.contains("pipeline `p2` に描くが") && x.contains("guard-a")),
+            "{p:#?}"
+        );
+    }
+
+    #[test]
+    fn labels_cannot_hold_quotes_or_backslashes() {
+        let d = repo();
+        write(
+            d.path(),
+            MANIFEST,
+            &MANIFEST_OK.replace("label = \"blocks\"", "label = \"say \\\"hi\\\"\""),
+        );
+        let p = problems(d.path());
+        assert!(p.iter().any(|x| x.contains("制御文字は使えない")), "{p:#?}");
     }
 
     #[test]

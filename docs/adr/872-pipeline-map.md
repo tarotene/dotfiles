@@ -53,7 +53,7 @@ root の `pipeline-map.toml` に lane、pipeline、node、edge を置く。`rust
 
 - 登録箇所 → manifest: ポインタの無い登録箇所、manifest に無い id は fail。
 - manifest → 登録箇所: `auto = true` のノードに登録箇所が 1 つも無ければ fail(機構が消えたのに地図に残る状態を許さない)。
-- manifest 内: 重複 id、未定義の lane / pipeline / node 参照、両端に共通のパイプラインが無い edge、実在しない `entity` / `doc`、ASCII でないラベルは fail。
+- manifest 内: 重複 id、未定義の lane / pipeline / node 参照、両端に共通のパイプラインが無い edge、edge のパイプラインに両端の node が属していない(詳細図に端点が描けない)、実在しない `entity` / `doc`、ASCII でない(または引用符・バックスラッシュ・制御文字を含む)ラベルは fail。
 
 `tests/coverage.rs` がリポジトリ本体に対して `cargo test` の一部として走らせる。実装言語は ADR-0024 の既定どおり Rust で、manifest を serde の型で読む。
 
@@ -111,7 +111,7 @@ nix が読む `pipeline-map.toml` は `BUILD_INPUTS` に(足さないと CI の 
 
 ## Verification
 
-- `cargo test -p pipeline-map`(単体 11 件と、リポジトリ本体に対する `tests/coverage.rs`)。
+- `cargo test -p pipeline-map`(単体 13 件と、リポジトリ本体に対する `tests/coverage.rs`)。
 - `cargo clippy -p pipeline-map --all-targets -- --deny warnings`、`cargo fmt --check`。
 - 陰性対照 3 本: (1) hook 宣言の `node` を 1 つ消すと nix の評価が落ちる、(2) manifest に無い id を書くと nix の評価が落ちる、(3) コメントのポインタを 1 つ消すと `cargo test` が落ちる。
 - `claudeHooksSpec` の評価結果が、変更の前後で JSON として一致し、`node` が漏れていない(`nix eval` で比較)。

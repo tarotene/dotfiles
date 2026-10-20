@@ -151,7 +151,7 @@ node = [
 
   # --- Sessions / services / state(auto = false)
   { id = "agent-session", label = "Agent session (Claude / Codex / Copilot)", lane = "external", group = "sessions", stack = "cloud-llm", llm = true, pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene", "evidence"], auto = false },
-  { id = "user", label = "You", lane = "external", group = "sessions", stack = "external", pipelines = ["plan-approval", "wrapup-to-issue", "host-hygiene"], auto = false },
+  { id = "user", label = "You", lane = "external", group = "sessions", stack = "external", pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "host-hygiene"], auto = false },
   { id = "github", label = "GitHub (Issues / PRs / rulesets / checks)", lane = "external", group = "services", stack = "external", pipelines = ["implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene"], auto = false },
   { id = "herdr", label = "herdr (sidebar / toast / tab bar)", lane = "external", group = "services", stack = "herdr", pipelines = ["host-hygiene"], auto = false },
   { id = "private-issue-repo", label = "Private Issue repo", lane = "external", group = "services", stack = "external", pipelines = ["host-hygiene"], auto = false },
