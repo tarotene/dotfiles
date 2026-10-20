@@ -54,6 +54,10 @@ pub struct Lane {
     pub id: String,
     pub label: String,
     pub order: u32,
+    /// true = このレーンの機構は、ハブ(`hub = true` のノード)のセッションの中で発火する
+    /// (hook の event)。図ではハブのコンテナの中に描き、ハブとの間のエッジは描かない。
+    #[serde(default)]
+    pub session: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +83,9 @@ pub struct Node {
     pub doc: Option<String>,
     /// true = 登録箇所からのポインタが 1 つ以上必須(人間が名前を打たなくても走る)。
     pub auto: bool,
+    /// true = エージェントセッション(`session = true` のレーンを内側に持つ)。1 つだけ。
+    #[serde(default)]
+    pub hub: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -509,6 +516,31 @@ pub fn audit(root: &Path, m: &Manifest) -> Report {
     let pipes: BTreeSet<&str> = m.pipeline.iter().map(|x| x.id.as_str()).collect();
     let nodes: BTreeMap<&str, &Node> = m.node.iter().map(|n| (n.id.as_str(), n)).collect();
 
+    let hubs: Vec<&Node> = m.node.iter().filter(|n| n.hub).collect();
+    if hubs.len() > 1 {
+        p.push("hub = true のノードが 2 つ以上ある(エージェントセッションは 1 つ)".into());
+    }
+    if m.lane.iter().any(|l| l.session) && hubs.is_empty() {
+        p.push("session = true のレーンがあるのに hub = true のノードが無い".into());
+    }
+    for h in &hubs {
+        if h.auto {
+            p.push(format!(
+                "node `{}`: hub は登録箇所を持たない(auto = false)",
+                h.id
+            ));
+        }
+        if m.lane
+            .iter()
+            .find(|l| l.id == h.lane)
+            .is_some_and(|l| l.session)
+        {
+            p.push(format!(
+                "node `{}`: hub 自身が session = true のレーンに属している",
+                h.id
+            ));
+        }
+    }
     for l in &m.lane {
         if !is_id(&l.id) {
             p.push(format!("lane `{}`: id の綴りが不正", l.id));
@@ -921,6 +953,38 @@ label = "blocks"
         );
         let p = problems(d.path());
         assert!(p.iter().any(|x| x.contains("制御文字は使えない")), "{p:#?}");
+    }
+
+    #[test]
+    fn hub_and_session_lane_rules() {
+        let d = repo();
+        // session のレーンがあるのに hub が無い
+        let m = MANIFEST_OK.replace(
+            "id = \"tool-call\"\nlabel = \"Tool call\"\norder = 1\n",
+            "id = \"tool-call\"\nlabel = \"Tool call\"\norder = 1\nsession = true\n",
+        );
+        write(d.path(), MANIFEST, &m);
+        let p = problems(d.path());
+        assert!(
+            p.iter().any(|x| x.contains("hub = true のノードが無い")),
+            "{p:#?}"
+        );
+        // hub が 2 つ、auto な hub
+        let m2 = m
+            .replace("lane = \"timer\"\nstack = \"rust\"\npipelines = [\"p1\"]\nauto = false\n", "lane = \"timer\"\nstack = \"rust\"\npipelines = [\"p1\"]\nauto = false\nhub = true\n")
+            .replace("lane = \"tool-call\"\nstack = \"rust\"\npipelines = [\"p1\"]\nauto = true\n[[node]]\nid = \"guard-b\"", "lane = \"tool-call\"\nstack = \"rust\"\npipelines = [\"p1\"]\nauto = true\nhub = true\n[[node]]\nid = \"guard-b\"");
+        write(d.path(), MANIFEST, &m2);
+        let p = problems(d.path());
+        assert!(p.iter().any(|x| x.contains("2 つ以上")), "{p:#?}");
+        assert!(
+            p.iter().any(|x| x.contains("hub は登録箇所を持たない")),
+            "{p:#?}"
+        );
+        assert!(
+            p.iter()
+                .any(|x| x.contains("session = true のレーンに属している")),
+            "{p:#?}"
+        );
     }
 
     #[test]

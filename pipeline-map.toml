@@ -19,11 +19,14 @@
 
 # ---------------------------------------------------------------- lanes
 # 概観図のレーン = 発火のきっかけ。order が左→右(セッションの時間軸、後半は常駐系)。
+# session = true のレーンは、hub(エージェントセッション)の中で発火する(hook の event)。
+# 図ではハブのコンテナの中に描き、ハブとそのレーン内のノードの間のエッジは描かない
+# (deny を持つノードは枠の色で示す)。
 lane = [
-  { id = "session-start", label = "SessionStart", order = 1 },
-  { id = "plan-approval", label = "Plan approval", order = 2 },
-  { id = "tool-call", label = "Tool call", order = 3 },
-  { id = "stop", label = "Turn end / Stop", order = 4 },
+  { id = "session-start", label = "SessionStart", order = 1, session = true },
+  { id = "plan-approval", label = "Plan approval", order = 2, session = true },
+  { id = "tool-call", label = "Tool call", order = 3, session = true },
+  { id = "stop", label = "Turn end / Stop", order = 4, session = true },
   { id = "git-hook", label = "git hooks", order = 5 },
   { id = "ci", label = "CI (GitHub Actions)", order = 6 },
   { id = "timer", label = "Timers / periodic", order = 7 },
@@ -150,7 +153,7 @@ node = [
   { id = "settings-reconcile", label = "settings-reconcile", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/settings-reconcile", doc = "docs/settings-reconcile.md", auto = false },
 
   # --- Sessions / services / state(auto = false)
-  { id = "agent-session", label = "Agent session (Claude / Codex / Copilot)", lane = "external", group = "sessions", stack = "cloud-llm", llm = true, pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene", "evidence"], auto = false },
+  { id = "agent-session", label = "Agent session (Claude / Codex / Copilot)", lane = "external", group = "sessions", stack = "cloud-llm", llm = true, pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene", "evidence"], auto = false, hub = true },
   { id = "user", label = "You", lane = "external", group = "sessions", stack = "external", pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "host-hygiene"], auto = false },
   { id = "github", label = "GitHub (Issues / PRs / rulesets / checks)", lane = "external", group = "services", stack = "external", pipelines = ["implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene"], auto = false },
   { id = "herdr", label = "herdr (sidebar / toast / tab bar)", lane = "external", group = "services", stack = "herdr", pipelines = ["host-hygiene"], auto = false },

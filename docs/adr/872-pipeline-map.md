@@ -23,6 +23,12 @@ hook(Claude Code 40 機構、Codex / Copilot の同じ判定エンジンのア�
 時間軸はレーン(発火のきっかけ)の並びと deny ループのエッジで、技術スタックはノードのクラス(色)で、LLM の関与はノードの形で乗せる。
 カオスマップ(技術スタックの静的な分類)と状態遷移図は別図として描かない。1 枚の空間図に時間軸を押し込むと読めなくなるためである(diagramming スキルの cases.md 事例 #1)。
 
+セッションの中で発火する機構(hook の event)は、エージェントセッション(ハブ)のコンテナの中に描き、ハブとの間のエッジは描かない。
+deny を持つ機構は枠の色で示す。ハブへ向かうエッジは 25 本を超え、すべて描くと配線が図全体を囲んで読めなかったためである(試作で確かめた)。
+manifest では、`session = true` のレーンと `hub = true` のノード(1 つ)でこれを表す。
+概観は「レーンの地図」にする。レーンを発火の時間順に番号を付けて並べ、グループ(レーン内で畳んだ単位)を色(スタック)・形(LLM)・パイプラインの番号で示し、
+配線はレーン間の流れだけにする。機構同士の配線は、パイプライン別の詳細図が受け持つ。
+
 ### D2: 図のデータ(`pipeline-map.toml`)を正本にし、図はそこからだけ作る
 
 root の `pipeline-map.toml` に lane、pipeline、node、edge を置く。`rust-migration.toml` と同型の machine-checkable な manifest で、lane / stack / kind は閉語彙の enum にする。
@@ -53,7 +59,7 @@ root の `pipeline-map.toml` に lane、pipeline、node、edge を置く。`rust
 
 - 登録箇所 → manifest: ポインタの無い登録箇所、manifest に無い id は fail。
 - manifest → 登録箇所: `auto = true` のノードに登録箇所が 1 つも無ければ fail(機構が消えたのに地図に残る状態を許さない)。
-- manifest 内: 重複 id、未定義の lane / pipeline / node 参照、両端に共通のパイプラインが無い edge、edge のパイプラインに両端の node が属していない(詳細図に端点が描けない)、実在しない `entity` / `doc`、ASCII でない(または引用符・バックスラッシュ・制御文字を含む)ラベルは fail。
+- manifest 内: `hub` が 2 つ以上ある、`session = true` のレーンがあるのに `hub` が無い、`hub` が登録箇所を持つ(`auto = true`)または `session = true` のレーンに属している、重複 id、未定義の lane / pipeline / node 参照、両端に共通のパイプラインが無い edge、edge のパイプラインに両端の node が属していない(詳細図に端点が描けない)、実在しない `entity` / `doc`、ASCII でない(または引用符・バックスラッシュ・制御文字を含む)ラベルは fail。
 
 `tests/coverage.rs` がリポジトリ本体に対して `cargo test` の一部として走らせる。実装言語は ADR-0024 の既定どおり Rust で、manifest を serde の型で読む。
 
@@ -111,7 +117,7 @@ nix が読む `pipeline-map.toml` は `BUILD_INPUTS` に(足さないと CI の 
 
 ## Verification
 
-- `cargo test -p pipeline-map`(単体 13 件と、リポジトリ本体に対する `tests/coverage.rs`)。
+- `cargo test -p pipeline-map`(単体 14 件と、リポジトリ本体に対する `tests/coverage.rs`)。
 - `cargo clippy -p pipeline-map --all-targets -- --deny warnings`、`cargo fmt --check`。
 - 陰性対照 3 本: (1) hook 宣言の `node` を 1 つ消すと nix の評価が落ちる、(2) manifest に無い id を書くと nix の評価が落ちる、(3) コメントのポインタを 1 つ消すと `cargo test` が落ちる。
 - `claudeHooksSpec` の評価結果が、変更の前後で JSON として一致し、`node` が漏れていない(`nix eval` で比較)。
