@@ -49,12 +49,15 @@ Mode model pin, so the pin never trails the installed binary.
 
 Note on `codex`: same ADR-0001 scoped exception as `claude` (ADR-457
 Amendment, #531) — the native installer is the source of truth, and Codex's
-own config file is not managed at all, since Codex itself writes hook-trust
-hashes, project trust, and model selection back into it at runtime. What
-home-manager *does* deploy is Codex's global instructions (a build-time merge
-of the shared canon with a Codex-specific file, ADR-0032) and the hook
-registrations (adapters over the same decision engines Claude uses — see
-ADR-0032 Amendment). A newly registered hook needs a one-time manual trust
+own config file is never deployed as a whole (no read-only symlink), since
+Codex itself writes hook-trust hashes, project trust, and model selection back
+into it at runtime. The only exception is the declared keys (currently
+`tui.terminal_title`), which an activation step sets to the declared value on
+every switch while leaving every other key untouched (ADR-457 Amendment,
+2026-10-20). What home-manager *does* deploy is Codex's global instructions (a
+build-time merge of the shared canon with a Codex-specific file, ADR-0032) and
+the hook registrations (adapters over the same decision engines Claude uses —
+see ADR-0032 Amendment). A newly registered hook needs a one-time manual trust
 via Codex's `/hooks` TUI command after `home-manager switch`.
 
 ## Project Structure

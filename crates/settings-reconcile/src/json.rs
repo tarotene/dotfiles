@@ -173,8 +173,14 @@ pub fn store_if_changed(path: &Path, before: &J, after: &J) -> Result<(), String
     if before == after {
         return Ok(());
     }
+    write_atomic(path, &render(after))
+}
+
+/// 同じディレクトリの一時ファイルへ書いてから rename する(`store_if_changed` の
+/// 書き込み部分。TOML 側の `codex_config` も同じ手順を使う)。
+pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     let tmp = tmp_path(path);
-    std::fs::write(&tmp, render(after)).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
     set_mode_like(path, &tmp);
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);

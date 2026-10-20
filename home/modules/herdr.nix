@@ -42,6 +42,27 @@ let
   legacyCodexMetadataCmd = "sh '${config.home.homeDirectory}/.codex/herdr-codex-metadata.sh'";
   legacyCopilotMetadataCmd = "sh '${config.home.homeDirectory}/.copilot/hooks/herdr-copilot-metadata.sh'";
 
+  # Codex 自身が端末タイトル(OSC)に描く項目。herdr はこれを pane の
+  # `terminal_title_stripped` として受け取り、サイドバーの Codex 行 4 行目にそのまま
+  # 出す(config/herdr/config.toml)。項目 ID は上流の `TerminalTitleItem`
+  # (openai/codex、codex-rs/tui/src/bottom_pane/title_setup.rs)で、改名・削除は
+  # 上流で破壊的変更として扱われる。取得 2026-10-20、rust-v0.160.0。
+  #   activity         — 動作中のスピナー / 承認待ちの表示
+  #   context-used     — context window の使用率
+  #   reasoning        — reasoning effort
+  #   five-hour-limit  — 5h rate limit の残り
+  #   weekly-limit     — 週次 rate limit の残り
+  # project-name は workspace 列と、thread-name は切り詰めのために外している。
+  codexConfigSpec = builtins.toJSON {
+    "tui.terminal_title" = [
+      "activity"
+      "context-used"
+      "reasoning"
+      "five-hour-limit"
+      "weekly-limit"
+    ];
+  };
+
   issueCountsPath = "${config.home.homeDirectory}/.local/bin/herdr-issue-counts";
   # herdr(workspace list / report-metadata)、git(remote -v)、gh(auth status /
   # api graphql)だけを呼ぶ。launchd の EnvironmentVariables.PATH は置換なので
@@ -74,6 +95,16 @@ in
           Stop "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 10
       '';
+
+  # ~/.codex/config.toml は Codex 自身が実行時に書き戻す(hook trust・project
+  # trust・モデル選択)ので、read-only symlink では配らない(ADR-457 Amendment)。
+  # 宣言した tui.terminal_title の 1 キーだけを、書式・コメントを保ったまま毎回
+  # 宣言値へ合わせる(settings-reconcile codex-config、crates/settings-reconcile)。
+  # TUI の /title で変えた値は次の switch で戻る。ほかのキーには触らない。
+  # 同じファイルに書く activation は他に無いので writeBoundary の後だけで足りる。
+  home.activation.reconcileCodexTerminalTitle = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
+  '';
 
   # ~/.copilot/settings.json を activation で書くものは他に無いので
   # writeBoundary だけで足りる。イベント名は Copilot CLI の native camelCase
