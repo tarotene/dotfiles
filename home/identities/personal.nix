@@ -24,6 +24,12 @@ in
     # a personal messaging account, kept out of common.nix so it does not
     # land on company hosts.
     ../modules/line.nix
+
+    # spotify-player (#861), a Spotify TUI/CLI. Same judgment as esa and LINE
+    # above — a personal streaming account, kept out of common.nix so it does
+    # not land on company hosts. The module's header has the package source,
+    # the Linux audio-backend override and the client-ID rule.
+    ../modules/spotify-player.nix
   ];
 
   home.username = lib.mkDefault "tarotene";

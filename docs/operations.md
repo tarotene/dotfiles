@@ -716,6 +716,77 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
    `touch ~/.codex/codex-plan-gate/skip` — see each hook's own doc under
    `docs/claude/`).
 
+## spotify-player: your own client ID
+
+`home/modules/spotify-player.nix` (#861) installs `spotify_player` on the
+personal hosts. Out of the box it authenticates with ncspot's shared client ID,
+whose request quota is shared by every user of it; the first Web API calls after
+login came back `429 Too Many Requests`. Registering your own application gives
+a quota of your own. The ID is a machine-state value, so it is not written here
+([ADR-0034](adr/0034-machine-state-wrapper-flake.md)): the private wrapper flake
+sets it, and this section is the rule for getting it.
+
+Prerequisite: a Spotify Premium account (spotify-player's README states it is
+required).
+
+1. **Log in to the dashboard.** Open <https://developer.spotify.com/dashboard>
+   and sign in with the Spotify account. Done when the page shows a
+   **Create app** button.
+2. **Create the app.** Press **Create app** and fill in:
+
+   | Field | Value |
+   |---|---|
+   | App name | `spotify-player` |
+   | App description | `terminal client (aome510/spotify-player)` |
+   | Redirect URIs | `http://127.0.0.1:8989/login` |
+   | API/SDK question | the Web API option |
+   | Developer Terms of Service | tick the checkbox |
+
+   Leave **Website** empty unless the form insists, then use
+   `https://github.com/aome510/spotify-player`. Press **Save**. Use the
+   numeric loopback address: Spotify does not allow `localhost` as a redirect
+   URI, and allows plain `http` only for a loopback address. Done when the new
+   app's overview page opens and shows a **Client ID**.
+3. **Copy the Client ID.** Do not copy the Client Secret; PKCE does not use it.
+4. **Hand it to the wrapper flake.** In the private wrapper flake, set
+   `dotfiles.spotifyPlayer.clientId = "<Client ID>";` in an extra module and run
+   `hms`. Done when `~/.config/spotify-player/app.toml` contains a `client_id`
+   line.
+
+Sources: Spotify for Developers, "Apps"
+(<https://developer.spotify.com/documentation/web-api/concepts/apps>) and
+"Redirect URIs"
+(<https://developer.spotify.com/documentation/web-api/concepts/redirect_uri>),
+accessed 2026-10-20; the spotify-player README, accessed 2026-10-20. The labels
+**Create app** and **Save** were seen on the dashboard on 2026-10-20; the other
+field labels follow the documentation and are not confirmed against the
+current form.
+
+### First login
+
+Run `spotify_player` (the TUI) once in a terminal. It opens an authorization
+page in the browser by itself; approve in that tab only. Tabs left over from an
+earlier attempt carry a different one-time challenge, and approving one of them
+makes the running process fail with `invalid_grant: code_verifier was
+incorrect`. Pasting the printed URL by hand showed `Redirect_uri: Not Present`
+once; the cause was not established, so use the tab that opened itself. The
+credentials land in `~/.cache/spotify-player`.
+
+What to expect, as observed on 2026-10-20 (vega, 0.25.1):
+
+- The TUI becoming the active device can resume the account's last playback
+  immediately, so sound may start on the default output as soon as it comes up.
+  Lower the volume first. `spotify_player playback pause` stops it.
+- GETs to `me/playlists` and `playlists/` go through the shared ncspot client
+  by default (the `ncspot_only_get_endpoints` setting, per spotify-player's
+  config documentation), so the playlist list waited about 20 seconds on a
+  rate-limit retry even with an ID of our own.
+- `spotify_player authenticate` on 0.23.0 only logs in and saves nothing; the
+  first TUI start is what stores credentials. Its behaviour on 0.25.1 was not
+  tried.
+- Once credentials exist, CLI subcommands such as `spotify_player search` work
+  without the TUI running, and make no sound.
+
 ## Which layer does a new tool go in?
 
 Decision flow for adding a tool, per
