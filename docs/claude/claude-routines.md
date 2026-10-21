@@ -47,11 +47,15 @@ project の `.claude/settings.json` は読まれない(リポジトリに入っ�
 
 - 空のときは射影に載せない。載せると、このフィールドを持たない既存の宣言のハッシュが変わり、
   全 routine が declared-ahead に見える(`selftest.sh` の 12a が、変更前の値で固定している)。
-- **未確認:** live の API が `session_context` の `auto_mode_allow` を受け付けるか。`RemoteTrigger get`
-  の `session_request.config` に `auto_mode_allow` と `auto_mode_environment` の欄があること(2026-10-21 に
-  読んだ。空配列)と、`session_context` と同じ名前の欄(`allowed_tools`、`model`、`sources`)が
-  そこにもあることからの推定で、実際の update での受理は確かめていない。update のあとに `get` して、
-  `session_request.config.auto_mode_allow` に値が出ることで確かめる。
+- **実測(2026-10-22): live は、この経路を受け付けない。** update に `session_context.auto_mode_allow` と
+  `auto_mode_environment` を付けて送ったが、update の応答と、別に実行した `RemoteTrigger get` の
+  両方で、`session_request.config.auto_mode_allow` と `auto_mode_environment` が `[]` のままだった
+  (同じ update の `allowed_tools`、プロンプト、cron、`sources` は反映された)。公式の文書で、この欄の書き方は
+  見つけられなかった(検索で見つかった routines の API の文書は fire だけだった。Anthropic,
+  "Trigger a routine through the API"、https://platform.claude.com/docs/api/claude-code/routines-fire 、
+  取得 2026-10-22。文書の全文は読んでいない)。受理される経路が分かるまで、宣言に書かない。書くと、
+  `classify` が、宣言と本番が一致しないので、毎回 declared-ahead と判定し、再適用を促し続ける。
+  `build-body` が `auto_mode_*` を載せる機構(`lib.jq`、`selftest.sh`)は、経路が分かったときのために残す。
 
 ## 実測(2026-09-27、`RemoteTrigger` + 段0 プローブ)
 
