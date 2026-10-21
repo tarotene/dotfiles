@@ -72,6 +72,12 @@ Claude が引き続き担当する残作業はここに入れず「検証」ま�
 
 1行目(`Closes #N` / `No-Issue:`)は既存の pr-gate(`G_link`)が機械的に強制する。`## Before / After` の証跡有無は `G_visual` が機械的に強制する(いずれもこのリポジトリの `crates/pr-gate`)。本文に未チェックの task list(`- [ ]`)が無いこと、`## 要確認` の各項目に Issue 参照(`#N` または issues URL)があることは `pr-confirm-guard.sh`(`config/claude/hooks/`、Codex 版 adapter は `config/codex/hooks/`、`docs/claude/pr-confirm-guard.md`)が作成時に機械強制する。それ以外(課題・解決策・検証・要確認の払い出し先の妥当性、および `Stack:` 行)はゲートの検査対象ではなく、この本文スケルトンが唯一の規律。`Stack:` 行は stacked PR のときだけ書く(手順は `stacked-pr` スキルを参照。ADR-0027 によりセッション内 2 本目以降の PR は既定でこれに該当する)。最下段は `Stack: base main` と書く(段番号・総段数は書かない、#657)。`既存手段:` 行も含め、既存の `## 解決策` 節の規律は変更していない(`G_prior` は既に pr-gate に実装済み)。
 
+**マージしても閉じたくない追跡 Issue**(例: 「stable が追いついたら overlay を畳む」のように、
+条件が満たされるまで開けておく Issue)を参照するときは、`Closes #N` と書かない。マージで
+追跡 Issue が閉じてしまう。1 行目は `No-Issue: <理由>(参照: #N)` の形で書く。同じ誤りが
+繰り返されるなら、`G_link` で `Closes` 先が `tracking` ラベルや「畳む」系の題名のときに
+警告する昇格を検討する(ADR-543 の昇格型。#825)。
+
 ## 2. Visual の範囲
 
 「見た目に影響する変更」は GUI/Web の画面変化に限らない。ターミナル/TUI の見た目(プロンプト、statusline、サイドバー、コマンドのレンダリング結果)も含む広義で判断する。テキストの差分だけで変化が十分伝わる場合(設定ファイルの数値変更など)は、画像の代わりに `## Before / After` 見出し配下へ fenced code block で対比を書いてよい。
