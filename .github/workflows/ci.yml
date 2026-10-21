@@ -371,6 +371,7 @@ jobs:
       # a design revisited via a private person-state repository's own
       # ADR-0010 D13). No network, no filesystem writes other than
       # --out-plan.
+      # Keep the version equal to nixpkgs stable's yq-go (home/modules/packages.nix, #813).
       - name: Install yq (single static binary, version-pinned)
         run: |
           wget -q "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64" \
