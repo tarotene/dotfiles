@@ -960,6 +960,18 @@ total: 1 app(s), ok=1 drifted=0
 
 ## Usage
 
+`github-audit --version` (and `hms --version`) print the dotfiles commit of the
+home-manager generation that installed the binary (#807), e.g.
+`github-audit 0.1.0 (generation <commit>)`. Compare it with `origin/main` before
+trusting a verdict: a stale binary once reported drift that ADR-792's
+`plan-free-private` declaration had already resolved. The commit comes from the
+one-line `~/.local/share/dotfiles/rev` that `mkHome` (flake.nix) writes into each
+generation, read at run time rather than compiled in, so a documentation-only
+commit does not rebuild the Rust workspace. `--version` is deliberately absent
+from `--help`: the bash and Rust help texts must stay byte-identical (the
+differential test). A `hms .` apply (a path input) has no commit, so it prints
+`generation unknown (path input, no commit)`.
+
 ```console
 $ github-audit
 verdict=ok domain=rulesets repo=telepath

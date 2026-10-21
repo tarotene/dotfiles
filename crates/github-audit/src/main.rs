@@ -1,6 +1,9 @@
 //! `github-audit [--json] [domain...]`(#414、ADR-0015)。判定は lib 側。
 
-use github_audit::{any_drift, audit, parse_domains, render_report, write_ledger, Config};
+use github_audit::{
+    any_drift, audit, generation_rev, parse_domains, render_report, version_line, write_ledger,
+    Config,
+};
 use std::process::ExitCode;
 
 const USAGE: &str = r#"usage: github-audit [--json|--selftest] [domain...]
@@ -144,6 +147,10 @@ fn main() -> ExitCode {
             }
             "-h" | "--help" => {
                 print!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            "-V" | "--version" => {
+                println!("{}", version_line(generation_rev().as_deref()));
                 return ExitCode::SUCCESS;
             }
             a if a.starts_with('-') => {

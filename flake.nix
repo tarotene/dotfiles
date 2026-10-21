@@ -331,6 +331,16 @@
           modules = [
             hostModule
             nix-flatpak.homeManagerModules.nix-flatpak
+            # The dotfiles commit this generation was built from, as a one-line
+            # file the Rust CLIs read for `--version` (#807). It is NOT compiled
+            # into the binaries: a compile-time env var would change the crane
+            # derivation on every commit and rebuild the whole workspace, which
+            # `cleanCargoSource` (Rust and Cargo files only) otherwise avoids for
+            # doc-only commits. A path input (`hms .`) has no rev, so it says so.
+            {
+              home.file.".local/share/dotfiles/rev".text =
+                (self.rev or self.dirtyRev or "unknown (path input, no commit)") + "\n";
+            }
           ]
           ++ extraModules;
           # bleep is a plain source tree (flake = false), threaded
