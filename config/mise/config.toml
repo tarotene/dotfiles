@@ -8,4 +8,4 @@
 # edit it: change the version here and apply with `hms`.
 [tools]
 node = "20.19.6"
-pnpm = "10.28.0"
+pnpm = "10.34.7"
