@@ -56,6 +56,7 @@ node = [
   { id = "esa-index", label = "esa-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/esa-index", doc = "docs/claude/esa-index.md", auto = true },
   { id = "pr-gate-session-start", label = "pr-gate (start)", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/claude/pr-gate.md", auto = true },
   { id = "herdr-status-advisory", label = "herdr-status-advisory", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-status-advisory", doc = "docs/claude/herdr-status-advisory.md", auto = true },
+  { id = "gate-failopen-advisory", label = "gate-failopen-advisory", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["plan-approval", "host-hygiene"], entity = "crates/gate-failopen-advisory", doc = "docs/claude/gate-failopen-advisory.md", auto = true },
   { id = "sign-prewarm", label = "sign-prewarm", lane = "session-start", group = "session-prep", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/sign-prewarm", doc = "docs/claude/sign-prewarm.md", auto = true },
   { id = "worktree-fresh-base", label = "worktree-fresh-base", lane = "session-start", group = "session-prep", stack = "rust", pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/worktree-fresh-base", doc = "docs/claude/worktree-fresh-base.md", auto = true },
   { id = "worktree-audit-context", label = "git-audit-worktrees --context", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-audit-worktrees", doc = "docs/worktree-lifecycle.md", auto = true },
@@ -201,6 +202,8 @@ edge = [
   { from = "sign-prewarm", to = "user", kind = "notify", label = "pinentry once", pipelines = ["implement-to-pr"] },
   { from = "worktree-audit-context", to = "agent-session", kind = "context", label = "stale worktrees", pipelines = ["host-hygiene"] },
   { from = "herdr-status-advisory", to = "agent-session", kind = "context", label = "client / server mismatch", pipelines = ["host-hygiene"] },
+  { from = "copilot-plan-review", to = "gate-failopen-advisory", kind = "file", label = "gate-events.jsonl (fail-open / pass)", pipelines = ["plan-approval"] },
+  { from = "gate-failopen-advisory", to = "agent-session", kind = "context", label = "consecutive fail-open", pipelines = ["host-hygiene"] },
 
   # === Implement to PR: tool call の guard(止めるものだけを描く)
   { from = "git-stash-guard", to = "agent-session", kind = "deny", label = "bare stash", pipelines = ["implement-to-pr"] },
