@@ -409,3 +409,59 @@ PR タイトル慣行がありうることだった。実際には、会社側�
 - `docs/claude/pr-title-contract.md`
 - `config/claude/skills/stacked-pr/SKILL.md`
 - `config/claude/skills/pr-description/SKILL.md`
+
+## Amendment (2026-10-21 — D7 の第二の縮小: 履歴を書き換えず、#337 の完了日より前の commit を許容する, #338)
+
+### 背景
+
+D7 の縮小(2026-09-24)は、tag/release を持つ 3 リポ・10 件だけを許容し、残る 8 リポ・15 件は
+履歴書き換えによるバックフィルの対象に残した。2026-10-21 に、強制層の播きが終わった(#337 は
+2026-10-01 に close)あとの現況を測り直した(全 non-archived 23 リポジトリ、`main` の直近最大 100
+commit、subject が `crates/pr-title-check` の文法に合わないもの)。
+
+- 非適合は合計 21 件・9 リポ(PUBLIC 2 リポ 3 件、PRIVATE 7 リポ 18 件)。内訳は、merge commit 9 件、
+  root commit 5 件、通常の commit 7 件。全件が署名済み。dotfiles 自身は 0 件(2026-09-25 の orphan rewrite
+  で解消済み)。起票時の「23 件」から減っている。
+- 書き換えには、対象リポの Security ruleset(`deletion` と `non_fast_forward`、`bypass_actors: []`)を
+  一時的に Disabled にする必要があり、5 リポは Quality の `required_linear_history` も外すか線形化が要る。
+  全件を書き換えると、書換点以降の全 commit の再署名で YubiKey のタッチが約 150〜180 回になる。
+- merge commit 9 件と root commit 5 件の書き換えは、subject の修正では済まず、履歴の形が変わる
+  (21 件中 14 件)。open PR 13 件の rebase も要る。
+- 検出層(`github-audit titles` は D5 により仕組みの存在検査で、過去の commit を見ない)も、
+  サーバ側の検査(`pr-title-check` は PR タイトルだけを入力にする)も、履歴を判定に入れない。
+  過去の非適合 commit が、いまの PR を落とすことは無い。
+
+### 決定
+
+D7 のバックフィルを、**実施しない**。#337 の完了日(2026-10-01)より前に `main` へ入った commit は、
+subject が非適合でも、書き換えず、契約の対象外として許容する(ADR-0020 の `createdAt` の
+grandfathering、ADR-0007「既存ファイルの遡及的な一括リネームはしない」、D7 の縮小と同じ扱い)。
+
+- 契約の対象は、強制層が播かれたあとに入る commit(= PR タイトル)に限る。再流入は、サーバ側の
+  required check と client guard が止める。
+- 許容は「書き換えない」ことで表現し、カットオフ日の判定を実行する仕組みは足さない。検出層が過去の
+  commit を見ないので、見る仕組みを足してから除外する方が遠回りになる(軸: 還元 — 既存の
+  grandfather の型に還元する)。
+- 元 Issue #325 の完了定義の 4 行目(「既存の非適合 PR タイトル/commit がバックフィル済み」)は、
+  「#337 の完了日より前の非適合 commit は書き換えず許容している(この Amendment)」に改める。
+
+### 棄却した代替案
+
+- D7 どおり 8〜9 リポを全件書き換える: 上の実測のとおり、force push 9 回、ruleset の一時解除、YubiKey の
+  タッチ約 150〜180 回、open PR 13 件の rebase を払って、検出にも強制にも効かない過去の subject を
+  整えるだけになる。
+- merge commit も open PR も無い線形の 4 リポ(計 7 件)だけ書き換え、残りを許容する折衷: force push 4 回、
+  タッチ約 57 回、Security ruleset の一時解除 4 リポで、得られるのは見た目の整合だけで、許容する 14 件が
+  残る以上、契約の例外を 2 種類に増やす。
+
+### 前提としての修復
+
+#325 の完了定義の 1 行目(`github-audit titles` が全リポジトリで drift を報告しない)に、2026-10-21 の
+実測で 2 リポジトリが drifted(`pr-title-workflow-missing`、`pr-title-check-not-required`、
+`pr-title-context-mismatch`)と出ている。この 2 リポは、この Amendment とは別に、`github-audit titles` が ok に
+なるまで直す。
+
+### 執行点
+
+- `crates/pr-title-check/tests/title_only.rs` — 契約が PR タイトルだけを入力にし、履歴に非適合 commit が
+  あっても適合したタイトルは通る(許容した過去の commit が、無関係な PR を落とし続けない)ことを固定する

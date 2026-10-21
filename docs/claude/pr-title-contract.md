@@ -160,9 +160,16 @@ API 取得に失敗した場合は fail-closed(red)にする — client guard
   直近 25 PR・ブランチ commit 計 109 件)では非適合 1 件のみ(適合率
   99.1%)で、その 1 件も上記の merge 設定 drift を経由してしか
   `main` に漏れなかった(ADR-0031 Amendment 参照)。
-- 他 19 リポジトリへの播き・merged PR のバックフィル — 本 ADR で方針は
-  確定するが、実施は sub-issue へ切り出し後続セッションが行う
-  (ADR-0031 Consequences)。
+- 他 19 リポジトリへの播き — 本 ADR で方針は確定し、#337 で実施済み。
+- **既存の非適合 commit のバックフィル(履歴の書き換えと再署名)は実施しない**
+  (ADR-0031 Amendment 2026-10-21、D7 の第二の縮小、#338)。#337 の完了日
+  (2026-10-01)より前に `main` へ入った commit は、書き換えず、契約の対象外として
+  許容する。2026-10-21 の実測で非適合は 21 件・9 リポ(merge commit 9、root commit
+  5、通常 7)で、書き換えは Security ruleset の一時解除、force push、YubiKey の
+  タッチ約 150〜180 回を払って、検出にも強制にも効かない過去の subject を整えるだけに
+  なる。サーバ側の検査(`pr-title-check`)は PR タイトルだけを入力にするので、許容した
+  commit が無関係な PR を落とすことは無く、その性質は
+  `crates/pr-title-check/tests/title_only.rs` が固定している。
 
 ## 無料プランの非公開リポジトリ
 
