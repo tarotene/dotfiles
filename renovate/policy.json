@@ -6,6 +6,7 @@
     "D2: merge executor is GitHub native auto-merge (platformAutomerge); safety depends on the consuming repo's rulesets required_status_checks.",
     "D3: minimumReleaseAge 3 days for everything; vulnerabilityAlerts fixes are exempt (0 days) and automerge.",
     "internalChecksFilter=strict (default, restated for clarity): a version younger than minimumReleaseAge is filtered out entirely, so no PR exists until it ages past the wait — platform auto-merge cannot fire on a pending version.",
+    "D3 Amendment (2026-10-21, #639): lockFileMaintenance is exempt from minimumReleaseAge. Renovate cannot apply a release age to a lock-file refresh (it delegates to the package manager) and, since Renovate 42, treats a missing release timestamp as 'not yet past the age', so the renovate/stability-days status stayed pending and platform auto-merge never fired.",
     "github-actions.managerFilePatterns has no override (#474): an earlier per-template override narrowed it to workflows only, which silently excluded composite actions (.github/actions/*/action.yml) from digest-pin updates. Renovate's own default already covers both — restated here, not re-narrowed."
   ],
   "extends": [
@@ -32,6 +33,7 @@
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": true,
+    "minimumReleaseAge": null,
     "schedule": ["before 6am on the first day of the month"]
   },
   "vulnerabilityAlerts": {

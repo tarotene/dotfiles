@@ -265,3 +265,48 @@ repo)は、Stage 3 と同じ関数(`judge_renovate()`)を触るため、この P
 - renovate/policy.json
 - renovate.json
 - .github/workflows/nix.yml
+
+## Amendment (2026-10-21 — D3 の追補: lockFileMaintenance を公開後の待機の対象外にする, #639)
+
+### 背景
+
+D3 は `minimumReleaseAge: "3 days"` を preset 全体に掛け、除外を `vulnerabilityAlerts` だけにした。
+nix の flake を持つ private wrapper リポジトリで、`lockFileMaintenance` の PR(2026-10-01 に作成)が、
+20 日後の 2026-10-21 も open のままで、`renovate/stability-days` が pending のまま
+(`gh api repos/<owner>/<repo>/commits/<head>/status` の description は
+"Updates have not met minimum release age requirement")だった。auto-merge は pending の間は発火しない
+(D2)ので、`flake.lock` は更新されなかった。
+
+- Renovate の文書は、`lockFileMaintenance` に `minimumReleaseAge` を適用することを
+  "Not possible, as we delegate to the package manager" と書く。
+- Renovate 42 以降は、release の timestamp が無いものを "as if the release is not yet past the
+  timestamp" として扱う。lock の再生成には release の timestamp が無いので、待機が過ぎても
+  pending が解けない、と読める。
+- Renovate のメンテナーは、この組合せの回避に `lockFileMaintenance.minimumReleaseAge: null` を挙げる。
+
+出典: Renovate, "Minimum release age" <https://docs.renovatebot.com/key-concepts/minimum-release-age/>
+(取得 2026-10-21)。renovatebot/renovate Discussion #38115 "minimumReleaseAge is not working with
+lockFileMaintenance and transitive Dependencies" <https://github.com/renovatebot/renovate/discussions/38115>
+(取得 2026-10-21)。
+
+### 決定
+
+`lockFileMaintenance` に `minimumReleaseAge: null` を付ける。`vulnerabilityAlerts` と同じ書き方で、
+D3 の除外が 1 つ増える。
+
+- lock の更新は、月初の schedule と CI の required check(D2)を通ってから auto-merge される。
+  公開直後の版を避ける待機は、直接の依存の更新(PR 単位)にだけ効く。lock の再生成が選ぶ版は、
+  もともと Renovate の待機では制御できない(上の文書の記述)ので、待機を残しても防御にならず、
+  pending のまま止めるだけになる。
+- 軸: 検出のみ — 悪性リリースの公開そのものは防げない。待機が効かない経路で、auto-merge を
+  止めない方を採る。
+
+### 未確認
+
+- 原因は、文書の記述と pending の状態からの推定。Renovate のジョブログは読んでいない。
+- 変更の効果(PR の `renovate/stability-days` が success になり、auto-merge で merge される)は、この
+  変更が既定ブランチに入り、Renovate が次に走るまで読めない。
+
+### 執行点
+
+- renovate/policy.json
