@@ -93,6 +93,24 @@ ADR-0030)は、個々の GAS スクリプトごとに GCP プロジェクトを�
 反映先: `gas-clasp-ops` スキルの初回セットアップ手順に、上記の導出値を
 既定値として埋め込む(2026-09-23、ADR-0030 Amendment 参照)。
 
+## 適用例3: ローカルのファイルを Drive へ上げる rclone(drive-upload)
+
+`drive-upload` スキル(`config/claude/skills/drive-upload/SKILL.md`、設計は `docs/gdrive-upload.md`、#769)は、
+エージェントがローカルの PDF・画像を Google Drive へ上げるために、`rclone` を自前のクラウドプロジェクトで使う。
+この `<tool>` は `rclone`(コマンド名)。
+
+| 項目 | 値 |
+|---|---|
+| ツール名 | `<tool>` = `rclone` |
+| プロジェクト ID/名 | `rclone-<github-username>` |
+| 同意画面 | External / アプリ名 `rclone` / 連絡先は所有アカウントのメールアドレス |
+| 公開ステータス | **Testing のまま**、自分自身を test user に登録する。人が都度実行するだけで無人・定期実行ではないため、Production 化の工数を払う理由がない。7 日で refresh token が失効したら `rclone config reconnect` でやり直す |
+| OAuth クライアント | Desktop app / クライアント名 `rclone` |
+| 有効化 API | Google Drive API(`drive.googleapis.com`)のみ |
+| scope | `drive.file`(rclone が作ったファイル・フォルダだけ。書き先の外への書き込みを許可の範囲で不可能にする) |
+
+反映先: `drive-upload` スキルと `docs/gdrive-upload.md` の初回セットアップに、上記の導出値を既定値として埋め込む。
+
 ## gcloud で自動化できる範囲
 
 同意画面の設定・OAuth クライアント作成はコンソール専用(公開 API が
