@@ -144,3 +144,47 @@ user 層で完結し、home-manager の世代管理とロールバックがそ�
 - Chrome は従来どおり `zwp_text_input_v3` をバインドしており、#14 の日本語入力経路に
   回帰はない（`WAYLAND_DEBUG=1` で確認）
 - Zoom は検証できていない。GL 以前にこのホストで起動しないため（#24）
+
+## Amendment (2026-10-21 — ラッパーが GL の変数を子孫に漏らさない、#851)
+
+### 背景
+
+`nixGLIntel` が export する `LD_LIBRARY_PATH`・`LIBGL_DRIVERS_PATH` などは、ラップしたアプリ
+自身には必要だが、そのアプリの**子孫のすべて**が継承する。ラップした端末(alacritty、
+warp-terminal)が起動するシェルと、そこに打ったコマンドも含む。vega では、apt で入れた
+KiCad 9.0.9 が nix 版 mesa 26.1.8 を system glibc のプロセスへ読み込み、毎回
+`Could not use OpenGL, falling back to software rendering` を出してソフトウェア描画に落ちた。
+この 2 変数だけを動かした A/B(#851)で、`glxinfo -B` が `couldn't find RGB GLX visual or
+fbconfig` から `direct rendering: Yes`(Intel MTL、OpenGL 4.6)に変わった。変数の出所は
+`home/modules/nixgl.nix` のラッパーで、ログインセッション全体ではなく、ラップした端末の
+子孫にだけ効いていた(hm-session-vars・systemd の user environment・`~/.zshenv` には無い)。
+ADR-0006 の意図は「GL を使う nix パッケージのプロセスにだけ nix の mesa を届ける」で、
+シェルへの伝播は想定外の副作用だった。
+
+### 決定
+
+- ラッパーが、`nixGLIntel` を実行する前に、各変数の現在の値を `__NIXGL_SAVED_<VAR>`
+  (未設定なら `__NIXGL_UNSET__`)に退避し、`NIXGL_WRAPPED=1` を立てる。すでに印があるとき
+  (ラップしたアプリの中から別のラップしたアプリを起動したとき)は退避を上書きせず、
+  いちばん外側の nixGL の前の値が残る。
+- 対話シェルは、印があるときだけ、`config/zsh/modules/05-nixgl-restore.zsh` が退避した値を
+  戻し、退避と印を消す。ラップしたアプリ自身は従来どおり nixGL の環境を見る。
+- 印が無ければ何もしない。`nixGLIntel <cmd>` を端末で自分で打った場合の挙動は変わらない。
+
+### 棄却した案
+
+- `.zshrc` での無条件の `unset`(nix-community/nixGL#116、取得 2026-10-21)。`nixGLIntel zsh`
+  のような意図した再利用を壊す。#116 の maintainer が「完全な解」と呼んだのは、印を付けて
+  条件付きで戻す形で、本案はそれに元の値の退避を加えたもの。
+- alacritty の起動設定(`alacritty.toml` の `shell`)で `env -u` する案。warp-terminal など
+  ほかのラップした端末には効かず、ラッパー側で閉じる方が、漏れの発生源に近い。
+- KiCad 用に `env -u` で起動する `.desktop` を足す案。darktable など次の apt 版 GL アプリにも
+  個別に要る対症療法で、原因(環境の漏れ)が残る。
+
+### 執行点
+
+- `home/modules/nixgl.nix` — ラッパーが退避と印を付ける(`makeWrapper --run`)
+- `config/zsh/modules/05-nixgl-restore.zsh` — 対話シェルで元の値へ戻す
+- `config/zsh/tests/nixgl-restore.test.zsh` — 復元、元が空のまま、印が無いときは何もしない、
+  退避の無い変数は触らない、特殊文字、の 5 ケース
+- `.github/workflows/ci.yml` — 上のテストの CI 配線

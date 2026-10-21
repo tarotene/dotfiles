@@ -146,6 +146,11 @@ jobs:
           done
           exit "$fail"
 
+      # nixGL ラッパーが退避した GL の変数を、対話シェルが戻すモジュールの挙動(#851、
+      # ADR-0006 Amendment 2026-10-21)。ネットワーク不使用。
+      - name: nixgl-restore module test
+        run: zsh config/zsh/tests/nixgl-restore.test.zsh
+
   dry-run:
     runs-on: ubuntu-latest
     name: Escape-hatch dry-run
