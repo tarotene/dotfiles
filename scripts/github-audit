@@ -432,17 +432,32 @@ fetch_head_sha_job_names() { # $1=repo $2=head_sha -> JSON array of unique job n
   printf '%s' "$names"
 }
 
-# rulesets ドメイン(ADR-503)用: 最新 PR
-# (state=all, updated 降順)の head SHA が報告した job 名。PR が 1 つも無い
-# リポジトリ(播いたばかり)は ground truth が存在しないので
-# judge_rulesets() 側で required-context-unreportable を立てない([] を返す
-# — apply-rulesets.sh の resolve_verify_sha と同じ「最新 PR の head」選択、
-# D14: default branch の squash commit 自体には pull_request 系の run が
-# 存在しないため)。
+# rulesets ドメイン(ADR-503)用: 最新 PR の head SHA(#843)。
+# 「最新」は、既定ブランチ宛ての open または merged の PR のうち最後に更新された
+# もの。次の 2 つを選ばない:
+#   - close しただけの古い PR。コメントして close すると updated が最新になるが、
+#     head は旧 workflow しか走らせておらず、必須 check を報告していない。
+#   - base が既定ブランチでない積み重ねの PR。pull_request の branches: [main] で
+#     動く ci.yml は、その PR では走らない。
+# どちらも live の ruleset と workflow は正しいのに required-context-unreportable を
+# 誤報する。条件に合う PR が無い・PR が無い・取得できないときは何も出さない
+# (ground truth が無いので、報告不能と判定しない)。gh に射影させて最近の 30 件だけを
+# 持ち帰り、選択は手元の jq で行う(射影後の JSON を返すスタブで検査できる)。
+select_latest_pr_head_sha() { # $1=repo -> sha, or empty
+  local pulls
+  pulls="$("$GH_BIN" api "repos/$OWNER/$1/pulls" -X GET -F state=all -F sort=updated -F direction=desc -F per_page=30 \
+    --jq '[.[] | {state: .state, merged: (.merged_at != null), base: .base.ref, default: .base.repo.default_branch, sha: .head.sha}]' 2>/dev/null)" || pulls='[]'
+  jq -r '[.[]? | select((.state == "open" or .merged == true) and .base != null and .base == .default)] | .[0].sha // empty' <<<"$pulls" 2>/dev/null || true
+}
+
+# rulesets ドメイン(ADR-503)用: 最新 PR(select_latest_pr_head_sha)の head SHA が
+# 報告した job 名。対象の PR が無いリポジトリ(播いたばかり)は ground truth が
+# 存在しないので judge_rulesets() 側で required-context-unreportable を立てない
+# ([] を返す — apply-rulesets.sh の resolve_verify_sha と同じ「最新 PR の head」選択、
+# D14: default branch の squash commit 自体には pull_request 系の run が存在しないため)。
 fetch_latest_pr_head_job_names() { # $1=repo -> JSON array, [] if no PR yet or unfetchable
   local sha
-  sha="$("$GH_BIN" api "repos/$OWNER/$1/pulls" -X GET -F state=all -F sort=updated -F direction=desc -F per_page=1 \
-    --jq '.[0].head.sha // empty' 2>/dev/null)" || sha=''
+  sha="$(select_latest_pr_head_sha "$1")"
   [[ -n "$sha" ]] || { printf '[]'; return; }
   fetch_head_sha_job_names "$1" "$sha"
 }
@@ -3291,6 +3306,32 @@ EOF
       "$(judge_rulesets ruleset-decl-test true "$decl_ok" '[]')" >&2
     return 1
   }
+
+  # #843: the "latest PR" used for the reportable-context check is the most
+  # recently updated PR aimed at the default branch that is open or merged. A PR
+  # that was merely closed (its updated_at jumps when it is commented on and
+  # closed) and a stacked PR (base != default branch, where a ci.yml limited to
+  # `branches: [main]` does not run) must not be picked, or live-correct rulesets
+  # are reported as required-context-unreportable. The gh stub applies no --jq,
+  # so the fixtures are the already-projected shape gh would print.
+  local pulls_case pulls_want pulls_got pulls_fx="$tmp/fixtures"
+  printf '%s' '[{"state":"closed","merged":false,"base":"main","default":"main","sha":"aaa"},{"state":"closed","merged":true,"base":"main","default":"main","sha":"bbb"}]' \
+    >"$pulls_fx/repos_tarotene_pulls-closed-newest_pulls.json"
+  printf '%s' '[{"state":"open","merged":false,"base":"feat-1","default":"main","sha":"ccc"},{"state":"open","merged":false,"base":"main","default":"main","sha":"ddd"}]' \
+    >"$pulls_fx/repos_tarotene_pulls-stacked-newest_pulls.json"
+  printf '%s' '[{"state":"open","merged":false,"base":"main","default":"main","sha":"eee"}]' \
+    >"$pulls_fx/repos_tarotene_pulls-plain_pulls.json"
+  printf '%s' '[{"state":"closed","merged":false,"base":"main","default":"main","sha":"fff"},{"state":"open","merged":false,"base":"x","default":"main","sha":"ggg"}]' \
+    >"$pulls_fx/repos_tarotene_pulls-none-qualify_pulls.json"
+  printf '%s' '[]' >"$pulls_fx/repos_tarotene_pulls-empty_pulls.json"
+  for pulls_case in pulls-closed-newest:bbb pulls-stacked-newest:ddd pulls-plain:eee pulls-none-qualify: pulls-empty:; do
+    pulls_want="${pulls_case#*:}"
+    pulls_got="$(OWNER=tarotene select_latest_pr_head_sha "${pulls_case%%:*}")"
+    [[ "$pulls_got" == "$pulls_want" ]] || {
+      printf 'FAIL: select_latest_pr_head_sha %s should be %q, got %q (#843)\n' "${pulls_case%%:*}" "$pulls_want" "$pulls_got" >&2
+      return 1
+    }
+  done
 
   # renovate: flake.nix alone counts as a manifest (#3 — this repo itself
   # uses flake.nix/flake.lock, not Cargo.toml/package.json/pyproject.toml/

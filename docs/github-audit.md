@@ -218,9 +218,14 @@ repository), the rulesets domain can machine-judge three more things:
   context that no job actually reported on the repository's most recent
   PR's head commit (the same "#337 permanently Expected" failure mode
   `titles`' `pr-title-context-mismatch` catches, generalized to every
-  context, not just "PR title"). Skipped (not judged) when the repository
-  has no PR yet to check against — that is "unverifiable", not
-  "unreportable". Remedy depends on which side is wrong: either the
+  context, not just "PR title"). "Most recent PR" means the most recently
+  updated PR aimed at the **default branch** that is **open or merged** (#843).
+  A PR that was only closed (commenting and closing it makes its `updated`
+  the newest, yet its head ran an old workflow) and a stacked PR (base is not the
+  default branch, so a `ci.yml` limited to `branches: [main]` does not run) are
+  skipped; both made live-correct rulesets look unreportable. Skipped (not
+  judged) when the repository has no such PR yet to check against — that is
+  "unverifiable", not "unreportable". Remedy depends on which side is wrong: either the
   declaration/live ruleset still names an old job, or the workflow job
   itself was renamed without updating the ruleset.
 
