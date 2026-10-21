@@ -42,9 +42,47 @@
 # share/ is symlinked straight to the original, matching the top-level
 # loop's existing treatment of every non-bin/non-share entry below.
 #
+# The variables nixGLIntel exports stay in the wrapped app's environment, which
+# is right for the app -- but every descendant inherits them too: the shell a
+# wrapped terminal starts, and whatever is typed into it. An apt-installed GL app
+# (KiCad) then loads nix's mesa into a system-glibc process and falls back to
+# software rendering (#851). So before nixGLIntel runs, the wrapper saves each
+# variable's current value into __NIXGL_SAVED_<VAR> (or __NIXGL_UNSET__ when it
+# was unset) and sets NIXGL_WRAPPED=1; config/zsh/modules/05-nixgl-restore.zsh
+# puts them back in an interactive shell. The wrapper never overwrites a save
+# that already exists, so a wrapped app started from inside another wrapped app
+# still restores the values from before the *outermost* nixGL. Doing it in the
+# wrapper keeps the app itself unchanged (it still sees nixGL's environment) and,
+# unlike an unconditional `unset` in .zshrc (nix-community/nixGL#116), does not
+# break a deliberate `nixGLIntel <cmd>` typed in a terminal.
+#
 # Caveat: the result is a plain derivation, so passthru and .override are
 # lost. Apply any .override to the package *before* handing it to nixGLWrap.
 { pkgs }:
+let
+  # The variables nixGLIntel sets (read from its script). Keep this list equal to
+  # the one in config/zsh/modules/05-nixgl-restore.zsh.
+  nixglVars = [
+    "GBM_BACKENDS_PATH"
+    "LIBGL_DRIVERS_PATH"
+    "LIBVA_DRIVERS_PATH"
+    "__EGL_VENDOR_LIBRARY_FILENAMES"
+    "LD_LIBRARY_PATH"
+  ];
+  # Runs (via makeWrapper --run) before nixGLIntel, so it sees the caller's values.
+  saveEnv = ''
+    if [ -z "''${NIXGL_WRAPPED-}" ]; then
+      export NIXGL_WRAPPED=1
+      for v in ${pkgs.lib.concatStringsSep " " nixglVars}; do
+        if [ -n "''${!v+x}" ]; then
+          export "__NIXGL_SAVED_$v=''${!v}"
+        else
+          export "__NIXGL_SAVED_$v=__NIXGL_UNSET__"
+        fi
+      done
+    fi
+  '';
+in
 pkg:
 pkgs.runCommand "${pkg.name}-nixgl" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
   mkdir -p "$out/bin"
@@ -61,6 +99,7 @@ pkgs.runCommand "${pkg.name}-nixgl" { nativeBuildInputs = [ pkgs.makeWrapper ]; 
   for binary in ${pkg}/bin/*; do
     makeWrapper ${pkgs.nixgl.nixGLIntel}/bin/nixGLIntel \
       "$out/bin/$(basename "$binary")" \
+      --run ${pkgs.lib.escapeShellArg saveEnv} \
       --add-flags "$binary"
   done
 
