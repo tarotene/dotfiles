@@ -39,7 +39,7 @@ jobs:
       # path- and line-regex-based only (no commit allowlist), so they mean the
       # same thing in either scan mode, and the public history is rewritten
       # (orphan, ADR-0004) rather than grown forever — a full scan stays cheap.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -47,7 +47,7 @@ jobs:
       # gitleaks-action (which requires a license key for organization-owned
       # repositories): the module checksum database pins the source, and no
       # secret is needed. Bump the version here deliberately.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.24"
 
@@ -63,10 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Shell script validation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: ShellCheck surviving scripts
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
           # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
@@ -85,7 +85,7 @@ jobs:
       # is genuine bash, though, and it carries the plan-review gate's judge
       # logic, so it gets its own pass with the exclusion lifted.
       - name: ShellCheck Claude Code hooks
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: './config/claude/hooks'
           severity: error
@@ -96,7 +96,7 @@ jobs:
       # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
       # pre-commit chain), so it gets its own pass with the exclusion lifted.
       - name: ShellCheck git hooks
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: './config/git/hooks'
           severity: error
@@ -110,7 +110,7 @@ jobs:
       # The Stage 4d hooks/statusline removed from the selftest steps below
       # (#413) run as `cargo test --workspace` in the nix.yml rust job.
       - name: ShellCheck Codex CLI hooks
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: './config/codex/hooks'
           severity: error
@@ -118,7 +118,7 @@ jobs:
           SHELLCHECK_OPTS: -e SC1091
 
       - name: ShellCheck Copilot CLI hooks
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: './config/copilot/hooks'
           severity: error
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Escape-hatch dry-run
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Every script with a --selftest dispatcher must be invoked from this
       # workflow (#390): a selftest CI never runs is not an oracle, and the Rust
@@ -529,7 +529,7 @@ jobs:
       build_host: ${{ steps.judge.outputs.build_host }}
       rust: ${{ steps.judge.outputs.rust }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - id: judge
@@ -539,7 +539,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Nix flake check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Determinate Systems installer (ADR-0001).
       - uses: DeterminateSystems/nix-installer-action@main
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
@@ -591,7 +591,7 @@ jobs:
     # gate's own fail-open branch (ADR-468).
     if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: DeterminateSystems/nix-installer-action@main
       - name: Build package + clippy + rustfmt (crane)
         run: |
@@ -644,7 +644,7 @@ jobs:
           # own required checks stay Linux-only so a bottleneck in the
           # shared macOS runner queue never blocks a merge).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: DeterminateSystems/nix-installer-action@main
       # cache.nixos.org never substitutes two classes of package this repo
       # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
@@ -669,7 +669,7 @@ jobs:
       # restore-prefixes-first-match still restores the nearest prior cache
       # for this host, so bws comes back from the store instead of
       # rebuilding — a key miss is not a cache miss.
-      - uses: nix-community/cache-nix-action@v7
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
           primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
@@ -763,7 +763,7 @@ jobs:
     runs-on: ubuntu-latest
     name: API docs
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: ./.github/actions/docs-rust
         with:
           upload: 'false'
@@ -776,7 +776,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Docs actions (fixtures)
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # --- Rust ---
       - name: Rust fixture builds
