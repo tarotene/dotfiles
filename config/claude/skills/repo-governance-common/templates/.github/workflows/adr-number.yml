@@ -23,6 +23,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # zizmor の artipacked 対策(#803): checkout の認証情報を .git/config に
+          # 残さない。そのため、checkout の後の別の `git fetch` は認証を要する
+          # (非公開リポジトリで失敗する)ので、base の履歴は fetch-depth: 0 で
+          # checkout の中に取り込み、別の fetch を置かない。
+          persist-credentials: false
+          fetch-depth: 0
 
       - name: adr-number-check
         env:
@@ -36,7 +43,6 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            git fetch origin "$BASE_SHA" --depth=1
             ./scripts/adr-number-check --base "$BASE_SHA" --pr "$PR_NUMBER"
           else
             ./scripts/adr-number-check

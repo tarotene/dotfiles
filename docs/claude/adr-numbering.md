@@ -77,6 +77,26 @@ ADR を最大 1 本しか追加できない(B 系統の項目 5)ので、その 
 hook を通らない経路(手動の `gh pr create`、`--web`、hook 未配備の環境)で
 書き換えが走らなくても、CI の項目 7 が取りこぼしを検出する。
 
+## push 前の自己検査
+
+ADR や `## Amendment` を足す PR は、push の前に、CI の required check と同じ判定を手元で
+走らせる。CI で初めて落ちると、push のやり直しが 1 往復増える(2026-10-15、Amendment ごとに
+`### 執行点` が要ると `decision-colocation-check` に落とされた。#808)。
+
+```
+cargo run -p decision-colocation --bin decision-colocation-check -- --base origin/main
+scripts/adr-number-check --base origin/main
+```
+
+- 積み重ねた PR(stacked PR)の 2 段目以降は、`origin/main` でなく、その段の PR の base
+  (直下の段のブランチ)を `--base` に渡す。CI は PR の base と比べるので、同じ範囲で見る
+- `scripts/adr-number-check` を `--base` 無しで実行しても、`origin/HEAD` との merge-base からの
+  差分に追加された起草中の参照は検出される(#762)。ただし ADR の追加数や PR 番号との一致
+  (B 系統の項目 5・6)は `--base` が要る。起草中の ADR(`docs/adr/0000-*.md`)が作業ツリー
+  にあるあいだは、起草中の参照が正当なので、この検出は skip される
+- `## Amendment` を足すときは、`### 執行点` に、非 `.md`・非 `docs/` の実体がこの PR で
+  変更されているかも確かめる。計画の段階での確かめ方は `precedent-grounding` スキルの §1b
+
 ## 判定エンジンの 2 系統
 
 判定項目は適用範囲が 2 系統に分かれる。混ぜると既着地の ADR を現在の PR
