@@ -394,6 +394,13 @@ astro の `seed.sh` と同じ呼び出し順(settings → files → rulesets)で
 apply-rulesets.sh <owner>/<repo> --from-dir <ローカルの checkout パス>/.github/rulesets --unverified-contexts
 ```
 
+`copy-files.sh` は、集約 job `CI passed` だけを持つ最小の `ci.yml` も播く(既存の
+`ci.yml` は上書きしない)。rulesets の宣言の必須 check は `CI passed` と `PR title` で、
+`CI passed` は `ci.yml` が報告するため、**`ci.yml`・`CI passed`・rulesets の宣言は同じ段に
+置く**。段に分けるときに `ci.yml` を後の段に回すと、最初の PR は `rulesets-context-check` が
+`CI passed` の報告を約 22 分待って落ち、rulesets の宣言だけを外すと今度は
+`workflow-naming-check` が `ci-yml-missing` で落ちる(#794、#815)。
+
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。
 
