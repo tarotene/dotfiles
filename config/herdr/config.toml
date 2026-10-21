@@ -65,8 +65,8 @@ status_indicators = "symbols"
 # (hostname・時計は残る)。実体の置き場と撤去条件は
 # docs/claude/herdr-tab-bar-local.md。
 tab_bar_right = [
-  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage\"", interval_seconds = 60, timeout_seconds = 10 },
-  { type = "command", command = "\"$HOME/.config/herdr/tab-bar-right.local\"", interval_seconds = 60, timeout_seconds = 10 },
+  { type = "command", command = "\"$HOME/.claude/hooks/claude-usage\"", interval_seconds = 60, timeout_seconds = 10 }, # pipeline-node: claude-usage
+  { type = "command", command = "\"$HOME/.config/herdr/tab-bar-right.local\"", interval_seconds = 60, timeout_seconds = 10 }, # pipeline-node: herdr-tab-bar-right-local
   { type = "hostname" },
   { type = "datetime", format = "%H:%M" },
 ]

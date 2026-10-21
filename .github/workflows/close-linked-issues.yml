@@ -17,6 +17,7 @@ name: Close Linked Issues
 # repository are ignored. Issues that are already closed are left alone, so
 # running after GitHub's native close is a no-op.
 
+# pipeline-node: close-linked-issues
 on:
   pull_request:
     types: [closed]

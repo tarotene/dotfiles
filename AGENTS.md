@@ -188,6 +188,16 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   rationale + how-to: `docs/claude/scope-inventory.md`, skill:
   `config/claude/skills/scope-inventory/`.
 
+### Pipeline map (automatically fired mechanisms)
+- Every mechanism that fires without a human typing its name (a hook, a timer or
+  launchd agent, a workflow, a git hook, a herdr periodic command) is a node in
+  `pipeline-map.toml`, and its registration points at that node: the `node`
+  attribute on a Claude Code hook declaration, and a `pipeline-node: <id>` comment
+  right above the registration everywhere else. A pointer that is missing or
+  points nowhere fails the nix evaluation (hook declarations) or `cargo test`
+  (everything else). Manual CLIs and skills are drawn as `auto = false` nodes and
+  need no pointer. Rules and rationale: ADR-872.
+
 ### Pull request descriptions
 - A coding task is **not done** until the PR exists: commit → push →
   `gh pr create` in one motion, without pausing to ask. The Stop hook

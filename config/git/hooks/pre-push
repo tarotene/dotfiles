@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# pipeline-node: git-pre-push
 set -euo pipefail
 
 # Detect worktree: git-dir differs from git-common-dir in worktrees

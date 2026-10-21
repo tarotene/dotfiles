@@ -160,6 +160,7 @@ in
     };
   };
 
+  # pipeline-node: gpg-subkey-remind
   systemd.user.timers.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Check GPG [S] subkey expiry once a day";
     Timer = {
@@ -173,6 +174,7 @@ in
   # launchd equivalent (ADR-0018) — see worktree.nix's git-audit-worktrees
   # agent for why EnvironmentVariables.PATH must list every binary the
   # script shells out to (launchd replaces PATH rather than extending it).
+  # pipeline-node: gpg-subkey-remind
   launchd.agents.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

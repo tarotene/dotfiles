@@ -738,6 +738,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pipeline-map"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "pkexec-guard"
 version = "0.1.0"
 dependencies = [

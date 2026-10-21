@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# pipeline-node: git-post-checkout
 set -euo pipefail
 
 # Post-create step for a fresh linked worktree (#702): run the repository's own

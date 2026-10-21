@@ -56,9 +56,9 @@ runs:
         # 完全一致。ci.yml の drift 検査ステップ「stack-position action
         # covers every path the nix code reads」がこの行を grep するので、
         # `BUILD_INPUTS: "..."` の形は変えない。
-        BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock rust-migration.toml .github/actions/stack-position/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
+        BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock rust-migration.toml pipeline-map.toml .github/actions/stack-position/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
         # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。
-        RUST_EXTRA_INPUTS: "config/claude/hooks/ config/claude/statusline/ config/codex/hooks/ config/copilot/hooks/ config/git/hooks/ scripts/ bootstrap.sh"
+        RUST_EXTRA_INPUTS: "config/claude/hooks/ config/claude/statusline/ config/codex/hooks/ config/copilot/hooks/ config/git/hooks/ scripts/ bootstrap.sh .github/workflows/ config/herdr/config.toml docs/assets/pipeline-map/"
         # build の入力から意図的に外した「コピーされるだけ」の集合。
         # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
         # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも
