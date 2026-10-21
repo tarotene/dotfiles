@@ -387,6 +387,64 @@ fn t03_first_pr_passes() {
     assert!(r.passed(), "{}", r.stdout);
 }
 
+/// #848: commit と同じコマンドで次の段を作るとき、ガードが走る時点の HEAD は
+/// まだ commit 前で、直下の段(stage2)の先頭と一致する。直下の段を base にする
+/// 作成が許可されること。
+#[test]
+fn t03b_head_equal_to_parent_head_accepts_parent_as_base() {
+    let fx = Fx::new();
+    fx.reset_state();
+    let r = fx.decide(
+        "prs-stage1-stage2.json",
+        "gh pr create --base stage2 --head stage3 --title t --body b",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.passed(), "{}", r.stdout);
+}
+
+/// #848: 同じ状況で、最下段(stage1)を base にしたら、直下の段(stage2)を案内して deny。
+#[test]
+fn t03c_head_equal_to_parent_head_denies_grandparent_base() {
+    let fx = Fx::new();
+    fx.reset_state();
+    let r = fx.decide(
+        "prs-stage1-stage2.json",
+        "gh pr create --base stage1 --head stage3 --title t --body b",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.denied(), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("gh pr create --base stage2"),
+        "直下の段を案内: {}",
+        r.stdout
+    );
+}
+
+/// #863: `gh pr create --help` は PR を作らない読み取りなので、判定しない。
+#[test]
+fn t03d_pr_create_help_is_not_judged() {
+    let fx = Fx::new();
+    fx.reset_state();
+    for cmd in [
+        "gh pr create --help 2>&1 | grep -c -- --attach",
+        "gh pr create -h",
+        "gh pr create --base main --help",
+    ] {
+        let r = fx.decide("prs-stage1-only.json", cmd, &fx.repo, &[]);
+        assert!(r.passed(), "{cmd}: {}", r.stdout);
+    }
+    // 対照: --help の無い同じ形は、従来どおり deny される
+    let r = fx.decide(
+        "prs-stage1-only.json",
+        "gh pr create --base main --title t --body b",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.denied(), "{}", r.stdout);
+}
+
 // --- 層(ii) セッションチェーン ---
 
 #[test]
