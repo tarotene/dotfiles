@@ -47,6 +47,8 @@ herdr は作業単位ごとに worktree を作り、その土台に親 checkout 
 - **D5 既に崩れていた checkout**: 触れた時点で dirty、または default branch 以外だった checkout は
   block しない(人の作業や別セッションの残骸をこのセッションの責任にしない)。代わりに
   `additionalContext` で、新しい作業単位は worktree で切るよう 1 回だけ伝える(Claude のみ)。
+  ただし `origin/HEAD` が無く main / master でもない所にある clone(読むだけの使い捨て)には
+  伝えない(#845。deny は変わらない)。
 - **D6 逃げ道なし**: env も ask も設けない。直接作業したいときは、本人が `!` 付きのコマンドで
   自分で操作する(hook を通らない)。エージェントが自分で逃げ道を実行する状態を表現できなくする。
 - **D7 Claude と Codex**: 規範文は共有の `config/agents/AGENTS.md` に置き、判定エンジンは 1 つ

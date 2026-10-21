@@ -366,7 +366,14 @@ pub fn record_touch(ledger: &SessionLedger, session_id: &str, top: &Path) -> Opt
     }
     let snap = snapshot(top)?;
     ledger.append(session_id, &encode(top, &snap)?).ok()?;
-    (!snap.pristine).then(|| {
+    // `origin/HEAD` が無く(既定ブランチが分からない)、main / master でもない所に
+    // いる checkout は、使い捨ての clone(例: `git clone --branch gh-pages` で
+    // 読むだけ)とみなし、助言を出さない(#845)。助言の前提は「既定ブランチで
+    // clean でない親 checkout から worktree を切ると、土台がずれる」ことで、
+    // `origin/<default>` が参照できない clone は herdr の土台になり得ない。
+    // deny は変わらない(助言の対象外)。
+    let scratch = default_branch(top).is_none() && snap.branch != "main" && snap.branch != "master";
+    (!snap.pristine && !scratch).then(|| {
         format!(
             "{} is a main checkout that is not clean on the default branch (branch: {}). \
              Do not start a new unit of work here; create a worktree with \
