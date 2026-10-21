@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# ci-consumers — 編集するパスを入力にしている CI の検査(消費者)を列挙する(#wrap-up inbox)。
+#
+# 起きたこと: `close-linked-issues.yml` に 1 行(pipeline-node のコメント)を足したら、
+# その配布元テンプレートとのバイト一致を要求する CI の step(`ci.yml` の
+# `close-linked-issues template is in sync`)が落ちた。ファイルを一括編集する前に、
+# そのファイルを入力にする CI 検査を探していなかった。この script は、その探し方を
+# 決定論に固める: 編集するパスを引数に渡すと、そのパスを読む箇所を、CI に効く場所だけから
+# `file:line` と直近の step 名つきで出す。
+#
+# 使い方:
+#   scripts/ci-consumers <path>...     # 編集する(した)パスごとに、消費者を列挙
+#   scripts/ci-consumers --selftest    # ネットワーク不使用の自己検査
+#
+# 探す場所(CI に効くものだけ。リポジトリの根から):
+#   .github/workflows/*.yml|yaml           workflow の step(`run:` の中のパスも拾う)
+#   .github/actions/*/action.yml|yaml      composite action(`BUILD_INPUTS` などの宣言も拾う)
+#   scripts/*                              workflow が呼ぶスクリプトと、その selftest
+#   crates/*/tests/**/*.rs|sh|toml         cargo test が読むファイル(fixture の JSON は除く)
+# 一致は、パスの文字列そのもの(先頭の `./` は落とす)の固定文字列検索。ディレクトリは
+# 末尾の `/` を補って、配下を指す参照も拾う。引数のパス自身のファイルは、自己参照なので
+# 除く。
+#
+# 終了コード: 0 = 消費者が見つかった、1 = 見つからなかった(`if ci-consumers X` で使える)、
+#             2 = 使い方の誤り。
+#
+# 既存手段の検討(ADR-543): このリポジトリには、パスの消費者を引く道具が無い。類例は
+# `ci.yml` の「生成物の同期」の検査(render して git status の差分を見る)と、
+# stack-position の `BUILD_INPUTS` の宣言で、どちらも消費者を事前に引くものではない。
+# bash を採るのは、ADR-0024 の対象が hook と `~/.local/bin` の CLI で、リポジトリ内の
+# escape-hatch の scripts は対象外であり、YAML の step 名は直前の `- name:` 行で足りるため。
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: ci-consumers <path>...
+       ci-consumers --selftest
+
+編集するパスを入力にしている CI の検査(workflow・composite action・scripts・
+crates の tests)を、file:line と直近の step 名つきで列挙する。
+消費者が 1 つも無ければ終了コード 1。
+EOF
+}
+
+# リポジトリの根(テストでは CI_CONSUMERS_ROOT で差し替える)。
+root_dir() {
+  if [[ -n ${CI_CONSUMERS_ROOT:-} ]]; then
+    printf '%s' "$CI_CONSUMERS_ROOT"
+  else
+    git rev-parse --show-toplevel 2>/dev/null || pwd
+  fi
+}
+
+# CI に効くファイルの一覧(根からの相対パス、重複なし)。
+consumer_files() {
+  (
+    cd "$1"
+    {
+      compgen -G '.github/workflows/*.yml' || true
+      compgen -G '.github/workflows/*.yaml' || true
+      compgen -G '.github/actions/*/action.yml' || true
+      compgen -G '.github/actions/*/action.yaml' || true
+      if [[ -d scripts ]]; then find scripts -maxdepth 2 -type f; fi
+      if [[ -d crates ]]; then
+        find crates -path '*/tests/*' -type f \( -name '*.rs' -o -name '*.sh' -o -name '*.toml' \)
+      fi
+    } | sort -u
+  )
+}
+
+# $1=file $2=line -> その行より前で最も近い YAML の step 名(`- name: X` / `name: X`)。無ければ空。
+step_name() {
+  awk -v n="$2" '
+    NR > n { exit }
+    {
+      line = $0
+      if (match(line, /^[[:space:]]*(-[[:space:]]+)?name:[[:space:]]*/)) {
+        v = substr(line, RLENGTH + 1)
+        gsub(/^["'"'"']|["'"'"']$/, "", v)
+        last = v
+      }
+    }
+    END { print last }
+  ' "$1"
+}
+
+# $1=root $2=path -> 消費者を `file:line  [step: name]  text` で出す。見つかれば 0、無ければ 1。
+consumers_of() {
+  local root="$1" path="$2" needle self found=1 f hit line text step
+  path="${path#./}"
+  needle="$path"
+  if [[ -d "$root/$path" && "$needle" != */ ]]; then needle="$path/"; fi
+  self="$path"
+  while IFS= read -r f; do
+    # 自己参照と、この script 自身(selftest の fixture に同じ文字列が並ぶ)は除く。
+    [[ -n $f && $f != "$self" && $f != scripts/ci-consumers ]] || continue
+    while IFS= read -r hit; do
+      [[ -n $hit ]] || continue
+      line="${hit%%:*}"
+      text="${hit#*:}"
+      text="$(printf '%s' "$text" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | cut -c1-120)"
+      step=""
+      case "$f" in *.yml | *.yaml) step="$(step_name "$root/$f" "$line")" ;; esac
+      if [[ -n $step ]]; then
+        printf '%s:%s  [step: %s]  %s\n' "$f" "$line" "$step" "$text"
+      else
+        printf '%s:%s  %s\n' "$f" "$line" "$text"
+      fi
+      found=0
+    done < <(cd "$root" && grep -nF -- "$needle" "$f" 2>/dev/null || true)
+  done < <(consumer_files "$root")
+  return "$found"
+}
+
+selftest() {
+  local tmp fails=0 out rc
+  # (RETURN トラップは、呼び出したネストした関数の return でも発火してしまうので使わず、
+  # 末尾で明示的に rm -rf する)
+  tmp="$(mktemp -d)"
+  mkdir -p "$tmp/.github/workflows" "$tmp/.github/actions/gate" "$tmp/scripts" \
+    "$tmp/crates/foo/tests" "$tmp/templates/.github/workflows" "$tmp/docs"
+  cat >"$tmp/.github/workflows/ci.yml" <<'EOF'
+name: CI
+jobs:
+  dry-run:
+    name: Escape-hatch dry-run
+    steps:
+      - name: close-linked-issues template is in sync
+        run: diff -u templates/.github/workflows/close-linked-issues.yml .github/workflows/close-linked-issues.yml
+      - name: unrelated
+        run: echo hello
+EOF
+  cat >"$tmp/.github/actions/gate/action.yml" <<'EOF'
+name: gate
+runs:
+  using: composite
+  steps:
+    - name: inputs
+      shell: bash
+      env:
+        BUILD_INPUTS: "crates config/skills"
+      run: echo "$BUILD_INPUTS"
+EOF
+  printf '#!/usr/bin/env bash\necho templates/.github/workflows/close-linked-issues.yml\n' >"$tmp/scripts/check"
+  printf 'const P: &str = "config/skills/x/SKILL.md";\n' >"$tmp/crates/foo/tests/t.rs"
+  printf '{"p":"config/skills/x/SKILL.md"}\n' >"$tmp/crates/foo/tests/fixture.json"
+  printf 'templates/.github/workflows/close-linked-issues.yml is mentioned in docs only\n' >"$tmp/docs/note.md"
+  printf 'x\n' >"$tmp/.github/workflows/close-linked-issues.yml"
+
+  expect() { # $1=名前 $2=条件(true/false)
+    if [[ $2 == true ]]; then printf 'ok   %s\n' "$1"; else printf 'FAIL %s\n' "$1" >&2; fails=$((fails + 1)); fi
+  }
+  has() { grep -qF -- "$2" <<<"$1" && echo true || echo false; }
+
+  # 1. workflow の step を、step 名つきで拾う(元の事故の形)。
+  rc=0
+  out="$(consumers_of "$tmp" ".github/workflows/close-linked-issues.yml")" || rc=$?
+  expect "1 workflow の step を file:line と step 名つきで列挙する" \
+    "$(has "$out" '.github/workflows/ci.yml:7  [step: close-linked-issues template is in sync]')"
+  expect "1b 見つかれば終了コード 0" "$([[ $rc == 0 ]] && echo true || echo false)"
+
+  # 2. パスの接頭辞の違い(templates/ 付きの参照)も固定文字列で拾い、scripts も対象。
+  out="$(consumers_of "$tmp" "templates/.github/workflows/close-linked-issues.yml")"
+  expect "2 scripts に当たる" "$(has "$out" 'scripts/check:2')"
+  expect "2a workflow にも当たる" "$(has "$out" '.github/workflows/ci.yml:7')"
+  expect "2b docs は対象外(CI に効かない)" "$([[ $(has "$out" 'docs/note.md') == false ]] && echo true || echo false)"
+
+  # 3. composite action の宣言と、crates の tests(.rs)を拾い、fixture の JSON は拾わない。
+  out="$(consumers_of "$tmp" "config/skills")"
+  expect "3 composite action の宣言を拾う" "$(has "$out" '.github/actions/gate/action.yml:8  [step: inputs]')"
+  expect "3b crates の tests の .rs を拾う" "$(has "$out" 'crates/foo/tests/t.rs:1')"
+  expect "3c fixture の JSON は拾わない" "$([[ $(has "$out" 'fixture.json') == false ]] && echo true || echo false)"
+
+  # 4. 消費者が無ければ終了コード 1(負例: 無関係なパス)。
+  rc=0
+  out="$(consumers_of "$tmp" "no/such/path.txt")" || rc=$?
+  expect "4 消費者が無ければ終了コード 1 で、何も出さない" "$([[ $rc == 1 && -z $out ]] && echo true || echo false)"
+
+  # 5. 先頭の ./ は落とす。引数のパス自身のファイルは自己参照なので除く。
+  out="$(consumers_of "$tmp" "./.github/workflows/ci.yml" || true)"
+  expect "5 引数のパス自身は除く" "$([[ -z $out ]] && echo true || echo false)"
+  out="$(consumers_of "$tmp" "./templates/.github/workflows/close-linked-issues.yml")"
+  expect "5b 先頭の ./ を落として照合する" "$(has "$out" '.github/workflows/ci.yml:7')"
+
+  # 6. ディレクトリは、配下を指す参照も拾う(末尾の / を補う)。
+  out="$(consumers_of "$tmp" "templates/.github")"
+  expect "6 ディレクトリ(templates/.github)の配下を指す参照を拾う" \
+    "$(has "$out" '.github/workflows/ci.yml:7')"
+  expect "6b scripts の参照も拾う" "$(has "$out" 'scripts/check:2')"
+
+  rm -rf "$tmp"
+  if ((fails > 0)); then
+    printf 'selftest: %d 件失敗\n' "$fails" >&2
+    return 1
+  fi
+  echo "selftest: OK"
+}
+
+main() {
+  case "${1-}" in
+    --selftest) selftest ;;
+    -h | --help) usage ;;
+    '') usage >&2; return 2 ;;
+    -*) usage >&2; return 2 ;;
+    *)
+      local root rc=1 p
+      root="$(root_dir)"
+      for p in "$@"; do
+        printf '== %s\n' "$p"
+        if consumers_of "$root" "$p"; then rc=0; else echo "  (消費者なし)"; fi
+      done
+      return "$rc"
+      ;;
+  esac
+}
+
+main "$@"
