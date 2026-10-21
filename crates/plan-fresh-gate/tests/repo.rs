@@ -186,7 +186,7 @@ fn case3_dirty_intersect_deny_bytes() {
     );
     let out = t.run(&wt, "sid3", "config/foo.nix を編集する計画");
     assert_eq!(git(&wt, &["rev-parse", "HEAD"]), before);
-    let msg = format!("プラン作成後に origin/main が進行し、以下のプラン参照ファイルが変更されました。再読してプランが依然成立するか確認し、必要なら修正のうえ再度 ExitPlanMode してください。\n\n  - config/foo.nix\n\ndiffstat:\n{stat}\n\nworktree は動かしていません(作業中のコミットがある、または main 直上のため)。origin/main 側の内容は `git show origin/main:<path>` または `git diff HEAD...origin/main -- <path>` で確認してください。rebase は人間に依頼してください。");
+    let msg = format!("プラン作成後に origin/main が進行し、以下のプラン参照ファイルが変更されました。再読してプランが依然成立するか確認し、必要なら修正のうえ再度 ExitPlanMode してください。\n\n  - config/foo.nix\n\ndiffstat:\n{stat}\n\nworktree は動かしていません(作業中のコミットがある、または main 直上のため)。origin/main 側の内容は `git show origin/main:<path>` または `git diff HEAD...origin/main -- <path>` で確認してください。rebase は人間に依頼してください。\n\n解消するには、次のどちらかを行って再度 ExitPlanMode してください。\n  - 親の本物の checkout が main でクリーンなら、そこで `git pull --ff-only` を実行してローカルの main を origin/main に追従させる(読み取りと同じく許可済みの操作。worktree を土台にする作業は、この追従のあとに切る)。\n  - 参照ファイルの差分を読み、プランが依然成立すると確かめたなら、その再確認の事実(確認した日付と、プランに影響する差分の有無)をプランに書く。");
     assert_eq!(
         out,
         format!(

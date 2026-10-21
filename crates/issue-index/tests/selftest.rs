@@ -676,6 +676,60 @@ fn handoff_human_section() {
     );
 }
 
+/// #831: cwd のリポジトリに open Issue が 1 件も無くても、着手可能な軽い人手タスクの節は
+/// 出す(人手タスクは作業中のリポジトリと無関係な場所で起きる)。
+#[test]
+fn handoff_human_section_without_open_issues() {
+    let fx = Fx::new();
+    let repo = fx.repo("repo", Some("https://github.com/tester/example.git"));
+    let other = fx.repo("other", Some("https://github.com/example/example.git"));
+    let zero = fx.json("zero.json", &zero());
+    let human = fx.json(
+        "human-one.json",
+        &json!({"total_count":2,"incomplete_results":false,"items":[
+            {"number":7,"title":"着手可能な人手タスク",
+             "repository_url":"https://api.github.com/repos/tester/lab",
+             "issue_dependencies_summary":{"blocked_by":0}},
+            {"number":8,"title":"blocker 未 close の人手タスク",
+             "repository_url":"https://api.github.com/repos/tester/lab",
+             "issue_dependencies_summary":{"blocked_by":1}}
+        ]}),
+    );
+    let section = "着手可能な軽い人手タスク";
+
+    let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &zero), (HUMAN, &human)]);
+    assert_eq!(o.code, 0);
+    let ctx = o.ctx();
+    assert_eq!(count(&ctx, section), 1, "Issue が 0 件でも節は出る: {ctx}");
+    assert_eq!(count(&ctx, "tester/lab#7 着手可能な人手タスク"), 1);
+    assert_eq!(count(&ctx, "blocker 未 close の人手タスク"), 0);
+    assert_eq!(
+        count(&ctx, "全件示す"),
+        0,
+        "Issue の索引の文言は出さない: {ctx}"
+    );
+
+    // 対照: 人手タスクが 0 件なら従来どおり沈黙。
+    let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &zero)]);
+    assert_eq!(o.stdout, "", "人手タスクも無ければ沈黙");
+
+    // owner が viewer と別(会社など)なら、個人の予定に流さず沈黙。
+    let o = fx.run_stub(&other, &[(MINE, &zero), (ALL, &zero), (HUMAN, &human)]);
+    assert_eq!(o.stdout, "", "owner が別: 沈黙");
+
+    // viewer が不明なら、owner と照合できないので沈黙。
+    let o = fx.run_stub(
+        &repo,
+        &[
+            (MINE, &zero),
+            (ALL, &zero),
+            (HUMAN, &human),
+            ("ISSUE_INDEX_STUB_WHO_RC", Path::new("1")),
+        ],
+    );
+    assert_eq!(o.stdout, "", "viewer 不明: 沈黙");
+}
+
 #[test]
 fn pr_line() {
     let fx = Fx::new();

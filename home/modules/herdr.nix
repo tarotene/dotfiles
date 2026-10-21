@@ -86,6 +86,12 @@ in
   home.activation.registerCodexHerdrMetadataHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexWorktreeHooks" ]
       ''
+        # SessionEnd の timeout は Codex の上限の 3 秒に揃える。Codex は SessionEnd と
+        # Interrupt の timeout を 1〜3 秒に丸め、超える宣言は起動のたびに
+        # `clamping SessionEnd hook timeout to 3s` の警告を出す(#858。openai/codex
+        # rust-v0.160.0 の codex-rs/hooks/src/events/session_end.rs、取得 2026-10-21)。
+        # herdr-agent-metadata の SessionEnd は socket へ 1 行を送るだけ(各 500ms の
+        # timeout)で、3 秒に収まる。ほかの 3 イベントの既定は 600 秒なので 10 のまま。
         # pipeline-node: herdr-agent-metadata
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire SessionStart ${lib.escapeShellArg legacyCodexMetadataCmd} \
@@ -96,7 +102,7 @@ in
           SessionStart "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           UserPromptSubmit "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           Stop "" ${lib.escapeShellArg codexMetadataCmd} 10 \
-          SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 10
+          SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 3
       '';
 
   # ~/.codex/config.toml は Codex 自身が実行時に書き戻す(hook trust・project

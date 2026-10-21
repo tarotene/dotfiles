@@ -48,6 +48,15 @@ block の後は、エージェントが直そうとしても PreToolUse が deny
 block しない。PreToolUse が `additionalContext` で 1 回だけ注意する(Claude のみ。Codex は
 PreToolUse の `additionalContext` を出さない)。
 
+ただし、`origin/HEAD` が無く(既定ブランチが分からない)、main / master でもない所にいる
+checkout は、使い捨ての clone とみなして注意しない(#845)。`git clone --branch gh-pages
+--depth 5 <url> /tmp/x` のように、デプロイ用ブランチに何が push されたかを読むだけの clone
+が典型で、「既定ブランチで clean でない」という文言が虚偽になり、`origin/<default>` が参照
+できないので herdr の土台にもならない。`pristine` の記録は従来どおり行い、deny も変わらない。
+`~/.ghr` 配下に限る案は、`herdr worktree create --cwd` が任意のパスを取る(ADR-705 の
+Alternatives)ので採らない。既定ブランチ以外すべてで注意を消す案は、人が `switch -c` した
+親から worktree を切る事故(この注意の本来の用途)で注意が消えるので採らない。
+
 ## 逃げ道
 
 ない(env も ask もない)。本人が直接作業するときは `!` 付きのコマンドで操作する。

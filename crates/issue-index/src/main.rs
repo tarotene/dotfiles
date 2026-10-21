@@ -2,7 +2,7 @@
 //! (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
 //! docs/claude/issue-index.md。
 
-use issue_index::{build, owner_repo, total_count, Context, PrStatus, Scope};
+use issue_index::{build, build_human_only, owner_repo, total_count, Context, PrStatus, Scope};
 use serde_json::Value;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -209,6 +209,17 @@ fn main() {
     let handoff = wait(handoff);
     let human = wait(human);
 
+    // `[[ rc_who -eq 0 && -s who.txt ]] && me="$(cat who.txt)"`
+    let me = if who.ok && !who.stdout.is_empty() {
+        who.stdout.trim_end_matches('\n').to_string()
+    } else {
+        String::new()
+    };
+
+    // owner が viewer 自身のときだけ使う(viewer が不明なら使わない: fail-closed)。
+    let human_raw = (human.ok && !me.is_empty() && owner.eq_ignore_ascii_case(&me))
+        .then_some(human.stdout.as_str());
+
     if !mine.ok {
         fail(&mine.stderr);
     }
@@ -222,21 +233,15 @@ fn main() {
         }
         all_v = parse(&all.stdout);
         if total_count(&all_v) <= 0 {
+            // open Issue が 1 件も無い。それでも着手可能な軽い人手タスクがあれば、
+            // その節だけを出す(#831)。無ければ従来どおり沈黙する。
+            if let Some(out) = build_human_only(&nwo, human_raw) {
+                print!("{out}");
+            }
             return;
         }
         (Scope::All, &all_v)
     };
-
-    // `[[ rc_who -eq 0 && -s who.txt ]] && me="$(cat who.txt)"`
-    let me = if who.ok && !who.stdout.is_empty() {
-        who.stdout.trim_end_matches('\n').to_string()
-    } else {
-        String::new()
-    };
-
-    // owner が viewer 自身のときだけ使う(viewer が不明なら使わない: fail-closed)。
-    let human_raw = (human.ok && !me.is_empty() && owner.eq_ignore_ascii_case(&me))
-        .then_some(human.stdout.as_str());
 
     let pr_status = match &pr {
         None => PrStatus::NoBranch,

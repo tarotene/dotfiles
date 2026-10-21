@@ -244,6 +244,42 @@ fn already_collapsed_checkout_warns_but_never_blocks() {
     assert_eq!(run(&f, "stop", &stop(&f.linked, false)), "");
 }
 
+/// #845: `git clone --branch gh-pages --depth 5 ... /tmp/x` のような使い捨ての clone
+/// (`origin/HEAD` が無く、既定ブランチが分からない。既定ブランチ以外にいる)は、
+/// 「既定ブランチで clean でない」という助言の前提に当たらない。助言は出さない。
+#[test]
+fn scratch_clone_off_default_without_origin_head_gets_no_advice() {
+    let f = fixture();
+    git(&f.main, &["switch", "-q", "-c", "gh-pages"]);
+    assert_eq!(run(&f, "pre", &bash("true", &f.main)), "");
+}
+
+/// 助言を出さないだけで、編集の deny は変わらない(deny は D5 の対象外)。
+#[test]
+fn scratch_clone_off_default_still_denies_edit() {
+    let f = fixture();
+    git(&f.main, &["switch", "-q", "-c", "gh-pages"]);
+    let out = run(
+        &f,
+        "pre",
+        &tool(
+            "Edit",
+            json!({"file_path": f.main.join("a.txt")}),
+            &f.linked,
+        ),
+    );
+    assert!(is_deny(&out), "{out}");
+}
+
+/// 対照: 既定ブランチが分からなくても、main / master 上で dirty なら従来どおり助言する。
+#[test]
+fn dirty_main_without_origin_head_still_warns() {
+    let f = fixture();
+    std::fs::write(f.main.join("a.txt"), "dirty\n").unwrap();
+    let out = run(&f, "pre", &bash("true", &f.main));
+    assert!(out.contains("not clean on the default branch"), "{out}");
+}
+
 #[test]
 fn unusable_input_is_fail_open() {
     let f = fixture();

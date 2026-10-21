@@ -204,6 +204,10 @@ fn run() -> ExitCode {
         ));
     } else {
         lines.push(format!("worktree は動かしていません(作業中のコミットがある、または main 直上のため)。origin/{base} 側の内容は `git show origin/{base}:<path>` または `git diff HEAD...origin/{base} -- <path>` で確認してください。rebase は人間に依頼してください。"));
+        lines.push(String::new());
+        lines.push("解消するには、次のどちらかを行って再度 ExitPlanMode してください。".into());
+        lines.push("  - 親の本物の checkout が main でクリーンなら、そこで `git pull --ff-only` を実行してローカルの main を origin/main に追従させる(読み取りと同じく許可済みの操作。worktree を土台にする作業は、この追従のあとに切る)。".into());
+        lines.push("  - 参照ファイルの差分を読み、プランが依然成立すると確かめたなら、その再確認の事実(確認した日付と、プランに影響する差分の有無)をプランに書く。".into());
     }
 
     // 台帳は「最後に deny した SHA」だけを持てばよいので、置き換えてから追記する

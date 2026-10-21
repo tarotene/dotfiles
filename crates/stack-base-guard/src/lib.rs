@@ -67,6 +67,8 @@ pub struct PrFlags {
     pub target: String,
     pub repo: String,
     pub has_base: bool,
+    /// `--help` / `-h`。PR を作らない読み取りなので、判定しない(#863)。
+    pub has_help: bool,
     pub has_body: bool,
     /// 本文の値(複数あれば改行で連結、heredoc 本体を含む)。
     pub body_text: String,
@@ -129,6 +131,9 @@ pub fn parse_pr_tokens(tok: &[String], heredoc_bodies: &str) -> PrFlags {
                     i += 2;
                     continue;
                 }
+            }
+            "--help" | "-h" => {
+                f.has_help = true;
             }
             "--body" | "-b" => {
                 f.has_body = true;
@@ -466,6 +471,10 @@ impl Guard {
     }
 
     fn judge_range(&self, kind: Kind, project: &Path, f: &PrFlags) -> Option<String> {
+        // `gh pr create --help` は PR を作らず、`gh` は即座に終わる(#863)。
+        if f.has_help {
+            return None;
+        }
         let nwo = if f.repo.is_empty() {
             owner_repo(project)?
         } else {
@@ -642,9 +651,11 @@ fn find_nearest_ancestor_pr(
         ) {
             continue;
         }
-        if r.oid == target_sha {
-            continue;
-        }
+        // r.oid == target_sha は距離 0 の祖先として扱う(#848)。`git commit && ... &&
+        // gh pr create` を 1 コマンドで流すと、ガードが走る時点の HEAD はまだ commit
+        // 前で、直下の段の先頭と一致する。これを除外すると、1 つ下の段が最近傍に
+        // なり、最下段を base にせよという誤った案内になる。自分自身は self_head /
+        // self_num で除外済みなので、ここで同じ oid を除外する必要はない。
         if !git_ok(
             project,
             &["merge-base", "--is-ancestor", &r.oid, target_sha],
