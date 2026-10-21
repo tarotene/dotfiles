@@ -113,6 +113,12 @@ in
       # Claude local settings
       "**/.claude/settings.local.json"
 
+      # Playwright MCP's default output directory (snapshots and console logs),
+      # created under the cwd when a session opens a page (#849). The server is
+      # pointed at the XDG cache (home/identities/personal.nix), but an explicit
+      # screenshot `filename` still lands under the cwd.
+      ".playwright-mcp/"
+
       # Shell-substitution literals. A path such as `$(mktemp -d)/` means a
       # command string was handed to a program without being expanded (a
       # headless browser's --user-data-dir, for one). It is never a real

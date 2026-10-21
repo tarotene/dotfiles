@@ -74,9 +74,16 @@
     # which also carries tarotene/bleep#93: a substitution inside double quotes
     # (`"$(… '"\(.x)"' …)"`) is no longer cut at an inner quote or operator, so a
     # read-only `gh … --jq` with a double-quoted jq string is not rejected as an
-    # unclosed quote.
+    # unclosed quote. Re-pinned (2026-10-21, #801) to bleep main 2d265fd, which carries
+    # tarotene/bleep#105 (a read-only `gh api graphql` query is not a post, so the
+    # quoting of the same query no longer changes the verdict, #801) and #104 (a repo-ref
+    # deny names the term hash and a runnable `bleep explain` line, so a false positive
+    # such as a public library name in an MCP query can be traced to the denylist entry),
+    # plus #103 (`--help` and `2>&1` are not post false positives), #107 (allow-tools.txt)
+    # and #110 (a variable command name or text piped into a shell is opaque-exec, deny).
+    # LEX_PROTOCOL stays 5, so the deployed hooks and the verdict schema are unchanged.
     bleep = {
-      url = "github:tarotene/bleep/d23af90f2bef4cbeef76255abfd09c3b3a269224";
+      url = "github:tarotene/bleep/2d265fd783b258b591cd9347a8188f7ef2ff99de";
       flake = false;
     };
 

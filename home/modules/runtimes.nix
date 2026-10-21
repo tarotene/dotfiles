@@ -12,6 +12,9 @@
     enableZshIntegration = false;
   };
 
+  # Global mise config (#826): literal file, versions pinned (ADR-0035 axis 1).
+  xdg.configFile."mise/config.toml".source = ../../config/mise/config.toml;
+
   home.packages = with pkgs; [
     # Runtime meta-tools; their shell hooks come from the zsh modules
     # (43-dev-mise, 44-dev-uv, 45-dev-deno). Java/Go consolidate into mise.

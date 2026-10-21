@@ -1,0 +1,11 @@
+# Global mise config. Deployed verbatim by home/modules/runtimes.nix (#826,
+# ADR-0002: a literal file with nothing to interpolate stays literal).
+#
+# Versions are pinned, not floating (ADR-0035 axis 1: pin > floating). Bump them
+# deliberately here; a project's own mise.toml still overrides these.
+#
+# This file is a read-only symlink into the nix store, so `mise use -g` cannot
+# edit it: change the version here and apply with `hms`.
+[tools]
+node = "20.19.6"
+pnpm = "10.28.0"

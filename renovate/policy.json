@@ -57,6 +57,12 @@
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
       "labels": ["dependencies", "ci"]
+    },
+    {
+      "description": "#844: tarotene/dotfiles' own composite actions (.github/actions/*) are consumed as floating @main refs by design (docs/adr/640-stack-standard-api-docs.md D2: the docs strictness standard lives in one place and takes effect in every repo at once). pinDigests would turn each ref into a 'pin to SHA' update candidate, so a standard change would wait for a per-repo Renovate PR. Keep this rule after the github-actions group rule; other actions keep pinDigests.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["tarotene/dotfiles"],
+      "pinDigests": false
     }
   ]
 }

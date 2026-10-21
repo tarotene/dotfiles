@@ -23,6 +23,13 @@
       # inherited host but was never declared anywhere (#28), so hooks would
       # silently emit nothing on a freshly provisioned machine.
       jq
+      # mikefarah's yq (binary `yq`): the slot-availability skill's slot-hit.sh and
+      # verification scripts in private repos read TOML through it. A hand-placed
+      # ~/.local/bin/yq (4.50.1) was the only copy on vega, and CI pins its own
+      # version, so the same input could give different results (#813). The stable
+      # channel's yq-go is 4.53.2 — the version CI installs
+      # (.github/workflows/ci.yml, "Install yq"); keep the two equal.
+      yq-go
       shellcheck
       zip
       unzip
