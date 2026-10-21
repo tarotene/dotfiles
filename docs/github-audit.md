@@ -218,9 +218,14 @@ repository), the rulesets domain can machine-judge three more things:
   context that no job actually reported on the repository's most recent
   PR's head commit (the same "#337 permanently Expected" failure mode
   `titles`' `pr-title-context-mismatch` catches, generalized to every
-  context, not just "PR title"). Skipped (not judged) when the repository
-  has no PR yet to check against — that is "unverifiable", not
-  "unreportable". Remedy depends on which side is wrong: either the
+  context, not just "PR title"). "Most recent PR" means the most recently
+  updated PR aimed at the **default branch** that is **open or merged** (#843).
+  A PR that was only closed (commenting and closing it makes its `updated`
+  the newest, yet its head ran an old workflow) and a stacked PR (base is not the
+  default branch, so a `ci.yml` limited to `branches: [main]` does not run) are
+  skipped; both made live-correct rulesets look unreportable. Skipped (not
+  judged) when the repository has no such PR yet to check against — that is
+  "unverifiable", not "unreportable". Remedy depends on which side is wrong: either the
   declaration/live ruleset still names an old job, or the workflow job
   itself was renamed without updating the ruleset.
 
@@ -954,6 +959,18 @@ total: 1 app(s), ok=1 drifted=0
 ```
 
 ## Usage
+
+`github-audit --version` (and `hms --version`) print the dotfiles commit of the
+home-manager generation that installed the binary (#807), e.g.
+`github-audit 0.1.0 (generation <commit>)`. Compare it with `origin/main` before
+trusting a verdict: a stale binary once reported drift that ADR-792's
+`plan-free-private` declaration had already resolved. The commit comes from the
+one-line `~/.local/share/dotfiles/rev` that `mkHome` (flake.nix) writes into each
+generation, read at run time rather than compiled in, so a documentation-only
+commit does not rebuild the Rust workspace. `--version` is deliberately absent
+from `--help`: the bash and Rust help texts must stay byte-identical (the
+differential test). A `hms .` apply (a path input) has no commit, so it prints
+`generation unknown (path input, no commit)`.
 
 ```console
 $ github-audit

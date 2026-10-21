@@ -462,6 +462,9 @@ fn print_help(r#ref: &str, wrapper_ref: &str) {
     }
     println!("  hms <path>   apply an arbitrary local checkout (same routing as `hms .`)");
     println!("  hms . --public-only   apply the checkout alone, dropping private value modules");
+    println!(
+        "  hms --version   print the dotfiles commit of the generation that installed this hms"
+    );
 }
 
 /// `nix flake metadata --refresh --json <flake>` の revision(解決できなければ None)。
@@ -480,6 +483,24 @@ fn refreshed_bleep_revision() -> Option<String> {
     (!rev.is_empty()).then_some(rev)
 }
 
+/// いま動いているバイナリが入った generation の rev(`~/.local/share/dotfiles/rev`、
+/// flake.nix の `mkHome` が置く 1 行)。読めなければ `None`。コンパイル時に埋め込むと
+/// コミットごとにワークスペース全体が再ビルドされるので、実行時に読む(#807)。
+fn generation_rev() -> Option<String> {
+    let text = std::fs::read_to_string(home().join(".local/share/dotfiles/rev")).ok()?;
+    let rev = text.trim();
+    (!rev.is_empty()).then(|| rev.to_string())
+}
+
+/// `--version` の 1 行(#807)。古い版の `hms` で適用して気づかないのを防ぐ。
+fn version_line(rev: Option<&str>) -> String {
+    format!(
+        "hms {} (generation {})",
+        env!("CARGO_PKG_VERSION"),
+        rev.unwrap_or("unknown")
+    )
+}
+
 /// 引数(`argv[0]` を除く)を処理して終了コードを返す。
 pub fn run(args: &[String]) -> i32 {
     let wrapper_ref = resolve_default_ref();
@@ -490,6 +511,10 @@ pub fn run(args: &[String]) -> i32 {
         match a.as_str() {
             "--help" | "-h" => {
                 print_help(&r#ref, &wrapper_ref);
+                return 0;
+            }
+            "--version" | "-V" => {
+                println!("{}", version_line(generation_rev().as_deref()));
                 return 0;
             }
             "--public-only" => public_only = true,
@@ -810,6 +835,17 @@ mod tests {
     use super::*;
 
     const WRAPPER: &str = "git+https://example.invalid/wrapper";
+
+    // version_line(#807): 古い版を使っていることを、適用の前に気づけるようにする。
+
+    #[test]
+    fn version_line_with_and_without_a_generation_rev() {
+        assert_eq!(
+            version_line(Some("abc1234")),
+            "hms 0.1.0 (generation abc1234)"
+        );
+        assert_eq!(version_line(None), "hms 0.1.0 (generation unknown)");
+    }
 
     // wrapper_locked_dotfiles_rev(selftest 1-3)
 

@@ -287,9 +287,23 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
         names
     }
 
-    /// bash: `fetch_latest_pr_head_job_names`(ADR-503)。最新 PR(state=all、
-    /// updated 降順)の head が報告した job 名。PR が無ければ空。
-    pub fn fetch_latest_pr_head_job_names(&self, repo: &str) -> Vec<String> {
+    /// bash: `select_latest_pr_head_sha`。最新 PR の head SHA(#843)。
+    ///
+    /// 「最新」は、**既定ブランチ宛て**の **open または merged** の PR のうち、
+    /// 最後に更新されたもの。次の 2 つを選ばない。
+    ///
+    /// - close しただけの古い PR。コメントして close すると `updated` が最新に
+    ///   なるが、head は旧 workflow しか走らせておらず、必須 check を報告していない。
+    /// - base が既定ブランチでない積み重ねの PR。`pull_request` の
+    ///   `branches: [main]` で動く `ci.yml` は、その PR では走らない。
+    ///
+    /// どちらも live の ruleset と workflow は正しいのに `required-context-unreportable`
+    /// を誤報する。条件に合う PR が無い・PR が無い・取得できないときは `None`
+    /// (ground truth が無いので、報告不能と判定しない)。
+    ///
+    /// `gh` に射影させて最近の 30 件だけを持ち帰り、選択は手元で行う(射影後の JSON
+    /// を返すスタブで検査できる)。
+    pub fn latest_pr_head_sha(&self, repo: &str) -> Option<String> {
         let r = self.run(
             &[
                 "api",
@@ -303,21 +317,37 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
                 "-F",
                 "direction=desc",
                 "-F",
-                "per_page=1",
+                "per_page=30",
                 "--jq",
-                ".[0].head.sha // empty",
+                "[.[] | {state: .state, merged: (.merged_at != null), base: .base.ref, default: .base.repo.default_branch, sha: .head.sha}]",
             ],
             false,
         );
-        let sha = if r.ok {
-            jq::sh_trim(&r.stdout).to_string()
-        } else {
-            String::new()
-        };
-        if sha.is_empty() {
-            return Vec::new();
+        if !r.ok {
+            return None;
         }
-        self.fetch_head_sha_job_names(repo, &sha)
+        let v: Value = serde_json::from_str(jq::sh_trim(&r.stdout)).ok()?;
+        v.as_array()?
+            .iter()
+            .find(|p| {
+                let open = p.get("state").and_then(Value::as_str) == Some("open");
+                let merged = p.get("merged").and_then(Value::as_bool) == Some(true);
+                let base = p.get("base").and_then(Value::as_str);
+                let default = p.get("default").and_then(Value::as_str);
+                (open || merged) && base.is_some() && base == default
+            })
+            .and_then(|p| p.get("sha").and_then(Value::as_str))
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    }
+
+    /// bash: `fetch_latest_pr_head_job_names`(ADR-503)。最新 PR の head が
+    /// 報告した job 名。対象の PR が無ければ空。
+    pub fn fetch_latest_pr_head_job_names(&self, repo: &str) -> Vec<String> {
+        match self.latest_pr_head_sha(repo) {
+            Some(sha) => self.fetch_head_sha_job_names(repo, &sha),
+            None => Vec::new(),
+        }
     }
 
     /// bash: `fetch_rulesets_list`(生の stdout、失敗は `None`)。

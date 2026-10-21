@@ -491,3 +491,55 @@ esac
         Some(true)
     );
 }
+
+/// #843: rulesets ドメインの「最新 PR」は、既定ブランチ宛ての open または merged の
+/// PR のうち最後に更新されたもの。close しただけの古い PR や、積み重ねの 2 段目以降
+/// (base が既定ブランチでない PR)を選ぶと、実際は報告されている必須 check を
+/// 「報告不能」と誤報する。スタブは `gh` が `--jq` で返す形(射影後)の JSON を返す。
+#[test]
+fn latest_pr_head_sha_skips_closed_unmerged_and_stacked_prs() {
+    let fx = Fx::new();
+    let stub = fx.p("bin/gh-pulls-stub");
+    write_exec(
+        &stub,
+        r#"#!/usr/bin/env bash
+case "$2" in
+  repos/tarotene/closed-newest/pulls)
+    printf '[{"state":"closed","merged":false,"base":"main","default":"main","sha":"aaa"},{"state":"closed","merged":true,"base":"main","default":"main","sha":"bbb"}]' ;;
+  repos/tarotene/stacked-newest/pulls)
+    printf '[{"state":"open","merged":false,"base":"feat-1","default":"main","sha":"ccc"},{"state":"open","merged":false,"base":"main","default":"main","sha":"ddd"}]' ;;
+  repos/tarotene/plain/pulls)
+    printf '[{"state":"open","merged":false,"base":"main","default":"main","sha":"eee"}]' ;;
+  repos/tarotene/none-qualify/pulls)
+    printf '[{"state":"closed","merged":false,"base":"main","default":"main","sha":"fff"},{"state":"open","merged":false,"base":"x","default":"main","sha":"ggg"}]' ;;
+  repos/tarotene/empty/pulls) printf '[]' ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    let gh = github_audit::Gh::new(stub.to_str().unwrap(), "tarotene");
+    let sha = |repo: &str| gh.latest_pr_head_sha(repo);
+
+    assert_eq!(
+        sha("closed-newest").as_deref(),
+        Some("bbb"),
+        "close しただけの新しい PR を飛ばし、merged の PR を採る"
+    );
+    assert_eq!(
+        sha("stacked-newest").as_deref(),
+        Some("ddd"),
+        "base が既定ブランチでない積み重ねの PR を飛ばす"
+    );
+    assert_eq!(
+        sha("plain").as_deref(),
+        Some("eee"),
+        "既定ブランチ宛ての open の PR はそのまま採る"
+    );
+    assert_eq!(
+        sha("none-qualify"),
+        None,
+        "条件に合う PR が無ければ ground truth が無い(報告不能と判定しない)"
+    );
+    assert_eq!(sha("empty"), None, "PR が無い");
+    assert_eq!(sha("unfetchable"), None, "取得できない");
+}
