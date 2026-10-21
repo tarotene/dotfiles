@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload PDFs as artifact
         if: steps.guard.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cv-pdfs-${{ github.sha }}
           path: dist/*.pdf
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -148,7 +148,7 @@ jobs:
 
       - name: Install just
         if: steps.guard.outputs.run == 'true'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
         with:
           tool: just
 
@@ -171,7 +171,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -216,13 +216,13 @@ jobs:
       # ADJUST: Update the negation pattern if your excluded file has a different name.
       - name: Run actionlint
         if: steps.guard.outputs.run == 'true'
-        uses: raven-actions/actionlint@v2
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
         with:
           files: .github/workflows/*.yml,!.github/workflows/metrics-reminder.yml
 
       - name: Install uv
         if: steps.guard.outputs.run == 'true'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       # zizmor audits workflows for security issues (token permissions, injection, etc.)
       - name: Run zizmor
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 

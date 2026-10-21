@@ -33,7 +33,7 @@ runs:
     # 挙動、docs/claude/pr-title-contract.md 参照)。path をリポジトリ直下
     # ではなく専用ディレクトリにする — 呼び出し元リポジトリ自身の
     # checkout 内容(既に checkout 済みのはず)を上書きしないため。
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       with:
         repository: tarotene/dotfiles
         ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}

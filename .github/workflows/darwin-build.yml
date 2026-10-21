@@ -33,7 +33,7 @@ jobs:
     outputs:
       build_host: ${{ steps.stack-position.outputs.build_host }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - id: stack-position
@@ -43,7 +43,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
         if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
 
-      - uses: nix-community/cache-nix-action@v7
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
         with:
           primary-key: nix-altair-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}

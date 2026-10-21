@@ -19,18 +19,18 @@ runs:
   steps:
     - name: Install Typst compiler
       # renovate: datasource=github-releases depName=typst/typst
-      uses: typst-community/setup-typst@v5
+      uses: typst-community/setup-typst@fee4b65b091cc546f02ce3be15fad8760f38a108 # v5
       with:
         typst-version: ${{ inputs.typst-version }}
 
     - name: Install fonts and PDF tools
       # Cached to avoid repeated apt-get installs across runs.
-      uses: awalsh128/cache-apt-pkgs-action@v1
+      uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1
       with:
         packages: fonts-noto-cjk poppler-utils
         version: 1.0
 
     - name: Install just task runner
-      uses: taiki-e/install-action@v2
+      uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
       with:
         tool: just
