@@ -316,6 +316,62 @@ rc=0; err="$(bash "$SCRIPT_DIR/slot-hit.sh" inbox-check --config "$tmpd/config.t
 check_error_contains "16d exclude_prefixes が配列でなければエラー" "exclude_prefixes" "$rc" "$err"
 rm -rf "$tmpd"
 
+# 17) adopted.jq: 取り込み済み(adopted_from に id がある)なのに残っている仮押さえの検査。
+run_adopted() { jq -n -L"$SCRIPT_DIR" --argjson config "$CONFIG" --argjson markers "$1" --argjson adopted "$2" --argjson now "$NOW" -f "$SCRIPT_DIR/adopted.jq"; }
+url_a="候補日程一覧: https://chouseisan.com/s?h=aaa"
+url_b="候補日程一覧: https://chouseisan.com/s?h=bbb"
+m1="$(ev '[hold] 面談(候補)' 2026-10-22T18:00:00+09:00 2026-10-22T21:00:00+09:00 "{\"id\":\"m1\",\"description\":\"$url_a\"}")"
+m2="$(ev '【調整中】面談(候補)' 2026-10-23T18:00:00+09:00 2026-10-23T21:00:00+09:00 "{\"id\":\"m2\",\"description\":\"$url_a\"}")"
+m3="$(ev '[hold] 別件' 2026-10-24T18:00:00+09:00 2026-10-24T21:00:00+09:00 "{\"id\":\"m3\",\"description\":\"$url_b\"}")"
+m4="$(ev '[hold] 過去' 2026-10-20T18:00:00+09:00 2026-10-20T21:00:00+09:00 "{\"id\":\"m4\",\"description\":\"$url_a\"}")"
+m5="$(ev '歯医者' 2026-10-25T10:00:00+09:00 2026-10-25T11:00:00+09:00 '{"id":"m5"}')"
+m6="$(ev '[hold] 取消' 2026-10-26T18:00:00+09:00 2026-10-26T21:00:00+09:00 "{\"id\":\"m6\",\"status\":\"cancelled\",\"description\":\"$url_a\"}")"
+all_markers="{\"events\":[$m1,$m2,$m3,$m4,$m5,$m6]}"
+
+out=$(run_adopted "$all_markers" '["m1","m4","m5","m6"]')
+check "17a 残っている取り込み済みの仮押さえは m1 だけ(過去・取消・印なしは数えない)" '["m1"]' "$(jq -c '[.stale[].id]' <<<"$out")"
+check "17b 同じ候補日程一覧の他の仮押さえ(旧印を含む)は m2 だけ" '["m2"]' "$(jq -c '[.siblings[].id]' <<<"$out")"
+check "17c 取り込み済みの仮押さえが残っていれば ok=false" "false" "$(jq '.ok' <<<"$out")"
+out=$(run_adopted "$all_markers" '[]')
+check "17d 取り込み済みの id が無ければ ok=true、sibling も出さない" "true|0" "$(jq -r '"\(.ok)|\(.siblings | length)"' <<<"$out")"
+out=$(run_adopted "$all_markers" '["m3"]')
+check "17e 別の候補日程一覧の仮押さえは sibling に数えない" '["m3"]|[]' "$(jq -r '"\([.stale[].id] | tojson)|\(.siblings | map(.id) | tojson)"' <<<"$out")"
+out=$(run_adopted '{"events":[]}' '["m1"]')
+check "17f 空のカレンダーは ok=true" "true" "$(jq '.ok' <<<"$out")"
+
+# 17g) slot-hit.sh adopted-check(TOML → 終了コード): adopted_from は、ファイル内のどこにあっても拾う。
+tmpd="$(mktemp -d)"
+cat > "$tmpd/config.toml" <<'TOML'
+timezone = "Asia/Tokyo"
+buffer_minutes = 60
+marker_prefix = "[hold] "
+marker_prefix_aliases = ["【調整中】"]
+marker_calendar = "primary"
+
+[slots]
+evening = { start = "18:00", end = "21:00" }
+TOML
+cat > "$tmpd/events.toml" <<'TOML'
+[[events]]
+id = "x"
+adopted_from = ["m1"]
+TOML
+cat > "$tmpd/exam.toml" <<'TOML'
+id = "exam"
+[nested]
+adopted_from = ["m3"]
+TOML
+printf '%s' "$all_markers" > "$tmpd/markers.json"
+rc=0; out="$(bash "$SCRIPT_DIR/slot-hit.sh" adopted-check --config "$tmpd/config.toml" --markers "$tmpd/markers.json" --adopted "$tmpd/events.toml" --adopted "$tmpd/exam.toml" --now "2026-10-21T12:00:00+09:00" 2>&1)" || rc=$?
+check "17g 取り込み済みが残っていれば終了コード 1" "1" "$rc"
+check "17h 2 本の TOML の adopted_from(入れ子を含む)を両方拾い、一括で消す対象も出す" "true" "$([[ "$out" == *"2 件残って"* && "$out" == *"他の仮押さえ 1 件"* ]] && echo true || echo false)"
+printf '%s' '{"events":[]}' > "$tmpd/none.json"
+rc=0; bash "$SCRIPT_DIR/slot-hit.sh" adopted-check --config "$tmpd/config.toml" --markers "$tmpd/none.json" --adopted "$tmpd/events.toml" --now "2026-10-21T12:00:00+09:00" >/dev/null 2>&1 || rc=$?
+check "17i 残りが無ければ終了コード 0" "0" "$rc"
+rc=0; err="$(bash "$SCRIPT_DIR/slot-hit.sh" adopted-check --config "$tmpd/config.toml" --markers "$tmpd/none.json" --now "2026-10-21T12:00:00+09:00" 2>&1 >/dev/null)" || rc=$?
+check_error_contains "17j --adopted が無ければエラー" "--adopted" "$rc" "$err"
+rm -rf "$tmpd"
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 if [[ "$fail" -eq 0 ]]; then

@@ -206,5 +206,18 @@ def has_prefix($s; $list):
 def marker_prefixes($config):
   [$config.marker_prefix] + ($config.marker_prefix_aliases // []) | map(select(. != null and . != ""));
 
+# list_events の 1 予定を {start, end, all_day}(epoch 秒)にする。終日は日本時間の 0:00 起点。
+# 時刻の無い予定は null。inbox.jq と adopted.jq が共有する。
+def range_of($ev; $tz):
+  if $ev.start.date != null then
+    ($ev.start.date | all_day_date | date_to_epoch_days) as $d0
+    | (if $ev.end.date != null then ($ev.end.date | all_day_date | date_to_epoch_days) else $d0 + 1 end) as $d1
+    | {start: ($d0 * 86400 - $tz), end: ($d1 * 86400 - $tz), all_day: true}
+  elif $ev.start.dateTime != null and $ev.end.dateTime != null then
+    {start: ($ev.start.dateTime | parse_offset_dt), end: ($ev.end.dateTime | parse_offset_dt), all_day: false}
+  else
+    null
+  end;
+
 def is_marker_title($title; $config):
   has_prefix($title; marker_prefixes($config));
