@@ -39,6 +39,13 @@
       # consumer remained; that premise was wrong, so ADR-0022's Amendment
       # (#451) restores it as a plain user-space CLI.
       sops
+      # Upload local files (PDF, images) to a dedicated Google Drive folder by path (#769).
+      # The claude.ai Drive connector takes file contents as base64 strings and the local
+      # gdrive MCP server is read-only, so neither can upload a multi-megabyte PDF. Scope is
+      # `drive.file` (rclone can touch only what it created) -- see docs/gdrive-upload.md and
+      # the drive-upload skill. rclone.conf stays hand-written: `programs.rclone` regenerates
+      # it and would overwrite the existing read-only remote and rclone's own token refresh.
+      rclone
 
       # Rust-tool CLIs (were cargo-binstall)
       bat

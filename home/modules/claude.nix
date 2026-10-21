@@ -2436,6 +2436,11 @@ in
   # ツールのナレッジだけを置く。詳細は docs/claude/gas-clasp-ops.md。
   home.file.".claude/skills/gas-clasp-ops/SKILL.md".source =
     repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
+
+  # drive-upload: ローカルのファイルを Google Drive の専用フォルダへ rclone で上げる手順
+  # (drive.file、#769)。コネクタは base64 の文字列渡しで数 MB に向かない。設計は docs/gdrive-upload.md。
+  home.file.".claude/skills/drive-upload/SKILL.md".source =
+    repoConfig + "/claude/skills/drive-upload/SKILL.md";
   # gpg-subkey-rotation: GPG の機体ローカル [S]/[E] サブ鍵ローテーションを
   # 8 ステップの完了条件付きで終わらせる判断知識(ADR-0003)。rotate だけ
   # 実行して export/nix 編集/GitHub-keyserver 同期/hms 適用のどれかを飛ばす
@@ -2574,6 +2579,8 @@ in
     repoConfig + "/claude/skills/talk-script/cases.md";
   home.file.".agents/skills/gas-clasp-ops/SKILL.md".source =
     repoConfig + "/claude/skills/gas-clasp-ops/SKILL.md";
+  home.file.".agents/skills/drive-upload/SKILL.md".source =
+    repoConfig + "/claude/skills/drive-upload/SKILL.md";
   home.file.".agents/skills/gpg-subkey-rotation/SKILL.md".source =
     repoConfig + "/claude/skills/gpg-subkey-rotation/SKILL.md";
   home.file.".agents/skills/external-call-scheduling/SKILL.md".source =

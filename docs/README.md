@@ -680,6 +680,9 @@ Design and rationale for the hooks and commands deployed from
   抜け漏れなく終わらせる手順。途中で止まっても壊れて見えない
   (旧サブ鍵がまだ有効)ため、次の PR の CI で `unknown_key` として
   初めて発覚するという失敗モードへの対処。
+- [`gdrive-upload.md`](gdrive-upload.md) — `drive-upload` スキルの設計と初回セットアップ: ローカルの
+  PDF・画像を rclone(`drive.file`)で Google Drive の専用フォルダへ上げる。コネクタの base64 渡しは
+  数 MB に向かない。書き込み先を許可の範囲で専用フォルダに閉じ、読み戻してから報告する。
 - [`gas-clasp-ops.md`](claude/gas-clasp-ops.md) — 個人スキル: Google Apps
   Script (GAS) を公式 CLI `clasp` で操作する基盤(ADR-0030)。GAS コード
   自体の正本は各利用リポジトリに分散配置したまま、セットアップ・
