@@ -592,6 +592,20 @@ jobs:
       - name: cargo test (fixture oracles + allowlist audit)
         run: nix develop --command cargo test --workspace --locked
 
+      # pipeline-map の図(ADR-872): manifest から作り直した .d2 / .svg が、コミット済みの
+      # ものと一致すること。d2 は flake.lock で pin されていて(devShell)、ELK の出力は
+      # 同じ入力に対して同一なので、差分は「manifest を変えたのに図を作り直していない」
+      # ことを表す。`git diff` は未追跡の新規ファイルを見ないので、status で見る。
+      - name: pipeline-map diagrams are up to date
+        run: |
+          set -euo pipefail
+          nix develop --command cargo run --locked --quiet -p pipeline-map -- render
+          if [ -n "$(git status --porcelain -- docs/assets/pipeline-map/)" ]; then
+            git status --short -- docs/assets/pipeline-map/
+            echo "::error::docs/assets/pipeline-map/ が manifest と食い違っています。ローカルで \`pipeline-map render\` を実行して差分をコミットしてください" >&2
+            exit 1
+          fi
+
   build-host:
     runs-on: ${{ matrix.runner }}
     name: Build ${{ matrix.host }}

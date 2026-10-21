@@ -430,6 +430,10 @@
               # crates/github-app-snapshot のテストは実 openssl で RS256 JWT を
               # 署名・検証する(bash 版 selftest と同じ前提、#414)。
               pkgs.openssl
+              # crates/pipeline-map の `render` が、manifest から作った .d2 を SVG にする
+              # (ELK 同梱の単一バイナリ)。CI の再生成差分検査も同じ d2 を使うので、
+              # flake.lock の pin でローカルと CI の出力が一致する(ADR-872)。
+              pkgs.d2
             ];
           };
         }

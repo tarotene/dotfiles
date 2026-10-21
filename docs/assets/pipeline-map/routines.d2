@@ -1,0 +1,276 @@
+# 自動生成: `pipeline-map render`。pipeline-map.toml から作る。手で直さない。
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+
+classes: {
+  s_rust: {
+    style: {
+      fill: "#E69F00"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_nix: {
+    style: {
+      fill: "#56B4E9"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_yaml: {
+    style: {
+      fill: "#009E73"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_cloud_llm: {
+    style: {
+      fill: "#CC79A7"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_external: {
+    style: {
+      fill: "#BBBBBB"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_skill: {
+    style: {
+      fill: "#F0E442"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_git: {
+    style: {
+      fill: "#0072B2"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_herdr: {
+    style: {
+      fill: "#D55E00"
+      font-color: "#FFFFFF"
+      font-size: 13
+      stroke: "#333333"
+    }
+  }
+  s_store: {
+    style: {
+      fill: "#FFFFFF"
+      font-color: "#111111"
+      font-size: 13
+      stroke: "#333333"
+      stroke-dash: 3
+    }
+  }
+  e_deny: {
+    style: {
+      stroke: "#D55E00"
+      font-color: "#D55E00"
+      font-size: 11
+      stroke-dash: 4
+    }
+  }
+  e_context: {
+    style: {
+      stroke: "#0072B2"
+      font-color: "#0072B2"
+      font-size: 11
+      stroke-dash: 2
+    }
+  }
+  e_file: {
+    style: {
+      stroke: "#444444"
+      font-color: "#444444"
+      font-size: 11
+    }
+  }
+  e_issue: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+    }
+  }
+  e_pr: {
+    style: {
+      stroke: "#009E73"
+      font-color: "#009E73"
+      font-size: 11
+      stroke-width: 3
+    }
+  }
+  e_notify: {
+    style: {
+      stroke: "#888888"
+      font-color: "#888888"
+      font-size: 11
+    }
+  }
+  e_invoke: {
+    style: {
+      stroke: "#000000"
+      font-color: "#000000"
+      font-size: 11
+      stroke-width: 1
+    }
+  }
+  lane: {
+    style: {
+      fill: "#F4F6F8"
+      stroke: "#9AA5B1"
+      font-size: 15
+      bold: true
+    }
+  }
+  session: {
+    style: {
+      fill: "#FBF3F8"
+      stroke: "#B05A8E"
+      font-size: 17
+      bold: true
+    }
+  }
+  plain: {
+    style: {
+      fill: "#FFFFFF"
+      stroke: "#555555"
+      font-size: 12
+    }
+  }
+  invisible: {
+    style: {
+      stroke-width: 0
+      fill: transparent
+    }
+  }
+}
+
+n_agent_session: "Agent session (Claude / Codex / Copilot)" {
+  class: session
+  l_tool_call: "Tool call" {
+    class: lane
+    n_routines_write_guard: "routines-write-guard" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+  }
+}
+
+l_cloud: "Cloud / LLM" {
+  class: lane
+  n_cloud_routine_auditor: "Cloud routine (weekly auditor)" {
+    class: s_cloud_llm
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+}
+
+l_manual: "Manual / skills" {
+  class: lane
+  n_claude_routines: "skill: claude-routines" {
+    class: s_skill
+    shape: hexagon
+    style.stroke-dash: 4
+  }
+  n_github_audit: "github-audit" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
+}
+
+l_external: "Sessions / services / state" {
+  class: lane
+  n_github: "GitHub (Issues / PRs / rulesets / checks)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+}
+
+l_manual.n_claude_routines -> n_agent_session.l_tool_call.n_routines_write_guard: "RemoteTrigger" {
+  class: e_invoke
+}
+l_manual.n_claude_routines -> l_cloud.n_cloud_routine_auditor: "create / update" {
+  class: e_invoke
+}
+l_cloud.n_cloud_routine_auditor -> l_external.n_github: "drift Issues" {
+  class: e_issue
+}
+l_manual.n_github_audit -> l_cloud.n_cloud_routine_auditor: "sources coverage" {
+  class: e_context
+}
+
+legend: "Legend" {
+  near: bottom-center
+  class: lane
+  grid-columns: 4
+  grid-gap: 8
+  lg_s_rust: "Rust crate" {
+    class: s_rust
+  }
+  lg_s_cloud_llm: "LLM session / cloud" {
+    class: s_cloud_llm
+  }
+  lg_s_external: "external tool / service" {
+    class: s_external
+  }
+  lg_s_skill: "skill (LLM follows a procedure)" {
+    class: s_skill
+  }
+  lg_llm: "hexagon: an LLM takes part in the decision" {
+    class: s_cloud_llm
+    shape: hexagon
+  }
+  lg_deny_mark: "red thick border: can stop the agent's action" {
+    class: s_rust
+    style.stroke: "#D55E00"
+    style.stroke-width: 4
+  }
+  lg_manual: "dashed border: not fired by itself (skill, CLI, service)" {
+    class: s_external
+    style.stroke-dash: 4
+  }
+  lg_e_context: "edge context: passes information" {
+    class: plain
+    style.stroke: "#0072B2"
+    style.font-color: "#0072B2"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+    style.stroke-dash: 2
+  }
+  lg_e_issue: "edge issue: creates or closes an Issue" {
+    class: plain
+    style.stroke: "#009E73"
+    style.font-color: "#009E73"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_invoke: "edge invoke: calls or redirects to" {
+    class: plain
+    style.stroke: "#000000"
+    style.font-color: "#000000"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+}
