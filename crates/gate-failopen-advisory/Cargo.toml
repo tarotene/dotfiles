@@ -1,0 +1,14 @@
+[package]
+name = "gate-failopen-advisory"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "fail-open で素通りし続けている gate を SessionStart で知らせる(#822)"
+
+[dependencies]
+hook-io = { version = "0.1.0", path = "../hook-io" }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"
