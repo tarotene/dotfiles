@@ -167,6 +167,18 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   default-behaviour differences). #687 is the model.
 - If it could not be tried (no such host, no permission), say that in the
   section and give the reason.
+- Isolate the trial's state: point `HOME` (and `XDG_CONFIG_HOME` /
+  `XDG_CACHE_HOME` if needed) at a temporary directory instead of relying on a
+  per-tool flag, because even `--help` can write default files under the real
+  `~/.config` and `~/.cache` (#861). Read back afterwards that nothing was
+  created under the real `HOME`.
+- Before trying, compare the pinned version with the latest upstream release
+  and read the known issues in between (Issues, release notes). If they
+  differ, try the latest one too — a README alone is not evidence for the
+  pinned version (#861: 0.23.0 could not parse a new app's responses; the fix
+  first shipped in 0.25.0).
+- Tell the user before starting anything that can make a sound, change the
+  account's state (playback, follows, purchases) or send a notification.
 - Scope: tool-adoption proposals to this repo only — not investigation-only
   Issues or other repos. Whether prose is enough or an Issue-template field
   is warranted is decided by whether the same miss repeats (ADR-543).
