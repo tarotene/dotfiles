@@ -88,6 +88,36 @@ pub fn is_valid_kizon_line(line: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// 承認された計画の `## 先行例との対比` の節にある、書式が正しい `既存手段:` 行(前後の空白と
+/// 行頭の `- ` を落としたもの、重複なし、出現順)。台帳は計画の派生で、正本は計画 —
+/// ExitPlanMode の承認後に、この行を台帳へ書けば、同じ行を手で `register` し直さずに済む。
+///
+/// 別の節の行(設計メモ、検証など)と、書式が不正な行(`is_valid_kizon_line` を通らないもの、
+/// 例: 理由の無い `自前`)は拾わない。節は、見出し `## 先行例との対比` から、次の `## ` の
+/// 見出しの手前まで。
+pub fn kizon_lines_in_plan(plan: &str) -> Vec<String> {
+    let mut in_section = false;
+    let mut out: Vec<String> = Vec::new();
+    for line in plan.lines() {
+        let t = line.trim();
+        if t.starts_with("## ") {
+            in_section = t.trim_start_matches('#').trim() == "先行例との対比";
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+        let body = t.strip_prefix("- ").unwrap_or(t).trim_start();
+        if body.starts_with("既存手段:")
+            && is_valid_kizon_line(body).is_ok()
+            && !out.iter().any(|x| x == body)
+        {
+            out.push(body.to_string());
+        }
+    }
+    out
+}
+
 /// `既存手段:` 行から対象パスだけを取り出す。ダッシュ種(-/—/–)を問わず、
 /// 前後に空白を伴う最初のダッシュより前をパスとみなす(plan-precedent-
 /// gate.sh の `CITATION_RE` 相当の緩さ)。
@@ -259,5 +289,23 @@ mod tests {
         assert!(ledger_has_record(&abs, root, "./crates/x/Cargo.toml"));
         // 別の worktree の絶対パスは一致しない
         assert!(!ledger_has_record(&abs, root, "/other/crates/x/Cargo.toml"));
+    }
+
+    #[test]
+    fn plan_lines_come_from_the_precedent_section_only() {
+        let plan = "## 先行例との対比\n\
+- D1: a\n  既存手段: scripts/a.sh — 採用: jq\n\
+- D2: b\n  既存手段: scripts/b.sh — 自前\n\
+- 既存手段: scripts/c.sh — 拡張: scripts/a.sh\n  既存手段: scripts/a.sh — 採用: jq\n\
+## 設計メモ\n  既存手段: scripts/d.sh — 採用: jq\n";
+        assert_eq!(
+            kizon_lines_in_plan(plan),
+            vec![
+                "既存手段: scripts/a.sh — 採用: jq".to_string(),
+                "既存手段: scripts/c.sh — 拡張: scripts/a.sh".to_string(),
+            ],
+            "自前の理由なしは除く、別の節は除く、重複は 1 つ、行頭の `- ` は落とす"
+        );
+        assert!(kizon_lines_in_plan("# 計画\n既存手段: x — 採用: y\n").is_empty());
     }
 }

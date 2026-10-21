@@ -441,6 +441,11 @@
 #    使い分けは「着手前に Plan を書いたか」で決まらない: Plan を書かない
 #    小さな作業でもこの hook が発火する。Claude Code 専用(#531、Codex/
 #    Copilot 展開は別 Issue)。
+#    記録役(PostToolUse, matcher: ExitPlanMode): 承認された計画の
+#    `## 先行例との対比` にある `既存手段:` 行(書式が正しいものだけ)を、現在の
+#    worktree の台帳へ転記する。承認時に plan-precedent-gate が読む行と同じ行を、
+#    手で `register` し直す二重入力をなくす(台帳は計画の派生、正本は計画)。
+#    手書きの `register` は、計画の無い作業の経路として残る。
 #
 # 31) feedback-target-guard(PreToolUse, matcher: Bash(gh *)、ADR-543、
 #    2026-09-28、段3/4):
@@ -1509,6 +1514,16 @@ let
       event = "PreToolUse";
       node = "new-tool-guard";
       matcher = "Write";
+      command = newToolGuardCmd;
+      timeout = 10;
+    }
+    # new-tool-guard の記録役: 同じバイナリを hook_event_name で分岐させる(gh-edit-allow と同じ
+    # 型)。ExitPlanMode の承認後(PostToolUse)に、計画の `既存手段:` 行を台帳へ転記する。
+    # 何も出力せず、書けなくても承認には影響しない(記録は best-effort)。
+    {
+      event = "PostToolUse";
+      node = "new-tool-guard-record";
+      matcher = "ExitPlanMode";
       command = newToolGuardCmd;
       timeout = 10;
     }

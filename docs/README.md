@@ -590,6 +590,9 @@ Design and rationale for the hooks and commands deployed from
   hook: fail-open で設計した hook(copilot-plan-review)が、依存先の不調で素通りし続けて
   いること(`gate-events.jsonl` の `fail-open` が、最後の `pass` より後に既定 3 回以上)を、
   セッション開始時に先に知らせる。何も実行しない。
+- [`new-tool-guard.md`](claude/new-tool-guard.md) — PreToolUse(Write)の判定役と、
+  ExitPlanMode 承認後(PostToolUse)の記録役: 新しい道具・単位の着手前に既存手段を問い、
+  承認された計画の `既存手段:` 行を台帳へ転記して、手で `register` し直す二重入力をなくす。
 - [`ci-consumers.md`](claude/ci-consumers.md) — `scripts/ci-consumers <path>...`:
   編集するパスを入力にしている CI の検査(workflow の step・composite action・scripts・
   crates の tests)を、編集の前に、`file:line` と step 名つきで引く。
