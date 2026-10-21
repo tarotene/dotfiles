@@ -69,6 +69,25 @@ transcript 全件を確認したところ利用実績が 0 セッションで、
 reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証時に書き足された
 `oauth` ブロックごと)も消す。
 
+### playwright の運用上の裁定(#849、#841)
+
+- **版は pin する。** `@playwright/mcp@latest` のままだと、npx のキャッシュが更新される
+  たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、上げるときは
+  `personal.nix` の版を意図して変える。
+- **出力先は XDG の cache に逃がす。** 既定ではセッションの cwd 直下に `.playwright-mcp/`
+  (ページのスナップショットとコンソールログ)を作り、worktree を汚す。引数 `--output-dir`
+  で `~/.cache/playwright-mcp` に向ける。ただし screenshot に `filename` を明示すると cwd
+  側に落ちる(0.0.83 の README)ので、`.playwright-mcp/` は `home/modules/git.nix` の
+  グローバル ignore にも入れてある。
+- **「unsupported command-line flag」の帯は許容する。** ブラウザの起動のたびに出る帯の
+  原因は、サーバー自身が Chromium 系に付ける `--disable-blink-features=AutomationControlled`
+  である(0.0.83 の `coreBundle.js` が付ける。Chromium の `bad_flags_prompt.cc` の
+  警告対象リストに `kDisableBlinkFeatures` が載っている。取得 2026-10-21)。0.0.83 には
+  この旗を外す設定が無く、`--disable-infobars` では抑止されない。設定ファイルの
+  `launchOptions` で旗の追加を回避するハックは、自動化検知の回避が消える副作用があり、
+  先行例も無いので採らない。帯は表示だけで動作に影響しない。上流への Issue は出さない
+  (本人の裁定、2026-10-21)。
+
 ## 使い方(populate する側)
 
 ```nix

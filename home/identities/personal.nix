@@ -3,7 +3,12 @@
 # Settings that follow the *person* on their personal machines, independent of
 # which host they sit at.  Git user.name / user.email are set here; the
 # per-machine signing key lives in the host module (#211 / ADR-0003).
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix. Only needed on
   # Linux — darwin has its own native GL stack.
@@ -89,7 +94,17 @@ in
     playwright = {
       type = "stdio";
       command = "npx";
-      args = [ "@playwright/mcp@latest" ];
+      # Pinned to the current latest (0.0.83, npm dist-tag `latest`, 2026-10-21): a floating
+      # `@latest` runs a different server per npx cache refresh. Bump deliberately.
+      # --output-dir keeps snapshots and console logs out of the working tree (#849);
+      # without it the server writes `.playwright-mcp/` under the cwd, which dirties a
+      # worktree. A `filename` passed explicitly to a screenshot still lands under the
+      # cwd (README, 0.0.83), so git.nix also ignores `.playwright-mcp/`.
+      args = [
+        "@playwright/mcp@0.0.83"
+        "--output-dir"
+        "${config.xdg.cacheHome}/playwright-mcp"
+      ];
     };
   };
 
