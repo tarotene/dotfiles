@@ -89,6 +89,14 @@ description: セッション内で複数の PR を作るとき、依存関係を
    を、触ったディレクトリごとに。PR タイトルの type も確かめる
    (`pr-description` スキル §0 の語彙)。CI が検出できることを、push 前に
    1 回だけ先に検出するだけの手順で、結果は PR 本文の「検証」に書く。
+   **編集したファイルを入力にする CI の検査も、push 前に引く。**
+   `scripts/ci-consumers <編集したパス>...` が、そのパスを読む workflow の step・
+   composite action・scripts・crates の tests を、`file:line` と step 名つきで出す
+   (消費者が無ければ終了コード 1)。ファイルを一括編集する前に引かないと、配布元
+   テンプレートとのバイト一致を要求する検査のような「そのファイルを入力にする CI」が、
+   CI で初めて落ちて、全段の rebase と force-push のやり直しになる(PR #872 で
+   `close-linked-issues.yml` に 1 行足して起きた)。出た step は手元で走らせ、
+   結果を PR 本文の「検証」に書く。設計は `docs/claude/ci-consumers.md`。
 4. 各段ごとに `git push -u origin <branch>` →
    `gh pr create -R OWNER/REPO --base <直前の段のブランチ> --body-file <絶対パス>`
    (最下段だけ `--base main`。本文は Write でファイルにしてから渡す —

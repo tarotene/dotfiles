@@ -197,6 +197,10 @@ path = "scripts/fix-ssh-permissions.sh"
 reason = "escape hatch: 手動実行の診断・修復(未配備)"
 
 [[excluded]]
+path = "scripts/ci-consumers"
+reason = "escape hatch: 手動実行の調査ツール(未配備)。編集するパスを読む CI の検査を grep と awk で列挙する。hook でも ~/.local/bin の CLI でもなく、CI が実行するのは --selftest だけ(ADR-0024 のスコープは hook と配備する CLI。docs/claude/ci-consumers.md)"
+
+[[excluded]]
 path = "scripts/fcitx5-key-trace.pl"
 reason = "perl の診断ツール(未配備、bash/sh ではない)"
 

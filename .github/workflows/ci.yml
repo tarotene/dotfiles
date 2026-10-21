@@ -270,6 +270,10 @@ jobs:
       - name: adr-number-check --selftest
         run: ./scripts/adr-number-check --selftest
 
+      # ci-consumers: 編集するパスを入力にする CI の検査(消費者)を列挙する(docs/claude/ci-consumers.md)。
+      - name: ci-consumers --selftest
+        run: scripts/ci-consumers --selftest
+
       # post-checkout hook (#702): linked-worktree-only, per-repository opt-in,
       # clone never runs the declared script. Needs a git that has
       # `rev-parse --path-format=absolute` (2.31+) — the runner's is newer.
