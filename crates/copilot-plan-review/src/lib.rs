@@ -607,6 +607,20 @@ pub fn advisory(cfg: &Config, args: &[String]) -> i32 {
 // ---------------------------------------------------------------------------
 
 /// hook の stdout と終了コード(常に 0)。
+/// gate-events.jsonl に `fail-open` / `pass` を残す(#822)。同じ gate の最後の `pass` より
+/// 後の `fail-open` を数えれば、「壊れたまま素通りし続けている」ことが状態ファイル無しで
+/// 分かる(`gate-failopen-advisory` が SessionStart で読む)。copilot が無い無音の素通り
+/// (ADR-0005 の設計上の fail-open)と、プラン本文を取れない素通りは、依存先の不調ではない
+/// ので記録しない。記録は best-effort で、判定の成否に影響させない。
+fn record_gate_event(decision: &str) {
+    if let Some(path) = hook_io::gate_event::default_path() {
+        let _ = hook_io::gate_event::record(&path, GATE_NAME, decision);
+    }
+}
+
+/// gate-events.jsonl 上の gate 名。`gate-failopen-advisory` が同じ名前で数える。
+pub const GATE_NAME: &str = "copilot-plan-review";
+
 fn pass_through(msg: &str) -> String {
     if msg.is_empty() {
         String::new()
@@ -916,6 +930,7 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
         let _ = fs::remove_file(p);
     }
     if run.critics.is_empty() {
+        record_gate_event("fail-open");
         return pass_through(&format!(
             "Copilot プランレビュー: 実行に失敗しました（タイムアウト {}s・未ログイン・ネットワーク等）。fail-open で通過させます。ラウンドは消費していません。{}",
             cfg.timeout_raw,
@@ -933,6 +948,7 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
 
     // --- ここから先はレビューが成立した = ラウンドを消費する ---
     let _ = write_file(&count_file, &format!("{round}\n"));
+    record_gate_event("pass");
     let ts = date("%Y%m%d-%H%M%S");
     let sid8: String = session_id.chars().take(8).collect();
     let review_log = format!("{}/{ts}-{sid8}.md", cfg.review_dir);

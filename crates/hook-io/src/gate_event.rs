@@ -4,7 +4,12 @@
 //! `## 先行例との対比` D6 参照)。
 //!
 //! フォーマットは1行1レコードの JSON(`{ts_unix, gate, decision}`)。
-//! `decision` は `"deny"` か `"skip"` の2値。
+//! `decision` は `"deny"`・`"skip"`・`"fail-open"`・`"pass"` の 4 値。
+//! `fail-open` は、gate が依存先の不調(外部 CLI・モデル・認証)で何も判定できずに
+//! 素通りしたこと、`pass` は、判定が成立して通ったこと(#822)。同じ gate の最後の
+//! `pass` より後の `fail-open` を数えれば「壊れたまま素通りし続けている」ことが
+//! 状態ファイル無しで分かる([`trailing_fail_open`])。`promotion-detect` は
+//! 知らない `decision` を読み飛ばすので、語彙を足しても降格候補の検出は変わらない。
 
 use serde::Serialize;
 use std::fs::OpenOptions;
@@ -36,7 +41,7 @@ pub fn default_path_with(
     Some(base.join("claude").join("gate-events.jsonl"))
 }
 
-/// `decision` は `"deny"` か `"skip"`。呼び出し側の都合で失敗は無視してよい
+/// `decision` は `"deny"`・`"skip"`・`"fail-open"`・`"pass"`。呼び出し側の都合で失敗は無視してよい
 /// 設計(記録は best-effort — gate 自体の判定を記録の成否に依存させない)。
 pub fn record(path: &Path, gate: &str, decision: &str) -> std::io::Result<()> {
     let ts_unix = SystemTime::now()
@@ -55,6 +60,32 @@ pub fn record(path: &Path, gate: &str, decision: &str) -> std::io::Result<()> {
     }
     let mut f = OpenOptions::new().create(true).append(true).open(path)?;
     writeln!(f, "{line}")
+}
+
+/// 同じ gate の、最後の `pass` より後の `fail-open` の数(#822)。
+///
+/// 末尾から読み、同じ gate の `pass` に当たったら止まる。別の gate の記録と、同じ gate の
+/// `deny` / `skip` は、加算もリセットもしない。壊れた行・`gate` や `decision` の無い行は
+/// 読み飛ばす。ファイルが無い・読めないときは 0(状態ファイルは持たず、ログの末尾から導く)。
+pub fn trailing_fail_open(path: &Path, gate: &str) -> usize {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return 0;
+    };
+    let mut n = 0;
+    for line in text.lines().rev() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v.get("gate").and_then(|g| g.as_str()) != Some(gate) {
+            continue;
+        }
+        match v.get("decision").and_then(|d| d.as_str()) {
+            Some("pass") => break,
+            Some("fail-open") => n += 1,
+            _ => {}
+        }
+    }
+    n
 }
 
 #[cfg(test)]
@@ -86,6 +117,83 @@ mod tests {
     #[test]
     fn default_path_none_without_home() {
         assert_eq!(default_path_with(None, None), None);
+    }
+
+    fn write_events(path: &Path, events: &[(&str, &str)]) {
+        for (gate, decision) in events {
+            record(path, gate, decision).unwrap();
+        }
+    }
+
+    #[test]
+    fn trailing_fail_open_counts_since_the_last_pass() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("e.jsonl");
+        write_events(
+            &p,
+            &[
+                ("g", "fail-open"),
+                ("g", "pass"),
+                ("g", "fail-open"),
+                ("g", "fail-open"),
+            ],
+        );
+        assert_eq!(
+            trailing_fail_open(&p, "g"),
+            2,
+            "最後の pass より後だけを数える"
+        );
+    }
+
+    #[test]
+    fn trailing_fail_open_is_reset_by_a_pass() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("e.jsonl");
+        write_events(&p, &[("g", "fail-open"), ("g", "fail-open"), ("g", "pass")]);
+        assert_eq!(trailing_fail_open(&p, "g"), 0);
+    }
+
+    #[test]
+    fn trailing_fail_open_ignores_other_gates_and_other_decisions() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("e.jsonl");
+        write_events(
+            &p,
+            &[
+                ("g", "fail-open"),
+                ("other", "pass"),
+                ("g", "deny"),
+                ("other", "fail-open"),
+                ("g", "fail-open"),
+                ("g", "skip"),
+            ],
+        );
+        assert_eq!(
+            trailing_fail_open(&p, "g"),
+            2,
+            "別の gate の pass と、同じ gate の deny / skip はリセットも加算もしない"
+        );
+    }
+
+    #[test]
+    fn trailing_fail_open_tolerates_missing_file_and_garbage_lines() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(trailing_fail_open(&d.path().join("none.jsonl"), "g"), 0);
+        let p = d.path().join("e.jsonl");
+        write_events(&p, &[("g", "fail-open")]);
+        std::fs::write(
+            &p,
+            format!(
+                "{}\nnot json\n\n{{\"gate\":\"g\"}}\n",
+                std::fs::read_to_string(&p).unwrap().trim_end()
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            trailing_fail_open(&p, "g"),
+            1,
+            "壊れた行と decision の無い行は読み飛ばす"
+        );
     }
 
     #[test]
