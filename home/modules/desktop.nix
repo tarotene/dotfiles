@@ -161,6 +161,16 @@ in
 
         # Session locale: LC_CTYPE=ja for JP glyph fallback (UI stays English).
         "environment.d/20-locale.conf".source = repoConfig + "/environment.d/20-locale.conf";
+
+        # Bluetooth headphones (Shokz OpenFit Pro): play A2DP as SBC-XQ rather
+        # than SBC, and move the default sink/source to the headphones on
+        # connect.  Both are drop-ins for the apt-owned PipeWire stack, which
+        # stays in the system layer (ADR-0001); rationale and sources are in
+        # each file's header.
+        "wireplumber/wireplumber.conf.d/51-bluez-sbc-xq.conf".source =
+          repoConfig + "/wireplumber/wireplumber.conf.d/51-bluez-sbc-xq.conf";
+        "pipewire/pipewire-pulse.conf.d/50-switch-on-connect.conf".source =
+          repoConfig + "/pipewire/pipewire-pulse.conf.d/50-switch-on-connect.conf";
       }
       # Pop!_OS ships GNOME/X11-only XDG autostart entries under
       # /etc/xdg/autostart/ that exit 1 under COSMIC on every host here
