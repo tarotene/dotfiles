@@ -150,6 +150,21 @@ impl Env {
         let _ = fs::remove_file(self.fake.join(name));
     }
 
+    /// `gate-events.jsonl` の `(gate, decision)` を記録順に返す(#822)。
+    fn events(&self) -> Vec<(String, String)> {
+        let text = fs::read_to_string(self.home.join(".local/state/claude/gate-events.jsonl"))
+            .unwrap_or_default();
+        text.lines()
+            .map(|l| {
+                let v: Value = serde_json::from_str(l).unwrap();
+                (
+                    v["gate"].as_str().unwrap().to_string(),
+                    v["decision"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    }
+
     fn seed(&self, sid: &str, count: &str, open: &Value) {
         fs::create_dir_all(self.review.join("state")).unwrap();
         fs::write(self.state(&format!("{sid}.count")), format!("{count}\n")).unwrap();
@@ -175,8 +190,11 @@ impl Env {
         ] {
             c.env_remove(k);
         }
+        // gate-events.jsonl(#822)をテストの HOME に閉じ込める。ホストの
+        // XDG_STATE_HOME が設定されていると、実機のログに書き込んでしまう。
         c.current_dir(&self.work)
             .env("HOME", &self.home)
+            .env("XDG_STATE_HOME", self.home.join(".local/state"))
             .env("COPILOT_PLAN_REVIEW_DIR", &self.review)
             .env("PLAN_PRECEDENT_GATE_BIN", "/dev/null")
             .env("PLAN_SCOPE_GATE_BIN", "/dev/null")
@@ -464,6 +482,37 @@ fn precheck_broken_stub_fails_open() {
     assert_eq!(decision(&out), "none");
     assert!(system_message(&out).contains("実行に失敗しました"));
     golden("critics_failed", &e.mask(&out));
+}
+
+/// #822: fail-open で素通りした事実と、レビューが成立して通った事実を、gate-events.jsonl に
+/// 残す。同じ gate の最後の `pass` より後の `fail-open` を数えれば、「壊れたまま素通りし
+/// 続けている」ことが状態ファイル無しで分かる。
+#[test]
+fn gate_events_record_fail_open_then_pass() {
+    let e = Env::new();
+    let events_path = e.home.join(".local/state/claude/gate-events.jsonl");
+    let par0 = [("COPILOT_PLAN_REVIEW_PARALLEL", "0")];
+
+    e.touch_fake("M.fail");
+    run(&e, "selftest-ev1", &par0);
+    run(&e, "selftest-ev2", &par0);
+    let fo = ("copilot-plan-review".to_string(), "fail-open".to_string());
+    assert_eq!(e.events(), vec![fo.clone(), fo.clone()]);
+    assert_eq!(
+        hook_io::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
+        2
+    );
+
+    // 成立したレビューは `pass` を残し、連続回数をリセットする。
+    e.rm_fake("M.fail");
+    e.write_fake("M.json", &critic_data(json!([]), json!([])).to_string());
+    run(&e, "selftest-ev3", &par0);
+    let pass = ("copilot-plan-review".to_string(), "pass".to_string());
+    assert_eq!(e.events(), vec![fo.clone(), fo, pass]);
+    assert_eq!(
+        hook_io::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
+        0
+    );
 }
 
 /// critic が stderr に理由を出して落ちたとき、fail-open の systemMessage にその先頭行が

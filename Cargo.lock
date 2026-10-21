@@ -386,6 +386,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gate-failopen-advisory"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

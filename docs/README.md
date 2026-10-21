@@ -586,6 +586,10 @@ Design and rationale for the hooks and commands deployed from
   hook: herdr の client と server の版が食い違っているとき(`herdr worktree create`
   が `protocol_mismatch` で失敗する前)に、`herdr status --json` を読んで先に知らせる。
   復旧は本人の操作で、hook は何も実行しない。
+- [`gate-failopen-advisory.md`](claude/gate-failopen-advisory.md) — SessionStart
+  hook: fail-open で設計した hook(copilot-plan-review)が、依存先の不調で素通りし続けて
+  いること(`gate-events.jsonl` の `fail-open` が、最後の `pass` より後に既定 3 回以上)を、
+  セッション開始時に先に知らせる。何も実行しない。
 - [`git-checkout-freshness.md`](claude/git-checkout-freshness.md) —
   home-manager 管理の systemd user timer: 親チェックアウト自身を
   origin/`<base>` へ定期的に fast-forward する(worktree-fresh-base.md の

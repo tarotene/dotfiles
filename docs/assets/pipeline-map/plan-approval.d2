@@ -168,6 +168,12 @@ classes: {
 
 n_agent_session: "Agent session (Claude / Codex / Copilot)" {
   class: session
+  l_session_start: "SessionStart" {
+    class: lane
+    n_gate_failopen_advisory: "gate-failopen-advisory" {
+      class: s_rust
+    }
+  }
   l_plan_approval: "Plan approval" {
     class: lane
     n_copilot_plan_review: "copilot-plan-review" {
@@ -194,6 +200,9 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+  }
+  l_session_start -> l_plan_approval: {
+    style.opacity: 0
   }
   l_stop: "Turn end / Stop" {
     class: lane
@@ -271,6 +280,9 @@ n_agent_session.l_stop.n_codex_plan_gate -> n_agent_session.l_plan_approval.n_pl
 n_agent_session.l_stop.n_codex_plan_gate -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "reuses" {
   class: e_invoke
 }
+n_agent_session.l_plan_approval.n_copilot_plan_review -> n_agent_session.l_session_start.n_gate_failopen_advisory: "gate-events.jsonl (fail-open / pass)" {
+  class: e_file
+}
 
 legend: "Legend" {
   near: bottom-center
@@ -309,6 +321,13 @@ legend: "Legend" {
     style.fill: "#FFFFFF"
     style.stroke-width: 3
     style.stroke-dash: 2
+  }
+  lg_e_file: "edge file: writes a file or state" {
+    class: plain
+    style.stroke: "#444444"
+    style.font-color: "#444444"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
   }
   lg_e_notify: "edge notify: toast, display, check" {
     class: plain

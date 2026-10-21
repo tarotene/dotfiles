@@ -503,6 +503,15 @@
 #    確定事項を予定と記録に反映し、フィルタにできる差出人を標準ルールに積み、
 #    受信箱の整理は最後にする。送信・削除・退会は本人の操作。事例は cases.md。
 #
+# 37) gate-failopen-advisory(SessionStart, matcher: startup|resume、
+#    docs/claude/gate-failopen-advisory.md、#822):
+#    fail-open で設計した hook(copilot-plan-review)は、依存先が壊れても止まらない
+#    代わりに、「壊れたまま素通りし続けている」ことに気づく手段が毎回の警告を人が
+#    読むことしか無かった(固定したモデルが catalog から消えて約 2 週間半、気づかれ
+#    なかった)。gate が gate-events.jsonl に残す fail-open / pass を末尾から数え、
+#    同じ gate の最後の pass より後の fail-open が閾値(既定 3)以上なら、セッション
+#    開始時に additionalContext で伝える。何も実行しない。fail-open。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -649,6 +658,7 @@ let
   legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-fresh-base'";
   herdrStatusAdvisoryCmd = "'${hooksDir}/herdr-status-advisory'";
+  gateFailopenAdvisoryCmd = "'${hooksDir}/gate-failopen-advisory'";
   worktreeCreateGuardCmd = "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'";
   worktreeAuditContextCmd = "'${config.home.homeDirectory}/.local/bin/git-audit-worktrees' --context";
   planScopeGateCmd = "'${hooksDir}/plan-scope-gate'";
@@ -1161,6 +1171,16 @@ let
       node = "herdr-status-advisory";
       matcher = "startup|resume";
       command = herdrStatusAdvisoryCmd;
+      timeout = 10;
+    }
+    # gate-failopen-advisory: fail-open で素通りし続けている gate を、セッション開始時に
+    # additionalContext で知らせる。gate-events.jsonl を読むだけで、何も実行しない
+    # (docs/claude/gate-failopen-advisory.md、#822)。
+    {
+      event = "SessionStart";
+      node = "gate-failopen-advisory";
+      matcher = "startup|resume";
+      command = gateFailopenAdvisoryCmd;
       timeout = 10;
     }
     # pr-gate: SessionStart は状態の一覧取得のみ(短時間)。Stop は CI の
@@ -1918,6 +1938,11 @@ in
   home.file.".claude/hooks/herdr-status-advisory".source =
     "${pkgs.dotfiles-tools}/bin/herdr-status-advisory";
 
+  # gate-failopen-advisory: fail-open で素通りし続けている gate を、セッション開始時に
+  # 知らせる SessionStart hook(#822)。
+  home.file.".claude/hooks/gate-failopen-advisory".source =
+    "${pkgs.dotfiles-tools}/bin/gate-failopen-advisory";
+
   # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
   # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
   home.file.".claude/hooks/pr-gate".source = "${pkgs.dotfiles-tools}/bin/pr-gate";
@@ -2127,7 +2152,7 @@ in
   home.activation.registerCodexSessionStartHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
       ''
-        # pipeline-node: issue-index, esa-index, wrapup-session-start, sign-prewarm, pr-gate-session-start, worktree-fresh-base, herdr-status-advisory
+        # pipeline-node: issue-index, esa-index, wrapup-session-start, sign-prewarm, pr-gate-session-start, worktree-fresh-base, herdr-status-advisory, gate-failopen-advisory
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
@@ -2141,7 +2166,8 @@ in
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg herdrStatusAdvisoryCmd} 10
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg herdrStatusAdvisoryCmd} 10 \
+          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg gateFailopenAdvisoryCmd} 10
       '';
 
   # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate は
