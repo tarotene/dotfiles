@@ -37,6 +37,20 @@ merge・merge 後のメタデータ反映まで自動で行っていたが、そ
 `GITHUB_AUDIT_OVERRIDES_FILE=<そのパス>` で渡す。渡さないと、過去に exempt
 裁定済みの組が drifted として再び出る(#708)。
 
+**起草に入る前に、`drifted` の種類(domain と token)ごとに 1〜2 件を、API の一次情報で
+読み戻して偽陽性でないことを確かめる。** 監査の出力を信じて起草に進むと、偽陽性や
+直せない要求に起草を費やす(2026-10-17 の監査では、drifted と ungoverned の 126 組の
+約半分がこれだった。#838)。確かめ方の例:
+
+- settings: `gh api repos/O/R/automated-security-fixes` で実際の状態を読む(Rust 版が
+  非公開リポジトリのフォールバックを持たず、実際は無効のものが drifted と出ることがあった)
+- rulesets: live と宣言を正規化して diff する(GitHub がサーバ側の既定値で埋める 1 項目
+  だけの差を、差として出すことがあった)
+- 全般: そのリポジトリが読み取り専用(アーカイブ済み)でないか。アーカイブ後はトピック等を
+  書き換えられず、`class-undeclared` のような要求は直せない
+
+偽陽性が見つかったら、起草ではなく監査の修正に回す(既存 Issue の有無を先に確かめる)。
+
 ## 2. 一括起草
 
 drifted な (repo, domain) の組ごとに background subagent へ委譲する。各
@@ -309,10 +323,13 @@ description・topics・settings フィールド・ファイルツリー・open I
     検査)も同様に、docs job を足すリポジトリに任意で付ける提案にする。
   - `private-pages-enabled` — PRIVATE リポジトリで Pages が有効。個人
     アカウントでは private repo の Pages も公開されるので、**起草では
-    直せない**(Settings → Pages の操作)。表には「Pages を無効化する」を
-    処分案として書き、実行はユーザーに依頼する(外向きの設定変更で、
-    公開済みの内容を取り戻せるわけでもない)。依頼の手順は後続 Issue に
-    払い出す。
+    直せない**(Settings → Pages の操作)。**推奨を決める前に、公開が意図的かを
+    確かめる**: README の目的文と、Pages を配信するワークフロー(`build_type`、
+    `docs-pages.yml` など)を読み、公開が成果物の目的(例: 本として配信)かを見る。
+    意図が読み取れれば、推奨は `exempt`(§7)にする。読み取れないときだけ、表に
+    「Pages を無効化する」を処分案として書き、実行はユーザーに依頼する(外向きの
+    設定変更で、公開済みの内容を取り戻せるわけでもない)。質問には、読んだ根拠
+    (どのファイルの何行目か)を添える。依頼の手順は後続 Issue に払い出す(#837)。
   - `not-applicable` のスタック(Astro サイト・Nix・Go・Typst・GAS・設定のみ)
     には何も提案しない。`package.json` が `exports`/`main`/`types` を
     持つのに API doc が不要なライブラリ(内部ツールなど)は、`exempt`
