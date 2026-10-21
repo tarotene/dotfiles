@@ -225,6 +225,31 @@ preview の実際のステータス、既知の issue、拡張のバージョン
 **時間で腐る事実**は `docs/stacked-pr-github-native.md`(調査記録)を参照。
 この SKILL.md には裁定とその理由だけを書く(ADR-0008 のルール 1)。
 
+### スタックの PR をマージする
+
+スタックした PR は `gh pr merge` では入らない。次のエラーで失敗する。
+
+```
+This pull request is part of a stack and must be merged using the asynchronous merge REST API.
+```
+
+GitHub の公式文書は、非同期マージ API が stacked PR のマージに必須で、「stacked PR では、その操作は下位の open な PR をすべて含む」と書いている。同期のマージ API は stacked PR に対応しない
+(GitHub Docs, "REST API endpoints for pull requests" の "Merge a pull request asynchronously"、取得 2026-10-21)。
+
+したがって、**最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
+
+1. 最上段が下書きなら、`gh pr ready <N>` で外す。
+2. `gh pr checks <N> --watch` で CI の完了を待つ。
+3. 非同期マージ API を呼ぶ。
+
+```bash
+gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
+  -f merge_method=squash -f merge_action=direct_merge
+```
+
+マージは取り消せず、全段が一度に入る。段ごとに別のレビューを終えてから入れたいときは、レビューが済んだ段を確かめてから呼ぶ。
+中間段を指定したときの挙動は未確認(文書の記述は「下位の open な PR を含む」までで、実測は最上段の例だけ)。エージェントはマージしない(完了定義は PR 作成まで)ので、この手順は本人がマージするときのためにある。
+
 ## 6. Issue リンクの書き分け
 
 各段の PR 本文の 1 行目(`Closes #N` / `No-Issue:`)は、**その段で完了する
