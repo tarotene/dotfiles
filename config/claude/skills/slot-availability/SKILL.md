@@ -59,6 +59,17 @@ JSON だけを入力に取るため、下記「汎用手順」はどの取得元
    `[inbox]` の `exclude_prefixes`。別の仕組みが招待者なしで直接書く `[outing] ` などは、
    ここに並べる)、キャンセル済み、終了済み、他人が主催の招待。1 件でも残れば、表を本人に
    見せ、取り込むか除外の印を付けてから判定する。エラーを握りつぶして判定に進まない。
+1b. **仮押さえを書き込んだことがあれば、判定の前に、取り込み済みの仮押さえの残りを検査する。**
+   確定した予定を型付きデータへ取り込んでも、主カレンダーの仮押さえのマーカーが残っていると、
+   実際には空いている枠を塞ぐ。`marker_calendar` を `list_events` して生のレスポンスを
+   `<markers.json>` に置き、`adopted_from` を持つデータの TOML(型付きの予定ファイルと、試験などの
+   ディレクトリの TOML)を `--adopted` に渡す(終了コード 1 = 残りあり)。
+   ```
+   bash scripts/slot-hit.sh adopted-check --config <config.toml> --markers <markers.json> \
+     --adopted <events.toml> [--adopted <別の TOML> ...]
+   ```
+   残りがあれば、表を本人に見せる。同じ候補日程一覧の他の仮押さえも、確定したので消す対象として
+   出る。削除は本人が決める(この検査は消さない)。消してから判定に進む。
 2. 設定の `[[calendars]]` allowlist を `list_calendars` で ID 解決し、
    候補期間を覆う範囲で各カレンダーを `list_events`(`timeZone` を設定の
    `timezone` に、`pageSize` は大きめ)する。`active = false` のエントリは

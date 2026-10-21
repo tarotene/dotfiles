@@ -23,17 +23,6 @@ include "lib";
 def exclude_prefixes($config):
   marker_prefixes($config) + ($config.inbox.exclude_prefixes // []);
 
-def range_of($ev; $tz):
-  if $ev.start.date != null then
-    ($ev.start.date | all_day_date | date_to_epoch_days) as $d0
-    | (if $ev.end.date != null then ($ev.end.date | all_day_date | date_to_epoch_days) else $d0 + 1 end) as $d1
-    | {start: ($d0 * 86400 - $tz), end: ($d1 * 86400 - $tz), all_day: true}
-  elif $ev.start.dateTime != null and $ev.end.dateTime != null then
-    {start: ($ev.start.dateTime | parse_offset_dt), end: ($ev.end.dateTime | parse_offset_dt), all_day: false}
-  else
-    null
-  end;
-
 def pending_events($events; $config; $now):
   ($config.tz_offset_seconds) as $tz
   | exclude_prefixes($config) as $excluded

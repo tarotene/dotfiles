@@ -28,6 +28,11 @@ GitHub-created squash-merge commits are automatically verified, so PR-merged com
 will satisfy this rule without local config. However, local signing is recommended for
 any direct commits (e.g. hotfixes, initial setup).
 
+To remove data that was committed by mistake from the history of a repository that requires
+signatures, see
+[`repo-governance-common/reference/history-scrub.md`](../../repo-governance-common/reference/history-scrub.md)
+(`git filter-repo` strips signatures, so it rewrites and unsigns every commit).
+
 **SSH signing (recommended — simpler than GPG):**
 ```bash
 # Generate an SSH key (if you don't have one):

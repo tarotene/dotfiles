@@ -41,6 +41,8 @@ usage() {
   slot-hit.sh enumerate --config <path> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
               [--weekdays <0-6,...>] [--slots <名前,...>] [--out <path>]
   slot-hit.sh inbox-check --config <path> --events <path> [--now <ISO8601|epoch秒>]
+  slot-hit.sh adopted-check --config <path> --markers <path> --adopted <toml> [--adopted <toml> ...]
+              [--now <ISO8601|epoch秒>]
   slot-hit.sh finalize --config <path> --decided <path> --markers <path>
               --event-title <str> [--source-url <str>] --today <YYYY-MM-DD>
               [--venue <str>] [--out-plan <path>]
@@ -298,6 +300,64 @@ cmd_inbox_check() {
   jq -e '.ok' <<<"$result" >/dev/null
 }
 
+# 取り込み済みの仮押さえの残り検査: 型付きデータへ取り込み済み(adopted_from に id がある)なのに、
+# 主カレンダーに仮押さえの印の予定が残っていれば、表を出して終了コード 1 で終わる。空き判定の
+# 前に呼ぶ。--markers は marker_calendar の list_events の生レスポンス({"events": [...]})、
+# --adopted は adopted_from を持つ TOML(何本でもよい。ファイル内のどこにある adopted_from も拾う)。
+# 仮押さえに数える予定と、同じ候補日程一覧の扱いは adopted.jq の冒頭を参照。
+cmd_adopted_check() {
+  local config="" markers="" now=""
+  local -a adopted_files=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config) config="$2"; shift 2 ;;
+      --markers) markers="$2"; shift 2 ;;
+      --adopted) adopted_files+=("$2"); shift 2 ;;
+      --now) now="$2"; shift 2 ;;
+      *) echo "error: 不明なオプション: $1" >&2; usage; exit 2 ;;
+    esac
+  done
+  if [[ -z "$config" || -z "$markers" || ${#adopted_files[@]} -eq 0 ]]; then
+    echo "error: adopted-check には --config --markers --adopted(1 つ以上)が必須です" >&2
+    exit 2
+  fi
+
+  local now_epoch
+  if [[ -z "$now" ]]; then
+    now_epoch="$(date +%s)"
+  elif [[ "$now" =~ ^[0-9]+$ ]]; then
+    now_epoch="$now"
+  elif ! now_epoch="$(jq -rn -L"$SCRIPT_DIR" --arg n "$now" 'include "lib"; $n | parse_offset_dt' 2>/dev/null)"; then
+    echo "error: --now は ISO8601(オフセット付き)か epoch 秒で指定してください: $now" >&2
+    exit 2
+  fi
+
+  local ids="[]" toml_file toml_json
+  for toml_file in "${adopted_files[@]}"; do
+    if ! toml_json="$(yq -p toml -o json "$toml_file")"; then
+      echo "error: TOML を読めません: $toml_file" >&2
+      exit 2
+    fi
+    ids="$(jq -n --argjson acc "$ids" --argjson d "$toml_json" \
+      '$acc + [$d | .. | objects | .adopted_from? | select(type == "array") | .[] | select(type == "string")]')"
+  done
+
+  local config_json result
+  config_json="$(load_config_json "$config")"
+  if ! result="$(jq -n -L"$SCRIPT_DIR" \
+    --argjson config "$config_json" \
+    --argjson markers "$(cat "$markers")" \
+    --argjson adopted "$ids" \
+    --argjson now "$now_epoch" \
+    -f "$SCRIPT_DIR/adopted.jq" 2>&1)"; then
+    echo "error: ${result#*error: }" >&2
+    exit 2
+  fi
+
+  jq -r '.table' <<<"$result"
+  jq -e '.ok' <<<"$result" >/dev/null
+}
+
 cmd_finalize() {
   local config="" decided="" markers="" event_title="" source_url="" today="" venue="未定" out_plan=""
   while [[ $# -gt 0 ]]; do
@@ -359,9 +419,10 @@ main() {
     infer-year) cmd_infer_year "$@" ;;
     enumerate) cmd_enumerate "$@" ;;
     inbox-check) cmd_inbox_check "$@" ;;
+    adopted-check) cmd_adopted_check "$@" ;;
     finalize) cmd_finalize "$@" ;;
     *)
-      echo "error: --selftest か、judge/infer-year/enumerate/inbox-check/finalize いずれかのサブコマンドを指定してください" >&2
+      echo "error: --selftest か、judge/infer-year/enumerate/inbox-check/adopted-check/finalize いずれかのサブコマンドを指定してください" >&2
       usage
       exit 2
       ;;
