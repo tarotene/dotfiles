@@ -392,6 +392,80 @@ fn tmp_sibling(base: &str) -> std::io::Result<(String, File)> {
     Err(std::io::Error::other("mktemp: too many collisions"))
 }
 
+// ---------------------------------------------------------------------------
+// 待ちターンと、/wrapup-chores の実行中(#854、#820)
+
+/// 開始から 1 時間を超えたバックグラウンド処理は、待ちとして数えない。終わらない監視
+/// (`tail -F` など)が、Stop の指示を際限なく黙らせないため。
+const WAIT_STALE_SECS: u64 = 3600;
+
+/// `/wrapup-chores` の印が有効な時間。スキルの実行は数時間に及ぶが、セッションが
+/// 消えて `--chores-end` が呼ばれなかった印が、ほかのセッションの指示を黙らせ続けない
+/// ための上限。
+const CHORES_STALE_SECS: u64 = 12 * 3600;
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// この Stop が、バックグラウンド処理の完了を待つ途中のターンか(#854)。Stop の入力に
+/// バックグラウンドの状態は無いので、transcript の開始と完了通知から導く。待ちのターンは
+/// 作業の終わりではなく、振り返りの対象は「セッション全体」なので、途中で出すとやり直しになる。
+/// transcript が読めないときは `false`(従来どおり判定する)。
+fn waiting_on_background(transcript_path: &str) -> bool {
+    if transcript_path.is_empty() {
+        return false;
+    }
+    let Ok(text) = fs::read_to_string(transcript_path) else {
+        return false;
+    };
+    !hook_io::transcript::pending_background_tasks(&text, unix_now(), WAIT_STALE_SECS).is_empty()
+}
+
+/// `/wrapup-chores` の実行中を示す印のパス(inbox の隣)。セッション ID は、スキルを動かす
+/// エージェント自身には分からない(hook の入力にだけ来る)ので、`--add` や `--mark-filed` と
+/// 同じく、SessionStart の注入に出ている inbox のパスで引く。
+fn chores_mark(inbox: &str) -> String {
+    format!("{inbox}.chores")
+}
+
+/// `--chores-begin <inbox>`: 印を置く(中身は開始時刻)。
+fn chores_begin(inbox: &str) -> Code {
+    let mark = chores_mark(inbox);
+    if let Some(dir) = Path::new(&mark).parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    match fs::write(&mark, format!("{}\n", unix_now())) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("wrapup-stop-gate: --chores-begin: {mark}: {e}");
+            1
+        }
+    }
+}
+
+/// `--chores-end <inbox>`: 印を外す(無くても成功する)。
+fn chores_end(inbox: &str) -> Code {
+    let _ = fs::remove_file(chores_mark(inbox));
+    0
+}
+
+/// 印が有効か。inbox が空になった、または `CHORES_STALE_SECS` を超えた印は、その場で外す。
+fn chores_active(inbox: &str) -> bool {
+    let mark = chores_mark(inbox);
+    let Ok(text) = fs::read_to_string(&mark) else {
+        return false;
+    };
+    let started: u64 = text.trim().parse().unwrap_or(0);
+    if !non_empty_file(inbox) || unix_now().saturating_sub(started) > CHORES_STALE_SECS {
+        let _ = fs::remove_file(&mark);
+        return false;
+    }
+    true
+}
+
 /// `--mark-filed`: 行全体が一致する先頭 1 行だけを削除し、削除行を
 /// `<inbox>.filed.jsonl` に退避する(#297)。
 pub fn mark_filed(inbox: &str, line: &str) -> Code {
@@ -802,6 +876,11 @@ fn git_ok(project: &str, args: &[&str]) -> Option<Vec<u8>> {
 /// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
 pub fn stop_hook(self_path: &str, input: &str) -> Code {
     let h = HookJson::parse(input);
+    // バックグラウンド処理の完了を待つターンは、作業の終わりではない(#854)。振り返りも
+    // 起票の指示も出さず、振り返りの上限 3 回のカウンタも消費しない。
+    if waiting_on_background(&h.get("transcript_path", None).unwrap_or_default()) {
+        return 0;
+    }
     // レトロは stop_hook_active で抜けない(複数往復が要る。上限はセッション単位の
     // カウンタ)。PR を作っていないセッションでは台帳を 1 つ読むだけで何も起きない。
     {
@@ -850,7 +929,10 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
     }
 
     let unlinked = unlinked_feedback_memories(&session_id);
-    if !non_empty_file(&inbox) && unlinked.is_empty() {
+    // `/wrapup-chores` の実行中は、PR を作るまで inbox に行が残るのが正しい状態なので、
+    // inbox の起票指示を出さない(#820)。フィードバックの Issue 化の指示は別物で、そのまま出す。
+    let inbox_shown: &str = if chores_active(&inbox) { "" } else { &inbox };
+    if !non_empty_file(inbox_shown) && unlinked.is_empty() {
         return 0;
     }
     if on_path("gh").is_none() {
@@ -864,7 +946,7 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
         _ => return 0,
     }
 
-    let msg = stop_message(self_path, &inbox, &unlinked);
+    let msg = stop_message(self_path, inbox_shown, &unlinked);
     let _ = writeln!(std::io::stderr(), "{msg}");
     2
 }
@@ -942,6 +1024,14 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 let sid = need(1, u)?;
                 let target = need(2, u)?;
                 retro::retro_close(sid, target)
+            }
+            "--chores-begin" => {
+                let inbox = need(1, "usage: wrapup-stop-gate --chores-begin <inbox>")?;
+                chores_begin(inbox)
+            }
+            "--chores-end" => {
+                let inbox = need(1, "usage: wrapup-stop-gate --chores-end <inbox>")?;
+                chores_end(inbox)
             }
             "--mark-filed" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;

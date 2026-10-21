@@ -39,6 +39,26 @@ PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセ�
 | `transcript` | Stop 時に渡された transcript のパス(手順書がユーザー発言を抽出する) |
 | `closed` | 完了の印(`--retro-close` が読み戻してから書く) |
 
+## 待ちターンでは出さない(#854)
+
+作業の途中で、バックグラウンド処理(背景の Bash、非同期の Agent)の完了を待つターンは、
+作業の終わりではない。振り返りの対象は「セッション全体」なので、途中で出すと後から出る PR や
+指摘が含まれず、やり直しになる。1 つのセッションで複数の PR を積みながら実機の長い実行を待つと、
+指示がターンごとに 5 回以上届いた。
+
+Stop の入力にバックグラウンドの状態は無いので、transcript から導く
+(`hook_io::transcript::pending_background_tasks`)。開始は `toolUseResult.backgroundTaskId` か、
+`toolUseResult.agentId` で `status == "async_launched"`。完了は task-notification の
+`<task-id>`(新しい記録形式は `attachment.type == "queued_command"`、古い形式は
+`origin.kind == "task-notification"`)。未完了が 1 件以上あれば、retro も inbox の指示も出さず、
+上の `count` も消費しない。
+
+- 開始から 1 時間を超えたものは待ちとして数えない。終わらない監視(`tail -F` など)が、
+  指示を際限なく黙らせないため。
+- transcript が読めない・時刻が読めないときは、従来どおり判定する(読めない開始は新しいものとして
+  数える)。誤判定は「従来どおり発火する」側に倒れ、block 側には倒れない(軸: 検出のみ)。
+- `last_assistant_message` から「報告で終えるターンか」を推定する案は、非決定論なので採らない(ADR-478 D1)。
+
 ## 限界
 
 - `gate-events.jsonl` は session_id を持たないので、突き合わせの対象にできない。
