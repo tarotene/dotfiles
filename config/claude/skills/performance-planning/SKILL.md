@@ -58,7 +58,7 @@ person-state リポジトリ側の `[[rehearsals]]` へ反映する手順のみ�
 
 こちらから合わせを打診する(発行側)場合の候補の出し方とマーカーの扱いは、
 slot-availability の SKILL.md「発行側の打診」に従う。予約型サービスを
-使うときは `【調整中】` マーカーを作らないので、下の手順2(`finalize`)は
+使うときは調整中のマーカー(slot-availability の `marker_prefix`)を作らないので、下の手順2(`finalize`)は
 通らない — 相手が予約して確定した予定から、手順3 の `start`/`end` を追記
 する。
 
