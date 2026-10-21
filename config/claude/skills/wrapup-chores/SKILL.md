@@ -14,6 +14,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 ## 1. 候補収集
 
 - **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `~/.claude/hooks/wrapup-stop-gate --inbox-path "$PWD"` で解決する(slug の計算方法は gate 側に一本化されている — 原則リポジトリ単位、remote なし・git repo 外はプロジェクト絶対パス由来にフォールバック)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
+- **実行中の印**: inbox を読んだら、すぐに `~/.claude/hooks/wrapup-stop-gate --chores-begin <inbox のパス>` を実行する。PR を作るまで inbox に行が残るのが正しい状態なので、このスキルの実行中は Stop フックが inbox の起票を繰り返し指示しないようにする印(#820)。印は inbox の隣の `<inbox>.chores` で、inbox が空になる・12 時間を超えると自動で外れる。スキルの終了時(§9 の完成の定義を満たしたとき、または途中で打ち切るとき)は `--chores-end <inbox のパス>` で外す(印が無くても成功する)。印は inbox の行を書かない(inbox の変更は `--add` / `--mark-filed` だけ、の制約は不変)。
 - **母集団は open Issue 全件 + inbox 行全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
   ```
   gh issue list --state open --limit 500 --json number,title,body,labels \
@@ -236,6 +237,7 @@ inbox 行を 1 行ずつ `--mark-filed` で削除する。行は完全一致で�
 - 対処した項目の `Closes #N` が段ごとに 1:1 対応している(inbox 直接消化分は
   本文の列挙で代替)
 - 対処済みの inbox 行が inbox から 0 件になっている
+- 実行中の印を `--chores-end` で外している(§1。外し忘れても inbox が空になれば自動で外れるが、行が残るまま終えたときは明示的に外す)
 - リポジトリ標準の検証(selftest / lint / ビルド等)が段ごとに green
 - 実装中に生じた分岐が該当段の PR 本文の `## 要確認` に列挙されている
 - L5 を扱った場合: 母集団の L5 の各件が、閉じた(証跡つき)か、状況コメントつきで open に
