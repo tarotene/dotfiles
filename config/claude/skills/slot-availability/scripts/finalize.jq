@@ -22,7 +22,7 @@ def parse_own_markers($markers_data; $config; $source_url):
   [
     ($markers_data.events // [])[]
     | select((.status // "") != "cancelled")
-    | select((.summary // "") | startswith($config.marker_prefix))
+    | select(is_marker_title(.summary // ""; $config))
     | select($source_url == "" or ((.description // "") | contains($source_url)))
     | select(.start.dateTime != null and .end.dateTime != null)
     | {

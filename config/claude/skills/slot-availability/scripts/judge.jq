@@ -42,7 +42,7 @@ def classify_events($events; $config; $source_url):
         | ($ev.summary // "") as $title
         | if ($ev.transparency // "") == "transparent" then
             .
-          elif ($title | startswith($config.marker_prefix)) then
+          elif is_marker_title($title; $config) then
             if ($source_url != "" and (($ev.description // "") | contains($source_url))) then
               .
             else
