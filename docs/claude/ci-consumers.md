@@ -57,6 +57,10 @@ $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
   複製で、ほかの step には効かない)、生成化(GitHub Actions が committed な複写を要求するので、バイト一致
   そのものを表現不可能にはできない)。
 - 軸: 検出のみ。
+- `rust-migration.toml` の監査(`migration-audit`)は、`scripts/` の新しいファイルを、Rust への移植の対象か
+  `[[excluded]]` に理由つきで載せたものかのどちらかに分類させる。この script は、`fix-ssh-permissions.sh` と同じ
+  「手動実行の調査ツール(未配備)」の escape hatch として `[[excluded]]` に載せた(最初の版は、この分類を
+  忘れて CI の `Rust workspace` が落ちた)。
 
 ## 登録
 
