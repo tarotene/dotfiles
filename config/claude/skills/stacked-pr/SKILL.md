@@ -108,6 +108,11 @@ description: セッション内で複数の PR を作るとき、依存関係を
    にする。** link 後に修正が必要になった場合は `gh stack unstack
    <stack-id>` で解除 → push → CI 確認 → 再度 `gh stack link` の順を
    繰り返す(unstack すると即座に CI が復帰することを実測済み)。
+   `gh stack link` の引数は**必ず PR 番号**で渡す。ブランチ名で渡すと、PR の
+   無いブランチには PR が自動で作られ(`gh stack link --help`、2026-10-21)、
+   本文を `pr-description` スキルに沿って書く前の PR ができてしまう。
+   最下段から順に、作成済みの全段を漏れなく並べる(`pr-gate` の `G_stack` が
+   未リンクを検出するが、検出は一次の手段ではない。#836)。
 
 ## 4. 下位段への修正が入ったときの追従
 
