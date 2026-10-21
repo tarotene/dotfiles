@@ -221,3 +221,20 @@ symbol = "terraform "
 
 [zig]
 symbol = "zig "
+
+# Tailscale: connection state and the exit node in use (#770). vega routes through a
+# Mullvad exit node, which the OS's VPN settings do not show (tailscale0 is a plain
+# `tun` device to NetworkManager).
+#   ts            connected, no exit node
+#   ts(<host>)    connected through exit node <host>
+#   ts(off)       tailscale0 exists but the backend is not running
+#   (nothing)     no tailscale0 -- Tailscale absent or down, and macOS (its tunnel is a
+#                 utunN, not tailscale0, so the check below is false there)
+# `when` is a cheap file check, so hosts without Tailscale never run the slower
+# `tailscale status --json` (30-80 ms measured on vega, under starship's 500 ms
+# command_timeout). jq is declared in home/modules/packages.nix.
+[custom.tailscale]
+when = "test -e /sys/class/net/tailscale0"
+command = '''tailscale status --json 2>/dev/null | jq -r 'if .BackendState != "Running" then "ts(off)" else (([.Peer[]? | select(.ExitNode == true) | .HostName] | first) as $x | if $x then "ts(" + $x + ")" else "ts" end) end' '''
+format = "[$output]($style) "
+style = "bold cyan"
