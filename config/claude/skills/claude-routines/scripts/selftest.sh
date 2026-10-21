@@ -180,6 +180,37 @@ unmanaged_out="$(bash "$PLAN" classify-unmanaged --live-list "$live_list_file")"
 check "11a classify-unmanaged件数" "1" "$(wc -l <<< "$unmanaged_out" | tr -d ' ')"
 check "11b classify-unmanaged id" "trig_UNMANAGED" "$(jq -r '.id' <<< "$unmanaged_out")"
 
+# --- 12) auto_mode_allow / auto_mode_environment(自動モードの分類器への許可) ---------
+
+# 12a) 既存の宣言(フィールドなし)の hash は、フィールド追加の前後で変わらない。変わると、
+#      全 routine が declared-ahead に見える(変更前の版で実測した値を固定する)。
+check "12a フィールドなしの宣言の routine-spec hash が不変" \
+  "9b41ed9a3bcd8c9db52b1f0c3e9e8a85280b04620c23d9897bd4a86aaaf371d2" "$hash1"
+check "12b フィールドなしなら session_context に auto_mode_* を出さない" "false|false" \
+  "$(jq -r '.job_config.ccr.session_context | "\(has("auto_mode_allow"))|\(has("auto_mode_environment"))"' <<< "$body")"
+
+decl_auto="$(jq '. + {
+    auto_mode_allow: ["$defaults", "Writing documents to the example artifact database is allowed: it is this routine'"'"'s own state store"],
+    auto_mode_environment: ["$defaults", "Key internal services: the example artifact database"]
+  }' <<< "$DECL_BASE")"
+decl_auto_file="$TMPDIR_T/decl-auto.json"
+printf '%s' "$decl_auto" > "$decl_auto_file"
+body_auto="$(bash "$PLAN" build-body --declaration "$decl_auto_file" --md "$md_file")"
+check "12c auto_mode_allow を、順序を保ったまま session_context に載せる(\$defaults を先頭に残す)" \
+  '["$defaults","Writing documents to the example artifact database is allowed: it is this routine'"'"'s own state store"]' \
+  "$(jq -c '.job_config.ccr.session_context.auto_mode_allow' <<< "$body_auto")"
+check "12d auto_mode_environment も載せる" '["$defaults","Key internal services: the example artifact database"]' \
+  "$(jq -c '.job_config.ccr.session_context.auto_mode_environment' <<< "$body_auto")"
+
+live_auto_file="$TMPDIR_T/live-auto.json"
+jq -n --argjson body "$body_auto" \
+  '{id:"trig_TEST0001", name:$body.name, cron_expression:$body.cron_expression,
+    enabled:$body.enabled, job_config:$body.job_config, suspension_reason:"", ended_reason:""}' > "$live_auto_file"
+check "12e live が宣言と同じ auto_mode_* を持てば in-sync" "in-sync" \
+  "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_auto_file" | head -1)"
+check "12f 宣言が auto_mode_* を足し、live が古いままなら declared-ahead" "declared-ahead" \
+  "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_file" | head -1)"
+
 # --- 結果 -----------------------------------------------------------------
 
 echo "routines-plan.sh selftest: pass=$pass fail=$fail" >&2

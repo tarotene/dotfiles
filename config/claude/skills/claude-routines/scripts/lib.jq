@@ -12,6 +12,14 @@
 def repo_from_git_url:
   capture("github\\.com[:/](?<repo>[^/]+/[^/]+?)(\\.git)?$"; "i").repo;
 
+# 空でない配列だけを、キーつきの 1 要素のオブジェクトにする(空なら {})。
+# auto_mode_allow / auto_mode_environment は、宣言も live も空なら射影に載せない。載せると、
+# このフィールドを持たない既存の宣言のハッシュ(routine-spec 注記)が変わり、全 routine が
+# declared-ahead に見えてしまう。値の順序は意味を持つ("$defaults" の差し込み位置)ので、
+# sort しない。
+def optional_list($key; $list):
+  if ($list | length) > 0 then {($key): $list} else {} end;
+
 # 宣言 JSON(1 routine 分、`.` に入っている想定)+ prompt md 本文
 # (routine-spec 行を含まない生テキスト)から正規化射影を作る。
 # `connectors`/`mcp_connections` は射影に含めない — 全 routine で共通の
@@ -27,7 +35,9 @@ def decl_projection($md_body):
     allowed_tools: ((.allowed_tools // []) | sort),
     enabled: (.state == "enabled"),
     prompt_body: ($md_body | rtrimstr("\n"))
-  };
+  }
+  + optional_list("auto_mode_allow"; (.auto_mode_allow // []))
+  + optional_list("auto_mode_environment"; (.auto_mode_environment // []));
 
 # live trigger の prompt 本文そのもの(routine-spec 注記行を含む)。
 def live_prompt_content:
@@ -61,7 +71,9 @@ def live_projection:
     allowed_tools: ((.job_config.ccr.session_context.allowed_tools // []) | sort),
     enabled: .enabled,
     prompt_body: live_prompt_body
-  };
+  }
+  + optional_list("auto_mode_allow"; (.job_config.ccr.session_context.auto_mode_allow // []))
+  + optional_list("auto_mode_environment"; (.job_config.ccr.session_context.auto_mode_environment // []));
 
 # 宣言(`.` に decl JSON)から RemoteTrigger create/update にそのまま渡す
 # body を組み立てる。$hash は routines-plan.sh が decl_projection の
@@ -85,12 +97,14 @@ def build_body($md_body; $hash):
             }
           }
         }],
-        session_context: {
+        session_context: ({
           model: .model,
           allowed_tools: ((.allowed_tools // []) | sort),
           sources: ((.sources // []) | sort
             | map({git_repository: {url: ("https://github.com/" + .)}}))
         }
+        + optional_list("auto_mode_allow"; (.auto_mode_allow // []))
+        + optional_list("auto_mode_environment"; (.auto_mode_environment // [])))
       }
     }
   };

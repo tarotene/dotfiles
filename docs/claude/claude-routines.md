@@ -19,7 +19,7 @@ routine の汎用手順〕、決定論的な差分コアは `scripts/routines-pl
 |---|---|
 | 宣言の場所 | 対象リポジトリ自身の `.claude/routines/<name>.{json,md}`(dotfiles には置かない) |
 | prompt 本体 | `<name>.md` が正本。live prompt は `Read and follow .claude/routines/<name>.md in <home_repo>.` という薄いポインタ |
-| 設定 | `id`/`state`/`cron_utc`/`model`/`environment_id`/`home_repo`/`sources`/`allowed_tools`/`role` の JSON |
+| 設定 | `id`/`state`/`cron_utc`/`model`/`environment_id`/`home_repo`/`sources`/`allowed_tools`/`role` と、任意の `auto_mode_allow`/`auto_mode_environment` の JSON |
 | 対象範囲 | cron routine の主要項目のみ。run-once/webhook trigger は宣言できない(表現不可能) |
 | 同定 | live に書き戻した `trig_` ID を pin。`name` は `<home_repo>:<name>` の名前空間キーで検証 |
 | 差分検出 | prompt 末尾の `routine-spec: <sha256>` 注記(last-applied 相当)と、宣言/live それぞれから再計算したハッシュを3方比較 |
@@ -29,6 +29,29 @@ routine の汎用手順〕、決定論的な差分コアは `scripts/routines-pl
 | 廃止 | `state: retired` で `enabled:false` 固定。宣言ファイルは残す(delete API が無い) |
 | ローカルの宣言外書き込み | `crates/routines-write-guard`(PreToolUse)が、名前空間キー + routine-spec 注記という構造を満たさない `RemoteTrigger` create/update を deny する(bypass なし) |
 | sources 網羅性 | `github-audit`(`crates/github-audit`)の routines ドメインが、`.claude/routines/` を持つのに auditor の宣言に含まれない repo を検出する |
+
+## 自動モードの分類器への許可(`auto_mode_allow` / `auto_mode_environment`)
+
+cloud routine は auto mode で動き、分類器が、共有の資源への書き込みなどを「Modify Shared
+Resources」として拒否することがある。`allowed_tools` に道具を足しても、分類器の判定は別なので
+通らない(`ArtifactData` が `allowed_tools` にあっても、新しい文書の作成が拒否された事例がある)。
+公式文書は、拒否を直す手段として、`autoMode.allow`(`soft_deny` への例外)と
+`autoMode.environment`(信頼する先)を、どちらも散文の配列として定義している
+(Anthropic, "Configure auto mode", https://code.claude.com/docs/en/auto-mode-config 、取得 2026-10-21)。
+project の `.claude/settings.json` は読まれない(リポジトリに入った設定が自分で許可を足せないため)。
+
+宣言に、任意の `auto_mode_allow` と `auto_mode_environment`(文字列の配列)を足せる。`build-body` は
+空でないものだけを `session_context` に載せる。**値の順序は意味を持つので sort しない。**
+`"$defaults"` を配列に含めないと、その節の組み込みの規則がすべて置き換わる(公式文書の注意)ので、
+`"$defaults"` を先頭に置く。
+
+- 空のときは射影に載せない。載せると、このフィールドを持たない既存の宣言のハッシュが変わり、
+  全 routine が declared-ahead に見える(`selftest.sh` の 12a が、変更前の値で固定している)。
+- **未確認:** live の API が `session_context` の `auto_mode_allow` を受け付けるか。`RemoteTrigger get`
+  の `session_request.config` に `auto_mode_allow` と `auto_mode_environment` の欄があること(2026-10-21 に
+  読んだ。空配列)と、`session_context` と同じ名前の欄(`allowed_tools`、`model`、`sources`)が
+  そこにもあることからの推定で、実際の update での受理は確かめていない。update のあとに `get` して、
+  `session_request.config.auto_mode_allow` に値が出ることで確かめる。
 
 ## 実測(2026-09-27、`RemoteTrigger` + 段0 プローブ)
 

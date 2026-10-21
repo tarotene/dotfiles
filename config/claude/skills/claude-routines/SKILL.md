@@ -41,6 +41,11 @@ JSON body を組み立てない。
   このスキーマで表現できない(意図的 — D11)。
 - `home_repo` は宣言が住む repo。`sources` からは導出しない —
   `sources` が空(prompt 内で手動 clone する routine)の実例があるため。
+- `auto_mode_allow`/`auto_mode_environment` は任意(文字列の配列)。cloud routine の auto mode の
+  分類器に、共有の資源への書き込みなどを許す散文の規則を渡す。値の順序を保ち、**`"$defaults"` を
+  先頭に置く**(置かないと、その節の組み込みの規則がすべて置き換わる)。空なら射影に載せない
+  (既存の宣言のハッシュが変わらない)。live が受け付けるかは未確認で、update のあとに `get` して
+  `session_request.config.auto_mode_allow` を確かめる。設計は `docs/claude/claude-routines.md`。
 - `connectors`/`mcp_connections` は宣言に含めない —
   アカウント全体で共通の既定セットで、routine ごとの管理対象ではない。
 - `<name>.md` は prompt 本体(routine-spec 注記行は書かない — build-body が
