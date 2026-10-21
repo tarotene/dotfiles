@@ -1,0 +1,44 @@
+name: CI
+
+# ADR-591(tarotene/dotfiles, docs/adr/591-ci-workflow-naming.md) D1/D6: 全リポジトリが
+# 予約ファイル `ci.yml` を持ち、集約 job `ci-passed`(`name: CI passed`)だけを
+# required status check にする。`core` 型の種まき(copy-files.sh)が播く最小形で、
+# 検査が1つも無いリポジトリでも `CI passed` が必ず報告される。
+#
+# `paths` フィルタを付けない: required check は PR ごとに必ず報告される必要があり、
+# フィルタで workflow が走らないと、その PR は `CI passed` が Expected のまま
+# 永久に止まる。
+#
+# このファイルは、言語ごとの governance skill(`*-repo-governance` の templates/
+# .github/workflows/ci.yml)で置き換える土台。gate job を足したら、`ci-passed` の
+# `needs:` に必ず足す(tarotene/dotfiles の `workflow-naming-check` が、`ci-passed`
+# 以外の全 job が `needs:` に含まれる不変条件を機械検査する)。
+
+on:
+  push:
+    branches: [__DEFAULT_BRANCH__]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # 集約 required check(ADR-591)。gate job を足したら、次の 2 つを同期させる:
+  #   1. `needs: [<job id>, ...]` を足す
+  #   2. 下の run step の前に、次の step を足す(`needs` が空のあいだは書けない:
+  #      actionlint が `needs.*` を、空のオブジェクトへの展開として拒否する)
+  #        - name: Fail if any required job failed or was cancelled
+  #          if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+  #          run: exit 1
+  # `if: always()` は、gate job が skipped でも判定する(skipped は合格、ADR-591 D3)ため。
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: No gate jobs yet
+        run: echo "No gate jobs are defined yet. Add them to ci.yml, list them in ci-passed.needs, and add the failure check described above."

@@ -3,9 +3,14 @@
 # none of the rust/typst/astro ecosystems above but still needs governance
 # (ADR-0021 core layer). Copies templates/.github/workflows/pr-title.yml
 # and templates/.github/rulesets/{security,quality,workflow}[,review].json
-# with placeholder substitution — Quality's required_status_checks is
-# `PR Title / PR title` only, no build/test job name is assumed (this
-# repository's CI shape is unknown to the skill).
+# with placeholder substitution. Quality's required_status_checks is
+# `CI passed` + `PR title` (ADR-591 D1), and `CI passed` is reported by the
+# aggregate job in ci.yml, so the minimal templates/.github/workflows/ci.yml
+# (only the `ci-passed` job, no gate jobs: this repository's CI shape is
+# unknown to the skill) is seeded in the SAME step -- without it the first PR
+# waits ~20 min on a `CI passed` that is never reported and then fails
+# workflow-naming-check with ci-yml-missing (#794, #815). An existing ci.yml is
+# never overwritten: a repository that already has gate jobs keeps them.
 # The ADR-number check (ADR-380) is seeded too: adr-number.yml plus its
 # scripts/adr-number-check engine.
 #
@@ -99,9 +104,21 @@ copy_file() {
   echo "  ✓  $rel"
 }
 
+# Copy only when the destination does not exist yet (ci.yml: the repository's own
+# gate jobs must survive a re-run of the seeding).
+copy_file_if_absent() {
+  local rel="$1"
+  if [[ -e "$DEST/$rel" ]]; then
+    echo "  kept        ${rel}  (already exists)"
+    return
+  fi
+  copy_file "$rel"
+}
+
 echo "Copying core-type templates to: $DEST"
 echo ""
 
+copy_file_if_absent ".github/workflows/ci.yml"
 copy_file ".github/workflows/pr-title.yml"
 copy_file ".github/workflows/adr-number.yml"
 copy_file "scripts/adr-number-check"
