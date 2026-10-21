@@ -2,7 +2,7 @@
 # adr-number-check — ADR 採番規約(ADR-380: 起草時の 0000 を PR 番号へ
 # 改番する、docs/adr/380-adr-number-by-pr.md)の判定エンジン単一ソース。
 #
-# CI の required check(.github/workflows/ci.yml の dry-run job)と、
+# CI の required check(.github/workflows/adr-number.yml の job `ADR number check`)と、
 # 手動実行・段3の PostToolUse hook(dotfiles では crates/adr-number。対象
 # プロジェクトのこのスクリプトを子プロセスで呼ぶ)の両方がこのスクリプトを
 # 呼ぶ — 判定ロジックは 1 箇所にしか存在しない(ADR-0031 の scripts/pr-title-check と同型)。
@@ -32,7 +32,9 @@
 #         ファイルは ADR_REF_ALLOW(下記)で除外する
 #
 # 使い方:
-#   adr-number-check [--base <ref>] [--pr <N>]   # 判定(--base 省略時は A のみ)
+#   adr-number-check [--base <ref>] [--pr <N>]   # 判定(--base 省略時は A と、
+                                                 # origin/HEAD との merge-base からの差分に
+                                                 # 対する項目 7 のみ。#762)
 #   adr-number-check --fix <PR番号> [<file>] [--base <ref>]
 #                                                 # git mv + H1 書き換え + 差分内の
 #                                                 # ADR-0000 参照の書き換え
@@ -187,6 +189,23 @@ added_draft_refs() {
       [[ $allow == *" $path "* ]] && continue
       printf '%s\t%s\t%s\n' "$path" "$line" "$text"
     done
+}
+
+# --base 省略時の既定: origin/HEAD との merge-base からの差分で項目 7(起草中の
+# 参照の追加)だけを判定する。CI の --base 付き実行と手元の無引数実行の検出力を
+# そろえる(#762。無引数が項目 7 を見ないために、PR 作成後の CI で初めて落ちた)。
+# - origin/HEAD が解決できない(remote なし・未取得)なら、従来どおり skip する。
+# - 起草中の ADR(docs/adr/0000-*.md)が作業ツリーにあるあいだは、起草中の参照が
+#   正当に存在するので skip する(--fix で改番した後に判定される)。
+# - 項目 5・6 は差分の範囲(積み重ねた PR の親の範囲)を知らないと誤判定するため、
+#   既定では見ない。
+check_default_base_draft_refs() {
+  local repo_root="$1" ref base
+  compgen -G "$repo_root/docs/adr/0000-*.md" > /dev/null && return 0
+  ref="$(git -C "$repo_root" symbolic-ref -q --short refs/remotes/origin/HEAD 2> /dev/null)" || return 0
+  base="$(git -C "$repo_root" merge-base HEAD "$ref" 2> /dev/null)" || return 0
+  [[ -n $base ]] || return 0
+  check_no_draft_refs "$repo_root" "$base"
 }
 
 check_no_draft_refs() {
@@ -459,6 +478,31 @@ selftest() {
   fi
   check "24 書き換え後は検出されない" 0 check_no_draft_refs "$refrepo" "$ref_base"
 
+  # --- --base 省略時の既定(origin/HEAD との merge-base。#762) ---
+  echo "--base 省略時の既定:"
+  local defrepo="$tmp/def"
+  mkdir -p "$defrepo/docs/adr"
+  git -C "$defrepo" init -q -b main
+  git -C "$defrepo" config core.hooksPath /dev/null
+  git -C "$defrepo" config user.email test@example.com
+  git -C "$defrepo" config user.name test
+  printf '# ADR-0001 — a\n' > "$defrepo/docs/adr/0001-a.md"
+  git -C "$defrepo" add -A
+  git -C "$defrepo" commit -qm base
+  check "25 origin/HEAD が無ければ skip して通過" 0 check_default_base_draft_refs "$defrepo"
+  git -C "$defrepo" update-ref refs/remotes/origin/main HEAD
+  git -C "$defrepo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$defrepo" switch -q -c topic
+  printf 'see docs/adr/0000-new.md\n' > "$defrepo/docs/other.md"
+  git -C "$defrepo" add -A
+  git -C "$defrepo" commit -qm "add ref"
+  check "26 無引数でも差分内の起草中の参照を検出" 1 check_default_base_draft_refs "$defrepo"
+  printf '# ADR-0000 — new\n' > "$defrepo/docs/adr/0000-new.md"
+  check "27 起草中の ADR があるあいだは skip" 0 check_default_base_draft_refs "$defrepo"
+  rm "$defrepo/docs/adr/0000-new.md"
+  git -C "$defrepo" switch -q main
+  check "28 main 上(差分なし)は通過" 0 check_default_base_draft_refs "$defrepo"
+
   rm -rf "$tmp"
 
   if [[ $fails -gt 0 ]]; then
@@ -535,6 +579,8 @@ main() {
   if [[ -n $base ]]; then
     check_added_adrs "$repo_root" "$base" "$pr" || fails=1
     check_no_draft_refs "$repo_root" "$base" || fails=1
+  else
+    check_default_base_draft_refs "$repo_root" || fails=1
   fi
 
   if [[ $fails -ne 0 ]]; then
