@@ -34,7 +34,9 @@ check_error_contains() {
 
 CONFIG='{
   "timezone": "Asia/Tokyo", "tz_offset": "+09:00", "tz_offset_seconds": 32400,
-  "buffer_minutes": 60, "marker_prefix": "【調整中】", "marker_calendar": "primary",
+  "buffer_minutes": 60, "marker_prefix": "[hold] ", "marker_calendar": "primary",
+  "marker_prefix_aliases": ["【調整中】"],
+  "inbox": {"calendar_id": "primary", "exclude_prefixes": ["[outing] ", "【お出かけ】"]},
   "slots": {
     "morning": {"start":"09:00","end":"12:00"},
     "noon": {"start":"13:00","end":"17:00"},
@@ -112,6 +114,20 @@ out=$(run_judge \
   "[{\"calendar_id\":\"primary\",\"calendar_summary\":\"本体\",\"ev\":{\"status\":\"confirmed\",\"start\":{\"dateTime\":\"2026-10-18T18:00:00+09:00\"},\"end\":{\"dateTime\":\"2026-10-18T21:00:00+09:00\"},\"summary\":\"【調整中】別件\",\"description\":\"候補日程一覧: https://chouseisan.com/s?h=other\"}}]" \
   '[{"date":"2026-10-18","time":"19:00"}]' "$url")
 check "8b foreign marker->△" "△" "$(jq -r '.plan.answers[0]' <<<"$out")"
+
+# 8c) 新しい印 `[hold] ` も同じ扱い(自分のは無視、別 URL のは △)。旧印 `【調整中】`(8a/8b)は
+#     marker_prefix_aliases の読み取り専用の別名として、同じように効く(#768)。
+out=$(run_judge \
+  "[{\"calendar_id\":\"primary\",\"calendar_summary\":\"本体\",\"ev\":{\"status\":\"confirmed\",\"start\":{\"dateTime\":\"2026-10-18T18:00:00+09:00\"},\"end\":{\"dateTime\":\"2026-10-18T21:00:00+09:00\"},\"summary\":\"[hold] テスト\",\"description\":\"候補日程一覧: $url\"}}]" \
+  '[{"date":"2026-10-18","time":"19:00"}]' "$url")
+check "8c own [hold] marker skipped->○" "○" "$(jq -r '.plan.answers[0]' <<<"$out")"
+out=$(run_judge \
+  "[{\"calendar_id\":\"primary\",\"calendar_summary\":\"本体\",\"ev\":{\"status\":\"confirmed\",\"start\":{\"dateTime\":\"2026-10-18T18:00:00+09:00\"},\"end\":{\"dateTime\":\"2026-10-18T21:00:00+09:00\"},\"summary\":\"[hold] 別件\",\"description\":\"候補日程一覧: https://chouseisan.com/s?h=other\"}}]" \
+  '[{"date":"2026-10-18","time":"19:00"}]' "$url")
+check "8d foreign [hold] marker->△" "△" "$(jq -r '.plan.answers[0]' <<<"$out")"
+# 8e) 新しく作る印は常に marker_prefix(旧印の別名では作らない)。
+out=$(run_judge '[]' '[{"date":"2026-10-18","time":"19:00"}]')
+check "8e created marker title uses marker_prefix" "[hold] テスト" "$(jq -r '.plan.markers[0].title' <<<"$out")"
 
 # 9) transparent な時間指定予定は無視。
 out=$(run_judge \
@@ -240,6 +256,65 @@ out=$(run_judge \
   '[{"calendar_id":"primary","calendar_summary":"本体","ev":{"status":"confirmed","start":{"dateTime":"2026-10-18T18:00:00+09:00"},"end":{"dateTime":"2026-10-18T21:00:00+09:00"},"summary":"会食"}}]' \
   "$cands")
 check "14i 列挙 → judge(朝○ 昼△ 夕×)" '["○","△","×"]' "$(jq -c '.plan.answers' <<<"$out")"
+
+# 15) 受付箱検査(inbox.jq): 主カレンダーを「手入力の受付箱」とみなし、型付きデータへ
+#     取り込まれていない予定(取り込み待ち)が残っていれば、空き判定を止める。
+#     取り込み待ちに数えない: 印の付いた予定(marker_prefix・その別名・inbox.exclude_prefixes、
+#     複数指定できる)、キャンセル済み、終了済み、他人が主催の招待。#768
+NOW="$(jq -rn '"2026-10-21T03:00:00Z" | fromdateiso8601')"  # 2026-10-21 12:00 JST
+run_inbox() { jq -n -L"$SCRIPT_DIR" --argjson config "$CONFIG" --argjson events "$1" --argjson now "$NOW" -f "$SCRIPT_DIR/inbox.jq"; }
+ev() { # $1=summary $2=start $3=end [$4=extra JSON object]
+  jq -nc --arg s "$1" --arg st "$2" --arg en "$3" --argjson x "${4:-{\}}" \
+    '{status:"confirmed", summary:$s, start:{dateTime:$st}, end:{dateTime:$en}} + $x'
+}
+manual="$(ev '歯医者' 2026-10-22T10:00:00+09:00 2026-10-22T11:00:00+09:00 '{"organizer":{"self":true}}')"
+allday='{"status":"confirmed","summary":"旅行","start":{"date":"2026-10-24"},"end":{"date":"2026-10-25"}}'
+held="$(ev '[hold] 合わせ' 2026-10-22T18:00:00+09:00 2026-10-22T21:00:00+09:00)"
+legacy="$(ev '【調整中】合わせ' 2026-10-23T18:00:00+09:00 2026-10-23T21:00:00+09:00)"
+outing="$(ev '[outing] 展覧会' 2026-10-25T13:00:00+09:00 2026-10-25T17:00:00+09:00)"
+outing_old="$(ev '【お出かけ】美術館' 2026-10-26T13:00:00+09:00 2026-10-26T17:00:00+09:00)"
+cancelled="$(ev '取消済み' 2026-10-22T14:00:00+09:00 2026-10-22T15:00:00+09:00 '{"status":"cancelled"}')"
+ended="$(ev '朝会' 2026-10-21T09:00:00+09:00 2026-10-21T10:00:00+09:00)"
+invited="$(ev '招待' 2026-10-22T16:00:00+09:00 2026-10-22T17:00:00+09:00 '{"organizer":{"self":false}}')"
+
+out=$(run_inbox "{\"events\":[$manual,$allday,$held,$legacy,$outing,$outing_old,$cancelled,$ended,$invited]}")
+check "15a 取り込み待ちは手入力の 2 件(時間指定と終日)だけ" '["歯医者","旅行"]' "$(jq -c '[.pending[].summary]' <<<"$out")"
+check "15b 取り込み待ちがあれば ok=false" "false" "$(jq '.ok' <<<"$out")"
+out=$(run_inbox "{\"events\":[$held,$legacy,$outing,$outing_old,$cancelled,$ended,$invited]}")
+check "15c 印付き・取消・終了・招待だけなら ok=true(複数の除外接頭辞が効く)" "true" "$(jq '.ok' <<<"$out")"
+check "15d 空の受付箱は ok=true" "true" "$(run_inbox '{"events":[]}' | jq '.ok')"
+# 15e) 主催者の情報が無い予定は、手入力とみなす(取りこぼしを避ける側に倒す)。
+out=$(run_inbox "{\"events\":[$(ev '主催者不明' 2026-10-22T10:00:00+09:00 2026-10-22T11:00:00+09:00)]}")
+check "15e organizer が無い予定は取り込み待ち" '["主催者不明"]' "$(jq -c '[.pending[].summary]' <<<"$out")"
+
+# 16) slot-hit.sh inbox-check(TOML → events ファイル → 終了コード): 取り込み待ちがあれば 1。
+tmpd="$(mktemp -d)"
+cat > "$tmpd/config.toml" <<'TOML'
+timezone = "Asia/Tokyo"
+buffer_minutes = 60
+marker_prefix = "[hold] "
+marker_prefix_aliases = ["【調整中】"]
+marker_calendar = "primary"
+
+[slots]
+evening = { start = "18:00", end = "21:00" }
+
+[inbox]
+calendar_id = "primary"
+exclude_prefixes = ["[outing] ", "【お出かけ】"]
+TOML
+printf '%s' "{\"events\":[$held,$outing_old]}" > "$tmpd/ok.json"
+printf '%s' "{\"events\":[$held,$manual]}" > "$tmpd/pending.json"
+rc=0; bash "$SCRIPT_DIR/slot-hit.sh" inbox-check --config "$tmpd/config.toml" --events "$tmpd/ok.json" --now "2026-10-21T12:00:00+09:00" >/dev/null || rc=$?
+check "16a 取り込み待ちなしは終了コード 0" "0" "$rc"
+rc=0; out="$(bash "$SCRIPT_DIR/slot-hit.sh" inbox-check --config "$tmpd/config.toml" --events "$tmpd/pending.json" --now "2026-10-21T12:00:00+09:00" 2>&1)" || rc=$?
+check "16b 取り込み待ちがあれば終了コード 1" "1" "$rc"
+check "16c 取り込み待ちの件名を表に出す" "true" "$([[ "$out" == *"歯医者"* && "$out" != *"[hold]"* ]] && echo true || echo false)"
+# 16d) 設定の型の誤り(除外接頭辞が配列でない)は黙って無視せずエラー。
+sed -i 's/^exclude_prefixes = .*/exclude_prefixes = "[outing] "/' "$tmpd/config.toml"
+rc=0; err="$(bash "$SCRIPT_DIR/slot-hit.sh" inbox-check --config "$tmpd/config.toml" --events "$tmpd/ok.json" --now "2026-10-21T12:00:00+09:00" 2>&1 >/dev/null)" || rc=$?
+check_error_contains "16d exclude_prefixes が配列でなければエラー" "exclude_prefixes" "$rc" "$err"
+rm -rf "$tmpd"
 
 echo ""
 echo "=== $pass passed, $fail failed ==="

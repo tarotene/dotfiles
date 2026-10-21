@@ -40,6 +40,7 @@ usage() {
   slot-hit.sh infer-year --month <N> --day <N> --weekday <字> --today <YYYY-MM-DD>
   slot-hit.sh enumerate --config <path> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
               [--weekdays <0-6,...>] [--slots <名前,...>] [--out <path>]
+  slot-hit.sh inbox-check --config <path> --events <path> [--now <ISO8601|epoch秒>]
   slot-hit.sh finalize --config <path> --decided <path> --markers <path>
               --event-title <str> [--source-url <str>] --today <YYYY-MM-DD>
               [--venue <str>] [--out-plan <path>]
@@ -85,6 +86,16 @@ load_config_json() {
   local config_path="$1"
   local raw
   raw="$(yq -p toml -o json "$config_path")"
+  # 文字列の配列でなければ、黙って無視せずエラーにする(型の誤りで除外が効かない
+  # まま、取り込み待ちを見落とすのを避ける)。
+  if ! jq -e '(.marker_prefix_aliases // []) | type == "array" and all(type == "string")' <<<"$raw" >/dev/null; then
+    echo "error: marker_prefix_aliases は文字列の配列で指定してください" >&2
+    exit 2
+  fi
+  if ! jq -e '(.inbox.exclude_prefixes // []) | type == "array" and all(type == "string")' <<<"$raw" >/dev/null; then
+    echo "error: [inbox] の exclude_prefixes は文字列の配列で指定してください" >&2
+    exit 2
+  fi
   local timezone
   timezone="$(jq -r '.timezone' <<<"$raw")"
   local tz_offset_raw
@@ -243,6 +254,50 @@ cmd_enumerate() {
   fi
 }
 
+# 受付箱検査(#768): 主カレンダーを「手入力の受付箱」とみなし、型付きデータへ取り込まれて
+# いない予定(取り込み待ち)が残っていれば、表を出して終了コード 1 で終わる。空き判定の
+# 前に呼ぶ。--events は受付箱のカレンダーの list_events の生レスポンス({"events": [...]})。
+# 取り込み待ちに数えない予定は inbox.jq の冒頭を参照(印・キャンセル・終了・他人が主催)。
+cmd_inbox_check() {
+  local config="" events="" now=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config) config="$2"; shift 2 ;;
+      --events) events="$2"; shift 2 ;;
+      --now) now="$2"; shift 2 ;;
+      *) echo "error: 不明なオプション: $1" >&2; usage; exit 2 ;;
+    esac
+  done
+  if [[ -z "$config" || -z "$events" ]]; then
+    echo "error: inbox-check には --config --events が必須です" >&2
+    exit 2
+  fi
+
+  local now_epoch
+  if [[ -z "$now" ]]; then
+    now_epoch="$(date +%s)"
+  elif [[ "$now" =~ ^[0-9]+$ ]]; then
+    now_epoch="$now"
+  elif ! now_epoch="$(jq -rn -L"$SCRIPT_DIR" --arg n "$now" 'include "lib"; $n | parse_offset_dt' 2>/dev/null)"; then
+    echo "error: --now は ISO8601(オフセット付き)か epoch 秒で指定してください: $now" >&2
+    exit 2
+  fi
+
+  local config_json result
+  config_json="$(load_config_json "$config")"
+  if ! result="$(jq -n -L"$SCRIPT_DIR" \
+    --argjson config "$config_json" \
+    --argjson events "$(cat "$events")" \
+    --argjson now "$now_epoch" \
+    -f "$SCRIPT_DIR/inbox.jq" 2>&1)"; then
+    echo "error: ${result#*error: }" >&2
+    exit 2
+  fi
+
+  jq -r '.table' <<<"$result"
+  jq -e '.ok' <<<"$result" >/dev/null
+}
+
 cmd_finalize() {
   local config="" decided="" markers="" event_title="" source_url="" today="" venue="未定" out_plan=""
   while [[ $# -gt 0 ]]; do
@@ -303,9 +358,10 @@ main() {
     judge) cmd_judge "$@" ;;
     infer-year) cmd_infer_year "$@" ;;
     enumerate) cmd_enumerate "$@" ;;
+    inbox-check) cmd_inbox_check "$@" ;;
     finalize) cmd_finalize "$@" ;;
     *)
-      echo "error: --selftest か、judge/infer-year/enumerate/finalize いずれかのサブコマンドを指定してください" >&2
+      echo "error: --selftest か、judge/infer-year/enumerate/inbox-check/finalize いずれかのサブコマンドを指定してください" >&2
       usage
       exit 2
       ;;

@@ -192,3 +192,19 @@ def enumerate_candidates($config; $from; $to; $weekdays; $slots):
         | {date: $d, time: (.value.start | hm_to_minutes | minutes_to_hm)}
       ]
   end;
+
+# --- 印(マーカー)の扱い(#768) ---------------------------------------------
+# 新しく作る印は常に `marker_prefix`(既定の形は `[hold] `)。かつての印(`【調整中】`)は
+# `marker_prefix_aliases` に並べ、読み取り専用の別名として同じように認識する(自分の印の
+# 判定・確定化・受付箱検査)。別名は作成には使わない。
+
+# $s が $list のどれかで始まるか。
+def has_prefix($s; $list):
+  any($list[]?; . as $p | ($p | length) > 0 and ($s | startswith($p)));
+
+# 印として認識する接頭辞(marker_prefix + 別名)。
+def marker_prefixes($config):
+  [$config.marker_prefix] + ($config.marker_prefix_aliases // []) | map(select(. != null and . != ""));
+
+def is_marker_title($title; $config):
+  has_prefix($title; marker_prefixes($config));
