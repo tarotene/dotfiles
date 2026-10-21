@@ -349,3 +349,137 @@ fn hook_matches_relative_register_and_shows_relative_path_in_deny() {
         String::from_utf8_lossy(&out.stdout)
     );
 }
+
+// --- ExitPlanMode の承認後に、計画の `既存手段:` 行を台帳へ転記する(PostToolUse) ---
+//
+// 計画の `## 先行例との対比` の `既存手段:` 行は、承認時に plan-precedent-gate が読むのに、
+// 台帳には登録されず、新規 Cargo.toml の Write が deny されて、承認済みの行を手で
+// `register` し直す二重入力があった。台帳を計画の派生にする。
+
+fn plan_stdin(cwd: &Path, plan: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "ExitPlanMode",
+        "tool_input": {"plan": plan},
+        "cwd": cwd.to_str().unwrap(),
+    })
+    .to_string()
+}
+
+fn ledger_lines(home: &Path) -> Vec<String> {
+    let dir = home.join(".claude/new-tool-guard/state");
+    let Ok(rd) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    rd.filter_map(|e| e.ok())
+        .flat_map(|e| {
+            fs::read_to_string(e.path())
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn denied(out: &std::process::Output) -> bool {
+    String::from_utf8_lossy(&out.stdout).contains("\"permissionDecision\":\"deny\"")
+}
+
+#[test]
+fn approved_plan_registers_its_existing_means_lines() {
+    let repo = init_repo();
+    let home = tempfile::tempdir().unwrap();
+    let target = "crates/new-thing/Cargo.toml";
+    let write = hook_stdin(
+        repo.path(),
+        repo.path().join(target).to_str().unwrap(),
+        "[package]\n",
+    );
+    assert!(
+        denied(&run_hook(repo.path(), home.path(), &write)),
+        "対照: 登録が無ければ新規の Cargo.toml は deny される"
+    );
+
+    let plan = format!(
+        "# 計画\n\n## 先行例との対比\n\n- D1: 新しい crate を足す\n  本命: なし — 理由\n  既存手段: {target} — 拡張: crates/herdr-status-advisory(型)\n  軸: 還元 — 句\n\n## 検証\n- テスト\n"
+    );
+    let out = run_hook(repo.path(), home.path(), &plan_stdin(repo.path(), &plan));
+    assert!(out.stdout.is_empty(), "記録は無出力");
+    assert_eq!(
+        ledger_lines(home.path()),
+        vec![format!(
+            "既存手段: {target} — 拡張: crates/herdr-status-advisory(型)"
+        )]
+    );
+
+    assert!(
+        !denied(&run_hook(repo.path(), home.path(), &write)),
+        "計画から転記された行で、手で register しなくても通る"
+    );
+}
+
+#[test]
+fn plan_transcription_skips_invalid_lines_other_sections_and_duplicates() {
+    let repo = init_repo();
+    let home = tempfile::tempdir().unwrap();
+    let plan = "## 先行例との対比\n\n\
+- D1: a\n  既存手段: scripts/a.sh — 採用: jq\n\
+- D2: b\n  既存手段: scripts/b.sh — 自前\n\
+- D3: c\n  既存手段: scripts/a.sh — 採用: jq\n\
+- 既存手段: scripts/c.sh — 拡張: scripts/a.sh\n\n\
+## 設計メモ\n  既存手段: scripts/d.sh — 採用: jq\n";
+    let out = run_hook(repo.path(), home.path(), &plan_stdin(repo.path(), plan));
+    assert!(out.stdout.is_empty());
+    assert_eq!(
+        ledger_lines(home.path()),
+        vec![
+            "既存手段: scripts/a.sh — 採用: jq".to_string(),
+            "既存手段: scripts/c.sh — 拡張: scripts/a.sh".to_string(),
+        ],
+        "書式が不正な行(自前の理由なし)・別の節の行・同じ行の重複は載せない"
+    );
+
+    // 同じ計画をもう一度承認しても、台帳は増えない。
+    run_hook(repo.path(), home.path(), &plan_stdin(repo.path(), plan));
+    assert_eq!(ledger_lines(home.path()).len(), 2);
+}
+
+#[test]
+fn plan_without_the_section_or_other_tools_record_nothing() {
+    let repo = init_repo();
+    let home = tempfile::tempdir().unwrap();
+    run_hook(
+        repo.path(),
+        home.path(),
+        &plan_stdin(repo.path(), "# 計画\n\n既存手段: scripts/x.sh — 採用: jq\n"),
+    );
+    assert!(ledger_lines(home.path()).is_empty(), "節が無い計画は対象外");
+
+    let other = serde_json::json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": "true", "plan": "## 先行例との対比\n既存手段: scripts/x.sh — 採用: jq\n"},
+        "cwd": repo.path().to_str().unwrap(),
+    })
+    .to_string();
+    run_hook(repo.path(), home.path(), &other);
+    assert!(
+        ledger_lines(home.path()).is_empty(),
+        "ExitPlanMode 以外は対象外"
+    );
+}
+
+#[test]
+fn plan_transcription_outside_a_git_worktree_is_silent() {
+    let not_git = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let plan = "## 先行例との対比\n  既存手段: scripts/x.sh — 採用: jq\n";
+    let out = run_hook(
+        not_git.path(),
+        home.path(),
+        &plan_stdin(not_git.path(), plan),
+    );
+    assert!(out.status.success() && out.stdout.is_empty());
+    assert!(ledger_lines(home.path()).is_empty());
+}

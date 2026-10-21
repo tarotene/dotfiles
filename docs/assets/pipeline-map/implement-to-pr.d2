@@ -189,6 +189,15 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       class: s_rust
     }
   }
+  l_plan_approval: "Plan approval" {
+    class: lane
+    n_new_tool_guard_record: "new-tool-guard (record)" {
+      class: s_rust
+    }
+  }
+  l_session_start -> l_plan_approval: {
+    style.opacity: 0
+  }
   l_tool_call: "Tool call" {
     class: lane
     n_git_worktree_allow: "git-worktree-allow" {
@@ -259,7 +268,7 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       class: s_rust
     }
   }
-  l_session_start -> l_tool_call: {
+  l_plan_approval -> l_tool_call: {
     style.opacity: 0
   }
   l_stop: "Turn end / Stop" {
@@ -342,6 +351,9 @@ l_external: "Sessions / services / state" {
 
 n_agent_session.l_session_start.n_sign_prewarm -> l_external.n_user: "pinentry once" {
   class: e_notify
+}
+n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_tool_call.n_new_tool_guard: "session ledger" {
+  class: e_file
 }
 n_agent_session.l_tool_call.n_gh_edit_allow_record -> n_agent_session.l_tool_call.n_gh_edit_allow_judge: "session ledger" {
   class: e_file

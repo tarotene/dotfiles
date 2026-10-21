@@ -70,6 +70,15 @@ fn cmd_hook() {
     let Some(input) = hook_io::input::read_stdin() else {
         return;
     };
+    // 記録役: ExitPlanMode の承認後に、計画の `既存手段:` 行を台帳へ転記する。
+    // gh-edit-allow と同じ、1 バイナリで記録役と判定役を兼ねる型。
+    if input.hook_event_name == "PostToolUse" && input.tool_name == "ExitPlanMode" {
+        if !skipped() {
+            record_plan_lines(&input);
+        }
+        return;
+    }
+    // 判定役: PreToolUse(Write)。
     if input.hook_event_name != "PreToolUse" || input.tool_name != "Write" {
         return;
     }
@@ -120,6 +129,36 @@ fn cmd_hook() {
     record_gate_event("deny");
     let shown = new_tool_guard::normalize_path(&root, file_path);
     PermissionDecision::deny(new_tool_guard::deny_message(&shown)).emit(Agent::Claude);
+}
+
+/// 承認された計画の `既存手段:` 行を、現在の worktree(git toplevel)の台帳へ書く。
+/// 台帳は計画の派生で、正本は計画。手書きの `register` は、計画の無い作業の経路として残る。
+/// 計画が取れない・節が無い・git の外・台帳が書けない場合は、何もしない(記録は
+/// best-effort で、承認そのものに影響させない)。同じ行がすでにあれば足さない。
+fn record_plan_lines(input: &hook_io::HookInput) {
+    let Some(plan) = hook_io::plan::plan_text(input) else {
+        return;
+    };
+    let lines = new_tool_guard::kizon_lines_in_plan(&plan);
+    if lines.is_empty() {
+        return;
+    }
+    let Some(ledger) = default_ledger() else {
+        return;
+    };
+    let Some(root) = input.project_dir().and_then(|d| hook_io::git::toplevel(&d)) else {
+        return;
+    };
+    let Some(key) = root.to_str() else {
+        return;
+    };
+    let existing = ledger.records(key);
+    for line in lines {
+        if existing.iter().any(|r| r.trim() == line) {
+            continue;
+        }
+        let _ = ledger.append(key, &line);
+    }
 }
 
 /// 新規ファイル `file_path` が属する worktree の git toplevel。ファイルも
