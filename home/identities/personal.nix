@@ -67,18 +67,6 @@ in
   # Revisit once the pinned channel picks up a fix.
   home.packages = lib.optionals pkgs.stdenv.isLinux [ (nixGLWrap pkgs.warp-terminal) ];
 
-  # Spotify desktop (Flatpak, #861). Declared here rather than in
-  # home/modules/flatpak.nix on purpose: that module is imported by common.nix
-  # for every host, including the company one, and a personal streaming app
-  # must not land there. `services.flatpak.packages` is a list option, so this
-  # identity module simply adds to what flatpak.nix declares.
-  #
-  # It was already installed by hand (Flathub, user installation, 1.2.92.147 on
-  # vega, checked 2026-10-20), outside the declared source of truth; this
-  # adopts it. nixpkgs' `spotify` (1.2.90 at the pin) plus the nixGL wrap was
-  # not tried. Linux only: Flatpak is out of scope on darwin.
-  services.flatpak.packages = lib.optionals pkgs.stdenv.isLinux [ "com.spotify.Client" ];
-
   # user scope の MCP サーバー(`~/.claude.json` の `.mcpServers`)。
   # `home/modules/claude-mcp-servers.nix` が reconcile する — ここと
   # `../modules/esa.nix` に挙がっていない user scope のサーバーは switch のたびに

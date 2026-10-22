@@ -14,6 +14,14 @@
 # ラップが要らない。nixpkgs の bambu-studio は 02.05.00.67 で、Flathub の
 # 2.8.2.61(2026-08-21、`flatpak remote-info --user flathub com.bambulab.BambuStudio`、
 # 取得 2026-10-16)より大きく遅れており、工房 PC の版に合わせにくい。
+#
+# com.spotify.Client: Spotify デスクトップ。#866 で vega に手で入れてあった
+# Flathub 版(user installation)を取り込んだときは、個人の配信アプリを会社
+# ホストに入れないため personal identity 側に宣言した。2026-10-22 に本人が
+# 「社用 PC でも聞きたい」と判断したので、全 Linux ホスト共通のここへ移した。
+# Flathub 版を使う理由は #866 のまま: nixpkgs の `spotify` + nixGL ラップは
+# 試していない。spotify-player(TUI/CLI)は personal identity のままで、
+# 社用ホストには入れない。
 # Linux 専用(altair の darwin はこのモジュール自体が対象外)。
 { lib, pkgs, ... }:
 {
@@ -23,6 +31,7 @@
       packages = [
         "us.zoom.Zoom"
         "com.bambulab.BambuStudio"
+        "com.spotify.Client"
       ];
     };
   };
