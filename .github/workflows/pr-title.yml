@@ -67,7 +67,7 @@ jobs:
       # する必要がある(実測: これを忘れると "Can't find 'action.yml' ...
       # under '.../.github/actions/pr-title'" で startup_failure になる、
       # PR #596)。
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/pr-title
         with:
           title: ${{ github.event.pull_request.title }}
@@ -104,7 +104,7 @@ jobs:
       # scripts/pr-merge-settings-check(ADR-0031 Amendment、2026-09-24)も
       # 同じ理由でここに含める — pr-merge-settings-check は github-audit の
       # judge_settings() を re-source するため、単独では動かない。
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: tarotene/dotfiles
           ref: main
