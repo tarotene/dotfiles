@@ -243,3 +243,32 @@ Decision が strict を要求している)。`nitpick_ignore_regex` で標準ラ
 
 - .github/actions/docs-python/action.yml
 - tests/docs-fixtures/python/src/docs_fixture/__init__.py
+
+## Amendment 2026-10-23: docs-python の Python の版は、既定でリポジトリの `.python-version` に従う
+
+2026-10-22 の runner image 更新(Ubuntu 24.04 `20261021`)で、`python-version` の既定 `'3.x'` が
+Python 3.15.0 を選ぶようになった。ある Python リポジトリは、依存の `colour-science` が
+`Requires-Python <3.15`(最新の 0.4.7 でも同じ)で、`pip install -e .` が
+「No matching distribution found」で落ちた。テスト job は `uv python install 3.12` で固定していたので
+通り、docs job だけが最新を引く、という版のずれが根である。PR ゲートの `API docs` と、main の
+Docs pages の deploy が同時に落ちた。
+
+2026-10-18 の Amendment は「`requires-python` が上限を持つリポジトリは範囲内の版を渡す」と書いたが、
+今回の上限は依存側にあり、`requires-python` には現れない。呼び出し側が気づく手がかりが無い。
+
+決定: `python-version` 入力の既定を空にする。空のとき、`working-directory` の `.python-version`
+があればその版を、無ければ従来どおり `'3.x'` を使う。明示した値は `.python-version` に優先する。
+版の正本をリポジトリの 1 ファイルに置けば、テスト job(uv も `.python-version` を読む)と docs job が
+別の版を見る状態を作れない。`.python-version` を持たないリポジトリの挙動は変わらない。
+
+代替案: 呼び出し側の workflow に `python-version: '3.12'` を書く案(呼び出し側に版を直接書いている既存のリポジトリがある)は、
+版の正本が `.python-version` と workflow の 2 か所になり、片方だけ上げるとずれる。採らない。
+setup-python の「入力が空なら `.python-version` を読む」機能に任せる案は、読むのがカレント
+ディレクトリ固定で `working-directory` を見ず、ファイルが無いと PATH 上の Python に落ちて
+従来の `'3.x'` と挙動が変わるので、解決を action 内の step で行う。
+
+### 執行点
+
+- .github/actions/docs-python/action.yml
+- .github/workflows/ci.yml
+- tests/docs-fixtures/python-myst/.python-version
