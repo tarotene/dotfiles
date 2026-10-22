@@ -517,6 +517,14 @@
 #    同じ gate の最後の pass より後の fail-open が閾値(既定 3)以上なら、セッション
 #    開始時に additionalContext で伝える。何も実行しない。fail-open。
 #
+# 38) daily-desk(個人スキル)+ desk-start(SessionStart, matcher: startup、
+#    docs/claude/daily-desk.md):
+#    その日にさばく作業(返信が要るメール、日程回答、人手タスク、未消費 PR の裁定、
+#    受信箱)の起点が、発火装置の違うものに散っていた問題への対処。手順の正本は
+#    private なハブ側の desk.md で、スキルはハブ(performance-hub)を解決して従うだけの
+#    薄いポインタ。hook は「今日の机は未実施」を注入し、実施済みの印
+#    (~/.local/state/claude/desk/<JST の日付>)があれば無音。ハブ未設定の機体でも無音。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -562,6 +570,7 @@ let
   issueIndexCmd = "'${hooksDir}/issue-index'";
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   esaIndexCmd = "'${hooksDir}/esa-index'";
+  deskStartCmd = "'${hooksDir}/desk-start'";
   signPrewarmCmd = "'${hooksDir}/sign-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   # #415 (ADR-0024 Stage 4a): pr-gate は Rust バイナリ(crates/pr-gate、
@@ -1143,6 +1152,15 @@ let
       node = "esa-index";
       matcher = "startup|resume|compact";
       command = esaIndexCmd;
+      timeout = 10;
+    }
+    # desk-start は startup だけで発火する: 机の未実施は新しいセッションの入口で一度伝えれば
+    # 足り、resume・compact で繰り返すと同じ日に何度も出る(印が無い限り startup ごとに出る)。
+    {
+      event = "SessionStart";
+      node = "desk-start";
+      matcher = "startup";
+      command = deskStartCmd;
       timeout = 10;
     }
     # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
@@ -1921,6 +1939,8 @@ in
 
   # esa-index: 社内 wiki の mirror の所在・検索手順・引用形式・鮮度を SessionStart で注入する。
   home.file.".claude/hooks/esa-index".source = "${pkgs.dotfiles-tools}/bin/esa-index";
+  # desk-start: 今日の朝の机(daily-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
+  home.file.".claude/hooks/desk-start".source = "${pkgs.dotfiles-tools}/bin/desk-start";
 
   # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
   home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";

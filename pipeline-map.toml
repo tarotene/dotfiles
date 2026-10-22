@@ -53,6 +53,7 @@ node = [
   # --- SessionStart: 文脈の注入と前提の整備
   { id = "wrapup-session-start", label = "wrapup-session-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/wrapup-stop-gate", doc = "docs/claude/wrapup-inbox.md", auto = true },
   { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/claude/issue-index.md", auto = true },
+  { id = "desk-start", label = "desk-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/desk-start", doc = "docs/claude/daily-desk.md", auto = true },
   { id = "esa-index", label = "esa-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/esa-index", doc = "docs/claude/esa-index.md", auto = true },
   { id = "pr-gate-session-start", label = "pr-gate (start)", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/claude/pr-gate.md", auto = true },
   { id = "herdr-status-advisory", label = "herdr-status-advisory", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-status-advisory", doc = "docs/claude/herdr-status-advisory.md", auto = true },
@@ -197,6 +198,7 @@ edge = [
   # === Implement to PR: SessionStart の文脈
   { from = "issue-index", to = "agent-session", kind = "context", label = "open Issues", pipelines = ["implement-to-pr"] },
   { from = "esa-index", to = "agent-session", kind = "context", label = "wiki mirror", pipelines = ["implement-to-pr"] },
+  { from = "desk-start", to = "agent-session", kind = "context", label = "desk reminder", pipelines = ["implement-to-pr"] },
   { from = "wrapup-session-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
   { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
   { from = "worktree-fresh-base", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },

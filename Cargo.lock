@@ -260,6 +260,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "desk-start"
+version = "0.1.0"
+dependencies = [
+ "hook-io",
+ "hub-resolve",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "detach-open"
 version = "0.1.0"
 dependencies = [
