@@ -818,6 +818,12 @@ jobs:
         with:
           working-directory: tests/docs-fixtures/python-myst
           upload: 'false'
+      # python-myst は .python-version(3.13)を持つ。入力が空のとき、action が最新ではなく
+      # working-directory のそのファイルの版を選んだことを確かめる(setup-python が PATH を
+      # 更新するので、直前の step の python が見える)。ファイルを持たない
+      # tests/docs-fixtures/python は、従来どおり最新('3.x')で上の step を通る。
+      - name: Python fixture used the version from .python-version
+        run: python -c 'import sys; assert sys.version_info[:2] == (3, 13), sys.version'
       - name: Break the Python fixture (unresolved nitpicky reference)
         run: |
           # backticks below are literal rst/rustdoc syntax, not command substitution

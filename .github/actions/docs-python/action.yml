@@ -29,11 +29,14 @@ inputs:
     default: ''
   python-version:
     description: >-
-      setup-python に渡すバージョン。既定の '3.x' は最新の Python を選ぶので、
-      pyproject.toml の requires-python が上限を持つリポジトリは、範囲に入る
-      バージョンを渡す(渡さないと `pip install -e .` が落ちる)。
+      setup-python に渡すバージョン。空なら working-directory の `.python-version`
+      を使い、それも無ければ '3.x'(最新の Python)を使う。最新の Python は、
+      依存が上限を持つリポジトリ(例: requires-python に現れない `Requires-Python <3.15`)
+      で `pip install -e .` を落とすので、そうしたリポジトリは `.python-version` を
+      置く(テスト job など他の job と版の正本を 1 つにできる)。明示した値は
+      `.python-version` より優先する。
     required: false
-    default: '3.x'
+    default: ''
   upload:
     description: 成果物を workflow artifact として残すか('true' / 'false')
     required: false
@@ -47,9 +50,26 @@ outputs:
 runs:
   using: composite
   steps:
+    # setup-python 自身にも「入力が空なら .python-version を読む」機能があるが、
+    # 読むのはカレントディレクトリ固定で working-directory を見ず、ファイルが無いと
+    # PATH 上の Python に落ちる('3.x' の従来挙動と変わる)。そのためここで解決する。
+    - name: Resolve the Python version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        REQUESTED: ${{ inputs.python-version }}
+      run: |
+        set -euo pipefail
+        v="$REQUESTED"
+        if [ -z "$v" ] && [ -f .python-version ]; then
+          v="$(tr -d '[:space:]' < .python-version)"
+        fi
+        echo "version=${v:-3.x}" >> "$GITHUB_OUTPUT"
+
     - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
       with:
-        python-version: ${{ inputs.python-version }}
+        python-version: ${{ steps.version.outputs.version }}
 
     - name: Install project and Sphinx
       shell: bash
