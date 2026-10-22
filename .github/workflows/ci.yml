@@ -39,7 +39,7 @@ jobs:
       # path- and line-regex-based only (no commit allowlist), so they mean the
       # same thing in either scan mode, and the public history is rewritten
       # (orphan, ADR-0004) rather than grown forever — a full scan stays cheap.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -47,7 +47,7 @@ jobs:
       # gitleaks-action (which requires a license key for organization-owned
       # repositories): the module checksum database pins the source, and no
       # secret is needed. Bump the version here deliberately.
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.24"
 
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Shell script validation
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: ShellCheck surviving scripts
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Escape-hatch dry-run
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Every script with a --selftest dispatcher must be invoked from this
       # workflow (#390): a selftest CI never runs is not an oracle, and the Rust
@@ -529,7 +529,7 @@ jobs:
       build_host: ${{ steps.judge.outputs.build_host }}
       rust: ${{ steps.judge.outputs.rust }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - id: judge
@@ -539,7 +539,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Nix flake check
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Determinate Systems installer (ADR-0001).
       - uses: DeterminateSystems/nix-installer-action@main
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
@@ -591,7 +591,7 @@ jobs:
     # gate's own fail-open branch (ADR-468).
     if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: DeterminateSystems/nix-installer-action@main
       - name: Build package + clippy + rustfmt (crane)
         run: |
@@ -644,7 +644,7 @@ jobs:
           # own required checks stay Linux-only so a bottleneck in the
           # shared macOS runner queue never blocks a merge).
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: DeterminateSystems/nix-installer-action@main
       # cache.nixos.org never substitutes two classes of package this repo
       # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
@@ -763,7 +763,7 @@ jobs:
     runs-on: ubuntu-latest
     name: API docs
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/docs-rust
         with:
           upload: 'false'
@@ -776,7 +776,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Docs actions (fixtures)
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # --- Rust ---
       - name: Rust fixture builds
