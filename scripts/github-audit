@@ -836,6 +836,14 @@ extract_purpose() { # $1=readme text -> first non-empty paragraph after the H1
   ' <<<"$1"
 }
 
+has_banner_before_h1() { # $1=readme text -> exit 0 iff an <img line precedes the first "# " line (ADR-0028 Amendment)
+  awk '
+    /^# / { exit }
+    /<img/ { found = 1 }
+    END { exit !found }
+  ' <<<"$1"
+}
+
 first_sentence() {
   local s
   s="$(grep -oP '^.*?[.。]' <<<"$1" | head -n1)"
@@ -1136,6 +1144,9 @@ judge_charters() { # $1=repo $2=description $3=topicCount $4=gql-data-json $5=to
         missing+=("purpose-mismatch")
       fi
     fi
+
+    # ADR-0028 Amendment: banner は必須。H1 より前に <img が無ければ drift。
+    has_banner_before_h1 "$readme" || missing+=("readme-banner-missing")
 
     local -a headings=() stray=() present_required=()
     while IFS= read -r h; do
@@ -2553,7 +2564,7 @@ EOF
 {
   "data": {
     "r1": {
-      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "readme": {"text": "<p align=\"center\"><img src=\"docs/assets/readme-banner.png\" alt=\"x\" width=\"240\"></p>\n\n# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
       "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"text": "See [README.md](README.md) for what this repository is and does, and [CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are accepted. This file is for agent operating instructions only.\n"},
@@ -3807,6 +3818,26 @@ FSSTUB
   jq -e '(.missing | index("lang-ja-stale")) | not' \
     <<<"$(judge_charters lj 'd' 1 "$lj_en_gql" '["automation"]')" >/dev/null || {
     printf 'FAIL: judge_charters must not flag lang-ja-stale when lang-ja is not declared\n' >&2
+    return 1
+  }
+
+  # banner 必須(ADR-0028 Amendment): H1 より前に <img が無ければ readme-banner-missing。
+  local bn_ok_gql='{"readme":{"text":"<p align=\"center\"><img src=\"docs/assets/b.png\" alt=\"x\" width=\"240\"></p>\n\n# r\n\nAn English purpose sentence.\n"}}'
+  local bn_late_gql='{"readme":{"text":"# r\n\nAn English purpose sentence.\n\n<img src=\"docs/assets/b.png\" alt=\"x\">\n"}}'
+  local bn_none_gql='{"readme":{"text":"# r\n\nAn English purpose sentence.\n"}}'
+  jq -e '(.missing | index("readme-banner-missing")) | not' \
+    <<<"$(judge_charters bn 'd' 1 "$bn_ok_gql" '["automation"]')" >/dev/null || {
+    printf 'FAIL: judge_charters must not flag readme-banner-missing when an <img precedes the H1\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("readme-banner-missing")' \
+    <<<"$(judge_charters bn 'd' 1 "$bn_late_gql" '["automation"]')" >/dev/null || {
+    printf 'FAIL: judge_charters must flag readme-banner-missing when the <img is only after the H1\n' >&2
+    return 1
+  }
+  jq -e '.missing | index("readme-banner-missing")' \
+    <<<"$(judge_charters bn 'd' 1 "$bn_none_gql" '["automation"]')" >/dev/null || {
+    printf 'FAIL: judge_charters must flag readme-banner-missing when the README has no <img\n' >&2
     return 1
   }
 

@@ -275,6 +275,10 @@ Judged items:
   `.`/`。` dropped), does not literally equal the normalized GitHub
   description. Intentionally strict: the point is to force an explicit
   edit that keeps both in sync, not to approve near-misses.
+- `readme-banner-missing` (ADR-0028 Amendment) — no line containing `<img`
+  appears before the README's first `# ` heading. Position only: the image
+  source, its path, and any attribution line are not judged, so a hand-made
+  logo satisfies it as well as a third-party illustration.
 - `readme-schema-incomplete-or-out-of-order` — the required headings
   (`## Install`, `## Usage`, `## Scope`, `## Development`, `## License`)
   are missing or not in that relative order. `## Background` is optional

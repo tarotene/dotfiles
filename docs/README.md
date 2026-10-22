@@ -195,7 +195,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   banner と第三者素材(repo ライセンスと異なる素材)の同梱規則を定める決定。
   ADR-0016 の README 固定スキーマ・ルート文書 allowlist を部分的に拡張し、
   画像アセットの置き場所・banner の位置・帰属注記の書式・素材の利用点数
-  管理を規定する。
+  管理を規定する。Amendment(2026-10-22)で banner を必須にし、位置だけを
+  監査(`readme-banner-missing`)で検出する。
 - [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH
   の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は
   `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、
