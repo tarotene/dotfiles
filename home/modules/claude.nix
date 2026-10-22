@@ -2495,6 +2495,11 @@ in
   };
   home.file.".claude/skills/venue-search/scripts/noah-chart.js".source =
     repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
+  # daily-desk: その日にさばく作業を朝の机 1 か所に集める薄いポインタ。手順の正本は
+  # person-state リポジトリ側の desk.md。ハブは performance-hub を流用する。詳細は
+  # docs/claude/daily-desk.md。
+  home.file.".claude/skills/daily-desk/SKILL.md".source =
+    repoConfig + "/claude/skills/daily-desk/SKILL.md";
 
   # inbox-adjudication: 溜まった受信箱を、返信の裁定から処理する判断知識。
   # 詳細は docs/claude/inbox-adjudication.md。
@@ -2611,6 +2616,8 @@ in
   };
   home.file.".agents/skills/venue-search/scripts/noah-chart.js".source =
     repoConfig + "/claude/skills/venue-search/scripts/noah-chart.js";
+  home.file.".agents/skills/daily-desk/SKILL.md".source =
+    repoConfig + "/claude/skills/daily-desk/SKILL.md";
   home.file.".agents/skills/inbox-adjudication/SKILL.md".source =
     repoConfig + "/claude/skills/inbox-adjudication/SKILL.md";
   home.file.".agents/skills/inbox-adjudication/cases.md".source =
