@@ -69,6 +69,15 @@ pub fn extract_purpose(readme: &str) -> String {
     para
 }
 
+/// bash: `has_banner_before_h1`。最初の `# ` 行より前に `<img` を含む行があるか
+/// (ADR-0028 Amendment: banner は必須で、H1 の直上に置く)。
+pub fn has_banner_before_h1(readme: &str) -> bool {
+    readme
+        .split('\n')
+        .take_while(|line| !line.starts_with("# "))
+        .any(|line| line.contains("<img"))
+}
+
 /// bash: `first_sentence`(`grep -oP '^.*?[.。]'`、無ければ全体)。
 pub fn first_sentence(para: &str) -> String {
     let line = para.split('\n').next().unwrap_or("");
@@ -234,6 +243,9 @@ pub fn judge_charters(description: &str, topics: &[String], gql: &RepoGql) -> Fi
             if description.is_empty() || normalize_text(&sentence) != normalize_text(description) {
                 missing.push("purpose-mismatch".into());
             }
+        }
+        if !has_banner_before_h1(&readme) {
+            missing.push("readme-banner-missing".into());
         }
         let (ok, stray) =
             heading_schema(&readme, &REQUIRED_README_HEADINGS, &ALLOWED_README_HEADINGS);

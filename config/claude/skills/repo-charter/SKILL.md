@@ -78,6 +78,16 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
    実在または実在しそうな具体的な Issue を書く(抽象的な原則の言い換えにしない)。
    この判定問 + 実例は CONTRIBUTING.md の `## Issues` 節の冒頭に書く(次々節)
    — 見出し名としての「Issue litmus」という自作語彙は ADR-0017 で廃止した。
+6. **banner 画像の選定**(ADR-0028 Amendment、必須) — README の H1 直上に置く
+   画像を 1 点選ぶ。素材源の既定はいらすとや(<https://www.irasutoya.com/>)で、
+   自作のロゴでもよい。何を描くかは手順 2 の命名クラスで決まる:
+   - `naming-codename` / `naming-coined`: 名前の由来(namesake)を描く
+     (例: 伝書鳩を意味する名前なら鳩)。
+   - `naming-descriptive` / `naming-pj` / `naming-site`: 目的 1 文の主題を描く。
+   alt text は英語 1 文で、何を描いたか、それが由来か主題か、出所の順に書く
+   (例: `Cartoon illustration of a carrier pigeon delivering a letter, the
+   repository name's namesake, by Irasutoya`)。第三者素材を使うなら §5 の手順を踏む。監査は
+   「H1 より前に `<img` があるか」だけを見る(`readme-banner-missing`)。
 
 インタビューは人間との対話で埋める。埋まらない項目があるなら、それは
 「リポジトリの目的がまだ固まっていない」ということなので、charter を書くこと
@@ -87,12 +97,12 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
 
 見出しリテラル(英語)は固定・順序も固定 — `github-audit` の charters ドメインが
 この形で機械検査する。日本語で書くリポジトリでも見出しはこの英語表記を使う。
-`## Background` は任意(知的出自のみ)、それ以外は必須。banner は任意(ADR-0028)。
+`## Background` は任意(知的出自のみ)、それ以外は必須。banner も必須(ADR-0028 Amendment)。
 
 ```markdown
-<!-- 任意。第三者素材を使う場合は ADR-0028・後述の「第三者素材アセットの同梱」節に従う -->
+<!-- 必須(ADR-0028 Amendment)。第三者素材を使う場合は後述の「第三者素材アセットの同梱」節に従う -->
 <p align="center">
-  <img src="docs/assets/<file>" alt="<英語 alt text>" width="420">
+  <img src="docs/assets/<file>" alt="<英語 alt text>" width="240">
 </p>
 
 # <repo-name>
@@ -247,7 +257,7 @@ repo ライセンス(MIT 等)と異なる利用規約を持つ第三者素材(RE
    このあとの帰属注記または PR 本文に残す。
 2. **`docs/assets/` に commit する。** ルート直下への配置と外部 URL への
    hotlink は禁止。ファイル名は英語ケバブケース(例 `readme-banner.png`)。
-3. **banner として使う場合は H1 の直上に置く。**
+3. **banner は H1 の直上に置く。**
    `## 2. README への反映` の banner ブロックの罠(監査の目的文抽出との
    衝突)を参照。
 4. **README の `## License` 節の末尾に、素材 1 点につき 1 行で帰属注記を

@@ -1,7 +1,7 @@
 {
   "data": {
     "r1": {
-      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "readme": {"text": "<p align=\"center\"><img src=\"docs/assets/readme-banner.png\" alt=\"x\" width=\"240\"></p>\n\n# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
       "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"text": "See [README.md](README.md) for what this repository is and does, and [CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are accepted. This file is for agent operating instructions only.\n"},
@@ -205,7 +205,7 @@
       "renovaterc": null
     },
     "r12": {
-      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "readme": {"text": "<p align=\"center\"><img src=\"docs/assets/readme-banner.png\" alt=\"x\" width=\"240\"></p>\n\n# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
       "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"text": "See [README.md](README.md) for what this repository is and does, and [CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are accepted. This file is for agent operating instructions only.\n"},
@@ -229,7 +229,7 @@
       "renovateDashboard": {"totalCount": 1}
     },
     "r13": {
-      "readme": {"text": "# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
+      "readme": {"text": "<p align=\"center\"><img src=\"docs/assets/readme-banner.png\" alt=\"x\" width=\"240\"></p>\n\n# all-ok\n\nAll domains pass.\n\n## Background\n\nSome history.\n\n<!-- nav-doc-exempt: path-inventory — legacy filenames kept for grep-ability -->\nSee `a.md`, `b.yml`, `c.toml`, `d.json` for the old scheme.\n\n## Install\n\nrun it.\n\n## Usage\n\nrun it more.\n\n## Scope\n\nIn scope.\n\n## Development\n\nrun tests.\n\n## License\n\nMIT.\n"},
       "contributing": {"text": "# Contributing\n\nSee README for what this repository is and how to set up a development environment.\n\n## Issues\n\nJudging question: does it help?\n\nAccepted:\n- yes\n\nRejected:\n- no\n\n## Pull requests\n\nStandard flow.\n"},
       "claudeMd": {"text": "@AGENTS.md\n\n## Claude-specific\n"},
       "agentsMd": {"text": "See [README.md](README.md) for what this repository is and does, and [CONTRIBUTING.md](CONTRIBUTING.md) for what Issues and pull requests are accepted. This file is for agent operating instructions only.\n"},

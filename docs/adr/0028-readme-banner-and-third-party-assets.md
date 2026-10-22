@@ -114,3 +114,46 @@ ADR-0016 は README の節構成・ルート文書 allowlist を固定したが�
 - 適用先リポジトリの README 更新後、H1 より前に banner のみが存在し、
   `extract_purpose()` の抽出対象(H1 直後の最初の非空段落)が従来どおり
   目的 1 文になっていることを目視確認する。
+
+## Amendment (2026-10-22 — banner を必須にし、監査で検出する)
+
+Decision 1 は banner を「任意」としていた。リポジトリの個性付けを charter の
+一部にするため、banner を README の必須要素にする。位置(H1 の直上)・置き場所・
+帰属注記の書式(Decision 1〜7)はそのまま有効で、変わるのは「任意」から「必須」
+への一点と、その執行である。
+
+- **必須化と検出。** 監査(`github-audit` の charters ドメイン)は、README の最初の
+  `# ` 行より前に `<img` を含む行が無いとき `readme-banner-missing` を報告する。
+  検出のみで、リポジトリの作成は止めない。Consequences の「banner の有無を強制
+  検査しない」はこの Amendment で上書きする。
+- **検査は位置だけ。** 素材源・ファイルのパス・License 節の帰属行は検査しない。
+  自作のロゴ(SVG など第三者素材でないもの)も適合する。第三者素材を使うときの
+  Decision 2〜5 は、素材を使う側が守る規則として残る。
+- **素材源の既定はいらすとや。** 規約確認(Decision 5)は、いらすとやについては
+  2026-10-22 に再確認した: 編集・加工は規約の範囲内で自由、帰属表示の要求は規約に
+  無い(License 節の帰属行は Decision 4 に従う自発的な出所明示)、禁止は「素材を
+  主体としたコンテンツ・商品の再配布・販売」、商用の有償条件は「素材を21点以上
+  使った商用デザイン」。1 リポジトリ 1 点なら該当しない。
+- **画像の選定基準。** 名前の命名クラスで描くものを分ける。`naming-codename` と
+  `naming-coined` は名前の由来(namesake)を描く。`naming-descriptive`、`naming-pj`、
+  `naming-site` は目的 1 文の主題を描く。alt text は英語 1 文で、何を描いたか、
+  それが由来か主題か、出所の順に書く。
+- **既定の幅は 240。** いらすとやの正方形のイラスト向け。横長の自作ロゴは
+  360〜420 でよい。
+
+一次情報の訂正。Context と一次情報の節は「standard-readme は Title の**上**に
+Banner スロットを定義している」と書いたが、原文(Richard Littauer, standard-readme
+spec, <https://raw.githubusercontent.com/RichardLitt/standard-readme/main/spec.md>,
+取得 2026-10-22)は Banner を Optional とし、「Must appear directly after the
+title」と定めている。節順は Title、Banner、Badges、Short Description である。
+H1 の直上に置く Decision 1 は standard-readme に倣ったものではなく、
+`extract_purpose()` が最初の `# ` 行より前を読まないことと両立させるための、この
+ADR 固有の判断である。裁定は変えない。
+
+### 執行点
+
+- `scripts/github-audit` — charters ドメインが `readme-banner-missing` を出す。`--selftest` に 3 ケース。
+- `crates/github-audit/src/domains/charters.rs` — Rust 版の同じ判定(`has_banner_before_h1`)。
+- `crates/github-audit/tests/judges.rs` — Rust 版の `charters_banner`。
+- `crates/github-audit/tests/fixtures/main/graphql-response.json` — `all-ok` の README に banner を足した fixture。
+- `config/claude/skills/repo-charter/SKILL.md` — インタビュー項目 6 と、テンプレートの必須化。

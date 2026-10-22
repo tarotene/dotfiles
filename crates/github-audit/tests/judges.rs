@@ -1051,3 +1051,23 @@ fn charters_lang_ja() {
     let f = judge_charters("d", &s(&["automation"]), &en);
     assert!(!f.has("lang-ja-stale"), "{f:?}");
 }
+
+/// banner 必須(ADR-0028 Amendment): 最初の `# ` 行より前に `<img` が無ければ
+/// `readme-banner-missing`。bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。
+#[test]
+fn charters_banner() {
+    let ok = gql(
+        r##"{"readme":{"text":"<p align=\"center\"><img src=\"docs/assets/b.png\" alt=\"x\" width=\"240\"></p>\n\n# r\n\nAn English purpose sentence.\n"}}"##,
+    );
+    let late = gql(
+        r##"{"readme":{"text":"# r\n\nAn English purpose sentence.\n\n<img src=\"docs/assets/b.png\" alt=\"x\">\n"}}"##,
+    );
+    let none = gql(r##"{"readme":{"text":"# r\n\nAn English purpose sentence.\n"}}"##);
+
+    let f = judge_charters("d", &s(&["automation"]), &ok);
+    assert!(!f.has("readme-banner-missing"), "{f:?}");
+    let f = judge_charters("d", &s(&["automation"]), &late);
+    assert!(f.has("readme-banner-missing"), "{f:?}");
+    let f = judge_charters("d", &s(&["automation"]), &none);
+    assert!(f.has("readme-banner-missing"), "{f:?}");
+}
