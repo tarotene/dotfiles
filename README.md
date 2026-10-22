@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="docs/assets/readme-banner.png"
+       alt="Cartoon illustration of two interlocking gears, standing for the configuration dotfiles reproduces, by Irasutoya"
+       width="240">
+</p>
+
 # dotfiles
 
 Flake-based home-manager config that reproduces one user environment identically across Pop!_OS hosts.
@@ -69,3 +75,9 @@ CI (`.github/workflows/`) runs a per-host activation build matrix plus a slim sh
 ## License
 
 See [LICENSE](LICENSE) for details.
+
+The banner illustration ([`docs/assets/readme-banner.png`](docs/assets/readme-banner.png))
+is by [Irasutoya](https://www.irasutoya.com/)
+([source page](https://www.irasutoya.com/2019/08/blog-post_805.html)) and is
+**not** covered by this repository's license; it is used under the
+[Irasutoya terms of use](https://www.irasutoya.com/p/terms.html).
