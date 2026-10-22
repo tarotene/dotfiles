@@ -37,6 +37,15 @@ hook: `crates/desk-start`(SessionStart、1 日 1 回の注入)
 `issue-index` は GitHub の Search API に依存する。失敗すると机の注入も一緒に落ちる。机の判定は
 日付ファイルだけでネットワークが要らないので、障害を独立させるために別の hook にした。
 
+## desk-start の発火条件
+
+- イベントは SessionStart の `startup` だけ。`resume` と `compact` では出さない(印が無い限り、新しい
+  セッションごとに 1 回出る)。
+- ハブが未設定の機体(会社の機体など)では何も出さない。ハブはあるが `desk.md` が読めないときは、
+  stderr に 1 行だけ出す。
+- 日付は JST で、`TZ` や `date(1)` に依存せず unix 秒から求める(`crates/desk-start`)。
+- 注入文は、本人が望むときにだけ `daily-desk` を実行するよう促す。自動では走らせない。
+
 ## 実施済みの印
 
 `~/.local/state/claude/desk/<JST の日付>` の空ファイル 1 つだけを新設する。机の完了を示す台帳は
