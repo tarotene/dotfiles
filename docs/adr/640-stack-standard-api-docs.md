@@ -246,12 +246,15 @@ Decision が strict を要求している)。`nitpick_ignore_regex` で標準ラ
 
 ## Amendment 2026-10-23: docs-python の Python の版は、既定でリポジトリの `.python-version` に従う
 
-2026-10-22 の runner image 更新(Ubuntu 24.04 `20261021`)で、`python-version` の既定 `'3.x'` が
-Python 3.15.0 を選ぶようになった。ある Python リポジトリは、依存の `colour-science` が
-`Requires-Python <3.15`(最新の 0.4.7 でも同じ)で、`pip install -e .` が
+2026-10-22 に `ubuntu-latest`(Ubuntu 26.04)の runner image が展開され始め、`python-version` の既定
+`'3.x'` が、新しい image の runner では Python 3.15.0 を選ぶようになった。旧い image(`20261012.163`
+は 3.14.8 までを同梱)の runner では 3.14.8 のままで、展開の途中は同じ workflow が通ったり落ちたり
+した(実測: 同日 14:45 の run は image `20261018.168` で 3.15.0 を選んで失敗、15:52 の run は
+`20261012.163` で 3.14.8 を選んで成功)。ある Python リポジトリは、依存の `colour-science` が
+`Requires-Python <3.15`(最新の 0.4.7 でも同じ)で、3.15 では `pip install -e .` が
 「No matching distribution found」で落ちた。テスト job は `uv python install 3.12` で固定していたので
-通り、docs job だけが最新を引く、という版のずれが根である。PR ゲートの `API docs` と、main の
-Docs pages の deploy が同時に落ちた。
+通り、docs job だけが runner 次第で最新を引く、という版のずれが根である。PR ゲートの `API docs` と、
+main の Docs pages の deploy が落ちた。
 
 2026-10-18 の Amendment は「`requires-python` が上限を持つリポジトリは範囲内の版を渡す」と書いたが、
 今回の上限は依存側にあり、`requires-python` には現れない。呼び出し側が気づく手がかりが無い。
