@@ -310,3 +310,39 @@ D3 の除外が 1 つ増える。
 ### 執行点
 
 - renovate/policy.json
+
+## Amendment (2026-10-23 — lockFileMaintenance を月次から週次にする)
+
+### 背景
+
+`vulnerabilityAlerts` が PR を作るのは直接の依存だけで、間接依存の alert は lock の再生成でしか消えない。
+`lockFileMaintenance` は月初の月 1 回で、上の Amendment が待機の固着を直すまで、private の Astro サイトのリポジトリでは
+1 本も merge されていなかった。2026-10-23 のそのリポジトリは、open な alert 23 件のうち 15 件が、lock を
+再生成するだけで消えた(`pnpm audit` で実測)。残りは、親が古い版を固定している 7 件(pnpm の overrides で
+直す)と、修正版が無い 1 件だった。
+
+- Renovate の文書は、`lockFileMaintenance` を "before 4am on monday" の週 1 回(once-per-week
+  semantics)にする既定を書く。
+- 月次を選んだ根拠は、この ADR の本文にも policy の `description` にも無い(`first day` を検索して
+  出るのは `lockFileMaintenance.schedule` の値だけ)。
+
+出典: Renovate, "Configuration Options — lockFileMaintenance"
+<https://docs.renovatebot.com/configuration-options/#lockfilemaintenance>(取得 2026-10-23)。
+
+### 決定
+
+`lockFileMaintenance.schedule` を `["before 6am on monday"]` にする。通常の PR の `schedule` と同じ窓で、
+既定の週次と同じ頻度になる。
+
+- 間接依存の alert は、最大でも 7 日以内の lock 再生成の PR で消える。lock の更新は、これまでどおり
+  CI の required check(D2)を通ってから auto-merge される。
+- 軸: 還元 — 新しい機構(hook・CI の audit job 等)を足さず、既存の仕組みの周期だけを変える。
+
+### 未確認
+
+- 週次に変えた後の PR の件数と、auto-merge の成否は、次の月曜(2026-10-26)以降に Renovate が走るまで
+  読めない。
+
+### 執行点
+
+- renovate/policy.json
