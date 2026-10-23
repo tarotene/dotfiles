@@ -290,7 +290,7 @@
   # eleven domains (rulesets/#130, charters, naming, settings, renovate,
   # titles/ADR-0031, lifecycle/#275, releaser, routines, workflows, docs —
   # ADR-0015; docs/github-audit.md) plus the opt-in `annotations` domain
-  # (named explicitly, Rust only; ADR-0000-annotations-domain). Replaces the former sibling scripts
+  # (named explicitly, Rust only; ADR-961). Replaces the former sibling scripts
   # github-audit-rulesets/github-audit-charters. Manual command, no timer —
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's

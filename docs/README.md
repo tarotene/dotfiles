@@ -346,7 +346,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-annotations-domain.md) — GitHub Actions の warning
+- [ADR-961](adr/961-annotations-domain.md) — GitHub Actions の warning
   (Node.js 20 の非推奨、キャッシュの空振り)を横断で拾う annotations
   ドメインを github-audit に足す。明示指定でだけ走り、Rust 版にだけ置く。
 - [ADR-833](adr/833-archived-naming-not-applicable.md) — アーカイブ済みの

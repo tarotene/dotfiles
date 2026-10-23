@@ -934,7 +934,7 @@ That the docs job is in `ci-passed.needs` is **not** judged here — the
 `workflows` domain already requires every `ci.yml` job to appear there
 (ADR-591 D1), and duplicating that check would give two sources of truth.
 
-### annotations (ADR-0000-annotations-domain, opt-in)
+### annotations (ADR-961, opt-in)
 
 Reads the `warning` annotations of the latest completed run of every
 workflow on the default branch, across every job of that run. The warnings

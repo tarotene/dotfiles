@@ -1,4 +1,4 @@
-# ADR-0000 — GitHub Actions の warning を横断で拾う annotations ドメインを github-audit に足す
+# ADR-961 — GitHub Actions の warning を横断で拾う annotations ドメインを github-audit に足す
 
 - Status: Accepted
 - Date: 2026-10-23
