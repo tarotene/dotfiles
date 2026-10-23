@@ -346,3 +346,47 @@ D3 の除外が 1 つ増える。
 ### 執行点
 
 - renovate/policy.json
+
+## Amendment (2026-10-23 — D1 の追補: github-actions のメジャー更新も automerge にする)
+
+### 背景
+
+D1 は major を人手 merge にした。2026-10-23 に、非アーカイブ 24 リポジトリの各ワークフローの最新 run の
+annotation を全件読んだ(`gh api repos/<r>/check-runs/<job>/annotations`)。
+
+- `Node.js 20 is deprecated … actions/checkout@v4` ほかの warning が約 60 件・19 リポジトリで出ていた。
+- 原因は、メジャー版が古い actions のまま残っていること。Renovate は v7 等への更新を検出済みで
+  (Dependency Dashboard に `renovate/major-github-actions` が載る)、人が押すまで入らなかった。
+- telepath #234(`actions/checkout` v7)は 2026-07-05 から open のまま。
+- Node 20 は 2026-09-23 に runner から削除されている。今は Node 24 で強制実行されている
+  (GitHub, "Deprecation of Node 20 on GitHub Actions runners", 2025-09-19,
+  <https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/>、取得 2026-10-23)。
+
+Actions のメジャーの多くはランタイム更新で、次の非推奨化(node16→20 は 2023 年、node20→24 は 2025 年)の
+たびに、全リポジトリで同じ滞留が起きる。
+
+### 決定
+
+`renovate/policy.json` に、`matchManagers: ["github-actions"]` かつ `matchUpdateTypes: ["major"]` の
+packageRule を足し、`automerge: true` にする。npm・cargo・pip など言語依存のメジャーは、D1 のとおり
+人手 merge のまま。
+
+- 安全弁は D2 と同じ: 各リポジトリの ruleset の required checks(`CI passed`・`PR title`)。
+  required checks の無いリポジトリは、先に ruleset を播く(`apply-rulesets`)。
+- 弱点: PR では走らないワークフロー(release-plz、Pages のデプロイ、schedule)は、merge の後に壊れて
+  初めて分かる。壊れたら revert する。required checks の無いリポジトリでは、CI を待たずに
+  merge されるため、ruleset を播く前に共通ポリシーへ切り替えない。
+- 差分(D1 の出典 "Automerge configuration and troubleshooting" との差): 公式は「non-major を
+  automerge」と書く。Actions のメジャーを外す理由は、この ADR の背景の実測(人手にすると約 60 件が
+  滞留した)で、semver の自己申告より required checks が最終防衛線であることは D1 と同じ。
+- 軸: 検出のみ — 破壊的な変更かどうかは semver の自己申告でしか分からず、required checks が頼り。
+
+### 未確認
+
+- 実際に automerge が働くかは、次の月曜(2026-10-26)の Renovate の実行の後でないと読めない。
+- 共通ポリシーを extends していない 6 リポジトリ(D4 の未展開分)は、`renovate.json` を替えるまでこの
+  ルールが届かない。
+
+### 執行点
+
+- renovate/policy.json
