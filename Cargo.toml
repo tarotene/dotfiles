@@ -12,5 +12,11 @@ license = "MIT"
 publish = false
 
 [profile.release]
-lto = true
+# LTO は off(2026-10-24、docs/rust-workspace-measurements.md §5)。69 本の bin
+# それぞれに fat LTO のリンクが走り、クリーンビルドは 107 秒、hook-io を 1 行
+# 変えた再ビルドは約 61 秒かかった。off では 30.6 秒と約 12 秒(3.5〜5 倍)で、
+# hook の起動時間(平均 0.6 ms、p99 約 1.3 ms)は変わらない。thin は fat より
+# 遅かった(131 秒 / 約 85 秒)。bin の合計は 39.4 MiB から 47.4 MiB に増える。
+# 起動が予算(50 ms)に近づく測定が出たら、thin / fat に戻す前にまずここを疑う。
+lto = "off"
 strip = true
