@@ -57,8 +57,12 @@ runs:
         # covers every path the nix code reads」がこの行を grep するので、
         # `BUILD_INPUTS: "..."` の形は変えない。
         BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock rust-migration.toml pipeline-map.toml .github/actions/stack-position/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
-        # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。
-        RUST_EXTRA_INPUTS: "config/claude/hooks/ config/claude/statusline/ config/codex/hooks/ config/copilot/hooks/ config/git/hooks/ scripts/ bootstrap.sh .github/workflows/ config/herdr/config.toml docs/assets/pipeline-map/"
+        # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。`cargo test` が実体を
+        # 読むもの: pipeline-map(登録の側の git hook・scripts・workflows・herdr の設定・図)と、
+        # pr-contract-check の整合性の検査(skills のテンプレートと `.github/rulesets/quality.json`、
+        # かつて常に走る dry-run job にあった bash の selftest が持っていた)。消えた hook の
+        # ディレクトリ(config/claude/hooks/ など、Rust への移植で無くなった)は外した。
+        RUST_EXTRA_INPUTS: "config/git/hooks/ config/claude/skills/ scripts/ bootstrap.sh .github/workflows/ .github/rulesets/ config/herdr/config.toml docs/assets/pipeline-map/"
         # build の入力から意図的に外した「コピーされるだけ」の集合。
         # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
         # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも
