@@ -862,17 +862,7 @@ impl HookJson {
     }
 }
 
-fn git_ok(project: &str, args: &[&str]) -> Option<Vec<u8>> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    out.status.success().then_some(out.stdout)
-}
+use hook_io::git::raw as git_ok;
 
 /// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
 pub fn stop_hook(self_path: &str, input: &str) -> Code {

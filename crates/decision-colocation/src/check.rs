@@ -47,7 +47,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 /// 違反メッセージの共通接頭辞(bash 版の `echo "decision-colocation-check: …"`)。
 const PREFIX: &str = "decision-colocation-check: ";
@@ -90,17 +89,8 @@ pub fn is_non_adr_artifact_path(p: &str) -> bool {
 /// `git -C <repo> <args…>` の標準出力。失敗(`--base` が解決できない等)は
 /// 空文字 — bash の `2> /dev/null || true`。
 fn git_out(repo: &Path, args: &[&str]) -> String {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default()
+    let bytes = hook_io::git::raw(repo, args).unwrap_or_default();
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// base..HEAD で追加されたファイル(`--diff-filter=A`)。

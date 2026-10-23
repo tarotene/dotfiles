@@ -12,6 +12,7 @@
 //! `WORKTREE_FRESH_BASE_FETCH_TTL`(秒、既定 600: FETCH_HEAD がこれより新しけ
 //! れば fetch を省く)。
 
+use hook_io::git::out as git;
 use serde_json::json;
 use std::io::Read;
 use std::path::Path;
@@ -19,26 +20,6 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// `git -C <dir> <args>` の stdout(末尾改行除去)。起動失敗・非 0 終了は `None`。
-fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(
-        String::from_utf8_lossy(&out.stdout)
-            .trim_end_matches('\n')
-            .to_string(),
-    )
-}
 
 /// `timeout 15 git fetch --quiet origin <base>` 相当。成功時のみ true。
 fn fetch(dir: &Path, base: &str) -> bool {

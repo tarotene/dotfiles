@@ -27,45 +27,15 @@
 
 use aho_corasick::{AhoCorasick, MatchKind};
 use std::collections::BTreeSet;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
 /// deny メッセージに並べる交差ファイルの上限(判定には上限を設けない)。
 pub const MAX_DENY_DISPLAY: usize = 50;
 
 /// `git -C dir <args>` の stdout(末尾改行除去)。失敗は `None`。
-pub fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
-    while s.ends_with('\n') {
-        s.pop();
-    }
-    Some(s)
-}
+pub use hook_io::git::out as git;
 
 /// `git -C dir <args>` が成功したか。
-pub fn git_ok(dir: &Path, args: &[&str]) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
+pub use hook_io::git::ok as git_ok;
 
 fn lines(s: &str) -> Vec<&str> {
     let mut v: Vec<&str> = s.split('\n').collect();

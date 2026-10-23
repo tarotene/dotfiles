@@ -10,6 +10,7 @@
 //! 縮退: 各 path は独立に fail-open。skip 理由は stderr に出すだけで、
 //! usage エラー以外では常に exit 0。
 
+use hook_io::git::{ok as git_ok, out as git_out};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
@@ -17,39 +18,6 @@ use std::time::{Duration, Instant};
 
 /// fetch の打ち切り秒数(旧版の `timeout 15`)。
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// `git -C dir <args>`: stdin/stderr は捨て、成功なら stdout(末尾改行除去)。
-fn git_out(dir: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
-    while s.ends_with('\n') {
-        s.pop();
-    }
-    Some(s)
-}
-
-fn git_ok(dir: &str, args: &[&str]) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
 
 fn kill_group(child: &mut Child) {
     // `timeout(1)` と同様、子のプロセスグループ全体に TERM を送る。

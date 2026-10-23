@@ -27,6 +27,7 @@ use guard_core::gh::{command_substitution, has_heredoc, read_body_file};
 use guard_core::hook::{jq_r_path, ToolCall};
 use guard_core::marker::has_reasoned_tag;
 use guard_core::repo::{default_branch_or_gh, owner_repo};
+use hook_io::git::{ok as git_ok, out as git_out};
 use hook_io::ledger::SessionLedger;
 use hook_io::Agent;
 use serde_json::Value;
@@ -332,32 +333,6 @@ fn first_row_where(
 // ---------------------------------------------------------------------------
 // 外部コマンド
 // ---------------------------------------------------------------------------
-
-fn git(project: &Path) -> Command {
-    let mut c = Command::new("git");
-    c.arg("-C")
-        .arg(project)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null());
-    c
-}
-
-fn git_ok(project: &Path, args: &[&str]) -> bool {
-    git(project)
-        .args(args)
-        .stdout(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// `$(git -C <project> …)`。失敗は `None`(空出力は `Some("")`)。
-fn git_out(project: &Path, args: &[&str]) -> Option<String> {
-    let out = git(project).args(args).output().ok()?;
-    out.status
-        .success()
-        .then(|| command_substitution(&String::from_utf8_lossy(&out.stdout)))
-}
 
 /// `gh pr list -R <nwo> --state open --limit 100 --json …`。失敗・空は `None`。
 fn open_prs(nwo: &str) -> Option<String> {
