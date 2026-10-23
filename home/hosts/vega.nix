@@ -80,6 +80,13 @@ in
   # marker's source of truth (ADR-0019 D3, Amendment 2).
   xdg.configFile."dotfiles/host".text = "vega\n";
 
+  # Osmo Pocket 3 as the desk webcam + mic (DJI Mic 2 via its receiver): make
+  # its USB mic the default input whenever it is plugged in.  Drop-in for the
+  # apt-owned PipeWire stack (ADR-0001); rationale in the file header,
+  # device-side steps and measurements in docs/webcam-osmo-pocket-3.md.
+  xdg.configFile."wireplumber/wireplumber.conf.d/52-osmo-pocket-3-mic.conf".source =
+    ../../config/wireplumber/wireplumber.conf.d/52-osmo-pocket-3-mic.conf;
+
   # vega-only apt escape hatch, reclaimed from `detect-drift`'s ad-hoc
   # inventory per dotfiles#4's classification rule ("2. intentional escape
   # hatch, reason documented"). Each group below needs root, a kernel

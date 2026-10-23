@@ -24,6 +24,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   commits, stale `[gone]` branches).
 - [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
   creation, detect stale registrations, and notify through Herdr.
+- [`webcam-osmo-pocket-3.md`](webcam-osmo-pocket-3.md) — Osmo Pocket 3 を
+  vega の常用 Web カメラ + マイクにする: 機器側・アプリ側の手順、既定マイクを
+  WirePlumber で固定する仕組み、実測値と未確認事項。
 - [`github-audit.md`](github-audit.md) — read-only cross-repository GitHub
   audit unified across six domains (rulesets #130 / charters / naming
   ADR-0014 / settings / renovate — ADR-0015 / titles — ADR-0031): why it
