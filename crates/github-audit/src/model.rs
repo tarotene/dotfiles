@@ -30,9 +30,18 @@ pub enum Domain {
     Routines,
     Workflows,
     Docs,
+    /// 既定の全実行に含めない(明示指定のみ)。[`Domain::OPT_IN`] を参照。
+    Annotations,
 }
 
 impl Domain {
+    /// 明示指定でだけ走るドメイン。run・job・annotation を全件たどって REST を
+    /// 多く払うので既定の実行に含めず、bash 版にも足さない(単一正本、
+    /// ADR-0035 軸 1)。bash 版との差分テスト(`tests/differential.rs`)が見る
+    /// 既定の出力は、これを足しても変わらない。
+    pub const OPT_IN: [Domain; 1] = [Domain::Annotations];
+
+    /// 既定の実行順(`ALL`)。
     pub const ALL: [Domain; 11] = [
         Domain::Rulesets,
         Domain::Charters,
@@ -60,11 +69,15 @@ impl Domain {
             Domain::Routines => "routines",
             Domain::Workflows => "workflows",
             Domain::Docs => "docs",
+            Domain::Annotations => "annotations",
         }
     }
 
     pub fn parse(s: &str) -> Option<Domain> {
-        Domain::ALL.into_iter().find(|d| d.as_str() == s)
+        Domain::ALL
+            .into_iter()
+            .chain(Domain::OPT_IN)
+            .find(|d| d.as_str() == s)
     }
 }
 

@@ -3,8 +3,8 @@
 
 use crate::config::Config;
 use crate::domains::{
-    charters, docs, lifecycle, naming, releaser, renovate, routines, rulesets, settings, titles,
-    workflows,
+    annotations, charters, docs, lifecycle, naming, releaser, renovate, routines, rulesets,
+    settings, titles, workflows,
 };
 use crate::gh::FetchError;
 use crate::jq;
@@ -259,6 +259,20 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                             RepoRest::default()
                         };
                         docs::judge_docs(repo, &visibility, gql, &rest)
+                    }
+                    Domain::Annotations => {
+                        // 既定ブランチの無い repo(空)と CI の無い repo は REST を払わない。
+                        let branch = meta
+                            .default_branch_ref
+                            .as_ref()
+                            .and_then(|n| n.name.as_deref())
+                            .unwrap_or("");
+                        let jobs = if gql.has_workflows() && !branch.is_empty() {
+                            gh.fetch_warning_annotations(repo, branch)
+                        } else {
+                            Vec::new()
+                        };
+                        annotations::judge_annotations(gql, &jobs)
                     }
                 }
             };

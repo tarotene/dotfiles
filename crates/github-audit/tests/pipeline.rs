@@ -543,3 +543,48 @@ esac
     assert_eq!(sha("empty"), None, "PR が無い");
     assert_eq!(sha("unfetchable"), None, "取得できない");
 }
+
+/// annotations ドメイン(ADR-568 Amendment 2026-10-23)。明示指定でだけ走り、
+/// 既定の実行の出力には現れない。gh スタブは `--jq` を適用しないので、
+/// fixture は jq を通した後の形(run は `{id,name}`、annotation は本文の配列)。
+#[test]
+fn annotations_domain_is_opt_in_and_reads_warnings() {
+    let fx = Fx::new();
+    fx.overlay("annotations");
+
+    // 既定の実行には含まれない(差分テストが見る bash 版の出力を変えない)。
+    let default_run = parse(&fx.rust(&["--json"], &[]));
+    assert!(default_run
+        .iter()
+        .all(|r| r.domain(Domain::Annotations).is_none()));
+
+    let fs = parse(&fx.rust(&["--json", "annotations"], &[]));
+    let ok = get(&fs, "all-ok", Domain::Annotations);
+    assert_eq!(ok.verdict, Verdict::Drifted);
+    assert_eq!(
+        ok.missing,
+        vec![
+            "cache-restore-failed@Release/Publish".to_string(),
+            "cache-save-failed@Release/Publish".to_string(),
+            "node20-deprecated:actions/checkout@v4@CI/Lint".to_string(),
+        ]
+    );
+    // warning の無い run(空配列)は ok。
+    assert_eq!(
+        get(&fs, "all-drifted", Domain::Annotations).verdict,
+        Verdict::Ok
+    );
+    // run の fixture が無い(スタブは `[]`)repo も ok、CI の無い repo は対象外。
+    assert_eq!(
+        get(&fs, "not-pj-prefixed", Domain::Annotations).verdict,
+        Verdict::Ok
+    );
+    assert_eq!(
+        get(&fs, "pj-ambiguous", Domain::Annotations).verdict,
+        Verdict::NotApplicable
+    );
+    assert_eq!(
+        get(&fs, "exempted", Domain::Annotations).verdict,
+        Verdict::Exempt
+    );
+}

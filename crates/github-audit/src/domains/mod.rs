@@ -1,6 +1,7 @@
 //! ドメインごとの判定(bash 版の judge_* 群)。モジュール分割は bash 本体の
 //! 節の並びに従う。
 
+pub mod annotations;
 pub mod charters;
 pub mod docs;
 pub mod lifecycle;
