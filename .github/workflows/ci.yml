@@ -47,9 +47,13 @@ jobs:
       # gitleaks-action (which requires a license key for organization-owned
       # repositories): the module checksum database pins the source, and no
       # secret is needed. Bump the version here deliberately.
+      # `cache: false`: this repository has no go.mod, and a single
+      # `go install` has nothing worth caching — setup-go's default cache
+      # only logs "Dependencies file is not found" as a warning.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.24"
+          cache: false
 
       - name: Install gitleaks v8.30.1
         run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
