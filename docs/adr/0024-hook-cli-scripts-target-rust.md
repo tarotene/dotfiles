@@ -188,3 +188,31 @@ skills の templates/scripts」)と同じ性質で、播種先に Rust ツール
 
 - `rust-migration.toml`
 - `crates/migration-audit/tests/allowlist.rs`
+
+## Amendment 4 (2026-10-24 — Amendment 3 の対象外のうち 4 本を移植、撤回条件の成立)
+
+Amendment 3 の撤回条件(「`pr-title-check` のように依存の無い crate を sparse-checkout して
+`cargo build` する形が入ったら、対象に戻して移植する」)は、`pr-title-check` で成立していた。
+`scripts/github-audit` の bash(4,558 行)と、それを `source` する 3 本は、次のとおり移した:
+
+- 新しい依存ゼロの crate `crates/pr-contract-check` に、`pr-merge-settings-check` /
+  `rulesets-context-check` / `workflow-naming-check` の 3 つの CLI と、その判定の純関数
+  (`settings::judge_settings` / `workflows::judge_workflows`)を置いた。JSON は自前で読まず、
+  `gh api --jq` の出力(行)と `jq` に任せる。`.github/actions/pr-title` は、`pr-title-check` と
+  この crate の 2 つだけを sparse-checkout してビルドする。
+- `crates/github-audit` は、同じ判定関数に委譲する。判定の単一正本は `pr-contract-check` で、
+  bash と Rust の二重実装とその一致を見張る差分テスト(`tests/differential.rs`)は要らなくなった。
+- 移す前に、tarotene 配下の 17 リポジトリで、bash 版と Rust 版の終了コードと出力が一致することを
+  確かめた。
+- 旧 `workflow_call` 互換(`pr-title.yml` の `check` ジョブ、ADR-591 Stage 6)は、呼び出しが
+  0 件(archived でない 24 リポジトリ)であることを確かめて撤去した。
+
+Amendment 3 の対象外の 5 本のうち、残るのは `scripts/adr-number-check`(governance
+テンプレートとして各リポジトリへ複製され、その CI が直接実行する)だけで、Amendment 3 の
+理由はこの 1 本にだけ当てはまる。
+
+### 執行点
+
+- `.github/actions/pr-title/action.yml`
+- `crates/pr-contract-check/src/lib.rs`
+- `crates/pr-contract-check/tests/consistency.rs`
