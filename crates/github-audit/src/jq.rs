@@ -23,20 +23,8 @@ pub fn sh_trim(s: &str) -> &str {
     s.trim_end_matches('\n')
 }
 
-/// glibc の `iswspace`(UTF-8 ロケールの `[[:space:]]`)。
-pub fn is_space(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' '
-            | '\u{1680}'
-            | '\u{2000}'..='\u{2006}'
-            | '\u{2008}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{205f}'
-            | '\u{3000}'
-    )
-}
+/// glibc の `iswspace`(UTF-8 ロケールの `[[:space:]]`)。単一正本は `pr-contract-check`。
+pub use pr_contract_check::workflows::is_space;
 
 /// C ロケール(バイト単位)の `[:space:]`。`tr` はマルチバイトを扱わない。
 pub fn is_ascii_space(c: char) -> bool {

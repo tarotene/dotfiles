@@ -10,19 +10,13 @@ name: PR Title
 # を直接呼んで自己適用する — connected-name concatenation が構造的に発生
 # しない(job 自身の `name: PR title` がそのまま required check context)。
 #
-# `check`(この下の job)は他リポジトリからの `workflow_call` 専用として
-# 残す(#325 Stage 5/6、播きの準備 — 全リポジトリの移行が終わるまでの
-# 互換レイヤー、ADR-591 Stage 6 で撤去予定)。連結名は「呼び出し側 **job**
-# の name / 呼び出される job の name」(呼び出し側 **workflow** の name
-# ではない — telepath#243 で実測、2026-09-26。当初「呼び出し側 workflow
-# の name」という誤った理論で ADR-0031 D2 追補を書き、#337 の播きが満たせ
-# ない required check context を作った)。呼び出し側テンプレート
-# (config/claude/skills/repo-governance-common/templates/.github/
-# workflows/pr-title.yml)は job に `name: PR Title` を固定しているため、
-# 連結名は常に "PR Title / PR title" になる。末尾の `Validate required-
-# check contexts` step がこれを実行時に自己照合する — ADR-503 により、対象は「PR title」1 context だけでなく、
-# 呼び出し元リポジトリの `.github/rulesets/quality.json` 宣言および live
-# な required_status_checks の全 context に一般化されている。
+# 他リポジトリは、この workflow を `workflow_call` で呼ぶのをやめ、同じ composite
+# action を直接呼ぶ(config/claude/skills/repo-governance-common/templates/
+# .github/workflows/pr-title.yml)。reusable workflow は必ず「呼び出し側 job の
+# name / 呼ばれる job の name」の連結名を作り、その誤解が required check context の
+# 不一致事故(#337)を生んだ — composite action にはこの連結が発生しない
+# (ADR-591 D3)。移行は全リポジトリで終わったので、旧 `workflow_call` 互換の
+# `check` ジョブ(ADR-591 Stage 6)は撤去した。
 #
 # As a side effect: since this check only fires on pull_request events, it
 # will never be reported for direct pushes to __DEFAULT_BRANCH__ — those are
@@ -32,14 +26,6 @@ name: PR Title
 
 # pipeline-node: pr-title-check
 on:
-  workflow_call:
-    inputs:
-      title:
-        description: >-
-          検査対象の PR タイトル。呼び出し側の
-          github.event.pull_request.title を明示的に渡す。
-        required: false
-        type: string
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
@@ -71,104 +57,3 @@ jobs:
       - uses: ./.github/actions/pr-title
         with:
           title: ${{ github.event.pull_request.title }}
-
-  # 他リポジトリからの workflow_call 専用(ADR-591 Stage 6 で撤去予定 —
-  # 全リポジトリが composite action へ移行し終えたら削除する)。
-  check:
-    if: github.repository != 'tarotene/dotfiles'
-    runs-on: ubuntu-latest
-    name: PR title
-    permissions:
-      # merge 設定フィールド(squash_merge_commit_title 等)は GitHub REST API
-      # ドキュメント上「contents:read と contents:write の両方」が必要と
-      # 明記されている(admin 権限ではない。GITHUB_TOKEN に administration
-      # スコープは存在しない)。実測(この workflow 自身の最初の実行、
-      # 2026-09-24)で contents:read 単体では該当フィールドがレスポンスから
-      # 欠落し、pr-merge-settings-check が誤って全項目 drift と判定した。
-      # このジョブは実際には何も書き込まない — 読み取りのためだけに
-      # write を要求する GitHub 側の仕様上の制約。
-      contents: write
-      # 末尾の `Validate required-check contexts` step が自 run の jobs を
-      # 読むために必要(scripts/rulesets-context-check、
-      # ADR-503、ADR-0031 Amendment
-      # 2026-09-26 が対象を PR title 1 本に限っていたのを一般化した)。
-      # workflow_call 経由の呼び出しでは、呼び出し側テンプレート
-      # の job 側でも同じ scope を明示しないとこの job 自体が
-      # startup_failure になる(bleep#33 で実測 — 呼び出し側の permissions
-      # 宣言が無いとリポジトリ既定に丸められ、既定が read だと足りない)。
-      actions: read
-    steps:
-      # 文法検査の単一ソース(crates/pr-title-check、Rust)を取得する。呼び出し元
-      # では常に main の安定版を使う — 呼び出し元の checkout とは独立させ、
-      # 判定根拠が全リポジトリで揃うことを保証する。scripts/github-audit /
-      # scripts/pr-merge-settings-check(ADR-0031 Amendment、2026-09-24)も
-      # 同じ理由でここに含める — pr-merge-settings-check は github-audit の
-      # judge_settings() を re-source するため、単独では動かない。
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: tarotene/dotfiles
-          ref: main
-          # /Cargo.toml + /crates/pr-title-check/ は .github/actions/pr-title
-          # と同じ理由(workspace root と、依存ゼロの checker クレート)。
-          sparse-checkout: |
-            /Cargo.toml
-            /crates/pr-title-check/
-            scripts/github-audit
-            scripts/pr-merge-settings-check
-            scripts/rulesets-context-check
-          sparse-checkout-cone-mode: false
-
-      - name: Validate PR title
-        env:
-          TITLE: ${{ inputs.title || github.event.pull_request.title }}
-        run: |
-          set -euo pipefail
-          cargo build --release --quiet -p pr-title-check
-          ./target/release/pr-title-check "$TITLE"
-
-      # ADR-0031 Amendment(2026-09-24): PR タイトル契約は「squash merge
-      # した結果、PR タイトルがそのまま main の commit subject になる」と
-      # いう merge 設定の上に乗った proxy であり、その設定が drift すると
-      # 契約全体が無声でバイパスされる(PRIVATE リポで実際に直近 25 PR
-      # 全件がバイパスされていた実例、docs/claude/pr-title-contract.md 参照)。
-      # ここで前提の生存を required check として検査し、drift を検出では
-      # なく防止に変える。GITHUB_TOKEN の contents:write(上記 permissions
-      # 参照)で merge 設定フィールドが返ることを実測済み。
-      #
-      # 例外: `security_and_analysis`(Dependabot security updates の状態)
-      # だけは repository admin 権限が無いと GitHub REST API のレスポンス
-      # から丸ごと欠落する(GitHub Docs "Get a repository" — "you must
-      # have admin permissions for the repository"、取得 2026-09-29)。
-      # `GITHUB_TOKEN` に付与できる permission の一覧に `administration`
-      # は存在しない(GitHub Docs "Workflow syntax for GitHub Actions"、
-      # 同日取得)ため、この permissions ブロックをどう足しても直らない
-      # ——足そうとして時間を使わないこと。scripts/pr-merge-settings-check
-      # はこの1項目だけを検査対象から除外している(理由はスクリプト冒頭の
-      # コメント参照)。
-      - name: Validate merge settings prerequisite
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/pr-merge-settings-check
-          ./scripts/pr-merge-settings-check "${{ github.repository }}"
-
-      # ADR-0031 Amendment(2026-09-26)で「PR title」1 context に限って
-      # 実装した実測照合(#337 の事故の再発防止)を、
-      # ADR-503 が全 required_status_checks
-      # context に一般化した。呼び出し元(caller)リポジトリの
-      # `.github/rulesets/quality.json` 宣言と live な branch ruleset の
-      # 両方を、この PR の head で実際に報告される job 名(Actions API)と
-      # 突合する — 宣言側の不一致は required context が対象リポジトリの
-      # 実際のジョブ名と一致しないまま播かれる BLOCKED 事故と同型、live 側の
-      # 不一致は #337 の "Expected" 固定事故と同型で、どちらもここで検出する。
-      - name: Validate required-check contexts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/rulesets-context-check
-          ./scripts/rulesets-context-check \
-            "${{ github.repository }}" \
-            "${{ github.event.pull_request.head.sha }}" \
-            "${{ github.event.repository.default_branch }}"

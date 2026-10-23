@@ -1,4 +1,4 @@
-//! 統合テストの共通部品(bash 版 `scripts/github-audit --selftest` の写し)。
+//! 統合テストの共通部品(かつての bash 版 `scripts/github-audit --selftest` の写し)。
 //!
 //! fixture は `tests/fixtures/<stage>/` に置く。bash 版 selftest の heredoc を
 //! 機械的に抜き出したもので、段(main → snapshot → releaser → archived)ごとに
@@ -227,11 +227,6 @@ impl Fx {
     /// Rust 版バイナリ。
     pub fn rust(&self, args: &[&str], extra: &[(&str, &str)]) -> Out {
         self.run(Path::new(env!("CARGO_BIN_EXE_github-audit")), args, extra)
-    }
-
-    /// 比較対象の bash 版(依存側の移植が終わるまでリポジトリに残る)。
-    pub fn bash(&self, args: &[&str], extra: &[(&str, &str)]) -> Out {
-        self.run(&repo_root().join("scripts/github-audit"), args, extra)
     }
 
     /// ライブラリを直接呼ぶ用の設定(`envs()` と同じ値)。

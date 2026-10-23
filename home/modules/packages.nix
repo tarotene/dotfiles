@@ -295,8 +295,9 @@
   # unlike git-audit-worktrees this has no Herdr notification integration
   # yet, so it stays in packages.nix rather than worktree.nix's
   # systemd.user.services pattern. Rust, from crates/github-audit via
-  # pkgs.dotfiles-tools (ADR-0024, #414); scripts/github-audit stays in the
-  # repo only as the library its bash dependents still source.
+  # pkgs.dotfiles-tools (ADR-0024, #414). The bash version
+  # (scripts/github-audit) is gone; the settings/workflows judgements are shared
+  # with the required checks in crates/pr-contract-check.
   home.file.".local/bin/github-audit".source = "${pkgs.dotfiles-tools}/bin/github-audit";
 
   # writing-style-hub: resolves the private style-guide hub's absolute path

@@ -11,9 +11,10 @@ description: >-
   ため、その事故の型自体が構造的に無くなる。
 
   判定ロジックは全て tarotene/dotfiles に一元化されており(PR タイトル
-  文法は crates/pr-title-check の Rust 実装、残りは scripts/ 配下の
-  pr-merge-settings-check / rulesets-context-check / workflow-naming-
-  check)、この action はその呼び出しに徹する。呼び出し
+  文法は crates/pr-title-check、残りの 3 つの検査 — pr-merge-settings-
+  check / rulesets-context-check / workflow-naming-check — は
+  crates/pr-contract-check、どちらも依存ゼロの Rust 実装)、この action は
+  その呼び出しに徹する。呼び出し
   元リポジトリの checkout 状態には依存しない — 常に別途 dotfiles を
   sparse-checkout する(dotfiles 自身の PR ではこの PR 自身の head SHA、
   他リポジトリでは main の安定版)。
@@ -38,16 +39,15 @@ runs:
         repository: tarotene/dotfiles
         ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
         # Cargo.toml は cargo が workspace root を見つけるために必要。
-        # crates/* は glob メンバーなので、sparse で crates/pr-title-check
-        # だけを取っても workspace は解決できる(存在するメンバーだけが
-        # 対象になる)。pr-title-check は依存ゼロなので registry へ出ない。
+        # crates/* は glob メンバーなので、sparse で 2 つの crate だけを
+        # 取っても workspace は解決できる(存在するメンバーだけが対象に
+        # なる)。pr-title-check と pr-contract-check はどちらも依存ゼロ
+        # (標準ライブラリだけ。JSON は `gh api --jq` と `jq` に任せる)なので、
+        # registry から取るものは無い。
         sparse-checkout: |
           /Cargo.toml
           /crates/pr-title-check/
-          scripts/github-audit
-          scripts/pr-merge-settings-check
-          scripts/rulesets-context-check
-          scripts/workflow-naming-check
+          /crates/pr-contract-check/
         sparse-checkout-cone-mode: false
         path: .pr-title-tools
 
@@ -66,7 +66,8 @@ runs:
           exit 1
         fi
         cargo build --release --quiet \
-          --manifest-path .pr-title-tools/Cargo.toml -p pr-title-check
+          --manifest-path .pr-title-tools/Cargo.toml \
+          -p pr-title-check -p pr-contract-check
         .pr-title-tools/target/release/pr-title-check "$TITLE"
 
     # ADR-0031 Amendment: PR タイトル契約は squash merge 設定の上に乗った
@@ -81,8 +82,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        chmod +x .pr-title-tools/scripts/pr-merge-settings-check
-        .pr-title-tools/scripts/pr-merge-settings-check "${{ github.repository }}"
+        .pr-title-tools/target/release/pr-merge-settings-check "${{ github.repository }}"
 
     # ADR-503: 呼び出し元(caller)リポジトリ
     # の .github/rulesets/quality.json 宣言と live な branch ruleset の
@@ -104,8 +104,7 @@ runs:
         RULESETS_CONTEXT_CHECK_INTERVAL: "20"
       run: |
         set -euo pipefail
-        chmod +x .pr-title-tools/scripts/rulesets-context-check
-        .pr-title-tools/scripts/rulesets-context-check \
+        .pr-title-tools/target/release/rulesets-context-check \
           "${{ github.repository }}" \
           "${{ github.event.pull_request.head.sha }}" \
           "${{ github.event.repository.default_branch }}"
@@ -119,8 +118,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        chmod +x .pr-title-tools/scripts/workflow-naming-check
-        .pr-title-tools/scripts/workflow-naming-check \
+        .pr-title-tools/target/release/workflow-naming-check \
           "${{ github.repository }}" \
           --ref "${{ github.event.pull_request.head.sha }}"
 

@@ -23,13 +23,15 @@ section below, and the account-level section after `routines`.
 **Implementation (#414, ADR-0024 Stage 4e).** The deployed `github-audit`
 command is the Rust crate `crates/github-audit` (a library plus a thin
 binary, shipped through `pkgs.dotfiles-tools`). Its output — the `--json`
-findings array, the human report and the ledger — is byte-identical to the
-former bash implementation, which `crates/github-audit/tests/differential.rs`
-checks by running both on the same fixtures. `scripts/github-audit` itself
-stays in the repository only until the bash scripts that `source` it
-(`scripts/rulesets-context-check`, `scripts/workflow-naming-check`,
-`scripts/pr-merge-settings-check`, `scripts/apply-rulesets.sh`) are ported;
-they should call the library API listed at the end of this document instead.
+findings array, the human report and the ledger — was byte-identical to the
+former bash implementation (`scripts/github-audit`), which a differential test
+checked by running both on the same fixtures until the bash version was
+deleted (2026-10-24, ADR-0024 Amendment 4). The three required checks that used
+to `source` it (`pr-merge-settings-check`, `rulesets-context-check`,
+`workflow-naming-check`) are now dependency-free Rust in `crates/pr-contract-check`.
+Its `settings::judge_settings` and `workflows::judge_workflows` are the single
+source for the `settings` and `workflows` domains here as well: this crate only
+builds their inputs from its serde model.
 
 ## Why this lives in dotfiles, not a dedicated inventory repo
 
@@ -577,9 +579,9 @@ Repositories with no `.github/workflows` at all are `not-applicable` —
 there is no CI to register a required check against, the same convention
 `renovate` uses.
 
-`.github/workflows/pr-title.yml` (the reusable workflow) also carries its
-own runtime self-check (`scripts/rulesets-context-check`,
-ADR-503 — a generalization of the
+`.github/actions/pr-title` (the composite action that `pr-title.yml` calls) also
+carries its own runtime self-check (`rulesets-context-check` in
+`crates/pr-contract-check`, ADR-503 — a generalization of the
 PR-title-only check this domain historically covered) as a required check
 step, independent of this (manually run) audit domain: it compares the
 caller repository's declared and live `required_status_checks` contexts
@@ -947,15 +949,11 @@ configuration that disagrees with the repository's contents, and GitHub has
 no setting that turns a warning into a failure.
 
 **Opt-in.** It runs only when named (`github-audit annotations`), is not in
-`Domain::ALL`, and exists in the Rust version only (not in
-`scripts/github-audit`). Every job of every latest run is read (runs →
-jobs → annotations, about 1 + W + W×J REST calls per repository with CI),
-so a whole-account run takes minutes (3.5 minutes for 24 repositories,
-2026-10-23) and is kept out of the default run. A single source of truth
-beats mirroring it into the bash version, which stays only as the library
-its bash dependents still source. The differential test
-(`tests/differential.rs`) compares the default output and `--help` with
-`OPT_IN_USAGE` stripped.
+`Domain::ALL`, and exists in the Rust version only (the
+bash version it was added beside has since been deleted). Every job of every
+latest run is read (runs → jobs → annotations, about 1 + W + W×J REST calls per
+repository with CI), so a whole-account run takes minutes (3.5 minutes for 24
+repositories, 2026-10-23) and is kept out of the default run.
 
 - **`missing=<kind>@<workflow>/<job>`**, sorted and de-duplicated. `kind`:
   `node20-deprecated:<actions>` (the action refs the runner names, joined by
@@ -1117,9 +1115,10 @@ never names private/company repositories in its own tree.
 
 `crates/github-audit` is a library first (#414): every judgement and fetch
 the bash version exposed as a sourceable function is a `pub` Rust function
-with typed inputs and outputs, so the bash scripts that still `source
-scripts/github-audit` can be ported onto it without re-implementing any
-judgement (ADR-0035 D1, a single source of truth). Inputs are the serde
+with typed inputs and outputs (ADR-0035 D1, a single source of truth). The
+`settings` and `workflows` judgements themselves live in
+`crates/pr-contract-check` (dependency-free, shared with the required checks that
+other repositories run); the functions here build their inputs from the serde types. Inputs are the serde
 types in `github_audit::model` (`RepoMeta` = one `gh repo list --json`
 element, `RepoGql` = one repository's slice of the GraphQL batch with the
 query's aliases as fields, `RepoRest` = the REST `repos/OWNER/REPO` fields
@@ -1171,5 +1170,5 @@ Arguments the bash functions accepted but never read (`judge_charters`'
 and `judge_workflows`' `$1=repo`, `judge_lifecycle`'s `$1=repo`) are
 dropped. The bash `--selftest` lives on as `cargo test -p github-audit`:
 `tests/pipeline.rs` and `tests/judges.rs` carry each of its 178 checks one
-to one (tagged `bash#N`), and `tests/differential.rs` compares both
-implementations byte for byte while the bash version still exists.
+to one (tagged `bash#N`). A differential test compared both implementations byte
+for byte until the bash version was deleted.

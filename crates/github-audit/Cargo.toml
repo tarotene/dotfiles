@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# lib + bin(#414): 依存側の bash(rulesets-context-check / workflow-naming-check /
-# pr-merge-settings-check / apply-rulesets.sh)が source して再利用していた
-# judge_* / fetch_* を、後続の移植で Rust から呼べるよう pub なライブラリ API に
-# する。bin はその上の薄い CLI。
+# lib + bin(#414): judge_* / fetch_* を pub なライブラリ API にし、bin はその上の薄い CLI。
+# 依存側の bash(rulesets-context-check / workflow-naming-check / pr-merge-settings-check)が
+# source していた判定は、crates/pr-contract-check に移した(settings / workflows の判定は
+# そこが単一正本で、ここはその入力を組み立てる)。
 [lib]
 path = "src/lib.rs"
 
@@ -18,6 +18,8 @@ path = "src/main.rs"
 
 [dependencies]
 hook-io = { version = "0.1.0", path = "../hook-io" }
+# settings / workflows の判定の単一正本(依存ゼロ。他リポジトリの required check も同じ関数を使う)。
+pr-contract-check = { version = "0.1.0", path = "../pr-contract-check" }
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

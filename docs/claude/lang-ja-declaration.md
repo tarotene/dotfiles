@@ -2,7 +2,7 @@
 
 設計判断の記録: `docs/adr/805-lang-ja-declaration.md`
 宣言: リポジトリのトピック `lang-ja`
-読む側: `scripts/github-audit`・`crates/github-audit`(charters ドメイン)
+読む側: `crates/github-audit`(charters ドメイン)
 付ける側: `config/claude/skills/repo-charter/SKILL.md`(charter インタビュー)
 
 ## 何のための宣言か

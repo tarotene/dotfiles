@@ -155,8 +155,9 @@ check context is simply this job's own `name: PR title`, pinned by the
 `repo-governance-common/templates/.github/workflows/pr-title.yml` template
 (this skill's copy is a symlink to it). `tarotene/dotfiles/.github/
 actions/pr-title` re-verifies the match at runtime on every PR via
-`scripts/rulesets-context-check` (every declared and live
-`required_status_checks` context) and `scripts/workflow-naming-check`
+`rulesets-context-check` (every declared and live
+`required_status_checks` context) and `workflow-naming-check` (both in
+`tarotene/dotfiles`' `crates/pr-contract-check`)
 (the `ci.yml` `needs:` coverage and `name:` casing basis, ADR-591).
 
 ---
