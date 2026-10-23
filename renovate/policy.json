@@ -56,10 +56,16 @@
       "automerge": true
     },
     {
-      "description": "GitHub Actions: one grouped PR per run; the group automerges only when every member matches the rules above (a major bump in the group holds the whole group for a human)",
+      "description": "GitHub Actions: one grouped PR per update type (major gets its own branch, renovate/major-github-actions, via separateMajorMinor); each group automerges only when every member matches the rules above and below",
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
       "labels": ["dependencies", "ci"]
+    },
+    {
+      "description": "ADR-568 D1 Amendment (2026-10-23): GitHub Actions major updates automerge too. Most Actions majors are runtime bumps (node20 -> node24), and holding them for a human left ~60 Node.js 20 deprecation warnings open across 19 repos, one open PR since 2026-07. The safety net stays D2 (required checks). Weak spot: workflows that never run on a PR (release, pages deploy, schedule) only fail after merge — revert then. Language-dependency majors (npm, cargo, pip) stay human-merged.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "automerge": true
     },
     {
       "description": "#844: tarotene/dotfiles' own composite actions (.github/actions/*) are consumed as floating @main refs by design (docs/adr/640-stack-standard-api-docs.md D2: the docs strictness standard lives in one place and takes effect in every repo at once). pinDigests would turn each ref into a 'pin to SHA' update candidate, so a standard change would wait for a per-repo Renovate PR. Keep this rule after the github-actions group rule; other actions keep pinDigests.",
