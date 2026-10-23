@@ -10,6 +10,7 @@
 //!   「全部無い」と読んで全リポジトリ規模の偽 drift を出さないため)。
 //!   この 2 つは gh の stderr もそのまま通す。
 
+use crate::domains::annotations::JobWarnings;
 use crate::jq;
 use crate::model::{RepoGql, RepoMeta, RepoRest};
 use serde_json::Value;
@@ -228,6 +229,81 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
             "[]",
         );
         parse_strings(&out)
+    }
+
+    /// annotations ドメインの取得。`branch`(既定ブランチ)の完了 run を workflow
+    /// ごとに最新 1 件へ絞り、その全 job の `warning` annotation を読む。どの
+    /// 段の取得失敗も空に縮退する(空データを「全部 clean」ではなく「判定材料
+    /// なし」と読ませる側は judge)。run・job・annotation は 1 ページ(100 件)
+    /// まで。それを超える repo は 100 件目以降を見ない。
+    pub fn fetch_warning_annotations(&self, repo: &str, branch: &str) -> Vec<JobWarnings> {
+        let branch_arg = format!("branch={branch}");
+        let runs = self.quiet_or(
+            &[
+                "api",
+                &self.repo_path(repo, "/actions/runs"),
+                "-X",
+                "GET",
+                "-F",
+                &branch_arg,
+                "-F",
+                "status=completed",
+                "-F",
+                "per_page=100",
+                "--jq",
+                "[.workflow_runs | group_by(.workflow_id)[] | .[0] | {id: .id, name: .name}]",
+            ],
+            "[]",
+        );
+        let mut out = Vec::new();
+        for run in parse_array(&runs) {
+            let (Some(run_id), Some(workflow)) = (
+                run.get("id").and_then(Value::as_i64),
+                run.get("name").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let jobs = self.quiet_or(
+                &[
+                    "api",
+                    &self.repo_path(repo, &format!("/actions/runs/{run_id}/jobs")),
+                    "-X",
+                    "GET",
+                    "-F",
+                    "per_page=100",
+                    "--jq",
+                    "[.jobs[] | {id: .id, name: .name}]",
+                ],
+                "[]",
+            );
+            for job in parse_array(&jobs) {
+                let (Some(job_id), Some(name)) = (
+                    job.get("id").and_then(Value::as_i64),
+                    job.get("name").and_then(Value::as_str),
+                ) else {
+                    continue;
+                };
+                let ann = self.quiet_or(
+                    &[
+                        "api",
+                        &self.repo_path(repo, &format!("/check-runs/{job_id}/annotations")),
+                        "-X",
+                        "GET",
+                        "-F",
+                        "per_page=100",
+                        "--jq",
+                        "[.[] | select(.annotation_level == \"warning\") | .message]",
+                    ],
+                    "[]",
+                );
+                out.push(JobWarnings {
+                    workflow: workflow.to_string(),
+                    job: name.to_string(),
+                    messages: parse_strings(&ann),
+                });
+            }
+        }
+        out
     }
 
     /// bash: `fetch_latest_pr_title_job_names`。pr-title.yml の最新 run の
@@ -457,6 +533,14 @@ fn set_dependabot_status(rest: &mut Value, status: &str) {
         cur = entry.as_object_mut().expect("just made an object");
     }
     cur.insert("status".into(), Value::String(status.into()));
+}
+
+/// JSON 配列として読めなければ空。
+fn parse_array(out: &str) -> Vec<Value> {
+    match serde_json::from_str::<Value>(out) {
+        Ok(Value::Array(a)) => a,
+        _ => Vec::new(),
+    }
 }
 
 fn parse_strings(out: &str) -> Vec<String> {

@@ -2,7 +2,7 @@
 
 use github_audit::{
     any_drift, audit, generation_rev, parse_domains, render_report, version_line, write_ledger,
-    Config,
+    Config, OPT_IN_USAGE,
 };
 use std::process::ExitCode;
 
@@ -146,7 +146,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
             "-h" | "--help" => {
-                print!("{USAGE}");
+                print!("{USAGE}{OPT_IN_USAGE}");
                 return ExitCode::SUCCESS;
             }
             "-V" | "--version" => {
@@ -154,7 +154,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             a if a.starts_with('-') => {
-                eprint!("{USAGE}");
+                eprint!("{USAGE}{OPT_IN_USAGE}");
                 return ExitCode::from(2);
             }
             _ => domain_args.push(arg),

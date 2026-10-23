@@ -22,6 +22,26 @@ pub mod jq;
 pub mod model;
 pub mod vocab;
 
+/// `--help` の末尾に足す、明示指定でだけ走るドメインの説明(Rust 版のみ)。
+/// bash 版の `--help` には無いので、差分テストはこの区画を外してから比べる。
+pub const OPT_IN_USAGE: &str = r#"
+Opt-in domains (named explicitly; never part of the default run, and not in
+the bash version):
+
+  annotations  warning annotations of the latest completed run of every
+             workflow on the default branch (ADR-568 Amendment 2026-10-23).
+             Node.js 20 deprecations and cache misses (a config that
+             disagrees with the repository's contents) show up only in a
+             run's annotations, never in a static lint. Every job of every
+             latest run is read, so this costs many REST calls: it is not
+             run by default. missing=<kind>@<workflow>/<job>, where kind is
+             node20-deprecated:<actions> | cache-dependency-file-not-found |
+             cache-restore-failed | cache-save-failed | other:<text>.
+             not-applicable for repos with no .github/workflows. failure
+             and notice annotations are not read (a red run is CI's own
+             signal)
+"#;
+
 /// home-manager が generation ごとに置く、dotfiles のコミットの 1 行テキスト
 /// (`~/.local/share/dotfiles/rev`、flake.nix の `mkHome`)。
 const GENERATION_REV_REL: &str = ".local/share/dotfiles/rev";

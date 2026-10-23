@@ -66,9 +66,11 @@ fn usage_and_errors() {
     for args in [&["--help"][..], &["-x"], &["bogus"]] {
         let b = fx.bash(args, &[]);
         let r = fx.rust(args, &[]);
+        // Rust 版だけの、明示指定のドメインの説明(OPT_IN_USAGE)は外して比べる。
+        let strip = |s: &String| s.replace(github_audit::OPT_IN_USAGE, "");
         assert_eq!(
-            (r.code, &r.stdout, &r.stderr),
-            (b.code, &b.stdout, &b.stderr),
+            (r.code, strip(&r.stdout), strip(&r.stderr)),
+            (b.code, b.stdout.clone(), b.stderr.clone()),
             "{args:?}"
         );
     }

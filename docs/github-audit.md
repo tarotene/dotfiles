@@ -1,6 +1,7 @@
 # github-audit: unified cross-repository GitHub audit
 
-Read-only audit across eleven domains — reports drift for every one of
+Read-only audit across eleven domains (plus one opt-in domain,
+`annotations`, below) — reports drift for every one of
 tarotene's owned repositories without applying or modifying anything.
 Unifies the former sibling scripts `github-audit-rulesets` (#130) and
 `github-audit-charters` (ADR-0013), and has since grown eight more domains:
@@ -932,6 +933,51 @@ Checks (via the shared `cargoToml` / `pyprojectToml` / `packageJson` /
 That the docs job is in `ci-passed.needs` is **not** judged here — the
 `workflows` domain already requires every `ci.yml` job to appear there
 (ADR-591 D1), and duplicating that check would give two sources of truth.
+
+### annotations (ADR-961, opt-in)
+
+Reads the `warning` annotations of the latest completed run of every
+workflow on the default branch, across every job of that run. The warnings
+this finds — a Node.js 20 deprecation, a cache that finds no dependency file
+or whose service answered 400 — appear only in a run's annotations: a
+workflow lint cannot see them, because they come from the runner or from a
+configuration that disagrees with the repository's contents, and GitHub has
+no setting that turns a warning into a failure.
+
+**Opt-in.** It runs only when named (`github-audit annotations`), is not in
+`Domain::ALL`, and exists in the Rust version only (not in
+`scripts/github-audit`). Every job of every latest run is read (runs →
+jobs → annotations, about 1 + W + W×J REST calls per repository with CI),
+so a whole-account run takes minutes (3.5 minutes for 24 repositories,
+2026-10-23) and is kept out of the default run. A single source of truth
+beats mirroring it into the bash version, which stays only as the library
+its bash dependents still source. The differential test
+(`tests/differential.rs`) compares the default output and `--help` with
+`OPT_IN_USAGE` stripped.
+
+- **`missing=<kind>@<workflow>/<job>`**, sorted and de-duplicated. `kind`:
+  `node20-deprecated:<actions>` (the action refs the runner names, joined by
+  `+`; a SHA ref is cut to 12 characters), `cache-dependency-file-not-found`
+  (setup-go / setup-python / setup-uv found no dependency file),
+  `cache-restore-failed`, `cache-save-failed`, or `other:<first 60
+  characters>`. Whitespace becomes `-` and `,` becomes `;` so the token
+  survives the `missing=` list.
+- **Only the default branch.** A run on a pull-request branch is not read: a
+  warning that exists only there (for example a stale `PR title` job) is
+  fixed or merged away by then.
+- **Only `warning`.** `failure` is a red run, which CI reports by itself;
+  `notice` is informational.
+- `not-applicable` for a repository with no `.github/workflows`. No
+  completed run, or a failed fetch, reads as `ok` (an empty fetch is not
+  evidence of a warning, and not evidence of a clean run either — read it as
+  "nothing observed").
+- One page (100) of runs, jobs, and annotations. A repository past that
+  loses the 101st onward.
+
+Where a finding is fixed: `node20-deprecated` clears when Renovate merges the
+Actions major bump (ADR-568 Amendment 2026-10-23); a cache kind is a
+repository's own workflow (`cache: false`, or a `cache-dependency-glob` that
+names a file that exists).
 
 ## Account-level: `github-app-registry-check` (ADR-436 Amendment 2026-09-30)
 
