@@ -858,6 +858,15 @@ let
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
   legacyCodexPlanReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
 
+  # **この一覧は凍結した。新しい legacy*Cmd を足さない**(2026-10-24)。宣言から外した
+  # hook は、settings-reconcile が所有の記録(下の claudeHooksSpec の `state`)で
+  # 「前回書いたが今回の宣言に無いもの」として消す。この一覧が今も効くのは、記録の
+  # 無いホスト(記録を入れる前の switch しかしていないホスト)の初回だけ。vega・
+  # arcturus・altair のすべてに記録ができたら、この一覧と legacy*Cmd は消せる
+  # (確認は後続の Issue)。なお `herdr-agent-state.sh`(herdr 自身が .hooks.SessionStart に
+  # 書く統合 hook)は dotfiles の所有ではなく、ここにも記録にも載せない — 載せると
+  # herdr の統合を壊す。
+  #
   # かつて登録したが撤回した hook。activation が全ホストの settings.json から
   # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
   # スクリプトを home.file から外すと settings.json のエントリだけが残り、消えた
@@ -1602,6 +1611,9 @@ let
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
     register = map declareHook claudeHookDeclarations;
+    # 所有の記録(crates/settings-reconcile の managed)。前回書いた (event, command) の集合を
+    # ここに残し、次の switch で宣言から外れたものを settings.json から消す。
+    state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-claude.json";
   };
 
   # statusLine / permissions の reconcile も settings-reconcile(crates/
