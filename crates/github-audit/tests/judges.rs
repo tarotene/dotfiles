@@ -131,7 +131,7 @@ fn rulesets_direct() {
 
 #[test]
 fn renovate_direct() {
-    let r = |j: &str, lang: &str| judge_renovate(&gql(j), lang, PRESET);
+    let r = |j: &str, _unused: &str| judge_renovate(&gql(j), PRESET);
     // #3: flake.nix 単独でも manifest。
     let f = r(
         r#"{"flakeNix": {"id": "x"}, "workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#,
@@ -215,16 +215,11 @@ fn renovate_direct() {
         "",
     );
     assert_eq!(f.verdict, Verdict::Ok, "bash#66");
-    // Typst は manifest を持たないので primaryLanguage で判定する。
-    let f = r(
-        r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#,
-        "TeX",
-    );
+    // 適用可否は CI の有無だけ(ADR-568 Amendment 2026-10-23)。manifest が無くても、
+    // CI があれば github-actions マネージャが対象にするので drift を判定する。
+    let f = r(r#"{"flakeNix": {"id": "x"}}"#, "");
     assert_eq!(f.verdict, Verdict::NotApplicable, "bash#67");
-    let f = r(
-        r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#,
-        "Typst",
-    );
+    let f = r(r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}"#, "");
     assert!(
         f.verdict == Verdict::Drifted && f.has("renovate-config-missing"),
         "bash#68"
