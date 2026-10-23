@@ -48,6 +48,6 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
   (ADR-0035 D1「単一正本 > 複写+同期」)。
 - **実装言語**: ADR-0024 は新規 hook を既定で Rust とし、bash 例外は
   「既存の巨大 bash 資産(かつての `scripts/github-audit` 等)を source して判定
-  ロジックを再利用する」ときに限る(`rust-migration.toml` の
-  コメント参照)。この hook は `gh api` の引数解析だけで完結し、
+  ロジックを再利用する」ときに限った
+  (その bash 資産は、`crates/pr-contract-check` への移植で無くなった)。この hook は `gh api` の引数解析だけで完結し、
   `github-audit` を source する必要が無いため、既定どおり Rust で書いた。
