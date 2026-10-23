@@ -390,3 +390,28 @@ packageRule を足し、`automerge: true` にする。npm・cargo・pip など�
 ### 執行点
 
 - renovate/policy.json
+
+## Amendment (2026-10-23 — 監査の renovate ドメインの対象を、CI があるリポジトリに広げる)
+
+### 背景
+
+上の Amendment(Actions のメジャー更新も automerge)の「未確認」にある、共通ポリシーを extends
+していないリポジトリが残った理由は、`github-audit` の renovate ドメインにあった。このドメインは
+「言語のマニフェスト(`Cargo.toml` など)と CI の両方があるリポジトリ」だけを対象にし、Actions
+だけが依存のリポジトリ(KiCad・試験対策・設定のみ)を `not-applicable` にしていた。D4 の展開は、
+この監査が出す drift を入力に進めるので、対象外のリポジトリは展開から漏れ、メジャー更新が人手待ちで
+滞留した(2026-10-23 の実測で 6 リポジトリ)。
+
+### 決定
+
+Renovate の `github-actions` マネージャは、マニフェストの有無に関係なく workflow の `uses:` を
+更新する。そこで renovate ドメインの適用可否を CI の有無だけにする(bash 版・Rust 版の
+`judge_renovate` と、`--help` の文言)。
+
+- 軸: 表現不可能 — 「Actions が依存なのに、監査の対象外で展開から漏れる」状態を、判定の条件から
+  無くす。検出の漏れを、別の人手の棚卸しで補わない。
+
+### 執行点
+
+- crates/github-audit/src/domains/renovate.rs
+- scripts/github-audit

@@ -189,8 +189,9 @@ judges the requested domains (default: all of them):
   settings   squash-only merge, delete-branch-on-merge, default branch,
              wiki/projects disabled, squash commit title=PR_TITLE/
              message=BLANK (ADR-0031)
-  renovate   Renovate config presence, for repos with a dependency manifest
-             and a CI workflow
+  renovate   Renovate config presence, for repos with a CI workflow (the
+             github-actions manager updates its `uses:` references, so a
+             repo with no language manifest is covered too)
   titles     PR-title commit-message contract enforcement presence
              (ADR-0031): pr-title.yml caller workflow + "PR title" required
              status check (exact-match: "PR title" self-applied, or
@@ -1458,19 +1459,17 @@ judge_settings() { # $1=repo-meta-json(GraphQL) $2=repo-rest-json(REST, optional
 # renovate domain
 # ---------------------------------------------------------------------------
 
-judge_renovate() { # $1=gql-data-json $2=primary-language(optional) -> finding
-  local gql="$1" primary_language="${2:-}" has_manifest has_workflows has_config
-  has_manifest="$(jq -e '(.cargoToml != null) or (.packageJson != null) or (.pyprojectToml != null) or (.goMod != null) or (.flakeNix != null)' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
-  # Typst repos have no dependency-manifest file of their own (no
-  # Cargo.toml/package.json/pyproject.toml/go.mod/flake.nix) — GitHub's
-  # linguist-detected primaryLanguage is the only applicability signal
-  # available without fetching every Typst source file. This was a false
-  # not-applicable for every typst-repo-governance-seeded repository until
-  # this stage.
-  [[ $has_manifest != true && $primary_language == "Typst" ]] && has_manifest=true
+judge_renovate() { # $1=gql-data-json -> finding
+  local gql="$1" has_workflows has_config
+  # Applicability is CI presence alone: Renovate's github-actions manager
+  # updates the workflows' `uses:` references, so a repository with no
+  # language manifest (KiCad, exam prep, config-only, Typst) is covered
+  # too. Requiring a manifest as well left such repositories
+  # not-applicable and outside ADR-568 D4's rollout (ADR-568 Amendment
+  # 2026-10-23).
   has_workflows="$(jq -e '(.workflowsDir.entries // []) | length > 0' <<<"$gql" >/dev/null 2>&1 && echo true || echo false)"
 
-  if [[ $has_manifest != true || $has_workflows != true ]]; then
+  if [[ $has_workflows != true ]]; then
     jq -n '{verdict: "not-applicable", missing: []}'
     return
   fi
@@ -2235,7 +2234,7 @@ audit() { # uses global DOMAINS -> prints JSON array of {repo, language, visibil
             ((need_repo_rest)) && repo_rest="$(fetch_repo_settings "$repo")"
             entry="$(judge_settings "$meta" "$repo_rest")"
             ;;
-          renovate) entry="$(judge_renovate "$repo_gql" "$lang")" ;;
+          renovate) entry="$(judge_renovate "$repo_gql")" ;;
           titles)
             local title_jobs='[]'
             local has_pr_title_caller
@@ -3430,23 +3429,23 @@ EOF
     return 1
   }
 
-  # (b) 隣接負債: Typst repo は Cargo.toml 等の manifest を持たないため
-  # has_manifest が常に false になり、renovate.json が実在し App が実際に
-  # 動いていても not-applicable という偽陰性になっていた。
-  # primaryLanguage == "Typst" を manifest 相当の signal として扱う。
+  # (b) 適用可否は CI の有無だけ(ADR-568 Amendment 2026-10-23)。言語の
+  # manifest を持たないリポジトリ(Typst・KiCad・試験対策・設定のみ)も、
+  # github-actions マネージャが `uses:` を更新するので対象にする。以前は
+  # manifest も要件で、Typst だけ primaryLanguage で例外にしていた。
   jq -e '.verdict == "not-applicable"' \
-    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}' "TeX")" >/dev/null || {
-    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=TeX, not Typst) should stay not-applicable\n' >&2
+    <<<"$(judge_renovate '{"flakeNix": {"id": "x"}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(no CI workflow) should be not-applicable even with a manifest\n' >&2
     return 1
   }
   jq -e '.verdict == "drifted" and (.missing | index("renovate-config-missing"))' \
-    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}' "Typst")" >/dev/null || {
-    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=Typst, no config) should be drifted:renovate-config-missing, not not-applicable\n' >&2
+    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(CI workflow, no manifest, no config) should be drifted:renovate-config-missing, not not-applicable\n' >&2
     return 1
   }
   jq -e '.verdict == "ok"' \
-    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 1}}' "Typst")" >/dev/null || {
-    printf 'FAIL: judge_renovate(no manifest, primaryLanguage=Typst, config extends preset, dashboard exists) should be ok\n' >&2
+    <<<"$(judge_renovate '{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "renovateJson": {"text": "{\"extends\": [\"github>tarotene/dotfiles//renovate/policy\"]}"}, "renovateDashboard": {"totalCount": 1}}')" >/dev/null || {
+    printf 'FAIL: judge_renovate(no manifest, config extends preset, dashboard exists) should be ok\n' >&2
     return 1
   }
 

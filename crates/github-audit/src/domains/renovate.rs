@@ -17,17 +17,15 @@ fn extends_has(config: &Value, needle: &str) -> bool {
 
 /// bash: `judge_renovate`。`preset` は extends に要る浮動参照
 /// (`Config::renovate_policy_preset`)。
-pub fn judge_renovate(gql: &RepoGql, primary_language: &str, preset: &str) -> Finding {
-    // Typst リポジトリは自前の manifest を持たない — linguist の
-    // primaryLanguage が、全ソースを取らずに使える唯一の適用可否シグナル
-    // (typst-repo-governance で播いた全リポジトリが偽 not-applicable だった)。
-    let has_manifest = gql.cargo_toml.is_some()
-        || gql.package_json.is_some()
-        || gql.pyproject_toml.is_some()
-        || gql.go_mod.is_some()
-        || gql.flake_nix.is_some()
-        || primary_language == "Typst";
-    if !has_manifest || !gql.has_workflows() {
+///
+/// 適用可否は CI workflow の有無だけで決める。Renovate の `github-actions`
+/// マネージャは workflow の `uses:` を依存として更新するので、言語の
+/// manifest が無いリポジトリ(KiCad・試験対策・設定のみ・Typst)も対象になる。
+/// かつては manifest も要件にしていて、Actions だけが依存のリポジトリが
+/// `not-applicable` のまま ADR-568 D4(共通ポリシーの extends)の展開から漏れ、
+/// Actions のメジャー更新が人手待ちで滞留した(ADR-568 Amendment 2026-10-23)。
+pub fn judge_renovate(gql: &RepoGql, preset: &str) -> Finding {
+    if !gql.has_workflows() {
         return Finding::not_applicable();
     }
     let configs = [

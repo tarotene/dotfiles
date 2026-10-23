@@ -182,9 +182,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                     Domain::Settings => {
                         settings::judge_settings(meta, &gh.fetch_repo_settings(repo))
                     }
-                    Domain::Renovate => {
-                        renovate::judge_renovate(gql, &lang, &cfg.renovate_policy_preset)
-                    }
+                    Domain::Renovate => renovate::judge_renovate(gql, &cfg.renovate_policy_preset),
                     Domain::Titles => {
                         // pr-title.yml の caller が無い repo は REST を払わない。
                         let jobs = if gql.has_workflow_file("pr-title.yml") {

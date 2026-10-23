@@ -26,8 +26,9 @@ judges the requested domains (default: all of them):
   settings   squash-only merge, delete-branch-on-merge, default branch,
              wiki/projects disabled, squash commit title=PR_TITLE/
              message=BLANK (ADR-0031)
-  renovate   Renovate config presence, for repos with a dependency manifest
-             and a CI workflow
+  renovate   Renovate config presence, for repos with a CI workflow (the
+             github-actions manager updates its `uses:` references, so a
+             repo with no language manifest is covered too)
   titles     PR-title commit-message contract enforcement presence
              (ADR-0031): pr-title.yml caller workflow + "PR title" required
              status check (exact-match: "PR title" self-applied, or

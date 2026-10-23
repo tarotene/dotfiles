@@ -589,21 +589,23 @@ someone runs `github-audit titles`/`rulesets` by hand.
 
 ### renovate
 
-Reports Renovate config presence, but only for repositories where it would
-plausibly matter: a dependency manifest (`Cargo.toml`, `package.json`,
-`pyproject.toml`, `go.mod`, or `flake.nix`) *and* at least one
-`.github/workflows/` file both present. Repositories without both are
-reported as `not-applicable`, a fourth verdict alongside
-`ok`/`drifted`/`exempt` — they are excluded from applicability, not
-silently judged and passed.
+Reports Renovate config presence for every repository that has at least one
+`.github/workflows/` file. Renovate's `github-actions` manager updates the
+`uses:` references in those workflows, so a repository with no language
+manifest (KiCad, exam prep, config-only, Typst) is covered too. A repository
+with no workflow is reported as `not-applicable`, a fourth verdict alongside
+`ok`/`drifted`/`exempt` — excluded from applicability, not silently judged
+and passed.
 
-`flake.nix` counts as a manifest as of #3: Renovate's `nix` manager
+Applicability used to require a language manifest (`Cargo.toml`,
+`package.json`, `pyproject.toml`, `go.mod`, `flake.nix`, or Typst as the
+primary language) as well. A repository whose only dependencies are Actions
+therefore stayed `not-applicable` and fell outside ADR-568 D4's rollout of
+the shared policy, so its Actions major updates waited for a human
+(ADR-568 Amendment 2026-10-23, "audit applicability"). `flake.nix` stays
+relevant on the Renovate side: its `nix` manager
 (<https://docs.renovatebot.com/modules/manager/nix/>, beta, opt-in via
-`{"nix": {"enabled": true}}`) updates `flake.lock` inputs, so a repository
-that only has a flake is no longer exempt from the same Renovate-presence
-expectation as a Cargo/npm/PyPI/Go repository. dotfiles itself is the
-first repository this flips from `not-applicable` to a real verdict
-(`renovate.json` is now present, ADR update-flake-lock tracking issue #3).
+`{"nix": {"enabled": true}}`) updates `flake.lock` inputs (#3).
 
 Mend App installation status (which repositories the App's *repository
 access* is scoped to) is still not checked directly — GitHub's REST API
