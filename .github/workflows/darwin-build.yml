@@ -89,3 +89,15 @@ jobs:
             i=$((i + 1))
           done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
           echo "rooted $i locally built paths"
+
+      # Rust の依存(crane の buildDepsOnly の出力)も root する。理由は ci.yml の
+      # build-host の同名のステップのコメントのとおり。
+      - name: Root the Rust dependency artifacts (crane buildDepsOnly)
+        if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
+        run: |
+          set -euo pipefail
+          deps="$(nix build ".#checks.aarch64-darwin.dotfiles-tools-deps" \
+            --no-link --print-out-paths)"
+          mkdir -p /tmp/nix-gcroots
+          nix-store --add-root /tmp/nix-gcroots/rust-deps --indirect --realise "$deps" >/dev/null
+          echo "rooted $deps ($(nix path-info -S -h "$deps" | awk '{print $2, $3}'))"
