@@ -13,7 +13,7 @@
 # node; this script only re-implements the two mechanical checks.
 #
 # The mechanical logic (nav_doc_path_tokens/nav_doc_scan) is duplicated
-# from scripts/github-audit in tarotene/dotfiles rather than sourced, same
+# from the `navdoc` domain of crates/github-audit in tarotene/dotfiles rather than shared, same
 # as check-language-mixing.sh's independent CJK-count reimplementation —
 # a downstream repo shouldn't need github-audit installed to run its own
 # CI. Keep the two in sync by hand; there is no single source for bash

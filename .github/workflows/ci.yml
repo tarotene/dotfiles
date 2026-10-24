@@ -438,32 +438,11 @@ jobs:
       # (#415); its tests (the old Claude + Codex adapter selftests) run in the
       # `rust` job below.
 
-      # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
-      # scripts/github-audit's judge_settings()/fetch_repo_settings() (no
-      # new judgement logic) and stubs GH_BIN to exercise the ok/drifted/
-      # fetch-failed paths without gh/network.
-      - name: pr-merge-settings-check --selftest
-        run: ./scripts/pr-merge-settings-check --selftest
-
-      # rulesets-context-check (ADR-503,
-      # generalizing ADR-0031 Amendment 2026-09-26's PR-title-only check)
-      # sources scripts/github-audit's fetch_head_sha_job_names() (no new
-      # judgement logic) and stubs GH_BIN to exercise the match/mismatch/
-      # no-declaration/apply-pending/fetch-failed paths without gh/network.
-      # Its selftest also cross-checks the repo-governance-common
-      # template's job name against all four quality.json seed files and
-      # dotfiles' own .github/rulesets/quality.json (the #337 incident's
-      # root cause was exactly this pair going out of sync).
-      - name: rulesets-context-check --selftest
-        run: ./scripts/rulesets-context-check --selftest
-
-      # workflow-naming-check(ADR-591, docs/adr/591-ci-workflow-naming.md):
-      # judge_workflows()(scripts/github-audit)を REST API 実測データに
-      # 対して呼び出す薄い層。judge_workflows() 自体のロジックテストは
-      # github-audit --selftest 側にある — ここは REST→JSON 組み立てと
-      # exit code のみを検査する。
-      - name: workflow-naming-check --selftest
-        run: ./scripts/workflow-naming-check --selftest
+      # pr-merge-settings-check / rulesets-context-check / workflow-naming-check
+      # (ADR-0031 Amendment、ADR-503、ADR-591)は、crates/pr-contract-check の
+      # 依存ゼロの Rust になった。かつての --selftest(gh のスタブで ok / drifted /
+      # fetch-failed の経路を通す、PR title の context がテンプレート間で揃っている
+      # ことの整合性の検査)は、同じ crate の `cargo test` として `rust` job で走る。
 
       # apply-repo-settings.sh (docs/adr/568-renovate-automerge-shared-preset.md D5b) is deterministic bash end to end against a stubbed
       # gh — covers the default (PATCH + vulnerability-alerts PUT +
@@ -475,16 +454,8 @@ jobs:
       - name: create-repo.sh --selftest
         run: bash ./config/claude/skills/repo-charter/scripts/create-repo.sh --selftest
 
-      # github-audit (ADR-0015) is deterministic shell + jq end to end
-      # against a stubbed gh (repo list, REST rulesets API, and GraphQL
-      # batch): rule-type union judgement, the README/CONTRIBUTING schema
-      # and routing checks (ADR-0016), naming class declaration/pattern
-      # match (ADR-0014), settings, and renovate applicability — including
-      # the regression that clearing overrides makes the same repo fall
-      # back to its own (drifted) judgement rather than coincidentally
-      # staying green (docs/github-audit.md).
-      - name: github-audit --selftest
-        run: ./scripts/github-audit --selftest
+      # github-audit (ADR-0015) は crates/github-audit の Rust で、その検査(gh のスタブ
+      # での判定・パイプライン)は `cargo test` として `rust` job で走る。
 
       # public-publish-guard's selftest now lives in its own repository
       # (tarotene/bleep, formerly tarotene/publish-guard, ADR-0009) and runs

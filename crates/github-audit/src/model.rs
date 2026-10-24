@@ -37,7 +37,7 @@ pub enum Domain {
 impl Domain {
     /// 明示指定でだけ走るドメイン。run・job・annotation を全件たどって REST を
     /// 多く払うので既定の実行に含めず、bash 版にも足さない(単一正本、
-    /// ADR-0035 軸 1)。bash 版との差分テスト(`tests/differential.rs`)が見る
+    /// ADR-0035 軸 1)。かつての bash 版との差分テストが見る
     /// 既定の出力は、これを足しても変わらない。
     pub const OPT_IN: [Domain; 1] = [Domain::Annotations];
 
@@ -595,6 +595,4 @@ impl RepoRest {
     }
 }
 
-/// 「非公開かつ無料プランのため、自動マージと rulesets が使えない」ことを
-/// 宣言するトピック(docs/claude/free-plan-declaration.md)。
-pub const PLAN_FREE_PRIVATE_TOPIC: &str = "plan-free-private";
+pub use pr_contract_check::settings::PLAN_FREE_PRIVATE_TOPIC;

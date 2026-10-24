@@ -507,6 +507,7 @@ name = "github-audit"
 version = "0.1.0"
 dependencies = [
  "hook-io",
+ "pr-contract-check",
  "regex",
  "serde",
  "serde_json",
@@ -841,6 +842,10 @@ dependencies = [
  "serde_json",
  "tempfile",
 ]
+
+[[package]]
+name = "pr-contract-check"
+version = "0.1.0"
 
 [[package]]
 name = "pr-gate"

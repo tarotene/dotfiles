@@ -93,8 +93,8 @@ Discussion #46752 <https://github.com/orgs/community/discussions/46752>
 .github/workflows/pr-title.yml`、rust/typst/astro-site の 3 skill は
 symlink で共有)は `check` job に `name: PR Title` を固定するため、連結名は
 常に `"PR Title / PR title"` になる。「最初の利用リポジトリへの展開時に
-実機で確認する」という手動手順は、`.github/workflows/pr-title.yml`
-(reusable workflow)の最終 step `scripts/rulesets-context-check` による
+実機で確認する」という手動手順は、`.github/actions/pr-title`(composite action)の
+最終 step `rulesets-context-check`(`crates/pr-contract-check`)による
 実行時の自己照合に置き換えた — ADR-503 により
 「PR title」1 context だけでなく、呼び出し元リポジトリの
 `.github/rulesets/quality.json` 宣言および live な required_status_checks
@@ -144,9 +144,9 @@ PRIVATE リポジトリ 2 件(実名は ADR-0034 により省略)が drift し�
 (ADR-0031 Amendment 参照)。
 
 これを required check(`pr-title.yml`)に同居させ、drift した状態での
-merge 自体を CI red で止める。判定ロジックは新設せず、`scripts/
-pr-merge-settings-check` が `scripts/github-audit` の `judge_settings()`
-を re-source して再利用する(判定の単一正本は `github-audit` 側のまま)。
+merge 自体を CI red で止める。判定ロジックは新設せず、`pr-merge-settings-check`
+(`crates/pr-contract-check`)と `github-audit` の settings ドメインが、同じ
+`settings::judge_settings` を使う(判定の単一正本は `pr-contract-check` 側)。
 API 取得に失敗した場合は fail-closed(red)にする — client guard
 (`pr-title-guard`)の fail-open とは逆で、契約の前提が確認できない
 まま merge を通さないことを優先する。

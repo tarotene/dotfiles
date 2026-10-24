@@ -29,7 +29,7 @@
 //!   は bash 版と同一なので、書込み系の PreToolUse hook(`rulesets-write-guard`)
 //!   と、テストの `gh` スタブ(パス→fixture)の規約はそのまま。
 //! - `GITHUB_AUDIT_GH_BIN`(既定 `gh`)は bash 版が source していた
-//!   `scripts/github-audit` の `GH_BIN` と同じ環境変数。
+//!   かつての bash 版 `scripts/github-audit` の `GH_BIN` と同じ環境変数。
 //! - 宣言 JSON が壊れていたとき、bash 版は `jq` のエラーでそのまま落ちたが、
 //!   ここでは診断を出して exit 1 にする。
 
@@ -163,7 +163,7 @@ fn names_of(v: &[String]) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 実測 job 名(scripts/github-audit の fetch_run_job_names / fetch_head_sha_job_names)
+// 実測 job 名(かつての bash 版 scripts/github-audit の fetch_run_job_names / fetch_head_sha_job_names)
 // ---------------------------------------------------------------------------
 
 fn fetch_run_job_names(gh: &Gh, owner: &str, repo: &str, run_id: &str) -> Vec<String> {

@@ -131,12 +131,12 @@ impl Config {
     }
 }
 
-/// bash 版の既定値 `$(dirname "$SELF")/../config/claude/skills/
-/// repo-governance-common/templates/.github/rulesets/quality.json` と同じ規則:
-/// 実行ファイルの実体(realpath)の 1 つ上からの相対パス。リポジトリの
-/// checkout から `scripts/github-audit` を直接叩いたときだけ実在し、
-/// home-manager で nix store に配備された実体からは解決できない(その場合
-/// bash 版と同じく `-r` 不成立で検査自体を飛ばす)。
+/// quality.json の単一正本の既定の場所: 実行ファイルの実体(realpath)の 1 つ上からの
+/// 相対パス(`../config/claude/skills/repo-governance-common/templates/.github/rulesets/
+/// quality.json`)。これはかつて bash 版を、リポジトリの checkout の `scripts/` から直接
+/// 叩いたときだけ実在した。Rust の実行ファイルは `target/` か nix store の中にあるので、
+/// 既定ではどこでも実在せず、その場合は `quality-json-not-canonical` の検査自体を
+/// 飛ばす。`WORKFLOWS_CANONICAL_QUALITY_FILE` で正本を指したときだけ、この検査が走る。
 fn default_canonical_quality_file() -> PathBuf {
     let exe = env::current_exe()
         .and_then(|p| p.canonicalize())

@@ -2,8 +2,8 @@
 
 設計判断の記録: `docs/adr/792-free-plan-declaration.md`
 宣言: リポジトリのトピック `plan-free-private`
-読む側: `scripts/github-audit`・`crates/github-audit`(settings・rulesets・titles ドメイン)、
-`scripts/pr-merge-settings-check`、`scripts/rulesets-context-check`
+読む側: `crates/github-audit`(settings・rulesets・titles ドメイン)、
+`crates/pr-contract-check`(`pr-merge-settings-check`、`rulesets-context-check`)
 播く側: `config/claude/skills/repo-charter/scripts/create-repo.sh`(`--plan`)
 
 ## 何のための宣言か
