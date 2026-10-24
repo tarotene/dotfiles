@@ -216,3 +216,28 @@ Amendment 3 の対象外の 5 本のうち、残るのは `scripts/adr-number-ch
 - `.github/actions/pr-title/action.yml`
 - `crates/pr-contract-check/src/lib.rs`
 - `crates/pr-contract-check/tests/consistency.rs`
+
+## Amendment 5 (2026-10-24 — 移植の完了、migration-audit と fixture-oracle の撤去)
+
+hook・CLI の bash → Rust の移植は完了した(`rust-migration.toml` の `max_remaining = 0`、
+`[[target]]` と `[[inline]]` は空、走査対象の 5 ディレクトリのうち 4 つは無くなった)。
+次の 3 つは、その移植を進めるために置いたもので、役目を終えたので撤去する:
+
+- `crates/fixture-oracle` — bash に向けた characterization fixture。`BASH_ORACLES` は空で、何も検査していない。
+- `crates/migration-audit` と `rust-migration.toml` — 移植対象の allowlist を実体と突き合わせ、未分類の
+  ファイル・inline の `writeShellScript`・残件の上限を検査していた。
+
+撤去で手放すのは、**検出を 1 つ**: 「`scripts/` と `config/git/hooks/` に、分類されていない新しい bash が
+増えたら、または nix の中に新しい `writeShellScript` が増えたら CI を落とす」。「新しい道具は Rust」
+という規範(Decision)は、散文として残す。生え直しが観測されたら、検査を戻す(ADR-543 D2:
+散文から検査への昇格は、同じ違反が繰り返されたとき。「散文で始め、生え直しが観測されたら強制へ
+昇格する」は、Software Engineering at Google 15 章 "Deprecation" の結論と同じ向き、#783)。
+言語を問わず、新しい道具の誕生時に理由を書かせる仕組みは残る(`new-tool-guard`、ADR-543。
+計画の段階の `selection-grounding`、ADR-0035・ADR-751)が、言語そのものを強制するものではない。
+手順は `docs/rust-migration.md` の「新しい道具の既定」に残した。
+
+### 執行点
+
+- `.github/actions/stack-position/action.yml`
+- `.github/workflows/ci.yml`
+- `crates/new-tool-guard/src/lib.rs`

@@ -57,10 +57,10 @@ $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
   複製で、ほかの step には効かない)、生成化(GitHub Actions が committed な複写を要求するので、バイト一致
   そのものを表現不可能にはできない)。
 - 軸: 検出のみ。
-- `rust-migration.toml` の監査(`migration-audit`)は、`scripts/` の新しいファイルを、Rust への移植の対象か
-  `[[excluded]]` に理由つきで載せたものかのどちらかに分類させる。この script は、`fix-ssh-permissions.sh` と同じ
-  「手動実行の調査ツール(未配備)」の escape hatch として `[[excluded]]` に載せた(最初の版は、この分類を
-  忘れて CI の `Rust workspace` が落ちた)。
+- かつての `rust-migration.toml` の監査(`migration-audit`)は、`scripts/` の新しいファイルを、Rust への
+  移植の対象か `[[excluded]]` に理由つきで載せたものかのどちらかに分類させていた(最初の版は、この分類を
+  忘れて CI の `Rust workspace` が落ちた)。移植の完了に伴い、2026-10-24 に撤去した(ADR-0024
+  Amendment 5)。新しい道具の既定が Rust であることは、`docs/rust-migration.md` の「新しい道具の既定」を参照。
 
 ## 登録
 

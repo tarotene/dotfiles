@@ -49,9 +49,9 @@ let
   # LaunchAgent's ProgramArguments is one flat argv, not a systemd-style
   # sequence of independent ExecStart= commands. Rather than add a wrapper
   # script just to run `git-prune-worktrees --auto` and `git-prune-branches
-  # --auto` in a row (a new inline `writeShellScript ''...''` body, which
-  # rust-migration.toml's scan tracks as debt on sight, for two lines that
-  # don't need to be a script), these are two independent LaunchAgents
+  # --auto` in a row (a new inline `writeShellScript ''...''` body — new tools are
+  # written in Rust by default, ADR-0024 — for two lines that don't need to be
+  # a script), these are two independent LaunchAgents
   # instead (below). They can race on the very first RunAtLoad tick, but
   # recover within the hour either way — deleting a worktree before its
   # branch is a (usually free) efficiency, not a correctness requirement:
@@ -272,7 +272,7 @@ in
   # Two ExecStart= lines, not a wrapper script: home-manager's systemd
   # module renders a list value as duplicate keys (`listsAsDuplicateKeys`),
   # which is exactly systemd's own native "run these in order" — no new
-  # script to add to rust-migration.toml's scan, no inline shell either.
+  # script, no inline shell either.
   systemd.user.services.git-auto-prune = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Delete worktrees/branches backed by content-preservation evidence (C1/C2/C3)";
     Service = {

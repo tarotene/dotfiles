@@ -44,10 +44,10 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`update-own-tools.md`](update-own-tools.md) — 自作 pre-release CLI を
   ホストローカルのレジストリに従って `origin/main` からビルドする
   `update-own-tools` のスキーマ・動作・退出手順(ADR-0025、#276)。
-- [`rust-migration.md`](rust-migration.md) — hook/CLI の bash → Rust 移植
-  手順(ADR-0024、#389): workspace 構成(`crates/hook-io` ほか)、
-  fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段、
-  `rust-migration.toml` allowlist の更新規則。
+- [`rust-migration.md`](rust-migration.md) — hook/CLI の bash → Rust 移植の
+  記録(ADR-0024、#389): 移行は完了(2026-10-24)。workspace 構成、かつての
+  fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段、Parallel Run を
+  採らなかった理由、新しい道具の既定が Rust であることの執行。
 - [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
   自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
   OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。

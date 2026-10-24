@@ -551,10 +551,11 @@ jobs:
   # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
   # clippy (--deny warnings) and rustfmt run as crane derivations from
   # flake.nix's checks, in the build sandbox. cargo test runs through
-  # `nix develop` instead, outside the sandbox: crates/fixture-oracle executes
-  # the bash originals (#!/usr/bin/env bash, jq, the rest of the repo tree),
-  # and migration-audit reads config/, scripts/ and home/ — neither is
-  # available inside a crane derivation's cleaned cargo source.
+  # `nix develop` instead, outside the sandbox: several tests read the rest of the
+  # repo tree (pipeline-map scans config/, scripts/, home/ and the workflows;
+  # pr-contract-check's consistency test reads the governance templates) and run
+  # jq, git and gnupg from the devShell — none of that is available inside a
+  # crane derivation's cleaned cargo source.
   rust:
     runs-on: ubuntu-latest
     name: Rust workspace
