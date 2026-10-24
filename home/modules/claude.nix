@@ -2005,6 +2005,18 @@ in
   home.file.".claude/hooks/bleep-hook" = {
     source = "${pkgs.bleep-hook}/bin/bleep-hook";
   };
+  # bleep の allow-tools.txt(bleep#95、tarotene/bleep#106): Bash 以外のツールのうち、
+  # repo-ref の検査から外すものをツール名の拡張正規表現で宣言する。ツール名だけで
+  # 実値(org/repo 名)を含まないので、orgs.txt・repos.txt と違い PUBLIC なこの
+  # リポジトリで宣言する(docs/claude/public-publish-guard.md)。組織内 Slack の
+  # 下書きは本人が確認してから送るもので、送信のツールは宣言しない(外部発信の
+  # ガード external-send-guard が下書き止まりにする)。サーバー名は機体で違うので
+  # `.*` に任せる。home-manager が読み取り専用のリンクとして配るため、手での追記や
+  # エージェントによる書き換えはできない。
+  xdg.configFile."bleep/allow-tools.txt".text = ''
+    # 組織内 Slack の下書き(送信ではない。本人が確認してから送る)
+    mcp__.*__slack_send_message_draft
+  '';
   # 配備された bleep hook の canary(#604)。bleep 入力の pin が決める hook の実体を、
   # 登録コマンドと同じ環境で実際に動かして判定を確かめる。home.checks は失敗すると
   # generation の build 自体が失敗し、closure には残らない — つまり bleep 側の破壊的
