@@ -220,6 +220,13 @@
           "enum": [
             "gh-noncanonical"
           ]
+        },
+        {
+          "description": "実行される内容を PreToolUse の時点で読めない形(コマンド名を変数で与える、 テキストをシェルへ流し込む)。`gh` を呼ばない命令にも当たるので、 `gh-noncanonical` とは別の語彙にした(tarotene/bleep ADR-0005、#115)。",
+          "type": "string",
+          "enum": [
+            "opaque-exec"
+          ]
         }
       ]
     },
