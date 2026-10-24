@@ -97,6 +97,17 @@ Decision 6 と同型 — 正本は wrapper flake 側、ここはスキーマ・�
 public 単体に縮退する、#567)は 2026-09-29 Amendment のマーカー宣言化 +
 降格 guard で対処済み。
 
+### `allow-tools.txt` はこのリポジトリで宣言する(tarotene/bleep#106)
+
+`allow-tools.txt`(Bash 以外のツールのうち、repo-ref の検査から外すものを、ツール名の
+拡張正規表現で 1 行ずつ宣言する。bleep README が正本)は、ツール名だけで実値を含まない
+ので、上の 3 ファイルと違い PUBLIC なこのリポジトリの `home/modules/claude.nix` が
+`xdg.configFile."bleep/allow-tools.txt"` で宣言し、全機体に同じ内容を配る。読み取り専用の
+リンクになるので、機体ごとの手での追記は食い違いの元になるため行わず、宣言を変える。現在の
+宣言は組織内 Slack の下書き(`mcp__.*__slack_send_message_draft`)だけで、送信のツールは
+宣言しない(送信は `external-send-guard` が下書き止まりにする)。`.*` の部分はコネクタの
+サーバー名で、機体ごとに違いうるため任せている。
+
 ## 未検証の前提
 
 - Claude Code hook の `deny` が `bypassPermissions` 下でも効くかは公式
