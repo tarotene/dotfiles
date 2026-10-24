@@ -20,12 +20,11 @@ fn run(args: &[&str], stdin: &str) -> (Output, tempfile::TempDir) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // 使い方の誤りで即終了するときは stdin を読まない。その BrokenPipe だけは正常。
+    match child.stdin.take().unwrap().write_all(stdin.as_bytes()) {
+        Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => panic!("stdin: {e}"),
+        _ => {}
+    }
     (child.wait_with_output().unwrap(), home)
 }
 
