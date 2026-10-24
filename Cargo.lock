@@ -359,6 +359,7 @@ dependencies = [
 name = "external-send-guard"
 version = "0.1.0"
 dependencies = [
+ "hook-io",
  "serde_json",
  "trycmd",
 ]
@@ -578,6 +579,34 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "hook-router"
+version = "0.1.0"
+dependencies = [
+ "adr-number",
+ "attribution-guard",
+ "cmd-hash-log",
+ "decision-colocation",
+ "external-send-guard",
+ "feedback-target-guard",
+ "gh-edit-allow",
+ "git-stash-guard",
+ "git-worktree-create-guard",
+ "hook-io",
+ "main-checkout-guard",
+ "new-tool-guard",
+ "pkexec-guard",
+ "pr-confirm-guard",
+ "pr-title-guard",
+ "repo-create-guard",
+ "routines-write-guard",
+ "rulesets-write-guard",
+ "serde_json",
+ "stack-base-guard",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

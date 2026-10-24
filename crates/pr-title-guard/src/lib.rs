@@ -158,3 +158,12 @@ fn is_inside_work_tree(project: &Path) -> bool {
         .map(|s| s.success())
         .unwrap_or(false)
 }
+
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(agent: hook_io::Agent, raw: &str) -> Option<hook_io::Outcome> {
+    let allow = std::env::var("PR_TITLE_GUARD_ALLOW").is_ok_and(|v| v == "1");
+    let call = ToolCall::parse(agent, raw)?;
+    let env_project = std::env::var("CLAUDE_PROJECT_DIR").ok();
+    check(&call, env_project.as_deref(), allow).map(hook_io::Outcome::Deny)
+}

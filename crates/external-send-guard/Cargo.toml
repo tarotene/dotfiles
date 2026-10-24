@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Outcome(ルータに載る検査の結果)の型だけを使う。
+hook-io = { version = "0.1.0", path = "../hook-io" }
 serde_json = "1.0.151"
 
 [dev-dependencies]

@@ -3,16 +3,15 @@
 //! PreToolUse 専用(gh-edit-allow と違い記録役を持たない)。判定できない
 //! 入力では何も出力せず exit 0 する(判定できないことを deny に変えない)。
 
-use hook_io::Agent;
+use hook_io::{Agent, Outcome, PermissionDecision};
+use std::io::Read;
 
 fn main() {
-    let Some(input) = hook_io::input::read_stdin() else {
-        return;
-    };
-    if input.hook_event_name != "PreToolUse" {
+    let mut raw = String::new();
+    if std::io::stdin().read_to_string(&mut raw).is_err() {
         return;
     }
-    if let Some(decision) = rulesets_write_guard::check(&input) {
-        decision.emit(Agent::Claude);
+    if let Some(Outcome::Deny(reason)) = rulesets_write_guard::hook(&raw) {
+        PermissionDecision::deny(reason).emit(Agent::Claude);
     }
 }

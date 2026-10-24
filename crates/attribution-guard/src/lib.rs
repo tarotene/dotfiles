@@ -274,6 +274,13 @@ pub fn check(call: &ToolCall) -> Option<String> {
     None
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(agent: Agent, raw: &str) -> Option<hook_io::Outcome> {
+    let call = ToolCall::parse(agent, raw)?;
+    check(&call).map(hook_io::Outcome::Deny)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

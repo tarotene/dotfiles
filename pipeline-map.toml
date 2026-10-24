@@ -4,6 +4,8 @@
 # 検査(crates/pipeline-map、`cargo test` の tests/coverage.rs が走らせる):
 #   - 登録箇所からのポインタ: Claude Code の hook 宣言(home/modules/claude.nix の
 #     claudeHookDeclarations)は nix 属性 `node = "<id>";`(nix 評価時にも検査される)。
+#     ルータ(hook-router)が走らせる検査は、Claude Code への登録を持たず、規則の表
+#     (crates/hook-router/src/rules.rs)の `node: "<id>",` が登録箇所。
 #     それ以外の登録箇所(Codex/Copilot の登録呼び出し・timer / launchd agent・workflow・
 #     git hook・herdr の command 行・statusline の定義)は、直前のコメント
 #     `pipeline-node: <id>`。
@@ -70,6 +72,10 @@ node = [
   { id = "plan-fresh-gate", label = "plan-fresh-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-fresh-gate", doc = "docs/claude/plan-fresh-gate.md", auto = true },
 
   # --- Tool call: PreToolUse / PostToolUse の guard 群
+  # ルータ(hook-router)は、拒否だけを出す検査と記録役の 19 件を 1 つのプロセスで走らせる。
+  # 19 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
+  { id = "hook-router-pre", label = "hook-router (pre)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/claude/hook-router.md", auto = true },
+  { id = "hook-router-post", label = "hook-router (post)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/claude/hook-router.md", auto = true },
   { id = "git-worktree-allow", label = "git-worktree-allow", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-worktree-allow", doc = "docs/claude/git-worktree-allow.md", auto = true },
   { id = "git-stash-guard", label = "git-stash-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-stash-guard", doc = "docs/claude/git-stash-guard.md", auto = true },
   { id = "main-checkout-guard-pre", label = "main-checkout-guard (pre)", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/claude/main-checkout-guard.md", auto = true },

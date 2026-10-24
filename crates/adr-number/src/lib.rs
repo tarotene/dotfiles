@@ -86,12 +86,17 @@ pub fn command_ran_pr_create(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 改番したことを伝える文(additionalContext の中身)。
+pub fn context_message(pr_number: &str, fix_out: &str) -> String {
+    format!(
+        "ADR-0000 を PR #{pr_number} の番号へ改番しました({fix_out})。commit して push してください。"
+    )
+}
+
 /// PostToolUse の additionalContext 出力(bash の `emit_context`、jq と同じ
 /// バイト列・末尾改行込み)。
 pub fn context_output(pr_number: &str, fix_out: &str) -> String {
-    let msg = format!(
-        "ADR-0000 を PR #{pr_number} の番号へ改番しました({fix_out})。commit して push してください。"
-    );
+    let msg = context_message(pr_number, fix_out);
     let v = J::obj(vec![(
         "hookSpecificOutput",
         J::obj(vec![
@@ -163,6 +168,19 @@ fn run_fix(project: &Path, checker: &Path, args: &[String]) -> Option<String> {
 
 /// hook 本体。出力すべき JSON(あれば)を返す。stdin は必要になるまで読まない。
 pub fn run(agent: Agent, stdin: &mut impl Read) -> Option<String> {
+    resolve(agent, stdin).map(|(pr_number, fix_out)| context_output(&pr_number, &fix_out))
+}
+
+/// ルータ(`crates/hook-router`)向けの本体。改番したときだけ、その知らせを `Context` で返す。
+/// 標準入力はルータがすでに読んでいるので、生の JSON を受ける。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    resolve(Agent::Claude, &mut raw.as_bytes()).map(|(pr_number, fix_out)| {
+        hook_io::Outcome::Context(context_message(&pr_number, &fix_out))
+    })
+}
+
+/// 改番したとき `(PR 番号, checker の出力)`。`run` と [`hook`] が共有する。
+fn resolve(agent: Agent, stdin: &mut impl Read) -> Option<(String, String)> {
     // 最安の早期 exit: プロジェクト dir が環境変数で分かっていれば、stdin を
     // 読む前に draft の有無だけ見て終わる。
     let env_project = std::env::var(project_env_var(agent))
@@ -203,5 +221,5 @@ pub fn run(agent: Agent, stdin: &mut impl Read) -> Option<String> {
         fix_args.push(format!("origin/{b}"));
     }
     let fix_out = run_fix(&project, &checker, &fix_args)?;
-    Some(context_output(&pr_number, &fix_out))
+    Some((pr_number, fix_out))
 }

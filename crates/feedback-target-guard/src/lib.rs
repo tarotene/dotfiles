@@ -202,6 +202,14 @@ pub fn decide(home: Option<&Home>, cmd: &str) -> Option<String> {
     })
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+    let cmd = call.bash_command()?;
+    decide(Home::from_env().as_ref(), &cmd).map(hook_io::Outcome::Deny)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

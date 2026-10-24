@@ -19,6 +19,7 @@
 //! | K jq 互換の挿入順 JSON の出力と入力(Stage 4b) | [`jqfmt`] / [`jqparse`] |
 //! | L `timeout(1)` / `date(1)` / `command -v`(Stage 4b) | [`proc`] |
 //! | M herdr socket への `pane.report_metadata` 送信(#413) | [`herdr`] |
+//! | N ルータに載る検査の結果(#4b) | [`outcome`] |
 //!
 //! H はもともと `crates/gh-edit-allow/src/shell.rs` にあったが、
 //! `crates/rulesets-write-guard`(ADR-503)も
@@ -35,6 +36,7 @@ pub mod input;
 pub mod jqfmt;
 pub mod jqparse;
 pub mod ledger;
+pub mod outcome;
 pub mod plan;
 pub mod proc;
 pub mod shell;
@@ -43,3 +45,4 @@ pub mod transcript;
 pub use decision::{Decision, PermissionDecision};
 pub use input::{Agent, HookInput};
 pub use ledger::SessionLedger;
+pub use outcome::Outcome;

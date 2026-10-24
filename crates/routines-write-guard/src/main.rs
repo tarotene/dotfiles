@@ -4,16 +4,15 @@
 //! (判定できないことを deny に変えない — rulesets-write-guard と同じ
 //! fail-open 方針)。
 
-use hook_io::Agent;
+use hook_io::{Agent, Outcome, PermissionDecision};
+use std::io::Read;
 
 fn main() {
-    let Some(input) = hook_io::input::read_stdin() else {
-        return;
-    };
-    if input.hook_event_name != "PreToolUse" {
+    let mut raw = String::new();
+    if std::io::stdin().read_to_string(&mut raw).is_err() {
         return;
     }
-    if let Some(decision) = routines_write_guard::check(&input) {
-        decision.emit(Agent::Claude);
+    if let Some(Outcome::Deny(reason)) = routines_write_guard::hook(&raw) {
+        PermissionDecision::deny(reason).emit(Agent::Claude);
     }
 }

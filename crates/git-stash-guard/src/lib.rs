@@ -189,3 +189,18 @@ pub fn decide(cmd: &str) -> Option<String> {
     }
     None
 }
+
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    // 事前フィルタは `decide` がパース後の command に対して行う。生の JSON に対して見ると、
+    // タブが `\t` にエスケープされて単語境界が崩れ、`git<TAB>stash` が素通りする(#637)。
+    let input = hook_io::HookInput::parse(raw)?;
+    let cmd = input.bash_command()?;
+    // bash 版は `$(jq …)` で末尾改行が落ちる。
+    let cmd = cmd.trim_end_matches('\n');
+    if cmd.is_empty() {
+        return None;
+    }
+    decide(cmd).map(|r| hook_io::Outcome::Deny(r.to_string()))
+}

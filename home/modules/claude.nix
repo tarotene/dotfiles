@@ -1,6 +1,11 @@
 # Claude Code のフック群 — plan-review ゲート・wrap-up inbox・plan-view・
 # sign-prewarm・pr-gate・issue-index を home-manager で配備する。
 #
+# 【2026-10-24 の注記】ツール呼び出しに付く検査 19 件(PreToolUse の拒否 15 件と、PostToolUse の
+# 記録役 4 件)は、検査ごとの登録をやめ、`hook-router`(hookRouterPreCmd / hookRouterPostCmd の
+# 2 件)が規則の表(crates/hook-router/src/rules.rs)に従って走らせる(docs/claude/hook-router.md)。
+# 下の各項(8〜38 番)にある、その 19 件の「matcher: …」「if: …」の記述は、旧登録の記録として残す。
+#
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    GitHub Copilot CLI(read-only custom agent)によるプランの自動レビュー。
 #    gate は acceptance-convergent であり、critic は verdict を出さず、
@@ -591,6 +596,9 @@ let
   # 介さず直接起動する。旧 `bash '….sh'` の command は retiredHookEntries /
   # --retire で完全一致削除する(legacy*Cmd)。
   gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
+  # hook-router(ツール呼び出しに付く検査 19 件を 1 つのプロセスで走らせる)。
+  hookRouterPreCmd = "'${hooksDir}/hook-router' pre";
+  hookRouterPostCmd = "'${hooksDir}/hook-router' post";
   gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
   # main-checkout-guard(docs/claude/main-checkout-guard.md): 本物の checkout
   # (main worktree)を変更させない。pre = PreToolUse(deny + baseline 記録)、
@@ -858,12 +866,13 @@ let
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
   legacyCodexPlanReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
 
-  # **この一覧は凍結した。新しい legacy*Cmd を足さない**(2026-10-24)。宣言から外した
-  # hook は、settings-reconcile が所有の記録(下の claudeHooksSpec の `state`)で
-  # 「前回書いたが今回の宣言に無いもの」として消す。この一覧が今も効くのは、記録の
-  # 無いホスト(記録を入れる前の switch しかしていないホスト)の初回だけ。vega・
-  # arcturus・altair のすべてに記録ができたら、この一覧と legacy*Cmd は消せる
-  # (確認は後続の Issue)。なお `herdr-agent-state.sh`(herdr 自身が .hooks.SessionStart に
+  # **この一覧に足すのは、記録が入る前の世代が書いた登録を外すときだけ**(2026-10-24)。
+  # 宣言から外した hook は、settings-reconcile が所有の記録(下の claudeHooksSpec の
+  # `state`)で「前回書いたが今回の宣言に無いもの」として消す。ただし記録は、記録を入れた
+  # 時点の宣言しか知らない: 記録の無いホストの最初の switch は、その前の世代が書いた登録を
+  # 知らないので、そのとき宣言から外す登録(ルータに載せた 19 件、下)は、ここに挙げる。
+  # 記録ができたあとに外す登録は、ここに足さない(記録が消す)。vega・arcturus・altair の
+  # すべてに記録ができたら、この一覧と legacy*Cmd は消せる(確認は後続の Issue、#979)。なお `herdr-agent-state.sh`(herdr 自身が .hooks.SessionStart に
   # 書く統合 hook)は dotfiles の所有ではなく、ここにも記録にも載せない — 載せると
   # herdr の統合を壊す。
   #
@@ -875,6 +884,86 @@ let
   # integration::claude_settings::rewrite による .hooks.SessionStart の
   # herdr-agent-state.sh だけで、statusLine にも他イベントにも触れない)。
   retiredHookEntries = [
+    # ルータ(hook-router)に載せた 19 件の旧登録(2026-10-24)。所有の記録が無いホスト(記録を
+    # 入れた直後の最初の switch)は、前の世代が書いたこの 19 件を知らないので、ここに挙げて
+    # 初回だけ消す。記録のあるホストは、記録(宣言から外れたもの)で消えるので、この項目は
+    # 要らない。全ホストに記録ができたら、一覧ごと消せる(#979)。
+    {
+      event = "PreToolUse";
+      command = gitStashGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = mainCheckoutGuardPreCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = attributionGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = worktreeCreateGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = stackBaseGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = prTitleGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = prConfirmGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = decisionColocationGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = externalSendGuardCmd;
+    }
+    {
+      event = "PostToolUse";
+      command = adrNumberCmd;
+    }
+    {
+      event = "PostToolUse";
+      command = ghEditAllowCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = rulesetsWriteGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = routinesWriteGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = pkexecGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = newToolGuardCmd;
+    }
+    {
+      event = "PostToolUse";
+      command = newToolGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = feedbackTargetGuardCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = repoCreateGuardCmd;
+    }
+    {
+      event = "PostToolUse";
+      command = cmdHashLogCmd;
+    }
     # 旧イテレーションは PostToolUse に herdr-claude-metadata.sh を登録していた。
     # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
     {
@@ -1244,27 +1333,25 @@ let
       timeout = 10;
       "if" = "Bash(git -C *)";
     }
-    # git-stash-guard: if を worktree-allow よりずっと広い "Bash(git *)" にする
-    # 理由は docs/claude/git-stash-guard.md(deny 側は if 不一致 = 素通りが
-    # 事故そのものになるため、絞り込みは hook 内部の早期 exit に移した)。
+    # hook-router(crates/hook-router、docs/claude/hook-router.md): ツール呼び出しに付く検査のうち、
+    # 拒否だけを出すもの(15 件)と記録役(4 件)を、1 つのプロセスで、規則の表
+    # (crates/hook-router/src/rules.rs)に従って走らせる。matcher は付けない — どのツールに
+    # どの検査を当てるかは表(`Tools` という閉じた型)が持つ。matcher の文字列の書き間違いで検査が
+    # 黙って素通りになる事故(旧登録の注意書きに、複合 matcher `Bash|mcp__.*` の実例があった)を、
+    # 表に載せた検査については起こりえなくする。timeout は、表の規則ごとの許容(最大 20 秒)に、
+    # プロセスの起動と出力の余裕を足した値。許可(allow)を出す検査(git-worktree-allow・
+    # gh-edit-allow の判定役)は、`if` の評価を Claude Code に任せるので、載せていない。
     {
       event = "PreToolUse";
-      node = "git-stash-guard";
-      matcher = "Bash";
-      command = gitStashGuardCmd;
-      timeout = 10;
-      "if" = "Bash(git *)";
+      node = "hook-router-pre";
+      command = hookRouterPreCmd;
+      timeout = 30;
     }
-    # main-checkout-guard: 本物の checkout への Write/Edit と変更系 git を deny し、
-    # 触れた checkout の baseline を記録する(Read/Grep/Glob は記録だけ)。
-    # deny 側なので matcher/if の不一致 = 素通りが事故になる。if は付けず、
-    # 絞り込みは hook 内部の早期 exit に置く(git-stash-guard と同じ理由)。
     {
-      event = "PreToolUse";
-      node = "main-checkout-guard-pre";
-      matcher = "Bash|Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob";
-      command = mainCheckoutGuardPreCmd;
-      timeout = 10;
+      event = "PostToolUse";
+      node = "hook-router-post";
+      command = hookRouterPostCmd;
+      timeout = 30;
     }
     # 事後検出: Bash の sed -i やリダイレクトなど、字面からは書き込みと
     # 分からない迂回(#661)を、触れた checkout の状態差分で捕まえる。
@@ -1293,18 +1380,6 @@ let
       matcher = "Bash|mcp__.*";
       command = bleepClaudeCmd;
       timeout = 20;
-    }
-    # attribution-guard: bleep と同じ外向き投稿面(gh pr/issue の
-    # create/edit/comment・gh pr review・MCP tool call)を見るが、判定の向きが
-    # 逆 — あちらは「社名が現れる」ことの検出、こちらは「attribution が無い」
-    # ことの検出。matcher も同じ複合 1 本にする(上と同じ理由: Bash 単体だと
-    # MCP 経路が無検査のまま残る)。gh api の往復は無いのでタイムアウトは短い。
-    {
-      event = "PreToolUse";
-      node = "attribution-guard";
-      matcher = "Bash|mcp__.*";
-      command = attributionGuardCmd;
-      timeout = 10;
     }
     # herdr-claude-metadata は permission mode の遷移を Herdr サイドバーに流す。
     # 同一 command を 5 イベントに登録する(スクリプト側が hook_event_name で分岐):
@@ -1343,15 +1418,6 @@ let
       event = "SessionEnd";
       node = "herdr-agent-metadata";
       command = herdrMetadataCmd;
-      timeout = 10;
-    }
-    # Direct worktree creation can outlive an agent's temporary checkout cleanup.
-    # Herdr owns both lifecycle ends, so reject every Bash spelling here.
-    {
-      event = "PreToolUse";
-      node = "worktree-create-guard";
-      matcher = "Bash";
-      command = worktreeCreateGuardCmd;
       timeout = 10;
     }
     # The timer is the primary detector; SessionStart also exposes pending state
@@ -1405,88 +1471,6 @@ let
       command = atuinHookClaudeCodeCmd;
       timeout = 10;
     }
-    # stack-base-guard(ADR-0027): bleep/attribution-guard と同じ
-    # 複合 matcher "Bash|mcp__.*" に並ぶ(Bash 単体だと MCP 接続の瞬間に
-    # 無検査になる、同じ理由の繰り返し)。gh pr list 1 往復 + ローカル git
-    # 走査のみなので timeout は attribution-guard 並みでよいが、往復を含む
-    # ため若干長めに確保する。
-    {
-      event = "PreToolUse";
-      node = "stack-base-guard";
-      matcher = "Bash|mcp__.*";
-      command = stackBaseGuardCmd;
-      timeout = 20;
-    }
-    # pr-title-guard(ADR-0031): attribution-guard/stack-base-guard と同じ
-    # 複合 matcher。判定は tarotene owner のローカル解決だけで gh API 往復を
-    # 持たないため timeout は短め。
-    {
-      event = "PreToolUse";
-      node = "pr-title-guard";
-      matcher = "Bash|mcp__.*";
-      command = prTitleGuardCmd;
-      timeout = 10;
-    }
-    # pr-confirm-guard: pr-title-guard と同じ複合 matcher。owner スコープを
-    # 持たず全リポジトリで発火する。本文の task list 検査・節切り出し・
-    # 項目分割は jq/gh API を使わない純粋な文字列処理なので timeout は
-    # 同じ短さでよい。
-    {
-      event = "PreToolUse";
-      node = "pr-confirm-guard";
-      matcher = "Bash|mcp__.*";
-      command = prConfirmGuardCmd;
-      timeout = 10;
-    }
-    # decision-colocation-guard(ADR-396): attribution-guard/stack-base-guard/
-    # pr-title-guard と同じ複合 matcher。checker(crates/decision-colocation の
-    # check::run_check)は git diff + ファイル読み取りのみで、gh API 往復は
-    # 持たない(base の default branch 解決で gh repo view に落ちる場合を
-    # 除く)ので timeout は stack-base-guard 並みでよい。
-    {
-      event = "PreToolUse";
-      node = "decision-colocation-guard";
-      matcher = "Bash|mcp__.*";
-      command = decisionColocationGuardCmd;
-      timeout = 20;
-    }
-    # external-send-guard(docs/claude/external-send-guard.md): Gmail/Slack
-    # の送信系 MCP tool だけが対象なので matcher は "mcp__.*" のみでよい
-    # (bleep/attribution-guard と違い Bash 経由の送信は原理的に検出できない
-    # ため、Bash|mcp__.* にする理由がない)。
-    # jq/文字列処理のみで往復が無いので timeout は最短。
-    {
-      event = "PreToolUse";
-      node = "external-send-guard";
-      matcher = "mcp__.*";
-      command = externalSendGuardCmd;
-      timeout = 10;
-    }
-    # adr-number(ADR-380): `gh pr create` 直後に ADR-478 を PR 番号へ自動
-    # 改番する段3(利便性層)。deny は一切しないため他の "Bash|mcp__.*" 系
-    # guard と揃える必要が無く、atuin と同じ単純な Bash matcher でよい。
-    # docs/adr/0000-*.md が無ければ stdin すら読まず即 exit するので常時
-    # コストはほぼゼロ — timeout は atuin と同じ短さでよい。
-    {
-      event = "PostToolUse";
-      node = "adr-number";
-      matcher = "Bash";
-      command = adrNumberCmd;
-      timeout = 10;
-    }
-    # gh-edit-allow(#392): 1 バイナリで記録役と判定役を兼ね、hook_event_name で
-    # 分岐する(herdr-claude-metadata と同じ「同一 command を複数イベントに」形)。
-    # PostToolUse は `git push && gh pr create …` のような複合コマンドの成功も
-    # 拾うため if を付けない(Rust 製で起動 ~1ms、非該当は即 exit)。PreToolUse は
-    # allow しか返さない(不一致は素通し)ので、if で gh 呼び出しに絞ってよい
-    # — git-worktree-allow と同じ理由付け。
-    {
-      event = "PostToolUse";
-      node = "gh-edit-allow-record";
-      matcher = "Bash";
-      command = ghEditAllowCmd;
-      timeout = 10;
-    }
     {
       event = "PreToolUse";
       node = "gh-edit-allow-judge";
@@ -1494,101 +1478,6 @@ let
       command = ghEditAllowCmd;
       timeout = 10;
       "if" = "Bash(gh *)";
-    }
-    # rulesets-write-guard(ADR-503 D7): deny
-    # のみ返す(判定しない入力は素通し)ので、gh-edit-allow の PreToolUse と
-    # 同じ if で gh 呼び出しに絞ってよい。
-    {
-      event = "PreToolUse";
-      node = "rulesets-write-guard";
-      matcher = "Bash";
-      command = rulesetsWriteGuardCmd;
-      timeout = 10;
-      "if" = "Bash(gh *)";
-    }
-    # routines-write-guard(28番、ADR-519 D7):
-    # RemoteTrigger は Bash ではないため、Bash 専用の permission-rule 構文
-    # (`Bash(gh *)` のような if narrowing)は使えない — matcher で
-    # RemoteTrigger 呼び出し全体を hook に渡し、対象外のアクション/body は
-    # バイナリ自身が None を返して素通しする(external-send-guard の
-    # "mcp__.*" と同じ「広い matcher + バイナリ内部判定」形)。
-    {
-      event = "PreToolUse";
-      node = "routines-write-guard";
-      matcher = "RemoteTrigger";
-      command = routinesWriteGuardCmd;
-      timeout = 10;
-    }
-    # pkexec-guard(29番、docs/claude/pkexec-guard.md): deny のみを返す
-    # (判定しない入力は素通し)が、git-stash-guard/bleep と同じ理由で if を
-    # 付けない — 対象の "pkexec"/"sudo" トークンはコマンド文字列のどこにでも
-    # 現れうるため、"Bash(pkexec *)" のような先頭一致の if では絞れず、
-    # 絞り込みは常にバイナリ内部の早期 exit に置く。Rust 製で起動が速いため
-    # timeout は atuin/gh-edit-allow 並みの短さでよい。
-    {
-      event = "PreToolUse";
-      node = "pkexec-guard";
-      matcher = "Bash";
-      command = pkexecGuardCmd;
-      timeout = 10;
-    }
-    # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
-    # promotion.md D1): deny のみ返す(判定しない入力は素通し)。matcher を
-    # "Write" に絞る — 対象イベントは常に PreToolUse(Write) で、バイナリ
-    # 内部でさらに「新規ファイルか」「新しい道具・単位の述語に合致するか」
-    # を判定する。Rust 製で起動が速いため timeout は他の Rust hook 並み。
-    {
-      event = "PreToolUse";
-      node = "new-tool-guard";
-      matcher = "Write";
-      command = newToolGuardCmd;
-      timeout = 10;
-    }
-    # new-tool-guard の記録役: 同じバイナリを hook_event_name で分岐させる(gh-edit-allow と同じ
-    # 型)。ExitPlanMode の承認後(PostToolUse)に、計画の `既存手段:` 行を台帳へ転記する。
-    # 何も出力せず、書けなくても承認には影響しない(記録は best-effort)。
-    {
-      event = "PostToolUse";
-      node = "new-tool-guard-record";
-      matcher = "ExitPlanMode";
-      command = newToolGuardCmd;
-      timeout = 10;
-    }
-    # feedback-target-guard(ADR-543 段3): gh-edit-allow/rulesets-write-guard
-    # と同じ理由で "Bash(gh *)" に絞る(コマンド文字列が "gh " で始まる場合
-    # のみ発火。複合コマンドの2番目以降に gh が来るケースは対象外 — 既存の
-    # gh-edit-allow/rulesets-write-guard と同じ既知のトレードオフ)。
-    {
-      event = "PreToolUse";
-      node = "feedback-target-guard";
-      matcher = "Bash";
-      command = feedbackTargetGuardCmd;
-      timeout = 10;
-      "if" = "Bash(gh *)";
-    }
-    # repo-create-guard(ADR-0013 Amendment 2026-09-29): stack-base-guard/
-    # decision-colocation-guard と同じ複合 matcher "Bash|mcp__.*" に並ぶ
-    # (gh-edit-allow/rulesets-write-guard/feedback-target-guard の
-    # "Bash(gh *)" if 絞り込みと違い、`git push && gh repo create …` の
-    # ような複合コマンドの2番目以降に対象コマンドが来るケースも拾う必要が
-    # あるため、この if 絞り込みは使わない)。判定は文字列処理のみで gh API
-    # 往復を持たないため timeout は pr-title-guard 並みでよい。
-    {
-      event = "PreToolUse";
-      node = "repo-create-guard";
-      matcher = "Bash|mcp__.*";
-      command = repoCreateGuardCmd;
-      timeout = 15;
-    }
-    # cmd-hash-log(ADR-543 段3): 判定を返さないので matcher を絞らず全
-    # Bash 実行を対象にする(記録漏れが検出の精度を下げるため)。Rust 製で
-    # 起動が速く、成功しても失敗しても即 exit するので timeout は最短。
-    {
-      event = "PostToolUse";
-      node = "cmd-hash-log";
-      matcher = "Bash";
-      command = cmdHashLogCmd;
-      timeout = 10;
     }
   ];
 
@@ -1998,6 +1887,8 @@ in
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
+  # hook-router: ツール呼び出しに付く検査 19 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
+  home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
   # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
   home.file.".claude/hooks/main-checkout-guard".source =
     "${pkgs.dotfiles-tools}/bin/main-checkout-guard";
