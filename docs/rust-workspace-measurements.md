@@ -110,6 +110,50 @@ statusline はストリーミング中 ~300ms 毎、claude-usage は herdr の�
 - claude-usage の通常経路は curl による fetch(`--max-time 5`)が支配的で、
   ネットワークに依存するため計測していない。
 
+## 5. LTO の設定(2026-10-24)
+
+§1 の記録は、bin が 2 本の時点で「bin が増えるとほぼ線形に伸びる」と見込み、
+許容できなくなったら `buildPackage` をメンバーごとに分ける、としていた。bin は
+69 本になった。CI の `Rust workspace` ジョブでは、package の段(69 本の LTO)が
+3 分 40 秒、`Build vega` では workspace 全体のビルドが 4 分 12 秒かかっていた
+(run 39899645195、2026-10-23)。支配項は §2 のとおり LTO のリンクなので、
+メンバーごとの分割ではなく、LTO の設定を測った。
+
+- 取得日: 2026-10-24
+- 環境: x86_64-linux(Pop!_OS、14 コア)、rustc 1.94.0、hyperfine 1.20.0
+- 手順: `CARGO_PROFILE_RELEASE_LTO` で設定ごとに上書きし、設定ごとに別の
+  `CARGO_TARGET_DIR` で `cargo build --release --workspace --locked` を測った
+  (クリーンは target を消してから 1 回、再ビルドは対象に 1 行足してから)。
+  `thin` は、最初の測定が別の作業(`cargo doc` など)と時間が重なった疑いがあったので、
+  CPU を空けて測り直した値を載せる。
+
+| `lto` | クリーン [s] | 葉(`hms`)の 1 行変更 [s] | `hook-io` の 1 行変更 [s] | bin 合計 [MiB] |
+|---|---:|---:|---:|---:|
+| `true`(fat、従来) | 107.0 | 4.1 / 3.9 / 4.2 | 60.1 / 62.0 | 39.4 |
+| `"thin"` | 131.3 | 4.2 / 3.7 / 3.4 | 84.5 / 87.0 | 44.6 |
+| `"off"` | 30.6 | 0.6 / 0.5 / 0.5 | 11.9 / 11.9 | 47.4 |
+
+hook の起動時間(`hyperfine -N --warmup 20 --runs 500 --input <PreToolUse の JSON>`)。
+fat と off で差は出なかった。
+
+| hook | `lto` | 平均 [ms] | p50 [ms] | p99 [ms] | 最大 [ms] |
+|---|---|---:|---:|---:|---:|
+| `git-stash-guard` | `true` | 0.61 | 0.56 | 1.20 | 1.47 |
+| `git-stash-guard` | `"off"` | 0.60 | 0.56 | 1.22 | 1.64 |
+| `repo-create-guard` | `true` | 0.60 | 0.55 | 1.38 | 1.68 |
+| `repo-create-guard` | `"off"` | 0.59 | 0.54 | 1.33 | 1.84 |
+| `pkexec-guard` | `true` | 0.56 | 0.53 | 1.32 | 1.49 |
+| `pkexec-guard` | `"off"` | 0.60 | 0.56 | 1.38 | 1.86 |
+
+判断: 採用の条件は「起動の p99 が予算 50 ms の 1/5(10 ms)以下の案のうち、
+クリーンビルドが最も速いもの」。`"off"` が満たす。`"thin"` は fat より遅く
+(クリーン 131 秒、`hook-io` の変更で約 85 秒)、採らない。
+`Cargo.toml` の `[profile.release]` を `lto = "off"` にした。
+
+この測定は 14 コアのローカルの値で、CI(4 vCPU)の値ではない。CI の値は、
+この変更の PR で `Rust workspace` / `Build vega` の package の段を、変更前の
+run(上記)と並べて載せる。darwin(altair)は未計測のまま。
+
 ## 判断
 
 どの数値も許容範囲内だった。
@@ -118,6 +162,8 @@ statusline はストリーミング中 ~300ms 毎、claude-usage は herdr の�
 - 起動は 50ms 予算を大きく下回った。
 
 したがって #205(herdr ローカルビルドキャッシュの Cachix 昇格)は再オープンしない。
+
+(2026-10-24 追記: bin が 69 本になった時点の再測定は §5。LTO を off にした。)
 
 未計測なのは darwin(altair、ADR-0018)。darwin ホストで同じ手順を
 再実行するまで、この結論は x86_64-linux に限る。
