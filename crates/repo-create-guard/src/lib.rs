@@ -114,6 +114,19 @@ pub fn decide(cmd: &str) -> Option<String> {
     first_deny(cmd, is_target_at, decide_range)
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+///
+/// `REPO_CREATE_GUARD_BYPASS` が空でなければ判定しない(バイパスは hook 入出力層の責務)。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    if std::env::var_os("REPO_CREATE_GUARD_BYPASS").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+    let cmd = call.bash_command()?;
+    decide(&cmd).map(hook_io::Outcome::Deny)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

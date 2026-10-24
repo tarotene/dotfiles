@@ -1,0 +1,37 @@
+[package]
+name = "hook-router"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# ツール呼び出しに付く検査(PreToolUse の拒否だけを出すもの、PostToolUse の記録役)を、
+# 1 つのプロセスで、規則の表に従って走らせる。各検査の判定は、それぞれの crate の
+# `hook` 関数(`main` が標準入力を読んだあとの処理)で、ここはそれを呼ぶだけ。
+[dependencies]
+hook-io = { version = "0.1.0", path = "../hook-io" }
+serde_json = "1.0.151"
+
+adr-number = { version = "0.1.0", path = "../adr-number" }
+attribution-guard = { version = "0.1.0", path = "../attribution-guard" }
+cmd-hash-log = { version = "0.1.0", path = "../cmd-hash-log" }
+decision-colocation = { version = "0.1.0", path = "../decision-colocation" }
+external-send-guard = { version = "0.1.0", path = "../external-send-guard" }
+feedback-target-guard = { version = "0.1.0", path = "../feedback-target-guard" }
+gh-edit-allow = { version = "0.1.0", path = "../gh-edit-allow" }
+git-stash-guard = { version = "0.1.0", path = "../git-stash-guard" }
+git-worktree-create-guard = { version = "0.1.0", path = "../git-worktree-create-guard" }
+main-checkout-guard = { version = "0.1.0", path = "../main-checkout-guard" }
+new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
+pkexec-guard = { version = "0.1.0", path = "../pkexec-guard" }
+pr-confirm-guard = { version = "0.1.0", path = "../pr-confirm-guard" }
+pr-title-guard = { version = "0.1.0", path = "../pr-title-guard" }
+repo-create-guard = { version = "0.1.0", path = "../repo-create-guard" }
+routines-write-guard = { version = "0.1.0", path = "../routines-write-guard" }
+rulesets-write-guard = { version = "0.1.0", path = "../rulesets-write-guard" }
+stack-base-guard = { version = "0.1.0", path = "../stack-base-guard" }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+# 旧 bin の trycmd の fixture(標準入力と期待する標準出力)を読んで、ルータと突き合わせる。
+toml = { version = "1.1.6", default-features = false, features = ["parse", "serde"] }

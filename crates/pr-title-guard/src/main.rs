@@ -13,8 +13,8 @@
 //!
 //! 縮退: stdin が読めない・不正 JSON なら何も出さず exit 0(fail-open)。
 
-use guard_core::hook::{agent_from_args, deny_output, ToolCall};
-use pr_title_guard::{check, decide};
+use guard_core::hook::{agent_from_args, deny_output};
+use pr_title_guard::decide;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -47,11 +47,7 @@ fn main() -> ExitCode {
     if std::io::stdin().read_to_string(&mut buf).is_err() {
         return ExitCode::SUCCESS;
     }
-    let Some(call) = ToolCall::parse(agent, &buf) else {
-        return ExitCode::SUCCESS;
-    };
-    let env_project = std::env::var("CLAUDE_PROJECT_DIR").ok();
-    if let Some(reason) = check(&call, env_project.as_deref(), allow) {
+    if let Some(hook_io::Outcome::Deny(reason)) = pr_title_guard::hook(agent, &buf) {
         print!("{}", deny_output(agent, &reason));
     }
     ExitCode::SUCCESS

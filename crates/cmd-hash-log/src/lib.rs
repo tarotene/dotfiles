@@ -47,6 +47,47 @@ pub fn build_record(input: &HookInput, repo_key: &str, ts_unix: u64) -> Option<S
     )
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。コマンドのハッシュを 1 行、ログに追記する。
+/// 出力は無い(`None`)。`main` と、ルータ(`crates/hook-router`)が同じ関数を呼ぶ。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    use std::io::Write;
+    let input = HookInput::parse(raw)?;
+    if input.hook_event_name != "PostToolUse" {
+        return None;
+    }
+
+    let repo_key = input
+        .project_dir()
+        .and_then(|d| hook_io::git::toplevel(&d))
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_default();
+
+    let ts_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let line = build_record(&input, &repo_key, ts_unix)?;
+
+    let path = resolve_log_path(
+        std::env::var_os("CMD_HASH_LOG_PATH").as_deref(),
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    )?;
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

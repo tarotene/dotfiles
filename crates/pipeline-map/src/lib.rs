@@ -170,6 +170,10 @@ pub enum Class {
     HerdrCommand,
     /// `claude.nix` の `statusLineCmd` の定義。
     Statusline,
+    /// `crates/hook-router/src/rules.rs` の規則の表の 1 件(`node: "<id>",`)。ルータ
+    /// (`hook-router pre|post`)が走らせる検査は、Claude Code への登録を持たず、この表が
+    /// 登録箇所になる。
+    RouterRule,
 }
 
 impl Class {
@@ -182,6 +186,7 @@ impl Class {
             Class::GitHook => "git hook",
             Class::HerdrCommand => "herdr command",
             Class::Statusline => "statusline",
+            Class::RouterRule => "hook-router の規則",
         }
     }
 }
@@ -463,7 +468,55 @@ fn scan_herdr(root: &Path, scan: &mut Scan) {
     }
 }
 
-/// 7 クラスの登録箇所を列挙する。
+const ROUTER_RULES: &str = "crates/hook-router/src/rules.rs";
+
+/// ルータの規則の表の、`node: "<id>",` の行。テストモジュール(`#[cfg(test)]`)より前だけを読む。
+fn scan_router_rules(root: &Path, scan: &mut Scan) {
+    let src = match read_lines(root, ROUTER_RULES) {
+        Ok(s) => s,
+        Err(e) => {
+            scan.problems.push(e);
+            return;
+        }
+    };
+    let mut found = false;
+    for (i, l) in src.lines().enumerate() {
+        if l.starts_with("#[cfg(test)]") {
+            break;
+        }
+        if is_comment(l) || l.trim_start().starts_with("//") {
+            continue;
+        }
+        let t = l.trim();
+        if let Some(rest) = t.strip_prefix("node:") {
+            let Some(id) = rest
+                .trim()
+                .strip_prefix('"')
+                .and_then(|r| r.split_once('"'))
+                .map(|(id, _)| id.to_string())
+            else {
+                scan.problems.push(format!(
+                    "{ROUTER_RULES}:{}: `node:` の値が文字列リテラルでない",
+                    i + 1
+                ));
+                continue;
+            };
+            found = true;
+            scan.sites.push(Site {
+                file: ROUTER_RULES.into(),
+                line: i + 1,
+                class: Class::RouterRule,
+                ids: vec![id],
+            });
+        }
+    }
+    if !found {
+        scan.problems
+            .push(format!("{ROUTER_RULES}: 規則の表に `node:` が 1 つも無い"));
+    }
+}
+
+/// 8 クラスの登録箇所を列挙する。
 pub fn scan(root: &Path) -> Scan {
     let mut s = Scan::default();
     scan_claude_decls(root, &mut s);
@@ -471,6 +524,7 @@ pub fn scan(root: &Path) -> Scan {
     scan_workflows(root, &mut s);
     scan_git_hooks(root, &mut s);
     scan_herdr(root, &mut s);
+    scan_router_rules(root, &mut s);
     s
 }
 
@@ -815,6 +869,11 @@ label = "blocks"
             "config/herdr/config.toml",
             "x = [\n  { type = \"command\", command = \"c\" }, # pipeline-node: tick\n]\n",
         );
+        write(
+            r,
+            ROUTER_RULES,
+            "pub struct Rule { pub node: &'static str }\n// node: \"commented-out\",\npub static RULES: &[Rule] = &[\n    Rule {\n        node: \"guard-a\",\n    },\n];\n\n#[cfg(test)]\nmod tests {\n    // テストの中の node は、登録箇所に数えない\n    const X: &str = \"\"; // node: \"not-a-site\",\n}\n",
+        );
         write(r, MANIFEST, MANIFEST_OK);
         d
     }
@@ -831,7 +890,8 @@ label = "blocks"
         let r = audit(d.path(), &m);
         assert!(r.problems.is_empty(), "{:#?}", r.problems);
         // claude 宣言 2 + registrar 1 + timer/agent 2 + workflow 1 + git hook 1 + herdr 1
-        assert_eq!(r.sites, 8);
+        // + ルータの表 1(コメントアウトした行と、`#[cfg(test)]` の中は数えない)
+        assert_eq!(r.sites, 9);
     }
 
     #[test]
@@ -1077,5 +1137,45 @@ label = "blocks"
         );
         let p = problems(d.path());
         assert!(p.iter().any(|x| x.contains("node `tick` が重複")), "{p:#?}");
+    }
+
+    #[test]
+    fn router_rule_with_an_unknown_node_fails_and_a_missing_table_is_a_problem() {
+        let d = repo();
+        write(
+            d.path(),
+            ROUTER_RULES,
+            "pub static RULES: &[Rule] = &[\n    Rule {\n        node: \"nope\",\n    },\n];\n",
+        );
+        let p = problems(d.path());
+        assert!(
+            p.iter()
+                .any(|m| m.contains("`nope` は") && m.contains(ROUTER_RULES)),
+            "{p:#?}"
+        );
+
+        let d = repo();
+        std::fs::remove_file(d.path().join(ROUTER_RULES)).unwrap();
+        let p = problems(d.path());
+        assert!(p.iter().any(|m| m.contains("rules.rs")), "{p:#?}");
+    }
+
+    #[test]
+    fn an_auto_node_only_in_the_router_table_counts_as_registered() {
+        // guard-a は、claude.nix の宣言と registrar のほかに、表からもポインタされる。
+        // 表だけを残して他を外しても、auto = true のノードは「登録あり」になる。
+        let d = repo();
+        write(
+            d.path(),
+            "home/modules/claude.nix",
+            "  claudeHookDeclarations = [\n  ];\n",
+        );
+        write(d.path(), "home/modules/herdr.nix", "");
+        let p = problems(d.path());
+        assert!(
+            !p.iter()
+                .any(|m| m.contains("guard-a") && m.contains("登録")),
+            "{p:#?}"
+        );
     }
 }

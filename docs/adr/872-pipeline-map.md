@@ -122,3 +122,22 @@ nix が読む `pipeline-map.toml` は `BUILD_INPUTS` に(足さないと CI の 
 - 陰性対照 3 本: (1) hook 宣言の `node` を 1 つ消すと nix の評価が落ちる、(2) manifest に無い id を書くと nix の評価が落ちる、(3) コメントのポインタを 1 つ消すと `cargo test` が落ちる。
 - `claudeHooksSpec` の評価結果が、変更の前後で JSON として一致し、`node` が漏れていない(`nix eval` で比較)。
 - CI の「stack-position action path gate covers every path the nix code reads」が通る(`pipeline-map.toml` を `BUILD_INPUTS` から外すと落ちることも確認した)。
+
+## Amendment (2026-10-24 — D4 のクラスに「ルータの表」を足す)
+
+ツール呼び出しに付く検査のうち、拒否だけを出す 15 件と記録役 4 件は、Claude Code に別々には登録せず、
+`hook-router`(1 つのプロセス)が規則の表(`crates/hook-router/src/rules.rs`)に従って走らせる
+(`docs/claude/hook-router.md`)。この 19 件は `claudeHookDeclarations` の要素を持たないので、D4 の 7 クラスの
+どれにも数えられず、`auto = true` のノードが「登録箇所が無い」になる。
+
+D4 に **8 つ目のクラス**を足す: 8. `crates/hook-router/src/rules.rs` の規則の表の、`node: "<id>",` の行
+(`#[cfg(test)]` より前、コメントアウトした行は除く)。ポインタの書式は、この表の 1 行がそのままポインタで、
+`pipeline-node:` コメントは要らない(表が型付きの Rust なので、id の書き間違いは `cargo test` が「定義が無い」で
+落とす)。ルータ自身の登録(`claudeHookDeclarations` の 2 件、`hook-router-pre` / `hook-router-post`)は、
+クラス 1 のままで、nix 評価時にも検査される。
+
+### 執行点
+
+- `crates/pipeline-map/src/lib.rs`
+- `crates/hook-router/src/rules.rs`
+- `home/modules/claude.nix`

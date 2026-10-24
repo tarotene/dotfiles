@@ -1,10 +1,9 @@
 //! main-checkout-guard — `pre`(PreToolUse)と `stop`(Stop)の 2 つのサブコマンド。
 //! `--agent claude|codex`(既定 claude)。判定なし・縮退はすべて無出力 exit 0。
 
-use hook_io::{Agent, HookInput, PermissionDecision};
+use hook_io::{Agent, HookInput, Outcome, PermissionDecision};
 use serde_json::{json, Value};
 use std::io::Read;
-use std::path::PathBuf;
 
 fn main() {
     let mut agent = Agent::Claude;
@@ -47,44 +46,16 @@ fn main() {
 }
 
 fn pre(input: &HookInput, agent: Agent) {
-    let Some(cwd) = input.cwd.clone().or_else(|| std::env::current_dir().ok()) else {
-        return;
-    };
-    let analysis = main_checkout_guard::analyze(&input.tool_name, &input.tool_input, &cwd);
-
-    for p in &analysis.mutations {
-        if let Some(top) = main_checkout_guard::main_checkout_of(p) {
-            PermissionDecision::deny(main_checkout_guard::deny_reason(&top)).emit(agent);
-            return;
-        }
-    }
-
-    let Some(ledger) = main_checkout_guard::ledger() else {
-        return;
-    };
-    let mut seen: Vec<PathBuf> = Vec::new();
-    let mut notices = Vec::new();
-    for p in &analysis.touches {
-        let Some(top) = main_checkout_guard::main_checkout_of(p) else {
-            continue;
-        };
-        if seen.contains(&top) {
-            continue;
-        }
-        if let Some(n) = main_checkout_guard::record_touch(&ledger, &input.session_id, &top) {
-            notices.push(n);
-        }
-        seen.push(top);
-    }
-    // PreToolUse の additionalContext は Claude Code のみ。Codex には出さない。
-    if !notices.is_empty() && agent == Agent::Claude {
-        println!(
+    match main_checkout_guard::pre_hook(agent, input) {
+        Some(Outcome::Deny(reason)) => PermissionDecision::deny(reason).emit(agent),
+        Some(Outcome::Context(text)) => println!(
             "{}",
             json!({"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "additionalContext": notices.join("\n"),
+                "additionalContext": text,
             }})
-        );
+        ),
+        None => {}
     }
 }
 

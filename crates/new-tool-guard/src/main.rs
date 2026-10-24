@@ -10,8 +10,9 @@
 //! - `register <既存手段: ...>`: 現在の worktree(git toplevel)の session
 //!   ledger に 1 行追記する。
 
-use hook_io::{Agent, PermissionDecision, SessionLedger};
-use std::path::{Path, PathBuf};
+use hook_io::{Agent, Outcome, PermissionDecision};
+use new_tool_guard::hook::{default_ledger, ledger_key};
+use std::io::Read;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -67,143 +68,11 @@ fn cmd_register(line: Option<String>) {
 }
 
 fn cmd_hook() {
-    let Some(input) = hook_io::input::read_stdin() else {
-        return;
-    };
-    // 記録役: ExitPlanMode の承認後に、計画の `既存手段:` 行を台帳へ転記する。
-    // gh-edit-allow と同じ、1 バイナリで記録役と判定役を兼ねる型。
-    if input.hook_event_name == "PostToolUse" && input.tool_name == "ExitPlanMode" {
-        if !skipped() {
-            record_plan_lines(&input);
-        }
+    let mut raw = String::new();
+    if std::io::stdin().read_to_string(&mut raw).is_err() {
         return;
     }
-    // 判定役: PreToolUse(Write)。
-    if input.hook_event_name != "PreToolUse" || input.tool_name != "Write" {
-        return;
+    if let Some(Outcome::Deny(reason)) = new_tool_guard::hook::hook(&raw) {
+        PermissionDecision::deny(reason).emit(Agent::Claude);
     }
-    if skipped() {
-        record_gate_event("skip");
-        return;
-    }
-    let Some(file_path) = input
-        .tool_input
-        .get("file_path")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-    else {
-        return;
-    };
-    // 既存ファイルへの Write(上書き)は対象外(ADR-543 D1: 新規ファイル
-    // 作成の瞬間だけを見る)。
-    if Path::new(file_path).exists() {
-        return;
-    }
-    let content = input
-        .tool_input
-        .get("content")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    if !new_tool_guard::is_new_tool_unit(file_path, content) {
-        return;
-    }
-    let Some(ledger) = default_ledger() else {
-        return;
-    };
-    // キーは `CLAUDE_PROJECT_DIR`(並列 worktree のサブエージェントでは親の
-    // リポジトリを指しうる)ではなく、書き込み先ファイルが属する worktree の
-    // toplevel にする。`register` は cwd の toplevel をキーにするので、
-    // 書き込み先と同じ worktree から register していれば必ず同じキーになる
-    // (#661)。
-    let fallback = input.project_dir().unwrap_or_default();
-    let Some(root) = write_target_toplevel(file_path, &fallback) else {
-        return;
-    };
-    let Some(key) = root.to_str() else {
-        return;
-    };
-    let records = ledger.records(key);
-    if new_tool_guard::ledger_has_record(&records, &root, file_path) {
-        return;
-    }
-    record_gate_event("deny");
-    let shown = new_tool_guard::normalize_path(&root, file_path);
-    PermissionDecision::deny(new_tool_guard::deny_message(&shown)).emit(Agent::Claude);
-}
-
-/// 承認された計画の `既存手段:` 行を、現在の worktree(git toplevel)の台帳へ書く。
-/// 台帳は計画の派生で、正本は計画。手書きの `register` は、計画の無い作業の経路として残る。
-/// 計画が取れない・節が無い・git の外・台帳が書けない場合は、何もしない(記録は
-/// best-effort で、承認そのものに影響させない)。同じ行がすでにあれば足さない。
-fn record_plan_lines(input: &hook_io::HookInput) {
-    let Some(plan) = hook_io::plan::plan_text(input) else {
-        return;
-    };
-    let lines = new_tool_guard::kizon_lines_in_plan(&plan);
-    if lines.is_empty() {
-        return;
-    }
-    let Some(ledger) = default_ledger() else {
-        return;
-    };
-    let Some(root) = input.project_dir().and_then(|d| hook_io::git::toplevel(&d)) else {
-        return;
-    };
-    let Some(key) = root.to_str() else {
-        return;
-    };
-    let existing = ledger.records(key);
-    for line in lines {
-        if existing.iter().any(|r| r.trim() == line) {
-            continue;
-        }
-        let _ = ledger.append(key, &line);
-    }
-}
-
-/// 新規ファイル `file_path` が属する worktree の git toplevel。ファイルも
-/// 親ディレクトリもまだ無いことがあるので、実在する最も近い祖先で解決する。
-/// 見つからなければ `fallback`(hook 入力の project dir)で解決する。
-fn write_target_toplevel(file_path: &str, fallback: &Path) -> Option<PathBuf> {
-    let mut dir = Path::new(file_path).parent();
-    while let Some(d) = dir {
-        if d.is_dir() {
-            return hook_io::git::toplevel(d).or_else(|| hook_io::git::toplevel(fallback));
-        }
-        dir = d.parent();
-    }
-    hook_io::git::toplevel(fallback)
-}
-
-/// ADR-543 段3: 降格候補検出(段4 の promotion-detect)の入力になる
-/// deny/skip イベントを記録する。記録の成否は判定に影響させない
-/// (best-effort — `hook_io::gate_event::record` のエラーは黙って握り潰す)。
-fn record_gate_event(decision: &str) {
-    if let Some(path) = hook_io::gate_event::default_path() {
-        let _ = hook_io::gate_event::record(&path, "new-tool-guard", decision);
-    }
-}
-
-/// `${NEW_TOOL_GUARD_DIR:-$HOME/.claude/new-tool-guard}/state/<key>.ledger`
-/// (`gh-edit-allow` と同じ形)。
-fn default_ledger() -> Option<SessionLedger> {
-    Some(SessionLedger::new(base_dir()?.join("state"), "ledger"))
-}
-
-fn base_dir() -> Option<PathBuf> {
-    match std::env::var_os("NEW_TOOL_GUARD_DIR") {
-        Some(d) if !d.is_empty() => Some(d.into()),
-        _ => Some(Path::new(&std::env::var_os("HOME")?).join(".claude/new-tool-guard")),
-    }
-}
-
-/// `SKIP_NEW_TOOL_GUARD=1` か `<base>/skip` の存在(既存 gate と同じ形)。
-fn skipped() -> bool {
-    std::env::var_os("SKIP_NEW_TOOL_GUARD").is_some_and(|v| v == "1")
-        || base_dir().is_some_and(|d| d.join("skip").exists())
-}
-
-/// ledger キー: session_id ではなく git toplevel(ADR-543 D7 の差分)。
-fn ledger_key(dir: &Path) -> Option<String> {
-    hook_io::git::toplevel(dir)?.to_str().map(str::to_string)
 }

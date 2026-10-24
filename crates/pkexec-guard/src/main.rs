@@ -12,7 +12,8 @@
 //! そのものが読めない場合だけの fail-open。pkexec を含むコマンドを解析
 //! できない場合は lib.rs 側で deny に倒す)。
 
-use hook_io::Agent;
+use hook_io::{Agent, Outcome, PermissionDecision};
+use std::io::Read;
 
 fn parse_agent() -> Agent {
     let mut args = std::env::args().skip(1);
@@ -34,13 +35,11 @@ fn parse_agent() -> Agent {
 
 fn main() {
     let agent = parse_agent();
-    let Some(input) = hook_io::input::read_stdin() else {
-        return;
-    };
-    if input.hook_event_name != "PreToolUse" {
+    let mut raw = String::new();
+    if std::io::stdin().read_to_string(&mut raw).is_err() {
         return;
     }
-    if let Some(decision) = pkexec_guard::check(&input, agent) {
-        decision.emit(agent);
+    if let Some(Outcome::Deny(reason)) = pkexec_guard::hook(agent, &raw) {
+        PermissionDecision::deny(reason).emit(agent);
     }
 }

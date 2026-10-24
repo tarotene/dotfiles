@@ -446,6 +446,46 @@ pub fn drift_reason(problems: &[String]) -> String {
     )
 }
 
+/// PreToolUse の本体(`pre` サブコマンド)。mutate が本物の checkout に及べば deny、そうでなければ
+/// 触った本物の checkout を台帳に記録し、初めて触ったときの注意を `Context` で返す
+/// (PreToolUse の additionalContext は Claude Code のみ。Codex には出さない)。
+///
+/// `main` と、ルータ(`crates/hook-router`)が同じ関数を呼ぶ。
+pub fn pre_hook(agent: hook_io::Agent, input: &hook_io::HookInput) -> Option<hook_io::Outcome> {
+    let cwd = input.cwd.clone().or_else(|| std::env::current_dir().ok())?;
+    let analysis = analyze(&input.tool_name, &input.tool_input, &cwd);
+
+    for p in &analysis.mutations {
+        if let Some(top) = main_checkout_of(p) {
+            return Some(hook_io::Outcome::Deny(deny_reason(&top)));
+        }
+    }
+
+    let ledger = ledger()?;
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut notices = Vec::new();
+    for p in &analysis.touches {
+        let Some(top) = main_checkout_of(p) else {
+            continue;
+        };
+        if seen.contains(&top) {
+            continue;
+        }
+        if let Some(n) = record_touch(&ledger, &input.session_id, &top) {
+            notices.push(n);
+        }
+        seen.push(top);
+    }
+    (!notices.is_empty() && agent == hook_io::Agent::Claude)
+        .then(|| hook_io::Outcome::Context(notices.join("\n")))
+}
+
+/// [`pre_hook`] を、生の入力(標準入力の JSON)から呼ぶ。Claude 向け(ルータ用)。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    let input = hook_io::HookInput::parse(raw)?;
+    pre_hook(hook_io::Agent::Claude, &input)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

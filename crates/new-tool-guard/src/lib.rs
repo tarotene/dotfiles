@@ -13,6 +13,8 @@
 
 use std::path::Path;
 
+pub mod hook;
+
 /// 除外パス(テスト・fixture・scratchpad)。これらは新しい道具・単位の
 /// 述語から常に除外する — テストコードは対象読者が別。
 pub fn is_excluded_path(path: &str) -> bool {

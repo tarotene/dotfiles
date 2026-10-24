@@ -177,6 +177,16 @@ pub fn check(input: &HookInput) -> Option<PermissionDecision> {
     ))
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    let input = hook_io::HookInput::parse(raw)?;
+    if input.hook_event_name != "PreToolUse" {
+        return None;
+    }
+    check(&input).and_then(hook_io::Outcome::from_decision)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

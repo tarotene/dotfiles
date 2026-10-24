@@ -135,6 +135,22 @@ pub fn skipped() -> bool {
         || base_dir().is_some_and(|d| d.join("skip").exists())
 }
 
+/// 記録役(PostToolUse)の本体。`gh pr/issue create` の結果を、このセッションの台帳に足す。
+/// 出力は無い(`None`)。`main` の PostToolUse の分岐と同じ処理で、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。判定役(PreToolUse の allow)は、`if` の評価を Claude Code に任せるため、
+/// ルータには載せない。
+pub fn record_hook(raw: &str) -> Option<hook_io::Outcome> {
+    let input = HookInput::parse(raw)?;
+    if skipped() {
+        return None;
+    }
+    let ledger = default_ledger()?;
+    if input.hook_event_name == "PostToolUse" {
+        record(&input, &ledger);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

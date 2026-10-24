@@ -169,3 +169,28 @@ impl Guard<'_> {
         )
     }
 }
+
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+///
+/// プロジェクトは `${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty')}`、git の外なら判定しない。
+pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+    let project = match std::env::var("CLAUDE_PROJECT_DIR") {
+        Ok(p) if !p.is_empty() => p,
+        _ => guard_core::hook::jq_r_path(&call.raw, &["cwd"])
+            .ok()
+            .flatten()
+            .unwrap_or_default(),
+    };
+    if project.is_empty() {
+        return None;
+    }
+    let project = std::path::PathBuf::from(project);
+    if !git_ok(&project, &["rev-parse", "--is-inside-work-tree"]) {
+        return None;
+    }
+    // Bash 以外(MCP 等)は対象外。
+    let cmd = call.bash_command()?;
+    Guard::with_env(|g| g.decide(&cmd, &project)).map(hook_io::Outcome::Deny)
+}

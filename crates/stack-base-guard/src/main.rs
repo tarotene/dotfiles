@@ -16,8 +16,9 @@
 //! 縮退(ADR-0005 の binary-existence gating に倣う): stdin が読めない・
 //! 不正 JSON・git/gh が無い・判定できない場合は何も出さず exit 0。
 
-use guard_core::hook::{agent_from_args, deny_output, ToolCall};
-use stack_base_guard::{check, Guard};
+use guard_core::hook::{agent_from_args, deny_output};
+use hook_io::Outcome;
+use stack_base_guard::Guard;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -47,20 +48,12 @@ fn main() -> ExitCode {
         };
     }
 
-    // skip は stdin を読む前に見る(bash 版 main と同じ順)。session_id は
-    // skip 判定に関係しない。
-    if Guard::from_env(String::new()).skipped() {
-        return ExitCode::SUCCESS;
-    }
-
+    // skip は stdin を読む前に見る(bash 版 main と同じ順)は `hook` の中。
     let mut buf = String::new();
     if std::io::stdin().read_to_string(&mut buf).is_err() {
         return ExitCode::SUCCESS;
     }
-    let Some(call) = ToolCall::parse(agent, &buf) else {
-        return ExitCode::SUCCESS;
-    };
-    if let Some(reason) = check(&call) {
+    if let Some(Outcome::Deny(reason)) = stack_base_guard::hook(agent, &buf) {
         print!("{}", deny_output(agent, &reason));
     }
     ExitCode::SUCCESS

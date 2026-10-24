@@ -14,11 +14,11 @@
 
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 
 use decision_colocation::guard::Guard;
-use guard_core::hook::{deny_output, jq_r_path, ToolCall};
-use hook_io::Agent;
+use guard_core::hook::deny_output;
+use hook_io::{Agent, Outcome};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -45,40 +45,7 @@ fn main() -> ExitCode {
     if std::io::stdin().read_to_string(&mut buf).is_err() {
         return ExitCode::SUCCESS;
     }
-    let Some(call) = ToolCall::parse(Agent::Claude, &buf) else {
-        return ExitCode::SUCCESS;
-    };
-
-    // `${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty')}`
-    let project = match std::env::var("CLAUDE_PROJECT_DIR") {
-        Ok(p) if !p.is_empty() => p,
-        _ => jq_r_path(&call.raw, &["cwd"])
-            .ok()
-            .flatten()
-            .unwrap_or_default(),
-    };
-    if project.is_empty() {
-        return ExitCode::SUCCESS;
-    }
-    let project = PathBuf::from(project);
-    let inside = Command::new("git")
-        .arg("-C")
-        .arg(&project)
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if !inside {
-        return ExitCode::SUCCESS;
-    }
-
-    // Bash 以外(MCP 等)は対象外。
-    let Some(cmd) = call.bash_command() else {
-        return ExitCode::SUCCESS;
-    };
-    if let Some(reason) = Guard::with_env(|g| g.decide(&cmd, &project)) {
+    if let Some(Outcome::Deny(reason)) = decision_colocation::guard::hook(&buf) {
         print!("{}", deny_output(Agent::Claude, &reason));
     }
     ExitCode::SUCCESS

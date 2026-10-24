@@ -302,6 +302,39 @@ pub fn allow_from_env() -> bool {
     std::env::var("PR_CONFIRM_GUARD_ALLOW").is_ok_and(|v| v == "1")
 }
 
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
+pub fn hook(agent: hook_io::Agent, raw: &str) -> Option<hook_io::Outcome> {
+    let call = guard_core::hook::ToolCall::parse(agent, raw)?;
+    let cwd = guard_core::hook::jq_r_path(&call.raw, &["cwd"])
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let project = match agent {
+        hook_io::Agent::Claude => std::env::var("CLAUDE_PROJECT_DIR")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .unwrap_or(cwd),
+        _ => cwd,
+    };
+    if project.is_empty() || !inside_work_tree(&project) {
+        return None;
+    }
+    let cmd = call.bash_command()?;
+    decide(&cmd, allow_from_env()).map(hook_io::Outcome::Deny)
+}
+
+/// `git -C <dir> rev-parse --is-inside-work-tree` が成功するか。
+fn inside_work_tree(dir: &str) -> bool {
+    std::process::Command::new("git")
+        .args(["-C", dir, "rev-parse", "--is-inside-work-tree"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

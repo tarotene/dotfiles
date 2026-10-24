@@ -6,9 +6,8 @@
 //! 縮退(bash 版と同じ): stdin が読めない・不正 JSON・Bash 以外・コマンドが
 //! 空なら何も出さず exit 0。
 
-use feedback_target_guard::{decide, Home};
-use guard_core::hook::{deny_output, ToolCall};
-use hook_io::Agent;
+use guard_core::hook::deny_output;
+use hook_io::{Agent, Outcome};
 use std::io::Read;
 use std::process::ExitCode;
 
@@ -17,13 +16,7 @@ fn main() -> ExitCode {
     if std::io::stdin().read_to_string(&mut buf).is_err() {
         return ExitCode::SUCCESS;
     }
-    let Some(call) = ToolCall::parse(Agent::Claude, &buf) else {
-        return ExitCode::SUCCESS;
-    };
-    let Some(cmd) = call.bash_command() else {
-        return ExitCode::SUCCESS;
-    };
-    if let Some(reason) = decide(Home::from_env().as_ref(), &cmd) {
+    if let Some(Outcome::Deny(reason)) = feedback_target_guard::hook(&buf) {
         print!("{}", deny_output(Agent::Claude, &reason));
     }
     ExitCode::SUCCESS
