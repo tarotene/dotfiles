@@ -52,6 +52,10 @@ pub enum ReasonId {
     /// `detail` の閉語彙(`inline-body`、本文ファイルを持つ投稿が
     /// 単独のコマンドでない `not-alone`(ADR-0004)など)に残る。
     GhNoncanonical,
+    /// 実行される内容を PreToolUse の時点で読めない形(コマンド名を変数で与える、
+    /// テキストをシェルへ流し込む)。`gh` を呼ばない命令にも当たるので、
+    /// `gh-noncanonical` とは別の語彙にした(tarotene/bleep ADR-0005、#115)。
+    OpaqueExec,
 }
 
 /// `match_class` フィールド。マッチしなかった判定(fail-loud な ask 等)は

@@ -42,7 +42,7 @@ fn unresolved_var_reason_id_deserializes() {
     serde_json::from_str::<VerdictRecord>(&line).expect("unresolved-var must be a known reason_id");
 }
 
-/// bleep ADR-0003 までに書かれる `reason_id` と、閉語彙の `detail` 欄が
+/// bleep ADR-0003・ADR-0005 までに書かれる `reason_id` と、閉語彙の `detail` 欄が
 /// 読める(#675。未登録だと厳密な deserialize が失敗する)。`detail` が
 /// 無いレコードも読める。
 #[test]
@@ -73,6 +73,8 @@ fn bleep_adr_0003_reason_ids_and_detail_deserialize() {
         "body-source-unreadable",
         "push-hook-bypass",
         "gh-noncanonical",
+        // tarotene/bleep#115: `gh` の違反から切り離した、読めない実行の deny。
+        "opaque-exec",
     ] {
         serde_json::from_str::<VerdictRecord>(&base(id, None))
             .unwrap_or_else(|e| panic!("{id} must be a known reason_id: {e}"));
