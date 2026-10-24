@@ -253,6 +253,10 @@
         in
         {
           inherit craneLib;
+          # buildDepsOnly の出力。package・clippy の build 時だけの入力で、どの
+          # activationPackage からも参照されない。CI がキャッシュに残すために、
+          # checks に名前を付けて出す(下の dotfiles-tools-deps)。
+          deps = cargoArtifacts;
           package = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
           clippy = craneLib.cargoClippy (
             commonArgs
@@ -410,6 +414,10 @@
         )
         // {
           dotfiles-tools = rust.package;
+          # 依存だけの build(crane の buildDepsOnly)。CI の build-host が GC root に
+          # して、キャッシュに残す(.github/workflows/ci.yml の「Root the Rust
+          # dependency artifacts」)。ここに名前が無いと、参照する手段が無い。
+          dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
           dotfiles-tools-fmt = rust.fmt;
         }

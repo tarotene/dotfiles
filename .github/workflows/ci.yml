@@ -112,7 +112,7 @@ jobs:
       # used to live here are Rust since #413, crates/herdr-agent-metadata),
       # excluded above for the same reason as the other config/ subdirectories.
       # The Stage 4d hooks/statusline removed from the selftest steps below
-      # (#413) run as `cargo test --workspace` in the nix.yml rust job.
+      # (#413) run as `cargo test --workspace` in the `rust` job below.
       - name: ShellCheck Codex CLI hooks
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
@@ -436,7 +436,7 @@ jobs:
       # bash end to end against fixture commands — no gh/network involved.
       # stack-base-guard (ADR-0027) is now the Rust crates/stack-base-guard
       # (#415); its tests (the old Claude + Codex adapter selftests) run in the
-      # nix.yml rust job.
+      # `rust` job below.
 
       # pr-merge-settings-check (ADR-0031 Amendment, 2026-09-24) sources
       # scripts/github-audit's judge_settings()/fetch_repo_settings() (no
@@ -597,12 +597,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: DeterminateSystems/nix-installer-action@main
-      - name: Build package + clippy + rustfmt (crane)
+      # clippy + rustfmt だけ。release の package(`checks.dotfiles-tools`)は、
+      # ここでは作らない: build-host の activationPackage が必ず同じ derivation を作る
+      # (`home.file.*.source = "${pkgs.dotfiles-tools}/bin/<name>"`)ので、ここで
+      # 作ると、同じ release ビルドを 3 つのジョブがやり直すことになる(2026-10-23 の
+      # 実測: Rust job の package の段 3 分 40 秒を、vega が 4 分 12 秒かけて再度作っていた)。
+      - name: Clippy + rustfmt (crane)
         run: |
           nix build --print-build-logs --no-link \
-            .#checks.x86_64-linux.dotfiles-tools \
             .#checks.x86_64-linux.dotfiles-tools-clippy \
             .#checks.x86_64-linux.dotfiles-tools-fmt
+      # cargo test の debug ビルドの target を残す(依存と、変えていない crate の
+      # 再コンパイルを省く)。キーは Cargo.lock から作られる。cargo test は
+      # `nix develop` の rustc で走るので、toolchain が変わったとき(flake.lock の更新)は
+      # cargo 自身が fingerprint の不一致で作り直す(誤った再利用は起きない)。
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: cargo test (fixture oracles + allowlist audit)
         run: nix develop --command cargo test --workspace --locked
 
@@ -658,8 +667,7 @@ jobs:
       # vega (the personal host) only, via home/modules/obsidian.nix). Both are
       # permanent per-run costs unless this cache actually retains them.
       #
-      # The primary-key hashes home/** and config/** (the same set that
-      # gates nix.yml's own `push.paths` above) in addition to the flake
+      # The primary-key hashes home/** and config/** in addition to the flake
       # inputs, and includes matrix.host: a key that only tracks
       # flake.lock/flake.nix/patches/** stays byte-identical across changes
       # to home/modules/obsidian.nix, so cache-nix-action's own "exact hit
@@ -757,6 +765,22 @@ jobs:
             i=$((i + 1))
           done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
           echo "rooted $i locally built paths"
+      # Rust の依存(crane の buildDepsOnly の出力)は、dotfiles-tools の build 時だけの
+      # 入力で、どの activationPackage の closure にも入らない。上の「ultimate かつ
+      # closure に残る」の規則では、構造的に root されず、GC で消えてキャッシュに残らない
+      # (2026-10-23 の実測: vega が `cargoArtifacts not set` のまま依存を毎回作り直し、
+      # deps の段だけで 2 分 48 秒)。flake の checks に名前を付けた
+      # `dotfiles-tools-deps` を、名前で root する。Cargo.lock が変わらなければ、
+      # buildDepsOnly の derivation は変わらない(crane は crate のソースを空にして
+      # 依存だけを作る)ので、次の run はキャッシュから戻る。
+      - name: Root the Rust dependency artifacts (crane buildDepsOnly)
+        run: |
+          set -euo pipefail
+          deps="$(nix build ".#checks.x86_64-linux.dotfiles-tools-deps" \
+            --no-link --print-out-paths)"
+          mkdir -p /tmp/nix-gcroots
+          nix-store --add-root /tmp/nix-gcroots/rust-deps --indirect --realise "$deps" >/dev/null
+          echo "rooted $deps ($(nix path-info -S -h "$deps" | awk '{print $2, $3}'))"
 
   # スタック標準の API doc ビルド必須化(ADR-640 stack-standard-api-docs)。
   # dotfiles 自身の Cargo workspace(crates/*)に docs-rust composite action
