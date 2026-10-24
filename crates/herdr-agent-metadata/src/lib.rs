@@ -80,15 +80,7 @@ fn jq_raw(payload: &Value, key: &str) -> String {
 
 /// `git -C <cwd> <args>` の stdout(末尾改行除去)。失敗は空文字。
 fn git_out(cwd: &str, args: &[&str]) -> String {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map(|o| strip_trailing_newlines(&String::from_utf8_lossy(&o.stdout)).to_string())
-        .unwrap_or_default()
+    hook_io::git::out(cwd, args).unwrap_or_default()
 }
 
 /// 現在のブランチ名。`worktree/` プレフィクスは表示幅節約のため落とす。

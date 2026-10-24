@@ -21,7 +21,6 @@ use hook_io::shell::split_segments;
 use hook_io::SessionLedger;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 /// `tool_input` から取り出した、パスの種別ごとの集合(git は呼ばない純粋な解析結果)。
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -229,24 +228,10 @@ fn nearest_dir(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// 成功時の stdout。UTF-8 として読めなければ `None`、末尾の `\n` / `\r` は落とす。
 fn git_out(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(
-        String::from_utf8(out.stdout)
-            .ok()?
-            .trim_end_matches(['\n', '\r'])
-            .to_string(),
-    )
+    let s = String::from_utf8(hook_io::git::raw(dir, args)?).ok()?;
+    Some(s.trim_end_matches(['\n', '\r']).to_string())
 }
 
 fn same_path(a: &str, b: &str) -> bool {

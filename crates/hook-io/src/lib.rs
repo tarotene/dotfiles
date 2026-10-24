@@ -16,7 +16,7 @@
 //! | H 最小 POSIX シェル語分割 | [`shell::split`] |
 //! | I コマンド正規化+ハッシュ(ADR-543 段3) | [`cmd_hash`] |
 //! | J gate の deny/skip イベント記録(ADR-543 段3) | [`gate_event`] |
-//! | K jq 互換の挿入順 JSON 出力(Stage 4b) | [`jqfmt`] |
+//! | K jq 互換の挿入順 JSON の出力と入力(Stage 4b) | [`jqfmt`] / [`jqparse`] |
 //! | L `timeout(1)` / `date(1)` / `command -v`(Stage 4b) | [`proc`] |
 //! | M herdr socket への `pane.report_metadata` 送信(#413) | [`herdr`] |
 //!
@@ -33,6 +33,7 @@ pub mod git;
 pub mod herdr;
 pub mod input;
 pub mod jqfmt;
+pub mod jqparse;
 pub mod ledger;
 pub mod plan;
 pub mod proc;

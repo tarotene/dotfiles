@@ -22,8 +22,8 @@
 //! 無効化する(`PR_TITLE_GUARD_ALLOW` と同じ性質 — 恒久的な本文タグでは
 //! ない)。
 
+use hook_io::git::ok as git_ok;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use guard_core::command::{first_deny, gh_command_at};
 use guard_core::gh::{scan_value_flags, ValueFlag};
@@ -56,18 +56,6 @@ pub fn real_checker(project: &Path, base_ref: &str) -> CheckOutcome {
     } else {
         CheckOutcome::NonConforming(violations.join("\n"))
     }
-}
-
-fn git_ok(project: &Path, args: &[&str]) -> bool {
-    Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }
 
 /// bash の `resolve_ref`: ローカルに実在すればそのまま、無ければ

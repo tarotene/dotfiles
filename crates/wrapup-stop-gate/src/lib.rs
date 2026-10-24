@@ -19,7 +19,8 @@ pub mod json;
 pub mod retro;
 pub mod shquote;
 
-use json::J;
+use hook_io::jqfmt::J;
+use hook_io::jqparse::{parse_stream, ParseError};
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -298,8 +299,8 @@ pub fn migrate_legacy_inbox(project: &str) -> std::io::Result<()> {
 
 /// `--add`: `jq -ce .` でコンパクト化して 1 行(複数値なら値ごとに 1 行)追記する。
 pub fn add(inbox: &str, line: &str) -> Code {
-    let compact = match json::parse_stream(line) {
-        Ok(vals) if vals.last().is_some_and(J::truthy) => {
+    let compact = match parse_stream(line) {
+        Ok(vals) if vals.last().is_some_and(json::truthy) => {
             vals.iter().map(J::compact).collect::<Vec<_>>().join("\n")
         }
         _ => {
@@ -543,7 +544,7 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
     // jq -e --arg t "$title" 'any(.[]; .title == $t)'
-    let Ok(vals) = json::parse_stream(stdout.trim_end_matches('\n')) else {
+    let Ok(vals) = parse_stream(stdout.trim_end_matches('\n')) else {
         return 0;
     };
     let mut last = None;
@@ -557,16 +558,16 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
         let mut hit = false;
         dup_number = None;
         for it in items {
-            match it.index("title") {
-                Ok(J::Str(s)) if s == title => {
+            match json::index(it, "title") {
+                Some(J::Str(s)) if s == title => {
                     hit = true;
-                    if let Ok(J::Num(n)) = it.index("number") {
+                    if let Some(J::Num(n)) = json::index(it, "number") {
                         dup_number = Some(n.clone());
                     }
                     break;
                 }
-                Ok(_) => {}
-                Err(_) => return 0,
+                Some(_) => {}
+                None => return 0, // `.title` できない → jq エラー
             }
         }
         last = Some(hit);
@@ -823,20 +824,20 @@ pub fn read_hook_stdin() -> String {
 
 /// 解析済みの hook 入力。不正 JSON・object でない入力は jq と同じくエラー扱い。
 pub struct HookJson {
-    values: Result<Vec<J>, json::ParseError>,
+    values: Result<Vec<J>, ParseError>,
 }
 
 impl HookJson {
     pub fn parse(input: &str) -> Self {
-        let values = json::parse_stream(input);
+        let values = parse_stream(input);
         if values.is_err() {
             eprintln!("wrapup-stop-gate: hook input is not valid JSON");
         }
         HookJson { values }
     }
 
-    fn get(&self, key: &str, alt: Option<&str>) -> Result<String, json::ParseError> {
-        let v = self.values.as_ref().map_err(|e| e.clone())?;
+    fn get(&self, key: &str, alt: Option<&str>) -> Result<String, ParseError> {
+        let v = self.values.as_ref().map_err(|e| *e)?;
         json::jq_r_alt(v, key, alt)
     }
 
@@ -861,17 +862,7 @@ impl HookJson {
     }
 }
 
-fn git_ok(project: &str, args: &[&str]) -> Option<Vec<u8>> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    out.status.success().then_some(out.stdout)
-}
+use hook_io::git::raw as git_ok;
 
 /// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
 pub fn stop_hook(self_path: &str, input: &str) -> Code {

@@ -1,22 +1,13 @@
 //! git だけで求まる材料(ネットワークに出るのは [`added_files`] の軽い fetch と
 //! SessionStart の fetch だけ)。
 
-use crate::trim_nl;
 use regex::Regex;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 
 /// `git -C <dir> <args>` の (成功したか, stdout)。起動できなければ `None`。
 pub fn git(dir: &Path, args: &[&str]) -> Option<(bool, String)> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
+    let out = hook_io::git::run(dir, args)?;
     Some((
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -24,17 +15,10 @@ pub fn git(dir: &Path, args: &[&str]) -> Option<(bool, String)> {
 }
 
 /// 成功時だけ stdout(末尾改行除去)を返す。bash の `x="$(git …)" || x=""` の成功側。
-pub fn git_ok(dir: &Path, args: &[&str]) -> Option<String> {
-    match git(dir, args)? {
-        (true, out) => Some(trim_nl(&out).to_string()),
-        _ => None,
-    }
-}
+pub use hook_io::git::out as git_ok;
 
 /// 成功したか(出力は捨てる)。
-pub fn git_succeeds(dir: &Path, args: &[&str]) -> bool {
-    matches!(git(dir, args), Some((true, _)))
-}
+pub use hook_io::git::ok as git_succeeds;
 
 static NWO_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^.*github\.com[:/]+([^/]+)/([^/.]+)(\.git)?/?$").expect("NWO_RE")

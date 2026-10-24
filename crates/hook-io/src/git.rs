@@ -1,21 +1,58 @@
 //! git の読み取り系ヘルパ(クラスタ B・F)。どれもネットワークに出ない。
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 
-fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+/// 静かな `git -C <dir> <args>`: stdin は閉じ、stderr は捨てる。起動できなければ `None`。
+///
+/// 各 hook/CLI が同じ形のラッパを private に持っていた(`git_ok` / `git_out` の約 10 複写)。
+/// 違いは戻り値の形(成否だけか、stdout か)と末尾の改行の扱いだけなので、核をここに置く。
+pub fn run(dir: impl AsRef<Path>, args: &[&str]) -> Option<Output> {
+    Command::new("git")
         .arg("-C")
-        .arg(dir)
+        .arg(dir.as_ref())
         .args(args)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8(out.stdout).ok()?;
+        .ok()
+}
+
+/// 成功時の stdout のバイト列(加工なし)。失敗・起動不能は `None`。
+pub fn raw(dir: impl AsRef<Path>, args: &[&str]) -> Option<Vec<u8>> {
+    run(dir, args)
+        .filter(|o| o.status.success())
+        .map(|o| o.stdout)
+}
+
+/// bash の `$(git -C <dir> …)`: 成功時の stdout(UTF-8 として読めない部分は U+FFFD)から
+/// 末尾の改行をすべて落とす。空出力は `Some("")`、失敗・起動不能は `None`。
+pub fn out(dir: impl AsRef<Path>, args: &[&str]) -> Option<String> {
+    let bytes = raw(dir, args)?;
+    Some(
+        String::from_utf8_lossy(&bytes)
+            .trim_end_matches('\n')
+            .to_string(),
+    )
+}
+
+/// `git -C <dir> <args>` が成功したか(stdout も捨てる)。
+pub fn ok(dir: impl AsRef<Path>, args: &[&str]) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(dir.as_ref())
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// 空でない 1 つの値を返す系(`rev-parse` 等)用: UTF-8 として読めない出力は `None`、
+/// 末尾の `\n` / `\r` を落とし、空なら `None`。
+fn git_stdout(dir: &Path, args: &[&str]) -> Option<String> {
+    let s = String::from_utf8(raw(dir, args)?).ok()?;
     let s = s.trim_end_matches(['\n', '\r']).to_string();
     (!s.is_empty()).then_some(s)
 }
@@ -203,5 +240,27 @@ mod tests {
         ] {
             assert_eq!(parse_github_nwo(u), None, "{u}");
         }
+    }
+
+    #[test]
+    fn quiet_helpers() {
+        let d = repo();
+        assert_eq!(
+            out(d.path(), &["branch", "--show-current"]).as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            out(d.path(), &["status", "--porcelain"]).as_deref(),
+            Some("")
+        );
+        assert_eq!(out(d.path(), &["no-such-subcommand"]), None);
+        assert!(ok(d.path(), &["rev-parse", "--is-inside-work-tree"]));
+        assert!(!ok(d.path(), &["rev-parse", "no-such-ref"]));
+        assert_eq!(
+            raw(d.path(), &["branch", "--show-current"]),
+            Some(b"main\n".to_vec())
+        );
+        assert!(run(Path::new("/nonexistent-dir-for-test"), &["status"])
+            .is_some_and(|o| !o.status.success()));
     }
 }
