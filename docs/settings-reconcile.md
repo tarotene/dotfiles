@@ -35,6 +35,28 @@ hook は `(event, command)` をキーに reconcile する。旧実装は「comma
 command 文字列そのものを変える場合は別キーなので、旧文字列を `retiredHookEntries`
 (Claude)/ `--retire`(Codex / Copilot)に移す運用は従来どおり。
 
+## 所有の記録(`claude-hooks` だけ)
+
+宣言から外した hook を消すために、退役の一覧に command を書き足す方式は、書き忘れると
+旧エントリが残り続けた(消えたパスを指して毎イベントで ENOENT、#44)。そこで
+`claude-hooks` の spec に `state`(記録のファイル、`~/.local/state/dotfiles/
+managed-hooks-claude.json`)を渡すと、`crates/settings-reconcile/src/managed.rs` が
+**前回書いた `(event, command)` の集合**を残し、次の適用で「前回書いたが今回の宣言に
+無いもの」を消す。
+
+- 所有は記録だけで決める。command の接頭辞(`~/.claude/hooks/`)では決めない。同じ
+  ディレクトリに、別のツールが自分で足したエントリがある(herdr の
+  `herdr-agent-state.sh`)が、記録に無いので触らない
+  (`tests/managed_record.rs` の `entries_we_did_not_write_…`)。
+- 退役の一覧は凍結した。新しい `legacy*Cmd` は足さない。今も効くのは、記録の無い
+  ホストの初回だけ。全ホストに記録ができたら一覧を消せる。
+- 記録が無い・壊れているときは初回として扱い(stderr に警告)、適用は止めない。
+- 記録は settings.json の書き込みが成功したあとにだけ更新する。同値なら書かない。
+- `state` を渡さなければ従来どおり(記録は作らない)。
+- `codex-hooks` / `copilot-hooks` には使っていない。1 つのファイルに、複数のモジュールの
+  約 18 の呼び出しが、それぞれ別の部分集合を登録しており、記録を 1 つにすると、ある
+  呼び出しが、別の呼び出しが登録した分を「宣言から外れた」と見て消してしまう。
+
 ## 書き込みの性質
 
 - 宣言と実体が同値なら書かない(定常状態で mtime を汚さない)。

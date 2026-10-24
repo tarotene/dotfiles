@@ -13,7 +13,10 @@ use crate::json::J;
 use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json::Number;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
+
+/// 宣言した hook の `(event, command)` の集合(Flat では command は `bash` 欄)。
+pub type Managed = BTreeSet<(String, String)>;
 
 /// Claude / Codex は `{matcher?, hooks:[{type, command, ...}]}` の入れ子、
 /// Copilot は event 配列に `{type, bash, timeoutSec}` を直接並べる。
@@ -54,18 +57,47 @@ pub struct HooksSpec {
     pub retire: Vec<Retire>,
     #[serde(default)]
     pub register: Vec<Register>,
+    /// 所有の記録(`managed`)のファイル。あれば、前回書いたが今回の宣言に無い hook を
+    /// 消し、今回の宣言を記録する。無ければ従来どおり `retire` だけで消す。
+    #[serde(default)]
+    pub state: Option<String>,
 }
 
 fn nonempty(s: &Option<String>) -> Option<&str> {
     s.as_deref().filter(|s| !s.is_empty())
 }
 
-/// retire を先に、register を後に適用する(旧実装と同じ順序)。
-pub fn apply(root: &mut J, flavor: Flavor, spec: &HooksSpec) -> Result<(), String> {
+/// 宣言の `(event, command)` の集合。
+pub fn declared(spec: &HooksSpec) -> Managed {
+    spec.register
+        .iter()
+        .map(|r| (r.event.clone(), r.command.clone()))
+        .collect()
+}
+
+fn retire(root: &mut J, flavor: Flavor, event: &str, command: &str) -> Result<(), String> {
+    match flavor {
+        Flavor::Nested => retire_nested(root, event, command),
+        Flavor::Flat => retire_flat(root, event, command),
+    }
+}
+
+/// retire を先に、register を後に適用する(旧実装と同じ順序)。`previous`(前回の
+/// 所有の記録)があれば、retire の後・register の前に、「前回書いたが今回の宣言に
+/// 無い」hook も消す。返すのは今回の宣言の集合(呼び出し側が記録に書く)。
+pub fn apply(
+    root: &mut J,
+    flavor: Flavor,
+    spec: &HooksSpec,
+    previous: Option<&Managed>,
+) -> Result<Managed, String> {
     for r in &spec.retire {
-        match flavor {
-            Flavor::Nested => retire_nested(root, &r.event, &r.command)?,
-            Flavor::Flat => retire_flat(root, &r.event, &r.command)?,
+        retire(root, flavor, &r.event, &r.command)?;
+    }
+    let now = declared(spec);
+    if let Some(previous) = previous {
+        for (event, command) in previous.difference(&now) {
+            retire(root, flavor, event, command)?;
         }
     }
     // (event, command) は宣言の一意キー。重複した宣言は後勝ちにせず、最初の
@@ -84,7 +116,7 @@ pub fn apply(root: &mut J, flavor: Flavor, spec: &HooksSpec) -> Result<(), Strin
             Flavor::Flat => register_flat(root, r)?,
         }
     }
-    Ok(())
+    Ok(now)
 }
 
 fn hooks_obj(root: &mut J, create: bool) -> Result<Option<&mut IndexMap<String, J>>, String> {

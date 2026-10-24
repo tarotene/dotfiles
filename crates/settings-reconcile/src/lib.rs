@@ -24,6 +24,7 @@
 pub mod codex_config;
 pub mod hooks;
 pub mod json;
+pub mod managed;
 pub mod settings;
 
 use hooks::{Flavor, HooksSpec, Register, Retire};
@@ -66,9 +67,7 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
     };
     let rest = &args[1..];
     match sub.as_str() {
-        "claude-hooks" => with_json_spec(rest, |root, spec: HooksSpec| {
-            hooks::apply(root, Flavor::Nested, &spec)
-        }),
+        "claude-hooks" => claude_hooks(rest),
         "claude-permissions" => {
             with_json_spec(rest, |root, spec| settings::permissions(root, &spec))
         }
@@ -102,6 +101,34 @@ fn with_json_spec<S: serde::de::DeserializeOwned>(
     };
     let spec: S = serde_json::from_str(spec).map_err(|e| usage(format!("spec-json: {e}")))?;
     edit(Path::new(file), |root| f(root, spec))
+}
+
+/// `claude-hooks <settings.json> <spec-json>`。spec に `state` があれば、所有の記録
+/// (`managed`)を使う: 前回書いたが今回の宣言に無い hook を消し、今回の宣言を記録する。
+/// 記録は settings.json の書き込みが成功したあとにだけ更新する(失敗した適用を
+/// 「書いた」ことにしない)。
+fn claude_hooks(rest: &[String]) -> Result<(), Failure> {
+    let [file, spec] = rest else {
+        return Err(usage(USAGE));
+    };
+    let spec: HooksSpec =
+        serde_json::from_str(spec).map_err(|e| usage(format!("spec-json: {e}")))?;
+    let state = spec.state.as_deref().map(Path::new);
+    let previous = state.and_then(managed::load);
+    let mut declared = None;
+    edit(Path::new(file), |root| {
+        declared = Some(hooks::apply(
+            root,
+            Flavor::Nested,
+            &spec,
+            previous.as_ref(),
+        )?);
+        Ok(())
+    })?;
+    if let (Some(path), Some(declared)) = (state, declared) {
+        managed::store_if_changed(path, previous.as_ref(), &declared).map_err(fail)?;
+    }
+    Ok(())
 }
 
 fn mcp_servers(rest: &[String]) -> Result<(), Failure> {
@@ -183,5 +210,7 @@ fn argv_hooks(rest: &[String], flavor: Flavor) -> Result<(), Failure> {
             if_rule: None,
         });
     }
-    edit(Path::new(file), |root| hooks::apply(root, flavor, &spec))
+    edit(Path::new(file), |root| {
+        hooks::apply(root, flavor, &spec, None).map(|_| ())
+    })
 }
