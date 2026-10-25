@@ -422,7 +422,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   hub-resolve と同じマーカーで渡し、owner/repo は作業ディレクトリから付け、
   SessionStart で規範と同じリポジトリの直近の stuck / found を注入する。
   Git へ上げる段は持たない。
-- [ADR-0000](adr/0000-schedule-light-tasks-before-unblock.md) — 軽い人手 Issue は
+- [ADR-1000](adr/1000-schedule-light-tasks-before-unblock.md) — 軽い人手 Issue は
   「1 件 = 1 回の作業」にそろえ、待ち(`blocked_by`)があっても、連鎖の最後の段から逆算して
   起票した日のうちに予定へ入れる(ADR-829 の「待ちが解けてから」を改める)。issue-index は
   待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。

@@ -147,7 +147,7 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 ## 軽い人手タスク
 
 `handoff:human` と `handoff:light` の両方を持ち、自分に assign された open Issue を、
-@me の枠・`handoff:ai` の節とは独立の節として出す(ADR-829、ADR-0000 が待ちの扱いを改めた)。
+@me の枠・`handoff:ai` の節とは独立の節として出す(ADR-829、ADR-1000 が待ちの扱いを改めた)。
 **待ち(`blocked_by`)のあるものも出し**、行に `(待ち N 件)` を添える。待ちの無いものを先に並べ、
 最大 10 件。節の見出しに「待ちがあっても、連鎖ごと、着手可能になる前に、handoff スキル §7 で予定に入れる」
 と添え、見えたセッションが予定化まで進める。`blocked_by` が欠けた Issue は出さない(fail-closed)。
