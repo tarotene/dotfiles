@@ -32,6 +32,8 @@ pub enum Domain {
     Docs,
     /// 既定の全実行に含めない(明示指定のみ)。[`Domain::OPT_IN`] を参照。
     Annotations,
+    /// 同上(ADR-1005 D5)。run ごとに job 一覧を読む。
+    GateHealth,
 }
 
 impl Domain {
@@ -39,7 +41,7 @@ impl Domain {
     /// 多く払うので既定の実行に含めず、bash 版にも足さない(単一正本、
     /// ADR-0035 軸 1)。かつての bash 版との差分テストが見る
     /// 既定の出力は、これを足しても変わらない。
-    pub const OPT_IN: [Domain; 1] = [Domain::Annotations];
+    pub const OPT_IN: [Domain; 2] = [Domain::Annotations, Domain::GateHealth];
 
     /// 既定の実行順(`ALL`)。
     pub const ALL: [Domain; 11] = [
@@ -70,6 +72,7 @@ impl Domain {
             Domain::Workflows => "workflows",
             Domain::Docs => "docs",
             Domain::Annotations => "annotations",
+            Domain::GateHealth => "gate-health",
         }
     }
 

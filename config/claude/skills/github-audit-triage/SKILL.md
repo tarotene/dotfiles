@@ -248,6 +248,14 @@ description・topics・settings フィールド・ファイルツリー・open I
     が失敗している(ADR-1005 D4)。構造の drift ではなく、直すのは workflow の中身
     (または環境)なので、表では「失敗の run の URL と原因」を書き、一括修正の
     対象にせず個別の Issue か PR に回す。
+  - `gate-job-slow:<job>` / `gate-job-flaky:<job>` — `gate-health` ドメイン
+    (明示指定でだけ走る opt-in、ADR-1005 D5)。`ci.yml` の job が、ADR-1005 D1 ②
+    の除外条件に当たっている。`slow` は直近の成功 run の p75 が 10 分超、`flaky` は
+    同じ head SHA で失敗と成功の両方を出した。処分は、{`ci.yml` の外へ出す(workflow を
+    分け、`ci-passed.needs` から外し、main への push でも走らせる)/ job を分割して
+    p75 を縮める / flaky の原因を直す}。どれにするかは job の中身を読んで人が決める
+    (低確信フラグ、§3)。job 名は matrix の展開後の名前なので、`ci.yml` の `name:` と
+    一致しないことがある。
   - `job-name-missing:<job-id>` / `job-name-lowercase:<job-id>` — 該当
     job に `name:` を追加・先頭大文字化する(意味を変えない範囲の
     sentence case)。

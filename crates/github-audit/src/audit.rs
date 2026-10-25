@@ -3,8 +3,8 @@
 
 use crate::config::Config;
 use crate::domains::{
-    annotations, charters, docs, lifecycle, naming, releaser, renovate, routines, rulesets,
-    settings, titles, workflows,
+    annotations, charters, docs, gate_health, lifecycle, naming, releaser, renovate, routines,
+    rulesets, settings, titles, workflows,
 };
 use crate::gh::FetchError;
 use crate::jq;
@@ -289,6 +289,20 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                             Vec::new()
                         };
                         annotations::judge_annotations(gql, &jobs)
+                    }
+                    Domain::GateHealth => {
+                        // ci.yml の無い repo と既定ブランチの無い repo は REST を払わない。
+                        let branch = meta
+                            .default_branch_ref
+                            .as_ref()
+                            .and_then(|n| n.name.as_deref())
+                            .unwrap_or("");
+                        let jobs = if gql.has_workflow_file("ci.yml") && !branch.is_empty() {
+                            gh.fetch_gate_job_runs(repo, branch)
+                        } else {
+                            Vec::new()
+                        };
+                        gate_health::judge_gate_health(gql, &jobs)
                     }
                 }
             };

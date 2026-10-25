@@ -629,3 +629,96 @@ esac
         "取得失敗は空(drift と読まない)"
     );
 }
+
+/// gate-health ドメイン(ADR-1005 D5)。明示指定でだけ走り、既定の実行の出力には現れない。
+/// スタブは `--jq` を適用しないので、fixture は jq を通した後の形。run は 5 本のうち 1 本が
+/// 既定ブランチ宛てでない(積み重ねの中間段)ので読まれない。
+#[test]
+fn gate_health_domain_is_opt_in_and_reads_durations_and_reruns() {
+    let fx = Fx::new();
+    fx.overlay("gate-health");
+
+    let default_run = parse(&fx.rust(&["--json"], &[]));
+    assert!(default_run
+        .iter()
+        .all(|r| r.domain(Domain::GateHealth).is_none()));
+
+    let fs = parse(&fx.rust(&["--json", "gate-health"], &[]));
+    let ok = get(&fs, "all-ok", Domain::GateHealth);
+    assert_eq!(ok.verdict, Verdict::Drifted);
+    assert_eq!(
+        ok.missing,
+        vec![
+            // Rust workspace は run 31(同じ SHA)で失敗と成功の両方。
+            "gate-job-flaky:Rust-workspace".to_string(),
+            // Build vega は 650・700・800・900 の p75(3 番目)= 800 > 600。
+            "gate-job-slow:Build-vega".to_string(),
+        ]
+    );
+    // 積み重ねの中間段(run 32、base が既定ブランチでない)は読まれない。
+    // run の fixture が無い repo(スタブは `[]`)は ok、ci.yml の無い repo は対象外。
+    assert_eq!(
+        get(&fs, "all-drifted", Domain::GateHealth).verdict,
+        Verdict::Ok
+    );
+    assert_eq!(
+        get(&fs, "pj-ambiguous", Domain::GateHealth).verdict,
+        Verdict::NotApplicable
+    );
+    assert_eq!(
+        get(&fs, "exempted", Domain::GateHealth).verdict,
+        Verdict::Exempt
+    );
+}
+
+/// gate-health の取得は、要求のパラメータ(`event=pull_request`・`status=completed`・
+/// `filter=all`)を守り、既定ブランチ宛て以外の PR の run の job を読まない。
+#[test]
+fn gate_job_runs_request_all_attempts_of_default_branch_pull_requests() {
+    let fx = Fx::new();
+    let stub = fx.p("bin/gh-gate-stub");
+    write_exec(
+        &stub,
+        r#"#!/usr/bin/env bash
+args=" $* "
+case "$2" in
+  repos/tarotene/red/actions/workflows/ci.yml/runs)
+    [[ "$args" == *" event=pull_request "* && "$args" == *" status=completed "* ]] || exit 1
+    printf '[{"id":1,"head_sha":"aaa","base":"main"},{"id":2,"head_sha":"bbb","base":"feat"},{"id":3,"head_sha":"ccc","base":"main"}]' ;;
+  repos/tarotene/red/actions/runs/1/jobs)
+    [[ "$args" == *" filter=all "* ]] || exit 1
+    printf '[{"name":"Rust workspace","conclusion":"success","seconds":300},{"name":"CI passed","conclusion":"","seconds":null}]' ;;
+  repos/tarotene/red/actions/runs/2/jobs) printf '[{"name":"WRONG","conclusion":"success","seconds":1}]' ;;
+  repos/tarotene/red/actions/runs/3/jobs)
+    printf '[{"name":"Rust workspace","conclusion":"failure","seconds":50}]' ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    let gh = github_audit::Gh::new(stub.to_str().unwrap(), "tarotene");
+    let jobs = gh.fetch_gate_job_runs("red", "main");
+    let summary: Vec<(String, String, String, Option<i64>)> = jobs
+        .iter()
+        .map(|j| {
+            (
+                j.job.clone(),
+                j.head_sha.clone(),
+                j.conclusion.clone(),
+                j.seconds,
+            )
+        })
+        .collect();
+    let t = |a: &str, b: &str, c: &str, d: Option<i64>| {
+        (a.to_string(), b.to_string(), c.to_string(), d)
+    };
+    assert_eq!(
+        summary,
+        vec![
+            t("Rust workspace", "aaa", "success", Some(300)),
+            t("CI passed", "aaa", "", None),
+            t("Rust workspace", "ccc", "failure", Some(50)),
+        ],
+        "既定ブランチ宛て(base=main)の run 1・3 だけを読み、積み重ね(run 2)は読まない"
+    );
+    assert!(gh.fetch_gate_job_runs("unreachable", "main").is_empty());
+}

@@ -40,6 +40,15 @@ the bash version):
              not-applicable for repos with no .github/workflows. failure
              and notice annotations are not read (a red run is CI's own
              signal)
+  gate-health  ci.yml jobs that meet the machine-measurable exclusion
+             conditions of ADR-1005 D1: gate-job-slow:<job> (p75 of the
+             successful runs' duration over 600 s, with at least 3 samples)
+             and gate-job-flaky:<job> (the same job both failed and passed
+             on the same head SHA). Reads the latest 20 completed ci.yml
+             runs of pull requests into the default branch, every job of
+             each (re-runs included), so it costs 1 + 20 REST calls per
+             repo: it is not run by default. not-applicable for repos with
+             no ci.yml
 "#;
 
 /// home-manager が generation ごとに置く、dotfiles のコミットの 1 行テキスト
