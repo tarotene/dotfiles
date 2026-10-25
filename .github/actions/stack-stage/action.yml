@@ -9,8 +9,8 @@ description: >-
 
   使い方: 呼び出し側の workflow に、この action だけを呼ぶ job を 1 つ置き
   (`permissions: pull-requests: read`、checkout は不要)、重い job が
-  `needs:` に取って `if: ${{ !cancelled() && needs.<job>.outputs.intermediate != 'true' }}`
-  で飛ばす。`!= 'true'`(`== 'false'` でない)と `!cancelled()` を使うのは、この job が
+  `needs:` に取って、job の `if:` に「`!cancelled()` かつ `needs.<job>.outputs.intermediate`
+  が `'true'` でない」式を書いて飛ばす(rust の ci.yml テンプレの `msrv` job が実例)。`!= 'true'`(`== 'false'` でない)と `!cancelled()` を使うのは、この job が
   失敗・取り消しでも重い job を飛ばさない(fail-open)ため。job 単位の skip は
   `skipped` で、required check(集約 job の `needs:`)は `skipped` を成功に数える。
   workflow 全体を path / branch の filter で飛ばしてはいけない: required check が
