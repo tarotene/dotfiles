@@ -313,6 +313,14 @@
   # own ADR-0009).
   home.file.".local/bin/performance-hub".source = "${pkgs.dotfiles-tools}/bin/performance-hub";
 
+  # dotfiles-identity: `verify` succeeds only when this machine's declared
+  # identity (DOTFILES_IDENTITY) and the Claude account actually logged in
+  # (DOTFILES_CLAUDE_ACCOUNT, set from `dotfiles.identity` in
+  # home/modules/identity.nix) agree. Lets a tool decide which side of a shared
+  # external account it may act for. Rust, from crates/dotfiles-identity via
+  # pkgs.dotfiles-tools (ADR-0024); docs/dotfiles-identity.md has the design.
+  home.file.".local/bin/dotfiles-identity".source = "${pkgs.dotfiles-tools}/bin/dotfiles-identity";
+
   # update-own-tools (ADR-0025, #276): builds self-authored, not-yet-released
   # CLIs from origin/<branch> per a host-local registry
   # (~/.config/update-own-tools/registry.toml — never in this repo). Rust,
