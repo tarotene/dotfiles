@@ -33,6 +33,22 @@ env:
   CARGO_NET_RETRY: "10"
 
 jobs:
+  # 積み重ねた PR(stacked PR)の中間段かを判定する(ADR-1005 D8)。重い job(目安: 成功した
+  # run の p75 が 2 分超)は、これを `needs:` に取って `if:` で飛ばす。この job を足したら
+  # `ci-passed.needs` にも足す(このファイルの先頭の不変条件)。`ci:full` ラベルで強制するなら、
+  # `on.pull_request.types` に `labeled` を足す(既定だと、開いている PR にラベルを付けても
+  # 再実行されない)。API の失敗は fail-open(飛ばさない)。
+  stack-stage:
+    name: Stack stage
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      intermediate: ${{ steps.judge.outputs.intermediate }}
+    steps:
+      - id: judge
+        uses: tarotene/dotfiles/.github/actions/stack-stage@main
+
   fmt:
     name: Format check
     runs-on: ubuntu-latest
@@ -182,6 +198,10 @@ jobs:
   msrv:
     name: MSRV (__MSRV__)
     runs-on: ubuntu-latest
+    # 重い job(実測 p75 が 2 分超、ADR-1005 D8)なので、積み重ねの中間段では飛ばす。
+    # `!= 'true'` と `!cancelled()`: stack-stage 自体が失敗・取り消しでも飛ばさない(fail-open)。
+    needs: stack-stage
+    if: ${{ !cancelled() && needs.stack-stage.outputs.intermediate != 'true' }}
     env:
       RUSTUP_TOOLCHAIN: "__MSRV_FULL__"
 
@@ -400,7 +420,7 @@ jobs:
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
-    needs: [fmt, host, msrv, firmware, tools, docs]
+    needs: [stack-stage, fmt, host, msrv, firmware, tools, docs]
     if: always()
     steps:
       - name: Fail if any required job failed or was cancelled

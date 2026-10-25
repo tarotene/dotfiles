@@ -22,6 +22,13 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
    (`docs-pages.yml`) and the weekly external link check
    (`docs-linkcheck.yml`) are opt-in templates under `repo-governance-common`
    — see `github-audit-triage` for when to add them.
+   The `ci.yml` template also has a `stack-stage` job
+   (`tarotene/dotfiles/.github/actions/stack-stage@main`, ADR-1005 D8) that
+   tells whether a PR is a middle stage of a stacked PR; the `msrv` job (p75 of 68 s
+   and 127 s in the two real repositories — the only template job that reaches
+   the 2-minute guideline) takes it in `needs:` and skips itself in a middle stage. To skip another job that grows
+   past 2 minutes, give it the same `needs: stack-stage` and
+   `if: ${{ !cancelled() && needs.stack-stage.outputs.intermediate != 'true' }}`.
 2. Applies repository merge settings (squash-only, delete-on-merge, wiki/projects disabled — same
    baseline `github-audit`'s `settings` domain judges, ADR-0015 in tarotene/dotfiles) via `gh api`.
 3. Creates the core GitHub Rulesets (Security / Quality / Workflow) that enforce
@@ -128,7 +135,7 @@ comment. The table below lists the most important locations:
 |------|----------------|
 | `.github/workflows/ci.yml` — `host` job | `PATTERNS` regex — replace `telepath-(wire\|server\|...)` with your crate names |
 | `.github/workflows/ci.yml` — `tools` job | `PATTERNS` regex; feature flags in `clippy-tools` and `mcp-test` Justfile recipes |
-| `.github/workflows/ci.yml` — `msrv` job | `PATTERNS` regex — all workspace + excluded crate paths |
+| `.github/workflows/ci.yml` — `msrv` job | `PATTERNS` regex — all workspace + excluded crate paths. Keep `needs: stack-stage` and the `if:` (ADR-1005 D8); `stack-stage` itself stays in `ci-passed`'s `needs:` |
 | `.github/workflows/ci.yml` — `firmware` job | Chip name, target triple, example path. **Delete this whole job** (and its entry in `ci-passed`'s `needs:`) if no embedded firmware |
 | `.github/workflows/release-plz.yml` | `host-pty-server` git-only package name; additional excluded crates in TREE_PAYLOAD |
 | `.github/workflows/release-binaries.yml` | License file names (`LICENSE-MIT`, `LICENSE-APACHE`), README path |
