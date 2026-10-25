@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["--help"]
+status.code = 0

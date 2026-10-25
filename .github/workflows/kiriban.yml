@@ -1,0 +1,50 @@
+name: Kiriban
+
+# Issue / PR の番号がキリ番(100 の倍数・3 桁以上のゾロ目・1000 の倍数の前後賞)に
+# 当たったら、祝福コメントとラベル kiriban を付け、大キリ番とゾロ目ではキリリク
+# 受付 Issue も開く。規則と文面の正本は tarotene/dotfiles の crates/kiriban で、
+# この workflow は composite action を呼ぶだけ(docs/kiriban.md)。
+#
+# required check ではない。落ちても PR や Issue を止めない遊びの機構なので、
+# CI passed の集約にも入れない。
+#
+# 制約: fork からの PR と Dependabot の PR は GITHUB_TOKEN が読み取り専用になり
+# 書き込めないので、job ごと skip する(skipped は成功扱い)。pull_request_target
+# にすれば書けるが、fork のコードに書き込み権限を渡す経路を作るので採らない。
+# 取りこぼした番号は、下の workflow_dispatch に番号を渡せば後から祝える。
+
+# pipeline-node: kiriban
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: 判定をやり直す Issue / PR の番号(遡及用)
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: kiriban-${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
+  cancel-in-progress: false
+
+jobs:
+  kiriban:
+    name: Kiriban
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: tarotene/dotfiles/.github/actions/kiriban@main
+        with:
+          number: ${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}

@@ -12,7 +12,9 @@
 # workflow-naming-check with ci-yml-missing (#794, #815). An existing ci.yml is
 # never overwritten: a repository that already has gate jobs keeps them.
 # The ADR-number check (ADR-380) is seeded too: adr-number.yml plus its
-# scripts/adr-number-check engine.
+# scripts/adr-number-check engine. kiriban.yml (milestone-number celebration,
+# docs/kiriban.md) is seeded as well; `--only <rel>` seeds just one template
+# file into an existing repository.
 #
 # Unlike rust/typst/astro, this type has no seed.sh: the caller runs this
 # script, commits + pushes the result, then applies the ruleset with
@@ -30,6 +32,7 @@ DEFAULT_BRANCH="main"
 DEST=""
 WITH_REVIEW=false
 DRY_RUN=false
+ONLY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --default-branch)   DEFAULT_BRANCH="$2";  shift 2 ;;
     --dest)             DEST="$2";            shift 2 ;;
     --with-review)      WITH_REVIEW=true;     shift ;;
+    --only)             ONLY="$2";            shift 2 ;;
     --dry-run)          DRY_RUN=true;         shift ;;
     *)                  echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -115,6 +119,22 @@ copy_file_if_absent() {
   copy_file "$rel"
 }
 
+# --only <relative path>: seed exactly one template file into an EXISTING
+# repository and stop -- no ci.yml / rulesets / adr-number set. For a file that
+# has no placeholders and is the same for every repository type (kiriban.yml,
+# docs/kiriban.md "Adding it to an existing repository"), so this one script
+# serves them all.
+if [[ -n "$ONLY" ]]; then
+  if [[ "$ONLY" == /* || "$ONLY" == *..* || ! -f "$TEMPLATES/$ONLY" ]]; then
+    echo "ERROR: --only needs a template path relative to $TEMPLATES (got: $ONLY)" >&2
+    exit 1
+  fi
+  echo "Copying one template to: $DEST"
+  echo ""
+  copy_file "$ONLY"
+  exit 0
+fi
+
 echo "Copying core-type templates to: $DEST"
 echo ""
 
@@ -123,6 +143,7 @@ copy_file ".github/workflows/pr-title.yml"
 copy_file ".github/workflows/adr-number.yml"
 copy_file "scripts/adr-number-check"
 copy_file ".github/workflows/close-linked-issues.yml"
+copy_file ".github/workflows/kiriban.yml"
 copy_file ".github/zizmor.yml"
 copy_file ".github/rulesets/security.json"
 copy_file ".github/rulesets/quality.json"

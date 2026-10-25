@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["request-title", "--number", "1100"]
+status.code = 1

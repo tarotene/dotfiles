@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["request-body", "--number", "1000", "--kind", "pr", "--getter", "tarotene", "--getter-type", "User", "--owner", "tarotene", "--repo", "tarotene/dotfiles", "--expires", "2026-11-24"]
+status.code = 0

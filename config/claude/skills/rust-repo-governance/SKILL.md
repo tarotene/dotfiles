@@ -138,6 +138,7 @@ comment. The table below lists the most important locations:
 | `Justfile` | Smoke test assertions in `host-pty-smoke`; feature combos in `clippy-tools` and `mcp-test` |
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
 | `.github/workflows/close-linked-issues.yml` | Nothing to adjust — closes the issues a merged PR names with `Closes #N` even when the PR was stacked on a non-default base (GitHub only acts on the keyword for PRs targeting the default branch, tarotene/dotfiles#609); needs no secrets, only `issues: write` |
+| `.github/workflows/kiriban.yml` | Nothing to adjust — celebrates an Issue / PR number that lands on a milestone (multiples of 100, 3+ digit repdigits, ±1 of a multiple of 1000) with a comment and the `kiriban` label, and opens a request issue for 1000-multiples and repdigits (docs/kiriban.md in tarotene/dotfiles); not a required check; needs no secrets, only `issues: write` and `pull-requests: write` |
 | `.github/zizmor.yml` | Nothing to adjust — `"tarotene/*": ref-pin` covers the composite action's symbolic-ref `uses:` (#491); zizmor's own blanket default (hash-pin) still applies to every other `uses:` |
 
 **Key invariant**: The `name:` field of each workflow job in `ci.yml`

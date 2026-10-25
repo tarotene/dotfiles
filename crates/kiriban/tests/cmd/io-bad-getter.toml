@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["comment", "--number", "1000", "--kind", "pr", "--getter", "@tarotene", "--getter-type", "User", "--owner", "tarotene", "--repo", "tarotene/dotfiles"]
+status.code = 2

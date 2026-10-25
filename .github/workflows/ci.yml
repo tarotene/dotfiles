@@ -252,6 +252,15 @@ jobs:
             <(grep -v '^# pipeline-node:' config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml) \
             <(grep -v '^# pipeline-node:' .github/workflows/close-linked-issues.yml)
 
+      # kiriban.yml (docs/kiriban.md): same reason as close-linked-issues above —
+      # the governance skills distribute the template (symlinked per type), this
+      # repo carries a real copy, and only the `pipeline-node:` pointer differs.
+      - name: kiriban template is in sync
+        run: |
+          diff -u \
+            <(grep -v '^# pipeline-node:' config/claude/skills/repo-governance-common/templates/.github/workflows/kiriban.yml) \
+            <(grep -v '^# pipeline-node:' .github/workflows/kiriban.yml)
+
       # hms (docs/adr/0034-machine-state-wrapper-flake.md Amendment
       # 2026-09-25) is Rust now (#414, ADR-0024 Stage 4e, crates/hms); the
       # wrapper-lock override / local-routing / downgrade-guard judgments
