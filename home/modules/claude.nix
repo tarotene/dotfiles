@@ -530,6 +530,12 @@
 #    薄いポインタ。hook は「今日の机は未実施」を注入し、実施済みの印
 #    (~/.local/state/claude/desk/<JST の日付>)があれば無音。ハブ未設定の機体でも無音。
 #
+# 39) worklog(SessionStart, matcher: startup、docs/claude/worklog.md):
+#    Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートへ 1 行ずつ
+#    書かせる。hook は書く時点と kind の規範と、同じリポジトリの直近 7 日の stuck / found を
+#    注入する。vault は ~/.config/dotfiles/worklog-vault(home/modules/obsidian.nix が置く)で
+#    宣言され、無い機体では黙って no-op するため、hook は全ホストへ無条件配備する。
+#
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
 # 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
@@ -576,6 +582,7 @@ let
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   esaIndexCmd = "'${hooksDir}/esa-index'";
   deskStartCmd = "'${hooksDir}/desk-start'";
+  worklogStartCmd = "'${hooksDir}/worklog' session-start";
   signPrewarmCmd = "'${hooksDir}/sign-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
   # #415 (ADR-0024 Stage 4a): pr-gate は Rust バイナリ(crates/pr-gate、
@@ -1261,6 +1268,15 @@ let
       command = deskStartCmd;
       timeout = 10;
     }
+    # worklog も startup だけ: 規範の再掲は新しいセッションの入口で足りる。resume・compact では
+    # 文脈に既にあるか、要約で落ちても書く場面(試した結果・詰まり)は次に来る。
+    {
+      event = "SessionStart";
+      node = "worklog";
+      matcher = "startup";
+      command = worklogStartCmd;
+      timeout = 10;
+    }
     # sign-prewarm は compact を含めない: 同一プロセス内の事象なので agent の
     # キャッシュはすでに温まっているか、そもそもまだ温まっていないかのどちらか
     # であり、compact での再発火は温度判定で黙って no-op になるだけで発火の価値が
@@ -1842,6 +1858,9 @@ in
   home.file.".claude/hooks/esa-index".source = "${pkgs.dotfiles-tools}/bin/esa-index";
   # desk-start: 今日の朝の机(daily-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
   home.file.".claude/hooks/desk-start".source = "${pkgs.dotfiles-tools}/bin/desk-start";
+  # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
+  # vault を宣言していない機体(~/.config/dotfiles/worklog-vault が無い)では無音。
+  home.file.".claude/hooks/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
 
   # sign-prewarm: git commit の署名パスフレーズをログイン直後に温める。
   home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";
