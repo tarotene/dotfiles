@@ -88,6 +88,11 @@ push では走らないとき、D4 の検出(main での失敗を拾う)がそ�
 finding にする(`advisory-workflow-no-push:<file>`)。外にあること自体は finding にしない(D1 ②で出した
 ものは正当に外にある)。PR が `closed` のときだけ走る workflow は検査ではないので対象外とする。
 
+PR のコンテキスト(`github.event.pull_request`・`github.event.number`・`gh pr `)を使う workflow も
+対象外とする。プレビュー・plan のコメント・PR 本文のリンク検査のように、PR が無い push では意味のある実行が
+できないため。除かないと誤報になる: 2026-10-25 に非アーカイブの自リポジトリ 24 件を走査して、この形の
+workflow が 5 件あり、除外が無いと 5 件すべてが誤報で、除外の登録(人が書き続ける記録)が要る。
+
 先行例: 同上(k8s の informing job は定期実行で main を見る)。dotfiles の `darwin-build.yml` は push と PR の
 両方で走る(取得 2026-10-25)。
 差分: 異なる — k8s は定期実行、ここは push 起動で main を見る。
