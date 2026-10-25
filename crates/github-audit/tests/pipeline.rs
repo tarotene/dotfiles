@@ -588,3 +588,44 @@ fn annotations_domain_is_opt_in_and_reads_warnings() {
         Verdict::Exempt
     );
 }
+
+/// ADR-1005 D4: workflows ドメインの main での失敗の取得は、既定ブランチの完了 run を
+/// 1 回の REST で読む(job は読まない)。スタブは `gh` が `--jq` で返す形(射影後)の JSON を
+/// 返し、要求のパラメータ(`branch=` と `status=completed`)を検める。
+#[test]
+fn default_branch_failed_workflows_reads_the_default_branch_in_one_call() {
+    let fx = Fx::new();
+    let stub = fx.p("bin/gh-runs-stub");
+    write_exec(
+        &stub,
+        r#"#!/usr/bin/env bash
+args=" $* "
+case "$2" in
+  repos/tarotene/red/actions/runs)
+    [[ "$args" == *" branch=trunk "* && "$args" == *" status=completed "* ]] || exit 1
+    printf '["lint-extra.yml","darwin-build.yml"]' ;;
+  repos/tarotene/green/actions/runs) printf '[]' ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    let gh = github_audit::Gh::new(stub.to_str().unwrap(), "tarotene");
+    assert_eq!(
+        gh.fetch_default_branch_failed_workflows("red", "trunk"),
+        vec!["lint-extra.yml".to_string(), "darwin-build.yml".to_string()],
+        "既定ブランチ(trunk)の完了 run を読み、失敗の workflow のファイル名を返す"
+    );
+    assert!(
+        gh.fetch_default_branch_failed_workflows("red", "other")
+            .is_empty(),
+        "別のブランチを要求すると、スタブが拒否して空に縮退する"
+    );
+    assert!(gh
+        .fetch_default_branch_failed_workflows("green", "trunk")
+        .is_empty());
+    assert!(
+        gh.fetch_default_branch_failed_workflows("unreachable", "trunk")
+            .is_empty(),
+        "取得失敗は空(drift と読まない)"
+    );
+}

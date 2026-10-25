@@ -169,6 +169,33 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
         jq::sh_trim(&out).to_string()
     }
 
+    /// workflows ドメインの取得(ADR-1005 D4)。`branch`(既定ブランチ)の完了 run を
+    /// workflow ごとに最新 1 件へ絞り、結論が `failure` のものの workflow ファイル名を返す。
+    /// 1 リポジトリあたり REST 1 回(annotations のように job を読まない)。取得失敗は空に
+    /// 縮退する。run は 1 ページ(100 件)まで。
+    pub fn fetch_default_branch_failed_workflows(&self, repo: &str, branch: &str) -> Vec<String> {
+        let branch_arg = format!("branch={branch}");
+        let out = self.quiet_or(
+            &[
+                "api",
+                &self.repo_path(repo, "/actions/runs"),
+                "-X",
+                "GET",
+                "-F",
+                &branch_arg,
+                "-F",
+                "status=completed",
+                "-F",
+                "per_page=100",
+                "--jq",
+                "[.workflow_runs | group_by(.workflow_id)[] | sort_by(.created_at) | last \
+                 | select(.conclusion == \"failure\") | .path | split(\"/\") | last]",
+            ],
+            "[]",
+        );
+        parse_strings(&out)
+    }
+
     /// bash: `fetch_repo_settings` の生 JSON。squash_merge_commit_title 等は
     /// REST にしか無い(GraphQL の Repository 型に無い、2026-09-22 確認)。
     /// 失敗は `{}`(drift 側に倒れる)、JSON として読めない出力は null。

@@ -246,7 +246,25 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                         routines::judge_routines(&cfg.owner, repo, gql, &routines_sources)
                     }
                     Domain::Workflows => {
-                        workflows::judge_workflows(gql, &cfg.workflows_canonical_quality_file)
+                        // 既定ブランチの無い repo(空)と CI の無い repo は REST を払わない。
+                        let branch = meta
+                            .default_branch_ref
+                            .as_ref()
+                            .and_then(|n| n.name.as_deref())
+                            .unwrap_or("");
+                        let failed = if gql.has_workflows() && !branch.is_empty() {
+                            gh.fetch_default_branch_failed_workflows(repo, branch)
+                        } else {
+                            Vec::new()
+                        };
+                        workflows::judge_workflows(
+                            gql,
+                            &cfg.workflows_canonical_quality_file,
+                            &workflows::DefaultBranch {
+                                name: branch,
+                                failed_workflows: &failed,
+                            },
+                        )
                     }
                     Domain::Docs => {
                         // Pages の状態は REST にしか無く、PRIVATE だけが問題
