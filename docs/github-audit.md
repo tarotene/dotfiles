@@ -887,6 +887,27 @@ fields — `declCi`/`declPrTitle`, the `ci.yml`/`pr-title.yml` contents at
   ADR-1005 D1 (a job belongs in `ci.yml` only if a failing main would break
   an invariant of main, and it is not flaky, not dependent on external state
   or a shared queue, and not over 10 minutes at p75).
+- **Workflows outside `ci.yml`** (ADR-1005 D3, D4; audit only — read from the
+  same `workflowsDir` blobs plus one REST call per repository with CI):
+  - `advisory-workflow-no-push:<file>` — a workflow other than `ci.yml` /
+    `pr-title.yml` runs on `pull_request` (`types` omitted, or including
+    `opened`/`synchronize`) but never on the default branch (no `push` whose
+    `branches` matches it, no `schedule`; `tags`-only `push` does not count),
+    so D4 has nothing to read for it. A workflow that uses a PR's context
+    (`github.event.pull_request`, `github.event.number`, `gh pr `) is skipped:
+    previews, plan comments and PR-body link checks cannot run on a push. The
+    first real scan (2026-10-25, 24 repositories) found 5 such workflows and
+    would have flagged all 5 without this exclusion. Being outside `ci.yml` is
+    not itself a finding. The `on:` block is read line by line
+    (`parse_triggers`), like `ci.yml`.
+  - `default-branch-run-failed:<file>` — the latest completed run of that
+    workflow on the default branch concluded `failure`. One REST call
+    (`/actions/runs?branch=<default>&status=completed`, latest run per
+    workflow); dynamic workflows with no file in `.github/workflows/`
+    (`dependabot-updates`, `pages-build-deployment`) and workflows whose file
+    was deleted are not reported. Unlike `annotations`, which reads warnings and
+    leaves failures to CI itself, this reads the failure of a workflow that is
+    not required and so cannot block a PR.
 - **`name:` presence and casing**: both the workflow-level `name:` and
   every job's `name:` must be present (`workflow-name-missing`,
   `job-name-missing:<job-id>`) and must not start with a lowercase ASCII

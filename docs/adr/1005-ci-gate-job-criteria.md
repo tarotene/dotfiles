@@ -183,3 +183,6 @@ core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を�
 - crates/pr-contract-check/src/workflows.rs
 - crates/github-audit/src/domains/workflows.rs
 - config/claude/skills/repo-charter/SKILL.md
+- crates/github-audit/src/gh.rs
+- crates/github-audit/src/audit.rs
+- crates/github-audit/tests/pipeline.rs

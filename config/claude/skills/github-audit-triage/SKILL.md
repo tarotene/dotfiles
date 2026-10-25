@@ -237,6 +237,17 @@ description・topics・settings フィールド・ファイルツリー・open I
     整形・秘密なし等)が壊れる job だけを足し、② flaky・外部依存(共有キュー・
     外部 API・時刻)・p75 10 分超の job は足さない(`ci.yml` の外へ置く)。
     どの job が①に当たるかは、リポジトリの中身を読んで人が決める(低確信フラグ、§3)。
+  - `advisory-workflow-no-push:<file>` — `ci.yml` の外の検査 workflow が PR では
+    走るのに既定ブランチへの push で走らない(ADR-1005 D3)。処分は 2 つ。
+    ADR-1005 D1 ① を満たす(落ちたまま main に入ると main の不変条件が壊れる)なら
+    `ci.yml` に移し、`ci-passed.needs` に足す。そうでなければ `on:` に `push:`
+    (`branches: [<既定ブランチ>]`)を足して main でも走らせ、`default-branch-run-failed`
+    で拾えるようにする。PR の番号や本文を使う補助(プレビュー・コメント)は、検出の
+    時点で除かれている。
+  - `default-branch-run-failed:<file>` — その workflow の既定ブランチでの最新の完了 run
+    が失敗している(ADR-1005 D4)。構造の drift ではなく、直すのは workflow の中身
+    (または環境)なので、表では「失敗の run の URL と原因」を書き、一括修正の
+    対象にせず個別の Issue か PR に回す。
   - `job-name-missing:<job-id>` / `job-name-lowercase:<job-id>` — 該当
     job に `name:` を追加・先頭大文字化する(意味を変えない範囲の
     sentence case)。

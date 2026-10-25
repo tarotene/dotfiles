@@ -72,7 +72,15 @@ judges the requested domains (default: all of them):
              not not-applicable — every repo should eventually carry a
              ci.yml. Also flags a still-live legacy reusable-workflow call
              to `tarotene/dotfiles/.github/workflows/pr-title.yml@` in
-             pr-title.yml (superseded by the composite-action caller form)
+             pr-title.yml (superseded by the composite-action caller form).
+             ADR-1005: `ci-passed` must carry `if: always()` and a failure
+             step once ci.yml has a gate job (ci-passed-not-always,
+             ci-passed-failure-step-missing); audit-only findings are
+             ci-gate-empty (no job besides ci-passed),
+             advisory-workflow-no-push:<file> (a workflow outside ci.yml
+             runs on pull_request but never on the default branch, unless it
+             needs a PR's context) and default-branch-run-failed:<file>
+             (the latest completed run on the default branch failed)
   docs      stack-standard API docs build (ADR-640): for repos whose
              manifests match the closed table (Cargo.toml -> rust,
              pyproject.toml -> python, a package.json declaring

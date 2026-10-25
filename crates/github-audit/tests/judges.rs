@@ -14,7 +14,7 @@ use github_audit::domains::routines::judge_routines;
 use github_audit::domains::rulesets::judge_rulesets;
 use github_audit::domains::settings::judge_settings;
 use github_audit::domains::titles::judge_titles;
-use github_audit::domains::workflows::judge_workflows;
+use github_audit::domains::workflows::{judge_workflows, DefaultBranch};
 use github_audit::vocab::read_closed_set;
 use github_audit::{
     any_drift, findings_from_json, Detail, Finding, RepoGql, RepoMeta, RepoRest, Verdict,
@@ -654,7 +654,7 @@ fn workflows_direct() {
     // 正本はライブのテンプレートではなく固定の fixture(テンプレの中身が
     // 変わってもこのテストは壊れない)。
     let canonical = fx.p("fixtures/workflows-canonical-quality.json");
-    let w = |g: &RepoGql| judge_workflows(g, &canonical);
+    let w = |g: &RepoGql| judge_workflows(g, &canonical, &DefaultBranch::default());
 
     let wf_ok_ci = "name: CI\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    name: Secret scan (gitleaks)\n    steps:\n      - run: echo hi\n  ci-passed:\n    runs-on: ubuntu-latest\n    name: CI passed\n    needs: [gitleaks]\n    if: always()\n    steps:\n      - name: Fail if any required job failed or was cancelled\n        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n        run: exit 1\n";
     let wf_bad_ci = "name: ci\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n  shellcheck:\n    runs-on: ubuntu-latest\n    name: shell check\n    steps:\n      - run: echo hi\n";
@@ -713,6 +713,69 @@ fn workflows_direct() {
         json!({"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declCi": {"text": wf_ok_ci}}),
     ));
     assert!(!f.has("ci-gate-empty"), "gate present: {f:?}");
+
+    // ADR-1005 D3・D4: 既定ブランチの情報があるときだけ、ci.yml の外の workflow を見る。
+    let on_pr_only = "name: Lint extra\non:\n  pull_request:\njobs:\n  a:\n    name: A\n";
+    let on_pr_and_push = "name: Lint extra\non:\n  push:\n    branches: [main]\n  pull_request:\njobs:\n  a:\n    name: A\n";
+    let pr_helper = "name: Preview\non:\n  pull_request:\njobs:\n  a:\n    steps:\n      - run: gh pr comment 1 --body hi\n";
+    let wf_dir = |files: &[(&str, &str)]| {
+        let entries: Vec<_> = files
+            .iter()
+            .map(|(n, t)| json!({"name": n, "object": {"text": t}}))
+            .collect();
+        gqlv(json!({"workflowsDir": {"entries": entries}, "declCi": {"text": wf_ok_ci}}))
+    };
+    let main_info = |failed: &[String]| {
+        judge_workflows(
+            &wf_dir(&[
+                ("ci.yml", wf_ok_ci),
+                ("lint-extra.yml", on_pr_only),
+                ("preview.yml", pr_helper),
+                ("ok-extra.yml", on_pr_and_push),
+            ]),
+            &canonical,
+            &DefaultBranch {
+                name: "main",
+                failed_workflows: failed,
+            },
+        )
+    };
+    let f = main_info(&[]);
+    assert!(
+        f.has("advisory-workflow-no-push:lint-extra.yml"),
+        "D3: {f:?}"
+    );
+    assert!(
+        !f.has("advisory-workflow-no-push:preview.yml"),
+        "PR helper: {f:?}"
+    );
+    assert!(
+        !f.has("advisory-workflow-no-push:ok-extra.yml"),
+        "push too: {f:?}"
+    );
+    assert!(
+        !f.has("advisory-workflow-no-push:ci.yml"),
+        "reserved: {f:?}"
+    );
+    let f = main_info(&["lint-extra.yml".into(), "gone.yml".into()]);
+    assert!(
+        f.has("default-branch-run-failed:lint-extra.yml"),
+        "D4: {f:?}"
+    );
+    assert!(
+        !f.has("default-branch-run-failed:gone.yml"),
+        "deleted workflow: {f:?}"
+    );
+    // 既定ブランチの情報が無い(空・CI なし・取得失敗)なら、どちらも報告しない。
+    let f = judge_workflows(
+        &wf_dir(&[("ci.yml", wf_ok_ci), ("lint-extra.yml", on_pr_only)]),
+        &canonical,
+        &DefaultBranch::default(),
+    );
+    assert!(
+        f.verdict == Verdict::Ok && f.missing.is_empty(),
+        "no info: {f:?}"
+    );
 
     let f = w(&gql(
         r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declQuality": {"text": "{\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"PR Title / PR title\"}]}}]}"}}"#,
