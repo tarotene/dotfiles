@@ -16,6 +16,10 @@ let
 in
 {
   imports = [
+    # The typed identity declaration (`dotfiles.identity`, set below) and the
+    # environment variables derived from it.
+    ../modules/identity.nix
+
     # esa MCP token supply (ADR-0022). esa is a personal-identity service —
     # the token's gpg recipient is this identity's master fingerprint, which
     # GnuPG resolves to the YubiKey [E] subkey (ADR-0003 Amendment). A
@@ -40,8 +44,15 @@ in
   home.username = lib.mkDefault "tarotene";
   home.homeDirectory = lib.mkDefault "/home/tarotene";
 
-  home.sessionVariables = {
-    DOTFILES_IDENTITY = "personal";
+  # DOTFILES_IDENTITY / DOTFILES_CLAUDE_ACCOUNT are derived from this
+  # (home/modules/identity.nix); `dotfiles-identity verify` checks them against
+  # the Claude account actually logged in.
+  dotfiles.identity = {
+    name = "personal";
+    claudeAccount = {
+      match = "exact";
+      value = "tarotene@gmail.com";
+    };
   };
 
   # warp-terminal (#9): cloud-connected AI terminal. Identity-scoped rather

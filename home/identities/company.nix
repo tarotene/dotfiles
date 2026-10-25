@@ -5,11 +5,22 @@
 # module (#211 / ADR-0003).
 { lib, pkgs, ... }:
 {
+  imports = [ ../modules/identity.nix ];
+
   home.username = lib.mkDefault "tarotene";
   home.homeDirectory = lib.mkDefault "/home/tarotene";
 
-  home.sessionVariables = {
-    DOTFILES_IDENTITY = "company";
+  # DOTFILES_IDENTITY / DOTFILES_CLAUDE_ACCOUNT are derived from this
+  # (home/modules/identity.nix). The Claude account is expected to be on the
+  # employer's mail domain, the same domain as the git email below; that this
+  # machine's Claude login really is on it is not confirmed yet, and until it
+  # is, `dotfiles-identity verify` refuses here (the closed side).
+  dotfiles.identity = {
+    name = "company";
+    claudeAccount = {
+      match = "domain";
+      value = "arkedgespace.com";
+    };
   };
 
   # Git identity — company (non-secret).
