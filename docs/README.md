@@ -416,6 +416,12 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   `pipeline-node:`)の漏れ・未定義 ID・登録の無い自動ノードを、nix の評価と
   `cargo test`(`crates/pipeline-map`)が落とす。図は D2 で manifest から
   生成する。
+- [ADR-998](adr/998-worklog-vault-daily-note.md) — Git で管理するには重い
+  粒度の作業ログ(返信した・試した・詰まった)を、Obsidian vault の当日ノート
+  の `## 作業ログ` へ 1 行ずつ追記する `worklog` を持つ決定。vault の場所は
+  hub-resolve と同じマーカーで渡し、owner/repo は作業ディレクトリから付け、
+  SessionStart で規範と同じリポジトリの直近の stuck / found を注入する。
+  Git へ上げる段は持たない。
 
 ## Claude Code tooling ([`claude/`](claude/))
 
