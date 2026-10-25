@@ -1,4 +1,4 @@
-# ADR-0000 — 粒度の小さい作業ログを、Obsidian vault の当日ノートへ worklog で追記し、SessionStart で渡す
+# ADR-998 — 粒度の小さい作業ログを、Obsidian vault の当日ノートへ worklog で追記し、SessionStart で渡す
 
 - Status: Accepted
 - Date: 2026-10-25

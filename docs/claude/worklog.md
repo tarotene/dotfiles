@@ -1,6 +1,6 @@
 # worklog — 粒度の小さい作業ログを、vault の当日ノートに 1 行ずつ書く
 
-決定の記録: `docs/adr/0000-worklog-vault-daily-note.md`
+決定の記録: `docs/adr/998-worklog-vault-daily-note.md`
 実体: `crates/worklog`(CLI と SessionStart hook)
 配備: `home/modules/obsidian.nix`(CLI `~/.local/bin/worklog` と vault のマーカー)、
 `home/modules/claude.nix`(hook `~/.claude/hooks/worklog`)
