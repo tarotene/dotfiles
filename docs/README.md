@@ -346,6 +346,12 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
+- [ADR-0000](adr/0000-ci-gate-job-criteria.md) — CI の gate job を
+  `ci.yml`(blocking)に入れる基準を、2 段(① 落ちたまま main に入ると main の
+  不変条件が壊れる、② flaky・外部依存・p75 10 分超なら外へ出す)で決め、
+  `ci-passed` の判定の形(`always()` と失敗判定 step)・gate job 0 個・
+  外の workflow の main での失敗を github-audit で検出し、言語別テンプレに
+  中間段 skip を入れる。ADR-591 D1 の配置の規則に、何を内に置くかを足す。
 - [ADR-961](adr/961-annotations-domain.md) — GitHub Actions の warning
   (Node.js 20 の非推奨、キャッシュの空振り)を横断で拾う annotations
   ドメインを github-audit に足す。明示指定でだけ走り、Rust 版にだけ置く。

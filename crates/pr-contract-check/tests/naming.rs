@@ -19,7 +19,9 @@ jobs:
     needs: [gitleaks]
     if: always()
     steps:
-      - run: echo done
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
 ";
 const QUALITY_OK: &str = r#"{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"CI passed"},{"context":"PR title"}]}}]}"#;
 const ENTRIES_OK: &str =

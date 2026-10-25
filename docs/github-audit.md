@@ -872,6 +872,21 @@ fields — `declCi`/`declPrTitle`, the `ci.yml`/`pr-title.yml` contents at
   `needs:` array (`ci-passed-job-missing`, `ci-passed-needs-missing`,
   `ci-passed-needs-incomplete:<job-id>`) — GitHub has no `needs: *`, so
   this coverage is not otherwise checkable at the platform level.
+- **`ci-passed` shape** (ADR-0000 D6): when `ci.yml` has at least one gate job
+  (a job other than `ci-passed`), the `ci-passed` job must carry an `if:`
+  containing `always()` (`ci-passed-not-always`) and a failure-check
+  expression — a non-comment line with both `needs.*.result` and `failure`
+  (`ci-passed-failure-step-missing`). Without the second, a failing gate job
+  leaves `CI passed` green and the required check never blocks. Shared
+  with the per-PR `workflow-naming-check` (same `judge_workflows`).
+- **No gate jobs** (`ci-gate-empty`, ADR-0000 D7): `ci.yml` has `ci-passed`
+  and nothing else. **Audit only** — not in `judge_workflows`, because a
+  required per-PR check would block every PR of a repository that has not
+  added its first gate job yet. Reported like `ci-absent`: triage chooses
+  {add a gate job / guidance Issue / exempt}, using the criteria in
+  ADR-0000 D1 (a job belongs in `ci.yml` only if a failing main would break
+  an invariant of main, and it is not flaky, not dependent on external state
+  or a shared queue, and not over 10 minutes at p75).
 - **`name:` presence and casing**: both the workflow-level `name:` and
   every job's `name:` must be present (`workflow-name-missing`,
   `job-name-missing:<job-id>`) and must not start with a lowercase ASCII
