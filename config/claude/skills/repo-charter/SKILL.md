@@ -417,11 +417,19 @@ review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 ## 9. 自己検証
 
 ```bash
-github-audit charters naming
+github-audit charters naming workflows rulesets
 ```
 
-対象リポジトリが両ドメインとも `ok` と出れば完了。`drifted` の場合は
+対象リポジトリが 4 ドメインとも `ok` と出れば完了。`drifted` の場合は
 `missing=` の項目を読んで埋め直す(`docs/github-audit.md` に各項目の説明)。
+
+`workflows` と `rulesets` は CI の構成を見る(ADR-1005)。`core` 型(言語別テンプレ
+が無い)は、`ci.yml` が `ci-passed` だけの最小形なので `ci-gate-empty` が出る。
+ADR-1005 D1 の基準 — ① 落ちたまま main に入ると main の不変条件(ビルド・テスト・
+整形・秘密なし等)が壊れる job だけを `ci.yml` に足し、② flaky・外部依存・p75 10 分
+超の job は `ci.yml` の外へ置く — を読んで、足す job を決める。足す job が今は無い
+リポジトリ(文書だけ等)は、exempt にする(`github-audit-triage` の三択)。足したら
+`ci-passed.needs` にも入れる。
 
 ## 10. 既存 Issue への適用(適合化のとき)
 

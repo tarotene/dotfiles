@@ -13,7 +13,7 @@ use pr_contract_check::workflows::{self as shared, Inputs};
 use serde_json::Value;
 use std::path::Path;
 
-pub use shared::{line_uses, parse_ci_yaml, CiJob, CiYaml};
+pub use shared::{ci_gate_empty, line_uses, parse_ci_yaml, CiJob, CiYaml};
 
 fn j_to_value(j: &J) -> Value {
     serde_json::from_str(&j.compact()).unwrap_or(Value::Null)
@@ -80,7 +80,7 @@ pub fn judge_workflows(gql: &RepoGql, canonical_quality_file: &Path) -> Finding 
     let pr_title_text = blob_text(&gql.decl_pr_title);
     let quality_text = blob_text(&gql.decl_quality);
     let canonical = std::fs::read_to_string(canonical_quality_file).ok();
-    Finding::ok_or_drifted(shared::judge_workflows(
+    let mut missing = shared::judge_workflows(
         &Inputs {
             file_names: &file_names,
             ci_text: &ci_text,
@@ -89,7 +89,13 @@ pub fn judge_workflows(gql: &RepoGql, canonical_quality_file: &Path) -> Finding 
             canonical_quality_text: canonical.as_deref(),
         },
         &quality_status_checks,
-    ))
+    );
+    // 監査だけの finding。PR ごとの検査(workflow-naming-check)には入れない — gate job を
+    // まだ持たないリポジトリの PR が全部止まるため(ADR の D7)。
+    if ci_gate_empty(&ci_text) {
+        missing.push("ci-gate-empty".into());
+    }
+    Finding::ok_or_drifted(missing)
 }
 
 #[cfg(test)]

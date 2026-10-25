@@ -656,7 +656,7 @@ fn workflows_direct() {
     let canonical = fx.p("fixtures/workflows-canonical-quality.json");
     let w = |g: &RepoGql| judge_workflows(g, &canonical);
 
-    let wf_ok_ci = "name: CI\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    name: Secret scan (gitleaks)\n    steps:\n      - run: echo hi\n  ci-passed:\n    runs-on: ubuntu-latest\n    name: CI passed\n    needs: [gitleaks]\n    if: always()\n    steps:\n      - run: echo done\n";
+    let wf_ok_ci = "name: CI\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    name: Secret scan (gitleaks)\n    steps:\n      - run: echo hi\n  ci-passed:\n    runs-on: ubuntu-latest\n    name: CI passed\n    needs: [gitleaks]\n    if: always()\n    steps:\n      - name: Fail if any required job failed or was cancelled\n        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n        run: exit 1\n";
     let wf_bad_ci = "name: ci\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n  shellcheck:\n    runs-on: ubuntu-latest\n    name: shell check\n    steps:\n      - run: echo hi\n";
     let wf_incomplete_needs = "name: CI\njobs:\n  a:\n    name: A\n    steps: []\n  b:\n    name: B\n    steps: []\n  ci-passed:\n    name: CI passed\n    needs: [a]\n    steps: []\n";
 
@@ -698,6 +698,21 @@ fn workflows_direct() {
         json!({"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declCi": {"text": wf_incomplete_needs}}),
     ));
     assert!(f.has("ci-passed-needs-incomplete:b"), "bash#119: {f:?}");
+    // ADR-591 D1/D3: `if: always()` と失敗判定 step が無い ci-passed は、gate job が
+    // 落ちても緑になる(wf_incomplete_needs はどちらも持たない)。
+    assert!(f.has("ci-passed-not-always"), "always: {f:?}");
+    assert!(f.has("ci-passed-failure-step-missing"), "failstep: {f:?}");
+
+    // gate job が 0 個の最小形は監査だけが `ci-gate-empty` を出す(PR ごとの検査には入れない)。
+    let wf_no_gate = "name: CI\njobs:\n  ci-passed:\n    name: CI passed\n    if: always()\n    steps:\n      - run: echo none\n";
+    let f = w(&gqlv(
+        json!({"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declCi": {"text": wf_no_gate}}),
+    ));
+    assert!(f.has("ci-gate-empty"), "gate-empty: {f:?}");
+    let f = w(&gqlv(
+        json!({"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declCi": {"text": wf_ok_ci}}),
+    ));
+    assert!(!f.has("ci-gate-empty"), "gate present: {f:?}");
 
     let f = w(&gql(
         r#"{"workflowsDir": {"entries": [{"name": "ci.yml"}]}, "declQuality": {"text": "{\"rules\":[{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"PR Title / PR title\"}]}}]}"}}"#,

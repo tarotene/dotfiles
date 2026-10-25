@@ -41,6 +41,12 @@ pub struct CiYaml {
     pub jobs: Vec<CiJob>,
     /// `ci-passed` job の `needs: [...]`(行が無ければ `None`)。
     pub ci_passed_needs: Option<Vec<String>>,
+    /// `ci-passed` job 直下の `if:` の値(行が無ければ `None`)。ADR-591 D3 は
+    /// gate job が skipped でも判定させるため `always()` を要求する。
+    pub ci_passed_if: Option<String>,
+    /// `ci-passed` job のどこかに、落ちた・取り消された job を失敗に変える式
+    /// (`needs.*.result` と `failure` を含む行、コメント行を除く)があるか。
+    pub ci_passed_failure_step: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -117,6 +123,17 @@ pub fn parse_ci_yaml(text: &str) -> CiYaml {
             }
         }
         if in_jobs && job == "ci-passed" {
+            if let Some(rest) = line.strip_prefix("    if:") {
+                records.push(vec!["IF".into(), strip_ws_tab(rest).to_string()]);
+                continue;
+            }
+            if !strip_ws_tab(line).starts_with('#')
+                && line.contains("needs.*.result")
+                && line.contains("failure")
+            {
+                records.push(vec!["FAILSTEP".into()]);
+                continue;
+            }
             if let Some(rest) = line.strip_prefix("    needs:") {
                 if let Some(v) = strip_ws_tab(rest).strip_prefix('[') {
                     let v = v.split(']').next().unwrap_or("");
@@ -156,8 +173,15 @@ pub fn parse_ci_yaml(text: &str) -> CiYaml {
         .iter()
         .find(|r| r[0] == "NEEDS")
         .and_then(|r| field(r, 1));
+    let ci_passed_if = records
+        .iter()
+        .find(|r| r[0] == "IF")
+        .and_then(|r| field(r, 1));
+    let ci_passed_failure_step = records.iter().any(|r| r[0] == "FAILSTEP");
     CiYaml {
         workflow_name,
+        ci_passed_if,
+        ci_passed_failure_step,
         jobs: job_ids
             .into_iter()
             .map(|id| CiJob {
@@ -272,13 +296,29 @@ pub fn judge_workflows(
                     .filter(|j| j.id != "ci-passed")
                     .map(|j| &j.id)
                     .collect();
-                if !others.is_empty() && needs.is_empty() {
+                let has_gate_jobs = !others.is_empty();
+                if has_gate_jobs && needs.is_empty() {
                     missing.push("ci-passed-needs-missing".into());
                 } else {
                     for j in others.into_iter().filter(|j| !needs.contains(j)) {
                         if !j.is_empty() {
                             missing.push(format!("ci-passed-needs-incomplete:{j}"));
                         }
+                    }
+                }
+                // ADR-591 D1/D3 の判定の形。gate job が 1 つ以上あるのに、`always()`
+                // が無いと gate job が落ちた時に ci-passed 自体が skipped になり、
+                // 失敗判定 step が無いと gate job が落ちても緑になる(required が空振りする)。
+                if has_gate_jobs {
+                    if !parsed
+                        .ci_passed_if
+                        .as_deref()
+                        .is_some_and(|v| v.contains("always()"))
+                    {
+                        missing.push("ci-passed-not-always".into());
+                    }
+                    if !parsed.ci_passed_failure_step {
+                        missing.push("ci-passed-failure-step-missing".into());
                     }
                 }
             }
@@ -315,6 +355,21 @@ pub fn judge_workflows(
     missing
 }
 
+/// `ci.yml` に gate job(`ci-passed` 以外の job)が 1 つも無いか(`ci-gate-empty`)。
+///
+/// [`judge_workflows`] には入れない: PR ごとの required check にすると、gate job を
+/// まだ持たないリポジトリの PR が全部止まる。github-audit の workflows ドメインだけが
+/// 足す(ADR-0020 §3 の `ci-absent` と同じく、黙認せず triage に見せ続ける)。
+/// `ci.yml` が読めない・`ci-passed` が無い場合は、別の finding が既に出るので `false`。
+pub fn ci_gate_empty(ci_text: &str) -> bool {
+    if ci_text.is_empty() {
+        return false;
+    }
+    let parsed = parse_ci_yaml(ci_text);
+    parsed.jobs.iter().any(|j| j.id == "ci-passed")
+        && parsed.jobs.iter().all(|j| j.id == "ci-passed")
+}
+
 fn starts_lower(s: &str) -> bool {
     s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
 }
@@ -349,7 +404,7 @@ mod tests {
         v.iter().map(|s| s.to_string()).collect()
     }
 
-    const CI_OK: &str = "name: CI\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    name: Secret scan (gitleaks)\n    steps:\n      - run: echo hi\n  ci-passed:\n    runs-on: ubuntu-latest\n    name: CI passed\n    needs: [gitleaks]\n    if: always()\n    steps:\n      - run: echo done\n";
+    const CI_OK: &str = "name: CI\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    name: Secret scan (gitleaks)\n    steps:\n      - run: echo hi\n  ci-passed:\n    runs-on: ubuntu-latest\n    name: CI passed\n    needs: [gitleaks]\n    if: always()\n    steps:\n      - name: Fail if any required job failed or was cancelled\n        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n        run: exit 1\n";
 
     /// quality.json の中身の違いだけを見る、テスト用の置き換え(JSON は読まない)。
     fn passthrough(s: &str) -> Option<String> {
@@ -424,6 +479,51 @@ mod tests {
         // 対象リポジトリに quality.json が無い、または単一正本を読めない: 検査しない。
         assert!(judge(&files, CI_OK, "", "", Some("B")).is_empty());
         assert!(judge(&files, CI_OK, "", "A", None).is_empty());
+    }
+
+    #[test]
+    fn ci_passed_without_always_is_reported() {
+        let ci = CI_OK.replace("    if: always()\n", "");
+        assert_eq!(
+            judge(&["ci.yml"], &ci, "", "", None),
+            ["ci-passed-not-always"]
+        );
+    }
+
+    #[test]
+    fn ci_passed_without_failure_step_is_reported() {
+        let ci = CI_OK.replace(
+            "      - name: Fail if any required job failed or was cancelled\n        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n        run: exit 1\n",
+            "      - run: echo done\n",
+        );
+        assert_eq!(
+            judge(&["ci.yml"], &ci, "", "", None),
+            ["ci-passed-failure-step-missing"]
+        );
+    }
+
+    #[test]
+    fn a_commented_out_failure_step_does_not_count() {
+        let ci = CI_OK.replace(
+            "      - name: Fail if any required job failed or was cancelled\n        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n        run: exit 1\n",
+            "      # if: contains(needs.*.result, 'failure')\n      - run: echo done\n",
+        );
+        assert_eq!(
+            judge(&["ci.yml"], &ci, "", "", None),
+            ["ci-passed-failure-step-missing"]
+        );
+    }
+
+    #[test]
+    fn minimal_ci_without_gate_jobs_needs_neither() {
+        // gate job が 0 個の最小形(core 型のテンプレ)は、`needs` が空のあいだ書けない
+        // ので always/失敗判定 step を要求しない。0 個であること自体は ci_gate_empty が拾う。
+        let ci = "name: CI\njobs:\n  ci-passed:\n    name: CI passed\n    if: always()\n    steps:\n      - run: echo none\n";
+        assert!(judge(&["ci.yml"], ci, "", "", None).is_empty());
+        assert!(ci_gate_empty(ci));
+        assert!(!ci_gate_empty(CI_OK));
+        assert!(!ci_gate_empty(""));
+        assert!(!ci_gate_empty("name: CI\njobs:\n  a:\n    name: A\n"));
     }
 
     #[test]

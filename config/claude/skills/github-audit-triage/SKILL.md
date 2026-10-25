@@ -223,6 +223,20 @@ description・topics・settings フィールド・ファイルツリー・open I
   - `ci-passed-needs-missing` / `ci-passed-needs-incomplete:<job-id>` —
     既存の `ci-passed` job の `needs:` 配列に、抜けている job id を
     追加する(他の job には触れない)。
+  - `ci-passed-not-always` / `ci-passed-failure-step-missing` — `ci-passed`
+    job の形が ADR-591 D1/D3 から外れている(ADR-1005 D6)。前者は job 直下に
+    `if: always()` を足し、後者は `steps:` に失敗判定 step
+    (`if: contains(needs.*.result, 'failure') || contains(needs.*.result,
+    'cancelled')` / `run: exit 1`)を足す。形は
+    `repo-governance-common` 以外の `*-repo-governance` テンプレートの `ci-passed`
+    と同一で、他の job には触れない。
+  - `ci-gate-empty` — `ci.yml` に gate job(`ci-passed` 以外の job)が 1 つも無い
+    (監査だけの finding、ADR-1005 D7)。`ci-absent` と同じく、{gate job を足す
+    PR / 誘導 Issue の起票 / exempt} の三択を表に書く。足す job は ADR-1005 D1 の
+    基準で決める — ① 落ちたまま main に入ると main の不変条件(ビルド・テスト・
+    整形・秘密なし等)が壊れる job だけを足し、② flaky・外部依存(共有キュー・
+    外部 API・時刻)・p75 10 分超の job は足さない(`ci.yml` の外へ置く)。
+    どの job が①に当たるかは、リポジトリの中身を読んで人が決める(低確信フラグ、§3)。
   - `job-name-missing:<job-id>` / `job-name-lowercase:<job-id>` — 該当
     job に `name:` を追加・先頭大文字化する(意味を変えない範囲の
     sentence case)。
