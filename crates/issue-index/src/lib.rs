@@ -189,8 +189,33 @@ fn pr_line(raw: &str) -> Option<String> {
     Some(s)
 }
 
-/// `blocked_by == 0` のものだけ、最大 10 件。`with_repo` なら `owner/repo#N` の形で出す
+/// 1 件ぶんの行(`owner/repo#N 題名`)。`with_repo` なら `owner/repo#N` の形で出す
 /// (owner 全体の検索は、番号だけでは Issue を特定できない)。
+fn issue_line(it: &Value, with_repo: bool) -> String {
+    let repo = if with_repo {
+        it.get("repository_url")
+            .and_then(Value::as_str)
+            .and_then(|u| u.rsplit_once("/repos/"))
+            .map(|(_, r)| sanitize(r))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    format!(
+        "{repo}#{} {}",
+        interp(it.get("number").unwrap_or(&Value::Null)),
+        sanitize(it.get("title").and_then(Value::as_str).unwrap_or(""))
+    )
+}
+
+/// `issue_dependencies_summary.blocked_by`。欠けていれば `None`(fail-closed: 出さない)。
+fn blocked_by(it: &Value) -> Option<f64> {
+    it.get("issue_dependencies_summary")
+        .and_then(|s| s.get("blocked_by"))
+        .and_then(Value::as_f64)
+}
+
+/// `blocked_by == 0` のものだけ、最大 10 件。
 /// `issue_dependencies_summary.blocked_by` が欠けたものは含めない(fail-closed)。
 fn actionable_lines(raw: &str, with_repo: bool) -> String {
     let Ok(v) = serde_json::from_str::<Value>(raw) else {
@@ -198,29 +223,40 @@ fn actionable_lines(raw: &str, with_repo: bool) -> String {
     };
     items(&v)
         .into_iter()
-        .filter(|it| {
-            it.get("issue_dependencies_summary")
-                .and_then(|s| s.get("blocked_by"))
-                .and_then(Value::as_f64)
-                == Some(0.0)
-        })
+        .filter(|it| blocked_by(it) == Some(0.0))
         .take(10)
-        .map(|it| {
-            let repo = if with_repo {
-                it.get("repository_url")
-                    .and_then(Value::as_str)
-                    .and_then(|u| u.rsplit_once("/repos/"))
-                    .map(|(_, r)| sanitize(r))
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
-            format!(
-                "{repo}#{} {}",
-                interp(it.get("number").unwrap_or(&Value::Null)),
-                sanitize(it.get("title").and_then(Value::as_str).unwrap_or(""))
-            )
+        .map(|it| issue_line(it, with_repo))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 軽い人手タスク。待ち(`blocked_by`)のあるものも出し、`(待ち N 件)` を添える。待ちは予定化を止める
+/// 理由にならない(連鎖ごと、着手可能になる前に予定へ入れる)。着手可能なもの(待ち 0 件)を先に並べ、
+/// 最大 10 件。`blocked_by` が欠けたものは含めない(fail-closed)。
+fn human_lines(raw: &str) -> String {
+    let Ok(v) = serde_json::from_str::<Value>(raw) else {
+        return String::new();
+    };
+    let mut rows: Vec<(f64, String)> = items(&v)
+        .into_iter()
+        .filter_map(|it| {
+            let n = blocked_by(it)?;
+            let line = issue_line(it, true);
+            Some((
+                n,
+                if n > 0.0 {
+                    format!("{line} (待ち {n} 件)")
+                } else {
+                    line
+                },
+            ))
         })
+        .collect();
+    // 安定ソート: 待ちの無いものが先、同じ待ちの数の中では検索結果の順(更新の新しい順)を保つ。
+    rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    rows.into_iter()
+        .take(10)
+        .map(|(_, l)| l)
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -230,15 +266,15 @@ fn handoff_text(raw: &str) -> String {
     actionable_lines(raw, false)
 }
 
-/// 着手可能な軽い人手タスク(`blocked_by == 0` のものだけ、最大 10 件、リポジトリ付き)。
+/// 軽い人手タスク(待ちのあるものも含む、最大 10 件、リポジトリ付き)。
 fn human_text(raw: &str) -> String {
-    actionable_lines(raw, true)
+    human_lines(raw)
 }
 
 /// 軽い人手タスクの節の見出し(`build` と `build_human_only` で共有する)。
-const HUMAN_HEADING: &str = "着手可能な軽い人手タスク(handoff:human かつ handoff:light で、自分に assign され、blocked_by が無い open Issue。着手可能になった日のうちに、handoff スキル §7 で予定に入れる):\n";
+const HUMAN_HEADING: &str = "軽い人手タスク(handoff:human かつ handoff:light で、自分に assign された open Issue。待ち(blocked_by)があるものは「(待ち N 件)」と添える。待ちがあっても、連鎖ごと、着手可能になる前に、handoff スキル §7 で予定に入れる):\n";
 
-/// cwd のリポジトリに open Issue が 1 件も無いときの注入。着手可能な軽い人手タスクが
+/// cwd のリポジトリに open Issue が 1 件も無いときの注入。軽い人手タスクが
 /// あれば、その節だけを出す(#831)。人手タスクは作業中のリポジトリと無関係な場所で
 /// 起きるので、Issue の無いリポジトリのセッションでこそ見えてほしい。
 /// 出す節が空なら `None`(従来どおり沈黙)。

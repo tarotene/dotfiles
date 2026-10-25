@@ -614,7 +614,7 @@ fn handoff_human_section() {
             "items":[{"number":10,"title":"summary フィールド無し",
                       "repository_url":"https://api.github.com/repos/tester/lab"}]}),
     );
-    let section = "着手可能な軽い人手タスク";
+    let section = "軽い人手タスク(handoff:human";
 
     let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &all12), (HUMAN, &mixed)]);
     let ctx = o.ctx();
@@ -625,9 +625,18 @@ fn handoff_human_section() {
         "作業中の repo と別の repo の Issue も出る"
     );
     assert_eq!(
-        count(&ctx, "blocker 未 close の人手タスク"),
-        0,
-        "blocked_by が 1 以上は出さない"
+        count(
+            &ctx,
+            "tester/lab#8 blocker 未 close の人手タスク (待ち 1 件)"
+        ),
+        1,
+        "blocked_by が 1 以上も出す(待ちは予定化を止める理由にならない)。待ちの件数を添える"
+    );
+    let pos = |needle: &str| ctx.find(needle).unwrap_or_else(|| panic!("無い: {needle}"));
+    assert!(
+        pos("tester/other#9 別リポジトリの人手タスク")
+            < pos("tester/lab#8 blocker 未 close の人手タスク"),
+        "待ちの無いものが先に並ぶ: {ctx}"
     );
     assert_eq!(count(&ctx, section), 1);
     snap("handoff-human-mixed", &o);
@@ -676,7 +685,7 @@ fn handoff_human_section() {
     );
 }
 
-/// #831: cwd のリポジトリに open Issue が 1 件も無くても、着手可能な軽い人手タスクの節は
+/// #831: cwd のリポジトリに open Issue が 1 件も無くても、軽い人手タスクの節は
 /// 出す(人手タスクは作業中のリポジトリと無関係な場所で起きる)。
 #[test]
 fn handoff_human_section_without_open_issues() {
@@ -695,14 +704,20 @@ fn handoff_human_section_without_open_issues() {
              "issue_dependencies_summary":{"blocked_by":1}}
         ]}),
     );
-    let section = "着手可能な軽い人手タスク";
+    let section = "軽い人手タスク(handoff:human";
 
     let o = fx.run_stub(&repo, &[(MINE, &zero), (ALL, &zero), (HUMAN, &human)]);
     assert_eq!(o.code, 0);
     let ctx = o.ctx();
     assert_eq!(count(&ctx, section), 1, "Issue が 0 件でも節は出る: {ctx}");
     assert_eq!(count(&ctx, "tester/lab#7 着手可能な人手タスク"), 1);
-    assert_eq!(count(&ctx, "blocker 未 close の人手タスク"), 0);
+    assert_eq!(
+        count(
+            &ctx,
+            "tester/lab#8 blocker 未 close の人手タスク (待ち 1 件)"
+        ),
+        1
+    );
     assert_eq!(
         count(&ctx, "全件示す"),
         0,

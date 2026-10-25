@@ -233,7 +233,7 @@ fn main() {
         }
         all_v = parse(&all.stdout);
         if total_count(&all_v) <= 0 {
-            // open Issue が 1 件も無い。それでも着手可能な軽い人手タスクがあれば、
+            // open Issue が 1 件も無い。それでも軽い人手タスクがあれば、
             // その節だけを出す(#831)。無ければ従来どおり沈黙する。
             if let Some(out) = build_human_only(&nwo, human_raw) {
                 print!("{out}");
