@@ -44,7 +44,7 @@ jobs:
           intermediate: ${{ steps.stack-stage.outputs.intermediate }}
 
       # Same fail-open rationale as ci.yml's `rust`/`build-host` jobs.
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
         if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
 
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
