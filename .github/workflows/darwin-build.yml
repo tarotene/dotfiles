@@ -52,6 +52,9 @@ jobs:
         with:
           primary-key: nix-altair-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-altair-${{ runner.os }}-
+          # Same rationale as ci.yml's build-host: a pull_request cache is
+          # scoped to refs/pull/N/merge and only evicts main's (#1014).
+          save: ${{ github.event_name != 'pull_request' }}
           gc-max-store-size-macos: 1G
           purge: true
           purge-prefixes: nix-altair-${{ runner.os }}-
