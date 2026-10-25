@@ -1,4 +1,4 @@
-# ADR-0000 — CI の gate job を ci.yml に入れる基準を決め、検出と部品で全リポジトリに揃える
+# ADR-1005 — CI の gate job を ci.yml に入れる基準を決め、検出と部品で全リポジトリに揃える
 
 - Status: Accepted
 - Date: 2026-10-25

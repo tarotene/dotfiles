@@ -346,7 +346,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
   `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
   sentence case。
-- [ADR-0000](adr/0000-ci-gate-job-criteria.md) — CI の gate job を
+- [ADR-1005](adr/1005-ci-gate-job-criteria.md) — CI の gate job を
   `ci.yml`(blocking)に入れる基準を、2 段(① 落ちたまま main に入ると main の
   不変条件が壊れる、② flaky・外部依存・p75 10 分超なら外へ出す)で決め、
   `ci-passed` の判定の形(`always()` と失敗判定 step)・gate job 0 個・
