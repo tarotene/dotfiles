@@ -11,6 +11,7 @@
 //!   この 2 つは gh の stderr もそのまま通す。
 
 use crate::domains::annotations::JobWarnings;
+use crate::domains::gate_health::{GateJobRun, MAX_RUNS};
 use crate::jq;
 use crate::model::{RepoGql, RepoMeta, RepoRest};
 use serde_json::Value;
@@ -194,6 +195,78 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
             "[]",
         );
         parse_strings(&out)
+    }
+
+    /// gate-health ドメインの取得(ADR-1005 D5)。ci.yml の完了した run のうち、
+    /// `branch`(既定ブランチ)宛ての PR のものを新しい順に [`MAX_RUNS`] 件読み、
+    /// 再実行を含む全 job(`filter=all`)の名前・結論・所要時間を返す。1 + [`MAX_RUNS`] 回の
+    /// REST を払う。どの段の取得失敗も空に縮退する(判定材料なしとして ok に倒すのは judge)。
+    /// run は 1 ページ(50 件)まで。
+    pub fn fetch_gate_job_runs(&self, repo: &str, branch: &str) -> Vec<GateJobRun> {
+        let runs = self.quiet_or(
+            &[
+                "api",
+                &self.repo_path(repo, "/actions/workflows/ci.yml/runs"),
+                "-X",
+                "GET",
+                "-F",
+                "event=pull_request",
+                "-F",
+                "status=completed",
+                "-F",
+                "per_page=50",
+                "--jq",
+                "[.workflow_runs[] | {id: .id, head_sha: .head_sha, \
+                 base: (.pull_requests[0].base.ref // \"\")}]",
+            ],
+            "[]",
+        );
+        let mut out = Vec::new();
+        let wanted = parse_array(&runs)
+            .into_iter()
+            .filter(|r| r.get("base").and_then(Value::as_str) == Some(branch))
+            .take(MAX_RUNS);
+        for run in wanted {
+            let (Some(run_id), Some(head_sha)) = (
+                run.get("id").and_then(Value::as_i64),
+                run.get("head_sha").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            let jobs = self.quiet_or(
+                &[
+                    "api",
+                    &self.repo_path(repo, &format!("/actions/runs/{run_id}/jobs")),
+                    "-X",
+                    "GET",
+                    "-F",
+                    "per_page=100",
+                    "-F",
+                    "filter=all",
+                    "--jq",
+                    "[.jobs[] | {name: .name, conclusion: (.conclusion // \"\"), \
+                     seconds: (try ((.completed_at | fromdate) - (.started_at | fromdate)) \
+                     catch null)}]",
+                ],
+                "[]",
+            );
+            for job in parse_array(&jobs) {
+                let Some(name) = job.get("name").and_then(Value::as_str) else {
+                    continue;
+                };
+                out.push(GateJobRun {
+                    job: name.to_string(),
+                    head_sha: head_sha.to_string(),
+                    conclusion: job
+                        .get("conclusion")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    seconds: job.get("seconds").and_then(Value::as_i64),
+                });
+            }
+        }
+        out
     }
 
     /// bash: `fetch_repo_settings` の生 JSON。squash_merge_commit_title 等は

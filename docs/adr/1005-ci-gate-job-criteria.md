@@ -186,3 +186,5 @@ core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を�
 - crates/github-audit/src/gh.rs
 - crates/github-audit/src/audit.rs
 - crates/github-audit/tests/pipeline.rs
+- crates/github-audit/src/domains/gate_health.rs
+- crates/github-audit/src/model.rs

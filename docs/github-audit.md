@@ -1015,6 +1015,36 @@ Actions major bump (ADR-568 Amendment 2026-10-23); a cache kind is a
 repository's own workflow (`cache: false`, or a `cache-dependency-glob` that
 names a file that exists).
 
+### gate-health (ADR-1005 D5, opt-in)
+
+Reads the job history of `ci.yml` and reports the two exclusion conditions of
+ADR-1005 D1 ② that a machine can measure. Whether a job guards an invariant of
+`main` (D1 ①) and whether it depends on external state are judgements about
+what the job means; they are made by a person reading the criteria, not here.
+
+**Opt-in.** It runs only when named (`github-audit gate-health`) and is not in
+`Domain::ALL`: it reads the job list of each of the latest 20 completed `ci.yml`
+runs of pull requests into the default branch (1 + 20 REST calls per
+repository with a `ci.yml`), the same cost class as `annotations`.
+
+- **`gate-job-slow:<job>`**: the p75 (nearest-rank) of the successful runs'
+  duration of that job exceeds 600 s (ADR-1005 D2). A job with fewer than 3
+  successful samples is not judged. Failed, cancelled and skipped runs and runs
+  with no start/end time are not counted. A matrix job is reported under its
+  expanded name (`Build vega`).
+- **`gate-job-flaky:<job>`**: on the same head SHA, the same job concluded both
+  `failure` and `success` (a re-run passed). Jobs are read with `filter=all`,
+  so the earlier attempts of a re-run are included.
+- Runs whose base is not the default branch (the middle of a stacked PR) are not
+  read; neither are `push` runs.
+- Tokens are sorted and de-duplicated; whitespace becomes `-` and `,` becomes `;`.
+- `not-applicable` for a repository with no `ci.yml`. No run, or a failed fetch,
+  reads as `ok` ("nothing observed"). One page (50) of runs is requested, of which
+  the latest 20 for the default branch are read.
+
+Where a finding is fixed: a slow job is split or moved outside `ci.yml` (D1 ②);
+a flaky job is fixed at its cause, or moved outside `ci.yml` until it is.
+
 ## Account-level: `github-app-registry-check` (ADR-436 Amendment 2026-09-30)
 
 A sibling command (Rust, `crates/github-app-registry-check`; it calls no

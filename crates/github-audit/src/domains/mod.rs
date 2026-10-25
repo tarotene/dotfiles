@@ -4,6 +4,7 @@
 pub mod annotations;
 pub mod charters;
 pub mod docs;
+pub mod gate_health;
 pub mod lifecycle;
 pub mod naming;
 pub mod navdoc;
