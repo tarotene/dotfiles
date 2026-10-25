@@ -191,6 +191,9 @@ l_ci: "CI (GitHub Actions)" {
   n_pr_title_check: "pr-title.yml" {
     class: s_yaml
   }
+  n_kiriban: "kiriban.yml" {
+    class: s_yaml
+  }
   n_bleep_pin_freshness: "bleep-pin-freshness.yml" {
     class: s_yaml
   }
@@ -229,11 +232,17 @@ l_external: "Sessions / services / state" {
 l_external.n_github -> l_ci.n_pr_title_check: "PR event" {
   class: e_invoke
 }
+l_external.n_github -> l_ci.n_kiriban: "Issue / PR opened" {
+  class: e_invoke
+}
 l_ci.n_ci -> l_external.n_github: "required checks" {
   class: e_notify
 }
 l_ci.n_pr_title_check -> l_external.n_github: "title check" {
   class: e_notify
+}
+l_ci.n_kiriban -> l_external.n_github: "comment / label / request" {
+  class: e_issue
 }
 l_external.n_github -> l_manual.n_github_audit: "REST / GraphQL" {
   class: e_context
@@ -305,6 +314,13 @@ legend: "Legend" {
     class: plain
     style.stroke: "#444444"
     style.font-color: "#444444"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_issue: "edge issue: creates or closes an Issue" {
+    class: plain
+    style.stroke: "#009E73"
+    style.font-color: "#009E73"
     style.fill: "#FFFFFF"
     style.stroke-width: 3
   }

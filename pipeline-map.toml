@@ -120,6 +120,7 @@ node = [
   { id = "darwin-build", label = "darwin-build.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr"], entity = ".github/workflows/darwin-build.yml", auto = true },
   { id = "pr-title-check", label = "pr-title.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr", "repo-governance"], entity = ".github/workflows/pr-title.yml", auto = true },
   { id = "close-linked-issues", label = "close-linked-issues.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr"], entity = ".github/workflows/close-linked-issues.yml", auto = true },
+  { id = "kiriban", label = "kiriban.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/kiriban.yml", doc = "docs/kiriban.md", auto = true },
   { id = "bleep-pin-freshness", label = "bleep-pin-freshness.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/bleep-pin-freshness.yml", auto = true },
 
   # --- Timers / periodic
@@ -250,10 +251,12 @@ edge = [
   { from = "github", to = "darwin-build", kind = "invoke", label = "PR event", pipelines = ["implement-to-pr"] },
   { from = "github", to = "pr-title-check", kind = "invoke", label = "PR event", pipelines = ["implement-to-pr", "repo-governance"] },
   { from = "github", to = "close-linked-issues", kind = "invoke", label = "PR closed", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "kiriban", kind = "invoke", label = "Issue / PR opened", pipelines = ["repo-governance"] },
   { from = "ci", to = "github", kind = "notify", label = "required checks", pipelines = ["implement-to-pr", "repo-governance"] },
   { from = "darwin-build", to = "github", kind = "notify", label = "advisory check", pipelines = ["implement-to-pr"] },
   { from = "pr-title-check", to = "github", kind = "notify", label = "title check", pipelines = ["implement-to-pr", "repo-governance"] },
   { from = "close-linked-issues", to = "github", kind = "issue", label = "close Issues", pipelines = ["implement-to-pr"] },
+  { from = "kiriban", to = "github", kind = "issue", label = "comment / label / request", pipelines = ["repo-governance"] },
   { from = "github", to = "pr-gate-stop", kind = "context", label = "checks / rules", pipelines = ["implement-to-pr"] },
   { from = "pr-gate-stop", to = "agent-session", kind = "deny", label = "PR not done", pipelines = ["implement-to-pr"] },
 

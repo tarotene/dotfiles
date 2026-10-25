@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["classify", "999"]
+status.code = 0

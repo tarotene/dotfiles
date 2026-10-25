@@ -1,0 +1,157 @@
+name: 'Kiriban'
+description: >-
+  Issue / PR の番号がキリ番(100 の倍数・3 桁以上のゾロ目・1000 の倍数の前後賞)に
+  当たったら、祝福コメントとラベル kiriban を付け、大キリ番とゾロ目ではキリリク
+  受付 Issue を開く。docs/kiriban.md。
+
+  規則と文面の単一正本は crates/kiriban(依存ゼロの Rust)。この action はその
+  呼び出しと GitHub への書き込みに徹する(PR タイトル検査の .github/actions/
+  pr-title と同じ形)。呼び出し元リポジトリの checkout 状態には依存しない — 常に
+  dotfiles を sparse-checkout する(dotfiles 自身ではこの run の SHA、他リポジ
+  トリでは main の安定版)。
+
+  冪等: 祝福コメントとキリリク Issue は本文の marker で既存を探し、あれば作らない
+  (workflow_dispatch での再実行で増えない)。
+
+inputs:
+  number:
+    description: 判定する Issue / PR の番号
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        repository: tarotene/dotfiles
+        ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
+        # Cargo.toml は cargo が workspace root を見つけるために必要。crates/* は
+        # glob メンバーなので、sparse で kiriban だけを取っても workspace は
+        # 解決できる。依存ゼロなので registry から取るものは無い。
+        sparse-checkout: |
+          /Cargo.toml
+          /crates/kiriban/
+        sparse-checkout-cone-mode: false
+        path: .kiriban-tools
+        persist-credentials: false
+
+    - name: Celebrate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        OWNER: ${{ github.repository_owner }}
+        NUMBER: ${{ inputs.number }}
+      run: |
+        set -euo pipefail
+        if ! command -v cargo > /dev/null 2>&1; then
+          echo "::error::cargo が見つかりません。kiriban(crates/kiriban)は Rust ツールチェーンを必要とします" >&2
+          exit 1
+        fi
+        if ! [[ "$NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::number は正の整数にしてください: $NUMBER" >&2
+          exit 1
+        fi
+        cargo build --release --quiet \
+          --manifest-path .kiriban-tools/Cargo.toml \
+          -p kiriban
+        KIRIBAN_BIN="$PWD/.kiriban-tools/target/release/kiriban"
+        kiriban() { "$KIRIBAN_BIN" "$@"; }
+        summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+        tmp="$(mktemp -d)"
+
+        # n を判定して祝う。allow_request=true のときだけキリリク受付 Issue を開く。
+        # 新しく開いたキリリク Issue の番号を REQUEST_CREATED に入れる(無ければ空)。
+        celebrate() {
+          local n="$1" allow_request="$2"
+          REQUEST_CREATED=""
+
+          local verdict
+          verdict="$(kiriban classify "$n")"
+          if ! grep -qx 'kiriban=true' <<<"$verdict"; then
+            echo "#$n はキリ番ではありません"
+            echo "- #$n: キリ番ではない" >> "$summary"
+            return 0
+          fi
+
+          # 踏んだ人と種類。Discussion など Issue / PR でない番号は 404 になる。
+          local info
+          if ! info="$(gh api "repos/$GH_REPO/issues/$n" \
+            --jq '[.user.login, .user.type, (if .pull_request then "pr" else "issue" end)] | @tsv' \
+            2> "$tmp/err")"; then
+            if grep -q 'HTTP 404' "$tmp/err"; then
+              echo "::notice::#$n は Issue / PR ではありません(Discussion など)。何もしません"
+              echo "- #$n: Issue / PR ではない" >> "$summary"
+              return 0
+            fi
+            cat "$tmp/err" >&2
+            return 1
+          fi
+          local getter getter_type kind
+          IFS=$'\t' read -r getter getter_type kind <<<"$info"
+
+          # ラベルの用意(何度実行しても同じ結果)と付与。
+          local name color desc
+          while IFS=$'\t' read -r name color desc; do
+            gh label create "$name" --color "$color" --description "$desc" --force > /dev/null
+          done < <(kiriban labels)
+          gh api -X POST "repos/$GH_REPO/issues/$n/labels" -f 'labels[]=kiriban' > /dev/null
+
+          local common=(--number "$n" --kind "$kind" --getter "$getter" --getter-type "$getter_type"
+            --owner "$OWNER" --repo "$GH_REPO")
+
+          # キリリク受付 Issue(大キリ番とゾロ目だけ)。
+          local request_args=() request_num="" expires=""
+          if [[ "$allow_request" == true ]] && grep -qx 'request=true' <<<"$verdict"; then
+            local marker="<!-- kiriban-request:$n -->"
+            request_num="$(gh issue list --label kiririku --state all --limit 1000 \
+              --json number,body \
+              | jq -r --arg m "$marker" '.[] | select(.body | contains($m)) | .number' \
+              | sed -n 1p)"
+            if [[ -n "$request_num" ]]; then
+              expires="$(gh issue view "$request_num" --json body --jq .body \
+                | sed -n 's/^| 受付期限 | \([0-9-]*\) |.*$/\1/p' | sed -n 1p)"
+            fi
+            if [[ -z "$expires" ]]; then
+              expires="$(date -u -d '+30 days' +%F)"
+            fi
+            if [[ -z "$request_num" ]]; then
+              kiriban request-body "${common[@]}" --expires "$expires" > "$tmp/request.md"
+              local title url
+              title="$(kiriban request-title --number "$n")"
+              url="$(gh issue create --title "$title" --body-file "$tmp/request.md" --label kiririku)"
+              request_num="${url##*/}"
+              REQUEST_CREATED="$request_num"
+              echo "キリリク受付 Issue を開きました: $url"
+            fi
+            request_args=(--request-issue "$request_num" --expires "$expires")
+          fi
+
+          # 祝福コメント(marker があれば投稿しない)。
+          local existing
+          existing="$(gh api "repos/$GH_REPO/issues/$n/comments" --paginate --jq '.[].body')"
+          if grep -qF "<!-- kiriban:$n -->" <<<"$existing"; then
+            echo "#$n には祝福コメントが既にあります"
+            echo "- #$n: 祝福済み(再実行)" >> "$summary"
+          else
+            kiriban comment "${common[@]}" "${request_args[@]}" > "$tmp/comment.md"
+            gh api -X POST "repos/$GH_REPO/issues/$n/comments" -F body=@"$tmp/comment.md" > /dev/null
+            echo "- #$n: 祝福コメントとラベルを付けた${request_num:+(キリリク #$request_num)}" >> "$summary"
+          fi
+        }
+
+        celebrate "$NUMBER" true
+        # GITHUB_TOKEN で開いた Issue は新しい workflow を起動しないので、開いた
+        # キリリク Issue がキリ番なら同じ run で祝う。キリリクは開かないので、
+        # 入れ子はここで止まる。
+        if [[ -n "$REQUEST_CREATED" ]]; then
+          celebrate "$REQUEST_CREATED" false
+        fi
+
+# 呼び出し元ワークフロー側で必要な job permissions(この composite action 自体は
+# permissions を宣言できない — job 単位でしか宣言できないため、caller テンプレート
+# (config/claude/skills/repo-governance-common/templates/.github/workflows/
+# kiriban.yml)側にコメントで明記する):
+#   contents: read       — dotfiles の sparse-checkout(public リポジトリ)
+#   issues: write        — ラベル・コメント・キリリク受付 Issue
+#   pull-requests: write — PR へのラベル・コメント

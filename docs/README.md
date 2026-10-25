@@ -12,6 +12,11 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   fires without being typed (hooks, timers, workflows, git hooks): when it
   runs, what it hands to the next one, and the stack it runs on, with one
   diagram per pipeline. Generated from the repository-root manifest.
+- [`kiriban.md`](kiriban.md) — celebrate an Issue / PR number that lands on a
+  milestone (multiples of 100, 3+ digit repdigits, ±1 of a multiple of 1000):
+  comment + `kiriban` label, and a request issue for 1000-multiples and
+  repdigits. One rule and wording source (`crates/kiriban`), a per-repository
+  workflow from the governance templates.
 - [`setup.md`](setup.md) — step-by-step host setup guide (moved from root
   `SETUP.md`, ADR-0016 root-document allowlist).
 - [`setup-macos.md`](setup-macos.md) — macOS (darwin) host setup guide:

@@ -69,6 +69,7 @@ Key locations:
 | `.github/workflows/ci.yml` — `min-typst` job | `PATTERNS` regex |
 | `.github/workflows/pr-title.yml` | Nothing to adjust — calls tarotene/dotfiles' composite action (ADR-0031/ADR-591); the reported check context is simply this job's own `name: PR title`, no manual confirmation needed |
 | `.github/workflows/close-linked-issues.yml` | Nothing to adjust — closes the issues a merged PR names with `Closes #N` even when the PR was stacked on a non-default base (GitHub only acts on the keyword for PRs targeting the default branch, tarotene/dotfiles#609); needs no secrets, only `issues: write` |
+| `.github/workflows/kiriban.yml` | Nothing to adjust — celebrates an Issue / PR number that lands on a milestone (multiples of 100, 3+ digit repdigits, ±1 of a multiple of 1000) with a comment and the `kiriban` label, and opens a request issue for 1000-multiples and repdigits (docs/kiriban.md in tarotene/dotfiles); not a required check; needs no secrets, only `issues: write` and `pull-requests: write` |
 | `.github/workflows/release.yml` | PDF filenames in `files:` block |
 | `.github/workflows/metrics-reminder.yml` | Issue body checklist; remove if not a CV |
 | `cliff.toml` | `tag_pattern` if your CalVer scheme differs from `vYYYY.MM[.P]` |

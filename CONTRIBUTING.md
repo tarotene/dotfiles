@@ -15,6 +15,8 @@ Rejected:
 - add a new feature to `herdr` itself (belongs in the upstream `herdr` repo)
 - pin a specific project's Rust toolchain version (belongs to that project's `mise`/`rustup` config, not this repo)
 
+Exception: kiriban request issues (label `kiririku`) opened automatically by `.github/workflows/kiriban.yml` are exempt from the judging question above.
+
 An Issue that proposes adopting a tool carries a "feasibility check on the host" section: the tool was run without a permanent change (for example `nix shell nixpkgs#<pkg> -c <cmd>`) on the real input and output, with the date, platform, command, result and any snag recorded. If it could not be tried, the Issue says so and why.
 
 ## Pull requests

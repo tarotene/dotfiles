@@ -62,6 +62,7 @@ ruleset の書き込みは `apply-rulesets` だけが正規の経路で、`rules
 `repo-create-guard` は `gh repo create` を止めて repo-charter の手順へ導く。
 CI の pr-title と必須の check が、各リポジトリで同じ判定エンジンを呼ぶ。
 `bleep-pin-freshness` は、bleep の pin が古くなると annotation で知らせる。
+`kiriban` は、Issue / PR の番号がキリ番に当たると祝福のコメントとラベルを付け、大キリ番とゾロ目ではキリリク受付の Issue を開く。
 
 ### P5 cloud routine
 

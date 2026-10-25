@@ -14,6 +14,7 @@
 | `crates/hook-io` | 共通入出力。stdin JSON / `permissionDecision` の emit / `default_branch` / plan テキスト解決 / session 台帳 / jq 互換の順序保持 JSON など(#391 のクラスタ A〜M) |
 | `crates/guard-core` | `gh` を呼ぶ PreToolUse guard の共有エンジン(#415) |
 | `crates/pr-title-check`・`crates/pr-contract-check` | 他リポジトリの required check の実体(`.github/actions/pr-title`)。依存ゼロで、sparse-checkout して `cargo build` する |
+| `crates/kiriban` | 他リポジトリの workflow の実体(`.github/actions/kiriban`)。Issue / PR 番号のキリ番の判定と祝福の文面の単一正本(`docs/kiriban.md`)。依存ゼロで、sparse-checkout して `cargo build` する |
 | `flake.nix` の `rustWorkspace` | crane でのビルド。`pkgs.dotfiles-tools` として overlay され、clippy / rustfmt / 依存の derivation は `checks` に入る |
 
 - `nix develop` で cargo / clippy / rustfmt / rust-analyzer / jq / hyperfine が揃う。

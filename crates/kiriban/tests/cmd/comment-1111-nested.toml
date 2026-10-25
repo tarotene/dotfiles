@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["comment", "--number", "1111", "--kind", "issue", "--getter", "github-actions[bot]", "--getter-type", "Bot", "--owner", "tarotene", "--repo", "tarotene/dotfiles"]
+status.code = 0
