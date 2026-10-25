@@ -1,0 +1,83 @@
+name: 'Stack stage'
+description: >-
+  ADR-468(docs/adr/468-stack-aware-heavy-ci.md)の stack 軸を、リポジトリ固有の
+  入力(パス)を持たない部品として切り出したもの(ADR-1005 D8)。この PR が、積み重ね
+  (stacked PR)の中間段か — base が既定ブランチでなく、`ci:full` ラベルが無く、この
+  PR の head を base にした open の PR がある — を `intermediate` に出す。中間段は、
+  上の段が最後に merge される前に、積み重ねた全体で再検査されるので、重い job を
+  飛ばしてよい。
+
+  使い方: 呼び出し側の workflow に、この action だけを呼ぶ job を 1 つ置き
+  (`permissions: pull-requests: read`、checkout は不要)、重い job が
+  `needs:` に取って、job の `if:` に「`!cancelled()` かつ `needs.<job>.outputs.intermediate`
+  が `'true'` でない」式を書いて飛ばす(rust の ci.yml テンプレの `msrv` job が実例)。`!= 'true'`(`== 'false'` でない)と `!cancelled()` を使うのは、この job が
+  失敗・取り消しでも重い job を飛ばさない(fail-open)ため。job 単位の skip は
+  `skipped` で、required check(集約 job の `needs:`)は `skipped` を成功に数える。
+  workflow 全体を path / branch の filter で飛ばしてはいけない: required check が
+  永遠に Pending になる(GitHub Docs, "Troubleshooting required status checks"、
+  取得 2026-09-25 — ADR-468 / `stack-position` の説明と同じ)。
+
+  `ci:full` ラベルで強制するなら、呼び出し側の `pull_request.types` に `labeled` を足す
+  (既定の `opened` / `synchronize` / `reopened` だけだと、既に開いている PR にラベルを
+  付けても workflow が再実行されない)。
+
+  path 軸(その PR が関係するパスを触ったか)は、この action の対象ではない。
+  リポジトリごとに読むパスが違うので、呼び出し側の「変更を検出する」step に任せる
+  (言語別テンプレ)。dotfiles の `stack-position` は、この action の出力を入力に取って
+  path 軸を足す。
+
+outputs:
+  intermediate:
+    description: "'true' means this PR is a middle stage of a stack (heavy jobs may be skipped). Every API failure reads as 'false' (fail-open)."
+    value: ${{ steps.judge.outputs.intermediate }}
+  reason:
+    description: "Why `intermediate` is what it is (for the job log)."
+    value: ${{ steps.judge.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - id: judge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      run: |
+        set -uo pipefail
+        # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル
+        # → 子 PR 件数(この PR の head を base にした open PR が無ければ tip)。
+        # gh api 失敗は fail-open。intermediate=true になるのは
+        # 「非 bottom かつ非 tip かつ ci:full 無し」の一本道だけ。
+        intermediate=false
+        reason=""
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          reason="event=$EVENT_NAME"
+        elif [ "$BASE_REF" = "$DEFAULT_BRANCH" ]; then
+          reason="bottom"
+        elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
+          reason="label ci:full"
+        else
+          # `if children=$(...); then` で終了コードを見る — `gh api` は
+          # 401/404 等でも(--jq がそのレスポンスに適用できないと)エラー
+          # JSON を stdout に出して非 0 終了することがあるため、`-z` での
+          # 空文字判定は fail-open を保証しない(実測 2026-09-25: Bad
+          # credentials 応答が children に入り、誤って intermediate 扱い
+          # = fail-closed になった)。終了コードのみを判定根拠にする。
+          if children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"; then
+            if [ "$children" -eq 0 ]; then
+              reason="tip (children=0)"
+            else
+              intermediate=true
+              reason="intermediate (children=$children)"
+            fi
+          else
+            reason="api-failure (fail-open)"
+          fi
+        fi
+        echo "intermediate=$intermediate (stack: $reason)"
+        echo "intermediate=$intermediate" >>"$GITHUB_OUTPUT"
+        echo "reason=$reason" >>"$GITHUB_OUTPUT"

@@ -28,6 +28,19 @@ description: >-
   ため、job 単位の判定に置き換えた。呼び出し元は `actions/checkout@v4`
   を `fetch-depth: 0` で、この action を呼ぶ前に実行しておくこと。
 
+inputs:
+  intermediate:
+    description: >-
+      The `intermediate` output of `.github/actions/stack-stage` (ADR-1005 D8):
+      'true' when this PR is a middle stage of a stack. The stack axis was inlined
+      here (ADR-468) and is now a separate action so language templates in other
+      repositories can use it; the caller runs `stack-stage` first and passes
+      its output. Composed in the workflow, not nested here: a composite action
+      cannot reference a sibling by relative path from another repository, and a
+      remote reference would test the copy on `main`, not this PR's.
+    required: false
+    default: 'false'
+
 outputs:
   build_host:
     description: "'false' means build-host jobs (vega/arcturus/altair) may safely be skipped"
@@ -45,9 +58,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
         EVENT_NAME: ${{ github.event_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        BASE_REF: ${{ github.event.pull_request.base.ref }}
-        HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        INTERMEDIATE: ${{ inputs.intermediate }}
         BEFORE_SHA: ${{ github.event.before }}
         AFTER_SHA: ${{ github.sha }}
         LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
@@ -56,7 +67,7 @@ runs:
         # 完全一致。ci.yml の drift 検査ステップ「stack-position action
         # covers every path the nix code reads」がこの行を grep するので、
         # `BUILD_INPUTS: "..."` の形は変えない。
-        BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock pipeline-map.toml .github/actions/stack-position/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
+        BUILD_INPUTS: "flake.nix flake.lock home/ patches/ crates/ Cargo.toml Cargo.lock pipeline-map.toml .github/actions/stack-position/action.yml .github/actions/stack-stage/action.yml .github/workflows/ci.yml .github/workflows/darwin-build.yml"
         # rust workspace 固有の追加入力(BUILD_INPUTS との和集合)。`cargo test` が実体を
         # 読むもの: pipeline-map(登録の側の git hook・scripts・workflows・herdr の設定・図)と、
         # pr-contract-check の整合性の検査(skills のテンプレートと `.github/rulesets/quality.json`、
@@ -70,35 +81,14 @@ runs:
         COPY_ONLY: "config/ scripts/ packages/"
       run: |
         set -uo pipefail
-        # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル
-        # → 子 PR 件数(この PR の head を base にした open PR が無ければ
-        # tip)。gh api 失敗は fail-open。stack_heavy=false になるのは
-        # 「非 bottom かつ非 tip かつ ci:full 無し」の一本道だけ。
+        # stack 軸は `.github/actions/stack-stage` が判定し(非 PR イベント → bottom →
+        # ci:full ラベル → 子 PR 件数、gh api 失敗は fail-open)、その `intermediate`
+        # を入力に取る。stack_heavy=false になるのは intermediate=true のときだけ。
         stack_heavy=true
-        stack_reason=""
-        if [ "$EVENT_NAME" != "pull_request" ]; then
-          stack_reason="event=$EVENT_NAME"
-        elif [ "$BASE_REF" = "$DEFAULT_BRANCH" ]; then
-          stack_reason="bottom"
-        elif case ",$LABELS," in *,ci:full,*) true ;; *) false ;; esac; then
-          stack_reason="label ci:full"
-        else
-          # `if children=$(...); then` で終了コードを見る — `gh api` は
-          # 401/404 等でも(--jq がそのレスポンスに適用できないと)エラー
-          # JSON を stdout に出して非 0 終了することがあるため、`-z` での
-          # 空文字判定は fail-open を保証しない(実測 2026-09-25: Bad
-          # credentials 応答が children に入り、誤って intermediate 扱い
-          # = fail-closed になった)。終了コードのみを判定根拠にする。
-          if children="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$HEAD_REF&per_page=100" --jq 'length' 2>/dev/null)"; then
-            if [ "$children" -eq 0 ]; then
-              stack_reason="tip (children=0)"
-            else
-              stack_heavy=false
-              stack_reason="intermediate (children=$children)"
-            fi
-          else
-            stack_reason="api-failure (fail-open)"
-          fi
+        stack_reason="not intermediate (stack-stage)"
+        if [ "$INTERMEDIATE" = "true" ]; then
+          stack_heavy=false
+          stack_reason="intermediate (stack-stage)"
         fi
 
         # path 軸: ci:full ラベルは stack 軸と同じ理由で常に触れた扱い。

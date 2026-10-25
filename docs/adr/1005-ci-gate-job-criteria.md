@@ -165,6 +165,19 @@ step に任せる。dotfiles の `stack-position`(build_host / rust の出力を
 切り出し、PR title の composite action(ADR-591 D3)と同じ形で他リポジトリへ配る。
 軸: 還元 — stack の判定を 1 つの composite action に置き、各リポジトリは参照するだけにする。
 
+**適用範囲(2026-10-25 の実測)**: テンプレを使う実リポジトリの、成功した run(各 12 本前後)の job の p75 は、
+rust の `msrv` が 68〜127 秒(2 リポジトリ)、`host` が 44〜92 秒、`tools` が 75 秒、`firmware` が 21 秒、
+typst の `Build` が 11 秒、astro の `Build` が 95 秒、`Lint` が 49 秒だった(nearest-rank、
+`gh api repos/<r>/actions/runs/<id>/jobs`)。D8 の目安(p75 2 分超)に当たるのは
+rust の `msrv` だけ(telepath で 127 秒)なので、`stack-stage` job は rust のテンプレにだけ入れ、`msrv` に使う。
+typst と astro のテンプレには、重い job が無いので入れない(使われない job を毎回走らせることになる)。
+増えたときのための手順を、各 skill の SKILL.md に書く。
+
+stack の軸を切り出す形は、`stack-position` が `stack-stage` を内側から呼ぶ入れ子でなく、workflow が
+`stack-stage` を呼んでその出力を `stack-position` の入力に渡す合成にした。composite action は他リポジトリから
+呼ばれたとき相対パスで兄弟を参照できず、`@main` で参照すると dotfiles 自身の PR が main 側の複写を検査して
+しまうため(この PR の CI が、新しい部品を相対パスで検査する)。
+
 ### D9: repo-charter は、自己検証に workflows と rulesets を足す
 
 `github-audit charters naming` を `charters naming workflows rulesets` に広げる。インタビューは増やさない。
@@ -194,3 +207,7 @@ core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を�
 - crates/github-audit/tests/pipeline.rs
 - crates/github-audit/src/domains/gate_health.rs
 - crates/github-audit/src/model.rs
+- .github/actions/stack-stage/action.yml
+- .github/actions/stack-position/action.yml
+- config/claude/skills/rust-repo-governance/templates/.github/workflows/ci.yml
+- crates/pr-contract-check/tests/consistency.rs

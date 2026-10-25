@@ -142,6 +142,19 @@ longer need to match anything in `.github/rulesets/quality.json`.
 `workflow-naming-check` (tarotene/dotfiles, a required check on every PR)
 verifies this `needs:` coverage automatically.
 
+**Heavy jobs and stacked PRs (ADR-1005 D8).** This template has no job whose
+measured p75 is over 2 minutes (`Build` has a p75 of about 95 s in a real site repository), so it carries no `stack-stage` job.
+If a job grows past that, copy the `stack-stage` job from
+`rust-repo-governance`'s `ci.yml` template (it calls
+`tarotene/dotfiles/.github/actions/stack-stage@main`, needs
+`permissions: pull-requests: read`), give the heavy job
+`needs: stack-stage` and
+`if: ${{ !cancelled() && needs.stack-stage.outputs.intermediate != 'true' }}`,
+and add `stack-stage` to `ci-passed`'s `needs:`. Which jobs belong in `ci.yml`
+at all is decided by the criteria in ADR-1005 D1 (a failing `main` would break
+an invariant; not flaky; not dependent on external state or a shared queue; p75
+under 10 minutes) — `github-audit gate-health` measures the last two.
+
 **`pr-title.yml`** has no `workflow_call` concatenation to worry about
 (ADR-591 replaced the old reusable-workflow form with a composite action,
 docs/adr/591-ci-workflow-naming.md D3 in tarotene/dotfiles) — the reported
