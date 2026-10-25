@@ -670,6 +670,15 @@ jobs:
         with:
           primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
+          # Never save from a pull_request run. A cache created there is
+          # scoped to refs/pull/N/merge and "can only be restored by re-runs
+          # of the pull request" (GitHub Docs, "Dependency caching
+          # reference", 取得 2026-10-25), yet each is ~800 MB and counts
+          # against the 10 GB repo limit; past it, eviction is oldest
+          # last-access first, i.e. main's restorable caches. 2026-10-25:
+          # 11.36 GB used, vega found no cache and rebuilt 346 derivations in
+          # 32 min (#1014). Pushes to main still save.
+          save: ${{ github.event_name != 'pull_request' }}
           gc-max-store-size-linux: 1G
           gc-max-store-size-macos: 1G
           purge: true
