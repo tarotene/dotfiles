@@ -529,7 +529,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Determinate Systems installer (ADR-0001).
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
       # in Feb 2025. We rely on cache.nixos.org substituters here; a FlakeHub
       # cache action can be added later once a token is provisioned.
@@ -581,7 +581,7 @@ jobs:
     if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       # clippy + rustfmt だけ。release の package(`checks.dotfiles-tools`)は、
       # ここでは作らない: build-host の activationPackage が必ず同じ derivation を作る
       # (`home.file.*.source = "${pkgs.dotfiles-tools}/bin/<name>"`)ので、ここで
@@ -596,7 +596,7 @@ jobs:
       # 再コンパイルを省く)。キーは Cargo.lock から作られる。cargo test は
       # `nix develop` の rustc で走るので、toolchain が変わったとき(flake.lock の更新)は
       # cargo 自身が fingerprint の不一致で作り直す(誤った再利用は起きない)。
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: cargo test (fixture oracles + allowlist audit)
         run: nix develop --command cargo test --workspace --locked
 
@@ -643,7 +643,7 @@ jobs:
           # shared macOS runner queue never blocks a merge).
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       # cache.nixos.org never substitutes two classes of package this repo
       # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
       # Amendment, invalidates the substitutable derivation) and bws
