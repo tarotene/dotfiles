@@ -125,17 +125,17 @@ impl HookInput {
             .filter(|p| p.is_dir())
     }
 
-    /// クラスタ D: `.cwd` が実在すればそこへ、無ければ `$HOME` へ移動する。
-    /// 移動に失敗しても続行する(bash 版の `cd ... || true`)。
-    pub fn enter_cwd(&self) {
-        let target = self
-            .cwd
+    /// クラスタ D: `.cwd` が実在すればそれ、無ければ `$HOME`。bash 版の
+    /// `[[ -d $CWD ]] || CWD="$HOME"; cd "$CWD"` の移動先。
+    ///
+    /// 移動(`set_current_dir`)はしない。作業ディレクトリはプロセス全体の状態で、規則を別スレッドで
+    /// 並列に走らせるルータ(`crates/hook-router`)では、ほかの規則に及ぶ。呼び出し側は、ここで得た
+    /// パスを明示で使う(`git -C`、相対パスの解決など)。
+    pub fn effective_cwd(&self) -> Option<PathBuf> {
+        self.cwd
             .clone()
             .filter(|p| p.is_dir())
-            .or_else(|| std::env::var_os("HOME").map(PathBuf::from));
-        if let Some(dir) = target {
-            let _ = std::env::set_current_dir(dir);
-        }
+            .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
     }
 }
 
@@ -213,6 +213,26 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(gone.project_dir_with(None), None);
+    }
+
+    #[test]
+    fn effective_cwd_is_an_existing_cwd_else_home_and_never_moves_the_process() {
+        let before = std::env::current_dir().unwrap();
+        let d = tempfile::tempdir().unwrap();
+        let i = HookInput {
+            cwd: Some(d.path().to_path_buf()),
+            ..Default::default()
+        };
+        assert_eq!(i.effective_cwd(), Some(d.path().to_path_buf()));
+        let gone = HookInput {
+            cwd: Some(PathBuf::from("/nonexistent/xyz")),
+            ..Default::default()
+        };
+        assert_eq!(
+            gone.effective_cwd(),
+            std::env::var_os("HOME").map(PathBuf::from)
+        );
+        assert_eq!(std::env::current_dir().unwrap(), before);
     }
 
     #[test]

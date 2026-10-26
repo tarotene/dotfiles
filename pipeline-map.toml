@@ -75,8 +75,8 @@ node = [
   { id = "plan-fresh-gate", label = "plan-fresh-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-fresh-gate", doc = "docs/agents/plan-fresh-gate.md", auto = true },
 
   # --- Tool call: PreToolUse / PostToolUse の guard 群
-  # ルータ(hook-router)は、拒否だけを出す検査と記録役の 19 件を 1 つのプロセスで走らせる。
-  # 19 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
+  # ルータ(hook-router)は、拒否だけを出す検査と記録役の 21 件を 1 つのプロセスで走らせる。
+  # 21 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
   { id = "hook-router-pre", label = "hook-router (pre)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
   { id = "hook-router-post", label = "hook-router (post)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
   { id = "agent-permissions", label = "agent-permissions", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/agent-settings-reconcile", doc = "docs/agents/agent-settings-reconcile.md", auto = true },

@@ -7,20 +7,11 @@
 //! スキップ手段: `touch ~/.claude/plan-precedent-gate/skip` または
 //! `SKIP_PLAN_PRECEDENT_GATE=1`。
 
+use agent_session::Outcome;
 use jq_json_compat::jqfmt;
-use plan_precedent_gate::{deny_message, example_block, judge_precedent};
+use plan_precedent_gate::{example_block, judge_precedent, today, trim_newlines};
 use std::io::Write;
-use std::path::PathBuf;
 use std::process::ExitCode;
-
-fn gate_dir() -> PathBuf {
-    std::env::var_os("CLAUDE_PLAN_PRECEDENT_GATE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-                .join(".claude/plan-precedent-gate")
-        })
-}
 
 fn read_plan_file(path: &str) -> Option<String> {
     let p = std::path::Path::new(path);
@@ -29,24 +20,6 @@ fn read_plan_file(path: &str) -> Option<String> {
     }
     let s = std::fs::read(p).ok()?;
     Some(trim_newlines(String::from_utf8_lossy(&s).into_owned()))
-}
-
-/// `$(cat …)` と同じく末尾の改行を落とす。
-fn trim_newlines(mut s: String) -> String {
-    while s.ends_with('\n') {
-        s.pop();
-    }
-    s
-}
-
-/// 例文に埋める取得日(`YYYY-MM-DD`)。テストは `PLAN_PRECEDENT_GATE_TODAY` で
-/// 固定する — ゴールデンに実行日が入り込む経路そのものを無くすため(#752、
-/// due-remind の `DUE_REMIND_TODAY` と同形)。本番は外部 `date` に委ねる。
-fn today() -> String {
-    std::env::var("PLAN_PRECEDENT_GATE_TODAY")
-        .ok()
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| process_control::date("%Y-%m-%d"))
 }
 
 fn cmd_check(plan_file: &str) -> ExitCode {
@@ -68,25 +41,15 @@ fn cmd_check(plan_file: &str) -> ExitCode {
 }
 
 fn hook() -> ExitCode {
-    if gate_dir().join("skip").exists()
-        || std::env::var("SKIP_PLAN_PRECEDENT_GATE").as_deref() == Ok("1")
-    {
-        return ExitCode::SUCCESS;
-    }
     let mut buf = String::new();
     let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf);
-    // 不正 JSON でも bash 版(jq が空を返す)と同じく最新プランへ縮退する。
-    let input = agent_session::HookInput::parse(&buf).unwrap_or_default();
-    input.enter_cwd();
-    let Some(plan) = agent_session::plan::plan_text(&input) else {
-        return ExitCode::SUCCESS;
-    };
-    let problems = judge_precedent(&trim_newlines(plan));
-    if problems.is_empty() {
-        return ExitCode::SUCCESS;
+    // 判定は lib の `hook`(ルータと同じ関数)。ここは出力の書式だけを持つ。
+    if let Some(Outcome::Deny(reason)) = plan_precedent_gate::hook(&buf) {
+        let event = agent_session::HookInput::parse(&buf)
+            .unwrap_or_default()
+            .hook_event_name;
+        print!("{}", jqfmt::deny_for_event(&event, &reason));
     }
-    let msg = deny_message(&problems, &today());
-    print!("{}", jqfmt::deny_for_event(&input.hook_event_name, &msg));
     ExitCode::SUCCESS
 }
 

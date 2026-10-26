@@ -286,6 +286,56 @@ pub fn deny_message(problems: &[String], today: &str) -> String {
     )
 }
 
+/// `$(cat …)` と同じく末尾の改行を落とす。
+pub fn trim_newlines(mut s: String) -> String {
+    while s.ends_with('\n') {
+        s.pop();
+    }
+    s
+}
+
+/// 例文に埋める取得日(`YYYY-MM-DD`)。テストは `PLAN_PRECEDENT_GATE_TODAY` で
+/// 固定する — ゴールデンに実行日が入り込む経路そのものを無くすため(#752、
+/// due-remind の `DUE_REMIND_TODAY` と同形)。本番は外部 `date` に委ねる。
+pub fn today() -> String {
+    std::env::var("PLAN_PRECEDENT_GATE_TODAY")
+        .ok()
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| process_control::date("%Y-%m-%d"))
+}
+
+fn gate_dir() -> std::path::PathBuf {
+    std::env::var_os("CLAUDE_PLAN_PRECEDENT_GATE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".claude/plan-precedent-gate")
+        })
+}
+
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。返すのは deny だけ(allow は決して返さない)。
+///
+/// 判定はプランの本文への正規表現だけで、`gh` もネットワークも呼ばない。プロセス全体の状態は変えない
+/// (作業ディレクトリへは移らず、`HookInput::effective_cwd` を相対パスの解決にだけ使う)。外の読み取りは、
+/// プランのファイルと、例文の取得日のための `date` だけ。
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    if gate_dir().join("skip").exists()
+        || std::env::var("SKIP_PLAN_PRECEDENT_GATE").as_deref() == Ok("1")
+    {
+        return None;
+    }
+    // 不正 JSON でも bash 版(jq が空を返す)と同じく最新プランへ縮退する。
+    let input = agent_session::HookInput::parse(raw).unwrap_or_default();
+    let cwd = input.effective_cwd();
+    let plan = agent_session::plan::plan_text_at(&input, cwd.as_deref())?;
+    let problems = judge_precedent(&trim_newlines(plan));
+    if problems.is_empty() {
+        return None;
+    }
+    agent_session::Outcome::deny(deny_message(&problems, &today()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
