@@ -240,7 +240,13 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
 2. `gh pr checks <N> --watch` で CI の完了を待つ。
-3. 非同期マージ API を呼ぶ。
+3. **マージする PR が最上段か確かめる。** マージしたい PR の head ブランチを base にしている open な
+   PR が無いことを、`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>" --jq length` が
+   `0` であることで読む。0 でなければ、その PR は最上段ではない — 上の段を探して、そちらを
+   マージする。下の段から 1 本ずつ入れると、下の段が `main` に入るたびに上の段が載せ直されて
+   (head の SHA が変わる)、CI が段の数だけやり直しになる(#1002)。単発の PR 用に手元に残した
+   `merge-async` のメモだけを根拠に呼ばない。この節を読んでから呼ぶ。
+4. 非同期マージ API を呼ぶ。
 
 ```bash
 gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
