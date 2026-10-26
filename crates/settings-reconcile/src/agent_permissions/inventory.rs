@@ -2,7 +2,7 @@
 //!
 //! Codex schemas: openai/codex rust-v0.164.0, config/src/{config_toml,
 //! profile_toml,mcp_types,types}.rs (retrieved 2026-10-26).
-//! Claude scopes: https://code.claude.com/docs/en/settings (retrieved 2026-10-26).
+//! Claude scopes: <https://code.claude.com/docs/en/settings> (retrieved 2026-10-26).
 //! Transport configuration, environment variables, credentials and model settings
 //! are deliberately excluded from `grants`; the digest covers the complete file.
 
