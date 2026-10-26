@@ -10,7 +10,8 @@
 
 通常の書き込みは現在の作業場所と一時領域に限る。Git の共有メタデータ、
 ホーム設定、Nix・Cargo のキャッシュへの書き込みは境界外であり、native の
-一回の審査へ進む。恒久的な Bash / prefix allow は生成しない。
+審査へ進む。hook は境界外の書き込みに ask を返さない(下の「hook は、Claude 本体が審査する呼び出しに ask を
+返さない」)。恒久的な Bash / prefix allow は生成しない。
 
 通常資料の読み取りは許可する。秘密パスは Claude の Read deny と sandbox、
 Codex の filesystem deny に変換する。認証を使う通常操作と秘密値の表示は別扱いにする。
@@ -18,15 +19,16 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 
 通信先の宣言は接続だけを許可する。投稿・送信に関する既存 hook は存続する。
 `domains` の初期値は `api.github.com`・`github.com`(git の fetch・push)・`cache.nixos.org`(Nix の既定のバイナリ
-キャッシュ)。追加の既知の宛先は本人の宣言に追加する。`github.com` を足したので、Claude の WebFetch は
-`github.com` の URL に ask を返さなくなる(接続だけの許可で、投稿・送信の hook は存続する)。
+キャッシュ)。追加の既知の宛先は本人の宣言に追加する。宣言した通信先は sandbox の通信許可と Codex の
+network に使われる。Claude の WebFetch は、宣言の有無にかかわらず hook が ask を返さず、本体の審査に任せる
+(投稿・送信の hook は存続する)。
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。例外は `mcp_allow` で
 宣言した MCP ツール 1 つずつだけである(下の「MCP ツールは `mcp_allow` で 1 つずつ宣言する」)。
 
-`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
-Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
-グローバルな通信許可へ昇格させず、native の一回の審査を使う。
+`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。かつては Claude の WebFetch の hook が
+現在の場所と照合していたが、hook がその ask を返さなくなったので、どこからも使われない(#1099 で削除する)。
+shell と Codex では、グローバルな通信許可へ昇格させず、native の審査を使う。
 
 ## sandbox の中で動く shell は自動で許可する
 
@@ -53,7 +55,8 @@ permission flow, even when sandboxed」で、`git status` のような読み取�
 拡大を伴う変更は `apply` が拒否するので、所有記録の `policy` は旧版のまま残る(activation は警告して続行する)。
 この間、hook(Claude の PreToolUse、Codex の PermissionRequest)と SessionStart の回収は、
 配備された `policy.json` ではなく、審査済みの所有記録の `policy` を基準に判定する(#1060)。
-未審査の拡大は効かず(たとえば追加した通信先への WebFetch は ask のまま)、全ツールも止まらない。
+未審査の拡大は効かず(たとえば共有ファイルが保持する、追加した通信先の fetch の allow は、範囲内に入らず、shell の
+ask のまま)、全ツールも止まらない。
 配備された `policy.json` が記録と違うことを報告するのは、CLI の `check`・`migrate` である(`policy changed`)。
 配備された `policy.json` は hook が読まないので、縮小(秘密パスの追加など)の効力は `apply` が成功して
 記録が更新されるまで及ばない。`apply` は未回収の許可があると拒否するので、その場合は次の SessionStart の
@@ -81,8 +84,8 @@ Codex の launcher は起動前に CLI の `check` を呼ぶので、配備と `
 
 エージェントの Bash は既定で native sandbox の中で動く。次の操作は、sandbox の中では失敗するので、最初から
 `dangerouslyDisableSandbox` で実行する(失敗を読み解いてから再実行する往復を省く。#1050・#1064)。外で実行する呼び出しは
-hook が一回ごとに ask するので、確認の往復は残る。これは設計どおりである(`allowUnsandboxedCommands` は有効で、
-sandbox を外した再実行は一回の審査に回す)。
+Claude 本体が一回ごとに審査する(自動モードでは分類器が判断する。hook は ask を返さない)。
+`allowUnsandboxedCommands` は有効で、sandbox を外した再実行は本体の審査に回す。
 
 | 操作 | sandbox の中での失敗 | 原因 | 共有ポリシーの扱い |
 |---|---|---|---|
@@ -329,6 +332,31 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 例外は、本人が `inspect` → `migrate` で審査した宣言に限る。「don't ask again」で積んだ許可は、従来どおり
 そのセッション限りで、昇格を裁定されたものだけが宣言になる。
 
+## hook は、Claude 本体が審査する呼び出しに ask を返さない
+
+hook の `ask` は、設定の `allow` に勝つ(下の「優先順位の実測」)。自動モードの分類器も、hook が ask を返した
+呼び出しは判断しない(公式文書は「hook の ask は自動モードでも承認を強制する」と書く。下の実測の節に引用)。
+そのため、本体がすでに審査する呼び出しに hook が ask を返すと、本体の審査を上書きして、すべてを人に回す。
+自動モードで放置した作業が止まる原因だった(#1099)。次の 3 つの ask を消した。
+
+| 消した ask | 以前の条件 | 今 |
+|---|---|---|
+| 境界外の書き込み | Write・Edit・MultiEdit・NotebookEdit の対象が、作業場所と一時領域の外 | 本体の審査。Protected paths の例外として、そのセッションのプランファイルと自動メモリを通し、そのほかの保護パスは自動モードなら分類器に、そうでなければ本人に回す(Anthropic, "Permission modes", <https://code.claude.com/docs/en/permission-modes>、取得 2026-10-27、担当の報告の逐語引用。本線では未再取得) |
+| sandbox を外した Bash | `dangerouslyDisableSandbox` が true | 本体の審査。`classifyAllShell` で、自動モードでは毎回分類器が判断する |
+| 未宣言の通信先への WebFetch | 共有ポリシーの `domains` と `project_rules` に無い | 本体の審査 |
+
+残した判断は、本体が審査しないものだけである: 秘密パスへの Read・Write の deny、`mcp_allow` の素通り、書き込めない
+設定元(共有の設定・管理設定)の allow が覆う MCP ツールへの ask、その設定元が保持する Edit・範囲外の fetch の allow が
+shell sandbox を広げるときの shell への ask。
+
+- 以前の文書は、sandbox を外した Bash の ask を「設計どおり」と書いたが、本人の裁定の記録は見つからなかった
+  (#1064 の本文、PR #1030 の本文を読んだ)。2026-10-27 に、自動モードを止める原因として本人が裁定し、消した。
+- 境界外の書き込みの ask をなくしても、`Policy::validate` の `writable_roots`(`workspace`・`temp`)は変わらない。
+  この欄は、Codex の `:workspace` の拡張と、記録の拡大判定が使う。
+- 実測していない: 作業場所の外で、保護パスでもない場所への Write が、本体で実際に確認になるか分類器に回るか
+  (公式文書の記述だけで、版を固定した実測は無い)。本体が通すと文書にあるプランファイルと自動メモリは、hook
+  のテストで「hook が何も返さない」ことだけを確かめた。
+
 ## 優先順位の実測(hook の ask と設定の allow)
 
 `scripts/hook-ask-vs-allow-probe` が、分離した HOME で `claude -p` を 3 回回し、組み込みの Bash(`echo probe-ok`)が
@@ -507,8 +535,8 @@ Linux 以外のホストは実機試験まで未確認である。
 | D2: native sandbox を使う | OpenAI, Codex [rust-v0.164.0 permissions_toml.rs L112](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/permissions_toml.rs#L112)、[exec_policy.rs L443](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/exec_policy.rs#L443)、公開日未確認 | 明示 allow は sandbox を迂回しうるので生成しない。軸: 還元 |
 | D3: 既存ライブラリと router を拡張する | dotfiles `managed.rs` / `router.rs`、OpenAI [rules 読込 L668](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/exec_policy.rs#L668) | 別の認可エンジンや CLI fork を作らない。権限検査の失敗だけ拒否。軸: 還元 |
 | D4: 未配備の基盤、配備の順に PR を積む | dotfiles [ADR-0027](adr/0027-uncertainty-first-stacking.md) | 既存のセッション内チェーン規約と一致。軸: 還元 |
-| D5: 共有設定を残し、境界外は一回の審査にする | Anthropic, [Permissions](https://code.claude.com/docs/en/permissions)、[Sandboxing](https://code.claude.com/docs/en/sandboxing)、公開日未確認 | Read/Edit/WebFetch の native 意味と hook ask を利用。機体管理設定だけの統制は採らない。軸: 還元 |
-| D6: sandbox の中で動く shell は自動で許可し、sandbox 外への再実行と ask・deny は審査する | Anthropic, [Sandboxing](https://code.claude.com/docs/en/sandboxing)、OpenAI, [Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、公開日はどちらも未確認 | auto-allow mode と `on-request` の仕様どおり。`prompt`→`auto` は拡大として reviewed migrate に回す(#1030 の R4 を保つ)。軸: 表現不可能 — 境界を OS の sandbox が強制する |
+| D5: 共有設定を残し、境界外は一回の審査にする(hook の ask は #1099 で消し、本体の審査に任せた) | Anthropic, [Permissions](https://code.claude.com/docs/en/permissions)、[Sandboxing](https://code.claude.com/docs/en/sandboxing)、公開日未確認 | Read/Edit/WebFetch の native 意味を利用。機体管理設定だけの統制は採らない。軸: 還元 |
+| D6: sandbox の中で動く shell は自動で許可し、sandbox 外への再実行と ask・deny は本体が審査する | Anthropic, [Sandboxing](https://code.claude.com/docs/en/sandboxing)、OpenAI, [Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、公開日はどちらも未確認 | auto-allow mode と `on-request` の仕様どおり。`prompt`→`auto` は拡大として reviewed migrate に回す(#1030 の R4 を保つ)。軸: 表現不可能 — 境界を OS の sandbox が強制する |
 
 既存手段: `crates/agent-settings-reconcile/src/bin/agent-permissions.rs` — 拡張: `crates/agent-settings-reconcile`。
 Claude の本体コードは非公開。固定版の根拠は Anthropic の
@@ -526,7 +554,7 @@ Claude の本体コードは非公開。固定版の根拠は Anthropic の
 | R5 | 「個別許可は原則その実行限り」 | 恒久 allow 空(`mcp_allow` の宣言だけが例外)、外部ツール prompt |
 | R6 | 「権限設定全体を対象にする」「権限の境界も決め直す」 | 複数設定元の棚卸しと生成 |
 | R7 | 「作業場所の外はその都度審査」「通常の資料は読める」「既知の宛先＋個別審査」 | native filesystem/network と hook |
-| R8 | 「表せない分は個別審査へ」「一回の本人承認を認める」 | sandbox 外実行の ask、project 通信先の native 審査 |
+| R8 | 「表せない分は個別審査へ」「一回の本人承認を認める」 | sandbox 外実行・境界外の書き込み・未宣言の fetch の本体の審査(hook は ask を返さない。#1099) |
 | R9 | 「蓄積・ずれ・誤操作の防止」 | 所有記録、check、fail-closed の権限検査 |
 | R10 | 「プロジェクト固有分も共通管理」 | projects / project_rules、共有ファイルを編集しない |
 | R11 | 「未知の許可は提示して止める」 | unknown と review の適用拒否 |

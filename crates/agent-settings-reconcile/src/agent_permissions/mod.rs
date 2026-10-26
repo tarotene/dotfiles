@@ -974,9 +974,11 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
     }
     let args = &input["tool_input"];
     let shell = ["Bash", "PowerShell", "Monitor"].contains(&tool);
-    if shell && args["dangerouslyDisableSandbox"] == true {
-        return Ok(Some("ask"));
-    }
+    // What Claude itself reviews is left to it: a command that leaves the sandbox, a
+    // write outside the workspace, a fetch from an undeclared host. Its protected
+    // paths pass the session's plan file and auto memory, and send the rest to the
+    // auto-mode classifier, or to the owner where there is none. An ask from here
+    // would override both, and no classifier sees a call a hook has asked about.
     if shell {
         // Claude folds shared WebFetch allow rules into sandbox connectivity.
         // A one-time ask is needed when that retained connectivity exceeds canon.
@@ -1012,29 +1014,6 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
             if path.starts_with(resolve(&secret)?) {
                 return Err("raw credential access requires a reviewed operation".into());
             }
-        }
-        if tool != "Read"
-            && !path.starts_with(resolve(Path::new(cwd))?)
-            && !path.starts_with(resolve(&std::env::temp_dir())?)
-        {
-            return Ok(Some("ask"));
-        }
-    }
-    if tool == "WebFetch" {
-        let url = args["url"].as_str().ok_or("WebFetch URL missing")?;
-        let host = url
-            .split_once("://")
-            .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
-            .ok_or("invalid URL")?;
-        let project_known = policy.project_rules.iter().any(|(p, rule)| {
-            resolve(Path::new(cwd))
-                .ok()
-                .zip(resolve(Path::new(p)).ok())
-                .is_some_and(|(cwd, root)| cwd.starts_with(root))
-                && rule.domains.iter().any(|d| d == host)
-        });
-        if !policy.domains.iter().any(|d| d == host) && !project_known {
-            return Ok(Some("ask"));
         }
     }
     Ok(None)

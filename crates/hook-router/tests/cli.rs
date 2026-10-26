@@ -427,13 +427,31 @@ fn permission_call(
 }
 
 #[test]
-fn migrated_policy_asks_once_for_outside_writes_and_denies_raw_secrets() {
+fn outside_writes_are_left_to_claude_and_raw_secrets_are_denied() {
     let (home, workspace) = permission_home();
+    // Claude passes the session's plan file and auto memory and sends the other
+    // protected paths to the classifier; a hook ask would override all of it.
+    let claude = home.path().join(".claude");
     for (tool, path, want) in [
-        ("Write", "/var/lib/agent-permissions-uncreated-file", "ask"),
+        ("Write", "/var/lib/agent-permissions-uncreated-file", "pass"),
+        (
+            "Write",
+            claude.join("plans/plan.md").to_str().unwrap(),
+            "pass",
+        ),
+        (
+            "Write",
+            claude.join("projects/p/memory/MEMORY.md").to_str().unwrap(),
+            "pass",
+        ),
         ("Read", "/var/lib/agent-permissions-uncreated-file", "pass"),
         (
             "Read",
+            home.path().join(".ssh/nonexistent").to_str().unwrap(),
+            "deny",
+        ),
+        (
+            "Write",
             home.path().join(".ssh/nonexistent").to_str().unwrap(),
             "deny",
         ),
@@ -449,7 +467,7 @@ fn migrated_policy_asks_once_for_outside_writes_and_denies_raw_secrets() {
         if want == "pass" {
             assert!(
                 out.stdout.is_empty(),
-                "{tool}: {}",
+                "{tool}: {path}: {}",
                 String::from_utf8_lossy(&out.stdout)
             );
         } else {
@@ -464,21 +482,58 @@ fn migrated_policy_asks_once_for_outside_writes_and_denies_raw_secrets() {
 
 #[cfg(unix)]
 #[test]
-fn dangling_symlink_to_outside_workspace_requires_one_time_approval() {
+fn a_symlink_in_the_workspace_to_a_secret_is_denied_and_one_to_elsewhere_is_not() {
     let (home, workspace) = permission_home();
-    let alias = workspace.join("alias");
-    std::os::unix::fs::symlink("/var/lib/agent-permissions-uncreated-target", &alias).unwrap();
+    let to_secret = workspace.join("to-secret");
+    std::os::unix::fs::symlink(home.path().join(".ssh/uncreated-key"), &to_secret).unwrap();
     let out = permission_call(
         home.path(),
         &workspace,
         "Write",
-        serde_json::json!({"file_path":alias}),
+        serde_json::json!({"file_path":to_secret}),
     );
     assert!(out.status.success());
     assert_eq!(
         json(&out)["hookSpecificOutput"]["permissionDecision"],
-        "ask"
+        "deny"
     );
+    let elsewhere = workspace.join("to-elsewhere");
+    std::os::unix::fs::symlink("/var/lib/agent-permissions-uncreated-target", &elsewhere).unwrap();
+    let out = permission_call(
+        home.path(),
+        &workspace,
+        "Write",
+        serde_json::json!({"file_path":elsewhere}),
+    );
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
+fn an_unsandboxed_shell_and_an_undeclared_fetch_are_left_to_claude() {
+    let (home, workspace) = permission_home();
+    for (tool, args) in [
+        (
+            "Bash",
+            serde_json::json!({"command":"gh issue list","dangerouslyDisableSandbox":true}),
+        ),
+        (
+            "WebFetch",
+            serde_json::json!({"url":"https://example.com/page","prompt":"x"}),
+        ),
+        (
+            "WebFetch",
+            serde_json::json!({"url":"https://github.com/o/r","prompt":"x"}),
+        ),
+    ] {
+        let out = permission_call(home.path(), &workspace, tool, args.clone());
+        assert!(out.status.success());
+        assert!(
+            out.stdout.is_empty(),
+            "{tool} {args}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
 }
 
 #[test]
@@ -574,6 +629,15 @@ fn removing_a_deployed_policy_does_not_disable_the_guard() {
 #[test]
 fn an_expansion_deployed_before_migrate_does_not_stop_tools_or_take_effect() {
     let (home, workspace) = permission_home();
+    // A shared project file retains a fetch allow for a host the policy does not
+    // declare yet; the hook asks once about a shell while it exceeds the canon.
+    std::fs::create_dir_all(workspace.join(".claude")).unwrap();
+    std::fs::write(
+        workspace.join(".claude/settings.json"),
+        r#"{"permissions":{"allow":["WebFetch(domain:example.org)"]}}"#,
+    )
+    .unwrap();
+    review_project(home.path(), &workspace);
     let deployed = home.path().join(".config/agent-permissions/policy.json");
     let mut value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&deployed).unwrap()).unwrap();
@@ -597,25 +661,9 @@ fn an_expansion_deployed_before_migrate_does_not_stop_tools_or_take_effect() {
         decision("Read", serde_json::json!({"file_path":"plain.txt"})),
         "pass"
     );
-    assert_eq!(
-        decision("Bash", serde_json::json!({"command":"ls"})),
-        "pass"
-    );
-    assert_eq!(
-        decision(
-            "WebFetch",
-            serde_json::json!({"url":"https://github.com/x"})
-        ),
-        "pass"
-    );
-    // The unreviewed destination is not effective until migrate.
-    assert_eq!(
-        decision(
-            "WebFetch",
-            serde_json::json!({"url":"https://example.org/x"})
-        ),
-        "ask"
-    );
+    // The unreviewed destination is not effective until migrate: were it, the
+    // retained fetch allow would be within the canon and the shell would pass.
+    assert_eq!(decision("Bash", serde_json::json!({"command":"ls"})), "ask");
 }
 
 #[test]
@@ -748,9 +796,12 @@ fn another_projects_unreadable_or_removed_settings_do_not_stop_this_session() {
         "a project this session does not read must not stop it"
     );
 
-    // The same breakage in the session's own project stops it, naming that one file.
+    // The mask in the session's own project stops nothing either (a file with no
+    // bytes grants nothing); content that cannot be read there stops it, by name.
     std::fs::create_dir_all(workspace.join(".claude")).unwrap();
     std::fs::write(workspace.join(".claude/settings.local.json"), "").unwrap();
+    assert!(read_plain(home.path(), &workspace).0);
+    std::fs::write(workspace.join(".claude/settings.local.json"), "{not json").unwrap();
     let (passed, reason) = read_plain(home.path(), &workspace);
     assert!(!passed);
     assert!(reason.contains("settings.local.json"), "{reason}");
