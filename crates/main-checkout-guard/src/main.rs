@@ -48,6 +48,8 @@ fn main() {
 fn pre(input: &HookInput, agent: Agent) {
     match main_checkout_guard::pre_hook(agent, input) {
         Some(Outcome::Deny(reason)) => PermissionDecision::deny(reason).emit(agent),
+        Some(Outcome::Ask(reason)) => PermissionDecision::ask(reason).emit(agent),
+        Some(Outcome::Allow(reason)) => PermissionDecision::allow(reason).emit(agent),
         Some(Outcome::Context(text)) => println!(
             "{}",
             json!({"hookSpecificOutput": {

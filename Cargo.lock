@@ -751,6 +751,7 @@ dependencies = [
  "routines-write-guard",
  "rulesets-write-guard",
  "serde_json",
+ "settings-reconcile",
  "stack-base-guard",
  "tempfile",
  "toml",

@@ -2,11 +2,11 @@
 //!
 //! 契約(旧: 検査ごとに別の hook として登録し、Claude Code が並列に走らせ、結果をまとめていた):
 //! - 各規則は別スレッドで走る。1 つが panic しても、ほかの規則は走り、panic した規則は
-//!   素通り(fail-open)にする。
+//!   素通り(fail-open)にする。`agent-permissions` だけは拒否する。
 //! - 各規則には、かつて個別の hook として宣言していた `timeout` と同じ時間(`Rule::budget`)を
 //!   許す。越えた規則の結果は捨てて素通りにする。スレッドは外から止められないので、
 //!   呼び出し側(`main`)は応答を出したあと、プロセスごと終わる。
-//! - PreToolUse: deny が 1 つでもあれば deny。理由は、表の順にすべて並べる。
+//! - PreToolUse: deny → ask → allow → 通常処理。理由は、表の順にすべて並べる。
 //! - `additionalContext`: すべて、表の順に改行でつなぐ。
 //! - 素通りさせた規則(panic・時間切れ)があれば、`systemMessage` で利用者に知らせる。
 
@@ -36,15 +36,20 @@ pub fn execute(rules: &[Rule], raw: &str) -> Vec<(&'static str, Verdict)> {
 
 /// Run the same rule table with the caller identity, without process-global environment changes.
 pub fn execute_for(agent: Agent, rules: &[Rule], raw: &str) -> Vec<(&'static str, Verdict)> {
-    let raw = Arc::new(raw.to_owned());
+    let inputs: Vec<_> = rules.iter().map(|rule| (*rule, raw.to_owned())).collect();
+    execute_inputs_for(agent, &inputs)
+}
+
+/// Run original-payload checks and normalized tool checks in the same bounded batch.
+pub fn execute_inputs_for(agent: Agent, inputs: &[(Rule, String)]) -> Vec<(&'static str, Verdict)> {
     let (tx, rx) = mpsc::channel::<(usize, Verdict)>();
     let start = Instant::now();
-    let mut results: Vec<Option<Verdict>> = vec![None; rules.len()];
+    let mut results: Vec<Option<Verdict>> = vec![None; inputs.len()];
     let mut pending: Vec<(usize, Instant)> = Vec::new();
 
-    for (i, rule) in rules.iter().enumerate() {
+    for (i, (rule, raw)) in inputs.iter().enumerate() {
         let tx = tx.clone();
-        let raw = Arc::clone(&raw);
+        let raw = Arc::new(raw.to_owned());
         let run = rule.run;
         let spawned = std::thread::Builder::new()
             .name(format!("rule-{}", rule.node))
@@ -67,8 +72,12 @@ pub fn execute_for(agent: Agent, rules: &[Rule], raw: &str) -> Vec<(&'static str
         match rx.recv_timeout(next.saturating_duration_since(Instant::now())) {
             Ok((i, verdict)) => {
                 // 時間切れにした規則の、遅れて届いた結果は採らない。
-                if pending.iter().any(|(j, _)| *j == i) {
-                    results[i] = Some(verdict);
+                if let Some((_, deadline)) = pending.iter().find(|(j, _)| *j == i) {
+                    results[i] = Some(if Instant::now() <= *deadline {
+                        verdict
+                    } else {
+                        Verdict::TimedOut
+                    });
                     pending.retain(|(j, _)| *j != i);
                 }
             }
@@ -92,10 +101,10 @@ pub fn execute_for(agent: Agent, rules: &[Rule], raw: &str) -> Vec<(&'static str
         }
     }
 
-    rules
+    inputs
         .iter()
         .zip(results)
-        .map(|(r, v)| (r.node, v.unwrap_or(Verdict::TimedOut)))
+        .map(|((r, _), v)| (r.node, v.unwrap_or(Verdict::TimedOut)))
         .collect()
 }
 
@@ -103,6 +112,8 @@ pub fn execute_for(agent: Agent, rules: &[Rule], raw: &str) -> Vec<(&'static str
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Merged {
     pub deny: Vec<String>,
+    pub ask: Vec<String>,
+    pub allow: Vec<String>,
     pub context: Vec<String>,
     /// 素通りにした規則(node, 理由)。
     pub failed_open: Vec<(&'static str, &'static str)>,
@@ -113,8 +124,18 @@ pub fn merge(results: &[(&'static str, Verdict)]) -> Merged {
     for (node, verdict) in results {
         match verdict {
             Verdict::Done(Some(Outcome::Deny(reason))) => m.deny.push(reason.clone()),
+            Verdict::Done(Some(Outcome::Ask(reason))) => m.ask.push(reason.clone()),
+            Verdict::Done(Some(Outcome::Allow(reason))) => m.allow.push(reason.clone()),
             Verdict::Done(Some(Outcome::Context(text))) => m.context.push(text.clone()),
             Verdict::Done(None) => {}
+            Verdict::Panicked | Verdict::TimedOut if *node == "agent-permissions" => {
+                let why = if matches!(verdict, Verdict::Panicked) {
+                    "panic"
+                } else {
+                    "時間切れ"
+                };
+                m.deny.push(format!("[agent-permissions] 権限検査が{why}で完了しなかったため拒否しました。agent-permissions inspect で診断してください。"));
+            }
             Verdict::Panicked => m.failed_open.push((node, "panic")),
             Verdict::TimedOut => m.failed_open.push((node, "時間切れ")),
         }
@@ -127,13 +148,18 @@ pub fn render(event: Event, m: &Merged) -> Option<String> {
     let mut specific = Map::new();
     specific.insert("hookEventName".into(), json!(event.name()));
     let mut any = false;
-    if event == Event::Pre && !m.deny.is_empty() {
-        specific.insert("permissionDecision".into(), json!("deny"));
-        specific.insert(
-            "permissionDecisionReason".into(),
-            json!(m.deny.join("\n\n")),
-        );
-        any = true;
+    if event == Event::Pre {
+        for (decision, reasons) in [("deny", &m.deny), ("ask", &m.ask), ("allow", &m.allow)] {
+            if !reasons.is_empty() {
+                specific.insert("permissionDecision".into(), json!(decision));
+                specific.insert(
+                    "permissionDecisionReason".into(),
+                    json!(reasons.join("\n\n")),
+                );
+                any = true;
+                break;
+            }
+        }
     }
     if !m.context.is_empty() {
         specific.insert("additionalContext".into(), json!(m.context.join("\n")));
@@ -234,6 +260,18 @@ mod tests {
     }
 
     #[test]
+    fn original_and_normalized_checks_receive_their_own_payloads() {
+        let checks = [
+            (rule("agent-permissions", 1000, echo_len), "original".into()),
+            (rule("normalized", 1000, echo_len), "patch-path".into()),
+        ];
+        assert_eq!(
+            merge(&execute_inputs_for(Agent::Codex, &checks)).context,
+            ["len=8", "len=10"]
+        );
+    }
+
+    #[test]
     fn a_panicking_rule_does_not_stop_the_others() {
         let rules = [rule("boom", 1000, boom), rule("a", 1000, deny_a)];
         let m = merge(&execute(&rules, "{}"));
@@ -324,5 +362,42 @@ mod tests {
         assert!(v.get("hookSpecificOutput").is_none());
         let msg = v["systemMessage"].as_str().unwrap();
         assert!(msg.contains("pkexec-guard(panic)") && msg.contains("stack-base-guard(時間切れ)"));
+    }
+
+    #[test]
+    fn decision_priority_is_deny_then_ask_then_allow() {
+        let outcomes = [
+            (
+                "allow",
+                Verdict::Done(Some(Outcome::Allow("allowed".into()))),
+            ),
+            ("ask", Verdict::Done(Some(Outcome::Ask("one time".into())))),
+            ("deny", Verdict::Done(Some(Outcome::Deny("blocked".into())))),
+        ];
+        for (len, want) in [(1, "allow"), (2, "ask"), (3, "deny")] {
+            let merged = merge(&outcomes[..len]);
+            let value: Value = serde_json::from_str(&render(Event::Pre, &merged).unwrap()).unwrap();
+            assert_eq!(value["hookSpecificOutput"]["permissionDecision"], want);
+            // The result is independent of rule ordering.
+            let reversed: Vec<_> = outcomes[..len].iter().rev().cloned().collect();
+            assert_eq!(
+                render(Event::Pre, &merged),
+                render(Event::Pre, &merge(&reversed))
+            );
+        }
+    }
+
+    #[test]
+    fn permission_check_panic_and_timeout_fail_closed_only_for_that_rule() {
+        for run in [boom as fn(Agent, &str) -> Option<Outcome>, slow] {
+            let checks = [rule("agent-permissions", 20, run), rule("other", 20, run)];
+            let merged = merge(&execute(&checks, "{}"));
+            assert_eq!(merged.deny.len(), 1);
+            assert!(merged.deny[0].contains("agent-permissions"));
+            assert_eq!(merged.failed_open.len(), 1);
+            assert_eq!(merged.failed_open[0].0, "other");
+            let value: Value = serde_json::from_str(&render(Event::Pre, &merged).unwrap()).unwrap();
+            assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+        }
     }
 }

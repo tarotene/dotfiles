@@ -34,6 +34,8 @@ impl Event {
 /// 規則が当たるツール。旧 `matcher` の閉じた表現。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tools {
+    /// 未知のツールも含むすべての呼び出し。
+    All,
     /// `Bash` だけ。
     Bash,
     /// `Bash` と、MCP のツール(`mcp__*`)。旧 `Bash|mcp__.*`。
@@ -47,6 +49,7 @@ pub enum Tools {
 impl Tools {
     pub fn matches(self, tool: &str) -> bool {
         match self {
+            Tools::All => true,
             Tools::Bash => tool == "Bash",
             Tools::BashOrMcp => tool == "Bash" || tool.starts_with("mcp__"),
             Tools::Mcp => tool.starts_with("mcp__"),
@@ -76,6 +79,14 @@ const S20: Duration = Duration::from_secs(20);
 
 /// 規則の表。並びは、まとめた結果の理由の並びになる。
 pub static RULES: &[Rule] = &[
+    // All rules run once on the original payload, before adapter expansion.
+    Rule {
+        node: "agent-permissions",
+        event: Event::Pre,
+        tools: Tools::All,
+        budget: S10,
+        run: permissions,
+    },
     // ---- PreToolUse(拒否だけを出す検査)
     Rule {
         node: "git-stash-guard",
@@ -225,6 +236,26 @@ pub static RULES: &[Rule] = &[
     },
 ];
 
+fn permissions(agent: Agent, raw: &str) -> Option<Outcome> {
+    let name = match agent {
+        Agent::Claude => "claude",
+        Agent::Codex => "codex",
+        Agent::Copilot => return None,
+    };
+    match settings_reconcile::agent_permissions::hook_check(name, raw) {
+        Ok(None) => None,
+        Ok(Some("ask")) if agent == Agent::Claude => Some(Outcome::Ask(
+            "[agent-permissions] この操作は共通の境界を越えるため、今回だけの承認が必要です。".into(),
+        )),
+        Ok(Some(_)) => Outcome::deny(
+            "[agent-permissions] この経路では一回の承認を表せません。agent-permissions inspect で設定元を確認してください。",
+        ),
+        Err(reason) => Outcome::deny(format!(
+            "[agent-permissions] {reason}\nagent-permissions inspect で設定元と差分を確認し、承認済みの移行で復旧してください。"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +277,8 @@ mod tests {
         assert!(Tools::Bash.matches("Bash") && !Tools::Bash.matches("mcp__x"));
         assert!(Tools::Named(&["Write"]).matches("Write"));
         assert!(!Tools::Named(&["Write"]).matches("Edit"));
+        assert!(Tools::All.matches("future_tool"));
+        assert!(Tools::All.matches(""));
     }
 
     /// 載せた検査の集合を、このテストが固定する。足す・外すは、ここを意識して直す
@@ -260,6 +293,7 @@ mod tests {
         assert_eq!(
             pre,
             BTreeSet::from([
+                "agent-permissions",
                 "attribution-guard",
                 "decision-colocation-guard",
                 "external-send-guard",
@@ -321,12 +355,15 @@ mod tests {
             !bash.contains(&"external-send-guard"),
             "Bash には MCP 専用の検査は当たらない"
         );
-        assert_eq!(nodes(Event::Pre, "Read"), ["main-checkout-guard-pre"]);
-        assert_eq!(nodes(Event::Pre, "RemoteTrigger"), ["routines-write-guard"]);
-        assert!(
-            nodes(Event::Pre, "ExitPlanMode").is_empty(),
-            "ExitPlanMode の gate は載せていない"
+        assert_eq!(
+            nodes(Event::Pre, "Read"),
+            ["agent-permissions", "main-checkout-guard-pre"]
         );
+        assert_eq!(
+            nodes(Event::Pre, "RemoteTrigger"),
+            ["agent-permissions", "routines-write-guard"]
+        );
+        assert_eq!(nodes(Event::Pre, "ExitPlanMode"), ["agent-permissions"]);
         assert_eq!(
             nodes(Event::Post, "ExitPlanMode"),
             ["new-tool-guard-record"]

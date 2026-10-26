@@ -122,6 +122,56 @@ fn unreadable_input_is_a_silent_pass() {
 }
 
 #[test]
+fn deployed_permissions_cannot_be_bypassed_by_unknown_or_unparseable_input() {
+    let home = tempfile::tempdir().unwrap();
+    let policy = home.path().join(".config/agent-permissions");
+    std::fs::create_dir_all(&policy).unwrap();
+    // An unreadable policy must reject every tool, including inputs the Codex
+    // apply_patch adapter cannot expand. No real account state is involved.
+    std::fs::write(policy.join("policy.json"), "invalid policy").unwrap();
+    for args in [
+        vec!["pre"],
+        vec!["pre", "--agent", "codex"],
+        vec!["permission", "--agent", "codex"],
+    ] {
+        for raw in [
+            "",
+            "not json",
+            "{}",
+            r#"{"tool_name":"future_tool"}"#,
+            r#"{"tool_name":"apply_patch","tool_input":{}}"#,
+        ] {
+            let mut child = Command::new(BIN)
+                .args(&args)
+                .env_clear()
+                .env("HOME", home.path())
+                .env("XDG_STATE_HOME", home.path().join("state"))
+                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(raw.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success());
+            let value = json(&out);
+            let output = &value["hookSpecificOutput"];
+            if args[0] == "permission" {
+                assert_eq!(output["decision"]["behavior"], "deny", "{args:?} {raw}");
+            } else {
+                assert_eq!(output["permissionDecision"], "deny", "{args:?} {raw}");
+            }
+        }
+    }
+}
+
+#[test]
 fn post_event_runs_the_recorders_and_stays_silent_when_there_is_nothing_to_say() {
     let (out, _h) = run(&["post"], &bash("PostToolUse", "ls"));
     assert!(out.status.success());
@@ -329,4 +379,143 @@ fn codex_records_created_issue_and_allows_only_its_edit() {
             assert!(out.stdout.is_empty());
         }
     }
+}
+
+fn permission_home() -> (tempfile::TempDir, std::path::PathBuf) {
+    use settings_reconcile::agent_permissions::{inspect, migrate, Policy};
+    let home = tempfile::tempdir().unwrap();
+    let workspace = home.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let config = home.path().join(".config/agent-permissions");
+    std::fs::create_dir_all(&config).unwrap();
+    let value = serde_json::json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt",
+        "projects":[],"project_rules":{}});
+    std::fs::write(config.join("policy.json"), value.to_string()).unwrap();
+    let policy: Policy = serde_json::from_value(value).unwrap();
+    let review = inspect(&policy, home.path(), &[]).unwrap();
+    migrate(&policy, home.path(), &[], &review).unwrap();
+    (home, workspace)
+}
+
+fn permission_call(
+    home: &std::path::Path,
+    workspace: &std::path::Path,
+    tool: &str,
+    args: serde_json::Value,
+) -> Output {
+    let raw = serde_json::json!({"hook_event_name":"PreToolUse","session_id":"permission-test",
+        "tool_name":tool,"tool_input":args,"cwd":workspace});
+    let mut child = Command::new(BIN)
+        .arg("pre")
+        .env_clear()
+        .env("HOME", home)
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("XDG_STATE_HOME", home.join("state"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(raw.to_string().as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn migrated_policy_asks_once_for_outside_writes_and_denies_raw_secrets() {
+    let (home, workspace) = permission_home();
+    for (tool, path, want) in [
+        ("Write", "/var/lib/agent-permissions-uncreated-file", "ask"),
+        ("Read", "/var/lib/agent-permissions-uncreated-file", "pass"),
+        (
+            "Read",
+            home.path().join(".ssh/nonexistent").to_str().unwrap(),
+            "deny",
+        ),
+        ("Write", workspace.join("new.txt").to_str().unwrap(), "pass"),
+    ] {
+        let out = permission_call(
+            home.path(),
+            &workspace,
+            tool,
+            serde_json::json!({"file_path":path}),
+        );
+        assert!(out.status.success());
+        if want == "pass" {
+            assert!(
+                out.stdout.is_empty(),
+                "{tool}: {}",
+                String::from_utf8_lossy(&out.stdout)
+            );
+        } else {
+            assert_eq!(
+                json(&out)["hookSpecificOutput"]["permissionDecision"],
+                want,
+                "{tool}: {path}"
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_symlink_to_outside_workspace_requires_one_time_approval() {
+    let (home, workspace) = permission_home();
+    let alias = workspace.join("alias");
+    std::os::unix::fs::symlink("/var/lib/agent-permissions-uncreated-target", &alias).unwrap();
+    let out = permission_call(
+        home.path(),
+        &workspace,
+        "Write",
+        serde_json::json!({"file_path":alias}),
+    );
+    assert!(out.status.success());
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecision"],
+        "ask"
+    );
+}
+
+#[test]
+fn migrated_policy_asks_for_mcp_but_an_existing_guard_deny_still_wins() {
+    let (home, workspace) = permission_home();
+    for (tool, want) in [
+        ("mcp__codex_apps__slack_draft_message", "ask"),
+        ("mcp__codex_apps__slack_send_message", "deny"),
+    ] {
+        let out = permission_call(
+            home.path(),
+            &workspace,
+            tool,
+            serde_json::json!({"text":"test"}),
+        );
+        assert!(out.status.success());
+        assert_eq!(
+            json(&out)["hookSpecificOutput"]["permissionDecision"],
+            want,
+            "{tool}"
+        );
+    }
+}
+
+#[test]
+fn removing_a_deployed_policy_does_not_disable_the_guard() {
+    let (home, workspace) = permission_home();
+    std::fs::remove_file(home.path().join(".config/agent-permissions/policy.json")).unwrap();
+    let out = permission_call(
+        home.path(),
+        &workspace,
+        "Read",
+        serde_json::json!({"file_path":"plain.txt"}),
+    );
+    assert!(out.status.success());
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecision"],
+        "deny"
+    );
 }

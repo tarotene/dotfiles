@@ -156,3 +156,24 @@ Reference-Only: #1021 — Codex hook 入力の不足。今回解消したとは�
 Codex の PreToolUse ask は使わず、native profile と PermissionRequest を使う。
 macOS 実機と認証付きの全経路は未確認。新しいセッションで有効設定と hook 信頼を読み戻してから、
 当該ホストで有効になったと報告する。
+
+## 配備は所有記録の検査と同じ段で接続する
+
+`home/modules/codex.nix` が共通モジュールを import し、既定で有効にする。
+Claude の旧 permissions activation は共通管理中には実行しない。
+Codex の既存 writer は端末表示だけを担当し、権限の writer と競合させない。
+設定全体は symlink にせず、正本の JSON だけを Nix store から配備する。
+
+初回 activation は撤去への承認を推測しない。所有記録が無ければ移行の案内を表示する。
+配備された router は記録ができるまで実行を拒否するため、初回はレビューと
+一時設定での試験を済ませてから移行・activation を行う。
+通常の activation は、既存の hook・モデル・端末設定の更新後に `apply` を走らせる。
+
+router は入力変換前に権限検査を行う。deny、ask、allow の順に集約し、
+この検査の panic・10秒の時間切れは拒否する。他の検査の失敗時の扱いは変えない。
+native の30秒のhook期限より前に返す設計だが、プロセス全体の強制終了まで
+拒否応答を返せるとは保証しない。
+Codex の PermissionRequest も、既存の限定 allow 判定より先に権限のずれを検査する。
+
+`/promote-permissions` は正本への変更提案を作る入口となる。実行時の allow 追加や
+プロジェクト設定の削除は行わず、個別の操作は原則その実行限りの承認を使う。

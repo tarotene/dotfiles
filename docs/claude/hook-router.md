@@ -19,27 +19,27 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 `(event, command)` が宣言の一意キーなので 2 つ目が無視され、MCP の経路が無検査のまま残る(bleep の旧実装が
 `Bash` 単体の matcher だったために持っていた最大の欠陥)。
 
-ルータは、ツール呼び出しに付く検査のうち、拒否だけを出すもの(PreToolUse の 15 件)と記録役(PostToolUse の
+ルータは、ツール呼び出しに付く検査のうち、権限の逸脱検査・拒否の検査と記録役(PostToolUse の
 4 件)を、**1 つのプロセスで、規則の表に従って**走らせる。Claude Code には `PreToolUse` と `PostToolUse` の
 2 件だけを、`matcher` なしで登録する。どのツールにどの検査を当てるかは、表の [`Tools`](型) が持つ:
-`Bash` / `BashOrMcp` / `Mcp` / `Named(&[…])` の 4 通りだけが書ける。文字列の書き間違いはコンパイルが
+`All` / `Bash` / `BashOrMcp` / `Mcp` / `Named(&[…])` の 5 通りだけが書ける。文字列の書き間違いはコンパイルが
 通らず、表に載せ忘れた検査は pipeline-map の `cargo test` が「auto なのに登録箇所が無い」で落とす。
 
 ## 載せるもの・載せないもの
 
-載せる(19 件): 拒否だけを出す PreToolUse の検査、記録役の PostToolUse(表は `rules.rs`)。
+載せる: 共通権限の PreToolUse 検査、拒否の検査、記録役の PostToolUse(表は `rules.rs`)。
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pr-confirm-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
+| PreToolUse | agent-permissions、attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pr-confirm-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
 
 載せない(今の登録のまま)と、その理由:
 
 - **許可(allow)を出す検査**(`git-worktree-allow`、`gh-edit-allow` の判定役)。`if`(`Bash(git -C *)`、
   `Bash(gh *)`)の絞り込みが、許可の範囲を決めている。`if` の評価は Claude Code の意味なので、ここで
-  再実装して許可の範囲を変えるリスクを取らない。ルータは deny だけを扱う(`Outcome::from_decision`
-  は、allow / ask を `None` にする)。
+  再実装して許可の範囲を変えるリスクを取らない。既存の拒否検査の `Outcome::from_decision`
+  は、allow / ask を `None` にする契約を維持する。共通権限の検査は専用の `Outcome::Ask` を使う。
 - **Stop・SessionStart・ExitPlanMode の検査**。時間のかかるもの(`pr-gate` の Stop は CI の完了を最大 5 分待つ、
   `wrapup-stop-gate` は Stop のたびにネットワークを呼ぶ、`sign-prewarm` は対話的で最大 180 秒)や、作業ツリーを
   書き換えるもの(`worktree-fresh-base`、`plan-fresh-gate`)、プロセス全体の状態を触るもの(`plan-view` の umask と
@@ -56,14 +56,18 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 - **並列**: 当たる規則ごとに別スレッド。待ち時間は、最も遅い規則で決まる(合計ではない)。
 - **規則ごとの打ち切り**: 各規則に、かつて個別の hook として宣言していた `timeout` と同じ時間
-  (10〜20 秒、`Rule::budget`)を許す。越えた規則の結果は捨てて素通り(fail-open)にする。スレッドは外から
+  (10〜20 秒、`Rule::budget`)を許す。越えた規則の結果は捨てて素通り(fail-open)にする。
+  `agent-permissions` だけは panic・時間切れ・スレッド作成失敗時に拒否する。スレッドは外から
   止められないので、応答を出したあと、プロセスごと終わる。
 - **panic の隔離**: 規則が panic しても、ほかの規則は走る。panic した規則は素通りにする。
 - **素通りの知らせ**: panic・時間切れがあった呼び出しでは、応答に `systemMessage` を付ける(「次の検査を
   素通りにしました: …」)。あわせて、`gate-events.jsonl` に `fail-open` を記録する。
-- **まとめ方**: PreToolUse は、deny が 1 つでもあれば deny で、理由は表の順にすべて(空行で区切って)並べる。
+- **まとめ方**: PreToolUse は deny → ask → allow → 通常処理の順で採る。同じ判定の理由は表の順にすべて(空行で区切って)並べる。
   `additionalContext` は、表の順に改行でつなぐ。PostToolUse は判定を出さない。
-- **判定できない入力**(JSON でない、`tool_name` が無い)は、何も出さず exit 0。
+- **判定できない入力**(JSON でない、`tool_name` が無い)も共通権限の検査へ渡す。
+  権限検査は `All` として、Codex のパッチ展開前の生入力で一回だけ走る。ほかの検査は従来どおり素通す。
+  全検査を同じ並列バッチで走らせるため、権限検査の予算をほかの検査の待ち時間に加算しない。
+  Codex の PermissionRequest による限定 allow にも、同じ権限検査を先に適用する。
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの
 両方が同じ関数を呼ぶ。standalone の bin の出力は変わらない(既存の trycmd の fixture が、そのまま通る)。

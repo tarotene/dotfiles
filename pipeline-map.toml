@@ -77,6 +77,7 @@ node = [
   # 19 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
   { id = "hook-router-pre", label = "hook-router (pre)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/claude/hook-router.md", auto = true },
   { id = "hook-router-post", label = "hook-router (post)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/claude/hook-router.md", auto = true },
+  { id = "agent-permissions", label = "agent-permissions", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/settings-reconcile", doc = "docs/settings-reconcile.md", auto = true },
   { id = "git-worktree-allow", label = "git-worktree-allow", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-worktree-allow", doc = "docs/claude/git-worktree-allow.md", auto = true },
   { id = "git-stash-guard", label = "git-stash-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-stash-guard", doc = "docs/claude/git-stash-guard.md", auto = true },
   { id = "main-checkout-guard-pre", label = "main-checkout-guard (pre)", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/claude/main-checkout-guard.md", auto = true },

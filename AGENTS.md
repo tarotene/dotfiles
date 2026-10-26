@@ -51,10 +51,11 @@ Note on `codex`: same ADR-0001 scoped exception as `claude` (ADR-457
 Amendment, #531) — the native installer is the source of truth, and Codex's
 own config file is never deployed as a whole (no read-only symlink), since
 Codex itself writes hook-trust hashes, project trust, and model selection back
-into it at runtime. The only exception is the declared keys (currently
-`tui.terminal_title`, `approval_policy`, and `approvals_reviewer`), which an
-activation step in `home/modules/codex.nix` sets on every switch while leaving
-every other key untouched (ADR-457 Amendments). Auto-review handles eligible
+into it at runtime. `home/modules/codex.nix` reconciles `tui.terminal_title`;
+the shared policy in `home/modules/agent-permissions.nix` owns permission fields
+through reviewed migration and drift checks (`docs/agent-permissions.md`).
+Other fields, including model selection and hook trust, remain writable.
+Auto-review handles eligible
 approval requests in both Default and Plan modes; Plan still restricts work
 to investigation and planning. What home-manager *does* deploy is Codex's global instructions (a
 build-time merge of the shared canon with a Codex-specific file, ADR-0032) and

@@ -13,7 +13,7 @@ pub mod codex;
 pub mod router;
 pub mod rules;
 
-pub use router::{execute, execute_for, merge, render, Merged, Verdict};
+pub use router::{execute, execute_for, execute_inputs_for, merge, render, Merged, Verdict};
 pub use rules::{Event, Rule, Tools, RULES};
 
 /// イベントとツール名に当たる規則。
