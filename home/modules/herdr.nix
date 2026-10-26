@@ -82,7 +82,7 @@ in
   # ~/.codex/hooks.json を jq で書き換える — lost-update 窓(#61 と同種)を
   # 避けるため明示的にその後ろに順序付ける
   # (installHerdrClaudeIntegration が registerClaudeHooks の後ろに並ぶのと同じ手法)。
-  # PreToolUse には登録しない(crates/herdr-agent-metadata の Codex 節のコメント参照)。
+  # PreToolUse also refreshes the Codex metadata when tool execution starts.
   home.activation.registerCodexHerdrMetadataHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexWorktreeHooks" ]
       ''
@@ -101,6 +101,7 @@ in
           --register \
           SessionStart "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           UserPromptSubmit "" ${lib.escapeShellArg codexMetadataCmd} 10 \
+          PreToolUse "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           Stop "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 3
       '';

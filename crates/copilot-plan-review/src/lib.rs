@@ -317,7 +317,13 @@ fn prompt_carryover(open: &[Value]) -> String {
 pub fn build_prompt(lens: &str, plan_file: &str, open: &[Value]) -> String {
     let s = format!(
         "{}{}{}",
-        prompts::PREAMBLE.replace("{plan_file}", plan_file),
+        prompts::PREAMBLE.replace("{plan_file}", plan_file).replace(
+            "(Claude)",
+            &format!(
+                "({})",
+                std::env::var("PLAN_AUTHOR_AGENT").unwrap_or_else(|_| "Claude".into())
+            )
+        ),
         prompt_lens(lens),
         prompt_carryover(open)
     );

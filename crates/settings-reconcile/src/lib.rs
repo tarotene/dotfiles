@@ -54,6 +54,7 @@ fn fail(message: impl Into<String>) -> Failure {
 pub const USAGE: &str = "\
 usage: settings-reconcile <subcommand> <file> ...
   claude-hooks <settings.json> <spec-json>
+  codex-hooks-spec <hooks.json> <spec-json>
   claude-permissions <settings.json> <spec-json>
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
@@ -67,7 +68,7 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
     };
     let rest = &args[1..];
     match sub.as_str() {
-        "claude-hooks" => claude_hooks(rest),
+        "claude-hooks" | "codex-hooks-spec" => claude_hooks(rest),
         "claude-permissions" => {
             with_json_spec(rest, |root, spec| settings::permissions(root, &spec))
         }

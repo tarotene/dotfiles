@@ -268,7 +268,10 @@ pub fn check(call: &ToolCall) -> Option<String> {
     if call.is_bash() {
         return attr.decide(&call.bash_command()?);
     }
-    if call.agent == Agent::Claude && call.tool.starts_with("mcp__github") {
+    if call.agent != Agent::Copilot
+        && (call.tool.starts_with("mcp__github")
+            || call.tool.starts_with("mcp__codex_apps__github_"))
+    {
         return attr.decide_mcp(call);
     }
     None

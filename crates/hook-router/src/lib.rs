@@ -9,10 +9,11 @@
 //! 検査を当てるかは、[`rules::RULES`] の表([`rules::Tools`] という閉じた型)が持つ。
 //! 設計と、載せなかったものの理由は [`rules`] と `docs/claude/hook-router.md`。
 
+pub mod codex;
 pub mod router;
 pub mod rules;
 
-pub use router::{execute, merge, render, Merged, Verdict};
+pub use router::{execute, execute_for, merge, render, Merged, Verdict};
 pub use rules::{Event, Rule, Tools, RULES};
 
 /// イベントとツール名に当たる規則。

@@ -443,6 +443,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 Design and rationale for the hooks and commands deployed from
 `config/claude/` by `home/modules/claude.nix`:
 
+- [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
 - [`hook-router.md`](claude/hook-router.md) — ツール呼び出しに付く検査 19 件(PreToolUse の
   拒否 15 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
   書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかったもの(許可を出す検査・Stop・

@@ -265,7 +265,10 @@
               cargoClippyExtraArgs = "--workspace --all-targets -- --deny warnings";
             }
           );
-          fmt = craneLib.cargoFmt { inherit src; };
+          fmt = craneLib.cargoFmt {
+            inherit src;
+            inherit (commonArgs) pname version;
+          };
         };
 
       rustOverlay = final: _prev: {

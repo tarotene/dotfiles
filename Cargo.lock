@@ -164,6 +164,8 @@ dependencies = [
 name = "codex-plan-gate"
 version = "0.1.0"
 dependencies = [
+ "hook-io",
+ "new-tool-guard",
  "serde_json",
  "tempfile",
 ]
@@ -600,6 +602,7 @@ dependencies = [
  "feedback-target-guard",
  "gh-edit-allow",
  "git-stash-guard",
+ "git-worktree-allow",
  "git-worktree-create-guard",
  "hook-io",
  "main-checkout-guard",

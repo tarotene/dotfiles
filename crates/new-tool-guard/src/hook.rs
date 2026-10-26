@@ -63,11 +63,12 @@ pub fn hook(raw: &str) -> Option<Outcome> {
     Some(Outcome::Deny(crate::deny_message(&shown)))
 }
 
-/// 承認された計画の `既存手段:` 行を、現在の worktree(git toplevel)の台帳へ書く。
+/// 計画の `既存手段:` 行を、現在の worktree(git toplevel)の台帳へ書く。
+/// Claude は承認後、Codex は Plan 検査通過後に呼ぶ。記録は検討の証跡で、承認を表さない。
 /// 台帳は計画の派生で、正本は計画。手書きの `register` は、計画の無い作業の経路として残る。
 /// 計画が取れない・節が無い・git の外・台帳が書けない場合は、何もしない(記録は
 /// best-effort で、承認そのものに影響させない)。同じ行がすでにあれば足さない。
-fn record_plan_lines(input: &HookInput) {
+pub fn record_plan_lines(input: &HookInput) {
     let Some(plan) = hook_io::plan::plan_text(input) else {
         return;
     };

@@ -44,6 +44,9 @@ impl T {
             &t.hooks().join("plan-precedent-gate"),
             "echo 'OK: 検査を通過しました。'",
         );
+        for name in ["plan-view", "plan-fresh-gate", "copilot-plan-review"] {
+            stub(&t.hooks().join(name), "cat >/dev/null");
+        }
         t
     }
     fn hooks(&self) -> PathBuf {
@@ -65,6 +68,8 @@ impl T {
         cmd.env("CODEX_PLAN_GATE_DIR", self.state_root())
             .env("CODEX_PLAN_GATE_CLAUDE_HOOKS_DIR", self.hooks())
             .env("TMPDIR", self.dir.path())
+            .env("NEW_TOOL_GUARD_DIR", self.dir.path().join("new-tools"))
+            .env_remove("SKIP_NEW_TOOL_GUARD")
             .env_remove("SKIP_CODEX_PLAN_GATE")
             .env_remove("CODEX_PLAN_GATE_MAX_BLOCKS");
         for (k, v) in envs {
@@ -138,7 +143,7 @@ fn scope_gate_finding_blocks() {
     assert!(!reason.contains("plan-precedent-gate"));
 }
 
-/// selftest 4: 上限到達後は escalate して無条件で通す
+/// selftest 4: 上限到達後は形式検査の拒否だけを抑止する。
 #[test]
 fn escalates_after_max_blocks() {
     let t = T::new();
@@ -234,4 +239,110 @@ fn plan_file_is_cleaned_up() {
         leftovers.is_empty(),
         "一時ファイルが残っている: {leftovers:?}"
     );
+}
+
+#[test]
+fn review_rejection_becomes_a_stop_block() {
+    let t = T::new();
+    stub(
+        &t.hooks().join("copilot-plan-review"),
+        r#"cat >/dev/null
+echo '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"review blocker"}}'"#,
+    );
+    let out = t.run(&with_plan());
+    assert_eq!(decision(&out).as_deref(), Some("block"));
+    assert!(out.contains("review blocker"));
+}
+
+#[test]
+fn stale_base_rejection_becomes_a_stop_block() {
+    let t = T::new();
+    stub(
+        &t.hooks().join("plan-fresh-gate"),
+        r#"cat >/dev/null
+echo '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"base changed"}}'"#,
+    );
+    let out = t.run(&with_plan());
+    assert_eq!(decision(&out).as_deref(), Some("block"));
+    assert!(out.contains("base changed"));
+}
+
+#[test]
+fn review_success_notice_does_not_prevent_investigation_record() {
+    let t = T::new();
+    let repo = t.dir.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    assert!(Command::new("git")
+        .arg("init")
+        .arg(&repo)
+        .output()
+        .unwrap()
+        .status
+        .success());
+    stub(
+        &t.hooks().join("copilot-plan-review"),
+        "cat >/dev/null\necho '{\"systemMessage\":\"review passed\"}'",
+    );
+    let input = serde_json::json!({
+        "hook_event_name": "Stop", "session_id": "record", "cwd": repo,
+        "last_assistant_message": "<proposed_plan>## 先行例との対比\n既存手段: scripts/probe — 採用: existing\n</proposed_plan>",
+    }).to_string();
+    let out = t.run(&input);
+    assert!(out.contains("review passed"));
+    assert_eq!(decision(&out), None);
+    let ledger = hook_io::SessionLedger::new(t.dir.path().join("new-tools/state"), "ledger");
+    let records = ledger.records(repo.to_str().unwrap());
+    assert_eq!(records, ["既存手段: scripts/probe — 採用: existing"]);
+
+    // Review's intentional fail-open is still an executed engine response, not
+    // missing execution. This ledger certifies investigation, not review approval.
+    stub(
+        &t.hooks().join("copilot-plan-review"),
+        "cat >/dev/null\necho '{\"systemMessage\":\"review fail-open\"}'",
+    );
+    let other = input.replace("scripts/probe", "scripts/other");
+    assert!(t.run(&other).contains("review fail-open"));
+    assert!(ledger
+        .records(repo.to_str().unwrap())
+        .iter()
+        .any(|line| line.contains("scripts/other")));
+
+    // A missing engine is different from either normal notice above.
+    fs::remove_file(t.hooks().join("copilot-plan-review")).unwrap();
+    let missing = input.replace("scripts/probe", "scripts/missing");
+    assert!(t.run(&missing).contains("executable missing"));
+    assert!(!ledger
+        .records(repo.to_str().unwrap())
+        .iter()
+        .any(|line| line.contains("scripts/missing")));
+}
+
+#[test]
+fn engine_rejections_survive_format_counter_and_escalation() {
+    for name in ["copilot-plan-review", "plan-fresh-gate"] {
+        let t = T::new();
+        t.failing(true);
+        for _ in 0..3 {
+            assert_eq!(decision(&t.run(&with_plan())).as_deref(), Some("block"));
+        }
+        stub(&t.hooks().join(name), "cat >/dev/null\necho '{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"engine rejected\"}}'");
+        // Reaching the format limit must not erase a new engine's rejection.
+        for _ in 0..2 {
+            let out = t.run(&with_plan());
+            assert_eq!(decision(&out).as_deref(), Some("block"), "{name}: {out}");
+            assert!(out.contains("engine rejected"));
+        }
+        assert!(t.state_root().join("state/sid1.escalated").exists());
+    }
+}
+
+#[test]
+fn engine_rejections_do_not_consume_format_counter() {
+    let t = T::new();
+    stub(&t.hooks().join("copilot-plan-review"), "cat >/dev/null\necho '{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"review blocker\"}}'");
+    for _ in 0..5 {
+        assert_eq!(decision(&t.run(&with_plan())).as_deref(), Some("block"));
+    }
+    assert!(!t.state_root().join("state/sid1.count").exists());
+    assert!(!t.state_root().join("state/sid1.escalated").exists());
 }

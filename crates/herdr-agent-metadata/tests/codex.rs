@@ -133,7 +133,7 @@ fn user_prompt_submit_is_reported_without_debounce() {
 
 #[test]
 fn unhandled_events_are_ignored() {
-    for ev in ["PreToolUse", "PostToolUse", ""] {
+    for ev in ["PostToolUse", ""] {
         let h = Harness::new();
         let r = h.run(
             "codex",
@@ -198,7 +198,7 @@ fn send_failure_is_silent() {
 #[test]
 fn bypass_permissions_sets_mode_bypass() {
     // Codex は承認方針が never のときだけ bypassPermissions を出す。
-    for ev in ["SessionStart", "UserPromptSubmit", "Stop"] {
+    for ev in ["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"] {
         let h = Harness::new();
         let r = h.run(
             "codex",

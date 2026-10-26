@@ -67,7 +67,7 @@ pub struct Rule {
     /// かつて個別の hook として宣言していた `timeout` と同じ値。
     pub budget: Duration,
     /// 判定の本体。引数は標準入力の JSON(生)。
-    pub run: fn(&str) -> Option<Outcome>,
+    pub run: fn(Agent, &str) -> Option<Outcome>,
 }
 
 const S10: Duration = Duration::from_secs(10);
@@ -82,7 +82,7 @@ pub static RULES: &[Rule] = &[
         event: Event::Pre,
         tools: Tools::Bash,
         budget: S10,
-        run: git_stash_guard::hook,
+        run: |_, raw| git_stash_guard::hook(raw),
     },
     Rule {
         node: "main-checkout-guard-pre",
@@ -98,98 +98,101 @@ pub static RULES: &[Rule] = &[
             "Glob",
         ]),
         budget: S10,
-        run: main_checkout_guard::hook,
+        run: |agent, raw| {
+            let input = hook_io::HookInput::parse(raw)?;
+            main_checkout_guard::pre_hook(agent, &input)
+        },
     },
     Rule {
         node: "attribution-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S10,
-        run: |raw| attribution_guard::hook(Agent::Claude, raw),
+        run: |agent, raw| attribution_guard::hook(agent, raw),
     },
     Rule {
         node: "worktree-create-guard",
         event: Event::Pre,
         tools: Tools::Bash,
         budget: S10,
-        run: git_worktree_create_guard::hook,
+        run: |_, raw| git_worktree_create_guard::hook(raw),
     },
     Rule {
         node: "stack-base-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S20,
-        run: |raw| stack_base_guard::hook(Agent::Claude, raw),
+        run: |agent, raw| stack_base_guard::hook(agent, raw),
     },
     Rule {
         node: "pr-title-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S10,
-        run: |raw| pr_title_guard::hook(Agent::Claude, raw),
+        run: |agent, raw| pr_title_guard::hook(agent, raw),
     },
     Rule {
         node: "pr-confirm-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S10,
-        run: |raw| pr_confirm_guard::hook(Agent::Claude, raw),
+        run: |agent, raw| pr_confirm_guard::hook(agent, raw),
     },
     Rule {
         node: "decision-colocation-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S20,
-        run: decision_colocation::guard::hook,
+        run: |_, raw| decision_colocation::guard::hook(raw),
     },
     Rule {
         node: "external-send-guard",
         event: Event::Pre,
         tools: Tools::Mcp,
         budget: S10,
-        run: external_send_guard::hook,
+        run: |_, raw| external_send_guard::hook(raw),
     },
     Rule {
         node: "rulesets-write-guard",
         event: Event::Pre,
         tools: Tools::Bash,
         budget: S10,
-        run: rulesets_write_guard::hook,
+        run: |_, raw| rulesets_write_guard::hook(raw),
     },
     Rule {
         node: "routines-write-guard",
         event: Event::Pre,
         tools: Tools::Named(&["RemoteTrigger"]),
         budget: S10,
-        run: routines_write_guard::hook,
+        run: |_, raw| routines_write_guard::hook(raw),
     },
     Rule {
         node: "pkexec-guard",
         event: Event::Pre,
         tools: Tools::Bash,
         budget: S10,
-        run: |raw| pkexec_guard::hook(Agent::Claude, raw),
+        run: |agent, raw| pkexec_guard::hook(agent, raw),
     },
     Rule {
         node: "new-tool-guard",
         event: Event::Pre,
         tools: Tools::Named(&["Write"]),
         budget: S10,
-        run: new_tool_guard::hook::hook,
+        run: |_, raw| new_tool_guard::hook::hook(raw),
     },
     Rule {
         node: "feedback-target-guard",
         event: Event::Pre,
         tools: Tools::Bash,
         budget: S10,
-        run: feedback_target_guard::hook,
+        run: |_, raw| feedback_target_guard::hook(raw),
     },
     Rule {
         node: "repo-create-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S15,
-        run: repo_create_guard::hook,
+        run: |_, raw| repo_create_guard::hook(raw),
     },
     // ---- PostToolUse(記録役。出力は、あっても additionalContext だけ)
     Rule {
@@ -197,28 +200,28 @@ pub static RULES: &[Rule] = &[
         event: Event::Post,
         tools: Tools::Bash,
         budget: S10,
-        run: gh_edit_allow::record_hook,
+        run: |_, raw| gh_edit_allow::record_hook(raw),
     },
     Rule {
         node: "cmd-hash-log",
         event: Event::Post,
         tools: Tools::Bash,
         budget: S10,
-        run: cmd_hash_log::hook,
+        run: |_, raw| cmd_hash_log::hook(raw),
     },
     Rule {
         node: "adr-number",
         event: Event::Post,
         tools: Tools::Bash,
         budget: S10,
-        run: adr_number::hook,
+        run: adr_number::hook_for,
     },
     Rule {
         node: "new-tool-guard-record",
         event: Event::Post,
         tools: Tools::Named(&["ExitPlanMode"]),
         budget: S10,
-        run: new_tool_guard::hook::hook,
+        run: |_, raw| new_tool_guard::hook::hook(raw),
     },
 ];
 
