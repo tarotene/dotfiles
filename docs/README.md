@@ -442,6 +442,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   起票した日のうちに予定へ入れる(ADR-829 の「待ちが解けてから」を改める)。issue-index は
   待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。
 
+- [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
+
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
 Design and rationale for the hooks and commands deployed from
@@ -759,4 +761,3 @@ Design and rationale for the hooks and commands deployed from
 - [命名と配置](agents/tooling-conventions.md)
 - [ライブラリの責務](agents/agent-libraries.md)
 - [改名・互換入口と削除条件](agents/tooling-migration.md)
-- [ADR-0000 — 命名・責務・共有配置](adr/0000-agent-tooling-names-and-responsibilities.md)

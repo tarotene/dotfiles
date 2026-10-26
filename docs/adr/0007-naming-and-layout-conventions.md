@@ -57,7 +57,7 @@ Misterio77/nix-starter-configs、hlissner/dotfiles)と Claude Code hook
 
 ### 3. hook の役割語彙
 
-ADR-0000 で更新。接尾辞は発火イベントでなく責務で決める。
+ADR-1040 で更新。接尾辞は発火イベントでなく責務で決める。
 
 | 接尾辞 | 意味 |
 |---|---|
