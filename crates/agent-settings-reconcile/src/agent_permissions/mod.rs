@@ -965,7 +965,12 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
         return Ok(None);
     }
     if tool.starts_with("mcp__") {
-        return Ok(Some("ask"));
+        // Whether a hook `ask` beats a settings `allow` is not documented (#1052), so
+        // nothing here depends on it: ask only where an allow this hook cannot
+        // manage (a shared or managed file) already covers the tool. Everywhere else
+        // the owner's own allows (declared, or pending until reclaim) and the default
+        // prompt are Claude's decision.
+        return Ok(shared_allow_covers(&record, &home, Path::new(cwd), tool).then_some("ask"));
     }
     let args = &input["tool_input"];
     let shell = ["Bash", "PowerShell", "Monitor"].contains(&tool);
@@ -1033,6 +1038,55 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
         }
     }
     Ok(None)
+}
+
+/// Whether a non-writable source this session reads (a shared project settings file,
+/// managed policy) allows `tool` with an `mcp__` rule. Those allows are outside the
+/// owner's declaration, so the one-time review has to come from the hook.
+fn shared_allow_covers(record: &Record, home: &Path, cwd: &Path, tool: &str) -> bool {
+    let Ok(home) = home.canonicalize() else {
+        return true; // cannot tell which sources this session reads: ask
+    };
+    let dirs = inventory::session_dirs(cwd);
+    record
+        .sources
+        .iter()
+        .filter(|s| !s.writable && inventory::in_session_scope(&s.path, &home, &dirs))
+        .filter_map(|s| s.grants["permissions"]["allow"].as_array())
+        .flatten()
+        .filter_map(Value::as_str)
+        .any(|rule| mcp_rule_covers(rule, tool))
+}
+
+/// Claude's `mcp__` allow rule forms: one tool, a whole server (`mcp__server`), or a
+/// pattern with `*`. Anything that is not an `mcp__` rule covers nothing here.
+fn mcp_rule_covers(rule: &str, tool: &str) -> bool {
+    if !rule.starts_with("mcp__") {
+        return false;
+    }
+    if rule.contains('*') {
+        return glob(rule, tool);
+    }
+    rule == tool || tool.strip_prefix(rule).is_some_and(|r| r.starts_with("__"))
+}
+
+/// `*` matches any run of characters; everything else matches itself.
+fn glob(pattern: &str, text: &str) -> bool {
+    let mut parts = pattern.split('*');
+    let first = parts.next().unwrap_or("");
+    let Some(mut rest) = text.strip_prefix(first) else {
+        return false;
+    };
+    let mut parts: Vec<&str> = parts.collect();
+    let last = parts.pop().unwrap_or(first);
+    for part in parts {
+        match rest.find(part) {
+            Some(i) => rest = &rest[i + part.len()..],
+            None => return false,
+        }
+    }
+    // The pattern has at least one `*`, so the last part anchors the end.
+    rest.ends_with(last) && rest.len() >= last.len()
 }
 
 fn resolve(path: &Path) -> Result<PathBuf, String> {
@@ -1346,4 +1400,41 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         _ => return Err("unknown subcommand".into()),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{glob, mcp_rule_covers};
+
+    #[test]
+    fn mcp_rules_cover_a_tool_a_server_or_a_pattern() {
+        assert!(mcp_rule_covers("mcp__s__t", "mcp__s__t"));
+        assert!(!mcp_rule_covers("mcp__s__t", "mcp__s__u"));
+        assert!(mcp_rule_covers("mcp__s", "mcp__s__t"));
+        assert!(
+            !mcp_rule_covers("mcp__s", "mcp__srv__t"),
+            "a prefix of the name is not the server"
+        );
+        assert!(mcp_rule_covers("mcp__s__*", "mcp__s__t"));
+        assert!(mcp_rule_covers("mcp__s__read_*", "mcp__s__read_file"));
+        assert!(!mcp_rule_covers("mcp__s__read_*", "mcp__s__write"));
+        assert!(!mcp_rule_covers("mcp__s__*", "mcp__other__t"));
+        assert!(!mcp_rule_covers("Bash(echo)", "mcp__s__t"));
+        assert!(!mcp_rule_covers("WebSearch", "mcp__s__t"));
+    }
+
+    #[test]
+    fn glob_matches_stars_without_overlapping_parts() {
+        assert!(glob("a*c", "abc"));
+        assert!(glob("a*c", "ac"));
+        assert!(!glob("a*c", "ab"));
+        assert!(glob("*", "anything"));
+        assert!(glob("a*b*c", "a--b--c"));
+        assert!(!glob("a*b*c", "a--c--b"));
+        assert!(
+            !glob("ab*ba", "aba"),
+            "the prefix and the suffix cannot share a character"
+        );
+        assert!(glob("ab*ba", "abba"));
+    }
 }

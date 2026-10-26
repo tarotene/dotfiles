@@ -246,7 +246,9 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 |---|---|---|
 | `mcp__esa__esa_get_post` | `~/.claude/settings.json` の `permissions.allow` に同じ文字列 | `~/.codex/config.toml` の `mcp_servers.esa.tools.esa_get_post.approval_mode = "approve"` |
 
-- hook は、宣言済みのツールに ask を返さない。宣言していない MCP ツールは、これまでどおり ask。
+- hook は、宣言済みのツールに ask を返さない。宣言していない MCP ツールは、書き込めない設定元(共有の
+  プロジェクト設定・管理設定)の `mcp__` の allow が覆うときだけ ask を返し、それ以外は判断を Claude 本体に
+  任せる(既定のプロンプト)。ask が allow に勝つか、allow が ask に勝つかに、結果が依存しない形である(#1052)。
   他の hook(Slack の送信 guard など)の deny は独立で、宣言しても外れない。
 - Codex は、`config.toml` に**定義済みの**サーバーのツールにだけ書く。`command` も `url` も持たない
   `[mcp_servers.<名前>]` は Codex が `invalid transport` で拒否する(openai/codex rust-v0.164.0
@@ -256,7 +258,10 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
   (Claude の `allow` から消え、Codex の該当ツールは `prompt` に戻る)。
 - 宣言を空にしている間、`mcp_allow` は記録にも `policy.json` にも現れない。この欄が無い記録は、空として読む。
 - Claude では、`permissions.allow` の許可と hook の `ask` のどちらが優先されるかを、公式文書は定めていない
-  (#1052 が実測する)。宣言済みのツールで hook が ask を返さない形にして、順位に依存しないようにしてある。
+  (下の「優先順位の実測」)。宣言済みのツールで hook が ask を返さない形にして、順位に依存しないようにしてある。
+- 宣言しない MCP ツールの確認は、Claude 本体の判断になる。既定のモードで MCP ツールに承認が要るのは Claude の標準の
+  挙動で、この変更の前後を実測してはいない(未検証)。自動モード(`autoMode`)の分類器が確認を省く可能性は、
+  hook の ask を外した分だけ増えうる(未検証)。
 - **宣言しないもの。** Bash・`prefix_rule`・WebSearch は記録のみのままである。Claude の自動モードでは
   `classifyAllShell` が Bash の allow を効かなくし(Anthropic, "Configure auto mode",
   <https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27。本線では原文を再取得していない)、
@@ -268,6 +273,38 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 さらに、`mcp_allow` に宣言した MCP ツールは、その規則の例外として、セッションを越えて常に許可する(本人の裁定、#1051)。
 例外は、本人が `inspect` → `migrate` で審査した宣言に限る。「don't ask again」で積んだ許可は、従来どおり
 そのセッション限りで、昇格を裁定されたものだけが宣言になる。
+
+## 優先順位の実測(hook の ask と設定の allow)
+
+`scripts/hook-ask-vs-allow-probe` が、分離した HOME で `claude -p` を 3 回回し、組み込みの Bash(`echo probe-ok`)が
+実行されたか拒否されたかを読む(#1052)。実 HOME の `~/.claude*` には触れない。
+
+| ケース | 設定 | 想定 |
+|---|---|---|
+| A 対照 | `permissions.allow` に `Bash(echo probe-ok)` だけ | 実行される |
+| B 対照 | PreToolUse hook が `ask` を返すだけ | 拒否される(`-p` には答える人がいない) |
+| C 本番 | A と B の両方 | 実行なら allow が勝ち、拒否なら ask が勝つ |
+
+C は、A が実行・B が拒否で、C の run で hook が動いた記録があるときだけ結論にする。結果が曖昧なとき
+(終了コード 1 で「判定不能」)は、標準入出力の小さな MCP スタブで同じ 3 ケースを回す(組み込みツールで足りれば
+スタブは作らない)。実測は本人作業である(分離した HOME にはログインが無い)。
+
+1. `claude setup-token` で長期トークンを発行する(Claude のサブスクリプションが要る)。
+2. `export CLAUDE_CODE_OAUTH_TOKEN=<トークン>`(API キーなら `ANTHROPIC_API_KEY`)。どちらも無いと、スクリプトは
+   認証が無い旨を出して終了コード 3 で終わる。
+3. `scripts/hook-ask-vs-allow-probe --keep`。先に `--dry-run` で設定と実行コマンドだけを読める。
+4. 結果を、使った Claude Code の版(スクリプトの先頭行)と一緒にこの節と #1052 に残す。
+
+結果の読み方と、文書への反映:
+
+| 出力 | 意味 | 文書への反映 |
+|---|---|---|
+| `allow が ask に勝つ` | 設定に allow があれば、hook が ask を返しても実行される | 書き込めない設定元の allow を覆うために hook の ask は使えない。上の MCP の分岐は、書き込めない設定元の allow が覆うツールに ask を返す意味を失う。その分岐の見直しを Issue に起票する |
+| `ask が allow に勝つ` | hook が ask を返すと、allow があっても承認が要る | 上の MCP の分岐が意図どおり働く。`mcp_allow` を宣言していないツールの「don't ask again」は、宣言するまでセッション限りの扱いのまま |
+| `判定不能`(A が実行されない) | allow 規則が効く前提が崩れている | `claude -p` の許可の評価が想定と違う。生の出力(`--keep`)を読み、版を添えて Issue に残す |
+| `判定不能`(B が拒否されない) | `-p` が ask を自動で通すか、hook が読まれていない | `--keep` のログで hook の実行を確かめ、対話の実行か MCP スタブへ進む |
+
+実測の結果: 未実測(2026-10-27 時点。実行は本人作業)。
 
 ## 更新を中断したら記録から復元する
 

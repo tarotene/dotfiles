@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# hook-ask-vs-allow-probe — Claude Code で、PreToolUse hook が返す `ask` と、設定の
+# `permissions.allow` のどちらが優先されるかを、分離した HOME で実測する(#1052)。
+#
+# 公式文書(Anthropic, Hooks / Permissions)は、hook が `permissionDecision: "ask"` を返せる
+# ことまでしか定めず、同じツールに allow 規則があるときの順位を書いていない(2026-10-26 時点)。
+# 順位で、MCP の「don't ask again」(allow 規則の追記)が効くかどうかが決まる。
+#
+# 使うのは組み込みツールの Bash(`echo probe-ok`)だけで、MCP サーバーは立てない。結果が
+# 曖昧なとき(下の判定が「判定不能」で終わったとき)に限り、標準入出力の小さな MCP スタブへ進む。
+#
+# 3 つの設定で `claude -p` を 1 回ずつ回し、echo が実行されたか、拒否されたかを読む。
+#   A 対照: allow 規則だけ          → 実行されるはず(allow が効くことの確認)
+#   B 対照: hook の ask だけ        → 拒否されるはず(-p では ask に答える人がいない)
+#   C 本番: allow 規則 + hook の ask → 実行なら「allow が ask に勝つ」、拒否なら「ask が allow に勝つ」
+# C は、A が実行・B が拒否で、C の run で hook が実際に動いた(ログが残った)ときだけ結論にする。
+#
+# 実 HOME には触れない。`HOME` を一時ディレクトリに替え、実際の `~/.claude*` を読み書きしない。
+# 分離した HOME にはログインが無いので、認証は環境変数で渡す(本人作業):
+#   claude setup-token                                    # 長期トークンを発行する(サブスクリプションが要る)
+#   export CLAUDE_CODE_OAUTH_TOKEN=<発行されたトークン>     # または ANTHROPIC_API_KEY
+# どちらも未設定なら、claude を呼ばずに終了コード 3 で終わる。
+#
+# 使い方:
+#   hook-ask-vs-allow-probe             # 3 つを実行して判定を出す(認証が要る)
+#   hook-ask-vs-allow-probe --dry-run   # 用意する設定と実行するコマンドを出すだけ(claude を呼ばない)
+#   hook-ask-vs-allow-probe --keep      # 一時ディレクトリを消さない(生の出力を読み直せる)
+#   hook-ask-vs-allow-probe --selftest  # 判定ロジックの自己検査(ネットワーク・認証・claude 不要)
+#
+# 環境変数: PROBE_MODEL — `claude --model` に渡す(未設定ならアカウントの既定)。
+#
+# 終了コード: 0 = 判定が出た(優先順位を表示)、1 = 判定不能(対照が想定どおりでない・hook が動かない)、
+#             2 = 使い方の誤り・前提の不足(claude・jq が無い)、3 = 認証が無い
+set -euo pipefail
+
+PROBE_MARK="probe-ok"
+PROBE_CMD="echo ${PROBE_MARK}"
+PROBE_PROMPT="Run exactly this one shell command with the Bash tool, then stop: ${PROBE_CMD}"
+PROBE_OUT=""
+
+usage() {
+  sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
+}
+
+# --- 設定の生成(純関数: 引数だけから JSON を作る) -------------------------------------
+
+# $1 = hook スクリプトの絶対パス(空なら hook を登録しない)、$2 = allow 規則を入れるか(yes|no)
+settings_json() {
+  local hook="$1" allow="$2" allow_json='[]' hooks_json='{}'
+  if [ "$allow" = yes ]; then
+    allow_json="[\"Bash(${PROBE_CMD})\"]"
+  fi
+  if [ -n "$hook" ]; then
+    hooks_json="{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"${hook}\"}]}]}"
+  fi
+  printf '{"permissions":{"allow":%s},"hooks":%s}\n' "$allow_json" "$hooks_json"
+}
+
+# hook が返す JSON(本番の hook-router が ask を返す形と同じ)
+ask_output() {
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"probe: hook asks"}}'
+}
+
+# --- 判定(純関数: stream-json の出力を読む) --------------------------------------------
+
+# stdin = `claude -p --output-format stream-json` の出力。標準出力に 1 語:
+#   EXECUTED    Bash が走り、結果が ${PROBE_MARK} だけだった
+#   DENIED      Bash が呼ばれたが、拒否された(is_error の tool_result か permission_denials)
+#   NOT_CALLED  Bash が呼ばれなかった(モデルが実行しなかった)
+#   AUTH        認証の失敗
+#   UNKNOWN     Bash は呼ばれたが、実行とも拒否とも読めない
+classify() {
+  local text lines called result denied
+  text="$(cat)"
+  # JSON の行だけを読む(行ごとに parse し、読めない行は捨てる)
+  lines="$(printf '%s\n' "$text" | jq -Rc 'fromjson? | objects' 2> /dev/null || true)"
+  called="$(printf '%s\n' "$lines" | jq -s '
+    [ .[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use" and .name == "Bash") ] | length' 2> /dev/null || echo 0)"
+  result="$(printf '%s\n' "$lines" | jq -rs --arg mark "$PROBE_MARK" '
+    [ .[] | select(.type == "user") | .message.content[]? | select(.type == "tool_result")
+      | { error: (.is_error // false),
+          text: (if (.content | type) == "array" then (.content | map(.text // "") | join("")) else ((.content // "") | tostring) end) } ]
+    | if any(.[]; (.error | not) and ((.text | gsub("^\\s+|\\s+$"; "")) == $mark)) then "executed"
+      elif any(.[]; .error) then "error"
+      else "none" end' 2> /dev/null || echo none)"
+  denied="$(printf '%s\n' "$lines" | jq -s '
+    [ .[] | select(.type == "result") | (.permission_denials // [])[]? | select(.tool_name == "Bash") ] | length' 2> /dev/null || echo 0)"
+  if [ "$result" = executed ]; then
+    echo EXECUTED
+  elif [ "$result" = error ] || [ "${denied:-0}" -gt 0 ]; then
+    echo DENIED
+  elif [ "${called:-0}" -gt 0 ]; then
+    echo UNKNOWN
+  elif printf '%s\n' "$text" | grep -qiE 'not logged in|please run /login|invalid api key|authentication|oauth token'; then
+    echo AUTH
+  else
+    echo NOT_CALLED
+  fi
+}
+
+# A・B・C の分類と、C の run で hook が動いたか(yes|no)から、結論を 1 行で返す。
+# 終了コード 0 = 結論あり、1 = 判定不能
+verdict() {
+  local a="$1" b="$2" c="$3" hook_ran="$4"
+  if [ "$a" = AUTH ] || [ "$b" = AUTH ] || [ "$c" = AUTH ]; then
+    echo "判定不能: 認証に失敗した(CLAUDE_CODE_OAUTH_TOKEN か ANTHROPIC_API_KEY を確かめる)"
+    return 1
+  fi
+  if [ "$a" != EXECUTED ]; then
+    echo "判定不能: 対照 A(allow だけ)が実行されなかった(${a})。allow 規則が効く前提が崩れている"
+    return 1
+  fi
+  if [ "$b" != DENIED ]; then
+    echo "判定不能: 対照 B(hook の ask だけ)が拒否されなかった(${b})。-p では ask が自動で通るか、hook が効いていない。対話の実行か MCP スタブへ進む"
+    return 1
+  fi
+  if [ "$hook_ran" != yes ]; then
+    echo "判定不能: C の run で hook が動いた記録が無い。hook が読まれていない"
+    return 1
+  fi
+  case "$c" in
+    EXECUTED) echo "allow が ask に勝つ: allow 規則があると、hook が ask を返しても実行される" ;;
+    DENIED) echo "ask が allow に勝つ: hook が ask を返すと、allow 規則があっても承認が要る" ;;
+    *)
+      echo "判定不能: C が ${c} で、実行とも拒否とも読めない。生の出力を読み、必要なら MCP スタブへ進む"
+      return 1
+      ;;
+  esac
+}
+
+# --- 実行 ---------------------------------------------------------------------------
+
+# $1 = ケース名(A|B|C)、$2 = 出力ディレクトリ。分離した HOME を作り、`claude -p` を 1 回回す
+run_case() {
+  local name="$1" out="$2" home work hook="" allow=no
+  home="$out/home-$name"
+  work="$out/work-$name"
+  mkdir -p "$home/.claude" "$work"
+  case "$name" in
+    A) allow=yes ;;
+    B) hook="$out/ask-hook-$name.sh" ;;
+    C)
+      allow=yes
+      hook="$out/ask-hook-$name.sh"
+      ;;
+  esac
+  if [ -n "$hook" ]; then
+    # hook が実際に動いたことを、ログの有無で読む(動いていない C は結論にしない)
+    cat > "$hook" << EOF
+#!/usr/bin/env bash
+echo ran >> "$out/hook-ran-$name.log"
+cat > /dev/null
+cat << 'JSON'
+$(ask_output)
+JSON
+EOF
+    chmod +x "$hook"
+  fi
+  settings_json "$hook" "$allow" > "$home/.claude/settings.json"
+  # 認証の環境変数以外は引き継がない。HOME は分離したものだけを見せる
+  local envargs=(HOME="$home" PATH="$PATH")
+  if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    envargs+=(CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN")
+  fi
+  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    envargs+=(ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY")
+  fi
+  local claude_args=(-p "$PROBE_PROMPT" --output-format stream-json --verbose
+    --no-session-persistence --max-turns 4 --max-budget-usd 0.5 --setting-sources user)
+  if [ -n "${PROBE_MODEL:-}" ]; then
+    claude_args+=(--model "$PROBE_MODEL")
+  fi
+  (
+    cd "$work"
+    env -i "${envargs[@]}" claude "${claude_args[@]}"
+  ) > "$out/case-$name.jsonl" 2> "$out/case-$name.err" || true
+}
+
+main_run() {
+  local dry=no keep=no
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=yes ;;
+      --keep) keep=yes ;;
+      -h | --help)
+        usage
+        return 0
+        ;;
+      *)
+        echo "unknown option: $1" >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+  command -v jq > /dev/null || {
+    echo "jq が要る" >&2
+    return 2
+  }
+  if [ "$dry" = yes ]; then
+    echo "# 分離した HOME ごとに claude -p を 1 回ずつ回す(実 HOME には触れない)"
+    echo "# prompt: $PROBE_PROMPT"
+    for c in A B C; do
+      echo "## case $c"
+      case "$c" in
+        A) settings_json "" yes ;;
+        B) settings_json "<out>/ask-hook-B.sh" no ;;
+        C) settings_json "<out>/ask-hook-C.sh" yes ;;
+      esac
+    done
+    echo "## hook が返す JSON"
+    ask_output
+    echo "## 実行するコマンド(各ケース、cwd は空のディレクトリ)"
+    echo "env -i HOME=<out>/home-<case> PATH=... [CLAUDE_CODE_OAUTH_TOKEN=... | ANTHROPIC_API_KEY=...] \\"
+    echo "  claude -p '<prompt>' --output-format stream-json --verbose --no-session-persistence \\"
+    echo "  --max-turns 4 --max-budget-usd 0.5 --setting-sources user"
+    return 0
+  fi
+  command -v claude > /dev/null || {
+    echo "claude が見つからない" >&2
+    return 2
+  }
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "認証が無い: 分離した HOME にはログインが無い。次で認証を渡してから再実行する。" >&2
+    echo "  claude setup-token                         # 長期トークンを発行する(サブスクリプションが要る)" >&2
+    echo "  export CLAUDE_CODE_OAUTH_TOKEN=<トークン>    # または export ANTHROPIC_API_KEY=<キー>" >&2
+    return 3
+  fi
+  PROBE_OUT="$(mktemp -d "${TMPDIR:-/tmp}/hook-ask-vs-allow.XXXXXX")"
+  if [ "$keep" = no ]; then
+    trap 'rm -rf "$PROBE_OUT"' EXIT
+  fi
+  echo "claude: $(claude --version 2> /dev/null || echo unknown)"
+  echo "out: $PROBE_OUT"
+  local a b c hook_ran=no case_name
+  for case_name in A B C; do
+    run_case "$case_name" "$PROBE_OUT"
+  done
+  a="$(classify < "$PROBE_OUT/case-A.jsonl")"
+  b="$(classify < "$PROBE_OUT/case-B.jsonl")"
+  c="$(classify < "$PROBE_OUT/case-C.jsonl")"
+  if [ -s "$PROBE_OUT/hook-ran-C.log" ]; then
+    hook_ran=yes
+  fi
+  echo "A (allow だけ)         : $a"
+  echo "B (hook の ask だけ)   : $b"
+  echo "C (allow + hook の ask): $c (hook が動いた: $hook_ran)"
+  if [ "$keep" = yes ]; then
+    echo "生の出力: $PROBE_OUT/case-{A,B,C}.jsonl と .err、hook のログ: $PROBE_OUT/hook-ran-*.log"
+  fi
+  local conclusion code=0
+  conclusion="$(verdict "$a" "$b" "$c" "$hook_ran")" || code=$?
+  echo "$conclusion"
+  return "$code"
+}
+
+# --- 自己検査 ------------------------------------------------------------------------
+
+selftest() {
+  command -v jq > /dev/null || {
+    echo "jq が要る" >&2
+    return 2
+  }
+  local fail=0
+  check() { # $1 = 名前、$2 = 期待、$3 = 実際
+    if [ "$2" = "$3" ]; then
+      echo "ok   $1"
+    else
+      echo "FAIL $1: 期待 '$2'、実際 '$3'" >&2
+      fail=1
+    fi
+  }
+  local use ok_result denied_result
+  use='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"echo probe-ok"}}]}}'
+  ok_result='{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"probe-ok","is_error":false}]}}'
+  denied_result='{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Permission to use Bash with command echo probe-ok has been denied.","is_error":true}]}}'
+  check classify-executed EXECUTED "$(printf '%s\n%s\n' "$use" "$ok_result" | classify)"
+  check classify-ignores-non-json-lines EXECUTED "$(printf '%s\nnot json\n%s\n' "$use" "$ok_result" | classify)"
+  check classify-executed-array-content EXECUTED "$(printf '%s\n%s\n' "$use" '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"probe-ok\n"}]}]}}' | classify)"
+  check classify-denied-by-error DENIED "$(printf '%s\n%s\n' "$use" "$denied_result" | classify)"
+  check classify-denied-by-result-field DENIED "$(printf '%s\n%s\n' "$use" '{"type":"result","is_error":false,"permission_denials":[{"tool_name":"Bash","tool_use_id":"t1"}]}' | classify)"
+  check classify-not-called NOT_CALLED "$(printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"no"}]}}' | classify)"
+  check classify-auth AUTH "$(printf '%s\n' '{"type":"result","is_error":true,"result":"Invalid API key · Please run /login"}' | classify)"
+  check classify-the-command-text-is-not-output UNKNOWN "$(printf '%s\n%s\n' "$use" '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ran echo probe-ok somewhere","is_error":false}]}}' | classify)"
+  check verdict-allow-wins "allow が ask に勝つ: allow 規則があると、hook が ask を返しても実行される" "$(verdict EXECUTED DENIED EXECUTED yes)"
+  check verdict-ask-wins "ask が allow に勝つ: hook が ask を返すと、allow 規則があっても承認が要る" "$(verdict EXECUTED DENIED DENIED yes)"
+  check verdict-needs-hook-log "判定不能: C の run で hook が動いた記録が無い。hook が読まれていない" "$(verdict EXECUTED DENIED DENIED no || true)"
+  check verdict-control-a-fails "判定不能: 対照 A(allow だけ)が実行されなかった(DENIED)。allow 規則が効く前提が崩れている" "$(verdict DENIED DENIED DENIED yes || true)"
+  check verdict-b-not-denied-is-inconclusive inconclusive "$(verdict EXECUTED EXECUTED EXECUTED yes > /dev/null && echo conclusive || echo inconclusive)"
+  # 生成する設定が JSON として読め、hook と allow が期待の場所にある
+  local settings
+  settings="$(settings_json /tmp/h.sh yes)"
+  check settings-allow "Bash(${PROBE_CMD})" "$(printf '%s' "$settings" | jq -r '.permissions.allow[0]')"
+  check settings-hook /tmp/h.sh "$(printf '%s' "$settings" | jq -r '.hooks.PreToolUse[0].hooks[0].command')"
+  check settings-no-allow 0 "$(settings_json '' no | jq '.permissions.allow | length')"
+  check settings-no-hook '{}' "$(settings_json '' yes | jq -c '.hooks')"
+  check hook-output ask "$(ask_output | jq -r '.hookSpecificOutput.permissionDecision')"
+  # --dry-run は claude を呼ばず、3 つのケースを出す
+  check dry-run-lists-cases 3 "$(main_run --dry-run | grep -c '^## case ')"
+  # 認証が無ければ、claude を呼ぶ前に終了コード 3 で終わる
+  local bin code=0
+  bin="$(mktemp -d "${TMPDIR:-/tmp}/probe-selftest.XXXXXX")"
+  printf '#!/bin/sh\nexit 0\n' > "$bin/claude"
+  chmod +x "$bin/claude"
+  (
+    unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
+    PATH="$bin:$PATH" main_run > /dev/null 2>&1
+  ) || code=$?
+  rm -rf "$bin"
+  check no-auth-exit-code 3 "$code"
+  return "$fail"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  *) main_run "$@" ;;
+esac
