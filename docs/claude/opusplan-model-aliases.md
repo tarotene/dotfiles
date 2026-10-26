@@ -11,8 +11,8 @@ Sonnet」と説明されるが、実際に固定されているのは**モデル
 
 | モード | Plan 側 | 実行側 | 用途 |
 |--------|---------|--------|------|
-| `fable/sonnet` | Fable(1M) | Sonnet | 既定。Plan を安く長く回す |
-| `opus/sonnet` | Opus | Sonnet | Fable のリミットが枯れたときの退避先 |
+| `opus/sonnet` | Opus | Sonnet | 既定。計画に Fable の約 2 倍の時間をかけない(下の「既定を opus/sonnet にしている理由」) |
+| `fable/sonnet` | Fable(1M) | Sonnet | Fable に計画を任せたいときに意図して選ぶ |
 | `fable/opus` | Fable(1M) | Opus | Plan は Fable のまま、実装を Opus に任せる |
 
 `opus` エイリアスを差し替えると副作用として `/model opus` も Fable になる。つまり
@@ -20,7 +20,7 @@ Fable 固有のリミットが枯れたとき、セッション内から Opus �
 往復路が `claude-plan-model`(`crates/claude-plan-model`、`~/.local/bin/claude-plan-model`)である。
 
 ```
-claude-plan-model              # 巡回 (fable/sonnet -> opus/sonnet -> fable/opus -> ...)
+claude-plan-model              # 巡回 (opus/sonnet -> fable/sonnet -> fable/opus -> ...)
 claude-plan-model fable/opus   # 明示指定(冪等)。旧名 fable / opus も別名として受ける
 claude-plan-model status       # 現在のモードを見るだけ
 claude-plan-model sync         # モードは保ったまま具体 ID を引き直す(activation 用)
@@ -29,6 +29,35 @@ claude-plan-model --force ...  # .model が "opusplan" でなくても強行す�
 
 引数なしを 3 モードの巡回にしているのは、「1 コマンドで倒す」という使い方を
 保つため。元のモードへ戻るのに 2 回叩くことになるが、方向を覚える必要がない。
+
+## 既定を opus/sonnet にしている理由(実測)
+
+以前の既定は `fable/sonnet`(Plan を Fable に任せる)だった。2026-10-27 に既定を
+`opus/sonnet` へ変えた。判断の入力は、この機体の Claude Code の履歴
+(`~/.claude/projects/*/*.jsonl` の主スレッド、2026-09-25〜2026-10-26、集計は同日)である。
+
+| 物差し | Fable 5.1 | Opus 5.5 | Sonnet 5.5 |
+|---|---|---|---|
+| 計画を書き終えるまでの稼働時間の中央値(p90) | 655 秒(1118) | 322 秒(1009) | 114 秒(442) |
+| 同じ区間の道具呼び出しの中央値 / 出力トークンの中央値 | 40 回 / 12.4 万 | 22 回 / 5.7 万 | 13 回 / 7.1 万 |
+| 計画の件数(稼働時間の集計) | 84 | 90 | 24 |
+| `ExitPlanMode` が承認された割合(その呼び出し数) | 67%(58) | 65%(98) | 70%(91) |
+
+読み方と限界:
+
+- 稼働時間は、人の発言から `ExitPlanMode` の呼び出しまでの、イベント間の間隔が 120 秒以下の
+  区間の合計。人が答える待ち(`AskUserQuestion` や承認)を除く。道具を 1 回以上呼んだ計画に限り、
+  区間で最も多く出たモデルに帰属させる。`ExitPlanMode` の承認は、その呼び出しの結果がエラーでない割合。
+- Fable は計画に約 2 倍の時間と出力トークンを使うが、承認された割合には差が見えない(67% 対 65%)。
+- モデルの割当てはランダムではない。Fable に難しい仕事が偏っていた可能性は残る。
+  Sonnet 5.5 の計画は、軽い仕事が多い可能性が高く、Opus と同列には比べない。
+- 実行側の推論量は、Sonnet 5.5 の high と medium でイベント間隔の中央値が 1.6 秒対 1.8 秒
+  (p90 は 7.3 秒対 7.9 秒)と差が出なかった。medium に下げても速くならないので、今の high のまま。
+  この間隔は、assistant の書き込みが内容ブロックごとに分かれるため、API 1 回分の待ちより短い。
+
+失うもの: 既定では Fable 固有の利用枠を使わなくなる。以前の既定の理由は「Plan を安く長く
+回す」だった。Fable に任せたい計画のときは、`claude-plan-model fable/sonnet` で選ぶ。
+既に設定済みのモードは変えない(既定が効くのは、キーが不在のときの seed だけ)。
 
 ## 状態の所有者を 2 つに割っている
 
@@ -55,7 +84,7 @@ Fable のリミットが枯れたのを見て本人が倒す一時スイッチ�
 | `fable/opus` | `<latest_per_family.fable>` | `<latest_per_family.opus>` | `[<latest_per_family.sonnet>]` |
 | 未初期化 | キー不在 | (不問) | — |
 
-判定はキーの値の系統だけを見る。Plan 側: 不在 → `fable/sonnet` で seed、
+判定はキーの値の系統だけを見る。Plan 側: 不在 → `opus/sonnet` で seed、
 `claude-fable-*` → Fable、`claude-opus-*` → Opus、それ以外 → **据え置き + 警告**。
 実行側: 不在 → Sonnet(エイリアス既定がそのまま望みの値)、`claude-opus-*` → Opus、
 それ以外 → **据え置き + 警告**。他の経路で入れた値を奪わないという規律なので、
@@ -185,7 +214,9 @@ Opus になっていることを示す。
 Plan 側に `[1m]` が付くのは Opus Plan Mode 自身の挙動で、こちらで指定したもので
 はない。Plan 中は 1M context で読める。
 
-## リミットが枯れたときの手順
+## Fable のリミットが枯れたときの手順
+
+Fable のモード(`fable/sonnet`、`fable/opus`)を選んでいる間の話。既定の `opus/sonnet` では起きない。
 
 1. `claude-plan-model opus/sonnet` — 次に起動する claude から Opus Plan になる
    (引数なしの巡回でも辿り着くが、枯れているときは明示指定が速い)
@@ -193,7 +224,8 @@ Plan 側に `[1m]` が付くのは Opus Plan Mode 自身の挙動で、こちら
    - `claude --continue` で再起動する(**推奨**。opusplan の Plan/実行の分離を保てる)
    - `/model claude-opus-5` と直に指定する(再起動不要だが、そのセッションだけ
      Plan/実行の分離が消えてフラットな Opus になる)
-3. Fable のリミット窓がリセットしたら `claude-plan-model fable/sonnet` で戻す
+3. Fable に任せ続けたいなら、リミット窓がリセットしたあとに `claude-plan-model fable/sonnet` で戻す
+   (戻さなければ、そのまま既定の Opus で続く)
 
 herdr で並列にエージェントを回している場合、**既に起動済みのペインはすべて元の
 モードのまま**である点に注意。

@@ -8,8 +8,8 @@
 //! *ペア* で、ペアとして名前を付ける:
 //!
 //! ```text
-//! fable/sonnet   plan = Fable, execute = Sonnet   (既定)
-//! opus/sonnet    plan = Opus,  execute = Sonnet
+//! fable/sonnet   plan = Fable, execute = Sonnet
+//! opus/sonnet    plan = Opus,  execute = Sonnet   (既定)
 //! fable/opus     plan = Fable, execute = Opus
 //! ```
 //!
@@ -53,7 +53,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 const PROG: &str = "claude-plan-model";
-const DEFAULT_MODE: &str = "fable/sonnet";
+const DEFAULT_MODE: &str = "opus/sonnet";
 const OPUS_KEY: &str = "ANTHROPIC_DEFAULT_OPUS_MODEL";
 const SONNET_KEY: &str = "ANTHROPIC_DEFAULT_SONNET_MODEL";
 
@@ -63,15 +63,15 @@ fn usage() -> String {
 
 Switch the pair of models behind Opus Plan Mode (plan side / execution side).
 
-  {p}               cycle fable/sonnet -> opus/sonnet -> fable/opus -> ...
+  {p}               cycle opus/sonnet -> fable/sonnet -> fable/opus -> ...
   {p} fable/opus    select a mode explicitly (idempotent)
   {p} status        report the current mode without changing anything
   {p} sync          keep the current mode, refresh the concrete model IDs
                         (run from home-manager activation)
 
 Modes:
-  fable/sonnet   plan = Fable, execute = Sonnet   (default; also accepts \"fable\")
-  opus/sonnet    plan = Opus,  execute = Sonnet   (also accepts \"opus\")
+  fable/sonnet   plan = Fable, execute = Sonnet   (also accepts \"fable\")
+  opus/sonnet    plan = Opus,  execute = Sonnet   (default; also accepts \"opus\")
   fable/opus     plan = Fable, execute = Opus
 
 Options:
@@ -317,9 +317,9 @@ fn normalize_mode(a: &str) -> Option<String> {
 
 fn next_mode(m: &str) -> Option<&'static str> {
     match m {
-        "fable/sonnet" => Some("opus/sonnet"),
-        "opus/sonnet" => Some("fable/opus"),
-        "fable/opus" => Some("fable/sonnet"),
+        "opus/sonnet" => Some("fable/sonnet"),
+        "fable/sonnet" => Some("fable/opus"),
+        "fable/opus" => Some("opus/sonnet"),
         _ => None,
     }
 }

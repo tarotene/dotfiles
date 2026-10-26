@@ -88,10 +88,10 @@ fn t1_uninit_seeds_default() {
     let (_d, f) = fixture();
     seed(&f, r#"{"model":"opusplan"}"#);
     let r = run(&f, &[""]);
-    assert_eq!(state(&f), M_FABLE_SONNET, "1a uninit seeds fable/sonnet");
+    assert_eq!(state(&f), M_OPUS_SONNET, "1a uninit seeds opus/sonnet");
     assert_eq!(r.rc, 0, "1b uninit exit 0");
     assert!(
-        r.out.contains("[uninitialised] => [fable/sonnet]"),
+        r.out.contains("[uninitialised] => [opus/sonnet]"),
         "1c uninit is not reported as opus: {}",
         r.out
     );
@@ -103,12 +103,13 @@ fn t2_cycle() {
     let (_d, f) = fixture();
     seed(&f, r#"{"model":"opusplan"}"#);
     run(&f, &[""]);
+    assert_eq!(state(&f), M_OPUS_SONNET, "2a first run seeds opus/sonnet");
     run(&f, &[""]);
-    assert_eq!(state(&f), M_OPUS_SONNET, "2a cycle 1 -> opus/sonnet");
+    assert_eq!(state(&f), M_FABLE_SONNET, "2b cycle 1 -> fable/sonnet");
     run(&f, &[""]);
-    assert_eq!(state(&f), M_FABLE_OPUS, "2b cycle 2 -> fable/opus");
+    assert_eq!(state(&f), M_FABLE_OPUS, "2c cycle 2 -> fable/opus");
     run(&f, &[""]);
-    assert_eq!(state(&f), M_FABLE_SONNET, "2c cycle 3 -> fable/sonnet");
+    assert_eq!(state(&f), M_OPUS_SONNET, "2d cycle 3 -> opus/sonnet");
 }
 
 // 3) fable/opus を抜けると実行側の上書きは残らず消える。
@@ -174,7 +175,7 @@ fn t5_alias_model_refused() {
         r.out
     );
     let r = run(&f, &["--force", ""]);
-    assert_eq!(state(&f), M_FABLE_OPUS, "5d --force applies anyway");
+    assert_eq!(state(&f), M_FABLE_SONNET, "5d --force applies anyway");
     assert_eq!(r.rc, 0, "5e --force exit 0");
 }
 
@@ -262,7 +263,7 @@ fn t8_sync_preserves_mode() {
     assert_eq!(state(&f), M_OPUS_SONNET, "8d sync preserves opus/sonnet");
     seed(&f, r#"{"model":"opusplan"}"#);
     run(&f, &["sync"]);
-    assert_eq!(state(&f), M_FABLE_SONNET, "8e sync seeds the default mode");
+    assert_eq!(state(&f), M_OPUS_SONNET, "8e sync seeds the default mode");
 }
 
 // 9) 無関係なキーは残り、status は決して書き換えず失敗もしない。
@@ -357,7 +358,7 @@ fn catalog_is_read_from_installed_claude() {
         .output()
         .unwrap();
     assert_eq!(o.status.code(), Some(0));
-    assert_eq!(state(&f), M_FABLE_SONNET);
+    assert_eq!(state(&f), M_OPUS_SONNET);
 }
 
 #[test]
