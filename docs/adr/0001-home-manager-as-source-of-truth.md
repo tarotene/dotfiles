@@ -242,3 +242,77 @@ tracks dropping the entry.
 - `flake.nix` — `herdrOverlay` に `mise` を追加
 - `home/modules/runtimes.nix` — `mise` が overlay 由来である旨のコメント
 - `docs/operations.md` — unstable の入口が `herdr` と `mise` を一緒に動かす旨
+
+## Amendment (2026-10-27 — the system layer also deploys configuration files under `/etc`, first case: system76-scheduler priorities, #1056)
+
+On a COSMIC session the whole desktop runs at nice 12, so a CPU-heavy build
+makes the GUI stall. Measured on `vega` (2026-10-26, `ps -eo pid,ni,comm,cgroup`):
+the greetd session worker, `cosmic-session`, Alacritty, Firefox, herdr and
+`claude` are at nice 12; `cosmic-comp` is at -3 and `pipewire` at -15 (both
+named in the packaged profiles); `nix-daemon` is at nice 12 with I/O class
+idle. `ulimit -e` is 0, so a user process cannot lower its own nice, and the
+home-manager layer has no way to fix this.
+
+Cause, from the pinned upstream source (pop-os/system76-scheduler, commit
+`8651bbf`, retrieved 2026-10-27; the installed package is `2.0.0~1763994311~24.04`
+and its packaged `config.kdl` / `process-scheduler/pop_os.kdl` are byte-identical
+to that commit's `data/` files, but the 2.0.0 binary's own parser was not
+compared with that commit):
+
+- The packaged `system-services` profile gives `/system.slice/*` nice 12.
+  The greetd session worker is forked inside `system.slice`, takes that nice,
+  and then moves to the `session-N.scope` (inferred: its cgroup at fork time
+  was not observed, only that it now sits in the scope at nice 12) (`daemon/src/service.rs:44-150`
+  assigns a process once and only forgets the assignment when the process
+  `exec`s under a new name or the daemon restarts).
+- Everything it launches inherits nice 12. A process in a session or app scope
+  matches no packaged profile (`Assignable`), and the default for that state
+  sets no nice (`apply_process_priority`, `service.rs:255-288`), so nothing
+  ever lowers it.
+
+Whether the `foreground` assignment (pop-shell calls `SetForegroundProcess`
+over D-Bus) works under COSMIC is **unverified**: the Alacritty window that had
+focus was at nice 12 at measurement time, which suggests it does not.
+
+The fix is configuration read by a root system service, not user-space
+configuration, so it belongs to the system layer, and the system-layer criterion
+is restated once more: **root, a system service, kernel/driver integration,
+code that must be loaded into an apt-installed process, or the configuration
+that such a service reads from `/etc`.** `scripts/install-packages.sh` already
+deploys one such file (the probe-rs udev rule); this Amendment makes that the
+pattern instead of an exception:
+
+- `config/system76-scheduler/desktop-priority.kdl` is deployed verbatim to
+  `/etc/system76-scheduler/process-scheduler/` (upstream's own drop-in
+  directory, read after the packaged one: `config/src/parser/mod.rs`). Packaged
+  files are untouched, so a package upgrade cannot clobber it.
+- It gives the session scope and the app scopes nice 0 (with an explicit
+  best-effort I/O priority 4, because a profile without `io` would set the
+  lowest one), and puts the `nix-daemon.service` cgroup in the packaged `batch`
+  profile (nice 19, `sched=idle`, I/O idle) instead of `system-services`.
+- A process that matches `include` rules of two profiles is assigned by
+  iterating a `HashMap` (`service.rs:122-144`), i.e. unpredictably. The drop-in
+  therefore adds `exclude` rules so that each case it touches matches exactly
+  one profile; this was checked by running upstream's own `config` crate over the
+  packaged files plus the drop-in on 11 sample processes, 200 times each.
+- The script deploys it only where `/usr/share/system76-scheduler` exists and the
+  deployed copy differs, and restarts `com.system76.Scheduler.service` (a
+  `reload` would not re-assign running processes).
+
+Known costs, accepted: a scope process that talks to PipeWire loses the
+packaged `pipewire` profile's nice -6 (it is applied only to `Assignable`
+processes, `service.rs:592`), so it runs at 0; and the drop-in depends on the
+packaged profile names `batch`, `session-services` and `system-services`
+(a renamed profile would make the drop-in create a new, mostly-default one,
+which the `ps` check in `docs/operations.md` would show).
+
+既存手段: 拡張(`scripts/install-packages.sh` の udev ルール配布の型に、
+upstream が用意した drop-in ディレクトリへの配置を足す。優先度の仕組みを自前で
+作らない)。
+
+### 執行点
+
+- `config/system76-scheduler/desktop-priority.kdl` — 配る設定の本体(新設)
+- `scripts/install-packages.sh` — 配布と scheduler の再起動(`--dry-run` 対応)
+- `docs/operations.md` — 適用・確認・戻し方の手順
+- `AGENTS.md` — システム層の行に `/etc` の設定を配ることを明記

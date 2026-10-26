@@ -577,6 +577,42 @@ to a marker-less or not-yet-renamed hostname with no matching
 run `dotfiles/host` marker placement (ADR-0019) or add the host's module
 before trusting a clean `sync` exit.
 
+## System layer: CPU priorities of the COSMIC desktop (system76-scheduler)
+
+Rationale and measurements: the ADR-0001 Amendment for #1056. Pop!_OS's
+`system76-scheduler` gives `/system.slice/*` nice 12, and the whole COSMIC
+session inherits it. `config/system76-scheduler/desktop-priority.kdl` is the
+correction: session and app scopes nice 0, `nix-daemon` in the packaged `batch`
+profile (nice 19, `sched=idle`, I/O idle).
+
+Apply (root; a host without `/usr/share/system76-scheduler` skips it):
+
+```bash
+./scripts/install-packages.sh --dry-run   # look for "Would install /etc/system76-scheduler/..."
+./scripts/install-packages.sh             # installs the file, then restarts com.system76.Scheduler
+```
+
+The script also installs the apt packages listed in `apt-packages.txt`.
+For the drop-in alone, the two lines it runs are
+`sudo install -D -m 0644 config/system76-scheduler/desktop-priority.kdl /etc/system76-scheduler/process-scheduler/desktop-priority.kdl`
+and `sudo systemctl try-restart com.system76.Scheduler.service`.
+The restart matters: `systemctl reload` re-reads the files but does not
+re-assign processes that already have an assignment.
+
+Check (no root needed). Expect nice 0 for `cosmic-session`, `alacritty` and
+the other apps, -3 for `cosmic-comp`, 19 for `nix-daemon`:
+
+```bash
+ps -eo pid,ni,cls,comm,cgroup | grep -E 'cosmic-session|cosmic-comp|alacritty|nix-daemon'
+```
+
+Roll back: `sudo rm /etc/system76-scheduler/process-scheduler/desktop-priority.kdl`
+then `sudo systemctl restart com.system76.Scheduler.service`.
+
+Things this does not settle: whether pop-shell's foreground boost works under
+COSMIC (unverified); and `.service` apps autostarted by the session
+(`app-*@autostart.service`) stay at the packaged `session-services` nice 9.
+
 ## Obsidian vault backup
 
 `home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
