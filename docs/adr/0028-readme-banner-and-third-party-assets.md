@@ -5,7 +5,7 @@
 - Issue: No-Issue(grill-me セッション中に設計 — 別リポジトリの README への
   いらすとやアイキャッチ追加を機に、repo ライセンスと異なるライセンスの
   素材を README/docs に同梱する規則が未設計であることが判明したため。
-  具体名は `docs/claude/public-publish-guard.md` の方針により省く)
+  具体名は `docs/agents/public-publish-guard.md` の方針により省く)
 - Supersedes: ADR-0016 の Decision 1(README 固定スキーマ)と Decision 3
   (ルート文書 allowlist)を部分的に拡張する。ADR-0016 の他の Decision・
   Alternatives・Consequences はそのまま有効。
@@ -107,7 +107,7 @@ ADR-0016 は README の節構成・ルート文書 allowlist を固定したが�
 ## Verification
 
 - `repo-charter` SKILL.md 改訂後、`grep -rn '§[0-9]'
-  config/claude/skills/` で節番号参照が壊れていないことを確認する
+  config/agents/skills/` で節番号参照が壊れていないことを確認する
   (github-audit-triage SKILL.md の「§2〜3」、ADR-0017 の「§3」は
   ともに §4 より前の節を指しており、本 ADR による繰り下げの影響を受けない
   ことを確認済み)。
@@ -156,4 +156,4 @@ ADR 固有の判断である。裁定は変えない。
 - `crates/github-audit/src/domains/charters.rs` — Rust 版の同じ判定(`has_banner_before_h1`)。
 - `crates/github-audit/tests/judges.rs` — Rust 版の `charters_banner`。
 - `crates/github-audit/tests/fixtures/main/graphql-response.json` — `all-ok` の README に banner を足した fixture。
-- `config/claude/skills/repo-charter/SKILL.md` — インタビュー項目 6 と、テンプレートの必須化。
+- `config/agents/skills/repo-charter/SKILL.md` — インタビュー項目 6 と、テンプレートの必須化。

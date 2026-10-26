@@ -161,7 +161,7 @@ Decision 3 の「英語の原文 1 本」と CJK の存在検査には、読者�
 `contributing-cjk-present` を報告しない。宣言が実態と食い違えば
 `lang-ja-stale` で検出する。既定は変わらない。決定は ADR-805
 (`docs/adr/805-lang-ja-declaration.md`)、手順は
-`docs/claude/lang-ja-declaration.md`。
+`docs/agents/lang-ja-declaration.md`。
 
 ### 執行点
 

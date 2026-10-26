@@ -64,7 +64,7 @@ in
         conflictStyle = "zdiff3";
       };
       rebase = {
-        # stacked PR work (docs/claude/stacked-pr.md) keeps several branches
+        # stacked PR work (docs/agents/stacked-pr.md) keeps several branches
         # pointing into the same worktree's commit range. A plain rebase of
         # the top branch leaves the middle branches' refs behind, pointing
         # at the pre-rebase commits — --update-refs force-updates any branch

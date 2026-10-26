@@ -1,10 +1,10 @@
-//! Stop hook が、作業の途中(バックグラウンド処理の待ち)と、`/wrapup-chores` の実行中に、
+//! Stop hook が、作業の途中(バックグラウンド処理の待ち)と、`/backlog-cleanup` の実行中に、
 //! 振り返りと inbox の指示を毎ターン出さないことの統合テスト(#854、#820)。
 //!
 //! - #854: 複数の PR を積みながら実機の長い実行を待つあいだ、`wrapup-stop-gate` の
 //!   振り返りの指示がターンごとに届いた(5 回以上)。作業は終わっておらず、振り返りの
 //!   対象は「セッション全体」なので、途中で行うとやり直しになる。
-//! - #820: `/wrapup-chores` は inbox の行を、その行を含む段の PR 作成の直後に消化する
+//! - #820: `/backlog-cleanup` は inbox の行を、その行を含む段の PR 作成の直後に消化する
 //!   (起票して即閉じる churn を避けるため)。PR を作るまで inbox に行が残るのが正しい
 //!   状態だが、Stop hook は区別せず、毎回「起票せよ」と指示した(4 回)。
 
@@ -168,7 +168,7 @@ fn a_task_that_never_finishes_does_not_silence_the_gate_forever() {
     assert_eq!(r.code, 2, "{}", r.stderr);
 }
 
-// --- #820: /wrapup-chores の実行中は inbox の起票指示を出さない ---
+// --- #820: /backlog-cleanup の実行中は inbox の起票指示を出さない ---
 
 #[test]
 fn chores_mark_suppresses_the_inbox_instruction_until_ended() {
@@ -184,7 +184,7 @@ fn chores_mark_suppresses_the_inbox_instruction_until_ended() {
     assert_eq!(
         (r.code, r.stderr.as_str()),
         (0, ""),
-        "wrapup-chores の実行中は、PR を作るまで行が残るのが正しい状態"
+        "backlog-cleanup の実行中は、PR を作るまで行が残るのが正しい状態"
     );
 
     assert_eq!(run_args(e.gate(), &["--chores-end", &ib]).code, 0);

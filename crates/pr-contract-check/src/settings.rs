@@ -6,7 +6,7 @@
 //! (ADR-0035 D1「単一正本 > 複写+同期」)。
 
 /// 「非公開かつ無料プランのため、自動マージと rulesets が使えない」ことを
-/// 宣言するトピック(docs/claude/free-plan-declaration.md)。
+/// 宣言するトピック(docs/agents/free-plan-declaration.md)。
 pub const PLAN_FREE_PRIVATE_TOPIC: &str = "plan-free-private";
 
 /// 判定に使うフィールドだけ。取得できなかった値は `None`(drift 側に倒れる —
@@ -112,7 +112,7 @@ pub fn judge_settings(s: &Settings) -> Vec<&'static str> {
     // ただし `plan-free-private` が宣言された(非公開かつ無料プランで、自動マージが
     // 使えない)リポジトリでは、この期待を外す。宣言が実態と食い違った(公開に
     // なった、または自動マージが有効になった)ときは `plan-free-private-stale` を
-    // 出し、トピックの外し忘れを必ず検出する(docs/claude/free-plan-declaration.md)。
+    // 出し、トピックの外し忘れを必ず検出する(docs/agents/free-plan-declaration.md)。
     if s.plan_free_private_declared() {
         if s.private == Some(false) || s.allow_auto_merge == Some(true) {
             missing.push("plan-free-private-stale");

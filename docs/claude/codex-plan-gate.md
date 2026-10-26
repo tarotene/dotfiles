@@ -51,7 +51,7 @@ plan-precedent-gate --check <file>
 
 `plan-fresh-gate`(worktree の drift 検査)は今回の対象外 — 入力が
 プラン参照ファイルの一覧など Claude Code の worktree 運用に依存する部分が
-大きく、SessionStart の `worktree-fresh-base.sh`(Codex にも段2で展開済み)
+大きく、SessionStart の `worktree-base-sync.sh`(Codex にも段2で展開済み)
 がカバーする範囲で足りると判断した。`plan-view`(Chrome 表示)・
 `copilot-plan-review`(Copilot 批評)は元々ブラウザ操作/別 CLI 呼び出し
 を伴い、Codex 週の premium request/ブラウザ操作を増やさないため対象外の
@@ -59,7 +59,7 @@ plan-precedent-gate --check <file>
 
 ## 無限 block 対策
 
-`pr-gate`(`docs/claude/pr-gate.md`)と同じ設計を踏襲する:
+`pr-gate`(`docs/agents/pr-gate.md`)と同じ設計を踏襲する:
 `stop_hook_active` は見ず、`session_id` ごとの独自カウンタ
 (`~/.codex/codex-plan-gate/state/<sid>.count`)が
 `${CODEX_PLAN_GATE_MAX_BLOCKS:-4}` に達したら 1 回だけ

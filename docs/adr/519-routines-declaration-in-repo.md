@@ -89,7 +89,7 @@ refuse は Issue を起票する(隠しマーカーで重複防止)。`create` �
 
 ### D6: auditor 手順の正本は dotfiles、private 側は薄いポインタ
 
-`config/claude/skills/claude-routines/auditor.md` に汎用手順を書き、
+`config/agents/skills/claude-routines/auditor.md` に汎用手順を書き、
 private な auditor 宣言の prompt はこのファイルを読んで従うだけにする —
 ADR-396(decision-colocation)により決定成果物には執行点が要るが、
 private repo の prompt はそもそも本リポジトリの執行点にはできないため、
@@ -138,26 +138,26 @@ name が名前空間キーの形であること、prompt 最終行が
 
 ## 執行点
 
-- `config/claude/skills/claude-routines/scripts/routines-plan.sh` — 差分
+- `config/agents/skills/claude-routines/scripts/routines-plan.sh` — 差分
   コアの CLI 本体(build-body/classify/classify-unmanaged)
-- `config/claude/skills/claude-routines/scripts/lib.jq` — 正規化射影・
+- `config/agents/skills/claude-routines/scripts/lib.jq` — 正規化射影・
   body 組み立ての共有関数
-- `config/claude/skills/claude-routines/scripts/selftest.sh` — 自己検査
+- `config/agents/skills/claude-routines/scripts/selftest.sh` — 自己検査
   (7分類 + unmanaged 検出 + run-once 拒否を網羅)
-- `config/claude/skills/claude-routines/SKILL.md` — ローカルセッションの
+- `config/agents/skills/claude-routines/SKILL.md` — ローカルセッションの
   create/adopt/apply 手順
-- `config/claude/skills/claude-routines/auditor.md` — クラウド自己監査
+- `config/agents/skills/claude-routines/auditor.md` — クラウド自己監査
   routine の汎用手順(D6 の執行点)
 - `docs/claude/claude-routines.md` — 決定表・実測の記録
 - `crates/routines-write-guard/` — D7 の PreToolUse guard(段2)
-- `docs/claude/routines-write-guard.md` — guard の設計根拠(段2)
+- `docs/agents/routines-write-guard.md` — guard の設計根拠(段2)
 - `scripts/github-audit` — routines ドメイン(sources 網羅性検出、段3)
 - `config/github-audit/routines-auditor-sources.tsv` — 段3 の PUBLIC 側入力
 - `docs/github-audit.md` — routines ドメインの記録(段3)
 
 ## Verification
 
-- `config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest`
+- `config/agents/skills/claude-routines/scripts/routines-plan.sh --selftest`
   (ネットワーク不使用、7分類全件 + unmanaged 検出 + cron_utc 必須検査)
 - CI の「Every --selftest is wired」チェックが本スクリプトを検出すること
   (段1で `.github/workflows/ci.yml` に配線)

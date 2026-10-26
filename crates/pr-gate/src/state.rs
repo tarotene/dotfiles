@@ -3,10 +3,10 @@
 //! 上限は独自カウンタ: `state/<sid>.count` が `PR_GATE_MAX_BLOCKS` に達したら
 //! 1 回だけ escalate し、`state/<sid>.escalated` を作る。以後そのセッションは
 //! 無条件で素通る(escalated のチェックは上限判定より前 —
-//! docs/claude/copilot-plan-review.md の closer と同じ置き方)。
+//! docs/agents/copilot-plan-review.md の closer と同じ置き方)。
 
 use crate::config::Config;
-use hook_io::SessionLedger;
+use agent_session::SessionLedger;
 use std::fs;
 use std::path::{Path, PathBuf};
 

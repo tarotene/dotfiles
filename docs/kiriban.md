@@ -64,7 +64,7 @@ PR タイトル検査(`.github/actions/pr-title`)と同じ形。
 - `.github/actions/kiriban/action.yml`: dotfiles を sparse-checkout して crate を build
   し、`gh` で書き込む composite action
 - `.github/workflows/kiriban.yml`: 各リポジトリの小さな workflow。正本は
-  `config/claude/skills/repo-governance-common/templates/.github/workflows/kiriban.yml`
+  `config/agents/skills/repo-governance-common/templates/.github/workflows/kiriban.yml`
   で、`ci.yml` の `kiriban template is in sync` が、dotfiles 自身の複写との一致を
   検査する(違ってよいのは `# pipeline-node:` の 1 行だけ)
 

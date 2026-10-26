@@ -3,7 +3,7 @@
 //! 縮退: stdin 不正・tool_name 無しは黙って exit 0。`EXTERNAL_SEND_GUARD_ALLOW=1`
 //! なら即 pass(この名前は理由文に書かない — 当事者が自分で bypass できてしまう)。
 
-use hook_io::Outcome;
+use agent_session::Outcome;
 use std::io::{Read, Write};
 
 fn main() {

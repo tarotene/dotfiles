@@ -28,10 +28,11 @@
 //! 判定不能は通す(bash 版と同じ): feedback ラベル無し・本文フラグ無し・
 //! 本文がコマンド置換のみ・空白のみ・トークン化できない。
 
-use guard_core::command::{first_deny, gh_command_at};
-use guard_core::gh::extract_body;
-use guard_core::shell::is_posix_space;
-use guard_core::Range;
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use command_inspection::shell::is_posix_space;
+use command_inspection::Range;
+use github_command::gh::extract_body;
 use std::path::{Path, PathBuf};
 
 const FEEDBACK_LABEL: &str = "feedback";
@@ -162,7 +163,7 @@ fn deny_reason_feedback(why: &str) -> String {
 
 本文に次のいずれかの形式で1行追加してください(実在照合されます):
 
-  Target: skill/<name>          — config/claude/skills/<name>/SKILL.md
+  Target: skill/<name>          — config/agents/skills/<name>/SKILL.md
   Target: agents-md/<節見出し>   — ~/.agents/AGENTS.md・~/.claude/CLAUDE.md の実在する見出し
   Target: hook/<name>            — config/claude/hooks/<name>* の実在するファイル
 
@@ -204,10 +205,10 @@ pub fn decide(home: Option<&Home>, cmd: &str) -> Option<String> {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    let call = agent_session::hook::ToolCall::parse(agent_session::Agent::Claude, raw)?;
     let cmd = call.bash_command()?;
-    decide(Home::from_env().as_ref(), &cmd).map(hook_io::Outcome::Deny)
+    decide(Home::from_env().as_ref(), &cmd).map(agent_session::Outcome::Deny)
 }
 
 #[cfg(test)]

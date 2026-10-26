@@ -1,6 +1,6 @@
 //! main.rs のワイヤリング(stdin 読み・ファイル書き込み・git toplevel 解決)を
 //! 実バイナリ越しに検査する。純粋なハッシュ・パス解決ロジックは lib.rs /
-//! hook_io::cmd_hash の単体テストで検査済みなので、ここでは配線に絞る。
+//! command_inspection::cmd_hash の単体テストで検査済みなので、ここでは配線に絞る。
 
 use std::fs;
 use std::path::Path;

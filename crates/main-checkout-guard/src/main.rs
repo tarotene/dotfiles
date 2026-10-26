@@ -1,7 +1,10 @@
 //! main-checkout-guard — `pre`(PreToolUse)と `stop`(Stop)の 2 つのサブコマンド。
 //! `--agent claude|codex`(既定 claude)。判定なし・縮退はすべて無出力 exit 0。
 
-use hook_io::{Agent, HookInput, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::HookInput;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use serde_json::{json, Value};
 use std::io::Read;
 

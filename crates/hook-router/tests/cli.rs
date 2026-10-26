@@ -382,7 +382,7 @@ fn codex_records_created_issue_and_allows_only_its_edit() {
 }
 
 fn permission_home() -> (tempfile::TempDir, std::path::PathBuf) {
-    use settings_reconcile::agent_permissions::{inspect, migrate, Policy};
+    use agent_settings_reconcile::agent_permissions::{inspect, migrate, Policy};
     let home = tempfile::tempdir().unwrap();
     let workspace = home.path().join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();

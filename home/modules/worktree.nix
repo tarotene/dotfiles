@@ -23,8 +23,8 @@ let
   legacyGuardCmd = "bash '${guardPath}'";
   legacyContextCmd = "bash '${auditPath}' --context";
 
-  # hooks.json への冪等 reconcile(crates/settings-reconcile、#414)。
-  registerCodexHooks = "${pkgs.dotfiles-tools}/bin/settings-reconcile codex-hooks";
+  # hooks.json への冪等 reconcile(crates/agent-settings-reconcile、#414)。
+  registerCodexHooks = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile codex-hooks";
 
   # #78: parent checkouts that herdr's Workspace Fork reads HEAD from
   # without fetching first. Explicit allowlist rather than a directory
@@ -37,7 +37,7 @@ let
     "${config.home.homeDirectory}/.ghr/github.com/tarotene/dotfiles"
   ]
   ++ config.dotfiles.checkoutFreshness.extraPaths;
-  checkoutFreshnessPath = "${config.home.homeDirectory}/.local/bin/git-checkout-freshness";
+  checkoutFreshnessPath = "${config.home.homeDirectory}/.local/bin/git-checkout-sync";
   # flock(1): Linux ships it via util-linux (already pulled in below). darwin
   # has no native flock, so pkgs.flock (discoteq/flock, a portable C
   # reimplementation, meta.platforms = platforms.all) is added there instead —
@@ -112,13 +112,12 @@ in
     "${pkgs.dotfiles-tools}/bin/git-prune-worktrees";
   home.file.".local/libexec/git-worktree-create-guard".source =
     "${pkgs.dotfiles-tools}/bin/git-worktree-create-guard";
-  # git-checkout-freshness: fetch + `merge --ff-only` a parent checkout onto
+  # git-checkout-sync: fetch + `merge --ff-only` a parent checkout onto
   # origin/<base> when clean and on the default branch (docs/claude/
-  # git-checkout-freshness.md) — the one-level-up companion to
-  # worktree-fresh-base (crates/worktree-fresh-base), which does the same for a
+  # git-checkout-sync.md) — the one-level-up companion to
+  # worktree-base-sync (crates/worktree-base-sync), which does the same for a
   # pristine *worktree*.
-  home.file.".local/bin/git-checkout-freshness".source =
-    "${pkgs.dotfiles-tools}/bin/git-checkout-freshness";
+  home.file.".local/bin/git-checkout-sync".source = "${pkgs.dotfiles-tools}/bin/git-checkout-sync";
 
   # Codex owns hooks.json at runtime, as Herdr's integration does. Merge only
   # our two commands and preserve all unrelated entries.
@@ -208,12 +207,12 @@ in
     };
   };
 
-  # git-checkout-freshness timer (#78). 10-minute interval: frequent enough
+  # git-checkout-sync timer (#78). 10-minute interval: frequent enough
   # that a parent checkout rarely sits more than 10 minutes stale before the
   # next Workspace Fork, but far less chatty against origin than
   # git-audit-worktrees' 1-minute read-only scan (this one does a real
   # `git fetch` per path per run).
-  systemd.user.services.git-checkout-freshness = lib.mkIf pkgs.stdenv.isLinux {
+  systemd.user.services.git-checkout-sync = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Fast-forward parent Git checkouts to origin/<base>";
     Service = {
       Type = "oneshot";
@@ -231,21 +230,21 @@ in
     };
   };
 
-  # pipeline-node: git-checkout-freshness
-  systemd.user.timers.git-checkout-freshness = lib.mkIf pkgs.stdenv.isLinux {
+  # pipeline-node: git-checkout-sync
+  systemd.user.timers.git-checkout-sync = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Keep parent Git checkouts fresh every 10 minutes";
     Timer = {
       OnBootSec = "2min";
       OnUnitActiveSec = "10min";
       AccuracySec = "30s";
       Persistent = true;
-      Unit = "git-checkout-freshness.service";
+      Unit = "git-checkout-sync.service";
     };
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # pipeline-node: git-checkout-freshness
-  launchd.agents.git-checkout-freshness = lib.mkIf pkgs.stdenv.isDarwin {
+  # pipeline-node: git-checkout-sync
+  launchd.agents.git-checkout-sync = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
       ProgramArguments = [ checkoutFreshnessPath ] ++ checkoutFreshnessPaths;
@@ -345,4 +344,6 @@ in
   launchd.agents.git-auto-prune-branches = lib.mkIf pkgs.stdenv.isDarwin (
     autoPruneAgent pruneBranchesPath
   );
+  home.file.".local/bin/git-checkout-freshness".source =
+    "${pkgs.dotfiles-tools}/bin/git-checkout-freshness";
 }

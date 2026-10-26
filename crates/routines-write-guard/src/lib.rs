@@ -5,7 +5,7 @@
 //!
 //! `RemoteTrigger` は Bash ツールではないため、`rulesets-write-guard` が
 //! 使う「`BYPASS=` env var 代入をコマンド文字列の字頭から読む」方式
-//! (`hook_io::shell::split` 前提)は使えない — 1 回のツール呼び出しに
+//! (`command_inspection::simple_shell::split` 前提)は使えない — 1 回のツール呼び出しに
 //! コマンド文字列という概念自体が無い。代わりに、正規の経路
 //! (`claude-routines` スキルの `build-body`/`classify` が出す body)が
 //! 必ず満たす構造(1. `name` が `<owner>/<repo>:<routine-name>` の名前
@@ -21,7 +21,8 @@
 //! 検出で拾う(decision-colocation の Codex/Copilot adapter 不要判断
 //! (ADR-396 D8)と同じ理由: 対象ツールが Claude Code 固有のため)。
 
-use hook_io::{HookInput, PermissionDecision};
+use agent_session::HookInput;
+use agent_session::PermissionDecision;
 use serde_json::Value;
 
 /// "<owner>/<repo>:<routine-name>" の形かどうか。owner/repo は非空、
@@ -104,12 +105,12 @@ pub fn check(input: &HookInput) -> Option<PermissionDecision> {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    let input = hook_io::HookInput::parse(raw)?;
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    let input = agent_session::HookInput::parse(raw)?;
     if input.hook_event_name != "PreToolUse" {
         return None;
     }
-    check(&input).and_then(hook_io::Outcome::from_decision)
+    check(&input).and_then(agent_session::Outcome::from_decision)
 }
 
 #[cfg(test)]

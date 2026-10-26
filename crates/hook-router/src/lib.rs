@@ -7,7 +7,7 @@
 //!
 //! `~/.claude/settings.json` には、この 2 つだけを登録する(`matcher` なし)。どのツールにどの
 //! 検査を当てるかは、[`rules::RULES`] の表([`rules::Tools`] という閉じた型)が持つ。
-//! 設計と、載せなかったものの理由は [`rules`] と `docs/claude/hook-router.md`。
+//! 設計と、載せなかったものの理由は [`rules`] と `docs/agents/hook-router.md`。
 
 pub mod codex;
 pub mod router;

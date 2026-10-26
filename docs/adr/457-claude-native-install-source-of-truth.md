@@ -159,7 +159,7 @@ ADR-0001 scoped exception として、codex についても明文化する。
 理由: herdr のサイドバーが Codex ペインの context 使用率・reasoning effort・5h/週の
 rate limit を出すには、Codex 自身に端末タイトルとして描かせる設定(`tui.terminal_title`)
 が要る。この値は Codex の hook からも documented な API からも取れない(Codex 0.160.0、
-`docs/claude/herdr-sidebar-metadata.md` の「Codex / Copilot ペイン」節)。設定が各ホスト
+`docs/agents/herdr-sidebar-metadata.md` の「Codex / Copilot ペイン」節)。設定が各ホスト
 に手で入っている前提にすると、ゼロ手作業を憲章にしたこのリポジトリの前提(README)に
 反する。
 

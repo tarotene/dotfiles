@@ -179,7 +179,7 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
     n_gate_failopen_advisory: "gate-failopen-advisory" {
       class: s_rust
     }
-    n_worktree_fresh_base: "worktree-fresh-base" {
+    n_worktree_base_sync: "worktree-base-sync" {
       class: s_rust
     }
     n_worktree_audit_context: "git-audit-worktrees --context" {
@@ -221,7 +221,7 @@ l_timer: "Timers / periodic" {
   n_git_audit_worktrees: "git-audit-worktrees (1 min)" {
     class: s_rust
   }
-  n_git_checkout_freshness: "git-checkout-freshness (10 min)" {
+  n_git_checkout_sync: "git-checkout-sync (10 min)" {
     class: s_rust
   }
   n_git_auto_prune: "git-auto-prune (hourly)" {
@@ -270,7 +270,7 @@ l_manual: "Manual / skills" {
     class: s_rust
     style.stroke-dash: 4
   }
-  n_settings_reconcile: "settings-reconcile" {
+  n_agent_settings_reconcile: "agent-settings-reconcile" {
     class: s_rust
     style.stroke-dash: 4
   }
@@ -305,10 +305,10 @@ l_external: "Sessions / services / state" {
   }
 }
 
-l_manual.n_hms -> l_manual.n_settings_reconcile: "activation" {
+l_manual.n_hms -> l_manual.n_agent_settings_reconcile: "activation" {
   class: e_invoke
 }
-l_manual.n_settings_reconcile -> n_agent_session: "registers hooks" {
+l_manual.n_agent_settings_reconcile -> n_agent_session: "registers hooks" {
   class: e_file
 }
 l_timer.n_git_audit_worktrees -> l_external.n_herdr: "stale toast" {
@@ -317,7 +317,7 @@ l_timer.n_git_audit_worktrees -> l_external.n_herdr: "stale toast" {
 l_external.n_github -> l_timer.n_git_auto_prune: "merge evidence" {
   class: e_context
 }
-l_external.n_github -> l_timer.n_git_checkout_freshness: "fetch" {
+l_external.n_github -> l_timer.n_git_checkout_sync: "fetch" {
   class: e_context
 }
 l_external.n_github -> l_timer.n_herdr_issue_counts: "open Issue counts" {

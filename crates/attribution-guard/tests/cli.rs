@@ -8,7 +8,7 @@
 //!   各 4 件(stdin JSON、`--agent codex|copilot`)
 //! - `hook-*.toml`: Claude の main() 分岐(MCP・不正 JSON 等)の追加ケース
 //!
-//! 他の guard の移植者向けのオラクルを兼ねる(docs/claude/guard-core.md)。
+//! 他の guard の移植者向けのオラクルを兼ねる(docs/agents/guard-core.md)。
 
 #[test]
 fn cli() {

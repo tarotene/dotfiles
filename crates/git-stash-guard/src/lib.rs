@@ -3,7 +3,7 @@
 //! `config/claude/hooks/git-stash-guard.sh` と Codex adapter
 //! `config/codex/hooks/git-stash-guard.sh` の移植(ADR-0024)。両 host は
 //! 判定も出力形(`hookSpecificOutput`)も同じなので 1 つの bin が
-//! `--host claude|codex` を受ける。設計と根拠: docs/claude/git-stash-guard.md。
+//! `--host claude|codex` を受ける。設計と根拠: docs/agents/git-stash-guard.md。
 //!
 //! 許可: `git stash list|show` / `push -u -m <tag>` / `apply <SHA>` /
 //! `drop <SHA>`。それ以外の stash 呼び出しは deny。トークン分割は素朴な
@@ -151,7 +151,7 @@ fn is_read_only_stash(seg: &str) -> bool {
 pub fn decide(cmd: &str) -> Option<String> {
     // heredoc の本文はコマンドではない(`python3 - <<'E'` の本文に
     // `git stash pop` があっても実行されない)。判定の前に本文を落とす。
-    let cmd = guard_core::shell::split_heredoc(cmd).command;
+    let cmd = command_inspection::shell::split_heredoc(cmd).command;
     let cmd = cmd.as_str();
     if !contains_word(cmd, "stash") {
         return None;
@@ -192,15 +192,15 @@ pub fn decide(cmd: &str) -> Option<String> {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     // 事前フィルタは `decide` がパース後の command に対して行う。生の JSON に対して見ると、
     // タブが `\t` にエスケープされて単語境界が崩れ、`git<TAB>stash` が素通りする(#637)。
-    let input = hook_io::HookInput::parse(raw)?;
+    let input = agent_session::HookInput::parse(raw)?;
     let cmd = input.bash_command()?;
     // bash 版は `$(jq …)` で末尾改行が落ちる。
     let cmd = cmd.trim_end_matches('\n');
     if cmd.is_empty() {
         return None;
     }
-    decide(cmd).map(|r| hook_io::Outcome::Deny(r.to_string()))
+    decide(cmd).map(|r| agent_session::Outcome::Deny(r.to_string()))
 }

@@ -12,7 +12,7 @@
 //! そのまま読めるようにするため。
 
 use crate::jq;
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -592,7 +592,7 @@ impl RepoRest {
     }
 
     /// `plan-free-private` トピックが宣言されているか(bash:
-    /// `plan_free_private_declared`。docs/claude/free-plan-declaration.md)。
+    /// `plan_free_private_declared`。docs/agents/free-plan-declaration.md)。
     pub fn plan_free_private_declared(&self) -> bool {
         self.topics.iter().any(|t| t == PLAN_FREE_PRIVATE_TOPIC)
     }

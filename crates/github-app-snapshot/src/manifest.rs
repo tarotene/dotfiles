@@ -4,7 +4,7 @@
 use crate::api::{http_post_unauthenticated, raw};
 use crate::config::{Config, GITHUB_API};
 use github_audit::jq::{j_get, parse_ordered};
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;

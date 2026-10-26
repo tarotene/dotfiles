@@ -1,0 +1,18 @@
+[package]
+name = "agent-settings-reconcile"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap = "2.14.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+# `~/.codex/config.toml` の宣言キーだけを書式・コメントごと保って書き換える(codex_config)。
+# 既存の Cargo.lock に推移的に入っている版(snapbox 経由)に揃える。
+toml_edit = { version = "0.25.15", default-features = false, features = ["parse", "display"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

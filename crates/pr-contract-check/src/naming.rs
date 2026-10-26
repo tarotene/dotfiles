@@ -45,7 +45,7 @@ fn canonical_quality_file() -> PathBuf {
         .unwrap_or_default();
     let dir = exe.parent().map(PathBuf::from).unwrap_or_default();
     dir.join(
-        "../config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json",
+        "../config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
     )
 }
 

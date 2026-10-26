@@ -577,7 +577,7 @@ fn run_inner(args: &[String]) -> Result<(), i32> {
     let gh = Gh::from_env();
     // bash 版は `command -v gh`(PATH 上)を見ていた。差し替え(GITHUB_AUDIT_GH_BIN)
     // 時はその実体を見る。
-    if !hook_io::proc::command_exists(&gh.bin) {
+    if !process_control::command_exists(&gh.bin) {
         eprintln!("ERROR: 'gh' not found");
         return Err(1);
     }

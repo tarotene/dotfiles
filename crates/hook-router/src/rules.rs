@@ -11,7 +11,8 @@
 //! Claude Code に任せる。ほかに、Stop・SessionStart・ExitPlanMode の検査、herdr、外部ツール
 //! (bleep・atuin・copilot-plan-review)。
 
-use hook_io::{Agent, Outcome};
+use agent_session::Agent;
+use agent_session::Outcome;
 use std::time::Duration;
 
 /// ルータを呼ぶイベント。
@@ -110,7 +111,7 @@ pub static RULES: &[Rule] = &[
         ]),
         budget: S10,
         run: |agent, raw| {
-            let input = hook_io::HookInput::parse(raw)?;
+            let input = agent_session::HookInput::parse(raw)?;
             main_checkout_guard::pre_hook(agent, &input)
         },
     },
@@ -143,11 +144,11 @@ pub static RULES: &[Rule] = &[
         run: |agent, raw| pr_title_guard::hook(agent, raw),
     },
     Rule {
-        node: "pr-confirm-guard",
+        node: "pr-followup-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
         budget: S10,
-        run: |agent, raw| pr_confirm_guard::hook(agent, raw),
+        run: |agent, raw| pr_followup_guard::hook(agent, raw),
     },
     Rule {
         node: "decision-colocation-guard",
@@ -242,7 +243,7 @@ fn permissions(agent: Agent, raw: &str) -> Option<Outcome> {
         Agent::Codex => "codex",
         Agent::Copilot => return None,
     };
-    match settings_reconcile::agent_permissions::hook_check(name, raw) {
+    match agent_settings_reconcile::agent_permissions::hook_check(name, raw) {
         Ok(None) => None,
         Ok(Some("ask")) if agent == Agent::Claude => Some(Outcome::Ask(
             "[agent-permissions] この操作は共通の境界を越えるため、今回だけの承認が必要です。".into(),
@@ -302,7 +303,7 @@ mod tests {
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",
-                "pr-confirm-guard",
+                "pr-followup-guard",
                 "pr-title-guard",
                 "repo-create-guard",
                 "routines-write-guard",

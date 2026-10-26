@@ -13,7 +13,7 @@
 
 use crate::jq::{self, j_get, parse_ordered};
 use crate::model::{blob_text, Finding, RepoGql};
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use pr_contract_check::workflows::{self as shared, Inputs};
 use serde_json::Value;
 use std::path::Path;

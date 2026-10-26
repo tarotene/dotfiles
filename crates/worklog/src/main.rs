@@ -1,4 +1,4 @@
-//! worklog の CLI と SessionStart hook(docs/claude/worklog.md)。
+//! worklog の CLI と SessionStart hook(docs/agents/worklog.md)。
 //!
 //! ```text
 //! worklog add <kind> <text...> [--ref N] [--repo owner/repo]
@@ -65,7 +65,7 @@ fn open_vault() -> Result<Vault, String> {
 
 /// 作業ディレクトリの GitHub の `owner/repo`。git の外・GitHub 以外の remote では `None`。
 fn cwd_repo() -> Option<String> {
-    hook_io::git::origin_nwo(&std::env::current_dir().ok()?)
+    git_repository::origin_nwo(&std::env::current_dir().ok()?)
 }
 
 /// `--flag value` の value を取る。
@@ -179,7 +179,7 @@ fn session_start() {
     let declared = getenv(VAULT.env_var).is_some_and(|v| !v.is_empty())
         || hub_resolve::marker_path(&VAULT, &getenv).is_file();
     // 標準入力は読み切る(hook の作法)。cwd はそこから取る。
-    let input = hook_io::input::read_stdin();
+    let input = agent_session::input::read_stdin();
     if !declared {
         return;
     }
@@ -194,7 +194,7 @@ fn session_start() {
     let cwd: Option<PathBuf> = input
         .and_then(|i| i.project_dir())
         .or_else(|| std::env::current_dir().ok());
-    let repo = cwd.and_then(|c| hook_io::git::origin_nwo(&c));
+    let repo = cwd.and_then(|c| git_repository::origin_nwo(&c));
     let today = jst_parts(now_unix()).0;
     let rows = list(&vault, today - (WINDOW_DAYS - 1), today).unwrap_or_else(|m| {
         eprintln!("[worklog] {m}");

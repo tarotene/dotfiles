@@ -1,11 +1,11 @@
-//! hook エントリポイント。詳細は lib.rs / docs/claude/gh-edit-allow.md。
+//! hook エントリポイント。詳細は lib.rs / docs/agents/gh-edit-allow.md。
 //!
 //! どの失敗経路でも何も出力せず exit 0 する(判定できないことを deny に変えない)。
 
-use hook_io::Agent;
+use agent_session::Agent;
 
 fn main() {
-    let Some(input) = hook_io::input::read_stdin() else {
+    let Some(input) = agent_session::input::read_stdin() else {
         return;
     };
     if gh_edit_allow::skipped() {
@@ -21,7 +21,7 @@ fn main() {
         "PreToolUse" => {
             let origin = input
                 .project_dir()
-                .and_then(|d| hook_io::git::origin_nwo(&d));
+                .and_then(|d| git_repository::origin_nwo(&d));
             if let Some(d) = gh_edit_allow::check(&input, &ledger, origin.as_deref()) {
                 d.emit(Agent::Claude);
             }

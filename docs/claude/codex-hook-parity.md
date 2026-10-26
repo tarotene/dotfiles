@@ -24,7 +24,7 @@ Codex 固有の入力変換を境界に集め、各検査を別実装にしな�
 | ADR改番、作成済みPR/Issueの記録、コマンドハッシュ | 実装済み。共通 router の PostToolUse |
 | git-worktree-allow、gh-edit-allow | 実装済み。PermissionRequest で既存判定エンジンを呼ぶ。範囲外は通常の確認へ戻す |
 | 要求インベントリ、先行例、Copilotレビュー、base鮮度、Plan表示 | 実装済み。codex-plan-gate の Stop。子の拒否を Stop の block に変換 |
-| issue-index、esa-index、wrap-up案内、署名準備、PR一覧、worktree鮮度、herdr警告、fail-open警告、desk-start、worklog、worktree監査 | 実装済み。共通宣言の SessionStart |
+| issue-index、esa-mirror-context、wrap-up案内、署名準備、PR一覧、worktree鮮度、herdr警告、fail-open警告、daily-desk-reminder、worklog、worktree監査 | 実装済み。共通宣言の SessionStart |
 | PR完了確認、wrap-up、main checkout事後検査、ターンログ | 実装済み。共通宣言の Stop/UserPromptSubmit |
 | Herdr metadata | 実装済み。従来の4イベントに PreToolUse を追加。model と bypass 状態を更新。Plan mode を推測しない |
 | Atuin | 実装済み。既存の `atuin hook codex` を利用。終了コードが無いときは -1（不明）を渡す |
@@ -111,4 +111,4 @@ trust はそのcommandを実行してよいという本人の許可を指す。
 - crates/hook-router/src/codex.rs
 - crates/hook-router/src/rules.rs
 - crates/codex-plan-gate/src/main.rs
-- crates/settings-reconcile/src/lib.rs
+- crates/agent-settings-reconcile/src/lib.rs

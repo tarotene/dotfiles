@@ -73,7 +73,7 @@ Console 検証という工数が発生する。**「無人実行だから Produc
 
 ## 適用例2: 個人用 GAS 自動化スクリプト群(gas-clasp-ops)
 
-`gas-clasp-ops` スキル(`config/claude/skills/gas-clasp-ops/SKILL.md`、
+`gas-clasp-ops` スキル(`config/agents/skills/gas-clasp-ops/SKILL.md`、
 ADR-0030)は、個々の GAS スクリプトごとに GCP プロジェクトを作るのではなく、
 **個人で 1 つの Cloud プロジェクト + OAuth クライアントを複数の GAS
 スクリプトで使い回す**設計を採る(スクリプトごとに同意画面・クライアントを
@@ -95,7 +95,7 @@ ADR-0030)は、個々の GAS スクリプトごとに GCP プロジェクトを�
 
 ## 適用例3: ローカルのファイルを Drive へ上げる rclone(drive-upload)
 
-`drive-upload` スキル(`config/claude/skills/drive-upload/SKILL.md`、設計は `docs/gdrive-upload.md`、#769)は、
+`drive-upload` スキル(`config/agents/skills/drive-upload/SKILL.md`、設計は `docs/gdrive-upload.md`、#769)は、
 エージェントがローカルの PDF・画像を Google Drive へ上げるために、`rclone` を自前のクラウドプロジェクトで使う。
 この `<tool>` は `rclone`(コマンド名)。
 

@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 /// `git -C <dir> <args>` の (成功したか, stdout)。起動できなければ `None`。
 pub fn git(dir: &Path, args: &[&str]) -> Option<(bool, String)> {
-    let out = hook_io::git::run(dir, args)?;
+    let out = git_repository::run(dir, args)?;
     Some((
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -15,10 +15,10 @@ pub fn git(dir: &Path, args: &[&str]) -> Option<(bool, String)> {
 }
 
 /// 成功時だけ stdout(末尾改行除去)を返す。bash の `x="$(git …)" || x=""` の成功側。
-pub use hook_io::git::out as git_ok;
+pub use git_repository::out as git_ok;
 
 /// 成功したか(出力は捨てる)。
-pub use hook_io::git::ok as git_succeeds;
+pub use git_repository::ok as git_succeeds;
 
 static NWO_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^.*github\.com[:/]+([^/]+)/([^/.]+)(\.git)?/?$").expect("NWO_RE")
@@ -190,7 +190,7 @@ pub fn unpushed_count(project: &Path, branch: &str) -> String {
         let ob = format!("origin/{branch}");
         if git_succeeds(project, &["rev-parse", "--verify", "-q", &ob]) {
             upstream = ob;
-        } else if let Some(d) = hook_io::git::default_branch(project) {
+        } else if let Some(d) = git_repository::default_branch(project) {
             let od = format!("origin/{d}");
             if git_succeeds(project, &["rev-parse", "--verify", "-q", &od]) {
                 upstream = od;

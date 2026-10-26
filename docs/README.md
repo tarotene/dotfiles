@@ -6,7 +6,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 
 ## Operations
 
-- [`agent-permissions.md`](agent-permissions.md) — Claude・Codex 共通の権限宣言、棚卸し、確認後の移行と復元。
+- [`agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex 共通の権限宣言、棚卸し、確認後の移行と復元。
 - [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
   configurable Plan/Auto models with cost/context comparisons and local usage estimates,
   preserving native permissions and history.
@@ -47,9 +47,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
   別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
   (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
-- [`settings-reconcile.md`](settings-reconcile.md) — `settings.json` /
+- [`agent-settings-reconcile.md`](agents/agent-settings-reconcile.md) — `settings.json` /
   `hooks.json` / `~/.claude.json` への宣言 reconcile(hook・permissions・
-  statusLine・MCP server)の Rust 実装(`crates/settings-reconcile`、#414)。
+  statusLine・MCP server)の Rust 実装(`crates/agent-settings-reconcile`、#414)。
 - [`update-own-tools.md`](update-own-tools.md) — 自作 pre-release CLI を
   ホストローカルのレジストリに従って `origin/main` からビルドする
   `update-own-tools` のスキーマ・動作・退出手順(ADR-0025、#276)。
@@ -198,7 +198,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   複数 PR は依存関係を予測せず常に作成順の単一チェーンに積む決定
   (uncertainty-first stacking)。ある private リポジトリで 1 セッション
   約 10 PR を作った際、依存予測に基づく判定条件が外れて base 宣言と実体が
-  不整合になり(汚染 diff・orphan PR)、`docs/claude/stacked-pr.md` の
+  不整合になり(汚染 diff・orphan PR)、`docs/agents/stacked-pr.md` の
   保留条項が発火した。離脱は閉じたタグ `Independent-PR:` のみとし、
   作成時 PreToolUse hook(`stack-base-guard`)と完了時 Stop judgement
   (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
@@ -256,7 +256,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   全般へ拡張する。
 - [ADR-0035](adr/0035-selection-grounding.md) — 技術・仕組みの選択を 3 軸
   (宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式
-  順序に接地させる決定(selection-grounding)。自己申告の「クリーンかつ
+  順序に接地させる決定(technology-selection)。自己申告の「クリーンかつ
   先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、
   「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と
   件の private リポジトリの決定履歴の横断調査から導いた。
@@ -266,7 +266,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   `n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の
   番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、
   CI required check が呼ぶ。ADR-0008 を amend する。
-- [ADR-387](adr/387-wrapup-chores-adjudication-first.md) — `wrapup-chores`
+- [ADR-387](adr/387-wrapup-chores-adjudication-first.md) — `backlog-cleanup`
   スキルを裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を
   変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで
   `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` /
@@ -381,9 +381,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   食い違えば `lang-ja-stale` で監査が検出する。見出しのリテラル・節の順序・
   目的文の一致は宣言があっても変わらない。
 - [ADR-795](adr/795-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在・
-  引用形式・鮮度を、SessionStart hook `esa-index` で注入する。ミラーのパスと対象 org は
+  引用形式・鮮度を、SessionStart hook `esa-mirror-context` で注入する。ミラーのパスと対象 org は
   private wrapper flake が option 経由で注入し、公開側は口だけを持つ。鮮度は既存の
-  `git-checkout-freshness` タイマーに任せ、出力は ADR-625 の形式。
+  `git-checkout-sync` タイマーに任せ、出力は ADR-625 の形式。
 - [ADR-792](adr/792-free-plan-declaration.md) — 無料プランの非公開
   リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査
   (自動マージの有効化、live の branch ruleset の照合)だけを外す。宣言が実態と
@@ -404,7 +404,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
-  転換し、`pr-confirm-guard` を全リポジトリで発火する形に拡張する。
+  転換し、`pr-followup-guard` を全リポジトリで発火する形に拡張する。
 - [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook
   出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式。
   Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
@@ -442,136 +442,135 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   起票した日のうちに予定へ入れる(ADR-829 の「待ちが解けてから」を改める)。issue-index は
   待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。
 
-## Claude Code tooling ([`claude/`](claude/))
+- [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
+
+## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
 Design and rationale for the hooks and commands deployed from
-`config/claude/` by `home/modules/claude.nix`:
+`config/agents/` by `home/modules/agents.nix`:
 
 - [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](claude/hook-router.md) — ツール呼び出しに付く検査 19 件(PreToolUse の
+- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 19 件(PreToolUse の
   拒否 15 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
   書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかったもの(許可を出す検査・Stop・
   SessionStart)の理由、規則ごとの打ち切りと panic の隔離、旧登録の matcher・timeout の記録。
-- [`copilot-plan-review.md`](claude/copilot-plan-review.md) — ExitPlanMode gate:
+- [`copilot-plan-review.md`](agents/copilot-plan-review.md) — ExitPlanMode gate:
   a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
   severity, not on a verdict.
-- [`pr-gate.md`](claude/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ・
+- [`pr-gate.md`](agents/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ・
   stacked PR チェーンの stack link 忘れ)(CI/push, not review/base).
-- [`pr-description.md`](claude/pr-description.md) — PR 本文の標準スケルトンと
+- [`pr-description.md`](agents/pr-description.md) — PR 本文の標準スケルトンと
   Before/After 視覚証跡の判断知識(スキル)+ `G_visual` による強制(ゲート)の
   二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
-- [`issue-index.md`](claude/issue-index.md) — SessionStart hook: inject an
+- [`issue-index.md`](agents/issue-index.md) — SessionStart hook: inject an
   Issue index, not a full crawl.
-- [`handoff.md`](claude/handoff.md) — 個人スキル + pr-gate の中断ハンドオフ節 +
+- [`handoff.md`](agents/handoff.md) — 個人スキル + pr-gate の中断ハンドオフ節 +
   issue-index の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
   打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
 - [`claude-routines.md`](claude/claude-routines.md) — 個人スキル:
   Claude Code routine(scheduled cloud agent)の設定・prompt を対象
   リポジトリ自身の `.claude/routines/` へ as-code 化する。差分コアは
   bash + jq の決定的 CLI(ADR-519-routines-declaration-in-repo)。
-- [`sign-prewarm.md`](claude/sign-prewarm.md) — SessionStart hook: pre-warm
+- [`gpg-prewarm.md`](agents/gpg-prewarm.md) — SessionStart hook: pre-warm
   the git-signing passphrase cache.
-- [`pkexec-guard.md`](claude/pkexec-guard.md) — PreToolUse hook: agent
+- [`pkexec-guard.md`](agents/pkexec-guard.md) — PreToolUse hook: agent
   セッションが root 権限のコマンドを実行するとき、polkit(`pkexec`)の
   認証ダイアログに全文が表示される範囲だけを通す(PR #326 の裁定し直し)。
-- [`plan-view.md`](claude/plan-view.md) — `/plan-view`: render the
+- [`plan-view.md`](agents/plan-view.md) — `/plan-view`: render the
   in-progress plan to HTML in Chrome.
-- [`wrapup-inbox.md`](claude/wrapup-inbox.md) — Stop hook: out-of-scope
+- [`wrapup-inbox.md`](agents/wrapup-inbox.md) — Stop hook: out-of-scope
   findings land in an issue-filing inbox.
-- [`wrapup-chores.md`](claude/wrapup-chores.md) — 個人スキル: 未起票の
+- [`backlog-cleanup.md`](agents/backlog-cleanup.md) — 個人スキル: 未起票の
   inbox 行と起票済みだが未着手の wrapup 由来 Issue をまとめて棚卸しし、
   triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO として stacked
-  PR で一括対処する `/wrapup-chores` の手順(ADR-387)。
-- [`retro.md`](claude/retro.md) — ADR-697: 作業終了時のレトロを
+  PR で一括対処する `/backlog-cleanup` の手順(ADR-387)。
+- [`retro.md`](agents/retro.md) — ADR-697: 作業終了時のレトロを
   `wrapup-stop-gate` の Stop で強制する(記録の語彙・突き合わせる出来事・
   PR コメントでの可視化・上限と抜け道)。出口は wrap-up inbox と共有。
-- [`verdict-escalate.md`](claude/verdict-escalate.md) — ADR-478:
+- [`verdict-escalate.md`](agents/verdict-escalate.md) — ADR-478:
   `wrapup-stop-gate` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
   なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
   単位・fingerprint 単位に集約し、閾値超えの候補を `repo`/`go:"ask"` 付きで
   wrap-up inbox に追記する。
-- [`promotion-detect.md`](claude/promotion-detect.md) — ADR-543 段4:
+- [`promotion-detect.md`](agents/promotion-detect.md) — ADR-543 段4:
   日次 timer(Rust)。同じ規範・skill を指す feedback Issue の再発、
   SKILL.md コードブロックの逐語反復実行、gate skip ファイルの滞留・多発を
   検出し、Q2(LLM/散文 → 決定論への昇格)の候補を wrap-up inbox に追記する。
-- [`main-checkout-guard.md`](claude/main-checkout-guard.md) — PreToolUse +
+- [`main-checkout-guard.md`](agents/main-checkout-guard.md) — PreToolUse +
   Stop hook(Rust): 本物の checkout への Write/Edit・変更系 git を deny し、
   触れた checkout の状態差分を Stop で検出する。
-- [`git-worktree-allow.md`](claude/git-worktree-allow.md) — PreToolUse hook:
+- [`git-worktree-allow.md`](agents/git-worktree-allow.md) — PreToolUse hook:
   validated programmatic allow for `git -C <worktree>`, replacing unsafe
   mid-pattern wildcard rules.
-- [`gh-edit-allow.md`](claude/gh-edit-allow.md) — Pre/PostToolUse hook
+- [`gh-edit-allow.md`](agents/gh-edit-allow.md) — Pre/PostToolUse hook
   (Rust, #392): validated programmatic allow for `gh pr|issue edit` /
   `gh issue create` on PRs/Issues this session itself created, via a
   session ledger fed from `gh … create` output — never a wildcard rule.
-- [`rulesets-write-guard.md`](claude/rulesets-write-guard.md) — PreToolUse
+- [`rulesets-write-guard.md`](agents/rulesets-write-guard.md) — PreToolUse
   hook (Rust, ADR-503): denies `gh api`
   writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
   forcing all applies through `apply-rulesets.sh`'s context
   verification (Rust, `crates/apply-rulesets`).
-- [`routines-write-guard.md`](claude/routines-write-guard.md) — PreToolUse
+- [`routines-write-guard.md`](agents/routines-write-guard.md) — PreToolUse
   hook (Rust, ADR-519): denies a cron-bearing
   `RemoteTrigger` create/update whose body lacks the namespace-key name and
   `routine-spec` annotation that `claude-routines`' `routines-plan.sh`
   always produces.
-- [`git-stash-guard.md`](claude/git-stash-guard.md) — PreToolUse hook: deny
+- [`git-stash-guard.md`](agents/git-stash-guard.md) — PreToolUse hook: deny
   bare `git stash` (the stack is shared across herdr's parallel worktrees).
-- [`public-publish-guard.md`](claude/public-publish-guard.md) — dotfiles-side
+- [`public-publish-guard.md`](agents/public-publish-guard.md) — dotfiles-side
   wiring for the PreToolUse hook (deny/ask on `git push` / `gh pr|issue
   create|edit|comment` / MCP GitHub tool calls that would leak a company or
   private repository name); the design and denylist mechanism now live
   upstream in [tarotene/bleep](https://github.com/tarotene/bleep) (formerly
   `tarotene/publish-guard`, ADR-0009).
-- [`attribution-guard.md`](claude/attribution-guard.md) — PreToolUse hook: deny
+- [`attribution-guard.md`](agents/attribution-guard.md) — PreToolUse hook: deny
   a `gh pr|issue create|edit|comment` / `gh pr review` whose body carries no
   Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
   Covers the two holes left by the harness-supplied footer: comments never got
   one, and the PR/Issue body side had no repo-side enforcement at all.
-- [`guard-core.md`](claude/guard-core.md) — `crates/guard-core`: the command
-  analysis engine (heredoc split, quote-aware tokenizer, command-position
-  ranges, `gh` flag extraction, `owner/repo`, deny output) that the bash
-  `attribution-guard.sh` used to provide by `source`. Public API and the
-  bash-function → Rust mapping for porting the remaining gh guards (#415).
-- [`external-send-guard.md`](claude/external-send-guard.md) — PreToolUse hook:
+- [`agent-libraries.md`](agents/agent-libraries.md) — hook 入出力・シェル解析・GitHub 引数解析・jq 互換・プロセス・Git・herdr の責務別ライブラリ。旧 hook-io / guard-core の移行先。
+- [`guard-core.md`](agents/guard-core.md) — 旧 API の履歴と移行先への案内。
+- [`external-send-guard.md`](agents/external-send-guard.md) — PreToolUse hook:
   Gmail MCP tool 経由の外部(自分以外)宛メール直接送信を deny し、
   `create_draft` へ誘導する。実在するアドレスでも「何の窓口か」の文脈判定は
   機械では原理的に難しいという実インシデント(2026-09-22)を受けた
   fail-closed 設計(`self.txt` 不在時は自分宛アドレス 0 件扱い)。
-- [`stack-base-guard.md`](claude/stack-base-guard.md) — PreToolUse hook
+- [`stack-base-guard.md`](agents/stack-base-guard.md) — PreToolUse hook
   (ADR-0027): `gh pr create` / `gh pr edit --base` の作成時に、セッション内の
   複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
   状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
   単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
   Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
   Claude/Codex 共通の 1 バイナリ、#415)。
-- [`lang-ja-declaration.md`](claude/lang-ja-declaration.md) — ADR-805: 日本語が正本の
+- [`lang-ja-declaration.md`](agents/lang-ja-declaration.md) — ADR-805: 日本語が正本の
   リポジトリを、トピック `lang-ja` の宣言で CJK 検査から外す手順と、嘘になったときの
   検出(`lang-ja-stale`)。
-- [`free-plan-declaration.md`](claude/free-plan-declaration.md) — ADR-792: 無料プランの
+- [`free-plan-declaration.md`](agents/free-plan-declaration.md) — ADR-792: 無料プランの
   非公開リポジトリで成り立たない前提(自動マージ、live の ruleset)を、トピック
   `plan-free-private` の宣言で外す手順と、Team 切替で戻す手順。
-- [`pr-title-contract.md`](claude/pr-title-contract.md) — ADR-0031: squash-only
+- [`pr-title-contract.md`](agents/pr-title-contract.md) — ADR-0031: squash-only
   運用では PR タイトルがそのまま `main` の commit subject になるため、
   client guard(`pr-title-guard`)・server required check
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
   `crates/pr-title-check`(Rust)。
-- [`pr-confirm-guard.md`](claude/pr-confirm-guard.md) — ADR-598: PR 本文に
+- [`pr-followup-guard.md`](agents/pr-followup-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する
-  (`crates/pr-confirm-guard`、`--agent codex` で Codex にも登録)。全リポジトリで発火する。
-- [`adr-numbering.md`](claude/adr-numbering.md) — ADR-380: ADR 番号をローカル
+  (`crates/pr-followup-guard`、`--agent codex` で Codex にも登録)。全リポジトリで発火する。
+- [`adr-numbering.md`](agents/adr-numbering.md) — ADR-380: ADR 番号をローカル
   連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
   不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
   + `--fix` + 段3の PostToolUse hook `crates/adr-number` が共有)。
-- [`decision-colocation.md`](claude/decision-colocation.md) — ADR-396:
+- [`decision-colocation.md`](agents/decision-colocation.md) — ADR-396:
   決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
   `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
   判定エンジンは `crates/decision-colocation` の `check::run_check`(CI
   required check の `decision-colocation-check` + client guard
   `decision-colocation-guard` が共有)。
-- [`repo-create-guard.md`](claude/repo-create-guard.md) — PreToolUse hook
+- [`repo-create-guard.md`](agents/repo-create-guard.md) — PreToolUse hook
   (ADR-0013 Amendment 2026-09-29): `gh repo create` / `gh api -X POST
   user/repos`・`orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの
   手順(命名インタビュー → GitHub メタデータ反映 → governance 播種)に
@@ -584,11 +583,11 @@ Design and rationale for the hooks and commands deployed from
   as `quarantine.nix`'s `managedFiles`) that ships with zero values — a
   mechanism for identity modules to populate later, not a data migration.
   First populated value: `esa`(下記、ADR-0022)。
-- [`esa-mcp.md`](claude/esa-mcp.md) — esa.io MCP サーバのトークン供給:
+- [`esa-mcp.md`](agents/esa-mcp.md) — esa.io MCP サーバのトークン供給:
   ホストローカルの GPG 暗号化ファイルを起動時に復号する専用 launcher +
   `dotfiles.claude.mcpServers.esa` への populate(personal identity 層限定、
   ADR-0022)。
-- [`writing-style.md`](claude/writing-style.md) — 執筆規約(別 private
+- [`writing-style.md`](agents/writing-style.md) — 執筆規約(別 private
   リポジトリの `docs/style/`)への薄いポインタスキル。ハブの絶対パスは
   マーカーファイル/環境変数で間接参照し、未設定・パス不在・レイアウト
   不一致のいずれも無音失敗にせず明示的に止まる(#115)。
@@ -599,7 +598,7 @@ Design and rationale for the hooks and commands deployed from
   具体モデル ID は宣言が `latest_per_family` から毎回引き直す(pin ゼロ)。
   `.model` が `opusplan` でなければ書き込む前に落ちる。`fallbackModel` は
   Usage limit では発火しない。
-- [`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) — Herdr
+- [`herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) — Herdr
   sidebar: per-agent mode/model/metrics via pane metadata. Claude is 2-channel
   (hook for permission mode, statusline for model/ctx/cost/effort); Codex and
   Copilot get a leaner branch+model-only reporter each, plus the research
@@ -611,107 +610,107 @@ Design and rationale for the hooks and commands deployed from
   pace-at-reset projection (average pace since window start → projected % at
   reset), from the undocumented `/usage` API (fail-soft: the segment just
   disappears).
-- [`herdr-tab-bar-local.md`](claude/herdr-tab-bar-local.md) — Herdr tab bar:
+- [`herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — Herdr tab bar:
   a host-local extension slot. The public config only names a mechanism
   (`~/.config/herdr/tab-bar-right.local`); what that file runs lives on each
   host, outside git (ADR-0025's registry shape, ADR-0034's boundary). A missing
   file just clears the segment, which is also why a broken one is silent.
-- [`worktree-fresh-base.md`](claude/worktree-fresh-base.md) — SessionStart
+- [`worktree-base-sync.md`](agents/worktree-base-sync.md) — SessionStart
   hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
   fast-forward する。
-- [`herdr-status-advisory.md`](claude/herdr-status-advisory.md) — SessionStart
+- [`herdr-status-advisory.md`](agents/herdr-status-advisory.md) — SessionStart
   hook: herdr の client と server の版が食い違っているとき(`herdr worktree create`
   が `protocol_mismatch` で失敗する前)に、`herdr status --json` を読んで先に知らせる。
   復旧は本人の操作で、hook は何も実行しない。
-- [`gate-failopen-advisory.md`](claude/gate-failopen-advisory.md) — SessionStart
+- [`gate-failopen-advisory.md`](agents/gate-failopen-advisory.md) — SessionStart
   hook: fail-open で設計した hook(copilot-plan-review)が、依存先の不調で素通りし続けて
   いること(`gate-events.jsonl` の `fail-open` が、最後の `pass` より後に既定 3 回以上)を、
   セッション開始時に先に知らせる。何も実行しない。
-- [`new-tool-guard.md`](claude/new-tool-guard.md) — PreToolUse(Write)の判定役と、
+- [`new-tool-guard.md`](agents/new-tool-guard.md) — PreToolUse(Write)の判定役と、
   ExitPlanMode 承認後(PostToolUse)の記録役: 新しい道具・単位の着手前に既存手段を問い、
   承認された計画の `既存手段:` 行を台帳へ転記して、手で `register` し直す二重入力をなくす。
-- [`ci-consumers.md`](claude/ci-consumers.md) — `scripts/ci-consumers <path>...`:
+- [`ci-consumers.md`](agents/ci-consumers.md) — `scripts/ci-consumers <path>...`:
   編集するパスを入力にしている CI の検査(workflow の step・composite action・scripts・
   crates の tests)を、編集の前に、`file:line` と step 名つきで引く。
-- [`git-checkout-freshness.md`](claude/git-checkout-freshness.md) —
+- [`git-checkout-sync.md`](agents/git-checkout-sync.md) —
   home-manager 管理の systemd user timer: 親チェックアウト自身を
-  origin/`<base>` へ定期的に fast-forward する(worktree-fresh-base.md の
+  origin/`<base>` へ定期的に fast-forward する(worktree-base-sync.md の
   一段上、#78)。
-- [`plan-fresh-gate.md`](claude/plan-fresh-gate.md) — PreToolUse /
+- [`plan-fresh-gate.md`](agents/plan-fresh-gate.md) — PreToolUse /
   ExitPlanMode hook: 並行 worktree 運用で drift したコードベースを見たまま
   プランが承認されるのを防ぐ。pristine なら ff-only で追従しつつ、
   origin/`<base>` の進行分がプラン参照ファイルと交差するときだけ deny する。
   deny 済み SHA のセッション state で収束を保証する。
-- [`global-agents-md.md`](claude/global-agents-md.md) — グローバル
+- [`global-agents-md.md`](agents/global-agents-md.md) — グローバル
   `~/.agents/AGENTS.md`(正本、ADR-0032): agent 非依存の調査規律・PR 運用・
   生成元明示の方針を Codex CLI・Copilot CLI・Claude Code の 3 CLI に
   home.file マウントで共有する。
 - [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
   `~/.claude/CLAUDE.md`: 上記共有 AGENTS.md を import する router +
-  Claude Code 固有の gate 配線(read-only 配布、`#` 追記は skill-gardening
+  Claude Code 固有の gate 配線(read-only 配布、`#` 追記は agent-tooling-authoring
   の PR フローへ)。
-- [`diagramming.md`](claude/diagramming.md) — 個人スキル: 作図時に内容の型に
+- [`diagramming.md`](agents/diagramming.md) — 個人スキル: 作図時に内容の型に
   合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
-- [`talk-script.md`](claude/talk-script.md) — 個人スキル: 発表のスライドを
+- [`presentation-authoring.md`](agents/presentation-authoring.md) — 個人スキル: 発表のスライドを
   作るとき、発表原稿(単独で練習できるプレインテキスト)を正本として先に全文書き、
   スライドを補助資料として派生させる。正本は Marp Markdown 1 ファイルで、
   frontend-slides を丸ごと採らなかった判断も持つ。
-- [`skill-gardening.md`](claude/skill-gardening.md) — 個人スキル: 知見を
+- [`agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — 個人スキル: 知見を
   この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
   公開リポジトリ向けサニタイズ規則の正本)。
-- [`living-description.md`](claude/living-description.md) — 個人スキル:
+- [`living-description.md`](agents/living-description.md) — 個人スキル:
   Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
   正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。
-- [`issue-ref-freshness.md`](claude/issue-ref-freshness.md) — 個人スキル:
+- [`issue-ref-freshness.md`](agents/issue-ref-freshness.md) — 個人スキル:
   他リポジトリの issue/PR を Open 前提で参照している記述を、参照先の裁定
   (close・merge・not planned)を読んで書き直す手順。常時監視を置かず、機会
   発動と手動の一括点検で回す理由を記録。
-- [`test-grounding.md`](claude/test-grounding.md) — 個人スキル: 複数の実
+- [`test-grounding.md`](agents/test-grounding.md) — 個人スキル: 複数の実
   コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
   一次資料に当たることを強制する。
-- [`copilot-model-bump.md`](claude/copilot-model-bump.md) — 個人スキル: 外部
+- [`model-pin-update.md`](agents/model-pin-update.md) — 個人スキル: 外部
   AI CLI に固定 pin した具体モデル ID を GA・廃止サイクルに追従して更新する
   定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。
-- [`stacked-pr.md`](claude/stacked-pr.md) — 個人スキル: PR 同士に依存関係が
+- [`stacked-pr.md`](agents/stacked-pr.md) — 個人スキル: PR 同士に依存関係が
   あるとき main 起点で並行させず base を親ブランチにした stacked PR として
   積む手順。なぜ素の `--base` + `gh stack link` を選び `init/submit/sync` を
   避けたか、なぜ pr-gate.sh を触らなかったかの裁定を記録。
-- [`tracking-issue.md`](claude/tracking-issue.md) — 個人スキル: 複数の子作業
+- [`tracking-issue.md`](agents/tracking-issue.md) — 個人スキル: 複数の子作業
   を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
   sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
   `issue-hygiene` が担う。
-- [`issue-hygiene.md`](claude/issue-hygiene.md) — 個人スキル: open Issue が
+- [`issue-hygiene.md`](agents/issue-hygiene.md) — 個人スキル: open Issue が
   出自ごとに束ねられず積み上がったとき、GitHub の sub-issues 機能で親子構造を
   明示し直し、腐った tracking Issue を清算する定期衛生管理の手順。起票・更新
   する側の規約は `tracking-issue` が担う。
-- [`scope-inventory.md`](claude/scope-inventory.md) — グローバル CLAUDE.md
+- [`requirements-inventory.md`](agents/requirements-inventory.md) — グローバル CLAUDE.md
   ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
   子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。
   gate: `plan-scope-gate`。
-- [`precedent-grounding.md`](claude/precedent-grounding.md) — グローバル
+- [`precedent-grounding.md`](agents/precedent-grounding.md) — グローバル
   CLAUDE.md ルール + 個人スキル: Plan の非自明な設計判断ごとに先行例との
   対比(`D1..Dn`)を成果物に残す書き方。プロンプトでの「敵対的レビュー」
   「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
   copilot-plan-review の lens A、形式検査は `plan-precedent-gate`(gh/LLM
   を呼ばない決定論的 judge)。
-- [`selection-grounding.md`](claude/selection-grounding.md) — ADR-0035:
+- [`technology-selection.md`](agents/technology-selection.md) — ADR-0035:
   「クリーンかつ先進的な技術選定を好む」という自認を、
   `## 先行例との対比` 節にトークンを 1 つ足すだけで検証可能な 3 軸
   (表現不可能性 → 還元性 → 先進性の辞書式順序)に変換した設計記録。
   独立した plan 節・専用 gate を新設せず `plan-precedent-gate` への
   加算で済ませた理由(還元性)も記録。
-- [`repo-charter.md`](claude/repo-charter.md) — 個人スキル: 自作リポジトリの
+- [`repo-charter.md`](agents/repo-charter.md) — 個人スキル: 自作リポジトリの
   README/CONTRIBUTING.md に machine-checkable な charter(目的1文・
   `## Scope`・CONTRIBUTING の Issues 節・命名クラス・topics)を播く/適合化し、
   AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順(ADR-0016・
   ADR-0017 で部分改訂)。事後の横断監査は `github-audit.md` が担う。
   パイロット適合(命名と責務の乖離が判明した経緯)も記録。
-- [`github-audit-triage.md`](claude/github-audit-triage.md) — 個人スキル:
+- [`github-audit-triage.md`](agents/github-audit-triage.md) — 個人スキル:
   `github-audit` の findings を入力に複数リポジトリぶんの修正を一括起草し、
   1 回の一括レビューを経て一括 PR 化する手順(ADR-0015 の LLM ノード)。
   charter-sweep(#180)を巻き取り、完了定義を PR 作成までに変更した理由
   (品質劣化・人間裁定なしの正本書き換えという 2 つの実害)を記録。
-- [`gpg-subkey-rotation.md`](claude/gpg-subkey-rotation.md) — 個人スキル:
+- [`gpg-subkey-rotation.md`](agents/gpg-subkey-rotation.md) — 個人スキル:
   `gpg-subkey rotate` 単体では完了しない GPG サブ鍵ローテーション
   (export → nix 編集 → GitHub/keyserver 同期 → PR → `hms` 適用)を
   抜け漏れなく終わらせる手順。途中で止まっても壊れて見えない
@@ -720,16 +719,16 @@ Design and rationale for the hooks and commands deployed from
 - [`gdrive-upload.md`](gdrive-upload.md) — `drive-upload` スキルの設計と初回セットアップ: ローカルの
   PDF・画像を rclone(`drive.file`)で Google Drive の専用フォルダへ上げる。コネクタの base64 渡しは
   数 MB に向かない。書き込み先を許可の範囲で専用フォルダに閉じ、読み戻してから報告する。
-- [`gas-clasp-ops.md`](claude/gas-clasp-ops.md) — 個人スキル: Google Apps
+- [`gas-clasp-ops.md`](agents/gas-clasp-ops.md) — 個人スキル: Google Apps
   Script (GAS) を公式 CLI `clasp` で操作する基盤(ADR-0030)。GAS コード
   自体の正本は各利用リポジトリに分散配置したまま、セットアップ・
   ログイン・日常操作・規約のナレッジだけをここに集約する。
-- [`external-call-scheduling.md`](claude/external-call-scheduling.md) —
+- [`human-task-scheduling.md`](agents/human-task-scheduling.md) —
   個人スキル: 電話等 Claude が代行できないハンドオフ作業を、相手の営業
   時間とユーザーの空き時間を突き合わせてカレンダーに反映する判断知識。
   「トークスクリプトを渡して終わり」がユーザーの自発的な想起に賭ける
   設計だった問題への対処。
-- [`browser-login-handoff.md`](claude/browser-login-handoff.md) — 個人
+- [`browser-login-handoff.md`](agents/browser-login-handoff.md) — 個人
   スキル: Playwright MCP・claude-in-chrome でのブラウザ操作中に未ログイン
   を検知したときのハンドオフ手順(#562)。パスワード・二段階認証の入力を
   Claude が代行しないよう、都度その場で組み立てていた手順を型化した。
@@ -756,3 +755,9 @@ Design and rationale for the hooks and commands deployed from
 - [`falcon-sensor.md`](falcon-sensor.md) — company EDR agent notes.
 - [`nixification-roadmap.md`](nixification-roadmap.md) — literal configs
   worth translating to Nix DSL later, per ADR-0002.
+
+## エージェント向けツールの共通規約
+
+- [命名と配置](agents/tooling-conventions.md)
+- [ライブラリの責務](agents/agent-libraries.md)
+- [改名・互換入口と削除条件](agents/tooling-migration.md)

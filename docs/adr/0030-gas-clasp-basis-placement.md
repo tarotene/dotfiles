@@ -35,7 +35,7 @@ developers.google.com、いずれも 2026-09-22 取得)上も事実上唯一の�
    密結合しており、コードだけ切り出すと二重正本の同期コストが増える。
 2. **ツール(clasp バイナリ)と運用ナレッジは dotfiles に集約**する。
    `home/modules/packages.nix` に `google-clasp` を追加し、`gas-clasp-ops`
-   スキル(`config/claude/skills/gas-clasp-ops/SKILL.md`)に初回セットアップ・
+   スキル(`config/agents/skills/gas-clasp-ops/SKILL.md`)に初回セットアップ・
    ログイン・日常操作・スクリプト側の規約を持つ。ADR-0001(home-manager as
    source of truth)に従う — 個人が繰り返し使う CLI ツールは home-manager 層
    の責務。

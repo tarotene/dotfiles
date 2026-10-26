@@ -11,7 +11,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 置き、判断ごとに 1 ブロック(`- Dn:` 行と、その下の従属行)で書く。各ブロックに
 必要なトークン(`先行例:` + 出典 + `(取得 YYYY-MM-DD)` + `差分:`、または
 `先行例なし:`。全ブロックに `軸:`。技術選定なら `本命:`/`対抗馬:`/`既存手段:`)
-の正本は precedent-grounding スキル §3 と selection-grounding スキル §3 で、
+の正本は precedent-grounding スキル §3 と technology-selection スキル §3 で、
 ここには複写しない。gate は従属行の順序・行数を見ず、ブロック内にトークンが
 揃っているかだけを見る。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。**ExitPlanMode を呼ぶ前に
@@ -27,7 +27,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 選ぶなら何を採るか」だけで下し、書き直しの作業量・歴史的経緯を理由に
 しない(ADR-751)。コストを理由にしてよいのは
 `戻せない: データ|外部契約|人手 — <内容>` の行だけで、閉語彙のコスト語が
-`Dn` に現れると同じ gate が deny する。書式は selection-grounding
+`Dn` に現れると同じ gate が deny する。書式は technology-selection
 スキルに従い、自己検査は同じ `plan-precedent-gate --check` コマンド
 1 本でまとめて行う(新しい gate は呼ばない)。
 
@@ -67,7 +67,7 @@ gate に当たる前に自発的に執行点を含めること — gate は漏�
 ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check-plan
 <プランファイル>` で節内整合性(処分・タグ)を自己検査する。実装中に
 見つかった隣接負債は AskUserQuestion で stack か wrap-up inbox かを聞く。
-手順は scope-inventory スキルに従う。
+手順は requirements-inventory スキルに従う。
 
 ## 実装タスクの完了定義の形式検査
 
@@ -78,7 +78,7 @@ commit → push → `gh pr create` を、途中で確認を挟まず一続きで
 漏れを検査する。
 
 PR 本文に未チェックの task list を残さない・人の確認を後続 Issue に払い
-出す原則の形式検査は `pr-confirm-guard`(Rust、PreToolUse deny、全リポジト
+出す原則の形式検査は `pr-followup-guard`(Rust、PreToolUse deny、全リポジト
 リで発火)が担う。gate に当たる前に自発的に Issue 化すること — gate は
 漏れを拾うためのもので、一次的な手段ではない。
 
@@ -89,7 +89,7 @@ PR 本文に未チェックの task list を残さない・人の確認を後続
 検査の配線:
 
 - `既存手段:` 行は `## 先行例との対比` 節の重い欄(`本命:`/`対抗馬:`)を
-  持つ `Dn` に必須(precedent-grounding / selection-grounding スキル
+  持つ `Dn` に必須(precedent-grounding / technology-selection スキル
   参照)。自己検査は同じ `plan-precedent-gate --check` コマンド
   1 本でまとめて行う(新しい gate は呼ばない)。
 - 新しい道具・単位(shebang 付き新規ファイル、`bin/scripts/hooks/cmd`

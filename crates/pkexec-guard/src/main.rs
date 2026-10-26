@@ -1,4 +1,4 @@
-//! hook エントリポイント。詳細は lib.rs / docs/claude/pkexec-guard.md。
+//! hook エントリポイント。詳細は lib.rs / docs/agents/pkexec-guard.md。
 //!
 //! PreToolUse 専用。3 つの CLI(Claude Code / Codex CLI / Copilot CLI)から
 //! 同じ 1 バイナリを呼ぶ——`attribution-guard.sh` の bash `source` に相当
@@ -12,7 +12,9 @@
 //! そのものが読めない場合だけの fail-open。pkexec を含むコマンドを解析
 //! できない場合は lib.rs 側で deny に倒す)。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use std::io::Read;
 
 fn parse_agent() -> Agent {

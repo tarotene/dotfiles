@@ -2,7 +2,9 @@
 //!
 //! `main` の `register` / `classify` も同じ台帳・ledger キーを使うので、`pub` にしてある。
 
-use hook_io::{HookInput, Outcome, SessionLedger};
+use agent_session::HookInput;
+use agent_session::Outcome;
+use agent_session::SessionLedger;
 use std::path::{Path, PathBuf};
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
@@ -69,7 +71,7 @@ pub fn hook(raw: &str) -> Option<Outcome> {
 /// 計画が取れない・節が無い・git の外・台帳が書けない場合は、何もしない(記録は
 /// best-effort で、承認そのものに影響させない)。同じ行がすでにあれば足さない。
 pub fn record_plan_lines(input: &HookInput) {
-    let Some(plan) = hook_io::plan::plan_text(input) else {
+    let Some(plan) = agent_session::plan::plan_text(input) else {
         return;
     };
     let lines = crate::kizon_lines_in_plan(&plan);
@@ -79,7 +81,10 @@ pub fn record_plan_lines(input: &HookInput) {
     let Some(ledger) = default_ledger() else {
         return;
     };
-    let Some(root) = input.project_dir().and_then(|d| hook_io::git::toplevel(&d)) else {
+    let Some(root) = input
+        .project_dir()
+        .and_then(|d| git_repository::toplevel(&d))
+    else {
         return;
     };
     let Some(key) = root.to_str() else {
@@ -101,19 +106,19 @@ fn write_target_toplevel(file_path: &str, fallback: &Path) -> Option<PathBuf> {
     let mut dir = Path::new(file_path).parent();
     while let Some(d) = dir {
         if d.is_dir() {
-            return hook_io::git::toplevel(d).or_else(|| hook_io::git::toplevel(fallback));
+            return git_repository::toplevel(d).or_else(|| git_repository::toplevel(fallback));
         }
         dir = d.parent();
     }
-    hook_io::git::toplevel(fallback)
+    git_repository::toplevel(fallback)
 }
 
 /// ADR-543 段3: 降格候補検出(段4 の promotion-detect)の入力になる
 /// deny/skip イベントを記録する。記録の成否は判定に影響させない
-/// (best-effort — `hook_io::gate_event::record` のエラーは黙って握り潰す)。
+/// (best-effort — `agent_session::gate_event::record` のエラーは黙って握り潰す)。
 fn record_gate_event(decision: &str) {
-    if let Some(path) = hook_io::gate_event::default_path() {
-        let _ = hook_io::gate_event::record(&path, "new-tool-guard", decision);
+    if let Some(path) = agent_session::gate_event::default_path() {
+        let _ = agent_session::gate_event::record(&path, "new-tool-guard", decision);
     }
 }
 
@@ -138,5 +143,5 @@ pub fn skipped() -> bool {
 
 /// ledger キー: session_id ではなく git toplevel(ADR-543 D7 の差分)。
 pub fn ledger_key(dir: &Path) -> Option<String> {
-    hook_io::git::toplevel(dir)?.to_str().map(str::to_string)
+    git_repository::toplevel(dir)?.to_str().map(str::to_string)
 }

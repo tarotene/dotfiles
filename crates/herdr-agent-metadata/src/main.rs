@@ -7,7 +7,7 @@
 //! stdin は常に読み切る(書き手を SIGPIPE で落とさないため、bash 版の `cat`
 //! と同じ)。終了コードは常に 0。
 
-use hook_io::Agent;
+use agent_session::Agent;
 use std::io::Read;
 
 fn main() {

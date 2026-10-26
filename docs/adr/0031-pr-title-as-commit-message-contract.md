@@ -9,7 +9,7 @@
 `tarotene` 配下の全リポジトリは squash-only 運用(`allow_squash_merge=true`、
 `allow_merge_commit=false`、`allow_rebase_merge=false`)であり、
 `squash_merge_commit_title=PR_TITLE` / `squash_merge_commit_message=BLANK`
-の設定(`config/claude/skills/*-repo-governance/scripts/apply-repo-settings.sh`
+の設定(`config/agents/skills/*-repo-governance/scripts/apply-repo-settings.sh`
 に既存)により、**PR タイトルがそのまま `main` の commit subject になる**。
 つまり PR タイトルは「squash merge 後に `main` に残る唯一のテキスト」であり、
 non-conventional な commit が `main` に混入する経路は実質的に PR タイトル
@@ -34,7 +34,7 @@ non-conventional な commit が `main` に混入する経路は実質的に PR �
    (元 Issue #325 の宣言を維持)。
 4. **GitHub UI からの revert(`Revert "..."` という自動生成タイトル)** —
    文法上 non-conventional なので CI red になる。運用は「`revert:` type に
-   改題してから merge する」(`docs/claude/pr-title-contract.md` に記載)。
+   改題してから merge する」(`docs/agents/pr-title-contract.md` に記載)。
    revert 自体を特例扱いしない — 例外を増やすと文法の閉集合性が崩れる。
 
 ## Decision
@@ -136,7 +136,7 @@ CI を持たないリポジトリ(workflows なし)は既存の `renovate` ド�
 ### D2 の追補: typst-repo-governance の先行実装との統合(Stage 5 で発見)
 
 Stage 5(governance skills テンプレート更新)の実装中に、
-`config/claude/skills/typst-repo-governance/templates/.github/workflows/
+`config/agents/skills/typst-repo-governance/templates/.github/workflows/
 pr-title.yml` が既に `amannn/action-semantic-pull-request` を使い、
 D1 と完全一致する 11 type の Conventional Commits 検査を実装済みだったと
 判明した(理由コメントも「squash-merge では PR タイトルが main の commit
@@ -195,7 +195,7 @@ Checks タブの実際の文字列を確認し、異なれば ruleset を訂正�
   ruleset への `PR title` required check 追加(後続段)。
 - `scripts/github-audit` の `settings` ドメイン拡張 + 新設 `titles`
   ドメイン(後続段)。
-- `config/claude/skills/{rust,typst,astro-site}-repo-governance/` の
+- `config/agents/skills/{rust,typst,astro-site}-repo-governance/` の
   `rulesets/quality.json` テンプレートと呼び出し workflow テンプレート
   (後続段、他リポへの播きの準備)。
 - 他 19 リポへの播き(呼び出し workflow 配布 + ruleset context 追加 +
@@ -377,7 +377,7 @@ required context があるのに一致しなければ CI を red にする(手�
 と、既存の `.github/workflows/pr-title.yml` / `scripts/github-audit` への変更):
 
 - `scripts/pr-title-context-check`
-- `config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml`
+- `config/agents/skills/repo-governance-common/templates/.github/workflows/pr-title.yml`
 - `.github/workflows/pr-title.yml`
 - `scripts/github-audit`
 
@@ -406,9 +406,9 @@ PR タイトル慣行がありうることだった。実際には、会社側�
 
 - `crates/pr-title-guard/src/lib.rs`
 - `crates/pr-title-guard/tests/cli.rs`
-- `docs/claude/pr-title-contract.md`
-- `config/claude/skills/stacked-pr/SKILL.md`
-- `config/claude/skills/pr-description/SKILL.md`
+- `docs/agents/pr-title-contract.md`
+- `config/agents/skills/stacked-pr/SKILL.md`
+- `config/agents/skills/pr-description/SKILL.md`
 
 ## Amendment (2026-10-21 — D7 の第二の縮小: 履歴を書き換えず、#337 の完了日より前の commit を許容する, #338)
 

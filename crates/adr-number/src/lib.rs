@@ -1,5 +1,5 @@
 //! `gh pr create` の直後に ADR-0000(起草中)を PR 番号へ自動改番する
-//! PostToolUse hook(ADR-380、docs/claude/adr-numbering.md)。
+//! PostToolUse hook(ADR-380、docs/agents/adr-numbering.md)。
 //!
 //! bash 版 `config/claude/hooks/adr-number.sh`(+ Codex adapter)の移植。
 //!
@@ -19,11 +19,13 @@
 //! PR 番号は tool_response を読まず `gh pr view --json number,baseRefName`
 //! で解決する(スキーマ非依存にして `--web`・ブラウザ作成でも効かせる)。
 
-use guard_core::command::{self, gh_command_at};
-use guard_core::hook::{jq_r_path, ToolCall};
-use hook_io::jqfmt::J;
-use hook_io::proc::command_exists;
-use hook_io::Agent;
+use agent_session::hook::jq_r_path;
+use agent_session::hook::ToolCall;
+use agent_session::Agent;
+use command_inspection::command;
+use command_inspection::command::gh_command_at;
+use jq_json_compat::jqfmt::J;
+use process_control::command_exists;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -173,14 +175,14 @@ pub fn run(agent: Agent, stdin: &mut impl Read) -> Option<String> {
 
 /// ルータ(`crates/hook-router`)向けの本体。改番したときだけ、その知らせを `Context` で返す。
 /// 標準入力はルータがすでに読んでいるので、生の JSON を受ける。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     hook_for(Agent::Claude, raw)
 }
 
 /// Agent-aware entry point shared by both routers.
-pub fn hook_for(agent: Agent, raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook_for(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
     resolve(agent, &mut raw.as_bytes()).map(|(pr_number, fix_out)| {
-        hook_io::Outcome::Context(context_message(&pr_number, &fix_out))
+        agent_session::Outcome::Context(context_message(&pr_number, &fix_out))
     })
 }
 
@@ -210,7 +212,7 @@ fn resolve(agent: Agent, stdin: &mut impl Read) -> Option<(String, String)> {
         return None;
     }
     let project = PathBuf::from(project);
-    hook_io::git::toplevel(&project)?;
+    git_repository::toplevel(&project)?;
 
     if !has_draft(&project) || !command_ran_pr_create(&cmd) {
         return None;

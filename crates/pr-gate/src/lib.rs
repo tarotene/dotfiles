@@ -1,7 +1,7 @@
 //! pr-gate — PR の完了を待つ Stop hook(+ 現在状態を運ぶ SessionStart hook)。
 //! 旧 `config/claude/hooks/pr-gate.sh` の移植(ADR-0024 Stage 4a、#415)。
 //!
-//! 設計と根拠: docs/claude/pr-gate.md(このリポジトリ内)
+//! 設計と根拠: docs/agents/pr-gate.md(このリポジトリ内)
 //!
 //! 「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
 //! 繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」「push 済み
@@ -22,7 +22,7 @@
 //!   G_wt       : 未コミット件数                                 → advisory
 //! ```
 //!
-//! 中断ハンドオフ(docs/claude/pr-gate.md「中断ハンドオフ」節、handoff skill):
+//! 中断ハンドオフ(docs/agents/pr-gate.md「中断ハンドオフ」節、handoff skill):
 //! Draft PR かつ本文に `Handoff: #N`(N が open Issue)があるときだけ、G_link の
 //! MISSING と G_CI の非 PASS を block ではなく advisory に落とす
 //! ([`gates::handoff`])。判定不能なら緩めない(fail-closed)。
@@ -61,11 +61,11 @@
 //!
 //! `stop_hook_active` は見ない。wrapup-stop-gate と同じ即 exit 0 にすると、
 //! G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
-//! (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自
+//! (docs/agents/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自
 //! カウンタ([`state`])。
 //!
 //! bash 版は jq で JSON を読み書きしていた。Rust 版は jq に依存しない
-//! (serde_json で読み、SessionStart の出力は [`hook_io::jqfmt`] で jq の整形出力と
+//! (serde_json で読み、SessionStart の出力は [`jq_json_compat::jqfmt`] で jq の整形出力と
 //! バイト一致させる)。
 //!
 //! エスケープハッチ: `touch ~/.claude/pr-gate/skip` または `SKIP_PR_GATE=1`。

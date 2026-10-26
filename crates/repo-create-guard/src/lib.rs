@@ -2,7 +2,7 @@
 //! `gh api -X POST orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの
 //! 手順(命名インタビュー → README/CONTRIBUTING → GitHub メタデータ反映 →
 //! governance 播種)に強制的に載せる PreToolUse(Bash) hook
-//! (docs/claude/repo-create-guard.md、ADR-0013 Amendment 2026-09-29、
+//! (docs/agents/repo-create-guard.md、ADR-0013 Amendment 2026-09-29、
 //! ADR-0024 Stage 4a #415)。
 //!
 //! bash 版 `config/claude/hooks/repo-create-guard.sh` の移植。コマンド解析は
@@ -26,9 +26,12 @@
 //! ロジックだけを持つ。MCP(`mcp__github*`)は現在未接続のため Bash のみ判定する
 //! — attribution-guard の `decide_mcp` と同じ理由。
 
-use guard_core::command::{first_deny, gh_command_at, is_gh};
-use guard_core::gh::{api_method, api_path};
-use guard_core::Range;
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use command_inspection::command::is_gh;
+use command_inspection::Range;
+use github_command::gh::api_method;
+use github_command::gh::api_path;
 
 /// 対象コマンドの種別(bash の `TARGET_KIND`)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +54,7 @@ pub fn is_target_at(tokens: &[String], i: usize) -> Option<TargetKind> {
 }
 
 const DENY_HINT: &str = "repo-charter スキルの作成スクリプトを使ってください
-(config/claude/skills/repo-charter/SKILL.md §8):
+(config/agents/skills/repo-charter/SKILL.md §8):
 
   ~/.claude/skills/repo-charter/scripts/create-repo.sh --owner <owner> --repo <repo> \\
     --description \"<目的 1 文>\" --class <naming-クラス> --topic <topic> \\
@@ -118,13 +121,13 @@ pub fn decide(cmd: &str) -> Option<String> {
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 ///
 /// `REPO_CREATE_GUARD_BYPASS` が空でなければ判定しない(バイパスは hook 入出力層の責務)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     if std::env::var_os("REPO_CREATE_GUARD_BYPASS").is_some_and(|v| !v.is_empty()) {
         return None;
     }
-    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+    let call = agent_session::hook::ToolCall::parse(agent_session::Agent::Claude, raw)?;
     let cmd = call.bash_command()?;
-    decide(&cmd).map(hook_io::Outcome::Deny)
+    decide(&cmd).map(agent_session::Outcome::Deny)
 }
 
 #[cfg(test)]

@@ -96,7 +96,7 @@ ADR-0016 Decision 5 は「AI 向け正本は AGENTS.md 1 本、README/CONTRIBUTI
 
 ## Consequences
 
-- `docs/claude/repo-charter.md` の `repo-charter` スキルが本 ADR の
+- `docs/agents/repo-charter.md` の `repo-charter` スキルが本 ADR の
   規約正本を持つ(§2 README の禁止事項、`<dir>/README.md` の扱い)。
 - `github-audit` の charters ドメインに `nav-doc-tree-fence` /
   `nav-doc-path-inventory` / `nav-doc-exempt-malformed` /

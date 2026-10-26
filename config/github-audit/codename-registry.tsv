@@ -6,7 +6,7 @@
 #
 # private リポジトリの codename は dotfiles(PUBLIC)にリポジトリ名を書け
 # ないため、ここではなく `~/.config/github-audit/codename-registry.local.tsv`
-# に置く(docs/claude/public-publish-guard.md の非公開方針)。監査は両者の
+# に置く(docs/agents/public-publish-guard.md の非公開方針)。監査は両者の
 # 和集合を読む。
 #
 # name<TAB>responsibility(1 line)<TAB>decided-date(YYYY-MM-DD)

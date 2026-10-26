@@ -2,19 +2,19 @@
 
 ## 共通管理への移行
 
-通常配備では [agent-permissions](../agent-permissions.md) が Claude・Codex 共通の
+通常配備では [agent-permissions](../agents/agent-permissions.md) が Claude・Codex 共通の
 権限宣言を管理する。以下は旧 Claude 専用 reconciler の記録で、共通管理を
 有効にしている間は旧 permissions activation を実行しない。
 
 `~/.claude/settings.json` の `permissions.allow` は、Claude Code が自分の判断で
 "許可プロンプトを毎回出さずに実行してよいコマンド" を宣言する場所。手で書いた
 ルールは他機の同期対象にならず、`home-manager switch` のたびに検証されないので、
-hook 登録（`docs/claude/copilot-plan-review.md`）と同じ「activation 時の冪等マージ」
+hook 登録（`docs/agents/copilot-plan-review.md`）と同じ「activation 時の冪等マージ」
 パターンを allow にも敷いた。
 
 配備は `home/modules/claude.nix` の `permissionRules` /
-`home.activation.registerClaudePermissions`(実体は `settings-reconcile
-claude-permissions`、`crates/settings-reconcile`、#414)。`registerClaudeHooks` とは別の
+`home.activation.registerClaudePermissions`(実体は `agent-settings-reconcile
+claude-permissions`、`crates/agent-settings-reconcile`、#414)。`registerClaudeHooks` とは別の
 activation として `writeBoundary` の後に並べており、片方が失敗しても他方に影響しない。
 
 ## ルール構文
@@ -41,7 +41,7 @@ Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（
 サブコマンドより前の `*` は `-c` / `--exec-path` 等のオプション挿入(= 任意
 コード実行)も素通しするとして Claude Code が毎セッション警告する。代替は
 git-worktree-allow hook(検証つきのプログラム的許可 —
-`docs/claude/git-worktree-allow.md`)。
+`docs/agents/git-worktree-allow.md`)。
 
 同じ経路は宣言由来のルールに限らない。`Bash(ps -p * -o pid,cmd)` は実行時の
 許可プロンプトで個別ホストの settings.json に直接足された野良ルールだったが、
@@ -66,7 +66,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 - **宣言リスト**(`permissionRules`): `home/modules/claude.nix` の
   `hasMidWildcard` で `nix flake check`/`nix build` の eval 時に
   `assert` する。中間 `*` を含むルールはそもそも書けない(表現不可能)。
-- **settings.json の実体**: `settings-reconcile claude-permissions` が
+- **settings.json の実体**: `agent-settings-reconcile claude-permissions` が
   `.permissions.allow` から中間 `*` を含むルールを一律 strip する
   (Claude Code 自身の「常に許可」プロンプトが書く分も含む — こちらは
   検出が上限で、宣言側のような表現不可能化はできない)。
@@ -77,7 +77,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 同じ撤回パターンを `.hooks.<event>` にも敷いたのが `claude-hooks` の
 `retiredHookEntries`、`statusLine` にも敷いたのが `claude-statusline` の
 `retiredStatusLineCommands`(いずれも `home/modules/claude.nix`。詳細は
-`docs/claude/herdr-sidebar-metadata.md`)。この文書の「削除も宣言的に行える」は
+`docs/agents/herdr-sidebar-metadata.md`)。この文書の「削除も宣言的に行える」は
 **forward switch にしか効かない**ことに注意: `home-manager switch --rollback`
 は撤回機構自体を含む前の generation の activation を再実行するので、撤回リストが
 まだ無い generation に戻れば「エントリだけ残る」問題が再発する
@@ -93,7 +93,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 ワイルドカードでは入れていない。`Bash(gh pr edit *)` と書くと、他人の PR の編集まで
 許すことを表してしまうためである。
 
-これらは代わりに gh-edit-allow hook(`docs/claude/gh-edit-allow.md`、#392)が
+これらは代わりに gh-edit-allow hook(`docs/agents/gh-edit-allow.md`、#392)が
 扱う。allow するのは、このセッション自身が作成した PR/Issue(と、そのリポジトリへの
 `gh issue create`)に限る。それ以外は通常の確認フローに残す。
 `.claude/skills/aocs-draft/SKILL.md` のように、別リポジトリのスキルが人の確認を

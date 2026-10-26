@@ -12,7 +12,7 @@
 //!   `quality-json-not-canonical` は `jq -c` の出力文字列を比べるため、
 //!   キー順が違えば別物と判定する(bash の挙動どおり)。
 
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::Value;
 use std::cmp::Ordering;

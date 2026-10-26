@@ -1,5 +1,5 @@
 //! gate-failopen-advisory — fail-open で素通りし続けている gate を、SessionStart で知らせる
-//! (#822、docs/claude/gate-failopen-advisory.md)。
+//! (#822、docs/agents/gate-failopen-advisory.md)。
 //!
 //! fail-open で設計した hook(例: copilot-plan-review)は、依存先(外部 CLI・モデル・認証)が
 //! 壊れても止まらない。その代わり「壊れたまま素通りし続けている」ことに気づく手段が、毎回の
@@ -13,7 +13,8 @@
 //! ログが無い・読めない・閾値に届かない場合は何も出さない(全経路 fail-open)。hook の入力
 //! (stdin)は使わない。
 
-use hook_io::gate_event::{default_path, trailing_fail_open};
+use agent_session::gate_event::default_path;
+use agent_session::gate_event::trailing_fail_open;
 use serde_json::json;
 use std::path::Path;
 
@@ -27,7 +28,7 @@ const DEFAULT_THRESHOLD: usize = 3;
 /// 他の fail-open の hook を足すときは、ここに 1 行足す。
 const GATES: &[(&str, &str)] = &[(
     "copilot-plan-review",
-    "ExitPlanMode のたびに出る systemMessage に、実行に失敗した原因(copilot の stderr の先頭行)が書かれています。copilot CLI が起動できるか、固定しているモデルが catalog に残っているか(`copilot-model-bump` スキル)、ログインが切れていないかを確かめてください。手順は docs/claude/copilot-plan-review.md。",
+    "ExitPlanMode のたびに出る systemMessage に、実行に失敗した原因(copilot の stderr の先頭行)が書かれています。copilot CLI が起動できるか、固定しているモデルが catalog に残っているか(`model-pin-update` スキル)、ログインが切れていないかを確かめてください。手順は docs/agents/copilot-plan-review.md。",
 )];
 
 fn threshold_from(raw: Option<&str>) -> usize {

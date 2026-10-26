@@ -43,7 +43,7 @@ ADR-0015(github-audit 統合監査)・ADR-0020(生成側規則反転)が独立�
 
 dotfiles は PUBLIC リポジトリであり、私設リポジトリの実名・そこで言及
 される private リポジトリの実名は本 ADR にも移設文書にも書かない
-(`docs/claude/public-publish-guard.md` の方針)。
+(`docs/agents/public-publish-guard.md` の方針)。
 
 ## Decision
 

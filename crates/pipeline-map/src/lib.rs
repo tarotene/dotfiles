@@ -5,7 +5,7 @@
 //! 図は manifest だけから作る(手描きの複写を持たない)。manifest のノードは、登録箇所
 //! からのポインタで網羅性を保つ:
 //!
-//! - Claude Code の hook 宣言(`home/modules/claude.nix` の `claudeHookDeclarations`)は
+//! - Claude Code の hook 宣言(`home/modules/agents.nix` の `claudeHookDeclarations`)は
 //!   nix 属性 `node = "<id>";`。nix の評価時にも同じ検査が走るので、ポインタの無い
 //!   宣言は適用(`hms`)に至らない。
 //! - それ以外の登録箇所は、登録の直前のコメントに `pipeline-node: <id>`。
@@ -288,10 +288,10 @@ fn sorted_files(root: &Path, dir: &str, keep: impl Fn(&str) -> bool) -> Vec<Stri
     out
 }
 
-const CLAUDE_NIX: &str = "home/modules/claude.nix";
+const HOOK_DECLARATIONS_NIX: &str = "home/modules/agents.nix";
 
 fn scan_claude_decls(root: &Path, scan: &mut Scan) {
-    let src = match read_lines(root, CLAUDE_NIX) {
+    let src = match read_lines(root, HOOK_DECLARATIONS_NIX) {
         Ok(s) => s,
         Err(e) => {
             scan.problems.push(e);
@@ -304,7 +304,7 @@ fn scan_claude_decls(root: &Path, scan: &mut Scan) {
         .position(|l| l.trim_start().starts_with("claudeHookDeclarations = ["))
     else {
         scan.problems.push(format!(
-            "{CLAUDE_NIX}: claudeHookDeclarations が見つからない"
+            "{HOOK_DECLARATIONS_NIX}: claudeHookDeclarations が見つからない"
         ));
         return;
     };
@@ -326,13 +326,13 @@ fn scan_claude_decls(root: &Path, scan: &mut Scan) {
             if let Some((ln, event, node)) = cur.take() {
                 match (event, node) {
                     (Some(_), Some(id)) => scan.sites.push(Site {
-                        file: CLAUDE_NIX.into(),
+                        file: HOOK_DECLARATIONS_NIX.into(),
                         line: ln,
                         class: Class::ClaudeHookDecl,
                         ids: vec![id],
                     }),
                     (Some(ev), None) => scan.problems.push(format!(
-                        "{CLAUDE_NIX}:{ln}: hook 宣言(event = \"{ev}\")に node が無い"
+                        "{HOOK_DECLARATIONS_NIX}:{ln}: hook 宣言(event = \"{ev}\")に node が無い"
                     )),
                     _ => {}
                 }
@@ -348,7 +348,7 @@ fn scan_claude_decls(root: &Path, scan: &mut Scan) {
     }
     if !closed {
         scan.problems.push(format!(
-            "{CLAUDE_NIX}: claudeHookDeclarations の終端(行頭 2 空白の `];`)が見つからない"
+            "{HOOK_DECLARATIONS_NIX}: claudeHookDeclarations の終端(行頭 2 空白の `];`)が見つからない"
         ));
     }
 }
@@ -415,7 +415,9 @@ fn scan_nix_modules(root: &Path, scan: &mut Scan) {
                     Class::TimerOrAgent,
                     block_tokens(&lines, i),
                 );
-            } else if rel == CLAUDE_NIX && t.starts_with("statusLineCmd =") {
+            } else if (rel == HOOK_DECLARATIONS_NIX || rel == "home/modules/claude.nix")
+                && t.starts_with("statusLineCmd =")
+            {
                 push_site(
                     scan,
                     &rel,
@@ -860,7 +862,7 @@ label = "blocks"
     fn repo() -> tempfile::TempDir {
         let d = tempfile::tempdir().unwrap();
         let r = d.path();
-        write(r, "home/modules/claude.nix", CLAUDE_OK);
+        write(r, "home/modules/agents.nix", CLAUDE_OK);
         write(
             r,
             "home/modules/herdr.nix",
@@ -927,7 +929,7 @@ label = "blocks"
         let d = repo();
         write(
             d.path(),
-            CLAUDE_NIX,
+            HOOK_DECLARATIONS_NIX,
             &CLAUDE_OK.replace("      node = \"guard-b\";\n", ""),
         );
         let p = problems(d.path());
@@ -1184,7 +1186,7 @@ label = "blocks"
         let d = repo();
         write(
             d.path(),
-            "home/modules/claude.nix",
+            "home/modules/agents.nix",
             "  claudeHookDeclarations = [\n  ];\n",
         );
         write(d.path(), "home/modules/herdr.nix", "");

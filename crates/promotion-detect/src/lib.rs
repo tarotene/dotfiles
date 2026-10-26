@@ -148,11 +148,11 @@ pub fn match_skill_blocks(
     let mut out = Vec::new();
     for (skill, blocks) in skill_blocks {
         for block in blocks {
-            let normalized = hook_io::cmd_hash::normalize(block);
-            if normalized.is_empty() || hook_io::cmd_hash::has_placeholder(&normalized) {
+            let normalized = command_inspection::cmd_hash::normalize(block);
+            if normalized.is_empty() || command_inspection::cmd_hash::has_placeholder(&normalized) {
                 continue;
             }
-            let h = hook_io::cmd_hash::fnv1a_hex(&normalized);
+            let h = command_inspection::cmd_hash::fnv1a_hex(&normalized);
             if let Some(&count) = repeated_hashes.get(&h) {
                 out.push(VerbatimCandidate {
                     skill: skill.clone(),
@@ -279,7 +279,7 @@ pub fn verbatim_title(c: &VerbatimCandidate) -> String {
 
 pub fn verbatim_detail(c: &VerbatimCandidate) -> String {
     format!(
-        "config/claude/skills/{}/SKILL.md のコードブロックが改変なしに繰り返し実行されています。決定論的なスクリプトへの昇格を検討してください(散文はフォールバック手順として残す、ADR-543 段4)。",
+        "config/agents/skills/{}/SKILL.md のコードブロックが改変なしに繰り返し実行されています。決定論的なスクリプトへの昇格を検討してください(散文はフォールバック手順として残す、ADR-543 段4)。",
         c.skill
     )
 }
@@ -400,7 +400,7 @@ mod tests {
         let mut blocks = HashMap::new();
         blocks.insert("s1".to_string(), vec!["real command --flag".to_string()]);
         blocks.insert("s2".to_string(), vec!["cmd <path>".to_string()]);
-        let h = hook_io::cmd_hash::hash("real command --flag");
+        let h = command_inspection::cmd_hash::hash("real command --flag");
         let mut repeated = HashMap::new();
         repeated.insert(h, 3);
         let out = match_skill_blocks(&blocks, &repeated);

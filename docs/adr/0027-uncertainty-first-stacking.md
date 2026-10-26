@@ -3,9 +3,9 @@
 - Status: Accepted
 - Date: 2026-09-21
 - Issue: No-Issue(ユーザー依頼の grill-me セッションで確定)
-- Supersedes: `config/claude/skills/stacked-pr/SKILL.md` §1 の判定条件
+- Supersedes: `config/agents/skills/stacked-pr/SKILL.md` §1 の判定条件
   (a)/(b) を「積むか否か」の判定としては廃止する(段の切り方の設計原則
-  としては §2 に存続させる)。`docs/claude/stacked-pr.md` §8「なぜ
+  としては §2 に存続させる)。`docs/agents/stacked-pr.md` §8「なぜ
   pr-gate.sh を触らなかったか」の裁定を上書きする。ADR-0024 の「新規 hook
   は Rust を既定とする」から D6 の範囲で明示的に逸脱する(Consequences 参照)。
 
@@ -24,13 +24,13 @@
   束ねきれない orphan PR が発生した。
 - 結果として並列 2 チェーン + 独立 PR 1 本に分裂した。
 
-`config/claude/skills/stacked-pr/SKILL.md` §1 の既存規律は、後続の変更が
+`config/agents/skills/stacked-pr/SKILL.md` §1 の既存規律は、後続の変更が
 先行 PR の成果物を参照するか(a)、同一ファイルの同じ節を逐次編集するか(b)
 を判定してから積むかどうかを決める、依存予測ベースの設計だった。この判定は
 セッション中の LLM 判断に委ねられており、今回の事故ではその予測が系統的に
 外れた。
 
-`docs/claude/stacked-pr.md` §8「なぜ pr-gate.sh を触らなかったか」は、
+`docs/agents/stacked-pr.md` §8「なぜ pr-gate.sh を触らなかったか」は、
 機械的な `G_stack` block(「親のコミットを含むのに base が default branch」
 の取り違えを検出する案)を検討した上で明示的に保留していた:
 
@@ -56,14 +56,14 @@
    一方、本来依存する変更を誤って並列に出してしまうコストは高い(orphan・
    汚染 diff・手動修復)。不確実な状況では、常に妥当な唯一の構造(作成順の
    線形チェーン)を選ぶ方が合理的。
-3. `docs/claude/stacked-pr.md` の保留条項が明示的に想定していた発火条件が
+3. `docs/agents/stacked-pr.md` の保留条項が明示的に想定していた発火条件が
    成立しており、block 化は場当たり的な追加ではなく既定路線の実行にあたる。
 
 ## Decision
 
 ### D1: セッション内の複数 PR は依存を予測せず常に作成順の単一チェーンに積む
 
-`config/claude/skills/stacked-pr/SKILL.md` §1 の判定条件 (a)/(b) は、
+`config/agents/skills/stacked-pr/SKILL.md` §1 の判定条件 (a)/(b) は、
 「stack するかどうか」の判定としては廃止する。同一セッション・同一
 worktree で 2 本目以降の PR を作るときは、常に直前の PR の head branch を
 `base` にする。(a)/(b) 自体は「段の切り方(何を 1 段にまとめるか)」の
@@ -128,7 +128,7 @@ Consequences が後続 Issue に切り出した本丸)が実施される際に�
 - **依存予測の継続**(現状維持): 今回発火した保留条項そのものであり、
   同種のインシデントの再発を防げない。棄却。
 - **`gh stack init/add/submit/sync` のローカル追跡系コマンドの採用**:
-  `config/claude/skills/stacked-pr/SKILL.md` §5 の既存裁定(force-push に
+  `config/agents/skills/stacked-pr/SKILL.md` §5 の既存裁定(force-push に
   よる履歴破壊バグを理由に不採用)をそのまま維持する。本 ADR では見直さない。
 - **`G_stack` を fail-closed にする(判定不能時も block)**: `gh-stack`
   拡張が未導入の環境や `gh api` が一時的に失敗する状況でデッドロックする。
@@ -138,11 +138,11 @@ Consequences が後続 Issue に切り出した本丸)が実施される際に�
 
 ## Consequences
 
-- `config/claude/skills/stacked-pr/SKILL.md`(§1 全面改稿、§3 の
-  `gh stack link` を必須化)、`docs/claude/stacked-pr.md`(保留条項発火の
+- `config/agents/skills/stacked-pr/SKILL.md`(§1 全面改稿、§3 の
+  `gh stack link` を必須化)、`docs/agents/stacked-pr.md`(保留条項発火の
   記録)、`config/claude/CLAUDE.md`(「依存する変更は stacked PR に積む」→
   「セッション内の PR は単一チェーンに積む」)、
-  `config/claude/skills/scope-inventory/SKILL.md` §5 を改訂する(後続段)。
+  `config/agents/skills/scope-inventory/SKILL.md` §5 を改訂する(後続段)。
 - `config/claude/hooks/stack-base-guard.sh` を新設し、
   `home/modules/claude.nix` に配線する(後続段)。
 - `config/claude/hooks/pr-gate.sh` に `G_stack` を追加し、`MAX_BLOCKS` を

@@ -150,7 +150,7 @@ runs:
 
 # 呼び出し元ワークフロー側で必要な job permissions(この composite action 自体は
 # permissions を宣言できない — job 単位でしか宣言できないため、caller テンプレート
-# (config/claude/skills/repo-governance-common/templates/.github/workflows/
+# (config/agents/skills/repo-governance-common/templates/.github/workflows/
 # kiriban.yml)側にコメントで明記する):
 #   contents: read       — dotfiles の sparse-checkout(public リポジトリ)
 #   issues: write        — ラベル・コメント・キリリク受付 Issue

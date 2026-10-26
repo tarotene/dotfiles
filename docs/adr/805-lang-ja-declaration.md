@@ -71,5 +71,5 @@ charter インタビューの時点で、README の正本言語を日本語に�
 - `crates/github-audit/src/domains/charters.rs`
 - `crates/github-audit/src/audit.rs`
 - `crates/github-audit/tests/judges.rs`
-- `docs/claude/lang-ja-declaration.md`
-- `config/claude/skills/repo-charter/SKILL.md`
+- `docs/agents/lang-ja-declaration.md`
+- `config/agents/skills/repo-charter/SKILL.md`

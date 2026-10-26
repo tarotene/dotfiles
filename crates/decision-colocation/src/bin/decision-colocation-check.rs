@@ -43,7 +43,7 @@ fn main() -> ExitCode {
 
     // `git rev-parse --show-toplevel 2>/dev/null || pwd`
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let root = hook_io::git::toplevel(&cwd).unwrap_or(cwd);
+    let root = git_repository::toplevel(&cwd).unwrap_or(cwd);
 
     let violations = run_check(&root, &base);
     if violations.is_empty() {

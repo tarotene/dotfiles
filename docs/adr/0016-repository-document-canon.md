@@ -12,7 +12,7 @@
 
 別セッションが並行して開発した charter-sweep スキル(#180)が ADR-0013 の
 スキーマを機械的に一括適用した結果(private リポジトリの 1 件で観測 —
-具体名は `docs/claude/public-publish-guard.md` の方針により省く)、README に
+具体名は `docs/agents/public-publish-guard.md` の方針により省く)、README に
 改名の経緯・日付・「follow-up 待ち」という時限状態記述、個別 Issue 番号の
 焼き込み、Issue litmus の長文弁明が現れた。これを受けて README の
 確立された規範を一次情報で調査した結果、**ADR-0013 のスキーマ自体が
@@ -190,10 +190,10 @@ pathspec が 1 件も markdown に当たらないときは、typo で検査が�
 
 ### 執行点
 
-- `config/claude/skills/repo-governance-common/templates/scripts/check-language-mixing.sh`
+- `config/agents/skills/repo-governance-common/templates/scripts/check-language-mixing.sh`
   — `LANG_MIX_PATHS` の解釈、空振りの検出、CJK 文字クラスの修正、
   `--selftest`(7 ケース)。
-- `config/claude/skills/repo-governance-common/templates/.github/workflows/lang-mix.yml`
+- `config/agents/skills/repo-governance-common/templates/.github/workflows/lang-mix.yml`
   — 播種される workflow が `LANG_MIX_PATHS` を渡す。
 - `.github/workflows/ci.yml` — `check-language-mixing.sh --selftest` を CI で走らせる。
 
@@ -205,7 +205,7 @@ Decision 4 の「英語の原文 1 本」と CJK の存在検査には、読者�
 `contributing-cjk-present` を報告しない。宣言が実態と食い違えば
 `lang-ja-stale` で検出する。既定は変わらない。決定は ADR-805
 (`docs/adr/805-lang-ja-declaration.md`)、手順は
-`docs/claude/lang-ja-declaration.md`。
+`docs/agents/lang-ja-declaration.md`。
 
 ### 執行点
 

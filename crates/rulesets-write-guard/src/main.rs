@@ -1,9 +1,11 @@
-//! hook エントリポイント。詳細は lib.rs / docs/claude/rulesets-write-guard.md。
+//! hook エントリポイント。詳細は lib.rs / docs/agents/rulesets-write-guard.md。
 //!
 //! PreToolUse 専用(gh-edit-allow と違い記録役を持たない)。判定できない
 //! 入力では何も出力せず exit 0 する(判定できないことを deny に変えない)。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use std::io::Read;
 
 fn main() {

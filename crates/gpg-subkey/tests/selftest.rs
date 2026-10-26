@@ -11,7 +11,7 @@
 //! ディレクトリ、`GPG_SUBKEY_PINENTRY_MODE=loopback` + `GPG_SUBKEY_PASSPHRASE=''` は
 //! この fixture 鍵だけを非対話に解錠する。例外は 2 つ:
 //! - on-disk/card-backed フィルタの回帰(#252, R1-B-1): 実カードは fixture では偽装
-//!   できないので、合成した `--with-colons` 出力をスタブ gpg 経由で通す(sign-prewarm の
+//!   できないので、合成した `--with-colons` 出力をスタブ gpg 経由で通す(gpg-prewarm の
 //!   テストの card/stub 合成入力と同じ手法)。`colon.rs` の単体テストと本ファイルの
 //!   `card_backed_*` が担う。
 //! - sync: `gh` と `curl` は PATH 上のスタブ — 実 GitHub アカウントにも実 keyserver にも

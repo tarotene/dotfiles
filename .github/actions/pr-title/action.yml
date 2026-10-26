@@ -31,7 +31,7 @@ runs:
     # のトリガー(github.repository == tarotene/dotfiles)では、この PR
     # 自身の head SHA から取得する — checker 自体を変更する PR を、まだ
     # main に乗っていない版で検査できる(旧 reusable workflow から引き継ぐ
-    # 挙動、docs/claude/pr-title-contract.md 参照)。path をリポジトリ直下
+    # 挙動、docs/agents/pr-title-contract.md 参照)。path をリポジトリ直下
     # ではなく専用ディレクトリにする — 呼び出し元リポジトリ自身の
     # checkout 内容(既に checkout 済みのはず)を上書きしないため。
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -124,7 +124,7 @@ runs:
 
 # 呼び出し元ワークフロー側で必要な job permissions(この composite action
 # 自体は permissions を宣言できない — job 単位でしか宣言できないため、
-# caller テンプレート(config/claude/skills/repo-governance-common/
+# caller テンプレート(config/agents/skills/repo-governance-common/
 # templates/.github/workflows/pr-title.yml)側にコメントで明記する):
 #   contents: write  — merge 設定フィールドの読み取り(GitHub REST API の
 #                      仕様上、contents:read だけでは squash_merge_commit_

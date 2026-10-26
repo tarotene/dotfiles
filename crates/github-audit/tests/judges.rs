@@ -508,7 +508,7 @@ fn settings_direct() {
     );
 }
 
-/// `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): 非公開かつ無料
+/// `plan-free-private` 宣言(docs/agents/free-plan-declaration.md): 非公開かつ無料
 /// プランの環境では自動マージ・rulesets が使えない。宣言があれば期待を外し、
 /// 宣言が実態と食い違えば `plan-free-private-stale` で必ず検出する。
 /// bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。
@@ -1087,7 +1087,7 @@ fn releaser_and_routines_direct() {
     );
 }
 
-/// `lang-ja` 宣言(docs/claude/lang-ja-declaration.md): 日本語が正本の README/
+/// `lang-ja` 宣言(docs/agents/lang-ja-declaration.md): 日本語が正本の README/
 /// CONTRIBUTING は、宣言があれば CJK の存在を drift にしない。宣言が嘘
 /// (README に CJK が無い)なら `lang-ja-stale` で検出する。
 /// bash 版 `scripts/github-audit --selftest` の同名ケースと対になる。

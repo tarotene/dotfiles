@@ -3,7 +3,7 @@
 # naming-site を宣言する PUBLIC リポジトリの対応ドメインをここに追記する
 # (cutoff 以降に作成されたリポジトリにのみ機械適用)。private リポジトリの
 # 保有ドメインは `~/.config/github-audit/site-domains.local.tsv` に置く
-# (docs/claude/public-publish-guard.md の非公開方針)。監査は両者の和集合を
+# (docs/agents/public-publish-guard.md の非公開方針)。監査は両者の和集合を
 # 読む。
 #
 # domain<TAB>decided-date(YYYY-MM-DD)

@@ -3,7 +3,7 @@
 //! herdr のサイドバー workspace 行に、その workspace のリポジトリの open Issue
 //! 数(PR を除く)を `$issues` トークンとして出す。プロセス起動(herdr / git /
 //! gh)と exit code は main.rs が担い、ここはパースと組み立てだけを持つ。
-//! 設計: docs/claude/herdr-sidebar-metadata.md「`$issues`」節。
+//! 設計: docs/agents/herdr-sidebar-metadata.md「`$issues`」節。
 use std::collections::BTreeMap;
 
 use serde::Deserialize;

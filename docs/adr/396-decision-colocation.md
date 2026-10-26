@@ -56,7 +56,7 @@ plan-precedent-gate.sh --selftest(後続段で拡張)」。参照(検証コマ�
 
 ### D1: 決定成果物に `## 執行点` 節を必須化し、導入 PR の diff と突合する
 
-`docs/adr/**` の新規追加、`docs/claude/**` / `config/claude/skills/**`
+`docs/adr/**` の新規追加、`docs/claude/**` / `config/agents/skills/**`
 の新規追加、または既存 ADR への `## Amendment` 見出し追加を「決定成果物の
 追加」と見なし、これらをトリガに導入 PR の diff を機械検査する。
 
@@ -120,7 +120,7 @@ Programmer*, 1999)。ADR-0024 で言えば、Rust 移植を 1 本だけ同梱す
 「実装を後続 Issue に分離する」という選択肢を `AskUserQuestion` に提示しない
 ことを `config/agents/AGENTS.md` に明記する(段2)。この repo には既に
 「`AskUserQuestion` の選択肢空間は機械検査に向かない」という裁定
-(`docs/claude/stacked-pr.md:57-61`)があり、それに従う。CI が当該選択肢を
+(`docs/agents/stacked-pr.md:57-61`)があり、それに従う。CI が当該選択肢を
 実行不能にした以上、語彙 lint を足しても新しい仕事が無い。
 
 ### D8: 既存 ADR への遡及適用はしない
@@ -145,7 +145,7 @@ Programmer*, 1999)。ADR-0024 で言えば、Rust 移植を 1 本だけ同梱す
 - **AskUserQuestion に PreToolUse guard を新設し、選択肢の label/
   description を語彙マッチで deny する**: CI が既に当該選択肢を実行不能に
   しており新しい仕事が無いこと、自由記述への語彙マッチが言い換えとの
-  いたちごっこになること(`docs/claude/scope-inventory.md:113-116` が
+  いたちごっこになること(`docs/agents/requirements-inventory.md:113-116` が
   同じ理由で `Conflicts:` タグを棄却した先例)から不採用。D7 で規範のみに
   留めた。
 

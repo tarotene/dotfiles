@@ -1,6 +1,6 @@
 //! main-checkout-guard — 本物の checkout(main worktree)を変更させない
 //! PreToolUse / Stop hook の判定エンジン。設計と根拠:
-//! docs/claude/main-checkout-guard.md。
+//! docs/agents/main-checkout-guard.md。
 //!
 //! 2 段で守る:
 //!
@@ -16,9 +16,9 @@
 //! 一致する main worktree。置き場所(`~/.ghr` 等)には依存しない。linked
 //! worktree(herdr、`.claude/worktrees/agent-*`)は対象外。
 
-use hook_io::git::default_branch;
-use hook_io::shell::split_segments;
-use hook_io::SessionLedger;
+use agent_session::SessionLedger;
+use command_inspection::simple_shell::split_segments;
+use git_repository::default_branch;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -230,7 +230,7 @@ fn nearest_dir(path: &Path) -> Option<PathBuf> {
 
 /// 成功時の stdout。UTF-8 として読めなければ `None`、末尾の `\n` / `\r` は落とす。
 fn git_out(dir: &Path, args: &[&str]) -> Option<String> {
-    let s = String::from_utf8(hook_io::git::raw(dir, args)?).ok()?;
+    let s = String::from_utf8(git_repository::raw(dir, args)?).ok()?;
     Some(s.trim_end_matches(['\n', '\r']).to_string())
 }
 
@@ -425,7 +425,7 @@ pub fn deny_reason(top: &Path) -> String {
          `git -C <worktree>` で操作します。worktree の土台は親 checkout の HEAD なので、親が default ブランチでない\
          ときは作成後に `git merge-base --is-ancestor origin/<default> HEAD` で確かめ、外れていれば \
          `origin/<default>` に揃えます。本物の checkout を直接変更したいときは、本人が `!` 付きのコマンドで \
-         操作します。詳細: docs/claude/main-checkout-guard.md",
+         操作します。詳細: docs/agents/main-checkout-guard.md",
         top.display(),
         top.display(),
     )
@@ -437,7 +437,7 @@ pub fn drift_reason(problems: &[String]) -> String {
          Do not try to repair it yourself (changes to a main checkout are denied). \
          Tell the user exactly what changed so they can inspect and restore it with `!`-prefixed commands, \
          and continue any further work in a worktree (`herdr worktree create --cwd <repo> --branch <name>`). \
-         See docs/claude/main-checkout-guard.md.",
+         See docs/agents/main-checkout-guard.md.",
         problems
             .iter()
             .map(|p| format!("- {p}"))
@@ -451,13 +451,16 @@ pub fn drift_reason(problems: &[String]) -> String {
 /// (PreToolUse の additionalContext は Claude Code のみ。Codex には出さない)。
 ///
 /// `main` と、ルータ(`crates/hook-router`)が同じ関数を呼ぶ。
-pub fn pre_hook(agent: hook_io::Agent, input: &hook_io::HookInput) -> Option<hook_io::Outcome> {
+pub fn pre_hook(
+    agent: agent_session::Agent,
+    input: &agent_session::HookInput,
+) -> Option<agent_session::Outcome> {
     let cwd = input.cwd.clone().or_else(|| std::env::current_dir().ok())?;
     let analysis = analyze(&input.tool_name, &input.tool_input, &cwd);
 
     for p in &analysis.mutations {
         if let Some(top) = main_checkout_of(p) {
-            return Some(hook_io::Outcome::Deny(deny_reason(&top)));
+            return Some(agent_session::Outcome::Deny(deny_reason(&top)));
         }
     }
 
@@ -476,14 +479,14 @@ pub fn pre_hook(agent: hook_io::Agent, input: &hook_io::HookInput) -> Option<hoo
         }
         seen.push(top);
     }
-    (!notices.is_empty() && agent == hook_io::Agent::Claude)
-        .then(|| hook_io::Outcome::Context(notices.join("\n")))
+    (!notices.is_empty() && agent == agent_session::Agent::Claude)
+        .then(|| agent_session::Outcome::Context(notices.join("\n")))
 }
 
 /// [`pre_hook`] を、生の入力(標準入力の JSON)から呼ぶ。Claude 向け(ルータ用)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    let input = hook_io::HookInput::parse(raw)?;
-    pre_hook(hook_io::Agent::Claude, &input)
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    let input = agent_session::HookInput::parse(raw)?;
+    pre_hook(agent_session::Agent::Claude, &input)
 }
 
 #[cfg(test)]

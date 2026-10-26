@@ -1,13 +1,15 @@
-//! エントリポイント。詳細は lib.rs / docs/claude/plan-fresh-gate.md。
+//! エントリポイント。詳細は lib.rs / docs/agents/plan-fresh-gate.md。
 //!
 //! hook として PreToolUse(matcher: ExitPlanMode)から stdin JSON で呼ばれる。
 //! スキップ手段: `touch ~/.claude/plan-fresh-gate/skip` または
 //! `SKIP_PLAN_FRESH_GATE=1`。
 
-use hook_io::{jqfmt, HookInput, SessionLedger};
+use agent_session::HookInput;
+use agent_session::SessionLedger;
+use jq_json_compat::jqfmt;
 use plan_fresh_gate::{git, git_ok, intersect_files, MAX_DENY_DISPLAY};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 use std::time::Duration;
 
 /// fetch の打ち切り(旧版の `timeout 15`)。
@@ -38,7 +40,7 @@ fn ensure_private_dir(dir: &Path) {
 }
 
 fn run() -> ExitCode {
-    if !hook_io::proc::command_exists("git") {
+    if !process_control::command_exists("git") {
         return ExitCode::SUCCESS;
     }
     let dir = gate_dir();
@@ -65,18 +67,13 @@ fn run() -> ExitCode {
     if branch.is_empty() {
         return ExitCode::SUCCESS; // detached HEAD / rebase 中は触らない
     }
-    let Some(base) = hook_io::git::default_branch(p).filter(|b| !b.is_empty()) else {
+    let Some(base) = git_repository::default_branch(p).filter(|b| !b.is_empty()) else {
         return ExitCode::SUCCESS;
     };
     let is_base_branch = branch == base;
 
     // fetch は TTL なしで常に実行する(ExitPlanMode はセッションに稀なイベント)。
-    let mut fetch = Command::new("git");
-    fetch
-        .arg("-C")
-        .arg(p)
-        .args(["fetch", "--quiet", "origin", &base]);
-    let _ = hook_io::proc::output_with_timeout(&mut fetch, FETCH_TIMEOUT, None);
+    let _ = git_repository::fetch_output(p, &base, FETCH_TIMEOUT);
     let origin_base = format!("origin/{base}");
     if !git_ok(p, &["rev-parse", "--verify", "-q", &origin_base]) {
         return ExitCode::SUCCESS;
@@ -119,32 +116,15 @@ fn run() -> ExitCode {
         return ExitCode::SUCCESS; // 実質的な差分なし
     }
 
-    // --- 移動(pristine のときだけ) ---
-    let mut did_ff = false;
-    let (mut before, mut after) = (String::new(), String::new());
-    if !is_base_branch
-        && git(p, &["status", "--porcelain"])
-            .unwrap_or_default()
-            .is_empty()
-    {
-        let range = format!("HEAD...{origin_base}");
-        let ab = git(p, &["rev-list", "--left-right", "--count", &range]).unwrap_or_default();
-        let ahead = ab.split('\t').next().unwrap_or("");
-        let behind = ab.rsplit('\t').next().unwrap_or("");
-        let behind_n = (!behind.is_empty() && behind.bytes().all(|b| b.is_ascii_digit()))
-            .then(|| behind.parse::<u64>().ok())
-            .flatten();
-        if ahead == "0" && behind_n.is_some_and(|n| n > 0) {
-            before = git(p, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
-            if git_ok(p, &["merge", "--ff-only", "--quiet", &origin_base]) {
-                after = git(p, &["rev-parse", "--short", "HEAD"]).unwrap_or_default();
-                did_ff = !before.is_empty() && !after.is_empty() && before != after;
-            }
-        }
-    }
+    // Updating the checkout is a repository operation, independent of plan freshness.
+    let movement = (!is_base_branch)
+        .then(|| git_repository::fast_forward_pristine(p, &origin_base))
+        .flatten();
+    let did_ff = movement.is_some();
+    let (before, after) = movement.unwrap_or_default();
 
     // --- プラン本文(tool_input.plan → planFilePath → 最新 ~/.claude/plans/*.md)
-    let plan = hook_io::plan::plan_text(&input)
+    let plan = agent_session::plan::plan_text(&input)
         .map(|mut s| {
             while s.ends_with('\n') {
                 s.pop();

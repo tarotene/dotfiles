@@ -101,7 +101,7 @@ fn missing_security_and_analysis_plus_a_real_drift_stays_red() {
     );
 }
 
-/// `plan-free-private` 宣言(docs/claude/free-plan-declaration.md)。
+/// `plan-free-private` 宣言(docs/agents/free-plan-declaration.md)。
 #[test]
 fn plan_free_private_declaration() {
     let s = Stub::new();

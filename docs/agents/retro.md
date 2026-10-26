@@ -1,0 +1,73 @@
+# 作業終了時のレトロ(ADR-697)
+
+現行の正準入口は `session-wrapup start|stop`。保存と起票は `issue-inbox`、振り返りは
+`session-retrospective`、期限付き試行は `feedback-trial` が担当する。
+以下の旧 `wrapup-stop-gate` / `wrapup-session-start` による説明は、引き続き使える互換入口と移行の経緯を示す。
+実装の配置と引数は[責務一覧](agent-libraries.md)を参照する。
+
+
+PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを
+求める。出口(inbox → Issue 化 → `/backlog-cleanup`)は [wrap-up inbox](wrapup-inbox.md) と
+共有し、入口と強制だけが別。決定の理由と代替案は
+[ADR-697](../adr/697-retro-stop-gate.md)。
+
+## 流れ
+
+1. PR を作成する(gh-edit-allow の台帳に `pr ` 行が積まれる。Codex は台帳が無いので現ブランチの
+   PR のうちセッション開始後に作られたもの)。
+2. 次の Stop で `kind="retro"` のポインタが出る。モデルは
+   `session-retrospective --retro-procedure <session_id>` を実行して手順書を読む。
+3. 手順書には、行に引くべき出来事の id(`verdict:…` / `pr-gate` / `memory:…`)と、
+   ユーザー発言の一覧(Claude のみ)が並ぶ。モデルは `--retro-add` で行を書く。
+4. 全行を kind ごとの表にして PR に 1 件コメントする(先頭は `<!-- wrapup-retro -->`)。
+5. `--retro-close <session_id> <comment-url>` が `gh api` でコメントを読み戻して完了にする。
+
+## 行の語彙
+
+| 欄 | 値 |
+|----|----|
+| `kind` | `user-correction` / `insight` / `friction` / `gate-hit` / `none` / `skipped` |
+| `disposition` | `inbox` / `issue:#N` / `none:<理由>` |
+| `mechanism` | `prose` / `script` / `gate` / `existing:<名前>` / `none:<理由>`(user-correction・friction・gate-hit で必須) |
+
+`none` と `skipped` は `disposition: none:<理由>` が必須。`skipped` は `quote`(ユーザーの
+発言の逐語)も必須。`existing:<名前>` は、その名前が `what` に書かれていなければ受け付けない。
+
+## 状態ファイル
+
+`${WRAPUP_RETRO_DIR:-${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/retro}/<session_id>.*`
+
+| 拡張子 | 内容 |
+|--------|------|
+| `jsonl` | 行(`--retro-add` が検証して追記) |
+| `count` | retro の block 回数(上限 3) |
+| `escalated` | 上限に達して警告を出した印 |
+| `transcript` | Stop 時に渡された transcript のパス(手順書がユーザー発言を抽出する) |
+| `closed` | 完了の印(`--retro-close` が読み戻してから書く) |
+
+## 待ちターンでは出さない(#854)
+
+作業の途中で、バックグラウンド処理(背景の Bash、非同期の Agent)の完了を待つターンは、
+作業の終わりではない。振り返りの対象は「セッション全体」なので、途中で出すと後から出る PR や
+指摘が含まれず、やり直しになる。1 つのセッションで複数の PR を積みながら実機の長い実行を待つと、
+指示がターンごとに 5 回以上届いた。
+
+Stop の入力にバックグラウンドの状態は無いので、transcript から導く
+(`hook_io::transcript::pending_background_tasks`)。開始は `toolUseResult.backgroundTaskId` か、
+`toolUseResult.agentId` で `status == "async_launched"`。完了は task-notification の
+`<task-id>`(新しい記録形式は `attachment.type == "queued_command"`、古い形式は
+`origin.kind == "task-notification"`)。未完了が 1 件以上あれば、retro も inbox の指示も出さず、
+上の `count` も消費しない。
+
+- 開始から 1 時間を超えたものは待ちとして数えない。終わらない監視(`tail -F` など)が、
+  指示を際限なく黙らせないため。
+- transcript が読めない・時刻が読めないときは、従来どおり判定する(読めない開始は新しいものとして
+  数える)。誤判定は「従来どおり発火する」側に倒れ、block 側には倒れない(軸: 検出のみ)。
+- `last_assistant_message` から「報告で終えるターンか」を推定する案は、非決定論なので採らない(ADR-478 D1)。
+
+## 限界
+
+- `gate-events.jsonl` は session_id を持たないので、突き合わせの対象にできない。
+- ユーザーの指摘を見落とさないかは、発言一覧の提示とモデルの判断に頼る(gate は判定しない)。
+- 上限(3 回)に達すると警告 1 回で通る。放置を防ぐだけで、強制し続けはしない。
+- PR の無いセッションは自動では発火しない。`/retro` で手動に踏む。

@@ -10,7 +10,7 @@ ADR-0023), releaser (grill-me セッション調べ), routines
 (ADR-519), workflows (ADR-591), and docs
 (ADR-640). Its findings feed the
 `github-audit-triage` skill
-(`docs/claude/github-audit-triage.md`), which is the only place an LLM
+(`docs/agents/github-audit-triage.md`), which is the only place an LLM
 enters this loop — this script never calls one.
 
 The `releaser`/`routines` domains additionally read a snapshot
@@ -246,7 +246,7 @@ which repositories' documentation drifts from the fixed document canon.
 Scope labels and README-embedded Issue litmus had no precedent in
 established README practice (standard-readme, GitHub's own docs, Art of
 README) — a mechanical bulk application of that schema to a private
-repository (see `docs/claude/public-publish-guard.md` for why this
+repository (see `docs/agents/public-publish-guard.md` for why this
 document doesn't name it) produced README content those sources actively
 warn against (timestamped history, Issue-number citations, long litmus
 prose). ADR-0016 replaces it with a schema grounded in those sources.
@@ -306,7 +306,7 @@ Judged items:
   presence alone is drift — Latin content does not need to co-occur. This
   only judges the two files this audit fetches, not every markdown file in
   the repository — the rest is each repository's own per-repo CI's job.
-  **Declared exception (ADR-805, `docs/claude/lang-ja-declaration.md`).** A
+  **Declared exception (ADR-805, `docs/agents/lang-ja-declaration.md`).** A
   repository carrying the topic `lang-ja` declares Japanese as the canonical
   language of README/CONTRIBUTING, and neither token is reported for it; every
   other check (heading literals, section order, purpose match, nav-doc) is
@@ -491,7 +491,7 @@ expectations:
   reported drifted on these two tokens (fail-open to drift, the same
   convention `judge_rulesets()`'s per-ruleset REST fetch uses) — it is
   never silently treated as compliant.
-- `plan-free-private-stale` (`docs/claude/free-plan-declaration.md`) — the
+- `plan-free-private-stale` (`docs/agents/free-plan-declaration.md`) — the
   `plan-free-private` topic declares "private and on a plan without
   auto-merge or rulesets", and while it is declared the `auto-merge-disabled`
   expectation below is not applied (the `rulesets` and `titles` domains
@@ -541,7 +541,7 @@ distinction matters: the client guard (`crates/pr-title-guard`) and the required
 pr-title.yml`) already judge individual titles; if this domain re-judged
 them too, a repository could show `drifted` here while every open PR is
 green, or vice versa, with no way to tell which layer to trust
-(`docs/claude/pr-title-contract.md`).
+(`docs/agents/pr-title-contract.md`).
 
 Three checks, all informational about whether the *mechanism* exists and
 actually works:
@@ -615,7 +615,7 @@ does not expose it deterministically for a user's own OAuth token
 (`/user/installations` needs a user-to-server token and returns 403
 otherwise, confirmed 2026-09-25). As of ADR-568 D5 the App's access is
 account-wide ("All repositories"), documented as the runbook in
-`config/claude/skills/repo-governance-common/reference/renovate-app.md`.
+`config/agents/skills/repo-governance-common/reference/renovate-app.md`.
 Since #465 (2026-09-25), the domain detects a proxy signal for the case
 where the App has not (yet) run on a repository: when config is present,
 `dependencyDashboard` is not explicitly disabled in it, and no open Issue
@@ -716,7 +716,7 @@ for some other App (no `RELEASE*` name) is not a claim. Repositories with
 no claim are `not-applicable`, the same convention `renovate`/`titles` use.
 
 Background: a `grill-me` session (2026-09-24) found that the releaser App
-had been created **per repository** (`config/claude/skills/
+had been created **per repository** (`config/agents/skills/
 rust-repo-governance/reference/manual-steps.md` used to name it
 `<REPO>-release-plz` and install it on that repository only), producing 4
 separate Apps on the personal account. The decision was to consolidate to
@@ -810,7 +810,7 @@ itself leak which private repositories exist. The App's *registration*
 `github-app-registry-check`, below.
 
 Setup and rotation live in `docs/github-app-snapshot.md` (Manifest flow,
-secret distribution, rotation) and `config/claude/skills/
+secret distribution, rotation) and `config/agents/skills/
 repo-governance-common/reference/releaser-app.md` (per-repo install
 checklist), referenced by every `*-repo-governance` skill that ships a
 releaser workflow template.
@@ -914,7 +914,7 @@ fields — `declCi`/`declPrTitle`, the `ci.yml`/`pr-title.yml` contents at
   letter (`workflow-name-lowercase`, `job-name-lowercase:<job-id>`).
 - **`quality.json` required_status_checks canonical match**
   (`quality-json-not-canonical`): compared against the single source of
-  truth — this repository's own `config/claude/skills/repo-governance-
+  truth — this repository's own `config/agents/skills/repo-governance-
   common/templates/.github/rulesets/quality.json`, read from disk at
   audit time, not a hardcoded duplicate (ADR-0035 単一正本 > 複写+同期).
   A repository with no `quality.json` at all is not double-reported here
@@ -1174,7 +1174,7 @@ repository.
 
 Which repositories were found drifted, and any one repository's own
 follow-up on its own issue tracker, are intentionally omitted from this
-document — see `docs/claude/public-publish-guard.md` for why dotfiles
+document — see `docs/agents/public-publish-guard.md` for why dotfiles
 never names private/company repositories in its own tree.
 
 ## Library API (ライブラリ API)

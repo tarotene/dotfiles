@@ -10,7 +10,9 @@
 //! - `register <既存手段: ...>`: 現在の worktree(git toplevel)の session
 //!   ledger に 1 行追記する。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use new_tool_guard::hook::{default_ledger, ledger_key};
 use std::io::Read;
 

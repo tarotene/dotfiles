@@ -81,7 +81,7 @@ not `hms .`), `hms` therefore resolves bleep's main with `nix flake prefetch
 --refresh` and, when it differs from the lock pin, **pre-builds** the
 activation package with `--override-input bleep github:tarotene/bleep/<rev>`
 (`dotfiles/bleep` on a wrapper host) before switching. The build runs the
-deployed-hook canary (`config/claude/bleep-canary.sh`, wired as a
+deployed-hook canary (`config/agents/bleep-canary.sh`, wired as a
 `home.checks` derivation in `home/modules/claude.nix`): the *deployed* bash
 body and `bleep-hook` are fed canary hook inputs and must still deny/pass as
 dotfiles' wiring expects. A failing canary fails the build, so:
@@ -261,7 +261,7 @@ the restart instructions above if they differ (#200).
 At the start of each session, the `herdr-status-advisory` SessionStart hook reads
 `herdr status --json` and says so up front when the client and server protocols
 no longer match, before `herdr worktree create` fails with `protocol_mismatch`
-(`docs/claude/herdr-status-advisory.md`). It only tells you; stopping the server
+(`docs/agents/herdr-status-advisory.md`). It only tells you; stopping the server
 ends every pane, so the restart stays a manual step.
 
 ### `hms` fails at `checkLinkTargets` with a `.backup` clobber error
@@ -287,7 +287,7 @@ it.
 
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
-`settings-reconcile`'s declarative retirement (`claude-hooks` / `claude-statusline`)
+`agent-settings-reconcile`'s declarative retirement (`claude-hooks` / `claude-statusline`)
 (`retiredHookEntries` / `retiredStatusLineCommands` in `home/modules/claude.nix`)
 only runs as part of the activation script baked into a given home-manager
 generation. A **forward** `hms` picks it up; a `home-manager switch --rollback`
@@ -298,7 +298,7 @@ later retired, `home.file` will remove the now-unmanaged script but the
 `~/.claude/settings.json` entry pointing at it can survive — the exact ENOENT /
 broken-status-line symptom issue #44 diagnosed (see
 [`claude-permissions.md`](claude/claude-permissions.md) and
-[`herdr-sidebar-metadata.md`](claude/herdr-sidebar-metadata.md) for the
+[`herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) for the
 mechanism). Treat `--rollback` as an emergency measure, not a way to retire a
 feature permanently — retiring permanently means adding to the retired list and
 doing a forward `hms`, not rolling back.
@@ -675,7 +675,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
 
 1. **Apply the latest hooks.** `hms` (or `hms .` from a topic worktree)
    deploys `~/.codex/AGENTS.md` (the build-time merge, see
-   `docs/claude/global-agents-md.md`) and registers every hook this repo
+   `docs/agents/global-agents-md.md`) and registers every hook this repo
    owns into `~/.codex/hooks.json`.
 2. **Trust the newly registered hooks once.** Codex persists hook trust as
    a hash per `(hooks.json path, event, index)` in `~/.codex/config.toml`'s

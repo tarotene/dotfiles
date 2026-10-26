@@ -42,7 +42,7 @@ static NO_ISSUE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^[[:space:]]*No-Issue:[[:space:]]*[^[:space:]]").expect("NO_ISSUE_RE")
 });
 
-/// 中断ハンドオフの宣言行(docs/claude/handoff.md)。
+/// 中断ハンドオフの宣言行(docs/agents/handoff.md)。
 static HANDOFF_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^[[:space:]]*Handoff:[[:space:]]*#([0-9]+)[[:space:]]*$").expect("HANDOFF_RE")
 });

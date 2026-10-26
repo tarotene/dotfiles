@@ -13,7 +13,7 @@
 `telepath` のような一語コードネーム型、`publish-guard` のような記述的
 複合語型、FQDN 形のドメイン名サイト型が、命名時に従うべき規則なしに
 混在していた(具体的にどのリポジトリがどう混在していたかは
-`docs/claude/public-publish-guard.md` の方針により本 ADR には書かない —
+`docs/agents/public-publish-guard.md` の方針により本 ADR には書かない —
 private/company リポジトリ名は dotfiles の成果物に残さない)。加えて
 `pj-` prefix の付与漏れ(時限プロジェクトなのに prefix がない、または
 その逆)のような、名前とクラスの不一致は名前だけを見ても機械的には

@@ -7,7 +7,7 @@
 //!
 //! 縮退: 何があっても exit 0(deny は一切しない段 3 の利便性層)。
 
-use guard_core::hook::agent_from_args;
+use agent_session::hook::agent_from_args;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {

@@ -148,7 +148,7 @@ a fallback. `--no-throw-keyids` is required here for the same reason as
 `docs/setup.md`'s own token-provisioning block: `home/modules/gpg.nix` sets
 `throw-keyids = true` globally, and without this flag decryption falls back
 to trying every card-backed secret key in the keyring in turn (see
-[`docs/claude/esa-mcp.md`](claude/esa-mcp.md) for the incident this avoids).
+[`docs/agents/esa-mcp.md`](agents/esa-mcp.md) for the incident this avoids).
 
 ```bash
 gpg --quiet --decrypt ~/.config/esa/token.gpg | \

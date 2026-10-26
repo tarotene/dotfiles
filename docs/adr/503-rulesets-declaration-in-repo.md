@@ -101,9 +101,9 @@ context を機械判定する 3 種の finding を追加する(D8)。GitHub App 
 - `.github/workflows/pr-title.yml` — `rulesets-context-check` の呼び出し
 - `.github/rulesets/security.json` — dotfiles 自身の宣言
   (`quality.json`/`workflow.json` も同ディレクトリに同居)
-- `config/claude/skills/rust-repo-governance/scripts/copy-files.sh` —
+- `config/agents/skills/rust-repo-governance/scripts/copy-files.sh` —
   宣言の播種 + placeholder 検証 + Firmware context の自動除去
-- `config/claude/skills/repo-governance-common/scripts/copy-files.sh` —
+- `config/agents/skills/repo-governance-common/scripts/copy-files.sh` —
   `core` 型(該当エコシステムが無いリポジトリ)向けの新規播種スクリプト
 - `home/modules/claude.nix` — `rulesets-write-guard` の hook 登録、
   governance skill 3 種への `.github/rulesets/{security,workflow,review}.json`

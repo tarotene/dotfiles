@@ -11,7 +11,7 @@ herdr ブランチの reflog が `branch: Created from HEAD`、fresh worktree �
 `home/modules/git.nix` の config と 2 本の git hook による手当て。
 
 Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
-`docs/claude/pr-gate.md` / `docs/claude/git-stash-guard.md` を参照。ここは
+`docs/agents/pr-gate.md` / `docs/agents/git-stash-guard.md` を参照。ここは
 **マシン全リポジトリに効く git 自体の設定**を扱う。
 
 ## 対応表
@@ -23,11 +23,11 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 | `push.autoSetupRemote = true` | herdr worktree が upstream 無しで作られ、初回 push が `--set-upstream` を要求してくる | 初回 `git push` が自動で upstream を張る |
 | `rerere.enabled = true` | 同じ衝突を worktree ごとに手で再解決する | 一度解決した衝突の解決結果を再利用する |
 | `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
-| `rebase.updateRefs = true` | stacked PR([`docs/claude/stacked-pr.md`](claude/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語は無いが、効果はまさにこれ) |
+| `rebase.updateRefs = true` | stacked PR([`docs/agents/stacked-pr.md`](agents/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語は無いが、効果はまさにこれ) |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
 | `git prune-branches`(`crates/git-prune`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除。`--auto` は内容保全の証拠を根拠に `git-auto-prune` timer から確認なしで削除(`docs/worktree-lifecycle.md`) |
-| `git shelve` / `git unshelve`(`crates/git-shelve` / `crates/git-shelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/claude/git-stash-guard.md` |
-| `config/git/hooks/pre-push` の bleep(旧 publish-guard)`scan-push` 統合 | 公開リポジトリへ company/private リポジトリ名等を含む差分を push してしまう(#196) | push する差分+ログを denylist で走査し、ヒットで block。回避は `BLEEP_ALLOW=1`。詳細は `docs/claude/public-publish-guard.md` |
+| `git shelve` / `git unshelve`(`crates/git-shelve` / `crates/git-shelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/agents/git-stash-guard.md` |
+| `config/git/hooks/pre-push` の bleep(旧 publish-guard)`scan-push` 統合 | 公開リポジトリへ company/private リポジトリ名等を含む差分を push してしまう(#196) | push する差分+ログを denylist で走査し、ヒットで block。回避は `BLEEP_ALLOW=1`。詳細は `docs/agents/public-publish-guard.md` |
 
 ## `git prune-branches`
 

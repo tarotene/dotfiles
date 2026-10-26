@@ -1,6 +1,6 @@
 //! decision-colocation-guard のエントリポイント。判定は
 //! `decision_colocation::guard`(bash 版 decision-colocation-guard.sh の移植、
-//! ADR-396、docs/claude/decision-colocation.md)。
+//! ADR-396、docs/agents/decision-colocation.md)。
 //!
 //! 使い方:
 //!   hook として: stdin JSON(PreToolUse、matcher: "Bash|mcp__.*")
@@ -16,9 +16,10 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use agent_session::hook::deny_output;
+use agent_session::Agent;
+use agent_session::Outcome;
 use decision_colocation::guard::Guard;
-use guard_core::hook::deny_output;
-use hook_io::{Agent, Outcome};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -102,7 +102,7 @@ pub fn fetch_live(gh: &Gh, owner_repo: &str, branch: &str) -> Result<Names, Fetc
     .ok_or(FetchFailed)
 }
 
-/// `plan-free-private` トピックが付いているか(docs/claude/free-plan-declaration.md)。
+/// `plan-free-private` トピックが付いているか(docs/agents/free-plan-declaration.md)。
 /// 取得に失敗したときは宣言なしとして扱う — 従来どおり live を取りに行き、取れなければ
 /// fail-closed になる。
 pub fn plan_free_private(gh: &Gh, owner_repo: &str) -> bool {
@@ -221,7 +221,7 @@ pub fn check_run(gh: &Gh, poll: Poll, owner_repo: &str, sha: &str, branch: &str)
         ));
     };
 
-    // `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): この環境では
+    // `plan-free-private` 宣言(docs/agents/free-plan-declaration.md): この環境では
     // branch ruleset を作れず、取得は 403 になる。live を取りに行かず空として
     // 扱い、宣言(quality.json)の context が head で報告されているかだけを
     // 検査する。宣言を外せば(Team 切替)live の照合が元に戻る。

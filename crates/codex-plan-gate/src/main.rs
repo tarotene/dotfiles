@@ -21,7 +21,7 @@
 //! 達したら形式検査の拒否だけを以後抑止する。レビューと base の鮮度検査は
 //! 各エンジンが持つ上限・状態を使い、このカウンタでは抑止しない。
 //! `stop_hook_active` 素通しだと block 直後の再呼び出しが判定に届かない
-//! (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。
+//! (docs/agents/copilot-plan-review.md の「第二次の非収束」と同型)。
 //!
 //! 縮退(ADR-0005 の binary-existence gating に倣う): plan-scope-gate・
 //! plan-precedent-gate 不在 / 判定不能な stdin は黙って exit 0(判定不能を
@@ -145,7 +145,7 @@ fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<St
         if let Some(cwd) = input["cwd"].as_str() {
             cmd.current_dir(cwd);
         }
-        let Some((status, out)) = hook_io::proc::output_with_timeout(
+        let Some((status, out)) = process_control::output_with_timeout(
             &mut cmd,
             std::time::Duration::from_secs(seconds),
             Some(raw.as_bytes()),
@@ -182,7 +182,7 @@ fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<St
     // deliberate fail-open. Neither revokes the evidence that existing means
     // were investigated: this ledger is not an approval or a review certificate.
     if findings.is_empty() && !execution_incomplete && !new_tool_guard::hook::skipped() {
-        if let Some(parsed) = hook_io::HookInput::parse(&raw) {
+        if let Some(parsed) = agent_session::HookInput::parse(&raw) {
             // The ledger records prior investigation, not permission to implement.
             new_tool_guard::hook::record_plan_lines(&parsed);
         }

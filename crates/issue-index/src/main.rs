@@ -1,6 +1,6 @@
 //! issue-index の hook 本体(SessionStart)。縮退はすべて exit 0
 //! (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
-//! docs/claude/issue-index.md。
+//! docs/agents/issue-index.md。
 
 use issue_index::{build, build_human_only, owner_repo, total_count, Context, PrStatus, Scope};
 use serde_json::Value;

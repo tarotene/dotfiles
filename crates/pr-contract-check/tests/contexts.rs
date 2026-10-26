@@ -193,7 +193,7 @@ fn owner_other_than_tarotene() {
     assert_eq!(r.code, 0, "{}", r.both());
 }
 
-/// `plan-free-private`(docs/claude/free-plan-declaration.md): 無料プランの非公開
+/// `plan-free-private`(docs/agents/free-plan-declaration.md): 無料プランの非公開
 /// リポジトリでは branch ruleset の取得が 403 になる。
 #[test]
 fn plan_free_private_skips_live_but_still_checks_declared() {

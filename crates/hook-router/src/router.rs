@@ -11,7 +11,8 @@
 //! - 素通りさせた規則(panic・時間切れ)があれば、`systemMessage` で利用者に知らせる。
 
 use crate::rules::{Event, Rule};
-use hook_io::{Agent, Outcome};
+use agent_session::Agent;
+use agent_session::Outcome;
 use serde_json::{json, Map, Value};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{self, RecvTimeoutError};

@@ -66,8 +66,8 @@
       # home-manager layer). ~/.nix-profile/bin precedes /usr/bin on PATH.
       pandoc
 
-      # Slide decks from a speaker script (talk-script skill,
-      # docs/claude/talk-script.md). The script lives in HTML comments of one
+      # Slide decks from a speaker script (presentation-authoring skill,
+      # docs/agents/presentation-authoring.md). The script lives in HTML comments of one
       # Markdown file; `marp --notes` derives the plain-text script from it and
       # plain `marp` renders the HTML deck (presenter view on `p`). Chosen over
       # Slidev / reveal.js because only Marp CLI exports the notes alone as text.
@@ -75,7 +75,7 @@
       marp-cli
 
       # Terminal-look capture for PR Before/After evidence (pr-description
-      # skill, docs/claude/pr-description.md — G_visual in pr-gate enforces
+      # skill, docs/agents/pr-description.md — G_visual in pr-gate enforces
       # that evidence exists). Binary: `freeze`. Chosen over termshot (also in
       # stable) because freeze renders ANSI text piped on stdin
       # (`cmd | freeze -o out.svg`), so a "Before" state captured before a
@@ -118,7 +118,7 @@
       # into script.google.com and reading results off the browser
       # execution log (ADR-0030 — a GAS script's Logger-only URL output was
       # missed and cost a re-run). Setup/login/day-to-day usage is the
-      # gas-clasp-ops skill (docs/claude/gas-clasp-ops.md); credentials stay
+      # gas-clasp-ops skill (docs/agents/gas-clasp-ops.md); credentials stay
       # host-local, not managed here.
       google-clasp
 
@@ -235,7 +235,7 @@
   };
 
   # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
-  # ラッパー(docs/claude/git-stash-guard.md)。~/.local/bin に置くだけで
+  # ラッパー(docs/agents/git-stash-guard.md)。~/.local/bin に置くだけで
   # git のサブコマンド解決に乗り、`git shelve` / `git unshelve` と呼べる
   # (alias 不要)。config/claude/hooks/git-stash-guard.sh の deny 案内が
   # ここへ誘導する。Rust 実装(crates/git-shelve、#416)の bin を指す。
@@ -253,7 +253,7 @@
   home.file.".local/bin/git-prune-branches".source = "${pkgs.dotfiles-tools}/bin/git-prune-branches";
 
   # pr-title-check: checker 単一ソース for the PR-title commit-message
-  # contract (ADR-0031, docs/claude/pr-title-contract.md). Rust 実装
+  # contract (ADR-0031, docs/agents/pr-title-contract.md). Rust 実装
   # (crates/pr-title-check、#415)の bin を指す。client-side guard
   # (crates/pr-title-guard)は同じ crate の check_title を直接リンクして
   # 呼び、サーバ側 required check(.github/actions/pr-title)は同じ crate を
@@ -262,7 +262,7 @@
   home.file.".local/bin/pr-title-check".source = "${pkgs.dotfiles-tools}/bin/pr-title-check";
 
   # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
-  # docs/claude/adr-numbering.md — 番号を導入 PR の番号にすることで採番
+  # docs/agents/adr-numbering.md — 番号を導入 PR の番号にすることで採番
   # 衝突を構造的に不可能にする決定). Both .github/workflows/ci.yml's
   # required check and the adr-number hook (crates/adr-number) call
   # this one script, so the rule never drifts between the two enforcement
@@ -274,7 +274,7 @@
   };
 
   # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
-  # colocation rule (docs/claude/decision-colocation.md — 決定成果物
+  # colocation rule (docs/agents/decision-colocation.md — 決定成果物
   # (ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment`
   # 追加に、その決定を執行する実ファイルの同梱を要求する決定). Since #415
   # (ADR-0024 Stage 4a) it is a Rust binary (crates/decision-colocation);
@@ -302,14 +302,14 @@
 
   # writing-style-hub: resolves the private style-guide hub's absolute path
   # (marker file or env var indirection — never hardcoded, #115) for the
-  # writing-style skill. docs/claude/writing-style.md has the design.
+  # writing-style skill. docs/agents/writing-style.md has the design.
   # Rust 実装(crates/hub-resolve、#414)の bin を指す。
   home.file.".local/bin/writing-style-hub".source = "${pkgs.dotfiles-tools}/bin/writing-style-hub";
 
   # performance-hub: resolves another private person-state repository's
   # absolute path (same marker-file/env-var indirection as writing-style-hub
-  # above) for the performance-planning skill.
-  # docs/claude/performance-planning.md has the design (that repository's
+  # above) for the music-performance-planning skill.
+  # docs/agents/music-performance-planning.md has the design (that repository's
   # own ADR-0009).
   home.file.".local/bin/performance-hub".source = "${pkgs.dotfiles-tools}/bin/performance-hub";
 

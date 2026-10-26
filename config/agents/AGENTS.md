@@ -277,7 +277,7 @@ inbox 等)へ流す。レビュー負荷が事実上ゼロの微小修正(数行
 dead link 修正等)に限り、断りを入れた上で同一 PR に同梱してよい。
 
 書式・具体的な自己検査手順はツールごとの運用規約(Claude Code なら
-scope-inventory スキル)に従う。
+requirements-inventory スキル)に従う。
 
 依頼に「調査・事前レビュー」と「作ってみる」が並ぶときは、成果物を 1 回きりの
 実物でなく、再利用するパターンの試作として扱う。
@@ -381,7 +381,7 @@ ADR・設計文書・skill のような決定成果物を追加するときは�
   PR の最大番号からの推測で番号を書かない — 欠番があり、確定値ではない
   (2026-10-04 に 255 と推測して外れた)。
 - 起草中の ADR を、コード・コメント・文書から参照するときは、題名でなく、
-  `--fix` が書き換える仮番号の形式で書く(形式は `docs/claude/adr-numbering.md`)。
+  `--fix` が書き換える仮番号の形式で書く(形式は `docs/agents/adr-numbering.md`)。
   題名での参照は改番で直らず、番号のない参照が残る(2026-10-20 に実際に
   起きた)。
 - 第三者製 skill の「最大番号を探して +1」という指示(domain-modeling の
@@ -435,7 +435,7 @@ ADR・設計文書・skill のような決定成果物を追加するときは�
 形式検査は `main-checkout-guard`(PreToolUse の deny + Stop の事後検出)が
 担う。gate に当たる前に自発的に worktree を切ること — gate は漏れを拾う
 ためのもので、一次的な手段ではない。設計は
-`docs/claude/main-checkout-guard.md`。
+`docs/agents/main-checkout-guard.md`。
 
 # GitHub に投稿するテキストには生成元を明示する
 
@@ -521,7 +521,7 @@ watcher / assignee には通知が飛ぶ。
 書き、キーの発行や契約のような人手・戻せない作業より前に、実測を置く。
 
 書式・自己検査の具体手順はツールごとの運用規約(Claude Code なら
-selection-grounding スキル)に従う。
+technology-selection スキル)に従う。
 
 # 道具を新設する前に既存手段を問い、決定論化は段階で昇格させる
 
@@ -562,7 +562,7 @@ Issue・PR)から導出できないかを問い、導出できるなら記録を
 再確認する(#739)。
 
 書式・自己検査の具体手順はツールごとの運用規約(Claude Code なら
-precedent-grounding / selection-grounding スキルの `既存手段:` 行)に
+precedent-grounding / technology-selection スキルの `既存手段:` 行)に
 従う。
 
 # 外部発信は既定で下書き止まりにする
@@ -609,7 +609,7 @@ Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発
 - Claude Code では、Slack MCP tool の送信系(`send_message` /
   `reply` / `schedule_message` / `post_message`)を PreToolUse hook が
   deny し、draft 系ツールへ誘導することで決定論的に担保する
-  (`crates/external-send-guard`、`docs/claude/external-send-guard.md`)。
+  (`crates/external-send-guard`、`docs/agents/external-send-guard.md`)。
   この機械強制はツールごとの運用規約側の責務であり、本節はその方針を
   宣言するだけに留める。
 

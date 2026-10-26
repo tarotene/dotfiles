@@ -316,7 +316,7 @@ Or, to switch to a specific older generation:
 **`--rollback` re-executes the activation script baked into the target
 generation, not the current one.** For most modules that is invisible — the
 target generation's `home.file` / `home.packages` are exactly what you get.
-But for the imperative `~/.claude/settings.json` merge (`settings-reconcile claude-hooks` /
+But for the imperative `~/.claude/settings.json` merge (`agent-settings-reconcile claude-hooks` /
 `claude-permissions` / `claude-statusline`, wired in `home/modules/claude.nix`), it
 means a rollback to a generation that predates a hook's declarative retirement
 cannot retire it — the old activation never learned about the retirement.
@@ -497,7 +497,7 @@ home-manager is supposed to be the source of truth for this value.
 The second effect is nastier because it is invisible. Once `~/.gitconfig`
 exists, `git config --global` addresses *that* file and stops seeing the XDG
 config entirely, so any script reading a home-manager-declared value with
-`--global` silently gets nothing. The `sign-prewarm` hook hit exactly this
+`--global` silently gets nothing. The `gpg-prewarm` hook hit exactly this
 during development and had to drop to a scope-less `git config --get`.
 
 ```bash

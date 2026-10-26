@@ -4,7 +4,7 @@
 //! JSON として読めない・`tool_name` が無い入力を素通す。素通りにした規則は `gate-events.jsonl` に
 //! `fail-open` で記録する(記録は best-effort)。
 
-use hook_io::Agent;
+use agent_session::Agent;
 use hook_router::{
     applicable, execute_for, execute_inputs_for, merge, render, tool_name, Event, Tools, Verdict,
 };
@@ -106,7 +106,7 @@ fn main() {
     }
     let results = execute_inputs_for(agent, &checks);
 
-    if let Some(path) = hook_io::gate_event::default_path() {
+    if let Some(path) = agent_session::gate_event::default_path() {
         for (node, verdict) in &results {
             if matches!(verdict, Verdict::Panicked | Verdict::TimedOut) {
                 let decision = if *node == "agent-permissions" {
@@ -114,7 +114,13 @@ fn main() {
                 } else {
                     "fail-open"
                 };
-                let _ = hook_io::gate_event::record(&path, node, decision);
+                // Persisted event identities survive display/package renames.
+                let recorded_node = if *node == "pr-followup-guard" {
+                    "pr-confirm-guard"
+                } else {
+                    node
+                };
+                let _ = agent_session::gate_event::record(&path, recorded_node, decision);
             }
         }
     }

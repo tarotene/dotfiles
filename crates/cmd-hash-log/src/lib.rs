@@ -6,15 +6,15 @@
 //! コマンド本文はどこにも書かない(ADR-0011 のプライバシー規約 —
 //! `agent-turn-log.sh` の「本文を1箇所以外に出さない」方針を、ここでは
 //! 「どこにも出さない(ハッシュのみ)」までさらに強める)。正規化・ハッシュ
-//! そのものは `hook_io::cmd_hash` が単一正本(段4 の promotion-detect が
+//! そのものは `command_inspection::cmd_hash` が単一正本(段4 の promotion-detect が
 //! SKILL.md のコードブロックを同じ関数でハッシュして照合する)。
 
-use hook_io::HookInput;
+use agent_session::HookInput;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
 /// `explicit`(`CMD_HASH_LOG_PATH`)→ `xdg_state_home` → `home` の順に解決。
-/// `hook_io::gate_event::default_path_with` と同じ優先順位。
+/// `agent_session::gate_event::default_path_with` と同じ優先順位。
 pub fn resolve_log_path(
     explicit: Option<&OsStr>,
     xdg_state_home: Option<&OsStr>,
@@ -35,7 +35,7 @@ pub fn resolve_log_path(
 /// Bash 以外・コマンドが空なら記録しない(`None`)。
 pub fn build_record(input: &HookInput, repo_key: &str, ts_unix: u64) -> Option<String> {
     let cmd = input.bash_command()?;
-    let hash = hook_io::cmd_hash::hash(cmd);
+    let hash = command_inspection::cmd_hash::hash(cmd);
     Some(
         serde_json::json!({
             "ts_unix": ts_unix,
@@ -49,7 +49,7 @@ pub fn build_record(input: &HookInput, repo_key: &str, ts_unix: u64) -> Option<S
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。コマンドのハッシュを 1 行、ログに追記する。
 /// 出力は無い(`None`)。`main` と、ルータ(`crates/hook-router`)が同じ関数を呼ぶ。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     use std::io::Write;
     let input = HookInput::parse(raw)?;
     if input.hook_event_name != "PostToolUse" {
@@ -58,7 +58,7 @@ pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
 
     let repo_key = input
         .project_dir()
-        .and_then(|d| hook_io::git::toplevel(&d))
+        .and_then(|d| git_repository::toplevel(&d))
         .and_then(|p| p.to_str().map(str::to_string))
         .unwrap_or_default();
 

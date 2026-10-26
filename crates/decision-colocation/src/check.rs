@@ -1,6 +1,6 @@
 //! 決定成果物(ADR / 設計文書 / skill)の新規追加、または既存 ADR への
 //! `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する
-//! 判定エンジン(ADR-396、docs/claude/decision-colocation.md)。
+//! 判定エンジン(ADR-396、docs/agents/decision-colocation.md)。
 //!
 //! bash 版 `scripts/decision-colocation-check` の移植。client guard
 //! (`decision-colocation-guard`)と CI required check
@@ -13,7 +13,7 @@
 //! 残して実装を後続 Issue に分離する」経路を、機械的に成立不能にする。
 //!
 //! トリガ(base との diff が次のいずれかを含むとき発火):
-//! 1. `docs/adr/**` / `docs/claude/**` / `config/claude/skills/**` への
+//! 1. `docs/adr/**` / `docs/claude/**` / `config/agents/skills/**` への
 //!    新規ファイル追加(`--diff-filter=A`)
 //! 2. 既存 `docs/adr/*.md` への `^## Amendment` 見出しの追加
 //!    (diff の追加行に現れる見出し行そのものを新規と見なす)
@@ -29,7 +29,7 @@
 //!   が無変更のパスの併記だけでは合格しない(「既存機構を再利用する」という
 //!   自己申告と、実際にそれを検証する変更を区別できないため — ADR-387 が実例)。
 //! - トリガ1が `docs/adr/` 以外(`docs/claude/**` または
-//!   `config/claude/skills/**` の新規)のときは、節を要求せず、PR の diff 全体に
+//!   `config/agents/skills/**` の新規)のときは、節を要求せず、PR の diff 全体に
 //!   「非 `.md` かつ非 `docs/`」のパスが 1 つ以上あることだけを検査する。
 //! - どのトリガにも触れない diff(索引修繕・typo・既存ファイルの編集のみ)は
 //!   無条件で適合。既存 ADR への遡及適用はしない。
@@ -59,7 +59,7 @@ fn is_space(c: char) -> bool {
 // ---- 経路の述語 -----------------------------------------------------------
 
 /// 執行点として認めるパスか: 非 `.md` かつ非 `docs/` 配下(パス分類台帳を
-/// 持たず、この 2 つの述語だけで判定する — docs/claude/decision-colocation.md
+/// 持たず、この 2 つの述語だけで判定する — docs/agents/decision-colocation.md
 /// の D3)。bash の `case` は `*` が `/` にも一致するので、`docs/*` は
 /// 前方一致、`*.md` は後方一致。
 pub fn is_execution_point_path(p: &str) -> bool {
@@ -79,9 +79,11 @@ pub fn is_new_adr_path(p: &str) -> bool {
     digits > 0 && !name.contains('/') && name[digits..].starts_with('-') && name.ends_with(".md")
 }
 
-/// `docs/claude/*` / `config/claude/skills/*`(ADR 以外の決定成果物)。
+/// `docs/claude/*` / `config/agents/skills/*`(ADR 以外の決定成果物)。
 pub fn is_non_adr_artifact_path(p: &str) -> bool {
-    p.starts_with("docs/claude/") || p.starts_with("config/claude/skills/")
+    (p.starts_with("docs/claude/") || p.starts_with("docs/agents/"))
+        || p.starts_with("config/claude/skills/")
+        || p.starts_with("config/agents/skills/")
 }
 
 // ---- git ------------------------------------------------------------------
@@ -89,7 +91,7 @@ pub fn is_non_adr_artifact_path(p: &str) -> bool {
 /// `git -C <repo> <args…>` の標準出力。失敗(`--base` が解決できない等)は
 /// 空文字 — bash の `2> /dev/null || true`。
 fn git_out(repo: &Path, args: &[&str]) -> String {
-    let bytes = hook_io::git::raw(repo, args).unwrap_or_default();
+    let bytes = git_repository::raw(repo, args).unwrap_or_default();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
@@ -430,13 +432,13 @@ pub fn run_check(repo_root: &Path, base: &str) -> Vec<String> {
         }
     }
 
-    // トリガ1b: ADR 以外の新規決定成果物(docs/claude/**, config/claude/skills/**)
+    // トリガ1b: ADR 以外の新規決定成果物(docs/claude/**, config/agents/skills/**)
     let non_adr_new = added_files
         .split('\n')
         .any(|f| !f.is_empty() && is_non_adr_artifact_path(f));
     if non_adr_new && !diff_has_execution_point(&changed_files) {
         out.push(format!(
-            "{PREFIX}docs/claude/ または config/claude/skills/ への新規追加がありますが、この PR の diff に非 .md かつ非 docs/ 配下のパスが含まれていません"
+            "{PREFIX}docs/claude/ または config/agents/skills/ への新規追加がありますが、この PR の diff に非 .md かつ非 docs/ 配下のパスが含まれていません"
         ));
     }
 
@@ -474,7 +476,7 @@ mod tests {
         assert!(!is_new_adr_path("docs/adr/template.md"));
         assert!(!is_new_adr_path("docs/adr/sub/0100-x.md"));
         assert!(!is_new_adr_path("docs/adr/0100.md"));
-        assert!(is_non_adr_artifact_path("config/claude/skills/a/SKILL.md"));
+        assert!(is_non_adr_artifact_path("config/agents/skills/a/SKILL.md"));
         assert!(!is_non_adr_artifact_path("docs/adr/x.md"));
     }
 

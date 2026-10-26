@@ -4,7 +4,7 @@
 - Date: 2026-09-25
 - Issue: Closes #419
 - Amends: なし。`.github/workflows/nix.yml` の既存の required check 構成
-  (ADR-0031 Amendment の merge 設定前提、docs/claude/pr-gate.md)には手を
+  (ADR-0031 Amendment の merge 設定前提、docs/agents/pr-gate.md)には手を
   加えない。
 
 ## Context
@@ -14,7 +14,7 @@ stacked PR(直近 100 PR 中 39 本が base≠main)では、各段で `nix.yml` 
 と `ci.yml` の 3 ジョブが毎回フルに走る。`pr-gate.sh` は base≠main の段では
 required check が定義できない(ruleset は `~DEFAULT_BRANCH` スコープ)ため、
 報告された全チェックが quiesce するまで待つ設計になっている
-(docs/claude/pr-gate.md「required check が無いと、ゲートは空振りする」)。
+(docs/agents/pr-gate.md「required check が無いと、ゲートは空振りする」)。
 つまり中間段のセッションの Stop 待ちは、実質「一番遅いジョブの完了」で
 決まる。
 
@@ -180,7 +180,7 @@ required check が定義できない(ruleset は `~DEFAULT_BRANCH` スコープ)
 Decision 1〜3 の stack 軸は、bottom 段(base=main)を常に `heavy=true` に
 した。しかし直近 60 本のマージ済み PR のうち約 33% は `flake.*` /
 `home/**` / `patches/**` / `crates/**` / `Cargo.*` を一切触っていない
-(docs のみ・`config/claude/skills/**` のみが典型)。bottom 段でも重い
+(docs のみ・`config/agents/skills/**` のみが典型)。bottom 段でも重い
 ジョブを毎回待つ運用(ユーザー確認、2026-09-26)では、required でない
 `build altair` を含む全ジョブの完走を Stop 前に待つため、stack 軸だけでは
 このコストを取り切れない。

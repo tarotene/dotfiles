@@ -6,7 +6,8 @@
   ...
 }:
 let
-  settingsReconcile = "${pkgs.dotfiles-tools}/bin/settings-reconcile";
+  repoConfig = ../../config;
+  settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
 
   # Shared permission declarations own the sandbox and review policy.
   # This writer keeps only the unrelated terminal display preference.
@@ -54,7 +55,7 @@ in
         "reconcileCodexConfig"
       ]
       ''
-        # pipeline-node: settings-reconcile
+        # pipeline-node: agent-settings-reconcile
         if [ -f "$HOME/.local/state/dotfiles/agent-permissions.json" ]; then
           # home-manager's activation PATH excludes user-profile executables.
           # Inventory uses git ls-files to protect tracked local settings.
@@ -87,7 +88,11 @@ in
   # A single writer preserves Codex-owned trust, model selection, and formatting.
   # TUI overrides last until the next switch; new sessions load the declaration.
   home.activation.reconcileCodexConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    # pipeline-node: settings-reconcile
+    # pipeline-node: agent-settings-reconcile
     run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
   '';
+  home.file.".codex/AGENTS.md".text =
+    builtins.readFile (repoConfig + "/agents/AGENTS.md")
+    + "\n"
+    + builtins.readFile (repoConfig + "/codex/AGENTS.codex.md");
 }

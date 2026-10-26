@@ -499,7 +499,7 @@ fn gate_events_record_fail_open_then_pass() {
     let fo = ("copilot-plan-review".to_string(), "fail-open".to_string());
     assert_eq!(e.events(), vec![fo.clone(), fo.clone()]);
     assert_eq!(
-        hook_io::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
+        agent_session::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
         2
     );
 
@@ -510,7 +510,7 @@ fn gate_events_record_fail_open_then_pass() {
     let pass = ("copilot-plan-review".to_string(), "pass".to_string());
     assert_eq!(e.events(), vec![fo.clone(), fo, pass]);
     assert_eq!(
-        hook_io::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
+        agent_session::gate_event::trailing_fail_open(&events_path, "copilot-plan-review"),
         0
     );
 }

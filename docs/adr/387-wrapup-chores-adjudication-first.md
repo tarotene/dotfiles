@@ -3,9 +3,9 @@
 - Status: Accepted
 - Date: 2026-09-23
 - Issue: No-Issue(ユーザー依頼の grill-me セッションで確定)
-- Supersedes: `config/claude/skills/wrapup-chores/SKILL.md` の 2026-09-21 版
+- Supersedes: `config/agents/skills/wrapup-chores/SKILL.md` の 2026-09-21 版
   (「判断を要さないものだけを対処し、要判断は一切手を付けず放置する」設計)
-  を全面的に置き換える。`docs/claude/github-audit-triage.md` L76-79 の
+  を全面的に置き換える。`docs/agents/github-audit-triage.md` L76-79 の
   「`wrapup-chores.md` と同じ型を踏襲しているため確認の往復は増えない」という
   相互参照の前提を部分的に更新する(本 ADR の射程外、参照修正のみ)。
 
@@ -13,7 +13,7 @@
 
 `wrapup-chores` スキルは、wrap-up inbox の未起票項目と起票済み wrapup 由来
 open Issue をまとめて 1 つの chores PR で一括対処する器として導入された
-(`docs/claude/wrapup-chores.md`)。運用実績を踏まえたユーザーからのグリル
+(`docs/agents/backlog-cleanup.md`)。運用実績を踏まえたユーザーからのグリル
 (2026-09-23)で、次の実害が特定された:
 
 1. **母集団から落ちる件数が多い**: open Issue 28 件のうち、実際に chores PR の
@@ -100,10 +100,10 @@ chores PR に物理的に入らない規模の項目(設計構想・大型機能
 
 ## Consequences
 
-- `config/claude/skills/wrapup-chores/SKILL.md` を全面改訂する(9 節構成)。
-- `docs/claude/wrapup-chores.md` に日和りの構造・検査器を新設しない理由・
+- `config/agents/skills/wrapup-chores/SKILL.md` を全面改訂する(9 節構成)。
+- `docs/agents/backlog-cleanup.md` に日和りの構造・検査器を新設しない理由・
   stacked PR への出力変更を追記する。
-- `docs/claude/github-audit-triage.md` の相互参照 1 行(L76-79)が陳腐化するため
+- `docs/agents/github-audit-triage.md` の相互参照 1 行(L76-79)が陳腐化するため
   修正する。`github-audit-triage` 自体の型は変えない(本 ADR の射程外)。
 - `github-audit-triage` にも同じ裁定フェーズを入れるべきかは未検証のため、
   wrap-up inbox に検討項目として追記し、この ADR のスコープには含めない。

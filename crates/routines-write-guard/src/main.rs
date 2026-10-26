@@ -4,7 +4,9 @@
 //! (判定できないことを deny に変えない — rulesets-write-guard と同じ
 //! fail-open 方針)。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use std::io::Read;
 
 fn main() {

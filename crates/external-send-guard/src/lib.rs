@@ -2,7 +2,7 @@
 //! (Gmail の create_draft / Slack の draft 系 tool)へ誘導する PreToolUse hook
 //! (#413 で `config/claude/hooks/external-send-guard.sh` から移植)。
 //!
-//! 設計と根拠: docs/claude/external-send-guard.md。
+//! 設計と根拠: docs/agents/external-send-guard.md。
 //!
 //! 判定は 2 つ:
 //! - Gmail: 外部宛(自分のアドレス以外を含む、または reply で宛先が暗黙)の
@@ -240,7 +240,7 @@ fn self_list_path() -> Option<std::path::PathBuf> {
 ///
 /// `EXTERNAL_SEND_GUARD_ALLOW=1` なら判定しない。`raw` は、不正な UTF-8 を U+FFFD に
 /// 置き換えたあとの文字列(jq と同じ)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     if std::env::var_os("EXTERNAL_SEND_GUARD_ALLOW").as_deref() == Some("1".as_ref()) {
         return None;
     }
@@ -254,7 +254,7 @@ pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
         .and_then(|p| std::fs::read(p).ok())
         .map(|c| parse_self_list(&c))
         .unwrap_or_default();
-    decide(tool, &input, &self_set).map(hook_io::Outcome::Deny)
+    decide(tool, &input, &self_set).map(agent_session::Outcome::Deny)
 }
 
 #[cfg(test)]

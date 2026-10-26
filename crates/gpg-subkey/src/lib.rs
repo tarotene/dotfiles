@@ -44,7 +44,7 @@
 //! Amendment 4 — `[E]` の元の card-backed subkey は、on-disk の `[E]` が日常の復号を担った
 //! 後も fallback/災害復旧経路として意図的に live のまま残す)。「現在どの subkey が有効か」
 //! の解決も rotate の revoke 候補収集も、on-disk の秘密素材(GnuPG `--with-colons` 欄 15
-//! == "+"、`crates/sign-prewarm` の key_is_on_disk と同じ判定)に限る — card-backed
+//! == "+"、`crates/gpg-prewarm` の key_is_on_disk と同じ判定)に限る — card-backed
 //! (token serial)と stub(#)は候補にならない。
 //!
 //! 機密: パスフレーズ・PIN は pinentry(本番)か、テスト用 fixture 鍵の loopback
@@ -446,7 +446,7 @@ fn generate_on(
         err(&format!(
             "  で暗号化している対象(例: esa MCP の token.gpg)を、新しい [E] subkey {new_keyid}"
         ));
-        err("  宛に再暗号化してください(docs/claude/esa-mcp.md 参照)");
+        err("  宛に再暗号化してください(docs/agents/esa-mcp.md 参照)");
     }
     Ok(new_keyid)
 }
@@ -1132,9 +1132,9 @@ fn fix_github(gh_json: &serde_json::Value, primary_short: &str, current_export: 
     // `jq -n --arg key "$current_export" '{armored_public_key: $key}'` と同じ JSON。
     let payload = format!(
         "{}\n",
-        hook_io::jqfmt::J::obj(vec![(
+        jq_json_compat::jqfmt::J::obj(vec![(
             "armored_public_key",
-            hook_io::jqfmt::J::str(current_export)
+            jq_json_compat::jqfmt::J::str(current_export)
         )])
         .pretty()
     );

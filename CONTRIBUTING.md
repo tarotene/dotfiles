@@ -21,7 +21,7 @@ An Issue that proposes adopting a tool carries a "feasibility check on the host"
 
 ## Pull requests
 
-Every PR body follows the 5-section skeleton described in `docs/claude/pr-description.md` and either closes an issue or states `No-Issue: <reason>`. CI (`.github/workflows/`) must pass before merge; this repository merges by squash only.
+Every PR body follows the 5-section skeleton described in `docs/agents/pr-description.md` and either closes an issue or states `No-Issue: <reason>`. CI (`.github/workflows/`) must pass before merge; this repository merges by squash only.
 
 ## Expectations
 

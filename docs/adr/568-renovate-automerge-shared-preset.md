@@ -24,7 +24,7 @@
   が 0 本の死んだ設定。`docs/operations.md` は「Renovate が dotfiles の
   flake.lock を週次更新している」と書いていたが、実績はゼロだった。
 - automerge ポリシーは全 repo で共通にしたいが、現状は
-  `config/claude/skills/{rust,astro,typst}-repo-governance/templates/
+  `config/agents/skills/{rust,astro,typst}-repo-governance/templates/
   renovate.json` の 3 テンプレートと dotfiles 自身の `renovate.json` に
   同種の設定が複写されており、ポリシー変更のたびに複数 PR が要る構造
   だった。
@@ -115,7 +115,7 @@ github-audit で差分は検知できるが、ポリシー変更のたびに複�
 外した候補: 専用 `renovate-config` repo の新設 — 感触で外した
 (governance の正本が dotfiles に集約されている現状と分散する気がした。
 分析ではない)。
-既存手段: `config/claude/skills/*-governance/templates/renovate.json`
+既存手段: `config/agents/skills/*-governance/templates/renovate.json`
 — 拡張: 既存テンプレートを extends 形に縮退させ、preset 参照の解決は
 Renovate 標準の `github>` プリセット機構に任せる(新しい同期スクリプトは
 書かない)。
@@ -234,7 +234,7 @@ repo)は、Stage 3 と同じ関数(`judge_renovate()`)を触るため、この P
 チェーンの一段として直す。
 
 出典: `docs/adr/0027-uncertainty-first-stacking.md`、
-`config/claude/skills/scope-inventory/SKILL.md` §4(取得 2026-09-29)。
+`config/agents/skills/scope-inventory/SKILL.md` §4(取得 2026-09-29)。
 差分: 一致。
 軸: 還元 — 展開セッションの findings から偽陽性・偽陰性を消し、triage の
 手戻りを無くす。

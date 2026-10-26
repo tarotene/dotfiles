@@ -7,7 +7,7 @@ publish.workspace = true
 description = "ファイル/URL を切り離して開く open / xdg-open / $BROWSER(scripts/detach-open.sh の Rust 移植、ADR-0024)"
 
 [dependencies]
-hook-io = { version = "0.1.0", path = "../hook-io" }
+process-control = { version = "0.1.0", path = "../process-control" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
