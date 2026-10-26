@@ -21,6 +21,10 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。
 
+`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
+Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
+グローバルな通信許可へ昇格させず、native の一回の審査を使う。
+
 ## sandbox の中で動く shell は自動で許可する
 
 `sandboxed_shell`(`auto` | `prompt`、既定 `auto`)は、native sandbox の中で動く shell コマンドに
@@ -46,19 +50,19 @@ sandbox の中では動かず、sandbox を外した再実行として一回ず�
 「policy changed」で失敗し、hook は inert な呼び出し以外の全ツールを拒否する。拡大を伴う変更は、
 本人の端末で次の順に、続けて行う。
 
-1. `nix build .#homeConfigurations.<host>.config.dotfiles.agentPermissions.policyFile --no-link --print-out-paths` で新しい policy のパスを得る。
-2. `agent-permissions reclaim` で、待機の許可を昇格候補のキューへ退避する。配備済みの
+1. 新しいバイナリと新しい policy のパスを得る。`hms` を当てる前の `agent-permissions` は旧版で、
+   `deny_unknown_fields` のため新しい policy の欄を読めない(2026-10-26 に `unknown field` で拒否されるのを実測)。
+   以降は、ここで得た新しいバイナリを使う。
+   - `nix build .#dotfiles-tools --no-link --print-out-paths`(この出力 + `/bin/agent-permissions`)
+   - `nix build .#homeConfigurations.<host>.config.dotfiles.agentPermissions.policyFile --no-link --print-out-paths`
+2. 新しいバイナリで `reclaim` を実行し、待機の許可を昇格候補のキューへ退避する。配備済みの
    policy.json と記録が一致している間に行う。これを飛ばすと `migrate` が待機の許可を
    キューに残さず取り除く。
-3. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check`。
-4. 直ちに `hms` で `policy.json` を配備する。
+3. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check` を、新しいバイナリで行う。
+4. 直ちに `hms` で新しいバイナリと `policy.json` を配備する。
 
 3 と 4 の間は、配備済みの policy.json が旧版なので、この間も全ツールが止まる。短い間に済ませ、
 その間は本人の端末だけで作業する。
-
-`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
-Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
-グローバルな通信許可へ昇格させず、native の一回の審査を使う。
 
 ## 移行前に一覧を確認する
 
