@@ -7,7 +7,7 @@
 //! of the shared policy is the owner's decision (`/promote-permissions`); nothing
 //! here widens the policy.
 use super::pending::{Pending, Revert, ToolRevert};
-use super::{assess, digest, read, state_path, transaction, Policy};
+use super::{assess, digest, load_record, read, state_path, transaction, Policy};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -291,7 +291,13 @@ pub fn hook_output(event: &str, stdin: &str) -> String {
     if !policy_path.exists() || !state_path(&home).exists() {
         return String::new();
     }
-    let Ok(policy) = Policy::load(&policy_path) else {
+    // Same baseline as the permission hook: the reviewed record's policy, so a
+    // deployed-but-unreviewed expansion does not switch reclaim off (#1060). A
+    // damaged record falls back to the deployed file, and reclaim reports it.
+    let Ok(policy) = load_record(&home)
+        .map(|record| record.policy)
+        .or_else(|_| Policy::load(&policy_path))
+    else {
         return String::new();
     };
     let cwd = serde_json::from_str::<Value>(stdin)
