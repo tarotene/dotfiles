@@ -88,3 +88,31 @@ herdr は作業単位ごとに worktree を作り、その土台に親 checkout 
 
 - `cargo test -p main-checkout-guard` — deny/allow の境界、baseline、Stop の事後検出。
 - `nix build .#homeConfigurations.vega.activationPackage --no-link` — hook の配備と登録が通る。
+
+## Amendment (2026-10-27 — Stop が block するのは、書きうる操作で触れた checkout だけ, #898)
+
+D4 の Stop は、触れた時点でクリーンな default branch にいた checkout が動いていれば、触れ方を
+問わず block していた。読み取りだけ(`git log`・`cat`・`grep`・`fetch`)で触れた checkout を、
+別のセッションか人が rebase して HEAD が非 fast-forward に動いたとき、このセッションの変更
+として報告され、報告と確認の 1 ターンが無駄になった(#898、再発 2 回)。D5「他者の残骸を
+このセッションの責任にしない」を、Stop 側の帰属へ広げる。
+
+- 台帳(baseline)の 1 行に 6 列目 `may_write`(書きうる操作で触れたか)を足す。旧い書式
+  (5 列)の行は `may_write = 1` として読む(従来の挙動を保つ後方互換)。
+- **読み取り専用の許可リスト**(`READ_ONLY_COMMANDS`、`is_read_only_git`)にある Bash
+  (`cat` `grep` `ls` `find`(`-delete`・`-exec` 等を除く)、読み取り系 git、`fetch` など)と、
+  Read/Grep/Glob は読み取り。許可リストに無い Bash と、ファイルへ書き出すリダイレクトを
+  含む Bash は「書きうる」。`2>&1`・`/dev/null` への出力は書き込みでない。
+- Stop が block するのは `may_write = 1` の checkout だけ。読み取りだけの checkout の移動は
+  `systemMessage`(ユーザーへの注意書き)にとどめ、block せず、モデルへ報告・復元を促さない。
+- 読み取りで記録した checkout に、後から書きうる操作で触れたら、**その時点の状態**で
+  baseline を取り直す。書きうる操作の前の移動は、このセッションの書き込みの結果ではない。
+- 許可リストを不採用にした Alternatives の理由(保守と誤検知)は、PreToolUse の deny を
+  許可リストにする案に向けたもので、ここでは deny を変えない。リストに漏れても、
+  結果は従来どおり block(安全側)になるだけである。
+
+### 執行点
+
+- `crates/main-checkout-guard/src/lib.rs`
+- `crates/main-checkout-guard/src/main.rs`
+- `crates/main-checkout-guard/tests/cli.rs`

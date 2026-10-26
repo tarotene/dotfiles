@@ -76,11 +76,18 @@ fn stop(input: &HookInput, raw: &str) {
     let Some(ledger) = main_checkout_guard::ledger() else {
         return;
     };
-    let problems = main_checkout_guard::check_drift(&ledger, &input.session_id);
-    if !problems.is_empty() {
-        println!(
-            "{}",
-            json!({"decision": "block", "reason": main_checkout_guard::drift_reason(&problems)})
-        );
+    let drift = main_checkout_guard::check_drift(&ledger, &input.session_id);
+    // 読み取りだけで触れた checkout の移動は block せず、ユーザーへの注意書き
+    // (`systemMessage`)だけにする(#898)。
+    let notice =
+        (!drift.notices.is_empty()).then(|| main_checkout_guard::notice_text(&drift.notices));
+    if !drift.blocking.is_empty() {
+        let mut out = json!({"decision": "block", "reason": main_checkout_guard::drift_reason(&drift.blocking)});
+        if let Some(n) = notice {
+            out["systemMessage"] = json!(n);
+        }
+        println!("{out}");
+    } else if let Some(n) = notice {
+        println!("{}", json!({"systemMessage": n}));
     }
 }

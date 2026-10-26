@@ -213,8 +213,126 @@ fn read_tools_record_a_baseline() {
     );
     assert_eq!(out, "");
     git(&f.main, &["switch", "-q", "-c", "elsewhere"]);
+    // 読み取りだけで触れた checkout の移動は block せず、注意書きだけ(#898)。
     let out = run(&f, "stop", &stop(&f.linked, false));
-    assert!(out.contains("branch main -> elsewhere"), "{out}");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(v.get("decision").is_none(), "{out}");
+    assert!(
+        v["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("branch main -> elsewhere"),
+        "{out}"
+    );
+    // 報告済みの状態は繰り返さない。
+    assert_eq!(run(&f, "stop", &stop(&f.linked, false)), "");
+}
+
+/// #898 の再現: `git log`・`cat` だけで触れた checkout を、別セッション(や人)が
+/// rebase して HEAD が非 fast-forward に動いた。このセッションの変更として block しない。
+#[test]
+fn read_only_touch_then_foreign_rebase_does_not_block() {
+    let f = fixture();
+    let m = f.main.to_str().unwrap();
+    for cmd in [
+        format!("git -C {m} log --oneline"),
+        format!("cat {m}/a.txt"),
+        format!("grep -rn a {m}"),
+        format!("git -C {m} fetch origin"),
+    ] {
+        assert_eq!(run(&f, "pre", &bash(&cmd, &f.linked)), "", "{cmd}");
+    }
+    // 別セッションによる、同じ内容の別コミットへの付け替え(非 fast-forward)。
+    git(
+        &f.main,
+        &["commit", "-q", "--amend", "-m", "init (rebased)"],
+    );
+    let out = run(&f, "stop", &stop(&f.linked, false));
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(v.get("decision").is_none(), "{out}");
+    assert!(
+        v["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("not a fast-forward"),
+        "{out}"
+    );
+    assert_eq!(run(&f, "stop", &stop(&f.linked, false)), "");
+}
+
+/// 対照: 同じ非 fast-forward でも、書きうる操作(許可リストに無い Bash)で触れた
+/// checkout なら、従来どおり block する。
+#[test]
+fn may_write_touch_then_non_ff_move_still_blocks() {
+    let f = fixture();
+    let m = f.main.to_str().unwrap();
+    assert_eq!(
+        run(&f, "pre", &bash(&format!("touch {m}/probe"), &f.linked)),
+        ""
+    );
+    std::fs::remove_file(f.main.join("probe")).ok();
+    git(
+        &f.main,
+        &["commit", "-q", "--amend", "-m", "init (rebased)"],
+    );
+    let out = run(&f, "stop", &stop(&f.linked, false));
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["decision"], "block", "{out}");
+    assert!(v["reason"].as_str().unwrap().contains("not a fast-forward"));
+}
+
+/// 読み取りで記録した後に書きうる操作で触れたら、その時点の状態を基準に取り直す。
+/// それ以前の(別セッションによる)移動は報告せず、以後の移動だけを block する。
+#[test]
+fn upgrade_to_may_write_rebases_the_baseline() {
+    let f = fixture();
+    let m = f.main.to_str().unwrap();
+    run(&f, "pre", &bash(&format!("cat {m}/a.txt"), &f.linked));
+    // 読み取りのあとで、別セッションが動かした。
+    git(
+        &f.main,
+        &["commit", "-q", "--amend", "-m", "init (rebased)"],
+    );
+    // その後に、書きうる操作で触れた(基準を取り直す)。
+    run(
+        &f,
+        "pre",
+        &bash(&format!("sed -i s/a/b/ {m}/a.txt"), &f.linked),
+    );
+    // 書きうる操作のあとは、動いていない: 何も出ない。
+    assert_eq!(run(&f, "stop", &stop(&f.linked, false)), "");
+    // 以後の変更(迂回の書き込み)は block する。
+    std::fs::write(f.main.join("a.txt"), "changed\n").unwrap();
+    let out = run(&f, "stop", &stop(&f.linked, false));
+    assert!(out.contains("\"decision\":\"block\""), "{out}");
+}
+
+/// 後方互換: 列が無い旧い書式の baseline 行は、書きうる操作で触れたものとして読み、
+/// 従来どおり block する。
+#[test]
+fn legacy_five_column_ledger_line_still_blocks() {
+    let f = fixture();
+    std::fs::create_dir_all(&f.state).unwrap();
+    let sha = String::from_utf8(
+        Command::new("git")
+            .arg("-C")
+            .arg(&f.main)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    // status_hash が現在と食い違う(= 作業ツリーが変わった)旧い書式の行。
+    let line = format!("{}\tmain\t{}\t1\t1\n", f.main.display(), sha.trim());
+    std::fs::write(f.state.join("s1.baseline"), line).unwrap();
+    let out = run(&f, "stop", &stop(&f.linked, false));
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["decision"], "block", "{out}");
+    assert!(v["reason"]
+        .as_str()
+        .unwrap()
+        .contains("working tree or index changed"));
 }
 
 #[test]
