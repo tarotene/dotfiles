@@ -56,7 +56,10 @@ in
       ''
         # pipeline-node: settings-reconcile
         if [ -f "$HOME/.local/state/dotfiles/agent-permissions.json" ]; then
-          run ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
+          # home-manager's activation PATH excludes user-profile executables.
+          # Inventory uses git ls-files to protect tracked local settings.
+          run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
+            ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
             --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME"
         else
           echo 'agent-permissions: migration review required; tool execution is blocked until migration.' >&2
