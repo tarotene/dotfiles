@@ -285,3 +285,35 @@ be approved.
 - `home/modules/herdr.nix`
 - `home/common.nix`
 - `AGENTS.md`
+
+## Amendment (2026-10-27 — 共有ポリシーの `mcp_allow` を、Codex の config.toml に書く宣言として足す, #1051)
+
+共有ポリシー(`home/modules/agent-permissions.nix`)の宣言は通信先だけだった。承認された許可を昇格候補のキューへ
+回収する仕組み(#1043)の昇格先が通信先に限られ、MCP ツールの「Always allow」は記録にとどまっていた。
+`mcp_allow`(`mcp__<server>__<tool>` の列、`*` は書けない)を足し、本人の裁定で、規則「個別許可は原則その実行限り」
+の例外を 1 つ認める: 宣言した MCP ツール 1 つずつは、セッションを越えて常に許可する。
+
+- **Claude**: 同じ文字列を `~/.claude/settings.json` の `permissions.allow` に書き、PreToolUse の hook は宣言済みの
+  ツールに ask を返さない。
+- **Codex**: ADR-457 の Amendment(2026-10-20)が許した「宣言したキーだけを合わせる」の範囲で、
+  `mcp_servers.<server>.tools.<tool>.approval_mode = "approve"` を `config.toml` に書く。`config.toml` に**定義済みの**
+  サーバーにだけ書く。`command` も `url` も無い `[mcp_servers.<名前>]` は Codex が `invalid transport` で拒否する
+  (openai/codex rust-v0.164.0 `codex-rs/config/src/mcp_types.rs` L548-549、取得 2026-10-27)ので、宣言のためにサーバーを
+  作らない。ファイル全体の管理(read-only symlink)は引き続きしない。
+- **審査**: 追加は権限の拡大なので `inspect` → `migrate` を要求し、削除は縮小として自動で反映する(Codex は `prompt` に戻る)。
+- **宣言しないもの**: Bash・`prefix_rule`・WebSearch。Claude の自動モードの `classifyAllShell` は Bash の allow を効かせず
+  (Anthropic, "Configure auto mode", <https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27)、
+  コマンドの前方一致は同じ前置きの別の引数まで許す。MCP ツールは名前が 1 つに決まり、両 CLI に 1 対 1 で写せる。
+
+### 対抗馬
+
+- **何も足さない(キューは記録のみ)**: 還元性では最小だが、毎回の承認が減らず、昇格の経路が通信先にしか効かない。
+- **`mcp__<server>__*` のサーバー単位の宣言**: 同じサーバーの書き込み系のツールまで許すので採らない(`*` を禁止した理由)。
+- **Bash の前方一致(`readonly_commands`)**: 上の理由で、今は宣言しない。
+
+### 執行点
+
+- `home/modules/agent-permissions.nix`
+- `crates/agent-settings-reconcile/src/agent_permissions/mod.rs`
+- `crates/agent-settings-reconcile/tests/agent_permissions.rs`
+- `crates/hook-router/tests/cli.rs`

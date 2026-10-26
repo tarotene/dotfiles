@@ -18,9 +18,11 @@ Each candidate gets one decision from the owner, never decided for them:
 - `WebFetch(domain:…)`, and a Codex `network_rule(host="…", …, decision="allow")`, can become a policy declaration: `domains` (every project) or
   `project_rules.<project>.domains` (one project), in the shared policy
   (`home/modules/agent-permissions.nix`; a private host value goes in the private wrapper).
-- `mcp__…`, `WebSearch`, `Bash(…)`, a Codex `prefix_rule(…)` and a tool `approval_mode` have no declaration in the shared policy: tools stay
-  `prompt`. Discard them, or open an Issue to extend the policy schema. Do not save them as
-  permanent allow rules.
+- `mcp__<server>__<tool>` (one tool, no wildcard), and a Codex tool `approval_mode = "approve"`, can become a policy
+  declaration: `mcp_allow` (`home/modules/agent-permissions.nix`). It is the one exception to "an individual allow
+  lasts for the session", so present it to the owner as an expansion: it needs `inspect` and a reviewed `migrate`.
+- `WebSearch`, `Bash(…)` and a Codex `prefix_rule(…)` have no declaration in the shared policy: they stay
+  individual approvals. Discard them. Do not save them as permanent allow rules.
 - After the owner decides, and after a promotion PR exists, withdraw the decided candidates:
   `agent-permissions pending --drop ID,ID`. An undecided candidate stays in the queue.
 

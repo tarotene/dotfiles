@@ -744,3 +744,39 @@ fn a_worktree_mcp_json_equal_to_a_reviewed_one_is_not_a_new_source() {
     // The reviewed workspace is untouched.
     assert!(read_plain(home.path(), &workspace).0);
 }
+
+/// #1051: a tool the shared policy declares is not asked about again; every other
+/// MCP tool still asks, and a guard's deny still wins.
+#[test]
+fn a_declared_mcp_tool_is_not_asked_about_and_the_rest_still_are() {
+    use agent_settings_reconcile::agent_permissions::{inspect, migrate, Policy};
+    let home = tempfile::tempdir().unwrap();
+    let workspace = home.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let config = home.path().join(".config/agent-permissions");
+    std::fs::create_dir_all(&config).unwrap();
+    let value = serde_json::json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt",
+        "projects":[],"project_rules":{},
+        "mcp_allow":["mcp__declared__read","mcp__codex_apps__slack_send_message"]});
+    std::fs::write(config.join("policy.json"), value.to_string()).unwrap();
+    let policy: Policy = serde_json::from_value(value).unwrap();
+    let review = inspect(&policy, home.path(), &[]).unwrap();
+    migrate(&policy, home.path(), &[], &review).unwrap();
+    let decision = |tool: &str| {
+        let out = permission_call(home.path(), &workspace, tool, serde_json::json!({"x":1}));
+        assert!(out.status.success());
+        if out.stdout.is_empty() {
+            return "pass".to_owned();
+        }
+        json(&out)["hookSpecificOutput"]["permissionDecision"]
+            .as_str()
+            .unwrap_or("other")
+            .to_owned()
+    };
+    assert_eq!(decision("mcp__declared__read"), "pass");
+    assert_eq!(decision("mcp__declared__write"), "ask");
+    assert_eq!(decision("mcp__other__read"), "ask");
+    // The Slack send guard is a separate rule: declaring the tool does not lift its deny.
+    assert_eq!(decision("mcp__codex_apps__slack_send_message"), "deny");
+}
