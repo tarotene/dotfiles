@@ -790,3 +790,118 @@ fn the_pending_command_lists_and_withdraws() {
     assert!(!run(&["pending", "--drop", "missing"]).status.success());
     drop(d);
 }
+
+const CODEX_PREFIX: &str = r#"prefix_rule(pattern=["ls"], decision="allow")"#;
+const CODEX_HOST: &str = r#"network_rule(host="example.com", protocol="https", decision="allow")"#;
+
+#[test]
+fn codex_rules_appended_by_an_approval_are_reclaimed_and_other_content_is_drift() {
+    for existed in [true, false] {
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path();
+        let p = policy();
+        if existed {
+            put(h, ".codex/rules/default.rules", "");
+        }
+        let r = inspect(&p, h, &[]).unwrap();
+        migrate(&p, h, &[], &r).unwrap();
+        check(&p, h, &[]).unwrap();
+        // Codex appends one line per approval: a created file, or a grown one.
+        put(
+            h,
+            ".codex/rules/default.rules",
+            &format!("{CODEX_PREFIX}\n{CODEX_HOST}\n"),
+        );
+        let waiting = assess(&p, h, &[]).unwrap();
+        assert_eq!(waiting.len(), 1, "existed={existed}");
+        assert_eq!(waiting[0].rules, [CODEX_PREFIX, CODEX_HOST]);
+        let done = reclaim(&p, h, &[]).unwrap();
+        assert_eq!((done.queued, done.removed, done.files), (2, 2, 1));
+        assert_eq!(
+            fs::read_to_string(h.join(".codex/rules/default.rules")).unwrap(),
+            ""
+        );
+        check(&p, h, &[]).unwrap();
+        let queued: Vec<_> = candidates(h).unwrap().into_iter().map(|c| c.rule).collect();
+        assert!(
+            queued.contains(&CODEX_PREFIX.to_owned()) && queued.contains(&CODEX_HOST.to_owned())
+        );
+        // Executable Starlark, a wildcard host or a deny is not what Codex writes for
+        // an approval: the file stays as it is and the drift is reported.
+        for body in [
+            format!("{CODEX_PREFIX}\nx = 1\n"),
+            r#"network_rule(host="*.example.com", protocol="https", decision="allow")"#.to_owned(),
+            r#"prefix_rule(pattern=["ls"], decision="prompt")"#.to_owned(),
+        ] {
+            put(h, ".codex/rules/default.rules", &body);
+            let report = assess(&p, h, &[]).unwrap_err();
+            assert!(
+                report.contains("permission drift") || report.contains("new permission source"),
+                "{body}: {report}"
+            );
+            assert!(reclaim(&p, h, &[]).is_err());
+            assert_eq!(
+                fs::read_to_string(h.join(".codex/rules/default.rules")).unwrap(),
+                body
+            );
+        }
+    }
+}
+
+#[test]
+fn codex_tool_approvals_are_reverted_key_by_key_without_touching_the_rest() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    let p = policy();
+    put(
+        h,
+        ".codex/config.toml",
+        "# keep me\nmodel = 'keep'\n[mcp_servers.srv]\ncommand = 'mcp'\n[mcp_servers.srv.tools.seen]\napproval_mode = 'prompt'\n[hooks.state.example]\ntrusted = true\n",
+    );
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+    // "Always allow" for an existing tool and for a tool seen for the first time.
+    let config = fs::read_to_string(h.join(".codex/config.toml")).unwrap();
+    // Only that tool's table: "default_tools_approval_mode" contains the same words.
+    let approved = config.replace(
+        "[mcp_servers.srv.tools.seen]\napproval_mode = \"prompt\"",
+        "[mcp_servers.srv.tools.seen]\napproval_mode = \"approve\"",
+    ) + "\n[mcp_servers.srv.tools.fresh]\napproval_mode = \"approve\"\n";
+    put(h, ".codex/config.toml", &approved);
+    let waiting = assess(&p, h, &[]).unwrap();
+    let mut rules = waiting[0].rules.clone();
+    rules.sort();
+    assert_eq!(
+        rules,
+        [
+            "mcp_servers.srv.tools.fresh.approval_mode=approve",
+            "mcp_servers.srv.tools.seen.approval_mode=approve"
+        ]
+    );
+    let done = reclaim(&p, h, &[]).unwrap();
+    assert_eq!((done.queued, done.removed), (2, 2));
+    let after = fs::read_to_string(h.join(".codex/config.toml")).unwrap();
+    let doc: toml_edit::DocumentMut = after.parse().unwrap();
+    assert_eq!(
+        doc["mcp_servers"]["srv"]["tools"]["seen"]["approval_mode"].as_str(),
+        Some("prompt")
+    );
+    assert!(
+        doc["mcp_servers"]["srv"]["tools"].get("fresh").is_none(),
+        "{after}"
+    );
+    assert!(after.contains("# keep me") && after.contains("model = 'keep'"));
+    assert!(after.contains("command = 'mcp'") && after.contains("trusted = true"));
+    check(&p, h, &[]).unwrap();
+    // A new default for every tool of a server is not a single tool's approval.
+    put(
+        h,
+        ".codex/config.toml",
+        &after.replace(
+            "command = 'mcp'\ndefault_tools_approval_mode = \"prompt\"",
+            "command = 'mcp'\ndefault_tools_approval_mode = \"approve\"",
+        ),
+    );
+    assert!(assess(&p, h, &[]).unwrap_err().contains("permission drift"));
+}

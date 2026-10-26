@@ -15,10 +15,10 @@ agent-permissions pending --json   # candidates: id, rule, project
 
 Each candidate gets one decision from the owner, never decided for them:
 
-- `WebFetch(domain:…)` can become a policy declaration: `domains` (every project) or
+- `WebFetch(domain:…)`, and a Codex `network_rule(host="…", …, decision="allow")`, can become a policy declaration: `domains` (every project) or
   `project_rules.<project>.domains` (one project), in the shared policy
   (`home/modules/agent-permissions.nix`; a private host value goes in the private wrapper).
-- `mcp__…`, `WebSearch` and `Bash(…)` have no declaration in the shared policy: tools stay
+- `mcp__…`, `WebSearch`, `Bash(…)`, a Codex `prefix_rule(…)` and a tool `approval_mode` have no declaration in the shared policy: tools stay
   `prompt`. Discard them, or open an Issue to extend the policy schema. Do not save them as
   permanent allow rules.
 - After the owner decides, and after a promotion PR exists, withdraw the decided candidates:

@@ -24,6 +24,10 @@ pub struct Source {
     pub unknown: Vec<String>,
 }
 
+/// Marks a rules file whose Starlark is not interpreted here.
+pub(crate) const OPAQUE_RULES: &str =
+    "executable Starlark rules require native parsing or explicit reviewed retirement";
+
 pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -227,7 +231,7 @@ impl Inventory {
                     .lines()
                     .any(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'));
                 if opaque {
-                    unknown.push("executable Starlark rules require native parsing or explicit reviewed retirement".into());
+                    unknown.push(OPAQUE_RULES.into());
                 }
                 json!({"opaque_rules": opaque, "rules": text})
             }
