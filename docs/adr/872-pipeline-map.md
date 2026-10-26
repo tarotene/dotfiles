@@ -159,8 +159,14 @@ Issue の案は、`node` を必須の引数にする nix のヘルパ(`mkTimer` 
   列挙し、`assertions`(home-manager が `activationPackage` の評価時に強制する)で、次の 2 つを落とす:
   対応付けの無い名前、`pipeline-map.toml` に無い id。生の `systemd.user.timers.*` を書いても、最終の config に
   現れるので、迂回できない。
-- 上流のモジュールが作る timer / agent は、許可リスト(`upstreamNames`)で除く。今あるのは `gpg-agent`
-  (`services.gpg-agent` が作る launchd agent)だけ。
+- 検査の対象は、**このリポジトリの中のファイルが定義した** timer / agent の名前だけにする。定義したファイルは、
+  モジュールシステムが `options.systemd.user.timers.definitionsWithLocations`(launchd は
+  `options.launchd.agents`)に残しているので、`toString ../..` で始まるファイルの定義を数え、最終の config の名前と
+  突き合わせる(`lib.mkIf` が偽の定義は数えない)。上流のモジュール(`services.gpg-agent` が作る launchd agent
+  など)と、別の flake(private wrapper)が作る timer / agent は、こちらの pipeline-map.toml にノードを持てないので、
+  自動で対象から外れる。許可リストは持たない。最初の版は、最終の config の名前を全部数える形で、private wrapper が
+  定義する timer 4 本(名前はここに書かない)を未対応として、`hms .` の評価を落とした(2026-10-27、実機の適用で
+  発見。dotfiles 単体の 3 ホストの評価では見えなかった)。
 - クラス 3 の `cargo test` 側は、`dotfiles.pipeline.timerNodes.<名前> = "<id>";` の行を登録箇所として数える
   (1 行 1 束縛の形だけを読む。まとめ書きは問題にする)。生の `systemd.user.timers.*` へのコメントは、もう求めない
   (評価時の検査と二重にしない)。`systemd.user.tmpfiles.rules`(名前の無いリスト)は、直前のコメントのまま。

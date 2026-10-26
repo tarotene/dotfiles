@@ -16,27 +16,39 @@
 #
 # activation・registrar・statusline は、nix の式として評価できる形でなく(シェル文字列の引数)、
 # 今までどおり直前のコメント `# pipeline-node: <id>` で、`cargo test` が検査する。
-{ config, lib, ... }:
+{
+  config,
+  options,
+  lib,
+  ...
+}:
 let
   cfg = config.dotfiles.pipeline;
 
   pipelineMap = builtins.fromTOML (builtins.readFile ../../pipeline-map.toml);
 
-  # 上流のモジュール(home-manager の `services.*` など)が作る timer / agent。こちらの
-  # 機構ではないので、ノードを持たない。足すのは、上流が作ると確かめたものだけ。
-  upstreamNames = [
-    # `services.gpg-agent`(gpg.nix)が作る launchd agent(home-manager の
-    # modules/services/gpg-agent.nix、`launchd.agents.gpg-agent`)。ソケット起動のデーモンで、
-    # pipeline-map の対象(自動発火する機構)の外。
-    "gpg-agent"
-  ];
+  # このリポジトリ(dotfiles)の中のファイルが定義した timer / agent の名前だけを検査する。
+  # 上流のモジュール(home-manager の `services.*` など)と、別の flake(private wrapper など)が
+  # 作るものは、こちらの機構ではなく、このリポジトリの pipeline-map.toml にノードを持てない。
+  # 定義したファイルは、モジュールシステムが `definitionsWithLocations` に残している。
+  # 最終の config の名前とも突き合わせるので、`lib.mkIf` が偽の定義は数えない。
+  repoRoot = toString ../..;
+  inRepo = file: lib.hasPrefix "${repoRoot}/" (toString file);
+  definedInRepo =
+    option:
+    lib.concatMap (
+      d: if inRepo d.file && lib.isAttrs d.value then builtins.attrNames d.value else [ ]
+    ) option.definitionsWithLocations;
 
   registeredNames = lib.unique (
-    builtins.attrNames config.systemd.user.timers ++ builtins.attrNames config.launchd.agents
+    lib.filter (n: builtins.elem n (builtins.attrNames config.systemd.user.timers)) (
+      definedInRepo options.systemd.user.timers
+    )
+    ++ lib.filter (n: builtins.elem n (builtins.attrNames config.launchd.agents)) (
+      definedInRepo options.launchd.agents
+    )
   );
-  unmapped = lib.filter (
-    n: !(cfg.timerNodes ? ${n}) && !(builtins.elem n upstreamNames)
-  ) registeredNames;
+  unmapped = lib.filter (n: !(cfg.timerNodes ? ${n})) registeredNames;
   undefinedIds = lib.filterAttrs (_: id: !(builtins.elem id cfg.nodeIds)) cfg.timerNodes;
 in
 {
@@ -72,7 +84,7 @@ in
       message = ''
         dotfiles.pipeline.timerNodes: 次の systemd timer / launchd agent に、pipeline-map のノードの対応付けが無い: ${lib.concatStringsSep ", " unmapped}
         その定義のそばに `dotfiles.pipeline.timerNodes.<名前> = "<ノード id>";` を足す(ノードは pipeline-map.toml、ADR-872)。
-        上流のモジュールが作るものなら、home/modules/pipeline.nix の upstreamNames に足す。'';
+        このリポジトリの外(上流のモジュール・別の flake)が作るものは、検査の対象外。'';
     }
     {
       assertion = undefinedIds == { };
