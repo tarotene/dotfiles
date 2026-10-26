@@ -46,23 +46,33 @@ sandbox の中では動かず、sandbox を外した再実行として一回ず�
 `auto` から `prompt` は縮小なので自動で反映する。この欄が無い記録は `prompt` で審査された
 ものとして読む。
 
-**適用の順序に注意する。** 配備された `policy.json` と所有記録の `policy` が違う間は、`assess` が
-「policy changed」で失敗し、hook は inert な呼び出し以外の全ツールを拒否する。拡大を伴う変更は、
-本人の端末で次の順に、続けて行う。
+**配備と移行の間は、記録の policy が基準になる。** `hms` は新しい `policy.json` を配備するが、
+拡大を伴う変更は `apply` が拒否するので、所有記録の `policy` は旧版のまま残る(activation は警告して続行する)。
+この間、hook(Claude の PreToolUse、Codex の PermissionRequest)と SessionStart の回収は、
+配備された `policy.json` ではなく、審査済みの所有記録の `policy` を基準に判定する(#1060)。
+未審査の拡大は効かず(たとえば追加した通信先への WebFetch は ask のまま)、全ツールも止まらない。
+配備された `policy.json` が記録と違うことを報告するのは、CLI の `check`・`migrate` である(`policy changed`)。
+配備された `policy.json` は hook が読まないので、縮小(秘密パスの追加など)の効力は `apply` が成功して
+記録が更新されるまで及ばない。`apply` は未回収の許可があると拒否するので、その場合は次の SessionStart の
+回収のあと、次の `hms` で反映される。
+
+拡大を反映する手順は、本人の端末で次の順に行う。
 
 1. 新しいバイナリと新しい policy のパスを得る。`hms` を当てる前の `agent-permissions` は旧版で、
    `deny_unknown_fields` のため新しい policy の欄を読めない(2026-10-26 に `unknown field` で拒否されるのを実測)。
    以降は、ここで得た新しいバイナリを使う。
    - `nix build .#dotfiles-tools --no-link --print-out-paths`(この出力 + `/bin/agent-permissions`)
    - `nix build .#homeConfigurations.<host>.config.dotfiles.agentPermissions.policyFile --no-link --print-out-paths`
-2. 新しいバイナリで `reclaim` を実行し、待機の許可を昇格候補のキューへ退避する。配備済みの
-   policy.json と記録が一致している間に行う。これを飛ばすと `migrate` が待機の許可を
-   キューに残さず取り除く。
-3. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check` を、新しいバイナリで行う。
-4. 直ちに `hms` で新しいバイナリと `policy.json` を配備する。
+2. `hms` で新しいバイナリと `policy.json` を配備する。新しい欄を足す変更では、`migrate` が書く記録を
+   旧バイナリの hook が読めず(`Record` と `Policy` は `deny_unknown_fields`)、全ツールが止まる。
+   記録を書き換える `migrate` より先に、新しいバイナリを配備する。
+3. 新しいバイナリで `reclaim` を実行し、待機の許可を昇格候補のキューへ退避する。`reclaim` は記録の
+   policy で動くので、配備の前後を問わない。これを飛ばすと `migrate` が待機の許可を
+   キューに残さず取り除く(hms の activation も同じ `reclaim` を先に実行する)。
+4. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check` を、新しいバイナリで行う。
 
-3 と 4 の間は、配備済みの policy.json が旧版なので、この間も全ツールが止まる。短い間に済ませ、
-その間は本人の端末だけで作業する。
+Codex の launcher は起動前に CLI の `check` を呼ぶので、配備と `migrate` の間は Codex の起動だけが
+拒否される(hook は止まらない)。この間は 3 と 4 を続けて行う。
 
 ## 移行前に一覧を確認する
 

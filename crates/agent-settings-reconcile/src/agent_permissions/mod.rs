@@ -775,7 +775,8 @@ fn merge_toml(table: &mut dyn toml_edit::TableLike, desired: &Value) -> Result<(
 }
 
 /// Hook adapter. Missing deployment is permitted before stage2; a deployed policy
-/// without a valid ownership record is always denied. No process-global mutation.
+/// without a valid ownership record is always denied. The policy it enforces is the
+/// reviewed record's, not the deployed file's (#1060). No process-global mutation.
 pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME missing")?);
     let path = home.join(".config/agent-permissions/policy.json");
@@ -792,7 +793,12 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
     if std::env::var_os("CODEX_HOME").is_some() || std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
         return Err("custom agent configuration home is not inventoried".into());
     }
-    let policy = Policy::load(&path)?;
+    // The baseline is the reviewed ownership record, never the deployed policy.json:
+    // an expansion that `hms` deployed but nobody has migrated yet must not take
+    // effect, and must not stop every tool either (#1060). A deployed policy
+    // without a valid record is still denied here (load_record fails).
+    let record = load_record(&home)?;
+    let policy = record.policy.clone();
     let input: Value =
         serde_json::from_str(raw).map_err(|e| format!("permission hook input: {e}"))?;
     let cwd = input
@@ -826,7 +832,6 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
     if shell {
         // Claude folds shared WebFetch allow rules into sandbox connectivity.
         // A one-time ask is needed when that retained connectivity exceeds canon.
-        let record = load_record(&home)?;
         if record.sources.iter().any(|s| {
             !s.writable
                 && s.grants["permissions"]["allow"]
@@ -1150,7 +1155,9 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
             println!("permissions applied and read back");
         }
         "reclaim" => {
-            let done = reclaim::reclaim(&policy, &home, &projects)?;
+            // Reclaim only returns files to what the record says, so it runs under the
+            // reviewed policy even while an unreviewed expansion is deployed (#1060).
+            let done = reclaim::reclaim(&load_record(&home)?.policy, &home, &projects)?;
             if output_json {
                 println!("{}", serde_json::to_string(&done).unwrap());
             } else {

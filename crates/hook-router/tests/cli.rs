@@ -520,6 +520,56 @@ fn removing_a_deployed_policy_does_not_disable_the_guard() {
     );
 }
 
+/// #1060: `hms` deploys an expanded policy.json before anyone migrates. The hook
+/// enforces the reviewed record, so the expansion neither takes effect nor stops
+/// every tool.
+#[test]
+fn an_expansion_deployed_before_migrate_does_not_stop_tools_or_take_effect() {
+    let (home, workspace) = permission_home();
+    let deployed = home.path().join(".config/agent-permissions/policy.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&deployed).unwrap()).unwrap();
+    value["domains"] = serde_json::json!(["github.com", "example.org"]);
+    value["sandboxed_shell"] = serde_json::json!("auto");
+    std::fs::write(&deployed, value.to_string()).unwrap();
+    let decision = |tool: &str, args: serde_json::Value| {
+        let out = permission_call(home.path(), &workspace, tool, args);
+        assert!(out.status.success());
+        if out.stdout.is_empty() {
+            "pass".to_owned()
+        } else {
+            json(&out)["hookSpecificOutput"]["permissionDecision"]
+                .as_str()
+                .unwrap_or("other")
+                .to_owned()
+        }
+    };
+    // Before the fix every one of these was denied: "policy changed".
+    assert_eq!(
+        decision("Read", serde_json::json!({"file_path":"plain.txt"})),
+        "pass"
+    );
+    assert_eq!(
+        decision("Bash", serde_json::json!({"command":"ls"})),
+        "pass"
+    );
+    assert_eq!(
+        decision(
+            "WebFetch",
+            serde_json::json!({"url":"https://github.com/x"})
+        ),
+        "pass"
+    );
+    // The unreviewed destination is not effective until migrate.
+    assert_eq!(
+        decision(
+            "WebFetch",
+            serde_json::json!({"url":"https://example.org/x"})
+        ),
+        "ask"
+    );
+}
+
 #[test]
 fn pending_allow_rules_do_not_stop_the_session() {
     let (home, workspace) = permission_home();
