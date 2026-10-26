@@ -167,7 +167,14 @@ impl Inventory {
                     ".claude/settings.local.json",
                 ])
                 .output()
-                .map_err(|e| at(path, e))?;
+                .map_err(|e| {
+                    at(
+                        path,
+                        format!(
+                            "cannot run git to determine whether local settings are tracked: {e}"
+                        ),
+                    )
+                })?;
             match output.status.code() {
                 Some(0) => true,
                 Some(1) => false,

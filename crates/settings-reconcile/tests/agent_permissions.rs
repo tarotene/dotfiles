@@ -14,6 +14,41 @@ fn put(home: &Path, path: &str, data: &str) {
 }
 
 #[test]
+fn missing_git_is_reported_as_an_executable_failure_not_a_missing_setting() {
+    let d = tempfile::tempdir().unwrap();
+    let home = d.path().join("home");
+    let project = d.path().join("project");
+    let empty_bin = d.path().join("empty-bin");
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&empty_bin).unwrap();
+    // A non-empty .git directory triggers the tracked-file query. No git
+    // process or inherited global git configuration is needed to arrange it.
+    put(&project, ".git/HEAD", "ref: refs/heads/main\n");
+    put(&project, ".claude/settings.local.json", "{}");
+    let policy_file = d.path().join("policy.json");
+    fs::write(&policy_file, serde_json::to_vec(&policy()).unwrap()).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_agent-permissions"))
+        .args(["inspect", "--policy"])
+        .arg(&policy_file)
+        .arg("--home")
+        .arg(&home)
+        .arg("--project")
+        .arg(&project)
+        .env("PATH", &empty_bin)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("cannot run git to determine whether local settings are tracked"));
+    assert_eq!(
+        fs::read_to_string(project.join(".claude/settings.local.json")).unwrap(),
+        "{}"
+    );
+}
+
+#[test]
 fn migration_preserves_unowned_fields_asks_denies_and_native_trust() {
     let d = tempfile::tempdir().unwrap();
     let h = d.path();
