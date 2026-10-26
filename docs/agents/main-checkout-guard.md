@@ -29,15 +29,48 @@ PreToolUse(`main-checkout-guard pre`)が deny する:
 
 本物の checkout に**初めて触れた**とき(Read/Grep/Glob の対象、読み取り系 git、Bash の cwd と
 絶対パス引数)、`~/.local/state/claude/main-checkout/<session_id>.baseline` に 1 行追記する:
-`top<TAB>branch<TAB>sha<TAB>status_hash<TAB>pristine`。`status_hash` は
-`git status --porcelain=v2` の FNV-1a、`pristine` は「クリーンかつ default branch」。
+`top<TAB>branch<TAB>sha<TAB>status_hash<TAB>pristine<TAB>may_write`。`status_hash` は
+`git status --porcelain=v2` の FNV-1a、`pristine` は「クリーンかつ default branch」、
+`may_write` は「書きうる操作で触れたか」(下の表)。6 列目の無い旧い書式の行は `may_write = 1`
+として読む(後方互換)。
 
-Stop(`main-checkout-guard stop`)は記録した checkout だけを再確認し、`pristine` だった
-ものが次のいずれかなら `{"decision":"block"}` を返す:
+### 書きうる操作か(#898)
+
+| 触れ方 | `may_write` |
+|---|---|
+| Read / Grep / Glob | 0 |
+| 読み取り専用の許可リストにある Bash(下) | 0 |
+| 許可リストに無い Bash(`sed -i`・`touch`・`rm`・`cargo`・`make`・`gh` など) | 1 |
+| ファイルへ書き出すリダイレクト(`>`・`>>`・`&>`)を含む Bash | 1(全文) |
+
+読み取り専用の許可リスト(`crates/main-checkout-guard/src/lib.rs` の `READ_ONLY_COMMANDS` と
+`is_read_only_git`)。Bash のコマンド: `cat` `head` `tail` `less` `more` `bat` `nl` `tac` `grep`
+`egrep` `fgrep` `rg` `ag` `ls` `eza` `tree` `stat` `file` `wc` `du` `df` `diff` `cmp` `readlink`
+`realpath` `basename` `dirname` `pwd` `echo` `printf` `true` `false` `test` `[` `date` `hostname`
+`which` `whoami` `jq` `sort`(`-o` なし)`uniq` `cut` `tr` `column` `find`(`-delete`・`-exec*`・
+`-fprint*`・`-fls` なし)`fd`(`-x`・`-X` なし)。git: `log` `show` `diff` `status` `ls-files`
+`ls-tree` `ls-remote` `rev-parse` `rev-list` `cat-file` `blame` `grep` `describe` `shortlog`
+`show-ref` `show-branch` `for-each-ref` `name-rev` `merge-base` `diff-*` `fetch` `version`、
+`reflog`(参照)、`stash list|show`、`worktree list`、`branch`(参照)、`remote`(`-v`・`show`・
+`get-url`)、`config`(`--get*`・`--list`)、`tag --list`。`pull`(`--ff-only` を含む)・`gc`・`push`
+は載せない(書きうる)。許可リストに漏れたコマンドは「書きうる」側に倒れるだけで、従来どおり
+block になる(安全側)。
+
+読み取りで記録した checkout に、後から書きうる操作で触れたときは、その時点の状態で baseline
+を取り直す(`may_write = 1` の行を追記)。書きうる操作の前の移動は、このセッションの書き込みの
+結果ではないので、基準に含めない。
+
+Stop(`main-checkout-guard stop`)は記録した checkout だけを再確認し、`pristine` かつ
+`may_write = 1` だったものが次のいずれかなら `{"decision":"block"}` を返す:
 
 - ブランチが変わった
 - 作業ツリーまたは index が変わった(`status_hash` の差)
 - HEAD が動き、かつ旧 HEAD の子孫ではない(`pull --ff-only` は子孫なので通す)
+
+`pristine` で `may_write = 0`(読み取りだけで触れた)checkout が同じ変化をしていても、block
+しない。原因はこのセッションとは限らない(別セッションや人の rebase など)ので、ユーザーに
+だけ見える注意書き(`{"systemMessage": ...}`)を返し、モデルへ報告・復元を促さない(#898)。
+Codex での `systemMessage` の表示は未確認(Claude は仕様どおり表示する)。
 
 報告した checkout は baseline を現在の状態へ追記して、次のターンで繰り返さない。
 `stop_hook_active` が立っているときは黙る(台帳に書けないときの無限 block 対策)。
