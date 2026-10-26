@@ -261,3 +261,82 @@ fn saved_script_and_remote_readback_are_required_for_ack() {
     assert_eq!(ack(&sha()).code, 0); // duplicate delivery/application is idempotent
     assert_eq!(t.hook("report", "r1", false, false).code, 0);
 }
+
+#[test]
+fn standing_authorization_posts_revisions_but_never_in_plan_mode() {
+    let t = Trial::new();
+    let config_path = t.env.path().join("config.json");
+    let mut config: Value =
+        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["posting_authorization"] = json!("Post trial observations without asking each time.");
+    fs::write(&config_path, config.to_string()).unwrap();
+    t.context("t1", "plan");
+    let hook = t.hook("source", "t1", false, false);
+    assert!(hook
+        .stderr
+        .contains("without asking for per-observation approval"));
+    let body = t.draft();
+    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
+    assert_eq!(t.state()["checks"]["source:t1"]["status"], "awaiting_post");
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
+    assert!(!t.env.path().join("posts").exists());
+    fs::write(&body, "Revised observation; owner impression uncollected.").unwrap();
+    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
+    t.context("t2", "default");
+    fs::write(t.env.path().join("fail-post"), "").unwrap();
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
+    assert_eq!(
+        fs::read_to_string(t.env.path().join("posts")).unwrap(),
+        "post\n"
+    );
+    let check = &t.state()["checks"]["source:t1"];
+    assert!(check["body"]
+        .as_str()
+        .unwrap()
+        .contains("Revised observation"));
+    assert!(check["approval"]
+        .as_str()
+        .unwrap()
+        .starts_with("Standing authorization:"));
+}
+
+#[test]
+fn existing_waiting_draft_can_use_new_standing_authorization() {
+    let t = Trial::new();
+    t.hook("source", "t1", false, false);
+    let body = t.draft();
+    t.cli(&["draft", "source:t1", &body]);
+    let config_path = t.env.path().join("config.json");
+    let mut config: Value =
+        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["posting_authorization"] = json!("Always post observations for this trial.");
+    fs::write(&config_path, config.to_string()).unwrap();
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
+}
+
+#[test]
+fn owner_reminder_after_new_turn_does_not_repeat_in_continuations() {
+    for mode in ["default", "plan"] {
+        let t = Trial::new();
+        t.hook("source", "t1", false, false);
+        let body = t.draft();
+        t.cli(&["draft", "source:t1", &body]);
+        t.context("t2", mode);
+        t.hook("source", "t2", false, false);
+        assert_eq!(t.hook("source", "t2", true, false).code, 0);
+        assert_eq!(t.state()["checks"]["source:t1"]["approval"], "");
+        assert!(!t.env.path().join("posts").exists());
+    }
+}
+
+#[test]
+fn empty_standing_authorization_is_rejected() {
+    let t = Trial::new();
+    let config_path = t.env.path().join("config.json");
+    let mut config: Value =
+        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["posting_authorization"] = json!("   ");
+    fs::write(config_path, config.to_string()).unwrap();
+    assert_eq!(t.cli(&["list"]).code, 1);
+}

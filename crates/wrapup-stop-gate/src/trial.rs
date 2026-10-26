@@ -10,6 +10,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub enabled: bool,
+    #[serde(default)]
+    pub posting_authorization: Option<String>,
     pub start: String,
     pub end_exclusive: String,
     pub repository: String,
@@ -84,7 +86,10 @@ fn config() -> Result<Option<Config>> {
     }
     let start = super::retro::parse_iso_epoch(&c.start).ok_or("invalid start")?;
     let end = super::retro::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?;
-    if start >= end
+    if c.posting_authorization
+        .as_ref()
+        .is_some_and(|x| x.trim().is_empty())
+        || start >= end
         || c.issue == 0
         || !c.report_worktree.is_absolute()
         || c.repository.split('/').count() != 2
@@ -172,11 +177,16 @@ fn marker(id: &str) -> String {
 }
 
 fn procedure(gate: &str, c: &Config) -> String {
+    let approval = if c.posting_authorization.is_some() {
+        "The owner has authorized observation posting for this configured trial. After drafting, post in Default mode without asking for per-observation approval. Owner impressions remain uncollected unless actually stated; never invent them. Final script and visual approval still require the owner."
+    } else {
+        "Present it to the owner, ask for their impression and approval, then STOP while awaiting their answer. Approval must never be inferred from silence. Drafting/revising invalidates approval; obtain explicit owner approval before posting."
+    };
     format!(
         r#"Trial feedback: inspect good and difficult moments, including scene, observed behavior and work impact. Never invent the owner's feelings.
-Use '{gate}' --trial list to read pending checks. For each unchecked id, record either no-candidate or draft <absolute-body-file>. A draft MUST include the scene and proposed exact wording. Present it to the owner, ask for their impression and approval, then STOP while awaiting their answer. Approval must never be inferred from silence.
+Use '{gate}' --trial list to read pending checks. For each unchecked id, record either no-candidate or draft <absolute-body-file>. A draft MUST include the scene and proposed exact wording. {approval}
 Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial dismiss <id> <owner-verbatim-rejection>; --trial post <id>.
-Drafting/revising invalidates approval. Plan mode permits drafts only. Do not post until explicit owner approval in Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
+Plan mode permits drafts only. Posting requires Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
 After post verification, use send_message_to_thread to send ONLY pending ids to report thread {thread}; request: retrieve the comment URLs and report destination from --trial list and the local trial config, read the Issue, update the configured script in the configured worktree, preserve stable beat ids and add the comment URL and <!-- codex-trial:ID --> marker, commit, then --trial applied <id> <commit>. Do not send feedback bodies, repository names, URLs or absolute worktree paths: reference guards can reject private names. Send one batch per normal input/resume, not a new production thread. After successful sending run --trial delivered <id>; it suppresses repeats in this turn only, NEVER marks completion. Delivery success is NOT completion; only report-side saved commit acknowledgement completes it. Delivery failures remain pending.
 The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
 Trial source: {repo}#{issue}; collection starts {start}. Hook continuations are never new observations. --trial list includes token snapshots for reporting overhead; null means unmeasured. Do not count reporting as business output."#,
@@ -291,6 +301,9 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
             }
             if !start {
                 check.attempts += 1;
+            }
+            if check.status == Status::AwaitingOwner {
+                check.waiting_turn = ctx.turn.clone();
             }
             due.push(id.clone());
         }
@@ -443,7 +456,12 @@ pub fn cli(args: &[String]) -> i32 {
                     }
                     check.body = format!("{}\n{}\n\n🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)", marker(id), body.trim());
                     check.approval.clear();
-                    check.status = Status::AwaitingOwner;
+                    if let Some(authorization) = &c.posting_authorization {
+                        check.approval = format!("Standing authorization: {authorization}");
+                        check.status = Status::AwaitingPost;
+                    } else {
+                        check.status = Status::AwaitingOwner;
+                    }
                     check.waiting_turn = context(&check.transcript)?.turn;
                 }
                 "approve" if check.status == Status::AwaitingOwner => {
@@ -459,7 +477,15 @@ pub fn cli(args: &[String]) -> i32 {
                     check.approval = answer.clone();
                     check.status = Status::AwaitingPost;
                 }
-                "post" => post(&c, id, check)?,
+                "post" => {
+                    if check.status == Status::AwaitingOwner {
+                        if let Some(authorization) = &c.posting_authorization {
+                            check.approval = format!("Standing authorization: {authorization}");
+                            check.status = Status::AwaitingPost;
+                        }
+                    }
+                    post(&c, id, check)?;
+                }
                 "applied" if check.status == Status::PostVerified => {
                     if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread) {
                         return Err("only report thread may acknowledge".into());

@@ -28,13 +28,23 @@ state root, in a mode-0700 directory. Keep one trial configuration until its
 pending items and final report are complete. Never copy feedback into public
 configuration or issue bodies.
 
+For a trial whose owner has requested automatic observation posting, add
+`"posting_authorization": "<verbatim owner authorization>"` to the local
+configuration. Omission preserves per-observation approval; an empty value is
+invalid. This authorization is scoped to the configured trial, not Slack or
+other outbound messages. Observations may be posted without another question;
+owner impressions must still come from the owner, and final script/visual review
+still requires approval. Plan mode continues to prohibit posting.
+
 ## Execution contract
 
 `wrapup-stop-gate --trial list` shows checks. Stop creates one check per normal
 turn; an open candidate takes precedence over new collection. Hook continuations
 reuse the check. Session start/resume recovers pending checks. Each attempt is
 bounded to three forced continuations per normal turn/resume; exhaustion is
-reported, not acknowledged. After the end, existing checks and final production
+reported, not acknowledged. An owner-approval reminder is emitted once per new
+input/resume; waiting then ends normally without revising the draft or approval.
+After the end, existing checks and final production
 remain due. No timer runs while every session is stopped.
 
 The procedure printed by the hook owns the agent instructions. Commands are:
@@ -42,11 +52,15 @@ The procedure printed by the hook owns the agent instructions. Commands are:
 - `none ID`: no candidate, only from unchecked.
 - `dismiss ID 'verbatim owner rejection'`: close an owner-rejected draft without
   posting. This is distinct from inventing approval or silently forgetting it.
-- `draft ID /absolute/body.md`: store proposed wording, clear earlier approval.
+- `draft ID /absolute/body.md`: store proposed wording and clear earlier approval.
+  With configured posting authorization, record that authorization and queue the
+  draft for posting; otherwise wait for the owner's per-observation answer.
 - `approve ID /absolute/body.md 'verbatim owner answer'`: accept only the same
   wording. The agent must actually obtain this answer; the CLI cannot decide
   whether natural-language approval was sincere or applicable.
-- `post ID`: Default mode only; list all issue comments, reuse the unique marker,
+- `post ID`: Default mode only. A previously waiting draft can use newly configured
+  posting authorization. Otherwise require the owner's exact-body approval.
+  List all issue comments, reuse the unique marker,
   post if absent, then verify the exact body and URL. Failure retains state.
 - `delivered ID`: after `send_message_to_thread` succeeds, suppress another send
   in this turn. This does not acknowledge application. Restart/resume or a new
