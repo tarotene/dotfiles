@@ -2805,15 +2805,17 @@ in
   # registerClaudeHooks と同じ DAG 位置(writeBoundary の後)で、独立した
   # activation script として走らせる — 片方が既存の hooks 登録ロジックを
   # 壊さないようにするため、jq マージの責務を混ぜない。
-  home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
-      ${lib.escapeShellArg (
-        builtins.toJSON {
-          retire_allow = retiredPermissionRules;
-          allow = permissionRules;
-          retire_ask = retiredAskRules;
-          ask = askRules;
-        }
-      )}
-  '';
+  home.activation.registerClaudePermissions = lib.mkIf (!config.dotfiles.agentPermissions.enable) (
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
+        ${lib.escapeShellArg (
+          builtins.toJSON {
+            retire_allow = retiredPermissionRules;
+            allow = permissionRules;
+            retire_ask = retiredAskRules;
+            ask = askRules;
+          }
+        )}
+    ''
+  );
 }

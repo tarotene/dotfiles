@@ -10,6 +10,10 @@
 pub enum Outcome {
     /// PreToolUse の deny(理由)。
     Deny(String),
+    /// 一回の本人承認を求める。恒久的な allow は追加しない。
+    Ask(String),
+    /// PreToolUse の限定的な allow。
+    Allow(String),
     /// `additionalContext`(PreToolUse / PostToolUse のどちらかは、呼ばれたイベントで決まる)。
     Context(String),
 }

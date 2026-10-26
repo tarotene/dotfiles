@@ -1,11 +1,15 @@
 # Codex keeps its writable config; reconcile only the declared keys (ADR-457).
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/settings-reconcile";
 
-  # Auto-review handles eligible approval requests in Default and Plan modes.
-  # Keep on-request so sandbox-boundary requests reach the reviewer; do not
-  # change the sandbox, network permissions, command rules, or reviewer policy.
+  # Shared permission declarations own the sandbox and review policy.
+  # This writer keeps only the unrelated terminal display preference.
   # OpenAI, Codex rust-v0.164.0 (retrieved 2026-10-26):
   # https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/protocol/src/config_types.rs#L175-L189
   # https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/chatwidget/settings.rs#L751-L768
@@ -25,8 +29,6 @@ let
   # (`Context … used` / `… left`)は短くできないので、項目の数で収める。
   # project-name は workspace 列と重なるので外している。
   codexConfigSpec = builtins.toJSON {
-    approval_policy = "on-request";
-    approvals_reviewer = "auto_review";
     "tui.terminal_title" = [
       "activity"
       "context-used"
@@ -36,6 +38,33 @@ let
 
 in
 {
+  imports = [ ./agent-permissions.nix ];
+  dotfiles.agentPermissions.enable = lib.mkDefault true;
+
+  # Permission migration requires an explicitly reviewed snapshot. A first
+  # activation deploys the policy and CLI, but never invents migration approval;
+  # the router refuses tools until the owner-reviewed migration is complete.
+  home.activation.reconcileAgentPermissions = lib.mkIf config.dotfiles.agentPermissions.enable (
+    lib.hm.dag.entryAfter
+      [
+        "writeBoundary"
+        "registerClaudeHooks"
+        "registerClaudeStatusLine"
+        "registerClaudeModelConfig"
+        "reconcileCodexConfig"
+      ]
+      ''
+        # pipeline-node: settings-reconcile
+        if [ -f "$HOME/.local/state/dotfiles/agent-permissions.json" ]; then
+          run ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
+            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME"
+        else
+          echo 'agent-permissions: migration review required; tool execution is blocked until migration.' >&2
+          echo 'Run agent-permissions inspect --json, review each disposition, then migrate --approved REVIEW.' >&2
+        fi
+      ''
+  );
+
   # A single writer preserves Codex-owned trust, model selection, and formatting.
   # TUI overrides last until the next switch; new sessions load the declaration.
   home.activation.reconcileCodexConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
