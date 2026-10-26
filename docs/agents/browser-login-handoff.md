@@ -41,9 +41,8 @@ filter(スコープ付きのロケータ)に還元でき、新しい機構は作
 ## `.agents/skills/`へミラーしない理由
 
 Playwright MCP・claude-in-chrome はいずれも Claude Code 固有のツール
-(MCP server)であり、Codex CLI・Copilot CLI では利用できない。
-`human-task-scheduling`・`venue-search`と同じ理由で、cross-tool
-ルーティング対象からは外している。
+(MCP server)であり、Codex CLI・Copilot CLI では利用できない。この
+ツール固有性だけを理由に、cross-tool ルーティング対象からは外している。
 
 ## 先行例調査(2026-09-29)
 

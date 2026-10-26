@@ -2355,8 +2355,8 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     repoConfig + "/agents/skills/human-task-scheduling/SKILL.md";
   # browser-login-handoff(#562): Playwright MCP・claude-in-chrome での
   # ブラウザ操作中に未ログインを検知したときのハンドオフ手順。両ツールとも
-  # Claude Code 固有のため .agents/skills/ へはミラーしない(external-call-
-  # scheduling と同じ理由)。詳細は docs/agents/browser-login-handoff.md。
+  # Claude Code 固有のため .agents/skills/ へはミラーしない(理由はツール
+  # 固有性だけ)。詳細は docs/agents/browser-login-handoff.md。
   home.file.".claude/skills/browser-login-handoff/SKILL.md".source =
     repoConfig + "/agents/skills/browser-login-handoff/SKILL.md";
   # slot-availability: 候補日程一覧 × Google Calendar の3コマ当たり判定。
