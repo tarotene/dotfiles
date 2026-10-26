@@ -11,7 +11,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 # レコード契約(docs/schemas/agent-verdict.schema.json)の正本を Rust の型に
 # 置き、Schema はそこからの生成物にする(ADR-478 D8)。
-schemars = "0.8"
+schemars = "0.9"
 
 [dev-dependencies]
 tempfile = "3.27.0"
