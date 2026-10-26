@@ -44,6 +44,8 @@ pub struct Check {
     pub applied_commit: String,
     #[serde(default)]
     pub delivery_turn: String,
+    #[serde(default)]
+    pub waiting_turn: String,
     pub usage_before: Value,
     pub usage_after: Value,
 }
@@ -56,6 +58,8 @@ struct State {
     report_attempts: u8,
     #[serde(default)]
     report_retry_turn: String,
+    #[serde(default)]
+    report_waiting: bool,
 }
 
 fn config_path() -> PathBuf {
@@ -174,7 +178,7 @@ Use '{gate}' --trial list to read pending checks. For each unchecked id, record 
 Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial post <id>.
 Drafting/revising invalidates approval. Plan mode permits drafts only. Do not post until explicit owner approval in Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
 After post verification, use send_message_to_thread to send ONLY pending ids and comment URLs to report thread {thread}; request: read the Issue, update {script} in {worktree}, preserve stable beat ids and add the comment URL and <!-- codex-trial:ID --> marker, commit, then --trial applied <id> <commit>. Do not send the feedback body. Send one batch per normal input/resume, not a new production thread. After successful sending run --trial delivered <id>; it suppresses repeats in this turn only, NEVER marks completion. Delivery success is NOT completion; only report-side saved commit acknowledgement completes it. Delivery failures remain pending.
-The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
+The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
 Trial source: {repo}#{issue}; collection starts {start}. Hook continuations are never new observations. --trial list includes token snapshots for reporting overhead; null means unmeasured. Do not count reporting as business output."#,
         thread = c.report_thread,
         script = c.script,
@@ -225,8 +229,12 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
             {
                 state.report_attempts = 0;
                 state.report_retry_turn = turn.into();
+                state.report_waiting = false;
             }
             if !start {
+                if state.report_waiting {
+                    return Ok(None);
+                }
                 if ctx.mode != "default" || state.report_attempts >= 3 {
                     eprintln!("trial report pending: {}; final_due={final_due}; retry next normal input/resume", json!(pending));
                     return Ok(None);
@@ -273,7 +281,7 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
             }
             // Waiting for a human and Plan mode can end normally.
             if !start
-                && (check.status == Status::AwaitingOwner
+                && (check.status == Status::AwaitingOwner && check.waiting_turn == ctx.turn
                     || ctx.mode != "default" && check.status != Status::Unchecked
                     || check.status == Status::PostVerified && check.delivery_turn == turn)
             {
@@ -392,6 +400,13 @@ pub fn cli(args: &[String]) -> i32 {
                 println!("{}", serde_json::to_string_pretty(state)?);
                 return Ok(());
             }
+            if action == "report-wait" {
+                if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread) {
+                    return Err("only report thread may wait for report approval".into());
+                }
+                state.report_waiting = true;
+                return Ok(());
+            }
             if action == "finalize" {
                 if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread)
                     || now()
@@ -426,6 +441,7 @@ pub fn cli(args: &[String]) -> i32 {
                     check.body = format!("{}\n{}\n\n🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)", marker(id), body.trim());
                     check.approval.clear();
                     check.status = Status::AwaitingOwner;
+                    check.waiting_turn = context(&check.transcript)?.turn;
                 }
                 "approve" if check.status == Status::AwaitingOwner => {
                     let body = fs::read_to_string(value)?;
