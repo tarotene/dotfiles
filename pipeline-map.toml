@@ -163,6 +163,7 @@ node = [
   { id = "apply-rulesets", label = "apply-rulesets", lane = "manual", group = "cli", stack = "rust", pipelines = ["repo-governance"], entity = "crates/apply-rulesets", auto = false },
   { id = "hms", label = "hms (apply)", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/hms", doc = "docs/operations.md", auto = false },
   { id = "settings-reconcile", label = "settings-reconcile", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/settings-reconcile", doc = "docs/settings-reconcile.md", auto = false },
+  { id = "codex-plan", label = "codex-plan", lane = "manual", group = "cli", stack = "rust", pipelines = ["plan-approval"], entity = "crates/codex-plan", doc = "docs/codex-plan.md", auto = false },
 
   # --- Sessions / services / state(auto = false)
   { id = "agent-session", label = "Agent session (Claude / Codex / Copilot)", lane = "external", group = "sessions", stack = "cloud-llm", llm = true, pipelines = ["plan-approval", "implement-to-pr", "wrapup-to-issue", "repo-governance", "routines", "host-hygiene", "evidence"], auto = false, hub = true },

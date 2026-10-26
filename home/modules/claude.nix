@@ -2213,6 +2213,10 @@ in
   # は不要になった)。
   home.file.".local/bin/claude-plan-model".source = planModelBin;
 
+  # Opt-in native Codex launcher; the user's pair and config.toml stay writable
+  # and are never seeded/reset by activation (docs/codex-plan.md).
+  home.file.".local/bin/codex-plan".source = "${pkgs.dotfiles-tools}/bin/codex-plan";
+
   # コマンドファイルは @home@ プレースホルダを config.home.homeDirectory に
   # 展開する(ADR-0002: literal + 1 変数の replaceVars パターン、
   # desktop.nix の fcitx5.desktop と同型)。altair(darwin, /Users/tarotene)
