@@ -54,6 +54,7 @@ pipeline = [
 node = [
   # --- SessionStart: 文脈の注入と前提の整備
   { id = "wrapup-session-start", label = "wrapup-session-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/wrapup-stop-gate", doc = "docs/claude/wrapup-inbox.md", auto = true },
+  { id = "agent-permissions-reclaim", label = "agent-permissions (reclaim)", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/settings-reconcile", doc = "docs/agent-permissions.md", auto = true },
   { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/claude/issue-index.md", auto = true },
   { id = "desk-start", label = "desk-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/desk-start", doc = "docs/claude/daily-desk.md", auto = true },
   { id = "worklog", label = "worklog", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/worklog", doc = "docs/claude/worklog.md", auto = true },
@@ -211,6 +212,7 @@ edge = [
   { from = "desk-start", to = "agent-session", kind = "context", label = "desk reminder", pipelines = ["implement-to-pr"] },
   { from = "worklog", to = "agent-session", kind = "context", label = "work log norm + recent stuck / found", pipelines = ["implement-to-pr"] },
   { from = "wrapup-session-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
+  { from = "agent-permissions-reclaim", to = "agent-session", kind = "context", label = "promotion candidates", pipelines = ["host-hygiene"] },
   { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
   { from = "worktree-fresh-base", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },
   { from = "sign-prewarm", to = "user", kind = "notify", label = "pinentry once", pipelines = ["implement-to-pr"] },

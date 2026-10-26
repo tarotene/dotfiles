@@ -2,6 +2,7 @@
 //! Native sandboxes enforce command boundaries; no shell command parser lives here.
 pub mod inventory;
 pub mod pending;
+pub mod reclaim;
 mod transaction;
 
 use inventory::{without_non_grants, Source};
@@ -260,6 +261,7 @@ pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<
             || (!s.writable && s.digest != old.digest)
         {
             match tolerated_additions(&old, s) {
+                Some(rules) if rules.is_empty() => {}
                 Some(rules) => waiting.push(Pending {
                     path: s.path.clone(),
                     rules,
@@ -908,6 +910,18 @@ const COMMANDS: &[(&str, &str)] = &[
         "migrate",
         "write a reviewed migration, preview it (--dry-run), or undo one (--restore)",
     ),
+    (
+        "reclaim",
+        "move pending allow rules to the promotion queue and remove them from settings",
+    ),
+    (
+        "pending",
+        "list the promotion queue (--json), or withdraw entries (--drop ID,ID)",
+    ),
+    (
+        "hook",
+        "session boundary hook: `hook session-start|session-end` (hook input on stdin)",
+    ),
 ];
 
 fn usage(command: Option<&str>) -> Result<String, String> {
@@ -939,6 +953,7 @@ fn usage(command: Option<&str>) -> Result<String, String> {
          \x20 --dry-run           check the review and list changes without writing (migrate)\n\
          \x20 --restore JOURNAL   restore the files recorded in a journal (migrate)\n\
          \x20 --retire-ownership  rebuild a damaged ownership record (migrate)\n\
+         \x20 --drop ID,ID        withdraw promotion candidates by id (pending)\n\
          \x20 -h, --help          show this help; `agent-permissions <command> --help` for one command\n\
          \nrecovery from a permission drift (only the third command writes):\n\
          \x20 agent-permissions inspect --json > review.json\n\
@@ -947,6 +962,21 @@ fn usage(command: Option<&str>) -> Result<String, String> {
          \x20 agent-permissions check\n",
     );
     Ok(out)
+}
+
+/// `agent-permissions hook session-start|session-end`: reads the hook input on
+/// stdin and prints what the session should be told. It never fails a session.
+fn hook_cli(args: &[String]) -> Result<(), String> {
+    use std::io::Read as _;
+    let event = args
+        .first()
+        .map(String::as_str)
+        .filter(|e| matches!(*e, "session-start" | "session-end"))
+        .ok_or("usage: agent-permissions hook session-start|session-end")?;
+    let mut stdin = String::new();
+    let _ = std::io::stdin().take(1 << 20).read_to_string(&mut stdin);
+    print!("{}", reclaim::hook_output(event, &stdin));
+    Ok(())
 }
 
 pub fn cli(args: Vec<String>) -> Result<(), String> {
@@ -963,6 +993,9 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         }
         _ => {}
     }
+    if args.first().map(String::as_str) == Some("hook") {
+        return hook_cli(&args[1..]);
+    }
     if std::env::var_os("CODEX_HOME").is_some() || std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
         return Err("custom CODEX_HOME/CLAUDE_CONFIG_DIR is not yet inventoried; use canonical settings, no changes made".into());
     }
@@ -975,6 +1008,7 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
     let mut projects = Vec::new();
     let mut approved = None;
     let mut restore = None;
+    let mut drop_ids: Vec<String> = Vec::new();
     let mut output_json = false;
     let mut dry_run = false;
     let mut retire_ownership = false;
@@ -1002,6 +1036,7 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
             "--project" => projects.push(PathBuf::from(value)),
             "--approved" => approved = Some(PathBuf::from(value)),
             "--restore" => restore = Some(PathBuf::from(value)),
+            "--drop" => drop_ids = value.split(',').map(str::to_owned).collect(),
             flag => return Err(format!("unknown option: {flag}")),
         }
         i += 2;
@@ -1018,6 +1053,24 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         }
         transaction::restore(&home, &journal)?;
         println!("restored and verified {}", journal.display());
+        return Ok(());
+    }
+    if command == "pending" {
+        if !drop_ids.is_empty() {
+            let n = reclaim::drop_candidates(&home, &drop_ids)?;
+            println!("withdrew {n} candidate(s)");
+            return Ok(());
+        }
+        let queue = reclaim::candidates(&home)?;
+        if output_json {
+            println!("{}", json!({"candidates": queue}));
+        } else if queue.is_empty() {
+            println!("no pending promotion candidates");
+        } else {
+            for c in &queue {
+                println!("{}  {}  {}", c.id, c.rule, c.project.display());
+            }
+        }
         return Ok(());
     }
     let path = policy_path.unwrap_or_else(|| home.join(".config/agent-permissions/policy.json"));
@@ -1075,6 +1128,17 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         "apply" => {
             apply(&policy, &home, &projects)?;
             println!("permissions applied and read back");
+        }
+        "reclaim" => {
+            let done = reclaim::reclaim(&policy, &home, &projects)?;
+            if output_json {
+                println!("{}", serde_json::to_string(&done).unwrap());
+            } else {
+                println!(
+                    "reclaimed {} rule(s) in {} file(s); {} new candidate(s) queued",
+                    done.removed, done.files, done.queued
+                );
+            }
         }
         "migrate" => {
             let path = approved.ok_or(

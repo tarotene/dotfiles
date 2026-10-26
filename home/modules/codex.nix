@@ -62,6 +62,14 @@ in
           # later step, including the final "current generation" GC root, and leave
           # the profile ahead of what is applied. The router keeps enforcing the
           # recorded permissions, so continuing is the safe side.
+          #
+          # Allow rules appended by "don't ask again" are queued for promotion and
+          # removed first; `apply` refuses to run over unreclaimed rules.
+          # pipeline-node: agent-permissions-reclaim
+          run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
+            ${pkgs.dotfiles-tools}/bin/agent-permissions reclaim \
+            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME" \
+            || echo 'agent-permissions: reclaim did not complete; apply may refuse to run over the pending rules.' >&2
           run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
             ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
             --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME" \

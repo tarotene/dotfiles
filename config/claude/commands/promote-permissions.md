@@ -4,6 +4,26 @@
 `home/modules/agent-permissions.nix` (private values belong in the private wrapper).
 It never adds permanent local allow rules or deletes project settings.
 
+## Promotion queue
+
+Allow rules saved by "don't ask again" are tolerated for the session and moved to a
+promotion queue at the next session boundary (docs/agent-permissions.md). Start here:
+
+```sh
+agent-permissions pending --json   # candidates: id, rule, project
+```
+
+Each candidate gets one decision from the owner, never decided for them:
+
+- `WebFetch(domain:…)` can become a policy declaration: `domains` (every project) or
+  `project_rules.<project>.domains` (one project), in the shared policy
+  (`home/modules/agent-permissions.nix`; a private host value goes in the private wrapper).
+- `mcp__…`, `WebSearch` and `Bash(…)` have no declaration in the shared policy: tools stay
+  `prompt`. Discard them, or open an Issue to extend the policy schema. Do not save them as
+  permanent allow rules.
+- After the owner decides, and after a promotion PR exists, withdraw the decided candidates:
+  `agent-permissions pending --drop ID,ID`. An undecided candidate stays in the queue.
+
 ## Procedure
 
 1. Run `agent-permissions inspect --json` with the current project supplied by

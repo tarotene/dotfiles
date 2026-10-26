@@ -73,6 +73,8 @@ fn split_allow(grants: &Value) -> Option<(Vec<String>, Value)> {
 
 /// `Some(added rules)` when `new` differs from the recorded `old` only by
 /// tolerated additions to `permissions.allow` of a writable Claude settings file.
+/// `Some(vec![])` when the two mean the same thing: `allow: []` and a missing
+/// `allow` are equivalent, which is what a reclaim leaves behind.
 pub(super) fn tolerated_additions(old: &Source, new: &Source) -> Option<Vec<String>> {
     if old.kind != "claude-settings"
         || new.kind != old.kind
@@ -93,7 +95,7 @@ pub(super) fn tolerated_additions(old: &Source, new: &Source) -> Option<Vec<Stri
             added.push(rule);
         }
     }
-    (!added.is_empty() && added.iter().all(|r| tolerated_rule(r))).then_some(added)
+    added.iter().all(|r| tolerated_rule(r)).then_some(added)
 }
 
 /// A writable Claude settings file that the record has never seen, such as the
@@ -148,6 +150,8 @@ fn read_only_cli(command: &str) -> bool {
     }
     match args.first() {
         Some(&"inspect" | &"check") => true,
+        // Listing the queue only reads; withdrawing candidates appends.
+        Some(&"pending") => !args.contains(&"--drop"),
         // --restore acts before --dry-run is looked at, so it is never read-only.
         Some(&"migrate") => {
             args.contains(&"--dry-run")
@@ -224,7 +228,15 @@ mod tests {
             tolerated_additions(&old, &added),
             Some(vec!["WebFetch(domain:a.example)".into()])
         );
-        assert_eq!(tolerated_additions(&old, &old), None, "no change");
+        assert_eq!(
+            tolerated_additions(&old, &old),
+            Some(vec![]),
+            "nothing added means the same thing"
+        );
+        let emptied = source(json!([]), json!({}));
+        let mut missing = emptied.clone();
+        missing.grants = json!({});
+        assert_eq!(tolerated_additions(&missing, &emptied), Some(vec![]));
         let edit = source(json!(["Bash(ls)", "Edit(/x)"]), json!({}));
         assert_eq!(tolerated_additions(&old, &edit), None);
         let removed = source(json!([]), json!({}));
@@ -287,6 +299,8 @@ mod tests {
             "agent-permissions inspect",
             "agent-permissions inspect --json",
             "agent-permissions check",
+            "agent-permissions pending",
+            "agent-permissions pending --json",
             "agent-permissions migrate --approved /tmp/r.json --dry-run",
             "agent-permissions --help",
             "agent-permissions migrate --help",
@@ -298,6 +312,9 @@ mod tests {
             "agent-permissions migrate --restore /tmp/j.json --dry-run",
             "agent-permissions migrate --retire-ownership --dry-run",
             "agent-permissions apply",
+            "agent-permissions reclaim",
+            "agent-permissions pending --drop abc",
+            "agent-permissions hook session-start",
             "agent-permissions inspect --json > /tmp/r.json",
             "agent-permissions inspect | jq .",
             "agent-permissions inspect; rm -rf /",
