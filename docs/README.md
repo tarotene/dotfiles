@@ -8,7 +8,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 
 - [`agent-permissions.md`](agent-permissions.md) — Claude・Codex 共通の権限宣言、棚卸し、確認後の移行と復元。
 - [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
-  Astra for Plan with Sol for execution, preserving permissions and history.
+  configurable Plan/Auto models with cost/context comparisons and local usage estimates,
+  preserving native permissions and history.
 - [`operations.md`](operations.md) — the canonical apply (`hms`), routine
   flake update, and the tool-layer decision flow for new tools.
 - [`pipeline-map.md`](pipeline-map.md) — the map of every mechanism that

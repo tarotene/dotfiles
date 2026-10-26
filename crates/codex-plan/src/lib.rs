@@ -1,6 +1,11 @@
 //! Only the model pair at collaboration-mode transitions belongs to this adapter.
 //! Permissions, manual model choices, instructions and inference remain native.
+pub mod advice;
+pub mod catalog;
+pub mod comparison;
+pub mod history;
 pub mod runtime;
+pub mod selection;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -27,7 +32,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             plan: Model {
-                model: "gpt-6-astra".into(),
+                model: "gpt-6.1-sol".into(),
                 reasoning_effort: "medium".into(),
             },
             execute: Model {
@@ -59,7 +64,10 @@ impl Settings {
     }
 
     pub fn validate_models(&self, models: &[Value]) -> Result<()> {
-        for (side, choice) in [("Plan", &self.plan), ("Default", &self.execute)] {
+        for (side, choice) in [
+            ("Plan", &self.plan),
+            ("Auto（実行／native Default）", &self.execute),
+        ] {
             let model = models.iter().find(|m| m["model"].as_str() == Some(&choice.model))
                 .with_context(|| format!("{side}: model {} is absent from native model/list; use codex-plan configure", choice.model))?;
             let efforts = model["supportedReasoningEfforts"]
