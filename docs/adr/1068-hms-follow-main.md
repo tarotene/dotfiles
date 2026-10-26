@@ -1,4 +1,4 @@
-# ADR-0000 — main の更新に沿って hms を自動で当てる。ただし hms が main から作った世代だけに追従する
+# ADR-1068 — main の更新に沿って hms を自動で当てる。ただし hms が main から作った世代だけに追従する
 
 - Status: Accepted
 - Date: 2026-10-27

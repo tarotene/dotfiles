@@ -153,8 +153,8 @@ server restarted from outside herdr (see the section below), and Claude Code
 hooks are swapped under a running session.
 
 To stop it: `systemctl --user stop hms-follow.timer` (until the next login), or
-set `dotfiles.hmsFollow.enable = false` and apply. Design record: ADR-0000
-(`adr/0000-hms-follow-main.md`).
+set `dotfiles.hmsFollow.enable = false` and apply. Design record: ADR-1068
+(`adr/1068-hms-follow-main.md`).
 
 ### `hms` applies bleep at its main, verified before the switch
 

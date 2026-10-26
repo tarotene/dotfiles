@@ -1,4 +1,4 @@
-# hms-follow: main が進んだら `hms --follow` が自動で追従する(ADR-0000-hms-follow-main)。
+# hms-follow: main が進んだら `hms --follow` が自動で追従する(ADR-1068)。
 # 10 分ごとに timer(Linux は systemd、darwin は launchd)が `hms --follow` を呼ぶ。
 # 追従するのは、いまの世代を引数なしの `hms` が作った場合だけで、`hms .` などで当てた
 # 検証用の世代・hms を通さない switch・許可ポリシーの変更を含む main には当てず、
