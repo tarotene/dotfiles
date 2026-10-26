@@ -206,6 +206,9 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
 
 l_git_hook: "git hooks" {
   class: lane
+  n_git_commit_msg: "commit-msg" {
+    class: s_git
+  }
   n_git_pre_push: "pre-push" {
     class: s_git
   }
@@ -283,6 +286,9 @@ n_agent_session.l_tool_call.n_bleep -> l_external.n_verdict_ledger: "verdicts" {
   class: e_file
 }
 l_git_hook.n_git_pre_push -> l_external.n_verdict_ledger: "verdicts" {
+  class: e_file
+}
+l_git_hook.n_git_commit_msg -> l_external.n_verdict_ledger: "verdicts" {
   class: e_file
 }
 n_agent_session.l_stop.n_session_wrapup_stop -> l_manual.n_verdict_escalate: "before gate" {

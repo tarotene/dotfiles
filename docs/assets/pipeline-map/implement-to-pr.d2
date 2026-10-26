@@ -309,6 +309,9 @@ l_git_hook: "git hooks" {
   n_git_pre_commit: "pre-commit" {
     class: s_git
   }
+  n_git_commit_msg: "commit-msg" {
+    class: s_git
+  }
   n_git_pre_push: "pre-push" {
     class: s_git
   }
@@ -393,6 +396,15 @@ l_manual.n_handoff -> n_agent_session.l_session_start.n_issue_index: "handoff:ai
   class: e_context
 }
 l_git_hook.n_git_pre_commit -> n_agent_session: "commit on main" {
+  class: e_deny
+}
+l_git_hook.n_git_pre_commit -> l_git_hook.n_git_commit_msg: "staged lines" {
+  class: e_invoke
+}
+l_git_hook.n_git_commit_msg -> n_agent_session.l_tool_call.n_bleep: "scan-push on throwaway commit" {
+  class: e_invoke
+}
+l_git_hook.n_git_commit_msg -> n_agent_session: "leak at commit" {
   class: e_deny
 }
 l_git_hook.n_git_pre_push -> n_agent_session.l_tool_call.n_bleep: "scan-push" {

@@ -78,6 +78,42 @@ D7 と同型)。
   この文書のように能動的に探さないと出てこない場所にだけ書く。
   PRIVATE/INTERNAL リポジトリの自動スキップは engine 側の判定。
 
+## commit 時の検査(#947・#949)
+
+push 時の `pre-push` は最後の砦で、止まったときには commit が既にある(作り直しの往復が
+増える)。`config/git/hooks/commit-msg` が、commit のメッセージとステージ済みの追加行を、同じ
+denylist と commit 時に照合する。`pre-commit` は同じ実体を `commit-msg --staged` で呼び、
+エディタを開く前にステージ済みの追加行だけを検査する。エージェントの経路(Edit・Write・Bash)
+には依存せず、`git commit` を通るものすべてに効く。
+
+- **既存手段: 採用**。denylist の照合・可視性の判定・判定レッジャー・理由文は、bleep の CLI
+  (`scan-push --pre-push`)をそのまま呼ぶ。bleep は commit の範囲を取るので、これから作る
+  commit を使い捨ての commit(`git write-tree` + `git commit-tree`、ref なし)として
+  `$TMPDIR` 配下の隔離した object ディレクトリに作り、本物の object store は alternate
+  として読むだけにする。使い捨ての commit は hook の終了時に消える。denylist のロジックは
+  このリポジトリに持たない。
+- **公開リポジトリ以外では何もしない**。bleep の可視性判定(PRIVATE / INTERNAL は検査しない)
+  をそのまま使う。さらに、`origin` が無いリポジトリ、bleep が未配備の機体、merge の途中は
+  黙って通す(ADR-0005)。可視性を取れないときは、bleep の既定どおり公開として検査する。
+- **メッセージ**は bleep の既存の形のまま: 語は出さず、`term_hash` と `bleep explain` の
+  案内だけ。bleep が一致した commit として挙げる短い SHA は使い捨ての commit のものなので、
+  その 1 文だけ落とす。bypass の手段は書かない(上流の方針、pre-push と同じ)。
+- エディタが付ける `#` の行(ブランチ名・ファイル一覧)は、git が commit の前に落とすので、
+  検査からも外す。
+- この hook の下ごしらえ(`write-tree`・`commit-tree`)が失敗したときは、警告を出して通す。
+  bleep の判定が ask のときは、pre-push と同じく止める(commit の hook には確かめる対話が無い)。
+- 判定レッジャーの `host` は `git-commit`(pre-commit 経由も同じ。`docs/schemas/
+  agent-verdict.schema.json`、`crates/verdict-escalate/src/record.rs`)。
+- 所要時間: bleep の起動(パターン構築)が 1 回あたり 0.8 秒前後で、pre-commit と commit-msg で
+  2 回走るため、commit 1 回に約 1.6 秒かかる(2026-10-27、この機体で実測。可視性の取得は
+  bleep のキャッシュが効いている間は含まない)。
+- 回避は `--no-verify` だが、`--no-verify` は pre-commit のチェーン先(他リポジトリの ruff・
+  mypy など)も飛ばすので、使わない(`docs/git-sync.md`)。push 時の検査は残るので、
+  commit 時の検査を飛ばしても最終的には pre-push が止める。
+
+自己検査: `./config/git/hooks/commit-msg --selftest`(CI で実行する。bleep の代わりに
+一時 HOME の置き換えを使うので、denylist も network も要らない)。
+
 ## `~/.config/bleep/` の実体(dotfiles には無い)
 
 `bleep` の判定語彙(`orgs.txt`・`repos.txt`)と、CLI ツール名と衝突する

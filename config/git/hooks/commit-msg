@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+# pipeline-node: git-commit-msg
+set -uo pipefail
+
+# bleep scan at commit time (#947, #949): check the message and the staged
+# added lines against the same denylist the pre-push hook uses, so a private
+# repository name is stopped at `git commit` instead of after the commit
+# already exists. pre-push stays the last line of defence (docs/agents/
+# public-publish-guard.md).
+#
+# This file is both the commit-msg hook (`commit-msg <message-file>`) and the
+# worker the pre-commit hook calls (`commit-msg --staged`, no message yet: the
+# staged lines are scanned before the editor opens).
+#
+# Existing means (採用): bleep's own CLI. `bleep scan-push --pre-push` already
+# does everything this needs — the added-lines + commit-message extraction,
+# the PRIVATE/INTERNAL visibility skip (so this does nothing in a private
+# repository), the verdict ledger, and the reason text (term_hash + `bleep
+# explain`, never the word). It takes a commit range, not a message and an
+# index, so the would-be commit is built as a throwaway commit object
+# (`git write-tree` + `git commit-tree`, no ref) in a quarantined object
+# directory that is deleted on exit; the real object store is only an
+# alternate (read-only). No other denylist logic lives here.
+#
+# Silently does nothing when: bleep is not deployed (ADR-0005 binary-existence
+# gating), the repository has no `origin` (nothing could be published from it
+# yet; pre-push scans once one exists), or a merge is in progress. A failure of
+# this script's own plumbing never blocks the commit (warning only) — unlike
+# bleep's verdict, which blocks on ask and deny alike because a commit hook has
+# no interactive prompt. The deny text does not name the bypass, as in
+# pre-push: the constrained party must not be able to read its way to it.
+#
+# core.hooksPath makes git ignore .git/hooks/, so the repo-local commit-msg
+# hook is chained to at the end (resolved via --git-common-dir so it works from
+# any linked worktree), like pre-commit and pre-push in this directory.
+
+# scan <message-file|""> — exit 0 to let the commit go on, 1 to block it. Run in
+# a subshell: the quarantine variables below must not reach the chained hook.
+scan() {
+    local msgfile="$1" bleep top url head objdir tmp msg tree new rc reason line
+    bleep="${HOME}/.claude/hooks/bleep/bleep"
+    [[ -x "$bleep" ]] || return 0
+    top=$(git rev-parse --path-format=absolute --show-toplevel 2> /dev/null) || return 0
+    url=$(git remote get-url origin 2> /dev/null) || return 0
+    [[ -n "$url" ]] || return 0
+    [[ -e "$(git rev-parse --path-format=absolute --git-path MERGE_HEAD 2> /dev/null)" ]] && return 0
+
+    objdir=$(git rev-parse --path-format=absolute --git-path objects 2> /dev/null) || return 0
+    tmp=$(mktemp -d 2> /dev/null) || return 0
+    # Expand now: `tmp` is local to this function, gone by the time EXIT fires.
+    # shellcheck disable=SC2064
+    trap "rm -rf '${tmp}'" EXIT
+
+    # Everything below writes into $tmp/objects, never the repository.
+    mkdir -p "$tmp/objects"
+    export GIT_OBJECT_DIRECTORY="$tmp/objects"
+    export GIT_ALTERNATE_OBJECT_DIRECTORIES="${GIT_ALTERNATE_OBJECT_DIRECTORIES:+${GIT_ALTERNATE_OBJECT_DIRECTORIES}:}${objdir}"
+
+    msg="$tmp/message"
+    if [[ -n "$msgfile" && -f "$msgfile" ]]; then
+        # The editor template's `#` lines (branch name, file list) are not part
+        # of the commit; git strips them after this hook, so do the same.
+        git stripspace --strip-comments < "$msgfile" > "$msg" 2> /dev/null || cp "$msgfile" "$msg"
+    else
+        printf 'commit scan\n' > "$msg"
+    fi
+
+    head=$(git rev-parse -q --verify HEAD 2> /dev/null || true)
+    if ! tree=$(git write-tree 2> /dev/null); then
+        echo "commit-msg: bleep の検査を準備できませんでした(write-tree)。検査せずに続けます。" >&2
+        return 0
+    fi
+    local -a parent=()
+    [[ -n "$head" ]] && parent=(-p "$head")
+    if ! new=$(GIT_AUTHOR_NAME=bleep GIT_AUTHOR_EMAIL=bleep@localhost \
+        GIT_COMMITTER_NAME=bleep GIT_COMMITTER_EMAIL=bleep@localhost \
+        git -c commit.gpgsign=false commit-tree "$tree" "${parent[@]}" -F "$msg" 2> /dev/null); then
+        echo "commit-msg: bleep の検査を準備できませんでした(commit-tree)。検査せずに続けます。" >&2
+        return 0
+    fi
+
+    # `<local-ref> <local-sha> <remote-ref> <remote-sha>`: the range is
+    # HEAD..<throwaway commit>; with no HEAD (first commit) bleep takes the
+    # whole commit.
+    line="refs/heads/commit-scan ${new} refs/heads/commit-scan ${head:-0000000000000000000000000000000000000000}"
+    reason="$(BLEEP_HOST=git-commit "$bleep" --cwd "$top" scan-push --pre-push origin "$url" <<< "$line")"
+    rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        # bleep names the matching commit by sha for `git show`; that commit is
+        # a throwaway one and is gone after this hook, so drop the clause.
+        reason="$(sed -E 's/ ?一致した commit: [0-9a-f]+(\(git show [0-9a-f]+ で確認できます\))?。//' <<< "$reason")"
+        echo "error: Commit blocked by bleep" >&2
+        [[ -n "$reason" ]] && echo "  ${reason}" >&2
+        echo "" >&2
+        echo "  commit メッセージとステージ済みの追加行を検査しました(commit はまだ作られていません)。" >&2
+        echo "  詳細: docs/agents/public-publish-guard.md を参照してください。" >&2
+        return 1
+    fi
+    return 0
+}
+
+chain_local_hook() {
+    local common_dir local_hook
+    common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2> /dev/null) || return 0
+    local_hook="${common_dir}/hooks/commit-msg"
+    if [[ -x "$local_hook" ]]; then
+        exec "$local_hook" "$@"
+    fi
+}
+
+selftest() {
+    local tmp fails=0 r self sha n before
+    tmp=$(mktemp -d)
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    export GIT_ALLOW_MAIN_COMMIT=1
+
+    check() { # $1=name $2=want $3=got
+        if [[ "$2" == "$3" ]]; then
+            echo "ok   $1"
+        else
+            echo "FAIL $1 (want $2 got $3)" >&2
+            fails=$((fails + 1))
+        fi
+    }
+
+    # A stand-in for bleep (HOME is the only thing the hook reads to find it):
+    # records its argv, stdin and what the throwaway commit holds, then exits
+    # with the code in $HOME/bleep-rc and prints $HOME/bleep-reason.
+    export HOME="$tmp/home"
+    mkdir -p "$HOME/.claude/hooks/bleep"
+    cat > "$HOME/.claude/hooks/bleep/bleep" << 'STUB'
+#!/usr/bin/env bash
+echo "$BLEEP_HOST $*" >> "$HOME/bleep-calls"
+[[ "$1" == --cwd ]] && cd "$2"
+read -r lref lsha rref rsha
+echo "$lsha $rsha" >> "$HOME/bleep-range"
+if [[ "$rsha" =~ ^0+$ ]]; then
+    git log -p --format=%B "$lsha" > "$HOME/bleep-seen"
+else
+    git log -p --format=%B "${rsha}..${lsha}" > "$HOME/bleep-seen"
+fi
+[[ -s "$HOME/bleep-reason" ]] && cat "$HOME/bleep-reason"
+exit "$(cat "$HOME/bleep-rc" 2>/dev/null || echo 0)"
+STUB
+    chmod +x "$HOME/.claude/hooks/bleep/bleep"
+    echo 0 > "$HOME/bleep-rc"
+    calls() { if [[ -f "$HOME/bleep-calls" ]]; then wc -l < "$HOME/bleep-calls" | tr -d ' '; else echo 0; fi; }
+
+    git init -q -b main "$tmp/repo"
+    git -C "$tmp/repo" config user.email test@example.com
+    git -C "$tmp/repo" config user.name test
+    git -C "$tmp/repo" config commit.gpgsign false
+    git -C "$tmp/repo" config core.hooksPath "$(dirname "$self")"
+    echo base > "$tmp/repo/a.txt"
+    git -C "$tmp/repo" add a.txt
+    git -C "$tmp/repo" commit -q -m base
+
+    # 1: no origin -> bleep is not called, the commit goes through
+    echo one >> "$tmp/repo/a.txt"
+    git -C "$tmp/repo" commit -q -am "no origin" 2> /dev/null && r=ok || r=blocked
+    check "1 origin が無ければ検査せず通す" "ok:0" "${r}:$(calls)"
+
+    git -C "$tmp/repo" remote add origin https://github.com/example/public-repo.git
+
+    # 2-5: pass -> bleep gets scan-push --pre-push with the origin URL; the
+    # throwaway commit is quarantined (not in the real object store afterwards)
+    echo two >> "$tmp/repo/a.txt"
+    git -C "$tmp/repo" commit -q -am "second change" 2> /dev/null && r=ok || r=blocked
+    check "2 通る判定ならコミットできる" ok "$r"
+    grep -q '^git-commit --cwd .* scan-push --pre-push origin https://github.com/example/public-repo.git$' "$HOME/bleep-calls" && r=1 || r=0
+    check "3 bleep を BLEEP_HOST=git-commit で scan-push --pre-push として呼ぶ" 1 "$r"
+    sha=$(tail -1 "$HOME/bleep-range" | cut -d' ' -f1)
+    git -C "$tmp/repo" cat-file -e "$sha" 2> /dev/null && r=leaked || r=clean
+    check "4 検査用の commit は本物の object store に残らない" clean "$r"
+    grep -q 'second change' "$HOME/bleep-seen" && grep -q '^+two$' "$HOME/bleep-seen" && r=1 || r=0
+    check "5 メッセージと追加行が検査対象に入る" 1 "$r"
+
+    # 6-9: ask/deny -> blocked, the reason is shown, no commit is made, the
+    # throwaway-commit clause is dropped
+    echo three >> "$tmp/repo/a.txt"
+    echo 2 > "$HOME/bleep-rc"
+    printf '一致しました(term_hash=abc)。 一致した commit: 1234567(git show 1234567 で確認できます)。\n' > "$HOME/bleep-reason"
+    before=$(git -C "$tmp/repo" rev-parse HEAD)
+    git -C "$tmp/repo" commit -q -am "third change" 2> "$tmp/err6" && r=ok || r=blocked
+    check "6 deny なら commit できない" blocked "$r"
+    [[ "$(git -C "$tmp/repo" rev-parse HEAD)" == "$before" ]] && r=1 || r=0
+    check "7 commit は作られない" 1 "$r"
+    grep -q 'term_hash=abc' "$tmp/err6" && ! grep -q '一致した commit' "$tmp/err6" && r=1 || r=0
+    check "8 理由は出し、使い捨ての commit の案内は出さない" 1 "$r"
+    grep -q 'BLEEP_ALLOW' "$tmp/err6" && r=leak || r=none
+    check "9 bypass の手段を書かない" none "$r"
+
+    # 10: comment lines of the editor template are not scanned
+    echo 0 > "$HOME/bleep-rc"
+    : > "$HOME/bleep-reason"
+    printf 'real subject\n\n# On branch SECRET-BRANCH-NAME\n' > "$tmp/msgfile"
+    git -C "$tmp/repo" add a.txt
+    (cd "$tmp/repo" && "$self" "$tmp/msgfile" > /dev/null 2>&1) || true
+    grep -q 'real subject' "$HOME/bleep-seen" && ! grep -q 'SECRET-BRANCH-NAME' "$HOME/bleep-seen" && r=1 || r=0
+    check "10 エディタの # 行は検査対象に入れない" 1 "$r"
+
+    # 11: pre-commit (--staged) scans the staged lines before a message exists
+    n=$(calls)
+    (cd "$tmp/repo" && "$self" --staged > /dev/null 2>&1) || true
+    [[ "$(calls)" == "$((n + 1))" ]] && grep -q '^+three$' "$HOME/bleep-seen" && r=1 || r=0
+    check "11 --staged はステージ済みの追加行を検査する" 1 "$r"
+
+    # 12: a merge in progress is skipped
+    n=$(calls)
+    touch "$tmp/repo/.git/MERGE_HEAD"
+    (cd "$tmp/repo" && "$self" --staged > /dev/null 2>&1) || true
+    [[ "$(calls)" == "$n" ]] && r=1 || r=0
+    rm -f "$tmp/repo/.git/MERGE_HEAD"
+    check "12 merge の途中は検査しない" 1 "$r"
+
+    # 13: bleep not deployed -> nothing happens
+    mv "$HOME/.claude/hooks/bleep/bleep" "$HOME/bleep.off"
+    n=$(calls)
+    (cd "$tmp/repo" && "$self" --staged > /dev/null 2>&1) && r=ok || r=blocked
+    mv "$HOME/bleep.off" "$HOME/.claude/hooks/bleep/bleep"
+    check "13 bleep が無ければ黙って通す" "ok:$n" "${r}:$(calls)"
+
+    # 14: the repo-local commit-msg hook is chained to, and does not see the
+    # quarantine variables
+    printf '#!/usr/bin/env bash\ntouch "$PWD/.local-hook-ran"\n[[ -z "${GIT_OBJECT_DIRECTORY:-}" ]] && touch "$PWD/.local-hook-clean-env"\n' > "$tmp/repo/.git/hooks/commit-msg"
+    chmod +x "$tmp/repo/.git/hooks/commit-msg"
+    (cd "$tmp/repo" && "$self" "$tmp/msgfile" > /dev/null 2>&1) || true
+    [[ -e "$tmp/repo/.local-hook-ran" ]] && r=1 || r=0
+    check "14 repo-local の commit-msg にチェーンする" 1 "$r"
+    [[ -e "$tmp/repo/.local-hook-clean-env" ]] && r=1 || r=0
+    check "15 チェーン先に隔離用の環境変数を渡さない" 1 "$r"
+
+    rm -rf "$tmp"
+    if [[ "$fails" != 0 ]]; then
+        echo "selftest: ${fails} 件失敗" >&2
+        return 1
+    fi
+    echo "selftest: OK"
+}
+
+main() {
+    case "${1:-}" in
+        --selftest)
+            selftest
+            return $?
+            ;;
+        --staged)
+            (scan "") || return 1
+            return 0
+            ;;
+        *)
+            (scan "${1:-}") || return 1
+            chain_local_hook "$@"
+            return 0
+            ;;
+    esac
+}
+
+main "$@"

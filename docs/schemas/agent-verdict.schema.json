@@ -85,6 +85,7 @@
         "codex",
         "copilot",
         "git-pre-push",
+        "git-commit",
         "cli"
       ]
     },
