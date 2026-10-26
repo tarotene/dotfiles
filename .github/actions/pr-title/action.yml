@@ -84,24 +84,22 @@ runs:
         set -euo pipefail
         .pr-title-tools/target/release/pr-merge-settings-check "${{ github.repository }}"
 
-    # ADR-503: 呼び出し元(caller)リポジトリ
-    # の .github/rulesets/quality.json 宣言と live な branch ruleset の
-    # 両方を、この PR の head で実際に報告される job 名(Actions API)と
-    # 突合する。`actions: read` が呼び出し元ワークフロー側の job
-    # permissions に必要(下記コメント参照)。
+    # ADR-503: 呼び出し元(caller)リポジトリの .github/rulesets/quality.json
+    # 宣言と live な branch ruleset の両方を、この PR の head の
+    # .github/workflows/ 配下の全 workflow から読んだ job 名と静的に突合する
+    # (ADR-503 Amendment 2026-10-27、#1014・#1065)。以前は実行中の job 名が
+    # Actions API に報告されるまで最大 1200 秒待っていたが、`CI passed` は
+    # `needs:` で束ねた重い job(build-host 等)が全て終わるまで自身の
+    # check-run すら報告しないので、遅い PR で待ち窓を超えて誤検知し(#1014)、
+    # 窓の中でも毎回 3〜4 分かかっていた(#1065)。待たないので、環境変数
+    # RULESETS_CONTEXT_CHECK_TIMEOUT / _INTERVAL は渡さない(古い版の action が
+    # 渡していても、このバイナリは読まない)。読むのは contents API だけで、
+    # `actions: read` はこの step には要らない(呼び出し側が宣言していても害は
+    # ない)。
     - name: Validate required-check contexts
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-        # ADR-591 の集約 job `CI passed` は `needs:` で束ねた重い job
-        # (build-host 等、実測で数分)が全て完了するまで自身の check-run
-        # すら報告しない。既定のポーリング窓(90s)はこの待ち時間より短く、
-        # PR #596 で実際に「宣言の required context が報告されていない」
-        # 誤検知(false failure — CI passed 自体は後で success する)を
-        # 起こした。この呼び出しに限り窓を広げる(rulesets-context-check
-        # 自体の既定値は他の呼び出し元のために変えない)。
-        RULESETS_CONTEXT_CHECK_TIMEOUT: "1200"
-        RULESETS_CONTEXT_CHECK_INTERVAL: "20"
       run: |
         set -euo pipefail
         .pr-title-tools/target/release/rulesets-context-check \
@@ -129,5 +127,7 @@ runs:
 #   contents: write  — merge 設定フィールドの読み取り(GitHub REST API の
 #                      仕様上、contents:read だけでは squash_merge_commit_
 #                      title 等がレスポンスから欠落する)
-#   actions: read    — Validate required-check contexts / Validate
-#                      workflow naming が自 run の jobs を読むために必要
+#   actions: read    — 以前は Validate required-check contexts が自 run の
+#                      jobs を読むために必要だった。ADR-503 Amendment
+#                      2026-10-27 から、contents API だけを読むので不要
+#                      (宣言している呼び出し側は、そのままでよい)

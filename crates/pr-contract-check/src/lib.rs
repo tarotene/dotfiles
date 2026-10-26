@@ -19,6 +19,7 @@
 
 pub mod contexts;
 pub mod gh;
+pub mod job_names;
 pub mod merge_settings;
 pub mod naming;
 pub mod settings;
