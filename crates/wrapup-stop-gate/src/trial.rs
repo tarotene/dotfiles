@@ -142,7 +142,11 @@ struct Context {
 
 fn context(path: &str) -> Result<Context> {
     let mut result = Context::default();
-    for line in fs::read_to_string(path)?.lines() {
+    for line in fs::read_to_string(path)?.split_inclusive('\n') {
+        // A live rollout may currently be appending its final record.
+        if !line.ends_with('\n') {
+            break;
+        }
         let v: Value = serde_json::from_str(line)?;
         let p = &v["payload"];
         if v["type"] == "turn_context" {
@@ -390,7 +394,8 @@ pub fn cli(args: &[String]) -> i32 {
             }
             if action == "finalize" {
                 if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread)
-                    || active(&c, now())
+                    || now()
+                        < super::retro::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?
                     || state
                         .checks
                         .values()
