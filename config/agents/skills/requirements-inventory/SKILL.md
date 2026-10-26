@@ -29,6 +29,19 @@ Tracking Issue のような複数項目を含む依頼を丸ごと Plan Mode に
    拾わない。
 3. 各項目に `R1`, `R2`, ... の ID を振る。
 
+## 1a. 計画の事実を取る前に、base を最新にする(#935)
+
+plan mode で長いグリルをすると、計画が依拠する事実(ファイルの path、規約文書、削除済みの仕組み)を、
+グリルの冒頭に読んだ古い作業ツリーから取ったまま進みやすい。その間に base の `origin/<default>` が進むと、
+`ExitPlanMode` の「参照ファイルが変更された」hook(`plan-fresh-gate`)が出口で初めて検出し、計画が差し戻される
+(実例: グリルの途中で `origin/main` が 16 コミット進み、計画が依拠していた検査ツールと宣言ファイルの削除と
+文書の改名が、出口で見つかった)。hook は設計どおりに働いている。足りないのは出口より前の検出で、次がその手順である。
+
+- グリルの開始時と、計画ファイルを書く直前に、`git fetch origin` して、作業ツリーの HEAD と `origin/<default>` の差を確かめる
+  (`git rev-list --count HEAD..origin/<default>`。`git symbolic-ref --short refs/remotes/origin/HEAD` は `origin/<default>` を返す)。
+- 差があるときは、計画が依拠するファイルの内容と有無を、作業ツリーでなく `git show origin/<default>:<path>` で取る。
+  差のあるファイルは `git diff HEAD origin/<default> -- <path>` で読む。
+
 ## 2. 処分の書き方
 
 各 `Rn` には、次のいずれか 1 つを書く。

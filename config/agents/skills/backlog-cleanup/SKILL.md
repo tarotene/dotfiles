@@ -141,7 +141,8 @@ L2 の裁定結果(実装する案 or 除外)/ L3 の裁定結果(着手する�
 
 ## 5. Plan を書く(このスキルは plan mode で走る)
 
-plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
+plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `git fetch origin` して、作業ツリーの HEAD と
+`origin/<default>` の差を確かめる(差があるときの事実の取り方は `requirements-inventory` §1a、#935)。Plan には:
 
 - `## 要求インベントリ` — 母集団の**全件**を `R1..Rn` で列挙する(open Issue +
   inbox 行)。各 `Rn` の処分は `段N で実装` / `Blocked-Upstream:` / `Obsolete:` /
@@ -156,8 +157,7 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
   - open Issue: §1 と同じクエリを取り直し、番号の増減と `updatedAt` の変化を `diff` する
     (`jq -r '.[] | "\(.number) \(.updatedAt)"' <ファイル> | sort` を両方に掛ける)
   - default branch の先頭: `git fetch` 後の `origin/<default>` の SHA。Plan を書き始めたときと
-    変わっていたら、Plan が根拠にしたファイルの差分を読む(plan mode 全般の手順は
-    `requirements-inventory` §1)
+    変わっていたら、Plan が根拠にしたファイルの差分を読む(`requirements-inventory` §1a)
   - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。
     根拠にした Issue の番号と `updatedAt` は、Plan を書くときに控えておく
 
