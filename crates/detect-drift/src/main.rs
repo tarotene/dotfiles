@@ -11,10 +11,11 @@
 use std::process::{Command, ExitCode};
 
 use detect_drift::{
-    compose_issue_report, compute_baseline_from_history, diff_apt, diff_cargo, diff_npm, diff_pipx,
-    exit_code, filter_registry_excluded, parse_apt_baseline, parse_apt_declared,
-    parse_apt_installed, parse_cargo_installed, parse_history_log_installs, parse_npm_global,
-    parse_pipx_venvs, visibility_permits_filing, FileIssueOutcome, LayerDrift,
+    compose_issue_report, compute_baseline_from_history, diff_apt, diff_apt_stale, diff_cargo,
+    diff_npm, diff_pipx, exit_code, filter_registry_excluded, parse_apt_baseline,
+    parse_apt_declared, parse_apt_installed, parse_cargo_installed, parse_history_log_installs,
+    parse_history_log_updates, parse_npm_global, parse_pipx_venvs, visibility_permits_filing,
+    DriftKind, FileIssueOutcome, LayerDrift, APT_STALE_DAYS_DEFAULT,
 };
 
 const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<repo>]\n\
@@ -22,6 +23,10 @@ const USAGE: &str = "usage: detect-drift [--porcelain] [--file-issue <owner>/<re
 Reports apt/cargo/npm -g/pipx packages installed outside their declaration\n\
 (packages/declarative/apt-packages.txt for apt; cargo/npm/pipx have no\n\
 declaration file, so every installed package is a candidate, ADR-0001).\n\
+Also reports apt update staleness (layer `apt-stale`, #1053): the last\n\
+`apt`/`apt-get upgrade|full-upgrade|dist-upgrade` in /var/log/apt/history.log*\n\
+older than 90 days (override: $DETECT_DRIFT_APT_STALE_DAYS). Skipped when\n\
+the log is absent or unreadable (non-apt hosts).\n\
 Detection only — never installs, removes, or modifies anything.\n\n\
 Without --porcelain: human-readable OK/WARN lines, exit 0 if clean, 1 if\n\
 drift was found.\n\
@@ -82,6 +87,9 @@ fn main() -> ExitCode {
     if let Some(d) = check_apt() {
         drifts.push(d);
     }
+    if let Some(d) = check_apt_stale() {
+        drifts.push(d);
+    }
     if let Some(d) = check_cargo() {
         drifts.push(d);
     }
@@ -97,14 +105,24 @@ fn main() -> ExitCode {
     if porcelain {
         for d in &drifts {
             for name in &d.undeclared {
-                let attr = nix_locate_candidate(name).unwrap_or_default();
+                let attr = match d.kind {
+                    DriftKind::Undeclared => nix_locate_candidate(name).unwrap_or_default(),
+                    DriftKind::Stale => String::new(),
+                };
                 println!("{}\t{}\t{}", d.layer, name, attr);
             }
         }
     } else {
         for d in &drifts {
             if d.is_clean() {
-                println!("OK   {}: 宣言外の在庫なし", d.layer);
+                match d.kind {
+                    DriftKind::Undeclared => println!("OK   {}: 宣言外の在庫なし", d.layer),
+                    DriftKind::Stale => println!("OK   {}: 更新の遅れなし", d.layer),
+                }
+            } else if d.kind == DriftKind::Stale {
+                for line in &d.undeclared {
+                    println!("WARN {}: {line}", d.layer);
+                }
             } else {
                 for name in &d.undeclared {
                     match nix_locate_candidate(name) {
@@ -442,6 +460,25 @@ fn read_apt_history_logs() -> String {
         }
     }
     combined
+}
+
+/// apt の更新遅れ(#1053)。`/var/log/apt/history.log*` が 1 つも読めない(apt の無い
+/// ホスト・権限・ローテーションで全滅)ときは、判定の材料が無いのでレイヤーごと skip する
+/// (ADR-0005)。しきい値(日)は `DETECT_DRIFT_APT_STALE_DAYS`、既定は
+/// [`APT_STALE_DAYS_DEFAULT`]。
+fn check_apt_stale() -> Option<LayerDrift> {
+    let history = parse_history_log_updates(&read_apt_history_logs());
+    history.oldest?;
+    let threshold = std::env::var("DETECT_DRIFT_APT_STALE_DAYS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|d| *d > 0)
+        .unwrap_or(APT_STALE_DAYS_DEFAULT);
+    let today = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| (d.as_secs() / 86_400) as i64)?;
+    Some(diff_apt_stale(&history, today, threshold))
 }
 
 fn check_cargo() -> Option<LayerDrift> {

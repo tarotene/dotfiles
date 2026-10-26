@@ -17,17 +17,38 @@
 
 use std::collections::BTreeSet;
 
-/// 1 レイヤー(apt/cargo/npm/pipx)の diff 結果。
+/// レイヤーの報告の種類。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DriftKind {
+    /// 実機にあるが宣言に無いもの(apt / cargo / npm / pipx)。
+    #[default]
+    Undeclared,
+    /// 更新の遅れ(`apt-stale`、#1053)。`undeclared` の各行は、遅れを説明する 1 行。
+    Stale,
+}
+
+/// 1 レイヤー(apt/cargo/npm/pipx、apt-stale)の diff 結果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerDrift {
     pub layer: &'static str,
-    /// 実機にあるが宣言に無いもの(ソート済み、重複無し)。
+    pub kind: DriftKind,
+    /// 実機にあるが宣言に無いもの(ソート済み、重複無し)。`kind` が
+    /// [`DriftKind::Stale`] のときは、遅れを説明する行。
     pub undeclared: Vec<String>,
 }
 
 impl LayerDrift {
     pub fn is_clean(&self) -> bool {
         self.undeclared.is_empty()
+    }
+
+    /// 宣言外の在庫の報告(従来の 4 層)。
+    pub fn undeclared(layer: &'static str, undeclared: Vec<String>) -> LayerDrift {
+        LayerDrift {
+            layer,
+            kind: DriftKind::Undeclared,
+            undeclared,
+        }
     }
 }
 
@@ -68,10 +89,7 @@ pub fn diff_apt(
         .filter(|name| !baseline.contains(*name))
         .cloned()
         .collect();
-    LayerDrift {
-        layer: "apt",
-        undeclared,
-    }
+    LayerDrift::undeclared("apt", undeclared)
 }
 
 /// baseline ファイルの解析。宣言ファイル(`packages/declarative/
@@ -171,6 +189,150 @@ pub fn compute_baseline_from_history(
     installed.difference(ad_hoc).cloned().collect()
 }
 
+/// apt の更新遅れのしきい値(日)の既定(#1053)。
+///
+/// 根拠(運用判断で、一次資料ではない): #1053 の実測で、vega は最後の `apt full-upgrade`
+/// (2025-11-27)から 335 日で 1141 件が更新待ちだった(1 日あたり約 3.4 件)。90 日(四半期)
+/// なら約 300 件で、`docs/operations.md` の手順(前後の確認・再起動)でまとめて上げられる量に
+/// 収まる。さらに短くすると、更新を急ぐ必要のない週にも毎週起票が積まれ、長くすると
+/// COSMIC(1.0 前のベータ)・kernel・Mesa の修正が数か月届かない。`DETECT_DRIFT_APT_STALE_DAYS`
+/// で上書きできる。
+pub const APT_STALE_DAYS_DEFAULT: i64 = 90;
+
+/// 1970-01-01 からの日数(Howard Hinnant の days_from_civil)。UTC の暦日。
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = i64::from((m + 9) % 12);
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// [`days_from_civil`] の逆(`YYYY-MM-DD`)。
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
+}
+
+fn format_ymd(days: i64) -> String {
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// `Start-Date: 2025-11-27  10:00:00` の日付部分(UTC でなくホストの現地日付。日単位の
+/// しきい値には影響しない)。
+fn parse_start_date(rest: &str) -> Option<i64> {
+    let date = rest.split_whitespace().next()?;
+    let mut it = date.split('-');
+    let y: i64 = it.next()?.parse().ok()?;
+    let m: u32 = it.next()?.parse().ok()?;
+    let d: u32 = it.next()?.parse().ok()?;
+    ((1..=12).contains(&m) && (1..=31).contains(&d)).then(|| days_from_civil(y, m, d))
+}
+
+/// `Commandline:` 1 行が、システム全体の更新(`apt`/`apt-get`/`aptitude` の `upgrade`・
+/// `full-upgrade`・`dist-upgrade`・`safe-upgrade`、PackageKit の `update-packages`)か。
+/// `apt install pop-upgrade` のように、パッケージ名に `upgrade` を含むだけのものは含まない
+/// (サブコマンドだけを見る)。`sudo` 経由・パス付きの実行ファイルも同じに見る。
+pub fn is_upgrade_commandline(cmd: &str) -> bool {
+    let mut tokens: Vec<&str> = cmd.split_whitespace().collect();
+    if tokens.first() == Some(&"sudo") {
+        tokens.remove(0);
+    }
+    let Some(bin) = tokens.first() else {
+        return false;
+    };
+    // PackageKit(Pop!_Shop 等の GUI の更新): `packagekit role='update-packages'`。
+    // 実機の history.log には install-packages の実例だけがあり、update-packages は
+    // PackageKit の role 名(`PK_ROLE_ENUM_UPDATE_PACKAGES`)からの推定(未確認)。
+    if *bin == "packagekit" {
+        return tokens.iter().any(|t| t.contains("role='update-packages'"));
+    }
+    let name = bin.rsplit('/').next().unwrap_or(bin);
+    if !matches!(name, "apt" | "apt-get" | "aptitude") {
+        return false;
+    }
+    // サブコマンド = 最初の非オプション。`-o`・`-c`・`-t` は次の語を引数に取る。
+    let mut it = tokens[1..].iter();
+    while let Some(t) = it.next() {
+        if matches!(*t, "-o" | "-c" | "-t") {
+            it.next();
+            continue;
+        }
+        if t.starts_with('-') {
+            continue;
+        }
+        return matches!(
+            *t,
+            "upgrade" | "full-upgrade" | "dist-upgrade" | "safe-upgrade"
+        );
+    }
+    false
+}
+
+/// `/var/log/apt/history.log*`(展開済みを連結したもの)から読んだ、更新の履歴。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AptUpdateHistory {
+    /// 最後の upgrade 系の実行の日(1970-01-01 からの日数)。
+    pub last_upgrade: Option<i64>,
+    /// 履歴に残っている最古のブロックの日。`None` は履歴が空(読めない)。
+    pub oldest: Option<i64>,
+}
+
+pub fn parse_history_log_updates(text: &str) -> AptUpdateHistory {
+    let mut h = AptUpdateHistory::default();
+    let mut block_date: Option<i64> = None;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("Start-Date:") {
+            block_date = parse_start_date(rest);
+            if let Some(d) = block_date {
+                h.oldest = Some(h.oldest.map_or(d, |o| o.min(d)));
+            }
+        } else if let Some(cmd) = line.strip_prefix("Commandline: ") {
+            if let (Some(d), true) = (block_date, is_upgrade_commandline(cmd)) {
+                h.last_upgrade = Some(h.last_upgrade.map_or(d, |l| l.max(d)));
+            }
+        }
+    }
+    h
+}
+
+/// apt-stale レイヤー: 最後の upgrade 系の実行が `threshold_days` より古ければ 1 行の
+/// 報告を返す。履歴に upgrade の記録が無いときは、履歴の最古が `threshold_days` より古い
+/// とき(それだけの期間、記録が無い)だけ報告する — 入れたばかりのホストは報告しない。
+/// 履歴が空(`oldest` が `None`)なら、判定の材料が無いので clean(呼び出し側がレイヤーごと
+/// skip する)。`today` は 1970-01-01 からの日数。
+pub fn diff_apt_stale(h: &AptUpdateHistory, today: i64, threshold_days: i64) -> LayerDrift {
+    let mut lines = Vec::new();
+    match (h.last_upgrade, h.oldest) {
+        (Some(last), _) if today - last > threshold_days => lines.push(format!(
+            "最後の apt upgrade / full-upgrade は {}({} 日前、しきい値 {threshold_days} 日)",
+            format_ymd(last),
+            today - last
+        )),
+        (None, Some(oldest)) if today - oldest > threshold_days => lines.push(format!(
+            "history.log の範囲({} 以降)に apt upgrade / full-upgrade の記録が無い(しきい値 {threshold_days} 日)",
+            format_ymd(oldest)
+        )),
+        _ => {}
+    }
+    LayerDrift {
+        layer: "apt-stale",
+        kind: DriftKind::Stale,
+        undeclared: lines,
+    }
+}
+
 /// `cargo install --list` の出力を解析し、パッケージ名の集合を返す。
 /// 形式は `<pkgname> v<version>:` の見出し行に続けて、インデントされた
 /// バイナリ名の行が並ぶ(`<pkgname> v<version> (<path>):` の派生形もある
@@ -193,10 +355,7 @@ pub fn parse_cargo_installed(text: &str) -> BTreeSet<String> {
 /// cargo レイヤーの diff: この repo は cargo install に対する宣言ファイルを
 /// 持たない(Issue #4 の設計どおり)ので、インストール済み全件が候補。
 pub fn diff_cargo(installed: &BTreeSet<String>) -> LayerDrift {
-    LayerDrift {
-        layer: "cargo",
-        undeclared: installed.iter().cloned().collect(),
-    }
+    LayerDrift::undeclared("cargo", installed.iter().cloned().collect())
 }
 
 /// `npm ls -g --depth=0 --json` の出力から `.dependencies` のキー(パッケージ
@@ -219,10 +378,7 @@ pub fn parse_npm_global(json_text: &str) -> BTreeSet<String> {
 }
 
 pub fn diff_npm(installed: &BTreeSet<String>) -> LayerDrift {
-    LayerDrift {
-        layer: "npm",
-        undeclared: installed.iter().cloned().collect(),
-    }
+    LayerDrift::undeclared("npm", installed.iter().cloned().collect())
 }
 
 /// `pipx list --json` の出力から `.venvs` のキー(パッケージ名)を抽出する。
@@ -237,10 +393,7 @@ pub fn parse_pipx_venvs(json_text: &str) -> BTreeSet<String> {
 }
 
 pub fn diff_pipx(installed: &BTreeSet<String>) -> LayerDrift {
-    LayerDrift {
-        layer: "pipx",
-        undeclared: installed.iter().cloned().collect(),
-    }
+    LayerDrift::undeclared("pipx", installed.iter().cloned().collect())
 }
 
 /// ADR-0025 対象(update-own-tools のホストローカルレジストリに載る
@@ -274,6 +427,7 @@ pub fn filter_registry_excluded(
                 .collect();
             LayerDrift {
                 layer: d.layer,
+                kind: d.kind,
                 undeclared: kept,
             }
         })
@@ -329,17 +483,35 @@ pub fn compose_issue_report(
     drifts: &[LayerDrift],
     excluded_count: usize,
 ) -> String {
+    let has_undeclared = drifts
+        .iter()
+        .any(|d| d.kind == DriftKind::Undeclared && !d.is_clean());
     let mut body = String::new();
-    body.push_str(&format!(
-        "`detect-drift` が {hostname} で宣言外の ad-hoc install を検出しました。\n\n"
-    ));
+    if has_undeclared {
+        body.push_str(&format!(
+            "`detect-drift` が {hostname} で宣言外の ad-hoc install を検出しました。\n\n"
+        ));
+    } else {
+        body.push_str(&format!(
+            "`detect-drift` が {hostname} で次を検出しました。\n\n"
+        ));
+    }
     for d in drifts {
         if d.undeclared.is_empty() {
             continue;
         }
         body.push_str(&format!("## {}\n\n", d.layer));
         for name in &d.undeclared {
-            body.push_str(&format!("- `{name}`\n"));
+            match d.kind {
+                DriftKind::Undeclared => body.push_str(&format!("- `{name}`\n")),
+                DriftKind::Stale => body.push_str(&format!("- {name}\n")),
+            }
+        }
+        if d.kind == DriftKind::Stale {
+            body.push_str(
+                "\n手順(`sudo apt full-upgrade` の前後に読むもの、再起動、held パッケージ)は \
+                 `docs/operations.md` の「システム層(apt)の定期更新」を参照してください。\n",
+            );
         }
         body.push('\n');
     }
@@ -348,10 +520,12 @@ pub fn compose_issue_report(
             "({excluded_count} 件は update-own-tools のホストローカルレジストリに登録済みのため、ADR-0025 によりここには列挙していません。)\n\n"
         ));
     }
-    body.push_str(
-        "宣言(home-manager / packages/declarative/apt-packages.txt)へ取り込むか、\
-         escape hatch として残すかは人間の判断です(Issue #4 の分類ルール)。\n",
-    );
+    if has_undeclared {
+        body.push_str(
+            "宣言(home-manager / packages/declarative/apt-packages.txt)へ取り込むか、\
+             escape hatch として残すかは人間の判断です(Issue #4 の分類ルール)。\n",
+        );
+    }
     body
 }
 
@@ -361,10 +535,7 @@ mod registry_tests {
     use update_own_tools::parse_registry;
 
     fn drift(layer: &'static str, names: &[&str]) -> LayerDrift {
-        LayerDrift {
-            layer,
-            undeclared: names.iter().map(|s| s.to_string()).collect(),
-        }
+        LayerDrift::undeclared(layer, names.iter().map(|s| s.to_string()).collect())
     }
 
     #[test]
@@ -748,5 +919,162 @@ ghr v1.2.3 (/home/x/.ghr/some/path):
             diff_pipx(&pipx_installed).undeclared,
             vec!["black".to_string()]
         );
+    }
+
+    // ---- apt-stale(#1053) ----
+
+    const HISTORY: &str = "\
+Start-Date: 2025-10-18  10:00:00
+Commandline: apt upgrade
+Requested-By: tarotene (1000)
+Upgrade: foo:amd64 (1, 2)
+End-Date: 2025-10-18  10:05:00
+
+Start-Date: 2025-11-21  23:21:28
+Commandline: apt install ros-jazzy-desktop
+Requested-By: tarotene (1000)
+Install: bar:amd64 (1, automatic)
+End-Date: 2025-11-21  23:25:05
+
+Start-Date: 2025-11-27  08:00:00
+Commandline: apt full-upgrade
+Requested-By: tarotene (1000)
+Upgrade: foo:amd64 (2, 3)
+End-Date: 2025-11-27  08:30:00
+
+Start-Date: 2026-01-13  09:00:00
+Commandline: apt-get -y -o Dpkg::Options::=--force-confdef install pop-upgrade libpop-upgrade-gtk
+Install: pop-upgrade:amd64 (1)
+End-Date: 2026-01-13  09:00:09
+";
+
+    fn day(y: i64, m: u32, d: u32) -> i64 {
+        days_from_civil(y, m, d)
+    }
+
+    #[test]
+    fn civil_days_roundtrip_and_known_values() {
+        assert_eq!(days_from_civil(1970, 1, 1), 0);
+        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
+        for (y, m, d) in [
+            (2024, 2, 29),
+            (2025, 11, 27),
+            (2026, 10, 27),
+            (1999, 12, 31),
+        ] {
+            assert_eq!(civil_from_days(days_from_civil(y, m, d)), (y, m, d));
+        }
+        assert_eq!(format_ymd(day(2025, 11, 27)), "2025-11-27");
+        assert_eq!(day(2026, 10, 26) - day(2025, 11, 27), 333);
+    }
+
+    #[test]
+    fn upgrade_commandlines_are_recognised_by_subcommand_only() {
+        for cmd in [
+            "apt upgrade",
+            "apt full-upgrade",
+            "apt-get upgrade -y --allow-downgrades",
+            "sudo apt-get -y dist-upgrade",
+            "/usr/bin/apt full-upgrade",
+            "aptitude safe-upgrade",
+            "apt -o Dpkg::Options::=--force-confold full-upgrade",
+            "packagekit role='update-packages'",
+        ] {
+            assert!(is_upgrade_commandline(cmd), "{cmd}");
+        }
+        for cmd in [
+            "apt install gh",
+            "apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold --allow-downgrades install pop-upgrade libpop-upgrade-gtk",
+            "apt-get purge -y ubuntu-minimal unattended-upgrades yaru-theme-gnome-shell",
+            "apt list --upgradable",
+            "packagekit role='install-packages'",
+            "dpkg -i foo.deb",
+            "",
+        ] {
+            assert!(!is_upgrade_commandline(cmd), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn history_gives_last_upgrade_and_oldest_block() {
+        let h = parse_history_log_updates(HISTORY);
+        assert_eq!(h.last_upgrade, Some(day(2025, 11, 27)));
+        assert_eq!(h.oldest, Some(day(2025, 10, 18)));
+        assert_eq!(parse_history_log_updates(""), AptUpdateHistory::default());
+    }
+
+    #[test]
+    fn old_upgrade_is_stale_with_a_one_line_report() {
+        let h = parse_history_log_updates(HISTORY);
+        let d = diff_apt_stale(&h, day(2026, 10, 26), 90);
+        assert_eq!(d.layer, "apt-stale");
+        assert_eq!(d.kind, DriftKind::Stale);
+        assert_eq!(d.undeclared.len(), 1);
+        assert!(d.undeclared[0].contains("2025-11-27"), "{:?}", d.undeclared);
+        assert!(d.undeclared[0].contains("333 日前"), "{:?}", d.undeclared);
+        assert!(
+            d.undeclared[0].contains("しきい値 90 日"),
+            "{:?}",
+            d.undeclared
+        );
+    }
+
+    #[test]
+    fn upgrade_within_the_threshold_is_clean() {
+        let h = parse_history_log_updates(HISTORY);
+        assert!(diff_apt_stale(&h, day(2025, 11, 27) + 90, 90).is_clean());
+        assert!(!diff_apt_stale(&h, day(2025, 11, 27) + 91, 90).is_clean());
+    }
+
+    #[test]
+    fn no_upgrade_record_is_stale_only_when_the_log_is_old_enough_to_say_so() {
+        let installs_only = "Start-Date: 2026-09-06  09:56:54\nCommandline: apt install gh\nEnd-Date: 2026-09-06  09:57:00\n";
+        let h = parse_history_log_updates(installs_only);
+        assert_eq!(h.last_upgrade, None);
+        // 入れて 50 日: まだ判断できない。
+        assert!(diff_apt_stale(&h, day(2026, 10, 26), 90).is_clean());
+        // 100 日: それだけの期間、記録が無い。
+        let d = diff_apt_stale(&h, day(2026, 12, 15), 90);
+        assert_eq!(d.undeclared.len(), 1);
+        assert!(d.undeclared[0].contains("記録が無い"), "{:?}", d.undeclared);
+        // 履歴が空なら、判定の材料が無いので clean。
+        assert!(diff_apt_stale(&AptUpdateHistory::default(), day(2026, 10, 26), 90).is_clean());
+    }
+
+    #[test]
+    fn stale_report_is_a_plain_line_and_points_at_the_runbook() {
+        let h = parse_history_log_updates(HISTORY);
+        let stale = diff_apt_stale(&h, day(2026, 10, 26), 90);
+        let body = compose_issue_report("vega", std::slice::from_ref(&stale), 0);
+        assert!(body.contains("## apt-stale"));
+        assert!(body.contains("- 最後の apt upgrade / full-upgrade は 2025-11-27"));
+        assert!(
+            !body.contains("`最後の"),
+            "名前ではないので code span にしない"
+        );
+        assert!(body.contains("docs/operations.md"));
+        assert!(!body.contains("ad-hoc install を検出"), "{body}");
+        // 宣言外の在庫と並ぶときは、従来の見出し・結びが残る。
+        let body = compose_issue_report(
+            "vega",
+            &[
+                LayerDrift::undeclared("apt", vec!["pandoc".to_string()]),
+                stale,
+            ],
+            0,
+        );
+        assert!(body.contains("ad-hoc install を検出"));
+        assert!(body.contains("`pandoc`") && body.contains("## apt-stale"));
+    }
+
+    #[test]
+    fn filter_registry_excluded_keeps_the_kind() {
+        let registry = update_own_tools::parse_registry("").unwrap();
+        let h = parse_history_log_updates(HISTORY);
+        let stale = diff_apt_stale(&h, day(2026, 10, 26), 90);
+        let (filtered, excluded) = filter_registry_excluded(&[stale], &registry);
+        assert_eq!(excluded, 0);
+        assert_eq!(filtered[0].kind, DriftKind::Stale);
+        assert_eq!(filtered[0].undeclared.len(), 1);
     }
 }

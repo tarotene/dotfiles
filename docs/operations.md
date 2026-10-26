@@ -343,6 +343,100 @@ Because the input method is now pinned rather than distro-supplied, it is only a
 current as the flake — which is the point (apt was stuck two years behind a fix),
 but it makes the update cadence above load-bearing for Japanese input.
 
+## Periodic updates of the system layer (apt)
+
+`hms` never touches apt (the system layer is the escape hatch, ADR-0001), and
+`scripts/install-packages.sh` only runs `apt-get update` and installs the
+declared list — nothing in this repository upgrades the system layer. The
+kernel, Mesa, firmware and the COSMIC packages therefore stay at whatever was
+installed until someone runs a full upgrade by hand. #1053: `vega` was last
+upgraded on 2025-11-27 and had 1141 packages waiting on 2026-10-26; nothing
+had said so until a GUI slowdown investigation noticed it.
+
+### Detection
+
+`detect-drift` has an `apt-stale` layer (`crates/detect-drift`, the same weekly
+timer and the same private `drift` Issue as the other layers, so nothing is
+written to a public repository — ADR-0034). It reads
+`/var/log/apt/history.log*` and reports when the last `apt` / `apt-get` /
+`aptitude` `upgrade`, `full-upgrade`, `dist-upgrade` or `safe-upgrade` is older
+than **90 days** (override: `DETECT_DRIFT_APT_STALE_DAYS`). A host whose log
+holds no upgrade at all is reported only once the oldest log entry is itself
+older than the threshold, so a freshly installed host is left alone. The layer
+is skipped when no history log can be read (non-apt hosts).
+
+```bash
+detect-drift | grep apt-stale   # a `WARN apt-stale:` line with the date and age, or `OK   apt-stale:`
+```
+
+Why 90 days: it is an operating judgement, not a vendor figure. At #1053's
+observed rate (1141 packages in 335 days, about 3.4 a day) 90 days is about 300
+pending packages, a batch the steps below can still be read through; a shorter
+threshold files an Issue in weeks when nothing needs rushing, a longer one lets
+fixes for COSMIC (pre-1.0), the kernel and Mesa sit unapplied for months.
+`/var/log/apt/history.log*` is kept for 12 rotations, so "no record" also covers
+a host that has not been upgraded for longer than the log reaches. Updates made
+through Pop!_Shop are counted only if PackageKit logs them as
+`role='update-packages'` (inferred from PackageKit's role names, not observed:
+the log on `vega` only shows `install-packages`). `unattended-upgrades` is not
+installed on `vega` (checked 2026-10-27), so there is no automatic path either.
+
+### Procedure
+
+Do it by hand, one host at a time, with nothing running that you cannot lose —
+the compositor and the greeter are among the upgraded packages. Nothing here is
+automated: every `sudo` is yours.
+
+1. **Read before upgrading.**
+
+   ```bash
+   sudo apt update
+   apt list --upgradable 2>/dev/null | tail -n +2 | wc -l   # how many
+   apt-mark showhold                                        # held packages
+   apt-get -s full-upgrade | grep -E '^Remv|kept back'      # what it would remove / not touch
+   apt-cache policy linux-system76                          # kernel: Installed vs Candidate
+   ```
+
+   - **Removals.** `apt full-upgrade` "will remove currently installed packages
+     if this is needed to upgrade the system as a whole" (apt(8)); `upgrade`
+     does not. Read every `Remv` line and stop if one is something you use. On
+     `vega` the simulation showed 19 on 2026-10-27.
+   - **Held packages.** `apt-mark hold` marks a package "as held back, which will
+     prevent the package from being automatically installed, upgraded or
+     removed" (apt-mark(8)). `apt-mark showhold` printed nothing on `vega`
+     (2026-10-27). For each package it does list, decide whether the hold is
+     still wanted before the upgrade (`sudo apt-mark unhold <package>` to let it
+     move), and say so in the Issue so the hold is not forgotten again. Packages
+     the simulation reports as "kept back" without being held are a dependency
+     or phasing matter: read the line, do not force them.
+   - **Kernel jump.** On 2026-10-27 `linux-system76` went from 6.17.4 installed to
+     a 7.2 candidate. A major version change deserves a fallback: the upgrade log
+     records old and new versions (`/var/log/apt/history.log`, the `Upgrade:`
+     line), so a single package can be put back with
+     `sudo apt install <package>=<old-version>`.
+2. **Upgrade.** `sudo apt full-upgrade` (read the removal list once more at the
+   prompt; it is the list from step 1 unless the archive moved).
+3. **Check whether a reboot is needed.** Do not rely on
+   `/var/run/reboot-required`: `needrestart` and `update-notifier-common` are not
+   installed on `vega`, so nothing creates it. Compare the running kernel with the
+   installed one instead:
+
+   ```bash
+   uname -r                                  # running
+   dpkg -s linux-system76 | grep '^Version'  # installed
+   ```
+
+   If they differ, or the upgrade replaced the compositor or graphics driver
+   packages, reboot. A reboot ends every session on the host, including any
+   agent session running there, so it is the **last** step: finish and push
+   in-flight work first.
+4. **After the reboot.** Run `detect-drift | grep apt-stale` and expect the `OK`
+   line. Run `sudo apt autoremove` only after the new kernel has booted and you
+   are satisfied with it (a procedure choice: the old kernel stays installed
+   until then). The weekly timer comments on the open `drift` Issue but never
+   closes it — the other layers keep that Issue open — so note the upgrade there
+   in a comment instead.
+
 ## Rotating a machine-local GPG [S] signing subkey
 
 `gpg-subkey` (`crates/gpg-subkey`, deployed to `~/.local/bin/gpg-subkey`) generates and
