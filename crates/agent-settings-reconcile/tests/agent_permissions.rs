@@ -1007,3 +1007,40 @@ fn codex_tool_approvals_are_reverted_key_by_key_without_touching_the_rest() {
     );
     assert!(assess(&p, h, &[]).unwrap_err().contains("permission drift"));
 }
+
+/// #1055: one unreadable file is one `review` source, not a failure of the inventory.
+#[test]
+fn an_unreadable_settings_file_is_reported_as_one_review_source() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path().join("home");
+    let broken = d.path().join("broken");
+    let fine = d.path().join("fine");
+    fs::create_dir_all(&h).unwrap();
+    put(&broken, ".claude/settings.json", "");
+    put(&broken, ".claude/settings.local.json", "{not json");
+    put(&fine, ".claude/settings.local.json", "{}");
+    let p = policy();
+    let projects = vec![broken.clone(), fine.clone()];
+    let review = inspect(&p, &h, &projects).unwrap();
+    let reviewed: Vec<_> = review
+        .decisions
+        .iter()
+        .filter(|(_, d)| *d == "review")
+        .map(|(path, _)| path.clone())
+        .collect();
+    assert_eq!(reviewed.len(), 2, "{:?}", review.decisions);
+    for path in &reviewed {
+        let source = review.sources.iter().find(|s| s.path == *path).unwrap();
+        assert!(source.unknown[0].starts_with("unreadable configuration:"));
+        assert!(path.starts_with(broken.canonicalize().unwrap()));
+    }
+    // The readable source next to them is still inventoried, and can be managed.
+    let fine_local = fine
+        .join(".claude/settings.local.json")
+        .canonicalize()
+        .unwrap();
+    assert_eq!(review.decisions[&fine_local], "manage");
+    // Nothing is migrated over an unreadable file; the owner fixes or removes it.
+    let err = migrate(&p, &h, &projects, &review).unwrap_err();
+    assert!(err.contains("requires review"), "{err}");
+}

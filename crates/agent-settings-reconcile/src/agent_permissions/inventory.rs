@@ -36,15 +36,35 @@ pub fn digest(bytes: &[u8]) -> String {
 /// Missing optional files are normal; unreadable or malformed present sources
 /// are errors. Every discovered physical file appears exactly once.
 pub fn discover(home: &Path, projects: &[PathBuf]) -> Result<Vec<Source>, String> {
+    discover_in(home, projects, true)
+}
+
+/// What a session started in `cwd` reads: the user and managed sources, plus the
+/// project files of `cwd` and its ancestors (and the main checkout of a linked
+/// worktree). Projects that Claude Code or Codex merely remember are not read:
+/// another worktree's file cannot change this session's permissions (#1055).
+pub fn discover_session(home: &Path, cwd: &Path) -> Result<Vec<Source>, String> {
+    discover_in(home, &[cwd.to_path_buf()], false)
+}
+
+fn discover_in(
+    home: &Path,
+    projects: &[PathBuf],
+    remembered_projects: bool,
+) -> Result<Vec<Source>, String> {
     let home = home.canonicalize().map_err(|e| at(home, e))?;
     let mut inventory = Inventory::default();
     let mut roots: BTreeSet<PathBuf> = projects.iter().cloned().collect();
     inventory.add(&home.join(".claude/settings.json"), "claude-settings", true)?;
     if let Some(state) = inventory.add(&home.join(".claude.json"), "claude-state", true)? {
-        collect_projects(&state, "projects", &mut roots)?;
+        if remembered_projects {
+            collect_projects(&state, "projects", &mut roots)?;
+        }
     }
     if let Some(config) = inventory.add(&home.join(".codex/config.toml"), "codex-config", true)? {
-        collect_projects(&config, "projects", &mut roots)?;
+        if remembered_projects {
+            collect_projects(&config, "projects", &mut roots)?;
+        }
     }
     inventory.rules(&home.join(".codex/rules"), true)?;
     inventory.add(&home.join(".claude/remote-settings.json"), "managed", false)?;
@@ -113,6 +133,70 @@ pub fn discover(home: &Path, projects: &[PathBuf]) -> Result<Vec<Source>, String
         }
     }
     Ok(inventory.files.into_values().collect())
+}
+
+/// The directories whose project-level files a session started in `cwd` reads:
+/// `cwd` and its ancestors, and the main checkout of a linked worktree (where
+/// Claude Code keeps its local settings). Lexical and physical spellings are both
+/// listed because a recorded source path is physical.
+pub fn session_dirs(cwd: &Path) -> Vec<PathBuf> {
+    let mut dirs = BTreeSet::new();
+    let mut chain = |start: &Path, whole_chain: bool| {
+        for dir in start.ancestors() {
+            dirs.insert(dir.to_path_buf());
+            if let Ok(physical) = dir.canonicalize() {
+                dirs.insert(physical);
+            }
+            if !whole_chain {
+                break;
+            }
+        }
+    };
+    chain(cwd, true);
+    if let Ok(physical) = cwd.canonicalize() {
+        chain(&physical, true);
+    }
+    if let Ok(Some(main)) = main_checkout(cwd) {
+        chain(&main, false);
+    }
+    dirs.into_iter().collect()
+}
+
+/// Whether the session started in a directory with these `dirs` reads `path`.
+/// Everything that is not a project-level file (user, managed, plugin sources) is
+/// read by every session; a project-level file only by a session below its project.
+/// The user's own `settings.json` and Codex files live in `home` but are read from
+/// anywhere; `home`'s `settings.local.json` and `.mcp.json` are project files.
+pub fn in_session_scope(path: &Path, home: &Path, dirs: &[PathBuf]) -> bool {
+    let name = |p: &Path| p.file_name().and_then(|n| n.to_str()).map(str::to_owned);
+    let up = |p: &Path, n: usize| p.ancestors().nth(n).map(Path::to_path_buf);
+    let file = name(path).unwrap_or_default();
+    let parent = path.parent().and_then(name).unwrap_or_default();
+    let project = if file == ".mcp.json" {
+        up(path, 1)
+    } else if (parent == ".claude" && (file == "settings.json" || file == "settings.local.json"))
+        || (parent == ".codex" && file == "config.toml")
+    {
+        up(path, 2)
+    } else if parent == "rules"
+        && path.extension().is_some_and(|e| e == "rules")
+        && path
+            .parent()
+            .and_then(Path::parent)
+            .and_then(name)
+            .is_some_and(|n| n == ".codex")
+    {
+        up(path, 3)
+    } else {
+        None
+    };
+    let Some(project) = project else {
+        return true;
+    };
+    if dirs.contains(&project) {
+        return true;
+    }
+    project == home && file != ".mcp.json" && file != "settings.local.json"
 }
 
 #[derive(Default)]
@@ -204,26 +288,24 @@ impl Inventory {
         };
         let physical = path.canonicalize().map_err(|e| at(path, e))?;
         let symlink = metadata.file_type().is_symlink() || has_symlink_parent(path)?;
-        if !std::fs::metadata(&physical)
-            .map_err(|e| at(path, e))?
-            .is_file()
-        {
-            return Err(at(path, "configuration source is not a regular file"));
-        }
-        let bytes = std::fs::read(&physical).map_err(|e| at(path, e))?;
-        let text = std::str::from_utf8(&bytes).map_err(|e| at(path, e))?;
-        let value = if path.extension().is_some_and(|s| s == "toml") {
-            let doc: DocumentMut = text.parse().map_err(|e| at(path, e))?;
-            table_json(doc.as_table())
-        } else if kind == "codex-rules" {
-            json!({})
-        } else {
-            let v: Value = serde_json::from_str(text).map_err(|e| at(path, e))?;
-            if !v.is_object() {
-                return Err(at(path, "configuration must be an object"));
+        let (bytes, value) = match Self::content(path, &physical, kind) {
+            Ok(content) => content,
+            Err(problem) => {
+                // An unreadable file (empty, not JSON/TOML, not UTF-8, not a regular
+                // file) is reported as one `review` source; it must not fail the
+                // inventory of every other source (#1055).
+                self.insert(
+                    physical,
+                    kind,
+                    writable && !symlink,
+                    digest(b""),
+                    json!({}),
+                    vec![format!("unreadable configuration: {problem}")],
+                );
+                return Ok(None);
             }
-            v
         };
+        let text = std::str::from_utf8(&bytes).unwrap_or_default(); // content() checked it
         let mut unknown = Vec::new();
         let grants = match kind {
             "codex-rules" => {
@@ -247,23 +329,67 @@ impl Inventory {
             }
             _ => claude(&value, &mut unknown),
         };
+        self.insert(
+            physical,
+            kind,
+            writable && !symlink,
+            digest(&bytes),
+            grants,
+            unknown,
+        );
+        Ok(Some(value))
+    }
+
+    /// Record one physical file once. Shared/managed ownership wins over a writable alias.
+    fn insert(
+        &mut self,
+        physical: PathBuf,
+        kind: &str,
+        writable: bool,
+        digest: String,
+        grants: Value,
+        unknown: Vec<String>,
+    ) {
         if let Some(existing) = self.files.get_mut(&physical) {
-            // Shared/managed ownership wins over a writable alias.
-            existing.writable &= writable && !symlink;
-            return Ok(Some(value));
+            existing.writable &= writable;
+            return;
         }
         self.files.insert(
             physical.clone(),
             Source {
                 path: physical,
                 kind: kind.into(),
-                writable: writable && !symlink,
-                digest: digest(&bytes),
+                writable,
+                digest,
                 grants,
                 unknown,
             },
         );
-        Ok(Some(value))
+    }
+
+    /// The bytes and parsed value of one configuration file, or why it cannot be read.
+    fn content(path: &Path, physical: &Path, kind: &str) -> Result<(Vec<u8>, Value), String> {
+        if !std::fs::metadata(physical)
+            .map_err(|e| at(path, e))?
+            .is_file()
+        {
+            return Err(at(path, "configuration source is not a regular file"));
+        }
+        let bytes = std::fs::read(physical).map_err(|e| at(path, e))?;
+        let text = std::str::from_utf8(&bytes).map_err(|e| at(path, e))?;
+        let value = if path.extension().is_some_and(|s| s == "toml") {
+            let doc: DocumentMut = text.parse().map_err(|e| at(path, e))?;
+            table_json(doc.as_table())
+        } else if kind == "codex-rules" {
+            json!({})
+        } else {
+            let v: Value = serde_json::from_str(text).map_err(|e| at(path, e))?;
+            if !v.is_object() {
+                return Err(at(path, "configuration must be an object"));
+            }
+            v
+        };
+        Ok((bytes, value))
     }
 
     fn rules(&mut self, dir: &Path, writable: bool) -> Result<(), String> {
@@ -1218,8 +1344,15 @@ default_tools_approval_mode = 'approve'
     fn malformed_and_unknown_are_not_treated_as_empty() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join(".claude/settings.json");
-        write(&p, "{");
-        assert!(discover(d.path(), &[]).is_err());
+        // Malformed is never empty: it is one source that needs review (#1055),
+        // and an empty file is the same.
+        for broken in ["{", ""] {
+            write(&p, broken);
+            let out = discover(d.path(), &[]).unwrap();
+            let source = out.iter().find(|s| s.kind == "claude-settings").unwrap();
+            assert_eq!(source.unknown.len(), 1, "{broken:?}");
+            assert!(source.unknown[0].starts_with("unreadable configuration:"));
+        }
         write(&p, r#"{"permissions":{"allow":42,"future":true}}"#);
         let out = discover(d.path(), &[]).unwrap();
         assert_eq!(

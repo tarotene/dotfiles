@@ -244,17 +244,61 @@ fn load_record(home: &Path) -> Result<Record, String> {
 /// error; tolerated allow rules added since the last review (see [`pending`])
 /// are returned for reclaim instead of blocking.
 pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<Pending>, String> {
+    let record = reviewed_record(policy, home)?;
+    let current = inspect(policy, home, projects)?;
+    compare(
+        &record,
+        &current.sources,
+        |_| true,
+        "run agent-permissions inspect --json, review then migrate",
+    )
+}
+
+/// [`assess`] for one session, as the permission hook runs it: only the sources
+/// a session started in `cwd` reads (user, managed, and the project files of
+/// `cwd`'s ancestors; see [`inventory::discover_session`]). A drift, an unreadable
+/// file or a new `.mcp.json` in another worktree cannot stop this session (#1055).
+pub fn assess_session(policy: &Policy, home: &Path, cwd: &Path) -> Result<Vec<Pending>, String> {
+    let record = reviewed_record(policy, home)?;
+    let sources = inventory::discover_session(home, cwd)?;
+    let physical_home = home
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", home.display()))?;
+    let dirs = inventory::session_dirs(cwd);
+    compare(
+        &record,
+        &sources,
+        |path| inventory::in_session_scope(path, &physical_home, &dirs),
+        // A new worktree's sources are only listed when it is named.
+        &format!(
+            "run agent-permissions inspect --json --project {}, review then migrate",
+            cwd.display()
+        ),
+    )
+}
+
+fn reviewed_record(policy: &Policy, home: &Path) -> Result<Record, String> {
     transaction::check_pending(home)?;
     let record = load_record(home)?;
     if record.policy != *policy {
         return Err("policy changed; inspect and review before apply (permission expansion is never implicit)".into());
     }
-    let current = inspect(policy, home, projects)?;
+    Ok(record)
+}
+
+/// `scope` says which recorded sources the caller reads; a recorded source
+/// outside it is not reported as removed.
+fn compare(
+    record: &Record,
+    sources: &[Source],
+    scope: impl Fn(&Path) -> bool,
+    hint: &str,
+) -> Result<Vec<Pending>, String> {
     // Every difference is listed, not just the first: one review should be enough.
     let mut problems = Vec::new();
     let mut waiting = Vec::new();
     // Hash whole shared files; compare only permission fields for mutable user configs.
-    for s in &current.sources {
+    for s in sources {
         let Some(old) = record.sources.iter().find(|o| o.path == s.path) else {
             match tolerated_new_source(s) {
                 Some(t) if t.rules.is_empty() => {}
@@ -263,7 +307,11 @@ pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<
                     rules: t.rules,
                     revert: t.revert,
                 }),
-                None => problems.push(format!("new permission source: {}", s.path.display())),
+                None if reviewed_mcp_copy(record, s) => {}
+                None => problems.push(match s.unknown.first() {
+                    Some(why) => format!("new permission source: {} ({why})", s.path.display()),
+                    None => format!("new permission source: {}", s.path.display()),
+                }),
             }
             continue;
         };
@@ -284,20 +332,38 @@ pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<
                     rules: t.rules,
                     revert: t.revert,
                 }),
-                None => problems.push(format!("permission drift: {}", s.path.display())),
+                None => problems.push(match s.unknown.first() {
+                    Some(why) if !old.unknown.contains(why) => {
+                        format!("permission drift: {} ({why})", s.path.display())
+                    }
+                    _ => format!("permission drift: {}", s.path.display()),
+                }),
             }
         }
     }
     for old in &record.sources {
-        if !current.sources.iter().any(|s| s.path == old.path) {
+        if scope(&old.path) && !sources.iter().any(|s| s.path == old.path) {
             problems.push(format!("permission source removed: {}", old.path.display()));
         }
     }
     if problems.is_empty() {
         return Ok(waiting);
     }
-    problems.push("run agent-permissions inspect --json, review then migrate".into());
+    problems.push(hint.into());
     Err(problems.join("\n"))
+}
+
+/// A `.mcp.json` the record has never seen but whose bytes equal one it holds: a
+/// linked worktree carries its checkout's file. The file defines servers and grants
+/// nothing (`grants` is empty); enabling a server is a setting that is tracked on its own.
+fn reviewed_mcp_copy(record: &Record, new: &Source) -> bool {
+    new.kind == "claude-mcp"
+        && !new.writable
+        && new.unknown.is_empty()
+        && record
+            .sources
+            .iter()
+            .any(|old| old.kind == "claude-mcp" && old.digest == new.digest)
 }
 
 /// Strict form of [`assess`]: pending allow rules are an error too. Used where
@@ -807,7 +873,7 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
         .ok_or("permission hook cwd missing")?;
     // Pending allow rules never block here; a structural drift blocks every call
     // except the inert ones, so the agent can still ask the owner and diagnose.
-    if let Err(reason) = assess(&policy, &home, &[PathBuf::from(cwd)]) {
+    if let Err(reason) = assess_session(&policy, &home, Path::new(cwd)) {
         let named = input.get("tool_name").and_then(Value::as_str);
         if inert_call(named, &input["tool_input"]) {
             return Ok(None);

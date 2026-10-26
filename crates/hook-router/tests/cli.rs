@@ -648,3 +648,99 @@ fn a_structural_drift_stops_tools_except_asking_and_read_only_diagnosis() {
         serde_json::json!({"command":"agent-permissions migrate --approved /tmp/r.json --dry-run"}),
     );
 }
+
+/// Review another project into the record, so the record lists its files.
+fn review_project(home: &std::path::Path, project: &std::path::Path) {
+    use agent_settings_reconcile::agent_permissions::{inspect, migrate, Policy};
+    let raw = std::fs::read(home.join(".config/agent-permissions/policy.json")).unwrap();
+    let policy: Policy = serde_json::from_slice(&raw).unwrap();
+    let projects = [project.to_path_buf()];
+    let review = inspect(&policy, home, &projects).unwrap();
+    migrate(&policy, home, &projects, &review).unwrap();
+}
+
+fn read_plain(home: &std::path::Path, workspace: &std::path::Path) -> (bool, String) {
+    let out = permission_call(
+        home,
+        workspace,
+        "Read",
+        serde_json::json!({"file_path":"plain.txt"}),
+    );
+    assert!(out.status.success());
+    if out.stdout.is_empty() {
+        return (true, String::new());
+    }
+    let v = json(&out);
+    (
+        false,
+        v["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+    )
+}
+
+/// #1055: another worktree's empty or removed settings file stops no tool here,
+/// while the same file in this session's own project still does, by name.
+#[test]
+fn another_projects_unreadable_or_removed_settings_do_not_stop_this_session() {
+    let (home, workspace) = permission_home();
+    let other = home.path().join("other");
+    std::fs::create_dir_all(other.join(".claude")).unwrap();
+    std::fs::write(other.join(".claude/settings.local.json"), "{}").unwrap();
+    std::fs::write(other.join(".claude/settings.json"), "{}").unwrap();
+    review_project(home.path(), &other);
+    assert!(read_plain(home.path(), &workspace).0);
+
+    // The empty, read-only file a sandbox leaves behind (0 bytes).
+    std::fs::write(other.join(".claude/settings.local.json"), "").unwrap();
+    std::fs::remove_file(other.join(".claude/settings.json")).unwrap();
+    assert!(
+        read_plain(home.path(), &workspace).0,
+        "a project this session does not read must not stop it"
+    );
+
+    // The same breakage in the session's own project stops it, naming that one file.
+    std::fs::create_dir_all(workspace.join(".claude")).unwrap();
+    std::fs::write(workspace.join(".claude/settings.local.json"), "").unwrap();
+    let (passed, reason) = read_plain(home.path(), &workspace);
+    assert!(!passed);
+    assert!(reason.contains("settings.local.json"), "{reason}");
+    assert!(reason.contains("unreadable"), "{reason}");
+    assert!(
+        !reason.contains("other/"),
+        "only this session's file is named: {reason}"
+    );
+    assert!(reason.contains("--project"), "{reason}");
+}
+
+/// #1062: a new worktree's committed `.mcp.json` is the checkout's file; the same
+/// bytes as a reviewed one are not a new permission source, different bytes are.
+#[test]
+fn a_worktree_mcp_json_equal_to_a_reviewed_one_is_not_a_new_source() {
+    let (home, workspace) = permission_home();
+    let main = home.path().join("main");
+    std::fs::create_dir_all(&main).unwrap();
+    std::fs::write(main.join(".mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+    review_project(home.path(), &main);
+
+    let worktree = home.path().join("worktrees/feature");
+    std::fs::create_dir_all(&worktree).unwrap();
+    std::fs::write(worktree.join(".mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+    assert!(read_plain(home.path(), &worktree).0);
+
+    std::fs::write(
+        worktree.join(".mcp.json"),
+        r#"{"mcpServers":{"x":{"command":"x"}}}"#,
+    )
+    .unwrap();
+    let (passed, reason) = read_plain(home.path(), &worktree);
+    assert!(!passed);
+    assert!(reason.contains("new permission source"), "{reason}");
+    assert!(
+        reason.contains(&format!("--project {}", worktree.display())),
+        "the recovery names the project to inspect: {reason}"
+    );
+    // The reviewed workspace is untouched.
+    assert!(read_plain(home.path(), &workspace).0);
+}

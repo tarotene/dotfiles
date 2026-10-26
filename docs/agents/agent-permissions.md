@@ -133,6 +133,21 @@ agent-permissions check --policy "$policyFile" --project "$PWD"
 棚卸しは Claude の user / project / local、linked worktree の main checkout 側
 local、登録済みプロジェクト、plugin と管理設定、Codex の user / project / 全 profile、
 rules、MCP / App / plugin の承認設定を対象とする。読めない設定元は無視しない。
+空のファイル・不正な JSON/TOML・UTF-8 でないファイルは、棚卸し全体を失敗させず、その 1 件を
+`review`(`unknown` に `unreadable configuration: …`)として報告する(#1055)。`migrate` はその 1 件が
+残る間は進まないので、本人が直すか消す。
+
+hook(Claude の PreToolUse、Codex の PermissionRequest)が見るのは、このセッションが実際に読む設定元だけである。
+user・managed・plugin と、`cwd` とその祖先ディレクトリの設定(linked worktree は本物の checkout の
+`settings.local.json` も)。`~/.claude.json` や Codex の `projects` に記憶されているだけの別プロジェクト・別 worktree の
+ファイルは、その不備・削除・新規作成でこのセッションを止めない。`check`・`apply`・`migrate` は従来どおり全体を見る。
+セッションの `cwd` 配下の不備は止める(fail-closed)が、理由にはそのファイル 1 件だけが出て、復旧の案内は
+`inspect --json --project <cwd>` を指す(`--project` を付けないと、新しい worktree の設定元は一覧に載らない)。
+
+新しい worktree には、本物の checkout と同じコミットの `.mcp.json` が入っている。`.mcp.json` は MCP サーバーの
+定義で、許可を持たない(`grants` は空。有効化は `enabledMcpjsonServers` など別の設定で、別に追跡する)。そのため、
+記録に無い `.mcp.json` でも、内容(SHA-256)が記録済みの `.mcp.json` と同じなら新しい設定元として扱わない(#1062)。
+内容が違うものは、これまでどおり新しい設定元として止める。
 `CODEX_HOME` / `CLAUDE_CONFIG_DIR` を別の場所へ変更した起動は未実装(意図あり)で、
 通常の設定元を読んだものとしては扱わず拒否する。
 CLI 引数による設定の上書き、Codex の enterprise/cloud/MDM の配布経路は、
