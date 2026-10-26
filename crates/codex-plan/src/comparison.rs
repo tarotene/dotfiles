@@ -208,7 +208,7 @@ pub fn build(days: u32, discovery: std::result::Result<&Discovery, &str>) -> Res
         "reset_at":o.reset_at,"window_minutes":o.window_minutes,"used_percent":o.used_percent,
         "ordinary_usage_allowed":o.ordinary_usage_allowed,"account_attributed":o.account_id.is_some()})).collect();
     Ok(
-        json!({"schema_version":1,"timestamp":timestamp,"days":days,"reference_catalog":catalog,
+        json!({"schema_version":2,"timestamp":timestamp,"days":days,"reference_catalog":catalog,
         "native_models":models,"native_error":native_error,"rate_limits_error":rate_error,"rate_metadata":rate_metadata,
         "current_rate_windows":current_redacted,"remaining_days":estimates,"history":history,
         "observed_standard_equivalents":observed_costs,"observed_token_totals_by_mode":token_totals,"same_token_scenarios_by_mode":scenarios,
@@ -420,6 +420,9 @@ pub fn render(report: &Value) -> String {
         for e in estimates {
             text.push_str(&format!("  {} / {}: 残り作業日数 {}（完了{}日、未完了{}、欠測{}、ゼロ{}、reset跨ぎ{}）\n    {}\n",display(&e["bucket"]),display(&e["window"]),display(&e["remaining_workdays_range"]),e["complete_observed_days"],e["incomplete_days"],e["missing_days"],e["zero_consumption_days"],e["reset_crossing_days"],display(&e["reason"])));
         }
+    }
+    if report.get("experiment_arms").is_some() {
+        text.push_str(&crate::threads::render(&report["experiment_arms"]));
     }
     if let Some(limits) = report["limitations"].as_array() {
         for l in limits {

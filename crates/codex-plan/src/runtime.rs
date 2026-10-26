@@ -128,6 +128,7 @@ pub struct Discovery {
 impl Discovery {
     pub fn validate(&self, settings: &Settings) -> Result<()> {
         settings.validate_models(&self.models)?;
+        settings.validate_experiment(&self.models)?;
         settings.patch_presets(&mut self.modes.clone())
     }
 }

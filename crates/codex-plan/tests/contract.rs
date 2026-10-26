@@ -112,6 +112,7 @@ fn settings_round_trip_atomic_pair_and_only_missing_file_uses_defaults() {
             model: "chosen-execute".into(),
             reasoning_effort: "low".into(),
         },
+        experiment: None,
     };
     selected.save(&path).unwrap();
     assert_eq!(Settings::load(&path).unwrap(), selected);

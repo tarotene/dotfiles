@@ -20,6 +20,8 @@ codex-plan compare --days 14 --json # 機械可読の比較資料
 codex-plan configure              # 比較 → Plan → Auto → 保存確認
 codex-plan configure --plan-model gpt-6-astra --plan-effort medium \
   --execute-model gpt-6.1-sol --execute-effort medium
+codex-plan experiment start --execute-efforts low,medium --until 2026-11-01
+codex-plan experiment stop         # 抽選を止める。期間の記録は残る
 ```
 
 起動後は標準の Shift+Tab や `/plan`、計画の実行操作で切り替える。
@@ -128,6 +130,47 @@ context観測も含む。料金表示は常にStandard相当で、実請求額�
 別モデルの持続時間には、モデル別の同一作業・アカウント・bucketの消費観測が足りない。
 API価格やcreditsから定額枠のドル上限や持続比を逆算しない。
 
+## 実行推論量の観測
+
+公開ベンチは「依頼から PR ができるまでの時間」を測らない。そこで普段の仕事を
+そのまま実験にする。Plan は固定のまま、実行（Auto）の推論量だけを抽選する。
+
+`experiment start` は、候補の推論量（2 つ以上）と最終日を
+`settings.toml` の `[experiment]` に書く。候補は、実行モデルが native の
+`model/list` で対応している値に限る。開始日はその日のローカル日付が入る。
+実験が走っている間は、**新規起動のたび**に候補から一様に 1 つを選び、起動時に
+「観測中: 今回の実行は gpt-6.1-sol low（〜日付）」を 1 行出す。選んだ値は
+そのセッションの実行ペアとして使う（TUI の起動引数と、モード切替で戻すペアの
+両方）。`resume` は抽選せず、保存済みのスレッドの値を使う。保存済みのペア自体は
+書き換えない。`/model` による手動変更は従来どおり尊重する。
+走っている実験に同じ候補で `start` を実行すると、最終日だけが延びる（開始日と割当て済みの
+期間は変わらない）。候補が違うときは拒否する。
+`experiment stop` は抽選を止め、`ended` に日付を書く。`[experiment]` を消さない
+のは、あとから「抽選で割り当てた期間」を導けるようにするため。割当ての台帳は
+作らない。選ばれた値は Codex 自身の履歴（各ターンの `effort`）に残る。
+実験中は `/fast` を使わない。使うとそのスレッドは別枠に分かれる。
+
+`compare` は、直近の暦日に作られたスレッドを実行モードの推論量で分け、次を出す。
+各値は中央値と p90。
+
+- 割当てあり: スレッドの開始が実験期間（`start`〜`ended`、停止前は `until`）に入る
+- 観察のみ: それ以外。設定を自分で選んだので、仕事の偏りが混ざる
+- PR まで: エージェントの稼働時間、最初のターン開始からの壁時計、人が割り込んだ往復数
+- 1 ターン: 所要時間と最初のトークンまでの時間（native の `task_complete`）
+- 別枠で数えるだけ: 実行モードの推論量が途中で変わったスレッド、service tier が
+  既定以外のターンを含むスレッド、実行モードのターンが無いスレッド。腕には混ぜない
+- PR 到達が 5 件未満の腕は「件数不足」とだけ表示し、比較に使わない
+
+「PR ができた」は、`gh pr create` を含む呼び出しの結果に、PR の URL が 1 行として
+出たときだけ数える。`--help` や失敗は URL を出さないので数えず、その後の再試行が
+手戻りとして計測に残る。URL の規則は `crates/gh-edit-allow/src/gh.rs` の
+`parse_url`（PR のみ）と同じで、テストで同じ入力を照合している。呼び出しと結果の
+本文は照合したらすぐ捨て、保存も表示もしない。同じコマンドで PR の URL を echo
+するような場合は、既存の hook と同じく区別できない。子エージェントの履歴は親の
+仕事に含まれるので、スレッドとして数えない。
+
+被験者は 1 人で期間も短いので、有意性は主張しない。分かるのは、各腕の値と件数まで。
+
 ## 通信と責務
 
 ```text
@@ -224,13 +267,15 @@ TUI・推論・履歴・フレーム処理は既存手段を採用する。
 - `crates/codex-plan/src/comparison.rs`
 - `crates/codex-plan/src/selection.rs`
 - `crates/codex-plan/src/advice.rs`
+- `crates/codex-plan/src/experiment.rs`
+- `crates/codex-plan/src/threads.rs`
 - `home/modules/claude.nix`
 
 ## 検証
 
 `cargo test -p codex-plan` は preset、未知フィールド、ID型、手動モデル・承認の
 非改変、設定の一括保存、無効なモデルと推論量、20 MiB の往復、切断、0700と
-並列 socket の独立、子プロセス回収、行の上限を検査する。
+並列 socket の独立、子プロセス回収、行の上限、実験の期間・抽選・PR 完了の判定を検査する。
 Unix socket を作れる実行環境が必要。
 
 実機の検証結果は PR の検証欄に記録する。標準 TUI の表示に加えて保存履歴の
@@ -259,6 +304,38 @@ sandbox_policy を読み、応答と対応づける。利用枠削減率は未�
   [作成アカウントは固定](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/protocol.rs#L3261)、
   [account-bound snapshot](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server-protocol/src/protocol/v2/account.rs#L331)。
   差分はアカウント帰属がない過去の使用率から日数を出さず、読取APIの観測で補うこと（軸: 表現不可能）。
+
+実行推論量の観測の根拠。取得日は 2026-10-27（D10 の上流ソースは 2026-10-26 に確認、
+2026-10-27 時点で最新リリースは rust-v0.164.0 のまま）。
+
+- D10: Plan は gpt-6.1-sol medium に固定し、観測の対象から外す。OpenAI、
+  [Plan プリセット](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/models-manager/src/collaboration_mode_presets.rs#L13)
+  は Plan の推論量を medium に固定し、Default はモデルの既定に従う。
+  差分は一致。Plan は計画の質が手戻りを決めるので試さない（軸: 検出のみ）。
+- D11: 実行の推論量は、新規起動ごとに一様に抽選する。Kohavi, Tang, Xu,
+  [Trustworthy Online Controlled Experiments](https://experimentguide.com/)（2020）。
+  差分は、割当ての単位が利用者でなく起動であること。被験者が 1 人なので、
+  曜日や作業の偏りを無作為化で均す目的に絞り、有意性を主張しない（軸: 還元）。
+- D12: 時間は native が保存する `task_complete` から導く。OpenAI、
+  [TurnCompleteEvent](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/protocol/src/protocol.rs#L2273)
+  の `duration_ms`・`time_to_first_token_ms`、および
+  [常に保存する判定](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/rollout/src/policy.rs#L137)。
+  差分は一致。独自の時刻記録は足さない（軸: 還元）。
+- D13: 観測中は Fast を使わない。OpenAI、
+  [Speed](https://learn.chatgpt.com/docs/agent-configuration/speed)（公開日の記載なし）は
+  Fast を「利用枠を 2.5 倍の速さで消費」と説明する。差分は一致。観測の外に置く
+  （軸: 検出のみ）。
+
+実行側の既定値を決める入力（観測の前の手元の根拠。値は取得時点のもの）:
+
+| 項目 | 値 | 出典 |
+|---|---|---|
+| gpt-6.1-sol の既定推論量（Codex） | low | OpenAI, [models.json L213](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/models-manager/models.json#L213) |
+| gpt-6.1-sol の既定推論量（API） | medium | OpenAI, [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)。Codex と食い違うので、どちらも断定せず観測で決める |
+| 知能指数（low / medium） | 42 / 48 | Artificial Analysis, [low](https://artificialanalysis.ai/models/gpt-6-1-sol-low)・[medium](https://artificialanalysis.ai/models/gpt-6-1-sol-medium)（ページに公開日の記載なし） |
+| 出力速度（low / medium） | 49.9 / 53.0 tokens/s | 同上。出力速度は推論量でほぼ変わらない |
+| 最初の回答トークンまで（low、medium プロンプト / long / 100k） | 1.47 / 2.71 / 6.10 秒 | 同上。プロンプト種別は同ページの区分で、各区分の入力量は未確認 |
+| 同（medium） | 3.39 / 4.38 / 21.8 秒 | 同上。文脈が長いほど、推論量による待ちの差が開く |
 
 Claude比較はAnthropic、[Pricing](https://platform.claude.com/docs/en/about-claude/pricing)と
 [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview)、

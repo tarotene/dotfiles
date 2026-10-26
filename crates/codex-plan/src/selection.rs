@@ -125,7 +125,11 @@ pub fn select(
     else {
         return Ok(None);
     };
-    let selected = Settings { plan, execute };
+    let selected = Settings {
+        plan,
+        execute,
+        experiment: current.experiment.clone(),
+    };
     selected.validate_models(models)?;
     writeln!(out, "\n{}", toml::to_string_pretty(&selected)?)?;
     let confirm = ask(input, out, "このペアを保存しますか? [y/N]")?;
