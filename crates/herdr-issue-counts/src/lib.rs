@@ -228,14 +228,38 @@ pub fn format_token(count: u64) -> String {
 /// (crates/detect-drift の `exit_code` と同じ考え方、#442)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
-    /// 想定内の不在(herdr 未起動・gh 未認証・GitHub リポの workspace 無し)。
-    /// 恒久的にこの状態のマシンで unit を failed に張り付かせない。
+    /// 想定内の不在(herdr 未起動・gh 未認証・GitHub リポの workspace 無し)と、
+    /// GraphQL のレート制限超過(#931: 時間あたりの上限に達すると約 1 時間
+    /// 続き、次の周期で上限が戻れば自然に再開する)。恒久的にこの状態の
+    /// マシン、上限が戻るまでの間で unit を failed に張り付かせない。
     Skipped,
     /// 全 workspace へ報告できた(一部リポジトリの解決失敗は含む)。
     Reported,
-    /// GraphQL・ネットワーク・report-metadata の失敗。一過性なので次の
-    /// 成功で failed は消える。
+    /// レート制限超過を除く GraphQL(ネットワーク・認証エラーなど)と
+    /// report-metadata の失敗。次の周期で戻る保証は無く、原因が直るまで
+    /// failed が続きうる — 見逃さないために exit 1 のままにしてある。
     Failed,
+}
+
+/// `gh api graphql` が応答を返せなかったとき、その失敗が GraphQL のレート制限
+/// 超過か(#931)。`gh` の stderr(`gh: API rate limit already exceeded for user
+/// ID …`)と stdout の GraphQL エラー(`"type":"RATE_LIMITED"`、同じ文言の
+/// `message`)のどちらかに現れる。副次制限(secondary rate limit)も同じ扱い。
+pub fn is_rate_limited(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    ["api rate limit", "secondary rate limit", "rate_limited"]
+        .iter()
+        .any(|needle| t.contains(needle))
+}
+
+/// GraphQL 呼び出しが失敗したときの結末。レート制限は一時的な不在として
+/// `Skipped`、それ以外は `Failed`。
+pub fn graphql_failure_outcome(stdout: &str, stderr: &str) -> Outcome {
+    if is_rate_limited(stdout) || is_rate_limited(stderr) {
+        Outcome::Skipped
+    } else {
+        Outcome::Failed
+    }
 }
 
 pub fn exit_code(outcome: Outcome) -> u8 {
@@ -375,6 +399,51 @@ mod tests {
     fn format_token_shows_zero() {
         assert_eq!(format_token(0), "\u{f41b} 0");
         assert_eq!(format_token(27), "\u{f41b} 27");
+    }
+
+    #[test]
+    fn rate_limit_messages_are_recognised() {
+        // gh の stderr(REST / GraphQL)、GraphQL の応答本文、副次制限。
+        for text in [
+            "gh: API rate limit already exceeded for user ID 12345. If you reach out to GitHub Support for help, please include the request ID ABC.",
+            "gh: API rate limit exceeded for user ID 12345 (HTTP 403)",
+            r#"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit already exceeded for user ID 12345."}]}"#,
+            "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+        ] {
+            assert!(is_rate_limited(text), "{text}");
+        }
+    }
+
+    #[test]
+    fn other_failures_are_not_rate_limits() {
+        for text in [
+            "",
+            "gh: Bad credentials (HTTP 401)",
+            "error connecting to api.github.com",
+            "Could not resolve to a Repository with the name 'o/nope'.",
+        ] {
+            assert!(!is_rate_limited(text), "{text}");
+        }
+    }
+
+    #[test]
+    fn graphql_failure_outcome_skips_only_the_rate_limit() {
+        let limited = r#"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit already exceeded for user ID 1."}]}"#;
+        // stdout にだけ現れる場合も、stderr にだけ現れる場合も。
+        assert_eq!(graphql_failure_outcome(limited, ""), Outcome::Skipped);
+        assert_eq!(
+            graphql_failure_outcome("", "gh: API rate limit already exceeded for user ID 1."),
+            Outcome::Skipped
+        );
+        // 認証エラー・ネットワーク障害は引き続き失敗(exit 1)。
+        assert_eq!(
+            graphql_failure_outcome(r#"{"errors":[{"message":"Bad credentials"}]}"#, ""),
+            Outcome::Failed
+        );
+        assert_eq!(
+            graphql_failure_outcome("", "error connecting to api.github.com"),
+            Outcome::Failed
+        );
     }
 
     #[test]

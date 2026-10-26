@@ -182,7 +182,11 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   ttl まで値を保持するので二重の状態は要らない。
 - **exit code**: 配信の成否だけを表す(detect-drift と同じ考え方、#442)。
   herdr 未起動・gh 未認証・GitHub remote のある workspace がゼロ、は恒久状態に
-  なり得るので stderr に 1 行出して 0。GraphQL・報告の失敗は 1。一部の
+  なり得るので stderr に 1 行出して 0。GraphQL のレート制限超過(時間あたりの
+  上限に達すると約 1 時間続く。`gh` の stderr か応答の `RATE_LIMITED` で見分ける)
+  も同じく skip して 0 — 上限が戻れば次の周期で自然に再開し、user systemd を
+  degraded にしない(#931)。それ以外の GraphQL の失敗(認証エラー・ネットワーク
+  障害)と報告の失敗は 1。一部の
   リポジトリだけ解決できない(削除済み・権限なし)場合は、そのリポジトリだけ
   skip して他は報告する — このとき `gh api graphql` は非 0 で終わるが stdout に
   `data` が入るので、成否は終了コードでなく応答の中身で判断している。
