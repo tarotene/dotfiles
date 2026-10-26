@@ -108,6 +108,52 @@ pub fn resolve_owner_repo(cwd: &Path) -> String {
     }
 }
 
+/// `--check` の issue-ref 引数を `owner/repo#N` に直す(#896)。
+///
+/// - `owner/repo#N` はそのまま。
+/// - `#N` と、番号だけの `N` は、カレントの origin(`owner_repo`、判定できなければ
+///   空を返す関数)から owner/repo を補う。補えなければその旨で落とす。
+/// - それ以外(`owner/repo1273` のように `#` が無い、`name#N` など)は、書式を案内して
+///   落とす。組み立てた誤った参照のまま gh を呼ぶと、書式の誤りが「gh 不在・未認証・
+///   ネットワーク不通」に見えてしまう。
+pub fn normalize_issue_ref(
+    arg: &str,
+    owner_repo: impl FnOnce() -> String,
+) -> Result<String, String> {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let segment = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    };
+    if let Some((repo, n)) = arg.rsplit_once('#') {
+        if digits(n) {
+            if repo.is_empty() {
+                return with_owner_repo(owner_repo(), n);
+            }
+            if repo
+                .split_once('/')
+                .is_some_and(|(o, r)| segment(o) && segment(r))
+            {
+                return Ok(arg.to_string());
+            }
+        }
+    } else if digits(arg) {
+        return with_owner_repo(owner_repo(), arg);
+    }
+    Err(format!(
+        "issue-ref の書式が不正です: {arg:?} — `owner/repo#N`(例: tarotene/dotfiles#136)、または cwd の origin から補う `#N` / `N` で渡してください"
+    ))
+}
+
+fn with_owner_repo(owner_repo: String, n: &str) -> Result<String, String> {
+    if owner_repo.is_empty() {
+        Err("cwd is not inside a GitHub-remote repo; pass owner/repo#N explicitly".to_string())
+    } else {
+        Ok(format!("{owner_repo}#{n}"))
+    }
+}
+
 /// "owner/repo#N" を重複無しで返す(バイト順)。
 ///
 /// "name#N"(スラッシュ無しの接頭辞付き、他リポジトリの略記)は自リポジトリの
@@ -150,16 +196,41 @@ impl Children {
     }
 }
 
-fn gh_output(args: &[&str]) -> Option<String> {
+/// gh を実行して stdout を返す。失敗は診断用の 1 行(起動失敗の理由、または
+/// 終了状態と stderr の要点)にして返す — 呼び出し側が fail-open で捨てるか、
+/// `--check` のように表示するかを選ぶ(#1036)。
+fn run_gh(args: &[&str]) -> Result<String, String> {
+    let label = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
     let out = Command::new("gh")
         .args(args)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        .map_err(|e| format!("gh を起動できません(gh {label}): {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "gh {label} が失敗しました({}){}",
+            out.status,
+            stderr_summary(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// 子プロセスの stderr の要点(先頭の非空 3 行・300 文字まで)。空なら空文字列。
+fn stderr_summary(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let head: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(3)
+        .collect();
+    if head.is_empty() {
+        return String::new();
+    }
+    let joined: String = head.join(" / ").chars().take(300).collect();
+    format!(": {joined}")
 }
 
 const SUB_ISSUES_QUERY: &str = "
@@ -172,8 +243,15 @@ const SUB_ISSUES_QUERY: &str = "
     }";
 
 /// 子項目を gh から取る。gh 不在・認証切れ・ネットワーク不通・不正な応答は
-/// `None`(呼び出し側はその参照だけを黙って諦める、fail-open)。
+/// `None`(呼び出し側はその参照だけを黙って諦める、fail-open)。理由が要る
+/// 呼び出し側は [`try_fetch_children`] を使う。
 pub fn fetch_children(r: &str) -> Option<Children> {
+    try_fetch_children(r).ok()
+}
+
+/// [`fetch_children`] と同じ取得で、失敗の理由(起動失敗・終了状態・stderr の
+/// 要点・応答の形)を `Err` に残す(#1036)。
+pub fn try_fetch_children(r: &str) -> Result<Children, String> {
     let (ownerrepo, number) = match (r.find('#'), r.rfind('#')) {
         (Some(first), Some(last)) => (&r[..first], &r[last + 1..]),
         _ => (r, r),
@@ -182,7 +260,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         Some(i) => (&ownerrepo[..i], &ownerrepo[i + 1..]),
         None => (ownerrepo, ownerrepo),
     };
-    let resp = gh_output(&[
+    let resp = run_gh(&[
         "api",
         "graphql",
         "-f",
@@ -194,11 +272,14 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         "-F",
         &format!("number={number}"),
     ])?;
-    let resp: Value = serde_json::from_str(&resp).ok()?;
-    let issue = resp.pointer("/data/repository/issue")?;
-    if issue.is_null() || issue == &Value::Bool(false) {
-        return None;
-    }
+    let resp: Value = serde_json::from_str(&resp)
+        .map_err(|e| format!("gh api graphql の応答が JSON として読めません: {e}"))?;
+    let issue = resp
+        .pointer("/data/repository/issue")
+        .filter(|i| !i.is_null() && *i != &Value::Bool(false))
+        .ok_or_else(|| {
+            format!("Issue {owner}/{repo}#{number} が見つかりません(参照・権限を確認してください)")
+        })?;
     let total = issue
         .pointer("/subIssues/totalCount")
         .cloned()
@@ -208,7 +289,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
             Some(Value::Array(a)) => a.clone(),
             _ => Vec::new(),
         };
-        return Some(Children {
+        return Ok(Children {
             total,
             kind: "sub".into(),
             items,
@@ -216,7 +297,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
     }
 
     // フォールバック: 本文の未チェック task-list
-    let Some(body) = gh_output(&[
+    let Ok(body) = run_gh(&[
         "issue",
         "view",
         number,
@@ -227,7 +308,8 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         "-q",
         ".body",
     ]) else {
-        return Some(Children {
+        // 本文を読めないときは子無し扱いに縮退する(通常の fallback)。
+        return Ok(Children {
             total: Value::from(0),
             kind: "none".into(),
             items: Vec::new(),
@@ -240,7 +322,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         .filter(|t| !t.is_empty())
         .map(|t| serde_json::json!({ "text": t }))
         .collect();
-    Some(Children {
+    Ok(Children {
         total: Value::from(items.len()),
         kind: "checkbox".into(),
         items,
@@ -265,6 +347,33 @@ pub fn extract_inventory_section(plan: &str) -> Vec<&str> {
         }
     }
     out
+}
+
+/// 節の行を項目に束ねる(#876)。`Rn` 行は、直後のインデントされた継続行(次の
+/// `Rn` 行・インデントの無い行・空行の手前まで)を `\n` でつないで 1 項目にする。
+/// 折り返した項目の処分(`— 段1で実装` など)が継続行にあっても、同じ項目として
+/// 読むため。`Rn` でない行は、それぞれ 1 項目。
+fn inventory_entries(section: &[&str]) -> Vec<String> {
+    let mut entries: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < section.len() {
+        let mut entry = section[i].to_string();
+        i += 1;
+        if RN_RE.is_match(&entry) {
+            while i < section.len() && is_continuation(section[i]) {
+                entry.push('\n');
+                entry.push_str(section[i]);
+                i += 1;
+            }
+        }
+        entries.push(entry);
+    }
+    entries
+}
+
+/// `Rn` 項目の継続行か: 空でなく、空白で始まり、それ自体が `Rn` 行でない。
+fn is_continuation(line: &str) -> bool {
+    line.starts_with([' ', '\t']) && !line.trim().is_empty() && !RN_RE.is_match(line)
 }
 
 /// [`judge_issue`] の判定。
@@ -333,6 +442,7 @@ pub fn judge_issue(r: &str, children: &Children, plan: &str) -> IssueJudgement {
     }
 
     let section = extract_inventory_section(plan);
+    let entries = inventory_entries(&section);
     let mut missing: Vec<String> = Vec::new();
     if children.kind == "sub" {
         for item in &children.items {
@@ -340,8 +450,8 @@ pub fn judge_issue(r: &str, children: &Children, plan: &str) -> IssueJudgement {
             let ctitle = tsv_escape(item.get("title").unwrap_or(&Value::Null));
             let pat =
                 Regex::new(&format!("#{}([^0-9]|$)", regex::escape(&cnum))).expect("valid regex");
-            let line = section.iter().find(|l| pat.is_match(l));
-            if !line.is_some_and(|l| STAGE_OR_TAG_RE.is_match(l)) {
+            let entry = entries.iter().find(|e| pat.is_match(e));
+            if !entry.is_some_and(|e| STAGE_OR_TAG_RE.is_match(e)) {
                 missing.push(format!("#{cnum} {ctitle}"));
             }
         }
@@ -377,12 +487,12 @@ pub fn judge_inventory(plan: &str) -> Vec<String> {
     let section = extract_inventory_section(plan);
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for line in section {
-        let Some(c) = RN_RE.captures(line) else {
+    for entry in inventory_entries(&section) {
+        let Some(c) = RN_RE.captures(&entry) else {
             continue;
         };
         let id = c[1].to_string();
-        let rest = &line[c.get(0).expect("match").end()..];
+        let rest = &entry[c.get(0).expect("match").end()..];
         if !seen.insert(id.clone()) {
             out.push(format!("R{id} が複数回処分されています"));
         }
@@ -466,6 +576,71 @@ mod tests {
             vec!["tarotene/dotfiles#136"]
         );
         assert!(extract_issue_refs("#1", "").is_empty());
+    }
+
+    #[test]
+    fn stderr_summary_keeps_the_first_lines_only() {
+        assert_eq!(stderr_summary(b""), "");
+        assert_eq!(stderr_summary(b"\n  \n"), "");
+        assert_eq!(
+            stderr_summary(b"\n a \nb\n\nc\nd\n"),
+            ": a / b / c",
+            "先頭の非空 3 行"
+        );
+        let long = "x".repeat(500);
+        assert_eq!(stderr_summary(long.as_bytes()).chars().count(), 2 + 300);
+    }
+
+    #[test]
+    fn normalize_issue_ref_accepts_full_and_fills_bare_numbers() {
+        let origin = || "tarotene/dotfiles".to_string();
+        for (arg, want) in [
+            ("o/r#1273", "o/r#1273"),
+            ("tarotene/dotfiles#136", "tarotene/dotfiles#136"),
+            ("a.b/c_d-e#7", "a.b/c_d-e#7"),
+            ("#1273", "tarotene/dotfiles#1273"),
+            ("1273", "tarotene/dotfiles#1273"),
+        ] {
+            assert_eq!(
+                normalize_issue_ref(arg, origin).as_deref(),
+                Ok(want),
+                "{arg}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_issue_ref_rejects_a_malformed_ref_with_the_expected_format() {
+        let origin = || "tarotene/dotfiles".to_string();
+        // `owner/repo` と番号を連結した形(# が無い)・略記・空・数字以外。
+        for arg in [
+            "o/r1273",
+            "telepath#7",
+            "o/r#",
+            "o/r#x",
+            "",
+            "#",
+            "abc",
+            "o/#1",
+            "/r#1",
+        ] {
+            let err = normalize_issue_ref(arg, origin).unwrap_err();
+            assert!(err.contains("owner/repo#N"), "{arg}: {err}");
+            assert!(err.contains(&format!("{arg:?}")), "{arg}: {err}");
+        }
+    }
+
+    #[test]
+    fn normalize_issue_ref_needs_an_origin_only_for_bare_numbers() {
+        let none = || String::new();
+        assert!(normalize_issue_ref("o/r#1", none).is_ok());
+        for arg in ["#1", "1"] {
+            let err = normalize_issue_ref(arg, none).unwrap_err();
+            assert!(
+                err.contains("cwd is not inside a GitHub-remote repo"),
+                "{err}"
+            );
+        }
     }
 
     #[test]
@@ -559,5 +734,63 @@ mod tests {
             ]
         );
         assert!(judge_inventory(EXAMPLE_BLOCK).is_empty());
+    }
+
+    /// #876: 折り返した項目の処分は、継続行にあっても同じ項目として読む。
+    #[test]
+    fn judge_inventory_reads_indented_continuation_lines() {
+        // Issue の再現(補足が長くて折り返し、処分は次の行)。
+        assert!(judge_inventory(
+            "## 要求インベントリ\n\n- R1: <依頼文の逐語>(補足が長くて折り返した部分)\n  — 段1で実装\n"
+        )
+        .is_empty());
+        // 継続行が複数、タブ字下げ、閉じたタグ。
+        assert!(judge_inventory(
+            "## 要求インベントリ\n- R1: 長い逐語\n  さらに折り返し\n\t— Obsolete: もう不要\n- R2: 段2で実装\n"
+        )
+        .is_empty());
+        // 継続行に処分が無ければ、従来どおり未記載。次の Rn 行の処分は借りない。
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n  折り返しだけ\n- R2: 段2で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        // 継続行は空行・インデントの無い行・見出しで終わる。
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n\n  段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n## 別の節\n  段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+    }
+
+    /// #876: 経路A(子 Issue の照合)も、折り返した項目の処分を同じ項目として読む。
+    #[test]
+    fn judge_issue_reads_indented_continuation_lines() {
+        let sub = ch(
+            json!({"totalCount":2,"kind":"sub","items":[{"number":137,"title":"t1"},{"number":138,"title":"t2"}]}),
+        );
+        let r = "tarotene/dotfiles#136";
+        assert_eq!(
+            judge_issue(
+                r,
+                &sub,
+                "## 要求インベントリ\n- R1: #137 子タイトル逐語(長くて折り返した)\n  — 段1で実装\n- R2: #138 t2\n  — Obsolete: 済\n"
+            ),
+            IssueJudgement::Covered
+        );
+        assert_eq!(
+            judge_issue(
+                r,
+                &sub,
+                "## 要求インベントリ\n- R1: #137 子タイトル逐語\n  折り返しだけ\n- R2: #138 段2で実装\n"
+            ),
+            IssueJudgement::Missing(vec!["#137 t1".into()])
+        );
     }
 }

@@ -104,6 +104,17 @@ fn s(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
 
+/// 失敗した assertion に付ける子の診断(終了状態・stdout・stderr)。断続的な
+/// 失敗でも、起動失敗の理由や gh の stderr を assertion の出力から回収できる(#1036)。
+fn diag(o: &Output) -> String {
+    format!(
+        "status: {}\nstdout: {}\nstderr: {}",
+        o.status,
+        s(&o.stdout),
+        s(&o.stderr)
+    )
+}
+
 #[test]
 fn check_sub_issues_missing() {
     let e = Env::new();
@@ -119,7 +130,7 @@ fn check_sub_issues_missing() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
     assert_eq!(
         s(&o.stdout),
         "children: {\"totalCount\":2,\"kind\":\"sub\",\"items\":[{\"number\":137,\"title\":\"t1\"},{\"number\":138,\"title\":\"t2\"}]}\nMISSING\n#138 t2\n"
@@ -177,6 +188,51 @@ fn check_bare_ref_resolves_origin() {
     assert!(s(&o.stdout).contains("\nMISSING\n#137 t1\n#138 t2\n"));
 }
 
+/// #896: 番号だけの参照(`#` も無い)は、書式の誤りとして落とさず origin から補う。
+#[test]
+fn check_number_only_ref_resolves_origin() {
+    let e = Env::new();
+    e.graphql(SUB2);
+    let repo = e.p("repo");
+    git_repo(&repo, "git@github.com:foo/bar.git");
+    fs::write(repo.join("plan.md"), "x\n").unwrap();
+    let o = e.run(&["--check", "plan.md", "1273"], &repo, "", &e.path_var());
+    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
+    assert!(
+        e.calls()
+            .contains("-f owner=foo -f repo=bar -F number=1273"),
+        "{}",
+        e.calls()
+    );
+}
+
+/// #896: 書式の誤り(`owner/repo` と番号を連結した形など)は、gh を呼ばずに書式を案内して
+/// 落とす。「gh 不在・未認証・ネットワーク不通」と取り違えさせない。
+#[test]
+fn check_malformed_ref_is_reported_as_a_format_error() {
+    let e = Env::new();
+    e.graphql(SUB2);
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    for arg in ["o/r1273", "telepath#7"] {
+        let o = e.run(
+            &["--check", "plan.md", arg],
+            e.dir.path(),
+            "",
+            &e.path_var(),
+        );
+        assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+        assert_eq!(o.stdout, b"");
+        let err = s(&o.stderr);
+        assert!(
+            err.starts_with(&format!("issue-ref の書式が不正です: {arg:?}"))
+                && err.contains("owner/repo#N")
+                && !err.contains("gh 不在"),
+            "{err}"
+        );
+    }
+    assert_eq!(e.calls(), "", "gh を呼ばないこと");
+}
+
 #[test]
 fn check_bare_ref_without_remote_fails() {
     let e = Env::new();
@@ -208,7 +264,52 @@ fn check_gh_failure() {
     assert_eq!(o.status.code(), Some(1));
     assert_eq!(
         s(&o.stderr),
-        "failed to fetch children for o/r#1 (gh 不在・未認証・ネットワーク不通のいずれか)\n"
+        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 1)\n"
+    );
+}
+
+/// 診断は、終了状態と gh の stderr の要点を落とさない(#1036)。
+#[test]
+fn check_gh_failure_keeps_exit_status_and_stderr() {
+    let e = Env::new();
+    write_exec(
+        &e.p("bin/gh"),
+        "#!/bin/sh\necho 'HTTP 401: Bad credentials' >&2\necho second line >&2\nexit 4\n",
+    );
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    let o = e.run(
+        &["--check", "plan.md", "o/r#1"],
+        e.dir.path(),
+        "",
+        &e.path_var(),
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    assert_eq!(
+        s(&o.stderr),
+        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 4): HTTP 401: Bad credentials / second line\n"
+    );
+}
+
+/// gh を起動できないとき、起動失敗の理由(OS のエラー)が残る(#1036)。
+#[test]
+fn check_gh_spawn_failure_keeps_the_os_error() {
+    let e = Env::new();
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    let empty = e.p("empty");
+    fs::create_dir(&empty).unwrap();
+    let o = e.run(
+        &["--check", "plan.md", "o/r#1"],
+        e.dir.path(),
+        "",
+        &empty.display().to_string(),
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    let err = s(&o.stderr);
+    assert!(
+        err.starts_with(
+            "failed to fetch children for o/r#1: gh を起動できません(gh api graphql): "
+        ) && err.contains("No such file or directory"),
+        "{err}"
     );
 }
 

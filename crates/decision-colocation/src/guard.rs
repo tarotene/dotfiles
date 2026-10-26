@@ -13,9 +13,13 @@
 //! `DECISION_COLOCATION_CHECK_BIN` / PATH フォールバックは不要になった)。
 //!
 //! base の解決順: 呼び出しの `--base`/`-B` フラグ → `default_branch`
-//! (origin/HEAD symref → `gh repo view`)。解決できた base がローカルに
-//! 存在しない場合(worktree で `origin/<base>` のみ持つケースを含む)は
-//! `origin/<base>` にフォールバックする。どちらも無ければ判定不能で通す
+//! (origin/HEAD symref → `gh repo view`)。解決した名前は `origin/<base>`
+//! (remote-tracking)を優先し、無ければローカルのブランチにフォールバックする
+//! (#1003: ローカルのブランチは、別 worktree が checkout していたり、別名の
+//! ブランチから `git push origin Y:X` で置き換えられたりして、PR が実際に
+//! 向く origin より古いことがある。古い base で差分を取ると、その間に main に
+//! 入った既存の ADR を新規と誤読する)。ローカルと origin が食い違うときは、
+//! どちらを見たかを deny の文面に出す。どちらも無ければ判定不能で通す
 //! (ADR-0005 の binary-existence gating と同じ fail-open 方針)。
 //!
 //! escape hatch: 環境変数 `SKIP_DECISION_COLOCATION_GUARD=1` で一時的に
@@ -23,6 +27,7 @@
 //! ない)。
 
 use git_repository::ok as git_ok;
+use git_repository::out as git_out;
 use std::path::Path;
 
 use command_inspection::command::first_deny;
@@ -61,14 +66,34 @@ pub fn real_checker(project: &Path, base_ref: &str) -> CheckOutcome {
     }
 }
 
-/// bash の `resolve_ref`: ローカルに実在すればそのまま、無ければ
-/// `origin/<branch>` にフォールバックする ref。どちらも無ければ `None`。
+/// base の名前を差分の基準になる ref に解決する。`origin/<branch>`(PR が実際に
+/// 向く側)が実在すればそれを、無ければローカルの `<branch>` を返す。どちらも
+/// 無ければ `None`。
 pub fn resolve_ref(project: &Path, branch: &str) -> Option<String> {
-    if git_ok(project, &["rev-parse", "--verify", "--quiet", branch]) {
-        return Some(branch.to_string());
-    }
     let origin = format!("origin/{branch}");
-    git_ok(project, &["rev-parse", "--verify", "--quiet", &origin]).then_some(origin)
+    if git_ok(project, &["rev-parse", "--verify", "--quiet", &origin]) {
+        return Some(origin);
+    }
+    git_ok(project, &["rev-parse", "--verify", "--quiet", branch]).then(|| branch.to_string())
+}
+
+/// `origin/<branch>` を基準にしたのに、同名のローカルブランチが別のコミットを
+/// 指しているときの注記(どちらを見たかを利用者に見せる)。食い違いが無ければ `None`。
+fn divergence_note(project: &Path, branch: &str, base_ref: &str) -> Option<String> {
+    if base_ref != format!("origin/{branch}") {
+        return None;
+    }
+    let rev = |r: &str| git_out(project, &["rev-parse", "--verify", "--quiet", r]);
+    let local = rev(&format!("refs/heads/{branch}"))?;
+    let remote = rev(base_ref)?;
+    (local != remote).then(|| {
+        let short = |s: &str| s.chars().take(7).collect::<String>();
+        format!(
+            "注意: ローカルの {branch}({})は {base_ref}({})と食い違っています。{base_ref} を基準に判定しました(PR が実際に向く側)。",
+            short(&local),
+            short(&remote)
+        )
+    })
 }
 
 /// deny の理由文の本体(checker の出力 `out` を埋め込む)。
@@ -148,7 +173,14 @@ impl Guard<'_> {
 
         let base_ref = resolve_ref(project, &branch)?;
         match (self.checker)(project, &base_ref) {
-            CheckOutcome::NonConforming(out) => Some(deny_reason(&out)),
+            CheckOutcome::NonConforming(out) => {
+                let mut reason = deny_reason(&out);
+                if let Some(note) = divergence_note(project, &branch, &base_ref) {
+                    reason.push('\n');
+                    reason.push_str(&note);
+                }
+                Some(reason)
+            }
             CheckOutcome::Conforming | CheckOutcome::Indeterminate => None,
         }
     }

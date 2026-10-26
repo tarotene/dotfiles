@@ -305,6 +305,272 @@ fn mentions_pkexec(cmd: &str, words: Option<&[String]>) -> bool {
     }
 }
 
+/// 引用符付きヒアドキュメントの本文を、受け手が解釈して実行しうるコマンド
+/// (シェル類)。これらに流し込む本文は「データ」ではなくコードなので、
+/// [`strip_quoted_heredoc_bodies`] は本文を残す(従来どおり判定の対象)。
+const SHELL_CONSUMERS: &[&str] = &[
+    "sh", "bash", "zsh", "dash", "ksh", "ash", "csh", "tcsh", "fish", "eval", "source", ".", "ssh",
+];
+
+/// ヒアドキュメントの開始行が、本文をシェルとして解釈する受け手を含むか。
+/// 語はパス区切りを含めて切り出し、末尾の要素(basename)で照合する。
+/// 迷う側(`echo bash <<'EOF'` のような偽陽性)は本文を残す = fail closed。
+fn line_feeds_a_shell(line: &str) -> bool {
+    line.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/')))
+        .filter(|w| !w.is_empty())
+        .any(|w| SHELL_CONSUMERS.contains(&w.rsplit('/').next().unwrap_or(w)))
+}
+
+struct PendingHeredoc {
+    tag: String,
+    /// 本文を判定の対象から外す(引用符付きで、受け手がシェルでない)。
+    strip: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Mode {
+    /// コマンドとして読む領域。`depth` は `(` の入れ子(`$(` は別の枠を積む)。
+    Code { depth: usize },
+    /// 二重引用符の中。`$(` だけがコマンドの枠を開く。
+    Dq,
+}
+
+/// 引用符付きヒアドキュメント(`<<'EOF'`・`<<"EOF"`・`<<\EOF`・`<<-'EOF'`)の
+/// 本文を取り除く(#1049)。シェルは引用符付きの本文を展開も実行もしない
+/// データとして扱うので、語 `pkexec` を含むだけで fail closed にしない。
+/// 展開される形(`<<EOF`)の本文、`$(…)`、バッククォートはそのまま残す。
+///
+/// 本文を残す(= 従来どおり判定する)のは次のとき:
+/// - 引用符なしのヒアドキュメント(本文は展開されるコード)
+/// - 受け手がシェル類([`SHELL_CONSUMERS`])のとき(本文がコードとして実行される)
+/// - 本文の終端が見つからない・構文を追えない(fail closed)
+///
+/// `<<` の検出は引用符・コメントの外に限る(`echo "<<'EOF'"` の次の行は
+/// 本物のコマンドで、本文ではない)。二重引用符の中の `$(…)` は、
+/// `"$(cat <<'EOF' … EOF)"` の形で本文を渡す頻出の書き方のために追う。
+/// 終端行は前後の空白を落として照合する — bash より早く本文を閉じる側に
+/// ずれるだけで、その場合は残りの行を余計に判定する(fail closed)。
+fn strip_quoted_heredoc_bodies(cmd: &str) -> String {
+    let b = cmd.as_bytes();
+    let n = b.len();
+    let mut out: Vec<u8> = Vec::with_capacity(n);
+    let mut pending: Vec<PendingHeredoc> = Vec::new();
+    let mut modes = vec![Mode::Code { depth: 0 }];
+    let mut i = 0;
+
+    while i < n {
+        let c = b[i];
+        let mode = *modes.last().expect("modes never empty");
+        match mode {
+            Mode::Dq => match c {
+                b'\\' => {
+                    out.extend_from_slice(&b[i..(i + 2).min(n)]);
+                    i += 2;
+                }
+                b'"' => {
+                    modes.pop();
+                    out.push(c);
+                    i += 1;
+                }
+                b'$' if b.get(i + 1) == Some(&b'(') => {
+                    modes.push(Mode::Code { depth: 0 });
+                    out.extend_from_slice(b"$(");
+                    i += 2;
+                }
+                b'`' => {
+                    i = copy_until_unescaped(b, i, b'`', &mut out);
+                }
+                _ => {
+                    out.push(c);
+                    i += 1;
+                }
+            },
+            Mode::Code { depth } => match c {
+                b'\\' => {
+                    out.extend_from_slice(&b[i..(i + 2).min(n)]);
+                    i += 2;
+                }
+                b'\'' => {
+                    // 単一引用符の中は何も解釈されない。
+                    out.push(c);
+                    i += 1;
+                    while i < n {
+                        out.push(b[i]);
+                        i += 1;
+                        if b[i - 1] == b'\'' {
+                            break;
+                        }
+                    }
+                }
+                b'"' => {
+                    modes.push(Mode::Dq);
+                    out.push(c);
+                    i += 1;
+                }
+                b'`' => {
+                    i = copy_until_unescaped(b, i, b'`', &mut out);
+                }
+                b'$' if b.get(i + 1) == Some(&b'\'') => {
+                    // ANSI-C 引用符 $'…' は `\'` で閉じない。
+                    out.push(b'$');
+                    i = copy_until_unescaped(b, i + 1, b'\'', &mut out);
+                }
+                b'$' if b.get(i + 1) == Some(&b'(') => {
+                    modes.push(Mode::Code { depth: 0 });
+                    out.extend_from_slice(b"$(");
+                    i += 2;
+                }
+                b'(' => {
+                    *modes.last_mut().expect("modes never empty") = Mode::Code { depth: depth + 1 };
+                    out.push(c);
+                    i += 1;
+                }
+                b')' => {
+                    if depth > 0 {
+                        *modes.last_mut().expect("modes never empty") =
+                            Mode::Code { depth: depth - 1 };
+                    } else if modes.len() > 1 {
+                        modes.pop();
+                    }
+                    out.push(c);
+                    i += 1;
+                }
+                b'#' if i == 0
+                    || matches!(b[i - 1], b' ' | b'\t' | b'\n' | b';' | b'|' | b'&' | b'(') =>
+                {
+                    while i < n && b[i] != b'\n' {
+                        out.push(b[i]);
+                        i += 1;
+                    }
+                }
+                b'<' if b.get(i + 1) == Some(&b'<') => {
+                    if b.get(i + 2) == Some(&b'<') {
+                        // here-string(`<<<`)はヒアドキュメントではない。
+                        out.extend_from_slice(&b[i..i + 3]);
+                        i += 3;
+                        continue;
+                    }
+                    let Some((tag, quoted, end)) = heredoc_delimiter(b, i + 2) else {
+                        return cmd.to_string();
+                    };
+                    if tag.is_empty() {
+                        out.extend_from_slice(&b[i..i + 2]);
+                        i += 2;
+                        continue;
+                    }
+                    let line_start = cmd[..i].rfind('\n').map_or(0, |p| p + 1);
+                    let line_end = cmd[i..].find('\n').map_or(n, |p| i + p);
+                    let strip = quoted && !line_feeds_a_shell(&cmd[line_start..line_end]);
+                    pending.push(PendingHeredoc { tag, strip });
+                    out.extend_from_slice(&b[i..end]);
+                    i = end;
+                }
+                b'\n' if !pending.is_empty() => {
+                    out.push(c);
+                    i += 1;
+                    for p in pending.drain(..) {
+                        loop {
+                            if i >= n {
+                                // 終端が無い。何も取り除かない。
+                                return cmd.to_string();
+                            }
+                            let line_end = cmd[i..].find('\n').map_or(n, |q| i + q);
+                            let is_end = cmd[i..line_end].trim() == p.tag;
+                            if !p.strip {
+                                out.extend_from_slice(&b[i..line_end]);
+                                if line_end < n {
+                                    out.push(b'\n');
+                                }
+                            }
+                            i = (line_end + 1).min(n);
+                            if is_end {
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    out.push(c);
+                    i += 1;
+                }
+            },
+        }
+    }
+
+    String::from_utf8(out).unwrap_or_else(|_| cmd.to_string())
+}
+
+/// `b[start]`(開きの引用符)から、エスケープされていない `close` までを
+/// `out` へ写し、次に読む位置を返す。閉じが無ければ末尾まで写す。
+fn copy_until_unescaped(b: &[u8], start: usize, close: u8, out: &mut Vec<u8>) -> usize {
+    let n = b.len();
+    out.push(b[start]);
+    let mut i = start + 1;
+    while i < n {
+        out.push(b[i]);
+        i += 1;
+        if b[i - 1] == b'\\' {
+            if i < n {
+                out.push(b[i]);
+                i += 1;
+            }
+        } else if b[i - 1] == close {
+            break;
+        }
+    }
+    i
+}
+
+/// `<<` の直後(`b[start..]`)から、ヒアドキュメントの区切り語を読む。
+/// 戻り値は (引用を外した区切り語, 引用符付きか, 区切り語の直後の位置)。
+/// 閉じていない引用符は `None`。
+fn heredoc_delimiter(b: &[u8], start: usize) -> Option<(String, bool, usize)> {
+    let n = b.len();
+    let mut j = start;
+    if j < n && b[j] == b'-' {
+        j += 1;
+    }
+    while j < n && matches!(b[j], b' ' | b'\t') {
+        j += 1;
+    }
+    let mut tag = Vec::new();
+    let mut quoted = false;
+    while j < n
+        && !matches!(
+            b[j],
+            b' ' | b'\t' | b'\n' | b'\r' | b';' | b'|' | b'&' | b'<' | b'>' | b'(' | b')'
+        )
+    {
+        match b[j] {
+            q @ (b'\'' | b'"') => {
+                quoted = true;
+                j += 1;
+                while j < n && b[j] != q {
+                    tag.push(b[j]);
+                    j += 1;
+                }
+                if j >= n {
+                    return None;
+                }
+                j += 1;
+            }
+            b'\\' => {
+                quoted = true;
+                j += 1;
+                if j < n {
+                    tag.push(b[j]);
+                    j += 1;
+                }
+            }
+            ch => {
+                tag.push(ch);
+                j += 1;
+            }
+        }
+    }
+    Some((String::from_utf8_lossy(&tag).into_owned(), quoted, j))
+}
+
 const CODEX_COPILOT_DENY_REASON: &str =
     "pkexec は Codex CLI / Copilot CLI からは常に deny — 明示的な ask \
      ルールが auto 系モードでも確認を強制することを確認できているのは \
@@ -331,6 +597,12 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
     if let Some(reason) = sudo_askpass_reintroduction(cmd) {
         return Some(PermissionDecision::deny(reason));
     }
+
+    // #1049: 引用符付きヒアドキュメントの本文はシェルが実行しないデータ。
+    // pkexec の判定はこの本文を除いた文字列で行う(sudo の再導入検査は
+    // 上で原文に対して済ませてある)。
+    let stripped = strip_quoted_heredoc_bodies(cmd);
+    let cmd = stripped.as_str();
 
     let segments = shell::split_segments(cmd);
 
@@ -716,6 +988,93 @@ mod tests {
         .is_none());
         assert!(check_claude("wc -l crates/pkexec-guard/src/lib.rs", &fs).is_none());
         assert!(check_claude("cargo test -p pkexec-guard", &fs).is_none());
+    }
+
+    // #1049: 引用符付きヒアドキュメントの本文はデータ。語 pkexec を含む
+    // 解析不能な行(`(` を含む等)を本文に持っていても deny しない。展開される
+    // 形・シェルへ流し込む形・追えない構文は従来どおり fail closed。
+
+    /// 本文の 1 行。`Bash(pkexec *)` は `(` と glob で単独では解析できず、
+    /// 語 pkexec を含む(= 本文が判定対象だと deny される)。
+    const DATA_LINE: &str = "s = s.replace(\"x\", Bash(pkexec *))";
+
+    #[test]
+    fn allows_pkexec_word_in_quoted_heredoc_body() {
+        let fs = FakeFs::new();
+        for open in ["<<'EOF'", "<<\"EOF\"", "<<\\EOF", "<<-'EOF'", "<< 'EOF'"] {
+            let cmd = format!("python3 - {open}\n{DATA_LINE}\nprint(1)\nEOF\n");
+            assert!(check_claude(&cmd, &fs).is_none(), "{open}");
+        }
+    }
+
+    #[test]
+    fn allows_quoted_heredoc_inside_command_substitution_in_double_quotes() {
+        // `git commit -m "$(cat <<'EOF' … EOF)"` の形。
+        let fs = FakeFs::new();
+        let cmd = format!("git commit -m \"$(cat <<'EOF'\nfix: {DATA_LINE}\nEOF\n)\"");
+        assert!(check_claude(&cmd, &fs).is_none());
+    }
+
+    #[test]
+    fn still_denies_pkexec_word_in_expanding_heredoc_body() {
+        let fs = FakeFs::new();
+        let cmd = format!("python3 - <<EOF\n{DATA_LINE}\nEOF\n");
+        assert!(check_claude(&cmd, &fs).is_some());
+        let cmd = format!("git commit -m \"$(cat <<EOF\n{DATA_LINE}\nEOF\n)\"");
+        assert!(check_claude(&cmd, &fs).is_some());
+    }
+
+    #[test]
+    fn still_denies_expansions_outside_the_quoted_heredoc_body() {
+        let fs = FakeFs::new();
+        // 本文の外(開始行・終端後)にある pkexec は従来どおり。
+        let cmd = format!("cat <<'EOF'\nplain\nEOF\n{DATA_LINE}");
+        assert!(check_claude(&cmd, &fs).is_some());
+        let cmd = "cat <<'EOF' | /usr/bin/pkexec /usr/bin/systemctl x\nplain\nEOF\n";
+        assert!(check_claude(cmd, &fs).is_some());
+        let cmd = "cat <<'EOF'\nplain\nEOF\n/usr/bin/pkexec /usr/bin/apt-get update";
+        assert!(check_claude(cmd, &fs).is_some());
+        let cmd = "echo $(pkexec /usr/bin/apt-get update) <<'EOF'\nplain\nEOF\n";
+        assert!(check_claude(cmd, &fs).is_some());
+    }
+
+    #[test]
+    fn still_denies_quoted_heredoc_body_fed_to_a_shell() {
+        let fs = FakeFs::new();
+        for start in ["bash <<'EOF'", "sh -s <<'EOF'", "cat <<'EOF' | /bin/bash"] {
+            let cmd = format!("{start}\n{DATA_LINE}\nEOF\n");
+            assert!(check_claude(&cmd, &fs).is_some(), "{start}");
+        }
+    }
+
+    #[test]
+    fn still_denies_when_a_heredoc_marker_is_not_a_real_heredoc() {
+        let fs = FakeFs::new();
+        // 引用符・コメントの中の `<<'EOF'` は本文を作らない。次の行は本物のコマンド。
+        for first in [
+            "echo \"<<'EOF'\"",
+            "echo '<<'\"'\"'EOF'",
+            "echo x # <<'EOF'",
+            "cat <<<'EOF'",
+        ] {
+            let cmd = format!("{first}\n{DATA_LINE}\nEOF\n");
+            assert!(check_claude(&cmd, &fs).is_some(), "{first}");
+        }
+        // 終端が無ければ、何も取り除かず従来どおり判定する。
+        let cmd = format!("cat <<'EOF'\n{DATA_LINE}\n");
+        assert!(check_claude(&cmd, &fs).is_some());
+    }
+
+    #[test]
+    fn strip_removes_only_quoted_bodies_in_order() {
+        let cmd = "cat <<'A'; cat <<B\nx pkexec\nA\ny pkexec\nB\nz";
+        assert_eq!(
+            strip_quoted_heredoc_bodies(cmd),
+            "cat <<'A'; cat <<B\ny pkexec\nB\nz"
+        );
+        // 引用符付きで終端がタブ字下げ(`<<-`)でも閉じる。
+        let cmd = "cat <<-'A'\n\tx pkexec\n\tA\nz";
+        assert_eq!(strip_quoted_heredoc_bodies(cmd), "cat <<-'A'\nz");
     }
 
     #[test]

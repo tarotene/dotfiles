@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::process::{Command, ExitCode};
 
 use herdr_issue_counts::{
-    alias, build_query, exit_code, format_token, parse_counts, parse_workspace_list,
-    repo_from_remotes, Outcome, Repo, SOURCE, TOKEN, TTL_MS,
+    alias, build_query, exit_code, format_token, graphql_failure_outcome, parse_counts,
+    parse_workspace_list, repo_from_remotes, Outcome, Repo, SOURCE, TOKEN, TTL_MS,
 };
 
 const USAGE: &str = "usage: herdr-issue-counts [--dry-run]\n\n\
@@ -20,8 +20,9 @@ space rows (config/herdr/config.toml). One GraphQL request covers every\n\
 repository. Values expire after 15 minutes if not refreshed.\n\n\
 --dry-run: print `workspace_id<TAB>owner/repo<TAB>count` instead of reporting.\n\n\
 Exit code reflects delivery: 0 = reported, or skipped because Herdr is not\n\
-running / gh is not authenticated / no workspace has a GitHub remote;\n\
-1 = the GraphQL request or a report failed.";
+running / gh is not authenticated / no workspace has a GitHub remote / the\n\
+GraphQL rate limit is exceeded (resumes by itself when the limit resets);\n\
+1 = the GraphQL request failed for another reason, or a report failed.";
 
 fn main() -> ExitCode {
     let mut dry_run = false;
@@ -84,9 +85,17 @@ fn run(dry_run: bool) -> Outcome {
     let query = build_query(&repos);
     let counts = match graphql(&query) {
         Ok(c) => c,
-        Err(msg) => {
-            eprintln!("herdr-issue-counts: {msg}");
-            return Outcome::Failed;
+        Err(failure) => {
+            if failure.outcome == Outcome::Skipped {
+                // 上限は次の周期以降に戻る。unit を failed にしない(#931)。
+                eprintln!(
+                    "herdr-issue-counts: GraphQL のレート制限超過(skip): {}",
+                    failure.message
+                );
+            } else {
+                eprintln!("herdr-issue-counts: {}", failure.message);
+            }
+            return failure.outcome;
         }
     };
     let repo_count: BTreeMap<&Repo, u64> = repos
@@ -152,19 +161,28 @@ fn run(dry_run: bool) -> Outcome {
     outcome
 }
 
+/// `graphql` の失敗。`outcome` は、レート制限超過なら `Skipped`、それ以外は `Failed`。
+struct GraphqlFailure {
+    message: String,
+    outcome: Outcome,
+}
+
 /// `gh api graphql` を実行する。部分エラー(一部リポジトリが解決できない)では
 /// gh は非 0 で終わるが stdout に `data` が入るので、終了コードではなく
 /// 応答の中身で判断する(lib.rs `parse_counts`)。
-fn graphql(query: &str) -> Result<BTreeMap<String, Result<u64, String>>, String> {
+fn graphql(query: &str) -> Result<BTreeMap<String, Result<u64, String>>, GraphqlFailure> {
     let q = format!("query={query}");
     let out = Command::new("gh")
         .args(["api", "graphql", "-f", &q])
         .output()
-        .map_err(|e| format!("gh の実行に失敗: {e}"))?;
+        .map_err(|e| GraphqlFailure {
+            message: format!("gh の実行に失敗: {e}"),
+            outcome: Outcome::Failed,
+        })?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    parse_counts(&stdout).map_err(|e| {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        match stderr
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    parse_counts(&stdout).map_err(|e| GraphqlFailure {
+        message: match stderr
             .lines()
             .next()
             .map(str::trim)
@@ -172,7 +190,8 @@ fn graphql(query: &str) -> Result<BTreeMap<String, Result<u64, String>>, String>
         {
             Some(line) => format!("gh api graphql に失敗: {line}"),
             None => e,
-        }
+        },
+        outcome: graphql_failure_outcome(&stdout, &stderr),
     })
 }
 

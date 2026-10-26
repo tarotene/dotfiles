@@ -288,6 +288,26 @@ fn graphql_failure_without_data_exits_nonzero() {
     assert!(f.reports().is_empty());
 }
 
+/// #931: GraphQL の時間あたりの上限に達すると約 1 時間、全呼び出しが失敗する。
+/// 上限が戻れば次の周期で再開するので、unit を failed(user systemd の degraded)に
+/// しない。
+#[test]
+fn graphql_rate_limit_is_skipped_with_exit_zero() {
+    let f = Fixture::new();
+    let a = f.repo("a", Some("https://github.com/o/a.git"));
+    f.stub_herdr(Some(&workspaces(&[("w1", Some(&a))])), false);
+    f.stub_gh(
+        true,
+        r#"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit already exceeded for user ID 1."}]}"#,
+        1,
+    );
+
+    let out = f.run(&[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stderr(&out).contains("レート制限"), "{}", stderr(&out));
+    assert!(f.reports().is_empty());
+}
+
 #[test]
 fn report_failure_exits_nonzero_but_tries_every_workspace() {
     let f = Fixture::new();

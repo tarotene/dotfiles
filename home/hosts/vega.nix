@@ -102,12 +102,6 @@ in
     "lightdm" # display manager / greeter (session-manager, not a CLI)
 
     ""
-    "# Kernel modules (DKMS/out-of-tree) — must build against the running kernel"
-    "# headers, which is squarely apt's job, not nixpkgs'."
-    "v4l2loopback-dkms"
-    "v4l2loopback-utils" # companion CLI for the module above
-
-    ""
     "# Virtualization stack: libvirtd is a root system service (like tailscaled,"
     "# ADR-471); virt-manager/bridge-utils are its client-side companions and stay"
     "# with it rather than splitting across layers."

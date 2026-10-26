@@ -17,9 +17,11 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 - **実行中の印**: inbox を読んだら、すぐに `~/.claude/hooks/issue-inbox --chores-begin <inbox のパス>` を実行する。PR を作るまで inbox に行が残るのが正しい状態なので、このスキルの実行中は Stop フックが inbox の起票を繰り返し指示しないようにする印(#820)。印は inbox の隣の `<inbox>.chores` で、inbox が空になる・12 時間を超えると自動で外れる。スキルの終了時(§9 の完成の定義を満たしたとき、または途中で打ち切るとき)は `--chores-end <inbox のパス>` で外す(印が無くても成功する)。印は inbox の行を書かない(inbox の変更は `--add` / `--mark-filed` だけ、の制約は不変)。
 - **母集団は open Issue 全件 + inbox 行全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
   ```
-  gh issue list --state open --limit 500 --json number,title,body,labels \
+  gh issue list --state open --limit 500 --json number,title,body,labels,updatedAt \
     | jq '[.[] | select(([.labels[].name] | index("blocked-by-upstream")) | not)]'
   ```
+  この結果は scratchpad のファイル(例 `population-<取得時刻>.json`)に保存しておく。
+  §5 の `ExitPlanMode` の直前に、同じクエリを取り直して差分を取るために使う(#971)。
   **取得件数が `--limit` と一致したら打ち切りの可能性がある**ので、その場合は limit を倍にして再実行する。wrap-up フッター regex(統合形 `Filed from [Claude Code](...) wrap-up inbox` と旧 2 行形式の両方にマッチする `test("Filed from \\[?Claude Code.*wrap-up inbox")`)は廃止しない — マッチする Issue は粗振り分けを経ずに無条件で候補に含める**ヒント**として使う。
 
 ## 2. 粗振り分け(本線・title + body だけで判断)
@@ -72,9 +74,18 @@ L2 に振った項目ごとに background subagent へ起草を委譲する(`git
 subagent への指示・返値の契約:
 
 - `gh` と読み取り専用ツールのみ。**実装はしない**、案の比較だけ行う
+- **Issue のコメントより先に、その Issue が指す手順書・ADR・runbook を読む。**
+  本文中の `docs/`・`state/` のパス、関連する ADR 番号を対象リポジトリで読み、完了条件が
+  既に満たされていないかを確かめる。満たされていれば、返値の先頭に「完了条件は既に
+  満たされている(根拠: パスと行)」と書かせる(起票時のコメントだけを根拠にして、
+  リポジトリの記録を読めば不要と分かる本人作業を選択肢に載せた実例がある。#983。
+  同じ見落としが繰り返されたら、返値の形式検査への昇格を検討する)
 - 実装案を 2〜4 個。各案に「変更するファイルと行数の概算」を付ける
 - 推奨 1 つと、推奨理由 1 行
 - 先行例: 出典(URL・`#N`・パス)+ 取得日、または `先行例なし:` + 探した範囲
+- **挙動の断定には、読んだソースの版・ファイル・行を添えさせる。** フレームワーク・
+  外部ライブラリ・crate の挙動(「関数 A を使えば〜できる」「型 B は公開されている」)が
+  対象。添えられないものは `未確認` と返させる(#970)
 - 軸: `表現不可能` / `還元` / `検出のみ` のいずれか + 1 句。**この返値は起草の
   結果であって、裁定の入力ではない**(検算は §4 の冒頭)
 - 対処が PR の外(ホストローカルファイル・GitHub 設定等)に出る項目では、
@@ -99,7 +110,18 @@ subagent への指示・返値の契約:
 より安い手段に置き換えるなら `還元`、検出して弾く・散文で促すだけなら `検出のみ`。
 散文の規範は通常 `検出のみ` である。`既存手段: 拡張`(新しい道具を作らず既存を
 伸ばす)と `軸: 還元` を取り違えない。返値と本線の判定が食い違ったら、本線の判定に
-置き換えてから載せる。
+置き換えてから載せる。軸ラベルに加えて、返値の事実の主張(因果・時系列など)も、
+「読んだ一次情報」か「推測」かを区別して選択肢に載せる(読めない主張に「推測」を
+付ける。共有 AGENTS.md「引き継いだ数字と下書きは、検算してから本人に出す」)。
+
+**軸ラベルに限らず、返値の事実の断定(挙動の断定)も、載せる前に検算する。**
+返値にある挙動の断定は、サブエージェントが読んだと主張するだけで、共有 AGENTS.md の
+「版を固定した一次ソースを読み、根拠をファイルと行で添える」を経ていない。Plan の
+`## 先行例との対比` の `差分:` に挙動の断定を書くときは、**本線が一次ソースのファイルと行を
+読んだものに限る**。読んでいない断定は `未確認` と書き、選択肢の推奨理由にしない
+(実例: 「関数 A で目次を保ったまま章区切りを止められる」という返値が Plan に入って
+承認されたが、実装前にソースを読むと関数 A は目次に効かなかった。「crate の型 B は公開
+されている」という Issue の前提も、実際のバージョンでは private だった。#970)。
 
 - **L2**: 1 件 1 問。§3 の返値(軸は検算済みのもの)を選択肢にし、「今回は除外」を必ず加える。
   1 回の呼び出しで最大 4 問(`AskUserQuestion` の上限)なので、件数が多ければ
@@ -119,7 +141,8 @@ L2 の裁定結果(実装する案 or 除外)/ L3 の裁定結果(着手する�
 
 ## 5. Plan を書く(このスキルは plan mode で走る)
 
-plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
+plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `git fetch origin` して、作業ツリーの HEAD と
+`origin/<default>` の差を確かめる(差があるときの事実の取り方は `requirements-inventory` §1a、#935)。Plan には:
 
 - `## 要求インベントリ` — 母集団の**全件**を `R1..Rn` で列挙する(open Issue +
   inbox 行)。各 `Rn` の処分は `段N で実装` / `Blocked-Upstream:` / `Obsolete:` /
@@ -127,6 +150,20 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
 - L5 の `Rn` の処分は、本人作業の結果を反映する最後の段(§6)の `段N で実装` にする。
   閉じられなかったものは、状況コメントつきで open のままにする(§7a、§9)
 - `## 先行例との対比` — §3 の返値から `Dn` 行を組み立てる
+- **自己検査の前に、母集団と前提の差分を取り直す**(#971)。収集から `ExitPlanMode` までの間に
+  起草の再起動や本人への質問が挟まると、Plan の前提が古くなる(実例: 起草エージェントの
+  再起動が半日続く間に、別セッションが起票した Issue が母集団に 1 件増え、`ExitPlanMode` を
+  本人に差し戻された)。次の 3 つを取り直して、§1 に保存した結果・Plan を書いたときの値と比べる:
+  - open Issue: §1 と同じクエリを取り直し、番号の増減と `updatedAt` の変化を `diff` する
+    (`jq -r '.[] | "\(.number) \(.updatedAt)"' <ファイル> | sort` を両方に掛ける)
+  - default branch の先頭: `git fetch` 後の `origin/<default>` の SHA。Plan を書き始めたときと
+    変わっていたら、Plan が根拠にしたファイルの差分を読む(`requirements-inventory` §1a)
+  - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。
+    根拠にした Issue の番号と `updatedAt` は、Plan を書くときに控えておく
+
+  差分があれば、Plan の要求インベントリに足すか、前提が変わっていないことを確かめてから
+  `ExitPlanMode` を呼ぶ。機械化できる(保存と diff だけ)ので、同じ差し戻しが繰り返された
+  ら script への昇格を検討する(ADR-543 の昇格型)。
 - 自己検査 2 本を走らせて指摘ゼロを確認してから `ExitPlanMode`:
   - `~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>`
   - `~/.claude/hooks/plan-precedent-gate --check <プランファイル>`
@@ -168,6 +205,21 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
     `## 要確認` か本人への報告にポインタを置く(public 側の PR には書けない)。
 - サブエージェントへ段や repo を委譲するときは、`github-audit-triage` §6a の
   委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
+  あわせて、作業場所は次のとおり渡す(#1004):
+  - **`Agent` の `isolation: worktree` を使わない。** 本物の checkout の `.claude/worktrees/` 配下に
+    worktree が作られ、`cargo` が上位の `Cargo.toml` を workspace と誤検出して `cargo fmt --all` が
+    落ちる repo がある(commit hook が失敗し、サブエージェントが `--no-verify` で commit した実例)。
+    本線が先に `herdr worktree create --cwd <本物の checkout> --branch <名前>` で本物の checkout の
+    外に worktree を作り、その絶対パスを指示に書いて渡す。
+  - 癖: `git worktree add` の直接実行は PreToolUse の hook が拒否する。`herdr worktree create` は
+    本物の checkout の cwd でしか実行できず、linked worktree からは `linked_worktree_source` で
+    拒否される。
+  - 起点を動かす: 作った worktree の起点は default branch の HEAD である。チェーンの途中のブランチから
+    始めるときは、worktree の中で `git reset --hard <ブランチ>` する(`herdr worktree create` の
+    `--base <REF>` が同じことをするかは未確認 — `--help` に説明が無い)。
+  - **`--no-verify` を使わせない。** 共通指示のファイルに「hook が落ちたら、原因を直して commit し
+    直す。`--no-verify` で飛ばさない」を入れる。委譲した作業の commit が、リポジトリの検査(hook)を
+    飛ばさずに積まれるようにするため。
 - 各段の PR 本文はリポジトリの `pr-description` スケルトンに従う:
   - その段で対処した Issue はすべて `Closes #N` として列挙する
   - inbox 由来で対応する Issue が無い項目は、**新たに起票しない**(起票して

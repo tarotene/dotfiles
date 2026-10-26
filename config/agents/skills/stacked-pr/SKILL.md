@@ -239,16 +239,28 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 したがって、**最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
 
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
-2. `gh pr checks <N> --watch` で CI の完了を待つ。
-3. 非同期マージ API を呼ぶ。
+2. `gh pr checks <N> --required --watch` で、required のチェックの完了だけを待つ(required でないチェックは
+   マージ可否を決めないので待たない。#1001。`--required` を付けた `--watch` が、まだ終わっていない PR で
+   終了するまで待つかは未確認)。
+3. **マージする PR が最上段か確かめる。** マージしたい PR の head ブランチを base にしている open な
+   PR が無いことを、`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>" --jq length` が
+   `0` であることで読む。0 でなければ、その PR は最上段ではない — 上の段を探して、そちらを
+   マージする。下の段から 1 本ずつ入れると、下の段が `main` に入るたびに上の段が載せ直されて
+   (head の SHA が変わる)、CI が段の数だけやり直しになる(#1002)。単発の PR 用に手元に残した
+   `merge-async` のメモだけを根拠に呼ばない。この節を読んでから呼ぶ。
+4. 非同期マージ API を呼ぶ。
 
 ```bash
 gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
-  -f merge_method=squash -f merge_action=direct_merge
+  -f merge_method=squash -f sha=<head SHA> -f merge_action=default
 ```
+
+`<head SHA>` は `gh pr view <N> --json headRefOid --jq .headRefOid` で取る(`sha` を渡すと、要求から実行までの間に push されたときはマージが取り消される)。`merge_action=default` は、対象ブランチにマージキューがあればキューに入り、無ければ直接マージする(`direct_merge` は常に直接。GitHub Docs の同じ節、取得 2026-10-27)。202 が返り、数秒後に `gh pr view <N> --json state` が `MERGED` になる。積みでない PR は、従来どおり `gh pr merge` で通る(#941、2026-10-22 に実測)。
 
 マージは取り消せず、全段が一度に入る。段ごとに別のレビューを終えてから入れたいときは、レビューが済んだ段を確かめてから呼ぶ。
 中間段を指定したときの挙動は未確認(文書の記述は「下位の open な PR を含む」までで、実測は最上段の例だけ)。エージェントはマージしない(完了定義は PR 作成まで)ので、この手順は本人がマージするときのためにある。
+
+本人が「マージも任せる」と明示したときだけ、エージェントも上の手順 1〜4 をそのまま行う(最上段の判定を省かない。#1002)。マージしてよい範囲は、本人が名指しした PR と、その下の open な段までで、名指しが無い段を、スタックの外から足さない。マージ後は `gh pr view <N> --json state` が `MERGED` になることと、下の各段の PR の `state` を読み戻してから報告する。
 
 ## 6. Issue リンクの書き分け
 

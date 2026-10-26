@@ -1,6 +1,7 @@
-# gdrive-upload — ローカルのファイルを Google Drive の専用フォルダへ上げる(rclone、`drive.file`)
+# gdrive-upload — ローカルのファイルを Google Drive の専用フォルダへ上げる(rclone、`drive.file`)。既存のファイルを取る読み取り側も持つ(`drive.readonly`)
 
 エージェント(Claude Code)が、ローカルのバイナリ(PDF・画像、数 MB)を Google Drive へパス指定で上げる手段。
+Drive にある既存の大きなファイルを取る読み取り側(`gdrive-read`、`drive.readonly`)も、同じ文書の「読み取り側のセットアップ」に置く。
 手順書は `drive-upload` スキル(`config/agents/skills/drive-upload/SKILL.md`)、この文書は設計と初回セットアップ。
 
 ## なぜ必要か(#769)
@@ -13,6 +14,18 @@
 - Playwright でのブラウザ操作は、Google に未ログインで止まった。
 - このホストにあったローカルの手段は、どちらも読み取り専用だった(既存の `rclone.conf` のリモートは `scope = drive.readonly`、
   ローカルの gdrive MCP サーバは検索と読み取りだけ)。
+
+## 読み取り側がなぜ要るか(#969)
+
+Drive にある 10 MB を超える既存のファイル(13 MB のバイナリ)を、エージェントが取れなかった。
+
+- claude.ai の Drive コネクタの `download_file_content` は、10 MB を超えるファイルを拒否する。
+- ブラウザ操作(claude-in-chrome)は、組織のポリシーで `drive.google.com` を開けなかった(回避しない)。
+- 書き込み用の `gdrive-agent`(`drive.file`)は、rclone が作ったファイルしか読めず、既存のファイルには使えない。
+
+本人が `drive.readonly` のリモートを作り、`rclone backend copyid` で ID を指定すると取れた(取れたサイズは、Drive のメタデータの
+`fileSize` と一致した)。このとき、リモートを作る `rclone config create` の出力に、access token と refresh token が表示された。
+読み取り側の手順は、下の「読み取り側のセットアップ」に、token が出ない形で書く。
 
 ## 何をするか
 
@@ -129,6 +142,71 @@ rclone lsf --format pi gdrive-agent:<purpose>/       # p=パス i=ID を読み�
 rclone md5sum gdrive-agent:<purpose>/                # ローカルの md5sum と突き合わせる
 ```
 
+既存のファイルを取るとき(読み取り側):
+
+```
+rclone backend copyid gdrive-read: <ファイルの ID> <保存先のディレクトリ>/
+```
+
+## 読み取り側のセットアップ(本人の作業。1 手順ずつ、完了確認を満たしてから次へ)
+
+前提: 上の手順 1〜3 が済んでいる(プロジェクトと OAuth クライアント `rclone`)。書き込み用の `gdrive-agent` は、そのまま残す
+(`drive.file` のままで、読み取り用とは別のリモート)。
+
+| 項目 | 値 |
+|---|---|
+| rclone のリモート名 | `gdrive-read` |
+| scope | `drive.readonly`(既存のファイルの読み取り専用。書き込めない) |
+| OAuth クライアント | 上の手順 3 と同じもの(新しく作らない) |
+
+### R1. `gdrive-read` を作る(端末、対話。エージェントのセッションの外のターミナルで)
+
+目的: Drive にある既存のファイルを、ID を指定して取れるようにする。
+
+遷移経路: 本人の端末で、エージェントのセッションを開いていないターミナルを使う(`!` 付きでセッションの中から実行すると、
+画面の出力が会話に入る。最後の確認画面に token が出るかは未確認だが、`config create` の出力には出た)。
+
+```
+rclone config
+```
+
+- `n`(New remote)→ 名前 `gdrive-read` → ストレージの種類は `drive`(Google Drive)。
+- `client_id` と `client_secret` に、手順 3 の値を入れる(端末の対話入力にだけ使う。チャットや Issue に貼らない)。共有の client_id
+  を使うと `This remote uses rclone's shared Google Drive client_id, which is being retired` の警告が出る(2026 年中に止まる)ので、
+  自分のクライアントを使う。
+- `scope` は **`drive.readonly`**(`drive.readonly` を含む選択肢を、画面に出る表記で選ぶ。選択肢の文言と番号は版で違うはずで、
+  1.75.0 での表記は未確認。`drive.file` や `drive`(フルスコープ)を選ばない)。
+- `root_folder_id` は空のまま。「Use auto config?」は `y`(rclone がローカルのウェブサーバを立てて認可を受ける)。
+- ブラウザが開いたら、test user に入れたアカウント(手順 2)を選び、`rclone` が Drive のファイルを読むことを許可する。
+  同意画面に `drive.readonly` を載せる必要があるかは未確認(「access blocked」が出たら、止まって項目名を確かめる)。
+- 最後の「Keep this "gdrive-read" remote?」の画面には、設定が出る(token を含むかは未確認)。**画面の写しをチャットに貼らない**。
+  `y` で確定する。
+- 完了確認: `rclone listremotes` に `gdrive-read:` が出る。
+- 根拠: rclone, "Google drive" https://rclone.org/drive/(取得 2026-10-21)の scope の選択肢と認可の手順。画面の項目名は、手順 4・5 と同じ。
+
+自分のクライアントをまだ作っていないなど、当面の簡便形として、共有の client_id で非対話に作ることもできる(上の警告が出る):
+
+```
+rclone config create gdrive-read drive scope=drive.readonly --no-output
+```
+
+`--no-output`(`rclone config create --help` の「Don't provide any output」、手元の 1.75.2 で、出力が出ないことを `alias` のリモートで
+確かめた。Drive の OAuth 認可と合わせた挙動は未確認)は、作ったリモートの設定の表示を止める。付けないと、token が標準出力へ出る(#969 で起きた)。
+ブラウザの認可は同じく本人が行う。
+
+### R2. 取れることを確かめる(端末)
+
+目的: ID を指定して、既存のファイルを取れることと、サイズが合うことを確かめる。
+
+```
+rclone backend copyid gdrive-read: <ファイルの ID> <保存先のディレクトリ>/
+```
+
+- ファイルの ID は、Drive の URL `https://drive.google.com/file/d/<ID>/view` の `<ID>` を使う。
+- 保存先は `/` で終える(終えないと、最後の要素がファイル名になる)。
+- 完了確認: 保存先のファイルのサイズが、Drive のメタデータの `fileSize`(Drive のファイルの詳細、またはコネクタの `get_file_metadata`)と一致する。
+- 根拠: `rclone backend help drive` の `copyid`(rclone 1.75.2、取得 2026-10-27)、および #969 で実際に取れた記録。
+
 ## 既存手段と代替
 
 - 既存手段: 採用 — rclone(https://rclone.org/drive/、nixpkgs の stable で 1.75.0)。
@@ -145,3 +223,5 @@ rclone md5sum gdrive-agent:<purpose>/                # ローカルの md5sum �
   共有の client ID が 2026 年中に止まること、Testing の grant が 1 週間で失効すること。
 - `docs/personal-cloud-projects.md`: プロジェクト・同意画面・クライアントの導出規則(適用例3)。
 - `docs/cloud-artifacts-and-runbooks.md` §1.2: Drive のフォルダの命名(`<tool>/<purpose>`)。
+- rclone, `rclone backend help drive`(1.75.2、取得 2026-10-27): `copyid` の使い方(ID とパスの組、パスが `/` で終わるときの扱い)。
+- rclone, `rclone config create --help`(1.75.2、取得 2026-10-27): `--no-output`。

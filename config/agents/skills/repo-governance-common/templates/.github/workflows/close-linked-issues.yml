@@ -42,8 +42,7 @@ jobs:
           # Drop fenced blocks (``` / ~~~) and inline `code` — GitHub ignores
           # closing keywords there, so a quoted example must not close anything.
           text="$(printf '%s\n' "$PR_BODY" \
-            | awk '/^[[:space:]]*(```|~~~)/ { fenced = !fenced; next } !fenced' \
-            | sed -E 's/`[^`]*`//g')"
+            | awk '/^[[:space:]]*(```|~~~)/ { fenced = !fenced; next } !fenced { gsub(/`[^`]*`/, ""); print }')"
           refs="$(printf '%s\n' "$text" \
             | grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' \
             | awk '{ print $NF }' || true)"

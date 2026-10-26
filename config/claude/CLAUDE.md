@@ -82,6 +82,20 @@ PR 本文に未チェックの task list を残さない・人の確認を後続
 リで発火)が担う。gate に当たる前に自発的に Issue 化すること — gate は
 漏れを拾うためのもので、一次的な手段ではない。
 
+## 待ち方: 前景の `sleep` の後にコマンドを続けない
+
+Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける書き方
+(`sleep N; gh pr checks <PR> …`、`sleep N; cat <背景タスクの出力ファイル>`)を
+`Blocked: sleep N followed by …` で拒否する(この dotfiles の hook ではない)。
+拒否のたびに 1 往復を失うので、最初から次の手で待つ(#1059)。
+
+- CI の完了: `gh pr checks <N> --required --watch` を背景(`run_in_background`)
+  で実行し、完了通知を待つ。待ってよい対象は required のチェックだけ(共有
+  AGENTS.md「実装タスクの完了定義」)。
+- 背景タスクの出力: 完了通知を待つか、`Monitor` の `until` ループ(共有
+  AGENTS.md「長い処理では…」の形)で待つ。
+- 前景の `sleep` で待たない。
+
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で

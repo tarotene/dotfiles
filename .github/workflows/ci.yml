@@ -463,6 +463,9 @@ jobs:
       - name: create-repo.sh --selftest
         run: bash ./config/agents/skills/repo-charter/scripts/create-repo.sh --selftest
 
+      - name: irasutoya-search.sh --selftest
+        run: bash ./config/agents/skills/repo-charter/scripts/irasutoya-search.sh --selftest
+
       # github-audit (ADR-0015) は crates/github-audit の Rust で、その検査(gh のスタブ
       # での判定・パイプライン)は `cargo test` として `rust` job で走る。
 
