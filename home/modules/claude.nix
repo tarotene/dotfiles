@@ -573,9 +573,11 @@ let
   # 差し替えて直接登録する(adapter ファイルを新設しない — ADR-0032
   # Amendment #531、D8)。attribution-guard の Codex adapter と同じ
   # 定数値。
-  codexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' '${hooksDir}/wrapup-stop-gate'";
+  priorCodexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' '${hooksDir}/wrapup-stop-gate'";
+  codexWrapupStopCmd = "WRAPUP_TRIAL_AGENT=codex ${priorCodexWrapupStopCmd}";
   legacyCodexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "'${hooksDir}/wrapup-session-start'";
+  codexWrapupSessionStartCmd = "WRAPUP_TRIAL_AGENT=codex ${wrapupSessionStartCmd}";
   legacyWrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "'${hooksDir}/plan-view'";
   issueIndexCmd = "'${hooksDir}/issue-index'";
@@ -2126,12 +2128,13 @@ in
           --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyWrapupSessionStartCmd} \
+          --retire SessionStart ${lib.escapeShellArg wrapupSessionStartCmd} \
           --retire SessionStart ${lib.escapeShellArg legacySignPrewarmCmd} \
           --retire SessionStart ${lib.escapeShellArg legacyPrGateSessionStartCmd} \
           --register \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg esaIndexCmd} 10 \
-          SessionStart "" ${lib.escapeShellArg wrapupSessionStartCmd} 10 \
+          SessionStart "" ${lib.escapeShellArg codexWrapupSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
           SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
           SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30 \
@@ -2150,6 +2153,7 @@ in
         # pipeline-node: wrapup-stop-gate, pr-gate-stop, agent-turn-log
         run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
           --retire Stop ${lib.escapeShellArg legacyCodexWrapupStopCmd} \
+          --retire Stop ${lib.escapeShellArg priorCodexWrapupStopCmd} \
           --retire Stop ${lib.escapeShellArg legacyPrGateStopCmd} \
           --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
           --retire Stop ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \

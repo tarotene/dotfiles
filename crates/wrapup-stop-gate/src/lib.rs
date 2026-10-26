@@ -18,6 +18,7 @@
 pub mod json;
 pub mod retro;
 pub mod shquote;
+pub mod trial;
 
 use hook_io::jqfmt::J;
 use hook_io::jqparse::{parse_stream, ParseError};
@@ -872,6 +873,14 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
     if waiting_on_background(&h.get("transcript_path", None).unwrap_or_default()) {
         return 0;
     }
+    match trial::hook(self_path, input, false) {
+        Ok(Some(message)) => {
+            eprintln!("{message}");
+            return 2;
+        }
+        Ok(None) => {}
+        Err(error) => eprintln!("trial: {error}; pending state retained, retry next input/resume"),
+    }
     // レトロは stop_hook_active で抜けない(複数往復が要る。上限はセッション単位の
     // カウンタ)。PR を作っていないセッションでは台帳を 1 つ読むだけで何も起きない。
     {
@@ -961,6 +970,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
     };
     let run = || -> Result<Code, Code> {
         Ok(match arg(0) {
+            "--trial" => trial::cli(&args[1..]),
             "--inbox-path" => {
                 let p = need(1, "usage: wrapup-stop-gate.sh --inbox-path <project-dir>")?;
                 print!("{}", inbox_for(p));
@@ -1096,6 +1106,14 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
         ));
     }
     ctx.push_str("\n</hook-directive>");
+    match trial::hook(&gate, input, true) {
+        Ok(Some(message)) => {
+            ctx.push('\n');
+            ctx.push_str(&message);
+        }
+        Ok(None) => {}
+        Err(error) => eprintln!("trial: {error}; pending state retained, retry next input/resume"),
+    }
     let out = SessionStartOut {
         hook_specific_output: SessionStartInner {
             hook_event_name: "SessionStart",
