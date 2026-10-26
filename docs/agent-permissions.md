@@ -72,8 +72,8 @@ agent-permissions check --policy "$policyFile" --project "$PWD"
 オプション、ずれからの復旧の手順(`inspect --json` → `migrate --dry-run` → `migrate` →
 `check`)を表示する。`migrate --dry-run` の各変更には、内容が変わるかを示す `changed` が付く。
 `check` はずれた設定元を 1 件目で止めず、全件を 1 行ずつ列挙する。
-設定が読めない、不正な構文、未知の権限キー、所有記録の破損、設定元の増減は
-実行を止める。可変ユーザー設定は権限部分を比較し、モデル選択や hook 信頼の
+設定が読めない、不正な構文、未知の権限キー、所有記録の破損、設定元の削除や、
+下の節の待機に当たらない増減は実行を止める。可変ユーザー設定は権限部分を比較し、モデル選択や hook 信頼の
 更新を誤検出しない。残置した共有ファイルは全文ハッシュも比較する。
 
 所有記録が壊れても `inspect` は診断と一覧を出す。本人がその一覧を確認したときだけ、
@@ -93,6 +93,41 @@ CLI 引数による設定の上書き、Codex の enterprise/cloud/MDM の配布
 実行前検査の拒否時は、本人の端末で専用 CLI を直接実行して診断・レビューする。
 任意のシェルコマンドを検査の例外にはしない。未知の設定を取り除く前に
 新しい一覧を確認し、移行後は `check` の読み戻し結果を確認する。
+
+## 追記された許可は待機として扱い、構造的なずれだけを止める
+
+Claude Code は「Yes, and don't ask again」と、sandbox の通信先承認のたびに、`settings.local.json`
+の `permissions.allow` へ規則を追記する(Anthropic,
+[Settings](https://code.claude.com/docs/en/settings)・[Sandboxing](https://code.claude.com/docs/en/sandboxing)、
+取得 2026-10-26。実機でも 2026-10-26 に再現した)。これは本人自身の判断なので、全セッションの全ツールを
+止める理由にしない(#1043)。`check` は差分を 2 種に分ける。
+
+| 種類 | 条件 | 扱い |
+|---|---|---|
+| 待機(pending) | 書き込み可能な Claude の設定で、`permissions.allow` への追加だけが差分。追加は次の閉じた語彙に限る | ツールは止まらない。`check` は報告して成功し、`apply` と移行後の読み戻しは拒否する |
+| 構造的なずれ | 上記以外すべて(語彙外の規則、deny / ask の変更、`sandbox` など他の欄、未知の構文、共有ファイルの変更、設定元の削除) | 拒否のまま |
+
+待機の語彙: 正確なホスト名の `WebFetch(domain:…)`、`WebSearch`、`*` を含まない `mcp__…` の 1 ツール、
+途中に `*` を含まない `Bash(…)`(ワイルドカードは末尾の `:*` か ` *` だけ。#461)。`Edit`・`Write`・
+`Read` の許可、裸のツール名は含まない。記録に無い設定ファイルも、空か待機の語彙だけなら新しい設定元の
+ずれにしない(プロジェクトで初めて承認を保存すると Claude Code がファイルを作る)。
+
+構造的なずれでも、次の呼び出しだけは通す(`pending.rs` の `inert_call`)。本人に質問し、診断するためで、
+任意のシェルは例外にしない。
+
+- `AskUserQuestion`・`ExitPlanMode`(外部に作用しない)
+- `agent-permissions` の読み取り専用の呼び出し: `inspect`・`check`・`migrate --dry-run`・`--help`。
+  単語だけで構成され、リダイレクト・パイプ・`;`・`&&`・引用符・`$` を含むものは通さない。
+  `--restore` と `--retire-ownership` は `--dry-run` より先に作用するので通さない
+
+`disabledMcpjsonServers` は許可でなく制限で、空の一覧は何も許可しない。Claude Code が新しい
+ディレクトリで起動するたびに空の欄を足すので、`~/.claude.json` の追跡から外した(以前の記録も同じ形に
+そろえて比較する)。有効化された `enabledMcpjsonServers` は許可として追跡を続ける。
+
+hms の activation は、`agent-permissions apply` が失敗しても止めず、警告を出して続ける。失敗で止めると
+`set -eu` が後続の段と「現在の世代」の印の付け替えを飛ばし、profile だけが進んだ状態が残る
+(2026-10-26 に `generation/reality mismatch` の警告として観測した)。実行時の検査(router)は
+記録が許す範囲だけを通し続けるので、続行は安全側である。
 
 ## 更新を中断したら記録から復元する
 

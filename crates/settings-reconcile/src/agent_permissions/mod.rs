@@ -1,9 +1,11 @@
 //! Shared permission policy, conservative inventory and reviewed migration.
 //! Native sandboxes enforce command boundaries; no shell command parser lives here.
 pub mod inventory;
+pub mod pending;
 mod transaction;
 
-use inventory::Source;
+use inventory::{without_non_grants, Source};
+use pending::{inert_call, tolerated_additions, tolerated_new_source, Pending};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -221,7 +223,10 @@ fn load_record(home: &Path) -> Result<Record, String> {
     Ok(r)
 }
 
-pub fn check(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), String> {
+/// Compare the sources with the ownership record. A structural drift is an
+/// error; tolerated allow rules added since the last review (see [`pending`])
+/// are returned for reclaim instead of blocking.
+pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<Pending>, String> {
     transaction::check_pending(home)?;
     let record = load_record(home)?;
     if record.policy != *policy {
@@ -230,19 +235,37 @@ pub fn check(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
     let current = inspect(policy, home, projects)?;
     // Every difference is listed, not just the first: one review should be enough.
     let mut problems = Vec::new();
+    let mut waiting = Vec::new();
     // Hash whole shared files; compare only permission fields for mutable user configs.
     for s in &current.sources {
         let Some(old) = record.sources.iter().find(|o| o.path == s.path) else {
-            problems.push(format!("new permission source: {}", s.path.display()));
+            match tolerated_new_source(s) {
+                Some(rules) if rules.is_empty() => {}
+                Some(rules) => waiting.push(Pending {
+                    path: s.path.clone(),
+                    rules,
+                }),
+                None => problems.push(format!("new permission source: {}", s.path.display())),
+            }
             continue;
         };
+        // Records written before empty lists and disabled servers were left out
+        // of `grants` are compared in the current shape.
+        let mut old = old.clone();
+        old.grants = without_non_grants(&old.kind, &old.grants);
         if s.kind != old.kind
             || s.writable != old.writable
             || s.grants != old.grants
             || s.unknown != old.unknown
             || (!s.writable && s.digest != old.digest)
         {
-            problems.push(format!("permission drift: {}", s.path.display()));
+            match tolerated_additions(&old, s) {
+                Some(rules) => waiting.push(Pending {
+                    path: s.path.clone(),
+                    rules,
+                }),
+                None => problems.push(format!("permission drift: {}", s.path.display())),
+            }
         }
     }
     for old in &record.sources {
@@ -251,10 +274,26 @@ pub fn check(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
         }
     }
     if problems.is_empty() {
-        return Ok(());
+        return Ok(waiting);
     }
     problems.push("run agent-permissions inspect --json, review then migrate".into());
     Err(problems.join("\n"))
+}
+
+/// Strict form of [`assess`]: pending allow rules are an error too. Used where
+/// the result must equal the reviewed record, such as the read-back after a
+/// migration and before an ordinary `apply`.
+pub fn check(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), String> {
+    let waiting = assess(policy, home, projects)?;
+    if waiting.is_empty() {
+        return Ok(());
+    }
+    let mut lines = vec!["pending permission grants are not in the reviewed record:".to_owned()];
+    for p in &waiting {
+        lines.push(format!("{}: {}", p.path.display(), p.rules.join(", ")));
+    }
+    lines.push("reclaim them or run a reviewed migrate first".into());
+    Err(lines.join("\n"))
 }
 
 /// Ordinary activation may narrow a reviewed policy, never expand one.
@@ -738,7 +777,15 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
         .get("cwd")
         .and_then(Value::as_str)
         .ok_or("permission hook cwd missing")?;
-    check(&policy, &home, &[PathBuf::from(cwd)])?;
+    // Pending allow rules never block here; a structural drift blocks every call
+    // except the inert ones, so the agent can still ask the owner and diagnose.
+    if let Err(reason) = assess(&policy, &home, &[PathBuf::from(cwd)]) {
+        let named = input.get("tool_name").and_then(Value::as_str);
+        if inert_call(named, &input["tool_input"]) {
+            return Ok(None);
+        }
+        return Err(reason);
+    }
     if agent == "codex" {
         return Ok(None);
     } // Native profile, not ignored Codex ask output.
@@ -1010,15 +1057,20 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
             }
         }
         "check" => {
-            check(&policy, &home, &projects)?;
-            println!(
-                "{}",
-                if output_json {
-                    "{\"ok\":true}"
-                } else {
-                    "permissions match policy and ownership record"
+            // Pending allow rules are reported, not an error: they wait for reclaim.
+            let waiting = assess(&policy, &home, &projects)?;
+            if output_json {
+                println!("{}", json!({"ok": true, "pending": waiting}));
+            } else {
+                println!("permissions match policy and ownership record");
+                for p in &waiting {
+                    println!(
+                        "pending grants awaiting reclaim: {}: {}",
+                        p.path.display(),
+                        p.rules.join(", ")
+                    );
                 }
-            );
+            }
         }
         "apply" => {
             apply(&policy, &home, &projects)?;

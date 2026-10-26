@@ -58,9 +58,17 @@ in
         if [ -f "$HOME/.local/state/dotfiles/agent-permissions.json" ]; then
           # home-manager's activation PATH excludes user-profile executables.
           # Inventory uses git ls-files to protect tracked local settings.
+          # A failed apply must not end the activation: `set -eu` would skip every
+          # later step, including the final "current generation" GC root, and leave
+          # the profile ahead of what is applied. The router keeps enforcing the
+          # recorded permissions, so continuing is the safe side.
           run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
             ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
-            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME"
+            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME" \
+            || {
+              echo 'agent-permissions: apply did not complete; the activation continues, and the router keeps denying what the record does not cover.' >&2
+              echo 'Run: agent-permissions check   (lists every drift); then inspect --json, migrate --approved REVIEW --dry-run, migrate --approved REVIEW.' >&2
+            }
         else
           echo 'agent-permissions: migration review required; tool execution is blocked until migration.' >&2
           echo 'Run agent-permissions inspect --json, review each disposition, then migrate --approved REVIEW.' >&2
