@@ -234,19 +234,13 @@ async fn experiment_command(args: &[String], config: &Path, native: &Path) -> Re
             };
             let today = today()?;
             let current = Settings::load(config)?;
-            if current
-                .experiment
-                .as_ref()
-                .is_some_and(|e| e.is_active(&today))
-            {
-                bail!("an experiment is already running; run `codex-plan experiment stop` first");
-            }
+            let efforts: Vec<String> = efforts.split(',').map(str::to_owned).collect();
+            let experiment = match current.experiment.as_ref().filter(|e| e.is_active(&today)) {
+                Some(running) => running.extend(&efforts, until)?,
+                None => experiment::Experiment::start(efforts, &today, until)?,
+            };
             let settings = Settings {
-                experiment: Some(experiment::Experiment::start(
-                    efforts.split(',').map(str::to_owned).collect(),
-                    &today,
-                    until,
-                )?),
+                experiment: Some(experiment),
                 ..current
             };
             runtime::preflight(native, &settings).await?;

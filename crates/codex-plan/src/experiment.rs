@@ -60,6 +60,18 @@ impl Experiment {
         Ok(experiment)
     }
 
+    /// A running experiment can only be extended: same candidates, later last day.
+    /// `start` and the assigned period stay, so earlier launches keep their label.
+    pub fn extend(&self, efforts: &[String], until: &str) -> Result<Self> {
+        if self.execute_efforts != efforts {
+            bail!("an experiment with different efforts is already running; run `codex-plan experiment stop` first");
+        }
+        let mut next = self.clone();
+        next.until = until.into();
+        next.validate()?;
+        Ok(next)
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.execute_efforts.len() < 2 {
             bail!("experiment needs at least two distinct execute efforts to compare");
@@ -188,6 +200,23 @@ mod tests {
         assert!(
             Experiment::start(pair(), "2026-10-27", "2026-10-27").is_ok(),
             "same-day experiment"
+        );
+    }
+
+    #[test]
+    fn a_running_experiment_extends_only_with_the_same_candidates() {
+        let e = Experiment::start(pair(), "2026-10-27", "2026-10-30").unwrap();
+        let longer = e.extend(&pair(), "2026-11-03").unwrap();
+        assert_eq!(
+            (longer.start.as_str(), longer.until.as_str()),
+            ("2026-10-27", "2026-11-03")
+        );
+        assert!(e
+            .extend(&["low".into(), "high".into()], "2026-11-03")
+            .is_err());
+        assert!(
+            e.extend(&pair(), "2026-10-26").is_err(),
+            "last day cannot precede start"
         );
     }
 

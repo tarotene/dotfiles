@@ -130,7 +130,7 @@ fn start_validates_candidates_against_native_and_keeps_the_pair() {
 }
 
 #[test]
-fn second_start_while_running_is_refused_and_stop_keeps_the_period() {
+fn running_start_extends_same_candidates_only_and_stop_keeps_the_period() {
     let f = Fixture::new();
     f.write_settings(PAIR);
     let start = [
@@ -139,14 +139,40 @@ fn second_start_while_running_is_refused_and_stop_keeps_the_period() {
         "--execute-efforts",
         "low,medium",
         "--until",
-        "2999-12-31",
+        "2999-12-30",
     ];
     assert!(f.run(&start).status.success());
+    // Different candidates cannot replace a running experiment.
     let before = fs::read(f.settings()).unwrap();
-    let again = f.run(&start);
-    assert!(!again.status.success());
-    assert!(text(&again.stderr).contains("already running"));
+    let other = f.run(&[
+        "experiment",
+        "start",
+        "--execute-efforts",
+        "medium,low",
+        "--until",
+        "2999-12-31",
+    ]);
+    assert!(!other.status.success());
+    assert!(text(&other.stderr).contains("already running"));
     assert_eq!(fs::read(f.settings()).unwrap(), before);
+    // Same candidates extend the last day; start (the assigned period) is kept.
+    let extend = f.run(&[
+        "experiment",
+        "start",
+        "--execute-efforts",
+        "low,medium",
+        "--until",
+        "2999-12-31",
+    ]);
+    assert!(extend.status.success(), "{}", text(&extend.stderr));
+    let extended = codex_plan::Settings::load(&f.settings())
+        .unwrap()
+        .experiment
+        .unwrap();
+    assert_eq!(
+        (extended.start.as_str(), extended.until.as_str()),
+        (today().as_str(), "2999-12-31")
+    );
 
     let stop = f.run(&["experiment", "stop"]);
     assert!(stop.status.success(), "{}", text(&stop.stderr));
@@ -163,7 +189,7 @@ fn second_start_while_running_is_refused_and_stop_keeps_the_period() {
     let after_stop = fs::read(f.settings()).unwrap();
     assert!(f.run(&["experiment", "stop"]).status.success());
     assert_eq!(fs::read(f.settings()).unwrap(), after_stop);
-    // A stopped experiment can be started again.
+    // A stopped experiment can be started again, as a new assigned period.
     assert!(f.run(&start).status.success());
 }
 
