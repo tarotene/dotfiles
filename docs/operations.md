@@ -98,6 +98,55 @@ pin, which is what a pin-bump PR needs. The override only exists at apply time;
 `flake.lock` is not written. The canary is also what CI runs, since the
 activation-package build includes `home.checks`.
 
+### `hms` success means the generation it built is the active one
+
+`home-manager switch` returning 0 does not mean the generation it built is the
+one in effect: upstream's `doSwitch` runs `nix build --out-link`, then
+`nix-env --profile … --set <generation>`, then `activate`, with no
+compare-and-swap and no lock. A switch from another worktree or session (an
+older `hms` that takes no lock, or a hand-run `home-manager switch`) that lands
+in between leaves `profile` and `current-home` on *its* generation while yours
+reports success — which is how one session's generation was replaced by
+another's with both versions of the hook registrations live at once (#1025).
+
+So `hms`'s "success" has a stricter meaning. Before the switch it asks nix for
+the target: `nix eval --raw <ref>#homeConfigurations.<host>.activationPackage.outPath`,
+with the same ref and the same `--override-input` / `--option` arguments as the
+switch. Nothing is built or linked by this step, and if the target cannot be
+evaluated `hms` stops before touching anything (the switch would evaluate the
+same thing). Right after the switch returns 0 it reads back both
+`~/.local/state/nix/profiles/home-manager` and
+`~/.local/state/home-manager/gcroots/current-home`; only when **both** resolve
+to the target does it print `==> 世代を照合しました: …` and go on to
+`daemon-reload` and the fcitx5 restart. Otherwise it exits 1 without those
+steps and prints:
+
+- the apply source: the flake ref, the worktree path for a local ref, and its
+  rev (`revision`, or `dirtyRevision` for a dirty `hms .`, from
+  `nix flake metadata`);
+- the target generation, and the generations `profile` and `current-home`
+  actually point at, with the `dotfiles/rev` each carries (a plain `path:`
+  input, such as the wrapper route's `dotfiles` override, records
+  `unknown (path input, no commit)` there, which is why the apply source's own
+  rev is shown separately);
+- the next step: merge the other change into one checkout if both are wanted,
+  then re-run the same `hms <args>` once the other apply has finished. A
+  re-run replaces the actual generation with this one.
+
+The check is one read taken right after the switch: it detects a competing
+apply that has already landed, not one that starts later. Appliers that take no
+lock (an older `hms`, a hand-run `home-manager switch`) are exactly what it
+exists for; the contract here does not depend on `hms` serialising itself.
+
+The lock alone does not cover one more case: an `hms` that waited (on the lock,
+or during its own evaluation) can apply an *older* change over a newer
+generation another session switched in meanwhile. `hms` remembers the profile's
+generation at its start and, just before the switch, prints a
+`==> 注意: 待っている間に別の適用が世代を切り替えました` block naming the
+generation about to be replaced (Ctrl-C still stops it — nothing has been
+switched yet), and repeats the replaced generation after the switch. That apply
+itself succeeds: the target is what was asked for, and it is active.
+
 ## `~/Downloads` is not storage
 
 `home/modules/downloads.nix` deploys a daily cleanup (`systemd.user.tmpfiles`

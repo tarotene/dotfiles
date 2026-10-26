@@ -74,6 +74,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
+mod verify;
+
 pub const DEFAULT_REF: &str = "github:tarotene/dotfiles";
 pub const FCITX5_UNIT: &str = "app-fcitx5@autostart.service";
 
@@ -548,6 +550,8 @@ fn version_line(rev: Option<&str>) -> String {
 
 /// 引数(`argv[0]` を除く)を処理して終了コードを返す。
 pub fn run(args: &[String]) -> i32 {
+    // ロックを待つ間に別の適用が世代を切り替えたかを、switch の前に見分けるための起点(#1025)。
+    let generation_at_start = verify::current_profile_generation();
     let wrapper_ref = resolve_default_ref();
     let mut r#ref = wrapper_ref.clone();
     let mut public_only = false;
@@ -749,6 +753,19 @@ pub fn run(args: &[String]) -> i32 {
         );
     }
 
+    // 今回の目標の世代を switch の前に求める(switch 後の照合に使う、#1025)。
+    let prepared = match verify::prepare(&verify::ApplyInput {
+        apply_ref: &apply_ref,
+        host: &host,
+        extra_opts: &extra_opts,
+        local_ref: ref_is_local.then_some(r#ref.as_str()),
+        meta_json: &ref_meta_json,
+        generation_at_start: &generation_at_start,
+    }) {
+        Ok(p) => p,
+        Err(rc) => return rc,
+    };
+
     println!(
         "==> home-manager switch --flake {apply_ref}#{host} -b backup {}",
         extra_opts.join(" ")
@@ -762,6 +779,13 @@ pub fn run(args: &[String]) -> i32 {
     );
     if rc != 0 {
         check_generation_consistency(true);
+        return rc;
+    }
+
+    // switch の成功は「今回の世代が有効」の証拠にならない(別の適用が割り込みうる、#1025)。
+    // 目標の世代と profile・current-home を照合し、食い違えば後処理へ進まず非 0 で終える。
+    let rc = verify::after_switch(&prepared, args);
+    if rc != 0 {
         return rc;
     }
 

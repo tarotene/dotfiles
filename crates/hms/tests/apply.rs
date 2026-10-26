@@ -47,12 +47,26 @@ impl T {
             symlink(jq, t.stubs().join("jq")).unwrap();
         }
         let s = t.stubs();
+        // 目標の世代の既定(`nix eval` が返し、`home-manager` が向ける先)。
+        let default_target = t.generation("default", "default-rev");
+        fs::write(s.join("target"), default_target.to_str().unwrap()).unwrap();
         // nix: `flake metadata [--refresh] --json <ref>` → meta/<ref を _ に置換>。無ければ失敗。
         exe(
             &s.join("nix"),
             r#"printf 'nix %s\n' "$*" >> "$STUB_DIR/calls.log"
 trap 'printf "nix rc=%s\n" "$?" >> "$STUB_DIR/rc.log"' EXIT
 [[ $1 == build ]] && exit "${BUILD_RC:-0}"
+# eval: 今回の目標の世代(`activationPackage.outPath`)。EVAL_HOLD は評価の最中で止まり、
+# `eval-go` が置かれるまで待つ(待ちには上限を付け、テストが先に失敗しても居残らない)。
+if [[ $1 == eval ]]; then
+  [[ -n ${EVAL_RC:-} ]] && { echo 'error: evaluation failed' >&2; exit "$EVAL_RC"; }
+  if [[ -n ${EVAL_HOLD:-} ]]; then
+    : > "$STUB_DIR/eval-started"
+    for _ in $(seq 400); do [[ -f $STUB_DIR/eval-go ]] && break; sleep 0.05; done
+  fi
+  printf '%s' "${NIX_TARGET:-$(cat "$STUB_DIR/target")}"
+  exit 0
+fi
 ref="${*: -1}"
 f="$STUB_DIR/meta/$(printf %s "$ref" | tr '/:+' '___')"
 [[ -f $f ]] && { cat "$f"; exit 0; }
@@ -60,7 +74,21 @@ exit 1"#,
         );
         exe(
             &s.join("home-manager"),
+            // 成功した switch は profile と current-home を世代へ向ける(実物は `nix-env --set` と
+            // activation script)。HM_LANDS で別の世代へ向けると別セッションの適用を、
+            // HM_ONLY_PROFILE で activation 前の状態を再現する。LAND_HOLD は向けた直後で止まり、
+            // `go` が置かれるまで待つ。
             r#"printf 'home-manager %s\n' "$*" >> "$STUB_DIR/calls.log"
+if [[ ${HM_RC:-0} == 0 ]]; then
+  gen="${HM_LANDS:-$(cat "$STUB_DIR/target")}"
+  mkdir -p "$HOME/.local/state/nix/profiles" "$HOME/.local/state/home-manager/gcroots"
+  ln -sfn "$gen" "$HOME/.local/state/nix/profiles/home-manager"
+  [[ -n ${HM_ONLY_PROFILE:-} ]] || ln -sfn "$gen" "$HOME/.local/state/home-manager/gcroots/current-home"
+  if [[ -n ${LAND_HOLD:-} ]]; then
+    : > "$STUB_DIR/landed"
+    for _ in $(seq 400); do [[ -f $STUB_DIR/go ]] && break; sleep 0.05; done
+  fi
+fi
 exit "${HM_RC:-0}""#,
         );
         exe(
@@ -74,6 +102,17 @@ esac
 exit 0"#,
         );
         t
+    }
+    /// 世代の実体(`home-files/.local/share/dotfiles/rev` つき)を作り、正準パスを返す。
+    fn generation(&self, name: &str, rev: &str) -> PathBuf {
+        let g = self.dir.path().join("gen").join(name);
+        fs::create_dir_all(g.join("home-files/.local/share/dotfiles")).unwrap();
+        fs::write(
+            g.join("home-files/.local/share/dotfiles/rev"),
+            format!("{rev}\n"),
+        )
+        .unwrap();
+        fs::canonicalize(g).unwrap()
     }
     fn stubs(&self) -> PathBuf {
         self.dir.path().join("stubs")
@@ -564,4 +603,202 @@ fn unknown_option_and_help() {
         "Routed through {WRAPPER} with dotfiles overridden to"
     )));
     assert!(t.hm_call().is_none());
+}
+
+// ---------------------------------------------------------------------------
+// 適用後の世代の照合(#1025)。switch の成功応答だけでは、今回の世代が有効とは言えない。
+// 別セッションの適用は、スタブの `home-manager` をロックなしで直接呼んで再現する
+// (ロックを持たない古い hms や手で実行した switch と同じ — hms 同士なら排他が先に効く)。
+// ---------------------------------------------------------------------------
+
+fn await_file(what: &str, path: PathBuf) {
+    for _ in 0..500 {
+        if path.exists() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!("timed out waiting for: {what}");
+}
+
+impl T {
+    /// `run` と同じ環境で hms を起動したまま返す。出力はファイルへ流す(パイプだと
+    /// 読む側が居ない間に詰まりうる)。
+    fn start_hms(&self, args: &[&str], env: &[(&str, &str)]) -> std::process::Child {
+        let mut c = Command::new(under_test());
+        c.args(args)
+            .env_clear()
+            .env("HOME", self.home())
+            .env("PATH", format!("{}:/usr/bin:/bin", self.stubs().display()))
+            .env("STUB_DIR", self.stubs())
+            .stdout(fs::File::create(self.dir.path().join("hms.out")).unwrap())
+            .stderr(fs::File::create(self.dir.path().join("hms.err")).unwrap());
+        for (k, v) in env {
+            c.env(k, v);
+        }
+        c.spawn().unwrap()
+    }
+    fn started_out(&self) -> String {
+        fs::read_to_string(self.dir.path().join("hms.out")).unwrap_or_default()
+    }
+    fn started_err(&self) -> String {
+        fs::read_to_string(self.dir.path().join("hms.err")).unwrap_or_default()
+    }
+    /// 別セッションの適用: hms を通さず、スタブの `home-manager switch` が世代 `to` を有効にする。
+    fn other_session_lands(&self, to: &Path) {
+        let st = Command::new(self.stubs().join("home-manager"))
+            .args(["switch", "--flake", "other#testhost"])
+            .env_clear()
+            .env("HOME", self.home())
+            .env("PATH", format!("{}:/usr/bin:/bin", self.stubs().display()))
+            .env("STUB_DIR", self.stubs())
+            .env("HM_LANDS", to)
+            .status()
+            .unwrap();
+        assert!(st.success());
+    }
+    fn profile_target(&self) -> PathBuf {
+        fs::canonicalize(self.home().join(".local/state/nix/profiles/home-manager")).unwrap()
+    }
+}
+
+/// 目標の世代を switch の前に `nix eval` で求め、switch と同じ attribute・同じ追加引数を渡す。
+/// switch の後に profile と current-home が目標を指すと確かめて、初めて続きへ進む。
+#[test]
+fn the_target_generation_is_evaluated_before_the_switch_and_verified_after() {
+    let t = T::new();
+    t.marker("private-hub", WRAPPER);
+    let d = t.checkout();
+    let o = t.run(&[d.to_str().unwrap()], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    let calls = t.calls();
+    let pos = |p: &str| calls.iter().position(|l| l.starts_with(p)).unwrap();
+    assert!(pos("nix eval") < pos("home-manager "));
+    // switch の `--flake <ref>#<host>` と同じ ref・host・追加引数で評価している。
+    assert_eq!(
+        calls[pos("nix eval")],
+        format!(
+            "nix eval --raw {WRAPPER}#homeConfigurations.testhost.activationPackage.outPath --option warn-dirty false --override-input dotfiles path:{} --no-write-lock-file",
+            d.display()
+        )
+    );
+    let target = fs::read_to_string(t.stubs().join("target")).unwrap();
+    assert!(out(&o).contains(&format!(
+        "世代を照合しました: profile と current-home が今回の世代を指しています ({target})"
+    )));
+    assert!(!err(&o).contains("待っている間に別の適用が世代を切り替えました"));
+    assert!(out(&o).ends_with("Done.\n"));
+}
+
+/// 目標の世代を求められないなら、何も変えずに止まる(switch も同じ評価をする)。
+#[test]
+fn an_unevaluable_target_stops_before_the_switch() {
+    let t = T::new();
+    let o = t.run(&[], &[("EVAL_RC", "1")]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("error: evaluation failed"));
+    assert!(err(&o).contains("今回の適用の目標の世代を求められませんでした"));
+    assert!(t.hm_call().is_none());
+}
+
+/// 再現(#1025): 今回の switch が成功を返した直後に、別セッションの適用が世代を切り替える。
+/// home-manager の終了コードは 0 のままでも、hms は成功と言わず、適用元・実際の世代・
+/// 次の操作を示して非 0 で終える。環境は別セッションの世代のまま(今回の変更は無効)。
+#[test]
+fn a_competing_apply_after_our_switch_is_detected_not_reported_as_done() {
+    let t = T::new();
+    let d = t.checkout();
+    t.meta(d.to_str().unwrap(), r#"{"dirtyRevision":"dirty123"}"#);
+    let theirs = t.generation("theirs", "their-rev");
+    let ours = fs::read_to_string(t.stubs().join("target")).unwrap();
+
+    let mut ours_apply = t.start_hms(&[d.to_str().unwrap()], &[("LAND_HOLD", "1")]);
+    await_file("our switch to take effect", t.stubs().join("landed"));
+    t.other_session_lands(&theirs);
+    fs::write(t.stubs().join("go"), "").unwrap();
+    let st = ours_apply.wait().unwrap();
+
+    assert_eq!(st.code(), Some(1), "{}", t.started_err());
+    let e = t.started_err();
+    assert!(e.contains("switch は成功しましたが、今回の世代が有効になっていません"));
+    // 適用元(worktree と rev)・目標・実際の世代・次の操作。
+    assert!(e.contains(&format!(
+        "適用元: {}(worktree {}、rev dirty123)",
+        d.display(),
+        d.display()
+    )));
+    assert!(e.contains(&format!("今回の目標の世代: {ours}")));
+    assert!(e.contains(&format!(
+        "実際の世代 profile: {}(rev their-rev)",
+        theirs.display()
+    )));
+    assert!(e.contains(&format!("`hms {}` を", d.display())));
+    // 成功の表示も、後処理(daemon-reload・fcitx5)も行わない。
+    assert!(!t.started_out().contains("Done."));
+    assert!(!t.started_out().contains("世代を照合しました"));
+    assert!(!t.calls().iter().any(|l| l.starts_with("systemctl")));
+    assert_eq!(t.profile_target(), theirs);
+}
+
+/// profile は今回の世代でも current-home が追いついていないなら、同じく成功にしない
+/// (別の適用の activation が進行中、または今回の activation が反映されていない)。
+#[test]
+fn a_current_home_that_did_not_follow_is_detected() {
+    let t = T::new();
+    let stale = t.generation("stale", "stale-rev");
+    let gc = t.home().join(".local/state/home-manager/gcroots");
+    fs::create_dir_all(&gc).unwrap();
+    symlink(&stale, gc.join("current-home")).unwrap();
+    let o = t.run(&[], &[("HM_ONLY_PROFILE", "1")]);
+    assert_eq!(o.status.code(), Some(1));
+    let e = err(&o);
+    assert!(e.contains("current-home が追いついていません"));
+    assert!(e.contains(&format!(
+        "実際の世代 current-home: {}(rev stale-rev)",
+        stale.display()
+    )));
+    assert!(!out(&o).ends_with("Done.\n"));
+}
+
+/// 排他だけでは足りない場合(#1025 の完了条件): 待っていた古い変更が、後から新しい変更を戻す。
+/// 今回の世代は有効なので成功だが、待っている間に別の適用が切り替えた世代を置き換えることを、
+/// switch の前(止められる間)と、終わった後の両方で示す。
+#[test]
+fn replacing_a_generation_that_changed_during_the_wait_is_announced() {
+    let t = T::new();
+    let before = t.generation("before", "before-rev");
+    let newer = t.generation("newer", "newer-rev");
+    let profiles = t.home().join(".local/state/nix/profiles");
+    fs::create_dir_all(&profiles).unwrap();
+    symlink(&before, profiles.join("home-manager")).unwrap();
+
+    let mut older = t.start_hms(&[], &[("EVAL_HOLD", "1")]);
+    await_file("our evaluation to start", t.stubs().join("eval-started"));
+    // 待っている間に、別セッションの(新しい)変更が適用される。
+    t.other_session_lands(&newer);
+    fs::write(t.stubs().join("eval-go"), "").unwrap();
+    let st = older.wait().unwrap();
+
+    assert!(st.success(), "{}", t.started_err());
+    let e = t.started_err();
+    assert!(e.contains(
+        "待っている間に別の適用が世代を切り替えました。今回の switch はそれを置き換えます。"
+    ));
+    assert!(e.contains(&format!(
+        "開始時の世代: {}(rev before-rev)",
+        before.display()
+    )));
+    assert!(e.contains(&format!(
+        "いまの世代(置き換えられる): {}(rev newer-rev)",
+        newer.display()
+    )));
+    assert!(t.started_out().contains(&format!(
+        "切り替えた世代 {}(rev newer-rev) を、今回の世代で置き換えました",
+        newer.display()
+    )));
+    // 今回の世代は有効になっている。
+    assert_eq!(
+        t.profile_target(),
+        PathBuf::from(fs::read_to_string(t.stubs().join("target")).unwrap())
+    );
 }
