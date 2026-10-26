@@ -112,6 +112,19 @@ Claude Code は「Yes, and don't ask again」と、sandbox の通信先承認の
 `Read` の許可、裸のツール名は含まない。記録に無い設定ファイルも、空か待機の語彙だけなら新しい設定元の
 ずれにしない(プロジェクトで初めて承認を保存すると Claude Code がファイルを作る)。
 
+Codex の承認も同じ考え方で待機にする。Codex は、コマンドの前方一致を「don't ask again」で承認すると
+`~/.codex/rules/default.rules` に 1 行追記し、通信先を承認すると同じファイルに `network_rule` を追記する。
+MCP ツールの「Always allow」は `config.toml` の `…tools.<tool>.approval_mode = "approve"` を書く
+(OpenAI, Codex rust-v0.164.0 `execpolicy/src/amend.rs` L65-L124、`execpolicy/src/rule.rs` L138-L145、
+`core/src/mcp_tool_call.rs` L2340-L2489、取得 2026-10-26)。待機にするのは次だけである。
+
+- `default.rules`: 記録した内容の**後ろに足されただけ**で、足された各行が Codex の書く形と完全に一致するもの。
+  `prefix_rule(pattern=["…", …], decision="allow")` と、正確なホスト・既知のプロトコル・`allow` の
+  `network_rule(host="…", protocol="…", decision="allow"[, justification="…"])`。Starlark は解釈しない。
+  形が違う行、deny・prompt の決定、ワイルドカードのホスト、記録した内容の書き換えは構造的なずれ。
+- `config.toml`: ツール 1 つの `approval_mode` が、無い状態か `prompt` から `approve` になっただけ(MCP サーバー・
+  App・plugin の MCP サーバー配下)。サーバー全体の既定値や他の欄の変更は構造的なずれ。
+
 構造的なずれでも、次の呼び出しだけは通す(`pending.rs` の `inert_call`)。本人に質問し、診断するためで、
 任意のシェルは例外にしない。
 
@@ -131,7 +144,9 @@ hms の activation は、`agent-permissions apply` が失敗しても止めず�
 
 ## 待機の許可はセッションの境界で回収し、昇格候補に移す
 
-待機の許可が、承認したセッションを越えて残らないようにする。回収は 3 つの契機で走り、どれも冪等である。
+待機の許可が、承認したセッションを越えて残らないようにする。回収は、Claude の設定ファイルからは追加された規則を
+取り除き、Codex の `default.rules` は記録した内容に書き戻し、`config.toml` は該当するキーだけを元の値に戻す
+(コメントや書式は toml_edit が保つ)。回収は 3 つの契機で走り、どれも冪等である。
 
 | 契機 | 登録 | 確実さ |
 |---|---|---|
@@ -151,8 +166,9 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 セッションの開始を妨げない。
 
 昇格は `/promote-permissions` が担う(`agent-permissions pending` で候補を読む)。共有ポリシーに宣言があるのは
-通信先(`domains`・`project_rules.<project>.domains`)だけなので、昇格できるのは `WebFetch(domain:…)` の候補に
-限る。`mcp__…`・`WebSearch`・`Bash(…)` の候補は、ツールを `prompt` に保つ現行の方針のとおり宣言が無く、
+通信先(`domains`・`project_rules.<project>.domains`)だけなので、昇格できるのは `WebFetch(domain:…)` と、
+Codex の `network_rule(… decision="allow")` の候補に限る。`mcp__…`・`WebSearch`・`Bash(…)`・`prefix_rule`・
+ツールの `approval_mode` の候補は、ツールを `prompt` に保つ現行の方針のとおり宣言が無く、
 キューは記録にとどまる。これらを昇格できるようにするには、共有ポリシーの形を広げる別の裁定が要る(未実装、
 意図は未決)。
 

@@ -6,6 +6,7 @@
 //! never outlives the session that granted it. Whether a candidate becomes part
 //! of the shared policy is the owner's decision (`/promote-permissions`); nothing
 //! here widens the policy.
+use super::pending::{Pending, Revert, ToolRevert};
 use super::{assess, digest, read, state_path, transaction, Policy};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -174,20 +175,8 @@ pub fn reclaim(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Rec
     let mut removed = 0;
     for pending in &waiting {
         let bytes = read(&pending.path)?;
-        let mut value: Value = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("{}: {e}", pending.path.display()))?;
-        let allow = value
-            .pointer_mut("/permissions/allow")
-            .and_then(Value::as_array_mut)
-            .ok_or_else(|| format!("{}: permissions.allow vanished", pending.path.display()))?;
-        let before = allow.len();
-        allow.retain(|r| {
-            r.as_str()
-                .is_none_or(|r| !pending.rules.iter().any(|x| x == r))
-        });
-        removed += before - allow.len();
-        let mut out = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
-        out.push(b'\n');
+        let (out, count) = reverted(pending, &bytes)?;
+        removed += count;
         expected.insert(pending.path.clone(), digest(&bytes));
         writes.insert(pending.path.clone(), Some(out));
     }
@@ -207,6 +196,85 @@ pub fn reclaim(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Rec
         removed,
         files,
     })
+}
+
+/// The file content with this file's pending changes undone, and how many there were.
+fn reverted(pending: &Pending, bytes: &[u8]) -> Result<(Vec<u8>, usize), String> {
+    let shown = pending.path.display();
+    match &pending.revert {
+        Revert::Allow => {
+            let mut value: Value =
+                serde_json::from_slice(bytes).map_err(|e| format!("{shown}: {e}"))?;
+            let allow = value
+                .pointer_mut("/permissions/allow")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| format!("{shown}: permissions.allow vanished"))?;
+            let before = allow.len();
+            allow.retain(|r| {
+                r.as_str()
+                    .is_none_or(|r| !pending.rules.iter().any(|x| x == r))
+            });
+            let count = before - allow.len();
+            let mut out = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
+            out.push(b'\n');
+            Ok((out, count))
+        }
+        // The file only grew since the record, so the recorded text is the answer.
+        Revert::Rules(recorded) => Ok((recorded.clone().into_bytes(), pending.rules.len())),
+        Revert::Tools(items) => Ok((revert_tools(bytes, items, &shown.to_string())?, items.len())),
+    }
+}
+
+/// Put Codex tool approvals back in `config.toml` without touching anything else:
+/// toml_edit keeps comments, order and formatting. A key that did not exist is
+/// removed, and so are the tables that became empty because of it.
+fn revert_tools(bytes: &[u8], items: &[ToolRevert], shown: &str) -> Result<Vec<u8>, String> {
+    use toml_edit::{DocumentMut, Item, TableLike};
+    fn table_mut<'a>(
+        root: &'a mut dyn TableLike,
+        keys: &[String],
+    ) -> Option<&'a mut dyn TableLike> {
+        let mut table = root;
+        for key in keys {
+            table = table.get_mut(key)?.as_table_like_mut()?;
+        }
+        Some(table)
+    }
+    /// Remove `keys` below `table` when the table at the end of them is empty.
+    fn prune(table: &mut dyn TableLike, keys: &[String]) -> bool {
+        if let Some((first, rest)) = keys.split_first() {
+            let empty = table
+                .get_mut(first)
+                .and_then(Item::as_table_like_mut)
+                .is_some_and(|child| prune(child, rest));
+            if empty {
+                table.remove(first);
+            }
+        }
+        table.is_empty()
+    }
+    let text = std::str::from_utf8(bytes).map_err(|e| format!("{shown}: {e}"))?;
+    let mut doc: DocumentMut = text.parse().map_err(|e| format!("{shown}: {e}"))?;
+    for item in items {
+        let (last, parents) = item
+            .path
+            .split_last()
+            .ok_or_else(|| format!("{shown}: empty approval path"))?;
+        let table = table_mut(doc.as_table_mut(), parents)
+            .ok_or_else(|| format!("{shown}: {} vanished", parents.join(".")))?;
+        match &item.was {
+            Some(mode) => {
+                table.insert(last, toml_edit::value(mode.as_str()));
+            }
+            None => {
+                table.remove(last);
+            }
+        }
+        if item.was.is_none() {
+            prune(doc.as_table_mut(), parents);
+        }
+    }
+    Ok(doc.to_string().into_bytes())
 }
 
 /// The text a session boundary hook prints. It never fails: a hook that errors

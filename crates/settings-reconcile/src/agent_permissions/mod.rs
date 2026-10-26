@@ -6,7 +6,7 @@ pub mod reclaim;
 mod transaction;
 
 use inventory::{without_non_grants, Source};
-use pending::{inert_call, tolerated_additions, tolerated_new_source, Pending};
+use pending::{inert_call, tolerated_changes, tolerated_new_source, Pending};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -241,10 +241,11 @@ pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<
     for s in &current.sources {
         let Some(old) = record.sources.iter().find(|o| o.path == s.path) else {
             match tolerated_new_source(s) {
-                Some(rules) if rules.is_empty() => {}
-                Some(rules) => waiting.push(Pending {
+                Some(t) if t.rules.is_empty() => {}
+                Some(t) => waiting.push(Pending {
                     path: s.path.clone(),
-                    rules,
+                    rules: t.rules,
+                    revert: t.revert,
                 }),
                 None => problems.push(format!("new permission source: {}", s.path.display())),
             }
@@ -260,11 +261,12 @@ pub fn assess(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Vec<
             || s.unknown != old.unknown
             || (!s.writable && s.digest != old.digest)
         {
-            match tolerated_additions(&old, s) {
-                Some(rules) if rules.is_empty() => {}
-                Some(rules) => waiting.push(Pending {
+            match tolerated_changes(&old, s) {
+                Some(t) if t.rules.is_empty() => {}
+                Some(t) => waiting.push(Pending {
                     path: s.path.clone(),
-                    rules,
+                    rules: t.rules,
+                    revert: t.revert,
                 }),
                 None => problems.push(format!("permission drift: {}", s.path.display())),
             }
