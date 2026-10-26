@@ -109,6 +109,50 @@ context を機械判定する 3 種の finding を追加する(D8)。GitHub App 
   governance skill 3 種への `.github/rulesets/{security,workflow,review}.json`
   オーバーレイのパス変更
 
+## Amendment (2026-10-27 — 毎 PR の required check は待たず、全 workflow の job 名と静的に突き合わせる, #1014・#1065)
+
+D2 の毎 PR の required check(`rulesets-context-check`)は、宣言と live の context を「その
+head が実際に報告する job 名」(Actions API の実測、D3)と突き合わせるため、実測の job 名が
+揃うまで最大 1200 秒待っていた。2 つの問題が出た。
+
+- #1014: required の集約 job `CI passed` は、`needs:` で束ねた重い job が全部終わるまで自身の
+  check-run も報告しない。`Build vega` が Nix のキャッシュの全損で約 35 分かかる日は、待ち窓
+  (20 分)を超えて、コードに問題の無い PR の `PR title` が誤検知で落ちた。
+- #1065: 窓の中でも、`CI passed` を待つので、毎回 3〜4 分かかっていた。
+
+裁定(2026-10-27、本人): **PR 時の検査だけ**、待たずに、head の `.github/workflows/` 配下の
+**全 workflow** から読んだ job の名前(`name:`、無ければ job id)と静的に突き合わせる。報告の
+有無は required check 自身(`CI passed`)が保証するので、`PR title` が重ねて待つ必要は無い。
+
+- **全 workflow を読む理由**: `quality.json` の required context は `CI passed`(`ci.yml`)と
+  `PR title`(別 workflow の `pr-title.yml`)の 2 つで、`ci.yml` だけを読むと、正常な PR でも
+  必ず落ちる。`PR title` の job は、この検査を走らせている job 自身で、その名前が一覧に入る
+  ことをテストで固定する。
+- **名前の展開**: `name:` の `${{ … }}` はワイルドカード、matrix の job は `<名前> (…)`、
+  reusable workflow を呼ぶ job は `<呼び出し側の名前> / …` を取りうる名前に足す。YAML は
+  汎用パーサでなく行ベースで読む(依存ゼロを保つ。他リポジトリの CI が sparse-checkout して
+  build する)。
+- **読み切れないとき**: フロー形式の `jobs:` などで読み切れない workflow があり、context が
+  見つからないときは、fail でなく warning にする。判定できないことを、他リポジトリの CI の
+  fail にしない。
+- **D3 との関係**: D3 の「実測で、YAML は静的パースしない」は、`apply-rulesets`(D5、PUT/POST
+  の直前)と `github-audit`(D8)には変わらず適用する。そこは宣言を live へ書く前・監査の
+  時点で、実際に報告されたか(trigger の条件で走らない job を含む)を見る必要があるので、
+  実測を残す。この Amendment が外すのは、毎 PR の required check の待ちだけ。
+- **失うもの(検出のみの限界)**: 存在するが、その PR の trigger では走らない job(`on:` の
+  条件)は、静的には分からない。実測の層(上記 2 つ)が検出する。
+- **後方互換**: 環境変数 `RULESETS_CONTEXT_CHECK_TIMEOUT` / `_INTERVAL` は読まない(設定
+  されていても無視する)。他リポジトリが `@main` の action を取りに来るので、バイナリの
+  引数・終了コード・出力の行の形は変えない。
+
+### 執行点
+
+- `crates/pr-contract-check/src/contexts.rs`
+- `crates/pr-contract-check/src/job_names.rs`
+- `crates/pr-contract-check/tests/contexts.rs`
+- `crates/pr-contract-check/tests/consistency.rs`
+- `.github/actions/pr-title/action.yml`
+
 ## 将来拡張(未実装)
 
 宣言 → live の反映を GitHub App による中央 reconciler で自動化する設計を

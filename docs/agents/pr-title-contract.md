@@ -98,8 +98,18 @@ symlink で共有)は `check` job に `name: PR Title` を固定するため、�
 実行時の自己照合に置き換えた — ADR-503 により
 「PR title」1 context だけでなく、呼び出し元リポジトリの
 `.github/rulesets/quality.json` 宣言および live な required_status_checks
-の全 context を対象に一般化されている。run のたびに実際の job 名を Actions
-API から実測し、宣言・live の双方と比較して不一致なら CI を red にする。
+の全 context を対象に一般化されている。run のたびに、head の
+`.github/workflows/` 配下の**全 workflow**から読んだ job 名(`name:`、無ければ job id。
+matrix・式・reusable workflow の呼び出しは取りうる名前に展開)と、宣言・live の双方を
+静的に突き合わせ、一致しなければ CI を red にする。以前は実行中の job 名が報告される
+まで最大 1200 秒待っていたが、`CI passed` が重い job の完了まで報告されないため、遅い PR
+で誤検知し(#1014)、毎回 3〜4 分かかっていた(#1065)。今は待たない(ADR-503 の Amendment
+2026-10-27)。required context は `CI passed`(`ci.yml`)と `PR title`(別 workflow の
+`pr-title.yml`)の 2 つの workflow にまたがるので、`ci.yml` だけを読むと正常な PR でも
+必ず落ちる。`PR title` の job は、この検査を走らせている job 自身である。存在するが
+PR で走らない job(trigger の条件)は静的には分からない — 報告の実測は
+`apply-rulesets` と `github-audit` が担う。読み切れない workflow(フロー形式の `jobs:` など)
+があって context が見つからないときは、fail でなく warning にする。
 
 ## revert の扱い
 
