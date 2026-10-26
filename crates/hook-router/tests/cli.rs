@@ -136,3 +136,197 @@ fn unknown_subcommand_is_a_usage_error() {
     let (out, _h) = run(&[], "{}");
     assert_eq!(out.status.code(), Some(1));
 }
+
+#[test]
+fn codex_uses_its_own_attribution_and_all_shared_guards() {
+    let (out, _h) = run(
+        &["pre", "--agent", "codex"],
+        &bash("PreToolUse", "gh pr comment 1 --body 'hello'"),
+    );
+    assert!(out.status.success());
+    let reason = json(&out)["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(reason.contains("Codex CLI"), "{reason}");
+}
+
+#[test]
+fn codex_patch_cannot_modify_the_main_checkout() {
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    let raw = serde_json::json!({
+        "hook_event_name": "PreToolUse", "session_id": "patch-test",
+        "tool_name": "apply_patch", "cwd": repo.path(),
+        "tool_input": {"command": "*** Begin Patch\n*** Add File: file.txt\n+text\n*** End Patch"}
+    })
+    .to_string();
+    let (out, _h) = run(&["pre", "--agent", "codex"], &raw);
+    assert!(out.status.success());
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecision"],
+        "deny"
+    );
+    assert!(!repo.path().join("file.txt").exists());
+}
+
+#[test]
+fn codex_patch_whitespace_headers_cannot_bypass_checkout_guard() {
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    for patch in [
+        "*** Begin Patch\n  *** Add File: file.txt  \n+text\n*** End Patch",
+        "*** Begin Patch\n\t*** Delete File: file.txt\t\n*** End Patch",
+        "*** Begin Patch\n  *** Update File: file.txt  \n@@\n-old\n+new\n*** End Patch",
+        "*** Begin Patch\n*** Update File: file.txt\n*** Move to: renamed.txt  \n@@\n-old\n+new\n*** End Patch",
+    ] {
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse", "session_id": "patch-whitespace-test",
+            "tool_name": "apply_patch", "cwd": repo.path(),
+            "tool_input": {"command": patch}
+        }).to_string();
+        let (out, _h) = run(&["pre", "--agent", "codex"], &raw);
+        assert!(out.status.success());
+        assert_eq!(json(&out)["hookSpecificOutput"]["permissionDecision"], "deny", "{patch}");
+    }
+}
+
+#[test]
+fn codex_connected_slack_send_is_denied_but_draft_is_not() {
+    for (tool, denied) in [
+        ("mcp__codex_apps__slack_send_message", true),
+        ("mcp__codex_apps__slack_draft_message", false),
+    ] {
+        let raw = serde_json::json!({"hook_event_name":"PreToolUse", "tool_name":tool,
+            "tool_input":{"text":"test"}, "cwd":"/tmp"})
+        .to_string();
+        let (out, _h) = run(&["pre", "--agent", "codex"], &raw);
+        assert!(out.status.success());
+        if denied {
+            assert_eq!(
+                json(&out)["hookSpecificOutput"]["permissionDecision"],
+                "deny"
+            );
+        } else {
+            assert!(out.stdout.is_empty());
+        }
+    }
+}
+
+#[test]
+fn codex_permission_does_not_allow_an_arbitrary_command() {
+    let (out, _h) = run(
+        &["permission", "--agent", "codex"],
+        &bash("PermissionRequest", "echo test"),
+    );
+    assert!(out.status.success() && out.stdout.is_empty());
+}
+
+#[test]
+fn local_ask_becomes_a_codex_deny() {
+    let command = "printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"run local check\"}}'";
+    let (out, _h) = run(&["compat", command], &bash("PreToolUse", "echo test"));
+    assert!(out.status.success());
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecision"],
+        "deny"
+    );
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecisionReason"],
+        "run local check"
+    );
+}
+
+#[test]
+fn codex_permission_allows_only_a_known_worktree_command() {
+    let home = tempfile::tempdir().unwrap();
+    let root = home.path().join(".herdr/worktrees");
+    let wt = root.join("repo/unit");
+    std::fs::create_dir_all(&wt).unwrap();
+    for (command, allowed) in [
+        (format!("git -C {} status", wt.display()), true),
+        (format!("git -C {} status; echo extra", wt.display()), false),
+    ] {
+        let mut child = Command::new(BIN)
+            .args(["permission", "--agent", "codex"])
+            .env_clear()
+            .env("HOME", home.path())
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(bash("PermissionRequest", &command).as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(out.status.success());
+        if allowed {
+            assert_eq!(
+                json(&out)["hookSpecificOutput"]["decision"]["behavior"],
+                "allow"
+            );
+        } else {
+            assert!(out.stdout.is_empty());
+        }
+    }
+}
+
+#[test]
+fn codex_records_created_issue_and_allows_only_its_edit() {
+    let home = tempfile::tempdir().unwrap();
+    let invoke = |mode: &str, raw: &str| {
+        let mut child = Command::new(BIN)
+            .args([mode, "--agent", "codex"])
+            .env_clear()
+            .env("HOME", home.path())
+            .env("XDG_STATE_HOME", home.path().join("state"))
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(raw.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    };
+    let mut created: serde_json::Value =
+        serde_json::from_str(&bash("PostToolUse", "gh issue create -R example/repo")).unwrap();
+    created["tool_response"] = serde_json::json!("https://github.com/example/repo/issues/42\n");
+    assert!(invoke("post", &created.to_string()).status.success());
+    for (number, allowed) in [(42, true), (43, false)] {
+        let out = invoke(
+            "permission",
+            &bash(
+                "PermissionRequest",
+                &format!("gh issue edit {number} -R example/repo --body-file /tmp/body.md"),
+            ),
+        );
+        assert!(out.status.success());
+        if allowed {
+            assert_eq!(
+                json(&out)["hookSpecificOutput"]["decision"]["behavior"],
+                "allow"
+            );
+        } else {
+            assert!(out.stdout.is_empty());
+        }
+    }
+}

@@ -398,6 +398,7 @@ fn scan_nix_modules(root: &Path, scan: &mut Scan) {
             let t = l.trim();
             if t.starts_with("run ${registerCodexHooks}")
                 || t.starts_with("run ${registerCopilotHooks}")
+                || t.starts_with("run ${settingsReconcile} codex-hooks-spec ")
             {
                 push_site(
                     scan,
@@ -838,6 +839,22 @@ to = "guard-b"
 kind = "deny"
 label = "blocks"
 "#;
+
+    #[test]
+    fn codex_shared_spec_registration_is_scanned() {
+        let d = repo();
+        write(
+            d.path(),
+            "home/modules/codex.nix",
+            "# pipeline-node: guard-b\nrun ${settingsReconcile} codex-hooks-spec path spec\n",
+        );
+        let mut scan = Scan::default();
+        scan_nix_modules(d.path(), &mut scan);
+        assert!(scan
+            .sites
+            .iter()
+            .any(|s| s.file == "home/modules/codex.nix" && s.ids == ["guard-b"]));
+    }
 
     /// 全クラスが揃った最小のリポジトリ。
     fn repo() -> tempfile::TempDir {

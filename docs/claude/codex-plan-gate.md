@@ -93,3 +93,13 @@ ADR-0005 の binary-existence gating に倣い、次はすべて黙って exit 0
 - 1 ターンに `<proposed_plan>` が複数回出ることは Codex の設計上想定され
   ていない(TUI 文字列リテラル: 新しい `<proposed_plan>` は「complete
   replacement」)ため、`extract_plan` は最初の1ブロックのみを対象にする。
+
+
+## 2026-10-26: 共通の Plan 検査へ接続
+
+Codex の Stop からも `copilot-plan-review`・`plan-fresh-gate`・`plan-view` を呼ぶ。
+上記の「対象外」という旧記述はこの変更で撤回する。本文は `tool_input.plan` に渡し、
+拒否は Stop の `decision=block` に変換する。表示はレビュー結果を待たずに起動する。
+形式検査と追加検査の通過後、既存手段の検討行を共通台帳へ記録する。本人の承認は
+代行しない。登録 timeout は400秒。対応表・固定版ソースは
+[codex-hook-parity.md](codex-hook-parity.md) にある。

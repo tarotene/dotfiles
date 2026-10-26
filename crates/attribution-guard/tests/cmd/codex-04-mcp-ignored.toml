@@ -1,6 +1,14 @@
-# codex adapter selftest 4: MCP は対象外(#161)
+# Codex MCP writes use the same attribution check as Bash.
 bin.name = "attribution-guard"
 args = ["--agent", "codex"]
 stdin = "{\"tool_name\": \"mcp__github__create_issue\", \"tool_input\": {\"body\": \"no footer\"}}"
 status.code = 0
-stdout = ""
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "GitHub に投稿する本文に attribution がありません(deny)。本文の末尾に「🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)」を追記してください。本文が Claude 生成でない場合(ユーザーの逐語をそのまま代理投稿する等)は、本文に「No-Attribution: <理由>」と書いて明示的に抜けてください。"
+  }
+}
+"""

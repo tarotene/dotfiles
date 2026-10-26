@@ -5,6 +5,11 @@
 登録: `home/modules/claude.nix` の `claudeHookDeclarations`(`hook-router-pre` / `hook-router-post`)
 地図: `pipeline-map.toml` の `hook-router-pre` / `hook-router-post`、ADR-872 Amendment
 
+Codex も同じ規則表を `pre|post --agent codex` で使う。登録は同じ宣言から生成し、
+`apply_patch` の入力変換は `codex.rs` が担う。許可は別の `permission --agent codex`
+入口で PermissionRequest に返す。Atuin とローカルHookの互換入口も規則表とは別である。
+対応範囲と上流の制約は [Codexとの対応表](codex-hook-parity.md) を参照。
+
 ## 何のための仕組みか
 
 Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude.nix` に約 50 件)。ツール呼び出しに付く
@@ -62,7 +67,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの
 両方が同じ関数を呼ぶ。standalone の bin の出力は変わらない(既存の trycmd の fixture が、そのまま通る)。
-standalone の bin は、Codex・Copilot の登録と、手で叩く用に残してある。
+standalone の bin は、Copilot の登録と、手で叩く用に残してある。
 
 ## 旧登録の記録(matcher と timeout の理由)
 

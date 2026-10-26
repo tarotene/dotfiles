@@ -165,3 +165,22 @@ daily-report の `agent_events`(ターン単位の作業証拠)は、Codex と C
 - config/claude/hooks/agent-turn-log.sh
 - crates/copilot-plan-review
 - home/modules/claude.nix
+
+## Amendment (2026-10-26 — Codex と Claude の Hook を共通宣言にする)
+
+2026-09-28 の対象外裁定を撤回し、現在の Codex 0.164.0 が公開するイベントへ
+同じ検査を接続する。利用者から全差分を閉じる依頼を受けた変更である。
+登録は Claude の宣言から導き、ツール検査は同じ router の規則表を使う。
+Plan のレビュー・表示・鮮度検査は Stop へ、許可は PermissionRequest へ接続する。
+Atuin は既存の Codex 処理を採用する。各判断の固定版ソース、PoC、残る上流制約は
+[Codex Hook 対応表](../claude/codex-hook-parity.md) に記録する。
+
+## 執行点
+
+- home/modules/claude.nix
+- home/modules/herdr.nix
+- home/modules/worktree.nix
+- crates/hook-router/src/codex.rs
+- crates/hook-router/src/rules.rs
+- crates/codex-plan-gate/src/main.rs
+- config/codex/AGENTS.codex.md

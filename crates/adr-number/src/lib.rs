@@ -174,7 +174,12 @@ pub fn run(agent: Agent, stdin: &mut impl Read) -> Option<String> {
 /// ルータ(`crates/hook-router`)向けの本体。改番したときだけ、その知らせを `Context` で返す。
 /// 標準入力はルータがすでに読んでいるので、生の JSON を受ける。
 pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    resolve(Agent::Claude, &mut raw.as_bytes()).map(|(pr_number, fix_out)| {
+    hook_for(Agent::Claude, raw)
+}
+
+/// Agent-aware entry point shared by both routers.
+pub fn hook_for(agent: Agent, raw: &str) -> Option<hook_io::Outcome> {
+    resolve(agent, &mut raw.as_bytes()).map(|(pr_number, fix_out)| {
         hook_io::Outcome::Context(context_message(&pr_number, &fix_out))
     })
 }

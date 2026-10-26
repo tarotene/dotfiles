@@ -37,12 +37,9 @@ Codex にも効く。
 挟まず一続きで実行する。「PR を作成しますか?」と聞かない。Stop hook
 (`pr-gate` の `G_pr`)がこの漏れを検査する。
 
-決定成果物(ADR・設計文書・skill)の執行点を同じ PR に出す原則(ADR-396)
-は Codex にも適用されるが、その形式検査は CI required check
-(`decision-colocation-check`、`crates/decision-colocation`)のみが担う
-(PreToolUse deny の `decision-colocation-guard` は Codex には登録しない — 対象範囲は
-ADR-0032 Amendment 参照)。gate ではなく CI が拾うため、push 後に気づく
-点に留意する。
+決定成果物(ADR・設計文書・skill)の執行点を同じ PR に出す原則(ADR-396)は、
+共通の `hook-router pre --agent codex` 内の `decision-colocation-guard` と、
+CI required check(`decision-colocation-check`)の両方が検査する。
 
 PR 本文に未チェックの task list を残さず、人の確認が要る残作業は後続
 Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard`
@@ -58,5 +55,14 @@ Codex CLI では固定でこの1行:
 🤖 Generated with [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)
 ```
 
-形式検査は `attribution-guard --agent codex`(PreToolUse、`crates/attribution-guard`)が行う。
+形式検査は共通 router が `attribution-guard` に Codex の識別を渡して行う。
 gate に当たる前に自発的に付けること。
+
+### 共通 Hook と Codex の入力形式
+
+Hook の登録は Claude と共通の宣言から生成し、検査は同じ router の規則表を使う。
+`apply_patch` は追加・更新・削除・移動の全パスを検査する。外部送信の抑止、
+新しい道具を作る前の既存手段の検討、フィードバックの対象指定も Codex に適用する。
+Plan は形式検査に加えて、Copilot レビュー・base の鮮度検査・ブラウザ表示を行う。
+検査通過は本人の承認を意味しない。既存手段の台帳には検討した事実だけを記録する。
+詳細と上流がまだ渡さない情報は `docs/claude/codex-hook-parity.md` を参照。

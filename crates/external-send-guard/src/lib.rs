@@ -149,6 +149,18 @@ pub const SLACK_DENY_REASON: &str = "Slack への直接送信は行わず、下�
 
 /// deny なら理由文、通すなら `None`。`self_set` は [`parse_self_list`] の結果。
 pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<String> {
+    // Connected Apps prefixes the operation with its service (rather than
+    // using that service as the MCP server name). Keep drafts outside the gate.
+    let normalized;
+    let tool = if let Some(op) = tool.strip_prefix("mcp__codex_apps__slack_") {
+        normalized = format!("mcp__slack__{op}");
+        normalized.as_str()
+    } else if let Some(op) = tool.strip_prefix("mcp__codex_apps__gmail_") {
+        normalized = format!("mcp__Gmail__{op}");
+        normalized.as_str()
+    } else {
+        tool
+    };
     // draft 系 tool は両パターンの対象名を含みうるので先に除外する
     if tool.contains("draft") || tool.contains("Draft") {
         return None;

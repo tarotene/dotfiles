@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Codex CLI の Stop hook(config/codex/hooks/codex-plan-gate.sh の Rust 移植、ADR-0024 / ADR-0032 Amendment)"
 
 [dependencies]
+hook-io = { version = "0.1.0", path = "../hook-io" }
+new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
 serde_json = "1.0.151"
 
 [dev-dependencies]

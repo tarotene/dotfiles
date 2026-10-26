@@ -18,7 +18,8 @@
 //!
 //! 無限 block 対策(D2): pr-gate.sh と同じ設計 — `stop_hook_active` は見ず、
 //! session_id ごとの独自カウンタが上限(`CODEX_PLAN_GATE_MAX_BLOCKS`、既定 4)に
-//! 達したら 1 回だけ escalate して以後そのセッションは無条件で通す。
+//! 達したら形式検査の拒否だけを以後抑止する。レビューと base の鮮度検査は
+//! 各エンジンが持つ上限・状態を使い、このカウンタでは抑止しない。
 //! `stop_hook_active` 素通しだと block 直後の再呼び出しが判定に届かない
 //! (docs/claude/copilot-plan-review.md の「第二次の非収束」と同型)。
 //!
@@ -119,6 +120,76 @@ impl Drop for Cleanup {
     }
 }
 
+/// Reuse the deployed plan engines; translate their PreToolUse verdict into a
+/// Stop verdict. A proposal passing checks is not user approval.
+fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<String>) {
+    let mut payload = input.clone();
+    payload["tool_input"] = serde_json::json!({"plan": plan});
+    let raw = payload.to_string();
+    let mut findings = Vec::new();
+    let mut notices = Vec::new();
+    let mut execution_incomplete = false;
+    for (name, seconds) in [
+        ("plan-view", 15),
+        ("plan-fresh-gate", 30),
+        ("copilot-plan-review", 300),
+    ] {
+        let bin = hooks.join(name);
+        if !is_executable(&bin) {
+            execution_incomplete = true;
+            notices.push(format!("{name}: executable missing; check not run"));
+            continue;
+        }
+        let mut cmd = Command::new(bin);
+        cmd.env("PLAN_AUTHOR_AGENT", "Codex");
+        if let Some(cwd) = input["cwd"].as_str() {
+            cmd.current_dir(cwd);
+        }
+        let Some((status, out)) = hook_io::proc::output_with_timeout(
+            &mut cmd,
+            std::time::Duration::from_secs(seconds),
+            Some(raw.as_bytes()),
+        ) else {
+            execution_incomplete = true;
+            notices.push(format!("{name}: could not run or timed out"));
+            continue;
+        };
+        let result: Value = serde_json::from_slice(&out).unwrap_or(Value::Null);
+        let reason = result["hookSpecificOutput"]["permissionDecisionReason"].as_str();
+        if result["hookSpecificOutput"]["permissionDecision"] == "deny" {
+            findings.push(format!(
+                "--- {name} ---\n{}",
+                reason
+                    .unwrap_or("plan rejected")
+                    .replace("AskUserQuestion", "ユーザーへの質問")
+                    .replace("ExitPlanMode を呼ぶ", "修正した Plan を提案する")
+                    .replace("ExitPlanMode を呼んで", "修正した Plan を提案して")
+            ));
+        } else if result["decision"] == "block" {
+            findings.push(format!(
+                "--- {name} ---\n{}",
+                result["reason"].as_str().unwrap_or("plan rejected")
+            ));
+        } else if !status.success() {
+            execution_incomplete = true;
+            notices.push(format!("{name}: exited with {status}"));
+        }
+        if let Some(message) = result["systemMessage"].as_str() {
+            notices.push(message.to_owned());
+        }
+    }
+    // Successful reviews return systemMessage, as does the review engine's
+    // deliberate fail-open. Neither revokes the evidence that existing means
+    // were investigated: this ledger is not an approval or a review certificate.
+    if findings.is_empty() && !execution_incomplete && !new_tool_guard::hook::skipped() {
+        if let Some(parsed) = hook_io::HookInput::parse(&raw) {
+            // The ledger records prior investigation, not permission to implement.
+            new_tool_guard::hook::record_plan_lines(&parsed);
+        }
+    }
+    (findings, notices)
+}
+
 fn run() -> Option<String> {
     let state_root = env_path("CODEX_PLAN_GATE_DIR", || {
         home().join(".codex/codex-plan-gate")
@@ -169,48 +240,62 @@ fn run() -> Option<String> {
     fs::create_dir_all(&state_dir).ok()?;
     let count_file = state_dir.join(format!("{session_id}.count"));
     let escalated_file = state_dir.join(format!("{session_id}.escalated"));
-    if escalated_file.exists() {
-        return None;
-    }
-
     let plan_file = write_plan_file(plan_body)?;
     let _cleanup = Cleanup(plan_file.clone());
 
     // 起動できない(=判定不能)ときは通す。
     let (rc1, out1) = run_merged(&scope_gate, "--check-plan", &plan_file)?;
     let (rc2, out2) = run_merged(&precedent_gate, "--check", &plan_file)?;
-    if rc1 == 0 && rc2 == 0 {
-        return None;
+    if (rc1 != 0 || rc2 != 0) && !escalated_file.exists() {
+        let count = fs::read_to_string(&count_file)
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+            + 1;
+        let _ = fs::write(&count_file, count.to_string());
+        if count >= max_blocks {
+            let _ = fs::write(&escalated_file, "");
+        } else {
+            let mut reason = String::from(
+                "Codex の Plan(<proposed_plan>)が要求インベントリ/先行例接地の形式検査を通過していません。修正してから再度 Plan を提案してください。\n\n",
+            );
+            if rc1 != 0 {
+                reason.push_str(&format!(
+                    "--- plan-scope-gate ---\n{}\n\n",
+                    trim_trailing_newlines(&out1)
+                ));
+            }
+            if rc2 != 0 {
+                reason.push_str(&format!(
+                    "--- plan-precedent-gate ---\n{}",
+                    trim_trailing_newlines(&out2)
+                ));
+            }
+            return serde_json::to_string_pretty(
+                &serde_json::json!({"decision": "block", "reason": reason}),
+            )
+            .ok();
+        }
     }
 
-    let count = fs::read_to_string(&count_file)
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0)
-        + 1;
-    let _ = fs::write(&count_file, count.to_string());
-
-    if count >= max_blocks {
-        let _ = fs::write(&escalated_file, "");
-        return None;
+    // The adapter's limit belongs only to its format checks. Review rounds and
+    // stale-base acknowledgements are owned by their engines; a previous format
+    // failure must never consume or suppress their first (or subsequent) deny.
+    let (findings, notices) = plan_engines(&claude_hooks, &input, plan_body);
+    if findings.is_empty() {
+        return (!notices.is_empty())
+            .then(|| serde_json::json!({"systemMessage": notices.join("\n")}).to_string());
     }
-
     let mut reason = String::from(
-        "Codex の Plan(<proposed_plan>)が要求インベントリ/先行例接地の形式検査を通過していません。修正してから再度 Plan を提案してください。\n\n",
+        "Codex の Plan が検査を通過していません。指摘を確認して再提案してください。\n",
     );
-    if rc1 != 0 {
-        reason.push_str(&format!(
-            "--- plan-scope-gate ---\n{}\n\n",
-            trim_trailing_newlines(&out1)
-        ));
+    for finding in findings {
+        reason.push_str(&format!("\n{finding}\n"));
     }
-    if rc2 != 0 {
-        reason.push_str(&format!(
-            "--- plan-precedent-gate ---\n{}",
-            trim_trailing_newlines(&out2)
-        ));
+    let mut doc = serde_json::json!({"decision": "block", "reason": reason});
+    if !notices.is_empty() {
+        doc["systemMessage"] = serde_json::json!(notices.join("\n"));
     }
-    let doc = serde_json::json!({"decision": "block", "reason": reason});
     serde_json::to_string_pretty(&doc).ok()
 }
 

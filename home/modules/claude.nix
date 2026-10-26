@@ -598,7 +598,6 @@ let
   # pr-gate の判定(G_pr/G_link/G_visual/G_stack)は agent 名を一切
   # 参照しないため、Codex にも同じファイルを adapter 無しで直接登録する
   # (ADR-0032 Amendment #531)。
-  codexPrGateStopCmd = prGateStopCmd;
   # #416 (ADR-0024 Stage 4c): git/worktree 系の hook は Rust バイナリ
   # (crates/git-worktree-allow など、pkgs.dotfiles-tools)になり、下の
   # home.file が ~/.claude/hooks/<name>(拡張子無し)として配備する。bash を
@@ -668,7 +667,6 @@ let
   # jq に分かれていた。サブコマンドごとに引数の形が違う(codex/copilot は旧 bash と
   # 同じ argv、claude-* は `builtins.toJSON` で作った宣言 JSON)。
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/settings-reconcile";
-  registerCodexHooks = "${settingsReconcile} codex-hooks";
   registerCopilotHooks = "${settingsReconcile} copilot-hooks";
   # attribution-guard の Codex/Copilot 展開(#192)。#415(ADR-0024 Stage 4a)で
   # Rust バイナリ(crates/attribution-guard)になり、Claude と同じ
@@ -1523,6 +1521,150 @@ let
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-claude.json";
   };
 
+  # Codex derives its registrations from the same declarations. Only protocol
+  # differences are mapped here; a newly added shared hook cannot be forgotten.
+  codexPlanNodes = [
+    "copilot-plan-review"
+    "plan-view"
+    "plan-scope-gate"
+    "plan-precedent-gate"
+    "plan-fresh-gate"
+  ];
+  codexHookDeclarations =
+    lib.concatMap (
+      d:
+      assert
+        !(d ? "if")
+        || builtins.elem d.node [
+          "git-worktree-allow"
+          "gh-edit-allow-judge"
+        ];
+      if builtins.elem d.node codexPlanNodes then
+        [ ]
+      else if d.node == "herdr-agent-metadata" then
+        [ ] # herdr.nix owns the agent-specific metadata lifecycle
+      else if d.node == "gh-edit-allow-judge" then
+        [ ] # combined PermissionRequest below
+      else if d.event == "PostToolUseFailure" then
+        assert d.node == "atuin-history";
+        [ ] # Codex reports failed commands through PostToolUse
+      else
+        [
+          (
+            (builtins.removeAttrs d [ "if" ])
+            // (
+              if d.node == "git-worktree-allow" then
+                {
+                  event = "PermissionRequest";
+                  command = "'${hooksDir}/hook-router' permission --agent codex";
+                }
+              else if d.node == "hook-router-pre" then
+                {
+                  command = "${hookRouterPreCmd} --agent codex";
+                }
+              else if d.node == "hook-router-post" then
+                {
+                  command = "${hookRouterPostCmd} --agent codex";
+                }
+              else if d.node == "bleep" then
+                { command = bleepCodexCmd; }
+              else if d.node == "main-checkout-guard-stop" then
+                { command = codexMainCheckoutGuardStopCmd; }
+              else if d.node == "wrapup-session-start" then
+                { command = codexWrapupSessionStartCmd; }
+              else if d.node == "wrapup-stop-gate" then
+                { command = codexWrapupStopCmd; }
+              else if d.node == "agent-turn-log" then
+                { command = codexAgentTurnLogCmd; }
+              else if d.node == "atuin-history" then
+                { command = "'${hooksDir}/hook-router' atuin --agent codex"; }
+              else
+                { }
+            )
+          )
+        ]
+    ) claudeHookDeclarations
+    ++ [
+      {
+        event = "Stop";
+        node = "codex-plan-gate";
+        command = codexPlanGateCmd;
+        timeout = 400;
+      }
+    ];
+  codexHooksSpec = builtins.toJSON {
+    state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-codex.json";
+    register = map declareHook codexHookDeclarations;
+    retire =
+      (map
+        (command: {
+          event = "PreToolUse";
+          inherit command;
+        })
+        [
+          legacyBleepCodexCmdUnprefixed
+          legacyPublishGuardCodexAdapterCmd
+          codexAttributionGuardCmd
+          legacyCodexAttributionGuardCmd
+          codexPrTitleGuardCmd
+          legacyCodexPrTitleGuardCmd
+          pkexecGuardCodexCmd
+          codexGitStashGuardCmd
+          legacyCodexGitStashGuardCmd
+          codexStackBaseGuardCmd
+          legacyCodexStackBaseGuardCmd
+          codexRulesetsWriteGuardCmd
+          codexMainCheckoutGuardPreCmd
+          codexPrConfirmGuardCmd
+          legacyCodexPrConfirmGuardCmd
+          "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'"
+        ]
+      )
+      ++ (map
+        (command: {
+          event = "PostToolUse";
+          inherit command;
+        })
+        [
+          codexAdrNumberCmd
+          legacyCodexAdrNumberCmd
+        ]
+      )
+      ++ (map
+        (command: {
+          event = "SessionStart";
+          inherit command;
+        })
+        [
+          wrapupSessionStartCmd
+          legacyWorktreeFreshBaseCmd
+          legacyIssueIndexCmd
+          legacyWrapupSessionStartCmd
+          legacySignPrewarmCmd
+          legacyPrGateSessionStartCmd
+        ]
+      )
+      ++ (map
+        (command: {
+          event = "Stop";
+          inherit command;
+        })
+        [
+          priorCodexWrapupStopCmd
+          legacyCodexWrapupStopCmd
+          legacyPrGateStopCmd
+          legacyCodexAgentTurnLogCmd
+          legacyCodexPlanGateCmd
+        ]
+      )
+      ++ [
+        {
+          event = "UserPromptSubmit";
+          command = legacyCodexAgentTurnLogCmd;
+        }
+      ];
+  };
+
   # statusLine / permissions の reconcile も settings-reconcile(crates/
   # settings-reconcile、#414)。かつてここに writeShellScript で埋め込んでいた
   # jq の設計メモ(振る舞いは Rust 版のコメントと fixture に引き継いだ):
@@ -1987,21 +2129,6 @@ in
   # command を登録する(register-{codex,copilot}-hooks に追加した --retire、
   # Claude 側の retiredHookEntries と同型 — 削除せず放置すると存在しない
   # パスを指したまま毎 tool call で失敗する)。
-  home.activation.registerCodexBleepHooks =
-    lib.hm.dag.entryAfter
-      [
-        "writeBoundary"
-        "registerCodexWorktreeHooks"
-        "registerCodexHerdrMetadataHooks"
-      ]
-      ''
-        # pipeline-node: bleep
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire PreToolUse ${lib.escapeShellArg legacyPublishGuardCodexAdapterCmd} \
-          --retire PreToolUse ${lib.escapeShellArg legacyBleepCodexCmdUnprefixed} \
-          --register \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg bleepCodexCmd} 20
-      '';
 
   home.activation.registerCopilotBleepHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
@@ -2016,15 +2143,6 @@ in
 
   # attribution-guard の Codex/Copilot 展開(#192)。同じ lost-update 対策で
   # bleep の登録の後ろに明示的に順序付ける。
-  home.activation.registerCodexAttributionGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexBleepHooks" ]
-      ''
-        # pipeline-node: attribution-guard
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire PreToolUse ${lib.escapeShellArg legacyCodexAttributionGuardCmd} \
-          --register \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexAttributionGuardCmd} 10
-      '';
 
   home.activation.registerCopilotAttributionGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotBleepHooks" ]
@@ -2038,15 +2156,6 @@ in
 
   # pr-title-guard の Codex/Copilot 展開(ADR-0031、#192 の型を踏襲)。同じ
   # lost-update 対策で attribution-guard の登録の後ろに明示的に順序付ける。
-  home.activation.registerCodexPrTitleGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexAttributionGuardHooks" ]
-      ''
-        # pipeline-node: pr-title-guard
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire PreToolUse ${lib.escapeShellArg legacyCodexPrTitleGuardCmd} \
-          --register \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrTitleGuardCmd} 10
-      '';
 
   home.activation.registerCopilotPrTitleGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAttributionGuardHooks" ]
@@ -2062,13 +2171,6 @@ in
   # を含む Bash コマンドを常に deny する(docs/claude/pkexec-guard.md「Codex /
   # Copilot からは pkexec を一切許さない」)。attribution-guard/pr-title-guard
   # と同じ lost-update 対策で、その後ろに明示的に順序付ける。
-  home.activation.registerCodexPkexecGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPrTitleGuardHooks" ]
-      ''
-        # pipeline-node: pkexec-guard
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg pkexecGuardCodexCmd} 10
-      '';
 
   home.activation.registerCopilotPkexecGuardHooks =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPrTitleGuardHooks" ]
@@ -2092,112 +2194,13 @@ in
           Stop ${lib.escapeShellArg copilotAgentTurnLogCmd} 10
       '';
 
-  # ADR-0032 Amendment #531 段2: 入力が Claude と同形の PreToolUse/
-  # PostToolUse adapter 群(git-stash-guard/stack-base-guard/adr-number)+
-  # rulesets-write-guard(Rust、直接登録)を Codex CLI に展開する。同じ
-  # lost-update 対策で(この段の時点で最後尾だった)pr-title-guard の登録
-  # ではなく、後から main に入った pkexec-guard の登録の後ろに明示的に
-  # 順序付ける(#534 のリベース追従時に発見 — 同じ registerCodexHooks 対象
-  # ファイルを書く2系統を並行させないため)。
-  home.activation.registerCodexStagedHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPkexecGuardHooks" ]
-      ''
-        # pipeline-node: git-stash-guard, stack-base-guard, rulesets-write-guard, main-checkout-guard-pre, main-checkout-guard-stop, adr-number
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire PreToolUse ${lib.escapeShellArg legacyCodexGitStashGuardCmd} \
-          --retire PreToolUse ${lib.escapeShellArg legacyCodexStackBaseGuardCmd} \
-          --retire PostToolUse ${lib.escapeShellArg legacyCodexAdrNumberCmd} \
-          --register \
-          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexGitStashGuardCmd} 10 \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexStackBaseGuardCmd} 20 \
-          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexRulesetsWriteGuardCmd} 10 \
-          PreToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexMainCheckoutGuardPreCmd} 10 \
-          Stop "" ${lib.escapeShellArg codexMainCheckoutGuardStopCmd} 30 \
-          PostToolUse ${lib.escapeShellArg "Bash"} ${lib.escapeShellArg codexAdrNumberCmd} 10
-      '';
-
-  # ADR-0032 Amendment #531 段2: SessionStart 系は入力が cwd のみで
-  # agent-agnostic なため、adapter を挟まず Claude 版スクリプトをそのまま
-  # Codex にも直接登録する(herdr metadata の旧 Codex 版とは違い、別スクリプトを
-  # 新設しない点に注意 — こちらは判定ロジックの単一正本を保つのが目的)。
-  home.activation.registerCodexSessionStartHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStagedHooks" ]
-      ''
-        # pipeline-node: issue-index, esa-index, wrapup-session-start, sign-prewarm, pr-gate-session-start, worktree-fresh-base, herdr-status-advisory, gate-failopen-advisory
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire SessionStart ${lib.escapeShellArg legacyWorktreeFreshBaseCmd} \
-          --retire SessionStart ${lib.escapeShellArg legacyIssueIndexCmd} \
-          --retire SessionStart ${lib.escapeShellArg legacyWrapupSessionStartCmd} \
-          --retire SessionStart ${lib.escapeShellArg wrapupSessionStartCmd} \
-          --retire SessionStart ${lib.escapeShellArg legacySignPrewarmCmd} \
-          --retire SessionStart ${lib.escapeShellArg legacyPrGateSessionStartCmd} \
-          --register \
-          SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg issueIndexCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume|compact"} ${lib.escapeShellArg esaIndexCmd} 10 \
-          SessionStart "" ${lib.escapeShellArg codexWrapupSessionStartCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg signPrewarmCmd} 120 \
-          SessionStart "" ${lib.escapeShellArg prGateSessionStartCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg worktreeFreshBaseCmd} 30 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg herdrStatusAdvisoryCmd} 10 \
-          SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg gateFailopenAdvisoryCmd} 10
-      '';
-
-  # ADR-0032 Amendment #531 段3: Stop/UserPromptSubmit hook。pr-gate は
-  # agent 名を参照しないため同じ command 文字列をそのまま(D8 参照)、
-  # wrapup-stop-gate/agent-turn-log は環境変数だけ差し替えた command
-  # 文字列を登録する — いずれも adapter ファイルは新設しない。同じ
-  # lost-update 対策で SessionStart の登録の後ろに明示的に順序付ける。
-  home.activation.registerCodexStopHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexSessionStartHooks" ]
-      ''
-        # pipeline-node: wrapup-stop-gate, pr-gate-stop, agent-turn-log
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire Stop ${lib.escapeShellArg legacyCodexWrapupStopCmd} \
-          --retire Stop ${lib.escapeShellArg priorCodexWrapupStopCmd} \
-          --retire Stop ${lib.escapeShellArg legacyPrGateStopCmd} \
-          --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
-          --retire Stop ${lib.escapeShellArg legacyCodexAgentTurnLogCmd} \
-          --register \
-          Stop "" ${lib.escapeShellArg codexWrapupStopCmd} 10 \
-          Stop "" ${lib.escapeShellArg codexPrGateStopCmd} 600 \
-          UserPromptSubmit "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10 \
-          Stop "" ${lib.escapeShellArg codexAgentTurnLogCmd} 10
-      '';
-
-  # ADR-0032 Amendment #531 段4: codex-plan-gate(docs/claude/
-  # codex-plan-gate.md)。同じ lost-update 対策で Stop hook 登録の後ろに
-  # 明示的に順序付ける。plan-scope-gate / plan-precedent-gate 自体は
-  # 呼び出すだけで Codex 用に配備しない(~/.claude/hooks/ 配下の既存パスを
-  # そのまま参照する)。
-  home.activation.registerCodexPlanGateHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexStopHooks" ]
-      ''
-        # pipeline-node: codex-plan-gate
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire Stop ${lib.escapeShellArg legacyCodexPlanGateCmd} \
-          --register \
-          Stop "" ${lib.escapeShellArg codexPlanGateCmd} 20
-      '';
-
-  # pr-confirm-guard の Codex 展開。同じ lost-update 対策で、この段の時点で
-  # 最後尾だった registerCodexPlanGateHooks の後ろに明示的に順序付ける。
-  home.activation.registerCodexPrConfirmGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexPlanGateHooks" ]
-      ''
-        # pipeline-node: pr-confirm-guard
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire PreToolUse ${lib.escapeShellArg legacyCodexPrConfirmGuardCmd} \
-          --register \
-          PreToolUse ${lib.escapeShellArg "Bash|mcp__.*"} ${lib.escapeShellArg codexPrConfirmGuardCmd} 10
-      '';
-
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
     # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
     tarotene/dotfiles
   '';
 
-  # Codex / Devin など hook を持たないエージェントや素のシェルから使う入口。
+  # Hook の外からも使える手動の入口。
   # 同じバイナリを置く(CSS は $HOME/.claude/hooks/plan-view.css へのフォール
   # バックで解決する、上の plan-view 節参照)。
   home.file.".local/bin/plan-view".source = "${pkgs.dotfiles-tools}/bin/plan-view";
@@ -2757,6 +2760,18 @@ in
   home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
 
   # 宣言(claudeHookDeclarations / retiredHookEntries)は JSON で 1 引数に渡す。
+  home.activation.registerCodexSharedHooks =
+    lib.hm.dag.entryAfter
+      [
+        "writeBoundary"
+        "registerCodexWorktreeHooks"
+        "registerCodexHerdrMetadataHooks"
+      ]
+      ''
+        # pipeline-node: hook-router-pre, hook-router-post, codex-plan-gate, git-worktree-allow, gh-edit-allow-judge
+        run ${settingsReconcile} codex-hooks-spec "$HOME/.codex/hooks.json" ${lib.escapeShellArg codexHooksSpec}
+      '';
+
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${settingsReconcile} claude-hooks "$HOME/.claude/settings.json" \
       ${lib.escapeShellArg claudeHooksSpec}

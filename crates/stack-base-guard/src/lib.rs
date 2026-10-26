@@ -755,7 +755,10 @@ pub fn check(call: &ToolCall) -> Option<String> {
     if call.tool == "Bash" {
         let cmd = call.bash_command()?;
         guard.decide_stack(&cmd, project)
-    } else if call.agent == Agent::Claude && call.tool.starts_with("mcp__github") {
+    } else if call.agent != Agent::Copilot
+        && (call.tool.starts_with("mcp__github")
+            || call.tool.starts_with("mcp__codex_apps__github_"))
+    {
         guard.decide_mcp_stack(call, project)
     } else {
         None

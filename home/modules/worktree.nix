@@ -126,9 +126,9 @@ in
     # pipeline-node: worktree-create-guard, worktree-audit-context
     run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
       --retire PreToolUse ${lib.escapeShellArg legacyGuardCmd} \
+      --retire PreToolUse ${lib.escapeShellArg guardCmd} \
       --retire SessionStart ${lib.escapeShellArg legacyContextCmd} \
       --register \
-      PreToolUse Bash ${lib.escapeShellArg guardCmd} 10 \
       SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg contextCmd} 30
   '';
 

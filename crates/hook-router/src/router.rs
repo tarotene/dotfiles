@@ -11,7 +11,7 @@
 //! - 素通りさせた規則(panic・時間切れ)があれば、`systemMessage` で利用者に知らせる。
 
 use crate::rules::{Event, Rule};
-use hook_io::Outcome;
+use hook_io::{Agent, Outcome};
 use serde_json::{json, Map, Value};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -31,6 +31,11 @@ pub enum Verdict {
 
 /// 規則を並列に走らせ、`rules` と同じ並びで結果を返す。
 pub fn execute(rules: &[Rule], raw: &str) -> Vec<(&'static str, Verdict)> {
+    execute_for(Agent::Claude, rules, raw)
+}
+
+/// Run the same rule table with the caller identity, without process-global environment changes.
+pub fn execute_for(agent: Agent, rules: &[Rule], raw: &str) -> Vec<(&'static str, Verdict)> {
     let raw = Arc::new(raw.to_owned());
     let (tx, rx) = mpsc::channel::<(usize, Verdict)>();
     let start = Instant::now();
@@ -44,7 +49,7 @@ pub fn execute(rules: &[Rule], raw: &str) -> Vec<(&'static str, Verdict)> {
         let spawned = std::thread::Builder::new()
             .name(format!("rule-{}", rule.node))
             .spawn(move || {
-                let verdict = match catch_unwind(AssertUnwindSafe(|| run(&raw))) {
+                let verdict = match catch_unwind(AssertUnwindSafe(|| run(agent, &raw))) {
                     Ok(outcome) => Verdict::Done(outcome),
                     Err(_) => Verdict::Panicked,
                 };
@@ -162,7 +167,7 @@ mod tests {
     use crate::rules::Tools;
     use std::time::Duration;
 
-    fn rule(node: &'static str, ms: u64, run: fn(&str) -> Option<Outcome>) -> Rule {
+    fn rule(node: &'static str, ms: u64, run: fn(Agent, &str) -> Option<Outcome>) -> Rule {
         Rule {
             node,
             event: Event::Pre,
@@ -172,26 +177,26 @@ mod tests {
         }
     }
 
-    fn pass(_: &str) -> Option<Outcome> {
+    fn pass(_: Agent, _: &str) -> Option<Outcome> {
         None
     }
-    fn deny_a(_: &str) -> Option<Outcome> {
+    fn deny_a(_: Agent, _: &str) -> Option<Outcome> {
         Outcome::deny("理由 A")
     }
-    fn deny_b(_: &str) -> Option<Outcome> {
+    fn deny_b(_: Agent, _: &str) -> Option<Outcome> {
         Outcome::deny("理由 B")
     }
-    fn ctx(_: &str) -> Option<Outcome> {
+    fn ctx(_: Agent, _: &str) -> Option<Outcome> {
         Outcome::context("文脈")
     }
-    fn boom(_: &str) -> Option<Outcome> {
+    fn boom(_: Agent, _: &str) -> Option<Outcome> {
         panic!("検査が壊れた");
     }
-    fn slow(_: &str) -> Option<Outcome> {
+    fn slow(_: Agent, _: &str) -> Option<Outcome> {
         std::thread::sleep(Duration::from_millis(1500));
         Outcome::deny("遅れて届いた理由")
     }
-    fn echo_len(raw: &str) -> Option<Outcome> {
+    fn echo_len(_: Agent, raw: &str) -> Option<Outcome> {
         Outcome::context(format!("len={}", raw.len()))
     }
 
@@ -253,7 +258,7 @@ mod tests {
     #[test]
     fn each_rule_has_its_own_budget() {
         // 短い budget の遅い規則だけが切られ、長い budget の規則は待たれる。
-        fn medium(_: &str) -> Option<Outcome> {
+        fn medium(_: Agent, _: &str) -> Option<Outcome> {
             std::thread::sleep(Duration::from_millis(300));
             Outcome::deny("300ms かかった理由")
         }

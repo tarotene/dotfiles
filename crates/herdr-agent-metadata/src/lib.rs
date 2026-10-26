@@ -258,7 +258,7 @@ pub fn plan_codex(
     }
     let end = match f.event.as_str() {
         "SessionEnd" => true,
-        "SessionStart" | "UserPromptSubmit" | "Stop" => false,
+        "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "Stop" => false,
         _ => return Plan::Skip,
     };
     let (b, o) = if end || f.cwd.is_empty() {
