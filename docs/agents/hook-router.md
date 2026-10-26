@@ -25,29 +25,54 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 `All` / `Bash` / `BashOrMcp` / `Mcp` / `Named(&[…])` の 5 通りだけが書ける。文字列の書き間違いはコンパイルが
 通らず、表に載せ忘れた検査は pipeline-map の `cargo test` が「auto なのに登録箇所が無い」で落とす。
 
-## 載せるもの・載せないもの
+## 載せるもの
 
-載せる: 共通権限の PreToolUse 検査、拒否の検査、記録役の PostToolUse(表は `rules.rs`)。
+ルータの表(`rules.rs`)に載せた検査は 21 件(拒否だけを出す PreToolUse の 17 件と、記録役の PostToolUse の 4 件)。表の行は、これに共通権限の検査 `agent-permissions` を足した 22 行。
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | agent-permissions、attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
+| PreToolUse | agent-permissions、attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
 
-載せない(今の登録のまま)と、その理由:
+載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
 
-- **許可(allow)を出す検査**(`git-worktree-allow`、`gh-edit-allow` の判定役)。`if`(`Bash(git -C *)`、
-  `Bash(gh *)`)の絞り込みが、許可の範囲を決めている。`if` の評価は Claude Code の意味なので、ここで
-  再実装して許可の範囲を変えるリスクを取らない。既存の拒否検査の `Outcome::from_decision`
-  は、allow / ask を `None` にする契約を維持する。共通権限の検査は専用の `Outcome::Ask` を使う。
-- **Stop・SessionStart・ExitPlanMode の検査**。時間のかかるもの(`pr-gate` の Stop は CI の完了を最大 5 分待つ、
-  `wrapup-stop-gate` は Stop のたびにネットワークを呼ぶ、`gpg-prewarm` は対話的で最大 180 秒)や、作業ツリーを
-  書き換えるもの(`worktree-base-sync`、`plan-fresh-gate`)、プロセス全体の状態を触るもの(`plan-view` の umask と
-  切り離したブラウザ)がある。1 つのルータにまとめると hook の `timeout` が 1 つになり、規則ごとの打ち切りを
-  自前で作る必要がある。Stop の出力は 2 流儀(exit 2 + 標準エラーと、JSON の block)が混ざり、`stop_hook_active` の
-  扱いも規則ごとに違う。載せるかどうかは、別に決める(Issue)。
-- **herdr・外部ツール**(bleep、atuin、copilot-plan-review)。herdr の hook は pane ごとの状態と環境変数に
-  依存する。外部ツールは、こちらの crate ではない。
+1. **出せる判定が決まっている。** PreToolUse なら deny だけ(allow・ask は、共通権限の検査だけ)、PostToolUse なら
+   `additionalContext` だけ。`Outcome` に無い形(Stop の block、`PermissionRequest`)を出す検査は載せられない。
+2. **プロセス全体の状態を変えない。** 規則は同じプロセスの別スレッドで並列に走る。作業ディレクトリ
+   (`set_current_dir`)、umask、シグナルは全スレッドに及ぶので、触る検査は載せられない。作業ツリーを書き換える
+   検査も、並列の別規則が読む状態を変えるので載せない。
+3. **時間が規則の予算(10〜20 秒)に収まる。** 越えたら結果を捨てて素通りにする契約なので、越えるのが常態の検査は
+   「検査しない」になる。
+4. **`hook(raw) -> Option<Outcome>` として、標準入力の文字列だけから判定できる。** 標準出力・標準エラー・終了コードを
+   `main` に残せる。
+
+## 載せなかった検査の裁定(#991)
+
+検査ごとに、「残す」(今の登録のまま)か「載せた」かと、その理由を書く。出典の欄が `読んだ` のものは、2026-10-27 に
+該当のファイルを読んで確かめた。`#991` は、Issue の調査(2026-10-24)の記述を、読み直さずに写したもの。
+
+| 検査(pipeline-map の node) | イベント | 裁定 | 理由 | 出典 |
+|---|---|---|---|---|
+| plan-scope-gate | PreToolUse(ExitPlanMode) | **載せた** | 条件 1〜4 を満たす。`plan_scope_gate::hook` は deny だけを返し(allow・ask の経路が無い)、標準出力・標準エラーへ書かない。外へ出るのは `git remote get-url` と `gh api graphql`(フォールバックは `gh issue view`)の読み取りだけで、失敗は参照 Issue 単位で黙って諦める。`gh` の呼び出しは、判定の副作用ではなく入力。かつての `timeout` 20 秒を `budget` に写した。作業ディレクトリへ移っていた `enter_cwd` は、`HookInput::effective_cwd`(移動しない)に置き換えた | 読んだ: `crates/plan-scope-gate/src/lib.rs`(`hook`)、`main.rs` |
+| plan-precedent-gate | PreToolUse(ExitPlanMode) | **載せた** | 判定は計画の本文への正規表現だけで、`gh`・ネットワークを呼ばない。出力は deny だけ。かつての `timeout` 10 秒を `budget` に写した | 読んだ: `crates/plan-precedent-gate/src/lib.rs`(`hook`)、`main.rs` |
+| plan-fresh-gate | PreToolUse(ExitPlanMode) | 残す | 条件 2・3 に反する。pristine な worktree を `git merge --ff-only` で動かす(作業ツリーを書き換える)。`git fetch` に最大 15 秒を許し、判定を含めた `timeout` は 30 秒で、ルータの最大の予算(20 秒)を越える | 読んだ: `crates/plan-fresh-gate/src/lib.rs:10`、`main.rs:15,76`、`agents.nix` の `timeout = 30` |
+| plan-view | PreToolUse(ExitPlanMode) | 残す | 条件 2 に反する。起動時に `restrict_umask()` でプロセス全体の umask を 077 に落とし、`setsid` で切り離したブラウザを起動する。ルータに載せると、umask がほかの規則のスレッドが作るファイルにも及ぶ。判定(deny)も出さない表示役 | 読んだ: `crates/plan-view/src/main.rs:6`、`lib.rs:236-249,461-465` |
+| copilot-plan-review | PreToolUse(ExitPlanMode) | 残す | 条件 3 に反する。外部の LLM(Copilot CLI)のレビューを待つ `timeout` は 300 秒で、ルータの最大の予算の 15 倍。ルータは越えた規則を素通りにするので、載せると、レビューが常に「検査しない」になる | 読んだ: `agents.nix` の `timeout = 300`。内容は #991 |
+| git-worktree-allow | PreToolUse(Bash、`if: Bash(git -C *)`) | 残す | 条件 1 に反する(allow を出す)。`if` の絞り込みが許可の範囲を決め、その評価は Claude Code の意味である。型付きの述語に写し直すと、複合コマンドでの許可の範囲が変わりうる。**白紙から選んでも、許可の範囲を決める文字列は、評価する側(Claude Code)に置く** | #991、本ドキュメントの旧「載せない」の節 |
+| gh-edit-allow(判定役) | PreToolUse(Bash、`if: Bash(gh *)`) | 残す | 同上。記録役(PostToolUse の `gh-edit-allow-record`)は、判定を出さないので載せた | 同上 |
+| pr-gate | Stop | 残す | 条件 1・3 に反する。CI の完了を最大 300 秒待ち(`PR_GATE_CI_TIMEOUT`、`timeout` は 600 秒)、出力は Stop の block。`stop_hook_active` を見ない設計(再呼び出しでも判定する) | 読んだ: `docs/agents/pr-gate.md:675`、`crates/pr-gate/src/lib.rs:62`、`agents.nix` の `timeout = 600` |
+| session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は終了コード 2 + 標準エラーで、1 つの入口の中でも `stop_hook_active` の扱いが違う(レトロは抜けない、wrap-up inbox は即 exit 0)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
+| main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の block)。`stop_hook_active` を読んで扱いを変える。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
+| agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
+| SessionStart の 12 件(session-wrapup-start、agent-permissions-reclaim、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、`render` は SessionStart の出力(複数の検査の `additionalContext` を 1 つにまとめる形)を持たない(条件 1 に反する)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
+| herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
+| bleep | PreToolUse(`Bash|mcp__.*`) | 残す | 外部ツール(上流 `tarotene/bleep`、ADR-0009)。この crate の `hook` 関数に切り出せない | `agents.nix` の宣言、ADR-0009 |
+| atuin-history | PreToolUse・PostToolUse・PostToolUseFailure(Bash) | 残す | 外部ツール(`atuin`)の入口で、この crate のものではない | `agents.nix` の宣言 |
+
+読み方: 「残す」は、**今のところ載せない** であって、永久に載せない約束ではない。表の理由(条件 1〜4 のどれに
+反するか)が解ける形になったら、載せる。たとえば Stop を載せるなら、`Outcome` に Stop の結果(block と
+`stop_hook_active` の扱い)を型で足し、規則ごとの出力の 2 流儀(exit 2 + 標準エラーと、JSON の block)を
+そろえる必要がある。そのときは ADR-872 の Amendment ではなく、ルータの契約を広げる ADR を立てる。
 
 ## 契約
 
@@ -87,9 +112,13 @@ standalone の bin は、Copilot の登録と、手で叩く用に残してあ�
 - **広い matcher + 規則内部の判定**(routines-write-guard、new-tool-guard): `RemoteTrigger` や `Write` は Bash では
   ないので、`Bash(...)` の `if` 構文が使えない。対象外の呼び出しは、規則自身が `None` を返して素通りにする。
   → `Tools::Named(&["RemoteTrigger"])`、`Tools::Named(&["Write"])`。
-- **timeout**: gh の往復を持たないもの(attribution-guard・pr-title-guard・pr-followup-guard・external-send-guard
-  ほか)は 10 秒。`gh pr list` や git の走査を含む stack-base-guard・decision-colocation-guard は 20 秒、
-  repo-create-guard は 15 秒。→ `Rule::budget` に同じ値。ルータ自身の `timeout` は、最大の 20 秒に起動と出力の
+- **`ExitPlanMode` の matcher**(plan-scope-gate・plan-precedent-gate、#991): 旧登録は、ほかの ExitPlanMode の
+  検査(copilot-plan-review・plan-view・plan-fresh-gate)と同じ matcher の別エントリで、Claude Code が並列に
+  走らせていた。→ `Tools::Named(&["ExitPlanMode"])`。Codex には ExitPlanMode のツール呼び出しが無い
+  ([codex-plan-gate.md](../claude/codex-plan-gate.md))ので、`pre --agent codex` では当たらない。
+- **timeout**: gh の往復を持たないもの(attribution-guard・pr-title-guard・pr-followup-guard・external-send-guard・
+  plan-precedent-gate ほか)は 10 秒。`gh pr list` や git の走査を含む stack-base-guard・decision-colocation-guard、
+  `gh api graphql` を呼ぶ plan-scope-gate は 20 秒、repo-create-guard は 15 秒。→ `Rule::budget` に同じ値。ルータ自身の `timeout` は、最大の 20 秒に起動と出力の
   余裕を足した 30 秒。
 
 ## `if` を外した影響(より厳しくなる向き)
@@ -108,8 +137,9 @@ standalone の bin は、Copilot の登録と、手で叩く用に残してあ�
 ## 移行
 
 `agent-settings-reconcile` の所有の記録(`docs/agents/agent-settings-reconcile.md`)は、前回書いた登録を消す。記録の無い
-ホスト(記録を入れた直後の最初の switch)は、前の世代が書いた 19 件の旧登録を知らないので、`claude.nix` の
-退役の一覧に 19 件を挙げた(初回だけ消す。全ホストに記録ができたら、一覧ごと消す、#979)。
+ホスト(記録を入れた直後の最初の switch)は、前の世代が書いた 19 件の旧登録を知らないので、退役の一覧
+(`agents.nix` の `retiredHookEntries`)に 19 件を挙げた(初回だけ消す。全ホストに記録ができたら、一覧ごと
+消す、#979)。ExitPlanMode の 2 件(#991)も、同じ理由で、一覧に足した。
 
 ## 規則の足し方
 
@@ -119,7 +149,7 @@ standalone の bin は、Copilot の登録と、手で叩く用に残してあ�
    `pipeline-map.toml` のノード id(無ければ足す)。
 3. 表の集合を固定しているテスト(`the_table_holds_exactly_the_agreed_rules`)を、意識して直す。
 
-許可(allow)を出す検査や、Stop・SessionStart の検査は、足さない(上の理由)。
+許可(allow)を出す検査や、Stop・SessionStart の検査は、足さない(「載せなかった検査の裁定」の表の理由)。
 
 ## 実測
 

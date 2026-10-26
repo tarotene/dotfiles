@@ -8,8 +8,9 @@
 //!
 //! 載せないもの(今の登録のまま): 許可(allow)を出す検査 — `git-worktree-allow` と
 //! `gh-edit-allow` の判定役は、`if` の絞り込みが許可の範囲を決めるので、その評価を
-//! Claude Code に任せる。ほかに、Stop・SessionStart・ExitPlanMode の検査、herdr、外部ツール
-//! (bleep・atuin・copilot-plan-review)。
+//! Claude Code に任せる。ほかに、Stop・SessionStart の検査、ExitPlanMode の検査のうち
+//! 拒否だけを出す 2 件(`plan-scope-gate`・`plan-precedent-gate`)以外、herdr、外部ツール
+//! (bleep・atuin・copilot-plan-review)。検査ごとの理由は `docs/agents/hook-router.md`。
 
 use agent_session::Agent;
 use agent_session::Outcome;
@@ -206,6 +207,24 @@ pub static RULES: &[Rule] = &[
         budget: S15,
         run: |_, raw| repo_create_guard::hook(raw),
     },
+    // ---- PreToolUse(ExitPlanMode の拒否。plan-view・plan-fresh-gate・copilot-plan-review は載せない)
+    // 作業ディレクトリへ移らない `hook` 関数なので、並列に走らせても、ほかの規則に及ばない。
+    // gh を呼ぶので、かつての `timeout`(20 秒)をそのまま許す。
+    Rule {
+        node: "plan-scope-gate",
+        event: Event::Pre,
+        tools: Tools::Named(&["ExitPlanMode"]),
+        budget: S20,
+        run: |_, raw| plan_scope_gate::hook(raw),
+    },
+    // 正規表現だけ。gh もネットワークも呼ばない(かつての `timeout` は 10 秒)。
+    Rule {
+        node: "plan-precedent-gate",
+        event: Event::Pre,
+        tools: Tools::Named(&["ExitPlanMode"]),
+        budget: S10,
+        run: |_, raw| plan_precedent_gate::hook(raw),
+    },
     // ---- PostToolUse(記録役。出力は、あっても additionalContext だけ)
     Rule {
         node: "gh-edit-allow-record",
@@ -303,6 +322,8 @@ mod tests {
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",
+                "plan-precedent-gate",
+                "plan-scope-gate",
                 "pr-followup-guard",
                 "pr-title-guard",
                 "repo-create-guard",
@@ -364,7 +385,14 @@ mod tests {
             nodes(Event::Pre, "RemoteTrigger"),
             ["agent-permissions", "routines-write-guard"]
         );
-        assert_eq!(nodes(Event::Pre, "ExitPlanMode"), ["agent-permissions"]);
+        assert_eq!(
+            nodes(Event::Pre, "ExitPlanMode"),
+            [
+                "agent-permissions",
+                "plan-scope-gate",
+                "plan-precedent-gate"
+            ]
+        );
         assert_eq!(
             nodes(Event::Post, "ExitPlanMode"),
             ["new-tool-guard-record"]

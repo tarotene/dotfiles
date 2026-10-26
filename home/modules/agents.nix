@@ -5,6 +5,9 @@
 # 記録役 4 件)は、検査ごとの登録をやめ、`hook-router`(hookRouterPreCmd / hookRouterPostCmd の
 # 2 件)が規則の表(crates/hook-router/src/rules.rs)に従って走らせる(docs/agents/hook-router.md)。
 # 下の各項(8〜38 番)にある、その 19 件の「matcher: …」「if: …」の記述は、旧登録の記録として残す。
+# 【#991】ExitPlanMode の拒否 2 件(plan-scope-gate・plan-precedent-gate、15・16 番)も、同じ表に
+# 載せた(合わせて 21 件、PreToolUse の拒否 17 件)。15・16 番の「ExitPlanMode matcher に N 番目の
+# エントリとして並ぶ」の記述は、旧登録の記録として残す。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    GitHub Copilot CLI(read-only custom agent)によるプランの自動レビュー。
@@ -606,7 +609,7 @@ let
   # 介さず直接起動する。旧 `bash '….sh'` の command は retiredHookEntries /
   # --retire で完全一致削除する(legacy*Cmd)。
   gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
-  # hook-router(ツール呼び出しに付く検査 19 件を 1 つのプロセスで走らせる)。
+  # hook-router(ツール呼び出しに付く検査 21 件を 1 つのプロセスで走らせる)。
   hookRouterPreCmd = "'${hooksDir}/hook-router' pre";
   hookRouterPostCmd = "'${hooksDir}/hook-router' post";
   gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
@@ -970,6 +973,16 @@ let
       event = "PostToolUse";
       command = cmdHashLogCmd;
     }
+    # 上の 19 件に続いて表に載せた、ExitPlanMode の拒否 2 件の旧登録(#991、2026-10-27)。
+    # 同じ理由で、記録の無いホストの最初の switch のためにここへ挙げる。
+    {
+      event = "PreToolUse";
+      command = planScopeGateCmd;
+    }
+    {
+      event = "PreToolUse";
+      command = planPrecedentGateCmd;
+    }
     # 旧イテレーションは PostToolUse に herdr-claude-metadata.sh を登録していた。
     # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
     {
@@ -1224,25 +1237,10 @@ let
       command = planViewCmd;
       timeout = 15;
     }
-    # plan-scope-gate も同じ matcher に 3 つ目のエントリとして並ぶ。gh api graphql
-    # 1 往復(+ フォールバック時は issue view 1 回)だけなので timeout は短め。
-    {
-      event = "PreToolUse";
-      node = "plan-scope-gate";
-      matcher = "ExitPlanMode";
-      command = planScopeGateCmd;
-      timeout = 20;
-    }
-    # plan-precedent-gate(ADR-0012)も同じ matcher に 4 つ目のエントリとして並ぶ。
-    # gh/ネットワークを一切呼ばず jq とテキスト処理だけなので timeout は最短。
-    {
-      event = "PreToolUse";
-      node = "plan-precedent-gate";
-      matcher = "ExitPlanMode";
-      command = planPrecedentGateCmd;
-      timeout = 10;
-    }
-    # plan-fresh-gate も同じ matcher に 5 つ目のエントリとして並ぶ。fetch 1 回
+    # plan-scope-gate・plan-precedent-gate(ExitPlanMode の拒否)は、ここに登録しない。
+    # 下の hook-router の表に載せた(#991、docs/agents/hook-router.md)。plan-view・plan-fresh-gate・
+    # copilot-plan-review は、副作用か待ち時間のために、ここに残す。
+    # plan-fresh-gate も同じ matcher に並ぶ。fetch 1 回
     # (timeout 15s)+ diff/grep/awk のみで gh は呼ばない。
     {
       event = "PreToolUse";
@@ -1363,7 +1361,7 @@ let
       "if" = "Bash(git -C *)";
     }
     # hook-router(crates/hook-router、docs/agents/hook-router.md): ツール呼び出しに付く検査のうち、
-    # 拒否だけを出すもの(15 件)と記録役(4 件)を、1 つのプロセスで、規則の表
+    # 拒否だけを出すもの(17 件)と記録役(4 件)を、1 つのプロセスで、規則の表
     # (crates/hook-router/src/rules.rs)に従って走らせる。matcher は付けない — どのツールに
     # どの検査を当てるかは表(`Tools` という閉じた型)が持つ。matcher の文字列の書き間違いで検査が
     # 黙って素通りになる事故(旧登録の注意書きに、複合 matcher `Bash|mcp__.*` の実例があった)を、
@@ -1536,11 +1534,11 @@ let
 
   # Codex derives its registrations from the same declarations. Only protocol
   # differences are mapped here; a newly added shared hook cannot be forgotten.
+  # (plan-scope-gate・plan-precedent-gate はルータの表にあり、Codex には ExitPlanMode が無いので
+  # `pre --agent codex` では当たらない。Codex の計画の検査は codex-plan-gate の Stop が担う。)
   codexPlanNodes = [
     "copilot-plan-review"
     "plan-view"
-    "plan-scope-gate"
-    "plan-precedent-gate"
     "plan-fresh-gate"
   ];
   codexHookDeclarations =
@@ -1978,7 +1976,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
-  # hook-router: ツール呼び出しに付く検査 19 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
+  # hook-router: ツール呼び出しに付く検査 21 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
   home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
   # agent-permissions: 権限の待機を回収する SessionStart / SessionEnd hook の入口(agentPermissionsStartCmd)。
   home.file.".claude/hooks/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";

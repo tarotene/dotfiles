@@ -450,10 +450,11 @@ Design and rationale for the hooks and commands deployed from
 `config/agents/` by `home/modules/agents.nix`:
 
 - [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 19 件(PreToolUse の
-  拒否 15 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
-  書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかったもの(許可を出す検査・Stop・
-  SessionStart)の理由、規則ごとの打ち切りと panic の隔離、旧登録の matcher・timeout の記録。
+- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 21 件(PreToolUse の
+  拒否 17 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
+  書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかった検査(許可を出す検査・ExitPlanMode の
+  一部・Stop・SessionStart・外部ツール)の、検査ごとの裁定と理由の表、規則ごとの打ち切りと panic の隔離、
+  旧登録の matcher・timeout の記録。
 - [`copilot-plan-review.md`](agents/copilot-plan-review.md) — ExitPlanMode gate:
   a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
   severity, not on a verdict.

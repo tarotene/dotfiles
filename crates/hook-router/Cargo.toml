@@ -28,6 +28,8 @@ git-worktree-create-guard = { version = "0.1.0", path = "../git-worktree-create-
 main-checkout-guard = { version = "0.1.0", path = "../main-checkout-guard" }
 new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
 pkexec-guard = { version = "0.1.0", path = "../pkexec-guard" }
+plan-precedent-gate = { version = "0.1.0", path = "../plan-precedent-gate" }
+plan-scope-gate = { version = "0.1.0", path = "../plan-scope-gate" }
 pr-followup-guard = { version = "0.1.0", path = "../pr-followup-guard" }
 pr-title-guard = { version = "0.1.0", path = "../pr-title-guard" }
 repo-create-guard = { version = "0.1.0", path = "../repo-create-guard" }
@@ -37,5 +39,7 @@ stack-base-guard = { version = "0.1.0", path = "../stack-base-guard" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# 旧 bin の出力の書式(`deny_for_event`)を、ルータの出力から描き直す。
+jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 # 旧 bin の trycmd の fixture(標準入力と期待する標準出力)を読んで、ルータと突き合わせる。
 toml = { version = "1.1.6", default-features = false, features = ["parse", "serde"] }

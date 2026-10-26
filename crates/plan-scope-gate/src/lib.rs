@@ -549,6 +549,71 @@ pub fn deny_message(deny_lines: &[String]) -> String {
     )
 }
 
+fn gate_dir() -> std::path::PathBuf {
+    std::env::var_os("CLAUDE_PLAN_SCOPE_GATE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".claude/plan-scope-gate")
+        })
+}
+
+/// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
+/// 同じ関数を呼ぶ。返すのは deny だけ(allow / ask は決して返さない)。
+///
+/// プロセス全体の状態は変えない。作業ディレクトリへは移らず(`HookInput::effective_cwd` の
+/// パスを `git -C` と相対パスの解決に使う)、書き込みも標準出力・標準エラーへの出力もしない。
+/// 外へ出るのは、`git remote get-url` と `gh api graphql`(・フォールバックの `gh issue view`)の
+/// 読み取りだけで、失敗は参照 Issue 単位で黙って諦める(fail-open)。
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    // ADR-0005: バイナリの存在でゲートする(gh 不在のマシンでは経路Bも含め沈黙)。
+    if !process_control::command_exists("gh") {
+        return None;
+    }
+    if gate_dir().join("skip").exists()
+        || std::env::var("SKIP_PLAN_SCOPE_GATE").as_deref() == Ok("1")
+    {
+        return None;
+    }
+    // 不正 JSON でも bash 版(jq が空を返す)と同じく最新プランへ縮退する。
+    let input = agent_session::HookInput::parse(raw).unwrap_or_default();
+    let cwd = input.effective_cwd();
+    let plan = agent_session::plan::plan_text_at(&input, cwd.as_deref())?;
+    let plan = trim_newlines(plan);
+    let cwd = cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+    let mut deny_lines: Vec<String> = Vec::new();
+
+    // --- 経路A: Issue 起点の実カバレッジ ---
+    let transcript = serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|v| v.get("transcript_path")?.as_str().map(str::to_string))
+        .unwrap_or_default();
+    if !transcript.is_empty() && Path::new(&transcript).is_file() {
+        let bytes = std::fs::read(&transcript).unwrap_or_default();
+        let user_text = trim_newlines(agent_session::transcript::extract_user_text(
+            &String::from_utf8_lossy(&bytes),
+        ));
+        let owner_repo = resolve_owner_repo(&cwd);
+        for r in extract_issue_refs(&user_text, &owner_repo) {
+            let Some(children) = fetch_children(&r) else {
+                continue;
+            };
+            if let IssueJudgement::Missing(items) = judge_issue(&r, &children, &plan) {
+                deny_lines.extend(missing_lines(&r, &items));
+            }
+        }
+    }
+
+    // --- 経路B: インベントリ内整合性 ---
+    deny_lines.extend(judge_inventory(&plan));
+
+    if deny_lines.is_empty() {
+        return None;
+    }
+    agent_session::Outcome::deny(deny_message(&deny_lines))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,6 +16,28 @@ pub fn plan_text(input: &HookInput) -> Option<String> {
     plan_text_in(input, plans_dir.as_deref())
 }
 
+/// [`plan_text`] を、作業ディレクトリ `cwd` を基準にして解く版。相対の `planFilePath` は `cwd` から
+/// 見たパスとして読む。かつては呼び出し側が `set_current_dir` で `cwd` に移っていたが、規則を
+/// 並列に走らせるルータでは、作業ディレクトリ(プロセス全体の状態)を動かせない
+/// ([`HookInput::effective_cwd`])。
+pub fn plan_text_at(input: &HookInput, cwd: Option<&Path>) -> Option<String> {
+    let plan_file = input
+        .tool_input
+        .get("planFilePath")
+        .and_then(|v| v.as_str())
+        .map(Path::new)
+        .filter(|p| p.is_relative() && !p.as_os_str().is_empty());
+    match (plan_file, cwd) {
+        (Some(rel), Some(cwd)) => {
+            let mut anchored = input.clone();
+            anchored.tool_input["planFilePath"] =
+                cwd.join(rel).to_string_lossy().into_owned().into();
+            plan_text(&anchored)
+        }
+        _ => plan_text(input),
+    }
+}
+
 /// [`plan_text`] の plans ディレクトリを注入可能にした版(テスト用)。
 pub fn plan_text_in(input: &HookInput, plans_dir: Option<&Path>) -> Option<String> {
     match plan_source_in(input, plans_dir)? {
@@ -150,6 +172,25 @@ mod tests {
         fs::write(&f, "from-file").unwrap();
         let i = input(json!({"plan":"\n\n","planFilePath": f}));
         assert_eq!(plan_text_in(&i, None).as_deref(), Some("from-file"));
+    }
+
+    #[test]
+    fn relative_plan_file_path_is_read_from_the_given_cwd_without_moving_the_process() {
+        let before = std::env::current_dir().unwrap();
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("rel.md"), "from-cwd").unwrap();
+        let i = input(json!({"plan":"","planFilePath":"rel.md"}));
+        assert_eq!(
+            plan_text_at(&i, Some(d.path())).as_deref(),
+            Some("from-cwd")
+        );
+        // 絶対パスはそのまま。
+        let abs = input(json!({"planFilePath": d.path().join("rel.md")}));
+        assert_eq!(
+            plan_text_at(&abs, Some(Path::new("/nonexistent"))).as_deref(),
+            Some("from-cwd")
+        );
+        assert_eq!(std::env::current_dir().unwrap(), before);
     }
 
     #[test]
