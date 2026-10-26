@@ -17,9 +17,11 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 - **実行中の印**: inbox を読んだら、すぐに `~/.claude/hooks/issue-inbox --chores-begin <inbox のパス>` を実行する。PR を作るまで inbox に行が残るのが正しい状態なので、このスキルの実行中は Stop フックが inbox の起票を繰り返し指示しないようにする印(#820)。印は inbox の隣の `<inbox>.chores` で、inbox が空になる・12 時間を超えると自動で外れる。スキルの終了時(§9 の完成の定義を満たしたとき、または途中で打ち切るとき)は `--chores-end <inbox のパス>` で外す(印が無くても成功する)。印は inbox の行を書かない(inbox の変更は `--add` / `--mark-filed` だけ、の制約は不変)。
 - **母集団は open Issue 全件 + inbox 行全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
   ```
-  gh issue list --state open --limit 500 --json number,title,body,labels \
+  gh issue list --state open --limit 500 --json number,title,body,labels,updatedAt \
     | jq '[.[] | select(([.labels[].name] | index("blocked-by-upstream")) | not)]'
   ```
+  この結果は scratchpad のファイル(例 `population-<取得時刻>.json`)に保存しておく。
+  §5 の `ExitPlanMode` の直前に、同じクエリを取り直して差分を取るために使う(#971)。
   **取得件数が `--limit` と一致したら打ち切りの可能性がある**ので、その場合は limit を倍にして再実行する。wrap-up フッター regex(統合形 `Filed from [Claude Code](...) wrap-up inbox` と旧 2 行形式の両方にマッチする `test("Filed from \\[?Claude Code.*wrap-up inbox")`)は廃止しない — マッチする Issue は粗振り分けを経ずに無条件で候補に含める**ヒント**として使う。
 
 ## 2. 粗振り分け(本線・title + body だけで判断)
@@ -141,6 +143,21 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan には:
 - L5 の `Rn` の処分は、本人作業の結果を反映する最後の段(§6)の `段N で実装` にする。
   閉じられなかったものは、状況コメントつきで open のままにする(§7a、§9)
 - `## 先行例との対比` — §3 の返値から `Dn` 行を組み立てる
+- **自己検査の前に、母集団と前提の差分を取り直す**(#971)。収集から `ExitPlanMode` までの間に
+  起草の再起動や本人への質問が挟まると、Plan の前提が古くなる(実例: 起草エージェントの
+  再起動が半日続く間に、別セッションが起票した Issue が母集団に 1 件増え、`ExitPlanMode` を
+  本人に差し戻された)。次の 3 つを取り直して、§1 に保存した結果・Plan を書いたときの値と比べる:
+  - open Issue: §1 と同じクエリを取り直し、番号の増減と `updatedAt` の変化を `diff` する
+    (`jq -r '.[] | "\(.number) \(.updatedAt)"' <ファイル> | sort` を両方に掛ける)
+  - default branch の先頭: `git fetch` 後の `origin/<default>` の SHA。Plan を書き始めたときと
+    変わっていたら、Plan が根拠にしたファイルの差分を読む(plan mode 全般の手順は
+    `requirements-inventory` §1)
+  - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。
+    根拠にした Issue の番号と `updatedAt` は、Plan を書くときに控えておく
+
+  差分があれば、Plan の要求インベントリに足すか、前提が変わっていないことを確かめてから
+  `ExitPlanMode` を呼ぶ。機械化できる(保存と diff だけ)ので、同じ差し戻しが繰り返された
+  ら script への昇格を検討する(ADR-543 の昇格型)。
 - 自己検査 2 本を走らせて指摘ゼロを確認してから `ExitPlanMode`:
   - `~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>`
   - `~/.claude/hooks/plan-precedent-gate --check <プランファイル>`
