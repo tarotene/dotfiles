@@ -130,3 +130,39 @@ ADR-0016 Decision 5 は「AI 向け正本は AGENTS.md 1 本、README/CONTRIBUTI
   確認する。
 - `shellcheck -S error scripts/github-audit`。
 - `nix flake check`。
+
+## Amendment (2026-10-27 — 数えるのを「一覧の形をした行」に絞る, #932)
+
+Decision の判定(節の一意な path 風トークンが `NAV_DOC_PATH_THRESHOLD`(4)以上なら
+手書きの一覧)は、節のどこにあるトークンも数えていた。ある組織の internal リポジトリを
+`repo-charter` で Charter したとき、そのリポジトリの AGENTS.md は人と AI の両方に向けた
+規約集(約 860 行)で、12 節が該当し、最大は 53 個だった。規則が実在のファイルを名指しする
+文(「このファイルは取り込み時に必ず直す」など)と、手書きの一覧が区別されておらず、
+例外マーカー(`nav-doc-exempt`)は直後の 1 段落か 1 つのコードブロックしか守れないので、
+規約集全体を通すには数十個が要り、規約集が読みにくくなる。
+
+本 ADR の判定軸は「その記述は、指す実体が変わるたびに書き換えが要るか」(Decision 2、情報の
+寿命)であり、規則が指す実体を名指しする散文は、実体の追加・改名で壊れても一覧ではない。
+手書きの一覧は、リスト項目・表の行・fence の行という**一覧の形**で書かれる。判定を次に絞る。
+
+- **数える**: fenced block の各行の最初の語、リスト項目(`-` `*` `+` `1.` `1)`、タスクを含む)
+  と表の行のインラインコードのうち、**行頭が path** のもの(表は最初のセル)か、
+  **行の大半(空白を除いた文字の半数超)が path のインラインコード**のもの。
+- **数えない**: 散文(リストでも表でもない行)の中の名指し。リスト項目・表の行でも、path が
+  行の途中に 1 つ現れるだけのもの。
+- 閾値(4)と、`nav-doc-tree-fence`・exempt マーカーの規則は変えない。
+- Verification の「散文の索引(パス密度で検出)」は、散文の索引を検出しなくなる。索引を
+  リスト項目で書けば、これまでどおり検出する(散文の索引は、一覧と同じ寿命を持つが、
+  規約の文との区別が機械的につかないため、検出を手放す側に倒した)。
+
+あわせて、ADR-0016 Decision 4 が「後付けしてよいが監査対象外」とする `README.ja.md` と、
+`charters` のルート allowlist(`ROOT_ALLOWLIST_EXACT`)の食い違いを直した。`README.ja.md` を
+allowlist に足す(依頼者の決定、2026-10-22。ある internal リポジトリが、英語 1 本にした
+README の日本語訳として足した)。
+
+### 執行点
+
+- `crates/github-audit/src/domains/navdoc.rs`
+- `crates/github-audit/src/domains/charters.rs`
+- `crates/github-audit/tests/pipeline.rs`
+
