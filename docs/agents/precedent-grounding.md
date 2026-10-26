@@ -88,6 +88,10 @@ Anthropic 公式ドキュメント(`code.claude.com/docs/en/best-practices`)
 あり、本仕組みの射程には含めていない。今後同様の依頼が増えれば、別途
 検討する(wrap-up inbox 参照)。
 
+なお、SKILL.md §2a(調査 agent の報告を外部へ書き込む根拠にする前に、一次情報で読み直す段を
+計画に置く、#967)は、設計判断の先行例接地ではなく、書き込みの根拠の一次確認である。
+`plan-precedent-gate` は検査しない。同じ誤りが再発したら昇格を検討する。
+
 ## 形式検査(plan-precedent-gate)
 
 `crates/plan-precedent-gate` は `plan-scope-gate` と同型の
