@@ -33,10 +33,14 @@ struct Launch {
 impl Launch {
     fn start(exit: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let native = dir.path().join("codex");
+        let native = dir.path().join(".local/bin/codex");
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
         fs::write(&native, NATIVE).unwrap();
         fs::set_permissions(&native, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(dir.path().join("codex"), "#!/bin/sh\nexit 91\n").unwrap();
+        fs::set_permissions(dir.path().join("codex"), fs::Permissions::from_mode(0o700)).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_codex-plan"))
+            .env("HOME", dir.path())
             .env("PATH", dir.path())
             .env("XDG_CONFIG_HOME", dir.path())
             .env("FIXTURE_DIR", dir.path())

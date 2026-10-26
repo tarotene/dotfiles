@@ -27,13 +27,19 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("codex"), NATIVE).unwrap();
+        let native = dir.path().join(".local/bin/codex");
+        fs::create_dir_all(native.parent().unwrap()).unwrap();
+        fs::write(&native, NATIVE).unwrap();
+        fs::set_permissions(&native, fs::Permissions::from_mode(0o700)).unwrap();
+        // PATH represents the credential launcher: it refuses app-server.
+        fs::write(dir.path().join("codex"), "#!/bin/sh\nexit 91\n").unwrap();
         fs::set_permissions(dir.path().join("codex"), fs::Permissions::from_mode(0o700)).unwrap();
         Self { dir }
     }
     fn command(&self) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_codex-plan"));
-        c.env("PATH", self.dir.path())
+        c.env("HOME", self.dir.path())
+            .env("PATH", self.dir.path())
             .env("XDG_CONFIG_HOME", self.dir.path().join("config"))
             .env("XDG_STATE_HOME", self.dir.path().join("state"))
             .env("CODEX_HOME", self.dir.path().join("native"));

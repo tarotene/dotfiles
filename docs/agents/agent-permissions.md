@@ -255,6 +255,8 @@ CLI の別 profile、設定上書き、権限変更、未知のオプション�
 
 特殊な設定で起動する場合は `~/.local/bin/codex` を直接使う。この経路では
 launcher の認証注入・起動前検査は行わない。通常の起動へ戻すときは `codex` を使う。
+既存の `codex-plan` は app-server と remote TUI を使うため、この native の
+絶対パスを呼ぶ。PATH 上の launcher を app-server として起動させない。
 `command -v codex` が launcher を示すことと、`agent-permissions check --project "$PWD"`
 が成功することを確認する。権限設定を戻す場合は、上記の journal による復元を使う。
 zsh の login profile でも PATH を先頭へ戻す。適用前から動いている親プロセスが
