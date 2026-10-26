@@ -6,6 +6,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 
 ## Operations
 
+- [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
+  Astra for Plan with Sol for execution, preserving permissions and history.
 - [`operations.md`](operations.md) — the canonical apply (`hms`), routine
   flake update, and the tool-layer decision flow for new tools.
 - [`pipeline-map.md`](pipeline-map.md) — the map of every mechanism that
