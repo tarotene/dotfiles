@@ -184,6 +184,7 @@ node = [
   { id = "due-index", label = "due-index (other repo)", lane = "external", group = "state", stack = "store", pipelines = ["host-hygiene"], auto = false },
   { id = "wrapup-inbox", label = "wrap-up inbox", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
   { id = "verdict-ledger", label = "verdict ledger", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
+  { id = "apt-history", label = "apt history.log", lane = "external", group = "state", stack = "store", pipelines = ["host-hygiene"], auto = false },
 ]
 
 # ---------------------------------------------------------------- edges
@@ -331,6 +332,7 @@ edge = [
   { from = "due-remind", to = "herdr", kind = "notify", label = "daily toast", pipelines = ["host-hygiene"] },
   { from = "gpg-subkey-remind", to = "herdr", kind = "notify", label = "expiry toast", pipelines = ["host-hygiene"] },
   { from = "gpg-subkey-remind", to = "gpg-subkey-rotation", kind = "invoke", label = "rotate", pipelines = ["host-hygiene"] },
+  { from = "apt-history", to = "detect-drift", kind = "file", label = "last upgrade", pipelines = ["host-hygiene"] },
   { from = "detect-drift", to = "private-issue-repo", kind = "issue", label = "drift Issue", pipelines = ["host-hygiene"] },
   { from = "obsidian-backup", to = "backblaze", kind = "file", label = "restic backup", pipelines = ["host-hygiene"] },
   { from = "obsidian-backup-maintenance", to = "backblaze", kind = "file", label = "prune / check", pipelines = ["host-hygiene"] },

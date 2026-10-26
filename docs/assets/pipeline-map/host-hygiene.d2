@@ -303,6 +303,11 @@ l_external: "Sessions / services / state" {
     shape: cylinder
     style.stroke-dash: 4
   }
+  n_apt_history: "apt history.log" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
 }
 
 l_manual.n_hms -> l_manual.n_agent_settings_reconcile: "activation" {
@@ -349,6 +354,9 @@ l_timer.n_gpg_subkey_remind -> l_external.n_herdr: "expiry toast" {
 }
 l_timer.n_gpg_subkey_remind -> l_manual.n_gpg_subkey_rotation: "rotate" {
   class: e_invoke
+}
+l_external.n_apt_history -> l_timer.n_detect_drift: "last upgrade" {
+  class: e_file
 }
 l_timer.n_detect_drift -> l_external.n_private_issue_repo: "drift Issue" {
   class: e_issue
