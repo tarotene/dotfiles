@@ -355,3 +355,101 @@ fn invalid_ownership_is_diagnosed_and_requires_digest_bound_retirement() {
     settings_reconcile::agent_permissions::cli(args).unwrap();
     check(&p, h, &[]).unwrap();
 }
+
+#[test]
+fn every_drifted_source_is_listed_in_one_report() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path().join("home");
+    let (a, b) = (d.path().join("repo-a"), d.path().join("repo-b"));
+    fs::create_dir_all(&h).unwrap();
+    for repo in [&a, &b] {
+        put(repo, ".claude/settings.local.json", "{}");
+    }
+    let p = policy();
+    let projects = vec![a.clone(), b.clone()];
+    let r = inspect(&p, &h, &projects).unwrap();
+    migrate(&p, &h, &projects, &r).unwrap();
+    check(&p, &h, &projects).unwrap();
+    for repo in [&a, &b] {
+        put(
+            repo,
+            ".claude/settings.local.json",
+            r#"{"permissions":{"allow":["Bash(ls)"]}}"#,
+        );
+    }
+    let report = check(&p, &h, &projects).unwrap_err();
+    for repo in [&a, &b] {
+        let line = format!(
+            "permission drift: {}",
+            repo.join(".claude/settings.local.json").display()
+        );
+        assert!(report.lines().any(|l| l == line), "{report}");
+    }
+    assert!(report.lines().last().unwrap().contains("inspect --json"));
+}
+
+#[test]
+fn help_needs_no_policy_and_names_every_command() {
+    let bin = env!("CARGO_BIN_EXE_agent-permissions");
+    let d = tempfile::tempdir().unwrap();
+    for args in [vec!["--help"], vec!["-h"], vec!["help"]] {
+        let out = std::process::Command::new(bin)
+            .args(&args)
+            .env("HOME", d.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{args:?}");
+        let text = String::from_utf8_lossy(&out.stdout);
+        for word in ["inspect", "check", "apply", "migrate", "--dry-run"] {
+            assert!(text.contains(word), "{args:?} lacks {word}");
+        }
+    }
+    let out = std::process::Command::new(bin)
+        .args(["migrate", "--help"])
+        .env("HOME", d.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("usage: agent-permissions migrate"));
+    let out = std::process::Command::new(bin)
+        .args(["nonsense", "--help"])
+        .env("HOME", d.path())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+}
+
+#[test]
+fn migration_journals_stay_small_and_old_ones_are_pruned() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    let p = policy();
+    // A large file that every migration leaves unchanged.
+    put(
+        h,
+        ".claude.json",
+        &format!("{{\"padding\":\"{}\"}}", "x".repeat(200_000)),
+    );
+    put(h, ".claude/settings.json", "{\"model\":\"keep\"}");
+    let mut last = None;
+    for round in 0..8 {
+        put(
+            h,
+            ".claude/settings.json",
+            &format!("{{\"model\":\"m{round}\"}}"),
+        );
+        let r = inspect(&p, h, &[]).unwrap();
+        last = Some(migrate(&p, h, &[], &r).unwrap());
+    }
+    let dir = last.unwrap().parent().unwrap().to_path_buf();
+    let mut sizes: Vec<u64> = fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".json"))
+        .map(|e| e.metadata().unwrap().len())
+        .collect();
+    sizes.sort();
+    assert_eq!(sizes.len(), 5, "only the newest journals are kept");
+    // The 200 KB unchanged file is not recorded, so a journal is a few KB.
+    assert!(*sizes.last().unwrap() < 20_000, "{sizes:?}");
+}
