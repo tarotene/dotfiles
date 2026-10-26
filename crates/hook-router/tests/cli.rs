@@ -519,3 +519,82 @@ fn removing_a_deployed_policy_does_not_disable_the_guard() {
         "deny"
     );
 }
+
+#[test]
+fn pending_allow_rules_do_not_stop_the_session() {
+    let (home, workspace) = permission_home();
+    std::fs::create_dir_all(workspace.join(".claude")).unwrap();
+    std::fs::write(
+        workspace.join(".claude/settings.local.json"),
+        r#"{"permissions":{"allow":["WebFetch(domain:example.com)","Bash(git status:*)"]}}"#,
+    )
+    .unwrap();
+    for (tool, args) in [
+        ("Read", serde_json::json!({"file_path":"plain.txt"})),
+        ("Bash", serde_json::json!({"command":"ls"})),
+        ("AskUserQuestion", serde_json::json!({})),
+    ] {
+        let out = permission_call(home.path(), &workspace, tool, args);
+        assert!(out.status.success());
+        assert!(
+            out.stdout.is_empty(),
+            "{tool}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+}
+
+#[test]
+fn a_structural_drift_stops_tools_except_asking_and_read_only_diagnosis() {
+    let (home, workspace) = permission_home();
+    std::fs::create_dir_all(workspace.join(".claude")).unwrap();
+    std::fs::write(
+        workspace.join(".claude/settings.local.json"),
+        r#"{"permissions":{"allow":["Edit(/etc)"]}}"#,
+    )
+    .unwrap();
+    let denied = |tool: &str, args: serde_json::Value| {
+        let out = permission_call(home.path(), &workspace, tool, args);
+        assert!(out.status.success());
+        let v = json(&out);
+        assert_eq!(
+            v["hookSpecificOutput"]["permissionDecision"], "deny",
+            "{tool}"
+        );
+        let reason = v["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        // The file was never reviewed, so it is reported as a new source.
+        assert!(reason.contains("new permission source"), "{reason}");
+    };
+    let passes = |tool: &str, args: serde_json::Value| {
+        let out = permission_call(home.path(), &workspace, tool, args);
+        assert!(out.status.success());
+        assert!(
+            out.stdout.is_empty(),
+            "{tool}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    };
+    denied("Read", serde_json::json!({"file_path":"plain.txt"}));
+    denied("Bash", serde_json::json!({"command":"ls"}));
+    denied(
+        "Bash",
+        serde_json::json!({"command":"agent-permissions inspect --json > /tmp/r.json"}),
+    );
+    denied(
+        "Bash",
+        serde_json::json!({"command":"agent-permissions migrate --approved /tmp/r.json"}),
+    );
+    passes("AskUserQuestion", serde_json::json!({"questions":[]}));
+    passes("ExitPlanMode", serde_json::json!({}));
+    passes(
+        "Bash",
+        serde_json::json!({"command":"agent-permissions check"}),
+    );
+    passes(
+        "Bash",
+        serde_json::json!({"command":"agent-permissions migrate --approved /tmp/r.json --dry-run"}),
+    );
+}

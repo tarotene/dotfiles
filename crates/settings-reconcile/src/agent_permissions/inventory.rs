@@ -735,7 +735,6 @@ fn claude_state(value: &Value, unknown: &mut Vec<String>) -> Value {
                             "toolPermissions",
                             "permissions",
                             "enabledMcpjsonServers",
-                            "disabledMcpjsonServers",
                             "enableAllProjectMcpServers",
                         ],
                     );
@@ -750,7 +749,36 @@ fn claude_state(value: &Value, unknown: &mut Vec<String>) -> Value {
         }
     }
     state_unknown(value, unknown);
-    out
+    without_non_grants("claude-state", &out)
+}
+
+/// Drop what grants nothing from a recorded or freshly read `grants` value, so
+/// both sides of a comparison use the same shape. Claude Code adds
+/// `disabledMcpjsonServers: []` to a project entry whenever it starts there; a
+/// disabled server is a restriction and an empty list allows nothing. Records
+/// written before this rule stay comparable because `check` applies it to them too.
+pub(crate) fn without_non_grants(kind: &str, grants: &Value) -> Value {
+    let mut grants = grants.clone();
+    if kind != "claude-state" {
+        return grants;
+    }
+    fn prune(object: &mut Map<String, Value>) {
+        object.remove("disabledMcpjsonServers");
+        object.retain(|_, v| v.as_array().is_none_or(|a| !a.is_empty()));
+    }
+    if let Some(top) = grants.as_object_mut() {
+        prune(top);
+        if let Some(projects) = top.get_mut("projects").and_then(Value::as_object_mut) {
+            for project in projects.values_mut().filter_map(Value::as_object_mut) {
+                prune(project);
+            }
+            projects.retain(|_, v| v.as_object().is_none_or(|o| !o.is_empty()));
+            if projects.is_empty() {
+                top.remove("projects");
+            }
+        }
+    }
+    grants
 }
 
 fn state_unknown(value: &Value, unknown: &mut Vec<String>) {

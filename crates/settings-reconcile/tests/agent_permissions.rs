@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use settings_reconcile::agent_permissions::{apply, check, inspect, migrate, Policy};
+use settings_reconcile::agent_permissions::{apply, assess, check, inspect, migrate, Policy};
 use std::fs;
 use std::path::Path;
 
@@ -374,7 +374,7 @@ fn every_drifted_source_is_listed_in_one_report() {
         put(
             repo,
             ".claude/settings.local.json",
-            r#"{"permissions":{"allow":["Bash(ls)"]}}"#,
+            r#"{"permissions":{"allow":["Edit(/x)"]}}"#,
         );
     }
     let report = check(&p, &h, &projects).unwrap_err();
@@ -452,4 +452,173 @@ fn migration_journals_stay_small_and_old_ones_are_pruned() {
     assert_eq!(sizes.len(), 5, "only the newest journals are kept");
     // The 200 KB unchanged file is not recorded, so a journal is a few KB.
     assert!(*sizes.last().unwrap() < 20_000, "{sizes:?}");
+}
+
+/// A reviewed home with one project whose local settings exist and are owned.
+fn reviewed_project() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path().join("home");
+    let project = d.path().join("project");
+    fs::create_dir_all(&h).unwrap();
+    put(&project, ".claude/settings.local.json", "{}");
+    let p = policy();
+    let projects = vec![project.clone()];
+    let r = inspect(&p, &h, &projects).unwrap();
+    migrate(&p, &h, &projects, &r).unwrap();
+    check(&p, &h, &projects).unwrap();
+    (d, h, project)
+}
+
+fn local(project: &Path) -> std::path::PathBuf {
+    project.join(".claude/settings.local.json")
+}
+
+#[test]
+fn tolerated_allow_rules_are_pending_and_the_strict_check_still_rejects_them() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy();
+    let projects = vec![project.clone()];
+    let rules = [
+        "WebFetch(domain:example.com)",
+        "mcp__srv__tool",
+        "WebSearch",
+        "Bash(git status:*)",
+    ];
+    fs::write(
+        local(&project),
+        json!({"permissions": {"allow": rules}}).to_string(),
+    )
+    .unwrap();
+    let waiting = assess(&p, &h, &projects).unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].path, local(&project).canonicalize().unwrap());
+    assert_eq!(waiting[0].rules, rules);
+    let strict = check(&p, &h, &projects).unwrap_err();
+    assert!(strict.contains("pending permission grants"), "{strict}");
+    assert!(strict.contains("WebFetch(domain:example.com)"), "{strict}");
+    // The ordinary apply refuses to proceed over unreclaimed rules.
+    assert!(apply(&p, &h, &projects).is_err());
+}
+
+#[test]
+fn rules_outside_the_vocabulary_or_other_changes_stay_drift() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy();
+    let projects = vec![project.clone()];
+    for body in [
+        json!({"permissions": {"allow": ["Edit(/etc)"]}}),
+        json!({"permissions": {"allow": ["WebSearch", "Write(/x)"]}}),
+        json!({"permissions": {"allow": ["Bash(*)"]}}),
+        json!({"permissions": {"allow": ["Bash(ps -p * -o pid)"]}}),
+        json!({"permissions": {"allow": ["WebFetch(domain:*.example.com)"]}}),
+        json!({"permissions": {"allow": ["WebSearch"], "deny": ["Read(x)"]}}),
+        json!({"permissions": {"allow": ["WebSearch"]}, "sandbox": {"enabled": false}}),
+    ] {
+        fs::write(local(&project), body.to_string()).unwrap();
+        let report = assess(&p, &h, &projects).unwrap_err();
+        assert!(report.contains("permission drift"), "{body}: {report}");
+    }
+}
+
+#[test]
+fn a_first_local_settings_file_with_pending_rules_is_not_a_new_source() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path().join("home");
+    let project = d.path().join("project");
+    fs::create_dir_all(&h).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    let p = policy();
+    let projects = vec![project.clone()];
+    let r = inspect(&p, &h, &projects).unwrap();
+    migrate(&p, &h, &projects, &r).unwrap();
+    // Claude Code creates the file the first time an approval is saved.
+    fs::create_dir_all(project.join(".claude")).unwrap();
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebSearch"]}}"#,
+    )
+    .unwrap();
+    assert_eq!(assess(&p, &h, &projects).unwrap()[0].rules, ["WebSearch"]);
+    // An empty file is nothing to report; a restriction-free blank is not drift.
+    fs::write(local(&project), r#"{"permissions":{"allow":[]}}"#).unwrap();
+    assert!(assess(&p, &h, &projects).unwrap().is_empty());
+    // Other content in a never-reviewed file is still a new permission source.
+    fs::write(local(&project), r#"{"sandbox":{"enabled":false}}"#).unwrap();
+    assert!(assess(&p, &h, &projects)
+        .unwrap_err()
+        .contains("new permission source"));
+}
+
+#[test]
+fn empty_mcp_lists_are_not_grants_even_in_records_that_contain_them() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path().join("home");
+    let project = d.path().join("project");
+    fs::create_dir_all(&h).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    let key = project.to_str().unwrap();
+    put(
+        &h,
+        ".claude.json",
+        &json!({"projects": {key: {"disabledMcpjsonServers": []}}}).to_string(),
+    );
+    let p = policy();
+    let projects = vec![project.clone()];
+    let r = inspect(&p, &h, &projects).unwrap();
+    migrate(&p, &h, &projects, &r).unwrap();
+    // A record written by the earlier inventory tracked the empty list.
+    let record_path = h.join(".local/state/dotfiles/agent-permissions.json");
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    for source in record["sources"].as_array_mut().unwrap() {
+        if source["kind"] == "claude-state" {
+            source["grants"] = json!({"projects": {key: {"disabledMcpjsonServers": []}}});
+        }
+    }
+    fs::write(&record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+    assert!(assess(&p, &h, &projects).unwrap().is_empty());
+    // Starting Claude in another directory adds another empty entry.
+    let state = fs::read_to_string(h.join(".claude.json")).unwrap();
+    let mut state: Value = serde_json::from_str(&state).unwrap();
+    state["projects"][project.join("sub").to_str().unwrap()] =
+        json!({"disabledMcpjsonServers": [], "enabledMcpjsonServers": []});
+    fs::write(h.join(".claude.json"), state.to_string()).unwrap();
+    assert!(assess(&p, &h, &projects).unwrap().is_empty());
+    // A server that is actually enabled is a grant.
+    state["projects"][key]["enabledMcpjsonServers"] = json!(["srv"]);
+    fs::write(h.join(".claude.json"), state.to_string()).unwrap();
+    assert!(assess(&p, &h, &projects).is_err());
+}
+
+#[test]
+fn the_check_command_reports_pending_rules_without_failing() {
+    let (d, h, project) = reviewed_project();
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebSearch"]}}"#,
+    )
+    .unwrap();
+    let policy_file = d.path().join("policy.json");
+    fs::write(&policy_file, serde_json::to_vec(&policy()).unwrap()).unwrap();
+    let run = |extra: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_agent-permissions"))
+            .args(["check", "--policy"])
+            .arg(&policy_file)
+            .arg("--home")
+            .arg(&h)
+            .arg("--project")
+            .arg(&project)
+            .args(extra)
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .output()
+            .unwrap()
+    };
+    let out = run(&[]);
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("pending grants awaiting reclaim"), "{text}");
+    let out = run(&["--json"]);
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["pending"][0]["rules"], json!(["WebSearch"]));
 }
