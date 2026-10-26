@@ -287,6 +287,14 @@ impl Inventory {
             Err(e) => return Err(at(path, e)),
         };
         let physical = path.canonicalize().map_err(|e| at(path, e))?;
+        // A zero-byte file has no content to grant anything or to review, whoever
+        // made it: the sandbox masks write-denied paths with one for the length of a
+        // command, and stopping every tool of a session while a background command
+        // runs protects nothing. The mask is not told apart by its mode (0444), which
+        // is the sandbox's choice. Content that cannot be read stays a review below.
+        if std::fs::metadata(&physical).is_ok_and(|m| m.is_file() && m.len() == 0) {
+            return Ok(None);
+        }
         let symlink = metadata.file_type().is_symlink() || has_symlink_parent(path)?;
         let (bytes, value) = match Self::content(path, &physical, kind) {
             Ok(content) => content,
@@ -1344,9 +1352,9 @@ default_tools_approval_mode = 'approve'
     fn malformed_and_unknown_are_not_treated_as_empty() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join(".claude/settings.json");
-        // Malformed is never empty: it is one source that needs review (#1055),
-        // and an empty file is the same.
-        for broken in ["{", ""] {
+        // Malformed is never empty: it is one source that needs review (#1055).
+        // A file with no bytes at all is a different thing: it grants nothing.
+        for broken in ["{", " ", "[]"] {
             write(&p, broken);
             let out = discover(d.path(), &[]).unwrap();
             let source = out.iter().find(|s| s.kind == "claude-settings").unwrap();
@@ -1363,6 +1371,32 @@ default_tools_approval_mode = 'approve'
                 .len(),
             2
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zero_byte_files_are_no_source_whatever_their_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        // What the sandbox leaves at write-denied paths while a command runs.
+        for (rel, kind) in [
+            (".claude/settings.json", "claude-settings"),
+            (".claude/settings.local.json", "claude-settings"),
+            (".mcp.json", "claude-mcp"),
+        ] {
+            for mode in [0o444, 0o644] {
+                let p = d.path().join(rel);
+                write(&p, "");
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(mode)).unwrap();
+                let out = discover_session(d.path(), d.path()).unwrap();
+                assert!(
+                    out.iter().all(|s| s.kind != kind),
+                    "{rel} {mode:o}: {out:?}"
+                );
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+                std::fs::remove_file(&p).unwrap();
+            }
+        }
     }
 
     #[test]

@@ -113,14 +113,22 @@ Claude Code の sandbox で、このリポジトリの宣言では消せない(�
 - `git add -A`・`git add .` を使わず、追加するパスを 1 つずつ指定する。
 - `git status` の未追跡の行は、自分が作ったファイルかを見てから扱う。
 
-**同じ placeholder が、別の Bash の実行中に hook を止めることがある(#1055・#1063)。** 上の文書は、placeholder が
-sandbox の実行中だけ存在し、セッションが途中で終わると残ると書く。`.claude/settings.json` の placeholder は 0
-バイトなので、同じ作業ツリーで別の sandbox の Bash(並行する別のエージェント・セッション)が走っている間に
-hook がそれを読むと、`EOF while parsing a value at line 1 column 0` で止まる(2026-10-27 の作業で、
-親の作業ツリーを `cwd` にした並行するエージェントの Bash の実行中に、3 回再現した)。hook はこのセッションの `cwd` 配下の
-設定を読むので、この場合は fail-closed のまま 1 件の理由で止まる(別 worktree の分は止めない。上の「ずれを検出したら
-設定元から診断する」)。残ったファイルは `claude doctor` が「Sandbox mask files left behind at write-deny paths」として
-列挙し、他の Claude Code セッションが動いていないときに `rm` で消す。
+**0 バイトのファイルは設定元に数えない(#1055・#1063)。** 上の文書は、placeholder が sandbox の実行中だけ存在し、
+セッションが途中で終わると残ると書く。placeholder は 0 バイトなので、以前の hook は、同じ作業ツリーで別の
+sandbox の Bash(`run_in_background` の Bash、同じ `cwd` のサブエージェント、並行する別のセッション)が走っている間に
+それを「読めない設定」として、`EOF while parsing a value at line 1 column 0` で全ツールを止めていた(2026-10-27 に、
+背景の Bash とサブエージェントで 1 回ずつ再現した。止める手段の TaskStop を読み込む ToolSearch まで拒否され、本人に
+`!` で止めてもらった)。今は、長さ 0 の通常ファイルを設定元として数えない(`inventory.rs` の `Inventory::add`)。中身が無い
+ファイルは、誰が作っても何も許可せず、審査する対象がないので、止める理由がない。
+
+- 実測(2026-10-27、vega、`claude` 2.1.285): 代役は通常ファイル・0 バイト・権限 0444・所有者は本人で、sandbox の
+  Bash の実行中だけ `.claude/settings.json`・`.mcp.json` に現れ、終わると消えた(sandbox の外から `stat` を 0.5 秒間隔で読んだ)。
+  権限(0444)では見分けない。権限は sandbox の実装の選択で、変わりうる。中身から必ず言える事実(長さ 0)で判定する。
+- PR #1074 の裁定「読めない設定を個別に報告する」は、中身があって読めない設定(壊れた JSON など)に狭めた。
+  長さ 0 を「不在」と扱えばこの停止は消せると同 PR が書いていた方法を採った(本人の裁定、2026-10-27)。
+- 記録済みの設定元が長さ 0 になったときは、今までどおり `permission source removed` で止まる。
+- 残ったファイルは `claude doctor` が「Sandbox mask files left behind at write-deny paths」として列挙し、他の
+  Claude Code セッションが動いていないときに `rm` で消す。
 
 ## 移行前に一覧を確認する
 

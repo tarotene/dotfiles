@@ -482,6 +482,44 @@ fn dangling_symlink_to_outside_workspace_requires_one_time_approval() {
 }
 
 #[test]
+fn sandbox_masks_do_not_stop_a_session_but_unreadable_content_still_does() {
+    let (home, workspace) = permission_home();
+    let read = |workspace: &std::path::Path| {
+        permission_call(
+            home.path(),
+            workspace,
+            "Read",
+            serde_json::json!({"file_path": workspace.join("a.txt")}),
+        )
+    };
+    // The sandbox leaves zero-byte files at write-denied paths while a command runs.
+    for rel in [
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        ".mcp.json",
+    ] {
+        let path = workspace.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+    }
+    let out = read(&workspace);
+    assert!(out.status.success());
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    // A file with content that cannot be read is not a mask: it stops and is reported.
+    std::fs::write(workspace.join(".claude/settings.json"), "{").unwrap();
+    let out = read(&workspace);
+    assert_eq!(
+        json(&out)["hookSpecificOutput"]["permissionDecision"],
+        "deny"
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("unreadable configuration"));
+}
+
+#[test]
 fn an_undeclared_mcp_tool_is_left_to_claude_and_an_existing_guard_deny_still_wins() {
     let (home, workspace) = permission_home();
     // #1052: the hook no longer asks for every MCP tool (whether its ask beats a

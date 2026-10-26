@@ -1016,8 +1016,10 @@ fn an_unreadable_settings_file_is_reported_as_one_review_source() {
     let broken = d.path().join("broken");
     let fine = d.path().join("fine");
     fs::create_dir_all(&h).unwrap();
-    put(&broken, ".claude/settings.json", "");
+    put(&broken, ".claude/settings.json", "[]");
     put(&broken, ".claude/settings.local.json", "{not json");
+    // A zero-byte file (the sandbox's mask) is no source, so it is not reviewed.
+    put(&fine, ".claude/settings.json", "");
     put(&fine, ".claude/settings.local.json", "{}");
     let p = policy();
     let projects = vec![broken.clone(), fine.clone()];
