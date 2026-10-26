@@ -55,7 +55,11 @@ impl T {
             &s.join("nix"),
             r#"printf 'nix %s\n' "$*" >> "$STUB_DIR/calls.log"
 trap 'printf "nix rc=%s\n" "$?" >> "$STUB_DIR/rc.log"' EXIT
-[[ $1 == build ]] && exit "${BUILD_RC:-0}"
+if [[ $1 == build ]]; then
+  # `--print-out-paths` が返す activationPackage の store path(--follow の許可ポリシー比較)。
+  [[ ${BUILD_RC:-0} == 0 && -n ${BUILD_OUT:-} ]] && printf '%s\n' "$BUILD_OUT"
+  exit "${BUILD_RC:-0}"
+fi
 # eval: 今回の目標の世代(`activationPackage.outPath`)。EVAL_HOLD は評価の最中で止まり、
 # `eval-go` が置かれるまで待つ(待ちには上限を付け、テストが先に失敗しても居残らない)。
 if [[ $1 == eval ]]; then
@@ -110,6 +114,13 @@ case "$*" in
   *"show -p MainPID"*) printf '%s\n' "${MAINPID:-4242}" ;;
 esac
 exit 0"#,
+        );
+        // herdr: `notification show` の呼び出しを記録し、HERDR_OUT(無ければ「表示された」)を返す。
+        exe(
+            &s.join("herdr"),
+            r#"printf 'herdr %s\n' "$*" >> "$STUB_DIR/calls.log"
+if [[ -n ${HERDR_OUT:-} ]]; then printf '%s\n' "$HERDR_OUT"
+else printf '%s\n' '{"result":{"shown":true,"reason":null}}'; fi"#,
         );
         t
     }
@@ -1052,4 +1063,452 @@ fn a_child_that_outlives_hms_does_not_hold_the_lock() {
     let o = t.run(&[], &[]);
     assert!(o.status.success(), "{}", err(&o));
     assert!(!err(&o).contains("別の hms が適用中です"));
+}
+
+// ---------------------------------------------------------------------------
+// 自動追従 `hms --follow`(D1〜D6)
+// ---------------------------------------------------------------------------
+
+const NATIVE_SPECS: [&str; 2] = ["claude-permissions.json", "codex-permissions.json"];
+
+const OLD_REV: &str = "aaaaaaa0000000000000000000000000000000aa";
+const NEW_REV: &str = "bbbbbbb1111111111111111111111111111111bb";
+const NEW_REV_2: &str = "ccccccc2222222222222222222222222222222cc";
+
+/// 追従できる状態: いまの世代(rev=OLD_REV)を引数なしの hms が作ったと記録してあり、
+/// 配備済みの許可ポリシーが `policy`、main の先頭は NEW_REV。世代の実体の絶対パスを返す。
+fn followable(t: &T, policy: &str) -> PathBuf {
+    let generation = fake_generation(t, OLD_REV);
+    seed_record(t, "default", generation.to_str().unwrap());
+    let deployed = t.home().join(".config/agent-native");
+    fs::create_dir_all(&deployed).unwrap();
+    for name in NATIVE_SPECS {
+        fs::write(deployed.join(name), policy).unwrap();
+    }
+    t.meta(MAIN, &format!(r#"{{"revision":"{NEW_REV}"}}"#));
+    generation
+}
+
+fn seed_record(t: &T, mode: &str, generation: &str) {
+    fs::create_dir_all(t.state()).unwrap();
+    fs::write(
+        t.state().join("last-apply.json"),
+        serde_json::json!({
+            "mode": mode, "rev": OLD_REV, "generation": generation, "applied_at": 1
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+/// 新しい世代として `nix build --print-out-paths` が返す activationPackage。
+fn fake_package(t: &T, policy: &str) -> String {
+    let conf = t.dir.path().join("package/home-files/.config/agent-native");
+    fs::create_dir_all(&conf).unwrap();
+    for name in NATIVE_SPECS {
+        fs::write(conf.join(name), policy).unwrap();
+    }
+    t.dir.path().join("package").to_str().unwrap().to_string()
+}
+
+fn herdr_calls(t: &T) -> Vec<String> {
+    t.calls()
+        .into_iter()
+        .filter(|l| l.starts_with("herdr "))
+        .collect()
+}
+
+fn hm_calls(t: &T) -> usize {
+    t.calls()
+        .iter()
+        .filter(|l| l.starts_with("home-manager "))
+        .count()
+}
+
+fn follow_state(t: &T) -> serde_json::Value {
+    let text = fs::read_to_string(t.state().join("follow-state.json")).unwrap_or_default();
+    serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
+}
+
+#[test]
+fn follow_applies_main_when_a_bare_hms_made_the_generation() {
+    let t = T::new();
+    followable(&t, r#"{"p":1}"#);
+    let package = fake_package(&t, r#"{"p":1}"#);
+    let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(
+        t.hm_call().unwrap(),
+        format!("home-manager switch --flake {MAIN}#testhost -b backup")
+    );
+    // switch の前に、新しい世代を組んで許可ポリシーを比べている。
+    let calls = t.calls();
+    let build = calls
+        .iter()
+        .position(|l| {
+            l == &format!(
+                "nix build --no-link --print-out-paths {MAIN}#homeConfigurations.testhost.activationPackage"
+            )
+        })
+        .expect("the new generation is built first");
+    let switch = calls
+        .iter()
+        .position(|l| l.starts_with("home-manager "))
+        .unwrap();
+    assert!(build < switch);
+    assert!(herdr_calls(&t).is_empty());
+    assert_eq!(t.record().unwrap()["mode"], "default");
+    assert_eq!(follow_state(&t)["notified"], serde_json::Value::Null);
+}
+
+#[test]
+fn follow_does_nothing_when_main_is_already_applied() {
+    let t = T::new();
+    followable(&t, "{}");
+    t.meta(MAIN, &format!(r#"{{"revision":"{OLD_REV}"}}"#));
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains("追従済みです"));
+    assert!(t.hm_call().is_none());
+    assert!(herdr_calls(&t).is_empty());
+}
+
+#[test]
+fn follow_clears_an_old_notice_once_main_is_applied() {
+    let t = T::new();
+    followable(&t, "{}");
+    t.meta(MAIN, &format!(r#"{{"revision":"{OLD_REV}"}}"#));
+    fs::write(
+        t.state().join("follow-state.json"),
+        r#"{"notified":"policy:old","failed_rev":"old"}"#,
+    )
+    .unwrap();
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(follow_state(&t)["notified"], serde_json::Value::Null);
+    assert_eq!(follow_state(&t)["failed_rev"], serde_json::Value::Null);
+}
+
+#[test]
+fn follow_does_nothing_when_main_cannot_be_resolved() {
+    let t = T::new();
+    followable(&t, "{}");
+    fs::remove_dir_all(t.stubs().join("meta")).unwrap();
+    fs::create_dir_all(t.stubs().join("meta")).unwrap();
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains("解決できません"));
+    assert!(t.hm_call().is_none());
+    assert!(herdr_calls(&t).is_empty());
+}
+
+/// 追従しない 3 つの世代(記録なし・記録と別の世代・検証用)は、適用せず、1 回だけ知らせる。
+fn assert_stops_and_tells_once(name: &str, t: &T, title: &str, key_prefix: &str) {
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{name}: {}", err(&o));
+    assert!(t.hm_call().is_none(), "{name}: must not switch");
+    let calls = herdr_calls(t);
+    assert_eq!(calls.len(), 1, "{name}: {calls:?}");
+    assert!(calls[0].starts_with("herdr notification show "), "{name}");
+    assert!(calls[0].contains(title), "{name}: {}", calls[0]);
+    assert!(calls[0].ends_with("--sound request"), "{name}");
+    let notified = follow_state(t)["notified"].as_str().unwrap().to_string();
+    assert!(notified.starts_with(key_prefix), "{name}: {notified}");
+    // 2 回目は同じ原因なので、知らせ直さない。
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{name}: {}", err(&o));
+    assert_eq!(herdr_calls(t).len(), 1, "{name}: notified twice");
+    assert!(t.hm_call().is_none(), "{name}: must not switch");
+}
+
+#[test]
+fn follow_stops_and_tells_once_without_a_record() {
+    let t = T::new();
+    followable(&t, "{}");
+    fs::remove_file(t.state().join("last-apply.json")).unwrap();
+    assert_stops_and_tells_once("no record", &t, "一度 hms を当ててください", "no-record");
+}
+
+#[test]
+fn follow_stops_and_tells_once_for_a_generation_hms_did_not_make() {
+    let t = T::new();
+    followable(&t, "{}");
+    seed_record(&t, "default", "/nix/store/some-other-generation");
+    assert_stops_and_tells_once("foreign", &t, "世代の不一致", "foreign:");
+}
+
+#[test]
+fn follow_stops_and_tells_once_for_a_verification_generation() {
+    let t = T::new();
+    let generation = followable(&t, "{}");
+    seed_record(&t, "explicit", generation.to_str().unwrap());
+    assert_stops_and_tells_once("explicit", &t, "検証用の世代", "explicit:");
+}
+
+/// 通知が表示されなかった(herdr に表示先が無い等)ときは、知らせたことにしない。
+#[test]
+fn follow_tells_again_when_the_notice_was_not_shown() {
+    let t = T::new();
+    followable(&t, "{}");
+    seed_record(
+        &t,
+        "explicit",
+        t.dir.path().join("generation").to_str().unwrap(),
+    );
+    let hidden = r#"{"result":{"shown":false,"reason":"disabled"}}"#;
+    let o = t.run(&["--follow"], &[("HERDR_OUT", hidden)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(herdr_calls(&t).len(), 1);
+    assert_eq!(follow_state(&t)["notified"], serde_json::Value::Null);
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(herdr_calls(&t).len(), 2);
+    assert!(follow_state(&t)["notified"].as_str().is_some());
+}
+
+/// 新しい世代の許可ポリシーが配備済みと違うなら、適用せず知らせる(#1060)。通知済みの間は
+/// 事前ビルドからやり直さない。
+#[test]
+fn follow_stops_when_native_permission_settings_change() {
+    let t = T::new();
+    followable(&t, r#"{"p":1}"#);
+    let package = fake_package(&t, r#"{"p":2}"#);
+    let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(t.hm_call().is_none());
+    let calls = herdr_calls(&t);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(calls[0].contains("許可ポリシーの変更"));
+    assert_eq!(
+        follow_state(&t)["notified"].as_str().unwrap(),
+        format!("policy:{NEW_REV}")
+    );
+    let builds = |t: &T| {
+        t.calls()
+            .iter()
+            .filter(|l| l.starts_with("nix build "))
+            .count()
+    };
+    assert_eq!(builds(&t), 1);
+
+    let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains("止めたままです"));
+    assert_eq!(builds(&t), 1, "no second pre-build while the notice stands");
+    assert_eq!(herdr_calls(&t).len(), 1);
+
+    // main が進めば、改めて確かめる。
+    t.meta(MAIN, &format!(r#"{{"revision":"{NEW_REV_2}"}}"#));
+    let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(builds(&t), 2);
+    assert_eq!(herdr_calls(&t).len(), 2);
+}
+
+/// ネイティブ設定が両方とも無くても、安全な同一設定とは判定しない。
+#[test]
+fn follow_stops_when_both_generations_lack_native_permission_settings() {
+    let t = T::new();
+    followable(&t, "{}");
+    fs::remove_dir_all(t.home().join(".config/agent-native")).unwrap();
+    let bare = t.dir.path().join("bare-package");
+    fs::create_dir_all(&bare).unwrap();
+    let o = t.run(&["--follow"], &[("BUILD_OUT", bare.to_str().unwrap())]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(hm_calls(&t), 0);
+    assert_eq!(herdr_calls(&t).len(), 1);
+}
+
+/// 追従の失敗は 1 回だけ知らせ、unit は成功で終える。同じコミットは再試行せず、main が
+/// 進んだら再試行する。
+#[test]
+fn follow_reports_a_failure_once_and_waits_for_main_to_move() {
+    let t = T::new();
+    followable(&t, "{}");
+    let package = fake_package(&t, "{}");
+    let env = [("BUILD_OUT", package.as_str()), ("HM_RC", "3")];
+    let o = t.run(&["--follow"], &env);
+    assert!(
+        o.status.success(),
+        "a failed follow must not fail the unit: {}",
+        err(&o)
+    );
+    assert_eq!(hm_calls(&t), 1);
+    let calls = herdr_calls(&t);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(calls[0].contains("自動追従に失敗しました"));
+    assert_eq!(follow_state(&t)["failed_rev"].as_str().unwrap(), NEW_REV);
+    // 失敗した switch は記録を書き換えない。
+    assert_eq!(t.record().unwrap()["rev"], OLD_REV);
+
+    let o = t.run(&["--follow"], &env);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains("再試行しません"));
+    assert_eq!(hm_calls(&t), 1);
+    assert_eq!(herdr_calls(&t).len(), 1);
+
+    t.meta(MAIN, &format!(r#"{{"revision":"{NEW_REV_2}"}}"#));
+    let o = t.run(&["--follow"], &[("BUILD_OUT", package.as_str())]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(hm_calls(&t), 2);
+    // 成功したので、失敗と通知の記憶は消える。
+    assert_eq!(follow_state(&t)["failed_rev"], serde_json::Value::Null);
+    assert_eq!(follow_state(&t)["notified"], serde_json::Value::Null);
+}
+
+/// 新しい世代を事前に組めなかったときも、失敗として 1 回だけ知らせる(switch はしない)。
+#[test]
+fn follow_reports_a_failed_pre_build_without_switching() {
+    let t = T::new();
+    followable(&t, "{}");
+    let o = t.run(&["--follow"], &[("BUILD_RC", "2")]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(t.hm_call().is_none());
+    assert!(herdr_calls(&t)[0].contains("自動追従に失敗しました"));
+    assert_eq!(follow_state(&t)["failed_rev"].as_str().unwrap(), NEW_REV);
+}
+
+/// 手動の hms が適用中なら、追従は待たずに見送る(timer が詰まらない)。
+#[test]
+fn follow_yields_to_a_running_hms() {
+    let t = T::new();
+    followable(&t, "{}");
+    let first_err = t.dir.path().join("first.err");
+    let mut first = t.spawn(&[], &[("HM_HOLD", "1")], &first_err);
+    wait_until("the manual hms to reach its switch", || {
+        t.stubs().join("started").exists()
+    });
+
+    let o = t.run(&["--follow"], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(out(&o).contains("別の hms が適用中なので、今回は見送ります"));
+    assert_eq!(t.order(), ["start"], "follow must not start a switch");
+
+    fs::write(t.stubs().join("release"), "").unwrap();
+    assert!(first.wait().unwrap().success());
+    assert_eq!(t.order(), ["start", "end"]);
+}
+
+#[test]
+fn follow_takes_no_other_arguments() {
+    let t = T::new();
+    for args in [&["--follow", "."][..], &["--follow", "--public-only"]] {
+        let o = t.run(args, &[]);
+        assert_eq!(o.status.code(), Some(1), "{args:?}");
+        assert!(err(&o).contains("--follow は"));
+    }
+    assert!(t.hm_call().is_none());
+}
+
+#[test]
+fn follow_compares_each_complete_native_spec_including_app_approvals() {
+    for (name, before, after) in [
+        (
+            "claude-permissions.json",
+            r#"{"permissions":{"allow":[]}}"#,
+            r#"{"permissions":{"allow":["Read"]}}"#,
+        ),
+        (
+            "codex-permissions.json",
+            r#"{"permissions":{"native":{"network":{"enabled":true}}}}"#,
+            r#"{"permissions":{"native":{"network":{"enabled":false}}}}"#,
+        ),
+        (
+            "codex-permissions.json",
+            r#"{"apps":{"_default":{"default_tools_approval_mode":"prompt"}}}"#,
+            r#"{"apps":{"_default":{"default_tools_approval_mode":"approve"}}}"#,
+        ),
+    ] {
+        let t = T::new();
+        followable(&t, "{}");
+        let package = fake_package(&t, "{}");
+        fs::write(t.home().join(".config/agent-native").join(name), before).unwrap();
+        fs::write(
+            Path::new(&package)
+                .join("home-files/.config/agent-native")
+                .join(name),
+            after,
+        )
+        .unwrap();
+        let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+        assert!(o.status.success(), "{name}: {}", err(&o));
+        assert!(
+            t.hm_call().is_none(),
+            "{name}: changed spec must stop unattended apply"
+        );
+        assert_eq!(herdr_calls(&t).len(), 1);
+        assert!(herdr_calls(&t)[0].contains("手動で hms"));
+        assert!(!herdr_calls(&t)[0].contains("migrate"));
+    }
+}
+
+#[test]
+fn follow_stops_on_added_removed_or_unreadable_native_specs() {
+    for name in NATIVE_SPECS {
+        for side in ["deployed", "candidate", "both"] {
+            for unreadable in [false, true] {
+                let t = T::new();
+                followable(&t, "{}");
+                let package = fake_package(&t, "{}");
+                let deployed = t.home().join(".config/agent-native").join(name);
+                let candidate = Path::new(&package)
+                    .join("home-files/.config/agent-native")
+                    .join(name);
+                let paths = match side {
+                    "deployed" => vec![deployed],
+                    "candidate" => vec![candidate],
+                    _ => vec![deployed, candidate],
+                };
+                for path in paths {
+                    fs::remove_file(&path).unwrap();
+                    if unreadable {
+                        fs::create_dir(&path).unwrap();
+                    }
+                }
+                let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+                assert!(
+                    o.status.success(),
+                    "{name} {side} {unreadable}: {}",
+                    err(&o)
+                );
+                assert!(t.hm_call().is_none(), "{name} {side} {unreadable}");
+                assert_eq!(herdr_calls(&t).len(), 1);
+                assert!(err(&o).contains("ネイティブ権限設定を読み取れません"));
+                assert_eq!(follow_state(&t)["failed_rev"], serde_json::Value::Null);
+            }
+        }
+    }
+}
+
+#[test]
+fn follow_applies_identical_complete_native_specs_ignoring_retired_shared_policy() {
+    let t = T::new();
+    followable(&t, "{}");
+    let package = fake_package(&t, "{}");
+    for (name, settings) in [
+        (
+            "claude-permissions.json",
+            r#"{"permissions":{"allow":["mcp__one__lookup"]},"sandbox":{"enabled":true}}"#,
+        ),
+        (
+            "codex-permissions.json",
+            r#"{"default_permissions":"native","permissions":{"native":{"extends":":workspace"}},"apps":{"_default":{"default_tools_approval_mode":"prompt"},"individual":{"tools":{"lookup":{"approval_mode":"approve"}}}}}"#,
+        ),
+    ] {
+        fs::write(t.home().join(".config/agent-native").join(name), settings).unwrap();
+        fs::write(
+            Path::new(&package)
+                .join("home-files/.config/agent-native")
+                .join(name),
+            settings,
+        )
+        .unwrap();
+    }
+    let retired = t.home().join(".config/agent-permissions");
+    fs::create_dir_all(&retired).unwrap();
+    fs::write(retired.join("policy.json"), "invalid obsolete policy").unwrap();
+    let o = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert_eq!(hm_calls(&t), 1);
+    assert!(herdr_calls(&t).is_empty());
 }

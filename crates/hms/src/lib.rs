@@ -324,6 +324,218 @@ pub fn apply_record_json(
     text
 }
 
+/// `last-apply.json` を読んだもの(`apply_record_json` の逆)。
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ApplyRecord {
+    pub mode: ApplyMode,
+    pub rev: Option<String>,
+    pub generation: String,
+}
+
+/// `last-apply.json` を読む。壊れている・`mode` が未知の値のときは `None`
+/// (記録が無いのと同じ扱い — 経路が分からない世代には追従しない)。
+pub fn parse_apply_record(json: &str) -> Option<ApplyRecord> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    let mode = match v.get("mode")?.as_str()? {
+        "default" => ApplyMode::Default,
+        "explicit" => ApplyMode::Explicit,
+        _ => return None,
+    };
+    Some(ApplyRecord {
+        mode,
+        rev: v.get("rev").and_then(Value::as_str).map(str::to_string),
+        generation: v.get("generation")?.as_str()?.to_string(),
+    })
+}
+
+/// 自動追従(`--follow`)が main へ追従しない理由。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum StopReason {
+    /// この世代に適用の記録が無い(新しい hms で当てる前の世代)。
+    NoRecord,
+    /// 記録の世代といまの世代が違う(rollback や、hms を通さない switch)。
+    ForeignGeneration,
+    /// `hms .` など、ref を明示して当てた検証用の世代。
+    ExplicitGeneration,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum FollowAction {
+    /// 何もしない(main を解決できない・追従済み・前回失敗したコミット)。
+    Idle,
+    /// 追従しない理由を知らせる。
+    Stop(StopReason),
+    /// main へ追従する(許可ポリシーの確認は、この後の switch の直前)。
+    Apply,
+}
+
+/// `--follow` の判断に使う事実。
+pub struct FollowFacts<'a> {
+    /// pushed main の先頭(解決できなければ `None` — オフライン)。
+    pub main_rev: Option<&'a str>,
+    /// いまの世代の dotfiles の rev(`~/.local/share/dotfiles/rev`)。
+    pub current_rev: Option<&'a str>,
+    /// いまの profile が指す store path(無ければ空)。
+    pub current_generation: &'a str,
+    pub record: Option<&'a ApplyRecord>,
+    /// 前回の自動追従が失敗した main のコミット。
+    pub failed_rev: Option<&'a str>,
+}
+
+/// main へ追従するか、止めるか、何もしないかを決める。
+///
+/// 追従済みかを先に見る: 検証用の世代でも、たまたま main の先頭と同じなら、止める
+/// 理由を知らせる必要は無い。追従するのは、記録の世代がいまの世代と一致し、かつ
+/// 引数なしの `hms` が作った世代(`ApplyMode::Default`)だけ。
+pub fn follow_decision(f: &FollowFacts) -> FollowAction {
+    let Some(main_rev) = f.main_rev else {
+        return FollowAction::Idle;
+    };
+    if f.current_rev == Some(main_rev) {
+        return FollowAction::Idle;
+    }
+    let Some(record) = f.record else {
+        return FollowAction::Stop(StopReason::NoRecord);
+    };
+    if record.generation.is_empty() || record.generation != f.current_generation {
+        return FollowAction::Stop(StopReason::ForeignGeneration);
+    }
+    if record.mode == ApplyMode::Explicit {
+        return FollowAction::Stop(StopReason::ExplicitGeneration);
+    }
+    if f.failed_rev == Some(main_rev) {
+        return FollowAction::Idle;
+    }
+    FollowAction::Apply
+}
+
+/// 本人へ知らせること。同じ `key` は 1 回だけ知らせる(`FollowState::notified`)。
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Notice {
+    NoRecord {
+        main_rev: String,
+    },
+    ForeignGeneration {
+        main_rev: String,
+        generation: String,
+    },
+    ExplicitGeneration {
+        main_rev: String,
+        generation: String,
+    },
+    PolicyChanged {
+        main_rev: String,
+    },
+    Failed {
+        main_rev: String,
+        rc: i32,
+    },
+}
+
+fn short_rev(rev: &str) -> &str {
+    rev.get(..7).unwrap_or(rev)
+}
+
+impl Notice {
+    /// 重複を抑えるキー。原因が変われば(世代が変わる・main が進む)別のキーになり、
+    /// 改めて知らせる。
+    pub fn key(&self) -> String {
+        match self {
+            Notice::NoRecord { .. } => "no-record".into(),
+            Notice::ForeignGeneration { generation, .. } => format!("foreign:{generation}"),
+            Notice::ExplicitGeneration { generation, .. } => format!("explicit:{generation}"),
+            Notice::PolicyChanged { main_rev } => format!("policy:{main_rev}"),
+            Notice::Failed { main_rev, .. } => format!("failed:{main_rev}"),
+        }
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            Notice::NoRecord { .. } => "hms の自動追従: 一度 hms を当ててください",
+            Notice::ForeignGeneration { .. } => "hms の自動追従を止めています(世代の不一致)",
+            Notice::ExplicitGeneration { .. } => "hms の自動追従を止めています(検証用の世代)",
+            Notice::PolicyChanged { .. } => "hms の自動追従を止めています(許可ポリシーの変更)",
+            Notice::Failed { .. } => "hms の自動追従に失敗しました",
+        }
+    }
+
+    pub fn body(&self) -> String {
+        match self {
+            Notice::NoRecord { main_rev } => format!(
+                "main が {} に進みましたが、この世代には適用の記録がありません。hms を 1 回実行すると、以後は自動で追従します。",
+                short_rev(main_rev)
+            ),
+            Notice::ForeignGeneration { main_rev, .. } => format!(
+                "いまの世代は hms の記録と一致しません(rollback や、hms を通さない switch)。main {} へ戻すには hms を実行してください。",
+                short_rev(main_rev)
+            ),
+            Notice::ExplicitGeneration { main_rev, .. } => format!(
+                "hms . などで ref を明示して当てた世代なので、main {} へは追従しません。戻すには hms を実行してください。",
+                short_rev(main_rev)
+            ),
+            Notice::PolicyChanged { main_rev } => format!(
+                "main {} のネイティブ権限設定に変更があるか、設定を読み取れません。Claude と Codex の設定差分を確認し、手動で hms を実行してください(docs/agents/agent-permissions.md)。",
+                short_rev(main_rev)
+            ),
+            Notice::Failed { main_rev, rc } => format!(
+                "main {} の適用が終了コード {rc} で失敗しました。journalctl --user -u hms-follow(macOS は ~/Library/Logs/hms-follow.log)を見てください。同じコミットは再試行しません。",
+                short_rev(main_rev)
+            ),
+        }
+    }
+}
+
+/// 自動追従が覚えておく状態(`follow-state.json`)。
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct FollowState {
+    /// 最後に知らせた `Notice::key`。同じキーは知らせ直さない。
+    pub notified: Option<String>,
+    /// 追従に失敗した main のコミット。main が進むまで再試行しない。
+    pub failed_rev: Option<String>,
+}
+
+/// 読めない・壊れているときは空の状態(最悪でも、もう 1 回知らせるだけ)。
+pub fn parse_follow_state(json: &str) -> FollowState {
+    let Ok(v) = serde_json::from_str::<Value>(json) else {
+        return FollowState::default();
+    };
+    let field = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    FollowState {
+        notified: field("notified"),
+        failed_rev: field("failed_rev"),
+    }
+}
+
+pub fn follow_state_json(state: &FollowState) -> String {
+    let mut text = serde_json::to_string_pretty(&serde_json::json!({
+        "notified": state.notified,
+        "failed_rev": state.failed_rev,
+    }))
+    .expect("a json! object always serializes");
+    text.push('\n');
+    text
+}
+
+/// herdr の `notification show` の応答から、通知が実際に表示されたか。
+/// 応答の形(`{"result":{"shown":true,…}}`)は入れ子なので、`shown` の真偽値を再帰で探す。
+/// 見つからなければ `false`(表示されたと言い切れないので、次回また知らせる側に倒す)。
+pub fn notification_shown(json: &str) -> bool {
+    fn find(v: &Value) -> Option<bool> {
+        match v {
+            Value::Object(map) => match map.get("shown") {
+                Some(Value::Bool(b)) => Some(*b),
+                _ => map.values().find_map(find),
+            },
+            Value::Array(items) => items.iter().find_map(find),
+            _ => None,
+        }
+    }
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .and_then(|v| find(&v))
+        .unwrap_or(false)
+}
+
 // ---------------------------------------------------------------------------
 // 環境の解決
 // ---------------------------------------------------------------------------
@@ -530,10 +742,28 @@ fn acquire_apply_lock(wait: bool) -> std::io::Result<Option<ApplyLock>> {
     }
 }
 
-/// switch に成功した世代の記録を書く。一時ファイルに書いてから rename するので、
-/// 途中で落ちても読み手は完全な旧記録か完全な新記録のどちらかを見る。
+fn profile_link() -> PathBuf {
+    home().join(".local/state/nix/profiles/home-manager")
+}
+
+/// 状態ディレクトリのファイルを丸ごと書く。一時ファイルに書いてから rename するので、
+/// 途中で落ちても読み手は完全な旧内容か完全な新内容のどちらかを見る。
+fn write_state_file(name: &str, text: &str) -> std::io::Result<()> {
+    let dir = state_dir();
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join(format!("{name}.tmp.{}", std::process::id()));
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, dir.join(name)).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+fn read_state_file(name: &str) -> Option<String> {
+    std::fs::read_to_string(state_dir().join(name)).ok()
+}
+
+/// switch に成功した世代の記録を書く。
 fn write_apply_record(mode: ApplyMode) -> std::io::Result<()> {
-    let profile_link = home().join(".local/state/nix/profiles/home-manager");
     let applied_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -541,16 +771,10 @@ fn write_apply_record(mode: ApplyMode) -> std::io::Result<()> {
     let text = apply_record_json(
         mode,
         generation_rev().as_deref(),
-        &readlink_f(&profile_link),
+        &readlink_f(&profile_link()),
         applied_at,
     );
-    let dir = state_dir();
-    std::fs::create_dir_all(&dir)?;
-    let tmp = dir.join(format!("last-apply.json.tmp.{}", std::process::id()));
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, dir.join("last-apply.json")).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    write_state_file("last-apply.json", &text)
 }
 
 // ---------------------------------------------------------------------------
@@ -647,6 +871,11 @@ fn print_help(r#ref: &str, wrapper_ref: &str) {
     println!("  hms <path>   apply an arbitrary local checkout (same routing as `hms .`)");
     println!("  hms . --public-only   apply the checkout alone, dropping private value modules");
     println!(
+        "  hms --follow    apply pushed main only if this generation was made by a bare `hms`"
+    );
+    println!("                  and main has moved on (run by the hms-follow timer; otherwise it");
+    println!("                  just says why it is not following)");
+    println!(
         "  hms --version   print the dotfiles commit of the generation that installed this hms"
     );
 }
@@ -693,6 +922,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut r#ref = wrapper_ref.clone();
     let mut public_only = false;
     let mut ref_given = false;
+    let mut follow_main = false;
 
     for a in args {
         match a.as_str() {
@@ -705,6 +935,7 @@ pub fn run(args: &[String]) -> i32 {
                 return 0;
             }
             "--public-only" => public_only = true,
+            "--follow" => follow_main = true,
             s if s.starts_with('-') => {
                 eprintln!("Error: Unknown option: {s}");
                 return 1;
@@ -714,6 +945,14 @@ pub fn run(args: &[String]) -> i32 {
                 ref_given = true;
             }
         }
+    }
+
+    if follow_main {
+        if ref_given || public_only {
+            eprintln!("Error: --follow は ref や --public-only と一緒には使えません。");
+            return 1;
+        }
+        return follow(&wrapper_ref);
     }
 
     // 適用は同時に 1 つだけ(#1025)。別の hms が適用中なら、終わるまでここで待つ。
@@ -728,6 +967,76 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
+
+    let req = ApplyRequest {
+        wrapper_ref,
+        r#ref,
+        public_only,
+        ref_given,
+        generation_at_start,
+        argv: args.to_vec(),
+    };
+    match apply(&req, &mut |_| Ok(())) {
+        ApplyOutcome::Done(rc) => rc,
+        // preflight が常に Ok の呼び出しでは起きない。
+        ApplyOutcome::Stopped(_) => {
+            eprintln!("Error: 内部エラー: 通常の適用が事前確認で止まりました");
+            1
+        }
+    }
+}
+
+/// 適用の要求(引数から決まる)。
+struct ApplyRequest {
+    /// `resolve_default_ref()`(wrapper 登録ホストでは wrapper の ref)。
+    wrapper_ref: String,
+    /// 適用する ref(引数なしなら `wrapper_ref` と同じ)。
+    r#ref: String,
+    public_only: bool,
+    /// 位置引数で ref を渡したか(`ApplyMode` の判定に使う)。
+    ref_given: bool,
+    /// 適用を始めた時点(ロックを待つ前)の profile が指す世代。待つ間に別の適用が世代を
+    /// 切り替えたかの起点(#1025)。
+    generation_at_start: String,
+    /// 競合の報告が「再実行する」コマンドとして示す、`hms` への引数。
+    argv: Vec<String>,
+}
+
+/// switch の直前に確定した適用内容。
+struct Prepared {
+    apply_ref: String,
+    host: String,
+    extra_opts: Vec<String>,
+}
+
+/// `preflight` が switch を止めた理由(`--follow` の事前確認)。
+enum PreflightStop {
+    /// 新しい世代のネイティブ権限設定が配備済みと違う、欠けている、または読めない。
+    PolicyChanged,
+    /// 新しい世代の事前ビルドが失敗した(終了コード)。
+    BuildFailed(i32),
+}
+
+enum ApplyOutcome {
+    /// 適用を最後まで進めた、または途中で失敗した。終了コード。
+    Done(i32),
+    /// switch の直前に `preflight` が止めた。
+    Stopped(PreflightStop),
+}
+
+/// 適用の本体: 世代の整合・降格 guard・ref の解決・wrapper と bleep の override・
+/// switch・後処理・適用の記録。呼び出し側が適用ロックを持っていること。
+///
+/// `preflight` は、switch の直前(ref と override がすべて確定した後)に呼ばれる。
+/// `Err` を返すと switch せずに止まる。
+fn apply(
+    req: &ApplyRequest,
+    preflight: &mut dyn FnMut(&Prepared) -> Result<(), PreflightStop>,
+) -> ApplyOutcome {
+    let wrapper_ref = req.wrapper_ref.clone();
+    let r#ref = req.r#ref.clone();
+    let public_only = req.public_only;
+    let ref_given = req.ref_given;
 
     let host = resolve_host();
 
@@ -755,7 +1064,7 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!(
             "    mkdir -p ~/.config/dotfiles && printf '%s\\n' '<wrapper flake ref>' > ~/.config/dotfiles/private-hub"
         );
-        return 1;
+        return ApplyOutcome::Done(1);
     }
 
     let mut extra_opts: Vec<String> = Vec::new();
@@ -907,17 +1216,28 @@ pub fn run(args: &[String]) -> i32 {
         );
     }
 
+    // switch の直前: 呼び出し側(`--follow`)が、この適用を進めてよいかを確かめる。
+    // 通常の `hms` は常に通す。
+    let prepared = Prepared {
+        apply_ref: apply_ref.clone(),
+        host: host.clone(),
+        extra_opts: extra_opts.clone(),
+    };
+    if let Err(why) = preflight(&prepared) {
+        return ApplyOutcome::Stopped(why);
+    }
+
     // 今回の目標の世代を switch の前に求める(switch 後の照合に使う、#1025)。
-    let prepared = match verify::prepare(&verify::ApplyInput {
+    let verified = match verify::prepare(&verify::ApplyInput {
         apply_ref: &apply_ref,
         host: &host,
         extra_opts: &extra_opts,
         local_ref: ref_is_local.then_some(r#ref.as_str()),
         meta_json: &ref_meta_json,
-        generation_at_start: &generation_at_start,
+        generation_at_start: &req.generation_at_start,
     }) {
         Ok(p) => p,
-        Err(rc) => return rc,
+        Err(rc) => return ApplyOutcome::Done(rc),
     };
 
     println!(
@@ -933,14 +1253,14 @@ pub fn run(args: &[String]) -> i32 {
     );
     if rc != 0 {
         check_generation_consistency(true);
-        return rc;
+        return ApplyOutcome::Done(rc);
     }
 
     // switch の成功は「今回の世代が有効」の証拠にならない(別の適用が割り込みうる、#1025)。
     // 目標の世代と profile・current-home を照合し、食い違えば後処理へ進まず非 0 で終える。
-    let rc = verify::after_switch(&prepared, args);
+    let rc = verify::after_switch(&verified, &req.argv);
     if rc != 0 {
-        return rc;
+        return ApplyOutcome::Done(rc);
     }
 
     // この世代をどの経路で作ったかを、後処理の前に記録する。後処理(Tailscale・
@@ -962,7 +1282,7 @@ pub fn run(args: &[String]) -> i32 {
     if command_path("tailscale-prefs").is_some() {
         let rc = run_inherit(Command::new("tailscale-prefs").arg("apply"));
         if rc != 0 {
-            return rc;
+            return ApplyOutcome::Done(rc);
         }
     }
 
@@ -971,13 +1291,13 @@ pub fn run(args: &[String]) -> i32 {
     if std::env::consts::OS != "linux" {
         println!("==> non-Linux host; skipping systemctl daemon-reload and fcitx5 restart.");
         println!("Done.");
-        return 0;
+        return ApplyOutcome::Done(0);
     }
 
     println!("==> systemctl --user daemon-reload");
     let rc = run_inherit(Command::new("systemctl").args(["--user", "daemon-reload"]));
     if rc != 0 {
-        return rc;
+        return ApplyOutcome::Done(rc);
     }
 
     check_herdr_staleness();
@@ -986,13 +1306,13 @@ pub fn run(args: &[String]) -> i32 {
     if !status_ok(Command::new("systemctl").args(["--user", "cat", FCITX5_UNIT])) {
         println!("==> {FCITX5_UNIT} not present; skipping fcitx5 restart.");
         println!("Done.");
-        return 0;
+        return ApplyOutcome::Done(0);
     }
 
     println!("==> systemctl --user restart {FCITX5_UNIT}");
     let rc = run_inherit(Command::new("systemctl").args(["--user", "restart", FCITX5_UNIT]));
     if rc != 0 {
-        return rc;
+        return ApplyOutcome::Done(rc);
     }
 
     // 検証: restart は同期的で daemon-reload の後に走るので、MainPID が生きている active な
@@ -1007,7 +1327,7 @@ pub fn run(args: &[String]) -> i32 {
             .args(["--user", "status", "--no-pager", FCITX5_UNIT])
             .stdout(std::io::stderr())
             .status();
-        return 1;
+        return ApplyOutcome::Done(1);
     }
 
     let pid = match capture_strict(Command::new("systemctl").args([
@@ -1019,11 +1339,11 @@ pub fn run(args: &[String]) -> i32 {
         FCITX5_UNIT,
     ])) {
         Ok(p) => p,
-        Err(rc) => return rc,
+        Err(rc) => return ApplyOutcome::Done(rc),
     };
     if pid.is_empty() || pid == "0" {
         eprintln!("Error: {FCITX5_UNIT} is active but has no MainPID.");
-        return 1;
+        return ApplyOutcome::Done(1);
     }
 
     let running_bin = readlink_f(Path::new(&format!("/proc/{pid}/exe")));
@@ -1036,7 +1356,242 @@ pub fn run(args: &[String]) -> i32 {
         }
     );
     println!("Done.");
-    0
+    ApplyOutcome::Done(0)
+}
+
+// ---------------------------------------------------------------------------
+// 自動追従(`hms --follow`。hms-follow の timer が呼ぶ)
+// ---------------------------------------------------------------------------
+
+/// herdr の通知を出す。表示されたと分かったときだけ true(due-remind と同じ — herdr に
+/// クライアントが居ない時刻の通知は捨てられるので、表示を確かめずに「知らせた」と
+/// しない)。journal / launchd のログにも同じ内容を残す。
+fn notify(notice: &Notice) -> bool {
+    eprintln!("hms --follow: {}: {}", notice.title(), notice.body());
+    let Some(herdr) = command_path("herdr") else {
+        eprintln!("hms --follow: herdr が PATH に無いので、通知は出せません");
+        return false;
+    };
+    // herdr の通知の本文は短く切る(gpg-subkey remind と同じ 230 文字)。
+    let body: String = notice.body().chars().take(230).collect();
+    let out = Command::new(herdr)
+        .args([
+            "notification",
+            "show",
+            notice.title(),
+            "--body",
+            &body,
+            "--sound",
+            "request",
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    match out {
+        Ok(o) => notification_shown(&String::from_utf8_lossy(&o.stdout)),
+        Err(_) => false,
+    }
+}
+
+fn read_follow_state() -> FollowState {
+    read_state_file("follow-state.json")
+        .map(|t| parse_follow_state(&t))
+        .unwrap_or_default()
+}
+
+fn write_follow_state(state: &FollowState) {
+    if let Err(e) = write_state_file("follow-state.json", &follow_state_json(state)) {
+        eprintln!(
+            "Warning: 自動追従の状態({})を書けませんでした: {e}",
+            state_dir().join("follow-state.json").display()
+        );
+    }
+}
+
+/// 同じ原因では 1 回だけ知らせる。表示されなかったとき(herdr のクライアントが居ない
+/// 等)は覚えず、次の周期でもう一度知らせる。
+fn notify_once(state: &mut FollowState, notice: &Notice) {
+    let key = notice.key();
+    if state.notified.as_deref() == Some(key.as_str()) {
+        return;
+    }
+    if notify(notice) {
+        state.notified = Some(key);
+        write_follow_state(state);
+    }
+}
+
+/// 完全なネイティブ権限設定の差を調べる。欠如も自動適用を止める。
+/// JSON の一部だけを抽出しない: apps の承認設定も比較対象に含まれる。
+pub fn policy_changed(new: Option<&[u8]>, deployed: Option<&[u8]>) -> bool {
+    new.is_none() || deployed.is_none() || new != deployed
+}
+
+/// switch の直前に Claude と Codex の完全なネイティブ権限設定を比較する。
+/// 拡大・縮小を分類せず、差分・欠如・読み取りエラーがあれば本人の確認に戻す。
+/// 設定の意味や所有権を hms で再実装しない。
+fn policy_preflight(p: &Prepared) -> Result<(), PreflightStop> {
+    let target = format!(
+        "{}#homeConfigurations.{}.activationPackage",
+        p.apply_ref, p.host
+    );
+    println!(
+        "==> nix build {target} (comparing native agent permission settings before the switch)"
+    );
+    let out = capture_strict(
+        Command::new("nix")
+            .args(["build", "--no-link", "--print-out-paths"])
+            .arg(&target)
+            .args(&p.extra_opts),
+    )
+    .map_err(PreflightStop::BuildFailed)?;
+    let Some(package) = out.lines().rev().find(|l| !l.trim().is_empty()) else {
+        eprintln!("Error: nix build が store path を返しませんでした");
+        return Err(PreflightStop::BuildFailed(1));
+    };
+    for name in ["claude-permissions.json", "codex-permissions.json"] {
+        let candidate = Path::new(package)
+            .join("home-files/.config/agent-native")
+            .join(name);
+        let deployed = config_home().join("agent-native").join(name);
+        // Preserve the error distinction in diagnostics rather than equating
+        // failed reads to matching absent files.
+        let read = |path: &Path| match std::fs::read(path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) => {
+                eprintln!(
+                    "Warning: ネイティブ権限設定を読み取れません: {}: {error}",
+                    path.display()
+                );
+                None
+            }
+        };
+        let candidate = read(&candidate);
+        let deployed = read(&deployed);
+        if policy_changed(candidate.as_deref(), deployed.as_deref()) {
+            return Err(PreflightStop::PolicyChanged);
+        }
+    }
+    Ok(())
+}
+
+/// `hms --follow`: いまの世代が引数なしの `hms` で作ったもので、main が進んでいれば
+/// 追従する。それ以外は適用せず、理由を 1 回だけ知らせる。timer が呼ぶので、
+/// 「適用しなかった」「失敗した」は終了コード 0 で終える(失敗した unit が居座らない
+/// ように — home/modules/drift.nix の教訓)。非 0 は、ロックを取れないなど環境の異常だけ。
+fn follow(wrapper_ref: &str) -> i32 {
+    let generation_at_start = verify::current_profile_generation();
+    let _lock = match acquire_apply_lock(false) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            println!("==> hms --follow: 別の hms が適用中なので、今回は見送ります");
+            return 0;
+        }
+        Err(e) => {
+            eprintln!(
+                "Error: 適用ロック({})を取れません: {e}",
+                state_dir().join("lock").display()
+            );
+            return 1;
+        }
+    };
+
+    let mut state = read_follow_state();
+    let Some(main) = refreshed_revision(DEFAULT_REF).map(|(_, rev)| rev) else {
+        println!("==> hms --follow: main の先頭を解決できません(オフライン?)。何もしません");
+        return 0;
+    };
+    let current_rev = generation_rev();
+    let generation = readlink_f(&profile_link());
+    let record = read_state_file("last-apply.json").and_then(|t| parse_apply_record(&t));
+
+    let action = follow_decision(&FollowFacts {
+        main_rev: Some(&main),
+        current_rev: current_rev.as_deref(),
+        current_generation: &generation,
+        record: record.as_ref(),
+        failed_rev: state.failed_rev.as_deref(),
+    });
+    match action {
+        FollowAction::Idle => {
+            if current_rev.as_deref() == Some(main.as_str()) {
+                println!("==> hms --follow: 追従済みです(main {})", short_rev(&main));
+                if state != FollowState::default() {
+                    write_follow_state(&FollowState::default());
+                }
+            } else {
+                println!(
+                    "==> hms --follow: main {} は前回の自動追従で失敗したので、再試行しません",
+                    short_rev(&main)
+                );
+            }
+            0
+        }
+        FollowAction::Stop(reason) => {
+            let notice = match reason {
+                StopReason::NoRecord => Notice::NoRecord { main_rev: main },
+                StopReason::ForeignGeneration => Notice::ForeignGeneration {
+                    main_rev: main,
+                    generation,
+                },
+                StopReason::ExplicitGeneration => Notice::ExplicitGeneration {
+                    main_rev: main,
+                    generation,
+                },
+            };
+            notify_once(&mut state, &notice);
+            0
+        }
+        FollowAction::Apply => {
+            let policy_notice = Notice::PolicyChanged {
+                main_rev: main.clone(),
+            };
+            // 許可ポリシーの変更で止めた main は、通知済みの間は事前ビルドからやり直さない。
+            if state.notified.as_deref() == Some(policy_notice.key().as_str()) {
+                println!(
+                    "==> hms --follow: main {} は許可ポリシーの変更を含むので、止めたままです",
+                    short_rev(&main)
+                );
+                return 0;
+            }
+            println!(
+                "==> hms --follow: main {} へ追従します(いまの世代 {})",
+                short_rev(&main),
+                current_rev.as_deref().map(short_rev).unwrap_or("unknown")
+            );
+            let req = ApplyRequest {
+                wrapper_ref: wrapper_ref.to_string(),
+                r#ref: wrapper_ref.to_string(),
+                public_only: false,
+                ref_given: false,
+                generation_at_start,
+                argv: vec!["--follow".to_string()],
+            };
+            let failed_rc = match apply(&req, &mut policy_preflight) {
+                ApplyOutcome::Done(0) => {
+                    write_follow_state(&FollowState::default());
+                    return 0;
+                }
+                ApplyOutcome::Done(rc) | ApplyOutcome::Stopped(PreflightStop::BuildFailed(rc)) => {
+                    rc
+                }
+                ApplyOutcome::Stopped(PreflightStop::PolicyChanged) => {
+                    notify_once(&mut state, &policy_notice);
+                    return 0;
+                }
+            };
+            state.failed_rev = Some(main.clone());
+            write_follow_state(&state);
+            notify_once(
+                &mut state,
+                &Notice::Failed {
+                    main_rev: main,
+                    rc: failed_rc,
+                },
+            );
+            0
+        }
+    }
 }
 
 /// `x="$(cmd)"` を `set -e` 下で実行する形: 失敗したらその終了コードで中断する。
@@ -1378,6 +1933,247 @@ mod tests {
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["mode"], "explicit");
         assert!(v["rev"].is_null());
+    }
+
+    // parse_apply_record: 書いたものを読み戻せる。読めないものは「記録なし」。
+
+    #[test]
+    fn apply_record_round_trips() {
+        for (mode, rev) in [
+            (ApplyMode::Default, Some("abc123")),
+            (ApplyMode::Explicit, None),
+        ] {
+            let text = apply_record_json(mode, rev, "/nix/store/g", 7);
+            assert_eq!(
+                parse_apply_record(&text),
+                Some(ApplyRecord {
+                    mode,
+                    rev: rev.map(str::to_string),
+                    generation: "/nix/store/g".into(),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn unreadable_apply_records_are_no_record() {
+        assert_eq!(parse_apply_record("oops"), None);
+        assert_eq!(parse_apply_record("{}"), None);
+        assert_eq!(
+            parse_apply_record(r#"{"mode":"someday","generation":"/g"}"#),
+            None
+        );
+        assert_eq!(parse_apply_record(r#"{"mode":"default"}"#), None);
+    }
+
+    // follow_decision: 追従するのは、記録の世代がいまの世代で、かつ default のときだけ。
+
+    const MAIN_REV: &str = "bbbbbbb1111111";
+    const OLD_REV: &str = "aaaaaaa0000000";
+    const GEN: &str = "/nix/store/gen-now";
+
+    fn record(mode: ApplyMode, generation: &str) -> ApplyRecord {
+        ApplyRecord {
+            mode,
+            rev: Some(OLD_REV.into()),
+            generation: generation.into(),
+        }
+    }
+
+    fn decide(
+        main_rev: Option<&str>,
+        current_rev: Option<&str>,
+        record: Option<&ApplyRecord>,
+        failed_rev: Option<&str>,
+    ) -> FollowAction {
+        follow_decision(&FollowFacts {
+            main_rev,
+            current_rev,
+            current_generation: GEN,
+            record,
+            failed_rev,
+        })
+    }
+
+    #[test]
+    fn follow_is_idle_when_main_cannot_be_resolved() {
+        let r = record(ApplyMode::Default, GEN);
+        assert_eq!(
+            decide(None, Some(OLD_REV), Some(&r), None),
+            FollowAction::Idle
+        );
+    }
+
+    #[test]
+    fn follow_is_idle_when_already_at_main_even_for_a_verification_generation() {
+        // 検証用の世代でも、たまたま main の先頭と同じなら、止める理由を知らせない。
+        let r = record(ApplyMode::Explicit, GEN);
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(MAIN_REV), Some(&r), None),
+            FollowAction::Idle
+        );
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(MAIN_REV), None, None),
+            FollowAction::Idle
+        );
+    }
+
+    #[test]
+    fn follow_stops_without_a_record() {
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(OLD_REV), None, None),
+            FollowAction::Stop(StopReason::NoRecord)
+        );
+    }
+
+    #[test]
+    fn follow_stops_when_the_record_is_for_another_generation() {
+        let other = record(ApplyMode::Default, "/nix/store/gen-before");
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(OLD_REV), Some(&other), None),
+            FollowAction::Stop(StopReason::ForeignGeneration)
+        );
+        // profile を読めない(空)ときに、空の記録と一致したことにしない。
+        let empty = record(ApplyMode::Default, "");
+        assert_eq!(
+            follow_decision(&FollowFacts {
+                main_rev: Some(MAIN_REV),
+                current_rev: Some(OLD_REV),
+                current_generation: "",
+                record: Some(&empty),
+                failed_rev: None,
+            }),
+            FollowAction::Stop(StopReason::ForeignGeneration)
+        );
+    }
+
+    #[test]
+    fn follow_stops_for_a_verification_generation() {
+        let r = record(ApplyMode::Explicit, GEN);
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(OLD_REV), Some(&r), None),
+            FollowAction::Stop(StopReason::ExplicitGeneration)
+        );
+    }
+
+    #[test]
+    fn follow_applies_for_a_default_generation_when_main_moved() {
+        let r = record(ApplyMode::Default, GEN);
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(OLD_REV), Some(&r), None),
+            FollowAction::Apply
+        );
+        // current_rev が読めなくても、main が進んでいるかは分からないので追従に倒す。
+        assert_eq!(
+            decide(Some(MAIN_REV), None, Some(&r), None),
+            FollowAction::Apply
+        );
+    }
+
+    #[test]
+    fn follow_does_not_retry_a_commit_that_failed_but_does_retry_a_newer_one() {
+        let r = record(ApplyMode::Default, GEN);
+        assert_eq!(
+            decide(Some(MAIN_REV), Some(OLD_REV), Some(&r), Some(MAIN_REV)),
+            FollowAction::Idle
+        );
+        assert_eq!(
+            decide(
+                Some(MAIN_REV),
+                Some(OLD_REV),
+                Some(&r),
+                Some("older-failure")
+            ),
+            FollowAction::Apply
+        );
+    }
+
+    // Notice: 原因が同じなら同じキー(1 回だけ知らせる)、変われば別のキー。
+
+    #[test]
+    fn notice_keys_follow_the_cause() {
+        let a = Notice::ForeignGeneration {
+            main_rev: MAIN_REV.into(),
+            generation: "/g1".into(),
+        };
+        let a_later = Notice::ForeignGeneration {
+            main_rev: "ccccccc".into(),
+            generation: "/g1".into(),
+        };
+        let b = Notice::ForeignGeneration {
+            main_rev: MAIN_REV.into(),
+            generation: "/g2".into(),
+        };
+        // main が進んでも、同じ世代で止まっている間は知らせ直さない。
+        assert_eq!(a.key(), a_later.key());
+        assert_ne!(a.key(), b.key());
+        // 許可ポリシーと失敗は、main のコミットごと。
+        let policy = |r: &str| Notice::PolicyChanged { main_rev: r.into() }.key();
+        let failed = |r: &str| {
+            Notice::Failed {
+                main_rev: r.into(),
+                rc: 1,
+            }
+            .key()
+        };
+        assert_ne!(policy("aaa"), policy("bbb"));
+        assert_ne!(failed("aaa"), failed("bbb"));
+        assert_ne!(policy("aaa"), failed("aaa"));
+    }
+
+    #[test]
+    fn notice_text_names_the_short_rev_and_the_way_out() {
+        let n = Notice::PolicyChanged {
+            main_rev: MAIN_REV.into(),
+        };
+        assert!(n.body().contains("bbbbbbb"));
+        assert!(!n.body().contains(MAIN_REV));
+        assert!(n.body().contains("docs/agents/agent-permissions.md"));
+        let f = Notice::Failed {
+            main_rev: MAIN_REV.into(),
+            rc: 3,
+        };
+        assert!(f.body().contains("終了コード 3"));
+        assert!(f.body().contains("journalctl --user -u hms-follow"));
+        // 短い rev でも落ちない。
+        assert_eq!(short_rev("abc"), "abc");
+    }
+
+    // FollowState / notification_shown / policy_changed
+
+    #[test]
+    fn follow_state_round_trips_and_garbage_is_empty() {
+        let s = FollowState {
+            notified: Some("policy:abc".into()),
+            failed_rev: Some("abc".into()),
+        };
+        assert_eq!(parse_follow_state(&follow_state_json(&s)), s);
+        assert_eq!(
+            parse_follow_state(&follow_state_json(&FollowState::default())),
+            FollowState::default()
+        );
+        assert_eq!(parse_follow_state("oops"), FollowState::default());
+    }
+
+    #[test]
+    fn notification_shown_reads_the_nested_flag() {
+        assert!(notification_shown(r#"{"id":"x","result":{"shown":true}}"#));
+        assert!(!notification_shown(
+            r#"{"result":{"shown":false,"reason":"disabled"}}"#
+        ));
+        // 見つからない・JSON でないときは「表示された」と言い切らない。
+        assert!(!notification_shown(r#"{"result":{}}"#));
+        assert!(!notification_shown("oops"));
+        assert!(!notification_shown(""));
+    }
+
+    #[test]
+    fn policy_changed_compares_complete_bytes_and_stops_on_any_missing() {
+        assert!(!policy_changed(Some(b"{}"), Some(b"{}")));
+        assert!(policy_changed(Some(b"{\"a\":1}"), Some(b"{}")));
+        assert!(policy_changed(Some(b"{}"), None));
+        assert!(policy_changed(None, Some(b"{}")));
+        assert!(policy_changed(None, None));
     }
 }
 // probe 1

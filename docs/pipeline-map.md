@@ -78,6 +78,7 @@ cloud 上の週次の auditor(LLM)が drift を Issue にし、`github-audit` �
 
 timer が定期に走り、結果を herdr の toast やサイドバー、または Issue に出す。
 worktree の検出(1 分)は toast、親 checkout の fast-forward(10 分)は黙って、自動 prune(1 時間)は証跡のある worktree とブランチを消す。
+`hms --follow`(10 分)は GitHub の main の先頭を読み、いまの世代を引数なしの `hms` が作っていて main が進んでいれば `hms` を呼び、それ以外は理由を toast で 1 回だけ知らせる。
 due-remind(時間毎)は別リポジトリの期限の索引を読み、1 日 1 回 toast を出す。
 gpg-subkey の期限(日次)は toast と、ローテーションの skill への導線。
 detect-drift(週次)は宣言とのずれを非公開の Issue 置き場に出す。

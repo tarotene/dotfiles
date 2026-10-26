@@ -224,6 +224,9 @@ l_timer: "Timers / periodic" {
   n_git_auto_prune: "git-auto-prune (hourly)" {
     class: s_rust
   }
+  n_hms_follow: "hms --follow (10 min)" {
+    class: s_rust
+  }
   n_herdr_issue_counts: "herdr-issue-counts (5 min)" {
     class: s_rust
   }
@@ -321,6 +324,15 @@ l_external.n_github -> l_timer.n_git_auto_prune: "merge evidence" {
 }
 l_external.n_github -> l_timer.n_git_checkout_sync: "fetch" {
   class: e_context
+}
+l_external.n_github -> l_timer.n_hms_follow: "main rev" {
+  class: e_context
+}
+l_timer.n_hms_follow -> l_manual.n_hms: "follow main" {
+  class: e_invoke
+}
+l_timer.n_hms_follow -> l_external.n_herdr: "stop / failure toast" {
+  class: e_notify
 }
 l_external.n_github -> l_timer.n_herdr_issue_counts: "open Issue counts" {
   class: e_context

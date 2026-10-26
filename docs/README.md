@@ -443,6 +443,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。
 
 - [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
+- [ADR-0000](adr/0000-hms-follow-main.md) — main が進んだら `hms --follow` が自動で追従する。ただし、いまの世代を引数なしの `hms` が作った場合だけで、`hms .` などで当てた検証用の世代・hms を通さない switch・許可ポリシーの変更を含む main には当てず、herdr の通知で 1 回だけ知らせる。適用は hms 全体で 1 つのロックで直列にする。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
