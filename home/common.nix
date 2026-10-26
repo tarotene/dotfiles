@@ -6,6 +6,7 @@
   imports = [
     ./modules/claude.nix
     ./modules/claude-mcp-servers.nix
+    ./modules/codex.nix
     ./modules/herdr.nix
     ./modules/worktree.nix
     ./modules/drift.nix

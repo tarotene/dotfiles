@@ -200,3 +200,88 @@ Codex の `/hooks` で信頼し直す。
 - `crates/settings-reconcile/src/codex_config.rs` — 宣言キーだけを合わせる実装
 - `crates/settings-reconcile/tests/codex_config.rs` — 書式保持・冪等・不正入力の試験
 - `AGENTS.md` — 「Note on `codex`」を本 Amendment に合わせた記述
+
+## Amendment (2026-10-26 — use Auto-review for routine approval requests)
+
+The session used Codex CLI 0.164.0 with `approval_policy = "on-request"`,
+`approvals_reviewer = "user"`, and a workspace-write sandbox without network
+access. The user config did not declare an approval reviewer. This explains
+the manual approval route, but does not establish how much of the perceived
+latency came from approvals rather than inference or tool execution.
+
+### Decision
+
+Declare `approval_policy = "on-request"` and `approvals_reviewer = "auto_review"`
+through home-manager. Eligible approval requests go to Codex's built-in reviewer
+in both Default and Plan modes. Plan continues to allow investigation and
+planning only. The user approved automatic review for Plan-mode investigation
+as well as ordinary execution.
+
+Keep the current sandbox, network restrictions, command rules, hook
+registrations, and built-in reviewer policy. A denial must be reported rather
+than worked around; Auto-review does not promise that every action will run.
+This change targets manual approval waits, not model inference latency.
+
+Move the existing terminal-title declaration and the single config activation
+from `home/modules/herdr.nix` to `home/modules/codex.nix`. That activation now
+owns all three declared keys. It keeps the writable file and preserves every
+undeclared key, including project trust, hook trust, and model selection.
+Subsequent switches restore the declared values. Running sessions are not
+reconfigured by rewriting the file; verify newly started sessions separately.
+
+### Precedents and alternatives
+
+- D1: Use the built-in reviewer, not a custom approval hook or wrapper.
+  OpenAI, *Codex*, `rust-v0.164.0`, commit
+  `6aaac694803004a63c6f393d153c96d22521a6b9`,
+  [reviewer enum](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/protocol/src/config_types.rs#L175-L189)
+  and [default selection](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L3914-L3926),
+  retrieved 2026-10-26. OpenAI, *Auto-review*, publication date not stated,
+  <https://learn.chatgpt.com/docs/sandboxing/auto-review>, retrieved 2026-10-26.
+  Difference: select the existing `auto_review` option instead of the `user`
+  default. Axes: one upstream implementation avoids duplicate policy; full
+  access or `approval_policy = "never"` would remove the boundary review we want.
+- D2: Keep approval review independent of Plan/Default switching.
+  OpenAI, *Codex*, same tag and retrieval date,
+  [mode update](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/chatwidget/settings.rs#L751-L768)
+  and [Plan rules](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/collaboration-mode-templates/templates/plan.md#L17-L39).
+  Difference: none; the upstream mode update leaves approval settings intact.
+  Axes: no duplicate mode tracking or custom transition hook is necessary.
+- D3: Extend the declared-key reconciliation introduced by this ADR's
+  2026-10-20 Amendment; move its single writer into the Codex module.
+  Difference: two additional scalar keys, no new settings writer.
+  Axes: a single declaration avoids competing writers; a shell wrapper would
+  only affect launches through that shell, and a whole-file symlink would
+  prevent Codex from persisting its own state.
+
+Existing mechanism: `settings-reconcile codex-config` — reuse. No new CLI,
+approval engine, or hook is needed.
+
+### Verification boundary
+
+Before changing the live config, the installed CLI accepted both settings via
+`-c` overrides with `app-server --print-startup-config` (exit 0, version 0.164.0,
+`configRequirements.requirements = null`). This validates startup configuration,
+not the reviewer's actual decisions or elapsed time. Configuration readback and
+new-session behavior are separate checks; do not infer them from startup success.
+
+After `hms .` on 2026-10-26, both declared approval values were read back from
+the live config. A hash of the parsed undeclared settings matched before and
+after activation. An app-server launched without config overrides returned
+`auto_review` / `on-request` from both `config/read` and an ephemeral
+`thread/start`, with `workspaceWrite` and `networkAccess = false`.
+
+Two non-mutating live checks, one in Default and one with `turn/start` selecting
+Plan, requested `/usr/bin/true` with `require_escalated`. Each emitted
+`item/autoApprovalReview/completed` with `decisionSource = "agent"` and
+`review.status = "approved"`; the matching command item then exited 0.
+Review elapsed times were 2.153 s and 3.742 s respectively. These are individual
+routing checks, not a latency benchmark or evidence that other actions will
+be approved.
+
+### 執行点
+
+- `home/modules/codex.nix`
+- `home/modules/herdr.nix`
+- `home/common.nix`
+- `AGENTS.md`
