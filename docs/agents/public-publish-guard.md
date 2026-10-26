@@ -124,14 +124,50 @@ tarotene/bleep#15 → PR #19 で決着)は、いずれも実値を含むため P
 wrapper flake が `~/.config/dotfiles/private-hub` マーカー経由で生成する
 (`crates/hms` の `resolve_default_ref()` と同じ間接参照。ADR-0034
 Decision 6 と同型 — 正本は wrapper flake 側、ここはスキーマ・手順だけを
-記す)。`allow-stopwords.txt` の各行は「実際には CLI ツール名としての
+記す)。生成されたファイルは home-manager の読み取り専用リンクなので、機体上で
+直接は書けない。変えるときは wrapper の宣言を直す(`allow-stopwords.txt` も同じ。
+#995)。`allow-stopwords.txt` の各行は「実際には CLI ツール名としての
 言及であり private リポジトリ名との衝突ではない」と判断した文字列を、
-コメントで理由を添えて 1 行ずつ追記する(#431)。`hms .` でこの3ファイルが
+コメントで理由を添えて 1 行ずつ宣言する(#431)。`hms .` でこの3ファイルが
 撤去される事故は、ADR-0034 の 2026-09-27 Amendment により解消済み
 (wrapper 登録ホストでのローカル適用は既定で wrapper 経由になる)。
 別経路(マーカーが一度も設置されないまま素の `hms` を実行し、無警告で
 public 単体に縮退する、#567)は 2026-09-29 Amendment のマーカー宣言化 +
 降格 guard で対処済み。
+
+### `allow-stopwords.txt` を手書きから wrapper の宣言へ移す(#995)
+
+2026-10-24 に `ls -la ~/.config/bleep/` で読んだ vega では、`orgs.txt` と
+`repos.txt`(と、次節の `allow-tools.txt`)が nix store へのリンクで、
+`allow-stopwords.txt` だけが、2026-10-18 更新・52 バイトの普通のファイルだった。つまり
+wrapper に宣言が無いまま、機体上で手で書かれていた。上の「wrapper の宣言を直す」
+が実態になるよう、wrapper に宣言を足して手書きを置き換える。移行前の機体では、
+手書きのファイルが唯一の正本なので、この節の手順が済むまで中身を消さない。
+
+移行(機体ごとに 1 回。語の実値はこの文書にも、コマンドの出力にも出さない):
+
+1. 手書きのファイルを退避する。`cp -p ~/.config/bleep/allow-stopwords.txt
+   ~/allow-stopwords.before`。中身は表示しない(`cat` しない)。行数は
+   `wc -l ~/allow-stopwords.before` で控える。
+2. wrapper の宣言に、退避したファイルの行を移す。語とその理由コメントを 1 行ずつ、
+   順序も保って移す(bleep README「Words excluded from the denylist」の書式)。
+   宣言の置き場所と書式は wrapper 側が正本で、`orgs.txt`・`repos.txt` を宣言している
+   箇所と同じ経路に足す。
+3. `hms` で適用する。既存の普通のファイルは、`-b backup` により
+   `allow-stopwords.txt.backup` へ退避されてからリンクに置き換わる。
+   `.backup` が前回から残っていて `checkLinkTargets` が止まったら、
+   [`docs/operations.md`](../operations.md) の「`hms` fails at `checkLinkTargets`
+   with a `.backup` clobber error」に従う(wrapper 側のモジュールで
+   `dotfiles.quarantine.managedFiles` に `.config/bleep/allow-stopwords.txt` を足せば、
+   前回の残りごと先に退避される。その場合の退避先は `.pre-nix` 接尾辞で、
+   `.backup` ではない)。
+4. 移行できたことを読み戻す。`ls -l ~/.config/bleep/` で `allow-stopwords.txt` が
+   nix store へのリンクになっていること、
+   `diff ~/allow-stopwords.before ~/.config/bleep/allow-stopwords.txt | wc -l`
+   が `0` であること(語と理由を落としていない。中身は出力に出ない)。
+   どちらかが違えば、退避したファイルから宣言を直して、もう一度適用する。
+5. 4 が通ってから、`~/allow-stopwords.before` と、適用で退避された手書きの
+   ファイル(`allow-stopwords.txt.backup` または `.pre-nix`)を消す。
 
 ### `allow-tools.txt` はこのリポジトリで宣言する(tarotene/bleep#106)
 
@@ -160,6 +196,8 @@ denylist には非公開リポジトリ名が登録され、その中に一般�
   使わない言い換えに直して通す。止まった語は黙って言い換えるだけで終えず、
   本人に報告する。
 - **本人の判断**: 語が一般語として使われる文書が今後も増えるなら、
-  `~/.config/bleep/allow-stopwords.txt`(bleep の README「Words excluded from the
-  denylist」)に入れる。これはガード設定の変更なので、エージェントは書き込まない。
+  `allow-stopwords.txt`(bleep の README「Words excluded from the denylist」)に
+  入れる。入れる先は wrapper の宣言で、機体上のファイルではない(リンクなので書けない。
+  上の「`allow-stopwords.txt` を手書きから wrapper の宣言へ移す」が済んでいない機体
+  だけ、手書きのファイルが正本)。これはガード設定の変更なので、エージェントは書き込まない。
   言い換えで運用し続けるか、登録するかを本人が決める。
