@@ -21,6 +21,7 @@
 //! `settings::StatusLineSpec`(`codex-config` は `codex_config` のドキュメント)。
 //! nix 側は `builtins.toJSON` で作って引数で渡す。
 
+pub mod agent_permissions;
 pub mod codex_config;
 pub mod hooks;
 pub mod json;
