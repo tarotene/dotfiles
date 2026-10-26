@@ -175,7 +175,7 @@ Plan のレビュー・表示・鮮度検査は Stop へ、許可は PermissionR
 Atuin は既存の Codex 処理を採用する。各判断の固定版ソース、PoC、残る上流制約は
 [Codex Hook 対応表](../claude/codex-hook-parity.md) に記録する。
 
-## 執行点
+### 執行点
 
 - home/modules/claude.nix
 - home/modules/herdr.nix
