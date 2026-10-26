@@ -57,7 +57,16 @@ in
 
     domains = mkOption {
       type = types.listOf types.str;
-      default = [ "api.github.com" ];
+      default = [
+        # GitHub's API (gh, and Codex's GitHub reads).
+        "api.github.com"
+        # git fetch / push over https. A push still needs a credential, which the
+        # sandbox deliberately does not show (gh's token), so it runs outside it.
+        "github.com"
+        # The default Nix binary cache. Nix's own writes and daemon socket are not
+        # declared here, so a build still runs outside the sandbox (#1050).
+        "cache.nixos.org"
+      ];
       description = "Known network destinations; this grants connectivity, not permission to send.";
     };
 
