@@ -14,7 +14,7 @@
 use jq_json_compat::jqfmt;
 use plan_scope_gate::{
     deny_message, extract_issue_refs, fetch_children, judge_inventory, judge_issue, missing_lines,
-    resolve_owner_repo, trim_newlines, IssueJudgement, EXAMPLE_BLOCK,
+    resolve_owner_repo, trim_newlines, try_fetch_children, IssueJudgement, EXAMPLE_BLOCK,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -53,9 +53,12 @@ fn cmd_check(plan_file: &str, r: &str) -> ExitCode {
         }
         r = format!("{owner_repo}{r}");
     }
-    let Some(children) = fetch_children(&r) else {
-        eprintln!("failed to fetch children for {r} (gh 不在・未認証・ネットワーク不通のいずれか)");
-        return ExitCode::from(1);
+    let children = match try_fetch_children(&r) {
+        Ok(c) => c,
+        Err(why) => {
+            eprintln!("failed to fetch children for {r}: {why}");
+            return ExitCode::from(1);
+        }
     };
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "children: {}", children.compact());

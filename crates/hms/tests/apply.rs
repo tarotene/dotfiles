@@ -51,6 +51,7 @@ impl T {
         exe(
             &s.join("nix"),
             r#"printf 'nix %s\n' "$*" >> "$STUB_DIR/calls.log"
+trap 'printf "nix rc=%s\n" "$?" >> "$STUB_DIR/rc.log"' EXIT
 [[ $1 == build ]] && exit "${BUILD_RC:-0}"
 ref="${*: -1}"
 f="$STUB_DIR/meta/$(printf %s "$ref" | tr '/:+' '___')"
@@ -118,6 +119,19 @@ exit 0"#,
             .map(String::from)
             .collect()
     }
+    /// 失敗した assertion に付ける診断: hms の終了状態・stdout・stderr と、スタブが
+    /// 受けた呼び出し・nix スタブの終了コード。断続的な失敗(スタブを起動できなかった
+    /// のか、起動したが非ゼロで終わったのか)を assertion の出力から切り分けられる(#1036)。
+    fn diag(&self, o: &Output) -> String {
+        format!(
+            "status: {}\nstdout: {}\nstderr: {}\ncalls:\n{}\nnix rc: {:?}",
+            o.status,
+            out(o),
+            err(o),
+            self.calls().join("\n"),
+            fs::read_to_string(self.stubs().join("rc.log")).unwrap_or_default(),
+        )
+    }
     fn hm_call(&self) -> Option<String> {
         self.calls()
             .into_iter()
@@ -138,7 +152,7 @@ fn default_apply_runs_the_whole_runbook() {
     let t = T::new();
     t.meta(MAIN, r#"{"revision":"deadbeef"}"#);
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     let so = out(&o);
     assert!(so.contains(&format!("==> nix flake metadata --refresh {MAIN}\n")));
     assert!(so.contains("==> applying revision deadbeef\n"));
@@ -167,7 +181,7 @@ fn local_apply_without_wrapper() {
     let t = T::new();
     let d = t.checkout();
     let o = t.run(&[d.to_str().unwrap()], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert_eq!(
         t.hm_call().unwrap(),
         format!(
@@ -186,7 +200,7 @@ fn local_apply_on_wrapper_host_routes_through_wrapper() {
     t.marker("private-hub", WRAPPER);
     let d = t.checkout();
     let o = t.run(&[d.to_str().unwrap()], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert_eq!(
         t.hm_call().unwrap(),
         format!(
@@ -205,7 +219,7 @@ fn public_only_skips_routing() {
     t.marker("private-hub", WRAPPER);
     let d = t.checkout();
     let o = t.run(&[d.to_str().unwrap(), "--public-only"], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert_eq!(
         t.hm_call().unwrap(),
         format!(
@@ -227,7 +241,7 @@ fn wrapper_lock_is_overridden_with_pushed_main() {
     t.meta(WRAPPER, WRAPPER_META);
     t.meta(MAIN, r#"{"revision":"newrev"}"#);
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     let so = out(&o);
     assert!(so.contains("==> applying revision wrev\n"));
     assert!(so.contains(
@@ -259,7 +273,7 @@ fn wrapper_lock_applied_as_is_when_main_unresolvable() {
     t.marker("private-hub", WRAPPER);
     t.meta(WRAPPER, WRAPPER_META);
     let o = t.run(&[], &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(err(&o).contains(&format!(
         "==> could not resolve {MAIN} (offline?); applying the wrapper's lock as-is (dotfiles oldrev)"
     )));
@@ -274,7 +288,7 @@ fn wrapper_lock_applied_as_is_when_main_unresolvable() {
 fn unresolvable_revision_warns_and_continues() {
     let t = T::new();
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(err(&o).contains(&format!(
         "==> could not resolve a revision for {MAIN} (offline?); continuing with whatever switch resolves"
     )));
@@ -300,7 +314,7 @@ fn bleep_main_is_overridden_after_a_passing_prebuild() {
     t.meta(MAIN, PUBLIC_META);
     bleep_main(&t, "newbleep");
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(out(&o).contains(
         "==> bleep revision newbleep (overriding the lock pin oldbleep; canary passed)\n"
     ));
@@ -322,7 +336,7 @@ fn bleep_main_falls_back_to_the_pin_when_prebuild_fails() {
     t.meta(MAIN, PUBLIC_META);
     bleep_main(&t, "newbleep");
     let o = t.run(&[], &[("BUILD_RC", "1")]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(err(&o).contains("Warning: bleep main newbleep failed to build or failed the deployed-hook canary; applying the locked pin oldbleep instead."));
     assert_eq!(
         t.hm_call().unwrap(),
@@ -356,11 +370,13 @@ fn bleep_override_goes_through_the_wrapper_input() {
     t.meta(MAIN, r#"{"revision":"oldrev"}"#);
     bleep_main(&t, "newbleep");
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
-    assert!(t
-        .hm_call()
-        .unwrap()
-        .contains("--override-input dotfiles/bleep github:tarotene/bleep/newbleep"));
+    assert!(o.status.success(), "{}", t.diag(&o));
+    let hm = t.hm_call().unwrap();
+    assert!(
+        hm.contains("--override-input dotfiles/bleep github:tarotene/bleep/newbleep"),
+        "{hm}\n{}",
+        t.diag(&o)
+    );
 }
 
 /// `hms .` / `hms <path>` は checkout の pin をそのまま検証する — bleep を触らない。
@@ -370,7 +386,7 @@ fn local_apply_does_not_touch_bleep() {
     bleep_main(&t, "newbleep");
     let d = t.checkout();
     let o = t.run(&[d.to_str().unwrap()], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(!t
         .calls()
         .iter()
@@ -384,7 +400,7 @@ fn bleep_unresolvable_applies_the_pin() {
     let t = T::new();
     t.meta(MAIN, PUBLIC_META);
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(err(&o).contains(
         "==> could not resolve github:tarotene/bleep (offline?); applying the locked bleep pin as-is (bleep oldbleep)"
     ));
@@ -419,13 +435,13 @@ fn downgrade_guard_allows_public_only_and_registered_wrapper() {
     with_prev_generation_marker(&t);
     t.meta(MAIN, r#"{"revision":"r"}"#);
     let o = t.run(&["--public-only"], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     let t2 = T::new();
     with_prev_generation_marker(&t2);
     t2.marker("private-hub", WRAPPER);
     t2.meta(WRAPPER, r#"{"revision":"w"}"#);
     let o = t2.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
 }
 
 /// home-manager の失敗はその終了コードで終わり、後処理(systemctl)は走らない。
@@ -458,7 +474,7 @@ fn fcitx5_unit_absent_skips_restart() {
     let t = T::new();
     t.meta(MAIN, r#"{"revision":"r"}"#);
     let o = t.run(&[], &[("CAT_RC", "1")]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(out(&o)
         .contains("==> app-fcitx5@autostart.service not present; skipping fcitx5 restart.\n"));
     assert!(out(&o).ends_with("Done.\n"));
@@ -496,7 +512,7 @@ fn tailscale_prefs_runs_when_present() {
         r#"printf 'tailscale-prefs %s\n' "$*" >> "$STUB_DIR/calls.log""#,
     );
     let o = t.run(&[], &[]);
-    assert!(o.status.success(), "{}", err(&o));
+    assert!(o.status.success(), "{}", t.diag(&o));
     let calls = t.calls();
     let ts = calls
         .iter()
@@ -523,7 +539,7 @@ fn host_marker_wins_over_hostname_and_whitespace_is_stripped() {
     )
     .unwrap();
     let o = t.run(&[], &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert_eq!(
         t.hm_call().unwrap(),
         format!("home-manager switch --flake {MAIN}#starship -b backup")
@@ -537,7 +553,7 @@ fn unknown_option_and_help() {
     assert_eq!(o.status.code(), Some(1));
     assert!(err(&o).contains("Error: Unknown option: --bogus"));
     let o = t.run(&["--help"], &[]);
-    assert!(o.status.success());
+    assert!(o.status.success(), "{}", t.diag(&o));
     assert!(out(&o).starts_with("Usage: hms [flake-ref] [--public-only]\n\nApply the home-manager configuration for this host.\n"));
     assert!(out(&o).contains(&format!("  hms          apply pushed main ({MAIN})\n")));
     assert!(!out(&o).contains("Routed through"));

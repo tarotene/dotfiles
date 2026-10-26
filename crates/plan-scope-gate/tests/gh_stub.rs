@@ -104,6 +104,17 @@ fn s(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
 
+/// 失敗した assertion に付ける子の診断(終了状態・stdout・stderr)。断続的な
+/// 失敗でも、起動失敗の理由や gh の stderr を assertion の出力から回収できる(#1036)。
+fn diag(o: &Output) -> String {
+    format!(
+        "status: {}\nstdout: {}\nstderr: {}",
+        o.status,
+        s(&o.stdout),
+        s(&o.stderr)
+    )
+}
+
 #[test]
 fn check_sub_issues_missing() {
     let e = Env::new();
@@ -119,7 +130,7 @@ fn check_sub_issues_missing() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
     assert_eq!(
         s(&o.stdout),
         "children: {\"totalCount\":2,\"kind\":\"sub\",\"items\":[{\"number\":137,\"title\":\"t1\"},{\"number\":138,\"title\":\"t2\"}]}\nMISSING\n#138 t2\n"
@@ -208,7 +219,52 @@ fn check_gh_failure() {
     assert_eq!(o.status.code(), Some(1));
     assert_eq!(
         s(&o.stderr),
-        "failed to fetch children for o/r#1 (gh 不在・未認証・ネットワーク不通のいずれか)\n"
+        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 1)\n"
+    );
+}
+
+/// 診断は、終了状態と gh の stderr の要点を落とさない(#1036)。
+#[test]
+fn check_gh_failure_keeps_exit_status_and_stderr() {
+    let e = Env::new();
+    write_exec(
+        &e.p("bin/gh"),
+        "#!/bin/sh\necho 'HTTP 401: Bad credentials' >&2\necho second line >&2\nexit 4\n",
+    );
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    let o = e.run(
+        &["--check", "plan.md", "o/r#1"],
+        e.dir.path(),
+        "",
+        &e.path_var(),
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    assert_eq!(
+        s(&o.stderr),
+        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 4): HTTP 401: Bad credentials / second line\n"
+    );
+}
+
+/// gh を起動できないとき、起動失敗の理由(OS のエラー)が残る(#1036)。
+#[test]
+fn check_gh_spawn_failure_keeps_the_os_error() {
+    let e = Env::new();
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    let empty = e.p("empty");
+    fs::create_dir(&empty).unwrap();
+    let o = e.run(
+        &["--check", "plan.md", "o/r#1"],
+        e.dir.path(),
+        "",
+        &empty.display().to_string(),
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    let err = s(&o.stderr);
+    assert!(
+        err.starts_with(
+            "failed to fetch children for o/r#1: gh を起動できません(gh api graphql): "
+        ) && err.contains("No such file or directory"),
+        "{err}"
     );
 }
 

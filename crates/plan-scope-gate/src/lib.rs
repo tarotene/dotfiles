@@ -150,16 +150,41 @@ impl Children {
     }
 }
 
-fn gh_output(args: &[&str]) -> Option<String> {
+/// gh を実行して stdout を返す。失敗は診断用の 1 行(起動失敗の理由、または
+/// 終了状態と stderr の要点)にして返す — 呼び出し側が fail-open で捨てるか、
+/// `--check` のように表示するかを選ぶ(#1036)。
+fn run_gh(args: &[&str]) -> Result<String, String> {
+    let label = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
     let out = Command::new("gh")
         .args(args)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        .map_err(|e| format!("gh を起動できません(gh {label}): {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "gh {label} が失敗しました({}){}",
+            out.status,
+            stderr_summary(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// 子プロセスの stderr の要点(先頭の非空 3 行・300 文字まで)。空なら空文字列。
+fn stderr_summary(stderr: &[u8]) -> String {
+    let text = String::from_utf8_lossy(stderr);
+    let head: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(3)
+        .collect();
+    if head.is_empty() {
+        return String::new();
+    }
+    let joined: String = head.join(" / ").chars().take(300).collect();
+    format!(": {joined}")
 }
 
 const SUB_ISSUES_QUERY: &str = "
@@ -172,8 +197,15 @@ const SUB_ISSUES_QUERY: &str = "
     }";
 
 /// 子項目を gh から取る。gh 不在・認証切れ・ネットワーク不通・不正な応答は
-/// `None`(呼び出し側はその参照だけを黙って諦める、fail-open)。
+/// `None`(呼び出し側はその参照だけを黙って諦める、fail-open)。理由が要る
+/// 呼び出し側は [`try_fetch_children`] を使う。
 pub fn fetch_children(r: &str) -> Option<Children> {
+    try_fetch_children(r).ok()
+}
+
+/// [`fetch_children`] と同じ取得で、失敗の理由(起動失敗・終了状態・stderr の
+/// 要点・応答の形)を `Err` に残す(#1036)。
+pub fn try_fetch_children(r: &str) -> Result<Children, String> {
     let (ownerrepo, number) = match (r.find('#'), r.rfind('#')) {
         (Some(first), Some(last)) => (&r[..first], &r[last + 1..]),
         _ => (r, r),
@@ -182,7 +214,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         Some(i) => (&ownerrepo[..i], &ownerrepo[i + 1..]),
         None => (ownerrepo, ownerrepo),
     };
-    let resp = gh_output(&[
+    let resp = run_gh(&[
         "api",
         "graphql",
         "-f",
@@ -194,11 +226,14 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         "-F",
         &format!("number={number}"),
     ])?;
-    let resp: Value = serde_json::from_str(&resp).ok()?;
-    let issue = resp.pointer("/data/repository/issue")?;
-    if issue.is_null() || issue == &Value::Bool(false) {
-        return None;
-    }
+    let resp: Value = serde_json::from_str(&resp)
+        .map_err(|e| format!("gh api graphql の応答が JSON として読めません: {e}"))?;
+    let issue = resp
+        .pointer("/data/repository/issue")
+        .filter(|i| !i.is_null() && *i != &Value::Bool(false))
+        .ok_or_else(|| {
+            format!("Issue {owner}/{repo}#{number} が見つかりません(参照・権限を確認してください)")
+        })?;
     let total = issue
         .pointer("/subIssues/totalCount")
         .cloned()
@@ -208,7 +243,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
             Some(Value::Array(a)) => a.clone(),
             _ => Vec::new(),
         };
-        return Some(Children {
+        return Ok(Children {
             total,
             kind: "sub".into(),
             items,
@@ -216,7 +251,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
     }
 
     // フォールバック: 本文の未チェック task-list
-    let Some(body) = gh_output(&[
+    let Ok(body) = run_gh(&[
         "issue",
         "view",
         number,
@@ -227,7 +262,8 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         "-q",
         ".body",
     ]) else {
-        return Some(Children {
+        // 本文を読めないときは子無し扱いに縮退する(通常の fallback)。
+        return Ok(Children {
             total: Value::from(0),
             kind: "none".into(),
             items: Vec::new(),
@@ -240,7 +276,7 @@ pub fn fetch_children(r: &str) -> Option<Children> {
         .filter(|t| !t.is_empty())
         .map(|t| serde_json::json!({ "text": t }))
         .collect();
-    Some(Children {
+    Ok(Children {
         total: Value::from(items.len()),
         kind: "checkbox".into(),
         items,
@@ -466,6 +502,19 @@ mod tests {
             vec!["tarotene/dotfiles#136"]
         );
         assert!(extract_issue_refs("#1", "").is_empty());
+    }
+
+    #[test]
+    fn stderr_summary_keeps_the_first_lines_only() {
+        assert_eq!(stderr_summary(b""), "");
+        assert_eq!(stderr_summary(b"\n  \n"), "");
+        assert_eq!(
+            stderr_summary(b"\n a \nb\n\nc\nd\n"),
+            ": a / b / c",
+            "先頭の非空 3 行"
+        );
+        let long = "x".repeat(500);
+        assert_eq!(stderr_summary(long.as_bytes()).chars().count(), 2 + 300);
     }
 
     #[test]

@@ -333,18 +333,63 @@ fn readlink_f(p: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// 成功した子の stdout(末尾改行除去)。失敗・起動不能は None。stderr は捨てる。
-fn capture(cmd: &mut Command) -> Option<String> {
+#[derive(Debug)]
+/// [`try_capture`] の失敗。`detail` は診断用の 1 行(プログラム名と、起動失敗の
+/// 理由、または終了状態と stderr の要点)。
+struct CaptureFailure {
+    /// 子を起動できなかった(コマンドが無い・exec 失敗など)。非ゼロ終了ではない。
+    spawn_failed: bool,
+    detail: String,
+}
+
+/// 成功した子の stdout(末尾改行除去)を返す。失敗は理由つきで返す(#1036)。
+fn try_capture(cmd: &mut Command) -> Result<String, CaptureFailure> {
+    let prog = cmd.get_program().to_string_lossy().into_owned();
     let out = cmd
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .output()
-        .ok()?;
-    out.status.success().then(|| {
-        String::from_utf8_lossy(&out.stdout)
-            .trim_end_matches('\n')
-            .to_string()
-    })
+        .map_err(|e| CaptureFailure {
+            spawn_failed: true,
+            detail: format!("{prog}: {e}"),
+        })?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let tail: Vec<&str> = stderr
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .take(3)
+            .collect();
+        let tail = if tail.is_empty() {
+            String::new()
+        } else {
+            format!(": {}", tail.join(" / "))
+        };
+        return Err(CaptureFailure {
+            spawn_failed: false,
+            detail: format!("{prog}: {}{tail}", out.status),
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .trim_end_matches('\n')
+        .to_string())
+}
+
+/// 成功した子の stdout(末尾改行除去)。失敗・起動不能は None(呼び出し側が縮退する)。
+/// 非ゼロ終了は通常の縮退(offline など)なので黙るが、子を起動できなかったときは
+/// 理由を stderr に 1 行出す — 縮退の原因が環境の異常(exec 失敗など)だと見えない
+/// 断続的な失敗の診断のため(#1036)。
+fn capture(cmd: &mut Command) -> Option<String> {
+    match try_capture(cmd) {
+        Ok(s) => Some(s),
+        Err(f) => {
+            if f.spawn_failed {
+                eprintln!("hms: {}", f.detail);
+            }
+            None
+        }
+    }
 }
 
 fn status_ok(cmd: &mut Command) -> bool {
@@ -835,6 +880,35 @@ mod tests {
     use super::*;
 
     const WRAPPER: &str = "git+https://example.invalid/wrapper";
+
+    // try_capture(#1036): 起動不能・非ゼロ終了の理由が失われない。
+
+    #[test]
+    fn try_capture_reports_why_a_child_could_not_start() {
+        let f =
+            try_capture(&mut Command::new("/nonexistent/hms-test-child")).expect_err("must fail");
+        assert!(f.spawn_failed);
+        assert!(
+            f.detail.starts_with("/nonexistent/hms-test-child: ")
+                && f.detail.contains("No such file or directory"),
+            "{}",
+            f.detail
+        );
+    }
+
+    #[test]
+    fn try_capture_reports_exit_status_and_stderr_of_a_failed_child() {
+        let f = try_capture(Command::new("sh").args(["-c", "echo out; echo oops >&2; exit 3"]))
+            .expect_err("must fail");
+        assert!(!f.spawn_failed);
+        assert_eq!(f.detail, "sh: exit status: 3: oops");
+    }
+
+    #[test]
+    fn try_capture_returns_stdout_without_trailing_newlines() {
+        let out = try_capture(Command::new("sh").args(["-c", "printf 'a\\nb\\n\\n'"]));
+        assert_eq!(out.ok().as_deref(), Some("a\nb"));
+    }
 
     // version_line(#807): 古い版を使っていることを、適用の前に気づけるようにする。
 
