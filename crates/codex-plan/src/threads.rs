@@ -268,24 +268,22 @@ fn read(path: &Path, files_seen: &mut HashSet<String>) -> Result<Option<Raw>> {
                 }
             }
             ("response_item", "function_call" | "custom_tool_call") => {
-                if let Ok(entry) = serde_json::from_str::<Timed<Call>>(&line) {
-                    if calls_pr_create(&entry.payload) {
-                        pr_calls.insert(entry.payload.call_id);
-                    }
+                let Ok(entry) = serde_json::from_str::<Timed<Call>>(&line) else {
+                    continue;
+                };
+                if calls_pr_create(&entry.payload) {
+                    pr_calls.insert(entry.payload.call_id);
                 }
             }
-            ("response_item", "function_call_output" | "custom_tool_call_output") => {
-                if raw.pr.is_none() {
-                    if let Ok(entry) = serde_json::from_str::<Timed<Output>>(&line) {
-                        if pr_calls.contains(&entry.payload.call_id)
-                            && output_has_pr_url(&entry.payload)
-                        {
-                            if let Some(id) = current.clone() {
-                                let at = raw.index.get(&id).copied();
-                                raw.pr = at.map(|i| (i, stamp));
-                            }
-                        }
-                    }
+            ("response_item", "function_call_output" | "custom_tool_call_output")
+                if raw.pr.is_none() =>
+            {
+                let Ok(entry) = serde_json::from_str::<Timed<Output>>(&line) else {
+                    continue;
+                };
+                if pr_calls.contains(&entry.payload.call_id) && output_has_pr_url(&entry.payload) {
+                    let at = current.as_ref().and_then(|id| raw.index.get(id)).copied();
+                    raw.pr = at.map(|i| (i, stamp));
                 }
             }
             _ => {}
