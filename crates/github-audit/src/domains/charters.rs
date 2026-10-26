@@ -24,8 +24,11 @@ pub const ALLOWED_README_HEADINGS: [&str; 6] = [
 /// CONTRIBUTING.md(ADR-0017)。"Issue litmus" は廃止語彙なので許可集合に無い。
 pub const REQUIRED_CONTRIBUTING_HEADINGS: [&str; 2] = ["Issues", "Pull requests"];
 pub const ALLOWED_CONTRIBUTING_HEADINGS: [&str; 3] = ["Issues", "Pull requests", "Expectations"];
-pub const ROOT_ALLOWLIST_EXACT: [&str; 5] = [
+/// `README.ja.md` は、英語 1 本の README の日本語訳として後付けしてよい(ADR-0016、
+/// Decision 4 の補足。#932 で allowlist と ADR の食い違いを直した)。
+pub const ROOT_ALLOWLIST_EXACT: [&str; 6] = [
     "README.md",
+    "README.ja.md",
     "CONTRIBUTING.md",
     "CHANGELOG.md",
     "AGENTS.md",

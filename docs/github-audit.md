@@ -317,8 +317,9 @@ Judged items:
   README).
 - `no-topics` — `repositoryTopics` is empty.
 - `root-doc-not-allowlisted:<names>` — a root-level `*.md` file outside
-  `README.md` / `CONTRIBUTING.md` / `CHANGELOG.md` / `AGENTS.md` /
-  `CLAUDE.md` / `LICENSE*`.
+  `README.md` / `README.ja.md` / `CONTRIBUTING.md` / `CHANGELOG.md` /
+  `AGENTS.md` / `CLAUDE.md` / `LICENSE*` (`README.ja.md` joined in #932: ADR-0016
+  Decision 4 allows it as a Japanese translation of an English-only README).
 - `claude-md-not-routed` / `claude-md-routed-but-agents-md-missing` —
   `CLAUDE.md` exists but does not start with an `@AGENTS.md` import line,
   or does but `AGENTS.md` itself is missing.
@@ -333,10 +334,14 @@ Judged items:
   (`├`/`└`/`│`), i.e. a hand-drawn directory tree.
 - `nav-doc-path-inventory:<file>:<heading>:<n>` (ADR-0033) — a
   heading-delimited section (any level, `#` through `######`) has `n`
-  unique path-like tokens (a backtick-quoted span, or a fenced line's first
-  word, containing `/` or ending in a known extension) at or above
-  `NAV_DOC_PATH_THRESHOLD` (4) — a hand-written file/content listing rather
-  than incidental mentions.
+  unique path-like tokens at or above `NAV_DOC_PATH_THRESHOLD` (4) — a
+  hand-written file/content listing rather than incidental mentions. Only
+  *list-shaped lines* are counted (#932): a fenced line's first word, and the
+  backtick-quoted spans of a list item or table row whose head is a path
+  (a table: its first cell) or whose characters are mostly paths. A path
+  named in the middle of prose is not counted, so a conventions document
+  (AGENTS.md) that names real files in its rules does not trip the check. A
+  token contains `/` or ends in a known extension.
 - `nav-doc-exempt-malformed:<file>` (ADR-0033) — a
   `<!-- nav-doc-exempt: <check> — <reason> -->` marker is missing the check
   name (`path-inventory` or `tree-fence`), the `—` separator, or the reason.
