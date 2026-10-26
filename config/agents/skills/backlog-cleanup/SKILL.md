@@ -205,6 +205,21 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
     `## 要確認` か本人への報告にポインタを置く(public 側の PR には書けない)。
 - サブエージェントへ段や repo を委譲するときは、`github-audit-triage` §6a の
   委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
+  あわせて、作業場所は次のとおり渡す(#1004):
+  - **`Agent` の `isolation: worktree` を使わない。** 本物の checkout の `.claude/worktrees/` 配下に
+    worktree が作られ、`cargo` が上位の `Cargo.toml` を workspace と誤検出して `cargo fmt --all` が
+    落ちる repo がある(commit hook が失敗し、サブエージェントが `--no-verify` で commit した実例)。
+    本線が先に `herdr worktree create --cwd <本物の checkout> --branch <名前>` で本物の checkout の
+    外に worktree を作り、その絶対パスを指示に書いて渡す。
+  - 癖: `git worktree add` の直接実行は PreToolUse の hook が拒否する。`herdr worktree create` は
+    本物の checkout の cwd でしか実行できず、linked worktree からは `linked_worktree_source` で
+    拒否される。
+  - 起点を動かす: 作った worktree の起点は default branch の HEAD である。チェーンの途中のブランチから
+    始めるときは、worktree の中で `git reset --hard <ブランチ>` する(`herdr worktree create` の
+    `--base <REF>` が同じことをするかは未確認 — `--help` に説明が無い)。
+  - **`--no-verify` を使わせない。** 共通指示のファイルに「hook が落ちたら、原因を直して commit し
+    直す。`--no-verify` で飛ばさない」を入れる。委譲した作業の commit が、リポジトリの検査(hook)を
+    飛ばさずに積まれるようにするため。
 - 各段の PR 本文はリポジトリの `pr-description` スケルトンに従う:
   - その段で対処した Issue はすべて `Closes #N` として列挙する
   - inbox 由来で対応する Issue が無い項目は、**新たに起票しない**(起票して
