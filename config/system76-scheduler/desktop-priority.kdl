@@ -1,0 +1,51 @@
+// system76-scheduler の優先度の補正(ADR-0001 Amendment、#1056)。
+// scripts/install-packages.sh が /etc/system76-scheduler/process-scheduler/ へ配る。
+// 読み込み: dist(/usr/share/.../process-scheduler/*.kdl)のあとに /etc 側が読まれ、
+// 同名のプロファイルは上書きでなく足し込みになる(upstream の
+// config/src/parser/mod.rs と config/src/parser/scheduler.rs)。
+//
+// 背景: COSMIC ではデスクトップ全体が nice 12 になっていた。greetd のセッション
+// ワーカーが system.slice にいる間に dist の system-services(nice 12)が当たり、
+// そのあと session scope へ移っても、cosmic-session 以下の全アプリが nice 12 を
+// 継承する。scope の中のプロセスには、dist のどの規則も nice を当てない。
+//
+// 同じプロセスが複数のプロファイルの include に当たると、どれが採られるかは
+// 決まらない(upstream の daemon/src/service.rs が HashMap の values() を回す)。
+// そのため、重なる dist のプロファイルには exclude を足して、片方だけが当たるようにする。
+assignments {
+    // ログインセッションの scope(cosmic-session・パネル・アプレット)と、
+    // アプリの scope(Alacritty・Firefox・herdr・claude など)。
+    // io を書かないと best-effort の最低優先度(7)が当たるので、nice 0 の既定(4)を明示する。
+    desktop-session nice=0 io=(best-effort)4 {
+        include cgroup="/user.slice/user-*.slice/session-*.scope"
+        include cgroup="/user.slice/user-*.slice/user@*.service/app.slice/*.scope"
+
+        // dist が名前・祖先で別のプロファイルへ入れるものは、そちらに任せる
+        // (dist の process-scheduler/pop_os.kdl の include name= / descends= と同じ語)。
+        exclude name="apt-*"
+        exclude name="dpkg-*"
+        exclude name="sbuild-*"
+        exclude name="Bitwig*"
+        exclude descends="steam"
+        exclude descends="lutris"
+        exclude descends="heroic"
+        exclude descends="itch"
+    }
+
+    // dist の session-services は parent=gnome-session-binary / gvfsd だけで当たるので、
+    // 上の scope と重なりうる。scope は desktop-session に任せる。
+    session-services {
+        exclude cgroup="/user.slice/user-*.slice/session-*.scope"
+        exclude cgroup="/user.slice/user-*.slice/user@*.service/app.slice/*.scope"
+    }
+
+    // nix-daemon とそのビルドプロセス(同じ cgroup)は batch(nice 19・sched idle・io idle)にする。
+    // dist の system-services(nice 12)は外す。
+    system-services {
+        exclude cgroup="/system.slice/nix-daemon.service*"
+    }
+
+    batch {
+        include cgroup="/system.slice/nix-daemon.service*"
+    }
+}

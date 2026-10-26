@@ -13,6 +13,8 @@ set -euo pipefail
 #   - smartcard support (scdaemon, direct CCID)
 #   - mesh VPN daemon (tailscaled, root systemd system service) + host
 #     firewall (ufw) — ADR-471
+#   - system76-scheduler priority drop-in under /etc (Pop!_OS only; skipped
+#     where system76-scheduler is absent) — ADR-0001 Amendment, #1056
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).
 # Usage: ./install-packages.sh [--dry-run]
@@ -66,6 +68,22 @@ fi
 
 UDEV_RULES="/etc/udev/rules.d/69-probe-rs.rules"
 
+# system76-scheduler drop-in (ADR-0001 Amendment, #1056): the daemon reads
+# /etc/system76-scheduler/process-scheduler/*.kdl after its packaged
+# /usr/share/... profiles, so a file there corrects priorities without
+# editing the package's own (upgrade-clobbered) files. Gated on the package's
+# own config dir existing — hosts without system76-scheduler (non-Pop!_OS, CI)
+# skip it — and on the deployed copy differing from the checkout's, so a
+# re-run is a no-op.
+SCHED_DIST_DIR="/usr/share/system76-scheduler"
+SCHED_DROPIN_SRC="${SCRIPT_DIR}/../config/system76-scheduler/desktop-priority.kdl"
+SCHED_DROPIN_DST="/etc/system76-scheduler/process-scheduler/desktop-priority.kdl"
+sched_dropin_stale=false
+if [[ -d "$SCHED_DIST_DIR" && -f "$SCHED_DROPIN_SRC" ]] \
+    && ! cmp -s "$SCHED_DROPIN_SRC" "$SCHED_DROPIN_DST"; then
+    sched_dropin_stale=true
+fi
+
 # Tailscale apt repo/keyring (ADR-471): `tailscale` in apt-packages.txt needs
 # a third-party repo added before `apt-get update` can resolve it. Gated on
 # the keyring file the same way probe-rs's udev rule is gated below — a
@@ -79,6 +97,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] Would install ${#packages[@]} system packages:"
     printf '  %s\n' "${packages[@]}"
     [[ ! -f "$UDEV_RULES" ]] && echo "[dry-run] Would install probe-rs udev rules"
+    if [[ "$sched_dropin_stale" == "true" ]]; then
+        echo "[dry-run] Would install $SCHED_DROPIN_DST and restart com.system76.Scheduler"
+    fi
     if [[ "$tailscale_repo_new" == "true" ]]; then
         echo "[dry-run] Would install Tailscale apt repo and run 'tailscale up --operator=\$USER'"
     fi
@@ -111,6 +132,15 @@ if [[ ! -f "$UDEV_RULES" ]]; then
         | sudo tee "$UDEV_RULES" > /dev/null
     sudo udevadm control --reload-rules
     sudo udevadm trigger
+fi
+
+# system76-scheduler priority drop-in. A restart is needed (not just `reload`):
+# the daemon assigns each process once and only forgets assignments when it
+# restarts, so already-running processes keep their old nice until then.
+if [[ "$sched_dropin_stale" == "true" ]]; then
+    echo "Installing system76-scheduler priority config..."
+    sudo install -D -m 0644 "$SCHED_DROPIN_SRC" "$SCHED_DROPIN_DST"
+    sudo systemctl try-restart com.system76.Scheduler.service
 fi
 
 # Bring Tailscale up once, right after its first install, so `--operator`
