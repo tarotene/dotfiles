@@ -577,6 +577,8 @@ let
   codexWrapupStopCmd = "WRAPUP_TRIAL_AGENT=codex ${priorCodexWrapupStopCmd}";
   legacyCodexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "'${hooksDir}/wrapup-session-start'";
+  agentPermissionsStartCmd = "'${hooksDir}/agent-permissions' hook session-start";
+  agentPermissionsEndCmd = "'${hooksDir}/agent-permissions' hook session-end";
   codexWrapupSessionStartCmd = "WRAPUP_TRIAL_AGENT=codex ${wrapupSessionStartCmd}";
   legacyWrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "'${hooksDir}/plan-view'";
@@ -1199,6 +1201,22 @@ let
       event = "SessionStart";
       node = "wrapup-session-start";
       command = wrapupSessionStartCmd;
+    }
+    # 権限の待機(「don't ask again」で追記された許可)の回収と、昇格候補の通知
+    # (docs/agent-permissions.md)。SessionEnd は結果を返せず時間も短い(Codex は 1〜3 秒)
+    # ので最善努力。確実な回収は、次の SessionStart と hms の activation が担う。
+    {
+      event = "SessionStart";
+      node = "agent-permissions-reclaim";
+      matcher = "startup|resume|clear";
+      command = agentPermissionsStartCmd;
+      timeout = 10;
+    }
+    {
+      event = "SessionEnd";
+      node = "agent-permissions-reclaim";
+      command = agentPermissionsEndCmd;
+      timeout = 3;
     }
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
     # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
@@ -2052,6 +2070,8 @@ in
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
   # hook-router: ツール呼び出しに付く検査 19 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
   home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
+  # agent-permissions: 権限の待機を回収する SessionStart / SessionEnd hook の入口(agentPermissionsStartCmd)。
+  home.file.".claude/hooks/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
   # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
   home.file.".claude/hooks/main-checkout-guard".source =
     "${pkgs.dotfiles-tools}/bin/main-checkout-guard";

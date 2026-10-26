@@ -129,6 +129,36 @@ hms の activation は、`agent-permissions apply` が失敗しても止めず�
 (2026-10-26 に `generation/reality mismatch` の警告として観測した)。実行時の検査(router)は
 記録が許す範囲だけを通し続けるので、続行は安全側である。
 
+## 待機の許可はセッションの境界で回収し、昇格候補に移す
+
+待機の許可が、承認したセッションを越えて残らないようにする。回収は 3 つの契機で走り、どれも冪等である。
+
+| 契機 | 登録 | 確実さ |
+|---|---|---|
+| SessionStart(`startup`・`resume`・`clear`) | `home/modules/claude.nix` の `agent-permissions-reclaim`(Codex へも同じ宣言から配る) | 確実 |
+| hms の activation(`apply` の前) | `home/modules/codex.nix` の `reconcileAgentPermissions` | 確実。`apply` は未回収の許可があると拒否する |
+| SessionEnd | 同上(`timeout = 3`) | 最善努力。結果を返せず、時間も短い(Codex は 1〜3 秒に丸められる)ので、これだけには頼らない |
+
+`agent-permissions reclaim` は、待機の許可を昇格候補の**キュー**(`~/.local/state/dotfiles/agent-permissions-pending.jsonl`、
+追記専用の行ログ)に追記し、読み戻してから、元の設定ファイルから取り除く。順序が要である: 途中で落ちても
+許可が「両方にある」状態にしかならず、「どちらにも無い」状態にはならない。取り除きは移行と同じ transaction
+(厳密なバイト列の比較・復元用 journal・読み戻し)を通る。他のセッションが同時に書き換えたら拒否する。
+構造的なずれがあるときは、何も回収しない。キューは追記だけなので、並行するセッションの追記が互いを消さない。
+取り下げは `drop` 行の追記で表し、書き直さない。
+
+SessionStart は、回収した件数と、キューに溜まった昇格候補の件数を、`[agent-permissions]` で始まる日本語の行でセッションに伝える(ADR-625: `<hook-directive>` の外枠は wrap-up 系だけが使う)。
+構造的なずれがあるときは、その全件を伝える(復旧の migrate は本人の端末で行う)。hook は常に成功を返し、
+セッションの開始を妨げない。
+
+昇格は `/promote-permissions` が担う(`agent-permissions pending` で候補を読む)。共有ポリシーに宣言があるのは
+通信先(`domains`・`project_rules.<project>.domains`)だけなので、昇格できるのは `WebFetch(domain:…)` の候補に
+限る。`mcp__…`・`WebSearch`・`Bash(…)` の候補は、ツールを `prompt` に保つ現行の方針のとおり宣言が無く、
+キューは記録にとどまる。これらを昇格できるようにするには、共有ポリシーの形を広げる別の裁定が要る(未実装、
+意図は未決)。
+
+この仕組みで、規則「個別許可は原則その実行限り」は「そのセッション限り」に緩む(本人の裁定、#1043)。
+並行する別のセッションが開始されると、もう一方の許可が回収されて再度プロンプトが出ることがある。
+
 ## 更新を中断したら記録から復元する
 
 内容が変わるファイルの更新前後の全バイト列を、本人のみ読み書きできる transaction journal に

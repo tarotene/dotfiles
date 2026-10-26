@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use settings_reconcile::agent_permissions::reclaim::{candidates, drop_candidates, reclaim};
 use settings_reconcile::agent_permissions::{apply, assess, check, inspect, migrate, Policy};
 use std::fs;
 use std::path::Path;
@@ -621,4 +622,171 @@ fn the_check_command_reports_pending_rules_without_failing() {
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
     assert_eq!(v["pending"][0]["rules"], json!(["WebSearch"]));
+}
+
+#[test]
+fn reclaim_queues_pending_rules_then_clears_the_file_and_keeps_the_rest() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy();
+    let projects = vec![project.clone()];
+    fs::write(
+        local(&project),
+        json!({"model": "keep", "permissions": {"allow": ["WebFetch(domain:example.com)", "Bash(ls)"]}})
+            .to_string(),
+    )
+    .unwrap();
+    let done = reclaim(&p, &h, &projects).unwrap();
+    assert_eq!((done.queued, done.removed, done.files), (2, 2, 1));
+    let v: Value = serde_json::from_slice(&fs::read(local(&project)).unwrap()).unwrap();
+    assert_eq!(v["permissions"]["allow"], json!([]));
+    assert_eq!(v["model"], "keep", "fields that are not permissions stay");
+    check(&p, &h, &projects).unwrap();
+    let queue = candidates(&h).unwrap();
+    let rules: Vec<_> = queue.iter().map(|c| c.rule.as_str()).collect();
+    assert_eq!(rules.len(), 2);
+    assert!(rules.contains(&"WebFetch(domain:example.com)") && rules.contains(&"Bash(ls)"));
+    assert!(queue
+        .iter()
+        .all(|c| c.project == project.canonicalize().unwrap()));
+    // Nothing left: a second run is a no-op.
+    assert_eq!(reclaim(&p, &h, &projects).unwrap().removed, 0);
+    // The same approval again is removed again but not queued twice.
+    fs::write(local(&project), r#"{"permissions":{"allow":["Bash(ls)"]}}"#).unwrap();
+    let again = reclaim(&p, &h, &projects).unwrap();
+    assert_eq!((again.queued, again.removed), (0, 1));
+    assert_eq!(candidates(&h).unwrap().len(), 2);
+}
+
+#[test]
+fn withdrawn_candidates_leave_the_queue_and_can_be_queued_again() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy();
+    let projects = vec![project.clone()];
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebSearch"]}}"#,
+    )
+    .unwrap();
+    reclaim(&p, &h, &projects).unwrap();
+    let id = candidates(&h).unwrap()[0].id.clone();
+    assert!(drop_candidates(&h, &["nope".into()]).is_err());
+    assert_eq!(drop_candidates(&h, std::slice::from_ref(&id)).unwrap(), 1);
+    assert!(candidates(&h).unwrap().is_empty());
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebSearch"]}}"#,
+    )
+    .unwrap();
+    assert_eq!(reclaim(&p, &h, &projects).unwrap().queued, 1);
+    assert_eq!(candidates(&h).unwrap()[0].id, id);
+}
+
+#[test]
+fn a_structural_drift_is_not_reclaimed() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy();
+    let projects = vec![project.clone()];
+    let body = r#"{"permissions":{"allow":["WebSearch","Edit(/etc)"]}}"#;
+    fs::write(local(&project), body).unwrap();
+    assert!(reclaim(&p, &h, &projects).is_err());
+    assert_eq!(fs::read_to_string(local(&project)).unwrap(), body);
+    assert!(candidates(&h).unwrap().is_empty());
+}
+
+#[test]
+fn session_hooks_reclaim_and_tell_the_session_only_what_it_needs() {
+    let (d, h, project) = reviewed_project();
+    fs::create_dir_all(h.join(".config/agent-permissions")).unwrap();
+    fs::write(
+        h.join(".config/agent-permissions/policy.json"),
+        serde_json::to_vec(&policy()).unwrap(),
+    )
+    .unwrap();
+    let run = |args: &[&str]| {
+        let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agent-permissions"))
+            .args(args)
+            .env("HOME", &h)
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(json!({"cwd": project}).to_string().as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let rule = r#"{"permissions":{"allow":["WebFetch(domain:example.com)"]}}"#;
+    // The end of a session reclaims quietly.
+    fs::write(local(&project), rule).unwrap();
+    assert_eq!(run(&["hook", "session-end"]), "");
+    assert!(fs::read_to_string(local(&project))
+        .unwrap()
+        .contains("\"allow\": []"));
+    assert_eq!(candidates(&h).unwrap().len(), 1);
+    // The start of the next one reports the queue.
+    let start = run(&["hook", "session-start"]);
+    assert!(!start.contains("<hook-directive"), "{start}");
+    assert!(start.starts_with("[agent-permissions] "), "{start}");
+    assert!(start.contains("1 件"), "{start}");
+    assert!(start.contains("/promote-permissions"), "{start}");
+    // Rules left behind by a crashed session are reclaimed and reported.
+    fs::write(local(&project), rule).unwrap();
+    let start = run(&["hook", "session-start"]);
+    assert!(start.contains("恒久の許可 1 件を取り除き"), "{start}");
+    // A structural drift is described, not hidden, and still never fails the hook.
+    fs::write(local(&project), r#"{"permissions":{"allow":["Edit(/x)"]}}"#).unwrap();
+    let start = run(&["hook", "session-start"]);
+    assert!(start.contains("権限の記録とずれています"), "{start}");
+    assert!(start.contains("permission drift"), "{start}");
+    // Without a deployed policy there is nothing to do.
+    fs::remove_file(h.join(".config/agent-permissions/policy.json")).unwrap();
+    assert_eq!(run(&["hook", "session-start"]), "");
+    drop(d);
+}
+
+#[test]
+fn the_pending_command_lists_and_withdraws() {
+    let (d, h, project) = reviewed_project();
+    let p = policy();
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebSearch"]}}"#,
+    )
+    .unwrap();
+    reclaim(&p, &h, std::slice::from_ref(&project)).unwrap();
+    let run = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_agent-permissions"))
+            .args(args)
+            .arg("--home")
+            .arg(&h)
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .output()
+            .unwrap()
+    };
+    let listed = run(&["pending", "--json"]);
+    assert!(listed.status.success());
+    let v: Value = serde_json::from_slice(&listed.stdout).unwrap();
+    let id = v["candidates"][0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(v["candidates"][0]["rule"], "WebSearch");
+    let text = String::from_utf8_lossy(&run(&["pending"]).stdout).into_owned();
+    assert!(text.contains(&id) && text.contains("WebSearch"), "{text}");
+    let dropped = run(&["pending", "--drop", &id]);
+    assert!(dropped.status.success());
+    assert!(String::from_utf8_lossy(&run(&["pending"]).stdout).contains("no pending"));
+    assert!(!run(&["pending", "--drop", "missing"]).status.success());
+    drop(d);
 }

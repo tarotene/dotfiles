@@ -1,0 +1,269 @@
+//! Reclaim of pending allow rules, and the promotion queue they move to.
+//!
+//! A rule appended by "don't ask again" is tolerated for the session (see
+//! [`super::pending`]). At a session boundary it is moved to an append-only queue
+//! of promotion candidates and removed from the settings file, so a standing allow
+//! never outlives the session that granted it. Whether a candidate becomes part
+//! of the shared policy is the owner's decision (`/promote-permissions`); nothing
+//! here widens the policy.
+use super::{assess, digest, read, state_path, transaction, Policy};
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+
+pub fn queue_path(home: &Path) -> PathBuf {
+    home.join(".local/state/dotfiles/agent-permissions-pending.jsonl")
+}
+
+/// One rule waiting for the owner's decision.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct Candidate {
+    pub id: String,
+    pub rule: String,
+    pub file: PathBuf,
+    pub project: PathBuf,
+    pub ts: u64,
+}
+
+fn candidate_id(file: &Path, rule: &str) -> String {
+    digest(format!("{}\0{rule}", file.display()).as_bytes())[..12].to_owned()
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// The queue is append-only: a line adds a candidate or, with `drop`, withdraws
+/// one. Appending needs no read-modify-write, so two sessions cannot lose each
+/// other's lines. Candidates are the adds that were not withdrawn afterwards.
+pub fn candidates(home: &Path) -> Result<Vec<Candidate>, String> {
+    let path = queue_path(home);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut live: BTreeMap<String, Candidate> = BTreeMap::new();
+    for (n, line) in text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty())
+    {
+        let bad = || format!("{}: malformed queue line {}", path.display(), n + 1);
+        let v: Value = serde_json::from_str(line).map_err(|_| bad())?;
+        if let Some(id) = v.get("drop").and_then(Value::as_str) {
+            live.remove(id);
+            continue;
+        }
+        let rule = v.get("rule").and_then(Value::as_str).ok_or_else(bad)?;
+        let file = PathBuf::from(v.get("file").and_then(Value::as_str).ok_or_else(bad)?);
+        let id = candidate_id(&file, rule);
+        let project = file
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        let ts = v.get("ts").and_then(Value::as_u64).unwrap_or(0);
+        live.insert(
+            id.clone(),
+            Candidate {
+                id,
+                rule: rule.to_owned(),
+                file,
+                project,
+                ts,
+            },
+        );
+    }
+    let mut out: Vec<_> = live.into_values().collect();
+    out.sort_by(|a, b| (a.ts, &a.id).cmp(&(b.ts, &b.id)));
+    Ok(out)
+}
+
+fn append(home: &Path, lines: &[String]) -> Result<(), String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    if lines.is_empty() {
+        return Ok(());
+    }
+    let path = queue_path(home);
+    let dir = path.parent().ok_or("queue has no directory")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!("refusing symlink queue: {}", path.display()));
+    }
+    let mut buffer = String::new();
+    for line in lines {
+        buffer.push_str(line);
+        buffer.push('\n');
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    file.write_all(buffer.as_bytes())
+        .and_then(|()| file.sync_all())
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Withdraw candidates by id (after they were promoted or discarded). Unknown
+/// ids are an error, so a typo is not mistaken for success.
+pub fn drop_candidates(home: &Path, ids: &[String]) -> Result<usize, String> {
+    let live: BTreeSet<String> = candidates(home)?.into_iter().map(|c| c.id).collect();
+    if let Some(unknown) = ids.iter().find(|id| !live.contains(*id)) {
+        return Err(format!("no pending candidate with id {unknown}"));
+    }
+    let lines: Vec<String> = ids
+        .iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|id| json!({"v": 1, "ts": now(), "drop": id}).to_string())
+        .collect();
+    append(home, &lines)?;
+    Ok(lines.len())
+}
+
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
+pub struct Reclaimed {
+    /// Candidates newly added to the queue.
+    pub queued: usize,
+    /// Allow rules removed from settings files.
+    pub removed: usize,
+    pub files: usize,
+}
+
+/// Move the pending allow rules to the queue, then remove them from their files.
+///
+/// Order matters: the queue line is written and read back *before* the file is
+/// touched, so a crash leaves a rule in both places (harmless; the next run
+/// finds the candidate already queued) and never in neither. The file rewrite
+/// goes through the migration transaction: exact-byte compare-and-swap, a
+/// recovery journal, and a read-back. A structural drift is not reclaimed.
+pub fn reclaim(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Reclaimed, String> {
+    let waiting = assess(policy, home, projects)?;
+    if waiting.is_empty() {
+        return Ok(Reclaimed::default());
+    }
+    let queued: BTreeSet<String> = candidates(home)?.into_iter().map(|c| c.id).collect();
+    let mut lines: Vec<String> = Vec::new();
+    let mut want: BTreeSet<String> = BTreeSet::new();
+    for pending in &waiting {
+        for rule in &pending.rules {
+            let id = candidate_id(&pending.path, rule);
+            if !queued.contains(&id) && want.insert(id) {
+                lines.push(
+                    json!({"v": 1, "ts": now(), "rule": rule, "file": pending.path}).to_string(),
+                );
+            }
+        }
+    }
+    let added = lines.len();
+    append(home, &lines)?;
+    let queued: BTreeSet<String> = candidates(home)?.into_iter().map(|c| c.id).collect();
+    if let Some(missing) = want.iter().find(|id| !queued.contains(*id)) {
+        return Err(format!("queue read-back is missing candidate {missing}"));
+    }
+
+    let mut writes = BTreeMap::new();
+    let mut expected = BTreeMap::new();
+    let mut removed = 0;
+    for pending in &waiting {
+        let bytes = read(&pending.path)?;
+        let mut value: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("{}: {e}", pending.path.display()))?;
+        let allow = value
+            .pointer_mut("/permissions/allow")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| format!("{}: permissions.allow vanished", pending.path.display()))?;
+        let before = allow.len();
+        allow.retain(|r| {
+            r.as_str()
+                .is_none_or(|r| !pending.rules.iter().any(|x| x == r))
+        });
+        removed += before - allow.len();
+        let mut out = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
+        out.push(b'\n');
+        expected.insert(pending.path.clone(), digest(&bytes));
+        writes.insert(pending.path.clone(), Some(out));
+    }
+    let files = writes.len();
+    // The ownership record is unchanged: reclaiming returns each file to what it records.
+    transaction::commit(home, writes, &expected, || read(&state_path(home)))?;
+    let left = assess(policy, home, projects)?;
+    let reappeared = waiting.iter().any(|w| {
+        left.iter()
+            .any(|l| l.path == w.path && l.rules.iter().any(|r| w.rules.contains(r)))
+    });
+    if reappeared {
+        return Err("reclaim read-back: a removed rule is still present".into());
+    }
+    Ok(Reclaimed {
+        queued: added,
+        removed,
+        files,
+    })
+}
+
+/// The text a session boundary hook prints. It never fails: a hook that errors
+/// at SessionStart would only add noise, and the permission check itself is the
+/// enforcement. Returns nothing when the permission policy is not deployed.
+pub fn hook_output(event: &str, stdin: &str) -> String {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return String::new();
+    };
+    if std::env::var_os("CODEX_HOME").is_some() || std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
+        return String::new();
+    }
+    let policy_path = home.join(".config/agent-permissions/policy.json");
+    if !policy_path.exists() || !state_path(&home).exists() {
+        return String::new();
+    }
+    let Ok(policy) = Policy::load(&policy_path) else {
+        return String::new();
+    };
+    let cwd = serde_json::from_str::<Value>(stdin)
+        .ok()
+        .and_then(|v| v.get("cwd").and_then(Value::as_str).map(PathBuf::from))
+        .or_else(|| std::env::current_dir().ok());
+    let projects: Vec<PathBuf> = cwd.into_iter().collect();
+    let outcome = reclaim(&policy, &home, &projects);
+    if event != "session-start" {
+        return String::new();
+    }
+    let mut notes: Vec<String> = Vec::new();
+    match &outcome {
+        Ok(done) if done.removed > 0 => notes.push(format!(
+            "前のセッションが残した恒久の許可 {} 件を取り除き、共有ポリシーへの昇格候補に移しました。",
+            done.removed
+        )),
+        Ok(_) => {}
+        Err(reason) => notes.push(format!(
+            "権限の記録とずれています。ツールの呼び出しが拒否されることがあります。\n{}\n\
+             診断は `agent-permissions check`(読み取り専用)で全件を列挙できます。\
+             復旧(migrate)は本人の端末で行ってください。",
+            reason.lines().take(6).collect::<Vec<_>>().join("\n")
+        )),
+    }
+    if let Ok(queue) = candidates(&home) {
+        if !queue.is_empty() {
+            notes.push(format!(
+                "承認済みの許可 {} 件が、共有ポリシーへの昇格候補として溜まっています(`agent-permissions pending`)。\
+                 本人が望むときにだけ `/promote-permissions` で、昇格する・捨てるを裁定してください。\
+                 このセッションの依頼を先に進めてかまいません。",
+                queue.len()
+            ));
+        }
+    }
+    // ADR-625: only the wrap-up hooks wrap their output in the directive frame; every
+    // other SessionStart prints plain Japanese lines with its own tag.
+    notes
+        .iter()
+        .flat_map(|note| note.lines())
+        .map(|line| format!("[agent-permissions] {line}\n"))
+        .collect()
+}
