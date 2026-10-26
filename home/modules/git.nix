@@ -144,6 +144,15 @@ in
     executable = true;
   };
 
+  # bleep scan at commit time (#947, #949): checks the message and the staged
+  # added lines against the denylist, and is also the worker pre-commit calls
+  # (`commit-msg --staged`, resolved next to pre-commit — keep both deployed
+  # together). docs/agents/public-publish-guard.md.
+  xdg.configFile."git/hooks/commit-msg" = {
+    source = repoConfig + "/git/hooks/commit-msg";
+    executable = true;
+  };
+
   # herdr creates a worktree with a plain `git worktree add`, so git's
   # post-checkout (null-ref $1, flag $3 = 1) is the one-shot "just created"
   # signal. Runs a repository-declared `.config/post-worktree.sh` in a linked

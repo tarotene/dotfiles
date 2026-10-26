@@ -115,6 +115,7 @@ node = [
 
   # --- git hooks
   { id = "git-pre-commit", label = "pre-commit", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr"], entity = "config/git/hooks/pre-commit", doc = "docs/git-sync.md", auto = true },
+  { id = "git-commit-msg", label = "commit-msg", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr", "wrapup-to-issue"], entity = "config/git/hooks/commit-msg", doc = "docs/agents/public-publish-guard.md", auto = true },
   { id = "git-pre-push", label = "pre-push", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr", "wrapup-to-issue"], entity = "config/git/hooks/pre-push", doc = "docs/git-sync.md", auto = true },
   { id = "git-post-checkout", label = "post-checkout", lane = "git-hook", group = "git-hooks", stack = "git", pipelines = ["implement-to-pr"], entity = "config/git/hooks/post-checkout", doc = "docs/git-sync.md", auto = true },
 
@@ -253,6 +254,9 @@ edge = [
 
   # === Implement to PR: git hook と CI と Stop
   { from = "git-pre-commit", to = "agent-session", kind = "deny", label = "commit on main", pipelines = ["implement-to-pr"] },
+  { from = "git-pre-commit", to = "git-commit-msg", kind = "invoke", label = "staged lines", pipelines = ["implement-to-pr"] },
+  { from = "git-commit-msg", to = "bleep", kind = "invoke", label = "scan-push on throwaway commit", pipelines = ["implement-to-pr"] },
+  { from = "git-commit-msg", to = "agent-session", kind = "deny", label = "leak at commit", pipelines = ["implement-to-pr"] },
   { from = "git-pre-push", to = "bleep", kind = "invoke", label = "scan-push", pipelines = ["implement-to-pr"] },
   { from = "git-pre-push", to = "agent-session", kind = "deny", label = "leak / non-herdr", pipelines = ["implement-to-pr"] },
   { from = "git-post-checkout", to = "agent-session", kind = "file", label = "worktree setup", pipelines = ["implement-to-pr"] },
@@ -276,6 +280,7 @@ edge = [
   { from = "agent-session", to = "github", kind = "issue", label = "gh issue create", pipelines = ["wrapup-to-issue"] },
   { from = "bleep", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
   { from = "git-pre-push", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
+  { from = "git-commit-msg", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
   { from = "session-wrapup-stop", to = "verdict-escalate", kind = "invoke", label = "before gate", pipelines = ["wrapup-to-issue"] },
   { from = "verdict-ledger", to = "verdict-escalate", kind = "file", label = "repeated deny", pipelines = ["wrapup-to-issue"] },
   { from = "verdict-escalate", to = "wrapup-inbox", kind = "file", label = "escalation line", pipelines = ["wrapup-to-issue"] },

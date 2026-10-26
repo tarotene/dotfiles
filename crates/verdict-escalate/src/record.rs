@@ -83,6 +83,9 @@ pub enum Host {
     Codex,
     Copilot,
     GitPrePush,
+    // commit 時の検査(`config/git/hooks/commit-msg`。pre-commit も呼ぶ)。
+    // doc コメントにしない: 付けると schemars が enum を oneOf に変える。
+    GitCommit,
     Cli,
 }
 

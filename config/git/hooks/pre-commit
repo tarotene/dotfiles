@@ -31,6 +31,17 @@ case "$branch" in
         ;;
 esac
 
+# bleep scan of the staged added lines (#947, #949): stop a private repository
+# name at commit time, before the editor opens. The worker is the commit-msg
+# hook in this same directory (`commit-msg --staged`; it also scans the message
+# when git runs it as commit-msg). No worker next to this hook, or no bleep, is
+# skipped silently (ADR-0005). The chained repo-local pre-commit below still
+# runs when this passes.
+bleep_worker="$(dirname "$0")/commit-msg"
+if [[ -x "$bleep_worker" ]]; then
+    "$bleep_worker" --staged || exit 1
+fi
+
 # core.hooksPath makes git ignore .git/hooks/ entirely, including in linked
 # worktrees (where the working tree's own .git is a file, not a directory).
 # Chain to the repo-local pre-commit hook if one is installed, resolving it
