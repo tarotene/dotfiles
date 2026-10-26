@@ -228,39 +228,33 @@ pub fn check(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
         return Err("policy changed; inspect and review before apply (permission expansion is never implicit)".into());
     }
     let current = inspect(policy, home, projects)?;
+    // Every difference is listed, not just the first: one review should be enough.
+    let mut problems = Vec::new();
     // Hash whole shared files; compare only permission fields for mutable user configs.
     for s in &current.sources {
-        let old = record
-            .sources
-            .iter()
-            .find(|o| o.path == s.path)
-            .ok_or_else(|| {
-                format!(
-                    "new permission source: {}; inspect and migrate",
-                    s.path.display()
-                )
-            })?;
+        let Some(old) = record.sources.iter().find(|o| o.path == s.path) else {
+            problems.push(format!("new permission source: {}", s.path.display()));
+            continue;
+        };
         if s.kind != old.kind
             || s.writable != old.writable
             || s.grants != old.grants
             || s.unknown != old.unknown
             || (!s.writable && s.digest != old.digest)
         {
-            return Err(format!(
-                "permission drift: {}; run agent-permissions inspect --json, review then migrate",
-                s.path.display()
-            ));
+            problems.push(format!("permission drift: {}", s.path.display()));
         }
     }
     for old in &record.sources {
         if !current.sources.iter().any(|s| s.path == old.path) {
-            return Err(format!(
-                "permission source removed: {}; inspect and migrate",
-                old.path.display()
-            ));
+            problems.push(format!("permission source removed: {}", old.path.display()));
         }
     }
-    Ok(())
+    if problems.is_empty() {
+        return Ok(());
+    }
+    problems.push("run agent-permissions inspect --json, review then migrate".into());
+    Err(problems.join("\n"))
 }
 
 /// Ordinary activation may narrow a reviewed policy, never expand one.
@@ -850,11 +844,84 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     walk(path, 0)
 }
 
+const COMMANDS: &[(&str, &str)] = &[
+    (
+        "inspect",
+        "list every permission source and its proposed disposition (read-only)",
+    ),
+    (
+        "check",
+        "verify the sources still match the ownership record (read-only)",
+    ),
+    (
+        "apply",
+        "reapply the declared policy; only narrowing is applied automatically",
+    ),
+    (
+        "migrate",
+        "write a reviewed migration, preview it (--dry-run), or undo one (--restore)",
+    ),
+];
+
+fn usage(command: Option<&str>) -> Result<String, String> {
+    let mut out = String::new();
+    match command {
+        None => {
+            out.push_str("usage: agent-permissions <command> [options]\n\ncommands:\n");
+            for (name, about) in COMMANDS {
+                out.push_str(&format!("  {name:<10}{about}\n"));
+            }
+        }
+        Some(name) => {
+            let (_, about) = COMMANDS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .ok_or("unknown subcommand")?;
+            out.push_str(&format!(
+                "usage: agent-permissions {name} [options]\n\n{about}\n"
+            ));
+        }
+    }
+    out.push_str(
+        "\noptions:\n\
+         \x20 --policy PATH       policy file (default: ~/.config/agent-permissions/policy.json)\n\
+         \x20 --home PATH         absolute home directory (default: $HOME)\n\
+         \x20 --project PATH      extra project to inventory (repeatable)\n\
+         \x20 --json              machine-readable output (inspect, check)\n\
+         \x20 --approved REVIEW   review file saved by `inspect --json` (migrate)\n\
+         \x20 --dry-run           check the review and list changes without writing (migrate)\n\
+         \x20 --restore JOURNAL   restore the files recorded in a journal (migrate)\n\
+         \x20 --retire-ownership  rebuild a damaged ownership record (migrate)\n\
+         \x20 -h, --help          show this help; `agent-permissions <command> --help` for one command\n\
+         \nrecovery from a permission drift (only the third command writes):\n\
+         \x20 agent-permissions inspect --json > review.json\n\
+         \x20 agent-permissions migrate --approved review.json --dry-run\n\
+         \x20 agent-permissions migrate --approved review.json\n\
+         \x20 agent-permissions check\n",
+    );
+    Ok(out)
+}
+
 pub fn cli(args: Vec<String>) -> Result<(), String> {
+    // Help needs no policy, no environment checks and no files.
+    let is_help = |a: &String| matches!(a.as_str(), "--help" | "-h" | "help");
+    match args.first() {
+        Some(first) if is_help(first) => {
+            print!("{}", usage(None)?);
+            return Ok(());
+        }
+        Some(first) if args[1..].iter().any(is_help) => {
+            print!("{}", usage(Some(first))?);
+            return Ok(());
+        }
+        _ => {}
+    }
     if std::env::var_os("CODEX_HOME").is_some() || std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
         return Err("custom CODEX_HOME/CLAUDE_CONFIG_DIR is not yet inventoried; use canonical settings, no changes made".into());
     }
-    let command = args.first().ok_or("usage: agent-permissions inspect|check|apply|migrate --policy PATH [--home PATH] [--project PATH] [--json] [--approved REVIEW] [--restore JOURNAL]")?;
+    let command = args
+        .first()
+        .ok_or("usage: agent-permissions <command> [options]; run `agent-permissions --help`")?;
     let home_default = std::env::var_os("HOME").ok_or("HOME missing")?;
     let mut home = PathBuf::from(home_default);
     let mut policy_path = None;
@@ -965,12 +1032,17 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
                 serde_json::from_slice(&read(&path)?).map_err(|e| e.to_string())?;
             let prepared = prepare_migration(&policy, &home, &projects, &review, retire_ownership)?;
             if dry_run {
-                let changes:Vec<_> = prepared.writes.iter().map(|(path, data)| json!({
-                    "path": path,
-                    "before": prepared.current.sources.iter().find(|s| s.path == *path).map(|s| &s.digest),
-                    "after": data.as_ref().map(|b| digest(b)),
-                    "disposition": review.decisions.get(path).map(String::as_str).unwrap_or("create")
-                })).collect();
+                let changes:Vec<_> = prepared.writes.iter().map(|(path, data)| {
+                    let before = prepared.current.sources.iter().find(|s| s.path == *path).map(|s| &s.digest);
+                    let after = data.as_ref().map(|b| digest(b));
+                    json!({
+                        "path": path,
+                        "before": before,
+                        "after": after,
+                        "changed": before != after.as_ref(),
+                        "disposition": review.decisions.get(path).map(String::as_str).unwrap_or("create")
+                    })
+                }).collect();
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&json!({"dry_run":true,"changes":changes}))

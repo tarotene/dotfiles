@@ -68,6 +68,10 @@ agent-permissions check --policy "$policyFile" --project "$PWD"
 ## ずれを検出したら設定元から診断する
 
 `inspect` は人向け表示と `--json`、`check` は成功時の JSON に対応する。
+`agent-permissions --help` と `agent-permissions <command> --help` で、サブコマンドと
+オプション、ずれからの復旧の手順(`inspect --json` → `migrate --dry-run` → `migrate` →
+`check`)を表示する。`migrate --dry-run` の各変更には、内容が変わるかを示す `changed` が付く。
+`check` はずれた設定元を 1 件目で止めず、全件を 1 行ずつ列挙する。
 設定が読めない、不正な構文、未知の権限キー、所有記録の破損、設定元の増減は
 実行を止める。可変ユーザー設定は権限部分を比較し、モデル選択や hook 信頼の
 更新を誤検出しない。残置した共有ファイルは全文ハッシュも比較する。
@@ -92,7 +96,11 @@ CLI 引数による設定の上書き、Codex の enterprise/cloud/MDM の配布
 
 ## 更新を中断したら記録から復元する
 
-更新前の全バイト列を、本人のみ読み書きできる transaction journal に保存する。
+内容が変わるファイルの更新前後の全バイト列を、本人のみ読み書きできる transaction journal に
+16 進の文字列で保存する(版 2)。内容が変わらないファイルは記録しない — 確認済みのハッシュは
+書き込みの前後に再検査されるので、復元に要らない。数値の配列で全ファイルを保存していた
+版 1 の journal も、引き続き復元できる。完了した journal は新しい 5 件だけを残し、古いものは
+`migrate` の成功後に消す。復元したい journal は、次の `migrate` の前に退避する。
 各ファイルは同じディレクトリの一時ファイルから rename し、書き込み後にも読み戻す。
 symlink を経由した書き込みは拒否する。複数ファイル全体の更新は単一の原子的操作ではないため、
 中断を示す `pending` が残ったら実行を拒否する。
