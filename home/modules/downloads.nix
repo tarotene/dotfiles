@@ -39,7 +39,7 @@
   # tmpfiles の既定(3 種のタイムスタンプのいずれか新しければ延命)を find の
   # 論理積(AND)で写す。初回のみ TCC 権限付与が要る(docs/cutover-runbook.md
   # の Post-cutover 手順)。
-  # pipeline-node: downloads-clean
+  dotfiles.pipeline.timerNodes.downloads-clean = "downloads-clean";
   launchd.agents.downloads-clean = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

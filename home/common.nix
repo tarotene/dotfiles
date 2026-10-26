@@ -29,6 +29,7 @@
     ./modules/flatpak.nix
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix
+    ./modules/pipeline.nix
   ];
 
   programs.home-manager.enable = true;

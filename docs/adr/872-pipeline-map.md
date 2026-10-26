@@ -39,6 +39,7 @@ root の `pipeline-map.toml` に lane、pipeline、node、edge を置く。`rust
 - `claudeHookDeclarations`(型付きの nix リスト、47 件)は、各要素に `node = "<id>";` を必須にする。nix の評価時に「node がある」「manifest に定義済み」を検査し、満たさない宣言は適用(`hms`)に至らない。
   `settings-reconcile` の宣言は未知のキーを拒否するので、`node` は渡す前に取り除く。評価結果の JSON は変わらない。
 - それ以外の登録箇所(Codex / Copilot の登録呼び出し、timer / launchd agent、workflow、git hook、herdr の command 行、statusline の定義)は、登録の直前のコメント `pipeline-node: <id>` を持つ。
+  (2026-10-27 の Amendment: timer / launchd agent は、nix の評価時に確かめる `dotfiles.pipeline.timerNodes` に改めた。)
   nix の評価が及ばない形式(YAML、TOML、シェル文字列の引数)だから、検出は `cargo test` が担う。
 
 後者を言語ネイティブの属性にするには、登録の宣言を型付きのリストへ作り直す必要がある。今回の範囲を超えるので、その移行は「意図は決まっていて未着手」とし、検査器の抽出規則へ 1 本足すだけで済む設計にしておく。
@@ -47,7 +48,7 @@ root の `pipeline-map.toml` に lane、pipeline、node、edge を置く。`rust
 
 1. `claudeHookDeclarations` の各要素
 2. `run ${registerCodexHooks}` / `run ${registerCopilotHooks}` の呼び出し
-3. `systemd.user.timers.*` / `launchd.agents.*` / `systemd.user.tmpfiles.rules` の束縛
+3. `systemd.user.timers.*` / `launchd.agents.*` / `systemd.user.tmpfiles.rules` の束縛(2026-10-27 の Amendment: 前 2 つは `dotfiles.pipeline.timerNodes.<名前> = "<id>";` の行)
 4. `.github/workflows/*.yml`(`on:` の直前)
 5. `config/git/hooks/*`(先頭 15 行)
 6. `config/herdr/config.toml` の `type = "command"` 行
@@ -141,3 +142,50 @@ D4 に **8 つ目のクラス**を足す: 8. `crates/hook-router/src/rules.rs` �
 - `crates/pipeline-map/src/lib.rs`
 - `crates/hook-router/src/rules.rs`
 - `home/modules/claude.nix`
+
+## Amendment (2026-10-27 — D3・D4 のクラス 3 のうち、timer と launchd agent を、nix の評価時に確かめる)
+
+D3 は、timer / launchd agent のポインタを直前のコメント `pipeline-node: <id>` にし、検出を `cargo test` に任せた。
+コメントを書き忘れる・書き間違えると、ローカルの `hms` は通り、CI の `cargo test` で初めて落ちる(#992)。
+
+Issue の案は、`node` を必須の引数にする nix のヘルパ(`mkTimer` など)を経由させる形だった。ヘルパは、
+生の `systemd.user.timers.*` を書けば迂回できる(迂回の検出は、結局コメントの走査に戻る)ので、採らない。
+採るのは、**最終の config を列挙する検査**である:
+
+- `home/modules/pipeline.nix` が、option `dotfiles.pipeline.timerNodes`(`attrsOf str`、名前 → ノード id)を置く。
+  各モジュールは、timer / agent を定義するそばに、`dotfiles.pipeline.timerNodes.<名前> = "<id>";` を 1 行書く
+  (同じ名前の systemd timer と launchd agent は 1 行)。
+- 同じモジュールが、全モジュールの合成後の `config.systemd.user.timers` と `config.launchd.agents` の名前を
+  列挙し、`assertions`(home-manager が `activationPackage` の評価時に強制する)で、次の 2 つを落とす:
+  対応付けの無い名前、`pipeline-map.toml` に無い id。生の `systemd.user.timers.*` を書いても、最終の config に
+  現れるので、迂回できない。
+- 上流のモジュールが作る timer / agent は、許可リスト(`upstreamNames`)で除く。今あるのは `gpg-agent`
+  (`services.gpg-agent` が作る launchd agent)だけ。
+- クラス 3 の `cargo test` 側は、`dotfiles.pipeline.timerNodes.<名前> = "<id>";` の行を登録箇所として数える
+  (1 行 1 束縛の形だけを読む。まとめ書きは問題にする)。生の `systemd.user.timers.*` へのコメントは、もう求めない
+  (評価時の検査と二重にしない)。`systemd.user.tmpfiles.rules`(名前の無いリスト)は、直前のコメントのまま。
+- **逆向き**(`auto = true` のノードに登録が 1 つも無い)は、`cargo test` に残す。登録は `lib.mkIf (isLinux && …)` の
+  条件付きで、1 ホストの評価では、ほかのホストの登録を見られない。そのため、評価時には逆向きを確かめない。
+- activation(`home.activation.*` の中の registrar 呼び出し)・Codex / Copilot の登録呼び出し・statusline は、
+  今までどおりコメント `pipeline-node: <id>` のまま。シェル文字列の引数や `let` の束縛で、最終の config に
+  列挙できる属性が無い(裁定で、この形にはしない)。
+
+### 先行例
+
+- home-manager `modules/default.nix`(`collectFailed` と `moduleChecks`、rev 24f8f8e、2026-10-27 に読んだ):
+  `config.assertions` の失敗は、`activationPackage` を取る評価で `throw` になる。ここは、この機構を
+  使うだけ(新しい検査器は作らない)。NixOS 側の同種の機構(`nixos/modules/misc/assertions.nix`)は、読んでいない。
+
+### 検証
+
+- `nix eval .#homeConfigurations.<host>.activationPackage.drvPath` が、vega・arcturus・altair の 3 ホストで通る。
+- 陰性対照: (1) 対応付けの行を消す(`due-remind`)と、vega の評価が「対応付けが無い: due-remind」で落ちる。
+  darwin だけの timer(`downloads-clean`)の行を消すと、altair だけが落ちる。(2) 値を manifest に無い id にすると、
+  「定義の無いノード id」で落ちる。(3) 対応付けの行を消すと、`cargo test -p pipeline-map`(`tests/coverage.rs`)が
+  「auto = true だが、ポインタする登録箇所が 1 つも無い」で落ちる(逆向き)。
+
+### 執行点
+
+- `home/modules/pipeline.nix`
+- `home/common.nix`
+- `crates/pipeline-map/src/lib.rs`

@@ -1513,8 +1513,7 @@ let
   # 保証するので、ポインタの無い hook 宣言は適用(hms)に至らない。agent-settings-reconcile の
   # 宣言(Register)は未知のキーを拒否するため、`node` は渡す前に取り除く。逆向き(auto な
   # ノードに登録が 1 つも無い)は crates/pipeline-map の cargo test が見る。
-  pipelineMap = builtins.fromTOML (builtins.readFile ../../pipeline-map.toml);
-  pipelineNodeIds = map (n: n.id) pipelineMap.node;
+  pipelineNodeIds = config.dotfiles.pipeline.nodeIds;
   declareHook =
     d:
     assert lib.assertMsg (

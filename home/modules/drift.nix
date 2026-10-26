@@ -84,7 +84,7 @@ in
     # (boot)毎に再発火していた(2026-09-24 実測、1日に3回発火し #440 に
     # 同じ内容のコメントが3回積まれた)。OnCalendar=weekly に切り替え、
     # RandomizedDelaySec でログイン直後のネットワーク未復帰との衝突を薄める。
-    # pipeline-node: detect-drift
+    dotfiles.pipeline.timerNodes.detect-drift = "detect-drift";
     systemd.user.timers.detect-drift = lib.mkIf (pkgs.stdenv.isLinux && cfg.issueRepo != null) {
       Unit.Description = "Check for ad-hoc install drift weekly";
       Timer = {
@@ -98,7 +98,7 @@ in
 
     # launchd 版(ADR-0018)。EnvironmentVariables.PATH は systemd の
     # Environment= と違い置換なので、同じ一覧をそのまま渡す。
-    # pipeline-node: detect-drift
+    # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.detect-drift が兼ねる。
     launchd.agents.detect-drift = lib.mkIf (pkgs.stdenv.isDarwin && cfg.issueRepo != null) {
       enable = true;
       config = {

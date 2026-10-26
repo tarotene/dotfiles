@@ -160,7 +160,9 @@ pub enum Class {
     ClaudeHookDecl,
     /// `run ${registerCodexHooks}` / `run ${registerCopilotHooks}` の呼び出し。
     RegistrarCall,
-    /// `systemd.user.timers.*` / `launchd.agents.*` / `systemd.user.tmpfiles.rules`。
+    /// `dotfiles.pipeline.timerNodes.<名前> = "<id>";`(`systemd.user.timers.*` と `launchd.agents.*` の
+    /// 対応付け。対応付けの有無は nix の評価時に `home/modules/pipeline.nix` が確かめる)と、
+    /// `systemd.user.tmpfiles.rules` の束縛(直前のコメント)。
     TimerOrAgent,
     /// `.github/workflows/*.yml`(`on:` の直前)。
     Workflow,
@@ -368,21 +370,27 @@ fn push_site(scan: &mut Scan, file: &str, line: usize, class: Class, ids: Vec<St
     });
 }
 
-/// `systemd.user.timers.<name> =` / `launchd.agents.<name> =` /
-/// `systemd.user.tmpfiles.rules =` の束縛行か。
-fn is_timer_decl(t: &str) -> bool {
-    for prefix in ["systemd.user.timers.", "launchd.agents."] {
-        if let Some(rest) = t.strip_prefix(prefix) {
-            return rest.split_once('=').is_some_and(|(name, _)| {
-                let name = name.trim();
-                !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            });
-        }
-    }
+/// `systemd.user.tmpfiles.rules =` の束縛行か。名前の無いリストなので、`timerNodes` では
+/// 対応付けられず、直前のコメントがポインタになる。
+fn is_tmpfiles_decl(t: &str) -> bool {
     t.starts_with("systemd.user.tmpfiles.rules") && t.contains('=')
+}
+
+const TIMER_NODES: &str = "dotfiles.pipeline.timerNodes";
+
+/// `dotfiles.pipeline.timerNodes.<名前> = "<id>";` から (名前, id) を取る。
+fn timer_node_binding(t: &str) -> Option<(String, String)> {
+    let rest = t.strip_prefix(TIMER_NODES)?.strip_prefix('.')?;
+    let (name, _) = rest.split_once(|c: char| c == '=' || c.is_whitespace())?;
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    let id = attr_str(rest, name)?;
+    Some((name.to_string(), id))
 }
 
 fn scan_nix_modules(root: &Path, scan: &mut Scan) {
@@ -407,7 +415,25 @@ fn scan_nix_modules(root: &Path, scan: &mut Scan) {
                     Class::RegistrarCall,
                     block_tokens(&lines, i),
                 );
-            } else if is_timer_decl(t) {
+            } else if t
+                .strip_prefix(TIMER_NODES)
+                .is_some_and(|r| r.starts_with(['.', ' ', '=']))
+            {
+                // 1 束縛 1 行の形だけを読む。`dotfiles.pipeline.timerNodes = { … };` のような
+                // まとめ書きは、行ごとの走査で読めないので、問題にする。
+                match timer_node_binding(t) {
+                    Some((_, id)) => scan.sites.push(Site {
+                        file: rel.clone(),
+                        line: i + 1,
+                        class: Class::TimerOrAgent,
+                        ids: vec![id],
+                    }),
+                    None => scan.problems.push(format!(
+                        "{rel}:{}: {TIMER_NODES} は `{TIMER_NODES}.<名前> = \"<id>\";` の 1 行 1 束縛で書く",
+                        i + 1
+                    )),
+                }
+            } else if is_tmpfiles_decl(t) {
                 push_site(
                     scan,
                     &rel,
@@ -871,7 +897,7 @@ label = "blocks"
         write(
             r,
             "home/modules/t.nix",
-            "# pipeline-node: tick\nsystemd.user.timers.tick = lib.mkIf pkgs.stdenv.isLinux {\n};\n# pipeline-node: tick\nlaunchd.agents.tick = {\n};\n",
+            "dotfiles.pipeline.timerNodes.tick = \"tick\";\nsystemd.user.timers.tick = lib.mkIf pkgs.stdenv.isLinux {\n};\nlaunchd.agents.tick = {\n};\n# pipeline-node: tick\nsystemd.user.tmpfiles.rules = [ ];\n",
         );
         write(
             r,
@@ -952,22 +978,70 @@ label = "blocks"
         );
     }
 
+    /// timer / agent の対応付けの有無は、nix の評価時に `home/modules/pipeline.nix` が確かめる。
+    /// ここは、生の `systemd.user.timers.*` にコメントを求めない(二重にしない)。
     #[test]
-    fn timer_without_token_fails_and_comments_are_ignored() {
+    fn raw_timer_bindings_need_no_comment_here() {
         let d = repo();
         write(
             d.path(),
             "home/modules/t.nix",
-            "# systemd.user.timers.ghost = は説明\nsystemd.user.timers.tick = {\n};\n# pipeline-node: tick\nlaunchd.agents.tick = {\n};\n",
+            "dotfiles.pipeline.timerNodes.tick = \"tick\";\nsystemd.user.timers.ghost = {\n};\nlaunchd.agents.ghost = {\n};\n# pipeline-node: tick\nsystemd.user.tmpfiles.rules = [ ];\n",
+        );
+        let p = problems(d.path());
+        assert!(p.is_empty(), "{p:#?}");
+    }
+
+    #[test]
+    fn tmpfiles_without_token_fails_and_comments_are_ignored() {
+        let d = repo();
+        write(
+            d.path(),
+            "home/modules/t.nix",
+            "# dotfiles.pipeline.timerNodes.ghost = \"nope\";\n# systemd.user.tmpfiles.rules = は説明\ndotfiles.pipeline.timerNodes.tick = \"tick\";\nsystemd.user.tmpfiles.rules = [ ];\n",
         );
         let p = problems(d.path());
         assert_eq!(
             p.iter()
-                .filter(|x| x.contains("timer / launchd agent"))
+                .filter(|x| x.contains("timer / launchd agent") && x.contains("が無い"))
                 .count(),
             1,
             "{p:#?}"
         );
+        assert!(!p.iter().any(|x| x.contains("nope")), "{p:#?}");
+    }
+
+    #[test]
+    fn timer_nodes_must_name_a_defined_node_and_use_one_binding_per_line() {
+        let d = repo();
+        write(
+            d.path(),
+            "home/modules/t.nix",
+            "dotfiles.pipeline.timerNodes.tick = \"tick\";\ndotfiles.pipeline.timerNodes.ghost = \"nope\";\n# pipeline-node: tick\nsystemd.user.tmpfiles.rules = [ ];\n",
+        );
+        let p = problems(d.path());
+        assert!(
+            p.iter().any(|x| x.contains("nope")),
+            "manifest に無い id: {p:#?}"
+        );
+        write(
+            d.path(),
+            "home/modules/t.nix",
+            "dotfiles.pipeline.timerNodes = { tick = \"tick\"; };\n# pipeline-node: tick\nsystemd.user.tmpfiles.rules = [ ];\n",
+        );
+        let p = problems(d.path());
+        assert!(
+            p.iter().any(|x| x.contains("1 行 1 束縛")),
+            "まとめ書きは読めない: {p:#?}"
+        );
+        // メッセージ文字列の中の `dotfiles.pipeline.timerNodes: …` は、束縛ではない。
+        write(
+            d.path(),
+            "home/modules/t.nix",
+            "message = ''\n  dotfiles.pipeline.timerNodes: 対応付けが無い\n'';\ndotfiles.pipeline.timerNodes.tick = \"tick\";\n# pipeline-node: tick\nsystemd.user.tmpfiles.rules = [ ];\n",
+        );
+        let p = problems(d.path());
+        assert!(p.is_empty(), "{p:#?}");
     }
 
     #[test]

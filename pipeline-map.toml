@@ -6,9 +6,11 @@
 #     claudeHookDeclarations)は nix 属性 `node = "<id>";`(nix 評価時にも検査される)。
 #     ルータ(hook-router)が走らせる検査は、Claude Code への登録を持たず、規則の表
 #     (crates/hook-router/src/rules.rs)の `node: "<id>",` が登録箇所。
-#     それ以外の登録箇所(Codex/Copilot の登録呼び出し・timer / launchd agent・workflow・
-#     git hook・herdr の command 行・statusline の定義)は、直前のコメント
-#     `pipeline-node: <id>`。
+#     timer と launchd agent は、定義のそばの `dotfiles.pipeline.timerNodes.<名前> = "<id>";`
+#     (home/modules/pipeline.nix が、最終の config の timer / agent の名前と突き合わせて、
+#     nix 評価時に検査する)。
+#     それ以外の登録箇所(Codex/Copilot の登録呼び出し・workflow・git hook・herdr の command 行・
+#     statusline の定義・tmpfiles)は、直前のコメント `pipeline-node: <id>`。
 #   - auto = true のノードは登録箇所から 1 つ以上ポインタされていること。
 #     auto = false のノード(skill・手動 CLI・外部サービス・状態ファイル)は
 #     hand-off 先として描くだけで、ポインタを要求しない(ポインタされていたら fail)。

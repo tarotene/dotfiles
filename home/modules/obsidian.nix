@@ -87,7 +87,7 @@ in
     ];
   };
 
-  # pipeline-node: obsidian-backup
+  dotfiles.pipeline.timerNodes.obsidian-backup = "obsidian-backup";
   systemd.user.timers.obsidian-backup = {
     Unit.Description = "Back up the personal Obsidian vault daily";
     Timer = {
@@ -99,7 +99,7 @@ in
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # pipeline-node: obsidian-backup-maintenance
+  dotfiles.pipeline.timerNodes.obsidian-backup-maintenance = "obsidian-backup-maintenance";
   systemd.user.timers.obsidian-backup-maintenance = {
     Unit.Description = "Prune and check the Obsidian backup weekly";
     Timer = {
@@ -118,7 +118,7 @@ in
   # weekly like maintenance, because the shortest retention tier is
   # `--keep-daily 7` — a month between checks still leaves ample time to
   # notice and fix a restore failure before older snapshots age out.
-  # pipeline-node: obsidian-backup-restore-test
+  dotfiles.pipeline.timerNodes.obsidian-backup-restore-test = "obsidian-backup-restore-test";
   systemd.user.timers.obsidian-backup-restore-test = {
     Unit.Description = "Restore and compare the Obsidian acceptance fixtures monthly";
     Timer = {

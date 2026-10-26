@@ -159,7 +159,7 @@ in
     };
   };
 
-  # pipeline-node: git-audit-worktrees
+  dotfiles.pipeline.timerNodes.git-audit-worktrees = "git-audit-worktrees";
   systemd.user.timers.git-audit-worktrees = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Check for stale Git worktrees every minute";
     Timer = {
@@ -175,7 +175,7 @@ in
   # launchd equivalent of the systemd timer+service pair above. StartInterval
   # (seconds) is launchd's OnUnitActiveSec; RunAtLoad covers OnBootSec (fires
   # once when the agent is first loaded, then every StartInterval thereafter).
-  # pipeline-node: git-audit-worktrees
+  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.git-audit-worktrees が兼ねる。
   launchd.agents.git-audit-worktrees = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
@@ -230,7 +230,7 @@ in
     };
   };
 
-  # pipeline-node: git-checkout-sync
+  dotfiles.pipeline.timerNodes.git-checkout-sync = "git-checkout-sync";
   systemd.user.timers.git-checkout-sync = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Keep parent Git checkouts fresh every 10 minutes";
     Timer = {
@@ -243,7 +243,7 @@ in
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # pipeline-node: git-checkout-sync
+  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.git-checkout-sync が兼ねる。
   launchd.agents.git-checkout-sync = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
@@ -318,7 +318,7 @@ in
     };
   };
 
-  # pipeline-node: git-auto-prune
+  dotfiles.pipeline.timerNodes.git-auto-prune = "git-auto-prune";
   systemd.user.timers.git-auto-prune = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Run git-auto-prune every hour";
     Timer = {
@@ -338,9 +338,9 @@ in
     Install.WantedBy = [ "timers.target" ];
   };
 
-  # pipeline-node: git-auto-prune
+  dotfiles.pipeline.timerNodes.git-auto-prune-worktrees = "git-auto-prune";
   launchd.agents.git-auto-prune-worktrees = lib.mkIf pkgs.stdenv.isDarwin (autoPruneAgent prunePath);
-  # pipeline-node: git-auto-prune
+  dotfiles.pipeline.timerNodes.git-auto-prune-branches = "git-auto-prune";
   launchd.agents.git-auto-prune-branches = lib.mkIf pkgs.stdenv.isDarwin (
     autoPruneAgent pruneBranchesPath
   );

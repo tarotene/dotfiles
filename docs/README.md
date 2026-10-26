@@ -427,8 +427,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-872](adr/872-pipeline-map.md) — 自動発火する機構(hook・timer・
   workflow・git hook・herdr の周期コマンド)の地図を、root の
   `pipeline-map.toml` を単一正本にして持つ決定。登録箇所からノードを指す
-  ポインタ(Claude hook の宣言は nix 属性 `node`、それ以外は直前のコメント
-  `pipeline-node:`)の漏れ・未定義 ID・登録の無い自動ノードを、nix の評価と
+  ポインタ(Claude hook の宣言は nix 属性 `node`、timer と launchd agent は
+  `dotfiles.pipeline.timerNodes`、それ以外は直前のコメント `pipeline-node:`)の漏れ・未定義 ID・登録の無い自動ノードを、nix の評価と
   `cargo test`(`crates/pipeline-map`)が落とす。図は D2 で manifest から
   生成する。
 - [ADR-998](adr/998-worklog-vault-daily-note.md) — Git で管理するには重い

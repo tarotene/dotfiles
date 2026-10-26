@@ -95,8 +95,8 @@ herdr のサイドバーには、hook の metadata、statusline、claude-usage�
 ## 機構を足す・消すとき
 
 1. [`pipeline-map.toml`](../pipeline-map.toml) にノードを足す(自動発火するなら `auto = true`)。lane・group・stack・pipelines・entity を書き、必要なら edge も足す。
-2. 登録箇所にポインタを書く。Claude Code の hook 宣言は nix 属性 `node = "<id>";`、それ以外は登録の直前のコメント `pipeline-node: <id>`(Codex / Copilot の登録呼び出し、timer / launchd agent、workflow、git hook、herdr の command 行、statusline の定義)。
-3. `cargo test -p pipeline-map` で、ポインタの漏れ・未定義の id・登録の無い自動ノードを確かめる。nix の評価時にも hook 宣言は検査される。
+2. 登録箇所にポインタを書く。Claude Code の hook 宣言は nix 属性 `node = "<id>";`、timer と launchd agent は定義のそばの `dotfiles.pipeline.timerNodes.<名前> = "<id>";`(名前は `systemd.user.timers.<名前>` / `launchd.agents.<名前>` と同じ)、それ以外は登録の直前のコメント `pipeline-node: <id>`(Codex / Copilot の登録呼び出し、workflow、git hook、herdr の command 行、statusline の定義、`systemd.user.tmpfiles.rules`)。
+3. `cargo test -p pipeline-map` で、ポインタの漏れ・未定義の id・登録の無い自動ノードを確かめる。nix の評価時には、hook 宣言と、timer・launchd agent の対応付けの漏れが検査される(`hms` で早く気づく)。
 4. 図を作り直す: `nix develop` の中で `cargo run -p pipeline-map -- render`。`docs/assets/pipeline-map/` の差分をコミットする。CI が同じ手順で再生成し、差分があれば落とす。
 5. 図を目視する(矢印の接続、はみ出し、重なり)。
 
