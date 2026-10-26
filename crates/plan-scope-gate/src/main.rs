@@ -3,8 +3,8 @@
 //! 使い方:
 //!   hook として: PreToolUse(matcher: ExitPlanMode)から stdin JSON で呼ばれる
 //!   手動 e2e:   plan-scope-gate --check <plan.md> <issue-ref>
-//!               (issue-ref は `#N` または `owner/repo#N`。bare の場合は cwd の
-//!               git remote から owner/repo を解決する)
+//!               (issue-ref は `owner/repo#N`。`#N` と番号だけの `N` は cwd の
+//!               git remote から owner/repo を補う。それ以外の書式は案内して落とす)
 //!   提出前の自走(経路Bのみ、gh 不使用):
 //!               plan-scope-gate --check-plan <plan.md>
 //!
@@ -14,7 +14,8 @@
 use jq_json_compat::jqfmt;
 use plan_scope_gate::{
     deny_message, extract_issue_refs, fetch_children, judge_inventory, judge_issue, missing_lines,
-    resolve_owner_repo, trim_newlines, try_fetch_children, IssueJudgement, EXAMPLE_BLOCK,
+    normalize_issue_ref, resolve_owner_repo, trim_newlines, try_fetch_children, IssueJudgement,
+    EXAMPLE_BLOCK,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -43,16 +44,14 @@ fn cmd_check(plan_file: &str, r: &str) -> ExitCode {
         eprintln!("plan file not found: {plan_file}");
         return ExitCode::from(1);
     };
-    let mut r = r.to_string();
-    if !r.contains('/') {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let owner_repo = resolve_owner_repo(&cwd);
-        if owner_repo.is_empty() {
-            eprintln!("cwd is not inside a GitHub-remote repo; pass owner/repo#N explicitly");
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let r = match normalize_issue_ref(r, || resolve_owner_repo(&cwd)) {
+        Ok(r) => r,
+        Err(why) => {
+            eprintln!("{why}");
             return ExitCode::from(1);
         }
-        r = format!("{owner_repo}{r}");
-    }
+    };
     let children = match try_fetch_children(&r) {
         Ok(c) => c,
         Err(why) => {

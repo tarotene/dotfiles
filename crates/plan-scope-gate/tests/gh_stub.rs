@@ -188,6 +188,51 @@ fn check_bare_ref_resolves_origin() {
     assert!(s(&o.stdout).contains("\nMISSING\n#137 t1\n#138 t2\n"));
 }
 
+/// #896: 番号だけの参照(`#` も無い)は、書式の誤りとして落とさず origin から補う。
+#[test]
+fn check_number_only_ref_resolves_origin() {
+    let e = Env::new();
+    e.graphql(SUB2);
+    let repo = e.p("repo");
+    git_repo(&repo, "git@github.com:foo/bar.git");
+    fs::write(repo.join("plan.md"), "x\n").unwrap();
+    let o = e.run(&["--check", "plan.md", "1273"], &repo, "", &e.path_var());
+    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
+    assert!(
+        e.calls()
+            .contains("-f owner=foo -f repo=bar -F number=1273"),
+        "{}",
+        e.calls()
+    );
+}
+
+/// #896: 書式の誤り(`owner/repo` と番号を連結した形など)は、gh を呼ばずに書式を案内して
+/// 落とす。「gh 不在・未認証・ネットワーク不通」と取り違えさせない。
+#[test]
+fn check_malformed_ref_is_reported_as_a_format_error() {
+    let e = Env::new();
+    e.graphql(SUB2);
+    fs::write(e.p("plan.md"), "x\n").unwrap();
+    for arg in ["o/r1273", "telepath#7"] {
+        let o = e.run(
+            &["--check", "plan.md", arg],
+            e.dir.path(),
+            "",
+            &e.path_var(),
+        );
+        assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+        assert_eq!(o.stdout, b"");
+        let err = s(&o.stderr);
+        assert!(
+            err.starts_with(&format!("issue-ref の書式が不正です: {arg:?}"))
+                && err.contains("owner/repo#N")
+                && !err.contains("gh 不在"),
+            "{err}"
+        );
+    }
+    assert_eq!(e.calls(), "", "gh を呼ばないこと");
+}
+
 #[test]
 fn check_bare_ref_without_remote_fails() {
     let e = Env::new();

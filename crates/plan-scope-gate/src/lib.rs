@@ -108,6 +108,52 @@ pub fn resolve_owner_repo(cwd: &Path) -> String {
     }
 }
 
+/// `--check` の issue-ref 引数を `owner/repo#N` に直す(#896)。
+///
+/// - `owner/repo#N` はそのまま。
+/// - `#N` と、番号だけの `N` は、カレントの origin(`owner_repo`、判定できなければ
+///   空を返す関数)から owner/repo を補う。補えなければその旨で落とす。
+/// - それ以外(`owner/repo1273` のように `#` が無い、`name#N` など)は、書式を案内して
+///   落とす。組み立てた誤った参照のまま gh を呼ぶと、書式の誤りが「gh 不在・未認証・
+///   ネットワーク不通」に見えてしまう。
+pub fn normalize_issue_ref(
+    arg: &str,
+    owner_repo: impl FnOnce() -> String,
+) -> Result<String, String> {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let segment = |s: &str| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    };
+    if let Some((repo, n)) = arg.rsplit_once('#') {
+        if digits(n) {
+            if repo.is_empty() {
+                return with_owner_repo(owner_repo(), n);
+            }
+            if repo
+                .split_once('/')
+                .is_some_and(|(o, r)| segment(o) && segment(r))
+            {
+                return Ok(arg.to_string());
+            }
+        }
+    } else if digits(arg) {
+        return with_owner_repo(owner_repo(), arg);
+    }
+    Err(format!(
+        "issue-ref の書式が不正です: {arg:?} — `owner/repo#N`(例: tarotene/dotfiles#136)、または cwd の origin から補う `#N` / `N` で渡してください"
+    ))
+}
+
+fn with_owner_repo(owner_repo: String, n: &str) -> Result<String, String> {
+    if owner_repo.is_empty() {
+        Err("cwd is not inside a GitHub-remote repo; pass owner/repo#N explicitly".to_string())
+    } else {
+        Ok(format!("{owner_repo}#{n}"))
+    }
+}
+
 /// "owner/repo#N" を重複無しで返す(バイト順)。
 ///
 /// "name#N"(スラッシュ無しの接頭辞付き、他リポジトリの略記)は自リポジトリの
@@ -543,6 +589,58 @@ mod tests {
         );
         let long = "x".repeat(500);
         assert_eq!(stderr_summary(long.as_bytes()).chars().count(), 2 + 300);
+    }
+
+    #[test]
+    fn normalize_issue_ref_accepts_full_and_fills_bare_numbers() {
+        let origin = || "tarotene/dotfiles".to_string();
+        for (arg, want) in [
+            ("o/r#1273", "o/r#1273"),
+            ("tarotene/dotfiles#136", "tarotene/dotfiles#136"),
+            ("a.b/c_d-e#7", "a.b/c_d-e#7"),
+            ("#1273", "tarotene/dotfiles#1273"),
+            ("1273", "tarotene/dotfiles#1273"),
+        ] {
+            assert_eq!(
+                normalize_issue_ref(arg, origin).as_deref(),
+                Ok(want),
+                "{arg}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_issue_ref_rejects_a_malformed_ref_with_the_expected_format() {
+        let origin = || "tarotene/dotfiles".to_string();
+        // `owner/repo` と番号を連結した形(# が無い)・略記・空・数字以外。
+        for arg in [
+            "o/r1273",
+            "telepath#7",
+            "o/r#",
+            "o/r#x",
+            "",
+            "#",
+            "abc",
+            "o/#1",
+            "/r#1",
+        ] {
+            let err = normalize_issue_ref(arg, origin).unwrap_err();
+            assert!(err.contains("owner/repo#N"), "{arg}: {err}");
+            assert!(err.contains(&format!("{arg:?}")), "{arg}: {err}");
+        }
+    }
+
+    #[test]
+    fn normalize_issue_ref_needs_an_origin_only_for_bare_numbers() {
+        let none = || String::new();
+        assert!(normalize_issue_ref("o/r#1", none).is_ok());
+        for arg in ["#1", "1"] {
+            let err = normalize_issue_ref(arg, none).unwrap_err();
+            assert!(
+                err.contains("cwd is not inside a GitHub-remote repo"),
+                "{err}"
+            );
+        }
     }
 
     #[test]
