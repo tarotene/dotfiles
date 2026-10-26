@@ -92,6 +92,8 @@ Web UI や旧来のやり方で作った routine を正本化するとき。
      --declaration .claude/routines/<name>.json --md .claude/routines/<name>.md \
      --live <get の生 JSON>
    ```
+   `get` の応答は `{"trigger": {...}}` の形。そのまま保存して渡してよい
+   (`classify` が `.trigger` を取り出す)。
 3. 出力の1行目が分類名。
    - `in-sync`: 何もしない。
    - `declared-ahead`: 2行目以降が update body。そのまま `RemoteTrigger`
@@ -102,7 +104,8 @@ Web UI や旧来のやり方で作った routine を正本化するとき。
    - `suspended`: `suspension_reason`/`ended_reason` が非空。自動で
      再有効化しない — 原因を確認してから手で対処する。
    - `refuse`: 注記が無い、または live の `name` が
-     `<home_repo>:<name>` と一致しない。adopt からやり直す。
+     `<home_repo>:<name>` と一致しない。adopt からやり直す。理由(注記が無い /
+     名前の不一致 / 入力の形)は標準エラーに 1 行出る。
    - `new`: 宣言に `id` が無い。「新規 routine を作る」の手順に進む。
 
 ## 廃止する(retire)

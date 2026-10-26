@@ -127,7 +127,7 @@ live_no_annotation_file="$TMPDIR_T/live-no-annotation.json"
 printf '%s' "$live_no_annotation" > "$live_no_annotation_file"
 
 check "7 classify refuse(注記なし)" "refuse" \
-  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_no_annotation_file" | head -1)"
+  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_no_annotation_file" 2> /dev/null | head -1)"
 
 # --- 8) refuse: live.name が宣言の名前空間キーと不一致 -------------------
 
@@ -136,7 +136,7 @@ live_name_mismatch_file="$TMPDIR_T/live-name-mismatch.json"
 printf '%s' "$live_name_mismatch" > "$live_name_mismatch_file"
 
 check "8 classify refuse(name不一致)" "refuse" \
-  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_name_mismatch_file" | head -1)"
+  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_name_mismatch_file" 2> /dev/null | head -1)"
 
 # --- 9) new: 宣言に id が無い -------------------------------------------
 
@@ -210,6 +210,43 @@ check "12e live が宣言と同じ auto_mode_* を持てば in-sync" "in-sync" \
   "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_auto_file" | head -1)"
 check "12f 宣言が auto_mode_* を足し、live が古いままなら declared-ahead" "declared-ahead" \
   "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_file" | head -1)"
+
+# --- 13) get の生応答 {"trigger": {...}} を渡せる / refuse の理由を stderr に出す(#982) ---
+
+live_wrapped_file="$TMPDIR_T/live-wrapped.json"
+jq -n --argjson t "$live_in_sync" '{trigger: $t}' > "$live_wrapped_file"
+check "13a get の生応答({trigger:…})でも in-sync" "in-sync" \
+  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_wrapped_file" | head -1)"
+
+refuse_reason() { # $@ = classify の引数。refuse の stderr(理由)だけを返す
+  { bash "$PLAN" classify "$@" > /dev/null; } 2>&1 || true
+}
+check_contains() {
+  local name="$1" needle="$2" output="$3"
+  if [[ "$output" == *"$needle"* ]]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+    echo "FAIL: $name" >&2
+    echo "  output: $output" >&2
+  fi
+}
+check_contains "13b refuse の理由(注記なし)" "refuse の理由: live の prompt 末尾に routine-spec 注記がありません" \
+  "$(refuse_reason --declaration "$decl_file" --md "$md_file" --live "$live_no_annotation_file")"
+check_contains "13c refuse の理由(name 不一致)" "live の name(someone-elses-routine)が <home_repo>:<name>(owner/repo-a:nightly-check)と一致しません" \
+  "$(refuse_reason --declaration "$decl_file" --md "$md_file" --live "$live_name_mismatch_file")"
+check_contains "13d refuse の理由(live が null)" "live が null です" \
+  "$(refuse_reason --declaration "$decl_file" --md "$md_file" --live "$null_file")"
+live_array_file="$TMPDIR_T/live-array.json"
+printf '[1,2]' > "$live_array_file"
+check_contains "13e refuse の理由(入力の形)" "JSON のオブジェクトではありません" \
+  "$(refuse_reason --declaration "$decl_file" --md "$md_file" --live "$live_array_file")"
+live_garbage_file="$TMPDIR_T/live-garbage.json"
+printf 'not json' > "$live_garbage_file"
+check_contains "13f refuse の理由(JSON でない)" "JSON のオブジェクトではありません" \
+  "$(refuse_reason --declaration "$decl_file" --md "$md_file" --live "$live_garbage_file")"
+check "13g refuse の分類名は stdout に出る" "refuse" \
+  "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_garbage_file" 2> /dev/null | head -1)"
 
 # --- 結果 -----------------------------------------------------------------
 

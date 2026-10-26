@@ -94,6 +94,13 @@ cmd_build_body() {
     'include "lib"; $decl | build_body($md; $hash)'
 }
 
+# refuse の分類名を stdout に出し、理由を 1 行 stderr に出す(宣言や live の問題と
+# 取り違えないため)。
+refuse() { # $1=理由
+  echo "refuse"
+  echo "refuse の理由: $1" >&2
+}
+
 # 分類名を1行 stdout に出す。declared-ahead のときは2行目に update body
 # (build-body と同じ形)を続けて出す。
 cmd_classify() {
@@ -115,6 +122,11 @@ cmd_classify() {
   decl_json="$(cat "$declaration")"
   md_body="$(cat "$md")"
   live_json="$(cat "$live")"
+  # `RemoteTrigger get` の応答は {"trigger": {...}}。`.trigger` があれば取り出す
+  # (取り出し済みのオブジェクトや null は、そのまま通す)。
+  if ! live_json="$(jq -c 'if type == "object" and (.trigger | type) == "object" then .trigger else . end' <<< "$live_json" 2> /dev/null)"; then
+    live_json="__invalid__"
+  fi
   decl_id="$(jq -r '.id // empty' <<< "$decl_json")"
 
   if [[ -z "$decl_id" ]]; then
@@ -127,7 +139,11 @@ cmd_classify() {
   fi
 
   if [[ "$live_json" == "null" ]]; then
-    echo "refuse"
+    refuse "宣言に id があるのに live が null です(get の応答が空、または別の routine の id)"
+    return 0
+  fi
+  if [[ "$live_json" == "__invalid__" ]] || [[ "$(jq -r 'type' <<< "$live_json")" != "object" ]]; then
+    refuse "--live が JSON のオブジェクトではありません(入力の形: get の生応答 {\"trigger\": {...}}、または .trigger を取り出したオブジェクト)"
     return 0
   fi
 
@@ -138,8 +154,12 @@ cmd_classify() {
   live_name="$(jq -r '.name // ""' <<< "$live_json")"
   expected_name="$(jq -r '.home_repo + ":" + .name' <<< "$decl_json")"
 
-  if [[ "$annotation" == "null" || "$live_name" != "$expected_name" ]]; then
-    echo "refuse"
+  if [[ "$annotation" == "null" ]]; then
+    refuse "live の prompt 末尾に routine-spec 注記がありません(未取り込みの routine。adopt からやり直す)"
+    return 0
+  fi
+  if [[ "$live_name" != "$expected_name" ]]; then
+    refuse "live の name(${live_name:-空})が <home_repo>:<name>(${expected_name})と一致しません(入力の形が違う、または別の routine)"
     return 0
   fi
 
