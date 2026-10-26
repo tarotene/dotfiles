@@ -3,9 +3,11 @@
 pub mod advice;
 pub mod catalog;
 pub mod comparison;
+pub mod experiment;
 pub mod history;
 pub mod runtime;
 pub mod selection;
+pub mod threads;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -26,6 +28,9 @@ pub struct Model {
 pub struct Settings {
     pub plan: Model,
     pub execute: Model,
+    /// Optional bounded experiment on the execute effort (absent = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiment: Option<experiment::Experiment>,
 }
 
 impl Default for Settings {
@@ -39,6 +44,7 @@ impl Default for Settings {
                 model: "gpt-6.1-sol".into(),
                 reasoning_effort: "medium".into(),
             },
+            experiment: None,
         }
     }
 }
@@ -46,8 +52,16 @@ impl Default for Settings {
 impl Settings {
     pub fn load(path: &Path) -> Result<Self> {
         match fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text)
-                .context("invalid pair settings (both models and efforts are required)"),
+            Ok(text) => {
+                let settings: Self = toml::from_str(&text)
+                    .context("invalid pair settings (both models and efforts are required)")?;
+                if let Some(experiment) = &settings.experiment {
+                    experiment
+                        .validate()
+                        .context("invalid experiment settings")?;
+                }
+                Ok(settings)
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e).context("read pair settings"),
         }
@@ -60,6 +74,43 @@ impl Settings {
         tmp.write_all(toml::to_string_pretty(self)?.as_bytes())?;
         tmp.as_file().sync_all()?;
         tmp.persist(path).context("atomically save model pair")?;
+        Ok(())
+    }
+
+    /// Settings for a fresh launch: while an experiment is active the execute
+    /// effort is drawn per launch. Returns the one-line notice to show, if any.
+    pub fn for_new_launch(
+        &self,
+        today: &str,
+        random: &mut dyn FnMut() -> Result<u8>,
+    ) -> Result<(Self, Option<String>)> {
+        // The relay needs only the pair; an experiment that is not drawing must
+        // not make launch re-validate its (possibly stale) candidates.
+        let mut drawn = self.clone();
+        drawn.experiment = None;
+        let Some(experiment) = self.experiment.as_ref().filter(|e| e.is_active(today)) else {
+            return Ok((drawn, None));
+        };
+        let effort = experiment.pick(random)?.to_owned();
+        let notice = format!(
+            "codex-plan: 観測中: 今回の実行は {} {effort}(〜{})。やめるには `codex-plan experiment stop`",
+            self.execute.model, experiment.until
+        );
+        drawn.execute.reasoning_effort = effort;
+        Ok((drawn, Some(notice)))
+    }
+
+    /// Every candidate effort must be supported by the execute model.
+    pub fn validate_experiment(&self, models: &[Value]) -> Result<()> {
+        let Some(experiment) = self.experiment.as_ref().filter(|e| e.ended.is_none()) else {
+            return Ok(());
+        };
+        for effort in &experiment.execute_efforts {
+            let mut candidate = self.clone();
+            candidate.execute.reasoning_effort = effort.clone();
+            candidate.experiment = None;
+            candidate.validate_models(models)?;
+        }
         Ok(())
     }
 

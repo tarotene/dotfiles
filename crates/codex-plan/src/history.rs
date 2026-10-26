@@ -761,7 +761,7 @@ pub fn local_day(timestamp: i64) -> Result<String> {
     ))
 }
 
-fn calendar_start(timestamp: i64, offset_days: i64) -> Result<i64> {
+pub(crate) fn calendar_start(timestamp: i64, offset_days: i64) -> Result<i64> {
     let mut tm = local_tm(timestamp)?;
     tm.tm_hour = 0;
     tm.tm_min = 0;
@@ -776,7 +776,7 @@ fn calendar_start(timestamp: i64, offset_days: i64) -> Result<i64> {
     Ok(result as i64)
 }
 
-fn parse_timestamp(value: &str) -> Option<i64> {
+pub(crate) fn parse_timestamp(value: &str) -> Option<i64> {
     let b = value.as_bytes();
     if b.len() < 20
         || b[4] != b'-'

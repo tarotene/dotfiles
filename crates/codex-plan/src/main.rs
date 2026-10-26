@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
-use codex_plan::{comparison, runtime, selection, Model, Settings};
+use codex_plan::{comparison, experiment, history, runtime, selection, threads, Model, Settings};
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const USAGE: &str = "Usage:
   codex-plan [PROMPT]
@@ -10,10 +10,14 @@ const USAGE: &str = "Usage:
   codex-plan compare [--days N] [--json]
   codex-plan configure
   codex-plan configure --plan-model ID --plan-effort EFFORT --execute-model ID --execute-effort EFFORT
+  codex-plan experiment start --execute-efforts EFFORT,EFFORT[,...] --until YYYY-MM-DD
+  codex-plan experiment stop
 
 Plan / Auto (execution / native Default): gpt-6.1-sol medium (unless configured).
 Settings: $XDG_CONFIG_HOME/codex-plan/settings.toml (default ~/.config).
 Changes apply on the next launch. /model is respected until the next mode switch.
+While an experiment runs, each fresh launch draws its execute effort from the
+candidates; resume keeps the saved one. `compare` splits results by effort.
 Native Codex owns permissions, hooks and history; no automatic model fallback.";
 
 #[tokio::main]
@@ -54,8 +58,12 @@ async fn run() -> Result<i32> {
                 config.display(),
                 toml::to_string_pretty(&Settings::load(&config)?)?
             );
+            if let Some(experiment) = Settings::load(&config)?.experiment {
+                println!("{}", experiment.status_line(&today()?));
+            }
             Ok(0)
         }
+        Some("experiment") => experiment_command(&args[1..], &config, &native).await,
         Some("compare") => {
             let mut days = 7;
             let mut json = false;
@@ -78,10 +86,20 @@ async fn run() -> Result<i32> {
             }
             let discovery = runtime::discover(&native, true).await;
             let error = discovery.as_ref().err().map(|e| format!("{e:#}"));
-            let report = comparison::build(
+            let mut report = comparison::build(
                 days,
                 discovery.as_ref().map_err(|_| error.as_deref().unwrap()),
             )?;
+            // Settings are optional context here: a broken file must not hide the report.
+            let experiment = Settings::load(&config).ok().and_then(|s| s.experiment);
+            let (found, unreadable) = threads::collect(
+                &comparison::codex_home()?,
+                days,
+                comparison::now(),
+                experiment.as_ref(),
+            )?;
+            report["experiment_arms"] =
+                threads::report(&found, unreadable, days, experiment.as_ref());
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -164,6 +182,8 @@ async fn run() -> Result<i32> {
                     model: fields["--execute-model"].clone(),
                     reasoning_effort: fields["--execute-effort"].clone(),
                 },
+                // A running experiment survives a pair change; a broken file has none to keep.
+                experiment: Settings::load(&config).ok().and_then(|s| s.experiment),
             };
             runtime::preflight(&native, &settings).await?;
             settings.save(&config)?;
@@ -180,14 +200,93 @@ async fn run() -> Result<i32> {
         }
         Some("resume" | "status") => bail!("invalid arguments\n{USAGE}"),
         _ if args.len() <= 1 && args.first().is_none_or(|a| !a.starts_with('-')) => {
-            runtime::launch(
-                &native,
-                &Settings::load(&config)?,
-                None,
-                args.first().map(String::as_str),
-            )
-            .await
+            let (settings, notice) = Settings::load(&config)?
+                .for_new_launch(&today()?, &mut experiment::urandom_byte)?;
+            if let Some(notice) = notice {
+                eprintln!("{notice}");
+            }
+            runtime::launch(&native, &settings, None, args.first().map(String::as_str)).await
         }
         _ => bail!("invalid arguments\n{USAGE}"),
+    }
+}
+
+fn today() -> Result<String> {
+    history::local_day(comparison::now())
+}
+
+async fn experiment_command(args: &[String], config: &Path, native: &Path) -> Result<i32> {
+    match args.first().map(String::as_str) {
+        Some("start") => {
+            let mut fields = std::collections::HashMap::new();
+            for pair in args[1..].chunks(2) {
+                if pair.len() != 2
+                    || !matches!(pair[0].as_str(), "--execute-efforts" | "--until")
+                    || fields.insert(pair[0].as_str(), pair[1].clone()).is_some()
+                {
+                    bail!("experiment start requires --execute-efforts and --until exactly once\n{USAGE}");
+                }
+            }
+            let (Some(efforts), Some(until)) =
+                (fields.get("--execute-efforts"), fields.get("--until"))
+            else {
+                bail!("experiment start requires --execute-efforts and --until\n{USAGE}");
+            };
+            let today = today()?;
+            let current = Settings::load(config)?;
+            if current
+                .experiment
+                .as_ref()
+                .is_some_and(|e| e.is_active(&today))
+            {
+                bail!("an experiment is already running; run `codex-plan experiment stop` first");
+            }
+            let settings = Settings {
+                experiment: Some(experiment::Experiment::start(
+                    efforts.split(',').map(str::to_owned).collect(),
+                    &today,
+                    until,
+                )?),
+                ..current
+            };
+            runtime::preflight(native, &settings).await?;
+            settings.save(config)?;
+            // Report the persisted state, not merely the write's success.
+            let saved = Settings::load(config)?;
+            println!(
+                "Saved {}\n{}",
+                config.display(),
+                saved
+                    .experiment
+                    .context("experiment was not saved")?
+                    .status_line(&today)
+            );
+            Ok(0)
+        }
+        Some("stop") if args.len() == 1 => {
+            let today = today()?;
+            let mut settings = Settings::load(config)?;
+            let Some(experiment) = settings.experiment.as_mut() else {
+                bail!("no experiment is configured");
+            };
+            if experiment.ended.is_some() {
+                println!("{}", experiment.status_line(&today));
+                return Ok(0);
+            }
+            experiment.ended = Some(today.clone());
+            experiment.validate()?;
+            settings.save(config)?;
+            let saved = Settings::load(config)?;
+            println!(
+                "Saved {}\n{}",
+                config.display(),
+                saved
+                    .experiment
+                    .context("experiment was not saved")?
+                    .status_line(&today)
+            );
+            Ok(0)
+        }
+        _ => bail!("invalid experiment arguments\n{USAGE}"),
     }
 }
