@@ -259,6 +259,13 @@ WebFetch がドメインを拒否した(「Claude Code is unable to fetch from �
   手を付けるなら既定でチェーンの一段として受ける。詳細は stacked-pr
   スキルに従う。
 - 手順・rebase 運用・Issue リンクの書き分けは stacked-pr スキルに従う。
+- stacked PR をマージするときは、最上段を 1 回だけマージして、下の open な
+  全段を一度に入れる。下の段から 1 本ずつ入れない(下の段が入るたびに、上の段が
+  base の上に載せ直されて head の SHA が変わり、CI が段の数だけやり直しになる)。
+  マージの前に、stacked-pr スキルの「スタックの PR をマージする」を読む。最上段の
+  判定は、マージしたい PR の head ブランチを base にしている open な PR が無いこと
+  (`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>"` が空)で
+  確かめる。空でなければ、その PR は最上段ではない(#1002)。
 
 ## 複数項目の依頼は要求インベントリで受ける
 
