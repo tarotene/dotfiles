@@ -351,7 +351,19 @@ C は、A が実行・B が拒否で、C の run で hook が動いた記録が�
 | `判定不能`(A が実行されない) | allow 規則が効く前提が崩れている | `claude -p` の許可の評価が想定と違う。生の出力(`--keep`)を読み、版を添えて Issue に残す |
 | `判定不能`(B が拒否されない) | `-p` が ask を自動で通すか、hook が読まれていない | `--keep` のログで hook の実行を確かめ、対話の実行か MCP スタブへ進む |
 
-実測の結果: 未実測(2026-10-27 時点。実行は本人作業)。
+実測の結果(2026-10-27、vega、`claude` 2.1.285、`claude -p`、組み込みの Bash): **ask が allow に勝つ**。
+
+| ケース | 結果 | 読んだ根拠(`--keep` の生の出力) |
+|---|---|---|
+| A 対照 | 実行された | `case-A.jsonl` の tool_result が `probe-ok` |
+| B 対照 | 拒否された | hook の理由 `probe: hook asks` が tool_result に返った |
+| C 本番 | 拒否された(hook が動いた) | `case-C.jsonl` の tool_result が `probe: hook asks`(`is_error: true`)、`result` の `permission_denials` が 1 件、hook のログに `ran` が残った |
+
+hook が ask を返すと、同じコマンドに allow 規則があっても承認が要る。上の表の 2 行目のとおり、MCP の分岐は
+意図どおり働く。確かめた範囲の限界: 組み込みの Bash で、`claude -p`(答える人がいない非対話)の実行である。
+MCP ツール自体、対話の実行、自動モード(分類器が ask を覆す可能性。公式文書は「hook の ask は自動モードでも
+承認を強制する」と書く。Anthropic, Hooks、取得 2026-10-27、担当の報告で本線では未再取得)は、実測していない
+(未確認)。MCP のスタブには進んでいない(結果が曖昧でなかったため)。
 
 ## 自動モードの `autoMode.environment` は機体ローカルの設定で、宣言しない
 
