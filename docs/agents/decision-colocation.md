@@ -108,6 +108,16 @@ PreToolUse の deny は Bash 呼び出し全体に効く。そのため「PR 本
 `gh pr create` より前に文がある場合は、deny 文で前段も実行されていないこと
 と、別の呼び出しに分けて再実行することを警告する(軸: 検出のみ)。
 
+## base は `origin/<名前>` で解決する(#1003)
+
+guard は `--base <名前>`(省略時は既定ブランチ)を `origin/<名前>` として
+解決し、無いときだけローカルの `<名前>` に倒す。ローカルのブランチは、別の
+worktree が checkout していたり、別名のブランチから
+`git push --force-with-lease origin Y:X` で PR ブランチ X を置き換えたりすると、
+PR が実際に向く origin より古いまま残る。古い base で差分を取ると、その間に
+main へ入った既存の ADR を新規と誤読して deny する。ローカルと origin が別の
+コミットを指すときは、deny 文の末尾にどちらを基準にしたかを出す。
+
 ## 実装(Rust)
 
 - `check::run_check(repo_root, base) -> Vec<String>` が違反メッセージを出力順に

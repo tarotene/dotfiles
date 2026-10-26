@@ -206,6 +206,85 @@ fn flag_spellings_and_edge_cases() {
     assert_eq!(decide(false, "gh pr create --title t", bare.path()), None);
 }
 
+// ---- base は origin/<名前> を優先する(#1003) ---------------------------
+
+/// 渡された base ref をそのまま理由に出す checker(どの ref で判定したかを見る)。
+fn echo_base(_: &Path, base: &str) -> CheckOutcome {
+    CheckOutcome::NonConforming(format!("base={base}"))
+}
+
+#[test]
+fn base_resolves_to_origin_and_says_so_when_local_is_stale() {
+    let dir = env_repo();
+    let repo = dir.path();
+    let guard = Guard {
+        skip: false,
+        checker: &echo_base,
+    };
+    // ローカルの stacked は旧 head のまま。origin/stacked は進んでいる。
+    let old = git(repo, &["rev-parse", "HEAD"]);
+    git(repo, &["branch", "stacked", &old]);
+    common::write(repo, "later.txt", "x");
+    common::commit_all(repo, "later");
+    let new = git(repo, &["rev-parse", "HEAD"]);
+    git(repo, &["update-ref", "refs/remotes/origin/stacked", &new]);
+
+    let out = guard
+        .decide("gh pr create --base stacked", repo)
+        .expect("deny");
+    assert!(out.contains("base=origin/stacked"), "{out}");
+    assert!(
+        out.ends_with(&format!(
+            "注意: ローカルの stacked({})は origin/stacked({})と食い違っています。origin/stacked を基準に判定しました(PR が実際に向く側)。",
+            &old[..7],
+            &new[..7]
+        )),
+        "{out}"
+    );
+
+    // 食い違わなければ origin を見ても、注記は付けない。
+    git(repo, &["update-ref", "refs/heads/stacked", &new]);
+    let out = guard
+        .decide("gh pr create --base stacked", repo)
+        .expect("deny");
+    assert!(out.contains("base=origin/stacked"), "{out}");
+    assert!(!out.contains("食い違"), "{out}");
+
+    // origin 側に無いローカルだけのブランチは、従来どおりローカルを見る。
+    let out = guard
+        .decide("gh pr create --base ng-base", repo)
+        .expect("deny");
+    assert!(out.contains("base=ng-base"), "{out}");
+    assert!(!out.contains("食い違"), "{out}");
+}
+
+/// #1003 の再現: ローカルの base が旧 head のまま、origin/<base> は既存の ADR を
+/// 取り込んで進んでいる。ローカルを基準にすると既存の ADR を新規と誤読して deny する。
+#[test]
+fn stale_local_base_does_not_make_an_existing_adr_look_new() {
+    use decision_colocation::guard::real_checker;
+    let r = Repo::new();
+    let p = r.path();
+    git(&p, &["branch", "stacked"]);
+    r.write("docs/adr/0002-already-landed.md", "# ADR\n\n## Context\n");
+    r.commit("an ADR that is already in the base");
+    let head = git(&p, &["rev-parse", "HEAD"]);
+    git(&p, &["update-ref", "refs/remotes/origin/stacked", &head]);
+    git(&p, &["switch", "-c", "next", "-q"]);
+
+    let guard = Guard {
+        skip: false,
+        checker: &real_checker,
+    };
+    assert_eq!(guard.decide("gh pr create --base stacked", &p), None);
+    // 対照: origin/stacked が無ければ、ローカルの旧 head と比べて新規 ADR に見える。
+    git(&p, &["update-ref", "-d", "refs/remotes/origin/stacked"]);
+    let out = guard
+        .decide("gh pr create --base stacked", &p)
+        .expect("deny");
+    assert!(out.contains("docs/adr/0002-already-landed.md"), "{out}");
+}
+
 // ---- 実 checker(同じクレートの run_check)での e2e ------------------------
 
 fn guard_bin() -> Command {
