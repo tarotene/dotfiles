@@ -287,6 +287,12 @@ jobs:
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
+      # hook-ask-vs-allow-probe (#1052): Claude の hook の ask と設定の allow の優先順位を、
+      # 分離した HOME で実測する確認スクリプト。selftest は claude・認証・ネットワークを使わず、
+      # 判定ロジックと設定の生成だけを固定する(実測は本人作業、docs/agents/agent-permissions.md)。
+      - name: hook-ask-vs-allow-probe --selftest
+        run: scripts/hook-ask-vs-allow-probe --selftest
+
       # post-checkout hook (#702): linked-worktree-only, per-repository opt-in,
       # clone never runs the declared script. Needs a git that has
       # `rev-parse --path-format=absolute` (2.31+) — the runner's is newer.

@@ -482,10 +482,12 @@ fn dangling_symlink_to_outside_workspace_requires_one_time_approval() {
 }
 
 #[test]
-fn migrated_policy_asks_for_mcp_but_an_existing_guard_deny_still_wins() {
+fn an_undeclared_mcp_tool_is_left_to_claude_and_an_existing_guard_deny_still_wins() {
     let (home, workspace) = permission_home();
+    // #1052: the hook no longer asks for every MCP tool (whether its ask beats a
+    // settings allow is not documented). The default prompt is Claude's own.
     for (tool, want) in [
-        ("mcp__codex_apps__slack_draft_message", "ask"),
+        ("mcp__codex_apps__slack_draft_message", "pass"),
         ("mcp__codex_apps__slack_send_message", "deny"),
     ] {
         let out = permission_call(
@@ -495,11 +497,19 @@ fn migrated_policy_asks_for_mcp_but_an_existing_guard_deny_still_wins() {
             serde_json::json!({"text":"test"}),
         );
         assert!(out.status.success());
-        assert_eq!(
-            json(&out)["hookSpecificOutput"]["permissionDecision"],
-            want,
-            "{tool}"
-        );
+        if want == "pass" {
+            assert!(
+                out.stdout.is_empty(),
+                "{tool}: {}",
+                String::from_utf8_lossy(&out.stdout)
+            );
+        } else {
+            assert_eq!(
+                json(&out)["hookSpecificOutput"]["permissionDecision"],
+                want,
+                "{tool}"
+            );
+        }
     }
 }
 
@@ -745,10 +755,10 @@ fn a_worktree_mcp_json_equal_to_a_reviewed_one_is_not_a_new_source() {
     assert!(read_plain(home.path(), &workspace).0);
 }
 
-/// #1051: a tool the shared policy declares is not asked about again; every other
-/// MCP tool still asks, and a guard's deny still wins.
+/// #1051: a tool the shared policy declares passes without a question; the rest is
+/// Claude's own decision, and a guard's deny still wins.
 #[test]
-fn a_declared_mcp_tool_is_not_asked_about_and_the_rest_still_are() {
+fn a_declared_mcp_tool_is_not_asked_about_and_the_rest_is_left_to_claude() {
     use agent_settings_reconcile::agent_permissions::{inspect, migrate, Policy};
     let home = tempfile::tempdir().unwrap();
     let workspace = home.path().join("workspace");
@@ -775,8 +785,55 @@ fn a_declared_mcp_tool_is_not_asked_about_and_the_rest_still_are() {
             .to_owned()
     };
     assert_eq!(decision("mcp__declared__read"), "pass");
-    assert_eq!(decision("mcp__declared__write"), "ask");
-    assert_eq!(decision("mcp__other__read"), "ask");
+    assert_eq!(decision("mcp__declared__write"), "pass");
+    assert_eq!(decision("mcp__other__read"), "pass");
     // The Slack send guard is a separate rule: declaring the tool does not lift its deny.
     assert_eq!(decision("mcp__codex_apps__slack_send_message"), "deny");
+}
+
+/// #1052: the hook asks about an MCP tool only where an allow it cannot manage (a
+/// shared project settings file) already covers it. The owner's own allows and the
+/// default prompt are left to Claude, so nothing depends on how a hook `ask` ranks
+/// against a settings `allow`.
+#[test]
+fn the_hook_asks_about_an_mcp_tool_only_where_a_shared_allow_covers_it() {
+    use agent_settings_reconcile::agent_permissions::{inspect, migrate, Policy};
+    let (home, workspace) = permission_home();
+    std::fs::create_dir_all(workspace.join(".claude")).unwrap();
+    std::fs::write(
+        workspace.join(".claude/settings.json"),
+        r#"{"permissions":{"allow":["mcp__shared__*","mcp__one__tool","mcp__whole"]}}"#,
+    )
+    .unwrap();
+    let raw = std::fs::read(home.path().join(".config/agent-permissions/policy.json")).unwrap();
+    let policy: Policy = serde_json::from_slice(&raw).unwrap();
+    let projects = [workspace.clone()];
+    let review = inspect(&policy, home.path(), &projects).unwrap();
+    migrate(&policy, home.path(), &projects, &review).unwrap();
+    let decision = |tool: &str| {
+        let out = permission_call(home.path(), &workspace, tool, serde_json::json!({"x":1}));
+        assert!(out.status.success());
+        if out.stdout.is_empty() {
+            return "pass".to_owned();
+        }
+        json(&out)["hookSpecificOutput"]["permissionDecision"]
+            .as_str()
+            .unwrap_or("other")
+            .to_owned()
+    };
+    assert_eq!(decision("mcp__shared__anything"), "ask");
+    assert_eq!(decision("mcp__one__tool"), "ask");
+    assert_eq!(decision("mcp__whole__any"), "ask");
+    assert_eq!(decision("mcp__one__other"), "pass");
+    assert_eq!(decision("mcp__unrelated__tool"), "pass");
+    // A session elsewhere does not read this project's shared file.
+    let elsewhere = home.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let out = permission_call(
+        home.path(),
+        &elsewhere,
+        "mcp__shared__anything",
+        serde_json::json!({"x":1}),
+    );
+    assert!(out.status.success() && out.stdout.is_empty());
 }
