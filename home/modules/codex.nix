@@ -42,6 +42,18 @@ in
   imports = [ ./agent-permissions.nix ];
   dotfiles.agentPermissions.enable = lib.mkDefault true;
 
+  # The native installer owns ~/.local/bin/codex; never replace that symlink.
+  home.file.".local/libexec/codex-launcher/codex".source =
+    "${pkgs.dotfiles-tools}/bin/codex-launcher";
+  home.sessionPath = [ "${config.home.homeDirectory}/.local/libexec/codex-launcher" ];
+  # A login shell can inherit HM's "session variables already sourced" marker
+  # from a pre-switch parent. Reassert the entry point even when noninteractive.
+  programs.zsh.profileExtra = lib.mkAfter ''
+    typeset -U path PATH
+    path=(${lib.escapeShellArg "${config.home.homeDirectory}/.local/libexec/codex-launcher"} $path)
+    export PATH
+  '';
+
   # Permission migration requires an explicitly reviewed snapshot. A first
   # activation deploys the policy and CLI, but never invents migration approval;
   # the router refuses tools until the owner-reviewed migration is complete.

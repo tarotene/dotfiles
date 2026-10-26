@@ -11,6 +11,7 @@ export PATH
 # User local binaries
 [[ -d "$HOME/.local/bin" ]] && path=("$HOME/.local/bin" $path)
 [[ -d "$HOME/bin" ]] && path=("$HOME/bin" $path)
+[[ -d "$HOME/.local/libexec/codex-launcher" ]] && path=("$HOME/.local/libexec/codex-launcher" $path)
 
 # Development tool paths are added by respective modules
 # Export again to ensure sync

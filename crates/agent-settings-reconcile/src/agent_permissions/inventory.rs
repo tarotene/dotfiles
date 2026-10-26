@@ -892,6 +892,7 @@ fn codex(value: &Value, unknown: &mut Vec<String>) -> Value {
             "features",
             &[
                 "network_proxy",
+                "credential_masking",
                 "exec_policy",
                 "guardian_approval",
                 "sandbox_heuristic",
@@ -902,6 +903,7 @@ fn codex(value: &Value, unknown: &mut Vec<String>) -> Value {
             features,
             &[
                 "network_proxy",
+                "credential_masking",
                 "exec_policy",
                 "guardian_approval",
                 "sandbox_heuristic",

@@ -133,7 +133,7 @@ impl Policy {
             },
             "codex": {
                 "approval_policy": "on-request", "approvals_reviewer": "auto_review",
-                "default_permissions": "dotfiles", "features": {"network_proxy": true},
+                "default_permissions": "dotfiles", "features": {"network_proxy": true, "credential_masking": true},
                 "permissions": {"dotfiles": {"extends": ":workspace", "filesystem": fs,
                     "network": {"enabled": true, "domains": domains}}},
                 "apps": {"_default": {"default_tools_approval_mode": "prompt"}}
@@ -699,6 +699,7 @@ fn scrub_codex(table: &mut dyn toml_edit::TableLike) {
                     .and_then(toml_edit::Item::as_table_like_mut)
                 {
                     f.remove("network_proxy");
+                    f.remove("credential_masking");
                 }
             }
         }

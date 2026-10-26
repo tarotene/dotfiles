@@ -55,7 +55,7 @@ in
 
     domains = mkOption {
       type = types.listOf types.str;
-      default = [ ];
+      default = [ "api.github.com" ];
       description = "Known network destinations; this grants connectivity, not permission to send.";
     };
 

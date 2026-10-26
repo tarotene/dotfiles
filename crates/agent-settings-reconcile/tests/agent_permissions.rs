@@ -15,6 +15,53 @@ fn put(home: &Path, path: &str, data: &str) {
 }
 
 #[test]
+fn github_connectivity_and_masking_are_generated_migrated_and_checked() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    let mut p = policy();
+    p.domains = vec!["api.github.com".into()];
+    let g = p.generated();
+    assert_eq!(
+        g["claude"]["sandbox"]["network"]["allowedDomains"],
+        json!(["api.github.com"])
+    );
+    assert_eq!(
+        g["codex"]["permissions"]["dotfiles"]["network"]["domains"]["api.github.com"],
+        "allow"
+    );
+    assert_eq!(g["codex"]["features"]["credential_masking"], true);
+    put(h, ".codex/config.toml", "model='keep'\n[features]\ncredential_masking=false\nunrelated=true\n[profiles.other.features]\ncredential_masking=false\n");
+    let r = inspect(&p, h, &[]).unwrap();
+    assert!(r
+        .sources
+        .iter()
+        .any(|s| s.grants.to_string().contains("credential_masking")));
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+    let path = h.join(".codex/config.toml");
+    let c = fs::read_to_string(&path).unwrap();
+    assert!(c.contains("model='keep'"));
+    assert!(c.contains("unrelated=true"));
+    assert_eq!(c.matches("credential_masking").count(), 1);
+    fs::write(
+        &path,
+        c.replace("credential_masking = true", "credential_masking = false"),
+    )
+    .unwrap();
+    assert!(check(&p, h, &[]).is_err());
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+    let c = fs::read_to_string(&path).unwrap();
+    fs::write(
+        &path,
+        format!("{c}\n[profiles.drift.features]\ncredential_masking=false\n"),
+    )
+    .unwrap();
+    assert!(check(&p, h, &[]).is_err());
+}
+
+#[test]
 fn missing_git_is_reported_as_an_executable_failure_not_a_missing_setting() {
     let d = tempfile::tempdir().unwrap();
     let home = d.path().join("home");
@@ -83,6 +130,7 @@ fn migration_preserves_unowned_fields_asks_denies_and_native_trust() {
     assert!(!c.contains("sandbox_mode"));
     assert!(c.contains("prompt"));
     assert!(c.contains("network_proxy = true"));
+    assert!(c.contains("credential_masking = true"));
     let before = fs::metadata(h.join(".codex/config.toml"))
         .unwrap()
         .modified()
