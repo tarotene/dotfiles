@@ -2307,6 +2307,12 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     source = repoConfig + "/agents/skills/repo-charter/scripts/create-repo.sh";
     executable = true;
   };
+  # irasutoya-search.sh: §1 手順 6(banner 選定)の候補探し。Blogger の JSON フィードを
+  # curl と jq で引き、題名・投稿 URL・画像 URL を JSON で返す薄いラッパ(#940)。
+  home.file.".claude/skills/repo-charter/scripts/irasutoya-search.sh" = {
+    source = repoConfig + "/agents/skills/repo-charter/scripts/irasutoya-search.sh";
+    executable = true;
+  };
   # writing-style: 執筆規約の正本(別 private リポジトリの docs/style/)への
   # 薄いポインタ(#115)。writing-style-hub(crates/hub-resolve)がマーカーファイル/環境
   # 変数からハブの絶対パスを解決する。

@@ -84,6 +84,10 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
    - `naming-codename` / `naming-coined`: 名前の由来(namesake)を描く
      (例: 伝書鳩を意味する名前なら鳩)。
    - `naming-descriptive` / `naming-pj` / `naming-site`: 目的 1 文の主題を描く。
+   候補探しは `scripts/irasutoya-search.sh <検索語>` で機械化する(検索ページは JS 描画で
+   画像 URL が取れないが、Blogger の JSON フィードは題名・投稿 URL・画像 URL を 1 回で返す。
+   出力は `title`・`url`・`s400`・`s800` の JSON 配列。#940)。`--dry-run` で走らせる curl だけを
+   表示し、`--selftest` で抽出(jq)だけを確かめる。
    alt text は英語 1 文で、何を描いたか、それが由来か主題か、出所の順に書く
    (例: `Cartoon illustration of a carrier pigeon delivering a letter, the
    repository name's namesake, by Irasutoya`)。第三者素材を使うなら §5 の手順を踏む。監査は
