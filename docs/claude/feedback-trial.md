@@ -40,6 +40,8 @@ remain due. No timer runs while every session is stopped.
 The procedure printed by the hook owns the agent instructions. Commands are:
 
 - `none ID`: no candidate, only from unchecked.
+- `dismiss ID 'verbatim owner rejection'`: close an owner-rejected draft without
+  posting. This is distinct from inventing approval or silently forgetting it.
 - `draft ID /absolute/body.md`: store proposed wording, clear earlier approval.
 - `approve ID /absolute/body.md 'verbatim owner answer'`: accept only the same
   wording. The agent must actually obtain this answer; the CLI cannot decide

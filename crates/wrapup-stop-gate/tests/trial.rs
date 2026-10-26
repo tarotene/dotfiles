@@ -135,6 +135,13 @@ fn confirmation_plan_and_changed_draft() {
     assert_eq!(t.state()["checks"]["source:t1"]["approval"], "");
     fs::write(&body, "Changed again").unwrap();
     assert_eq!(t.cli(&["approve", "source:t1", &body, "OK"]).code, 1);
+    assert_eq!(
+        t.cli(&["dismiss", "source:t1", "Do not publish this candidate"])
+            .code,
+        0
+    );
+    assert_eq!(t.hook("source", "t1", true, false).code, 0);
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
 }
 
 #[test]

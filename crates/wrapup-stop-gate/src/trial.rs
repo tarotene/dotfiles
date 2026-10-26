@@ -175,7 +175,7 @@ fn procedure(gate: &str, c: &Config) -> String {
     format!(
         r#"Trial feedback: inspect good and difficult moments, including scene, observed behavior and work impact. Never invent the owner's feelings.
 Use '{gate}' --trial list to read pending checks. For each unchecked id, record either no-candidate or draft <absolute-body-file>. A draft MUST include the scene and proposed exact wording. Present it to the owner, ask for their impression and approval, then STOP while awaiting their answer. Approval must never be inferred from silence.
-Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial post <id>.
+Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial dismiss <id> <owner-verbatim-rejection>; --trial post <id>.
 Drafting/revising invalidates approval. Plan mode permits drafts only. Do not post until explicit owner approval in Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
 After post verification, use send_message_to_thread to send ONLY pending ids and comment URLs to report thread {thread}; request: read the Issue, update {script} in {worktree}, preserve stable beat ids and add the comment URL and <!-- codex-trial:ID --> marker, commit, then --trial applied <id> <commit>. Do not send the feedback body. Send one batch per normal input/resume, not a new production thread. After successful sending run --trial delivered <id>; it suppresses repeats in this turn only, NEVER marks completion. Delivery success is NOT completion; only report-side saved commit acknowledgement completes it. Delivery failures remain pending.
 The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
@@ -430,6 +430,11 @@ pub fn cli(args: &[String]) -> i32 {
             }
             match action {
                 "none" if check.status == Status::Unchecked => {
+                    check.status = Status::NoCandidate;
+                    check.usage_after = context(&check.transcript)?.usage;
+                }
+                "dismiss" if check.status == Status::AwaitingOwner && !value.trim().is_empty() => {
+                    check.approval = format!("Rejected: {value}");
                     check.status = Status::NoCandidate;
                     check.usage_after = context(&check.transcript)?.usage;
                 }
