@@ -594,7 +594,7 @@ Design and rationale for the hooks and commands deployed from
   不一致のいずれも無音失敗にせず明示的に止まる(#115)。
 - [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
   Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
-  モードを **(Plan 側, 実行側) のペア 3 種**(`fable/sonnet` / `opus/sonnet` /
+  モードを **(Plan 側, 実行側) のペア 3 種**(`opus/sonnet`(既定)/ `fable/sonnet` /
   `fable/opus`)として `claude-plan-model` で巡回する。モードは実行時状態、
   具体モデル ID は宣言が `latest_per_family` から毎回引き直す(pin ゼロ)。
   `.model` が `opusplan` でなければ書き込む前に落ちる。`fallbackModel` は

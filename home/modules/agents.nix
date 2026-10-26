@@ -103,7 +103,7 @@
 #    `model: "opusplan"` は「Plan 中は opus エイリアス、実行中は sonnet エイリアス」
 #    という *エイリアスのペア* であり、各エイリアスがどの具体モデルに解決されるかは
 #    settings.json の env で別に宣言できる。したがってモードは常に
-#    (Plan 側, 実行側) のペアで、3 つある: fable/sonnet(既定)・opus/sonnet・
+#    (Plan 側, 実行側) のペアで、3 つある: opus/sonnet(既定)・fable/sonnet・
 #    fable/opus。opus エイリアスを Fable に差し替えるとその瞬間 `/model opus` も
 #    Fable になるため、Fable 固有のリミットが枯れたときに戻る道が塞がる
 #    (fallbackModel は overload 系にしか効かず、Usage limit では発火しない)。
@@ -1171,7 +1171,7 @@ let
   # `model: "opusplan"` は Plan 中に opus エイリアス、実行中に sonnet エイリアスを
   # 解決する。各エイリアスの解決先は settings.json の
   # `.env.ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL` で乗っ取れるので、モードは
-  # (Plan 側, 実行側) のペアになる — fable/sonnet(既定)・opus/sonnet・fable/opus。
+  # (Plan 側, 実行側) のペアになる — opus/sonnet(既定)・fable/sonnet・fable/opus。
   #
   # ここに具体モデル ID を書かないのは、書くと必ず腐るから。エイリアス文字列
   # (`fable`)は env の値として使えず(API が unrecognized_model で拒否する)、
