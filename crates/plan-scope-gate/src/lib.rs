@@ -303,6 +303,33 @@ pub fn extract_inventory_section(plan: &str) -> Vec<&str> {
     out
 }
 
+/// 節の行を項目に束ねる(#876)。`Rn` 行は、直後のインデントされた継続行(次の
+/// `Rn` 行・インデントの無い行・空行の手前まで)を `\n` でつないで 1 項目にする。
+/// 折り返した項目の処分(`— 段1で実装` など)が継続行にあっても、同じ項目として
+/// 読むため。`Rn` でない行は、それぞれ 1 項目。
+fn inventory_entries(section: &[&str]) -> Vec<String> {
+    let mut entries: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < section.len() {
+        let mut entry = section[i].to_string();
+        i += 1;
+        if RN_RE.is_match(&entry) {
+            while i < section.len() && is_continuation(section[i]) {
+                entry.push('\n');
+                entry.push_str(section[i]);
+                i += 1;
+            }
+        }
+        entries.push(entry);
+    }
+    entries
+}
+
+/// `Rn` 項目の継続行か: 空でなく、空白で始まり、それ自体が `Rn` 行でない。
+fn is_continuation(line: &str) -> bool {
+    line.starts_with([' ', '\t']) && !line.trim().is_empty() && !RN_RE.is_match(line)
+}
+
 /// [`judge_issue`] の判定。
 #[derive(Debug, Clone, PartialEq)]
 pub enum IssueJudgement {
@@ -369,6 +396,7 @@ pub fn judge_issue(r: &str, children: &Children, plan: &str) -> IssueJudgement {
     }
 
     let section = extract_inventory_section(plan);
+    let entries = inventory_entries(&section);
     let mut missing: Vec<String> = Vec::new();
     if children.kind == "sub" {
         for item in &children.items {
@@ -376,8 +404,8 @@ pub fn judge_issue(r: &str, children: &Children, plan: &str) -> IssueJudgement {
             let ctitle = tsv_escape(item.get("title").unwrap_or(&Value::Null));
             let pat =
                 Regex::new(&format!("#{}([^0-9]|$)", regex::escape(&cnum))).expect("valid regex");
-            let line = section.iter().find(|l| pat.is_match(l));
-            if !line.is_some_and(|l| STAGE_OR_TAG_RE.is_match(l)) {
+            let entry = entries.iter().find(|e| pat.is_match(e));
+            if !entry.is_some_and(|e| STAGE_OR_TAG_RE.is_match(e)) {
                 missing.push(format!("#{cnum} {ctitle}"));
             }
         }
@@ -413,12 +441,12 @@ pub fn judge_inventory(plan: &str) -> Vec<String> {
     let section = extract_inventory_section(plan);
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for line in section {
-        let Some(c) = RN_RE.captures(line) else {
+    for entry in inventory_entries(&section) {
+        let Some(c) = RN_RE.captures(&entry) else {
             continue;
         };
         let id = c[1].to_string();
-        let rest = &line[c.get(0).expect("match").end()..];
+        let rest = &entry[c.get(0).expect("match").end()..];
         if !seen.insert(id.clone()) {
             out.push(format!("R{id} が複数回処分されています"));
         }
@@ -608,5 +636,63 @@ mod tests {
             ]
         );
         assert!(judge_inventory(EXAMPLE_BLOCK).is_empty());
+    }
+
+    /// #876: 折り返した項目の処分は、継続行にあっても同じ項目として読む。
+    #[test]
+    fn judge_inventory_reads_indented_continuation_lines() {
+        // Issue の再現(補足が長くて折り返し、処分は次の行)。
+        assert!(judge_inventory(
+            "## 要求インベントリ\n\n- R1: <依頼文の逐語>(補足が長くて折り返した部分)\n  — 段1で実装\n"
+        )
+        .is_empty());
+        // 継続行が複数、タブ字下げ、閉じたタグ。
+        assert!(judge_inventory(
+            "## 要求インベントリ\n- R1: 長い逐語\n  さらに折り返し\n\t— Obsolete: もう不要\n- R2: 段2で実装\n"
+        )
+        .is_empty());
+        // 継続行に処分が無ければ、従来どおり未記載。次の Rn 行の処分は借りない。
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n  折り返しだけ\n- R2: 段2で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        // 継続行は空行・インデントの無い行・見出しで終わる。
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n\n  段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 逐語\n## 別の節\n  段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+    }
+
+    /// #876: 経路A(子 Issue の照合)も、折り返した項目の処分を同じ項目として読む。
+    #[test]
+    fn judge_issue_reads_indented_continuation_lines() {
+        let sub = ch(
+            json!({"totalCount":2,"kind":"sub","items":[{"number":137,"title":"t1"},{"number":138,"title":"t2"}]}),
+        );
+        let r = "tarotene/dotfiles#136";
+        assert_eq!(
+            judge_issue(
+                r,
+                &sub,
+                "## 要求インベントリ\n- R1: #137 子タイトル逐語(長くて折り返した)\n  — 段1で実装\n- R2: #138 t2\n  — Obsolete: 済\n"
+            ),
+            IssueJudgement::Covered
+        );
+        assert_eq!(
+            judge_issue(
+                r,
+                &sub,
+                "## 要求インベントリ\n- R1: #137 子タイトル逐語\n  折り返しだけ\n- R2: #138 段2で実装\n"
+            ),
+            IssueJudgement::Missing(vec!["#137 t1".into()])
+        );
     }
 }
