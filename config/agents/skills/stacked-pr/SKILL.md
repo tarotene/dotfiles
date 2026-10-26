@@ -244,8 +244,10 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 
 ```bash
 gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
-  -f merge_method=squash -f merge_action=direct_merge
+  -f merge_method=squash -f sha=<head SHA> -f merge_action=default
 ```
+
+`<head SHA>` は `gh pr view <N> --json headRefOid --jq .headRefOid` で取る(`sha` を渡すと、要求から実行までの間に push されたときはマージが取り消される)。`merge_action=default` は、対象ブランチにマージキューがあればキューに入り、無ければ直接マージする(`direct_merge` は常に直接。GitHub Docs の同じ節、取得 2026-10-27)。202 が返り、数秒後に `gh pr view <N> --json state` が `MERGED` になる。積みでない PR は、従来どおり `gh pr merge` で通る(#941、2026-10-22 に実測)。
 
 マージは取り消せず、全段が一度に入る。段ごとに別のレビューを終えてから入れたいときは、レビューが済んだ段を確かめてから呼ぶ。
 中間段を指定したときの挙動は未確認(文書の記述は「下位の open な PR を含む」までで、実測は最上段の例だけ)。エージェントはマージしない(完了定義は PR 作成まで)ので、この手順は本人がマージするときのためにある。
