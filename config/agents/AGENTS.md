@@ -40,6 +40,19 @@ documents", https://developers.google.com/workspace/drive/api/guides/ref-export-
 最終更新 2026-09-03、取得 2026-10-14)。書き出しの返値がファイルとして保存されるか
 文字列で返るかは環境で違いうるので、確かめていないうちは「未確認」と書く。
 
+Google Drive の PDF の図に載る数値(寸法公差など)は、`read_file_content` が
+テキストしか返さないので読めない。`download_file_content` で書き出し、結果が
+ツールの上限を超えて保存ファイルに落ちたら、その JSON の base64 を PDF に戻して、
+埋込画像として取り出す(JSON のキー名は保存ファイルを見て確かめる)。
+
+```bash
+jq -r .content <保存された JSON> | base64 -d > doc.pdf
+pdftotext -layout doc.pdf -        # テキスト
+pdfimages -f N -l N -j doc.pdf fig # 図は埋込画像として取り出し、拡大して読む
+```
+
+埋込画像の解像度が足りず桁を読めないときは「未確認」と書き、相手に確認する(#894)。
+
 WebFetch がドメインを拒否した(「Claude Code is unable to fetch from …」)とき、
 または名前解決に失敗したときは、「未確認」と書く前に、ブラウザ操作(Playwright の
 `browser_navigate` と `browser_snapshot`)で同じ一次ページを読む。WebFetch が拒否した
