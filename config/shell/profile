@@ -67,4 +67,9 @@ if [ -d "$HOME/.cargo/bin" ]; then
     esac
 fi
 
+# Credential launcher precedes the native installer's ~/.local/bin/codex.
+if [ -d "$HOME/.local/libexec/codex-launcher" ]; then
+    PATH="$HOME/.local/libexec/codex-launcher:$PATH"
+fi
+
 export PATH

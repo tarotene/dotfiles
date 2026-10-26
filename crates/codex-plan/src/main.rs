@@ -43,7 +43,10 @@ async fn run() -> Result<i32> {
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .context("HOME or XDG_CONFIG_HOME is required")?
         .join("codex-plan/settings.toml");
-    let native = PathBuf::from("codex");
+    // The credential launcher intentionally rejects app-server / --remote / -c.
+    // This protocol adapter needs the installer-owned native entry point.
+    let native = PathBuf::from(std::env::var_os("HOME").context("HOME is required")?)
+        .join(".local/bin/codex");
     match args.first().map(String::as_str) {
         Some("status") if args.len() == 1 => {
             println!(

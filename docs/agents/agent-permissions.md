@@ -17,7 +17,7 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 秘密パスの追加は制限の強化、削除は権限の拡大として扱う。
 
 通信先の宣言は接続だけを許可する。投稿・送信に関する既存 hook は存続する。
-`domains` の初期値は空で、既知の宛先は本人の宣言に追加する。
+`domains` の初期値は `api.github.com`。追加の既知の宛先は本人の宣言に追加する。
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。
 
@@ -231,6 +231,69 @@ symlink を経由した書き込みは拒否する。複数ファイル全体の
 ```sh
 agent-permissions migrate --restore "$journal"
 ```
+
+## 通常の Codex 起動で GitHub 認証を仲介する
+
+`codex` は `~/.local/libexec/codex-launcher/codex` で解決する。
+launcher は共通権限の `check --project <起動先>` に成功してから、既存の
+`gh auth token --hostname github.com` で認証を取得し、Codex 親プロセスだけの
+`GH_TOKEN` に渡す。シェル全体へ export せず、トークンをファイル・引数・ログへ書かない。
+native installer が管理する `~/.local/bin/codex` は変更せず、絶対パスで exec する。
+
+原因は、接続許可と認証の取得が別の境界だったことである。`api.github.com` を
+許可するだけでは sandbox から認証ストアを利用できなかった。
+共通設定で `features.network_proxy` と `features.credential_masking` を有効にし、
+Codex 内蔵の認証仲介で子プロセスのトークンを代替値に置換する。
+通信許可は読み取り専用化ではない。投稿・審査の既存方針は引き続き適用する。
+
+通常セッション、`exec`、`resume`、`fork`、`review`、`sandbox -- <コマンド>` が
+保護経路を通る。help・version・completion・update・login・logout は、GitHub の
+トークン環境変数を除いてそのまま native へ委譲する。認証失敗・空値は停止する。
+CLI の別 profile、設定上書き、権限変更、未知のオプションは認証取得前に拒否する。
+`-C` / `--cd` は指定先を棚卸しする。`sandbox` の子コマンドは `--` の後に書く。
+オプションの省略形の連結や複数の起動先指定は使わない。
+
+特殊な設定で起動する場合は `~/.local/bin/codex` を直接使う。この経路では
+launcher の認証注入・起動前検査は行わない。通常の起動へ戻すときは `codex` を使う。
+既存の `codex-plan` は app-server と remote TUI を使うため、この native の
+絶対パスを呼ぶ。PATH 上の launcher を app-server として起動させない。
+`command -v codex` が launcher を示すことと、`agent-permissions check --project "$PWD"`
+が成功することを確認する。権限設定を戻す場合は、上記の journal による復元を使う。
+zsh の login profile でも PATH を先頭へ戻す。適用前から動いている親プロセスが
+「home-manager の環境変数を読込済み」という印を継承すると、sessionPath の
+再読込を省略するためである。非対話 login shell でも launcher が選ばれることを
+実機で検査する。
+
+credential masking は確認した `0.164.0` では開発中・既定無効である。
+launcher はこの版だけに認証を渡す。更新後は固定版の CLI 定義を読み直し、
+対応版をコードで変更し、以下の受入試験を行う。`codex update` 自体は制限しない。
+
+1. `agent-permissions inspect --json` で通信先・masking・全 profile を確認する。
+   差分を提示した後に `migrate --approved REVIEW` と `check` を実行する。
+2. 新しい通常起動の Codex で、最初のコマンドを
+   `gh pr view -R tarotene/dotfiles 1039 --json number,title` とし、返った番号と題名を照合する。
+3. sandbox 子プロセスで `GH_TOKEN` が存在し、親の値とは異なることを値を表示せず比較する。
+   未許可の宛先への通信が拒否されることも確かめる。
+
+本物のトークンは Codex 親プロセスが保持する。同一ユーザーの悪意あるプロセスの
+隔離までは保証しない。Unix socket 全体の許可は追加しない。
+Linux 以外のホストは実機試験まで未確認である。
+
+2026-10-26、arcturus（Linux）で `inspect → migrate → check → hms .` を実施した。
+新しい login shell の裸の `codex exec` から、最初の sandbox コマンド
+`gh pr view -R tarotene/dotfiles 1039 --json number,title` が終了コード0で番号・題名を返した。
+同じ配備の `codex sandbox` でも親子トークンの不一致と PR 読み取り成功を確認し、
+未許可の `example.com` は proxy が403で拒否した。トークン値は出力していない。
+初回の試験では古い親 PATH から native が選ばれて401になったため、login profile
+への設定を追加し、同じ非対話 login 起動で成功することを再測定した。
+
+| 判断 | 出典（取得 2026-10-26、公開日未確認） | 先行例との差分と軸 |
+|---|---|---|
+| D6: 内蔵の認証仲介を使う | OpenAI, Codex [rust-v0.164.0 GitHub provider L14–50](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L14-L50)、[proxy 設定 L585–604](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L585-L604)、[feature L1483](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/features/src/lib.rs#L1483) | 開発中機能を明示的に有効化。軸: 還元 — proxy を自作しない |
+| D7: Rust launcher と installer の入口を分ける | dotfiles `crates/esa-mcp-launcher/src/main.rs` と `home/modules/esa.nix` | gh の認証と権限 check に用途を限定。POSIX shell と比較し、秘密値の shell 展開をなくす Rust を採用。軸: 表現不可能 |
+| D8: 起動引数を閉じた語彙で検査する | OpenAI, Codex [CLI 定義 L129](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/cli/src/main.rs#L129)、[共通オプション L10](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/utils/cli/src/shared_options.rs#L10)、[exec 定義 L11](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/exec/src/cli.rs#L11) | native の全機能を複製せず、未分類指定には認証を渡さない。版も固定。軸: 表現不可能 |
+
+既存手段: `crates/codex-launcher/Cargo.toml` — 自前 — 却下: POSIX shell（秘密値の shell 展開・xtrace を構造からなくすため）、esa-mcp-launcher の直接流用（GPG・esa 専用）。exec の構造は踏襲する。
 
 ## 先行例と実装上の判断
 
