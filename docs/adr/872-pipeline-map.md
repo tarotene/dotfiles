@@ -195,3 +195,6 @@ Issue の案は、`node` を必須の引数にする nix のヘルパ(`mkTimer` 
 - `home/modules/pipeline.nix`
 - `home/common.nix`
 - `crates/pipeline-map/src/lib.rs`
+- `flake.nix`
+
+`flake.nix` の執行点は `checks.x86_64-linux.pipeline-external-timer`(このリポジトリの外が足した timer で評価が落ちないこと)。
