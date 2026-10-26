@@ -59,10 +59,13 @@ The procedure printed by the hook owns the agent instructions. Commands are:
   Complete script/storyboard/visual review before invoking it. Then set enabled
   to false in the local declaration.
 
-Only the report thread edits the report worktree. Senders send IDs and URLs,
+Only the report thread edits the report worktree. Senders send only opaque check IDs,
 never start a second producer. Queued messages are hints: the local pending set
 is authoritative, and a report already processing a batch re-reads it before
-ending. Duplicate requests reuse the marker already in the script.
+ending. The receiver resolves URLs and paths from local state/config, so private
+repository references never need to cross the thread-message guard. This replaces
+the planned ID+URL payload after the reference guard rejected a real delivery on
+2026-10-26; the redacted ID-only retry succeeded. Duplicate requests reuse the marker already in the script.
 
 The state transition and remote read-back run under the existing file lock, so
 parallel senders cannot lose state or create duplicate comments. An ambiguous
