@@ -35,7 +35,7 @@ fn patches_only_matched_responses_preserving_unknown_fields_and_id_types() {
     assert_eq!(result["id"], "1");
     assert_eq!(result["result"]["future"], 42);
     let data = &result["result"]["data"];
-    assert_eq!(data[0]["model"], "gpt-6-astra");
+    assert_eq!(data[0]["model"], "gpt-6.1-sol");
     assert_eq!(data[0]["future"]["keep"], true);
     assert_eq!(data[1]["model"], "gpt-6.1-sol");
     assert_eq!(data[1]["reasoning_effort"], "medium");
@@ -197,11 +197,7 @@ fn mode_change_restores_pair_and_stale_turn_while_manual_choice_is_preserved() {
         let raw = update("thread/settings/update", mode, "manual", "high");
         let patched = relay.from_client(&raw, &settings).unwrap().unwrap();
         let actual: serde_json::Value = serde_json::from_str(&patched).unwrap();
-        let expected_model = if mode == "plan" {
-            "gpt-6-astra"
-        } else {
-            "gpt-6.1-sol"
-        };
+        let expected_model = "gpt-6.1-sol";
         assert_eq!(actual["params"]["model"], expected_model);
         assert_eq!(actual["params"]["effort"], "medium");
         let mut expected: serde_json::Value = serde_json::from_str(&raw).unwrap();

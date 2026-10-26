@@ -117,7 +117,27 @@ async fn rpc(
     .context("native protocol preflight timed out")?
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct Discovery {
+    pub models: Vec<Value>,
+    pub modes: Value,
+    pub rate_limits: Option<Value>,
+    pub rate_limits_error: Option<String>,
+}
+
+impl Discovery {
+    pub fn validate(&self, settings: &Settings) -> Result<()> {
+        settings.validate_models(&self.models)?;
+        settings.patch_presets(&mut self.modes.clone())
+    }
+}
+
 pub async fn preflight(native: &Path, settings: &Settings) -> Result<()> {
+    discover(native, false).await?.validate(settings)
+}
+
+/// Discovery never starts a thread, sends prompts or changes account selection.
+pub async fn discover(native: &Path, with_rates: bool) -> Result<Discovery> {
     let mut term = signal(SignalKind::terminate())?;
     let mut hangup = signal(SignalKind::hangup())?;
     let mut interrupt = signal(SignalKind::interrupt())?;
@@ -169,8 +189,7 @@ pub async fn preflight(native: &Path, settings: &Settings) -> Result<()> {
                 bail!("model/list repeated a pagination cursor");
             }
         }
-        settings.validate_models(&models)?;
-        let mut modes = rpc(
+        let modes = rpc(
             &mut reader,
             &mut writer,
             2,
@@ -178,8 +197,31 @@ pub async fn preflight(native: &Path, settings: &Settings) -> Result<()> {
             json!({}),
         )
         .await?;
-        settings.patch_presets(&mut modes)?;
-        Ok(())
+        let (rate_limits, rate_limits_error) = if with_rates {
+            match rpc(
+                &mut reader,
+                &mut writer,
+                3,
+                "account/rateLimits/read",
+                json!({
+                    "supportsLunaReserve": false,
+                    "excludeResetCreditDetails": false
+                }),
+            )
+            .await
+            {
+                Ok(value) => (value.get("result").cloned(), None),
+                Err(error) => (None, Some(format!("{error:#}"))),
+            }
+        } else {
+            (None, None)
+        };
+        Ok(Discovery {
+            models,
+            modes,
+            rate_limits,
+            rate_limits_error,
+        })
     };
     let result = tokio::select! {
         result = check => result,
@@ -199,6 +241,7 @@ async fn relay(
     mut reader: Reader,
     mut writer: Writer,
     settings: &Settings,
+    advice: &std::sync::Mutex<crate::advice::AdviceObserver>,
 ) -> Result<()> {
     let (socket, _) = timeout(Duration::from_secs(60), listener.accept())
         .await
@@ -244,6 +287,7 @@ async fn relay(
                 .await
                 .context("app-server disconnected")?
                 .context("read app-server JSON line (maximum 256 MiB)")?;
+            advice.lock().unwrap().observe(&parse_message(&raw)?);
             let patched = relay.lock().unwrap().from_server(&raw, settings)?;
             outgoing
                 .send(Message::Text(patched.unwrap_or(raw).into()))
@@ -296,7 +340,9 @@ pub async fn launch(
     prompt: Option<&str>,
 ) -> Result<i32> {
     // Preflight owns its own handlers and always reaps its child before return.
-    preflight(native, settings).await?;
+    let discovery = discover(native, false).await?;
+    discovery.validate(settings)?;
+    let advice = std::sync::Mutex::new(crate::advice::AdviceObserver::default());
     let mut term = signal(SignalKind::terminate())?;
     let mut hangup = signal(SignalKind::hangup())?;
     let mut interrupt = signal(SignalKind::interrupt())?;
@@ -318,7 +364,7 @@ pub async fn launch(
     let result = async {
         tokio::select! {
             status = tui.wait() => Ok(status?.code().unwrap_or(1)),
-            result = relay(listener, reader, writer, settings) => {
+            result = relay(listener, reader, writer, settings, &advice) => {
                 match result {
                     Ok(()) => timeout(Duration::from_secs(2), tui.wait()).await
                         .context("TUI closed connection but did not exit")?
@@ -337,6 +383,10 @@ pub async fn launch(
     let _ = tui.wait().await;
     server.stop().await;
     drop(directory);
+    drop(terminal);
+    if let Some(message) = advice.lock().unwrap().render(&discovery.models) {
+        eprint!("{message}");
+    }
     result
 }
 
@@ -418,10 +468,16 @@ mod tests {
         let listener = UnixListener::bind(&socket).unwrap();
         let _other = UnixListener::bind(&other).unwrap();
         let (mut server, reader, writer) = echo_server().await;
-        let task =
-            tokio::spawn(
-                async move { relay(listener, reader, writer, &Settings::default()).await },
-            );
+        let task = tokio::spawn(async move {
+            relay(
+                listener,
+                reader,
+                writer,
+                &Settings::default(),
+                &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
+            )
+            .await
+        });
         let stream = UnixStream::connect(&socket).await.unwrap();
         let config = WebSocketConfig::default()
             .max_message_size(Some(MAX_MESSAGE))
@@ -453,10 +509,16 @@ mod tests {
         let socket = dir.path().join("rpc.sock");
         let listener = UnixListener::bind(&socket).unwrap();
         let (mut server, reader, writer) = echo_server().await;
-        let task =
-            tokio::spawn(
-                async move { relay(listener, reader, writer, &Settings::default()).await },
-            );
+        let task = tokio::spawn(async move {
+            relay(
+                listener,
+                reader,
+                writer,
+                &Settings::default(),
+                &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
+            )
+            .await
+        });
         let (mut client, _) = client_async_with_config(
             "ws://localhost/",
             UnixStream::connect(socket).await.unwrap(),
@@ -481,10 +543,16 @@ mod tests {
         let socket = dir.path().join("rpc.sock");
         let listener = UnixListener::bind(&socket).unwrap();
         let (mut server, reader, writer) = echo_server().await;
-        let task =
-            tokio::spawn(
-                async move { relay(listener, reader, writer, &Settings::default()).await },
-            );
+        let task = tokio::spawn(async move {
+            relay(
+                listener,
+                reader,
+                writer,
+                &Settings::default(),
+                &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
+            )
+            .await
+        });
         let (_client, _) = client_async_with_config(
             "ws://localhost/",
             UnixStream::connect(socket).await.unwrap(),
