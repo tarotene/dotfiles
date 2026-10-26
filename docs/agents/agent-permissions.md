@@ -19,7 +19,8 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 通信先の宣言は接続だけを許可する。投稿・送信に関する既存 hook は存続する。
 `domains` の初期値は `api.github.com`。追加の既知の宛先は本人の宣言に追加する。
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
-外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。
+外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。例外は `mcp_allow` で
+宣言した MCP ツール 1 つずつだけである(下の「MCP ツールは `mcp_allow` で 1 つずつ宣言する」)。
 
 `project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
 Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
@@ -230,14 +231,43 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 セッションの開始を妨げない。
 
 昇格は `/promote-permissions` が担う(`agent-permissions pending` で候補を読む)。共有ポリシーに宣言があるのは
-通信先(`domains`・`project_rules.<project>.domains`)だけなので、昇格できるのは `WebFetch(domain:…)` と、
-Codex の `network_rule(… decision="allow")` の候補に限る。`mcp__…`・`WebSearch`・`Bash(…)`・`prefix_rule`・
-ツールの `approval_mode` の候補は、ツールを `prompt` に保つ現行の方針のとおり宣言が無く、
-キューは記録にとどまる。これらを昇格できるようにするには、共有ポリシーの形を広げる別の裁定が要る(未実装、
-意図は未決)。
+通信先(`domains`・`project_rules.<project>.domains`)と MCP ツール(`mcp_allow`)なので、昇格できるのは
+`WebFetch(domain:…)`、Codex の `network_rule(… decision="allow")`、`mcp__<server>__<tool>` の候補である。
+`WebSearch`・`Bash(…)`・`prefix_rule` は、宣言を持たないので昇格できず、キューは記録にとどまる(下の「MCP ツールは
+`mcp_allow` で 1 つずつ宣言する」に理由)。Codex のツールの `approval_mode` の候補は、`mcp_allow` に
+`mcp__<server>__<tool>` を足す形で昇格する。
+
+## MCP ツールは `mcp_allow` で 1 つずつ宣言する
+
+共有ポリシーの `mcp_allow`(`mcp__<server>__<tool>` の列。`*` は書けない)に載せた MCP ツールは、常に許可する(#1051)。
+両 CLI の本来の仕組みへ 1 対 1 で写し、独自の認可は作らない。
+
+| 宣言 | Claude | Codex |
+|---|---|---|
+| `mcp__esa__esa_get_post` | `~/.claude/settings.json` の `permissions.allow` に同じ文字列 | `~/.codex/config.toml` の `mcp_servers.esa.tools.esa_get_post.approval_mode = "approve"` |
+
+- hook は、宣言済みのツールに ask を返さない。宣言していない MCP ツールは、これまでどおり ask。
+  他の hook(Slack の送信 guard など)の deny は独立で、宣言しても外れない。
+- Codex は、`config.toml` に**定義済みの**サーバーのツールにだけ書く。`command` も `url` も持たない
+  `[mcp_servers.<名前>]` は Codex が `invalid transport` で拒否する(openai/codex rust-v0.164.0
+  `codex-rs/config/src/mcp_types.rs` L548-549、取得 2026-10-27)ので、未定義のサーバーを作らない。Claude の
+  コネクタ(`claude_ai_…`)やプラグイン由来の名前は、Codex に同名のサーバーが無ければ Claude だけに効く。
+- 追加は権限の拡大なので `apply` は拒否し、`inspect` → `migrate` を要求する。削除は縮小で、自動で反映する
+  (Claude の `allow` から消え、Codex の該当ツールは `prompt` に戻る)。
+- 宣言を空にしている間、`mcp_allow` は記録にも `policy.json` にも現れない。この欄が無い記録は、空として読む。
+- Claude では、`permissions.allow` の許可と hook の `ask` のどちらが優先されるかを、公式文書は定めていない
+  (#1052 が実測する)。宣言済みのツールで hook が ask を返さない形にして、順位に依存しないようにしてある。
+- **宣言しないもの。** Bash・`prefix_rule`・WebSearch は記録のみのままである。Claude の自動モードでは
+  `classifyAllShell` が Bash の allow を効かなくし(Anthropic, "Configure auto mode",
+  <https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27。本線では原文を再取得していない)、
+  コマンドの前方一致は、同じ前置きの別の引数まで許してしまう。MCP ツールは名前が 1 つに決まり、両 CLI に
+  1 対 1 で写せる。
 
 この仕組みで、規則「個別許可は原則その実行限り」は「そのセッション限り」に緩む(本人の裁定、#1043)。
 並行する別のセッションが開始されると、もう一方の許可が回収されて再度プロンプトが出ることがある。
+さらに、`mcp_allow` に宣言した MCP ツールは、その規則の例外として、セッションを越えて常に許可する(本人の裁定、#1051)。
+例外は、本人が `inspect` → `migrate` で審査した宣言に限る。「don't ask again」で積んだ許可は、従来どおり
+そのセッション限りで、昇格を裁定されたものだけが宣言になる。
 
 ## 更新を中断したら記録から復元する
 
@@ -346,7 +376,7 @@ Claude の本体コードは非公開。固定版の根拠は Anthropic の
 | R2 | 「両者を同じソースにして一元管理できる状態にしたい」 | Nix 宣言、共通 Policy と native 設定生成 |
 | R3 | 「整理・取り込みまで含める」 | inspect / migrate、本人確認後に適用 |
 | R4 | 「範囲が広がるときだけ確認」 | apply の拡大判定とレビュー照合 |
-| R5 | 「個別許可は原則その実行限り」 | 恒久 allow 空、外部ツール prompt |
+| R5 | 「個別許可は原則その実行限り」 | 恒久 allow 空(`mcp_allow` の宣言だけが例外)、外部ツール prompt |
 | R6 | 「権限設定全体を対象にする」「権限の境界も決め直す」 | 複数設定元の棚卸しと生成 |
 | R7 | 「作業場所の外はその都度審査」「通常の資料は読める」「既知の宛先＋個別審査」 | native filesystem/network と hook |
 | R8 | 「表せない分は個別審査へ」「一回の本人承認を認める」 | sandbox 外実行の ask、project 通信先の native 審査 |

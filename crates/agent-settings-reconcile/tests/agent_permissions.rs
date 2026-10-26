@@ -1044,3 +1044,137 @@ fn an_unreadable_settings_file_is_reported_as_one_review_source() {
     let err = migrate(&p, &h, &projects, &review).unwrap_err();
     assert!(err.contains("requires review"), "{err}");
 }
+
+fn with_mcp_allow(tools: &[&str]) -> Policy {
+    let mut p = policy();
+    p.mcp_allow = tools.iter().map(|t| (*t).to_owned()).collect();
+    p
+}
+
+#[test]
+fn mcp_allow_lists_single_tools_only_and_stays_out_of_an_old_shaped_record() {
+    with_mcp_allow(&["mcp__esa__esa_get_post", "mcp__plugin_a_b__tool__x"])
+        .validate()
+        .unwrap();
+    for bad in [
+        "mcp__esa__*",
+        "mcp__*",
+        "mcp__esa",
+        "mcp__esa__",
+        "mcp____tool",
+        "Bash(git status:*)",
+        "mcp__es a__x",
+    ] {
+        let err = with_mcp_allow(&[bad]).validate().unwrap_err();
+        assert!(err.contains("mcp_allow"), "{bad}: {err}");
+    }
+    let twice = with_mcp_allow(&["mcp__a__b", "mcp__a__b"]);
+    assert!(twice.validate().unwrap_err().contains("twice"));
+    // An empty list is not serialized: a record without the field is the same policy,
+    // and an older binary can still read what this one writes.
+    assert!(!serde_json::to_string(&policy())
+        .unwrap()
+        .contains("mcp_allow"));
+    assert!(serde_json::to_string(&with_mcp_allow(&["mcp__a__b"]))
+        .unwrap()
+        .contains("mcp_allow"));
+}
+
+#[test]
+fn mcp_allow_maps_one_to_one_to_claude_allow_and_codex_tool_approval() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    put(
+        h,
+        ".claude/settings.json",
+        r#"{"permissions":{"allow":["mcp__human__added"]}}"#,
+    );
+    put(
+        h,
+        ".codex/config.toml",
+        "[mcp_servers.esa]\ncommand = 'esa'\n[mcp_servers.esa.tools.esa_get_post]\napproval_mode = 'prompt'\n[mcp_servers.other]\ncommand = 'o'\n[mcp_servers.other.tools.kept]\napproval_mode = 'approve'\n",
+    );
+    let p = with_mcp_allow(&["mcp__esa__esa_get_post", "mcp__claude_ai_Drive__read"]);
+    let r = inspect(&p, h, &[]).unwrap();
+    assert_eq!(
+        r.generated["claude"]["permissions"]["allow"],
+        json!(["mcp__esa__esa_get_post", "mcp__claude_ai_Drive__read"])
+    );
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+    let claude: Value =
+        serde_json::from_slice(&fs::read(h.join(".claude/settings.json")).unwrap()).unwrap();
+    assert_eq!(
+        claude["permissions"]["allow"],
+        json!(["mcp__esa__esa_get_post", "mcp__claude_ai_Drive__read"]),
+        "a human-added allow is replaced by the declaration"
+    );
+    assert_eq!(
+        approval(h, "esa", "esa_get_post").as_deref(),
+        Some("approve")
+    );
+    assert_eq!(
+        approval(h, "other", "kept").as_deref(),
+        Some("prompt"),
+        "an undeclared tool goes back to prompt"
+    );
+    assert!(
+        !has_server(h, "claude_ai_Drive"),
+        "a server the config does not define is never created: Codex rejects it as an invalid transport"
+    );
+}
+
+/// The `approval_mode` under `mcp_servers.<server>.tools.<tool>` of the Codex config.
+fn approval(home: &Path, server: &str, tool: &str) -> Option<String> {
+    let doc: toml_edit::DocumentMut = fs::read_to_string(home.join(".codex/config.toml"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    doc["mcp_servers"][server]["tools"][tool]["approval_mode"]
+        .as_str()
+        .map(str::to_owned)
+}
+
+fn has_server(home: &Path, server: &str) -> bool {
+    let doc: toml_edit::DocumentMut = fs::read_to_string(home.join(".codex/config.toml"))
+        .unwrap()
+        .parse()
+        .unwrap();
+    doc["mcp_servers"].get(server).is_some()
+}
+
+#[test]
+fn adding_an_mcp_tool_is_an_expansion_and_removing_one_narrows_back_to_prompt() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    put(h, ".claude/settings.json", "{}");
+    put(
+        h,
+        ".codex/config.toml",
+        "[mcp_servers.esa]\ncommand = 'esa'\n",
+    );
+    let mut p = with_mcp_allow(&["mcp__esa__a"]);
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+
+    p.mcp_allow.push("mcp__esa__b".into());
+    assert!(apply(&p, h, &[]).unwrap_err().contains("expansion"));
+    let after_refusal: Value =
+        serde_json::from_slice(&fs::read(h.join(".claude/settings.json")).unwrap()).unwrap();
+    assert_eq!(
+        after_refusal["permissions"]["allow"],
+        json!(["mcp__esa__a"])
+    );
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+
+    p.mcp_allow.retain(|t| t != "mcp__esa__a");
+    apply(&p, h, &[]).unwrap();
+    check(&p, h, &[]).unwrap();
+    let claude: Value =
+        serde_json::from_slice(&fs::read(h.join(".claude/settings.json")).unwrap()).unwrap();
+    assert_eq!(claude["permissions"]["allow"], json!(["mcp__esa__b"]));
+    assert_eq!(approval(h, "esa", "a").as_deref(), Some("prompt"));
+    assert_eq!(approval(h, "esa", "b").as_deref(), Some("approve"));
+}

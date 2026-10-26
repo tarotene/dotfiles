@@ -37,12 +37,33 @@ pub struct Policy {
     /// before this field existed was reviewed under `prompt`.
     #[serde(default = "default_sandboxed_shell")]
     pub sandboxed_shell: String,
+    /// MCP tools (`mcp__<server>__<tool>`, no wildcard) that are always allowed.
+    /// Claude gets the same strings in `permissions.allow`; Codex gets
+    /// `approval_mode = "approve"` on the same tool of a server that exists in its
+    /// config. This is the one exception to "an individual allow lasts for the
+    /// session" (#1051). Left out of the record while empty, so a record written
+    /// before the field existed reads the same.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_allow: Vec<String>,
     pub projects: Vec<PathBuf>,
     pub project_rules: BTreeMap<String, ProjectRule>,
 }
 
 fn default_sandboxed_shell() -> String {
     "prompt".into()
+}
+
+/// `mcp__<server>__<tool>` -> (server, tool). The server is the segment before
+/// the first `__`; a tool name may contain `__`. No wildcard, no empty segment.
+pub fn mcp_tool(entry: &str) -> Option<(&str, &str)> {
+    let (server, tool) = entry.strip_prefix("mcp__")?.split_once("__")?;
+    let valid = |part: &str| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    };
+    (valid(server) && valid(tool)).then_some((server, tool))
 }
 
 impl Policy {
@@ -65,6 +86,16 @@ impl Policy {
                 "sandboxed_shell must be auto or prompt: {}",
                 self.sandboxed_shell
             ));
+        }
+        for (i, entry) in self.mcp_allow.iter().enumerate() {
+            if mcp_tool(entry).is_none() {
+                return Err(format!(
+                    "mcp_allow must list single tools as mcp__<server>__<tool>, no wildcard: {entry}"
+                ));
+            }
+            if self.mcp_allow[..i].contains(entry) {
+                return Err(format!("mcp_allow lists a tool twice: {entry}"));
+            }
         }
         for path in &self.secret_paths {
             if !(path.starts_with("~/") || Path::new(path).is_absolute())
@@ -116,7 +147,7 @@ impl Policy {
         json!({
             "claude": {
                 "disableAllHooks": false,
-                "permissions": {"allow": [], "additionalDirectories": [],
+                "permissions": {"allow": self.mcp_allow, "additionalDirectories": [],
                     // Claude // is an absolute filesystem path; / is project-relative.
                     "deny": self.secret_paths.iter().flat_map(|p| {
                         let native = if p.starts_with('/') { format!("/{p}") } else { p.clone() };
@@ -392,6 +423,7 @@ pub fn apply(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
     let old = &record.policy;
     if policy.domains.iter().any(|d| !old.domains.contains(d))
         || (old.sandboxed_shell == "prompt" && policy.sandboxed_shell == "auto")
+        || policy.mcp_allow.iter().any(|t| !old.mcp_allow.contains(t))
         || old
             .secret_paths
             .iter()
@@ -587,6 +619,7 @@ fn render_source(
         }
         scrub_codex(doc.as_table_mut());
         merge_toml(doc.as_table_mut(), &policy.generated()["codex"])?;
+        approve_declared_tools(doc.as_table_mut(), policy);
         return Ok(doc.to_string().into_bytes());
     }
     let mut root: Value = serde_json::from_str(&before).map_err(|e| e.to_string())?;
@@ -772,6 +805,45 @@ fn scrub_codex(table: &mut dyn toml_edit::TableLike) {
     }
 }
 
+/// `mcp_allow` on the Codex side: `approval_mode = "approve"` on the tool, only for a
+/// server the config already defines. A `[mcp_servers.x]` table without `command` or
+/// `url` is an "invalid transport" error in Codex (rust-v0.164.0
+/// `config/src/mcp_types.rs` L548-549), so a tool of an unknown server is not written.
+fn approve_declared_tools(table: &mut dyn toml_edit::TableLike, policy: &Policy) {
+    let Some(servers) = table
+        .get_mut("mcp_servers")
+        .and_then(toml_edit::Item::as_table_like_mut)
+    else {
+        return;
+    };
+    for (server, tool) in policy.mcp_allow.iter().filter_map(|e| mcp_tool(e)) {
+        let Some(server) = servers
+            .get_mut(server)
+            .and_then(toml_edit::Item::as_table_like_mut)
+        else {
+            continue;
+        };
+        if !server.contains_key("tools") {
+            server.insert("tools", toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        let Some(tools) = server
+            .get_mut("tools")
+            .and_then(toml_edit::Item::as_table_like_mut)
+        else {
+            continue;
+        };
+        if !tools.contains_key(tool) {
+            tools.insert(tool, toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        if let Some(entry) = tools
+            .get_mut(tool)
+            .and_then(toml_edit::Item::as_table_like_mut)
+        {
+            entry.insert("approval_mode", toml_edit::value("approve"));
+        }
+    }
+}
+
 fn prompt_servers(table: &mut dyn toml_edit::TableLike) {
     if let Some(servers) = table
         .get_mut("mcp_servers")
@@ -887,6 +959,11 @@ pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String
         .get("tool_name")
         .and_then(Value::as_str)
         .ok_or("permission hook tool missing")?;
+    // A tool the shared policy declares is already allowed in the settings; asking
+    // again would defeat the declaration (#1051).
+    if policy.mcp_allow.iter().any(|declared| declared == tool) {
+        return Ok(None);
+    }
     if tool.starts_with("mcp__") {
         return Ok(Some("ask"));
     }

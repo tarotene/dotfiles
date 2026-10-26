@@ -20,7 +20,9 @@ let
       projects
       project_rules
       ;
-  };
+  }
+  # Left out while empty, so the deployed file stays what an older reader accepts.
+  // lib.optionalAttrs (cfg.mcp_allow != [ ]) { inherit (cfg) mcp_allow; };
 in
 {
   options.dotfiles.agentPermissions = {
@@ -80,6 +82,21 @@ in
       '';
     };
 
+    mcp_allow = mkOption {
+      type = types.listOf (types.strMatching "mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+");
+      default = [ ];
+      example = [ "mcp__<server>__<tool>" ];
+      description = ''
+        MCP tools that are always allowed, one `mcp__<server>__<tool>` per entry; a wildcard
+        cannot be written. Claude gets the same string in permissions.allow, Codex gets
+        approval_mode = "approve" on that tool of a server its config already defines, and the
+        permission hook stops asking about it. This is the one exception to "an individual
+        allow lasts for the session" (docs/agents/agent-permissions.md). Adding a tool widens
+        the boundary, so it needs inspect and a reviewed migrate; removing one narrows it and
+        is applied automatically. Bash, command prefixes and WebSearch have no declaration.
+      '';
+    };
+
     projects = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -109,6 +126,12 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = lib.unique cfg.mcp_allow == cfg.mcp_allow;
+        message = "dotfiles.agentPermissions.mcp_allow lists a tool twice";
+      }
+    ];
     xdg.configFile."agent-permissions/policy.json".source = cfg.policyFile;
     home.file.".local/bin/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
     # Native Claude sandbox dependencies. Bubblewrap is Linux-only; Darwin uses
