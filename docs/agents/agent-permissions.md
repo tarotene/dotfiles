@@ -17,7 +17,9 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 秘密パスの追加は制限の強化、削除は権限の拡大として扱う。
 
 通信先の宣言は接続だけを許可する。投稿・送信に関する既存 hook は存続する。
-`domains` の初期値は `api.github.com`。追加の既知の宛先は本人の宣言に追加する。
+`domains` の初期値は `api.github.com`・`github.com`(git の fetch・push)・`cache.nixos.org`(Nix の既定のバイナリ
+キャッシュ)。追加の既知の宛先は本人の宣言に追加する。`github.com` を足したので、Claude の WebFetch は
+`github.com` の URL に ask を返さなくなる(接続だけの許可で、投稿・送信の hook は存続する)。
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。例外は `mcp_allow` で
 宣言した MCP ツール 1 つずつだけである(下の「MCP ツールは `mcp_allow` で 1 つずつ宣言する」)。
@@ -40,8 +42,8 @@ permission flow, even when sandboxed」で、`git status` のような読み取�
 生成内容は変えない。
 
 書き込みは作業場所と一時領域、通信は宣言した宛先に OS が制限するので、恒久の allow 規則は増えない。
-一方、署名(`~/.gnupg` を sandbox が読ませない。#1050)と、`domains` に無い宛先への通信(git push、gh)は
-sandbox の中では動かず、sandbox を外した再実行として一回ずつ審査される。
+一方、署名・gh の認証・push・Nix の書き込みなど、宣言の外にあるものは sandbox の中では動かず、sandbox を外した
+再実行として一回ずつ審査される。何が外で、何が中で動くかは、次の節に表で書く。
 
 `prompt` から `auto` への変更は権限の拡大なので、`apply` は拒否し、`inspect` → `migrate` を要求する。
 `auto` から `prompt` は縮小なので自動で反映する。この欄が無い記録は `prompt` で審査された
@@ -74,6 +76,51 @@ sandbox の中では動かず、sandbox を外した再実行として一回ず�
 
 Codex の launcher は起動前に CLI の `check` を呼ぶので、配備と `migrate` の間は Codex の起動だけが
 拒否される(hook は止まらない)。この間は 3 と 4 を続けて行う。
+
+## sandbox の中で失敗する操作は、最初から外で実行する
+
+エージェントの Bash は既定で native sandbox の中で動く。次の操作は、sandbox の中では失敗するので、最初から
+`dangerouslyDisableSandbox` で実行する(失敗を読み解いてから再実行する往復を省く。#1050・#1064)。外で実行する呼び出しは
+hook が一回ごとに ask するので、確認の往復は残る。これは設計どおりである(`allowUnsandboxedCommands` は有効で、
+sandbox を外した再実行は一回の審査に回す)。
+
+| 操作 | sandbox の中での失敗 | 原因 | 共有ポリシーの扱い |
+|---|---|---|---|
+| `git commit`(GPG 署名) | `gpg: signing failed: No secret key` | `~/.gnupg` は `secret_paths` の既定で `denyRead` | **意図して残す。** 秘密鍵を sandbox に読ませない。署名つきコミットは外で実行する |
+| `gh` | `HTTP 401: Requires authentication` | gh の認証情報を sandbox に見せない | **意図して残す。** `gh` は外で実行する。Codex だけは launcher が親プロセスに `GH_TOKEN` を渡し、子には代替値を見せる(別の経路。下の「通常の Codex 起動」) |
+| `git fetch` | 通信先が許可リストに無く拒否 | `domains` に `github.com` が無かった | `github.com` を足した。公開リポジトリの fetch は、認証が要らないので中で通る見込み(未実測) |
+| `git push` | 同上、または認証なし | push は認証が要る。認証は gh の credential helper で、`gh` と同じく見せない | 通信先は足したが、認証が無いので外で実行する(未実測) |
+| `nix fmt` / `nix build` | `Read-only file system`、daemon に接続できない | `~/.cache/nix` などの書き込み先と、nix-daemon への接続が sandbox の外(#1050 の観測) | `cache.nixos.org` を足した。書き込み先・ソケットの口は共有ポリシーに無く、作らない。外で実行する |
+| wrap-up inbox・retro の台帳への書き込み(`wrapup-stop-gate --add`・`--retro-add`) | `Read-only file system`、`cannot write the retro ledger` | `~/.local/state/claude/wrapup/` などが書き込み先の外 | 口が無い。外で実行する |
+| `cargo test` の Unix ソケットを bind するテスト(例: `claude-statusline` の統合テスト) | `PermissionDenied: Operation not permitted` | sandbox が Unix ソケットを許さない | 口が無い。その crate は外で実行する。変更したコードのせいに見えるので、`cargo tree -i <crate>` で依存が無いことを確かめ、環境を疑う |
+
+**口が共有ポリシーに無いことの確認。** `Policy::generated` は `sandbox.excludedCommands = []`・
+`sandbox.filesystem.allowWrite = []` を固定で生成し、`writable_roots` は `workspace`・`temp` に固定である
+(`validate`)。除外コマンドも書き込み先も、宣言する入力が無い。作らない。理由: 除外コマンドは sandbox
+そのものを外す拡大で、書き込み先の拡大は「境界外への書き込みは一回の審査」という前提(上の「書き込み・読み取り・通信を
+分けて宣言する」)を崩す。外での実行が日常になって確認の質が下がる懸念(#1064)は、操作を外に出すのでなく、
+上の表で「何が外か」を先に決めておくことで抑える。
+
+**`git add` はパス指定にする(#1050・#1063)。** sandbox は、書き込みを禁じるパス(`.claude/settings.json`・
+`.claude/skills` などの `denyWithinAllow`)に、まだ存在しないファイルがあると、0 バイトの読み取り専用の
+placeholder を作って塞ぎ、コマンドが終わると消す(Anthropic,
+[Sandboxing](https://code.claude.com/docs/en/sandboxing) の troubleshooting 節「0-byte read-only files appear at
+.claude settings paths」、取得 2026-10-27、curl で全文を取得)。#1063 の観測では、sandbox の中の `ls -l` は
+これを `/dev/null` の文字デバイス(`1, 3`)と表示し、`.bashrc`・`.gitconfig`・`.claude/` などが未追跡として
+`git status` に出る(公式文書の「0 バイトの placeholder」との対応は、読み戻していないので未確認)。置く主体は
+Claude Code の sandbox で、このリポジトリの宣言では消せない(原因は上流)。
+
+- `git add -A`・`git add .` を使わず、追加するパスを 1 つずつ指定する。
+- `git status` の未追跡の行は、自分が作ったファイルかを見てから扱う。
+
+**同じ placeholder が、別の Bash の実行中に hook を止めることがある(#1055・#1063)。** 上の文書は、placeholder が
+sandbox の実行中だけ存在し、セッションが途中で終わると残ると書く。`.claude/settings.json` の placeholder は 0
+バイトなので、同じ作業ツリーで別の sandbox の Bash(並行する別のエージェント・セッション)が走っている間に
+hook がそれを読むと、`EOF while parsing a value at line 1 column 0` で止まる(2026-10-27 の作業で、
+親の作業ツリーを `cwd` にした並行するエージェントの Bash の実行中に、3 回再現した)。hook はこのセッションの `cwd` 配下の
+設定を読むので、この場合は fail-closed のまま 1 件の理由で止まる(別 worktree の分は止めない。上の「ずれを検出したら
+設定元から診断する」)。残ったファイルは `claude doctor` が「Sandbox mask files left behind at write-deny paths」として
+列挙し、他の Claude Code セッションが動いていないときに `rm` で消す。
 
 ## 移行前に一覧を確認する
 
