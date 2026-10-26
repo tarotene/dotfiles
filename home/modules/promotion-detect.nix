@@ -51,7 +51,7 @@ in
     };
   };
 
-  # pipeline-node: promotion-detect
+  dotfiles.pipeline.timerNodes.promotion-detect = "promotion-detect";
   systemd.user.timers.promotion-detect = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Run promotion-detect once a day";
     Timer = {
@@ -66,7 +66,7 @@ in
   # extends) launchd's PATH, so every binary promotion-detect or the
   # wrapup-stop-gate it shells out to needs must be listed explicitly
   # (same reasoning as git-audit-worktrees' launchd agent).
-  # pipeline-node: promotion-detect
+  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.promotion-detect が兼ねる。
   launchd.agents.promotion-detect = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

@@ -424,6 +424,27 @@
           dotfiles-tools-clippy = rust.clippy;
           dotfiles-tools-fmt = rust.fmt;
         }
+        // lib.optionalAttrs (system == linuxSystem) {
+          # private wrapper(`lib.mkHome` の `extraModules`)のように、このリポジトリの外が
+          # pipeline-map のノードを持たない timer を足しても、評価が通ること(#992、
+          # home/modules/pipeline.nix)。最初の版は最終の config の名前を全部数えたので、
+          # wrapper の timer を未対応として `hms .` の評価を落とした。評価するだけで、
+          # generation は build しない(`drvPath` を強制した後の空の derivation)。
+          pipeline-external-timer =
+            let
+              cfg = mkHome linuxSystem ./home/hosts/vega.nix [
+                {
+                  systemd.user.timers.external-example = {
+                    Unit.Description = "outside-the-repo timer (pipeline-external-timer check)";
+                    Timer.OnCalendar = "daily";
+                  };
+                }
+              ];
+            in
+            builtins.seq cfg.activationPackage.drvPath (
+              pkgsFor.${system}.runCommand "pipeline-external-timer" { } "touch $out"
+            );
+        }
       );
 
       # Addressable alias for the patched herdr build (overlay above). CI's

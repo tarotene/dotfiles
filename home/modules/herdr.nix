@@ -131,7 +131,7 @@ in
 
   # Persistent= は書かない — OnCalendar= にしか効かない死んだ宣言になる
   # (drift.nix の #442 の教訓、systemd.timer(5))。
-  # pipeline-node: herdr-issue-counts
+  dotfiles.pipeline.timerNodes.herdr-issue-counts = "herdr-issue-counts";
   systemd.user.timers.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
     Unit.Description = "Refresh Herdr sidebar issue counts every 5 minutes";
     Timer = {
@@ -144,7 +144,7 @@ in
   };
 
   # launchd 版(ADR-0018)。RunAtLoad が systemd の OnBootSec に相当する。
-  # pipeline-node: herdr-issue-counts
+  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.herdr-issue-counts が兼ねる。
   launchd.agents.herdr-issue-counts = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {

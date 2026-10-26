@@ -214,10 +214,12 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 - Every mechanism that fires without a human typing its name (a hook, a timer or
   launchd agent, a workflow, a git hook, a herdr periodic command) is a node in
   `pipeline-map.toml`, and its registration points at that node: the `node`
-  attribute on a Claude Code hook declaration, and a `pipeline-node: <id>` comment
-  right above the registration everywhere else. A pointer that is missing or
-  points nowhere fails the nix evaluation (hook declarations) or `cargo test`
-  (everything else). Manual CLIs and skills are drawn as `auto = false` nodes and
+  attribute on a Claude Code hook declaration, a
+  `dotfiles.pipeline.timerNodes.<name> = "<id>";` line next to a systemd timer or
+  launchd agent, and a `pipeline-node: <id>` comment right above the registration
+  everywhere else. A pointer that is missing or points nowhere fails the nix
+  evaluation (hook declarations, timers, launchd agents) or `cargo test`
+  (everything else; plus a node with no registration at all). Manual CLIs and skills are drawn as `auto = false` nodes and
   need no pointer. Rules and rationale: ADR-872.
 
 ### Pull request descriptions
