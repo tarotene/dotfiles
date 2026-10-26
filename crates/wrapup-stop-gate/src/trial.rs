@@ -45,8 +45,6 @@ pub struct Check {
     pub retry_turn: String,
     pub applied_commit: String,
     #[serde(default)]
-    pub delivery_turn: String,
-    #[serde(default)]
     pub waiting_turn: String,
     pub usage_before: Value,
     pub usage_after: Value,
@@ -187,7 +185,7 @@ fn procedure(gate: &str, c: &Config) -> String {
 Use '{gate}' --trial list to read pending checks. For each unchecked id, record either no-candidate or draft <absolute-body-file>. A draft MUST include the scene and proposed exact wording. {approval}
 Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial dismiss <id> <owner-verbatim-rejection>; --trial post <id>.
 Plan mode permits drafts only. Posting requires Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
-After post verification, use send_message_to_thread to send ONLY pending ids to report thread {thread}; request: retrieve the comment URLs and report destination from --trial list and the local trial config, read the Issue, update the configured script in the configured worktree, preserve stable beat ids and add the comment URL and <!-- codex-trial:ID --> marker, commit, then --trial applied <id> <commit>. Do not send feedback bodies, repository names, URLs or absolute worktree paths: reference guards can reject private names. Send one batch per normal input/resume, not a new production thread. After successful sending run --trial delivered <id>; it suppresses repeats in this turn only, NEVER marks completion. Delivery success is NOT completion; only report-side saved commit acknowledgement completes it. Delivery failures remain pending.
+After post verification, the shared pending state hands the observation to report thread {thread}. Continue the originating thread's work; no thread-send tool or delivery acknowledgement is required. If a thread-send tool is available, an optional notification may contain ONLY pending ids, once per normal input/resume. Do not send feedback bodies, repository names, URLs or absolute worktree paths, or start a new production thread. The report thread retrieves comment URLs and its destination from --trial list and the local trial config, reads the Issue, updates the configured script in the configured worktree, preserves stable beat ids, adds the comment URL and <!-- codex-trial:ID --> marker, commits, then runs --trial applied <id> <commit>. Posting and optional notification NEVER mark report completion; only report-side saved commit acknowledgement completes it.
 The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
 Trial source: {repo}#{issue}; collection starts {start}. Hook continuations are never new observations. --trial list includes token snapshots for reporting overhead; null means unmeasured. Do not count reporting as business output."#,
         thread = c.report_thread,
@@ -278,6 +276,7 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
         for (id, check) in &mut state.checks {
             if check.session != sid
                 || check.status == Status::NoCandidate
+                || check.status == Status::PostVerified
                 || !check.applied_commit.is_empty()
             {
                 continue;
@@ -285,13 +284,11 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
             if start && v["source"] != "compact" || !continuation && check.retry_turn != turn {
                 check.attempts = 0;
                 check.retry_turn = turn.into();
-                check.delivery_turn.clear();
             }
             // Waiting for a human and Plan mode can end normally.
             if !start
                 && (check.status == Status::AwaitingOwner && check.waiting_turn == ctx.turn
-                    || ctx.mode != "default" && check.status != Status::Unchecked
-                    || check.status == Status::PostVerified && check.delivery_turn == turn)
+                    || ctx.mode != "default" && check.status != Status::Unchecked)
             {
                 continue;
             }
@@ -504,9 +501,6 @@ pub fn cli(args: &[String]) -> i32 {
                         );
                     }
                     check.applied_commit = value.into();
-                }
-                "delivered" if check.status == Status::PostVerified => {
-                    check.delivery_turn = context(&check.transcript)?.turn;
                 }
                 _ => return Err(
                     "invalid transition; use list, none, draft, approve, post, applied, finalize"

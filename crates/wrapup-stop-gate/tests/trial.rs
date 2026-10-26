@@ -145,7 +145,7 @@ fn confirmation_plan_and_changed_draft() {
 }
 
 #[test]
-fn post_failure_readback_retry_and_delivery_are_not_ack() {
+fn post_failure_readback_retry_does_not_ack_application() {
     let t = Trial::new();
     t.hook("source", "t1", false, false);
     let body = t.draft();
@@ -154,6 +154,7 @@ fn post_failure_readback_retry_and_delivery_are_not_ack() {
     fs::write(t.env.path().join("fail-read"), "").unwrap();
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     assert!(!t.env.path().join("posts").exists());
+    assert_eq!(t.hook("source", "t1", true, false).code, 2);
     fs::remove_file(t.env.path().join("fail-read")).unwrap();
     fs::write(t.env.path().join("fail-post"), "").unwrap();
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
@@ -163,7 +164,6 @@ fn post_failure_readback_retry_and_delivery_are_not_ack() {
         fs::read_to_string(t.env.path().join("posts")).unwrap(),
         "post\n"
     );
-    assert_eq!(t.cli(&["delivered", "source:t1"]).code, 0);
     assert_eq!(t.hook("source", "t1", true, false).code, 0);
     assert_eq!(t.state()["checks"]["source:t1"]["applied_commit"], "");
     let report = t.hook("report", "r1", false, true);
@@ -171,6 +171,56 @@ fn post_failure_readback_retry_and_delivery_are_not_ack() {
     assert_eq!(t.hook("report", "r1", false, false).code, 2);
     assert_eq!(t.state()["checks"].as_object().unwrap().len(), 1); // report never collects
     assert_eq!(t.cli(&["applied", "source:t1", &"a".repeat(40)]).code, 1);
+}
+
+#[test]
+fn verified_post_without_thread_transport_does_not_block_source() {
+    let t = Trial::new();
+    t.hook("source", "t1", false, false);
+    let body = t.draft();
+    t.cli(&["draft", "source:t1", &body]);
+    t.cli(&["approve", "source:t1", &body, "OK"]);
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
+
+    let mut legacy = t.state();
+    legacy["checks"]["source:t1"]["delivery_turn"] = json!("previous-turn");
+    fs::write(
+        t.env.state().join("claude/wrapup/trial/state.json"),
+        legacy.to_string(),
+    )
+    .unwrap();
+
+    // No thread-send tool or delivery acknowledgement exists in this source turn.
+    for _ in 0..4 {
+        let stopped = t.hook("source", "t1", true, false);
+        assert_eq!(stopped.code, 0, "{}", stopped.stderr);
+    }
+    for mode in ["default", "plan"] {
+        let turn = format!("t2-{mode}");
+        t.context(&turn, mode);
+        let resumed = t.hook("source", &turn, false, true);
+        assert_eq!(resumed.code, 0);
+        assert!(!resumed.stdout.contains("source:t1"));
+        let next_input = t.hook("source", &turn, false, false);
+        assert_eq!(next_input.code, 2);
+        assert!(!next_input.stderr.contains("source:t1"));
+        assert_eq!(t.cli(&["none", &format!("source:{turn}")]).code, 0);
+        assert_eq!(t.hook("source", &turn, true, false).code, 0);
+    }
+    let check = &t.state()["checks"]["source:t1"];
+    assert_eq!(check["status"], "post_verified");
+    assert_eq!(check["applied_commit"], "");
+    assert_eq!(check["body"], legacy["checks"]["source:t1"]["body"]);
+    assert_eq!(check["approval"], "OK");
+    assert_eq!(
+        check["comment_url"],
+        legacy["checks"]["source:t1"]["comment_url"]
+    );
+    t.context("r1", "default");
+    let report = t.hook("report", "r1", false, true);
+    assert!(report.stdout.contains("source:t1"));
+    assert!(report.stdout.contains("issuecomment-7"));
+    assert_eq!(t.hook("report", "r1", false, false).code, 2);
 }
 
 #[test]

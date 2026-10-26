@@ -47,6 +47,13 @@ input/resume; waiting then ends normally without revising the draft or approval.
 After the end, existing checks and final production
 remain due. No timer runs while every session is stopped.
 
+Once `post` has verified the remote body and marker, the observation remains in
+the shared pending state for the report thread. The originating thread can stop,
+resume and collect later observations without waiting for a thread-message tool
+or the report's saved commit. Report start/resume and Stop recover the entire
+pending set. An interrupted report remains pending until that report resumes;
+this never marks its work complete.
+
 The procedure printed by the hook owns the agent instructions. Commands are:
 
 - `none ID`: no candidate, only from unchecked.
@@ -62,9 +69,6 @@ The procedure printed by the hook owns the agent instructions. Commands are:
   posting authorization. Otherwise require the owner's exact-body approval.
   List all issue comments, reuse the unique marker,
   post if absent, then verify the exact body and URL. Failure retains state.
-- `delivered ID`: after `send_message_to_thread` succeeds, suppress another send
-  in this turn. This does not acknowledge application. Restart/resume or a new
-  input retries until report-side acknowledgement.
 - `applied ID FULL_SHA`: report thread only. Read the issue again and verify
   the exact comment. Verify the saved script in the configured worktree has
   both marker and URL before acknowledgement. Report synthesis is the agent's
@@ -73,13 +77,13 @@ The procedure printed by the hook owns the agent instructions. Commands are:
   Complete script/storyboard/visual review before invoking it. Then set enabled
   to false in the local declaration.
 
-Only the report thread edits the report worktree. Senders send only opaque check IDs,
-never start a second producer. Queued messages are hints: the local pending set
-is authoritative, and a report already processing a batch re-reads it before
-ending. The receiver resolves URLs and paths from local state/config, so private
-repository references never need to cross the thread-message guard. This replaces
-the planned ID+URL payload after the reference guard rejected a real delivery on
-2026-10-26; the redacted ID-only retry succeeded. Duplicate requests reuse the marker already in the script.
+Only the report thread edits the report worktree. The local pending set is the
+handoff: no message acknowledgement or second producer is required. If a
+thread-message tool is available, an optional notification sends only opaque
+check IDs, at most once per normal input/resume. The receiver resolves URLs and
+paths from local state/config, so private references never cross that message.
+A report already processing a batch re-reads the pending set before ending.
+Duplicate requests reuse the marker already in the script.
 
 The state transition and remote read-back run under the existing file lock, so
 parallel senders cannot lose state or create duplicate comments. An ambiguous
@@ -97,6 +101,13 @@ sum overlapping intervals or equate tokens with money/quota percentages.
   `src/lib.rs` lock/SessionStart/Stop and `src/retro.rs` bounded retries. No
   independent hook or duplicated retrospective state machine. Retrieved
   2026-10-26. Difference: per-normal-input collection without a PR prerequisite.
+- Handoff decision: use the existing shared pending state and report-side
+  recovery at baseline `5d499a9a06d5c4c4e3c76ec870f5760be57164ab`
+  (`src/trial.rs:213–220`, `docs/claude/feedback-trial.md:62–65`), retrieved
+  2026-10-26. Existing means: extend that state owner; add no transport service.
+  Difference: a verified post no longer blocks the originating thread on a
+  delivery hint. Report acknowledgement still requires the saved commit and
+  remote read-back. Source: [Issue #1037](https://github.com/tarotene/dotfiles/issues/1037).
 - OpenAI, *Hooks*, <https://learn.chatgpt.com/docs/hooks>, retrieved 2026-10-26.
   Fixed source: OpenAI Codex `6aaac694803004a63c6f393d153c96d22521a6b9`,
   [Stop](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/hooks/src/events/stop.rs#L294)
