@@ -306,6 +306,49 @@ C は、A が実行・B が拒否で、C の run で hook が動いた記録が�
 
 実測の結果: 未実測(2026-10-27 時点。実行は本人作業)。
 
+## 自動モードの `autoMode.environment` は機体ローカルの設定で、宣言しない
+
+Claude の自動モードの分類器が、worktree での `git switch -c` を「共有資源の変更」として拒否した(#939)。
+分類器が信頼する宛先を決める `autoMode.environment` の扱いを、事実・判断・手順に分けて書く。
+
+**事実(2026-10-27 に読んだもの)。**
+
+- このリポジトリの `home/`・`crates/`・`docs/` に、`autoMode.environment` を宣言する場所は無い。共有ポリシーが
+  生成する `autoMode` は `classifyAllShell = true` だけである(`mod.rs` の `Policy::generated`)。`migrate` は
+  既存の `autoMode` にこのキーを足すだけで、`environment` には触れない(`merge_json`)。private wrapper に
+  宣言があるかは、このリポジトリからは読めない(未確認)。
+- vega の `~/.claude/settings.json` は、`environment` に `"$defaults"` が無く、信頼するリポジトリが private の
+  1 つだけで、`classifyAllShell: true` である。
+- Anthropic, 「Configure auto mode」(<https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27、
+  全文を curl で取得): `/auto-mode-setup` は `environment` を `"$defaults"` **無しで**書く(「ドラフトが組み込みの項目を
+  そのまま書き出すため」)。`"$defaults"` の無い配列は、その節の既定を丸ごと置き換える。vega の内容は、組み込みの
+  項目の見出しを並べて末尾に利用者の項目を足した形なので、`/auto-mode-setup` が書いたと読める(推論。書いた主体の
+  記録は読んでいない)。
+
+**判断: 共有ポリシーに宣言を足さず、手順だけを書く。** 中身は信頼する宛先(リポジトリ・ドメイン)で、公開リポジトリに
+書けない値なので、宣言を足しても公開側は機構だけになり、値は private wrapper に置くことになる。さらに
+`/auto-mode-setup` が同じ欄を実行時に書き換えるので、宣言は書き手を 2 つにし、実行のたびに `migrate` を要求する。
+`"$defaults"` を戻すだけの修正に、欄の機構(`Policy`・検証・拡大の判定)は大きすぎる。
+
+**手順(`"$defaults"` を戻す)。** 本人の端末で、書き換えから `migrate` までを続けて行う。`~/.claude/settings.json`
+の `autoMode` が変わると、記録とのずれ(構造的なずれ)になり、`migrate` までは inert な呼び出し以外の全ツールが止まる。
+
+```sh
+tmp="$(mktemp)"
+jq '.autoMode.environment |= (if index("$defaults") then . else ["$defaults"] + . end)' \
+  ~/.claude/settings.json > "$tmp" && cp "$tmp" ~/.claude/settings.json && rm -f "$tmp"
+jq -c '.autoMode.environment[0]' ~/.claude/settings.json    # "$defaults" が返る
+```
+
+続けて「移行前に一覧を確認する」の `inspect --json` → `migrate --dry-run` → `migrate` → `check` を行う。`environment` が
+空の host、または `autoMode` の無い host には、この手順は要らない(`jq` が `["$defaults"]` を作るだけなので、
+作る必要が無ければ実行しない)。
+
+**未検証。** 拒否の原因が `"$defaults"` の欠落なのか、信頼するリポジトリが 1 つに限られていて作業中のリポジトリを
+含まないことなのかは分かっていない。利用者の項目が「そのリポジトリのみ」と書いていると、`"$defaults"` が足す既定
+(「作業中のリポジトリとその remote」)が効くかは、分類器の読み次第である(未検証)。確かめ方は、実セッションで
+自分の worktree の `git switch -c` が、本人の往復なしに通ること。#939 は、それまで open にする。
+
 ## 更新を中断したら記録から復元する
 
 内容が変わるファイルの更新前後の全バイト列を、本人のみ読み書きできる transaction journal に
