@@ -197,7 +197,7 @@ fn deny_reason_text_is_verbatim() {
 
 本文に次のいずれかの形式で1行追加してください(実在照合されます):
 
-  Target: skill/<name>          — config/claude/skills/<name>/SKILL.md
+  Target: skill/<name>          — config/agents/skills/<name>/SKILL.md
   Target: agents-md/<節見出し>   — ~/.agents/AGENTS.md・~/.claude/CLAUDE.md の実在する見出し
   Target: hook/<name>            — config/claude/hooks/<name>* の実在するファイル
 

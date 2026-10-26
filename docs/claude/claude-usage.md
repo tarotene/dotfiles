@@ -3,7 +3,7 @@
 `/usage` を毎回打たないと、5h セッション窓や Fable の週間上限にあとどれくらいで
 到達するか、到達後いつ復活するかが分からない。この機能は Herdr の**タブバー
 右端**にその数値を常時表示する。表示場所がサイドバー(`herdr-agent-metadata`
-等、[`herdr-sidebar-metadata.md`](herdr-sidebar-metadata.md))ではなくタブバーな
+等、[`herdr-sidebar-metadata.md`](../agents/herdr-sidebar-metadata.md))ではなくタブバーな
 のは、usage がペイン単位ではなくアカウント全体の値だから — グローバルな情報は
 グローバルな場所に置く。
 
@@ -289,4 +289,4 @@ TZ を継承するので、`→` の表示はユーザーのローカル時刻�
   で、Herdr 外で実行しても API を叩いて 1 行出すだけ)。
 - **config.toml は store symlink**: 変更はこのリポジトリの `config/herdr/config.toml`
   を編集して `home-manager switch`、反映は `herdr server reload-config`
-  ([`herdr-sidebar-metadata.md`](herdr-sidebar-metadata.md) と同じ運用)。
+  ([`herdr-sidebar-metadata.md`](../agents/herdr-sidebar-metadata.md) と同じ運用)。

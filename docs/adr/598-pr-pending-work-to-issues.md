@@ -125,11 +125,11 @@ pr-confirm-guard.sh` を、`pr-title-guard.sh` (Codex adapter) と同型の
   selftest を刷新する。
 - `config/codex/hooks/pr-confirm-guard.sh` を新設し、`home/modules/
   claude.nix` に Codex 版の登録を追加する。
-- `config/claude/skills/pr-description/SKILL.md`・`cases.md` を更新する。
-- `docs/claude/pr-confirm-guard.md`・`docs/claude/pr-description.md` を
+- `config/agents/skills/pr-description/SKILL.md`・`cases.md` を更新する。
+- `docs/agents/pr-followup-guard.md`・`docs/agents/pr-description.md` を
   更新する。
 - Copilot 版 adapter は作らない(依頼は Codex のみ)。
-- `docs/claude/pr-gate.md` の運用表の `PR_GATE_MAX_BLOCKS` 既定値の陳腐化
+- `docs/agents/pr-gate.md` の運用表の `PR_GATE_MAX_BLOCKS` 既定値の陳腐化
   (`5` と書かれているが実際は `6`)は本決定と無関係のため対象外とし、
   wrap-up inbox に別途記録する。
 

@@ -16,8 +16,9 @@
 //! 縮退(ADR-0005 の binary-existence gating に倣う): stdin が読めない・
 //! 不正 JSON・git/gh が無い・判定できない場合は何も出さず exit 0。
 
-use guard_core::hook::{agent_from_args, deny_output};
-use hook_io::Outcome;
+use agent_session::hook::agent_from_args;
+use agent_session::hook::deny_output;
+use agent_session::Outcome;
 use stack_base_guard::Guard;
 use std::io::Read;
 use std::path::PathBuf;

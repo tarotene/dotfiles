@@ -106,7 +106,7 @@ nix が読む `pipeline-map.toml` は `BUILD_INPUTS` に(足さないと CI の 
 - このリポジトリの `rust-migration.toml` と `crates/migration-audit`(manifest を実体と突き合わせる `cargo test`)。本決定は、コード側にも ID を持たせて逆方向(登録 → manifest)も検査する点で異なる。
 - このリポジトリの ADR-0033 の `nav-doc-exempt` マーカー(grep で拾う閉じたコメントトークン)。D3 のコメントトークンはこの規約に倣う。
 - このリポジトリの `docs/settings-reconcile.md`(hook は宣言を正とする)と `home/modules/apt.nix`(単一の repo ファイルを nix が読む)。D3 の nix 属性の根拠。
-- このリポジトリの diagramming スキル(`config/claude/skills/diagramming/SKILL.md` の §1 と §2)。D1 と D7 の根拠。
+- このリポジトリの diagramming スキル(`config/agents/skills/diagramming/SKILL.md` の §1 と §2)。D1 と D7 の根拠。
 
 ## 執行点
 
@@ -127,7 +127,7 @@ nix が読む `pipeline-map.toml` は `BUILD_INPUTS` に(足さないと CI の 
 
 ツール呼び出しに付く検査のうち、拒否だけを出す 15 件と記録役 4 件は、Claude Code に別々には登録せず、
 `hook-router`(1 つのプロセス)が規則の表(`crates/hook-router/src/rules.rs`)に従って走らせる
-(`docs/claude/hook-router.md`)。この 19 件は `claudeHookDeclarations` の要素を持たないので、D4 の 7 クラスの
+(`docs/agents/hook-router.md`)。この 19 件は `claudeHookDeclarations` の要素を持たないので、D4 の 7 クラスの
 どれにも数えられず、`auto = true` のノードが「登録箇所が無い」になる。
 
 D4 に **8 つ目のクラス**を足す: 8. `crates/hook-router/src/rules.rs` の規則の表の、`node: "<id>",` の行

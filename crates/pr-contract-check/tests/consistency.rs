@@ -34,7 +34,7 @@ fn caller_job_name(text: &str) -> String {
 fn the_pr_title_caller_context_is_in_every_quality_json() {
     let root = repo_root();
     let tpl = std::fs::read_to_string(root.join(
-        "config/claude/skills/repo-governance-common/templates/.github/workflows/pr-title.yml",
+        "config/agents/skills/repo-governance-common/templates/.github/workflows/pr-title.yml",
     ))
     .unwrap();
     let caller = caller_job_name(&tpl);
@@ -44,10 +44,10 @@ fn the_pr_title_caller_context_is_in_every_quality_json() {
     );
 
     for f in [
-        "config/claude/skills/rust-repo-governance/templates/.github/rulesets/quality.json",
-        "config/claude/skills/typst-repo-governance/templates/.github/rulesets/quality.json",
-        "config/claude/skills/astro-site-governance/templates/.github/rulesets/quality.json",
-        "config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json",
+        "config/agents/skills/rust-repo-governance/templates/.github/rulesets/quality.json",
+        "config/agents/skills/typst-repo-governance/templates/.github/rulesets/quality.json",
+        "config/agents/skills/astro-site-governance/templates/.github/rulesets/quality.json",
+        "config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
         ".github/rulesets/quality.json",
     ] {
         let text = std::fs::read_to_string(root.join(f)).unwrap();
@@ -82,7 +82,7 @@ fn every_ci_yml_template_passes_the_shared_workflow_judge() {
         "astro-site-governance",
     ] {
         let path = root.join(format!(
-            "config/claude/skills/{skill}/templates/.github/workflows/ci.yml"
+            "config/agents/skills/{skill}/templates/.github/workflows/ci.yml"
         ));
         let text = std::fs::read_to_string(&path).unwrap();
         let missing = judge_workflows(

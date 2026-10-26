@@ -290,7 +290,7 @@ fn review_success_notice_does_not_prevent_investigation_record() {
     let out = t.run(&input);
     assert!(out.contains("review passed"));
     assert_eq!(decision(&out), None);
-    let ledger = hook_io::SessionLedger::new(t.dir.path().join("new-tools/state"), "ledger");
+    let ledger = agent_session::SessionLedger::new(t.dir.path().join("new-tools/state"), "ledger");
     let records = ledger.records(repo.to_str().unwrap());
     assert_eq!(records, ["既存手段: scripts/probe — 採用: existing"]);
 

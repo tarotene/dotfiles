@@ -1,7 +1,7 @@
 //! plan-view — プランを Markdown レンダリング済みの HTML にして Chrome の専用窓へ
 //! 飛ばす(旧 `config/claude/hooks/plan-view.sh`、ADR-0024 Stage 4b、#412)。
 //!
-//! 設計と根拠: docs/claude/plan-view.md
+//! 設計と根拠: docs/agents/plan-view.md
 //!
 //! **構造の再解釈はしない。** 入力の Markdown を 1:1 で HTML(pandoc)に写すだけ。
 //! LLM は呼ばない。
@@ -102,16 +102,16 @@ impl Config {
         if self.is_darwin() {
             Path::new(&self.darwin_chrome_app).is_dir()
         } else {
-            hook_io::proc::command_exists(&self.browser)
+            process_control::command_exists(&self.browser)
         }
     }
 
     pub fn pandoc_available(&self) -> bool {
-        hook_io::proc::command_exists(&self.pandoc)
+        process_control::command_exists(&self.pandoc)
     }
 
     /// CSS の探索。配備後は `~/.claude/hooks/` に本体と .css が並ぶので
-    /// SCRIPT_DIR 相対で足りる。リポジトリ上では `config/claude/assets/` に
+    /// SCRIPT_DIR 相対で足りる。リポジトリ上では `config/agents/assets/` に
     /// 分離されている(ADR-0007)ので SCRIPT_DIR の一つ上の assets/ も探す。
     pub fn find_css(&self) -> Option<PathBuf> {
         let candidates = [
@@ -233,7 +233,7 @@ impl Config {
             let mut c = Command::new("open");
             c.arg("-a").arg(&self.darwin_chrome_app).arg("--args");
             c
-        } else if hook_io::proc::command_exists("setsid") {
+        } else if process_control::command_exists("setsid") {
             let mut c = Command::new("setsid");
             c.arg(&self.browser);
             c
@@ -266,7 +266,7 @@ impl Config {
             meta.push_str(&html_escape(label));
             meta.push_str(" · ");
         }
-        meta.push_str(&hook_io::proc::date("%Y-%m-%d %H:%M"));
+        meta.push_str(&process_control::date("%Y-%m-%d %H:%M"));
         meta.push_str("</p>");
 
         let Some((tmp, mut f)) = mktemp(&self.view_dir, ".plan.", ".md") else {
@@ -486,9 +486,9 @@ fn die(msg: &str) -> i32 {
 fn latest_plan(cfg: &Config) -> Option<PathBuf> {
     // 入力が空なら 3 段目(最新の plans/*.md)だけが効く。
     let dir = cfg.home.join(".claude/plans");
-    match hook_io::plan::plan_source_in(&hook_io::HookInput::default(), Some(&dir))? {
-        hook_io::plan::PlanSource::File(p) => Some(p),
-        hook_io::plan::PlanSource::Inline(_) => None,
+    match agent_session::plan::plan_source_in(&agent_session::HookInput::default(), Some(&dir))? {
+        agent_session::plan::PlanSource::File(p) => Some(p),
+        agent_session::plan::PlanSource::Inline(_) => None,
     }
 }
 
@@ -594,8 +594,10 @@ pub fn run_cli(cfg: &Config, args: &[String]) -> i32 {
     }
 
     let out_path = if out.is_empty() {
-        cfg.view_dir
-            .join(format!("cli-{}.html", hook_io::proc::date("%Y%m%d-%H%M%S")))
+        cfg.view_dir.join(format!(
+            "cli-{}.html",
+            process_control::date("%Y%m%d-%H%M%S")
+        ))
     } else {
         PathBuf::from(&out)
     };
@@ -654,11 +656,12 @@ pub fn run_hook(cfg: &Config, stdin: &str) {
 
     // 不正 JSON でも bash 版は jq の失敗を `|| echo unknown` 等で吸収して
     // 最新プランの描画に進む。同じく既定値で続行する。
-    let input = hook_io::HookInput::parse(stdin).unwrap_or_else(|| hook_io::HookInput {
-        session_id: "unknown".into(),
-        ..Default::default()
-    });
-    let session = hook_io::ledger::sanitize_session_id(&input.session_id);
+    let input =
+        agent_session::HookInput::parse(stdin).unwrap_or_else(|| agent_session::HookInput {
+            session_id: "unknown".into(),
+            ..Default::default()
+        });
+    let session = agent_session::ledger::sanitize_session_id(&input.session_id);
     let cwd = input
         .cwd
         .clone()
@@ -668,8 +671,8 @@ pub fn run_hook(cfg: &Config, stdin: &str) {
     // --- プラン本文の取得: tool_input.plan → planFilePath → 最新の plans/*.md ---
     let plans_dir = cfg.home.join(".claude/plans");
     let mut plan_tmp: Option<PathBuf> = None;
-    let plan_file = match hook_io::plan::plan_source_in(&input, Some(&plans_dir)) {
-        Some(hook_io::plan::PlanSource::Inline(text)) => {
+    let plan_file = match agent_session::plan::plan_source_in(&input, Some(&plans_dir)) {
+        Some(agent_session::plan::PlanSource::Inline(text)) => {
             let Some((path, mut f)) = mktemp(&cfg.view_dir, ".hook.", ".md") else {
                 return;
             };
@@ -680,14 +683,14 @@ pub fn run_hook(cfg: &Config, stdin: &str) {
             plan_tmp = Some(path.clone());
             path
         }
-        Some(hook_io::plan::PlanSource::File(p)) => p,
+        Some(agent_session::plan::PlanSource::File(p)) => p,
         None => return,
     };
 
     let sid8: String = session.chars().take(8).collect();
     let out = cfg.view_dir.join(format!(
         "{}-{sid8}.html",
-        hook_io::proc::date("%Y%m%d-%H%M%S")
+        process_control::date("%Y%m%d-%H%M%S")
     ));
     let _ = cfg.view_plan(
         &plan_file,

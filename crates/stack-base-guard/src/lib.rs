@@ -2,12 +2,12 @@
 //! 作成時に機械強制する PreToolUse hook(ADR-0027: uncertainty-first
 //! stacking、ADR-0024 Stage 4a #415)。
 //!
-//! 設計と根拠: docs/claude/stack-base-guard.md
+//! 設計と根拠: docs/agents/stack-base-guard.md
 //!
 //! bash 版 `config/claude/hooks/stack-base-guard.sh` と Codex adapter
 //! `config/codex/hooks/stack-base-guard.sh` の移植。bash 版は
 //! attribution-guard.sh を `source` して `is_target_at` / `TARGET_KIND` を
-//! 上書きしていた — ここでは `guard_core::command::first_deny` に対象判定
+//! 上書きしていた — ここでは `command_inspection::command::first_deny` に対象判定
 //! 関数を渡す形になった。
 //!
 //! 判定は 2 層:
@@ -22,14 +22,20 @@
 //! (`-R/--repo` によるクロスリポジトリ指定にも対応)。判定不能はすべて
 //! fail-open(通す) — ADR-0005 の binary-existence gating と同じ縮退方針。
 
-use guard_core::command::{first_deny, gh_command_at};
-use guard_core::gh::{command_substitution, has_heredoc, read_body_file};
-use guard_core::hook::{jq_r_path, ToolCall};
-use guard_core::marker::has_reasoned_tag;
-use guard_core::repo::{default_branch_or_gh, owner_repo};
-use hook_io::git::{ok as git_ok, out as git_out};
-use hook_io::ledger::SessionLedger;
-use hook_io::Agent;
+use agent_session::hook::jq_r_path;
+use agent_session::hook::ToolCall;
+use agent_session::ledger::SessionLedger;
+use agent_session::Agent;
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use git_repository::ok as git_ok;
+use git_repository::out as git_out;
+use git_repository::repo::default_branch_or_gh;
+use git_repository::repo::owner_repo;
+use github_command::gh::command_substitution;
+use github_command::gh::has_heredoc;
+use github_command::gh::read_body_file;
+use github_command::marker::has_reasoned_tag;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -95,7 +101,7 @@ const SKIP_VALUE_FLAGS: &[&str] = &[
 /// bash の `parse_pr_tokens`: 1 つの `gh pr create|edit` 呼び出しぶんの
 /// トークン列から、本文・値フラグ・読み飛ばしリスト・位置引数を 1 ループで
 /// 読む(guard-core の `scan_value_flags` に収まらないので自前、
-/// docs/claude/guard-core.md)。
+/// docs/agents/guard-core.md)。
 ///
 /// 既知の限界: `--title` 等、値を取る未知フラグの値が `target`(edit の対象
 /// 識別子)に誤って捕捉されることがある。誤捕捉は「対象 PR が解決できない」
@@ -769,12 +775,12 @@ pub fn check(call: &ToolCall) -> Option<String> {
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 ///
 /// skip は stdin を読む前に見る(bash 版 main と同じ順)。session_id は skip 判定に関係しない。
-pub fn hook(agent: Agent, raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
     if Guard::from_env(String::new()).skipped() {
         return None;
     }
     let call = ToolCall::parse(agent, raw)?;
-    check(&call).map(hook_io::Outcome::Deny)
+    check(&call).map(agent_session::Outcome::Deny)
 }
 
 #[cfg(test)]

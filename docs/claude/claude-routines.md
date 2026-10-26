@@ -6,7 +6,7 @@ Claude Code routine(claude.ai 上の scheduled cloud agent)は Web UI・
 Plan agent による敵対的レビュー(replan)を経て、対象リポジトリ自身の
 宣言を正本にする形に決めた(ADR-503〔rulesets の宣言〕と同型)。
 
-実装は `config/claude/skills/claude-routines/`(手順は `SKILL.md`〔ローカル
+実装は `config/agents/skills/claude-routines/`(手順は `SKILL.md`〔ローカル
 session での create/adopt/apply〕と `auditor.md`〔クラウドの自己監査
 routine の汎用手順〕、決定論的な差分コアは `scripts/routines-plan.sh` +
 `scripts/lib.jq`)。機構側は `crates/routines-write-guard`(段2)と
@@ -97,4 +97,4 @@ install 先に含める。到達範囲の機械的な検出は未実装で、別
 `docs/github-app-snapshot.md`「Claude's cloud sandbox reach」節。
 
 先行例・各判断の対比は `docs/adr/519-routines-declaration-in-repo.md`
-「先行例との対比」を参照(precedent-grounding/selection-grounding スキル)。
+「先行例との対比」を参照(precedent-grounding/technology-selection スキル)。

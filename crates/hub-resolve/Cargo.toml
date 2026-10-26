@@ -19,3 +19,5 @@ path = "src/bin/performance-hub.rs"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[dependencies]

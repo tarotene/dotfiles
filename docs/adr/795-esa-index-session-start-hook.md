@@ -11,7 +11,7 @@
 社内 wiki(esa)の全記事は、private リポジトリに毎日ミラーされ、ローカルに clone してある。
 エージェントが社内の事実(設備・規程・手順・用語)を述べる前にこれを読む運用が、守られなく
 なってきた。共有 AGENTS.md に一文足しても、実行はモデルの気分次第になる
-(`docs/claude/issue-index.md`)。
+(`docs/agents/issue-index.md`)。
 
 さらに制約が 2 つある。
 

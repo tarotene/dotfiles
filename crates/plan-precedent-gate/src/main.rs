@@ -1,4 +1,4 @@
-//! エントリポイント。詳細は lib.rs / docs/claude/precedent-grounding.md。
+//! エントリポイント。詳細は lib.rs / docs/agents/precedent-grounding.md。
 //!
 //! 使い方:
 //!   hook として: PreToolUse(matcher: ExitPlanMode)から stdin JSON で呼ばれる
@@ -7,7 +7,7 @@
 //! スキップ手段: `touch ~/.claude/plan-precedent-gate/skip` または
 //! `SKIP_PLAN_PRECEDENT_GATE=1`。
 
-use hook_io::jqfmt;
+use jq_json_compat::jqfmt;
 use plan_precedent_gate::{deny_message, example_block, judge_precedent};
 use std::io::Write;
 use std::path::PathBuf;
@@ -46,7 +46,7 @@ fn today() -> String {
     std::env::var("PLAN_PRECEDENT_GATE_TODAY")
         .ok()
         .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| hook_io::proc::date("%Y-%m-%d"))
+        .unwrap_or_else(|| process_control::date("%Y-%m-%d"))
 }
 
 fn cmd_check(plan_file: &str) -> ExitCode {
@@ -76,9 +76,9 @@ fn hook() -> ExitCode {
     let mut buf = String::new();
     let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf);
     // 不正 JSON でも bash 版(jq が空を返す)と同じく最新プランへ縮退する。
-    let input = hook_io::HookInput::parse(&buf).unwrap_or_default();
+    let input = agent_session::HookInput::parse(&buf).unwrap_or_default();
     input.enter_cwd();
-    let Some(plan) = hook_io::plan::plan_text(&input) else {
+    let Some(plan) = agent_session::plan::plan_text(&input) else {
         return ExitCode::SUCCESS;
     };
     let problems = judge_precedent(&trim_newlines(plan));

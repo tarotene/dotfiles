@@ -15,7 +15,7 @@ delivery = "herdr"
 
 [theme]
 # Match the alacritty palette (Catppuccin Mocha) so panes and chrome read as
-# one UI. See docs/claude/herdr-sidebar-metadata.md for the full role→color
+# one UI. See docs/agents/herdr-sidebar-metadata.md for the full role→color
 # table shared by this file, crates/claude-statusline and alacritty.toml.
 name = "catppuccin"
 
@@ -32,7 +32,7 @@ name = "catppuccin"
 # (VS Code 標準 dark テーマの list.activeSelectionBackground が同じくグレーでは
 # なく青系タイントである先行例に倣う)。selection_bg(navigate モードのカーソル行)
 # もテーマ既定の surface0 より一段明るい旧 active_row_bg 相当(surface1)に引き上げる。
-# 詳細は docs/claude/herdr-sidebar-metadata.md「アクティブ行の視認性」節。
+# 詳細は docs/agents/herdr-sidebar-metadata.md「アクティブ行の視認性」節。
 sidebar_bg = "reset"       # 端末透過に委ねる(テーマ既定と同値。#3773 保険の明示)
 # panel_bg も同じ保険として明示するが、chrome(サイドバー等 herdr 自身の描画)側
 # にしか効かない。pane 内で動くプログラム(vt ランタイムのセル)の透過は
@@ -63,7 +63,7 @@ status_indicators = "symbols"
 # tab-bar-right.local(git 管理外の実行ファイル)が出す 1 行を表示する。無い
 # ホストでは command が失敗するので、herdr の仕様どおりこのセグメントだけが消える
 # (hostname・時計は残る)。実体の置き場と撤去条件は
-# docs/claude/herdr-tab-bar-local.md。
+# docs/agents/herdr-tab-bar-local.md。
 tab_bar_right = [
   { type = "command", command = "\"$HOME/.claude/hooks/claude-usage\"", interval_seconds = 60, timeout_seconds = 10 }, # pipeline-node: claude-usage
   { type = "command", command = "\"$HOME/.config/herdr/tab-bar-right.local\"", interval_seconds = 60, timeout_seconds = 10 }, # pipeline-node: herdr-tab-bar-right-local
@@ -100,7 +100,7 @@ rows = [
 # context 使用率と 5h の rate limit が入る(サイドバー幅に収まる 2 項目まで)。その項目は
 # home/modules/herdr.nix が ~/.codex/config.toml の tui.terminal_title に宣言する
 # (ADR-457 Amendment)。ctx/cost の hook 経路が無い理由・調べた範囲は
-# docs/claude/herdr-sidebar-metadata.md。
+# docs/agents/herdr-sidebar-metadata.md。
 # Copilot ペインは $branch/$model だけ(mode/ctx/cost/effort 相当は確実に取れない)。
 #
 # $oshi(推しマーク絵文字)は 3 エージェントすべての metadata hook が、
@@ -115,7 +115,7 @@ rows = [
 # なって選択行の背景(#45475A)とほぼ同色になり消える。カラー化そのものは
 # config/fontconfig/conf.d/75-color-emoji-fallback.conf が担当する二重防御。
 #
-# 配色は Catppuccin Mocha の役割トークン(詳細は docs/claude/herdr-sidebar-metadata.md):
+# 配色は Catppuccin Mocha の役割トークン(詳細は docs/agents/herdr-sidebar-metadata.md):
 #   blue #89B4FA(plan) / mauve #CBA6F7(default) / green #A6E3A1(accept) /
 #   red #F38BA8(bypass) / pink #F5C2E7(model) / subtext0 #A6ADC8(控えめ情報)。
 # 控えめ情報は旧 overlay1 #7F849C(矩形上 2.5:1)から subtext0 に引き上げ済み

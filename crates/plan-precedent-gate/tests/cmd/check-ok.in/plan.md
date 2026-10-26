@@ -1,7 +1,7 @@
 ## 先行例との対比
 
 - D1: 三層構成で規律を配置する
-  先行例: 自リポジトリ scope-inventory — config/claude/CLAUDE.md (取得 2026-09-15)
+  先行例: 自リポジトリ requirements-inventory — config/claude/CLAUDE.md (取得 2026-09-15)
   差分: 一致
   軸: 還元 — 既存語彙で足りる
 - D2: 別の判断

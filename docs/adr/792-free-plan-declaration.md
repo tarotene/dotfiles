@@ -56,7 +56,7 @@ rulesets・titles では通常判定に戻る。Team に切り替えたのにト
 auto|free|paid`(既定 `auto`)で上書きでき、検出できなかったときは注意を出して `--plan free` での
 再実行(作成は飛ばされる)を案内する。`--dry-run` は gh を呼ばないので、検出しない。
 
-### D5: Team 切替の手順を `docs/claude/free-plan-declaration.md` に書く
+### D5: Team 切替の手順を `docs/agents/free-plan-declaration.md` に書く
 
 宣言を外す、設定を適用して自動マージを有効にする、rulesets を適用する、監査で `ok` を確かめる、
 の順。workflow ファイルの編集は要らない。組織のプラン変更だけが人手で、画面の手順は GitHub Docs
@@ -93,5 +93,5 @@ auto|free|paid`(既定 `auto`)で上書きでき、検出できなかったと�
 - `crates/github-audit/src/audit.rs`
 - `scripts/pr-merge-settings-check`
 - `scripts/rulesets-context-check`
-- `config/claude/skills/repo-charter/scripts/create-repo.sh`
-- `docs/claude/free-plan-declaration.md`
+- `config/agents/skills/repo-charter/scripts/create-repo.sh`
+- `docs/agents/free-plan-declaration.md`

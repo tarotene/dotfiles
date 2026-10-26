@@ -6,8 +6,9 @@
 //! 縮退(bash 版と同じ): stdin が読めない・不正 JSON・Bash 以外・コマンドが
 //! 空なら何も出さず exit 0。
 
-use guard_core::hook::deny_output;
-use hook_io::{Agent, Outcome};
+use agent_session::hook::deny_output;
+use agent_session::Agent;
+use agent_session::Outcome;
 use std::io::Read;
 use std::process::ExitCode;
 

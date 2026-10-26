@@ -2,7 +2,8 @@
 //! vocabulary; apply_patch retains its canonical name in upstream hook payloads.
 //! See docs/claude/codex-hook-parity.md for the pinned wire-format evidence.
 
-use hook_io::{Decision, HookInput};
+use agent_session::Decision;
+use agent_session::HookInput;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -83,7 +84,7 @@ pub fn permission(raw: &str) -> Option<Value> {
         let ledger = gh_edit_allow::default_ledger()?;
         let origin = input
             .project_dir()
-            .and_then(|d| hook_io::git::origin_nwo(&d));
+            .and_then(|d| git_repository::origin_nwo(&d));
         gh_edit_allow::check(&input, &ledger, origin.as_deref())
     };
     if worktree.is_some() || edit().is_some_and(|d| d.decision == Decision::Allow) {
@@ -101,7 +102,7 @@ pub fn permission(raw: &str) -> Option<Value> {
 pub fn compatibility(command: &str, raw: &str) -> Option<Value> {
     let mut cmd = std::process::Command::new("sh");
     cmd.args(["-c", command]);
-    let (status, bytes) = hook_io::proc::output_with_timeout(
+    let (status, bytes) = process_control::output_with_timeout(
         &mut cmd,
         std::time::Duration::from_secs(30),
         Some(raw.as_bytes()),
@@ -145,7 +146,7 @@ pub fn atuin(raw: &str) {
     if let Some(cwd) = input["cwd"].as_str() {
         cmd.current_dir(cwd).env("PWD", cwd);
     }
-    let _ = hook_io::proc::output_with_timeout(
+    let _ = process_control::output_with_timeout(
         &mut cmd,
         std::time::Duration::from_secs(8),
         Some(input.to_string().as_bytes()),

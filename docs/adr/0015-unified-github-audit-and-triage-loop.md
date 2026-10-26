@@ -73,7 +73,7 @@
   rulesets.md` / `docs/github-audit-charters.md` は `docs/github-audit.md`
   に統合再編される(既存の設計判断の記述は保存する)。
 - `~/.claude/skills/{rust,typst,astro}-repo-governance` の 3 スキルは
-  `config/claude/skills/` へ移設され、監査基準(settings・renovate)との
+  `config/agents/skills/` へ移設され、監査基準(settings・renovate)との
   乖離があれば skill 側を修正する(基準の正本は ADR、Closes #151)。
 - `github-audit-triage` スキルが新設され、charter-sweep(#180)の設計
   (低確信フラグ・exempt 処分・self-verify)を継承しつつ、完了定義を

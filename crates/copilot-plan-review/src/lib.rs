@@ -1,6 +1,6 @@
 //! copilot-plan-review — ExitPlanMode 直前に GitHub Copilot CLI でプランを自動
 //! レビューする hook(旧 `config/claude/hooks/copilot-plan-review.sh`、ADR-0024
-//! Stage 4b、#412)。設計と根拠は docs/claude/copilot-plan-review.md。
+//! Stage 4b、#412)。設計と根拠は docs/agents/copilot-plan-review.md。
 //!
 //! critic / judge / acceptance oracle の分離、ラウンド上限・closer・escalation、
 //! 書式 gate precheck、fail-open の各規則は bash 版と同じ。judge・レンダリングは
@@ -17,10 +17,14 @@
 pub mod judge;
 pub mod prompts;
 
-use hook_io::jqfmt;
-use hook_io::plan::{plan_source, PlanSource};
-use hook_io::proc::{command_exists, date, spawn_group, wait_with_timeout};
+use agent_session::plan::plan_source;
+use agent_session::plan::PlanSource;
+use jq_json_compat::jqfmt;
 use judge::{chomp, Judged};
+use process_control::command_exists;
+use process_control::date;
+use process_control::spawn_group;
+use process_control::wait_with_timeout;
 use serde_json::{json, Value};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -619,8 +623,8 @@ pub fn advisory(cfg: &Config, args: &[String]) -> i32 {
 /// (ADR-0005 の設計上の fail-open)と、プラン本文を取れない素通りは、依存先の不調ではない
 /// ので記録しない。記録は best-effort で、判定の成否に影響させない。
 fn record_gate_event(decision: &str) {
-    if let Some(path) = hook_io::gate_event::default_path() {
-        let _ = hook_io::gate_event::record(&path, GATE_NAME, decision);
+    if let Some(path) = agent_session::gate_event::default_path() {
+        let _ = agent_session::gate_event::record(&path, GATE_NAME, decision);
     }
 }
 
@@ -660,8 +664,11 @@ fn precheck_deny_reason(bin: &str, limit: Duration, input: &str) -> Option<Strin
     }
     // `<<<"$INPUT"`: INPUT は `$(cat)` で末尾改行が落ち、here-string が 1 個足す。
     let stdin = format!("{}\n", chomp(input));
-    let (st, out) =
-        hook_io::proc::output_with_timeout(&mut Command::new(bin), limit, Some(stdin.as_bytes()))?;
+    let (st, out) = process_control::output_with_timeout(
+        &mut Command::new(bin),
+        limit,
+        Some(stdin.as_bytes()),
+    )?;
     if !st.success() {
         return None;
     }
@@ -777,7 +784,7 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
     } else {
         String::new()
     };
-    let session_id = hook_io::ledger::sanitize_session_id(&session_raw);
+    let session_id = agent_session::ledger::sanitize_session_id(&session_raw);
     let cwd_raw = if parsed.is_some() {
         match v.get("cwd") {
             None | Some(Value::Null) | Some(Value::Bool(false)) => String::new(),
@@ -900,7 +907,7 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
     }
 
     // --- プラン本文の取得 ---
-    let hook_input = hook_io::HookInput::parse(input_text).unwrap_or_default();
+    let hook_input = agent_session::HookInput::parse(input_text).unwrap_or_default();
     let mut plan_tmp: Option<String> = None;
     let plan_file = match plan_source(&hook_input) {
         Some(PlanSource::Inline(t)) => {

@@ -6,8 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-guard-core = { version = "0.1.0", path = "../guard-core" }
-hook-io = { version = "0.1.0", path = "../hook-io" }
+agent-session = { version = "0.1.0", path = "../agent-session" }
+command-inspection = { version = "0.1.0", path = "../command-inspection" }
 
 [dev-dependencies]
 serde_json = "1.0.151"

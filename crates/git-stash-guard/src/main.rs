@@ -2,7 +2,9 @@
 //! を deny する。`--host claude|codex`(既定 claude)。出力は両 host とも
 //! `hookSpecificOutput` 形で同一。判定なし・縮退はすべて無出力 exit 0。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use std::io::Read;
 
 fn main() {

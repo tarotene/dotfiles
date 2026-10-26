@@ -7,8 +7,9 @@
 //! exit 0(バイパスは hook 入出力層の責務)。stdin が読めない・不正 JSON・
 //! Bash 以外・コマンドが空でも exit 0。
 
-use guard_core::hook::deny_output;
-use hook_io::{Agent, Outcome};
+use agent_session::hook::deny_output;
+use agent_session::Agent;
+use agent_session::Outcome;
 use std::io::Read;
 use std::process::ExitCode;
 

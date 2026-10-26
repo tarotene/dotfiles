@@ -4,6 +4,7 @@
 { lib, ... }:
 {
   imports = [
+    ./modules/agents.nix
     ./modules/claude.nix
     ./modules/claude-mcp-servers.nix
     ./modules/codex.nix
@@ -11,7 +12,7 @@
     ./modules/worktree.nix
     ./modules/drift.nix
     ./modules/wrapper-hub.nix
-    ./modules/esa-index.nix
+    ./modules/esa-mirror-context.nix
     ./modules/checkout-freshness.nix
     ./modules/apt.nix
     ./modules/quarantine.nix

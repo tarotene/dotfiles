@@ -1,6 +1,6 @@
 //! 中断ハンドオフ(`Handoff: #N`): G_link / G_CI の緩和条件。
 //!
-//! handoff skill(docs/claude/handoff.md)が作る WIP の Draft PR は、まだ
+//! handoff skill(docs/agents/handoff.md)が作る WIP の Draft PR は、まだ
 //! closing keyword を書けない(親 Issue に `Closes` を書くと、再開後に子の
 //! 一部だけ終えてマージしたときに親まで閉じてしまう — tracking-issue の
 //! 「全 sub-issue closed で親を閉じる」条件に反する)。かつ CI が赤/pending

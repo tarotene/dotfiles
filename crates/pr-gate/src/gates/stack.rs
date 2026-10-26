@@ -1,4 +1,4 @@
-//! G_stack: chain 検出と GitHub stack リンク判定(ADR-0027、docs/claude/pr-gate.md
+//! G_stack: chain 検出と GitHub stack リンク判定(ADR-0027、docs/agents/pr-gate.md
 //! 「G_stack」節)。
 //!
 //! セッション内の複数 PR は常に作成順の単一チェーンに積む(uncertainty-first

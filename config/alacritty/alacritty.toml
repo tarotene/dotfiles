@@ -16,7 +16,7 @@ dynamic_padding = true
 # default-background regions (herdr's sidebar/pane base), which used to read as
 # "the base looks faded but the highlight rectangle looks fine" — that's not a
 # TUI theming bug, it's this option's documented scope. See
-# docs/claude/herdr-sidebar-metadata.md「アクティブ行の視認性」.
+# docs/agents/herdr-sidebar-metadata.md「アクティブ行の視認性」.
 opacity = 0.95
 
 # Blur. Requests compositor-side background blur for transparent windows

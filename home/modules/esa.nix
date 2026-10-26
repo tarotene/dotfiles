@@ -22,7 +22,7 @@
 # トークンの宛先は personal identity の master fingerprint(GnuPG が YubiKey 上の
 # [E] サブ鍵に解決する、ADR-0003 Amendment)で、company ホストのカードでは
 # 復号できないため、company に配ると毎セッション必ず失敗する MCP 登録だけが
-# 残る。詳細は docs/claude/esa-mcp.md、手動プロビジョニングは docs/setup.md。
+# 残る。詳細は docs/agents/esa-mcp.md、手動プロビジョニングは docs/setup.md。
 { config, pkgs, ... }:
 let
   launcherPath = "${config.home.homeDirectory}/.local/libexec/esa-mcp-launcher";

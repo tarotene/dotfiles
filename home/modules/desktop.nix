@@ -136,7 +136,7 @@ in
         # $oshi mark vanish into the selected-row background.  The rule is
         # scoped to the terminal's own family so generic monospace/sans-serif
         # matching is untouched; rationale in the file's own header and in
-        # docs/claude/herdr-sidebar-metadata.md.
+        # docs/agents/herdr-sidebar-metadata.md.
         "fontconfig/conf.d/75-color-emoji-fallback.conf".source =
           repoConfig + "/fontconfig/conf.d/75-color-emoji-fallback.conf";
 

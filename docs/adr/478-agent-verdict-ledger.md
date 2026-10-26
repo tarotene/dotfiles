@@ -110,7 +110,7 @@ without betraying user privacy, 2023-08-01
 GO 前に起票させない。`gh-edit-allow` は同セッションで作成実績のある
 リポジトリへの `gh issue create` を自動 allow するため、permission prompt
 は人間 GO の境界にならない。
-先行例: `docs/claude/wrapup-inbox.md`(採取 → Stop で起票を促す配管)
+先行例: `docs/agents/wrapup-inbox.md`(採取 → Stop で起票を促す配管)
 (取得 2026-09-25); Anthropic, Tools reference(SendFeedback は下書きを
 ローカルに置き、送信は人間の `/feedback` のみ)
 <https://code.claude.com/docs/en/tools-reference> (取得 2026-09-25);

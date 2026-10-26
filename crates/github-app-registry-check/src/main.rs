@@ -13,7 +13,7 @@
 //! Stage 4e)。出力・終了コードはバイト単位で一致させる。jq を使わなくなったため
 //! `GITHUB_APP_REGISTRY_CHECK_JQ_BIN` は無くなった。
 
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

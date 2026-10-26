@@ -69,7 +69,7 @@ Anthropic, "Plugin marketplaces", <https://code.claude.com/docs/en/plugin-market
    採らない。
 3. **二層構造**: エージェント非依存の汎用 CLI(`publish-guard`)+ 薄い
    adapter 層(Claude Code plugin / Codex CLI / Copilot CLI)。既存の
-   `plan-view` の先例(`docs/claude/plan-view.md` — 「汎用の `plan-view`
+   `plan-view` の先例(`docs/agents/plan-view.md` — 「汎用の `plan-view`
    CLI を下層に置き、自動発火は Claude Code にだけ配線した」)と同型。
 4. **ゼロデータ配布**: denylist(org 名・private リポ名)は一切配布しない。
    手書きが必要なのは org 名 1 行(`orgs.txt`)だけで、リポジトリ名は各自の
@@ -122,7 +122,7 @@ CWE-184 / Rahman et al. 2022)は
 - `config/claude/hooks/public-publish-guard.sh` を削除し、
   `tarotene/publish-guard` の CLI + Claude adapter を flake input 経由で
   配備する(実装は本 ADR と同じ変更セットの後続コミットで行う)。
-- `docs/claude/public-publish-guard.md` は上流リポへのポインタ + dotfiles
+- `docs/agents/public-publish-guard.md` は上流リポへのポインタ + dotfiles
   固有の配線に改稿する(ADR-0008 の docs-correspondence 原則)。
 - 新リポの stopword/allowlist 拡張や Codex/Copilot adapter の詳細は
   `tarotene/publish-guard` 側の README/CONTRIBUTING が正本であり、この

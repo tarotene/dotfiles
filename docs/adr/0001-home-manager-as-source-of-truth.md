@@ -93,7 +93,7 @@ strictly better but not automatic. `docs/operations.md` owns that cadence.
 
 The Decision above pins to "the latest **stable release** channel" with no stated
 exception. `herdr` (the worktree/workspace manager this repo's own hooks already
-assume — see `docs/claude/git-worktree-allow.md`) landed in nixpkgs after the
+assume — see `docs/agents/git-worktree-allow.md`) landed in nixpkgs after the
 `nixos-26.05` branch-off and is not evaluable there at all
 (`nix eval` on the pinned channel errors with "does not provide attribute
 … herdr"). Being on the stable channel offered no way to reach the package, not
@@ -134,7 +134,7 @@ Issue #42 tracks it for the current instance.
 `gh` is not absent from the pinned stable channel the way `herdr` was — it
 evaluates fine, at 2.96.0. What is missing is a specific feature: `--attach`
 (upload Before/After images straight from `gh pr create|edit`, see the
-`pr-description` skill / `docs/claude/pr-gate.md`'s `G_visual` judgement),
+`pr-description` skill / `docs/agents/pr-gate.md`'s `G_visual` judgement),
 which shipped in gh v2.99.0. This is the *input-boundary* mirror of the shape
 the 2026-07 fcitx5 amendment already drew at the *system-layer* boundary: a
 capped version, not a missing package. The criterion above ("a tool that is

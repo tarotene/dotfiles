@@ -58,7 +58,7 @@
 入力としても弱い。`[hold]`(旧 `【調整中】`)と `[outing]`(旧 `【お出かけ】`)がこれに当たる。
 旧印は、`slot-availability` の設定の `marker_prefix_aliases` / `[inbox].exclude_prefixes` に並べて、
 読み取り専用の別名として一定期間読み、既存の予定が確定・終了するにつれて外す
-(`docs/claude/slot-availability.md`)。`【勉強期間】` と `【試験本番】` は、人が読む終日の
+(`docs/agents/slot-availability.md`)。`【勉強期間】` と `【試験本番】` は、人が読む終日の
 区間を示す状態語で、機械的な除外・書き込みの対象ではないので、全角のまま残す。
 
 状態語を足すときは、既存の語と意味が重ならないことを確認してから表に追記する。

@@ -1,6 +1,6 @@
 //! herdr-status-advisory — SessionStart で `herdr status --json` を読み、herdr の
 //! client と server が食い違っているときだけ、先に知らせる。設計と根拠:
-//! docs/claude/herdr-status-advisory.md。
+//! docs/agents/herdr-status-advisory.md。
 //!
 //! 食い違いに気づくのが、作業ツリーを切る瞬間(`herdr worktree create` が
 //! `protocol_mismatch` で失敗する)になってから、という遅さを直す。照合は herdr

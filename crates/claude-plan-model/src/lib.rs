@@ -46,7 +46,7 @@
 
 mod json;
 
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};

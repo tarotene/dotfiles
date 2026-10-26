@@ -1,5 +1,5 @@
 //! PR タイトルを commit-message 契約として作成時に機械強制する PreToolUse
-//! hook の判定(ADR-0031、設計と根拠は docs/claude/pr-title-contract.md)。
+//! hook の判定(ADR-0031、設計と根拠は docs/agents/pr-title-contract.md)。
 //!
 //! bash 版 `config/claude/hooks/pr-title-guard.sh` と、その Codex/Copilot
 //! adapter の移植(ADR-0024 Stage 4a、#415)。
@@ -20,10 +20,13 @@
 //! (`No-Issue:` のような本文タグ型ではない — 単発の緊急対応向けの一時解除
 //! であり、本文に恒久的に残す決定ではないため)。
 
-use guard_core::command::{first_deny, gh_command_at};
-use guard_core::gh::{scan_value_flags, ValueFlag};
-use guard_core::hook::{jq_r_path, ToolCall};
-use guard_core::repo::owner_repo;
+use agent_session::hook::jq_r_path;
+use agent_session::hook::ToolCall;
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use git_repository::repo::owner_repo;
+use github_command::gh::scan_value_flags;
+use github_command::gh::ValueFlag;
 use pr_title_check::{check_title, Verdict};
 use std::path::Path;
 
@@ -123,7 +126,7 @@ pub fn decide(cmd: &str, project: &Path, allow: bool) -> Option<String> {
 /// project は Claude のみ `CLAUDE_PROJECT_DIR` を優先し、無ければ `.cwd`。
 /// Codex/Copilot adapter は `.cwd` だけを見ていた(env を見ない)。
 pub fn check(call: &ToolCall, claude_project_dir: Option<&str>, allow: bool) -> Option<String> {
-    use hook_io::Agent;
+    use agent_session::Agent;
     let env_project = match call.agent {
         Agent::Claude => claude_project_dir.filter(|s| !s.is_empty()),
         Agent::Codex | Agent::Copilot => None,
@@ -161,9 +164,9 @@ fn is_inside_work_tree(project: &Path) -> bool {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(agent: hook_io::Agent, raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(agent: agent_session::Agent, raw: &str) -> Option<agent_session::Outcome> {
     let allow = std::env::var("PR_TITLE_GUARD_ALLOW").is_ok_and(|v| v == "1");
     let call = ToolCall::parse(agent, raw)?;
     let env_project = std::env::var("CLAUDE_PROJECT_DIR").ok();
-    check(&call, env_project.as_deref(), allow).map(hook_io::Outcome::Deny)
+    check(&call, env_project.as_deref(), allow).map(agent_session::Outcome::Deny)
 }

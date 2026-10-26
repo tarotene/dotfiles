@@ -1,7 +1,7 @@
 //! issue-index — 自分に関係する open Issue の索引だけを薄く注入する SessionStart
 //! hook(`config/claude/hooks/issue-index.sh` の移植、#413)。
 //!
-//! 設計と根拠は docs/claude/issue-index.md。ここは純粋な部分(remote URL の
+//! 設計と根拠は docs/agents/issue-index.md。ここは純粋な部分(remote URL の
 //! 解釈と、Search API 応答から注入文を組み立てる部分)だけを持ち、gh / git の
 //! 呼び出しは `main.rs` が担う。
 //!

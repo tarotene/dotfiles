@@ -78,7 +78,7 @@ cannot auto-repair it.
 ## Installing and distributing secrets
 
 Install the App on a repository through `https://github.com/settings/apps`
-(**Install App**, not a new App creation — see `config/claude/skills/
+(**Install App**, not a new App creation — see `config/agents/skills/
 repo-governance-common/reference/releaser-app.md` for the releaser App's
 full per-repo checklist). Then distribute the two repo secrets (`RELEASER_APP_CLIENT_ID`, `RELEASER_APP_PRIVATE_KEY`) straight
 from Secrets Manager, without ever landing the PEM on disk outside the

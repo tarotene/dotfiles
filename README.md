@@ -56,7 +56,7 @@ Routine operations and the tool-layer decision flow (new CLI → home-manager pa
 
 ## Scope
 
-home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the Claude Code tooling under `config/claude/`. Two layers stay outside it as escape hatches — a thin apt system layer for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
+home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the shared coding-agent tooling under `config/agents/` (with product-specific configuration under `config/claude/` and `config/codex/`). Two layers stay outside it as escape hatches — a thin apt system layer for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
 
 This repository does not manage per-project language toolchains, the judgement engine behind `bleep` (formerly `publish-guard`; lives in [tarotene/bleep](https://github.com/tarotene/bleep); this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
 

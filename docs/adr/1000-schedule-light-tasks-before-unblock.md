@@ -10,8 +10,8 @@
 - `crates/issue-index/src/lib.rs` — 軽い人手タスクの節に、待ちのある Issue も出し、`(待ち N 件)` を添える(この PR で変更)。
 - `crates/issue-index/tests/selftest.rs` — 待ちのある Issue が出ること、待ちの無いものが先に並ぶことの検査(この PR で変更)。
 - `crates/issue-index/tests/expected/handoff-human-mixed.stdout` — 注入文の期待出力(この PR で変更)。
-- `config/claude/skills/handoff/SKILL.md` — §1 に「1 Issue = 1 回の作業」、§7 に「待ちがあっても待たない・連鎖は最後の段から逆算する」を書いた(この PR で変更)。
-- `config/claude/skills/pr-description/SKILL.md` — §6 に、払い出した Issue が軽い人手タスクなら同じセッションで予定化まで進める手順を足した(この PR で変更)。
+- `config/agents/skills/handoff/SKILL.md` — §1 に「1 Issue = 1 回の作業」、§7 に「待ちがあっても待たない・連鎖は最後の段から逆算する」を書いた(この PR で変更)。
+- `config/agents/skills/pr-description/SKILL.md` — §6 に、払い出した Issue が軽い人手タスクなら同じセッションで予定化まで進める手順を足した(この PR で変更)。
 
 ## Context
 

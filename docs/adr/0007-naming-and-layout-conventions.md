@@ -57,20 +57,22 @@ Misterio77/nix-starter-configs、hlissner/dotfiles)と Claude Code hook
 
 ### 3. hook の役割語彙
 
+ADR-0000 で更新。接尾辞は発火イベントでなく責務で決める。
+
 | 接尾辞 | 意味 |
 |---|---|
-| `-guard` | PreToolUse で遮断(`permissionDecision: "deny"`)する hook |
-| `-gate` | Stop の完了バリア hook |
-| `-allow` | PreToolUse で検証つき `permissionDecision: "allow"` を返す hook。`-guard` とは意味的に別物(遮断ではなく許可の裏付け) |
-| 接尾辞なし | SessionStart 注入系などイベント名を含まない機能名 |
+| `-guard` | 禁止操作・状態から対象を守る |
+| `-gate` | 条件が揃うまで進行・完了を止める |
+| `-check` | 適合性を判定する |
 
-既存ファイルはこの表に従って遡及的にリネームしない。新規に hook を追加する
-ときにのみ適用する。
+これは本リポジトリの語彙であり、業界標準とは扱わない。品詞を一律に揃えない。
+名前が責務を説明しきれなければ、責務の切り方を見直す。
+現行の配置と移行条件は [命名・配置規約](../agents/tooling-conventions.md)を参照する。
 
 ### 4. `config/claude/hooks/` ソースツリーの純度
 
 `config/claude/hooks/` 直下は hook 本体スクリプトのみとする。同梱アセット
-(`*.schema.json`、`*.css`)は `config/claude/assets/` へ、statusline のような
+(`*.schema.json`、`*.css`)は `config/agents/assets/` へ、statusline のような
 「hook でない」仕組みは `config/claude/statusline/` へ分離する(#106 実施分)。
 
 これは**ソースツリー側の規約**であり、配備先(`~/.claude/hooks/`)の規約では

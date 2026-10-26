@@ -1,0 +1,12 @@
+[package]
+name = "git-repository"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+process-control = { version = "0.1.0", path = "../process-control" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

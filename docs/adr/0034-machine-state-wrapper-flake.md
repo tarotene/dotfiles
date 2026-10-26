@@ -46,13 +46,13 @@ person-state hub(person-state, private)/ さらに別の private リポジトリ
 2. **依存の向きはこの1本のみ**: dotfiles は private リポジトリを flake
    input に取らない。取れば `flake.lock` がその input の `original` に
    `{owner, repo}` を平文で記録し、コミット済みファイルに private リポ名
-   が載る — `docs/claude/writing-style.md` が明文で禁じている形と同じで、
+   が載る — `docs/agents/writing-style.md` が明文で禁じている形と同じで、
    物理的に不可能である。よって依存方向を反転し、private wrapper flake
    が dotfiles を input に取る側にする。
 3. dotfiles 側は `lib.mkHome` を export するだけで、private wrapper flake
    の**名前・パスを一切知らない**。所在の解決は `scripts/hms.sh` の
    `~/.config/dotfiles/private-hub` マーカー1個を介した間接参照とする —
-   ADR-0019 の host マーカー、`docs/claude/writing-style.md` の style-hub
+   ADR-0019 の host マーカー、`docs/agents/writing-style.md` の style-hub
    マーカーと同じ型。home-manager では宣言しない(宣言すると絶対パスが
    ソースに写り間接参照の意味が消えるため、style-hub と同じ理由)。
 4. `homeConfigurations` は dotfiles 側にも据え置く。`nix flake check` の

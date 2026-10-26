@@ -1,6 +1,6 @@
 //! pkexec-guard — agent セッションが `pkexec` で root 権限のコマンドを実行
 //! するとき、polkit の認証ダイアログに全文が表示される範囲だけを通す
-//! PreToolUse hook。設計と裁定の経緯は `docs/claude/pkexec-guard.md`
+//! PreToolUse hook。設計と裁定の経緯は `docs/agents/pkexec-guard.md`
 //! (PR #326 のグリルセッション、2026-09-28)。
 //!
 //! ## 採らなかった設計: SUDO_ASKPASS
@@ -36,10 +36,13 @@
 //! 5. **Codex / Copilot からは pkexec を一切許さない。** 明示的な ask
 //!    ルール(`permissions.ask` の `Bash(/usr/bin/pkexec *)`)が auto mode
 //!    でも確認を強制することを Claude Code 側で確認できているのは Claude
-//!    のみ(公式ドキュメント参照、docs/claude/pkexec-guard.md)。二段承認
+//!    のみ(公式ドキュメント参照、docs/agents/pkexec-guard.md)。二段承認
 //!    が成立しない CLI では全 deny にする。
 
-use hook_io::{shell, Agent, HookInput, PermissionDecision};
+use agent_session::Agent;
+use agent_session::HookInput;
+use agent_session::PermissionDecision;
+use command_inspection::simple_shell as shell;
 use std::path::Path;
 
 /// 実行時に固定されている pkexec 自身の絶対パス。相対名 `pkexec` は許可
@@ -49,7 +52,7 @@ const PKEXEC_PATH: &str = "/usr/bin/pkexec";
 /// root で実行してよい対象バイナリの閉じた許可リスト(絶対パス)。実装時に
 /// このホスト(vega)で実在を確認済み。`tailscale` は載せない: 導入後に
 /// 実パス(/usr/bin/tailscale)を確認したが、`--operator` 設定済みで日常の
-/// 操作に root が要らないため(docs/claude/pkexec-guard.md、2026-10-07)。
+/// 操作に root が要らないため(docs/agents/pkexec-guard.md、2026-10-07)。
 const ALLOWED_TARGETS: &[&str] = &[
     "/usr/bin/apt-get",
     "/usr/bin/apt",
@@ -71,7 +74,7 @@ const GROUP_OR_OTHER_WRITABLE: u32 = 0o022;
 const SETUID_BIT: u32 = 0o4000;
 
 /// ファイルの所有者(uid)とモードを問い合わせる面。実運用は
-/// [`RealFs`]、テストはフェイクを注入する(`hook_io::input::HookInput::
+/// [`RealFs`]、テストはフェイクを注入する(`agent_session::input::HookInput::
 /// project_dir_with` と同じ、実ファイルシステムに依存しないテストの
 /// ための注入パターン)。
 trait PathMeta {
@@ -234,7 +237,7 @@ fn sudo_askpass_reintroduction(cmd: &str) -> Option<&'static str> {
     {
         return Some(
             "SUDO_ASKPASS の再導入は deny — パスワードを agent が読めるパイプに \
-             通す設計は #348/#421 により不採用と裁定済み(docs/claude/pkexec-guard.md)",
+             通す設計は #348/#421 により不採用と裁定済み(docs/agents/pkexec-guard.md)",
         );
     }
     if let Some(words) = shell::split(cmd) {
@@ -246,7 +249,7 @@ fn sudo_askpass_reintroduction(cmd: &str) -> Option<&'static str> {
             return Some(
                 "sudo -A/-S/--askpass/--stdin の使用は deny — パスワードを agent が \
                  読めるパイプに通す設計は #348/#421 により不採用と裁定済み \
-                 (docs/claude/pkexec-guard.md)",
+                 (docs/agents/pkexec-guard.md)",
             );
         }
     }
@@ -305,7 +308,7 @@ fn mentions_pkexec(cmd: &str, words: Option<&[String]>) -> bool {
 const CODEX_COPILOT_DENY_REASON: &str =
     "pkexec は Codex CLI / Copilot CLI からは常に deny — 明示的な ask \
      ルールが auto 系モードでも確認を強制することを確認できているのは \
-     Claude Code のみ(docs/claude/pkexec-guard.md)";
+     Claude Code のみ(docs/agents/pkexec-guard.md)";
 
 /// #548: 複合コマンド(`;`/`&&`/`||`/`|`/`&`/改行区切り)を文単位で判定する。
 /// 単一コマンド(`shell::split_segments` が1文しか返さない場合)は旧来と
@@ -344,7 +347,7 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
                 "pkexec を含むコマンドが複合コマンド・展開・引用符・改行を含むため \
                  静的に解析できません。解析できない場合は fail closed で deny します \
                  — 単純な `/usr/bin/pkexec <絶対パス> <引数…>` のみ許可します \
-                 (docs/claude/pkexec-guard.md)",
+                 (docs/agents/pkexec-guard.md)",
             ));
         };
         return match validate_pkexec(&words, fs) {
@@ -375,7 +378,7 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
             "複合コマンドの中に pkexec の呼び出しに見える文が含まれています。 \
              polkit の認証ダイアログは pkexec に渡された argv しか表示しないため、 \
              同じ Bash 呼び出し内の他の文が承認の目に入らず実行されます — deny \
-             (docs/claude/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
+             (docs/agents/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
         ));
     }
 
@@ -383,7 +386,7 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
         "複合コマンドの中に、pkexec を含むが静的に解析できない文(展開・ \
          リダイレクト等)があります。リダイレクトで偽装された呼び出しの \
          可能性を排除できないため fail closed で deny します \
-         (docs/claude/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
+         (docs/agents/pkexec-guard.md)。単独の Bash 呼び出しに分離してください。",
     ))
 }
 
@@ -397,12 +400,12 @@ pub fn check(input: &HookInput, agent: Agent) -> Option<PermissionDecision> {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(agent: hook_io::Agent, raw: &str) -> Option<hook_io::Outcome> {
-    let input = hook_io::HookInput::parse(raw)?;
+pub fn hook(agent: agent_session::Agent, raw: &str) -> Option<agent_session::Outcome> {
+    let input = agent_session::HookInput::parse(raw)?;
     if input.hook_event_name != "PreToolUse" {
         return None;
     }
-    check(&input, agent).and_then(hook_io::Outcome::from_decision)
+    check(&input, agent).and_then(agent_session::Outcome::from_decision)
 }
 
 #[cfg(test)]
@@ -577,7 +580,7 @@ mod tests {
 
     #[test]
     fn allows_quoted_argument_without_expansion() {
-        // `hook_io::shell::split` はクォートを展開なしの語に正しく解決する
+        // `command_inspection::simple_shell::split` はクォートを展開なしの語に正しく解決する
         // (`'status'` → `status`)。pkexec のダイアログは実行時の実際の argv
         // (クォート解決済み)を表示するので、判定もその argv に対して行う —
         // クォートの有無そのものを deny 理由にはしない(Plan 時点では

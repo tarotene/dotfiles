@@ -10,7 +10,7 @@ use crate::gh::FetchError;
 use crate::jq;
 use crate::model::{Domain, Finding, RepoFindings, RepoGql, RepoRest, Verdict};
 use crate::vocab;
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
@@ -132,7 +132,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
         let visibility = meta.visibility_str();
         // `plan-free-private` の宣言は「非公開」を含意する。公開リポジトリに残った
         // トピックは通常判定に戻し、stale は settings ドメインが報告する
-        // (docs/claude/free-plan-declaration.md)。
+        // (docs/agents/free-plan-declaration.md)。
         let plan_free_private = visibility == "PRIVATE"
             && topics
                 .iter()
@@ -329,7 +329,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
 pub fn write_ledger(state_dir: &Path, findings: &[RepoFindings]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     std::fs::create_dir_all(state_dir)?;
-    let generated_at = hook_io::proc::date("%Y-%m-%dT%H:%M:%S%:z");
+    let generated_at = process_control::date("%Y-%m-%dT%H:%M:%S%:z");
     let doc = J::obj(vec![
         ("generated_at", J::str(generated_at)),
         (

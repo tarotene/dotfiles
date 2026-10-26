@@ -3,10 +3,11 @@
 //! 無出力 exit 0(通常の permission フローへフォールスルー)。
 //! 環境変数: `HERDR_WORKTREES_DIR`(既定 `$HOME/.herdr/worktrees`)。
 
-use hook_io::{Agent, PermissionDecision};
+use agent_session::Agent;
+use agent_session::PermissionDecision;
 
 fn main() {
-    let Some(input) = hook_io::input::read_stdin() else {
+    let Some(input) = agent_session::input::read_stdin() else {
         return;
     };
     let Some(cmd) = input.bash_command() else {

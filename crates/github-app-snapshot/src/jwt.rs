@@ -4,7 +4,7 @@
 //! PEM は呼び出し元が 0600 の一時ファイルに置いて渡す)。
 
 use crate::config::Config;
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};

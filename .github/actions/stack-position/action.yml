@@ -73,7 +73,7 @@ runs:
         # pr-contract-check の整合性の検査(skills のテンプレートと `.github/rulesets/quality.json`、
         # かつて常に走る dry-run job にあった bash の selftest が持っていた)。消えた hook の
         # ディレクトリ(config/claude/hooks/ など、Rust への移植で無くなった)は外した。
-        RUST_EXTRA_INPUTS: "config/git/hooks/ config/claude/skills/ scripts/ bootstrap.sh .github/workflows/ .github/rulesets/ config/herdr/config.toml docs/assets/pipeline-map/"
+        RUST_EXTRA_INPUTS: "config/git/hooks/ config/agents/skills/ scripts/ bootstrap.sh .github/workflows/ .github/rulesets/ config/herdr/config.toml docs/assets/pipeline-map/"
         # build の入力から意図的に外した「コピーされるだけ」の集合。
         # 判定には使わない — ci.yml の drift 検査が、nix コードが読む
         # トップレベル項目のうち BUILD_INPUTS にも COPY_ONLY にも

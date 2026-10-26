@@ -88,7 +88,7 @@ in
   # どちらも外部サービスに繋ぐ経路であり、common.nix に置くと company ホストへ
   # 黙って配備される。
   dotfiles.claude.mcpServers = {
-    # PR の Before/After 視覚証跡(docs/claude/pr-description.md の G_visual)と
+    # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
     # Web UI の実地確認に使う。ローカル完結(npx でブラウザを起動するだけ)。
     playwright = {
       type = "stdio";

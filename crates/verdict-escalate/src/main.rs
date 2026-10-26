@@ -1,6 +1,6 @@
 //! CLI エントリポイント。`wrapup-stop-gate` が Stop の stdin JSON を
 //! そのまま渡して呼ぶ(hook 登録はしない — 詳細は lib.rs /
-//! docs/claude/verdict-escalate.md)。
+//! docs/agents/verdict-escalate.md)。
 //!
 //! usage: verdict-escalate --inbox <path>
 //!
@@ -21,7 +21,7 @@ fn main() {
     let Some(inbox) = inbox else {
         return;
     };
-    let Some(input) = hook_io::input::read_stdin() else {
+    let Some(input) = agent_session::input::read_stdin() else {
         return;
     };
     verdict_escalate::run(&input.session_id, &inbox);

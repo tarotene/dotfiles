@@ -18,7 +18,7 @@ fn under_test() -> PathBuf {
 }
 
 fn repo_css() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/claude/assets/plan-view.css")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/agents/assets/plan-view.css")
 }
 
 fn have_pandoc() -> bool {

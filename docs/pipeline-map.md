@@ -28,15 +28,15 @@ Copilot CLI が批評者として計画を読み(LLM)、gate が指摘の重さ�
 `plan-view` は計画を HTML にして窓に出す(表示だけで承認には干渉しない)。
 `plan-scope-gate` は依頼と参照 Issue の項目が要求インベントリに載っているかを、`plan-precedent-gate` は先行例の節の書式を、`plan-fresh-gate` は base が進んで計画が参照するファイルが変わっていないかを見る。
 どれかが止めたら、エージェントは計画を直して `ExitPlanMode` をやり直す。
-skill の scope-inventory・precedent-grounding・selection-grounding は、提出前に同じ gate を自分で呼んで確かめる手順を持つ。
+skill の requirements-inventory・precedent-grounding・technology-selection は、提出前に同じ gate を自分で呼んで確かめる手順を持つ。
 Codex の Plan mode には `ExitPlanMode` が無いので、`codex-plan-gate` が Stop で同じ gate を再利用する。
-批評のラウンドの上限と終わらせ方は [`copilot-plan-review.md`](claude/copilot-plan-review.md)。
+批評のラウンドの上限と終わらせ方は [`copilot-plan-review.md`](agents/copilot-plan-review.md)。
 
 ### P2 実装から PR
 
 ![実装から PR のパイプライン](assets/pipeline-map/implement-to-pr.svg)
 
-セッションの開始時に、issue-index・esa-index・wrapup-session-start が文脈を注入し、worktree-fresh-base が作業ツリーを base へ fast-forward し、sign-prewarm が署名の pinentry を前倒しする。
+セッションの開始時に、issue-index・esa-mirror-context・wrapup-session-start が文脈を注入し、worktree-base-sync が作業ツリーを base へ fast-forward し、gpg-prewarm が署名の pinentry を前倒しする。
 ツール呼び出しのたびに、Bash や MCP への PreToolUse hook が並ぶ: 本物の checkout を変更させない、`git stash` を止める、`gh` の投稿に生成元の footer・Conventional Commits のタイトル・未チェックの task list の禁止・決定成果物の執行点を求める、stacked PR の base を親にそろえる、新しい道具に既存手段の検討を求める、非公開の名前の流出を止める(bleep)。
 `git commit` と `git push` では git hook が走る(main への直接の commit を止める、push 前に bleep が走査する)。
 `gh pr create` で PR ができると、GitHub が CI の workflow を起動し、必須の check の結果が `pr-gate` に戻る。
@@ -49,9 +49,9 @@ Stop で `pr-gate` が、push・PR・Issue のリンク・見た目の証跡・s
 
 作業のスコープ外で見つけた気づきは、エージェントが wrap-up inbox に追記する。
 Stop で `wrapup-stop-gate` が inbox に未起票の行があれば止め、エージェントが `gh issue create` で Issue にする。
-bleep と pre-push の走査は verdict ledger に判定を書き、同じ指紋の deny / ask が 3 回たまると、Stop の gate が呼ぶ `verdict-escalate` が inbox に行を足す([`verdict-escalate.md`](claude/verdict-escalate.md))。
+bleep と pre-push の走査は verdict ledger に判定を書き、同じ指紋の deny / ask が 3 回たまると、Stop の gate が呼ぶ `verdict-escalate` が inbox に行を足す([`verdict-escalate.md`](agents/verdict-escalate.md))。
 `promotion-detect`(日次)は、実行したコマンドのハッシュと feedback の Issue を読み、決定論へ昇格させる候補を inbox に足す。
-retro の skill は振り返りの行を足し、wrapup-chores の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
+retro の skill は振り返りの行を足し、backlog-cleanup の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
 
 ### P4 repo governance
 
@@ -83,7 +83,7 @@ gpg-subkey の期限(日次)は toast と、ローテーションの skill へ�
 detect-drift(週次)は宣言とのずれを非公開の Issue 置き場に出す。
 Obsidian のバックアップ(日次、週次、月次)は B2 に書き、失敗を toast で知らせる。
 herdr のサイドバーには、hook の metadata、statusline、claude-usage、issue 件数、ホスト固有の欄が流れる。
-`hms` は適用のたびに `settings-reconcile` を呼び、hook の宣言を各ツールの設定ファイルへ反映する。
+`hms` は適用のたびに `agent-settings-reconcile` を呼び、hook の宣言を各ツールの設定ファイルへ反映する。
 
 ### P7 活動の証跡
 

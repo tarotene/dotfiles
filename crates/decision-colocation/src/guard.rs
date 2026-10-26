@@ -2,7 +2,7 @@
 //! 作成時から機械強制する PreToolUse hook(ADR-396)。
 //!
 //! bash 版 `config/claude/hooks/decision-colocation-guard.sh` の移植。
-//! 設計と根拠は docs/claude/decision-colocation.md。
+//! 設計と根拠は docs/agents/decision-colocation.md。
 //!
 //! 対象コマンド: コマンド位置の `gh pr create`(`-R/--repo` によるクロス
 //! リポジトリ指定にも対応)。判定は [`crate::check::run_check`] 1 本に
@@ -22,12 +22,15 @@
 //! 無効化する(`PR_TITLE_GUARD_ALLOW` と同じ性質 — 恒久的な本文タグでは
 //! ない)。
 
-use hook_io::git::ok as git_ok;
+use git_repository::ok as git_ok;
 use std::path::Path;
 
-use guard_core::command::{first_deny, gh_command_at};
-use guard_core::gh::{scan_value_flags, ValueFlag};
-use guard_core::repo::{default_branch_or_gh, owner_repo};
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use git_repository::repo::default_branch_or_gh;
+use git_repository::repo::owner_repo;
+use github_command::gh::scan_value_flags;
+use github_command::gh::ValueFlag;
 
 use crate::check;
 
@@ -49,7 +52,7 @@ pub enum CheckOutcome {
 /// 現在の `run_check` は判定不能を返さない(bash 版でも rc=2 は使い方誤りの
 /// ときだけで、guard は常に正しい引数で呼ぶ)。
 pub fn real_checker(project: &Path, base_ref: &str) -> CheckOutcome {
-    let root = hook_io::git::toplevel(project).unwrap_or_else(|| project.to_path_buf());
+    let root = git_repository::toplevel(project).unwrap_or_else(|| project.to_path_buf());
     let violations = check::run_check(&root, base_ref);
     if violations.is_empty() {
         CheckOutcome::Conforming
@@ -80,7 +83,7 @@ fn deny_reason(out: &str) -> String {
 /// PreToolUse の deny は Bash 呼び出し全体に効く。`gh pr create` より前に
 /// 文があれば(本文ファイルの生成など)それも実行されていない(#668)。
 /// deny を部分的にかけることは仕組み上できないので警告で補う(軸: 検出のみ、
-/// docs/claude/decision-colocation.md「複合コマンドの deny は部分的にできない」)。
+/// docs/agents/decision-colocation.md「複合コマンドの deny は部分的にできない」)。
 const PRECEDING_STATEMENT_NOTE: &str = "注意: この Bash 呼び出しは全体が実行されていません。gh pr create より前の文(PR 本文ファイルの生成など)も実行されていないので、指摘を直したうえで、前段の文と gh pr create を別の呼び出しに分けて再実行してください。";
 
 /// 判定の設定(環境変数・checker を差し替えられるようにする)。
@@ -174,11 +177,11 @@ impl Guard<'_> {
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 ///
 /// プロジェクトは `${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty')}`、git の外なら判定しない。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    let call = guard_core::hook::ToolCall::parse(hook_io::Agent::Claude, raw)?;
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    let call = agent_session::hook::ToolCall::parse(agent_session::Agent::Claude, raw)?;
     let project = match std::env::var("CLAUDE_PROJECT_DIR") {
         Ok(p) if !p.is_empty() => p,
-        _ => guard_core::hook::jq_r_path(&call.raw, &["cwd"])
+        _ => agent_session::hook::jq_r_path(&call.raw, &["cwd"])
             .ok()
             .flatten()
             .unwrap_or_default(),
@@ -192,5 +195,5 @@ pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
     }
     // Bash 以外(MCP 等)は対象外。
     let cmd = call.bash_command()?;
-    Guard::with_env(|g| g.decide(&cmd, &project)).map(hook_io::Outcome::Deny)
+    Guard::with_env(|g| g.decide(&cmd, &project)).map(agent_session::Outcome::Deny)
 }

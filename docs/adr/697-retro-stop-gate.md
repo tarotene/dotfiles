@@ -8,7 +8,7 @@
 
 ## Context
 
-wrap-up inbox(`docs/claude/wrapup-inbox.md`)は「作業中にモデルが自発的に `--add` した
+wrap-up inbox(`docs/agents/wrapup-inbox.md`)は「作業中にモデルが自発的に `--add` した
 項目を、Stop 時に Issue 化させる」仕組みで、項目の中身は追記した時点で決まっている。
 作業を終えた時点でセッション全体を見直させる機構は無く、ユーザーの指摘・詰まり・
 hook に当たった事実は、モデルが気付いて `--add` したものしか残らない。
@@ -83,7 +83,7 @@ hook に当たった事実は、モデルが気付いて `--add` したものし
 
 - `crates/wrapup-stop-gate/src/retro.rs`
 - `crates/wrapup-stop-gate/tests/retro.rs`
-- `config/claude/skills/retro/SKILL.md`
+- `config/agents/skills/retro/SKILL.md`
 
 ## Verification
 

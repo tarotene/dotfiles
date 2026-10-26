@@ -36,7 +36,7 @@ impl Sub {
 /// `usage_subkeys <cap-char> [selector] [on-disk]` の awk と同じ走査。
 ///
 /// `ondisk_only` が真なら on-disk の秘密素材(`--with-colons` 欄 15 == "+"、GnuPG
-/// DETAILS。`crates/sign-prewarm` の `key_is_on_disk` と同じ判定)に限る — card-backed
+/// DETAILS。`crates/gpg-prewarm` の `key_is_on_disk` と同じ判定)に限る — card-backed
 /// (token S/N)と stub(#)は除外する。
 pub fn usage_subkeys(listing: &str, cap: char, ondisk_only: bool) -> Vec<Sub> {
     let mut out = Vec::new();

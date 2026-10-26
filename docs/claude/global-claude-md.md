@@ -6,7 +6,7 @@
 `home.file.".claude/CLAUDE.md"`。
 
 **ADR-0032 以降、本文の正本は `config/agents/AGENTS.md`(agent 非依存の
-共有規範、`docs/claude/global-agents-md.md` 参照)に移り、このファイルは
+共有規範、`docs/agents/global-agents-md.md` 参照)に移り、このファイルは
 `@~/.agents/AGENTS.md` を import する router + Claude Code 固有の施行配線
 (gate スクリプトの自己検査手順・ExitPlanMode・AskUserQuestion まわり)だけを
 持つ。**以下の節は移設前の経緯として残すが、本文の内容そのものは共有
@@ -58,7 +58,7 @@ GitHub のクローリングをしないまま計画を書き切ってしまう�
 herdr-sidebar-metadata.md` 参照)と同じ設計判断で、意図的に許容している:
 その場の追記を許すと宣言的管理からのドリフトが始まり、次の `hms` で誰にも
 説明のつかない差分に化ける。知見を永続化したいときは
-`docs/claude/skill-gardening.md` の PR フローに乗せる —— つまり「追記したい」
+`docs/agents/agent-tooling-authoring.md` の PR フローに乗せる —— つまり「追記したい」
 という気持ちそのものは正しく、その受け口を CLAUDE.md の直接編集からリポジトリの
 レビュー可能な変更に付け替えている。
 

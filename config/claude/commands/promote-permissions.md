@@ -7,7 +7,7 @@ It never adds permanent local allow rules or deletes project settings.
 ## Promotion queue
 
 Allow rules saved by "don't ask again" are tolerated for the session and moved to a
-promotion queue at the next session boundary (docs/agent-permissions.md). Start here:
+promotion queue at the next session boundary (docs/agents/agent-permissions.md). Start here:
 
 ```sh
 agent-permissions pending --json   # candidates: id, rule, project
@@ -49,5 +49,5 @@ The old `--delete-after` and `--keep-project-specific` migration options are
 retired; report that change instead of deleting or rewriting shared settings.
 
 For interrupted migration or invalid ownership records, follow the dedicated
-CLI recovery procedure in `docs/agent-permissions.md`. Do not bypass the runtime
+CLI recovery procedure in `docs/agents/agent-permissions.md`. Do not bypass the runtime
 permission check with an arbitrary shell command.

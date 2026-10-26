@@ -12,10 +12,10 @@ Codex の Plan mode で応答に `<proposed_plan>` ブロックを含めると�
 ごとに `## 先行例との対比` 節を置き、判断ごとに `Dn:` 行(採った判断 / 出典と
 取得日 / 先行例との差分 / `軸:`)を書く。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。書式は precedent-grounding /
-selection-grounding スキル(`~/.agents/skills/`)に従う。
+technology-selection スキル(`~/.agents/skills/`)に従う。
 
 複数項目を含む依頼には `## 要求インベントリ` 節を置き、逐語で `Rn` の ID を
-振って処分(実装する段、または閉じたタグ)を書く(scope-inventory スキル)。
+振って処分(実装する段、または閉じたタグ)を書く(requirements-inventory スキル)。
 
 `<proposed_plan>` を出す前に、次の2本を自分で実行して指摘ゼロを確認する
 (Stop hook `codex-plan-gate` の block を待たない — gate は漏れを拾う
@@ -42,8 +42,8 @@ Codex にも効く。
 CI required check(`decision-colocation-check`)の両方が検査する。
 
 PR 本文に未チェックの task list を残さず、人の確認が要る残作業は後続
-Issue へ払い出す原則も Codex に適用される。形式検査は `pr-confirm-guard`
-(`crates/pr-confirm-guard` を `--agent codex` で登録、PreToolUse deny、
+Issue へ払い出す原則も Codex に適用される。形式検査は `pr-followup-guard`
+(`crates/pr-followup-guard` を `--agent codex` で登録、PreToolUse deny、
 全リポジトリで発火)が担う。
 
 ### GitHub 投稿の生成元明示

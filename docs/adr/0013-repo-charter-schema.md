@@ -16,12 +16,12 @@ topics も調査した範囲の全リポジトリで未設定だった。
 の「自動提案は入力を 1 回だけ見て提案し、以降の工程には関与しない」という
 言明と、ある open Issue の内容(それと正反対の反復ループ提案)が正面から
 矛盾していた(固有名は private/company リポジトリ名を書かない方針
-[`docs/claude/public-publish-guard.md`]により伏せる)。判定軸が言語化
+[`docs/agents/public-publish-guard.md`]により伏せる)。判定軸が言語化
 されていないと、AI Agent は目指すべき方向性がブレ、人間は何を期待すべきか
 ブレて見当外れの Issue を切りかねない — これは単発のミスではなく、
 スキーマが存在しない限り再発する構造的な問題である。設計判断の詳細
 (スキーマの各要素をこの形にした理由、監査を LLM なしにした理由)は
-`docs/claude/repo-charter.md` に記録する。
+`docs/agents/repo-charter.md` に記録する。
 
 ## Decision
 
@@ -33,7 +33,7 @@ topics も調査した範囲の全リポジトリで未設定だった。
    - GitHub topics を最低 1 つ設定する。
    - 見出しリテラルは英語で固定し、機械検査のアンカーにする。
 2. **強制点は 2 つ、Issue 起票時の照合は含めない。**
-   - 作成時: `repo-charter` スキル(`config/claude/skills/repo-charter/`)が
+   - 作成時: `repo-charter` スキル(`config/agents/skills/repo-charter/`)が
      charter インタビュー → README 雛形 → description/topics 反映 →
      自己検証までを一式で行う。
    - 事後: `github-audit-charters`(`scripts/github-audit-charters`、
@@ -59,7 +59,7 @@ topics も調査した範囲の全リポジトリで未設定だった。
 
 - **charter を独立ファイル(`CHARTER.md`)に分離する** — README と正本の
   場所が割れ、Web UI で最初に見る場所と機械検査の場所が一致しなくなる。
-  棄却(詳細は `docs/claude/repo-charter.md`)。
+  棄却(詳細は `docs/agents/repo-charter.md`)。
 - **`## Charter` という単一節に Purpose/Scope/Issue litmus を集約する** —
   検査は単純になるが、既存リポジトリ全部で README の再構成が必要になり
   段階的適合化(Decision 4)と相性が悪い。棄却。
@@ -73,8 +73,8 @@ topics も調査した範囲の全リポジトリで未設定だった。
 ## Consequences
 
 - `scripts/github-audit-charters`(新規、`home/modules/packages.nix` 経由で
-  `~/.local/bin` に配布)、`config/claude/skills/repo-charter/`(新規)、
-  `docs/github-audit-charters.md`、`docs/claude/repo-charter.md`(いずれも
+  `~/.local/bin` に配布)、`config/agents/skills/repo-charter/`(新規)、
+  `docs/github-audit-charters.md`、`docs/agents/repo-charter.md`(いずれも
   新規)が本 ADR の実装物。
 - 本 ADR の時点では、charter スキーマを満たすリポジトリはまだ 0 件であり、
   `github-audit-charters` は所有する全リポジトリを `drifted` と報告する。
@@ -124,7 +124,7 @@ guard.md` を参照)。
 ### 執行点
 
 - `config/claude/hooks/repo-create-guard.sh` — 本 Amendment の判定エンジン。
-- `config/claude/skills/repo-charter/SKILL.md` — §8 `core` 型手順に
+- `config/agents/skills/repo-charter/SKILL.md` — §8 `core` 型手順に
   `apply-repo-settings.sh` の呼び出しを追加(今回の drift の直接原因を修正)。
 
 ## Amendment (2026-10-08 — #754)
@@ -137,7 +137,7 @@ safety bypass と判定されて拒否される。本人が承認した「privat
 通った)。
 
 **手順そのものを実行するスクリプトを、正規の入口にする。**
-`config/claude/skills/repo-charter/scripts/create-repo.sh` が、§1 の閉語彙チェック →
+`config/agents/skills/repo-charter/scripts/create-repo.sh` が、§1 の閉語彙チェック →
 `gh repo create` → `gh repo edit --add-topic` → 型別の governance 播種を 1 本で行う。
 hook が強制したいのは「手順に載せること」なので、手順を実行するスクリプトを通れば
 意図は満たされる。hook は Bash のコマンド文字列しか見ないため、スクリプト内の
@@ -155,6 +155,6 @@ hook が強制したいのは「手順に載せること」なので、手順を
 
 ### 執行点
 
-- config/claude/skills/repo-charter/scripts/create-repo.sh
+- config/agents/skills/repo-charter/scripts/create-repo.sh
 - crates/repo-create-guard/src/lib.rs
-- config/claude/skills/repo-charter/SKILL.md
+- config/agents/skills/repo-charter/SKILL.md

@@ -1,5 +1,5 @@
 //! gh-edit-allow — このセッションが作成した PR/Issue への `gh` 書き込みを、
-//! 検証付きでプログラム的に allow する hook(#392、docs/claude/gh-edit-allow.md)。
+//! 検証付きでプログラム的に allow する hook(#392、docs/agents/gh-edit-allow.md)。
 //!
 //! 1 バイナリで 2 役を持ち、`hook_event_name` で分岐する:
 //!
@@ -15,8 +15,11 @@
 
 pub mod gh;
 
+use agent_session::HookInput;
+use agent_session::PermissionDecision;
+use agent_session::SessionLedger;
+use command_inspection::simple_shell as shell;
 use gh::{GhCommand, Kind, Verb};
-use hook_io::{shell, HookInput, PermissionDecision, SessionLedger};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -139,7 +142,7 @@ pub fn skipped() -> bool {
 /// 出力は無い(`None`)。`main` の PostToolUse の分岐と同じ処理で、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。判定役(PreToolUse の allow)は、`if` の評価を Claude Code に任せるため、
 /// ルータには載せない。
-pub fn record_hook(raw: &str) -> Option<hook_io::Outcome> {
+pub fn record_hook(raw: &str) -> Option<agent_session::Outcome> {
     let input = HookInput::parse(raw)?;
     if skipped() {
         return None;

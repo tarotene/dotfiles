@@ -18,7 +18,7 @@
 //! - `dotfiles/private-hub`(ADR-0034): 無ければ `scripts/hms.sh` の
 //!   DEFAULT_REF(github:tarotene/dotfiles)にフォールバックする。private
 //!   wrapper flake を使わないホストでは未設置が正常。未設置は INFO。
-//! - `dotfiles/style-hub`(#115、docs/claude/writing-style.md): フォール
+//! - `dotfiles/style-hub`(#115、docs/agents/writing-style.md): フォール
 //!   バック先は `$WRITING_STYLE_HUB` 環境変数のみで、どちらも無ければ
 //!   writing-style skill が使用不能になる。未設置・解決不能は WARN。解決自体は
 //!   `writing-style-hub` に委譲する(縮退・エラーメッセージのロジックを
@@ -97,14 +97,14 @@ fn find_style_hub_bin() -> Option<PathBuf> {
     let on_path = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
             .map(|d| d.join("writing-style-hub"))
-            .find(|p| hook_io::proc::command_exists(&p.to_string_lossy()))
+            .find(|p| process_control::command_exists(&p.to_string_lossy()))
     });
     on_path.or_else(|| {
         let sibling = std::env::current_exe()
             .ok()
             .and_then(|e| e.canonicalize().ok())
             .and_then(|e| e.parent().map(|d| d.join("writing-style-hub")))?;
-        hook_io::proc::command_exists(&sibling.to_string_lossy()).then_some(sibling)
+        process_control::command_exists(&sibling.to_string_lossy()).then_some(sibling)
     })
 }
 

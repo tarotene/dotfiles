@@ -12,7 +12,7 @@ GitHub App を新規作成せよ」と指示していた。同じ手順を `taro
 `RELEASE_PLZ_APP_PRIVATE_KEY`、2026-05-30 登録)、grill-me セッション時点で
 個人アカウントには releaser 用途の GitHub App が 4 個存在していた。
 
-原因は `config/claude/skills/rust-repo-governance/reference/
+原因は `config/agents/skills/rust-repo-governance/reference/
 manual-steps.md` の手順そのもの: App 名テンプレートを `<REPO>-release-plz`
 と決め打ちし、"Install the app on your repository only" と明示していた。
 放置すれば rust/astro 系リポジトリを seed するたびに App が 1 個増える。
@@ -146,7 +146,7 @@ push で即座に失敗する(loud failure)ため、同じ失敗を 2 箇所で�
 ### D7: releaser App の手順書を `repo-governance-common` に 1 本化する
 
 手順書(App 作成でなく install する旨、secret の配布手順、鍵ローテーション
-手順)を `config/claude/skills/repo-governance-common/reference/
+手順)を `config/agents/skills/repo-governance-common/reference/
 releaser-app.md` に置き、`rust-repo-governance` / `astro-site-governance`
 の両 skill からこれを参照させる。
 
@@ -286,7 +286,7 @@ message: Use 'client-id' instead.` の警告が出るようになった。GitHub
 
 - `scripts/github-audit`
 - `scripts/github-app-snapshot`
-- `config/claude/skills/rust-repo-governance/templates/.github/workflows/release-plz.yml`
+- `config/agents/skills/rust-repo-governance/templates/.github/workflows/release-plz.yml`
 - `docs/github-audit.md`
 
 ## Amendment (2026-10-01 — 旧 RELEASER_APP_ID の残存を advisory で見せる, #633)

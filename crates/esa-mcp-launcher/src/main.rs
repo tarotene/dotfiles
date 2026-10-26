@@ -14,7 +14,7 @@
 //! recovery 用に残置されているだけで、日常の復号経路には登場しない。したがって
 //! ログイン後最初の復号では on-disk `[E]` のパスフレーズの pinentry が出る(以後
 //! は gpg-agent がキャッシュする)。MCP サーバの起動はセッション開始時 = 画面を
-//! 見ている瞬間なので、sign-prewarm(`[S]`/`[E]` 両方のパスフレーズを前倒しする
+//! 見ている瞬間なので、gpg-prewarm(`[S]`/`[E]` 両方のパスフレーズを前倒しする
 //! 別機構、#252 で `[E]` にも対応)と同じ「安全な瞬間への前倒し」に収まる。
 //!
 //! 縮退はしない: トークン欠如・gpg/npx 不在・復号失敗・空トークンは stderr に
@@ -28,9 +28,9 @@
 //! bash 版にあった `--selftest` は無い(`cargo test` の統合テストに移した)。
 //! 引数は全て npx へ素通しする。
 //!
-//! 設計と根拠: docs/claude/esa-mcp.md
+//! 設計と根拠: docs/agents/esa-mcp.md
 
-use hook_io::proc::command_exists;
+use process_control::command_exists;
 use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
@@ -51,7 +51,7 @@ fn non_empty_env(key: &str) -> Option<OsString> {
 }
 
 /// `${ESA_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/esa/token.gpg}`
-/// (空文字は未設定扱い)。sign-prewarm も同じ規則(crates/sign-prewarm)。
+/// (空文字は未設定扱い)。gpg-prewarm も同じ規則(crates/gpg-prewarm)。
 fn token_file() -> PathBuf {
     if let Some(f) = non_empty_env("ESA_TOKEN_FILE") {
         return PathBuf::from(f);

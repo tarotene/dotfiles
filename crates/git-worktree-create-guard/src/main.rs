@@ -1,7 +1,9 @@
 //! git-worktree-create-guard — PreToolUse(Bash)の stdin JSON を読み、直接の
 //! worktree 追加を deny する。判定なし・縮退はすべて無出力 exit 0。
 
-use hook_io::{Agent, Outcome, PermissionDecision};
+use agent_session::Agent;
+use agent_session::Outcome;
+use agent_session::PermissionDecision;
 use std::io::Read;
 
 fn main() {

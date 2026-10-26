@@ -2,7 +2,7 @@
 //! bash 版 `scripts/writing-style-hub`・`scripts/performance-hub` の移植、
 //! ADR-0024 / #389 Stage 4e)。
 //!
-//! 設計と根拠: docs/claude/writing-style.md(#115)、docs/claude/performance-planning.md
+//! 設計と根拠: docs/agents/writing-style.md(#115)、docs/agents/music-performance-planning.md
 //!
 //! ハブの絶対パスをソースにハードコードしない(private リポジトリの存在自体を
 //! 公開ソースに書かないため)— ADR-0019 のホスト・マーカー方式
@@ -16,7 +16,7 @@
 //! 縮退: マーカーが無い / 指すパスが存在しない / README が無い、いずれも
 //! 黙って何もしない(silent failure)のではなく、明示的なメッセージを stderr に
 //! 出して非 0 で終わる(ADR-0005 の binary-existence gating と同じ「存在しない
-//! なら明示して止まる」原則。docs/claude/wrapup-inbox.md も同じ縮退方針の先例)。
+//! なら明示して止まる」原則。docs/agents/wrapup-inbox.md も同じ縮退方針の先例)。
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};

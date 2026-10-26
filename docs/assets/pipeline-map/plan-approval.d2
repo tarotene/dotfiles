@@ -231,7 +231,7 @@ l_cloud: "Cloud / LLM" {
 
 l_manual: "Manual / skills" {
   class: lane
-  n_scope_inventory: "skill: scope-inventory" {
+  n_requirements_inventory: "skill: requirements-inventory" {
     class: s_skill
     shape: hexagon
     style.stroke-dash: 4
@@ -241,7 +241,7 @@ l_manual: "Manual / skills" {
     shape: hexagon
     style.stroke-dash: 4
   }
-  n_selection_grounding: "skill: selection-grounding" {
+  n_technology_selection: "skill: technology-selection" {
     class: s_skill
     shape: hexagon
     style.stroke-dash: 4
@@ -272,13 +272,13 @@ n_agent_session.l_plan_approval.n_plan_view -> l_external.n_user: "HTML window" 
 l_external.n_user -> n_agent_session: "GO / feedback" {
   class: e_context
 }
-l_manual.n_scope_inventory -> n_agent_session.l_plan_approval.n_plan_scope_gate: "self-check" {
+l_manual.n_requirements_inventory -> n_agent_session.l_plan_approval.n_plan_scope_gate: "self-check" {
   class: e_invoke
 }
 l_manual.n_precedent_grounding -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "self-check" {
   class: e_invoke
 }
-l_manual.n_selection_grounding -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "self-check" {
+l_manual.n_technology_selection -> n_agent_session.l_plan_approval.n_plan_precedent_gate: "self-check" {
   class: e_invoke
 }
 n_agent_session.l_stop.n_codex_plan_gate -> n_agent_session.l_plan_approval.n_plan_scope_gate: "reuses" {

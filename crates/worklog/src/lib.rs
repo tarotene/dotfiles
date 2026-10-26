@@ -1,4 +1,4 @@
-//! worklog の中身(docs/claude/worklog.md)。
+//! worklog の中身(docs/agents/worklog.md)。
 //!
 //! Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートの
 //! `## 作業ログ` 節へ 1 行ずつ追記し、読み出す。行の形は次のとおり。

@@ -2,10 +2,10 @@
 //! プランが参照しているファイルと交差するときだけ deny する
 //! (旧 `config/claude/hooks/plan-fresh-gate.sh`、ADR-0024 Stage 4b #412)。
 //!
-//! 設計と根拠: docs/claude/plan-fresh-gate.md
+//! 設計と根拠: docs/agents/plan-fresh-gate.md
 //!
 //! 判定は 2 段:
-//!   1) 移動: worktree-fresh-base と同じ pristine 5 条件(branch 非空・
+//!   1) 移動: worktree-base-sync と同じ pristine 5 条件(branch 非空・
 //!      branch != base・clean・ahead==0・behind>0)を満たすときだけ
 //!      `git merge --ff-only` で追従する。
 //!   2) deny 判定: 移動の可否とは独立に、常に fetch し、origin/<base> の
@@ -13,7 +13,7 @@
 //!      ファイル(フルパス部分一致 or basename 部分一致)が交差するかを判定する。
 //!
 //! 収束保証: deny した時点の origin/<base> の SHA をセッション単位の台帳
-//! (`hook_io::SessionLedger`、`<GATE_DIR>/<sid>.denied_sha`)に記録し、次回は
+//! (`agent_session::SessionLedger`、`<GATE_DIR>/<sid>.denied_sha`)に記録し、次回は
 //! その SHA からの増分だけを見る。同じ SHA への再 ExitPlanMode は無条件 allow。
 //! 台帳は追記式なので「最後のレコード」を記録 SHA として読む(bash 版は上書き
 //! していたが、読む値は同じ)。
@@ -32,10 +32,10 @@ use std::collections::BTreeSet;
 pub const MAX_DENY_DISPLAY: usize = 50;
 
 /// `git -C dir <args>` の stdout(末尾改行除去)。失敗は `None`。
-pub use hook_io::git::out as git;
+pub use git_repository::out as git;
 
 /// `git -C dir <args>` が成功したか。
-pub use hook_io::git::ok as git_ok;
+pub use git_repository::ok as git_ok;
 
 fn lines(s: &str) -> Vec<&str> {
     let mut v: Vec<&str> = s.split('\n').collect();

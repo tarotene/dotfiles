@@ -35,7 +35,7 @@ pub const ROOT_ALLOWLIST_EXACT: [&str; 5] = [
 /// この下限以上あればそれだけで drift(ADR-0017)。
 pub const CJK_PRESENCE_THRESHOLD: usize = 5;
 /// README/CONTRIBUTING の正本言語が日本語であることを宣言するトピック
-/// (docs/claude/lang-ja-declaration.md)。
+/// (docs/agents/lang-ja-declaration.md)。
 pub const LANG_JA_TOPIC: &str = "lang-ja";
 
 /// bash: `extract_purpose`。最初の `# ` 見出しの後の、最初の非空段落。
@@ -221,7 +221,7 @@ fn grep_line(text: &str, f: impl Fn(&str) -> bool) -> bool {
 
 /// bash: `judge_charters`。`topics` は `repositoryTopics` の名前。
 ///
-/// `lang-ja`(docs/claude/lang-ja-declaration.md)が宣言されていれば、README/
+/// `lang-ja`(docs/agents/lang-ja-declaration.md)が宣言されていれば、README/
 /// CONTRIBUTING の CJK を drift にしない。宣言が嘘(README に CJK が無い)なら
 /// `lang-ja-stale` を出す。
 pub fn judge_charters(description: &str, topics: &[String], gql: &RepoGql) -> Finding {

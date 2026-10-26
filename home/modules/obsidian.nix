@@ -59,7 +59,7 @@ in
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
 
   # worklog: 当日ノートへ作業ログを 1 行ずつ追記し、読む CLI(crates/worklog、
-  # docs/claude/worklog.md)。vault の場所はこのモジュールの vaultPath を、hub-resolve と
+  # docs/agents/worklog.md)。vault の場所はこのモジュールの vaultPath を、hub-resolve と
   # 同じマーカー(~/.config/dotfiles/worklog-vault の 1 行目)で渡す。SessionStart hook は
   # claude.nix が全ホストに配備するが、このマーカーが無い機体では何も注入しない —
   # vault を宣言した機体(このモジュールを読む機体)だけで規範が効く。

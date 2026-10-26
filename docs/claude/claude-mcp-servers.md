@@ -4,7 +4,7 @@
 書き換える(`~/.claude/settings.json` と同じ制約)。したがって
 hook 登録 / permissions(`docs/claude/claude-permissions.md`)と
 同じ「activation 時の冪等書き換え」パターンを敷く。実体は 3 つとも
-`settings-reconcile`(`crates/settings-reconcile`、#414)のサブコマンド。
+`agent-settings-reconcile`(`crates/agent-settings-reconcile`、#414)のサブコマンド。
 
 配備は独立モジュール `home/modules/claude-mcp-servers.nix`(`home/modules/quarantine.nix`
 と同じ「1 option = 1 ファイル」の粒度、`home/common.nix` の imports に追加)の
@@ -42,7 +42,7 @@ home-manager 自身の宣言モデル(宣言 = 望ましい完全状態。`home.
    callbackPort)を switch のたびに剥がし、再認証を強いる。宣言した field 自体は
    毎回上書きされるので「宣言が正」は変わらない。
 3. **削除は activation ログに出す。** 不可逆操作で、しかも野良サーバーで実験して
-   いた場合は何が消えたかがそこにしか残らないため、`settings-reconcile:
+   いた場合は何が消えたかがそこにしか残らないため、`agent-settings-reconcile:
    宣言外の MCP サーバーを削除します: <name>` を stderr に出す。
 
 **reconcile の対象は user scope だけ**である。project scope(リポジトリの
@@ -112,7 +112,7 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
   スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
   (`home/modules/esa.nix` + `crates/esa-mcp-launcher`、
-  [`esa-mcp.md`](esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
+  [`esa-mcp.md`](../agents/esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
   トークン(例: 別プロセスが供給する company workspace のトークン)なら
   `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。
 - 宣言した key は merge のたびに上書きされる。宣言していない key(`claude mcp add`

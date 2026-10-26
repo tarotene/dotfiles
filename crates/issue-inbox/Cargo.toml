@@ -1,0 +1,15 @@
+[package]
+name = "issue-inbox"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
+git-repository = { version = "0.1.0", path = "../git-repository" }
+jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

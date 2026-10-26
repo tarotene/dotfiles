@@ -170,28 +170,28 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
   class: session
   l_session_start: "SessionStart" {
     class: lane
-    n_wrapup_session_start: "wrapup-session-start" {
+    n_session_wrapup_start: "session-wrapup-start" {
       class: s_rust
     }
     n_issue_index: "issue-index" {
       class: s_rust
     }
-    n_desk_start: "desk-start" {
+    n_daily_desk_reminder: "daily-desk-reminder" {
       class: s_rust
     }
     n_worklog: "worklog" {
       class: s_rust
     }
-    n_esa_index: "esa-index" {
+    n_esa_mirror_context: "esa-mirror-context" {
       class: s_rust
     }
     n_pr_gate_session_start: "pr-gate (start)" {
       class: s_rust
     }
-    n_sign_prewarm: "sign-prewarm" {
+    n_gpg_prewarm: "gpg-prewarm" {
       class: s_rust
     }
-    n_worktree_fresh_base: "worktree-fresh-base" {
+    n_worktree_base_sync: "worktree-base-sync" {
       class: s_rust
     }
   }
@@ -258,7 +258,7 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
-    n_pr_confirm_guard: "pr-confirm-guard" {
+    n_pr_followup_guard: "pr-followup-guard" {
       class: s_rust
       style.stroke: "#D55E00"
       style.stroke-width: 4
@@ -364,7 +364,7 @@ l_external: "Sessions / services / state" {
   }
 }
 
-n_agent_session.l_session_start.n_sign_prewarm -> l_external.n_user: "pinentry once" {
+n_agent_session.l_session_start.n_gpg_prewarm -> l_external.n_user: "pinentry once" {
   class: e_notify
 }
 n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_tool_call.n_new_tool_guard: "session ledger" {

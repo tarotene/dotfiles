@@ -1,9 +1,9 @@
 //! plan-scope-gate — ExitPlanMode 直前に、要求インベントリ(config/claude/CLAUDE.md
-//! の「複数項目の依頼は要求インベントリで受ける」節、config/claude/skills/
-//! scope-inventory/SKILL.md)の脱落を機械的に検査する hook
+//! の「複数項目の依頼は要求インベントリで受ける」節、config/agents/skills/
+//! requirements-inventory/SKILL.md)の脱落を機械的に検査する hook
 //! (旧 `config/claude/hooks/plan-scope-gate.sh`、ADR-0024 Stage 4b #412)。
 //!
-//! 設計と根拠: docs/claude/scope-inventory.md
+//! 設計と根拠: docs/agents/requirements-inventory.md
 //!
 //! この gate は LLM を呼ばず、文字列と gh の応答だけで判定する純粋な judge。
 //!
@@ -19,17 +19,17 @@
 //!   - 問題なし / gh 不在 / 認証エラー / ネットワーク不通 / 対象 Issue 無し
 //!     → 何も決定しない(exit 0)。allow は決して返さない。
 //!
-//! 既知の限界(意図的な選択、docs/claude/scope-inventory.md 参照):
+//! 既知の限界(意図的な選択、docs/agents/requirements-inventory.md 参照):
 //!   - checkbox フォールバックの「子項目」はテキストの部分一致でしか検査できない。
 //!   - `Reference-Only: #N` は Issue の番号だけで照合する。
 //!
-//! メッセージ文面はスキル文書(scope-inventory)と一致している必要があるため、
+//! メッセージ文面はスキル文書(requirements-inventory)と一致している必要があるため、
 //! bash 版の出力とのバイト一致を `tests/cmd/*.toml` で固定している。
 //!
 //! 行の扱いは grep/awk/`read` と同じく `\n` だけで区切る(`\r` は行の一部として
 //! 残る)。`[[:space:]]` は Unicode 空白(`\s`)で写した。
 
-use hook_io::jqfmt::J;
+use jq_json_compat::jqfmt::J;
 use regex::Regex;
 use serde_json::Value;
 use std::path::Path;
@@ -434,7 +434,7 @@ pub fn missing_lines(r: &str, items: &[String]) -> Vec<String> {
 /// hook モードの deny 理由。
 pub fn deny_message(deny_lines: &[String]) -> String {
     format!(
-        "要求インベントリの検査で問題が見つかりました。scope-inventory スキルの手順に従って計画を修正してください。\n\n{}\n\n{EXAMPLE_BLOCK}",
+        "要求インベントリの検査で問題が見つかりました。requirements-inventory スキルの手順に従って計画を修正してください。\n\n{}\n\n{EXAMPLE_BLOCK}",
         deny_lines.join("\n")
     )
 }

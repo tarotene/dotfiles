@@ -195,7 +195,7 @@ impl Fx {
             (
                 "GITHUB_AUDIT_WORKFLOWS_CANONICAL_QUALITY_FILE".into(),
                 s(repo_root().join(
-                    "config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json",
+                    "config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
                 )),
             ),
         ]

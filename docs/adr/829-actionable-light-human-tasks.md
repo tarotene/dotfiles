@@ -45,8 +45,8 @@ D1 に照らして行う。本文には根拠として `## 見積り` 節を書�
 
 ## 先行例との対比
 
-- 人手の残作業の印と予定化: 本リポジトリの `docs/claude/handoff.md` の D4(閉語彙ラベル)・D7(着手可能な `handoff:ai` を issue-index に出す)。D1 から D3 はその型の拡張で、軽さを閉語彙のラベルにする点と、検索を owner 単位にする点だけが異なる。
-- 外部の営業時間と本人の空きを突き合わせてカレンダーに入れる手順: `config/claude/skills/external-call-scheduling/SKILL.md`。D4 はこれを使う。ただし同スキルが専用カレンダーを使うとする点は採らず、busy 判定に入る主カレンダーへの仮押さえにする。専用カレンダーは busy 判定の対象外なので、確定前の枠が他の調整に食われる。
+- 人手の残作業の印と予定化: 本リポジトリの `docs/agents/handoff.md` の D4(閉語彙ラベル)・D7(着手可能な `handoff:ai` を issue-index に出す)。D1 から D3 はその型の拡張で、軽さを閉語彙のラベルにする点と、検索を owner 単位にする点だけが異なる。
+- 外部の営業時間と本人の空きを突き合わせてカレンダーに入れる手順: `config/agents/skills/external-call-scheduling/SKILL.md`。D4 はこれを使う。ただし同スキルが専用カレンダーを使うとする点は採らず、busy 判定に入る主カレンダーへの仮押さえにする。専用カレンダーは busy 判定の対象外なので、確定前の枠が他の調整に食われる。
 - 通知を出す routine を増やさない方針: 私的な person-state リポジトリの日次 routine の ADR。D4 が新しい routine を作らない根拠で、cloud routine は登録済みリポジトリにしか届かないので、個人の別リポジトリの Issue には届かない。
 
 ## 却下した案
@@ -68,7 +68,7 @@ D1 に照らして行う。本文には根拠として `## 見積り` 節を書�
 - `crates/issue-index/src/lib.rs`
 - `crates/issue-index/tests/selftest.rs`
 - `crates/issue-index/tests/expected/handoff-human-mixed.stdout`
-- `config/claude/skills/handoff/scripts/handoff.sh`
-- `config/claude/skills/handoff/SKILL.md`
-- `docs/claude/issue-index.md`
-- `docs/claude/handoff.md`
+- `config/agents/skills/handoff/scripts/handoff.sh`
+- `config/agents/skills/handoff/SKILL.md`
+- `docs/agents/issue-index.md`
+- `docs/agents/handoff.md`

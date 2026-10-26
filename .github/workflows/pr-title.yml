@@ -1,6 +1,6 @@
 name: PR Title
 
-# PR タイトルを commit-message 契約(ADR-0031, docs/claude/pr-title-contract.md)
+# PR タイトルを commit-message 契約(ADR-0031, docs/agents/pr-title-contract.md)
 # として強制する required check。判定は crates/pr-title-check 1 本に一元化
 # されており、この workflow はその呼び出しに徹する(文法は checker 側にしか
 # 存在しない)。
@@ -11,7 +11,7 @@ name: PR Title
 # しない(job 自身の `name: PR title` がそのまま required check context)。
 #
 # 他リポジトリは、この workflow を `workflow_call` で呼ぶのをやめ、同じ composite
-# action を直接呼ぶ(config/claude/skills/repo-governance-common/templates/
+# action を直接呼ぶ(config/agents/skills/repo-governance-common/templates/
 # .github/workflows/pr-title.yml)。reusable workflow は必ず「呼び出し側 job の
 # name / 呼ばれる job の name」の連結名を作り、その誤解が required check context の
 # 不一致事故(#337)を生んだ — composite action にはこの連結が発生しない

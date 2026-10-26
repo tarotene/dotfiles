@@ -6,8 +6,8 @@ use crate::body::{self, Link, Visual};
 use crate::config::Config;
 use crate::jqv::JqError;
 use crate::{gh, join_lines, jqv, repo};
-use hook_io::jqfmt::J;
-use hook_io::HookInput;
+use agent_session::HookInput;
+use jq_json_compat::jqfmt::J;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -40,7 +40,7 @@ fn emit(ctx: &str) {
 
 /// FETCH_HEAD が `ttl` 秒より新しければ fetch を省く。fetch に失敗したら注記を返す。
 fn maybe_fetch(cfg: &Config, project: &Path) -> Option<String> {
-    let common = hook_io::git::git_common_dir(project)?;
+    let common = git_repository::git_common_dir(project)?;
     let fetch_head = common.join("FETCH_HEAD");
     let mut do_fetch = true;
     if fetch_head.is_file() {
@@ -61,7 +61,7 @@ fn maybe_fetch(cfg: &Config, project: &Path) -> Option<String> {
         cmd.arg("-C")
             .arg(project)
             .args(["fetch", "--quiet", "--prune", "origin"]);
-        let ok = hook_io::proc::output_with_timeout(&mut cmd, Duration::from_secs(15), None)
+        let ok = process_control::output_with_timeout(&mut cmd, Duration::from_secs(15), None)
             .is_some_and(|(st, _)| st.success());
         if !ok {
             note = " (リモート未確認: fetch 失敗)".to_string();
@@ -106,7 +106,7 @@ fn bucket_summary(checks_json: &str) -> String {
 }
 
 pub fn run(input: &str) -> i32 {
-    if !hook_io::proc::command_exists("gh") || !hook_io::proc::command_exists("git") {
+    if !process_control::command_exists("gh") || !process_control::command_exists("git") {
         return 0;
     }
     let cfg = Config::from_env();
@@ -143,7 +143,7 @@ pub fn run(input: &str) -> i32 {
         // (この worktree 自身が origin/main から 4 コミット遅れていて実際に無音
         // だったケース)。PR 有無自体は issue-index が示すので、ここでは
         // hygiene の材料が無ければやはり無音にする。
-        let default_br = hook_io::git::default_branch(&project).unwrap_or_default();
+        let default_br = git_repository::default_branch(&project).unwrap_or_default();
         let stale_line = repo::stale_base_line(&project, &default_br);
         let hygiene = join_lines(&[stale_line, gone_line, stale_wt_line]);
         if !hygiene.is_empty() {

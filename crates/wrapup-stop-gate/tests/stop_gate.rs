@@ -55,7 +55,7 @@ fn feedback_block(paths: &[&Path]) -> String {
          GitHub Issue by default, then add #N to the body of the memory file (shared\n\
          AGENTS.md 「ユーザーからのフィードバックは不可視なローカルメモに閉じ込めない」,\n\
          config/claude/CLAUDE.md 「フィードバックの Issue 化」). Project-specific content\n\
-         that does not generalize, or sensitive content (security, personal data), is\n\
+         that does not generalize, or sensitive content (credentials, incidents, personal data), is\n\
          exempt.\n\
          </hook-directive>",
         n = paths.len()

@@ -1,12 +1,12 @@
 //! plan-precedent-gate — ExitPlanMode 直前に、先行例との対比(config/claude/
-//! CLAUDE.md の「発明する前に先行例を確認する」節、config/claude/skills/
+//! CLAUDE.md の「発明する前に先行例を確認する」節、config/agents/skills/
 //! precedent-grounding/SKILL.md)の欠落を機械的に検査する hook
 //! (旧 `config/claude/hooks/plan-precedent-gate.sh`、ADR-0024 Stage 4b #412)。
 //!
 //! 設計と根拠: docs/adr/0012-precedent-grounding-over-prompted-adversarial-
-//! review.md、docs/claude/precedent-grounding.md。技術・仕組みの選択に関する
+//! review.md、docs/agents/precedent-grounding.md。技術・仕組みの選択に関する
 //! `軸:`/重い欄の検査は docs/adr/0035-selection-grounding.md、
-//! docs/claude/selection-grounding.md を参照。
+//! docs/agents/technology-selection.md を参照。
 //!
 //! 形式(節または免除行が存在するか、各 Dn に必要な要素があるか)だけを
 //! LLM を呼ばずに検査する。内容(引用が本当に主張を支えているか)は
@@ -27,7 +27,7 @@
 //!     `戻せない:(データ|外部契約|人手) — <内容>` の行だけ。
 //!   - allow は決して返さない。問題が無ければ何も決定しない(exit 0)。
 //!
-//! メッセージ文面はスキル文書(precedent-grounding / selection-grounding)と
+//! メッセージ文面はスキル文書(precedent-grounding / technology-selection)と
 //! 一致している必要があるため、bash 版の出力とバイト一致を
 //! `tests/cmd/*.toml` で固定している。
 //!
@@ -110,14 +110,14 @@ pub fn example_block(today: &str) -> String {
   戻せない: データ | 外部契約 | 人手 — <内容。戻せないものが無ければこの行ごと省く>
   軸: 表現不可能 | 還元 | 検出のみ — <1句>
 
-`軸:` は全 Dn に必須(precedent-grounding スキル §3、selection-grounding
+`軸:` は全 Dn に必須(precedent-grounding スキル §3、technology-selection
 スキル参照)。出典は URL のほか #123 / owner/repo#123 / リポジトリ内パス
 でも可。先行例から意図的に外れた場合は「差分: 異なる — <理由>」。技術・
 仕組みの選択で外部依存の新設・置換・撤去、新しい道具・単位の実装言語の選択、
 または戻せないもの(データの損失・外部契約・人手の作業)が生じるときは、
 加えて「本命:」「対抗馬:」(揃えて書く)「外した候補:」
 「既存手段:」(自前なら却下:/探索: 必須、ADR-543)も書く
-(selection-grounding スキル参照)。裁定は「コード 0 行の白紙から選ぶなら
+(technology-selection スキル参照)。裁定は「コード 0 行の白紙から選ぶなら
 何を採るか」だけで下し、書き直しの作業量と過去の経緯は理由にしない。
 戻せないものがあるときだけ「戻せない: データ | 外部契約 | 人手 — <内容>」の
 1 行で書く(これ以外の書き方でコストを理由にすると deny)。設計判断を含まない
@@ -165,7 +165,7 @@ fn check_cost_reasons(id: &str, block: &str, out: &mut Vec<String>) {
         let stripped = BACKTICK_SPAN_RE.replace_all(line, "");
         if let Some(m) = COST_WORD_RE.find(&stripped) {
             out.push(format!(
-                "D{id}: 「{}」は書き直しの作業量・歴史的経緯を理由にする語です。裁定は「コード 0 行の白紙から選ぶなら何を採るか」だけで下します。戻せないもの(データの損失・外部契約・人手の作業)があるときだけ「戻せない: データ|外部契約|人手 — <内容>」の行で書いてください(selection-grounding スキル)",
+                "D{id}: 「{}」は書き直しの作業量・歴史的経緯を理由にする語です。裁定は「コード 0 行の白紙から選ぶなら何を採るか」だけで下します。戻せないもの(データの損失・外部契約・人手の作業)があるときだけ「戻せない: データ|外部契約|人手 — <内容>」の行で書いてください(technology-selection スキル)",
                 m.as_str()
             ));
         }

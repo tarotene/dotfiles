@@ -4,7 +4,7 @@
 //! Claude Code の statusLine command。stdin の JSON からリポ名・モデル・
 //! context 使用率・セッションコスト・effort を取り、Catppuccin Mocha の 1 行を
 //! stdout に出す(表示例: `■ dotfiles · ◆ Fable 5 · ◐ 42% · $1.23 · ↯ low`)。
-//! 設計は docs/claude/herdr-sidebar-metadata.md。
+//! 設計は docs/agents/herdr-sidebar-metadata.md。
 //!
 //! Herdr への報告(`pane.report_metadata`)は表示をブロックしない: 表示を
 //! stdout に書いて flush したあと、送るべきとき(値が変わり、前回送信から 2 秒以上)
@@ -14,7 +14,7 @@
 use claude_statusline::{
     parse_payload, posix_basename, posix_dirname, printf_2f, shell_int, Tokens,
 };
-use hook_io::herdr;
+use herdr_client as herdr;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};

@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 fn write_events(state_home: &Path, events: &[(&str, &str)]) {
     let path = state_home.join("claude/gate-events.jsonl");
     for (gate, decision) in events {
-        hook_io::gate_event::record(&path, gate, decision).unwrap();
+        agent_session::gate_event::record(&path, gate, decision).unwrap();
     }
 }
 
@@ -73,7 +73,7 @@ fn at_threshold_warns() {
     assert!(ctx.starts_with("[gate-failopen-advisory]"), "{ctx}");
     assert!(ctx.contains(GATE), "{ctx}");
     assert!(ctx.contains("3 回連続"), "{ctx}");
-    assert!(ctx.contains("docs/claude/copilot-plan-review.md"), "{ctx}");
+    assert!(ctx.contains("docs/agents/copilot-plan-review.md"), "{ctx}");
 }
 
 /// 受け入れ条件: レビューが 1 回成立すると、連続回数がリセットされる。

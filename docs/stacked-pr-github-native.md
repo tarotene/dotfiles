@@ -1,7 +1,7 @@
 # GitHub ネイティブ Stacked PR 機能の実態(調査記録)
 
 ADR-0008 のルール 1 に従い、時間で腐る事実をここに隔離する。
-`docs/claude/stacked-pr.md` の裁定(素の `--base` + `gh stack link`、
+`docs/agents/stacked-pr.md` の裁定(素の `--base` + `gh stack link`、
 `init/submit/sync` は使わない)はここにリンクするだけで、本文には埋め込まない。
 public preview が GA したときは、このファイルだけを差し替えればよい。
 
@@ -63,7 +63,7 @@ public preview が GA したときは、このファイルだけを差し替え�
 
 ## 再検証すべきこと(再検証済み、2026-09-09)
 
-`docs/claude/pr-gate.md:383-387` の「stacked PR は ruleset 対象外」前提を、
+`docs/agents/pr-gate.md:383-387` の「stacked PR は ruleset 対象外」前提を、
 `gh stack link` を実際に使った stack(#124)の merged PR で実測した:
 
 | PR | base | 報告された check(計 6 件) |

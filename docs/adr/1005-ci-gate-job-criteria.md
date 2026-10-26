@@ -183,7 +183,7 @@ stack の軸を切り出す形は、`stack-position` が `stack-stage` を内側
 `github-audit charters naming` を `charters naming workflows rulesets` に広げる。インタビューは増やさない。
 core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を読んで job を足すか exempt にする。
 
-先行例: config/claude/skills/repo-charter/SKILL.md(今は charters と naming だけ)。
+先行例: config/agents/skills/repo-charter/SKILL.md(今は charters と naming だけ)。
 差分: 異なる — CI のドメインも同じ自己検証で見る。
 軸: 還元 — 既存の監査コマンドに引数を足すだけ。
 
@@ -201,7 +201,7 @@ core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を�
 
 - crates/pr-contract-check/src/workflows.rs
 - crates/github-audit/src/domains/workflows.rs
-- config/claude/skills/repo-charter/SKILL.md
+- config/agents/skills/repo-charter/SKILL.md
 - crates/github-audit/src/gh.rs
 - crates/github-audit/src/audit.rs
 - crates/github-audit/tests/pipeline.rs
@@ -209,5 +209,5 @@ core 型(テンプレ無し)では `ci-gate-empty` が出るので、D1 ①を�
 - crates/github-audit/src/model.rs
 - .github/actions/stack-stage/action.yml
 - .github/actions/stack-position/action.yml
-- config/claude/skills/rust-repo-governance/templates/.github/workflows/ci.yml
+- config/agents/skills/rust-repo-governance/templates/.github/workflows/ci.yml
 - crates/pr-contract-check/tests/consistency.rs

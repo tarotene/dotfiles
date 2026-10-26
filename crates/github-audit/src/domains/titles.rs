@@ -2,7 +2,7 @@
 //!
 //! PR タイトル契約の強制機構が「在って動いているか」だけを見る。個々の open
 //! PR のタイトルは client guard と required check の仕事で、ここでも判定すると
-//! CI が緑なのに drift と出る(docs/claude/pr-title-contract.md)。
+//! CI が緑なのに drift と出る(docs/agents/pr-title-contract.md)。
 
 use super::rulesets::required_contexts;
 use crate::gh::Gh;
@@ -62,7 +62,7 @@ pub fn judge_titles_with(
     if !has_caller {
         missing.push("pr-title-workflow-missing".into());
     }
-    // `plan-free-private` 宣言(docs/claude/free-plan-declaration.md): live の ruleset が
+    // `plan-free-private` 宣言(docs/agents/free-plan-declaration.md): live の ruleset が
     // 作れない環境なので、required に載っていないことも、live の context と run の
     // job 名の突合も判定できない。workflow の有無(上)だけが判定対象として残る。
     if !plan_free_private {

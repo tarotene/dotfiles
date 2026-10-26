@@ -7,14 +7,14 @@
 //! - `config/copilot/hooks/herdr-copilot-metadata.sh` — model(settings.json 由来)
 //!   (+ branch/oshi)。action は argv(`report` / `clear`)
 //!
-//! 入力の差は [`hook_io::Agent`] で選ぶ `plan` の分岐に閉じ込め、socket 送信は
-//! [`hook_io::herdr`] に任せる。送信 JSON は python 版 `json.dumps(request)` と
+//! 入力の差は [`agent_session::Agent`] で選ぶ `plan` の分岐に閉じ込め、socket 送信は
+//! [`herdr_client`] に任せる。送信 JSON は python 版 `json.dumps(request)` と
 //! バイト一致させる([`pyjson`]、ensure_ascii と `", "` / `": "` 区切り)。
-//! 詳細は docs/claude/herdr-sidebar-metadata.md。
+//! 詳細は docs/agents/herdr-sidebar-metadata.md。
 
 pub mod pyjson;
 
-use hook_io::Agent;
+use agent_session::Agent;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -80,7 +80,7 @@ fn jq_raw(payload: &Value, key: &str) -> String {
 
 /// `git -C <cwd> <args>` の stdout(末尾改行除去)。失敗は空文字。
 fn git_out(cwd: &str, args: &[&str]) -> String {
-    hook_io::git::out(cwd, args).unwrap_or_default()
+    git_repository::out(cwd, args).unwrap_or_default()
 }
 
 /// 現在のブランチ名。`worktree/` プレフィクスは表示幅節約のため落とす。
@@ -347,7 +347,7 @@ pub fn request_line(r: &Report, pane_id: &str, id: &str, seq: u128) -> String {
     }
     s.push('}');
     if r.ttl {
-        s.push_str(&format!(", \"ttl_ms\": {}", hook_io::herdr::TTL_MS));
+        s.push_str(&format!(", \"ttl_ms\": {}", herdr_client::TTL_MS));
     }
     s.push_str("}}");
     s
@@ -358,7 +358,7 @@ pub fn run(agent: Agent, action: &str, input: &str) {
     if agent == Agent::Copilot && !matches!(action, "report" | "clear") {
         return;
     }
-    let Some((socket, pane)) = hook_io::herdr::pane_env() else {
+    let Some((socket, pane)) = herdr_client::pane_env() else {
         return;
     };
     let payload = parse_payload(input);
@@ -370,7 +370,7 @@ pub fn run(agent: Agent, action: &str, input: &str) {
             if f.subagent {
                 return;
             }
-            let sf = hook_io::herdr::pane_state_file("herdr-claude-mode", &pane);
+            let sf = herdr_client::pane_state_file("herdr-claude-mode", &pane);
             let last = match f.event.as_str() {
                 "SessionEnd" => {
                     let _ = std::fs::remove_file(&sf);
@@ -407,10 +407,10 @@ pub fn run(agent: Agent, action: &str, input: &str) {
     let line = request_line(
         &report,
         &pane,
-        &hook_io::herdr::request_id(report.source),
-        hook_io::herdr::seq_ns(),
+        &herdr_client::request_id(report.source),
+        herdr_client::seq_ns(),
     );
-    if hook_io::herdr::send_line(&socket, &line).is_ok() {
+    if herdr_client::send_line(&socket, &line).is_ok() {
         if let (Some(sf), Some(mode)) = (state_file, report.remember) {
             let _ = std::fs::write(sf, mode);
         }

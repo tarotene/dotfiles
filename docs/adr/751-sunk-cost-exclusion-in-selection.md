@@ -124,4 +124,4 @@ ADR-0035 D3 の重い欄(`本命:`/`対抗馬:`/`外した候補:`)の条件を�
 - `crates/plan-precedent-gate/src/lib.rs`
 - `config/agents/AGENTS.md`
 - `config/claude/CLAUDE.md`
-- `config/claude/skills/selection-grounding/SKILL.md`
+- `config/agents/skills/selection-grounding/SKILL.md`

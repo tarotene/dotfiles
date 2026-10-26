@@ -132,7 +132,7 @@ impl Config {
 }
 
 /// quality.json の単一正本の既定の場所: 実行ファイルの実体(realpath)の 1 つ上からの
-/// 相対パス(`../config/claude/skills/repo-governance-common/templates/.github/rulesets/
+/// 相対パス(`../config/agents/skills/repo-governance-common/templates/.github/rulesets/
 /// quality.json`)。これはかつて bash 版を、リポジトリの checkout の `scripts/` から直接
 /// 叩いたときだけ実在した。Rust の実行ファイルは `target/` か nix store の中にあるので、
 /// 既定ではどこでも実在せず、その場合は `quality-json-not-canonical` の検査自体を
@@ -143,6 +143,6 @@ fn default_canonical_quality_file() -> PathBuf {
         .unwrap_or_default();
     let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     dir.join(
-        "../config/claude/skills/repo-governance-common/templates/.github/rulesets/quality.json",
+        "../config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
     )
 }

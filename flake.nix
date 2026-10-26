@@ -92,12 +92,12 @@
     # MIT). Plain source tree like bleep, pinned to a rev. It is deliberately
     # NOT placed under ~/.claude/skills/: its description ("Use when the user
     # wants to build a presentation … slides for a talk") would fire on every
-    # slide request and compete with the talk-script skill, which writes the
+    # slide request and compete with the presentation-authoring skill, which writes the
     # speaker script first. It lands in ~/.local/share/frontend-slides/ (outside
-    # the skills scan) and talk-script reads its SKILL.md only when the user
+    # the skills scan) and presentation-authoring reads its SKILL.md only when the user
     # explicitly asks for a visually elaborate HTML deck. It has no speaker-notes
     # output, so it is a rendering-layer candidate, not the source of truth
-    # (docs/claude/talk-script.md). Pinned at main HEAD 9906a34 (2026-06-23).
+    # (docs/agents/presentation-authoring.md). Pinned at main HEAD 9906a34 (2026-06-23).
     frontend-slides = {
       url = "github:zarazhangrui/frontend-slides/9906a34d640d2111f724544cbc50f7f130569ae1";
       flake = false;
@@ -354,7 +354,7 @@
           # through as an extra module argument rather than an overlay —
           # claude.nix only needs its store path for home.file.source, not a
           # package derivation (ADR-0009). frontend-slides is threaded the same
-          # way (home.file.source only, docs/claude/talk-script.md).
+          # way (home.file.source only, docs/agents/presentation-authoring.md).
           extraSpecialArgs = {
             inherit bleep frontend-slides;
           };
@@ -393,7 +393,7 @@
       # private value modules, without this repo ever taking that flake as an
       # input — flake.lock records an input's `{owner, repo}` in the clear,
       # and that flake's name cannot appear in this PUBLIC repo's source
-      # (docs/claude/writing-style.md's same constraint). Dependency direction
+      # (docs/agents/writing-style.md's same constraint). Dependency direction
       # is inverted instead: the private flake takes this one as an input.
       lib = {
         inherit mkHome;

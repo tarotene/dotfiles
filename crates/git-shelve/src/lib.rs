@@ -3,7 +3,7 @@
 //! stash スタックは git ではリポジトリ単位なので、message に worktree の
 //! 絶対パスをタグ(`shelve:<toplevel>:`)として埋め込んで所有権を示す。
 //! `git shelve` / `git unshelve` はともに `<git-common-dir>/claude-shelve.lock`
-//! を flock で保持して直列化する(設計根拠は docs/claude/git-stash-guard.md)。
+//! を flock で保持して直列化する(設計根拠は docs/agents/git-stash-guard.md)。
 
 use std::fs::{File, OpenOptions};
 use std::io;

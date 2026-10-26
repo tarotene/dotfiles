@@ -1,6 +1,6 @@
 //! pr-gate の入口。`pr-gate session-start` / `pr-gate stop` を settings.json の
 //! SessionStart / Stop から stdin JSON 付きで呼ぶ。それ以外の引数は何もせず
-//! exit 0(bash 版の dispatch と同じ)。設計は lib.rs と docs/claude/pr-gate.md。
+//! exit 0(bash 版の dispatch と同じ)。設計は lib.rs と docs/agents/pr-gate.md。
 
 use std::io::Read;
 

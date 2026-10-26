@@ -53,7 +53,7 @@ fi
 # tarotene/bleep's CONTRIBUTING.md and README). This hook previously
 # violated that policy by printing `BLEEP_ALLOW=1` directly in the message
 # an agent reads; anyone who legitimately needs the bypass finds it
-# documented for humans in docs/claude/public-publish-guard.md instead.
+# documented for humans in docs/agents/public-publish-guard.md instead.
 stdin_file="$(mktemp)"
 trap 'rm -f "$stdin_file"' EXIT
 cat > "$stdin_file"
@@ -64,7 +64,7 @@ if [[ -x "$bleep" ]]; then
         echo "error: Push blocked by bleep" >&2
         [[ -n "$reason" ]] && echo "  ${reason}" >&2
         echo "" >&2
-        echo "  詳細: docs/claude/public-publish-guard.md を参照してください。" >&2
+        echo "  詳細: docs/agents/public-publish-guard.md を参照してください。" >&2
         exit 1
     fi
 fi

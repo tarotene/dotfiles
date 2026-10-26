@@ -104,7 +104,7 @@ agent による文献調査)。
    接地し、成果物(Plan)の中に検証可能な形で残す**。「先行例を調べたか」
    を LLM の自己申告に委ねず、`## 先行例との対比` 節という具体的で
    検証可能な出力形式を要求する(`config/claude/CLAUDE.md` 追記、
-   `config/claude/skills/precedent-grounding/SKILL.md`)。
+   `config/agents/skills/precedent-grounding/SKILL.md`)。
 3. **「敵対的レビュー」は、既存の文脈を切った批評者(`copilot-plan-review.sh`
    の lens A)にこの節を監査させる形で機構化する。** 新しい独立 lens を
    立てず既存 lens A に統合し、premium request を増やさない。批評者が
@@ -128,7 +128,7 @@ agent による文献調査)。
   同一コンテキストでの自己批評は推論・設計タスクで改善しないと示し、
   Anthropic 自身も抽象的な批判指示を推奨していない。棄却。
 - **批評者(Copilot critic)にネットワークを与えて自ら先行例を検索
-  させる** — 独立性は上がるが、`docs/claude/copilot-plan-review.md`
+  させる** — 独立性は上がるが、`docs/agents/copilot-plan-review.md`
   が既に確立した「read-only と network-safe は別の境界」(prompt
   injection 経由の外部送信リスク)を破る。著者が接地し批評者が監査する
   形で同等の効果を、境界を破らずに得られるため採らない。
@@ -138,7 +138,7 @@ agent による文献調査)。
   誤り」「既存パターンとの矛盾」と同軸のため、統合で十分と判断した。
 - **形式検査を plan-scope-gate.sh に経路C として追加する** — hook
   登録の変更が不要で selftest 基盤を共用できる利点はあるが、
-  `docs/claude/scope-inventory.md` と該当 skill が「スコープ」に特化した
+  `docs/agents/requirements-inventory.md` と該当 skill が「スコープ」に特化した
   設計文書になっており、先行例接地の検査を混ぜると両方の説明が濁る。
   ADR-0007 の「遡及的な一括リネームはしない」の精神に沿い、新規 hook
   として独立させる。
@@ -156,7 +156,7 @@ agent による文献調査)。
   (段1 PR の非スコープ節、wrap-up inbox 参照)。
 - モデル世代が進みプロンプティングのベストプラクティスが変わった場合
   (本 ADR が引く Anthropic ドキュメントの Opus 5 系の注記のように)、
-  この設計もその都度再検証が必要。`docs/claude/precedent-grounding.md`
+  この設計もその都度再検証が必要。`docs/agents/precedent-grounding.md`
   に生きた設計理由として残し、ADR 本文は決定の記録として不変に保つ
   (ADR-0008)。
 

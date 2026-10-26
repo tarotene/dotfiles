@@ -8,7 +8,7 @@
 //!    呼ばれる。`classify` サブコマンドが単一正本、ADR-0024 の
 //!    「hook と CI が同じ判定エンジンを呼ぶ」型)。
 //! 2. [`ledger_has_record`] — そのパスについて `既存手段:` が既に
-//!    session ledger(`crates/hook-io::SessionLedger`、キーは
+//!    session ledger(`crates/agent-session::SessionLedger`、キーは
 //!    session_id ではなく git toplevel、ADR-543)に登録済みか。
 
 use std::path::Path;
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn plain_module_is_not_tool_unit() {
         assert!(!is_new_tool_unit(
-            "crates/hook-io/src/plan.rs",
+            "crates/agent-session/src/plan.rs",
             "pub fn x() {}\n"
         ));
     }

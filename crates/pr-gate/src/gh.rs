@@ -114,5 +114,5 @@ pub fn watch_checks(pr_num: &str, nwo: &str, required: bool, limit: Duration) {
         cmd.arg("--required");
     }
     cmd.args(["--watch", "--fail-fast", "--interval", "10"]);
-    let _ = hook_io::proc::output_with_timeout(&mut cmd, limit, None);
+    let _ = process_control::output_with_timeout(&mut cmd, limit, None);
 }

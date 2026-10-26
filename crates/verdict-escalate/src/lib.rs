@@ -13,7 +13,7 @@
 
 pub mod record;
 
-use hook_io::SessionLedger;
+use agent_session::SessionLedger;
 use record::{Verdict, VerdictRecord};
 use std::path::{Path, PathBuf};
 use std::process::Command;

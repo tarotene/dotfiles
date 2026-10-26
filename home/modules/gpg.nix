@@ -56,7 +56,7 @@ in
       # card-backed key (e.g. esa MCP's token.gpg) MUST pass `--no-throw-keyids`
       # explicitly, or decryption falls back to trying every card-backed
       # secret key in the keyring in turn (one "insert card" prompt per card
-      # owned). See docs/claude/esa-mcp.md's "落とし穴: throw-keyids" section.
+      # owned). See docs/agents/esa-mcp.md's "落とし穴: throw-keyids" section.
       throw-keyids = true;
 
       # Auto-retrieve keys when verifying signatures.

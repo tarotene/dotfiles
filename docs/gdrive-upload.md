@@ -1,7 +1,7 @@
 # gdrive-upload — ローカルのファイルを Google Drive の専用フォルダへ上げる(rclone、`drive.file`)
 
 エージェント(Claude Code)が、ローカルのバイナリ(PDF・画像、数 MB)を Google Drive へパス指定で上げる手段。
-手順書は `drive-upload` スキル(`config/claude/skills/drive-upload/SKILL.md`)、この文書は設計と初回セットアップ。
+手順書は `drive-upload` スキル(`config/agents/skills/drive-upload/SKILL.md`)、この文書は設計と初回セットアップ。
 
 ## なぜ必要か(#769)
 

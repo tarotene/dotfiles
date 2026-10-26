@@ -89,7 +89,7 @@ gate・ドメイン)に載せられるなら新設しない」という設計判
 ### D3: 器は新設せず、既存の `## 先行例との対比` 節にトークンを追加する
 
 新しい plan 節・新しい `ExitPlanMode` gate は作らない。ADR-0012 が確立
-した節(`config/claude/skills/precedent-grounding/SKILL.md`)の各 `Dn`
+した節(`config/agents/skills/precedent-grounding/SKILL.md`)の各 `Dn`
 行に `軸:`(必須、`表現不可能|還元|検出のみ` のいずれか)を追加し、
 外部依存の新設・置換・撤去、または撤収コストが導入コストを上回る選択の
 ときだけ `本命:`/`対抗馬:`/`外した候補:` の重い欄を追加で書く。
@@ -106,7 +106,7 @@ gate・ドメイン)に載せられるなら新設しない」という設計判
 
 `selection-grounding` の判断は必ずしも「先行例と対比」ではなく「複数の
 軸で評価する」ことが主眼だが、改名は CLAUDE.md・skill・gate・selftest・
-`docs/claude/precedent-grounding.md`・ADR-0012 の Amendment に波及し、
+`docs/agents/precedent-grounding.md`・ADR-0012 の Amendment に波及し、
 得られるのは名前の正確さだけである。件の private リポジトリの ADR-0004
 D8 の "Known weakness, accepted... This paragraph is the record of that
 trade-off, so it does not need re-litigating later." にならい、この
@@ -140,10 +140,10 @@ ADR-0020 の `createdAt` grandfathering と同じ扱いとし、新しい監査
 
 - `config/agents/AGENTS.md` に 1 節追加(判断知識、後続段)。
 - `config/claude/CLAUDE.md` に形式検査の配線を 1 節追加(後続段)。
-- `config/claude/skills/selection-grounding/`(新設)+
-  `config/claude/skills/precedent-grounding/SKILL.md` §3 への
+- `config/agents/skills/selection-grounding/`(新設)+
+  `config/agents/skills/precedent-grounding/SKILL.md` §3 への
   `軸:` トークン追記(後続段)。
-- `docs/claude/selection-grounding.md`(新設、living design rationale、
+- `docs/agents/technology-selection.md`(新設、living design rationale、
   後続段)。
 - `config/claude/hooks/plan-precedent-gate.sh` への加算的検査項目 +
   `config/claude/hooks/copilot-plan-review.sh` の lens A 監査項目追加

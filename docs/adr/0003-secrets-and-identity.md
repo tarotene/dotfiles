@@ -116,7 +116,7 @@ because it stems from a different investigation.
    `grabKeyboardAndMouse` stays `true`; the moment the passphrase is asked for
    is instead moved earlier, to a `SessionStart` hook that prompts while the
    user is already looking at the screen (`config/claude/hooks/sign-prewarm.sh`,
-   `docs/claude/sign-prewarm.md`).
+   `docs/agents/gpg-prewarm.md`).
 
 ## Amendment 3 (2026-09 — #235)
 
@@ -231,7 +231,7 @@ findings from validating it on real hardware.
   identity's primary fingerprint, by inserting the card.
 - `keys/<identity>.pub` and `gpg-subkey sync` now track two independent
   `[S]`/`[E]` on-disk lifecycles per host instead of one; `docs/claude/
-  esa-mcp.md` and `docs/claude/sign-prewarm.md` carry the operational
+  esa-mcp.md` and `docs/agents/gpg-prewarm.md` carry the operational
   detail.
 
 ## Amendment 5 (2026-09 — #348)
@@ -281,5 +281,5 @@ a vulnerability on this basis).
   a "save to keyring" UI, but the underlying external-cache protocol is
   reachable by a direct pinentry caller, and is now explicitly closed at
   the `gpg-agent` level.
-- `docs/claude/sign-prewarm.md`'s parallel claim is corrected in the
+- `docs/agents/gpg-prewarm.md`'s parallel claim is corrected in the
   same PR.

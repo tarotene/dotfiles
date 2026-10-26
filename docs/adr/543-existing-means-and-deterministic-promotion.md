@@ -86,7 +86,7 @@ Q1 の判定を 3 値の閉語彙(`採用|拡張|自前`)にし、`自前` の�
 `## 先行例との対比` 節の重い欄(`本命:`/`対抗馬:`)を持つ `Dn` にこの行を
 追加で必須化する。
 
-先行例: リポジトリ内 `config/claude/skills/selection-grounding/SKILL.md`
+先行例: リポジトリ内 `config/agents/skills/selection-grounding/SKILL.md`
 §3(重い欄の閉語彙設計)(取得 2026-09-28)
 差分: 一致 — 既存の重い欄と同じ「閉語彙 + 発火条件付き必須化」の形を
 そのまま踏襲する。
@@ -119,7 +119,7 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
 - `config/agents/AGENTS.md` に 1 節追加(Q1 前倒し・Q2 段階モデルの原則、
   `既存手段:` 語彙の参照先)。
 - `config/claude/CLAUDE.md` に形式検査の配線を 1 節追加。
-- `config/claude/skills/{precedent-grounding,selection-grounding,
+- `config/agents/skills/{precedent-grounding,selection-grounding,
   pr-description,skill-gardening}/SKILL.md` に `既存手段:` 文法・散文
   保持規約を追記。
 - `config/claude/hooks/plan-precedent-gate.sh` に `既存手段:` の必須化

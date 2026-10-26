@@ -16,9 +16,11 @@
 //! `crates/gh-edit-allow` と同じ「gh コマンド文字列を静的に解析し、判定
 //! できない入力は素通しに倒す」設計を踏襲する(ADR-0024: github-audit の
 //! ような巨大な既存 bash 資産を source する必要が無い hook は Rust が既定)。
-//! 語分割は `hook_io::shell::split` を共有する。
+//! 語分割は `command_inspection::simple_shell::split` を共有する。
 
-use hook_io::{shell, HookInput, PermissionDecision};
+use agent_session::HookInput;
+use agent_session::PermissionDecision;
+use command_inspection::simple_shell as shell;
 
 const BYPASS_VAR: &str = "RULESETS_WRITE_GUARD_BYPASS";
 
@@ -173,18 +175,18 @@ pub fn check(input: &HookInput) -> Option<PermissionDecision> {
     Some(PermissionDecision::deny(
         "ruleset の直接書換は deny。正本は対象リポジトリの .github/rulesets/*.json — \
          apply-rulesets.sh <owner/repo> [--reconcile] を使う \
-         (docs/claude/rulesets-write-guard.md、rulesets-write-guard)",
+         (docs/agents/rulesets-write-guard.md、rulesets-write-guard)",
     ))
 }
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(raw: &str) -> Option<hook_io::Outcome> {
-    let input = hook_io::HookInput::parse(raw)?;
+pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
+    let input = agent_session::HookInput::parse(raw)?;
     if input.hook_event_name != "PreToolUse" {
         return None;
     }
-    check(&input).and_then(hook_io::Outcome::from_decision)
+    check(&input).and_then(agent_session::Outcome::from_decision)
 }
 
 #[cfg(test)]

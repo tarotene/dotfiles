@@ -1,6 +1,6 @@
 //! attribution-guard — AI エージェントが GitHub に書く外向きテキストに
 //! attribution フッターが載っていることを保証する PreToolUse hook
-//! (docs/claude/attribution-guard.md、#192、ADR-0024 Stage 4a #415)。
+//! (docs/agents/attribution-guard.md、#192、ADR-0024 Stage 4a #415)。
 //!
 //! bash 版 `config/claude/hooks/attribution-guard.sh` の移植。コマンド解析
 //! (heredoc 分離・トークナイザ・コマンド位置・本文フラグ)は `guard-core` に
@@ -28,7 +28,7 @@
 //!   検査する
 //! - トークン化できない(unmatched quote)→ 通す
 //!
-//! 既知の限界(意図的な選択、docs/claude/attribution-guard.md):
+//! 既知の限界(意図的な選択、docs/agents/attribution-guard.md):
 //! - `gh api` は外向き投稿の URL パス(issues/pulls の作成・編集・コメント、
 //!   pulls のレビュー作成)のみ判定する(#195)。`pulls/N/comments` のような
 //!   インラインレビューコメントは対象外のまま(#194)。GET/HEAD/DELETE は
@@ -37,12 +37,20 @@
 //!   判定は Claude だけで行う(bash 版の Codex/Copilot adapter が
 //!   `decide_mcp` を呼ばなかったのと同じ)。
 
-use guard_core::command::{first_deny, gh_command_at, is_gh};
-use guard_core::gh::{api_method, api_path, assemble_body_text, has_heredoc, ApiBody, BodyFlags};
-use guard_core::hook::ToolCall;
-use guard_core::marker::{has_lead_then_name, has_reasoned_tag};
-use guard_core::Range;
-use hook_io::Agent;
+use agent_session::hook::ToolCall;
+use agent_session::Agent;
+use command_inspection::command::first_deny;
+use command_inspection::command::gh_command_at;
+use command_inspection::command::is_gh;
+use command_inspection::Range;
+use github_command::gh::api_method;
+use github_command::gh::api_path;
+use github_command::gh::assemble_body_text;
+use github_command::gh::has_heredoc;
+use github_command::gh::ApiBody;
+use github_command::gh::BodyFlags;
+use github_command::marker::has_lead_then_name;
+use github_command::marker::has_reasoned_tag;
 
 /// フッターに載せるエージェント名とリンク先(#192)。bash 版では adapter が
 /// `ATTRIBUTION_AGENT_NAME` / `ATTRIBUTION_AGENT_URL` を source 前に上書き
@@ -279,9 +287,9 @@ pub fn check(call: &ToolCall) -> Option<String> {
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
-pub fn hook(agent: Agent, raw: &str) -> Option<hook_io::Outcome> {
+pub fn hook(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
     let call = ToolCall::parse(agent, raw)?;
-    check(&call).map(hook_io::Outcome::Deny)
+    check(&call).map(agent_session::Outcome::Deny)
 }
 
 #[cfg(test)]

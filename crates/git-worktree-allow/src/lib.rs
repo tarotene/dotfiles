@@ -1,7 +1,7 @@
 //! git-worktree-allow — herdr worktree を外から駆動する `git -C <dir> …` を
 //! 許可する PreToolUse hook の判定エンジン(`config/claude/hooks/
 //! git-worktree-allow.sh` の移植、ADR-0024)。設計と根拠:
-//! docs/claude/git-worktree-allow.md。
+//! docs/agents/git-worktree-allow.md。
 //!
 //! 許可条件(すべて満たすときだけ allow):
 //! 1. 複合コマンド・リダイレクト・展開(`;` `&` `|` `$(` バッククォート `>` `<`

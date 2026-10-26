@@ -1,4 +1,4 @@
-//! エントリポイント。詳細は lib.rs / docs/claude/scope-inventory.md。
+//! エントリポイント。詳細は lib.rs / docs/agents/requirements-inventory.md。
 //!
 //! 使い方:
 //!   hook として: PreToolUse(matcher: ExitPlanMode)から stdin JSON で呼ばれる
@@ -11,7 +11,7 @@
 //! スキップ手段: `touch ~/.claude/plan-scope-gate/skip` または
 //! `SKIP_PLAN_SCOPE_GATE=1`。
 
-use hook_io::jqfmt;
+use jq_json_compat::jqfmt;
 use plan_scope_gate::{
     deny_message, extract_issue_refs, fetch_children, judge_inventory, judge_issue, missing_lines,
     resolve_owner_repo, trim_newlines, IssueJudgement, EXAMPLE_BLOCK,
@@ -84,7 +84,7 @@ fn cmd_check_plan(plan_file: &str) -> ExitCode {
 
 fn hook() -> ExitCode {
     // ADR-0005: バイナリの存在でゲートする(gh 不在のマシンでは経路Bも含め沈黙)。
-    if !hook_io::proc::command_exists("gh") {
+    if !process_control::command_exists("gh") {
         return ExitCode::SUCCESS;
     }
     if gate_dir().join("skip").exists()
@@ -95,9 +95,9 @@ fn hook() -> ExitCode {
     let mut buf = String::new();
     let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf);
     // 不正 JSON でも bash 版(jq が空を返す)と同じく最新プランへ縮退する。
-    let input = hook_io::HookInput::parse(&buf).unwrap_or_default();
+    let input = agent_session::HookInput::parse(&buf).unwrap_or_default();
     input.enter_cwd();
-    let Some(plan) = hook_io::plan::plan_text(&input) else {
+    let Some(plan) = agent_session::plan::plan_text(&input) else {
         return ExitCode::SUCCESS;
     };
     let plan = trim_newlines(plan);
@@ -112,7 +112,7 @@ fn hook() -> ExitCode {
         .unwrap_or_default();
     if !transcript.is_empty() && Path::new(&transcript).is_file() {
         let raw = std::fs::read(&transcript).unwrap_or_default();
-        let user_text = trim_newlines(hook_io::transcript::extract_user_text(
+        let user_text = trim_newlines(agent_session::transcript::extract_user_text(
             &String::from_utf8_lossy(&raw),
         ));
         let owner_repo = resolve_owner_repo(&cwd);

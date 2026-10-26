@@ -131,18 +131,18 @@ fn cases_1_to_16() {
 
     // 8: 非mdの同梱なしは不合格(config/claude/skills 新規)
     r.reset_to_base();
-    r.write("config/claude/skills/new-skill.md", "skill body\n");
+    r.write("config/agents/skills/new-skill.md", "skill body\n");
     r.commit("add new skill doc only");
     let v = check(&r);
     assert_eq!(v.len(), 1, "8: {v:?}");
     assert!(
-        v[0].contains("docs/claude/ または config/claude/skills/"),
+        v[0].contains("docs/claude/ または config/agents/skills/"),
         "8: {v:?}"
     );
 
     // 9: 非mdの同梱ありは合格
     r.reset_to_base();
-    r.write("config/claude/skills/new-skill.md", "skill body\n");
+    r.write("config/agents/skills/new-skill.md", "skill body\n");
     r.write("config/claude/hooks/new-skill-gate.sh", SH);
     r.commit("add new skill doc + hook");
     assert_eq!(check(&r), Vec::<String>::new(), "9");

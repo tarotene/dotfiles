@@ -11,7 +11,7 @@ ADR-0015 の運用(`github-audit` → `github-audit-triage`)を実地に回し�
 それを検査するだけ。この構造には根本的な限界がある — 検査項目を増やすほど
 運用負荷が増える一方、生成側は相変わらず自由なので、次の新規リポジトリでも
 同じ drift が再発する。実例(具体的にどのリポジトリかは
-`docs/claude/public-publish-guard.md` の方針により本 ADR には書かない):
+`docs/agents/public-publish-guard.md` の方針により本 ADR には書かない):
 `naming-descriptive` 候補として一見自然に見えた名前が、実際には「片付ける」
 という完了しうる行為を表す語であり、`naming-pj`(期限付きプロジェクト)で
 あるべきだった。これは検査ルールの穴ではなく、生成側(命名時の判断)に
@@ -103,7 +103,7 @@ ADR-0014(命名クラス 4 種の語彙)を維持しつつ、次の生成側規�
   site-domains}.tsv` が閉語彙の正本になる。private リポジトリの codename・
   site ドメインは、dotfiles が PUBLIC である制約上この repo 管理ファイルに
   書けないため、`~/.config/github-audit/*.local.tsv` のローカル overlay に
-  置く(`docs/claude/public-publish-guard.md` の非公開方針を継続)。
+  置く(`docs/agents/public-publish-guard.md` の非公開方針を継続)。
   species トークン(cleanup 除外の理由になった一般英単語)はリポジトリ名
   そのものではないため repo 管理ファイルに置ける。
 - `repo-charter` スキルの新規作成インタビューが、本 ADR の文法を作成時点
@@ -136,7 +136,7 @@ Decision 1 の種別語閉集合(`descriptive-species.tsv`)の初版は、思い
 (「研究テーマっぽい語だから恒久的な主題だろう」)だけで採否を決め、
 対応する README を実際に読まなかった。結果、複数リポジトリで使われている
 ある種の末尾トークン(具体的にどのリポジトリ・どの語かは
-`docs/claude/public-publish-guard.md` の方針により本 ADR には書かない)
+`docs/agents/public-publish-guard.md` の方針により本 ADR には書かない)
 を「研究分野という恒久的な主題」を指す種別語として採録しようとしたが、
 これは誤りだった。README を読むと、該当リポジトリはいずれも
 **完了・凍結した研究の archive**(Scope の Out に明示的に「新規研究の

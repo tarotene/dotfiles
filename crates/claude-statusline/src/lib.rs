@@ -514,7 +514,7 @@ impl Tokens {
             py_json_opt(&self.ctx),
             py_json_opt(&self.cost),
             py_json_opt(&self.effort),
-            hook_io::herdr::TTL_MS
+            herdr_client::TTL_MS
         )
     }
 }

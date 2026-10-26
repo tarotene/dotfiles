@@ -13,7 +13,7 @@ on:
   push:
     branches: [ main, "feat/home-manager", "feat/hm-**" ]
   # No branches filter here (unlike push above): these checks are required
-  # status checks (pr-gate ruleset, docs/claude/pr-gate.md), and a required check
+  # status checks (pr-gate ruleset, docs/agents/pr-gate.md), and a required check
   # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
   # that PR's Stop gate permanently blocked on a check that will never exist.
   #
@@ -166,7 +166,7 @@ jobs:
       # migration (ADR-0024, #389) relies on these selftests as its correctness
       # oracle. Any mention of `--selftest` counts: in these directories it
       # only ever appears in files that implement one (bash, POSIX sh, perl,
-      # python). `config/claude/skills/*/scripts` (not the whole skills tree)
+      # python). `config/agents/skills/*/scripts` (not the whole skills tree)
       # is deliberately scoped to skill code directories — SKILL.md docs
       # elsewhere under config/claude/skills mention `--selftest` in prose
       # without implementing a dispatcher, which would false-positive here.
@@ -175,7 +175,7 @@ jobs:
           missing=0
           for f in $(grep -rl -- --selftest \
               config/claude/hooks config/codex/hooks \
-              config/copilot/hooks config/git/hooks config/claude/skills/*/scripts scripts); do
+              config/copilot/hooks config/git/hooks config/agents/skills/*/scripts scripts); do
             if ! grep -qF -- "$f --selftest" .github/workflows/ci.yml; then
               echo "::error file=$f::has a --selftest dispatcher but ci.yml never runs it"
               missing=1
@@ -242,14 +242,14 @@ jobs:
 
       # close-linked-issues.yml (#609): GitHub Actions cannot follow a symlink
       # for a workflow file, so this repo carries a real copy of the template
-      # that the governance skills distribute (docs/claude/stacked-pr.md).
+      # that the governance skills distribute (docs/agents/stacked-pr.md).
       # Keep the two byte-identical, except for this repo's own `pipeline-node:`
       # pointer line (ADR-872): the template is distributed to other repos, so
       # the pointer to this repo's pipeline-map.toml lives only in the copy.
       - name: close-linked-issues template is in sync
         run: |
           diff -u \
-            <(grep -v '^# pipeline-node:' config/claude/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml) \
+            <(grep -v '^# pipeline-node:' config/agents/skills/repo-governance-common/templates/.github/workflows/close-linked-issues.yml) \
             <(grep -v '^# pipeline-node:' .github/workflows/close-linked-issues.yml)
 
       # kiriban.yml (docs/kiriban.md): same reason as close-linked-issues above —
@@ -258,7 +258,7 @@ jobs:
       - name: kiriban template is in sync
         run: |
           diff -u \
-            <(grep -v '^# pipeline-node:' config/claude/skills/repo-governance-common/templates/.github/workflows/kiriban.yml) \
+            <(grep -v '^# pipeline-node:' config/agents/skills/repo-governance-common/templates/.github/workflows/kiriban.yml) \
             <(grep -v '^# pipeline-node:' .github/workflows/kiriban.yml)
 
       # hms (docs/adr/0034-machine-state-wrapper-flake.md Amendment
@@ -273,7 +273,7 @@ jobs:
       - name: setup-firewall.sh --dry-run
         run: ./scripts/setup-firewall.sh --dry-run
 
-      # adr-number-check (ADR-380, docs/claude/adr-numbering.md): ADR 番号を
+      # adr-number-check (ADR-380, docs/agents/adr-numbering.md): ADR 番号を
       # 導入 PR の番号にすることで採番衝突を構造的に不可能にする決定の判定
       # エンジン。selftest はネットワーク不使用。pull_request イベントでは
       # base SHA を追加 fetch した上で base 差分限定の判定(1 PR = 最大 1 ADR、
@@ -283,7 +283,7 @@ jobs:
       - name: adr-number-check --selftest
         run: ./scripts/adr-number-check --selftest
 
-      # ci-consumers: 編集するパスを入力にする CI の検査(消費者)を列挙する(docs/claude/ci-consumers.md)。
+      # ci-consumers: 編集するパスを入力にする CI の検査(消費者)を列挙する(docs/agents/ci-consumers.md)。
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
@@ -297,7 +297,7 @@ jobs:
       # LANG_MIX_PATHS による対象指定と、CJK 統合漢字の範囲指定の回帰を
       # 固定する。ネットワーク不使用。
       - name: check-language-mixing.sh --selftest
-        run: bash config/claude/skills/repo-governance-common/templates/scripts/check-language-mixing.sh --selftest
+        run: bash config/agents/skills/repo-governance-common/templates/scripts/check-language-mixing.sh --selftest
 
       - name: adr-number-check
         env:
@@ -341,7 +341,7 @@ jobs:
       # 名生成の正本)と config/herdr/oshi-marks.tsv のキー集合を双方向突合する。
       # patch にあって TSV に無い名前は行欠落、TSV にあって patch に無い名前は
       # 死んだエントリ — mark 列が空(未確証)なのは許容するが、行自体の欠落・
-      # 余剰は許さない(docs/claude/herdr-sidebar-metadata.md)。
+      # 余剰は許さない(docs/agents/herdr-sidebar-metadata.md)。
       - name: oshi-marks.tsv matches herdr-worktree-names.patch talent list
         run: |
           set -euo pipefail
@@ -379,14 +379,14 @@ jobs:
       # plan-fresh-gate) are Rust now (#412, ADR-0024 Stage 4b); their former
       # --selftest cases run as `cargo test --workspace` in the rust job.
       - name: copilot-plan-review output schema is valid JSON
-        run: jq empty config/claude/assets/copilot-plan-review.schema.json
+        run: jq empty config/agents/assets/copilot-plan-review.schema.json
 
       # codex-plan-gate (ADR-0032 Amendment #531) is Rust now (#389, ADR-0024
       # Stage 4b); its former --selftest cases run as `cargo test --workspace`
       # in the rust job (crates/codex-plan-gate/tests/gate.rs).
 
       # slot-hit.sh is the deterministic judgment core behind the
-      # slot-availability skill (docs/claude/slot-availability.md): matching
+      # slot-availability skill (docs/agents/slot-availability.md): matching
       # candidate slots against calendar busy/soft-day events, and (finalize)
       # reconciling a decided subset against existing markers into an
       # update/create/delete plan. bash + yq + jq only (no Python runtime —
@@ -402,26 +402,26 @@ jobs:
           yq --version
 
       - name: slot-hit.sh --selftest
-        run: bash ./config/claude/skills/slot-availability/scripts/slot-hit.sh --selftest
+        run: bash ./config/agents/skills/slot-availability/scripts/slot-hit.sh --selftest
 
       # performance-hub / writing-style-hub / detach-open are Rust now (#414,
       # ADR-0024 Stage 4e, crates/hub-resolve and crates/detach-open); their
       # former --selftest cases run as `cargo test --workspace` in the rust job.
 
       # venue-urls.sh is the deterministic candidate-service enumerator behind
-      # the venue-search skill (docs/claude/venue-search.md): reads a fixture
+      # the venue-search skill (docs/agents/venue-search.md): reads a fixture
       # state/places.toml, no network, and checks the needs=grand-piano
       # branching (SpaceMarket/Instabase included only then), the
       # registered-only facility filter, and the url:null fallback for an
       # unknown service/system.
       - name: venue-urls.sh --selftest
-        run: bash ./config/claude/skills/venue-search/scripts/venue-urls.sh --selftest
+        run: bash ./config/agents/skills/venue-search/scripts/venue-urls.sh --selftest
 
       # handoff.sh is deterministic shell + a stubbed gh end to end: labels-missing/
       # create-labels/block, including the issue number → id resolution the
-      # dependencies API requires (docs/claude/handoff.md).
+      # dependencies API requires (docs/agents/handoff.md).
       - name: handoff.sh --selftest
-        run: bash ./config/claude/skills/handoff/scripts/handoff.sh --selftest
+        run: bash ./config/agents/skills/handoff/scripts/handoff.sh --selftest
 
       # routines-plan.sh is deterministic bash + jq end to end, no network:
       # the 7-way classification (in-sync/declared-ahead/live-drift/conflict/
@@ -429,19 +429,19 @@ jobs:
       # webhook rejection (cron_utc required) are all exercised against
       # placeholder fixtures built inline (docs/claude/claude-routines.md).
       - name: routines-plan.sh --selftest
-        run: bash ./config/claude/skills/claude-routines/scripts/routines-plan.sh --selftest
+        run: bash ./config/agents/skills/claude-routines/scripts/routines-plan.sh --selftest
 
       # The git/worktree CLIs and hooks that used to be tested here
       # (git-audit-worktrees, git-prune-{worktrees,branches}, git-worktree-
-      # create-guard, git-stash-guard, git-worktree-allow, worktree-fresh-base,
-      # git-checkout-freshness, git-shelve/unshelve) are Rust now (#416, ADR-0024
+      # create-guard, git-stash-guard, git-worktree-allow, worktree-base-sync,
+      # git-checkout-sync, git-shelve/unshelve) are Rust now (#416, ADR-0024
       # Stage 4c); their cases run as `cargo test --workspace` in the rust job.
       # The hook/settings registrars (register-{codex,copilot}-hooks and the
       # inline register-claude-* / sync-claude-statusline) are Rust too
-      # (crates/settings-reconcile, #414): its fixtures, including the
+      # (crates/agent-settings-reconcile, #414): its fixtures, including the
       # idempotence check beside Herdr's own entries, run in the same job.
 
-      # attribution-guard (docs/claude/attribution-guard.md) is deterministic
+      # attribution-guard (docs/agents/attribution-guard.md) is deterministic
       # bash end to end against fixture commands — no gh/network involved.
       # stack-base-guard (ADR-0027) is now the Rust crates/stack-base-guard
       # (#415); its tests (the old Claude + Codex adapter selftests) run in the
@@ -458,10 +458,10 @@ jobs:
       # automated-security-fixes DELETE), --no-dependabot (both Dependabot
       # calls skipped), and --dry-run (no gh api calls at all) paths.
       - name: apply-repo-settings.sh --selftest
-        run: bash ./config/claude/skills/repo-governance-common/scripts/apply-repo-settings.sh --selftest
+        run: bash ./config/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh --selftest
 
       - name: create-repo.sh --selftest
-        run: bash ./config/claude/skills/repo-charter/scripts/create-repo.sh --selftest
+        run: bash ./config/agents/skills/repo-charter/scripts/create-repo.sh --selftest
 
       # github-audit (ADR-0015) は crates/github-audit の Rust で、その検査(gh のスタブ
       # での判定・パイプライン)は `cargo test` として `rust` job で走る。

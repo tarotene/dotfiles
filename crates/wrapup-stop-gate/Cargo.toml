@@ -10,7 +10,8 @@ tempfile = "3.27.0"
 trycmd = "1.2.1"
 
 [dependencies]
-hook-io = { version = "0.1.0", path = "../hook-io" }
-serde = { version = "1.0.229", features = ["derive"] }
+issue-inbox = { version = "0.1.0", path = "../issue-inbox" }
+session-retrospective = { version = "0.1.0", path = "../session-retrospective" }
+feedback-trial = { version = "0.1.0", path = "../feedback-trial" }
+session-wrapup = { version = "0.1.0", path = "../session-wrapup" }
 serde_json = "1.0.151"
-verdict-escalate = { version = "0.1.0", path = "../verdict-escalate" }

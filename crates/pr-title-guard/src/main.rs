@@ -13,7 +13,8 @@
 //!
 //! 縮退: stdin が読めない・不正 JSON なら何も出さず exit 0(fail-open)。
 
-use guard_core::hook::{agent_from_args, deny_output};
+use agent_session::hook::agent_from_args;
+use agent_session::hook::deny_output;
 use pr_title_guard::decide;
 use std::io::Read;
 use std::path::PathBuf;
@@ -47,7 +48,7 @@ fn main() -> ExitCode {
     if std::io::stdin().read_to_string(&mut buf).is_err() {
         return ExitCode::SUCCESS;
     }
-    if let Some(hook_io::Outcome::Deny(reason)) = pr_title_guard::hook(agent, &buf) {
+    if let Some(agent_session::Outcome::Deny(reason)) = pr_title_guard::hook(agent, &buf) {
         print!("{}", deny_output(agent, &reason));
     }
     ExitCode::SUCCESS

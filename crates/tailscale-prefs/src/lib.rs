@@ -147,7 +147,7 @@ pub fn cmd_apply(args: &[String]) -> i32 {
         ));
         return 0;
     }
-    if !hook_io::proc::command_exists("tailscale") {
+    if !process_control::command_exists("tailscale") {
         warn("tailscale not installed (see scripts/install-packages.sh) — skipping");
         return 0;
     }

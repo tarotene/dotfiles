@@ -279,7 +279,7 @@ fn read_marker(name: &str) -> Option<String> {
 }
 
 /// 既定の flake ref を解決する: マーカーファイルが先、DEFAULT_REF がフォールバック
-/// (ADR-0034。resolve_host・docs/claude/writing-style.md の style-hub マーカーと同じ
+/// (ADR-0034。resolve_host・docs/agents/writing-style.md の style-hub マーカーと同じ
 /// 間接参照)。マーカーにより 1 ホストの `hms`(ref 無し)を、この repo のホスト
 /// module の上に private value module を重ねる private wrapper flake へ向けられる —
 /// この repo のソースがその flake を名指しすることなく。home-manager で宣言すると

@@ -52,7 +52,7 @@ fn main_fixture_pipeline() {
         "bash#5"
     );
 
-    // plan-free-private 宣言(docs/claude/free-plan-declaration.md): 非公開かつ無料
+    // plan-free-private 宣言(docs/agents/free-plan-declaration.md): 非公開かつ無料
     // プランでは自動マージも rulesets も無いが、宣言があれば drift にしない。
     // 宣言が実態と食い違えば(自動マージが有効)stale を出す。
     assert_eq!(

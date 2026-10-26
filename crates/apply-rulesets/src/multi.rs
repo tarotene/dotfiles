@@ -50,7 +50,7 @@ fn self_apply_script() -> PathBuf {
 }
 
 fn apply_one(script: &PathBuf, args: &[String]) -> bool {
-    if !hook_io::proc::command_exists(&script.to_string_lossy()) {
+    if !process_control::command_exists(&script.to_string_lossy()) {
         eprintln!(
             "ERROR: {} not found or not executable (home-manager 未配備の可能性)",
             script.display()

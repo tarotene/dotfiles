@@ -58,7 +58,7 @@ templates/scripts、git hooks、zsh モジュール(ADR-0007 の性質分類、�
 言語を直接は問わない:
 
 - 計画の段階: 新しい道具・単位の実装言語を選ぶ `Dn` には、対抗馬を立てて白紙で比べた記録
-  (`本命:` / `対抗馬:` / `既存手段:`)を書く規約がある(`selection-grounding` スキル、ADR-0035、
+  (`本命:` / `対抗馬:` / `既存手段:`)を書く規約がある(`technology-selection` スキル、ADR-0035、
   ADR-751)。`plan-precedent-gate` が見るのは `## 先行例との対比` 節と `軸:` などの書式で、
   言語選択の `Dn` に重い欄が書かれているかまでは判定しない。内容は `copilot-plan-review` の
   lens A が監査する。
@@ -72,3 +72,5 @@ bash が生え直したことが観測されたら、検査を戻す(ADR-543 D2:
 ## 実測
 
 再ビルド秒数と起動時間は `rust-workspace-measurements.md` を参照。
+
+現在の共通層は[責務別ライブラリ](agents/agent-libraries.md)へ移行済み。上の旧 crate 名は移植時点の記録。

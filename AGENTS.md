@@ -53,7 +53,7 @@ own config file is never deployed as a whole (no read-only symlink), since
 Codex itself writes hook-trust hashes, project trust, and model selection back
 into it at runtime. `home/modules/codex.nix` reconciles `tui.terminal_title`;
 the shared policy in `home/modules/agent-permissions.nix` owns permission fields
-through reviewed migration and drift checks (`docs/agent-permissions.md`).
+through reviewed migration and drift checks (`docs/agents/agent-permissions.md`).
 Other fields, including model selection and hook trust, remain writable.
 Auto-review handles eligible
 approval requests in both Default and Plan modes; Plan still restricts work
@@ -81,6 +81,13 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
 `docs/adr/` directly for the full text of any decision.
 
 ## Development Rules
+
+### Agent tooling names and layout
+
+Follow [the agent tooling conventions](docs/agents/tooling-conventions.md) when adding,
+renaming, or splitting agent-facing tools. Shared sources live in `config/agents/`,
+shared docs in `docs/agents/`, and shared deployment declarations in `home/modules/agents.nix`.
+Preserve the compatibility contracts and removal conditions in the migration document.
 
 ### Nix modules
 - Modules are the source of truth. A host module imports the shared module
@@ -200,8 +207,8 @@ Full list with one-line summaries: [`docs/README.md`](docs/README.md#architectur
   as a fallback) against the plan's inventory, and separately checks the
   inventory section's internal consistency (every `Rn` has a disposition,
   tags are from the closed set, no duplicates). It calls no LLM. Full
-  rationale + how-to: `docs/claude/scope-inventory.md`, skill:
-  `config/claude/skills/scope-inventory/`.
+  rationale + how-to: `docs/agents/requirements-inventory.md`, skill:
+  `config/agents/skills/requirements-inventory/`.
 
 ### Pipeline map (automatically fired mechanisms)
 - Every mechanism that fires without a human typing its name (a hook, a timer or

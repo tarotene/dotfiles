@@ -92,4 +92,4 @@ required check(`.github/workflows/ci.yml` の `dry-run` job)がこれを呼ぶ�
 
 - `scripts/adr-number-check --selftest`
 - CI: `.github/workflows/ci.yml` の `dry-run` job が `adr-number-check` を
-  呼ぶ(詳細: `docs/claude/adr-numbering.md`)
+  呼ぶ(詳細: `docs/agents/adr-numbering.md`)

@@ -33,7 +33,7 @@ fn setsid_args(have_gio: bool, args: &[String]) -> Vec<String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let argv = setsid_args(hook_io::proc::command_exists("gio"), &args);
+    let argv = setsid_args(process_control::command_exists("gio"), &args);
     let err = Command::new("setsid")
         .args(argv)
         .stdout(Stdio::null())

@@ -8,7 +8,7 @@ use crate::gates::handoff::{self, Handoff};
 use crate::gates::{prior, stack};
 use crate::state::{self, State};
 use crate::{gh, join_lines, jqv, repo, session_start};
-use hook_io::HookInput;
+use agent_session::HookInput;
 use serde_json::Value;
 use std::path::Path;
 
@@ -17,11 +17,11 @@ fn session_id(input: &str) -> String {
     let sid = HookInput::parse(input)
         .map(|i| i.session_id)
         .unwrap_or_else(|| "unknown".to_string());
-    hook_io::ledger::sanitize_session_id(&sid)
+    agent_session::ledger::sanitize_session_id(&sid)
 }
 
 pub fn run(input: &str) -> i32 {
-    if !hook_io::proc::command_exists("gh") || !hook_io::proc::command_exists("git") {
+    if !process_control::command_exists("gh") || !process_control::command_exists("git") {
         return 0;
     }
     let cfg = Config::from_env();
@@ -72,7 +72,7 @@ fn positive(x: &str) -> bool {
 /// 「積んだコミットが 1 個もリモートに無い」事実だけを見る(G_unpushed)。
 fn no_pr(st: &State, sid: &str, project: &Path, nwo: &str, branch: &str) -> i32 {
     let unpushed = repo::unpushed_count(project, branch);
-    let default_br = hook_io::git::default_branch(project).unwrap_or_default();
+    let default_br = git_repository::default_branch(project).unwrap_or_default();
     if positive(&unpushed) {
         let hygiene = join_lines(&[
             repo::stale_base_line(project, &default_br),
@@ -97,7 +97,7 @@ push し、そのまま `gh pr create` まで実行してから終了してく�
     // G_pr — push 済みなのに PR が無いまま終わろうとする事故を塞ぐ。
     // G_unpushed は「push したか」しか見ないため、push 済みブランチが
     // PR を作らずに終わるケースはここまで無条件で完全沈黙していた
-    // (詳細: docs/claude/pr-gate.md の G_pr 節)。判定できる場合だけ block し、
+    // (詳細: docs/agents/pr-gate.md の G_pr 節)。判定できる場合だけ block し、
     // 判定できないときは断定に変えず素通す(以下はすべて exit 0 の skip 条件):
     //   - unpushed が "?"(upstream 不明。判定不能)
     //   - default_br が空(origin/HEAD 未設定。判定不能)
@@ -204,7 +204,7 @@ fn with_pr(
         format!("base 追従: ahead {ahead} / behind {behind}\n未コミット: {wt_count} ファイル");
 
     // 中断ハンドオフ(Handoff: #N) — G_link / G_CI の緩和条件。判定不能なら
-    // 緩めない(fail-closed)。docs/claude/pr-gate.md「中断ハンドオフ」節。
+    // 緩めない(fail-closed)。docs/agents/pr-gate.md「中断ハンドオフ」節。
     let pr_body = jqv::first_field(prs, "body").unwrap_or_default();
     let is_draft = jqv::first_field(prs, "isDraft").unwrap_or_else(|| "false".into()) == "true";
     let handoff_issue = match is_draft.then(|| handoff::judge(&pr_body, nwo)) {
@@ -215,7 +215,7 @@ fn with_pr(
     let mut f = BodyFindings::default();
 
     // G_link
-    let default_br = hook_io::git::default_branch(project).unwrap_or_default();
+    let default_br = git_repository::default_branch(project).unwrap_or_default();
     match (body::judge_link(&pr_body), &handoff_issue) {
         (Link::Missing, Some(h)) => {
             advisory.push_str(&format!(

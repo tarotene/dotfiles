@@ -141,7 +141,7 @@ here: `home/modules/gpg.nix`'s `throw-keyids = true` applies to every
 `gpg --encrypt` on this host, so without this flag every recipient key ID is
 stripped and decryption falls back to trying every card-backed secret key in
 the keyring in turn — one "insert card" GUI prompt per card owned. See
-[`docs/claude/esa-mcp.md`](claude/esa-mcp.md) for the full incident.
+[`docs/agents/esa-mcp.md`](agents/esa-mcp.md) for the full incident.
 
 Adding a new personal host means re-running the block above with the
 token's current plaintext (`gpg --quiet --decrypt` the existing
@@ -152,13 +152,13 @@ revoking the old PAT v2 on esa.io first (same menu as step 1), then
 re-running the block above with a fresh `ESA_TOKEN` but the same recipient
 list to overwrite `~/.config/esa/token.gpg` on every personal host.
 
-Full design + troubleshooting: [`docs/claude/esa-mcp.md`](claude/esa-mcp.md).
+Full design + troubleshooting: [`docs/agents/esa-mcp.md`](agents/esa-mcp.md).
 
 ## Company host: CrowdStrike Falcon Sensor
 
 Falcon Sensor is a root-owned system service and is installed separately from
 home-manager and the ordinary apt package list. On `company-pop-new`, follow
-the dedicated [Falcon Sensor runbook](docs/falcon-sensor.md) after bootstrap.
+the dedicated [Falcon Sensor runbook](falcon-sensor.md) after bootstrap.
 The company-provided `.deb` and CID must remain outside Git.
 
 ## Verify

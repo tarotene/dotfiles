@@ -7,7 +7,7 @@ publish.workspace = true
 description = "apply-rulesets / github-rulesets-apply (scripts/apply-rulesets.sh と scripts/github-rulesets-apply の Rust 移植、ADR-503 / ADR-0024)"
 
 [dependencies]
-hook-io = { path = "../hook-io" }
+process-control = { version = "0.1.0", path = "../process-control" }
 serde_json = "1.0.151"
 
 [dev-dependencies]

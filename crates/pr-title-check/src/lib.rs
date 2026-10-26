@@ -1,5 +1,5 @@
 //! PR タイトル(= squash merge 後の main commit subject)の文法検査。
-//! 判定エンジンの単一正本(ADR-0031、docs/claude/pr-title-contract.md)。
+//! 判定エンジンの単一正本(ADR-0031、docs/agents/pr-title-contract.md)。
 //!
 //! bash 版 `scripts/pr-title-check` の `check_title()` の移植(ADR-0024 Stage
 //! 4a、#415)。client-side guard(`crates/pr-title-guard`)はこのライブラリを
