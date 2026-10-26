@@ -170,6 +170,23 @@ root で実行するため、以後の `tailscale set` や `tailscale status` �
 が1文しか返さない場合は旧来どおり `split` + `mentions_pkexec` の経路を
 そのまま通る。
 
+### 引用符付きヒアドキュメントの本文は対象外(#1049)
+
+`python3 - <<'EOF' … 'Bash(pkexec *)' … EOF` のように、語 `pkexec` を
+引用符付きヒアドキュメントの本文に含むだけの呼び出しが、解析できない文として
+fail closed になっていた。引用符付きの本文(`<<'EOF'`・`<<"EOF"`・`<<\EOF`・
+`<<-'EOF'`)はシェルが展開も実行もしないデータなので、
+`strip_quoted_heredoc_bodies` が判定の前に本文を取り除く。
+
+- 残す(従来どおり判定する)もの: 引用符なしの `<<EOF`(本文は展開される)、
+  `$(…)`・バッククォート、終端が無い・構文を追えない入力。
+- 受け手がシェル類(`bash`・`sh`・`eval`・`ssh` など)のときも本文を残す —
+  本文がコードとして実行されるため。python 等のインタプリタに流し込む本文は
+  データとして扱う(インタプリタが中で pkexec を起動する形は、語を組み立てる
+  だけで従来から静的には見えない)。
+- `<<` の検出は引用符・コメントの外に限る。`"$(cat <<'EOF' … EOF)"` の形
+  (commit メッセージの定番)は二重引用符の中の `$(` を追って扱う。
+
 ## `permissions.ask` の拡張
 
 `agent-settings-reconcile claude-permissions`(旧 `home/modules/agents.nix` の
