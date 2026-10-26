@@ -16,6 +16,7 @@ let
       secret_paths
       domains
       tools
+      sandboxed_shell
       projects
       project_rules
       ;
@@ -62,6 +63,21 @@ in
       type = types.enum [ "prompt" ];
       default = "prompt";
       description = "External tool calls require individual review; permanent shell allows stay empty.";
+    };
+
+    sandboxed_shell = mkOption {
+      type = types.enum [
+        "auto"
+        "prompt"
+      ];
+      default = "auto";
+      description = ''
+        auto: a shell command that runs inside the native sandbox needs no approval
+        (Claude autoAllowBashIfSandboxed; Codex on-request already behaves so).
+        Writes stay limited to the workspace and temp, network to the declared
+        domains. A re-run outside the sandbox, ask and deny rules are still reviewed.
+        prompt: every shell command goes through the regular permission flow.
+      '';
     };
 
     projects = mkOption {

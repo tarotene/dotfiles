@@ -31,8 +31,18 @@ pub struct Policy {
     pub secret_paths: Vec<String>,
     pub domains: Vec<String>,
     pub tools: String,
+    /// `auto`: a shell command that runs inside the native sandbox needs no
+    /// approval (Claude `autoAllowBashIfSandboxed`; Codex `on-request` already
+    /// behaves so). `prompt`: every shell command is reviewed. A record written
+    /// before this field existed was reviewed under `prompt`.
+    #[serde(default = "default_sandboxed_shell")]
+    pub sandboxed_shell: String,
     pub projects: Vec<PathBuf>,
     pub project_rules: BTreeMap<String, ProjectRule>,
+}
+
+fn default_sandboxed_shell() -> String {
+    "prompt".into()
 }
 
 impl Policy {
@@ -49,6 +59,12 @@ impl Policy {
             || self.tools != "prompt"
         {
             return Err("unsupported policy: version=1, writable_roots=[workspace,temp], tools=prompt required".into());
+        }
+        if !["auto", "prompt"].contains(&self.sandboxed_shell.as_str()) {
+            return Err(format!(
+                "sandboxed_shell must be auto or prompt: {}",
+                self.sandboxed_shell
+            ));
         }
         for path in &self.secret_paths {
             if !(path.starts_with("~/") || Path::new(path).is_absolute())
@@ -109,7 +125,7 @@ impl Policy {
                 "autoMode": {"classifyAllShell": true},
                 "sandbox": {
                     "enabled": true, "failIfUnavailable": true,
-                    "autoAllowBashIfSandboxed": false,
+                    "autoAllowBashIfSandboxed": self.sandboxed_shell == "auto",
                     "allowUnsandboxedCommands": true, "excludedCommands": [],
                     "filesystem": {"allowWrite": [], "denyRead": self.secret_paths},
                     "network": {"allowedDomains": self.domains}
@@ -309,6 +325,7 @@ pub fn apply(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
     }
     let old = &record.policy;
     if policy.domains.iter().any(|d| !old.domains.contains(d))
+        || (old.sandboxed_shell == "prompt" && policy.sandboxed_shell == "auto")
         || old
             .secret_paths
             .iter()

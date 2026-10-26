@@ -170,6 +170,60 @@ fn narrowing_applies_but_expansion_requires_review() {
     assert!(apply(&p, h, &[]).unwrap_err().contains("expansion"));
 }
 
+fn claude_auto_allow(h: &Path) -> Value {
+    let c: Value =
+        serde_json::from_slice(&fs::read(h.join(".claude/settings.json")).unwrap()).unwrap();
+    c["sandbox"]["autoAllowBashIfSandboxed"].clone()
+}
+
+#[test]
+fn a_policy_without_the_field_was_reviewed_under_prompt_and_unknown_values_are_refused() {
+    // The fixture predates `sandboxed_shell`, like every record written before it existed.
+    let old = policy();
+    assert_eq!(old.sandboxed_shell, "prompt");
+    assert_eq!(
+        old.generated()["claude"]["sandbox"]["autoAllowBashIfSandboxed"],
+        false
+    );
+    let mut auto = policy();
+    auto.sandboxed_shell = "auto".into();
+    auto.validate().unwrap();
+    assert_eq!(
+        auto.generated()["claude"]["sandbox"]["autoAllowBashIfSandboxed"],
+        true
+    );
+    auto.sandboxed_shell = "yes".into();
+    assert!(auto.validate().unwrap_err().contains("sandboxed_shell"));
+}
+
+#[test]
+fn sandboxed_shell_auto_is_an_expansion_that_needs_review_and_prompt_narrows_back() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    put(h, ".claude/settings.json", "{}");
+    let mut p = policy();
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+    assert_eq!(claude_auto_allow(h), false);
+
+    p.sandboxed_shell = "auto".into();
+    assert!(apply(&p, h, &[]).unwrap_err().contains("expansion"));
+    assert_eq!(
+        claude_auto_allow(h),
+        false,
+        "a refused apply writes nothing"
+    );
+    let r = inspect(&p, h, &[]).unwrap();
+    migrate(&p, h, &[], &r).unwrap();
+    check(&p, h, &[]).unwrap();
+    assert_eq!(claude_auto_allow(h), true);
+
+    p.sandboxed_shell = "prompt".into();
+    apply(&p, h, &[]).unwrap();
+    check(&p, h, &[]).unwrap();
+    assert_eq!(claude_auto_allow(h), false);
+}
+
 #[test]
 fn corrupt_record_and_shared_boundary_overrides_fail_closed() {
     let d = tempfile::tempdir().unwrap();

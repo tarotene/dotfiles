@@ -21,6 +21,41 @@ Codex の filesystem deny に変換する。認証を使う通常操作と秘密
 非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。
 
+## sandbox の中で動く shell は自動で許可する
+
+`sandboxed_shell`(`auto` | `prompt`、既定 `auto`)は、native sandbox の中で動く shell コマンドに
+承認を求めるかを決める。`auto` の Claude は `sandbox.autoAllowBashIfSandboxed = true` を生成する。
+Anthropic の「Sandboxing」によれば、`false` の間は「All Bash commands go through the regular
+permission flow, even when sandboxed」で、`git status` のような読み取りまで毎回確認になる。
+`true` でも、sandbox を外した再実行、`Bash(…)` の ask・deny 規則(pkexec の ask など)、
+重要パスへの `rm` は従来どおり審査される(Anthropic,
+[Sandboxing](https://code.claude.com/docs/en/sandboxing)、取得 2026-10-26)。Codex は
+`approval_policy = "on-request"` が同じ意味を持つ(OpenAI,
+[Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、取得 2026-10-26)ので、
+生成内容は変えない。
+
+書き込みは作業場所と一時領域、通信は宣言した宛先に OS が制限するので、恒久の allow 規則は増えない。
+一方、署名(`~/.gnupg` を sandbox が読ませない。#1050)と、`domains` に無い宛先への通信(git push、gh)は
+sandbox の中では動かず、sandbox を外した再実行として一回ずつ審査される。
+
+`prompt` から `auto` への変更は権限の拡大なので、`apply` は拒否し、`inspect` → `migrate` を要求する。
+`auto` から `prompt` は縮小なので自動で反映する。この欄が無い記録は `prompt` で審査された
+ものとして読む。
+
+**適用の順序に注意する。** 配備された `policy.json` と所有記録の `policy` が違う間は、`assess` が
+「policy changed」で失敗し、hook は inert な呼び出し以外の全ツールを拒否する。拡大を伴う変更は、
+本人の端末で次の順に、続けて行う。
+
+1. `nix build .#homeConfigurations.<host>.config.dotfiles.agentPermissions.policyFile --no-link --print-out-paths` で新しい policy のパスを得る。
+2. `agent-permissions reclaim` で、待機の許可を昇格候補のキューへ退避する。配備済みの
+   policy.json と記録が一致している間に行う。これを飛ばすと `migrate` が待機の許可を
+   キューに残さず取り除く。
+3. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check`。
+4. 直ちに `hms` で `policy.json` を配備する。
+
+3 と 4 の間は、配備済みの policy.json が旧版なので、この間も全ツールが止まる。短い間に済ませ、
+その間は本人の端末だけで作業する。
+
 `project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
 Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
 グローバルな通信許可へ昇格させず、native の一回の審査を使う。
@@ -204,6 +239,7 @@ agent-permissions migrate --restore "$journal"
 | D3: 既存ライブラリと router を拡張する | dotfiles `managed.rs` / `router.rs`、OpenAI [rules 読込 L668](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/exec_policy.rs#L668) | 別の認可エンジンや CLI fork を作らない。権限検査の失敗だけ拒否。軸: 還元 |
 | D4: 未配備の基盤、配備の順に PR を積む | dotfiles [ADR-0027](adr/0027-uncertainty-first-stacking.md) | 既存のセッション内チェーン規約と一致。軸: 還元 |
 | D5: 共有設定を残し、境界外は一回の審査にする | Anthropic, [Permissions](https://code.claude.com/docs/en/permissions)、[Sandboxing](https://code.claude.com/docs/en/sandboxing)、公開日未確認 | Read/Edit/WebFetch の native 意味と hook ask を利用。機体管理設定だけの統制は採らない。軸: 還元 |
+| D6: sandbox の中で動く shell は自動で許可し、sandbox 外への再実行と ask・deny は審査する | Anthropic, [Sandboxing](https://code.claude.com/docs/en/sandboxing)、OpenAI, [Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、公開日はどちらも未確認 | auto-allow mode と `on-request` の仕様どおり。`prompt`→`auto` は拡大として reviewed migrate に回す(#1030 の R4 を保つ)。軸: 表現不可能 — 境界を OS の sandbox が強制する |
 
 既存手段: `crates/settings-reconcile/src/bin/agent-permissions.rs` — 拡張: `crates/settings-reconcile`。
 Claude の本体コードは非公開。固定版の根拠は Anthropic の
