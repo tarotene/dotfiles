@@ -55,6 +55,7 @@ pipeline = [
 # ---------------------------------------------------------------- nodes
 node = [
   { id = "codex-launcher", label = "codex launcher", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/codex-launcher", doc = "docs/agents/agent-permissions.md", auto = false },
+  { id = "pr-checks-wait", label = "pr-checks-wait", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/agents/pr-gate.md", auto = false },
   # --- SessionStart: 文脈の注入と前提の整備
   { id = "session-wrapup-start", label = "session-wrapup-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/session-wrapup", doc = "docs/agents/wrapup-inbox.md", auto = true },
   { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/agents/issue-index.md", auto = true },
@@ -279,6 +280,9 @@ edge = [
   { from = "close-linked-issues", to = "github", kind = "issue", label = "close Issues", pipelines = ["implement-to-pr"] },
   { from = "kiriban", to = "github", kind = "issue", label = "comment / label / request", pipelines = ["repo-governance"] },
   { from = "github", to = "pr-gate-stop", kind = "context", label = "checks / rules", pipelines = ["implement-to-pr"] },
+  { from = "github", to = "pr-checks-wait", kind = "context", label = "checks / rules", pipelines = ["implement-to-pr"] },
+  { from = "agent-session", to = "pr-checks-wait", kind = "invoke", label = "wait for CI", pipelines = ["implement-to-pr"] },
+  { from = "pr-checks-wait", to = "agent-session", kind = "context", label = "NG on 1 red / OK on required green", pipelines = ["implement-to-pr"] },
   { from = "pr-gate-stop", to = "agent-session", kind = "deny", label = "PR not done", pipelines = ["implement-to-pr"] },
 
   # === Findings to Issue

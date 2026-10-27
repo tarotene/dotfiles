@@ -49,6 +49,7 @@ let
     "Bash(gh pr list *)"
     "Bash(gh pr diff *)"
     "Bash(gh pr checks *)"
+    "Bash(pr-checks-wait *)"
     "Bash(gh issue view *)"
     "Bash(gh issue list *)"
 

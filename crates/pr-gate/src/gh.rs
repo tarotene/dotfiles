@@ -3,7 +3,6 @@
 
 use crate::trim_nl;
 use std::process::{Command, Stdio};
-use std::time::Duration;
 
 /// `gh <args>` の (成功したか, stdout 末尾改行除去)。起動できなければ `None`。
 pub fn gh(args: &[&str]) -> Option<(bool, String)> {
@@ -92,8 +91,11 @@ pub fn branch_rules(nwo: &str, base: &str) -> Option<String> {
 }
 
 /// `gh pr checks --json` の応答(失敗・空は `[]`)。
+///
+/// pending のチェックがあると gh は exit 8 を返す(`gh pr checks --help` の
+/// "Additional exit codes")。終了コードでなく、標準出力が配列として読めるかで採る。
 pub fn reported_checks(pr_num: &str, nwo: &str) -> String {
-    or_empty_array(gh_ok(&[
+    let out = gh(&[
         "pr",
         "checks",
         pr_num,
@@ -101,18 +103,59 @@ pub fn reported_checks(pr_num: &str, nwo: &str) -> String {
         nwo,
         "--json",
         "name,bucket,link,workflow",
-    ]))
+    ])
+    .map(|(_, s)| s)
+    .filter(|s| s.trim_start().starts_with('['));
+    or_empty_array(out)
 }
 
-/// terminal state まで待つだけの道具。exit code は acceptance criterion にしない
-/// (cli/cli#9973: 部分集合が pass した時点で早期終了することがある)ので、
-/// 結果は返さない。bash 版の `timeout "$CI_TIMEOUT" gh pr checks … --watch`。
-pub fn watch_checks(pr_num: &str, nwo: &str, required: bool, limit: Duration) {
-    let mut cmd = Command::new("gh");
-    cmd.args(["pr", "checks", pr_num, "-R", nwo]);
-    if required {
-        cmd.arg("--required");
-    }
-    cmd.args(["--watch", "--fail-fast", "--interval", "10"]);
-    let _ = process_control::output_with_timeout(&mut cmd, limit, None);
+/// PR の base ブランチ名。取得できなければ `None`。
+pub fn pr_base(pr_num: &str, nwo: &str) -> Option<String> {
+    gh_ok(&[
+        "pr",
+        "view",
+        pr_num,
+        "-R",
+        nwo,
+        "--json",
+        "baseRefName",
+        "-q",
+        ".baseRefName",
+    ])
+    .filter(|s| !s.is_empty())
+}
+
+/// PR の `mergeable`(`MERGEABLE` / `CONFLICTING` / `UNKNOWN`)。取得できなければ `None`。
+pub fn pr_mergeable(pr_num: &str, nwo: &str) -> Option<String> {
+    gh_ok(&[
+        "pr",
+        "view",
+        pr_num,
+        "-R",
+        nwo,
+        "--json",
+        "mergeable",
+        "-q",
+        ".mergeable",
+    ])
+    .filter(|s| !s.is_empty())
+}
+
+/// 現在のブランチの PR 番号(`pr-checks-wait` で PR を省いたとき)。
+pub fn current_pr_number(nwo: &str) -> Option<String> {
+    gh_ok(&["pr", "view", "-R", nwo, "--json", "number", "-q", ".number"]).filter(|s| !s.is_empty())
+}
+
+/// リポジトリの既定ブランチ名。取得できなければ `None`。
+pub fn default_branch(nwo: &str) -> Option<String> {
+    gh_ok(&[
+        "repo",
+        "view",
+        nwo,
+        "--json",
+        "defaultBranchRef",
+        "-q",
+        ".defaultBranchRef.name",
+    ])
+    .filter(|s| !s.is_empty())
 }

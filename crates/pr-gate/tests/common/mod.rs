@@ -20,7 +20,13 @@ use std::process::{Command, Stdio};
 ///   PR_GATE_STUB_RULES_FILE         : gh api rules/branches の応答(未指定なら [])
 ///   PR_GATE_STUB_RULES_FAIL=1       : gh api rules/branches を非ゼロ終了させる
 ///   PR_GATE_STUB_CHECKS_FILE        : gh pr checks --json の応答(未指定なら [])
-///   PR_GATE_STUB_WATCH_RC           : gh pr checks --watch の exit code(既定 0)
+///   PR_GATE_STUB_CHECKS_SEQ         : 指定すると CHECKS_FILE の代わりに、呼ぶたびに
+///     `<SEQ>.0` `<SEQ>.1` … を順に返す(最後の 1 つで止まる。進み具合は `<SEQ>.n`)
+///   PR_GATE_STUB_CHECKS_RC          : gh pr checks --json の exit code(既定 0。pending の 8 を再現する)
+///   PR_GATE_STUB_LOG                : 指定すると gh の全呼び出しの引数を 1 行ずつ追記する
+///   PR_GATE_STUB_RULES_DEFAULT_FILE : gh api rules/branches/main の応答(RULES_FILE より優先)
+///   PR_GATE_STUB_MERGEABLE          : gh pr view --json mergeable の応答(既定 MERGEABLE)
+///   PR_GATE_STUB_DEFAULT_BRANCH     : gh repo view の既定ブランチ名(未指定なら空 = 取得失敗)
 ///   PR_GATE_STUB_PR_BODY            : gh pr list が返す PR 本文(既定は
 ///     "Closes #1" + "No-Visual: selftest 既定本文" の 2 行)
 ///   PR_GATE_STUB_CHAIN_FILE         : gh pr list --state open(--head 無し)の応答
@@ -31,6 +37,7 @@ use std::process::{Command, Stdio};
 ///   PR_GATE_STUB_ALL_STATE          : gh pr list --state all が返す state
 pub const STUB_GH: &str = r#"#!/usr/bin/env bash
 jqbin="$(command -v jq)"
+[[ -n "${PR_GATE_STUB_LOG:-}" ]] && echo "$*" >> "$PR_GATE_STUB_LOG"
 case "$1" in
   pr)
     case "$2" in
@@ -62,13 +69,38 @@ No-Visual: selftest 既定本文}" \
         ;;
       checks)
         if [[ "$*" == *"--watch"* ]]; then
-          exit "${PR_GATE_STUB_WATCH_RC:-0}"
+          echo "stub: --watch は呼ばない設計" >&2
+          exit 97
         fi
-        if [[ -n "${PR_GATE_STUB_CHECKS_FILE:-}" && -f "${PR_GATE_STUB_CHECKS_FILE:-}" ]]; then
+        if [[ -n "${PR_GATE_STUB_CHECKS_SEQ:-}" ]]; then
+          S="${PR_GATE_STUB_CHECKS_SEQ}"
+          k=0; while [[ -f "$S.$((k+1))" ]]; do k=$((k+1)); done
+          n="$(cat "$S.n" 2>/dev/null || echo 0)"; (( n > k )) && n=$k
+          echo $((n+1)) > "$S.n"
+          cat "$S.$n"
+        elif [[ -n "${PR_GATE_STUB_CHECKS_FILE:-}" && -f "${PR_GATE_STUB_CHECKS_FILE:-}" ]]; then
           cat "${PR_GATE_STUB_CHECKS_FILE}"
         else
           echo '[]'
         fi
+        exit "${PR_GATE_STUB_CHECKS_RC:-0}"
+        ;;
+      view)
+        case "$*" in
+          *baseRefName*) printf '%s\n' "${PR_GATE_STUB_BASE:-main}" ;;
+          *mergeable*) printf '%s\n' "${PR_GATE_STUB_MERGEABLE:-MERGEABLE}" ;;
+          *number*) printf '%s\n' "${PR_GATE_STUB_PR_NUM:-37}" ;;
+          *) exit 1 ;;
+        esac
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  repo)
+    case "$2" in
+      view)
+        [[ -n "${PR_GATE_STUB_DEFAULT_BRANCH:-}" ]] || exit 1
+        printf '%s\n' "${PR_GATE_STUB_DEFAULT_BRANCH}"
         ;;
       *) exit 1 ;;
     esac
@@ -96,7 +128,9 @@ No-Visual: selftest 既定本文}" \
         if [[ "${PR_GATE_STUB_RULES_FAIL:-0}" == "1" ]]; then
           exit 1
         fi
-        if [[ -n "${PR_GATE_STUB_RULES_FILE:-}" && -f "${PR_GATE_STUB_RULES_FILE:-}" ]]; then
+        if [[ "$*" == *"rules/branches/main"* && -n "${PR_GATE_STUB_RULES_DEFAULT_FILE:-}" && -f "${PR_GATE_STUB_RULES_DEFAULT_FILE:-}" ]]; then
+          cat "${PR_GATE_STUB_RULES_DEFAULT_FILE}"
+        elif [[ -n "${PR_GATE_STUB_RULES_FILE:-}" && -f "${PR_GATE_STUB_RULES_FILE:-}" ]]; then
           cat "${PR_GATE_STUB_RULES_FILE}"
         else
           echo '[]'
@@ -127,6 +161,8 @@ pub const CHECKS_PARTIAL_PENDING: &str = r#"[{"name":"job-a","bucket":"pass","li
 pub const CHECKS_PARTIAL_FAIL: &str = r#"[{"name":"job-a","bucket":"pass","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"fail","link":"https://x/runs/1/job/12","workflow":"CI"}]"#;
 pub const CHECKS_QUIESCE_PASS: &str = r#"[{"name":"Shell script validation","bucket":"pass","link":"https://x/runs/2/job/21","workflow":"CI"}]"#;
 pub const CHECKS_QUIESCE_FAIL: &str = r#"[{"name":"Shell script validation","bucket":"fail","link":"https://x/runs/2/job/21","workflow":"CI"}]"#;
+pub const CHECKS_REQ_PASS_OTHER_PENDING: &str = r#"[{"name":"job-a","bucket":"pass","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"pass","link":"https://x/runs/1/job/12","workflow":"CI"},{"name":"altair","bucket":"pending","link":"https://x/runs/3/job/31","workflow":"Darwin"}]"#;
+pub const CHECKS_OTHER_FAIL_REQ_PENDING: &str = r#"[{"name":"job-a","bucket":"pending","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"pending","link":"https://x/runs/1/job/12","workflow":"CI"},{"name":"lint","bucket":"fail","link":"https://x/runs/4/job/41","workflow":"Lint"}]"#;
 pub const ZERO_OID: &str = "0000000000000000000000000000000000000000";
 
 pub struct Run {
@@ -329,7 +365,8 @@ impl Fx {
             .env("PR_GATE_ALLOWLIST", self.allowlist())
             .env("PR_GATE_CHECK_APPEAR_TIMEOUT", "0")
             .env("PR_GATE_QUIESCE", "0")
-            .env("PR_GATE_CI_TIMEOUT", "30")
+            .env("PR_GATE_CI_TIMEOUT", "0")
+            .env("PR_GATE_POLL_INTERVAL", "0.05")
             .env("CLAUDE_PROJECT_DIR", project)
             // G_prior の `git fetch origin <base>` をネットワークに出さない。
             .env("GIT_ALLOW_PROTOCOL", "file")
@@ -346,6 +383,33 @@ impl Fx {
             .unwrap();
         child.stdin.take().unwrap().write_all(stdin.as_bytes()).ok();
         let o = child.wait_with_output().unwrap();
+        Run {
+            code: o.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        }
+    }
+
+    /// `pr-checks-wait` を呼ぶ(stub の gh + 隔離した HOME)。
+    pub fn run_wait(&self, args: &[&str], envs: &[(&str, &str)]) -> Run {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_pr-checks-wait"));
+        c.args(args).env_clear().current_dir(&self.repo);
+        for k in ["LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"] {
+            if let Some(v) = std::env::var_os(k) {
+                c.env(k, v);
+            }
+        }
+        c.env("HOME", self.dir().join("home"))
+            .env("PATH", &self.path)
+            .env("PR_GATE_CHECK_APPEAR_TIMEOUT", "0")
+            .env("PR_GATE_QUIESCE", "0")
+            .env("PR_GATE_POLL_INTERVAL", "0.05")
+            .env("GIT_TERMINAL_PROMPT", "0");
+        Self::git_env(&mut c);
+        for (k, v) in envs {
+            c.env(k, v);
+        }
+        let o = c.stdin(Stdio::null()).output().unwrap();
         Run {
             code: o.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&o.stdout).into_owned(),

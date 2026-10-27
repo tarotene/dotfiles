@@ -261,6 +261,12 @@
   # `pr-title-check "<title>"` と打てるようにするために配備する。
   home.file.".local/bin/pr-title-check".source = "${pkgs.dotfiles-tools}/bin/pr-title-check";
 
+  # pr-checks-wait: PR の CI を「赤 1 件で即 NG、required 全緑で即 OK」で待つ CLI
+  # (crates/pr-gate、docs/agents/pr-gate.md)。Stop の G_CI と同じ判定関数を使う。
+  # `gh pr checks --watch` の代わりに run_in_background で呼ぶ(config/claude/CLAUDE.md
+  # 「待ち方」)。PATH で解決される実行可能ファイルなので ~/.local/bin に置く。
+  home.file.".local/bin/pr-checks-wait".source = "${pkgs.dotfiles-tools}/bin/pr-checks-wait";
+
   # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
   # docs/agents/adr-numbering.md — 番号を導入 PR の番号にすることで採番
   # 衝突を構造的に不可能にする決定). Both .github/workflows/ci.yml's
