@@ -184,6 +184,7 @@ fn request_id(message: &Value) -> Result<Option<RequestId>> {
 
 pub struct Relay {
     permissions: String,
+    protected: bool,
     pending: HashMap<RequestId, ResponseKind>,
     threads: HashMap<String, ThreadState>,
 }
@@ -205,14 +206,107 @@ impl Relay {
     pub fn new(permissions: String) -> Self {
         Self {
             permissions,
+            protected: false,
             pending: HashMap::new(),
             threads: HashMap::new(),
         }
     }
 
+    /// Use for an app-server whose parent supplied credentials. The fixed
+    /// native TUI sends --cd for thread creation and cwd for each turn.
+    pub fn protected(permissions: String) -> Self {
+        Self {
+            protected: true,
+            ..Self::new(permissions)
+        }
+    }
+
+    fn validate_protected_request(&self, method: &str, params: &Value) -> Result<()> {
+        if matches!(
+            method,
+            "command/exec" | "process/exec" | "thread/shellCommand"
+        ) {
+            bail!("direct native commands are unavailable in a credential-bearing session; use native sandboxed tools");
+        }
+        if !matches!(
+            method,
+            "thread/start"
+                | "thread/resume"
+                | "thread/fork"
+                | "thread/settings/update"
+                | "turn/start"
+        ) {
+            return Ok(());
+        }
+        let params = params
+            .as_object()
+            .context("protected request requires object params")?;
+        if let Some(config) = params.get("config").filter(|value| !value.is_null()) {
+            let config = toml::Value::try_from(config).context("invalid per-thread config")?;
+            if codex_launcher::overrides_protections(&config) {
+                bail!("per-thread config overrides credential protections; relaunch after changing protected native settings");
+            }
+        }
+        for (key, expected) in [
+            ("approvalPolicy", "on-request"),
+            ("approvalsReviewer", "auto_review"),
+        ] {
+            if params
+                .get(key)
+                .filter(|value| !value.is_null())
+                .is_some_and(|value| value.as_str() != Some(expected))
+            {
+                bail!("{key} would override credential protections");
+            }
+        }
+        let creation = matches!(method, "thread/start" | "thread/resume" | "thread/fork");
+        if !creation {
+            if params
+                .get("sandboxPolicy")
+                .is_some_and(|value| !value.is_null())
+            {
+                bail!("legacy sandboxPolicy would override credential protections; keep the validated named profile");
+            }
+            if params
+                .get("permissions")
+                .filter(|value| !value.is_null())
+                .is_some_and(|value| value.as_str() != Some(self.permissions.as_str()))
+            {
+                bail!(
+                    "permission profile changes require relaunch and fresh credential validation"
+                );
+            }
+        }
+        // Native resume/fork can restore a different saved cwd. A missing cwd
+        // cannot be checked safely and is never replaced with the launch cwd.
+        match params.get("cwd").filter(|value| !value.is_null()) {
+            Some(cwd) => {
+                let cwd = cwd
+                    .as_str()
+                    .context("protected cwd must be a path string")?;
+                if !Path::new(cwd).is_absolute() {
+                    bail!("protected cwd must be absolute");
+                }
+                let selected = codex_launcher::validate_working_directory(Path::new(cwd))
+                    .map_err(anyhow::Error::msg)?;
+                if selected != self.permissions {
+                    bail!("native permission profile changed; relaunch to validate and acquire fresh credentials");
+                }
+            }
+            None if creation || method == "turn/start" => {
+                bail!("credential-bearing thread creation and turns require an explicit cwd; change to the intended directory in your terminal and relaunch codex-plan");
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
     pub fn from_client(&mut self, raw: &str, settings: &Settings) -> Result<Option<String>> {
         let mut value = parse_message(raw)?;
         let method = value["method"].as_str().unwrap_or_default().to_owned();
+        if self.protected {
+            self.validate_protected_request(&method, &value["params"])?;
+        }
         let creation = matches!(
             method.as_str(),
             "thread/start" | "thread/resume" | "thread/fork"

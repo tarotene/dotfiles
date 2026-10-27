@@ -33,10 +33,10 @@ struct Server {
 }
 
 impl Server {
-    fn spawn(native: &Path) -> Result<(Self, Reader, Writer)> {
-        let mut command = Command::new(native);
+    fn spawn(native: &Path, launch: codex_launcher::Launch) -> Result<(Self, Reader, Writer)> {
+        let prepared = codex_launcher::command(native, launch).map_err(anyhow::Error::msg)?;
+        let mut command = Command::from(prepared);
         command
-            .args(["app-server", "--listen", "stdio://"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -143,7 +143,8 @@ pub async fn discover(native: &Path, with_rates: bool) -> Result<Discovery> {
     let mut term = signal(SignalKind::terminate())?;
     let mut hangup = signal(SignalKind::hangup())?;
     let mut interrupt = signal(SignalKind::interrupt())?;
-    let (mut server, mut reader, mut writer) = Server::spawn(native)?;
+    let (mut server, mut reader, mut writer) =
+        Server::spawn(native, codex_launcher::Launch::DiscoveryServer)?;
     let check = async {
         rpc(
             &mut reader,
@@ -269,7 +270,7 @@ async fn relay(
     .await
     .context("TUI WebSocket handshake timed out")??;
     let (mut outgoing, mut incoming) = websocket.split();
-    let relay = std::sync::Mutex::new(Relay::new(permissions));
+    let relay = std::sync::Mutex::new(Relay::protected(permissions));
     // Poll both directions independently even while a pipe/socket write is
     // backpressured. Serial writes can deadlock against a busy native server.
     let to_server = async {
@@ -365,9 +366,12 @@ pub async fn launch(
     let socket_path = directory.path().join("rpc.sock");
     let listener = UnixListener::bind(&socket_path)?;
     let endpoint = format!("unix://{}", socket_path.display());
-    let (mut server, reader, writer) = Server::spawn(native)?;
+    let (mut server, reader, writer) =
+        Server::spawn(native, codex_launcher::Launch::SessionServer)?;
     let mut terminal = Terminal::capture();
-    let mut tui = Command::new(native)
+    let prepared = codex_launcher::command(native, codex_launcher::Launch::RemoteTui(Vec::new()))
+        .map_err(anyhow::Error::msg)?;
+    let mut tui = Command::from(prepared)
         .arg("--cd")
         .arg(std::env::current_dir()?)
         .args(tui_args(settings, &endpoint, resume, prompt))

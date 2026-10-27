@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+codex-launcher = { path = "../codex-launcher" }
 anyhow = "1"
 futures-util = { version = "0.3", features = ["sink"] }
 libc = "0.2"

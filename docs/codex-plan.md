@@ -415,3 +415,44 @@ Claude比較はAnthropic、[Pricing](https://platform.claude.com/docs/en/about-c
 このリポジトリのモデル選択・料金計算はこれらの公式データを使う。
 既存手段: `crates/codex-plan` — 拡張 — モデル取得・保存・中継を再利用し、
 新たなLLM判定・外部価格API・自動fallbackを追加しない。
+
+## GitHub 資格情報の起動経路
+
+既存手段: 拡張 — `codex-launcher` の保護検査・資格情報取得をライブラリとして共有する。
+`codex-plan` は情報表示とモデル探索の app-server、実セッションの app-server、
+remote TUI を区別する。GitHub 資格情報を取得するのは実セッション用の app-server だけである。
+通常 CLI と同じ版確認・native 保護設定検査を終えてから取得し、失敗時には
+実セッションを起動しない。TUI と探索用プロセスからは継承した GitHub token も除去する。
+
+端末で `gh auth login --hostname github.com` を実行した後は、新しい `codex-plan`
+を起動するか、`codex-plan resume <ID>` で再開起動する。端末の認証成功だけでは
+起動中セッションの復旧を示さない。新セッションの tool で次を実行し、
+ログイン名と対象 Issue の本文を読み戻して確かめる。
+
+```sh
+gh api user --jq .login
+gh issue view <NUMBER> -R <OWNER/REPO>
+issue-inbox --check-dup '<TITLE>' <OWNER/REPO>
+```
+
+資格情報を引数・設定・会話へコピーせず、broker が tool 用の置換値へ変換する。
+合成資格情報の `codex-launcher` 試験は両起動入口の取得順序、失敗時の未起動、
+探索・TUI の資格情報除去を検査する。実際の native broker とモデル送信の確認は
+上の opt-in 試験で行う。コードの根拠は
+[GitHub provider](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L14-L51)
+（OpenAI *Codex*、公開日不明、取得日 2026-10-27）。
+
+認証情報を持つ中継では、起動時だけでなく、新規・再開・派生と各 turn の明示的な
+作業ディレクトリを再検査する。設定の上書きで masking・proxy・承認方式を弱める要求、
+turn 中の権限 profile の切替、native の直接コマンド実行は拒否する。モデルと推論量は
+引き続き変更できる。cwd を持たない `PreserveExistingThread` の特殊な再接続は、
+保存先を推測して起動せず拒否する。その場合は意図したディレクトリから
+`codex-plan resume <ID>` で起動し直す。
+
+これは、固定版 app-server が要求の config を CLI override の後ろへ追加し、再開時には
+保存された cwd の設定も読み直すためである。OpenAI *Codex* `rust-v0.164.0`、公開日不明、
+取得日 2026-10-27:
+[config_manager.rs L565–577](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server/src/config_manager.rs#L565-L577)、
+[thread_processor.rs L4119–4121](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server/src/request_processors/thread_processor.rs#L4119-L4121)、
+[masking 無効時の扱い L4915–4951](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/config/mod.rs#L4915-L4951)。
+通常の remote TUI の起動・turn は cwd を送り、モデル操作はこの保護の対象外である。

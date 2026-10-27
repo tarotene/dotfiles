@@ -1,5 +1,6 @@
 //! Experiment commands and the per-launch draw, against the real binary and a
 //! tiny native-process fixture. No credentials or model requests.
+mod common;
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -8,6 +9,8 @@ use std::{
 };
 
 const NATIVE: &str = r#"#!/bin/sh
+if [ "$1" = --version ]; then echo "codex-cli 0.164.0"; exit; fi
+if [ "$1" = --config ]; then shift; shift; fi
 if [ "$1" = app-server ]; then
   while IFS= read -r line; do
     case "$line" in
@@ -30,6 +33,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
+        common::credentials(dir.path());
         let native = dir.path().join(".local/bin/codex");
         fs::create_dir_all(native.parent().unwrap()).unwrap();
         fs::write(&native, NATIVE).unwrap();
@@ -40,11 +44,13 @@ impl Fixture {
     }
     fn command(&self) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_codex-plan"));
-        c.env("HOME", self.dir.path())
+        c.env_remove("CODEX_HOME")
+            .env_remove("CODEX_PROFILE")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env("HOME", self.dir.path())
             .env("PATH", self.dir.path())
             .env("XDG_CONFIG_HOME", self.dir.path().join("config"))
             .env("XDG_STATE_HOME", self.dir.path().join("state"))
-            .env("CODEX_HOME", self.dir.path().join("native"))
             .env("FIXTURE_DIR", self.dir.path());
         c
     }
@@ -306,7 +312,7 @@ fn expired_or_stopped_experiments_and_resume_do_not_draw() {
 }
 
 fn write_rollout(dir: &Path, name: &str, lines: &[String]) {
-    let path = dir.join("native/sessions/2026/10/27").join(name);
+    let path = dir.join(".codex/sessions/2026/10/27").join(name);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, lines.join("\n")).unwrap();
 }

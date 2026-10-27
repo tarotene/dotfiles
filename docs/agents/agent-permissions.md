@@ -34,11 +34,28 @@ Codex の native writer は宣言した名前の profile だけを置き換え�
 
 ## 認証 launcher は native の保護を確かめる
 
-`crates/codex-launcher/src/main.rs` の `validate_config` は、認証付き起動の前に
+`crates/codex-launcher/src/lib.rs` の `validate_config` は、認証付き起動の前に
 `on-request` / `auto_review`、proxy と credential masking、選択した workspace profile を検査する。
 保護を上書きする profile・project 設定や別設定ホームは拒否し、確認した profile を起動時に指定する。
 CLI の版・引数も確認してから資格情報を渡す。共有の移行済み記録や hash への依存は無い。
 この検査は認証情報の引き渡し条件であり、全ツール呼び出しを共有所有検査へ通すものではない。
+
+通常 CLI と `codex-plan` は `codex_launcher::command` を共有する。
+起動種別は `Launch` の閉じた enum で、通常 CLI のセッションと固定の
+`app-server --listen stdio://` だけが保護検査後に `gh auth token --hostname github.com`
+を呼ぶ。継承した GitHub token は全種別で除去し、取得した値は実セッション用の
+子プロセス環境だけへ渡す。TUI・情報表示・モデル探索には渡さない。
+新規・再開・派生のために adapter を起動し直すと、その都度取得し直す。
+認証取得に失敗した場合は実セッションを起動せず、端末での再認証と
+セッションの再起動・再開起動を案内する。実行中の親の資格情報は更新されない。
+
+資格情報を tool の環境とモデル入力から隠す処理は、OpenAI *Codex* `rust-v0.164.0`
+(commit `6aaac694803004a63c6f393d153c96d22521a6b9`) の native broker に任せる。
+[GitHub provider L14–51](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L14-L51)
+の token 形状・環境変数・宛先制約を使い、独自の中継は追加しない
+（公開日不明、取得日 2026-10-27）。返された `Command` は資格情報を含みうるのでログに出さない。
+認証付き中継は各 thread / turn の cwd と設定を再検査する。権限切替・直接の native コマンド・
+cwd が不明な特殊再接続の制約は [codex-plan の起動経路](../codex-plan.md#github-資格情報の起動経路) に記す。
 
 ## 旧共有管理を撤去する
 

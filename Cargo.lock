@@ -222,6 +222,7 @@ name = "codex-plan"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "codex-launcher",
  "futures-util",
  "libc",
  "serde",
