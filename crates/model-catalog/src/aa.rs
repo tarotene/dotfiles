@@ -1,7 +1,7 @@
 //! Artificial Analysis(AA)の `/data/llms/models` の応答から、カタログの測定値(生成ブロック)を作る。
 //!
 //! 突き合わせは AA の行 ID(uuid)で行う。AA 公式が、slug や名前は変わりうるので ID を主キーに
-//! するよう推奨している(https://artificialanalysis.ai/api-reference、取得 2026-10-27)。
+//! するよう推奨している(<https://artificialanalysis.ai/api-reference>、取得 2026-10-27)。
 //! 取り込むのは、カタログの `[benchmark.*]` に定義済みのベンチだけで、値が null のものは載せない。
 
 use crate::{AaMeta, Catalog, Measurement};
