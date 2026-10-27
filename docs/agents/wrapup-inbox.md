@@ -77,7 +77,42 @@ flock は `--add` と `--mark-filed` の両方が取る。session_id フィル�
 複数セッションが同じ inbox に触るため、追記と置換の競合(行の消失・復活)を排他で防ぐ。
 
 Stop ゲートの stderr 指示は「起票成功または重複に再発コメントを追記した行だけ `--mark-filed`、
-失敗行は残して次ターンで再試行、直接編集は禁止」と明示する。
+失敗行は残す、直接編集は禁止」と明示する。
+
+## 取得障害では行を保持し、同じセッションの反復停止を抑える
+
+`--check-dup <title> [repo] --inbox <path> --session-id <session>` は任意のコンテキストを
+取る。`--inbox` と `--session-id` は組で指定する。従来のコンテキストなし呼び出しと
+終了コード `0`(重複なし) / `1`(重複) / `3`(判定不能)は維持する。
+Stop は自身のセッション ID を `--procedure <inbox> --session-id <session>` に渡し、
+手順書が示す重複確認コマンドにもこのコンテキストを含める。
+
+重複確認は外部取得の前に、該当する title・repo の inbox 行をロック下で読み取る。
+取得が失敗した場合だけ、その**行全体の完全一致スナップショット**を既存の
+`agent-session::ledger::SessionLedger` へ記録する。場所は inbox の state root の
+`lookup-failures/<sanitized-session-id>.jsonl`。イベントの中にも元の session ID と
+正規化した inbox パスを持たせ、ファイル名のサニタイズによる衝突を区別する。
+記録と読み取りはセッション台帳の隣の `.lock` で排他する。
+
+- Stop とコンテキスト付き手順書は、同じセッション・同じ inbox で実際に取得に失敗した
+  未変更の行だけを起票要求から除外する。inbox 自体は変更しない。取得中に追加された行、
+  変更された行、別セッションの行は要求対象になる。セッション ID が不明なら除外しない。
+- 明示的な `--check-dup` は常に外部取得を行う。コンテキスト付きの取得が成功したら、
+  重複の有無に関係なく、その title・repo の失敗記録を解除する。台帳は失敗と解除の
+  イベントを追記し、最後のイベントから状態を導出する。
+- 外部取得は10秒で打ち切り、終了コード `3` と理由を表示する。認証・通信・タイムアウトの
+  いずれでも inbox は保持する。台帳の記録に失敗した場合はその理由も表示する。
+  台帳が壊れている・読めない場合は起票要求を復活させる側に倒す。
+- この抑止は inbox の起票要求だけに適用する。フィードバック確認と振り返りは継続する。
+  inbox から削除できるのは、起票、再発コメント、または本人の除外裁定が済んだ行だけである。
+
+既存手段: 拡張 — `SessionLedger` の追記台帳を利用し、独立した「処理済み」正本を作らない。
+プロセスの制限時間は既存の `process-control::spawn_group` / `wait_with_timeout` を採用する。
+根拠: tarotene/dotfiles,
+[`agent-session/src/ledger.rs`](https://github.com/tarotene/dotfiles/blob/ac9866a869a683c6130e9fb1f5aa84b5425fb893/crates/agent-session/src/ledger.rs) と
+[`process-control/src/lib.rs`](https://github.com/tarotene/dotfiles/blob/ac9866a869a683c6130e9fb1f5aa84b5425fb893/crates/process-control/src/lib.rs)、
+公開日不明、取得 2026-10-27。前者はセッション単位の追記とプライベートなディレクトリを、
+後者は子プロセスのグループ起動と期限切れの回収を既に提供している。
 
 ## slug のリポジトリ単位化と自己修復マージ
 

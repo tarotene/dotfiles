@@ -784,7 +784,8 @@ fn feedback_and_inbox_combined() {
         r.stderr,
         format!(
             "{}\n\n{}\n",
-            stop_inbox_block(1, &inbox, r"Claude\ Code", "https://claude.com/claude-code"),
+            stop_inbox_block(1, &inbox, r"Claude\ Code", "https://claude.com/claude-code")
+                .replace("` and follow", r" --session-id a/b\ c` and follow"),
             feedback_block(&[&f1])
         )
     );

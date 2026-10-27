@@ -16,13 +16,14 @@
 //! 両実装が混在しても排他が成立する)。git と gh は外部コマンドのまま。
 
 pub use jq_json_compat::query as json;
+mod lookup_failure;
 pub mod shquote;
 
 use jq_json_compat::jqfmt::J;
 use jq_json_compat::jqparse::parse_stream;
 use std::ffi::OsStr;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Seek, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -498,6 +499,25 @@ pub fn mark_filed(inbox: &str, line: &str) -> Code {
 /// (その Issue 番号を stdout に 1 行出す。再発コメントの宛先) /
 /// 3 = 判定不能(gh 失敗。理由は stderr、#606)。
 pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
+    check_dup_with_context(self_path, title, repo, None)
+}
+
+fn check_dup_with_context(
+    self_path: &str,
+    title: &str,
+    repo: &str,
+    context: Option<lookup_failure::Context>,
+) -> Code {
+    let result = lookup(self_path, title, repo, std::time::Duration::from_secs(10));
+    if let Some(context) = context {
+        if let Err(error) = context.record(result == 3) {
+            eprintln!("check-dup: cannot update session failure ledger: {error}; inbox retained, deferral update failed");
+        }
+    }
+    result
+}
+
+fn lookup(self_path: &str, title: &str, repo: &str, limit: std::time::Duration) -> Code {
     let mut c = Command::new("gh");
     c.args(["issue", "list"]);
     if !repo.is_empty() {
@@ -511,19 +531,42 @@ pub fn check_dup(self_path: &str, title: &str, repo: &str) -> Code {
         "--json",
         "number,title",
     ]);
-    let out = match c.stdin(Stdio::inherit()).output() {
-        Ok(o) => o,
-        Err(_) => {
-            eprintln!("check-dup: gh issue list failed: {self_path}: gh: command not found ");
+    // Existing process-group timeout; seekable captures also avoid pipe-buffer stalls.
+    let output = (|| -> std::io::Result<_> {
+        let mut stdout = tempfile::tempfile()?;
+        let mut stderr = tempfile::tempfile()?;
+        c.stdin(Stdio::null())
+            .stdout(stdout.try_clone()?)
+            .stderr(stderr.try_clone()?);
+        let mut child = process_control::spawn_group(&mut c)?;
+        let status = process_control::wait_with_timeout(&mut child, limit);
+        stdout.rewind()?;
+        stderr.rewind()?;
+        let mut out = String::new();
+        let mut err = String::new();
+        stdout.read_to_string(&mut out)?;
+        stderr.read_to_string(&mut err)?;
+        Ok((status, out, err))
+    })();
+    let (status, stdout, stderr) = match output {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("check-dup: gh issue list failed: {self_path}: {error}");
             return 3;
         }
     };
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr).replace('\n', " ");
+    let Some(status) = status else {
+        eprintln!(
+            "check-dup: gh issue list timed out after {} seconds; inbox retained",
+            limit.as_secs()
+        );
+        return 3;
+    };
+    if !status.success() {
+        let err = stderr.replace('\n', " ");
         eprintln!("check-dup: gh issue list failed: {err}");
         return 3;
     }
-    let stdout = String::from_utf8_lossy(&out.stdout);
     // jq -e --arg t "$title" 'any(.[]; .title == $t)'
     let Ok(vals) = parse_stream(stdout.trim_end_matches('\n')) else {
         return 0;
@@ -699,12 +742,29 @@ pub fn attribution() -> (String, String) {
 
 /// `--procedure <inbox>` の手順書(LLM 向け hook 出力の書式は ADR-625)。
 pub fn procedure_text(self_path: &str, inbox: &str) -> String {
+    procedure_with_session(self_path, inbox, None)
+}
+
+fn procedure_with_session(self_path: &str, inbox: &str, session: Option<&str>) -> String {
+    let context = session
+        .map(|session| {
+            format!(
+                " --inbox {} --session-id {}",
+                shquote::printf_q(inbox),
+                shquote::printf_q(session)
+            )
+        })
+        .unwrap_or_default();
+    let eligible = session.map(|session| match lookup_failure::pending_lines(inbox, session) {
+        Ok(lines) => format!("\nOnly the following exact inbox lines require filing in this session (unchanged failed rows remain in the inbox). An explicit --check-dup retry always runs:\n{}\n", lines.join("\n")),
+        Err(error) => format!("\nCannot read session failure ledger: {error}; process all inbox lines.\n"),
+    }).unwrap_or_default();
     let (name, url) = attribution();
     format!(
-        r#"<hook-directive source="wrapup-stop-gate" kind="procedure">
+        r#"<hook-directive source="wrapup-stop-gate" kind="procedure">{eligible}
 Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
 Process the lines one by one:
-  1. Run '{self_path}' --check-dup "<title>" [repo] (pass repo if the line
+  1. Run '{self_path}' --check-dup "<title>" [repo]{context} (pass repo if the line
      has one; otherwise the target is this project's repository).
      exit 1 means an open Issue with the same title already exists (duplicate);
      its number is printed on stdout (when known) as <N>.
@@ -748,15 +808,26 @@ Do not edit the inbox directly (always go through --add / --mark-filed).
     )
 }
 
-fn stop_message(self_path: &str, inbox: &str, unlinked: &[String]) -> String {
+fn stop_message(
+    self_path: &str,
+    inbox: &str,
+    unlinked: &[String],
+    session: &str,
+    pending: usize,
+) -> String {
     let mut msg = String::new();
     if non_empty_file(inbox) {
         let (name, url) = attribution();
-        let count = newline_count(inbox);
+        let count = pending;
+        let context = if session.is_empty() || session == "unknown" {
+            String::new()
+        } else {
+            format!(" --session-id {}", shquote::printf_q(session))
+        };
         // エージェントが叩く --procedure にも Stop 起動時と同じフッター(Codex
         // は env で差し替える)が届くよう、env を明示的に前置したコマンドを示す。
         let cmd = format!(
-            "ATTRIBUTION_AGENT_NAME={} ATTRIBUTION_AGENT_URL={} {} --procedure {}",
+            "ATTRIBUTION_AGENT_NAME={} ATTRIBUTION_AGENT_URL={} {} --procedure {}{context}",
             shquote::printf_q(&name),
             shquote::printf_q(&url),
             shquote::printf_q(self_path),
@@ -825,7 +896,23 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
             }
             "--procedure" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --procedure <inbox>")?;
-                print!("{}", procedure_text(self_path, inbox));
+                let session = match arg(2) {
+                    "" => None,
+                    "--session-id" if args.len() == 4 => Some(need(
+                        3,
+                        "usage: --procedure <inbox> [--session-id <session>]",
+                    )?),
+                    _ => {
+                        return Err(usage_error(
+                            self_path,
+                            &Usage {
+                                param: 3,
+                                text: "usage: --procedure <inbox> [--session-id <session>]",
+                            },
+                        ))
+                    }
+                };
+                print!("{}", procedure_with_session(self_path, inbox, session));
                 0
             }
             "--migrate" => {
@@ -853,7 +940,43 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
             }
             "--check-dup" => {
                 let title = need(1, "usage: wrapup-stop-gate.sh --check-dup <title> [repo]")?;
-                check_dup(self_path, title, arg(2))
+                let mut repo = "";
+                let mut inbox = None;
+                let mut session = None;
+                let mut index = 2;
+                while index < args.len() {
+                    match arg(index) {
+                        "--inbox" if inbox.is_none() => { index += 1; inbox = Some(need(index, "usage: --inbox <path>")?); }
+                        "--session-id" if session.is_none() => { index += 1; session = Some(need(index, "usage: --session-id <session>")?); }
+                        value if index == 2 && !value.starts_with("--") => repo = value,
+                        _ => return Err(usage_error(self_path, &Usage { param: index + 1, text: "usage: --check-dup <title> [repo] [--inbox <path> --session-id <session>]" })),
+                    }
+                    index += 1;
+                }
+                let context = match (inbox, session) {
+                    (None, None) => None,
+                    (Some(inbox), Some(session)) => {
+                        match lookup_failure::Context::capture(inbox, session, title, repo) {
+                            Ok(context) => Some(context),
+                            Err(error) => {
+                                eprintln!(
+                                    "check-dup: cannot snapshot inbox: {error}; inbox retained"
+                                );
+                                None
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(usage_error(
+                            self_path,
+                            &Usage {
+                                param: 3,
+                                text: "--inbox and --session-id must be supplied together",
+                            },
+                        ))
+                    }
+                };
+                check_dup_with_context(self_path, title, repo, context)
             }
             "--chores-begin" => {
                 let inbox = need(1, "usage: wrapup-stop-gate --chores-begin <inbox>")?;
@@ -923,7 +1046,18 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
     let unlinked = unlinked_feedback_memories(&session_id);
     // `/backlog-cleanup` の実行中は、PR を作るまで inbox に行が残るのが正しい状態なので、
     // inbox の起票指示を出さない(#820)。フィードバックの Issue 化の指示は別物で、そのまま出す。
-    let inbox_shown: &str = if chores_active(&inbox) { "" } else { &inbox };
+    let pending = match lookup_failure::pending_lines(&inbox, &session_id) {
+        Ok(lines) => lines.len(),
+        Err(error) => {
+            eprintln!("wrapup-stop-gate: cannot read session failure ledger/inbox: {error}; filing requests remain enabled");
+            newline_count(&inbox).max(usize::from(non_empty_file(&inbox)))
+        }
+    };
+    let inbox_shown: &str = if chores_active(&inbox) || pending == 0 {
+        ""
+    } else {
+        &inbox
+    };
     if !non_empty_file(inbox_shown) && unlinked.is_empty() {
         return 0;
     }
@@ -938,7 +1072,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
         _ => return 0,
     }
 
-    let msg = stop_message(self_path, inbox_shown, &unlinked);
+    let msg = stop_message(self_path, inbox_shown, &unlinked, &session_id, pending);
     let _ = writeln!(std::io::stderr(), "{msg}");
     2
 }
