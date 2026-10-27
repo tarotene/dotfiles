@@ -292,7 +292,7 @@ mod tests {
         let g = &v["golden"]["execute"]["claude-sonnet-5-5:high"]["claude-sonnet-5-5:low"];
         assert_eq!(g.as_array().unwrap().len(), 2);
         assert_eq!(v["roles"].as_array().unwrap().len(), 2);
-        assert_eq!(v["models"].as_array().unwrap().len(), 4);
+        assert_eq!(v["models"].as_array().unwrap().len(), 6);
     }
 
     #[test]

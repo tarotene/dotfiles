@@ -124,9 +124,11 @@ dl.kv dd { margin: 0; }
         <input type="range" id="cap" min="1" max="25" step="0.5"></label>
       <label class="f">速さの許容幅 <span class="val" id="spdv"></span>
         <input type="range" id="spd" min="5" max="100" step="5"></label>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="only"> 基準と同等以上だけを表示</label>
       <button class="ghost" id="reset" type="button">既定に戻す</button>
     </div>
     <p class="small" id="role-note"></p>
+    <p class="small" id="count"></p>
     <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
     <div class="legend" id="legend"></div>
   </section>
@@ -209,7 +211,7 @@ function roleVerdict(roleId, refKey, candKey, m) {
 
 // ---- 状態 ----
 const DEFAULTS = { cap: D.margins.capability_points, spd: D.margins.speed_ratio };
-const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null };
+const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false };
 D.roles.forEach((r) => (S.refs[r.id] = r.default_reference));
 S.target = (D.models.find((m) => m.id === "gpt-6.1-sol") || D.models[0]).id;
 try {
@@ -218,10 +220,11 @@ try {
     if (saved.m && saved.m.cap > 0 && saved.m.spd > 0) S.m = { cap: saved.m.cap, spd: saved.m.spd };
     for (const r of D.roles) if (saved.refs && D.rows[saved.refs[r.id]]) S.refs[r.id] = saved.refs[r.id];
     if (saved.role && D.roles.some((r) => r.id === saved.role)) S.role = saved.role;
+    if (typeof saved.only === "boolean") S.only = saved.only;
   }
 } catch (_) { /* 保存できなくても既定で動く */ }
 function save() {
-  try { localStorage.setItem("model-equivalence", JSON.stringify({ m: S.m, refs: S.refs, role: S.role })); } catch (_) {}
+  try { localStorage.setItem("model-equivalence", JSON.stringify({ m: S.m, refs: S.refs, role: S.role, only: S.only })); } catch (_) {}
 }
 
 const model = (id) => D.models.find((m) => m.id === id);
@@ -251,6 +254,7 @@ function renderControls() {
   $("ref").addEventListener("change", (e) => { S.refs[S.role] = e.target.value; S.sel = null; save(); renderAll(); });
   $("cap").addEventListener("input", (e) => { S.m.cap = Number(e.target.value); save(); renderAll(); });
   $("spd").addEventListener("input", (e) => { S.m.spd = Number(e.target.value) / 100; save(); renderAll(); });
+  $("only").addEventListener("change", (e) => { S.only = e.target.checked; save(); renderAll(); });
   $("reset").addEventListener("click", () => { S.m = { ...DEFAULTS }; save(); renderAll(); });
   $("target").innerHTML = D.models.map((m) => `<option value="${esc(m.id)}">${esc(m.provider)} ${esc(m.name)}</option>`).join("");
   $("target").addEventListener("change", (e) => { S.target = e.target.value; renderPair(); });
@@ -263,30 +267,60 @@ function syncControls() {
   $("spd").value = Math.round(S.m.spd * 100); $("spdv").textContent = `±${Math.round(S.m.spd * 100)}%`;
   $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.role === S.role)));
   $("target").value = S.target;
+  $("only").checked = S.only;
   $("role-note").textContent = roleOf(S.role).note;
 }
 
+// 並びは、基準に対する判定から決める(基準を変えると、同等以上の候補が上に来る)。
+const RANK = { equivalent: 0, stronger: 0, insufficient: 1, weaker: 2 };
 function renderMatrix() {
   const ref = S.refs[S.role];
-  let html = `<thead><tr><th scope="col">モデル</th>${EFFORTS.map((e) => `<th scope="col">${esc(e)}</th>`).join("")}</tr></thead><tbody>`;
-  let prov = null;
+  const info = new Map();
+  let good = 0, all = 0;
   for (const m of D.models) {
-    if (m.provider !== prov) { prov = m.provider; html += `<tr class="prov"><th scope="rowgroup" colspan="${EFFORTS.length + 1}">${esc(prov)}</th></tr>`; }
-    const price = m.price ? `<span class="price">入力 $${m.price.input} / 出力 $${m.price.output} /100万tok</span>` : "";
-    html += `<tr><th scope="row">${esc(m.name)}${m.retired ? '<span class="tag">提供終了</span>' : ""}${price}</th>`;
-    for (const e of EFFORTS) {
-      if (!m.efforts.includes(e)) { html += `<td class="c"></td>`; continue; }
+    let best = 9;
+    const by = {};
+    for (const e of m.efforts) {
       const k = keyOf(m.id, e);
-      if (k === ref) { html += `<td class="c"><span class="cell base" aria-label="基準 ${esc(label(k))}">基準</span></td>`; continue; }
-      const r = roleVerdict(S.role, ref, k, S.m);
-      const x = VERDICT[r.v];
-      html += `<td class="c"><button type="button" class="cell v-${r.v}" data-k="${esc(k)}" aria-pressed="${S.sel === k}" aria-label="${esc(label(k))}: ${x.label}" title="${esc(label(k))}: ${x.label}"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></button></td>`;
+      if (k === ref) { best = -1; continue; }
+      const v = roleVerdict(S.role, ref, k, S.m).v;
+      by[e] = v;
+      best = Math.min(best, RANK[v]);
+      all++;
+      if (RANK[v] === 0) good++;
     }
-    html += `</tr>`;
+    info.set(m.id, { best, by });
+  }
+  const order = D.models.map((m, i) => ({ m, i }));
+  const provFirst = [...new Set(D.models.map((m) => m.provider))];
+  const provBest = {};
+  for (const { m } of order) provBest[m.provider] = Math.min(provBest[m.provider] ?? 9, info.get(m.id).best);
+  const provs = provFirst.slice().sort((a, b) => provBest[a] - provBest[b] || provFirst.indexOf(a) - provFirst.indexOf(b));
+  let html = `<thead><tr><th scope="col">モデル</th>${EFFORTS.map((e) => `<th scope="col">${esc(e)}</th>`).join("")}</tr></thead><tbody>`;
+  for (const prov of provs) {
+    const rows = order.filter((o) => o.m.provider === prov && (!S.only || info.get(o.m.id).best <= 0))
+      .sort((a, b) => info.get(a.m.id).best - info.get(b.m.id).best || a.i - b.i);
+    if (!rows.length) continue;
+    html += `<tr class="prov"><th scope="rowgroup" colspan="${EFFORTS.length + 1}">${esc(prov)}</th></tr>`;
+    for (const { m } of rows) {
+      const price = m.price ? `<span class="price">入力 $${m.price.input} / 出力 $${m.price.output} /100万tok</span>` : `<span class="price">価格は未登録</span>`;
+      html += `<tr><th scope="row">${esc(m.name)}${m.retired ? '<span class="tag">提供終了</span>' : ""}${price}</th>`;
+      for (const e of EFFORTS) {
+        if (!m.efforts.includes(e)) { html += `<td class="c"></td>`; continue; }
+        const k = keyOf(m.id, e);
+        if (k === ref) { html += `<td class="c"><span class="cell base" aria-label="基準 ${esc(label(k))}">基準</span></td>`; continue; }
+        const v = info.get(m.id).by[e];
+        if (S.only && RANK[v] > 0) { html += `<td class="c small" aria-hidden="true">—</td>`; continue; }
+        const x = VERDICT[v];
+        html += `<td class="c"><button type="button" class="cell v-${v}" data-k="${esc(k)}" aria-pressed="${S.sel === k}" aria-label="${esc(label(k))}: ${x.label}" title="${esc(label(k))}: ${x.label}"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></button></td>`;
+      }
+      html += `</tr>`;
+    }
   }
   const cap = $("matrix").querySelector("caption");
   $("matrix").innerHTML = html + `</tbody>`;
   $("matrix").appendChild(cap);
+  $("count").textContent = `基準と同等以上の候補は ${good} 件(全 ${all} 件。モデルごとの並びは、同等以上があるものが上)。`;
   $("matrix").querySelectorAll("button.cell").forEach((b) => b.addEventListener("click", () => { S.sel = b.dataset.k; renderMatrix(); renderDetail(); document.getElementById("h-detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
 }
 

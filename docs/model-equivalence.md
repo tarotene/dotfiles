@@ -48,6 +48,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 
 - 主データは Artificial Analysis(AA、第三者の計測機関)の API。Claude と GPT-6.1 Sol を low〜max の 5 段階ずつ、別の行で測っている。
   ハーネスは mini-swe-agent に固定(Claude Code・Codex では測っていない)。他社のモデルも同じ形で載る。
+- 価格を載せていないモデル(Claude Haiku 5.5、GPT-6.1 Terra)は、測定値だけを持ち、費用の比較(codex-plan)には出ない。`catalog.toml` の `[[model]]` は、価格の欄が全部そろったときだけ費用の比較に出る。
 - 取り込みは `model-catalog fetch-aa`。AA の行 ID(uuid)で突き合わせる(AA 公式が、名前や slug は変わりうるので ID を主キーに
   するよう推奨している)。生成ブロックだけを書き換え、応答に無い行と、追跡中の提供元の新しい行(新モデルの候補)を報告する。
 - 鍵は環境変数 `ARTIFICIAL_ANALYSIS_API_KEY`、無ければ login keyring(`secret-tool`、application=model-catalog
@@ -63,7 +64,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 
 `model-equivalence render --lens <lens.json> --out <page.html>` が、データとスクリプトを埋め込んだ単一の HTML を作る。ローカルで開く完全な文書が既定で、Artifact として公開するときは、公開側が文書の枠を付けるので `--fragment` で断片を出す。
 
-- 基準の (モデル × エフォート)を選ぶと、全組合せが 4 値のバッジで並ぶ。セルを押すと、ベンチごとの差の区間と許容幅の帯が出る。
+- 基準の (モデル × エフォート)を選ぶと、全組合せが 4 値のバッジで並ぶ。並びは基準に対する判定で決まり(同等以上のある提供元・モデルが上)、基準を変えると変わる。「基準と同等以上だけを表示」で絞り込める。セルを押すと、ベンチごとの差の区間と許容幅の帯が出る。
 - 役の切り替え、許容幅のスライダー、Plan 役 + 実行役の組の対応表、履歴の内訳、データの出典と限界(90 日を超えた出典は薄く表示)。
 - 判定の規則(境界の比較と役の束ね)は、スライダーを動かすために JS にも書かれている。重い計算(区間、速さの比)は Rust が
   事前に済ませて埋め込み、Rust が出した判定(2 通りの許容幅)をページが読み込み時に自分の判定と突き合わせる。ずれたら警告を出す。

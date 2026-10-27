@@ -228,6 +228,34 @@ high = "268525e2-f873-4178-bc07-e6a0ee1f002d" # claude-sonnet-5-5-high
 xhigh = "975aeaef-50bd-4a65-9c73-f1015adcd4d4" # claude-sonnet-5-5-xhigh
 max = "b171d979-5ec1-45de-b8b9-db1ee65e77ec" # claude-sonnet-5-5
 
+# 価格を載せていないモデル(測定値だけを持つ)。費用の比較には出ない。
+[[model]]
+id = "claude-haiku-5-5"
+provider = "anthropic"
+name = "Claude Haiku 5.5"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "42908ae3-d3bd-4934-be19-fbff93d3fde8" # claude-haiku-5-5-low
+medium = "af26fff4-8120-41be-a5f0-86aaea023f20" # claude-haiku-5-5-medium
+high = "20829974-af06-497e-9f42-77fb958d43b9" # claude-haiku-5-5-high
+xhigh = "41b5bf5e-daf6-42d9-b8d1-60e340a3028d" # claude-haiku-5-5-xhigh
+max = "7d064a11-6e78-4030-b535-cdf940615041" # claude-haiku-5-5
+
+[[model]]
+id = "gpt-6.1-terra"
+provider = "openai"
+name = "GPT-6.1 Terra"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "c955b262-a17f-4f1a-b097-6860b866295b" # gpt-6-1-terra-low
+medium = "c441e158-a87d-4116-911b-93325e4b4f1c" # gpt-6-1-terra-medium
+high = "ea3e1f50-f62d-41d2-849a-9af0413e4d37" # gpt-6-1-terra-high
+xhigh = "e8d443ba-8aca-4830-a186-ae869bb9c6fe" # gpt-6-1-terra-xhigh
+max = "b0c462cf-f2d0-4126-9434-28db9502219f" # gpt-6-1-terra
+
+
 # --------------------------------------------------------------- benchmarks
 # AA の API が現行モデルに値を返す評価だけを持つ(2026-10-27 の実測: 15 行すべてで非 null)。
 # コード指数・tau2・terminalbench_hard は同じ行で null だったので載せない。
@@ -762,4 +790,164 @@ hle = 0.55
 lcr = 0.826666666666667
 scicode = 0.61
 terminalbench_v4_0 = 0.636363636363636
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "low"
+aa_name = "Claude Haiku 5.5 (Low)"
+aa_slug = "claude-haiku-5-5-low"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 155.845
+median_time_to_first_token_seconds = 3.928
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 29.5
+hle = 0.27
+lcr = 0.72
+scicode = 0.492
+terminalbench_v4_0 = 0.126262626262626
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "medium"
+aa_name = "Claude Haiku 5.5 (Medium)"
+aa_slug = "claude-haiku-5-5-medium"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 147.231
+median_time_to_first_token_seconds = 6.688
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 34.5
+hle = 0.338
+lcr = 0.773333333333333
+scicode = 0.49
+terminalbench_v4_0 = 0.151515151515152
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "high"
+aa_name = "Claude Haiku 5.5 (High)"
+aa_slug = "claude-haiku-5-5-high"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 158.281
+median_time_to_first_token_seconds = 14.154
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 37.8
+hle = 0.373
+lcr = 0.773333333333333
+scicode = 0.487
+terminalbench_v4_0 = 0.217171717171717
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "xhigh"
+aa_name = "Claude Haiku 5.5 (Xhigh)"
+aa_slug = "claude-haiku-5-5-xhigh"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 182.35
+median_time_to_first_token_seconds = 38.732
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 41.2
+hle = 0.427
+lcr = 0.783333333333333
+scicode = 0.517
+terminalbench_v4_0 = 0.292929292929293
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "max"
+aa_name = "Claude Haiku 5.5 (Max)"
+aa_slug = "claude-haiku-5-5"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 235.237
+median_time_to_first_token_seconds = 246.975
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 43.4
+hle = 0.444
+lcr = 0.826666666666667
+scicode = 0.55
+terminalbench_v4_0 = 0.328282828282828
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "low"
+aa_name = "GPT-6.1 Terra (Low)"
+aa_slug = "gpt-6-1-terra-low"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.761
+median_time_to_first_token_seconds = 1.732
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 36.2
+hle = 0.358
+lcr = 0.81
+scicode = 0.524
+terminalbench_v4_0 = 0.151515151515152
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "medium"
+aa_name = "GPT-6.1 Terra (Medium)"
+aa_slug = "gpt-6-1-terra-medium"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.849
+median_time_to_first_token_seconds = 1.736
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 41.3
+hle = 0.402
+lcr = 0.806666666666667
+scicode = 0.516
+terminalbench_v4_0 = 0.323232323232323
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "high"
+aa_name = "GPT-6.1 Terra (High)"
+aa_slug = "gpt-6-1-terra-high"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 91.47
+median_time_to_first_token_seconds = 9.113
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 43.9
+hle = 0.433
+lcr = 0.823333333333333
+scicode = 0.516
+terminalbench_v4_0 = 0.419191919191919
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "xhigh"
+aa_name = "GPT-6.1 Terra (Xhigh)"
+aa_slug = "gpt-6-1-terra-xhigh"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.959
+median_time_to_first_token_seconds = 24.298
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 45.4
+hle = 0.437
+lcr = 0.816666666666667
+scicode = 0.534
+terminalbench_v4_0 = 0.464646464646465
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "max"
+aa_name = "GPT-6.1 Terra (Max)"
+aa_slug = "gpt-6-1-terra"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.933
+median_time_to_first_token_seconds = 203.707
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 48.1
+hle = 0.462
+lcr = 0.826666666666667
+scicode = 0.551
+terminalbench_v4_0 = 0.555555555555556
 # END GENERATED
