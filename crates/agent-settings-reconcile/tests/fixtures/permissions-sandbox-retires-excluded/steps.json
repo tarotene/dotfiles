@@ -1,0 +1,21 @@
+[
+  [
+    "claude-permissions",
+    {
+      "retire_allow": [],
+      "allow": [],
+      "ask": [],
+      "sandbox": {
+        "excluded_commands": [
+          "gh *",
+          "git commit *"
+        ],
+        "retire_excluded_commands": [
+          "git -C * commit *",
+          "git -C * push *",
+          "git -C * add *"
+        ]
+      }
+    }
+  ]
+]
