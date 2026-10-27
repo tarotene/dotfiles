@@ -96,6 +96,13 @@ pub struct Judgement {
     pub basis: String,
 }
 
+/// 点数 `p`(0..1)・課題数 `n` のベンチの分解能(点)。同じ点数どうしの差の 90% 区間の半幅で、
+/// 点数が同じ候補でも差の区間はここまで広がる。地図の距離(`map`)も同じ式で、ベンチの尺度を決める。
+pub fn resolution_points(p: f64, n: f64) -> f64 {
+    let (lo, hi) = newcombe_diff(p, n, p, n, Z90);
+    (hi - lo) / 2.0 * 100.0
+}
+
 /// 差の区間 `[lo, hi]` を許容幅 `margin` で 4 値に分ける。同等は、区間が ±margin の内側(境界を含まない)。
 pub fn classify_interval(lo: f64, hi: f64, margin: f64) -> Verdict {
     if lo > -margin && hi < margin {
@@ -143,8 +150,7 @@ pub fn capability(
     let margin = margin_points / 100.0;
     let (lo, hi) = newcombe_diff(c, f64::from(n), r, f64::from(n), Z90);
     j.interval = Some((lo * 100.0, hi * 100.0));
-    let (l0, h0) = newcombe_diff(r, f64::from(n), r, f64::from(n), Z90);
-    let resolution = (h0 - l0) / 2.0 * 100.0;
+    let resolution = resolution_points(r, f64::from(n));
     j.resolution_points = Some(resolution);
     j.verdict = classify_interval(lo, hi, margin);
     let where_ = match j.verdict {
