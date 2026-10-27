@@ -9,9 +9,14 @@
 //! 自分の計算と突き合わせて、ずれたら警告を出す。突き合わせるのは、役ごとの既定の基準 1 点に対する
 //! 全候補の、(1) 2 通りの許容幅での役の判定、(2) 判定に使うベンチごとの差の区間 `[下限, 上限]`。
 //! 埋め込みは行数に比例する(組合せの数には比例しない)。
+//!
+//! 近さの地図(`map`)の座標は、役ごと・尺度(許容幅の組)ごとに Rust が事前計算して埋め込む。座標は行数 ×
+//! 2 の数値だけで、組合せの数には比例しない。距離の式は JS にも要る(選んだ基準との距離を出すため)ので、
+//! 役ごとの既定の基準 1 点 × 全候補の距離も `golden.dist` として埋め込み、ページが突き合わせる。
 
 use crate::judge::{capability, compare, judged_benchmarks, Margins, Verdict};
 use crate::lens::Lens;
+use crate::map;
 use model_catalog::aa::{DEFAULT_EFFORT, EFFORT_VOCABULARY};
 use model_catalog::Catalog;
 use serde_json::{json, Map, Value};
@@ -185,6 +190,15 @@ pub fn build_data(
     //   v:  候補ごとに 2 文字(既定の許容幅・別の許容幅)の判定。基準自身は "--"。
     //   iv: 判定に使うベンチごとに、候補ごとの差の区間 [下限, 上限](点)。作れないものは null。
     let mut golden = Map::new();
+    // 近さの地図(役ごと)。座標は、既定の許容幅と別の許容幅の 2 通りの尺度で事前計算する(スライダーでは作り直さない)。
+    let by_key: std::collections::BTreeMap<String, &model_catalog::Measurement> = catalog
+        .measurements
+        .iter()
+        .map(|r| (key(&r.model, &r.effort), r))
+        .collect();
+    let meas: Vec<&model_catalog::Measurement> = keys.iter().map(|k| by_key[k]).collect();
+    let map_sets = [margins, GOLDEN_ALT];
+    let mut map_roles = Map::new();
     for (role, default_ref, judged) in &golden_specs {
         let (m, e) = split_ref(default_ref)?;
         let a = compare(catalog, role, (m, e), lens, margins)?;
@@ -240,9 +254,17 @@ pub fn build_data(
             }
             iv.insert(id.clone(), Value::Array(flat));
         }
+        let axes = map::axes(catalog, judged)?;
+        let vals: Vec<_> = meas.iter().map(|m| map::values(&axes, m)).collect();
+        let ref_idx = keys
+            .iter()
+            .position(|k| k == default_ref)
+            .expect("基準の存在は確認済み");
+        let (role_map, dist) = map::role_json(&axes, &vals, &map_sets, ref_idx);
+        map_roles.insert(role.clone(), role_map);
         golden.insert(
             role.clone(),
-            json!({"ref": default_ref, "v": v, "iv": Value::Object(iv)}),
+            json!({"ref": default_ref, "v": v, "iv": Value::Object(iv), "dist": dist}),
         );
     }
 
@@ -284,6 +306,7 @@ pub fn build_data(
         "effort_order": effort_order(catalog),
         "roles": roles, "benchmarks": benchmarks, "models": models, "rows": rows,
         "golden": golden, "lens": lens_json, "native_harness": native,
+        "map": {"min_common": map::MIN_COMMON, "stress_warn": map::STRESS_WARN, "roles": map_roles},
     }))
 }
 
@@ -514,9 +537,113 @@ mod tests {
         for role in ["plan", "execute"] {
             assert_eq!(v["golden"][role]["v"].as_str().unwrap().len(), 2 * n);
         }
+        // 近さの地図: 座標は行数 × 2 の数値だけ。500KB を超えない。
+        assert!(kb < 500, "地図を含めても 500KB 未満: {kb} KB");
+        let map_bytes = serde_json::to_string(&v["map"]).unwrap().len();
+        eprintln!("地図の座標: {} KB", map_bytes / 1024);
+        assert!(map_bytes < 100 * 1024, "{map_bytes} bytes");
+        for role in ["plan", "execute"] {
+            for set in v["map"]["roles"][role]["sets"].as_array().unwrap() {
+                let stress = set["stress"].as_f64().unwrap();
+                eprintln!(
+                    "{n} 行 {role} {}: stress {stress}、載せた点 {}、補った組 {}",
+                    set["margins"], set["n_points"], set["filled_pairs"]
+                );
+                assert!((0.0..=1.0).contains(&stress));
+                assert_eq!(set["pts"].as_array().unwrap().len(), 2 * n);
+            }
+        }
         // 事前計算していた頃の、組合せ数(行数の 2 乗)に比例した埋め込みが無いこと。
         let golden = serde_json::to_string(&v["golden"]).unwrap();
-        assert!(golden.len() < 60 * n * 4, "{} bytes", golden.len());
+        assert!(golden.len() < 90 * n * 4, "{} bytes", golden.len());
+    }
+
+    #[test]
+    fn map_embeds_a_coordinate_pair_per_row_for_each_role_and_scale() {
+        let c = data();
+        let v = build_data(c, Some(&lens()), &RenderOptions::default()).unwrap();
+        let n = c.measurements.len();
+        assert_eq!(v["map"]["min_common"], map::MIN_COMMON);
+        let roles = v["map"]["roles"].as_object().unwrap();
+        assert_eq!(roles.len(), 2);
+        for (role, m) in roles {
+            let sets = m["sets"].as_array().unwrap();
+            assert_eq!(sets.len(), 2, "既定と別の許容幅の 2 通り");
+            assert_ne!(sets[0]["margins"], sets[1]["margins"]);
+            for set in sets {
+                let pts = set["pts"].as_array().unwrap();
+                assert_eq!(pts.len(), 2 * n, "{role}: 行ごとに x と y");
+                let placed = pts.chunks(2).filter(|p| p[0].is_number()).count();
+                assert_eq!(placed as u64, set["n_points"].as_u64().unwrap());
+                assert!(placed >= 8, "{role}: 地図に載る点が少なすぎる: {placed}");
+                let stress = set["stress"].as_f64().unwrap();
+                eprintln!("{role} {}: stress {stress}", set["margins"]);
+                assert!((0.0..1.0).contains(&stress), "{role}: {stress}");
+            }
+            // 座標は、役の判定に使う成分(ベンチ + 速さ 2 つ)から作る。
+            let axes = m["axes"].as_array().unwrap();
+            assert!(axes.len() >= 3, "{role}: {axes:?}");
+        }
+        // 基準自身の距離は無く、ほかの行の距離が埋め込まれる。
+        for role in ["plan", "execute"] {
+            assert_eq!(v["golden"][role]["dist"].as_array().unwrap().len(), 2 * n);
+        }
+    }
+
+    #[test]
+    fn the_map_is_deterministic() {
+        let c = data();
+        let l = lens();
+        let a = build_data(c, Some(&l), &RenderOptions::default()).unwrap();
+        let b = build_data(c, Some(&l), &RenderOptions::default()).unwrap();
+        assert_eq!(a["map"], b["map"], "同じ入力は同じ座標");
+        assert_eq!(render_document(&a), render_document(&b));
+    }
+
+    #[test]
+    fn the_page_embeds_the_map_and_its_script_draws_it() {
+        let c = data();
+        let v = build_data(c, None, &RenderOptions::default()).unwrap();
+        let html = render_document(&v);
+        // 座標を埋め込んでいる(JSON のキーと、先頭の行の座標)。
+        assert!(html.contains("\"map\":{"), "map のデータ");
+        let first = &v["map"]["roles"]["plan"]["sets"][0]["pts"];
+        let x = serde_json::to_string(
+            first
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p.is_number())
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(html.contains(&x), "座標 {x}");
+        // 描画する側。
+        for needle in [
+            "id=\"mapsvg\"",
+            "function renderMap()",
+            "D.map.roles[S.role]",
+            "mapDistance(",
+        ] {
+            assert!(PAGE.contains(needle), "{needle}");
+        }
+        // 役ごとの地図と、スマートフォン幅で操作できる大きさの当たり判定・キーボード操作。
+        assert!(PAGE.contains("role=\"button\"") && PAGE.contains("tabindex=\"0\""));
+        assert!(
+            PAGE.contains("viewBox=\"0 0 360 360\"") && PAGE.contains("setAttribute(\"viewBox\"")
+        );
+    }
+
+    #[test]
+    fn the_page_core_notices_a_tampered_distance() {
+        let c = data();
+        let mut v = build_data(c, None, &RenderOptions::default()).unwrap();
+        let d = v["golden"]["plan"]["dist"].as_array_mut().unwrap();
+        let i = d.iter().position(|x| x.is_number()).unwrap();
+        d[i] = json!(d[i].as_f64().unwrap() + 0.5);
+        if let Some(r) = run_page_core(&v) {
+            assert_eq!(r["bad"].as_array().unwrap().len(), 1, "{r}");
+        }
     }
 
     #[test]
