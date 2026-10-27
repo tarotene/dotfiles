@@ -304,7 +304,8 @@ pub fn apply_mode(ref_given: bool, public_only: bool) -> ApplyMode {
 
 /// `last-apply.json` の内容(整形済みの JSON 1 件、末尾改行つき)。
 ///
-/// - `rev`: 適用した世代の dotfiles の rev(`generation_rev`。読めなければ null)
+/// - `rev`: 適用対象へ pin した public dotfiles の rev。解決できない経路は世代の
+///   表示用 marker を残す(読めなければ null)。wrapper 自体の rev は使わない。
 /// - `generation`: 適用後の profile の指す store path
 /// - `applied_at`: 適用を終えた時刻(unix 秒)
 pub fn apply_record_json(
@@ -382,6 +383,20 @@ pub struct FollowFacts<'a> {
     pub failed_rev: Option<&'a str>,
 }
 
+/// A recorded public source belongs only to the default apply that produced
+/// this exact generation. Shared by follow decisions, status, and --version.
+fn recorded_public_revision<'a>(
+    record: Option<&'a ApplyRecord>,
+    generation: &str,
+) -> Option<&'a str> {
+    let record = record?;
+    if record.mode != ApplyMode::Default || generation.is_empty() || record.generation != generation
+    {
+        return None;
+    }
+    record.rev.as_deref().filter(|rev| !rev.is_empty())
+}
+
 /// main へ追従するか、止めるか、何もしないかを決める。
 ///
 /// 追従済みかを先に見る: 検証用の世代でも、たまたま main の先頭と同じなら、止める
@@ -402,6 +417,9 @@ pub fn follow_decision(f: &FollowFacts) -> FollowAction {
     }
     if record.mode == ApplyMode::Explicit {
         return FollowAction::Stop(StopReason::ExplicitGeneration);
+    }
+    if recorded_public_revision(f.record, f.current_generation) == Some(main_rev) {
+        return FollowAction::Idle;
     }
     if f.failed_rev == Some(main_rev) {
         return FollowAction::Idle;
@@ -763,18 +781,44 @@ fn read_state_file(name: &str) -> Option<String> {
 }
 
 /// switch に成功した世代の記録を書く。
-fn write_apply_record(mode: ApplyMode) -> std::io::Result<()> {
+fn write_apply_record(
+    mode: ApplyMode,
+    public_rev: Option<&str>,
+    generation: &str,
+) -> std::io::Result<()> {
     let applied_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let text = apply_record_json(
+    let text = verified_apply_record_json(
         mode,
-        generation_rev().as_deref(),
-        &readlink_f(&profile_link()),
+        public_rev.or(generation_rev().as_deref()),
+        generation,
+        &verify::current_profile_generation(),
+        &readlink_f(&home().join(".local/state/home-manager/gcroots/current-home")),
         applied_at,
-    );
+    )?;
     write_state_file("last-apply.json", &text)
+}
+
+// Bind provenance to the target verified by this invocation, never a fresh
+// profile read: a foreign switch after verification must not become ours.
+fn verified_apply_record_json(
+    mode: ApplyMode,
+    rev: Option<&str>,
+    expected: &str,
+    profile: &str,
+    current_home: &str,
+    applied_at: u64,
+) -> std::io::Result<String> {
+    if expected.is_empty()
+        || verify::judge(expected, profile, current_home) != verify::Verdict::Active
+    {
+        return Err(std::io::Error::other(
+            "generation changed after verification; apply record not written",
+        ));
+    }
+    Ok(apply_record_json(mode, rev, expected, applied_at))
 }
 
 // ---------------------------------------------------------------------------
@@ -931,7 +975,12 @@ pub fn run(args: &[String]) -> i32 {
                 return 0;
             }
             "--version" | "-V" => {
-                println!("{}", version_line(generation_rev().as_deref()));
+                let record =
+                    read_state_file("last-apply.json").and_then(|text| parse_apply_record(&text));
+                let marker = generation_rev();
+                let revision = recorded_public_revision(record.as_ref(), &generation_at_start)
+                    .or(marker.as_deref());
+                println!("{}", version_line(revision));
                 return 0;
             }
             "--public-only" => public_only = true,
@@ -1073,11 +1122,15 @@ fn apply(
     // パス(`.` や checkout ディレクトリ)は常に現在のツリーを読むので refresh は不要。
     let ref_is_local = Path::new(&r#ref).exists();
     let ref_meta_json: String;
+    let mut public_rev = None;
     if !ref_is_local {
         println!("==> nix flake metadata --refresh {}", r#ref);
         match refreshed_revision(&r#ref) {
             Some((json, rev)) => {
                 println!("==> applying revision {rev}");
+                if r#ref == DEFAULT_REF {
+                    public_rev = Some(rev);
+                }
                 ref_meta_json = json;
             }
             None => {
@@ -1112,7 +1165,12 @@ fn apply(
     // ローカルパス適用は、そのパス単体を適用して private value module(bleep 自身の
     // denylist config を含む)をすべて落とす代わりに、`dotfiles` をそのパスへ override
     // した wrapper 経由にする。
-    let mut apply_ref = r#ref.clone();
+    // Resolve once and use that exact public revision for build, eval, switch,
+    // and the generation-bound record. A moving main must not change underneath
+    // the provenance recorded after a successful switch.
+    let mut apply_ref = public_rev
+        .as_ref()
+        .map_or_else(|| r#ref.clone(), |rev| format!("{DEFAULT_REF}/{rev}"));
     if plan == ApplyPlan::Route {
         // `realpath -m`(存在しなくても解決。ここでは ref_is_local なので存在する)
         let abs = std::fs::canonicalize(&r#ref)
@@ -1134,6 +1192,7 @@ fn apply(
     if plan != ApplyPlan::Route && !ref_meta_json.is_empty() {
         let locked = wrapper_locked_dotfiles_rev(&ref_meta_json);
         if !locked.is_empty() {
+            public_rev = Some(locked.clone());
             match refreshed_revision(DEFAULT_REF) {
                 Some((_, main_rev)) => {
                     if main_rev == locked {
@@ -1146,10 +1205,14 @@ fn apply(
                         );
                     }
                     extra_opts.extend(dotfiles_override_opts(&main_rev));
+                    public_rev = Some(main_rev);
                 }
-                None => eprintln!(
-                    "==> could not resolve {DEFAULT_REF} (offline?); applying the wrapper's lock as-is (dotfiles {locked})"
-                ),
+                None => {
+                    eprintln!("==> could not resolve {DEFAULT_REF} (offline?); applying the wrapper's locked dotfiles revision {locked}");
+                    // Even offline, pin the source whose identity we record;
+                    // a moving wrapper ref must not select a different lock.
+                    extra_opts.extend(dotfiles_override_opts(&locked));
+                }
             }
         }
     }
@@ -1269,7 +1332,11 @@ fn apply(
     // 照合の後に置くのは、食い違ったとき profile は別の適用の世代を指しており、
     // その前に記録すると他人の世代をこの経路で作ったと書いてしまうため。
     // 記録できなくても適用は失敗にしない。
-    if let Err(e) = write_apply_record(apply_mode(ref_given, public_only)) {
+    if let Err(e) = write_apply_record(
+        apply_mode(ref_given, public_only),
+        public_rev.as_deref(),
+        &verified.target,
+    ) {
         eprintln!(
             "Warning: 適用の記録({})を書けませんでした: {e}",
             state_dir().join("last-apply.json").display()
@@ -1514,7 +1581,9 @@ fn follow(wrapper_ref: &str) -> i32 {
     });
     match action {
         FollowAction::Idle => {
-            if current_rev.as_deref() == Some(main.as_str()) {
+            let recorded_current =
+                recorded_public_revision(record.as_ref(), &generation) == Some(main.as_str());
+            if current_rev.as_deref() == Some(main.as_str()) || recorded_current {
                 println!("==> hms --follow: 追従済みです(main {})", short_rev(&main));
                 if state != FollowState::default() {
                     write_follow_state(&FollowState::default());
@@ -2179,3 +2248,70 @@ mod tests {
 // probe 1
 // probe 2
 // probe 3
+
+#[cfg(test)]
+mod resolved_revision_tests {
+    use super::*;
+    #[test]
+    fn record_revision_requires_default_mode_and_the_verified_current_generation() {
+        let mut record = ApplyRecord {
+            mode: ApplyMode::Default,
+            rev: Some("main".into()),
+            generation: "/ours".into(),
+        };
+        let decide = |r: &ApplyRecord| {
+            follow_decision(&FollowFacts {
+                main_rev: Some("main"),
+                current_rev: Some("unknown (path input, no commit)"),
+                current_generation: "/ours",
+                record: Some(r),
+                failed_rev: None,
+            })
+        };
+        assert_eq!(decide(&record), FollowAction::Idle);
+        record.generation = "/foreign".into();
+        assert_eq!(recorded_public_revision(Some(&record), "/ours"), None);
+        assert_eq!(
+            decide(&record),
+            FollowAction::Stop(StopReason::ForeignGeneration)
+        );
+        record.generation = "/ours".into();
+        record.mode = ApplyMode::Explicit;
+        assert_eq!(recorded_public_revision(Some(&record), "/ours"), None);
+        assert_eq!(
+            decide(&record),
+            FollowAction::Stop(StopReason::ExplicitGeneration)
+        );
+        record.mode = ApplyMode::Default;
+        record.rev = Some("unknown (path input, no commit)".into());
+        assert_eq!(decide(&record), FollowAction::Apply);
+    }
+    #[test]
+    fn a_foreign_switch_after_verification_produces_no_owned_record() {
+        for (profile, current_home) in [
+            ("/foreign", "/ours"),
+            ("/ours", "/foreign"),
+            ("/foreign", "/foreign"),
+        ] {
+            assert!(verified_apply_record_json(
+                ApplyMode::Default,
+                Some("main"),
+                "/ours",
+                profile,
+                current_home,
+                1
+            )
+            .is_err());
+        }
+        let record = verified_apply_record_json(
+            ApplyMode::Default,
+            Some("main"),
+            "/ours",
+            "/ours",
+            "/ours",
+            1,
+        )
+        .unwrap();
+        assert_eq!(parse_apply_record(&record).unwrap().generation, "/ours");
+    }
+}

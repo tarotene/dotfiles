@@ -167,7 +167,7 @@ pub fn conflict_report(
 
 /// switch の前に済ませたこと。
 pub struct Prepared {
-    target: String,
+    pub(crate) target: String,
     /// 待っている間に別の適用が世代を切り替え、今回の switch がそれを置き換えるとき、
     /// 置き換える世代。
     replaces: Option<String>,

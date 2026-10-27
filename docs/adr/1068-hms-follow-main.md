@@ -88,3 +88,71 @@ switch の直前に、新しい世代を `nix build` で組む。`home-files/.co
 - 変異で、テストが落ちることを確かめた: ロックを常に取れたことにする、許可ポリシーの確認を外す、検証用の世代に追従する、通知の重複抑止を外す、失敗したコミットを覚えない、記録と別の世代を検出しない。
 - `cargo test -p pipeline-map` と、図の再生成(`docs/assets/pipeline-map/`)。
 - 実機での確認(ロックの待ち、macOS の flock、timer の起動、許可ポリシーの変更で止まること)は、本人の端末でしか確かめられないので、#1066 に払い出した。
+
+## Amendment (2026-10-27 — input override で失われる marker に、適用 revision の判定を依存させない)
+
+Issue #1118「input override で revision が unknown になると同じ main を再適用する」に対応する。
+実機では、marker と `last-apply.json.rev` がともに `unknown (path input, no commit)` で、
+記録の世代・profile・current-home が一致し、`mode = default` である状態を確認した。
+この状態を再現した隔離 fixture で、同じ main の再適用を確認した。実機の timer による反復は未観測である。
+timer を止めたことは修正の適用・復旧確認の代わりにはしない。
+
+### 原因は追加 input の override と marker の生成にある
+
+Determinate Nix 3.21.5 / Nix 2.34.8 の実機で、同じ public commit を固定した A/B を行った。
+追加 override なしでは marker がその commit、bleep の追加 override と `--no-write-lock-file` ありでは
+unknown になった。変更した lock を保存しない旨の警告は override に対応するもので、評価自体は成功した。
+marker は `self.rev or self.dirtyRev or "unknown (path input, no commit)"` から作る。
+
+この説明の一次ソースは Nix contributors, *Nix 2.34.8*、commit
+`f3f1c3c5b8ad91850e0f7c590cf177f7ab022024`。以下は取得日 2026-10-27。
+
+- [`flake.cc` L897–898](https://github.com/NixOS/nix/blob/f3f1c3c5b8ad91850e0f7c590cf177f7ab022024/src/libflake/flake.cc#L897-L898): 未保存の lock 変更で `forceDirty` を立てる。
+- [`flake.cc` L949–955](https://github.com/NixOS/nix/blob/f3f1c3c5b8ad91850e0f7c590cf177f7ab022024/src/libflake/flake.cc#L949-L955): root の source metadata にその flag を渡す。
+- [`fetchTree.cc` L43–63](https://github.com/NixOS/nix/blob/f3f1c3c5b8ad91850e0f7c590cf177f7ab022024/src/libexpr/primops/fetchTree.cc#L43-L63): `forceDirty` 時には `rev` を出さず、`dirtyRev` は元の input に属性がある場合だけ出す。
+- [`call-flake.nix` L73–87](https://github.com/NixOS/nix/blob/f3f1c3c5b8ad91850e0f7c590cf177f7ab022024/src/libflake/call-flake.nix#L73-L87): source metadata を flake の結果へ合わせる。
+- dotfiles, [`flake.nix` L349](https://github.com/tarotene/dotfiles/blob/77f73968b31b6146f41e79ba6c867f008929f548/flake.nix#L349): A/B の固定 revision での marker 生成式。
+
+インストール済み Determinate build の内部ソースそのものは未取得である。
+pinned upstream は原因を説明する資料、実機 A/B はそのバイナリでの挙動の証拠として区別する。
+
+### 裁定は適用対象を固定し、その revision と世代を結び付ける
+
+- D7: 直接の default 適用は metadata で解決した public revision に ref を固定してから build・eval・switch する。
+  先行例は上記 Nix の固定 revision と source metadata の区別。差分は marker の再読込を適用元の同定に使わず、
+  解決済みの同じ revision を処理全体で使うこと。軸: 表現不可能性。解決した revision と適用した対象のずれを避ける。
+- D8: wrapper 経由では実際の `dotfiles` override revision を使う。offline 時は wrapper の lock の
+  `dotfiles` revision に固定する。wrapper 自身の root revision を public revision にしない。
+  先行例は ADR-0034 の wrapper input 固定と本 ADR の適用記録。差分は記録にも同じ input の由来を使うこと。
+  軸: 表現不可能性。wrapper と public input の revision の混同を避ける。
+- D9: 適用記録は今回検証した target generation と public revision を結び付け、profile と current-home の一致を確認して書く。
+  follow が記録の revision を既適用の根拠に使うのは、現在の generation と記録が一致し、かつ `mode = default` の場合だけ。
+  `hms --version` と follow の状態表示にも同じ `recorded_public_revision` の判定を使い、
+  信頼できる default 記録が無い場合や explicit 世代では marker 表示へ戻す。
+  古い unknown 記録は main と同じ commit の証拠にしない。foreign / explicit の guard を先に保つ。
+  先行例は本 ADR の D2 と既存の適用後検証。差分は記録の revision で同じ main への再適用を止めること。
+  軸: 還元性。新しい台帳や同期機構を加えず、既存の検証済み記録を使う。
+
+既存手段: `hms` の metadata 解決・適用記録・適用後検証 — 拡張。
+marker の生成方式を別の同期機構へ置き換えたり、記録だけで foreign / explicit 世代を default と読み替えたりしない。
+
+### 検証は回帰試験と全ホストの復旧を区別する
+
+初期のスタブ再現では、unknown marker で同じ main へ 2 回 follow すると、home-manager 呼び出しが
+期待 1 回に対して 2 回になり RED。同じ bleep override の既知 marker 対照は GREEN、
+記録だけ既知 revision にした対照は RED だった。記録作成と follow の参照元の両方を修正対象とする根拠である。
+
+固定した修正前の baseline でも同じ再現が RED、`REPRO_KNOWN_MARKER=1` の対照が GREEN であることを独立に確認した。
+実装変更後は、リポジトリ内の回帰試験が次のコマンドで GREEN になった。
+
+```sh
+cargo test -p hms --test apply unknown_generation_marker_does_not_reapply_the_same_resolved_main
+```
+
+これはスタブの回帰確認であり、全ホストの timer・実際の switch の復旧確認ではない。
+既存の foreign / explicit 世代を守る試験、wrapper の provenance、build・eval・switch の同一 ref の確認も維持する。
+
+## 執行点
+
+- `crates/hms/src/lib.rs`
+- `crates/hms/src/verify.rs`

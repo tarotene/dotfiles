@@ -249,7 +249,7 @@ fn default_apply_runs_the_whole_runbook() {
     assert!(so.contains("==> applying revision deadbeef\n"));
     // extra_opts が空でも末尾の空白は残る(bash の `${extra_opts[*]}`)。
     assert!(so.contains(&format!(
-        "==> home-manager switch --flake {MAIN}#testhost -b backup \n"
+        "==> home-manager switch --flake {MAIN}/deadbeef#testhost -b backup \n"
     )));
     assert!(so.contains("==> systemctl --user daemon-reload\n"));
     assert!(so.contains("==> systemctl --user restart app-fcitx5@autostart.service\n"));
@@ -257,7 +257,7 @@ fn default_apply_runs_the_whole_runbook() {
     assert!(so.ends_with("Done.\n"));
     assert_eq!(
         t.hm_call().unwrap(),
-        format!("home-manager switch --flake {MAIN}#testhost -b backup")
+        format!("home-manager switch --flake {MAIN}/deadbeef#testhost -b backup")
     );
     let calls = t.calls();
     let pos = |needle: &str| calls.iter().position(|l| l.contains(needle)).unwrap();
@@ -357,7 +357,7 @@ fn wrapper_lock_already_current() {
         .contains("==> dotfiles revision oldrev (wrapper's lock already at this revision)\n"));
 }
 
-/// main が解決できない(offline)→ wrapper の lock をそのまま適用(override 無し)。
+/// main が解決できない(offline)→ 読み取った wrapper の public lock に固定する。
 #[test]
 fn wrapper_lock_applied_as_is_when_main_unresolvable() {
     let t = T::new();
@@ -366,11 +366,11 @@ fn wrapper_lock_applied_as_is_when_main_unresolvable() {
     let o = t.run(&[], &[]);
     assert!(o.status.success(), "{}", t.diag(&o));
     assert!(err(&o).contains(&format!(
-        "==> could not resolve {MAIN} (offline?); applying the wrapper's lock as-is (dotfiles oldrev)"
+        "==> could not resolve {MAIN} (offline?); applying the wrapper's locked dotfiles revision oldrev"
     )));
     assert_eq!(
         t.hm_call().unwrap(),
-        format!("home-manager switch --flake {WRAPPER}#testhost -b backup")
+        format!("home-manager switch --flake {WRAPPER}#testhost -b backup --override-input dotfiles {MAIN}/oldrev --no-write-lock-file")
     );
 }
 
@@ -415,7 +415,7 @@ fn bleep_main_is_overridden_after_a_passing_prebuild() {
     assert_eq!(
         t.hm_call().unwrap(),
         format!(
-            "home-manager switch --flake {MAIN}#testhost -b backup --override-input bleep github:tarotene/bleep/newbleep --no-write-lock-file"
+            "home-manager switch --flake {MAIN}/mrev#testhost -b backup --override-input bleep github:tarotene/bleep/newbleep --no-write-lock-file"
         )
     );
 }
@@ -431,7 +431,7 @@ fn bleep_main_falls_back_to_the_pin_when_prebuild_fails() {
     assert!(err(&o).contains("Warning: bleep main newbleep failed to build or failed the deployed-hook canary; applying the locked pin oldbleep instead."));
     assert_eq!(
         t.hm_call().unwrap(),
-        format!("home-manager switch --flake {MAIN}#testhost -b backup")
+        format!("home-manager switch --flake {MAIN}/mrev#testhost -b backup")
     );
 }
 
@@ -633,7 +633,7 @@ fn host_marker_wins_over_hostname_and_whitespace_is_stripped() {
     assert!(o.status.success(), "{}", t.diag(&o));
     assert_eq!(
         t.hm_call().unwrap(),
-        format!("home-manager switch --flake {MAIN}#starship -b backup")
+        format!("home-manager switch --flake {MAIN}/r#starship -b backup")
     );
 }
 
@@ -906,7 +906,7 @@ fn a_default_apply_records_how_the_generation_was_made() {
     assert!(o.status.success(), "{}", err(&o));
     let r = t.record().expect("a successful switch writes a record");
     assert_eq!(r["mode"], "default");
-    assert_eq!(r["rev"], "abc123");
+    assert_eq!(r["rev"], "deadbeef");
     assert_eq!(r["generation"], generation.to_str().unwrap());
     assert!(r["applied_at"].as_u64().unwrap() >= before);
     assert!(leftover_temp_files(&t).is_empty());
@@ -1139,7 +1139,7 @@ fn follow_applies_main_when_a_bare_hms_made_the_generation() {
     assert!(o.status.success(), "{}", err(&o));
     assert_eq!(
         t.hm_call().unwrap(),
-        format!("home-manager switch --flake {MAIN}#testhost -b backup")
+        format!("home-manager switch --flake {MAIN}/{NEW_REV}#testhost -b backup")
     );
     // switch の前に、新しい世代を組んで許可ポリシーを比べている。
     let calls = t.calls();
@@ -1147,7 +1147,7 @@ fn follow_applies_main_when_a_bare_hms_made_the_generation() {
         .iter()
         .position(|l| {
             l == &format!(
-                "nix build --no-link --print-out-paths {MAIN}#homeConfigurations.testhost.activationPackage"
+                "nix build --no-link --print-out-paths {MAIN}/{NEW_REV}#homeConfigurations.testhost.activationPackage"
             )
         })
         .expect("the new generation is built first");
@@ -1511,4 +1511,129 @@ fn follow_applies_identical_complete_native_specs_ignoring_retired_shared_policy
     assert!(o.status.success(), "{}", err(&o));
     assert_eq!(hm_calls(&t), 1);
     assert!(herdr_calls(&t).is_empty());
+}
+
+/// Input overrides can remove self.rev even for a resolved remote source. The
+/// apply record must identify the verified public source, not that display marker.
+#[test]
+fn unknown_generation_marker_does_not_reapply_the_same_resolved_main() {
+    let t = T::new();
+    followable(&t, r#"{"p":1}"#);
+    let marker = "unknown (path input, no commit)";
+    let generation = t.generation("remote-overridden", marker);
+    fs::write(t.stubs().join("target"), generation.to_str().unwrap()).unwrap();
+    fs::write(
+        t.home().join(".local/share/dotfiles/rev"),
+        format!("{marker}\n"),
+    )
+    .unwrap();
+    let mut metadata: serde_json::Value = serde_json::from_str(PUBLIC_META).unwrap();
+    metadata["revision"] = serde_json::json!(NEW_REV);
+    t.meta(MAIN, &metadata.to_string());
+    bleep_main(&t, "newbleep");
+    let package = fake_package(&t, r#"{"p":1}"#);
+    let applied = t.run(&[], &[("BUILD_OUT", &package)]);
+    assert!(applied.status.success(), "{}", t.diag(&applied));
+    assert_eq!(t.record().unwrap()["rev"], NEW_REV);
+    assert_eq!(
+        fs::read_to_string(t.home().join(".local/share/dotfiles/rev"))
+            .unwrap()
+            .trim(),
+        marker
+    );
+    assert!(t
+        .hm_call()
+        .unwrap()
+        .contains(&format!("--flake {MAIN}/{NEW_REV}#")));
+    let version = t.run(&["--version"], &[]);
+    assert!(version.status.success());
+    assert!(out(&version).contains(NEW_REV));
+    assert!(!out(&version).contains("unknown"));
+    let before = hm_calls(&t);
+    let follow = t.run(&["--follow"], &[("BUILD_OUT", &package)]);
+    assert!(follow.status.success(), "{}", t.diag(&follow));
+    assert_eq!(
+        hm_calls(&t),
+        before,
+        "same public main must not switch twice; record={:?}\n{}",
+        t.record(),
+        t.diag(&follow)
+    );
+}
+
+#[test]
+fn unknown_wrapper_marker_records_public_override_and_follow_is_idle() {
+    let t = T::new();
+    let generation = fake_generation(&t, "unknown (path input, no commit)");
+    t.marker("private-hub", WRAPPER);
+    t.meta(WRAPPER, WRAPPER_META);
+    t.meta(MAIN, &format!(r#"{{"revision":"{NEW_REV}"}}"#));
+    let applied = t.run(&[], &[]);
+    assert!(applied.status.success(), "{}", t.diag(&applied));
+    let record = t.record().unwrap();
+    assert_eq!(record["rev"], NEW_REV);
+    assert_eq!(record["generation"], generation.to_str().unwrap());
+    assert!(t
+        .hm_call()
+        .unwrap()
+        .contains(&format!("--override-input dotfiles {MAIN}/{NEW_REV}")));
+    let calls = hm_calls(&t);
+    let follow = t.run(&["--follow"], &[]);
+    assert!(follow.status.success(), "{}", t.diag(&follow));
+    assert_eq!(hm_calls(&t), calls);
+    assert!(out(&follow).contains("追従済み"));
+}
+
+#[test]
+fn offline_wrapper_records_and_applies_only_its_locked_public_revision() {
+    let t = T::new();
+    fake_generation(&t, "unknown (path input, no commit)");
+    t.marker("private-hub", WRAPPER);
+    t.meta(WRAPPER, WRAPPER_META);
+    let applied = t.run(&[], &[]);
+    assert!(applied.status.success(), "{}", t.diag(&applied));
+    assert_eq!(t.record().unwrap()["rev"], "oldrev");
+    assert!(t
+        .hm_call()
+        .unwrap()
+        .contains(&format!("--override-input dotfiles {MAIN}/oldrev")));
+}
+
+#[test]
+fn explicit_local_unknown_marker_never_claims_the_public_main_revision() {
+    let t = T::new();
+    fake_generation(&t, "unknown (path input, no commit)");
+    t.meta(MAIN, &format!(r#"{{"revision":"{NEW_REV}"}}"#));
+    let checkout = t.checkout();
+    let applied = t.run(&[checkout.to_str().unwrap()], &[]);
+    assert!(applied.status.success(), "{}", t.diag(&applied));
+    let record = t.record().unwrap();
+    assert_eq!(record["mode"], "explicit");
+    assert_eq!(record["rev"], "unknown (path input, no commit)");
+    let calls = hm_calls(&t);
+    let follow = t.run(&["--follow"], &[]);
+    assert!(follow.status.success(), "{}", t.diag(&follow));
+    assert_eq!(hm_calls(&t), calls);
+    assert!(
+        out(&follow).contains("検証用") || herdr_calls(&t).iter().any(|s| s.contains("検証用"))
+    );
+}
+
+#[test]
+fn foreign_generation_cannot_borrow_a_record_of_the_same_main() {
+    let t = T::new();
+    followable(&t, "{}");
+    let mut record = t.record().unwrap();
+    record["rev"] = serde_json::json!(NEW_REV);
+    record["generation"] = serde_json::json!("/other-generation");
+    fs::write(t.state().join("last-apply.json"), record.to_string()).unwrap();
+    let version = t.run(&["--version"], &[]);
+    assert!(version.status.success());
+    assert!(out(&version).contains(OLD_REV));
+    assert!(!out(&version).contains(NEW_REV));
+    let followed = t.run(&["--follow"], &[]);
+    assert!(followed.status.success(), "{}", t.diag(&followed));
+    assert_eq!(hm_calls(&t), 0);
+    assert!(!out(&followed).contains("追従済み"));
+    assert_eq!(herdr_calls(&t).len(), 1);
 }
