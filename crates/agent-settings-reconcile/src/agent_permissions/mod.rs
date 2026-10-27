@@ -1281,6 +1281,9 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         if !drop_ids.is_empty() {
             let n = reclaim::drop_candidates(&home, &drop_ids)?;
             println!("withdrew {n} candidate(s)");
+            if let Err(e) = reclaim::sync_note_from_env(&home) {
+                eprintln!("agent-permissions: vault のノートを更新できない: {e}");
+            }
             return Ok(());
         }
         let queue = reclaim::candidates(&home)?;
@@ -1355,12 +1358,15 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
             // Reclaim only returns files to what the record says, so it runs under the
             // reviewed policy even while an unreviewed expansion is deployed (#1060).
             let done = reclaim::reclaim(&load_record(&home)?.policy, &home, &projects)?;
+            if let Err(e) = reclaim::sync_note_from_env(&home) {
+                eprintln!("agent-permissions: vault のノートを更新できない: {e}");
+            }
             if output_json {
                 println!("{}", serde_json::to_string(&done).unwrap());
             } else {
                 println!(
-                    "reclaimed {} rule(s) in {} file(s); {} new candidate(s) queued",
-                    done.removed, done.files, done.queued
+                    "reclaimed {} rule(s) in {} file(s); {} new candidate(s) queued; {} already granted and withdrawn",
+                    done.removed, done.files, done.queued, done.dropped
                 );
             }
         }

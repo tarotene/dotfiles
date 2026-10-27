@@ -74,6 +74,26 @@ vault の外(`<state>/vault.lock`)に置く。
 
 軸: 表現不可能 — vault の場所の正本が 1 つになり、機構ごとに食い違う宣言が作れない。
 
+### D6: agent-permissions の昇格待ちキューは、vault の `decisions/` にノートとして写す。wrap-up inbox には積まない
+
+昇格待ちのキュー(承認済みの許可を共有ポリシーに昇格する候補。`agent-permissions pending`)は、**本人だけが裁定する
+許可の方針**で、エージェントが PR で直す気づきとは責務が違う。別リポジトリのセッションが、このキューを自分の片付けの
+対象と読んで、セッション終わりの Wrap-Up で止まった。キューを inbox に積むと、同じものを 2 か所で数えて件数がずれ、
+`/backlog-cleanup` が許可の方針を直す対象にしてしまう。そこで、キューを正本のまま、vault の
+`decisions/agent-permissions.md` に**写す**。回収(reclaim)と `pending --drop` がキューを変えるたびに、ノートを
+丸ごと書き直し、キューが空なら消す。書くのはキューと同じ処理だけなので、件数がずれない。SessionStart の注入文に
+「キューが記録の正本なので、セッションの終わりに報告・起票・wrap-up inbox への追加をしない」と書く。
+
+軸: 表現不可能 — ノートはキューから決まる写しで、書き手が 1 つなので、食い違いを作れない。
+
+### D7: 共有ポリシーが既に許可している規則は、回収のときに自動で取り下げる
+
+候補のうち、答えが一意に決まるもの(共有ポリシーが既に許可している)は、本人の裁定の対象にしない。判定は
+permission hook と同じ規則で、基準は審査済みの所有記録の policy(未審査の拡大を「許可済み」と誤認しない)。
+許可済みの規則は設定ファイルから取り除くがキューには積まず、キューに既にある分には `drop` 行を足す。
+
+軸: 還元 — 本人の裁定を、決める余地のある候補だけに絞る。
+
 ## Alternatives considered
 
 - **Issue のまま、`wrapup` ラベルで分けて、一覧と索引から外す**: Issue 起票の強制と、private な内容を
@@ -106,6 +126,7 @@ vault の外(`<state>/vault.lock`)に置く。
 - `home/modules/obsidian.nix`
 - `config/agents/skills/backlog-cleanup/SKILL.md`
 - `pipeline-map.toml`
+- `crates/agent-settings-reconcile/src/agent_permissions/reclaim.rs`
 
 ## Verification
 

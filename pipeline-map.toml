@@ -224,6 +224,7 @@ edge = [
   { from = "worklog", to = "obsidian-vault", kind = "file", label = "daily note rows", pipelines = ["implement-to-pr"] },
   { from = "session-wrapup-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
   { from = "agent-permissions-reclaim", to = "agent-session", kind = "context", label = "promotion candidates", pipelines = ["host-hygiene"] },
+  { from = "agent-permissions-reclaim", to = "obsidian-vault", kind = "file", label = "decisions/ note", pipelines = ["host-hygiene"] },
   { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
   { from = "worktree-base-sync", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },
   { from = "gpg-prewarm", to = "user", kind = "notify", label = "pinentry once", pipelines = ["implement-to-pr"] },

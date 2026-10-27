@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
+vault-note = { version = "0.1.0", path = "../vault-note" }
 indexmap = "2.14.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

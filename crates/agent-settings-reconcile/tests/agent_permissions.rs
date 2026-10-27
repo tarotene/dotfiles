@@ -1,4 +1,7 @@
-use agent_settings_reconcile::agent_permissions::reclaim::{candidates, drop_candidates, reclaim};
+use agent_settings_reconcile::agent_permissions::reclaim::{
+    candidates, covered, drop_candidates, drop_covered, promotion_target, reclaim, render_note,
+    sync_note, NOTE_REL,
+};
 use agent_settings_reconcile::agent_permissions::{apply, assess, check, inspect, migrate, Policy};
 use serde_json::{json, Value};
 use std::fs;
@@ -85,6 +88,9 @@ fn missing_git_is_reported_as_an_executable_failure_not_a_missing_setting() {
         .env("PATH", &empty_bin)
         .env_remove("CODEX_HOME")
         .env_remove("CLAUDE_CONFIG_DIR")
+        // 実機の vault に書かない(宣言は、テストが明示したときだけ)。
+        .env_remove("OBSIDIAN_VAULT")
+        .env_remove("XDG_CONFIG_HOME")
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -713,6 +719,9 @@ fn the_check_command_reports_pending_rules_without_failing() {
             .args(extra)
             .env_remove("CODEX_HOME")
             .env_remove("CLAUDE_CONFIG_DIR")
+            // 実機の vault に書かない(宣言は、テストが明示したときだけ)。
+            .env_remove("OBSIDIAN_VAULT")
+            .env_remove("XDG_CONFIG_HOME")
             .output()
             .unwrap()
     };
@@ -810,6 +819,9 @@ fn session_hooks_reclaim_and_tell_the_session_only_what_it_needs() {
             .env("HOME", &h)
             .env_remove("CODEX_HOME")
             .env_remove("CLAUDE_CONFIG_DIR")
+            // 実機の vault に書かない(宣言は、テストが明示したときだけ)。
+            .env_remove("OBSIDIAN_VAULT")
+            .env_remove("XDG_CONFIG_HOME")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -876,6 +888,9 @@ fn the_pending_command_lists_and_withdraws() {
             .arg(&h)
             .env_remove("CODEX_HOME")
             .env_remove("CLAUDE_CONFIG_DIR")
+            // 実機の vault に書かない(宣言は、テストが明示したときだけ)。
+            .env_remove("OBSIDIAN_VAULT")
+            .env_remove("XDG_CONFIG_HOME")
             .output()
             .unwrap()
     };
@@ -1177,4 +1192,256 @@ fn adding_an_mcp_tool_is_an_expansion_and_removing_one_narrows_back_to_prompt() 
     assert_eq!(claude["permissions"]["allow"], json!(["mcp__esa__b"]));
     assert_eq!(approval(h, "esa", "a").as_deref(), Some("prompt"));
     assert_eq!(approval(h, "esa", "b").as_deref(), Some("approve"));
+}
+
+// ---------------------------------------------------------------- 共有ポリシーにある規則の取り下げ
+
+fn granting_policy() -> Policy {
+    serde_json::from_value(json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":["~/.ssh"],"domains":["a.example"],"tools":"prompt",
+        "mcp_allow":["mcp__srv__tool"],"projects":[],
+        "project_rules":{"/work/proj":{"domains":["p.example"]}}}))
+    .unwrap()
+}
+
+#[test]
+fn covered_follows_the_permission_hooks_own_test() {
+    let p = granting_policy();
+    let any = Path::new("/elsewhere");
+    let in_proj = Path::new("/work/proj/sub");
+    // 通信先: 全体の domains、または、その場所を含む project_rules の domains。
+    assert!(covered(&p, any, "WebFetch(domain:a.example)"));
+    assert!(covered(&p, in_proj, "WebFetch(domain:p.example)"));
+    assert!(!covered(&p, any, "WebFetch(domain:p.example)"));
+    assert!(!covered(&p, in_proj, "WebFetch(domain:other.example)"));
+    // Codex の network_rule は、同じ通信先の宣言で足りる。
+    assert!(covered(
+        &p,
+        any,
+        r#"network_rule(host="a.example", protocol="https", decision="allow")"#
+    ));
+    // MCP ツール: mcp_allow に 1 つずつ。Codex のツールの approval_mode も、同じ宣言に写る。
+    assert!(covered(&p, any, "mcp__srv__tool"));
+    assert!(covered(
+        &p,
+        any,
+        "mcp_servers.srv.tools.tool.approval_mode=approve"
+    ));
+    assert!(!covered(&p, any, "mcp__srv__other"));
+    assert!(!covered(
+        &p,
+        any,
+        "mcp_servers.srv.tools.other.approval_mode=approve"
+    ));
+    assert!(!covered(&p, any, "apps.app.tools.t.approval_mode=approve"));
+    // サーバ全体(`mcp__srv`)・WebSearch・Bash・prefix_rule には、宣言が無い。
+    for rule in [
+        "mcp__srv",
+        "WebSearch",
+        "Bash(ls)",
+        r#"prefix_rule(pattern=["ls"], decision="allow")"#,
+    ] {
+        assert!(!covered(&p, any, rule), "{rule}");
+    }
+}
+
+#[test]
+fn promotion_targets_split_into_declarable_and_discard() {
+    assert!(promotion_target("WebFetch(domain:x.example)").contains("domains"));
+    assert!(promotion_target(
+        r#"network_rule(host="x.example", protocol="https", decision="allow")"#
+    )
+    .contains("domains"));
+    assert!(promotion_target("mcp__srv__tool").contains("mcp_allow"));
+    assert!(
+        promotion_target("mcp_servers.srv.tools.t.approval_mode=approve").contains("mcp_allow")
+    );
+    for rule in [
+        "WebSearch",
+        "Bash(ls)",
+        "mcp__srv",
+        "apps.a.tools.t.approval_mode=approve",
+    ] {
+        assert!(promotion_target(rule).contains("宣言なし"), "{rule}");
+    }
+}
+
+#[test]
+fn a_covered_rule_is_removed_from_the_file_but_never_queued() {
+    let (_d, h, project) = reviewed_project();
+    let p = policy(); // domains: ["github.com"]
+    let projects = vec![project.clone()];
+    fs::write(
+        local(&project),
+        json!({"permissions": {"allow": ["WebFetch(domain:github.com)", "WebSearch"]}}).to_string(),
+    )
+    .unwrap();
+    let done = reclaim(&p, &h, &projects).unwrap();
+    // どちらも設定ファイルから取り除くが、キューに積むのは、本人の裁定が要る方だけ。
+    assert_eq!((done.queued, done.removed, done.dropped), (1, 2, 0));
+    let rules: Vec<_> = candidates(&h)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.rule)
+        .collect();
+    assert_eq!(rules, ["WebSearch"]);
+    check(&p, &h, &projects).unwrap();
+}
+
+#[test]
+fn a_queue_filled_before_a_rule_joined_the_policy_is_tidied_with_nothing_waiting() {
+    let (_d, h, project) = reviewed_project();
+    let projects = vec![project.clone()];
+    let file = local(&project).canonicalize().unwrap();
+    let line = |rule: &str| {
+        json!({"v": 1, "ts": 1_793_059_200u64, "rule": rule, "file": file}).to_string()
+    };
+    fs::create_dir_all(h.join(".local/state/dotfiles")).unwrap();
+    fs::write(
+        h.join(".local/state/dotfiles/agent-permissions-pending.jsonl"),
+        format!(
+            "{}\n{}\n{}\n",
+            line("WebFetch(domain:github.com)"),
+            line("WebFetch(domain:later.example)"),
+            line("WebSearch")
+        ),
+    )
+    .unwrap();
+    assert_eq!(candidates(&h).unwrap().len(), 3);
+    // 設定ファイルに待機の許可は無い。それでも、既に許可済みのものは取り下げる。
+    let done = reclaim(&policy(), &h, &projects).unwrap();
+    assert_eq!((done.queued, done.removed, done.dropped), (0, 0, 1));
+    let mut rules: Vec<_> = candidates(&h)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.rule)
+        .collect();
+    rules.sort();
+    assert_eq!(rules, ["WebFetch(domain:later.example)", "WebSearch"]);
+    // 冪等。
+    assert_eq!(drop_covered(&policy(), &h).unwrap(), 0);
+    // 方針が広がったら(審査済みの記録に入ったら)、次の回収で、残りも取り下がる。
+    let mut wider = policy();
+    wider.domains.push("later.example".into());
+    let review = inspect(&wider, &h, &projects).unwrap();
+    migrate(&wider, &h, &projects, &review).unwrap();
+    assert_eq!(reclaim(&wider, &h, &projects).unwrap().dropped, 1);
+    assert_eq!(candidates(&h).unwrap().len(), 1);
+}
+
+// ---------------------------------------------------------------- vault の裁定ノート
+
+fn vault_at(d: &Path) -> vault_note::VaultNotes {
+    vault_note::VaultNotes::at(&d.join("vault"), &d.join("lock"))
+}
+
+#[test]
+fn the_decision_note_mirrors_the_queue_and_disappears_when_it_is_empty() {
+    let (d, h, project) = reviewed_project();
+    let projects = vec![project.clone()];
+    let vault = vault_at(d.path());
+    // 空のキューでは、ノートを作らない。
+    assert!(!sync_note(&h, &vault).unwrap());
+    assert!(vault.lock().unwrap().read(NOTE_REL).unwrap().is_none());
+
+    fs::write(
+        local(&project),
+        json!({"permissions": {"allow": ["WebFetch(domain:later.example)", "mcp__srv__tool", "WebSearch"]}}).to_string(),
+    )
+    .unwrap();
+    reclaim(&policy(), &h, &projects).unwrap();
+    assert!(sync_note(&h, &vault).unwrap());
+    let text = vault.lock().unwrap().read(NOTE_REL).unwrap().unwrap();
+    assert!(text.starts_with("---\ncount: \"3\"\n---\n"), "{text}");
+    assert!(text.contains("/promote-permissions"), "{text}");
+    for c in candidates(&h).unwrap() {
+        assert!(text.contains(&format!("`{}`", c.id)), "{text}");
+        assert!(text.contains(&format!("`{}`", c.rule)), "{text}");
+    }
+    assert!(text.contains("| 宣言なし(捨てる) |"), "{text}");
+    assert!(text.contains("mcp_allow(拡大"), "{text}");
+    // プロジェクトは `$HOME` 配下でないので、そのまま書く。
+    assert!(
+        text.contains(&project.canonicalize().unwrap().display().to_string()),
+        "{text}"
+    );
+    // 内容は、キューだけで決まる。もう一度写しても書き直さない。
+    assert!(!sync_note(&h, &vault).unwrap());
+    assert_eq!(render_note(&h, &candidates(&h).unwrap()), text);
+
+    // 全件を取り下げると、ノートが消える。
+    let ids: Vec<String> = candidates(&h).unwrap().into_iter().map(|c| c.id).collect();
+    drop_candidates(&h, &ids).unwrap();
+    assert!(sync_note(&h, &vault).unwrap());
+    assert!(vault.lock().unwrap().read(NOTE_REL).unwrap().is_none());
+    assert!(!sync_note(&h, &vault).unwrap());
+}
+
+#[test]
+fn the_hooks_and_the_pending_command_keep_the_vault_note_in_step() {
+    let (d, h, project) = reviewed_project();
+    fs::create_dir_all(h.join(".config/agent-permissions")).unwrap();
+    fs::write(
+        h.join(".config/agent-permissions/policy.json"),
+        serde_json::to_vec(&policy()).unwrap(),
+    )
+    .unwrap();
+    let vault_dir = d.path().join("vault");
+    fs::create_dir_all(vault_dir.join(".obsidian")).unwrap();
+    fs::write(vault_dir.join(".obsidian/app.json"), "{}").unwrap();
+    let note = vault_dir.join(NOTE_REL);
+    let run = |args: &[&str], stdin: &str| {
+        let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_agent-permissions"))
+            .args(args)
+            .env("HOME", &h)
+            .env("WRAPUP_STATE_DIR", d.path().join("wrapup"))
+            .env("OBSIDIAN_VAULT", &vault_dir)
+            .env_remove("XDG_CONFIG_HOME")
+            .env_remove("CODEX_HOME")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let cwd = json!({"cwd": project}).to_string();
+    fs::write(
+        local(&project),
+        r#"{"permissions":{"allow":["WebFetch(domain:later.example)"]}}"#,
+    )
+    .unwrap();
+    assert_eq!(run(&["hook", "session-end"], &cwd), "");
+    let text = fs::read_to_string(&note).unwrap();
+    assert!(text.contains("`WebFetch(domain:later.example)`"), "{text}");
+
+    // 注入文は、キューが記録の正本であることと、終わりに報告・起票しないことを言う。
+    let start = run(&["hook", "session-start"], &cwd);
+    assert!(start.contains("キューが記録の正本"), "{start}");
+    assert!(
+        start.contains("報告・起票・wrap-up inbox への追加はしない"),
+        "{start}"
+    );
+
+    // 取り下げると、ノートも消える。
+    let id = candidates(&h).unwrap()[0].id.clone();
+    run(
+        &["pending", "--drop", &id, "--home", h.to_str().unwrap()],
+        "",
+    );
+    assert!(!note.exists());
 }

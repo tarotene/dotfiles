@@ -23,6 +23,21 @@ use std::path::{Component, Path, PathBuf};
 /// ノートのファイル名(拡張子を除く)の上限(バイト)。
 const NAME_MAX_BYTES: usize = 150;
 
+// ---------------------------------------------------------------- 状態の置き場
+
+/// wrap-up の状態の置き場(排他ロック・inbox の jsonl・retro の台帳の親)。
+/// `${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/claude/wrapup`。
+pub fn state_dir() -> PathBuf {
+    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+    let base = env("WRAPUP_STATE_DIR")
+        .or_else(|| env("XDG_STATE_HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state")
+        });
+    base.join("claude/wrapup")
+}
+
 // ---------------------------------------------------------------- vault の解決
 
 /// 宣言されている vault の場所。`None` は宣言なし(環境変数もマーカーも無い)。

@@ -25,6 +25,11 @@ Each candidate gets one decision from the owner, never decided for them:
   individual approvals. Discard them. Do not save them as permanent allow rules.
 - After the owner decides, and after a promotion PR exists, withdraw the decided candidates:
   `agent-permissions pending --drop ID,ID`. An undecided candidate stays in the queue.
+- A candidate the shared policy already grants (under the reviewed record) is withdrawn
+  automatically at the next reclaim; it never needs a decision. The queue is mirrored into the
+  owner's vault as `decisions/agent-permissions.md` (rewritten on every change, removed when the
+  queue is empty). That note is where the owner finds what to decide; do not report, file an Issue
+  for, or add the queue to the wrap-up inbox at the end of a session.
 
 ## Procedure
 

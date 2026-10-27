@@ -284,6 +284,34 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 `mcp_allow` で 1 つずつ宣言する」に理由)。Codex のツールの `approval_mode` の候補は、`mcp_allow` に
 `mcp__<server>__<tool>` を足す形で昇格する。
 
+**共有ポリシーが既に許可している規則は、候補にしない(ADR-1136)。** 回収は、候補をキューに積む前に
+`covered` で判定する。判定は permission hook と同じ規則で、同じ基準 — **審査済みの所有記録の
+policy**(配備済みの `policy.json` ではない。未審査の拡大を「もう許可済み」と誤認して取り下げない。#1060 と
+同じ理由)— を使う。通信先(`WebFetch(domain:h)`、Codex の `network_rule(host="h", …)`)は、`domains`、または、
+その作業場所を含む `project_rules` の `domains` に `h` があれば許可済み。MCP ツール(`mcp__<server>__<tool>`、Codex の
+`mcp_servers.<server>.tools.<tool>.approval_mode=approve`)は、`mcp_allow` にあれば許可済み。`WebSearch`・
+`Bash(…)`・`prefix_rule`・サーバ全体の `mcp__<server>`・アプリのツールには宣言が無く、常に未許可。
+
+- 許可済みの規則は、設定ファイルから取り除くが、キューには積まない(個別の許可であることは変わらない)。
+- キューに既にある許可済みの候補には、`drop` 行を足して取り下げる。**待機の許可が 1 件も無くても**、回収の
+  最初にこれを行う(キューが、規則が方針に入る前に溜まっていても片付く)。方針が広がるのは、`inspect` と審査済みの
+  `migrate` を経て記録に入ったときなので、拡大した分は、その次の回収から取り下がる。
+- `agent-permissions reclaim` の出力に、取り下げた件数(`dropped`)が出る。
+
+**キューの写しを vault の `decisions/agent-permissions.md` に置く(ADR-1136)。** 回収と `pending --drop` が
+キューを変えるたびに、ノートを丸ごと書き直す(`vault-note` の一時ファイル + rename。内容が同じなら書かない)。
+キューが空ならノートを消す。ノートは、キューだけで決まる表(`id`・規則・プロジェクト・日付(JST)・昇格先)と、
+「`/promote-permissions` で裁定する」の一文で、日付など呼ぶたびに変わる値を持たない。昇格先は
+`promotion_target` が決める(通信先は `domains` か `project_rules.<project>.domains`、MCP ツールは `mcp_allow`
+(拡大: `inspect` と審査済みの `migrate` が要る)、それ以外は「宣言なし(捨てる)」)。vault を宣言していない機体では何も
+しない。vault に書けないとき(宣言が使えない)は、SessionStart で 1 行伝え、キューは残る。
+
+これは wrap-up inbox(エージェントの気づきを PR で直すもの)とは**別の責務**である。キューは本人だけが裁定する
+許可の方針で、`/backlog-cleanup` が直す対象ではない。そのため、SessionStart の注入文は「キューが記録の
+正本なので、セッションの終わりに報告・起票・wrap-up inbox への追加はしない」と言う(別リポジトリのセッションが、
+このキューを自分の片付けの対象と読んで、Wrap-Up で止まった。本人の裁定は `/promote-permissions` で、
+ノートがその入口になる)。
+
 ## MCP ツールは `mcp_allow` で 1 つずつ宣言する
 
 共有ポリシーの `mcp_allow`(`mcp__<server>__<tool>` の列。`*` は書けない)に載せた MCP ツールは、常に許可する(#1051)。

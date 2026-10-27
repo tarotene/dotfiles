@@ -315,6 +315,9 @@ l_external: "Sessions / services / state" {
   }
 }
 
+n_agent_session.l_session_start.n_agent_permissions_reclaim -> l_external.n_obsidian_vault: "decisions/ note" {
+  class: e_file
+}
 l_manual.n_hms -> l_manual.n_agent_settings_reconcile: "activation" {
   class: e_invoke
 }

@@ -155,10 +155,7 @@ pub fn self_path() -> String {
 
 /// `${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/claude/wrapup`
 pub fn state_root() -> String {
-    let base = env_nonempty("WRAPUP_STATE_DIR")
-        .or_else(|| env_nonempty("XDG_STATE_HOME"))
-        .unwrap_or_else(|| format!("{}/.local/state", home()));
-    format!("{base}/claude/wrapup")
+    vault_note::state_dir().to_string_lossy().into_owned()
 }
 
 /// 絶対パス slug(`tr '/.' '--'`)。

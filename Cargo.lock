@@ -29,12 +29,14 @@ dependencies = [
 name = "agent-settings-reconcile"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "indexmap",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "toml_edit",
+ "vault-note",
 ]
 
 [[package]]
