@@ -84,6 +84,22 @@ fn waits_until_required_turn_green() {
 }
 
 #[test]
+fn aggregate_job_that_appears_late_is_waited_for() {
+    // 集約ジョブ(CI passed 相当の job-b)は、他のジョブが pending の間は現れない。
+    // 出現待ちの上限(テストでは 0 秒)を過ぎても、pending がある間は待ち続ける。
+    let fx = Fx::new();
+    let seq = fx.dir().join("seq").display().to_string();
+    let pend =
+        r#"[{"name":"job-a","bucket":"pending","link":"https://x/runs/1/job/11","workflow":"CI"}]"#;
+    std::fs::write(format!("{seq}.0"), pend).unwrap();
+    std::fs::write(format!("{seq}.1"), pend).unwrap();
+    std::fs::write(format!("{seq}.2"), CHECKS_2PASS).unwrap();
+    let envs = with_rules(&fx, RULES_2, &[("PR_GATE_STUB_CHECKS_SEQ", seq.as_str())]);
+    let r = run(&fx, &["37", "--timeout", "30"], &envs);
+    assert_eq!(r.code, 0, "{}", r.all());
+}
+
+#[test]
 fn partial_set_that_is_green_is_not_ok() {
     // cli/cli#9973: 出現した部分集合(job-a)が緑でも、job-b が未出現なら OK にしない。
     let fx = Fx::new();

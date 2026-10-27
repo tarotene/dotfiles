@@ -680,6 +680,10 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 | 3 | E が空で、報告件数が `PR_GATE_QUIESCE` 秒静止(または出現待ちの上限)し pending が 0 | OK(静止による近似) |
 | — | それ以外 | 続行(上限で PENDING / MISSING / EMPTY) |
 
+required の未出現は、他のチェックが pending の間は出現待ちの上限(`PR_GATE_CHECK_APPEAR_TIMEOUT`)で打ち切らない。
+集約ジョブ(`CI passed`)は `needs` の完了までチェックとして現れないので、上限で打ち切ると、他のジョブが走っている
+最中に「揃っていない」と誤って返す。pending が 0 のまま現れないとき(workflow が起動していない)だけ、上限で MISSING にする。
+
 E の取り方は、base の ruleset の required → 空なら**既定ブランチの ruleset の required**
 → それも空なら quiesce。stacked PR で base が ruleset の対象外でも、CI は base を問わず
 同名のチェックを報告する(上の「ruleset のスコープと CI の報告は別軸」、#133)ので、

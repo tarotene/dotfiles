@@ -287,7 +287,12 @@ pub fn wait(
             } => {
                 let timed_out = t >= deadline;
                 if required {
-                    if !missing.is_empty() && (t >= appear_deadline || timed_out) {
+                    // required の未出現は、他のチェックが pending の間は出現待ちの上限で
+                    // 打ち切らない: 集約ジョブ(`CI passed`)は `needs` が終わるまで
+                    // チェックとして現れない。pending が 0 のまま現れないとき(workflow が
+                    // 起動していない)だけ、出現待ちの上限で Missing にする。
+                    let appear_expired = t >= appear_deadline && pending == 0;
+                    if !missing.is_empty() && (appear_expired || timed_out) {
                         return done(
                             Outcome {
                                 status: Status::Missing,
