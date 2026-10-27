@@ -15,9 +15,11 @@ agent-permissions pending --json   # candidates: id, rule, project
 
 Each candidate gets one decision from the owner, never decided for them:
 
-- `WebFetch(domain:…)`, and a Codex `network_rule(host="…", …, decision="allow")`, can become a policy declaration: `domains` (every project) or
-  `project_rules.<project>.domains` (one project), in the shared policy
-  (`home/modules/agent-permissions.nix`; a private host value goes in the private wrapper).
+- `WebFetch(domain:…)`, and a Codex `network_rule(host="…", …, decision="allow")`, can become a policy declaration:
+  `domains` (every project), in the shared policy
+  (`home/modules/agent-permissions.nix`; a private host value goes in the private wrapper). There is no per-project
+  declaration any more (`project_rules` was retired in #1099): a destination only one project needs stays a
+  per-session approval, or goes in `domains` if the owner accepts it for every project.
 - `mcp__<server>__<tool>` (one tool, no wildcard), and a Codex tool `approval_mode = "approve"`, can become a policy
   declaration: `mcp_allow` (`home/modules/agent-permissions.nix`). It is the one exception to "an individual allow
   lasts for the session", so present it to the owner as an expansion: it needs `inspect` and a reviewed `migrate`.

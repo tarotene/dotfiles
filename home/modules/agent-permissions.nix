@@ -18,13 +18,22 @@ let
       tools
       sandboxed_shell
       projects
-      project_rules
       ;
   }
   # Left out while empty, so the deployed file stays what an older reader accepts.
   // lib.optionalAttrs (cfg.mcp_allow != [ ]) { inherit (cfg) mcp_allow; };
 in
 {
+  imports = [
+    # Its one reader was the hook's WebFetch ask, which is gone (#1099).
+    (lib.mkRemovedOptionModule [ "dotfiles" "agentPermissions" "project_rules" ] ''
+      project_rules is retired: nothing reads it. Move the project paths to
+      dotfiles.agentPermissions.projects (they are still inventoried), delete the
+      per-project domains, then run agent-permissions inspect and migrate.
+      See docs/agents/agent-permissions.md.
+    '')
+  ];
+
   options.dotfiles.agentPermissions = {
     enable = lib.mkEnableOption "shared Claude and Codex permission boundaries";
 
@@ -110,20 +119,6 @@ in
       type = types.listOf types.str;
       default = [ ];
       description = "Project paths to inventory in addition to the active project (private wrapper values).";
-    };
-
-    project_rules = mkOption {
-      type = types.attrsOf (
-        types.submodule {
-          options.domains = mkOption {
-            type = types.listOf types.str;
-            default = [ ];
-            description = "Additional known destinations for this project only.";
-          };
-        }
-      );
-      default = { };
-      description = "Project-scoped declarations keyed by project path, without modifying shared repositories.";
     };
 
     policyFile = mkOption {

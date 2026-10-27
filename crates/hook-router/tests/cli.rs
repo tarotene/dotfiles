@@ -390,7 +390,7 @@ fn permission_home() -> (tempfile::TempDir, std::path::PathBuf) {
     std::fs::create_dir_all(&config).unwrap();
     let value = serde_json::json!({"version":1,"writable_roots":["workspace","temp"],
         "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt",
-        "projects":[],"project_rules":{}});
+        "projects":[]});
     std::fs::write(config.join("policy.json"), value.to_string()).unwrap();
     let policy: Policy = serde_json::from_value(value).unwrap();
     let review = inspect(&policy, home.path(), &[]).unwrap();
@@ -531,6 +531,38 @@ fn an_unsandboxed_shell_and_an_undeclared_fetch_are_left_to_claude() {
         assert!(
             out.stdout.is_empty(),
             "{tool} {args}: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+}
+
+/// #1099: `project_rules` is retired. A record written before carries it (empty,
+/// or with values a private wrapper once declared); the hook still reads it and
+/// stops no tool.
+#[test]
+fn a_record_written_before_project_rules_was_retired_still_lets_the_hook_run() {
+    let (home, workspace) = permission_home();
+    let record = home
+        .path()
+        .join(".local/state/dotfiles/agent-permissions.json");
+    for rules in [
+        serde_json::json!({}),
+        serde_json::json!({"/some/project":{"domains":["example.com"]}}),
+    ] {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+        value["policy"]["project_rules"] = rules.clone();
+        std::fs::write(&record, value.to_string()).unwrap();
+        let out = permission_call(
+            home.path(),
+            &workspace,
+            "Read",
+            serde_json::json!({"file_path":"plain.txt"}),
+        );
+        assert!(out.status.success());
+        assert!(
+            out.stdout.is_empty(),
+            "{rules}: {}",
             String::from_utf8_lossy(&out.stdout)
         );
     }
@@ -856,7 +888,7 @@ fn a_declared_mcp_tool_is_not_asked_about_and_the_rest_is_left_to_claude() {
     std::fs::create_dir_all(&config).unwrap();
     let value = serde_json::json!({"version":1,"writable_roots":["workspace","temp"],
         "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt",
-        "projects":[],"project_rules":{},
+        "projects":[],
         "mcp_allow":["mcp__declared__read","mcp__codex_apps__slack_send_message"]});
     std::fs::write(config.join("policy.json"), value.to_string()).unwrap();
     let policy: Policy = serde_json::from_value(value).unwrap();

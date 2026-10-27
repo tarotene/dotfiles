@@ -19,12 +19,6 @@ pub fn digest(bytes: &[u8]) -> String {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct ProjectRule {
-    pub domains: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct Policy {
     pub version: u32,
     pub writable_roots: Vec<String>,
@@ -46,7 +40,12 @@ pub struct Policy {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_allow: Vec<String>,
     pub projects: Vec<PathBuf>,
-    pub project_rules: BTreeMap<String, ProjectRule>,
+    /// Retired (#1099): its one reader was the WebFetch ask, which is gone. Read, so a
+    /// policy file or ownership record written before still parses; never written
+    /// (a record written by this version does not carry it); a non-empty value is
+    /// refused by [`Policy::load`]. Work places are listed in `projects`.
+    #[serde(default, skip_serializing)]
+    pub project_rules: BTreeMap<String, Value>,
 }
 
 fn default_sandboxed_shell() -> String {
@@ -70,6 +69,12 @@ impl Policy {
     pub fn load(path: &Path) -> Result<Self, String> {
         let p: Self =
             serde_json::from_slice(&read(path)?).map_err(|e| format!("{}: {e}", path.display()))?;
+        if !p.project_rules.is_empty() {
+            return Err(format!(
+                "{}: project_rules is retired; list the work places in projects and migrate",
+                path.display()
+            ));
+        }
         p.validate()?;
         Ok(p)
     }
@@ -105,11 +110,7 @@ impl Policy {
                 return Err(format!("invalid secret path: {path}"));
             }
         }
-        for domain in self
-            .domains
-            .iter()
-            .chain(self.project_rules.values().flat_map(|p| &p.domains))
-        {
+        for domain in &self.domains {
             if domain.is_empty()
                 || domain.contains(['/', ':', '*'])
                 || !domain
@@ -119,12 +120,7 @@ impl Policy {
                 return Err(format!("domain must be an exact hostname: {domain}"));
             }
         }
-        for path in self
-            .projects
-            .iter()
-            .map(PathBuf::as_path)
-            .chain(self.project_rules.keys().map(Path::new))
-        {
+        for path in self.projects.iter().map(PathBuf::as_path) {
             if !path.is_absolute() {
                 return Err(format!("project path must be absolute: {}", path.display()));
             }
@@ -249,7 +245,6 @@ pub fn inspect(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Rev
 
 fn all_projects(policy: &Policy, projects: &[PathBuf]) -> Vec<PathBuf> {
     let mut p = policy.projects.clone();
-    p.extend(policy.project_rules.keys().map(PathBuf::from));
     p.extend_from_slice(projects);
     p.sort();
     p.dedup();
@@ -429,11 +424,6 @@ pub fn apply(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
             .iter()
             .any(|p| !policy.secret_paths.contains(p))
         || policy.projects != old.projects
-        || policy.project_rules.iter().any(|(p, r)| {
-            old.project_rules
-                .get(p)
-                .is_none_or(|o| r.domains.iter().any(|d| !o.domains.contains(d)))
-        })
     {
         return Err(
             "permission expansion or source scope change requires inspect and reviewed migrate"

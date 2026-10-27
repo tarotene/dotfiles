@@ -26,9 +26,18 @@ network に使われる。Claude の WebFetch は、宣言の有無にかかわ�
 外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。例外は `mcp_allow` で
 宣言した MCP ツール 1 つずつだけである(下の「MCP ツールは `mcp_allow` で 1 つずつ宣言する」)。
 
-`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。かつては Claude の WebFetch の hook が
-現在の場所と照合していたが、hook がその ask を返さなくなったので、どこからも使われない(#1099 で削除する)。
-shell と Codex では、グローバルな通信許可へ昇格させず、native の審査を使う。
+プロジェクト限定の通信先の宣言(`project_rules`)は廃止した(#1099)。唯一の読み手は Claude の WebFetch の hook だった
+(現在の場所と照合していた)が、その ask を返さなくなり、どこからも使われなくなった。shell と Codex の通信先は、もとから
+`domains` だけを使う。作業場所のパスは `projects` に宣言する(棚卸しの対象になる)。
+
+- **互換。** `project_rules` の欄は、読むだけ残す。空の欄を持つ配備済みの `policy.json` と所有記録は、そのまま読める(全ツールは
+  止まらない)。この版が書く記録と review には載らない。`--policy` に空でない欄を渡すと、「`project_rules` は廃止」と
+  理由つきで拒否する。この版で `migrate` した記録を旧版のバイナリが読むと、欄が無いと拒否する(`mcp_allow` と同じ向きの
+  注意で、`hms` で旧版へ戻したあとは `migrate` を旧版でやり直す)。
+- **nix。** `dotfiles.agentPermissions.project_rules` に値を入れた設定は、評価の時点で「廃止」の案内つきで止まる
+  (`lib.mkRemovedOptionModule`)。非公開の wrapper が値を入れている機体は、wrapper を直す(パスは `projects` へ、通信先の
+  宣言は消す)。そのうえで、その機体で `inspect` → `migrate` を行う。この wrapper の確認は人手で、機体ごとに行う
+  (2026-10-27 時点で、vega の配備済みポリシーは 0 件。arcturus・altair は未確認)。
 
 ## sandbox の中で動く shell は自動で許可する
 
@@ -289,7 +298,7 @@ SessionStart は、回収した件数と、キューに溜まった昇格候補�
 セッションの開始を妨げない。
 
 昇格は `/promote-permissions` が担う(`agent-permissions pending` で候補を読む)。共有ポリシーに宣言があるのは
-通信先(`domains`・`project_rules.<project>.domains`)と MCP ツール(`mcp_allow`)なので、昇格できるのは
+通信先(`domains`)と MCP ツール(`mcp_allow`)なので、昇格できるのは
 `WebFetch(domain:…)`、Codex の `network_rule(… decision="allow")`、`mcp__<server>__<tool>` の候補である。
 `WebSearch`・`Bash(…)`・`prefix_rule` は、宣言を持たないので昇格できず、キューは記録にとどまる(下の「MCP ツールは
 `mcp_allow` で 1 つずつ宣言する」に理由)。Codex のツールの `approval_mode` の候補は、`mcp_allow` に
@@ -343,7 +352,7 @@ hook の `ask` は、設定の `allow` に勝つ(下の「優先順位の実測�
 |---|---|---|
 | 境界外の書き込み | Write・Edit・MultiEdit・NotebookEdit の対象が、作業場所と一時領域の外 | 本体の審査。Protected paths の例外として、そのセッションのプランファイルと自動メモリを通し、そのほかの保護パスは自動モードなら分類器に、そうでなければ本人に回す(Anthropic, "Permission modes", <https://code.claude.com/docs/en/permission-modes>、取得 2026-10-27、担当の報告の逐語引用。本線では未再取得) |
 | sandbox を外した Bash | `dangerouslyDisableSandbox` が true | 本体の審査。`classifyAllShell` で、自動モードでは毎回分類器が判断する |
-| 未宣言の通信先への WebFetch | 共有ポリシーの `domains` と `project_rules` に無い | 本体の審査 |
+| 未宣言の通信先への WebFetch | 共有ポリシーの `domains`(と、廃止した `project_rules`)に無い | 本体の審査 |
 
 残した判断は、本体が審査しないものだけである: 秘密パスへの Read・Write の deny、`mcp_allow` の素通り、書き込めない
 設定元(共有の設定・管理設定)の allow が覆う MCP ツールへの ask、その設定元が保持する Edit・範囲外の fetch の allow が
@@ -556,7 +565,7 @@ Claude の本体コードは非公開。固定版の根拠は Anthropic の
 | R7 | 「作業場所の外はその都度審査」「通常の資料は読める」「既知の宛先＋個別審査」 | native filesystem/network と hook |
 | R8 | 「表せない分は個別審査へ」「一回の本人承認を認める」 | sandbox 外実行・境界外の書き込み・未宣言の fetch の本体の審査(hook は ask を返さない。#1099) |
 | R9 | 「蓄積・ずれ・誤操作の防止」 | 所有記録、check、fail-closed の権限検査 |
-| R10 | 「プロジェクト固有分も共通管理」 | projects / project_rules、共有ファイルを編集しない |
+| R10 | 「プロジェクト固有分も共通管理」 | projects(`project_rules` は #1099 で廃止)、共有ファイルを編集しない |
 | R11 | 「未知の許可は提示して止める」 | unknown と review の適用拒否 |
 | R12 | 「一覧確認後に境界と審査へ置換」 | 承認済み一覧の再読込とハッシュ照合 |
 | R13 | sudachipy を「入れる件を起票すれば良い」 | 依存宣言済みと確認。runner を使わなかった原因を [#1029](https://github.com/tarotene/dotfiles/issues/1029) に記録 |

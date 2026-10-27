@@ -6,7 +6,7 @@ use std::path::Path;
 
 fn policy() -> Policy {
     serde_json::from_value(json!({"version":1,"writable_roots":["workspace","temp"],
-        "secret_paths":["~/.ssh","~/.codex/auth.json"],"domains":["github.com"],"tools":"prompt","projects":[],"project_rules":{}})).unwrap()
+        "secret_paths":["~/.ssh","~/.codex/auth.json"],"domains":["github.com"],"tools":"prompt","projects":[]})).unwrap()
 }
 fn put(home: &Path, path: &str, data: &str) {
     let path = home.join(path);
@@ -1179,4 +1179,41 @@ fn adding_an_mcp_tool_is_an_expansion_and_removing_one_narrows_back_to_prompt() 
     assert_eq!(claude["permissions"]["allow"], json!(["mcp__esa__b"]));
     assert_eq!(approval(h, "esa", "a").as_deref(), Some("prompt"));
     assert_eq!(approval(h, "esa", "b").as_deref(), Some("approve"));
+}
+
+#[test]
+fn project_rules_is_retired_old_files_still_parse_and_nothing_writes_it() {
+    let d = tempfile::tempdir().unwrap();
+    let base = json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt","projects":[]});
+    let load = |extra: Option<Value>| {
+        let mut v = base.clone();
+        if let Some(extra) = extra {
+            v["project_rules"] = extra;
+        }
+        let path = d.path().join("policy.json");
+        fs::write(&path, v.to_string()).unwrap();
+        Policy::load(&path)
+    };
+    // The shape every earlier deployment carries, and the shape without the field.
+    load(Some(json!({}))).unwrap();
+    let p = load(None).unwrap();
+    // A value is refused with the way out, not silently dropped.
+    let err = load(Some(json!({"/x":{"domains":["a.com"]}}))).unwrap_err();
+    assert!(
+        err.contains("project_rules is retired") && err.contains("projects"),
+        "{err}"
+    );
+    // Not written: the policy a migration records and the review carry no such key.
+    assert!(serde_json::to_value(&p)
+        .unwrap()
+        .get("project_rules")
+        .is_none());
+    let h = d.path().join("home");
+    fs::create_dir_all(&h).unwrap();
+    let review = inspect(&p, &h, &[]).unwrap();
+    assert!(serde_json::to_value(&review.policy)
+        .unwrap()
+        .get("project_rules")
+        .is_none());
 }
