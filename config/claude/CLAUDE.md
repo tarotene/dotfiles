@@ -124,6 +124,20 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
 - 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
 
+sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範囲):
+
+- **sandbox の中でよい**: `cargo test`・`cargo check`・`cargo metadata`・`cargo fmt`(`target/` は cwd 配下で書ける)、
+  `issue-inbox --add`・`--set-status`(書き込み先 `~/.local/state/claude` と vault は書き込み許可にある)、
+  scratchpad・`$TMPDIR` への書き込み。cargo を sandbox の外で回す必要は無い。
+- **sandbox の外が要る**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)、`~/.claude/new-tool-guard/state` に書く
+  `new-tool-guard register`(`Read-only file system` になる)。
+- **cwd はリポジトリのルートに保つ。** sandbox は、cwd と `cd` で入ったディレクトリごとに、書き込み禁止の代役
+  (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
+  (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する
+  ので壊れないが、代役は `rm` で消せず(`Device or resource busy`)、セッションが続く間は残る。
+- Unix ソケットを作るテスト(`codex-plan` の起動経路など)が sandbox の中で動くかは未確認(#1103 の起票時は
+  動かなかった)。動かなければ、CI で見る。
+
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で
