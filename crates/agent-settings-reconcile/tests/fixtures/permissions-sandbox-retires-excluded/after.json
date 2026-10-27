@@ -1,0 +1,14 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": [
+      "gh *",
+      "docker *",
+      "git commit *"
+    ]
+  },
+  "permissions": {
+    "allow": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": ["gh *", "git -C * commit *", "git -C * push *", "git -C * add *", "docker *"]
+  }
+}

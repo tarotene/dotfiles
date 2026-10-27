@@ -144,6 +144,13 @@ let
       deny_read = cfg.secretPaths;
       allow_write = cfg.allowWrite;
       excluded_commands = cfg.excludedCommands;
+      # #1169 が足したが、途中に `*` を持つパターンは効かないと分かった(#1164、#1173)。
+      # 配列は「宣言との和」なので、宣言から外しただけでは settings.json に残る。
+      retire_excluded_commands = [
+        "git -C * commit *"
+        "git -C * push *"
+        "git -C * add *"
+      ];
     };
   };
 in
