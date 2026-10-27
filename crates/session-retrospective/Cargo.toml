@@ -9,6 +9,8 @@ publish.workspace = true
 verdict-escalate = { version = "0.1.0", path = "../verdict-escalate" }
 agent-session = { version = "0.1.0", path = "../agent-session" }
 issue-inbox = { version = "0.1.0", path = "../issue-inbox" }
+git-repository = { version = "0.1.0", path = "../git-repository" }
+vault-note = { version = "0.1.0", path = "../vault-note" }
 serde_json = "1.0.151"
 
 [dev-dependencies]

@@ -1500,9 +1500,11 @@ name = "session-retrospective"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "git-repository",
  "issue-inbox",
  "serde_json",
  "tempfile",
+ "vault-note",
  "verdict-escalate",
 ]
 

@@ -89,3 +89,21 @@ hook に当たった事実は、モデルが気付いて `--add` したものし
 
 - `cargo test -p wrapup-stop-gate` — 発火条件・語彙・突き合わせ・上限・読み戻しの検査。
 - `nix build .#homeConfigurations.vega.activationPackage --no-link` — skill の配備が通る。
+
+## Amendment (2026-10-27 — ADR-1136)
+
+D6(可視化)を置き換える。全行を kind ごとの表にして **PR にコメントする**代わりに、`--retro-close` が
+台帳から vault の `retro/<年>/<日付>-<owner>-<repo>-<PR 番号>.md` に**決定論的に**書き出し、
+読み戻して一致を確かめてから完了にする。理由は 2 つ: PR の購読者に毎回通知が飛んで迷惑なこと、
+private な内容(振り返り)を公開リポジトリの PR に書く形になっていたこと。エージェントが表を書き直す
+手順(旧・手順書の step 4)は消える。台帳と表の食い違いは、描画が決定論なので起きない。
+vault を宣言していない機体では、台帳に残したまま完了にする(ADR-1136 D3 と同じ規則)。
+`kind: user-correction` の行は、`disposition: inbox` を拒否する(feedback は Issue にする。
+共有 AGENTS.md)。D1〜D5・D7・D8 は変更しない。D4 の「inbox の重複は捨てず、既存 Issue に再発コメントを
+積む」は、ADR-1136 でノートの行数に置き換わった。
+
+### 執行点
+
+- `crates/session-retrospective/src/lib.rs`
+- `crates/wrapup-stop-gate/tests/retro.rs`
+- `config/agents/skills/retro/SKILL.md`

@@ -399,9 +399,10 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   触れた checkout の baseline を記録して Stop で状態の差分を検出する(Bash 経由の
   迂回を字面でなく状態で捕まえる)。逃げ道なし、Claude と Codex 共通。
 - [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
-  強制する。出口(inbox → Issue)は wrap-up inbox と共有し、入口(閉語彙の
-  構造化記録 + 決定論的な出来事との突き合わせ)と強制を `wrapup-stop-gate` に
-  足す。重複した inbox 行は再発コメントとして積む。
+  強制する。出口(inbox → `/backlog-cleanup` での裁定)は wrap-up inbox と共有し、
+  入口(閉語彙の構造化記録 + 決定論的な出来事との突き合わせ)と強制を
+  `wrapup-stop-gate` に足す。全行は、台帳から vault の `retro/` のノートに決定論的に
+  書き出す(PR にはコメントしない。ADR-1136 の Amendment)。
 - [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
   task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
   決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
@@ -490,7 +491,7 @@ Design and rationale for the hooks and commands deployed from
   PR で一括対処する `/backlog-cleanup` の手順(ADR-387)。
 - [`retro.md`](agents/retro.md) — ADR-697: 作業終了時のレトロを
   `wrapup-stop-gate` の Stop で強制する(記録の語彙・突き合わせる出来事・
-  PR コメントでの可視化・上限と抜け道)。出口は wrap-up inbox と共有。
+  vault のノートへの書き出し・上限と抜け道)。出口は wrap-up inbox と共有。
 - [`verdict-escalate.md`](agents/verdict-escalate.md) — ADR-478:
   `wrapup-stop-gate` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
   なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
