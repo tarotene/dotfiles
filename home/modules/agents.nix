@@ -1746,10 +1746,84 @@ let
     in
     declared == "name: ${name}";
 
+  # Build regular-file trees before Home Manager links each skill directory.
+  # Refer to the complete source root so relative template links can resolve
+  # repo-governance-common while cp dereferences them.
+  governanceSkillNames = [
+    "rust-repo-governance"
+    "typst-repo-governance"
+    "astro-site-governance"
+  ];
+  browserReferenceSkillNames = [
+    "browser-login-handoff"
+    "pr-description"
+    "venue-search"
+    "inbox-adjudication"
+  ];
+  ciReferenceSkillNames = governanceSkillNames ++ [
+    "inbox-adjudication"
+    "pr-description"
+    "stacked-pr"
+    "github-audit-triage"
+  ];
+  skillDistributionNames = skillNames ++ [ "repo-governance-common" ];
+  skillDistributions = lib.genAttrs skillDistributionNames (
+    name:
+    pkgs.runCommand "agent-skill-${name}" { } ''
+      mkdir -p "$out"
+      cp -rL ${skillRoot}/${name}/. "$out/"
+      chmod -R u+w "$out"
+      ${lib.optionalString (builtins.elem name governanceSkillNames) ''
+        mkdir -p "$out/scripts" "$out/templates/.github/rulesets"
+        cp ${skillRoot}/repo-governance-common/scripts/{setup-hooks,apply-repo-settings}.sh "$out/scripts/"
+        for rule in ${skillRoot}/repo-governance-common/templates/.github/rulesets/*.json; do
+          target="$out/templates/.github/rulesets/$(basename "$rule")"
+          if [ ! -e "$target" ]; then cp "$rule" "$target"; fi
+        done
+      ''}
+      ${lib.optionalString (builtins.elem name browserReferenceSkillNames) ''
+        mkdir -p "$out/reference"
+        cp ${repoConfig}/agents/reference/browser-operations.md "$out/reference/"
+      ''}
+      ${lib.optionalString (builtins.elem name ciReferenceSkillNames) ''
+        mkdir -p "$out/reference"
+        cp ${skillRoot}/repo-governance-common/reference/ci-failures.md "$out/reference/"
+      ''}
+      # A distribution must not retain links back to the source tree.
+      test -z "$(find "$out" -type l -print -quit)"
+    ''
+  );
+  skillFiles = lib.listToAttrs (
+    lib.concatMap
+      (
+        root:
+        map
+          (name: {
+            name = "${root}/${name}";
+            value = {
+              source = skillDistributions.${name};
+              recursive = false;
+            };
+          })
+          (
+            builtins.filter (
+              name: root == ".claude/skills" || name != "browser-login-handoff"
+            ) skillDistributionNames
+          )
+      )
+      [
+        ".claude/skills"
+        ".agents/skills"
+      ]
+  );
+
 in
 assert lib.assertMsg (lib.all skillNameMatches skillNames)
   "Agent skill names must match their source directory";
 {
+  # Merge generated skill entries with the explicit hook/config declarations.
+  imports = [ { home.file = skillFiles; } ];
+
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
   # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
   # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
@@ -2171,504 +2245,10 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".claude/commands/promote-permissions.md".source =
     repoConfig + "/claude/commands/promote-permissions.md";
 
-  # diagramming: 作図するときの処方(ジャンル選択)と原則(接続不良防止・視認必須)。
-  # cases.md は追記型の失敗事例集で、追記時のサニタイズ規則は agent-tooling-authoring 側を見る。
-  home.file.".claude/skills/diagramming/SKILL.md".source =
-    repoConfig + "/agents/skills/diagramming/SKILL.md";
-  home.file.".claude/skills/diagramming/cases.md".source =
-    repoConfig + "/agents/skills/diagramming/cases.md";
-  # agent-tooling-authoring: 知見をこの公開リポジトリにスキル化するときのメタスキル
-  # (器の判断・配線チェックリスト・公開リポジトリ向けサニタイズ規則の正本)。
-  home.file.".claude/skills/agent-tooling-authoring/SKILL.md".source =
-    repoConfig + "/agents/skills/agent-tooling-authoring/SKILL.md";
-  # test-grounding: 複数の実コンポーネントが絡む検証項目・試験手順を書く前に、
-  # facts文書+層別モデルで一次資料に当たることを強制する個人スキル。
-  home.file.".claude/skills/test-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/test-grounding/SKILL.md";
-  home.file.".claude/skills/test-grounding/cases.md".source =
-    repoConfig + "/agents/skills/test-grounding/cases.md";
-  # living-description: Issue/PR の Description を正本として、コメントで裁定が
-  # 確定した時点で編集し続ける習慣。cases.md は追記型の失敗事例集。
-  home.file.".claude/skills/living-description/SKILL.md".source =
-    repoConfig + "/agents/skills/living-description/SKILL.md";
-  home.file.".claude/skills/living-description/cases.md".source =
-    repoConfig + "/agents/skills/living-description/cases.md";
-  # issue-ref-freshness: 他リポジトリの issue/PR を Open 前提で参照している
-  # 記述を、参照先の裁定(close・merge・not planned)を読んで書き直す手順。
-  # living-description の外部参照版。詳細は docs/agents/issue-ref-freshness.md。
-  home.file.".claude/skills/issue-ref-freshness/SKILL.md".source =
-    repoConfig + "/agents/skills/issue-ref-freshness/SKILL.md";
-  # pr-description: PR 本文の標準スケルトンと Before/After 視覚証跡の判断知識。
-  # 指針は全リポジトリで有効、強制(内容ではなく証跡の有無)は pr-gate の
-  # G_visual(~/.claude/pr-gate-repos の allowlist 内のみ)が担う。cases.md は
-  # 追記型の失敗事例集。
-  home.file.".claude/skills/pr-description/SKILL.md".source =
-    repoConfig + "/agents/skills/pr-description/SKILL.md";
-  home.file.".claude/skills/pr-description/cases.md".source =
-    repoConfig + "/agents/skills/pr-description/cases.md";
-  # backlog-cleanup: wrap-up inbox のうち判断を要さない軽微な項目を、未起票の inbox
-  # 行と起票済みの wrapup 由来 Issue の両方からまとめて triage し、1 回の確認後に
-  # 1 つの chores PR で一括対処する判断知識。hook 側(wrapup-stop-gate)には
-  # 手を入れず、inbox からの削除は既存の --mark-filed 経由のみを使う。
-  home.file.".claude/skills/backlog-cleanup/SKILL.md".source =
-    repoConfig + "/agents/skills/backlog-cleanup/SKILL.md";
-  # retro: 作業終了時のレトロ(ADR-697)。PR を作ったセッションは wrapup-stop-gate が
-  # Stop で求め、PR の無いセッションではこのスキルで手動に同じ手順を踏む。手順の正本は
-  # `wrapup-stop-gate --retro-procedure` の出力で、スキルはその呼び方と判断の目安だけを持つ。
-  home.file.".claude/skills/retro/SKILL.md".source = repoConfig + "/agents/skills/retro/SKILL.md";
-  # model-pin-update: 外部 AI CLI(Copilot CLI 等)に固定 pin した具体モデル ID を、
-  # ベンダー側の GA・廃止サイクルに追従して更新する手順の判断知識。pin 箇所の棚卸し
-  # (既定値・selftest 期待値・docs)・上流確認・スラッグ実機確認・完了条件を定型化する
-  # (copilot-plan-review.sh の gpt-5.6-sol → gpt-6-astra bump が初出時の実例)。
-  home.file.".claude/skills/model-pin-update/SKILL.md".source =
-    repoConfig + "/agents/skills/model-pin-update/SKILL.md";
-  # issue-hygiene: open Issue を出自でクラスタリングし、GitHub ネイティブ sub-issues
-  # で親子構造を明示、腐った tracking Issue を清算する定期衛生管理の判断知識。
-  home.file.".claude/skills/issue-hygiene/SKILL.md".source =
-    repoConfig + "/agents/skills/issue-hygiene/SKILL.md";
-  # tracking-issue: 複数の子作業を束ねる親 Issue を書く/更新する側の書式規約。
-  # issue-hygiene(事後の棚卸し・清算)とは役割が異なる。詳細は
-  # docs/agents/tracking-issue.md。
-  home.file.".claude/skills/tracking-issue/SKILL.md".source =
-    repoConfig + "/agents/skills/tracking-issue/SKILL.md";
-  # handoff: ユーザーの指示で作業を途中で打ち切るとき、残タスクを Human / AI
-  # 双方に振り分けて起票し、後で再開できる状態にする判断知識(WIP は Draft PR、
-  # 担当は閉語彙ラベル handoff:human/handoff:ai、順序は Issue dependencies)。
-  # pr-gate の中断ハンドオフ節・issue-index の着手可能な handoff:ai 節と
-  # 組で動く。詳細は docs/agents/handoff.md。
-  home.file.".claude/skills/handoff/SKILL.md".source = repoConfig + "/agents/skills/handoff/SKILL.md";
-  home.file.".claude/skills/handoff/scripts/handoff.sh" = {
-    source = repoConfig + "/agents/skills/handoff/scripts/handoff.sh";
-    executable = true;
-  };
-  # claude-routines: Claude Code routine を対象リポジトリ自身の
-  # `.claude/routines/<name>.{json,md}` へ as-code 化する判断知識。ローカル
-  # session 向けは SKILL.md、クラウド自己監査 routine 向けは auditor.md。
-  # 差分コアは scripts/routines-plan.sh(bash + jq)。詳細は
-  # docs/claude/claude-routines.md。
-  home.file.".claude/skills/claude-routines/SKILL.md".source =
-    repoConfig + "/agents/skills/claude-routines/SKILL.md";
-  home.file.".claude/skills/claude-routines/auditor.md".source =
-    repoConfig + "/agents/skills/claude-routines/auditor.md";
-  home.file.".claude/skills/claude-routines/scripts/routines-plan.sh" = {
-    source = repoConfig + "/agents/skills/claude-routines/scripts/routines-plan.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/claude-routines/scripts/selftest.sh" = {
-    source = repoConfig + "/agents/skills/claude-routines/scripts/selftest.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/claude-routines/scripts/lib.jq".source =
-    repoConfig + "/agents/skills/claude-routines/scripts/lib.jq";
-  # stacked-pr: PR 同士に依存関係があるとき main 起点で並行させず base を親ブランチ
-  # にした stacked PR として積む判断知識。判定条件・rebase.updateRefs による追従・
-  # Issue リンクの書き分け・GitHub ネイティブ stack 機能の使い方を持つ。
-  home.file.".claude/skills/stacked-pr/SKILL.md".source =
-    repoConfig + "/agents/skills/stacked-pr/SKILL.md";
-  # requirements-inventory: Tracking Issue 等の複数項目の依頼を計画に起こすとき、子タスク
-  # を黙って落とさせないための要求インベントリの作り方(gh graphql での sub-issues
-  # 列挙、閉じた棄却タグ、Reference-Only: での参照 Issue の書き分け)。強制は
-  # plan-scope-gate(段2)が担う。詳細は docs/agents/requirements-inventory.md。
-  home.file.".claude/skills/requirements-inventory/SKILL.md".source =
-    repoConfig + "/agents/skills/requirements-inventory/SKILL.md";
-  # precedent-grounding: Plan に非自明な設計判断を書くとき、確立されたやり方
-  # (先行例・文献)と照合した結果を `## 先行例との対比` 節として成果物に残す
-  # 書き方(出典・取得日・差分の書式、免除行の条件)。批評(lens A)が何を監査
-  # するかもここに持つ。形式検査は plan-precedent-gate(段2)が担う。詳細は
-  # docs/agents/precedent-grounding.md、コメント索引 16) 参照。
-  home.file.".claude/skills/precedent-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/precedent-grounding/SKILL.md";
-  # technology-selection: 技術・仕組みの選択(ツール・ライブラリ・hook/skill の
-  # 要否・置き換え)を表現不可能性 → 還元性 → 先進性の3軸の辞書式順序で評価し、
-  # precedent-grounding が確立した `## 先行例との対比` 節に `軸:` トークンと
-  # (該当時)`本命:`/`対抗馬:`/`外した候補:` を追加する書き方(ADR-0035)。
-  # 形式検査は plan-precedent-gate(precedent-grounding と共有、新規 gate は
-  # 作らない)。詳細は docs/agents/technology-selection.md。
-  home.file.".claude/skills/technology-selection/SKILL.md".source =
-    repoConfig + "/agents/skills/technology-selection/SKILL.md";
-  # github-audit-triage: github-audit の findings を入力に複数リポジトリの
-  # 一括起草・一括レビュー・一括 PR 化を行う判断知識(ADR-0015 の LLM
-  # ノード)。charter-sweep(#180)を巻き取り、完了定義を PR 作成までに
-  # 変更している。詳細は docs/agents/github-audit-triage.md。
-  home.file.".claude/skills/github-audit-triage/SKILL.md".source =
-    repoConfig + "/agents/skills/github-audit-triage/SKILL.md";
-  # repo-charter: 新規リポジトリ作成時に README/CONTRIBUTING の charter
-  # スキーマ(purpose sentence / Scope / Issues 節 / naming class / topics)を
-  # インタビュー形式で埋める判断知識(ADR-0013 + ADR-0016 + ADR-0017)。
-  # cases.md は追記型の失敗事例集。
-  home.file.".claude/skills/repo-charter/SKILL.md".source =
-    repoConfig + "/agents/skills/repo-charter/SKILL.md";
-  home.file.".claude/skills/repo-charter/cases.md".source =
-    repoConfig + "/agents/skills/repo-charter/cases.md";
-  # create-repo.sh: §8 の「閉語彙チェック → gh repo create → topic → governance
-  # 播種」を 1 本にまとめた正規の入口。素の `gh repo create` は
-  # repo-create-guard が deny するので、エージェントはこれを使う(#754)。
-  home.file.".claude/skills/repo-charter/scripts/create-repo.sh" = {
-    source = repoConfig + "/agents/skills/repo-charter/scripts/create-repo.sh";
-    executable = true;
-  };
-  # irasutoya-search.sh: §1 手順 6(banner 選定)の候補探し。Blogger の JSON フィードを
-  # curl と jq で引き、題名・投稿 URL・画像 URL を JSON で返す薄いラッパ(#940)。
-  home.file.".claude/skills/repo-charter/scripts/irasutoya-search.sh" = {
-    source = repoConfig + "/agents/skills/repo-charter/scripts/irasutoya-search.sh";
-    executable = true;
-  };
-  # writing-style: 執筆規約の正本(別 private リポジトリの docs/style/)への
-  # 薄いポインタ(#115)。writing-style-hub(crates/hub-resolve)がマーカーファイル/環境
-  # 変数からハブの絶対パスを解決する。
-  home.file.".claude/skills/writing-style/SKILL.md".source =
-    repoConfig + "/agents/skills/writing-style/SKILL.md";
-  # presentation-authoring: 発表原稿を正本にしてスライドを派生させる手順(設計は
-  # docs/agents/presentation-authoring.md)。
-  home.file.".claude/skills/presentation-authoring/SKILL.md".source =
-    repoConfig + "/agents/skills/presentation-authoring/SKILL.md";
-  home.file.".claude/skills/presentation-authoring/cases.md".source =
-    repoConfig + "/agents/skills/presentation-authoring/cases.md";
-  # frontend-slides: 見た目に凝った単一 HTML を作る第三者スキル(rev 固定、
-  # flake input)。skills の走査対象外の ~/.local/share/ に置くのが要点 —
-  # ~/.claude/skills/ に置くと description が「スライドを作るとき」全般に発火して
-  # presentation-authoring と衝突する。presentation-authoring が本人の明示指示のときだけ SKILL.md を読む。
+  # Skill distribution is declared once below; frontend-slides remains opt-in
+  # outside the skill discovery roots (presentation-authoring invokes it).
   home.file.".local/share/frontend-slides".source =
     "${frontend-slides}/plugins/frontend-slides/skills/frontend-slides";
-  # gas-clasp-ops: Google Apps Script (GAS) を clasp CLI で操作する判断知識
-  # (ADR-0030)。初回 GCP セットアップ・ログイン・日常操作・スクリプト側の
-  # 規約を持つ。GAS コード自体の正本は各利用リポジトリに分散配置し、ここには
-  # ツールのナレッジだけを置く。詳細は docs/agents/gas-clasp-ops.md。
-  home.file.".claude/skills/gas-clasp-ops/SKILL.md".source =
-    repoConfig + "/agents/skills/gas-clasp-ops/SKILL.md";
-
-  # drive-upload: ローカルのファイルを Google Drive の専用フォルダへ rclone で上げる手順
-  # (drive.file、#769)。コネクタは base64 の文字列渡しで数 MB に向かない。設計は docs/gdrive-upload.md。
-  home.file.".claude/skills/drive-upload/SKILL.md".source =
-    repoConfig + "/agents/skills/drive-upload/SKILL.md";
-  # gpg-subkey-rotation: GPG の機体ローカル [S]/[E] サブ鍵ローテーションを
-  # 8 ステップの完了条件付きで終わらせる判断知識(ADR-0003)。rotate だけ
-  # 実行して export/nix 編集/GitHub-keyserver 同期/hms 適用のどれかを飛ばす
-  # と commit 署名検証が静かに壊れる、という実際の失敗から起票。詳細は
-  # docs/agents/gpg-subkey-rotation.md。
-  home.file.".claude/skills/gpg-subkey-rotation/SKILL.md".source =
-    repoConfig + "/agents/skills/gpg-subkey-rotation/SKILL.md";
-  # human-task-scheduling: 電話等 Claude が代行できないハンドオフ作業を、
-  # 相手の営業時間とユーザーの空き時間を突き合わせてカレンダーに反映する
-  # 判断知識。詳細は docs/agents/human-task-scheduling.md。
-  home.file.".claude/skills/human-task-scheduling/SKILL.md".source =
-    repoConfig + "/agents/skills/human-task-scheduling/SKILL.md";
-  # browser-login-handoff(#562): Playwright MCP・claude-in-chrome での
-  # ブラウザ操作中に未ログインを検知したときのハンドオフ手順。両ツールとも
-  # Claude Code 固有のため .agents/skills/ へはミラーしない(理由はツール
-  # 固有性だけ)。詳細は docs/agents/browser-login-handoff.md。
-  home.file.".claude/skills/browser-login-handoff/SKILL.md".source =
-    repoConfig + "/agents/skills/browser-login-handoff/SKILL.md";
-  # slot-availability: 候補日程一覧 × Google Calendar の3コマ当たり判定。
-  # 詳細は docs/agents/slot-availability.md。
-  home.file.".claude/skills/slot-availability/SKILL.md".source =
-    repoConfig + "/agents/skills/slot-availability/SKILL.md";
-  home.file.".claude/skills/slot-availability/scripts/slot-hit.sh" = {
-    source = repoConfig + "/agents/skills/slot-availability/scripts/slot-hit.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/slot-availability/scripts/selftest.sh" = {
-    source = repoConfig + "/agents/skills/slot-availability/scripts/selftest.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/slot-availability/scripts/lib.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/lib.jq";
-  home.file.".claude/skills/slot-availability/scripts/judge.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/judge.jq";
-  home.file.".claude/skills/slot-availability/scripts/finalize.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/finalize.jq";
-  # music-performance-planning: 演奏本番の練習計画提案・合わせ調整の統合・当日
-  # タイムテーブル/遠征の Calendar dispatch。詳細は
-  # docs/agents/music-performance-planning.md(別の private な person-state
-  # リポジトリ側の ADR-0010)。
-  home.file.".claude/skills/music-performance-planning/SKILL.md".source =
-    repoConfig + "/agents/skills/music-performance-planning/SKILL.md";
-  # venue-search: 合わせ・個人練習の会場探し(空き確認は機械、予約は人間)。
-  # ハブは music-performance-planning の performance-hub を流用する。詳細は
-  # docs/agents/venue-search.md(別の private な person-state リポジトリ
-  # 側の ADR-0015)。
-  home.file.".claude/skills/venue-search/SKILL.md".source =
-    repoConfig + "/agents/skills/venue-search/SKILL.md";
-  home.file.".claude/skills/venue-search/scripts/venue-urls.sh" = {
-    source = repoConfig + "/agents/skills/venue-search/scripts/venue-urls.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/venue-search/scripts/noah-chart.js".source =
-    repoConfig + "/agents/skills/venue-search/scripts/noah-chart.js";
-  # daily-desk: その日にさばく作業を朝の机 1 か所に集める薄いポインタ。手順の正本は
-  # person-state リポジトリ側の desk.md。ハブは performance-hub を流用する。詳細は
-  # docs/agents/daily-desk.md。
-  home.file.".claude/skills/daily-desk/SKILL.md".source =
-    repoConfig + "/agents/skills/daily-desk/SKILL.md";
-
-  # inbox-adjudication: 溜まった受信箱を、返信の裁定から処理する判断知識。
-  # 詳細は docs/agents/inbox-adjudication.md。
-  home.file.".claude/skills/inbox-adjudication/SKILL.md".source =
-    repoConfig + "/agents/skills/inbox-adjudication/SKILL.md";
-  home.file.".claude/skills/inbox-adjudication/cases.md".source =
-    repoConfig + "/agents/skills/inbox-adjudication/cases.md";
-
-  # ADR-0016 (tarotene/dotfiles): skills も AGENTS.md と同型のクロスツール
-  # ルーティング対象 — 正本はツール中立の .agents/skills/(Codex CLI・
-  # Copilot CLI がネイティブ読取)。上の .claude/skills/ 配下の各スキルと
-  # 同一ソースを .agents/skills/ にも張る(コメント・追跡ロジックは
-  # .claude/skills/ 側に一本化し、ここは張り替えのみ)。Claude Code が
-  # .agents/skills/ をネイティブに読むようになったらこのブロックは撤去する。
-  home.file.".agents/skills/diagramming/SKILL.md".source =
-    repoConfig + "/agents/skills/diagramming/SKILL.md";
-  home.file.".agents/skills/diagramming/cases.md".source =
-    repoConfig + "/agents/skills/diagramming/cases.md";
-  home.file.".agents/skills/agent-tooling-authoring/SKILL.md".source =
-    repoConfig + "/agents/skills/agent-tooling-authoring/SKILL.md";
-  home.file.".agents/skills/test-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/test-grounding/SKILL.md";
-  home.file.".agents/skills/test-grounding/cases.md".source =
-    repoConfig + "/agents/skills/test-grounding/cases.md";
-  home.file.".agents/skills/living-description/SKILL.md".source =
-    repoConfig + "/agents/skills/living-description/SKILL.md";
-  home.file.".agents/skills/living-description/cases.md".source =
-    repoConfig + "/agents/skills/living-description/cases.md";
-  home.file.".agents/skills/issue-ref-freshness/SKILL.md".source =
-    repoConfig + "/agents/skills/issue-ref-freshness/SKILL.md";
-  home.file.".agents/skills/pr-description/SKILL.md".source =
-    repoConfig + "/agents/skills/pr-description/SKILL.md";
-  home.file.".agents/skills/pr-description/cases.md".source =
-    repoConfig + "/agents/skills/pr-description/cases.md";
-  home.file.".agents/skills/backlog-cleanup/SKILL.md".source =
-    repoConfig + "/agents/skills/backlog-cleanup/SKILL.md";
-  home.file.".agents/skills/retro/SKILL.md".source = repoConfig + "/agents/skills/retro/SKILL.md";
-  home.file.".agents/skills/model-pin-update/SKILL.md".source =
-    repoConfig + "/agents/skills/model-pin-update/SKILL.md";
-  home.file.".agents/skills/issue-hygiene/SKILL.md".source =
-    repoConfig + "/agents/skills/issue-hygiene/SKILL.md";
-  home.file.".agents/skills/tracking-issue/SKILL.md".source =
-    repoConfig + "/agents/skills/tracking-issue/SKILL.md";
-  home.file.".agents/skills/handoff/SKILL.md".source = repoConfig + "/agents/skills/handoff/SKILL.md";
-  home.file.".agents/skills/handoff/scripts/handoff.sh" = {
-    source = repoConfig + "/agents/skills/handoff/scripts/handoff.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/claude-routines/SKILL.md".source =
-    repoConfig + "/agents/skills/claude-routines/SKILL.md";
-  home.file.".agents/skills/claude-routines/auditor.md".source =
-    repoConfig + "/agents/skills/claude-routines/auditor.md";
-  home.file.".agents/skills/claude-routines/scripts/routines-plan.sh" = {
-    source = repoConfig + "/agents/skills/claude-routines/scripts/routines-plan.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/claude-routines/scripts/selftest.sh" = {
-    source = repoConfig + "/agents/skills/claude-routines/scripts/selftest.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/claude-routines/scripts/lib.jq".source =
-    repoConfig + "/agents/skills/claude-routines/scripts/lib.jq";
-  home.file.".agents/skills/stacked-pr/SKILL.md".source =
-    repoConfig + "/agents/skills/stacked-pr/SKILL.md";
-  home.file.".agents/skills/requirements-inventory/SKILL.md".source =
-    repoConfig + "/agents/skills/requirements-inventory/SKILL.md";
-  home.file.".agents/skills/precedent-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/precedent-grounding/SKILL.md";
-  home.file.".agents/skills/technology-selection/SKILL.md".source =
-    repoConfig + "/agents/skills/technology-selection/SKILL.md";
-  home.file.".agents/skills/github-audit-triage/SKILL.md".source =
-    repoConfig + "/agents/skills/github-audit-triage/SKILL.md";
-  home.file.".agents/skills/repo-charter/SKILL.md".source =
-    repoConfig + "/agents/skills/repo-charter/SKILL.md";
-  home.file.".agents/skills/repo-charter/cases.md".source =
-    repoConfig + "/agents/skills/repo-charter/cases.md";
-  home.file.".agents/skills/writing-style/SKILL.md".source =
-    repoConfig + "/agents/skills/writing-style/SKILL.md";
-  home.file.".agents/skills/presentation-authoring/SKILL.md".source =
-    repoConfig + "/agents/skills/presentation-authoring/SKILL.md";
-  home.file.".agents/skills/presentation-authoring/cases.md".source =
-    repoConfig + "/agents/skills/presentation-authoring/cases.md";
-  home.file.".agents/skills/gas-clasp-ops/SKILL.md".source =
-    repoConfig + "/agents/skills/gas-clasp-ops/SKILL.md";
-  home.file.".agents/skills/drive-upload/SKILL.md".source =
-    repoConfig + "/agents/skills/drive-upload/SKILL.md";
-  home.file.".agents/skills/gpg-subkey-rotation/SKILL.md".source =
-    repoConfig + "/agents/skills/gpg-subkey-rotation/SKILL.md";
-  home.file.".agents/skills/human-task-scheduling/SKILL.md".source =
-    repoConfig + "/agents/skills/human-task-scheduling/SKILL.md";
-  home.file.".agents/skills/slot-availability/SKILL.md".source =
-    repoConfig + "/agents/skills/slot-availability/SKILL.md";
-  home.file.".agents/skills/slot-availability/scripts/slot-hit.sh" = {
-    source = repoConfig + "/agents/skills/slot-availability/scripts/slot-hit.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/slot-availability/scripts/selftest.sh" = {
-    source = repoConfig + "/agents/skills/slot-availability/scripts/selftest.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/slot-availability/scripts/lib.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/lib.jq";
-  home.file.".agents/skills/slot-availability/scripts/judge.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/judge.jq";
-  home.file.".agents/skills/slot-availability/scripts/finalize.jq".source =
-    repoConfig + "/agents/skills/slot-availability/scripts/finalize.jq";
-  home.file.".agents/skills/music-performance-planning/SKILL.md".source =
-    repoConfig + "/agents/skills/music-performance-planning/SKILL.md";
-  home.file.".agents/skills/venue-search/SKILL.md".source =
-    repoConfig + "/agents/skills/venue-search/SKILL.md";
-  home.file.".agents/skills/venue-search/scripts/venue-urls.sh" = {
-    source = repoConfig + "/agents/skills/venue-search/scripts/venue-urls.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/venue-search/scripts/noah-chart.js".source =
-    repoConfig + "/agents/skills/venue-search/scripts/noah-chart.js";
-  home.file.".agents/skills/daily-desk/SKILL.md".source =
-    repoConfig + "/agents/skills/daily-desk/SKILL.md";
-  home.file.".agents/skills/inbox-adjudication/SKILL.md".source =
-    repoConfig + "/agents/skills/inbox-adjudication/SKILL.md";
-  home.file.".agents/skills/inbox-adjudication/cases.md".source =
-    repoConfig + "/agents/skills/inbox-adjudication/cases.md";
-
-  # rust-repo-governance / typst-repo-governance / astro-site-governance:
-  # #151 で ~/.claude/skills/ の未バージョン管理状態から dotfiles 管理に
-  # 移設。ディレクトリ全体を単一シンボリックリンクとしてデプロイし(個別
-  # ファイル列挙はしない — scripts/templates/reference の下位構造は各
-  # スキル側で完結している。共通の保護用 ruleset だけは
-  # 下の repo-governance-common ブロックが上書きする)、
-  # 上と同じ理由で .agents/skills/ にも同一ソースを張る。
-  home.file.".claude/skills/rust-repo-governance" = {
-    source = repoConfig + "/agents/skills/rust-repo-governance";
-    recursive = true;
-  };
-  home.file.".agents/skills/rust-repo-governance" = {
-    source = repoConfig + "/agents/skills/rust-repo-governance";
-    recursive = true;
-  };
-  home.file.".claude/skills/typst-repo-governance" = {
-    source = repoConfig + "/agents/skills/typst-repo-governance";
-    recursive = true;
-  };
-  home.file.".agents/skills/typst-repo-governance" = {
-    source = repoConfig + "/agents/skills/typst-repo-governance";
-    recursive = true;
-  };
-  home.file.".claude/skills/astro-site-governance" = {
-    source = repoConfig + "/agents/skills/astro-site-governance";
-    recursive = true;
-  };
-  home.file.".agents/skills/astro-site-governance" = {
-    source = repoConfig + "/agents/skills/astro-site-governance";
-    recursive = true;
-  };
-
-  # repo-governance-common: 上の3 skill が共有する scripts/templates の
-  # 正本(#388 の三重化還元)。setup-hooks.sh / apply-repo-settings.sh は
-  # 3 skill でロジック差分ゼロだったため丸ごと1本化、
-  # templates/.github/rulesets/ の共通保護 ruleset はバイト
-  # 単位で完全一致だったため同様に1本化した。quality.json と
-  # copy-files.sh/seed.sh はエコシステム固有差分が実在するため各 skill 側
-  # に残る(apply 自体は ADR-503 D4 によりスクリプト側の型分岐そのものを
-  # 撤去したので、共有コアを source する層はもう無い)。
-  #
-  # まずディレクトリ自体を上と同じ recursive マウントで配る。次に、各
-  # governance skill の recursive マウントは「そのスキルの**自分の**
-  # ソースツリーに存在するファイルだけ」を個別シンボリックリンクするため
-  # (setup-hooks.sh 等はソースツリーから削除済み)、ここで正本を指す
-  # ネストした home.file エントリを skill × マウントルート(.claude/
-  # .agents)の組ごとに個別に宣言して併置する(ADR-0032 と同型の単一正本・
-  # 複数マウント、#388)。nix の内包表記(listToAttrs 等)で動的生成する案も
-  # 検討したが、このモジュールの規模では生成した attrset を
-  # `home.file = ...;` として直接代入する形が既存の dotted attrpath 宣言群
-  # と "attribute 'home.file' already defined" で衝突し、回避には
-  # モジュール全体を lib.mkMerge で包む必要があった — 1600 行超のファイル
-  # 全体の再インデントという不釣り合いなコストを伴うため、30 行の手書き
-  # 列挙(このコメントの直後)に倒した。
-  home.file.".claude/skills/repo-governance-common" = {
-    source = repoConfig + "/agents/skills/repo-governance-common";
-    recursive = true;
-  };
-  home.file.".agents/skills/repo-governance-common" = {
-    source = repoConfig + "/agents/skills/repo-governance-common";
-    recursive = true;
-  };
-  home.file.".claude/skills/rust-repo-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/rust-repo-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/rust-repo-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".claude/skills/rust-repo-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".claude/skills/rust-repo-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
-  home.file.".agents/skills/rust-repo-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/rust-repo-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/rust-repo-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".agents/skills/rust-repo-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".agents/skills/rust-repo-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
-  home.file.".claude/skills/typst-repo-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/typst-repo-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/typst-repo-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".claude/skills/typst-repo-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".claude/skills/typst-repo-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
-  home.file.".agents/skills/typst-repo-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/typst-repo-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/typst-repo-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".agents/skills/typst-repo-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".agents/skills/typst-repo-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
-  home.file.".claude/skills/astro-site-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/astro-site-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".claude/skills/astro-site-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".claude/skills/astro-site-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".claude/skills/astro-site-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
-  home.file.".agents/skills/astro-site-governance/scripts/setup-hooks.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/setup-hooks.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/astro-site-governance/scripts/apply-repo-settings.sh" = {
-    source = repoConfig + "/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh";
-    executable = true;
-  };
-  home.file.".agents/skills/astro-site-governance/templates/.github/rulesets/security.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/security.json";
-  home.file.".agents/skills/astro-site-governance/templates/.github/rulesets/workflow.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/workflow.json";
-  home.file.".agents/skills/astro-site-governance/templates/.github/rulesets/review.json".source =
-    repoConfig + "/agents/skills/repo-governance-common/templates/.github/rulesets/review.json";
 
   # グローバル AGENTS.md(正本): agent 非依存の調査・先行例確認・PR 運用・
   # 生成元明示の方針。Codex CLI(~/.codex/AGENTS.md)・Copilot CLI
@@ -2724,91 +2304,16 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 壊さないようにするため、jq マージの責務を混ぜない。
 
   # Temporary compatibility entries. Each delegates to the canonical implementation.
-  home.file.".claude/skills/copilot-model-bump/SKILL.md".source =
-    repoConfig + "/agents/skills/copilot-model-bump/SKILL.md";
-  home.file.".agents/skills/copilot-model-bump/SKILL.md".source =
-    repoConfig + "/agents/skills/copilot-model-bump/SKILL.md";
   home.file.".claude/hooks/desk-start".source = "${pkgs.dotfiles-tools}/bin/desk-start";
   home.file.".claude/hooks/esa-index".source = "${pkgs.dotfiles-tools}/bin/esa-index";
   home.file.".claude/hooks/pr-confirm-guard".source = "${pkgs.dotfiles-tools}/bin/pr-confirm-guard";
-  home.file.".claude/skills/performance-planning/SKILL.md".source =
-    repoConfig + "/agents/skills/performance-planning/SKILL.md";
-  home.file.".agents/skills/performance-planning/SKILL.md".source =
-    repoConfig + "/agents/skills/performance-planning/SKILL.md";
-  home.file.".claude/skills/talk-script/SKILL.md".source =
-    repoConfig + "/agents/skills/talk-script/SKILL.md";
-  home.file.".agents/skills/talk-script/SKILL.md".source =
-    repoConfig + "/agents/skills/talk-script/SKILL.md";
-  home.file.".claude/skills/scope-inventory/SKILL.md".source =
-    repoConfig + "/agents/skills/scope-inventory/SKILL.md";
-  home.file.".agents/skills/scope-inventory/SKILL.md".source =
-    repoConfig + "/agents/skills/scope-inventory/SKILL.md";
-  home.file.".claude/skills/selection-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/selection-grounding/SKILL.md";
-  home.file.".agents/skills/selection-grounding/SKILL.md".source =
-    repoConfig + "/agents/skills/selection-grounding/SKILL.md";
   home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";
   home.file.".claude/hooks/worktree-fresh-base".source =
     "${pkgs.dotfiles-tools}/bin/worktree-fresh-base";
-  home.file.".claude/skills/wrapup-chores/SKILL.md".source =
-    repoConfig + "/agents/skills/wrapup-chores/SKILL.md";
-  home.file.".agents/skills/wrapup-chores/SKILL.md".source =
-    repoConfig + "/agents/skills/wrapup-chores/SKILL.md";
-  home.file.".claude/skills/skill-gardening/SKILL.md".source =
-    repoConfig + "/agents/skills/skill-gardening/SKILL.md";
-  home.file.".agents/skills/skill-gardening/SKILL.md".source =
-    repoConfig + "/agents/skills/skill-gardening/SKILL.md";
-  home.file.".claude/skills/external-call-scheduling/SKILL.md".source =
-    repoConfig + "/agents/skills/external-call-scheduling/SKILL.md";
-  home.file.".agents/skills/external-call-scheduling/SKILL.md".source =
-    repoConfig + "/agents/skills/external-call-scheduling/SKILL.md";
   home.file.".claude/hooks/session-wrapup".source = "${pkgs.dotfiles-tools}/bin/session-wrapup";
   home.file.".claude/hooks/issue-inbox".source = "${pkgs.dotfiles-tools}/bin/issue-inbox";
   home.file.".claude/hooks/session-retrospective".source =
     "${pkgs.dotfiles-tools}/bin/session-retrospective";
   home.file.".claude/hooks/feedback-trial".source = "${pkgs.dotfiles-tools}/bin/feedback-trial";
 
-  # Shared references have one source and are readable in each supported skill.
-  home.file.".claude/skills/browser-login-handoff/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".claude/skills/pr-description/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".agents/skills/pr-description/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".claude/skills/venue-search/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".agents/skills/venue-search/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".claude/skills/inbox-adjudication/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".agents/skills/inbox-adjudication/reference/browser-operations.md".source =
-    repoConfig + "/agents/reference/browser-operations.md";
-  home.file.".claude/skills/inbox-adjudication/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/inbox-adjudication/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/pr-description/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/pr-description/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/stacked-pr/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/stacked-pr/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/github-audit-triage/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/github-audit-triage/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/rust-repo-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/rust-repo-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/typst-repo-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/typst-repo-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".claude/skills/astro-site-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
-  home.file.".agents/skills/astro-site-governance/reference/ci-failures.md".source =
-    repoConfig + "/agents/skills/repo-governance-common/reference/ci-failures.md";
 }
