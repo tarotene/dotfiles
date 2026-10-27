@@ -87,20 +87,34 @@ in
   # identity 層に置くのは warp-terminal(#9)や esa(ADR-0022)と同じ判断 —
   # どちらも外部サービスに繋ぐ経路であり、common.nix に置くと company ホストへ
   # 黙って配備される。
+  # playwright の起動ラッパー(crates/playwright-mcp-launcher)。esa と同じく
+  # ~/.local/libexec に置き、下の mcpServers.playwright.command が指す。
+  home.file.".local/libexec/playwright-mcp-launcher".source =
+    "${pkgs.dotfiles-tools}/bin/playwright-mcp-launcher";
+
   dotfiles.claude.mcpServers = {
     # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
-    # Web UI の実地確認に使う。ローカル完結(npx でブラウザを起動するだけ)。
+    # Web UI の実地確認に使う。普段の Firefox のログイン状態をそのまま使うため、
+    # 起動ラッパー(crates/playwright-mcp-launcher)が普段のプロファイルを
+    # 専用の複製へ rsync で差分同期し、その複製で素の Firefox を操作させる。
+    # 普段のプロファイルを直接渡さないのは、Playwright が起動のたびにプロファイルへ
+    # user.js を書くため(docs/claude/claude-mcp-servers.md)。
+    #
+    # @playwright/mcp の版の pin(0.0.83)はラッパー側の PLAYWRIGHT_MCP が持つ。
+    # `--` より後ろはそのまま Playwright MCP へ渡る。--output-dir は snapshot と
+    # console log を作業ツリーの外へ逃がす(#849)。無いとサーバーは cwd 直下に
+    # `.playwright-mcp/` を作り、worktree が汚れる。screenshot に `filename` を明示
+    # すると cwd に落ちる(0.0.83 の README)ので、git.nix も `.playwright-mcp/` を
+    # ignore する。
     playwright = {
       type = "stdio";
-      command = "npx";
-      # Pinned to the current latest (0.0.83, npm dist-tag `latest`, 2026-10-21): a floating
-      # `@latest` runs a different server per npx cache refresh. Bump deliberately.
-      # --output-dir keeps snapshots and console logs out of the working tree (#849);
-      # without it the server writes `.playwright-mcp/` under the cwd, which dirties a
-      # worktree. A `filename` passed explicitly to a screenshot still lands under the
-      # cwd (README, 0.0.83), so git.nix also ignores `.playwright-mcp/`.
+      command = "${config.home.homeDirectory}/.local/libexec/playwright-mcp-launcher";
       args = [
-        "@playwright/mcp@0.0.83"
+        "--rsync"
+        "${pkgs.rsync}/bin/rsync"
+        "--clone"
+        "${config.xdg.cacheHome}/playwright-mcp-profile/firefox"
+        "--"
         "--output-dir"
         "${config.xdg.cacheHome}/playwright-mcp"
       ];

@@ -71,15 +71,53 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
 
 ### playwright の運用上の裁定(#849、#841)
 
+- **普段の Firefox のプロファイルの複製で、素の Firefox を操作する(2026-10-27)。**
+  `command` は起動ラッパー `crates/playwright-mcp-launcher`(`~/.local/libexec/` に配備、
+  `home/identities/personal.nix`)で、起動のたびに次を行う。
+  1. `~/.mozilla/firefox/installs.ini`(darwin は `~/Library/Application Support/Firefox/`)
+     の `Default=` を普段のプロファイルとして決める。`Default=` が 0 個・複数なら
+     exit 1 する(Firefox を複数の場所に入れていると決められない)。
+  2. それを `~/.cache/playwright-mcp-profile/firefox`(0700)へ `rsync -a --delete` で
+     一方向に差分同期する。除外は `lock` / `.parentlock` / `user.js` /
+     `prefs.js.playwright` / セッション復元 / クラッシュ記録 / キャッシュ
+     (`EXCLUDES`)。複製の `lock` が生きた process を指す間は、同期を飛ばす。
+  3. `npx @playwright/mcp@<pin> --browser moz-firefox --user-data-dir <複製>` を exec する。
+     Linux は PATH の `firefox` を `--executable-path` に渡す(Playwright の既定は
+     `/snap/bin/firefox` で、apt の Firefox では合わない)。
+
+  複製を挟む理由は、Playwright が Firefox の起動のたびにプロファイルへ `user.js`
+  (セーフブラウジング・トラッキング防止の無効化、拡張の自動更新の停止、パスワード保存の
+  無効化など)を書き、`prefs.js` を `prefs.js.playwright` に退避するため
+  (`playwright-core` 1.64.0-alpha の `lib/coreBundle.js` の `writePreferences` と
+  `defaultProfilePreferences`、取得 2026-10-27)。普段のプロファイルを直接渡すと、
+  その設定が普段の Firefox にも効いて残る。複製だけを渡す構成なら、その書き込みが
+  普段のプロファイルへ届く経路が無い。起動中の Firefox につなぐ手段も無い
+  (README の `--extension` は Edge/Chrome 専用、`--cdp-endpoint` は CDP)。Chrome も 136 から
+  既定のプロファイルへの `--remote-debugging-port` を無視し、別の `--user-data-dir` を
+  求めている(Will Harris, Google,
+  <https://developer.chrome.com/blog/remote-debugging-port>、2025-03-17、取得 2026-10-27)。
+
+  同期は一方向で、エージェント側のログインや変更は次の起動の同期で消える。ログインが
+  要るサービスは、普段の Firefox でログインして `/mcp` から再接続する
+  (`config/agents/skills/browser-login-handoff/SKILL.md` §5)。
+  実測(vega、Firefox 158、普段の Firefox を起動したまま、2026-10-27): プロファイル
+  約 1.1GB の 1 回目の同期は 1.2 秒、2 回目は 0.2 秒。複製の素の Firefox は headed でも
+  別のインスタンスとして約 2 秒で起動し、`github.com` にログイン済みで入れた。普段の
+  プロファイルには `user.js` も `prefs.js.playwright` も作られなかった。
+  未確認: darwin(altair)の Firefox の場所と `installs.ini` の節の数。darwin では
+  `lock` の symlink が無い(`.parentlock` の fcntl ロックを使う)ので、複製の使用中の
+  検出は Linux でだけ働く。
 - **版は pin する。** `@playwright/mcp@latest` のままだと、npx のキャッシュが更新される
-  たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、上げるときは
-  `personal.nix` の版を意図して変える。
+  たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、pin は
+  ラッパーの `PLAYWRIGHT_MCP`(`crates/playwright-mcp-launcher/src/lib.rs`)が持つ。上げる
+  ときはそこを意図して変える。
 - **出力先は XDG の cache に逃がす。** 既定ではセッションの cwd 直下に `.playwright-mcp/`
   (ページのスナップショットとコンソールログ)を作り、worktree を汚す。引数 `--output-dir`
   で `~/.cache/playwright-mcp` に向ける。ただし screenshot に `filename` を明示すると cwd
   側に落ちる(0.0.83 の README)ので、`.playwright-mcp/` は `home/modules/git.nix` の
   グローバル ignore にも入れてある。
-- **「unsupported command-line flag」の帯は許容する。** ブラウザの起動のたびに出る帯の
+- **「unsupported command-line flag」の帯は許容する(Chromium で動かしていた間の裁定)。
+  Firefox に替えた後は出ない。** ブラウザの起動のたびに出る帯の
   原因は、サーバー自身が Chromium 系に付ける `--disable-blink-features=AutomationControlled`
   である(0.0.83 の `coreBundle.js` が付ける。Chromium の `bad_flags_prompt.cc` の
   警告対象リストに `kDisableBlinkFeatures` が載っている。取得 2026-10-21)。0.0.83 には
