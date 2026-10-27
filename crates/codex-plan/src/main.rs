@@ -47,8 +47,8 @@ async fn run() -> Result<i32> {
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .context("HOME or XDG_CONFIG_HOME is required")?
         .join("codex-plan/settings.toml");
-    // The credential launcher intentionally rejects app-server / --remote / -c.
-    // This protocol adapter needs the installer-owned native entry point.
+    // The shared launcher prepares the session server and strips credentials
+    // from discovery and the remote TUI; the installer owns the native binary.
     let native = PathBuf::from(std::env::var_os("HOME").context("HOME is required")?)
         .join(".local/bin/codex");
     match args.first().map(String::as_str) {

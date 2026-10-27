@@ -1,5 +1,6 @@
 //! Launch the real adapter against a tiny native-process fixture. No credentials
 //! or model requests; this exercises process ownership, not Codex's TUI logic.
+mod common;
 use std::{
     fs,
     os::unix::{fs::PermissionsExt, process::CommandExt},
@@ -9,6 +10,8 @@ use std::{
 };
 
 const NATIVE: &str = r#"#!/bin/sh
+if [ "$1" = --version ]; then echo "codex-cli 0.164.0"; exit; fi
+if [ "$1" = --config ]; then shift; shift; fi
 if [ "$1" = app-server ]; then
   echo $$ >> "$FIXTURE_DIR/servers"
   while IFS= read -r line; do
@@ -34,6 +37,7 @@ struct Launch {
 impl Launch {
     fn start(exit: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
+        common::credentials(dir.path());
         let native = dir.path().join(".local/bin/codex");
         fs::create_dir_all(native.parent().unwrap()).unwrap();
         fs::write(&native, NATIVE).unwrap();
@@ -41,6 +45,9 @@ impl Launch {
         fs::write(dir.path().join("codex"), "#!/bin/sh\nexit 91\n").unwrap();
         fs::set_permissions(dir.path().join("codex"), fs::Permissions::from_mode(0o700)).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_codex-plan"))
+            .env_remove("CODEX_HOME")
+            .env_remove("CODEX_PROFILE")
+            .env_remove("CLAUDE_CONFIG_DIR")
             .env("HOME", dir.path())
             .env("PATH", dir.path())
             .env("XDG_CONFIG_HOME", dir.path())

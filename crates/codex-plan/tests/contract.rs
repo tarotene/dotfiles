@@ -412,3 +412,167 @@ fn standard_fork_starts_in_default_mode() {
         .unwrap()
         .is_some());
 }
+
+#[test]
+fn credential_relay_rechecks_native_protections_before_forwarding() {
+    const CONFIG: &str = r#"default_permissions = "fixture"
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+[features]
+network_proxy = true
+credential_masking = true
+[permissions.fixture]
+extends = ":workspace"
+[permissions.fixture.network]
+enabled = true
+"#;
+    if std::env::var_os("PROTECTED_RELAY_CHILD").is_none() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join(".codex")).unwrap();
+        std::fs::write(directory.path().join(".codex/config.toml"), CONFIG).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "credential_relay_rechecks_native_protections_before_forwarding",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("HOME", directory.path())
+            .env("PROTECTED_RELAY_CHILD", "1")
+            .current_dir(directory.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        return;
+    }
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let request = |method: &str, extra: serde_json::Value| {
+        let mut params = json!({"cwd":home,"threadId":"saved"});
+        params
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        json!({"id":1,"method":method,"params":params}).to_string()
+    };
+    for method in [
+        "thread/start",
+        "thread/resume",
+        "thread/fork",
+        "thread/settings/update",
+        "turn/start",
+    ] {
+        for config in [
+            json!({"features":{"network_proxy":false}}),
+            json!({"features":{"credential_masking":false}}),
+            json!({"features.credential_masking":false}),
+            json!({"permissions.fixture.network.enabled":false}),
+            json!({"permissions":{"fixture":{"extends":":danger-full-access"}}}),
+            json!({"profiles":{"unsafe":{"features":{"credential_masking":false}}}}),
+            json!({"shell_environment_policy":{"set":{"Gh_Token":"conflict"}}}),
+            json!({"approval_policy":"never"}),
+            json!({"sandbox_mode":"danger-full-access"}),
+        ] {
+            let mut relay = Relay::protected("fixture".into());
+            assert!(relay
+                .from_client(
+                    &request(method, json!({"config":config})),
+                    &Settings::default()
+                )
+                .is_err());
+            // Rejected calls must not reserve the request ID.
+            assert!(relay
+                .from_client(
+                    &request(method, json!({"model":"manual","effort":"high"})),
+                    &Settings::default()
+                )
+                .is_ok());
+        }
+        for extra in [
+            json!({"approvalPolicy":"never"}),
+            json!({"approvalsReviewer":"user"}),
+            json!({"cwd":"relative"}),
+        ] {
+            let mut relay = Relay::protected("fixture".into());
+            assert!(relay
+                .from_client(&request(method, extra), &Settings::default())
+                .is_err());
+        }
+    }
+    for method in ["thread/start", "thread/resume", "thread/fork", "turn/start"] {
+        let mut relay = Relay::protected("fixture".into());
+        assert!(relay
+            .from_client(&request(method, json!({"cwd":null})), &Settings::default())
+            .is_err());
+    }
+    for method in ["thread/settings/update", "turn/start"] {
+        for extra in [
+            json!({"permissions":":danger-full-access"}),
+            json!({"sandboxPolicy":{"type":"dangerFullAccess"}}),
+        ] {
+            let mut relay = Relay::protected("fixture".into());
+            assert!(relay
+                .from_client(&request(method, extra), &Settings::default())
+                .is_err());
+        }
+        let mut relay = Relay::protected("fixture".into());
+        assert!(relay
+            .from_client(
+                &request(
+                    method,
+                    json!({"permissions":"fixture","model":"manual","effort":"high"})
+                ),
+                &Settings::default()
+            )
+            .unwrap()
+            .is_none());
+    }
+    for method in ["command/exec", "process/exec", "thread/shellCommand"] {
+        assert!(Relay::protected("fixture".into())
+            .from_client(&request(method, json!({})), &Settings::default())
+            .is_err());
+    }
+    let project = home.join("project");
+    std::fs::create_dir_all(project.join(".codex")).unwrap();
+    std::fs::write(
+        project.join(".codex/config.toml"),
+        "[features]\ncredential_masking = false\n",
+    )
+    .unwrap();
+    assert!(Relay::protected("fixture".into())
+        .from_client(
+            &request("thread/resume", json!({"cwd":project})),
+            &Settings::default()
+        )
+        .is_err());
+    for key in ["GH_TOKEN", "Gh_ToKeN", "GITHUB_ENTERPRISE_TOKEN"] {
+        std::fs::write(
+            home.join(".codex/config.toml"),
+            format!("{CONFIG}\n[shell_environment_policy.set]\n{key} = \"synthetic-override\"\n"),
+        )
+        .unwrap();
+        assert!(Relay::protected("fixture".into())
+            .from_client(&request("turn/start", json!({})), &Settings::default())
+            .is_err());
+    }
+    std::fs::write(
+        home.join(".codex/config.toml"),
+        format!("{CONFIG}\n[shell_environment_policy]\ninclude_only = [\"HOME\", \"GH_TOKEN\"]\n"),
+    )
+    .unwrap();
+    assert!(Relay::protected("fixture".into())
+        .from_client(&request("thread/start", json!({})), &Settings::default())
+        .is_ok());
+    // Protection is checked again on every turn, not just once at startup.
+    std::fs::write(
+        home.join(".codex/config.toml"),
+        CONFIG.replace("credential_masking = true", "credential_masking = false"),
+    )
+    .unwrap();
+    assert!(Relay::protected("fixture".into())
+        .from_client(&request("turn/start", json!({})), &Settings::default())
+        .is_err());
+}
