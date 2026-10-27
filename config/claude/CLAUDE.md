@@ -101,6 +101,13 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   AGENTS.md「長い処理では…」の形)で待つ。
 - 前景の `sleep` で待たない。
 
+形式検査は `ci-wait-guard`(PreToolUse deny、`hook-router` の規則)が担う。Bash と
+`Monitor` で、`gh pr checks --watch`・`gh run watch`・`until`/`while`/`sleep` で
+`gh pr checks` などを引き直す形を実行前に拒否し、`pr-checks-wait` を案内する。gate に
+当たる前に最初から `pr-checks-wait` で待つこと — gate は漏れを拾うためのもので、一次的な
+手段ではない。PR に紐づかない workflow run を待つときだけ、コマンドに
+`CI_WAIT_GUARD_ALLOW=1` を足す(`docs/agents/ci-wait-guard.md`)。
+
 ## sandbox の外で動かすコマンドは、単体で呼ぶ(#1164)
 
 `gh`・`git commit`・`git push`・`git add`・`git rebase`・`git merge`・`git cherry-pick`・`git revert`・`git tag`・

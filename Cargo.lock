@@ -173,6 +173,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "ci-wait-guard"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
+ "serde_json",
+]
+
+[[package]]
 name = "claude-plan-model"
 version = "0.1.0"
 dependencies = [
@@ -819,6 +828,7 @@ dependencies = [
  "adr-number",
  "agent-session",
  "attribution-guard",
+ "ci-wait-guard",
  "cmd-hash-log",
  "decision-colocation",
  "external-send-guard",
