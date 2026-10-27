@@ -593,6 +593,8 @@ mod tests {
             days: 365,
             total: counts.values().sum(),
             counts,
+            by_files: 0,
+            file_failures: 0,
         }
     }
 

@@ -7,13 +7,14 @@
 //! model-equivalence render [--lens PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]
 //! ```
 //!
-//! `lens` は gh CLI で、自分の merge 済み PR のタイトルだけを読み、種類ごとの件数と期間だけを書く
-//! (タイトルもリポジトリ名も残さない)。既定の対象は自分のアカウントだけで、組織は `--owners` で
+//! `lens` は gh CLI で、自分の merge 済み PR のタイトルを読み、種類ごとの件数と期間だけを書く
+//! (タイトルもリポジトリ名もファイル名も残さない)。タイトルの prefix で種類が決まらなかった PR にだけ、
+//! 変更ファイルの名前を REST で取って種類を推す。既定の対象は自分のアカウントだけで、組織は `--owners` で
 //! 明示したものだけを足す(会社の業務リポジトリを巻き込まないため)。
 
 use model_catalog::{data, date};
 use model_equivalence::judge::{compare, Margins, Verdict};
-use model_equivalence::lens::Lens;
+use model_equivalence::lens::{files_endpoint, parse_filenames, parse_search_rows, Lens};
 use model_equivalence::render::{build_data, render_document, render_fragment, RenderOptions};
 use std::process::{Command, ExitCode};
 
@@ -118,7 +119,7 @@ fn cmd_lens(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     }
     // 履歴が多いと、検索の上限(1 クエリ 1000 件)で切り詰められて、新しい側に偏る。
     // 7 日ごとの範囲に区切って数え、どれかが上限に達したらエラーにする(切り詰めた集計は使わない)。
-    let mut titles = Vec::new();
+    let mut prs = Vec::new();
     let window = 7u32;
     let mut calls = 0;
     for owner in &owners {
@@ -144,28 +145,24 @@ fn cmd_lens(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
                 "--limit",
                 "1000",
                 "--json",
-                "title",
+                "title,number,repository",
             ])?;
-            let rows: Vec<serde_json::Value> =
-                serde_json::from_str(&json).map_err(|e| format!("gh の出力が JSON でない: {e}"))?;
+            let rows = parse_search_rows(&json)?;
             if rows.len() >= 1000 {
                 return Err(format!(
                     "{from}..{to} の PR が検索の上限 1000 件に達した。区切りを短くしないと全件を数えられない"
                 ));
             }
-            titles.extend(
-                rows.iter()
-                    .filter_map(|r| r.get("title")?.as_str().map(str::to_owned)),
-            );
+            prs.extend(rows);
             ago += window;
         }
     }
-    let lens = Lens::build(
-        data(),
-        titles.iter().map(String::as_str),
-        &date::today_utc(),
-        days,
-    );
+    // 変更ファイルは、タイトルの prefix で種類が決まらなかった PR にだけ、REST で 1 件ずつ取る。失敗は
+    // その PR を `other` にするだけ(gh のエラーはリポジトリ名を含むので、表示せず件数だけ数える)。
+    let lens = Lens::build_with_files(data(), &prs, &date::today_utc(), days, &mut |pr| {
+        let endpoint = files_endpoint(pr).ok_or("リポジトリ名・番号が読めない")?;
+        parse_filenames(&gh(&["api", &endpoint, "--jq", "[.[].filename]"])?)
+    });
     lens.validate(data())?;
     let out = f.get("--out").map_or_else(default_lens_path, str::to_owned);
     if let Some(dir) = std::path::Path::new(&out).parent() {
@@ -187,7 +184,11 @@ fn cmd_lens(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
             lens.share(id) * 100.0
         );
     }
-    println!("書き込み: {out}(件数と期間だけ。タイトル・リポジトリ名は残さない)");
+    println!(
+        "  うち変更ファイルで決めた {} 件、ファイルを取れず「その他」にした {} 件",
+        lens.by_files, lens.file_failures
+    );
+    println!("書き込み: {out}(件数と期間だけ。タイトル・リポジトリ名・ファイル名は残さない)");
     Ok(ExitCode::SUCCESS)
 }
 
