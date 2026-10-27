@@ -152,7 +152,7 @@ cargo test -p hms --test apply unknown_generation_marker_does_not_reapply_the_sa
 これはスタブの回帰確認であり、全ホストの timer・実際の switch の復旧確認ではない。
 既存の foreign / explicit 世代を守る試験、wrapper の provenance、build・eval・switch の同一 ref の確認も維持する。
 
-## 執行点
+### 執行点
 
 - `crates/hms/src/lib.rs`
 - `crates/hms/src/verify.rs`
