@@ -57,6 +57,7 @@ th, td { padding: 6px 8px; text-align: left; vertical-align: middle; }
 thead th { font-size: 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--grid); text-align: center; }
 thead th:first-child { text-align: left; }
 tbody th { font-weight: 600; min-width: 148px; }
+tbody th[scope=row] { position: sticky; left: 0; background: var(--surface); z-index: 1; }
 tbody tr.prov th, tbody tr.prov td { font-size: 12px; color: var(--muted); padding-top: 14px; font-weight: 600; letter-spacing: .02em; }
 tbody tr + tr th, tbody tr + tr td { border-top: 1px solid var(--grid); }
 tbody tr.prov + tr th, tbody tr.prov + tr td { border-top: 0; }
@@ -93,6 +94,8 @@ svg text { fill: var(--muted); font-size: 10px; font-family: inherit; }
 .chip { font-size: 11px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; color: var(--ink2); }
 .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
 .stale { opacity: .6; }
+.cell.stale { opacity: .55; }
+input[type=search] { font: inherit; color: inherit; background: var(--page); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 8px; min-width: 200px; }
 a { color: var(--blue); }
 footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
 dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 8px 0 0; font-size: 13px; }
@@ -101,9 +104,13 @@ dl.kv dd { margin: 0; }
 @media (max-width: 560px) {
   .metric { grid-template-columns: 1fr; }
   .hist { grid-template-columns: minmax(0, 1fr); }
-  .cell { min-width: 0; padding: 5px 6px; }
+  .cell { min-width: 36px; min-height: 36px; padding: 5px 6px; }
   .cell .lb { display: none; }
-  select { min-width: 0; width: 100%; }
+  select, input[type=search] { min-width: 0; width: 100%; }
+  label.f { width: 100%; }
+  th, td { padding: 4px; }
+  tbody th { min-width: 112px; font-size: 13px; }
+  main { padding: 16px 12px 48px; }
 }
 @media (forced-colors: active) {
   .cell { border: 1px solid CanvasText; }
@@ -120,6 +127,7 @@ dl.kv dd { margin: 0; }
     <div class="row">
       <div class="tabs" role="tablist" id="tabs"></div>
       <label class="f">基準(いま使っている組合せ)<select id="ref"></select></label>
+      <label class="f">モデルを絞り込む(名前・提供元)<input type="search" id="q" autocomplete="off" placeholder="例: claude"></label>
       <label class="f">能力の許容幅 <span class="val" id="capv"></span>
         <input type="range" id="cap" min="1" max="25" step="0.5"></label>
       <label class="f">速さの許容幅 <span class="val" id="spdv"></span>
@@ -174,12 +182,42 @@ const VERDICT = {
 };
 const SPEED = { tps: "出力速度", ttft: "最初のトークンまでの時間" };
 
-// ---- 判定の規則(Rust の model-equivalence::judge と同じ。読み込み時に golden と突き合わせる) ----
+// ==== CORE BEGIN: 判定の規則と区間の計算。DOM に触れない(Rust の model-equivalence と同じ式。読み込み時に golden と突き合わせ、
+// cargo test も同じ範囲を node で実行する)。区間は全組合せを事前計算せず、基準 1 点 × 候補のたびにここで計算する。 ====
+const Z90 = 1.6448536269514722; // 標準正規分布の上側 5% 点(片側 α=0.05 の TOST に使う 90% 区間)
+const sq = (x) => x * x;
+function wilson(p, n, z) {
+  const z2 = z * z, denom = 1 + z2 / n;
+  const center = (p + z2 / (2 * n)) / denom;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / denom;
+  return [Math.max(center - half, 0), Math.min(center + half, 1)];
+}
+// p1 - p2 の区間(Newcombe 1998 の method 10)。
+function newcombeDiff(p1, n1, p2, n2, z) {
+  const [l1, u1] = wilson(p1, n1, z), [l2, u2] = wilson(p2, n2, z);
+  const d = p1 - p2;
+  return [d - Math.sqrt(sq(p1 - l1) + sq(u2 - p2)), d + Math.sqrt(sq(u1 - p1) + sq(p2 - l2))];
+}
+// ベンチ 1 本の差(候補 c − 基準 r)。区間(点)と分解能、作れなければ理由。
+function capPair(id, r, c) {
+  const b = D.benchmarks[id];
+  if (r === undefined || r === null || c === undefined || c === null) return { why: "基準か候補のどちらかに、このベンチの値が無い。" };
+  if (b.unit !== "fraction") return { why: "割合でない指数なので、二項分布の区間を作れない。表示だけにする。" };
+  if (!b.n) return { why: "課題数が公開されておらず、区間を作れない。" };
+  const [lo, hi] = newcombeDiff(c, b.n, r, b.n, Z90);
+  const [l0, h0] = newcombeDiff(r, b.n, r, b.n, Z90);
+  return { d: (c - r) * 100, lo: lo * 100, hi: hi * 100, res: ((h0 - l0) / 2) * 100 };
+}
 function classifyInterval(lo, hi, mg) {
   if (lo > -mg && hi < mg) return "equivalent";
   if (hi < -mg) return "weaker";
   if (lo > mg) return "stronger";
   return "insufficient";
+}
+// 候補の「良さ」の基準に対する比(1 より大きいほど候補が良い)。出力速度は速いほど、待ちは短いほど良い。
+function goodness(kind, ref, cand) {
+  if (!(ref > 0 && cand > 0)) return null;
+  return kind === "tps" ? cand / ref : ref / cand;
 }
 function classifySpeed(g, ratio) {
   if (g === null || g === undefined) return "insufficient";
@@ -196,22 +234,52 @@ function combine(vs) {
 function roleVerdict(roleId, refKey, candKey, m) {
   const role = D.roles.find((r) => r.id === roleId);
   if (refKey === candKey) return { v: "equivalent", same: true, items: [] };
-  const p = D.pairs[refKey][candKey];
+  const A = D.rows[refKey], B = D.rows[candKey];
   const items = [];
   for (const j of role.judged) {
-    const c = p.cap[j.id];
+    const c = capPair(j.id, A.scores[j.id], B.scores[j.id]);
     items.push({ kind: "cap", id: j.id, fit: j.fit, p: c, v: c.why ? "insufficient" : classifyInterval(c.lo, c.hi, m.cap) });
   }
-  items.push({ kind: "spd", id: "tps", g: p.tps, v: classifySpeed(p.tps, m.spd) });
-  items.push({ kind: "spd", id: "ttft", g: p.ttft, v: classifySpeed(p.ttft, m.spd) });
+  const gt = goodness("tps", A.tps, B.tps), gf = goodness("ttft", A.ttft, B.ttft);
+  items.push({ kind: "spd", id: "tps", g: gt, v: classifySpeed(gt, m.spd) });
+  items.push({ kind: "spd", id: "ttft", g: gf, v: classifySpeed(gf, m.spd) });
   const vs = items.map((i) => i.v);
   if (!role.judged.length) vs.push("insufficient");
   return { v: combine(vs), items };
 }
+// Rust が埋め込んだ golden(役ごとの既定の基準 1 点 × 全候補)との突き合わせ。
+// v は候補ごとに 2 文字(既定の許容幅・別の許容幅)の判定、iv は判定に使うベンチごとの [下限, 上限](点)。
+const LETTER = { e: "equivalent", s: "stronger", w: "weaker", i: "insufficient" };
+const IV_TOLERANCE = 1e-3; // Rust は小数 4 桁に丸めて埋め込む
+function selfCheckCore() {
+  const keys = Object.keys(D.rows), bad = [];
+  const sets = [{ cap: D.margins.capability_points, spd: D.margins.speed_ratio }, { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio }];
+  let n = 0;
+  for (const [role, g] of Object.entries(D.golden)) {
+    if (!D.rows[g.ref] || g.v.length !== 2 * keys.length) { bad.push(`${role}: golden の形が rows と合わない`); n++; continue; }
+    keys.forEach((k, i) => {
+      if (k === g.ref) return;
+      sets.forEach((m, s) => {
+        n++;
+        const got = roleVerdict(role, g.ref, k, m).v, want = LETTER[g.v[2 * i + s]];
+        if (got !== want) bad.push(`${role} ${g.ref}→${k} (許容幅 ${s}): ${got} ≠ ${want}`);
+      });
+      for (const [bid, arr] of Object.entries(g.iv)) {
+        n++;
+        const p = capPair(bid, D.rows[g.ref].scores[bid], D.rows[k].scores[bid]);
+        const lo = arr[2 * i], hi = arr[2 * i + 1];
+        const ok = p.why ? lo === null && hi === null : lo !== null && hi !== null && Math.abs(p.lo - lo) <= IV_TOLERANCE && Math.abs(p.hi - hi) <= IV_TOLERANCE;
+        if (!ok) bad.push(`${role} ${g.ref}→${k} ${bid} の区間: [${p.lo}, ${p.hi}] ≠ [${lo}, ${hi}]`);
+      }
+    });
+  }
+  return { n, bad };
+}
+// ==== CORE END ====
 
 // ---- 状態 ----
 const DEFAULTS = { cap: D.margins.capability_points, spd: D.margins.speed_ratio };
-const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false };
+const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false, q: "" };
 D.roles.forEach((r) => (S.refs[r.id] = r.default_reference));
 S.target = (D.models.find((m) => m.id === "gpt-6.1-sol") || D.models[0]).id;
 try {
@@ -231,7 +299,7 @@ const model = (id) => D.models.find((m) => m.id === id);
 const keyOf = (m, e) => `${m}:${e}`;
 const splitKey = (k) => { const i = k.lastIndexOf(":"); return [k.slice(0, i), k.slice(i + 1)]; };
 const label = (k) => { const [m, e] = splitKey(k); return `${model(m).name} ${e}`; };
-const EFFORTS = (() => { const o = []; for (const m of D.models) for (const e of m.efforts) if (!o.includes(e)) o.push(e); return o; })();
+const EFFORTS = D.effort_order; // 列の並び(段階の順)。Rust がカタログの語彙から決める
 const roleOf = (id) => D.roles.find((r) => r.id === id);
 const benchName = (id) => (D.benchmarks[id] ? D.benchmarks[id].name : id);
 const fmtPt = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "pt";
@@ -244,7 +312,8 @@ function badge(v, extra = "") {
 
 // ---- 描画 ----
 function renderControls() {
-  $("sub").textContent = `Claude と GPT の (モデル × エフォート) を、公開ベンチだけで比べて、乗り換えても差を感じにくい組合せを引く。更新 ${D.generated}。`;
+  const nRows = Object.keys(D.rows).length, nProv = new Set(D.models.map((m) => m.provider)).size;
+  $("sub").textContent = `${nProv} 社・${D.models.length} モデル・${nRows} 組の (モデル × エフォート) を、公開ベンチだけで比べて、乗り換えても差を感じにくい組合せを引く。更新 ${D.generated}。`;
   $("tabs").innerHTML = D.roles.map((r) => `<button role="tab" type="button" data-role="${r.id}" aria-selected="${r.id === S.role}">${esc(r.name)}</button>`).join("");
   $("tabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { S.role = b.dataset.role; S.sel = null; save(); renderAll(); }));
   const keys = Object.keys(D.rows);
@@ -255,6 +324,7 @@ function renderControls() {
   $("cap").addEventListener("input", (e) => { S.m.cap = Number(e.target.value); save(); renderAll(); });
   $("spd").addEventListener("input", (e) => { S.m.spd = Number(e.target.value) / 100; save(); renderAll(); });
   $("only").addEventListener("change", (e) => { S.only = e.target.checked; save(); renderAll(); });
+  $("q").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); renderMatrix(); });
   $("reset").addEventListener("click", () => { S.m = { ...DEFAULTS }; save(); renderAll(); });
   $("target").innerHTML = D.models.map((m) => `<option value="${esc(m.id)}">${esc(m.provider)} ${esc(m.name)}</option>`).join("");
   $("target").addEventListener("change", (e) => { S.target = e.target.value; renderPair(); });
@@ -298,7 +368,7 @@ function renderMatrix() {
   const provs = provFirst.slice().sort((a, b) => provBest[a] - provBest[b] || provFirst.indexOf(a) - provFirst.indexOf(b));
   let html = `<thead><tr><th scope="col">モデル</th>${EFFORTS.map((e) => `<th scope="col">${esc(e)}</th>`).join("")}</tr></thead><tbody>`;
   for (const prov of provs) {
-    const rows = order.filter((o) => o.m.provider === prov && (!S.only || info.get(o.m.id).best <= 0))
+    const rows = order.filter((o) => o.m.provider === prov && (!S.only || info.get(o.m.id).best <= 0) && (!S.q || `${o.m.provider} ${o.m.name}`.toLowerCase().includes(S.q)))
       .sort((a, b) => info.get(a.m.id).best - info.get(b.m.id).best || a.i - b.i);
     if (!rows.length) continue;
     html += `<tr class="prov"><th scope="rowgroup" colspan="${EFFORTS.length + 1}">${esc(prov)}</th></tr>`;
@@ -312,7 +382,9 @@ function renderMatrix() {
         const v = info.get(m.id).by[e];
         if (S.only && RANK[v] > 0) { html += `<td class="c small" aria-hidden="true">—</td>`; continue; }
         const x = VERDICT[v];
-        html += `<td class="c"><button type="button" class="cell v-${v}" data-k="${esc(k)}" aria-pressed="${S.sel === k}" aria-label="${esc(label(k))}: ${x.label}" title="${esc(label(k))}: ${x.label}"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></button></td>`;
+        const age = daysSince(D.rows[k].retrieved), old = age !== null && age > 90;
+        const tip = `${label(k)}: ${x.label}${old ? `(取得から ${age} 日の値)` : ""}`;
+        html += `<td class="c"><button type="button" class="cell v-${v}${old ? " stale" : ""}" data-k="${esc(k)}" aria-pressed="${S.sel === k}" aria-label="${esc(tip)}" title="${esc(tip)}"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></button></td>`;
       }
       html += `</tr>`;
     }
@@ -369,6 +441,10 @@ function renderDetail() {
   if (!S.sel) { $("detail").innerHTML = `<p class="lead">マトリクスのセルを選ぶと、その組合せがなぜその判定かを、ベンチごとの差の区間で示す。</p>`; return; }
   const r = roleVerdict(S.role, ref, S.sel, S.m);
   let html = `<div class="row" style="margin-bottom:8px"><b>${esc(label(S.sel))}</b> は <b>${esc(label(ref))}</b> に対して ${badge(r.v)}<span class="small">(${esc(role.name)})</span></div>`;
+  for (const k of [ref, S.sel]) {
+    const age = daysSince(D.rows[k].retrieved);
+    if (age !== null && age > 90) html += `<p class="warn">${esc(label(k))} の値は、取得から ${age} 日(${esc(D.rows[k].retrieved)})。応答から消えたモデルなどで、最後に測れた値を持ち越している。</p>`;
+  }
   html += `<p class="small">判定の規則: 能力はベンチごとに、差の 90% 区間が許容幅の内側なら「同等」、全体が下に外れれば「弱い分野あり」、全体が上に外れれば「上回る」、またぐなら「データ不足」。1 つでも弱ければ役の判定も「弱い分野あり」、そうでなく 1 つでも不足なら「データ不足」。平均や総合点は作らない。</p>`;
   for (const it of r.items) {
     const name = it.kind === "cap" ? benchName(it.id) : SPEED[it.id];
@@ -434,7 +510,7 @@ function renderEvidence() {
   html += `</tbody></table></div>`;
   const aa = D.aa;
   html += `<dl class="kv"><dt>測定値</dt><dd>${aa ? `<a href="https://artificialanalysis.ai/" rel="noopener">${esc(aa.attribution)}</a> の API(取得 ${esc(aa.retrieved)})。エフォート別に別の行で測られ、ハーネスは mini-swe-agent に固定。速さの測定条件は入力 ${aa.prompt_length_tokens ?? "?"} トークン。` : "—"}</dd>
-    <dt>区間の計算</dt><dd>AA は信頼区間を公開していないので、課題数から Newcombe(1998)の区間を計算(2 つのモデルを独立な標本として扱うので、同じ課題での対応を無視する分、区間は広めに出て、同等を言い過ぎない側に倒れる)。</dd>
+    <dt>区間の計算</dt><dd>AA は信頼区間を公開していないので、課題数から Newcombe(1998)の区間を、基準を選ぶたびにこのページ内で計算する(読み込み時に Rust の計算と突き合わせる)。2 つのモデルを独立な標本として扱うので、同じ課題での対応を無視する分、区間は広めに出て、同等を言い過ぎない側に倒れる。</dd>
     <dt>判定の方法</dt><dd>同等性検定(TOST、Lakens 2017)。差が有意でないことは同等の証拠にならないので、区間が許容幅に収まって初めて「同等」と言う。</dd>
     <dt>採点の偏り</dt><dd>AA-LCR と HLE は GPT 系の LLM(GPT-5.6 Luna (medium))が、参照解答との等価判定をしている。Claude の答えを GPT が採点する構図なので、この 2 つで GPT が有利に出る偏りがありうる(大きさは未確認。AA は採点者を替えた結果を公開していない)。</dd>
     <dt>速さ</dt><dd>最初のトークンまでの時間は、エフォートで桁が変わる(思考の長さ)。区間は無く、点推定の比で見る。</dd></dl>`;
@@ -451,20 +527,11 @@ function renderFoot() {
   $("foot").innerHTML = `データ: ${D.aa ? esc(D.aa.attribution) : ""}。このページは、測定値のカタログ(catalog.toml)と履歴の件数から生成した自分用のもの。個別の課題名やリポジトリ名は含まない。`;
 }
 
-// ---- 二重化した規則の自己検査(Rust が出した判定と突き合わせる) ----
+// ---- 二重化した規則の自己検査(Rust が出した判定・区間と突き合わせる) ----
 function selfCheck() {
-  const bad = [];
-  const sets = [{ cap: D.margins.capability_points, spd: D.margins.speed_ratio }, { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio }];
-  let n = 0;
-  for (const [role, byRef] of Object.entries(D.golden)) {
-    for (const [ref, byCand] of Object.entries(byRef)) {
-      for (const [cand, want] of Object.entries(byCand)) {
-        sets.forEach((m, i) => { n++; const got = roleVerdict(role, ref, cand, m).v; if (got !== want[i]) bad.push(`${role} ${ref}→${cand} (${i}): ${got} ≠ ${want[i]}`); });
-      }
-    }
-  }
+  const { n, bad } = selfCheckCore();
   $("check").innerHTML = bad.length
-    ? `<div class="warn" role="alert">ページの判定が、生成時の判定と ${bad.length}/${n} 件で食い違っている。判定の規則を二重に持つ JS と Rust がずれている。このページの判定を信用しないこと。最初の例: ${esc(bad[0])}</div>`
+    ? `<div class="warn" role="alert">ページの計算が、生成時の Rust の計算と ${bad.length}/${n} 件で食い違っている。判定の規則と区間の式を二重に持つ JS と Rust がずれている。このページの判定を信用しないこと。最初の例: ${esc(bad[0])}</div>`
     : "";
   return { n, bad: bad.length };
 }

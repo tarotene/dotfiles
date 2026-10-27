@@ -1,14 +1,18 @@
 //! 単一の HTML ページ(データとスクリプトを埋め込む)の生成。
 //!
-//! 許容幅 δ はページ上のスライダーで動かすので、判定の規則(境界の比較と役の束ね)は JS にも要る。
-//! 重い計算(Newcombe の区間、速さの比)は Rust で事前に済ませて埋め込み、JS は比較と束ねだけを行う。
-//! 二重化した規則がずれないよう、Rust が出した判定(2 通りの許容幅)を `golden` として埋め込み、
-//! ページが読み込み時に自分の判定と突き合わせて、ずれたら警告を出す。
+//! 許容幅 δ はページ上のスライダーで動かすので、判定の規則は JS にも要る。数百行の測定値では、
+//! 全組合せ(基準 × 候補)の区間を事前計算して埋め込む方式は破綻する(30 行で 560KB、組合せは
+//! 行数の 2 乗)ので、事前計算は持たない。ページ(JS)が、選んだ基準 1 点 × 全候補の Newcombe 区間と
+//! 速さの比を都度計算する。
+//!
+//! 二重化した規則がずれないよう、Rust が出した判定を `golden` として埋め込み、ページが読み込み時に
+//! 自分の計算と突き合わせて、ずれたら警告を出す。突き合わせるのは、役ごとの既定の基準 1 点に対する
+//! 全候補の、(1) 2 通りの許容幅での役の判定、(2) 判定に使うベンチごとの差の区間 `[下限, 上限]`。
+//! 埋め込みは行数に比例する(組合せの数には比例しない)。
 
-use crate::judge::{
-    capability, compare, goodness_ratio, judged_benchmarks, Margins, SpeedMetric, Verdict,
-};
+use crate::judge::{capability, compare, judged_benchmarks, Margins, Verdict};
 use crate::lens::Lens;
+use model_catalog::aa::{DEFAULT_EFFORT, EFFORT_VOCABULARY};
 use model_catalog::Catalog;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -41,13 +45,49 @@ fn key(model: &str, effort: &str) -> String {
     format!("{model}:{effort}")
 }
 
-fn verdict_str(v: Verdict) -> Value {
-    serde_json::to_value(v).expect("Verdict は文字列に直せる")
-}
-
 fn split_ref(s: &str) -> Result<(&str, &str), String> {
     s.split_once(':')
         .ok_or_else(|| format!("基準は MODEL:EFFORT の形: {s}"))
+}
+
+/// 判定の頭文字(`golden` の文字列に使う)。e = 同等、s = 上回る、w = 弱い分野あり、i = データ不足。
+fn verdict_letter(v: Verdict) -> char {
+    match v {
+        Verdict::Equivalent => 'e',
+        Verdict::Stronger => 's',
+        Verdict::Weaker => 'w',
+        Verdict::Insufficient => 'i',
+    }
+}
+
+/// 区間の突き合わせに使う丸め(点、小数 4 桁)。ページが許す誤差はこの丸めより大きい。
+pub const INTERVAL_DECIMALS: f64 = 1e4;
+
+fn round_points(v: f64) -> f64 {
+    (v * INTERVAL_DECIMALS).round() / INTERVAL_DECIMALS
+}
+
+/// ページに出すエフォートの列の並び。語彙の段階順 → `default` → カタログにだけある段階(出現順)。
+fn effort_order(catalog: &Catalog) -> Vec<String> {
+    let used: BTreeSet<&str> = catalog
+        .models
+        .iter()
+        .flat_map(|m| m.efforts.iter().map(String::as_str))
+        .collect();
+    let mut out: Vec<String> = EFFORT_VOCABULARY
+        .iter()
+        .chain(std::iter::once(&DEFAULT_EFFORT))
+        .filter(|e| used.contains(**e))
+        .map(|e| (*e).to_owned())
+        .collect();
+    for m in &catalog.models {
+        for e in &m.efforts {
+            if !out.contains(e) {
+                out.push(e.clone());
+            }
+        }
+    }
+    out
 }
 
 pub fn build_data(
@@ -59,19 +99,16 @@ pub fn build_data(
 
     // 役と、判定に使うベンチ(履歴に従う役は絞り込み済み)。
     let mut roles = Vec::new();
-    let mut cap_benches: BTreeSet<String> = BTreeSet::new();
+    // 役ごとの (役 ID, 既定の基準, 判定に使うベンチ) — golden の元。
+    let mut golden_specs: Vec<(String, String, Vec<String>)> = Vec::new();
     let mut shown_benches: BTreeSet<String> = BTreeSet::new();
     let mut ordered: Vec<_> = catalog.roles.iter().collect();
     ordered.sort_by_key(|(id, r)| (r.order, (*id).clone()));
     for (id, role) in ordered {
         let (judged, uncovered) = judged_benchmarks(catalog, id, lens)?;
-        for (b, _) in &judged {
-            cap_benches.insert(b.clone());
-        }
         // 判定に使うベンチは、履歴で絞る前のもの全部の値を載せる(ページ側で絞り込みの説明に使う)。
         for b in role.benchmarks.iter().chain(&role.reference_benchmarks) {
             shown_benches.insert(b.clone());
-            cap_benches.insert(b.clone());
         }
         let default_ref = match id.as_str() {
             "plan" => &opts.plan_reference,
@@ -82,6 +119,11 @@ pub fn build_data(
         if catalog.measurement(m, e).is_none() {
             return Err(format!("役 {id} の基準 {default_ref} の測定値が無い"));
         }
+        golden_specs.push((
+            id.clone(),
+            default_ref.clone(),
+            judged.iter().map(|(b, _)| b.clone()).collect(),
+        ));
         roles.push(json!({
             "id": id,
             "name": role.name,
@@ -94,8 +136,6 @@ pub fn build_data(
             "default_reference": default_ref,
         }));
     }
-    // 判定に使うベンチの値を、判定対象でないものも含めて pairs に載せる必要は無い。
-    cap_benches.retain(|b| catalog.roles.values().any(|r| r.benchmarks.contains(b)));
 
     let mut benchmarks = Map::new();
     for id in &shown_benches {
@@ -133,78 +173,77 @@ pub fn build_data(
         rows.insert(
             key(&r.model, &r.effort),
             json!({
-                "aa_name": r.aa_name, "tps": r.median_output_tokens_per_second,
+                "aa_name": r.aa_name, "retrieved": r.retrieved, "tps": r.median_output_tokens_per_second,
                 "ttft": r.median_time_to_first_token_seconds, "scores": r.scores,
             }),
         );
     }
+    // golden は、この並び(`rows` のキーの並び。ページは `Object.keys(D.rows)`)に揃えた配列で持つ。
+    let keys: Vec<String> = rows.keys().cloned().collect();
 
-    // 順序つきの全組(基準, 候補)について、許容幅に依らない事前計算値を持つ。
-    let mut pairs = Map::new();
-    for rf in &catalog.measurements {
-        let mut per_ref = Map::new();
-        for cd in &catalog.measurements {
-            if (&rf.model, &rf.effort) == (&cd.model, &cd.effort) {
-                continue;
-            }
-            let mut cap = Map::new();
-            for id in &cap_benches {
-                let bench = &catalog.benchmarks[id];
-                let j = capability(
-                    id,
-                    bench,
-                    rf.scores.get(id).copied(),
-                    cd.scores.get(id).copied(),
-                    margins.capability_points,
-                );
-                cap.insert(
-                    id.clone(),
-                    match (j.interval, j.resolution_points, j.reference, j.candidate) {
-                        (Some((lo, hi)), Some(res), Some(r), Some(c)) => {
-                            json!({"d": (c - r) * 100.0, "lo": lo, "hi": hi, "res": res})
-                        }
-                        _ => json!({"why": j.basis}),
-                    },
-                );
-            }
-            let spd = |metric: SpeedMetric| -> Value {
-                match (metric.value(rf), metric.value(cd)) {
-                    (Some(r), Some(c)) if r > 0.0 && c > 0.0 => json!(goodness_ratio(metric, r, c)),
-                    _ => Value::Null,
-                }
-            };
-            per_ref.insert(
-                key(&cd.model, &cd.effort),
-                json!({
-                    "cap": cap,
-                    "tps": spd(SpeedMetric::OutputTokensPerSecond),
-                    "ttft": spd(SpeedMetric::TimeToFirstToken),
-                }),
+    // Rust の判定を、役ごとの既定の基準 1 点 × 全候補で埋め込む。ページの JS が自分の計算と突き合わせる。
+    //   v:  候補ごとに 2 文字(既定の許容幅・別の許容幅)の判定。基準自身は "--"。
+    //   iv: 判定に使うベンチごとに、候補ごとの差の区間 [下限, 上限](点)。作れないものは null。
+    let mut golden = Map::new();
+    for (role, default_ref, judged) in &golden_specs {
+        let (m, e) = split_ref(default_ref)?;
+        let a = compare(catalog, role, (m, e), lens, margins)?;
+        let b = compare(catalog, role, (m, e), lens, GOLDEN_ALT)?;
+        let mut by_key: std::collections::BTreeMap<String, String> = Default::default();
+        for (x, y) in a.iter().zip(&b) {
+            by_key.insert(
+                key(&x.model, &x.effort),
+                format!(
+                    "{}{}",
+                    verdict_letter(x.judgement.verdict),
+                    verdict_letter(y.judgement.verdict)
+                ),
             );
         }
-        pairs.insert(key(&rf.model, &rf.effort), Value::Object(per_ref));
-    }
-
-    // Rust の判定(既定と別の許容幅の 2 通り)。ページの JS が自分の判定と突き合わせる。
-    let mut golden = Map::new();
-    for role in catalog.roles.keys() {
-        let mut per_role = Map::new();
-        for rf in &catalog.measurements {
-            let mut per_ref = Map::new();
-            let a = compare(catalog, role, (&rf.model, &rf.effort), lens, margins)?;
-            let b = compare(catalog, role, (&rf.model, &rf.effort), lens, GOLDEN_ALT)?;
-            for (x, y) in a.iter().zip(&b) {
-                per_ref.insert(
-                    key(&x.model, &x.effort),
-                    json!([
-                        verdict_str(x.judgement.verdict),
-                        verdict_str(y.judgement.verdict)
-                    ]),
-                );
+        let v: String = keys
+            .iter()
+            .map(|k| by_key.get(k).map_or("--", String::as_str))
+            .collect();
+        let base = catalog.measurement(m, e).expect("基準の存在は確認済み");
+        let mut iv = Map::new();
+        for id in judged {
+            let bench = &catalog.benchmarks[id];
+            let mut flat = Vec::with_capacity(keys.len() * 2);
+            for k in &keys {
+                let cand = catalog
+                    .measurements
+                    .iter()
+                    .find(|r| &key(&r.model, &r.effort) == k)
+                    .expect("rows のキーは測定値から作った");
+                let interval = if k == default_ref {
+                    None
+                } else {
+                    capability(
+                        id,
+                        bench,
+                        base.scores.get(id).copied(),
+                        cand.scores.get(id).copied(),
+                        margins.capability_points,
+                    )
+                    .interval
+                };
+                match interval {
+                    Some((lo, hi)) => {
+                        flat.push(json!(round_points(lo)));
+                        flat.push(json!(round_points(hi)));
+                    }
+                    None => {
+                        flat.push(Value::Null);
+                        flat.push(Value::Null);
+                    }
+                }
             }
-            per_role.insert(key(&rf.model, &rf.effort), Value::Object(per_ref));
+            iv.insert(id.clone(), Value::Array(flat));
         }
-        golden.insert(role.clone(), Value::Object(per_role));
+        golden.insert(
+            role.clone(),
+            json!({"ref": default_ref, "v": v, "iv": Value::Object(iv)}),
+        );
     }
 
     let lens_json = lens.map(|l| {
@@ -242,8 +281,9 @@ pub fn build_data(
         "margins": {"capability_points": margins.capability_points, "speed_ratio": margins.speed_ratio},
         "alt_margins": {"capability_points": GOLDEN_ALT.capability_points, "speed_ratio": GOLDEN_ALT.speed_ratio},
         "history_share_min": catalog.equivalence.history_share_min,
+        "effort_order": effort_order(catalog),
         "roles": roles, "benchmarks": benchmarks, "models": models, "rows": rows,
-        "pairs": pairs, "golden": golden, "lens": lens_json, "native_harness": native,
+        "golden": golden, "lens": lens_json, "native_harness": native,
     }))
 }
 
@@ -269,7 +309,8 @@ pub fn render_document(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model_catalog::data;
+    use model_catalog::{data, CATALOG_TOML};
+    use std::process::Command;
 
     fn lens() -> Lens {
         Lens::build(
@@ -279,20 +320,103 @@ mod tests {
         )
     }
 
+    fn letters(v: &Value) -> Vec<char> {
+        v.as_str().unwrap().chars().collect()
+    }
+
+    /// 数百行の測定値を持つカタログ(AA の応答の代わりに、決定的に作った行を `fetch-aa` の取り込みに通す)。
+    /// 33 社 × 2 モデル × 5 エフォート = 330 行を手登録の 30 行に足す。一部のベンチは値を欠く。
+    fn big_catalog() -> Catalog {
+        let efforts = ["Low", "Medium", "High", "XHigh", "Max"];
+        let mut rows = Vec::new();
+        let mut n = 0u64;
+        for p in 0..33u64 {
+            for m in 0..2u64 {
+                for e in efforts {
+                    n += 1;
+                    let frac = |salt: u64| ((n * 7919 + salt * 104_729) % 1000) as f64 / 1000.0;
+                    let sci = if n.is_multiple_of(7) {
+                        "null".to_owned()
+                    } else {
+                        frac(3).to_string()
+                    };
+                    rows.push(format!(
+                        r#"{{"id":"00000000-0000-0000-0000-{n:012}","name":"Model {p}-{m} ({e})","slug":"model-{p}-{m}-{e}",
+                        "release_date":"2026-09-15","model_creator":{{"name":"Maker {p}"}},
+                        "median_output_tokens_per_second":{tps},"median_time_to_first_token_seconds":{ttft},
+                        "evaluations":{{"terminalbench_v4_0":{tb},"scicode":{sci},"lcr":{lcr},"hle":{hle},
+                        "artificial_analysis_intelligence_index":{idx}}}}}"#,
+                        tps = 20.0 + frac(1) * 100.0,
+                        ttft = 1.0 + frac(2) * 30.0,
+                        tb = frac(4),
+                        lcr = frac(5),
+                        hle = frac(6) * 0.6,
+                        idx = frac(7) * 60.0,
+                    ));
+                }
+            }
+        }
+        let json = format!(
+            r#"{{"status":200,"prompt_options":{{"parallel_queries":1,"prompt_length":1000}},"data":[{}]}}"#,
+            rows.join(",")
+        );
+        let (_, text) = model_catalog::aa::run(CATALOG_TOML, &json, "2026-10-28").unwrap();
+        Catalog::parse(&text).unwrap()
+    }
+
+    /// ページの JS の核(`CORE BEGIN`〜`CORE END`)を node で実行し、埋め込んだ golden と突き合わせる。
+    /// node が無い環境では None(ブラウザが読み込み時に同じ突き合わせをする)。
+    fn run_page_core(data: &Value) -> Option<Value> {
+        if Command::new("node").arg("--version").output().is_err() {
+            eprintln!("node が無いので、JS の核の突き合わせは省略(ページが読み込み時に行う)");
+            return None;
+        }
+        let begin = PAGE.find("// ==== CORE BEGIN").expect("核の開始行");
+        let end = PAGE.find("// ==== CORE END ====").expect("核の終了行");
+        let dir = tempfile::tempdir().unwrap();
+        let json = dir.path().join("data.json");
+        let script = dir.path().join("check.js");
+        std::fs::write(&json, serde_json::to_string(data).unwrap()).unwrap();
+        std::fs::write(
+            &script,
+            format!(
+                "\"use strict\";\nconst D = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\n{}\nconsole.log(JSON.stringify(selfCheckCore()));\n",
+                &PAGE[begin..end]
+            ),
+        )
+        .unwrap();
+        let out = Command::new("node")
+            .arg(&script)
+            .arg(&json)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        Some(serde_json::from_slice(&out.stdout).unwrap())
+    }
+
     #[test]
-    fn data_has_every_ordered_pair_and_the_golden_verdicts() {
+    fn data_embeds_no_precomputed_pairs_and_one_golden_per_role() {
         let c = data();
         let v = build_data(c, Some(&lens()), &RenderOptions::default()).unwrap();
+        assert!(v.get("pairs").is_none(), "全組合せの区間は埋め込まない");
         let n = c.measurements.len();
-        let pairs = v["pairs"].as_object().unwrap();
-        assert_eq!(pairs.len(), n);
-        assert!(pairs
-            .values()
-            .all(|p| p.as_object().unwrap().len() == n - 1));
-        let g = &v["golden"]["execute"]["claude-sonnet-5-5:high"]["claude-sonnet-5-5:low"];
-        assert_eq!(g.as_array().unwrap().len(), 2);
+        assert_eq!(v["rows"].as_object().unwrap().len(), n);
+        let g = v["golden"].as_object().unwrap();
+        assert_eq!(g.len(), 2);
+        for (role, want_ref) in [
+            ("plan", "claude-opus-5-5:high"),
+            ("execute", "claude-sonnet-5-5:high"),
+        ] {
+            assert_eq!(g[role]["ref"], want_ref);
+            assert_eq!(g[role]["v"].as_str().unwrap().len(), 2 * n);
+        }
         assert_eq!(v["roles"].as_array().unwrap().len(), 2);
         assert_eq!(v["models"].as_array().unwrap().len(), 6);
+        assert!(v["rows"]["claude-opus-5-5:high"]["retrieved"].is_string());
     }
 
     #[test]
@@ -301,25 +425,154 @@ mod tests {
         let l = lens();
         let v = build_data(c, Some(&l), &RenderOptions::default()).unwrap();
         let m = Margins::from_catalog(c);
+        let keys: Vec<&String> = v["rows"].as_object().unwrap().keys().collect();
         let got = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), m).unwrap();
         let alt = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), GOLDEN_ALT).unwrap();
+        let ls = letters(&v["golden"]["plan"]["v"]);
         for (x, y) in got.iter().zip(&alt) {
-            let g = &v["golden"]["plan"]["claude-opus-5-5:high"][key(&x.model, &x.effort)];
-            assert_eq!(g[0], verdict_str(x.judgement.verdict));
-            assert_eq!(g[1], verdict_str(y.judgement.verdict));
+            let i = keys
+                .iter()
+                .position(|k| **k == key(&x.model, &x.effort))
+                .unwrap();
+            assert_eq!(ls[2 * i], verdict_letter(x.judgement.verdict));
+            assert_eq!(ls[2 * i + 1], verdict_letter(y.judgement.verdict));
+        }
+        let me = keys
+            .iter()
+            .position(|k| *k == "claude-opus-5-5:high")
+            .unwrap();
+        assert_eq!(
+            (ls[2 * me], ls[2 * me + 1]),
+            ('-', '-'),
+            "基準自身は判定しない"
+        );
+    }
+
+    #[test]
+    fn golden_intervals_equal_the_rust_interval_and_failures_are_null() {
+        let c = data();
+        let v = build_data(c, None, &RenderOptions::default()).unwrap();
+        let keys: Vec<&String> = v["rows"].as_object().unwrap().keys().collect();
+        let i = keys
+            .iter()
+            .position(|k| *k == "claude-sonnet-5-5:xhigh")
+            .unwrap();
+        let iv = &v["golden"]["execute"]["iv"]["terminalbench_v4_0"];
+        let want = capability(
+            "terminalbench_v4_0",
+            &c.benchmarks["terminalbench_v4_0"],
+            c.measurement("claude-sonnet-5-5", "high")
+                .unwrap()
+                .scores
+                .get("terminalbench_v4_0")
+                .copied(),
+            c.measurement("claude-sonnet-5-5", "xhigh")
+                .unwrap()
+                .scores
+                .get("terminalbench_v4_0")
+                .copied(),
+            5.0,
+        )
+        .interval
+        .unwrap();
+        assert_eq!(iv[2 * i], json!(round_points(want.0)));
+        assert_eq!(iv[2 * i + 1], json!(round_points(want.1)));
+        // 基準自身の区間は無い。
+        let me = keys
+            .iter()
+            .position(|k| *k == "claude-sonnet-5-5:high")
+            .unwrap();
+        assert!(iv[2 * me].is_null() && iv[2 * me + 1].is_null());
+    }
+
+    #[test]
+    fn effort_columns_follow_the_vocabulary_then_default_then_the_rest() {
+        let c = big_catalog();
+        let o = effort_order(&c);
+        assert_eq!(o, ["low", "medium", "high", "xhigh", "max"]);
+        // 語彙に無い段階はその後ろ、default は語彙の段階の後ろ。
+        let mut c = c;
+        c.models[0].efforts = vec!["ultra".into(), "default".into(), "minimal".into()];
+        let o = effort_order(&c);
+        assert_eq!(
+            o,
+            ["minimal", "low", "medium", "high", "xhigh", "max", "default", "ultra"]
+        );
+    }
+
+    #[test]
+    fn hundreds_of_rows_stay_within_a_few_hundred_kb_and_golden_grows_linearly() {
+        let c = big_catalog();
+        let n = c.measurements.len();
+        assert!(n >= 360, "{n}");
+        let v = build_data(&c, Some(&lens()), &RenderOptions::default()).unwrap();
+        let html = render_document(&v);
+        let kb = html.len() / 1024;
+        eprintln!("{n} 行のページ: {kb} KB");
+        assert!(kb < 400, "数百 KB に収まる: {kb} KB");
+        assert!(v.get("pairs").is_none());
+        for role in ["plan", "execute"] {
+            assert_eq!(v["golden"][role]["v"].as_str().unwrap().len(), 2 * n);
+        }
+        // 事前計算していた頃の、組合せ数(行数の 2 乗)に比例した埋め込みが無いこと。
+        let golden = serde_json::to_string(&v["golden"]).unwrap();
+        assert!(golden.len() < 60 * n * 4, "{} bytes", golden.len());
+    }
+
+    #[test]
+    fn the_page_core_agrees_with_rust_on_the_embedded_catalog() {
+        let c = data();
+        let v = build_data(c, Some(&lens()), &RenderOptions::default()).unwrap();
+        if let Some(r) = run_page_core(&v) {
+            assert_eq!(r["bad"].as_array().unwrap().len(), 0, "{r}");
+            // 2 役 ×(29 候補 ×(判定 2 + 区間 2))= 232 件ほど。
+            assert!(r["n"].as_u64().unwrap() > 200, "{r}");
         }
     }
 
     #[test]
-    fn precomputed_interval_matches_the_judgement_and_failures_carry_a_reason() {
+    fn the_page_core_agrees_with_rust_for_many_references_at_hundreds_of_rows() {
+        let c = big_catalog();
+        let l = lens();
+        // 既定の基準を、行を等間隔に 12 点選んで変える(埋め込む golden は基準ごとに作り直される)。
+        // 手登録の行・自動登録の行・応答から消えた行の持ち越しを含め、基準 × 全候補を突き合わせる。
+        let keys: Vec<String> = c
+            .measurements
+            .iter()
+            .map(|r| key(&r.model, &r.effort))
+            .collect();
+        let step = keys.len() / 12;
+        let mut compared = 0;
+        for k in keys.iter().step_by(step) {
+            let opts = RenderOptions {
+                plan_reference: k.clone(),
+                execute_reference: keys[keys.len() - 1].clone(),
+            };
+            let v = build_data(&c, Some(&l), &opts).unwrap();
+            let Some(r) = run_page_core(&v) else { return };
+            assert_eq!(r["bad"].as_array().unwrap().len(), 0, "{k}: {r}");
+            compared += r["n"].as_u64().unwrap();
+        }
+        assert!(compared > 12 * 2000, "{compared}");
+    }
+
+    #[test]
+    fn the_page_core_notices_a_tampered_golden() {
         let c = data();
-        let v = build_data(c, None, &RenderOptions::default()).unwrap();
-        let p = &v["pairs"]["claude-opus-5-5:high"]["claude-sonnet-5-5:xhigh"];
-        let tb = &p["cap"]["terminalbench_v4_0"];
-        let (lo, hi) = (tb["lo"].as_f64().unwrap(), tb["hi"].as_f64().unwrap());
-        assert!(lo < tb["d"].as_f64().unwrap() && tb["d"].as_f64().unwrap() < hi);
-        assert!(tb["res"].as_f64().unwrap() > 10.0);
-        assert!(p["ttft"].as_f64().unwrap() > 0.0);
+        let mut v = build_data(c, None, &RenderOptions::default()).unwrap();
+        // 判定を 1 文字、区間を 1 つ書き換える。
+        let mut s: Vec<char> = letters(&v["golden"]["plan"]["v"]);
+        let i = s.iter().position(|c| *c == 'w').expect("弱い候補がある");
+        s[i] = 'e';
+        v["golden"]["plan"]["v"] = json!(s.into_iter().collect::<String>());
+        let iv = v["golden"]["execute"]["iv"]["terminalbench_v4_0"]
+            .as_array_mut()
+            .unwrap();
+        let j = iv.iter().position(|x| x.is_number()).unwrap();
+        iv[j] = json!(iv[j].as_f64().unwrap() + 1.0);
+        if let Some(r) = run_page_core(&v) {
+            assert_eq!(r["bad"].as_array().unwrap().len(), 2, "{r}");
+        }
     }
 
     #[test]
