@@ -88,17 +88,78 @@ pub fn command_ran_pr_create(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// 改番したことを伝える文(additionalContext の中身)。
-pub fn context_message(pr_number: &str, fix_out: &str) -> String {
-    format!(
-        "ADR-0000 を PR #{pr_number} の番号へ改番しました({fix_out})。commit して push してください。"
-    )
+/// 改番したことを伝える文(additionalContext の中身)。`changed` は改番で書き換わり、
+/// hook が stage まで済ませたファイル(#1072)。無ければ従来の文のまま。
+pub fn context_message(pr_number: &str, fix_out: &str, changed: &[String]) -> String {
+    let mut msg = format!("ADR-0000 を PR #{pr_number} の番号へ改番しました({fix_out})。");
+    if changed.is_empty() {
+        msg.push_str("commit して push してください。");
+    } else {
+        msg.push_str(&format!(
+            "書き換えたファイルは stage 済みです: {}。`git add` は要りません(旧パス `docs/adr/0000-…` は指定しない)。`git commit` して push してください。",
+            changed.join(", ")
+        ));
+    }
+    msg
+}
+
+/// `git status --porcelain` の 1 行を (行そのもの, 現在のパス) にする。リネームは新しい側。
+fn status_entries(project: &Path) -> Vec<(String, String)> {
+    let Ok(out) = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(project)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.len() > 3)
+        .map(|l| {
+            let path = l[3..].rsplit(" -> ").next().unwrap_or("").trim_matches('"');
+            (l.to_string(), path.to_string())
+        })
+        .collect()
+}
+
+/// 改番の前後の `git status` を比べ、改番で増えた・変わったパスを stage して返す。
+/// stage の状態をそろえるのは、リネームだけが stage 済みで書き換えが未 stage という
+/// 割れ方を避けるため(#1072)。失敗しても改番そのものには影響させない。
+fn stage_changed(project: &Path, before: &[(String, String)]) -> Vec<String> {
+    let changed: Vec<String> = status_entries(project)
+        .into_iter()
+        .filter(|(line, _)| !before.iter().any(|(b, _)| b == line))
+        .map(|(_, path)| path)
+        .collect();
+    if changed.is_empty() {
+        return changed;
+    }
+    let ok = Command::new("git")
+        .args(["add", "--"])
+        .args(&changed)
+        .current_dir(project)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok {
+        changed
+    } else {
+        Vec::new()
+    }
 }
 
 /// PostToolUse の additionalContext 出力(bash の `emit_context`、jq と同じ
 /// バイト列・末尾改行込み)。
-pub fn context_output(pr_number: &str, fix_out: &str) -> String {
-    let msg = context_message(pr_number, fix_out);
+pub fn context_output(pr_number: &str, fix_out: &str, changed: &[String]) -> String {
+    let msg = context_message(pr_number, fix_out, changed);
     let v = J::obj(vec![(
         "hookSpecificOutput",
         J::obj(vec![
@@ -170,7 +231,8 @@ fn run_fix(project: &Path, checker: &Path, args: &[String]) -> Option<String> {
 
 /// hook 本体。出力すべき JSON(あれば)を返す。stdin は必要になるまで読まない。
 pub fn run(agent: Agent, stdin: &mut impl Read) -> Option<String> {
-    resolve(agent, stdin).map(|(pr_number, fix_out)| context_output(&pr_number, &fix_out))
+    resolve(agent, stdin)
+        .map(|(pr_number, fix_out, changed)| context_output(&pr_number, &fix_out, &changed))
 }
 
 /// ルータ(`crates/hook-router`)向けの本体。改番したときだけ、その知らせを `Context` で返す。
@@ -181,13 +243,13 @@ pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
 
 /// Agent-aware entry point shared by both routers.
 pub fn hook_for(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
-    resolve(agent, &mut raw.as_bytes()).map(|(pr_number, fix_out)| {
-        agent_session::Outcome::Context(context_message(&pr_number, &fix_out))
+    resolve(agent, &mut raw.as_bytes()).map(|(pr_number, fix_out, changed)| {
+        agent_session::Outcome::Context(context_message(&pr_number, &fix_out, &changed))
     })
 }
 
-/// 改番したとき `(PR 番号, checker の出力)`。`run` と [`hook`] が共有する。
-fn resolve(agent: Agent, stdin: &mut impl Read) -> Option<(String, String)> {
+/// 改番したとき `(PR 番号, checker の出力, stage した変更パス)`。`run` と [`hook`] が共有する。
+fn resolve(agent: Agent, stdin: &mut impl Read) -> Option<(String, String, Vec<String>)> {
     // 最安の早期 exit: プロジェクト dir が環境変数で分かっていれば、stdin を
     // 読む前に draft の有無だけ見て終わる。
     let env_project = std::env::var(project_env_var(agent))
@@ -227,6 +289,8 @@ fn resolve(agent: Agent, stdin: &mut impl Read) -> Option<(String, String)> {
         fix_args.push("--base".into());
         fix_args.push(format!("origin/{b}"));
     }
+    let before = status_entries(&project);
     let fix_out = run_fix(&project, &checker, &fix_args)?;
-    Some((pr_number, fix_out))
+    let changed = stage_changed(&project, &before);
+    Some((pr_number, fix_out, changed))
 }
