@@ -1,0 +1,17 @@
+[package]
+name = "model-equivalence"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "(モデル × エフォート)の乗り換え先を、同等性検定(TOST)と履歴の内訳で根拠付きで判定する"
+
+# 統計は固定の z 値による四則演算だけで足りるので、統計 crate は足さない。
+# 履歴の収集は既存の gh CLI を呼ぶ。
+[dependencies]
+model-catalog = { path = "../model-catalog" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

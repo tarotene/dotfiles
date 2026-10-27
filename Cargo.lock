@@ -1037,6 +1037,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-equivalence"
+version = "0.1.0"
+dependencies = [
+ "model-catalog",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "new-tool-guard"
 version = "0.1.0"
 dependencies = [

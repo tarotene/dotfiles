@@ -6,6 +6,7 @@
 //! 実行時に検査で落ちる状態は、テストを通ったビルドには入らない。
 
 pub mod aa;
+pub mod date;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -163,12 +164,68 @@ pub struct Measurement {
     pub scores: BTreeMap<String, f64>,
 }
 
+/// 同等性の判定の既定値。ページのスライダーが、この値から動かす。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Equivalence {
+    /// 能力の許容幅 ±δ(0..100 の点)。割合のベンチには 1/100 にして当てる。
+    pub capability_margin_points: f64,
+    /// 速さの許容幅 ±δ(比)。基準に対し 1/(1+δ)〜(1+δ) の範囲を同等とする。
+    pub speed_margin_ratio: f64,
+    /// 履歴の内訳で、この割合以上を占める種類だけを、判定に使うベンチの選択に効かせる。
+    pub history_share_min: f64,
+}
+
+/// 判定の単位。Plan 役・実行役のように、同じモデルでも役ごとに効く力が違うので役ごとに判定する。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Role {
+    pub name: String,
+    pub note: String,
+    /// true の役は、履歴の内訳(種類ごとの割合)に応じて判定するベンチを絞る。
+    pub follows_history: bool,
+    /// 判定に使うベンチ。
+    pub benchmarks: Vec<String>,
+    /// 表示だけして判定に使わないベンチ(区間を作れない総合指数など)。
+    #[serde(default)]
+    pub reference_benchmarks: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Fit {
+    /// そのベンチが、その種類の仕事そのものを測っている。
+    Direct,
+    /// 近い力を測っているだけの代理。根拠欄に「代理」と出す。
+    Proxy,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CategoryBench {
+    pub id: String,
+    pub fit: Fit,
+}
+
+/// 履歴の課題の種類。`benchmarks` が空の種類は、現行モデルに値のある公開ベンチで測れていない。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Category {
+    pub name: String,
+    pub note: Option<String>,
+    #[serde(default)]
+    pub benchmarks: Vec<CategoryBench>,
+}
+
 #[derive(Clone)]
 pub struct Catalog {
     pub retrieved: String,
     pub providers: Vec<Provider>,
     pub models: Vec<Model>,
     pub benchmarks: BTreeMap<String, Benchmark>,
+    pub equivalence: Equivalence,
+    pub roles: BTreeMap<String, Role>,
+    pub categories: BTreeMap<String, Category>,
     pub aa: Option<AaMeta>,
     pub measurements: Vec<Measurement>,
     pricing: Vec<CatalogModel>,
@@ -201,6 +258,11 @@ struct RawFile {
     models: Vec<RawModel>,
     #[serde(default)]
     benchmark: BTreeMap<String, Benchmark>,
+    equivalence: Equivalence,
+    #[serde(default)]
+    role: BTreeMap<String, Role>,
+    #[serde(default)]
+    category: BTreeMap<String, Category>,
     aa: Option<AaMeta>,
     #[serde(default, rename = "measurement")]
     measurements: Vec<Measurement>,
@@ -475,6 +537,43 @@ impl Catalog {
                 return Err(format!("aa.retrieved が日付でない: {}", aa.retrieved));
             }
         }
+        let eq = &raw.equivalence;
+        for (label, v) in [
+            ("capability_margin_points", eq.capability_margin_points),
+            ("speed_margin_ratio", eq.speed_margin_ratio),
+        ] {
+            if !(v.is_finite() && v > 0.0) {
+                return Err(format!("equivalence.{label} は 0 より大きい有限の値: {v}"));
+            }
+        }
+        if !(eq.history_share_min > 0.0 && eq.history_share_min < 1.0) {
+            return Err(format!(
+                "equivalence.history_share_min は 0 と 1 の間: {}",
+                eq.history_share_min
+            ));
+        }
+        for (id, role) in &raw.role {
+            let mut seen = BTreeSet::new();
+            for b in role.benchmarks.iter().chain(&role.reference_benchmarks) {
+                if !raw.benchmark.contains_key(b) {
+                    return Err(format!("role {id}: 未定義のベンチ {b}"));
+                }
+                if !seen.insert(b) {
+                    return Err(format!("role {id}: ベンチ {b} が重複"));
+                }
+            }
+        }
+        for (id, cat) in &raw.category {
+            let mut seen = BTreeSet::new();
+            for b in &cat.benchmarks {
+                if !raw.benchmark.contains_key(&b.id) {
+                    return Err(format!("category {id}: 未定義のベンチ {}", b.id));
+                }
+                if !seen.insert(&b.id) {
+                    return Err(format!("category {id}: ベンチ {} が重複", b.id));
+                }
+            }
+        }
         if !raw.measurements.is_empty() && raw.aa.is_none() {
             return Err("[[measurement]] があるのに [aa] が無い(取得日と出典の表示が要る)".into());
         }
@@ -531,6 +630,9 @@ impl Catalog {
                 .collect(),
             models,
             benchmarks: raw.benchmark,
+            equivalence: raw.equivalence,
+            roles: raw.role,
+            categories: raw.category,
             aa: raw.aa,
             measurements: raw.measurements,
             pricing,
@@ -766,6 +868,66 @@ mod tests {
         let e = with(|t| t.replacen("schema_version = 1", "schema_version = 1\nsurprise = 1", 1))
             .unwrap_err();
         assert!(e.contains("surprise"), "{e}");
+    }
+
+    #[test]
+    fn embedded_roles_and_categories_point_at_defined_benchmarks() {
+        let c = data();
+        assert_eq!(
+            c.roles.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["execute", "plan"]
+        );
+        assert_eq!(
+            c.categories.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["bugfix", "config", "docs", "feature", "other", "refactor"]
+        );
+        assert!(c.roles["execute"].follows_history && !c.roles["plan"].follows_history);
+        // 総合指数は区間を作れないので、判定ではなく表示だけに回している。
+        assert!(!c.roles["plan"]
+            .benchmarks
+            .contains(&"artificial_analysis_intelligence_index".to_owned()));
+        assert!(c.categories["other"].benchmarks.is_empty());
+    }
+
+    #[test]
+    fn rejects_dangling_role_and_category_benchmarks() {
+        let e = with(|t| {
+            t.replacen(
+                "benchmarks = [\"lcr\", \"hle\"]",
+                "benchmarks = [\"lcr\", \"nope\"]",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("role plan: 未定義のベンチ nope"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "{ id = \"lcr\", fit = \"proxy\" }",
+                "{ id = \"nope\", fit = \"proxy\" }",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("category docs: 未定義のベンチ nope"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "benchmarks = [\"lcr\", \"hle\"]",
+                "benchmarks = [\"lcr\", \"lcr\"]",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("重複"), "{e}");
+    }
+
+    #[test]
+    fn rejects_non_positive_margins() {
+        let e = with(|t| t.replacen("speed_margin_ratio = 0.2", "speed_margin_ratio = 0.0", 1))
+            .unwrap_err();
+        assert!(e.contains("speed_margin_ratio"), "{e}");
+        let e = with(|t| t.replacen("history_share_min = 0.1", "history_share_min = 1.0", 1))
+            .unwrap_err();
+        assert!(e.contains("history_share_min"), "{e}");
     }
 
     #[test]
