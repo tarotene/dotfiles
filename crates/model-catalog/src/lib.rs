@@ -301,14 +301,16 @@ struct RawProvider {
     id: String,
     name: String,
     aa_creator: Option<String>,
+    #[serde(default)]
     comparison_only: bool,
-    api_context: u64,
-    api_max_output: u64,
+    api_context: Option<u64>,
+    api_max_output: Option<u64>,
+    #[serde(default)]
     conditions: Vec<String>,
-    cache: RawCache,
+    cache: Option<RawCache>,
     long_context: Option<RawLongContext>,
     codex_context: Option<RawCodexContext>,
-    #[serde(rename = "source")]
+    #[serde(default, rename = "source")]
     sources: Vec<RawSource>,
 }
 
@@ -353,10 +355,10 @@ struct RawModel {
     id: String,
     provider: String,
     name: String,
-    purpose: String,
-    input: f64,
-    cache_read: f64,
-    output: f64,
+    purpose: Option<String>,
+    input: Option<f64>,
+    cache_read: Option<f64>,
+    output: Option<f64>,
     credits: Option<CreditRates>,
     codex_models_json_line: Option<u64>,
     docs_slug: Option<String>,
@@ -470,7 +472,9 @@ impl Catalog {
                 ("cache_read", m.cache_read),
                 ("output", m.output),
             ] {
-                finite_positive(&format!("model {} の {label}", m.id), v)?;
+                if let Some(v) = v {
+                    finite_positive(&format!("model {} の {label}", m.id), v)?;
+                }
             }
             models.push(Model {
                 id: m.id.clone(),
@@ -481,6 +485,21 @@ impl Catalog {
                 aa_ids: m.aa_ids.clone(),
             });
 
+            // 価格の見え方は、提供元とモデルの両方に価格の欄がそろっているものだけに作る。
+            // 価格の無いモデル(測定値だけを持つ自動登録のモデル)は、費用の比較に出ない。
+            let (Some(purpose), Some(input), Some(cache_read), Some(output)) =
+                (&m.purpose, m.input, m.cache_read, m.output)
+            else {
+                continue;
+            };
+            let (Some(api_context), Some(api_max_output), Some(cache)) =
+                (p.api_context, p.api_max_output, &p.cache)
+            else {
+                return Err(format!(
+                    "model {}: 価格があるのに、provider {} に api_context・api_max_output・cache が無い",
+                    m.id, m.provider
+                ));
+            };
             let mut sources = Vec::new();
             for s in &p.sources {
                 sources.push(Source {
@@ -499,10 +518,10 @@ impl Catalog {
                 id: m.id.clone(),
                 name: m.name.clone(),
                 provider: p.name.clone(),
-                purpose: m.purpose.clone(),
+                purpose: purpose.clone(),
                 comparison_only: p.comparison_only,
-                api_context: p.api_context,
-                api_max_output: p.api_max_output,
+                api_context,
+                api_max_output,
                 codex_context: match (&p.codex_context, m.codex_models_json_line) {
                     (Some(c), Some(_)) => Some(CodexContext {
                         version: c.version.clone(),
@@ -521,13 +540,13 @@ impl Catalog {
                     (None, _) => None,
                 },
                 api: ApiRates {
-                    input: m.input,
-                    cache_read: m.cache_read,
-                    cache_write_short: m.input * p.cache.write_short_multiplier,
-                    cache_write_long: m.input * p.cache.write_long_multiplier,
-                    output: m.output,
-                    short_write_ttl: p.cache.short_ttl.clone(),
-                    long_write_ttl: p.cache.long_ttl.clone(),
+                    input,
+                    cache_read,
+                    cache_write_short: input * cache.write_short_multiplier,
+                    cache_write_long: input * cache.write_long_multiplier,
+                    output,
+                    short_write_ttl: cache.short_ttl.clone(),
+                    long_write_ttl: cache.long_ttl.clone(),
                     long_context_threshold: threshold,
                     long_input_multiplier: im,
                     long_output_multiplier: om,
@@ -768,7 +787,7 @@ mod tests {
                 tracked += 1;
             }
         }
-        assert_eq!(tracked, 20);
+        assert_eq!(tracked, 30);
         assert_eq!(c.measurements.len(), tracked);
         assert!(c
             .aa
@@ -776,6 +795,25 @@ mod tests {
             .unwrap()
             .attribution
             .contains("artificialanalysis.ai"));
+    }
+
+    #[test]
+    fn models_without_a_price_are_measured_but_stay_out_of_the_cost_view() {
+        let c = data();
+        for id in ["claude-haiku-5-5", "gpt-6.1-terra"] {
+            let m = c.model(id).unwrap();
+            assert_eq!(m.efforts.len(), 5, "{id}");
+            assert!(c.measurement(id, "high").is_some(), "{id}");
+            assert!(
+                lookup(id).is_none(),
+                "{id}: 価格が無いので、費用の比較には出ない"
+            );
+        }
+        assert_eq!(
+            catalog().len(),
+            7,
+            "費用の比較に出るのは、価格を載せた 7 モデルだけ"
+        );
     }
 
     #[test]
