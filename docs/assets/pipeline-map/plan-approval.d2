@@ -250,6 +250,14 @@ l_manual: "Manual / skills" {
     class: s_rust
     style.stroke-dash: 4
   }
+  n_model_catalog: "model-catalog" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
+  n_model_equivalence: "model-equivalence" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
 }
 
 l_external: "Sessions / services / state" {
@@ -270,6 +278,12 @@ n_agent_session.l_plan_approval.n_plan_view -> l_external.n_user: "HTML window" 
   class: e_notify
 }
 l_external.n_user -> n_agent_session: "GO / feedback" {
+  class: e_context
+}
+l_manual.n_model_catalog -> l_manual.n_model_equivalence: "catalog.toml" {
+  class: e_context
+}
+l_manual.n_model_catalog -> l_manual.n_codex_plan: "pricing data" {
   class: e_context
 }
 l_manual.n_requirements_inventory -> n_agent_session.l_plan_approval.n_plan_scope_gate: "self-check" {

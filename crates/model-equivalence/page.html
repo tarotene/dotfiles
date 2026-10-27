@@ -1,0 +1,445 @@
+<title>モデル同等性マップ</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+  --blue: #2a78d6; --good: #0ca30c; --crit: #d03b3b; --band: rgba(137, 135, 129, 0.24);
+  --warn-bg: #fff4d6; --warn-ink: #5a3d00;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --blue: #3987e5; --band: rgba(137, 135, 129, 0.30);
+    --warn-bg: #3a2c00; --warn-ink: #ffd98a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+  --blue: #3987e5; --band: rgba(137, 135, 129, 0.30);
+  --warn-bg: #3a2c00; --warn-ink: #ffd98a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 24px; margin: 0 0 4px; font-weight: 650; }
+h2 { font-size: 17px; margin: 0 0 4px; font-weight: 650; }
+.sub { color: var(--ink2); margin: 0 0 16px; font-size: 14px; }
+section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; margin: 16px 0;
+}
+.lead { color: var(--ink2); font-size: 14px; margin: 0 0 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink2); }
+select, input[type=range], button { font: inherit; color: inherit; }
+select {
+  background: var(--page); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 8px; min-width: 200px;
+}
+.tabs { display: inline-flex; border: 1px solid var(--axis); border-radius: 10px; overflow: hidden; }
+.tabs button {
+  background: transparent; border: 0; padding: 8px 14px; cursor: pointer; font-weight: 600; color: var(--ink2);
+}
+.tabs button[aria-selected=true] { background: var(--ink); color: var(--surface); }
+.ghost { background: transparent; border: 1px solid var(--axis); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+.ghost:hover { background: var(--grid); }
+.val { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+.scroll { overflow-x: auto; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; }
+th, td { padding: 6px 8px; text-align: left; vertical-align: middle; }
+thead th { font-size: 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--grid); text-align: center; }
+thead th:first-child { text-align: left; }
+tbody th { font-weight: 600; min-width: 148px; }
+tbody tr.prov th, tbody tr.prov td { font-size: 12px; color: var(--muted); padding-top: 14px; font-weight: 600; letter-spacing: .02em; }
+tbody tr + tr th, tbody tr + tr td { border-top: 1px solid var(--grid); }
+tbody tr.prov + tr th, tbody tr.prov + tr td { border-top: 0; }
+.price { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+.tag { display: inline-block; font-size: 11px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; margin-left: 6px; color: var(--ink2); font-weight: 500; }
+td.c { text-align: center; padding: 3px; }
+.cell {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: var(--page);
+  border-radius: 8px; padding: 5px 8px; cursor: pointer; min-width: 74px; justify-content: center; font-size: 13px;
+  border-left: 3px solid var(--vc, var(--muted));
+}
+.cell:hover { background: var(--grid); }
+.cell[aria-pressed=true] { outline: 2px solid var(--ink); outline-offset: 1px; }
+.cell .ic { color: var(--vc, var(--muted)); font-weight: 700; }
+.cell.base { cursor: default; border-left-color: var(--ink); font-weight: 650; white-space: nowrap; }
+.v-equivalent { --vc: var(--good); }
+.v-stronger { --vc: var(--blue); }
+.v-weaker { --vc: var(--crit); }
+.v-insufficient { --vc: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink2); margin: 10px 0 0; }
+.legend span { display: inline-flex; gap: 5px; align-items: center; border-left: 3px solid var(--vc); padding-left: 6px; }
+.metric { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 6px 16px; padding: 10px 0; border-top: 1px solid var(--grid); }
+.metric:first-of-type { border-top: 0; }
+.metric h3 { font-size: 14px; margin: 0; font-weight: 600; }
+.metric .small, .small { font-size: 12px; color: var(--ink2); }
+.why { margin: 0; font-size: 13px; color: var(--ink2); }
+svg { display: block; width: 100%; max-width: 420px; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+.bar { height: 10px; background: var(--blue); border-radius: 0 4px 4px 0; }
+.hist { display: grid; grid-template-columns: minmax(80px, 150px) minmax(0, 1fr); gap: 6px 12px; align-items: center; font-size: 14px; }
+.hist > div { min-width: 0; }
+.hist .small { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.hist .track { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.chip { font-size: 11px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; color: var(--ink2); }
+.warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
+.stale { opacity: .6; }
+a { color: var(--blue); }
+footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 8px 0 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; }
+@media (max-width: 560px) {
+  .metric { grid-template-columns: 1fr; }
+  .hist { grid-template-columns: minmax(0, 1fr); }
+  .cell { min-width: 0; padding: 5px 6px; }
+  .cell .lb { display: none; }
+  select { min-width: 0; width: 100%; }
+}
+@media (forced-colors: active) {
+  .cell { border: 1px solid CanvasText; }
+}
+</style>
+<main>
+  <h1>モデル同等性マップ</h1>
+  <p class="sub" id="sub"></p>
+  <div id="check"></div>
+
+  <section aria-labelledby="h-matrix">
+    <h2 id="h-matrix">基準と同じ使い心地のモデルを引く</h2>
+    <p class="lead">基準にしたい (モデル × エフォート) を選ぶと、ほかの全組合せが、基準に対して同等か、上回るか、弱い分野があるか、データ不足かで並ぶ。セルを押すと根拠が下に出る。役ごとに力が違うので、役を切り替えて見る。</p>
+    <div class="row">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <label class="f">基準(いま使っている組合せ)<select id="ref"></select></label>
+      <label class="f">能力の許容幅 <span class="val" id="capv"></span>
+        <input type="range" id="cap" min="1" max="25" step="0.5"></label>
+      <label class="f">速さの許容幅 <span class="val" id="spdv"></span>
+        <input type="range" id="spd" min="5" max="100" step="5"></label>
+      <button class="ghost" id="reset" type="button">既定に戻す</button>
+    </div>
+    <p class="small" id="role-note"></p>
+    <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section aria-labelledby="h-detail">
+    <h2 id="h-detail">根拠</h2>
+    <div id="detail"></div>
+  </section>
+
+  <section aria-labelledby="h-pair">
+    <h2 id="h-pair">Plan 役 + 実行役の組</h2>
+    <p class="lead">opusplan も codex-plan も、Plan 役と実行役の 2 つの (モデル × エフォート) の組。役ごとの基準(上の選択)に対して、選んだモデルのどの組合せが、両方の役で同等かを引く。両方が同等以上のときだけ「同等」になる。</p>
+    <div class="row"><label class="f">乗り換え先のモデル<select id="target"></select></label></div>
+    <p class="small" id="pair-note"></p>
+    <div class="scroll"><table id="pair"></table></div>
+  </section>
+
+  <section aria-labelledby="h-hist">
+    <h2 id="h-hist">自分の課題の内訳</h2>
+    <div id="hist"></div>
+  </section>
+
+  <section aria-labelledby="h-ev">
+    <h2 id="h-ev">データの出典と限界</h2>
+    <div id="ev"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</main>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const VERDICT = {
+  equivalent: { label: "同等", icon: "＝" },
+  stronger: { label: "上回る", icon: "▲" },
+  weaker: { label: "弱い分野あり", icon: "▼" },
+  insufficient: { label: "データ不足", icon: "？" },
+};
+const SPEED = { tps: "出力速度", ttft: "最初のトークンまでの時間" };
+
+// ---- 判定の規則(Rust の model-equivalence::judge と同じ。読み込み時に golden と突き合わせる) ----
+function classifyInterval(lo, hi, mg) {
+  if (lo > -mg && hi < mg) return "equivalent";
+  if (hi < -mg) return "weaker";
+  if (lo > mg) return "stronger";
+  return "insufficient";
+}
+function classifySpeed(g, ratio) {
+  if (g === null || g === undefined) return "insufficient";
+  const up = 1 + ratio, down = 1 / up;
+  return g < down ? "weaker" : g > up ? "stronger" : "equivalent";
+}
+function combine(vs) {
+  if (!vs.length) return "insufficient";
+  if (vs.includes("weaker")) return "weaker";
+  if (vs.includes("insufficient")) return "insufficient";
+  if (vs.every((v) => v === "stronger")) return "stronger";
+  return "equivalent";
+}
+function roleVerdict(roleId, refKey, candKey, m) {
+  const role = D.roles.find((r) => r.id === roleId);
+  if (refKey === candKey) return { v: "equivalent", same: true, items: [] };
+  const p = D.pairs[refKey][candKey];
+  const items = [];
+  for (const j of role.judged) {
+    const c = p.cap[j.id];
+    items.push({ kind: "cap", id: j.id, fit: j.fit, p: c, v: c.why ? "insufficient" : classifyInterval(c.lo, c.hi, m.cap) });
+  }
+  items.push({ kind: "spd", id: "tps", g: p.tps, v: classifySpeed(p.tps, m.spd) });
+  items.push({ kind: "spd", id: "ttft", g: p.ttft, v: classifySpeed(p.ttft, m.spd) });
+  const vs = items.map((i) => i.v);
+  if (!role.judged.length) vs.push("insufficient");
+  return { v: combine(vs), items };
+}
+
+// ---- 状態 ----
+const DEFAULTS = { cap: D.margins.capability_points, spd: D.margins.speed_ratio };
+const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null };
+D.roles.forEach((r) => (S.refs[r.id] = r.default_reference));
+S.target = (D.models.find((m) => m.id === "gpt-6.1-sol") || D.models[0]).id;
+try {
+  const saved = JSON.parse(localStorage.getItem("model-equivalence") || "null");
+  if (saved && typeof saved === "object") {
+    if (saved.m && saved.m.cap > 0 && saved.m.spd > 0) S.m = { cap: saved.m.cap, spd: saved.m.spd };
+    for (const r of D.roles) if (saved.refs && D.rows[saved.refs[r.id]]) S.refs[r.id] = saved.refs[r.id];
+    if (saved.role && D.roles.some((r) => r.id === saved.role)) S.role = saved.role;
+  }
+} catch (_) { /* 保存できなくても既定で動く */ }
+function save() {
+  try { localStorage.setItem("model-equivalence", JSON.stringify({ m: S.m, refs: S.refs, role: S.role })); } catch (_) {}
+}
+
+const model = (id) => D.models.find((m) => m.id === id);
+const keyOf = (m, e) => `${m}:${e}`;
+const splitKey = (k) => { const i = k.lastIndexOf(":"); return [k.slice(0, i), k.slice(i + 1)]; };
+const label = (k) => { const [m, e] = splitKey(k); return `${model(m).name} ${e}`; };
+const EFFORTS = (() => { const o = []; for (const m of D.models) for (const e of m.efforts) if (!o.includes(e)) o.push(e); return o; })();
+const roleOf = (id) => D.roles.find((r) => r.id === id);
+const benchName = (id) => (D.benchmarks[id] ? D.benchmarks[id].name : id);
+const fmtPt = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "pt";
+const fmtPct = (v) => (v * 100).toFixed(1) + "%";
+
+function badge(v, extra = "") {
+  const x = VERDICT[v];
+  return `<span class="cell v-${v}" ${extra} style="cursor:inherit"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></span>`;
+}
+
+// ---- 描画 ----
+function renderControls() {
+  $("sub").textContent = `Claude と GPT の (モデル × エフォート) を、公開ベンチだけで比べて、乗り換えても差を感じにくい組合せを引く。更新 ${D.generated}。`;
+  $("tabs").innerHTML = D.roles.map((r) => `<button role="tab" type="button" data-role="${r.id}" aria-selected="${r.id === S.role}">${esc(r.name)}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { S.role = b.dataset.role; S.sel = null; save(); renderAll(); }));
+  const keys = Object.keys(D.rows);
+  const groups = {};
+  for (const k of keys) { const [m] = splitKey(k); (groups[model(m).provider] ||= []).push(k); }
+  $("ref").innerHTML = Object.entries(groups).map(([p, ks]) => `<optgroup label="${esc(p)}">${ks.map((k) => `<option value="${esc(k)}">${esc(label(k))}</option>`).join("")}</optgroup>`).join("");
+  $("ref").addEventListener("change", (e) => { S.refs[S.role] = e.target.value; S.sel = null; save(); renderAll(); });
+  $("cap").addEventListener("input", (e) => { S.m.cap = Number(e.target.value); save(); renderAll(); });
+  $("spd").addEventListener("input", (e) => { S.m.spd = Number(e.target.value) / 100; save(); renderAll(); });
+  $("reset").addEventListener("click", () => { S.m = { ...DEFAULTS }; save(); renderAll(); });
+  $("target").innerHTML = D.models.map((m) => `<option value="${esc(m.id)}">${esc(m.provider)} ${esc(m.name)}</option>`).join("");
+  $("target").addEventListener("change", (e) => { S.target = e.target.value; renderPair(); });
+  $("legend").innerHTML = Object.entries(VERDICT).map(([v, x]) => `<span class="v-${v}"><b class="ic" style="color:var(--vc)" aria-hidden="true">${x.icon}</b>${x.label}</span>`).join("");
+}
+
+function syncControls() {
+  $("ref").value = S.refs[S.role];
+  $("cap").value = S.m.cap; $("capv").textContent = `±${S.m.cap}pt`;
+  $("spd").value = Math.round(S.m.spd * 100); $("spdv").textContent = `±${Math.round(S.m.spd * 100)}%`;
+  $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.role === S.role)));
+  $("target").value = S.target;
+  $("role-note").textContent = roleOf(S.role).note;
+}
+
+function renderMatrix() {
+  const ref = S.refs[S.role];
+  let html = `<thead><tr><th scope="col">モデル</th>${EFFORTS.map((e) => `<th scope="col">${esc(e)}</th>`).join("")}</tr></thead><tbody>`;
+  let prov = null;
+  for (const m of D.models) {
+    if (m.provider !== prov) { prov = m.provider; html += `<tr class="prov"><th scope="rowgroup" colspan="${EFFORTS.length + 1}">${esc(prov)}</th></tr>`; }
+    const price = m.price ? `<span class="price">入力 $${m.price.input} / 出力 $${m.price.output} /100万tok</span>` : "";
+    html += `<tr><th scope="row">${esc(m.name)}${m.retired ? '<span class="tag">提供終了</span>' : ""}${price}</th>`;
+    for (const e of EFFORTS) {
+      if (!m.efforts.includes(e)) { html += `<td class="c"></td>`; continue; }
+      const k = keyOf(m.id, e);
+      if (k === ref) { html += `<td class="c"><span class="cell base" aria-label="基準 ${esc(label(k))}">基準</span></td>`; continue; }
+      const r = roleVerdict(S.role, ref, k, S.m);
+      const x = VERDICT[r.v];
+      html += `<td class="c"><button type="button" class="cell v-${r.v}" data-k="${esc(k)}" aria-pressed="${S.sel === k}" aria-label="${esc(label(k))}: ${x.label}" title="${esc(label(k))}: ${x.label}"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></button></td>`;
+    }
+    html += `</tr>`;
+  }
+  const cap = $("matrix").querySelector("caption");
+  $("matrix").innerHTML = html + `</tbody>`;
+  $("matrix").appendChild(cap);
+  $("matrix").querySelectorAll("button.cell").forEach((b) => b.addEventListener("click", () => { S.sel = b.dataset.k; renderMatrix(); renderDetail(); document.getElementById("h-detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
+}
+
+function forest(item) {
+  const p = item.p;
+  if (p.why) return `<p class="why">${esc(p.why)}</p>`;
+  const mg = S.m.cap;
+  const dom = Math.max(10, Math.ceil(Math.max(Math.abs(p.lo), Math.abs(p.hi), mg * 1.5) / 5) * 5);
+  const W = 400, pad = 14, x = (v) => pad + ((v + dom) / (2 * dom)) * (W - 2 * pad);
+  const col = `var(--${item.v === "equivalent" ? "good" : item.v === "stronger" ? "blue" : item.v === "weaker" ? "crit" : "muted"})`;
+  const tip = `${VERDICT[item.v].label}: 差 ${fmtPt(p.d)}、90% 区間 [${p.lo.toFixed(1)}, ${p.hi.toFixed(1)}]pt、許容幅 ±${mg}pt、分解能 ±${p.res.toFixed(1)}pt`;
+  return `<svg viewBox="0 0 ${W} 50" role="img" aria-label="${esc(tip)}"><title>${esc(tip)}</title>
+    <rect x="${x(-mg)}" y="6" width="${x(mg) - x(-mg)}" height="24" fill="var(--band)"/>
+    <line x1="${x(0)}" x2="${x(0)}" y1="4" y2="32" stroke="var(--axis)" stroke-width="1"/>
+    <line x1="${pad}" x2="${W - pad}" y1="32" y2="32" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="${x(p.lo)}" x2="${x(p.hi)}" y1="18" y2="18" stroke="${col}" stroke-width="2"/>
+    <line x1="${x(p.lo)}" x2="${x(p.lo)}" y1="12" y2="24" stroke="${col}" stroke-width="2"/>
+    <line x1="${x(p.hi)}" x2="${x(p.hi)}" y1="12" y2="24" stroke="${col}" stroke-width="2"/>
+    <circle cx="${x(p.d)}" cy="18" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${pad}" y="44">−${dom}pt</text><text x="${x(0)}" y="44" text-anchor="middle">0</text><text x="${W - pad}" y="44" text-anchor="end">+${dom}pt</text>
+    <text x="${x(0)}" y="3" text-anchor="middle">灰色の帯 = 許容幅 ±${mg}pt</text></svg>
+    <p class="small">差 <b class="val">${fmtPt(p.d)}</b>、90% 区間 [${p.lo.toFixed(1)}, ${p.hi.toFixed(1)}]pt。このベンチの分解能は ±${p.res.toFixed(1)}pt${S.m.cap < p.res ? "(いまの許容幅より広いので、差が無くても同等と言えない)" : ""}。</p>`;
+}
+
+function speedChart(item) {
+  if (item.g === null) return `<p class="why">基準か候補に、この速さの値が無い。</p>`;
+  const lim = Math.log(8), W = 400, pad = 14, ratio = S.m.spd;
+  const x = (g) => pad + ((Math.log(Math.min(8, Math.max(1 / 8, g))) + lim) / (2 * lim)) * (W - 2 * pad);
+  const col = `var(--${item.v === "equivalent" ? "good" : item.v === "stronger" ? "blue" : item.v === "weaker" ? "crit" : "muted"})`;
+  const clipped = item.g > 8 || item.g < 1 / 8;
+  const up = 1 + ratio, down = 1 / up;
+  const word = Math.abs(item.g - 1) < 0.005 ? "ほぼ同じ" : item.g >= 1 ? `${item.g.toFixed(2)} 倍良い` : `${(1 / item.g).toFixed(2)} 倍悪い`;
+  const rel = word === "ほぼ同じ" ? "基準と" : "基準より ";
+  const tip = `${VERDICT[item.v].label}: ${rel}${word}(点推定のみ)。許容は ${down.toFixed(2)}〜${up.toFixed(2)} 倍`;
+  return `<svg viewBox="0 0 ${W} 44" role="img" aria-label="${esc(tip)}"><title>${esc(tip)}</title>
+    <rect x="${x(down)}" y="4" width="${x(up) - x(down)}" height="24" fill="var(--band)"/>
+    <line x1="${x(1)}" x2="${x(1)}" y1="2" y2="30" stroke="var(--axis)"/>
+    <line x1="${pad}" x2="${W - pad}" y1="30" y2="30" stroke="var(--grid)"/>
+    <circle cx="${x(item.g)}" cy="16" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${pad}" y="42">基準より悪い ←</text><text x="${x(1)}" y="42" text-anchor="middle">同じ</text><text x="${W - pad}" y="42" text-anchor="end">→ 基準より良い</text></svg>
+    <p class="small">${rel}<b class="val">${word}</b>${clipped ? "(図は 8 倍で打ち切り)" : ""}。点推定のみ(AA は区間を公開していない)。</p>`;
+}
+
+function renderDetail() {
+  const ref = S.refs[S.role], role = roleOf(S.role);
+  if (!S.sel) { $("detail").innerHTML = `<p class="lead">マトリクスのセルを選ぶと、その組合せがなぜその判定かを、ベンチごとの差の区間で示す。</p>`; return; }
+  const r = roleVerdict(S.role, ref, S.sel, S.m);
+  let html = `<div class="row" style="margin-bottom:8px"><b>${esc(label(S.sel))}</b> は <b>${esc(label(ref))}</b> に対して ${badge(r.v)}<span class="small">(${esc(role.name)})</span></div>`;
+  html += `<p class="small">判定の規則: 能力はベンチごとに、差の 90% 区間が許容幅の内側なら「同等」、全体が下に外れれば「弱い分野あり」、全体が上に外れれば「上回る」、またぐなら「データ不足」。1 つでも弱ければ役の判定も「弱い分野あり」、そうでなく 1 つでも不足なら「データ不足」。平均や総合点は作らない。</p>`;
+  for (const it of r.items) {
+    const name = it.kind === "cap" ? benchName(it.id) : SPEED[it.id];
+    const fit = it.fit ? `<span class="chip">${it.fit === "direct" ? "仕事を直接測る" : "代理"}</span>` : "";
+    html += `<div class="metric"><div><h3>${esc(name)}</h3>${badge(it.v)}<div>${fit}</div></div><div>${it.kind === "cap" ? forest(it) : speedChart(it)}</div></div>`;
+  }
+  if (!role.judged.length) html += `<p class="warn">履歴の内訳に対応するベンチが、この役の判定に使うベンチに 1 つも無い。能力は判定できないので、役の判定は「データ不足」になる。</p>`;
+  if (role.reference_benchmarks.length) {
+    const a = D.rows[ref], b = D.rows[S.sel];
+    html += `<div class="metric"><div><h3>表示だけ(判定に使わない)</h3></div><div>` + role.reference_benchmarks.map((id) => {
+      const bn = D.benchmarks[id], x = a.scores[id], y = b.scores[id];
+      return `<p class="small">${esc(bn.name)}: 基準 <b class="val">${x ?? "—"}</b> / 候補 <b class="val">${y ?? "—"}</b>(${esc(bn.note || "")})</p>`;
+    }).join("") + `</div></div>`;
+  }
+  $("detail").innerHTML = html;
+}
+
+function renderPair() {
+  const t = model(S.target);
+  const pr = S.refs.plan, xr = S.refs.execute;
+  $("pair-note").innerHTML = `Plan 役の基準: <b>${esc(label(pr))}</b> / 実行役の基準: <b>${esc(label(xr))}</b>。行 = ${esc(t.name)} を Plan 役に使うときのエフォート、列 = 実行役に使うときのエフォート。`;
+  let html = `<thead><tr><th scope="col">Plan 役 \\ 実行役</th>${t.efforts.map((e) => `<th scope="col">${esc(e)}</th>`).join("")}</tr></thead><tbody>`;
+  for (const pe of t.efforts) {
+    html += `<tr><th scope="row">${esc(pe)}</th>`;
+    for (const xe of t.efforts) {
+      const a = roleVerdict("plan", pr, keyOf(t.id, pe), S.m), b = roleVerdict("execute", xr, keyOf(t.id, xe), S.m);
+      const v = combine([a.v, b.v]), x = VERDICT[v];
+      const tip = `Plan ${pe}: ${VERDICT[a.v].label} / 実行 ${xe}: ${VERDICT[b.v].label}`;
+      html += `<td class="c"><span class="cell v-${v}" title="${esc(tip)}" aria-label="${esc(tip)}" style="cursor:help"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></span></td>`;
+    }
+    html += `</tr>`;
+  }
+  $("pair").innerHTML = html + `</tbody>`;
+}
+
+function renderHist() {
+  const L = D.lens;
+  if (!L) { $("hist").innerHTML = `<p class="lead">履歴の内訳を読み込んでいない。実行役は、役の全ベンチで判定している。</p>`; return; }
+  const role = roleOf("execute") || D.roles[0];
+  let html = `<p class="lead">直近 ${L.days} 日にマージした PR ${L.total} 件を、タイトルの接頭辞(feat・fix など)で分類した件数(${esc(L.generated)} 集計。タイトルやリポジトリ名は載せていない)。実行役は、${Math.round(D.history_share_min * 100)}% 以上を占める種類に対応するベンチだけで判定する。</p><div class="hist">`;
+  const max = Math.max(...L.categories.map((c) => c.share), 0.01);
+  for (const c of L.categories.slice().sort((a, b) => b.count - a.count)) {
+    const active = c.share >= D.history_share_min;
+    const chips = c.benchmarks.length ? c.benchmarks.map((b) => `<span class="chip">${esc(benchName(b.id))} ${b.fit === "direct" ? "(直接)" : "(代理)"}</span>`).join("") : `<span class="chip">現行モデルに値のある公開ベンチが無い</span>`;
+    html += `<div title="${esc(c.note || "")}">${esc(c.name)}</div><div><div class="track"><div class="bar" style="width:${(c.share / max) * 60}%;min-width:2px;${active ? "" : "opacity:.45"}"></div><span class="val">${c.count} 件 (${fmtPct(c.share)})</span></div><div class="small">${chips}</div></div>`;
+  }
+  html += `</div>`;
+  const unc = role.uncovered || [];
+  if (unc.length) html += `<p class="warn">履歴の ${unc.map((u) => `${(u.share * 100).toFixed(0)}% を占める「${esc(u.name)}」`).join("、")}は、現行モデルに値のある公開ベンチで測れていない。この部分の乗り換えの差は、このページから分からない。</p>`;
+  $("hist").innerHTML = html;
+}
+
+function daysSince(d) { const t = Date.parse(d); return Number.isNaN(t) ? null : Math.floor((Date.now() - t) / 864e5); }
+
+function renderEvidence() {
+  const role = roleOf(S.role);
+  const ids = [...role.all_benchmarks, ...role.reference_benchmarks];
+  let html = `<div class="scroll"><table><thead><tr><th scope="col">ベンチ</th><th scope="col">課題数</th><th scope="col">ハーネス</th><th scope="col">採点</th><th scope="col">出典(取得日)</th></tr></thead><tbody>`;
+  for (const id of ids) {
+    const b = D.benchmarks[id], s = b.source, age = s ? daysSince(s.retrieved) : null, stale = age !== null && age > 90;
+    html += `<tr class="${stale ? "stale" : ""}"><th scope="row">${esc(b.name)}</th><td>${b.n ? `${b.n} ${esc(b.n_unit)}${b.trials ? `×${b.trials}回` : ""}` : "非公開"}</td><td>${esc(b.harness || "なし")}</td><td>${esc(b.grader || (b.unit === "index_points" ? "複数評価の加重平均" : "テスト/コード実行"))}</td><td>${s ? `<a href="${esc(s.url)}" rel="noopener">${esc(s.author)}</a>(${esc(s.retrieved)}${stale ? `、取得から ${age} 日` : ""})` : "—"}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  const aa = D.aa;
+  html += `<dl class="kv"><dt>測定値</dt><dd>${aa ? `<a href="https://artificialanalysis.ai/" rel="noopener">${esc(aa.attribution)}</a> の API(取得 ${esc(aa.retrieved)})。エフォート別に別の行で測られ、ハーネスは mini-swe-agent に固定。速さの測定条件は入力 ${aa.prompt_length_tokens ?? "?"} トークン。` : "—"}</dd>
+    <dt>区間の計算</dt><dd>AA は信頼区間を公開していないので、課題数から Newcombe(1998)の区間を計算(2 つのモデルを独立な標本として扱うので、同じ課題での対応を無視する分、区間は広めに出て、同等を言い過ぎない側に倒れる)。</dd>
+    <dt>判定の方法</dt><dd>同等性検定(TOST、Lakens 2017)。差が有意でないことは同等の証拠にならないので、区間が許容幅に収まって初めて「同等」と言う。</dd>
+    <dt>採点の偏り</dt><dd>AA-LCR と HLE は GPT 系の LLM が採点している。Claude の答えを GPT が採点する構図なので、この 2 つで GPT が有利に出る偏りがありうる(大きさは未確認)。</dd>
+    <dt>速さ</dt><dd>最初のトークンまでの時間は、エフォートで桁が変わる(思考の長さ)。区間は無く、点推定の比で見る。</dd></dl>`;
+  const nh = D.native_harness;
+  if (nh.length) {
+    html += `<h2 style="margin-top:16px;font-size:15px">純正ハーネスでの実測(判定に使わない注記)</h2><p class="small">Terminal-Bench 公式の leaderboard にある、各社の純正ハーネスでの値(max のみ)。AA の mini-swe-agent での値との差の向きがモデルごとに揃わないので、ある段階の差を他のエフォートへ当てはめる補正はしていない。</p><div class="scroll"><table><thead><tr><th scope="col">モデル(max)</th><th scope="col">純正ハーネス</th><th scope="col">AA(mini-swe-agent)</th><th scope="col">差</th></tr></thead><tbody>` +
+      nh.map((h) => { const d = h.fixed === null || h.fixed === undefined ? null : (h.score - h.fixed) * 100; return `<tr><th scope="row">${esc(model(h.model).name)}</th><td>${esc(h.harness)} <b class="val">${fmtPct(h.score)}</b> ±${h.ci95_points}pt</td><td>${h.fixed === null || h.fixed === undefined ? "—" : `<b class="val">${fmtPct(h.fixed)}</b>`}</td><td>${d === null ? "—" : `<b class="val">${fmtPt(d)}</b>`}</td></tr>`; }).join("") +
+      `</tbody></table></div><p class="small"><a href="${esc(nh[0].source.url)}" rel="noopener">${esc(nh[0].source.author)} — ${esc(nh[0].source.title)}</a>(取得 ${esc(nh[0].source.retrieved)})</p>`;
+  }
+  $("ev").innerHTML = html;
+}
+
+function renderFoot() {
+  $("foot").innerHTML = `データ: ${D.aa ? esc(D.aa.attribution) : ""}。このページは、測定値のカタログ(catalog.toml)と履歴の件数から生成した自分用のもの。個別の課題名やリポジトリ名は含まない。`;
+}
+
+// ---- 二重化した規則の自己検査(Rust が出した判定と突き合わせる) ----
+function selfCheck() {
+  const bad = [];
+  const sets = [{ cap: D.margins.capability_points, spd: D.margins.speed_ratio }, { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio }];
+  let n = 0;
+  for (const [role, byRef] of Object.entries(D.golden)) {
+    for (const [ref, byCand] of Object.entries(byRef)) {
+      for (const [cand, want] of Object.entries(byCand)) {
+        sets.forEach((m, i) => { n++; const got = roleVerdict(role, ref, cand, m).v; if (got !== want[i]) bad.push(`${role} ${ref}→${cand} (${i}): ${got} ≠ ${want[i]}`); });
+      }
+    }
+  }
+  $("check").innerHTML = bad.length
+    ? `<div class="warn" role="alert">ページの判定が、生成時の判定と ${bad.length}/${n} 件で食い違っている。判定の規則を二重に持つ JS と Rust がずれている。このページの判定を信用しないこと。最初の例: ${esc(bad[0])}</div>`
+    : "";
+  return { n, bad: bad.length };
+}
+
+function renderAll() { syncControls(); renderMatrix(); renderDetail(); renderPair(); renderHist(); renderEvidence(); }
+
+renderControls();
+renderFoot();
+const chk = selfCheck();
+document.documentElement.dataset.selfcheck = `${chk.n - chk.bad}/${chk.n}`;
+renderAll();
+</script>

@@ -237,8 +237,17 @@
         let
           craneLib = crane.mkLib pkgs;
           # cleanCargoSource keeps *.rs / Cargo.* / *.toml only, so editing a
-          # bash hook or a doc never invalidates the Rust build.
-          src = craneLib.cleanCargoSource ./.;
+          # bash hook or a doc never invalidates the Rust build. The one exception is
+          # crates/model-equivalence/page.html, which render.rs embeds with include_str!
+          # (docs/model-equivalence.md): without it the Nix build cannot compile that crate.
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type:
+              (craneLib.filterCargoSources path type)
+              || (builtins.match ".*/crates/model-equivalence/page\\.html" path != null);
+            name = "source";
+          };
           commonArgs = {
             inherit src;
             pname = "dotfiles-tools";

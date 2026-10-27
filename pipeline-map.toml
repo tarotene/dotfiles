@@ -170,6 +170,8 @@ node = [
   { id = "hms", label = "hms (apply)", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/hms", doc = "docs/operations.md", auto = false },
   { id = "agent-settings-reconcile", label = "agent-settings-reconcile", lane = "manual", group = "cli", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/agent-settings-reconcile", doc = "docs/agents/agent-settings-reconcile.md", auto = false },
   { id = "codex-plan", label = "codex-plan", lane = "manual", group = "cli", stack = "rust", pipelines = ["plan-approval"], entity = "crates/codex-plan", doc = "docs/codex-plan.md", auto = false },
+  { id = "model-catalog", label = "model-catalog", lane = "manual", group = "cli", stack = "rust", pipelines = ["plan-approval"], entity = "crates/model-catalog", doc = "docs/model-equivalence.md", auto = false },
+  { id = "model-equivalence", label = "model-equivalence", lane = "manual", group = "cli", stack = "rust", pipelines = ["plan-approval"], entity = "crates/model-equivalence", doc = "docs/model-equivalence.md", auto = false },
 
   # Responsibility owners invoked sequentially by session-wrapup; also manual CLIs.
   { id = "issue-inbox", label = "issue-inbox", lane = "manual", group = "wrapup", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/issue-inbox", doc = "docs/agents/agent-libraries.md", auto = false },
@@ -209,6 +211,8 @@ edge = [
   { from = "plan-fresh-gate", to = "agent-session", kind = "deny", label = "base moved", pipelines = ["plan-approval"] },
   { from = "plan-view", to = "user", kind = "notify", label = "HTML window", pipelines = ["plan-approval"] },
   { from = "user", to = "agent-session", kind = "context", label = "GO / feedback", pipelines = ["plan-approval"] },
+  { from = "model-catalog", to = "model-equivalence", kind = "context", label = "catalog.toml", pipelines = ["plan-approval"] },
+  { from = "model-catalog", to = "codex-plan", kind = "context", label = "pricing data", pipelines = ["plan-approval"] },
   { from = "requirements-inventory", to = "plan-scope-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },
   { from = "precedent-grounding", to = "plan-precedent-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },
   { from = "technology-selection", to = "plan-precedent-gate", kind = "invoke", label = "self-check", pipelines = ["plan-approval"] },

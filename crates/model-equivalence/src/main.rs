@@ -4,6 +4,7 @@
 //! model-equivalence lens [--days N] [--owners a,b] [--out PATH] [--list-orgs]
 //! model-equivalence compare --reference MODEL:EFFORT [--role ID] [--lens PATH] [--verbose]
 //!                           [--margin-points N] [--speed-margin R]
+//! model-equivalence render [--lens PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]
 //! ```
 //!
 //! `lens` は gh CLI で、自分の merge 済み PR のタイトルだけを読み、種類ごとの件数と期間だけを書く
@@ -13,13 +14,14 @@
 use model_catalog::{data, date};
 use model_equivalence::judge::{compare, Margins, Verdict};
 use model_equivalence::lens::Lens;
+use model_equivalence::render::{build_data, render_document, render_fragment, RenderOptions};
 use std::process::{Command, ExitCode};
 
 fn usage() -> ExitCode {
     eprintln!(
         "usage: model-equivalence lens [--days N] [--owners a,b] [--out PATH] [--list-orgs]\n       \
          model-equivalence compare --reference MODEL:EFFORT [--role ID] [--lens PATH] [--verbose] \
-         [--margin-points N] [--speed-margin R]"
+         [--margin-points N] [--speed-margin R]\n       model-equivalence render [--lens PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]"
     );
     ExitCode::from(2)
 }
@@ -286,11 +288,55 @@ fn cmd_compare(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn cmd_render(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
+    let f = Flags::parse(
+        args,
+        &["--lens", "--out", "--plan-ref", "--execute-ref"],
+        &["--fragment"],
+    )?;
+    let c = data();
+    let lens = match f.get("--lens") {
+        Some(p) => Some(Lens::from_json(
+            &std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}"))?,
+            c,
+        )?),
+        None => None,
+    };
+    let mut opts = RenderOptions::default();
+    if let Some(v) = f.get("--plan-ref") {
+        opts.plan_reference = v.to_owned();
+    }
+    if let Some(v) = f.get("--execute-ref") {
+        opts.execute_reference = v.to_owned();
+    }
+    let data_json = build_data(c, lens.as_ref(), &opts)?;
+    let html = if f.has("--fragment") {
+        render_fragment(&data_json)
+    } else {
+        render_document(&data_json)
+    };
+    let out = f.get("--out").map_or_else(
+        || default_lens_path().replace("lens.json", "page.html"),
+        str::to_owned,
+    );
+    if let Some(dir) = std::path::Path::new(&out).parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    std::fs::write(&out, &html).map_err(|e| format!("{out}: {e}"))?;
+    println!(
+        "書き込み: {out}({} KB。履歴: {})",
+        html.len() / 1024,
+        if lens.is_some() { "あり" } else { "なし" }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let result = match args.next().as_deref() {
         Some("lens") => cmd_lens(args),
         Some("compare") => cmd_compare(args),
+        Some("render") => cmd_render(args),
         _ => return usage(),
     };
     match result {

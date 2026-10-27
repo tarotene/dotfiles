@@ -184,6 +184,8 @@ pub struct Role {
     pub note: String,
     /// true の役は、履歴の内訳(種類ごとの割合)に応じて判定するベンチを絞る。
     pub follows_history: bool,
+    /// ページでの並び順(小さいほど先)。BTreeMap の辞書順に表示順を任せない。
+    pub order: u32,
     /// 判定に使うベンチ。
     pub benchmarks: Vec<String>,
     /// 表示だけして判定に使わないベンチ(区間を作れない総合指数など)。
@@ -217,6 +219,22 @@ pub struct Category {
     pub benchmarks: Vec<CategoryBench>,
 }
 
+/// 各社の純正ハーネス(Claude Code・Codex)で測られた値。AA の固定ハーネスの値とは別に、補正せず
+/// 注記として並べるためのもの。エフォートによる差を他へ当てはめる根拠が無いので、判定には使わない。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct NativeHarness {
+    pub model: String,
+    pub effort: String,
+    pub harness: String,
+    pub benchmark: String,
+    pub score: f64,
+    /// 95% 信頼区間の半幅(点)。
+    pub ci95_points: f64,
+    pub measured: String,
+    pub source: BenchSource,
+}
+
 #[derive(Clone)]
 pub struct Catalog {
     pub retrieved: String,
@@ -226,6 +244,7 @@ pub struct Catalog {
     pub equivalence: Equivalence,
     pub roles: BTreeMap<String, Role>,
     pub categories: BTreeMap<String, Category>,
+    pub native_harness: Vec<NativeHarness>,
     pub aa: Option<AaMeta>,
     pub measurements: Vec<Measurement>,
     pricing: Vec<CatalogModel>,
@@ -263,6 +282,8 @@ struct RawFile {
     role: BTreeMap<String, Role>,
     #[serde(default)]
     category: BTreeMap<String, Category>,
+    #[serde(default)]
+    native_harness: Vec<NativeHarness>,
     aa: Option<AaMeta>,
     #[serde(default, rename = "measurement")]
     measurements: Vec<Measurement>,
@@ -578,6 +599,36 @@ impl Catalog {
             return Err("[[measurement]] があるのに [aa] が無い(取得日と出典の表示が要る)".into());
         }
         let by_id: BTreeMap<&str, &Model> = models.iter().map(|m| (m.id.as_str(), m)).collect();
+        for h in &raw.native_harness {
+            let m = by_id
+                .get(h.model.as_str())
+                .ok_or_else(|| format!("native_harness: 未知の model {}", h.model))?;
+            if !m.efforts.contains(&h.effort) {
+                return Err(format!(
+                    "native_harness: model {} の efforts に {} が無い",
+                    h.model, h.effort
+                ));
+            }
+            if !raw.benchmark.contains_key(&h.benchmark) {
+                return Err(format!("native_harness: 未定義のベンチ {}", h.benchmark));
+            }
+            if !(h.score.is_finite()
+                && h.score >= 0.0
+                && h.ci95_points.is_finite()
+                && h.ci95_points >= 0.0)
+            {
+                return Err(format!("native_harness {}/{}: 値が不正", h.model, h.effort));
+            }
+            if !h.source.url.starts_with("https://")
+                || !is_date(&h.source.retrieved)
+                || !is_date(&h.measured)
+            {
+                return Err(format!(
+                    "native_harness {}/{}: 出典の url か日付が不正",
+                    h.model, h.effort
+                ));
+            }
+        }
         let mut keys = BTreeSet::new();
         for r in &raw.measurements {
             let m = by_id
@@ -633,6 +684,7 @@ impl Catalog {
             equivalence: raw.equivalence,
             roles: raw.role,
             categories: raw.category,
+            native_harness: raw.native_harness,
             aa: raw.aa,
             measurements: raw.measurements,
             pricing,
@@ -882,11 +934,57 @@ mod tests {
             ["bugfix", "config", "docs", "feature", "other", "refactor"]
         );
         assert!(c.roles["execute"].follows_history && !c.roles["plan"].follows_history);
+        assert!(
+            c.roles["plan"].order < c.roles["execute"].order,
+            "Plan 役が先"
+        );
         // 総合指数は区間を作れないので、判定ではなく表示だけに回している。
         assert!(!c.roles["plan"]
             .benchmarks
             .contains(&"artificial_analysis_intelligence_index".to_owned()));
         assert!(c.categories["other"].benchmarks.is_empty());
+    }
+
+    #[test]
+    fn native_harness_rows_are_kept_apart_from_the_fixed_harness_scores() {
+        let c = data();
+        assert_eq!(c.native_harness.len(), 4);
+        let opus = c
+            .native_harness
+            .iter()
+            .find(|h| h.model == "claude-opus-5-5")
+            .unwrap();
+        assert_eq!(
+            (opus.harness.as_str(), opus.effort.as_str()),
+            ("Claude Code", "max")
+        );
+        // AA の固定ハーネスの値(測定行)とは別の欄で、差は補正に使わない。
+        let fixed = c.measurement("claude-opus-5-5", "max").unwrap().scores["terminalbench_v4_0"];
+        assert!((opus.score - fixed).abs() > 0.01, "別のハーネスの値");
+    }
+
+    #[test]
+    fn rejects_bad_native_harness_rows() {
+        let e = with(|t| {
+            t.replacen(
+                "[[native_harness]]\nmodel = \"claude-opus-5-5\"",
+                "[[native_harness]]\nmodel = \"nope\"",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("未知の model"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "effort = \"max\"\nharness = \"Claude Code\"",
+                "effort = \"ultra\"\nharness = \"Claude Code\"",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("efforts に"), "{e}");
+        let e = with(|t| t.replacen("ci95_points = 3.1", "ci95_points = -1.0", 1)).unwrap_err();
+        assert!(e.contains("値が不正"), "{e}");
     }
 
     #[test]

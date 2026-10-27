@@ -317,6 +317,7 @@ history_share_min = 0.1
 [role.plan]
 name = "Plan 役"
 note = "設計・推論・長い文脈の読解に効く力。仕事の種類を問わず同じベンチで判定する。"
+order = 1
 follows_history = false
 benchmarks = ["lcr", "hle"]
 reference_benchmarks = ["artificial_analysis_intelligence_index"]
@@ -324,6 +325,7 @@ reference_benchmarks = ["artificial_analysis_intelligence_index"]
 [role.execute]
 name = "実行役"
 note = "コードを直し、端末を操作して仕事を進める力。履歴の内訳で、対応するベンチだけに絞る。"
+order = 2
 follows_history = true
 benchmarks = ["terminalbench_v4_0", "scicode"]
 
@@ -369,6 +371,69 @@ benchmarks = [{ id = "lcr", fit = "proxy" }]
 [category.other]
 name = "その他"
 note = "タイトルから種類を決められなかった PR(prefix の無いもの、chore・test・style・revert)。"
+
+# ------------------------------------------------- 純正ハーネスで測られた値
+# Terminal-Bench 公式の leaderboard にある、各社の純正ハーネス(Claude Code・Codex)での値。
+# AA の mini-swe-agent での値とは別物として、補正せずに注記として並べる。ハーネスによる差の向きが
+# モデルごとに揃わない(2026-10-27 時点の max で、Opus 5.5 は +5.2pt、Sonnet 5.5 は −1.8pt、
+# GPT-6.1 Sol は +2.1pt)ので、ある段階の差を他のエフォートへ当てはめることはしない。判定には使わない。
+# 公式は max のエフォートだけを載せている。± は 95% 信頼区間の半幅。
+
+[[native_harness]]
+model = "claude-opus-5-5"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.648
+ci95_points = 3.1
+measured = "2026-09-22"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "claude-sonnet-5-5"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.618
+ci95_points = 2.9
+measured = "2026-09-28"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "gpt-6.1-sol"
+effort = "max"
+harness = "Codex"
+benchmark = "terminalbench_v4_0"
+score = 0.582
+ci95_points = 3.1
+measured = "2026-09-29"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "claude-fable-5-1"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.579
+ci95_points = 3.8
+measured = "2026-09-01"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
 
 # BEGIN GENERATED (model-catalog fetch-aa) — do not edit by hand
 [aa]
