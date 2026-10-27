@@ -117,7 +117,7 @@ fn bucket_is(r: &Value, buckets: &[&str]) -> Result<bool, JqError> {
 /// 取り直した 1 回分の報告に対する判定。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// 報告のどれかが fail / cancel(即時 NG)。
+    /// 報告のどれかが fail(即時 NG)、または cancel があって pending が 0(他が落ち着いても残る cancel)。
     Failed,
     /// E が非空で、E の全件が出現し、すべて pass / skipping(即時 OK)。
     Pass,
@@ -132,7 +132,10 @@ pub enum Verdict {
 
 /// 報告(`gh pr checks --json`)を期待集合 `expected` に照らして判定する純関数。
 ///
-/// - 報告に fail / cancel が 1 件でもあれば `Failed`(E に入っていなくても)。
+/// - 報告に fail が 1 件でもあれば `Failed`(E に入っていなくても)。cancel は、同じ head の
+///   後続の run に置き換えられただけのことがある(concurrency の `cancel-in-progress`)ので
+///   即時 NG にはしない: E が全緑なら `Pass`、pending が残る間は待ち、pending が 0 になって
+///   なお cancel が残るときに `Failed`。
 /// - `expected` が非空で、E ⊆ 報告 かつ E の全件の bucket が pass / skipping なら `Pass`。
 ///   E に無いチェックの pending はここでは見ない。
 /// - それ以外は `Wait`。`expected` が空(base が ruleset の対象外)のときは `Pass` を
@@ -149,9 +152,15 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
         return unreadable();
     };
     let mut pending = 0;
+    let mut cancelled = 0;
     for x in &r {
-        match bucket_is(x, &["fail", "cancel"]) {
+        match bucket_is(x, &["fail"]) {
             Ok(true) => return Verdict::Failed,
+            Ok(false) => {}
+            Err(JqError) => return unreadable(),
+        }
+        match bucket_is(x, &["cancel"]) {
+            Ok(true) => cancelled += 1,
             Ok(false) => {}
             Err(JqError) => return unreadable(),
         }
@@ -175,6 +184,9 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
         if all_green {
             return Verdict::Pass;
         }
+    }
+    if cancelled > 0 && pending == 0 {
+        return Verdict::Failed;
     }
     Verdict::Wait {
         missing,
@@ -424,8 +436,23 @@ mod tests {
         // NG は報告された全チェックで見る(E に入っていない x でも即時)。
         let r = r#"[{"name":"job-a","bucket":"pending"},{"name":"x","bucket":"fail"}]"#;
         assert_eq!(decide(&e2(), r), Verdict::Failed);
+        // cancel だけが残って他が落ち着いたなら NG。
         let r = r#"[{"name":"x","bucket":"cancel"}]"#;
         assert_eq!(decide(&[], r), Verdict::Failed);
+    }
+
+    #[test]
+    fn cancel_is_not_an_immediate_ng() {
+        // 後続の run に置き換えられた cancel(#1157 で実際に起きた)で、即 NG にしない。
+        let r = r#"[{"name":"job-a","bucket":"cancel"},{"name":"job-b","bucket":"pending"}]"#;
+        let (_, pending, _) = wait_of(decide(&e2(), r));
+        assert_eq!(pending, 1);
+        // E が全緑なら、E 外の cancel があっても OK。
+        let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"pass"},{"name":"x","bucket":"cancel"}]"#;
+        assert_eq!(decide(&e2(), r), Verdict::Pass);
+        // E の cancel が残り、pending が 0 なら NG。
+        let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"cancel"}]"#;
+        assert_eq!(decide(&e2(), r), Verdict::Failed);
     }
 
     #[test]
