@@ -56,7 +56,8 @@ grep 可能な形で残す。
 | 本文に attribution フッターがある | 通す |
 | 本文に `No-Attribution: <理由>` がある | 通す |
 | 本文フラグが無い（`gh pr edit --add-label`） | 通す（判定不能） |
-| `--body-file` のファイルが読めない | 通す（判定不能） |
+| `--body-file` が読めない絶対パスのリテラル | **deny**（#1109。footer を確かめられない。本文の Write が終わる前の並列投稿もここで止まる） |
+| `--body-file` が読めない相対パス・`-`・変数やコマンド置換を含むパス | 通す（判定不能。実行時の値が分からない） |
 | 本文がコマンド置換（`--body "$(cat f)"`） | 通す（判定不能） |
 | 上記以外 | **deny** |
 
@@ -188,6 +189,7 @@ xargs: unmatched single quote; by default quotes are special to xargs unless you
 | heredoc（`<<`）を含む | 抽出した本文に heredoc 本体を足して検査 | 本体が `command` 文字列内に実在する |
 | コマンド置換のみ（`$(` / `` ` ``） | 判定不能 → 通す | 中身が不明。deny に倒すと `--body "$(cat body.md)"` が常に弾かれる |
 | 本文フラグが無い | 判定不能 → 通す | `gh pr edit --add-label` を誤検知しない |
+| 読めない絶対パスの `--body-file` | deny | `gh` 自身もファイルが無ければ失敗するので、止めて失うものが無い。通すと付け忘れが静かに残る（#1109） |
 | トークナイザが unmatched quote | 判定不能 → 通す | トークン列が空になる |
 
 「判定できない場合は断定に変えず素通す」は `crates/pr-gate`(`src/lib.rs` 冒頭)の縮退表と同じ思想。

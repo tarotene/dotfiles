@@ -55,9 +55,20 @@ pub struct BodyFlags {
     pub have_flag: bool,
     /// 取れた本文の値(出現順)。`--body-file` は読めたものだけ。
     pub texts: Vec<String>,
+    /// 読めなかった `--body-file` の値(出現順)。存在しない・通常ファイルでない・読めない。
+    /// 標準入力(`-`)と空は含めない。判定する側が、読めない本文を黙って通すかを決める(#1109)。
+    pub unreadable_files: Vec<String>,
 }
 
 impl BodyFlags {
+    fn take_file(&mut self, p: &str) {
+        match read_body_file(p) {
+            Some(s) => self.texts.push(s),
+            None if !p.is_empty() && p != "-" => self.unreadable_files.push(p.to_string()),
+            None => {}
+        }
+    }
+
     /// bash の本文抽出ループ(4 guard で同一式)。値を取るフラグだけが値
     /// トークンを消費し、それ以外のトークンは読み飛ばす。
     pub fn scan(tokens: &[String]) -> Self {
@@ -78,9 +89,7 @@ impl BodyFlags {
                 "--body-file" | "-F" => {
                     out.have_flag = true;
                     if i + 1 < n {
-                        if let Some(s) = read_body_file(&tokens[i + 1]) {
-                            out.texts.push(s);
-                        }
+                        out.take_file(&tokens[i + 1]);
                         i += 2;
                         continue;
                     }
@@ -91,9 +100,7 @@ impl BodyFlags {
                         out.texts.push(v.to_string());
                     } else if let Some(p) = t.strip_prefix("--body-file=") {
                         out.have_flag = true;
-                        if let Some(s) = read_body_file(p) {
-                            out.texts.push(s);
-                        }
+                        out.take_file(p);
                     }
                 }
             }
@@ -325,6 +332,10 @@ mod tests {
         let f = BodyFlags::scan(&v(&["--body=a", "--body-file=/nonexistent/x"]));
         assert!(f.have_flag);
         assert_eq!(f.texts, ["a"]);
+        assert_eq!(f.unreadable_files, ["/nonexistent/x"]);
+        assert!(BodyFlags::scan(&v(&["--body-file", "-"]))
+            .unreadable_files
+            .is_empty());
         assert!(!BodyFlags::scan(&v(&["--add-label", "bug"])).have_flag);
     }
 
