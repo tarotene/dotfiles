@@ -80,7 +80,7 @@ sandbox を外した再実行は自動モードの判定が「Safety Bypass」�
 Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.com/docs/security>)しか取得できず、**未確認**。
 
 `excludedCommands` の既定は、sandbox の中では鍵束の D-Bus・gpg-agent・nix daemon のソケットに届かない
-コマンド(`gh`・`git commit`・`git push`・`git add`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
+コマンド(`gh`・`git commit`・`git push`・`git add`・`git fetch`・`git pull`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
 狭い allow と分類器を通る。
 
 **除外パターンの照合規則**(Anthropic, "Sandboxing"、取得 2026-10-27): 呼び出し 1 行全体のコマンドがすべて
@@ -101,6 +101,7 @@ git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広�
 | `git -C <リテラルの絶対パス> commit -S ...`(`git -C * commit *` を除外に入れた状態) | 失敗(`No secret key`) | 途中の `*` を持つパターンは効かない(変数展開が原因ではない) |
 | `git -C "$TMPDIR/…" commit -S ...`、`git -C … add . && git -C … commit -S ...` | 失敗(`No secret key`) | 同上 |
 | `git rebase --force-rebase HEAD~1`(使い捨てのブランチ、worktree の cwd。除外に無かった) | 失敗(`gpg: skipped "…": No secret key`、`failed to write commit object`) | `commit.gpgsign=true` で、書き換えたコミットの再署名が sandbox 内の gpg に届かない |
+| `git fetch origin`(除外に `git fetch *` を足す前。worktree の cwd、単体、2026-10-28 に別のセッションで測定) | 失敗(`fatal: could not read Username for 'https://github.com': No such device or address`) | `fetch` も認証情報を gh の keyring 経由で読むので、sandbox の中では届かない。`git fetch *` と `git pull *` を除外に足した(`git push` と同じ理由。`git fetch` を sandbox の外で再実行すると成功した。`git pull` は `fetch` を内部で呼ぶので同じ経路からの推定で、未測定) |
 | `nix build nixpkgs#hello --no-link`(除外に `nix build *` を足す前) | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
 | `nix build nixpkgs#hello --no-link`(`nix build *` を足した後) | **成功** | 除外が効く |
 | `cargo --version`・`$TMPDIR` への書き込み | 成功 | sandbox 内で確認なしに通る |
