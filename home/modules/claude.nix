@@ -172,13 +172,29 @@ in
     excludedCommands = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [
-        # They need the login keyring (gh's token) or gpg-agent, which the sandbox does
-        # not show, so they run outside it and go through the regular permission flow:
-        # the narrow allow rules above, then the auto-mode classifier. Keep patterns
-        # narrow: an excluded command runs with full access.
+        # They need the login keyring (gh's token), gpg-agent or the nix daemon socket,
+        # which the sandbox does not show, so they run outside it and go through the
+        # regular permission flow: the narrow allow rules above, then the auto-mode
+        # classifier. Keep patterns narrow: an excluded command runs with full access.
+        #
+        # Matching (Anthropic, "Sandboxing", https://code.claude.com/docs/en/sandboxing,
+        # retrieved 2026-10-27, and measured on vega 2026-10-28, #1164): the whole call
+        # must match, and a pattern matches the text of the call. So `git -C <dir> commit`
+        # needs its own entry, `git add . && git commit` needs `git add` excluded too,
+        # and a `cd`, a redirect to a file or a `$(...)` keeps the call sandboxed.
         "gh *"
         "git commit *"
+        "git -C * commit *"
         "git push *"
+        "git -C * push *"
+        "git add *"
+        "git -C * add *"
+        # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
+        # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
+        "nix build *"
+        "nix eval *"
+        "nix flake *"
+        "nix fmt *"
       ];
       description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
     };

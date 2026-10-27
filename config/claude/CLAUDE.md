@@ -96,6 +96,20 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   AGENTS.md「長い処理では…」の形)で待つ。
 - 前景の `sleep` で待たない。
 
+## sandbox の外で動かすコマンドは、単体で呼ぶ(#1164)
+
+`gh`・`git commit`・`git push`・`git add`・`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
+`home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が要るためである。ただし、**呼び出し全体の
+コマンドが除外パターンに合わないと、全体が sandbox の中に残る**(Anthropic, "Sandboxing"、
+<https://code.claude.com/docs/en/sandboxing>、取得 2026-10-27)。残ると `gh` は認証できず、署名は
+`No secret key` で失敗し、`nix` は `Read-only file system` になる。2026-10-28 に vega で、
+`gh auth status; echo "exit=$?"` が失敗し、`gh auth status` 単体が成功することを確かめた。
+
+- これらは単体で呼ぶ。`; echo …`・`cd <dir> &&`・`> file` のリダイレクト・`$(…)` を連結しない。
+- 作業ディレクトリは `git -C <dir> …` で指定する(`cd` を連結しない)。`git -C <dir> commit` と
+  `git -C <dir> add` は除外に入れてあるので、署名付きの commit は通る。
+- 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
+
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で

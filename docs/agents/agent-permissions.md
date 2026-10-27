@@ -79,11 +79,33 @@ sandbox を外した再実行は自動モードの判定が「Safety Bypass」�
 <https://code.claude.com/docs/en/permissions>、取得 2026-10-27、本文を逐語で引く形で取得して読んだ)。
 Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.com/docs/security>)しか取得できず、**未確認**。
 
-`excludedCommands` の既定(`gh *`・`git commit *`・`git push *`)は、sandbox の中では鍵束の D-Bus と gpg-agent に
-届かないコマンドである。外で動くので、狭い allow と分類器を通る。この集合は暫定で、vega の実機で
-`claude --settings <一時ファイル>` を重ねて実測し(`gh auth status`、署名付き `git commit`、`git push --dry-run`、
-`nix build`、`cargo check`、`$TMPDIR` への書き込み、自動モードが除外コマンドを拒否しないこと)、
-通らないものを `allowWrite` か `excludedCommands` に振り分ける。実測の結果は未取得(2026-10-27)。
+`excludedCommands` の既定は、sandbox の中では鍵束の D-Bus・gpg-agent・nix daemon のソケットに届かない
+コマンド(`gh`・`git commit`・`git push`・`git add`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
+狭い allow と分類器を通る。
+
+**除外パターンの照合規則**(Anthropic, "Sandboxing"、取得 2026-10-27): 呼び出し 1 行全体のコマンドがすべて
+除外パターンに合わないと、全体が sandbox の中に残る。パターンは呼び出しの文字列に対して合わせる。`cd`・
+ファイルへのリダイレクト・`$(…)` を含む呼び出しは sandbox に残る。このため `git -C <dir> commit` は
+`git commit *` に合わず、別の項目(`git -C * commit *`)が要る。
+
+**実測(vega、2026-10-28、#1164、`hms` 適用後の新しいセッション・Auto モード)**:
+
+| 呼び出し | 結果 | 読み |
+|---|---|---|
+| `gh auth status; echo "exit=$?"`(1 回目) | 失敗(`token is invalid`) | 末尾の `echo` が除外に合わず sandbox に残った |
+| `gh auth status`(2 回目、単体) | 成功(keyring でログイン済み) | 除外が効く。鍵束に届く |
+| `gh pr list -R tarotene/dotfiles --limit 1`(単体) | 成功 | 同上 |
+| `git push --dry-run`(単体) | 成功 | 同上。認証情報が通る |
+| `git -C <dir> commit -S ...`・`git -C <dir> add . && git -C <dir> commit -S ...` | 失敗(`No secret key`) | `git -C` の形が `git commit *` に合わなかった。署名そのものの可否は未測定 |
+| `nix build nixpkgs#hello --no-link` | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
+| `cargo --version`・`$TMPDIR` への書き込み | 成功 | sandbox 内で確認なしに通る |
+
+自動モードの分類器は、実測の全呼び出しを許可した(sandbox を外す再実行はしていないので、「Safety Bypass」の
+問題は、除外コマンドで外の実行になるこの構成では起きなかった、という範囲で確かめられた)。
+この結果に基づき、既定に `git -C * commit *`・`git -C * push *`・`git add *`・`git -C * add *`・`nix build *`・
+`nix eval *`・`nix flake *`・`nix fmt *` を足した。署名付き commit の成功は、この変更の `hms` 適用後に再測定する
+(#1164)。`nix` を sandbox の中に残す案(`allowWrite` で `~/.cache/nix`、socket の許可)は、socket の作成自体が
+拒否されるので採らない(`allowAllUnixSockets` が要り、範囲が広すぎる)。
 `/tmp` 直下への書き込みは `allowWrite` を広げず、`$TMPDIR` を使う運用のままにする。
 
 宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
