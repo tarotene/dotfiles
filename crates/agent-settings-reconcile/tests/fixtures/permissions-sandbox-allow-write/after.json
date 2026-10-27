@@ -1,0 +1,20 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "allowWrite": [
+        "~/.kube",
+        "~/.local/state/claude",
+        "/home/example/vault"
+      ],
+      "denyRead": [
+        "~/.ssh"
+      ]
+    }
+  },
+  "model": "keep",
+  "permissions": {
+    "allow": [],
+    "ask": []
+  }
+}

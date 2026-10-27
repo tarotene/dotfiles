@@ -113,6 +113,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 | `sandbox.allowed_domains` | `sandbox.network.allowedDomains` | `dotfiles.claudePermissions.sandboxDomains` |
 | `sandbox.deny_read` | `sandbox.filesystem.denyRead` | `dotfiles.claudePermissions.secretPaths` |
 | `sandbox.excluded_commands` | `sandbox.excludedCommands` | `dotfiles.claudePermissions.excludedCommands` |
+| `sandbox.allow_write` / `retire_allow_write` | `sandbox.filesystem.allowWrite` | `dotfiles.claudePermissions.allowWrite`(各モジュールが足す。claude.nix は `~/.local/state/claude`、obsidian.nix は vault) |
 
 - 宣言したキーだけを合わせる。真偽値は異なるときだけ書き、配列は「宣言との和 − `retire_*`」で、
   本人が `/sandbox` や承認で足した値(`allowWrite`・別の `denyRead` など)は残す。

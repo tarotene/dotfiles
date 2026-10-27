@@ -33,7 +33,7 @@ pub struct PermissionsSpec {
 
 /// `sandbox` のうち、宣言したキーだけを合わせる。真偽値は set-if-different、
 /// 配列は「宣言との和 − 撤回」(本人が `/sandbox` や承認で足した値は残す)。
-/// 宣言に無いキー(`allowWrite`・`allowUnsandboxedCommands` など)には触れない。
+/// 宣言に無いキー(`allowUnsandboxedCommands` など)には触れない。
 #[derive(Deserialize, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SandboxSpec {
@@ -51,6 +51,12 @@ pub struct SandboxSpec {
     pub deny_read: Vec<String>,
     #[serde(default)]
     pub retire_deny_read: Vec<String>,
+    /// `sandbox.filesystem.allowWrite`。sandbox 内の道具が書く場所(エージェントが Bash で呼ぶ
+    /// 自前の道具の状態ディレクトリなど)。宣言との和 − 撤回で、本人が足した値は残す。
+    #[serde(default)]
+    pub allow_write: Vec<String>,
+    #[serde(default)]
+    pub retire_allow_write: Vec<String>,
     #[serde(default)]
     pub excluded_commands: Vec<String>,
     #[serde(default)]
@@ -207,13 +213,26 @@ fn apply_sandbox(top: &mut IndexMap<String, J>, spec: &SandboxSpec) -> Result<()
             &spec.retire_allowed_domains,
         );
     }
-    if !spec.deny_read.is_empty() || !spec.retire_deny_read.is_empty() {
+    if !spec.deny_read.is_empty()
+        || !spec.retire_deny_read.is_empty()
+        || !spec.allow_write.is_empty()
+        || !spec.retire_allow_write.is_empty()
+    {
         let filesystem = object_entry(sandbox, "filesystem")?;
-        sync_strings(
-            string_array(filesystem, "denyRead")?,
-            &spec.deny_read,
-            &spec.retire_deny_read,
-        );
+        if !spec.deny_read.is_empty() || !spec.retire_deny_read.is_empty() {
+            sync_strings(
+                string_array(filesystem, "denyRead")?,
+                &spec.deny_read,
+                &spec.retire_deny_read,
+            );
+        }
+        if !spec.allow_write.is_empty() || !spec.retire_allow_write.is_empty() {
+            sync_strings(
+                string_array(filesystem, "allowWrite")?,
+                &spec.allow_write,
+                &spec.retire_allow_write,
+            );
+        }
     }
     Ok(())
 }

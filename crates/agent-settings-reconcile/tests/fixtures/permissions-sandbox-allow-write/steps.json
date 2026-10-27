@@ -1,0 +1,19 @@
+[
+  [
+    "claude-permissions",
+    {
+      "retire_allow": [],
+      "allow": [],
+      "ask": [],
+      "sandbox": {
+        "allow_write": [
+          "~/.local/state/claude",
+          "/home/example/vault"
+        ],
+        "retire_allow_write": [
+          "~/old-state"
+        ]
+      }
+    }
+  ]
+]

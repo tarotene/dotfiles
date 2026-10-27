@@ -1,0 +1,7 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {"allowWrite": ["~/.kube", "~/old-state"], "denyRead": ["~/.ssh"]}
+  },
+  "model": "keep"
+}
