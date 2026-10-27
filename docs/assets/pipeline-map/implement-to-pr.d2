@@ -260,6 +260,11 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+    n_ci_wait_guard: "ci-wait-guard" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
     n_decision_colocation_guard: "decision-colocation-guard" {
       class: s_rust
       style.stroke: "#D55E00"
@@ -385,6 +390,9 @@ n_agent_session.l_session_start.n_gpg_prewarm -> l_external.n_user: "pinentry on
 }
 n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_tool_call.n_new_tool_guard: "session ledger" {
   class: e_file
+}
+n_agent_session.l_tool_call.n_ci_wait_guard -> l_manual.n_pr_checks_wait: "points to" {
+  class: e_invoke
 }
 n_agent_session.l_tool_call.n_gh_edit_allow_record -> n_agent_session.l_tool_call.n_gh_edit_allow_judge: "session ledger" {
   class: e_file

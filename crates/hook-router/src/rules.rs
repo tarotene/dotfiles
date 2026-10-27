@@ -137,6 +137,13 @@ pub static RULES: &[Rule] = &[
         run: |agent, raw| pr_title_guard::hook(agent, raw),
     },
     Rule {
+        node: "ci-wait-guard",
+        event: Event::Pre,
+        tools: Tools::Named(&["Bash", "Monitor"]),
+        budget: S10,
+        run: |agent, raw| ci_wait_guard::hook(agent, raw),
+    },
+    Rule {
         node: "pr-followup-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
@@ -290,6 +297,7 @@ mod tests {
             pre,
             BTreeSet::from([
                 "attribution-guard",
+                "ci-wait-guard",
                 "decision-colocation-guard",
                 "external-send-guard",
                 "feedback-target-guard",

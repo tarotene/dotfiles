@@ -8,6 +8,8 @@
 # 【#991】ExitPlanMode の拒否 2 件(plan-scope-gate・plan-precedent-gate、15・16 番)も、同じ表に
 # 載せた(合わせて 21 件、PreToolUse の拒否 17 件)。15・16 番の「ExitPlanMode matcher に N 番目の
 # エントリとして並ぶ」の記述は、旧登録の記録として残す。
+# ci-wait-guard(Bash と Monitor、docs/agents/ci-wait-guard.md)も同じ表に載せた(合わせて 22 件、
+# PreToolUse の拒否 18 件)。
 #
 # 1) plan-review ゲート(PreToolUse / ExitPlanMode):
 #    GitHub Copilot CLI(read-only custom agent)によるプランの自動レビュー。
@@ -609,7 +611,7 @@ let
   # 介さず直接起動する。旧 `bash '….sh'` の command は retiredHookEntries /
   # --retire で完全一致削除する(legacy*Cmd)。
   gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
-  # hook-router(ツール呼び出しに付く検査 21 件を 1 つのプロセスで走らせる)。
+  # hook-router(ツール呼び出しに付く検査 22 件を 1 つのプロセスで走らせる)。
   hookRouterPreCmd = "'${hooksDir}/hook-router' pre";
   hookRouterPostCmd = "'${hooksDir}/hook-router' post";
   gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
@@ -1353,7 +1355,7 @@ let
       "if" = "Bash(git -C *)";
     }
     # hook-router(crates/hook-router、docs/agents/hook-router.md): ツール呼び出しに付く検査のうち、
-    # 拒否だけを出すもの(17 件)と記録役(4 件)を、1 つのプロセスで、規則の表
+    # 拒否だけを出すもの(18 件)と記録役(4 件)を、1 つのプロセスで、規則の表
     # (crates/hook-router/src/rules.rs)に従って走らせる。matcher は付けない — どのツールに
     # どの検査を当てるかは表(`Tools` という閉じた型)が持つ。matcher の文字列の書き間違いで検査が
     # 黙って素通りになる事故(旧登録の注意書きに、複合 matcher `Bash|mcp__.*` の実例があった)を、
@@ -2089,7 +2091,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
-  # hook-router: ツール呼び出しに付く検査 21 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
+  # hook-router: ツール呼び出しに付く検査 22 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
   home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
   # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
   home.file.".claude/hooks/main-checkout-guard".source =

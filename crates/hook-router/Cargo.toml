@@ -15,6 +15,7 @@ serde_json = "1.0.151"
 
 adr-number = { version = "0.1.0", path = "../adr-number" }
 attribution-guard = { version = "0.1.0", path = "../attribution-guard" }
+ci-wait-guard = { version = "0.1.0", path = "../ci-wait-guard" }
 cmd-hash-log = { version = "0.1.0", path = "../cmd-hash-log" }
 decision-colocation = { version = "0.1.0", path = "../decision-colocation" }
 external-send-guard = { version = "0.1.0", path = "../external-send-guard" }

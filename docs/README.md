@@ -455,8 +455,8 @@ Design and rationale for the hooks and commands deployed from
 `config/agents/` by `home/modules/agents.nix`:
 
 - [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 21 件(PreToolUse の
-  拒否 17 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
+- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 22 件(PreToolUse の
+  拒否 18 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
   書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかった検査(許可を出す検査・ExitPlanMode の
   一部・Stop・SessionStart・外部ツール)の、検査ごとの裁定と理由の表、規則ごとの打ち切りと panic の隔離、
   旧登録の matcher・timeout の記録。
@@ -561,6 +561,10 @@ Design and rationale for the hooks and commands deployed from
   (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
   Conventional Commits 文法を機械強制する。単一ソースの checker は
   `crates/pr-title-check`(Rust)。
+- [`ci-wait-guard.md`](agents/ci-wait-guard.md) — CI を `gh pr checks --watch`・`gh run watch`・
+  `until`/`while`/`sleep` のポーリングで待つ形を、Bash と Monitor の実行前に deny し、赤 1 件で即 NG・
+  required 全緑で即 OK の `pr-checks-wait` へ案内する(`crates/ci-wait-guard`、hook-router の規則)。
+  待ち方の判定の正本は `docs/agents/pr-gate.md`「待ち方」。
 - [`pr-followup-guard.md`](agents/pr-followup-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する
