@@ -9,10 +9,10 @@ Codex は native 設定を使う。所有記録が無いことや、設定を本
 
 | 対象 | 宣言・執行点 | 適用する内容 |
 |---|---|---|
-| Claude | `home/modules/claude.nix`、`agent-settings-reconcile claude-permissions` | native の allow / ask と、それぞれの撤回リスト |
+| Claude | `home/modules/claude.nix`、`agent-settings-reconcile claude-permissions` | native の allow / ask / deny と撤回リスト、`sandbox`・`autoMode.classifyAllShell`([層構造](#claude-と-codex-の層構造を揃える)) |
 | Codex | `home/modules/codex.nix`、`agent-settings-reconcile codex-permissions` | `on-request`、`auto_review`、名前付き `dotfiles` 権限 profile、通信 proxy、秘密パスの masking、個別 MCP 設定 |
 
-Claude の追加許可は `dotfiles.claudePermissions.extraAllow`、Codex の入力は
+Claude の入力は `dotfiles.claudePermissions.{extraAllow,secretPaths,sandboxDomains,excludedCommands}`、Codex の入力は
 `dotfiles.codexPermissions.secretPaths` / `domains` / `mcpAllow` / `apps` に置く。
 非公開の実値は ADR-0034 に従い private wrapper に置く。
 既存 3 ホストとの互換性のため `dotfiles.agentPermissions` の option は残るが、
@@ -56,6 +56,37 @@ CLI の版・引数も確認してから資格情報を渡す。共有の移行�
 （公開日不明、取得日 2026-10-27）。返された `Command` は資格情報を含みうるのでログに出さない。
 認証付き中継は各 thread / turn の cwd と設定を再検査する。権限切替・直接の native コマンド・
 cwd が不明な特殊再接続の制約は [codex-plan の起動経路](../codex-plan.md#github-資格情報の起動経路) に記す。
+
+## Claude と Codex の層構造を揃える
+
+共有ポリシーの最初の移行(2026-10-26)は、Claude の `sandbox`・`autoMode.classifyAllShell`・Read の秘密パス deny を
+書いた。撤去(上の節)は journal の残る変更しか戻せず、最初の移行の journal は `transaction.rs` の `prune` で
+消えていたため、Claude は「sandbox 有効・通信先空・自動許可なし・除外コマンドなし」の壊れた状態で残った。
+sandbox の中では `gh` の認証(鍵束の D-Bus)・署名付き commit(gpg-agent)・`/tmp` 直下への書き込みが失敗し、
+sandbox を外した再実行は自動モードの判定が「Safety Bypass」で拒否した。
+
+直し方として「sandbox を外して先週に戻す」ではなく、Codex と同じ層構造に宣言で揃える(本人の裁定、2026-10-27)。
+公式の指針は「権限ルールと sandbox は別の層で、両方を使う(defense-in-depth)」である。
+
+| 層 | Claude の公式な指針 | Codex(`dotfiles` profile) | Claude の宣言 |
+|---|---|---|---|
+| 権限ルール | 評価順は deny → ask → allow。Bash ルールは「プログラムの周りの境界ではない」。引数を絞る Bash パターンは壊れやすい | Bash 前方一致の宣言なし。MCP は既定で毎回確認 | 狭い allow(`permissionRules`)と秘密パスの Read deny。広い Bash 前方一致は宣言しない |
+| 分類器 | 自動モードの分類器。`classifyAllShell` は全シェルを分類し Bash の allow を停止する | `auto_review` が全承認要求を審査する | `autoMode.classifyAllShell = true` |
+| sandbox | OS が強制する。直し方は `allowWrite`・`allowedDomains`・狭い `excludedCommands`。`autoAllowBashIfSandboxed` は既定 true。`WebFetch(domain:...)` の許可は通信先にも加わる | 常時 sandbox(全体 read・workspace write・秘密 deny・通信先を宣言) | `sandbox.enabled`・`failIfUnavailable`・`autoAllowBashIfSandboxed = true`・`allowedDomains`・`denyRead`・`excludedCommands` |
+| hook | hook の判定は deny / ask を越えられない | 同種の hook | 変更しない |
+
+出典(Anthropic, "Sandboxing" と "Configure permissions"、<https://code.claude.com/docs/en/sandboxing>、
+<https://code.claude.com/docs/en/permissions>、取得 2026-10-27、本文を逐語で引く形で取得して読んだ)。
+Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.com/docs/security>)しか取得できず、**未確認**。
+
+`excludedCommands` の既定(`gh *`・`git commit *`・`git push *`)は、sandbox の中では鍵束の D-Bus と gpg-agent に
+届かないコマンドである。外で動くので、狭い allow と分類器を通る。この集合は暫定で、vega の実機で
+`claude --settings <一時ファイル>` を重ねて実測し(`gh auth status`、署名付き `git commit`、`git push --dry-run`、
+`nix build`、`cargo check`、`$TMPDIR` への書き込み、自動モードが除外コマンドを拒否しないこと)、
+通らないものを `allowWrite` か `excludedCommands` に振り分ける。実測の結果は未取得(2026-10-27)。
+`/tmp` 直下への書き込みは `allowWrite` を広げず、`$TMPDIR` を使う運用のままにする。
+
+宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
 
 ## 旧共有管理を撤去する
 

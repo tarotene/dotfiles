@@ -46,6 +46,11 @@ fn fixtures_match_and_are_idempotent() {
     for entry in std::fs::read_dir(fixtures()).unwrap() {
         let dir = entry.unwrap().path();
         let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        // case のディレクトリ名は `.` で始まらない。sandbox や編集環境が cwd 配下に
+        // 置く退避用の `.claude`・`.mcp.json` などは case ではない。
+        if name.starts_with('.') {
+            continue;
+        }
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("settings.json");
         if dir.join("before.json").exists() {

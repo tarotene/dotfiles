@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)"
+    ],
+    "ask": [
+      "Bash(/usr/bin/pkexec *)"
+    ],
+    "deny": [
+      "Read(~/.ssh)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg)",
+      "Read(~/.gnupg/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [
+      "gh *",
+      "git commit *",
+      "git push *"
+    ],
+    "network": {
+      "allowedDomains": [
+        "api.github.com",
+        "github.com",
+        "cache.nixos.org"
+      ]
+    },
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.gnupg"
+      ]
+    }
+  },
+  "autoMode": {
+    "classifyAllShell": true
+  }
+}

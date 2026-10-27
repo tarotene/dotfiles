@@ -16,6 +16,45 @@ pub struct PermissionsSpec {
     pub retire_ask: Vec<String>,
     #[serde(default)]
     pub ask: Vec<String>,
+    /// `permissions.deny`。宣言どうし・撤回(完全一致)とも allow / ask と同じ扱い。
+    #[serde(default)]
+    pub retire_deny: Vec<String>,
+    #[serde(default)]
+    pub deny: Vec<String>,
+    /// 宣言があるときだけ `sandbox` を合わせる(Codex の `dotfiles` 権限 profile と
+    /// 同じ層構造。docs/agents/agent-permissions.md の層別の対応表)。
+    #[serde(default)]
+    pub sandbox: Option<SandboxSpec>,
+    /// `autoMode.classifyAllShell`。宣言があるときだけ書く。`autoMode.environment`
+    /// など他のキーには触れない。
+    #[serde(default)]
+    pub auto_mode_classify_all_shell: Option<bool>,
+}
+
+/// `sandbox` のうち、宣言したキーだけを合わせる。真偽値は set-if-different、
+/// 配列は「宣言との和 − 撤回」(本人が `/sandbox` や承認で足した値は残す)。
+/// 宣言に無いキー(`allowWrite`・`allowUnsandboxedCommands` など)には触れない。
+#[derive(Deserialize, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SandboxSpec {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub fail_if_unavailable: Option<bool>,
+    #[serde(default)]
+    pub auto_allow_bash_if_sandboxed: Option<bool>,
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub retire_allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub deny_read: Vec<String>,
+    #[serde(default)]
+    pub retire_deny_read: Vec<String>,
+    #[serde(default)]
+    pub excluded_commands: Vec<String>,
+    #[serde(default)]
+    pub retire_excluded_commands: Vec<String>,
 }
 
 /// #461: 中間 `*` を含む allow rule(`Bash(git -C * add *)` のような、`(` か
@@ -88,6 +127,93 @@ pub fn permissions(root: &mut J, spec: &PermissionsSpec) -> Result<(), String> {
         if !ask.iter().any(|v| v.as_str() == Some(r)) {
             ask.push(J::str(r));
         }
+    }
+
+    // deny は宣言も撤回も空なら配列を作らない(allow / ask と違い、宣言の無い
+    // 環境に空配列を足さない)。
+    if !spec.deny.is_empty() || !spec.retire_deny.is_empty() {
+        sync_strings(string_array(perms, "deny")?, &spec.deny, &spec.retire_deny);
+    }
+
+    if let Some(sandbox) = &spec.sandbox {
+        apply_sandbox(top, sandbox)?;
+    }
+    if let Some(classify) = spec.auto_mode_classify_all_shell {
+        let auto = object_entry(top, "autoMode")?;
+        set_bool(auto, "classifyAllShell", classify);
+    }
+    Ok(())
+}
+
+/// 配列から撤回の完全一致を外し、宣言のうち無いものを末尾に足す。
+fn sync_strings(arr: &mut Vec<J>, add: &[String], retire: &[String]) {
+    arr.retain(|v| match v.as_str() {
+        Some(s) => !retire.iter().any(|r| r == s),
+        None => true,
+    });
+    for a in add {
+        if !arr.iter().any(|v| v.as_str() == Some(a)) {
+            arr.push(J::str(a));
+        }
+    }
+}
+
+/// `key` のオブジェクトを返す。無い・null なら空のオブジェクトを作る。
+fn object_entry<'a>(
+    parent: &'a mut IndexMap<String, J>,
+    key: &str,
+) -> Result<&'a mut IndexMap<String, J>, String> {
+    if matches!(parent.get(key), None | Some(J::Null)) {
+        parent.insert(key.to_owned(), J::Obj(IndexMap::new()));
+    }
+    match parent.get_mut(key) {
+        Some(J::Obj(o)) => Ok(o),
+        _ => Err(format!(".{key} がオブジェクトではない")),
+    }
+}
+
+fn set_bool(obj: &mut IndexMap<String, J>, key: &str, value: bool) {
+    if obj.get(key) != Some(&J::Bool(value)) {
+        obj.insert(key.to_owned(), J::Bool(value));
+    }
+}
+
+fn apply_sandbox(top: &mut IndexMap<String, J>, spec: &SandboxSpec) -> Result<(), String> {
+    let sandbox = object_entry(top, "sandbox")?;
+    for (key, value) in [
+        ("enabled", spec.enabled),
+        ("failIfUnavailable", spec.fail_if_unavailable),
+        (
+            "autoAllowBashIfSandboxed",
+            spec.auto_allow_bash_if_sandboxed,
+        ),
+    ] {
+        if let Some(v) = value {
+            set_bool(sandbox, key, v);
+        }
+    }
+    if !spec.excluded_commands.is_empty() || !spec.retire_excluded_commands.is_empty() {
+        sync_strings(
+            string_array(sandbox, "excludedCommands")?,
+            &spec.excluded_commands,
+            &spec.retire_excluded_commands,
+        );
+    }
+    if !spec.allowed_domains.is_empty() || !spec.retire_allowed_domains.is_empty() {
+        let network = object_entry(sandbox, "network")?;
+        sync_strings(
+            string_array(network, "allowedDomains")?,
+            &spec.allowed_domains,
+            &spec.retire_allowed_domains,
+        );
+    }
+    if !spec.deny_read.is_empty() || !spec.retire_deny_read.is_empty() {
+        let filesystem = object_entry(sandbox, "filesystem")?;
+        sync_strings(
+            string_array(filesystem, "denyRead")?,
+            &spec.deny_read,
+            &spec.retire_deny_read,
+        );
     }
     Ok(())
 }
