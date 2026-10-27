@@ -1,0 +1,23 @@
+{
+  "status": 200,
+  "prompt_options": {"parallel_queries": 1, "prompt_length": 1000},
+  "data": [
+    {"id": "05776db7-f5c0-40f7-b824-079160f8cfa8", "name": "Claude Fable 5.1 (Low)", "slug": "claude-fable-5-1-low",
+     "release_date": "2026-09-01", "model_creator": {"name": "Anthropic"},
+     "median_output_tokens_per_second": 80.0, "median_time_to_first_token_seconds": 2,
+     "evaluations": {"terminalbench_v4_0": 0.5, "scicode": null, "lcr": 0.25, "hle": 0.1}},
+    {"id": "11111111-0000-0000-0000-000000000001", "name": "Acme One (High)", "slug": "acme-one-high",
+     "release_date": "2026-09-10", "model_creator": {"name": "Acme Labs"},
+     "median_output_tokens_per_second": 60.5, "median_time_to_first_token_seconds": 1.5,
+     "evaluations": {"terminalbench_v4_0": 0.4, "scicode": 0.3, "lcr": 0.5, "hle": 0.05}},
+    {"id": "11111111-0000-0000-0000-000000000002", "name": "Acme One (Low)", "slug": "acme-one-low",
+     "release_date": "2026-09-10", "model_creator": {"name": "Acme Labs"},
+     "evaluations": {"terminalbench_v4_0": 0.3, "scicode": 0.2, "lcr": null, "hle": 0.04}},
+    {"id": "11111111-0000-0000-0000-000000000003", "name": "Zeta 3", "slug": "zeta-3",
+     "release_date": "2026-07-15", "model_creator": {"name": "Zeta AI"},
+     "evaluations": {"terminalbench_v4_0": null, "scicode": null, "lcr": 0.2, "hle": null}},
+    {"id": "11111111-0000-0000-0000-000000000004", "name": "Acme Old", "slug": "acme-old",
+     "release_date": "2025-01-01", "model_creator": {"name": "Acme Labs"},
+     "evaluations": {"terminalbench_v4_0": 0.1}}
+  ]
+}

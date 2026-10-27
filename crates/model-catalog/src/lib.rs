@@ -383,6 +383,90 @@ struct RawModel {
     aa_ids: BTreeMap<String, String>,
 }
 
+// ------------------------------------------------------------------ 生成ブロックだけの読み込み
+
+/// 生成ブロック(`model-catalog fetch-aa` が書く部分)を、手書きの部分と切り離して読んだもの。
+/// 手書きの部分と突き合わせた検査(重複・未知の提供元など)は `Catalog::parse` が全体に対して行う。
+/// ここで切り離して読むのは、手で登録したモデルが、自動登録済みのモデルと同じ ID になっても、
+/// 次の取り込みが読めなくならないようにするため(その場合は手登録が優先され、自動登録側が外れる)。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GeneratedBlock {
+    pub aa: Option<AaMeta>,
+    pub providers: Vec<Provider>,
+    pub models: Vec<Model>,
+    pub measurements: Vec<Measurement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBlock {
+    aa: Option<AaMeta>,
+    #[serde(default, rename = "provider")]
+    providers: Vec<RawProvider>,
+    #[serde(default, rename = "model")]
+    models: Vec<RawModel>,
+    #[serde(default, rename = "measurement")]
+    measurements: Vec<Measurement>,
+}
+
+impl GeneratedBlock {
+    pub fn parse(text: &str) -> Result<GeneratedBlock, String> {
+        let raw: RawBlock = toml::from_str(text).map_err(|e| format!("生成ブロック: {e}"))?;
+        let mut providers = Vec::new();
+        for p in raw.providers {
+            if p.api_context.is_some()
+                || p.api_max_output.is_some()
+                || p.cache.is_some()
+                || p.long_context.is_some()
+                || p.codex_context.is_some()
+                || p.comparison_only
+                || !p.conditions.is_empty()
+                || !p.sources.is_empty()
+            {
+                return Err(format!(
+                    "生成ブロックの provider {}: 価格・出典の欄は手登録の部分にだけ書ける",
+                    p.id
+                ));
+            }
+            providers.push(Provider {
+                id: p.id,
+                name: p.name,
+                aa_creator: p.aa_creator,
+            });
+        }
+        let mut models = Vec::new();
+        for m in raw.models {
+            if m.purpose.is_some()
+                || m.input.is_some()
+                || m.cache_read.is_some()
+                || m.output.is_some()
+                || m.credits.is_some()
+                || m.codex_models_json_line.is_some()
+                || m.docs_slug.is_some()
+            {
+                return Err(format!(
+                    "生成ブロックの model {}: 価格・出典の欄は手登録の部分にだけ書ける",
+                    m.id
+                ));
+            }
+            models.push(Model {
+                id: m.id,
+                provider: m.provider,
+                name: m.name,
+                status: m.status.unwrap_or(Status::Active),
+                efforts: m.efforts,
+                aa_ids: m.aa_ids,
+            });
+        }
+        Ok(GeneratedBlock {
+            aa: raw.aa,
+            providers,
+            models,
+            measurements: raw.measurements,
+        })
+    }
+}
+
 // ------------------------------------------------------------------ 読み込みと検査
 
 fn is_date(s: &str) -> bool {
