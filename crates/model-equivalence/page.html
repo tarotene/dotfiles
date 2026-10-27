@@ -436,7 +436,7 @@ function renderEvidence() {
   html += `<dl class="kv"><dt>測定値</dt><dd>${aa ? `<a href="https://artificialanalysis.ai/" rel="noopener">${esc(aa.attribution)}</a> の API(取得 ${esc(aa.retrieved)})。エフォート別に別の行で測られ、ハーネスは mini-swe-agent に固定。速さの測定条件は入力 ${aa.prompt_length_tokens ?? "?"} トークン。` : "—"}</dd>
     <dt>区間の計算</dt><dd>AA は信頼区間を公開していないので、課題数から Newcombe(1998)の区間を計算(2 つのモデルを独立な標本として扱うので、同じ課題での対応を無視する分、区間は広めに出て、同等を言い過ぎない側に倒れる)。</dd>
     <dt>判定の方法</dt><dd>同等性検定(TOST、Lakens 2017)。差が有意でないことは同等の証拠にならないので、区間が許容幅に収まって初めて「同等」と言う。</dd>
-    <dt>採点の偏り</dt><dd>AA-LCR と HLE は GPT 系の LLM が採点している。Claude の答えを GPT が採点する構図なので、この 2 つで GPT が有利に出る偏りがありうる(大きさは未確認)。</dd>
+    <dt>採点の偏り</dt><dd>AA-LCR と HLE は GPT 系の LLM(GPT-5.6 Luna (medium))が、参照解答との等価判定をしている。Claude の答えを GPT が採点する構図なので、この 2 つで GPT が有利に出る偏りがありうる(大きさは未確認。AA は採点者を替えた結果を公開していない)。</dd>
     <dt>速さ</dt><dd>最初のトークンまでの時間は、エフォートで桁が変わる(思考の長さ)。区間は無く、点推定の比で見る。</dd></dl>`;
   const nh = D.native_harness;
   if (nh.length) {
