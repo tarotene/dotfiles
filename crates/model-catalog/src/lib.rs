@@ -221,7 +221,20 @@ pub struct CategoryBench {
     pub fit: Fit,
 }
 
+/// 変更ファイルから種類を推す規則。`dirs` はパスの先頭、または任意の `/` の直後から始まる一致
+/// (`docs/` は `docs/a.md` にも `crates/x/docs/a.md` にも当たる)。`extensions` は小文字・ドットなしの拡張子。
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct FileRule {
+    #[serde(default)]
+    pub dirs: Vec<String>,
+    #[serde(default)]
+    pub extensions: Vec<String>,
+}
+
 /// 履歴の課題の種類。`benchmarks` が空の種類は、現行モデルに値のある公開ベンチで測れていない。
+/// `prefixes` は、PR タイトルの conventional prefix(小文字)のうち、この種類に入るもの。`files` は、
+/// prefix で決まらなかった PR を、変更ファイルから推す規則。どちらにも当たらないものは `other`。
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Category {
@@ -229,6 +242,9 @@ pub struct Category {
     pub note: Option<String>,
     #[serde(default)]
     pub benchmarks: Vec<CategoryBench>,
+    #[serde(default)]
+    pub prefixes: Vec<String>,
+    pub files: Option<FileRule>,
 }
 
 /// 各社の純正ハーネス(Claude Code・Codex)で測られた値。AA の固定ハーネスの値とは別に、補正せず
@@ -261,6 +277,52 @@ pub struct Catalog {
     pub aa: Option<AaMeta>,
     pub measurements: Vec<Measurement>,
     pricing: Vec<CatalogModel>,
+}
+
+/// 分類の宣言の検査。同じ prefix・置き場所・拡張子を 2 つの種類が持つと、種類が宣言の順に依存するので
+/// 拒否する。`other` は残りの受け皿なので、宣言を持たない。
+fn validate_classification(categories: &BTreeMap<String, Category>) -> Result<(), String> {
+    if !categories.is_empty() && !categories.contains_key(OTHER_CATEGORY) {
+        return Err("category other が無い(種類を決められない PR の受け皿)".into());
+    }
+    let mut prefixes = BTreeMap::new();
+    let mut dirs = BTreeMap::new();
+    let mut exts = BTreeMap::new();
+    for (id, c) in categories {
+        let rule = c.files.as_ref();
+        if id == OTHER_CATEGORY && (!c.prefixes.is_empty() || rule.is_some()) {
+            return Err("category other: 受け皿なので prefixes・files を持てない".into());
+        }
+        for p in &c.prefixes {
+            if p.is_empty() || !p.chars().all(|ch| ch.is_ascii_lowercase()) {
+                return Err(format!("category {id}: prefix {p:?} は小文字の英字だけ"));
+            }
+            if let Some(prev) = prefixes.insert(p.as_str(), id.as_str()) {
+                return Err(format!("prefix {p} が {prev} と {id} で重複"));
+            }
+        }
+        for d in rule.iter().flat_map(|f| &f.dirs) {
+            if !d.ends_with('/') || d.starts_with('/') || d.len() < 2 {
+                return Err(format!(
+                    "category {id}: dirs {d:?} は `a/b/` の形(先頭に / を付けず、末尾は /)"
+                ));
+            }
+            if let Some(prev) = dirs.insert(d.as_str(), id.as_str()) {
+                return Err(format!("dirs {d} が {prev} と {id} で重複"));
+            }
+        }
+        for e in rule.iter().flat_map(|f| &f.extensions) {
+            if e.is_empty() || e.contains('.') || e.contains('/') || *e != e.to_ascii_lowercase() {
+                return Err(format!(
+                    "category {id}: extensions {e:?} は小文字・ドットなしの拡張子"
+                ));
+            }
+            if let Some(prev) = exts.insert(e.as_str(), id.as_str()) {
+                return Err(format!("extensions {e} が {prev} と {id} で重複"));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 要約だけを出す(全体を出すと、テストの失敗表示が数十 KB になる)。
@@ -516,7 +578,43 @@ fn finite_positive(label: &str, v: f64) -> Result<(), String> {
     }
 }
 
+/// 種類に当たらないものの ID(`[category.other]`)。
+pub const OTHER_CATEGORY: &str = "other";
+
 impl Catalog {
+    /// conventional prefix(大文字小文字を無視)が入る種類。どの種類にも宣言が無ければ None。
+    pub fn category_for_prefix(&self, kind: &str) -> Option<&str> {
+        let kind = kind.to_ascii_lowercase();
+        self.categories
+            .iter()
+            .find(|(_, c)| c.prefixes.contains(&kind))
+            .map(|(id, _)| id.as_str())
+    }
+
+    /// 1 つの変更ファイルの種類。`dirs` の一致を先に見て(最も長い一致が勝つ)、無ければ拡張子で決める。
+    /// どちらにも当たらなければ None。
+    pub fn category_for_file(&self, path: &str) -> Option<&str> {
+        let path = path.trim_start_matches("./");
+        let mut best: Option<(usize, &str)> = None;
+        for (id, c) in &self.categories {
+            for d in c.files.iter().flat_map(|f| &f.dirs) {
+                let hit = path.starts_with(d.as_str()) || path.contains(&format!("/{d}"));
+                if hit && best.is_none_or(|(n, _)| d.len() > n) {
+                    best = Some((d.len(), id.as_str()));
+                }
+            }
+        }
+        if let Some((_, id)) = best {
+            return Some(id);
+        }
+        let name = path.rsplit('/').next().unwrap_or(path);
+        let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase())?;
+        self.categories
+            .iter()
+            .find(|(_, c)| c.files.iter().any(|f| f.extensions.contains(&ext)))
+            .map(|(id, _)| id.as_str())
+    }
+
     pub fn parse(text: &str) -> Result<Catalog, String> {
         let raw: RawFile = toml::from_str(text).map_err(|e| format!("catalog.toml: {e}"))?;
         if raw.schema_version != SUPPORTED_SCHEMA {
@@ -726,6 +824,7 @@ impl Catalog {
                 }
             }
         }
+        validate_classification(&raw.category)?;
         if !raw.measurements.is_empty() && raw.aa.is_none() {
             return Err("[[measurement]] があるのに [aa] が無い(取得日と出典の表示が要る)".into());
         }
@@ -1088,7 +1187,7 @@ mod tests {
         );
         assert_eq!(
             c.categories.keys().map(String::as_str).collect::<Vec<_>>(),
-            ["bugfix", "config", "docs", "feature", "other", "refactor"]
+            ["bugfix", "config", "docs", "feature", "other", "refactor", "test"]
         );
         assert!(c.roles["execute"].follows_history && !c.roles["plan"].follows_history);
         assert!(
@@ -1100,6 +1199,106 @@ mod tests {
             .benchmarks
             .contains(&"artificial_analysis_intelligence_index".to_owned()));
         assert!(c.categories["other"].benchmarks.is_empty());
+    }
+
+    #[test]
+    fn prefixes_map_to_one_category_each_and_ignore_case() {
+        let c = data();
+        let cases = [
+            ("feat", "feature"),
+            ("FEAT", "feature"),
+            ("fix", "bugfix"),
+            ("revert", "bugfix"),
+            ("refactor", "refactor"),
+            ("perf", "refactor"),
+            ("style", "refactor"),
+            ("test", "test"),
+            ("build", "config"),
+            ("chore", "config"),
+            ("ci", "config"),
+            ("docs", "docs"),
+        ];
+        for (prefix, want) in cases {
+            assert_eq!(c.category_for_prefix(prefix), Some(want), "{prefix}");
+        }
+        assert_eq!(c.category_for_prefix("wip"), None);
+        assert_eq!(c.category_for_prefix(""), None);
+        assert!(c.categories[OTHER_CATEGORY].prefixes.is_empty());
+        assert!(c.categories[OTHER_CATEGORY].files.is_none());
+    }
+
+    #[test]
+    fn files_map_by_dir_first_then_extension() {
+        let c = data();
+        let cases = [
+            ("docs/adr/0001.md", Some("docs")),
+            ("crates/x/docs/a.txt", Some("docs")),
+            ("README.md", Some("docs")),
+            (".github/workflows/ci.yml", Some("config")),
+            (".github/workflows/release.md", Some("config")),
+            ("tests/cli.rs", Some("test")),
+            ("crates/x/tests/fixtures/a.json", Some("test")),
+            ("docs/example.yml", Some("docs")),
+            ("tests/notes.md", Some("test")),
+            ("flake.nix", Some("config")),
+            ("./scripts/run.sh", Some("config")),
+            ("Cargo.lock", Some("config")),
+            ("src/main.rs", None),
+            ("Makefile", None),
+            ("mydocs/a.rs", None),
+        ];
+        for (path, want) in cases {
+            assert_eq!(c.category_for_file(path), want, "{path}");
+        }
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_malformed_classification() {
+        let e = with(|t| {
+            t.replacen(
+                "prefixes = [\"docs\", \"doc\"]",
+                "prefixes = [\"docs\", \"fix\"]",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("prefix fix が"), "{e}");
+        let e = with(|t| t.replacen("prefixes = [\"docs\", \"doc\"]", "prefixes = [\"Docs\"]", 1))
+            .unwrap_err();
+        assert!(e.contains("小文字の英字"), "{e}");
+        let e = with(|t| t.replacen("dirs = [\"docs/\", \"doc/\"]", "dirs = [\"docs\"]", 1))
+            .unwrap_err();
+        assert!(e.contains("dirs"), "{e}");
+        let e = with(|t| t.replacen("dirs = [\"docs/\", \"doc/\"]", "dirs = [\"tests/\"]", 1))
+            .unwrap_err();
+        assert!(e.contains("dirs tests/ が"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "extensions = [\"md\", \"rst\", \"adoc\"]",
+                "extensions = [\".md\"]",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("extensions"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "extensions = [\"md\", \"rst\", \"adoc\"]",
+                "extensions = [\"nix\"]",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("extensions nix が"), "{e}");
+        let e = with(|t| {
+            t.replacen(
+                "name = \"その他\"",
+                "prefixes = [\"wip\"]\nname = \"その他\"",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("受け皿"), "{e}");
     }
 
     #[test]

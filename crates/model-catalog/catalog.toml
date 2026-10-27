@@ -366,7 +366,16 @@ order = 2
 follows_history = true
 benchmarks = ["terminalbench_v4_0", "scicode"]
 
-# 履歴の課題の種類(PR タイトルの conventional prefix から決める)と、測っているベンチの対応。
+# 履歴の課題の種類と、測っているベンチの対応。種類は次の順で、決定論的に決める(LLM は使わない)。
+#   1. PR タイトルの conventional prefix(`prefixes`)。型の一覧は Conventional Commits 1.0.0
+#      (https://www.conventionalcommits.org/en/v1.0.0/、取得 2026-10-28)が `fix`・`feat` に加えて
+#      推奨する `build`・`chore`・`ci`・`docs`・`style`・`refactor`・`perf`・`test` に、`revert`
+#      (取り消し)と、慣用の別名(`feature`・`bugfix`・`hotfix`・`doc`・`tests`)を足したもの。
+#      prefix は大文字小文字を区別せず、2 つの種類が同じ prefix を持つと読み込みで拒否する。
+#   2. prefix で決まらなかった PR(prefix が無い、または未知)だけ、変更ファイルの名前(`files`)。
+#      全ファイルが同じ 1 つの種類に当たるときだけ、その種類にする。混在・どれにも当たらない
+#      ファイルがある・取得に失敗したときは `other`。`dirs` が先(最も長い一致が勝つ)、無ければ拡張子。
+#   3. どちらでも決まらなければ `other`。
 # fit = direct は、その仕事そのものを測っているベンチ。proxy は近い力を測っているだけの代理。
 # SWE-bench 系は、現行モデルに値のある行が無い(更新停止)ので載せられない。ベンチが空の種類は、
 # 現行モデルに値のある公開ベンチで測れていない領域として、ページに帯で見せる。
@@ -374,6 +383,7 @@ benchmarks = ["terminalbench_v4_0", "scicode"]
 [category.feature]
 name = "機能追加"
 note = "既存の仕組みに機能を足す仕事。直接測るベンチは無く、端末での作業とコード生成を代理にする。"
+prefixes = ["feat", "feature"]
 benchmarks = [
   { id = "terminalbench_v4_0", fit = "proxy" },
   { id = "scicode", fit = "proxy" },
@@ -381,7 +391,8 @@ benchmarks = [
 
 [category.bugfix]
 name = "バグ修正"
-note = "不具合の原因を調べて直す仕事。SWE-bench 系が直接のベンチだが現行モデルの行が無いので、代理にする。"
+note = "不具合の原因を調べて直す仕事(取り消し `revert` も、壊れた変更を戻す修正として含める)。SWE-bench 系が直接のベンチだが現行モデルの行が無いので、代理にする。"
+prefixes = ["fix", "bugfix", "hotfix", "revert"]
 benchmarks = [
   { id = "terminalbench_v4_0", fit = "proxy" },
   { id = "scicode", fit = "proxy" },
@@ -389,7 +400,18 @@ benchmarks = [
 
 [category.refactor]
 name = "リファクタ・性能"
-note = "動作を変えずに構造や性能を直す仕事。"
+note = "動作を変えずに構造・書式・性能を直す仕事(`style` も含める)。"
+prefixes = ["refactor", "perf", "style"]
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.test]
+name = "テスト"
+note = "テストを足す・直す仕事。コード生成と端末での作業を代理にする。"
+prefixes = ["test", "tests"]
+files = { dirs = ["tests/", "test/", "__tests__/", "spec/"] }
 benchmarks = [
   { id = "terminalbench_v4_0", fit = "proxy" },
   { id = "scicode", fit = "proxy" },
@@ -397,17 +419,21 @@ benchmarks = [
 
 [category.config]
 name = "設定・インフラ"
-note = "Nix・CI・シェルなどの設定を端末で直す仕事。Terminal-Bench が仕事の形に近い。"
+note = "Nix・CI・シェルなどの設定、依存・ビルド・雑務(`chore`)を端末で直す仕事。Terminal-Bench が仕事の形に近い。"
+prefixes = ["ci", "build", "chore"]
+files = { dirs = [".github/", "scripts/"], extensions = ["nix", "toml", "yaml", "yml", "sh", "zsh", "lock"] }
 benchmarks = [{ id = "terminalbench_v4_0", fit = "direct" }]
 
 [category.docs]
 name = "文書・設計"
 note = "文書や設計を書く仕事。文章を書く力を測る公開ベンチは無く、長い文脈の読解を代理にする。"
+prefixes = ["docs", "doc"]
+files = { dirs = ["docs/", "doc/"], extensions = ["md", "rst", "adoc"] }
 benchmarks = [{ id = "lcr", fit = "proxy" }]
 
 [category.other]
 name = "その他"
-note = "タイトルから種類を決められなかった PR(prefix の無いもの、chore・test・style・revert)。"
+note = "prefix でも変更ファイルでも種類を決められなかった PR(prefix の無いタイトルで、変更ファイルが混在しているものなど)。"
 
 # ------------------------------------------------- 純正ハーネスで測られた値
 # Terminal-Bench 公式の leaderboard にある、各社の純正ハーネス(Claude Code・Codex)での値。

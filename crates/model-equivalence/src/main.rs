@@ -160,7 +160,12 @@ fn cmd_lens(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
             ago += window;
         }
     }
-    let lens = Lens::build(titles.iter().map(String::as_str), &date::today_utc(), days);
+    let lens = Lens::build(
+        data(),
+        titles.iter().map(String::as_str),
+        &date::today_utc(),
+        days,
+    );
     lens.validate(data())?;
     let out = f.get("--out").map_or_else(default_lens_path, str::to_owned);
     if let Some(dir) = std::path::Path::new(&out).parent() {

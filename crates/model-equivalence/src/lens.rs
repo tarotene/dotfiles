@@ -1,16 +1,15 @@
 //! 過去の課題(マージ済み PR)の内訳。PR タイトルの conventional prefix だけで種類を決める
 //! (決定論的で、LLM を使わない)。出力は種類ごとの件数と期間だけで、タイトルもリポジトリ名も残さない。
 
-use model_catalog::Catalog;
+use model_catalog::{Catalog, OTHER_CATEGORY};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// `feat(scope)!: …` の prefix から種類を決める。prefix が無い・未知のものは `other`。
-/// 返す ID は、`catalog.toml` の `[category.*]` に必ずある(テストで縛っている)。
-pub fn classify(title: &str) -> &'static str {
+/// `feat(scope)!: …` の prefix の型(小文字)。prefix が無い・英字だけでないものは None。
+fn prefix_kind(title: &str) -> Option<String> {
     let head = title.split(':').next().unwrap_or("");
     if head.len() == title.len() {
-        return "other"; // ':' が無い
+        return None; // ':' が無い
     }
     let kind = head
         .split('(')
@@ -19,16 +18,20 @@ pub fn classify(title: &str) -> &'static str {
         .trim_end_matches('!')
         .trim();
     if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_alphabetic()) {
-        return "other";
+        return None;
     }
-    match kind.to_ascii_lowercase().as_str() {
-        "feat" | "feature" => "feature",
-        "fix" | "bugfix" | "hotfix" => "bugfix",
-        "refactor" | "perf" => "refactor",
-        "docs" | "doc" => "docs",
-        "ci" | "build" => "config",
-        _ => "other",
-    }
+    Some(kind.to_ascii_lowercase())
+}
+
+/// タイトルの prefix だけで決まる種類。prefix が無い、または `catalog.toml` の `[category.*].prefixes`
+/// のどれにも無ければ None(変更ファイルなど、次の手がかりに回す)。
+pub fn classify_prefix<'c>(catalog: &'c Catalog, title: &str) -> Option<&'c str> {
+    catalog.category_for_prefix(&prefix_kind(title)?)
+}
+
+/// タイトルだけで種類を決める。決まらなければ `other`。返す ID は `catalog.categories` に必ずある。
+pub fn classify<'c>(catalog: &'c Catalog, title: &str) -> &'c str {
+    classify_prefix(catalog, title).unwrap_or(OTHER_CATEGORY)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -45,6 +48,7 @@ pub struct Lens {
 
 impl Lens {
     pub fn build<'a>(
+        catalog: &Catalog,
         titles: impl IntoIterator<Item = &'a str>,
         generated: &str,
         days: u32,
@@ -52,7 +56,7 @@ impl Lens {
         let mut counts = BTreeMap::new();
         let mut total = 0;
         for t in titles {
-            *counts.entry(classify(t).to_owned()).or_insert(0) += 1;
+            *counts.entry(classify(catalog, t).to_owned()).or_insert(0) += 1;
             total += 1;
         }
         Lens {
@@ -101,20 +105,27 @@ mod tests {
 
     #[test]
     fn classifies_conventional_prefixes() {
+        let c = data();
         let cases = [
             ("feat(model-catalog): add a catalog", "feature"),
             ("feat: x", "feature"),
+            ("feat!: breaking", "feature"),
+            ("feat(x)!: scope and bang", "feature"),
             ("fix(wrapup): defer unchanged rows", "bugfix"),
             ("fix!: breaking", "bugfix"),
             ("Fix(Scope): upper case", "bugfix"),
+            ("revert: x", "bugfix"),
             ("refactor(core): split", "refactor"),
             ("perf: faster", "refactor"),
+            ("style: fmt", "refactor"),
             ("docs(adr): note", "docs"),
+            ("test: add", "test"),
+            ("test(cli): add", "test"),
             ("ci: pin action", "config"),
             ("build(deps): bump", "config"),
-            ("chore: tidy", "other"),
-            ("test: add", "other"),
-            ("revert: x", "other"),
+            ("chore: tidy", "config"),
+            ("chore(deps)!: bump", "config"),
+            ("wip: unknown kind", "other"),
             ("no prefix at all", "other"),
             ("Add a thing: with a colon later", "other"),
             (
@@ -125,43 +136,65 @@ mod tests {
             (": empty kind", "other"),
         ];
         for (title, want) in cases {
-            assert_eq!(classify(title), want, "{title}");
+            assert_eq!(classify(c, title), want, "{title}");
         }
+    }
+
+    #[test]
+    fn prefix_only_decides_when_the_catalog_declares_the_prefix() {
+        let c = data();
+        assert_eq!(classify_prefix(c, "chore: x"), Some("config"));
+        assert_eq!(classify_prefix(c, "wip: x"), None);
+        assert_eq!(classify_prefix(c, "no prefix"), None);
     }
 
     #[test]
     fn every_class_id_exists_in_the_catalog() {
         let c = data();
-        for title in ["feat: a", "fix: a", "refactor: a", "docs: a", "ci: a", "x"] {
-            assert!(c.categories.contains_key(classify(title)), "{title}");
+        for title in [
+            "feat: a",
+            "fix: a",
+            "refactor: a",
+            "docs: a",
+            "ci: a",
+            "test: a",
+            "x",
+        ] {
+            assert!(c.categories.contains_key(classify(c, title)), "{title}");
         }
     }
 
     #[test]
     fn build_counts_shares_and_keeps_no_titles() {
-        let lens = Lens::build(["feat: a", "feat: b", "fix: c", "wip"], "2026-10-27", 365);
+        let c = data();
+        let lens = Lens::build(
+            c,
+            ["feat: a", "feat: b", "fix: c", "wip"],
+            "2026-10-27",
+            365,
+        );
         assert_eq!(lens.total, 4);
         assert_eq!(lens.counts["feature"], 2);
         assert!((lens.share("feature") - 0.5).abs() < 1e-12);
         assert_eq!(lens.share("docs"), 0.0);
         let json = serde_json::to_string(&lens).unwrap();
         assert!(!json.contains("feat: a") && !json.contains("wip"), "{json}");
-        assert_eq!(Lens::from_json(&json, data()).unwrap(), lens);
+        assert_eq!(Lens::from_json(&json, c).unwrap(), lens);
     }
 
     #[test]
     fn empty_lens_has_zero_shares() {
-        let lens = Lens::build([], "2026-10-27", 30);
+        let lens = Lens::build(data(), [], "2026-10-27", 30);
         assert_eq!(lens.total, 0);
         assert_eq!(lens.share("feature"), 0.0);
     }
 
     #[test]
     fn validate_rejects_bad_sums_and_unknown_categories() {
-        let mut lens = Lens::build(["feat: a"], "2026-10-27", 30);
+        let mut lens = Lens::build(data(), ["feat: a"], "2026-10-27", 30);
         lens.total = 2;
         assert!(lens.validate(data()).unwrap_err().contains("合わない"));
-        let mut lens = Lens::build(["feat: a"], "2026-10-27", 30);
+        let mut lens = Lens::build(data(), ["feat: a"], "2026-10-27", 30);
         lens.counts.insert("surprise".into(), 0);
         assert!(lens.validate(data()).unwrap_err().contains("未知の種類"));
         assert!(Lens::from_json("{\"generated\":\"x\"}", data()).is_err());
