@@ -100,12 +100,15 @@ git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広�
 | `git commit -S --allow-empty -m probeA`(worktree の cwd、`-C` なし、単体) | **成功**(署名できた) | `git commit *` の除外が効く。gpg-agent に届く |
 | `git -C <リテラルの絶対パス> commit -S ...`(`git -C * commit *` を除外に入れた状態) | 失敗(`No secret key`) | 途中の `*` を持つパターンは効かない(変数展開が原因ではない) |
 | `git -C "$TMPDIR/…" commit -S ...`、`git -C … add . && git -C … commit -S ...` | 失敗(`No secret key`) | 同上 |
+| `git rebase --force-rebase HEAD~1`(使い捨てのブランチ、worktree の cwd。除外に無かった) | 失敗(`gpg: skipped "…": No secret key`、`failed to write commit object`) | `commit.gpgsign=true` で、書き換えたコミットの再署名が sandbox 内の gpg に届かない |
 | `nix build nixpkgs#hello --no-link`(除外に `nix build *` を足す前) | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
 | `nix build nixpkgs#hello --no-link`(`nix build *` を足した後) | **成功** | 除外が効く |
 | `cargo --version`・`$TMPDIR` への書き込み | 成功 | sandbox 内で確認なしに通る |
 
 自動モードの分類器は、実測の全呼び出しを許可した(sandbox を外す再実行はしていないので、「Safety Bypass」の
 問題は、除外コマンドで外の実行になるこの構成では起きなかった、という範囲で確かめられた)。
+署名が要る書き換え系の `git rebase *`・`git merge *`・`git cherry-pick *`・`git revert *`・`git tag *` も、除外に足した
+(`git rebase` は上の表で実測した失敗。残りは同じ理由からの推定で、`hms` 後に測る)。
 この結果に基づき、既定に `git add *`・`nix build *`・`nix eval *`・`nix flake *`・`nix fmt *` を足した(`git -C *` の
 3 件は効かないと分かり、外した)。連結(`git add . && git commit`)を cwd で単体測定する項目が残る(#1164)。`nix` を sandbox の中に残す案(`allowWrite` で `~/.cache/nix`、socket の許可)は、socket の作成自体が
 拒否されるので採らない(`allowAllUnixSockets` が要り、範囲が広すぎる)。
