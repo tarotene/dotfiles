@@ -905,6 +905,7 @@ dependencies = [
  "agent-session",
  "git-repository",
  "jq-json-compat",
+ "process-control",
  "serde_json",
  "tempfile",
 ]
