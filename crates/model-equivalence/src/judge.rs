@@ -69,7 +69,7 @@ impl SpeedMetric {
         }
     }
 
-    fn value(self, m: &Measurement) -> Option<f64> {
+    pub fn value(self, m: &Measurement) -> Option<f64> {
         match self {
             SpeedMetric::OutputTokensPerSecond => m.median_output_tokens_per_second,
             SpeedMetric::TimeToFirstToken => m.median_time_to_first_token_seconds,
@@ -164,6 +164,14 @@ pub fn capability(
     j
 }
 
+/// 候補の「良さ」の基準に対する比(1 より大きいほど候補が良い)。出力速度は速いほど、待ちは短いほど良い。
+pub fn goodness_ratio(metric: SpeedMetric, reference: f64, candidate: f64) -> f64 {
+    match metric {
+        SpeedMetric::OutputTokensPerSecond => candidate / reference,
+        SpeedMetric::TimeToFirstToken => reference / candidate,
+    }
+}
+
 pub fn speed(
     metric: SpeedMetric,
     reference: Option<f64>,
@@ -191,10 +199,7 @@ pub fn speed(
         return j;
     }
     // g > 1 が「候補の方が良い」になるように向きをそろえる(出力速度は速いほど、待ちは短いほど良い)。
-    let g = match metric {
-        SpeedMetric::OutputTokensPerSecond => c / r,
-        SpeedMetric::TimeToFirstToken => r / c,
-    };
+    let g = goodness_ratio(metric, r, c);
     let up = 1.0 + margin_ratio;
     let down = 1.0 / up;
     j.verdict = if g < down {
@@ -266,10 +271,10 @@ fn fit_str(f: Fit) -> &'static str {
 }
 
 /// 判定に使うベンチ(ID と、仕事を直接測るか代理かの別)と、ベンチの無い種類。
-type Judged = (Vec<(String, Option<&'static str>)>, Vec<Uncovered>);
+pub type Judged = (Vec<(String, Option<&'static str>)>, Vec<Uncovered>);
 
 /// 役が判定に使うベンチと、履歴で一定以上を占めるのにベンチの無い種類を返す。
-fn judged_benchmarks(
+pub fn judged_benchmarks(
     catalog: &Catalog,
     role_id: &str,
     lens: Option<&Lens>,
