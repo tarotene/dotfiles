@@ -6,7 +6,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 
 - 正本のデータ: `crates/model-catalog/catalog.toml`(価格・文脈長・出典、ベンチの定義、測定値、役、履歴の種類との対応)。
 - 判定と収集: `crates/model-equivalence`(`lens`・`compare`・`render`)。
-- 取り込み: `crates/model-catalog`(`check`・`fetch-aa`)。
+- 取り込み: `crates/model-catalog`(`check`・`fetch-aa`)。AA が測っている提供元・モデルを、コードを変えずに自動で登録する(「自動登録」の節)。
 
 ## 何を主張しないか
 
@@ -50,7 +50,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
   ハーネスは mini-swe-agent に固定(Claude Code・Codex では測っていない)。他社のモデルも同じ形で載る。
 - 価格を載せていないモデル(Claude Haiku 5.5、GPT-6.1 Terra)は、測定値だけを持ち、費用の比較(codex-plan)には出ない。`catalog.toml` の `[[model]]` は、価格の欄が全部そろったときだけ費用の比較に出る。
 - 取り込みは `model-catalog fetch-aa`。AA の行 ID(uuid)で突き合わせる(AA 公式が、名前や slug は変わりうるので ID を主キーに
-  するよう推奨している)。生成ブロックだけを書き換え、応答に無い行と、追跡中の提供元の新しい行(新モデルの候補)を報告する。
+  するよう推奨している)。生成ブロックだけを書き換え、手登録の部分には触れない。規則は次の「自動登録」の節。
 - 鍵は環境変数 `ARTIFICIAL_ANALYSIS_API_KEY`、無ければ login keyring(`secret-tool`、application=model-catalog
   credential=artificial-analysis-api-key)から読み、標準入力で `curl` に渡す(`ps` に出ない)。リポジトリには置かない。
 - 利用条件: AA への出典表示が必要(ページの脚注とデータの出典欄に出す)。上限は 1 日 1000 リクエスト。
@@ -59,6 +59,25 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 - 純正ハーネス(Claude Code・Codex)での値は、Terminal-Bench 公式の leaderboard にある(max のみ)。AA の値との差の向きが
   モデルごとに揃わない(2026-10-27 時点で、Opus 5.5 は +5.2pt、Sonnet 5.5 は −1.8pt、GPT-6.1 Sol は +2.1pt)ので、補正に使わず、
   注記として並べる。
+
+## 自動登録(#1148)
+
+`catalog.toml` の `[discovery] aa_release_since`(公開日の下限)以降の、AA の全提供元・全モデルを、`fetch-aa --write` が
+生成ブロックの中へ `[[provider]]`・`[[model]]`・`[[measurement]]` として書く。新しい提供元・モデル・エフォートが出ても、
+コードは変えない。生成ブロックは毎回、前回のブロックと応答から作り直す(同じ入力なら同じ文字列。2 回目の実行で差分は出ない)。
+
+| 規則 | 内容 |
+|---|---|
+| 対象 | 公開日が `aa_release_since` 以降で、役の判定に使うベンチ(`[role.*].benchmarks`)のどれかに値がある行。既に自動登録した行は、日付の外に出ても、値が null になっても残る。`[discovery]` が無ければ、新しい登録はしない。 |
+| 手登録の保護 | 生成ブロックの外の `[[provider]]`・`[[model]]` は読むだけ。手登録の `aa_ids` の行は、測定値だけを更新する。手登録と同名(大文字小文字・空白を無視した基本名が一致し、提供元の `aa_creator` も合う)の別の行は、取り込まずに報告する。手登録の部分へ、自動登録済みと同じ ID のモデルを足したら、手登録が優先され、自動登録側が外れる。 |
+| エフォート | 名前の末尾の括弧の、カンマの前の先頭語が、閉じた語彙(low・medium・high・xhigh・max・minimal・reasoning・non-reasoning)に当たるときだけエフォートとし、括弧を外した名前を基本名にする。それ以外(`(Dec '24)`・`(Preview)`・`(Adaptive Reasoning, …)` など)は名前の一部のままで、エフォートは `default` の 1 行。公式の段階名かの確認は別(「未確認だった点の確認」の 2)。 |
+| まとめ方 | (提供元, 基本名)で 1 モデルにまとめる。同じ (基本名, エフォート) の行が複数あれば、公開が新しい方を取り(同日なら ID の大きい方)、取らなかった行を報告する。 |
+| 提供元 | 手登録の提供元の `aa_creator` に合えばそこへ(Anthropic・OpenAI の新モデルは既存の提供元に入る)。無ければ、提供元名のスラッグで新しい `[[provider]]` を作る。 |
+| ID の安定 | 前回の生成ブロックの AA の行 ID を逆引きし、同じモデル ID を再利用する(名前が変わっても別モデルにならない。表示名は追従する)。新しいモデルは基本名のスラッグ。手登録・既存と衝突したら提供元の ID を付け、それでも衝突したら番号を付ける。 |
+| 引退 | 応答に 1 行も無くなった自動登録のモデルは `status = "retired"` で残り、応答に戻れば active に戻る。応答に無い行の最後の値は、行ごとの取得日(`retrieved`)つきで持ち越す。ページは、取得から 90 日を超えた値のセルを薄くし、根拠の欄に日数を出す。手登録のモデルの `status` は手登録の部分にあるので書き換えず、応答に 1 行も無いときは報告だけをする。 |
+| 価格 | 自動登録のモデルは価格を持たない(費用の比較には出ず、ページには「価格は未登録」と出る)。 |
+
+実 API を呼ばずに確かめるため、テストは `crates/model-catalog/tests/fixtures/aa-small.json` と、テスト内で作った 330 行の応答を使う。
 
 ## 未確認だった点の確認(#1154、2026-10-28)
 
@@ -83,22 +102,33 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 
 - 基準の (モデル × エフォート)を選ぶと、全組合せが 4 値のバッジで並ぶ。並びは基準に対する判定で決まり(同等以上のある提供元・モデルが上)、基準を変えると変わる。「基準と同等以上だけを表示」で絞り込める。セルを押すと、ベンチごとの差の区間と許容幅の帯が出る。
 - 役の切り替え、許容幅のスライダー、Plan 役 + 実行役の組の対応表、履歴の内訳、データの出典と限界(90 日を超えた出典は薄く表示)。
-- 判定の規則(境界の比較と役の束ね)は、スライダーを動かすために JS にも書かれている。重い計算(区間、速さの比)は Rust が
-  事前に済ませて埋め込み、Rust が出した判定(2 通りの許容幅)をページが読み込み時に自分の判定と突き合わせる。ずれたら警告を出す。
+- 判定の規則と区間の計算(Wilson・Newcombe の式、境界の比較、速さの比、役の束ね)は、スライダーを動かすために JS にも書かれている。
+  全組合せの区間を Rust が事前計算して埋め込む方式は、組合せ数(行数の 2 乗)に比例して増えて破綻した(30 行で 560KB、360 行なら数 MB)ので、
+  ページが、選んだ基準 1 点 × 全候補だけを都度計算する(30 行で 52KB、360 行で約 160KB)。
+  Rust との一致は、役ごとの既定の基準 1 点 × 全候補について、2 通りの許容幅での判定と、判定に使うベンチごとの差の区間(小数 4 桁に丸めた値)を
+  `golden` として埋め込み、ページが読み込み時に自分の計算と突き合わせて縛る。ずれたら警告を出す。埋め込みは行数に比例する。
   突き合わせの件数は `<html data-selfcheck="一致/総数">` にも出る。
+- JS の核(`CORE BEGIN`〜`CORE END`)は DOM に触れず、`cargo test`(`render.rs`)が node で実行して golden と突き合わせる(360 行、12 通りの基準、
+  埋め込みを書き換えたときに検知することまで)。node が無い環境ではこの突き合わせだけを省く(ブラウザの読み込み時の突き合わせは残る)。
+- 列(エフォート)の並びは、語彙の段階順 → `default` → その他。モデル名・提供元で絞り込める。先頭列は固定で、表は横に動かせる。
 - 生成した HTML は、自分だけが見る private なページとして公開する。公開先の URL は private な場所に置き、このリポジトリには書かない。
 
 ## 追従
 
-- 新しいモデル・エフォートの段階: `catalog.toml` に `[[model]]`(と `aa_ids`)を足す。コードは変えない。
-- 引退したモデル: `status = "retired"` にして残す(以前の組合せとの比較のため)。ページに「提供終了」と出る。
-- 測定値の更新: `model-catalog fetch-aa --file crates/model-catalog/catalog.toml --write`。
+- 新しい提供元・モデル・エフォートの段階: `[discovery]` の範囲なら、`fetch-aa --write` が自動で登録する。コードは変えない。価格や、
+  公式の段階名・出典を持たせたいモデルだけ、`catalog.toml` の生成ブロックの外に `[[model]]`(と `aa_ids`)を手で足す(手登録が優先される)。
+- 引退したモデル: 自動登録のモデルは `fetch-aa` が `status = "retired"` にして残す(以前の組合せとの比較のため)。手登録のモデルは人が
+  `status = "retired"` にする。ページに「提供終了」と出る。
+- 測定値の更新と自動登録: `model-catalog fetch-aa --file crates/model-catalog/catalog.toml --write`。標準出力に、新しく登録したモデル・
+  retired にしたモデル・応答に無い行・同じ名前とエフォートの衝突・手登録と同名で取り込まなかった行が出る。
 - `catalog.toml` は `cleanCargoSource` の対象(`*.toml`)なので、更新は workspace の Rust ビルドのキャッシュを無効にする。
 
 ## 執行点
 
 - `crates/model-catalog/catalog.toml`
 - `crates/model-catalog/src/lib.rs`
+- `crates/model-catalog/src/aa.rs`
+- `crates/model-catalog/tests/fetch_aa.rs`
 - `crates/model-equivalence/src/judge.rs`
 - `crates/model-equivalence/src/render.rs`
 - `crates/model-equivalence/page.html`
