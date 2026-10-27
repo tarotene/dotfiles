@@ -6,7 +6,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 
 ## Operations
 
-- [`agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex 共通の権限宣言、棚卸し、確認後の移行と復元。
+- [`agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex の native 権限設定と旧共有管理の撤去手順。
 - [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
   configurable Plan/Auto models with cost/context comparisons and local usage estimates,
   preserving native permissions and history.

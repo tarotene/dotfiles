@@ -16,19 +16,19 @@ const KEEP_JOURNALS: usize = 5;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Entry {
-    path: PathBuf,
+pub(super) struct Entry {
+    pub(super) path: PathBuf,
     #[serde(with = "file_bytes")]
-    before: Option<Vec<u8>>,
+    pub(super) before: Option<Vec<u8>>,
     #[serde(with = "file_bytes")]
-    after: Option<Vec<u8>>,
+    pub(super) after: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Journal {
-    version: u32,
-    entries: Vec<Entry>,
+pub(super) struct Journal {
+    pub(super) version: u32,
+    pub(super) entries: Vec<Entry>,
 }
 
 mod file_bytes {
@@ -84,7 +84,7 @@ fn from_hex(text: &str) -> Result<Vec<u8>, String> {
         .collect())
 }
 
-fn root(home: &Path) -> PathBuf {
+pub(super) fn root(home: &Path) -> PathBuf {
     home.join(".local/state/dotfiles/agent-permissions-transactions")
 }
 fn pending(home: &Path) -> PathBuf {
@@ -100,7 +100,7 @@ fn get(path: &Path) -> Result<Option<Vec<u8>>, String> {
     }
 }
 
-fn reject_symlinks(path: &Path) -> Result<(), String> {
+pub(crate) fn reject_symlinks(path: &Path) -> Result<(), String> {
     for ancestor in path.ancestors() {
         match fs::symlink_metadata(ancestor) {
             Ok(m) if m.file_type().is_symlink() => {
@@ -138,7 +138,11 @@ fn private_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-fn replace(path: &Path, before: &Option<Vec<u8>>, after: &Option<Vec<u8>>) -> Result<(), String> {
+pub(crate) fn replace(
+    path: &Path,
+    before: &Option<Vec<u8>>,
+    after: &Option<Vec<u8>>,
+) -> Result<(), String> {
     if &get(path)? != before {
         return Err(format!("concurrent modification: {}", path.display()));
     }

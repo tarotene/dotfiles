@@ -214,6 +214,7 @@ name = "codex-launcher"
 version = "0.1.0"
 dependencies = [
  "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -814,16 +815,13 @@ version = "0.1.0"
 dependencies = [
  "adr-number",
  "agent-session",
- "agent-settings-reconcile",
  "attribution-guard",
  "cmd-hash-log",
  "decision-colocation",
  "external-send-guard",
  "feedback-target-guard",
  "gh-edit-allow",
- "git-repository",
  "git-stash-guard",
- "git-worktree-allow",
  "git-worktree-create-guard",
  "jq-json-compat",
  "main-checkout-guard",

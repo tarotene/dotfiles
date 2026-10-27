@@ -52,9 +52,12 @@ Amendment, #531) — the native installer is the source of truth, and Codex's
 own config file is never deployed as a whole (no read-only symlink), since
 Codex itself writes hook-trust hashes, project trust, and model selection back
 into it at runtime. `home/modules/codex.nix` reconciles `tui.terminal_title`;
-the shared policy in `home/modules/agent-permissions.nix` owns permission fields
-through reviewed migration and drift checks (`docs/agents/agent-permissions.md`).
-Other fields, including model selection and hook trust, remain writable.
+native approval settings and the named `dotfiles` permission profile are declared
+in that same module (`docs/agents/agent-permissions.md`). Shared permission
+ownership checks are retired. The credential launcher remains and checks native
+protections before handing credentials to Codex, independently of shared
+ownership records. Other fields, including
+model selection and hook trust, remain writable.
 Auto-review handles eligible
 approval requests in both Default and Plan modes; Plan still restricts work
 to investigation and planning. What home-manager *does* deploy is Codex's global instructions (a

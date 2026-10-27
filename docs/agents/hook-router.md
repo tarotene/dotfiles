@@ -27,11 +27,11 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 ## 載せるもの
 
-ルータの表(`rules.rs`)に載せた検査は 21 件(拒否だけを出す PreToolUse の 17 件と、記録役の PostToolUse の 4 件)。表の行は、これに共通権限の検査 `agent-permissions` を足した 22 行。
+ルータの表(`rules.rs`)に載せた検査は 21 件(拒否だけを出す PreToolUse の 17 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | agent-permissions、attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
+| PreToolUse | attribution-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
@@ -64,7 +64,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 | session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は終了コード 2 + 標準エラーで、1 つの入口の中でも `stop_hook_active` の扱いが違う(レトロは抜けない、wrap-up inbox は即 exit 0)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
 | main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の block)。`stop_hook_active` を読んで扱いを変える。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
 | agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
-| SessionStart の 12 件(session-wrapup-start、agent-permissions-reclaim、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、`render` は SessionStart の出力(複数の検査の `additionalContext` を 1 つにまとめる形)を持たない(条件 1 に反する)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
+| SessionStart の 11 件(session-wrapup-start、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、`render` は SessionStart の出力(複数の検査の `additionalContext` を 1 つにまとめる形)を持たない(条件 1 に反する)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
 | herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
 | bleep | PreToolUse(`Bash|mcp__.*`) | 残す | 外部ツール(上流 `tarotene/bleep`、ADR-0009)。この crate の `hook` 関数に切り出せない | `agents.nix` の宣言、ADR-0009 |
 | atuin-history | PreToolUse・PostToolUse・PostToolUseFailure(Bash) | 残す | 外部ツール(`atuin`)の入口で、この crate のものではない | `agents.nix` の宣言 |
@@ -82,19 +82,12 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 - **並列**: 当たる規則ごとに別スレッド。待ち時間は、最も遅い規則で決まる(合計ではない)。
 - **規則ごとの打ち切り**: 各規則に、かつて個別の hook として宣言していた `timeout` と同じ時間
   (10〜20 秒、`Rule::budget`)を許す。越えた規則の結果は捨てて素通り(fail-open)にする。
-  `agent-permissions` だけは panic・時間切れ・スレッド作成失敗時に拒否する。スレッドは外から
-  止められないので、応答を出したあと、プロセスごと終わる。権限の記録とのずれのうち、追記された許可は
-  待機として通し、構造的なずれだけを拒否する。拒否中も、質問と読み取り専用の診断だけは通す
-  ([agent-permissions.md](../agent-permissions.md#追記された許可は待機として扱い構造的なずれだけを止める))。
 - **panic の隔離**: 規則が panic しても、ほかの規則は走る。panic した規則は素通りにする。
 - **素通りの知らせ**: panic・時間切れがあった呼び出しでは、応答に `systemMessage` を付ける(「次の検査を
   素通りにしました: …」)。あわせて、`gate-events.jsonl` に `fail-open` を記録する。
 - **まとめ方**: PreToolUse は deny → ask → allow → 通常処理の順で採る。同じ判定の理由は表の順にすべて(空行で区切って)並べる。
   `additionalContext` は、表の順に改行でつなぐ。PostToolUse は判定を出さない。
-- **判定できない入力**(JSON でない、`tool_name` が無い)も共通権限の検査へ渡す。
-  権限検査は `All` として、Codex のパッチ展開前の生入力で一回だけ走る。ほかの検査は従来どおり素通す。
-  全検査を同じ並列バッチで走らせるため、権限検査の予算をほかの検査の待ち時間に加算しない。
-  Codex の PermissionRequest による限定 allow にも、同じ権限検査を先に適用する。
+- **判定できない入力**(JSON でない、`tool_name` が無い)は素通す。
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの
 両方が同じ関数を呼ぶ。standalone の bin の出力は変わらない(既存の trycmd の fixture が、そのまま通る)。

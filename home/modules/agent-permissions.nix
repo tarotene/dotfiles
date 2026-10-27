@@ -134,17 +134,6 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = lib.unique cfg.mcp_allow == cfg.mcp_allow;
-        message = "dotfiles.agentPermissions.mcp_allow lists a tool twice";
-      }
-    ];
-    xdg.configFile."agent-permissions/policy.json".source = cfg.policyFile;
-    home.file.".local/bin/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
-    # Native Claude sandbox dependencies. Bubblewrap is Linux-only; Darwin uses
-    # Seatbelt. These are user-space executables, not system-layer services.
-    home.packages = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
-  };
+  # Compatibility inputs only during the three-host retirement. Product modules
+  # consume these defaults; no shared policy, ownership check or gate is deployed.
 }

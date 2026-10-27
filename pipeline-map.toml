@@ -57,7 +57,6 @@ node = [
   { id = "codex-launcher", label = "codex launcher", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/codex-launcher", doc = "docs/agents/agent-permissions.md", auto = false },
   # --- SessionStart: 文脈の注入と前提の整備
   { id = "session-wrapup-start", label = "session-wrapup-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/session-wrapup", doc = "docs/agents/wrapup-inbox.md", auto = true },
-  { id = "agent-permissions-reclaim", label = "agent-permissions (reclaim)", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/agent-settings-reconcile", doc = "docs/agents/agent-permissions.md", auto = true },
   { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/agents/issue-index.md", auto = true },
   { id = "daily-desk-reminder", label = "daily-desk-reminder", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/daily-desk-reminder", doc = "docs/agents/daily-desk.md", auto = true },
   { id = "worklog", label = "worklog", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/worklog", doc = "docs/agents/worklog.md", auto = true },
@@ -81,7 +80,6 @@ node = [
   # 21 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
   { id = "hook-router-pre", label = "hook-router (pre)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
   { id = "hook-router-post", label = "hook-router (post)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
-  { id = "agent-permissions", label = "agent-permissions", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/agent-settings-reconcile", doc = "docs/agents/agent-settings-reconcile.md", auto = true },
   { id = "git-worktree-allow", label = "git-worktree-allow", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-worktree-allow", doc = "docs/agents/git-worktree-allow.md", auto = true },
   { id = "git-stash-guard", label = "git-stash-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-stash-guard", doc = "docs/agents/git-stash-guard.md", auto = true },
   { id = "main-checkout-guard-pre", label = "main-checkout-guard (pre)", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/agents/main-checkout-guard.md", auto = true },
@@ -221,7 +219,6 @@ edge = [
   { from = "daily-desk-reminder", to = "agent-session", kind = "context", label = "desk reminder", pipelines = ["implement-to-pr"] },
   { from = "worklog", to = "agent-session", kind = "context", label = "work log norm + recent stuck / found", pipelines = ["implement-to-pr"] },
   { from = "session-wrapup-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
-  { from = "agent-permissions-reclaim", to = "agent-session", kind = "context", label = "promotion candidates", pipelines = ["host-hygiene"] },
   { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
   { from = "worktree-base-sync", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },
   { from = "gpg-prewarm", to = "user", kind = "notify", label = "pinentry once", pipelines = ["implement-to-pr"] },

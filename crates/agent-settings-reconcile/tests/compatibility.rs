@@ -1,10 +1,7 @@
 //! Old and canonical executables share code, stdio, exit status and state contracts.
-use std::{
-    io::Write,
-    process::{Command, Stdio},
-};
+use std::process::{Command, Stdio};
 fn run(bin: &str, home: &std::path::Path) -> std::process::Output {
-    let mut child = Command::new(bin)
+    let child = Command::new(bin)
         .args(["not-a-command"])
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
@@ -14,12 +11,11 @@ fn run(bin: &str, home: &std::path::Path) -> std::process::Output {
         .env_remove("HERDR_SOCKET_PATH")
         .env_remove("HERDR_PANE_ID")
         .current_dir(home)
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(b"{}\n").unwrap();
     child.wait_with_output().unwrap()
 }
 #[test]

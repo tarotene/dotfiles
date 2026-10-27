@@ -2,8 +2,6 @@
 //! vocabulary; apply_patch retains its canonical name in upstream hook payloads.
 //! See docs/claude/codex-hook-parity.md for the pinned wire-format evidence.
 
-use agent_session::Decision;
-use agent_session::HookInput;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -65,35 +63,6 @@ pub fn inputs(raw: &str) -> Vec<String> {
         }
     }
     calls.into_iter().map(|v| v.to_string()).collect()
-}
-
-/// Codex ignores PreToolUse allow. Use PermissionRequest for the existing narrow
-/// allow engines, and let the normal prompt handle every non-matching command.
-pub fn permission(raw: &str) -> Option<Value> {
-    let input = HookInput::parse(raw)?;
-    if input.hook_event_name != "PermissionRequest" {
-        return None;
-    }
-    let command = input.bash_command()?;
-    let worktree = git_worktree_allow::worktrees_root()
-        .and_then(|root| git_worktree_allow::decide(command, &root));
-    let edit = || {
-        if gh_edit_allow::skipped() {
-            return None;
-        }
-        let ledger = gh_edit_allow::default_ledger()?;
-        let origin = input
-            .project_dir()
-            .and_then(|d| git_repository::origin_nwo(&d));
-        gh_edit_allow::check(&input, &ledger, origin.as_deref())
-    };
-    if worktree.is_some() || edit().is_some_and(|d| d.decision == Decision::Allow) {
-        Some(
-            json!({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}),
-        )
-    } else {
-        None
-    }
 }
 
 /// Bridge a locally owned command hook without copying its private rules into

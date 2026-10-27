@@ -3,7 +3,8 @@
 pub mod inventory;
 pub mod pending;
 pub mod reclaim;
-mod transaction;
+pub mod retire;
+pub(crate) mod transaction;
 
 use inventory::{without_non_grants, Source};
 use pending::{inert_call, tolerated_changes, tolerated_new_source, Pending};
@@ -1117,6 +1118,10 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
 
 const COMMANDS: &[(&str, &str)] = &[
     (
+        "retire",
+        "restore recorded shared-policy changes, preserving owner edits",
+    ),
+    (
         "inspect",
         "list every permission source and its proposed disposition (read-only)",
     ),
@@ -1266,7 +1271,7 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
     if !home.is_absolute() {
         return Err("--home must be absolute".into());
     }
-    if (dry_run || retire_ownership) && command != "migrate" {
+    if (dry_run || retire_ownership) && command != "migrate" && command != "retire" {
         return Err("migration options require migrate".into());
     }
     if let Some(journal) = restore {
@@ -1293,6 +1298,10 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
                 println!("{}  {}  {}", c.id, c.rule, c.project.display());
             }
         }
+        return Ok(());
+    }
+    if command == "retire" {
+        println!("{}", retire::run(&home, dry_run)?);
         return Ok(());
     }
     let path = policy_path.unwrap_or_else(|| home.join(".config/agent-permissions/policy.json"));

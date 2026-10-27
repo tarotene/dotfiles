@@ -9,8 +9,43 @@ let
   repoConfig = ../../config;
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
 
-  # Shared permission declarations own the sandbox and review policy.
-  # This writer keeps only the unrelated terminal display preference.
+  cfg = config.dotfiles.codexPermissions;
+  permissionSpec = {
+    approval_policy = "on-request";
+    approvals_reviewer = "auto_review";
+    default_permissions = "dotfiles";
+    features = {
+      network_proxy = true;
+      credential_masking = true;
+    };
+    permissions.dotfiles = {
+      extends = ":workspace";
+      filesystem = {
+        ":root" = "read";
+      }
+      // builtins.listToAttrs (
+        map (path: {
+          name = path;
+          value = "deny";
+        }) cfg.secretPaths
+      );
+      network = {
+        enabled = true;
+        domains = builtins.listToAttrs (
+          map (domain: {
+            name = domain;
+            value = "allow";
+          }) cfg.domains
+        );
+      };
+    };
+    apps = {
+      _default.default_tools_approval_mode = "prompt";
+    }
+    // lib.mapAttrs (_: tools: {
+      tools = lib.mapAttrs (_: mode: { approval_mode = mode; }) tools;
+    }) cfg.apps;
+  };
   # OpenAI, Codex rust-v0.164.0 (retrieved 2026-10-26):
   # https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/protocol/src/config_types.rs#L175-L189
   # https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/chatwidget/settings.rs#L751-L768
@@ -40,71 +75,83 @@ let
 in
 {
   imports = [ ./agent-permissions.nix ];
-  dotfiles.agentPermissions.enable = lib.mkDefault true;
+  options.dotfiles.codexPermissions = {
+    apps = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.attrsOf (
+          lib.types.enum [
+            "approve"
+            "prompt"
+          ]
+        )
+      );
+      default = { };
+      description = "Native app connector IDs and per-tool approval modes, separate from custom MCP servers.";
+    };
+    secretPaths = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.secret_paths;
+      description = "Native Codex filesystem denies (legacy inputs remain compatible).";
+    };
+    domains = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.domains;
+      description = "Native Codex network proxy destinations.";
+    };
+    mcpAllow = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.mcp_allow;
+      description = "Individual native MCP allowances, applied only to existing servers.";
+    };
+  };
 
-  # The native installer owns ~/.local/bin/codex; never replace that symlink.
-  home.file.".local/libexec/codex-launcher/codex".source =
-    "${pkgs.dotfiles-tools}/bin/codex-launcher";
-  home.sessionPath = [ "${config.home.homeDirectory}/.local/libexec/codex-launcher" ];
-  # A login shell can inherit HM's "session variables already sourced" marker
-  # from a pre-switch parent. Reassert the entry point even when noninteractive.
-  programs.zsh.profileExtra = lib.mkAfter ''
-    typeset -U path PATH
-    path=(${lib.escapeShellArg "${config.home.homeDirectory}/.local/libexec/codex-launcher"} $path)
-    export PATH
-  '';
+  config = {
+    # Kept as a manual retirement/recovery utility, never a runtime gate.
+    home.file.".local/bin/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
+    xdg.configFile."agent-native/codex-permissions.json".text = builtins.toJSON {
+      settings = permissionSpec;
+      mcp_allow = cfg.mcpAllow;
+    };
 
-  # Permission migration requires an explicitly reviewed snapshot. A first
-  # activation deploys the policy and CLI, but never invents migration approval;
-  # the router refuses tools until the owner-reviewed migration is complete.
-  home.activation.reconcileAgentPermissions = lib.mkIf config.dotfiles.agentPermissions.enable (
-    lib.hm.dag.entryAfter
-      [
-        "writeBoundary"
-        "registerClaudeHooks"
-        "registerClaudeStatusLine"
-        "registerClaudeModelConfig"
-        "reconcileCodexConfig"
-      ]
-      ''
-        # pipeline-node: agent-settings-reconcile
-        if [ -f "$HOME/.local/state/dotfiles/agent-permissions.json" ]; then
-          # home-manager's activation PATH excludes user-profile executables.
-          # Inventory uses git ls-files to protect tracked local settings.
-          # A failed apply must not end the activation: `set -eu` would skip every
-          # later step, including the final "current generation" GC root, and leave
-          # the profile ahead of what is applied. The router keeps enforcing the
-          # recorded permissions, so continuing is the safe side.
-          #
-          # Allow rules appended by "don't ask again" are queued for promotion and
-          # removed first; `apply` refuses to run over unreclaimed rules.
-          # pipeline-node: agent-permissions-reclaim
-          run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
-            ${pkgs.dotfiles-tools}/bin/agent-permissions reclaim \
-            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME" \
-            || echo 'agent-permissions: reclaim did not complete; apply may refuse to run over the pending rules.' >&2
-          run ${pkgs.coreutils}/bin/env PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH" \
-            ${pkgs.dotfiles-tools}/bin/agent-permissions apply \
-            --policy ${config.dotfiles.agentPermissions.policyFile} --home "$HOME" \
-            || {
-              echo 'agent-permissions: apply did not complete; the activation continues, and the router keeps denying what the record does not cover.' >&2
-              echo 'Run: agent-permissions check   (lists every drift); then inspect --json, migrate --approved REVIEW --dry-run, migrate --approved REVIEW.' >&2
-            }
-        else
-          echo 'agent-permissions: migration review required; tool execution is blocked until migration.' >&2
-          echo 'Run agent-permissions inspect --json, review each disposition, then migrate --approved REVIEW.' >&2
-        fi
-      ''
-  );
+    # The native installer owns ~/.local/bin/codex; never replace that symlink.
+    home.file.".local/libexec/codex-launcher/codex".source =
+      "${pkgs.dotfiles-tools}/bin/codex-launcher";
+    home.sessionPath = [ "${config.home.homeDirectory}/.local/libexec/codex-launcher" ];
+    # A login shell can inherit HM's "session variables already sourced" marker
+    # from a pre-switch parent. Reassert the entry point even when noninteractive.
+    programs.zsh.profileExtra = lib.mkAfter ''
+      typeset -U path PATH
+      path=(${lib.escapeShellArg "${config.home.homeDirectory}/.local/libexec/codex-launcher"} $path)
+      export PATH
+    '';
 
-  # A single writer preserves Codex-owned trust, model selection, and formatting.
-  # TUI overrides last until the next switch; new sessions load the declaration.
-  home.activation.reconcileCodexConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    # pipeline-node: agent-settings-reconcile
-    run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
-  '';
-  home.file.".codex/AGENTS.md".text =
-    builtins.readFile (repoConfig + "/agents/AGENTS.md")
-    + "\n"
-    + builtins.readFile (repoConfig + "/codex/AGENTS.codex.md");
+    # Retire proven shared edits before either native writer runs. This is not a
+    # runtime permission check: an unrelated setting never blocks tool execution.
+    home.activation.retireAgentPermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      # pipeline-node: agent-settings-reconcile
+      run ${pkgs.dotfiles-tools}/bin/agent-permissions retire --home "$HOME"
+    '';
+
+    home.activation.reconcileCodexPermissions = lib.hm.dag.entryAfter [ "retireAgentPermissions" ] ''
+      # pipeline-node: agent-settings-reconcile
+      run ${settingsReconcile} codex-permissions "$HOME/.codex/config.toml" \
+        ${lib.escapeShellArg (
+          builtins.toJSON {
+            settings = permissionSpec;
+            mcp_allow = cfg.mcpAllow;
+          }
+        )}
+    '';
+
+    # A single writer preserves Codex-owned trust, model selection, and formatting.
+    # TUI overrides last until the next switch; new sessions load the declaration.
+    home.activation.reconcileCodexConfig = lib.hm.dag.entryAfter [ "reconcileCodexPermissions" ] ''
+      # pipeline-node: agent-settings-reconcile
+      run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
+    '';
+    home.file.".codex/AGENTS.md".text =
+      builtins.readFile (repoConfig + "/agents/AGENTS.md")
+      + "\n"
+      + builtins.readFile (repoConfig + "/codex/AGENTS.codex.md");
+  };
 }

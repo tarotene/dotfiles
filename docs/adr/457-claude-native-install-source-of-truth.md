@@ -317,3 +317,68 @@ be approved.
 - `crates/agent-settings-reconcile/src/agent_permissions/mod.rs`
 - `crates/agent-settings-reconcile/tests/agent_permissions.rs`
 - `crates/hook-router/tests/cli.rs`
+
+## Amendment (2026-10-27 — 共有権限の所有管理を撤去し、native 設定へ戻す)
+
+本 Amendment は、上の共有ポリシーと `mcp_allow` の運用を置き換える。
+Claude と Codex の権限は、それぞれの native 設定として宣言・適用する。
+共有管理の所有記録・hash・移行済み状態を、通常のツール実行の条件にしない。
+所有検査の router 登録、SessionStart の許可回収、共有 apply activation を撤去する。
+認証 launcher は維持し、資格情報を渡す前の native 保護検査を残す。共有の所有記録への依存だけを除去する。
+
+### 裁定と先行例との対比
+
+- D1: Claude 専用の `claude-permissions` reconciler を通常配備へ戻す。
+  先行例は本リポジトリの `home/modules/claude.nix` と
+  `crates/agent-settings-reconcile/src/settings.rs`、取得 2026-10-27。
+  差分は共有管理中の activation 抑止を外し、native の allow / ask と撤回リストを使うこと。
+  軸: 還元性。別の実行時所有検査を重ねない。
+- D2: Codex は `approval_policy = "on-request"`、`approvals_reviewer = "auto_review"` と
+  名前付き `dotfiles` 権限 profile を `codex-permissions` で合わせる。
+  proxy と秘密パスの masking、個別 MCP 設定を native の宣言として残す。
+  OpenAI, *Codex*, `rust-v0.164.0`、commit
+  `6aaac694803004a63c6f393d153c96d22521a6b9`、公開日未確認、取得 2026-10-27。
+  [権限 profile の実装](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/permissions_toml.rs)、
+  [承認経路 L484–505](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/approvals.rs#L484-L505)。
+  差分は認証 launcher から dotfiles の所有記録への依存を外すこと。
+  native の proxy・masking・承認設定と設定上書きの検査は資格情報を渡す前に行う。
+  軸: 還元性。CLI 自身の sandbox と reviewer が執行する。
+- D3: PermissionRequest hook の allow / deny は reviewer より先に適用される。
+  Apps の reviewer は link / app / app default の指定を使いうるが、custom MCP は
+  その上書きを使わない。両者を一律の共有許可へ変換しない。
+  OpenAI, *Codex*、同じ版・取得日、
+  [`tools/approvals.rs` L484–505](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/approvals.rs#L484-L505)、
+  [`mcp_tool_call.rs` L219–229](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/mcp_tool_call.rs#L219-L229)、
+  [`connectors.rs` L514–550](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/connectors.rs#L514-L550)。
+  差分は native 設定ごとの意味を保持すること。軸: 還元性。
+- D4: 撤去は既存 CLI に `agent-permissions retire --home PATH [--dry-run]` を足し、
+  transaction journal の変更前・変更後と現在値を照合して共有変更だけを戻す。
+  先行例は `crates/agent-settings-reconcile/src/agent_permissions/transaction.rs`、取得 2026-10-27。
+  差分は変更後と一致する箇所だけの逆適用。後からの編集、Claude の Plan、
+  `autoMode.environment`、個別 MCP の許可を保持する。
+  journal が無いときは共有 selector/profile の撤去に限り、由来が不明な設定は削除しない。
+  軸: 表現不可能性。現在値と記録が一致しない変更を復元対象にしない。
+
+既存手段: `claude-permissions` / `codex-permissions` / `agent-permissions` — 拡張。
+独立した移行ツールや承認 engine は追加しない。
+旧 `dotfiles.agentPermissions` の option は既存 3 ホストの互換入力として残し、
+新しい入力は `dotfiles.claudePermissions.extraAllow` と
+`dotfiles.codexPermissions.{secretPaths,domains,mcpAllow,apps}` に置く。
+比較可能な native spec を `~/.config/agent-native/` に配備する。
+
+### 検証の境界
+
+今回の nested sandbox では reviewer の end-to-end 実行は未検証である。
+設定の生成・parse・読み戻しを、実際の自動審査の成功や待ち時間の実測として扱わない。
+旧 Amendment の実測は当時の構成についての記録として残す。
+撤去手順と承認経路の詳細は [運用文書](../agents/agent-permissions.md) に集約する。
+
+### 執行点
+
+- `home/modules/claude.nix`
+- `home/modules/codex.nix`
+- `home/modules/agent-permissions.nix`
+- `crates/agent-settings-reconcile/src/agent_permissions/retire.rs`
+- `crates/hook-router/src/rules.rs`
+- `crates/codex-launcher/src/main.rs`
+- `config/claude/commands/promote-permissions.md`
