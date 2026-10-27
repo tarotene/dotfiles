@@ -443,7 +443,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。
 
 - [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
-- [ADR-0000](adr/0000-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
+- [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 

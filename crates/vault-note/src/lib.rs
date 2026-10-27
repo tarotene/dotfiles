@@ -1,6 +1,6 @@
 //! Obsidian vault のノートを扱う共通部品(wrap-up の気づき・retro・裁定待ちの写しが使う)。
 //!
-//! 設計と根拠: docs/agents/wrapup-inbox.md、docs/adr/0000-wrapup-inbox-to-vault.md。
+//! 設計と根拠: docs/agents/wrapup-inbox.md、docs/adr/1136-wrapup-inbox-to-vault.md。
 //!
 //! vault は LiveSync でスマホと同期されるので、書き方は次の 3 つに限る。
 //!

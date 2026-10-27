@@ -3,7 +3,7 @@
 ## 動機
 
 [wrap-up inbox 機構](wrapup-inbox.md)は、スコープ外の気づきを vault のノートに溜める
-(vault の無い機体では jsonl)。**Issue にはしない**(ADR-0000-wrapup-inbox-to-vault)。以前は
+(vault の無い機体では jsonl)。**Issue にはしない**(ADR-1136)。以前は
 Stop が毎セッション、inbox の全行を Issue にさせていた。気づいた文脈が濃いうちに記録を残すことには
 向いたが、実際に inbox に溜まる項目の多くは判断を要さない軽微な修正で、1 件ずつ Issue → PR を回すのは
 摩擦が大きく、Issue が積み上がるだけで着手されず、本当に大事な開発タスクが埋もれた。

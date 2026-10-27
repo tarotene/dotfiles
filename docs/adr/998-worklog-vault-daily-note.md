@@ -120,7 +120,7 @@ stuck が解決したかは追跡しない。解決したら found を書き、�
 - Obsidian, "Obsidian CLI", <https://obsidian.md/help/cli>(取得 2026-10-25)— 公式 CLI は 1.12 以降で、
   アプリが起動していなければ最初のコマンドで起動する。
 
-## Amendment (2026-10-27 — ADR-0000-wrapup-inbox-to-vault)
+## Amendment (2026-10-27 — ADR-1136)
 
 vault の場所の宣言を、worklog 専用の `WORKLOG_VAULT` / `~/.config/dotfiles/worklog-vault` から、
 vault を使う機構が共有する `OBSIDIAN_VAULT` / `~/.config/dotfiles/obsidian-vault`(`hub_resolve::OBSIDIAN_VAULT`)に

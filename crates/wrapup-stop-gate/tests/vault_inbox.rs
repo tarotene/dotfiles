@@ -1,4 +1,4 @@
-//! 気づきの行き先が vault のノートになる経路の統合テスト(ADR-0000-wrapup-inbox-to-vault)。
+//! 気づきの行き先が vault のノートになる経路の統合テスト(ADR-1136)。
 //!
 //! 実機の vault に書かないため、`common::Env` が `OBSIDIAN_VAULT` と `XDG_CONFIG_HOME` を消す。
 //! ここでは、テストごとに一時ディレクトリの vault を `OBSIDIAN_VAULT` で明示的に宣言する。

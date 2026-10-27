@@ -155,7 +155,7 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
 
 - `crates/plan-precedent-gate/src/lib.rs`
 
-## Amendment (2026-10-27 — ADR-0000-wrapup-inbox-to-vault)
+## Amendment (2026-10-27 — ADR-1136)
 
 「同じ規範違反が繰り返し起きる」ことを昇格の合図にする、wrap-up inbox の再発の記録は、これまで
 既存 Issue への再発コメントの数だった(Stop の `--procedure` が、重複なら `gh issue comment` を指示していた)。

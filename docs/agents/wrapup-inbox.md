@@ -4,13 +4,13 @@
 `session-retrospective`、期限付き試行は `feedback-trial` が担当する。
 以下の旧 `wrapup-stop-gate` / `wrapup-session-start` による説明は、引き続き使える互換入口と移行の経緯を示す。
 実装の配置と引数は[責務一覧](agent-libraries.md)を参照する。決定の記録は
-`docs/adr/0000-wrapup-inbox-to-vault.md`(起草中の仮番号。PR 作成後に `scripts/adr-number-check --fix` で改番される)。
+`docs/adr/1136-wrapup-inbox-to-vault.md`(起草中の仮番号。PR 作成後に `scripts/adr-number-check --fix` で改番される)。
 
 作業中に出た「今回のタスクのスコープ外だが記録する価値のある気づき」が揮発する問題への
 対処。**収集**(セッション中に inbox へ溜める)と**裁定**(本人が `/backlog-cleanup` でまとめて決める)を
 分離する。**Issue にするのは裁定で選んだものだけ**で、Stop は起票を求めない。以前は Stop が毎セッション、
 inbox の全行を Issue にさせていたため、些細な気づきの Issue が増えて、大事な開発タスクが埋もれた
-(ADR-0000-wrapup-inbox-to-vault の背景)。
+(ADR-1136 の背景)。
 
 inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` スキル §1 の判定条件)が
 無い気づきに限る。依存があれば stacked PR の追加提案段として受ける選択肢が先に

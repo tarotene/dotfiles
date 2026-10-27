@@ -11,7 +11,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 「よく分からない」は agent が独断で母集団から落とす理由にならず、必ず
 ユーザーへの問いに変換される。
 
-気づき(inbox)は Stop で Issue にならない(ADR-0000-wrapup-inbox-to-vault)。vault の
+気づき(inbox)は Stop で Issue にならない(ADR-1136)。vault の
 `inbox/` に 1 件 1 ノートで溜まり、**ここで裁定したものだけ**が PR で直されるか、Issue になる。
 直せるものは Issue を経ずに PR で直す。Issue にするのは、chores の PR に入らない大物(L3)と、
 本人の作業が要るもの(L5)だけである。

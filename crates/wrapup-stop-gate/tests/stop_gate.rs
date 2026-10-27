@@ -140,7 +140,7 @@ fn add_matches_jq_compact() {
 }
 
 /// 気づきの inbox は、Stop の指示を出さない(起票は backlog-cleanup の裁定、
-/// ADR-0000-wrapup-inbox-to-vault)。gh も GitHub remote もあり、行が溜まっていても素通りする。
+/// ADR-1136)。gh も GitHub remote もあり、行が溜まっていても素通りする。
 #[test]
 fn a_non_empty_inbox_never_blocks_the_stop() {
     let e = Env::new();

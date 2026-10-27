@@ -1,4 +1,4 @@
-# ADR-0000 — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする
+# ADR-1136 — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする
 
 - Status: Accepted
 - Date: 2026-10-27

@@ -771,7 +771,7 @@ pub fn attribution() -> (String, String) {
 }
 
 /// Stop の指示。更新した feedback memory に `#N` 参照が無いものだけを示す(気づきは
-/// 起票を求めない。ADR-0000-wrapup-inbox-to-vault)。
+/// 起票を求めない。ADR-1136)。
 fn stop_message(unlinked: &[String]) -> String {
     let list: String = unlinked.iter().map(|p| format!("  - {p}\n")).collect();
     format!(
@@ -1086,7 +1086,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
     }
 
     // vault を宣言している機体では、jsonl に残っている行を移す。気づきの起票は Stop では求めない
-    // (裁定は backlog-cleanup。ADR-0000-wrapup-inbox-to-vault)。
+    // (裁定は backlog-cleanup。ADR-1136)。
     if let Err(e) = drain_to_vault(&project) {
         eprintln!("wrapup-stop-gate: drain: {e}");
     }
