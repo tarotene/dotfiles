@@ -84,3 +84,11 @@ journal が無い場合は保守的に扱う。共有管理の名前付き selec
 設定の parse・読み戻しと、reviewer が実際に審査したことは区別する。
 今回の nested sandbox 内では reviewer の end-to-end 実行は未検証。
 既存の過去の実測を、今回の設定で実測した結果として流用しない。
+
+## main の自動追従では native 宣言を比較する
+
+`hms --follow` は候補世代と配備済みの両方にある
+`agent-native/claude-permissions.json` と `agent-native/codex-permissions.json` を全バイト比較する。
+両宣言が存在し、読み取れ、一致するときだけ自動適用する。変更・欠落・読み取り失敗時は
+適用せず通知し、本人の差分確認と手動の `hms` を待つ。共有管理の `migrate` は要求しない。
+詳細は [適用手順](../operations.md) の main 自動追従を参照する。

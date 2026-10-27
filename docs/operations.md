@@ -101,9 +101,60 @@ wrapper host) and `explicit` whenever a ref was passed (`hms .`, `hms <path>`,
 are verification generations, whether the ref is a local path or not. The
 record is written as a whole file (temp file, then rename), a failed switch
 leaves the previous record alone, and an unwritable record only prints a
-warning. Nothing reads the record yet; it exists so that a later mechanism can
-tell a generation `hms` made from main apart from one it did not, without
-guessing from the commit.
+warning. `hms --follow` (next section) reads the record to tell a generation
+`hms` made from main apart from one it did not, without guessing from the
+commit.
+
+### Following main automatically (`hms --follow`)
+
+A user timer (`hms-follow.timer`, systemd on Linux; a launchd agent on darwin,
+log in `~/Library/Logs/hms-follow.log`) runs `hms --follow` five minutes after
+boot and every ten minutes after that, only while you are logged in (linger is
+forbidden, `assertNoLinger` in `home/modules/gpg.nix`). `hms --follow` resolves
+pushed main, and applies it through the same path as a bare `hms` only when
+all of these hold:
+
+1. main is ahead of the running generation (`~/.local/share/dotfiles/rev`);
+2. `last-apply.json` exists, names the current profile generation, and says
+   `mode = default` (see the previous section) — that is, the running
+   generation was made by a bare `hms` and nothing switched it since;
+3. both native permission specs, `agent-native/claude-permissions.json` and
+   `agent-native/codex-permissions.json`, exist and can be read in both the new
+   generation's `home-files/.config/` and the deployed config directory
+   (`$XDG_CONFIG_HOME`, or `~/.config`). Each complete file must be byte-identical
+   to its deployed counterpart. Any difference, missing file, or read error
+   skips unattended application and notifies the user to review the native
+   settings and run `hms` manually (`docs/agents/agent-permissions.md`). This
+   checks the complete specs, without classifying expansion or contraction;
+   there is no shared-policy migration prerequisite.
+
+Otherwise it applies nothing and says why once, as a herdr toast (and in the
+journal / log):
+
+| Toast | Meaning | What to do |
+|---|---|---|
+| 一度 hms を当ててください | no record for this generation (it predates the record) | run `hms` once |
+| 世代の不一致 | the generation is not the one `hms` recorded (a rollback, or a switch that bypassed `hms`) | run `hms` |
+| 検証用の世代 | the generation came from `hms .`, `hms <path>`, `hms <ref>` or `--public-only` | run `hms` when done verifying |
+| 許可ポリシーの変更 | either native permission spec differs, is missing, or cannot be read | review the Claude and Codex native settings, then run `hms` manually (`docs/agents/agent-permissions.md`) |
+| 自動追従に失敗しました | the apply failed (exit code in the toast) | read the journal: `journalctl --user -u hms-follow` |
+
+A toast is repeated only when its cause changes (a different generation, or a
+newer main for the policy and failure cases), and is remembered only once herdr
+reports it was actually shown (`~/.local/state/hms/follow-state.json`). A commit
+whose apply failed is not retried until main moves again. A manual `hms` that is
+running makes `--follow` skip that round instead of waiting. `hms --follow`
+exits 0 for "did not apply" and "failed" so the unit does not stay failed; a
+non-zero exit means the environment is broken (for instance, the lock cannot be
+taken).
+
+Two things stay manual, as before: a changed herdr binary still needs the
+server restarted from outside herdr (see the section below), and Claude Code
+hooks are swapped under a running session.
+
+To stop it: `systemctl --user stop hms-follow.timer` (until the next login), or
+set `dotfiles.hmsFollow.enable = false` and apply. Design record: ADR-1068
+(`adr/1068-hms-follow-main.md`).
 
 ### `hms` applies bleep at its main, verified before the switch
 

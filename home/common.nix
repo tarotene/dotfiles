@@ -14,6 +14,7 @@
     ./modules/wrapper-hub.nix
     ./modules/esa-mirror-context.nix
     ./modules/checkout-freshness.nix
+    ./modules/hms-follow.nix
     ./modules/apt.nix
     ./modules/quarantine.nix
     ./modules/shell.nix
