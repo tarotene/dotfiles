@@ -121,6 +121,12 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 - 宣言も撤回も空の配列は作らない(`allow` / `ask` だけは従来どおり空配列を作る)。
 - `excludedCommands` は sandbox の外で全権限で動く。パターンは狭く保つ。外のコマンドは通常の
   権限フロー(上の狭い allow、自動モードの分類器)を通る。
+- 秘密パスに足す基準(#1160): 上流のツールが既定で使う資格情報の保存先のうち、このリポジトリが導入または
+  文書化しているもの(`rclone` の `~/.config/rclone`、`clasp` の `~/.clasprc.json`・`~/.config/clasp`、
+  `secret-tool` が読む GNOME の鍵束 `~/.local/share/keyrings`)。足すと、sandbox の中のコマンドと Read ツール
+  から読めなくなる。そのため `rclone`・`clasp` を sandbox の中で呼ぶ手順(`drive-upload`・`gas-clasp-ops`
+  スキル)は、設定を読めずに失敗する可能性がある(2026-10-28 時点で未実測。失敗したら、除外コマンドに足す
+  かどうかを別に判断する)。
 - 通信先・秘密パスの実値で公開できないものは private wrapper で `dotfiles.claudePermissions.*` を上書きする
   (ADR-0034)。Codex の `dotfiles.codexPermissions.{domains,secretPaths}` と同じ元(`agentPermissions`)が既定値。
 - 検査: `crates/agent-settings-reconcile/tests/fixtures/permissions-sandbox-*`(壊れた状態からの収束・

@@ -51,8 +51,22 @@ in
         "~/.config/gcloud"
         "~/.claude/.credentials.json"
         "~/.codex/auth.json"
+        # Default credential stores of tools this repository installs or documents
+        # (#1160): rclone's remotes (packages.nix, docs/gdrive-upload.md), clasp's
+        # token (packages.nix), and the GNOME login keyring files that
+        # `secret-tool` (bitwarden.nix, obsidian.nix) reads.
+        "~/.config/rclone"
+        "~/.clasprc.json"
+        "~/.config/clasp"
+        "~/.local/share/keyrings"
       ];
-      description = "Credential paths excluded from ordinary file reads; use reviewed operations.";
+      description = ''
+        Credential paths excluded from ordinary file reads; use reviewed operations.
+        Add a path here when it is the upstream default credential store of a tool this
+        repository installs or documents, and it exists on a host. Host- or
+        organization-specific paths do not belong here (this repository is public):
+        put them in the private wrapper flake (ADR-0034).
+      '';
     };
 
     domains = mkOption {
