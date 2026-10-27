@@ -384,7 +384,8 @@ push してから終了してください。
     // WIP に CI green を要求しないため)。判定不能(API_FAILURE)も同様に緩める
     // — Handoff の成立自体は既に fail-closed で判定済みなので、ここでの緩和は
     // 「揃っていない集合を緑と読む」ことにはならない(CI を評価しないだけ)。
-    let outcome = ci::run(cfg, nwo, pr_num, &base);
+    let default_base = git_repository::default_branch(project);
+    let outcome = ci::run(cfg, nwo, pr_num, &base, default_base.as_deref());
     if outcome.status != Status::Pass {
         if let Some(h) = &handoff_issue {
             advisory.push_str(&format!(
@@ -397,13 +398,14 @@ push してから終了してください。
             let msg = match outcome.status {
                 Status::Empty => format!(
                     "CI のチェックがまだ 1 件も報告されていません。
-gh pr checks で確認してから終わってください。
+pr-checks-wait {pr_num} で確認してから終わってください。
 
 {rider}"
                 ),
                 Status::Missing => format!(
                     "CI のチェックが揃っていません。未出現: {}
-gh pr checks --watch で待ってから終わってください。
+`pr-checks-wait {pr_num}` を run_in_background で待ってから終わってください
+(赤 1 件で即 NG、required 全緑で即 OK を返します)。
 
 {rider}",
                     outcome.detail
@@ -430,7 +432,8 @@ gh pr checks --watch で待ってから終わってください。
                     ci::render_failed(&gh::reported_checks(pr_num, nwo))
                 ),
                 _ => format!(
-                    "CI がまだ pending です。gh pr checks --watch で待ってから終わってください。
+                    "CI がまだ pending です。`pr-checks-wait {pr_num}` を run_in_background で待ってから終わってください
+(赤 1 件で即 NG、required 全緑で即 OK を返します)。
 
 {rider}"
                 ),

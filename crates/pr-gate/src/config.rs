@@ -9,8 +9,11 @@ pub struct Config {
     pub state_root: PathBuf,
     /// `PR_GATE_ALLOWLIST`(既定 `~/.claude/pr-gate-repos`)。
     pub allowlist: PathBuf,
-    /// `PR_GATE_CI_TIMEOUT`(既定 300 秒): `gh pr checks --watch` の上限。
+    /// `PR_GATE_CI_TIMEOUT`(既定 300 秒): Stop で CI の判定を待つ上限
+    /// (`pr-checks-wait` は `--timeout` で別に持つ)。
     pub ci_timeout: Duration,
+    /// `PR_GATE_POLL_INTERVAL`(既定 10 秒): 判定のためにチェックを取り直す間隔。
+    pub poll: Duration,
     /// `PR_GATE_CHECK_APPEAR_TIMEOUT`(既定 60 秒): チェックの出現待ちの上限。
     pub check_appear_timeout: u64,
     /// `PR_GATE_QUIESCE`(既定 15 秒): quiesce モードで「揃った」とみなす静止時間。
@@ -33,6 +36,13 @@ fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
+fn env_secs(name: &str, default: f64) -> f64 {
+    env_nonempty(name)
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .unwrap_or(default)
+}
+
 fn env_num(name: &str, default: u64) -> u64 {
     env_nonempty(name)
         .and_then(|v| v.trim().parse().ok())
@@ -50,6 +60,7 @@ impl Config {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".claude/pr-gate-repos")),
             ci_timeout: Duration::from_secs(env_num("PR_GATE_CI_TIMEOUT", 300)),
+            poll: Duration::from_secs_f64(env_secs("PR_GATE_POLL_INTERVAL", 10.0)),
             check_appear_timeout: env_num("PR_GATE_CHECK_APPEAR_TIMEOUT", 60),
             quiesce: env_num("PR_GATE_QUIESCE", 15),
             fetch_ttl: env_num("PR_GATE_FETCH_TTL", 600),

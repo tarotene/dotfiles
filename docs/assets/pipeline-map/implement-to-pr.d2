@@ -339,6 +339,10 @@ l_manual: "Manual / skills" {
     class: s_rust
     style.stroke-dash: 4
   }
+  n_pr_checks_wait: "pr-checks-wait" {
+    class: s_rust
+    style.stroke-dash: 4
+  }
   n_stacked_pr: "skill: stacked-pr" {
     class: s_skill
     shape: hexagon
@@ -446,6 +450,15 @@ l_ci.n_close_linked_issues -> l_external.n_github: "close Issues" {
   class: e_issue
 }
 l_external.n_github -> n_agent_session.l_stop.n_pr_gate_stop: "checks / rules" {
+  class: e_context
+}
+l_external.n_github -> l_manual.n_pr_checks_wait: "checks / rules" {
+  class: e_context
+}
+n_agent_session -> l_manual.n_pr_checks_wait: "wait for CI" {
+  class: e_invoke
+}
+l_manual.n_pr_checks_wait -> n_agent_session: "NG on 1 red / OK on required green" {
   class: e_context
 }
 

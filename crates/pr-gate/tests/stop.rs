@@ -203,31 +203,25 @@ fn g_ci_missing_required_blocks() {
 }
 
 #[test]
-fn g_ci_partial_pending_blocks_even_if_watch_exits_zero() {
-    // R2-C-1 / R2-C-2 の核心: --watch が exit 0 を返しても、判定に使う --json では
-    // job-b がまだ pending。判定が --watch の exit code に依存していたら素通りする。
+fn g_ci_partial_pending_blocks() {
+    // R2-C-1 / R2-C-2 の核心: job-a が pass でも、E の job-b がまだ pending なら
+    // 部分集合が緑でも素通りしない(`gh pr checks --watch` は呼ばない)。
     let fx = Fx::new();
     let r = ci(
         &fx,
         "partial-sid",
         Some(RULES_2),
         CHECKS_PARTIAL_PENDING,
-        &[("PR_GATE_STUB_WATCH_RC", "0")],
+        &[],
     );
-    assert_eq!(r.code, 2); // ok   --watch が exit 0 でも部分 pending は block される(--watch 非依存の検査)
+    assert_eq!(r.code, 2); // ok   部分 pending は block される
     assert!(has(&r.stderr, "pending")); // ok   pending メッセージ
 }
 
 #[test]
 fn g_ci_failed_job_blocks_with_log_command() {
     let fx = Fx::new();
-    let r = ci(
-        &fx,
-        "failsid",
-        Some(RULES_2),
-        CHECKS_PARTIAL_FAIL,
-        &[("PR_GATE_STUB_WATCH_RC", "0")],
-    );
+    let r = ci(&fx, "failsid", Some(RULES_2), CHECKS_PARTIAL_FAIL, &[]);
     assert_eq!(r.code, 2); // ok   job-b が fail: exit 2
     assert!(has(&r.stderr, "job-b")); // ok   失敗ジョブ名が出る
     assert!(has(&r.stderr, "gh run view 1 --log-failed --job 12")); // ok   gh run view コマンドが出る
@@ -259,6 +253,78 @@ fn g_ci_quiesce_fail_blocks() {
         &[],
     );
     assert_eq!(r.code, 2); // ok   stacked PR + 1件 fail: exit 2
+}
+
+#[test]
+fn g_ci_required_green_passes_while_other_check_is_pending() {
+    // required 全緑の時点で OK: required でない altair の pending は待たない。
+    let fx = Fx::new();
+    let r = ci(
+        &fx,
+        "req-green-sid",
+        Some(RULES_2),
+        CHECKS_REQ_PASS_OTHER_PENDING,
+        &[],
+    );
+    assert_eq!(r.code, 0); // ok   E 全緑 + E 外 pending: 素通り
+}
+
+#[test]
+fn g_ci_non_required_red_blocks_before_required_finish() {
+    // 赤 1 件で即 NG: required(job-a/b)がまだ pending でも、lint が赤なら待たずに block。
+    let fx = Fx::new();
+    let r = ci(
+        &fx,
+        "other-red-sid",
+        Some(RULES_2),
+        CHECKS_OTHER_FAIL_REQ_PENDING,
+        &[],
+    );
+    assert_eq!(r.code, 2); // ok   E 外の赤でも即 block
+    assert!(has(&r.stderr, "CI が赤です")); // ok   赤のメッセージ(pending のメッセージではない)
+    assert!(has(&r.stderr, "lint")); // ok   赤のチェック名が出る
+}
+
+#[test]
+fn g_ci_never_calls_watch_and_points_to_pr_checks_wait() {
+    // 案内先は `pr-checks-wait`。`gh pr checks --watch` は(スタブが exit 97 で落とすので)
+    // 呼ばれていれば結果が変わる。ログでも呼ばれていないことを読む。
+    let fx = Fx::new();
+    let log = fx.write("gh.log", "");
+    let r = ci(
+        &fx,
+        "no-watch-sid",
+        Some(RULES_2),
+        CHECKS_PARTIAL_PENDING,
+        &[("PR_GATE_STUB_LOG", log.as_str())],
+    );
+    assert_eq!(r.code, 2);
+    assert!(has(&r.stderr, "pr-checks-wait")); // ok   待ち方の案内
+    assert!(!has(&r.stderr, "gh pr checks --watch")); // ok   旧案内は出ない
+    let calls = std::fs::read_to_string(&log).unwrap();
+    assert!(calls.contains("pr checks")); // ok   取り直しは行った
+    assert!(!calls.contains("--watch")); // ok   --watch は一度も呼ばない
+}
+
+#[test]
+fn g_ci_stacked_pr_uses_default_branch_required() {
+    // base が ruleset の対象外(stacked PR)でも、既定ブランチの required が全緑なら
+    // quiesce でなく E で判定する(E 外 pending を待たない)。注記が出る。
+    let fx = Fx::new();
+    fx.set_origin_head("main", None);
+    let default_rules = fx.write("default-rules.json", RULES_2);
+    let r = ci(
+        &fx,
+        "stacked-default-sid",
+        Some("[]"),
+        CHECKS_REQ_PASS_OTHER_PENDING,
+        &[
+            ("PR_GATE_STUB_BASE", "feature-x"),
+            ("PR_GATE_STUB_RULES_DEFAULT_FILE", default_rules.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 0); // ok   既定ブランチの required が全緑: 素通り
+    assert!(has(&r.stderr, "既定ブランチ main の required")); // ok   注記
 }
 
 // --- G_link (PR 本文 → Issue のリンク) ---

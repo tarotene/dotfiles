@@ -1,15 +1,21 @@
-//! G_CI: 期待集合の取得と判定。
+//! G_CI: 期待集合の取得と判定、および待ち(`pr-checks-wait` と Stop の共通部)。
 //!
 //! 中心不変条件は「揃っていない集合を緑と読まないこと」。次の 3 経路で
 //! `gh pr checks` は「チェックが無い/揃っていない」を「exit 0」で返す。どの経路でも
 //! 判定をその exit code に置かない — 期待集合をサーバから取り、判定は
-//! [`judge`] が `--json` の取り直しに対して行う:
+//! [`decide`] が `--json` の取り直しに対して行う:
 //!   1. push 直後で check run がまだ API に現れていない (cli/cli#7401)
 //!   2. ruleset の対象外(base が main 以外の stacked PR)で required が 0 件
 //!   3. 6 件のうち一部だけが現れ、その部分集合が pass した時点で
 //!      `--watch` が早期終了する (cli/cli#9973) — これが一番危ない。
-//!      「1 件以上現れたら待機開始」では防げないので、`--watch` は待つための
-//!      道具に格下げし、その exit code を acceptance criterion にしない。
+//!      「1 件以上現れたら待機開始」では防げないので、`gh pr checks --watch` は
+//!      呼ばず、取り直した `--json` を [`decide`] に通す。
+//!
+//! 判定は 2 つの集合を分ける。NG は**報告された全チェック**(required かどうかを
+//! 問わず、赤 1 件で即時)、OK は**期待集合 E**(required の context)の全件が緑に
+//! なった時点で即時(required でないチェックの pending は待たない)。
+//! `gh pr checks --required --watch --fail-fast` では、集約ジョブ(`CI passed`)が
+//! 全ジョブの完了後にしか結果を出さないため、先に落ちたジョブの NG が遅れる。
 
 use crate::config::Config;
 use crate::jqv::JqError;
@@ -17,7 +23,7 @@ use crate::{gh, jqv};
 use regex::Regex;
 use serde_json::Value;
 use std::sync::LazyLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -108,151 +114,236 @@ fn bucket_is(r: &Value, buckets: &[&str]) -> Result<bool, JqError> {
     Ok(buckets.iter().any(|x| b == Value::String((*x).into())))
 }
 
-/// 判定材料の集計(bash の `judged` の jq 式)。
-#[derive(Debug, Default, PartialEq)]
-pub struct Judged {
-    pub n: usize,
-    pub missing: Vec<Value>,
-    pub failed: usize,
-    pub pending: usize,
+/// 取り直した 1 回分の報告に対する判定。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// 報告のどれかが fail / cancel(即時 NG)。
+    Failed,
+    /// E が非空で、E の全件が出現し、すべて pass / skipping(即時 OK)。
+    Pass,
+    /// まだ決まらない。`missing` は E のうち未出現の名前、`pending` は報告のうち
+    /// pending の件数、`reported` は報告の件数。
+    Wait {
+        missing: Vec<Value>,
+        pending: usize,
+        reported: usize,
+    },
 }
 
-/// 期待集合が非空なら報告のうち期待に含まれるものだけ、空なら報告すべてを対象に、
-/// 未出現・失敗(fail/cancel)・pending を数える。jq がエラーになる形
-/// (配列でない・要素がオブジェクトでない)は全ゼロに倒す(bash 版と同じ)。
-pub fn judge(expected: &[Value], reported: &str) -> Judged {
-    let inner = || -> Result<Judged, JqError> {
-        let r = parse_reported(reported).ok_or(JqError)?;
-        let rel: Vec<Value> = if expected.is_empty() {
-            r
-        } else {
-            let mut rel = Vec::new();
-            for x in r {
-                let n = jqv::field(&x, "name")?;
-                if expected.iter().any(|e| jqv::eq(e, &n)) {
-                    rel.push(x);
-                }
-            }
-            rel
-        };
-        let mut failed = 0;
-        let mut pending = 0;
-        for x in &rel {
-            if bucket_is(x, &["fail", "cancel"])? {
-                failed += 1;
-            }
-            if bucket_is(x, &["pending"])? {
-                pending += 1;
+/// 報告(`gh pr checks --json`)を期待集合 `expected` に照らして判定する純関数。
+///
+/// - 報告に fail / cancel が 1 件でもあれば `Failed`(E に入っていなくても)。
+/// - `expected` が非空で、E ⊆ 報告 かつ E の全件の bucket が pass / skipping なら `Pass`。
+///   E に無いチェックの pending はここでは見ない。
+/// - それ以外は `Wait`。`expected` が空(base が ruleset の対象外)のときは `Pass` を
+///   返さない — 「揃った」の近似(静止)は状態を持つ [`wait`] の仕事。
+/// - 配列として読めない・要素がオブジェクトでない報告は、緑と読まず `Wait` に倒す
+///   (旧 `judge` は全ゼロ = 素通りに倒していた)。
+pub fn decide(expected: &[Value], reported: &str) -> Verdict {
+    let unreadable = || Verdict::Wait {
+        missing: expected.to_vec(),
+        pending: 0,
+        reported: 0,
+    };
+    let Some(r) = parse_reported(reported) else {
+        return unreadable();
+    };
+    let mut pending = 0;
+    for x in &r {
+        match bucket_is(x, &["fail", "cancel"]) {
+            Ok(true) => return Verdict::Failed,
+            Ok(false) => {}
+            Err(JqError) => return unreadable(),
+        }
+        match bucket_is(x, &["pending"]) {
+            Ok(true) => pending += 1,
+            Ok(false) => {}
+            Err(JqError) => return unreadable(),
+        }
+    }
+    let Ok(reported_names) = names(&r) else {
+        return unreadable();
+    };
+    let missing = jqv::subtract(expected, &reported_names);
+    if !expected.is_empty() && missing.is_empty() {
+        let all_green = r.iter().all(|x| {
+            let in_e = jqv::field(x, "name")
+                .map(|n| expected.iter().any(|e| jqv::eq(e, &n)))
+                .unwrap_or(false);
+            !in_e || bucket_is(x, &["pass", "skipping"]).unwrap_or(false)
+        });
+        if all_green {
+            return Verdict::Pass;
+        }
+    }
+    Verdict::Wait {
+        missing,
+        pending,
+        reported: r.len(),
+    }
+}
+
+/// 待ちの結果の注記つき期待集合。`Ok((E, 注記))`。E が空なら quiesce で判定する。
+///
+/// base の ruleset が required を持たないとき(stacked PR)は、既定ブランチの ruleset の
+/// required を E に使う: CI は base を問わず同名のチェックを報告する(docs/agents/pr-gate.md
+/// 「ruleset のスコープと CI の報告は別軸」)ので、required の全緑で OK を判定できる。
+/// 既定ブランチ側の取得に失敗したら、従来どおり quiesce に縮退する(base 側の API 失敗は
+/// これまでどおり `Err` で、縮退させない — #135)。
+pub fn resolve_expected(
+    nwo: &str,
+    base: &str,
+    default_base: Option<&str>,
+) -> Result<(Vec<Value>, String), JqError> {
+    let e = expected_contexts(nwo, base)?;
+    if !e.is_empty() {
+        return Ok((e, String::new()));
+    }
+    if let Some(d) = default_base.filter(|d| !d.is_empty() && *d != base) {
+        if let Ok(de) = expected_contexts(nwo, d) {
+            if !de.is_empty() {
+                return Ok((
+                    de,
+                    format!(
+                        "base {base} は ruleset の対象外。既定ブランチ {d} の required で判定した"
+                    ),
+                ));
             }
         }
-        Ok(Judged {
-            n: rel.len(),
-            missing: jqv::subtract(expected, &names(&rel)?),
-            failed,
-            pending,
-        })
+    }
+    Ok((
+        e,
+        format!("base {base} は ruleset の対象外。報告された全チェックで判定した"),
+    ))
+}
+
+/// 待ちの結果。`reported` は最後に取り直した報告、`expected` は判定に使った期待集合
+/// (どちらも整形・内訳に使う。E が空なら quiesce で判定した)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Waited {
+    pub outcome: Outcome,
+    pub reported: String,
+    pub expected: Vec<Value>,
+}
+
+/// Stop の G_CI(`PR_GATE_CI_TIMEOUT` まで待つ)。
+pub fn run(
+    cfg: &Config,
+    nwo: &str,
+    pr_num: &str,
+    base: &str,
+    default_base: Option<&str>,
+) -> Outcome {
+    wait(cfg, nwo, pr_num, base, default_base, cfg.ci_timeout).outcome
+}
+
+/// `limit` まで `--json` を取り直して判定する。赤 1 件で即 `Failed`、E が全緑で即 `Pass`。
+/// E が空のときは、報告件数が `QUIESCE` 秒増えなくなる(または出現待ちの上限に達する)のを
+/// 「揃った」とみなし、pending が 0 になったら `Pass`。
+pub fn wait(
+    cfg: &Config,
+    nwo: &str,
+    pr_num: &str,
+    base: &str,
+    default_base: Option<&str>,
+    limit: Duration,
+) -> Waited {
+    let Ok((expected, note)) = resolve_expected(nwo, base, default_base) else {
+        return Waited {
+            outcome: Outcome::of(Status::ApiFailure),
+            reported: String::new(),
+            expected: Vec::new(),
+        };
     };
-    inner().unwrap_or_default()
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
-fn sleep5() {
-    std::thread::sleep(Duration::from_secs(5));
-}
-
-/// G_CI の判定本体(bash の `run_g_ci`)。
-pub fn run(cfg: &Config, nwo: &str, pr_num: &str, base: &str) -> Outcome {
-    let Ok(expected) = expected_contexts(nwo, base) else {
-        return Outcome::of(Status::ApiFailure);
+    let done = |outcome: Outcome, reported: String| Waited {
+        outcome,
+        reported,
+        expected: expected.clone(),
     };
     let required = !expected.is_empty();
-    let note = if required {
-        String::new()
-    } else {
-        format!("base {base} は ruleset の対象外。報告された全チェックで判定した")
-    };
-    let deadline = now() + cfg.check_appear_timeout;
+    let start = Instant::now();
+    let appear_deadline = start + Duration::from_secs(cfg.check_appear_timeout);
+    let deadline = start + limit;
+    let quiesce = Duration::from_secs(cfg.quiesce);
+    let mut prev: Option<usize> = None;
+    let mut stable_since: Option<Instant> = None;
 
-    if required {
-        // 出現待ち: 期待集合 E が報告集合 R に完全に含まれるまで待つ(cli#7401 / #9973 対策)。
-        loop {
-            let reported = gh::reported_checks(pr_num, nwo);
-            let names_json = parse_reported(&reported)
-                .and_then(|r| names(&r).ok())
-                .unwrap_or_default();
-            let missing = jqv::subtract(&expected, &names_json);
-            if missing.is_empty() {
-                break;
-            }
-            if now() >= deadline {
-                return Outcome {
-                    status: Status::Missing,
-                    detail: jqv::join(&missing, ", "),
+    loop {
+        let reported = gh::reported_checks(pr_num, nwo);
+        let t = Instant::now();
+        match decide(&expected, &reported) {
+            Verdict::Failed => return done(Outcome::of(Status::Failed), reported),
+            Verdict::Pass => {
+                let o = Outcome {
+                    status: Status::Pass,
+                    detail: note,
                 };
+                return done(o, reported);
             }
-            sleep5();
-        }
-    } else {
-        // quiescence: E が定義できない(stacked PR 等)ので、報告件数が
-        // QUIESCE 秒増えなくなるまで待って「揃った」とみなす。
-        let mut prev: i64 = -1;
-        let mut stable_since: Option<u64> = None;
-        loop {
-            let reported = gh::reported_checks(pr_num, nwo);
-            let cur = serde_json::from_str::<Value>(&reported)
-                .ok()
-                .and_then(|v| jqv::length(&v).ok())
-                .unwrap_or(0) as i64;
-            let t = now();
-            if cur > 0 && cur == prev {
-                let since = *stable_since.get_or_insert(t);
-                if t - since >= cfg.quiesce {
-                    break;
+            Verdict::Wait {
+                missing,
+                pending,
+                reported: n,
+            } => {
+                let timed_out = t >= deadline;
+                if required {
+                    if !missing.is_empty() && (t >= appear_deadline || timed_out) {
+                        return done(
+                            Outcome {
+                                status: Status::Missing,
+                                detail: jqv::join(&missing, ", "),
+                            },
+                            reported,
+                        );
+                    }
+                } else {
+                    if prev == Some(n) && n > 0 {
+                        stable_since.get_or_insert(t);
+                    } else {
+                        stable_since = None;
+                    }
+                    prev = Some(n);
+                    let quiesced = n > 0
+                        && (t >= appear_deadline
+                            || stable_since.is_some_and(|s| t.duration_since(s) >= quiesce));
+                    if quiesced && pending == 0 {
+                        return done(
+                            Outcome {
+                                status: Status::Pass,
+                                detail: note,
+                            },
+                            reported,
+                        );
+                    }
+                    if n == 0 && (t >= appear_deadline || timed_out) {
+                        return done(Outcome::of(Status::Empty), reported);
+                    }
                 }
-            } else {
-                stable_since = None;
-            }
-            prev = cur;
-            if t >= deadline {
-                if cur == 0 {
-                    return Outcome::of(Status::Empty);
+                if timed_out {
+                    return done(Outcome::of(Status::Pending), reported);
                 }
-                break; // 部分的でも上限に達したら今の集合で判定に進む(下の判定が最終防御)
             }
-            sleep5();
         }
+        std::thread::sleep(cfg.poll.min(deadline.saturating_duration_since(t)));
     }
+}
 
-    // terminal state まで待つだけ。exit code は見ない(cli/cli#9973)。
-    gh::watch_checks(pr_num, nwo, required, cfg.ci_timeout);
+/// 報告のうち pending のチェック名(整形用)。`only` が非空ならその名前のものだけ。
+pub fn pending_names(reported: &str, only: &[Value]) -> Vec<String> {
+    let Some(r) = parse_reported(reported) else {
+        return Vec::new();
+    };
+    r.iter()
+        .filter(|x| bucket_is(x, &["pending"]).unwrap_or(false))
+        .filter_map(|x| jqv::field(x, "name").ok())
+        .filter(|n| only.is_empty() || only.iter().any(|e| jqv::eq(e, n)))
+        .map(|n| jqv::raw(&n))
+        .collect()
+}
 
-    // 判定は --json を取り直して行う。--watch の exit code は使わない。
-    let j = judge(&expected, &gh::reported_checks(pr_num, nwo));
-    if !required && j.n == 0 {
-        return Outcome::of(Status::Empty);
-    }
-    if !j.missing.is_empty() {
-        return Outcome {
-            status: Status::Missing,
-            detail: jqv::join(&j.missing, ", "),
-        };
-    }
-    if j.failed > 0 {
-        return Outcome::of(Status::Failed);
-    }
-    if j.pending > 0 {
-        return Outcome::of(Status::Pending);
-    }
-    Outcome {
-        status: Status::Pass,
-        detail: note,
-    }
+/// 報告の件数(読めなければ 0)。
+pub fn reported_count(reported: &str) -> usize {
+    parse_reported(reported).map_or(0, |r| r.len())
 }
 
 static RUN_JOB_RE: LazyLock<Regex> =
@@ -308,14 +399,72 @@ mod tests {
         assert!(parse_expected("{").is_err());
     }
 
+    fn e2() -> Vec<Value> {
+        vec![json!("job-a"), json!("job-b")]
+    }
+
+    fn wait_of(v: Verdict) -> (Vec<Value>, usize, usize) {
+        match v {
+            Verdict::Wait {
+                missing,
+                pending,
+                reported,
+            } => (missing, pending, reported),
+            other => panic!("Wait を期待したが {other:?}"),
+        }
+    }
+
     #[test]
-    fn judge_counts() {
-        let e = vec![json!("job-a"), json!("job-b")];
-        let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"pending"},{"name":"x","bucket":"fail"}]"#;
-        let j = judge(&e, r);
-        assert_eq!((j.n, j.failed, j.pending), (2, 0, 1));
-        assert!(j.missing.is_empty());
-        assert_eq!(judge(&[], "not json"), Judged::default());
+    fn any_red_is_failed_even_if_not_required() {
+        // NG は報告された全チェックで見る(E に入っていない x でも即時)。
+        let r = r#"[{"name":"job-a","bucket":"pending"},{"name":"x","bucket":"fail"}]"#;
+        assert_eq!(decide(&e2(), r), Verdict::Failed);
+        let r = r#"[{"name":"x","bucket":"cancel"}]"#;
+        assert_eq!(decide(&[], r), Verdict::Failed);
+    }
+
+    #[test]
+    fn required_all_green_passes_without_waiting_for_others() {
+        // OK は E の全件が緑になった時点。E 外の pending(Build altair 等)は待たない。
+        let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"skipping"},{"name":"altair","bucket":"pending"}]"#;
+        assert_eq!(decide(&e2(), r), Verdict::Pass);
+    }
+
+    #[test]
+    fn partial_set_is_never_pass() {
+        // cli/cli#9973: 出現した部分集合が全緑でも、E ⊆ 報告 でなければ Pass にしない。
+        let r = r#"[{"name":"job-a","bucket":"pass"}]"#;
+        let (missing, pending, n) = wait_of(decide(&e2(), r));
+        assert_eq!((missing, pending, n), (vec![json!("job-b")], 0, 1));
+        // 全件出現していても required が pending なら続行。
+        let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"pending"}]"#;
+        let (missing, pending, _) = wait_of(decide(&e2(), r));
+        assert_eq!((missing.len(), pending), (0, 1));
+    }
+
+    #[test]
+    fn empty_expected_never_passes_here() {
+        // E が空のときの「揃った」は静止で近似する(状態を持つ wait の仕事)。
+        let r = r#"[{"name":"x","bucket":"pass"},{"name":"y","bucket":"pending"}]"#;
+        let (missing, pending, n) = wait_of(decide(&[], r));
+        assert_eq!((missing.len(), pending, n), (0, 1, 2));
+        assert_eq!(wait_of(decide(&[], "[]")).2, 0);
+    }
+
+    #[test]
+    fn unreadable_report_is_not_green() {
+        for bad in ["not json", "{}", r#"[1]"#, r#"[{"name":"job-a"}]"#] {
+            assert!(matches!(decide(&e2(), bad), Verdict::Wait { .. }), "{bad}");
+        }
+    }
+
+    #[test]
+    fn pending_names_and_count() {
+        let r = r#"[{"name":"a","bucket":"pass"},{"name":"b","bucket":"pending"}]"#;
+        assert_eq!(pending_names(r, &[]), vec!["b".to_string()]);
+        assert!(pending_names(r, &[json!("a")]).is_empty());
+        assert_eq!(reported_count(r), 2);
+        assert_eq!(reported_count("x"), 0);
     }
 
     #[test]

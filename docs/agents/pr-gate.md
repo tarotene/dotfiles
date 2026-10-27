@@ -625,8 +625,8 @@ pr-gate の G_CI を実装するときに Codex plan-review で 3 回連続し�
 [cli/cli#9973]: https://github.com/cli/cli/issues/9973
 
 3 が最も危ない。「1 件以上現れたら待機を始める」という素朴な実装では防げないため、
-`gh pr checks --watch` を**待つための道具**に格下げし、**その exit code を acceptance
-criterion にしない**。これは `docs/agents/copilot-plan-review.md` の「judge をシェルに置くのが要点。
+`gh pr checks --watch` の exit code を acceptance criterion にしない。さらに今は
+`--watch` 自体を呼ばず、`--json` を取り直して判定する(下の「待ち方」節)。これは `docs/agents/copilot-plan-review.md` の「judge をシェルに置くのが要点。
 acceptance criterion を確率的な写像に任せない」と同じ論理を、LLM critic ではなく `gh` という
 外部コマンドに対して適用したものである。
 
@@ -647,14 +647,65 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ（出現待ち）
 3. E が空（stacked PR）なら、E の代わりに **quiescence**（報告件数が一定時間増えない）
    で「揃った」を近似する
-4. `gh pr checks [--required] --watch --fail-fast` で terminal state まで待つ
-   （**待つだけ**。この exit code は使わない）
-5. **`--json` を取り直して判定する**: E の全 context が R にあり、かつ
-   fail/cancel が無く、かつ pending が無いときだけ PASS
+4. `--json` を `PR_GATE_POLL_INTERVAL` ごとに取り直して `ci::decide` に通す
+   （`gh pr checks --watch` は呼ばない。pending のとき gh が exit 8 を返しても、標準出力が
+   配列なら読む）
+5. **判定は 2 つの集合に分ける**(下の「待ち方」節): 報告された全チェックに fail/cancel が
+   1 件でもあれば即 FAILED。E ⊆ R かつ E の全件が pass/skipping なら即 PASS
+   （E 外の pending は待たない）
 
 どの経路でも「0 件」も「部分集合」も PASS には落ちない。stacked PR で required が
 取れないときも「緑」と主張せず、報告された全チェックで判定したことを注記した上で判定する
 （`docs/agents/issue-index.md` の「嘘の正確な数字を出さない」と同じ立場）。
+
+## 待ち方: 早期 NG・早期 OK(`pr-checks-wait`)
+
+セッションが CI 待ちで終わらないのは、待ち方が「全部終わるまで」になっていたから。
+`gh pr checks` の旗では、次の 2 つを同時に満たせない(`gh pr checks --help`、gh 2.102.0):
+
+- `--required --watch --fail-fast`: 失敗を見る集合と OK を判定する集合が同じ(required)。
+  required の `CI passed` は集約ジョブ(`.github/workflows/ci.yml` の
+  `needs: [...]` + `if: always()`)で、**全ジョブの完了後にしか結果を出さない**。
+  30 秒で落ちたジョブの NG が、最も遅い build の完了まで報告されない。
+- `--watch --fail-fast`(`--required` なし): 赤は早く見えるが、required でない
+  チェック(`Build altair` など)の完了まで OK が出ない。
+
+そこで判定を `crates/pr-gate/src/gates/ci.rs` の純関数 `decide(E, 報告)` 1 つに置き、
+Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定の正本は 1 か所)。
+
+| 順 | 条件 | 結果 |
+|---|---|---|
+| 1 | 報告のどれか 1 件でも bucket が `fail` / `cancel`(required でなくても) | **NG**(即時) |
+| 2 | E が非空で、E ⊆ 報告 かつ E の全件が `pass` / `skipping` | **OK**(即時。E 外の pending は待たない) |
+| 3 | E が空で、報告件数が `PR_GATE_QUIESCE` 秒静止(または出現待ちの上限)し pending が 0 | OK(静止による近似) |
+| — | それ以外 | 続行(上限で PENDING / MISSING / EMPTY) |
+
+E の取り方は、base の ruleset の required → 空なら**既定ブランチの ruleset の required**
+→ それも空なら quiesce。stacked PR で base が ruleset の対象外でも、CI は base を問わず
+同名のチェックを報告する(上の「ruleset のスコープと CI の報告は別軸」、#133)ので、
+既定ブランチの required の全緑で OK を判定できる。既定ブランチ側の取得に失敗したら従来どおり
+quiesce に縮退する(base 側の API 失敗は縮退させず `ApiFailure` で止める、#135)。
+
+「揃っていない集合を緑と読まない」不変条件は変わらない: OK は E ⊆ 報告 のときだけで、
+部分集合が全緑でも OK にならない。NG を報告全体に広げたのは、赤はどのチェックでも
+修正を要する信号であり、早く返すほど手戻りが小さいから。Stop では、required でない
+チェックの赤でも block する(`PR_GATE_MAX_BLOCKS` で escalate)。
+
+### `pr-checks-wait`
+
+```
+pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
+```
+
+| exit | 意味 |
+|---|---|
+| 0 | OK(E が全緑) |
+| 1 | NG(赤 1 件以上。失敗ジョブ名・link・`gh run view … --log-failed` を出す) |
+| 8 | 時間切れで pending(gh の pending と同じ値) |
+| 2 | 判定不能(チェックが揃わない・API 失敗・引数の誤り) |
+
+結果は stdout の 1〜数行で、`run_in_background` の完了通知にそのまま載る。エージェントは
+`gh pr checks --watch` や `until` のポーリングでなく、これを背景で実行して完了通知を待つ。
 
 ## 発火範囲
 
@@ -672,7 +723,8 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
 | `PR_GATE_MAX_BLOCKS` | `6` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5、G_stack 追加時に 5→6 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
-| `PR_GATE_CI_TIMEOUT` | `300` | `gh pr checks --watch` の timeout(秒) |
+| `PR_GATE_CI_TIMEOUT` | `300` | Stop で CI の判定を待つ上限(秒)。`pr-checks-wait` は `--timeout`(既定 1500) |
+| `PR_GATE_POLL_INTERVAL` | `10` | 判定のためにチェックを取り直す間隔(秒、小数可) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
 | `PR_GATE_FETCH_TTL` | `600` | SessionStart の `git fetch` を省略する TTL(秒) |
@@ -702,9 +754,12 @@ hook 経路を end-to-end に駆動する。旧 `pr-gate.sh --selftest` の 111 
 
 - **PASS 経路が到達可能であること**（`docs/agents/copilot-plan-review.md` の「第二次の非収束」と
   同種の穴——ゲートが弾くだけで一度も通さない実装になっていないかの検査）
-- **`--watch` の exit code に依存していないこと** — stub の `--watch` を常に exit 0 に
-  固定した上で、`--json` が部分 pending / fail を返すケースで block されること
-  （上記「部分出現」の回帰テスト）
+- **`--watch` を呼ばず、その exit code に依存していないこと** — stub の `--watch` は
+  exit 97 で落ちる設計にし、`--json` が部分 pending / fail を返すケースで block されること、
+  呼び出しログに `--watch` が現れないこと（上記「部分出現」の回帰テスト）
+- **早期 NG・早期 OK**(`tests/stop.rs` の `g_ci_*`、`tests/checks_wait.rs`) — required が
+  pending のまま E 外が赤なら即 block / NG、E が全緑なら E 外 pending を待たずに OK、
+  stacked PR は既定ブランチの required で判定、取り直しながら待って緑に変わるケース
 - **チェック 0 件・部分出現・stacked PR フォールバックのそれぞれで block/pass が
   正しく分岐すること**
 - **`G_unpushed`**: PR 無し + 未 push commit あり(exit 2)/ PR 無し + 0 件(完全沈黙)

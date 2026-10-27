@@ -448,10 +448,11 @@ requirements-inventory スキル)に従う。
   Ruleset で required のものだけにする。required でないチェックはマージ可否を
   決めないので、`Monitor`・背景のシェル・`sleep` のループで完了を待たない。
   待つ必要が出たら、現在の状態を 1 回読んで報告し、終える(結果が要る人が
-  あとで読む)。required のチェックを待つときも、完了で終わる形(「長い処理では…」
-  の節の `until` の形)にして、終わった監視を残さない。報告には、読んだ時点の
-  required / 非 required の別と、読んだ手段(`gh pr checks --required` など)を
-  添える(#1001)。
+  あとで読む)。required のチェックを待つときは、`pr-checks-wait <PR>` を背景で
+  実行する(赤が 1 件でも出れば即 NG、required が全緑になれば即 OK で終わる。
+  `gh pr checks --watch` や自作のポーリングで待たない)。終わった監視を残さない。
+  報告には、読んだ時点の required / 非 required の別と、読んだ手段
+  (`pr-checks-wait`・`gh pr checks --required` など)を添える(#1001)。
 
 # 承認済み計画から規則を差し替えたら、適用するゲートの前に申告する
 

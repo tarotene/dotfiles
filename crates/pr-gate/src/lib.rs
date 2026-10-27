@@ -71,6 +71,7 @@
 //! エスケープハッチ: `touch ~/.claude/pr-gate/skip` または `SKIP_PR_GATE=1`。
 
 pub mod body;
+pub mod checks_wait;
 pub mod config;
 pub mod gates;
 pub mod gh;

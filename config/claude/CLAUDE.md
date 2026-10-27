@@ -89,9 +89,14 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 `Blocked: sleep N followed by …` で拒否する(この dotfiles の hook ではない)。
 拒否のたびに 1 往復を失うので、最初から次の手で待つ(#1059)。
 
-- CI の完了: `gh pr checks <N> --required --watch` を背景(`run_in_background`)
-  で実行し、完了通知を待つ。待ってよい対象は required のチェックだけ(共有
-  AGENTS.md「実装タスクの完了定義」)。
+- CI の完了: `pr-checks-wait <N>` を背景(`run_in_background`)で実行し、完了通知を
+  待つ。赤が 1 件でも出れば即 NG(exit 1)、required が全緑になれば即 OK(exit 0)で
+  終わる(時間切れの pending は exit 8、判定不能は exit 2)。`gh pr checks --watch` や
+  `until` のポーリングでは待たない — `--required --watch --fail-fast` は集約ジョブ
+  (`CI passed`)が全ジョブの完了後にしか結果を出さないので NG が遅れ、`--required`
+  を外すと required でないチェックの完了まで待つ。判定の正本は
+  `crates/pr-gate/src/gates/ci.rs`(`docs/agents/pr-gate.md`)。待ってよい対象は
+  required のチェックだけ(共有 AGENTS.md「実装タスクの完了定義」)。
 - 背景タスクの出力: 完了通知を待つか、`Monitor` の `until` ループ(共有
   AGENTS.md「長い処理では…」の形)で待つ。
 - 前景の `sleep` で待たない。

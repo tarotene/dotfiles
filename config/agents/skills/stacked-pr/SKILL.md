@@ -111,7 +111,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
    のを block する(ADR-0027、§8 参照)。**ただし upstream の既知バグ
    (github/gh-stack#319、§5 参照)により、link した瞬間からそのブランチ
    への `pull_request` イベントが一切発火しなくなる。実行順は必ず
-   「全段の内容を確定 → push → `gh pr checks` で CI green を確認 →
+   「全段の内容を確定 → push → `pr-checks-wait <N>` で CI green を確認 →
    最後に1回だけ `gh stack link` → 以後そのブランチには push しない」
    にする。** link 後に修正が必要になった場合は `gh stack unstack
    <stack-id>` で解除 → push → CI 確認 → 再度 `gh stack link` の順を
@@ -205,7 +205,7 @@ git push --force-with-lease origin <2段目のブランチ>
 <直下の段>` などで控えておく)を差し替えて繰り返す。各段を rebase する
 たびに `nix flake check --all-systems --no-build`(このリポジトリの回帰
 確認コマンド、他リポジトリではそれぞれの高速検証コマンドに読み替える)を
-挟み、全段 push し終えてから `gh pr checks <N> --watch` で CI を待つ
+挟み、全段 push し終えてから `pr-checks-wait <N>` で CI を待つ
 (`mergeable` が `MERGEABLE` に変わったことも合わせて確認する)。
 
 ## 5. GitHub ネイティブの stack 機能
@@ -239,9 +239,9 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 したがって、**最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
 
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
-2. `gh pr checks <N> --required --watch` で、required のチェックの完了だけを待つ(required でないチェックは
-   マージ可否を決めないので待たない。#1001。`--required` を付けた `--watch` が、まだ終わっていない PR で
-   終了するまで待つかは未確認)。
+2. `pr-checks-wait <N>` を背景で実行して、required のチェックの完了だけを待つ(required でないチェックは
+   マージ可否を決めないので待たない。#1001。赤が 1 件でも出れば即 NG で終わる。stacked PR で base が
+   ruleset の対象外でも、既定ブランチの required で判定する)。
 3. **マージする PR が最上段か確かめる。** マージしたい PR の head ブランチを base にしている open な
    PR が無いことを、`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>" --jq length` が
    `0` であることで読む。0 でなければ、その PR は最上段ではない — 上の段を探して、そちらを
