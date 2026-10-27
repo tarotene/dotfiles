@@ -133,3 +133,27 @@ vault の場所の正本が分かれるため。存在確認は `.obsidian/app.j
 - `crates/hub-resolve/src/lib.rs`
 - `crates/worklog/src/lib.rs`
 - `home/modules/obsidian.nix`
+
+## Amendment (2026-10-28 — Codex と Copilot のセッションにも注入する)
+
+D5 の「範囲は Claude Code のセッションに限る」と「Codex と Copilot のセッションへの注入は、今は登録していない
+(未決)」を、次に改める。vault を宣言した機体では、Claude Code、Codex、Copilot CLI のどのセッションにも、
+作業ログの規範と直近の stuck / found を渡す。
+
+- Codex: 共通の hook 宣言(`claudeHookDeclarations`)から展開済みで、`~/.codex/hooks.json` の `SessionStart`
+  (matcher `startup`)に `worklog session-start` がある(vega、2026-10-28 に読んだ。`docs/claude/codex-hook-parity.md`
+  にも「実装済み」とある)。D5 の「登録していない」は、Codex については事実と違っていた。出力は Claude Code と同じ入れ子の形。
+- Copilot CLI: `sessionStart` は最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks reference"、
+  <https://docs.github.com/en/copilot/reference/hooks-reference> の `sessionStart`、取得 2026-10-28)。そこで
+  `worklog session-start --agent copilot` が最上位の形で出し、`home/modules/agents.nix` が `~/.copilot/settings.json` の
+  `sessionStart` に登録する。`--agent claude|codex` は従来の入れ子の形。
+- 未確認: 実際の Copilot CLI と Codex のセッションで、注入された文が文脈に入ること。`hms` の適用後に、新しい
+  セッションで確かめる。
+
+D1〜D4 は変更しない。D5 のうち、Git へ上げる段を持たないことは変えない。
+
+### 執行点
+
+- `crates/worklog/src/main.rs`
+- `crates/worklog/tests/cli.rs`
+- `home/modules/agents.nix`

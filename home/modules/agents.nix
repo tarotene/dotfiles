@@ -2235,6 +2235,18 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
           Stop ${lib.escapeShellArg copilotAgentTurnLogCmd} 10
       '';
 
+  # worklog の Copilot 展開(ADR-998 の追記)。Codex は共通宣言の SessionStart から展開済み。Copilot
+  # CLI の sessionStart は最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks
+  # reference"、取得 2026-10-28)ので、`--agent copilot` でその形を出させる。同じ lost-update 対策で、
+  # 最後尾の agent-turn-log の登録の後ろに明示的に順序付ける。
+  home.activation.registerCopilotWorklogHooks =
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAgentTurnLogHooks" ]
+      ''
+        # pipeline-node: worklog
+        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
+          sessionStart ${lib.escapeShellArg "${worklogStartCmd} --agent copilot"} 10
+      '';
+
   home.file.".claude/pr-gate-repos".text = ''
     # pr-gate が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
     # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。

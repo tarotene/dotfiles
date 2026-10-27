@@ -3,7 +3,7 @@
 //! ```text
 //! worklog add <kind> <text...> [--ref N] [--repo owner/repo]
 //! worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]
-//! worklog session-start      # SessionStart hook。vault を宣言していない機体では無音
+//! worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。vault を宣言していない機体では無音
 //! ```
 //!
 //! `WORKLOG_NOW`(unix 秒)は試験用に今の時刻を固定する。
@@ -21,7 +21,7 @@ fn usage() -> String {
     format!(
         "usage:\n  worklog add <kind> <text...> [--ref N] [--repo owner/repo]\n  \
          worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]\n  \
-         worklog session-start\nkind: {} (list では memo も)",
+         worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)",
         Kind::names()
     )
 }
@@ -31,10 +31,7 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("add") => add_cmd(&args[1..]),
         Some("list") => list_cmd(&args[1..]),
-        Some("session-start") => {
-            session_start();
-            Ok(())
-        }
+        Some("session-start") => session_arg(&args[1..]).map(session_start),
         _ => Err(usage()),
     };
     match result {
@@ -173,8 +170,53 @@ fn list_cmd(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// SessionStart の出力の形。Claude Code と Codex は `hookSpecificOutput` に入れ子で読み、Copilot CLI は
+/// 最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks reference" の
+/// `sessionStart`、取得 2026-10-28)。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Shape {
+    Nested,
+    TopLevel,
+}
+
+/// `session-start [--agent claude|codex|copilot]`。既定は `claude`(入れ子)。
+fn session_arg(args: &[String]) -> Result<Shape, String> {
+    let mut shape = Shape::Nested;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--agent" => {
+                shape = match value(&mut it, "--agent")? {
+                    "claude" | "codex" => Shape::Nested,
+                    "copilot" => Shape::TopLevel,
+                    other => {
+                        return Err(format!(
+                            "--agent は claude|codex|copilot のいずれか: '{other}'"
+                        ))
+                    }
+                };
+            }
+            other => return Err(format!("session-start に未知の引数: '{other}'")),
+        }
+    }
+    Ok(shape)
+}
+
+/// 注入する JSON。`context` はそのまま `additionalContext` に入る。
+fn session_output(shape: Shape, context: String) -> serde_json::Value {
+    match shape {
+        Shape::Nested => json!({
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": context,
+            }
+        }),
+        Shape::TopLevel => json!({ "additionalContext": context }),
+    }
+}
+
 /// SessionStart hook。常に exit 0。vault を宣言していない機体では何も出さない。
-fn session_start() {
+fn session_start(shape: Shape) {
     let getenv = |k: &str| std::env::var(k).ok();
     let declared = getenv(VAULT.env_var).is_some_and(|v| !v.is_empty())
         || hub_resolve::marker_path(&VAULT, &getenv).is_file();
@@ -204,12 +246,7 @@ fn session_start() {
         .as_deref()
         .map(|r| select_recent(&rows, r, SESSION_MAX_LINES))
         .unwrap_or_default();
-    let out = json!({
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": build_context(repo.as_deref(), &recent),
-        }
-    });
+    let out = session_output(shape, build_context(repo.as_deref(), &recent));
     println!(
         "{}",
         serde_json::to_string_pretty(&out).expect("serialize session-start output")

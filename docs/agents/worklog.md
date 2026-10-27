@@ -16,7 +16,7 @@ Git に置かず、Obsidian vault の当日ノートに置く。スマホから�
 ```text
 worklog add <kind> <text...> [--ref N] [--repo owner/repo]
 worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]
-worklog session-start        # SessionStart hook。手で打つ必要は無い
+worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手で打つ必要は無い
 ```
 
 - `add` は当日ノートの `## 作業ログ` 節の末尾に 1 行を足す。`owner/repo` は作業ディレクトリの
@@ -37,7 +37,10 @@ hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、無けれ
 
 ## SessionStart の注入
 
-- イベントは `startup` だけ。
+- イベントは `startup` だけ。Claude Code、Codex、Copilot CLI のセッションに渡す(ADR-998 の 2026-10-28 の追記)。
+  Codex は共通の hook 宣言から展開される。Copilot は `home/modules/agents.nix` が `~/.copilot/settings.json` の
+  `sessionStart` に `--agent copilot` つきで登録する。出力の形は、Claude Code と Codex が `hookSpecificOutput` の
+  入れ子、Copilot が最上位の `additionalContext`。
 - マーカーも環境変数も無い機体では何も出さない(会社の機体など)。
 - 宣言はあるが vault が使えないときは、stderr に 1 行だけ出して exit 0 で終わる。
 - 注入文は、書く時点と kind の意味、書かないもの(会社の業務の中身、機密、既存の記録から導けること)、

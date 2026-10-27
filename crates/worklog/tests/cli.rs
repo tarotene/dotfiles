@@ -289,6 +289,65 @@ fn session_start_outside_git_carries_the_norm_only() {
 }
 
 #[test]
+fn session_start_for_copilot_puts_additional_context_at_the_top_level() {
+    // Copilot CLI consumes only a top-level `additionalContext` for sessionStart
+    // (GitHub Docs, "GitHub Copilot hooks reference", retrieved 2026-10-28).
+    let e = env();
+    declare_by_marker(&e);
+    let stdin = format!(r#"{{"cwd":"{}"}}"#, e.repo.display());
+    let o = run(
+        &e,
+        &e.root,
+        None,
+        &["session-start", "--agent", "copilot"],
+        &stdin,
+    );
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let v: Value = serde_json::from_str(&o.stdout).unwrap();
+    assert!(v.get("hookSpecificOutput").is_none(), "{v}");
+    assert!(
+        v["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("worklog add"),
+        "{v}"
+    );
+    assert_eq!(v.as_object().unwrap().len(), 1, "{v}");
+}
+
+#[test]
+fn session_start_for_codex_keeps_the_nested_shape() {
+    let e = env();
+    declare_by_marker(&e);
+    let o = run(
+        &e,
+        &e.root,
+        None,
+        &["session-start", "--agent", "codex"],
+        "{}",
+    );
+    let v: Value = serde_json::from_str(&o.stdout).unwrap();
+    assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
+    assert!(v.get("additionalContext").is_none(), "{v}");
+}
+
+#[test]
+fn session_start_rejects_an_unknown_agent_or_argument() {
+    let e = env();
+    declare_by_marker(&e);
+    let bad_agent = run(
+        &e,
+        &e.root,
+        None,
+        &["session-start", "--agent", "nope"],
+        "{}",
+    );
+    assert_eq!(bad_agent.code, 2);
+    let bad_arg = run(&e, &e.root, None, &["session-start", "--wat"], "{}");
+    assert_eq!(bad_arg.code, 2);
+}
+
+#[test]
 fn a_declared_but_broken_vault_is_reported_once_and_never_blocks() {
     let e = env();
     std::fs::remove_file(e.vault.join(".obsidian/daily-notes.json")).unwrap();
