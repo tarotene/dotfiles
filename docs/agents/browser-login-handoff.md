@@ -52,7 +52,10 @@ Playwright MCP・claude-in-chrome はいずれも Claude Code 固有のツール
   手順は書かれていない。
 - Playwright MCP README (microsoft/playwright-mcp): 既定で persistent
   profile を使い、ログイン情報はディスクに保存される
-  ("All the logged in information will be stored")。これにより再発頻度
-  が既に低い(SKILL.md §5 参照)。
+  ("All the logged in information will be stored")。2026-10-27 以降、
+  personal ホストは既定の専用プロファイルでなく、普段の Firefox のプロファイルを
+  同期した複製を使う(`docs/claude/claude-mcp-servers.md`)。複製への同期は
+  一方向なので、エージェント側のログインは次の起動で消え、ログインは
+  普段の Firefox で行う(SKILL.md §5)。
 - リポジトリ内の全 skill を「未ログイン」「storageState」「ハンドオフ」で
   検索したが、対話セッション向けの型は既存の skill のいずれにも無かった。
