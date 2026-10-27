@@ -8,6 +8,29 @@ fn policy() -> Policy {
     serde_json::from_value(json!({"version":1,"writable_roots":["workspace","temp"],
         "secret_paths":["~/.ssh","~/.codex/auth.json"],"domains":["github.com"],"tools":"prompt","projects":[],"project_rules":{}})).unwrap()
 }
+/// #1099: `project_rules` was removed from the policy, but a `policy.json` and an ownership
+/// record written before that still carry it. They must keep loading, and the key must not
+/// come back when the policy is written again.
+#[test]
+fn a_policy_with_the_removed_project_rules_key_still_loads_and_does_not_write_it_back() {
+    let old = json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":["~/.ssh"],"domains":["github.com"],"tools":"prompt","projects":[],
+        "project_rules":{"/some/project":{"domains":["example.com"]}}});
+    let loaded: Policy = serde_json::from_value(old).unwrap();
+    loaded.validate().unwrap();
+    let written = serde_json::to_value(&loaded).unwrap();
+    assert!(written.get("project_rules").is_none(), "{written}");
+    // The same policy without the key is equal: the legacy value does not affect comparisons.
+    let without: Policy = serde_json::from_value(written).unwrap();
+    assert_eq!(loaded, without);
+    // Unknown keys are still refused.
+    assert!(serde_json::from_value::<Policy>(
+        json!({"version":1,"writable_roots":["workspace","temp"],
+        "secret_paths":[],"domains":[],"tools":"prompt","projects":[],"project_ruless":{}})
+    )
+    .is_err());
+}
+
 fn put(home: &Path, path: &str, data: &str) {
     let path = home.join(path);
     fs::create_dir_all(path.parent().unwrap()).unwrap();

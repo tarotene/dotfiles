@@ -7,7 +7,7 @@ pub mod retire;
 pub(crate) mod transaction;
 
 use inventory::{without_non_grants, Source};
-use pending::{inert_call, tolerated_changes, tolerated_new_source, Pending};
+use pending::{tolerated_changes, tolerated_new_source, Pending};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -18,10 +18,9 @@ pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ProjectRule {
-    pub domains: Vec<String>,
+/// Reads and discards a key that an older `policy.json` / ownership record still carries.
+fn discard<'de, D: serde::Deserializer<'de>>(d: D) -> Result<(), D::Error> {
+    serde::de::IgnoredAny::deserialize(d).map(|_| ())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -47,7 +46,17 @@ pub struct Policy {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_allow: Vec<String>,
     pub projects: Vec<PathBuf>,
-    pub project_rules: BTreeMap<String, ProjectRule>,
+    /// `project_rules` was removed (#1099): the places a policy covers are listed in
+    /// `projects`. Records written before that still hold the key, and
+    /// `deny_unknown_fields` would refuse to read them, so it is read and dropped; it is
+    /// never written back.
+    #[serde(
+        default,
+        rename = "project_rules",
+        skip_serializing,
+        deserialize_with = "discard"
+    )]
+    legacy_project_rules: (),
 }
 
 fn default_sandboxed_shell() -> String {
@@ -106,11 +115,7 @@ impl Policy {
                 return Err(format!("invalid secret path: {path}"));
             }
         }
-        for domain in self
-            .domains
-            .iter()
-            .chain(self.project_rules.values().flat_map(|p| &p.domains))
-        {
+        for domain in &self.domains {
             if domain.is_empty()
                 || domain.contains(['/', ':', '*'])
                 || !domain
@@ -120,12 +125,7 @@ impl Policy {
                 return Err(format!("domain must be an exact hostname: {domain}"));
             }
         }
-        for path in self
-            .projects
-            .iter()
-            .map(PathBuf::as_path)
-            .chain(self.project_rules.keys().map(Path::new))
-        {
+        for path in self.projects.iter().map(PathBuf::as_path) {
             if !path.is_absolute() {
                 return Err(format!("project path must be absolute: {}", path.display()));
             }
@@ -250,7 +250,6 @@ pub fn inspect(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<Rev
 
 fn all_projects(policy: &Policy, projects: &[PathBuf]) -> Vec<PathBuf> {
     let mut p = policy.projects.clone();
-    p.extend(policy.project_rules.keys().map(PathBuf::from));
     p.extend_from_slice(projects);
     p.sort();
     p.dedup();
@@ -430,11 +429,6 @@ pub fn apply(policy: &Policy, home: &Path, projects: &[PathBuf]) -> Result<(), S
             .iter()
             .any(|p| !policy.secret_paths.contains(p))
         || policy.projects != old.projects
-        || policy.project_rules.iter().any(|(p, r)| {
-            old.project_rules
-                .get(p)
-                .is_none_or(|o| r.domains.iter().any(|d| !o.domains.contains(d)))
-        })
     {
         return Err(
             "permission expansion or source scope change requires inspect and reviewed migrate"
@@ -913,209 +907,6 @@ fn merge_toml(table: &mut dyn toml_edit::TableLike, desired: &Value) -> Result<(
     Ok(())
 }
 
-/// Hook adapter. Missing deployment is permitted before stage2; a deployed policy
-/// without a valid ownership record is always denied. The policy it enforces is the
-/// reviewed record's, not the deployed file's (#1060). No process-global mutation.
-pub fn hook_check(agent: &str, raw: &str) -> Result<Option<&'static str>, String> {
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME missing")?);
-    let path = home.join(".config/agent-permissions/policy.json");
-    match std::fs::symlink_metadata(&path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if state_path(&home).exists() {
-                return Err("deployed permission policy disappeared; restore declaration".into());
-            }
-            return Ok(None);
-        }
-        Err(e) => return Err(format!("{}: {e}", path.display())),
-        Ok(_) => {}
-    }
-    if std::env::var_os("CODEX_HOME").is_some() || std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
-        return Err("custom agent configuration home is not inventoried".into());
-    }
-    // The baseline is the reviewed ownership record, never the deployed policy.json:
-    // an expansion that `hms` deployed but nobody has migrated yet must not take
-    // effect, and must not stop every tool either (#1060). A deployed policy
-    // without a valid record is still denied here (load_record fails).
-    let record = load_record(&home)?;
-    let policy = record.policy.clone();
-    let input: Value =
-        serde_json::from_str(raw).map_err(|e| format!("permission hook input: {e}"))?;
-    let cwd = input
-        .get("cwd")
-        .and_then(Value::as_str)
-        .ok_or("permission hook cwd missing")?;
-    // Pending allow rules never block here; a structural drift blocks every call
-    // except the inert ones, so the agent can still ask the owner and diagnose.
-    if let Err(reason) = assess_session(&policy, &home, Path::new(cwd)) {
-        let named = input.get("tool_name").and_then(Value::as_str);
-        if inert_call(named, &input["tool_input"]) {
-            return Ok(None);
-        }
-        return Err(reason);
-    }
-    if agent == "codex" {
-        return Ok(None);
-    } // Native profile, not ignored Codex ask output.
-    let tool = input
-        .get("tool_name")
-        .and_then(Value::as_str)
-        .ok_or("permission hook tool missing")?;
-    // A tool the shared policy declares is already allowed in the settings; asking
-    // again would defeat the declaration (#1051).
-    if policy.mcp_allow.iter().any(|declared| declared == tool) {
-        return Ok(None);
-    }
-    if tool.starts_with("mcp__") {
-        // Whether a hook `ask` beats a settings `allow` is not documented (#1052), so
-        // nothing here depends on it: ask only where an allow this hook cannot
-        // manage (a shared or managed file) already covers the tool. Everywhere else
-        // the owner's own allows (declared, or pending until reclaim) and the default
-        // prompt are Claude's decision.
-        return Ok(shared_allow_covers(&record, &home, Path::new(cwd), tool).then_some("ask"));
-    }
-    let args = &input["tool_input"];
-    let shell = ["Bash", "PowerShell", "Monitor"].contains(&tool);
-    if shell && args["dangerouslyDisableSandbox"] == true {
-        return Ok(Some("ask"));
-    }
-    if shell {
-        // Claude folds shared WebFetch allow rules into sandbox connectivity.
-        // A one-time ask is needed when that retained connectivity exceeds canon.
-        if record.sources.iter().any(|s| {
-            !s.writable
-                && s.grants["permissions"]["allow"]
-                    .as_array()
-                    .is_some_and(|a| {
-                        a.iter().filter_map(Value::as_str).any(|r| {
-                            r.starts_with("Edit")
-                                || (r.starts_with("WebFetch")
-                                    && !r
-                                        .strip_prefix("WebFetch(domain:")
-                                        .and_then(|d| d.strip_suffix(')'))
-                                        .is_some_and(|d| policy.domains.iter().any(|p| p == d)))
-                        })
-                    })
-        }) {
-            return Ok(Some("ask"));
-        }
-    }
-    if ["Read", "Write", "Edit", "MultiEdit", "NotebookEdit"].contains(&tool) {
-        let path = args
-            .get("file_path")
-            .or_else(|| args.get("notebook_path"))
-            .and_then(Value::as_str)
-            .ok_or("file tool path missing")?;
-        let path = resolve(&PathBuf::from(cwd).join(path))?;
-        for secret in &policy.secret_paths {
-            let secret = secret
-                .strip_prefix("~/")
-                .map_or_else(|| PathBuf::from(secret), |p| home.join(p));
-            if path.starts_with(resolve(&secret)?) {
-                return Err("raw credential access requires a reviewed operation".into());
-            }
-        }
-        if tool != "Read"
-            && !path.starts_with(resolve(Path::new(cwd))?)
-            && !path.starts_with(resolve(&std::env::temp_dir())?)
-        {
-            return Ok(Some("ask"));
-        }
-    }
-    if tool == "WebFetch" {
-        let url = args["url"].as_str().ok_or("WebFetch URL missing")?;
-        let host = url
-            .split_once("://")
-            .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
-            .ok_or("invalid URL")?;
-        let project_known = policy.project_rules.iter().any(|(p, rule)| {
-            resolve(Path::new(cwd))
-                .ok()
-                .zip(resolve(Path::new(p)).ok())
-                .is_some_and(|(cwd, root)| cwd.starts_with(root))
-                && rule.domains.iter().any(|d| d == host)
-        });
-        if !policy.domains.iter().any(|d| d == host) && !project_known {
-            return Ok(Some("ask"));
-        }
-    }
-    Ok(None)
-}
-
-/// Whether a non-writable source this session reads (a shared project settings file,
-/// managed policy) allows `tool` with an `mcp__` rule. Those allows are outside the
-/// owner's declaration, so the one-time review has to come from the hook.
-fn shared_allow_covers(record: &Record, home: &Path, cwd: &Path, tool: &str) -> bool {
-    let Ok(home) = home.canonicalize() else {
-        return true; // cannot tell which sources this session reads: ask
-    };
-    let dirs = inventory::session_dirs(cwd);
-    record
-        .sources
-        .iter()
-        .filter(|s| !s.writable && inventory::in_session_scope(&s.path, &home, &dirs))
-        .filter_map(|s| s.grants["permissions"]["allow"].as_array())
-        .flatten()
-        .filter_map(Value::as_str)
-        .any(|rule| mcp_rule_covers(rule, tool))
-}
-
-/// Claude's `mcp__` allow rule forms: one tool, a whole server (`mcp__server`), or a
-/// pattern with `*`. Anything that is not an `mcp__` rule covers nothing here.
-fn mcp_rule_covers(rule: &str, tool: &str) -> bool {
-    if !rule.starts_with("mcp__") {
-        return false;
-    }
-    if rule.contains('*') {
-        return glob(rule, tool);
-    }
-    rule == tool || tool.strip_prefix(rule).is_some_and(|r| r.starts_with("__"))
-}
-
-/// `*` matches any run of characters; everything else matches itself.
-fn glob(pattern: &str, text: &str) -> bool {
-    let mut parts = pattern.split('*');
-    let first = parts.next().unwrap_or("");
-    let Some(mut rest) = text.strip_prefix(first) else {
-        return false;
-    };
-    let mut parts: Vec<&str> = parts.collect();
-    let last = parts.pop().unwrap_or(first);
-    for part in parts {
-        match rest.find(part) {
-            Some(i) => rest = &rest[i + part.len()..],
-            None => return false,
-        }
-    }
-    // The pattern has at least one `*`, so the last part anchors the end.
-    rest.ends_with(last) && rest.len() >= last.len()
-}
-
-fn resolve(path: &Path) -> Result<PathBuf, String> {
-    fn walk(path: &Path, depth: usize) -> Result<PathBuf, String> {
-        if depth > 128 {
-            return Err("path resolution depth exceeded".into());
-        }
-        match std::fs::symlink_metadata(path) {
-            Ok(m) if m.file_type().is_symlink() => {
-                let target = std::fs::read_link(path).map_err(|e| e.to_string())?;
-                return walk(
-                    &path.parent().ok_or("symlink has no parent")?.join(target),
-                    depth + 1,
-                );
-            }
-            Ok(_) => {
-                return std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("{}: {e}", path.display())),
-        }
-        let parent = path.parent().ok_or("path has no parent")?;
-        let leaf = path.file_name().ok_or("path has no filename")?;
-        Ok(walk(parent, depth + 1)?.join(leaf))
-    }
-    walk(path, 0)
-}
-
 const COMMANDS: &[(&str, &str)] = &[
     (
         "retire",
@@ -1409,41 +1200,4 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         _ => return Err("unknown subcommand".into()),
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{glob, mcp_rule_covers};
-
-    #[test]
-    fn mcp_rules_cover_a_tool_a_server_or_a_pattern() {
-        assert!(mcp_rule_covers("mcp__s__t", "mcp__s__t"));
-        assert!(!mcp_rule_covers("mcp__s__t", "mcp__s__u"));
-        assert!(mcp_rule_covers("mcp__s", "mcp__s__t"));
-        assert!(
-            !mcp_rule_covers("mcp__s", "mcp__srv__t"),
-            "a prefix of the name is not the server"
-        );
-        assert!(mcp_rule_covers("mcp__s__*", "mcp__s__t"));
-        assert!(mcp_rule_covers("mcp__s__read_*", "mcp__s__read_file"));
-        assert!(!mcp_rule_covers("mcp__s__read_*", "mcp__s__write"));
-        assert!(!mcp_rule_covers("mcp__s__*", "mcp__other__t"));
-        assert!(!mcp_rule_covers("Bash(echo)", "mcp__s__t"));
-        assert!(!mcp_rule_covers("WebSearch", "mcp__s__t"));
-    }
-
-    #[test]
-    fn glob_matches_stars_without_overlapping_parts() {
-        assert!(glob("a*c", "abc"));
-        assert!(glob("a*c", "ac"));
-        assert!(!glob("a*c", "ab"));
-        assert!(glob("*", "anything"));
-        assert!(glob("a*b*c", "a--b--c"));
-        assert!(!glob("a*b*c", "a--c--b"));
-        assert!(
-            !glob("ab*ba", "aba"),
-            "the prefix and the suffix cannot share a character"
-        );
-        assert!(glob("ab*ba", "abba"));
-    }
 }
