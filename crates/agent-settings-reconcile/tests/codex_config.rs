@@ -76,6 +76,30 @@ fn adds_tui_table_after_codex_owned_content_without_touching_it() {
 }
 
 #[test]
+fn feature_notice_suppression_preserves_native_state_comments_and_is_idempotent() {
+    for original in [
+        CODEX_OWNED.to_owned(),
+        format!("suppress_unstable_features_warning = false # owner comment\n{CODEX_OWNED}"),
+    ] {
+        let (_d, file) = with(Some(&original));
+        let got = apply(
+            &file,
+            r#"{"suppress_unstable_features_warning":true,"tui.terminal_title":["activity","context-used","five-hour-limit"]}"#,
+        );
+        for line in CODEX_OWNED.lines().filter(|line| !line.is_empty()) {
+            assert!(
+                got.lines().any(|actual| actual == line),
+                "lost native-owned line: {line}"
+            );
+        }
+        assert!(got.contains("suppress_unstable_features_warning = true"));
+        if original.contains("# owner comment") {
+            assert!(got.contains("true # owner comment"));
+        }
+    }
+}
+
+#[test]
 fn adds_key_to_existing_tui_table() {
     let before = "[tui]\nscreen_reader_detection_done = true\n\n[tui.model_availability_nux]\n\"gpt-6.1-sol\" = 3\n";
     let (_d, f) = with(Some(before));

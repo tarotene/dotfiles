@@ -181,8 +181,11 @@ codex-plan
 native codex app-server --listen stdio://
 ```
 
-起動時は短命の app-server で initialize、全ページの model/list、
-collaborationMode/list を照合する。互換性のないプロトコル・モデルを検出したら
+起動時は短命の app-server で initialize、作業ディレクトリを指定した config/read、
+全ページの model/list、collaborationMode/list を照合する。
+config/read の `default_permissions` が空でない文字列であることを確認し、
+起動時の権限名として保持する。欠落・型不正・旧 sandbox 設定との併存では
+理由を示して終了する。互換性のないプロトコル・モデルを検出したら
 TUI や推論を開始しない。その後、別の専用 app-server と標準 TUI を起動する。
 検証中に要求された承認を勝手に許可しない。
 
@@ -194,9 +197,15 @@ TUI や推論を開始しない。その後、別の専用 app-server と標準 
 turn/start も、次の手動設定更新まで補正する。native の適用結果通知をそのまま
 返し、TUI が実際に適用された設定を表示する。履歴や指示文からモードを推測しない。
 IDは整数と文字列を区別し、サーバーからの承認要求とは別に扱う。
+`thread/start`・`thread/resume`・`thread/fork` の `sandbox` を除き、
+起動前に取得した名前を `permissions` に指定する。再開・派生でも現在の権限宣言を
+選び、保存済みの履歴・モデル・推論量は書き換えない。要求の `config` に
+`sandbox_mode`・`sandbox_workspace_write`（ドット区切りの子キーを含む）が
+あれば、競合した要求を転送せず終了する。権限名やポリシーは中継に固定しない。
+開始後の明示的な権限変更はそのまま native に渡す。
 未知のフィールドは保持する。それ以外の要求・応答・
 通知は JSON とサイズを検証して元の文字列を転送する。
-会話・モード判定・Plan 指示・sandbox・承認・hook・推論は native が担当する。
+会話・モード判定・Plan 指示・権限ポリシーの解決と強制・承認・hook・推論は native が担当する。
 
 TUI には現在の作業ディレクトリと Plan 推論量を CLI 引数で渡す。
 新規起動だけ実行モデルと実行推論量も渡す。resume にそれらを渡すと
@@ -251,7 +260,7 @@ SIGKILLやマシンクラッシュではプロセス内の cleanup は実行で�
   実測ではプリセットだけだと Plan/high→Default/medium→Plan/high となった。
   計画の「応答だけ」を拡張し、明示的なモード値で切替を認識する。
   同モードでの手動選択を奪わず、通知待ちの古い turn/start も補正する。
-  権限・承認・指示の補正や native 本体の fork は不要。
+  承認・指示の補正や native 本体の fork は不要。
 
 既存手段: `crates/codex-plan` — 自前 — native 設定だけでは Plan 専用の
 モデルを指定できず、観測用 hook は要求の制御に使えないため中継を追加する。
@@ -270,6 +279,7 @@ TUI・推論・履歴・フレーム処理は既存手段を採用する。
 - `crates/codex-plan/src/experiment.rs`
 - `crates/codex-plan/src/threads.rs`
 - `home/modules/claude.nix`
+- `home/modules/codex.nix`
 
 ## 検証
 
@@ -277,6 +287,67 @@ TUI・推論・履歴・フレーム処理は既存手段を採用する。
 非改変、設定の一括保存、無効なモデルと推論量、20 MiB の往復、切断、0700と
 並列 socket の独立、子プロセス回収、行の上限、実験の期間・抽選・PR 完了の判定を検査する。
 Unix socket を作れる実行環境が必要。
+
+### 起動時の警告と資格情報保護
+
+2026-10-27、Codex 0.164.0 で確認。remote TUI は名前付き権限を送らず、
+旧形式の `sandbox=workspace-write` に変換する。この形式では今回の設定の
+ネットワーク許可が失われ、資格情報のマスク処理が無効になっていた。
+警告を取り除くため、上記の起動要求で native の権限名を選び直す。
+
+開発中機能の注意書きは、home-manager の既存の設定反映で
+`suppress_unstable_features_warning=true` を宣言する。
+中継は警告通知を削除せず、不動作・実行時の警告もそのまま転送する。
+この設定は開発中機能全般の注意書きを抑止するため、機能を追加したときも
+その注意書きは表示されない。
+
+既存手段: `crates/codex-plan` と `home/modules/codex.nix` — 拡張 —
+既存の起動前検査・中継・設定反映を使う。ポリシーの複写や独自の表示フィルタは増やさない。
+
+根拠（OpenAI, Codex rust-v0.164.0、取得2026-10-27）:
+
+- D14: native の設定から権限名を取得し、起動要求に選択名だけを渡す。
+  [config/read の作業ディレクトリ](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server-protocol/src/protocol/v2/config.rs#L389-L407)、
+  [remote の権限選択と旧形式への変換](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/app_server_session.rs#L2160-L2199)、
+  [名前付き指定と sandbox の排他](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server-protocol/src/protocol/v2/thread.rs#L94-L100)。
+  差分: remote の変換を中継で補正する（軸: 表現不可能 — 単一正本と排他的な選択）。
+- D15: 開発中機能の注意書きは native の設定で抑止する。
+  [設定定義](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L1162-L1163)、
+  [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)（公開日不明）。
+  差分: 一致。本人了承済みの標準設定を使う（軸: 還元 — 独自フィルタを作らない）。
+- D16: 合成資格情報で実際のツール実行とモデルへの送信内容を検査する。
+  [upstream の資格情報マスク試験](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/tests/suite/scenarios_credential_masking.rs#L128-L193)、
+  [ネットワーク無効時の警告](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L4916-L4951)。
+  差分: 中継を含む native app-server の実行で検査する（軸: 検出のみ — 外部バイナリの動作確認）。
+
+`tests/native_permissions.rs` は一時HOME、合成GitHub資格情報、ループバックの
+模擬Responsesを使う opt-in 試験。実トークンや有料推論は使わない。
+インストール済みのCodex 0.164.0、zsh、native sandboxを利用できるLinux上で実行する:
+
+```sh
+cargo test -p codex-plan --test native_permissions -- --ignored --nocapture
+```
+
+他のCodex sandbox内ではホストのdaemon socketが見えないため、通常のホスト権限で実行する。
+一時HOMEに対するPATH補助バイナリの作成拒否は、nativeが意図して出す診断として
+起動警告の通知とは区別する。試験は新規・再開・派生の実効権限名・通信許可と履歴・
+モデル・推論量を読み戻し、通常の `exec_command` のshell起動で資格情報が置換値になり、
+秘密パスが拒否されることを検査する。旧形式と通信無効の負の対照も含む。
+
+同日の実行結果:
+
+| 指定 | 実効権限名 | 通信許可 | 起動警告 |
+|---|---|---|---|
+| 旧 sandbox・注意書き表示 | なし | false | マスク無効・開発中機能の2件 |
+| 中継の名前付き権限・注意書き抑止 | synthetic-check | true | 0件 |
+| 名前付き権限・通信無効・注意書き抑止 | synthetic-check | false | マスク無効が残る |
+
+再開・派生でも権限名と通信許可を読み戻し、履歴・モデル・推論量の保持を確認した。
+模擬Responsesへの2回の要求には元の合成資格情報が含まれず、ツール出力は置換値と
+秘密パスの `Permission denied` を含んだ。標準TUIの新規セッションも一時HOMEで
+起動し、変更前の `2 warnings` 表示が変更後には出ないことを確認した。
+現在ホストでは `hms .` の適用後にTOMLを読み、注意書き抑止・名前付き権限・
+network_proxy・credential_maskingの設定値を確認した。
 
 実機の検証結果は PR の検証欄に記録する。標準 TUI の表示に加えて保存履歴の
 `turn_context` の model、effort、collaboration_mode、approval_policy、

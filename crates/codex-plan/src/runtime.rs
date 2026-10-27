@@ -120,6 +120,7 @@ async fn rpc(
 #[derive(Debug, serde::Serialize)]
 pub struct Discovery {
     pub models: Vec<Value>,
+    pub permissions: String,
     pub modes: Value,
     pub rate_limits: Option<Value>,
     pub rate_limits_error: Option<String>,
@@ -158,6 +159,15 @@ pub async fn discover(native: &Path, with_rates: bool) -> Result<Discovery> {
         writer
             .send(json!({"method":"initialized"}).to_string())
             .await?;
+        let config = rpc(
+            &mut reader,
+            &mut writer,
+            4,
+            "config/read",
+            json!({"cwd":std::env::current_dir()?, "includeLayers":false}),
+        )
+        .await?;
+        let permissions = crate::selected_permissions(&config)?;
         let mut models = Vec::new();
         let mut cursor = Value::Null;
         let mut seen = std::collections::HashSet::new();
@@ -219,6 +229,7 @@ pub async fn discover(native: &Path, with_rates: bool) -> Result<Discovery> {
         };
         Ok(Discovery {
             models,
+            permissions,
             modes,
             rate_limits,
             rate_limits_error,
@@ -242,6 +253,7 @@ async fn relay(
     mut reader: Reader,
     mut writer: Writer,
     settings: &Settings,
+    permissions: String,
     advice: &std::sync::Mutex<crate::advice::AdviceObserver>,
 ) -> Result<()> {
     let (socket, _) = timeout(Duration::from_secs(60), listener.accept())
@@ -257,7 +269,7 @@ async fn relay(
     .await
     .context("TUI WebSocket handshake timed out")??;
     let (mut outgoing, mut incoming) = websocket.split();
-    let relay = std::sync::Mutex::new(Relay::default());
+    let relay = std::sync::Mutex::new(Relay::new(permissions));
     // Poll both directions independently even while a pipe/socket write is
     // backpressured. Serial writes can deadlock against a busy native server.
     let to_server = async {
@@ -365,7 +377,7 @@ pub async fn launch(
     let result = async {
         tokio::select! {
             status = tui.wait() => Ok(status?.code().unwrap_or(1)),
-            result = relay(listener, reader, writer, settings, &advice) => {
+            result = relay(listener, reader, writer, settings, discovery.permissions.clone(), &advice) => {
                 match result {
                     Ok(()) => timeout(Duration::from_secs(2), tui.wait()).await
                         .context("TUI closed connection but did not exit")?
@@ -475,6 +487,7 @@ mod tests {
                 reader,
                 writer,
                 &Settings::default(),
+                "test-profile".into(),
                 &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
             )
             .await
@@ -516,6 +529,7 @@ mod tests {
                 reader,
                 writer,
                 &Settings::default(),
+                "test-profile".into(),
                 &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
             )
             .await
@@ -550,6 +564,7 @@ mod tests {
                 reader,
                 writer,
                 &Settings::default(),
+                "test-profile".into(),
                 &std::sync::Mutex::new(crate::advice::AdviceObserver::default()),
             )
             .await

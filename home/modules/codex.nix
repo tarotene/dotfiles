@@ -65,6 +65,9 @@ let
   # (`Context … used` / `… left`)は短くできないので、項目の数で収める。
   # project-name は workspace 列と重なるので外している。
   codexConfigSpec = builtins.toJSON {
+    # Native feature notices only; runtime protection failures remain visible.
+    # OpenAI rust-v0.164.0 core/src/config/mod.rs:1162 (retrieved 2026-10-27).
+    suppress_unstable_features_warning = true;
     "tui.terminal_title" = [
       "activity"
       "context-used"

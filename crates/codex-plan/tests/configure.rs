@@ -15,6 +15,13 @@ while IFS= read -r line; do
         *'"cursor":"page2"'*) echo '{"id":1,"result":{"nextCursor":null,"data":[{"model":"future-model","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}]}}' ;;
         *) echo '{"id":1,"result":{"nextCursor":"page2","data":[{"model":"gpt-6.1-sol","supportedReasoningEfforts":[{"reasoningEffort":"medium"}]}]}}' ;;
       esac ;;
+    *'"method":"config/read"'*)
+      if [ -n "$FIXTURE_CONFIG_REQUEST" ]; then printf '%s\n' "$line" > "$FIXTURE_CONFIG_REQUEST"; fi
+      if [ -n "$FIXTURE_CONFIG_JSON" ]; then
+        printf '{"id":4,"result":{"config":%s}}\n' "$FIXTURE_CONFIG_JSON"
+      else
+        echo '{"id":4,"result":{"config":{"default_permissions":"fixture"}}}'
+      fi ;;
     *'"method":"collaborationMode/list"'*) echo '{"id":2,"result":{"data":[{"mode":"plan"},{"mode":"default"}]}}' ;;
     *'"method":"account/rateLimits/read"'*) echo '{"id":3,"result":{"accountId":"synthetic-private-account","ordinaryUsageAllowed":true,"rateLimits":{},"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":11,"resetsAt":1794000000,"windowDurationMins":300}},"other":{"secondary":{"usedPercent":20,"resetsAt":1795000000,"windowDurationMins":10080}}}}}' ;;
   esac
@@ -100,6 +107,32 @@ fn non_tty_requires_explicit_options_without_writing() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("four explicit options"));
     assert!(!fixture.dir.path().join("config").exists());
+}
+
+#[test]
+fn launch_checks_cwd_native_permissions_before_starting_tui_or_inference() {
+    let fixture = Fixture::new();
+    let request = fixture.dir.path().join("config-request");
+    for config in [
+        "{}",
+        r#"{"default_permissions":false}"#,
+        r#"{"default_permissions":""}"#,
+        r#"{"default_permissions":"chosen","sandbox_mode":"workspace-write"}"#,
+    ] {
+        let output = fixture
+            .command()
+            .env("FIXTURE_CONFIG_JSON", config)
+            .env("FIXTURE_CONFIG_REQUEST", &request)
+            .current_dir(fixture.dir.path())
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("native config"));
+        let read: serde_json::Value = serde_json::from_slice(&fs::read(&request).unwrap()).unwrap();
+        assert_eq!(read["params"]["cwd"], fixture.dir.path().to_str().unwrap());
+        assert_eq!(read["params"]["includeLayers"], false);
+        assert!(!fixture.dir.path().join("config").exists());
+    }
 }
 
 #[test]
