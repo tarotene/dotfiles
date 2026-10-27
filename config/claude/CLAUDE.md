@@ -98,7 +98,8 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 
 ## sandbox の外で動かすコマンドは、単体で呼ぶ(#1164)
 
-`gh`・`git commit`・`git push`・`git add`・`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
+`gh`・`git commit`・`git push`・`git add`・`git rebase`・`git merge`・`git cherry-pick`・`git revert`・`git tag`・
+`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
 `home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が要るためである。ただし、**呼び出し全体の
 コマンドが除外パターンに合わないと、全体が sandbox の中に残る**(Anthropic, "Sandboxing"、
 <https://code.claude.com/docs/en/sandboxing>、取得 2026-10-27)。残ると `gh` は認証できず、署名は

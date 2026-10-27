@@ -205,6 +205,15 @@ in
         "git commit *"
         "git push *"
         "git add *"
+        # They rewrite or create commits, and `commit.gpgsign=true` re-signs them, which needs
+        # gpg-agent: `git rebase` failed with `No secret key` inside the sandbox (measured on
+        # vega 2026-10-28). `merge`, `cherry-pick`, `revert` and `tag` sign the same way
+        # (not measured yet; docs/agents/agent-permissions.md).
+        "git rebase *"
+        "git merge *"
+        "git cherry-pick *"
+        "git revert *"
+        "git tag *"
         # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
         # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
         "nix build *"
