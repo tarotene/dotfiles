@@ -108,6 +108,14 @@ Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.co
 拒否されるので採らない(`allowAllUnixSockets` が要り、範囲が広すぎる)。
 `/tmp` 直下への書き込みは `allowWrite` を広げず、`$TMPDIR` を使う運用のままにする。
 
+**自前の道具の書き込み先(2026-10-28、vega、#1164)**: hook の指示でエージェントが Bash で呼ぶ道具は、sandbox の中で
+動く。状態の置き場が書き込み許可に無いと、`Read-only file system` で失敗する。実測で確かめた失敗は次のとおり。
+`worklog add`(vault の journal)、`session-retrospective --retro-add`(`~/.local/state/claude/wrapup/retro`)、
+`issue-inbox --check-dup`(台帳の snapshot)。hook そのものは Claude Code が sandbox の外で動かすので影響しない。
+直し方は、`excludedCommands`(全権限で動く)ではなく、道具が所有する場所だけを `sandbox.filesystem.allowWrite` に宣言する:
+`~/.local/state/claude`(`claude.nix`)と、vault(`obsidian.nix` の `vaultPath`。vega だけが宣言する)。
+`dotfiles.claudePermissions.allowWrite` は各モジュールが足した値の和になる。
+
 宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
 
 ## 旧共有管理を撤去する

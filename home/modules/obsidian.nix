@@ -72,6 +72,11 @@ in
   home.file.".local/bin/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
   xdg.configFile."dotfiles/obsidian-vault".text = "${vaultPath}\n";
 
+  # worklog / vault-note(エージェントが Bash で呼ぶ)が書く場所。sandbox の中では読み取り専用で
+  # `Read-only file system` になる(2026-10-28 に vega で実測、#1164)。vault は vega のこの
+  # モジュールだけが宣言するので、書き込みの許可も同じ場所で足す。
+  dotfiles.claudePermissions.allowWrite = [ vaultPath ];
+
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
     Service.ExecStart = "${backupPath} backup --notify";
   };

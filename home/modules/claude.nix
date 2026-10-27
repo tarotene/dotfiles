@@ -142,6 +142,7 @@ let
       auto_allow_bash_if_sandboxed = true;
       allowed_domains = cfg.sandboxDomains;
       deny_read = cfg.secretPaths;
+      allow_write = cfg.allowWrite;
       excluded_commands = cfg.excludedCommands;
     };
   };
@@ -167,6 +168,15 @@ in
       description = ''
         Network destinations sandboxed commands may reach (same source as Codex's domains).
         WebFetch(domain:...) allow rules also feed the sandbox's allowlist.
+      '';
+    };
+    allowWrite = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Paths sandboxed commands may write (sandbox.filesystem.allowWrite). Other modules add
+        their own: each definition is merged, so a host module can add its state without
+        replacing the shared ones. Keep every entry as narrow as a directory the tool owns.
       '';
     };
     excludedCommands = lib.mkOption {
@@ -200,6 +210,10 @@ in
     };
   };
   config = {
+    # The tools hooks tell the agent to run through Bash (`issue-inbox`, `session-retrospective`,
+    # `worklog`, ...) keep their state here. Inside the sandbox this was read-only, so they
+    # failed with `Read-only file system` (measured on vega 2026-10-28, #1164).
+    dotfiles.claudePermissions.allowWrite = [ "~/.local/state/claude" ];
     # Native Claude sandbox dependencies remain available for restored settings.
     home.packages = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
     xdg.configFile."agent-native/claude-permissions.json".text = builtins.toJSON permissionsSpec;
