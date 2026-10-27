@@ -516,6 +516,10 @@ SKILL.md §9 と同じ作法)。
 - private/company リポジトリ名は、このリポジトリ(公開)の成果物・会話ログ
   以外の永続物に書かない(`docs/agents/public-publish-guard.md`)。一括
   レビュー表はそのセッション内限りで、docs には残さない。
+- `github-audit annotations --json` などの出力を**公開**リポジトリの Issue・PR
+  に書くときは、先にリポジトリごとの `visibility`(`PUBLIC`/`PRIVATE`)を読み、
+  公開は名前を書き、非公開は名前を伏せて件数だけにする(例: 「非公開 14 件」)。
+  名前を書いてから `bleep` の `repo-ref` に止められて書き直す往復を避ける(#1094)。
 - GitHub description/topics の反映は `gh repo edit` の即時反映であり、対応する
   README/CONTRIBUTING の PR が merge されるまで実行しない(§6-5)。
 - `github-audit` の実行結果(ledger)には private リポジトリ名が含まれる
