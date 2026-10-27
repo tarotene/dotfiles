@@ -471,9 +471,10 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
        that would stop it recurring (prose = skill/AGENTS text, script, gate =
        hook; existing:<name> = a mechanism already exists and leaked — name it
        in `what`, it is that mechanism's defect).
-     - disposition "inbox" also appends the row to the wrap-up inbox; filing,
-       duplicate check and recurrence comments then follow the normal
-       '{q_self}' --procedure flow. Do not add it to the inbox yourself.
+     - disposition "inbox" also appends the row to the wrap-up inbox (a note in
+       the user's vault, or a jsonl line on a machine without one). No Issue is
+       filed for it: the user adjudicates it later with /backlog-cleanup. Do not
+       add it to the inbox yourself.
      - If there is truly nothing, add one row with kind "none" and
        disposition "none:<reason>". Rows are never skipped silently.
      - To skip the retro, the user must have said so: kind "skipped", the

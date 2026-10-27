@@ -28,19 +28,6 @@ fn stop(e: &Env, project: &Path) -> Run {
     run(c, &hook_input(project))
 }
 
-/// 期待される Stop 出力の inbox 節(`printf %q` の結果は、テストの一時パスが
-/// クオート不要の文字だけでできている前提で素のまま埋める)。
-fn stop_inbox_block(count: usize, inbox: &str, name_q: &str, url_q: &str) -> String {
-    let gate = gate_path();
-    format!(
-        "<hook-directive source=\"wrapup-stop-gate\" event=\"Stop\">\n\
-         {count} unfiled item(s) in the wrap-up inbox: {inbox}\n\
-         Run `ATTRIBUTION_AGENT_NAME={name_q} ATTRIBUTION_AGENT_URL={url_q} {gate} --procedure {inbox}` and follow its output.\n\
-         </hook-directive>",
-        gate = gate.display()
-    )
-}
-
 fn feedback_block(paths: &[&Path]) -> String {
     let list: String = paths
         .iter()
@@ -60,76 +47,6 @@ fn feedback_block(paths: &[&Path]) -> String {
          </hook-directive>",
         n = paths.len()
     )
-}
-
-fn procedure_text(inbox: &str, name: &str, url: &str) -> String {
-    let gate = gate_path();
-    let gate = gate.display();
-    format!(
-        r#"<hook-directive source="wrapup-stop-gate" kind="procedure">
-Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
-Process the lines one by one:
-  1. Run '{gate}' --check-dup "<title>" [repo] (pass repo if the line
-     has one; otherwise the target is this project's repository).
-     exit 1 means an open Issue with the same title already exists (duplicate);
-     its number is printed on stdout (when known) as <N>.
-     exit 3 means the check could not be made — skip that line this time and
-     leave it in the inbox.
-  2. If the line has no "go":"ask" and is not a duplicate, file it with
-     gh issue create [-R <repo>] --title "<title>" --body "<body>".
-     If it is a duplicate, do not just drop it: record the recurrence on the
-     existing Issue with gh issue comment <N> [-R <repo>] --body "<body>"
-     (date, what happened this time from detail, and where it was seen), ending
-     the comment with the same provenance footer as step 4. If <N> was not
-     printed, find it with gh issue list --search "in:title <title>". The count
-     of such comments is the signal ADR-543 uses to promote a rule to a script
-     or gate. Do this for a "go":"ask" line too, after the AskUserQuestion
-     answer of step 3 is to file it.
-  3. If the line has "go":"ask" (auto-aggregated from the verdict ledger,
-     ADR-478), do not file it right away even when it is not a duplicate.
-     Show title, detail, and repo (the default target) via AskUserQuestion with
-     the choices 「このまま <repo> に起票する」「別のリポジトリに振り直す」
-     「今回は起票しない」, then act on the answer (re-routing only changes the
-     -R target). gh-edit-allow may auto-allow gh issue create based on earlier
-     creations in the same session, so the absence of a permission prompt is
-     not a GO — always confirm with AskUserQuestion.
-  4. Before writing the body, check whether the target repository is public:
-     gh repo view [-R <repo>] --json visibility. If it is public, write only
-     the minimal facts needed to reproduce — no internal repository names,
-     project names, or confidential terms from the conversation context
-     (the PreToolUse denylist rejects them, costing a round trip).
-     Write the body from detail plus the conversation context, and end it with
-     this line (the provenance footer, grep-able for inbox-origin Issues, also
-     serves as the attribution that attribution-guard.sh requires):
-       「🤖 Filed from [{name}]({url}) wrap-up inbox」
-  5. Remove only the lines that were filed, commented on as duplicates, or declined
-     with 「今回は起票しない」 in step 3, using
-     '{gate}' --mark-filed '{inbox}' '<the line verbatim>'.
-     If gh issue create fails, do not call --mark-filed; the line stays in the
-     inbox for a retry on the next turn.
-Do not edit the inbox directly (always go through --add / --mark-filed).
-</hook-directive>
-"#
-    )
-}
-
-/// 「Stop 出力から --procedure コマンドを抽出できる」の sed と同じ抽出。
-fn extract_procedure_cmd(stderr: &str) -> Option<String> {
-    stderr.lines().find_map(|l| {
-        l.strip_prefix("Run `")
-            .and_then(|r| r.strip_suffix("` and follow its output."))
-            .map(str::to_string)
-    })
-}
-
-fn sh(e: &Env, cmd: &str) -> Run {
-    let mut c = std::process::Command::new("bash");
-    c.arg("-c").arg(cmd);
-    // base 環境(HOME 等)を揃えるため gate() の env を借りず、最低限だけ渡す。
-    c.env("HOME", e.home())
-        .env_remove("ATTRIBUTION_AGENT_NAME")
-        .env_remove("ATTRIBUTION_AGENT_URL");
-    run(c, "")
 }
 
 /// selftest: 「stop_hook_active で素通り」
@@ -222,12 +139,10 @@ fn add_matches_jq_compact() {
     }
 }
 
-/// selftest: 「非空 inbox でゲート発動」「ゲートは stderr に指示を出す」
-/// 「Stop 出力は hook-directive 外枠 4 行に収まる」「Stop 出力から --procedure
-/// コマンドを抽出できる」「--procedure は既定フッターを含む」
-/// 「--procedure は差し替えフッターを引き継ぐ」
+/// 気づきの inbox は、Stop の指示を出さない(起票は backlog-cleanup の裁定、
+/// ADR-1136)。gh も GitHub remote もあり、行が溜まっていても素通りする。
 #[test]
-fn gate_fires_and_points_to_procedure() {
+fn a_non_empty_inbox_never_blocks_the_stop() {
     let e = Env::new();
     let repo = repo(
         &e.path().join("repo"),
@@ -236,59 +151,25 @@ fn gate_fires_and_points_to_procedure() {
     let inbox = inbox_path(&e, &repo);
     add(&e, Path::new(&inbox), LINE1);
     add(&e, Path::new(&inbox), LINE2);
-
     let r = stop(&e, &repo);
-    assert_eq!(r.code, 2);
-    assert_eq!(r.stdout, "");
-    let want = stop_inbox_block(2, &inbox, r"Claude\ Code", "https://claude.com/claude-code");
-    assert_eq!(r.stderr, format!("{want}\n"));
-    assert_eq!(r.stderr.lines().count(), 4);
-
-    let cmd = extract_procedure_cmd(&r.stderr).expect("procedure cmd");
-    let p = sh(&e, &cmd);
-    assert_eq!(p.code, 0);
-    assert_eq!(
-        p.stdout,
-        procedure_text(&inbox, "Claude Code", "https://claude.com/claude-code")
-    );
-
-    let mut c = e.gate();
-    c.env("CLAUDE_PROJECT_DIR", &repo)
-        .env("ATTRIBUTION_AGENT_NAME", "Codex CLI")
-        .env("ATTRIBUTION_AGENT_URL", "https://example.com/codex");
-    let r = run(c, &hook_input(&repo));
-    assert_eq!(r.code, 2);
-    assert_eq!(
-        r.stderr,
-        format!(
-            "{}\n",
-            stop_inbox_block(2, &inbox, r"Codex\ CLI", "https://example.com/codex")
-        )
-    );
-    let cmd = extract_procedure_cmd(&r.stderr).unwrap();
-    let p = sh(&e, &cmd);
-    assert!(p
-        .stdout
-        .contains("Filed from [Codex CLI](https://example.com/codex) wrap-up inbox"));
+    assert_eq!((r.code, r.stdout.as_str(), r.stderr.as_str()), (0, "", ""));
+    // 行は消えず、裁定を待つ。
+    assert_eq!(read(Path::new(&inbox)), format!("{LINE1}\n{LINE2}\n"));
 }
 
-/// `--procedure` の全文(env で差し替えたフッター込み)。
+/// 手順書(`--procedure`)と実行中の印(`--chores-*`)は無くなった。
 #[test]
-fn procedure_full_text() {
+fn the_filing_procedure_and_chores_marks_are_gone() {
     let e = Env::new();
-    let mut c = e.gate();
-    c.env("ATTRIBUTION_AGENT_NAME", "N")
-        .env("ATTRIBUTION_AGENT_URL", "U");
-    let r = run_args(c, &["--procedure", "/x/y.jsonl"]);
-    assert_eq!(r.code, 0);
-    assert_eq!(r.stdout, procedure_text("/x/y.jsonl", "N", "U"));
-    // 空文字の env は未設定扱い(bash の `:-`)
-    let mut c = e.gate();
-    c.env("ATTRIBUTION_AGENT_NAME", "");
-    let r = run_args(c, &["--procedure", "/x/y.jsonl"]);
-    assert!(r
-        .stdout
-        .contains("[Claude Code](https://claude.com/claude-code)"));
+    for args in [
+        &["--procedure", "/x/y.jsonl"][..],
+        &["--chores-begin", "/x/y.jsonl"][..],
+        &["--chores-end", "/x/y.jsonl"][..],
+    ] {
+        let r = run_args(e.gate(), args);
+        assert_eq!(r.code, 1, "{args:?}");
+        assert!(r.stderr.contains("was removed"), "{}", r.stderr);
+    }
 }
 
 /// selftest: 「gh 不在で素通り」
@@ -299,9 +180,15 @@ fn no_gh_passes() {
         &e.path().join("repo"),
         Some("https://github.com/example/example.git"),
     );
-    let inbox = inbox_path(&e, &repo);
-    add(&e, Path::new(&inbox), LINE1);
-    let nogh = e.path().join("nogh");
+    arm_feedback(&e, "nogh");
+    let mut control = e.gate();
+    control.env("CLAUDE_PROJECT_DIR", &repo);
+    assert_eq!(
+        run(control, &hook_input_sid(&repo, "nogh")).code,
+        2,
+        "対照: gh があれば指示が出る"
+    );
+    let nogh = e.path().join("nogh-bin");
     std::fs::create_dir_all(&nogh).unwrap();
     for c in [
         "jq", "git", "grep", "wc", "tr", "dirname", "basename", "cat",
@@ -335,14 +222,20 @@ fn no_gh_passes() {
         .env("WRAPUP_FEEDBACK_MEMORY_DIR", e.memory_dir())
         .env("CLAUDE_PROJECT_DIR", &repo)
         .env("PATH", &nogh);
-    let r = run(c, &hook_input(&repo));
+    let r = run(c, &hook_input_sid(&repo, "nogh"));
     assert_eq!((r.code, r.stderr.as_str()), (0, ""));
 }
 
-/// selftest: 「GitHub remote なしで素通り」「git repo 外で素通り」
+/// selftest: 「GitHub remote なしで素通り」「git repo 外で素通り」(指示が出る条件は、
+/// #N の無い feedback memory)。
 #[test]
 fn no_github_remote_or_no_repo_passes() {
     let e = Env::new();
+    arm_feedback(&e, "sid");
+    let github = repo(
+        &e.path().join("github"),
+        Some("https://github.com/example/example.git"),
+    );
     let norepo = repo(&e.path().join("norepo"), None);
     let plain = e.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
@@ -350,10 +243,18 @@ fn no_github_remote_or_no_repo_passes() {
         &e.path().join("gitlab"),
         Some("https://gitlab.com/example/example.git"),
     );
+    let stop_in = |p: &Path| {
+        let mut c = e.gate();
+        c.env("CLAUDE_PROJECT_DIR", p);
+        run(c, &hook_input_sid(p, "sid"))
+    };
+    assert_eq!(
+        stop_in(&github).code,
+        2,
+        "対照: GitHub の repo なら指示が出る"
+    );
     for p in [&norepo, &plain, &gitlab] {
-        let inbox = inbox_path(&e, p);
-        add(&e, Path::new(&inbox), LINE1);
-        let r = stop(&e, p);
+        let r = stop_in(p);
         assert_eq!((r.code, r.stderr.as_str()), (0, ""), "{}", p.display());
     }
 }
@@ -611,9 +512,8 @@ fn check_dup_odd_gh_output() {
     }
 }
 
-/// selftest: 「verdict-escalate が追記した行だけでもゲート発動」「Stop 出力は
-/// --procedure へのポインタを含む」「手順書に go:ask の扱いが含まれる」
-/// 「verdict-escalate 未配備でも素通り」
+/// verdict-escalate は Stop のたびに呼ばれ、追記した行は inbox に残る。行があっても Stop は
+/// 素通りする(裁定は backlog-cleanup)。verdict-escalate 未配備でも素通り。
 #[test]
 fn verdict_escalate_wiring() {
     let e = Env::new();
@@ -643,17 +543,14 @@ echo ve-stderr >&2
         .env("WRAPUP_VERDICT_ESCALATE_BIN", &ve);
     let input = format!("{}\n\n", hook_input(&repo1));
     let r = run(c, &input);
-    assert_eq!(r.code, 2);
-    assert!(r.stderr.contains("--procedure"));
+    assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(!r.stderr.contains("ve-stderr"));
     // verdict-escalate の stdout は hook の stdout にそのまま流れる
     assert_eq!(r.stdout, "ve-stdout\n");
     // stdin は `$(cat)` 由来で末尾改行が落ちたものが渡る
     assert_eq!(read(&e.path().join("ve-bin/stdin.txt")), hook_input(&repo1));
     let inbox = inbox_path(&e, &repo1);
-    assert!(read(Path::new(&inbox)).contains(r#""go":"ask""#));
-    let r = run_args(e.gate(), &["--procedure", "/x.jsonl"]);
-    assert!(r.stdout.contains(r#""go":"ask""#));
+    assert!(read(Path::new(&inbox)).contains(r#""title":"escalated""#));
 
     let repo2 = repo(
         &e.path().join("ve_repo2"),
@@ -730,18 +627,11 @@ fn feedback_memory_check() {
     assert_eq!((r.code, r.stderr.as_str()), (0, ""));
 }
 
-/// stamp を 1 時間前に戻す(selftest の `touch -d '1 hour ago'`)。
-fn backdate(p: &Path) {
-    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
-    let f = std::fs::File::options().write(true).open(p).unwrap();
-    f.set_modified(t).unwrap();
-}
-
-/// inbox と feedback の両方があるときは 2 節を空行で区切って出す。memory の
+/// inbox に行があっても、Stop の出力は feedback の節だけ。memory の
 /// 探索は `-path '*/memory/*.md'`(下位ディレクトリも含む)・`-type f`・
 /// `-newer stamp` に従う。session_id はサニタイズされる。
 #[test]
-fn feedback_and_inbox_combined() {
+fn feedback_only_even_with_an_inbox() {
     let e = Env::new();
     let fb = repo(
         &e.path().join("fb"),
@@ -780,15 +670,7 @@ fn feedback_and_inbox_combined() {
         &format!(r#"{{"cwd":"/nonexistent","session_id":"{sid}"}}"#),
     );
     assert_eq!(r.code, 2);
-    assert_eq!(
-        r.stderr,
-        format!(
-            "{}\n\n{}\n",
-            stop_inbox_block(1, &inbox, r"Claude\ Code", "https://claude.com/claude-code")
-                .replace("` and follow", r" --session-id a/b\ c` and follow"),
-            feedback_block(&[&f1])
-        )
-    );
+    assert_eq!(r.stderr, format!("{}\n", feedback_block(&[&f1])));
 }
 
 /// project の解決: CLAUDE_PROJECT_DIR が無ければ `.cwd`、両方無ければ素通り。
@@ -801,11 +683,10 @@ fn project_from_cwd_and_empty() {
         &e.path().join("repo"),
         Some("https://github.com/example/cwd.git"),
     );
-    let inbox = inbox_path(&e, &repo);
-    add(&e, Path::new(&inbox), LINE1);
-    let r = run(e.gate(), &hook_input(&repo));
-    assert_eq!(r.code, 2);
-    assert!(r.stderr.contains(&inbox));
+    arm_feedback(&e, "cwd-sid");
+    let r = run(e.gate(), &hook_input_sid(&repo, "cwd-sid"));
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(r.stderr.contains("type: feedback"), "{}", r.stderr);
 }
 
 /// usage エラー(`${2:?usage: ...}`): exit 1、stderr 末尾に usage 文言。
@@ -818,8 +699,8 @@ fn usage_errors() {
             "usage: wrapup-stop-gate.sh --inbox-path <project-dir>",
         ),
         (
-            &["--procedure"][..],
-            "usage: wrapup-stop-gate.sh --procedure <inbox>",
+            &["--set-status"][..],
+            "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R]",
         ),
         (
             &["--migrate", ""][..],

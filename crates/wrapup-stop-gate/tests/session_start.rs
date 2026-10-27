@@ -12,16 +12,19 @@ fn expected_json(inbox: &str, pending: usize) -> String {
     let mut ctx = format!(
         "<hook-directive source=\"wrapup-session-start\" event=\"SessionStart\">\n\
          wrap-up inbox for this project: {inbox}\n\
-         When something outside the current task's scope is worth an Issue (a sign of a\n\
+         When something outside the current task's scope is worth recording (a sign of a\n\
          bug, debt, an improvement idea), append it right then as one line per finding:\n\
-         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<Issue title>\", \"detail\": \"<what and why>\"}}'\n\
-         Do not edit the inbox directly (always go through --add). The Stop hook at the\n\
-         end of the turn points to the filing procedure for appended items.",
+         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
+         A finding becomes a note in the user's vault (inbox/, one note per title; the same title\n\
+         adds a row instead of a duplicate) or, on a machine without a vault, a line in the jsonl above.\n\
+         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /backlog-cleanup,\n\
+         which fixes them by PR and files an Issue only for the ones the user picks. Do not file an\n\
+         Issue for a finding yourself, and do not edit the inbox directly (always go through --add).",
         gate = gate.display()
     );
     if pending > 0 {
         ctx.push_str(&format!(
-            "\nThe inbox currently holds {pending} unprocessed item(s) (including leftovers from past sessions)."
+            "\nThere are {pending} unadjudicated finding(s) for this project (including leftovers from past sessions)."
         ));
     }
     ctx.push_str("\n</hook-directive>");
@@ -57,7 +60,7 @@ fn injects_context_and_pending_count() {
     c.env("CLAUDE_PROJECT_DIR", &repo);
     let r = run(c, &hook_input(&repo));
     assert_eq!(r.stdout, expected_json(&inbox, 2));
-    assert!(r.stdout.contains("2 unprocessed item(s)"));
+    assert!(r.stdout.contains("2 unadjudicated finding(s)"));
 }
 
 /// `.cwd` から project を解決し、旧 inbox の自己修復マージと

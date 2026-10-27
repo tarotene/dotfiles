@@ -109,23 +109,22 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
     if !sid.is_empty() {
         stamp_feedback_session(&sid);
     }
-    let pending = if non_empty_file(&inbox) {
-        newline_count(&inbox)
-    } else {
-        0
-    };
+    let pending = pending_count(&project);
     let mut ctx = format!(
         "<hook-directive source=\"wrapup-session-start\" event=\"SessionStart\">\n\
          wrap-up inbox for this project: {inbox}\n\
-         When something outside the current task's scope is worth an Issue (a sign of a\n\
+         When something outside the current task's scope is worth recording (a sign of a\n\
          bug, debt, an improvement idea), append it right then as one line per finding:\n\
-         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<Issue title>\", \"detail\": \"<what and why>\"}}'\n\
-         Do not edit the inbox directly (always go through --add). The Stop hook at the\n\
-         end of the turn points to the filing procedure for appended items."
+         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
+         A finding becomes a note in the user's vault (inbox/, one note per title; the same title\n\
+         adds a row instead of a duplicate) or, on a machine without a vault, a line in the jsonl above.\n\
+         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /backlog-cleanup,\n\
+         which fixes them by PR and files an Issue only for the ones the user picks. Do not file an\n\
+         Issue for a finding yourself, and do not edit the inbox directly (always go through --add)."
     );
     if pending > 0 {
         ctx.push_str(&format!(
-            "\nThe inbox currently holds {pending} unprocessed item(s) (including leftovers from past sessions)."
+            "\nThere are {pending} unadjudicated finding(s) for this project (including leftovers from past sessions)."
         ));
     }
     ctx.push_str("\n</hook-directive>");
@@ -154,16 +153,23 @@ pub fn gate_main(self_path: &str, args: &[String]) -> i32 {
         Some("--retro-add" | "--retro-close" | "--retro-procedure") => retro::cli(self_path, args),
         Some(
             "--inbox-path"
-            | "--procedure"
             | "--migrate"
             | "--stamp-feedback-session"
             | "--add"
             | "--check-dup"
-            | "--chores-begin"
-            | "--chores-end"
+            | "--list-open"
+            | "--set-status"
             | "--mark-filed"
             | "--selftest",
         ) => issue_inbox::gate_main(self_path, args),
+        // 起票の手順書と実行中の印は無くなった(気づきは vault に入り、裁定は backlog-cleanup)。
+        // 未知のフラグは Stop hook として動いてしまうので、無言で通さず、はっきり断る。
+        Some(flag @ ("--procedure" | "--chores-begin" | "--chores-end")) => {
+            eprintln!(
+                "session-wrapup: {flag} was removed (ADR-1136): findings are no longer filed at Stop; use --list-open / --set-status"
+            );
+            1
+        }
         _ => stop_hook(self_path, &read_hook_stdin()),
     }
 }

@@ -20,6 +20,7 @@ fn env() -> Env {
     let root = dir.path().to_path_buf();
     let vault = root.join("vault");
     std::fs::create_dir_all(vault.join(".obsidian")).unwrap();
+    std::fs::write(vault.join(".obsidian/app.json"), "{}").unwrap();
     std::fs::write(
         vault.join(".obsidian/daily-notes.json"),
         r#"{"folder":"journal","format":"YYYY/YYYY-MM-DD"}"#,
@@ -57,7 +58,7 @@ struct Out {
     stderr: String,
 }
 
-/// `vault` が `Some` なら `WORKLOG_VAULT` で渡す。HOME と XDG_CONFIG_HOME は一時ディレクトリ。
+/// `vault` が `Some` なら `OBSIDIAN_VAULT` で渡す。HOME と XDG_CONFIG_HOME は一時ディレクトリ。
 fn run(e: &Env, cwd: &Path, vault: Option<&Path>, args: &[&str], stdin: &str) -> Out {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_worklog"));
     cmd.env_clear()
@@ -72,7 +73,7 @@ fn run(e: &Env, cwd: &Path, vault: Option<&Path>, args: &[&str], stdin: &str) ->
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(v) = vault {
-        cmd.env("WORKLOG_VAULT", v);
+        cmd.env("OBSIDIAN_VAULT", v);
     }
     let mut child = cmd.spawn().unwrap();
     {
@@ -220,7 +221,7 @@ fn no_vault_declared_fails_loudly_for_the_cli_and_stays_silent_for_the_hook() {
     let e = env();
     let cli = run(&e, &e.repo, None, &["add", "task", "x"], "");
     assert_eq!(cli.code, 2);
-    assert!(cli.stderr.contains("worklog-vault"), "{}", cli.stderr);
+    assert!(cli.stderr.contains("obsidian-vault"), "{}", cli.stderr);
 
     let hook = run(&e, &e.repo, None, &["session-start"], "{}");
     assert_eq!(
@@ -233,7 +234,7 @@ fn declare_by_marker(e: &Env) {
     let dir = e.root.join("config/dotfiles");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
-        dir.join("worklog-vault"),
+        dir.join("obsidian-vault"),
         format!("{}\n", e.vault.display()),
     )
     .unwrap();

@@ -154,3 +154,17 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
 ### 執行点
 
 - `crates/plan-precedent-gate/src/lib.rs`
+
+## Amendment (2026-10-27 — ADR-1136)
+
+「同じ規範違反が繰り返し起きる」ことを昇格の合図にする、wrap-up inbox の再発の記録は、これまで
+既存 Issue への再発コメントの数だった(Stop の `--procedure` が、重複なら `gh issue comment` を指示していた)。
+気づきを Issue にせず vault のノートに溜めるようにしたので、再発の合図は**ノートの本文の行数**になる。
+`issue-inbox --list-open` が行数の多い順に返し、`/backlog-cleanup` は繰り返されているものから裁定する。
+日次 timer で自動検出する仕組みは持たない(繰り返し見落としが起きたときに、この ADR の昇格型に従って検討する)。
+promotion-detect の、feedback Issue の `Target:` の集計は変えない。D1・D2 は変更しない。
+
+### 執行点
+
+- `crates/issue-inbox/src/lib.rs`
+- `crates/issue-inbox/src/vault.rs`
