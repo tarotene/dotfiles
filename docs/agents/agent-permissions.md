@@ -1,565 +1,86 @@
-# Claude・Codex の権限を同じ宣言で管理する
+# Claude と Codex はそれぞれの native 権限設定を使う
 
-権限の正本は `home/modules/agent-permissions.nix`。`agent-permissions` は
-既存の設定を棚卸しし、確認した内容だけを両 CLI の標準設定へ反映する。
-対象読者は、この dotfiles を適用する本人と保守するエージェントである。
-初回は「移行前に一覧を確認する」までを読み、以後は診断と復元の節を参照する。
-基盤追加の段では既定配備を変えない。次段で標準設定と router を接続する。
+共有権限ポリシーの実行時管理は撤去した。Claude は Claude 専用 reconciler、
+Codex は native 設定を使う。所有記録が無いことや、設定を本人が変更したことを
+理由に router が通常のツール実行を止める仕組みは無い。裁定は
+[ADR-457 の 2026-10-27 Amendment](../adr/457-claude-native-install-source-of-truth.md) に残す。
 
-## 書き込み・読み取り・通信を分けて宣言する
+## 設定の正本と適用後の比較対象
 
-通常の書き込みは現在の作業場所と一時領域に限る。Git の共有メタデータ、
-ホーム設定、Nix・Cargo のキャッシュへの書き込みは境界外であり、native の
-一回の審査へ進む。恒久的な Bash / prefix allow は生成しない。
+| 対象 | 宣言・執行点 | 適用する内容 |
+|---|---|---|
+| Claude | `home/modules/claude.nix`、`agent-settings-reconcile claude-permissions` | native の allow / ask と、それぞれの撤回リスト |
+| Codex | `home/modules/codex.nix`、`agent-settings-reconcile codex-permissions` | `on-request`、`auto_review`、名前付き `dotfiles` 権限 profile、通信 proxy、秘密パスの masking、個別 MCP 設定 |
 
-通常資料の読み取りは許可する。秘密パスは Claude の Read deny と sandbox、
-Codex の filesystem deny に変換する。認証を使う通常操作と秘密値の表示は別扱いにする。
-秘密パスの追加は制限の強化、削除は権限の拡大として扱う。
+Claude の追加許可は `dotfiles.claudePermissions.extraAllow`、Codex の入力は
+`dotfiles.codexPermissions.secretPaths` / `domains` / `mcpAllow` / `apps` に置く。
+非公開の実値は ADR-0034 に従い private wrapper に置く。
+既存 3 ホストとの互換性のため `dotfiles.agentPermissions` の option は残るが、
+旧共有 policy ファイル・所有検査・SessionStart の回収は配備しない。
+認証 launcher は維持し、資格情報を渡す前に native 設定を検査する。共有の所有記録は参照しない。
+旧入力は native option の既定値に使い、以後の宣言は native option に書く。
 
-通信先の宣言は接続だけを許可する。投稿・送信に関する既存 hook は存続する。
-`domains` の初期値は `api.github.com`・`github.com`(git の fetch・push)・`cache.nixos.org`(Nix の既定のバイナリ
-キャッシュ)。追加の既知の宛先は本人の宣言に追加する。`github.com` を足したので、Claude の WebFetch は
-`github.com` の URL に ask を返さなくなる(接続だけの許可で、投稿・送信の hook は存続する)。
-非公開の宛先・作業場所は非公開 wrapper の値として渡し、このリポジトリへ書かない。
-外部ツールは個別審査とし、MCP の各サーバーと App の既定を prompt にする。例外は `mcp_allow` で
-宣言した MCP ツール 1 つずつだけである(下の「MCP ツールは `mcp_allow` で 1 つずつ宣言する」)。
+生成した比較対象は `~/.config/agent-native/claude-permissions.json` と
+`~/.config/agent-native/codex-permissions.json`。前者は Claude reconciler の spec、
+後者は `settings` と `mcp_allow` を持つ Codex の spec である。
+両 CLI の設定全体を symlink にしないため、モデル・trust などの本人の設定は書き込み可能なまま残る。
+Claude の `permissions.defaultMode = "plan"` と `autoMode.environment` は撤去時にも保持する。
 
-`project_rules.<作業場所>.domains` はプロジェクト限定の通信先である。
-Claude の WebFetch は hook が現在の場所と照合する。shell と Codex では
-グローバルな通信許可へ昇格させず、native の一回の審査を使う。
+Codex の native writer は宣言した名前の profile だけを置き換え、古い通信先や書き込み許可を残さない。
+ほかの profile・モデル・trust は保持する。`default_permissions` を宣言するときは競合する旧
+`sandbox_mode` / `sandbox_workspace_write` を取り除く。これらの置換前には同じディレクトリに
+権限 0600 の `config.toml.native-permissions-backup.<内容のSHA-256>` を作り、現在値の一致を確かめて更新する。
 
-## sandbox の中で動く shell は自動で許可する
 
-`sandboxed_shell`(`auto` | `prompt`、既定 `auto`)は、native sandbox の中で動く shell コマンドに
-承認を求めるかを決める。`auto` の Claude は `sandbox.autoAllowBashIfSandboxed = true` を生成する。
-Anthropic の「Sandboxing」によれば、`false` の間は「All Bash commands go through the regular
-permission flow, even when sandboxed」で、`git status` のような読み取りまで毎回確認になる。
-`true` でも、sandbox を外した再実行、`Bash(…)` の ask・deny 規則(pkexec の ask など)、
-重要パスへの `rm` は従来どおり審査される(Anthropic,
-[Sandboxing](https://code.claude.com/docs/en/sandboxing)、取得 2026-10-26)。Codex は
-`approval_policy = "on-request"` が同じ意味を持つ(OpenAI,
-[Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、取得 2026-10-26)ので、
-生成内容は変えない。
+## 認証 launcher は native の保護を確かめる
 
-書き込みは作業場所と一時領域、通信は宣言した宛先に OS が制限するので、恒久の allow 規則は増えない。
-一方、署名・gh の認証・push・Nix の書き込みなど、宣言の外にあるものは sandbox の中では動かず、sandbox を外した
-再実行として一回ずつ審査される。何が外で、何が中で動くかは、次の節に表で書く。
+`crates/codex-launcher/src/main.rs` の `validate_config` は、認証付き起動の前に
+`on-request` / `auto_review`、proxy と credential masking、選択した workspace profile を検査する。
+保護を上書きする profile・project 設定や別設定ホームは拒否し、確認した profile を起動時に指定する。
+CLI の版・引数も確認してから資格情報を渡す。共有の移行済み記録や hash への依存は無い。
+この検査は認証情報の引き渡し条件であり、全ツール呼び出しを共有所有検査へ通すものではない。
 
-`prompt` から `auto` への変更は権限の拡大なので、`apply` は拒否し、`inspect` → `migrate` を要求する。
-`auto` から `prompt` は縮小なので自動で反映する。この欄が無い記録は `prompt` で審査された
-ものとして読む。
+## 旧共有管理を撤去する
 
-**配備と移行の間は、記録の policy が基準になる。** `hms` は新しい `policy.json` を配備するが、
-拡大を伴う変更は `apply` が拒否するので、所有記録の `policy` は旧版のまま残る(activation は警告して続行する)。
-この間、hook(Claude の PreToolUse、Codex の PermissionRequest)と SessionStart の回収は、
-配備された `policy.json` ではなく、審査済みの所有記録の `policy` を基準に判定する(#1060)。
-未審査の拡大は効かず(たとえば追加した通信先への WebFetch は ask のまま)、全ツールも止まらない。
-配備された `policy.json` が記録と違うことを報告するのは、CLI の `check`・`migrate` である(`policy changed`)。
-配備された `policy.json` は hook が読まないので、縮小(秘密パスの追加など)の効力は `apply` が成功して
-記録が更新されるまで及ばない。`apply` は未回収の許可があると拒否するので、その場合は次の SessionStart の
-回収のあと、次の `hms` で反映される。
-
-拡大を反映する手順は、本人の端末で次の順に行う。
-
-1. 新しいバイナリと新しい policy のパスを得る。`hms` を当てる前の `agent-permissions` は旧版で、
-   `deny_unknown_fields` のため新しい policy の欄を読めない(2026-10-26 に `unknown field` で拒否されるのを実測)。
-   以降は、ここで得た新しいバイナリを使う。
-   - `nix build .#dotfiles-tools --no-link --print-out-paths`(この出力 + `/bin/agent-permissions`)
-   - `nix build .#homeConfigurations.<host>.config.dotfiles.agentPermissions.policyFile --no-link --print-out-paths`
-2. `hms` で新しいバイナリと `policy.json` を配備する。新しい欄を足す変更では、`migrate` が書く記録を
-   旧バイナリの hook が読めず(`Record` と `Policy` は `deny_unknown_fields`)、全ツールが止まる。
-   記録を書き換える `migrate` より先に、新しいバイナリを配備する。
-3. 新しいバイナリで `reclaim` を実行し、待機の許可を昇格候補のキューへ退避する。`reclaim` は記録の
-   policy で動くので、配備の前後を問わない。これを飛ばすと `migrate` が待機の許可を
-   キューに残さず取り除く(hms の activation も同じ `reclaim` を先に実行する)。
-4. 「移行前に一覧を確認する」の `inspect` → `migrate`(`--policy` にそのパス)→ `check` を、新しいバイナリで行う。
-
-Codex の launcher は起動前に CLI の `check` を呼ぶので、配備と `migrate` の間は Codex の起動だけが
-拒否される(hook は止まらない)。この間は 3 と 4 を続けて行う。
-
-## sandbox の中で失敗する操作は、最初から外で実行する
-
-エージェントの Bash は既定で native sandbox の中で動く。次の操作は、sandbox の中では失敗するので、最初から
-`dangerouslyDisableSandbox` で実行する(失敗を読み解いてから再実行する往復を省く。#1050・#1064)。外で実行する呼び出しは
-hook が一回ごとに ask するので、確認の往復は残る。これは設計どおりである(`allowUnsandboxedCommands` は有効で、
-sandbox を外した再実行は一回の審査に回す)。
-
-| 操作 | sandbox の中での失敗 | 原因 | 共有ポリシーの扱い |
-|---|---|---|---|
-| `git commit`(GPG 署名) | `gpg: signing failed: No secret key` | `~/.gnupg` は `secret_paths` の既定で `denyRead` | **意図して残す。** 秘密鍵を sandbox に読ませない。署名つきコミットは外で実行する |
-| `gh` | `HTTP 401: Requires authentication` | gh の認証情報を sandbox に見せない | **意図して残す。** `gh` は外で実行する。Codex だけは launcher が親プロセスに `GH_TOKEN` を渡し、子には代替値を見せる(別の経路。下の「通常の Codex 起動」) |
-| `git fetch` | 通信先が許可リストに無く拒否 | `domains` に `github.com` が無かった | `github.com` を足した。公開リポジトリの fetch は、認証が要らないので中で通る見込み(未実測) |
-| `git push` | 同上、または認証なし | push は認証が要る。認証は gh の credential helper で、`gh` と同じく見せない | 通信先は足したが、認証が無いので外で実行する(未実測) |
-| `nix fmt` / `nix build` | `Read-only file system`、daemon に接続できない | `~/.cache/nix` などの書き込み先と、nix-daemon への接続が sandbox の外(#1050 の観測) | `cache.nixos.org` を足した。書き込み先・ソケットの口は共有ポリシーに無く、作らない。外で実行する |
-| wrap-up inbox・retro の台帳への書き込み(`wrapup-stop-gate --add`・`--retro-add`) | `Read-only file system`、`cannot write the retro ledger` | `~/.local/state/claude/wrapup/` などが書き込み先の外 | 口が無い。外で実行する |
-| `cargo test` の Unix ソケットを bind するテスト(例: `claude-statusline` の統合テスト) | `PermissionDenied: Operation not permitted` | sandbox が Unix ソケットを許さない | 口が無い。その crate は外で実行する。変更したコードのせいに見えるので、`cargo tree -i <crate>` で依存が無いことを確かめ、環境を疑う |
-
-**口が共有ポリシーに無いことの確認。** `Policy::generated` は `sandbox.excludedCommands = []`・
-`sandbox.filesystem.allowWrite = []` を固定で生成し、`writable_roots` は `workspace`・`temp` に固定である
-(`validate`)。除外コマンドも書き込み先も、宣言する入力が無い。作らない。理由: 除外コマンドは sandbox
-そのものを外す拡大で、書き込み先の拡大は「境界外への書き込みは一回の審査」という前提(上の「書き込み・読み取り・通信を
-分けて宣言する」)を崩す。外での実行が日常になって確認の質が下がる懸念(#1064)は、操作を外に出すのでなく、
-上の表で「何が外か」を先に決めておくことで抑える。
-
-**`git add` はパス指定にする(#1050・#1063)。** sandbox は、書き込みを禁じるパス(`.claude/settings.json`・
-`.claude/skills` などの `denyWithinAllow`)に、まだ存在しないファイルがあると、0 バイトの読み取り専用の
-placeholder を作って塞ぎ、コマンドが終わると消す(Anthropic,
-[Sandboxing](https://code.claude.com/docs/en/sandboxing) の troubleshooting 節「0-byte read-only files appear at
-.claude settings paths」、取得 2026-10-27、curl で全文を取得)。#1063 の観測では、sandbox の中の `ls -l` は
-これを `/dev/null` の文字デバイス(`1, 3`)と表示し、`.bashrc`・`.gitconfig`・`.claude/` などが未追跡として
-`git status` に出る(公式文書の「0 バイトの placeholder」との対応は、読み戻していないので未確認)。置く主体は
-Claude Code の sandbox で、このリポジトリの宣言では消せない(原因は上流)。
-
-- `git add -A`・`git add .` を使わず、追加するパスを 1 つずつ指定する。
-- `git status` の未追跡の行は、自分が作ったファイルかを見てから扱う。
-
-**同じ placeholder が、別の Bash の実行中に hook を止めることがある(#1055・#1063)。** 上の文書は、placeholder が
-sandbox の実行中だけ存在し、セッションが途中で終わると残ると書く。`.claude/settings.json` の placeholder は 0
-バイトなので、同じ作業ツリーで別の sandbox の Bash(並行する別のエージェント・セッション)が走っている間に
-hook がそれを読むと、`EOF while parsing a value at line 1 column 0` で止まる(2026-10-27 の作業で、
-親の作業ツリーを `cwd` にした並行するエージェントの Bash の実行中に、3 回再現した)。hook はこのセッションの `cwd` 配下の
-設定を読むので、この場合は fail-closed のまま 1 件の理由で止まる(別 worktree の分は止めない。上の「ずれを検出したら
-設定元から診断する」)。残ったファイルは `claude doctor` が「Sandbox mask files left behind at write-deny paths」として
-列挙し、他の Claude Code セッションが動いていないときに `rm` で消す。
-
-## 移行前に一覧を確認する
-
-初回の適用は自動では行わない。まず、build した `agent-permissions` と
-Nix が生成した `policyFile` を指定して一覧を保存する。以下の変数には、
-当該 build の出力パスを使う。作業中のエージェントが具体値を提示する。
+既存手段: `agent-permissions` — 拡張。既存の transaction journal の変更前・変更後を使う
+`retire` を追加し、別の移行ツールは作らない。通常の activation はこの撤去を native writer より先に行う。
+手元で変更候補だけを見る場合は、次の順で行う。
 
 ```sh
-umask 077
-agent-permissions inspect --policy "$policyFile" --project "$PWD" --json > /tmp/agent-permissions-review.json
+agent-permissions retire --home "$HOME" --dry-run
+agent-permissions retire --home "$HOME"
 ```
 
-JSON は実ファイルの重複を除いた一覧、設定元、内容の SHA-256、権限部分と
-移行方針、生成する標準設定を含む。認証・モデル・接続用の環境変数は一覧へ載せない。
-`decisions` の値を次のように読む。
-
-| 値 | 処理 |
-|---|---|
-| `manage` | 本人の可変設定から恒久 allow を撤去し、正本の境界を設定する |
-| `remove` | 本人の Codex rules ファイルを空にする。変更前の内容はバックアップに残る |
-| `retain` | 共有・管理設定を変更せず、内容を記録して以後の変更を検出する |
-| `review` | 意味や構文が未確認。適用を止める |
-
-`.rules` は実行可能な Starlark なので、部分的なパターン照合では解釈しない。
-一覧を読んで撤去を承認した本人のファイルだけ、`review` を `remove` へ変更できる。
-共有ファイル・未知の設定構文は、同じ方法で黙って削除しない。
-共有設定が sandbox や hook の境界を弱める場合も、残置を承認しただけでは通らない。
-
-撤去・残置・取り込みの一覧を本人が確認した後に、同じ JSON を適用する。
-適用前の `migrate --dry-run` は書き込まずに移行方針と内容の一致を検査する。
-
-```sh
-agent-permissions migrate --policy "$policyFile" --project "$PWD" --approved /tmp/agent-permissions-review.json
-agent-permissions check --policy "$policyFile" --project "$PWD"
-```
-
-実行直前に再集計し、一覧とハッシュが一致しなければ何も変更しない。
-取り込みによる権限の拡大は正本の変更として別に確認する。
-通常の `apply` は記録済み設定の一致を検査し、宣言による制限の強化だけを自動反映する。
-通信先の追加、秘密パスの削除、対象プロジェクトの変更は再レビューが必要になる。
-
-## ずれを検出したら設定元から診断する
-
-`inspect` は人向け表示と `--json`、`check` は成功時の JSON に対応する。
-`agent-permissions --help` と `agent-permissions <command> --help` で、サブコマンドと
-オプション、ずれからの復旧の手順(`inspect --json` → `migrate --dry-run` → `migrate` →
-`check`)を表示する。`migrate --dry-run` の各変更には、内容が変わるかを示す `changed` が付く。
-`check` はずれた設定元を 1 件目で止めず、全件を 1 行ずつ列挙する。
-設定が読めない、不正な構文、未知の権限キー、所有記録の破損、設定元の削除や、
-下の節の待機に当たらない増減は実行を止める。可変ユーザー設定は権限部分を比較し、モデル選択や hook 信頼の
-更新を誤検出しない。残置した共有ファイルは全文ハッシュも比較する。
-
-所有記録が壊れても `inspect` は診断と一覧を出す。本人がその一覧を確認したときだけ、
-`migrate --retire-ownership --approved REVIEW` で記録を再構築する。
-破損した記録もバックアップし、確認後に内容が変われば拒否する。
-以前の所有範囲を復元できないため、由来が不明になった拒否規則は残す。
-
-棚卸しは Claude の user / project / local、linked worktree の main checkout 側
-local、登録済みプロジェクト、plugin と管理設定、Codex の user / project / 全 profile、
-rules、MCP / App / plugin の承認設定を対象とする。読めない設定元は無視しない。
-空のファイル・不正な JSON/TOML・UTF-8 でないファイルは、棚卸し全体を失敗させず、その 1 件を
-`review`(`unknown` に `unreadable configuration: …`)として報告する(#1055)。`migrate` はその 1 件が
-残る間は進まないので、本人が直すか消す。
-
-hook(Claude の PreToolUse、Codex の PermissionRequest)が見るのは、このセッションが実際に読む設定元だけである。
-user・managed・plugin と、`cwd` とその祖先ディレクトリの設定(linked worktree は本物の checkout の
-`settings.local.json` も)。`~/.claude.json` や Codex の `projects` に記憶されているだけの別プロジェクト・別 worktree の
-ファイルは、その不備・削除・新規作成でこのセッションを止めない。`check`・`apply`・`migrate` は従来どおり全体を見る。
-セッションの `cwd` 配下の不備は止める(fail-closed)が、理由にはそのファイル 1 件だけが出て、復旧の案内は
-`inspect --json --project <cwd>` を指す(`--project` を付けないと、新しい worktree の設定元は一覧に載らない)。
-
-新しい worktree には、本物の checkout と同じコミットの `.mcp.json` が入っている。`.mcp.json` は MCP サーバーの
-定義で、許可を持たない(`grants` は空。有効化は `enabledMcpjsonServers` など別の設定で、別に追跡する)。そのため、
-記録に無い `.mcp.json` でも、内容(SHA-256)が記録済みの `.mcp.json` と同じなら新しい設定元として扱わない(#1062)。
-内容が違うものは、これまでどおり新しい設定元として止める。
-`CODEX_HOME` / `CLAUDE_CONFIG_DIR` を別の場所へ変更した起動は未実装(意図あり)で、
-通常の設定元を読んだものとしては扱わず拒否する。
-CLI 引数による設定の上書き、Codex の enterprise/cloud/MDM の配布経路は、
-ローカルファイル一覧だけでは全件確認できない。native の有効設定の読み戻しを
-受入試験に含め、未確認のホストで完全な設定元の網羅をうたわない。
-
-実行前検査の拒否時は、本人の端末で専用 CLI を直接実行して診断・レビューする。
-任意のシェルコマンドを検査の例外にはしない。未知の設定を取り除く前に
-新しい一覧を確認し、移行後は `check` の読み戻し結果を確認する。
-
-## 追記された許可は待機として扱い、構造的なずれだけを止める
-
-Claude Code は「Yes, and don't ask again」と、sandbox の通信先承認のたびに、`settings.local.json`
-の `permissions.allow` へ規則を追記する(Anthropic,
-[Settings](https://code.claude.com/docs/en/settings)・[Sandboxing](https://code.claude.com/docs/en/sandboxing)、
-取得 2026-10-26。実機でも 2026-10-26 に再現した)。これは本人自身の判断なので、全セッションの全ツールを
-止める理由にしない(#1043)。`check` は差分を 2 種に分ける。
-
-| 種類 | 条件 | 扱い |
-|---|---|---|
-| 待機(pending) | 書き込み可能な Claude の設定で、`permissions.allow` への追加だけが差分。追加は次の閉じた語彙に限る | ツールは止まらない。`check` は報告して成功し、`apply` と移行後の読み戻しは拒否する |
-| 構造的なずれ | 上記以外すべて(語彙外の規則、deny / ask の変更、`sandbox` など他の欄、未知の構文、共有ファイルの変更、設定元の削除) | 拒否のまま |
-
-待機の語彙: 正確なホスト名の `WebFetch(domain:…)`、`WebSearch`、`*` を含まない `mcp__…` の 1 ツール、
-途中に `*` を含まない `Bash(…)`(ワイルドカードは末尾の `:*` か ` *` だけ。#461)。`Edit`・`Write`・
-`Read` の許可、裸のツール名は含まない。記録に無い設定ファイルも、空か待機の語彙だけなら新しい設定元の
-ずれにしない(プロジェクトで初めて承認を保存すると Claude Code がファイルを作る)。
-
-Codex の承認も同じ考え方で待機にする。Codex は、コマンドの前方一致を「don't ask again」で承認すると
-`~/.codex/rules/default.rules` に 1 行追記し、通信先を承認すると同じファイルに `network_rule` を追記する。
-MCP ツールの「Always allow」は `config.toml` の `…tools.<tool>.approval_mode = "approve"` を書く
-(OpenAI, Codex rust-v0.164.0 `execpolicy/src/amend.rs` L65-L124、`execpolicy/src/rule.rs` L138-L145、
-`core/src/mcp_tool_call.rs` L2340-L2489、取得 2026-10-26)。待機にするのは次だけである。
-
-- `default.rules`: 記録した内容の**後ろに足されただけ**で、足された各行が Codex の書く形と完全に一致するもの。
-  `prefix_rule(pattern=["…", …], decision="allow")` と、正確なホスト・既知のプロトコル・`allow` の
-  `network_rule(host="…", protocol="…", decision="allow"[, justification="…"])`。Starlark は解釈しない。
-  形が違う行、deny・prompt の決定、ワイルドカードのホスト、記録した内容の書き換えは構造的なずれ。
-- `config.toml`: ツール 1 つの `approval_mode` が、無い状態か `prompt` から `approve` になっただけ(MCP サーバー・
-  App・plugin の MCP サーバー配下)。サーバー全体の既定値や他の欄の変更は構造的なずれ。
-
-構造的なずれでも、次の呼び出しだけは通す(`pending.rs` の `inert_call`)。本人に質問し、診断するためで、
-任意のシェルは例外にしない。
-
-- `AskUserQuestion`・`ExitPlanMode`(外部に作用しない)
-- `agent-permissions` の読み取り専用の呼び出し: `inspect`・`check`・`migrate --dry-run`・`--help`。
-  単語だけで構成され、リダイレクト・パイプ・`;`・`&&`・引用符・`$` を含むものは通さない。
-  `--restore` と `--retire-ownership` は `--dry-run` より先に作用するので通さない
-
-`disabledMcpjsonServers` は許可でなく制限で、空の一覧は何も許可しない。Claude Code が新しい
-ディレクトリで起動するたびに空の欄を足すので、`~/.claude.json` の追跡から外した(以前の記録も同じ形に
-そろえて比較する)。有効化された `enabledMcpjsonServers` は許可として追跡を続ける。
-
-hms の activation は、`agent-permissions apply` が失敗しても止めず、警告を出して続ける。失敗で止めると
-`set -eu` が後続の段と「現在の世代」の印の付け替えを飛ばし、profile だけが進んだ状態が残る
-(2026-10-26 に `generation/reality mismatch` の警告として観測した)。実行時の検査(router)は
-記録が許す範囲だけを通し続けるので、続行は安全側である。
-
-## 待機の許可はセッションの境界で回収し、昇格候補に移す
-
-待機の許可が、承認したセッションを越えて残らないようにする。回収は、Claude の設定ファイルからは追加された規則を
-取り除き、Codex の `default.rules` は記録した内容に書き戻し、`config.toml` は該当するキーだけを元の値に戻す
-(コメントや書式は toml_edit が保つ)。回収は 3 つの契機で走り、どれも冪等である。
-
-| 契機 | 登録 | 確実さ |
-|---|---|---|
-| SessionStart(`startup`・`resume`・`clear`) | `home/modules/claude.nix` の `agent-permissions-reclaim`(Codex へも同じ宣言から配る) | 確実 |
-| hms の activation(`apply` の前) | `home/modules/codex.nix` の `reconcileAgentPermissions` | 確実。`apply` は未回収の許可があると拒否する |
-| SessionEnd | 同上(`timeout = 3`) | 最善努力。結果を返せず、時間も短い(Codex は 1〜3 秒に丸められる)ので、これだけには頼らない |
-
-`agent-permissions reclaim` は、待機の許可を昇格候補の**キュー**(`~/.local/state/dotfiles/agent-permissions-pending.jsonl`、
-追記専用の行ログ)に追記し、読み戻してから、元の設定ファイルから取り除く。順序が要である: 途中で落ちても
-許可が「両方にある」状態にしかならず、「どちらにも無い」状態にはならない。取り除きは移行と同じ transaction
-(厳密なバイト列の比較・復元用 journal・読み戻し)を通る。他のセッションが同時に書き換えたら拒否する。
-構造的なずれがあるときは、何も回収しない。キューは追記だけなので、並行するセッションの追記が互いを消さない。
-取り下げは `drop` 行の追記で表し、書き直さない。
-
-SessionStart は、回収した件数と、キューに溜まった昇格候補の件数を、`[agent-permissions]` で始まる日本語の行でセッションに伝える(ADR-625: `<hook-directive>` の外枠は wrap-up 系だけが使う)。
-構造的なずれがあるときは、その全件を伝える(復旧の migrate は本人の端末で行う)。hook は常に成功を返し、
-セッションの開始を妨げない。
-
-昇格は `/promote-permissions` が担う(`agent-permissions pending` で候補を読む)。共有ポリシーに宣言があるのは
-通信先(`domains`・`project_rules.<project>.domains`)と MCP ツール(`mcp_allow`)なので、昇格できるのは
-`WebFetch(domain:…)`、Codex の `network_rule(… decision="allow")`、`mcp__<server>__<tool>` の候補である。
-`WebSearch`・`Bash(…)`・`prefix_rule` は、宣言を持たないので昇格できず、キューは記録にとどまる(下の「MCP ツールは
-`mcp_allow` で 1 つずつ宣言する」に理由)。Codex のツールの `approval_mode` の候補は、`mcp_allow` に
-`mcp__<server>__<tool>` を足す形で昇格する。
-
-## MCP ツールは `mcp_allow` で 1 つずつ宣言する
-
-共有ポリシーの `mcp_allow`(`mcp__<server>__<tool>` の列。`*` は書けない)に載せた MCP ツールは、常に許可する(#1051)。
-両 CLI の本来の仕組みへ 1 対 1 で写し、独自の認可は作らない。
-
-| 宣言 | Claude | Codex |
-|---|---|---|
-| `mcp__esa__esa_get_post` | `~/.claude/settings.json` の `permissions.allow` に同じ文字列 | `~/.codex/config.toml` の `mcp_servers.esa.tools.esa_get_post.approval_mode = "approve"` |
-
-- hook は、宣言済みのツールに ask を返さない。宣言していない MCP ツールは、書き込めない設定元(共有の
-  プロジェクト設定・管理設定)の `mcp__` の allow が覆うときだけ ask を返し、それ以外は判断を Claude 本体に
-  任せる(既定のプロンプト)。ask が allow に勝つか、allow が ask に勝つかに、結果が依存しない形である(#1052)。
-  他の hook(Slack の送信 guard など)の deny は独立で、宣言しても外れない。
-- Codex は、`config.toml` に**定義済みの**サーバーのツールにだけ書く。`command` も `url` も持たない
-  `[mcp_servers.<名前>]` は Codex が `invalid transport` で拒否する(openai/codex rust-v0.164.0
-  `codex-rs/config/src/mcp_types.rs` L548-549、取得 2026-10-27)ので、未定義のサーバーを作らない。Claude の
-  コネクタ(`claude_ai_…`)やプラグイン由来の名前は、Codex に同名のサーバーが無ければ Claude だけに効く。
-- 追加は権限の拡大なので `apply` は拒否し、`inspect` → `migrate` を要求する。削除は縮小で、自動で反映する
-  (Claude の `allow` から消え、Codex の該当ツールは `prompt` に戻る)。
-- 宣言を空にしている間、`mcp_allow` は記録にも `policy.json` にも現れない。この欄が無い記録は、空として読む。
-- Claude では、`permissions.allow` の許可と hook の `ask` のどちらが優先されるかを、公式文書は定めていない
-  (下の「優先順位の実測」)。宣言済みのツールで hook が ask を返さない形にして、順位に依存しないようにしてある。
-- 宣言しない MCP ツールの確認は、Claude 本体の判断になる。既定のモードで MCP ツールに承認が要るのは Claude の標準の
-  挙動で、この変更の前後を実測してはいない(未検証)。自動モード(`autoMode`)の分類器が確認を省く可能性は、
-  hook の ask を外した分だけ増えうる(未検証)。
-- **宣言しないもの。** Bash・`prefix_rule`・WebSearch は記録のみのままである。Claude の自動モードでは
-  `classifyAllShell` が Bash の allow を効かなくし(Anthropic, "Configure auto mode",
-  <https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27。本線では原文を再取得していない)、
-  コマンドの前方一致は、同じ前置きの別の引数まで許してしまう。MCP ツールは名前が 1 つに決まり、両 CLI に
-  1 対 1 で写せる。
-
-この仕組みで、規則「個別許可は原則その実行限り」は「そのセッション限り」に緩む(本人の裁定、#1043)。
-並行する別のセッションが開始されると、もう一方の許可が回収されて再度プロンプトが出ることがある。
-さらに、`mcp_allow` に宣言した MCP ツールは、その規則の例外として、セッションを越えて常に許可する(本人の裁定、#1051)。
-例外は、本人が `inspect` → `migrate` で審査した宣言に限る。「don't ask again」で積んだ許可は、従来どおり
-そのセッション限りで、昇格を裁定されたものだけが宣言になる。
-
-## 優先順位の実測(hook の ask と設定の allow)
-
-`scripts/hook-ask-vs-allow-probe` が、分離した HOME で `claude -p` を 3 回回し、組み込みの Bash(`echo probe-ok`)が
-実行されたか拒否されたかを読む(#1052)。実 HOME の `~/.claude*` には触れない。
-
-| ケース | 設定 | 想定 |
-|---|---|---|
-| A 対照 | `permissions.allow` に `Bash(echo probe-ok)` だけ | 実行される |
-| B 対照 | PreToolUse hook が `ask` を返すだけ | 拒否される(`-p` には答える人がいない) |
-| C 本番 | A と B の両方 | 実行なら allow が勝ち、拒否なら ask が勝つ |
-
-C は、A が実行・B が拒否で、C の run で hook が動いた記録があるときだけ結論にする。結果が曖昧なとき
-(終了コード 1 で「判定不能」)は、標準入出力の小さな MCP スタブで同じ 3 ケースを回す(組み込みツールで足りれば
-スタブは作らない)。実測は本人作業である(分離した HOME にはログインが無い)。
-
-1. `claude setup-token` で長期トークンを発行する(Claude のサブスクリプションが要る)。
-2. `export CLAUDE_CODE_OAUTH_TOKEN=<トークン>`(API キーなら `ANTHROPIC_API_KEY`)。どちらも無いと、スクリプトは
-   認証が無い旨を出して終了コード 3 で終わる。
-3. `scripts/hook-ask-vs-allow-probe --keep`。先に `--dry-run` で設定と実行コマンドだけを読める。
-4. 結果を、使った Claude Code の版(スクリプトの先頭行)と一緒にこの節と #1052 に残す。
-
-結果の読み方と、文書への反映:
-
-| 出力 | 意味 | 文書への反映 |
-|---|---|---|
-| `allow が ask に勝つ` | 設定に allow があれば、hook が ask を返しても実行される | 書き込めない設定元の allow を覆うために hook の ask は使えない。上の MCP の分岐は、書き込めない設定元の allow が覆うツールに ask を返す意味を失う。その分岐の見直しを Issue に起票する |
-| `ask が allow に勝つ` | hook が ask を返すと、allow があっても承認が要る | 上の MCP の分岐が意図どおり働く。`mcp_allow` を宣言していないツールの「don't ask again」は、宣言するまでセッション限りの扱いのまま |
-| `判定不能`(A が実行されない) | allow 規則が効く前提が崩れている | `claude -p` の許可の評価が想定と違う。生の出力(`--keep`)を読み、版を添えて Issue に残す |
-| `判定不能`(B が拒否されない) | `-p` が ask を自動で通すか、hook が読まれていない | `--keep` のログで hook の実行を確かめ、対話の実行か MCP スタブへ進む |
-
-実測の結果(2026-10-27、vega、`claude` 2.1.285、`claude -p`、組み込みの Bash): **ask が allow に勝つ**。
-
-| ケース | 結果 | 読んだ根拠(`--keep` の生の出力) |
-|---|---|---|
-| A 対照 | 実行された | `case-A.jsonl` の tool_result が `probe-ok` |
-| B 対照 | 拒否された | hook の理由 `probe: hook asks` が tool_result に返った |
-| C 本番 | 拒否された(hook が動いた) | `case-C.jsonl` の tool_result が `probe: hook asks`(`is_error: true`)、`result` の `permission_denials` が 1 件、hook のログに `ran` が残った |
-
-hook が ask を返すと、同じコマンドに allow 規則があっても承認が要る。上の表の 2 行目のとおり、MCP の分岐は
-意図どおり働く。確かめた範囲の限界: 組み込みの Bash で、`claude -p`(答える人がいない非対話)の実行である。
-MCP ツール自体、対話の実行、自動モード(分類器が ask を覆す可能性。公式文書は「hook の ask は自動モードでも
-承認を強制する」と書く。Anthropic, Hooks、取得 2026-10-27、担当の報告で本線では未再取得)は、実測していない
-(未確認)。MCP のスタブには進んでいない(結果が曖昧でなかったため)。
-
-## 自動モードの `autoMode.environment` は機体ローカルの設定で、宣言しない
-
-Claude の自動モードの分類器が、worktree での `git switch -c` を「共有資源の変更」として拒否した(#939)。
-分類器が信頼する宛先を決める `autoMode.environment` の扱いを、事実・判断・手順に分けて書く。
-
-**事実(2026-10-27 に読んだもの)。**
-
-- このリポジトリの `home/`・`crates/`・`docs/` に、`autoMode.environment` を宣言する場所は無い。共有ポリシーが
-  生成する `autoMode` は `classifyAllShell = true` だけである(`mod.rs` の `Policy::generated`)。`migrate` は
-  既存の `autoMode` にこのキーを足すだけで、`environment` には触れない(`merge_json`)。private wrapper に
-  宣言があるかは、このリポジトリからは読めない(未確認)。
-- vega の `~/.claude/settings.json` は、`environment` に `"$defaults"` が無く、信頼するリポジトリが private の
-  1 つだけで、`classifyAllShell: true` である。
-- Anthropic, 「Configure auto mode」(<https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-27、
-  全文を curl で取得): `/auto-mode-setup` は `environment` を `"$defaults"` **無しで**書く(「ドラフトが組み込みの項目を
-  そのまま書き出すため」)。`"$defaults"` の無い配列は、その節の既定を丸ごと置き換える。vega の内容は、組み込みの
-  項目の見出しを並べて末尾に利用者の項目を足した形なので、`/auto-mode-setup` が書いたと読める(推論。書いた主体の
-  記録は読んでいない)。
-
-**判断: 共有ポリシーに宣言を足さず、手順だけを書く。** 中身は信頼する宛先(リポジトリ・ドメイン)で、公開リポジトリに
-書けない値なので、宣言を足しても公開側は機構だけになり、値は private wrapper に置くことになる。さらに
-`/auto-mode-setup` が同じ欄を実行時に書き換えるので、宣言は書き手を 2 つにし、実行のたびに `migrate` を要求する。
-`"$defaults"` を戻すだけの修正に、欄の機構(`Policy`・検証・拡大の判定)は大きすぎる。
-
-**手順(`"$defaults"` を戻す)。** 本人の端末で、書き換えから `migrate` までを続けて行う。`~/.claude/settings.json`
-の `autoMode` が変わると、記録とのずれ(構造的なずれ)になり、`migrate` までは inert な呼び出し以外の全ツールが止まる。
-
-```sh
-tmp="$(mktemp)"
-jq '.autoMode.environment |= (if index("$defaults") then . else ["$defaults"] + . end)' \
-  ~/.claude/settings.json > "$tmp" && cp "$tmp" ~/.claude/settings.json && rm -f "$tmp"
-jq -c '.autoMode.environment[0]' ~/.claude/settings.json    # "$defaults" が返る
-```
-
-続けて「移行前に一覧を確認する」の `inspect --json` → `migrate --dry-run` → `migrate` → `check` を行う。`environment` が
-空の host、または `autoMode` の無い host には、この手順は要らない(`jq` が `["$defaults"]` を作るだけなので、
-作る必要が無ければ実行しない)。
-
-**未検証。** 拒否の原因が `"$defaults"` の欠落なのか、信頼するリポジトリが 1 つに限られていて作業中のリポジトリを
-含まないことなのかは分かっていない。利用者の項目が「そのリポジトリのみ」と書いていると、`"$defaults"` が足す既定
-(「作業中のリポジトリとその remote」)が効くかは、分類器の読み次第である(未検証)。確かめ方は、実セッションで
-自分の worktree の `git switch -c` が、本人の往復なしに通ること。#939 は、それまで open にする。
-
-## 更新を中断したら記録から復元する
-
-内容が変わるファイルの更新前後の全バイト列を、本人のみ読み書きできる transaction journal に
-16 進の文字列で保存する(版 2)。内容が変わらないファイルは記録しない — 確認済みのハッシュは
-書き込みの前後に再検査されるので、復元に要らない。数値の配列で全ファイルを保存していた
-版 1 の journal も、引き続き復元できる。完了した journal は新しい 5 件だけを残し、古いものは
-`migrate` の成功後に消す。復元したい journal は、次の `migrate` の前に退避する。
-各ファイルは同じディレクトリの一時ファイルから rename し、書き込み後にも読み戻す。
-symlink を経由した書き込みは拒否する。複数ファイル全体の更新は単一の原子的操作ではないため、
-中断を示す `pending` が残ったら実行を拒否する。
-
-`migrate` が表示した journal の絶対パスを、次の `journal` に指定する。
-全ファイルが更新前・更新後のいずれかと一致するときだけ復元し、途中の他の編集は上書きしない。
-
-```sh
-agent-permissions migrate --restore "$journal"
-```
-
-## 通常の Codex 起動で GitHub 認証を仲介する
-
-`codex` は `~/.local/libexec/codex-launcher/codex` で解決する。
-launcher は共通権限の `check --project <起動先>` に成功してから、既存の
-`gh auth token --hostname github.com` で認証を取得し、Codex 親プロセスだけの
-`GH_TOKEN` に渡す。シェル全体へ export せず、トークンをファイル・引数・ログへ書かない。
-native installer が管理する `~/.local/bin/codex` は変更せず、絶対パスで exec する。
-
-原因は、接続許可と認証の取得が別の境界だったことである。`api.github.com` を
-許可するだけでは sandbox から認証ストアを利用できなかった。
-共通設定で `features.network_proxy` と `features.credential_masking` を有効にし、
-Codex 内蔵の認証仲介で子プロセスのトークンを代替値に置換する。
-通信許可は読み取り専用化ではない。投稿・審査の既存方針は引き続き適用する。
-
-通常セッション、`exec`、`resume`、`fork`、`review`、`sandbox -- <コマンド>` が
-保護経路を通る。help・version・completion・update・login・logout は、GitHub の
-トークン環境変数を除いてそのまま native へ委譲する。認証失敗・空値は停止する。
-CLI の別 profile、設定上書き、権限変更、未知のオプションは認証取得前に拒否する。
-`-C` / `--cd` は指定先を棚卸しする。`sandbox` の子コマンドは `--` の後に書く。
-オプションの省略形の連結や複数の起動先指定は使わない。
-
-特殊な設定で起動する場合は `~/.local/bin/codex` を直接使う。この経路では
-launcher の認証注入・起動前検査は行わない。通常の起動へ戻すときは `codex` を使う。
-既存の `codex-plan` は app-server と remote TUI を使うため、この native の
-絶対パスを呼ぶ。PATH 上の launcher を app-server として起動させない。
-`command -v codex` が launcher を示すことと、`agent-permissions check --project "$PWD"`
-が成功することを確認する。権限設定を戻す場合は、上記の journal による復元を使う。
-zsh の login profile でも PATH を先頭へ戻す。適用前から動いている親プロセスが
-「home-manager の環境変数を読込済み」という印を継承すると、sessionPath の
-再読込を省略するためである。非対話 login shell でも launcher が選ばれることを
-実機で検査する。
-
-credential masking は確認した `0.164.0` では開発中・既定無効である。
-launcher はこの版だけに認証を渡す。更新後は固定版の CLI 定義を読み直し、
-対応版をコードで変更し、以下の受入試験を行う。`codex update` 自体は制限しない。
-
-1. `agent-permissions inspect --json` で通信先・masking・全 profile を確認する。
-   差分を提示した後に `migrate --approved REVIEW` と `check` を実行する。
-2. 新しい通常起動の Codex で、最初のコマンドを
-   `gh pr view -R tarotene/dotfiles 1039 --json number,title` とし、返った番号と題名を照合する。
-3. sandbox 子プロセスで `GH_TOKEN` が存在し、親の値とは異なることを値を表示せず比較する。
-   未許可の宛先への通信が拒否されることも確かめる。
-
-本物のトークンは Codex 親プロセスが保持する。同一ユーザーの悪意あるプロセスの
-隔離までは保証しない。Unix socket 全体の許可は追加しない。
-Linux 以外のホストは実機試験まで未確認である。
-
-2026-10-26、arcturus（Linux）で `inspect → migrate → check → hms .` を実施した。
-新しい login shell の裸の `codex exec` から、最初の sandbox コマンド
-`gh pr view -R tarotene/dotfiles 1039 --json number,title` が終了コード0で番号・題名を返した。
-同じ配備の `codex sandbox` でも親子トークンの不一致と PR 読み取り成功を確認し、
-未許可の `example.com` は proxy が403で拒否した。トークン値は出力していない。
-初回の試験では古い親 PATH から native が選ばれて401になったため、login profile
-への設定を追加し、同じ非対話 login 起動で成功することを再測定した。
-
-| 判断 | 出典（取得 2026-10-26、公開日未確認） | 先行例との差分と軸 |
-|---|---|---|
-| D6: 内蔵の認証仲介を使う | OpenAI, Codex [rust-v0.164.0 GitHub provider L14–50](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L14-L50)、[proxy 設定 L585–604](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L585-L604)、[feature L1483](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/features/src/lib.rs#L1483) | 開発中機能を明示的に有効化。軸: 還元 — proxy を自作しない |
-| D7: Rust launcher と installer の入口を分ける | dotfiles `crates/esa-mcp-launcher/src/main.rs` と `home/modules/esa.nix` | gh の認証と権限 check に用途を限定。POSIX shell と比較し、秘密値の shell 展開をなくす Rust を採用。軸: 表現不可能 |
-| D8: 起動引数を閉じた語彙で検査する | OpenAI, Codex [CLI 定義 L129](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/cli/src/main.rs#L129)、[共通オプション L10](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/utils/cli/src/shared_options.rs#L10)、[exec 定義 L11](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/exec/src/cli.rs#L11) | native の全機能を複製せず、未分類指定には認証を渡さない。版も固定。軸: 表現不可能 |
-
-既存手段: `crates/codex-launcher/Cargo.toml` — 自前 — 却下: POSIX shell（秘密値の shell 展開・xtrace を構造からなくすため）、esa-mcp-launcher の直接流用（GPG・esa 専用）。exec の構造は踏襲する。
-
-## 先行例と実装上の判断
-
-出典の取得日はすべて 2026-10-26。公開日が確認できなかった資料はその旨を記す。
-
-| 判断 | 一次資料・先行例 | 差分と軸 |
-|---|---|---|
-| D1: 正本を home-manager に置く | dotfiles commit `8279bc6`、`crates/agent-settings-reconcile/src/managed.rs` | 所有記録を権限へ拡張。軸: 表現不可能 — 単一正本 |
-| D2: native sandbox を使う | OpenAI, Codex [rust-v0.164.0 permissions_toml.rs L112](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/permissions_toml.rs#L112)、[exec_policy.rs L443](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/exec_policy.rs#L443)、公開日未確認 | 明示 allow は sandbox を迂回しうるので生成しない。軸: 還元 |
-| D3: 既存ライブラリと router を拡張する | dotfiles `managed.rs` / `router.rs`、OpenAI [rules 読込 L668](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/exec_policy.rs#L668) | 別の認可エンジンや CLI fork を作らない。権限検査の失敗だけ拒否。軸: 還元 |
-| D4: 未配備の基盤、配備の順に PR を積む | dotfiles [ADR-0027](adr/0027-uncertainty-first-stacking.md) | 既存のセッション内チェーン規約と一致。軸: 還元 |
-| D5: 共有設定を残し、境界外は一回の審査にする | Anthropic, [Permissions](https://code.claude.com/docs/en/permissions)、[Sandboxing](https://code.claude.com/docs/en/sandboxing)、公開日未確認 | Read/Edit/WebFetch の native 意味と hook ask を利用。機体管理設定だけの統制は採らない。軸: 還元 |
-| D6: sandbox の中で動く shell は自動で許可し、sandbox 外への再実行と ask・deny は審査する | Anthropic, [Sandboxing](https://code.claude.com/docs/en/sandboxing)、OpenAI, [Agent approvals & security](https://learn.chatgpt.com/docs/agent-approvals-security)、公開日はどちらも未確認 | auto-allow mode と `on-request` の仕様どおり。`prompt`→`auto` は拡大として reviewed migrate に回す(#1030 の R4 を保つ)。軸: 表現不可能 — 境界を OS の sandbox が強制する |
-
-既存手段: `crates/agent-settings-reconcile/src/bin/agent-permissions.rs` — 拡張: `crates/agent-settings-reconcile`。
-Claude の本体コードは非公開。固定版の根拠は Anthropic の
-[v2.1.285 changelog](https://github.com/anthropics/claude-code/blob/v2.1.285/CHANGELOG.md#L3152)
-と隔離試験で、現在の公開ドキュメントにある新しい挙動まで確認済みとはしない。
-
-## 要求と実装の対応
-
-| ID | 要求・合意 | 実装箇所 |
-|---|---|---|
-| R1 | 「そういえば Claude ではどうやってましたっけ？」 | 本文と既存 `docs/agents/agent-settings-reconcile.md` |
-| R2 | 「両者を同じソースにして一元管理できる状態にしたい」 | Nix 宣言、共通 Policy と native 設定生成 |
-| R3 | 「整理・取り込みまで含める」 | inspect / migrate、本人確認後に適用 |
-| R4 | 「範囲が広がるときだけ確認」 | apply の拡大判定とレビュー照合 |
-| R5 | 「個別許可は原則その実行限り」 | 恒久 allow 空(`mcp_allow` の宣言だけが例外)、外部ツール prompt |
-| R6 | 「権限設定全体を対象にする」「権限の境界も決め直す」 | 複数設定元の棚卸しと生成 |
-| R7 | 「作業場所の外はその都度審査」「通常の資料は読める」「既知の宛先＋個別審査」 | native filesystem/network と hook |
-| R8 | 「表せない分は個別審査へ」「一回の本人承認を認める」 | sandbox 外実行の ask、project 通信先の native 審査 |
-| R9 | 「蓄積・ずれ・誤操作の防止」 | 所有記録、check、fail-closed の権限検査 |
-| R10 | 「プロジェクト固有分も共通管理」 | projects / project_rules、共有ファイルを編集しない |
-| R11 | 「未知の許可は提示して止める」 | unknown と review の適用拒否 |
-| R12 | 「一覧確認後に境界と審査へ置換」 | 承認済み一覧の再読込とハッシュ照合 |
-| R13 | sudachipy を「入れる件を起票すれば良い」 | 依存宣言済みと確認。runner を使わなかった原因を [#1029](https://github.com/tarotene/dotfiles/issues/1029) に記録 |
-| R14 | 共有リポジトリの設定は変更せず、本人の環境側で制御する | retain と変更検出、tracked local も保護 |
-
-Reference-Only: #939 — worktree ブランチ作成の自動審査拒否。受入試験用。
-Reference-Only: #991 — router 外の許可 hook の意図。既存登録を維持する。
-Reference-Only: #1021 — Codex hook 入力の不足。今回解消したとは扱わない。
-
-実装状態の「所有記録」は、適用した権限設定と残置した設定元を記録した本人のローカルファイルを指す。
-「native」は Claude / Codex 本体の設定・sandbox・承認処理を指す。
-
-## 検証の限界を残す
-
-対象は許可の蓄積・ずれ・誤操作の防止である。hook を無効にした起動や、
-同一ユーザー権限の悪意あるコードの隔離までは保証しない。
-共有の Edit / WebFetch allow が shell sandbox の範囲を広げうる場合は、
-共有ファイルを消さず shell 実行を一回の確認へ戻す。
-Codex の PreToolUse ask は使わず、native profile と PermissionRequest を使う。
-macOS 実機と認証付きの全経路は未確認。新しいセッションで有効設定と hook 信頼を読み戻してから、
-当該ホストで有効になったと報告する。
-
-## 配備は所有記録の検査と同じ段で接続する
-
-`home/modules/codex.nix` が共通モジュールを import し、既定で有効にする。
-Claude の旧 permissions activation は共通管理中には実行しない。
-Codex の既存 writer は端末表示だけを担当し、権限の writer と競合させない。
-設定全体は symlink にせず、正本の JSON だけを Nix store から配備する。
-
-初回 activation は撤去への承認を推測しない。所有記録が無ければ移行の案内を表示する。
-配備された router は記録ができるまで実行を拒否するため、初回はレビューと
-一時設定での試験を済ませてから移行・activation を行う。
-通常の activation は、既存の hook・モデル・端末設定の更新後に `apply` を走らせる。
-
-router は入力変換前に権限検査を行う。deny、ask、allow の順に集約し、
-この検査の panic・10秒の時間切れは拒否する。他の検査の失敗時の扱いは変えない。
-native の30秒のhook期限より前に返す設計だが、プロセス全体の強制終了まで
-拒否応答を返せるとは保証しない。
-Codex の PermissionRequest も、既存の限定 allow 判定より先に権限のずれを検査する。
-
-`/promote-permissions` は正本への変更提案を作る入口となる。実行時の allow 追加や
-プロジェクト設定の削除は行わず、個別の操作は原則その実行限りの承認を使う。
+`--home` は撤去対象ホームの絶対パス。dry-run は変更候補を JSON で返し、書き込まない。
+実行は現在の所有記録からたどれる journal だけを使い、取り消された移行は除外する。
+証明できる共有変更だけを逆適用し、現在値が記録後の値と違う箇所は本人の編集として保持する。
+後から加えた許可や個別 MCP の許可も保持する。完了は transaction と読み戻しで確かめ、
+撤去済みの印を残す。同じホームへ再実行しても共有設定を作り直さない。
+
+journal が無い場合は保守的に扱う。共有管理の名前付き selector とその profile の撤去だけを対象にし、
+由来を証明できないローカル設定・project 設定・rules は削除しない。
+未完了の transaction がある場合は、その回復を先に行い、撤去で上書きしない。
+旧 `inspect` / `migrate` / `apply` / `check` は互換 CLI の入口として残るが、通常実行や activation の前提ではない。
+旧 promotion queue は自動で再適用しない。必要な許可は `/promote-permissions` から native 宣言として提案する。
+
+## 承認経路は upstream のコードに基づいて区別する
+
+以下は OpenAI, *Codex*, `rust-v0.164.0`、commit
+`6aaac694803004a63c6f393d153c96d22521a6b9` のコードを読んだ範囲である。
+公開日未確認、取得日 2026-10-27。
+
+- 承認要求は PermissionRequest hook の allow / deny を先に適用し、判定が無いときに reviewer へ進む。
+  `auto_review` を宣言しても既存 hook の拒否を迂回しない。
+  [`tools/approvals.rs` L484–505](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/approvals.rs#L484-L505)。
+- reviewer は guardian が応答すればその結果を採り、応答が無い経路は user へ進む。
+  全ツールが必ず自動承認されるという意味ではない。
+  [`tools/approvals.rs` L552–583](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/approvals.rs#L552-L583)。
+- Apps は app policy、custom MCP は server/tool の approval mode を使う。
+  [`mcp_tool_call.rs` L219–229](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/mcp_tool_call.rs#L219-L229)。
+  Apps の reviewer は link → app → app default の順に見て、requirements が許す指定を使う。
+  custom MCP はその app 固有の上書きを使わず、既定 reviewer を使う。
+  [`connectors.rs` L514–550](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/connectors.rs#L514-L550)。
+
+設定の parse・読み戻しと、reviewer が実際に審査したことは区別する。
+今回の nested sandbox 内では reviewer の end-to-end 実行は未検証。
+既存の過去の実測を、今回の設定で実測した結果として流用しない。

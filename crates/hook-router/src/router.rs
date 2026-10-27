@@ -2,7 +2,7 @@
 //!
 //! 契約(旧: 検査ごとに別の hook として登録し、Claude Code が並列に走らせ、結果をまとめていた):
 //! - 各規則は別スレッドで走る。1 つが panic しても、ほかの規則は走り、panic した規則は
-//!   素通り(fail-open)にする。`agent-permissions` だけは拒否する。
+//!   素通り(fail-open)にする。
 //! - 各規則には、かつて個別の hook として宣言していた `timeout` と同じ時間(`Rule::budget`)を
 //!   許す。越えた規則の結果は捨てて素通りにする。スレッドは外から止められないので、
 //!   呼び出し側(`main`)は応答を出したあと、プロセスごと終わる。
@@ -129,14 +129,6 @@ pub fn merge(results: &[(&'static str, Verdict)]) -> Merged {
             Verdict::Done(Some(Outcome::Allow(reason))) => m.allow.push(reason.clone()),
             Verdict::Done(Some(Outcome::Context(text))) => m.context.push(text.clone()),
             Verdict::Done(None) => {}
-            Verdict::Panicked | Verdict::TimedOut if *node == "agent-permissions" => {
-                let why = if matches!(verdict, Verdict::Panicked) {
-                    "panic"
-                } else {
-                    "時間切れ"
-                };
-                m.deny.push(format!("[agent-permissions] 権限検査が{why}で完了しなかったため拒否しました。agent-permissions inspect で診断してください。"));
-            }
             Verdict::Panicked => m.failed_open.push((node, "panic")),
             Verdict::TimedOut => m.failed_open.push((node, "時間切れ")),
         }
@@ -263,7 +255,7 @@ mod tests {
     #[test]
     fn original_and_normalized_checks_receive_their_own_payloads() {
         let checks = [
-            (rule("agent-permissions", 1000, echo_len), "original".into()),
+            (rule("original-payload", 1000, echo_len), "original".into()),
             (rule("normalized", 1000, echo_len), "patch-path".into()),
         ];
         assert_eq!(
@@ -385,20 +377,6 @@ mod tests {
                 render(Event::Pre, &merged),
                 render(Event::Pre, &merge(&reversed))
             );
-        }
-    }
-
-    #[test]
-    fn permission_check_panic_and_timeout_fail_closed_only_for_that_rule() {
-        for run in [boom as fn(Agent, &str) -> Option<Outcome>, slow] {
-            let checks = [rule("agent-permissions", 20, run), rule("other", 20, run)];
-            let merged = merge(&execute(&checks, "{}"));
-            assert_eq!(merged.deny.len(), 1);
-            assert!(merged.deny[0].contains("agent-permissions"));
-            assert_eq!(merged.failed_open.len(), 1);
-            assert_eq!(merged.failed_open[0].0, "other");
-            let value: Value = serde_json::from_str(&render(Event::Pre, &merged).unwrap()).unwrap();
-            assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
         }
     }
 }

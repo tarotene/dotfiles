@@ -60,6 +60,7 @@ usage: agent-settings-reconcile <subcommand> <file> ...
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
   codex-config <config.toml> <spec-json>
+  codex-permissions <config.toml> <{settings: object, mcp_allow: array}>
   codex-hooks <hooks.json> [--retire <event> <command>]... [--register] <event> <matcher> <command> <timeout> [...]
   copilot-hooks <settings.json> [--retire <event> <command>]... [--register] <event> <command> <timeoutSec> [...]";
 
@@ -75,11 +76,15 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
         }
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
-        "codex-config" => {
+        "codex-config" | "codex-permissions" => {
             let [file, spec] = rest else {
                 return Err(usage(USAGE));
             };
-            codex_config::apply(Path::new(file), spec).map_err(fail)
+            if sub == "codex-permissions" {
+                codex_config::permissions(Path::new(file), spec).map_err(fail)
+            } else {
+                codex_config::apply(Path::new(file), spec).map_err(fail)
+            }
         }
         "codex-hooks" => argv_hooks(rest, Flavor::Nested),
         "copilot-hooks" => argv_hooks(rest, Flavor::Flat),

@@ -35,7 +35,8 @@
 たとえば `esa-index/config.json`、`WORKTREE_FRESH_BASE_FETCH_TTL`、wrapup の state root、
 `<!-- codex-trial:ID -->`、`<!-- wrapup-retro -->` はそのまま使う。
 既存の directive 識別子 `esa-index` と gate-event 識別子 `pr-confirm-guard` も、実行名と分けて維持する。
-`agent-permissions` の CLI・公開 option・権限境界・移行承認条件も維持する。
+`agent-permissions` の旧 CLI は互換入口として残す。共有権限管理の撤去は
+ADR-457 の 2026-10-27 Amendment と `agent-permissions retire` に従う。
 
 旧 CLI は新 CLI と同じ entry 実装を呼び、引数・stdin・終了コード・stdout/stderr を転送する。
 旧 skill は旧ディレクトリと同じ name を持ち、新 skill の全文を読む入口だけを持つ。
@@ -176,7 +177,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 
 | CLI | 維持理由 |
 |---|---|
-| `agent-permissions` | 共通権限の棚卸し・移行・適用・判定を扱う。承認条件と境界を維持する。 |
+| `agent-permissions` | 旧共有権限の撤去と既存 CLI の互換入口。通常実行の権限判定には使わない。 |
 | `github-rulesets-apply` | 複数リポジトリへ ruleset の適用を回す。単一対象の apply-rulesets と区別する。 |
 | `decision-colocation-check` | CI で決定成果物と執行点の同梱を判定する。 |
 | `decision-colocation-guard` | 投稿時に同梱条件を満たさない PR を防ぐ。 |

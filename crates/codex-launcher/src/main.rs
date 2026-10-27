@@ -138,6 +138,105 @@ fn clean_command(path: &Path) -> Command {
     c
 }
 
+// OpenAI Codex rust-v0.164.0 core/src/config/mod.rs:577-604,2652-2700
+// and config/src/permissions_toml.rs:121-127 (retrieved 2026-10-27).
+// https://github.com/openai/codex/tree/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs
+// Validate native protection settings only; no ownership record or other
+// worktree's state participates in credential delivery.
+fn validate_config(home: &Path, cwd: &Path) -> Result<String, String> {
+    fn read(path: &Path) -> Result<toml::Value, String> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|_| format!("cannot read native config {}", path.display()))?;
+        toml::from_str(&text).map_err(|_| format!("invalid native config {}", path.display()))
+    }
+    fn overrides(value: &toml::Value) -> bool {
+        [
+            "default_permissions",
+            "permissions",
+            "sandbox_mode",
+            "sandbox_workspace_write",
+            "approval_policy",
+            "approvals_reviewer",
+            "profile",
+        ]
+        .iter()
+        .any(|key| value.get(key).is_some())
+            || value.get("features").is_some_and(|f| {
+                ["network_proxy", "credential_masking"]
+                    .iter()
+                    .any(|key| f.get(key).is_some())
+            })
+            || value
+                .get("profiles")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|profiles| profiles.values().any(overrides))
+    }
+    let config = read(&home.join(".codex/config.toml"))?;
+    for key in ["network_proxy", "credential_masking"] {
+        if config
+            .get("features")
+            .and_then(|f| f.get(key))
+            .and_then(toml::Value::as_bool)
+            != Some(true)
+        {
+            return Err(format!(
+                "native protective config requires features.{key} = true"
+            ));
+        }
+    }
+    if config.get("approval_policy").and_then(toml::Value::as_str) != Some("on-request")
+        || config
+            .get("approvals_reviewer")
+            .and_then(toml::Value::as_str)
+            != Some("auto_review")
+    {
+        return Err(
+            "native protective config requires on-request approval with auto_review".into(),
+        );
+    }
+    let selected = config
+        .get("default_permissions")
+        .and_then(toml::Value::as_str)
+        .ok_or("native protective config requires default_permissions")?;
+    let profile = config
+        .get("permissions")
+        .and_then(|p| p.get(selected))
+        .ok_or("native protective config selected profile is missing")?;
+    if profile.get("extends").and_then(toml::Value::as_str) != Some(":workspace")
+        || profile
+            .get("network")
+            .and_then(|n| n.get("enabled"))
+            .and_then(toml::Value::as_bool)
+            != Some(true)
+        || config.get("sandbox_mode").is_some()
+        || config.get("profile").is_some()
+    {
+        return Err("native protective config requires a network-enabled :workspace profile and no legacy/profile override".into());
+    }
+    if config
+        .get("profiles")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|profiles| profiles.values().any(overrides))
+    {
+        return Err("native config profiles must not override credential protections".into());
+    }
+    // Native loader discovers ancestor project config. Treat even untrusted
+    // project layers conservatively: trust can change independently of this run.
+    for ancestor in cwd.ancestors() {
+        let path = ancestor.join(".codex/config.toml");
+        if path == home.join(".codex/config.toml") {
+            continue;
+        }
+        if path.exists() && overrides(&read(&path)?) {
+            return Err(format!(
+                "project config overrides native credential protections: {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(selected.to_owned())
+}
+
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let invocation = classify(&args)?;
@@ -152,7 +251,6 @@ fn run() -> Result<(), String> {
         return Err("native Codex points back to the launcher".into());
     }
     let mut child = clean_command(&native);
-    child.args(&args);
     if invocation.protected {
         for key in ["CODEX_HOME", "CLAUDE_CONFIG_DIR", "CODEX_PROFILE"] {
             if std::env::var_os(key).is_some() {
@@ -179,20 +277,12 @@ fn run() -> Result<(), String> {
                 .unwrap_or(std::env::current_dir().map_err(|_| "cannot read working directory")?),
         )
         .map_err(|_| "cannot resolve working directory")?;
-        let checked = clean_command(&home.join(".local/bin/agent-permissions"))
-            .args(["check", "--project"])
-            .arg(&cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|_| "cannot run agent-permissions check")?;
-        if !checked.success() {
-            return Err(
-                "permission check failed; run agent-permissions inspect/check before launching"
-                    .into(),
-            );
-        }
+        let selected = validate_config(&home, &cwd)?;
+        // A resumed session can retain a permission selection. Explicitly select
+        // the validated profile so its managed sandbox/proxy remains active.
+        child
+            .arg("--config")
+            .arg(format!("default_permissions={selected:?}"));
         // gh diagnostics can contain credentials: capture stdout, discard stderr.
         let output = clean_command(Path::new("gh"))
             .args(["auth", "token", "--hostname", "github.com"])
@@ -222,6 +312,7 @@ fn run() -> Result<(), String> {
         }
         child.env("GH_TOKEN", token);
     }
+    child.args(&args);
     Err(format!("cannot execute native Codex: {}", child.exec()))
 }
 

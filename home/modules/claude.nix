@@ -71,7 +71,7 @@ let
   permissionRules =
     assert lib.assertMsg (lib.all (r: !hasMidWildcard r) permissionRules_)
       "home/modules/claude.nix permissionRules に中間 `*` を含むルールがあります: ${lib.concatStringsSep ", " (lib.filter hasMidWildcard permissionRules_)} — 値受け取り位置への任意オプション挿入を素通しするため書けません(#461)。個別ルールに絞るか、検証付きの allow hook を追加してください。";
-    permissionRules_;
+    permissionRules_ ++ config.dotfiles.claudePermissions.extraAllow;
 
   # pkexec-guard(29番)向けの明示 ask ルール。`.permissions.allow` と違い
   # 「常に許可」ではなく「auto mode でも必ず確認を出す」ことが目的
@@ -115,35 +115,43 @@ let
     "mcp__github__create_pull_request"
     "mcp__github__search_issues"
   ];
+  permissionsSpec = {
+    retire_allow = retiredPermissionRules;
+    allow = permissionRules;
+    retire_ask = retiredAskRules;
+    ask = askRules;
+  };
 in
 {
-  home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
-  home.file.".claude/hooks/claude-statusline".source = "${pkgs.dotfiles-tools}/bin/claude-statusline";
-  home.file.".claude/hooks/claude-usage".source = "${pkgs.dotfiles-tools}/bin/claude-usage";
-  home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${settingsReconcile} claude-statusline "$HOME/.claude/settings.json" \
-      ${lib.escapeShellArg (
-        builtins.toJSON {
-          desired = statusLineCmd;
-          retired = retiredStatusLineCommands;
-        }
-      )}
-  '';
-  home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run env PATH="$HOME/.local/bin":"$PATH" ${planModelBin} sync
-  '';
-  home.file.".local/bin/claude-plan-model".source = planModelBin;
-  home.activation.registerClaudePermissions = lib.mkIf (!config.dotfiles.agentPermissions.enable) (
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
+  options.dotfiles.claudePermissions.extraAllow = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = config.dotfiles.agentPermissions.mcp_allow;
+    description = "Additional native Claude permission allowances.";
+  };
+  config = {
+    # Native Claude sandbox dependencies remain available for restored settings.
+    home.packages = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
+    xdg.configFile."agent-native/claude-permissions.json".text = builtins.toJSON permissionsSpec;
+    home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
+    home.file.".claude/hooks/claude-statusline".source = "${pkgs.dotfiles-tools}/bin/claude-statusline";
+    home.file.".claude/hooks/claude-usage".source = "${pkgs.dotfiles-tools}/bin/claude-usage";
+    home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run ${settingsReconcile} claude-statusline "$HOME/.claude/settings.json" \
         ${lib.escapeShellArg (
           builtins.toJSON {
-            retire_allow = retiredPermissionRules;
-            allow = permissionRules;
-            retire_ask = retiredAskRules;
-            ask = askRules;
+            desired = statusLineCmd;
+            retired = retiredStatusLineCommands;
           }
         )}
-    ''
-  );
+    '';
+    home.activation.registerClaudeModelConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run env PATH="$HOME/.local/bin":"$PATH" ${planModelBin} sync
+    '';
+    home.file.".local/bin/claude-plan-model".source = planModelBin;
+    home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "retireAgentPermissions" ] ''
+      # pipeline-node: agent-settings-reconcile
+      run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
+        ${lib.escapeShellArg (builtins.toJSON permissionsSpec)}
+    '';
+  };
 }

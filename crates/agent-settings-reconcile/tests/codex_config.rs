@@ -146,7 +146,6 @@ fn bad_specs_are_rejected_without_writing() {
         r#"{"a..b": 1}"#,
         r#"{"a": null}"#,
         r#"{"a": 1.5}"#,
-        r#"{"a": {"b": 1}}"#,
         r#"{"a": [[1]]}"#,
     ] {
         let (_d, f) = with(None);
@@ -183,4 +182,92 @@ fn new_file_is_private_and_existing_mode_is_kept() {
         std::fs::metadata(&f2).unwrap().permissions().mode() & 0o777,
         0o640
     );
+}
+
+#[test]
+fn native_permissions_merge_literal_keys_and_only_existing_servers() {
+    let (_d,f)=with(Some("model = 'owner'\n[mcp_servers.custom]\ncommand = 'server'\n[apps.connector_1.tools.search]\napproval_mode = 'approve'\n"));
+    let spec = r#"{"settings":{"permissions":{"dotfiles":{"extends":":workspace","filesystem":{"~/.secret.path":"deny"}}},"apps":{"_default":{"default_tools_approval_mode":"prompt"}}},"mcp_allow":["mcp__custom__read","mcp__missing__read","mcp__codex_apps__search"]}"#;
+    let invoke = || {
+        Command::new(BIN)
+            .args(["codex-permissions", &f.to_string_lossy(), spec])
+            .output()
+            .unwrap()
+    };
+    let out = invoke();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let warnings = String::from_utf8_lossy(&out.stderr);
+    assert!(warnings.contains("custom MCP server missing absent"));
+    assert!(warnings.contains("codex_apps tool search needs explicit"));
+    let first = std::fs::read_to_string(&f).unwrap();
+    let doc: toml_edit::DocumentMut = first.parse().unwrap();
+    assert_eq!(
+        doc["permissions"]["dotfiles"]["filesystem"]["~/.secret.path"].as_str(),
+        Some("deny")
+    );
+    assert_eq!(
+        doc["mcp_servers"]["custom"]["tools"]["read"]["approval_mode"].as_str(),
+        Some("approve")
+    );
+    assert!(doc["mcp_servers"].get("missing").is_none());
+    assert_eq!(
+        doc["apps"]["connector_1"]["tools"]["search"]["approval_mode"].as_str(),
+        Some("approve")
+    );
+    assert!(invoke().status.success());
+    assert_eq!(std::fs::read_to_string(f).unwrap(), first);
+}
+
+#[test]
+fn native_permissions_replace_owned_profile_and_legacy_selectors_with_backup() {
+    let original = "model = 'owner'\nsandbox_mode = 'workspace-write'\n[sandbox_workspace_write]\nwritable_roots = ['/old']\n[permissions.dotfiles]\nextends = ':workspace'\n[permissions.dotfiles.filesystem]\n'/owner-extra' = 'write'\n[permissions.dotfiles.network.domains]\n'old.example' = 'allow'\n[permissions.other]\nextends = ':read-only'\n";
+    let (_dir, file) = with(Some(original));
+    let spec = r#"{"settings":{"default_permissions":"dotfiles","permissions":{"dotfiles":{"extends":":workspace","filesystem":{":root":"read"},"network":{"enabled":true,"domains":{"approved.example":"allow"}}}}},"mcp_allow":[]}"#;
+    let invoke = || {
+        Command::new(BIN)
+            .args(["codex-permissions", &file.to_string_lossy(), spec])
+            .output()
+            .unwrap()
+    };
+    let out = invoke();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = std::fs::read_to_string(&file).unwrap();
+    let doc: toml_edit::DocumentMut = text.parse().unwrap();
+    assert!(doc.get("sandbox_mode").is_none());
+    assert!(doc.get("sandbox_workspace_write").is_none());
+    assert_eq!(doc["model"].as_str(), Some("owner"));
+    assert_eq!(
+        doc["permissions"]["other"]["extends"].as_str(),
+        Some(":read-only")
+    );
+    assert!(doc["permissions"]["dotfiles"]["filesystem"]
+        .get("/owner-extra")
+        .is_none());
+    assert!(doc["permissions"]["dotfiles"]["network"]["domains"]
+        .get("old.example")
+        .is_none());
+    let backups: Vec<_> = std::fs::read_dir(file.parent().unwrap())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .contains("native-permissions-backup")
+        })
+        .collect();
+    assert_eq!(backups.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(backups[0].path()).unwrap(),
+        original
+    );
+    assert!(invoke().status.success());
+    assert_eq!(std::fs::read_to_string(file).unwrap(), text);
 }

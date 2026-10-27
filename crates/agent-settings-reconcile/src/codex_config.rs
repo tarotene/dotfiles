@@ -6,7 +6,7 @@
 //! コメント・並び・空行には触らない(`toml_edit` が書式を保つ)。
 //!
 //! spec は「ドット区切りのキー → 値」のオブジェクト(JSON)。値は文字列・整数・
-//! 真偽値と、それらだけの配列。キーの各区間は引用なしの名前に限る(ドットを含む
+//! 真偽値と、それらだけの配列、または literal-key オブジェクト。キーの各区間は引用なしの名前に限る(ドットを含む
 //! キー名は宣言できない — 今回の用途では要らない)。
 
 use crate::json::write_atomic;
@@ -66,6 +66,18 @@ fn set_dotted(doc: &mut DocumentMut, dotted: &str, want: &Spec) -> Result<(), St
             .ok_or_else(|| format!("`{seg}` が表ではない"))?;
     }
 
+    if let Spec::Object(children) = want {
+        if !table.contains_key(leaf) {
+            let mut t = Table::new();
+            t.set_implicit(true);
+            table.insert(leaf, Item::Table(t));
+        }
+        let target = table
+            .get_mut(leaf)
+            .and_then(Item::as_table_like_mut)
+            .ok_or("existing value is not a table")?;
+        return merge_object(target, children);
+    }
     let new = to_toml(want)?;
     match table.get_mut(leaf) {
         Some(Item::Value(old)) => {
@@ -85,7 +97,7 @@ fn set_dotted(doc: &mut DocumentMut, dotted: &str, want: &Spec) -> Result<(), St
     Ok(())
 }
 
-fn to_toml(v: &Spec) -> Result<Value, String> {
+pub(crate) fn to_toml(v: &Spec) -> Result<Value, String> {
     match v {
         Spec::String(s) => Ok(Value::from(s.as_str())),
         Spec::Bool(b) => Ok(Value::from(*b)),
@@ -118,4 +130,183 @@ fn same(have: &Value, want: &Spec) -> bool {
         }
         _ => false,
     }
+}
+
+// Object members are literal TOML keys (filesystem paths and server names may
+// contain dots); only the outer spec keys use dotted-path notation.
+fn merge_object(
+    table: &mut dyn toml_edit::TableLike,
+    values: &serde_json::Map<String, Spec>,
+) -> Result<(), String> {
+    for (key, want) in values {
+        if let Spec::Object(children) = want {
+            if !table.contains_key(key) {
+                let mut t = Table::new();
+                t.set_implicit(true);
+                table.insert(key, Item::Table(t));
+            }
+            let child = table
+                .get_mut(key)
+                .and_then(Item::as_table_like_mut)
+                .ok_or_else(|| format!("{key}: existing value is not a table"))?;
+            merge_object(child, children)?;
+        } else {
+            if table
+                .get(key)
+                .and_then(Item::as_value)
+                .is_some_and(|v| same(v, want))
+            {
+                continue;
+            }
+            let mut value = to_toml(want)?;
+            if let Some(old) = table.get(key).and_then(Item::as_value) {
+                *value.decor_mut() = old.decor().clone();
+            }
+            table.insert(key, Item::Value(value));
+        }
+    }
+    Ok(())
+}
+
+/// Native permissions declaration, independent of the retired shared policy.
+/// MCP names retain the existing custom-server mapping; absent servers are skipped.
+/// Declared named profiles are exact; unrelated named profiles and runtime fields
+/// survive. With a declared default selector, legacy sandbox selectors are removed.
+/// Upstream rejects simultaneous selector overrides: openai/codex tree
+/// 6aaac694803004a63c6f393d153c96d22521a6b9,
+/// codex-rs/core/src/config/mod.rs:3482-3486 (retrieved 2026-10-27).
+/// Destructive replacement has a private content-addressed before-image alongside
+/// the config; the write reuses the migration CAS/readback primitive.
+pub fn permissions(path: &Path, spec_json: &str) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Declaration {
+        settings: serde_json::Map<String, Spec>,
+        mcp_allow: Vec<String>,
+    }
+    let mut declaration: Declaration =
+        serde_json::from_str(spec_json).map_err(|e| format!("spec-json: {e}"))?;
+    let before = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.to_string()),
+    };
+    let mut doc: DocumentMut = before.parse().map_err(|e| format!("{e}"))?;
+    let mut servers = serde_json::Map::new();
+    for entry in &declaration.mcp_allow {
+        let (server, tool) = crate::agent_permissions::mcp_tool(entry)
+            .ok_or_else(|| format!("invalid MCP tool: {entry}"))?;
+        if server == "codex_apps" {
+            eprintln!("agent-settings-reconcile: codex_apps tool {tool} needs explicit apps.<connector>.tools mapping; preserved existing app settings");
+            continue;
+        }
+        if doc
+            .get("mcp_servers")
+            .and_then(Item::as_table_like)
+            .and_then(|s| s.get(server))
+            .and_then(Item::as_table_like)
+            .is_none()
+        {
+            eprintln!(
+                "agent-settings-reconcile: custom MCP server {server} absent; allowance skipped"
+            );
+            continue;
+        }
+        let server = servers
+            .entry(server)
+            .or_insert_with(|| serde_json::json!({"tools":{}}));
+        server["tools"][tool] = serde_json::json!({"approval_mode":"approve"});
+    }
+    if !servers.is_empty() {
+        declaration
+            .settings
+            .insert("mcp_servers".into(), Spec::Object(servers));
+    }
+    let mut replaced = false;
+    if declaration.settings.contains_key("default_permissions") {
+        // Named native profiles replace the legacy selector; do not leave a
+        // second selector for the launcher or upstream override parser.
+        replaced |= doc.remove("sandbox_mode").is_some();
+        replaced |= doc.remove("sandbox_workspace_write").is_some();
+    }
+    if let Some(Spec::Object(profiles)) = declaration.settings.get("permissions") {
+        if let Some(table) = doc.get_mut("permissions").and_then(Item::as_table_like_mut) {
+            for (name, want) in profiles {
+                if table.get(name).is_some_and(|have| !item_same(have, want)) {
+                    // This one profile is declaration-owned: retained domain or
+                    // filesystem entries would silently broaden its boundary.
+                    table.remove(name);
+                    replaced = true;
+                }
+            }
+        }
+    }
+    for (key, want) in &declaration.settings {
+        set_dotted(&mut doc, key, want)?;
+    }
+    let after = doc.to_string();
+    if after == before {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let observed = match std::fs::read(path) {
+        Ok(b) => Some(b),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.to_string()),
+    };
+    if observed.as_deref().unwrap_or_default() != before.as_bytes() {
+        return Err(format!("concurrent modification: {}", path.display()));
+    }
+    crate::agent_permissions::transaction::reject_symlinks(path)?;
+    if replaced && observed.is_some() {
+        native_backup(path, before.as_bytes())?;
+    }
+    crate::agent_permissions::transaction::replace(path, &observed, &Some(after.into_bytes()))
+}
+
+fn item_same(have: &Item, want: &Spec) -> bool {
+    if let Spec::Object(want) = want {
+        return have.as_table_like().is_some_and(|table| {
+            table.len() == want.len()
+                && want
+                    .iter()
+                    .all(|(key, value)| table.get(key).is_some_and(|item| item_same(item, value)))
+        });
+    }
+    have.as_value().is_some_and(|v| same(v, want))
+}
+
+fn native_backup(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let name = path
+        .file_name()
+        .ok_or("config has no filename")?
+        .to_string_lossy();
+    let backup = path.with_file_name(format!(
+        "{name}.native-permissions-backup.{}",
+        crate::agent_permissions::digest(bytes)
+    ));
+    crate::agent_permissions::transaction::reject_symlinks(&backup)?;
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&backup)
+    {
+        Ok(mut file) => {
+            file.write_all(bytes)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| e.to_string())?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            if std::fs::read(&backup).map_err(|e| e.to_string())? != bytes {
+                return Err("native permissions backup conflict".into());
+            }
+        }
+        Err(e) => return Err(e.to_string()),
+    }
+    Ok(())
 }

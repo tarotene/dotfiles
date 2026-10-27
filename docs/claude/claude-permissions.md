@@ -1,10 +1,10 @@
 # claude-permissions — `permissions.allow` を宣言的に配る
 
-## 共通管理への移行
+## Claude 専用の設定管理を使う
 
-通常配備では [agent-permissions](../agents/agent-permissions.md) が Claude・Codex 共通の
-権限宣言を管理する。以下は旧 Claude 専用 reconciler の記録で、共通管理を
-有効にしている間は旧 permissions activation を実行しない。
+2026-10-27 の ADR-457 Amendment で共有権限管理を撤去し、以下の Claude 専用
+reconciler を通常配備へ戻した。Codex は自身の native 設定を使う。
+旧共有管理の撤去は [agent-permissions](../agents/agent-permissions.md) を参照する。
 
 `~/.claude/settings.json` の `permissions.allow` は、Claude Code が自分の判断で
 "許可プロンプトを毎回出さずに実行してよいコマンド" を宣言する場所。手で書いた

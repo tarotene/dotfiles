@@ -580,8 +580,8 @@ let
   codexWrapupStopCmd = "WRAPUP_TRIAL_AGENT=codex ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' ${wrapupStopCmd}";
   legacyCodexWrapupStopCmd = "ATTRIBUTION_AGENT_NAME='Codex CLI' ATTRIBUTION_AGENT_URL='https://learn.chatgpt.com/docs/codex/cli' bash '${hooksDir}/wrapup-stop-gate.sh'";
   wrapupSessionStartCmd = "'${hooksDir}/session-wrapup' start";
-  agentPermissionsStartCmd = "'${hooksDir}/agent-permissions' hook session-start";
-  agentPermissionsEndCmd = "'${hooksDir}/agent-permissions' hook session-end";
+  retiredAgentPermissionsStartCmd = "'${hooksDir}/agent-permissions' hook session-start";
+  retiredAgentPermissionsEndCmd = "'${hooksDir}/agent-permissions' hook session-end";
   codexWrapupSessionStartCmd = "WRAPUP_TRIAL_AGENT=codex ${wrapupSessionStartCmd}";
   legacyWrapupSessionStartCmd = "bash '${hooksDir}/wrapup-session-start.sh'";
   planViewCmd = "'${hooksDir}/plan-view'";
@@ -893,6 +893,14 @@ let
   # integration::claude_settings::rewrite による .hooks.SessionStart の
   # herdr-agent-state.sh だけで、statusLine にも他イベントにも触れない)。
   retiredHookEntries = [
+    {
+      event = "SessionStart";
+      command = retiredAgentPermissionsStartCmd;
+    }
+    {
+      event = "SessionEnd";
+      command = retiredAgentPermissionsEndCmd;
+    }
     # ルータ(hook-router)に載せた 19 件の旧登録(2026-10-24)。所有の記録が無いホスト(記録を
     # 入れた直後の最初の switch)は、前の世代が書いたこの 19 件を知らないので、ここに挙げて
     # 初回だけ消す。記録のあるホストは、記録(宣言から外れたもの)で消えるので、この項目は
@@ -1209,22 +1217,6 @@ let
       event = "SessionStart";
       node = "session-wrapup-start";
       command = wrapupSessionStartCmd;
-    }
-    # 権限の待機(「don't ask again」で追記された許可)の回収と、昇格候補の通知
-    # (docs/agents/agent-permissions.md)。SessionEnd は結果を返せず時間も短い(Codex は 1〜3 秒)
-    # ので最善努力。確実な回収は、次の SessionStart と hms の activation が担う。
-    {
-      event = "SessionStart";
-      node = "agent-permissions-reclaim";
-      matcher = "startup|resume|clear";
-      command = agentPermissionsStartCmd;
-      timeout = 10;
-    }
-    {
-      event = "SessionEnd";
-      node = "agent-permissions-reclaim";
-      command = agentPermissionsEndCmd;
-      timeout = 3;
     }
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
     # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
@@ -1553,8 +1545,13 @@ let
         [ ]
       else if d.node == "herdr-agent-metadata" then
         [ ] # herdr.nix owns the agent-specific metadata lifecycle
-      else if d.node == "gh-edit-allow-judge" then
-        [ ] # combined PermissionRequest below
+      else if
+        builtins.elem d.node [
+          "git-worktree-allow"
+          "gh-edit-allow-judge"
+        ]
+      then
+        [ ] # Native Auto-review must receive approvals; retain Claude Allow hooks.
       else if d.event == "PostToolUseFailure" then
         assert d.node == "atuin-history";
         [ ] # Codex reports failed commands through PostToolUse
@@ -1563,12 +1560,7 @@ let
           (
             (builtins.removeAttrs d [ "if" ])
             // (
-              if d.node == "git-worktree-allow" then
-                {
-                  event = "PermissionRequest";
-                  command = "'${hooksDir}/hook-router' permission --agent codex";
-                }
-              else if d.node == "hook-router-pre" then
+              if d.node == "hook-router-pre" then
                 {
                   command = "${hookRouterPreCmd} --agent codex";
                 }
@@ -1605,74 +1597,87 @@ let
   codexHooksSpec = builtins.toJSON {
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-codex.json";
     register = map declareHook codexHookDeclarations;
-    retire =
-      (map
-        (command: {
-          event = "PreToolUse";
-          inherit command;
-        })
-        [
-          legacyBleepCodexCmdUnprefixed
-          legacyPublishGuardCodexAdapterCmd
-          codexAttributionGuardCmd
-          legacyCodexAttributionGuardCmd
-          codexPrTitleGuardCmd
-          legacyCodexPrTitleGuardCmd
-          pkexecGuardCodexCmd
-          codexGitStashGuardCmd
-          legacyCodexGitStashGuardCmd
-          codexStackBaseGuardCmd
-          legacyCodexStackBaseGuardCmd
-          codexRulesetsWriteGuardCmd
-          codexMainCheckoutGuardPreCmd
-          codexPrConfirmGuardCmd
-          legacyCodexPrConfirmGuardCmd
-          "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'"
-        ]
-      )
-      ++ (map
-        (command: {
-          event = "PostToolUse";
-          inherit command;
-        })
-        [
-          codexAdrNumberCmd
-          legacyCodexAdrNumberCmd
-        ]
-      )
-      ++ (map
-        (command: {
-          event = "SessionStart";
-          inherit command;
-        })
-        [
-          wrapupSessionStartCmd
-          legacyWorktreeFreshBaseCmd
-          legacyIssueIndexCmd
-          legacyWrapupSessionStartCmd
-          legacySignPrewarmCmd
-          legacyPrGateSessionStartCmd
-        ]
-      )
-      ++ (map
-        (command: {
-          event = "Stop";
-          inherit command;
-        })
-        [
-          priorCodexWrapupStopCmd
-          legacyCodexWrapupStopCmd
-          legacyPrGateStopCmd
-          legacyCodexAgentTurnLogCmd
-          legacyCodexPlanGateCmd
-        ]
-      )
-      ++ [
-        {
-          event = "UserPromptSubmit";
-          command = legacyCodexAgentTurnLogCmd;
-        }
-      ];
+    retire = [
+      {
+        event = "PermissionRequest";
+        command = "'${hooksDir}/hook-router' permission --agent codex";
+      }
+      {
+        event = "SessionStart";
+        command = retiredAgentPermissionsStartCmd;
+      }
+      {
+        event = "SessionEnd";
+        command = retiredAgentPermissionsEndCmd;
+      }
+    ]
+    ++ (map
+      (command: {
+        event = "PreToolUse";
+        inherit command;
+      })
+      [
+        legacyBleepCodexCmdUnprefixed
+        legacyPublishGuardCodexAdapterCmd
+        codexAttributionGuardCmd
+        legacyCodexAttributionGuardCmd
+        codexPrTitleGuardCmd
+        legacyCodexPrTitleGuardCmd
+        pkexecGuardCodexCmd
+        codexGitStashGuardCmd
+        legacyCodexGitStashGuardCmd
+        codexStackBaseGuardCmd
+        legacyCodexStackBaseGuardCmd
+        codexRulesetsWriteGuardCmd
+        codexMainCheckoutGuardPreCmd
+        codexPrConfirmGuardCmd
+        legacyCodexPrConfirmGuardCmd
+        "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'"
+      ]
+    )
+    ++ (map
+      (command: {
+        event = "PostToolUse";
+        inherit command;
+      })
+      [
+        codexAdrNumberCmd
+        legacyCodexAdrNumberCmd
+      ]
+    )
+    ++ (map
+      (command: {
+        event = "SessionStart";
+        inherit command;
+      })
+      [
+        wrapupSessionStartCmd
+        legacyWorktreeFreshBaseCmd
+        legacyIssueIndexCmd
+        legacyWrapupSessionStartCmd
+        legacySignPrewarmCmd
+        legacyPrGateSessionStartCmd
+      ]
+    )
+    ++ (map
+      (command: {
+        event = "Stop";
+        inherit command;
+      })
+      [
+        priorCodexWrapupStopCmd
+        legacyCodexWrapupStopCmd
+        legacyPrGateStopCmd
+        legacyCodexAgentTurnLogCmd
+        legacyCodexPlanGateCmd
+      ]
+    )
+    ++ [
+      {
+        event = "UserPromptSubmit";
+        command = legacyCodexAgentTurnLogCmd;
+      }
+    ];
   };
 
   # statusLine / permissions の reconcile も agent-settings-reconcile(crates/
@@ -1977,8 +1982,6 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
   # hook-router: ツール呼び出しに付く検査 21 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
   home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
-  # agent-permissions: 権限の待機を回収する SessionStart / SessionEnd hook の入口(agentPermissionsStartCmd)。
-  home.file.".claude/hooks/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
   # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
   home.file.".claude/hooks/main-checkout-guard".source =
     "${pkgs.dotfiles-tools}/bin/main-checkout-guard";
@@ -2699,7 +2702,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
         "registerCodexHerdrMetadataHooks"
       ]
       ''
-        # pipeline-node: hook-router-pre, hook-router-post, codex-plan-gate, git-worktree-allow, gh-edit-allow-judge
+        # pipeline-node: hook-router-pre, hook-router-post, codex-plan-gate
         run ${settingsReconcile} codex-hooks-spec "$HOME/.codex/hooks.json" ${lib.escapeShellArg codexHooksSpec}
       '';
 
