@@ -34,6 +34,7 @@ repo-create-guard = { version = "0.1.0", path = "../repo-create-guard" }
 routines-write-guard = { version = "0.1.0", path = "../routines-write-guard" }
 rulesets-write-guard = { version = "0.1.0", path = "../rulesets-write-guard" }
 stack-base-guard = { version = "0.1.0", path = "../stack-base-guard" }
+worktree-lease = { version = "0.1.0", path = "../worktree-lease" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

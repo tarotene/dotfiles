@@ -230,6 +230,11 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+    n_worktree_lease: "worktree-lease" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
     n_new_tool_guard: "new-tool-guard" {
       class: s_rust
       style.stroke: "#D55E00"
@@ -387,6 +392,9 @@ n_agent_session.l_session_start.n_worklog -> l_external.n_obsidian_vault: "daily
 }
 n_agent_session.l_session_start.n_gpg_prewarm -> l_external.n_user: "pinentry once" {
   class: e_notify
+}
+n_agent_session.l_tool_call.n_worktree_lease -> n_agent_session.l_stop.n_pr_gate_stop: "lease (git-dir)" {
+  class: e_file
 }
 n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_tool_call.n_new_tool_guard: "session ledger" {
   class: e_file

@@ -77,14 +77,15 @@ node = [
   { id = "plan-fresh-gate", label = "plan-fresh-gate", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/plan-fresh-gate", doc = "docs/agents/plan-fresh-gate.md", auto = true },
 
   # --- Tool call: PreToolUse / PostToolUse の guard 群
-  # ルータ(hook-router)は、拒否だけを出す検査と記録役の 21 件を 1 つのプロセスで走らせる。
-  # 21 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
+  # ルータ(hook-router)は、拒否だけを出す検査と記録役の 22 件を 1 つのプロセスで走らせる。
+  # 22 件は Claude Code への登録を持たず、crates/hook-router/src/rules.rs の表が登録箇所。
   { id = "hook-router-pre", label = "hook-router (pre)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
   { id = "hook-router-post", label = "hook-router (post)", lane = "tool-call", group = "router", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/hook-router", doc = "docs/agents/hook-router.md", auto = true },
   { id = "git-worktree-allow", label = "git-worktree-allow", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-worktree-allow", doc = "docs/agents/git-worktree-allow.md", auto = true },
   { id = "git-stash-guard", label = "git-stash-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/git-stash-guard", doc = "docs/agents/git-stash-guard.md", auto = true },
   { id = "main-checkout-guard-pre", label = "main-checkout-guard (pre)", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/agents/main-checkout-guard.md", auto = true },
   { id = "worktree-create-guard", label = "worktree-create-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/git-worktree-create-guard", doc = "docs/worktree-lifecycle.md", auto = true },
+  { id = "worktree-lease", label = "worktree-lease", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/worktree-lease", doc = "docs/agents/worktree-lease.md", auto = true },
   { id = "pkexec-guard", label = "pkexec-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/pkexec-guard", doc = "docs/agents/pkexec-guard.md", auto = true },
   { id = "new-tool-guard", label = "new-tool-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/new-tool-guard", auto = true },
   { id = "new-tool-guard-record", label = "new-tool-guard (record)", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["implement-to-pr", "plan-approval"], entity = "crates/new-tool-guard", doc = "docs/agents/new-tool-guard.md", auto = true },
@@ -242,6 +243,8 @@ edge = [
   { from = "git-worktree-allow", to = "agent-session", kind = "context", label = "allow git -C", pipelines = ["implement-to-pr"] },
   { from = "main-checkout-guard-pre", to = "agent-session", kind = "deny", label = "write to main checkout", pipelines = ["implement-to-pr"] },
   { from = "main-checkout-guard-stop", to = "agent-session", kind = "deny", label = "leftover change", pipelines = ["implement-to-pr"] },
+  { from = "worktree-lease", to = "agent-session", kind = "deny", label = "another session in this worktree", pipelines = ["implement-to-pr"] },
+  { from = "worktree-lease", to = "pr-gate-stop", kind = "file", label = "lease (git-dir)", pipelines = ["implement-to-pr"] },
   { from = "worktree-create-guard", to = "agent-session", kind = "deny", label = "unmanaged worktree", pipelines = ["implement-to-pr", "host-hygiene"] },
   { from = "new-tool-guard", to = "agent-session", kind = "deny", label = "no existing-means", pipelines = ["implement-to-pr"] },
   { from = "agent-session", to = "new-tool-guard-record", kind = "invoke", label = "ExitPlanMode approved", pipelines = ["plan-approval"] },

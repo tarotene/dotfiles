@@ -109,6 +109,13 @@ pub static RULES: &[Rule] = &[
         },
     },
     Rule {
+        node: "worktree-lease",
+        event: Event::Pre,
+        tools: Tools::Bash,
+        budget: S10,
+        run: |_, raw| worktree_lease::hook(raw),
+    },
+    Rule {
         node: "attribution-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
@@ -313,6 +320,7 @@ mod tests {
                 "routines-write-guard",
                 "rulesets-write-guard",
                 "stack-base-guard",
+                "worktree-lease",
                 "worktree-create-guard",
             ])
         );
