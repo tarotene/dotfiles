@@ -714,7 +714,10 @@ mod tests {
                 }
             }
         }
-        assert!(seen >= 2, "the procedure should name --retro-add and --retro-close");
+        assert!(
+            seen >= 2,
+            "the procedure should name --retro-add and --retro-close"
+        );
         assert!(!text.contains("' --procedure"), "{text}");
     }
 
