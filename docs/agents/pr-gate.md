@@ -702,7 +702,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 | 0 | OK(E が全緑) |
 | 1 | NG(赤 1 件以上。失敗ジョブ名・link・`gh run view … --log-failed` を出す) |
 | 8 | 時間切れで pending(gh の pending と同じ値) |
-| 2 | 判定不能(チェックが揃わない・API 失敗・引数の誤り) |
+| 2 | 判定不能(チェックが揃わない・API 失敗・引数の誤り)。PR が base と衝突(`mergeable: CONFLICTING`)していて CI が起動していないときは、その旨を注記する(GitHub は衝突した PR の `pull_request` CI を起動しない) |
 
 結果は stdout の 1〜数行で、`run_in_background` の完了通知にそのまま載る。エージェントは
 `gh pr checks --watch` や `until` のポーリングでなく、これを背景で実行して完了通知を待つ。

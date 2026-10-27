@@ -25,6 +25,7 @@ use std::process::{Command, Stdio};
 ///   PR_GATE_STUB_CHECKS_RC          : gh pr checks --json の exit code(既定 0。pending の 8 を再現する)
 ///   PR_GATE_STUB_LOG                : 指定すると gh の全呼び出しの引数を 1 行ずつ追記する
 ///   PR_GATE_STUB_RULES_DEFAULT_FILE : gh api rules/branches/main の応答(RULES_FILE より優先)
+///   PR_GATE_STUB_MERGEABLE          : gh pr view --json mergeable の応答(既定 MERGEABLE)
 ///   PR_GATE_STUB_DEFAULT_BRANCH     : gh repo view の既定ブランチ名(未指定なら空 = 取得失敗)
 ///   PR_GATE_STUB_PR_BODY            : gh pr list が返す PR 本文(既定は
 ///     "Closes #1" + "No-Visual: selftest 既定本文" の 2 行)
@@ -87,6 +88,7 @@ No-Visual: selftest 既定本文}" \
       view)
         case "$*" in
           *baseRefName*) printf '%s\n' "${PR_GATE_STUB_BASE:-main}" ;;
+          *mergeable*) printf '%s\n' "${PR_GATE_STUB_MERGEABLE:-MERGEABLE}" ;;
           *number*) printf '%s\n' "${PR_GATE_STUB_PR_NUM:-37}" ;;
           *) exit 1 ;;
         esac

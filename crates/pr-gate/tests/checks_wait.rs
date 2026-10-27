@@ -117,6 +117,25 @@ fn gh_exit_8_with_json_is_still_read() {
 }
 
 #[test]
+fn conflicting_pr_explains_why_no_checks_arrive() {
+    // 衝突している PR には CI が起動しない。待っても来ないので、原因を注記する。
+    let fx = Fx::new();
+    let conflicting = ("PR_GATE_STUB_MERGEABLE", "CONFLICTING");
+    let mut envs = with_rules(&fx, RULES_2, &[conflicting]);
+    envs.push(checks_file(&fx, "[]"));
+    let r = run(&fx, &["37", "--timeout", "0"], &envs);
+    assert_eq!(r.code, 2, "{}", r.all());
+    assert!(r.stdout.contains("mergeable: CONFLICTING"), "{}", r.stdout);
+    assert!(r.stdout.contains("job-a"), "{}", r.stdout); // 未出現の required も出る
+                                                         // 衝突していなければ注記しない。
+    let mut envs = with_rules(&fx, RULES_2, &[]);
+    envs.push(checks_file(&fx, "[]"));
+    let r = run(&fx, &["37", "--timeout", "0"], &envs);
+    assert_eq!(r.code, 2);
+    assert!(!r.stdout.contains("CONFLICTING"));
+}
+
+#[test]
 fn rules_api_failure_is_unknown_not_green() {
     // #135: required の取得失敗を「required 無し」と読んで緑にしない。
     let fx = Fx::new();

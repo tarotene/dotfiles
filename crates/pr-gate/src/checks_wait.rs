@@ -75,6 +75,19 @@ fn join_names(names: &[String]) -> String {
     names.join(", ")
 }
 
+/// チェックが揃わない原因として最もありがちな、PR が base と衝突している場合の注記。
+/// GitHub は自動マージが計算できない(`mergeable: CONFLICTING`)PR では `pull_request` の
+/// CI を起動しない(stacked-pr スキル §4)ので、待っても CI は来ない。
+fn conflict_hint(pr: &str, nwo: &str) -> String {
+    match gh::pr_mergeable(pr, nwo).as_deref() {
+        Some("CONFLICTING") => format!(
+            "\nPR #{pr} は base と衝突(mergeable: CONFLICTING)しているため、CI が起動していません。\
+             base に rebase して force-push してください(stacked-pr スキル §4)"
+        ),
+        _ => String::new(),
+    }
+}
+
 /// 結果を (終了コード, 出力) にする。`cwd` は `-R` を省いたときのリポジトリ検出に使う。
 pub fn execute(args: &[String], cwd: &Path, cfg: &Config) -> (i32, String) {
     let unknown = |msg: String| (EXIT_UNKNOWN, format!("UNKNOWN: {msg}"));
@@ -160,10 +173,14 @@ pub fn execute(args: &[String], cwd: &Path, cfg: &Config) -> (i32, String) {
             )
         }
         Status::Missing => unknown(format!(
-            "PR #{pr} — 期待する required チェックが報告されていません: {}",
-            o.detail
+            "PR #{pr} — 期待する required チェックが報告されていません: {}{}",
+            o.detail,
+            conflict_hint(&pr, &nwo)
         )),
-        Status::Empty => unknown(format!("PR #{pr} — チェックが 1 件も報告されていません")),
+        Status::Empty => unknown(format!(
+            "PR #{pr} — チェックが 1 件も報告されていません{}",
+            conflict_hint(&pr, &nwo)
+        )),
         Status::ApiFailure => unknown(format!(
             "required チェック集合の取得に失敗しました。\
              `gh api repos/{nwo}/rules/branches/{base}` で確認してください"

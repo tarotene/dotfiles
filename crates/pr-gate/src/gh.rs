@@ -125,6 +125,22 @@ pub fn pr_base(pr_num: &str, nwo: &str) -> Option<String> {
     .filter(|s| !s.is_empty())
 }
 
+/// PR の `mergeable`(`MERGEABLE` / `CONFLICTING` / `UNKNOWN`)。取得できなければ `None`。
+pub fn pr_mergeable(pr_num: &str, nwo: &str) -> Option<String> {
+    gh_ok(&[
+        "pr",
+        "view",
+        pr_num,
+        "-R",
+        nwo,
+        "--json",
+        "mergeable",
+        "-q",
+        ".mergeable",
+    ])
+    .filter(|s| !s.is_empty())
+}
+
 /// 現在のブランチの PR 番号(`pr-checks-wait` で PR を省いたとき)。
 pub fn current_pr_number(nwo: &str) -> Option<String> {
     gh_ok(&["pr", "view", "-R", nwo, "--json", "number", "-q", ".number"]).filter(|s| !s.is_empty())
