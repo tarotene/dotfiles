@@ -225,6 +225,7 @@ dependencies = [
  "codex-launcher",
  "futures-util",
  "libc",
+ "model-catalog",
  "serde",
  "serde_json",
  "tempfile",
@@ -1023,6 +1024,16 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys",
+]
+
+[[package]]
+name = "model-catalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
