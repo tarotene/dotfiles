@@ -23,6 +23,9 @@ fn discard<'de, D: serde::Deserializer<'de>>(d: D) -> Result<(), D::Error> {
     serde::de::IgnoredAny::deserialize(d).map(|_| ())
 }
 
+// `legacy_project_rules` is a private `()` that only exists so an old record still parses;
+// that is not a "non-exhaustive" API marker.
+#[allow(clippy::manual_non_exhaustive)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
@@ -934,7 +937,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "pending",
-        "list the promotion queue (--json), or withdraw entries (--drop ID,ID)",
+        "list the promotion queue (--json), withdraw entries (--drop ID,ID), or put rules back into their settings file (--restore-rules ID,ID|all)",
     ),
     (
         "hook",
@@ -1027,6 +1030,7 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
     let mut approved = None;
     let mut restore = None;
     let mut drop_ids: Vec<String> = Vec::new();
+    let mut restore_ids: Vec<String> = Vec::new();
     let mut output_json = false;
     let mut dry_run = false;
     let mut retire_ownership = false;
@@ -1055,6 +1059,7 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
             "--approved" => approved = Some(PathBuf::from(value)),
             "--restore" => restore = Some(PathBuf::from(value)),
             "--drop" => drop_ids = value.split(',').map(str::to_owned).collect(),
+            "--restore-rules" => restore_ids = value.split(',').map(str::to_owned).collect(),
             flag => return Err(format!("unknown option: {flag}")),
         }
         i += 2;
@@ -1074,6 +1079,16 @@ pub fn cli(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     if command == "pending" {
+        if !restore_ids.is_empty() {
+            let done = reclaim::restore_candidates(&home, &restore_ids)?;
+            for rule in &done.restored {
+                println!("restored {rule}");
+            }
+            for (id, why) in &done.skipped {
+                println!("skipped {id}: {why}");
+            }
+            return Ok(());
+        }
         if !drop_ids.is_empty() {
             let n = reclaim::drop_candidates(&home, &drop_ids)?;
             println!("withdrew {n} candidate(s)");

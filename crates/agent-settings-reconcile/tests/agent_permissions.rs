@@ -1201,3 +1201,106 @@ fn adding_an_mcp_tool_is_an_expansion_and_removing_one_narrows_back_to_prompt() 
     assert_eq!(approval(h, "esa", "a").as_deref(), Some("prompt"));
     assert_eq!(approval(h, "esa", "b").as_deref(), Some("approve"));
 }
+
+/// #1158: queued rules go back into the settings file they were reclaimed from.
+mod restore_queue {
+    use super::*;
+    use agent_settings_reconcile::agent_permissions::reclaim::restore_candidates;
+
+    fn queue(home: &Path, lines: &[Value]) {
+        let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
+        put(
+            home,
+            ".local/state/dotfiles/agent-permissions-pending.jsonl",
+            &text,
+        );
+    }
+    fn id_of(home: &Path, rule: &str) -> String {
+        candidates(home)
+            .unwrap()
+            .into_iter()
+            .find(|c| c.rule == rule)
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn rules_return_to_their_json_file_once_and_leave_the_queue() {
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path();
+        let settings = h.join("proj/.claude/settings.local.json");
+        put(
+            h,
+            "proj/.claude/settings.local.json",
+            r#"{"permissions":{"allow":["WebSearch"]},"other":1}"#,
+        );
+        queue(
+            h,
+            &[
+                json!({"v":1,"ts":1,"rule":"WebSearch","file":settings}),
+                json!({"v":1,"ts":2,"rule":"Bash(git status)","file":settings}),
+            ],
+        );
+        let done = restore_candidates(h, &["all".into()]).unwrap();
+        assert_eq!(done.restored.len(), 2);
+        assert!(done.skipped.is_empty());
+        let v: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        // The rule that was already there is not duplicated; the other file keys stay.
+        assert_eq!(
+            v["permissions"]["allow"],
+            json!(["WebSearch", "Bash(git status)"])
+        );
+        assert_eq!(v["other"], 1);
+        assert!(candidates(h).unwrap().is_empty());
+        // Nothing left to do the second time.
+        let again = restore_candidates(h, &["all".into()]).unwrap();
+        assert!(again.restored.is_empty() && again.skipped.is_empty());
+    }
+
+    #[test]
+    fn missing_files_and_other_formats_stay_queued_and_unknown_ids_write_nothing() {
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path();
+        let gone = h.join("deleted-project/.claude/settings.local.json");
+        let rules = h.join("proj/.codex/rules/default.rules");
+        put(h, "proj/.codex/rules/default.rules", "# codex\n");
+        queue(
+            h,
+            &[
+                json!({"v":1,"ts":1,"rule":"WebSearch","file":gone}),
+                json!({"v":1,"ts":2,"rule":"prefix_rule(x)","file":rules}),
+            ],
+        );
+        let done = restore_candidates(h, &["all".into()]).unwrap();
+        assert!(done.restored.is_empty());
+        assert_eq!(done.skipped.len(), 2);
+        // A file that is gone is not created, and the queue keeps both candidates.
+        assert!(!gone.exists());
+        assert_eq!(candidates(h).unwrap().len(), 2);
+        assert_eq!(fs::read_to_string(&rules).unwrap(), "# codex\n");
+        let err = restore_candidates(h, &[id_of(h, "WebSearch"), "nope".into()]).unwrap_err();
+        assert!(err.contains("no pending candidate with id nope"), "{err}");
+        assert_eq!(candidates(h).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_missing_allow_array_is_created() {
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path();
+        let settings = h.join("proj/.claude/settings.local.json");
+        put(
+            h,
+            "proj/.claude/settings.local.json",
+            r#"{"permissions":{"deny":["Read(x)"]}}"#,
+        );
+        queue(
+            h,
+            &[json!({"v":1,"ts":1,"rule":"WebSearch","file":settings})],
+        );
+        let id = id_of(h, "WebSearch");
+        restore_candidates(h, &[id]).unwrap();
+        let v: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(v["permissions"]["allow"], json!(["WebSearch"]));
+        assert_eq!(v["permissions"]["deny"], json!(["Read(x)"]));
+    }
+}

@@ -147,6 +147,23 @@ journal が無い場合は保守的に扱う。共有管理の名前付き selec
 旧 `inspect` / `migrate` / `apply` / `check` は互換 CLI の入口として残るが、通常実行や activation の前提ではない。
 旧 promotion queue は自動で再適用しない。必要な許可は `/promote-permissions` から native 宣言として提案する。
 
+### 撤去が戻せないものと、終わらせる条件(#1158)
+
+撤去は 1 回で終わる設計のままにする。理由: 再実行しても、journal が無くなった変更は戻らない(journal は
+`transaction.rs` の `KEEP_JOURNALS = 5` で完了のたびに古いものから消える)。失敗は無言にせず、dry-run と
+実行の出力の `retained` に「由来を証明できず戻さなかったもの」を理由つきで並べ、`queued_rules` に待ち行列の
+件数を出す。
+
+- 最初の移行が書いた Claude の `sandbox`・`autoMode.classifyAllShell`・Read の秘密パス deny は、journal が
+  消えていても戻らない。これらは撤去に頼らず、`home/modules/claude.nix` の宣言が直接合わせる(#1165)。
+- 待ち行列の許可(`agent-permissions-pending.jsonl`)は、`agent-permissions pending` で一覧し、
+  `pending --restore-rules ID,ID|all` で元の Claude 設定(`.json` の `permissions.allow`)へ戻して待ち行列から
+  外すか、`pending --drop ID,ID` で外す。元のファイルが無い・`.json` でないものは戻さず、待ち行列に残して
+  理由を出す(消えた project の設定を作り直さない)。
+- `home/modules/codex.nix` の `retireAgentPermissions`(全ホストの activation のたびに走る)を外す条件:
+  3 ホストすべてで撤去済みの印があり、各ホストの `retained` を本人が確認し、待ち行列が空になったとき
+  (確認は #1104)。外すときは、この活性化と `retire` モジュール、旧 CLI を同じ変更で消す。
+
 ## 承認経路は upstream のコードに基づいて区別する
 
 以下は OpenAI, *Codex*, `rust-v0.164.0`、commit
