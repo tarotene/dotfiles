@@ -1,0 +1,17 @@
+[package]
+name = "vault-note"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Obsidian vault のノートを、解決・原子的に書き換え・追記・列挙する共通部品(ADR-0000-wrapup-inbox-to-vault)"
+
+# vault の場所は hub-resolve の「環境変数 + マーカーファイル」で解決する(worklog と共通の
+# OBSIDIAN_VAULT)。frontmatter の値は JSON の二重引用符文字列で書くので、YAML の依存は持たない。
+
+[dependencies]
+hub-resolve = { version = "0.1.0", path = "../hub-resolve" }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

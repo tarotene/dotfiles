@@ -184,7 +184,8 @@ node = [
   { id = "backblaze", label = "Backblaze B2", lane = "external", group = "services", stack = "external", pipelines = ["host-hygiene"], auto = false },
   { id = "daily-report", label = "daily-report (other repo)", lane = "external", group = "services", stack = "external", pipelines = ["evidence"], auto = false },
   { id = "due-index", label = "due-index (other repo)", lane = "external", group = "state", stack = "store", pipelines = ["host-hygiene"], auto = false },
-  { id = "wrapup-inbox", label = "wrap-up inbox", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
+  { id = "wrapup-inbox", label = "wrap-up inbox (jsonl; machine without a vault)", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
+  { id = "obsidian-vault", label = "Obsidian vault", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue", "implement-to-pr", "host-hygiene"], auto = false },
   { id = "verdict-ledger", label = "verdict ledger", lane = "external", group = "state", stack = "store", pipelines = ["wrapup-to-issue"], auto = false },
   { id = "apt-history", label = "apt history.log", lane = "external", group = "state", stack = "store", pipelines = ["host-hygiene"], auto = false },
 ]
@@ -220,6 +221,7 @@ edge = [
   { from = "esa-mirror-context", to = "agent-session", kind = "context", label = "wiki mirror", pipelines = ["implement-to-pr"] },
   { from = "daily-desk-reminder", to = "agent-session", kind = "context", label = "desk reminder", pipelines = ["implement-to-pr"] },
   { from = "worklog", to = "agent-session", kind = "context", label = "work log norm + recent stuck / found", pipelines = ["implement-to-pr"] },
+  { from = "worklog", to = "obsidian-vault", kind = "file", label = "daily note rows", pipelines = ["implement-to-pr"] },
   { from = "session-wrapup-start", to = "agent-session", kind = "context", label = "inbox path", pipelines = ["wrapup-to-issue", "implement-to-pr"] },
   { from = "pr-gate-session-start", to = "agent-session", kind = "context", label = "PR status", pipelines = ["implement-to-pr"] },
   { from = "worktree-base-sync", to = "agent-session", kind = "context", label = "ff-only to base", pipelines = ["implement-to-pr"] },
@@ -278,7 +280,9 @@ edge = [
   # === Findings to Issue
   { from = "agent-session", to = "wrapup-inbox", kind = "file", label = "--add finding", pipelines = ["wrapup-to-issue"] },
   { from = "wrapup-inbox", to = "session-wrapup-stop", kind = "file", label = "pending lines", pipelines = ["wrapup-to-issue"] },
-  { from = "session-wrapup-stop", to = "agent-session", kind = "deny", label = "file Issues / retro", pipelines = ["wrapup-to-issue"] },
+  { from = "session-wrapup-stop", to = "agent-session", kind = "deny", label = "feedback memory / retro", pipelines = ["wrapup-to-issue"] },
+  { from = "agent-session", to = "obsidian-vault", kind = "file", label = "--add finding (inbox/ note)", pipelines = ["wrapup-to-issue"] },
+  { from = "issue-inbox", to = "obsidian-vault", kind = "file", label = "inbox/ notes", pipelines = ["wrapup-to-issue"] },
   { from = "agent-session", to = "github", kind = "issue", label = "gh issue create", pipelines = ["wrapup-to-issue"] },
   { from = "bleep", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
   { from = "git-pre-push", to = "verdict-ledger", kind = "file", label = "verdicts", pipelines = ["wrapup-to-issue"] },
@@ -295,7 +299,8 @@ edge = [
   { from = "promotion-detect", to = "wrapup-inbox", kind = "file", label = "promotion candidates", pipelines = ["wrapup-to-issue"] },
   { from = "github", to = "promotion-detect", kind = "context", label = "feedback Issues", pipelines = ["wrapup-to-issue"] },
   { from = "feedback-target-guard", to = "agent-session", kind = "deny", label = "no Target:", pipelines = ["wrapup-to-issue"] },
-  { from = "backlog-cleanup", to = "wrapup-inbox", kind = "file", label = "sweep", pipelines = ["wrapup-to-issue"] },
+  { from = "backlog-cleanup", to = "wrapup-inbox", kind = "file", label = "sweep (no vault)", pipelines = ["wrapup-to-issue"] },
+  { from = "backlog-cleanup", to = "obsidian-vault", kind = "file", label = "sweep open notes / set-status", pipelines = ["wrapup-to-issue"] },
   { from = "backlog-cleanup", to = "github", kind = "pr", label = "chores PRs", pipelines = ["wrapup-to-issue"] },
 
   # === Repo governance

@@ -57,7 +57,7 @@ kind の無い行は、スマホで書いた行として `memo` と読む。以�
 
 `worklog add <kind> <text...> [--ref N] [--repo owner/repo]`、`worklog list`、`worklog session-start`
 の 3 つを持つ。vault の場所は hub-resolve と同じ「環境変数 `WORKLOG_VAULT`、無ければ
-`~/.config/dotfiles/worklog-vault` の 1 行目」で解き、マーカーは `home/modules/obsidian.nix` が
+`~/.config/dotfiles/worklog-vault` の 1 行目」で解き(2026-10-27 の Amendment で `OBSIDIAN_VAULT` / `obsidian-vault` に改めた)、マーカーは `home/modules/obsidian.nix` が
 `vaultPath` から置く。owner/repo は hook-io の `git::origin_nwo` で作業ディレクトリから導くので、
 書き手は番号だけを渡す(`--ref N`)。参照の書き忘れは起こせない。
 
@@ -119,3 +119,17 @@ stuck が解決したかは追跡しない。解決したら found を書き、�
 
 - Obsidian, "Obsidian CLI", <https://obsidian.md/help/cli>(取得 2026-10-25)— 公式 CLI は 1.12 以降で、
   アプリが起動していなければ最初のコマンドで起動する。
+
+## Amendment (2026-10-27 — ADR-0000-wrapup-inbox-to-vault)
+
+vault の場所の宣言を、worklog 専用の `WORKLOG_VAULT` / `~/.config/dotfiles/worklog-vault` から、
+vault を使う機構が共有する `OBSIDIAN_VAULT` / `~/.config/dotfiles/obsidian-vault`(`hub_resolve::OBSIDIAN_VAULT`)に
+改めた。wrap-up の気づき・retro・裁定待ちの写しも vault に書くようになり、機構ごとに別のマーカーを置くと、
+vault の場所の正本が分かれるため。存在確認は `.obsidian/app.json` で、日次ノートの設定
+(`daily-notes.json`)は、これまでどおり worklog だけが追加で読む。D1〜D5 は変更しない。
+
+### 執行点
+
+- `crates/hub-resolve/src/lib.rs`
+- `crates/worklog/src/lib.rs`
+- `home/modules/obsidian.nix`

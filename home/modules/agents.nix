@@ -536,7 +536,7 @@
 # 39) worklog(SessionStart, matcher: startup、docs/agents/worklog.md):
 #    Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートへ 1 行ずつ
 #    書かせる。hook は書く時点と kind の規範と、同じリポジトリの直近 7 日の stuck / found を
-#    注入する。vault は ~/.config/dotfiles/worklog-vault(home/modules/obsidian.nix が置く)で
+#    注入する。vault は ~/.config/dotfiles/obsidian-vault(home/modules/obsidian.nix が置く)で
 #    宣言され、無い機体では黙って no-op するため、hook は全ホストへ無条件配備する。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
@@ -2044,7 +2044,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".claude/hooks/daily-desk-reminder".source =
     "${pkgs.dotfiles-tools}/bin/daily-desk-reminder";
   # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
-  # vault を宣言していない機体(~/.config/dotfiles/worklog-vault が無い)では無音。
+  # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault が無い)では無音。
   home.file.".claude/hooks/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
 
   # gpg-prewarm: git commit の署名パスフレーズをログイン直後に温める。

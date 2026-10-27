@@ -58,13 +58,14 @@ in
   home.file.".local/bin/obsidian-backup".source = "${pkgs.dotfiles-tools}/bin/obsidian-backup";
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
 
-  # worklog: 当日ノートへ作業ログを 1 行ずつ追記し、読む CLI(crates/worklog、
-  # docs/agents/worklog.md)。vault の場所はこのモジュールの vaultPath を、hub-resolve と
-  # 同じマーカー(~/.config/dotfiles/worklog-vault の 1 行目)で渡す。SessionStart hook は
-  # claude.nix が全ホストに配備するが、このマーカーが無い機体では何も注入しない —
-  # vault を宣言した機体(このモジュールを読む機体)だけで規範が効く。
+  # vault の場所の宣言(~/.config/dotfiles/obsidian-vault の 1 行目)。worklog(crates/worklog、
+  # docs/agents/worklog.md)と vault-note(wrap-up の気づき・retro・裁定待ちの写し、
+  # docs/agents/wrapup-inbox.md)が、hub-resolve の OBSIDIAN_VAULT として同じマーカーを読む
+  # 単一の正本。SessionStart hook は agents.nix が全ホストに配備するが、このマーカーが無い機体では
+  # 何も注入せず、気づきは機体の jsonl に溜まるだけ — vault を宣言した機体(このモジュールを読む
+  # 機体)だけで vault への書き込みが効く。
   home.file.".local/bin/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
-  xdg.configFile."dotfiles/worklog-vault".text = "${vaultPath}\n";
+  xdg.configFile."dotfiles/obsidian-vault".text = "${vaultPath}\n";
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
     Service.ExecStart = "${backupPath} backup --notify";

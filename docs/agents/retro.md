@@ -7,8 +7,8 @@
 
 
 PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを
-求める。出口(inbox → Issue 化 → `/backlog-cleanup`)は [wrap-up inbox](wrapup-inbox.md) と
-共有し、入口と強制だけが別。決定の理由と代替案は
+求める。出口(inbox → `/backlog-cleanup` での裁定)は [wrap-up inbox](wrapup-inbox.md) と
+共有し、入口と強制だけが別。`disposition: inbox` の行は Issue にならず、vault のノートに溜まる。決定の理由と代替案は
 [ADR-697](../adr/697-retro-stop-gate.md)。
 
 ## 流れ
