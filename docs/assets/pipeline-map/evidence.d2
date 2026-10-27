@@ -190,6 +190,10 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
 
 l_timer: "Timers / periodic" {
   class: lane
+  n_feedback_trial_collect: "feedback-trial collect (30 min)" {
+    class: s_rust
+    shape: hexagon
+  }
   n_promotion_detect: "promotion-detect (daily)" {
     class: s_rust
   }

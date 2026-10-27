@@ -39,6 +39,28 @@ else:
     }
     fn context(&self, turn: &str, mode: &str) {
         fs::write(self.env.path().join("rollout"), format!("{}\n{}\n", json!({"type":"turn_context","payload":{"turn_id":turn,"collaboration_mode":{"mode":mode}}}), json!({"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":2}}}}))).unwrap();
+        let dir = self.env.path().join("codex/sessions/2026/10/27");
+        fs::create_dir_all(&dir).unwrap();
+        let text = fs::read_to_string(self.env.path().join("rollout")).unwrap();
+        fs::write(
+            dir.join("report.jsonl"),
+            format!(
+                "{}\n{text}",
+                json!({"type":"session_meta","payload":{"id":"report"}})
+            ),
+        )
+        .unwrap();
+    }
+    fn seed(&self) {
+        let root = self.env.state().join("claude/wrapup/trial");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("state.json"), json!({
+            "checks":{"source:t1":{
+                "session":"source", "turn":"t1", "transcript":self.env.path().join("rollout"),
+                "status":"unchecked", "body":"", "approval":"", "comment_url":"",
+                "attempts":0,"retry_turn":"", "applied_commit":"", "usage_before":null,"usage_after":null
+            }}, "finalized_commit":""
+        }).to_string()).unwrap();
     }
     fn cmd(&self, start: bool) -> Command {
         let mut c = Command::new(if start {
@@ -50,7 +72,8 @@ else:
             .env("WRAPUP_STATE_DIR", self.env.state())
             .env("WRAPUP_TRIAL_CONFIG", self.env.path().join("config.json"))
             .env("WRAPUP_TRIAL_AGENT", "codex")
-            .env("CODEX_THREAD_ID", "source")
+            .env("CODEX_THREAD_ID", "report")
+            .env("CODEX_HOME", self.env.path().join("codex"))
             .env("TEST_TRIAL_ROOT", self.env.path())
             .env("PATH", self.env.stub_path())
             .env_remove("CLAUDE_PROJECT_DIR");
@@ -86,180 +109,151 @@ else:
 }
 
 #[test]
-fn bounded_continuations_and_next_input_resume() {
+fn ordinary_hooks_never_collect_or_inject_even_with_pending_checks() {
     let t = Trial::new();
-    assert_eq!(t.hook("source", "t1", false, false).code, 2);
-    for _ in 0..2 {
-        assert_eq!(t.hook("source", "t1", true, false).code, 2);
+    for mode in ["default", "plan"] {
+        t.context("short-answer", mode);
+        for start in [true, false] {
+            for recursive in [true, false] {
+                let out = t.hook("source", "short-answer", recursive, start);
+                assert_eq!(out.code, 0, "{}", out.stderr);
+                assert!(!out.stdout.contains("Trial report"));
+                assert!(!out.stderr.contains("trial"));
+            }
+        }
     }
-    let exhausted = t.hook("source", "t1", true, false);
-    assert_eq!(exhausted.code, 0);
-    assert!(exhausted.stderr.contains("still pending"));
-    assert_eq!(t.state()["checks"].as_object().unwrap().len(), 1);
-    t.context("t2", "default");
-    assert_eq!(t.hook("source", "t2", false, false).code, 2);
-    assert_eq!(t.state()["checks"].as_object().unwrap().len(), 1);
-    assert_eq!(t.hook("source", "t2", false, true).code, 0);
-    assert_eq!(t.state()["checks"]["source:t1"]["attempts"], 0);
+    let root = t.env.state().join("claude/wrapup/trial");
+    assert!(!root.exists());
+    t.seed();
+    let before = fs::read(root.join("state.json")).unwrap();
+    for start in [true, false] {
+        let out = t.hook("source", "t2", false, start);
+        assert_eq!(out.code, 0);
+        assert!(!out.stdout.contains("Trial report"));
+        assert!(!out.stderr.contains("Trial report"));
+    }
+    assert_eq!(fs::read(root.join("state.json")).unwrap(), before);
+    assert!(!root.join("state.lock").exists());
 }
 
 #[test]
-fn candidate_none_and_outside_window() {
+fn list_and_report_hooks_are_pure_reads_and_procedure_is_explicit() {
+    use std::os::unix::fs::PermissionsExt;
     let t = Trial::new();
-    t.configure("2000-01-01T00:00:00Z", "2001-01-01T00:00:00Z");
-    assert_eq!(t.hook("source", "t1", false, false).code, 0);
-    assert!(t.state()["checks"].as_object().unwrap().is_empty());
-    t.configure("2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z");
-    t.hook("source", "t1", false, false);
-    assert_eq!(t.cli(&["none", "source:t1"]).code, 0);
-    assert_eq!(t.hook("source", "t1", true, false).code, 0);
-    t.context("t2", "default");
-    t.hook("source", "t2", false, false);
-    t.configure("2000-01-01T00:00:00Z", "2001-01-01T00:00:00Z");
-    assert_eq!(t.hook("source", "t2", true, false).code, 2); // leftovers survive expiry
+    let root = t.env.state().join("claude/wrapup/trial");
+    assert_eq!(t.cli(&["list"]).code, 0);
+    assert!(!root.exists());
+    t.seed();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+    fs::set_permissions(root.join("state.json"), fs::Permissions::from_mode(0o400)).unwrap();
+    let before = fs::read(root.join("state.json")).unwrap();
+    assert_eq!(t.cli(&["list"]).code, 0);
+    for mode in ["default", "plan"] {
+        t.context("r1", mode);
+        let start = t.hook("report", "r1", false, true);
+        assert_eq!(start.code, 0);
+        assert!(start.stdout.contains("Trial report: 1 pending"));
+        assert!(!start.stdout.contains("Trial feedback: inspect"));
+        let stop = t.hook("report", "r1", true, false);
+        assert_eq!(stop.code, 0);
+        assert!(stop.stderr.contains("Trial report: 1 pending"));
+    }
+    assert_eq!(fs::read(root.join("state.json")).unwrap(), before);
+    assert!(!root.join("state.lock").exists());
+    assert_eq!(
+        fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+        0o500
+    );
+    let full = t.cli(&["procedure"]);
+    assert_eq!(full.code, 0);
+    assert!(full.stdout.contains("Trial feedback: inspect"));
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
 }
 
 #[test]
-fn confirmation_plan_and_changed_draft() {
+fn only_report_thread_in_default_can_mutate_legacy_observations() {
     let t = Trial::new();
-    t.context("t1", "plan");
-    assert_eq!(t.hook("source", "t1", false, false).code, 2);
+    t.seed();
     let body = t.draft();
+    let source: Run = t
+        .cmd(false)
+        .env("CODEX_THREAD_ID", "source")
+        .args(["--trial", "draft", "source:t1", &body])
+        .output()
+        .unwrap()
+        .into();
+    assert_eq!(source.code, 1);
+    t.context("r1", "plan");
+    let before = t.state();
+    for args in [
+        vec!["draft", "source:t1", &body],
+        vec!["none", "source:t1"],
+        vec!["report-wait"],
+    ] {
+        assert_eq!(t.cli(&args).code, 1);
+    }
+    assert_eq!(t.state(), before);
+    assert!(!t
+        .env
+        .state()
+        .join("claude/wrapup/trial/state.lock")
+        .exists());
+    t.context("r2", "default");
     assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
-    assert_eq!(t.hook("source", "t1", true, false).code, 0);
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     assert_eq!(t.cli(&["approve", "source:t1", &body, "OK"]).code, 0);
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     fs::write(&body, "Changed wording").unwrap();
-    t.cli(&["draft", "source:t1", &body]);
+    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
     assert_eq!(t.state()["checks"]["source:t1"]["approval"], "");
     fs::write(&body, "Changed again").unwrap();
     assert_eq!(t.cli(&["approve", "source:t1", &body, "OK"]).code, 1);
-    assert_eq!(
-        t.cli(&["dismiss", "source:t1", "Do not publish this candidate"])
-            .code,
-        0
-    );
-    assert_eq!(t.hook("source", "t1", true, false).code, 0);
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
+}
+
+#[test]
+fn report_mode_uses_archived_report_rollout_and_fails_closed_if_missing() {
+    let t = Trial::new();
+    t.seed();
+    let body = t.draft();
+    let sessions = t.env.path().join("codex/sessions");
+    fs::rename(&sessions, t.env.path().join("codex/archived_sessions")).unwrap();
+    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
+    fs::remove_dir_all(t.env.path().join("codex/archived_sessions")).unwrap();
+    assert_eq!(t.cli(&["approve", "source:t1", &body, "OK"]).code, 1);
 }
 
 #[test]
 fn post_failure_readback_retry_does_not_ack_application() {
     let t = Trial::new();
-    t.hook("source", "t1", false, false);
+    t.seed();
     let body = t.draft();
-    t.cli(&["draft", "source:t1", &body]);
-    t.cli(&["approve", "source:t1", &body, "OK"]);
+    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
+    assert_eq!(t.cli(&["approve", "source:t1", &body, "OK"]).code, 0);
+    // The source rollout is now Plan; the report's confirmed Default mode owns posting.
+    fs::write(
+        t.env.path().join("rollout"),
+        "{\"type\":\"turn_context\",\"payload\":{\"collaboration_mode\":{\"mode\":\"plan\"}}}\n",
+    )
+    .unwrap();
     fs::write(t.env.path().join("fail-read"), "").unwrap();
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     assert!(!t.env.path().join("posts").exists());
-    assert_eq!(t.hook("source", "t1", true, false).code, 2);
     fs::remove_file(t.env.path().join("fail-read")).unwrap();
     fs::write(t.env.path().join("fail-post"), "").unwrap();
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     assert_eq!(t.state()["checks"]["source:t1"]["status"], "awaiting_post");
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 0); // remote already has marker
+    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
     assert_eq!(
         fs::read_to_string(t.env.path().join("posts")).unwrap(),
         "post\n"
     );
-    assert_eq!(t.hook("source", "t1", true, false).code, 0);
     assert_eq!(t.state()["checks"]["source:t1"]["applied_commit"], "");
-    let report = t.hook("report", "r1", false, true);
-    assert!(report.stdout.contains("issuecomment-7"));
-    assert_eq!(t.hook("report", "r1", false, false).code, 2);
-    assert_eq!(t.state()["checks"].as_object().unwrap().len(), 1); // report never collects
-    assert_eq!(t.cli(&["applied", "source:t1", &"a".repeat(40)]).code, 1);
-}
-
-#[test]
-fn verified_post_without_thread_transport_does_not_block_source() {
-    let t = Trial::new();
-    t.hook("source", "t1", false, false);
-    let body = t.draft();
-    t.cli(&["draft", "source:t1", &body]);
-    t.cli(&["approve", "source:t1", &body, "OK"]);
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
-
-    let mut legacy = t.state();
-    legacy["checks"]["source:t1"]["delivery_turn"] = json!("previous-turn");
-    fs::write(
-        t.env.state().join("claude/wrapup/trial/state.json"),
-        legacy.to_string(),
-    )
-    .unwrap();
-
-    // No thread-send tool or delivery acknowledgement exists in this source turn.
-    for _ in 0..4 {
-        let stopped = t.hook("source", "t1", true, false);
-        assert_eq!(stopped.code, 0, "{}", stopped.stderr);
-    }
-    for mode in ["default", "plan"] {
-        let turn = format!("t2-{mode}");
-        t.context(&turn, mode);
-        let resumed = t.hook("source", &turn, false, true);
-        assert_eq!(resumed.code, 0);
-        assert!(!resumed.stdout.contains("source:t1"));
-        let next_input = t.hook("source", &turn, false, false);
-        assert_eq!(next_input.code, 2);
-        assert!(!next_input.stderr.contains("source:t1"));
-        assert_eq!(t.cli(&["none", &format!("source:{turn}")]).code, 0);
-        assert_eq!(t.hook("source", &turn, true, false).code, 0);
-    }
-    let check = &t.state()["checks"]["source:t1"];
-    assert_eq!(check["status"], "post_verified");
-    assert_eq!(check["applied_commit"], "");
-    assert_eq!(check["body"], legacy["checks"]["source:t1"]["body"]);
-    assert_eq!(check["approval"], "OK");
-    assert_eq!(
-        check["comment_url"],
-        legacy["checks"]["source:t1"]["comment_url"]
-    );
-    t.context("r1", "default");
-    let report = t.hook("report", "r1", false, true);
-    assert!(report.stdout.contains("source:t1"));
-    assert!(report.stdout.contains("issuecomment-7"));
-    assert_eq!(t.hook("report", "r1", false, false).code, 2);
-}
-
-#[test]
-fn parallel_stops_do_not_lose_checks() {
-    let t = Trial::new();
-    std::thread::scope(|scope| {
-        for i in 0..12 {
-            let t = &t;
-            scope.spawn(move || {
-                assert_eq!(t.hook(&format!("s{i}"), "t1", false, false).code, 2);
-            });
-        }
-    });
-    assert_eq!(t.state()["checks"].as_object().unwrap().len(), 12);
-}
-
-#[test]
-fn absent_config_and_other_agents_do_not_collect() {
-    let t = Trial::new();
-    let out = t
-        .cmd(false)
-        .env("WRAPUP_TRIAL_AGENT", "claude")
-        .stdin(Stdio::piped())
-        .output()
-        .unwrap();
-    assert!(!String::from_utf8_lossy(&out.stderr).contains("Trial feedback"));
-    fs::remove_file(t.env.path().join("config.json")).unwrap();
-    assert_eq!(t.hook("source", "t1", false, false).code, 0);
-    assert!(!t
-        .env
-        .state()
-        .join("claude/wrapup/trial/state.json")
-        .exists());
+    assert_eq!(t.hook("report", "r1", false, false).code, 0);
 }
 
 #[test]
 fn saved_script_and_remote_readback_are_required_for_ack() {
     let t = Trial::new();
-    t.hook("source", "t1", false, false);
+    t.seed();
     let body = t.draft();
     t.cli(&["draft", "source:t1", &body]);
     t.cli(&["approve", "source:t1", &body, "OK"]);
@@ -288,15 +282,7 @@ fn saved_script_and_remote_readback_are_required_for_ack() {
         .trim()
         .to_string()
     };
-    let ack = |commit: &str| -> Run {
-        t.cmd(false)
-            .env("CODEX_THREAD_ID", "report")
-            .args(["--trial", "applied", "source:t1", commit])
-            .output()
-            .unwrap()
-            .into()
-    };
-    assert_eq!(ack(&sha()).code, 1);
+    assert_eq!(t.cli(&["applied", "source:t1", &sha()]).code, 1);
     fs::write(repo.join("script.md"), "A synthesized beat.\n<!-- codex-trial:source:t1 -->\nhttps://github.com/example/notes/issues/1#issuecomment-7\n").unwrap();
     common::git(&repo, &["add", "script.md"]);
     common::git(
@@ -304,89 +290,51 @@ fn saved_script_and_remote_readback_are_required_for_ack() {
         &["-c", "commit.gpgsign=false", "commit", "-qm", "apply"],
     );
     fs::write(t.env.path().join("fail-read"), "").unwrap();
-    assert_eq!(ack(&sha()).code, 1);
+    assert_eq!(t.cli(&["applied", "source:t1", &sha()]).code, 1);
     assert_eq!(t.state()["checks"]["source:t1"]["applied_commit"], "");
     fs::remove_file(t.env.path().join("fail-read")).unwrap();
-    assert_eq!(ack(&sha()).code, 0);
-    assert_eq!(ack(&sha()).code, 0); // duplicate delivery/application is idempotent
-    assert_eq!(t.hook("report", "r1", false, false).code, 0);
+    assert_eq!(t.cli(&["applied", "source:t1", &sha()]).code, 0);
+    assert_eq!(t.cli(&["applied", "source:t1", &sha()]).code, 0);
 }
 
 #[test]
-fn standing_authorization_posts_revisions_but_never_in_plan_mode() {
+fn standing_authorization_is_preserved_but_plan_never_posts() {
     let t = Trial::new();
+    t.seed();
     let config_path = t.env.path().join("config.json");
-    let mut config: Value =
-        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
+    let mut config: Value = serde_json::from_slice(&fs::read(&config_path).unwrap()).unwrap();
     config["posting_authorization"] = json!("Post trial observations without asking each time.");
     fs::write(&config_path, config.to_string()).unwrap();
-    t.context("t1", "plan");
-    let hook = t.hook("source", "t1", false, false);
-    assert!(hook
-        .stderr
-        .contains("without asking for per-observation approval"));
     let body = t.draft();
     assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
     assert_eq!(t.state()["checks"]["source:t1"]["status"], "awaiting_post");
+    t.context("r2", "plan");
     assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
     assert!(!t.env.path().join("posts").exists());
-    fs::write(&body, "Revised observation; owner impression uncollected.").unwrap();
-    assert_eq!(t.cli(&["draft", "source:t1", &body]).code, 0);
-    t.context("t2", "default");
-    fs::write(t.env.path().join("fail-post"), "").unwrap();
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 1);
+    t.context("r3", "default");
     assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
-    assert_eq!(
-        fs::read_to_string(t.env.path().join("posts")).unwrap(),
-        "post\n"
-    );
-    let check = &t.state()["checks"]["source:t1"];
-    assert!(check["body"]
-        .as_str()
-        .unwrap()
-        .contains("Revised observation"));
-    assert!(check["approval"]
+    assert!(t.state()["checks"]["source:t1"]["approval"]
         .as_str()
         .unwrap()
         .starts_with("Standing authorization:"));
-}
-
-#[test]
-fn existing_waiting_draft_can_use_new_standing_authorization() {
-    let t = Trial::new();
-    t.hook("source", "t1", false, false);
-    let body = t.draft();
-    t.cli(&["draft", "source:t1", &body]);
-    let config_path = t.env.path().join("config.json");
-    let mut config: Value =
-        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
-    config["posting_authorization"] = json!("Always post observations for this trial.");
-    fs::write(&config_path, config.to_string()).unwrap();
-    assert_eq!(t.cli(&["post", "source:t1"]).code, 0);
-}
-
-#[test]
-fn owner_reminder_after_new_turn_does_not_repeat_in_continuations() {
-    for mode in ["default", "plan"] {
-        let t = Trial::new();
-        t.hook("source", "t1", false, false);
-        let body = t.draft();
-        t.cli(&["draft", "source:t1", &body]);
-        t.context("t2", mode);
-        t.hook("source", "t2", false, false);
-        assert_eq!(t.hook("source", "t2", true, false).code, 0);
-        assert_eq!(t.state()["checks"]["source:t1"]["approval"], "");
-        assert!(!t.env.path().join("posts").exists());
-    }
-}
-
-#[test]
-fn empty_standing_authorization_is_rejected() {
-    let t = Trial::new();
-    let config_path = t.env.path().join("config.json");
-    let mut config: Value =
-        serde_json::from_str(&fs::read_to_string(&config_path).unwrap()).unwrap();
-    config["posting_authorization"] = json!("   ");
+    config["posting_authorization"] = json!("  ");
     fs::write(config_path, config.to_string()).unwrap();
     assert_eq!(t.cli(&["list"]).code, 1);
+}
+
+#[test]
+fn corrupt_trial_state_cannot_interrupt_ordinary_conversations() {
+    let t = Trial::new();
+    t.seed();
+    fs::write(
+        t.env.state().join("claude/wrapup/trial/state.json"),
+        "broken",
+    )
+    .unwrap();
+    for start in [true, false] {
+        let out = t.hook("source", "t1", false, start);
+        assert_eq!(out.code, 0);
+        assert!(!out.stderr.contains("trial:"));
+    }
+    assert_eq!(t.hook("report", "r1", false, false).code, 0);
 }

@@ -1,8 +1,11 @@
 # Bounded Codex feedback trial
 
-The existing wrap-up hooks optionally collect observations independently of the
-PR retrospective. No trial is enabled by the distributed configuration. Claude
-and Copilot remain on their existing paths.
+A separate collector reads saved Codex conversations and stores observation
+candidates locally. Normal SessionStart and Stop paths never inject trial
+instructions, create per-turn checks, or force the conversation to continue.
+The configured report conversation handles wording, owner approval, posting,
+and synthesis. Collection never resumes that conversation automatically.
+Claude and Copilot remain on their existing paths.
 
 ## Local declaration
 
@@ -23,106 +26,219 @@ private values. `WRAPUP_TRIAL_CONFIG` overrides the path for isolated tests.
 ```
 
 Dates are UTC instants: the example represents October 26–November 1 inclusive
-in Asia/Tokyo. State is local, under `claude/wrapup/trial` in the existing wrap-up
-state root, in a mode-0700 directory. Keep one trial configuration until its
-pending items and final report are complete. Never copy feedback into public
-configuration or issue bodies.
+in Asia/Tokyo. State remains under `claude/wrapup/trial` in the wrap-up state
+root (`WRAPUP_STATE_DIR`, then `XDG_STATE_HOME`, then `~/.local/state`), in a
+mode-0700 directory. Destinations, thread identifiers and conversation content
+stay in private runtime state. Keep the configuration until pending observations
+and final production are complete.
 
-For a trial whose owner has requested automatic observation posting, add
-`"posting_authorization": "<verbatim owner authorization>"` to the local
-configuration. Omission preserves per-observation approval; an empty value is
-invalid. This authorization is scoped to the configured trial, not Slack or
-other outbound messages. Observations may be posted without another question;
-owner impressions must still come from the owner, and final script/visual review
-still requires approval. Plan mode continues to prohibit posting.
+The current trial uses per-observation approval in the report conversation.
+Do not configure `posting_authorization` for it. The existing CLI can read a
+standing authorization for other explicitly authorized trials; that capability
+does not authorize this trial. Owner impressions must come from actual owner
+statements, and final script and visual review still require owner approval.
 
-## Execution contract
+## Differential collection
 
-`feedback-trial list` shows checks. Stop creates one check per normal
-turn; an open candidate takes precedence over new collection. Hook continuations
-reuse the check. Session start/resume recovers pending checks. Each attempt is
-bounded to three forced continuations per normal turn/resume; exhaustion is
-reported, not acknowledged. An owner-approval reminder is emitted once per new
-input/resume; waiting then ends normally without revising the draft or approval.
-After the end, existing checks and final production
-remain due. No timer runs while every session is stopped.
+`feedback-trial collect --dry-run` reads the available source intervals without
+calling the model or saving state. `feedback-trial collect` processes completed
+or interrupted intervals from normal and archived Codex rollouts, bounded by
+the trial start and exclusive end. It excludes the report conversation, its
+own analysis, child agents and hook continuations. Short owner answers are read
+with their surrounding context, rather than discarded by length.
 
-Once `post` has verified the remote body and marker, the observation remains in
-the shared pending state for the report thread. The originating thread can stop,
-resume and collect later observations without waiting for a thread-message tool
-or the report's saved commit. Report start/resume and Stop recover the entire
-pending set. An interrupted report remains pending until that report resumes;
-this never marks its work complete.
+Finite batches retain the unread remainder. Each accepted result saves both
+its candidate (or explicit no-candidate decision) and source position together.
+Existing checks and source references prevent duplicate collection. No new
+input means no model call. Failures, invalid JSON and interrupted execution
+leave the affected input available for retry; completed batches remain saved.
+A separate collector lock prevents concurrent collection without holding the
+shared trial-state lock during inference.
 
-The procedure printed by the hook owns the agent instructions. Commands are:
+Each fragment includes numbered source records and a bounded preceding context
+with its own source line list. References must belong to the current fragment or
+that supplied context. Model-returned fragment IDs are constrained to the input
+IDs in the schema and checked again before saving. Recovery under the same turn
+ID preserves fragment numbering; an incomplete final JSONL record waits for its
+newline. Malformed completed records produce a diagnostic without consuming input.
 
-- `none ID`: no candidate, only from unchecked.
-- `dismiss ID 'verbatim owner rejection'`: close an owner-rejected draft without
-  posting. This is distinct from inventing approval or silently forgetting it.
-- `draft ID /absolute/body.md`: store proposed wording and clear earlier approval.
-  With configured posting authorization, record that authorization and queue the
-  draft for posting; otherwise wait for the owner's per-observation answer.
-- `approve ID /absolute/body.md 'verbatim owner answer'`: accept only the same
-  wording. The agent must actually obtain this answer; the CLI cannot decide
-  whether natural-language approval was sincere or applicable.
-- `post ID`: Default mode only. A previously waiting draft can use newly configured
-  posting authorization. Otherwise require the owner's exact-body approval.
-  List all issue comments, reuse the unique marker,
-  post if absent, then verify the exact body and URL. Failure retains state.
-- `applied ID FULL_SHA`: report thread only. Read the issue again and verify
-  the exact comment. Verify the saved script in the configured worktree has
-  both marker and URL before acknowledgement. Report synthesis is the agent's
-  responsibility, not substring validation's responsibility.
-- `finalize FULL_SHA`: report thread only, after expiry and pending completion.
-  Complete script/storyboard/visual review before invoking it. Then set enabled
-  to false in the local declaration.
+Finalization takes the collector lock and rejects unread or unfinished input and
+unresolved collection errors. The collector also checks finalization before
+committing results, so stopping the trial cannot silently discard its backlog.
 
-Only the report thread edits the report worktree. The local pending set is the
-handoff: no message acknowledgement or second producer is required. If a
-thread-message tool is available, an optional notification sends only opaque
-check IDs, at most once per normal input/resume. The receiver resolves URLs and
-paths from local state/config, so private references never cross that message.
-A report already processing a batch re-reads the pending set before ending.
-Duplicate requests reuse the marker already in the script.
+Analysis uses the native `~/.local/bin/codex`, rather than the interactive
+credential launcher, via `exec --ephemeral --output-schema`. The service sets
+`FEEDBACK_TRIAL_CODEX_BIN` to that native path. A private analysis `CODEX_HOME`
+links the existing authentication file; ordinary Codex configuration stays
+writable and unchanged. The collector inherits model and reasoning effort,
+while disabling shell, web, MCP, apps and plugins, with a read-only sandbox and
+approval policy `never`. GitHub credentials are removed from the subprocess
+environment. This is a restricted analysis invocation, not a guarantee that
+Codex exposes no tools. Returned JSON is validated as candidate data and is
+never executed.
 
-The state transition and remote read-back run under the existing file lock, so
-parallel senders cannot lose state or create duplicate comments. An ambiguous
-post failure is recovered by listing comments before retry. A conflicting body
-or duplicate remote marker requires reconciliation and is never auto-completed.
+A missing or disabled declaration causes no model invocation. Expiry stops
+selection of new outside-period input but allows collection of unread
+inside-period intervals. Finalization or disabling the trial stops collection.
+Errors go to the service journal and collector status, without notifying normal
+conversations.
 
-Token snapshots bracket collection work. They can include intervening ordinary
-work and are not a pure-overhead measurement. The report thread's rollout is the
-source for report-only token use. Missing usage is unknown, never zero; do not
-sum overlapping intervals or equate tokens with money/quota percentages.
+## Report conversation and approval
+
+`feedback-trial list` is a read-only view: it creates no lock, changes no file
+permissions, and saves no state. The report conversation gets only counts and
+a CLI hint on start/resume; `feedback-trial procedure` prints the full procedure
+when needed. Plan mode permits reading and reviewing candidates. Switch to
+Default for state changes or posting. Waiting for owner approval or encountering
+a write failure never forces continuation.
+
+Commands use the existing check IDs, including IDs created before collection
+moved out of normal conversations:
+
+- `none ID`: mark an unchecked legacy item as having no candidate.
+- `dismiss ID 'verbatim owner rejection'`: close an owner-rejected draft.
+- `draft ID /absolute/body.md`: store wording and invalidate earlier approval.
+- `approve ID /absolute/body.md 'verbatim owner answer'`: approve that exact
+  wording using an answer actually obtained from the owner.
+- `post ID`: Default mode only, with exact-body approval for this trial. List
+  issue comments, reuse the unique marker, post only if absent, then read back
+  the exact body and URL. Failure retains pending state.
+- `applied ID FULL_SHA`: report conversation only. Read the issue again and
+  verify the exact comment, then verify the saved script commit contains both
+  marker and URL before acknowledging application.
+- `finalize FULL_SHA`: report conversation only, after expiry and completion of
+  pending observations, script review and visual review. Then set `enabled` to
+  false in the local declaration.
+
+Only the report conversation edits its worktree. It re-reads all pending checks
+before ending. No transport service or automatic report resume is required.
+Ambiguous posting failures recover by listing comments before retry. Conflicting
+bodies or duplicate remote markers require reconciliation.
+
+Token snapshots can include intervening ordinary work, so they do not measure
+pure collection overhead. The report rollout supplies report-only token use.
+Missing usage is unknown, never zero; do not sum overlapping intervals or
+convert tokens into money or quota percentages without supporting data.
+
+## Deployment, migration and recovery
+
+`home/modules/agents.nix` declares
+`dotfiles.feedbackTrial.collector.enable`, default false. Only
+`home/hosts/arcturus.nix` enables it. The Linux user timer runs at minute 00 and
+30 with `Persistent = true`; the service timeout is ten minutes. The
+`feedback-trial-collect` node and timer pointer register this automatic execution
+in `pipeline-map.toml`.
+
+Before applying, stop the collector and save a private snapshot of its current
+state. This preserves old IDs, drafts, approvals, posted URLs, no-candidate
+records and applied commits. The schema adds fields while accepting old state;
+there is no reset or re-keying migration. On the target host:
+
+```sh
+systemctl --user stop feedback-trial-collect.timer feedback-trial-collect.service
+```
+
+On the first deployment the units do not exist yet; systemd's unit-not-found
+message in this step means there was no collector to stop. Do not ignore other
+errors. Then copy the existing state directory to a dated sibling backup:
+
+```sh
+trial_state_base="${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}"
+trial_backup_path="${trial_state_base}/claude/wrapup/trial.backup-$(date -u +%Y%m%dT%H%M%SZ)"
+cp -a -- "${trial_state_base}/claude/wrapup/trial" "$trial_backup_path"
+```
+
+Confirm the backup contains the same files with `diff -r` before continuing.
+Use the newly built binary to run `collect --dry-run` and `list`; inspect the
+selected intervals and current counts without changing state. Keep the backup
+outside the public repository. Do not rely on counts recorded in an earlier
+session.
+
+Apply from this worktree with `hms .`. Read the installed units and timer state:
+
+```sh
+systemctl --user cat feedback-trial-collect.service feedback-trial-collect.timer
+systemctl --user list-timers --all feedback-trial-collect.timer
+systemctl --user start feedback-trial-collect.service
+systemctl --user show feedback-trial-collect.service -p Result -p ExecMainStatus
+journalctl --user -u feedback-trial-collect.service -n 50 --no-pager
+~/.claude/hooks/feedback-trial list
+```
+
+The installed service must run `feedback-trial collect`, use native Codex and
+show a ten-minute timeout. The timer must show the half-hour calendar and
+persistence. A successful service exit alone does not prove useful collection:
+read the candidate source references and state back, verify existing approvals
+and posted records survived, and confirm the report conversation can read them.
+Check an ordinary conversation through actual SessionStart and Stop to confirm
+trial output and new per-turn checks are both absent. Changed hook commands may
+require the owner's trust via Codex `/hooks`; never manufacture trust hashes.
+
+After a failure, inspect `journalctl` and `list`, repair the reported cause,
+then start the same service again. An unprocessed batch retries with its source
+references; do not delete state to force a retry. To roll back, stop both units,
+restore the backup to the same private state path, and apply the prior
+home-manager generation. Read the restored records before restarting collection.
+After finalization, disable the local declaration; disabling the Nix option
+also removes the timer on the next activation.
+
+Verify changes with `cargo test -p feedback-trial -p session-wrapup -p pipeline-map`,
+`cargo clippy -p feedback-trial -p session-wrapup --all-targets -- -D warnings`,
+`nix fmt`, and the target host's activation build. Isolated fixture tests and
+native Codex PoC results are distinct from the live timer/report read-back.
+
+On 2026-10-27, live `collect --dry-run` found 1,026 fragments from 32
+conversations. The pre-migration read-back contained 86 checks (7 unchecked,
+13 awaiting owner, 1 awaiting post, 17 verified posts, 48 no-candidate).
+The first 24 accepted fragments saved 6 candidates; every existing check field
+still matched the byte-preserved backup. The native analysis reported
+`approval: never` and `sandbox: read-only`, shared the authentication symlink,
+and saved zero rollouts. Normal deployed `session-wrapup start` and `stop`
+both returned 0, emitted no trial context, and created zero checks.
+`feedback-trial list` succeeded inside the normal read-only sandbox.
+
+Live analysis also exercised two failure paths: an incorrectly copied fragment
+ID and a citation to supplied preceding context. Rejected results advanced no
+positions. Input-ID schema enums and explicit context source-line validation
+fixed these causes, and retry processed the retained intervals. The remaining
+backlog is intentionally drained over successive bounded runs. Timer/service
+state was read back using `systemctl --user show` and `cat`: active half-hour
+timer, persistent catch-up, native Codex path, and ten-minute service timeout.
+Simultaneous normal model use succeeded; an actual simultaneous authentication
+refresh was not observed. The isolated retry/credential tests cover failures,
+but do not establish native cross-process refresh serialization.
 
 ## Sources and decisions
 
-- Existing means: extend `crates/wrapup-stop-gate`, at baseline `df5893c`:
-  `src/lib.rs` lock/SessionStart/Stop and `src/retro.rs` bounded retries. No
-  independent hook or duplicated retrospective state machine. Retrieved
-  2026-10-26. Difference: per-normal-input collection without a PR prerequisite.
-- Handoff decision: use the existing shared pending state and report-side
-  recovery at baseline `5d499a9a06d5c4c4e3c76ec870f5760be57164ab`
-  (`src/trial.rs:213–220`, `docs/claude/feedback-trial.md:62–65`), retrieved
-  2026-10-26. Existing means: extend that state owner; add no transport service.
-  Difference: a verified post no longer blocks the originating thread on a
-  delivery hint. Report acknowledgement still requires the saved commit and
-  remote read-back. Source: [Issue #1037](https://github.com/tarotene/dotfiles/issues/1037).
+- Existing means: extend `crates/feedback-trial`, its shared pending state,
+  approval transitions and remote read-back, at baseline
+  `838dcadd7bb5096f77aa1e05bbf108fc1fff87a0`, retrieved 2026-10-27.
+  Difference: source-position collection replaces per-turn hook collection;
+  report-side operations retain old IDs and exact-body approval.
+- dotfiles, [promotion-detect timer](../../home/modules/promotion-detect.nix),
+  baseline `838dcadd7bb5096f77aa1e05bbf108fc1fff87a0`, retrieved 2026-10-27.
+  Existing means: extend the home-manager user timer pattern and pipeline map.
+  Difference: opt in on one host, every half hour, with a ten-minute timeout.
+- OpenAI, Codex 0.164.0, fixed source
+  `6aaac694803004a63c6f393d153c96d22521a6b9`, publication date unconfirmed,
+  retrieved 2026-10-27:
+  [ephemeral execution](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/exec/src/lib.rs#L1440)
+  and [session persistence](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/session/session.rs#L1064).
+  Existing means: native schema-constrained ephemeral exec, no independent
+  inference client. Difference: use an isolated analysis home and validate
+  candidate data before committing source positions. The 2026-10-27 PoC used
+  synthetic input and returned schema-valid JSON with exit 0 and no saved
+  rollout; live conversation collection and simultaneous auth refresh require
+  deployment verification.
 - OpenAI, *Hooks*, <https://learn.chatgpt.com/docs/hooks>, retrieved 2026-10-26.
-  Fixed source: OpenAI Codex `6aaac694803004a63c6f393d153c96d22521a6b9`,
-  [Stop](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/hooks/src/events/stop.rs#L294)
+  Fixed source:
+  [Stop event](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/hooks/src/events/stop.rs#L294)
   and [hook runtime](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/hook_runtime.rs#L996).
-  `permission_mode` describes approval policy, not Plan mode. We inspect the
-  rollout's `turn_context.collaboration_mode.mode` (observed locally on
-  2026-10-26); unknown mode blocks posting. Stop's `turn_id` and
-  `stop_hook_active` bound continuation; isolated CLI tests exercise that contract.
-
-## Verification and deployment
-
-Run `cargo test -p wrapup-stop-gate` and
-`cargo clippy -p issue-inbox --all-targets -- -D warnings`.
-Apply with the repository's `hms .` flow. Read registrations and trust back
-afterward; the command changes need the owner's trust if Codex reports them
-untrusted. Do not manufacture trust hashes. A real cross-session round trip
-still requires an owner-approved observation and is distinct from isolated
-transport/commit tests.
+  `permission_mode` describes approval policy; the rollout's
+  `turn_context.collaboration_mode.mode` supplies Plan/Default state.
+  Unknown mode blocks posting.
+- OpenAI, Codex 0.164.0, same fixed commit, retrieved 2026-10-27:
+  [same-turn recovery contract](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/turn_input.rs#L101)
+  and [regular task start](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/tasks/regular.rs#L48).
+  Difference: the collector retains fragment numbering across recovery rather
+  than interpreting a repeated task-start record as a new source turn.
