@@ -189,16 +189,15 @@ in
         #
         # Matching (Anthropic, "Sandboxing", https://code.claude.com/docs/en/sandboxing,
         # retrieved 2026-10-27, and measured on vega 2026-10-28, #1164): the whole call
-        # must match, and a pattern matches the text of the call. So `git -C <dir> commit`
-        # needs its own entry, `git add . && git commit` needs `git add` excluded too,
-        # and a `cd`, a redirect to a file or a `$(...)` keeps the call sandboxed.
+        # must match, so `git add . && git commit` needs `git add` excluded too, and a `cd`,
+        # a redirect to a file or a `$(...)` keeps the call sandboxed. Only patterns with a
+        # trailing `*` took effect. `git -C * commit *` (a `*` in the middle) did not, even with a
+        # literal path, so run git in the worktree's cwd without `-C`; do not add `git -C *`
+        # (it would take every `-C` call out of the sandbox).
         "gh *"
         "git commit *"
-        "git -C * commit *"
         "git push *"
-        "git -C * push *"
         "git add *"
-        "git -C * add *"
         # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
         # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
         "nix build *"

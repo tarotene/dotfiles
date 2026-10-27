@@ -417,8 +417,9 @@ profile と同じ層構造に、`claude-permissions` が宣言で揃えること
 
 `excludedCommands` の既定(`gh *`・`git commit *`・`git push *`)は暫定で、vega の実機での実測は未取得である
 (2026-10-27)。2026-10-28 の実測(#1164)で、単体の `gh`・`git push` が除外で通ること、呼び出し全体が除外に
-合わないと sandbox に残ること(`git -C` の形・`nix`)が分かり、既定を追加した。署名付き commit の成功は未測定
-(追加した `git -C * commit *` を適用したあとに再測定する)。実測の表と手順は
+合わないと sandbox に残ること、末尾だけに `*` を持つパターンだけが効き、途中に `*` を持つ `git -C * commit *` は
+効かないこと、worktree の cwd での単体の `git commit -S` は署名が通ることが分かった。既定に `git add *`・`nix` を追加し、
+効かない `git -C` の 3 件は外した。連結(`git add . && git commit`)の測定が残る。実測の表と手順は
 [運用文書](../agents/agent-permissions.md#claude-と-codex-の層構造を揃える) に置く。
 `nix flake check` は、この Amendment を書いた環境の sandbox が nix daemon のソケットを開けないため手元で実行して
 いない(CI の結果で確かめる)。

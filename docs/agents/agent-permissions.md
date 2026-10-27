@@ -85,8 +85,9 @@ Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.co
 
 **除外パターンの照合規則**(Anthropic, "Sandboxing"、取得 2026-10-27): 呼び出し 1 行全体のコマンドがすべて
 除外パターンに合わないと、全体が sandbox の中に残る。パターンは呼び出しの文字列に対して合わせる。`cd`・
-ファイルへのリダイレクト・`$(…)` を含む呼び出しは sandbox に残る。このため `git -C <dir> commit` は
-`git commit *` に合わず、別の項目(`git -C * commit *`)が要る。
+ファイルへのリダイレクト・`$(…)` を含む呼び出しは sandbox に残る。さらに実測(下の表)で、**末尾だけに `*` を
+持つパターンだけが効き**、途中に `*` を持つ `git -C * commit *` は、リテラルのパスでも効かなかった。このため
+git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広い除外は、全ての `-C` の呼び出しを外に出すので採らない。
 
 **実測(vega、2026-10-28、#1164、`hms` 適用後の新しいセッション・Auto モード)**:
 
@@ -96,15 +97,17 @@ Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.co
 | `gh auth status`(2 回目、単体) | 成功(keyring でログイン済み) | 除外が効く。鍵束に届く |
 | `gh pr list -R tarotene/dotfiles --limit 1`(単体) | 成功 | 同上 |
 | `git push --dry-run`(単体) | 成功 | 同上。認証情報が通る |
-| `git -C <dir> commit -S ...`・`git -C <dir> add . && git -C <dir> commit -S ...` | 失敗(`No secret key`) | `git -C` の形が `git commit *` に合わなかった。署名そのものの可否は未測定 |
-| `nix build nixpkgs#hello --no-link` | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
+| `git commit -S --allow-empty -m probeA`(worktree の cwd、`-C` なし、単体) | **成功**(署名できた) | `git commit *` の除外が効く。gpg-agent に届く |
+| `git -C <リテラルの絶対パス> commit -S ...`(`git -C * commit *` を除外に入れた状態) | 失敗(`No secret key`) | 途中の `*` を持つパターンは効かない(変数展開が原因ではない) |
+| `git -C "$TMPDIR/…" commit -S ...`、`git -C … add . && git -C … commit -S ...` | 失敗(`No secret key`) | 同上 |
+| `nix build nixpkgs#hello --no-link`(除外に `nix build *` を足す前) | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
+| `nix build nixpkgs#hello --no-link`(`nix build *` を足した後) | **成功** | 除外が効く |
 | `cargo --version`・`$TMPDIR` への書き込み | 成功 | sandbox 内で確認なしに通る |
 
 自動モードの分類器は、実測の全呼び出しを許可した(sandbox を外す再実行はしていないので、「Safety Bypass」の
 問題は、除外コマンドで外の実行になるこの構成では起きなかった、という範囲で確かめられた)。
-この結果に基づき、既定に `git -C * commit *`・`git -C * push *`・`git add *`・`git -C * add *`・`nix build *`・
-`nix eval *`・`nix flake *`・`nix fmt *` を足した。署名付き commit の成功は、この変更の `hms` 適用後に再測定する
-(#1164)。`nix` を sandbox の中に残す案(`allowWrite` で `~/.cache/nix`、socket の許可)は、socket の作成自体が
+この結果に基づき、既定に `git add *`・`nix build *`・`nix eval *`・`nix flake *`・`nix fmt *` を足した(`git -C *` の
+3 件は効かないと分かり、外した)。連結(`git add . && git commit`)を cwd で単体測定する項目が残る(#1164)。`nix` を sandbox の中に残す案(`allowWrite` で `~/.cache/nix`、socket の許可)は、socket の作成自体が
 拒否されるので採らない(`allowAllUnixSockets` が要り、範囲が広すぎる)。
 `/tmp` 直下への書き込みは `allowWrite` を広げず、`$TMPDIR` を使う運用のままにする。
 

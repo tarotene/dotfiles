@@ -106,8 +106,9 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 `gh auth status; echo "exit=$?"` が失敗し、`gh auth status` 単体が成功することを確かめた。
 
 - これらは単体で呼ぶ。`; echo …`・`cd <dir> &&`・`> file` のリダイレクト・`$(…)` を連結しない。
-- 作業ディレクトリは `git -C <dir> …` で指定する(`cd` を連結しない)。`git -C <dir> commit` と
-  `git -C <dir> add` は除外に入れてあるので、署名付きの commit は通る。
+- git は worktree の cwd で、`-C` なしに呼ぶ(シェルの cwd は呼び出しをまたいで保たれる)。除外は末尾だけに
+  `*` を持つパターン(`git commit *` など)だけが効き、`git -C <dir> commit` は sandbox に残って署名が
+  `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
 - 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
 
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
