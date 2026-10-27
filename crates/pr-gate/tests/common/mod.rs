@@ -162,7 +162,7 @@ pub const CHECKS_PARTIAL_FAIL: &str = r#"[{"name":"job-a","bucket":"pass","link"
 pub const CHECKS_QUIESCE_PASS: &str = r#"[{"name":"Shell script validation","bucket":"pass","link":"https://x/runs/2/job/21","workflow":"CI"}]"#;
 pub const CHECKS_QUIESCE_FAIL: &str = r#"[{"name":"Shell script validation","bucket":"fail","link":"https://x/runs/2/job/21","workflow":"CI"}]"#;
 pub const CHECKS_REQ_PASS_OTHER_PENDING: &str = r#"[{"name":"job-a","bucket":"pass","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"pass","link":"https://x/runs/1/job/12","workflow":"CI"},{"name":"altair","bucket":"pending","link":"https://x/runs/3/job/31","workflow":"Darwin"}]"#;
-pub const CHECKS_OTHER_FAIL_REQ_PENDING: &str = r#"[{"name":"job-a","bucket":"pending","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"pending","link":"https://x/runs/1/job/12","workflow":"CI"},{"name":"lint","bucket":"fail","link":"https://x/runs/4/job/41","workflow":"CI"}]"#;
+pub const CHECKS_OTHER_FAIL_REQ_PENDING: &str = r#"[{"name":"job-a","bucket":"pending","link":"https://x/runs/1/job/11","workflow":"CI"},{"name":"job-b","bucket":"pending","link":"https://x/runs/1/job/12","workflow":"CI"},{"name":"lint","bucket":"fail","link":"https://x/runs/4/job/41","workflow":"Lint"}]"#;
 pub const ZERO_OID: &str = "0000000000000000000000000000000000000000";
 
 pub struct Run {

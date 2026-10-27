@@ -680,6 +680,11 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 | 3 | E が空で、報告件数が `PR_GATE_QUIESCE` 秒静止(または出現待ちの上限)し pending が 0 | OK(静止による近似) |
 | — | それ以外 | 続行(上限で PENDING / MISSING / EMPTY) |
 
+同じ workflow に複数の run があれば、`link` の run ID が最大(最新)のものだけを判定に使う。同じ head に run が
+重なると、先の run は concurrency で cancel され、その集約ジョブ(`CI passed`)は fail で報告される。新しい run の
+同名のチェックがまだ作られていない間、その古い fail を NG と読むと誤報になる(#1157 で実際に起きた)。re-run は
+同じ run ID のままなので、これで落ちない。run ID の無いチェック(外部の status context)は残す。
+
 `cancel` は即時 NG にしない。同じ head の後続の run に置き換えられた(concurrency の `cancel-in-progress`)だけのことがあり、
 #1157 では先の run の `cancel` を赤と読んで誤って NG を返した。E が全緑なら OK、pending が残る間は待ち、pending が 0 に
 なってなお cancel が残るときに NG とする。

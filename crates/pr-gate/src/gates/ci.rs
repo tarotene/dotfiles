@@ -97,10 +97,45 @@ pub fn parse_expected(raw: &str) -> Result<Vec<Value>, JqError> {
     Ok(out)
 }
 
-/// 報告集合(`gh pr checks --json`)。配列として読めなければ `None`。
+static RUN_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"/runs/([0-9]+)(?:/|$)").expect("RUN_ID_RE"));
+
+/// チェックの `link` にある workflow run の ID。外部の status context など、無ければ `None`。
+fn run_id(check: &Value) -> Option<u64> {
+    let link = check.get("link")?.as_str()?;
+    RUN_ID_RE.captures(link)?[1].parse().ok()
+}
+
+/// 同じ workflow に複数の run があれば、run ID が最大のもの(最新)のチェックだけを残す。
+/// 同じ head に run が重なる(base ブランチの更新で `synchronize` が重ねて飛ぶ)と、先の run は
+/// concurrency で cancel され、その集約ジョブ(`CI passed`)は fail で報告される。新しい run の
+/// 同名のチェックがまだ作られていない間、その古い fail を NG と読むと誤報になる(#1157 で
+/// 実際に起きた)。re-run は同じ run ID のままなので、これで落ちない。run ID の無いチェックは残す。
+fn latest_runs_only(all: Vec<Value>) -> Vec<Value> {
+    let mut newest: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for c in &all {
+        if let Some(id) = run_id(c) {
+            let wf = c.get("workflow").and_then(Value::as_str).unwrap_or("");
+            let e = newest.entry(wf.to_string()).or_insert(id);
+            *e = (*e).max(id);
+        }
+    }
+    all.into_iter()
+        .filter(|c| match run_id(c) {
+            Some(id) => {
+                let wf = c.get("workflow").and_then(Value::as_str).unwrap_or("");
+                newest.get(wf).is_none_or(|n| id >= *n)
+            }
+            None => true,
+        })
+        .collect()
+}
+
+/// 報告集合(`gh pr checks --json`)。配列として読めなければ `None`。置き換えられた古い run の
+/// チェックは除く([`latest_runs_only`])。
 fn parse_reported(s: &str) -> Option<Vec<Value>> {
     match serde_json::from_str::<Value>(s).ok()? {
-        Value::Array(a) => Some(a),
+        Value::Array(a) => Some(latest_runs_only(a)),
         _ => None,
     }
 }
@@ -438,6 +473,32 @@ mod tests {
         assert_eq!(decide(&e2(), r), Verdict::Failed);
         // cancel だけが残って他が落ち着いたなら NG。
         let r = r#"[{"name":"x","bucket":"cancel"}]"#;
+        assert_eq!(decide(&[], r), Verdict::Failed);
+    }
+
+    #[test]
+    fn stale_run_results_are_ignored() {
+        // 古い run(100)の CI passed は fail、新しい run(200)にはまだ CI passed が無い。
+        let e = vec![json!("job-a"), json!("CI passed")];
+        let r = r#"[
+          {"name":"CI passed","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"Build ${{ matrix.host }}","bucket":"cancel","link":"https://x/runs/100/job/2","workflow":"CI"},
+          {"name":"job-a","bucket":"pending","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        let (missing, pending, n) = wait_of(decide(&e, r));
+        assert_eq!((missing, pending, n), (vec![json!("CI passed")], 1, 1));
+        // 新しい run の CI passed が出れば、それで判定する。
+        let r = r#"[
+          {"name":"CI passed","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"CI passed","bucket":"pass","link":"https://x/runs/200/job/4","workflow":"CI"},
+          {"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        assert_eq!(decide(&e, r), Verdict::Pass);
+        // 別の workflow の古い run は、その workflow の最新があるときだけ除く(workflow ごと)。
+        let r = r#"[
+          {"name":"x","bucket":"fail","link":"https://x/runs/5/job/1","workflow":"Darwin"},
+          {"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        assert_eq!(decide(&[json!("job-a")], r), Verdict::Failed);
+        // run ID の無いチェック(外部の status)は残す。
+        let r = r#"[{"name":"ext","bucket":"fail","link":"https://ci.example/b/1","workflow":""}]"#;
         assert_eq!(decide(&[], r), Verdict::Failed);
     }
 
