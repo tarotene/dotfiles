@@ -1,4 +1,4 @@
-use codex_plan::{runtime::tui_args, Model, Relay, Settings};
+use codex_plan::{runtime::tui_args, ClientAction, Model, Relay, Settings};
 use serde_json::json;
 
 fn presets(id: serde_json::Value) -> String {
@@ -19,7 +19,7 @@ fn thread_creation_keeps_named_permissions_instead_of_remote_legacy_sandbox() {
             "config":{"model_reasoning_effort":"high"}, "future":{"keep":true}
         }});
         let patched = relay
-            .from_client(&raw.to_string(), &Settings::default())
+            .forwarded(&raw.to_string(), &Settings::default())
             .unwrap()
             .expect("legacy remote sandbox must be replaced");
         let got: serde_json::Value = serde_json::from_str(&patched).unwrap();
@@ -43,7 +43,7 @@ fn profile_is_native_selected_and_later_permission_changes_are_forwarded() {
         {
             let raw = json!({"id":id,"method":method,"params":{"permissions":"old-saved-profile","sandbox":null}});
             let patched = relay
-                .from_client(&raw.to_string(), &Settings::default())
+                .forwarded(&raw.to_string(), &Settings::default())
                 .unwrap()
                 .unwrap();
             let got: serde_json::Value = serde_json::from_str(&patched).unwrap();
@@ -57,7 +57,7 @@ fn profile_is_native_selected_and_later_permission_changes_are_forwarded() {
             }})
             .to_string();
             assert!(relay
-                .from_client(&raw, &Settings::default())
+                .forwarded(&raw, &Settings::default())
                 .unwrap()
                 .is_none());
         }
@@ -77,12 +77,12 @@ fn contradictory_thread_config_is_rejected_before_forwarding() {
             let mut relay = Relay::new("network".into());
             let raw = json!({"id":1,"method":method,"params":{"config":config}}).to_string();
             assert!(
-                relay.from_client(&raw, &Settings::default()).is_err(),
+                relay.forwarded(&raw, &Settings::default()).is_err(),
                 "{raw}"
             );
             // No pending response state was recorded by the rejected request.
             let retry = json!({"id":1,"method":method,"params":{}}).to_string();
-            assert!(relay.from_client(&retry, &Settings::default()).is_ok());
+            assert!(relay.forwarded(&retry, &Settings::default()).is_ok());
         }
     }
 }
@@ -117,7 +117,7 @@ fn patches_only_matched_responses_preserving_unknown_fields_and_id_types() {
     let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
-        .from_client(
+        .forwarded(
             r#"{"id":"1","method":"collaborationMode/list","params":{}}"#,
             &Settings::default(),
         )
@@ -158,14 +158,14 @@ fn errors_unknown_notifications_and_manual_settings_are_not_rewritten() {
         r#"{"id":4,"result":{"unknown":true}}"#,
         r#"{"method":"unknown","params":{"model":"manual"}}"#,
     ] {
-        relay.from_client(raw, &Settings::default()).unwrap();
+        relay.forwarded(raw, &Settings::default()).unwrap();
         assert!(relay
             .from_server(raw, &Settings::default())
             .unwrap()
             .is_none());
     }
     relay
-        .from_client(
+        .forwarded(
             r#"{"id":1,"method":"collaborationMode/list"}"#,
             &Settings::default(),
         )
@@ -187,10 +187,10 @@ fn errors_unknown_notifications_and_manual_settings_are_not_rewritten() {
 fn invalid_protocol_fails_before_forwarding() {
     let mut relay = Relay::new("custom-network".into());
     for bad in ["{", "[]", r#"{"id":1.5}"#, r#"{"id":null}"#] {
-        assert!(relay.from_client(bad, &Settings::default()).is_err());
+        assert!(relay.forwarded(bad, &Settings::default()).is_err());
     }
     relay
-        .from_client(
+        .forwarded(
             r#"{"id":1,"method":"collaborationMode/list"}"#,
             &Settings::default(),
         )
@@ -270,7 +270,7 @@ fn resumed_relay() -> Relay {
     let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
-        .from_client(
+        .forwarded(
             r#"{"id":"resume","method":"thread/resume","params":{"threadId":"saved"}}"#,
             &settings,
         )
@@ -296,10 +296,10 @@ fn mode_change_restores_pair_and_stale_turn_while_manual_choice_is_preserved() {
     let settings = Settings::default();
     let mut relay = resumed_relay();
     let saved_turn = update("turn/start", "plan", "manual", "high");
-    assert!(relay.from_client(&saved_turn, &settings).unwrap().is_none());
+    assert!(relay.forwarded(&saved_turn, &settings).unwrap().is_none());
     for mode in ["default", "plan"] {
         let raw = update("thread/settings/update", mode, "manual", "high");
-        let patched = relay.from_client(&raw, &settings).unwrap().unwrap();
+        let patched = relay.forwarded(&raw, &settings).unwrap().unwrap();
         let actual: serde_json::Value = serde_json::from_str(&patched).unwrap();
         let expected_model = "gpt-6.1-sol";
         assert_eq!(actual["params"]["model"], expected_model);
@@ -314,14 +314,14 @@ fn mode_change_restores_pair_and_stale_turn_while_manual_choice_is_preserved() {
         assert!(relay.from_server(r#"{"method":"thread/settings/updated","params":{"threadId":"saved","threadSettings":{"collaborationMode":{"mode":"plan"}}}}"#, &settings).unwrap().is_none());
         let stale = update("turn/start", mode, "manual", "high");
         assert!(relay
-            .from_client(&stale, &settings)
+            .forwarded(&stale, &settings)
             .unwrap()
             .unwrap()
             .contains("medium"));
     }
     let manual = update("thread/settings/update", "plan", "manual", "high");
-    assert!(relay.from_client(&manual, &settings).unwrap().is_none());
-    assert!(relay.from_client(&saved_turn, &settings).unwrap().is_none());
+    assert!(relay.forwarded(&manual, &settings).unwrap().is_none());
+    assert!(relay.forwarded(&saved_turn, &settings).unwrap().is_none());
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn failed_start_does_not_invent_thread_state_or_patch_errors() {
     let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
-        .from_client(r#"{"id":1,"method":"thread/start","params":{}}"#, &settings)
+        .forwarded(r#"{"id":1,"method":"thread/start","params":{}}"#, &settings)
         .unwrap();
     assert!(relay
         .from_server(
@@ -339,7 +339,7 @@ fn failed_start_does_not_invent_thread_state_or_patch_errors() {
         .unwrap()
         .is_none());
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("turn/start", "default", "manual", "high"),
             &settings
         )
@@ -351,7 +351,7 @@ fn rejected_switch_does_not_undo_tui_mode_or_steal_later_manual_choice() {
     let mut relay = resumed_relay();
     let settings = Settings::default();
     relay
-        .from_client(
+        .forwarded(
             &update("thread/settings/update", "default", "manual", "high"),
             &settings,
         )
@@ -359,21 +359,21 @@ fn rejected_switch_does_not_undo_tui_mode_or_steal_later_manual_choice() {
     let error = r#"{"id":99,"error":{"code":-1,"message":"unavailable"}}"#;
     assert!(relay.from_server(error, &settings).unwrap().is_none());
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("turn/start", "default", "manual", "high"),
             &settings
         )
         .unwrap()
         .is_some());
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("thread/settings/update", "default", "manual", "high"),
             &settings
         )
         .unwrap()
         .is_none());
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("turn/start", "default", "manual", "high"),
             &settings
         )
@@ -386,7 +386,7 @@ fn standard_fork_starts_in_default_mode() {
     let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
-        .from_client(
+        .forwarded(
             r#"{"id":1,"method":"thread/fork","params":{"threadId":"parent"}}"#,
             &settings,
         )
@@ -398,14 +398,14 @@ fn standard_fork_starts_in_default_mode() {
         )
         .unwrap();
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("turn/start", "default", "manual", "high"),
             &settings
         )
         .unwrap()
         .is_none());
     assert!(relay
-        .from_client(
+        .forwarded(
             &update("thread/settings/update", "plan", "manual", "high"),
             &settings
         )
@@ -482,14 +482,14 @@ enabled = true
                     &request(method, json!({"config":config})),
                     &Settings::default()
                 )
-                .is_err());
+                .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
             // Rejected calls must not reserve the request ID.
             assert!(relay
                 .from_client(
                     &request(method, json!({"model":"manual","effort":"high"})),
                     &Settings::default()
                 )
-                .is_ok());
+                .is_ok_and(|action| matches!(action, ClientAction::Forward(_))));
         }
         for extra in [
             json!({"approvalPolicy":"never"}),
@@ -499,14 +499,14 @@ enabled = true
             let mut relay = Relay::protected("fixture".into());
             assert!(relay
                 .from_client(&request(method, extra), &Settings::default())
-                .is_err());
+                .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
         }
     }
     for method in ["thread/start", "thread/resume", "thread/fork", "turn/start"] {
         let mut relay = Relay::protected("fixture".into());
         assert!(relay
             .from_client(&request(method, json!({"cwd":null})), &Settings::default())
-            .is_err());
+            .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
     }
     for method in ["thread/settings/update", "turn/start"] {
         for extra in [
@@ -516,7 +516,7 @@ enabled = true
             let mut relay = Relay::protected("fixture".into());
             assert!(relay
                 .from_client(&request(method, extra), &Settings::default())
-                .is_err());
+                .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
         }
         let mut relay = Relay::protected("fixture".into());
         assert!(relay
@@ -527,13 +527,12 @@ enabled = true
                 ),
                 &Settings::default()
             )
-            .unwrap()
-            .is_none());
+            .is_ok_and(|action| matches!(action, ClientAction::Forward(_))));
     }
     for method in ["command/exec", "process/exec", "thread/shellCommand"] {
         assert!(Relay::protected("fixture".into())
             .from_client(&request(method, json!({})), &Settings::default())
-            .is_err());
+            .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
     }
     let project = home.join("project");
     std::fs::create_dir_all(project.join(".codex")).unwrap();
@@ -547,7 +546,7 @@ enabled = true
             &request("thread/resume", json!({"cwd":project})),
             &Settings::default()
         )
-        .is_err());
+        .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
     for key in ["GH_TOKEN", "Gh_ToKeN", "GITHUB_ENTERPRISE_TOKEN"] {
         std::fs::write(
             home.join(".codex/config.toml"),
@@ -556,7 +555,7 @@ enabled = true
         .unwrap();
         assert!(Relay::protected("fixture".into())
             .from_client(&request("turn/start", json!({})), &Settings::default())
-            .is_err());
+            .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
     }
     std::fs::write(
         home.join(".codex/config.toml"),
@@ -565,7 +564,7 @@ enabled = true
     .unwrap();
     assert!(Relay::protected("fixture".into())
         .from_client(&request("thread/start", json!({})), &Settings::default())
-        .is_ok());
+        .is_ok_and(|action| matches!(action, ClientAction::Forward(_))));
     // Protection is checked again on every turn, not just once at startup.
     std::fs::write(
         home.join(".codex/config.toml"),
@@ -574,5 +573,55 @@ enabled = true
     .unwrap();
     assert!(Relay::protected("fixture".into())
         .from_client(&request("turn/start", json!({})), &Settings::default())
-        .is_err());
+        .is_ok_and(|action| matches!(action, ClientAction::Reply(_))));
+}
+
+// Model/permission transformation tests distinguish unchanged bytes from patches.
+trait Forwarded {
+    fn forwarded(&mut self, raw: &str, settings: &Settings) -> anyhow::Result<Option<String>>;
+}
+impl Forwarded for Relay {
+    fn forwarded(&mut self, raw: &str, settings: &Settings) -> anyhow::Result<Option<String>> {
+        match self.from_client(raw, settings)? {
+            ClientAction::Forward(message) => Ok((message != raw).then_some(message)),
+            ClientAction::Reply(reply) => anyhow::bail!("unexpected local refusal: {reply}"),
+        }
+    }
+}
+
+#[test]
+fn local_refusals_preserve_ids_do_not_echo_params_or_reserve_pending_ids() {
+    for id in [json!(42), json!("42")] {
+        let mut relay = Relay::protected("fixture".into());
+        let raw =
+            json!({"id":id,"method":"command/exec","params":{"command":["synthetic-secret"]}})
+                .to_string();
+        let ClientAction::Reply(reply) = relay.from_client(&raw, &Settings::default()).unwrap()
+        else {
+            panic!("refused command was forwarded")
+        };
+        let reply: serde_json::Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(reply["id"], id);
+        assert_eq!(reply["error"]["code"], -32600);
+        assert!(!reply.to_string().contains("synthetic-secret"));
+        let request = json!({"id":id,"method":"collaborationMode/list","params":{}}).to_string();
+        assert_eq!(
+            relay.from_client(&request, &Settings::default()).unwrap(),
+            ClientAction::Forward(request)
+        );
+        assert!(relay
+            .from_server(&presets(id), &Settings::default())
+            .unwrap()
+            .is_some());
+    }
+    for raw in [
+        r#"{"method":"command/exec","params":{}}"#,
+        r#"{"id":null,"method":"command/exec","params":{}}"#,
+        r#"{"id":true,"method":"command/exec","params":{}}"#,
+        "{",
+    ] {
+        assert!(Relay::protected("fixture".into())
+            .from_client(raw, &Settings::default())
+            .is_err());
+    }
 }

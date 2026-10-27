@@ -446,7 +446,11 @@ issue-inbox --check-dup '<TITLE>' <OWNER/REPO>
 作業ディレクトリを再検査する。設定の上書きで masking・proxy・承認方式を弱める要求、
 turn 中の権限 profile の切替、native の直接コマンド実行は拒否する。モデルと推論量は
 引き続き変更できる。cwd を持たない `PreserveExistingThread` の特殊な再接続は、
-保存先を推測して起動せず拒否する。その場合は意図したディレクトリから
+保存先を推測して起動せず拒否する。有効な要求IDがある拒否は、その要求だけに
+JSON-RPC エラーを返し、接続と他の要求は継続する。TUI が Git などの補助情報を
+取得する `command/exec` もこの拒否の対象なので、補助情報は取得できない場合がある。
+拒否を理由に TUI 全体を終了させず、成功結果も偽造しない。不正なJSON・ID、
+応答できない禁止通知、通信障害では引き続き終了する。その場合は意図したディレクトリから
 `codex-plan resume <ID>` で起動し直す。
 
 これは、固定版 app-server が要求の config を CLI override の後ろへ追加し、再開時には

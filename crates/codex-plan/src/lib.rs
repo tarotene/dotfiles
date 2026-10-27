@@ -182,6 +182,13 @@ fn request_id(message: &Value) -> Result<Option<RequestId>> {
     }
 }
 
+/// A client message either reaches native Codex or receives a local refusal.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClientAction {
+    Forward(String),
+    Reply(String),
+}
+
 pub struct Relay {
     permissions: String,
     protected: bool,
@@ -301,11 +308,21 @@ impl Relay {
         Ok(())
     }
 
-    pub fn from_client(&mut self, raw: &str, settings: &Settings) -> Result<Option<String>> {
+    pub fn from_client(&mut self, raw: &str, settings: &Settings) -> Result<ClientAction> {
         let mut value = parse_message(raw)?;
         let method = value["method"].as_str().unwrap_or_default().to_owned();
         if self.protected {
-            self.validate_protected_request(&method, &value["params"])?;
+            if let Err(error) = self.validate_protected_request(&method, &value["params"]) {
+                // Invalid IDs and notifications cannot receive a correlated reply.
+                // Do not reserve a pending ID or forward any rejected params.
+                request_id(&value)?.context("refused request requires an ID")?;
+                return Ok(ClientAction::Reply(serde_json::to_string(
+                    &serde_json::json!({
+                        "id": value["id"],
+                        "error": {"code": -32600, "message": format!("{method}: {error:#}")}
+                    }),
+                )?));
+            }
         }
         let creation = matches!(
             method.as_str(),
@@ -402,14 +419,14 @@ impl Relay {
                             params.insert(key.into(), Value::String(content.clone()));
                         }
                     }
-                    return Ok(Some(serde_json::to_string(&value)?));
+                    return Ok(ClientAction::Forward(serde_json::to_string(&value)?));
                 }
             }
         }
         if creation {
-            Ok(Some(serde_json::to_string(&value)?))
+            Ok(ClientAction::Forward(serde_json::to_string(&value)?))
         } else {
-            Ok(None)
+            Ok(ClientAction::Forward(raw.to_owned()))
         }
     }
 

@@ -44,7 +44,8 @@ impl Fixture {
     }
     fn command(&self) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_codex-plan"));
-        c.env_remove("CODEX_HOME")
+        c.current_dir(self.dir.path())
+            .env_remove("CODEX_HOME")
             .env_remove("CODEX_PROFILE")
             .env_remove("CLAUDE_CONFIG_DIR")
             .env("HOME", self.dir.path())
