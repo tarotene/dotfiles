@@ -118,6 +118,7 @@ pub fn collect(catalog: &Catalog, json: &str, retrieved: &str) -> Result<Report,
                     .and_then(Value::as_str)
                     .ok_or_else(|| format!("AA の行 {aa_id} に slug が無い"))?
                     .to_owned(),
+                retrieved: retrieved.to_owned(),
                 release_date: release,
                 median_output_tokens_per_second: row
                     .get("median_output_tokens_per_second")
@@ -231,6 +232,7 @@ pub fn render_block(report: &Report) -> String {
         out.push_str(&format!("effort = {}\n", s(&m.effort)));
         out.push_str(&format!("aa_name = {}\n", s(&m.aa_name)));
         out.push_str(&format!("aa_slug = {}\n", s(&m.aa_slug)));
+        out.push_str(&format!("retrieved = {}\n", s(&m.retrieved)));
         if let Some(d) = &m.release_date {
             out.push_str(&format!("release_date = {}\n", s(d)));
         }
