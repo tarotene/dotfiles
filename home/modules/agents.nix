@@ -2156,6 +2156,51 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
         touch $out
       ''
     )
+    # スキル配布の検査(#1124)。`checks.<system>.agent-skills`(flake.nix)と同じ定義を、
+    # 適用する配布物そのもの(この config の home.file)に掛ける。flake の check は
+    # activation build の依存ではなく、`hms .` は検査に落ちた配布物を実ホームへ置けた。
+    (import ../tests/agent-skills.nix {
+      inherit pkgs lib;
+      files = config.home.file;
+    })
+    # `${pkgs.dotfiles-tools}/bin/<名前>` の参照先が実在することの検査(#1170)。#683 が
+    # 実在しない `bin/obsidian-backup` への参照だけを入れ、評価もビルドも通ったまま
+    # バックアップが 25 日止まった。参照の一覧は登録簿にせず、生成された出力から導く:
+    # home-files の store へのシンボリックリンクと systemd unit、activation script の文字列。
+    (pkgs.runCommand "dotfiles-tools-references"
+      {
+        nativeBuildInputs = with pkgs; [
+          coreutils
+          findutils
+          gnugrep
+        ];
+        activationScript = lib.concatStringsSep "\n" (
+          lib.mapAttrsToList (_: entry: entry.data) config.home.activation
+        );
+        passAsFile = [ "activationScript" ];
+      }
+      ''
+        tools=${pkgs.dotfiles-tools}
+        status=0
+        missing() {
+          echo "dotfiles-tools-references: $1 を参照しているが、実行ファイルが dotfiles-tools に無い ($2)" >&2
+          status=1
+        }
+        while IFS= read -r -d $'\0' link; do
+          target=$(readlink "$link")
+          case "$target" in
+            "$tools"/*) test -e "$target" || missing "$target" "''${link#${config.home-files}/}" ;;
+          esac
+        done < <(find ${config.home-files} -type l -print0)
+        refs=$(grep -RhoE "$tools/bin/[A-Za-z0-9._+-]+" \
+          ${config.home-files}/.config/systemd "$activationScriptPath" 2>/dev/null | sort -u || true)
+        for ref in $refs; do
+          test -e "$ref" || missing "$ref" "systemd unit または activation script"
+        done
+        if [ "$status" != 0 ]; then exit 1; fi
+        touch $out
+      ''
+    )
   ];
 
   # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
