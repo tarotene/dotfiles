@@ -302,6 +302,74 @@ title = "Artificial Analysis Intelligence Benchmarking Methodology"
 url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
 retrieved = "2026-10-27"
 
+# -------------------------------------------------------------- equivalence
+# 同等性の判定(model-equivalence)。能力は差の 90% 区間(Newcombe 1998)が ±δ の内側に収まること、
+# 速さは点推定の比が 1/(1+δ)〜(1+δ) に収まること。区間を作れないものは「データ不足」になる。
+
+[equivalence]
+capability_margin_points = 5.0
+speed_margin_ratio = 0.2
+history_share_min = 0.1
+
+# 役ごとに判定する。Plan 役は種類を問わず設計・推論・長い文脈の読解に効く力、実行役は
+# 種類ごとの仕事(コードを直し、端末を操作する)に効く力なので、履歴の内訳に従ってベンチを絞る。
+
+[role.plan]
+name = "Plan 役"
+note = "設計・推論・長い文脈の読解に効く力。仕事の種類を問わず同じベンチで判定する。"
+follows_history = false
+benchmarks = ["lcr", "hle"]
+reference_benchmarks = ["artificial_analysis_intelligence_index"]
+
+[role.execute]
+name = "実行役"
+note = "コードを直し、端末を操作して仕事を進める力。履歴の内訳で、対応するベンチだけに絞る。"
+follows_history = true
+benchmarks = ["terminalbench_v4_0", "scicode"]
+
+# 履歴の課題の種類(PR タイトルの conventional prefix から決める)と、測っているベンチの対応。
+# fit = direct は、その仕事そのものを測っているベンチ。proxy は近い力を測っているだけの代理。
+# SWE-bench 系は、現行モデルに値のある行が無い(更新停止)ので載せられない。ベンチが空の種類は、
+# 現行モデルに値のある公開ベンチで測れていない領域として、ページに帯で見せる。
+
+[category.feature]
+name = "機能追加"
+note = "既存の仕組みに機能を足す仕事。直接測るベンチは無く、端末での作業とコード生成を代理にする。"
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.bugfix]
+name = "バグ修正"
+note = "不具合の原因を調べて直す仕事。SWE-bench 系が直接のベンチだが現行モデルの行が無いので、代理にする。"
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.refactor]
+name = "リファクタ・性能"
+note = "動作を変えずに構造や性能を直す仕事。"
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.config]
+name = "設定・インフラ"
+note = "Nix・CI・シェルなどの設定を端末で直す仕事。Terminal-Bench が仕事の形に近い。"
+benchmarks = [{ id = "terminalbench_v4_0", fit = "direct" }]
+
+[category.docs]
+name = "文書・設計"
+note = "文書や設計を書く仕事。文章を書く力を測る公開ベンチは無く、長い文脈の読解を代理にする。"
+benchmarks = [{ id = "lcr", fit = "proxy" }]
+
+[category.other]
+name = "その他"
+note = "タイトルから種類を決められなかった PR(prefix の無いもの、chore・test・style・revert)。"
+
 # BEGIN GENERATED (model-catalog fetch-aa) — do not edit by hand
 [aa]
 retrieved = "2026-10-27"
