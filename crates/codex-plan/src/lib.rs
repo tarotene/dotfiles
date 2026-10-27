@@ -1,4 +1,4 @@
-//! Only the model pair at collaboration-mode transitions belongs to this adapter.
+//! Model pairs and native permission-profile selection belong to this adapter.
 //! Permissions, manual model choices, instructions and inference remain native.
 pub mod advice;
 pub mod catalog;
@@ -182,8 +182,8 @@ fn request_id(message: &Value) -> Result<Option<RequestId>> {
     }
 }
 
-#[derive(Default)]
 pub struct Relay {
+    permissions: String,
     pending: HashMap<RequestId, ResponseKind>,
     threads: HashMap<String, ThreadState>,
 }
@@ -202,9 +202,42 @@ struct ThreadState {
 }
 
 impl Relay {
+    pub fn new(permissions: String) -> Self {
+        Self {
+            permissions,
+            pending: HashMap::new(),
+            threads: HashMap::new(),
+        }
+    }
+
     pub fn from_client(&mut self, raw: &str, settings: &Settings) -> Result<Option<String>> {
         let mut value = parse_message(raw)?;
         let method = value["method"].as_str().unwrap_or_default().to_owned();
+        let creation = matches!(
+            method.as_str(),
+            "thread/start" | "thread/resume" | "thread/fork"
+        );
+        if creation {
+            let params = value["params"]
+                .as_object_mut()
+                .context("thread creation requires object params")?;
+            if let Some(config) = params.get("config").filter(|c| !c.is_null()) {
+                let config = config
+                    .as_object()
+                    .context("thread config overrides must be an object")?;
+                if let Some(key) = config.keys().find(|key| legacy_permission_key(key)) {
+                    bail!("thread config override {key} conflicts with native named permissions; remove the legacy sandbox override");
+                }
+            }
+            // Remote TUI 0.164.0 projects profiles to the lossy legacy enum.
+            // Re-select by native name, including on resume/fork. Native remains
+            // responsible for resolving and enforcing the selected policy.
+            params.remove("sandbox");
+            params.insert(
+                "permissions".into(),
+                Value::String(self.permissions.clone()),
+            );
+        }
         let kind = match method.as_str() {
             "collaborationMode/list" => Some(ResponseKind::Presets),
             "thread/start" => Some(ResponseKind::Start),
@@ -279,7 +312,11 @@ impl Relay {
                 }
             }
         }
-        Ok(None)
+        if creation {
+            Ok(Some(serde_json::to_string(&value)?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Return None to forward the original bytes, including unknown fields.
@@ -325,6 +362,33 @@ impl Relay {
         }
         Ok(None)
     }
+}
+
+fn legacy_permission_key(key: &str) -> bool {
+    ["sandbox_mode", "sandbox_workspace_write"]
+        .iter()
+        .any(|legacy| key == *legacy || key.starts_with(&format!("{legacy}.")))
+}
+
+/// Read the selector from native's cwd-aware effective config, never a second
+/// TOML parser or a hard-coded profile name. Native resolves profile contents.
+pub fn selected_permissions(response: &Value) -> Result<String> {
+    let config = response
+        .pointer("/result/config")
+        .and_then(Value::as_object)
+        .context("unsupported config/read protocol: missing result.config")?;
+    if let Some((key, _)) = config
+        .iter()
+        .find(|(key, value)| legacy_permission_key(key) && !value.is_null())
+    {
+        bail!("native config contains legacy {key}; use default_permissions and a named permissions profile");
+    }
+    config
+        .get("default_permissions")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_owned)
+        .context("native config/read requires a nonempty default_permissions profile name")
 }
 
 pub fn parse_message(raw: &str) -> Result<Value> {

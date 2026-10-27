@@ -13,6 +13,7 @@ if [ "$1" = app-server ]; then
     case "$line" in
       *'"method":"initialize"'*) echo '{"id":0,"result":{"userAgent":"fixture"}}' ;;
       *'"method":"model/list"'*) echo '{"id":1,"result":{"nextCursor":null,"data":[{"model":"gpt-6.1-sol","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}]}]}}' ;;
+      *'"method":"config/read"'*) echo '{"id":4,"result":{"config":{"default_permissions":"fixture"}}}' ;;
       *'"method":"collaborationMode/list"'*) echo '{"id":2,"result":{"data":[{"mode":"plan"},{"mode":"default"}]}}' ;;
       *'"method":"account/rateLimits/read"'*) echo '{"id":3,"result":{"rateLimits":{}}}' ;;
     esac

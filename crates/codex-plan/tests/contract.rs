@@ -10,8 +10,111 @@ fn presets(id: serde_json::Value) -> String {
 }
 
 #[test]
+fn thread_creation_keeps_named_permissions_instead_of_remote_legacy_sandbox() {
+    for method in ["thread/start", "thread/resume", "thread/fork"] {
+        let mut relay = Relay::new("custom-network".into());
+        let raw = json!({"id":1,"method":method,"params":{
+            "sandbox":"workspace-write", "permissions":null,
+            "model":"saved-model", "effort":"high", "threadId":"saved",
+            "config":{"model_reasoning_effort":"high"}, "future":{"keep":true}
+        }});
+        let patched = relay
+            .from_client(&raw.to_string(), &Settings::default())
+            .unwrap()
+            .expect("legacy remote sandbox must be replaced");
+        let got: serde_json::Value = serde_json::from_str(&patched).unwrap();
+        let mut expected = raw;
+        expected["params"]
+            .as_object_mut()
+            .unwrap()
+            .remove("sandbox");
+        expected["params"]["permissions"] = json!("custom-network");
+        assert_eq!(got, expected);
+    }
+}
+
+#[test]
+fn profile_is_native_selected_and_later_permission_changes_are_forwarded() {
+    for profile in ["arbitrary-name", ":workspace", "profile.with.dots"] {
+        let mut relay = Relay::new(profile.into());
+        for (id, method) in ["thread/start", "thread/resume", "thread/fork"]
+            .iter()
+            .enumerate()
+        {
+            let raw = json!({"id":id,"method":method,"params":{"permissions":"old-saved-profile","sandbox":null}});
+            let patched = relay
+                .from_client(&raw.to_string(), &Settings::default())
+                .unwrap()
+                .unwrap();
+            let got: serde_json::Value = serde_json::from_str(&patched).unwrap();
+            assert_eq!(got["params"]["permissions"], profile);
+            assert!(got["params"].get("sandbox").is_none());
+        }
+        for method in ["thread/settings/update", "turn/start"] {
+            let raw = json!({"id":10,"method":method,"params":{
+                "permissions":"manually-selected", "sandboxPolicy":{"type":"readOnly"},
+                "model":"manual", "future":true
+            }})
+            .to_string();
+            assert!(relay
+                .from_client(&raw, &Settings::default())
+                .unwrap()
+                .is_none());
+        }
+    }
+}
+
+#[test]
+fn contradictory_thread_config_is_rejected_before_forwarding() {
+    for method in ["thread/start", "thread/resume", "thread/fork"] {
+        for config in [
+            json!({"sandbox_mode":"workspace-write"}),
+            json!({"sandbox_workspace_write":{"network_access":true}}),
+            json!({"sandbox_workspace_write.network_access":true}),
+            json!({"sandbox_mode":null}),
+            json!([]),
+        ] {
+            let mut relay = Relay::new("network".into());
+            let raw = json!({"id":1,"method":method,"params":{"config":config}}).to_string();
+            assert!(
+                relay.from_client(&raw, &Settings::default()).is_err(),
+                "{raw}"
+            );
+            // No pending response state was recorded by the rejected request.
+            let retry = json!({"id":1,"method":method,"params":{}}).to_string();
+            assert!(relay.from_client(&retry, &Settings::default()).is_ok());
+        }
+    }
+}
+
+#[test]
+fn config_read_requires_a_valid_selector_and_no_legacy_override() {
+    use codex_plan::selected_permissions;
+    for bad in [
+        json!({}),
+        json!(null),
+        json!({"default_permissions":null}),
+        json!({"default_permissions":7}),
+        json!({"default_permissions":"  "}),
+        json!({"default_permissions":"ok","sandbox_mode":"workspace-write"}),
+        json!({"default_permissions":"ok","sandbox_workspace_write":{}}),
+    ] {
+        assert!(selected_permissions(&json!({"result":{"config":bad}})).is_err());
+    }
+    assert!(selected_permissions(&json!({"result":{}})).is_err());
+    assert_eq!(
+        selected_permissions(&json!({"result":{"config":{
+            "default_permissions":"chosen-by-native", "sandbox_mode":null,
+            "sandbox_workspace_write":null,"future":true
+        }}}))
+        .unwrap(),
+        "chosen-by-native"
+    );
+}
+
+#[test]
 fn patches_only_matched_responses_preserving_unknown_fields_and_id_types() {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
         .from_client(
@@ -48,7 +151,7 @@ fn patches_only_matched_responses_preserving_unknown_fields_and_id_types() {
 
 #[test]
 fn errors_unknown_notifications_and_manual_settings_are_not_rewritten() {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     for raw in [
         r#"{"id":2,"method":"thread/settings/update","params":{"model":"manual","approvalPolicy":"on-request"}}"#,
         r#"{"id":3,"method":"turn/start","params":{"sandboxPolicy":{"type":"readOnly"}}}"#,
@@ -82,7 +185,7 @@ fn errors_unknown_notifications_and_manual_settings_are_not_rewritten() {
 
 #[test]
 fn invalid_protocol_fails_before_forwarding() {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     for bad in ["{", "[]", r#"{"id":1.5}"#, r#"{"id":null}"#] {
         assert!(relay.from_client(bad, &Settings::default()).is_err());
     }
@@ -157,14 +260,14 @@ fn resume_has_no_overrides_of_saved_model_or_effort() {
 #[test]
 fn large_plugin_response_is_not_truncated_or_reencoded() {
     let raw = json!({"id":15,"result":{"data":"x".repeat(20 * 1024 * 1024)}}).to_string();
-    assert!(Relay::default()
+    assert!(Relay::new("custom-network".into())
         .from_server(&raw, &Settings::default())
         .unwrap()
         .is_none());
 }
 
 fn resumed_relay() -> Relay {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
         .from_client(
@@ -223,10 +326,10 @@ fn mode_change_restores_pair_and_stale_turn_while_manual_choice_is_preserved() {
 
 #[test]
 fn failed_start_does_not_invent_thread_state_or_patch_errors() {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
-        .from_client(r#"{"id":1,"method":"thread/start"}"#, &settings)
+        .from_client(r#"{"id":1,"method":"thread/start","params":{}}"#, &settings)
         .unwrap();
     assert!(relay
         .from_server(
@@ -280,7 +383,7 @@ fn rejected_switch_does_not_undo_tui_mode_or_steal_later_manual_choice() {
 
 #[test]
 fn standard_fork_starts_in_default_mode() {
-    let mut relay = Relay::default();
+    let mut relay = Relay::new("custom-network".into());
     let settings = Settings::default();
     relay
         .from_client(
