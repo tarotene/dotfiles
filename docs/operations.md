@@ -105,6 +105,26 @@ warning. `hms --follow` (next section) reads the record to tell a generation
 `hms` made from main apart from one it did not, without guessing from the
 commit.
 
+For a default apply, the record's `rev` is the public dotfiles revision
+resolved for this apply, rather than the wrapper flake's own revision or an
+unconditionally trusted generation marker. For a direct default apply, `hms` pins the resolved public revision
+before build, evaluation, and switch. Through a wrapper, it records the actual
+`dotfiles` override revision, or the pinned `dotfiles` input from the wrapper's
+lock when offline. The same input is pinned for the operation. The record is
+bound to the target generation only after both the profile and `current-home`
+resolve to that verified target.
+`hms --version` and follow status use that same matching-generation default
+record to display the public revision. If the record is not trusted or the
+generation is explicit, the display falls back to the generation marker.
+
+An input override with `--no-write-lock-file` can make the generated
+`~/.local/share/dotfiles/rev` marker say `unknown (path input, no commit)` even
+for a fixed public commit. That marker alone does not show that the host is
+behind main. A matching-generation default record provides the applied public
+revision; an old `unknown` record is not evidence of a matching commit. See
+[ADR-1068's revision Amendment](adr/1068-hms-follow-main.md) and
+[Issue 1118, repeated application of the same main](https://github.com/tarotene/dotfiles/issues/1118).
+
 ### Following main automatically (`hms --follow`)
 
 A user timer (`hms-follow.timer`, systemd on Linux; a launchd agent on darwin,
@@ -114,10 +134,15 @@ forbidden, `assertNoLinger` in `home/modules/gpg.nix`). `hms --follow` resolves
 pushed main, and applies it through the same path as a bare `hms` only when
 all of these hold:
 
-1. main is ahead of the running generation (`~/.local/share/dotfiles/rev`);
+1. the resolved main revision differs from the applied public revision. A
+   matching generation marker can show that it is already applied; otherwise
+   the default apply record supplies the revision only after the generation
+   and mode checks below;
 2. `last-apply.json` exists, names the current profile generation, and says
    `mode = default` (see the previous section) — that is, the running
-   generation was made by a bare `hms` and nothing switched it since;
+   generation was made by a bare `hms` and nothing switched it since. Only
+   after these checks may its recorded public revision establish that main
+   is already applied; foreign or explicit records cannot do so;
 3. both native permission specs, `agent-native/claude-permissions.json` and
    `agent-native/codex-permissions.json`, exist and can be read in both the new
    generation's `home-files/.config/` and the deployed config directory
