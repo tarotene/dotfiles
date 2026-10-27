@@ -1,0 +1,237 @@
+//! model-catalog — カタログ(catalog.toml)の検査と、AA の測定値の取り込み。
+//!
+//! ```text
+//! model-catalog check [--file PATH]
+//! model-catalog fetch-aa [--file PATH] [--input JSON] [--retrieved YYYY-MM-DD] [--write]
+//! ```
+//!
+//! `fetch-aa` は既定では書かず、差分の要約だけを出す。`--write` は `--file` の生成ブロックだけを
+//! 置き換える。鍵は `ARTIFICIAL_ANALYSIS_API_KEY`、無ければ login keyring(`secret-tool`、
+//! application=model-catalog credential=artificial-analysis-api-key)から読み、標準入力で curl に渡す。
+
+use model_catalog::aa::{self, Report};
+use model_catalog::Catalog;
+use std::io::Write;
+use std::process::{Command, ExitCode, Stdio};
+
+const KEY_ENV: &str = "ARTIFICIAL_ANALYSIS_API_KEY";
+
+fn usage() -> ExitCode {
+    eprintln!(
+        "usage: model-catalog check [--file PATH]\n       model-catalog fetch-aa [--file PATH] [--input JSON] [--retrieved YYYY-MM-DD] [--write]"
+    );
+    ExitCode::from(2)
+}
+
+struct Opts {
+    file: Option<String>,
+    input: Option<String>,
+    retrieved: Option<String>,
+    write: bool,
+}
+
+fn parse_opts(args: impl Iterator<Item = String>) -> Result<Opts, String> {
+    let mut o = Opts {
+        file: None,
+        input: None,
+        retrieved: None,
+        write: false,
+    };
+    let mut it = args;
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--write" => o.write = true,
+            "--file" => o.file = Some(it.next().ok_or("--file に値が無い")?),
+            "--input" => o.input = Some(it.next().ok_or("--input に値が無い")?),
+            "--retrieved" => o.retrieved = Some(it.next().ok_or("--retrieved に値が無い")?),
+            other => return Err(format!("未知の引数: {other}")),
+        }
+    }
+    Ok(o)
+}
+
+fn load(file: &Option<String>) -> Result<(Catalog, String), String> {
+    let text = match file {
+        Some(p) => std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}"))?,
+        None => model_catalog::CATALOG_TOML.to_owned(),
+    };
+    Ok((Catalog::parse(&text)?, text))
+}
+
+/// UTC の今日(YYYY-MM-DD)。1970-01-01 からの日数を暦に直す(Howard Hinnant の civil_from_days)。
+fn today_utc() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn api_key() -> Result<String, String> {
+    if let Ok(k) = std::env::var(KEY_ENV) {
+        if !k.trim().is_empty() {
+            return Ok(k.trim().to_owned());
+        }
+    }
+    let out = Command::new("secret-tool")
+        .args([
+            "lookup",
+            "application",
+            "model-catalog",
+            "credential",
+            "artificial-analysis-api-key",
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| format!("secret-tool を起動できない: {e}"))?;
+    let key = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    if key.is_empty() {
+        return Err(format!(
+            "AA の鍵が無い。環境変数 {KEY_ENV} か、login keyring(secret-tool store --label='model-catalog Artificial Analysis API key' application model-catalog credential artificial-analysis-api-key)に入れる"
+        ));
+    }
+    Ok(key)
+}
+
+/// 鍵は argv に出さず、curl の設定を標準入力で渡す(`ps` に鍵が見えない)。
+fn fetch_live() -> Result<String, String> {
+    let key = api_key()?;
+    let mut child = Command::new("curl")
+        .args(["-sS", "-f", "--max-time", "60", "-K", "-", aa::ENDPOINT])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("curl を起動できない: {e}"))?;
+    let config = format!(
+        "header = \"x-api-key: {}\"\n",
+        key.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    child
+        .stdin
+        .take()
+        .ok_or("curl の標準入力を取れない")?
+        .write_all(config.as_bytes())
+        .map_err(|e| format!("curl へ書けない: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("curl の待機に失敗: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("AA の取得に失敗(curl {})", out.status));
+    }
+    String::from_utf8(out.stdout).map_err(|e| format!("応答が UTF-8 でない: {e}"))
+}
+
+fn print_report(report: &Report, before: &Catalog) {
+    println!(
+        "AA 取得 {}: 測定 {} 行(取得前 {} 行)、プロンプト長 {:?} token",
+        report.meta.retrieved,
+        report.measurements.len(),
+        before.measurements.len(),
+        report.meta.prompt_length_tokens
+    );
+    let changed = report
+        .measurements
+        .iter()
+        .filter(|m| before.measurement(&m.model, &m.effort) != Some(*m))
+        .count();
+    println!("  値が変わった・増えた行: {changed}");
+    for m in &report.missing {
+        println!(
+            "  応答に無い行: {} / {} (AA の行 ID {})",
+            m.model, m.effort, m.aa_id
+        );
+    }
+    for id in &report.retire_candidates {
+        println!("  引退の候補(応答に 1 行も無い): {id}");
+    }
+    for u in &report.unmapped {
+        println!(
+            "  対応表に無い新しい行: [{}] {} ({}) 公開 {} ID {}",
+            u.creator,
+            u.name,
+            u.slug,
+            u.release_date.as_deref().unwrap_or("?"),
+            u.id
+        );
+    }
+}
+
+fn run() -> Result<ExitCode, String> {
+    let mut args = std::env::args().skip(1);
+    let Some(cmd) = args.next() else {
+        return Ok(usage());
+    };
+    match cmd.as_str() {
+        "check" => {
+            let o = parse_opts(args)?;
+            let (c, _) = load(&o.file)?;
+            println!(
+                "OK: 提供元 {}・モデル {}・ベンチ {}・測定 {} 行",
+                c.providers.len(),
+                c.models.len(),
+                c.benchmarks.len(),
+                c.measurements.len()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        "fetch-aa" => {
+            let o = parse_opts(args)?;
+            if o.write && o.file.is_none() {
+                return Err(
+                    "--write には --file が要る(埋め込みのカタログは書き換えられない)".into(),
+                );
+            }
+            let (catalog, text) = load(&o.file)?;
+            let json = match &o.input {
+                Some(p) => std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}"))?,
+                None => fetch_live()?,
+            };
+            let retrieved = o.retrieved.unwrap_or_else(today_utc);
+            let report = aa::collect(&catalog, &json, &retrieved)?;
+            print_report(&report, &catalog);
+            if o.write {
+                let next = aa::splice(&text, &aa::render_block(&report))?;
+                Catalog::parse(&next)
+                    .map_err(|e| format!("書き換え後のカタログが不正(書かない): {e}"))?;
+                let path = o.file.as_deref().unwrap_or_default();
+                std::fs::write(path, next).map_err(|e| format!("{path}: {e}"))?;
+                println!("書き込み: {path}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        _ => Ok(usage()),
+    }
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("model-catalog: {e}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::today_utc;
+
+    #[test]
+    fn today_has_date_shape() {
+        let d = today_utc();
+        assert_eq!(d.len(), 10);
+        assert!(d.starts_with("20"));
+    }
+}

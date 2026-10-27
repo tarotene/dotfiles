@@ -56,7 +56,7 @@ home-manager はバイナリだけを配備し、ペア設定も Codex の `conf
 
 ## 比較表を読む
 
-公開仕様は `crates/codex-plan/src/catalog.rs` の単一データにモデルID、単価、
+公開仕様は `crates/model-catalog/catalog.toml`（ベンダー中立のモデルカタログ。同等性の判定も同じ正本を読む）にモデルID、単価、
 課金条件、著者、資料名、公開日（判明分）、URL、取得日をまとめてある。
 可用性の正本は毎回取得する native `model/list`。Claude の3モデルは比較専用。
 未知のモデルを native が返した場合も選択できるが、価格・仕様は他世代から補わない。
@@ -272,6 +272,7 @@ TUI・推論・履歴・フレーム処理は既存手段を採用する。
 - `crates/codex-plan/src/runtime.rs`
 - `crates/codex-plan/src/main.rs`
 - `crates/codex-plan/src/catalog.rs`
+- `crates/model-catalog/catalog.toml`
 - `crates/codex-plan/src/history.rs`
 - `crates/codex-plan/src/comparison.rs`
 - `crates/codex-plan/src/selection.rs`

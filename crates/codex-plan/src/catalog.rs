@@ -1,68 +1,13 @@
-//! Versioned public reference data, independent API/credit units, and request pricing.
-//! Availability and actual runtime context always belong to native discovery/history.
+//! Request pricing over the shared model catalog.
+//!
+//! The reference data (rates, contexts, sources) lives in `model-catalog`'s `catalog.toml`, the single
+//! source shared with the equivalence page. This module owns only the token categories and the cost
+//! arithmetic. Availability and actual runtime context always belong to native discovery/history.
 use serde::{Deserialize, Serialize};
 
-pub const RETRIEVED: &str = "2026-10-26";
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct Source {
-    pub author: String,
-    pub title: String,
-    pub url: String,
-    /// None means the page gives no publication date.
-    pub published: Option<String>,
-    pub retrieved: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct ApiRates {
-    /// USD per million tokens; all five categories are disjoint.
-    pub input: f64,
-    pub cache_read: f64,
-    pub cache_write_short: f64,
-    pub cache_write_long: f64,
-    pub output: f64,
-    pub short_write_ttl: String,
-    pub long_write_ttl: String,
-    /// Strictly greater than this many request input tokens triggers the premium.
-    pub long_context_threshold: Option<u64>,
-    pub long_input_multiplier: f64,
-    pub long_output_multiplier: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct CreditRates {
-    /// Credits per million tokens, from the credit rate card, not derived from USD.
-    pub input: f64,
-    pub cache_read: f64,
-    pub output: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct CodexContext {
-    pub version: String,
-    pub default_window: u64,
-    pub maximum_override: u64,
-    pub effective_percent: u64,
-    pub default_effective: u64,
-    pub conditions: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct CatalogModel {
-    pub id: String,
-    pub name: String,
-    pub provider: String,
-    pub purpose: String,
-    pub comparison_only: bool,
-    pub api_context: u64,
-    pub api_max_output: u64,
-    pub codex_context: Option<CodexContext>,
-    pub api: ApiRates,
-    pub credits: Option<CreditRates>,
-    pub conditions: Vec<String>,
-    pub sources: Vec<Source>,
-}
+pub use model_catalog::{
+    catalog, lookup, retrieved, ApiRates, CatalogModel, CodexContext, CreditRates, Source,
+};
 
 /// Token categories are disjoint. `output` already includes reasoning tokens.
 /// This deliberately has no separately billable reasoning field.
@@ -186,159 +131,6 @@ pub fn example_cost(model: &CatalogModel) -> CostEstimate {
     price_tokens(model, example_usage(), ContextBand::Short)
 }
 
-fn source(author: &str, title: &str, url: &str, published: Option<&str>) -> Source {
-    Source {
-        author: author.into(),
-        title: title.into(),
-        url: url.into(),
-        published: published.map(str::to_owned),
-        retrieved: RETRIEVED.into(),
-    }
-}
-
-pub fn catalog() -> Vec<CatalogModel> {
-    let openai = [
-        (
-            "gpt-6-astra",
-            "GPT-6 Astra",
-            "複雑な推論・コーディング・研究など、最も難しい仕事向け",
-            10.0,
-            1.0,
-            50.0,
-            250.0,
-            25.0,
-            1250.0,
-            34,
-        ),
-        (
-            "gpt-6.1-sol",
-            "GPT-6.1 Sol",
-            "複雑なコーディングや専門業務で、性能と費用の均衡を取る",
-            2.0,
-            0.1,
-            10.0,
-            50.0,
-            2.5,
-            250.0,
-            206,
-        ),
-        (
-            "gpt-6-sol",
-            "GPT-6 Sol",
-            "複雑なコーディングとエージェントの作業向け",
-            2.0,
-            0.2,
-            10.0,
-            50.0,
-            5.0,
-            250.0,
-            382,
-        ),
-        (
-            "gpt-6-luna",
-            "GPT-6 Luna",
-            "対象を絞った大量処理向けの効率重視モデル",
-            0.1,
-            0.01,
-            0.5,
-            2.5,
-            0.25,
-            12.5,
-            553,
-        ),
-    ];
-    let mut models = Vec::new();
-    for (id, name, purpose, input, read, output, ci, cr, co, line) in openai {
-        models.push(CatalogModel {
-            id: id.into(), name: name.into(), provider: "OpenAI".into(),
-            purpose: purpose.into(), comparison_only: false,
-            api_context: 1_050_000, api_max_output: 128_000,
-            codex_context: Some(CodexContext {
-                version: "rust-v0.164.0 (6aaac694803004a63c6f393d153c96d22521a6b9)".into(),
-                default_window: 272_000, maximum_override: 872_000,
-                effective_percent: 95, default_effective: 258_400,
-                conditions: "同梱upstreamカタログの既定参考値。実行中の値ではない。リモートカタログ・設定の上書きで変わる。最大値は設定上書きの上限で、自動適用されない。".into(),
-            }),
-            api: ApiRates { input, cache_read: read, cache_write_short: input * 1.25,
-                cache_write_long: input * 2.5, output,
-                short_write_ttl: "30m".into(), long_write_ttl: "12h".into(),
-                long_context_threshold: Some(272_000), long_input_multiplier: 2.0,
-                long_output_multiplier: 1.5 },
-            credits: Some(CreditRates { input: ci, cache_read: cr, output: co }),
-            conditions: vec![
-                "API: Standard・global・テキスト、USD/100万tokens。ツール料金・税・地域加算を含まない。".into(),
-                "API: 各リクエストの入力（キャッシュを含む）が272,000を超えると入力とキャッシュ2倍、出力1.5倍。".into(),
-                "credits: Standardの別料金表。キャッシュ書込の追加課金なし。定額枠の消費率・ドル上限には換算しない。".into(),
-                "Fast/Ultrafast・Batch/Flex・地域指定はこの費用例の対象外。同じ仕事の完了費用・品質・持続時間を示さない。".into(),
-            ],
-            sources: vec![
-                source("OpenAI", name, &format!("https://developers.openai.com/api/docs/models/{id}"), None),
-                source("OpenAI", "API Pricing — Standard text rates and 30m/12h cache writes", "https://developers.openai.com/api/docs/pricing", None),
-                source("OpenAI", "Prompt caching — GPT-5.6 and later, cache lifetimes and disjoint usage categories", "https://developers.openai.com/api/docs/guides/prompt-caching", None),
-                source("OpenAI", "Pricing — Codex token credit rates", "https://learn.chatgpt.com/docs/pricing", None),
-                source("OpenAI", "Codex rust-v0.164.0 bundled model context", &format!("https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/models-manager/models.json#L{line}"), None),
-                source("OpenAI", "Codex ModelInfo — default effective percent and usable_context_window", "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/openai_models.rs#L393", None),
-                source("OpenAI", "Codex ModelInfo — usable context calculation", "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/openai_models.rs#L523", None),
-                source("OpenAI", "Codex with_config_overrides — context clamped to model maximum", "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/models-manager/src/model_info.rs#L19", None),
-            ],
-        });
-    }
-    for (id, name, purpose, input, read, output) in [
-        (
-            "claude-fable-5-1",
-            "Claude Fable 5.1",
-            "難しい推論と長期のエージェント作業向け",
-            10.0,
-            0.25,
-            50.0,
-        ),
-        (
-            "claude-opus-5-5",
-            "Claude Opus 5.5",
-            "長時間のエージェントによるコーディングと知識業務向け",
-            4.0,
-            0.2,
-            20.0,
-        ),
-        (
-            "claude-sonnet-5-5",
-            "Claude Sonnet 5.5",
-            "速度と知能の両立を重視",
-            2.0,
-            0.1,
-            10.0,
-        ),
-    ] {
-        let slug = id.strip_prefix("claude-").unwrap();
-        models.push(CatalogModel {
-            id: id.into(), name: name.into(), provider: "Anthropic".into(),
-            purpose: purpose.into(), comparison_only: true,
-            api_context: 1_000_000, api_max_output: 128_000, codex_context: None,
-            api: ApiRates { input, cache_read: read, cache_write_short: input * 1.25,
-                cache_write_long: input * 2.0, output,
-                short_write_ttl: "5m".into(), long_write_ttl: "1h".into(),
-                long_context_threshold: None, long_input_multiplier: 1.0,
-                long_output_multiplier: 1.0 },
-            credits: None,
-            conditions: vec![
-                "比較専用。Codexでの可用性を示さない。Claude APIのStandard・global・テキスト、USD/100万tokens。".into(),
-                "1M context全域で標準単価。キャッシュ書込は5m/1hで別単価。Batch・Fast・地域加算・ツール料金・税は対象外。".into(),
-                "最大出力は通常API。Opus/SonnetのBatch beta 300K出力とは区別する。".into(),
-            ],
-            sources: vec![
-                source("Anthropic", name, &format!("https://platform.claude.com/docs/en/models/{slug}/overview"), None),
-                source("Anthropic", "Pricing — model pricing, caching and long context", "https://platform.claude.com/docs/en/about-claude/pricing", None),
-            ],
-        });
-    }
-    models
-}
-
-/// Exact model IDs only. Unknown versions never inherit another model's rates.
-pub fn lookup(id: &str) -> Option<CatalogModel> {
-    catalog().into_iter().find(|model| model.id == id)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,7 +237,7 @@ mod tests {
             assert!(model
                 .sources
                 .iter()
-                .all(|s| s.retrieved == RETRIEVED && s.url.starts_with("https://")));
+                .all(|s| s.retrieved == retrieved() && s.url.starts_with("https://")));
             if let Some(context) = &model.codex_context {
                 assert_eq!(
                     context.default_window * context.effective_percent / 100,

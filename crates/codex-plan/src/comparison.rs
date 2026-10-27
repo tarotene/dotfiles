@@ -236,7 +236,7 @@ fn display(value: &Value) -> String {
 }
 
 pub fn render(report: &Value) -> String {
-    let mut text = format!("モデル比較（公開情報取得 {}、直近{}暦日）\nAuto（実行／native Default）。承認方式とは別です。\n", catalog::RETRIEVED, report["days"]);
+    let mut text = format!("モデル比較（公開情報取得 {}、直近{}暦日）\nAuto（実行／native Default）。承認方式とは別です。\n", catalog::retrieved(), report["days"]);
     text.push_str("\nモデル | API context / 最大出力 | Codex既定 / 実効参考 | API $/MTok 入力 / 読取 / 書込短期 / 書込長期 / 出力 | credits/MTok 入力 / 読取 / 出力\n");
     if let Some(models) = report["reference_catalog"].as_array() {
         for m in models {
