@@ -94,8 +94,10 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 
 ### Nix modules
 - Modules are the source of truth. A host module imports the shared module
-  plus exactly one identity module; the shared module imports everything
-  under the per-topic modules directory.
+  plus exactly one identity module; the shared module (`home/common.nix`)
+  lists every per-topic module under `home/modules/` explicitly in its
+  `imports`. A new module placed there is **not** evaluated until it is added
+  to that list — no error or warning says so (#1071).
 - `homeConfigurations.<hostname>` in the flake is keyed by hostname so
   `home-manager switch --flake .#"$(hostname)"` auto-selects per machine.
 - Identity-scoped values (git `user.name`/`email`, browser default) go in
