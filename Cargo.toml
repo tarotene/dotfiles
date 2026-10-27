@@ -4,7 +4,7 @@
 # 全メンバー共通にキャッシュする。
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/[!.]*"]
 
 [workspace.package]
 edition = "2021"
