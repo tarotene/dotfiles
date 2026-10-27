@@ -1,6 +1,8 @@
 //! Opt-in, bounded feedback collection. Local configuration owns all destinations.
+mod collector;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
+use std::io::BufRead;
 use std::os::unix::fs::PermissionsExt;
 use std::{collections::BTreeMap, fs, path::PathBuf, process::Command};
 
@@ -34,6 +36,8 @@ pub enum Status {
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct Check {
+    #[serde(default)]
+    pub observation: Value,
     pub session: String,
     pub turn: String,
     pub transcript: String,
@@ -52,6 +56,8 @@ pub struct Check {
 
 #[derive(Default, Deserialize, Serialize)]
 struct State {
+    #[serde(default)]
+    collector: collector::Progress,
     checks: BTreeMap<String, Check>,
     finalized_commit: String,
     #[serde(default)]
@@ -132,9 +138,13 @@ fn now() -> i64 {
         .as_secs() as i64
 }
 
-fn active(c: &Config, time: i64) -> bool {
-    agent_session::time::parse_iso_epoch(&c.start).is_some_and(|s| s <= time)
-        && agent_session::time::parse_iso_epoch(&c.end_exclusive).is_some_and(|e| time < e)
+fn read_state() -> Result<State> {
+    let path = PathBuf::from(state_root()).join("trial/state.json");
+    match fs::read(path) {
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(State::default()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn transaction<T>(f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
@@ -153,6 +163,12 @@ fn transaction<T>(f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
         State::default()
     };
     let result = f(&mut state)?;
+    // Every writer uses the same migration boundary, including report operations
+    // that happen before the first scheduled collection.
+    let backup = root.join("state.pre-collector.json");
+    if path.exists() && !backup.exists() {
+        fs::copy(&path, backup)?;
+    }
     let tmp = root.join("state.tmp");
     fs::write(&tmp, serde_json::to_vec_pretty(&state)?)?;
     fs::rename(tmp, path)?;
@@ -203,9 +219,9 @@ fn procedure(gate: &str, c: &Config) -> String {
         r#"Trial feedback: inspect good and difficult moments, including scene, observed behavior and work impact. Never invent the owner's feelings.
 Use '{gate}' --trial list to read pending checks. For each unchecked id, record either no-candidate or draft <absolute-body-file>. A draft MUST include the scene and proposed exact wording. {approval}
 Commands: --trial none <id>; --trial draft <id> <file>; --trial approve <id> <same-file> <owner-verbatim-answer>; --trial dismiss <id> <owner-verbatim-rejection>; --trial post <id>.
-Plan mode permits drafts only. Posting requires Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
-After post verification, the shared pending state hands the observation to report thread {thread}. Continue the originating thread's work; no thread-send tool or delivery acknowledgement is required. If a thread-send tool is available, an optional notification may contain ONLY pending ids, once per normal input/resume. Do not send feedback bodies, repository names, URLs or absolute worktree paths, or start a new production thread. The report thread retrieves comment URLs and its destination from --trial list and the local trial config, reads the Issue, updates the configured script in the configured worktree, preserves stable beat ids, adds the comment URL and <!-- codex-trial:ID --> marker, commits, then runs --trial applied <id> <commit>. Posting and optional notification NEVER mark report completion; only report-side saved commit acknowledgement completes it.
-The report thread owns this worktree exclusively and reads all pending checks on start/stop. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect no new observations; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
+Plan mode is read-only. All state changes and posting require Default mode. post reads back the exact body and marker; failures stay pending. Never post manually around this command.
+Only the report thread may change observations. After post verification, the shared pending state hands the observation to report thread {thread}. The report thread retrieves comment URLs and its destination from --trial list and the local trial config, reads the Issue, updates the configured script in the configured worktree, preserves stable beat ids, adds the comment URL and <!-- codex-trial:ID --> marker, commits, then runs --trial applied <id> <commit>. Posting never marks report completion; only report-side saved commit acknowledgement completes it.
+The report thread owns this worktree exclusively and reads pending checks on request. Ordinary conversations never collect or present trial checks. It must re-read the Issue, synthesize into S3, and acknowledge only after saving the script. Duplicates reuse the existing marker. After {end}, collect only previously unprocessed observations from within the trial period; finish pending feedback and final aggregation, script approval, storyboard and visual review using /slides. If waiting for the owner's script/visual approval, run --trial report-wait and return the question; next input/resume reopens the pending work. Finalize with --trial finalize <commit> only after that work, then disable the local config. Slack outputs are drafts only.
 Trial source: {repo}#{issue}; collection starts {start}. Hook continuations are never new observations. --trial list includes token snapshots for reporting overhead; null means unmeasured. Do not count reporting as business output."#,
         thread = c.report_thread,
         end = c.end_exclusive,
@@ -223,123 +239,89 @@ Trial source: {repo}#{issue}; collection starts {start}. Hook continuations are 
     }
 }
 
-/// Return a bounded continuation, or advisory-only context on session start.
+/// Ordinary conversations bypass trial state entirely. Report context is advisory only.
 pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
-    // Explicit wiring prevents Claude/Copilot sessions from opting in accidentally.
     if std::env::var("WRAPUP_TRIAL_AGENT").as_deref() != Ok("codex") {
         return Ok(None);
     }
-    let Some(c) = config()? else {
-        return Ok(None);
-    };
+    let Some(c) = config()? else { return Ok(None) };
     let v: Value = serde_json::from_str(input)?;
-    let sid = v["session_id"].as_str().ok_or("missing session_id")?;
-    if !safe_id(sid) {
-        return Err("invalid session_id".into());
+    if v["session_id"].as_str() != Some(c.report_thread.as_str()) {
+        return Ok(None);
     }
-    let path = v["transcript_path"].as_str().unwrap_or("");
-    let ctx = context(path).unwrap_or_default();
-    let turn = v["turn_id"]
-        .as_str()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(&ctx.turn);
-    let continuation = v["stop_hook_active"] == true;
-    transaction(|state| {
-        if sid == c.report_thread {
-            let pending: Vec<_> = state
-                .checks
-                .iter()
-                .filter(|(_, x)| x.status == Status::PostVerified && x.applied_commit.is_empty())
-                .map(|(id, x)| json!({"id":id,"url":x.comment_url}))
-                .collect();
-            let final_due = now()
-                >= agent_session::time::parse_iso_epoch(&c.end_exclusive).unwrap_or(i64::MAX)
-                && state.finalized_commit.is_empty();
-            if pending.is_empty() && !final_due {
-                return Ok(None);
-            }
-            if start && v["source"] != "compact" || !continuation && state.report_retry_turn != turn
+    let state = read_state()?;
+    let pending = state
+        .checks
+        .values()
+        .filter(|x| x.status != Status::NoCandidate && x.applied_commit.is_empty())
+        .count();
+    let final_due = now()
+        >= agent_session::time::parse_iso_epoch(&c.end_exclusive).unwrap_or(i64::MAX)
+        && state.finalized_commit.is_empty();
+    let failure = !state.collector.last_error.is_empty();
+    if pending == 0 && !final_due && !failure {
+        return Ok(None);
+    }
+    let command = if std::path::Path::new(gate)
+        .file_name()
+        .is_some_and(|n| n == "feedback-trial")
+    {
+        ""
+    } else {
+        "--trial "
+    };
+    let message = format!("Trial report: {pending} pending; final_due={final_due}; collector_error={failure}. Read '{gate}' {command}list; full instructions: '{gate}' {command}procedure. Plan is read-only; return normally while waiting for the owner.");
+    if start {
+        Ok(Some(message))
+    } else {
+        eprintln!("{message}");
+        Ok(None)
+    }
+}
+
+/// Resolve the report's own rollout, never the observation's source mode.
+fn report_context(c: &Config) -> Result<Context> {
+    session_context(&c.report_thread)
+}
+
+fn session_context(thread: &str) -> Result<Context> {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".codex"));
+    let mut dirs = vec![home.join("sessions"), home.join("archived_sessions")];
+    let mut found = Vec::new();
+    while let Some(dir) = dirs.pop() {
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                dirs.push(entry.path());
+            } else if kind.is_file()
+                && entry.path().extension().is_some_and(|x| x == "jsonl")
+                && entry.file_name().to_string_lossy().contains(thread)
             {
-                state.report_attempts = 0;
-                state.report_retry_turn = turn.into();
-                state.report_waiting = false;
-            }
-            if !start {
-                if state.report_waiting {
-                    return Ok(None);
-                }
-                if ctx.mode != "default" || state.report_attempts >= 3 {
-                    eprintln!("trial report pending: {}; final_due={final_due}; retry next normal input/resume", json!(pending));
-                    return Ok(None);
-                }
-                state.report_attempts += 1;
-            }
-            return Ok(Some(format!(
-                "Report updates: {}. final_due={final_due}\n{}",
-                json!(pending),
-                procedure(gate, &c)
-            )));
-        }
-        if !start && !continuation && active(&c, now()) && safe_id(turn) {
-            let id = format!("{sid}:{turn}");
-            // A confirmation turn resolves its open candidate instead of creating another.
-            if !state.checks.values().any(|x| {
-                x.session == sid
-                    && matches!(
-                        x.status,
-                        Status::Unchecked | Status::AwaitingOwner | Status::AwaitingPost
-                    )
-            }) {
-                state.checks.entry(id).or_insert_with(|| Check {
-                    session: sid.into(),
-                    turn: turn.into(),
-                    transcript: path.into(),
-                    usage_before: ctx.usage.clone(),
-                    ..Check::default()
+                let mut text = String::new();
+                std::io::BufReader::new(fs::File::open(entry.path())?).read_line(&mut text)?;
+                let is_report = text.lines().take(1).any(|line| {
+                    serde_json::from_str::<Value>(line)
+                        .is_ok_and(|v| v["type"] == "session_meta" && v["payload"]["id"] == thread)
                 });
+                if is_report {
+                    found.push((entry.metadata()?.modified()?, entry.path()));
+                }
             }
         }
-        let mut due = Vec::new();
-        for (id, check) in &mut state.checks {
-            if check.session != sid
-                || check.status == Status::NoCandidate
-                || check.status == Status::PostVerified
-                || !check.applied_commit.is_empty()
-            {
-                continue;
-            }
-            if start && v["source"] != "compact" || !continuation && check.retry_turn != turn {
-                check.attempts = 0;
-                check.retry_turn = turn.into();
-            }
-            // Waiting for a human and Plan mode can end normally.
-            if !start
-                && (check.status == Status::AwaitingOwner && check.waiting_turn == ctx.turn
-                    || ctx.mode != "default" && check.status != Status::Unchecked)
-            {
-                continue;
-            }
-            if !start && check.attempts >= 3 {
-                eprintln!("trial: {id} still pending after 3 continuations; retry on next normal input/resume");
-                continue;
-            }
-            if !start {
-                check.attempts += 1;
-            }
-            if check.status == Status::AwaitingOwner {
-                check.waiting_turn = ctx.turn.clone();
-            }
-            due.push(id.clone());
-        }
-        if due.is_empty() && !(start && active(&c, now())) {
-            return Ok(None);
-        }
-        Ok(Some(format!(
-            "Pending trial checks: {}\n{}",
-            json!(due),
-            procedure(gate, &c)
-        )))
-    })
+    }
+    found.sort_by_key(|x| x.0);
+    let path = found
+        .last()
+        .ok_or("session rollout not found; mode is unconfirmed")?;
+    context(path.1.to_str().ok_or("invalid report rollout path")?)
 }
 
 fn gh(args: &[&str]) -> Result<String> {
@@ -363,9 +345,6 @@ fn comments(c: &Config) -> Result<Vec<Value>> {
 fn post(c: &Config, id: &str, check: &mut Check) -> Result<()> {
     if check.status != Status::AwaitingPost && check.status != Status::PostVerified {
         return Err("owner approval required".into());
-    }
-    if context(&check.transcript)?.mode != "default" {
-        return Err("posting requires confirmed Default mode".into());
     }
     let matches = |rows: Vec<Value>| -> Result<Option<Value>> {
         let found: Vec<_> = rows
@@ -405,7 +384,7 @@ fn post(c: &Config, id: &str, check: &mut Check) -> Result<()> {
         .ok_or("missing comment URL")?
         .into();
     check.status = Status::PostVerified;
-    check.usage_after = context(&check.transcript)?.usage;
+    check.usage_after = report_context(c)?.usage;
     Ok(())
 }
 
@@ -426,15 +405,46 @@ fn saved_script(c: &Config, commit: &str) -> Result<String> {
 
 pub fn cli(args: &[String]) -> i32 {
     let run = || -> Result<()> {
+        if args.first().map(String::as_str) == Some("collect") {
+            if args.len() > 2 || args.get(1).is_some_and(|s| s != "--dry-run") {
+                return Err("usage: collect [--dry-run]".into());
+            }
+            if args.len() == 1 {
+                if let Ok(thread) = std::env::var("CODEX_THREAD_ID") {
+                    if session_context(&thread)?.mode != "default" {
+                        return Err("collection from a conversation requires Default mode; use --dry-run in Plan".into());
+                    }
+                }
+            }
+            return collector::collect(args.len() == 2);
+        }
         let c = config()?.ok_or("trial is not configured or disabled")?;
         let action = args.first().map(String::as_str).unwrap_or("list");
         let id = args.get(1).map(String::as_str).unwrap_or("");
         let value = args.get(2).map(String::as_str).unwrap_or("");
+        if action == "list" {
+            println!("{}", serde_json::to_string_pretty(&read_state()?)?);
+            return Ok(());
+        }
+        if action == "procedure" {
+            println!("{}", procedure("feedback-trial", &c));
+            return Ok(());
+        }
+        if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread) {
+            return Err("only the report thread may change trial state".into());
+        }
+        let ctx = report_context(&c)?;
+        if ctx.mode != "default" {
+            return Err(
+                "trial state changes require confirmed Default mode; Plan is read-only".into(),
+            );
+        }
+        let _collection_lock = if action == "finalize" {
+            Some(collector::finalize_lock()?)
+        } else {
+            None
+        };
         transaction(|state| {
-            if action == "list" {
-                println!("{}", serde_json::to_string_pretty(state)?);
-                return Ok(());
-            }
             if action == "report-wait" {
                 if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread) {
                     return Err("only report thread may wait for report approval".into());
@@ -443,6 +453,9 @@ pub fn cli(args: &[String]) -> i32 {
                 return Ok(());
             }
             if action == "finalize" {
+                if !state.collector.last_error.is_empty() || collector::has_pending(&c, state)? {
+                    return Err("collector has unread intervals; collect before finalizing".into());
+                }
                 if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread)
                     || now()
                         < agent_session::time::parse_iso_epoch(&c.end_exclusive)
@@ -459,20 +472,15 @@ pub fn cli(args: &[String]) -> i32 {
                 return Ok(());
             }
             let check = state.checks.get_mut(id).ok_or("unknown check id")?;
-            if action != "applied"
-                && std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&check.session)
-            {
-                return Err("only the originating thread may change this observation".into());
-            }
             match action {
                 "none" if check.status == Status::Unchecked => {
                     check.status = Status::NoCandidate;
-                    check.usage_after = context(&check.transcript)?.usage;
+                    check.usage_after = ctx.usage.clone();
                 }
                 "dismiss" if check.status == Status::AwaitingOwner && !value.trim().is_empty() => {
                     check.approval = format!("Rejected: {value}");
                     check.status = Status::NoCandidate;
-                    check.usage_after = context(&check.transcript)?.usage;
+                    check.usage_after = ctx.usage.clone();
                 }
                 "draft" if check.status != Status::PostVerified => {
                     let body = fs::read_to_string(value)?;
@@ -487,7 +495,7 @@ pub fn cli(args: &[String]) -> i32 {
                     } else {
                         check.status = Status::AwaitingOwner;
                     }
-                    check.waiting_turn = context(&check.transcript)?.turn;
+                    check.waiting_turn = ctx.turn.clone();
                 }
                 "approve" if check.status == Status::AwaitingOwner => {
                     let body = fs::read_to_string(value)?;

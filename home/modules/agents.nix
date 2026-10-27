@@ -1822,7 +1822,42 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   "Agent skill names must match their source directory";
 {
   # Merge generated skill entries with the explicit hook/config declarations.
-  imports = [ { home.file = skillFiles; } ];
+  imports = [
+    { home.file = skillFiles; }
+    {
+      options.dotfiles.feedbackTrial.collector.enable =
+        lib.mkEnableOption "the host-local Codex feedback trial collector";
+    }
+  ];
+
+  # Only the selected host collects its saved conversations. Trial destinations
+  # and approval remain private runtime state, never Nix-store values.
+  systemd.user.services.feedback-trial-collect =
+    lib.mkIf (pkgs.stdenv.isLinux && config.dotfiles.feedbackTrial.collector.enable)
+      {
+        Unit.Description = "Collect local Codex feedback trial observations";
+        Service = {
+          Type = "oneshot";
+          ExecStart = "${pkgs.dotfiles-tools}/bin/feedback-trial collect";
+          # Bypass the interactive credential launcher: collection gets the
+          # native Codex binary and never needs GitHub credentials.
+          Environment = "FEEDBACK_TRIAL_CODEX_BIN=${config.home.homeDirectory}/.local/bin/codex";
+          TimeoutStartSec = "10min";
+        };
+      };
+
+  dotfiles.pipeline.timerNodes.feedback-trial-collect = "feedback-trial-collect";
+  systemd.user.timers.feedback-trial-collect =
+    lib.mkIf (pkgs.stdenv.isLinux && config.dotfiles.feedbackTrial.collector.enable)
+      {
+        Unit.Description = "Collect Codex feedback trial observations every half hour";
+        Timer = {
+          OnCalendar = "*-*-* *:00,30:00";
+          Persistent = true;
+          Unit = "feedback-trial-collect.service";
+        };
+        Install.WantedBy = [ "timers.target" ];
+      };
 
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
   # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という

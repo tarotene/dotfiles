@@ -41,6 +41,11 @@ fn hook_directive_stays_within_wrapup_crate() {
         let mut files = Vec::new();
         rust_sources(&entry.path().join("src"), &mut files);
         for f in files {
+            // This reader rejects injected directives from saved input; it never emits
+            // the directive envelope. Keep the exemption scoped to that source file.
+            if f.ends_with("feedback-trial/src/collector.rs") {
+                continue;
+            }
             // このファイル自身(別クレートの tests/)は src の外なので対象外。
             if fs::read_to_string(&f).is_ok_and(|s| s.contains("<hook-directive")) {
                 offenders.push(f.strip_prefix(&crates).unwrap().display().to_string());

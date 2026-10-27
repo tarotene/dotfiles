@@ -128,6 +128,7 @@ node = [
   { id = "bleep-pin-freshness", label = "bleep-pin-freshness.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/bleep-pin-freshness.yml", auto = true },
 
   # --- Timers / periodic
+  { id = "feedback-trial-collect", label = "feedback-trial collect (30 min)", lane = "timer", group = "wrapup", stack = "rust", llm = true, pipelines = ["wrapup-to-issue", "evidence"], entity = "crates/feedback-trial", doc = "docs/agents/feedback-trial.md", auto = true },
   { id = "git-audit-worktrees", label = "git-audit-worktrees (1 min)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-audit-worktrees", doc = "docs/worktree-lifecycle.md", auto = true },
   { id = "git-checkout-sync", label = "git-checkout-sync (10 min)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-checkout-sync", doc = "docs/agents/git-checkout-sync.md", auto = true },
   { id = "git-auto-prune", label = "git-auto-prune (hourly)", lane = "timer", group = "worktree-hygiene", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/git-prune", doc = "docs/worktree-lifecycle.md", auto = true },
@@ -286,6 +287,7 @@ edge = [
   { from = "verdict-ledger", to = "verdict-escalate", kind = "file", label = "repeated deny", pipelines = ["wrapup-to-issue"] },
   { from = "verdict-escalate", to = "wrapup-inbox", kind = "file", label = "escalation line", pipelines = ["wrapup-to-issue"] },
   { from = "session-wrapup-stop", to = "feedback-trial", kind = "invoke", label = "1: trial", pipelines = ["wrapup-to-issue"] },
+  { from = "feedback-trial-collect", to = "feedback-trial", kind = "invoke", label = "collect saved intervals", pipelines = ["wrapup-to-issue"] },
   { from = "session-wrapup-stop", to = "session-retrospective", kind = "invoke", label = "2: retrospective", pipelines = ["wrapup-to-issue"] },
   { from = "session-wrapup-stop", to = "issue-inbox", kind = "invoke", label = "3: inbox", pipelines = ["wrapup-to-issue"] },
   { from = "retro", to = "session-retrospective", kind = "invoke", label = "--retro-add", pipelines = ["wrapup-to-issue"] },
