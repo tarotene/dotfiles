@@ -98,3 +98,29 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 `gh issue create`)に限る。それ以外は通常の確認フローに残す。
 `.claude/skills/aocs-draft/SKILL.md` のように、別リポジトリのスキルが人の確認を
 明示的に要求している場合は、その hook の skip 機構(同文書)で止められる。
+
+## sandbox・自動モード・秘密パスも宣言する(2026-10-27)
+
+`claude-permissions` の spec は allow / ask に加えて、Codex の `dotfiles` 権限 profile と
+同じ層構造を宣言する。層別の対応表と理由は
+[agent-permissions](../agents/agent-permissions.md#claude-と-codex-の層構造を揃える) を参照する。
+
+| spec のキー | 合わせる先(`~/.claude/settings.json`) | 宣言の入力 |
+|---|---|---|
+| `deny` / `retire_deny` | `permissions.deny` | `dotfiles.claudePermissions.secretPaths`(`Read(p)` と `Read(p/**)`) |
+| `auto_mode_classify_all_shell` | `autoMode.classifyAllShell` | 固定で `true` |
+| `sandbox.enabled` / `fail_if_unavailable` / `auto_allow_bash_if_sandboxed` | `sandbox.enabled` など | 固定 |
+| `sandbox.allowed_domains` | `sandbox.network.allowedDomains` | `dotfiles.claudePermissions.sandboxDomains` |
+| `sandbox.deny_read` | `sandbox.filesystem.denyRead` | `dotfiles.claudePermissions.secretPaths` |
+| `sandbox.excluded_commands` | `sandbox.excludedCommands` | `dotfiles.claudePermissions.excludedCommands` |
+
+- 宣言したキーだけを合わせる。真偽値は異なるときだけ書き、配列は「宣言との和 − `retire_*`」で、
+  本人が `/sandbox` や承認で足した値(`allowWrite`・別の `denyRead` など)は残す。
+  宣言に無いキー(`allowUnsandboxedCommands`・`autoMode.environment`・`permissions.defaultMode`)には触れない。
+- 宣言も撤回も空の配列は作らない(`allow` / `ask` だけは従来どおり空配列を作る)。
+- `excludedCommands` は sandbox の外で全権限で動く。パターンは狭く保つ。外のコマンドは通常の
+  権限フロー(上の狭い allow、自動モードの分類器)を通る。
+- 通信先・秘密パスの実値で公開できないものは private wrapper で `dotfiles.claudePermissions.*` を上書きする
+  (ADR-0034)。Codex の `dotfiles.codexPermissions.{domains,secretPaths}` と同じ元(`agentPermissions`)が既定値。
+- 検査: `crates/agent-settings-reconcile/tests/fixtures/permissions-sandbox-*`(壊れた状態からの収束・
+  本人のキーの保持・空ファイルからの生成。どれも 2 回目の実行で差分が出ないことを `reconcile.rs` が検査する)。

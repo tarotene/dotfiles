@@ -1,0 +1,8 @@
+{
+  "permissions": {"allow": ["Bash(git status *)"], "ask": ["Bash(/usr/bin/pkexec *)"], "defaultMode": "plan",
+    "deny": ["Read(~/.ssh)", "Read(~/.ssh/**)", "Read(~/.gnupg)", "Read(~/.gnupg/**)"]},
+  "sandbox": {"enabled": true, "failIfUnavailable": true, "autoAllowBashIfSandboxed": false,
+    "allowUnsandboxedCommands": true, "excludedCommands": [],
+    "filesystem": {"allowWrite": [], "denyRead": ["~/.ssh", "~/.gnupg"]}, "network": {"allowedDomains": []}},
+  "autoMode": {"classifyAllShell": true, "environment": ["### Org-wide", "**Trusted repo**: example/one"]}
+}

@@ -1,0 +1,43 @@
+[
+  [
+    "claude-permissions",
+    {
+      "retire_allow": [],
+      "allow": [
+        "Bash(git status *)"
+      ],
+      "ask": [
+        "Bash(/usr/bin/pkexec *)"
+      ],
+      "deny": [
+        "Read(~/.ssh)",
+        "Read(~/.ssh/**)",
+        "Read(~/.gnupg)",
+        "Read(~/.gnupg/**)"
+      ],
+      "auto_mode_classify_all_shell": true,
+      "sandbox": {
+        "enabled": true,
+        "fail_if_unavailable": true,
+        "auto_allow_bash_if_sandboxed": true,
+        "allowed_domains": [
+          "api.github.com",
+          "github.com",
+          "cache.nixos.org"
+        ],
+        "deny_read": [
+          "~/.ssh",
+          "~/.gnupg"
+        ],
+        "excluded_commands": [
+          "gh *",
+          "git commit *",
+          "git push *"
+        ],
+        "retire_allowed_domains": [
+          "old.example.com"
+        ]
+      }
+    }
+  ]
+]

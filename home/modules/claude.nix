@@ -115,18 +115,73 @@ let
     "mcp__github__create_pull_request"
     "mcp__github__search_issues"
   ];
+  cfg = config.dotfiles.claudePermissions;
+
+  # Claude の Read ルールは、絶対パス(`/` 始まり)を `//` で書く。`~/…` はそのまま。
+  nativeReadPath = p: if lib.hasPrefix "/" p then "/" + p else p;
+  secretReadRules = lib.concatMap (p: [
+    "Read(${nativeReadPath p})"
+    "Read(${nativeReadPath p}/**)"
+  ]) cfg.secretPaths;
+
+  # Codex の `dotfiles` 権限 profile(home/modules/codex.nix)と同じ層構造:
+  # sandbox は常時有効、sandbox 内のコマンドは確認なし、全シェルは分類器が見る
+  # (`classifyAllShell`。Codex の auto_review に当たる)、秘密パスは読ませない。
+  # 宣言したキーだけを合わせる。本人が足した `allowWrite` などには触れない。
+  # 層別の対応表: docs/agents/agent-permissions.md。
   permissionsSpec = {
     retire_allow = retiredPermissionRules;
     allow = permissionRules;
     retire_ask = retiredAskRules;
     ask = askRules;
+    deny = secretReadRules;
+    auto_mode_classify_all_shell = true;
+    sandbox = {
+      enabled = true;
+      fail_if_unavailable = true;
+      auto_allow_bash_if_sandboxed = true;
+      allowed_domains = cfg.sandboxDomains;
+      deny_read = cfg.secretPaths;
+      excluded_commands = cfg.excludedCommands;
+    };
   };
 in
 {
-  options.dotfiles.claudePermissions.extraAllow = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = config.dotfiles.agentPermissions.mcp_allow;
-    description = "Additional native Claude permission allowances.";
+  options.dotfiles.claudePermissions = {
+    extraAllow = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.mcp_allow;
+      description = "Additional native Claude permission allowances.";
+    };
+    secretPaths = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.secret_paths;
+      description = "Credential paths denied to the Read tool and to sandboxed commands (same source as Codex's secretPaths).";
+    };
+    sandboxDomains = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = config.dotfiles.agentPermissions.domains ++ [
+        # Read version-pinned upstream sources during investigation, including Plan mode.
+        "raw.githubusercontent.com"
+      ];
+      description = ''
+        Network destinations sandboxed commands may reach (same source as Codex's domains).
+        WebFetch(domain:...) allow rules also feed the sandbox's allowlist.
+      '';
+    };
+    excludedCommands = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        # They need the login keyring (gh's token) or gpg-agent, which the sandbox does
+        # not show, so they run outside it and go through the regular permission flow:
+        # the narrow allow rules above, then the auto-mode classifier. Keep patterns
+        # narrow: an excluded command runs with full access.
+        "gh *"
+        "git commit *"
+        "git push *"
+      ];
+      description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
+    };
   };
   config = {
     # Native Claude sandbox dependencies remain available for restored settings.

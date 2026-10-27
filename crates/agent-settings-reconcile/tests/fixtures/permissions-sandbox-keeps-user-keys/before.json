@@ -1,0 +1,8 @@
+{
+  "permissions": {"allow": [], "ask": [], "defaultMode": "plan", "deny": ["Read(~/.private)"]},
+  "sandbox": {"enabled": false, "allowUnsandboxedCommands": false, "excludedCommands": ["docker *"],
+    "filesystem": {"allowWrite": ["~/.kube"], "denyRead": ["~/.secret"]},
+    "network": {"allowedDomains": ["example.org", "old.example.com"]}},
+  "autoMode": {"environment": ["keep me"]},
+  "model": "keep"
+}

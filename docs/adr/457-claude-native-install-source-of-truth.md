@@ -382,3 +382,49 @@ Claude と Codex の権限は、それぞれの native 設定として宣言・�
 - `crates/hook-router/src/rules.rs`
 - `crates/codex-launcher/src/main.rs`
 - `config/claude/commands/promote-permissions.md`
+
+## Amendment (2026-10-27 — Claude の sandbox・自動モード・秘密パスを native 宣言として合わせる)
+
+上の撤去 Amendment の後も、Claude Code は「sandbox 有効・通信先空・自動許可なし・除外コマンドなし」の壊れた状態で
+残った。最初の共有移行(2026-10-26)の journal が `transaction.rs` の `prune` で消えており、撤去が戻せなかったため
+である。`gh` の認証(鍵束の D-Bus)・署名付き commit(gpg-agent)が sandbox 内で失敗し、sandbox を外した再実行は
+自動モードの判定が拒否した。本人の裁定(2026-10-27)は、先週の「sandbox 無し」へ戻さず、Codex の `dotfiles` 権限
+profile と同じ層構造に、`claude-permissions` が宣言で揃えること。
+
+### 裁定と先行例との対比
+
+- D1: Claude の sandbox・自動モードの `classifyAllShell`・秘密パスの Read deny を、`claude-permissions` が宣言したキーだけ
+  合わせる(sandbox は残す)。
+  先行例: Anthropic, "Sandboxing", <https://code.claude.com/docs/en/sandboxing>、取得 2026-10-27
+  (権限ルールと sandbox は別の層で、OS が強制する。推奨の直し方は `allowedDomains`・狭い `excludedCommands`)。
+  差分: 一致。通信先・秘密パスは Codex の `dotfiles` profile と同じ元(`agentPermissions`)を既定値にする。
+  軸: 表現不可能性。sandbox は OS が強制するので、許可していない到達を「検出」でなく「できない」状態にする。
+- D2: `autoMode.classifyAllShell = true` を残し、広い Bash 前方一致は宣言しない。
+  先行例: Anthropic, "Configure permissions", <https://code.claude.com/docs/en/permissions>、取得 2026-10-27
+  (「Bash のルールはプログラムの周りの境界ではない」「引数を絞る Bash パターンは壊れやすい」)と、本 ADR の
+  2026-10-27 Amendment(Bash の前方一致は宣言しない)。
+  差分: 一致。Codex の `auto_review`(全承認要求を審査)に当たる役割を `classifyAllShell` が担う。
+  軸: 表現不可能性。
+- D3: 失われた「常に許可」ルールのうち読み取り系だけを、本人のレビューを経て手順で戻す。宣言には入れない。
+  先行例: `docs/agents/agent-permissions.md` の「autoMode.environment は機体ローカルの設定で、宣言しない」(#1087)。
+  差分: 一致。
+  軸: 還元性。
+
+既存手段: `claude-permissions` — 拡張。`PermissionsSpec` に `deny`・`sandbox`・`auto_mode_classify_all_shell` を足す。
+新しい reconciler・移行ツールは作らない。journal の無い変更は、戻さずに宣言で収束させる。
+
+### 検証の境界
+
+`excludedCommands` の既定(`gh *`・`git commit *`・`git push *`)は暫定で、vega の実機での実測は未取得である
+(2026-10-27)。実測できる項目と手順は [運用文書](../agents/agent-permissions.md#claude-と-codex-の層構造を揃える) に置く。
+`nix flake check` は、この Amendment を書いた環境の sandbox が nix daemon のソケットを開けないため手元で実行して
+いない(CI の結果で確かめる)。
+
+### 執行点
+
+- `home/modules/claude.nix`
+- `crates/agent-settings-reconcile/src/settings.rs`
+- `crates/agent-settings-reconcile/tests/reconcile.rs`
+- `crates/agent-settings-reconcile/tests/fixtures/permissions-sandbox-converges-broken-state/after.json`
+- `crates/agent-settings-reconcile/tests/fixtures/permissions-sandbox-keeps-user-keys/after.json`
+- `crates/agent-settings-reconcile/tests/fixtures/permissions-sandbox-from-empty/after.json`
