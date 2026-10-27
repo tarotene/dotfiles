@@ -19,12 +19,14 @@ PR を作ったセッションでは、最初の Stop で `session-wrapup stop` 
    出ない。その場合は会話を自分で見返して、ユーザーの指摘・不満・言い直しを拾う。
 3. 出力に従って `--retro-add` で行を書く。語彙は閉じていて、語彙外は exit 64 になる。
    「何も無かった」は `kind: none` の 1 行で表す。黙って飛ばさない。
-4. 全行を表にして、投稿先に 1 件コメントする。GitHub に出す先が無い(PR も Issue も無い)
-   ときは、表をチャットに出し、`--retro-close '<session_id>' 'none:<理由>'` で閉じる。
-   その場合は「投稿は未確認」と報告する。
+4. 全行がそろったら `--retro-close '<session_id>'` を実行する。台帳の全行を kind ごとの表にして、vault の
+   `retro/<年>/` に 1 件のノートとして書き出し、読み戻してから完了にする(PR にはコメントしない。表を
+   自分で書き直さない)。vault の無い機体では、台帳に残したまま完了になる。
 5. `disposition: inbox` にした行は、通常の気づきと同じく inbox(vault のノート、vault の無い機体では
    jsonl)に入る。Issue にはならず、`/backlog-cleanup` で本人が裁定する。ここで直接
-   `gh issue create` しない。
+   `gh issue create` しない。ただし `kind: user-correction` の行は `inbox` にできない(共有 AGENTS.md の
+   「フィードバックは Issue 化」)。先に `gh issue create` で Issue にして `issue:#<N>` と書くか、
+   プロジェクト固有・機微な内容なら `none:<理由>` と書く。
 
 ## 判断の目安
 

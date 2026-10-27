@@ -330,6 +330,9 @@ n_agent_session.l_stop.n_session_wrapup_stop -> l_manual.n_issue_inbox: "3: inbo
 l_manual.n_retro -> l_manual.n_session_retrospective: "--retro-add" {
   class: e_invoke
 }
+l_manual.n_session_retrospective -> l_external.n_obsidian_vault: "retro/ note" {
+  class: e_file
+}
 n_agent_session.l_tool_call.n_cmd_hash_log -> l_timer.n_promotion_detect: "command hashes" {
   class: e_file
 }

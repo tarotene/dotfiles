@@ -3,14 +3,14 @@
 //! このセッションで PR を作成した後の最初の Stop で、セッション全体の振り返りを
 //! 構造化した JSONL として書かせ、決定論的に取れる出来事(判定レッジャーの
 //! deny/ask・pr-gate の block・更新した feedback memory)が全て行に引かれて
-//! いなければ block する。`disposition: inbox` の行は既存の wrap-up inbox に
-//! 流れ、起票・重複検査・backlog-cleanup は既存の経路をそのまま使う(出口は共有、
-//! 入口と強制だけが新設)。設計と根拠は docs/agents/retro.md。
+//! いなければ block する。`disposition: inbox` の行は既存の wrap-up inbox(vault の
+//! ノート)に流れ、裁定は backlog-cleanup が担う(出口は共有、入口と強制だけが新設)。
+//! 全行は、`--retro-close` が台帳から vault の `retro/` のノートに決定論的に書き出す
+//! (PR コメントは投稿しない。ADR-1136)。設計と根拠は docs/agents/retro.md。
 
 use agent_session::SessionLedger;
 use issue_inbox::{
-    add, attribution, env_nonempty, feedback_stamp_file, home, inbox_for, shquote,
-    updated_feedback_memories,
+    add, env_nonempty, feedback_stamp_file, home, inbox_for, shquote, updated_feedback_memories,
 };
 use serde_json::{json, Value};
 use std::fs;
@@ -19,9 +19,6 @@ use std::process::{Command, Stdio};
 
 /// retro 系の block の上限(pr-gate と同じセッション単位カウンタ方式)。
 pub const MAX_BLOCKS: u64 = 3;
-
-/// PR コメントの先頭に置く目印。`--retro-close` が読み戻しで確かめる。
-pub const COMMENT_MARKER: &str = "<!-- wrapup-retro -->";
 
 const KINDS: &[&str] = &[
     "user-correction",
@@ -109,6 +106,12 @@ pub fn validate_row(v: &Value) -> Result<(), String> {
     let disp = str_field(o, "disposition").ok_or("disposition is required")?;
     if !valid_disposition(disp) {
         return Err("disposition must be inbox | issue:#<N> | none:<reason>".into());
+    }
+    if kind == "user-correction" && disp == "inbox" {
+        return Err(
+            "kind user-correction is feedback: file it as an Issue (disposition issue:#<N>) or give none:<reason> (project-specific or sensitive); it is not kept in the inbox"
+                .into(),
+        );
     }
     if matches!(kind, "none" | "skipped") && !disp.starts_with("none:") {
         return Err(format!("kind {kind} requires disposition none:<reason>"));
@@ -253,7 +256,7 @@ fn read_rows(sid: &str) -> Vec<Value> {
         .collect()
 }
 
-/// 行に引かれていない出来事。`skipped` 行が 1 つでもあれば免除(PR コメントには載る)。
+/// 行に引かれていない出来事。`skipped` 行が 1 つでもあれば免除(ノートには載る)。
 pub fn uncovered(sid: &str, rows: &[Value]) -> Vec<(String, String)> {
     if rows.iter().any(|r| r["kind"] == "skipped") {
         return Vec::new();
@@ -273,27 +276,37 @@ pub fn uncovered(sid: &str, rows: &[Value]) -> Vec<(String, String)> {
 // ---------------------------------------------------------------------------
 // 発火条件: このセッションで PR を作成したか
 
-/// gh-edit-allow の台帳(Claude のみ)に `pr ` 行があるか。
-fn pr_in_ledger(sid: &str) -> bool {
+/// gh-edit-allow の台帳(Claude のみ)の最後の `pr <owner/repo> <N>` 行。stack のときは、最後に作った
+/// PR(= 最上段)になる。
+fn ledger_pr(sid: &str) -> Option<(String, String)> {
     let dir = env_nonempty("GH_EDIT_ALLOW_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(home()).join(".claude/gh-edit-allow"));
     SessionLedger::new(dir.join("state"), "ledger")
         .records(sid)
         .iter()
-        .any(|r| r.starts_with("pr "))
+        .rev()
+        .find_map(|r| {
+            let mut w = r.split_whitespace();
+            (w.next()? == "pr").then(|| {
+                (
+                    w.next().unwrap_or("").to_string(),
+                    w.next().unwrap_or("").to_string(),
+                )
+            })
+        })
 }
 
 /// 台帳が無い環境(Codex)向け: 現ブランチの PR に、セッション開始 stamp より
-/// 後に作られたものがあるか。
-fn pr_by_branch(sid: &str, project: &str) -> bool {
-    let Ok(since) = fs::metadata(feedback_stamp_file(sid)).and_then(|m| m.modified()) else {
-        return false;
-    };
-    let Ok(since) = since.duration_since(std::time::UNIX_EPOCH) else {
-        return false;
-    };
-    let Some(branch) = Command::new("git")
+/// 後に作られたものがあれば、その番号(無ければ空文字)。`gh pr list` の各行は
+/// `<createdAt>` か `<createdAt> <number>`。
+fn branch_pr(sid: &str, project: &str) -> Option<String> {
+    let since = fs::metadata(feedback_stamp_file(sid))
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    let branch = Command::new("git")
         .args(["-C", project, "rev-parse", "--abbrev-ref", "HEAD"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -301,11 +314,8 @@ fn pr_by_branch(sid: &str, project: &str) -> bool {
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|b| !b.is_empty() && b != "HEAD")
-    else {
-        return false;
-    };
-    let Ok(out) = Command::new("gh")
+        .filter(|b| !b.is_empty() && b != "HEAD")?;
+    let out = Command::new("gh")
         .current_dir(project)
         .args([
             "pr",
@@ -315,25 +325,38 @@ fn pr_by_branch(sid: &str, project: &str) -> bool {
             "--state",
             "all",
             "--json",
-            "createdAt",
+            "createdAt,number",
             "--jq",
-            ".[].createdAt",
+            r#".[] | "\(.createdAt) \(.number)""#,
         ])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
-    else {
-        return false;
-    };
-    out.status.success()
-        && String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter_map(parse_iso_epoch)
-            .any(|t| t >= since.as_secs() as i64)
+        .ok()
+        .filter(|o| o.status.success())?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            let t = parse_iso_epoch(w.next()?)?;
+            (t >= since.as_secs() as i64).then(|| (t, w.next().unwrap_or("").to_string()))
+        })
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, n)| n)
 }
 
 pub fn session_pr_created(sid: &str, project: &str) -> bool {
-    pr_in_ledger(sid) || pr_by_branch(sid, project)
+    ledger_pr(sid).is_some() || branch_pr(sid, project).is_some()
+}
+
+/// このセッションの PR(`owner/repo` と番号)。台帳 → 現ブランチの PR の順。分からなければ `None`。
+pub fn retro_pr(sid: &str, project: &str) -> Option<(String, String)> {
+    if let Some((nwo, n)) = ledger_pr(sid) {
+        return Some((nwo, n));
+    }
+    let n = branch_pr(sid, project)?;
+    let nwo = git_repository::origin_nwo(Path::new(project))?;
+    Some((nwo, n))
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +390,7 @@ pub fn stop_check(self_path: &str, sid: &str, project: &str, transcript: &str) -
         if n > 0 {
             format!("{n} event(s) not yet covered by a row")
         } else {
-            "rows recorded, not yet posted to the PR".to_string()
+            "rows recorded, not yet closed into the vault note".to_string()
         }
     };
     let n = read_count(sid);
@@ -425,7 +448,6 @@ fn user_messages(sid: &str) -> Option<Vec<String>> {
 
 /// `--retro-procedure <session_id>` の手順書(LLM 向けの書式は ADR-625)。
 pub fn procedure_text(self_path: &str, sid: &str) -> String {
-    let (name, url) = attribution();
     let q_sid = shquote::printf_q(sid);
     let q_self = shquote::printf_q(self_path);
     let rows = read_rows(sid);
@@ -475,47 +497,88 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
        the user's vault, or a jsonl line on a machine without one). No Issue is
        filed for it: the user adjudicates it later with /backlog-cleanup. Do not
        add it to the inbox yourself.
+     - A user-correction is feedback and is never kept in the inbox: file it as a
+       GitHub Issue first (gh issue create) and use "issue:#<N>", or use
+       "none:<reason>" when it is project-specific or sensitive. "inbox" is refused.
      - If there is truly nothing, add one row with kind "none" and
        disposition "none:<reason>". Rows are never skipped silently.
      - To skip the retro, the user must have said so: kind "skipped", the
        user's words in "quote" (verbatim), disposition "none:<reason>".
-  4. When no TODO is left, post ONE comment on this session's PR (the top of the
-     stack when stacked) whose first line is {marker}, then a table of all rows
-     grouped by kind with the filed Issue number (#N) next to each, ending with
-     「🤖 Generated with [{name}]({url})」. Use gh pr comment -R <owner/repo>
-     <number> --body-file <absolute path>.
-  5. Run '{q_self}' --retro-close {q_sid} <comment-url>. It reads the comment
-     back and only then marks the retro done. With no GitHub target use
-     none:<reason> instead of the URL and say the post is unconfirmed.
+  4. When no TODO is left, run '{q_self}' --retro-close {q_sid}. It renders all
+     rows, grouped by kind, into one note in the user's vault (retro/…) and reads
+     it back before marking the retro done. Nothing is posted to GitHub. On a
+     machine without a vault the rows stay in the local ledger and the retro is
+     marked done.
 </hook-directive>
 "#,
         n_rows = rows.len(),
-        marker = COMMENT_MARKER,
     )
 }
 
 // ---------------------------------------------------------------------------
-// 完了
+// 完了: 台帳から vault のノートを決定論的に書き出し、読み戻してから閉じる
 
-/// `https://github.com/o/r/pull/N#issuecomment-ID` → `(o/r, ID)`。
-pub fn parse_comment_url(url: &str) -> Option<(String, String)> {
-    let rest = url.strip_prefix("https://github.com/")?;
-    let (path, frag) = rest.split_once("#issuecomment-")?;
-    let mut p = path.split('/');
-    let (o, r, kind, n) = (p.next()?, p.next()?, p.next()?, p.next()?);
-    if !matches!(kind, "pull" | "issues") || n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit())
-    {
-        return None;
-    }
-    if frag.is_empty() || !frag.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    Some((format!("{o}/{r}"), frag.to_string()))
+const KIND_ORDER: &[&str] = &[
+    "user-correction",
+    "friction",
+    "gate-hit",
+    "insight",
+    "none",
+    "skipped",
+];
+
+/// 表の 1 マス。`|` と改行は壊れる元なので置き換える。
+fn cell(s: &str) -> String {
+    s.replace('|', "\\|").replace(['\n', '\r'], " ")
 }
 
-/// `--retro-close <session_id> <comment-url|none:reason>`: 0 = 完了 / 1 = 未了 /
-/// 3 = 読み戻せない。
-pub fn retro_close(sid: &str, target: &str) -> i32 {
+/// 台帳の全行を kind ごとの表にした、ノートの本文。
+pub fn render_body(rows: &[Value]) -> String {
+    let mut out = String::new();
+    for kind in KIND_ORDER {
+        let of_kind: Vec<&Value> = rows.iter().filter(|r| r["kind"] == *kind).collect();
+        if of_kind.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("## {kind}\n\n"));
+        out.push_str("| what | evidence | disposition | mechanism |\n|---|---|---|---|\n");
+        for r in of_kind {
+            let f = |k: &str| cell(r[k].as_str().unwrap_or("-"));
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                f("what"),
+                f("evidence"),
+                f("disposition"),
+                f("mechanism")
+            ));
+            if let Some(q) = r["quote"].as_str() {
+                out.push_str(&format!("|  | quote: {} |  |  |\n", cell(q)));
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// ノートの vault 内のパス(拡張子つき)。PR が分からなければ番号の代わりに `s<session の先頭 8 文字>`。
+fn note_rel(date: &str, nwo: &str, pr: &str, sid: &str, suffix: Option<&str>) -> String {
+    let who = nwo.replace('/', "-");
+    let tail = if pr.is_empty() {
+        format!("s{}", sid.chars().take(8).collect::<String>())
+    } else {
+        pr.to_string()
+    };
+    let name = vault_note::note_name(&format!("{date}-{who}-{tail}"));
+    let name = match suffix {
+        Some(s) => format!("{name} ~{s}"),
+        None => name,
+    };
+    format!("retro/{}/{name}.md", &date[..4.min(date.len())])
+}
+
+/// `--retro-close <session_id>`: 0 = 完了 / 1 = 未了 / 3 = ノートを書けない・読み戻せない。
+/// vault を宣言していない機体(使えない場合を含む)では、台帳に残したまま完了にする。
+pub fn retro_close(sid: &str) -> i32 {
     let rows = read_rows(sid);
     if rows.is_empty() {
         eprintln!("wrapup-stop-gate: --retro-close: no rows recorded yet");
@@ -529,51 +592,70 @@ pub fn retro_close(sid: &str, target: &str) -> i32 {
         }
         return 1;
     }
-    if target
-        .strip_prefix("none:")
-        .is_some_and(|r| !r.trim().is_empty())
-    {
-        let _ = fs::write(marker(sid, "closed"), target);
-        println!("retro closed (unconfirmed: no comment was posted: {target})");
-        return 0;
-    }
-    let Some((nwo, id)) = parse_comment_url(target) else {
-        eprintln!(
-            "wrapup-stop-gate: --retro-close: not a GitHub comment URL (…#issuecomment-<id>)"
-        );
-        return 1;
+    let ledger_only = |why: &str| {
+        let _ = fs::create_dir_all(retro_dir());
+        let _ = fs::write(marker(sid, "closed"), format!("ledger-only: {why}"));
+        println!("retro closed (ledger only: {why})");
+        0
     };
-    let out = Command::new("gh")
-        .args([
-            "api",
-            &format!("repos/{nwo}/issues/comments/{id}"),
-            "--jq",
-            ".body",
-        ])
-        .stdin(Stdio::null())
-        .output();
-    let body = match out {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
-        Ok(o) => {
+    let state = PathBuf::from(issue_inbox::state_root());
+    let vault = match vault_note::VaultNotes::open(&state) {
+        None => return ledger_only("this machine declares no vault"),
+        Some(Err(e)) => {
+            eprintln!("wrapup-stop-gate: --retro-close: vault を使えない({e}); 台帳に残す");
+            return ledger_only("the declared vault is unusable");
+        }
+        Some(Ok(v)) => v,
+    };
+    let project = project_dir();
+    let (nwo, pr) = retro_pr(sid, &project)
+        .or_else(|| git_repository::origin_nwo(Path::new(&project)).map(|n| (n, String::new())))
+        .unwrap_or_else(|| ("unknown".into(), String::new()));
+    let date = issue_inbox::vault::jst_today();
+    let g = match vault.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("wrapup-stop-gate: --retro-close: vault をロックできない: {e}");
+            return 3;
+        }
+    };
+    let mut rel = note_rel(&date, &nwo, &pr, sid, None);
+    // 同じ日に同じ PR を別のセッションが閉じていたら、そのノートを上書きしない。
+    if let Ok(Some(text)) = g.read(&rel) {
+        if vault_note::Note::parse(&text).get("session") != Some(sid) {
+            rel = note_rel(&date, &nwo, &pr, sid, Some(&vault_note::short_hash(sid)));
+        }
+    }
+    let note = vault_note::Note {
+        front: vec![
+            ("repo".into(), nwo.clone()),
+            ("pr".into(), pr.clone()),
+            ("session".into(), sid.to_string()),
+            ("date".into(), date.clone()),
+        ],
+        body: render_body(&rows),
+    };
+    let text = note.render();
+    if let Err(e) = g.replace(&rel, &text) {
+        eprintln!("wrapup-stop-gate: --retro-close: ノートを書けない({rel}): {e}");
+        return 3;
+    }
+    match g.read(&rel) {
+        Ok(Some(back)) if back == text => {}
+        other => {
             eprintln!(
-                "wrapup-stop-gate: --retro-close: gh api failed: {}",
-                String::from_utf8_lossy(&o.stderr).replace('\n', " ")
+                "wrapup-stop-gate: --retro-close: 読み戻した内容がノートと一致しない({rel}): {}",
+                other.map_or_else(
+                    |e| e.to_string(),
+                    |o| o.map_or("無い".into(), |_| "違う".into())
+                )
             );
             return 3;
         }
-        Err(_) => {
-            eprintln!("wrapup-stop-gate: --retro-close: gh: command not found");
-            return 3;
-        }
-    };
-    if !body.contains(COMMENT_MARKER) {
-        eprintln!(
-            "wrapup-stop-gate: --retro-close: the comment does not start with {COMMENT_MARKER}"
-        );
-        return 1;
     }
-    let _ = fs::write(marker(sid, "closed"), target);
-    println!("retro closed (read back {nwo} comment {id})");
+    let _ = fs::create_dir_all(retro_dir());
+    let _ = fs::write(marker(sid, "closed"), &rel);
+    println!("retro closed (note: {rel})");
     0
 }
 
@@ -590,9 +672,11 @@ pub fn cli(self_path: &str, args: &[String]) -> i32 {
                 retro_add(need(1, text)?, need(2, text)?)
             }
             Some("--retro-close") => {
-                let text =
-                    "usage: wrapup-stop-gate --retro-close <session_id> <comment-url|none:reason>";
-                retro_close(need(1, text)?, need(2, text)?)
+                let text = "usage: wrapup-stop-gate --retro-close <session_id>";
+                if let Some(extra) = args.get(2) {
+                    eprintln!("session-retrospective: --retro-close: ignoring {extra} (nothing is posted to GitHub any more; ADR-1136)");
+                }
+                retro_close(need(1, text)?)
             }
             Some("--retro-procedure") => {
                 let sid = need(1, "usage: wrapup-stop-gate --retro-procedure <session_id>")?;
@@ -622,22 +706,17 @@ mod tests {
     }
 
     #[test]
-    fn comment_url() {
-        assert_eq!(
-            parse_comment_url("https://github.com/o/r/pull/7#issuecomment-123"),
-            Some(("o/r".into(), "123".into()))
-        );
-        assert_eq!(parse_comment_url("https://github.com/o/r/pull/7"), None);
-        assert_eq!(
-            parse_comment_url("https://example.com/o/r/pull/7#issuecomment-1"),
-            None
-        );
-    }
-
-    #[test]
     fn vocabulary() {
-        let ok = json!({"kind":"user-correction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"});
+        let ok = json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"});
         assert!(validate_row(&ok).is_ok());
+        // user-correction は feedback: inbox には置けず、Issue か none:<理由>。
+        let fb = json!({"kind":"user-correction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"});
+        assert!(validate_row(&fb).unwrap_err().contains("Issue"));
+        let mut fb_issue = fb.clone();
+        fb_issue["disposition"] = json!("issue:#12");
+        assert!(validate_row(&fb_issue).is_ok());
+        fb_issue["disposition"] = json!("none:project-specific");
+        assert!(validate_row(&fb_issue).is_ok());
         let mut bad = ok.clone();
         bad["mechanism"] = json!("vibes");
         assert!(validate_row(&bad).is_err());
@@ -650,5 +729,37 @@ mod tests {
         assert!(validate_row(&skipped).is_err());
         let existing = json!({"kind":"friction","what":"foo leaked","evidence":"e","disposition":"inbox","mechanism":"existing:bar"});
         assert!(validate_row(&existing).is_err());
+    }
+
+    #[test]
+    fn body_groups_rows_by_kind_and_escapes_the_table() {
+        let rows = vec![
+            json!({"kind":"insight","what":"a | b","evidence":"line1\nline2","disposition":"inbox","mechanism":"prose"}),
+            json!({"kind":"user-correction","what":"w","evidence":"e","disposition":"issue:#9","mechanism":"gate"}),
+            json!({"kind":"skipped","what":"s","evidence":"e","disposition":"none:r","quote":"不要"}),
+        ];
+        let body = render_body(&rows);
+        let pos = |h: &str| body.find(h).unwrap_or_else(|| panic!("{h}\n{body}"));
+        assert!(pos("## user-correction") < pos("## insight"));
+        assert!(pos("## insight") < pos("## skipped"));
+        assert!(
+            body.contains("| a \\| b | line1 line2 | inbox | prose |"),
+            "{body}"
+        );
+        assert!(body.contains("quote: 不要"), "{body}");
+        assert!(!body.contains("## friction"));
+    }
+
+    #[test]
+    fn note_names_carry_the_date_the_repo_and_the_pr() {
+        assert_eq!(
+            note_rel("2026-10-27", "o/r", "5", "abcdef012345", None),
+            "retro/2026/2026-10-27-o-r-5.md"
+        );
+        assert_eq!(
+            note_rel("2026-10-27", "o/r", "", "abcdef012345", None),
+            "retro/2026/2026-10-27-o-r-sabcdef01.md"
+        );
+        assert!(note_rel("2026-10-27", "o/r", "5", "x", Some("h")).ends_with("-5 ~h.md"));
     }
 }
