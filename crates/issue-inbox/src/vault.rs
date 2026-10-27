@@ -1,4 +1,4 @@
-//! wrap-up inbox の vault 側(ADR-0000-wrapup-inbox-to-vault)。
+//! wrap-up inbox の vault 側(ADR-1136)。
 //!
 //! 気づき 1 件 = vault の `inbox/<題名から作った名前>.md` 1 枚。同じ題名(同じ repo)は同じノートに
 //! なるので、重複が構造的に起きず、本文の行数がそのまま再発の回数になる。

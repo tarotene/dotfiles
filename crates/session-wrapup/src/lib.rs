@@ -166,7 +166,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> i32 {
         // 未知のフラグは Stop hook として動いてしまうので、無言で通さず、はっきり断る。
         Some(flag @ ("--procedure" | "--chores-begin" | "--chores-end")) => {
             eprintln!(
-                "session-wrapup: {flag} was removed (ADR-0000-wrapup-inbox-to-vault): findings are no longer filed at Stop; use --list-open / --set-status"
+                "session-wrapup: {flag} was removed (ADR-1136): findings are no longer filed at Stop; use --list-open / --set-status"
             );
             1
         }

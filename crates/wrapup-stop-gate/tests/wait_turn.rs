@@ -1,6 +1,6 @@
 //! Stop hook が、作業の途中(バックグラウンド処理の待ち)に、振り返りと feedback の指示を
 //! 毎ターン出さないことの統合テスト(#854)。気づきの inbox は Stop の指示を出さない
-//! (ADR-0000-wrapup-inbox-to-vault)ので、`/backlog-cleanup` の実行中の印(#820)は無くなった。
+//! (ADR-1136)ので、`/backlog-cleanup` の実行中の印(#820)は無くなった。
 //!
 //! - #854: 複数の PR を積みながら実機の長い実行を待つあいだ、`wrapup-stop-gate` の
 //!   振り返りの指示がターンごとに届いた(5 回以上)。作業は終わっておらず、振り返りの
@@ -164,7 +164,7 @@ fn a_task_that_never_finishes_does_not_silence_the_gate_forever() {
     assert_eq!(r.code, 2, "{}", r.stderr);
 }
 
-// --- ADR-0000-wrapup-inbox-to-vault: 溜まった気づきは Stop を止めない ---
+// --- ADR-1136: 溜まった気づきは Stop を止めない ---
 
 #[test]
 fn unadjudicated_findings_never_hold_the_stop_even_across_turns() {
