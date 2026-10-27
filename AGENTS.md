@@ -286,6 +286,15 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 - `hms` — canonical apply (pushed main); `hms .` applies the current
   checkout/worktree for pre-push verification (wraps switch + daemon-reload +
   fcitx5 restart; see `docs/operations.md`).
+- A change that affects nix evaluation (`home/modules/*.nix`, `flake.nix`,
+  `assertions`) must also be checked through the private wrapper's evaluation,
+  not only the dotfiles-only builds above: `hms .` evaluates through the wrapper
+  with its `dotfiles` input overridden to this checkout, so an assertion can fail
+  there for options and timers the wrapper defines (#1092, #1083 passed the
+  dotfiles-only `nix eval` and failed in `hms .`). Run `hms .` (or the wrapper's
+  `nix eval` with `--override-input dotfiles path:<this checkout>
+  --no-write-lock-file`, resolved through the private-hub marker like `hms`
+  does) before stacking the change; never write the wrapper's name here (ADR-0034).
 - `home-manager switch --flake .#"$(hostname)" -b backup` — the raw switch
   `hms` wraps (see runbook).
 - Rollback via generations: `home-manager generations`, then `--rollback`.
