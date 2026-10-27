@@ -53,6 +53,9 @@ else:
             .env("CODEX_THREAD_ID", "source")
             .env("TEST_TRIAL_ROOT", self.env.path())
             .env("PATH", self.env.stub_path())
+            // 実機の vault を読み書きしない(宣言はテストが明示したときだけ)。
+            .env_remove("OBSIDIAN_VAULT")
+            .env_remove("XDG_CONFIG_HOME")
             .env_remove("CLAUDE_PROJECT_DIR");
         c
     }

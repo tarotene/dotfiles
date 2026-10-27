@@ -29,10 +29,11 @@ worklog session-start        # SessionStart hook。手で打つ必要は無い
 
 ## vault の場所の解決
 
-hub-resolve と同じ間接参照で、環境変数 `WORKLOG_VAULT`、無ければ
-`${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/worklog-vault` の 1 行目(絶対パス)。マーカーは
-`obsidian.nix` が `vaultPath` から置くので、vault を宣言した機体にしか無い。存在確認は
-`<vault>/.obsidian/daily-notes.json` で、当日ノートの置き場と書式もそこから読む。
+hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、無ければ
+`${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目(絶対パス。wrap-up の inbox と共有する単一の正本)。マーカーは
+`obsidian.nix` が `vaultPath` から置くので、vault を宣言した機体にしか無い。存在確認は共有の
+`<vault>/.obsidian/app.json` で、worklog はさらに `<vault>/.obsidian/daily-notes.json` から、
+当日ノートの置き場と書式を読む。
 
 ## SessionStart の注入
 

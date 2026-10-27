@@ -261,7 +261,12 @@ l_external: "Sessions / services / state" {
     class: s_external
     style.stroke-dash: 4
   }
-  n_wrapup_inbox: "wrap-up inbox" {
+  n_wrapup_inbox: "wrap-up inbox (jsonl; machine without a vault)" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
+  n_obsidian_vault: "Obsidian vault" {
     class: s_store
     shape: cylinder
     style.stroke-dash: 4
@@ -277,6 +282,12 @@ n_agent_session -> l_external.n_wrapup_inbox: "--add finding" {
   class: e_file
 }
 l_external.n_wrapup_inbox -> n_agent_session.l_stop.n_session_wrapup_stop: "pending lines" {
+  class: e_file
+}
+n_agent_session -> l_external.n_obsidian_vault: "--add finding (inbox/ note)" {
+  class: e_file
+}
+l_manual.n_issue_inbox -> l_external.n_obsidian_vault: "inbox/ notes" {
   class: e_file
 }
 n_agent_session -> l_external.n_github: "gh issue create" {
@@ -321,7 +332,10 @@ l_timer.n_promotion_detect -> l_external.n_wrapup_inbox: "promotion candidates" 
 l_external.n_github -> l_timer.n_promotion_detect: "feedback Issues" {
   class: e_context
 }
-l_manual.n_backlog_cleanup -> l_external.n_wrapup_inbox: "sweep" {
+l_manual.n_backlog_cleanup -> l_external.n_wrapup_inbox: "sweep (no vault)" {
+  class: e_file
+}
+l_manual.n_backlog_cleanup -> l_external.n_obsidian_vault: "sweep open notes / set-status" {
   class: e_file
 }
 l_manual.n_backlog_cleanup -> l_external.n_github: "chores PRs" {

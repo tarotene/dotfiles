@@ -1,12 +1,10 @@
-//! Stop hook が、作業の途中(バックグラウンド処理の待ち)と、`/backlog-cleanup` の実行中に、
-//! 振り返りと inbox の指示を毎ターン出さないことの統合テスト(#854、#820)。
+//! Stop hook が、作業の途中(バックグラウンド処理の待ち)に、振り返りと feedback の指示を
+//! 毎ターン出さないことの統合テスト(#854)。気づきの inbox は Stop の指示を出さない
+//! (ADR-0000-wrapup-inbox-to-vault)ので、`/backlog-cleanup` の実行中の印(#820)は無くなった。
 //!
 //! - #854: 複数の PR を積みながら実機の長い実行を待つあいだ、`wrapup-stop-gate` の
 //!   振り返りの指示がターンごとに届いた(5 回以上)。作業は終わっておらず、振り返りの
 //!   対象は「セッション全体」なので、途中で行うとやり直しになる。
-//! - #820: `/backlog-cleanup` は inbox の行を、その行を含む段の PR 作成の直後に消化する
-//!   (起票して即閉じる churn を避けるため)。PR を作るまで inbox に行が残るのが正しい
-//!   状態だが、Stop hook は区別せず、毎回「起票せよ」と指示した(4 回)。
 
 mod common;
 
@@ -15,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SID: &str = "s1";
-const LINE: &str = r#"{"ts":"2026-10-21T00:00:00+09:00","title":"chores 対象","detail":"d"}"#;
+const LINE: &str = r#"{"ts":"2026-10-21T00:00:00+09:00","title":"裁定待ち","detail":"d"}"#;
 
 fn now() -> u64 {
     SystemTime::now()
@@ -137,22 +135,21 @@ fn waiting_turn_does_not_fire_retro_and_does_not_spend_the_counter() {
 }
 
 #[test]
-fn waiting_turn_does_not_fire_the_inbox_instruction_either() {
+fn waiting_turn_does_not_fire_the_feedback_instruction_either() {
     let e = Env::new();
     let p = project(&e);
-    let ib = inbox(&e, &p);
-    add_row(&e, &ib);
+    arm_feedback(&e, SID);
     let tr = e.path().join("t.jsonl");
 
     std::fs::write(&tr, bash_started("b1", now() - 30)).unwrap();
     let r = stop_with_transcript(&e, &p, &tr);
     assert_eq!((r.code, r.stderr.as_str()), (0, ""));
 
-    // 対照: 待っていなければ、従来どおり起票の指示が出る。
+    // 対照: 待っていなければ、従来どおり feedback の指示が出る。
     std::fs::write(&tr, "").unwrap();
     let r = stop_with_transcript(&e, &p, &tr);
     assert_eq!(r.code, 2);
-    assert!(r.stderr.contains("unfiled item(s)"), "{}", r.stderr);
+    assert!(r.stderr.contains("type: feedback"), "{}", r.stderr);
 }
 
 #[test]
@@ -160,69 +157,25 @@ fn a_task_that_never_finishes_does_not_silence_the_gate_forever() {
     // 終わらない監視(`tail -F` など)。1 時間より古い開始は、待ちとして数えない。
     let e = Env::new();
     let p = project(&e);
-    let ib = inbox(&e, &p);
-    add_row(&e, &ib);
+    arm_feedback(&e, SID);
     let tr = e.path().join("t.jsonl");
     std::fs::write(&tr, bash_started("old", now() - 2 * 3600)).unwrap();
     let r = stop_with_transcript(&e, &p, &tr);
     assert_eq!(r.code, 2, "{}", r.stderr);
 }
 
-// --- #820: /backlog-cleanup の実行中は inbox の起票指示を出さない ---
+// --- ADR-0000-wrapup-inbox-to-vault: 溜まった気づきは Stop を止めない ---
 
 #[test]
-fn chores_mark_suppresses_the_inbox_instruction_until_ended() {
+fn unadjudicated_findings_never_hold_the_stop_even_across_turns() {
     let e = Env::new();
     let p = project(&e);
     let ib = inbox(&e, &p);
     add_row(&e, &ib);
-
-    assert_eq!(stop(&e, &p).code, 2, "対照: 印が無ければ指示が出る");
-
-    assert_eq!(run_args(e.gate(), &["--chores-begin", &ib]).code, 0);
-    let r = stop(&e, &p);
-    assert_eq!(
-        (r.code, r.stderr.as_str()),
-        (0, ""),
-        "backlog-cleanup の実行中は、PR を作るまで行が残るのが正しい状態"
-    );
-
-    assert_eq!(run_args(e.gate(), &["--chores-end", &ib]).code, 0);
-    assert_eq!(stop(&e, &p).code, 2, "印を外せば、また指示が出る");
-    // 印が無いときの --chores-end は成功する(冪等)。
-    assert_eq!(run_args(e.gate(), &["--chores-end", &ib]).code, 0);
-}
-
-#[test]
-fn chores_mark_expires_after_twelve_hours() {
-    let e = Env::new();
-    let p = project(&e);
-    let ib = inbox(&e, &p);
-    add_row(&e, &ib);
-    assert_eq!(run_args(e.gate(), &["--chores-begin", &ib]).code, 0);
-    // 印を 13 時間前のものにする(セッションが消えて、外されないまま残った状態)。
-    std::fs::write(format!("{ib}.chores"), format!("{}\n", now() - 13 * 3600)).unwrap();
-    assert_eq!(stop(&e, &p).code, 2, "失効した印は無視される");
-}
-
-#[test]
-fn chores_mark_is_removed_once_the_inbox_is_empty() {
-    let e = Env::new();
-    let p = project(&e);
-    let ib = inbox(&e, &p);
-    add_row(&e, &ib);
-    assert_eq!(run_args(e.gate(), &["--chores-begin", &ib]).code, 0);
-    assert!(Path::new(&format!("{ib}.chores")).exists());
-
-    // 全行を消化した(--mark-filed)あとの Stop で、印も片付く。
-    assert_eq!(run_args(e.gate(), &["--mark-filed", &ib, LINE]).code, 0);
-    assert_eq!(stop(&e, &p).code, 0);
-    assert!(
-        !Path::new(&format!("{ib}.chores")).exists(),
-        "inbox が空になったら印は外れる"
-    );
-
-    // 次に溜まった行は、印が無いので通常どおり指示される。
-    add_row(&e, &ib);
-    assert_eq!(stop(&e, &p).code, 2);
+    for _ in 0..3 {
+        let r = stop(&e, &p);
+        assert_eq!((r.code, r.stderr.as_str()), (0, ""), "毎ターン素通り");
+    }
+    // 行は消えない(裁定を待つ)。
+    assert_eq!(lines(Path::new(&ib)), 1);
 }

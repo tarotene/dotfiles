@@ -189,6 +189,9 @@ impl Env {
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env_remove("CLAUDE_PROJECT_DIR")
             .env_remove("XDG_STATE_HOME")
+            // 実機の vault に書かない: 宣言(環境変数・マーカー)は、テストが明示したときだけ。
+            .env_remove("OBSIDIAN_VAULT")
+            .env_remove("XDG_CONFIG_HOME")
             .env_remove("ATTRIBUTION_AGENT_NAME")
             .env_remove("ATTRIBUTION_AGENT_URL")
             .env_remove("WRAPUP_VERDICT_ESCALATE_BIN")
@@ -235,4 +238,35 @@ pub fn read(p: &Path) -> String {
 
 pub fn hook_input(cwd: &Path) -> String {
     format!(r#"{{"cwd":"{}","stop_hook_active":false}}"#, cwd.display())
+}
+
+pub fn hook_input_sid(cwd: &Path, sid: &str) -> String {
+    format!(
+        r#"{{"cwd":"{}","session_id":"{sid}","stop_hook_active":false}}"#,
+        cwd.display()
+    )
+}
+
+/// stamp を 1 時間前に戻す(selftest の `touch -d '1 hour ago'`)。
+pub fn backdate(p: &Path) {
+    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = std::fs::File::options().write(true).open(p).unwrap();
+    f.set_modified(t).unwrap();
+}
+
+/// Stop が指示を出す唯一の条件(#N の無い feedback memory)を用意する。セッション `sid` の
+/// stamp を作って過去に戻し、その後に更新された `type: feedback` のメモを置く。メモのパスを返す。
+pub fn arm_feedback(e: &Env, sid: &str) -> PathBuf {
+    let r = run_args(e.gate(), &["--stamp-feedback-session", sid]);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    backdate(&e.stamp_dir().join(format!("{sid}.stamp")));
+    let mem = e.memory_dir().join("proj/memory");
+    std::fs::create_dir_all(&mem).unwrap();
+    let f = mem.join("unlinked.md");
+    std::fs::write(
+        &f,
+        "---\nname: unlinked\nmetadata:\n  type: feedback\n---\n\nIssue 番号が無い。\n",
+    )
+    .unwrap();
+    f
 }

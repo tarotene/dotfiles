@@ -22,8 +22,9 @@ PR を作ったセッションでは、最初の Stop で `session-wrapup stop` 
 4. 全行を表にして、投稿先に 1 件コメントする。GitHub に出す先が無い(PR も Issue も無い)
    ときは、表をチャットに出し、`--retro-close '<session_id>' 'none:<理由>'` で閉じる。
    その場合は「投稿は未確認」と報告する。
-5. `disposition: inbox` にした行は、通常の inbox と同じ流れ(Stop 時の `--procedure`、
-   または `/backlog-cleanup`)で起票される。ここで直接 `gh issue create` しない。
+5. `disposition: inbox` にした行は、通常の気づきと同じく inbox(vault のノート、vault の無い機体では
+   jsonl)に入る。Issue にはならず、`/backlog-cleanup` で本人が裁定する。ここで直接
+   `gh issue create` しない。
 
 ## 判断の目安
 

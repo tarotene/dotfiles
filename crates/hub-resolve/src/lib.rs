@@ -56,6 +56,18 @@ pub const PERFORMANCE_HUB: Hub = Hub {
     repo_placeholder: "/path/to/person-state-repo",
 };
 
+/// Obsidian vault(worklog と vault-note が共有する単一の正本)。マーカーの実値は
+/// `home/modules/obsidian.nix` が 1 か所だけで置く(ADR-0034)。存在確認は `.obsidian/app.json`
+/// で、日次ノートの設定(`daily-notes.json`)を要るのは worklog だけが追加で確かめる。
+pub const OBSIDIAN_VAULT: Hub = Hub {
+    name: "obsidian-vault",
+    env_var: "OBSIDIAN_VAULT",
+    marker_name: "obsidian-vault",
+    readme_rel: ".obsidian/app.json",
+    unset_msg: "vault の場所が未設定です。次のいずれかで設定してください:",
+    repo_placeholder: "/path/to/obsidian-vault",
+};
+
 /// 環境変数の取得を差し替え可能にした入口(テスト用)。
 pub type Getenv<'a> = &'a dyn Fn(&str) -> Option<String>;
 

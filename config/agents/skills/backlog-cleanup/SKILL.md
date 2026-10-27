@@ -1,6 +1,6 @@
 ---
 name: backlog-cleanup
-description: wrap-up inbox に溜まった未起票の気づきと、起票済みの wrapup 由来 open Issue をまとめて triage し、裁定が要る項目は triage フェーズ内で AskUserQuestion により決着させたうえで、1 回の GO(ExitPlanMode)後は stacked PR で一括対処する手順。inbox 消化・wrapup 消化・chores をまとめて・雑務を片付けて・wrapup をまとめて処理・溜まった Issue を一掃、sweep the wrap-up inbox, batch chores PR, clean up wrapup issues といった文脈で使う。
+description: wrap-up inbox(vault の inbox/ のノート。vault の無い機体では jsonl)に溜まった未裁定の気づきと、起票済みの wrapup 由来 open Issue をまとめて triage し、裁定が要る項目は triage フェーズ内で AskUserQuestion により決着させたうえで、1 回の GO(ExitPlanMode)後は stacked PR で一括対処する手順。inbox 消化・wrapup 消化・chores をまとめて・雑務を片付けて・wrapup をまとめて処理・溜まった Issue を一掃、sweep the wrap-up inbox, batch chores PR, clean up wrapup issues といった文脈で使う。
 ---
 
 wrap-up inbox と起票済み wrapup 由来 Issue を 1 件ずつ Issue → PR で回すのは
@@ -11,11 +11,23 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 「よく分からない」は agent が独断で母集団から落とす理由にならず、必ず
 ユーザーへの問いに変換される。
 
+気づき(inbox)は Stop で Issue にならない(ADR-0000-wrapup-inbox-to-vault)。vault の
+`inbox/` に 1 件 1 ノートで溜まり、**ここで裁定したものだけ**が PR で直されるか、Issue になる。
+直せるものは Issue を経ずに PR で直す。Issue にするのは、chores の PR に入らない大物(L3)と、
+本人の作業が要るもの(L5)だけである。
+
 ## 1. 候補収集
 
-- **inbox**: パスは SessionStart 注入(`additionalContext`)に出ているものを使う。無ければ `~/.claude/hooks/issue-inbox --inbox-path "$PWD"` で解決する(slug の計算方法は gate 側に一本化されている — 原則リポジトリ単位、remote なし・git repo 外はプロジェクト絶対パス由来にフォールバック)。読むのは `cat` + `jq` で構わない — 禁止されているのは書き込みで、変更は `--add` / `--mark-filed` 経由に限る(この制約はこのスキルでも不変)。
-- **実行中の印**: inbox を読んだら、すぐに `~/.claude/hooks/issue-inbox --chores-begin <inbox のパス>` を実行する。PR を作るまで inbox に行が残るのが正しい状態なので、このスキルの実行中は Stop フックが inbox の起票を繰り返し指示しないようにする印(#820)。印は inbox の隣の `<inbox>.chores` で、inbox が空になる・12 時間を超えると自動で外れる。スキルの終了時(§9 の完成の定義を満たしたとき、または途中で打ち切るとき)は `--chores-end <inbox のパス>` で外す(印が無くても成功する)。印は inbox の行を書かない(inbox の変更は `--add` / `--mark-filed` だけ、の制約は不変)。
-- **母集団は open Issue 全件 + inbox 行全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
+- **inbox**: `~/.claude/hooks/issue-inbox --list-open --repo <owner/repo> --json` で読む(`<owner/repo>` は
+  このリポジトリの `origin`)。vault を宣言している機体では vault の `inbox/` の、状態が open のノートが、
+  **再発の行数の多い順**(同数なら初出が古い順)に出る。各要素は `title`・`repo`・`count`(= 再発の回数)・
+  `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス)・`source`(`vault` / `jsonl`)。
+  vault の無い機体では inbox の jsonl の行が同じ形で出る(`source: jsonl`、1 行 = 1 回)。
+  **読むのは `--list-open` だけにする** — vault の絶対パスを知る必要も、ノートを直接読み書きする必要も無い
+  (状態の変更は `--set-status`、追記は `--add` に限る。この制約はこのスキルでも不変)。再発の回数が
+  多いものは、直す価値の根拠として §3 の起草と §4 の選択肢に添える(ADR-543 の昇格の合図)。
+  この結果も scratchpad のファイル(例 `findings-<取得時刻>.json`)に保存する(§5 で取り直して比べる)。
+- **母集団は open Issue 全件 + inbox の open な気づき全件**: 起票済み Issue の発見は wrap-up フッター一致に頼らない — 実測(2026-09-21)で本文フッター一致は open Issue のごく一部にしか当たらず、汎用の attribution フッターのみを持つ Claude 起票 Issue の大半が発見漏れになっていた。`blocked-by-upstream` ラベルはクエリ段階で機械除外し、残りを §2 の粗振り分けで判定する:
   ```
   gh issue list --state open --limit 500 --json number,title,body,labels,updatedAt \
     | jq '[.[] | select(([.labels[].name] | index("blocked-by-upstream")) | not)]'
@@ -145,7 +157,7 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
 `origin/<default>` の差を確かめる(差があるときの事実の取り方は `requirements-inventory` §1a、#935)。Plan には:
 
 - `## 要求インベントリ` — 母集団の**全件**を `R1..Rn` で列挙する(open Issue +
-  inbox 行)。各 `Rn` の処分は `段N で実装` / `Blocked-Upstream:` / `Obsolete:` /
+  inbox の open な気づき)。各 `Rn` の処分は `段N で実装` / `Blocked-Upstream:` / `Obsolete:` /
   `User-Excluded:` のいずれか 1 つ
 - L5 の `Rn` の処分は、本人作業の結果を反映する最後の段(§6)の `段N で実装` にする。
   閉じられなかったものは、状況コメントつきで open のままにする(§7a、§9)
@@ -156,6 +168,8 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
   本人に差し戻された)。次の 3 つを取り直して、§1 に保存した結果・Plan を書いたときの値と比べる:
   - open Issue: §1 と同じクエリを取り直し、番号の増減と `updatedAt` の変化を `diff` する
     (`jq -r '.[] | "\(.number) \(.updatedAt)"' <ファイル> | sort` を両方に掛ける)
+  - 気づき: `--list-open --repo <owner/repo> --json` を取り直し、§1 に保存した結果と `title` と `count` を
+    `diff` する(別のセッションが `--add` した新しい気づきや、再発の増えたものが見つかる)
   - default branch の先頭: `git fetch` 後の `origin/<default>` の SHA。Plan を書き始めたときと
     変わっていたら、Plan が根拠にしたファイルの差分を読む(`requirements-inventory` §1a)
   - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。
@@ -260,22 +274,33 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   PR 本文の `## 要確認` にポインタ(`- #N — 一言`)を置く。コメントにも数字(時間・按分)は
   書かない(リポジトリの外向きの文面の規約に従う)。
 
-## 8. inbox の消化タイミング
+## 8. 気づきの消化タイミング
 
-その項目を含む**段**の PR 作成(`gh pr create` 成功)の直後に、対処済みの
-inbox 行を 1 行ずつ `--mark-filed` で削除する。行は完全一致で渡す(inbox の
-直接編集は不変で禁止)。
+その項目を含む**段**の PR 作成(`gh pr create` 成功)の直後に、対処した気づきの状態を
+`~/.claude/hooks/issue-inbox --set-status "<title>" <状態> [url] --repo <owner/repo>` で変える
+(題名はノートの `title` と完全一致で渡す。ノートの直接編集は不変で禁止)。
 
-- **commit 直後ではなく PR 作成直後**にする理由: セッションが PR 作成前に
-  終了しても inbox はそのまま残り、既存の収集・起票の仕組みが自己修復的に
-  拾い直せる。commit しかしていない段階で inbox から消してしまうと、push 前に
-  セッションが落ちた場合に気づきそのものが失われる。
-- **merge 後ではなく PR 作成直後**にする理由: PR 作成から merge までの間、
-  対処済みの項目が inbox に残っていると、その間に走る別セッションの Stop
-  ゲートが同じ項目を再び起票しようとする。merge を待って消すと「merge 後に
-  inbox を消す主体」がこの機構には存在しない。PR 作成直後に消しておけば、
-  記録は PR 本文と commit に恒久的に残るため、PR が閉じられても気づきの内容
-  自体は失われない。
+| 裁定 | 状態 | url |
+|---|---|---|
+| PR で直した(Issue を経ない) | `fixed` | その段の PR の URL |
+| 大物・本人の作業として Issue にした | `issued` | `gh issue create` で作った Issue の URL |
+| 直さない・もう起きない | `dropped` | 無し |
+
+- **Issue にするのは L3 と L5 だけ**: 本人が裁定で「Issue にする」と選んだものを `gh issue create` で
+  起票し(本文の末尾に出自フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」を
+  付ける。`--check-dup "<title>"` で同名の open Issue を先に確かめ、あれば新しく作らず `gh issue comment`)、
+  その URL で `issued` にする。公開リポジトリの Issue には、再現に要る最小限の事実だけを書く
+  (内部の名前は書かない。PreToolUse の denylist に弾かれると 1 往復を失う)。
+- vault の無い機体(`source: jsonl`)では、同じコマンドが jsonl のその行を取り除く
+  (`<inbox>.filed.jsonl` に退避)。状態は残らないが、PR 本文と commit が記録になる。
+- **commit 直後ではなく PR 作成直後**にする理由: セッションが PR 作成前に終了しても気づきは
+  open のまま残り、次の機会に拾い直せる。commit しかしていない段階で `fixed` にすると、push 前に
+  セッションが落ちた場合に、直っていないのに直った記録になる。
+- **merge 後ではなく PR 作成直後**にする理由: PR 作成から merge までの間、対処済みの項目が
+  open のままだと、その間に走る別の `/backlog-cleanup` が同じ項目を再び拾う。merge を待って
+  変える主体はこの機構には存在しない。PR 作成直後に変えておけば、記録は PR 本文と commit に
+  恒久的に残る。
+- 直したはずの気づきが再発したときは、`--add` がノートを自動で open に戻す(再発の行が足される)。
 
 ## 9. 完成の定義
 
@@ -286,10 +311,9 @@ inbox 行を 1 行ずつ `--mark-filed` で削除する。行は完全一致で�
 - `plan-scope-gate --check-plan` と `plan-precedent-gate --check` が
   指摘ゼロ
 - 全段の PR が作成済み(`stacked-pr` の完了定義に従う)
-- 対処した項目の `Closes #N` が段ごとに 1:1 対応している(inbox 直接消化分は
+- 対処した項目の `Closes #N` が段ごとに 1:1 対応している(Issue を経ない直接消化分は
   本文の列挙で代替)
-- 対処済みの inbox 行が inbox から 0 件になっている
-- 実行中の印を `--chores-end` で外している(§1。外し忘れても inbox が空になれば自動で外れるが、行が残るまま終えたときは明示的に外す)
+- 対処した気づきがすべて `--set-status` で `fixed` / `issued` / `dropped` になっている(`--list-open` に残っていない)
 - リポジトリ標準の検証(selftest / lint / ビルド等)が段ごとに green
 - 実装中に生じた分岐が該当段の PR 本文の `## 要確認` に列挙されている
 - L5 を扱った場合: 母集団の L5 の各件が、閉じた(証跡つき)か、状況コメントつきで open に

@@ -1,83 +1,133 @@
-# wrap-up inbox — スコープ外の気づきを自動で Issue 化する hook 機構
+# wrap-up inbox — スコープ外の気づきを、vault のノートに溜めて、あとでまとめて裁定する
 
-現行の正準入口は `session-wrapup start|stop`。保存と起票は `issue-inbox`、振り返りは
+現行の正準入口は `session-wrapup start|stop`。保存と裁定の入口は `issue-inbox`、振り返りは
 `session-retrospective`、期限付き試行は `feedback-trial` が担当する。
 以下の旧 `wrapup-stop-gate` / `wrapup-session-start` による説明は、引き続き使える互換入口と移行の経緯を示す。
-実装の配置と引数は[責務一覧](agent-libraries.md)を参照する。
+実装の配置と引数は[責務一覧](agent-libraries.md)を参照する。決定の記録は
+`docs/adr/0000-wrapup-inbox-to-vault.md`(起草中の仮番号。PR 作成後に `scripts/adr-number-check --fix` で改番される)。
 
-
-作業中に出た「今回のタスクのスコープ外だが起票価値のある気づき」が揮発する問題への
-対処。**収集**(セッション中に inbox へ溜める)と**起票**(`gh issue create`)を分離し、
-Claude Code の hook 2 本で回す。
+作業中に出た「今回のタスクのスコープ外だが記録する価値のある気づき」が揮発する問題への
+対処。**収集**(セッション中に inbox へ溜める)と**裁定**(本人が `/backlog-cleanup` でまとめて決める)を
+分離する。**Issue にするのは裁定で選んだものだけ**で、Stop は起票を求めない。以前は Stop が毎セッション、
+inbox の全行を Issue にさせていたため、些細な気づきの Issue が増えて、大事な開発タスクが埋もれた
+(ADR-0000-wrapup-inbox-to-vault の背景)。
 
 inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` スキル §1 の判定条件)が
 無い気づきに限る。依存があれば stacked PR の追加提案段として受ける選択肢が先に
 出るため、この文書が扱うのは「stack せず inbox に落ち着いた」気づきの以降の経路
-(SessionStart 注入・Stop ゲート・起票)である。振り分け自体の設計根拠は
+(SessionStart 注入・保存・裁定)である。振り分け自体の設計根拠は
 `docs/agents/stacked-pr.md`「スコープ外発見を stack の一段として受ける入口」を
 参照。
 
 | 部品 | イベント | 役割 |
 |------|----------|------|
-| `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ」を `additionalContext` で注入。未処理件数も掲示 |
-| `wrapup-stop-gate` | Stop | inbox 非空かつ起票可能なら exit 2 + stderr の短いポインタで、本体 Claude に `--procedure` の手順書を取りに行かせて起票させる(Stop 出力は人にも見えるため手順書本体は出さない。書式は ADR-625) |
+| `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ。Issue にはしない」を `additionalContext` で注入。未裁定の件数も掲示 |
+| `wrapup-stop-gate` | Stop | jsonl に残った行を vault へ移す。更新した feedback memory に `#N` が無ければ指示する。**気づきの起票は求めない** |
+| `/backlog-cleanup` | 手動 | vault の open な気づきを集め、本人が裁定し、直せるものは PR で直す(スキルは[`backlog-cleanup.md`](backlog-cleanup.md)) |
 
 配備は `home/modules/agents.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
-への登録は activation 時の冪等 jq マージ)。全ホスト共通。
+への登録は activation 時の冪等 jq マージ)。全ホスト共通。vault の場所の宣言は
+`home/modules/obsidian.nix` が置くマーカー 1 つ(下の「行き先」)。
+
+## 行き先: vault のノート、vault の無い機体では jsonl
+
+`--add` は、vault を宣言している機体では vault のノートに書き、宣言していない機体では従来どおり
+機体の jsonl に溜める。**どちらも Issue にはしない**。機体によって Issue が増えたり増えなかったりしないよう、
+規則は全機体で同じにしてある。
+
+vault の宣言は hub-resolve の `OBSIDIAN_VAULT`(環境変数、無ければ
+`${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目。worklog と同じ単一の正本)で、
+実値は `home/modules/obsidian.nix` の 1 か所だけにある(ADR-0034)。宣言があるのに読めないとき
+(パスが無い、`.obsidian/app.json` が無い)は、理由を 1 行出して jsonl に退避する。黙って捨てない。
+
+全機体を vault に寄せることは**未実装(意図あり)**で、いまは vault を持つ機体だけが対象である
+(後続の Issue に残す)。
+
+### ノートの形
+
+気づき 1 件 = vault の `inbox/<題名から作った名前>.md` 1 枚。ファイル名はリンクに使えない文字
+(`\ / : * ? " < > | # ^ [ ]` と制御文字)を `-` にし、150 バイトを超えるときは文字の境界で切って
+末尾に ` ~<hash>` を付ける(`vault-note::note_name`)。同じ題名は同じノートになる
+(同じ名前でも `title` と `repo` が違えば、別のノートにする)ので、重複が構造的に起きず、**本文の
+行数がそのまま再発の回数**になる(ADR-543 が昇格の合図にしている「同じことの繰り返し」。以前は
+既存 Issue へのコメントの数で数えていた)。
+
+```
+---
+title: "<題名>"
+repo: "owner/repo"
+status: "open"        # open | fixed | issued | dropped
+issue: ""             # issued にしたときの URL
+pr: ""                # fixed にしたときの URL
+first_seen: "YYYY-MM-DD"
+---
+- YYYY-MM-DD <detail>
+```
+
+- 再発は本文に 1 行足す(`O_APPEND`)。同じ日に同じ内容の行は足さない(冪等)。
+- `fixed` か `dropped` のノートに再発の行が付くと、`status` を `open` に戻す(直したはずのものが
+  再発した合図)。`issued` は動かさない(Issue 側で扱う)。書き直しは、状態が変わるときだけで、
+  一時ファイル + rename(`vault-note::Locked::replace`)。内容が同じなら書かない。
+- 値は JSON の二重引用符文字列で書く(YAML としても正しい)。Obsidian の Properties で引用符なしに
+  書き直されても読める。キーの順と、知らないキーは保つ。
+- 排他ロックは vault の**外**(`<state>/vault.lock`)に置く。rename でノートの inode が変わるので、
+  ノート自体にかけた flock では排他にならない。
+
+Obsidian の Bases(core plugin、https://obsidian.md/help/bases 、取得 2026-10-27)で、
+`status` ごとの一覧を作れる。
 
 ## なぜ SessionEnd ではないのか
 
-セッション終了時に起票エージェントを走らせる案は、ドキュメント上の制約で成立しない:
+SessionEnd で何かを起票させる案は、ドキュメント上の制約で成立しない:
 
 - `SessionEnd` は decision control を持たない。副作用専用で、exit 2 でも何もブロック
-  できず、stderr はユーザーにしか見えない — 子エージェントの結果を渡す先がない。
+  できず、stderr はユーザーにしか見えない。
 - `SessionEnd` の hook は短い時間予算を共有する(設定で引き上げても上限 60 秒)。
 
-「セッションが死んでいく最中に、時間制限つきで、結果を誰にも報告できない形で」外部
-副作用(Issue 作成)を賭けることになるため、採らない。
+(この制約は、気づきを Issue にしなくなった今も、jsonl の行を vault へ移す処理を SessionEnd に
+置かない理由になる。移す処理は SessionStart・Stop・`--migrate` で走り、冪等である。)
 
-`Stop` は逆に exit 2 で会話を継続させられ、フルコンテキストと実ツールを持った本体
-Claude に起票させられる。起票の実行主体が LLM 本体なので、Issue 本文に発見時の文脈を
-盛り込めるのも Stop 側の利点。
-
-## 設計判断(/grilling で確定)
+## 設計判断
 
 | 論点 | 決定 | 根拠 |
 |------|------|------|
-| スコープ | user グローバル(`~/.claude/settings.json`) | 気づきの Issue 化はプロジェクト非依存。home-manager 配備で全ホストに自動展開 |
-| 粒度 | ターン単位・session_id フィルタなし | 気づいた直後の起票が最も文脈が濃い。残骸はどのセッションでも自己修復的に回収される |
+| スコープ | user グローバル(`~/.claude/settings.json`) | 気づきの記録はプロジェクト非依存。home-manager 配備で全ホストに自動展開 |
+| 粒度 | ターン単位・session_id フィルタなし | 気づいた直後の記録が最も文脈が濃い。残骸はどのセッションでも自己修復的に回収される |
 | 収集指示の経路 | SessionStart `additionalContext` 注入 | グローバル CLAUDE.md を store symlink にすると `#` メモリ追記が壊れる。skill は受動的ルールの担い手として発火が不確実 |
-| 起票先 | 作業中プロジェクト自身のリポジトリ | スコープ外の気づきもそのリポジトリの事象。起票は hook でなく本体 Claude が行う |
-| 縮退 | gh 不在 / git repo 外 / GitHub remote 不在 なら黙って exit 0 | ADR-0005 の binary-existence gating。inbox は残り、条件が揃う環境・セッションで回収される。remote 判定は `git remote -v` の `github.` マッチ(静的検査のみ、hook 内でネットワークに出ない) |
-| スキーマ | 最小 JSONL `{"ts", "title", "detail"}`・ラベルなし | 存在しないラベルは `gh issue create` を落とす。出自は本文フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」で検索可能にする(このリンクが attribution-guard.sh の生成元表示要求も兼ねる、`attribution-guard.md`「wrap-up inbox の出自フッターは生成元表示を兼ねる」参照) |
-| inbox 置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク |
-| slug のキー | 原則リポジトリ単位(`remote.origin.url` の正規化)。remote なし・git repo 外はプロジェクト絶対パスの `/` `.` → `-` 置換にフォールバック | 旧・絶対パス slug は同一リポジトリでも worktree ごとに inbox が分散し、worktree 削除後は orphan 化していた(実測: dotfiles で 3 個以上の分散 inbox、うち 1 個が並行セッション中に無言で 0 バイト化してデータ喪失)。remote URL 単位に正規化すれば worktree 間で inbox を共有できる |
+| 起票 | しない(裁定は `/backlog-cleanup`) | 毎セッションの起票は些細な Issue を増やし、本当に大事な開発タスクを埋もれさせた。Issue にするのは、本人が選んだ大物・本人の作業が要るものだけ |
+| `go: ask` の行 | `go` は読まない | 起票前の確認を行に持たせる必要が無くなった(裁定は `/backlog-cleanup`) |
+| 縮退 | vault 無し・使えない → jsonl。gh 不在 / git repo 外 / GitHub remote 不在 → feedback の指示を出さない | ADR-0005 の binary-existence gating。記録は残り、条件が揃う環境・セッションで回収される |
+| jsonl のスキーマ | 最小 JSONL `{"ts", "title", "detail"}`、任意で `repo` | vault の無い機体の保存形式。題名の無い行は vault に書けず jsonl に残る |
+| jsonl の置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク |
+| slug のキー | 原則リポジトリ単位(`remote.origin.url` の正規化)。remote なし・git repo 外はプロジェクト絶対パスの `/` `.` → `-` 置換にフォールバック | 旧・絶対パス slug は同一リポジトリでも worktree ごとに inbox が分散し、worktree 削除後は orphan 化していた。remote URL 単位に正規化すれば worktree 間で inbox を共有できる |
+| repo(ノートの `repo`) | 行の `repo` → 作業中プロジェクトの `origin` の `owner/repo` → jsonl のファイル名(slug) | 同じ題名が別のリポジトリで出ても、別のノートにする |
 
-## inbox の整合性(Codex レビューで確定)
+## inbox の整合性
 
-inbox の書き込みを LLM の自由編集に任せると、重複起票・失敗行の誤削除・並行セッション
-との競合を検証できない。そこでリスクのある操作をすべて `wrapup-stop-gate` の
-決定論的サブコマンドに寄せ、selftest(CI)で回帰テストする:
+書き込みを LLM の自由編集に任せると、重複・失敗行の誤削除・並行セッションとの競合を検証できない。
+そこでリスクのある操作をすべて `issue-inbox` の決定論的サブコマンドに寄せ、`cargo test` で回帰テストする:
 
-- `--add <inbox> <json1行>` — `mkdir -p` + JSON 検証 + flock 追記。初回利用時の
-  ディレクトリ不在で沈黙する事故を防ぐ。
-- `--check-dup "<title>"` — `gh issue list --search` で同名 open Issue を検査。
-  exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能
-  (その行は残す)。重複は捨てず、その Issue に再発コメントを追記してから
-  `--mark-filed` する(下記「再発の記録」)。
-- `--mark-filed <inbox> <json1行>` — **行全体の完全一致で先頭 1 行だけ**削除
-  (`ts` は一意性を保証しないため削除キーにしない)。flock + tmp+mv。削除した
-  行は `<inbox>.filed.jsonl` に tombstone として追記してから mv する(#297
-  — 起票済み・重複(再発コメント追記済み)いずれの削除も無検証の一撃消去にしないため)。
-  削除対象が無い呼び出しは rewrite 自体をせず tombstone にも追記しない
-  (no-op 検出)。mv 前に元ファイルのパーミッションを引き継ぐ(mktemp 既定の
-  0600 化を防ぐ)。
+- `--add <inbox> <json1行>` — JSON 検証 + 追記。vault を宣言していればノートへ(上記)。書けなかった行は
+  jsonl に退避する(`mkdir -p` + flock 追記)。初回利用時のディレクトリ不在で沈黙する事故を防ぐ。
+- `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
+  機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/backlog-cleanup` の唯一の収集口。
+- `--set-status <title> <fixed|issued|dropped> [url] [--repo R]` — ノートの frontmatter だけを書き換える
+  (本文はバイト単位でそのまま残す)。jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に退避)。
+- `--check-dup "<title>" [repo]` — `gh issue list --search` で同名 open Issue を検査する。
+  exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能。Issue を作る前に、
+  `/backlog-cleanup` と promotion-detect が使う。
+- `--mark-filed <inbox> <json1行>` — jsonl の**行全体の完全一致で先頭 1 行だけ**削除
+  (`ts` は一意性を保証しないため削除キーにしない)。flock + tmp+mv。削除した行は
+  `<inbox>.filed.jsonl` に tombstone として追記してから mv する(#297)。vault の無い機体の消化手段。
+- `--migrate <project-dir>` — 旧 slug の inbox の回収(下の節)と、jsonl に残った行の vault への移行。
 
-flock は `--add` と `--mark-filed` の両方が取る。session_id フィルタを捨てた設計では
-複数セッションが同じ inbox に触るため、追記と置換の競合(行の消失・復活)を排他で防ぐ。
+jsonl の flock は `--add` と `--mark-filed` の両方が取る。vault 側は `vault-note` の
+`<state>/vault.lock` が排他する。どちらの経路も、jsonl のロックを取ってから vault のロックを取る順に
+固定してあり、逆順で取る経路が無いのでデッドロックしない。
 
-Stop ゲートの stderr 指示は「起票成功または重複に再発コメントを追記した行だけ `--mark-filed`、
-失敗行は残して次ターンで再試行、直接編集は禁止」と明示する。
+削除したサブコマンド: `--procedure`(起票の手順書)、`--chores-begin` / `--chores-end`
+(`/backlog-cleanup` の実行中に Stop の起票指示を黙らせる印。#820)。Stop が気づきの起票を
+求めなくなったので、黙らせる対象が無い。呼ぶと「削除された」と断って exit 1 する。
 
 ## slug のリポジトリ単位化と自己修復マージ
 
@@ -90,56 +140,52 @@ worktree の数だけ分散し、worktree 削除後は誰も読まない orphan 
 
 過去に書かれた旧 slug の inbox を回収するため、`--migrate <project-dir>`
 サブコマンド(Stop hook 本体と `wrapup-session-start` の双方が毎回呼ぶ)が
-自己修復マージを行う。安全性はこのリポジトリの inbox 整合性モデル(上記
-「inbox の整合性」節)を壊さないことを最優先に設計している:
+自己修復マージを行う。安全性はこのリポジトリの inbox 整合性モデル(上記)を壊さないことを
+最優先に設計している:
 
-- 使用中になり得る `<inbox>.lock` は削除・再作成しない(#297 でこの主張と
-  実装の不一致を修正済み — 修正前は空ファイル判定分岐・全行確認済み分岐の
-  両方で `rm -f "$legacy" "$legacy.lock"` と lock も unlink していた)。
-  unlink すると、既にその lock を open/flock 待ちしている別プロセスとの
-  相互排他が壊れる(unlink 後は同名で新しい inode の lock が作られるため、
-  旧 inode を握ったままの保持者と競合しなくなる)。orphan のまま残る lock
-  ファイルは空なので実害はない。新旧両方の lock を取るのはこのマージだけで、
-  全呼び出し箇所が「新 → 旧」の同一順序で取得するためデッドロックしない。
-- 空ファイル判定もロック取得後に行う(空判定直後に並行 `--add` が書いた行を
-  消さないため)。
+- 使用中になり得る `<inbox>.lock` は削除・再作成しない(#297)。unlink すると、既にその lock を
+  open/flock 待ちしている別プロセスとの相互排他が壊れる。orphan のまま残る lock ファイルは空なので
+  実害はない。新旧両方の lock を取るのはこのマージだけで、全呼び出し箇所が「新 → 旧」の同一順序で
+  取得するためデッドロックしない。
+- 空ファイル判定もロック取得後に行う(空判定直後に並行 `--add` が書いた行を消さないため)。
 - 新ファイルへは append のみ(truncate/rewrite する経路を持たない)。dedup は
-  行全体の完全一致(この機構の行同一性モデルそのもの。`ts`+`title` 一致だと
-  `detail` の異なる行を落とすため使わない)。
-- 旧の全行が新に存在することを確認できたときだけ旧本体を削除する(lock は
-  上記の通り削除しない)。1 行でも欠ければ残して次回呼び出し(次セッション)
-  に再試行を委ねる(冪等)。
+  行全体の完全一致。
+- 旧の全行が新に存在することを確認できたときだけ旧本体を削除する。1 行でも欠ければ残して次回
+  呼び出し(次セッション)に再試行を委ねる(冪等)。
 
 移行後も、旧パスを埋め込んだ SessionStart 注入を持つ長命セッションが
 リテラル旧パスへ `--add` して旧ファイルを再作成することがあり得るが、
-次にどのセッションの hook が起動しても `--migrate` が毎回走るため自己修復
-される。
+次にどのセッションの hook が起動しても `--migrate` が毎回走るため自己修復される。
+
+jsonl から vault への移行(`drain_to_vault`)も同じ契機で走る。**そのプロジェクトの** jsonl の行だけを
+移す(別のリポジトリの jsonl は、そのリポジトリでセッションが始まったときに移る。jsonl の
+ファイル名から owner/repo を逆算できないため)。読めない行と vault に書けなかった行は jsonl に残し、
+移した行は `<inbox>.filed.jsonl` に退避する。
 
 ## 検証
 
-- `nix develop --command cargo test -p wrapup-stop-gate` — 縮退ゲート・
-  `--add`/`--mark-filed`/`--check-dup`・SessionStart 注入の回帰テスト(CI の
-  `ci.yml` でも実行)。
-- 手動 E2E は inbox にダミー行を `--add` して新しいセッションを開始する:
-  SessionStart 注入に未処理件数が出て、ターン終了時に Stop ゲートが発火する。
+- `cargo test -p wrapup-stop-gate -p issue-inbox -p vault-note -p session-wrapup` — vault のノート
+  (`vault_inbox.rs`)・縮退・`--add`/`--mark-filed`/`--check-dup`・SessionStart 注入の回帰テスト
+  (CI の `ci.yml` でも実行)。テストは `OBSIDIAN_VAULT` と `XDG_CONFIG_HOME` を消した一時環境で走り、
+  実機の vault に書かない。
+- 手動 E2E は vault を宣言した機体で `issue-inbox --add` して `inbox/` にノートができること、新しい
+  セッションの SessionStart 注入に未裁定の件数が出て、ターン終了時に Stop が起票を求めないことを読む。
 
 ## feedback 型 auto memory の経路(#328)
 
-wrap-up inbox は「今回のタスクのスコープ外だが Issue 起票の価値がある気づき」
-だけを対象にしており、ユーザーから受けた作業方針上のフィードバックを Claude
-Code の auto memory(`~/.claude/projects/*/memory/*.md`、frontmatter
-`metadata.type: feedback`)に保存するケースは対象外だった。実測
-(2026-09-23)では、ローカル auto memory の `type: feedback` ファイル 17 件中
+wrap-up inbox は「今回のタスクのスコープ外だが記録する価値がある気づき」だけを対象にしており、
+ユーザーから受けた作業方針上のフィードバックを Claude Code の auto memory
+(`~/.claude/projects/*/memory/*.md`、frontmatter `metadata.type: feedback`)に保存するケースは
+対象外だった。実測(2026-09-23)では、ローカル auto memory の `type: feedback` ファイル 17 件中
 14 件が Issue 化されずローカルに閉じたままだった。
 
-`wrapup-stop-gate` の同じ Stop 本体に、inbox とは独立した第二の検査を
-足した: 今セッション中に更新された `type: feedback` メモリで `#N`(Issue
-番号)参照が無いものを検出し、inbox が空でも単独でゲートを発火させる。
-「今セッション」の境界は `wrapup-session-start` が touch する stamp
-ファイル(`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)
-の mtime を基準に `find -newer` で判定する(GNU/BSD 両対応、epoch 文字列を
-扱わない)。stamp が無い(SessionStart 未実行など)場合は判定不能として
-何もしない側に倒す(ADR-0005 と同じ fail-open)。
+`wrapup-stop-gate` の同じ Stop 本体に、inbox とは独立した検査を足してある: 今セッション中に更新された
+`type: feedback` メモリで `#N`(Issue 番号)参照が無いものを検出して、Issue 化を促す。**今は Stop が出す
+指示は、この 1 つだけ**である(気づきの inbox は指示を出さない)。「今セッション」の境界は
+`wrapup-session-start` が touch する stamp ファイル
+(`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)の mtime を基準に `find -newer` で
+判定する。stamp が無い(SessionStart 未実行など)場合は判定不能として何もしない側に倒す(ADR-0005 と
+同じ fail-open)。
 
 原則そのもの(不可視なローカルメモに閉じ込めない)は共有 AGENTS.md、
 auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
@@ -153,68 +199,30 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 追記する。詳細は[ADR-478](../adr/478-agent-verdict-ledger.md)と
 [`verdict-escalate.md`](verdict-escalate.md)を参照。
 
-この経路が書く行は最小スキーマに 2 フィールドを追加する:
+この経路が書く行は、最小スキーマに `repo`(任意、`"owner/repo"`: ノートの `repo`)と
+`go`(任意、`"ask"` 固定)を足す。`go` は、以前は「起票前に人間の明示的な GO が要る」印で、Stop の
+指示が AskUserQuestion で確認させていた(ADR-478 D6)。気づきが起票されなくなったので、
+`go` は読まない — 裁定は `/backlog-cleanup` で行い、「収集・集約は自動、Issue にするのは人間が
+選んだもののみ」は同じ形で保たれる。
 
-- `repo`(任意、`"owner/repo"`): 既定の起票先。省略時はこれまでどおり
-  「作業中プロジェクト自身のリポジトリ」。
-- `go`(任意、`"ask"` 固定): 「起票前に人間の明示的な GO が要る」印。
-  `verdict-escalate` が書く行には必ず付く。このフィールドが無い行(通常の
-  スコープ外の気づき)は従来どおり重複確認だけで起票してよい。
+## 消化経路
 
-`go:"ask"` を付ける理由: `wrapup-stop-gate` の既存 Stop 指示は重複確認の
-直後に `gh issue create` を実行させ、人間の承認を挟む段階が無い。permission
-prompt も境界にならない — `gh-edit-allow` が同セッション内の作成実績がある
-リポジトリへの `gh issue create` を自動 allow するため。そこで `go:"ask"`
-の行だけ、Stop 指示文が AskUserQuestion で title・detail・起票先 `repo` を
-提示し、「このまま起票」「別リポジトリへ振り直し」「今回は起票しない」の
-選択を得てから処理させる(ADR-478 D6)。「収集・集約は自動、起票は人間の
-GO 後」という要件をこの 2 フィールドだけで表現する。
-
-`--check-dup` は repo 引数を取れるようになった(`--check-dup <title>
-[repo]`)。repo があれば `gh issue list -R <repo>` で調べる。
-
-## 消化経路は 2 つ
-
-上記の Stop ゲートによる個別起票に加えて、判断を要さない軽微な項目をまとめて片す
-[`backlog-cleanup` スキル](backlog-cleanup.md)がある。どちらの経路でも inbox からの
-削除は `--mark-filed` のみを介する(直接編集は禁止のまま)。個別起票は「気づいた
-文脈が濃いうちに Issue へ記録する」ため、chores スキルは「判断無しで即対処できる
-ものを 1 つの PR でまとめて消化する」ためのもので、役割は排他ではなく補完である。
-
-## `/backlog-cleanup` の実行中は起票の指示を出さない(#820)
-
-`backlog-cleanup` は inbox の行を、その行を含む段の PR 作成の直後に `--mark-filed` で消化する
-(PR 作成前に起票すると、起票して即閉じる churn になる)。そのため PR を作るまでは、inbox に行が
-残るのが正しい状態だが、Stop hook はそれを区別せず、バックグラウンドの調査の完了を待つ短い応答の
-たびに「起票せよ」と指示し、1 セッションで 4 回、「起票しない」という応答を返す必要があった。
-
-`issue-inbox --chores-begin <inbox>` が、inbox の隣に印 `<inbox>.chores`(中身は開始時刻)を置く。
-印が有効なあいだ、Stop は inbox の起票指示を出さない。フィードバック型 auto memory の Issue 化の
-指示(上の節)は別物なので、そのまま出す。`--chores-end <inbox>` が印を外す(無くても成功する)。
-
-- 印は inbox のパスで引く。セッション ID は hook の入力にだけ来て、スキルを動かすエージェント自身には
-  分からない。inbox のパスは `--add` や `--mark-filed` と同じく SessionStart の注入に出ている。
-- 失効: inbox が空になったとき(次の Stop で外れる)、開始から 12 時間を超えたとき。セッションが消えて
-  `--chores-end` が呼ばれなかった印が、同じプロジェクトのほかのセッションの指示を黙らせ続けない
-  ための上限(スキルの実行は数時間に及ぶので 12 時間)。壊れ方は「指示が戻る」側で、取りこぼしは
-  `backlog-cleanup` の収集が拾う。
-- 同じ inbox を共有する別セッションの Stop も、印が有効なあいだは黙る。そのセッションの行も、
-  `backlog-cleanup` が母集団として拾う。
+溜まった気づきは、[`backlog-cleanup` スキル](backlog-cleanup.md)が `--list-open` で集め、再発の
+回数の多い順に本人が裁定する。直せるものは Issue を経ずに stacked PR で直し(`--set-status fixed`)、
+大物と本人の作業が要るものだけが Issue になる(`--set-status issued`)。捨てるものは `dropped`。
+**ノートは直接編集しない**(読み書きは `--add` / `--list-open` / `--set-status` を介する)。
 
 ## 待ちターンでは出さない(#854)
 
-バックグラウンド処理の完了を待つターンでは、inbox の指示も retro の指示も出さない。仕組みと限界は
+バックグラウンド処理の完了を待つターンでは、retro の指示も feedback の指示も出さない。仕組みと限界は
 [`retro.md`](retro.md) の「待ちターンでは出さない」に書いた。
 
 ## 再発の記録(重複を捨てない)
 
-以前の手順書は `--check-dup` が重複を返すと行を黙って捨てていたため、同じ気づきが
-何度出ても再発回数がどこにも残らなかった。ADR-543 は「同じ規範違反が繰り返し起きる」
-ことを散文 → script → gate への昇格の合図にしているので、その合図が消えていた。
-
-`--procedure` の手順 2 は、重複なら既存 Issue に `gh issue comment <N>` で再発
-(日付・今回の detail・見つけた場所)を追記してから `--mark-filed` するよう指示する。
-コメントの数がそのまま再発回数になり、新しい集計機構は要らない。通常の追記行と
-verdict-escalate 由来の行(`go:ask`)の両方に同じ手順を適用する。先行例は Google SRE
-Workbook ch.10 "Postmortem Culture"(https://sre.google/workbook/postmortem-culture/、
-取得 2026-10-02)で、action item に追跡番号を持たせ、繰り返しを傾向として見る。
+同じ気づきが何度出ても再発回数がどこにも残らないと、ADR-543 が散文 → script → gate への昇格の合図に
+している「同じ規範違反が繰り返し起きる」が見えなくなる(以前の手順書は、重複を黙って捨てていた)。
+ノートの本文の行数が再発の回数である。`--list-open` が回数の多い順に返すので、`/backlog-cleanup` は
+繰り返されているものから裁定する。日次 timer で自動検出する仕組みは持たない(繰り返し見落としが
+起きたときに、ADR-543 の昇格型に従って検討する)。先行例は Google SRE Workbook ch.10
+"Postmortem Culture"(https://sre.google/workbook/postmortem-culture/、取得 2026-10-02)で、
+action item に追跡番号を持たせ、繰り返しを傾向として見る。

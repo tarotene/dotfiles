@@ -369,8 +369,16 @@ l_external: "Sessions / services / state" {
     class: s_external
     style.stroke-dash: 4
   }
+  n_obsidian_vault: "Obsidian vault" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
 }
 
+n_agent_session.l_session_start.n_worklog -> l_external.n_obsidian_vault: "daily note rows" {
+  class: e_file
+}
 n_agent_session.l_session_start.n_gpg_prewarm -> l_external.n_user: "pinentry once" {
   class: e_notify
 }
@@ -466,6 +474,9 @@ legend: "Legend" {
   }
   lg_s_git: "git hook" {
     class: s_git
+  }
+  lg_s_store: "state file" {
+    class: s_store
   }
   lg_llm: "hexagon: an LLM takes part in the decision" {
     class: s_cloud_llm

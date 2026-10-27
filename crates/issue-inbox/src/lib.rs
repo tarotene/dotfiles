@@ -17,6 +17,7 @@
 
 pub use jq_json_compat::query as json;
 pub mod shquote;
+pub mod vault;
 
 use jq_json_compat::jqfmt::J;
 use jq_json_compat::jqparse::parse_stream;
@@ -296,17 +297,77 @@ pub fn migrate_legacy_inbox(project: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 宣言された vault。宣言が無い、または使えない機体では `None`(使えないときは理由を 1 行出す)。
+fn open_vault() -> Option<vault_note::VaultNotes> {
+    match vault_note::VaultNotes::open(Path::new(&state_root())) {
+        None => None,
+        Some(Ok(v)) => Some(v),
+        Some(Err(e)) => {
+            eprintln!("issue-inbox: vault を使えない({e}); inbox の jsonl に退避する");
+            None
+        }
+    }
+}
+
+/// 作業中のプロジェクトのディレクトリ(`CLAUDE_PROJECT_DIR`、無ければ cwd)。
+fn project_dir() -> String {
+    env_nonempty("CLAUDE_PROJECT_DIR").unwrap_or_else(|| {
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    })
+}
+
+/// 気づきの repo。行に無ければ、プロジェクトの `origin` の `owner/repo`、それも無ければ
+/// inbox のファイル名(slug)。
+fn default_repo(project: &str, inbox: &str) -> String {
+    git_repository::origin_nwo(Path::new(project)).unwrap_or_else(|| {
+        let base = basename(inbox);
+        base.strip_suffix(".jsonl").unwrap_or(&base).to_string()
+    })
+}
+
+fn add_to_vault(vault: &vault_note::VaultNotes, inbox: &str, line: &str) -> Result<(), String> {
+    let mut item = vault::parse_item(line)?;
+    if item.repo.is_empty() {
+        item.repo = default_repo(&project_dir(), inbox);
+    }
+    let g = vault.lock().map_err(|e| e.to_string())?;
+    vault::add_item(&g, &item, &vault::jst_today())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// `--add`: `jq -ce .` でコンパクト化して 1 行(複数値なら値ごとに 1 行)追記する。
+/// vault を宣言している機体では、行ごとに vault のノートへ足す(Issue にはしない)。
+/// 書けなかった行(題名が無い・vault が書けない)は、従来どおり inbox の jsonl に残す。
 pub fn add(inbox: &str, line: &str) -> Code {
     let compact = match parse_stream(line) {
         Ok(vals) if vals.last().is_some_and(json::truthy) => {
-            vals.iter().map(J::compact).collect::<Vec<_>>().join("\n")
+            vals.iter().map(J::compact).collect::<Vec<_>>()
         }
         _ => {
             eprintln!("wrapup-stop-gate: --add: 不正な JSON です");
             return 64;
         }
     };
+    let compact = match open_vault() {
+        None => compact,
+        Some(vault) => compact
+            .into_iter()
+            .filter(|l| match add_to_vault(&vault, inbox, l) {
+                Ok(()) => false,
+                Err(e) => {
+                    eprintln!("issue-inbox: vault に書けない({e}); inbox の jsonl に退避する");
+                    true
+                }
+            })
+            .collect(),
+    };
+    if compact.is_empty() {
+        return 0;
+    }
+    let compact = compact.join("\n");
     let dir = dirname(inbox);
     if let Err(e) = fs::create_dir_all(&dir) {
         eprintln!("mkdir: cannot create directory '{dir}': {e}");
@@ -324,6 +385,74 @@ pub fn add(inbox: &str, line: &str) -> Code {
             1
         }
     }
+}
+
+/// プロジェクトの inbox の jsonl に残っている行を、vault のノートへ移す(vault を宣言している
+/// 機体だけ)。読めない行と、vault に書けなかった行は jsonl に残す。移した行は
+/// `<inbox>.filed.jsonl` に退避する。移した件数を返す。
+pub fn drain_to_vault(project: &str) -> Result<usize, String> {
+    let Some(vault) = open_vault() else {
+        return Ok(0);
+    };
+    let inbox = inbox_for(project);
+    if !non_empty_file(&inbox) {
+        return Ok(0);
+    }
+    let repo = default_repo(project, &inbox);
+    let _l = lock(&format!("{inbox}.lock")).map_err(|e| e.to_string())?;
+    let orig = fs::read(&inbox).map_err(|e| e.to_string())?;
+    let g = vault.lock().map_err(|e| e.to_string())?;
+    let mut kept: Vec<&[u8]> = Vec::new();
+    let mut moved: Vec<&[u8]> = Vec::new();
+    let mut warned = false;
+    for rec in split_lines(&orig) {
+        let ok = std::str::from_utf8(rec)
+            .map_err(|e| e.to_string())
+            .and_then(vault::parse_item)
+            .and_then(|mut item| {
+                if item.repo.is_empty() {
+                    item.repo = repo.clone();
+                }
+                vault::add_item(&g, &item, &vault::jst_today()).map_err(|e| e.to_string())
+            });
+        match ok {
+            Ok(_) => moved.push(rec),
+            Err(e) => {
+                if !warned {
+                    eprintln!("issue-inbox: jsonl の行を vault へ移せない({e}); 残す");
+                    warned = true;
+                }
+                kept.push(rec);
+            }
+        }
+    }
+    if moved.is_empty() {
+        return Ok(0);
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(orig.len());
+    for rec in &kept {
+        out.extend_from_slice(rec);
+        out.push(b'\n');
+    }
+    let mut filed: Vec<u8> = Vec::new();
+    for rec in &moved {
+        filed.extend_from_slice(rec);
+        filed.push(b'\n');
+    }
+    File::options()
+        .create(true)
+        .append(true)
+        .open(format!("{inbox}.filed.jsonl"))
+        .and_then(|mut f| f.write_all(&filed))
+        .map_err(|e| e.to_string())?;
+    let (tmp, mut f) = tmp_sibling(&inbox).map_err(|e| e.to_string())?;
+    f.write_all(&out).map_err(|e| e.to_string())?;
+    drop(f);
+    if let Ok(m) = fs::metadata(&inbox) {
+        let _ = fs::set_permissions(&tmp, m.permissions());
+    }
+    fs::rename(&tmp, &inbox).map_err(|e| e.to_string())?;
+    Ok(moved.len())
 }
 
 /// awk の `$0 == ENVIRON["TARGET"]`: 両辺が数値に見えれば数値比較、それ以外は文字列比較。
@@ -390,62 +519,6 @@ fn tmp_sibling(base: &str) -> std::io::Result<(String, File)> {
         }
     }
     Err(std::io::Error::other("mktemp: too many collisions"))
-}
-
-// ---------------------------------------------------------------------------
-// 待ちターンと、/backlog-cleanup の実行中(#854、#820)
-
-/// `/backlog-cleanup` の印が有効な時間。スキルの実行は数時間に及ぶが、セッションが
-/// 消えて `--chores-end` が呼ばれなかった印が、ほかのセッションの指示を黙らせ続けない
-/// ための上限。
-const CHORES_STALE_SECS: u64 = 12 * 3600;
-
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
-/// `/backlog-cleanup` の実行中を示す印のパス(inbox の隣)。セッション ID は、スキルを動かす
-/// エージェント自身には分からない(hook の入力にだけ来る)ので、`--add` や `--mark-filed` と
-/// 同じく、SessionStart の注入に出ている inbox のパスで引く。
-fn chores_mark(inbox: &str) -> String {
-    format!("{inbox}.chores")
-}
-
-/// `--chores-begin <inbox>`: 印を置く(中身は開始時刻)。
-fn chores_begin(inbox: &str) -> Code {
-    let mark = chores_mark(inbox);
-    if let Some(dir) = Path::new(&mark).parent() {
-        let _ = fs::create_dir_all(dir);
-    }
-    match fs::write(&mark, format!("{}\n", unix_now())) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("wrapup-stop-gate: --chores-begin: {mark}: {e}");
-            1
-        }
-    }
-}
-
-/// `--chores-end <inbox>`: 印を外す(無くても成功する)。
-fn chores_end(inbox: &str) -> Code {
-    let _ = fs::remove_file(chores_mark(inbox));
-    0
-}
-
-/// 印が有効か。inbox が空になった、または `CHORES_STALE_SECS` を超えた印は、その場で外す。
-fn chores_active(inbox: &str) -> bool {
-    let mark = chores_mark(inbox);
-    let Ok(text) = fs::read_to_string(&mark) else {
-        return false;
-    };
-    let started: u64 = text.trim().parse().unwrap_or(0);
-    if !non_empty_file(inbox) || unix_now().saturating_sub(started) > CHORES_STALE_SECS {
-        let _ = fs::remove_file(&mark);
-        return false;
-    }
-    true
 }
 
 /// `--mark-filed`: 行全体が一致する先頭 1 行だけを削除し、削除行を
@@ -697,99 +770,24 @@ pub fn attribution() -> (String, String) {
     )
 }
 
-/// `--procedure <inbox>` の手順書(LLM 向け hook 出力の書式は ADR-625)。
-pub fn procedure_text(self_path: &str, inbox: &str) -> String {
-    let (name, url) = attribution();
+/// Stop の指示。更新した feedback memory に `#N` 参照が無いものだけを示す(気づきは
+/// 起票を求めない。ADR-0000-wrapup-inbox-to-vault)。
+fn stop_message(unlinked: &[String]) -> String {
+    let list: String = unlinked.iter().map(|p| format!("  - {p}\n")).collect();
     format!(
-        r#"<hook-directive source="wrapup-stop-gate" kind="procedure">
-Each line of {inbox} is one JSONL item (ts/title/detail, optionally repo/go).
-Process the lines one by one:
-  1. Run '{self_path}' --check-dup "<title>" [repo] (pass repo if the line
-     has one; otherwise the target is this project's repository).
-     exit 1 means an open Issue with the same title already exists (duplicate);
-     its number is printed on stdout (when known) as <N>.
-     exit 3 means the check could not be made — skip that line this time and
-     leave it in the inbox.
-  2. If the line has no "go":"ask" and is not a duplicate, file it with
-     gh issue create [-R <repo>] --title "<title>" --body "<body>".
-     If it is a duplicate, do not just drop it: record the recurrence on the
-     existing Issue with gh issue comment <N> [-R <repo>] --body "<body>"
-     (date, what happened this time from detail, and where it was seen), ending
-     the comment with the same provenance footer as step 4. If <N> was not
-     printed, find it with gh issue list --search "in:title <title>". The count
-     of such comments is the signal ADR-543 uses to promote a rule to a script
-     or gate. Do this for a "go":"ask" line too, after the AskUserQuestion
-     answer of step 3 is to file it.
-  3. If the line has "go":"ask" (auto-aggregated from the verdict ledger,
-     ADR-478), do not file it right away even when it is not a duplicate.
-     Show title, detail, and repo (the default target) via AskUserQuestion with
-     the choices 「このまま <repo> に起票する」「別のリポジトリに振り直す」
-     「今回は起票しない」, then act on the answer (re-routing only changes the
-     -R target). gh-edit-allow may auto-allow gh issue create based on earlier
-     creations in the same session, so the absence of a permission prompt is
-     not a GO — always confirm with AskUserQuestion.
-  4. Before writing the body, check whether the target repository is public:
-     gh repo view [-R <repo>] --json visibility. If it is public, write only
-     the minimal facts needed to reproduce — no internal repository names,
-     project names, or confidential terms from the conversation context
-     (the PreToolUse denylist rejects them, costing a round trip).
-     Write the body from detail plus the conversation context, and end it with
-     this line (the provenance footer, grep-able for inbox-origin Issues, also
-     serves as the attribution that attribution-guard.sh requires):
-       「🤖 Filed from [{name}]({url}) wrap-up inbox」
-  5. Remove only the lines that were filed, commented on as duplicates, or declined
-     with 「今回は起票しない」 in step 3, using
-     '{self_path}' --mark-filed '{inbox}' '<the line verbatim>'.
-     If gh issue create fails, do not call --mark-filed; the line stays in the
-     inbox for a retry on the next turn.
-Do not edit the inbox directly (always go through --add / --mark-filed).
-</hook-directive>
-"#
+        "<hook-directive source=\"wrapup-stop-gate\" kind=\"feedback-memory\">\n\
+         {n} type: feedback auto memory file(s) updated in this session have no Issue\n\
+         reference (#N):\n\
+         {list}\
+         File general working-policy feedback (not project-specific, not sensitive) as a\n\
+         GitHub Issue by default, then add #N to the body of the memory file (shared\n\
+         AGENTS.md 「ユーザーからのフィードバックは不可視なローカルメモに閉じ込めない」,\n\
+         config/claude/CLAUDE.md 「フィードバックの Issue 化」). Project-specific content\n\
+         that does not generalize, or sensitive content (credentials, incidents, personal data), is\n\
+         exempt.\n\
+         </hook-directive>",
+        n = unlinked.len()
     )
-}
-
-fn stop_message(self_path: &str, inbox: &str, unlinked: &[String]) -> String {
-    let mut msg = String::new();
-    if non_empty_file(inbox) {
-        let (name, url) = attribution();
-        let count = newline_count(inbox);
-        // エージェントが叩く --procedure にも Stop 起動時と同じフッター(Codex
-        // は env で差し替える)が届くよう、env を明示的に前置したコマンドを示す。
-        let cmd = format!(
-            "ATTRIBUTION_AGENT_NAME={} ATTRIBUTION_AGENT_URL={} {} --procedure {}",
-            shquote::printf_q(&name),
-            shquote::printf_q(&url),
-            shquote::printf_q(self_path),
-            shquote::printf_q(inbox),
-        );
-        msg.push_str(&format!(
-            "<hook-directive source=\"wrapup-stop-gate\" event=\"Stop\">\n\
-             {count} unfiled item(s) in the wrap-up inbox: {inbox}\n\
-             Run `{cmd}` and follow its output.\n\
-             </hook-directive>"
-        ));
-    }
-    if !unlinked.is_empty() {
-        if !msg.is_empty() {
-            msg.push_str("\n\n");
-        }
-        let list: String = unlinked.iter().map(|p| format!("  - {p}\n")).collect();
-        msg.push_str(&format!(
-            "<hook-directive source=\"wrapup-stop-gate\" kind=\"feedback-memory\">\n\
-             {n} type: feedback auto memory file(s) updated in this session have no Issue\n\
-             reference (#N):\n\
-             {list}\
-             File general working-policy feedback (not project-specific, not sensitive) as a\n\
-             GitHub Issue by default, then add #N to the body of the memory file (shared\n\
-             AGENTS.md 「ユーザーからのフィードバックは不可視なローカルメモに閉じ込めない」,\n\
-             config/claude/CLAUDE.md 「フィードバックの Issue 化」). Project-specific content\n\
-             that does not generalize, or sensitive content (credentials, incidents, personal data), is\n\
-             exempt.\n\
-             </hook-directive>",
-            n = unlinked.len()
-        ));
-    }
-    msg
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +796,181 @@ fn stop_message(self_path: &str, inbox: &str, unlinked: &[String]) -> String {
 pub use agent_session::legacy_input::{read_hook_stdin, HookJson};
 
 use git_repository::raw as git_ok;
+
+// ---------------------------------------------------------------------------
+// 裁定の入口: open な気づきの一覧と、状態の変更(backlog-cleanup が使う)
+
+/// `--repo R` / `--json` と位置引数に分ける。
+fn split_flags(args: &[String]) -> (Vec<&str>, Option<&str>, bool) {
+    let mut pos = Vec::new();
+    let mut repo = None;
+    let mut json = false;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--repo" => repo = it.next().map(String::as_str),
+            "--json" => json = true,
+            other => pos.push(other),
+        }
+    }
+    (pos, repo, json)
+}
+
+/// jsonl の行を、vault の open なノートと同じ形(行 1 つ = 再発 1 回)で見せる。
+fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String)> {
+    let inbox = inbox_for(project);
+    let default = default_repo(project, &inbox);
+    let Ok(bytes) = fs::read(&inbox) else {
+        return Vec::new();
+    };
+    split_lines(&bytes)
+        .into_iter()
+        .filter_map(|rec| {
+            let line = String::from_utf8_lossy(rec).into_owned();
+            let item = vault::parse_item(&line).ok()?;
+            let repo_of = if item.repo.is_empty() {
+                default.clone()
+            } else {
+                item.repo.clone()
+            };
+            if repo.is_some_and(|r| r != repo_of) {
+                return None;
+            }
+            let date = if item.ts.len() >= 10 {
+                item.ts[..10].to_string()
+            } else {
+                String::new()
+            };
+            let row = format!("- {date} {}", item.detail).trim_end().to_string();
+            Some((
+                vault::OpenNote {
+                    note: String::new(),
+                    title: item.title,
+                    repo: repo_of,
+                    first_seen: date,
+                    rows: vec![row],
+                },
+                line,
+            ))
+        })
+        .collect()
+}
+
+/// `--list-open [--repo R] [--json]`: 状態が open の気づきを、再発の行数の多い順に出す。
+/// vault を宣言していれば vault のノート、無ければ inbox の jsonl(1 行 = 1 回)。
+/// vault の絶対パスは出さない(`note` は vault からの相対パス)。
+fn list_open_cmd(args: &[String]) -> Code {
+    let (_, repo, json) = split_flags(args);
+    let project = project_dir();
+    let _ = drain_to_vault(&project);
+    let rows: Vec<(vault::OpenNote, &str, Option<String>)> = match open_vault() {
+        Some(v) => {
+            let listed = v
+                .lock()
+                .and_then(|g| vault::list_open(&g, repo))
+                .map_err(|e| e.to_string());
+            match listed {
+                Ok(l) => l.into_iter().map(|n| (n, "vault", None)).collect(),
+                Err(e) => {
+                    eprintln!("issue-inbox: --list-open: {e}");
+                    return 1;
+                }
+            }
+        }
+        None => jsonl_open(&project, repo)
+            .into_iter()
+            .map(|(n, line)| (n, "jsonl", Some(line)))
+            .collect(),
+    };
+    if json {
+        let arr: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|(n, source, line)| {
+                serde_json::json!({
+                    "title": n.title, "repo": n.repo, "count": n.rows.len(),
+                    "first_seen": n.first_seen, "rows": n.rows, "note": n.note,
+                    "source": source, "line": line,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::Value::Array(arr));
+    } else {
+        for (n, _, _) in &rows {
+            println!("{}\t{}\t{}", n.rows.len(), n.repo, n.title);
+        }
+    }
+    0
+}
+
+/// `--set-status <title> <fixed|issued|dropped> [url] [--repo R]`: 気づきの状態を変える。
+/// vault では frontmatter だけを書き換える。jsonl の機体では、その行を取り除く
+/// (`<inbox>.filed.jsonl` に退避)。
+fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
+    let (pos, repo, _) = split_flags(args);
+    let (Some(title), Some(status)) = (pos.first(), pos.get(1)) else {
+        return usage_error(
+            self_path,
+            &Usage {
+                param: 2,
+                text: "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R]",
+            },
+        );
+    };
+    let url = pos.get(2).copied().unwrap_or("");
+    if let Some(v) = open_vault() {
+        let r = v
+            .lock()
+            .map_err(|e| e.to_string())
+            .and_then(|g| vault::set_status(&g, title, repo, status, url));
+        return match r {
+            Ok(note) => {
+                println!("{note}");
+                0
+            }
+            Err(e) => {
+                eprintln!("issue-inbox: --set-status: {e}");
+                1
+            }
+        };
+    }
+    if !["fixed", "issued", "dropped"].contains(status) {
+        eprintln!(
+            "issue-inbox: --set-status: 状態は fixed | issued | dropped のいずれか: {status}"
+        );
+        return 1;
+    }
+    let project = project_dir();
+    let hit = jsonl_open(&project, repo)
+        .into_iter()
+        .find(|(n, _)| n.title == *title);
+    match hit {
+        Some((_, line)) => mark_filed(&inbox_for(&project), &line),
+        None => {
+            eprintln!("issue-inbox: --set-status: 該当する行が無い: {title}");
+            1
+        }
+    }
+}
+
+/// このプロジェクトの、まだ裁定していない気づきの件数(vault の open なノート + jsonl の行)。
+/// SessionStart が掲示する。数えられないときは 0。
+pub fn pending_count(project: &str) -> usize {
+    let inbox = inbox_for(project);
+    let jsonl = if non_empty_file(&inbox) {
+        newline_count(&inbox)
+    } else {
+        0
+    };
+    let in_vault = open_vault()
+        .and_then(|v| {
+            let repo = default_repo(project, &inbox);
+            v.lock()
+                .ok()
+                .and_then(|g| vault::list_open(&g, Some(&repo)).ok())
+        })
+        .map_or(0, |l| l.len());
+    jsonl + in_vault
+}
 
 /// usage エラーを bash に似せて出す(`<self>: <n>: usage: ...`、exit 1)。
 pub fn usage_error(self_path: &str, u: &Usage) -> Code {
@@ -823,15 +996,13 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 print!("{}", inbox_for(p));
                 0
             }
-            "--procedure" => {
-                let inbox = need(1, "usage: wrapup-stop-gate.sh --procedure <inbox>")?;
-                print!("{}", procedure_text(self_path, inbox));
-                0
-            }
             "--migrate" => {
                 let p = need(1, "usage: wrapup-stop-gate.sh --migrate <project-dir>")?;
-                match migrate_legacy_inbox(p) {
-                    Ok(()) => 0,
+                match migrate_legacy_inbox(p)
+                    .map_err(|e| e.to_string())
+                    .and_then(|()| drain_to_vault(p))
+                {
+                    Ok(_) => 0,
                     Err(e) => {
                         eprintln!("wrapup-stop-gate: --migrate: {e}");
                         1
@@ -855,14 +1026,8 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 let title = need(1, "usage: wrapup-stop-gate.sh --check-dup <title> [repo]")?;
                 check_dup(self_path, title, arg(2))
             }
-            "--chores-begin" => {
-                let inbox = need(1, "usage: wrapup-stop-gate --chores-begin <inbox>")?;
-                chores_begin(inbox)
-            }
-            "--chores-end" => {
-                let inbox = need(1, "usage: wrapup-stop-gate --chores-end <inbox>")?;
-                chores_end(inbox)
-            }
+            "--list-open" => list_open_cmd(&args[1..]),
+            "--set-status" => set_status_cmd(self_path, &args[1..]),
             "--mark-filed" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;
                 let line = need(2, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;
@@ -920,11 +1085,14 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
         }
     }
 
+    // vault を宣言している機体では、jsonl に残っている行を移す。気づきの起票は Stop では求めない
+    // (裁定は backlog-cleanup。ADR-0000-wrapup-inbox-to-vault)。
+    if let Err(e) = drain_to_vault(&project) {
+        eprintln!("wrapup-stop-gate: drain: {e}");
+    }
+
     let unlinked = unlinked_feedback_memories(&session_id);
-    // `/backlog-cleanup` の実行中は、PR を作るまで inbox に行が残るのが正しい状態なので、
-    // inbox の起票指示を出さない(#820)。フィードバックの Issue 化の指示は別物で、そのまま出す。
-    let inbox_shown: &str = if chores_active(&inbox) { "" } else { &inbox };
-    if !non_empty_file(inbox_shown) && unlinked.is_empty() {
+    if unlinked.is_empty() {
         return 0;
     }
     if on_path("gh").is_none() {
@@ -938,8 +1106,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
         _ => return 0,
     }
 
-    let msg = stop_message(self_path, inbox_shown, &unlinked);
-    let _ = writeln!(std::io::stderr(), "{msg}");
+    let _ = writeln!(std::io::stderr(), "{}", stop_message(&unlinked));
     2
 }
 

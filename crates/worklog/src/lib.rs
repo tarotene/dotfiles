@@ -13,23 +13,16 @@
 //! `.obsidian/daily-notes.json` から読み、`YYYY` / `MM` / `DD` 以外の書式は推測せずに止まる。
 //! 日付は JST。I/O は `Vault` だけが行い、行の解析・整形・日付は純関数にしてある。
 
-use hub_resolve::Hub;
 use serde_json::Value;
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
-/// vault の場所。環境変数 `WORKLOG_VAULT` か `~/.config/dotfiles/worklog-vault` の 1 行目
-/// (hub-resolve と同じ間接参照)。存在確認は日次ノートの設定ファイル。
-pub const VAULT: Hub = Hub {
-    name: "worklog",
-    env_var: "WORKLOG_VAULT",
-    marker_name: "worklog-vault",
-    readme_rel: ".obsidian/daily-notes.json",
-    unset_msg: "vault の場所が未設定です。次のいずれかで設定してください:",
-    repo_placeholder: "/path/to/obsidian-vault",
-};
+/// vault の場所。環境変数 `OBSIDIAN_VAULT` か `~/.config/dotfiles/obsidian-vault` の 1 行目
+/// (hub-resolve と同じ間接参照)。vault-note と共有する単一の正本で、日次ノートの設定は
+/// [`Vault::open`] が別に読む。
+pub use hub_resolve::OBSIDIAN_VAULT as VAULT;
 
 /// 書き込む節の見出し。
 pub const HEADING: &str = "## 作業ログ";
