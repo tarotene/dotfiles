@@ -7,7 +7,8 @@
 
 
 PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを
-求める。出口(inbox → `/backlog-cleanup` での裁定)は [wrap-up inbox](wrapup-inbox.md) と
+求める。全行は、`--retro-close` が vault の `retro/` に 1 件のノートとして書き出す(PR にはコメントしない。
+ADR-1136 の段2、ADR-697 の Amendment)。出口(inbox → `/backlog-cleanup` での裁定)は [wrap-up inbox](wrapup-inbox.md) と
 共有し、入口と強制だけが別。`disposition: inbox` の行は Issue にならず、vault のノートに溜まる。決定の理由と代替案は
 [ADR-697](../adr/697-retro-stop-gate.md)。
 
@@ -19,8 +20,30 @@ PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセ�
    `session-retrospective --retro-procedure <session_id>` を実行して手順書を読む。
 3. 手順書には、行に引くべき出来事の id(`verdict:…` / `pr-gate` / `memory:…`)と、
    ユーザー発言の一覧(Claude のみ)が並ぶ。モデルは `--retro-add` で行を書く。
-4. 全行を kind ごとの表にして PR に 1 件コメントする(先頭は `<!-- wrapup-retro -->`)。
-5. `--retro-close <session_id> <comment-url>` が `gh api` でコメントを読み戻して完了にする。
+4. 全行がそろったら `--retro-close <session_id>` が、台帳から vault の
+   `retro/<年>/<日付>-<owner>-<repo>-<PR 番号>.md` を**決定論的に**書き出し、読み戻して一致を確かめてから
+   完了にする(エージェントは表を書かない。PR にはコメントしない)。
+
+## ノート
+
+- 場所: vault の `retro/<年>/<JST の日付>-<owner>-<repo>-<PR 番号>.md`。PR が分からない(手動の `/retro`)
+  ときは、番号の代わりに `s<session の先頭 8 文字>`。stack のときの PR は、台帳の最後の `pr` 行
+  (最後に作った = 最上段)。同じ日に同じ PR を別のセッションが閉じたときは、後のノートの名前に
+  ` ~<hash>` を付け、先のノートを上書きしない。
+- frontmatter: `repo`・`pr`・`session`・`date`。本文は、kind ごとの表(`what` / `evidence` /
+  `disposition` / `mechanism`。user-correction → friction → gate-hit → insight → none → skipped の順。
+  `skipped` の `quote` は表の下の行)。
+- vault を宣言していない機体、または宣言が使えない機体では、台帳に残したまま完了にする(`closed` に
+  `ledger-only: …` と書く)。使えない理由は stderr に出す。ノートを書けない・読み戻せないときだけ、
+  exit 3 で未了のまま(次の Stop で再び求める。上限は同じ 3 回)。
+- 古い呼び出し(`--retro-close <session_id> <comment-url>`)の URL は、警告を出して無視する。
+
+## user-correction は inbox に置けない
+
+user-correction は feedback(ユーザーが方針・結果を直した発言)で、共有 AGENTS.md は「不可視な
+ローカルメモに閉じ込めず、既定で Issue にする」と定める。inbox は vault のノートなので、`disposition: inbox`
+の user-correction は `--retro-add` が exit 64 で拒否する。先に `gh issue create` で Issue にして
+`issue:#<N>` と書くか、プロジェクト固有・機微な内容なら `none:<理由>` と書く。
 
 ## 行の語彙
 
@@ -43,7 +66,7 @@ PR を作ったセッションの最初の Stop で、`wrapup-stop-gate` がセ�
 | `count` | retro の block 回数(上限 3) |
 | `escalated` | 上限に達して警告を出した印 |
 | `transcript` | Stop 時に渡された transcript のパス(手順書がユーザー発言を抽出する) |
-| `closed` | 完了の印(`--retro-close` が読み戻してから書く) |
+| `closed` | 完了の印(`--retro-close` がノートを読み戻してから書く。中身はノートの vault 内のパス、または `ledger-only: …`) |
 
 ## 待ちターンでは出さない(#854)
 

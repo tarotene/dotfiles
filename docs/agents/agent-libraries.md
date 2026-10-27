@@ -29,7 +29,7 @@ worktree 用の fetch は直下の子を打ち切り、親 checkout 用の fetch
 | CLI / ライブラリ | 責務 | 引数 |
 |---|---|---|
 | issue-inbox | 発見事項の保存(vault のノート、vault の無い機体では jsonl)と、`--list-open` / `--set-status` による裁定の入口。Issue 化は `/backlog-cleanup` | 既存 inbox 操作フラグ(`--procedure` と `--chores-*` は削除) |
-| session-retrospective | 振り返りと記録 | 既存 --retro-* |
+| session-retrospective | 振り返りの記録と、台帳から vault の `retro/` のノートへの書き出し(PR コメントは投稿しない) | 既存 --retro-*(`--retro-close` は `<session_id>` だけ) |
 | feedback-trial | 期限付き試行の収集・承認・投稿・適用確認 | 旧 --trial の後ろのサブコマンド |
 | session-wrapup | 上記の逐次実行 | start / stop |
 

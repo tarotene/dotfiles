@@ -295,6 +295,7 @@ edge = [
   { from = "session-wrapup-stop", to = "session-retrospective", kind = "invoke", label = "2: retrospective", pipelines = ["wrapup-to-issue"] },
   { from = "session-wrapup-stop", to = "issue-inbox", kind = "invoke", label = "3: inbox", pipelines = ["wrapup-to-issue"] },
   { from = "retro", to = "session-retrospective", kind = "invoke", label = "--retro-add", pipelines = ["wrapup-to-issue"] },
+  { from = "session-retrospective", to = "obsidian-vault", kind = "file", label = "retro/ note", pipelines = ["wrapup-to-issue"] },
   { from = "cmd-hash-log", to = "promotion-detect", kind = "file", label = "command hashes", pipelines = ["wrapup-to-issue", "evidence"] },
   { from = "promotion-detect", to = "wrapup-inbox", kind = "file", label = "promotion candidates", pipelines = ["wrapup-to-issue"] },
   { from = "github", to = "promotion-detect", kind = "context", label = "feedback Issues", pipelines = ["wrapup-to-issue"] },

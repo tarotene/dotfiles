@@ -1,7 +1,9 @@
 //! 作業終了時のレトロ(`src/retro.rs`)の統合テスト。
 //!
 //! PR 作成の判定は gh-edit-allow の台帳 `~/.claude/gh-edit-allow/state/<sid>.ledger`
-//! (HOME は隔離済み)に `pr ...` 行を置いて作る。
+//! (HOME は隔離済み)に `pr ...` 行を置いて作る。完了(`--retro-close`)は、台帳から vault の
+//! `retro/` のノートを書き出して読み戻す。vault は、テストごとの一時ディレクトリを
+//! `OBSIDIAN_VAULT` で明示したときだけ宣言される(実機の vault には書かない)。
 
 mod common;
 
@@ -47,20 +49,37 @@ fn add_row(e: &Env, p: &Path, row: &str) -> Run {
     run_args(c, &["--retro-add", SID, row])
 }
 
-fn close(e: &Env, target: &str) -> Run {
-    run_args(e.gate(), &["--retro-close", SID, target])
+fn close(e: &Env) -> Run {
+    run_args(e.gate(), &["--retro-close", SID])
 }
 
-fn gh_api_stub(e: &Env, body: &str, fail: bool) {
-    let script = if fail {
-        "#!/bin/sh\necho 'HTTP 404' >&2\nexit 1\n".to_string()
-    } else {
-        format!("#!/bin/sh\ncat <<'X'\n{body}\nX\n")
-    };
-    write_exec(&e.bin_dir().join("gh"), &script);
+/// vault を宣言した `--retro-close`。作業中のプロジェクトは `p`。
+fn close_in(e: &Env, vault: &Path, p: &Path, sid: &str) -> Run {
+    let mut c = e.gate();
+    c.env("OBSIDIAN_VAULT", vault).env("CLAUDE_PROJECT_DIR", p);
+    run_args(c, &["--retro-close", sid])
 }
 
-const URL: &str = "https://github.com/acme/x/pull/5#issuecomment-99";
+fn vault(e: &Env) -> PathBuf {
+    let v = e.path().join("vault");
+    std::fs::create_dir_all(v.join(".obsidian")).unwrap();
+    std::fs::write(v.join(".obsidian/app.json"), "{}").unwrap();
+    v
+}
+
+/// `retro/<年>/` 配下のノートを、パスの昇順で返す。
+fn retro_notes(v: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(years) = std::fs::read_dir(v.join("retro")) {
+        for y in years.flatten() {
+            for f in std::fs::read_dir(y.path()).unwrap().flatten() {
+                out.push(f.path());
+            }
+        }
+    }
+    out.sort();
+    out
+}
 
 #[test]
 fn no_pr_means_no_retro() {
@@ -86,12 +105,12 @@ fn pr_created_blocks_until_closed() {
     assert_eq!(add_row(&e, &p, ROW_OK).code, 0);
     let r = stop(&e, &p, false);
     assert_eq!(r.code, 2);
-    assert!(r.stderr.contains("rows recorded, not yet posted"));
+    assert!(r.stderr.contains("rows recorded, not yet closed"));
 
-    gh_api_stub(&e, &format!("{}\nbody", "<!-- wrapup-retro -->"), false);
-    let r = close(&e, URL);
+    // vault の無い機体: 台帳に残したまま完了になる(PR にはコメントしない)。
+    let r = close(&e);
     assert_eq!(r.code, 0, "{}", r.stderr);
-    assert!(r.stdout.contains("read back acme/x comment 99"));
+    assert!(r.stdout.contains("ledger only"), "{}", r.stdout);
     let r = stop(&e, &p, false);
     assert_eq!((r.code, r.stderr.as_str()), (0, ""));
 }
@@ -108,6 +127,8 @@ fn vocabulary_is_enforced() {
         r#"{"kind":"none","what":"w","evidence":"e","disposition":"inbox"}"#,
         r#"{"kind":"skipped","what":"w","evidence":"e","disposition":"none:r"}"#,
         r#"{"kind":"insight","what":"w","evidence":"e","disposition":"issue:#x"}"#,
+        // user-correction は feedback。inbox(vault のノート)には置けず、Issue か none:<理由>。
+        r#"{"kind":"user-correction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"}"#,
     ] {
         let r = add_row(&e, &p, bad);
         assert_eq!(r.code, 64, "{bad}: {}", r.stderr);
@@ -123,7 +144,7 @@ fn vocabulary_is_enforced() {
 fn inbox_disposition_reaches_the_wrapup_inbox() {
     let e = Env::new();
     let p = project(&e);
-    let row = r#"{"kind":"user-correction","what":"gate X leaked","evidence":"user: no","disposition":"inbox","mechanism":"existing:gate X"}"#;
+    let row = r#"{"kind":"friction","what":"gate X leaked","evidence":"user: no","disposition":"inbox","mechanism":"existing:gate X"}"#;
     assert_eq!(add_row(&e, &p, row).code, 0);
     let mut c = e.gate();
     c.env("CLAUDE_PROJECT_DIR", &p);
@@ -131,6 +152,22 @@ fn inbox_disposition_reaches_the_wrapup_inbox() {
     let body = read(Path::new(&inbox));
     assert!(body.contains(r#""title":"gate X leaked""#), "{body}");
     assert!(body.contains("mechanism: existing:gate X"), "{body}");
+}
+
+/// user-correction は feedback。Issue(`issue:#N`)か `none:<理由>` で記録でき、inbox には流れない。
+#[test]
+fn a_user_correction_is_recorded_against_an_issue_not_the_inbox() {
+    let e = Env::new();
+    let p = project(&e);
+    let row = r#"{"kind":"user-correction","what":"gate X leaked","evidence":"user: no","disposition":"issue:#12","mechanism":"gate"}"#;
+    assert_eq!(add_row(&e, &p, row).code, 0);
+    let mut c = e.gate();
+    c.env("CLAUDE_PROJECT_DIR", &p);
+    let inbox = run_args(c, &["--inbox-path", p.to_str().unwrap()]).stdout;
+    assert!(
+        !Path::new(&inbox).exists(),
+        "Issue 化した行は inbox に流さない"
+    );
 }
 
 #[test]
@@ -148,13 +185,13 @@ fn deterministic_events_must_be_cited() {
         r.stderr
     );
     // 引かれていなければ close できない
-    assert_eq!(close(&e, "none:no github target").code, 1);
+    assert_eq!(close(&e).code, 1);
 
     let cite = r#"{"kind":"gate-hit","what":"pr-gate blocked","evidence":"pr-gate blocked twice","disposition":"none:handled","mechanism":"none:fine"}"#;
     assert_eq!(add_row(&e, &p, cite).code, 0);
     let r = stop(&e, &p, false);
     assert!(
-        r.stderr.contains("rows recorded, not yet posted"),
+        r.stderr.contains("rows recorded, not yet closed"),
         "{}",
         r.stderr
     );
@@ -170,13 +207,13 @@ fn skipped_row_waives_events_but_still_needs_close() {
     assert_eq!(add_row(&e, &p, skip).code, 0);
     let r = stop(&e, &p, false);
     assert!(
-        r.stderr.contains("rows recorded, not yet posted"),
+        r.stderr.contains("rows recorded, not yet closed"),
         "{}",
         r.stderr
     );
-    let r = close(&e, "none:no github target");
+    let r = close(&e);
     assert_eq!(r.code, 0);
-    assert!(r.stdout.contains("unconfirmed"));
+    assert!(r.stdout.contains("ledger only"));
 }
 
 #[test]
@@ -196,19 +233,120 @@ fn block_count_is_bounded() {
 }
 
 #[test]
-fn close_reads_the_comment_back() {
+fn close_writes_one_note_into_the_vault_and_reads_it_back() {
+    let e = Env::new();
+    let (p, v) = (project(&e), vault(&e));
+    pr_ledger(&e);
+    assert_eq!(close_in(&e, &v, &p, SID).code, 1); // 行が無い
+    let rows = [
+        r#"{"kind":"friction","what":"a | b","evidence":"e","disposition":"inbox","mechanism":"prose"}"#,
+        r#"{"kind":"user-correction","what":"直された","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate"}"#,
+        ROW_OK,
+    ];
+    for r in rows {
+        assert_eq!(add_row(&e, &p, r).code, 0);
+    }
+
+    let r = close_in(&e, &v, &p, SID);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(
+        r.stdout.starts_with("retro closed (note: retro/"),
+        "{}",
+        r.stdout
+    );
+    let notes = retro_notes(&v);
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    let name = notes[0].file_name().unwrap().to_string_lossy().into_owned();
+    // 日付(JST)・owner-repo・PR 番号(台帳の `pr acme/x 5`)。
+    assert!(name.ends_with("-acme-x-5.md"), "{name}");
+    let text = read(&notes[0]);
+    assert!(
+        text.starts_with("---\nrepo: \"acme/x\"\npr: \"5\"\nsession: \"s1\"\ndate: \""),
+        "{text}"
+    );
+    // kind ごとに、user-correction → friction → insight の順で表になる。
+    let pos = |h: &str| text.find(h).unwrap_or_else(|| panic!("{h}\n{text}"));
+    assert!(pos("## user-correction") < pos("## friction"));
+    assert!(pos("## friction") < pos("## insight"));
+    assert!(text.contains("| a \\| b | e | inbox | prose |"), "{text}");
+    // PR にはコメントしない(gh は一度も呼ばれない)。
+    assert_eq!(read(&e.gh_log()), "");
+    // 閉じたので、Stop は通る。閉じ直しても同じノートで、内容は変わらない。
+    assert_eq!(stop(&e, &p, false).code, 0);
+    assert_eq!(close_in(&e, &v, &p, SID).code, 0);
+    assert_eq!(retro_notes(&v), notes);
+    assert_eq!(read(&notes[0]), text);
+}
+
+#[test]
+fn another_session_on_the_same_pr_does_not_overwrite_the_note() {
+    let e = Env::new();
+    let (p, v) = (project(&e), vault(&e));
+    pr_ledger(&e);
+    assert_eq!(add_row(&e, &p, ROW_OK).code, 0);
+    assert_eq!(close_in(&e, &v, &p, SID).code, 0);
+
+    // 別のセッション(同じ PR、同じ日)。
+    let f = e.home().join(".claude/gh-edit-allow/state/s2.ledger");
+    std::fs::write(f, "pr acme/x 5\n").unwrap();
+    let mut c = e.gate();
+    c.env("CLAUDE_PROJECT_DIR", &p);
+    assert_eq!(run_args(c, &["--retro-add", "s2", ROW_OK]).code, 0);
+    assert_eq!(close_in(&e, &v, &p, "s2").code, 0);
+    let notes = retro_notes(&v);
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    let sessions: Vec<bool> = notes
+        .iter()
+        .map(|n| read(n).contains("session: \"s1\""))
+        .collect();
+    assert!(
+        sessions.contains(&true) && sessions.contains(&false),
+        "{sessions:?}"
+    );
+}
+
+#[test]
+fn without_a_pr_the_note_is_named_by_the_session() {
+    let e = Env::new();
+    let (p, v) = (project(&e), vault(&e));
+    assert_eq!(add_row(&e, &p, ROW_OK).code, 0);
+    assert_eq!(close_in(&e, &v, &p, SID).code, 0);
+    let notes = retro_notes(&v);
+    assert_eq!(notes.len(), 1);
+    let name = notes[0].file_name().unwrap().to_string_lossy().into_owned();
+    // PR が分からなければ、番号の代わりに `s<session の先頭 8 文字>`。repo は origin から。
+    assert!(name.ends_with("-acme-x-ss1.md"), "{name}");
+}
+
+#[test]
+fn an_unusable_vault_never_wedges_the_retro() {
     let e = Env::new();
     let p = project(&e);
     pr_ledger(&e);
-    assert_eq!(close(&e, URL).code, 1); // 行が無い
     assert_eq!(add_row(&e, &p, ROW_OK).code, 0);
+    let gone = e.path().join("no-such-vault");
+    let r = close_in(&e, &gone, &p, SID);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(r.stderr.contains("vault を使えない"), "{}", r.stderr);
+    assert!(r.stdout.contains("ledger only"), "{}", r.stdout);
+    assert_eq!(stop(&e, &p, false).code, 0);
+}
 
-    assert_eq!(close(&e, "https://example.com/x").code, 1); // URL 形式違い
-    gh_api_stub(&e, "", true);
-    assert_eq!(close(&e, URL).code, 3); // 読み戻せない
-    gh_api_stub(&e, "a comment without the marker", false);
-    assert_eq!(close(&e, URL).code, 1); // 目印が無い
-    assert_eq!(stop(&e, &p, false).code, 2); // どれも完了扱いにならない
+#[test]
+fn an_old_style_url_argument_is_ignored_with_a_warning() {
+    let e = Env::new();
+    let p = project(&e);
+    assert_eq!(add_row(&e, &p, ROW_OK).code, 0);
+    let r = run_args(
+        e.gate(),
+        &[
+            "--retro-close",
+            SID,
+            "https://github.com/acme/x/pull/5#issuecomment-99",
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(r.stderr.contains("ignoring"), "{}", r.stderr);
 }
 
 #[test]
@@ -240,8 +378,17 @@ fn procedure_lists_events_and_user_messages() {
     assert!(r.stdout.contains("[TODO] pr-gate"), "{}", r.stdout);
     assert!(r.stdout.contains("それは違う、こうして"), "{}", r.stdout);
     assert!(!r.stdout.contains("通知です"));
-    assert!(r.stdout.contains("<!-- wrapup-retro -->"));
-    assert!(r.stdout.contains("Generated with [Claude Code]"));
+    // PR コメントは投稿しない。完了は --retro-close(vault のノート)。
+    assert!(r.stdout.contains("--retro-close"), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("Nothing is posted to GitHub"),
+        "{}",
+        r.stdout
+    );
+    assert!(!r.stdout.contains("gh pr comment"), "{}", r.stdout);
+    assert!(!r.stdout.contains("wrapup-retro"), "{}", r.stdout);
+    // user-correction は inbox に置けない。
+    assert!(r.stdout.contains("never kept in the inbox"), "{}", r.stdout);
 }
 
 #[test]
