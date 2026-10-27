@@ -1,7 +1,7 @@
 //! Opt-in check against the installed native binary; no account or paid inference.
 //! Run outside another Codex sandbox (the native daemon socket must be visible):
 //! cargo test -p codex-plan --test native_permissions -- --ignored --nocapture
-use codex_plan::{selected_permissions, Relay, Settings};
+use codex_plan::{selected_permissions, ClientAction, Relay, Settings};
 use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -30,7 +30,12 @@ impl Native {
         let raw = self
             .relay
             .as_mut()
-            .and_then(|r| r.from_client(&raw, &Settings::default()).unwrap())
+            .map(
+                |r| match r.from_client(&raw, &Settings::default()).unwrap() {
+                    ClientAction::Forward(raw) => raw,
+                    ClientAction::Reply(reply) => panic!("native fixture request refused: {reply}"),
+                },
+            )
             .unwrap_or(raw);
         writeln!(self.input.as_mut().unwrap(), "{raw}").unwrap();
     }
@@ -127,7 +132,13 @@ fn scenario(
     launcher: bool,
 ) {
     let root = tempfile::tempdir().unwrap();
-    let home = root.path().join("home");
+    let home = if launcher {
+        std::env::var_os("CODEX_PLAN_NATIVE_FIXTURE_HOME")
+            .map(std::path::PathBuf::from)
+            .expect("protected relay acceptance runs in an isolated HOME subprocess")
+    } else {
+        root.path().join("home")
+    };
     let work = root.path().join("work");
     let config = home.join(".codex");
     let secret = home.join("private");
@@ -456,6 +467,33 @@ fn native_permissions_and_credential_masking() {
 #[test]
 #[ignore = "requires installed Codex 0.164.0, zsh, loopback sockets, and native sandbox access"]
 fn shared_launcher_credentials_in_new_resumed_and_forked_tools() {
+    // Relay validation runs in this process, while the native launcher runs in
+    // its child. Both must read the same synthetic HOME, never the user's.
+    if std::env::var_os("CODEX_PLAN_NATIVE_FIXTURE_HOME").is_none() {
+        let native = native_binary().canonicalize().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "shared_launcher_credentials_in_new_resumed_and_forked_tools",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("CODEX_NATIVE_TEST_BINARY", native)
+            .env("CODEX_PLAN_NATIVE_FIXTURE_HOME", &home)
+            .env("HOME", &home)
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
     scenario(
         &native_binary(),
         "shared launcher new/resume/fork credentials",

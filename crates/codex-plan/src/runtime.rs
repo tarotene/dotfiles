@@ -1,4 +1,4 @@
-use crate::{parse_message, Relay, Settings, MAX_MESSAGE};
+use crate::{parse_message, ClientAction, Relay, Settings, MAX_MESSAGE};
 use anyhow::{bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -271,6 +271,9 @@ async fn relay(
     .context("TUI WebSocket handshake timed out")??;
     let (mut outgoing, mut incoming) = websocket.split();
     let relay = std::sync::Mutex::new(Relay::protected(permissions));
+    // One sink owns all native messages and local refusals. Bounded buffering
+    // keeps both readers independently pollable without unbounded growth.
+    let (client_messages, mut client_queue) = tokio::sync::mpsc::channel::<String>(32);
     // Poll both directions independently even while a pipe/socket write is
     // backpressured. Serial writes can deadlock against a busy native server.
     let to_server = async {
@@ -279,11 +282,16 @@ async fn relay(
             {
                 match message.context("TUI disconnected")?? {
                     Message::Text(raw) => {
-                        let patched = relay.lock().unwrap().from_client(&raw, settings)?;
-                        writer
-                            .send(patched.unwrap_or_else(|| raw.to_string()))
-                            .await
-                            .context("write to app-server")?;
+                        let action = relay.lock().unwrap().from_client(&raw, settings)?;
+                        match action {
+                            ClientAction::Forward(raw) => {
+                                writer.send(raw).await.context("write to app-server")?
+                            }
+                            ClientAction::Reply(raw) => client_messages
+                                .send(raw)
+                                .await
+                                .context("queue local refusal to TUI")?,
+                        }
                     }
                     // tungstenite queues and flushes automatic pong/close frames
                     // when its stream is polled again.
@@ -303,13 +311,26 @@ async fn relay(
                 .context("read app-server JSON line (maximum 256 MiB)")?;
             advice.lock().unwrap().observe(&parse_message(&raw)?);
             let patched = relay.lock().unwrap().from_server(&raw, settings)?;
-            outgoing
-                .send(Message::Text(patched.unwrap_or(raw).into()))
+            client_messages
+                .send(patched.unwrap_or(raw))
                 .await
-                .context("forward app-server message to TUI")?;
+                .context("queue app-server message to TUI")?;
         }
     };
-    tokio::select! { result = to_server => result, result = to_client => result }
+    let send_to_client = async {
+        while let Some(raw) = client_queue.recv().await {
+            outgoing
+                .send(Message::Text(raw.into()))
+                .await
+                .context("forward message to TUI")?;
+        }
+        Ok(())
+    };
+    tokio::select! {
+        result = to_server => result,
+        result = to_client => result,
+        result = send_to_client => result,
+    }
 }
 
 pub fn tui_args(

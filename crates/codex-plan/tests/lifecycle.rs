@@ -15,7 +15,9 @@ if [ "$1" = --config ]; then shift; shift; fi
 if [ "$1" = app-server ]; then
   echo $$ >> "$FIXTURE_DIR/servers"
   while IFS= read -r line; do
+    printf '%s\n' "$line" >> "$FIXTURE_DIR/requests"
     case "$line" in
+      *'"method":"fixture/ping"'*) echo '{"id":99,"result":{"alive":true}}'; echo '{"method":"fixture/event","params":{}}' ;;
       *'"method":"initialize"'*) echo '{"id":0,"result":{"userAgent":"fixture"}}' ;;
       *'"method":"model/list"'*) echo '{"id":1,"result":{"nextCursor":null,"data":[{"model":"gpt-6-astra","supportedReasoningEfforts":[{"reasoningEffort":"medium"}]},{"model":"gpt-6.1-sol","supportedReasoningEfforts":[{"reasoningEffort":"medium"}]}]}}' ;;
       *'"method":"config/read"'*) echo '{"id":4,"result":{"config":{"default_permissions":"fixture"}}}' ;;
@@ -48,6 +50,7 @@ impl Launch {
             .env_remove("CODEX_HOME")
             .env_remove("CODEX_PROFILE")
             .env_remove("CLAUDE_CONFIG_DIR")
+            .current_dir(dir.path())
             .env("HOME", dir.path())
             .env("PATH", dir.path())
             .env("XDG_CONFIG_HOME", dir.path())
@@ -105,6 +108,10 @@ impl Launch {
 }
 impl Drop for Launch {
     fn drop(&mut self) {
+        // SAFETY: the fixture owns the child process group, including its fake TUI.
+        unsafe {
+            libc::kill(-(self.child.id() as i32), libc::SIGKILL);
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -132,4 +139,75 @@ fn signal_cleanup_does_not_touch_parallel_launch() {
 fn tui_startup_failure_reaps_server_and_socket() {
     let mut launch = Launch::start(true);
     launch.finish(42);
+}
+
+#[tokio::test]
+async fn denied_background_request_keeps_connection_and_native_notifications_alive() {
+    use futures_util::{SinkExt, StreamExt};
+    use serde_json::{json, Value};
+    use tokio::{net::UnixStream, time::timeout};
+    use tokio_tungstenite::{client_async, tungstenite::Message};
+
+    let mut launch = Launch::start(false);
+    let stream = UnixStream::connect(launch.socket()).await.unwrap();
+    let (mut socket, _) = client_async("ws://localhost/", stream).await.unwrap();
+    let methods = ["command/exec", "process/exec", "thread/shellCommand"];
+    let mut ids = Vec::new();
+    // More refusals than the outbound queue capacity: neither reader may
+    // monopolize the task while local replies are backpressured.
+    for (index, method) in methods.into_iter().cycle().take(96).enumerate() {
+        let id = if index % 2 == 0 {
+            json!(index)
+        } else {
+            json!(index.to_string())
+        };
+        socket.send(Message::Text(json!({"id":id,"method":method,"params":{"command":["git","status"],"cwd":launch.dir.path()}}).to_string().into())).await.unwrap();
+        ids.push(id);
+    }
+    for id in ids {
+        let reply = timeout(Duration::from_secs(3), socket.next())
+            .await
+            .unwrap()
+            .expect("relay closed after background request")
+            .expect("read refusal");
+        let reply: Value = serde_json::from_str(reply.to_text().unwrap()).unwrap();
+        assert_eq!(reply["id"], id);
+        assert_eq!(reply["error"]["code"], -32600);
+        assert!(reply.get("result").is_none());
+        assert!(launch.child.try_wait().unwrap().is_none());
+    }
+    socket
+        .send(Message::Text(
+            json!({"id":99,"method":"fixture/ping","params":{}})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    for expected in [
+        json!({"id":99,"result":{"alive":true}}),
+        json!({"method":"fixture/event","params":{}}),
+    ] {
+        let reply = timeout(Duration::from_secs(3), socket.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap(),
+            expected
+        );
+    }
+    let requests = fs::read_to_string(launch.dir.path().join("requests")).unwrap();
+    for method in ["command/exec", "process/exec", "thread/shellCommand"] {
+        assert!(
+            !requests.contains(method),
+            "denied request reached native: {requests}"
+        );
+    }
+    // SAFETY: this is our live launcher child.
+    unsafe {
+        libc::kill(launch.child.id() as i32, libc::SIGTERM);
+    }
+    launch.finish(143);
 }
