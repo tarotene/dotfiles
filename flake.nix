@@ -416,6 +416,12 @@
           lib.filterAttrs (_name: cfg: cfg.activationPackage.system == system) self.homeConfigurations
         )
         // {
+          agent-skills = import ./home/tests/agent-skills.nix {
+            pkgs = pkgsFor.${system};
+            inherit lib;
+            files =
+              self.homeConfigurations.${if system == linuxSystem then "vega" else "altair"}.config.home.file;
+          };
           dotfiles-tools = rust.package;
           # 依存だけの build(crane の buildDepsOnly)。CI の build-host が GC root に
           # して、キャッシュに残す(.github/workflows/ci.yml の「Root the Rust

@@ -39,6 +39,38 @@ skill の frontmatter の `name` は、その `SKILL.md` を含むディレク�
 `repo-governance-common/reference/ci-failures.md`、人手タスクの予定化は `human-task-scheduling` を正本とする。
 利用する skill には、その場面で必ず読む指示を残す。
 
+### スキルはディレクトリ単位で配布する
+
+`home/modules/agents.nix` がソースの `SKILL.md` から配布対象を導出する。
+Claude 用は42件、共有の `.agents/skills/` 用は41件で、`browser-login-handoff` は
+Claude 専用のままとする。`repo-governance-common` は補助ディレクトリとして両方に配る。
+
+各ディレクトリをビルド時にコピーし、相対リンクを実体化したうえで共有スクリプト・ruleset・
+参照資料を合成する。実行権限を保持し、Home Manager は `recursive = false` で
+ディレクトリ全体へのリンクを配置する。`SKILL.md` 自体をリンクにしない。
+`checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致、実行権限を検査する。
+
+既存のファイル単位配布からは `hms .` の `-b backup` で移行する。旧ディレクトリは
+同じ場所の `<スキル名>.backup` に残る。同名のバックアップがあれば適用が止まるため、
+既存バックアップを別名へ退避してから再実行する。削除や上書きはしない。
+管理外のシンボリックリンクは `-b backup` の対象外であるため、衝突したリンク自体を
+バックアップへ退避してから再実行する（上書き先がないことを確認する）。
+管理対象外の第三者製スキルは移動しない。
+
+既存手段: `home/modules/agents.nix` — 拡張 — Nix のビルドと Home Manager の
+ディレクトリリンク・バックアップ機能を使い、独自の移行処理は追加しない。
+
+- 判断: 通常ファイルを持つディレクトリ全体をリンクする。OpenAI, Codex rust-v0.164.0,
+  [discovery.rs L66–83, L142–153](https://github.com/openai/codex/blob/fe3b29455488c2e189e43ad5526a107900c5e1b7/codex-rs/ext/skills/src/loader/discovery.rs#L66) と
+  [discovery_tests.rs L42–99](https://github.com/openai/codex/blob/fe3b29455488c2e189e43ad5526a107900c5e1b7/codex-rs/ext/skills/src/loader/discovery_tests.rs#L42)、
+  OpenAI, [Build skills](https://learn.chatgpt.com/docs/build-skills), 公開日記載なし
+  （取得 2026-10-27）。公式のディレクトリリンク方式と一致し、補助資料の合成だけを追加する。
+  Codex 0.164.0 の `skills/list` でファイルリンクは0/41件、ディレクトリリンクは41/41件と実測した。
+- 判断: 移行は既存のバックアップに任せる。nix-community, home-manager rev
+  `24f8f8e786f87d6a818e1746cb2389bf922afdab`,
+  [modules/files.nix L187–224](https://github.com/nix-community/home-manager/blob/24f8f8e786f87d6a818e1746cb2389bf922afdab/modules/files.nix#L187)、
+  公開日記載なし（取得 2026-10-27）。`crates/hms/src/lib.rs` の `-b backup` 指定をそのまま使う。
+
 ## 変更は配線と検証まで揃える
 
 改名するときは package、実行名、skill 宣言名、配布宣言、内部呼び出し、文書、pipeline-map を同時に更新する。

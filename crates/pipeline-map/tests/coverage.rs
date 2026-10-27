@@ -21,7 +21,7 @@ fn repository_manifest_matches_registrations() {
 }
 
 #[test]
-fn shared_skills_have_matching_names_and_single_deployment_sources() {
+fn shared_skills_have_matching_names_and_valid_source_references() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let module = std::fs::read_to_string(root.join("home/modules/agents.nix")).unwrap();
     let skills = root.join("config/agents/skills");
@@ -41,11 +41,9 @@ fn shared_skills_have_matching_names_and_single_deployment_sources() {
             "{}",
             skill.display()
         );
-        assert!(
-            module.contains(&format!("/agents/skills/{name}/SKILL.md"))
-                || module.contains(&format!("/agents/skills/{name}\"")),
-            "undeployed skill {name}"
-        );
+        // Deployment is generated from this source tree. The agent-skills Nix
+        // check verifies the evaluated home.file entries and built resources;
+        // searching for literal per-skill declarations cannot check that.
         if let Some(tail) = text.split("Read `../").nth(1) {
             let target = tail.split('`').next().unwrap();
             assert!(
