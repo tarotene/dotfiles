@@ -111,5 +111,23 @@ local/auth/ssh/hosts/
 .devin/
 .claude/
 
+# Claude Code's Bash sandbox puts write-protected stand-ins (a /dev/null character
+# device, or an empty directory) at these names under the cwd and every directory
+# the shell `cd`s into, for as long as the session runs. They are not part of the
+# repository; ignoring them keeps `git add -A` from committing them (#1063). None of
+# these names is tracked here. The Cargo workspace glob skips dot-names for the same
+# reason (`Cargo.toml`, #1100, #1166).
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.idea
+.mcp.json
+.profile
+.ripgreprc
+.vscode
+.zprofile
+.zshrc
+
 # Cargo build output (crates/ workspace, ADR-0024)
 target/
