@@ -69,6 +69,16 @@
 //! flake '<ref>':` と input の差分を出す — override が効いている痕跡で異常ではなく、
 //! この警告だけを消す nix のフラグは無い。`lock_warning_expected` がこの場合を検出し、
 //! nix の出力の前にその旨を言う。
+//!
+//! 適用は同時に 1 つだけ(排他ロック `~/.local/state/hms/lock`)。別の worktree や
+//! セッションが同じユーザー環境へ同時に switch すると、先の適用が後の適用に戻される
+//! (#1025)。2 つ目の `hms` は先の適用が終わるまで待つ。ロックは `File::lock`
+//! (flock)なので、hms が落ちても OS が解放する。
+//!
+//! switch が成功し、世代の照合(`verify`)も通ったら、その世代をどの経路で作ったかを
+//! `~/.local/state/hms/last-apply.json` に記録する(`ApplyMode`)。後から世代の rev だけで
+//! 経路を推測しない — squash-merge では、ブランチのコミットが main に無いことからしか
+//! 検証用の世代と分からない。
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -256,6 +266,64 @@ pub fn private_hub_downgrade_abort(
     had_marker_prev_gen // 前世代で登録済み、今回未登録 → 無警告の降格
 }
 
+/// 世代をどの経路で適用したか(`last-apply.json` の `mode`)。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ApplyMode {
+    /// 引数なしの `hms`(pushed main、wrapper 登録ホストでは wrapper 経由の main)。
+    Default,
+    /// 引数で ref を渡した、または `--public-only` を付けた適用(`hms .`、
+    /// `hms <path>`、`hms github:…/<branch または rev>`)。検証用の世代として扱う。
+    Explicit,
+}
+
+impl ApplyMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ApplyMode::Default => "default",
+            ApplyMode::Explicit => "explicit",
+        }
+    }
+}
+
+/// 適用の経路を、引数から決める。
+///
+/// ローカルかリモートかでは決めない(`ref_is_local` はパスが存在するかだけの判定)。
+/// `hms github:tarotene/dotfiles/<branch>` もリモートだが main ではないので、
+/// 明示した ref はすべて `Explicit` にする。`--public-only` は wrapper が足す private
+/// value module を意図して落とす適用なので、ref が無くても `Explicit`。
+///
+/// - `ref_given`: 位置引数で ref を渡したか
+/// - `public_only`: `--public-only` が渡されたか
+pub fn apply_mode(ref_given: bool, public_only: bool) -> ApplyMode {
+    if ref_given || public_only {
+        ApplyMode::Explicit
+    } else {
+        ApplyMode::Default
+    }
+}
+
+/// `last-apply.json` の内容(整形済みの JSON 1 件、末尾改行つき)。
+///
+/// - `rev`: 適用した世代の dotfiles の rev(`generation_rev`。読めなければ null)
+/// - `generation`: 適用後の profile の指す store path
+/// - `applied_at`: 適用を終えた時刻(unix 秒)
+pub fn apply_record_json(
+    mode: ApplyMode,
+    rev: Option<&str>,
+    generation: &str,
+    applied_at: u64,
+) -> String {
+    let mut text = serde_json::to_string_pretty(&serde_json::json!({
+        "mode": mode.as_str(),
+        "rev": rev,
+        "generation": generation,
+        "applied_at": applied_at,
+    }))
+    .expect("a json! object always serializes");
+    text.push('\n');
+    text
+}
+
 // ---------------------------------------------------------------------------
 // 環境の解決
 // ---------------------------------------------------------------------------
@@ -417,6 +485,75 @@ fn run_inherit(cmd: &mut Command) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
+// 永続状態: 排他ロックと適用の記録(状態のパスは hms が所有する)
+// ---------------------------------------------------------------------------
+
+fn state_dir() -> PathBuf {
+    home().join(".local/state/hms")
+}
+
+/// 排他ロックの保持者。drop(またはプロセスの終了)で解放される。
+/// `File` は O_CLOEXEC で開かれるので、子の nix・home-manager には継承されない。
+struct ApplyLock {
+    _file: std::fs::File,
+}
+
+/// hms 全体で 1 つの適用ロックを取る。
+///
+/// 取れなければ、`wait` なら待つ旨を言ってから取れるまで待ち、そうでなければ
+/// `Ok(None)`(誰かが適用中)。ロックファイルを開けない(状態ディレクトリを作れない
+/// など)のは `Err` — ロックなしで進むと、同時適用を防ぐという目的が崩れる。
+fn acquire_apply_lock(wait: bool) -> std::io::Result<Option<ApplyLock>> {
+    use std::fs::TryLockError;
+    let dir = state_dir();
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(ApplyLock { _file: file })),
+        Err(TryLockError::WouldBlock) => {
+            if !wait {
+                return Ok(None);
+            }
+            eprintln!(
+                "==> 別の hms が適用中です。終わるまで待ちます({})",
+                path.display()
+            );
+            file.lock()?;
+            Ok(Some(ApplyLock { _file: file }))
+        }
+        Err(TryLockError::Error(e)) => Err(e),
+    }
+}
+
+/// switch に成功した世代の記録を書く。一時ファイルに書いてから rename するので、
+/// 途中で落ちても読み手は完全な旧記録か完全な新記録のどちらかを見る。
+fn write_apply_record(mode: ApplyMode) -> std::io::Result<()> {
+    let profile_link = home().join(".local/state/nix/profiles/home-manager");
+    let applied_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let text = apply_record_json(
+        mode,
+        generation_rev().as_deref(),
+        &readlink_f(&profile_link),
+        applied_at,
+    );
+    let dir = state_dir();
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join(format!("last-apply.json.tmp.{}", std::process::id()));
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, dir.join("last-apply.json")).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+// ---------------------------------------------------------------------------
 // 診断(warn-only)
 // ---------------------------------------------------------------------------
 
@@ -555,6 +692,7 @@ pub fn run(args: &[String]) -> i32 {
     let wrapper_ref = resolve_default_ref();
     let mut r#ref = wrapper_ref.clone();
     let mut public_only = false;
+    let mut ref_given = false;
 
     for a in args {
         match a.as_str() {
@@ -571,9 +709,25 @@ pub fn run(args: &[String]) -> i32 {
                 eprintln!("Error: Unknown option: {s}");
                 return 1;
             }
-            s => r#ref = s.to_string(),
+            s => {
+                r#ref = s.to_string();
+                ref_given = true;
+            }
         }
     }
+
+    // 適用は同時に 1 つだけ(#1025)。別の hms が適用中なら、終わるまでここで待つ。
+    // 以降の読み取り(世代の整合・降格 guard)も、先の適用が終わった後の状態を見る。
+    let _lock = match acquire_apply_lock(true) {
+        Ok(lock) => lock,
+        Err(e) => {
+            eprintln!(
+                "Error: 適用ロック({})を取れません: {e}",
+                state_dir().join("lock").display()
+            );
+            return 1;
+        }
+    };
 
     let host = resolve_host();
 
@@ -787,6 +941,19 @@ pub fn run(args: &[String]) -> i32 {
     let rc = verify::after_switch(&prepared, args);
     if rc != 0 {
         return rc;
+    }
+
+    // この世代をどの経路で作ったかを、後処理の前に記録する。後処理(Tailscale・
+    // systemd・fcitx5)が失敗しても、照合を通った時点で世代は適用済み —
+    // 記録が無いと、hms が作った世代を「hms 以外で切り替えられた」と誤認する。
+    // 照合の後に置くのは、食い違ったとき profile は別の適用の世代を指しており、
+    // その前に記録すると他人の世代をこの経路で作ったと書いてしまうため。
+    // 記録できなくても適用は失敗にしない。
+    if let Err(e) = write_apply_record(apply_mode(ref_given, public_only)) {
+        eprintln!(
+            "Warning: 適用の記録({})を書けませんでした: {e}",
+            state_dir().join("last-apply.json").display()
+        );
     }
 
     // Tailscale prefs の収束(ADR-471、下の check_herdr_staleness と同じ warn-only —
@@ -1168,6 +1335,49 @@ mod tests {
         assert_eq!(metadata_revision(r#"{"revision":null}"#), "");
         assert_eq!(metadata_revision(r#"{}"#), "");
         assert_eq!(metadata_revision("oops"), "");
+    }
+
+    // apply_mode(D2): ref を渡したかどうかで決め、ローカル/リモートでは決めない。
+
+    #[test]
+    fn mode_without_a_ref_is_default() {
+        assert_eq!(apply_mode(false, false), ApplyMode::Default);
+    }
+
+    #[test]
+    fn mode_with_any_explicit_ref_is_explicit() {
+        // `hms .`、`hms <path>`、`hms github:tarotene/dotfiles/<branch>` はどれも位置引数。
+        assert_eq!(apply_mode(true, false), ApplyMode::Explicit);
+    }
+
+    #[test]
+    fn mode_with_public_only_is_explicit_even_without_a_ref() {
+        assert_eq!(apply_mode(false, true), ApplyMode::Explicit);
+        assert_eq!(apply_mode(true, true), ApplyMode::Explicit);
+    }
+
+    #[test]
+    fn apply_record_json_shape() {
+        let v: Value = serde_json::from_str(&apply_record_json(
+            ApplyMode::Default,
+            Some("abc123"),
+            "/nix/store/x-home-manager-generation",
+            1_790_000_000,
+        ))
+        .unwrap();
+        assert_eq!(v["mode"], "default");
+        assert_eq!(v["rev"], "abc123");
+        assert_eq!(v["generation"], "/nix/store/x-home-manager-generation");
+        assert_eq!(v["applied_at"], 1_790_000_000u64);
+    }
+
+    #[test]
+    fn apply_record_json_marks_an_unreadable_rev_as_null_and_ends_with_a_newline() {
+        let text = apply_record_json(ApplyMode::Explicit, None, "/g", 1);
+        assert!(text.ends_with('\n'));
+        let v: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["mode"], "explicit");
+        assert!(v["rev"].is_null());
     }
 }
 // probe 1

@@ -78,7 +78,15 @@ exit 1"#,
             // activation script)。HM_LANDS で別の世代へ向けると別セッションの適用を、
             // HM_ONLY_PROFILE で activation 前の状態を再現する。LAND_HOLD は向けた直後で止まり、
             // `go` が置かれるまで待つ。
+            // HM_HOLD: switch の最中(世代を向ける前)で止まり(`started` を置く)、`release` が
+            // 置かれるまで待つ — 2 つ目の hms を重ねて、排他を確かめる。待ちには上限を付け、
+            // テストが先に失敗しても stub が居残らないようにする。order.log は start/end の並び。
             r#"printf 'home-manager %s\n' "$*" >> "$STUB_DIR/calls.log"
+printf 'start\n' >> "$STUB_DIR/order.log"
+if [[ -n ${HM_HOLD:-} ]]; then
+  : > "$STUB_DIR/started"
+  for _ in $(seq 400); do [[ -f $STUB_DIR/release ]] && break; sleep 0.05; done
+fi
 if [[ ${HM_RC:-0} == 0 ]]; then
   gen="${HM_LANDS:-$(cat "$STUB_DIR/target")}"
   mkdir -p "$HOME/.local/state/nix/profiles" "$HOME/.local/state/home-manager/gcroots"
@@ -89,6 +97,8 @@ if [[ ${HM_RC:-0} == 0 ]]; then
     for _ in $(seq 400); do [[ -f $STUB_DIR/go ]] && break; sleep 0.05; done
   fi
 fi
+[[ -n ${HM_BG:-} ]] && { nohup sleep 3 >/dev/null 2>&1 & }
+printf 'end\n' >> "$STUB_DIR/order.log"
 exit "${HM_RC:-0}""#,
         );
         exe(
@@ -150,6 +160,37 @@ exit 0"#,
             c.env(k, v);
         }
         c.output().unwrap()
+    }
+    /// `run` と同じ環境で子を起動したまま返す(排他のテストで 2 つ重ねる)。stderr は
+    /// `stderr_to` のファイルへ流す — パイプだと読む側が居ない間に詰まりうる。
+    fn spawn(&self, args: &[&str], env: &[(&str, &str)], stderr_to: &Path) -> std::process::Child {
+        let mut c = Command::new(under_test());
+        c.args(args)
+            .env_clear()
+            .env("HOME", self.home())
+            .env("PATH", format!("{}:/usr/bin:/bin", self.stubs().display()))
+            .env("STUB_DIR", self.stubs())
+            .stdout(std::process::Stdio::null())
+            .stderr(fs::File::create(stderr_to).unwrap());
+        for (k, v) in env {
+            c.env(k, v);
+        }
+        c.spawn().unwrap()
+    }
+    fn state(&self) -> PathBuf {
+        self.home().join(".local/state/hms")
+    }
+    /// `last-apply.json`(無ければ None)。
+    fn record(&self) -> Option<serde_json::Value> {
+        let text = fs::read_to_string(self.state().join("last-apply.json")).ok()?;
+        Some(serde_json::from_str(&text).expect("the record is valid json"))
+    }
+    fn order(&self) -> Vec<String> {
+        fs::read_to_string(self.stubs().join("order.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
     }
     fn calls(&self) -> Vec<String> {
         fs::read_to_string(self.stubs().join("calls.log"))
@@ -611,16 +652,6 @@ fn unknown_option_and_help() {
 // (ロックを持たない古い hms や手で実行した switch と同じ — hms 同士なら排他が先に効く)。
 // ---------------------------------------------------------------------------
 
-fn await_file(what: &str, path: PathBuf) {
-    for _ in 0..500 {
-        if path.exists() {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    panic!("timed out waiting for: {what}");
-}
-
 impl T {
     /// `run` と同じ環境で hms を起動したまま返す。出力はファイルへ流す(パイプだと
     /// 読む側が居ない間に詰まりうる)。
@@ -713,7 +744,9 @@ fn a_competing_apply_after_our_switch_is_detected_not_reported_as_done() {
     let ours = fs::read_to_string(t.stubs().join("target")).unwrap();
 
     let mut ours_apply = t.start_hms(&[d.to_str().unwrap()], &[("LAND_HOLD", "1")]);
-    await_file("our switch to take effect", t.stubs().join("landed"));
+    wait_until("our switch to take effect", || {
+        t.stubs().join("landed").exists()
+    });
     t.other_session_lands(&theirs);
     fs::write(t.stubs().join("go"), "").unwrap();
     let st = ours_apply.wait().unwrap();
@@ -773,7 +806,9 @@ fn replacing_a_generation_that_changed_during_the_wait_is_announced() {
     symlink(&before, profiles.join("home-manager")).unwrap();
 
     let mut older = t.start_hms(&[], &[("EVAL_HOLD", "1")]);
-    await_file("our evaluation to start", t.stubs().join("eval-started"));
+    wait_until("our evaluation to start", || {
+        t.stubs().join("eval-started").exists()
+    });
     // 待っている間に、別セッションの(新しい)変更が適用される。
     t.other_session_lands(&newer);
     fs::write(t.stubs().join("eval-go"), "").unwrap();
@@ -801,4 +836,220 @@ fn replacing_a_generation_that_changed_during_the_wait_is_announced() {
         t.profile_target(),
         PathBuf::from(fs::read_to_string(t.stubs().join("target")).unwrap())
     );
+}
+
+// ---------------------------------------------------------------------------
+// 適用ロックと適用の記録(#1025。D2: 経路の記録、D3: 同時に 1 つだけ)
+// ---------------------------------------------------------------------------
+
+/// `~/.local/state/nix/profiles/home-manager` が指す世代と、その世代が置いた
+/// `~/.local/share/dotfiles/rev` を用意する(switch 後の読み戻しの再現)。世代の実体の
+/// 絶対パスを返す。
+fn fake_generation(t: &T, rev: &str) -> PathBuf {
+    let generation = t.dir.path().join("generation");
+    fs::create_dir_all(&generation).unwrap();
+    let profiles = t.home().join(".local/state/nix/profiles");
+    fs::create_dir_all(&profiles).unwrap();
+    symlink(&generation, profiles.join("home-manager")).unwrap();
+    let share = t.home().join(".local/share/dotfiles");
+    fs::create_dir_all(&share).unwrap();
+    fs::write(share.join("rev"), format!("{rev}\n")).unwrap();
+    let generation = fs::canonicalize(generation).unwrap();
+    // 成功した switch は profile を目標へ向け直す。目標もこの世代に揃えて、照合も記録も
+    // 同じ世代を見るようにする。
+    fs::write(t.stubs().join("target"), generation.to_str().unwrap()).unwrap();
+    generation
+}
+
+fn wait_until(what: &str, mut ready: impl FnMut() -> bool) {
+    for _ in 0..500 {
+        if ready() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!("timed out waiting for: {what}");
+}
+
+fn leftover_temp_files(t: &T) -> Vec<String> {
+    fs::read_dir(t.state())
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.contains(".tmp."))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_default_apply_records_how_the_generation_was_made() {
+    let t = T::new();
+    t.meta(MAIN, r#"{"revision":"deadbeef"}"#);
+    let generation = fake_generation(&t, "abc123");
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    let r = t.record().expect("a successful switch writes a record");
+    assert_eq!(r["mode"], "default");
+    assert_eq!(r["rev"], "abc123");
+    assert_eq!(r["generation"], generation.to_str().unwrap());
+    assert!(r["applied_at"].as_u64().unwrap() >= before);
+    assert!(leftover_temp_files(&t).is_empty());
+}
+
+/// `args` で適用し、記録の `mode` が `explicit` になることを確かめる。
+fn assert_recorded_as_explicit(name: &str, args: impl FnOnce(&T) -> Vec<String>) {
+    let t = T::new();
+    fake_generation(&t, "abc123");
+    let args = args(&t);
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    let o = t.run(&argv, &[]);
+    assert!(o.status.success(), "{name}: {}", err(&o));
+    assert_eq!(t.record().expect(name)["mode"], "explicit", "{name}");
+}
+
+/// 引数で ref を渡した適用はすべて検証用の世代(`explicit`)。ローカルパスかどうかでは
+/// 決めない — リモートのブランチ ref も main ではない。`--public-only` も同じ。
+#[test]
+fn every_explicit_ref_is_recorded_as_explicit() {
+    assert_recorded_as_explicit("a local checkout", |t| {
+        vec![t.checkout().to_str().unwrap().to_string()]
+    });
+    assert_recorded_as_explicit("a remote branch", |_| {
+        vec!["github:tarotene/dotfiles/some-branch".to_string()]
+    });
+    assert_recorded_as_explicit("--public-only", |_| vec!["--public-only".to_string()]);
+}
+
+#[test]
+fn a_failed_switch_does_not_write_or_touch_the_record() {
+    let t = T::new();
+    let o = t.run(&[], &[("HM_RC", "3")]);
+    assert_eq!(o.status.code(), Some(3));
+    assert!(t.record().is_none());
+
+    let previous = r#"{"mode":"default","rev":"old"}"#;
+    fs::create_dir_all(t.state()).unwrap();
+    fs::write(t.state().join("last-apply.json"), previous).unwrap();
+    let o = t.run(&[], &[("HM_RC", "3")]);
+    assert_eq!(o.status.code(), Some(3));
+    assert_eq!(
+        fs::read_to_string(t.state().join("last-apply.json")).unwrap(),
+        previous
+    );
+}
+
+/// 照合(#1025)が食い違ったとき、profile は別の適用の世代を指している。その世代を
+/// この hms の経路で作ったと記録しない(既存の記録にも触らない)。
+#[test]
+fn a_generation_that_fails_verification_is_not_recorded() {
+    let t = T::new();
+    let theirs = t.generation("theirs", "their-rev");
+    let o = t.run(&[], &[("HM_LANDS", theirs.to_str().unwrap())]);
+    assert_eq!(o.status.code(), Some(1), "{}", t.diag(&o));
+    assert!(err(&o).contains("今回の世代が有効になっていません"));
+    assert!(t.record().is_none());
+
+    let previous = r#"{"mode":"default","rev":"old"}"#;
+    fs::create_dir_all(t.state()).unwrap();
+    fs::write(t.state().join("last-apply.json"), previous).unwrap();
+    let o = t.run(&[], &[("HM_LANDS", theirs.to_str().unwrap())]);
+    assert_eq!(o.status.code(), Some(1), "{}", t.diag(&o));
+    assert_eq!(
+        fs::read_to_string(t.state().join("last-apply.json")).unwrap(),
+        previous
+    );
+}
+
+/// 後処理(ここでは fcitx5 の検証)が失敗しても、switch は成功しているので世代は適用済み。
+/// 記録が無いと、hms が作った世代を hms 以外が切り替えたと誤認する。
+#[test]
+fn a_failure_after_the_switch_still_records_the_generation() {
+    let t = T::new();
+    fake_generation(&t, "abc123");
+    let o = t.run(&[], &[("ACTIVE_RC", "1")]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(
+        t.record().expect("the switch had succeeded")["mode"],
+        "default"
+    );
+}
+
+#[test]
+fn an_unwritable_record_only_warns() {
+    let t = T::new();
+    // rename の先が(空の)ディレクトリだと失敗する。
+    fs::create_dir_all(t.state().join("last-apply.json")).unwrap();
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(err(&o).contains("Warning: 適用の記録"));
+    assert!(leftover_temp_files(&t).is_empty());
+}
+
+/// ロックを取れない(状態ディレクトリを作れない)ときは、ロックなしで進まず止まる。
+#[test]
+fn an_unobtainable_lock_stops_the_apply() {
+    let t = T::new();
+    fs::create_dir_all(t.home().join(".local/state")).unwrap();
+    fs::write(t.state(), "not a directory").unwrap();
+    let o = t.run(&[], &[]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err(&o).contains("適用ロック"));
+    assert!(t.hm_call().is_none());
+}
+
+#[test]
+fn help_version_and_bad_options_take_no_lock_and_leave_no_state() {
+    let t = T::new();
+    for args in [&["--help"][..], &["--version"], &["--bogus"]] {
+        t.run(args, &[]);
+    }
+    assert!(!t.state().exists());
+}
+
+/// 2 つ目の hms は、先の switch が終わるまで待つ(#1025)。待っている間に重ならず、
+/// start/end が入れ子にならない。
+#[test]
+fn a_second_hms_waits_for_the_first_to_finish() {
+    let t = T::new();
+    let first_err = t.dir.path().join("first.err");
+    let second_err = t.dir.path().join("second.err");
+
+    let mut first = t.spawn(&[], &[("HM_HOLD", "1")], &first_err);
+    wait_until("the first hms to reach its switch", || {
+        t.stubs().join("started").exists()
+    });
+
+    let mut second = t.spawn(&[], &[], &second_err);
+    wait_until("the second hms to announce that it is waiting", || {
+        fs::read_to_string(&second_err)
+            .unwrap_or_default()
+            .contains("別の hms が適用中です")
+    });
+    // 待っている間、2 つ目は switch に入っていない。
+    assert_eq!(t.order(), ["start"]);
+
+    fs::write(t.stubs().join("release"), "").unwrap();
+    assert!(first.wait().unwrap().success());
+    assert!(second.wait().unwrap().success());
+    assert_eq!(t.order(), ["start", "end", "start", "end"]);
+    assert!(!fs::read_to_string(&first_err)
+        .unwrap()
+        .contains("別の hms が適用中です"));
+}
+
+/// ロックは hms 自身だけが持つ。子(nix・home-manager)が hms より長生きしても、
+/// 次の hms を待たせない(ロックの fd を子に継承させない)。
+#[test]
+fn a_child_that_outlives_hms_does_not_hold_the_lock() {
+    let t = T::new();
+    let o = t.run(&[], &[("HM_BG", "1")]);
+    assert!(o.status.success(), "{}", err(&o));
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", err(&o));
+    assert!(!err(&o).contains("別の hms が適用中です"));
 }

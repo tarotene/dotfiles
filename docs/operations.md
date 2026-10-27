@@ -72,6 +72,39 @@ is a separate concern — it only affects the wrapper's own `nix flake check`,
 and does not make this warning go away, since `hms .` always pins `dotfiles`
 to a local path (never something a lock file could already match).
 
+### Only one `hms` applies at a time, and each apply is recorded
+
+Two `hms` runs against the same user environment — typically from two
+worktrees or two sessions — used to be able to overlap, and the later switch
+could put an older generation back over the earlier one (#1025). Every `hms`
+that switches now takes one lock, `~/.local/state/hms/lock`; a second `hms`
+prints a `==> …` line saying another `hms` is applying and that it will wait,
+then waits until the first has finished. The lock is a plain `flock` on that
+file, so it is released
+when `hms` exits for any reason, and the child `nix` / `home-manager`
+processes do not inherit it. If the lock file cannot be opened at all (for
+instance `~/.local/state/hms` cannot be created), `hms` stops with an error
+instead of applying without the lock. `--help`, `--version` and a bad option
+take no lock.
+
+Right after a successful `home-manager switch` — before the Tailscale,
+`daemon-reload` and fcitx5 steps, which can still fail — `hms` records how
+that generation was made in `~/.local/state/hms/last-apply.json`:
+
+```json
+{ "mode": "default", "rev": "<dotfiles commit>", "generation": "/nix/store/…", "applied_at": 1790000000 }
+```
+
+`mode` is `default` for a bare `hms` (pushed main, through the wrapper on a
+wrapper host) and `explicit` whenever a ref was passed (`hms .`, `hms <path>`,
+`hms github:tarotene/dotfiles/<branch>`) or `--public-only` was given — those
+are verification generations, whether the ref is a local path or not. The
+record is written as a whole file (temp file, then rename), a failed switch
+leaves the previous record alone, and an unwritable record only prints a
+warning. Nothing reads the record yet; it exists so that a later mechanism can
+tell a generation `hms` made from main apart from one it did not, without
+guessing from the commit.
+
 ### `hms` applies bleep at its main, verified before the switch
 
 `flake.lock` pins `bleep` (the PreToolUse guard's upstream, a `flake = false`
