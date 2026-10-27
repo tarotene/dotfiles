@@ -141,6 +141,15 @@ git push --force-with-lease origin <段のブランチ>   # 影響を受けた�
 `docs/git-sync.md` 参照)。これが無いと最上位段だけ rebase され、中間段の
 ブランチ ref が古いコミットを指したまま置いていかれる。
 
+**下段を push すると、上段の PR にも `pull_request` の CI が 2 本できる(先の 1 本は
+cancelled になる)。** GitHub の公式文書は「stack の各 PR は、stack の base を向いているかの
+ように workflow が起動する」と書く("GitHub Actions workflows trigger as if each pull request in
+the stack targets the base of the stack."、GitHub Docs "Stacked pull requests"、取得 2026-10-28)。
+`ci.yml` と `darwin-build.yml` の concurrency の鍵は `head.sha` なので、同じ head への 2 本目が
+1 本目を cancel する(2026-10-27 に #1157 の head で 4 回観測。二重起動の内部動作そのものは
+未確認)。cancelled の run は無害で、`pr-gate` は `latest_runs_only` で古い run を除いて判定する。
+2 本目は下段が変わった後の合成木を検査する。直さずに受け入れる。
+
 中間段(bottom でも tip でもない段)、または変更 path が build/rust の
 入力に含まれない段(bottom・tip を含む、ADR-468 Amendment 2026-09-26)は
 `nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
