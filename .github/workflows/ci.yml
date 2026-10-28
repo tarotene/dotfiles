@@ -31,6 +31,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codex-review-diff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" HEAD -- crates/codex-launcher/reviewed.toml; then
+            echo 'value=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'value=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Generate complete upstream review diff
+        if: steps.changed.outputs.value == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          manifest=crates/codex-launcher/reviewed.toml
+          git show "$BASE_SHA:$manifest" > /tmp/codex-old.toml 2>/dev/null || cp "$manifest" /tmp/codex-old.toml
+          python3 - <<'PY' > /tmp/codex-revisions
+          import re, tomllib
+          for path in ('/tmp/codex-old.toml', 'crates/codex-launcher/reviewed.toml'):
+              with open(path, 'rb') as f:
+                  data = tomllib.load(f)
+              assert re.fullmatch(r'rust-v\d+\.\d+\.\d+', data['release'])
+              assert re.fullmatch(r'[a-f0-9]{40}', data['commit'])
+              print(data['release'], data['commit'])
+          PY
+          read -r old_tag old_commit < /tmp/codex-revisions
+          read -r new_tag new_commit < <(tail -n 1 /tmp/codex-revisions)
+          git init -q /tmp/codex-source
+          git -C /tmp/codex-source remote add origin https://github.com/openai/codex.git
+          git -C /tmp/codex-source fetch --quiet --depth=1 origin "$old_commit" "$new_commit" "refs/tags/$new_tag:refs/tags/$new_tag"
+          test "$(git -C /tmp/codex-source rev-parse "$new_tag^{commit}")" = "$new_commit"
+          mkdir -p /tmp/codex-review
+          printf 'Old: %s %s\nNew: %s %s\n' "$old_tag" "$old_commit" "$new_tag" "$new_commit" > /tmp/codex-review/revisions.txt
+          git -C /tmp/codex-source diff --no-ext-diff "$old_commit" "$new_commit" -- codex-rs scripts/install > /tmp/codex-review/upstream.diff
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.changed.outputs.value == 'true'
+        with:
+          name: codex-upstream-review
+          path: /tmp/codex-review/
+
   gitleaks:
     runs-on: ubuntu-latest
     name: Secret scan (gitleaks)
