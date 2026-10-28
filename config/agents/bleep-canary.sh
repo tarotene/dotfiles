@@ -73,7 +73,7 @@ expect "unresolved shell variable is outside the canonical form" deny "$(bash_cm
 expect "canonical post with a clean body" "" "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-clean.md")"
 expect "push that disables pre-push" deny "$(bash_cmd 'git push --no-verify origin x')"
 expect "unrelated command" "" "$(bash_cmd 'ls -la')"
-for tool in view grep glob; do
+for tool in view grep glob rg; do
   expect "copilot $tool read" "" "$(jq -nc --arg t "$tool" '{toolName:$t,toolArgs:{path:"acme/secret-project"}}')" copilot
 done
 expect "copilot preview is not allowed" deny '{"toolName":"preview","toolArgs":{"path":"acme/secret-project"}}' copilot
