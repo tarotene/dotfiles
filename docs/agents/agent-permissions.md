@@ -94,6 +94,13 @@ sandbox を外した再実行は自動モードの判定が「Safety Bypass」�
 <https://code.claude.com/docs/en/permissions>、取得 2026-10-27、本文を逐語で引く形で取得して読んだ)。
 Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.com/docs/security>)しか取得できず、**未確認**。
 
+Claude Code の sandbox が起動に要るコマンド（`socat`、Linux は `bubblewrap`）は、対話の Claude では `home.packages` で PATH に載る。
+systemd の user unit のような headless の起動の PATH には `~/.nix-profile/bin` が無く、`failIfUnavailable = true` が効いて
+`sandbox required but unavailable: … socat not installed` で起動を拒否する（2026-10-28、メールの自動仕分けの unit が 10 分ごとに失敗）。
+そのため `home/modules/claude.nix` は、同じ一覧から導いた `dotfiles.claudePermissions.sandboxBinPath`（nix store の bin を `:` で
+つないだ文字列、読み取り専用）を出す。headless で `claude` を起動する unit は、これを `Environment=PATH=…` に連結する。
+unit の実値は private wrapper に置く（ADR-0034）。
+
 `excludedCommands` の既定は、sandbox の中では鍵束の D-Bus・gpg-agent・nix daemon のソケットに届かない
 コマンド(`gh`・`git commit`・`git push`・`git add`・`git fetch`・`git pull`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
 狭い allow と分類器を通る。

@@ -165,6 +165,12 @@ let
   # 許可を含む）を、前回の記録をもとに settings.json から消すため（#1161）。
   # `agent-native/claude-permissions.json` には足さない（そちらは `PermissionsSpec` の
   # 他の読み手に渡る宣言そのもの）。
+  # Claude Code の sandbox が起動に要るコマンド（socat、Linux は bubblewrap）。対話の Claude は
+  # home.packages 経由で PATH に載るが、systemd の user unit のような headless の起動の PATH には
+  # `~/.nix-profile/bin` が無く、`sandbox.failIfUnavailable` が効いて `socat not installed` で起動を
+  # 拒否する（2026-10-28、mailctl-triage.service が 10 分ごとに失敗した）。
+  sandboxDeps = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
+
   claudePermissionsApplySpec = permissionsSpec // {
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-allow-claude.json";
   };
@@ -175,6 +181,17 @@ in
       type = lib.types.listOf lib.types.str;
       default = config.dotfiles.agentPermissions.mcp_allow;
       description = "Additional native Claude permission allowances.";
+    };
+    sandboxBinPath = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = lib.makeBinPath sandboxDeps;
+      description = ''
+        PATH entries (colon-separated nix store paths) holding the commands Claude Code's sandbox
+        needs to start. A headless unit that runs `claude` (a systemd user service, a timer) puts
+        this in its `Environment=PATH=…`; otherwise `sandbox.failIfUnavailable` refuses to start
+        with `socat not installed`. Same list as `home.packages` below, so there is one source.
+      '';
     };
     secretPaths = lib.mkOption {
       type = lib.types.listOf lib.types.str;
@@ -250,7 +267,7 @@ in
     # failed with `Read-only file system` (measured on vega 2026-10-28, #1164).
     dotfiles.claudePermissions.allowWrite = [ "~/.local/state/claude" ];
     # Native Claude sandbox dependencies remain available for restored settings.
-    home.packages = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
+    home.packages = sandboxDeps;
     xdg.configFile."agent-native/claude-permissions.json".text = builtins.toJSON permissionsSpec;
     home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
     home.file.".claude/hooks/claude-statusline".source = "${pkgs.dotfiles-tools}/bin/claude-statusline";
