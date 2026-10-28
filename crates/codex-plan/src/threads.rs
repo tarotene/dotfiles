@@ -146,23 +146,7 @@ fn leaves(value: &Value, each: &mut dyn FnMut(&str)) {
     }
 }
 
-/// Same rule as `crates/gh-edit-allow/src/gh.rs` `parse_url` for pull requests:
-/// strip `#`/`?`, require exactly owner/repo/pull/N with a positive integer N.
-pub fn is_pr_url(u: &str) -> bool {
-    let Some(rest) = u.strip_prefix("https://github.com/") else {
-        return false;
-    };
-    let rest = rest.split(['#', '?']).next().unwrap_or("");
-    let parts: Vec<&str> = rest.trim_end_matches('/').split('/').collect();
-    let [owner, repo, "pull", number] = parts.as_slice() else {
-        return false;
-    };
-    !owner.is_empty()
-        && !repo.is_empty()
-        && !number.is_empty()
-        && number.bytes().all(|b| b.is_ascii_digit())
-        && number.parse::<u64>().is_ok_and(|n| n > 0)
-}
+use github_command::url::is_pr_url;
 
 fn calls_pr_create(call: &Call) -> bool {
     let mut found = false;
@@ -609,26 +593,6 @@ pub fn render(report: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn pr_url_rule_matches_gh_edit_allow_parse_url_for_pull_requests() {
-        // Same inputs as crates/gh-edit-allow/src/gh.rs `urls` (issues are not PRs).
-        for (url, pr) in [
-            ("https://github.com/Octo/Hello/pull/7", true),
-            ("https://github.com/o/r/pull/7#issuecomment-1", true),
-            ("https://github.com/o/r/pull/7/", true),
-            ("https://github.com/o/r/issues/3#issuecomment-1", false),
-            ("https://github.com/o/r/pull/7/files", false),
-            ("https://github.com/o/r/commit/abc", false),
-            ("https://gitlab.com/o/r/pull/7", false),
-            ("https://github.com/o/r/pull/0", false),
-            ("https://github.com//r/pull/7", false),
-            ("https://github.com/o/r/pull/+7", false),
-            ("", false),
-        ] {
-            assert_eq!(is_pr_url(url), pr, "{url}");
-        }
-    }
 
     const BASE: &str = "2026-10-27T01:00:00.000Z";
 

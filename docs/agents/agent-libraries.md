@@ -6,7 +6,7 @@
 |---|---|---|
 | agent-session | hook 入出力・判定・計画・会話とセッションの記録 | decision, gate_event, input, ledger, outcome, plan, transcript, hook |
 | command-inspection | シェルの解析・コマンド範囲・ハッシュ | shell, command, cmd_hash |
-| github-command | GitHub コマンドの引数・本文・本文マーカーの解析 | gh, marker |
+| github-command | GitHub コマンドの引数・本文・本文マーカーの解析、PR・Issue の URL の認識（`url`: `gh-edit-allow` と `codex-plan` が共有する単一正本） | gh, marker, url |
 | jq-json-compat | jq 互換の JSON 読み取り・表現 | jqfmt, jqparse, raw |
 | process-control | プロセス起動・タイムアウト・実行ファイル探索 | proc |
 | git-repository | Git の状態取得・操作と remote の解決 | git, repo |

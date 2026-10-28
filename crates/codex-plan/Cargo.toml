@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 codex-launcher = { path = "../codex-launcher" }
+github-command = { path = "../github-command" }
 model-catalog = { path = "../model-catalog" }
 anyhow = "1"
 futures-util = { version = "0.3", features = ["sink"] }
