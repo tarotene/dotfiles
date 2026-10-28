@@ -151,6 +151,13 @@ pub static RULES: &[Rule] = &[
         run: |agent, raw| ci_wait_guard::hook(agent, raw),
     },
     Rule {
+        node: "sandbox-compound-guard",
+        event: Event::Pre,
+        tools: Tools::Bash,
+        budget: S10,
+        run: |agent, raw| sandbox_compound_guard::hook(agent, raw),
+    },
+    Rule {
         node: "pr-followup-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
@@ -319,6 +326,7 @@ mod tests {
                 "repo-create-guard",
                 "routines-write-guard",
                 "rulesets-write-guard",
+                "sandbox-compound-guard",
                 "stack-base-guard",
                 "worktree-lease",
                 "worktree-create-guard",

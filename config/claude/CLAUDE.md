@@ -124,6 +124,11 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
 - 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
 
+形式検査は `sandbox-compound-guard`(PreToolUse deny、`hook-router` の規則)が担う。除外一覧(`sandbox.excludedCommands`)
+のコマンドを `;`・`&&`・`|`・ループ・改行で別のコマンドと並べる形を実行前に拒否し、単体で呼ぶよう案内する
+(`docs/agents/sandbox-compound-guard.md`)。gate に当たる前に最初から単体で呼ぶこと — gate は漏れを拾うためのもので、
+一次的な手段ではない。
+
 sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範囲):
 
 - **sandbox の中でよい**: `cargo test`・`cargo check`・`cargo metadata`・`cargo fmt`(`target/` は cwd 配下で書ける)、

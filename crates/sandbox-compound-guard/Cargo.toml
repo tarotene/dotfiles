@@ -1,0 +1,14 @@
+[package]
+name = "sandbox-compound-guard"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
+command-inspection = { version = "0.1.0", path = "../command-inspection" }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -565,6 +565,10 @@ Design and rationale for the hooks and commands deployed from
   `until`/`while`/`sleep` のポーリングで待つ形を、Bash と Monitor の実行前に deny し、赤 1 件で即 NG・
   required 全緑で即 OK の `pr-checks-wait` へ案内する(`crates/ci-wait-guard`、hook-router の規則)。
   待ち方の判定の正本は `docs/agents/pr-gate.md`「待ち方」。
+- [`sandbox-compound-guard.md`](agents/sandbox-compound-guard.md) — sandbox の外で動かす道具(`gh`・`git commit`・
+  `nix build` など。`sandbox.excludedCommands`)を別のコマンドと連結した Bash 呼び出しを、実行前に deny し、
+  「単体で呼ぶ」へ案内する(連結すると全体が sandbox の中に残り、`gh` は 401・署名は `No secret key` になる。
+  `crates/sandbox-compound-guard`、hook-router の規則)。
 - [`pr-followup-guard.md`](agents/pr-followup-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する

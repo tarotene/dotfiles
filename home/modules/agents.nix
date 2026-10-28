@@ -611,7 +611,7 @@ let
   # 介さず直接起動する。旧 `bash '….sh'` の command は retiredHookEntries /
   # --retire で完全一致削除する(legacy*Cmd)。
   gitWorktreeAllowCmd = "'${hooksDir}/git-worktree-allow'";
-  # hook-router(ツール呼び出しに付く検査 22 件を 1 つのプロセスで走らせる)。
+  # hook-router(ツール呼び出しに付く検査 24 件を 1 つのプロセスで走らせる。件数の正本は docs/agents/hook-router.md)。
   hookRouterPreCmd = "'${hooksDir}/hook-router' pre";
   hookRouterPostCmd = "'${hooksDir}/hook-router' post";
   gitStashGuardCmd = "'${hooksDir}/git-stash-guard'";
@@ -2097,7 +2097,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
   # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
   home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
-  # hook-router: ツール呼び出しに付く検査 22 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
+  # hook-router: ツール呼び出しに付く検査 24 件の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
   home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
   # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
   home.file.".claude/hooks/main-checkout-guard".source =
