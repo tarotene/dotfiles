@@ -1517,6 +1517,12 @@ let
       "claudeHookDeclarations: node `${d.node}` が pipeline-map.toml に定義されていない";
     builtins.removeAttrs d [ "node" ];
 
+  # Codex の `/hooks` は、statusMessage の無い hook をすべて `Unnamed hook` と表示する(#1122)。
+  # 表示名は pipeline-map.toml のノードの label(ASCII)を使う。Claude の宣言には付けない
+  # (Claude は statusMessage をフック実行中の表示にも使う)。
+  declareCodexHook =
+    d: declareHook d // { statusMessage = config.dotfiles.pipeline.nodeLabels.${d.node}; };
+
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
     register = map declareHook claudeHookDeclarations;
@@ -1598,7 +1604,7 @@ let
     ];
   codexHooksSpec = builtins.toJSON {
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-codex.json";
-    register = map declareHook codexHookDeclarations;
+    register = map declareCodexHook codexHookDeclarations;
     retire = [
       {
         event = "PermissionRequest";

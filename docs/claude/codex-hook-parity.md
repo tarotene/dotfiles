@@ -99,6 +99,26 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 テストする。詳細は OpenAI, [Hooks](https://learn.chatgpt.com/docs/hooks)
 （取得2026-10-26）、固定版の [hooks_list.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/tests/suite/v2/hooks_list.rs#L190) を参照。
 
+## `/hooks` の表示名（statusMessage）
+
+Codex の `/hooks` は、hook の `statusMessage` を表示名にし、無い（空白だけを含む）hook を
+すべて `Unnamed hook` と表示する。信頼の操作で、どの検査を信頼するのかが一覧から判断できない
+（#1122）。そこで、Codex に登録する hook には `statusMessage` を付ける。
+
+- 共有の宣言（`codexHookDeclarations`）: `pipeline-map.toml` のノードの `label` を表示名にする。
+  `label` は ASCII で、`home/modules/pipeline.nix` の `nodeLabels` が nix の評価時に引く。
+  node の無い宣言は、評価の時点で落ちる（表示名の無い hook を登録できない）。
+- herdr の統合と worktree の context: `agent-settings-reconcile codex-hooks` の
+  `--status-message <text>` で、その呼び出しで登録するすべての hook に同じ表示名を付ける。
+- Claude の宣言には付けない。Claude は `statusMessage` を hook の実行中の表示にも使うため、
+  共有の宣言から導く対象は Codex だけにしている。宣言から外すと、ハンドラの欄からも消える。
+
+根拠: OpenAI, Codex `rust-v0.164.0`、取得 2026-10-28。
+[hooks_browser_view.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/bottom_pane/hooks_browser_view.rs#L420)
+は `hook.status_message` を trim し、空なら `Unnamed hook` とする。
+[hook_config.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/hook_config.rs#L190)
+は JSON キー `statusMessage`（`#[serde(default, rename = "statusMessage")]`）を受け付ける。
+
 疑問や上流更新による不一致は dotfiles の Issue に、Codexの版と上記の読み戻し結果を
 添えて報告する。Hook はイベントで起動する検査、router は検査の振り分け役、
 trust はそのcommandを実行してよいという本人の許可を指す。
@@ -112,3 +132,6 @@ trust はそのcommandを実行してよいという本人の許可を指す。
 - crates/hook-router/src/rules.rs
 - crates/codex-plan-gate/src/main.rs
 - crates/agent-settings-reconcile/src/lib.rs
+- crates/agent-settings-reconcile/src/hooks.rs
+- home/modules/pipeline.nix
+- home/modules/agents.nix

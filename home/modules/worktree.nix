@@ -127,6 +127,7 @@ in
       --retire PreToolUse ${lib.escapeShellArg legacyGuardCmd} \
       --retire PreToolUse ${lib.escapeShellArg guardCmd} \
       --retire SessionStart ${lib.escapeShellArg legacyContextCmd} \
+      --status-message ${lib.escapeShellArg "worktree audit context"} \
       --register \
       SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg contextCmd} 30
   '';
