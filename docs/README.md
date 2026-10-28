@@ -451,6 +451,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
 - [ADR-1228](adr/1228-system-layer-declarations.md) — Linux と macOS のシステム層の対象設定を system-manager と nix-darwin で宣言し、root 適用を home-manager と分ける。
 - [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、再訪の条件(固まりが負荷の高い区間に残る・AUR にしか無い必要なパッケージ・会社の EDR の明言)を atop の記録で確かめる。
+- [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する(H1〜H6 の穴と S1〜S6・L1〜L3 を検査し、語彙を版 2 に上げる)。検査は nix の check で、表の 1 行が 1 derivation。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 

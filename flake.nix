@@ -474,6 +474,12 @@
           dotfiles-tools-fmt = rust.fmt;
         }
         // lib.optionalAttrs (system == linuxSystem) {
+          # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。Apalache のサーバーが
+          # ポート 8822 を使うので、derivation ごとの sandbox に分けられる Linux だけで回す。
+          calendar-handshake-spec = import ./home/tests/calendar-handshake-spec.nix {
+            pkgs = pkgsFor.${system};
+            inherit lib;
+          };
           # private wrapper(`lib.mkHome` の `extraModules`)のように、このリポジトリの外が
           # pipeline-map のノードを持たない timer を足しても、評価が通ること(#992、
           # home/modules/pipeline.nix)。最初の版は最終の config の名前を全部数えたので、

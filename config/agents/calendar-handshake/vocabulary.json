@@ -1,7 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "description": "Closed vocabulary of title-leading markers for the personal/workplace calendar handshake. The title of an event on the handshake calendar starts with exactly one token; every state change is a title change.",
-  "group_key": "title-after-token",
+  "group_key": "stamped-id-else-title-after-token",
   "states": [
     { "id": "candidate", "token": "[hold] ", "owner": "person", "hold": "soft" },
     { "id": "ok", "token": "[ok] ", "owner": "workplace-script", "hold": "soft" },
@@ -15,6 +15,8 @@
     { "from": ["candidate"], "to": ["ok", "resched", "ng"], "by": "workplace-script" },
     { "from": ["ok", "resched"], "to": ["go"], "by": "person" },
     { "from": ["go"], "to": ["blocked"], "by": "workplace-script" },
-    { "from": ["blocked"], "to": ["secured"], "by": "workplace-agent" }
+    { "from": ["blocked"], "to": ["secured"], "by": "workplace-agent" },
+    { "from": ["blocked", "secured"], "to": ["go"], "by": "workplace-script" },
+    { "from": ["ok", "resched", "ng", "go", "blocked", "secured"], "to": ["candidate"], "by": "person" }
   ]
 }
