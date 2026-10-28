@@ -29,9 +29,41 @@ BRANCH="main"
 CLONE_DIR="$HOME/dotfiles"
 DRY_RUN=false
 
+# Keep distro selection closed: ID_LIKE must not route an unreviewed distro to
+# apt. This check runs before Nix installation or any other host mutation.
+classify_os() {
+    case "$1:$2" in
+        Darwin:*) printf '%s\n' darwin ;;
+        Linux:pop|Linux:ubuntu) printf '%s\n' apt ;;
+        Linux:cachyos) printf '%s\n' cachyos ;;
+        *) printf '%s\n' unsupported ;;
+    esac
+}
+
+selftest_os() {
+    local actual kernel distro expected
+    while read -r kernel distro expected; do
+        actual="$(classify_os "$kernel" "$distro")"
+        if [[ "$actual" != "$expected" ]]; then
+            echo "OS classification failed: $kernel $distro: $actual != $expected" >&2
+            return 1
+        fi
+    done <<'CASES'
+Darwin ignored darwin
+Linux pop apt
+Linux ubuntu apt
+Linux cachyos cachyos
+Linux debian unsupported
+Linux unknown unsupported
+FreeBSD ignored unsupported
+CASES
+    echo "OS classification selftest passed"
+}
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         --dry-run) DRY_RUN=true; shift ;;
+        --selftest) selftest_os; exit ;;
         --help|-h)
             echo "Usage: $0 [--dry-run]"
             echo ""
@@ -44,6 +76,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 info() { echo "==> $*"; }
+
+# Reject unimplemented platforms before Nix installation, cloning, or apt.
+SYSTEM_KERNEL="$(uname -s)"
+SYSTEM_ID=""
+if [[ "$SYSTEM_KERNEL" == Linux && -r /etc/os-release ]]; then
+    # os-release is the distribution's local system identity file.
+    ID=""
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    SYSTEM_ID="${ID:-}"
+fi
+SYSTEM_KIND="$(classify_os "$SYSTEM_KERNEL" "$SYSTEM_ID")"
+case "$SYSTEM_KIND" in
+    apt|darwin) ;;
+    cachyos) echo "Error: CachyOS bootstrap is not implemented; no changes made." >&2; exit 1 ;;
+    *) echo "Error: unsupported operating system ($SYSTEM_KERNEL, ID=${SYSTEM_ID:-unknown}); no changes made." >&2; exit 1 ;;
+esac
 
 # --- 1. Install Nix ---
 if command -v nix &>/dev/null; then
@@ -96,7 +145,7 @@ fi
 
 # --- 3. System-layer packages (apt on Linux, Homebrew on darwin — ADR-0018) ---
 info "Installing system-layer packages..."
-if [[ "$(uname -s)" == "Darwin" ]]; then
+if [[ "$SYSTEM_KIND" == "darwin" ]]; then
     SYSTEM_INSTALLER="$REPO_DIR/scripts/install-packages-darwin.sh"
 else
     SYSTEM_INSTALLER="$REPO_DIR/scripts/install-packages.sh"

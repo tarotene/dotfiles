@@ -237,6 +237,9 @@ jobs:
       - name: bootstrap.sh --dry-run
         run: ./bootstrap.sh --dry-run
 
+      - name: bootstrap.sh --selftest
+        run: ./bootstrap.sh --selftest
+
       - name: install-packages.sh --dry-run
         run: ./scripts/install-packages.sh --dry-run
 
