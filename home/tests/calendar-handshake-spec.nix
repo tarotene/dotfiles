@@ -4,6 +4,8 @@
 # 8822 番ポートを使うので、同じ sandbox の中で 2 つ同時には回せない。nix の sandbox は
 # derivation ごとに分かれ、ネットワークも使わない(Quint に同梱の Apalache と TLC だけで動く)。
 # 語彙の遷移の被覆(per_transition)の行数は、語彙 JSON の遷移の数から数える。
+# CI は .github/workflows/ci.yml の calendar-handshake-spec ジョブが build する
+# (flake-check は --no-build で、評価しか行わない)。
 { pkgs, lib }:
 let
   root = ../../config/agents/calendar-handshake;

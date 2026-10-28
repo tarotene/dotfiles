@@ -54,7 +54,9 @@ Quint は Node と JVM を要し、仕様は Apalache を経由して TLC に渡
 
 `home/tests/calendar-handshake-spec.nix` が `spec/scenarios.json` を読み、`flake.nix` の `checks.x86_64-linux.calendar-handshake-spec` に登録する。
 Apalache のサーバーは 8822 番ポートを使うので、同じ環境では 2 つ同時に回せない。derivation ごとの sandbox に分けると、この衝突が無い。
-darwin では回さない(sandbox の分離が前提)。expect が `fail` の行は、ADR-550 のままの規則の穴を回帰テストにしたもので、反例が出なくなれば赤になる。
+darwin では回さない(sandbox の分離が前提)。CI は `ci.yml` の専用ジョブ `calendar-handshake-spec` が実際に build する(既存の `flake-check` は `--no-build` で、評価しか行わない。
+最初の版はこれを見落とし、`flake-check` が回すと書いていた。PR の CI が 50 秒で通ったことで気づいた)。握手の語彙・仕様・検査の定義が変わった PR と、main への push だけで回す。
+expect が `fail` の行は、ADR-550 のままの規則の穴を回帰テストにしたもので、反例が出なくなれば赤になる。
 
 ### D5. 検査で見つけた穴の処分(改訂した規則)
 
@@ -142,6 +144,7 @@ S5(会社側が読めるのは専用カレンダーだけ)は、検査でなく�
 - `config/agents/calendar-handshake/vocabulary.json`
 - `home/tests/calendar-handshake-spec.nix`
 - `flake.nix`
+- `.github/workflows/ci.yml`
 
 ## Consequences
 

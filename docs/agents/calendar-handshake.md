@@ -88,7 +88,8 @@ JSON の `version` は人が読む世代番号であり、照合の根拠には�
 | `spec/vocab.jq` | 語彙 JSON から、仕様が import する `vocab.qnt` を作る |
 
 実行は `nix build .#checks.x86_64-linux.calendar-handshake-spec -L`(`home/tests/calendar-handshake-spec.nix`)。
-表の 1 行が 1 つの derivation で、CI の `flake-check` が回す。期待が「反例が出る」の行は、版 1 の規則の穴を回帰テストにしたもので、
+表の 1 行が 1 つの derivation で、CI の `calendar-handshake-spec` ジョブ(`.github/workflows/ci.yml`。
+握手の語彙・仕様・検査の定義が変わった PR と main への push で回す)が回す。`flake-check` は `--no-build` なので、評価しか行わない。期待が「反例が出る」の行は、版 1 の規則の穴を回帰テストにしたもので、
 改訂を戻して反例が出なくなれば、検査が赤になる。語彙の遷移ごとに、仕様がその遷移を起こせる(到達可能)ことも確かめ、
 語彙に死んだ遷移があれば赤になる。逆に、仕様が語彙に無い遷移を起こせば、不変条件 `s6` が破れる。
 
