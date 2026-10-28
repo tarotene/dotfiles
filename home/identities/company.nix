@@ -76,4 +76,10 @@
   # into a user-owned device regardless (Tailscale tags KB), and the ACL's
   # `ssh` section deliberately omits tag:company.
   dotfiles.tailscale.ssh = false;
+
+  # Applications used on the company machine (#929).
+  services.flatpak.packages = lib.mkIf pkgs.stdenv.isLinux [
+    "com.github.PintaProject.Pinta"
+    "org.localsend.localsend_app"
+  ];
 }
