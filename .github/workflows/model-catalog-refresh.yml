@@ -1,0 +1,81 @@
+name: Refresh model catalog
+
+# pipeline-node: model-catalog-refresh
+on:
+  schedule:
+    - cron: '17 22 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: model-catalog-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Fetch and validate catalog
+        env:
+          ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
+        run: |
+          set -eu
+          if [ -z "$ARTIFICIAL_ANALYSIS_API_KEY" ]; then
+            echo '::error::ARTIFICIAL_ANALYSIS_API_KEY is not configured'
+            exit 1
+          fi
+          cargo run --locked -p model-catalog -- fetch-aa --file crates/model-catalog/catalog.toml --write
+          cargo run --locked -p model-catalog -- check --file crates/model-catalog/catalog.toml
+      - name: Update refresh pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          if git diff --quiet -- crates/model-catalog/catalog.toml; then
+            echo 'Catalog has no meaningful changes.'
+            exit 0
+          fi
+          branch='automation/model-catalog-refresh'
+          main_sha=$(git rev-parse HEAD)
+          ref="repos/$REPOSITORY/git/ref/heads/$branch"
+          if gh api "$ref" > /dev/null 2>&1; then
+            # Never discard changes by a person or changes outside the generated catalog.
+            gh api "repos/$REPOSITORY/compare/$main_sha...$branch" > /tmp/catalog-compare.json
+            jq -e 'all(.files[]; .filename == "crates/model-catalog/catalog.toml") and all(.commits[]; .author.login == "github-actions[bot]")' /tmp/catalog-compare.json > /dev/null || {
+              echo '::error::Refresh branch contains non-automation changes; refusing to replace it.'
+              exit 1
+            }
+            main_sha=$(jq -er '.head_commit.sha' /tmp/catalog-compare.json)
+          else
+            gh api --method POST "repos/$REPOSITORY/git/refs" -f ref="refs/heads/$branch" -f sha="$main_sha" > /dev/null
+          fi
+          jq -n --arg repo "$REPOSITORY" --arg branch "$branch" --arg sha "$main_sha" \
+            --rawfile content crates/model-catalog/catalog.toml \
+            '{query:"mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }", variables:{input:{branch:{repositoryNameWithOwner:$repo,branchName:$branch},expectedHeadOid:$sha,message:{headline:"chore(model-catalog): refresh AA data"},fileChanges:{additions:[{path:"crates/model-catalog/catalog.toml",contents:($content | @base64)}]}}}}' > /tmp/catalog-commit.json
+          gh api graphql --input /tmp/catalog-commit.json > /dev/null
+          if [ -z "$(gh pr list -R "$REPOSITORY" --state open --head "$branch" --json number --jq '.[0].number // empty')" ]; then
+            cat > /tmp/catalog-pr.md <<'BODY'
+          No-Issue: recurring catalog refresh.
+
+          ## 課題
+          Artificial Analysis の測定値が古くなる。
+
+          ## 解決策
+          応答を検証し、生成ブロックを更新する。
+
+          ## Before / After
+          No-Visual: 数値データの更新であり、この PR 自体は表示を変更しない。
+
+          ## 検証
+          インポーターの検証とカタログ検査を実行した。GITHUB_TOKEN による PR の workflow は本人がレビュー時に実行を承認する。
+
+          🤖 Generated with [GitHub Actions](https://github.com/features/actions)
+          BODY
+            gh pr create -R "$REPOSITORY" --base main --head "$branch" --title 'chore(model-catalog): refresh AA data' --body-file /tmp/catalog-pr.md
+          fi

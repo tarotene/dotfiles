@@ -88,11 +88,24 @@ fn api_key() -> Result<String, String> {
 /// 鍵は argv に出さず、curl の設定を標準入力で渡す(`ps` に鍵が見えない)。
 fn fetch_live() -> Result<String, String> {
     let key = api_key()?;
+    if key.contains(['\r', '\n']) {
+        return Err("AA の鍵の形式が不正".into());
+    }
     let mut child = Command::new("curl")
-        .args(["-sS", "-f", "--max-time", "60", "-K", "-", aa::ENDPOINT])
+        .args([
+            "-sS",
+            "-f",
+            "--max-time",
+            "60",
+            "-K",
+            "-",
+            "--write-out",
+            "\n%{http_code}",
+            aa::ENDPOINT,
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("curl を起動できない: {e}"))?;
     let config = format!(
@@ -108,10 +121,17 @@ fn fetch_live() -> Result<String, String> {
     let out = child
         .wait_with_output()
         .map_err(|e| format!("curl の待機に失敗: {e}"))?;
-    if !out.status.success() {
-        return Err(format!("AA の取得に失敗(curl {})", out.status));
+    let output = String::from_utf8(out.stdout).map_err(|_| "AA の応答が UTF-8 でない")?;
+    let (body, status) = output
+        .rsplit_once('\n')
+        .ok_or("AA の HTTP 状態を読めない")?;
+    if !out.status.success() || status != "200" {
+        return Err(format!(
+            "AA の取得に失敗 (HTTP {status}, curl {})",
+            out.status
+        ));
     }
-    String::from_utf8(out.stdout).map_err(|e| format!("応答が UTF-8 でない: {e}"))
+    Ok(body.to_owned())
 }
 
 fn print_report(report: &Report, before: &Catalog) {
@@ -198,10 +218,12 @@ fn run() -> Result<ExitCode, String> {
             let retrieved = o.retrieved.unwrap_or_else(model_catalog::date::today_utc);
             let (report, next) = aa::run(&text, &json, &retrieved)?;
             print_report(&report, &catalog);
-            if o.write {
+            if o.write && next != text {
                 let path = o.file.as_deref().unwrap_or_default();
                 std::fs::write(path, next).map_err(|e| format!("{path}: {e}"))?;
                 println!("書き込み: {path}");
+            } else if o.write {
+                println!("意味のある変更なし");
             }
             Ok(ExitCode::SUCCESS)
         }

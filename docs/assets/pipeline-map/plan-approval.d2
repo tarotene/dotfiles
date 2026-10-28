@@ -220,6 +220,13 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
   }
 }
 
+l_ci: "CI (GitHub Actions)" {
+  class: lane
+  n_model_catalog_refresh: "model-catalog-refresh.yml" {
+    class: s_yaml
+  }
+}
+
 l_cloud: "Cloud / LLM" {
   class: lane
   n_copilot_cli_critic: "Copilot CLI (plan critic)" {
@@ -312,6 +319,9 @@ legend: "Legend" {
   grid-gap: 8
   lg_s_rust: "Rust crate" {
     class: s_rust
+  }
+  lg_s_yaml: "GitHub Actions workflow" {
+    class: s_yaml
   }
   lg_s_cloud_llm: "LLM session / cloud" {
     class: s_cloud_llm
