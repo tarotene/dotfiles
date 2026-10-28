@@ -121,6 +121,28 @@ fn g_unpushed_blocks_when_commits_not_on_remote() {
 }
 
 #[test]
+fn g_unpushed_ignores_commits_already_on_a_lower_stack_branch() {
+    // upstream も origin/<branch> も無い新しい段のブランチ。下の段 (origin/lower) が
+    // c1 まで push 済みなら、未 push は c2 の 1 件だけ(origin/main..HEAD の 2 件ではない)。
+    let fx = Fx::new();
+    fx.set_origin_head("main", None);
+    fx.git(&["update-ref", "refs/remotes/origin/lower", &fx.rev("HEAD~1")]);
+    let r = fx.stop("gu-stack-sid", &[("PR_GATE_STUB_NO_PR", "1")]);
+    assert_eq!(r.code, 2); // ok   下の段に載らない commit が残る: exit 2
+    assert!(has(&r.stderr, "未 push の commit が 1 件")); // ok   下の段の push 済み commit は数えない
+}
+
+#[test]
+fn g_unpushed_silent_when_every_commit_is_on_a_lower_stack_branch() {
+    let fx = Fx::new();
+    fx.set_origin_head("main", None);
+    fx.git(&["update-ref", "refs/remotes/origin/lower", &fx.real_head]);
+    let r = fx.stop("gu-stack-clean-sid", &[("PR_GATE_STUB_NO_PR", "1")]);
+    // 未 push は 0 件。(push 済みで PR が無い G_pr の指摘は別の gate の仕事で、ここでは見ない)
+    assert!(!has(&r.stderr, "未 push")); // ok   全 commit が下の段に載っている: 未 push と数えない
+}
+
+#[test]
 fn g_unpushed_silent_when_all_pushed() {
     let fx = Fx::new();
     fx.set_upstream(&fx.real_head);
