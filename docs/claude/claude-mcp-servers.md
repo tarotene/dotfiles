@@ -107,6 +107,38 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   未確認: darwin(altair)の Firefox の場所と `installs.ini` の節の数。darwin では
   `lock` の symlink が無い(`.parentlock` の fcntl ロックを使う)ので、複製の使用中の
   検出は Linux でだけ働く。
+- **headless で動かす(2026-10-28)。** 引数 `--headless` を `--` の後ろに足している
+  (`home/identities/personal.nix`)。headed のままだと、普段の Firefox のほかにウィンドウが
+  2 つ増えて計 3 つになり、作業の邪魔になった。
+  - 原因: 複製の Firefox 1 プロセスがウィンドウを 2 つ持つ。1 つは Firefox が起動時に開く
+    `about:blank`、もう 1 つは Playwright が `browsingContext.create`(type: window)で
+    作るウィンドウ。persistent context の BiDi 起動処理は、起動時のウィンドウを拾えない
+    ので新しく作る(上流 main の `bidiBrowser.ts` L98 に
+    `Create default page as we cannot get access to the existing one.`、Microsoft,
+    microsoft/playwright、取得 2026-10-28。手元の `playwright-core` 1.64.0-alpha の
+    `coreBundle.js` L43689-43694 と L43844-43847 も同じ)。MCP から見えるタブは 1 つで、
+    複製の `sessionstore-backups/recovery.jsonlz4` の windows は 2(どちらも `about:blank`
+    から始まる)だった。
+  - 起動時のウィンドウを出さない Firefox の `-silent` は使えない。ウィンドウが 0 だと Firefox
+    が起動直後に終了し、BiDi の接続が `400 Bad Request` で失敗した(vega、2026-10-28)。
+  - 普段の Firefox のウィンドウを使う案は採らない。(1) Playwright MCP 0.0.83 に、起動中の
+    Firefox につなぐ手段が無い(`--extension` は Edge/Chrome 専用、`--cdp-endpoint` は
+    CDP 専用)。(2) つなげる状態にするには、普段の Firefox を常時
+    `--remote-debugging-port` 付きで起動する必要がある。そのポートには認証が無く、手元の
+    任意のプロセスが、ログイン済みの普段のブラウザを操作し、Cookie を読める。エージェントの
+    操作(ページの移動、ログイン状態の変更)も普段のプロファイルに直接残り、複製を挟む理由
+    (上の user.js の書き込み)も崩れる。
+  - headless にしても攻撃面は増えない。Playwright が複製の Firefox につなぐ BiDi のポートは、
+    headed のときと同じ `127.0.0.1` 上の、OS が選ぶ空きポート(`--remote-debugging-port=0`)で、
+    起動のたびに変わる。普段のプロファイルには、どちらも届かない。
+  - 実測(vega、2026-10-28): headless の起動引数は `--remote-debugging-port=0 --headless
+    --profile <複製>`(`--foreground` は付かない)。`github.com/settings/profile` がログイン済みで
+    開いた(タイトル `Your profile`)。ラッパー(npx)に SIGTERM を送ると、5 秒後には Firefox
+    を含めて複製を使う process が残らなかった。
+  - 運用への影響: エージェントの操作の様子は画面で見えない。screenshot は撮れる。
+    `--idle-timeout` の既定は、headless では 1 時間(headed は無期限、0.0.83 の `--help`)。
+    1 時間呼び出しが無いとブラウザが閉じ、次の呼び出しで起動し直す。起動し直しても、
+    同期は走らず、複製のログイン状態は前回のまま。
 - **版は pin する。** `@playwright/mcp@latest` のままだと、npx のキャッシュが更新される
   たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、pin は
   ラッパーの `PLAYWRIGHT_MCP`(`crates/playwright-mcp-launcher/src/lib.rs`)が持つ。上げる
