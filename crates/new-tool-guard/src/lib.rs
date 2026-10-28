@@ -27,7 +27,10 @@ pub fn is_excluded_path(path: &str) -> bool {
         .last()
         .map(|f| f.contains("_test.") || f.contains(".test."))
         .unwrap_or(false);
-    let in_scratchpad = lower.contains("/scratchpad/") || lower.starts_with("/tmp/claude-");
+    // scratchpad の実パスは `/tmp/claude-<uid>/<project>/<session>/scratchpad/` で、`/scratchpad/` を
+    // 含む。`/tmp/claude-` の接頭辞では除外しない: sandbox の TMPDIR(`/tmp/claude-<uid>`)の下に
+    // `tempfile` が作る一時リポジトリまで外れ、sandbox の中だけで試験が落ちた(2026-10-28)。
+    let in_scratchpad = lower.contains("/scratchpad/");
     in_test_dir || file_marks_test || in_scratchpad
 }
 
@@ -238,10 +241,19 @@ mod tests {
             "crates/foo/src/bin_test.rs",
             "config/claude/hooks/fixtures/x.sh",
             "spec/bin/x.sh",
-            "/tmp/claude-1000/scratch/scripts/x.sh",
+            "/tmp/claude-1000/-home-u-proj/sess/scratchpad/scripts/x.sh",
         ] {
             assert!(!is_new_tool_unit(p, "#!/bin/sh\n"), "{p}");
         }
+    }
+
+    #[test]
+    fn sandbox_tmpdir_is_not_excluded_by_its_prefix() {
+        // sandbox の TMPDIR 直下は scratchpad ではない。名前だけで外さない。
+        assert!(is_new_tool_unit(
+            "/tmp/claude-1000/repo/scripts/x.sh",
+            "#!/bin/sh\n"
+        ));
     }
 
     #[test]
