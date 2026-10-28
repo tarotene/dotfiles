@@ -12,6 +12,8 @@ fn git(dir: &Path, args: &[&str]) {
         .arg(dir)
         .arg("-c")
         .arg("core.hooksPath=")
+        // 利用者のグローバル設定(署名など)を拾わない。sandbox の中では `No secret key` で落ちる。
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

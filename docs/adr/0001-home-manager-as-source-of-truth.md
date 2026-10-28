@@ -270,9 +270,20 @@ compared with that commit):
   sets no nice (`apply_process_priority`, `service.rs:255-288`), so nothing
   ever lowers it.
 
-Whether the `foreground` assignment (pop-shell calls `SetForegroundProcess`
-over D-Bus) works under COSMIC is **unverified**: the Alacritty window that had
-focus was at nice 12 at measurement time, which suggests it does not.
+The `foreground` assignment does not work under COSMIC, because nothing calls
+it (#1214, read 2026-10-28). The daemon never inspects focus: it learns the
+foreground process only from the D-Bus method `SetForegroundProcess(u32)`
+(pop-os/system76-scheduler at `8651bbf74bcf`, the installed
+`2.0.0~1784750427~24.04~8651bbf`: `README.md:30`; `daemon/src/dbus.rs:96-97`
+forwards it as `Event::SetForegroundProcess`; `daemon/src/service.rs:267-273`
+assigns the foreground/background profiles only while a foreground is set, and
+falls back to the default profile otherwise). The one caller found is pop-shell,
+a GNOME Shell extension (pop-os/shell `master_noble` at `7898b65c2073`,
+`src/scheduler.ts:21-30`, `win.get_pid()` → `SetForegroundProcessRemote`).
+`gh search code SetForegroundProcess --owner pop-os` lists only pop-os/shell and
+pop-os/system76-scheduler itself; this is the search index's range, so a caller
+outside it is not excluded. That matches the measurement: the Alacritty window
+that had focus was at nice 12.
 
 The fix is configuration read by a root system service, not user-space
 configuration, so it belongs to the system layer, and the system-layer criterion

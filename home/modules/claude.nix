@@ -251,6 +251,11 @@ in
         # Username for 'https://github.com'` and passed outside (measured on vega 2026-10-28).
         "git fetch *"
         "git pull *"
+        # `pr-checks-wait` (crates/pr-gate) runs `gh` inside itself, so the call must be
+        # outside the sandbox too: started in the background from inside it, it exited 2
+        # with `PR の base ブランチを取得できません` (the keyring is out of reach, 2026-10-28).
+        # The pattern stays on the tool's own name: an excluded command runs with full access.
+        "pr-checks-wait *"
         # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
         # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
         "nix build *"
