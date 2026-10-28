@@ -11,10 +11,11 @@
 # 根拠、crates/hms)。`bleep doctor` は導入の健全性だけで、実コマンドに canary を
 # 通す検査は持たない(bleep の cmd_doctor のコメント)ので、これは置き換えられない。
 #
-# 使い方: bleep-canary.sh <hooks-dir>
+# 使い方: bleep-canary.sh <hooks-dir> <allow-tools-file>
 set -euo pipefail
 
-H="${1:?usage: bleep-canary.sh <hooks-dir>}"
+H="${1:?usage: bleep-canary.sh <hooks-dir> <allow-tools-file>}"
+ALLOW="${2:?usage: bleep-canary.sh <hooks-dir> <allow-tools-file>}"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/config" "$T/state" "$T/cwd"
@@ -37,14 +38,14 @@ decide_raw() {
     BLEEP_HOOK_BIN="$H/bleep-hook" BLEEP_LEX_BIN="$H/bleep-hook" \
       BLEEP_CONFIG_DIR="$T/config" BLEEP_STATE_DIR="$T/state" \
       BLEEP_ORGS_FILE="$T/config/orgs.txt" BLEEP_REPOS_FILE="$T/config/repos.txt" \
-      BLEEP_OWNER=test-owner BLEEP_GH_BIN="$T/bin-gh" BLEEP_LEDGER_DIR="$T/ledger" \
-      bash "$H/bleep/hooks/bleep.sh" --host=claude <<<"$1")
+      BLEEP_ALLOW_TOOLS_FILE="$ALLOW" BLEEP_OWNER=test-owner BLEEP_GH_BIN="$T/bin-gh" BLEEP_LEDGER_DIR="$T/ledger" \
+      bash "$H/bleep/hooks/bleep.sh" --host="${2:-claude}" <<<"$1")
 }
 
 fail=0
 expect() { # $1=label $2=expected decision ("" = pass) $3=hook input JSON
   local raw got
-  raw="$(decide_raw "$3" 2>&1 || true)"
+  raw="$(decide_raw "$3" "${4:-claude}" 2>&1 || true)"
   got="$(sed -n 's/.*"permissionDecision":"\([a-z]*\)".*/\1/p' <<<"$raw")"
   if [ "$got" = "$2" ]; then
     echo "ok   $1 -> ${got:-pass}"
@@ -72,4 +73,11 @@ expect "unresolved shell variable is outside the canonical form" deny "$(bash_cm
 expect "canonical post with a clean body" "" "$(bash_cmd "gh issue create -R pub/repo --title t --body-file $T/body-clean.md")"
 expect "push that disables pre-push" deny "$(bash_cmd 'git push --no-verify origin x')"
 expect "unrelated command" "" "$(bash_cmd 'ls -la')"
+for tool in view grep glob; do
+  expect "copilot $tool read" "" "$(jq -nc --arg t "$tool" '{toolName:$t,toolArgs:{path:"acme/secret-project"}}')" copilot
+done
+expect "copilot preview is not allowed" deny '{"toolName":"preview","toolArgs":{"path":"acme/secret-project"}}' copilot
+expect "codex public post" deny '{"tool_name":"mcp__github__create_issue","tool_input":{"owner":"pub","repo":"repo","body":"acme/secret-project"}}' codex
+expect "copilot shell post" deny "$(jq -nc --arg c "gh issue create -R pub/repo --title t --body-file $T/body-secret.md" '{toolName:"bash",toolArgs:{command:$c}}')" copilot
+expect "copilot public post" deny '{"toolName":"mcp__github__create_issue","toolArgs":{"owner":"pub","repo":"repo","body":"acme/secret-project"}}' copilot
 exit $fail

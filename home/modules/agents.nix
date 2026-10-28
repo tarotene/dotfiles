@@ -2129,6 +2129,10 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   xdg.configFile."bleep/allow-tools.txt".text = ''
     # 組織内 Slack の下書き(送信ではない。本人が確認してから送る)
     mcp__.*__slack_send_message_draft
+    # Copilot の読み取り専用ツール
+    view
+    grep
+    glob
   '';
   # 配備された bleep hook の canary(#604)。bleep 入力の pin が決める hook の実体を、
   # 登録コマンドと同じ環境で実際に動かして判定を確かめる。home.checks は失敗すると
@@ -2158,7 +2162,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
         cp -rL ${config.home-files}/.claude/hooks/bleep "$hooks/bleep"
         chmod -R u+w "$hooks/bleep"
         patchShebangs "$hooks/bleep"
-        bash ${repoConfig}/agents/bleep-canary.sh "$hooks"
+        bash ${repoConfig}/agents/bleep-canary.sh "$hooks" ${config.home-files}/.config/bleep/allow-tools.txt
         touch $out
       ''
     )
