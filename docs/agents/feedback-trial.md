@@ -32,10 +32,9 @@ mode-0700 directory. Destinations, thread identifiers and conversation content
 stay in private runtime state. Keep the configuration until pending observations
 and final production are complete.
 
-The current trial uses per-observation approval in the report conversation.
-Do not configure `posting_authorization` for it. The existing CLI can read a
-standing authorization for other explicitly authorized trials; that capability
-does not authorize this trial. Owner impressions must come from actual owner
+The owner authorized ongoing observation posting for the current trial on
+2026-10-28. Its private declaration records that authorization in
+`posting_authorization`. Owner impressions must come from actual owner
 statements, and final script and visual review still require owner approval.
 
 ## Differential collection
@@ -110,7 +109,8 @@ moved out of normal conversations:
 - `draft ID /absolute/body.md`: store wording and invalidate earlier approval.
 - `approve ID /absolute/body.md 'verbatim owner answer'`: approve that exact
   wording using an answer actually obtained from the owner.
-- `post ID`: Default mode only, with exact-body approval for this trial. List
+- `post ID`: Default mode only, with the trial's standing authorization or
+  exact-body approval. List
   issue comments, reuse the unique marker, post only if absent, then read back
   the exact body and URL. Failure retains pending state.
 - `applied ID FULL_SHA`: report conversation only. Read the issue again and
