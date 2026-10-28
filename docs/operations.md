@@ -734,7 +734,7 @@ Things this does not settle: `.service` apps autostarted by the session
 
 ## Freeze trace (vega): atop's raw recording
 
-Rationale: ADR-0000-cachyos-migration-hold (#249 is on hold; its first revisit
+Rationale: ADR-1237 (#249 is on hold; its first revisit
 condition is "the freezes remain in a CPU-heavy interval after the updates").
 `home/modules/atop-trace.nix` runs `atop -w` as a user service on `vega` only:
 one raw file per day, `~/.local/state/atop/atop_YYYYMMDD`, every 10 seconds, the
