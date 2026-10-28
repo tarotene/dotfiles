@@ -29,6 +29,11 @@ pub struct PermissionsSpec {
     /// など他のキーには触れない。
     #[serde(default)]
     pub auto_mode_classify_all_shell: Option<bool>,
+    /// `autoMode.allow`（分類器への、自然言語の例外）。宣言があるときだけ書く。先頭に
+    /// `"$defaults"` を置く（無いと既定の一覧が丸ごと消える。Anthropic, "Configure auto mode"）。
+    /// 本人が足した要素は残す（和）。分類器は `~/.claude/settings.json` の `autoMode` だけを読む。
+    #[serde(default)]
+    pub auto_mode_allow: Vec<String>,
     /// 所有の記録のファイル。あれば、前回書いたが今回の宣言に無い `allow` を消し、今回の
     /// 宣言を記録する(#1161。`mcp_allow` から外した許可が残り続けた)。無ければ従来どおり
     /// `retire_allow` の完全一致だけで消す。
@@ -174,6 +179,30 @@ pub fn permissions(
     if let Some(classify) = spec.auto_mode_classify_all_shell {
         let auto = object_entry(top, "autoMode")?;
         set_bool(auto, "classifyAllShell", classify);
+    }
+    if !spec.auto_mode_allow.is_empty() {
+        apply_auto_mode_allow(top, &spec.auto_mode_allow)?;
+    }
+    Ok(())
+}
+
+/// `autoMode.allow` を「`"$defaults"` + 宣言との和」にする。先頭に `"$defaults"` が無ければ
+/// 足す。本人が足した要素は残し、宣言のうち無いものを末尾に足す。
+fn apply_auto_mode_allow(top: &mut IndexMap<String, J>, entries: &[String]) -> Result<(), String> {
+    let auto = object_entry(top, "autoMode")?;
+    if matches!(auto.get("allow"), None | Some(J::Null)) {
+        auto.insert("allow".into(), J::Arr(Vec::new()));
+    }
+    let Some(J::Arr(allow)) = auto.get_mut("allow") else {
+        return Err(".autoMode.allow が配列ではない".into());
+    };
+    if !allow.iter().any(|v| v.as_str() == Some("$defaults")) {
+        allow.insert(0, J::str("$defaults"));
+    }
+    for e in entries {
+        if !allow.iter().any(|v| v.as_str() == Some(e)) {
+            allow.push(J::str(e));
+        }
     }
     Ok(())
 }
