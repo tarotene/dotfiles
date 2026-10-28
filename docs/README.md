@@ -7,7 +7,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 ## Operations
 
 - [`agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex の native 権限設定と旧共有管理の撤去手順。
-- [`codex-network-exceptions.md`](agents/codex-network-exceptions.md) — Codex の upstream ソース取得先と、herdr を使うための Unix socket 許可。
+- [`codex-network-exceptions.md`](agents/codex-network-exceptions.md) — Codex の通信先と Unix socket の制限。
 - [`model-equivalence.md`](model-equivalence.md) — (モデル × エフォート) の乗り換え先を、公開ベンチと履歴の内訳から役ごとに判定する(同等性検定)。
 - [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
   configurable Plan/Auto models with cost/context comparisons and local usage estimates,

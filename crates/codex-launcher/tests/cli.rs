@@ -233,6 +233,10 @@ fn native_protection_changes_are_rejected_before_credentials() {
         PROTECTED.replace("auto_review", "user"),
         PROTECTED.replace("network_proxy = true", "network_proxy = false"),
         PROTECTED.replace("enabled = true", "enabled = false"),
+        PROTECTED.replace(
+            "enabled = true",
+            "enabled = true\ndangerously_allow_all_unix_sockets = true",
+        ),
         PROTECTED.replace(":workspace", ":danger-full-access"),
         PROTECTED.replace(
             "default_permissions = \"native\"",
