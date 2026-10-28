@@ -72,6 +72,9 @@ fn run_register(repo: &Path, home: &Path, line: &str) -> std::process::Output {
     Command::new(bin())
         .current_dir(repo)
         .env("HOME", home)
+        // 台帳の既定の置き場は XDG_STATE_HOME を $HOME より優先する。実環境の値を見えなくして、
+        // 台帳がテスト用の HOME の下に作られるようにする。
+        .env_remove("XDG_STATE_HOME")
         .arg("register")
         .arg(line)
         .output()
@@ -367,7 +370,7 @@ fn plan_stdin(cwd: &Path, plan: &str) -> String {
 }
 
 fn ledger_lines(home: &Path) -> Vec<String> {
-    let dir = home.join(".claude/new-tool-guard/state");
+    let dir = home.join(".local/state/claude/new-tool-guard/state");
     let Ok(rd) = fs::read_dir(dir) else {
         return Vec::new();
     };

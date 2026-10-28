@@ -129,8 +129,8 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
 - **sandbox の中でよい**: `cargo test`・`cargo check`・`cargo metadata`・`cargo fmt`(`target/` は cwd 配下で書ける)、
   `issue-inbox --add`・`--set-status`(書き込み先 `~/.local/state/claude` と vault は書き込み許可にある)、
   scratchpad・`$TMPDIR` への書き込み。cargo を sandbox の外で回す必要は無い。
-- **sandbox の外が要る**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)、`~/.claude/new-tool-guard/state` に書く
-  `new-tool-guard register`(`Read-only file system` になる)。
+- **sandbox の外が要る**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)。`new-tool-guard register` は
+  `~/.local/state/claude/new-tool-guard/state` に書くので、sandbox の中でよい。
 - **cwd はリポジトリのルートに保つ。** sandbox は、cwd と `cd` で入ったディレクトリごとに、書き込み禁止の代役
   (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
   (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する

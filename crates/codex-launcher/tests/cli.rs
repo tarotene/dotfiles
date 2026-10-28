@@ -187,7 +187,12 @@ fn rejects_recursive_native_and_unreviewed_version() {
         "echo 'codex-cli 0.166.0'",
     );
     let o = f.cmd().output().unwrap();
-    assert!(String::from_utf8_lossy(&o.stderr).contains("unreviewed Codex version"));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("unreviewed Codex version"));
+    // 止まるときは、検出した版・レビュー済みの版・直し方が分かる。
+    assert!(err.contains("codex-cli 0.166.0"), "{err}");
+    assert!(err.contains("codex-cli 0.165.0"), "{err}");
+    assert!(err.contains("REVIEWED_VERSION"), "{err}");
     assert!(f.order().is_empty());
 }
 

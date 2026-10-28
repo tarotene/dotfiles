@@ -461,3 +461,22 @@ JSON-RPC エラーを返し、接続と他の要求は継続する。TUI が Git
 [thread_processor.rs L4119–4121](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server/src/request_processors/thread_processor.rs#L4119-L4121)、
 [masking 無効時の扱い L4915–4951](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/config/mod.rs#L4915-L4951)。
 通常の remote TUI の起動・turn は cwd を送り、モデル操作はこの保護の対象外である。
+
+### 起動ラッパーの版固定（#1162）
+
+`codex-launcher` は、GitHub 資格情報を渡す前に `codex --version` の出力を確かめ、
+`crates/codex-launcher/src/lib.rs` の `REVIEWED_VERSION`（現在 `codex-cli 0.165.0`）と
+完全に一致しなければ起動しない。引数の語彙と設定の検査が、その版のソースを読んで
+作ったものだからである。範囲を宣言して通すと、読んでいない版の新しい subcommand・
+権限 flag に資格情報を渡すことになるので、固定は残す。native の `codex update` で
+版が上がると、保護付きの起動（通常 CLI と `codex-plan`）が止まる。これは意図した動作である。
+
+止まったときの stderr は、検出した版・レビュー済みの版・直し方を示す。直し方は次の順である。
+
+1. 検出した版の OpenAI *Codex* のソース（`codex-rs/core/src/config/mod.rs` の設定と、
+   起動引数の定義）を読み、`lib.rs` の語彙の表（`// Closed vocabulary` 以下）との差を確かめる。
+2. `crates/codex-launcher/tests/` の受け入れ試験を、新しい版の出力で通す。
+3. `REVIEWED_VERSION` と、`lib.rs` 冒頭の「Argument vocabulary」の版・取得日を更新する。
+
+資格情報を渡さない起動（保護なしの通常のサブコマンド）は、この確認の対象外で止まらない。
+版が変わったときに自動で追従する仕組みは持たない（レビューを経ずに広がるため）。

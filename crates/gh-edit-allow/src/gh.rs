@@ -4,21 +4,8 @@
 //! どうかが分からないと位置引数(対象番号)を取り違えるためで、その場合は
 //! 判定しない(通常の確認フローに落ちる)。
 
-/// `gh <kind> <verb>` の kind。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    Pr,
-    Issue,
-}
-
-impl Kind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Kind::Pr => "pr",
-            Kind::Issue => "issue",
-        }
-    }
-}
+// URL の認識（Kind・parse_url・parse_number）は github-command::url が単一正本。
+pub use github_command::url::{parse_number, parse_url, Kind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verb {
@@ -137,33 +124,6 @@ pub fn normalize_repo(r: &str) -> Option<String> {
     Some(format!("{owner}/{name}").to_ascii_lowercase())
 }
 
-/// `https://github.com/<o>/<r>/(pull|issues)/<N>` を (kind, owner/repo, N) に。
-pub fn parse_url(u: &str) -> Option<(Kind, String, u64)> {
-    let rest = u.strip_prefix("https://github.com/")?;
-    let rest = rest.split(['#', '?']).next()?;
-    let parts: Vec<&str> = rest.trim_end_matches('/').split('/').collect();
-    let [o, r, k, n] = parts.as_slice() else {
-        return None;
-    };
-    let kind = match *k {
-        "pull" => Kind::Pr,
-        "issues" => Kind::Issue,
-        _ => return None,
-    };
-    let num = parse_number(n)?;
-    if o.is_empty() || r.is_empty() {
-        return None;
-    }
-    Some((kind, format!("{o}/{r}").to_ascii_lowercase(), num))
-}
-
-pub fn parse_number(s: &str) -> Option<u64> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    s.parse().ok().filter(|n| *n > 0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,21 +163,5 @@ mod tests {
         assert_eq!(normalize_repo("github.com/o/r").as_deref(), Some("o/r"));
         assert_eq!(normalize_repo("ghe.example.com/o/r"), None);
         assert_eq!(normalize_repo("o"), None);
-    }
-
-    #[test]
-    fn urls() {
-        assert_eq!(
-            parse_url("https://github.com/Octo/Hello/pull/7"),
-            Some((Kind::Pr, "octo/hello".into(), 7))
-        );
-        assert_eq!(
-            parse_url("https://github.com/o/r/issues/3#issuecomment-1"),
-            Some((Kind::Issue, "o/r".into(), 3))
-        );
-        assert_eq!(parse_url("https://github.com/o/r/pull/7/files"), None);
-        assert_eq!(parse_url("https://github.com/o/r/commit/abc"), None);
-        assert_eq!(parse_url("https://gitlab.com/o/r/pull/7"), None);
-        assert_eq!(parse_url("https://github.com/o/r/pull/0"), None);
     }
 }

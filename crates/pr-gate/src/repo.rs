@@ -173,8 +173,11 @@ pub fn stale_worktrees_line(project: &Path) -> String {
 // だけを見る。解消は git push 1 回(push.autoSetupRemote が upstream を自動で
 // 張るので --set-upstream の指定は要らない) — 履歴改変は伴わない。
 
-/// upstream(無ければ origin/`<branch>`、それも無ければ origin/`<default>`)に対して
-/// 未 push のコミット数。比較先が決まらなければ "?"。
+/// upstream(無ければ origin/`<branch>`)に対して未 push のコミット数。どちらも無い
+/// 新しいブランチ(origin/`<default>` は有る)では、`origin` のどの ref にも無い
+/// コミットを数える。`origin/<default>..HEAD` で数えると、同じ stack の下段の PR が
+/// 既に push 済みのコミットまで「未 push・PR 無し」に数えて block する(#1093 の再発)。
+/// 比較先が決まらなければ "?"。
 pub fn unpushed_count(project: &Path, branch: &str) -> String {
     let mut upstream = git_ok(
         project,
@@ -186,6 +189,7 @@ pub fn unpushed_count(project: &Path, branch: &str) -> String {
         ],
     )
     .unwrap_or_default();
+    let mut on_remote_refs = false;
     if upstream.is_empty() {
         let ob = format!("origin/{branch}");
         if git_succeeds(project, &["rev-parse", "--verify", "-q", &ob]) {
@@ -193,15 +197,22 @@ pub fn unpushed_count(project: &Path, branch: &str) -> String {
         } else if let Some(d) = git_repository::default_branch(project) {
             let od = format!("origin/{d}");
             if git_succeeds(project, &["rev-parse", "--verify", "-q", &od]) {
-                upstream = od;
+                on_remote_refs = true;
             }
         }
     }
-    if upstream.is_empty() {
+    let counted = if on_remote_refs {
+        git_ok(
+            project,
+            &["rev-list", "--count", "HEAD", "--not", "--remotes=origin"],
+        )
+    } else if upstream.is_empty() {
         return "?".to_string();
-    }
-    let range = format!("{upstream}..HEAD");
-    match git_ok(project, &["rev-list", "--count", &range]) {
+    } else {
+        let range = format!("{upstream}..HEAD");
+        git_ok(project, &["rev-list", "--count", &range])
+    };
+    match counted {
         Some(n) if !n.is_empty() => n,
         _ => "?".to_string(),
     }

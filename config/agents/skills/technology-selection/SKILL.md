@@ -164,8 +164,8 @@ gate は `Dn` 内の閉語彙のコスト語(書き直しコスト・移行コ�
 行の先頭の `<path>` は、**その単位で最初に Write するファイルの相対パス**にする
 (クレートなら `crates/<名前>/Cargo.toml`)。ディレクトリのパス(`crates/<名前>`)で
 は、最初の `Cargo.toml` の Write が `new-tool-guard` に deny されて、登録し直す往復が
-増える(2026-10-27、#1142)。`register` は `~/.claude/new-tool-guard/state/` に書くので、
-sandbox の中では `Read-only file system` で失敗し、sandbox の外での実行が要る。
+増える(2026-10-27、#1142)。`register` は `~/.local/state/claude/new-tool-guard/state/` に書く(sandbox の書き込み許可の内側。
+以前の `~/.claude/new-tool-guard/state/` は sandbox の中で `Read-only file system` になった)。
 
 これは precedent-grounding の「発明する前に先行例を確認する」と同じ
 判断を、技術・仕組みの選択という具体的な発火条件に絞って検証可能にした
