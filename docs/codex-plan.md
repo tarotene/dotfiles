@@ -465,18 +465,18 @@ JSON-RPC エラーを返し、接続と他の要求は継続する。TUI が Git
 ### 起動ラッパーの版固定（#1162）
 
 `codex-launcher` は、GitHub 資格情報を渡す前に `codex --version` の出力を確かめ、
-`crates/codex-launcher/src/lib.rs` の `REVIEWED_VERSION`（現在 `codex-cli 0.165.0`）と
+`crates/codex-launcher/reviewed.toml` の release と
 完全に一致しなければ起動しない。引数の語彙と設定の検査が、その版のソースを読んで
 作ったものだからである。範囲を宣言して通すと、読んでいない版の新しい subcommand・
-権限 flag に資格情報を渡すことになるので、固定は残す。native の `codex update` で
-版が上がると、保護付きの起動（通常 CLI と `codex-plan`）が止まる。これは意図した動作である。
+権限 flag に資格情報を渡すことになるので、固定は残す。`codex update` は固定 commit の
+公式 installer を使ってレビュー済みの具体版を選び、更新後に実際の版を読み戻す。
 
 止まったときの stderr は、検出した版・レビュー済みの版・直し方を示す。直し方は次の順である。
 
 1. 検出した版の OpenAI *Codex* のソース（`codex-rs/core/src/config/mod.rs` の設定と、
    起動引数の定義）を読み、`lib.rs` の語彙の表（`// Closed vocabulary` 以下）との差を確かめる。
 2. `crates/codex-launcher/tests/` の受け入れ試験を、新しい版の出力で通す。
-3. `REVIEWED_VERSION` と、`lib.rs` 冒頭の「Argument vocabulary」の版・取得日を更新する。
+3. `reviewed.toml` の release と commit、および `lib.rs` 冒頭の版・取得日を更新する。
 
 資格情報を渡さない起動（保護なしの通常のサブコマンド）は、この確認の対象外で止まらない。
-版が変わったときに自動で追従する仕組みは持たない（レビューを経ずに広がるため）。
+Renovate は新しい release と commit を PR に提案するが、自動マージはしない。

@@ -9,8 +9,123 @@ struct Invocation {
     cwd: Option<PathBuf>,
 }
 
-/// The only `codex --version` output the argument vocabulary below has been reviewed against.
-const REVIEWED_VERSION: &str = "codex-cli 0.165.0";
+const REVIEWED: &str = include_str!("../reviewed.toml");
+
+/// The release tag and installer revision are one reviewed unit.
+pub fn reviewed() -> Result<(String, String), String> {
+    let value: toml::Value = toml::from_str(REVIEWED).map_err(|_| "invalid reviewed manifest")?;
+    let release = value
+        .get("release")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing reviewed release")?;
+    let version = release
+        .strip_prefix("rust-v")
+        .ok_or("invalid reviewed release")?;
+    if version.split('.').count() != 3
+        || version
+            .split('.')
+            .any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err("invalid reviewed release".into());
+    }
+    let commit = value
+        .get("commit")
+        .and_then(toml::Value::as_str)
+        .ok_or("missing reviewed commit")?;
+    if commit.len() != 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("invalid reviewed commit".into());
+    }
+    Ok((version.into(), commit.into()))
+}
+
+/// Install only the reviewed release, with no inherited credentials or installer overrides.
+pub fn update(native: &Path, home: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    if !home.is_absolute() || native != home.join(".local/bin/codex") {
+        return Err("native Codex path must be the home installation".into());
+    }
+    let metadata = std::fs::metadata(native).map_err(|_| "native Codex is missing")?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err("native Codex is not executable".into());
+    }
+    for key in ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"] {
+        if let Some(value) = std::env::var_os(key) {
+            let value = value.to_str().ok_or("invalid proxy configuration")?;
+            let (scheme, authority) = value
+                .split_once("://")
+                .ok_or("invalid proxy configuration")?;
+            if !["http", "https", "socks4", "socks4a", "socks5", "socks5h"].contains(&scheme)
+                || authority.is_empty()
+                || authority.contains(['@', '/', '?', '#'])
+                || authority.chars().any(char::is_whitespace)
+            {
+                return Err("proxy configuration must not contain credentials or a path".into());
+            }
+        }
+    }
+    let (version, commit) = reviewed()?;
+    let dir = tempfile::Builder::new()
+        .prefix("codex-reviewed-update-")
+        .tempdir()
+        .map_err(|_| "cannot create installer directory")?;
+    let installer = dir.path().join("install.sh");
+    let url = format!(
+        "https://raw.githubusercontent.com/openai/codex/{commit}/scripts/install/install.sh"
+    );
+    let clean = |program: &str| {
+        let mut command = Command::new(program);
+        command.env_clear().env("HOME", home);
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let mut paths = vec![home.join(".local/bin")];
+        paths.extend(std::env::split_paths(&path));
+        if let Ok(path) = std::env::join_paths(paths) {
+            command.env("PATH", path);
+        }
+        for key in [
+            "SSL_CERT_FILE",
+            "NIX_SSL_CERT_FILE",
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "TMPDIR",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        command
+    };
+    let status = clean("curl")
+        .args(["-q", "-fsSL", &url, "-o"])
+        .arg(&installer)
+        .status()
+        .map_err(|_| "cannot download reviewed installer")?;
+    if !status.success() {
+        return Err("reviewed installer download failed".into());
+    }
+    let status = clean("sh")
+        .env("CODEX_NON_INTERACTIVE", "true")
+        .arg(&installer)
+        .args(["--release", &version])
+        .status()
+        .map_err(|_| "cannot run reviewed installer")?;
+    if !status.success() {
+        return Err("reviewed installer failed".into());
+    }
+    let output = clean(native.to_str().ok_or("invalid native path")?)
+        .arg("--version")
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|_| "cannot inspect installed Codex")?;
+    if !output.status.success()
+        || String::from_utf8_lossy(&output.stdout).trim_end() != format!("codex-cli {version}")
+    {
+        return Err("installed Codex version does not match reviewed release".into());
+    }
+    Ok(())
+}
 
 // Closed vocabulary. Values are data, not options; `--` ends option parsing.
 fn classify(args: &[OsString]) -> Result<Invocation, &'static str> {
@@ -25,7 +140,7 @@ fn classify(args: &[OsString]) -> Result<Invocation, &'static str> {
         });
     }
     if args.first().is_some_and(|a| {
-        ["help", "completion", "update", "login", "logout"]
+        ["help", "completion", "login", "logout"]
             .iter()
             .any(|s| a == s)
     }) {
@@ -340,12 +455,18 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
             .map_err(|_| "cannot inspect native Codex version")?;
         let found = String::from_utf8_lossy(&version.stdout);
         let found = found.trim_end();
-        if !version.status.success() || found != REVIEWED_VERSION {
+        let (reviewed, _) = reviewed()?;
+        let expected = format!("codex-cli {reviewed}");
+        if !version.status.success() || found != expected {
             return Err(format!(
-                "unreviewed Codex version (found {:?}, reviewed {REVIEWED_VERSION:?}); \
+                "unreviewed Codex version (found {:?}, reviewed {expected:?}); \
                  review the launcher vocabulary against that release, repeat the acceptance \
-                 tests, then update REVIEWED_VERSION (docs/codex-plan.md, \"起動ラッパーの版固定\")",
-                if found.is_empty() { "<no output>" } else { found }
+                 tests, then update reviewed.toml (docs/codex-plan.md, \"起動ラッパーの版固定\")",
+                if found.is_empty() {
+                    "<no output>"
+                } else {
+                    found
+                }
             ));
         }
         let cwd = std::fs::canonicalize(

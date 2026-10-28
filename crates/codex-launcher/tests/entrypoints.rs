@@ -70,7 +70,7 @@ test -z "${{GITHUB_TOKEN:-}}${{GH_ENTERPRISE_TOKEN:-}}${{GITHUB_ENTERPRISE_TOKEN
 printf '%s\n' "$@"
 exit 23
 "#
-        ),
+        ).replace("0.165.0", &codex_launcher::reviewed().unwrap().0),
     );
     let run = |kind: &str| {
         Command::new(std::env::current_exe().unwrap())

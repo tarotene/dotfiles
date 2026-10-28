@@ -30,12 +30,13 @@ impl Fixture {
         };
         script(
             &f.home().join(".local/bin/codex"),
-            r#"
+            &r#"
 if [ "$1" = '--version' ]; then echo 'codex-cli 0.165.0'; exit; fi
 test "${GH_TOKEN:-}" = "ghp_0000000000000000000000000000000000000000" || exit 80
 test -z "${GITHUB_TOKEN:-}" || exit 81
 printf '%s\n' "$@"
-exit 23"#,
+exit 23"#
+                .replace("0.165.0", &codex_launcher::reviewed().unwrap().0),
         );
         fs::create_dir_all(f.home().join(".codex")).unwrap();
         fs::write(f.home().join(".codex/config.toml"), PROTECTED).unwrap();
@@ -148,7 +149,6 @@ fn maintenance_delegates_without_any_github_credentials_or_check() {
         vec!["--help"],
         vec!["--version"],
         vec!["completion", "zsh"],
-        vec!["update"],
         vec!["login", "status"],
         vec!["logout"],
         vec!["help", "exec"],
@@ -170,6 +170,103 @@ fn maintenance_delegates_without_any_github_credentials_or_check() {
 }
 
 #[test]
+fn update_uses_reviewed_installer_and_rejects_failure_or_wrong_version() {
+    let (version, commit) = codex_launcher::reviewed().unwrap();
+    for (installer_exit, installed, success) in [
+        (0, version.as_str(), true),
+        (9, version.as_str(), false),
+        (0, "0.0.0", false),
+    ] {
+        let f = Fixture::new();
+        script(
+            &f.home().join("bin/curl"),
+            &format!(
+                r#"
+test "$1" = -q && test "$2" = -fsSL || exit 31
+test "$3" = 'https://raw.githubusercontent.com/openai/codex/{commit}/scripts/install/install.sh' || exit 32
+test "$4" = -o || exit 33
+printf '%s\n' '#!/bin/sh' 'test "$1" = --release && test "$2" = "{version}" || exit 34' 'test -z "${{GH_TOKEN:-}}${{CODEX_RELEASE:-}}${{CODEX_INSTALL_IF_LATEST:-}}" || exit 35' 'test "$HTTPS_PROXY" = http://127.0.0.1:1234 || exit 36' 'exit {installer_exit}' > "$5"
+"#
+            ),
+        );
+        script(
+            &f.home().join(".local/bin/codex"),
+            &format!("echo 'codex-cli {installed}'"),
+        );
+        // The test PATH normally contains only fixtures; sh is needed to execute the installer.
+        let path = format!("{}:/bin:/usr/bin", f.home().join("bin").display());
+        let output = f
+            .cmd()
+            .env("PATH", path)
+            .env("GH_TOKEN", "secret")
+            .env("CODEX_RELEASE", "latest")
+            .env("CODEX_INSTALL_IF_LATEST", "1")
+            .env("HTTPS_PROXY", "http://127.0.0.1:1234")
+            .arg("update")
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.success(),
+            success,
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("secret"));
+        assert!(f.order().is_empty());
+    }
+    let f = Fixture::new();
+    script(&f.home().join("bin/curl"), "exit 7");
+    let output = f.cmd().arg("update").output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("download failed"));
+    assert!(f.order().is_empty());
+    assert!(!f
+        .cmd()
+        .args(["update", "--release", "latest"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+}
+
+#[test]
+fn update_rejects_proxy_credentials_and_missing_native_before_download() {
+    for key in ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"] {
+        let f = Fixture::new();
+        script(
+            &f.home().join("bin/curl"),
+            "echo called > \"$HOME/downloaded\"; exit 0",
+        );
+        let output = f
+            .cmd()
+            .env(key, "http://user:secret@example.invalid:8080")
+            .arg("update")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!f.home().join("downloaded").exists());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("secret"));
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("secret"));
+    }
+    for remove in [true, false] {
+        let f = Fixture::new();
+        script(
+            &f.home().join("bin/curl"),
+            "echo called > \"$HOME/downloaded\"; exit 0",
+        );
+        let native = f.home().join(".local/bin/codex");
+        if remove {
+            fs::remove_file(&native).unwrap();
+        } else {
+            fs::set_permissions(&native, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let output = f.cmd().arg("update").output().unwrap();
+        assert!(!output.status.success());
+        assert!(!f.home().join("downloaded").exists());
+    }
+}
+
+#[test]
 fn rejects_recursive_native_and_unreviewed_version() {
     let f = Fixture::new();
     fs::remove_file(f.home().join(".local/bin/codex")).unwrap();
@@ -182,17 +279,20 @@ fn rejects_recursive_native_and_unreviewed_version() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("points back"));
     assert!(f.order().is_empty());
     let f = Fixture::new();
-    script(
-        &f.home().join(".local/bin/codex"),
-        "echo 'codex-cli 0.166.0'",
-    );
+    script(&f.home().join(".local/bin/codex"), "echo 'codex-cli 0.0.0'");
     let o = f.cmd().output().unwrap();
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("unreviewed Codex version"));
     // 止まるときは、検出した版・レビュー済みの版・直し方が分かる。
-    assert!(err.contains("codex-cli 0.166.0"), "{err}");
-    assert!(err.contains("codex-cli 0.165.0"), "{err}");
-    assert!(err.contains("REVIEWED_VERSION"), "{err}");
+    assert!(err.contains("codex-cli 0.0.0"), "{err}");
+    assert!(
+        err.contains(&format!(
+            "codex-cli {}",
+            codex_launcher::reviewed().unwrap().0
+        )),
+        "{err}"
+    );
+    assert!(err.contains("reviewed.toml"), "{err}");
     assert!(f.order().is_empty());
 }
 

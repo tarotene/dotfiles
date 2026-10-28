@@ -4,7 +4,23 @@
   "nix": {
     "enabled": true
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^crates\\/codex-launcher\\/reviewed\\.toml$/"],
+      "matchStrings": ["release = \"(?<currentValue>rust-v[^\"]+)\"\\ncommit = \"(?<currentDigest>[a-f0-9]{40})\""],
+      "depNameTemplate": "openai/codex",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^rust-v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    }
+  ],
   "packageRules": [
+    {
+      "description": "Codex launcher releases require human review of upstream changes (#1204)",
+      "matchFileNames": ["crates/codex-launcher/reviewed.toml"],
+      "matchPackageNames": ["openai/codex"],
+      "automerge": false
+    },
     {
       "description": "docs-typescript action の typedoc と typescript は peer 制約があるので同じ PR で上げる(#645)",
       "matchFileNames": [".github/actions/docs-typescript/package.json"],
