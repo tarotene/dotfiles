@@ -135,8 +135,10 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
   (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する
   ので壊れないが、代役は `rm` で消せず(`Device or resource busy`)、セッションが続く間は残る。
-- Unix ソケットを作るテスト(`codex-plan` の起動経路など)が sandbox の中で動くかは未確認(#1103 の起票時は
-  動かなかった)。動かなければ、CI で見る。
+- **Unix ソケットを作るテストは sandbox の中では動かない**(2026-10-28 に vega で実測: `cargo test -p
+  claude-statusline --test integration` の 6 件が `UnixListener::bind` で `Operation not permitted` になる。
+  `tests/integration.rs:289`)。`codex-plan` の起動経路のテストも同じ型。失敗しても変更の不具合とは限らない
+  ので、`cargo test --workspace` の赤はこの型かを先に見て、CI の結果で確かめる。
 
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 

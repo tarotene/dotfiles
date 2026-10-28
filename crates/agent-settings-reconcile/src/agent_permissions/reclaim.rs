@@ -129,6 +129,122 @@ pub fn drop_candidates(home: &Path, ids: &[String]) -> Result<usize, String> {
     Ok(lines.len())
 }
 
+/// What [`restore_candidates`] did, per candidate id.
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
+pub struct Restored {
+    /// Rules written back to their settings file (or already there), and withdrawn.
+    pub restored: Vec<String>,
+    /// Candidates left in the queue, with the reason.
+    pub skipped: Vec<(String, String)>,
+}
+
+/// Put queued rules back into the settings file they were reclaimed from, then withdraw
+/// them from the queue (#1158). `ids` are candidate ids, or `["all"]`.
+///
+/// Reclaim moved the rules out of a file that a "don't ask again" had grown, and the
+/// retirement of the shared policy left them queued with nowhere to go. Only Claude
+/// settings files (`.json`, `permissions.allow`) are restored: a rule is never
+/// written to a file that is gone (that would resurrect a deleted project directory) or
+/// to a format this code does not own. Unknown ids are an error and nothing is written.
+pub fn restore_candidates(home: &Path, ids: &[String]) -> Result<Restored, String> {
+    let live = candidates(home)?;
+    let chosen: Vec<&Candidate> = if ids == ["all"] {
+        live.iter().collect()
+    } else {
+        let mut chosen = Vec::new();
+        for id in ids {
+            let c = live
+                .iter()
+                .find(|c| &c.id == id)
+                .ok_or_else(|| format!("no pending candidate with id {id}"))?;
+            chosen.push(c);
+        }
+        chosen
+    };
+    let mut by_file: BTreeMap<&Path, Vec<&Candidate>> = BTreeMap::new();
+    for c in chosen {
+        by_file.entry(c.file.as_path()).or_default().push(c);
+    }
+    let mut out = Restored::default();
+    let mut withdraw: Vec<String> = Vec::new();
+    for (file, group) in by_file {
+        let skip = |out: &mut Restored, why: &str| {
+            for c in &group {
+                out.skipped.push((c.id.clone(), why.to_owned()));
+            }
+        };
+        if file.extension().is_none_or(|e| e != "json") {
+            skip(
+                &mut out,
+                "not a Claude settings file (.json); restore it by hand",
+            );
+            continue;
+        }
+        let bytes = match std::fs::read(file) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                skip(&mut out, "the settings file no longer exists");
+                continue;
+            }
+            Err(e) => return Err(format!("{}: {e}", file.display())),
+        };
+        let mut value: Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+        let Some(root) = value.as_object_mut() else {
+            skip(&mut out, "the settings file is not a JSON object");
+            continue;
+        };
+        let permissions = root.entry("permissions").or_insert_with(|| json!({}));
+        let Some(permissions) = permissions.as_object_mut() else {
+            skip(&mut out, "permissions is not an object");
+            continue;
+        };
+        let allow = permissions.entry("allow").or_insert_with(|| json!([]));
+        let Some(allow) = allow.as_array_mut() else {
+            skip(&mut out, "permissions.allow is not an array");
+            continue;
+        };
+        for c in &group {
+            if !allow.iter().any(|r| r.as_str() == Some(c.rule.as_str())) {
+                allow.push(json!(c.rule));
+            }
+        }
+        let mut text = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
+        text.push(b'\n');
+        write_replacing(file, &text)?;
+        for c in group {
+            out.restored.push(c.rule.clone());
+            withdraw.push(c.id.clone());
+        }
+    }
+    // Withdraw only after the files are written: a failure above leaves the queue intact.
+    let lines: Vec<String> = withdraw
+        .iter()
+        .map(|id| json!({"v": 1, "ts": now(), "drop": id}).to_string())
+        .collect();
+    append(home, &lines)?;
+    Ok(out)
+}
+
+/// Write `data` to `path` through a temporary file in the same directory, keeping the
+/// original permissions, so a reader never sees a half-written settings file.
+fn write_replacing(path: &Path, data: &[u8]) -> Result<(), String> {
+    let dir = path.parent().ok_or("settings file has no directory")?;
+    let name = path
+        .file_name()
+        .ok_or("settings file has no name")?
+        .to_string_lossy();
+    let tmp = dir.join(format!(".{name}.restore-{}", std::process::id()));
+    std::fs::write(&tmp, data).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("{}: {e}", path.display())
+    })
+}
+
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
 pub struct Reclaimed {
     /// Candidates newly added to the queue.

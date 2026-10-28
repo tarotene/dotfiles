@@ -314,7 +314,12 @@ pub fn run(home: &Path, dry_run: bool) -> Result<Value, String> {
     if !dry_run {
         transaction::commit(home, writes, &expected, || Ok(RETIRED.to_vec()))?;
     }
-    Ok(json!({"dry_run":dry_run,"changes":changes,"differences":differences,"retained":retained}))
+    // Rules that reclaim queued before the retirement are not restored by it: they wait in the
+    // queue for `pending --restore-rules` or `--drop` (#1158).
+    let queued = super::reclaim::candidates(home).map_or(0, |c| c.len());
+    Ok(
+        json!({"dry_run":dry_run,"changes":changes,"differences":differences,"retained":retained,"queued_rules":queued}),
+    )
 }
 
 #[cfg(test)]

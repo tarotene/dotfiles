@@ -18,7 +18,6 @@ let
       tools
       sandboxed_shell
       projects
-      project_rules
       ;
   }
   # Left out while empty, so the deployed file stays what an older reader accepts.
@@ -51,8 +50,22 @@ in
         "~/.config/gcloud"
         "~/.claude/.credentials.json"
         "~/.codex/auth.json"
+        # Default credential stores of tools this repository installs or documents
+        # (#1160): rclone's remotes (packages.nix, docs/gdrive-upload.md), clasp's
+        # token (packages.nix), and the GNOME login keyring files that
+        # `secret-tool` (bitwarden.nix, obsidian.nix) reads.
+        "~/.config/rclone"
+        "~/.clasprc.json"
+        "~/.config/clasp"
+        "~/.local/share/keyrings"
       ];
-      description = "Credential paths excluded from ordinary file reads; use reviewed operations.";
+      description = ''
+        Credential paths excluded from ordinary file reads; use reviewed operations.
+        Add a path here when it is the upstream default credential store of a tool this
+        repository installs or documents, and it exists on a host. Host- or
+        organization-specific paths do not belong here (this repository is public):
+        put them in the private wrapper flake (ADR-0034).
+      '';
     };
 
     domains = mkOption {
@@ -112,18 +125,14 @@ in
       description = "Project paths to inventory in addition to the active project (private wrapper values).";
     };
 
+    # Removed (#1099): the places a policy covers are listed in `projects`. The name stays only
+    # so a private wrapper that still sets it keeps evaluating; a non-empty value warns and has no
+    # effect. Delete this option once every host's wrapper has dropped it.
     project_rules = mkOption {
-      type = types.attrsOf (
-        types.submodule {
-          options.domains = mkOption {
-            type = types.listOf types.str;
-            default = [ ];
-            description = "Additional known destinations for this project only.";
-          };
-        }
-      );
+      type = types.attrs;
       default = { };
-      description = "Project-scoped declarations keyed by project path, without modifying shared repositories.";
+      visible = false;
+      description = "Removed; has no effect. List project paths in `projects`.";
     };
 
     policyFile = mkOption {
@@ -133,6 +142,10 @@ in
       description = "Validated CLI input, available before enabling deployment for inspection and migration.";
     };
   };
+
+  config.warnings =
+    lib.optional (cfg.project_rules != { })
+      "dotfiles.agentPermissions.project_rules was removed (#1099) and has no effect; list the project paths in `dotfiles.agentPermissions.projects`.";
 
   # Compatibility inputs only during the three-host retirement. Product modules
   # consume these defaults; no shared policy, ownership check or gate is deployed.

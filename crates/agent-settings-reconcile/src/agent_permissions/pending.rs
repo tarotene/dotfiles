@@ -373,50 +373,6 @@ pub(super) fn tolerated_new_source(new: &Source) -> Option<Tolerated> {
     }
 }
 
-/// Calls that stay possible while the permission record is not trustworthy, so
-/// the agent can still ask the owner and diagnose: tools that act on nothing, and
-/// read-only `agent-permissions` invocations. No shell syntax is interpreted; a
-/// command that is not one plain word list from a small character set is refused.
-pub(super) fn inert_call(tool: Option<&str>, input: &Value) -> bool {
-    match tool {
-        Some("AskUserQuestion" | "ExitPlanMode") => true,
-        Some("Bash") => input["command"].as_str().is_some_and(read_only_cli),
-        _ => false,
-    }
-}
-
-fn read_only_cli(command: &str) -> bool {
-    let tokens: Vec<&str> = command
-        .split([' ', '\t'])
-        .filter(|t| !t.is_empty())
-        .collect();
-    if tokens.first() != Some(&"agent-permissions")
-        || !tokens.iter().all(|t| {
-            t.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._/=:@+-".contains(&b))
-        })
-    {
-        return false;
-    }
-    let args = &tokens[1..];
-    if args.iter().any(|a| matches!(*a, "--help" | "-h" | "help")) {
-        return true;
-    }
-    match args.first() {
-        Some(&"inspect" | &"check") => true,
-        // Listing the queue only reads; withdrawing candidates appends.
-        Some(&"pending") => !args.contains(&"--drop"),
-        // --restore acts before --dry-run is looked at, so it is never read-only.
-        Some(&"migrate") => {
-            args.contains(&"--dry-run")
-                && !args
-                    .iter()
-                    .any(|a| matches!(*a, "--restore" | "--retire-ownership"))
-        }
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -683,54 +639,5 @@ mod tests {
                 "{changed}"
             );
         }
-    }
-
-    #[test]
-    fn only_inert_tools_and_read_only_cli_pass_a_structural_drift() {
-        let no = json!({});
-        assert!(inert_call(Some("AskUserQuestion"), &no));
-        assert!(inert_call(Some("ExitPlanMode"), &no));
-        assert!(!inert_call(Some("Read"), &no));
-        assert!(!inert_call(None, &no));
-        for ok in [
-            "agent-permissions inspect",
-            "agent-permissions inspect --json",
-            "agent-permissions check",
-            "agent-permissions pending",
-            "agent-permissions pending --json",
-            "agent-permissions migrate --approved /tmp/r.json --dry-run",
-            "agent-permissions --help",
-            "agent-permissions migrate --help",
-        ] {
-            assert!(inert_call(Some("Bash"), &json!({"command": ok})), "{ok}");
-        }
-        for bad in [
-            "agent-permissions migrate --approved /tmp/r.json",
-            "agent-permissions migrate --restore /tmp/j.json --dry-run",
-            "agent-permissions migrate --retire-ownership --dry-run",
-            "agent-permissions apply",
-            "agent-permissions reclaim",
-            "agent-permissions pending --drop abc",
-            "agent-permissions hook session-start",
-            "agent-permissions inspect --json > /tmp/r.json",
-            "agent-permissions inspect | jq .",
-            "agent-permissions inspect; rm -rf /",
-            "agent-permissions inspect && rm x",
-            "agent-permissions inspect $(id)",
-            "agent-permissions inspect 'x'",
-            "agent-permissions inspect\nrm x",
-            "/tmp/agent-permissions inspect",
-            "~/.local/bin/agent-permissions inspect",
-            "env agent-permissions inspect",
-            "ls",
-            "",
-        ] {
-            assert!(!inert_call(Some("Bash"), &json!({"command": bad})), "{bad}");
-        }
-        assert!(!inert_call(Some("Bash"), &json!({})));
-        assert!(!inert_call(
-            Some("Write"),
-            &json!({"command": "agent-permissions inspect"})
-        ));
     }
 }
