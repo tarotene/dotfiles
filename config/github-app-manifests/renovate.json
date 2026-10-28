@@ -1,0 +1,22 @@
+{
+  "name": "tarotene-renovate",
+  "url": "https://github.com/tarotene/dotfiles",
+  "hook_attributes": {
+    "url": "https://github.com/settings/apps",
+    "active": false
+  },
+  "redirect_url": "https://github.com/settings/apps",
+  "public": false,
+  "default_permissions": {
+    "administration": "read",
+    "checks": "write",
+    "contents": "write",
+    "issues": "write",
+    "metadata": "read",
+    "pull_requests": "write",
+    "statuses": "write",
+    "vulnerability_alerts": "read",
+    "workflows": "write"
+  },
+  "default_events": []
+}
