@@ -10,7 +10,7 @@ use std::{
 };
 
 const NATIVE: &str = r#"#!/bin/sh
-if [ "$1" = --version ]; then echo "codex-cli 0.164.0"; exit; fi
+if [ "$1" = --version ]; then echo "codex-cli 0.165.0"; exit; fi
 if [ "$1" = --config ]; then shift; shift; fi
 if [ "$1" = app-server ]; then
   echo $$ >> "$FIXTURE_DIR/servers"

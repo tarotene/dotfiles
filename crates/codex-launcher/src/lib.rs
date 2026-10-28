@@ -1,5 +1,5 @@
 //! Narrow credential entry point; the native installer retains its binary.
-//! Argument vocabulary: OpenAI Codex rust-v0.164.0 (retrieved 2026-10-26).
+//! Argument vocabulary: OpenAI Codex rust-v0.165.0 (retrieved 2026-10-28).
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -180,9 +180,9 @@ pub fn validate_working_directory(cwd: &Path) -> Result<String, String> {
     validate_config(&home, &cwd)
 }
 
-// OpenAI Codex rust-v0.164.0 core/src/config/mod.rs:577-604,2652-2700
-// and config/src/permissions_toml.rs:121-127 (retrieved 2026-10-27).
-// https://github.com/openai/codex/tree/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs
+// OpenAI Codex rust-v0.165.0 core/src/config/mod.rs (0.164.0 lines 577-604,2652-2700; no change to the checked keys)
+// and config/src/permissions_toml.rs:121-127 (retrieved 2026-10-28).
+// https://github.com/openai/codex/tree/360319d8dee62d87e2d59fc0c21805d79519cfed/codex-rs
 // Validate native protection settings only; no ownership record or other
 // worktree's state participates in credential delivery.
 fn validate_config(home: &Path, cwd: &Path) -> Result<String, String> {
@@ -330,7 +330,7 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
             .stderr(Stdio::null())
             .output()
             .map_err(|_| "cannot inspect native Codex version")?;
-        if !version.status.success() || version.stdout != b"codex-cli 0.164.0\n" {
+        if !version.status.success() || version.stdout != b"codex-cli 0.165.0\n" {
             return Err(
                 "unreviewed Codex version; update launcher vocabulary and repeat acceptance tests"
                     .into(),

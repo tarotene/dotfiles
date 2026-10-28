@@ -31,7 +31,7 @@ impl Fixture {
         script(
             &f.home().join(".local/bin/codex"),
             r#"
-if [ "$1" = '--version' ]; then echo 'codex-cli 0.164.0'; exit; fi
+if [ "$1" = '--version' ]; then echo 'codex-cli 0.165.0'; exit; fi
 test "${GH_TOKEN:-}" = "ghp_0000000000000000000000000000000000000000" || exit 80
 test -z "${GITHUB_TOKEN:-}" || exit 81
 printf '%s\n' "$@"
@@ -184,7 +184,7 @@ fn rejects_recursive_native_and_unreviewed_version() {
     let f = Fixture::new();
     script(
         &f.home().join(".local/bin/codex"),
-        "echo 'codex-cli 0.165.0'",
+        "echo 'codex-cli 0.166.0'",
     );
     let o = f.cmd().output().unwrap();
     assert!(String::from_utf8_lossy(&o.stderr).contains("unreviewed Codex version"));

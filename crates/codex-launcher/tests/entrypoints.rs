@@ -60,7 +60,7 @@ fn prepared_entrypoints() {
             r#"
 if [ "$1" = --version ]; then
   test -z "${{GH_TOKEN:-}}${{GITHUB_TOKEN:-}}${{GH_ENTERPRISE_TOKEN:-}}${{GITHUB_ENTERPRISE_TOKEN:-}}" || exit 90
-  echo 'codex-cli 0.164.0'; exit
+  echo 'codex-cli 0.165.0'; exit
 fi
 case "$ENTRYPOINT_CHILD" in
   session) test "$GH_TOKEN" = '{TOKEN}' || exit 91 ;;
