@@ -695,7 +695,7 @@ correction: session and app scopes nice 0, `nix-daemon` in the packaged `batch`
 profile (nice 19, `sched=idle`, I/O idle).
 
 The system-manager declaration in `system/linux.nix` now uses this same source
-(ADR-0000). It is evaluated separately from `hms`; it has not yet been applied.
+(ADR-1228). It is evaluated separately from `hms`; it has not yet been applied.
 Until migration to system-manager, use the existing installer below.
 
 Apply (root; a host without `/usr/share/system76-scheduler` skips it):
