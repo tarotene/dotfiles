@@ -42,6 +42,41 @@ if [[ -x "$bleep_worker" ]]; then
     "$bleep_worker" --staged || exit 1
 fi
 
+# rustfmt of the staged Rust files: a formatting miss in one stage of a stacked
+# PR chain otherwise surfaces only when a later stage runs `cargo fmt --all`
+# (or in CI), and every stage above has to be rebuilt. The edition is the
+# nearest Cargo.toml's literal `edition = "..."`, else the top-level one (a
+# crate with `edition.workspace = true`), else 2021. No rustfmt, or no staged
+# .rs file, is skipped silently (ADR-0005).
+if command -v rustfmt >/dev/null 2>&1; then
+    top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    fmt_failed=0
+    while IFS= read -r -d '' rs; do
+        [[ -f "$top/$rs" ]] || continue
+        edition=""
+        dir=$(dirname "$rs")
+        while :; do
+            if [[ -f "$top/$dir/Cargo.toml" ]]; then
+                edition=$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$top/$dir/Cargo.toml" | head -n 1)
+                break
+            fi
+            [[ "$dir" == "." || "$dir" == "/" ]] && break
+            dir=$(dirname "$dir")
+        done
+        if [[ -z "$edition" && -f "$top/Cargo.toml" ]]; then
+            edition=$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$top/Cargo.toml" | head -n 1)
+        fi
+        if ! rustfmt --check --edition "${edition:-2021}" "$top/$rs" >/dev/null 2>&1; then
+            echo "error: rustfmt differs in staged file: $rs" >&2
+            fmt_failed=1
+        fi
+    done < <(git diff --cached --name-only --diff-filter=ACM -z -- '*.rs')
+    if [[ "$fmt_failed" == 1 ]]; then
+        echo "  run 'rustfmt --edition <edition> <file>' (or 'cargo fmt --all') and stage the result." >&2
+        exit 1
+    fi
+fi
+
 # core.hooksPath makes git ignore .git/hooks/ entirely, including in linked
 # worktrees (where the working tree's own .git is a file, not a directory).
 # Chain to the repo-local pre-commit hook if one is installed, resolving it
