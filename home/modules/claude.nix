@@ -154,6 +154,13 @@ let
       ];
     };
   };
+  # 適用のときだけ所有の記録（state）を足す。宣言から外した allow（`mcp_allow` から外した
+  # 許可を含む）を、前回の記録をもとに settings.json から消すため（#1161）。
+  # `agent-native/claude-permissions.json` には足さない（そちらは `PermissionsSpec` の
+  # 他の読み手に渡る宣言そのもの）。
+  claudePermissionsApplySpec = permissionsSpec // {
+    state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-allow-claude.json";
+  };
 in
 {
   options.dotfiles.claudePermissions = {
@@ -257,7 +264,7 @@ in
     home.activation.registerClaudePermissions = lib.hm.dag.entryAfter [ "retireAgentPermissions" ] ''
       # pipeline-node: agent-settings-reconcile
       run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
-        ${lib.escapeShellArg (builtins.toJSON permissionsSpec)}
+        ${lib.escapeShellArg (builtins.toJSON claudePermissionsApplySpec)}
     '';
   };
 }

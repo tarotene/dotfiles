@@ -149,6 +149,8 @@ in
           builtins.toJSON {
             settings = permissionSpec;
             mcp_allow = cfg.mcpAllow;
+            # 前回書いた MCP 許可の記録。宣言から外した許可を config.toml から消す（#1161）。
+            state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-mcp-allow-codex.json";
           }
         )}
     '';

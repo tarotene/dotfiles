@@ -367,3 +367,61 @@ fn status_message_flag_without_a_value_or_for_copilot_is_usage_error() {
     );
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn claude_allow_removed_from_the_declaration_is_removed_from_settings() {
+    // #1161: 宣言した allow は記録に残り、次の適用で宣言から外れていれば settings.json から消える。
+    // 本人が手で足した規則は記録に無いので残る。
+    let (d, f) = tmp_file(Some(r#"{"permissions":{"allow":["Bash(manual *)"]}}"#));
+    let state = d.path().join("state/managed-allow.json");
+    let spec = |allow: &[&str]| serde_json::json!({"allow": allow, "state": state}).to_string();
+    let allow = |f: &Path| -> Vec<String> {
+        read_json(f)["permissions"]["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    };
+
+    let out = run(
+        &strs(&["claude-permissions", &spec(&["mcp__s__a", "mcp__s__b"])]),
+        &f,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(allow(&f), ["Bash(manual *)", "mcp__s__a", "mcp__s__b"]);
+
+    let out = run(&strs(&["claude-permissions", &spec(&["mcp__s__a"])]), &f);
+    assert!(out.status.success());
+    assert_eq!(allow(&f), ["Bash(manual *)", "mcp__s__a"]);
+
+    // 冪等: 内容も所有の記録も変わらない。
+    let before = (
+        std::fs::read_to_string(&f).unwrap(),
+        std::fs::read_to_string(&state).unwrap(),
+    );
+    assert!(
+        run(&strs(&["claude-permissions", &spec(&["mcp__s__a"])]), &f)
+            .status
+            .success()
+    );
+    assert_eq!(
+        (
+            std::fs::read_to_string(&f).unwrap(),
+            std::fs::read_to_string(&state).unwrap()
+        ),
+        before
+    );
+
+    // `state` を渡さない従来の呼び出しは、何も消さない（初回と同じ扱い）。
+    let out = run(
+        &strs(&["claude-permissions", r#"{"allow":["mcp__s__c"]}"#]),
+        &f,
+    );
+    assert!(out.status.success());
+    assert_eq!(allow(&f), ["Bash(manual *)", "mcp__s__a", "mcp__s__c"]);
+}

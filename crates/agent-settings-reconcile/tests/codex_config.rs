@@ -295,3 +295,72 @@ fn native_permissions_replace_owned_profile_and_legacy_selectors_with_backup() {
     assert!(invoke().status.success());
     assert_eq!(std::fs::read_to_string(file).unwrap(), text);
 }
+
+#[test]
+fn mcp_allow_removed_from_the_declaration_is_removed_from_codex_config() {
+    // #1161: `mcp_allow` から外した許可は、前回の記録にある分だけ消える。
+    let (d, f) = with(Some(
+        "[mcp_servers.custom]\ncommand = 'server'\n[mcp_servers.custom.tools.manual]\napproval_mode = 'approve'\n[mcp_servers.custom.tools.tuned]\napproval_mode = 'approve'\n",
+    ));
+    let state = d.path().join("state/managed-mcp-allow.json");
+    let spec = |allow: &[&str]| {
+        serde_json::json!({
+            "settings": {},
+            "mcp_allow": allow,
+            "state": state,
+        })
+        .to_string()
+    };
+    let invoke = |allow: &[&str]| {
+        let out = Command::new(BIN)
+            .args(["codex-permissions", &f.to_string_lossy(), &spec(allow)])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        std::fs::read_to_string(&f)
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap()
+    };
+    let tool = |doc: &toml_edit::DocumentMut, name: &str| {
+        doc["mcp_servers"]["custom"]["tools"]
+            .as_table_like()
+            .and_then(|t| t.get(name))
+            .and_then(|t| t["approval_mode"].as_str().map(str::to_owned))
+    };
+
+    let doc = invoke(&[
+        "mcp__custom__read",
+        "mcp__custom__write",
+        "mcp__custom__tuned",
+    ]);
+    for name in ["read", "write", "tuned", "manual"] {
+        assert_eq!(tool(&doc, name).as_deref(), Some("approve"), "{name}");
+    }
+
+    // 本人が `tuned` の承認方式を変えた。記録にあっても、`approve` でなければ触らない。
+    let mut edited: toml_edit::DocumentMut = std::fs::read_to_string(&f).unwrap().parse().unwrap();
+    edited["mcp_servers"]["custom"]["tools"]["tuned"]["approval_mode"] = toml_edit::value("prompt");
+    std::fs::write(&f, edited.to_string()).unwrap();
+
+    // 宣言から write と tuned を外す。write は消え、tuned（本人が変更）と manual（記録に無い）は残る。
+    let doc = invoke(&["mcp__custom__read"]);
+    assert_eq!(tool(&doc, "read").as_deref(), Some("approve"));
+    assert_eq!(tool(&doc, "write"), None);
+    assert_eq!(tool(&doc, "tuned").as_deref(), Some("prompt"));
+    assert_eq!(tool(&doc, "manual").as_deref(), Some("approve"));
+
+    // 冪等: 同じ宣言をもう一度流しても内容は変わらない。
+    let again = std::fs::read_to_string(&f).unwrap();
+    invoke(&["mcp__custom__read"]);
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), again);
+
+    // 記録が無ければ（初回）何も消さない。
+    std::fs::remove_file(&state).unwrap();
+    let doc = invoke(&[]);
+    assert_eq!(tool(&doc, "read").as_deref(), Some("approve"));
+}

@@ -183,6 +183,9 @@ pub fn permissions(path: &Path, spec_json: &str) -> Result<(), String> {
     struct Declaration {
         settings: serde_json::Map<String, Spec>,
         mcp_allow: Vec<String>,
+        /// 所有の記録のファイル。あれば、前回書いたが今回の宣言に無い MCP 許可を消す(#1161)。
+        #[serde(default)]
+        state: Option<String>,
     }
     let mut declaration: Declaration =
         serde_json::from_str(spec_json).map_err(|e| format!("spec-json: {e}"))?;
@@ -192,6 +195,17 @@ pub fn permissions(path: &Path, spec_json: &str) -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
     let mut doc: DocumentMut = before.parse().map_err(|e| format!("{e}"))?;
+    // 宣言から外した MCP 許可は、前回の記録にある分だけ消す。所有は記録だけで決める — 本人が
+    // 手で足した許可や、承認方式を変えたツールは、記録に無い・`approve` でないので触らない。
+    let state = declaration.state.as_deref().map(Path::new);
+    let previous = state.and_then(crate::managed::load);
+    if let Some(previous) = &previous {
+        for (kind, entry) in previous {
+            if kind == MCP_ALLOW && !declaration.mcp_allow.contains(entry) {
+                retire_mcp_allowance(&mut doc, entry);
+            }
+        }
+    }
     let mut servers = serde_json::Map::new();
     for entry in &declaration.mcp_allow {
         let (server, tool) = crate::agent_permissions::mcp_tool(entry)
@@ -244,7 +258,67 @@ pub fn permissions(path: &Path, spec_json: &str) -> Result<(), String> {
     for (key, want) in &declaration.settings {
         set_dotted(&mut doc, key, want)?;
     }
-    let after = doc.to_string();
+    write_permissions(path, &before, doc.to_string(), replaced)?;
+    if let Some(state) = state {
+        let declared: crate::hooks::Managed = declaration
+            .mcp_allow
+            .iter()
+            .map(|e| (MCP_ALLOW.to_owned(), e.clone()))
+            .collect();
+        crate::managed::store_if_changed(state, previous.as_ref(), &declared)?;
+    }
+    Ok(())
+}
+
+/// 所有の記録の中で、MCP 許可を表す種別。
+const MCP_ALLOW: &str = "mcp_allow";
+
+/// `mcp__<server>__<tool>` に当たる `mcp_servers.<server>.tools.<tool>` を、`approval_mode =
+/// "approve"` のときだけ消す。`tools` が空になったらそれも消す。サーバー自体は本人のものなので残す。
+fn retire_mcp_allowance(doc: &mut DocumentMut, entry: &str) {
+    let Some((server, tool)) = crate::agent_permissions::mcp_tool(entry) else {
+        return;
+    };
+    if server == "codex_apps" {
+        return;
+    }
+    let Some(tools) = doc
+        .get_mut("mcp_servers")
+        .and_then(Item::as_table_like_mut)
+        .and_then(|servers| servers.get_mut(server))
+        .and_then(Item::as_table_like_mut)
+        .and_then(|server| server.get_mut("tools"))
+        .and_then(Item::as_table_like_mut)
+    else {
+        return;
+    };
+    let approved = tools
+        .get(tool)
+        .and_then(Item::as_table_like)
+        .and_then(|t| t.get("approval_mode"))
+        .and_then(Item::as_str)
+        == Some("approve");
+    if approved {
+        tools.remove(tool);
+    }
+    if tools.is_empty() {
+        if let Some(server) = doc
+            .get_mut("mcp_servers")
+            .and_then(Item::as_table_like_mut)
+            .and_then(|servers| servers.get_mut(server))
+            .and_then(Item::as_table_like_mut)
+        {
+            server.remove("tools");
+        }
+    }
+}
+
+fn write_permissions(
+    path: &Path,
+    before: &str,
+    after: String,
+    replaced: bool,
+) -> Result<(), String> {
     if after == before {
         return Ok(());
     }
