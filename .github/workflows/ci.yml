@@ -238,7 +238,7 @@ jobs:
       # (ADR-468 Amendment 2026-09-26, docs/adr/468-stack-aware-heavy-ci.md;
       # moved from nix.yml into .github/actions/stack-position by ADR-591):
       # a change confined to build_host/rust's declared "safe to skip" set
-      # can only stay safe as long as flake.nix / home/**/*.nix never start
+      # can only stay safe as long as flake.nix / home/**/*.nix / system/**/*.nix never start
       # reading a new top-level path without that path being added to the
       # action's `BUILD_INPUTS`/`COPY_ONLY` declarations. This scans every
       # non-comment `../`/`./` relative-path literal in those files, resolves
@@ -282,7 +282,7 @@ jobs:
                 fail=1
               fi
             done < <(grep -vE '^[[:space:]]*#' "$f" | grep -oE '(\.\./)+[A-Za-z0-9_./-]+|\./[A-Za-z0-9_./-]+')
-          done < <(printf '%s\n' flake.nix; find home -name '*.nix')
+          done < <(printf '%s\n' flake.nix; find home system -name '*.nix')
           exit "$fail"
 
       - name: bootstrap.sh --dry-run
@@ -723,7 +723,7 @@ jobs:
       # vega (the personal host) only, via home/modules/obsidian.nix). Both are
       # permanent per-run costs unless this cache actually retains them.
       #
-      # The primary-key hashes home/** and config/** in addition to the flake
+      # The primary-key hashes home/**, system/**, config/** and packages/** in addition to the flake
       # inputs, and includes matrix.host: a key that only tracks
       # flake.lock/flake.nix/patches/** stays byte-identical across changes
       # to home/modules/obsidian.nix, so cache-nix-action's own "exact hit
@@ -739,7 +739,7 @@ jobs:
       # rebuilding — a key miss is not a cache miss.
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
-          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
+          primary-key: nix-${{ matrix.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'system/**', 'config/**', 'packages/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-${{ matrix.host }}-${{ runner.os }}-
           # Never save from a pull_request run. A cache created there is
           # scoped to refs/pull/N/merge and "can only be restored by re-runs
@@ -766,6 +766,8 @@ jobs:
           nix build \
             ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
             --print-build-logs --no-link
+      - name: Build system configuration
+        run: nix build ".#systemConfigs.${{ matrix.host }}" --print-build-logs --no-link
       # #602: the Codex/Copilot adapters `source` the Claude hook engines.
       # Running their --selftest from the source tree cannot catch a broken
       # source path, because there ../../claude/hooks exists; in the deployed
