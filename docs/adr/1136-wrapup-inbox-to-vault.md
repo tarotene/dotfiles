@@ -52,9 +52,11 @@ SessionStart の「未裁定の件数」の掲示を見た本人が頼むとき(
 
 ### D3: vault の無い機体では、機体の jsonl に溜めるだけにする(規則は全機体で同じ)
 
-vault を宣言しているのは vega だけで、altair と arcturus(会社)には無い。宣言が無い、または使えない
-機体では、従来どおり機体の jsonl に溜め、起票は強制しない。機体によって Issue が増えたり増えなかったり
-しないように、規則は全機体で同じにする。全機体を vault に寄せることは、**未実装(意図あり)**。
+宣言が無い、または使えない機体では、従来どおり機体の jsonl に溜め、起票は強制しない。
+全 OS で vault の場所を宣言できる option を用意する。arcturus は明示初期化を有効にし、
+会社用 vault の場所は private 側で宣言する。altair の場所も private 側で宣言する。
+新規・空のディレクトリだけを初期化し、既存設定を上書きしない。private 側の宣言と実機適用、
+altair の同期は未確認。会社用 vault を個人 vault へ自動コピーしない。
 
 軸: 還元 — 既存の jsonl を、vault の無い機体の保存形式としてそのまま使う。
 
@@ -71,7 +73,8 @@ vault の外(`<state>/vault.lock`)に置く。
 ### D5: vault の場所の宣言は、worklog と共有する 1 つのマーカー(`obsidian-vault`)にする
 
 `hub_resolve::OBSIDIAN_VAULT`(環境変数 `OBSIDIAN_VAULT`、無ければ `~/.config/dotfiles/obsidian-vault` の
-1 行目)。実値は `home/modules/obsidian.nix` の 1 か所だけ(ADR-0034)。worklog の `worklog-vault` を
+1 行目)。`dotfiles.obsidian.vaultPath` を正本にし、マーカーと書込み許可を導出する。
+実値の配置は ADR-0034 に従う。worklog の `worklog-vault` を
 これに改める(日次ノートの設定の検査は worklog が別に行う)。
 
 軸: 表現不可能 — vault の場所の正本が 1 つになり、機構ごとに食い違う宣言が作れない。
@@ -91,7 +94,8 @@ vault の外(`<state>/vault.lock`)に置く。
 - 気づきは GitHub に出ない。Issue の検索・購読・通知には載らない。`/backlog-cleanup` を頼まないと
   裁定されない(SessionStart の件数の掲示が、唯一の合図)。裁定されずに溜まる壊れ方は、`--list-open` が
   再発の多い順に返すことで和らげる。
-- vault の無い機体(altair、arcturus)の分は、その機体でしか見えない。
+- vault を宣言していない機体の jsonl は、その機体でしか見えない。altair と arcturus の
+  private 宣言・実機適用は未確認。
 - jsonl から vault への移行は、**そのプロジェクトの** jsonl だけを、セッション開始・Stop・`--migrate` の
   契機で行う。別のリポジトリの jsonl は、そのリポジトリでセッションが始まったときに移る。
 - LiveSync と書き込みの共存(Obsidian の起動中に rename で置き換えても競合版ができないか、一時ファイルが
@@ -102,10 +106,13 @@ vault の外(`<state>/vault.lock`)に置く。
 
 - `crates/vault-note/src/lib.rs`
 - `crates/issue-inbox/src/lib.rs`
+- `crates/issue-inbox/src/vault_init.rs`
 - `crates/issue-inbox/src/vault.rs`
 - `crates/session-wrapup/src/lib.rs`
 - `crates/hub-resolve/src/lib.rs`
 - `home/modules/obsidian.nix`
+- `home/modules/obsidian-vault.nix`
+- `home/common.nix`
 - `config/agents/skills/backlog-cleanup/SKILL.md`
 - `pipeline-map.toml`
 

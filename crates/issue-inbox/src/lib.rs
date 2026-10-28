@@ -18,6 +18,7 @@
 pub use jq_json_compat::query as json;
 pub mod shquote;
 pub mod vault;
+mod vault_init;
 
 use jq_json_compat::jqfmt::J;
 use jq_json_compat::jqparse::parse_stream;
@@ -1018,6 +1019,22 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
     };
     let run = || -> Result<Code, Code> {
         Ok(match arg(0) {
+            "--prepare-vault" => {
+                let path = need(
+                    1,
+                    "usage: issue-inbox --prepare-vault <absolute-path> [--initialize]",
+                )?;
+                if args.len() > 3 || (args.len() == 3 && arg(2) != "--initialize") {
+                    return Ok(1);
+                }
+                match vault_init::prepare(Path::new(path), arg(2) == "--initialize") {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        eprintln!("issue-inbox: vault preparation failed: {e}");
+                        1
+                    }
+                }
+            }
             "--inbox-path" => {
                 let p = need(1, "usage: wrapup-stop-gate.sh --inbox-path <project-dir>")?;
                 print!("{}", inbox_for(p));
