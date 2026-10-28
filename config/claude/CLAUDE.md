@@ -145,6 +145,16 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   `tests/integration.rs:289`)。`codex-plan` の起動経路のテストも同じ型。失敗しても変更の不具合とは限らない
   ので、`cargo test --workspace` の赤はこの型かを先に見て、CI の結果で確かめる。
 
+## テストの出力を `head` / `tail` で切らない
+
+`cargo test … | head -10` は、失敗の行(`FAILED`・`panicked`)が切れた範囲の外に出ると見えず、終了コードも
+`head` のものになる(2026-10-28、落ちるテストを PR #1199 に載せた)。絞るなら
+`2>&1 | grep -E 'FAILED|panicked|test result'`、またはファイルに書いて終了コードを別に確かめる。
+
+形式検査は `test-output-guard`(PreToolUse deny、`hook-router` の規則)が担う。`cargo test`・`cargo nextest` の出力を
+`| head` / `| tail` へ流す形を実行前に拒否し、絞り方を案内する(`docs/agents/test-output-guard.md`)。gate に当たる前に
+最初から切らないこと — gate は漏れを拾うためのもので、一次的な手段ではない。
+
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で

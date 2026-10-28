@@ -873,6 +873,7 @@ dependencies = [
  "serde_json",
  "stack-base-guard",
  "tempfile",
+ "test-output-guard",
  "toml",
  "worktree-lease",
 ]
@@ -1762,6 +1763,14 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "test-output-guard"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
 ]
 
 [[package]]
