@@ -27,11 +27,11 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 ## 載せるもの
 
-ルータの表(`rules.rs`)に載せた検査は 23 件(拒否だけを出す PreToolUse の 19 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
+ルータの表(`rules.rs`)に載せた検査は 24 件(拒否だけを出す PreToolUse の 20 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、stack-base-guard、worktree-create-guard、worktree-lease |
+| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、worktree-create-guard、worktree-lease |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
