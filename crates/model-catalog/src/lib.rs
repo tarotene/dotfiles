@@ -986,7 +986,19 @@ mod tests {
     fn every_tracked_model_effort_pair_has_a_measurement() {
         let c = data();
         let mut tracked = 0;
-        for m in c.models.iter().filter(|m| !m.aa_ids.is_empty()) {
+        // 手登録のモデルだけ。`fetch-aa` が自動登録したモデルは、判定に使うベンチのどれか 1 つに値が
+        // あれば載るので、Terminal-Bench を持つとは限らない（#1188）。
+        let hand: BTreeSet<String> = Catalog::parse(&base())
+            .unwrap()
+            .models
+            .iter()
+            .map(|m| m.id.clone())
+            .collect();
+        for m in c
+            .models
+            .iter()
+            .filter(|m| !m.aa_ids.is_empty() && hand.contains(&m.id))
+        {
             assert_eq!(
                 m.aa_ids.keys().collect::<BTreeSet<_>>(),
                 m.efforts.iter().collect::<BTreeSet<_>>(),
@@ -1005,8 +1017,9 @@ mod tests {
                 tracked += 1;
             }
         }
-        assert_eq!(tracked, 30);
-        assert_eq!(c.measurements.len(), tracked);
+        assert_eq!(tracked, 30, "手登録の (モデル × エフォート)");
+        // 自動登録の測定値が、手登録の分に加わる（持ち越しの規則は aa の試験が見る）。
+        assert!(c.measurements.len() >= tracked);
         assert!(c
             .aa
             .as_ref()
@@ -1388,7 +1401,11 @@ mod tests {
     fn discovery_range_is_a_date_and_each_measurement_carries_its_own_retrieved_date() {
         let c = data();
         assert_eq!(c.discovery.as_ref().unwrap().aa_release_since, "2026-07-01");
-        assert!(c.measurements.iter().all(|m| m.retrieved == "2026-10-27"));
+        // 各行は自分の取得日を持つ。取得日は行ごとに違いうる（再取得で値が変わった行だけ新しい日になる）。
+        assert!(c
+            .measurements
+            .iter()
+            .all(|m| { m.retrieved.len() == 10 && m.retrieved.starts_with("2026-") }));
         let e = with(|t| {
             t.replacen(
                 "aa_release_since = \"2026-07-01\"",
