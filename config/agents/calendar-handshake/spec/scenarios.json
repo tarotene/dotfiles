@@ -1,0 +1,174 @@
+{
+  "about": "握手の仕様(handshake.qnt)の検査の表。各行が 1 回のモデル検査で、cfg.qnt を生成して回す。expect が fail の行は、反例が出ることが期待で、出なければ検査が赤になる(ADR-550 のままの規則の穴を回帰テストとして残す)。",
+  "defaults": {
+    "STAMP_GROUP": true,
+    "IDEMPOTENT_ABSENCE": true,
+    "LOCKED": true,
+    "CLOSE_GROUP": true,
+    "REVERT": true,
+    "RECONCILE": true,
+    "CANCEL_PROPAGATES": true,
+    "CAN_CRASH": false,
+    "TWO_RUNS": false,
+    "CAN_EDIT_TITLE": false,
+    "CAN_EDIT_START": false,
+    "CAN_FORGE": false,
+    "CAN_CANCEL": false,
+    "CAN_DELETE": false,
+    "EDIT_AFTER_JUDGED": true,
+    "WITH_DESK": false,
+    "MAX_EDITS": 3,
+    "MAX_CRASHES": 1
+  },
+  "asis_rules": {
+    "STAMP_GROUP": false,
+    "IDEMPOTENT_ABSENCE": false,
+    "LOCKED": false,
+    "CLOSE_GROUP": false,
+    "REVERT": false,
+    "RECONCILE": false,
+    "CANCEL_PROPAGATES": false
+  },
+  "scenarios": [
+    {
+      "name": "h1_asis",
+      "about": "H1: 組のキーが題名の一致だと、本人が片方の題名を直すと組が割れ、[go] のときに他の候補が消えない",
+      "rules": "asis",
+      "flags": { "CAN_EDIT_TITLE": true, "MAX_EDITS": 4 },
+      "invariant": ["s3"],
+      "expect": "fail"
+    },
+    {
+      "name": "h1_revised",
+      "about": "H1 の改訂: script が最初の判定で組の id を刻む。判定のあとの題名の編集では組が割れない",
+      "flags": { "CAN_EDIT_TITLE": true, "MAX_EDITS": 4 },
+      "invariant": ["s1", "s3", "s6"],
+      "expect": "pass"
+    },
+    {
+      "name": "h1_residual",
+      "about": "H1 の残余: 最初の判定の前(10 分以内)に題名を直すと、刻まれる id が分かれる。仕様では防げず、受容する",
+      "flags": { "CAN_EDIT_TITLE": true, "EDIT_AFTER_JUDGED": false, "MAX_EDITS": 4 },
+      "invariant": ["s3"],
+      "expect": "fail"
+    },
+    {
+      "name": "h2_asis",
+      "about": "H2: 不在を入れたあと、印を直す前に script が落ちると、再実行で不在が二重に入る",
+      "rules": "asis",
+      "flags": { "CAN_CRASH": true, "MAX_EDITS": 2 },
+      "invariant": ["s2dup"],
+      "expect": "fail"
+    },
+    {
+      "name": "h2_revised",
+      "about": "H2 の改訂: 不在を作る前に拡張プロパティで探す(冪等)",
+      "flags": { "CAN_CRASH": true, "MAX_EDITS": 2 },
+      "invariant": ["s2dup", "s2blk"],
+      "expect": "pass"
+    },
+    {
+      "name": "h4_asis",
+      "about": "H4: 冪等(探してから作る)でも、2 つの実行が同時に探して同時に作ると不在が二重に入る。ロックが要る",
+      "rules": "asis",
+      "flags": { "IDEMPOTENT_ABSENCE": true, "TWO_RUNS": true, "MAX_EDITS": 2 },
+      "invariant": ["s2dup"],
+      "expect": "fail"
+    },
+    {
+      "name": "h4_revised",
+      "about": "H4 の改訂: 1 回の実行全体を script lock で囲む",
+      "flags": { "TWO_RUNS": true, "MAX_EDITS": 2 },
+      "invariant": ["s2dup", "s2blk"],
+      "expect": "pass"
+    },
+    {
+      "name": "h3_asis",
+      "about": "H3: 本人が [blocked] を [hold] に戻しても、不在が残り続ける",
+      "rules": "asis",
+      "flags": { "CAN_CANCEL": true },
+      "temporal": ["s4"],
+      "expect": "fail"
+    },
+    {
+      "name": "h3_revised",
+      "about": "H3 の改訂: 印が [blocked]・[secured] でなくなったら、不在を消す",
+      "flags": { "CAN_CANCEL": true },
+      "temporal": ["s4"],
+      "expect": "pass"
+    },
+    {
+      "name": "h5_asis",
+      "about": "H5: [blocked]・[secured] のあとに本人が日を変えても、不在の日が食い違ったまま残る",
+      "rules": "asis",
+      "flags": { "CAN_EDIT_START": true },
+      "temporal": ["s2heal"],
+      "expect": "fail"
+    },
+    {
+      "name": "h5_revised",
+      "about": "H5 の改訂: 不在の日と印の日が食い違えば、不在を消して [go] に戻し、取り直す",
+      "flags": { "CAN_EDIT_START": true },
+      "temporal": ["s2heal"],
+      "expect": "pass"
+    },
+    {
+      "name": "h6_asis",
+      "about": "H6: 同じ組の別の候補が既に [blocked] のとき、後から来た候補の [go] も [blocked] になり、確保が 2 件になる",
+      "rules": "asis",
+      "flags": { "MAX_EDITS": 4 },
+      "invariant": ["s1"],
+      "expect": "fail"
+    },
+    {
+      "name": "h6_revised",
+      "about": "H6 の改訂: 閉じた組への新しい候補は、判定の時点で [ng] にする",
+      "flags": { "MAX_EDITS": 4 },
+      "invariant": ["s1", "s3"],
+      "expect": "pass"
+    },
+    {
+      "name": "s6_asis",
+      "about": "S6: 本人が語彙に無い書き換え(例: [ng] を [go] に)をしても、ADR-550 には応答が無い",
+      "rules": "asis",
+      "flags": { "CAN_FORGE": true, "MAX_EDITS": 2 },
+      "temporal": ["s6revert"],
+      "expect": "fail"
+    },
+    {
+      "name": "s6_revised",
+      "about": "S6 の改訂: 最後に受理した印へ差し戻す。印を捏造した [blocked] は不在との食い違いで [go] に戻る",
+      "flags": { "CAN_FORGE": true, "MAX_EDITS": 3 },
+      "temporal": ["s6revert", "s2heal"],
+      "expect": "pass"
+    },
+    {
+      "name": "l1_revised",
+      "about": "L1: [go] は、いずれ [go] でなくなる(落ちる実行があっても)",
+      "flags": { "CAN_CRASH": true },
+      "temporal": ["l1"],
+      "expect": "pass"
+    },
+    {
+      "name": "l2_revised",
+      "about": "L2: 本人が送った [blocked] は、いずれ [secured] になる",
+      "flags": {},
+      "temporal": ["l2"],
+      "expect": "pass"
+    },
+    {
+      "name": "l3_revised",
+      "about": "L3: 停滞([go]・[blocked] のまま開始が近い)は、いずれ朝の机の警告に達する",
+      "flags": { "WITH_DESK": true },
+      "temporal": ["l3"],
+      "expect": "pass"
+    },
+    {
+      "name": "cover",
+      "about": "語彙の遷移ごとの到達可能性。違反の反例が出れば、その遷移を仕様が起こせる。出なければ死んだ遷移",
+      "flags": { "CAN_CANCEL": true, "CAN_EDIT_START": true, "MAX_EDITS": 4 },
+      "per_transition": true,
+      "expect": "fail"
+    }
+  ]
+}
