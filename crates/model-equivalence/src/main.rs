@@ -13,7 +13,7 @@
 //! 明示したものだけを足す(会社の業務リポジトリを巻き込まないため)。
 
 use model_catalog::{data, date};
-use model_equivalence::judge::{compare, Margins, Verdict};
+use model_equivalence::judge::{compare, role_default_margins, role_resolution, Margins, Verdict};
 use model_equivalence::lens::{files_endpoint, parse_filenames, parse_search_rows, Lens};
 use model_equivalence::render::{build_data, render_document, render_fragment, RenderOptions};
 use std::process::{Command, ExitCode};
@@ -211,18 +211,22 @@ fn cmd_compare(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     let (model, effort) = reference
         .split_once(':')
         .ok_or_else(|| format!("--reference は MODEL:EFFORT の形: {reference}"))?;
-    let mut margins = Margins::from_catalog(c);
-    if let Some(v) = f.get("--margin-points") {
-        margins.capability_points = v
-            .parse()
-            .map_err(|_| format!("--margin-points が数でない: {v}"))?;
-    }
+    // 能力の許容幅は、役ごとの既定（判定に使うベンチの分解能の最大値、`[equivalence]` の値が下限）。
+    // `--margin-points` を渡したときだけ、全部の役でその値にする。
+    let mut speed_ratio = Margins::from_catalog(c).speed_ratio;
+    let capability_override: Option<f64> = match f.get("--margin-points") {
+        Some(v) => Some(
+            v.parse()
+                .map_err(|_| format!("--margin-points が数でない: {v}"))?,
+        ),
+        None => None,
+    };
     if let Some(v) = f.get("--speed-margin") {
-        margins.speed_ratio = v
+        speed_ratio = v
             .parse()
             .map_err(|_| format!("--speed-margin が数でない: {v}"))?;
     }
-    if !(margins.capability_points > 0.0 && margins.speed_ratio > 0.0) {
+    if !(capability_override.is_none_or(|v| v > 0.0) && speed_ratio > 0.0) {
         return Err("許容幅は 0 より大きい値".into());
     }
     let lens = match f.get("--lens") {
@@ -239,15 +243,24 @@ fn cmd_compare(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     let verbose = f.has("--verbose");
     let aa = c.aa.as_ref().map(|a| a.retrieved.as_str()).unwrap_or("?");
     println!(
-        "基準: {model} / {effort}   許容幅: 能力 ±{}pt・速さ ±{:.0}%   履歴: {}   データ: Artificial Analysis {aa}",
-        margins.capability_points,
-        margins.speed_ratio * 100.0,
+        "基準: {model} / {effort}   許容幅: 能力{}・速さ ±{:.0}%   履歴: {}   データ: Artificial Analysis {aa}",
+        capability_override.map_or(
+            "は役ごと(判定に使うベンチの分解能の最大値。下限は catalog.toml の値)".to_owned(),
+            |v| format!("±{v}pt")
+        ),
+        speed_ratio * 100.0,
         lens.as_ref().map_or("なし(役の全ベンチ)".to_owned(), |l| format!(
             "{} 件({}、直近 {} 日)",
             l.total, l.generated, l.days
         )),
     );
     for role in roles {
+        let mut margins = role_default_margins(c, role, lens.as_ref())?;
+        if let Some(v) = capability_override {
+            margins.capability_points = v;
+        }
+        margins.speed_ratio = speed_ratio;
+        let resolution = role_resolution(c, role, lens.as_ref())?;
         let mut rows = compare(c, role, (model, effort), lens.as_ref(), margins)?;
         let rank = |v: Verdict| match v {
             Verdict::Equivalent => 0,
@@ -257,7 +270,15 @@ fn cmd_compare(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
         };
         rows.sort_by_key(|r| (rank(r.judgement.verdict), r.model.clone(), r.effort.clone()));
         let r = &c.roles[role];
-        println!("\n■ {}({})", r.name, role);
+        println!(
+            "\n■ {}({})  能力の許容幅 ±{}pt{}",
+            r.name,
+            role,
+            margins.capability_points,
+            resolution.map_or(String::new(), |x| format!(
+                "(判定に使うベンチの分解能の最大 ±{x:.1}pt。許容幅がこれより狭いと、差が無くても同等と言えない)"
+            ))
+        );
         for row in &rows {
             let j = &row.judgement;
             let detail: Vec<String> = j

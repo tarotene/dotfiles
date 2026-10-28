@@ -14,7 +14,9 @@
 //! 2 の数値だけで、組合せの数には比例しない。距離の式は JS にも要る(選んだ基準との距離を出すため)ので、
 //! 役ごとの既定の基準 1 点 × 全候補の距離も `golden.dist` として埋め込み、ページが突き合わせる。
 
-use crate::judge::{capability, compare, judged_benchmarks, Margins, Verdict};
+use crate::judge::{
+    capability, compare, judged_benchmarks, role_default_margins, role_resolution, Margins, Verdict,
+};
 use crate::lens::Lens;
 use crate::map;
 use model_catalog::aa::{DEFAULT_EFFORT, EFFORT_VOCABULARY};
@@ -100,12 +102,13 @@ pub fn build_data(
     lens: Option<&Lens>,
     opts: &RenderOptions,
 ) -> Result<Value, String> {
+    // `[equivalence]` の値。役の既定の許容幅の下限で、ページの「既定に戻す」は役ごとの既定に戻す。
     let margins = Margins::from_catalog(catalog);
 
     // 役と、判定に使うベンチ(履歴に従う役は絞り込み済み)。
     let mut roles = Vec::new();
     // 役ごとの (役 ID, 既定の基準, 判定に使うベンチ) — golden の元。
-    let mut golden_specs: Vec<(String, String, Vec<String>)> = Vec::new();
+    let mut golden_specs: Vec<(String, String, Vec<String>, Margins)> = Vec::new();
     let mut shown_benches: BTreeSet<String> = BTreeSet::new();
     let mut ordered: Vec<_> = catalog.roles.iter().collect();
     ordered.sort_by_key(|(id, r)| (r.order, (*id).clone()));
@@ -124,10 +127,14 @@ pub fn build_data(
         if catalog.measurement(m, e).is_none() {
             return Err(format!("役 {id} の基準 {default_ref} の測定値が無い"));
         }
+        // 役の既定の許容幅（#1150）: 判定に使うベンチの分解能の最大値が下限。
+        let role_margins = role_default_margins(catalog, id, lens)?;
+        let resolution_max = role_resolution(catalog, id, lens)?;
         golden_specs.push((
             id.clone(),
             default_ref.clone(),
             judged.iter().map(|(b, _)| b.clone()).collect(),
+            role_margins,
         ));
         roles.push(json!({
             "id": id,
@@ -139,6 +146,8 @@ pub fn build_data(
             "reference_benchmarks": role.reference_benchmarks,
             "uncovered": uncovered.iter().map(|u| json!({"id": u.category, "name": u.name, "share": u.share})).collect::<Vec<_>>(),
             "default_reference": default_ref,
+            "margins": {"capability_points": role_margins.capability_points, "speed_ratio": role_margins.speed_ratio},
+            "resolution_max": resolution_max,
         }));
     }
 
@@ -197,11 +206,11 @@ pub fn build_data(
         .map(|r| (key(&r.model, &r.effort), r))
         .collect();
     let meas: Vec<&model_catalog::Measurement> = keys.iter().map(|k| by_key[k]).collect();
-    let map_sets = [margins, GOLDEN_ALT];
     let mut map_roles = Map::new();
-    for (role, default_ref, judged) in &golden_specs {
+    for (role, default_ref, judged, role_margins) in &golden_specs {
+        let map_sets = [*role_margins, GOLDEN_ALT];
         let (m, e) = split_ref(default_ref)?;
-        let a = compare(catalog, role, (m, e), lens, margins)?;
+        let a = compare(catalog, role, (m, e), lens, *role_margins)?;
         let b = compare(catalog, role, (m, e), lens, GOLDEN_ALT)?;
         let mut by_key: std::collections::BTreeMap<String, String> = Default::default();
         for (x, y) in a.iter().zip(&b) {
@@ -237,7 +246,7 @@ pub fn build_data(
                         bench,
                         base.scores.get(id).copied(),
                         cand.scores.get(id).copied(),
-                        margins.capability_points,
+                        role_margins.capability_points,
                     )
                     .interval
                 };
@@ -448,7 +457,7 @@ mod tests {
         let c = data();
         let l = lens();
         let v = build_data(c, Some(&l), &RenderOptions::default()).unwrap();
-        let m = Margins::from_catalog(c);
+        let m = role_default_margins(c, "plan", Some(&l)).unwrap();
         let keys: Vec<&String> = v["rows"].as_object().unwrap().keys().collect();
         let got = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), m).unwrap();
         let alt = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), GOLDEN_ALT).unwrap();
