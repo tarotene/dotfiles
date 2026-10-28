@@ -106,6 +106,10 @@ in
     # `.playwright-mcp/` を作り、worktree が汚れる。screenshot に `filename` を明示
     # すると cwd に落ちる(0.0.83 の README)ので、git.nix も `.playwright-mcp/` を
     # ignore する。
+    #
+    # --headless は追加ウィンドウを画面に出さないため。Playwright の BiDi 版 Firefox は
+    # persistent context で起動時のウィンドウを使わず新しく作るので、headed だと普段の
+    # Firefox のほかに 2 枚出る(docs/claude/claude-mcp-servers.md)。
     playwright = {
       type = "stdio";
       command = "${config.home.homeDirectory}/.local/libexec/playwright-mcp-launcher";
@@ -115,6 +119,7 @@ in
         "--clone"
         "${config.xdg.cacheHome}/playwright-mcp-profile/firefox"
         "--"
+        "--headless"
         "--output-dir"
         "${config.xdg.cacheHome}/playwright-mcp"
       ];
