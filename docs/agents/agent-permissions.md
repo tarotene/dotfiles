@@ -83,16 +83,39 @@ sandbox を外した再実行は自動モードの判定が「Safety Bypass」�
 直し方として「sandbox を外して先週に戻す」ではなく、Codex と同じ層構造に宣言で揃える(本人の裁定、2026-10-27)。
 公式の指針は「権限ルールと sandbox は別の層で、両方を使う(defense-in-depth)」である。
 
-| 層 | Claude の公式な指針 | Codex(`dotfiles` profile) | Claude の宣言 |
-|---|---|---|---|
-| 権限ルール | 評価順は deny → ask → allow。Bash ルールは「プログラムの周りの境界ではない」。引数を絞る Bash パターンは壊れやすい | Bash 前方一致の宣言なし。MCP は既定で毎回確認 | 狭い allow(`permissionRules`)と秘密パスの Read deny。広い Bash 前方一致は宣言しない |
-| 分類器 | 自動モードの分類器。`classifyAllShell` は全シェルを分類し Bash の allow を停止する。分類器への例外は `autoMode.allow`(自然言語)で書く。`"$defaults"` を含めないと既定の一覧が丸ごと消える | `auto_review` が全承認要求を審査する | `autoMode.classifyAllShell = true`、`autoMode.allow`(`"$defaults"` + 自分の linked worktree でのブランチ作成は可。main の checkout・ブランチ削除・push は含めない) |
-| sandbox | OS が強制する。直し方は `allowWrite`・`allowedDomains`・狭い `excludedCommands`。`autoAllowBashIfSandboxed` は既定 true。`WebFetch(domain:...)` の許可は通信先にも加わる | 常時 sandbox(全体 read・workspace write・秘密 deny・通信先を宣言) | `sandbox.enabled`・`failIfUnavailable`・`autoAllowBashIfSandboxed = true`・`allowedDomains`・`denyRead`・`excludedCommands` |
-| hook | hook の判定は deny / ask を越えられない | 同種の hook | 変更しない |
+| 層 | Claude の公式な指針 | Codex の公式な指針 | Codex(`dotfiles` profile) | Claude の宣言 |
+|---|---|---|---|---|
+| 権限ルール | 評価順は deny → ask → allow。Bash ルールは「プログラムの周りの境界ではない」。引数を絞る Bash パターンは壊れやすい | `~/.codex/rules/` に `prefix_rule(pattern = ["curl"], decision = "prompt", justification = …)` を置き、宛先が許可リストにあるコマンドも確認に回せる。追加後は Codex を再起動する(`recommended-configuration`) | Bash 前方一致の宣言なし。MCP は既定で毎回確認 | 狭い allow(`permissionRules`)と秘密パスの Read deny。広い Bash 前方一致は宣言しない |
+| 分類器 | 自動モードの分類器。`classifyAllShell` は全シェルを分類し Bash の allow を停止する。分類器への例外は `autoMode.allow`(自然言語)で書く。`"$defaults"` を含めないと既定の一覧が丸ごと消える | `approvals_reviewer = "auto_review"` で、承認が要る要求だけを審査エージェントに回す(`approvals_reviewer` の既定は `"user"`)。sandbox の中で完結する操作は審査しない(`agent-approvals-security`) | `auto_review` が全承認要求を審査する | `autoMode.classifyAllShell = true`、`autoMode.allow`(`"$defaults"` + 自分の linked worktree でのブランチ作成は可。main の checkout・ブランチ削除・push は含めない) |
+| sandbox | OS が強制する。直し方は `allowWrite`・`allowedDomains`・狭い `excludedCommands`。`autoAllowBashIfSandboxed` は既定 true。`WebFetch(domain:...)` の許可は通信先にも加わる | `default_permissions` の権限 profile で最小権限の境界を作る(変更が要らなければ `:read-only`、編集が要れば `:workspace` を継承)。例は `approval_policy = "on-request"`・`approvals_reviewer = "auto_review"`・`features.network_proxy = true`(無いと `network.enabled = true` は宛先の許可リストを効かせない)・秘密のパターンの deny・通信先の allow。profile と旧 `sandbox_mode` は併用しない。既定は通信オフ。`<writable_root>/.git` は読み取り専用で保護。`dangerously_allow_all_unix_sockets = true` は Unix socket の許可リストを迂回するので、厳密に管理された環境でだけ使う | 常時 sandbox(全体 read・workspace write・秘密 deny・通信先を宣言) | `sandbox.enabled`・`failIfUnavailable`・`autoAllowBashIfSandboxed = true`・`allowedDomains`・`denyRead`・`excludedCommands` |
+| hook | hook の判定は deny / ask を越えられない | 取得した 2 ページに記述なし | 同種の hook | 変更しない |
 
 出典(Anthropic, "Sandboxing" と "Configure permissions"、<https://code.claude.com/docs/en/sandboxing>、
 <https://code.claude.com/docs/en/permissions>、取得 2026-10-27、本文を逐語で引く形で取得して読んだ)。
-Codex 側の公式な設計指針は、概要ページ(<https://learn.chatgpt.com/docs/security>)しか取得できず、**未確認**。
+Codex 側の公式な設計指針の出典(OpenAI, ChatGPT Learn、公開日不明、取得 2026-10-28。headless Chromium で本文を読み、表の文の根拠を本文で確かめた):
+
+- "Recommended configuration"(<https://learn.chatgpt.com/docs/cyber-safety/recommended-configuration>)。
+  サイバーセキュリティの試験環境(higher-risk な作業)向けの推奨で、一般の開発作業の推奨ではない。ただし権限 profile・
+  `auto_review`・`network_proxy`・`prefix_rule` の使い方の例として、層ごとの対応表に使える。本文は
+  「Use Codex permission profiles to create a least-privilege boundary.」と書き、`approval_policy = "on-request"` /
+  `approvals_reviewer = "auto_review"` / `default_permissions` と `[features] network_proxy = true` の例を挙げる。
+- "Agent approvals & security"(<https://learn.chatgpt.com/docs/agent-approvals-security>)。本文は
+  「By default, the agent runs with network access turned off.」「The reviewer evaluates only actions that already need approval」
+  「`<writable_root>/.git` is protected as read-only whether it appears as a directory or file.」
+  「`dangerously_allow_all_unix_sockets = true` bypasses the Unix socket allowlist. Use them only in tightly controlled environments.」と書く。
+  `developers.openai.com/codex/…` は 308 で `learn.chatgpt.com/docs/…` へ移っている(`/codex/` が付かない)。
+
+### 宣言(`home/modules/codex.nix`)との食い違い
+
+- 食い違う: `dangerously_allow_all_unix_sockets = true`(`codex.nix` の `network` 節、herdr の AF_UNIX ソケットのため)。公式は
+  「Dangerous settings」に挙げ、「厳密に管理された環境でだけ使う」とする。sandbox から D-Bus・鍵束に届くかの実測は
+  #1159 が追跡している(公式の一文はそこへコメントした)。
+- 食い違わない: `approval_policy = "on-request"`、`approvals_reviewer = "auto_review"`、`default_permissions` の名前付き profile が
+  `:workspace` を継承すること、`features.network_proxy = true`、秘密パスの deny、通信先の allow、旧 `sandbox_mode` を併用しない
+  こと(reconciler が取り除く)。
+- 宣言しない: `~/.codex/rules/` の `prefix_rule`(公式の例は、許可リストにある宛先のコマンドも確認に回す用途)。Codex は
+  Bash 前方一致の宣言を持たない、という上の表の判断は変えていない。
+- 取得した 2 ページに記述なし: `features.credential_masking`、hook の層。
 
 Claude Code の sandbox が起動に要るコマンド（`socat`、Linux は `bubblewrap`）は、対話の Claude では `home.packages` で PATH に載る。
 systemd の user unit のような headless の起動の PATH には `~/.nix-profile/bin` が無く、`failIfUnavailable = true` が効いて
