@@ -5,7 +5,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 判定は役(Plan 役・実行役)ごとに行い、最後に組の対応表を出す。結果は自分だけが見る単一の HTML ページになる。
 
 - 正本のデータ: `crates/model-catalog/catalog.toml`(価格・文脈長・出典、ベンチの定義、測定値、役、履歴の種類との対応)。
-- 判定と収集: `crates/model-equivalence`(`lens`・`compare`・`render`)。
+- 判定と収集: `crates/model-equivalence`(`lens`・`compare`・`observations`・`render`)。
 - 取り込み: `crates/model-catalog`(`check`・`fetch-aa`)。AA が測っている提供元・モデルを、コードを変えずに自動で登録する(「自動登録」の節)。
 
 ## 何を主張しないか
@@ -190,6 +190,24 @@ prefix の表は無い)。
   (探した範囲: 上の論文の要旨だけ。距離の定義に関する文献の検索は未実施)。
 
 ## ページ
+
+実地観測を含める場合は、各機体の native transcript から集計してからページを生成する。
+
+```sh
+model-equivalence observations --days 14 --out /tmp/observations.json
+model-equivalence render --observations /tmp/observations.json --out /tmp/model-equivalence.html
+```
+
+`--days` の既定は 14 日。Codex と Claude Code の記録について、成功した PR 作成の
+呼び出しと結果を照合し、到達数・壁時計・本人の往復を集計する。Plan と実行のモデルを
+組で示し、実行中のモデル・推論量の変更は比較対象から除く。5 件未満の PR 到達は
+件数不足として示す。割当てありと観察のみは別にする。
+
+取得できない時間は `null`、ページでは `—` と欠測件数で示す。Claude の PR 到達までの
+稼働時間と TTFT は未取得であり、0 とみなさない。入力の本文は本人の発言と PR 作成の
+成否を識別するために一時的に読むが、出力型には本文・リポジトリ名・URL・スレッド ID を
+持たせない。この観測は同じ仕事を無作為に再実行した比較ではなく、公開ベンチの判定を
+補正しない。収集を指定しない場合もページの観測欄を残し、未収集と表示する。
 
 `model-equivalence render --lens <lens.json> --out <page.html>` が、データとスクリプトを埋め込んだ単一の HTML を作る。ローカルで開く完全な文書が既定で、Artifact として公開するときは、公開側が文書の枠を付けるので `--fragment` で断片を出す。
 

@@ -334,6 +334,7 @@ pub fn render_fragment(data: &Value) -> String {
         .expect("Value は文字列に直せる")
         .replace("</", "<\\/");
     PAGE.replace("__DATA__", &json)
+        .replace("__OBSERVATIONS__", &render_observations(None))
 }
 
 /// ローカルのブラウザで直接開ける完全な文書(断片に doctype・charset・viewport を付ける)。
@@ -343,6 +344,39 @@ pub fn render_document(data: &Value) -> String {
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n{}\n</html>\n",
         render_fragment(data)
     )
+}
+
+/// Observations are independent evidence, never inputs to benchmark judgement.
+pub fn render_observations(
+    observations: Option<&agent_observations::export::Observations>,
+) -> String {
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;")
+    }
+    fn display(v: Option<u64>) -> String {
+        v.map_or_else(|| "—".into(), |n| n.to_string())
+    }
+    let mut html = String::from("<section><h2>実地観測（公開ベンチの判定には使わない）</h2><p>時間はミリ秒、各値は中央値。取得できない値は — と欠測件数で示す。</p><table><thead><tr><th>ハーネス</th><th>割当</th><th>計画モデル</th><th>実行モデル</th><th>推論量</th><th>PR 到達</th><th>稼働時間</th><th>壁時計</th><th>本人往復</th><th>最初のトークン</th><th>欠測（稼働 / 壁時計 / ターン / TTFT）</th><th>判定</th></tr></thead><tbody>");
+    if let Some(data) = observations {
+        for (harness, report) in [("Codex", &data.codex), ("Claude", &data.claude)] {
+            for a in &report.arms {
+                html.push_str(&format!("<tr><td>{harness}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{} / {} / {} / {}</td><td>{}</td></tr>",
+                    esc(&a.assignment), esc(&a.plan_model), esc(&a.model), esc(&a.effort), a.threads_with_pr, a.threads,
+                    display(a.to_pr_agent_ms.median), display(a.to_pr_wall_ms.median), display(a.to_pr_user_turns.median), display(a.default_ttft_ms.median),
+                    a.missing.to_pr_agent_ms, a.missing.to_pr_wall_ms, a.missing.default_turn_ms, a.missing.default_ttft_ms,
+                    if a.sufficient { "観測" } else { "件数不足（5件未満）" }));
+            }
+        }
+    }
+    if observations.is_none_or(|o| o.codex.arms.is_empty() && o.claude.arms.is_empty()) {
+        html.push_str("<tr><td colspan=\"12\">未収集または該当する観測なし</td></tr>");
+    }
+    html.push_str("</tbody></table></section>");
+    html
 }
 
 #[cfg(test)]
