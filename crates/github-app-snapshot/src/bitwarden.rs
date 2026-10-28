@@ -4,9 +4,8 @@
 //! read-only な machine account の access token だけ(GNOME Keyring)。形は
 //! 旧 `scripts/obsidian-backup` の `configure_token()` / `keyring_token()` と
 //! 同型だが、obsidian-backup の machine account とは共有しない(App ごとの
-//! 最小権限、2026-09-30 の user 判断、ADR-590)。obsidian-backup の Rust 版は
-//! このブランチの時点で存在しない(リポジトリにも無い)ので再利用できず、
-//! keyring まわりは secret-tool を呼ぶだけの数十行をここに持つ。
+//! 最小権限、2026-09-30 の user 判断、ADR-590)。keyring まわりは
+//! secret-tool を呼ぶだけの数十行をここに持つ。
 //! token は argv にも stdout にも出さない(`secret-tool` の stdin / `bws` の
 //! 環境変数 `BWS_ACCESS_TOKEN` のみ)。
 
