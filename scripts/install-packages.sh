@@ -15,6 +15,8 @@ set -euo pipefail
 #     firewall (ufw) — ADR-471
 #   - system76-scheduler priority drop-in under /etc (Pop!_OS only; skipped
 #     where system76-scheduler is absent) — ADR-0001 Amendment, #1056
+#   - Waydroid (Android container: root, a system service, kernel binder) and
+#     its apt repo, only on a host whose package list names `waydroid` — #323
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).
 # Usage: ./install-packages.sh [--dry-run]
@@ -93,6 +95,21 @@ TAILSCALE_LIST="/etc/apt/sources.list.d/tailscale.list"
 tailscale_repo_new=false
 [[ -f "$TAILSCALE_KEYRING" ]] || tailscale_repo_new=true
 
+# Waydroid apt repo/keyring (#323): `waydroid` is not in Ubuntu/Pop!_OS' own
+# archives, so a host that lists it (home/hosts/vega.nix) needs the project's
+# repo first. Same shape as Tailscale above, but only for a host whose package
+# list names `waydroid` — arcturus and CI never add it. The project's own
+# installer (`curl -s https://repo.waydro.id | sudo bash`) does exactly these
+# two writes (read 2026-10-28, without running it): the keyring from
+# https://repo.waydro.id/waydroid.gpg and a `deb [signed-by=…] https://repo.waydro.id/
+# <codename> main` line; `noble` is among the codenames it accepts.
+WAYDROID_KEYRING="/usr/share/keyrings/waydroid.gpg"
+WAYDROID_LIST="/etc/apt/sources.list.d/waydroid.list"
+waydroid_repo_new=false
+if printf '%s\n' "${packages[@]}" | grep -qx 'waydroid' && [[ ! -f "$WAYDROID_KEYRING" ]]; then
+    waydroid_repo_new=true
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "[dry-run] Would install ${#packages[@]} system packages:"
     printf '  %s\n' "${packages[@]}"
@@ -103,7 +120,21 @@ if [[ "$DRY_RUN" == "true" ]]; then
     if [[ "$tailscale_repo_new" == "true" ]]; then
         echo "[dry-run] Would install Tailscale apt repo and run 'tailscale up --operator=\$USER'"
     fi
+    if [[ "$waydroid_repo_new" == "true" ]]; then
+        echo "[dry-run] Would install Waydroid apt repo ($WAYDROID_LIST)"
+    fi
     exit 0
+fi
+
+if [[ "$waydroid_repo_new" == "true" ]]; then
+    echo "Installing Waydroid apt repo..."
+    # Same codename resolution as the project's installer: UBUNTU_CODENAME
+    # (noble on Pop!_OS 24.04). The repo lists no Pop!_OS-specific suite.
+    codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-noble}")"
+    curl -fsSL --proto '=https' --tlsv1.2 https://repo.waydro.id/waydroid.gpg \
+        | sudo tee "$WAYDROID_KEYRING" > /dev/null
+    echo "deb [signed-by=${WAYDROID_KEYRING}] https://repo.waydro.id/ ${codename} main" \
+        | sudo tee "$WAYDROID_LIST" > /dev/null
 fi
 
 if [[ "$tailscale_repo_new" == "true" ]]; then
