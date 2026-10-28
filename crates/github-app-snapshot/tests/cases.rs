@@ -30,6 +30,8 @@ fn bin() -> Command {
         "GITHUB_APP_SNAPSHOT_OPENSSL_BIN",
         "GITHUB_APP_RELEASER_ID",
         "GITHUB_APP_RELEASER_PEM",
+        "GITHUB_APP_CLAUDE_INSTALLATION_ID",
+        "GITHUB_PAT_READ_USER",
         "XDG_RUNTIME_DIR",
     ] {
         c.env_remove(k);
@@ -174,7 +176,95 @@ fn missing_app_secret_is_skipped_not_fatal() {
     // 空配列は jq と同じく `[]`
     assert!(fs::read_to_string(&target)
         .unwrap()
-        .contains("\"apps\": []\n"));
+        .contains("\"apps\": [],"));
+}
+
+#[test]
+fn third_party_observation_distinguishes_empty_errors_and_pages_without_leaking_token() {
+    let fx = Fx::new();
+    fs::write(fx.p("claude-installation-id"), "123\n").unwrap();
+    let curl = fx.p("third-party-curl");
+    let target = fx.p("state/third-party.json");
+    for (script, expected, count) in [
+        (
+            "#!/bin/sh\ncat >/dev/null\nprintf '{\"total_count\":0,\"repositories\":[]}'\n",
+            "observed",
+            0,
+        ),
+        ("#!/bin/sh\ncat >/dev/null\nexit 22\n", "error", 0),
+        (
+            "#!/bin/sh\ncat >/dev/null\nprintf '{\"total_count\":1,\"repositories\":[]}'\n",
+            "error",
+            0,
+        ),
+    ] {
+        write_exec(&curl, script);
+        let o = out(snapshot_cmd(&fx, &curl, &target)
+            .env("GITHUB_APP_SNAPSHOT_CONFIG_DIR", fx.tmp.path())
+            .env("GITHUB_PAT_READ_USER", "secret-test-token"));
+        assert_eq!(o.code, 0);
+        let text = fs::read_to_string(&target).unwrap();
+        let doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(doc["claude_installation"]["status"], expected);
+        assert_eq!(
+            doc["claude_installation"]["repositories"]
+                .as_array()
+                .unwrap()
+                .len(),
+            count
+        );
+        assert!(!text.contains("secret-test-token"));
+        assert!(!o.stderr.contains("secret-test-token"));
+    }
+    write_exec(
+        &curl,
+        r##"#!/usr/bin/env python3
+import json, sys
+assert 'secret-test-token' not in ' '.join(sys.argv)
+assert 'secret-test-token' in sys.stdin.read()
+page = int(sys.argv[-1].split('page=')[-1])
+repos = [{'full_name': f'owner/repo{i}'} for i in (range(100) if page == 1 else range(100,101))]
+print(json.dumps({'total_count': 101, 'repositories': repos}))
+"##,
+    );
+    let o = out(snapshot_cmd(&fx, &curl, &target)
+        .env("GITHUB_APP_SNAPSHOT_CONFIG_DIR", fx.tmp.path())
+        .env("GITHUB_PAT_READ_USER", "secret-test-token"));
+    assert_eq!(o.code, 0);
+    let doc: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(target).unwrap()).unwrap();
+    assert_eq!(doc["claude_installation"]["status"], "observed");
+    assert_eq!(
+        doc["claude_installation"]["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        101
+    );
+    write_exec(
+        &curl,
+        r##"#!/usr/bin/env python3
+import json, sys
+sys.stdin.read()
+if sys.argv[-1].endswith('page=2'):
+    sys.exit(22)
+print(json.dumps({'total_count': 101, 'repositories': [{'full_name': f'owner/repo{i}'} for i in range(100)]}))
+"##,
+    );
+    let o = out(snapshot_cmd(&fx, &curl, &fx.p("state/third-party.json"))
+        .env("GITHUB_APP_SNAPSHOT_CONFIG_DIR", fx.tmp.path())
+        .env("GITHUB_PAT_READ_USER", "secret-test-token"));
+    assert_eq!(o.code, 0);
+    let doc: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(fx.p("state/third-party.json")).unwrap()).unwrap();
+    assert_eq!(doc["claude_installation"]["status"], "error");
+    assert_eq!(
+        doc["claude_installation"]["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
 }
 
 /// bash#13〜#16: manifest_form が実際に submit できるページを作る(manifest 属性は

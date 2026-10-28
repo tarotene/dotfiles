@@ -121,7 +121,7 @@ An App whose Secrets Manager secrets aren't set yet is skipped with a
 warning on stderr, not a hard failure — `run` still writes a snapshot for
 every App it *can* observe.
 
-## Claude's cloud sandbox reach (not managed by this command)
+## Claude's cloud sandbox reach
 
 How far Claude's cloud sandbox (`claude --cloud`, cloud routines) reaches is
 decided by how GitHub was connected, not by anything in this repository
@@ -137,9 +137,21 @@ decided by how GitHub was connected, not by anything in this repository
   "GitHub token could not be validated" (verified 2026-10-01). Do not run it
   with a broader token than you intend to grant.
 
-`github-audit` does not detect this reach yet: the Claude App's install
-targets are not readable with a `gh` OAuth token, and the classic-PAT route
-is untested (see the follow-up Issue referenced from ADR-590's Amendment).
+The installation-specific repository endpoint was verified on 2026-10-01
+with a temporary classic PAT carrying `read:user` only; listing installations
+still returned 403. See [Issue #617](https://github.com/tarotene/dotfiles/issues/617)
+for the experiment. Declare the installation ID privately in
+`$XDG_CONFIG_HOME/github-app-snapshot/claude-installation-id` and put
+`GITHUB_PAT_READ_USER` in the existing Bitwarden Secrets Manager project as a
+classic PAT with only `read:user`. The installation ID is the number in the
+Claude App's settings URL. `github-app-snapshot run` reads all
+pages and records `claude_installation` as `observed`, `unobserved`, or
+`error`; a successful empty list is distinct from a failed request. The token
+is passed to curl on stdin and is not recorded. `github-audit routines` reads
+only that snapshot and flags private repositories with routine declarations
+that are absent from the observed installation; an unavailable observation is
+reported as an advisory rather than an empty installation. The production
+credential and operation on vega remain unverified.
 
 ## Rotation
 

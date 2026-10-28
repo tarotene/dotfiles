@@ -203,7 +203,7 @@ D4 と直前の Amendment は、Claude のクラウド sandbox の到達範囲�
 - `github-app-snapshot` から PAT probe(`pat-probes.tsv`、`CLAUDE_WEB_PAT`、private の HTTP 200/404 判定)を撤去する。`app-snapshot.json` は所有 App の登録と install 先だけを持つ。
 - `github-audit` の `routines` ドメインから `routines-cloud-access-missing` / `routines-cloud-access-unclaimed` を撤去し、ADR-436 の Amendment にある同項目も撤回する。`releaser` ドメインの install 検出(`releaser-app-not-installed` など)は変更しない。
 - D5 のうち、PAT を Secrets Manager に保管する部分は失効する。PEM の保管は変更しない。
-- Claude App の install 先の機械的な検出は、GitHub の `gh` OAuth トークンでは読めず、classic PAT での読み取りも未検証のため、別 Issue で扱う。
+- Claude App の install 先は `gh` OAuth トークンでは読めない。classic PAT の読み取りは当時未検証だったが、2026-10-01 に `read:user` のみで installation 固有の repo 一覧を取得できた([Issue #617](https://github.com/tarotene/dotfiles/issues/617))。`github-app-snapshot` が観測し、`github-audit` が読み取る。vega での常用設定・運用確認は未完。
 
 軸: 検出のみ — 到達の実体は Anthropic 側の接続にあり、この repo からは宣言も固定もできない。読めない状態を読めるふりをしない。
 

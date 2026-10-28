@@ -165,6 +165,10 @@ pub fn run_with_bitwarden(cfg: &Config, operation: &str, args: &[String]) -> u8 
         format!("GITHUB_APP_SNAPSHOT_OWNER={}", cfg.owner),
         format!("GITHUB_APP_SNAPSHOT_STATE_DIR={}", cfg.state_dir.display()),
         format!(
+            "GITHUB_APP_SNAPSHOT_CLAUDE_INSTALLATION_ID_FILE={}",
+            cfg.claude_installation_id_file.display()
+        ),
+        format!(
             "GITHUB_APP_SNAPSHOT_MANIFESTS_DIR={}",
             cfg.manifests_dir.display()
         ),

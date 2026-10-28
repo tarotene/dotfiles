@@ -69,6 +69,24 @@ pub fn read_releaser_snapshot(path: &Path, app_name: &str) -> (bool, Vec<String>
     (true, installs)
 }
 
+/// Only a complete observation can establish an empty installation set.
+pub fn read_claude_snapshot(path: &Path) -> Result<Vec<String>, &'static str> {
+    let text = std::fs::read_to_string(path).map_err(|_| "unobserved")?;
+    let snap: Value = serde_json::from_str(&text).map_err(|_| "error")?;
+    let Some(obs) = snap.get("claude_installation") else {
+        return Err("unobserved");
+    };
+    match obs.get("status").and_then(Value::as_str) {
+        Some("unobserved") => Err("unobserved"),
+        Some("observed") => obs
+            .get("repositories")
+            .and_then(Value::as_array)
+            .and_then(|v| v.iter().map(|r| r.as_str().map(str::to_owned)).collect())
+            .ok_or("error"),
+        _ => Err("error"),
+    }
+}
+
 /// bash: `audit`。`domains` の順に判定し、`gh repo list` の順にリポジトリを
 /// 並べる。fail loud な取得(リポジトリ一覧・GraphQL バッチ)が失敗したら
 /// `Err`(理由は stderr に出してある)。
@@ -120,6 +138,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
     } else {
         (false, Vec::new())
     };
+    let claude_installs = read_claude_snapshot(&cfg.app_snapshot_file);
 
     let mut results = Vec::new();
     for meta in &repos {
@@ -242,9 +261,14 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                             release_conclusion,
                         })
                     }
-                    Domain::Routines => {
-                        routines::judge_routines(&cfg.owner, repo, gql, &routines_sources)
-                    }
+                    Domain::Routines => routines::judge_routines_installation(
+                        &cfg.owner,
+                        repo,
+                        gql,
+                        &routines_sources,
+                        visibility == "PRIVATE",
+                        &claude_installs,
+                    ),
                     Domain::Workflows => {
                         // 既定ブランチの無い repo(空)と CI の無い repo は REST を払わない。
                         let branch = meta
