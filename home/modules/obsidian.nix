@@ -9,7 +9,7 @@ let
   nixGLWrap = import ./nixgl.nix { inherit pkgs; };
   obsidianPackage = nixGLWrap pkgs.obsidian;
   backupPath = "${config.home.homeDirectory}/.local/bin/obsidian-backup";
-  vaultPath = "${config.home.homeDirectory}/Documents/obsidian/personal";
+  vaultPath = config.dotfiles.obsidian.vaultPath;
   servicePath = lib.makeBinPath [
     pkgs.bash
     pkgs.bws
@@ -75,6 +75,8 @@ in
 {
   imports = [ ./bitwarden.nix ];
 
+  dotfiles.obsidian.vaultPath = lib.mkDefault "${config.home.homeDirectory}/Documents/obsidian/personal";
+
   home.packages = [
     obsidianPackage
     pkgs.restic
@@ -88,20 +90,6 @@ in
     executable = true;
   };
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
-
-  # vault の場所の宣言(~/.config/dotfiles/obsidian-vault の 1 行目)。worklog(crates/worklog、
-  # docs/agents/worklog.md)と vault-note(wrap-up の気づき・retro・裁定待ちの写し、
-  # docs/agents/wrapup-inbox.md)が、hub-resolve の OBSIDIAN_VAULT として同じマーカーを読む
-  # 単一の正本。SessionStart hook は agents.nix が全ホストに配備するが、このマーカーが無い機体では
-  # 何も注入せず、気づきは機体の jsonl に溜まるだけ — vault を宣言した機体(このモジュールを読む
-  # 機体)だけで vault への書き込みが効く。
-  home.file.".local/bin/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
-  xdg.configFile."dotfiles/obsidian-vault".text = "${vaultPath}\n";
-
-  # worklog / vault-note(エージェントが Bash で呼ぶ)が書く場所。sandbox の中では読み取り専用で
-  # `Read-only file system` になる(2026-10-28 に vega で実測、#1164)。vault は vega のこの
-  # モジュールだけが宣言するので、書き込みの許可も同じ場所で足す。
-  dotfiles.claudePermissions.allowWrite = [ vaultPath ];
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
     Service.ExecStart = "${backupPath} backup --notify";
