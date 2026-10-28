@@ -76,6 +76,7 @@ backup/
 backup_*/
 *backup/
 *backup_*
+!/crates/obsidian-backup/
 snapshots/
 rollback-*.sh
 

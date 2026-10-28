@@ -130,7 +130,7 @@ access token だけを GNOME Keyring に保存する。旧来の「vault item
 (Secure Note)」記述は本決定で置き換え、二重保管はしない。
 
 先行例: `docs/operations.md` "One-time Backblaze and Bitwarden setup"、
-`scripts/obsidian-backup` の `configure_token()`/`run_with_bitwarden()`
+当時の `scripts/obsidian-backup` の `configure_token()`/`run_with_bitwarden()`
 (取得 2026-09-29) — machine token は keyring、payload secret は SM、
 実行時 `bws run` で注入し環境ファイルを作らない、という同型の配線を
 そのまま踏襲する(差分: 一致)。

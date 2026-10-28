@@ -347,16 +347,7 @@ jobs:
       - name: hook-ask-vs-allow-probe --selftest
         run: scripts/hook-ask-vs-allow-probe --selftest
 
-      # obsidian-backup is exercised end to end against stubbed
-      # restic/bws/secret-tool/herdr: init/backup/maintenance/restore-test's
-      # restic invocations, the unsafe-relative-path rejection, the
-      # missing-keyring-token fail-closed path, and the notify_failure
-      # warning for herdr's toast-disabled response are all covered without
-      # touching a real Backblaze B2 repository or Bitwarden Secrets Manager
-      # account (docs/operations.md). Restored in #1170: #683 removed this step
-      # together with the script, but no Rust replacement was ever added.
-      - name: obsidian-backup --selftest
-        run: ./scripts/obsidian-backup --selftest
+      # obsidian-backup's fixture tests run in the Rust workspace job.
 
       # post-checkout hook (#702): linked-worktree-only, per-repository opt-in,
       # clone never runs the declared script. Needs a git that has

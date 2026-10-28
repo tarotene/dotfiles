@@ -263,7 +263,7 @@ a vulnerability on this basis).
    Nothing in GnuPG or GCR distinguishes "`gpg-agent` asked" from
    "anything on this uid asked". Closing that fully would require not
    trusting the login keyring's auto-unlock at all, which conflicts
-   with this host's own use of it (`scripts/obsidian-backup` reads a
+   with this host's own use of it (`crates/obsidian-backup` reads a
    Bitwarden token from the same keyring via `secret-tool lookup` for
    unattended systemd-timer runs). The residual risk (same-uid Secret
    Service read) is therefore accepted and only detected, not

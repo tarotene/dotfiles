@@ -82,13 +82,13 @@ in
     pkgs.restic
   ];
 
-  # bash 版(scripts/obsidian-backup、`--selftest` あり)。#683 が Rust 版(crates/obsidian-backup)
-  # への参照だけを入れ、Rust 版は追加されなかったため、2026-10-03 から B2 へのバックアップが
-  # 取れていなかった(#1170)。Rust 版が実在し、参照の実在が評価時に検査されるまで、この形を保つ。
-  home.file.".local/bin/obsidian-backup" = {
-    source = ../../scripts/obsidian-backup;
-    executable = true;
-  };
+  assertions = [
+    {
+      assertion = builtins.pathExists ../../crates/obsidian-backup/src/main.rs;
+      message = "obsidian-backup Rust source must exist";
+    }
+  ];
+  home.file.".local/bin/obsidian-backup".source = "${pkgs.dotfiles-tools}/bin/obsidian-backup";
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
