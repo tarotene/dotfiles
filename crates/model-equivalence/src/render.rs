@@ -337,6 +337,7 @@ mod tests {
 
     fn lens() -> Lens {
         Lens::build(
+            data(),
             ["feat: a", "feat: b", "fix: c", "ci: d", "docs: e", "x"],
             "2026-10-27",
             365,
