@@ -50,7 +50,7 @@ jobs:
       - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
         with:
-          primary-key: nix-altair-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'config/**', 'Cargo.lock', 'crates/**') }}
+          primary-key: nix-altair-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'system/**', 'config/**', 'packages/**', 'Cargo.lock', 'crates/**') }}
           restore-prefixes-first-match: nix-altair-${{ runner.os }}-
           # Same rationale as ci.yml's build-host: a pull_request cache is
           # scoped to refs/pull/N/merge and only evicts main's (#1014).
@@ -68,6 +68,10 @@ jobs:
           nix build \
             ".#homeConfigurations.altair.activationPackage" \
             --print-build-logs --no-link
+
+      - name: Build system configuration
+        if: ${{ !cancelled() && steps.stack-position.outputs.build_host != 'false' }}
+        run: nix build ".#darwinConfigurations.altair.system" --print-build-logs --no-link
 
       # 集約と同じ根拠(ci.yml の build-host job のコメント参照): 非
       # substitutable な herdr/bws を GC root で保護する。

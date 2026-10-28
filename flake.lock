@@ -32,6 +32,45 @@
         "type": "github"
       }
     },
+    "flake-compat": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767039857,
+        "narHash": "sha256-vNpUSpF5Nuw8xvDLj2KCwwksIbjua2LZCqhV1LNRDns=",
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "rev": "5edf11c44bc78a0d334f6334cdaf7d60d732daab",
+        "type": "github"
+      },
+      "original": {
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "system-manager",
+          "userborn",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1768135262,
+        "narHash": "sha256-PVvu7OqHBGWN16zSi6tEmPwwHQ4rLPU9Plvs8/1TUBY=",
+        "ref": "refs/heads/main",
+        "rev": "80daad04eddbbf5a4d883996a73f3f542fa437ac",
+        "revCount": 435,
+        "type": "git",
+        "url": "https://github.com/hercules-ci/flake-parts"
+      },
+      "original": {
+        "rev": "80daad04eddbbf5a4d883996a73f3f542fa437ac",
+        "type": "git",
+        "url": "https://github.com/hercules-ci/flake-parts"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -67,6 +106,30 @@
         "type": "github"
       }
     },
+    "gitignore": {
+      "inputs": {
+        "nixpkgs": [
+          "system-manager",
+          "userborn",
+          "pre-commit-hooks-nix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1709087332,
+        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
+        "ref": "refs/heads/master",
+        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "revCount": 101,
+        "type": "git",
+        "url": "https://github.com/hercules-ci/gitignore.nix"
+      },
+      "original": {
+        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "type": "git",
+        "url": "https://github.com/hercules-ci/gitignore.nix"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -86,6 +149,27 @@
         "ref": "release-26.05",
         "repo": "home-manager",
         "type": "github"
+      }
+    },
+    "nix-darwin": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792800221,
+        "narHash": "sha256-53jIZEWNh96irEXhsMZFoNhLJgGSU3nYl1i4wFQHAsU=",
+        "ref": "refs/heads/master",
+        "rev": "d31953cf55f9027a56e9be938daf5db8c5655663",
+        "revCount": 2381,
+        "type": "git",
+        "url": "https://github.com/nix-darwin/nix-darwin"
+      },
+      "original": {
+        "rev": "d31953cf55f9027a56e9be938daf5db8c5655663",
+        "type": "git",
+        "url": "https://github.com/nix-darwin/nix-darwin"
       }
     },
     "nix-flatpak": {
@@ -156,16 +240,70 @@
         "type": "github"
       }
     },
+    "pre-commit-hooks-nix": {
+      "inputs": {
+        "flake-compat": [
+          "system-manager",
+          "userborn",
+          "flake-compat"
+        ],
+        "gitignore": "gitignore",
+        "nixpkgs": [
+          "system-manager",
+          "userborn",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1769069492,
+        "narHash": "sha256-Efs3VUPelRduf3PpfPP2ovEB4CXT7vHf8W+xc49RL/U=",
+        "ref": "refs/heads/master",
+        "rev": "a1ef738813b15cf8ec759bdff5761b027e3e1d23",
+        "revCount": 1159,
+        "type": "git",
+        "url": "https://github.com/cachix/pre-commit-hooks.nix"
+      },
+      "original": {
+        "rev": "a1ef738813b15cf8ec759bdff5761b027e3e1d23",
+        "type": "git",
+        "url": "https://github.com/cachix/pre-commit-hooks.nix"
+      }
+    },
     "root": {
       "inputs": {
         "bleep": "bleep",
         "crane": "crane",
         "frontend-slides": "frontend-slides",
         "home-manager": "home-manager",
+        "nix-darwin": "nix-darwin",
         "nix-flatpak": "nix-flatpak",
         "nixgl": "nixgl",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstable": "nixpkgs-unstable"
+        "nixpkgs-unstable": "nixpkgs-unstable",
+        "system-manager": "system-manager"
+      }
+    },
+    "system-manager": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "userborn": "userborn"
+      },
+      "locked": {
+        "lastModified": 1791268696,
+        "narHash": "sha256-XkmzsMbP/d9FPh5HbtPQdAVpMt7MJPDtzaKA9uBK0OI=",
+        "ref": "refs/heads/main",
+        "rev": "8c7a4b84eabbae3236a423ca6f16c142ef3a91b9",
+        "revCount": 1045,
+        "type": "git",
+        "url": "https://github.com/numtide/system-manager"
+      },
+      "original": {
+        "rev": "8c7a4b84eabbae3236a423ca6f16c142ef3a91b9",
+        "type": "git",
+        "url": "https://github.com/numtide/system-manager"
       }
     },
     "systems": {
@@ -181,6 +319,51 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "systems_2": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "userborn": {
+      "inputs": {
+        "flake-compat": [
+          "system-manager",
+          "flake-compat"
+        ],
+        "flake-parts": "flake-parts",
+        "nixpkgs": [
+          "system-manager",
+          "nixpkgs"
+        ],
+        "pre-commit-hooks-nix": "pre-commit-hooks-nix",
+        "systems": "systems_2"
+      },
+      "locked": {
+        "lastModified": 1770377964,
+        "narHash": "sha256-q2pnlX2IW0kg80GLFnwWd/GigIpkuZnyKPLhrgJql3E=",
+        "ref": "system-manager",
+        "rev": "55c2cd7952c207a62736a5bbd9499ea73da18d24",
+        "revCount": 1,
+        "type": "git",
+        "url": "https://github.com/jfroche/userborn"
+      },
+      "original": {
+        "ref": "system-manager",
+        "rev": "55c2cd7952c207a62736a5bbd9499ea73da18d24",
+        "type": "git",
+        "url": "https://github.com/jfroche/userborn"
       }
     }
   },

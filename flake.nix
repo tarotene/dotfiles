@@ -118,6 +118,30 @@
     # to the system's own `flatpak` binary at activation time, it never
     # dlopens anything nixpkgs builds.
     nix-flatpak.url = "github:gmodena/nix-flatpak";
+
+    # System-layer declarations (#274); activation remains a separate operation.
+    system-manager = {
+      url = "git+https://github.com/numtide/system-manager?rev=8c7a4b84eabbae3236a423ca6f16c142ef3a91b9";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.userborn.url = "git+https://github.com/jfroche/userborn?ref=system-manager&rev=55c2cd7952c207a62736a5bbd9499ea73da18d24";
+      inputs.userborn.inputs.flake-parts.url =
+        "git+https://github.com/hercules-ci/flake-parts?rev=80daad04eddbbf5a4d883996a73f3f542fa437ac";
+      inputs.userborn.inputs.flake-parts.inputs.nixpkgs-lib.follows = "system-manager/userborn/nixpkgs";
+      inputs.userborn.inputs.pre-commit-hooks-nix.url =
+        "git+https://github.com/cachix/pre-commit-hooks.nix?rev=a1ef738813b15cf8ec759bdff5761b027e3e1d23";
+      inputs.userborn.inputs.pre-commit-hooks-nix.inputs.flake-compat.follows =
+        "system-manager/userborn/flake-compat";
+      inputs.userborn.inputs.pre-commit-hooks-nix.inputs.nixpkgs.follows =
+        "system-manager/userborn/nixpkgs";
+      inputs.userborn.inputs.pre-commit-hooks-nix.inputs.gitignore.url =
+        "git+https://github.com/hercules-ci/gitignore.nix?rev=637db329424fd7e46cf4185293b9cc8c88c95394";
+      inputs.userborn.inputs.pre-commit-hooks-nix.inputs.gitignore.inputs.nixpkgs.follows =
+        "system-manager/userborn/pre-commit-hooks-nix/nixpkgs";
+    };
+    nix-darwin = {
+      url = "git+https://github.com/nix-darwin/nix-darwin?rev=d31953cf55f9027a56e9be938daf5db8c5655663";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -131,6 +155,8 @@
       frontend-slides,
       crane,
       nix-flatpak,
+      system-manager,
+      nix-darwin,
       ...
     }:
     let
@@ -370,6 +396,14 @@
         };
     in
     {
+      systemConfigs = {
+        vega = system-manager.lib.makeSystemConfig { modules = [ ./system/linux.nix ]; };
+        arcturus = system-manager.lib.makeSystemConfig { modules = [ ./system/linux.nix ]; };
+      };
+      darwinConfigurations.altair = nix-darwin.lib.darwinSystem {
+        modules = [ ./system/darwin.nix ];
+      };
+
       # Keyed by logical hostname (ADR-0019 star-codename, resolved via a
       # marker file — see crates/hms / bootstrap.sh `resolve_host`, not
       # the OS `hostname`). All three Linux hosts moved off the old

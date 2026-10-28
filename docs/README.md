@@ -143,8 +143,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   Issue litmus 項と ADR-0016 Decision 2 を部分 supersede。
 - [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — 最初の darwin
   ホスト(altair)は standalone home-manager をそのまま拡張し、macOS
-  システム層は nix-darwin ではなく apt 対称の Homebrew Bundle(Brewfile)
-  に委ねる決定。Linux 専用モジュールは各モジュール内で isLinux/isDarwin
+  システム層を Homebrew Bundle(Brewfile)に委ねた決定。nix-darwin 不採用は
+  [ADR-0000](adr/0000-system-layer-declarations.md) が変更。Linux 専用モジュールは各モジュール内で isLinux/isDarwin
   分岐する。
 - [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) —
   新規ホストは恒星コードネームで命名し(役割・identity・世代を名前に
@@ -448,6 +448,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
 - [ADR-1068](adr/1068-hms-follow-main.md) — main が進んだら `hms --follow` が自動で追従する。ただし、いまの世代を引数なしの `hms` が作った場合だけで、`hms .` などで当てた検証用の世代・hms を通さない switch・許可ポリシーの変更を含む main には当てず、herdr の通知で 1 回だけ知らせる。適用は hms 全体で 1 つのロックで直列にする。
 - [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
+- [ADR-0000](adr/0000-system-layer-declarations.md) — Linux と macOS のシステム層の対象設定を system-manager と nix-darwin で宣言し、root 適用を home-manager と分ける。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
