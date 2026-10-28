@@ -11,6 +11,7 @@ jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-control = { version = "0.1.0", path = "../process-control" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
+worktree-lease = { version = "0.1.0", path = "../worktree-lease" }
 regex = "1.13.1"
 serde_json = "1.0.151"
 

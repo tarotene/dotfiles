@@ -852,6 +852,7 @@ dependencies = [
  "stack-base-guard",
  "tempfile",
  "toml",
+ "worktree-lease",
 ]
 
 [[package]]
@@ -1229,6 +1230,7 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "worktree-lease",
 ]
 
 [[package]]
@@ -2021,6 +2023,16 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "worktree-lease"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
  "serde_json",
  "tempfile",
 ]

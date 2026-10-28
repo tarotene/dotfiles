@@ -64,6 +64,50 @@ fn g_push_blocks_unpushed_head() {
     assert!(has(&r.stderr, "bleep が deny")); // ok   未push で block: pre-push 迂回は bleep が deny する旨
 }
 
+// --- 同じ linked worktree を別のセッションが使っている(worktree-lease) ---
+
+/// 本物の checkout から linked worktree を作り、そこで `session` が Bash を 1 回使った印
+/// (lease)を置く。返すのは worktree のパス。
+fn linked_worktree_used_by(fx: &Fx, session: &str) -> std::path::PathBuf {
+    let wt = fx.dir().join("linked-wt");
+    fx.git(&[
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "other-topic",
+        wt.to_str().unwrap(),
+    ]);
+    let used = serde_json::json!({
+        "session_id": session, "cwd": wt, "tool_name": "Bash",
+        "tool_input": {"command": "ls"}
+    });
+    assert!(worktree_lease::hook(&used.to_string()).is_none());
+    wt
+}
+
+#[test]
+fn another_live_session_in_the_same_linked_worktree_is_not_blamed() {
+    let fx = Fx::new();
+    let wt = linked_worktree_used_by(&fx, "other-session");
+    let stdin = format!(
+        r#"{{"cwd":"{}","session_id":"this-session"}}"#,
+        wt.display()
+    );
+    // 別セッションが使っている間は、未 push の HEAD でも、このセッションの Stop を止めない。
+    let r = fx.run_in(&wt, "stop", &stdin, &[("PR_GATE_STUB_HEAD_OID", ZERO_OID)]);
+    assert_eq!(r.code, 0, "{}", r.all());
+    assert_eq!(r.all(), "");
+    // 使っているのが自分自身なら、従来どおり止める。
+    let own = format!(
+        r#"{{"cwd":"{}","session_id":"other-session"}}"#,
+        wt.display()
+    );
+    let r = fx.run_in(&wt, "stop", &own, &[("PR_GATE_STUB_HEAD_OID", ZERO_OID)]);
+    assert_eq!(r.code, 2, "{}", r.all());
+    assert!(has(&r.stderr, "未 push"));
+}
+
 // --- G_unpushed (PR がまだ無いときの push 忘れ) ---
 
 #[test]

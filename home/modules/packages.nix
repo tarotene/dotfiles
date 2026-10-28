@@ -267,6 +267,11 @@
   # 「待ち方」)。PATH で解決される実行可能ファイルなので ~/.local/bin に置く。
   home.file.".local/bin/pr-checks-wait".source = "${pkgs.dotfiles-tools}/bin/pr-checks-wait";
 
+  # worktree-lease: 同じ linked worktree を別のセッションが使っている印を見る・外す CLI
+  # (crates/worktree-lease、docs/agents/worktree-lease.md)。判定はルータが呼ぶので hook の
+  # 登録は無い。deny されたとき、ユーザーが `! worktree-lease release` で外すために PATH に置く。
+  home.file.".local/bin/worktree-lease".source = "${pkgs.dotfiles-tools}/bin/worktree-lease";
+
   # adr-number-check: checker 単一ソース for ADR 採番規約 (ADR-380,
   # docs/agents/adr-numbering.md — 番号を導入 PR の番号にすることで採番
   # 衝突を構造的に不可能にする決定). Both .github/workflows/ci.yml's

@@ -35,6 +35,14 @@ pub fn run(input: &str) -> i32 {
     let Some(nwo) = session_start::target(&cfg, &project) else {
         return 0;
     };
+    // 同じ linked worktree を別のセッションが今使っているときは、そちらが動かしたブランチ・
+    // 作った commit・PR をこのセッションのものとして block しない(2026-10-27 に別セッションの
+    // PR #1173 が帰属された)。判定は worktree-lease の印(docs/agents/worktree-lease.md)。
+    if HookInput::parse(input)
+        .is_some_and(|i| worktree_lease::held_by_other(&project, &i.session_id))
+    {
+        return 0;
+    }
 
     state::ensure_dirs(&cfg);
     let st = State::new(&cfg);
