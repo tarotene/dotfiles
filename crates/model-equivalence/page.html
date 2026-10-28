@@ -101,6 +101,16 @@ footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
 dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 8px 0 0; font-size: 13px; }
 dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
+svg.map { max-width: 600px; margin: 0 auto; overflow: hidden; background: var(--page); border: 1px solid var(--border); border-radius: 10px; touch-action: manipulation; }
+svg.map .pt { cursor: pointer; }
+svg.map .pt:focus { outline: none; }
+svg.map .pt:focus .mk, svg.map .pt:hover .mk { stroke: var(--ink); stroke-width: 2; }
+svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); stroke-width: 3px; stroke-linejoin: round; font-size: 10px; }
+.notes { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink2); }
+.notes li { margin: 3px 0; }
+.near { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.near .cell { min-width: 0; }
+.near .dv { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 @media (max-width: 560px) {
   .metric { grid-template-columns: 1fr; }
   .hist { grid-template-columns: minmax(0, 1fr); }
@@ -139,6 +149,18 @@ dl.kv dd { margin: 0; }
     <p class="small" id="count"></p>
     <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
     <div class="legend" id="legend"></div>
+  </section>
+
+  <section aria-labelledby="h-map">
+    <h2 id="h-map">近さの地図</h2>
+    <p class="lead">基準を選ばずに、(モデル × エフォート)同士の近さを 1 枚で見る。近い点は、使うベンチの点数と速さが近い。同じモデルのエフォートは線で結ぶ。点の形と色は、いま選んでいる基準に対する判定(上のスライダーに連動)で、基準は黒い二重丸。点を押すと、根拠(下)と基準との距離が出る。</p>
+    <div class="row"><div class="tabs" role="tablist" id="mapsets" aria-label="距離の尺度"></div></div>
+    <div id="map-warn"></div>
+    <svg class="map" id="mapsvg" viewBox="0 0 360 360" role="group" aria-label="近さの地図"></svg>
+    <p class="small" id="map-info"></p>
+    <h3 style="font-size:14px;margin:12px 0 0">基準に距離の近い順(地図が歪んでいても、こちらは距離そのもの)</h3>
+    <div class="near" id="map-near"></div>
+    <ul class="notes" id="map-notes"></ul>
   </section>
 
   <section aria-labelledby="h-detail">
@@ -180,10 +202,10 @@ const VERDICT = {
   weaker: { label: "弱い分野あり", icon: "▼" },
   insufficient: { label: "データ不足", icon: "？" },
 };
-const SPEED = { tps: "出力速度", ttft: "最初のトークンまでの時間" };
 
 // ==== CORE BEGIN: 判定の規則と区間の計算。DOM に触れない(Rust の model-equivalence と同じ式。読み込み時に golden と突き合わせ、
 // cargo test も同じ範囲を node で実行する)。区間は全組合せを事前計算せず、基準 1 点 × 候補のたびにここで計算する。 ====
+const SPEED = { tps: "出力速度", ttft: "最初のトークンまでの時間" };
 const Z90 = 1.6448536269514722; // 標準正規分布の上側 5% 点(片側 α=0.05 の TOST に使う 90% 区間)
 const sq = (x) => x * x;
 function wilson(p, n, z) {
@@ -247,6 +269,31 @@ function roleVerdict(roleId, refKey, candKey, m) {
   if (!role.judged.length) vs.push("insufficient");
   return { v: combine(vs), items };
 }
+// 近さの距離(Rust の model-equivalence::map と同じ式)。成分 = 役の判定に使うベンチ + 出力速度 + 最初のトークンまでの時間。
+//   能力: |差(点)| / max(許容幅, 2 点の中点の点数での分解能)。課題数の無いベンチ・割合でない指数は尺度が許容幅。
+//   速さ: |ln(候補/基準)| / ln(1+許容比)。値の無い成分は外し、共通の成分が min_common 本未満なら距離を出さない。
+// set = { cap, spd }。driver は、距離を決めた(最大の)成分の名前。
+function resolutionPts(p, n) { const [l, h] = newcombeDiff(p, n, p, n, Z90); return ((h - l) / 2) * 100; }
+function mapDistance(roleId, aKey, bKey, set) {
+  const role = D.roles.find((r) => r.id === roleId), A = D.rows[aKey], B = D.rows[bKey];
+  let common = 0, max = 0, driver = null;
+  const take = (name, q) => { common++; if (q > max) { max = q; driver = name; } };
+  for (const j of role.judged) {
+    const b = D.benchmarks[j.id];
+    let x = A.scores[j.id], y = B.scores[j.id];
+    if (x === undefined || x === null || y === undefined || y === null) continue;
+    const frac = b.unit === "fraction";
+    if (frac) { x *= 100; y *= 100; }
+    const unit = frac && b.n ? Math.max(set.cap, resolutionPts(Math.min(1, Math.max(0, (x + y) / 200)), b.n)) : set.cap;
+    take(b.name, Math.abs(x - y) / unit);
+  }
+  for (const kind of ["tps", "ttft"]) {
+    const x = A[kind], y = B[kind];
+    if (!(x > 0 && y > 0)) continue;
+    take(SPEED[kind], Math.abs(Math.log(x) - Math.log(y)) / Math.log(1 + set.spd));
+  }
+  return { d: common >= D.map.min_common ? max : null, common, driver };
+}
 // Rust が埋め込んだ golden(役ごとの既定の基準 1 点 × 全候補)との突き合わせ。
 // v は候補ごとに 2 文字(既定の許容幅・別の許容幅)の判定、iv は判定に使うベンチごとの [下限, 上限](点)。
 const LETTER = { e: "equivalent", s: "stronger", w: "weaker", i: "insufficient" };
@@ -256,13 +303,19 @@ function selfCheckCore() {
   const sets = [{ cap: D.margins.capability_points, spd: D.margins.speed_ratio }, { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio }];
   let n = 0;
   for (const [role, g] of Object.entries(D.golden)) {
-    if (!D.rows[g.ref] || g.v.length !== 2 * keys.length) { bad.push(`${role}: golden の形が rows と合わない`); n++; continue; }
+    if (!D.rows[g.ref] || g.v.length !== 2 * keys.length || g.dist.length !== 2 * keys.length) { bad.push(`${role}: golden の形が rows と合わない`); n++; continue; }
     keys.forEach((k, i) => {
       if (k === g.ref) return;
       sets.forEach((m, s) => {
         n++;
         const got = roleVerdict(role, g.ref, k, m).v, want = LETTER[g.v[2 * i + s]];
         if (got !== want) bad.push(`${role} ${g.ref}→${k} (許容幅 ${s}): ${got} ≠ ${want}`);
+      });
+      D.map.roles[role].sets.forEach((st, si) => {
+        n++;
+        const got = mapDistance(role, g.ref, k, { cap: st.margins.capability_points, spd: st.margins.speed_ratio }).d, want = g.dist[2 * i + si];
+        const ok = got === null ? want === null : want !== null && Math.abs(got - want) <= IV_TOLERANCE;
+        if (!ok) bad.push(`${role} ${g.ref}→${k} (尺度 ${si}) の距離: ${got} ≠ ${want}`);
       });
       for (const [bid, arr] of Object.entries(g.iv)) {
         n++;
@@ -279,7 +332,7 @@ function selfCheckCore() {
 
 // ---- 状態 ----
 const DEFAULTS = { cap: D.margins.capability_points, spd: D.margins.speed_ratio };
-const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false, q: "" };
+const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false, q: "", mapSet: 0 };
 D.roles.forEach((r) => (S.refs[r.id] = r.default_reference));
 S.target = (D.models.find((m) => m.id === "gpt-6.1-sol") || D.models[0]).id;
 try {
@@ -324,7 +377,7 @@ function renderControls() {
   $("cap").addEventListener("input", (e) => { S.m.cap = Number(e.target.value); save(); renderAll(); });
   $("spd").addEventListener("input", (e) => { S.m.spd = Number(e.target.value) / 100; save(); renderAll(); });
   $("only").addEventListener("change", (e) => { S.only = e.target.checked; save(); renderAll(); });
-  $("q").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); renderMatrix(); });
+  $("q").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); renderMatrix(); renderMap(); });
   $("reset").addEventListener("click", () => { S.m = { ...DEFAULTS }; save(); renderAll(); });
   $("target").innerHTML = D.models.map((m) => `<option value="${esc(m.id)}">${esc(m.provider)} ${esc(m.name)}</option>`).join("");
   $("target").addEventListener("change", (e) => { S.target = e.target.value; renderPair(); });
@@ -393,7 +446,103 @@ function renderMatrix() {
   $("matrix").innerHTML = html + `</tbody>`;
   $("matrix").appendChild(cap);
   $("count").textContent = `基準と同等以上の候補は ${good} 件(全 ${all} 件。モデルごとの並びは、同等以上があるものが上)。`;
-  $("matrix").querySelectorAll("button.cell").forEach((b) => b.addEventListener("click", () => { S.sel = b.dataset.k; renderMatrix(); renderDetail(); document.getElementById("h-detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
+  $("matrix").querySelectorAll("button.cell").forEach((b) => b.addEventListener("click", () => { S.sel = b.dataset.k; renderMatrix(); renderMap(); renderDetail(); document.getElementById("h-detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); }));
+}
+
+// ---- 近さの地図 ----
+const MARK = { equivalent: "var(--good)", stronger: "var(--blue)", weaker: "var(--crit)", insufficient: "var(--muted)" };
+function markPath(v, x, y, r) {
+  if (v === "stronger") return `M${x} ${y - r}L${x + r} ${y + r * 0.8}L${x - r} ${y + r * 0.8}Z`;
+  if (v === "weaker") return `M${x} ${y + r}L${x + r} ${y - r * 0.8}L${x - r} ${y - r * 0.8}Z`;
+  if (v === "insufficient") return `M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`;
+  return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
+}
+const fmtD = (d) => (d === null ? "—" : d.toFixed(2));
+function renderMap() {
+  const rm = D.map.roles[S.role], set = rm.sets[S.mapSet], ref = S.refs[S.role];
+  const sc = { cap: set.margins.capability_points, spd: set.margins.speed_ratio };
+  const keys = Object.keys(D.rows);
+  $("mapsets").innerHTML = rm.sets.map((st, i) => `<button role="tab" type="button" data-i="${i}" aria-selected="${i === S.mapSet}">${i === 0 ? "既定" : "広め"} ±${st.margins.capability_points}pt・±${Math.round(st.margins.speed_ratio * 100)}%</button>`).join("");
+  $("mapsets").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { S.mapSet = Number(b.dataset.i); renderMap(); }));
+  const at = new Map();
+  keys.forEach((k, i) => { if (set.pts[2 * i] !== null) at.set(k, { x: set.pts[2 * i], y: set.pts[2 * i + 1] }); });
+  const W = 360, pad = 26;
+  const xs = [...at.values()].map((p) => p.x), ys = [...at.values()].map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const u = (W - 2 * pad) / Math.max(maxX - minX, maxY - minY, 1e-9); // 距離 1 の長さ
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  // 縦は、点の広がりに合わせて詰める(横に長い配置で、上下の余白を広げない)。
+  const H = at.size ? Math.round(Math.min(360, Math.max(190, (maxY - minY) * u + 2 * pad + 26))) : 200;
+  $("mapsvg").setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const X = (x) => W / 2 + (x - cx) * u, Y = (y) => H / 2 - (y - cy) * u; // 上が +
+  const role = roleOf(S.role);
+  let svg = "";
+  // 同じモデルのエフォートを、段階の順に線で結ぶ(選択・基準のモデルは濃く)。
+  const hot = new Set([S.sel, ref].filter(Boolean).map((x) => splitKey(x)[0]));
+  for (const m of D.models) {
+    const ps = EFFORTS.filter((e) => m.efforts.includes(e)).map((e) => at.get(keyOf(m.id, e))).filter(Boolean);
+    if (ps.length < 2) continue;
+    svg += `<polyline points="${ps.map((p) => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--${hot.has(m.id) ? "ink2" : "axis"})" stroke-width="${hot.has(m.id) ? 1.6 : 1}" stroke-linejoin="round"/>`;
+  }
+  const rp = at.get(ref);
+  if (rp) svg += `<circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="${u}" fill="none" stroke="var(--ink2)" stroke-width="1" stroke-dasharray="4 3"/>`;
+  const verdicts = new Map(), dists = new Map();
+  for (const key of keys) {
+    if (key === ref) continue;
+    verdicts.set(key, roleVerdict(S.role, ref, key, S.m).v);
+    dists.set(key, mapDistance(S.role, ref, key, sc));
+  }
+  const q = S.q, dim = (key) => (q && !`${model(splitKey(key)[0]).provider} ${model(splitKey(key)[0]).name}`.toLowerCase().includes(q)) || (S.only && RANK[verdicts.get(key)] > 0);
+  const order = [...at.keys()].filter((key) => key !== ref && key !== S.sel).concat(S.sel && at.has(S.sel) && S.sel !== ref ? [S.sel] : []);
+  for (const key of order) {
+    const p = at.get(key), v = verdicts.get(key), dd = dists.get(key).d;
+    const tip = `${label(key)}: ${VERDICT[v].label}、基準との距離 ${fmtD(dd)}`;
+    svg += `<g class="pt" data-k="${esc(key)}" tabindex="0" role="button" aria-pressed="${S.sel === key}" aria-label="${esc(tip)}" opacity="${dim(key) ? 0.18 : 1}"><title>${esc(tip)}</title><circle cx="${X(p.x)}" cy="${Y(p.y)}" r="11" fill="transparent"/><path class="mk" d="${markPath(v, X(p.x), Y(p.y), S.sel === key ? 6.5 : 4.6)}" fill="${MARK[v]}" stroke="${S.sel === key ? "var(--ink)" : "var(--page)"}" stroke-width="${S.sel === key ? 2 : 1.2}"/></g>`;
+  }
+  if (rp) {
+    svg += `<g aria-hidden="true"><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="9" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="4" fill="var(--ink)"/></g>`;
+    const right = X(rp.x) < W / 2;
+    svg += `<text class="lbl" x="${X(rp.x) + (right ? 13 : -13)}" y="${Y(rp.y) + 3}" text-anchor="${right ? "start" : "end"}">基準 ${esc(label(ref))}</text>`;
+  }
+  const sp = S.sel && S.sel !== ref ? at.get(S.sel) : null;
+  if (sp) {
+    const right = X(sp.x) < W / 2;
+    svg += `<text class="lbl" x="${X(sp.x) + (right ? 11 : -11)}" y="${Y(sp.y) + 3}" text-anchor="${right ? "start" : "end"}">${esc(label(S.sel))}</text>`;
+  }
+  svg += `<line x1="${pad}" x2="${pad + u}" y1="${H - 12}" y2="${H - 12}" stroke="var(--ink2)" stroke-width="2"/><text x="${pad + u + 6}" y="${H - 8}">= 距離 1</text>`;
+  $("mapsvg").innerHTML = at.size ? svg : `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">地図に載る点が無い</text>`;
+  $("mapsvg").setAttribute("aria-label", `近さの地図(${role.name}、${at.size} 点、stress ${set.stress})`);
+  $("mapsvg").querySelectorAll("g.pt").forEach((g) => {
+    const pick = () => { S.sel = g.dataset.k; renderMatrix(); renderMap(); renderDetail(); };
+    g.addEventListener("click", pick);
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+  });
+
+  // 警告と注記
+  const warns = [];
+  if (!rp) warns.push(`基準 ${esc(label(ref))} は、値のある成分が ${D.map.min_common} 本に満たないか、ほかの行と距離でつながらないので、地図に載っていない。下の「近い順」も出せない。`);
+  if (set.stress > D.map.stress_warn) warns.push(`この地図の歪み(stress ${set.stress.toFixed(2)})は目安の ${D.map.stress_warn} を超えている。2 次元に収まりきらないので、地図の近さを信じず、下の「近い順」の距離を見る。`);
+  if (at.size < 8) warns.push(`地図に載っている点が ${at.size} 点しかない。配置のまとまりを読むには少なすぎる。`);
+  $("map-warn").innerHTML = warns.map((w) => `<div class="warn" role="alert">${w}</div>`).join("");
+  $("map-notes").innerHTML = [
+    `地図の歪み(Kruskal の stress-1)は <b class="val">${set.stress.toFixed(3)}</b>(0 に近いほど、地図の上の距離が元の距離を保つ。目安 ${D.map.stress_warn} は、このページが独自に置いたもの)。多くの軸を 2 次元に圧縮しているので、近く見える 2 点が実は遠い、遠く見える 2 点が実は近い、ことがある。stress が大きいときは、距離の表(上の近い順)を信じる。`,
+    `距離は、ベンチと速さのそれぞれの差を「許容幅(または、課題数が少ないベンチの分解能の広い方)」で割り、その最大を取ったもの。1 つでも大きく違えば遠い(役の判定が「1 つでも弱ければ弱い」と束ねるのに合わせている)。使った成分: ${rm.axes.map((a) => esc(a.label)).join("・")}。距離が 1 以下でも「同等」ではない(同等は、差の 90% 区間が許容幅の内側かで決める)。`,
+    `軸に意味は無く、向きも任意(再現できるよう符号だけ固定している)。位置は上の 2 通りの尺度で事前に計算していて、許容幅のスライダーでは動かない。スライダーが変えるのは、点の形と色(判定)。`,
+    `${set.excluded} 行は、値のある成分が ${D.map.min_common} 本に満たないか、ほかの行と距離でつながらないので、地図に載せていない。載せた ${set.n_points} 点のうち ${set.filled_pairs} 組は、共通の成分が ${D.map.min_common} 本に満たず距離を直接出せなかったので、距離でつながる別の点を経由した最短経路で補った(stress は、直接の距離がある ${set.direct_pairs} 組だけで測る)。`,
+    `破線の円は、基準から距離 1 の目安。地図の上の円なので、円の内外が元の距離と食い違うことがある。`,
+  ].map((t) => `<li>${t}</li>`).join("");
+
+  // 選択中の点の距離と、基準にする操作
+  const sel = S.sel && S.sel !== ref ? S.sel : null;
+  if (sel) {
+    const dd = dists.get(sel);
+    $("map-info").innerHTML = `選択: <b>${esc(label(sel))}</b> — 基準との距離 <b class="val">${fmtD(dd.d)}</b>${dd.d === null ? `(共通の成分が ${dd.common} 本で、${D.map.min_common} 本に満たない)` : dd.driver ? `(いちばん離れている成分: ${esc(dd.driver)})` : ""}。 <a href="#h-detail">根拠を見る</a> <button class="ghost" id="asref" type="button">この点を基準にする</button>`;
+    $("asref").addEventListener("click", () => { S.refs[S.role] = sel; S.sel = null; save(); renderAll(); });
+  } else $("map-info").textContent = "点を押すと、その点の根拠と、基準との距離が出る。";
+  // 基準に距離の近い順
+  const near = [...dists.entries()].filter(([, v]) => v.d !== null).sort((a, b) => a[1].d - b[1].d || (a[0] < b[0] ? -1 : 1)).slice(0, 8);
+  $("map-near").innerHTML = near.length ? near.map(([key, v]) => { const vv = verdicts.get(key), x = VERDICT[vv]; return `<button type="button" class="cell v-${vv}" data-k="${esc(key)}" aria-pressed="${S.sel === key}" title="${esc(`${label(key)}: ${x.label}、距離 ${fmtD(v.d)}`)}"><span class="ic" aria-hidden="true">${x.icon}</span><span>${esc(label(key))}</span><span class="dv">${fmtD(v.d)}</span></button>`; }).join("") : `<span class="small">距離を出せる候補が無い。</span>`;
+  $("map-near").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { S.sel = b.dataset.k; renderMatrix(); renderMap(); renderDetail(); }));
 }
 
 function forest(item) {
@@ -536,7 +685,7 @@ function selfCheck() {
   return { n, bad: bad.length };
 }
 
-function renderAll() { syncControls(); renderMatrix(); renderDetail(); renderPair(); renderHist(); renderEvidence(); }
+function renderAll() { syncControls(); renderMatrix(); renderMap(); renderDetail(); renderPair(); renderHist(); renderEvidence(); }
 
 renderControls();
 renderFoot();

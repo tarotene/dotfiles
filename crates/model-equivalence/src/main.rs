@@ -323,6 +323,27 @@ fn cmd_render(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     std::fs::write(&out, &html).map_err(|e| format!("{out}: {e}"))?;
+    // 近さの地図の警告: 共通の成分が少なく距離を出せない組・地図に載せなかった行・歪みの大きい地図。
+    if let Some(roles) = data_json["map"]["roles"].as_object() {
+        for (role, m) in roles {
+            for set in m["sets"].as_array().into_iter().flatten() {
+                let (excluded, filled) = (set["excluded"].as_u64(), set["filled_pairs"].as_u64());
+                let stress = set["stress"].as_f64().unwrap_or(0.0);
+                if excluded > Some(0)
+                    || filled > Some(0)
+                    || stress > model_equivalence::map::STRESS_WARN
+                {
+                    eprintln!(
+                        "警告: 地図({role}、許容幅 {})は、{} 行を載せず、{} 組の距離を最短経路で補った(共通の成分が {} 本未満)。stress {stress}",
+                        set["margins"],
+                        excluded.unwrap_or(0),
+                        filled.unwrap_or(0),
+                        model_equivalence::map::MIN_COMMON,
+                    );
+                }
+            }
+        }
+    }
     println!(
         "書き込み: {out}({} KB。履歴: {})",
         html.len() / 1024,
