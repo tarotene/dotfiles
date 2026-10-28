@@ -38,6 +38,10 @@ if mode == 'block':
         time.sleep(0.01)
 if mode == 'fail':
     sys.exit(7)
+if mode == 'omit':
+    out = pathlib.Path(sys.argv[sys.argv.index('--output-last-message') + 1])
+    out.write_text(json.dumps({'decisions': []}))
+    sys.exit(0)
 out = pathlib.Path(sys.argv[sys.argv.index('--output-last-message') + 1])
 if mode == 'invalid':
     out.write_text('{invalid')
@@ -226,6 +230,40 @@ fn failures_and_invalid_results_retry_without_consuming_input() {
     assert_eq!(t.state()["collector"]["last_error"], "");
     t.ok(&["collect"]);
     assert_eq!(t.calls().len(), 3);
+}
+
+#[test]
+fn rejected_analysis_keeps_pending_state_without_failing_the_periodic_service() {
+    // #1134: 解析結果の検証エラー（決定の欠落・不正な観察）で service が failed/degraded に
+    // ならない。pending は消費せず、last_error に残して報告に出し、次の収集で直れば消える。
+    let t = Trial::new();
+    t.ordinary("normal", "yes");
+    for (mode, message) in [
+        ("omit", "analysis omitted or duplicated fragment decisions"),
+        ("unrelated-line", "invalid observation or source reference"),
+    ] {
+        fs::write(t.path("mode"), mode).unwrap();
+        let out = t.run(&["collect"]);
+        assert!(out.status.success(), "{mode}: {:?}", out);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(message), "{mode}: {stderr}");
+        assert!(
+            stderr.contains("pending state retained"),
+            "{mode}: {stderr}"
+        );
+        let state = t.state();
+        assert!(state["collector"]["done"].as_array().unwrap().is_empty());
+        assert!(state["checks"].as_object().unwrap().is_empty());
+        assert!(state["collector"]["last_error"]
+            .as_str()
+            .unwrap()
+            .contains(message));
+    }
+    // 入力修正が要る状態は service の健全性と別に読める（報告の collector_error）。
+    fs::write(t.path("mode"), "none").unwrap();
+    t.ok(&["collect"]);
+    assert_eq!(t.state()["collector"]["done"].as_array().unwrap().len(), 1);
+    assert_eq!(t.state()["collector"]["last_error"], "");
 }
 
 #[test]
@@ -743,8 +781,13 @@ fn observations_may_cite_supplied_previous_turn_context_but_not_unrelated_lines(
     assert!(segments[0]["first_line"].as_u64().unwrap() > 4);
     fs::write(t.path("mode"), "unrelated-line").unwrap();
     let unrelated = t.run(&["collect"]);
-    assert!(!unrelated.status.success());
+    // 解析結果の不備は service を failed にしない（last_error に残し、入力は消費しない）。
+    assert!(unrelated.status.success());
     assert!(String::from_utf8_lossy(&unrelated.stderr)
+        .contains("invalid observation or source reference"));
+    assert!(t.state()["collector"]["last_error"]
+        .as_str()
+        .unwrap()
         .contains("invalid observation or source reference"));
     assert_eq!(t.state()["collector"]["done"], initial);
     assert!(t.state()["checks"].as_object().unwrap().is_empty());
