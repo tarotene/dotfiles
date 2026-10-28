@@ -14,6 +14,7 @@ pub struct Config {
     pub owner: String,
     pub state_dir: PathBuf,
     pub manifests_dir: PathBuf,
+    pub claude_installation_id_file: PathBuf,
     pub bws_bin: String,
     pub secret_tool_bin: String,
     pub curl_bin: String,
@@ -59,6 +60,15 @@ impl Config {
             owner: env_or("GITHUB_APP_SNAPSHOT_OWNER", || "tarotene".to_string()),
             state_dir,
             manifests_dir,
+            claude_installation_id_file: PathBuf::from(env_or(
+                "GITHUB_APP_SNAPSHOT_CLAUDE_INSTALLATION_ID_FILE",
+                || {
+                    config_dir
+                        .join("claude-installation-id")
+                        .to_string_lossy()
+                        .into_owned()
+                },
+            )),
             bws_bin: env_or("GITHUB_APP_SNAPSHOT_BWS_BIN", || "bws".to_string()),
             secret_tool_bin: env_or("GITHUB_APP_SNAPSHOT_SECRET_TOOL_BIN", || {
                 "secret-tool".to_string()

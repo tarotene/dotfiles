@@ -39,6 +39,108 @@ fn http_get(cfg: &Config, url: &str, bearer: &str) -> String {
     curl(cfg, &["-sS", "-H", &auth, "-H", ACCEPT, url])
 }
 
+// Keep this third-party user token out of argv and diagnostics. The token is
+// passed through stdin as curl configuration, never written to the snapshot.
+fn user_installation_page(cfg: &Config, id: &str, token: &str, page: usize) -> Result<J, ()> {
+    if token.is_empty()
+        || token
+            .bytes()
+            .any(|b| b.is_ascii_control() || b == b'"' || b == b'\\')
+    {
+        return Err(());
+    }
+    let url = format!("{GITHUB_API}/user/installations/{id}/repositories?per_page=100&page={page}");
+    let mut child = Command::new(&cfg.curl_bin)
+        .args(["--silent", "--show-error", "--fail", "--config", "-", &url])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| ())?;
+    let mut stdin = child.stdin.take().ok_or(())?;
+    write!(
+        stdin,
+        "header = \"Authorization: Bearer {token}\"\nheader = \"{ACCEPT}\"\n"
+    )
+    .map_err(|_| ())?;
+    drop(stdin);
+    let out = child.wait_with_output().map_err(|_| ())?;
+    if !out.status.success() {
+        return Err(());
+    }
+    parse_ordered(std::str::from_utf8(&out.stdout).map_err(|_| ())?).ok_or(())
+}
+
+fn third_party_snapshot(cfg: &Config) -> J {
+    let id = match std::fs::read_to_string(&cfg.claude_installation_id_file) {
+        Ok(id) => id.trim().to_owned(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => {
+            return J::obj(vec![
+                ("status", J::str("error")),
+                ("repositories", J::Arr(vec![])),
+            ])
+        }
+    };
+    let token = std::env::var("GITHUB_PAT_READ_USER").unwrap_or_default();
+    let result = if id.is_empty() && token.is_empty() {
+        ("unobserved", Vec::new())
+    } else if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) || token.is_empty() {
+        ("error", Vec::new())
+    } else {
+        match fetch_user_installation(cfg, &id, &token) {
+            Ok(repos) => ("observed", repos),
+            Err(()) => ("error", Vec::new()),
+        }
+    };
+    J::obj(vec![
+        ("status", J::str(result.0)),
+        ("repositories", J::Arr(result.1)),
+    ])
+}
+
+fn fetch_user_installation(cfg: &Config, id: &str, token: &str) -> Result<Vec<J>, ()> {
+    let mut repos = Vec::new();
+    let mut total = None;
+    for page in 1..=10000 {
+        let body = user_installation_page(cfg, id, token, page)?;
+        let count = match j_get(&body, "total_count") {
+            Some(J::Num(n)) => n.parse::<usize>().map_err(|_| ())?,
+            _ => return Err(()),
+        };
+        if total.is_some_and(|old| old != count) {
+            return Err(());
+        }
+        total = Some(count);
+        let Some(J::Arr(batch)) = j_get(&body, "repositories") else {
+            return Err(());
+        };
+        if batch.len() > 100 {
+            return Err(());
+        }
+        for repo in batch {
+            let Some(J::Str(name)) = j_get(repo, "full_name") else {
+                return Err(());
+            };
+            if name.is_empty() || repos.iter().any(|r| matches!(r, J::Str(s) if s == name)) {
+                return Err(());
+            }
+            repos.push(J::str(name));
+        }
+        if repos.len() > count {
+            return Err(());
+        }
+        if batch.len() < 100 {
+            return if repos.len() == count {
+                Ok(repos)
+            } else {
+                Err(())
+            };
+        }
+    }
+    Err(())
+}
+
 fn http_post_empty_body(cfg: &Config, url: &str, bearer: &str) -> String {
     let auth = format!("Authorization: Bearer {bearer}");
     curl(cfg, &["-sS", "-X", "POST", "-H", &auth, "-H", ACCEPT, url])
@@ -296,6 +398,7 @@ pub fn do_snapshot(cfg: &Config, out_path: &Path) -> Result<(), String> {
         ("schema", J::Num("1".into())),
         ("generated_at", J::str(iso_now())),
         ("apps", apps),
+        ("claude_installation", third_party_snapshot(cfg)),
     ]);
     let mut tmp = tempfile::Builder::new()
         .prefix("app-snapshot.json.")
