@@ -215,6 +215,11 @@ in
         "git cherry-pick *"
         "git revert *"
         "git tag *"
+        # `git fetch` and `git pull` read the credential through gh's keyring helper, which the
+        # sandbox does not show: `git fetch origin` failed inside it with `fatal: could not read
+        # Username for 'https://github.com'` and passed outside (measured on vega 2026-10-28).
+        "git fetch *"
+        "git pull *"
         # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
         # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
         "nix build *"
