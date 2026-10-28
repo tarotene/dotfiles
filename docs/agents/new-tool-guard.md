@@ -8,7 +8,7 @@
 新しい道具・単位(shebang で始まる新規ファイル、`bin`・`scripts`・`hooks`・`cmd` を構成要素に含む新規パス、
 パッケージマニフェストの新設。テスト・fixture・scratchpad 配下と、ディスクに既にあるファイルは対象外)を、
 そのパスの `既存手段:` 行が現在の worktree の台帳(git toplevel をキーにした
-`~/.claude/new-tool-guard/state/<key>.ledger`)に無いまま `Write` しようとすると deny する。deny の文には
+`~/.local/state/claude/new-tool-guard/state/<key>.ledger`)に無いまま `Write` しようとすると deny する。deny の文には
 `register` コマンドの完全形が付く。`classify <path>` サブコマンドは、同じ述語を pr-gate の `G_prior` に公開する。
 
 ## 記録役(PostToolUse、matcher `ExitPlanMode`)

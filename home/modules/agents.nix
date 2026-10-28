@@ -444,7 +444,7 @@
 #    の `is_new_tool_unit` が単一正本で、`classify` サブコマンドと
 #    pr-gate の G_prior が同じ関数を使う)。テスト・fixture・scratchpad 配下と、ディスク上に
 #    既に存在するファイル(上書き)は対象外。該当かつ、現在の worktree の
-#    session ledger(git toplevel キー、`~/.claude/new-tool-guard/state/`)
+#    session ledger(git toplevel キー、`~/.local/state/claude/new-tool-guard/state/`)
 #    にそのパスの `既存手段:` 行が未登録なら deny する——deny メッセージが
 #    `register` コマンドの完全形を同梱するので、登録して再試行すれば通る。
 #    段1(ADR-543)の `## 先行例との対比` 節側の `既存手段:` 必須化との

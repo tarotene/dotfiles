@@ -122,8 +122,9 @@ fn record_gate_event(decision: &str) {
     }
 }
 
-/// `${NEW_TOOL_GUARD_DIR:-$HOME/.claude/new-tool-guard}/state/<key>.ledger`
-/// (`gh-edit-allow` と同じ形)。
+/// `${NEW_TOOL_GUARD_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/claude/new-tool-guard}/state/<key>.ledger`。
+/// 既定の置き場は sandbox の書き込み許可(`~/.local/state/claude`)の中にあるので、
+/// sandbox の中の `register` が `Read-only file system` で失敗しない(`~/.claude` 配下は読み取り専用)。
 pub fn default_ledger() -> Option<SessionLedger> {
     Some(SessionLedger::new(base_dir()?.join("state"), "ledger"))
 }
@@ -131,7 +132,13 @@ pub fn default_ledger() -> Option<SessionLedger> {
 fn base_dir() -> Option<PathBuf> {
     match std::env::var_os("NEW_TOOL_GUARD_DIR") {
         Some(d) if !d.is_empty() => Some(d.into()),
-        _ => Some(Path::new(&std::env::var_os("HOME")?).join(".claude/new-tool-guard")),
+        _ => {
+            let state = match std::env::var_os("XDG_STATE_HOME") {
+                Some(d) if !d.is_empty() => PathBuf::from(d),
+                _ => Path::new(&std::env::var_os("HOME")?).join(".local/state"),
+            };
+            Some(state.join("claude").join("new-tool-guard"))
+        }
     }
 }
 
