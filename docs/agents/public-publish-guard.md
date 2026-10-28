@@ -176,7 +176,7 @@ wrapper に宣言が無いまま、機体上で手で書かれていた。上の
 ので、上の 3 ファイルと違い PUBLIC なこのリポジトリの `home/modules/agents.nix` が
 `xdg.configFile."bleep/allow-tools.txt"` で宣言し、全機体に同じ内容を配る。読み取り専用の
 リンクになるので、機体ごとの手での追記は食い違いの元になるため行わず、宣言を変える。現在の
-宣言は組織内 Slack の下書き(`mcp__.*__slack_send_message_draft`)と Copilot の読み取り専用ツール(`view`・`grep`・`glob`)で、送信のツールは
+宣言は組織内 Slack の下書き(`mcp__.*__slack_send_message_draft`)と Copilot の読み取り専用ツール(`view`・`grep`・`glob`・`rg`)で、送信のツールは
 宣言しない(送信は `external-send-guard` が下書き止まりにする)。`.*` の部分はコネクタの
 サーバー名で、機体ごとに違いうるため任せている。
 

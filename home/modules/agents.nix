@@ -2133,6 +2133,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     view
     grep
     glob
+    rg
   '';
   # 配備された bleep hook の canary(#604)。bleep 入力の pin が決める hook の実体を、
   # 登録コマンドと同じ環境で実際に動かして判定を確かめる。home.checks は失敗すると
