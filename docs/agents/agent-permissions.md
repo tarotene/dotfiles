@@ -124,7 +124,8 @@ unit の実値は private wrapper に置く（ADR-0034）。
 
 `excludedCommands` の既定は、sandbox の中では鍵束の D-Bus・gpg-agent・nix daemon のソケットに届かない
 コマンド(`gh`・`git commit`・`git push`・`git add`・`git fetch`・`git pull`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
-狭い allow と分類器を通る。
+狭い allow と分類器を通る。内部で `gh` を呼ぶ自前の道具 `pr-checks-wait` も同じ理由で足した(sandbox の中で背景起動すると
+`PR の base ブランチを取得できません` で exit 2 になった。2026-10-28。効果の読み戻しは `hms` の後)。
 
 **除外パターンの照合規則**(Anthropic, "Sandboxing"、取得 2026-10-27): 呼び出し 1 行全体のコマンドがすべて
 除外パターンに合わないと、全体が sandbox の中に残る。パターンは呼び出しの文字列に対して合わせる。`cd`・
