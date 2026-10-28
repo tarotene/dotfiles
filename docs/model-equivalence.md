@@ -54,11 +54,28 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 - 鍵は環境変数 `ARTIFICIAL_ANALYSIS_API_KEY`、無ければ login keyring(`secret-tool`、application=model-catalog
   credential=artificial-analysis-api-key)から読み、標準入力で `curl` に渡す(`ps` に出ない)。リポジトリには置かない。
 - 利用条件: AA への出典表示が必要(ページの脚注とデータの出典欄に出す)。上限は 1 日 1000 リクエスト。
-- 採点の偏り: AA-LCR と HLE は GPT 系の LLM が採点している。Claude の答えを GPT が採点する構図で、この 2 つでは GPT が有利に
-  出る偏りがありうる(大きさは未確認)。ページの出典欄に書く。
+- 採点の偏り: AA-LCR と HLE は GPT 系の LLM(GPT-5.6 Luna (medium))が等価判定をしている。Claude の答えを GPT が採点する構図で、
+  この 2 つでは GPT が有利に出る偏りがありうる(大きさは未確認。「未確認だった点の確認」参照)。ページの出典欄に書く。
 - 純正ハーネス(Claude Code・Codex)での値は、Terminal-Bench 公式の leaderboard にある(max のみ)。AA の値との差の向きが
   モデルごとに揃わない(2026-10-27 時点で、Opus 5.5 は +5.2pt、Sonnet 5.5 は −1.8pt、GPT-6.1 Sol は +2.1pt)ので、補正に使わず、
   注記として並べる。
+
+## 未確認だった点の確認(#1154、2026-10-28)
+
+起票時に「未確認」としていた 6 点を、一次資料で確かめた。確かめた手段は、公式ページの取得(本文は WebFetch の要約を通るので、
+引用は逐語を求めた結果)、API リファレンス、検索。引用は取得したページの原文(英語)のまま書く。
+
+| # | 点 | 結論 | 根拠(出典・取得日 2026-10-28) |
+|---|---|---|---|
+| 1 | Claude の行名の `Default Fallback` | **未確認**(意味を書いた一次資料が見つからない) | AA の方法論ページ(<https://artificialanalysis.ai/methodology/intelligence-benchmarking>)に `Default Fallback` は無い(取得結果: `NOT FOUND: Default Fallback`)。API リファレンス(<https://artificialanalysis.ai/api-reference>)のモデルの項目は `id`・`name`・`slug`・`model_creator`・`evaluations`・`pricing`・速度の欄で、`reasoning_effort` や `Default Fallback` の欄は無い。モデルのページ(`/models/claude-opus-5-5-medium`)の取得結果にも説明は無かった。検索では、Claude の全行が `(Adaptive Reasoning, <段階> Effort, Default Fallback)` と付く事実だけが確認できた(例: <https://artificialanalysis.ai/models/claude-fable-5-1>)。GPT の行には付かない。 |
+| 2 | `Non-reasoning` の扱い | **未確認**(`reasoning.effort` の `none` と同じかは言えない) | OpenAI の文書(<https://developers.openai.com/api/docs/guides/reasoning>)は、"Supported values are model-dependent and can include `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`." と書き、"GPT-6.1 Sol does not support `none` or `minimal` and defaults to `medium`." と書く。GPT-6.1 Terra が `none` に対応するかは、取得した範囲に記述が無い。AA の方法論ページに `Non-reasoning` という行名の説明は無いが、"Non-reasoning models: 16,384 tokens … Reasoning models: Maximum output tokens allowed" と "Temperature: 0 for non-reasoning models, 0.6 for reasoning models" のように、AA は測定条件の設定を非推論モデルと推論モデルで分けている。これは AA の分類で、OpenAI の `none` との対応を示す文ではない。**扱いは、エフォートの段階ではなく別の軸のまま**(カタログは公式の段階名を持つ方針で、`Non-reasoning` は公式の段階名として確認できていない)。 |
+| 3 | 採点者の偏り | **採点者は確認できた。偏りの大きさは未確認** | AA の方法論ページ。AA-LCR: "Model responses are evaluated using GPT-5.6 Luna (medium) as an equality checker with pass@1 scoring"。HLE: "Evaluated with an equality checker LLM prompt adapted from the original HLE paper, using GPT-5.6 Luna (medium), with pass@1 scoring"。どちらも参照解答との等価判定で、主観的な採点ではない。自己選好の研究 Panickssery, Bowman, Feng, "LLM Evaluators Recognize and Favor Their Own Generations"(<https://arxiv.org/abs/2404.13076>、公開日は取得ページに記載なし)は、"an LLM evaluator scores its own outputs higher than others' while human annotators consider them of equal quality" と述べるが、それは評価者が自分の出力を採点する場面で、参照解答との等価判定でどれだけ出るかは、この文献からは言えない。採点者を替えた他の評価は見つけていない。 |
+| 4 | SWE-bench 系の再開 | **まだ現行モデルの行を確認できない** | Aider の leaderboard(<https://aider.chat/docs/leaderboards/>)は "last updated November 20, 2025" で、上位は `gpt-5 (high)` など。SWE-bench の実験リポジトリ(<https://github.com/SWE-bench/experiments>)は、"submissions must include a link to an arXiv preprint or technical report" とする方針を 2025-11-18 から適用すると書くが、新しい提出の有無は取得した範囲から読めない。swebench.com の leaderboard は取得結果にテーブルが無く(動的描画)、更新日も読めなかった。**四半期ごとに確かめる**(対応表 `[category.*]` を直接測るベンチに替える条件は変えない)。 |
+| 5 | 課題ごとの結果 | **公開されていない(文書に記述なし)** | API リファレンスの取得結果は、課題・問・サンプルごとの結果と標準誤差の欄を `NOT FOUND` とした。信頼区間 `ci95` を返すのは画像・動画の Elo の endpoint だけ。方法論ページにも課題ごとの結果の公開の記述は無い(`per-question` は `NOT FOUND`)。したがって、同じ課題での対応のある検定はできず、区間は今の Newcombe の方法(独立な 2 標本)のまま。 |
+| 6 | Terminal-Bench の機械可読なデータ | **安定した取得方法は確認できなかった** | tbench.ai の leaderboard ページ(<https://www.tbench.ai/leaderboard/terminal-bench/4.0>)の取得結果は列の見出しだけで、行は読めなかった。リポジトリ(<https://github.com/harbor-framework/terminal-bench>)は "Dataset & leaderboard: Terminal-Bench on Harbor Hub"(<https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/latest>)へ案内するが、そのページは取得時に "Loading leaderboard…" で、API・CSV・JSON の書き出しの記述は見つからなかった。Harbor の文書(<https://docs.harborframework.com/>)にも、leaderboard を機械で読む方法の記述は見つからなかった。提出の様式(`metadata.yaml` と `result.json`)は検索結果で目にしたが、一次資料では確認できていない。**今のところ、ブラウザで読んだ表の手転記を続ける**。 |
+
+試した手段の限界: 公式ページの多くは JS で描画され、WebFetch の取得結果は本文の一部だけだった。「見つからなかった」は「資料に無い」ではない。
+点 1・2・6 は、AA の担当や Harbor の保守者に問い合わせるまで未確認として扱う(問い合わせは人の作業で、ここでは行っていない)。
 
 ## ページ
 
@@ -97,3 +114,8 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 - Artificial Analysis, "Intelligence Benchmarking Methodology". <https://artificialanalysis.ai/methodology/intelligence-benchmarking>(取得 2026-10-27)
 - Artificial Analysis, "API Reference". <https://artificialanalysis.ai/api-reference>(取得 2026-10-27)
 - Terminal-Bench, "Terminal-Bench 4.0 leaderboard". <https://www.tbench.ai/leaderboard/terminal-bench/4.0>(取得 2026-10-27)
+- OpenAI, "Reasoning models" の `reasoning.effort`. <https://developers.openai.com/api/docs/guides/reasoning>(取得 2026-10-28)
+- A. Panickssery, S. R. Bowman, S. Feng, "LLM Evaluators Recognize and Favor Their Own Generations". <https://arxiv.org/abs/2404.13076>(取得 2026-10-28)
+- Aider, "Aider LLM Leaderboards"(last updated November 20, 2025). <https://aider.chat/docs/leaderboards/>(取得 2026-10-28)
+- SWE-bench, "experiments". <https://github.com/SWE-bench/experiments>(取得 2026-10-28)
+- Harbor, "Terminal-Bench on Harbor Hub". <https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/latest>(取得 2026-10-28)
