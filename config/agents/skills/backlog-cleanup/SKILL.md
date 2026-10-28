@@ -201,6 +201,12 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 - 最新の default branch から作業ブランチを切る(`Closes` が効くのは default
   branch 向き PR だけなので、ベースブランチを必ず確認する)。
 - 項目ごとに 1 commit。Issue に対応する項目は commit message に `#N` を含める。
+- **段1 の最初の commit ができたら、すぐ push して PR を作り、以後はその PR に commit を足す。**
+  サブエージェントへの委譲の完了を待つ Stop のたびに、`pr-gate` が「未 push の commit があります。
+  PR はまだありません」と block し、PR 作成を急かす(2026-10-27 に 6 回。#1093)。かつての
+  `--chores-begin` の「実行中の印」は ADR-1136 で削除され(`session-wrapup --chores-begin` は
+  exit 1)、`pr-gate` を抑える手段は無い。PR が先にあれば `no_pr` の block は起きない。追加の push
+  のたびに CI が回り直す費用は、この block の往復より小さい。
 - 他リポジトリで作業する段は、`github-audit-triage` §6 の手順 1・2 に従う。
   scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
   <clone> --branch <名前>` で切った worktree で編集・commit する

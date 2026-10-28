@@ -40,10 +40,23 @@ pub fn extract_user_text(transcript: &str) -> String {
         if alt_str(kind) == Some("task-notification") {
             continue;
         }
+        // `!` で実行したコマンドの入出力(#1167)。本人の発言ではなく、複数行の出力が
+        // 1 行ずつの発言として混ざる。
+        if is_bash_echo(content) {
+            continue;
+        }
         out.push_str(content);
         out.push('\n');
     }
     out
+}
+
+/// `!` コマンドの入力・標準出力・標準エラーとして Claude Code が user 行に書く形。
+fn is_bash_echo(content: &str) -> bool {
+    let c = content.trim_start();
+    ["<bash-input>", "<bash-stdout>", "<bash-stderr>"]
+        .iter()
+        .any(|tag| c.starts_with(tag))
 }
 
 /// jq の `x // ""` を文字列比較に使うための近似: null/false/欠落は ""。
@@ -189,6 +202,23 @@ mod tests {
         assert!(x.contains("#136"));
         assert!(x.contains("#135"));
         assert!(!x.contains("#134"));
+    }
+
+    #[test]
+    fn transcript_drops_bang_command_input_and_output() {
+        let t = concat!(
+            r#"{"type":"user","message":{"content":"<bash-input>bash run.sh</bash-input>"}}"#,
+            "\n",
+            r#"{"type":"user","message":{"content":"<bash-stdout>commit abc\nhttps://example.test/issues/1\nusage: gh pr view</bash-stdout><bash-stderr></bash-stderr>"}}"#,
+            "\n",
+            r#"{"type":"user","message":{"content":"本当の発言: 違う、#42 の件"}}"#,
+            "\n",
+        );
+        let x = extract_user_text(t);
+        assert!(!x.contains("commit abc"));
+        assert!(!x.contains("usage: gh pr view"));
+        assert!(!x.contains("run.sh"));
+        assert!(x.contains("#42"));
     }
 
     // --- pending_background_tasks(#854) ---

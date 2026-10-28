@@ -696,6 +696,31 @@ pub fn cli(self_path: &str, args: &[String]) -> i32 {
 mod tests {
     use super::*;
 
+    /// #1125: 手順書が案内するコマンドは、この実行ファイルの `cli` が受け付けるものだけ。
+    /// 別の実行ファイルが持つ操作(かつての `--procedure`)を、自分のパスで案内しない。
+    #[test]
+    fn procedure_only_points_at_flags_the_cli_accepts() {
+        let text = procedure_text("/bin/session-retrospective", "sid-1");
+        let accepted = ["--retro-add", "--retro-close", "--retro-procedure"];
+        let mut seen = 0;
+        for word in text.split_whitespace() {
+            if let Some(flag) = word.strip_prefix("--").map(|f| f.trim_end_matches('.')) {
+                if flag.starts_with("retro-") {
+                    seen += 1;
+                    assert!(
+                        accepted.contains(&format!("--{flag}").as_str()),
+                        "unknown flag in the procedure: --{flag}"
+                    );
+                }
+            }
+        }
+        assert!(
+            seen >= 2,
+            "the procedure should name --retro-add and --retro-close"
+        );
+        assert!(!text.contains("' --procedure"), "{text}");
+    }
+
     #[test]
     fn iso_roundtrip() {
         let t = parse_iso_epoch("2026-10-02T01:02:03Z").unwrap();

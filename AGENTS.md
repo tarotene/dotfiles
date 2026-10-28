@@ -94,8 +94,10 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 
 ### Nix modules
 - Modules are the source of truth. A host module imports the shared module
-  plus exactly one identity module; the shared module imports everything
-  under the per-topic modules directory.
+  plus exactly one identity module; the shared module (`home/common.nix`)
+  lists every per-topic module under `home/modules/` explicitly in its
+  `imports`. A new module placed there is **not** evaluated until it is added
+  to that list — no error or warning says so (#1071).
 - `homeConfigurations.<hostname>` in the flake is keyed by hostname so
   `home-manager switch --flake .#"$(hostname)"` auto-selects per machine.
 - Identity-scoped values (git `user.name`/`email`, browser default) go in
@@ -284,6 +286,15 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 - `hms` — canonical apply (pushed main); `hms .` applies the current
   checkout/worktree for pre-push verification (wraps switch + daemon-reload +
   fcitx5 restart; see `docs/operations.md`).
+- A change that affects nix evaluation (`home/modules/*.nix`, `flake.nix`,
+  `assertions`) must also be checked through the private wrapper's evaluation,
+  not only the dotfiles-only builds above: `hms .` evaluates through the wrapper
+  with its `dotfiles` input overridden to this checkout, so an assertion can fail
+  there for options and timers the wrapper defines (#1092, #1083 passed the
+  dotfiles-only `nix eval` and failed in `hms .`). Run `hms .` (or the wrapper's
+  `nix eval` with `--override-input dotfiles path:<this checkout>
+  --no-write-lock-file`, resolved through the private-hub marker like `hms`
+  does) before stacking the change; never write the wrapper's name here (ADR-0034).
 - `home-manager switch --flake .#"$(hostname)" -b backup` — the raw switch
   `hms` wraps (see runbook).
 - Rollback via generations: `home-manager generations`, then `--rollback`.

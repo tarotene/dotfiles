@@ -144,6 +144,56 @@ fn case1_draft_and_pr_create_emits_context() {
     assert!(out.starts_with("{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PostToolUse\",\n    \"additionalContext\": \"ADR-0000 を PR #999 の番号へ改番しました(0000-x.md -> 999-x.md)。commit して push してください。\"\n  }\n}\n"), "{out}");
 }
 
+/// #1072: 改番がリネーム(stage 済み)と他ファイルの書き換え(未 stage)を起こしたとき、
+/// hook は書き換えも stage し、変わったファイルを案内に出す。
+#[test]
+fn case1d_stages_everything_the_renumbering_changed() {
+    let fx = Fx::new();
+    let repo = fx.repo("repo", Some("0000-x.md"), true);
+    let git = |args: &[&str]| {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(&repo)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.test")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    fs::write(repo.join("README.md"), "see ADR-0000\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "draft"]);
+    // 改番を模す checker: git mv(stage 済みのリネーム)+ 他ファイルの書き換え(未 stage)
+    script(
+        &fx.bin("bin/adr-number-check"),
+        r#"git mv docs/adr/0000-x.md docs/adr/999-x.md; echo "see ADR-0999" > README.md; echo "0000-x.md -> 999-x.md"; exit 0"#,
+    );
+    let out = fx.run(
+        None,
+        &fx.bin("bin"),
+        Some(("CLAUDE_PROJECT_DIR", &repo)),
+        &input(&repo, CREATE),
+    );
+    assert!(out.contains("stage 済み"), "{out}");
+    assert!(out.contains("README.md"), "{out}");
+    assert!(out.contains("docs/adr/999-x.md"), "{out}");
+    let porcelain = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    let porcelain = String::from_utf8(porcelain.stdout).unwrap();
+    // すべて stage 済み(2 桁目が空白)。未 stage の行は残らない。
+    for line in porcelain.lines() {
+        assert_eq!(&line[1..2], " ", "unstaged change left: {line}");
+    }
+}
+
 #[test]
 fn case1c_base_branch_passed_to_fix() {
     let fx = Fx::new();
