@@ -341,8 +341,7 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
                  review the launcher vocabulary against that release, repeat the acceptance \
                  tests, then update REVIEWED_VERSION (docs/codex-plan.md, \"起動ラッパーの版固定\")",
                 if found.is_empty() { "<no output>" } else { found }
-            )
-            .into());
+            ));
         }
         let cwd = std::fs::canonicalize(
             invocation
