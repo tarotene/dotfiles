@@ -1,0 +1,12 @@
+[package]
+name = "local-state-backup"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+backup-runtime = { path = "../backup-runtime" }
+libc = "0.2"
+serde_json = "1"
+tempfile = "3"

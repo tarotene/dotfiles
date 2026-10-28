@@ -669,7 +669,14 @@ jobs:
       # cargo 自身が fingerprint の不一致で作り直す(誤った再利用は起きない)。
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: cargo test (fixture oracles + allowlist audit)
-        run: nix develop --command cargo test --workspace --locked
+        run: |
+          nix develop --command bash -c '
+            set -eu
+            export TEST_RESTIC_BIN="$(command -v restic)"
+            export TEST_SQLITE_BIN="$(command -v sqlite3)"
+            test -x "$TEST_RESTIC_BIN" && test -x "$TEST_SQLITE_BIN"
+            cargo test --workspace --locked
+          '
 
       # pipeline-map の図(ADR-872): manifest から作り直した .d2 / .svg が、コミット済みの
       # ものと一致すること。d2 は flake.lock で pin されていて(devShell)、ELK の出力は

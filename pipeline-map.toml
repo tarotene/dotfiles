@@ -150,6 +150,11 @@ node = [
   { id = "obsidian-backup-stale-check", label = "obsidian-backup stale-check (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-maintenance", label = "obsidian-backup maintenance (weekly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-restore-test", label = "obsidian-backup restore-test (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "local-state-backup-backup", label = "local-state backup (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
+  { id = "local-state-backup-check", label = "local-state check (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
+  { id = "local-state-backup-maintenance", label = "local-state maintenance (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
+  { id = "local-state-backup-restore-test", label = "local-state restore (quarterly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
+  { id = "local-state-backup-audit", label = "local-state audit (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
   { id = "downloads-clean", label = "downloads-clean (14 days)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/downloads.nix", auto = true },
 
   # --- Cloud / LLM(auto = false: 登録箇所を持たない)
