@@ -111,7 +111,8 @@ Codex の `/hooks` は、hook の `statusMessage` を表示名にし、無い（
 - herdr の統合と worktree の context: `agent-settings-reconcile codex-hooks` の
   `--status-message <text>` で、その呼び出しで登録するすべての hook に同じ表示名を付ける。
 - Claude の宣言には付けない。Claude は `statusMessage` を hook の実行中の表示にも使うため、
-  共有の宣言から導く対象は Codex だけにしている。宣言から外すと、ハンドラの欄からも消える。
+  共有の宣言から導く対象は Codex だけにしている。`statusMessage` は宣言があるときだけ書き、
+  宣言の無いハンドラの既存の値（他のツールや本人が足したもの）には触れない。
 
 根拠: OpenAI, Codex `rust-v0.164.0`、取得 2026-10-28。
 [hooks_browser_view.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/bottom_pane/hooks_browser_view.rs#L420)

@@ -272,7 +272,7 @@ fn read_json(f: &Path) -> serde_json::Value {
 }
 
 #[test]
-fn declared_status_message_names_the_handler_and_is_removed_when_dropped() {
+fn declared_status_message_names_the_handler_and_undeclared_one_is_kept() {
     // Codex の `/hooks` は statusMessage の無い hook を `Unnamed hook` と表示する(#1122)。
     let (_d, f) = tmp_file(Some("{}\n"));
     let named = r#"{"register":[{"event":"Stop","command":"a","statusMessage":"gate A"}]}"#;
@@ -283,14 +283,24 @@ fn declared_status_message_names_the_handler_and_is_removed_when_dropped() {
         read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
         "gate A"
     );
-    // 宣言から外すと、ハンドラの欄からも消える(timeout と同じ扱い)。
+    // 宣言が無くなっても、ハンドラの既存の statusMessage は未知のキーと同じく消さない。
     let plain = r#"{"register":[{"event":"Stop","command":"a"}]}"#;
     assert!(run(&strs(&["codex-hooks-spec", plain]), &f)
         .status
         .success());
-    assert!(read_json(&f)["hooks"]["Stop"][0]["hooks"][0]
-        .get("statusMessage")
-        .is_none());
+    assert_eq!(
+        read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "gate A"
+    );
+    // 別の表示名を宣言すれば、その値に合わせる。
+    let renamed = r#"{"register":[{"event":"Stop","command":"a","statusMessage":"gate B"}]}"#;
+    assert!(run(&strs(&["codex-hooks-spec", renamed]), &f)
+        .status
+        .success());
+    assert_eq!(
+        read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "gate B"
+    );
 }
 
 #[test]

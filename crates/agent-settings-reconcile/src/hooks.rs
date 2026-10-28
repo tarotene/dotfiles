@@ -213,7 +213,7 @@ fn event_list<'a>(
     }
 }
 
-/// 宣言の timeout / if / statusMessage を既存ハンドラへ反映する。未知のキーは残す。
+/// 宣言の timeout / if（と、宣言があれば statusMessage）を既存ハンドラへ反映する。未知のキーは残す。
 fn apply_handler_fields(h: &mut IndexMap<String, J>, r: &Register) {
     h.insert("type".into(), J::str("command"));
     h.insert("command".into(), J::str(&r.command));
@@ -233,13 +233,10 @@ fn apply_handler_fields(h: &mut IndexMap<String, J>, r: &Register) {
             h.shift_remove("timeout");
         }
     }
-    match nonempty(&r.status_message) {
-        Some(v) => {
-            h.insert("statusMessage".into(), J::str(v));
-        }
-        None => {
-            h.shift_remove("statusMessage");
-        }
+    // 宣言があるときだけ書く。宣言の無いハンドラの既存の `statusMessage` は、他のツールや本人が
+    // 足した未知のキーと同じく残す（timeout / if と違い、宣言の無い値を消さない）。
+    if let Some(v) = nonempty(&r.status_message) {
+        h.insert("statusMessage".into(), J::str(v));
     }
 }
 
