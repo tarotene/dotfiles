@@ -103,6 +103,53 @@ pub fn resolution_points(p: f64, n: f64) -> f64 {
     (hi - lo) / 2.0 * 100.0
 }
 
+/// 能力の許容幅の刻み（ページのスライダーの刻みと同じ）。
+const MARGIN_STEP: f64 = 0.5;
+
+/// 役の判定に使うベンチの分解能の最大値（点）。点数が 0.5 のときが最大で、同じ点数どうしでも
+/// 差の 90% 区間がここまで広がる。課題数が分かる割合のベンチだけを数える（`capability` が
+/// 区間を作れるもの）。数えられるベンチが 1 つも無ければ `None`。
+pub fn role_resolution(
+    catalog: &Catalog,
+    role_id: &str,
+    lens: Option<&Lens>,
+) -> Result<Option<f64>, String> {
+    let (judged, _) = judged_benchmarks(catalog, role_id, lens)?;
+    let mut widest: Option<f64> = None;
+    for (id, _) in &judged {
+        let bench = catalog
+            .benchmarks
+            .get(id)
+            .ok_or_else(|| format!("未定義のベンチ: {id}"))?;
+        if bench.unit != Unit::Fraction {
+            continue;
+        }
+        if let Some(n) = bench.n {
+            let r = resolution_points(0.5, f64::from(n));
+            widest = Some(widest.map_or(r, |w| w.max(r)));
+        }
+    }
+    Ok(widest)
+}
+
+/// 役の既定の許容幅（#1150）。能力は、`catalog.toml` の `[equivalence]` の値（下限）と、役の判定に
+/// 使うベンチの分解能の最大値（`role_resolution`）の大きい方を、`MARGIN_STEP` に切り上げた値。
+/// 許容幅が分解能より狭いと、差が無くても「同等」と言えず、行の多くが「データ不足」になる。速さは
+/// 区間を持たないので、`[equivalence]` の値のまま。
+pub fn role_default_margins(
+    catalog: &Catalog,
+    role_id: &str,
+    lens: Option<&Lens>,
+) -> Result<Margins, String> {
+    let base = Margins::from_catalog(catalog);
+    let resolution = role_resolution(catalog, role_id, lens)?.unwrap_or(0.0);
+    let wanted = base.capability_points.max(resolution);
+    Ok(Margins {
+        capability_points: (wanted / MARGIN_STEP).ceil() * MARGIN_STEP,
+        speed_ratio: base.speed_ratio,
+    })
+}
+
 /// 差の区間 `[lo, hi]` を許容幅 `margin` で 4 値に分ける。同等は、区間が ±margin の内側(境界を含まない)。
 pub fn classify_interval(lo: f64, hi: f64, margin: f64) -> Verdict {
     if lo > -margin && hi < margin {
@@ -542,6 +589,80 @@ mod tests {
         no_n.n_unit = None;
         let j = capability("x", &no_n, Some(0.5), Some(0.5), 5.0);
         assert!(j.basis.contains("課題数"), "{}", j.basis);
+    }
+
+    #[test]
+    fn role_default_margin_is_the_widest_resolution_rounded_up_with_the_catalog_value_as_floor() {
+        let c = data();
+        // 役の既定は、判定に使うベンチの分解能の最大値(点数 0.5 のとき)。履歴で絞らない場合は役の全ベンチ。
+        for role in ["plan", "execute"] {
+            let widest = role_resolution(c, role, None)
+                .unwrap()
+                .expect("n のあるベンチがある");
+            let m = role_default_margins(c, role, None).unwrap();
+            assert!(
+                m.capability_points >= widest,
+                "{role}: 既定 {} は分解能 {widest} 以上",
+                m.capability_points
+            );
+            assert!(
+                m.capability_points - widest.max(c.equivalence.capability_margin_points)
+                    < MARGIN_STEP,
+                "{role}: 刻みの分だけ切り上げる"
+            );
+            assert_eq!(
+                (m.capability_points / MARGIN_STEP).fract(),
+                0.0,
+                "{role}: スライダーの刻みに乗る"
+            );
+            assert_eq!(
+                m.speed_ratio, c.equivalence.speed_margin_ratio,
+                "速さは区間を持たない"
+            );
+            // 既定の許容幅なら、判定に使う全ベンチで「分解能より狭くて同等と言えない」が起きない。
+            let (judged, _) = judged_benchmarks(c, role, None).unwrap();
+            for (id, _) in judged {
+                let b = &c.benchmarks[&id];
+                if let (Unit::Fraction, Some(n)) = (b.unit, b.n) {
+                    assert!(resolution_points(0.5, f64::from(n)) <= m.capability_points);
+                }
+            }
+        }
+        // 下限: catalog.toml の値が分解能より大きければ、そちらが既定。
+        let mut wide = data().clone();
+        wide.equivalence.capability_margin_points = 40.0;
+        assert_eq!(
+            role_default_margins(&wide, "plan", None)
+                .unwrap()
+                .capability_points,
+            40.0
+        );
+    }
+
+    #[test]
+    fn role_default_margin_makes_the_same_score_pair_equivalent_instead_of_insufficient() {
+        // #1150: 既定の ±5pt では、同じ点数どうしでも分解能が広いベンチで「データ不足」になる。
+        let c = data();
+        let r = c.measurement("claude-opus-5-5", "high").unwrap();
+        let narrow = judge_role(c, "plan", r, r, None, Margins::from_catalog(c)).unwrap();
+        let by_role = role_default_margins(c, "plan", None).unwrap();
+        let wide = judge_role(c, "plan", r, r, None, by_role).unwrap();
+        let verdicts = |x: &RoleJudgement| -> Vec<Verdict> {
+            x.judgements
+                .iter()
+                .filter(|j| j.interval.is_some())
+                .map(|j| j.verdict)
+                .collect()
+        };
+        assert!(
+            verdicts(&narrow).contains(&Verdict::Insufficient),
+            "±5pt では分解能の広いベンチが不足になる"
+        );
+        assert!(
+            verdicts(&wide).iter().all(|v| *v == Verdict::Equivalent),
+            "役の既定なら、同じ行どうしは全ベンチで同等: {:?}",
+            verdicts(&wide)
+        );
     }
 
     #[test]

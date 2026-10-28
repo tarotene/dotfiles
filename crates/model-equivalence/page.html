@@ -146,6 +146,7 @@ svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); s
       <button class="ghost" id="reset" type="button">既定に戻す</button>
     </div>
     <p class="small" id="role-note"></p>
+    <p class="small" id="cap-note"></p>
     <p class="small" id="count"></p>
     <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
     <div class="legend" id="legend"></div>
@@ -300,9 +301,12 @@ const LETTER = { e: "equivalent", s: "stronger", w: "weaker", i: "insufficient" 
 const IV_TOLERANCE = 1e-3; // Rust は小数 4 桁に丸めて埋め込む
 function selfCheckCore() {
   const keys = Object.keys(D.rows), bad = [];
-  const sets = [{ cap: D.margins.capability_points, spd: D.margins.speed_ratio }, { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio }];
+  const alt = { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio };
   let n = 0;
   for (const [role, g] of Object.entries(D.golden)) {
+    // 既定の許容幅は役ごと(判定に使うベンチの分解能の最大値が下限、#1150)。
+    const rm = D.roles.find((r) => r.id === role).margins;
+    const sets = [{ cap: rm.capability_points, spd: rm.speed_ratio }, alt];
     if (!D.rows[g.ref] || g.v.length !== 2 * keys.length || g.dist.length !== 2 * keys.length) { bad.push(`${role}: golden の形が rows と合わない`); n++; continue; }
     keys.forEach((k, i) => {
       if (k === g.ref) return;
@@ -331,21 +335,23 @@ function selfCheckCore() {
 // ==== CORE END ====
 
 // ---- 状態 ----
-const DEFAULTS = { cap: D.margins.capability_points, spd: D.margins.speed_ratio };
-const S = { role: D.roles[0].id, refs: {}, m: { ...DEFAULTS }, sel: null, target: null, only: false, q: "", mapSet: 0 };
-D.roles.forEach((r) => (S.refs[r.id] = r.default_reference));
+// 許容幅は役ごと。既定は、その役の判定に使うベンチの分解能の最大値(下限は catalog.toml の値)。
+const roleDefault = (id) => { const m = D.roles.find((r) => r.id === id).margins; return { cap: m.capability_points, spd: m.speed_ratio }; };
+const S = { role: D.roles[0].id, refs: {}, mm: {}, sel: null, target: null, only: false, q: "", mapSet: 0 };
+D.roles.forEach((r) => { S.refs[r.id] = r.default_reference; S.mm[r.id] = roleDefault(r.id); });
+const M = (role = S.role) => S.mm[role];
 S.target = (D.models.find((m) => m.id === "gpt-6.1-sol") || D.models[0]).id;
 try {
   const saved = JSON.parse(localStorage.getItem("model-equivalence") || "null");
   if (saved && typeof saved === "object") {
-    if (saved.m && saved.m.cap > 0 && saved.m.spd > 0) S.m = { cap: saved.m.cap, spd: saved.m.spd };
+    for (const r of D.roles) { const m = saved.mm && saved.mm[r.id]; if (m && m.cap > 0 && m.spd > 0) S.mm[r.id] = { cap: m.cap, spd: m.spd }; }
     for (const r of D.roles) if (saved.refs && D.rows[saved.refs[r.id]]) S.refs[r.id] = saved.refs[r.id];
     if (saved.role && D.roles.some((r) => r.id === saved.role)) S.role = saved.role;
     if (typeof saved.only === "boolean") S.only = saved.only;
   }
 } catch (_) { /* 保存できなくても既定で動く */ }
 function save() {
-  try { localStorage.setItem("model-equivalence", JSON.stringify({ m: S.m, refs: S.refs, role: S.role, only: S.only })); } catch (_) {}
+  try { localStorage.setItem("model-equivalence", JSON.stringify({ mm: S.mm, refs: S.refs, role: S.role, only: S.only })); } catch (_) {}
 }
 
 const model = (id) => D.models.find((m) => m.id === id);
@@ -374,11 +380,11 @@ function renderControls() {
   for (const k of keys) { const [m] = splitKey(k); (groups[model(m).provider] ||= []).push(k); }
   $("ref").innerHTML = Object.entries(groups).map(([p, ks]) => `<optgroup label="${esc(p)}">${ks.map((k) => `<option value="${esc(k)}">${esc(label(k))}</option>`).join("")}</optgroup>`).join("");
   $("ref").addEventListener("change", (e) => { S.refs[S.role] = e.target.value; S.sel = null; save(); renderAll(); });
-  $("cap").addEventListener("input", (e) => { S.m.cap = Number(e.target.value); save(); renderAll(); });
-  $("spd").addEventListener("input", (e) => { S.m.spd = Number(e.target.value) / 100; save(); renderAll(); });
+  $("cap").addEventListener("input", (e) => { M().cap = Number(e.target.value); save(); renderAll(); });
+  $("spd").addEventListener("input", (e) => { M().spd = Number(e.target.value) / 100; save(); renderAll(); });
   $("only").addEventListener("change", (e) => { S.only = e.target.checked; save(); renderAll(); });
   $("q").addEventListener("input", (e) => { S.q = e.target.value.trim().toLowerCase(); renderMatrix(); renderMap(); });
-  $("reset").addEventListener("click", () => { S.m = { ...DEFAULTS }; save(); renderAll(); });
+  $("reset").addEventListener("click", () => { S.mm[S.role] = roleDefault(S.role); save(); renderAll(); });
   $("target").innerHTML = D.models.map((m) => `<option value="${esc(m.id)}">${esc(m.provider)} ${esc(m.name)}</option>`).join("");
   $("target").addEventListener("change", (e) => { S.target = e.target.value; renderPair(); });
   $("legend").innerHTML = Object.entries(VERDICT).map(([v, x]) => `<span class="v-${v}"><b class="ic" style="color:var(--vc)" aria-hidden="true">${x.icon}</b>${x.label}</span>`).join("");
@@ -386,12 +392,18 @@ function renderControls() {
 
 function syncControls() {
   $("ref").value = S.refs[S.role];
-  $("cap").value = S.m.cap; $("capv").textContent = `±${S.m.cap}pt`;
-  $("spd").value = Math.round(S.m.spd * 100); $("spdv").textContent = `±${Math.round(S.m.spd * 100)}%`;
+  const m = M();
+  $("cap").value = m.cap; $("capv").textContent = `±${m.cap}pt`;
+  $("spd").value = Math.round(m.spd * 100); $("spdv").textContent = `±${Math.round(m.spd * 100)}%`;
   $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.role === S.role)));
   $("target").value = S.target;
   $("only").checked = S.only;
   $("role-note").textContent = roleOf(S.role).note;
+  // 許容幅と分解能の関係を、数値を読まなくても分かる文で示す(#1150)。
+  const role = roleOf(S.role), res = role.resolution_max;
+  $("cap-note").textContent = res === null
+    ? "この役の判定に使うベンチには、課題数が分かるものが無いので、能力の差の区間を作れない。"
+    : `この役の判定に使うベンチは課題数が少なく、同じ点数でも差の区間が最大 ±${res.toFixed(1)}pt まで広がる(分解能)。既定の許容幅 ±${role.margins.capability_points}pt はそれに合わせてある。許容幅をこれより狭くすると、差が無くても「同等」と言えず、「データ不足」の行が増える${m.cap < res ? "。いまの許容幅はそれより狭い" : ""}。`;
 }
 
 // 並びは、基準に対する判定から決める(基準を変えると、同等以上の候補が上に来る)。
@@ -406,7 +418,7 @@ function renderMatrix() {
     for (const e of m.efforts) {
       const k = keyOf(m.id, e);
       if (k === ref) { best = -1; continue; }
-      const v = roleVerdict(S.role, ref, k, S.m).v;
+      const v = roleVerdict(S.role, ref, k, M()).v;
       by[e] = v;
       best = Math.min(best, RANK[v]);
       all++;
@@ -489,7 +501,7 @@ function renderMap() {
   const verdicts = new Map(), dists = new Map();
   for (const key of keys) {
     if (key === ref) continue;
-    verdicts.set(key, roleVerdict(S.role, ref, key, S.m).v);
+    verdicts.set(key, roleVerdict(S.role, ref, key, M()).v);
     dists.set(key, mapDistance(S.role, ref, key, sc));
   }
   const q = S.q, dim = (key) => (q && !`${model(splitKey(key)[0]).provider} ${model(splitKey(key)[0]).name}`.toLowerCase().includes(q)) || (S.only && RANK[verdicts.get(key)] > 0);
@@ -548,7 +560,7 @@ function renderMap() {
 function forest(item) {
   const p = item.p;
   if (p.why) return `<p class="why">${esc(p.why)}</p>`;
-  const mg = S.m.cap;
+  const mg = M().cap;
   const dom = Math.max(10, Math.ceil(Math.max(Math.abs(p.lo), Math.abs(p.hi), mg * 1.5) / 5) * 5);
   const W = 400, pad = 14, x = (v) => pad + ((v + dom) / (2 * dom)) * (W - 2 * pad);
   const col = `var(--${item.v === "equivalent" ? "good" : item.v === "stronger" ? "blue" : item.v === "weaker" ? "crit" : "muted"})`;
@@ -563,12 +575,12 @@ function forest(item) {
     <circle cx="${x(p.d)}" cy="18" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
     <text x="${pad}" y="44">−${dom}pt</text><text x="${x(0)}" y="44" text-anchor="middle">0</text><text x="${W - pad}" y="44" text-anchor="end">+${dom}pt</text>
     <text x="${x(0)}" y="3" text-anchor="middle">灰色の帯 = 許容幅 ±${mg}pt</text></svg>
-    <p class="small">差 <b class="val">${fmtPt(p.d)}</b>、90% 区間 [${p.lo.toFixed(1)}, ${p.hi.toFixed(1)}]pt。このベンチの分解能は ±${p.res.toFixed(1)}pt${S.m.cap < p.res ? "(いまの許容幅より広いので、差が無くても同等と言えない)" : ""}。</p>`;
+    <p class="small">差 <b class="val">${fmtPt(p.d)}</b>、90% 区間 [${p.lo.toFixed(1)}, ${p.hi.toFixed(1)}]pt。このベンチの分解能は ±${p.res.toFixed(1)}pt${M().cap < p.res ? "(いまの許容幅より広いので、差が無くても同等と言えない)" : ""}。</p>`;
 }
 
 function speedChart(item) {
   if (item.g === null) return `<p class="why">基準か候補に、この速さの値が無い。</p>`;
-  const lim = Math.log(8), W = 400, pad = 14, ratio = S.m.spd;
+  const lim = Math.log(8), W = 400, pad = 14, ratio = M().spd;
   const x = (g) => pad + ((Math.log(Math.min(8, Math.max(1 / 8, g))) + lim) / (2 * lim)) * (W - 2 * pad);
   const col = `var(--${item.v === "equivalent" ? "good" : item.v === "stronger" ? "blue" : item.v === "weaker" ? "crit" : "muted"})`;
   const clipped = item.g > 8 || item.g < 1 / 8;
@@ -588,7 +600,7 @@ function speedChart(item) {
 function renderDetail() {
   const ref = S.refs[S.role], role = roleOf(S.role);
   if (!S.sel) { $("detail").innerHTML = `<p class="lead">マトリクスのセルを選ぶと、その組合せがなぜその判定かを、ベンチごとの差の区間で示す。</p>`; return; }
-  const r = roleVerdict(S.role, ref, S.sel, S.m);
+  const r = roleVerdict(S.role, ref, S.sel, M());
   let html = `<div class="row" style="margin-bottom:8px"><b>${esc(label(S.sel))}</b> は <b>${esc(label(ref))}</b> に対して ${badge(r.v)}<span class="small">(${esc(role.name)})</span></div>`;
   for (const k of [ref, S.sel]) {
     const age = daysSince(D.rows[k].retrieved);
@@ -619,7 +631,7 @@ function renderPair() {
   for (const pe of t.efforts) {
     html += `<tr><th scope="row">${esc(pe)}</th>`;
     for (const xe of t.efforts) {
-      const a = roleVerdict("plan", pr, keyOf(t.id, pe), S.m), b = roleVerdict("execute", xr, keyOf(t.id, xe), S.m);
+      const a = roleVerdict("plan", pr, keyOf(t.id, pe), M("plan")), b = roleVerdict("execute", xr, keyOf(t.id, xe), M("execute"));
       const v = combine([a.v, b.v]), x = VERDICT[v];
       const tip = `Plan ${pe}: ${VERDICT[a.v].label} / 実行 ${xe}: ${VERDICT[b.v].label}`;
       html += `<td class="c"><span class="cell v-${v}" title="${esc(tip)}" aria-label="${esc(tip)}" style="cursor:help"><span class="ic" aria-hidden="true">${x.icon}</span><span class="lb">${x.label}</span></span></td>`;
