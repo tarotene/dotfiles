@@ -116,10 +116,12 @@ fn fetch_live() -> Result<String, String> {
 
 fn print_report(report: &Report, before: &Catalog) {
     println!(
-        "AA 取得 {}: 測定 {} 行(取得前 {} 行)、プロンプト長 {:?} token",
+        "AA 取得 {}: 測定 {} 行(取得前 {} 行)、提供元 {} 社・モデル {} 件を自動登録、プロンプト長 {:?} token",
         report.meta.retrieved,
         report.measurements.len(),
         before.measurements.len(),
+        report.providers.len(),
+        report.models.len(),
         report.meta.prompt_length_tokens
     );
     let changed = report
@@ -128,23 +130,37 @@ fn print_report(report: &Report, before: &Catalog) {
         .filter(|m| before.measurement(&m.model, &m.effort) != Some(*m))
         .count();
     println!("  値が変わった・増えた行: {changed}");
+    for id in &report.added {
+        println!("  新しく自動登録したモデル: {id}");
+    }
+    for id in &report.retired {
+        println!("  応答に 1 行も無くなり retired にしたモデル: {id}");
+    }
     for m in &report.missing {
         println!(
-            "  応答に無い行: {} / {} (AA の行 ID {})",
+            "  応答に無い行(最後の値を持ち越す): {} / {} (AA の行 ID {})",
             m.model, m.effort, m.aa_id
         );
     }
     for id in &report.retire_candidates {
-        println!("  引退の候補(応答に 1 行も無い): {id}");
-    }
-    for u in &report.unmapped {
         println!(
-            "  対応表に無い新しい行: [{}] {} ({}) 公開 {} ID {}",
-            u.creator,
-            u.name,
-            u.slug,
-            u.release_date.as_deref().unwrap_or("?"),
-            u.id
+            "  手登録のモデルで、応答に 1 行も無い(status = \"retired\" にするか判断する): {id}"
+        );
+    }
+    for c in &report.conflicts {
+        println!(
+            "  同じ (提供元, 基本名, エフォート) の行が複数: [{}] {} / {} は {} を取り、{} を取らなかった",
+            c.creator,
+            c.base_name,
+            c.effort,
+            c.kept,
+            c.dropped.join("、")
+        );
+    }
+    for s in &report.skipped {
+        println!(
+            "  手登録の「{}」と同名の別の行(取り込まない): [{}] {} ID {}",
+            s.manual_model, s.creator, s.name, s.id
         );
     }
 }
@@ -180,12 +196,9 @@ fn run() -> Result<ExitCode, String> {
                 None => fetch_live()?,
             };
             let retrieved = o.retrieved.unwrap_or_else(model_catalog::date::today_utc);
-            let report = aa::collect(&catalog, &json, &retrieved)?;
+            let (report, next) = aa::run(&text, &json, &retrieved)?;
             print_report(&report, &catalog);
             if o.write {
-                let next = aa::splice(&text, &aa::render_block(&report))?;
-                Catalog::parse(&next)
-                    .map_err(|e| format!("書き換え後のカタログが不正(書かない): {e}"))?;
                 let path = o.file.as_deref().unwrap_or_default();
                 std::fs::write(path, next).map_err(|e| format!("{path}: {e}"))?;
                 println!("書き込み: {path}");

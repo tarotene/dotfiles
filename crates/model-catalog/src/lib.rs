@@ -156,12 +156,24 @@ pub struct Measurement {
     /// AA が取得時にそう呼んでいた名前・slug・公開日。名前は変わりうるので、突き合わせには使わない。
     pub aa_name: String,
     pub aa_slug: String,
+    /// この値を AA から取得した日。応答から消えた行は、最後の値を持ち越すので、`[aa]` の取得日より古くなる
+    /// (ページはこの日で「90 日を超えた値」を薄く表示する)。
+    pub retrieved: String,
     pub release_date: Option<String>,
     pub median_output_tokens_per_second: Option<f64>,
     pub median_time_to_first_token_seconds: Option<f64>,
     /// ベンチ ID → 値(単位はベンチの `unit`)。値の無いベンチは、0 を入れず、載せない。
     #[serde(default)]
     pub scores: BTreeMap<String, f64>,
+}
+
+/// AA の応答から、手で登録していない提供元・モデルを自動で登録するときの範囲(`model-catalog fetch-aa`)。
+/// 古いモデルまで載せると候補が膨らむので、公開日で切る。既に登録したものは、日付の外に出ても残す。
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Discovery {
+    /// この日(含む)以降に公開されたモデルだけを新しく登録する(`YYYY-MM-DD`)。
+    pub aa_release_since: String,
 }
 
 /// 同等性の判定の既定値。ページのスライダーが、この値から動かす。
@@ -241,6 +253,7 @@ pub struct Catalog {
     pub providers: Vec<Provider>,
     pub models: Vec<Model>,
     pub benchmarks: BTreeMap<String, Benchmark>,
+    pub discovery: Option<Discovery>,
     pub equivalence: Equivalence,
     pub roles: BTreeMap<String, Role>,
     pub categories: BTreeMap<String, Category>,
@@ -277,6 +290,7 @@ struct RawFile {
     models: Vec<RawModel>,
     #[serde(default)]
     benchmark: BTreeMap<String, Benchmark>,
+    discovery: Option<Discovery>,
     equivalence: Equivalence,
     #[serde(default)]
     role: BTreeMap<String, Role>,
@@ -369,6 +383,90 @@ struct RawModel {
     aa_ids: BTreeMap<String, String>,
 }
 
+// ------------------------------------------------------------------ 生成ブロックだけの読み込み
+
+/// 生成ブロック(`model-catalog fetch-aa` が書く部分)を、手書きの部分と切り離して読んだもの。
+/// 手書きの部分と突き合わせた検査(重複・未知の提供元など)は `Catalog::parse` が全体に対して行う。
+/// ここで切り離して読むのは、手で登録したモデルが、自動登録済みのモデルと同じ ID になっても、
+/// 次の取り込みが読めなくならないようにするため(その場合は手登録が優先され、自動登録側が外れる)。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GeneratedBlock {
+    pub aa: Option<AaMeta>,
+    pub providers: Vec<Provider>,
+    pub models: Vec<Model>,
+    pub measurements: Vec<Measurement>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawBlock {
+    aa: Option<AaMeta>,
+    #[serde(default, rename = "provider")]
+    providers: Vec<RawProvider>,
+    #[serde(default, rename = "model")]
+    models: Vec<RawModel>,
+    #[serde(default, rename = "measurement")]
+    measurements: Vec<Measurement>,
+}
+
+impl GeneratedBlock {
+    pub fn parse(text: &str) -> Result<GeneratedBlock, String> {
+        let raw: RawBlock = toml::from_str(text).map_err(|e| format!("生成ブロック: {e}"))?;
+        let mut providers = Vec::new();
+        for p in raw.providers {
+            if p.api_context.is_some()
+                || p.api_max_output.is_some()
+                || p.cache.is_some()
+                || p.long_context.is_some()
+                || p.codex_context.is_some()
+                || p.comparison_only
+                || !p.conditions.is_empty()
+                || !p.sources.is_empty()
+            {
+                return Err(format!(
+                    "生成ブロックの provider {}: 価格・出典の欄は手登録の部分にだけ書ける",
+                    p.id
+                ));
+            }
+            providers.push(Provider {
+                id: p.id,
+                name: p.name,
+                aa_creator: p.aa_creator,
+            });
+        }
+        let mut models = Vec::new();
+        for m in raw.models {
+            if m.purpose.is_some()
+                || m.input.is_some()
+                || m.cache_read.is_some()
+                || m.output.is_some()
+                || m.credits.is_some()
+                || m.codex_models_json_line.is_some()
+                || m.docs_slug.is_some()
+            {
+                return Err(format!(
+                    "生成ブロックの model {}: 価格・出典の欄は手登録の部分にだけ書ける",
+                    m.id
+                ));
+            }
+            models.push(Model {
+                id: m.id,
+                provider: m.provider,
+                name: m.name,
+                status: m.status.unwrap_or(Status::Active),
+                efforts: m.efforts,
+                aa_ids: m.aa_ids,
+            });
+        }
+        Ok(GeneratedBlock {
+            aa: raw.aa,
+            providers,
+            models,
+            measurements: raw.measurements,
+        })
+    }
+}
+
 // ------------------------------------------------------------------ 読み込みと検査
 
 fn is_date(s: &str) -> bool {
@@ -434,9 +532,15 @@ impl Catalog {
             ));
         }
         let mut seen = BTreeSet::new();
+        let mut creators = BTreeSet::new();
         for p in &raw.providers {
             if !seen.insert(p.id.as_str()) {
                 return Err(format!("provider {} が重複", p.id));
+            }
+            if let Some(c) = &p.aa_creator {
+                if !creators.insert(c.as_str()) {
+                    return Err(format!("provider {}: aa_creator {c} が他と重複", p.id));
+                }
             }
         }
         let providers: BTreeMap<&str, &RawProvider> =
@@ -577,6 +681,14 @@ impl Catalog {
                 return Err(format!("aa.retrieved が日付でない: {}", aa.retrieved));
             }
         }
+        if let Some(d) = &raw.discovery {
+            if !is_date(&d.aa_release_since) {
+                return Err(format!(
+                    "discovery.aa_release_since が日付でない: {}",
+                    d.aa_release_since
+                ));
+            }
+        }
         let eq = &raw.equivalence;
         for (label, v) in [
             ("capability_margin_points", eq.capability_margin_points),
@@ -662,6 +774,12 @@ impl Catalog {
             if !keys.insert((r.model.as_str(), r.effort.as_str())) {
                 return Err(format!("measurement: ({}, {}) が重複", r.model, r.effort));
             }
+            if !is_date(&r.retrieved) {
+                return Err(format!(
+                    "measurement {}/{}: retrieved が日付でない: {}",
+                    r.model, r.effort, r.retrieved
+                ));
+            }
             for (bench, v) in &r.scores {
                 if !raw.benchmark.contains_key(bench) {
                     return Err(format!(
@@ -700,6 +818,7 @@ impl Catalog {
                 .collect(),
             models,
             benchmarks: raw.benchmark,
+            discovery: raw.discovery,
             equivalence: raw.equivalence,
             roles: raw.role,
             categories: raw.category,
@@ -903,7 +1022,7 @@ mod tests {
     fn measurement_block(extra: &str) -> String {
         format!(
             "[aa]\nretrieved = \"2026-10-27\"\nsource = \"https://example.com\"\nattribution = \"x\"\n\n\
-             [[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\n{extra}\n"
+             [[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\nretrieved = \"2026-10-27\"\n{extra}\n"
         )
     }
 
@@ -936,7 +1055,7 @@ mod tests {
         ))
         .unwrap_err();
         assert!(e.contains("有限の値でない"), "{e}");
-        let dup = format!("{}{}", measurement_block(""), "[[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\n");
+        let dup = format!("{}{}", measurement_block(""), "[[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\nretrieved = \"2026-10-27\"\n");
         let e = with_block(&dup).unwrap_err();
         assert!(e.contains("重複"), "{e}");
         let e =
@@ -949,7 +1068,7 @@ mod tests {
 
     #[test]
     fn measurement_without_attribution_block_is_rejected() {
-        let e = with_block("[[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\n").unwrap_err();
+        let e = with_block("[[measurement]]\nmodel = \"claude-opus-5-5\"\neffort = \"high\"\naa_name = \"n\"\naa_slug = \"s\"\nretrieved = \"2026-10-27\"\n").unwrap_err();
         assert!(e.contains("[aa] が無い"), "{e}");
     }
 
@@ -1064,6 +1183,36 @@ mod tests {
         let e = with(|t| t.replacen("history_share_min = 0.1", "history_share_min = 1.0", 1))
             .unwrap_err();
         assert!(e.contains("history_share_min"), "{e}");
+    }
+
+    #[test]
+    fn discovery_range_is_a_date_and_each_measurement_carries_its_own_retrieved_date() {
+        let c = data();
+        assert_eq!(c.discovery.as_ref().unwrap().aa_release_since, "2026-07-01");
+        assert!(c.measurements.iter().all(|m| m.retrieved == "2026-10-27"));
+        let e = with(|t| {
+            t.replacen(
+                "aa_release_since = \"2026-07-01\"",
+                "aa_release_since = \"July\"",
+                1,
+            )
+        })
+        .unwrap_err();
+        assert!(e.contains("aa_release_since"), "{e}");
+        let e = with_block(&measurement_block("").replacen(
+            "aa_slug = \"s\"\nretrieved = \"2026-10-27\"",
+            "aa_slug = \"s\"\nretrieved = \"yesterday\"",
+            1,
+        ))
+        .unwrap_err();
+        assert!(e.contains("retrieved が日付でない"), "{e}");
+    }
+
+    #[test]
+    fn rejects_two_providers_with_the_same_aa_creator() {
+        let e = with(|t| t.replacen("aa_creator = \"Anthropic\"", "aa_creator = \"OpenAI\"", 1))
+            .unwrap_err();
+        assert!(e.contains("aa_creator"), "{e}");
     }
 
     #[test]
