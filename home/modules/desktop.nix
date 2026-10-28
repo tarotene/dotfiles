@@ -43,6 +43,20 @@ let
   # see that file for the full rationale.
   nixGLWrap = import ./nixgl.nix { inherit pkgs; };
 
+  # Slack Technologies, slack-desktop_4.52.182_amd64.deb and SHA-256,
+  # retrieved 2026-10-28:
+  # https://packagecloud.io/slacktechnologies/slack/packages/debian/jessie/slack-desktop_4.52.182_amd64.deb?distro_version_id=25
+  # Pin the packagecloud artifact itself; equality with the separately hosted
+  # downloads.slack-edge.com artifact has not been established.
+  slackPackage = pkgs.slack.overrideAttrs (_: {
+    version = "4.52.182";
+    src = pkgs.fetchurl {
+      name = "slack-desktop-4.52.182-amd64.deb";
+      url = "https://packagecloud.io/slacktechnologies/slack/packages/debian/jessie/slack-desktop_4.52.182_amd64.deb/download.deb?distro_version_id=25";
+      hash = "sha256-Vo+edqFDperWlkUZLjgTGJf4WvdkXX2BiX82/arI9wA=";
+    };
+  });
+
   # Bound rather than inlined into home.packages: the launcher entry below
   # needs this exact derivation's store path for its Exec= (ADR-0029).
   alacrittyPackage = nixGLWrap pkgs.alacritty;
@@ -96,7 +110,7 @@ in
         #     replacement: Flatpak's own self-contained GL runtime sidesteps the
         #     mismatch entirely instead of trying to fix the nixGL/bwrap bridge.
         (nixGLWrap pkgs.google-chrome)
-        (nixGLWrap pkgs.slack)
+        (nixGLWrap slackPackage)
 
         # draw.io (#687): an Electron GUI, wrapped like Chrome/Slack so a GUI launch
         # uses nix's mesa instead of silently falling back to CPU rendering. The same
