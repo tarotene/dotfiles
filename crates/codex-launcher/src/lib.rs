@@ -9,6 +9,9 @@ struct Invocation {
     cwd: Option<PathBuf>,
 }
 
+/// The only `codex --version` output the argument vocabulary below has been reviewed against.
+const REVIEWED_VERSION: &str = "codex-cli 0.165.0";
+
 // Closed vocabulary. Values are data, not options; `--` ends option parsing.
 fn classify(args: &[OsString]) -> Result<Invocation, &'static str> {
     if args.len() == 1
@@ -330,11 +333,16 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
             .stderr(Stdio::null())
             .output()
             .map_err(|_| "cannot inspect native Codex version")?;
-        if !version.status.success() || version.stdout != b"codex-cli 0.165.0\n" {
-            return Err(
-                "unreviewed Codex version; update launcher vocabulary and repeat acceptance tests"
-                    .into(),
-            );
+        let found = String::from_utf8_lossy(&version.stdout);
+        let found = found.trim_end();
+        if !version.status.success() || found != REVIEWED_VERSION {
+            return Err(format!(
+                "unreviewed Codex version (found {:?}, reviewed {REVIEWED_VERSION:?}); \
+                 review the launcher vocabulary against that release, repeat the acceptance \
+                 tests, then update REVIEWED_VERSION (docs/codex-plan.md, \"起動ラッパーの版固定\")",
+                if found.is_empty() { "<no output>" } else { found }
+            )
+            .into());
         }
         let cwd = std::fs::canonicalize(
             invocation
