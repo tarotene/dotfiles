@@ -157,7 +157,9 @@ fn mcp_servers(rest: &[String]) -> Result<(), Failure> {
 }
 
 /// codex-hooks / copilot-hooks の旧 bash と同じ argv 形式。
-/// `<file> [--retire <event> <command>]... [--register] <tuples>...`。
+/// `<file> [--retire <event> <command>]... [--status-message <text>] [--register] <tuples>...`。
+/// `--status-message` は codex-hooks のみで、この呼び出しで登録するすべての hook の
+/// 表示名(`statusMessage`)にする。
 /// retire は pair ごとに `--retire` トークンを付ける(複数 pair の前に 1 つだけ
 /// 置く形は、後続の引数を 1 つずつずらして register を黙って no-op にした
 /// 実害があった、#576)。tuple の個数が割り切れない場合は usage エラー(2)。
@@ -191,6 +193,16 @@ fn argv_hooks(rest: &[String], flavor: Flavor) -> Result<(), Failure> {
         });
         a = &a[3..];
     }
+    let mut status_message = None;
+    if a.first().map(String::as_str) == Some("--status-message") {
+        if flavor != Flavor::Nested || a.len() < 2 {
+            return Err(usage(format!(
+                "{name}: --status-message は codex-hooks で <text> を 1 つ取る"
+            )));
+        }
+        status_message = Some(a[1].clone());
+        a = &a[2..];
+    }
     if a.first().map(String::as_str) == Some("--register") {
         a = &a[1..];
     }
@@ -215,6 +227,7 @@ fn argv_hooks(rest: &[String], flavor: Flavor) -> Result<(), Failure> {
             command,
             timeout: Some(timeout),
             if_rule: None,
+            status_message: status_message.clone(),
         });
     }
     edit(Path::new(file), |root| {

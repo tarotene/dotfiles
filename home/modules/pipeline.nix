@@ -64,6 +64,23 @@ in
       '';
     };
 
+    nodeLabels = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      internal = true;
+      default = builtins.listToAttrs (
+        map (n: {
+          name = n.id;
+          value = n.label;
+        }) pipelineMap.node
+      );
+      description = ''
+        pipeline-map.toml のノード id から label への対応。Codex の hook 登録の表示名
+        (`statusMessage`)に使う。Codex の `/hooks` は表示名の無い hook をすべて
+        `Unnamed hook` と表示するため(#1122)。
+      '';
+    };
+
     timerNodes = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };

@@ -75,6 +75,7 @@ in
           --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexMetadataCmd} \
           --retire Stop ${lib.escapeShellArg legacyCodexMetadataCmd} \
           --retire SessionEnd ${lib.escapeShellArg legacyCodexMetadataCmd} \
+          --status-message ${lib.escapeShellArg "herdr agent metadata"} \
           --register \
           SessionStart "" ${lib.escapeShellArg codexMetadataCmd} 10 \
           UserPromptSubmit "" ${lib.escapeShellArg codexMetadataCmd} 10 \

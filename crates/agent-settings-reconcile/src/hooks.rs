@@ -48,6 +48,10 @@ pub struct Register {
     /// 空文字または省略なら出力しない(Nested のみ)。
     #[serde(default, rename = "if")]
     pub if_rule: Option<String>,
+    /// ハンドラの表示名(`statusMessage`)。Codex の `/hooks` は、これが無い hook を
+    /// すべて `Unnamed hook` と表示する(#1122)。空文字または省略なら出力しない(Nested のみ)。
+    #[serde(default, rename = "statusMessage")]
+    pub status_message: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -209,7 +213,7 @@ fn event_list<'a>(
     }
 }
 
-/// 宣言の timeout / if を既存ハンドラへ反映する。未知のキーは残す。
+/// 宣言の timeout / if（と、宣言があれば statusMessage）を既存ハンドラへ反映する。未知のキーは残す。
 fn apply_handler_fields(h: &mut IndexMap<String, J>, r: &Register) {
     h.insert("type".into(), J::str("command"));
     h.insert("command".into(), J::str(&r.command));
@@ -228,6 +232,11 @@ fn apply_handler_fields(h: &mut IndexMap<String, J>, r: &Register) {
         None => {
             h.shift_remove("timeout");
         }
+    }
+    // 宣言があるときだけ書く。宣言の無いハンドラの既存の `statusMessage` は、他のツールや本人が
+    // 足した未知のキーと同じく残す（timeout / if と違い、宣言の無い値を消さない）。
+    if let Some(v) = nonempty(&r.status_message) {
+        h.insert("statusMessage".into(), J::str(v));
     }
 }
 

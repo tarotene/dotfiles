@@ -266,3 +266,104 @@ fn unknown_spec_field_is_rejected() {
     );
     assert_eq!(out.status.code(), Some(2));
 }
+
+fn read_json(f: &Path) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap()
+}
+
+#[test]
+fn declared_status_message_names_the_handler_and_undeclared_one_is_kept() {
+    // Codex の `/hooks` は statusMessage の無い hook を `Unnamed hook` と表示する(#1122)。
+    let (_d, f) = tmp_file(Some("{}\n"));
+    let named = r#"{"register":[{"event":"Stop","command":"a","statusMessage":"gate A"}]}"#;
+    assert!(run(&strs(&["codex-hooks-spec", named]), &f)
+        .status
+        .success());
+    assert_eq!(
+        read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "gate A"
+    );
+    // 宣言が無くなっても、ハンドラの既存の statusMessage は未知のキーと同じく消さない。
+    let plain = r#"{"register":[{"event":"Stop","command":"a"}]}"#;
+    assert!(run(&strs(&["codex-hooks-spec", plain]), &f)
+        .status
+        .success());
+    assert_eq!(
+        read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "gate A"
+    );
+    // 別の表示名を宣言すれば、その値に合わせる。
+    let renamed = r#"{"register":[{"event":"Stop","command":"a","statusMessage":"gate B"}]}"#;
+    assert!(run(&strs(&["codex-hooks-spec", renamed]), &f)
+        .status
+        .success());
+    assert_eq!(
+        read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "gate B"
+    );
+}
+
+#[test]
+fn argv_status_message_names_every_registered_tuple() {
+    let (_d, f) = tmp_file(Some("{}\n"));
+    let out = run(
+        &strs(&[
+            "codex-hooks",
+            "--retire",
+            "Stop",
+            "old",
+            "--status-message",
+            "metadata",
+            "--register",
+            "SessionStart",
+            "",
+            "cmd1",
+            "10",
+            "Stop",
+            "",
+            "cmd2",
+            "10",
+        ]),
+        &f,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = read_json(&f);
+    assert_eq!(
+        v["hooks"]["SessionStart"][0]["hooks"][0]["statusMessage"],
+        "metadata"
+    );
+    assert_eq!(
+        v["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
+        "metadata"
+    );
+}
+
+#[test]
+fn status_message_flag_without_a_value_or_for_copilot_is_usage_error() {
+    let (_d, f) = tmp_file(Some("{}\n"));
+    let out = run(
+        &strs(&["codex-hooks", "--retire", "Stop", "old", "--status-message"]),
+        &f,
+    );
+    assert_eq!(out.status.code(), Some(2));
+    let out = run(
+        &strs(&[
+            "copilot-hooks",
+            "--retire",
+            "Stop",
+            "old",
+            "--status-message",
+            "x",
+            "--register",
+            "Stop",
+            "cmd",
+            "10",
+        ]),
+        &f,
+    );
+    assert_eq!(out.status.code(), Some(2));
+}
