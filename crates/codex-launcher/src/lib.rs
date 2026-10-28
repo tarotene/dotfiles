@@ -245,10 +245,15 @@ fn validate_config(home: &Path, cwd: &Path) -> Result<String, String> {
             .and_then(|n| n.get("enabled"))
             .and_then(toml::Value::as_bool)
             != Some(true)
+        || profile
+            .get("network")
+            .and_then(|n| n.get("dangerously_allow_all_unix_sockets"))
+            .and_then(toml::Value::as_bool)
+            == Some(true)
         || config.get("sandbox_mode").is_some()
         || config.get("profile").is_some()
     {
-        return Err("native protective config requires a network-enabled :workspace profile and no legacy/profile override".into());
+        return Err("native protective config requires a network-enabled :workspace profile without unrestricted Unix sockets or legacy/profile override".into());
     }
     if config
         .get("profiles")

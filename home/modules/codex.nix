@@ -31,10 +31,7 @@ let
       );
       network = {
         enabled = true;
-        # Linux's reviewed proxy sandbox requires this for standalone AF_UNIX
-        # clients such as herdr; exact-path grants alone keep socket() denied.
-        # OpenAI rust-v0.164.0 linux-sandbox/src/seccomp.rs:254-269 (2026-10-27).
-        dangerously_allow_all_unix_sockets = true;
+        dangerously_allow_all_unix_sockets = false;
         domains = builtins.listToAttrs (
           map (domain: {
             name = domain;
@@ -105,6 +102,7 @@ in
       default = config.dotfiles.agentPermissions.domains ++ [
         # Read version-pinned upstream sources during investigation, including Plan mode.
         "raw.githubusercontent.com"
+        "api.business.githubcopilot.com"
       ];
       description = "Native Codex network proxy destinations.";
     };

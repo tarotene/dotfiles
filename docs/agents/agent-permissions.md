@@ -107,9 +107,7 @@ Codex 側の公式な設計指針の出典(OpenAI, ChatGPT Learn、公開日不�
 
 ### 宣言(`home/modules/codex.nix`)との食い違い
 
-- 食い違う: `dangerously_allow_all_unix_sockets = true`(`codex.nix` の `network` 節、herdr の AF_UNIX ソケットのため)。公式は
-  「Dangerous settings」に挙げ、「厳密に管理された環境でだけ使う」とする。sandbox から D-Bus・鍵束に届くかの実測は
-  #1159 が追跡している(公式の一文はそこへコメントした)。
+- 食い違わない: `dangerously_allow_all_unix_sockets = false`。herdr や署名が必要な操作は native の自動審査に渡す。
 - 食い違わない: `approval_policy = "on-request"`、`approvals_reviewer = "auto_review"`、`default_permissions` の名前付き profile が
   `:workspace` を継承すること、`features.network_proxy = true`、秘密パスの deny、通信先の allow、旧 `sandbox_mode` を併用しない
   こと(reconciler が取り除く)。

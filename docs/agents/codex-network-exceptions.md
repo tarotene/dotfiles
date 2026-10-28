@@ -1,7 +1,7 @@
 # Codex の調査用ネットワーク例外
 
 `home/modules/codex.nix` の `dotfiles.codexPermissions.domains` は、共有の宛先に
-`raw.githubusercontent.com` を加える。固定した版の upstream ソースを、Plan モードの
+`raw.githubusercontent.com` と `api.business.githubcopilot.com` を加える。固定した版の upstream ソースを、Plan モードの
 調査でも取得できるようにするためである。許可するのは通信先であり、書き込みや公開の
 許可ではない。秘密パスの拒否、資格情報の masking、通信 proxy は維持する。
 
@@ -22,10 +22,9 @@ sed -n '1,10p' /tmp/codex-permissions-source.rs
 
 ## herdr の Unix socket
 
-同じ profile の `network.dangerously_allow_all_unix_sockets = true` は、herdr の
-Unix socket クライアントを動かすための、本人が承認した例外である。herdr の socket
-だけに接続を限定する設定ではない。ファイルシステムから見えるほかの Unix socket にも
-接続できるため、すべての Unix socket を許可するものとして扱う。
+同じ profile の `network.dangerously_allow_all_unix_sockets` は false とする。
+herdr や署名付き Git 操作で socket が必要なときは native の自動審査に渡す。
+適用後の新しいセッションでの動作は未確認である。
 
 OpenAI, *Codex*, `rust-v0.164.0` の
 [`seccomp.rs` L254–269](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/linux-sandbox/src/seccomp.rs#L254-L269)
