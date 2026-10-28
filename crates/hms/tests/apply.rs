@@ -9,7 +9,8 @@
 use std::fs;
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::RwLock;
 
 const MAIN: &str = "github:tarotene/dotfiles";
 const WRAPPER: &str = "git+https://example.invalid/wrapper";
@@ -20,7 +21,23 @@ fn under_test() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_hms")))
 }
 
+/// 実行ファイルの書き込みと、子プロセスの fork→exec を重ねないための鍵(#1110)。
+///
+/// テストは並列に走る。ある実行ファイルを書いている最中(書き込み用の fd が開いている間)に、
+/// 別のスレッドが子プロセスを fork すると、子は fd の複製を exec まで持つ。その間に hms が
+/// そのスタブを exec すると `ETXTBSY`(Text file busy)で起動に失敗し、スタブが呼ばれなかった
+/// 形の assertion 失敗になる(rust-lang/rust#114554 と同じ型)。書く側が書き込み、起動する側が
+/// 読み取りの鍵を持つ。`spawn` は exec の成否を待ってから返るので、鍵を fork→exec の間だけ
+/// 持てばよい。
+static FORK_VS_WRITE: RwLock<()> = RwLock::new(());
+
+fn spawn_locked(c: &mut Command) -> Child {
+    let _g = FORK_VS_WRITE.read().unwrap_or_else(|e| e.into_inner());
+    c.spawn().unwrap()
+}
+
 fn exe(path: &Path, body: &str) {
+    let _g = FORK_VS_WRITE.write().unwrap_or_else(|e| e.into_inner());
     fs::write(path, format!("#!/usr/bin/env bash\n{body}\n")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
@@ -170,7 +187,10 @@ else printf '%s\n' '{"result":{"shown":true,"reason":null}}'; fi"#,
         for (k, v) in env {
             c.env(k, v);
         }
-        c.output().unwrap()
+        c.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        spawn_locked(&mut c).wait_with_output().unwrap()
     }
     /// `run` と同じ環境で子を起動したまま返す(排他のテストで 2 つ重ねる)。stderr は
     /// `stderr_to` のファイルへ流す — パイプだと読む側が居ない間に詰まりうる。
@@ -186,7 +206,7 @@ else printf '%s\n' '{"result":{"shown":true,"reason":null}}'; fi"#,
         for (k, v) in env {
             c.env(k, v);
         }
-        c.spawn().unwrap()
+        spawn_locked(&mut c)
     }
     fn state(&self) -> PathBuf {
         self.home().join(".local/state/hms")
@@ -678,7 +698,7 @@ impl T {
         for (k, v) in env {
             c.env(k, v);
         }
-        c.spawn().unwrap()
+        spawn_locked(&mut c)
     }
     fn started_out(&self) -> String {
         fs::read_to_string(self.dir.path().join("hms.out")).unwrap_or_default()
@@ -688,15 +708,14 @@ impl T {
     }
     /// 別セッションの適用: hms を通さず、スタブの `home-manager switch` が世代 `to` を有効にする。
     fn other_session_lands(&self, to: &Path) {
-        let st = Command::new(self.stubs().join("home-manager"))
-            .args(["switch", "--flake", "other#testhost"])
+        let mut c = Command::new(self.stubs().join("home-manager"));
+        c.args(["switch", "--flake", "other#testhost"])
             .env_clear()
             .env("HOME", self.home())
             .env("PATH", format!("{}:/usr/bin:/bin", self.stubs().display()))
             .env("STUB_DIR", self.stubs())
-            .env("HM_LANDS", to)
-            .status()
-            .unwrap();
+            .env("HM_LANDS", to);
+        let st = spawn_locked(&mut c).wait().unwrap();
         assert!(st.success());
     }
     fn profile_target(&self) -> PathBuf {

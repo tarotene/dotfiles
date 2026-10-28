@@ -146,6 +146,12 @@ pub fn is_judged_api_path(t: &str) -> bool {
     }
 }
 
+/// 展開されない絶対パスのリテラルか。変数・コマンド置換・チルダ・相対パスは、フックが
+/// 見る文字列と実行時の値が一致しないので、読めなくても判定不能のまま通す。
+fn is_literal_abs(p: &str) -> bool {
+    p.starts_with('/') && !p.contains(['$', '`', '*', '?', '\\'])
+}
+
 /// MCP の tool 名が書き込み系か(bash の `MCP_WRITE_RE` の部分一致)。
 pub fn is_mcp_write(tool: &str) -> bool {
     MCP_WRITE_WORDS.iter().any(|w| tool.contains(w))
@@ -191,6 +197,16 @@ impl Attribution {
         )
     }
 
+    /// 読めない `--body-file`(#1109)の理由文。読めない本文は footer の有無を確かめられず、
+    /// 黙って通すと付け忘れが残る。`gh` 自身もファイルが無ければ失敗するので、止めて失うものは
+    /// 無い。本文の Write と投稿を同じ応答で並列に出したときも、ここで止まる。
+    fn unreadable_reason(&self, path: &str) -> String {
+        format!(
+            "GitHub に投稿する本文ファイル {path} を読めないため、attribution の有無を確かめられません(deny)。本文は Write でファイルにし、その Write が成功してから、別の呼び出しで投稿してください(同じ応答で並列に出さない)。本文の末尾には「{}」を置いてください。",
+            self.footer()
+        )
+    }
+
     fn judge_text(&self, text: Option<String>) -> Option<String> {
         let text = text?;
         (!self.has_marker(&text)).then(|| self.deny_reason())
@@ -202,6 +218,11 @@ impl Attribution {
         let flags = BodyFlags::scan(tokens);
         if !flags.have_flag {
             return None; // 本文フラグ無し → 判定不能で通す
+        }
+        if flags.texts.is_empty() {
+            if let Some(p) = flags.unreadable_files.iter().find(|p| is_literal_abs(p)) {
+                return Some(self.unreadable_reason(p));
+            }
         }
         self.judge_text(assemble_body_text(
             &flags.texts,
@@ -295,6 +316,35 @@ pub fn hook(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1109: 読めない絶対パスの `--body-file` は、footer を確かめられないので deny する。
+    /// 読めない相対パス・標準入力・変数を含むパスは、実行時の値が分からないので通す。
+    #[test]
+    fn unreadable_body_file_is_denied_only_for_a_literal_absolute_path() {
+        let a = Attribution::CLAUDE;
+        let dir =
+            std::env::temp_dir().join(format!("attribution-guard-1109-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let missing = dir.join("not-written-yet.md");
+        let cmd =
+            |file: &str| format!("gh pr create -R o/r --base main --title t --body-file {file}");
+        let reason = a
+            .decide(&cmd(missing.to_str().unwrap()))
+            .expect("a missing absolute body file must be denied");
+        assert!(reason.contains("not-written-yet.md"), "{reason}");
+        assert!(reason.contains("Generated with"), "{reason}");
+        assert_eq!(a.decide(&cmd("relative/missing.md")), None);
+        assert_eq!(a.decide(&cmd("-")), None);
+        assert_eq!(a.decide(&cmd("\"$BODY\"")), None);
+        // 読めるファイルは従来どおり footer の有無で決まる。
+        let ok = dir.join("ok.md");
+        std::fs::write(&ok, a.footer()).unwrap();
+        assert_eq!(a.decide(&cmd(ok.to_str().unwrap())), None);
+        let bad = dir.join("bad.md");
+        std::fs::write(&bad, "## 課題\nfoo\n").unwrap();
+        assert!(a.decide(&cmd(bad.to_str().unwrap())).is_some());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn judged_paths() {
