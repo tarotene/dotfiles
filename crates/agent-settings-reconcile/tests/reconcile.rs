@@ -425,3 +425,47 @@ fn claude_allow_removed_from_the_declaration_is_removed_from_settings() {
     assert!(out.status.success());
     assert_eq!(allow(&f), ["Bash(manual *)", "mcp__s__a", "mcp__s__c"]);
 }
+
+#[test]
+fn auto_mode_allow_keeps_defaults_first_and_the_owners_entries() {
+    // #939: 分類器への例外は `autoMode.allow` に書く。`"$defaults"` が無いと既定の一覧が丸ごと
+    // 消えるので、必ず先頭に置く。本人が足した要素は残す。
+    let (_d, f) = tmp_file(Some(
+        r#"{"autoMode":{"classifyAllShell":true,"allow":["owner rule"]}}"#,
+    ));
+    let spec = r#"{"auto_mode_allow":["branch rule"]}"#;
+    let allow = |f: &Path| read_json(f)["autoMode"]["allow"].clone();
+    assert!(run(&strs(&["claude-permissions", spec]), &f)
+        .status
+        .success());
+    assert_eq!(
+        allow(&f),
+        serde_json::json!(["$defaults", "owner rule", "branch rule"])
+    );
+    // 冪等。classifyAllShell など他のキーには触れない。
+    let before = std::fs::read_to_string(&f).unwrap();
+    assert!(run(&strs(&["claude-permissions", spec]), &f)
+        .status
+        .success());
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), before);
+    assert_eq!(read_json(&f)["autoMode"]["classifyAllShell"], true);
+
+    // 無い設定から作る。
+    let (_d2, g) = tmp_file(Some("{}\n"));
+    assert!(run(&strs(&["claude-permissions", spec]), &g)
+        .status
+        .success());
+    assert_eq!(allow(&g), serde_json::json!(["$defaults", "branch rule"]));
+
+    // 宣言が空なら autoMode.allow を作らない。
+    let (_d3, h) = tmp_file(Some("{}\n"));
+    assert!(run(&strs(&["claude-permissions", r#"{"allow":[]}"#]), &h)
+        .status
+        .success());
+    assert!(read_json(&h).get("autoMode").is_none());
+
+    // 配列でない値は、黙って上書きせず runtime error にする。
+    let (_d4, k) = tmp_file(Some(r#"{"autoMode":{"allow":"x"}}"#));
+    let out = run(&strs(&["claude-permissions", spec]), &k);
+    assert!(!out.status.success());
+}

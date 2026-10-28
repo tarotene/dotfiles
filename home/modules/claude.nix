@@ -137,6 +137,13 @@ let
     ask = askRules;
     deny = secretReadRules;
     auto_mode_classify_all_shell = true;
+    # 分類器への例外（`autoMode.allow`、自然言語）。`Bash(git switch *)` などの allow ルールは、
+    # `classifyAllShell` が有効なあいだ停止されるので効かない。自分の worktree でのブランチ作成が
+    # 「共有資源の変更」(`[Modify Shared Resources]`)として拒否された（#939、2026-10-22 に 1 回）。
+    # main の checkout・ブランチの削除・push は含めない。`"$defaults"` は照合側が先頭に足す。
+    auto_mode_allow = [
+      "Creating or switching to a branch inside the agent's own linked git worktree (git switch -c, git switch, git checkout -b) is routine local work and not a change to shared resources. This does not cover creating branches in the main checkout of a repository, deleting branches, or pushing."
+    ];
     sandbox = {
       enabled = true;
       fail_if_unavailable = true;

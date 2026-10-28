@@ -25,6 +25,12 @@ Claude の入力は `dotfiles.claudePermissions.{extraAllow,secretPaths,sandboxD
 後者は `settings` と `mcp_allow` を持つ Codex の spec である。
 両 CLI の設定全体を symlink にしないため、モデル・trust などの本人の設定は書き込み可能なまま残る。
 Claude の `permissions.defaultMode = "plan"` と `autoMode.environment` は撤去時にも保持する。
+`autoMode.allow`（#939）は `auto_mode_allow` の宣言があるときだけ書く。先頭に `"$defaults"` を置き、本人が足した要素は残して
+宣言との和にする。自分の worktree での `git switch -c` が `[Modify Shared Resources]` で拒否された（2026-10-22 の
+1 回）のは、`classifyAllShell` が Bash の allow（`Bash(git switch *)`）を停止し、分類器が `.git` の保護パスを判定したため
+（Anthropic, "Configure auto mode"、<https://code.claude.com/docs/en/auto-mode-config>、取得 2026-10-28。#939 のコメントが逐語で引用）。
+分類器は `~/.claude/settings.json` の `autoMode` だけを読むので、この宣言は `agent-settings-reconcile claude-permissions` が
+そこへ書く。実セッションで拒否が出なくなるかは、適用後の観測で確かめる（この PR では未確認）。
 
 Codex の native writer は宣言した名前の profile だけを置き換え、古い通信先や書き込み許可を残さない。
 ほかの profile・モデル・trust は保持する。`default_permissions` を宣言するときは競合する旧
@@ -80,7 +86,7 @@ sandbox を外した再実行は自動モードの判定が「Safety Bypass」�
 | 層 | Claude の公式な指針 | Codex(`dotfiles` profile) | Claude の宣言 |
 |---|---|---|---|
 | 権限ルール | 評価順は deny → ask → allow。Bash ルールは「プログラムの周りの境界ではない」。引数を絞る Bash パターンは壊れやすい | Bash 前方一致の宣言なし。MCP は既定で毎回確認 | 狭い allow(`permissionRules`)と秘密パスの Read deny。広い Bash 前方一致は宣言しない |
-| 分類器 | 自動モードの分類器。`classifyAllShell` は全シェルを分類し Bash の allow を停止する | `auto_review` が全承認要求を審査する | `autoMode.classifyAllShell = true` |
+| 分類器 | 自動モードの分類器。`classifyAllShell` は全シェルを分類し Bash の allow を停止する。分類器への例外は `autoMode.allow`(自然言語)で書く。`"$defaults"` を含めないと既定の一覧が丸ごと消える | `auto_review` が全承認要求を審査する | `autoMode.classifyAllShell = true`、`autoMode.allow`(`"$defaults"` + 自分の linked worktree でのブランチ作成は可。main の checkout・ブランチ削除・push は含めない) |
 | sandbox | OS が強制する。直し方は `allowWrite`・`allowedDomains`・狭い `excludedCommands`。`autoAllowBashIfSandboxed` は既定 true。`WebFetch(domain:...)` の許可は通信先にも加わる | 常時 sandbox(全体 read・workspace write・秘密 deny・通信先を宣言) | `sandbox.enabled`・`failIfUnavailable`・`autoAllowBashIfSandboxed = true`・`allowedDomains`・`denyRead`・`excludedCommands` |
 | hook | hook の判定は deny / ask を越えられない | 同種の hook | 変更しない |
 
