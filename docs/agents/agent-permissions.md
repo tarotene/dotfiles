@@ -31,6 +31,15 @@ Codex の native writer は宣言した名前の profile だけを置き換え�
 `sandbox_mode` / `sandbox_workspace_write` を取り除く。これらの置換前には同じディレクトリに
 権限 0600 の `config.toml.native-permissions-backup.<内容のSHA-256>` を作り、現在値の一致を確かめて更新する。
 
+宣言から外した許可（`mcp_allow` から外した MCP 許可、Claude の `allow` から外した規則）は、
+hook と同じ「所有の記録」（`agent-settings-reconcile` の `managed`、#1161）で消す。
+前回の適用で書いた集合をホストごとのファイル（`~/.local/state/dotfiles/managed-allow-claude.json`・
+`managed-mcp-allow-codex.json`）に残し、次の適用で「前回あるが今回の宣言に無い」分だけを消す。
+所有は記録だけで決めるので、本人が手で足した規則・許可は残る。Codex の MCP 許可は
+`approval_mode = "approve"` のときだけ消し、本人が承認方式を変えたツールには触れない
+（`mcp_servers.<server>` 自体も残す）。記録が無い初回は何も消さず、撤回リスト（`retire_allow`）の
+完全一致だけが従来どおり効く。
+
 
 ## 認証 launcher は native の保護を確かめる
 

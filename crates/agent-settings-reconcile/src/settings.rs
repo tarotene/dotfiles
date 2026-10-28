@@ -29,6 +29,22 @@ pub struct PermissionsSpec {
     /// など他のキーには触れない。
     #[serde(default)]
     pub auto_mode_classify_all_shell: Option<bool>,
+    /// 所有の記録のファイル。あれば、前回書いたが今回の宣言に無い `allow` を消し、今回の
+    /// 宣言を記録する(#1161。`mcp_allow` から外した許可が残り続けた)。無ければ従来どおり
+    /// `retire_allow` の完全一致だけで消す。
+    #[serde(default)]
+    pub state: Option<String>,
+}
+
+/// 所有の記録の中で、`permissions.allow` の規則を表す種別。
+pub const ALLOW: &str = "allow";
+
+/// 宣言した `allow` の集合（所有の記録に書く値）。
+pub fn declared_allow(spec: &PermissionsSpec) -> crate::hooks::Managed {
+    spec.allow
+        .iter()
+        .map(|r| (ALLOW.to_owned(), r.clone()))
+        .collect()
 }
 
 /// `sandbox` のうち、宣言したキーだけを合わせる。真偽値は set-if-different、
@@ -100,7 +116,11 @@ fn string_array<'a>(
 /// retire を外し(allow は中間ワイルドカード入りも一律 strip)、宣言のうち
 /// まだ無いものを末尾に足す。`defaultMode` など他のキーには触らない。
 /// 旧 bash と同じく、無い配列は空配列として作る。
-pub fn permissions(root: &mut J, spec: &PermissionsSpec) -> Result<(), String> {
+pub fn permissions(
+    root: &mut J,
+    spec: &PermissionsSpec,
+    previous: Option<&crate::hooks::Managed>,
+) -> Result<(), String> {
     let top = root
         .as_obj_mut()
         .ok_or("トップレベルが JSON オブジェクトではない")?;
@@ -112,8 +132,15 @@ pub fn permissions(root: &mut J, spec: &PermissionsSpec) -> Result<(), String> {
     };
 
     let allow = string_array(perms, "allow")?;
+    // 前回の記録にあって今回の宣言に無い規則は、宣言から外されたものなので消す。所有は記録だけで
+    // 決める — 本人が手で足した規則は記録に無いので残る。
+    let dropped = |s: &str| {
+        previous.is_some_and(|p| {
+            p.contains(&(ALLOW.to_owned(), s.to_owned())) && !spec.allow.iter().any(|a| a == s)
+        })
+    };
     allow.retain(|v| match v.as_str() {
-        Some(s) => !spec.retire_allow.iter().any(|r| r == s) && !has_mid_wildcard(s),
+        Some(s) => !spec.retire_allow.iter().any(|r| r == s) && !has_mid_wildcard(s) && !dropped(s),
         None => true,
     });
     for r in &spec.allow {

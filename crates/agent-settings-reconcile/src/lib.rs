@@ -71,9 +71,7 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
     let rest = &args[1..];
     match sub.as_str() {
         "claude-hooks" | "codex-hooks-spec" => claude_hooks(rest),
-        "claude-permissions" => {
-            with_json_spec(rest, |root, spec| settings::permissions(root, &spec))
-        }
+        "claude-permissions" => claude_permissions(rest),
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
         "codex-config" | "codex-permissions" => {
@@ -134,6 +132,27 @@ fn claude_hooks(rest: &[String]) -> Result<(), Failure> {
     })?;
     if let (Some(path), Some(declared)) = (state, declared) {
         managed::store_if_changed(path, previous.as_ref(), &declared).map_err(fail)?;
+    }
+    Ok(())
+}
+
+/// `claude-permissions <settings.json> <spec-json>`。spec に `state` があれば、所有の記録を
+/// 使う: 前回書いたが今回の宣言に無い `allow` を消し、今回の宣言を記録する。記録は
+/// settings.json の書き込みが成功したあとにだけ更新する（`claude_hooks` と同じ）。
+fn claude_permissions(rest: &[String]) -> Result<(), Failure> {
+    let [file, spec] = rest else {
+        return Err(usage(USAGE));
+    };
+    let spec: settings::PermissionsSpec =
+        serde_json::from_str(spec).map_err(|e| usage(format!("spec-json: {e}")))?;
+    let state = spec.state.as_deref().map(Path::new);
+    let previous = state.and_then(managed::load);
+    edit(Path::new(file), |root| {
+        settings::permissions(root, &spec, previous.as_ref())
+    })?;
+    if let Some(path) = state {
+        managed::store_if_changed(path, previous.as_ref(), &settings::declared_allow(&spec))
+            .map_err(fail)?;
     }
     Ok(())
 }
