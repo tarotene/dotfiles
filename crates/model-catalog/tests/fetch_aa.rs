@@ -82,3 +82,83 @@ fn write_to_the_embedded_catalog_is_refused() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("--file"));
 }
+
+#[test]
+fn later_retrieval_date_without_data_change_preserves_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("catalog.toml");
+    std::fs::write(&file, include_str!("fixtures/catalog-hand-registered.toml")).unwrap();
+    assert!(fetch(&file, &["--write"]).status.success());
+    let before = std::fs::read(&file).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_model-catalog"))
+        .args([
+            "fetch-aa",
+            "--input",
+            FIXTURE,
+            "--retrieved",
+            "2026-10-29",
+            "--file",
+        ])
+        .arg(&file)
+        .arg("--write")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+}
+
+#[test]
+fn malformed_or_empty_response_never_modifies_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("catalog.toml");
+    let input = dir.path().join("response.json");
+    let original = include_str!("fixtures/catalog-hand-registered.toml");
+    std::fs::write(&file, original).unwrap();
+    for body in [
+        "not json",
+        r#"{"data":[]}"#,
+        r#"{"status":401,"data":[{"id":"x"}]}"#,
+        r#"{"data":[{}]}"#,
+    ] {
+        std::fs::write(&input, body).unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_model-catalog"))
+            .args(["fetch-aa", "--input"])
+            .arg(&input)
+            .arg("--file")
+            .arg(&file)
+            .arg("--write")
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "accepted {body}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn http_failure_does_not_write_or_echo_credentials() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("catalog.toml");
+    let original = include_str!("fixtures/catalog-hand-registered.toml");
+    std::fs::write(&file, original).unwrap();
+    let curl = dir.path().join("curl");
+    std::fs::write(&curl, "#!/bin/sh\nwhile IFS= read -r line; do :; done\necho secret-value >&2\nprintf '\\n401'\nexit 22\n").unwrap();
+    std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_model-catalog"))
+        .env("PATH", dir.path())
+        .env("ARTIFICIAL_ANALYSIS_API_KEY", "secret-value")
+        .args(["fetch-aa", "--file"])
+        .arg(&file)
+        .arg("--write")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("401"));
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("secret-value"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+}

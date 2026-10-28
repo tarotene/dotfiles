@@ -232,6 +232,18 @@ pub fn collect(
         .get("data")
         .and_then(Value::as_array)
         .ok_or("AA の応答に data の配列が無い")?;
+    if root.get("status").is_some_and(|s| s.as_u64() != Some(200)) {
+        return Err("AA の応答 status が 200 ではない".into());
+    }
+    if data.is_empty()
+        || data.iter().any(|row| {
+            row.get("id")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+        })
+    {
+        return Err("AA の応答に行が無いか、行 ID が不正".into());
+    }
     let rows: Vec<Row> = data.iter().filter_map(|r| parse_row(base, r)).collect();
     let by_id: BTreeMap<&str, &Row> = rows.iter().map(|r| (r.id, r)).collect();
 
@@ -719,7 +731,26 @@ pub fn run(text: &str, json: &str, retrieved: &str) -> Result<(Report, String), 
     let report = collect(&base, &prev, json, retrieved)?;
     let next = splice(text, &render_block(&report))?;
     Catalog::parse(&next).map_err(|e| format!("書き換え後のカタログが不正(書かない): {e}"))?;
-    Ok((report, next))
+    // 取得日だけの更新は差分にしない。実値が変わったときだけ新しい取得日を保存する。
+    fn semantic(block: &str) -> Result<toml::Value, String> {
+        let mut value: toml::Value = toml::from_str(block).map_err(|e| e.to_string())?;
+        if let Some(aa) = value.get_mut("aa").and_then(toml::Value::as_table_mut) {
+            aa.remove("retrieved");
+        }
+        if let Some(rows) = value
+            .get_mut("measurement")
+            .and_then(toml::Value::as_array_mut)
+        {
+            for row in rows {
+                if let Some(table) = row.as_table_mut() {
+                    table.remove("retrieved");
+                }
+            }
+        }
+        Ok(value)
+    }
+    let unchanged = semantic(block_of(text)?)? == semantic(block_of(&next)?)?;
+    Ok((report, if unchanged { text.to_owned() } else { next }))
 }
 
 #[cfg(test)]
