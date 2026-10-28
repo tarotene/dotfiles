@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+agent-observations = { path = "../agent-observations" }
 codex-launcher = { path = "../codex-launcher" }
 github-command = { path = "../github-command" }
 model-catalog = { path = "../model-catalog" }

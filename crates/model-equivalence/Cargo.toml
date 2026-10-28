@@ -9,9 +9,11 @@ description = "(モデル × エフォート)の乗り換え先を、同等性�
 # 統計は固定の z 値による四則演算だけで足りるので、統計 crate は足さない。
 # 履歴の収集は既存の gh CLI を呼ぶ。
 [dependencies]
+agent-observations = { path = "../agent-observations" }
 model-catalog = { path = "../model-catalog" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.151"
+toml = "1.1.8"
 
 [dev-dependencies]
 tempfile = "3.27.0"

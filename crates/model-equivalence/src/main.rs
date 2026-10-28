@@ -4,7 +4,8 @@
 //! model-equivalence lens [--days N] [--owners a,b] [--out PATH] [--list-orgs]
 //! model-equivalence compare --reference MODEL:EFFORT [--role ID] [--lens PATH] [--verbose]
 //!                           [--margin-points N] [--speed-margin R]
-//! model-equivalence render [--lens PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]
+//! model-equivalence observations [--days N] [--out PATH]
+//! model-equivalence render [--lens PATH] [--observations PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]
 //! ```
 //!
 //! `lens` は gh CLI で、自分の merge 済み PR のタイトルを読み、種類ごとの件数と期間だけを書く
@@ -12,6 +13,7 @@
 //! 変更ファイルの名前を REST で取って種類を推す。既定の対象は自分のアカウントだけで、組織は `--owners` で
 //! 明示したものだけを足す(会社の業務リポジトリを巻き込まないため)。
 
+use agent_observations::{experiment::Experiment, export::Observations};
 use model_catalog::{data, date};
 use model_equivalence::judge::{compare, role_default_margins, role_resolution, Margins, Verdict};
 use model_equivalence::lens::{files_endpoint, parse_filenames, parse_search_rows, Lens};
@@ -22,7 +24,7 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: model-equivalence lens [--days N] [--owners a,b] [--out PATH] [--list-orgs]\n       \
          model-equivalence compare --reference MODEL:EFFORT [--role ID] [--lens PATH] [--verbose] \
-         [--margin-points N] [--speed-margin R]\n       model-equivalence render [--lens PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]"
+         [--margin-points N] [--speed-margin R]\n       model-equivalence observations [--days N] [--out PATH]\n       model-equivalence render [--lens PATH] [--observations PATH] [--out PATH] [--plan-ref MODEL:EFFORT] [--execute-ref MODEL:EFFORT] [--fragment]"
     );
     ExitCode::from(2)
 }
@@ -318,7 +320,13 @@ fn cmd_compare(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
 fn cmd_render(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     let f = Flags::parse(
         args,
-        &["--lens", "--out", "--plan-ref", "--execute-ref"],
+        &[
+            "--lens",
+            "--out",
+            "--plan-ref",
+            "--execute-ref",
+            "--observations",
+        ],
         &["--fragment"],
     )?;
     let c = data();
@@ -337,11 +345,26 @@ fn cmd_render(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
         opts.execute_reference = v.to_owned();
     }
     let data_json = build_data(c, lens.as_ref(), &opts)?;
-    let html = if f.has("--fragment") {
+    let mut html = if f.has("--fragment") {
         render_fragment(&data_json)
     } else {
         render_document(&data_json)
     };
+    let observations: Option<Observations> = f
+        .get("--observations")
+        .map(|p| {
+            let text = std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}"))?;
+            serde_json::from_str(&text).map_err(|e| format!("invalid observations: {e}"))
+        })
+        .transpose()?;
+    if observations.as_ref().is_some_and(|o| o.schema != 1) {
+        return Err("unsupported observations schema".into());
+    }
+    let section = model_equivalence::render::render_observations(observations.as_ref());
+    html = html.replace(
+        &model_equivalence::render::render_observations(None),
+        &section,
+    );
     let out = f.get("--out").map_or_else(
         || default_lens_path().replace("lens.json", "page.html"),
         str::to_owned,
@@ -379,12 +402,72 @@ fn cmd_render(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn cmd_observations(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
+    let f = Flags::parse(args, &["--days", "--out"], &[])?;
+    let days: u32 = f
+        .get("--days")
+        .unwrap_or("14")
+        .parse()
+        .map_err(|_| "--days must be a number")?;
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").ok_or("HOME is required")?);
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".codex"));
+    let claude_home = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".claude"));
+    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let settings = config_home.join("codex-plan/settings.toml");
+    #[derive(serde::Deserialize)]
+    struct Settings {
+        experiment: Option<Experiment>,
+    }
+    let experiment = match std::fs::read_to_string(&settings) {
+        Ok(s) => {
+            let settings: Settings =
+                toml::from_str(&s).map_err(|e| format!("invalid codex-plan settings: {e}"))?;
+            settings.experiment
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("cannot read codex-plan settings: {e}")),
+    };
+    if let Some(e) = &experiment {
+        e.validate().map_err(|e| e.to_string())?;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs() as i64;
+    let observations = agent_observations::export::collect(
+        &codex_home,
+        &claude_home.join("projects"),
+        days,
+        now,
+        experiment.as_ref(),
+    )
+    .map_err(|e| e.to_string())?;
+    let out = f.get("--out").map_or_else(
+        || default_lens_path().replace("lens.json", "observations.json"),
+        str::to_owned,
+    );
+    if let Some(dir) = std::path::Path::new(&out).parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&observations).map_err(|e| e.to_string())? + "\n";
+    std::fs::write(&out, text).map_err(|e| format!("{out}: {e}"))?;
+    println!("観測を書き込み: {out}");
+    Ok(ExitCode::SUCCESS)
+}
+
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let result = match args.next().as_deref() {
         Some("lens") => cmd_lens(args),
         Some("compare") => cmd_compare(args),
         Some("render") => cmd_render(args),
+        Some("observations") => cmd_observations(args),
         _ => return usage(),
     };
     match result {
