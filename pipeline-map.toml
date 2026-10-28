@@ -145,6 +145,7 @@ node = [
   { id = "detect-drift", label = "detect-drift (weekly)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/detect-drift", auto = true },
   { id = "promotion-detect", label = "promotion-detect (daily)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["wrapup-to-issue", "evidence"], entity = "crates/promotion-detect", doc = "docs/agents/promotion-detect.md", auto = true },
   { id = "obsidian-backup", label = "obsidian-backup (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "obsidian-backup-stale-check", label = "obsidian-backup stale-check (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-maintenance", label = "obsidian-backup maintenance (weekly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-restore-test", label = "obsidian-backup restore-test (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "downloads-clean", label = "downloads-clean (14 days)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/downloads.nix", auto = true },
@@ -365,6 +366,7 @@ edge = [
   { from = "obsidian-backup-maintenance", to = "backblaze", kind = "file", label = "prune / check", pipelines = ["host-hygiene"] },
   { from = "obsidian-backup-restore-test", to = "backblaze", kind = "context", label = "restore", pipelines = ["host-hygiene"] },
   { from = "obsidian-backup", to = "herdr", kind = "notify", label = "failure toast", pipelines = ["host-hygiene"] },
+  { from = "obsidian-backup-stale-check", to = "herdr", kind = "notify", label = "stale toast", pipelines = ["host-hygiene"] },
   { from = "herdr", to = "user", kind = "notify", label = "sidebar / toast", pipelines = ["host-hygiene"] },
 
   # === Activity evidence
