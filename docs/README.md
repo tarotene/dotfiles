@@ -14,6 +14,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   preserving native permissions and history.
 - [`operations.md`](operations.md) — the canonical apply (`hms`), routine
   flake update, and the tool-layer decision flow for new tools.
+- [`local-state-backup.md`](local-state-backup.md) — local state backup, verification and recovery.
 - [`pipeline-map.md`](pipeline-map.md) — the map of every mechanism that
   fires without being typed (hooks, timers, workflows, git hooks): when it
   runs, what it hands to the next one, and the stack it runs on, with one
