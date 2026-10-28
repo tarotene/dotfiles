@@ -1,5 +1,5 @@
 //! Backblaze, b2_list_file_versions, updated 2026-09-11, retrieved 2026-10-28:
-//! https://www.backblaze.com/apidocs/b2-list-file-versions
+//! <https://www.backblaze.com/apidocs/b2-list-file-versions>
 use serde_json::Value;
 use std::collections::HashSet;
 use std::io::Write;
@@ -88,7 +88,7 @@ pub fn authorize(curl: &Path, key_id: &str, application_key: &str) -> Result<Val
 
 /// Refuse to infer an unfiltered listing from a token whose allowed scope has
 /// not been established. B2 authorize-account v4, retrieved 2026-10-28:
-/// https://www.backblaze.com/apidocs/b2-authorize-account
+/// <https://www.backblaze.com/apidocs/b2-authorize-account>
 pub fn authorize_scope(
     response: &Value,
     bucket_id: &str,
@@ -129,7 +129,7 @@ pub fn authorize_scope(
 /// Bind the listing to restic's S3 endpoint, bucket name and object prefix.
 /// restic v0.18.1: internal/backend/s3/config.go:56-105 (retrieved 2026-10-28).
 /// Bucket ID/name mapping: B2 b2_list_buckets v4 (retrieved 2026-10-28),
-/// https://www.backblaze.com/apidocs/b2-list-buckets.
+/// <https://www.backblaze.com/apidocs/b2-list-buckets>.
 pub fn verify_repository(
     curl: &Path,
     authorization: &Value,
