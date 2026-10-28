@@ -21,6 +21,32 @@ let
     pkgs.libsecret
     pkgs.restic
   ];
+  # 成功の印（ファイルの mtime）。バックアップ本体の unit が成功したときだけ、unit の ExecStartPost が
+  # 更新する。本体の実行ファイルが無い（203/EXEC）など、ExecStart が失敗すると ExecStartPost は走らず、
+  # 印は古いままになる。印を読む側は本体に依存しない（下の staleCheck、#1170 の完了条件 3）。
+  backupStamp = "${config.home.homeDirectory}/.local/state/dotfiles/obsidian-backup-last-success";
+  staleDays = 3;
+  staleCheck = pkgs.writeShellApplication {
+    name = "obsidian-backup-stale-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.herdr
+    ];
+    text = ''
+      # 印が無い間（この検査を入れた直後など）は、最初の検査の時刻から猶予を数える。
+      stamp=${lib.escapeShellArg backupStamp}
+      mkdir -p "$(dirname "$stamp")"
+      [ -e "$stamp" ] || touch "$stamp"
+      if [ -n "$(find "$stamp" -mtime -${toString staleDays})" ]; then
+        exit 0
+      fi
+      msg="Obsidian backup has not succeeded for ${toString staleDays}+ days (last success: $(date -r "$stamp" '+%F %T')); inspect systemctl --user status obsidian-backup*"
+      printf '%s\n' "$msg" >&2
+      herdr notification show "Obsidian backup stale" --body "$msg" --sound request >/dev/null 2>&1 || true
+      exit 1
+    '';
+  };
   serviceBase = {
     Unit = {
       Description = "Back up the personal Obsidian vault to Backblaze B2";
@@ -79,6 +105,23 @@ in
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
     Service.ExecStart = "${backupPath} backup --notify";
+    # 成功したときだけ印を更新する（ExecStart が失敗すると走らない）。
+    Service.ExecStartPost = "${pkgs.coreutils}/bin/install -D -m 0600 /dev/null ${backupStamp}";
+  };
+
+  # 本体の unit が「失敗する」ことには `--notify` が気づけるが、unit が起動すらできない
+  # （実行ファイルが無い、timer が発火しない）と、失敗の通知も出ない。2026-10-03 から約 25 日、
+  # バックアップが取れていなかったのに、`hms` の degraded まで気づかなかった（#1170）。
+  # 成功の印が ${toString staleDays} 日より古ければ、本体に依存せず（coreutils・findutils・herdr だけ）知らせる。
+  # 失敗した unit は、`hms` の degraded と `systemctl --user --failed` にも残る。
+  systemd.user.services.obsidian-backup-stale-check = {
+    Unit.Description = "Check that the Obsidian vault backup succeeded within the last ${toString staleDays} days";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${staleCheck}/bin/obsidian-backup-stale-check";
+      NoNewPrivileges = true;
+      PrivateTmp = true;
+    };
   };
 
   systemd.user.services.obsidian-backup-maintenance = lib.recursiveUpdate serviceBase {
@@ -106,6 +149,18 @@ in
       Persistent = true;
       RandomizedDelaySec = "30min";
       Unit = "obsidian-backup.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  dotfiles.pipeline.timerNodes.obsidian-backup-stale-check = "obsidian-backup-stale-check";
+  systemd.user.timers.obsidian-backup-stale-check = {
+    Unit.Description = "Check the Obsidian backup is not stale, daily";
+    Timer = {
+      OnCalendar = "daily";
+      Persistent = true;
+      RandomizedDelaySec = "1h";
+      Unit = "obsidian-backup-stale-check.service";
     };
     Install.WantedBy = [ "timers.target" ];
   };

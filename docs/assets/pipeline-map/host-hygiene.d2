@@ -248,6 +248,9 @@ l_timer: "Timers / periodic" {
   n_obsidian_backup: "obsidian-backup (daily)" {
     class: s_nix
   }
+  n_obsidian_backup_stale_check: "obsidian-backup stale-check (daily)" {
+    class: s_nix
+  }
   n_obsidian_backup_maintenance: "obsidian-backup maintenance (weekly)" {
     class: s_nix
   }
@@ -385,6 +388,9 @@ l_timer.n_obsidian_backup_restore_test -> l_external.n_backblaze: "restore" {
   class: e_context
 }
 l_timer.n_obsidian_backup -> l_external.n_herdr: "failure toast" {
+  class: e_notify
+}
+l_timer.n_obsidian_backup_stale_check -> l_external.n_herdr: "stale toast" {
   class: e_notify
 }
 l_external.n_herdr -> l_external.n_user: "sidebar / toast" {

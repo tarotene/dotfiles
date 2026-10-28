@@ -784,6 +784,27 @@ keyring is locked, Bitwarden is unavailable, a secret is missing, or B2
 rejects a request, the command exits non-zero; timer failures also emit a
 Herdr notification rather than reporting a success-shaped fallback.
 
+### Stale-backup detection (#1170)
+
+`--notify` only reports a unit that starts and then fails. A unit that cannot start at
+all (a missing executable, `status=203/EXEC`, as from 2026-10-03 when `obsidian-backup`
+was missing from `dotfiles-tools`) or a timer that never fires reports nothing, and the
+vault went unbacked-up for about 25 days before `hms` showed a degraded user session.
+
+`obsidian-backup.service` therefore touches a success stamp
+(`~/.local/state/dotfiles/obsidian-backup-last-success`) in `ExecStartPost`, which only
+runs after a successful `ExecStart`. `obsidian-backup-stale-check.timer` runs daily and
+fails `obsidian-backup-stale-check.service` (and raises a Herdr toast) when the stamp is
+older than 3 days. The check depends only on coreutils, findutils and herdr, not on the
+backup script, so a broken backup body cannot silence it. A missing stamp (the first run
+after this check is deployed) is created at that moment, so the 3-day grace starts at the
+first check.
+
+```bash
+systemctl --user status obsidian-backup-stale-check.service
+ls -l ~/.local/state/dotfiles/obsidian-backup-last-success   # mtime = last success
+```
+
 ### Retention, health checks, and restore tests
 
 The weekly maintenance service retains 7 daily, 5 weekly, and 12 monthly
