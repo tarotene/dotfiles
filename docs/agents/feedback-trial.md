@@ -62,6 +62,16 @@ IDs in the schema and checked again before saving. Recovery under the same turn
 ID preserves fragment numbering; an incomplete final JSONL record waits for its
 newline. Malformed completed records produce a diagnostic without consuming input.
 
+A well-formed analysis that cannot be used (fragment decisions omitted or duplicated, or an
+observation citing lines outside its fragment and context) is *rejected*, not a service
+failure (#1134). The collector keeps the pending input, records the reason in
+`collector.last_error` (shown as `collector_error=true` in the trial report and blocking
+finalization), prints `<reason>; pending state retained` to stderr (the journal), and exits 0,
+so the periodic `feedback-trial-collect.service` does not turn `failed` and make the systemd
+user session `degraded` on every tick. The next run retries the same input and clears
+`last_error` once it succeeds. Failed model execution, timeouts and invalid JSON still exit
+non-zero.
+
 Finalization takes the collector lock and rejects unread or unfinished input and
 unresolved collection errors. The collector also checks finalization before
 committing results, so stopping the trial cannot silently discard its backlog.

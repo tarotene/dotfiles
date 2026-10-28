@@ -18,6 +18,22 @@ pub(super) struct Progress {
     pub last_error: String,
 }
 
+/// The model's analysis was well-formed JSON but unusable (missing or duplicated fragment
+/// decisions, or an observation citing lines outside its fragment). Nothing in the input is wrong
+/// to retry on the next run, so `collect` records it in `last_error` (visible in the trial report
+/// and blocking finalization) and exits 0: a periodic service must not turn into `failed`
+/// because the model answered badly.
+#[derive(Debug)]
+struct AnalysisRejected(&'static str);
+
+impl std::fmt::Display for AnalysisRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for AnalysisRejected {}
+
 #[derive(Clone, Serialize)]
 struct Segment {
     id: String,
@@ -399,7 +415,7 @@ fn analyze(batch: &[Segment], root: &Path) -> Result<Analysis> {
     let expected: BTreeSet<_> = batch.iter().map(|s| &s.id).collect();
     let actual: BTreeSet<_> = analysis.decisions.iter().map(|d| &d.id).collect();
     if expected != actual || analysis.decisions.len() != batch.len() {
-        return Err("analysis omitted or duplicated fragment decisions".into());
+        return Err(AnalysisRejected("analysis omitted or duplicated fragment decisions").into());
     }
     for d in &analysis.decisions {
         let s = batch
@@ -416,7 +432,7 @@ fn analyze(batch: &[Segment], root: &Path) -> Result<Analysis> {
                     (*n < s.first_line || *n > s.last_line) && !s.context_lines.contains(n)
                 })
             {
-                return Err("invalid observation or source reference".into());
+                return Err(AnalysisRejected("invalid observation or source reference").into());
             }
         }
     }
@@ -521,6 +537,10 @@ pub(super) fn collect(dry_run: bool) -> Result<()> {
             state.collector.last_error = message.clone();
             Ok(())
         })?;
+        if error.downcast_ref::<AnalysisRejected>().is_some() {
+            eprintln!("{message}; pending state retained");
+            return Ok(());
+        }
         return Err(error);
     }
     Ok(())
