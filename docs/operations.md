@@ -722,8 +722,14 @@ ps -eo pid,ni,cls,comm,cgroup | grep -E 'cosmic-session|cosmic-comp|alacritty|ni
 Roll back: `sudo rm /etc/system76-scheduler/process-scheduler/desktop-priority.kdl`
 then `sudo systemctl restart com.system76.Scheduler.service`.
 
-Things this does not settle: whether pop-shell's foreground boost works under
-COSMIC (unverified); and `.service` apps autostarted by the session
+The `foreground` assignment does not work under COSMIC, and there is nothing to
+configure: the daemon does not look at focus, it only learns the foreground
+process when something calls `SetForegroundProcess(pid)` on D-Bus, and the only
+caller found is pop-shell, a GNOME Shell extension (#1214; sources and dates in
+the ADR-0001 Amendment for #1056). Whole-session nice 0 above is therefore the
+whole effect; a foreground/background split would need a COSMIC-side caller.
+
+Things this does not settle: `.service` apps autostarted by the session
 (`app-*@autostart.service`) stay at the packaged `session-services` nice 9.
 
 ## Obsidian vault backup
