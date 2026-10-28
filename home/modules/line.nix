@@ -12,11 +12,13 @@
 # programs.chromium, and gives it a dedicated `--app=chrome-extension://…`
 # launcher entry (config/applications/LINE.desktop) so it looks and starts
 # like a normal app. A real Linux-native client would still be preferable —
-# Waydroid + the Android LINE app is the closer equivalent — but personal-pop's
-# kernel (6.17.4-76061704-generic) ships with
-# CONFIG_ANDROID_BINDER_IPC unset, so Waydroid would need an out-of-tree DKMS
-# binder module in the system layer, an unstable foundation to build on.
-# Revisit once #249 (CachyOS migration, binder support in-tree) lands.
+# Waydroid + the Android LINE app is the closer equivalent. On the old kernel
+# (6.17.4-76061704-generic, CONFIG_ANDROID_BINDER_IPC unset) that needed an
+# out-of-tree DKMS binder module; vega's 7.2.6 has the in-tree Rust binder
+# (CONFIG_ANDROID_BINDER_IPC_RUST=y, read 2026-10-28), so the CachyOS migration
+# (#249, now on hold) is no longer the precondition. `waydroid` is declared in
+# home/hosts/vega.nix's apt list; whether it runs, and whether it replaces this
+# launcher, is open — docs/waydroid.md, #323. This launcher stays until then.
 #
 # Identity-scoped rather than in desktop.nix on purpose, same judgment as
 # warp-terminal (#9) and esa (ADR-0022, see that module) — LINE is a personal

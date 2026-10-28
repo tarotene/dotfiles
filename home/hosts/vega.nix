@@ -167,5 +167,17 @@ in
     "antigravity"
     "firefox-trunk"
     "arandr"
+
+    ""
+    "# Android container (Waydroid, for the Android LINE app — #323): a root-owned"
+    "# container runtime plus the kernel's binder, so it cannot be a user-space"
+    "# package. The package comes from the project's own apt repo, which"
+    "# scripts/install-packages.sh adds when this line is present. vega's kernel"
+    "# 7.2.6 has CONFIG_ANDROID_BINDER_IPC_RUST=y and lists binder in"
+    "# /proc/filesystems (read 2026-10-28), so no out-of-tree DKMS module is"
+    "# needed. Declared before it is proven to run: mounting binderfs, the Rust"
+    "# binder with Waydroid, and the Android init are all unverified —"
+    "# docs/waydroid.md has the steps and what is still open."
+    "waydroid"
   ];
 }
