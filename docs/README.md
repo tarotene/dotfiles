@@ -450,6 +450,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1068](adr/1068-hms-follow-main.md) — main が進んだら `hms --follow` が自動で追従する。ただし、いまの世代を引数なしの `hms` が作った場合だけで、`hms .` などで当てた検証用の世代・hms を通さない switch・許可ポリシーの変更を含む main には当てず、herdr の通知で 1 回だけ知らせる。適用は hms 全体で 1 つのロックで直列にする。
 - [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
 - [ADR-1228](adr/1228-system-layer-declarations.md) — Linux と macOS のシステム層の対象設定を system-manager と nix-darwin で宣言し、root 適用を home-manager と分ける。
+- [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、再訪の条件(固まりが負荷の高い区間に残る・AUR にしか無い必要なパッケージ・会社の EDR の明言)を atop の記録で確かめる。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 

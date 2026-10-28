@@ -732,6 +732,42 @@ whole effect; a foreground/background split would need a COSMIC-side caller.
 Things this does not settle: `.service` apps autostarted by the session
 (`app-*@autostart.service`) stay at the packaged `session-services` nice 9.
 
+## Freeze trace (vega): atop's raw recording
+
+Rationale: ADR-1237 (#249 is on hold; its first revisit
+condition is "the freezes remain in a CPU-heavy interval after the updates").
+`home/modules/atop-trace.nix` runs `atop -w` as a user service on `vega` only:
+one raw file per day, `~/.local/state/atop/atop_YYYYMMDD`, every 10 seconds, the
+last 3 days kept (about 65 MB a day, measured 2026-10-28). It runs without root,
+so short-lived processes that exit between two samples are not recorded.
+
+When the desktop freezes, leave a mark with the time:
+
+```bash
+logger -t freeze-mark "UI froze for a few seconds"
+```
+
+Read it back later (no root needed):
+
+```bash
+journalctl --user -t freeze-mark --since today        # when the marks were left
+atop -r ~/.local/state/atop/atop_$(date +%Y%m%d)      # t = next sample, T = previous, b = jump to a time
+atop -r ~/.local/state/atop/atop_$(date +%Y%m%d) -P PSI | tail -n 30   # pressure (parseable); avg10 / avg60 / avg300
+```
+
+Check the service is recording (after `hms`; the file should grow every 10 seconds):
+
+```bash
+systemctl --user status atop-trace.service
+ls -l ~/.local/state/atop/
+```
+
+How to read it (the decision table in the #249 comment of 2026-10-26): a freeze
+that coincides with a high CPU `some` pressure points to the scheduler priorities
+first; a freeze with low pressure while `cosmic-comp` spikes in CPU is a
+compositor problem to report upstream. Judge only after 1–2 days of recording.
+To stop: `systemctl --user disable --now atop-trace.service`.
+
 ## Obsidian vault backup
 
 `home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and

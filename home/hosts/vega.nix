@@ -43,6 +43,7 @@ in
     ../identities/personal.nix
     ../modules/obsidian.nix
     ../modules/github-apps.nix
+    ../modules/atop-trace.nix
   ];
 
   # Per-machine sign subkey. On-disk, annual rotation (ADR-0003 Amendment 3).
