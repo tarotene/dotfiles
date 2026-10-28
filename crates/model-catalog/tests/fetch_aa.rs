@@ -25,7 +25,8 @@ fn fetch(file: &std::path::Path, extra: &[&str]) -> std::process::Output {
 fn write_registers_the_in_range_models_and_a_second_write_changes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("catalog.toml");
-    let original = model_catalog::CATALOG_TOML;
+    // 手登録だけの固定の土台（実カタログには自動登録が入っていくので使わない、#1188）。
+    let original = include_str!("fixtures/catalog-hand-registered.toml");
     std::fs::write(&file, original).unwrap();
 
     // --write なしでは書かない。

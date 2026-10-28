@@ -504,24 +504,900 @@ retrieved = "2026-10-27"
 
 # BEGIN GENERATED (model-catalog fetch-aa) — do not edit by hand
 [aa]
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 source = "https://artificialanalysis.ai/api/v2/data/llms/models"
 attribution = "Artificial Analysis (https://artificialanalysis.ai/)"
 prompt_length_tokens = 1000
 parallel_queries = 1
+
+[[provider]]
+id = "ai9stars"
+name = "AI9Stars"
+aa_creator = "AI9Stars"
+
+[[provider]]
+id = "alibaba"
+name = "Alibaba"
+aa_creator = "Alibaba"
+
+[[provider]]
+id = "apodex"
+name = "Apodex"
+aa_creator = "Apodex"
+
+[[provider]]
+id = "celeris"
+name = "Celeris"
+aa_creator = "Celeris"
+
+[[provider]]
+id = "china-mobile"
+name = "China Mobile"
+aa_creator = "China Mobile"
+
+[[provider]]
+id = "deepseek"
+name = "DeepSeek"
+aa_creator = "DeepSeek"
+
+[[provider]]
+id = "google"
+name = "Google"
+aa_creator = "Google"
+
+[[provider]]
+id = "ibm"
+name = "IBM"
+aa_creator = "IBM"
+
+[[provider]]
+id = "inception"
+name = "Inception"
+aa_creator = "Inception"
+
+[[provider]]
+id = "inclusionai"
+name = "InclusionAI"
+aa_creator = "InclusionAI"
+
+[[provider]]
+id = "institute-of-foundation-models"
+name = "Institute of Foundation Models"
+aa_creator = "Institute of Foundation Models"
+
+[[provider]]
+id = "kimi"
+name = "Kimi"
+aa_creator = "Kimi"
+
+[[provider]]
+id = "lg-ai-research"
+name = "LG AI Research"
+aa_creator = "LG AI Research"
+
+[[provider]]
+id = "liquid-ai"
+name = "Liquid AI"
+aa_creator = "Liquid AI"
+
+[[provider]]
+id = "meta"
+name = "Meta"
+aa_creator = "Meta"
+
+[[provider]]
+id = "minimax"
+name = "MiniMax"
+aa_creator = "MiniMax"
+
+[[provider]]
+id = "mistral"
+name = "Mistral"
+aa_creator = "Mistral"
+
+[[provider]]
+id = "motif-technologies"
+name = "Motif Technologies"
+aa_creator = "Motif Technologies"
+
+[[provider]]
+id = "multiverse-computing"
+name = "Multiverse Computing"
+aa_creator = "Multiverse Computing"
+
+[[provider]]
+id = "nvidia"
+name = "NVIDIA"
+aa_creator = "NVIDIA"
+
+[[provider]]
+id = "openbmb"
+name = "OpenBMB"
+aa_creator = "OpenBMB"
+
+[[provider]]
+id = "reflection"
+name = "Reflection"
+aa_creator = "Reflection"
+
+[[provider]]
+id = "sapiens-ai"
+name = "Sapiens AI"
+aa_creator = "Sapiens AI"
+
+[[provider]]
+id = "sk-telecom"
+name = "SK Telecom"
+aa_creator = "SK Telecom"
+
+[[provider]]
+id = "spacexai"
+name = "SpaceXAI"
+aa_creator = "SpaceXAI"
+
+[[provider]]
+id = "stepfun"
+name = "StepFun"
+aa_creator = "StepFun"
+
+[[provider]]
+id = "tencent"
+name = "Tencent"
+aa_creator = "Tencent"
+
+[[provider]]
+id = "thinking-machines"
+name = "Thinking Machines"
+aa_creator = "Thinking Machines"
+
+[[provider]]
+id = "upstage"
+name = "Upstage"
+aa_creator = "Upstage"
+
+[[provider]]
+id = "xiaomi"
+name = "Xiaomi"
+aa_creator = "Xiaomi"
+
+[[provider]]
+id = "z-ai"
+name = "Z AI"
+aa_creator = "Z AI"
+
+[[model]]
+id = "a-x-k2"
+provider = "sk-telecom"
+name = "A.X-K2"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "8215372b-66ff-457b-855e-e8abeafc9571"
+
+[[model]]
+id = "agnes-2-5-pro-beta"
+provider = "sapiens-ai"
+name = "Agnes 2.5 Pro Beta"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "f3a0e101-086f-44b3-a1b2-d23498f9716b"
+
+[[model]]
+id = "apodex-1-1"
+provider = "apodex"
+name = "Apodex 1.1"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "08242385-ee91-4de6-be7f-271a6d9780ce"
+
+[[model]]
+id = "beam-1-0"
+provider = "reflection"
+name = "Beam 1.0"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "69468cce-7b5c-414a-b498-41df4c34df85"
+
+[[model]]
+id = "celeris-1"
+provider = "celeris"
+name = "Celeris-1"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "8014c311-fa23-4a4b-8485-8a864db8a113"
+
+[[model]]
+id = "claude-opus-5"
+provider = "anthropic"
+name = "Claude Opus 5"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+"low" = "20928ba9-3a3f-415f-9519-b84ff64ecf34"
+"medium" = "ff51be8f-e362-4a7e-9043-687ba15de207"
+"high" = "712be54a-77ae-41b2-9a58-21181479d6ee"
+"xhigh" = "1305c921-7aaa-4d6d-99b5-99b3acf15e19"
+"max" = "b8fc61f7-5e9a-49e6-8547-6ac56db24627"
+
+[[model]]
+id = "deepseek-v4-1-flash"
+provider = "deepseek"
+name = "DeepSeek V4.1 Flash"
+efforts = ["max", "non-reasoning"]
+
+[model.aa_ids]
+"max" = "dbe7c625-3100-4463-b479-a228c41f75dd"
+"non-reasoning" = "73c96f99-0de3-4668-a4bd-b106a0fe18f2"
+
+[[model]]
+id = "deepseek-v4-1-flash-1017"
+provider = "deepseek"
+name = "DeepSeek V4.1 Flash 1017"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "f151fd0b-2139-40cf-a3ec-995e8cedc592"
+
+[[model]]
+id = "deepseek-v4-flash-0731"
+provider = "deepseek"
+name = "DeepSeek V4 Flash 0731"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "fe4c0848-e284-4e52-a79d-cdc28392f1a9"
+
+[[model]]
+id = "deepseek-v4-flash-vision"
+provider = "deepseek"
+name = "DeepSeek V4 Flash Vision"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "7707a46f-895f-4247-b7a8-ddab87c9a11d"
+
+[[model]]
+id = "deepseek-v4-pro-0813"
+provider = "deepseek"
+name = "DeepSeek V4 Pro 0813"
+efforts = ["max", "non-reasoning"]
+
+[model.aa_ids]
+"max" = "83173329-c09a-41f1-a028-a282a5f908d7"
+"non-reasoning" = "d4f5b250-be37-4801-85e6-32fda4179337"
+
+[[model]]
+id = "g9v3-39a5b"
+provider = "ai9stars"
+name = "G9v3-39A5B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "c1c5db7c-968f-445a-a274-7b5689348bf8"
+
+[[model]]
+id = "g9v3-3b"
+provider = "ai9stars"
+name = "G9v3-3B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "2ffa7571-fa78-453a-b589-9aa3fac702d2"
+
+[[model]]
+id = "gemini-3-5-flash-lite"
+provider = "google"
+name = "Gemini 3.5 Flash-Lite"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "093b9df2-ebee-4309-943f-5a7e88360adf"
+
+[[model]]
+id = "gemini-3-6-flash"
+provider = "google"
+name = "Gemini 3.6 Flash"
+efforts = ["high"]
+
+[model.aa_ids]
+"high" = "78332c88-fe60-42c8-af9d-3617e44cf1f5"
+
+[[model]]
+id = "gemini-3-7-flash"
+provider = "google"
+name = "Gemini 3.7 Flash"
+efforts = ["low", "medium", "high"]
+
+[model.aa_ids]
+"low" = "ddfdaf64-3f8e-40a6-a492-608ee83a1351"
+"medium" = "eb0d4272-7204-42b9-b875-8866fed58548"
+"high" = "b2331108-72ed-415a-82d1-188633875bbc"
+
+[[model]]
+id = "gemini-3-8-flash"
+provider = "google"
+name = "Gemini 3.8 Flash"
+efforts = ["low", "medium", "high"]
+
+[model.aa_ids]
+"low" = "f6db039b-0f3b-485c-9d7f-982988e44f26"
+"medium" = "744fa3c1-42a7-4995-b138-fb6be11f463c"
+"high" = "8a999846-4c1d-4ce7-a8b7-1310a7166fd7"
+
+[[model]]
+id = "gemini-4-argon"
+provider = "google"
+name = "Gemini 4 Argon"
+efforts = ["high"]
+
+[model.aa_ids]
+"high" = "d366dfa1-d940-4788-aa73-d298c45699b3"
+
+[[model]]
+id = "glm-5-3"
+provider = "z-ai"
+name = "GLM-5.3"
+efforts = ["low", "max"]
+
+[model.aa_ids]
+"low" = "cc1e488b-8ba4-464d-875d-690166b15ad3"
+"max" = "cd684ea4-b475-4269-b001-d469d06d8a7a"
+
+[[model]]
+id = "glm-5-3-flash"
+provider = "z-ai"
+name = "GLM-5.3-Flash"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "19496b81-9f41-4214-a77a-1df803b3c5ae"
+
+[[model]]
+id = "gpt-5-6-luna"
+provider = "openai"
+name = "GPT-5.6 Luna"
+efforts = ["low", "medium", "high", "xhigh", "max", "non-reasoning"]
+
+[model.aa_ids]
+"low" = "050c61cd-cddc-463a-a30a-a82aaa37be59"
+"medium" = "58b812bf-8498-46db-b834-f43ccc614b61"
+"high" = "aa55297e-8fbf-4372-b4ab-9b068dc6396c"
+"xhigh" = "87110ff0-1f79-41b4-9976-eda250597317"
+"max" = "426d24c8-49ae-482a-b4a8-20f1c53f21c1"
+"non-reasoning" = "dc64f856-3ded-497d-9527-d41d31267ed5"
+
+[[model]]
+id = "gpt-5-6-sol"
+provider = "openai"
+name = "GPT-5.6 Sol"
+efforts = ["low", "medium", "high", "xhigh", "max", "non-reasoning"]
+
+[model.aa_ids]
+"low" = "0904b596-8932-43bd-9b21-324f128e1723"
+"medium" = "6f174934-5b7d-4333-86cb-f5ebf4a862e3"
+"high" = "8afc250d-b538-45a2-812a-4605f4ffd87e"
+"xhigh" = "d998db47-9b67-4727-a2bb-2e1261020ac0"
+"max" = "d93edfe8-bf35-49ad-b56e-b18116142a1c"
+"non-reasoning" = "7c4d1e30-6ecb-46cf-880c-41446d7b51f1"
+
+[[model]]
+id = "gpt-5-6-terra"
+provider = "openai"
+name = "GPT-5.6 Terra"
+efforts = ["low", "medium", "high", "xhigh", "max", "non-reasoning"]
+
+[model.aa_ids]
+"low" = "cc4a20cd-09fe-4962-a430-119c815e85fa"
+"medium" = "26e0f83a-ca98-4f34-94ac-7c5e251ee410"
+"high" = "81972fba-1219-477e-bbfb-18c656a63ff7"
+"xhigh" = "9e30696f-16fa-4b4f-ba53-161895a85fed"
+"max" = "bcf8db0a-3bb6-4d82-9516-0f57370c85a6"
+"non-reasoning" = "9b97a35e-6ac7-44d9-91c6-422fa678963e"
+
+[[model]]
+id = "granite-4-2-30b"
+provider = "ibm"
+name = "Granite 4.2 30B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "1071dea1-43e7-4fe9-b936-3034bb622b2e"
+
+[[model]]
+id = "granite-4-2-3b"
+provider = "ibm"
+name = "Granite 4.2 3B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "0c64b008-20c3-408d-bd68-15136df8cd2c"
+
+[[model]]
+id = "granite-4-2-8b"
+provider = "ibm"
+name = "Granite 4.2 8B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "adfae555-f489-4f3e-9064-c6b7fcdd0783"
+
+[[model]]
+id = "grok-4-5"
+provider = "spacexai"
+name = "Grok 4.5"
+efforts = ["high"]
+
+[model.aa_ids]
+"high" = "794f69b5-cede-482b-b1cc-d769478497cd"
+
+[[model]]
+id = "grok-4-6"
+provider = "spacexai"
+name = "Grok 4.6"
+efforts = ["low", "medium", "high", "xhigh"]
+
+[model.aa_ids]
+"low" = "c07e65e6-32fc-451e-938d-7477a1c3ffcc"
+"medium" = "26614164-6840-4e17-a65a-2deb2fe7e87b"
+"high" = "c8adc5cf-fd5a-407b-af51-dc3bede3e49c"
+"xhigh" = "d6f43d0a-e8c4-447c-9ff7-5cf0a9d59aa3"
+
+[[model]]
+id = "grok-4-7"
+provider = "spacexai"
+name = "Grok 4.7"
+efforts = ["low", "high", "xhigh"]
+
+[model.aa_ids]
+"low" = "208c16f0-8c5b-4524-ac8a-ac74c02e80a9"
+"high" = "272f5f03-aea9-4675-a244-2b753b618cdf"
+"xhigh" = "59627802-1546-422c-9a65-65b61c022d36"
+
+[[model]]
+id = "hy3"
+provider = "tencent"
+name = "Hy3"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "b23e6c69-96e5-44c9-8f58-4b42e0c399d5"
+
+[[model]]
+id = "inkling"
+provider = "thinking-machines"
+name = "Inkling"
+efforts = ["xhigh"]
+
+[model.aa_ids]
+"xhigh" = "0de09623-2b1a-4c8d-86ef-7f5245d4e24b"
+
+[[model]]
+id = "inkling-small"
+provider = "thinking-machines"
+name = "Inkling Small"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "7261504e-503c-4a66-a9d3-a3272cdf9ad6"
+
+[[model]]
+id = "jt-4-1-flash-236b-a21b"
+provider = "china-mobile"
+name = "JT-4.1 Flash 236B A21B"
+efforts = ["reasoning", "non-reasoning"]
+
+[model.aa_ids]
+"reasoning" = "46f11cdf-1725-4abb-b39b-bd6bd948149c"
+"non-reasoning" = "901ec71b-51ec-4f53-b807-06ee17b890b4"
+
+[[model]]
+id = "k-exaone-2-0-0803"
+provider = "lg-ai-research"
+name = "K-EXAONE 2.0 0803"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "18721247-4e56-4cf7-9a9d-c71cc60c0961"
+
+[[model]]
+id = "k2-horizon-0-9b"
+provider = "institute-of-foundation-models"
+name = "K2 Horizon 0.9B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "9e9fb958-87f5-4835-a761-26102ef25898"
+
+[[model]]
+id = "k2-horizon-3-7b"
+provider = "institute-of-foundation-models"
+name = "K2 Horizon 3.7B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "31da3a71-0773-47d9-8560-9f19f069926b"
+
+[[model]]
+id = "k2-horizon-375b-a23b"
+provider = "institute-of-foundation-models"
+name = "K2 Horizon 375B A23B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "bb3d7e75-8e22-4082-b9d6-1db0803e042f"
+
+[[model]]
+id = "k2-horizon-7b"
+provider = "institute-of-foundation-models"
+name = "K2 Horizon 7B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "122a1fa1-976a-4089-87a2-5a0a13e2a52c"
+
+[[model]]
+id = "k2-horizon-mova-36b-a4b"
+provider = "institute-of-foundation-models"
+name = "K2 Horizon MoVA 36B A4B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "53b9e276-e360-4a39-9076-1a19d72c25fe"
+
+[[model]]
+id = "kimi-k3"
+provider = "kimi"
+name = "Kimi K3"
+efforts = ["low", "max"]
+
+[model.aa_ids]
+"low" = "512d17ef-13d2-4f65-bf9b-154b0dec7e8d"
+"max" = "f7d2fc3e-1f7b-405f-818c-07952a4af78f"
+
+[[model]]
+id = "kimi-k3-1-pro"
+provider = "kimi"
+name = "Kimi K3.1 Pro"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "665c67ca-09eb-48f0-a7a3-0096e1d5de51"
+
+[[model]]
+id = "lfm2-5-2-6b"
+provider = "liquid-ai"
+name = "LFM2.5-2.6B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "e1bfc488-5f48-4d42-abf6-7f3c53d79f9c"
+
+[[model]]
+id = "ling-3-0-flash"
+provider = "inclusionai"
+name = "Ling 3.0 Flash"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "e33dc369-ae81-40e0-8c4e-28b002d02197"
+
+[[model]]
+id = "ling-3-0-flash-fin"
+provider = "inclusionai"
+name = "Ling-3.0-flash-Fin"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "6d6fa1c9-b833-40b2-8a58-fa810e24a84e"
+
+[[model]]
+id = "ling-3-0-flash-vl"
+provider = "inclusionai"
+name = "Ling-3.0-flash-VL"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "433d5c5d-3092-4026-9727-1587ca07915d"
+
+[[model]]
+id = "ling-3-0-tiny"
+provider = "inclusionai"
+name = "Ling 3.0 Tiny"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "7eaf926c-5f39-4e58-ae50-c38b5fc630fc"
+
+[[model]]
+id = "ling-3-1-flash"
+provider = "inclusionai"
+name = "Ling 3.1 Flash"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "a6043b9b-628a-4a76-a021-2834e0627d05"
+
+[[model]]
+id = "ling-3-1-flash-1019"
+provider = "inclusionai"
+name = "Ling 3.1 Flash 1019"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "539ed227-38f4-4bea-a015-117057c14b18"
+
+[[model]]
+id = "mercury-2-5"
+provider = "inception"
+name = "Mercury 2.5"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "765c9f31-95ec-4f14-900a-80614c3b0777"
+
+[[model]]
+id = "mimo-v2-6-flash"
+provider = "xiaomi"
+name = "MiMo-V2.6-Flash"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "127de816-57d3-4037-8484-480a613cd413"
+
+[[model]]
+id = "mimo-v2-6-pro"
+provider = "xiaomi"
+name = "MiMo-V2.6-Pro"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "24d8fdfe-6241-424e-b7b7-1b6efb06e4fb"
+
+[[model]]
+id = "minicpm5-2b"
+provider = "openbmb"
+name = "MiniCPM5-2B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "641a073a-41c9-4773-9b02-d965c16607c5"
+
+[[model]]
+id = "minimax-m3-1-flash"
+provider = "minimax"
+name = "MiniMax-M3.1-Flash"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "d49c8680-e29b-400e-9511-824f7ddebe07"
+
+[[model]]
+id = "mistral-large-4-preview"
+provider = "mistral"
+name = "Mistral Large 4 Preview"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "34fc646a-0174-470e-9e62-d8df452210b3"
+
+[[model]]
+id = "motif-3"
+provider = "motif-technologies"
+name = "Motif 3"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "b01eefb1-c9f8-412d-8353-571031a52f23"
+
+[[model]]
+id = "motif-3-beta"
+provider = "motif-technologies"
+name = "Motif 3 (Beta)"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "a3043d4f-9b92-4261-8ea2-a2d391b09cf4"
+
+[[model]]
+id = "muse-glimmer"
+provider = "meta"
+name = "Muse Glimmer"
+efforts = ["high"]
+
+[model.aa_ids]
+"high" = "583f98fb-c4b8-4df3-8d40-60ac0ed69882"
+
+[[model]]
+id = "muse-spark-1-1"
+provider = "meta"
+name = "Muse Spark 1.1"
+efforts = ["xhigh"]
+
+[model.aa_ids]
+"xhigh" = "d61493e2-43ff-460c-9054-eaf6ba317360"
+
+[[model]]
+id = "muse-spark-1-2"
+provider = "meta"
+name = "Muse Spark 1.2"
+efforts = ["xhigh"]
+
+[model.aa_ids]
+"xhigh" = "04ee6719-0327-463b-a1a1-70a6a78254f9"
+
+[[model]]
+id = "muse-spark-1-3"
+provider = "meta"
+name = "Muse Spark 1.3"
+efforts = ["xhigh", "max"]
+
+[model.aa_ids]
+"xhigh" = "d5170215-69be-4129-849b-26d8d8825bfc"
+"max" = "9999672c-b687-4026-9c15-5cef02ff53bb"
+
+[[model]]
+id = "muse-spark-open"
+provider = "meta"
+name = "Muse Spark Open"
+efforts = ["xhigh"]
+
+[model.aa_ids]
+"xhigh" = "3661c8fb-caf7-4118-aa18-65b84fea8e44"
+
+[[model]]
+id = "muse-wonder"
+provider = "meta"
+name = "Muse Wonder"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "ff2f3f3d-783f-4e27-8a39-47237501a313"
+
+[[model]]
+id = "muse-wonder-full"
+provider = "meta"
+name = "Muse Wonder Full"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "e994a6e0-d36b-4dab-8ae1-c1b469e4d9e2"
+
+[[model]]
+id = "nemotron-3-5-bolt-74b-a9b"
+provider = "nvidia"
+name = "Nemotron 3.5 Bolt 74B-A9B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "7d2aa050-888e-4c27-a92d-10337a4dfb3a"
+
+[[model]]
+id = "nemotron-3-5-lightning"
+provider = "nvidia"
+name = "Nemotron 3.5 Lightning"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "29976311-665a-4b2f-ac72-557c33e0758e"
+
+[[model]]
+id = "nemotron-3-5-super-vl"
+provider = "nvidia"
+name = "Nemotron 3.5 Super VL"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "e2c0623e-c855-4a61-bb66-be1f1ed43234"
+
+[[model]]
+id = "quasar-438b"
+provider = "multiverse-computing"
+name = "Quasar 438B"
+efforts = ["max"]
+
+[model.aa_ids]
+"max" = "f9739750-6d42-450f-ba1e-2f76c869b4fe"
+
+[[model]]
+id = "qwen3-8-2-4t-a95b"
+provider = "alibaba"
+name = "Qwen3.8 2.4T A95B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "8df710d3-9dae-4498-9b4e-9818238e6f31"
+
+[[model]]
+id = "qwen3-8-27b"
+provider = "alibaba"
+name = "Qwen3.8 27B"
+efforts = ["low", "medium", "xhigh", "non-reasoning"]
+
+[model.aa_ids]
+"low" = "7e30585f-fad7-40df-a8cb-03c1d96df38a"
+"medium" = "6657d7de-a2a9-40bc-a32f-86e80ad63698"
+"xhigh" = "b01dee41-c62b-48ed-8d16-984adc405e5c"
+"non-reasoning" = "353c92f3-2148-4c2d-9231-aa7e1322a1fd"
+
+[[model]]
+id = "qwen3-8-flash-next"
+provider = "alibaba"
+name = "Qwen3.8-Flash-Next"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "9ac3908c-9eb2-44db-8c01-3ec7da6fc2ae"
+
+[[model]]
+id = "qwen3-8-max"
+provider = "alibaba"
+name = "Qwen3.8 Max"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "5e5b4ce7-bc54-47b2-b911-21b9cad8394c"
+
+[[model]]
+id = "qwen3-8-max-0902"
+provider = "alibaba"
+name = "Qwen3.8 Max (0902)"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "b112af07-3bd5-4647-b09f-b23204361bb2"
+
+[[model]]
+id = "solar-mini-4"
+provider = "upstage"
+name = "Solar Mini 4"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "62ea3198-9866-4d9f-8406-a79ee78c7164"
+
+[[model]]
+id = "solar-open2-250b"
+provider = "upstage"
+name = "Solar Open2 250B"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "7eabd8ca-bf43-4d56-b3df-efd1c4eebfb0"
+
+[[model]]
+id = "solar-pro-4"
+provider = "upstage"
+name = "Solar Pro 4"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "15c4cbd7-b9aa-42c8-9ce5-5abbde0e6963"
+
+[[model]]
+id = "step-5-preview"
+provider = "stepfun"
+name = "Step 5 Preview"
+efforts = ["default"]
+
+[model.aa_ids]
+"default" = "094ea3e3-ce41-419e-8bd1-723389663158"
 
 [[measurement]]
 model = "gpt-6.1-sol"
 effort = "low"
 aa_name = "GPT-6.1 Sol (Low)"
 aa_slug = "gpt-6-1-sol-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-29"
-median_output_tokens_per_second = 55.386
-median_time_to_first_token_seconds = 1.812
+median_output_tokens_per_second = 65.29
+median_time_to_first_token_seconds = 2.191
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 42.1
+artificial_analysis_intelligence_index = 34.5
 hle = 0.474
 lcr = 0.84
 scicode = 0.532
@@ -532,13 +1408,13 @@ model = "gpt-6.1-sol"
 effort = "medium"
 aa_name = "GPT-6.1 Sol (Medium)"
 aa_slug = "gpt-6-1-sol-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-29"
-median_output_tokens_per_second = 52.459
+median_output_tokens_per_second = 59.582
 median_time_to_first_token_seconds = 4.047
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 47.8
+artificial_analysis_intelligence_index = 46.1
 hle = 0.499
 lcr = 0.833333333333333
 scicode = 0.532
@@ -549,10 +1425,10 @@ model = "gpt-6.1-sol"
 effort = "high"
 aa_name = "GPT-6.1 Sol (High)"
 aa_slug = "gpt-6-1-sol-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-29"
-median_output_tokens_per_second = 57.21
-median_time_to_first_token_seconds = 24.244
+median_output_tokens_per_second = 63.419
+median_time_to_first_token_seconds = 19.758
 
 [measurement.scores]
 artificial_analysis_intelligence_index = 50.2
@@ -566,13 +1442,13 @@ model = "gpt-6.1-sol"
 effort = "xhigh"
 aa_name = "GPT-6.1 Sol (Xhigh)"
 aa_slug = "gpt-6-1-sol-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-29"
-median_output_tokens_per_second = 64.081
+median_output_tokens_per_second = 67.889
 median_time_to_first_token_seconds = 69.997
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 51.0
+artificial_analysis_intelligence_index = 52.3
 hle = 0.526
 lcr = 0.796666666666667
 scicode = 0.557
@@ -583,13 +1459,13 @@ model = "gpt-6.1-sol"
 effort = "max"
 aa_name = "GPT-6.1 Sol (Max)"
 aa_slug = "gpt-6-1-sol"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-29"
-median_output_tokens_per_second = 64.281
-median_time_to_first_token_seconds = 161.154
+median_output_tokens_per_second = 74.76
+median_time_to_first_token_seconds = 157.321
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 51.8
+artificial_analysis_intelligence_index = 54.5
 hle = 0.529
 lcr = 0.83
 scicode = 0.542
@@ -600,13 +1476,13 @@ model = "claude-fable-5-1"
 effort = "low"
 aa_name = "Claude Fable 5.1 (Low, Default Fallback)"
 aa_slug = "claude-fable-5-1-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-01"
-median_output_tokens_per_second = 48.854
+median_output_tokens_per_second = 55.425
 median_time_to_first_token_seconds = 0.833
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 46.8
+artificial_analysis_intelligence_index = 38.5
 hle = 0.489
 lcr = 0.823333333333333
 scicode = 0.567
@@ -617,13 +1493,13 @@ model = "claude-fable-5-1"
 effort = "medium"
 aa_name = "Claude Fable 5.1 (Medium, Default Fallback)"
 aa_slug = "claude-fable-5-1-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-01"
-median_output_tokens_per_second = 48.827
-median_time_to_first_token_seconds = 2.114
+median_output_tokens_per_second = 59.158
+median_time_to_first_token_seconds = 2.407
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 48.9
+artificial_analysis_intelligence_index = 43.0
 hle = 0.538
 lcr = 0.846666666666667
 scicode = 0.564
@@ -634,13 +1510,13 @@ model = "claude-fable-5-1"
 effort = "high"
 aa_name = "Claude Fable 5.1 (High, Default Fallback)"
 aa_slug = "claude-fable-5-1-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-01"
-median_output_tokens_per_second = 51.358
+median_output_tokens_per_second = 56.434
 median_time_to_first_token_seconds = 2.179
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 51.2
+artificial_analysis_intelligence_index = 47.0
 hle = 0.559
 lcr = 0.836666666666667
 scicode = 0.587
@@ -651,13 +1527,13 @@ model = "claude-fable-5-1"
 effort = "xhigh"
 aa_name = "Claude Fable 5.1 (Xhigh, Default Fallback)"
 aa_slug = "claude-fable-5-1-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-01"
-median_output_tokens_per_second = 54.903
+median_output_tokens_per_second = 61.038
 median_time_to_first_token_seconds = 35.222
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 53.2
+artificial_analysis_intelligence_index = 49.7
 hle = 0.587
 lcr = 0.83
 scicode = 0.609
@@ -668,13 +1544,13 @@ model = "claude-fable-5-1"
 effort = "max"
 aa_name = "Claude Fable 5.1 (Max, Default Fallback)"
 aa_slug = "claude-fable-5-1"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-01"
-median_output_tokens_per_second = 65.565
-median_time_to_first_token_seconds = 155.724
+median_output_tokens_per_second = 66.056
+median_time_to_first_token_seconds = 158.044
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 53.4
+artificial_analysis_intelligence_index = 49.0
 hle = 0.591
 lcr = 0.853333333333333
 scicode = 0.631
@@ -685,13 +1561,13 @@ model = "claude-opus-5-5"
 effort = "low"
 aa_name = "Claude Opus 5.5 (Low, Default Fallback)"
 aa_slug = "claude-opus-5-5-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-22"
-median_output_tokens_per_second = 72.69
-median_time_to_first_token_seconds = 1.731
+median_output_tokens_per_second = 78.521
+median_time_to_first_token_seconds = 2.131
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 42.3
+artificial_analysis_intelligence_index = 34.5
 hle = 0.483
 lcr = 0.806666666666667
 scicode = 0.586
@@ -702,13 +1578,13 @@ model = "claude-opus-5-5"
 effort = "medium"
 aa_name = "Claude Opus 5.5 (Medium, Default Fallback)"
 aa_slug = "claude-opus-5-5-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-22"
-median_output_tokens_per_second = 76.64
-median_time_to_first_token_seconds = 10.986
+median_output_tokens_per_second = 80.303
+median_time_to_first_token_seconds = 10.698
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 51.2
+artificial_analysis_intelligence_index = 48.1
 hle = 0.547
 lcr = 0.843333333333333
 scicode = 0.593
@@ -719,13 +1595,13 @@ model = "claude-opus-5-5"
 effort = "high"
 aa_name = "Claude Opus 5.5 (High, Default Fallback)"
 aa_slug = "claude-opus-5-5-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-22"
-median_output_tokens_per_second = 73.423
+median_output_tokens_per_second = 80.785
 median_time_to_first_token_seconds = 13.042
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 53.6
+artificial_analysis_intelligence_index = 51.7
 hle = 0.556
 lcr = 0.826666666666667
 scicode = 0.604
@@ -736,13 +1612,13 @@ model = "claude-opus-5-5"
 effort = "xhigh"
 aa_name = "Claude Opus 5.5 (Xhigh, Default Fallback)"
 aa_slug = "claude-opus-5-5-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-22"
-median_output_tokens_per_second = 77.206
-median_time_to_first_token_seconds = 59.041
+median_output_tokens_per_second = 79.994
+median_time_to_first_token_seconds = 59.008
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 56.0
+artificial_analysis_intelligence_index = 57.0
 hle = 0.575
 lcr = 0.846666666666667
 scicode = 0.65
@@ -753,13 +1629,13 @@ model = "claude-opus-5-5"
 effort = "max"
 aa_name = "Claude Opus 5.5 (Max, Default Fallback)"
 aa_slug = "claude-opus-5-5"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-22"
 median_output_tokens_per_second = 96.606
-median_time_to_first_token_seconds = 466.448
+median_time_to_first_token_seconds = 451.712
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 57.6
+artificial_analysis_intelligence_index = 58.4
 hle = 0.614
 lcr = 0.846666666666667
 scicode = 0.669
@@ -770,13 +1646,13 @@ model = "claude-sonnet-5-5"
 effort = "low"
 aa_name = "Claude Sonnet 5.5 (Low, Default Fallback)"
 aa_slug = "claude-sonnet-5-5-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-28"
-median_output_tokens_per_second = 88.921
-median_time_to_first_token_seconds = 0.765
+median_output_tokens_per_second = 102.789
+median_time_to_first_token_seconds = 0.774
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 35.9
+artificial_analysis_intelligence_index = 25.3
 hle = 0.362
 lcr = 0.76
 scicode = 0.491
@@ -787,13 +1663,13 @@ model = "claude-sonnet-5-5"
 effort = "medium"
 aa_name = "Claude Sonnet 5.5 (Medium, Default Fallback)"
 aa_slug = "claude-sonnet-5-5-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-28"
-median_output_tokens_per_second = 93.41
-median_time_to_first_token_seconds = 1.002
+median_output_tokens_per_second = 103.977
+median_time_to_first_token_seconds = 1.042
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 40.8
+artificial_analysis_intelligence_index = 30.3
 hle = 0.398
 lcr = 0.763333333333333
 scicode = 0.529
@@ -804,13 +1680,13 @@ model = "claude-sonnet-5-5"
 effort = "high"
 aa_name = "Claude Sonnet 5.5 (High, Default Fallback)"
 aa_slug = "claude-sonnet-5-5-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-28"
-median_output_tokens_per_second = 96.796
-median_time_to_first_token_seconds = 8.113
+median_output_tokens_per_second = 106.813
+median_time_to_first_token_seconds = 7.214
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 46.8
+artificial_analysis_intelligence_index = 41.1
 hle = 0.458
 lcr = 0.78
 scicode = 0.537
@@ -821,13 +1697,13 @@ model = "claude-sonnet-5-5"
 effort = "xhigh"
 aa_name = "Claude Sonnet 5.5 (Xhigh, Default Fallback)"
 aa_slug = "claude-sonnet-5-5-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-28"
-median_output_tokens_per_second = 96.371
+median_output_tokens_per_second = 106.054
 median_time_to_first_token_seconds = 12.36
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 51.9
+artificial_analysis_intelligence_index = 49.6
 hle = 0.5
 lcr = 0.796666666666667
 scicode = 0.573
@@ -838,13 +1714,13 @@ model = "claude-sonnet-5-5"
 effort = "max"
 aa_name = "Claude Sonnet 5.5 (Max, Default Fallback)"
 aa_slug = "claude-sonnet-5-5"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-09-28"
-median_output_tokens_per_second = 140.814
-median_time_to_first_token_seconds = 297.57
+median_output_tokens_per_second = 140.676
+median_time_to_first_token_seconds = 302.814
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 56.0
+artificial_analysis_intelligence_index = 54.2
 hle = 0.55
 lcr = 0.826666666666667
 scicode = 0.61
@@ -855,13 +1731,13 @@ model = "claude-haiku-5-5"
 effort = "low"
 aa_name = "Claude Haiku 5.5 (Low)"
 aa_slug = "claude-haiku-5-5-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-07"
-median_output_tokens_per_second = 155.845
-median_time_to_first_token_seconds = 3.928
+median_output_tokens_per_second = 165.816
+median_time_to_first_token_seconds = 4.871
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 29.5
+artificial_analysis_intelligence_index = 18.6
 hle = 0.27
 lcr = 0.72
 scicode = 0.492
@@ -872,13 +1748,13 @@ model = "claude-haiku-5-5"
 effort = "medium"
 aa_name = "Claude Haiku 5.5 (Medium)"
 aa_slug = "claude-haiku-5-5-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-07"
-median_output_tokens_per_second = 147.231
-median_time_to_first_token_seconds = 6.688
+median_output_tokens_per_second = 163.678
+median_time_to_first_token_seconds = 7.292
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 34.5
+artificial_analysis_intelligence_index = 24.6
 hle = 0.338
 lcr = 0.773333333333333
 scicode = 0.49
@@ -889,13 +1765,13 @@ model = "claude-haiku-5-5"
 effort = "high"
 aa_name = "Claude Haiku 5.5 (High)"
 aa_slug = "claude-haiku-5-5-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-07"
-median_output_tokens_per_second = 158.281
-median_time_to_first_token_seconds = 14.154
+median_output_tokens_per_second = 178.238
+median_time_to_first_token_seconds = 13.707
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 37.8
+artificial_analysis_intelligence_index = 29.6
 hle = 0.373
 lcr = 0.773333333333333
 scicode = 0.487
@@ -906,13 +1782,13 @@ model = "claude-haiku-5-5"
 effort = "xhigh"
 aa_name = "Claude Haiku 5.5 (Xhigh)"
 aa_slug = "claude-haiku-5-5-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-07"
-median_output_tokens_per_second = 182.35
+median_output_tokens_per_second = 189.329
 median_time_to_first_token_seconds = 38.732
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 41.2
+artificial_analysis_intelligence_index = 34.3
 hle = 0.427
 lcr = 0.783333333333333
 scicode = 0.517
@@ -923,13 +1799,13 @@ model = "claude-haiku-5-5"
 effort = "max"
 aa_name = "Claude Haiku 5.5 (Max)"
 aa_slug = "claude-haiku-5-5"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-07"
-median_output_tokens_per_second = 235.237
-median_time_to_first_token_seconds = 246.975
+median_output_tokens_per_second = 240.446
+median_time_to_first_token_seconds = 254.075
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 43.4
+artificial_analysis_intelligence_index = 36.2
 hle = 0.444
 lcr = 0.826666666666667
 scicode = 0.55
@@ -940,13 +1816,13 @@ model = "gpt-6.1-terra"
 effort = "low"
 aa_name = "GPT-6.1 Terra (Low)"
 aa_slug = "gpt-6-1-terra-low"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-26"
-median_output_tokens_per_second = 90.761
+median_output_tokens_per_second = 90.863
 median_time_to_first_token_seconds = 1.732
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 36.2
+artificial_analysis_intelligence_index = 29.2
 hle = 0.358
 lcr = 0.81
 scicode = 0.524
@@ -957,13 +1833,13 @@ model = "gpt-6.1-terra"
 effort = "medium"
 aa_name = "GPT-6.1 Terra (Medium)"
 aa_slug = "gpt-6-1-terra-medium"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-26"
 median_output_tokens_per_second = 90.849
 median_time_to_first_token_seconds = 1.736
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 41.3
+artificial_analysis_intelligence_index = 38.1
 hle = 0.402
 lcr = 0.806666666666667
 scicode = 0.516
@@ -974,13 +1850,13 @@ model = "gpt-6.1-terra"
 effort = "high"
 aa_name = "GPT-6.1 Terra (High)"
 aa_slug = "gpt-6-1-terra-high"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-26"
-median_output_tokens_per_second = 91.47
+median_output_tokens_per_second = 91.023
 median_time_to_first_token_seconds = 9.113
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 43.9
+artificial_analysis_intelligence_index = 42.3
 hle = 0.433
 lcr = 0.823333333333333
 scicode = 0.516
@@ -991,13 +1867,13 @@ model = "gpt-6.1-terra"
 effort = "xhigh"
 aa_name = "GPT-6.1 Terra (Xhigh)"
 aa_slug = "gpt-6-1-terra-xhigh"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-26"
-median_output_tokens_per_second = 90.959
+median_output_tokens_per_second = 90.896
 median_time_to_first_token_seconds = 24.298
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 45.4
+artificial_analysis_intelligence_index = 45.0
 hle = 0.437
 lcr = 0.816666666666667
 scicode = 0.534
@@ -1008,15 +1884,1839 @@ model = "gpt-6.1-terra"
 effort = "max"
 aa_name = "GPT-6.1 Terra (Max)"
 aa_slug = "gpt-6-1-terra"
-retrieved = "2026-10-27"
+retrieved = "2026-10-28"
 release_date = "2026-10-26"
 median_output_tokens_per_second = 90.933
-median_time_to_first_token_seconds = 203.707
+median_time_to_first_token_seconds = 169.206
 
 [measurement.scores]
-artificial_analysis_intelligence_index = 48.1
+artificial_analysis_intelligence_index = 51.0
 hle = 0.462
 lcr = 0.826666666666667
 scicode = 0.551
 terminalbench_v4_0 = 0.555555555555556
+
+[[measurement]]
+model = "a-x-k2"
+effort = "default"
+aa_name = "A.X-K2"
+aa_slug = "a-x-k2"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.296
+lcr = 0.7
+scicode = 0.41
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "agnes-2-5-pro-beta"
+effort = "default"
+aa_name = "Agnes 2.5 Pro Beta"
+aa_slug = "agnes-2-5-pro-beta"
+retrieved = "2026-10-28"
+release_date = "2026-08-26"
+median_output_tokens_per_second = 120.954
+median_time_to_first_token_seconds = 0.637
+
+[measurement.scores]
+hle = 0.375
+lcr = 0.83
+scicode = 0.488
+
+[[measurement]]
+model = "apodex-1-1"
+effort = "default"
+aa_name = "Apodex 1.1"
+aa_slug = "apodex-1-1"
+retrieved = "2026-10-28"
+release_date = "2026-08-30"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.341
+lcr = 0.793333333333333
+scicode = 0.455
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "beam-1-0"
+effort = "default"
+aa_name = "Beam 1.0"
+aa_slug = "reflection-beam"
+retrieved = "2026-10-28"
+release_date = "2026-10-16"
+median_output_tokens_per_second = 402.916
+median_time_to_first_token_seconds = 0.475
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 17.7
+hle = 0.347
+lcr = 0.78
+scicode = 0.485
+terminalbench_v4_0 = 0.0303030303030303
+
+[[measurement]]
+model = "celeris-1"
+effort = "default"
+aa_name = "Celeris-1"
+aa_slug = "celeris-1"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 1704.401
+median_time_to_first_token_seconds = 0.42
+
+[measurement.scores]
+hle = 0.068
+lcr = 0.38
+scicode = 0.216
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "claude-opus-5"
+effort = "low"
+aa_name = "Claude Opus 5 (Low)"
+aa_slug = "claude-opus-5-low"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.434
+lcr = 0.813333333333333
+scicode = 0.492
+terminalbench_v4_0 = 0.262626262626263
+
+[[measurement]]
+model = "claude-opus-5"
+effort = "medium"
+aa_name = "Claude Opus 5 (Medium)"
+aa_slug = "claude-opus-5-medium"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.513
+lcr = 0.82
+scicode = 0.515
+terminalbench_v4_0 = 0.343434343434343
+
+[[measurement]]
+model = "claude-opus-5"
+effort = "high"
+aa_name = "Claude Opus 5 (High)"
+aa_slug = "claude-opus-5-high"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.528
+lcr = 0.79
+scicode = 0.554
+terminalbench_v4_0 = 0.45959595959596
+
+[[measurement]]
+model = "claude-opus-5"
+effort = "xhigh"
+aa_name = "Claude Opus 5 (Xhigh)"
+aa_slug = "claude-opus-5-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.544
+lcr = 0.803333333333333
+scicode = 0.557
+terminalbench_v4_0 = 0.464646464646465
+
+[[measurement]]
+model = "claude-opus-5"
+effort = "max"
+aa_name = "Claude Opus 5 (Max)"
+aa_slug = "claude-opus-5"
+retrieved = "2026-10-28"
+release_date = "2026-07-24"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.549
+lcr = 0.793333333333333
+scicode = 0.564
+terminalbench_v4_0 = 0.48989898989899
+
+[[measurement]]
+model = "deepseek-v4-1-flash"
+effort = "max"
+aa_name = "DeepSeek V4.1 Flash (Max)"
+aa_slug = "deepseek-v4-1-flash"
+retrieved = "2026-10-28"
+release_date = "2026-09-10"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.392
+lcr = 0.84
+scicode = 0.519
+terminalbench_v4_0 = 0.267676767676768
+
+[[measurement]]
+model = "deepseek-v4-1-flash"
+effort = "non-reasoning"
+aa_name = "DeepSeek V4.1 Flash (Non-reasoning)"
+aa_slug = "deepseek-v4-1-flash-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-09-10"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.108
+lcr = 0.553333333333333
+scicode = 0.355
+terminalbench_v4_0 = 0.0555555555555556
+
+[[measurement]]
+model = "deepseek-v4-1-flash-1017"
+effort = "max"
+aa_name = "DeepSeek V4.1 Flash 1017 (Max)"
+aa_slug = "deepseek-v4-1-flash-1017"
+retrieved = "2026-10-28"
+release_date = "2026-10-17"
+median_output_tokens_per_second = 164.335
+median_time_to_first_token_seconds = 0.878
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 32.5
+hle = 0.433
+lcr = 0.826666666666667
+scicode = 0.559
+terminalbench_v4_0 = 0.338383838383838
+
+[[measurement]]
+model = "deepseek-v4-flash-0731"
+effort = "max"
+aa_name = "DeepSeek V4 Flash 0731 (Max)"
+aa_slug = "deepseek-v4-flash"
+retrieved = "2026-10-28"
+release_date = "2026-07-31"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.386
+lcr = 0.796666666666667
+scicode = 0.503
+terminalbench_v4_0 = 0.121212121212121
+
+[[measurement]]
+model = "deepseek-v4-flash-vision"
+effort = "max"
+aa_name = "DeepSeek V4 Flash Vision (Max)"
+aa_slug = "deepseek-v4-flash-vision"
+retrieved = "2026-10-28"
+release_date = "2026-08-21"
+median_output_tokens_per_second = 171.044
+median_time_to_first_token_seconds = 1.156
+
+[measurement.scores]
+hle = 0.345
+lcr = 0.813333333333333
+scicode = 0.497
+terminalbench_v4_0 = 0.121212121212121
+
+[[measurement]]
+model = "deepseek-v4-pro-0813"
+effort = "max"
+aa_name = "DeepSeek V4 Pro 0813 (Max)"
+aa_slug = "deepseek-v4-pro"
+retrieved = "2026-10-28"
+release_date = "2026-08-13"
+median_output_tokens_per_second = 85.013
+median_time_to_first_token_seconds = 1.115
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 23.1
+hle = 0.41
+lcr = 0.803333333333333
+scicode = 0.51
+terminalbench_v4_0 = 0.141414141414141
+
+[[measurement]]
+model = "deepseek-v4-pro-0813"
+effort = "non-reasoning"
+aa_name = "DeepSeek V4 Pro 0813 (Non-reasoning)"
+aa_slug = "deepseek-v4-pro-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-08-13"
+median_output_tokens_per_second = 97.088
+median_time_to_first_token_seconds = 1.159
+
+[measurement.scores]
+hle = 0.106
+lcr = 0.506666666666667
+scicode = 0.399
+terminalbench_v4_0 = 0.0151515151515152
+
+[[measurement]]
+model = "g9v3-39a5b"
+effort = "default"
+aa_name = "G9v3-39A5B"
+aa_slug = "g9v3-39a5b"
+retrieved = "2026-10-28"
+release_date = "2026-08-20"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.175
+lcr = 0.653333333333333
+scicode = 0.368
+
+[[measurement]]
+model = "g9v3-3b"
+effort = "default"
+aa_name = "G9v3-3B"
+aa_slug = "g9v3-3b"
+retrieved = "2026-10-28"
+release_date = "2026-07-23"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.045
+lcr = 0.413333333333333
+
+[[measurement]]
+model = "gemini-3-5-flash-lite"
+effort = "default"
+aa_name = "Gemini 3.5 Flash-Lite"
+aa_slug = "gemini-3-5-flash-lite"
+retrieved = "2026-10-28"
+release_date = "2026-07-21"
+median_output_tokens_per_second = 416.622
+median_time_to_first_token_seconds = 5.786
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 11.7
+hle = 0.188
+lcr = 0.76
+scicode = 0.413
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "gemini-3-6-flash"
+effort = "high"
+aa_name = "Gemini 3.6 Flash (High)"
+aa_slug = "gemini-3-6-flash"
+retrieved = "2026-10-28"
+release_date = "2026-07-21"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.408
+lcr = 0.8
+scicode = 0.534
+terminalbench_v4_0 = 0.0707070707070707
+
+[[measurement]]
+model = "gemini-3-7-flash"
+effort = "low"
+aa_name = "Gemini 3.7 Flash (Low)"
+aa_slug = "gemini-3-7-flash-low"
+retrieved = "2026-10-28"
+release_date = "2026-08-13"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.351
+lcr = 0.786666666666667
+scicode = 0.557
+
+[[measurement]]
+model = "gemini-3-7-flash"
+effort = "medium"
+aa_name = "Gemini 3.7 Flash (Medium)"
+aa_slug = "gemini-3-7-flash-medium"
+retrieved = "2026-10-28"
+release_date = "2026-08-13"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.39
+lcr = 0.83
+scicode = 0.598
+
+[[measurement]]
+model = "gemini-3-7-flash"
+effort = "high"
+aa_name = "Gemini 3.7 Flash (High)"
+aa_slug = "gemini-3-7-flash"
+retrieved = "2026-10-28"
+release_date = "2026-08-13"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.479
+lcr = 0.816666666666667
+scicode = 0.572
+terminalbench_v4_0 = 0.136363636363636
+
+[[measurement]]
+model = "gemini-3-8-flash"
+effort = "low"
+aa_name = "Gemini 3.8 Flash (Low)"
+aa_slug = "gemini-3-8-flash-low"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 22.3
+hle = 0.371
+lcr = 0.806666666666667
+scicode = 0.55
+terminalbench_v4_0 = 0.101010101010101
+
+[[measurement]]
+model = "gemini-3-8-flash"
+effort = "medium"
+aa_name = "Gemini 3.8 Flash (Medium)"
+aa_slug = "gemini-3-8-flash-medium"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 30.0
+hle = 0.421
+lcr = 0.84
+scicode = 0.551
+terminalbench_v4_0 = 0.196969696969697
+
+[[measurement]]
+model = "gemini-3-8-flash"
+effort = "high"
+aa_name = "Gemini 3.8 Flash (High)"
+aa_slug = "gemini-3-8-flash"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 134.936
+median_time_to_first_token_seconds = 16.283
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 30.5
+hle = 0.478
+lcr = 0.813333333333333
+scicode = 0.566
+terminalbench_v4_0 = 0.196969696969697
+
+[[measurement]]
+model = "gemini-4-argon"
+effort = "high"
+aa_name = "Gemini 4 Argon (High)"
+aa_slug = "gemini-4-argon"
+retrieved = "2026-10-28"
+release_date = "2026-09-30"
+median_output_tokens_per_second = 80.457
+median_time_to_first_token_seconds = 36.021
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 50.4
+hle = 0.571
+lcr = 0.796666666666667
+scicode = 0.618
+terminalbench_v4_0 = 0.570707070707071
+
+[[measurement]]
+model = "glm-5-3"
+effort = "low"
+aa_name = "GLM-5.3 (Low)"
+aa_slug = "glm-5-3-low"
+retrieved = "2026-10-28"
+release_date = "2026-08-18"
+median_output_tokens_per_second = 75.722
+median_time_to_first_token_seconds = 2.639
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 23.1
+hle = 0.366
+lcr = 0.726666666666667
+scicode = 0.42
+terminalbench_v4_0 = 0.348484848484849
+
+[[measurement]]
+model = "glm-5-3"
+effort = "max"
+aa_name = "GLM-5.3 (Max)"
+aa_slug = "glm-5-3"
+retrieved = "2026-10-28"
+release_date = "2026-08-18"
+median_output_tokens_per_second = 81.55
+median_time_to_first_token_seconds = 2.397
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 31.7
+hle = 0.423
+lcr = 0.796666666666667
+scicode = 0.59
+terminalbench_v4_0 = 0.419191919191919
+
+[[measurement]]
+model = "glm-5-3-flash"
+effort = "default"
+aa_name = "GLM-5.3-Flash"
+aa_slug = "glm-5-3-flash"
+retrieved = "2026-10-28"
+release_date = "2026-08-26"
+median_output_tokens_per_second = 78.47
+median_time_to_first_token_seconds = 2.38
+
+[measurement.scores]
+hle = 0.399
+lcr = 0.8
+scicode = 0.516
+terminalbench_v4_0 = 0.328282828282828
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "low"
+aa_name = "GPT-5.6 Luna (Low)"
+aa_slug = "gpt-5-6-luna-low"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.198
+lcr = 0.7
+scicode = 0.461
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "medium"
+aa_name = "GPT-5.6 Luna (Medium)"
+aa_slug = "gpt-5-6-luna-medium"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.258
+lcr = 0.75
+scicode = 0.468
+terminalbench_v4_0 = 0.00505050505050505
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "high"
+aa_name = "GPT-5.6 Luna (High)"
+aa_slug = "gpt-5-6-luna-high"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.334
+lcr = 0.803333333333333
+scicode = 0.516
+terminalbench_v4_0 = 0.0252525252525253
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "xhigh"
+aa_name = "GPT-5.6 Luna (Xhigh)"
+aa_slug = "gpt-5-6-luna-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.37
+lcr = 0.816666666666667
+scicode = 0.505
+terminalbench_v4_0 = 0.0353535353535354
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "max"
+aa_name = "GPT-5.6 Luna (Max)"
+aa_slug = "gpt-5-6-luna"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.395
+lcr = 0.836666666666667
+scicode = 0.536
+terminalbench_v4_0 = 0.116161616161616
+
+[[measurement]]
+model = "gpt-5-6-luna"
+effort = "non-reasoning"
+aa_name = "GPT-5.6 Luna (Non-reasoning)"
+aa_slug = "gpt-5-6-luna-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.072
+lcr = 0.426666666666667
+scicode = 0.404
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "low"
+aa_name = "GPT-5.6 Sol (Low)"
+aa_slug = "gpt-5-6-sol-low"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.394
+lcr = 0.78
+scicode = 0.564
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "medium"
+aa_name = "GPT-5.6 Sol (Medium)"
+aa_slug = "gpt-5-6-sol-medium"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.422
+lcr = 0.803333333333333
+scicode = 0.574
+terminalbench_v4_0 = 0.146464646464646
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "high"
+aa_name = "GPT-5.6 Sol (High)"
+aa_slug = "gpt-5-6-sol-high"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.46
+lcr = 0.816666666666667
+scicode = 0.578
+terminalbench_v4_0 = 0.207070707070707
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "xhigh"
+aa_name = "GPT-5.6 Sol (Xhigh)"
+aa_slug = "gpt-5-6-sol-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.473
+lcr = 0.823333333333333
+scicode = 0.571
+terminalbench_v4_0 = 0.247474747474747
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "max"
+aa_name = "GPT-5.6 Sol (Max)"
+aa_slug = "gpt-5-6-sol"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.495
+lcr = 0.84
+scicode = 0.571
+terminalbench_v4_0 = 0.398989898989899
+
+[[measurement]]
+model = "gpt-5-6-sol"
+effort = "non-reasoning"
+aa_name = "GPT-5.6 Sol (Non-reasoning)"
+aa_slug = "gpt-5-6-sol-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.167
+lcr = 0.623333333333333
+scicode = 0.477
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "low"
+aa_name = "GPT-5.6 Terra (Low)"
+aa_slug = "gpt-5-6-terra-low"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 110.323
+median_time_to_first_token_seconds = 1.414
+
+[measurement.scores]
+hle = 0.292
+lcr = 0.713333333333333
+scicode = 0.499
+terminalbench_v4_0 = 0.0151515151515152
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "medium"
+aa_name = "GPT-5.6 Terra (Medium)"
+aa_slug = "gpt-5-6-terra-medium"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 107.235
+median_time_to_first_token_seconds = 1.351
+
+[measurement.scores]
+hle = 0.333
+lcr = 0.74
+scicode = 0.505
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "high"
+aa_name = "GPT-5.6 Terra (High)"
+aa_slug = "gpt-5-6-terra-high"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 105.235
+median_time_to_first_token_seconds = 2.166
+
+[measurement.scores]
+hle = 0.385
+lcr = 0.776666666666667
+scicode = 0.524
+terminalbench_v4_0 = 0.0151515151515152
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "xhigh"
+aa_name = "GPT-5.6 Terra (Xhigh)"
+aa_slug = "gpt-5-6-terra-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 102.076
+median_time_to_first_token_seconds = 6.983
+
+[measurement.scores]
+hle = 0.419
+lcr = 0.79
+scicode = 0.523
+terminalbench_v4_0 = 0.101010101010101
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "max"
+aa_name = "GPT-5.6 Terra (Max)"
+aa_slug = "gpt-5-6-terra"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 125.015
+median_time_to_first_token_seconds = 82.126
+
+[measurement.scores]
+hle = 0.429
+lcr = 0.83
+scicode = 0.55
+terminalbench_v4_0 = 0.353535353535354
+
+[[measurement]]
+model = "gpt-5-6-terra"
+effort = "non-reasoning"
+aa_name = "GPT-5.6 Terra (Non-reasoning)"
+aa_slug = "gpt-5-6-terra-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 107.7
+median_time_to_first_token_seconds = 0.787
+
+[measurement.scores]
+hle = 0.114
+lcr = 0.586666666666667
+scicode = 0.451
+terminalbench_v4_0 = 0.00505050505050505
+
+[[measurement]]
+model = "granite-4-2-30b"
+effort = "default"
+aa_name = "Granite 4.2 30B"
+aa_slug = "granite-4-2-30b"
+retrieved = "2026-10-28"
+release_date = "2026-08-25"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.112
+lcr = 0.49
+scicode = 0.378
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "granite-4-2-3b"
+effort = "default"
+aa_name = "Granite 4.2 3B"
+aa_slug = "granite-4-2-3b"
+retrieved = "2026-10-28"
+release_date = "2026-08-25"
+median_output_tokens_per_second = 50.342
+median_time_to_first_token_seconds = 0.39
+
+[measurement.scores]
+hle = 0.066
+lcr = 0.243333333333333
+scicode = 0.253
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "granite-4-2-8b"
+effort = "default"
+aa_name = "Granite 4.2 8B"
+aa_slug = "granite-4-2-8b"
+retrieved = "2026-10-28"
+release_date = "2026-08-25"
+median_output_tokens_per_second = 51.541
+median_time_to_first_token_seconds = 0.43
+
+[measurement.scores]
+hle = 0.097
+lcr = 0.45
+scicode = 0.315
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "grok-4-5"
+effort = "high"
+aa_name = "Grok 4.5 (High)"
+aa_slug = "grok-4-5"
+retrieved = "2026-10-28"
+release_date = "2026-07-08"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.427
+lcr = 0.793333333333333
+scicode = 0.55
+terminalbench_v4_0 = 0.106060606060606
+
+[[measurement]]
+model = "grok-4-6"
+effort = "low"
+aa_name = "Grok 4.6 (Low)"
+aa_slug = "grok-4-6-low"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.276
+lcr = 0.806666666666667
+scicode = 0.494
+terminalbench_v4_0 = 0.0303030303030303
+
+[[measurement]]
+model = "grok-4-6"
+effort = "medium"
+aa_name = "Grok 4.6 (Medium)"
+aa_slug = "grok-4-6-medium"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.421
+lcr = 0.81
+scicode = 0.559
+terminalbench_v4_0 = 0.131313131313131
+
+[[measurement]]
+model = "grok-4-6"
+effort = "high"
+aa_name = "Grok 4.6 (High)"
+aa_slug = "grok-4-6"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.429
+lcr = 0.803333333333333
+scicode = 0.565
+terminalbench_v4_0 = 0.212121212121212
+
+[[measurement]]
+model = "grok-4-6"
+effort = "xhigh"
+aa_name = "Grok 4.6 (Xhigh)"
+aa_slug = "grok-4-6-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.441
+lcr = 0.81
+scicode = 0.53
+terminalbench_v4_0 = 0.171717171717172
+
+[[measurement]]
+model = "grok-4-7"
+effort = "low"
+aa_name = "Grok 4.7 (Low)"
+aa_slug = "grok-4-7-low"
+retrieved = "2026-10-28"
+release_date = "2026-09-21"
+median_output_tokens_per_second = 79.131
+median_time_to_first_token_seconds = 4.003
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 30.9
+hle = 0.392
+lcr = 0.8
+scicode = 0.549
+terminalbench_v4_0 = 0.161616161616162
+
+[[measurement]]
+model = "grok-4-7"
+effort = "high"
+aa_name = "Grok 4.7 (High)"
+aa_slug = "grok-4-7-high"
+retrieved = "2026-10-28"
+release_date = "2026-09-21"
+median_output_tokens_per_second = 85.692
+median_time_to_first_token_seconds = 11.587
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 35.0
+hle = 0.423
+lcr = 0.77
+scicode = 0.578
+terminalbench_v4_0 = 0.247474747474747
+
+[[measurement]]
+model = "grok-4-7"
+effort = "xhigh"
+aa_name = "Grok 4.7 (Xhigh)"
+aa_slug = "grok-4-7"
+retrieved = "2026-10-28"
+release_date = "2026-09-21"
+median_output_tokens_per_second = 82.259
+median_time_to_first_token_seconds = 14.477
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 34.3
+hle = 0.431
+lcr = 0.766666666666667
+scicode = 0.574
+terminalbench_v4_0 = 0.257575757575758
+
+[[measurement]]
+model = "hy3"
+effort = "default"
+aa_name = "Hy3"
+aa_slug = "hy3"
+retrieved = "2026-10-28"
+release_date = "2026-07-06"
+median_output_tokens_per_second = 81.023
+median_time_to_first_token_seconds = 1.859
+
+[measurement.scores]
+hle = 0.335
+lcr = 0.79
+scicode = 0.486
+terminalbench_v4_0 = 0.00505050505050505
+
+[[measurement]]
+model = "inkling"
+effort = "xhigh"
+aa_name = "Inkling (Xhigh)"
+aa_slug = "inkling"
+retrieved = "2026-10-28"
+release_date = "2026-07-15"
+median_output_tokens_per_second = 166.452
+median_time_to_first_token_seconds = 2.209
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 12.5
+hle = 0.319
+lcr = 0.773333333333333
+scicode = 0.47
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "inkling-small"
+effort = "default"
+aa_name = "Inkling Small"
+aa_slug = "inkling-small"
+retrieved = "2026-10-28"
+release_date = "2026-07-30"
+median_output_tokens_per_second = 236.085
+median_time_to_first_token_seconds = 2.007
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 12.9
+hle = 0.333
+lcr = 0.756666666666667
+scicode = 0.497
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "jt-4-1-flash-236b-a21b"
+effort = "reasoning"
+aa_name = "JT-4.1 Flash 236B A21B (Reasoning)"
+aa_slug = "jt-4-1-flash-236b-a21b"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.436
+lcr = 0.783333333333333
+scicode = 0.52
+terminalbench_v4_0 = 0.0303030303030303
+
+[[measurement]]
+model = "jt-4-1-flash-236b-a21b"
+effort = "non-reasoning"
+aa_name = "JT-4.1 Flash 236B A21B (Non-reasoning)"
+aa_slug = "jt-4-1-flash-236b-a21b-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.178
+lcr = 0.713333333333333
+
+[[measurement]]
+model = "k-exaone-2-0-0803"
+effort = "default"
+aa_name = "K-EXAONE 2.0 0803"
+aa_slug = "k-exaone-2-0-0803"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.186
+lcr = 0.6
+scicode = 0.42
+
+[[measurement]]
+model = "k2-horizon-0-9b"
+effort = "default"
+aa_name = "K2 Horizon 0.9B"
+aa_slug = "k2-horizon-0-9b"
+retrieved = "2026-10-28"
+release_date = "2026-09-03"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.054
+lcr = 0.0633333333333333
+scicode = 0.069
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "k2-horizon-3-7b"
+effort = "default"
+aa_name = "K2 Horizon 3.7B"
+aa_slug = "k2-horizon-3-7b"
+retrieved = "2026-10-28"
+release_date = "2026-09-03"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.139
+lcr = 0.623333333333333
+scicode = 0.22
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "k2-horizon-375b-a23b"
+effort = "default"
+aa_name = "K2 Horizon 375B A23B"
+aa_slug = "k2-horizon-375b-a23b"
+retrieved = "2026-10-28"
+release_date = "2026-09-03"
+median_output_tokens_per_second = 793.045
+median_time_to_first_token_seconds = 1.9
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 17.8
+hle = 0.32
+lcr = 0.8
+scicode = 0.429
+terminalbench_v4_0 = 0.0151515151515152
+
+[[measurement]]
+model = "k2-horizon-7b"
+effort = "default"
+aa_name = "K2 Horizon 7B"
+aa_slug = "k2-horizon-7b"
+retrieved = "2026-10-28"
+release_date = "2026-09-03"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.182
+lcr = 0.696666666666667
+scicode = 0.275
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "k2-horizon-mova-36b-a4b"
+effort = "default"
+aa_name = "K2 Horizon MoVA 36B A4B"
+aa_slug = "k2-horizon-mova-36b-a4b"
+retrieved = "2026-10-28"
+release_date = "2026-09-03"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.234
+lcr = 0.716666666666667
+scicode = 0.4
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "kimi-k3"
+effort = "low"
+aa_name = "Kimi K3 (Low)"
+aa_slug = "kimi-k3-low"
+retrieved = "2026-10-28"
+release_date = "2026-07-16"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.25
+lcr = 0.793333333333333
+scicode = 0.527
+terminalbench_v4_0 = 0.126262626262626
+
+[[measurement]]
+model = "kimi-k3"
+effort = "max"
+aa_name = "Kimi K3 (Max)"
+aa_slug = "kimi-k3"
+retrieved = "2026-10-28"
+release_date = "2026-07-16"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.469
+lcr = 0.886666666666667
+scicode = 0.595
+terminalbench_v4_0 = 0.126262626262626
+
+[[measurement]]
+model = "kimi-k3-1-pro"
+effort = "default"
+aa_name = "Kimi K3.1 Pro"
+aa_slug = "kimi-k3-1-pro"
+retrieved = "2026-10-28"
+release_date = "2026-10-23"
+median_output_tokens_per_second = 38.014
+median_time_to_first_token_seconds = 2.174
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 46.0
+hle = 0.525
+lcr = 0.863333333333333
+scicode = 0.608
+terminalbench_v4_0 = 0.671717171717172
+
+[[measurement]]
+model = "lfm2-5-2-6b"
+effort = "default"
+aa_name = "LFM2.5-2.6B"
+aa_slug = "lfm2-5-2-6b"
+retrieved = "2026-10-28"
+release_date = "2026-08-04"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.062
+lcr = 0.0566666666666667
+scicode = 0.144
+
+[[measurement]]
+model = "ling-3-0-flash"
+effort = "default"
+aa_name = "Ling 3.0 Flash"
+aa_slug = "ling-3-0-flash"
+retrieved = "2026-10-28"
+release_date = "2026-08-04"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.237
+lcr = 0.73
+scicode = 0.42
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "ling-3-0-flash-fin"
+effort = "default"
+aa_name = "Ling-3.0-flash-Fin"
+aa_slug = "ling-3-0-flash-fin"
+retrieved = "2026-10-28"
+release_date = "2026-09-11"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.226
+lcr = 0.736666666666667
+scicode = 0.424
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "ling-3-0-flash-vl"
+effort = "default"
+aa_name = "Ling-3.0-flash-VL"
+aa_slug = "ling-3-0-flash-vl"
+retrieved = "2026-10-28"
+release_date = "2026-09-10"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.22
+lcr = 0.783333333333333
+scicode = 0.442
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "ling-3-0-tiny"
+effort = "default"
+aa_name = "Ling 3.0 Tiny"
+aa_slug = "ling-3-0-tiny"
+retrieved = "2026-10-28"
+release_date = "2026-08-06"
+median_output_tokens_per_second = 57.895
+median_time_to_first_token_seconds = 1.804
+
+[measurement.scores]
+hle = 0.093
+lcr = 0.603333333333333
+scicode = 0.242
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "ling-3-1-flash"
+effort = "default"
+aa_name = "Ling 3.1 Flash"
+aa_slug = "ling-3-1-flash"
+retrieved = "2026-10-28"
+release_date = "2026-10-01"
+median_output_tokens_per_second = 214.975
+median_time_to_first_token_seconds = 1.17
+
+[measurement.scores]
+hle = 0.394
+lcr = 0.83
+scicode = 0.541
+terminalbench_v4_0 = 0.333333333333333
+
+[[measurement]]
+model = "ling-3-1-flash-1019"
+effort = "default"
+aa_name = "Ling 3.1 Flash 1019"
+aa_slug = "ling-3-1-flash-1019"
+retrieved = "2026-10-28"
+release_date = "2026-10-22"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 29.5
+hle = 0.435
+lcr = 0.823333333333333
+scicode = 0.568
+terminalbench_v4_0 = 0.328282828282828
+
+[[measurement]]
+model = "mercury-2-5"
+effort = "default"
+aa_name = "Mercury 2.5"
+aa_slug = "mercury-2-5"
+retrieved = "2026-10-28"
+release_date = "2026-09-08"
+median_output_tokens_per_second = 859.52
+median_time_to_first_token_seconds = 2.582
+
+[measurement.scores]
+hle = 0.118
+lcr = 0.716666666666667
+scicode = 0.385
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "mimo-v2-6-flash"
+effort = "default"
+aa_name = "MiMo-V2.6-Flash"
+aa_slug = "mimo-v2-6-flash"
+retrieved = "2026-10-28"
+release_date = "2026-09-21"
+median_output_tokens_per_second = 60.277
+median_time_to_first_token_seconds = 2.437
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 26.7
+hle = 0.351
+lcr = 0.743333333333333
+scicode = 0.513
+terminalbench_v4_0 = 0.227272727272727
+
+[[measurement]]
+model = "mimo-v2-6-pro"
+effort = "default"
+aa_name = "MiMo-V2.6-Pro"
+aa_slug = "mimo-v2-6-pro"
+retrieved = "2026-10-28"
+release_date = "2026-09-21"
+median_output_tokens_per_second = 52.519
+median_time_to_first_token_seconds = 2.567
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 29.9
+hle = 0.494
+lcr = 0.863333333333333
+scicode = 0.609
+terminalbench_v4_0 = 0.348484848484849
+
+[[measurement]]
+model = "minicpm5-2b"
+effort = "default"
+aa_name = "MiniCPM5-2B"
+aa_slug = "minicpm5-2b"
+retrieved = "2026-10-28"
+release_date = "2026-09-07"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.089
+lcr = 0.593333333333333
+scicode = 0.263
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "minimax-m3-1-flash"
+effort = "default"
+aa_name = "MiniMax-M3.1-Flash"
+aa_slug = "minimax-m3-1-flash"
+retrieved = "2026-10-28"
+release_date = "2026-10-19"
+median_output_tokens_per_second = 108.393
+median_time_to_first_token_seconds = 0.869
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 28.9
+hle = 0.48
+lcr = 0.796666666666667
+scicode = 0.534
+terminalbench_v4_0 = 0.257575757575758
+
+[[measurement]]
+model = "mistral-large-4-preview"
+effort = "default"
+aa_name = "Mistral Large 4 Preview"
+aa_slug = "mistral-large-4"
+retrieved = "2026-10-28"
+release_date = "2026-10-06"
+median_output_tokens_per_second = 106.853
+median_time_to_first_token_seconds = 0.873
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 25.3
+hle = 0.35
+lcr = 0.813333333333333
+scicode = 0.542
+terminalbench_v4_0 = 0.267676767676768
+
+[[measurement]]
+model = "motif-3"
+effort = "default"
+aa_name = "Motif 3"
+aa_slug = "motif-3"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.37
+lcr = 0.76
+scicode = 0.422
+
+[[measurement]]
+model = "motif-3-beta"
+effort = "default"
+aa_name = "Motif 3 (Beta)"
+aa_slug = "motif-0714"
+retrieved = "2026-10-28"
+release_date = "2026-07-14"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.404
+lcr = 0.746666666666667
+
+[[measurement]]
+model = "muse-glimmer"
+effort = "high"
+aa_name = "Muse Glimmer (High)"
+aa_slug = "muse-glimmer"
+retrieved = "2026-10-28"
+release_date = "2026-08-10"
+median_output_tokens_per_second = 129.829
+median_time_to_first_token_seconds = 0.422
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 6.3
+hle = 0.22
+lcr = 0.833333333333333
+scicode = 0.449
+terminalbench_v4_0 = 0.00505050505050505
+
+[[measurement]]
+model = "muse-spark-1-1"
+effort = "xhigh"
+aa_name = "Muse Spark 1.1 (Xhigh)"
+aa_slug = "muse-spark-1-1"
+retrieved = "2026-10-28"
+release_date = "2026-07-09"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.462
+lcr = 0.776666666666667
+scicode = 0.588
+terminalbench_v4_0 = 0.0606060606060606
+
+[[measurement]]
+model = "muse-spark-1-2"
+effort = "xhigh"
+aa_name = "Muse Spark 1.2 (Xhigh)"
+aa_slug = "muse-spark-1-2"
+retrieved = "2026-10-28"
+release_date = "2026-08-05"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.455
+lcr = 0.79
+scicode = 0.574
+terminalbench_v4_0 = 0.0707070707070707
+
+[[measurement]]
+model = "muse-spark-1-3"
+effort = "xhigh"
+aa_name = "Muse Spark 1.3 (Xhigh)"
+aa_slug = "muse-spark-1-3-xhigh"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.475
+lcr = 0.83
+scicode = 0.597
+terminalbench_v4_0 = 0.166666666666667
+
+[[measurement]]
+model = "muse-spark-1-3"
+effort = "max"
+aa_name = "Muse Spark 1.3 (Max)"
+aa_slug = "muse-spark-1-3"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 36.4
+hle = 0.487
+lcr = 0.83
+scicode = 0.588
+terminalbench_v4_0 = 0.333333333333333
+
+[[measurement]]
+model = "muse-spark-open"
+effort = "xhigh"
+aa_name = "Muse Spark Open (Xhigh)"
+aa_slug = "muse-spark-open"
+retrieved = "2026-10-28"
+release_date = "2026-10-15"
+median_output_tokens_per_second = 224.783
+median_time_to_first_token_seconds = 0.482
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 24.7
+hle = 0.439
+lcr = 0.783333333333333
+scicode = 0.584
+terminalbench_v4_0 = 0.0808080808080808
+
+[[measurement]]
+model = "muse-wonder"
+effort = "max"
+aa_name = "Muse Wonder (Max)"
+aa_slug = "muse-wonder"
+retrieved = "2026-10-28"
+release_date = "2026-10-12"
+median_output_tokens_per_second = 189.951
+median_time_to_first_token_seconds = 21.713
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 43.3
+hle = 0.501
+lcr = 0.806666666666667
+scicode = 0.603
+terminalbench_v4_0 = 0.52020202020202
+
+[[measurement]]
+model = "muse-wonder-full"
+effort = "max"
+aa_name = "Muse Wonder Full (Max)"
+aa_slug = "muse-wonder-full"
+retrieved = "2026-10-28"
+release_date = "2026-10-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 49.7
+hle = 0.536
+lcr = 0.836666666666667
+scicode = 0.626
+terminalbench_v4_0 = 0.570707070707071
+
+[[measurement]]
+model = "nemotron-3-5-bolt-74b-a9b"
+effort = "default"
+aa_name = "Nemotron 3.5 Bolt 74B-A9B"
+aa_slug = "nemotron-3-5-bolt-74b-a9b"
+retrieved = "2026-10-28"
+release_date = "2026-10-15"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.247
+lcr = 0.696666666666667
+scicode = 0.397
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "nemotron-3-5-lightning"
+effort = "default"
+aa_name = "Nemotron 3.5 Lightning"
+aa_slug = "nemotron-3-5-lightning"
+retrieved = "2026-10-28"
+release_date = "2026-08-11"
+median_output_tokens_per_second = 292.558
+median_time_to_first_token_seconds = 0.443
+
+[measurement.scores]
+hle = 0.106
+lcr = 0.603333333333333
+scicode = 0.321
+terminalbench_v4_0 = 0.00505050505050505
+
+[[measurement]]
+model = "nemotron-3-5-super-vl"
+effort = "default"
+aa_name = "Nemotron 3.5 Super VL"
+aa_slug = "nemotron-3-5-super-vl"
+retrieved = "2026-10-28"
+release_date = "2026-10-15"
+median_output_tokens_per_second = 443.675
+median_time_to_first_token_seconds = 0.516
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 13.6
+hle = 0.307
+lcr = 0.69
+scicode = 0.478
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "quasar-438b"
+effort = "max"
+aa_name = "Quasar 438B (Max, Based on GLM-5.2)"
+aa_slug = "quasar-438b"
+retrieved = "2026-10-28"
+release_date = "2026-08-10"
+median_output_tokens_per_second = 167.904
+median_time_to_first_token_seconds = 0.569
+
+[measurement.scores]
+hle = 0.187
+lcr = 0.763333333333333
+scicode = 0.481
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "qwen3-8-2-4t-a95b"
+effort = "default"
+aa_name = "Qwen3.8 2.4T A95B"
+aa_slug = "qwen3-8-2-4t-a95b"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 40.207
+median_time_to_first_token_seconds = 2.125
+
+[measurement.scores]
+hle = 0.424
+lcr = 0.803333333333333
+scicode = 0.541
+terminalbench_v4_0 = 0.111111111111111
+
+[[measurement]]
+model = "qwen3-8-27b"
+effort = "low"
+aa_name = "Qwen3.8 27B (Low)"
+aa_slug = "qwen3-8-27b-low"
+retrieved = "2026-10-28"
+release_date = "2026-08-14"
+median_output_tokens_per_second = 48.068
+median_time_to_first_token_seconds = 1.202
+
+[measurement.scores]
+hle = 0.14
+lcr = 0.773333333333333
+scicode = 0.4
+terminalbench_v4_0 = 0.0252525252525253
+
+[[measurement]]
+model = "qwen3-8-27b"
+effort = "medium"
+aa_name = "Qwen3.8 27B (Medium)"
+aa_slug = "qwen3-8-27b-medium"
+retrieved = "2026-10-28"
+release_date = "2026-08-14"
+median_output_tokens_per_second = 46.944
+median_time_to_first_token_seconds = 1.22
+
+[measurement.scores]
+hle = 0.141
+lcr = 0.796666666666667
+scicode = 0.39
+terminalbench_v4_0 = 0.0505050505050505
+
+[[measurement]]
+model = "qwen3-8-27b"
+effort = "xhigh"
+aa_name = "Qwen3.8 27B (Xhigh)"
+aa_slug = "qwen3-8-27b"
+retrieved = "2026-10-28"
+release_date = "2026-08-14"
+median_output_tokens_per_second = 39.264
+median_time_to_first_token_seconds = 1.217
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 20.1
+hle = 0.339
+lcr = 0.82
+scicode = 0.466
+terminalbench_v4_0 = 0.0555555555555556
+
+[[measurement]]
+model = "qwen3-8-27b"
+effort = "non-reasoning"
+aa_name = "Qwen3.8 27B (Non-reasoning)"
+aa_slug = "qwen3-8-27b-non-reasoning"
+retrieved = "2026-10-28"
+release_date = "2026-08-14"
+median_output_tokens_per_second = 46.877
+median_time_to_first_token_seconds = 1.213
+
+[measurement.scores]
+hle = 0.121
+lcr = 0.693333333333333
+scicode = 0.362
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "qwen3-8-flash-next"
+effort = "default"
+aa_name = "Qwen3.8-Flash-Next"
+aa_slug = "qwen3-8-flash-next"
+retrieved = "2026-10-28"
+release_date = "2026-08-26"
+median_output_tokens_per_second = 53.089
+median_time_to_first_token_seconds = 1.282
+
+[measurement.scores]
+hle = 0.38
+lcr = 0.796666666666667
+scicode = 0.506
+terminalbench_v4_0 = 0.252525252525253
+
+[[measurement]]
+model = "qwen3-8-max"
+effort = "default"
+aa_name = "Qwen3.8 Max"
+aa_slug = "qwen3-8-max-0803"
+retrieved = "2026-10-28"
+release_date = "2026-08-03"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.43
+lcr = 0.783333333333333
+scicode = 0.532
+terminalbench_v4_0 = 0.186868686868687
+
+[[measurement]]
+model = "qwen3-8-max-0902"
+effort = "default"
+aa_name = "Qwen3.8 Max (0902)"
+aa_slug = "qwen3-8-max"
+retrieved = "2026-10-28"
+release_date = "2026-09-02"
+median_output_tokens_per_second = 39.909
+median_time_to_first_token_seconds = 1.891
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 33.6
+hle = 0.431
+lcr = 0.803333333333333
+scicode = 0.521
+terminalbench_v4_0 = 0.388888888888889
+
+[[measurement]]
+model = "solar-mini-4"
+effort = "default"
+aa_name = "Solar Mini 4"
+aa_slug = "solar-mini4"
+retrieved = "2026-10-28"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 101.4
+median_time_to_first_token_seconds = 1.149
+
+[measurement.scores]
+hle = 0.258
+lcr = 0.833333333333333
+scicode = 0.476
+terminalbench_v4_0 = 0.0101010101010101
+
+[[measurement]]
+model = "solar-open2-250b"
+effort = "default"
+aa_name = "Solar Open2 250B"
+aa_slug = "solar-open2-250b"
+retrieved = "2026-10-28"
+release_date = "2026-08-12"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.285
+lcr = 0.716666666666667
+scicode = 0.48
+
+[[measurement]]
+model = "solar-pro-4"
+effort = "default"
+aa_name = "Solar Pro 4"
+aa_slug = "solar-pro4"
+retrieved = "2026-10-28"
+release_date = "2026-08-06"
+median_output_tokens_per_second = 0.0
+median_time_to_first_token_seconds = 0.0
+
+[measurement.scores]
+hle = 0.298
+lcr = 0.706666666666667
+scicode = 0.48
+terminalbench_v4_0 = 0.0
+
+[[measurement]]
+model = "step-5-preview"
+effort = "default"
+aa_name = "Step 5 Preview"
+aa_slug = "step-5"
+retrieved = "2026-10-28"
+release_date = "2026-09-18"
+median_output_tokens_per_second = 192.839
+median_time_to_first_token_seconds = 0.734
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 28.5
+hle = 0.465
+lcr = 0.883333333333333
+scicode = 0.589
+terminalbench_v4_0 = 0.333333333333333
 # END GENERATED

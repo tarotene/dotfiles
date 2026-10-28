@@ -301,12 +301,11 @@ const LETTER = { e: "equivalent", s: "stronger", w: "weaker", i: "insufficient" 
 const IV_TOLERANCE = 1e-3; // Rust は小数 4 桁に丸めて埋め込む
 function selfCheckCore() {
   const keys = Object.keys(D.rows), bad = [];
-  const alt = { cap: D.alt_margins.capability_points, spd: D.alt_margins.speed_ratio };
   let n = 0;
   for (const [role, g] of Object.entries(D.golden)) {
     // 既定の許容幅は役ごと(判定に使うベンチの分解能の最大値が下限、#1150)。
-    const rm = D.roles.find((r) => r.id === role).margins;
-    const sets = [{ cap: rm.capability_points, spd: rm.speed_ratio }, alt];
+    const rr = D.roles.find((r) => r.id === role), rm = rr.margins, wm = rr.wide_margins;
+    const sets = [{ cap: rm.capability_points, spd: rm.speed_ratio }, { cap: wm.capability_points, spd: wm.speed_ratio }];
     if (!D.rows[g.ref] || g.v.length !== 2 * keys.length || g.dist.length !== 2 * keys.length) { bad.push(`${role}: golden の形が rows と合わない`); n++; continue; }
     keys.forEach((k, i) => {
       if (k === g.ref) return;
@@ -509,17 +508,17 @@ function renderMap() {
   for (const key of order) {
     const p = at.get(key), v = verdicts.get(key), dd = dists.get(key).d;
     const tip = `${label(key)}: ${VERDICT[v].label}、基準との距離 ${fmtD(dd)}`;
-    svg += `<g class="pt" data-k="${esc(key)}" tabindex="0" role="button" aria-pressed="${S.sel === key}" aria-label="${esc(tip)}" opacity="${dim(key) ? 0.18 : 1}"><title>${esc(tip)}</title><circle cx="${X(p.x)}" cy="${Y(p.y)}" r="11" fill="transparent"/><path class="mk" d="${markPath(v, X(p.x), Y(p.y), S.sel === key ? 6.5 : 4.6)}" fill="${MARK[v]}" stroke="${S.sel === key ? "var(--ink)" : "var(--page)"}" stroke-width="${S.sel === key ? 2 : 1.2}"/></g>`;
+    svg += `<g class="pt" data-k="${esc(key)}" tabindex="0" role="button" aria-pressed="${S.sel === key}" aria-label="${esc(tip)}" opacity="${dim(key) ? 0.18 : 1}"><title>${esc(tip)}</title><circle cx="${X(p.x)}" cy="${Y(p.y)}" r="6" fill="transparent"/><path class="mk" d="${markPath(v, X(p.x), Y(p.y), S.sel === key ? 6.5 : 4.6)}" fill="${MARK[v]}" stroke="${S.sel === key ? "var(--ink)" : "var(--page)"}" stroke-width="${S.sel === key ? 2 : 1.2}"/></g>`;
   }
   if (rp) {
-    svg += `<g aria-hidden="true"><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="9" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="4" fill="var(--ink)"/></g>`;
+    svg += `<g aria-hidden="true" pointer-events="none"><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="9" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="${X(rp.x)}" cy="${Y(rp.y)}" r="4" fill="var(--ink)"/></g>`;
     const right = X(rp.x) < W / 2;
-    svg += `<text class="lbl" x="${X(rp.x) + (right ? 13 : -13)}" y="${Y(rp.y) + 3}" text-anchor="${right ? "start" : "end"}">基準 ${esc(label(ref))}</text>`;
+    svg += `<text class="lbl" pointer-events="none" x="${X(rp.x) + (right ? 13 : -13)}" y="${Y(rp.y) + 3}" text-anchor="${right ? "start" : "end"}">基準 ${esc(label(ref))}</text>`;
   }
   const sp = S.sel && S.sel !== ref ? at.get(S.sel) : null;
   if (sp) {
     const right = X(sp.x) < W / 2;
-    svg += `<text class="lbl" x="${X(sp.x) + (right ? 11 : -11)}" y="${Y(sp.y) + 3}" text-anchor="${right ? "start" : "end"}">${esc(label(S.sel))}</text>`;
+    svg += `<text class="lbl" pointer-events="none" x="${X(sp.x) + (right ? 11 : -11)}" y="${Y(sp.y) + 3}" text-anchor="${right ? "start" : "end"}">${esc(label(S.sel))}</text>`;
   }
   svg += `<line x1="${pad}" x2="${pad + u}" y1="${H - 12}" y2="${H - 12}" stroke="var(--ink2)" stroke-width="2"/><text x="${pad + u + 6}" y="${H - 8}">= 距離 1</text>`;
   $("mapsvg").innerHTML = at.size ? svg : `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">地図に載る点が無い</text>`;

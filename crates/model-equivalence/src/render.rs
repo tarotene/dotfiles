@@ -26,11 +26,17 @@ use std::collections::BTreeSet;
 
 const PAGE: &str = include_str!("../page.html");
 
-/// 突き合わせに使う 2 通り目の許容幅(既定とは別の領域の境界を通すため)。
-pub const GOLDEN_ALT: Margins = Margins {
-    capability_points: 15.0,
-    speed_ratio: 0.5,
-};
+/// 役の既定の許容幅に対する「広め」（突き合わせと地図の 2 通り目）。能力だけを 2 倍にする（刻みは
+/// 0.5pt の倍数のまま）。速さは変えない。役の既定が分解能に合わせて広がった（#1150）ので、能力と
+/// 速さを同じ比で広げると、地図の尺度が全成分で一様に伸びるだけで、配置も stress も既定と変わらない
+/// （#1191 の確認で、能力 ±23pt・速さ ±50% にしたら、配置も stress も既定と同じになった）。能力だけを
+/// 広げれば、能力と速さの相対的な重みが変わり、配置が変わる。
+pub fn wide_margins(role_default: Margins) -> Margins {
+    Margins {
+        capability_points: role_default.capability_points * 2.0,
+        speed_ratio: role_default.speed_ratio,
+    }
+}
 
 pub struct RenderOptions {
     /// 起動時に選んでおく基準(`MODEL:EFFORT`)。役ごと。
@@ -147,6 +153,7 @@ pub fn build_data(
             "uncovered": uncovered.iter().map(|u| json!({"id": u.category, "name": u.name, "share": u.share})).collect::<Vec<_>>(),
             "default_reference": default_ref,
             "margins": {"capability_points": role_margins.capability_points, "speed_ratio": role_margins.speed_ratio},
+            "wide_margins": {"capability_points": wide_margins(role_margins).capability_points, "speed_ratio": wide_margins(role_margins).speed_ratio},
             "resolution_max": resolution_max,
         }));
     }
@@ -208,10 +215,11 @@ pub fn build_data(
     let meas: Vec<&model_catalog::Measurement> = keys.iter().map(|k| by_key[k]).collect();
     let mut map_roles = Map::new();
     for (role, default_ref, judged, role_margins) in &golden_specs {
-        let map_sets = [*role_margins, GOLDEN_ALT];
+        let wide = wide_margins(*role_margins);
+        let map_sets = [*role_margins, wide];
         let (m, e) = split_ref(default_ref)?;
         let a = compare(catalog, role, (m, e), lens, *role_margins)?;
-        let b = compare(catalog, role, (m, e), lens, GOLDEN_ALT)?;
+        let b = compare(catalog, role, (m, e), lens, wide)?;
         let mut by_key: std::collections::BTreeMap<String, String> = Default::default();
         for (x, y) in a.iter().zip(&b) {
             by_key.insert(
@@ -310,7 +318,6 @@ pub fn build_data(
         "generated": model_catalog::date::today_utc(),
         "aa": catalog.aa,
         "margins": {"capability_points": margins.capability_points, "speed_ratio": margins.speed_ratio},
-        "alt_margins": {"capability_points": GOLDEN_ALT.capability_points, "speed_ratio": GOLDEN_ALT.speed_ratio},
         "history_share_min": catalog.equivalence.history_share_min,
         "effort_order": effort_order(catalog),
         "roles": roles, "benchmarks": benchmarks, "models": models, "rows": rows,
@@ -341,7 +348,11 @@ pub fn render_document(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model_catalog::{data, CATALOG_TOML};
+    use model_catalog::data;
+
+    /// `fetch-aa` が自動登録を入れる前の `catalog.toml` の写し（model-catalog の試験の土台と同じ）。
+    const HAND_REGISTERED: &str =
+        include_str!("../../model-catalog/tests/fixtures/catalog-hand-registered.toml");
     use std::process::Command;
 
     fn lens() -> Lens {
@@ -393,7 +404,8 @@ mod tests {
             r#"{{"status":200,"prompt_options":{{"parallel_queries":1,"prompt_length":1000}},"data":[{}]}}"#,
             rows.join(",")
         );
-        let (_, text) = model_catalog::aa::run(CATALOG_TOML, &json, "2026-10-28").unwrap();
+        // 手登録だけの固定の土台（実カタログには自動登録が入っていくので使わない、#1188）。
+        let (_, text) = model_catalog::aa::run(HAND_REGISTERED, &json, "2026-10-28").unwrap();
         Catalog::parse(&text).unwrap()
     }
 
@@ -448,7 +460,8 @@ mod tests {
             assert_eq!(g[role]["v"].as_str().unwrap().len(), 2 * n);
         }
         assert_eq!(v["roles"].as_array().unwrap().len(), 2);
-        assert_eq!(v["models"].as_array().unwrap().len(), 6);
+        // 手登録の 6 モデルに、`fetch-aa` が自動登録したモデルが加わる。
+        assert!(v["models"].as_array().unwrap().len() >= 6);
         assert!(v["rows"]["claude-opus-5-5:high"]["retrieved"].is_string());
     }
 
@@ -460,7 +473,14 @@ mod tests {
         let m = role_default_margins(c, "plan", Some(&l)).unwrap();
         let keys: Vec<&String> = v["rows"].as_object().unwrap().keys().collect();
         let got = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), m).unwrap();
-        let alt = compare(c, "plan", ("claude-opus-5-5", "high"), Some(&l), GOLDEN_ALT).unwrap();
+        let alt = compare(
+            c,
+            "plan",
+            ("claude-opus-5-5", "high"),
+            Some(&l),
+            wide_margins(m),
+        )
+        .unwrap();
         let ls = letters(&v["golden"]["plan"]["v"]);
         for (x, y) in got.iter().zip(&alt) {
             let i = keys

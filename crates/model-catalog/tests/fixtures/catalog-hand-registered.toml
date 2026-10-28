@@ -1,0 +1,1022 @@
+# Vendor-neutral model catalog — the single source of truth (D4).
+#
+# - 価格・文脈長・出典(`[[provider]]` / `[[model]]`)は codex-plan の費用比較が読む。
+#   旧 crates/codex-plan/src/catalog.rs の直書きをここへ移した。
+# - ベンチの定義(`[benchmark.*]`)と測定値(末尾の生成ブロック)は model-equivalence が読む。
+# - 生成ブロックは `model-catalog fetch-aa --write` だけが書く。手で編集しない。ここには測定値のほか、
+#   AA から自動で登録した提供元・モデルも入る(範囲は `[discovery]`)。
+# - 他社・新モデルを足すときは、`[[provider]]` と `[[model]]` の行を足す。コードは変えない。
+# - エフォートは各社の公式の段階名のまま持つ。他社の段階名へ読み替えない。
+schema_version = 1
+
+[pricing]
+# 価格・文脈長の出典を最後に読んだ日。測定値の取得日は、各 [[measurement]] が別に持つ。
+retrieved = "2026-10-26"
+
+# ---------------------------------------------------------------- providers
+
+[[provider]]
+id = "openai"
+name = "OpenAI"
+aa_creator = "OpenAI" # AA の model_creator.name。未対応の新モデルの検出に使う。
+comparison_only = false
+api_context = 1050000
+api_max_output = 128000
+conditions = [
+  "API: Standard・global・テキスト、USD/100万tokens。ツール料金・税・地域加算を含まない。",
+  "API: 各リクエストの入力（キャッシュを含む）が272,000を超えると入力とキャッシュ2倍、出力1.5倍。",
+  "credits: Standardの別料金表。キャッシュ書込の追加課金なし。定額枠の消費率・ドル上限には換算しない。",
+  "Fast/Ultrafast・Batch/Flex・地域指定はこの費用例の対象外。同じ仕事の完了費用・品質・持続時間を示さない。",
+]
+
+[provider.cache]
+write_short_multiplier = 1.25
+write_long_multiplier = 2.5
+short_ttl = "30m"
+long_ttl = "12h"
+
+[provider.long_context]
+threshold = 272000
+input_multiplier = 2.0
+output_multiplier = 1.5
+
+[provider.codex_context]
+version = "rust-v0.164.0 (6aaac694803004a63c6f393d153c96d22521a6b9)"
+default_window = 272000
+maximum_override = 872000
+effective_percent = 95
+conditions = "同梱upstreamカタログの既定参考値。実行中の値ではない。リモートカタログ・設定の上書きで変わる。最大値は設定上書きの上限で、自動適用されない。"
+
+# 出典の url / title では {id} {name} {docs_slug} {line} を、モデルの同名の値に置き換える。
+[[provider.source]]
+author = "OpenAI"
+title = "{name}"
+url = "https://developers.openai.com/api/docs/models/{id}"
+
+[[provider.source]]
+author = "OpenAI"
+title = "API Pricing — Standard text rates and 30m/12h cache writes"
+url = "https://developers.openai.com/api/docs/pricing"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Prompt caching — GPT-5.6 and later, cache lifetimes and disjoint usage categories"
+url = "https://developers.openai.com/api/docs/guides/prompt-caching"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Pricing — Codex token credit rates"
+url = "https://learn.chatgpt.com/docs/pricing"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Codex rust-v0.164.0 bundled model context"
+url = "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/models-manager/models.json#L{line}"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Codex ModelInfo — default effective percent and usable_context_window"
+url = "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/openai_models.rs#L393"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Codex ModelInfo — usable context calculation"
+url = "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/openai_models.rs#L523"
+
+[[provider.source]]
+author = "OpenAI"
+title = "Codex with_config_overrides — context clamped to model maximum"
+url = "https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/models-manager/src/model_info.rs#L19"
+
+[[provider]]
+id = "anthropic"
+name = "Anthropic"
+aa_creator = "Anthropic"
+comparison_only = true
+api_context = 1000000
+api_max_output = 128000
+conditions = [
+  "比較専用。Codexでの可用性を示さない。Claude APIのStandard・global・テキスト、USD/100万tokens。",
+  "1M context全域で標準単価。キャッシュ書込は5m/1hで別単価。Batch・Fast・地域加算・ツール料金・税は対象外。",
+  "最大出力は通常API。Opus/SonnetのBatch beta 300K出力とは区別する。",
+]
+
+[provider.cache]
+write_short_multiplier = 1.25
+write_long_multiplier = 2.0
+short_ttl = "5m"
+long_ttl = "1h"
+
+[[provider.source]]
+author = "Anthropic"
+title = "{name}"
+url = "https://platform.claude.com/docs/en/models/{docs_slug}/overview"
+
+[[provider.source]]
+author = "Anthropic"
+title = "Pricing — model pricing, caching and long context"
+url = "https://platform.claude.com/docs/en/about-claude/pricing"
+
+# ------------------------------------------------------------------- models
+# efforts: そのモデルが公式に持つ推論エフォートの段階(測定した段階)。
+# aa_ids:  エフォート → AA の行 ID(uuid)。AA 公式が、slug や名前は変わりうるので ID を
+#          主キーにするよう推奨している(https://artificialanalysis.ai/api-reference、取得 2026-10-27)。
+# status:  active | retired。引退したモデルも消さず、以前の組合せとの比較に残す。
+
+[[model]]
+id = "gpt-6-astra"
+provider = "openai"
+name = "GPT-6 Astra"
+purpose = "複雑な推論・コーディング・研究など、最も難しい仕事向け"
+input = 10.0
+cache_read = 1.0
+output = 50.0
+credits = { input = 250.0, cache_read = 25.0, output = 1250.0 }
+codex_models_json_line = 34
+
+[[model]]
+id = "gpt-6.1-sol"
+provider = "openai"
+name = "GPT-6.1 Sol"
+purpose = "複雑なコーディングや専門業務で、性能と費用の均衡を取る"
+input = 2.0
+cache_read = 0.1
+output = 10.0
+credits = { input = 50.0, cache_read = 2.5, output = 250.0 }
+codex_models_json_line = 206
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "e76e0fe5-93ca-4272-9359-2eb1740467d1" # gpt-6-1-sol-low
+medium = "a2e51d62-ea4e-4f15-8be0-be9dc1fb489d" # gpt-6-1-sol-medium
+high = "3b84fee3-b70a-41bc-819e-5fbdef9a0042" # gpt-6-1-sol-high
+xhigh = "092a3b0e-c5c8-45dc-bf1b-53673c8ff352" # gpt-6-1-sol-xhigh
+max = "b25ac058-1e33-4c31-bbc9-a20c3ad0717a" # gpt-6-1-sol
+
+[[model]]
+id = "gpt-6-sol"
+provider = "openai"
+name = "GPT-6 Sol"
+purpose = "複雑なコーディングとエージェントの作業向け"
+input = 2.0
+cache_read = 0.2
+output = 10.0
+credits = { input = 50.0, cache_read = 5.0, output = 250.0 }
+codex_models_json_line = 382
+
+[[model]]
+id = "gpt-6-luna"
+provider = "openai"
+name = "GPT-6 Luna"
+purpose = "対象を絞った大量処理向けの効率重視モデル"
+input = 0.1
+cache_read = 0.01
+output = 0.5
+credits = { input = 2.5, cache_read = 0.25, output = 12.5 }
+codex_models_json_line = 553
+
+[[model]]
+id = "claude-fable-5-1"
+provider = "anthropic"
+name = "Claude Fable 5.1"
+purpose = "難しい推論と長期のエージェント作業向け"
+input = 10.0
+cache_read = 0.25
+output = 50.0
+docs_slug = "fable-5-1"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "05776db7-f5c0-40f7-b824-079160f8cfa8" # claude-fable-5-1-low
+medium = "3b7de71c-e034-4591-8ca6-6b6be2fa471f" # claude-fable-5-1-medium
+high = "9d7d72cd-d95d-45a0-b109-4ad292c9aabd" # claude-fable-5-1-high
+xhigh = "9b166bf3-42db-4f63-8338-1c4a1244ffe8" # claude-fable-5-1-xhigh
+max = "3e87c73e-a257-495e-9730-367a66229811" # claude-fable-5-1
+
+[[model]]
+id = "claude-opus-5-5"
+provider = "anthropic"
+name = "Claude Opus 5.5"
+purpose = "長時間のエージェントによるコーディングと知識業務向け"
+input = 4.0
+cache_read = 0.2
+output = 20.0
+docs_slug = "opus-5-5"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "4416ca93-fde6-4b7b-abbc-3a6be109cc3d" # claude-opus-5-5-low
+medium = "ea9e0da6-169f-43c6-92f5-730a10d6ff8d" # claude-opus-5-5-medium
+high = "f314eade-2232-44bf-a3ab-9b326bc67de6" # claude-opus-5-5-high
+xhigh = "df5bf99d-d228-4715-b41b-19ca86118777" # claude-opus-5-5-xhigh
+max = "2f3c4dc9-a450-4303-8697-0237257cf08f" # claude-opus-5-5
+
+[[model]]
+id = "claude-sonnet-5-5"
+provider = "anthropic"
+name = "Claude Sonnet 5.5"
+purpose = "速度と知能の両立を重視"
+input = 2.0
+cache_read = 0.1
+output = 10.0
+docs_slug = "sonnet-5-5"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "bbc2ffea-cf6b-43be-8c41-1769347e234d" # claude-sonnet-5-5-low
+medium = "042e8a37-fcd0-40f4-8f41-99215fb68eda" # claude-sonnet-5-5-medium
+high = "268525e2-f873-4178-bc07-e6a0ee1f002d" # claude-sonnet-5-5-high
+xhigh = "975aeaef-50bd-4a65-9c73-f1015adcd4d4" # claude-sonnet-5-5-xhigh
+max = "b171d979-5ec1-45de-b8b9-db1ee65e77ec" # claude-sonnet-5-5
+
+# 価格を載せていないモデル(測定値だけを持つ)。費用の比較には出ない。
+[[model]]
+id = "claude-haiku-5-5"
+provider = "anthropic"
+name = "Claude Haiku 5.5"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "42908ae3-d3bd-4934-be19-fbff93d3fde8" # claude-haiku-5-5-low
+medium = "af26fff4-8120-41be-a5f0-86aaea023f20" # claude-haiku-5-5-medium
+high = "20829974-af06-497e-9f42-77fb958d43b9" # claude-haiku-5-5-high
+xhigh = "41b5bf5e-daf6-42d9-b8d1-60e340a3028d" # claude-haiku-5-5-xhigh
+max = "7d064a11-6e78-4030-b535-cdf940615041" # claude-haiku-5-5
+
+[[model]]
+id = "gpt-6.1-terra"
+provider = "openai"
+name = "GPT-6.1 Terra"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+
+[model.aa_ids]
+low = "c955b262-a17f-4f1a-b097-6860b866295b" # gpt-6-1-terra-low
+medium = "c441e158-a87d-4116-911b-93325e4b4f1c" # gpt-6-1-terra-medium
+high = "ea3e1f50-f62d-41d2-849a-9af0413e4d37" # gpt-6-1-terra-high
+xhigh = "e8d443ba-8aca-4830-a186-ae869bb9c6fe" # gpt-6-1-terra-xhigh
+max = "b0c462cf-f2d0-4126-9434-28db9502219f" # gpt-6-1-terra
+
+
+# --------------------------------------------------------------- benchmarks
+# AA の API が現行モデルに値を返す評価だけを持つ(2026-10-27 の実測: 15 行すべてで非 null)。
+# コード指数・tau2・terminalbench_hard は同じ行で null だったので載せない。
+# unit: fraction = 0..1 の割合 / index_points = 指数の点(0..100)。
+# n: 課題数。公開の信頼区間が無いベンチの区間を、n からの二項区間で計算するのに使う。
+#    n が無いベンチは区間を作れず、判定は「データ不足」になる。
+
+[benchmark.terminalbench_v4_0]
+name = "Terminal-Bench 4.0"
+unit = "fraction"
+harness = "mini-swe-agent"
+n = 66
+n_unit = "tasks"
+trials = 3
+note = "pass@1 を課題ごとに 3 回の平均で採点。端末操作が中心。"
+
+[benchmark.terminalbench_v4_0.source]
+author = "Artificial Analysis"
+title = "Artificial Analysis Intelligence Benchmarking Methodology"
+url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
+retrieved = "2026-10-27"
+
+[benchmark.scicode]
+name = "SciCode"
+unit = "fraction"
+n = 288
+n_unit = "subproblems"
+note = "コードを実行して pass@1 でサブ問題ごとに採点。科学計算のコード。"
+
+[benchmark.scicode.source]
+author = "Artificial Analysis"
+title = "Artificial Analysis Intelligence Benchmarking Methodology"
+url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
+retrieved = "2026-10-27"
+
+[benchmark.lcr]
+name = "AA-LCR v1.1"
+unit = "fraction"
+n = 100
+n_unit = "questions"
+grader = "GPT-5.6 Luna (medium)"
+note = "長い文脈の推論。採点者が GPT 系の LLM なので、Claude の答えを GPT が採点する構図になる。"
+
+[benchmark.lcr.source]
+author = "Artificial Analysis"
+title = "Artificial Analysis Intelligence Benchmarking Methodology"
+url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
+retrieved = "2026-10-27"
+
+[benchmark.hle]
+name = "Humanity's Last Exam"
+unit = "fraction"
+n = 2158
+n_unit = "questions"
+grader = "GPT-5.6 Luna (medium)"
+note = "テキストのみの専門知識の問題。採点者が GPT 系の LLM。"
+
+[benchmark.hle.source]
+author = "Artificial Analysis"
+title = "Artificial Analysis Intelligence Benchmarking Methodology"
+url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
+retrieved = "2026-10-27"
+
+[benchmark.artificial_analysis_intelligence_index]
+name = "Artificial Analysis Intelligence Index"
+unit = "index_points"
+note = "10 評価の加重平均(エージェント 30%・コード 20%・科学的推論 20%・一般 30%)。総合点として判定には使わず、1 本のベンチとして表示する。"
+
+[benchmark.artificial_analysis_intelligence_index.source]
+author = "Artificial Analysis"
+title = "Artificial Analysis Intelligence Benchmarking Methodology"
+url = "https://artificialanalysis.ai/methodology/intelligence-benchmarking"
+retrieved = "2026-10-27"
+
+# ---------------------------------------------------------------- discovery
+# `model-catalog fetch-aa --write` が、AA の応答から手登録でない提供元・モデルを、生成ブロックの
+# 中へ自動で登録する範囲。この日(含む)以降に公開されたモデルだけを新しく載せる。古いモデルまで
+# 載せると候補が膨らむため。既に登録したものは、日付の外に出ても残る。手登録の行は書き換えない。
+
+[discovery]
+aa_release_since = "2026-07-01"
+
+# -------------------------------------------------------------- equivalence
+# 同等性の判定(model-equivalence)。能力は差の 90% 区間(Newcombe 1998)が ±δ の内側に収まること、
+# 速さは点推定の比が 1/(1+δ)〜(1+δ) に収まること。区間を作れないものは「データ不足」になる。
+
+# capability_margin_points は能力の許容幅の「下限」。役ごとの既定は、役の判定に使うベンチの分解能の最大値
+# (点数 0.5 のとき)を 0.5pt に切り上げた値と、この値の大きい方になる(#1150)。許容幅が分解能より狭いと、
+# 差が無くても「同等」と言えず、行の多くが「データ不足」になるため。速さは区間を持たないので、この値のまま。
+
+[equivalence]
+capability_margin_points = 5.0
+speed_margin_ratio = 0.2
+history_share_min = 0.1
+
+# 役ごとに判定する。Plan 役は種類を問わず設計・推論・長い文脈の読解に効く力、実行役は
+# 種類ごとの仕事(コードを直し、端末を操作する)に効く力なので、履歴の内訳に従ってベンチを絞る。
+
+[role.plan]
+name = "Plan 役"
+note = "設計・推論・長い文脈の読解に効く力。仕事の種類を問わず同じベンチで判定する。"
+order = 1
+follows_history = false
+benchmarks = ["lcr", "hle"]
+reference_benchmarks = ["artificial_analysis_intelligence_index"]
+
+[role.execute]
+name = "実行役"
+note = "コードを直し、端末を操作して仕事を進める力。履歴の内訳で、対応するベンチだけに絞る。"
+order = 2
+follows_history = true
+benchmarks = ["terminalbench_v4_0", "scicode"]
+
+# 履歴の課題の種類と、測っているベンチの対応。種類は次の順で、決定論的に決める(LLM は使わない)。
+#   1. PR タイトルの conventional prefix(`prefixes`)。型の一覧は Conventional Commits 1.0.0
+#      (https://www.conventionalcommits.org/en/v1.0.0/、取得 2026-10-28)が `fix`・`feat` に加えて
+#      推奨する `build`・`chore`・`ci`・`docs`・`style`・`refactor`・`perf`・`test` に、`revert`
+#      (取り消し)と、慣用の別名(`feature`・`bugfix`・`hotfix`・`doc`・`tests`)を足したもの。
+#      prefix は大文字小文字を区別せず、2 つの種類が同じ prefix を持つと読み込みで拒否する。
+#   2. prefix で決まらなかった PR(prefix が無い、または未知)だけ、変更ファイルの名前(`files`)。
+#      全ファイルが同じ 1 つの種類に当たるときだけ、その種類にする。混在・どれにも当たらない
+#      ファイルがある・取得に失敗したときは `other`。`dirs` が先(最も長い一致が勝つ)、無ければ拡張子。
+#   3. どちらでも決まらなければ `other`。
+# fit = direct は、その仕事そのものを測っているベンチ。proxy は近い力を測っているだけの代理。
+# SWE-bench 系は、現行モデルに値のある行が無い(更新停止)ので載せられない。ベンチが空の種類は、
+# 現行モデルに値のある公開ベンチで測れていない領域として、ページに帯で見せる。
+
+[category.feature]
+name = "機能追加"
+note = "既存の仕組みに機能を足す仕事。直接測るベンチは無く、端末での作業とコード生成を代理にする。"
+prefixes = ["feat", "feature"]
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.bugfix]
+name = "バグ修正"
+note = "不具合の原因を調べて直す仕事(取り消し `revert` も、壊れた変更を戻す修正として含める)。SWE-bench 系が直接のベンチだが現行モデルの行が無いので、代理にする。"
+prefixes = ["fix", "bugfix", "hotfix", "revert"]
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.refactor]
+name = "リファクタ・性能"
+note = "動作を変えずに構造・書式・性能を直す仕事(`style` も含める)。"
+prefixes = ["refactor", "perf", "style"]
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.test]
+name = "テスト"
+note = "テストを足す・直す仕事。コード生成と端末での作業を代理にする。"
+prefixes = ["test", "tests"]
+files = { dirs = ["tests/", "test/", "__tests__/", "spec/"] }
+benchmarks = [
+  { id = "terminalbench_v4_0", fit = "proxy" },
+  { id = "scicode", fit = "proxy" },
+]
+
+[category.config]
+name = "設定・インフラ"
+note = "Nix・CI・シェルなどの設定、依存・ビルド・雑務(`chore`)を端末で直す仕事。Terminal-Bench が仕事の形に近い。"
+prefixes = ["ci", "build", "chore"]
+files = { dirs = [".github/", "scripts/"], extensions = ["nix", "toml", "yaml", "yml", "sh", "zsh", "lock"] }
+benchmarks = [{ id = "terminalbench_v4_0", fit = "direct" }]
+
+[category.docs]
+name = "文書・設計"
+note = "文書や設計を書く仕事。文章を書く力を測る公開ベンチは無く、長い文脈の読解を代理にする。"
+prefixes = ["docs", "doc"]
+files = { dirs = ["docs/", "doc/"], extensions = ["md", "rst", "adoc"] }
+benchmarks = [{ id = "lcr", fit = "proxy" }]
+
+[category.other]
+name = "その他"
+note = "prefix でも変更ファイルでも種類を決められなかった PR(prefix の無いタイトルで、変更ファイルが混在しているものなど)。"
+
+# ------------------------------------------------- 純正ハーネスで測られた値
+# Terminal-Bench 公式の leaderboard にある、各社の純正ハーネス(Claude Code・Codex)での値。
+# AA の mini-swe-agent での値とは別物として、補正せずに注記として並べる。ハーネスによる差の向きが
+# モデルごとに揃わない(2026-10-27 時点の max で、Opus 5.5 は +5.2pt、Sonnet 5.5 は −1.8pt、
+# GPT-6.1 Sol は +2.1pt)ので、ある段階の差を他のエフォートへ当てはめることはしない。判定には使わない。
+# 公式は max のエフォートだけを載せている。± は 95% 信頼区間の半幅。
+
+[[native_harness]]
+model = "claude-opus-5-5"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.648
+ci95_points = 3.1
+measured = "2026-09-22"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "claude-sonnet-5-5"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.618
+ci95_points = 2.9
+measured = "2026-09-28"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "gpt-6.1-sol"
+effort = "max"
+harness = "Codex"
+benchmark = "terminalbench_v4_0"
+score = 0.582
+ci95_points = 3.1
+measured = "2026-09-29"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+[[native_harness]]
+model = "claude-fable-5-1"
+effort = "max"
+harness = "Claude Code"
+benchmark = "terminalbench_v4_0"
+score = 0.579
+ci95_points = 3.8
+measured = "2026-09-01"
+[native_harness.source]
+author = "Terminal-Bench"
+title = "Terminal-Bench 4.0 leaderboard"
+url = "https://www.tbench.ai/leaderboard/terminal-bench/4.0"
+retrieved = "2026-10-27"
+
+# BEGIN GENERATED (model-catalog fetch-aa) — do not edit by hand
+[aa]
+retrieved = "2026-10-27"
+source = "https://artificialanalysis.ai/api/v2/data/llms/models"
+attribution = "Artificial Analysis (https://artificialanalysis.ai/)"
+prompt_length_tokens = 1000
+parallel_queries = 1
+
+[[measurement]]
+model = "gpt-6.1-sol"
+effort = "low"
+aa_name = "GPT-6.1 Sol (Low)"
+aa_slug = "gpt-6-1-sol-low"
+retrieved = "2026-10-27"
+release_date = "2026-09-29"
+median_output_tokens_per_second = 55.386
+median_time_to_first_token_seconds = 1.812
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 42.1
+hle = 0.474
+lcr = 0.84
+scicode = 0.532
+terminalbench_v4_0 = 0.308080808080808
+
+[[measurement]]
+model = "gpt-6.1-sol"
+effort = "medium"
+aa_name = "GPT-6.1 Sol (Medium)"
+aa_slug = "gpt-6-1-sol-medium"
+retrieved = "2026-10-27"
+release_date = "2026-09-29"
+median_output_tokens_per_second = 52.459
+median_time_to_first_token_seconds = 4.047
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 47.8
+hle = 0.499
+lcr = 0.833333333333333
+scicode = 0.532
+terminalbench_v4_0 = 0.47979797979798
+
+[[measurement]]
+model = "gpt-6.1-sol"
+effort = "high"
+aa_name = "GPT-6.1 Sol (High)"
+aa_slug = "gpt-6-1-sol-high"
+retrieved = "2026-10-27"
+release_date = "2026-09-29"
+median_output_tokens_per_second = 57.21
+median_time_to_first_token_seconds = 24.244
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 50.2
+hle = 0.514
+lcr = 0.823333333333333
+scicode = 0.558
+terminalbench_v4_0 = 0.515151515151515
+
+[[measurement]]
+model = "gpt-6.1-sol"
+effort = "xhigh"
+aa_name = "GPT-6.1 Sol (Xhigh)"
+aa_slug = "gpt-6-1-sol-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-09-29"
+median_output_tokens_per_second = 64.081
+median_time_to_first_token_seconds = 69.997
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 51.0
+hle = 0.526
+lcr = 0.796666666666667
+scicode = 0.557
+terminalbench_v4_0 = 0.54040404040404
+
+[[measurement]]
+model = "gpt-6.1-sol"
+effort = "max"
+aa_name = "GPT-6.1 Sol (Max)"
+aa_slug = "gpt-6-1-sol"
+retrieved = "2026-10-27"
+release_date = "2026-09-29"
+median_output_tokens_per_second = 64.281
+median_time_to_first_token_seconds = 161.154
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 51.8
+hle = 0.529
+lcr = 0.83
+scicode = 0.542
+terminalbench_v4_0 = 0.560606060606061
+
+[[measurement]]
+model = "claude-fable-5-1"
+effort = "low"
+aa_name = "Claude Fable 5.1 (Low, Default Fallback)"
+aa_slug = "claude-fable-5-1-low"
+retrieved = "2026-10-27"
+release_date = "2026-09-01"
+median_output_tokens_per_second = 48.854
+median_time_to_first_token_seconds = 0.833
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 46.8
+hle = 0.489
+lcr = 0.823333333333333
+scicode = 0.567
+terminalbench_v4_0 = 0.404040404040404
+
+[[measurement]]
+model = "claude-fable-5-1"
+effort = "medium"
+aa_name = "Claude Fable 5.1 (Medium, Default Fallback)"
+aa_slug = "claude-fable-5-1-medium"
+retrieved = "2026-10-27"
+release_date = "2026-09-01"
+median_output_tokens_per_second = 48.827
+median_time_to_first_token_seconds = 2.114
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 48.9
+hle = 0.538
+lcr = 0.846666666666667
+scicode = 0.564
+terminalbench_v4_0 = 0.44949494949495
+
+[[measurement]]
+model = "claude-fable-5-1"
+effort = "high"
+aa_name = "Claude Fable 5.1 (High, Default Fallback)"
+aa_slug = "claude-fable-5-1-high"
+retrieved = "2026-10-27"
+release_date = "2026-09-01"
+median_output_tokens_per_second = 51.358
+median_time_to_first_token_seconds = 2.179
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 51.2
+hle = 0.559
+lcr = 0.836666666666667
+scicode = 0.587
+terminalbench_v4_0 = 0.52020202020202
+
+[[measurement]]
+model = "claude-fable-5-1"
+effort = "xhigh"
+aa_name = "Claude Fable 5.1 (Xhigh, Default Fallback)"
+aa_slug = "claude-fable-5-1-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-09-01"
+median_output_tokens_per_second = 54.903
+median_time_to_first_token_seconds = 35.222
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 53.2
+hle = 0.587
+lcr = 0.83
+scicode = 0.609
+terminalbench_v4_0 = 0.55050505050505
+
+[[measurement]]
+model = "claude-fable-5-1"
+effort = "max"
+aa_name = "Claude Fable 5.1 (Max, Default Fallback)"
+aa_slug = "claude-fable-5-1"
+retrieved = "2026-10-27"
+release_date = "2026-09-01"
+median_output_tokens_per_second = 65.565
+median_time_to_first_token_seconds = 155.724
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 53.4
+hle = 0.591
+lcr = 0.853333333333333
+scicode = 0.631
+terminalbench_v4_0 = 0.52020202020202
+
+[[measurement]]
+model = "claude-opus-5-5"
+effort = "low"
+aa_name = "Claude Opus 5.5 (Low, Default Fallback)"
+aa_slug = "claude-opus-5-5-low"
+retrieved = "2026-10-27"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 72.69
+median_time_to_first_token_seconds = 1.731
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 42.3
+hle = 0.483
+lcr = 0.806666666666667
+scicode = 0.586
+terminalbench_v4_0 = 0.313131313131313
+
+[[measurement]]
+model = "claude-opus-5-5"
+effort = "medium"
+aa_name = "Claude Opus 5.5 (Medium, Default Fallback)"
+aa_slug = "claude-opus-5-5-medium"
+retrieved = "2026-10-27"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 76.64
+median_time_to_first_token_seconds = 10.986
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 51.2
+hle = 0.547
+lcr = 0.843333333333333
+scicode = 0.593
+terminalbench_v4_0 = 0.525252525252525
+
+[[measurement]]
+model = "claude-opus-5-5"
+effort = "high"
+aa_name = "Claude Opus 5.5 (High, Default Fallback)"
+aa_slug = "claude-opus-5-5-high"
+retrieved = "2026-10-27"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 73.423
+median_time_to_first_token_seconds = 13.042
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 53.6
+hle = 0.556
+lcr = 0.826666666666667
+scicode = 0.604
+terminalbench_v4_0 = 0.565656565656566
+
+[[measurement]]
+model = "claude-opus-5-5"
+effort = "xhigh"
+aa_name = "Claude Opus 5.5 (Xhigh, Default Fallback)"
+aa_slug = "claude-opus-5-5-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 77.206
+median_time_to_first_token_seconds = 59.041
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 56.0
+hle = 0.575
+lcr = 0.846666666666667
+scicode = 0.65
+terminalbench_v4_0 = 0.595959595959596
+
+[[measurement]]
+model = "claude-opus-5-5"
+effort = "max"
+aa_name = "Claude Opus 5.5 (Max, Default Fallback)"
+aa_slug = "claude-opus-5-5"
+retrieved = "2026-10-27"
+release_date = "2026-09-22"
+median_output_tokens_per_second = 96.606
+median_time_to_first_token_seconds = 466.448
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 57.6
+hle = 0.614
+lcr = 0.846666666666667
+scicode = 0.669
+terminalbench_v4_0 = 0.595959595959596
+
+[[measurement]]
+model = "claude-sonnet-5-5"
+effort = "low"
+aa_name = "Claude Sonnet 5.5 (Low, Default Fallback)"
+aa_slug = "claude-sonnet-5-5-low"
+retrieved = "2026-10-27"
+release_date = "2026-09-28"
+median_output_tokens_per_second = 88.921
+median_time_to_first_token_seconds = 0.765
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 35.9
+hle = 0.362
+lcr = 0.76
+scicode = 0.491
+terminalbench_v4_0 = 0.207070707070707
+
+[[measurement]]
+model = "claude-sonnet-5-5"
+effort = "medium"
+aa_name = "Claude Sonnet 5.5 (Medium, Default Fallback)"
+aa_slug = "claude-sonnet-5-5-medium"
+retrieved = "2026-10-27"
+release_date = "2026-09-28"
+median_output_tokens_per_second = 93.41
+median_time_to_first_token_seconds = 1.002
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 40.8
+hle = 0.398
+lcr = 0.763333333333333
+scicode = 0.529
+terminalbench_v4_0 = 0.297979797979798
+
+[[measurement]]
+model = "claude-sonnet-5-5"
+effort = "high"
+aa_name = "Claude Sonnet 5.5 (High, Default Fallback)"
+aa_slug = "claude-sonnet-5-5-high"
+retrieved = "2026-10-27"
+release_date = "2026-09-28"
+median_output_tokens_per_second = 96.796
+median_time_to_first_token_seconds = 8.113
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 46.8
+hle = 0.458
+lcr = 0.78
+scicode = 0.537
+terminalbench_v4_0 = 0.439393939393939
+
+[[measurement]]
+model = "claude-sonnet-5-5"
+effort = "xhigh"
+aa_name = "Claude Sonnet 5.5 (Xhigh, Default Fallback)"
+aa_slug = "claude-sonnet-5-5-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-09-28"
+median_output_tokens_per_second = 96.371
+median_time_to_first_token_seconds = 12.36
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 51.9
+hle = 0.5
+lcr = 0.796666666666667
+scicode = 0.573
+terminalbench_v4_0 = 0.570707070707071
+
+[[measurement]]
+model = "claude-sonnet-5-5"
+effort = "max"
+aa_name = "Claude Sonnet 5.5 (Max, Default Fallback)"
+aa_slug = "claude-sonnet-5-5"
+retrieved = "2026-10-27"
+release_date = "2026-09-28"
+median_output_tokens_per_second = 140.814
+median_time_to_first_token_seconds = 297.57
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 56.0
+hle = 0.55
+lcr = 0.826666666666667
+scicode = 0.61
+terminalbench_v4_0 = 0.636363636363636
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "low"
+aa_name = "Claude Haiku 5.5 (Low)"
+aa_slug = "claude-haiku-5-5-low"
+retrieved = "2026-10-27"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 155.845
+median_time_to_first_token_seconds = 3.928
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 29.5
+hle = 0.27
+lcr = 0.72
+scicode = 0.492
+terminalbench_v4_0 = 0.126262626262626
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "medium"
+aa_name = "Claude Haiku 5.5 (Medium)"
+aa_slug = "claude-haiku-5-5-medium"
+retrieved = "2026-10-27"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 147.231
+median_time_to_first_token_seconds = 6.688
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 34.5
+hle = 0.338
+lcr = 0.773333333333333
+scicode = 0.49
+terminalbench_v4_0 = 0.151515151515152
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "high"
+aa_name = "Claude Haiku 5.5 (High)"
+aa_slug = "claude-haiku-5-5-high"
+retrieved = "2026-10-27"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 158.281
+median_time_to_first_token_seconds = 14.154
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 37.8
+hle = 0.373
+lcr = 0.773333333333333
+scicode = 0.487
+terminalbench_v4_0 = 0.217171717171717
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "xhigh"
+aa_name = "Claude Haiku 5.5 (Xhigh)"
+aa_slug = "claude-haiku-5-5-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 182.35
+median_time_to_first_token_seconds = 38.732
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 41.2
+hle = 0.427
+lcr = 0.783333333333333
+scicode = 0.517
+terminalbench_v4_0 = 0.292929292929293
+
+[[measurement]]
+model = "claude-haiku-5-5"
+effort = "max"
+aa_name = "Claude Haiku 5.5 (Max)"
+aa_slug = "claude-haiku-5-5"
+retrieved = "2026-10-27"
+release_date = "2026-10-07"
+median_output_tokens_per_second = 235.237
+median_time_to_first_token_seconds = 246.975
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 43.4
+hle = 0.444
+lcr = 0.826666666666667
+scicode = 0.55
+terminalbench_v4_0 = 0.328282828282828
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "low"
+aa_name = "GPT-6.1 Terra (Low)"
+aa_slug = "gpt-6-1-terra-low"
+retrieved = "2026-10-27"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.761
+median_time_to_first_token_seconds = 1.732
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 36.2
+hle = 0.358
+lcr = 0.81
+scicode = 0.524
+terminalbench_v4_0 = 0.151515151515152
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "medium"
+aa_name = "GPT-6.1 Terra (Medium)"
+aa_slug = "gpt-6-1-terra-medium"
+retrieved = "2026-10-27"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.849
+median_time_to_first_token_seconds = 1.736
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 41.3
+hle = 0.402
+lcr = 0.806666666666667
+scicode = 0.516
+terminalbench_v4_0 = 0.323232323232323
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "high"
+aa_name = "GPT-6.1 Terra (High)"
+aa_slug = "gpt-6-1-terra-high"
+retrieved = "2026-10-27"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 91.47
+median_time_to_first_token_seconds = 9.113
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 43.9
+hle = 0.433
+lcr = 0.823333333333333
+scicode = 0.516
+terminalbench_v4_0 = 0.419191919191919
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "xhigh"
+aa_name = "GPT-6.1 Terra (Xhigh)"
+aa_slug = "gpt-6-1-terra-xhigh"
+retrieved = "2026-10-27"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.959
+median_time_to_first_token_seconds = 24.298
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 45.4
+hle = 0.437
+lcr = 0.816666666666667
+scicode = 0.534
+terminalbench_v4_0 = 0.464646464646465
+
+[[measurement]]
+model = "gpt-6.1-terra"
+effort = "max"
+aa_name = "GPT-6.1 Terra (Max)"
+aa_slug = "gpt-6-1-terra"
+retrieved = "2026-10-27"
+release_date = "2026-10-26"
+median_output_tokens_per_second = 90.933
+median_time_to_first_token_seconds = 203.707
+
+[measurement.scores]
+artificial_analysis_intelligence_index = 48.1
+hle = 0.462
+lcr = 0.826666666666667
+scicode = 0.551
+terminalbench_v4_0 = 0.555555555555556
+# END GENERATED

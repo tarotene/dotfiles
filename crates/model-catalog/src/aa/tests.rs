@@ -1,5 +1,10 @@
 use super::*;
-use crate::{Catalog, CATALOG_TOML};
+use crate::Catalog;
+
+/// 手登録だけのカタログ（`fetch-aa` が自動登録を入れる前の `catalog.toml` の写し）。実カタログには
+/// 自動登録のモデル・測定値が入っていくので、これらの試験は、この固定の土台と試験用の応答だけを
+/// 前提にする（#1188）。手登録の行の取得日・持ち越しなど、土台の中身にも依存している。
+const CATALOG_TOML: &str = include_str!("../../tests/fixtures/catalog-hand-registered.toml");
 
 /// 応答の 1 行(AA の形の最小限)。`tb` は Terminal-Bench 4.0 の値で、None なら判定に使うベンチに値が無い。
 fn row(id: u32, name: &str, creator: &str, release: &str, tb: Option<f64>) -> String {
