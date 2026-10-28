@@ -130,6 +130,7 @@ node = [
   { id = "close-linked-issues", label = "close-linked-issues.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["implement-to-pr"], entity = ".github/workflows/close-linked-issues.yml", auto = true },
   { id = "kiriban", label = "kiriban.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/kiriban.yml", doc = "docs/kiriban.md", auto = true },
   { id = "bleep-pin-freshness", label = "bleep-pin-freshness.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/bleep-pin-freshness.yml", auto = true },
+  { id = "renovate-runner", label = "renovate-runner.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["repo-governance"], entity = ".github/workflows/renovate-runner.yml", auto = true },
   { id = "model-catalog-refresh", label = "model-catalog-refresh.yml", lane = "ci", group = "ci", stack = "yaml", pipelines = ["plan-approval"], entity = ".github/workflows/model-catalog-refresh.yml", auto = true },
 
   # --- Timers / periodic

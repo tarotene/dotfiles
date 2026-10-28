@@ -84,9 +84,9 @@ set -euo pipefail
 url="${*: -1}"
 case "$url" in
   */app) printf '{"slug":"tarotene-releaser","name":"tarotene-releaser","permissions":{"contents":"write","issues":"write","pull_requests":"write","metadata":"read"},"events":[]}' ;;
-  */app/installations) printf '[{"id":111,"account":{"login":"tarotene"},"repository_selection":"selected"}]' ;;
+  */app/installations\?per_page=100\&page=1) printf '[{"id":111,"account":{"login":"tarotene"},"repository_selection":"selected"}]' ;;
   */app/installations/111/access_tokens) printf '{"token":"fake-install-token"}' ;;
-  */installation/repositories\?per_page=100\&page=1) printf '{"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
+  */installation/repositories\?per_page=100\&page=1) printf '{"total_count":2,"repositories":[{"full_name":"tarotene/telepath"},{"full_name":"tarotene/bleep"}]}' ;;
   */installation/repositories\?per_page=100\&page=2) printf '{"repositories":[]}' ;;
   *) printf '{}' ;;
 esac
@@ -155,6 +155,69 @@ fn snapshot_assembles_apps_and_installations() {
         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
         0o600
     );
+}
+
+#[test]
+fn owned_app_api_failure_preserves_previous_snapshot() {
+    let fx = Fx::new();
+    let pem = genrsa(&fx.p("test.pem"));
+    let curl = fx.p("curl-failing-installations");
+    write_exec(
+        &curl,
+        r#"#!/bin/sh
+case "$*" in
+  */app) printf '{"slug":"releaser","name":"releaser","permissions":{},"events":[]}' ;;
+  *) printf '{"message":"upstream failure"}' ;;
+esac
+"#,
+    );
+    let target = fx.p("state/app-snapshot.json");
+    fs::write(&target, "previous snapshot\n").unwrap();
+    let o = out(snapshot_cmd(&fx, &curl, &target)
+        .env("GITHUB_APP_RELEASER_ID", "999")
+        .env("GITHUB_APP_RELEASER_PEM", &pem));
+    assert_eq!(o.code, 1);
+    assert_eq!(fs::read_to_string(target).unwrap(), "previous snapshot\n");
+}
+
+#[test]
+fn owned_app_requires_all_repository_pages() {
+    let fx = Fx::new();
+    let pem = genrsa(&fx.p("test.pem"));
+    let curl = fx.p("curl-paged");
+    write_exec(
+        &curl,
+        r##"#!/usr/bin/env python3
+import json, os, sys
+url=sys.argv[-1]
+if url.endswith('/app'): print(json.dumps({'slug':'releaser','name':'releaser','permissions':{},'events':[]}))
+elif '/app/installations?' in url: print(json.dumps([{'id':111,'account':{'login':'owner'},'repository_selection':'selected'}]))
+elif url.endswith('/access_tokens'): print(json.dumps({'token':'fake-token'}))
+elif 'installation/repositories?' in url:
+    page=int(url.split('page=')[-1])
+    if page == 2 and os.getenv('FAIL_PAGE'): sys.exit(22)
+    print(json.dumps({'total_count':101, 'repositories':[{'full_name':f'owner/repo{i}'} for i in (range(100) if page == 1 else range(100,101))]}))
+else: sys.exit(1)
+"##,
+    );
+    let target = fx.p("state/app-snapshot.json");
+    let mut cmd = snapshot_cmd(&fx, &curl, &target);
+    cmd.env("GITHUB_APP_RELEASER_ID", "999")
+        .env("GITHUB_APP_RELEASER_PEM", &pem);
+    assert_eq!(out(&mut cmd).code, 0);
+    let previous = fs::read_to_string(&target).unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&previous).unwrap();
+    assert_eq!(
+        doc["apps"][0]["installations"][0]["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        101
+    );
+    assert_eq!(doc["apps"][0]["complete"], true);
+    cmd.env("FAIL_PAGE", "1");
+    assert_eq!(out(&mut cmd).code, 1);
+    assert_eq!(fs::read_to_string(target).unwrap(), previous);
 }
 
 /// bash#11〜#12: App の secret が環境に無ければ警告して飛ばし、致命にしない。

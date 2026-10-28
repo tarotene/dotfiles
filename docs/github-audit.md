@@ -625,8 +625,7 @@ Since #465 (2026-09-25), the domain detects a proxy signal for the case
 where the App has not (yet) run on a repository: when config is present,
 `dependencyDashboard` is not explicitly disabled in it, and no open Issue
 titled by Renovate's Dependency Dashboard feature exists
-(`renovate[bot]`-authored, via a GraphQL `filterBy: {createdBy:
-"renovate[bot]"}` query), the domain reports `drifted:
+via a GraphQL `filterBy: {createdBy: ...}` query), the domain reports `drifted:
 renovate-dashboard-missing`. This is not gated by Renovate's `schedule`
 option — Renovate's `ensureDependencyDashboard()`
 (`lib/workers/repository/index.ts`,
@@ -638,6 +637,15 @@ is correctly scoped gets a Dashboard Issue within its next run
 repositories) — a first run simply not having happened yet is now the
 dominant remaining explanation for one never appearing (with the App
 account-wide, an install-scope gap is no longer the default assumption).
+
+When a complete snapshot contains the owned `renovate` App, the Dashboard
+author is derived from its observed slug (`<slug>[bot]`) and the domain
+also reports `renovate-app-not-installed` for a repository absent from the
+personal account's observed installation. Other organizations' installations
+are not treated as personal targets. Before that snapshot exists, the author
+remains `renovate[bot]` and installation is not judged. Snapshot API failures
+stop the snapshot update rather than turn a failed page into an empty list.
+The self-hosted App has not yet been registered or verified in operation.
 
 Since ADR-568 D4 (2026-09-29), the domain also reports `drifted:
 renovate-policy-preset-missing` when config is present but its `extends`

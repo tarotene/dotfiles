@@ -188,6 +188,11 @@ struct Registration {
 fn fetch_app_registration(cfg: &Config, id: &str, pem_file: &Path) -> Result<Registration, String> {
     let jwt = build_jwt(cfg, id, pem_file)?;
     let body = parse_body(&http_get(cfg, &format!("{GITHUB_API}/app"), &jwt));
+    if !matches!(j_get(&body, "slug"), Some(J::Str(s)) if !s.is_empty())
+        || !matches!(j_get(&body, "name"), Some(J::Str(s)) if !s.is_empty())
+    {
+        return Err("app registration unavailable".into());
+    }
     Ok(Registration {
         slug: alt(j_get(&body, "slug"), J::str("")),
         app_name: alt(j_get(&body, "name"), J::str("")),
@@ -196,78 +201,107 @@ fn fetch_app_registration(cfg: &Config, id: &str, pem_file: &Path) -> Result<Reg
     })
 }
 
-/// installation の repo 一覧("owner/repo" の配列)。token が取れなければ空。
-fn fetch_installation_repos(cfg: &Config, installation_id: &str, jwt: &str) -> J {
-    let token_body = parse_body(&http_post_empty_body(
+/// Read all pages; a failed or partial response is never an empty installation.
+fn fetch_installation_repos(cfg: &Config, installation_id: &str, jwt: &str) -> Result<J, String> {
+    let body = parse_body(&http_post_empty_body(
         cfg,
         &format!("{GITHUB_API}/app/installations/{installation_id}/access_tokens"),
         jwt,
     ));
-    let token = match j_get(&token_body, "token") {
-        None | Some(J::Null) | Some(J::Bool(false)) => String::new(),
-        Some(v) => raw(v),
+    let token = match j_get(&body, "token") {
+        Some(J::Str(s)) if !s.is_empty() => s,
+        _ => return Err("installation token unavailable".into()),
     };
-    if token.is_empty() {
-        return J::Arr(vec![]);
-    }
     let mut repos = Vec::new();
-    let mut page = 1;
-    loop {
+    let mut total = None;
+    for page in 1..=10000 {
         let body = parse_body(&http_get(
             cfg,
             &format!("{GITHUB_API}/installation/repositories?per_page=100&page={page}"),
-            &token,
+            token,
         ));
-        let batch: Vec<J> = match j_get(&body, "repositories") {
-            Some(J::Arr(items)) => items
-                .iter()
-                .filter(|r| matches!(r, J::Obj(_)))
-                .map(|r| j_get(r, "full_name").cloned().unwrap_or(J::Null))
-                .collect(),
-            _ => Vec::new(),
+        let count = match j_get(&body, "total_count") {
+            Some(J::Num(n)) => n.parse::<usize>().map_err(|_| "invalid repository count")?,
+            _ => return Err("repository listing unavailable".into()),
         };
-        let n = batch.len();
-        repos.extend(batch);
-        if n < 100 {
-            break;
+        if total.is_some_and(|previous| previous != count) {
+            return Err("repository listing changed during pagination".into());
         }
-        page += 1;
+        total = Some(count);
+        let Some(J::Arr(batch)) = j_get(&body, "repositories") else {
+            return Err("repository listing unavailable".into());
+        };
+        if batch.len() > 100 {
+            return Err("invalid repository page".into());
+        }
+        for entry in batch {
+            let Some(J::Str(name)) = j_get(entry, "full_name") else {
+                return Err("invalid repository entry".into());
+            };
+            if name.is_empty() || repos.iter().any(|r| matches!(r, J::Str(s) if s == name)) {
+                return Err("duplicate or empty repository".into());
+            }
+            repos.push(J::str(name));
+        }
+        if repos.len() > count {
+            return Err("invalid repository count".into());
+        }
+        if batch.len() < 100 {
+            return if repos.len() == count {
+                Ok(J::Arr(repos))
+            } else {
+                Err("incomplete repository listing".into())
+            };
+        }
     }
-    J::Arr(repos)
+    Err("repository page limit exceeded".into())
 }
 
-/// `[{id, account, repository_selection, repositories}]`。応答が配列でない
-/// (API エラーのオブジェクトなど)ときは空 — bash 版は jq の失敗が連鎖して
-/// 壊れた JSON を書き出していた(意図的に変えた箇所)。
+/// All installation pages and all their repository pages, or an error.
 fn fetch_app_installations(cfg: &Config, id: &str, pem_file: &Path) -> Result<J, String> {
     let jwt = build_jwt(cfg, id, pem_file)?;
-    let body = parse_body(&http_get(
-        cfg,
-        &format!("{GITHUB_API}/app/installations"),
-        &jwt,
-    ));
-    let J::Arr(items) = body else {
-        return Ok(J::Arr(vec![]));
-    };
     let mut out = Vec::new();
-    for inst in items {
-        let Some(J::Num(inst_id)) = j_get(&inst, "id").cloned() else {
-            continue;
+    let mut ids = std::collections::HashSet::new();
+    for page in 1..=10000 {
+        let body = parse_body(&http_get(
+            cfg,
+            &format!("{GITHUB_API}/app/installations?per_page=100&page={page}"),
+            &jwt,
+        ));
+        let J::Arr(items) = body else {
+            return Err("installation listing unavailable".into());
         };
-        let account = j_get(&inst, "account")
-            .and_then(|a| j_get(a, "login"))
-            .map(|v| alt(Some(v), J::str("")))
-            .unwrap_or_else(|| J::str(""));
-        let selection = alt(j_get(&inst, "repository_selection"), J::str(""));
-        let repos = fetch_installation_repos(cfg, &inst_id, &jwt);
-        out.push(J::obj(vec![
-            ("id", J::Num(inst_id)),
-            ("account", J::str(raw(&account))),
-            ("repository_selection", J::str(raw(&selection))),
-            ("repositories", repos),
-        ]));
+        let n = items.len();
+        if n > 100 {
+            return Err("invalid installation page".into());
+        }
+        for inst in items {
+            let Some(J::Num(inst_id)) = j_get(&inst, "id").cloned() else {
+                return Err("invalid installation id".into());
+            };
+            if !ids.insert(inst_id.clone()) {
+                return Err("duplicate installation".into());
+            }
+            let Some(J::Str(account)) = j_get(&inst, "account").and_then(|a| j_get(a, "login"))
+            else {
+                return Err("invalid installation account".into());
+            };
+            let Some(J::Str(selection)) = j_get(&inst, "repository_selection") else {
+                return Err("invalid installation selection".into());
+            };
+            let repos = fetch_installation_repos(cfg, &inst_id, &jwt)?;
+            out.push(J::obj(vec![
+                ("id", J::Num(inst_id)),
+                ("account", J::str(account)),
+                ("repository_selection", J::str(selection)),
+                ("repositories", repos),
+            ]));
+        }
+        if n < 100 {
+            return Ok(J::Arr(out));
+        }
     }
-    Ok(J::Arr(out))
+    Err("installation page limit exceeded".into())
 }
 
 /// bash の glob `"$dir"/*.json`(バイト順。ドットファイルは含まない)。
@@ -362,6 +396,7 @@ pub fn snapshot_apps(cfg: &Config) -> Result<J, String> {
             ("permissions", reg.permissions),
             ("events", reg.events),
             ("installations", installs),
+            ("complete", J::Bool(true)),
         ]));
     }
     Ok(J::Arr(out))

@@ -87,6 +87,57 @@ pub fn read_claude_snapshot(path: &Path) -> Result<Vec<String>, &'static str> {
     }
 }
 
+/// Derive the GitHub bot account from the observed owned App registration.
+/// A missing/invalid snapshot retains the existing hosted App during migration.
+pub fn renovate_actor(path: &Path) -> String {
+    let app = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|doc| {
+            doc.get("apps")?
+                .as_array()?
+                .iter()
+                .find(|a| {
+                    a.get("name").and_then(Value::as_str) == Some("renovate")
+                        && a.get("complete").and_then(Value::as_bool) == Some(true)
+                })
+                .and_then(|a| a.get("slug").and_then(Value::as_str))
+                .map(str::to_owned)
+        });
+    match app {
+        Some(slug)
+            if !slug.is_empty() && slug.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') =>
+        {
+            format!("{slug}[bot]")
+        }
+        _ => "renovate[bot]".into(),
+    }
+}
+
+pub fn read_renovate_installations(path: &Path, owner: &str) -> Option<Vec<String>> {
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let app = doc
+        .get("apps")?
+        .as_array()?
+        .iter()
+        .find(|a| a.get("name").and_then(Value::as_str) == Some("renovate"))?;
+    if app.get("complete").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    let installs = app.get("installations")?.as_array()?;
+    let mut repos = Vec::new();
+    for installation in installs {
+        let account = installation.get("account")?.as_str()?;
+        if !account.eq_ignore_ascii_case(owner) {
+            continue;
+        }
+        for repo in installation.get("repositories")?.as_array()? {
+            repos.push(repo.as_str()?.to_owned());
+        }
+    }
+    Some(repos)
+}
+
 /// bash: `audit`。`domains` の順に判定し、`gh repo list` の順にリポジトリを
 /// 並べる。fail loud な取得(リポジトリ一覧・GraphQL バッチ)が失敗したら
 /// `Err`(理由は stderr に出してある)。
@@ -106,7 +157,8 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
     let mut gql_batch: HashMap<String, RepoGql> = HashMap::new();
     if need_graphql {
         let names: Vec<String> = repos.iter().map(|m| m.name.clone()).collect();
-        gql_batch = gh.fetch_graphql_batch(&names).inspect_err(|_| {
+        let actor = renovate_actor(&cfg.app_snapshot_file);
+        gql_batch = gh.fetch_graphql_batch_with_renovate_actor(&names, &actor).inspect_err(|_| {
             eprintln!(
                 "github-audit: aborting — charters/renovate/rulesets judgement requires GraphQL data that failed to fetch"
             );
@@ -139,6 +191,7 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
         (false, Vec::new())
     };
     let claude_installs = read_claude_snapshot(&cfg.app_snapshot_file);
+    let renovate_installs = read_renovate_installations(&cfg.app_snapshot_file, &cfg.owner);
 
     let mut results = Vec::new();
     for meta in &repos {
@@ -201,7 +254,21 @@ pub fn audit(cfg: &Config, domains: &[Domain]) -> Result<Vec<RepoFindings>, Fetc
                     Domain::Settings => {
                         settings::judge_settings(meta, &gh.fetch_repo_settings(repo))
                     }
-                    Domain::Renovate => renovate::judge_renovate(gql, &cfg.renovate_policy_preset),
+                    Domain::Renovate => {
+                        let mut finding =
+                            renovate::judge_renovate(gql, &cfg.renovate_policy_preset);
+                        if finding.verdict != Verdict::NotApplicable
+                            && renovate_installs.as_ref().is_some_and(|repos| {
+                                !repos.iter().any(|name| {
+                                    name.eq_ignore_ascii_case(&format!("{}/{repo}", cfg.owner))
+                                })
+                            })
+                        {
+                            finding.missing.push("renovate-app-not-installed".into());
+                            finding.verdict = Verdict::Drifted;
+                        }
+                        finding
+                    }
                     Domain::Titles => {
                         // pr-title.yml の caller が無い repo は REST を払わない。
                         let jobs = if gql.has_workflow_file("pr-title.yml") {
@@ -443,4 +510,36 @@ pub fn any_drift(findings: &[RepoFindings]) -> bool {
                     | Verdict::Advisory
             )
         })
+}
+
+#[cfg(test)]
+mod renovate_snapshot_tests {
+    use super::*;
+    #[test]
+    fn observes_owned_actor_and_only_personal_installation() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("snapshot.json");
+        assert_eq!(renovate_actor(&path), "renovate[bot]");
+        assert!(read_renovate_installations(&path, "owner").is_none());
+        std::fs::write(&path, r#"{"apps":[{"name":"renovate","slug":"my-renovate","complete":true,"installations":[{"account":"owner","repositories":["owner/a"]},{"account":"other-org","repositories":["other-org/secret"]}]}]}"#).unwrap();
+        assert_eq!(renovate_actor(&path), "my-renovate[bot]");
+        assert_eq!(
+            read_renovate_installations(&path, "owner"),
+            Some(vec!["owner/a".into()])
+        );
+        let query = crate::gh::build_graphql_query_for_actor(
+            "owner",
+            &["a".into()],
+            &renovate_actor(&path),
+        );
+        assert!(query.contains("createdBy: \"my-renovate[bot]\""));
+        assert!(!query.contains("createdBy: \"renovate[bot]\""));
+        std::fs::write(
+            &path,
+            r#"{"apps":[{"name":"renovate","slug":"bad\"quote","installations":null}]}"#,
+        )
+        .unwrap();
+        assert_eq!(renovate_actor(&path), "renovate[bot]");
+        assert!(read_renovate_installations(&path, "owner").is_none());
+    }
 }

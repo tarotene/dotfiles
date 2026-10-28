@@ -573,9 +573,17 @@ hasWikiEnabled,hasProjectsEnabled,createdAt,pushedAt,isArchived,viewerPermission
         &self,
         names: &[String],
     ) -> Result<HashMap<String, RepoGql>, FetchError> {
+        self.fetch_graphql_batch_with_renovate_actor(names, "renovate[bot]")
+    }
+
+    pub fn fetch_graphql_batch_with_renovate_actor(
+        &self,
+        names: &[String],
+        actor: &str,
+    ) -> Result<HashMap<String, RepoGql>, FetchError> {
         let mut merged = HashMap::new();
         for chunk in names.chunks(GRAPHQL_CHUNK_SIZE) {
-            let query = build_graphql_query(&self.owner, chunk);
+            let query = build_graphql_query_for_actor(&self.owner, chunk, actor);
             let r = self.run(&["api", "graphql", "-f", &format!("query={query}")], true);
             let parsed = if r.ok {
                 serde_json::from_str::<Value>(&r.stdout).ok()
@@ -689,6 +697,12 @@ fn applies_to_default_branch(d: &Value) -> bool {
 
 /// bash: `build_graphql_query`。クエリ文字列は bash 版と 1 字違わず同じ。
 pub fn build_graphql_query(owner: &str, names: &[String]) -> String {
+    build_graphql_query_for_actor(owner, names, "renovate[bot]")
+}
+
+pub fn build_graphql_query_for_actor(owner: &str, names: &[String], actor: &str) -> String {
+    // JSON string escaping is valid for the GraphQL string literal as well.
+    let actor = serde_json::to_string(actor).expect("string JSON serialization");
     let mut query = String::from("query {");
     for (i, name) in names.iter().enumerate() {
         let i = i + 1;
@@ -719,7 +733,7 @@ pub fn build_graphql_query(owner: &str, names: &[String]) -> String {
       ghRenovateJson: object(expression: \"HEAD:.github/renovate.json\") {{ ... on Blob {{ text }} }}
       ghRenovateJson5: object(expression: \"HEAD:.github/renovate.json5\") {{ ... on Blob {{ text }} }}
       renovaterc: object(expression: \"HEAD:.renovaterc.json\") {{ ... on Blob {{ text }} }}
-      renovateDashboard: issues(states: OPEN, first: 1, filterBy: {{createdBy: \"renovate[bot]\"}}) {{ totalCount }}
+      renovateDashboard: issues(states: OPEN, first: 1, filterBy: {{createdBy: {actor}}}) {{ totalCount }}
       latestRelease: releases(first: 1, orderBy: {{field: CREATED_AT, direction: DESC}}) {{ nodes {{ createdAt }} }}
       openIssueActivity: issues(states: OPEN, first: 1, orderBy: {{field: UPDATED_AT, direction: DESC}}) {{ totalCount nodes {{ updatedAt }} }}
     }}"
