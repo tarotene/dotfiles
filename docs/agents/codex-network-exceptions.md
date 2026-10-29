@@ -26,6 +26,13 @@ sed -n '1,10p' /tmp/codex-permissions-source.rs
 herdr や署名付き Git 操作で socket が必要なときは native の自動審査に渡す。
 適用後の新しいセッションでの動作は未確認である。
 
+#1064(Codex の sandbox 内でローカル GPG 署名できる経路)は、この判断で決定済みとして閉じる。
+socket のパスだけを許可しても拒否が続く(下の `rust-v0.164.0` のソースとテスト)ので、
+gpg-agent の socket だけを開く形は採らず、署名は native の自動審査に渡す。
+`rust-v0.165.0` でも同じかは未確認。自動審査を通して署名付きコミットが作れることの実測は、
+まだ行っていない(#1159 の実測と同じ Codex の使い捨てセッションで行う)。
+署名が通らないときの別経路は、GitHub のコミット API(`config/agents/AGENTS.md` の該当節)。
+
 OpenAI, *Codex*, `rust-v0.164.0` の
 [`seccomp.rs` L254–269](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/linux-sandbox/src/seccomp.rs#L254-L269)
 では、この boolean が真の場合だけ proxy 経由の Linux sandbox 内で standalone な
