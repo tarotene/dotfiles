@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -78,4 +79,25 @@ jobs:
           🤖 Generated with [GitHub Actions](https://github.com/features/actions)
           BODY
             gh pr create -R "$REPOSITORY" --base main --head "$branch" --title 'chore(model-catalog): refresh AA data' --body-file /tmp/catalog-pr.md
+          fi
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -eu
+          title='model-catalog-refresh: 週次の取り込みが失敗した'
+          {
+            printf '%s\n' "週次の取り込み(\`.github/workflows/model-catalog-refresh.yml\`)が失敗した。実行: $RUN_URL"
+            printf '\n%s\n' "原因の候補: \`ARTIFICIAL_ANALYSIS_API_KEY\` が未登録、AA の API が 401 を返した、応答の形が変わった、Actions に PR の作成が許されていない(\`can_approve_pull_request_reviews\`)。"
+            printf '\n%s\n' '同じ失敗が続く間は、この Issue にコメントが足される。直したら閉じる。'
+            printf '\n%s\n' '🤖 Generated with [GitHub Actions](https://github.com/features/actions)'
+          } > /tmp/catalog-failure.md
+          number=$(gh issue list -R "$REPOSITORY" --state open --limit 100 --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)
+          if [ -n "$number" ]; then
+            gh issue comment "$number" -R "$REPOSITORY" --body-file /tmp/catalog-failure.md
+          else
+            gh issue create -R "$REPOSITORY" --title "$title" --body-file /tmp/catalog-failure.md
           fi
