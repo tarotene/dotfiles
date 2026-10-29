@@ -3,29 +3,36 @@
 //! ```text
 //! worklog add <kind> <text...> [--ref N] [--repo owner/repo]
 //! worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]
+//! worklog mail open|check|sweep [--today YYYY-MM-DD] [--dry-run]|restore <鍵>|forget <鍵>
 //! worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。vault を宣言していない機体では無音
 //! ```
 //!
-//! `WORKLOG_NOW`(unix 秒)は試験用に今の時刻を固定する。
+//! `WORKLOG_NOW`(unix 秒)は試験用に今の時刻を固定する。`WORKLOG_STATE_DIR` は終端の控えの置き場
+//! (既定 `~/.local/state/claude/worklog`)。
 
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
+use worklog::mail::{self, Actor, Ledger, Vocabulary};
 use worklog::{
-    add, build_context, jst_parts, list, parse_date, select_recent, Added, Kind, Reference, Vault,
-    MAIL_CHANNELS, MAIL_DISPOSITIONS, MAIL_SUMMARY_MAX_CHARS, SESSION_MAX_LINES, VAULT,
-    WINDOW_DAYS,
+    add, build_context, format_date, jst_parts, list, parse_date, select_recent, Added, Kind,
+    Reference, Vault, MAIL_CHANNELS, MAIL_SUMMARY_MAX_CHARS, SESSION_MAX_LINES, VAULT, WINDOW_DAYS,
 };
 
 fn usage() -> String {
     format!(
         "usage:\n  worklog add <kind> <text...> [--ref N] [--repo owner/repo]\n  \
          worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]\n  \
+         worklog mail open|check\n  worklog mail sweep [--today YYYY-MM-DD] [--dry-run]\n  \
+         worklog mail restore <鍵>|forget <鍵>\n  \
          worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)\n\
-         mail の本文: '<{}>: <要旨(結論だけ・{}字まで)> [<{}>:<id>]'(媒体 none は '[none]')",
+         mail の本文: '<{}>: <要旨(結論だけ・{}字まで)> [<{}>:<スレッド>/<受信> [due:YYYY-MM-DD]]'\
+         (媒体 none は '[none]'、move は to:<owner/repo#N|cal:YYYY-MM-DD|mail:<鍵>> が要る。\
+         受信は gmail ならメッセージ ID、それ以外は YYYYMMDDTHHMM)",
         Kind::names(),
-        MAIL_DISPOSITIONS.join("|"),
+        Vocabulary::get().event_names(),
         MAIL_SUMMARY_MAX_CHARS,
         MAIL_CHANNELS.join("|")
     )
@@ -34,13 +41,16 @@ fn usage() -> String {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("add") => add_cmd(&args[1..]),
-        Some("list") => list_cmd(&args[1..]),
-        Some("session-start") => session_arg(&args[1..]).map(session_start),
+        Some("add") => add_cmd(&args[1..]).map(|()| ExitCode::SUCCESS),
+        Some("list") => list_cmd(&args[1..]).map(|()| ExitCode::SUCCESS),
+        Some("mail") => mail_cmd(&args[1..]),
+        Some("session-start") => session_arg(&args[1..])
+            .map(session_start)
+            .map(|()| ExitCode::SUCCESS),
         _ => Err(usage()),
     };
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(m) => {
             eprintln!("worklog: {m}");
             ExitCode::from(2)
@@ -109,11 +119,33 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
         }
     }
     // mail の出典は本文の印で、リポジトリには結びつかない(作業ディレクトリから参照を付けない)。
-    let repo = if kind == Kind::Mail {
-        repo
-    } else {
-        repo.or_else(cwd_repo)
-    };
+    // 状態の検査(畳み込み・終端の控え)は mail::add_mail が担う。
+    if kind == Kind::Mail {
+        if repo.is_some() || number.is_some() {
+            return Err("mail には owner/repo の参照を付けない(出典は本文の印)".into());
+        }
+        let vault = open_vault()?;
+        let (days, time) = jst_parts(now_unix());
+        let ledger = Ledger::from_env()?;
+        let r = mail::add_mail(&vault, &ledger, days, &time, &text.join(" "), Actor::Agent)?;
+        for old in &r.superseded {
+            println!("同じスレッドの古い項目を移した: {old}");
+        }
+        match (r.duplicate, r.path) {
+            (true, p) => println!(
+                "既に記録済み: {}",
+                p.map_or("同じ出来事は畳み込み済み".to_string(), |p| p
+                    .display()
+                    .to_string())
+            ),
+            (false, p) => println!(
+                "追記した: {}",
+                p.map_or(String::new(), |p| p.display().to_string())
+            ),
+        }
+        return Ok(());
+    }
+    let repo = repo.or_else(cwd_repo);
     if number.is_some() && repo.is_none() {
         return Err(
             "--ref には owner/repo が要る。git の外では --repo owner/repo を渡す".to_string(),
@@ -128,6 +160,91 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
         Added::Duplicate(p) => println!("既に記録済み: {}", p.display()),
     }
     Ok(())
+}
+
+/// `mail open|check|sweep|restore|forget`。`check` は食い違いがあれば exit 1。
+fn mail_cmd(args: &[String]) -> Result<ExitCode, String> {
+    let sub = args.first().map(String::as_str).ok_or_else(usage)?;
+    let rest = &args[1..];
+    let vault = open_vault()?;
+    let (today, time) = jst_parts(now_unix());
+    let ledger = Ledger::from_env()?;
+    match sub {
+        "open" if rest.is_empty() => {
+            let (_, folded) = mail::load(&vault, today)?;
+            let entries = ledger.entries()?;
+            let vanished = mail::deleted_terminals(&folded, &entries);
+            let skip: BTreeSet<&str> = vanished.iter().map(|(k, _, _)| k.as_str()).collect();
+            let v = Vocabulary::get();
+            for i in folded.items.values().filter(|i| !v.is_terminal(&i.state)) {
+                if skip.contains(i.key.as_str()) {
+                    continue;
+                }
+                println!(
+                    "{}\t{}\t{}日\t{}\t{}",
+                    i.state,
+                    i.key,
+                    today - i.last_day,
+                    i.due.map_or("-".to_string(), format_date),
+                    i.summary
+                );
+            }
+            for (key, was, now) in &vanished {
+                println!("終端の行が消えた\t{key}\t控え: {was} / 今: {now}\t-\t`worklog mail restore` か `forget`");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "check" if rest.is_empty() => {
+            let (_, folded) = mail::load(&vault, today)?;
+            let vanished = mail::deleted_terminals(&folded, &ledger.entries()?);
+            for d in &folded.discrepancies {
+                println!("食い違い\t{}\t{}", d.key, d.message);
+            }
+            for (key, was, now) in &vanished {
+                println!("食い違い\t{key}\t終端の行が消えた(控え: {was} / 今: {now})");
+            }
+            let n = folded.discrepancies.len() + vanished.len();
+            Ok(if n == 0 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            })
+        }
+        "sweep" => {
+            let (mut dry_run, mut day) = (false, today);
+            let mut it = rest.iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--dry-run" => dry_run = true,
+                    "--today" => {
+                        let s = value(&mut it, "--today")?;
+                        day = parse_date(s).ok_or_else(|| format!("--today が日付でない: {s}"))?;
+                    }
+                    _ => return Err(usage()),
+                }
+            }
+            for a in mail::sweep(&vault, &ledger, day, &time, dry_run)? {
+                println!("{}\t{}\t{}", a.event, a.key, a.text);
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        "restore" | "forget" if rest.len() == 1 => {
+            let key = rest[0].as_str();
+            let entries = ledger.entries()?;
+            let entry = entries
+                .get(key)
+                .ok_or_else(|| format!("終端の控えに無い鍵: {key}"))?;
+            if sub == "forget" {
+                ledger.forget(key)?;
+                println!("控えから捨てた: {key}");
+            } else {
+                mail::add_mail(&vault, &ledger, today, &time, &entry.text, Actor::Machine)?;
+                println!("終端の行を書き戻した: {key}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        _ => Err(usage()),
+    }
 }
 
 fn list_cmd(args: &[String]) -> Result<(), String> {

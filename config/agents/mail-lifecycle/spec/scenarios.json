@@ -1,0 +1,309 @@
+{
+  "about": "寿命の仕様(lifecycle.qnt)の検査の表。各行が 1 回のモデル検査で、cfg.qnt を生成して回す。expect が fail の行は、規則を 1 つだけ外し、その規則が守る性質の反例が出ることが期待で、出なければ検査が赤になる(規則が実際に効いている証拠)。",
+  "defaults": {
+    "N_KEYS": 1,
+    "TWO_MACHINES": false,
+    "REMIND_AFTER": 2,
+    "STALE_AFTER": 2,
+    "BEFORE_DUE": 1,
+    "CAP": 2,
+    "ABSORB": true,
+    "DUP_IDEMPOTENT": true,
+    "MOVE_ON_NEW": true,
+    "NEED_REMIND": true,
+    "STALE_NEXT_DAY": true,
+    "LEDGER": true,
+    "RECORD_FIRST": true,
+    "SKIP_FLAGGED": true,
+    "ALLOW_READ": true,
+    "ALLOW_DRAFT": true,
+    "ALLOW_ASK": true,
+    "WITH_DUE": false,
+    "CAN_DECIDE": true,
+    "CAN_PASS": true,
+    "CAN_DEL_DRAFT": false,
+    "CAN_SEND": false,
+    "CAN_DEL_U": false,
+    "CAN_DEL_T": false,
+    "CAN_CRASH": false,
+    "MAX_CRASHES": 1,
+    "MAX_PERSON": 1,
+    "SWEEP_ALL": false,
+    "WITH_LEDGER": false,
+    "TRACK_S1": false,
+    "TRACK_S5": false,
+    "TRACK_FIRED": false,
+    "WITH_TIME": true
+  },
+  "scenarios": [
+    {
+      "name": "safety",
+      "about": "S1 S2 S4 S5: 2 機体・LiveSync の遅延・再読(重ねて届く開く出来事)があっても、終端は吸収され、終端へは高々 1 回しか入らず、stale は remind のあとにだけ書かれ、再読は状態を変えない",
+      "flags": {
+        "TWO_MACHINES": true,
+        "TRACK_S1": true,
+        "TRACK_S5": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "vocabStates",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "thread",
+      "about": "S3: 同じスレッドに 2 つ目の受信が来ても、未裁定の項目は高々 1 つ(エージェントが古い項目の move を先に書く)",
+      "flags": {
+        "N_KEYS": 2,
+        "TRACK_S1": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "threads",
+      "about": "S3: 2 スレッドに受信が 2 つずつ(キー 4 つ)来ても、スレッドごとに未裁定の項目は高々 1 つで、他のスレッドの項目は動かない",
+      "flags": {
+        "N_KEYS": 4,
+        "WITH_TIME": false,
+        "TRACK_S1": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s3",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "thread_machines",
+      "about": "S3: 2 機体で受信が重なっても(片方の機体は Gmail の下書きだけを見て記録済みと見なし、行を見ていない場合を含む)未裁定の項目は高々 1 つ。暗黙の supersede が働くのは、書き手が古い項目を見ていなかったときだけ",
+      "flags": {
+        "N_KEYS": 2,
+        "TWO_MACHINES": true,
+        "WITH_TIME": false,
+        "TRACK_S1": true,
+        "TRACK_S5": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s3",
+        "s5",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "vocab",
+      "about": "S6: 仕様が起こす遷移はすべて語彙にある(下書きの削除・送信を含む)",
+      "flags": {
+        "TRACK_FIRED": true,
+        "WITH_DUE": true,
+        "CAN_DEL_DRAFT": true,
+        "CAN_SEND": true
+      },
+      "invariant": [
+        "s6"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "detect",
+      "about": "S7: 終端の行を消されても、台帳を持つ機体の check がその項目をちょうど拾う。台帳の追記の前に落ちて控えが欠けても、余計な控えはできない。拾った項目に remind を書かない",
+      "flags": {
+        "WITH_LEDGER": true,
+        "CAN_DEL_T": true,
+        "CAN_CRASH": true,
+        "CAN_DEL_U": true
+      },
+      "invariant": [
+        "s2",
+        "s7",
+        "s7b",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "l1",
+      "about": "L1: 開いた項目は、未裁定のまま残り続けない(終端か stale になる)。2 機体の遅延があり、本人が答えなくても",
+      "flags": {
+        "TWO_MACHINES": true
+      },
+      "temporal": [
+        "l1"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "l1_detect",
+      "about": "L1: 終端の行を消された項目は、未裁定のまま残らず、終端の行が消えた項目として拾われる(台帳を持つ機体で)。落ちる手があっても",
+      "flags": {
+        "WITH_LEDGER": true,
+        "CAN_DEL_T": true,
+        "CAN_CRASH": true
+      },
+      "temporal": [
+        "l1"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "l2",
+      "about": "L2: 来た受信は、いずれ項目になるか、記録済みと見なされる(2 機体の遅延、行の削除があっても)",
+      "flags": {
+        "TWO_MACHINES": true,
+        "CAN_DEL_U": true,
+        "ALLOW_READ": false,
+        "CAN_DECIDE": false,
+        "CAN_PASS": false
+      },
+      "temporal": [
+        "l2"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "l3",
+      "about": "L3: 行を記録した下書きの項目が、Gmail の下書きを作る前に落ちても、作り直されるか、送られるか、終端になる",
+      "flags": {
+        "ALLOW_READ": false,
+        "ALLOW_ASK": false,
+        "CAN_CRASH": true,
+        "CAN_SEND": true,
+        "CAN_DEL_DRAFT": true
+      },
+      "temporal": [
+        "l3"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "s1_absorb_off",
+      "about": "S1 を外す: 終端のあとの出来事も当てる(ABSORB を外す)と、終端だった項目が未裁定に戻る",
+      "flags": {
+        "ABSORB": false,
+        "TWO_MACHINES": true,
+        "TRACK_S1": true
+      },
+      "invariant": [
+        "s1"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s3_move_off",
+      "about": "S3 を外す: 新しい受信が来ても古い項目の move を書かないと、書き手が古い項目を見ているのに暗黙の supersede が働く",
+      "flags": {
+        "MOVE_ON_NEW": false,
+        "N_KEYS": 2
+      },
+      "invariant": [
+        "s3"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s4_remind_off",
+      "about": "S4 を外す: remind を書かずに stale を書ける(NEED_REMIND を外す)と、stale の前提が破れる",
+      "flags": {
+        "NEED_REMIND": false
+      },
+      "invariant": [
+        "s4"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s4_same_day_off",
+      "about": "S4 を外す: remind と同じ日に stale を書ける(STALE_NEXT_DAY を外す)と、期日を過ぎた日に remind と stale が同じ日に並ぶ",
+      "flags": {
+        "STALE_NEXT_DAY": false,
+        "WITH_DUE": true
+      },
+      "invariant": [
+        "s4"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s5_dup_off",
+      "about": "S5 を外す: 開いた項目に重ねて届いた開く出来事(再読)が状態を変える(DUP_IDEMPOTENT を外す)",
+      "flags": {
+        "DUP_IDEMPOTENT": false,
+        "TWO_MACHINES": true,
+        "TRACK_S5": true
+      },
+      "invariant": [
+        "s5"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s7_ledger_off",
+      "about": "S7 を外す: 機体が台帳を書かない(LEDGER を外す)と、終端の行を消されても check が拾わない",
+      "flags": {
+        "LEDGER": false,
+        "WITH_LEDGER": true,
+        "CAN_DEL_T": true
+      },
+      "invariant": [
+        "s7"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s7_skip_off",
+      "about": "S7 を外す: 拾った項目を除かずに掃引すると、終端の行を消された項目に remind を書く(SKIP_FLAGGED を外す)",
+      "flags": {
+        "SKIP_FLAGGED": false,
+        "WITH_LEDGER": true,
+        "CAN_DEL_T": true
+      },
+      "invariant": [
+        "s7b"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "l3_draft_first",
+      "about": "L3 を外す: Gmail の下書きを先に作り、行をあとで記録する(RECORD_FIRST を外す)と、その間に落ちたとき行が失われ、下書きだけが記録されないまま残る",
+      "flags": {
+        "RECORD_FIRST": false,
+        "ALLOW_READ": false,
+        "ALLOW_ASK": false,
+        "CAN_CRASH": true
+      },
+      "temporal": [
+        "l3"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "cover",
+      "about": "語彙の遷移ごとの到達可能性。違反の反例が出れば、その遷移を仕様が起こせる。出なければ死んだ遷移",
+      "flags": {
+        "N_KEYS": 2,
+        "TRACK_FIRED": true,
+        "WITH_DUE": true,
+        "CAN_SEND": true,
+        "MAX_PERSON": 2
+      },
+      "per_transition": true,
+      "expect": "fail"
+    }
+  ]
+}

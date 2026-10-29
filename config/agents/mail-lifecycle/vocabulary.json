@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。",
+  "initial": "none",
+  "states": [
+    { "id": "awaiting", "terminal": false },
+    { "id": "decided", "terminal": false },
+    { "id": "closed", "terminal": true },
+    { "id": "dismissed", "terminal": true },
+    { "id": "stale", "terminal": true },
+    { "id": "superseded", "terminal": true }
+  ],
+  "events": [
+    { "id": "read", "from": ["none"], "to": "closed", "by": "agent" },
+    { "id": "draft", "from": ["none"], "to": "awaiting", "by": "agent" },
+    { "id": "ask", "from": ["none"], "to": "awaiting", "by": "agent" },
+    { "id": "decide", "from": ["awaiting"], "to": "decided", "by": "person" },
+    { "id": "apply", "from": ["awaiting", "decided"], "to": "closed", "by": "agent" },
+    { "id": "pass", "from": ["none", "awaiting", "decided"], "to": "dismissed", "by": "person" },
+    { "id": "remind", "from": ["awaiting", "decided"], "to": "same", "by": "machine" },
+    { "id": "move", "from": ["awaiting", "decided"], "to": "superseded", "by": "agent" },
+    { "id": "stale", "from": ["awaiting", "decided"], "to": "stale", "by": "machine" }
+  ],
+  "timers": {
+    "remind_after_days": 7,
+    "stale_after_remind_days": 7,
+    "remind_before_due_days": 3
+  }
+}
