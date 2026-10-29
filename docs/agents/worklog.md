@@ -30,7 +30,7 @@ worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手
 ## mail — 読んだメールの出来事と、未裁定項目の状態
 
 決定の記録: `docs/adr/1256-worklog-mail-kind.md`(ADR-998 の追記)と、それを改める
-`docs/adr/0000-mail-lifecycle.md`。状態機械・時間の決まり・終端の控えは `docs/agents/mail-lifecycle.md`。
+`docs/adr/1259-mail-lifecycle.md`。状態機械・時間の決まり・終端の控えは `docs/agents/mail-lifecycle.md`。
 
 メールを読んだセッションが、出来事と出典の印だけを残す kind。本文は次の形で、コードが検査する
 (外れる、または今の状態から許されない出来事は、書かずに止まる)。
