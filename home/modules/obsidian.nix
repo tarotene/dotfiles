@@ -82,6 +82,17 @@ in
     pkgs.restic
   ];
 
+  # Start Obsidian at login so LiveSync (an Obsidian plugin) keeps uploading the
+  # vault; notes written by hooks while Obsidian is closed otherwise wait for the
+  # next manual start (#1196).  Same shape as autostart/fcitx5.desktop in desktop.nix:
+  # one interpolated value in an otherwise literal file (ADR-0002).  The store path of
+  # the nixGL wrapper, not a profile symlink, so "declared" and "running" cannot diverge.
+  xdg.configFile."autostart/obsidian.desktop".source =
+    pkgs.replaceVars (../../config + "/autostart/obsidian.desktop")
+      {
+        obsidian = "${obsidianPackage}/bin/obsidian";
+      };
+
   assertions = [
     {
       assertion = builtins.pathExists ../../crates/obsidian-backup/src/main.rs;

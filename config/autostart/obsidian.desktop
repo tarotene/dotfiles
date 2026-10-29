@@ -1,0 +1,26 @@
+# Obsidian autostart (vega only; #1196).
+#
+# LiveSync is an Obsidian plugin, so while Obsidian is not running nothing from the
+# vault reaches the phone: the notes are written by Claude Code hooks outside Obsidian,
+# and the first upload happens about a minute after Obsidian starts.  Starting Obsidian
+# at login removes the "Obsidian was closed" cause; closing it by hand still stops sync.
+#
+# Same mechanism as fcitx5.desktop: COSMIC has no native XDG autostart, and
+# systemd-xdg-autostart-generator turns this file into app-obsidian@autostart.service.
+# Verify with: systemctl --user status app-obsidian@autostart.service
+#
+# Exec is @obsidian@, substituted with the nixGL-wrapped store path by pkgs.replaceVars
+# in home/modules/obsidian.nix.  An unmatched placeholder is a build failure, not a
+# silently wrong Exec=.
+
+[Desktop Entry]
+Type=Application
+Name=Obsidian
+Comment=Start Obsidian so LiveSync keeps running
+Exec=@obsidian@
+Icon=obsidian
+Terminal=false
+Categories=Office;
+StartupNotify=false
+X-GNOME-Autostart-Phase=Applications
+X-GNOME-Autostart-Notify=false
