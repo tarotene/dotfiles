@@ -1,4 +1,4 @@
-# ADR-0000 — worklog に mail kind を足し、読んだメールの裁定結論を vault に残す
+# ADR-1256 — worklog に mail kind を足し、読んだメールの裁定結論を vault に残す
 
 - Status: Accepted
 - Date: 2026-10-29

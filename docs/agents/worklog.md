@@ -29,7 +29,7 @@ worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手
 
 ## mail — 読んだメールの裁定の結論
 
-決定の記録: `docs/adr/0000-worklog-mail-kind.md`(ADR-998 の追記)
+決定の記録: `docs/adr/1256-worklog-mail-kind.md`(ADR-998 の追記)
 
 メールを読んで裁定したセッションが、結論と出典の id だけを残す kind。本文は次の形で、コードが検査する
 (外れると書かずに止まる)。
