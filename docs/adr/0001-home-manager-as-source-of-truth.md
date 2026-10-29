@@ -1,6 +1,6 @@
 # ADR-0001 — home-manager is the source of truth; apt and per-project runtimes are escape hatches
 
-- Status: Accepted
+- Status: Accepted(システム層の設定のうち、Linux の scheduler 設定と macOS の Homebrew アプリの宣言は ADR-1228 が改めた)
 - Date: 2025
 - Epic: #207
 

@@ -1,6 +1,6 @@
 # ADR-0018 — darwin ホストと macOS システム層の Homebrew 薄層写像
 
-- Status: Accepted
+- Status: Accepted(Decision 1 の nix-darwin 不採用は ADR-1228 が改めた)
 - Date: 2026-09-19
 - Issue: No-Issue(grill-me セッション中に発見・裁定)
 
