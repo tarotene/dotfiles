@@ -41,10 +41,10 @@ Firefox は Meet で、カメラを v4l2 で直接開くことを実測した(�
   ブラウザの許可は、サイトごとに記憶される。
 - **マイクは何も選ばない。** 「音声」→「マイク」は既定のままにする。既定が Osmo になる
   (「3. 既定マイクの仕組み」)。
-- **Slack**(vega には Flatpak 版が入っている): 環境設定の音声と動画で、カメラに
-  DJIPocket3 を選ぶ。**画面名・項目名は未確認**(Slack のこのバージョンで確かめていない)。
-  Flatpak 版 Slack は `devices=all` で `/dev/video*` が見える(`flatpak info --show-permissions
-  com.slack.Slack`、2026-10-23)。
+- **Slack**(vega の正は nix 版。`home/modules/desktop.nix` の宣言、#957): 環境設定の音声と動画で、
+  カメラに DJIPocket3 を選ぶ。**画面名・項目名は未確認**(Slack のこのバージョンで確かめていない)。
+  手で入れた Flatpak 版 `com.slack.Slack`(2026-10-23 の読み取りでは `devices=all` で `/dev/video*` が
+  見えた)は宣言に無く、撤去する対象である(#957)。nix 版でカメラが見えることは、vega の実機では未確認。
 
 ## 3. 既定マイクの仕組み
 
