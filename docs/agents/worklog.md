@@ -25,7 +25,29 @@ worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手
   kind の無い行は `memo`。以前の見出し `## 済んだこと` の行も読む。
 - 本人は Obsidian で同じ節に、kind も時刻も付けずに書いてよい。
 
-行の形は `- HH:MM [kind] 本文 (owner/repo#N)`。kind は `reply|deadline|task|pr|found|stuck`。
+行の形は `- HH:MM [kind] 本文 (owner/repo#N)`。kind は `reply|deadline|task|pr|found|stuck|mail`。
+
+## mail — 読んだメールの裁定の結論
+
+決定の記録: `docs/adr/1256-worklog-mail-kind.md`(ADR-998 の追記)
+
+メールを読んで裁定したセッションが、結論と出典の id だけを残す kind。本文は次の形で、コードが検査する
+(外れると書かずに止まる)。
+
+```text
+worklog add mail "<処分>: <要旨> [<媒体>:<id>]"
+```
+
+- 処分(閉語彙): `read`(読んだ。何もしない・片付いている)、`draft`(返信の下書きを作った)、
+  `pass`(断る・返さないと決めた)、`decide`(通知への判断を決めた)、`apply`(正本へ反映した。予定、フィルタ規則など)。
+- 要旨: 結論だけ(相手は組織・サービス名か種類、何を決めたか)。120 文字まで。`@`・`http`・角括弧を含められない。
+- 出典の印: 媒体は `gmail|linkedin|lapras|none`、id は `[A-Za-z0-9_=-]+`(Gmail や LinkedIn のスレッド id)。
+  `none` は id を付けない `[none]` で、「約 N 件を読んだ」のような集計の行にだけ使う。
+- 出典の印は冪等の鍵。同じ kind・本文の行は時刻が違っても重ならない。同じスレッドでも処分が違えば別の行。
+  mail には owner/repo の参照を付けない(作業ディレクトリが違っても、同じ行は重ならない)。
+- 「どのスレッドを処理済みか」は `worklog list --kind mail --since YYYY-MM-DD` の出力を id で grep して引く。
+- メールの本文・件名・相手の名前・アドレスは書かない。それらは Gmail に残り、ここには結論と id だけを置く。
+  既存の記録(Gmail の下書き、PR のマージ状態、カレンダー)から導けることを書かない規範は、そのまま保つ。
 
 ## vault の場所の解決
 
