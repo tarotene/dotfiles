@@ -157,3 +157,14 @@ D1〜D4 は変更しない。D5 のうち、Git へ上げる段を持たない�
 - `crates/worklog/src/main.rs`
 - `crates/worklog/tests/cli.rs`
 - `home/modules/agents.nix`
+
+## Amendment (2026-10-29 — ADR-0000)
+
+D2 の kind の閉語彙に、7 つ目の `mail`(読んだメールの裁定の結論と出典の id)を足す。本文は
+`<処分>: <要旨> [<媒体>:<id>]` の文法で、`worklog add` が検査する。D1〜D5 は変更しない。詳細は
+ADR-0000 を参照する。
+
+### 執行点
+
+- `crates/worklog/src/lib.rs`
+- `crates/worklog/tests/cli.rs`
