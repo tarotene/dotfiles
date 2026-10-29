@@ -157,6 +157,7 @@ node = [
   { id = "local-state-backup-restore-test", label = "local-state restore (quarterly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
   { id = "local-state-backup-audit", label = "local-state audit (monthly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/local-state-backup.nix", doc = "docs/local-state-backup.md", auto = true },
   { id = "downloads-clean", label = "downloads-clean (14 days)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/downloads.nix", auto = true },
+  { id = "claude-tmp-clean", label = "claude-tmp-clean (14 days, altair)", lane = "timer", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/scratch-retention.nix", doc = "docs/operations.md", auto = true },
   { id = "atop-trace", label = "atop-trace (10 s, vega)", lane = "timer", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/atop-trace.nix", doc = "docs/operations.md", auto = true },
 
   # --- Cloud / LLM(auto = false: 登録箇所を持たない)

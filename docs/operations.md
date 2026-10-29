@@ -279,6 +279,47 @@ removing it:
 systemd-tmpfiles --user --clean --dry-run
 ```
 
+## `/tmp` survives a reboot and ages out after 14 days
+
+Coding agents write their primary artifacts (plans, drafts, outputs) to `/tmp`,
+either through `$TMPDIR` (Claude Code's scratchpad is
+`/tmp/claude-<uid>/<project>/<session>/scratchpad/`) or by naming `/tmp/...`
+directly. The packaged systemd rule is `D /tmp 1777 root root 30d`; its `D` makes
+`systemd-tmpfiles-setup.service` (`--create --remove --boot`) empty `/tmp` at
+every boot, so a power cut or reboot loses everything (the same loss is reported
+upstream: anthropics/claude-code#92166). Redirecting `$TMPDIR` alone would not
+save the direct `/tmp/...` writes, so the rule for `/tmp` itself is replaced.
+
+- **Linux (vega, arcturus).** `scripts/install-packages.sh` installs
+  `config/tmpfiles/tmp.conf` as `/etc/tmpfiles.d/tmp.conf`, which replaces the
+  packaged file wholesale. It says `d /tmp 1777 root root 14d`: `d` keeps the
+  daily age sweep (`systemd-tmpfiles-clean.timer`, 15 min after boot and then
+  daily) and drops the boot-time removal. The age check is tmpfiles' default
+  (any of atime/mtime/ctime newer than 14 days keeps the entry), and `/` is
+  `noatime`, so it means "14 days since the last modification". The cost: stale
+  lock files and sockets now outlive a reboot (`/tmp/systemd-private-*` is
+  still removed at boot by a separate `R!` rule). It takes effect from the next
+  boot; to see what the next sweep would remove: `systemd-tmpfiles --clean
+  --dry-run`. To confirm which file is in force:
+  `systemd-tmpfiles --cat-config | grep -E '^[a-zA-Z]!? +/tmp( |$)'`.
+- **darwin (altair).** Two separate paths, because macOS's `/tmp` is swept by
+  a different mechanism and is also emptied at reboot (reported in
+  claude-code#88773 and #97759; which component does it, and whether it can be
+  stopped, is **not verified**).
+  - `home/modules/scratch-retention.nix` sets `CLAUDE_CODE_TMPDIR` to
+    `~/.local/state/claude-tmp`, so Claude Code's scratchpad tree moves out of
+    `/tmp`, and a `launchd` agent sweeps it with the same 14-day `find` rule as
+    `~/Downloads`.
+  - `scripts/install-packages-darwin.sh` writes
+    `daily_clean_tmps_days="14"` to `/etc/periodic.conf.local` (only when that
+    file does not exist), moving periodic's daily `110.clean-tmps` from its
+    3-day default to 14 days (Apple DTS, developer.apple.com/forums/thread/71382,
+    retrieved 2026-10-29). Whether macOS reads that file, and whether
+    `daily_clean_tmps_enable` is on, is **not verified** either.
+  - Not covered: the `$TMPDIR` that Codex and Copilot use on macOS
+    (`/var/folders/...`, swept after 3 days by `dirhelper`) — implementation
+    intended, not yet done.
+
 ## Host-local marker files
 
 Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let

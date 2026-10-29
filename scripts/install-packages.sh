@@ -15,6 +15,9 @@ set -euo pipefail
 #     firewall (ufw) — ADR-471
 #   - system76-scheduler priority drop-in under /etc (Pop!_OS only; skipped
 #     where system76-scheduler is absent) — ADR-0001 Amendment, #1056
+#   - /tmp retention override under /etc/tmpfiles.d (systemd hosts only): /tmp
+#     survives reboot and ages out after 14 days, so an agent's primary
+#     artifacts are not lost to a power cut (config/tmpfiles/tmp.conf)
 #   - Waydroid (Android container: root, a system service, kernel binder) and
 #     its apt repo, only on a host whose package list names `waydroid` — #323
 #
@@ -86,6 +89,22 @@ if [[ -d "$SCHED_DIST_DIR" && -f "$SCHED_DROPIN_SRC" ]] \
     sched_dropin_stale=true
 fi
 
+# /tmp retention override: the packaged /usr/lib/tmpfiles.d/tmp.conf has
+# `D /tmp … 30d`, whose `D` empties /tmp at every boot. A same-named file in
+# /etc/tmpfiles.d replaces it wholesale (tmpfiles.d(5)); ours uses `d … 14d`, so
+# only the age-based sweep remains. Gated on the packaged file existing (systemd
+# hosts only) and on the deployed copy differing from the checkout's, so a
+# re-run is a no-op. No restart: the next boot and the daily
+# systemd-tmpfiles-clean.timer pick it up.
+TMP_DIST_CONF="/usr/lib/tmpfiles.d/tmp.conf"
+TMP_OVERRIDE_SRC="${SCRIPT_DIR}/../config/tmpfiles/tmp.conf"
+TMP_OVERRIDE_DST="/etc/tmpfiles.d/tmp.conf"
+tmp_override_stale=false
+if [[ -f "$TMP_DIST_CONF" && -f "$TMP_OVERRIDE_SRC" ]] \
+    && ! cmp -s "$TMP_OVERRIDE_SRC" "$TMP_OVERRIDE_DST"; then
+    tmp_override_stale=true
+fi
+
 # Tailscale apt repo/keyring (ADR-471): `tailscale` in apt-packages.txt needs
 # a third-party repo added before `apt-get update` can resolve it. Gated on
 # the keyring file the same way probe-rs's udev rule is gated below — a
@@ -116,6 +135,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
     [[ ! -f "$UDEV_RULES" ]] && echo "[dry-run] Would install probe-rs udev rules"
     if [[ "$sched_dropin_stale" == "true" ]]; then
         echo "[dry-run] Would install $SCHED_DROPIN_DST and restart com.system76.Scheduler"
+    fi
+    if [[ "$tmp_override_stale" == "true" ]]; then
+        echo "[dry-run] Would install $TMP_OVERRIDE_DST (/tmp kept across reboot, 14-day age sweep)"
     fi
     if [[ "$tailscale_repo_new" == "true" ]]; then
         echo "[dry-run] Would install Tailscale apt repo and run 'tailscale up --operator=\$USER'"
@@ -172,6 +194,12 @@ if [[ "$sched_dropin_stale" == "true" ]]; then
     echo "Installing system76-scheduler priority config..."
     sudo install -D -m 0644 "$SCHED_DROPIN_SRC" "$SCHED_DROPIN_DST"
     sudo systemctl try-restart com.system76.Scheduler.service
+fi
+
+# /tmp retention override (see the TMP_OVERRIDE_* block above).
+if [[ "$tmp_override_stale" == "true" ]]; then
+    echo "Installing /tmp retention override..."
+    sudo install -D -m 0644 "$TMP_OVERRIDE_SRC" "$TMP_OVERRIDE_DST"
 fi
 
 # Bring Tailscale up once, right after its first install, so `--operator`

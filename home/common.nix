@@ -27,6 +27,7 @@
     ./modules/tailscale.nix
     ./modules/desktop.nix
     ./modules/downloads.nix
+    ./modules/scratch-retention.nix
     ./modules/flatpak.nix
     ./modules/obsidian-vault.nix
     ./modules/local-state-backup.nix
