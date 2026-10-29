@@ -217,6 +217,50 @@ fn list_filters_by_repo_and_kind_and_reads_memos() {
 }
 
 #[test]
+fn mail_is_validated_without_a_repo_reference_and_listed_by_kind() {
+    let e = env();
+    let line = "draft: 面談の日程回答の下書きを作った [gmail:abc123]";
+    // git のリポジトリの中で呼んでも、mail には owner/repo が付かない。
+    let ok = run(&e, &e.repo, Some(&e.vault), &["add", "mail", line], "");
+    assert_eq!(ok.code, 0, "{}", ok.stderr);
+    assert_eq!(note(&e), format!("## 作業ログ\n- 09:12 [mail] {line}\n"));
+    // 別の作業ディレクトリから呼んでも同じ行は重ならない(冪等の鍵は出典の id)。
+    let outside = e.root.join("plain");
+    std::fs::create_dir_all(&outside).unwrap();
+    let again = run(&e, &outside, Some(&e.vault), &["add", "mail", line], "");
+    assert!(
+        again.stdout.starts_with("既に記録済み: "),
+        "{}",
+        again.stdout
+    );
+    let agg = "read: 直近 3 日の約 490 件を読んだ(自動通知を除く処分 4 件) [none]";
+    let ok = run(&e, &e.repo, Some(&e.vault), &["add", "mail", agg], "");
+    assert_eq!(ok.code, 0, "{}", ok.stderr);
+
+    // 文法に合わない mail と、--ref つきは止まり、ノートを変えない。
+    let before = note(&e);
+    for args in [
+        &["add", "mail", "read: a@b.c [gmail:x]"][..],
+        &["add", "mail", "skip: 読んだ [gmail:x]"][..],
+        &["add", "mail", "read: 出典なし"][..],
+        &["add", "mail", "read: 読んだ [gmail:x]", "--ref", "1"][..],
+    ] {
+        let bad = run(&e, &e.repo, Some(&e.vault), args, "");
+        assert_eq!(bad.code, 2, "{args:?}");
+    }
+    assert_eq!(note(&e), before);
+
+    // list --kind mail で、記録済みのスレッドを id で引ける。
+    let l = run(&e, &e.repo, Some(&e.vault), &["list", "--kind", "mail"], "");
+    assert_eq!(l.code, 0, "{}", l.stderr);
+    assert!(l.stdout.contains("[gmail:abc123]"), "{}", l.stdout);
+    assert_eq!(l.stdout.lines().count(), 2);
+    // 文法はヘルプにも出る。
+    let h = run(&e, &e.repo, Some(&e.vault), &["add"], "");
+    assert!(h.stderr.contains("mail の本文"), "{}", h.stderr);
+}
+
+#[test]
 fn no_vault_declared_fails_loudly_for_the_cli_and_stays_silent_for_the_hook() {
     let e = env();
     let cli = run(&e, &e.repo, None, &["add", "task", "x"], "");

@@ -14,15 +14,20 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 use worklog::{
     add, build_context, jst_parts, list, parse_date, select_recent, Added, Kind, Reference, Vault,
-    SESSION_MAX_LINES, VAULT, WINDOW_DAYS,
+    MAIL_CHANNELS, MAIL_DISPOSITIONS, MAIL_SUMMARY_MAX_CHARS, SESSION_MAX_LINES, VAULT,
+    WINDOW_DAYS,
 };
 
 fn usage() -> String {
     format!(
         "usage:\n  worklog add <kind> <text...> [--ref N] [--repo owner/repo]\n  \
          worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]\n  \
-         worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)",
-        Kind::names()
+         worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)\n\
+         mail の本文: '<{}>: <要旨(結論だけ・{}字まで)> [<{}>:<id>]'(媒体 none は '[none]')",
+        Kind::names(),
+        MAIL_DISPOSITIONS.join("|"),
+        MAIL_SUMMARY_MAX_CHARS,
+        MAIL_CHANNELS.join("|")
     )
 }
 
@@ -103,7 +108,12 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
             other => text.push(other),
         }
     }
-    let repo = repo.or_else(cwd_repo);
+    // mail の出典は本文の印で、リポジトリには結びつかない(作業ディレクトリから参照を付けない)。
+    let repo = if kind == Kind::Mail {
+        repo
+    } else {
+        repo.or_else(cwd_repo)
+    };
     if number.is_some() && repo.is_none() {
         return Err(
             "--ref には owner/repo が要る。git の外では --repo owner/repo を渡す".to_string(),
