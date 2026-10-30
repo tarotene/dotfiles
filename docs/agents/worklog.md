@@ -53,7 +53,7 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 
 ## slot — 作業の枠(自分一人でやる、時間枠つきの作業)の完了記録
 
-決定の記録: `docs/adr/0000-slot-completion-record.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
+決定の記録: `docs/adr/1295-slot-completion-record.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
 
 `mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`done`・`drop`)。時間枠の定義は予定データ(Git)に残り、
 作業ログが持つのは済んだ・やめたの完了記録だけ。鍵は予定データの予定 id で、時間枠・Issue・本文・個人名は書かない。

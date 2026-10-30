@@ -1,6 +1,6 @@
 # task-slot — 作業の枠の「済んだ・やめた」を、作業ログに完了記録として残す
 
-決定の記録: `docs/adr/0000-slot-completion-record.md`(ADR-1291 の slot kind の仕様を置き換える。作りは ADR-1259 の `mail` と同じ)
+決定の記録: `docs/adr/1295-slot-completion-record.md`(ADR-1291 の slot kind の仕様を置き換える。作りは ADR-1259 の `mail` と同じ)
 語彙の正本: `config/agents/task-slot/vocabulary.json`(版 3。共通の形は `docs/agents/state-vocabulary.md`)
 実体: `crates/worklog/src/slot.rs`(文法・畳み込み・書き込みの検査)、`crates/worklog/src/main.rs`(`worklog add slot`・`worklog slot`)
 

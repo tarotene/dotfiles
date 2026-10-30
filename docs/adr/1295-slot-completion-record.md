@@ -1,4 +1,4 @@
-# ADR-0000 — 作業の枠の時間は予定データに残し、worklog の slot kind は済んだ・やめたの完了記録だけを持つ
+# ADR-1295 — 作業の枠の時間は予定データに残し、worklog の slot kind は済んだ・やめたの完了記録だけを持つ
 
 - Status: Accepted
 - Date: 2026-10-30
