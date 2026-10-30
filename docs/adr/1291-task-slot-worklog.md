@@ -1,4 +1,4 @@
-# ADR-0000 — 作業の枠の状態を worklog の slot kind で追い、時間枠は行に持つ
+# ADR-1291 — 作業の枠の状態を worklog の slot kind で追い、時間枠は行に持つ
 
 - Status: Accepted
 - Date: 2026-10-30

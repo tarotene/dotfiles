@@ -53,7 +53,7 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 
 ## slot — 作業の枠(自分一人でやる、時間枠つきの作業)の出来事と状態
 
-決定の記録: `docs/adr/0000-task-slot-worklog.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
+決定の記録: `docs/adr/1291-task-slot-worklog.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
 
 `mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`plan`・`resched`・`done`・`drop`)。時間枠(`start:`・
 `end:`。ISO 8601 のオフセット付き)と参照 Issue は行に持ち、本文・個人名は書かない。タイマーは無く、
