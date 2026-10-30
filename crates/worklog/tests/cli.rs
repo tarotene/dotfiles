@@ -471,137 +471,58 @@ fn slot_note(e: &Env, date: &str) -> String {
         .unwrap_or_default()
 }
 
-const SLOT_W1: [&str; 4] = [
-    "--start",
-    "2026-11-02T10:00+09:00",
-    "--end",
-    "2026-11-02T12:00+09:00",
-];
-
 #[test]
-fn slot_walks_plan_resched_done_and_open_and_overdue_follow() {
+fn slot_records_done_and_drop_and_closed_lists_them_in_the_order_written() {
     let e = env();
-    let plan = [
-        &["add", "slot", "plan", "reader-bot-resume"][..],
-        &SLOT_W1[..],
-        &["--issue", "example/repo#12"][..],
-    ]
-    .concat();
-    let p = slot_run(&e, 0, &plan);
-    assert_eq!(p.code, 0, "{}{}", p.stdout, p.stderr);
-    assert!(p.stdout.starts_with("追記した: "), "{}", p.stdout);
+    // 記録の無い枠には、予定データの予定 id で done を書ける。
+    let d = slot_run(&e, 0, &["add", "slot", "done", "example-slot-20261101"]);
+    assert_eq!(d.code, 0, "{}{}", d.stdout, d.stderr);
+    assert!(d.stdout.starts_with("追記した: "), "{}", d.stdout);
     assert_eq!(
         slot_note(&e, "2026-11-01"),
-        "## 作業ログ\n- 09:12 [slot] plan: reader-bot-resume [start:2026-11-02T10:00+09:00 end:2026-11-02T12:00+09:00 issue:example/repo#12]\n"
+        "## 作業ログ\n- 09:12 [slot] done: example-slot-20261101\n"
     );
-    // 同じ命令の再実行は記録済み。内容の違う plan は、鍵が使い回せないので止まる。
-    let again = slot_run(&e, 0, &plan);
-    assert!(
-        again.stdout.starts_with("既に記録済み: "),
-        "{}",
-        again.stdout
-    );
-    let other = slot_run(
-        &e,
-        0,
-        &[
-            "add",
-            "slot",
-            "plan",
-            "reader-bot-resume",
-            "--start",
-            "2026-11-05T10:00+09:00",
-            "--end",
-            "2026-11-05T12:00+09:00",
-        ],
-    );
-    assert_eq!(other.code, 2);
-    assert!(other.stderr.contains("既にある"), "{}", other.stderr);
+    // 同じ事象の再実行は、日が変わっても記録済み。行は増えない。
+    for days in [0, 2] {
+        let again = slot_run(&e, days, &["add", "slot", "done", "example-slot-20261101"]);
+        assert_eq!(again.code, 0, "{}", again.stderr);
+        assert!(
+            again.stdout.starts_with("既に記録済み: "),
+            "{}",
+            again.stdout
+        );
+    }
     assert_eq!(slot_note(&e, "2026-11-01").lines().count(), 2);
+    // 別の終端は拒否する(先に書かれた終端が勝つ)。
+    let clash = slot_run(&e, 2, &["add", "slot", "drop", "example-slot-20261101"]);
+    assert_eq!(clash.code, 2);
+    assert!(clash.stderr.contains("既に done"), "{}", clash.stderr);
 
-    // 未了の一覧(TSV と JSON)。
-    let open = slot_run(&e, 0, &["slot", "open"]);
+    let dropped = slot_run(&e, 2, &["add", "slot", "drop", "other-slot-20261103"]);
+    assert_eq!(dropped.code, 0, "{}{}", dropped.stdout, dropped.stderr);
+
+    // 記録済みの一覧(TSV と JSON)は書かれた順。
+    let tsv = slot_run(&e, 2, &["slot", "closed"]);
+    assert_eq!(tsv.code, 0, "{}", tsv.stderr);
     assert_eq!(
-        open.stdout,
-        "reader-bot-resume\t2026-11-02T10:00+09:00\t2026-11-02T12:00+09:00\texample/repo#12\n"
+        tsv.stdout,
+        "example-slot-20261101\tdone\t2026-11-01\nother-slot-20261103\tdropped\t2026-11-03\n"
     );
     let js: Value =
-        serde_json::from_str(slot_run(&e, 0, &["slot", "open", "--json"]).stdout.trim()).unwrap();
-    assert_eq!(js[0]["key"], "reader-bot-resume");
-    assert_eq!(js[0]["state"], "scheduled");
-    assert_eq!(js[0]["issues"][0], "example/repo#12");
-
-    // 終了を過ぎたものだけが overdue。`--now` は別のオフセットでもよい。
-    let before = slot_run(
-        &e,
-        0,
-        &["slot", "overdue", "--now", "2026-11-02T12:00+09:00"],
+        serde_json::from_str(slot_run(&e, 2, &["slot", "closed", "--json"]).stdout.trim()).unwrap();
+    assert_eq!(
+        js,
+        serde_json::json!([
+            {"key": "example-slot-20261101", "state": "done", "day": "2026-11-01"},
+            {"key": "other-slot-20261103", "state": "dropped", "day": "2026-11-03"},
+        ])
     );
-    assert_eq!((before.code, before.stdout.as_str()), (0, ""));
-    let after = slot_run(&e, 0, &["slot", "overdue", "--now", "2026-11-02T03:00:01Z"]);
-    assert_eq!(after.code, 0, "{}", after.stderr);
-    assert!(
-        after.stdout.starts_with("reader-bot-resume\t"),
-        "{}",
-        after.stdout
-    );
-    let after_json: Value = serde_json::from_str(
-        slot_run(
-            &e,
-            0,
-            &[
-                "slot",
-                "overdue",
-                "--now",
-                "2026-11-02T13:00+09:00",
-                "--json",
-            ],
-        )
-        .stdout
-        .trim(),
-    )
-    .unwrap();
-    assert_eq!(after_json.as_array().unwrap().len(), 1);
-
-    // 組み直すと overdue から外れ、新しい時間枠が出る。
-    let r = slot_run(
-        &e,
-        1,
-        &[
-            "add",
-            "slot",
-            "resched",
-            "reader-bot-resume",
-            "--start",
-            "2026-11-04T10:00+09:00",
-            "--end",
-            "2026-11-04T12:00+09:00",
-        ],
-    );
-    assert_eq!(r.code, 0, "{}{}", r.stdout, r.stderr);
-    assert!(slot_run(
-        &e,
-        1,
-        &["slot", "overdue", "--now", "2026-11-03T00:00+09:00"]
-    )
-    .stdout
-    .is_empty());
-    assert!(slot_run(&e, 1, &["slot", "open"])
-        .stdout
-        .contains("2026-11-04T10:00+09:00"));
-
-    // 済ませると未了から消え、終端のあとの出来事は止まる。
-    let done = slot_run(&e, 3, &["add", "slot", "done", "reader-bot-resume"]);
-    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
-    assert_eq!(slot_run(&e, 3, &["slot", "open"]).stdout, "");
-    assert_eq!(slot_run(&e, 3, &["slot", "check"]).code, 0);
-    for args in [
-        &["add", "slot", "drop", "reader-bot-resume"][..],
-        &["add", "slot", "done", "never-planned"][..],
-    ] {
-        let o = slot_run(&e, 3, args);
-        assert_eq!(o.code, 2, "{args:?}: {}{}", o.stdout, o.stderr);
-    }
+    // 何も記録が無ければ、空の配列。
+    let empty = env();
+    let none = slot_run(&empty, 0, &["slot", "closed", "--json"]);
+    assert_eq!((none.code, none.stdout.trim()), (0, "[]"));
+    assert_eq!(slot_run(&empty, 0, &["slot", "closed"]).stdout, "");
+    assert_eq!(slot_run(&e, 2, &["slot", "check"]).code, 0);
 }
 
 #[test]
@@ -610,40 +531,18 @@ fn slot_rejects_what_the_grammar_forbids_and_check_reports_merged_lines() {
     for args in [
         &["add", "slot", "pause", "k"][..],
         &["add", "slot", "plan", "k"][..],
-        &[
-            "add",
-            "slot",
-            "plan",
-            "k",
-            "--start",
-            "2026-11-02T10:00",
-            "--end",
-            "2026-11-02T12:00",
-        ][..],
-        &[
-            "add",
-            "slot",
-            "plan",
-            "Bad_Key",
-            "--start",
-            "2026-11-02T10:00Z",
-            "--end",
-            "2026-11-02T12:00Z",
-        ][..],
-        &[
-            "add",
-            "slot",
-            "plan",
-            "k",
-            "--start",
-            "2026-11-02T12:00Z",
-            "--end",
-            "2026-11-02T10:00Z",
-        ][..],
+        &["add", "slot", "resched", "k"][..],
+        &["add", "slot", "done"][..],
+        &["add", "slot", "done", "k", "extra"][..],
+        &["add", "slot", "done", "Bad_Key"][..],
+        &["add", "slot", "done", "bad key"][..],
         &["add", "slot", "done", "k", "--start", "2026-11-02T10:00Z"][..],
+        &["add", "slot", "done", "k", "--issue", "example/repo#1"][..],
         &["add", "slot", "done", "k", "--ref", "1"][..],
-        &["slot", "overdue", "--now", "2026-11-02T10:00"][..],
-        &["slot", "open", "--now", "2026-11-02T10:00Z"][..],
+        &["slot", "open"][..],
+        &["slot", "overdue", "--now", "2026-11-02T10:00Z"][..],
+        &["slot", "closed", "--now", "2026-11-02T10:00Z"][..],
+        &["slot", "check", "--json"][..],
         &["slot", "frobnicate"][..],
     ] {
         let o = slot_run(&e, 0, args);
@@ -652,24 +551,22 @@ fn slot_rejects_what_the_grammar_forbids_and_check_reports_merged_lines() {
     assert!(!e.vault.join("journal").exists());
     // 出来事の語彙は、止めるときの文言とヘルプに出る。
     let bad = slot_run(&e, 0, &["add", "slot", "pause", "k"]);
-    assert!(
-        bad.stderr.contains("plan|resched|done|drop"),
-        "{}",
-        bad.stderr
-    );
+    assert!(bad.stderr.contains("done|drop"), "{}", bad.stderr);
     let help = slot_run(&e, 0, &["add"]);
     assert!(
-        help.stderr.contains("worklog slot overdue"),
+        help.stderr.contains("worklog slot closed"),
         "{}",
         help.stderr
     );
+    assert!(!help.stderr.contains("overdue"), "{}", help.stderr);
 
-    // 合流した別の機体の行のように、状態から許されない行がノートにあると、check が食い違いに出す。
+    // 合流した別の機体の行のように、同じ鍵に別の終端が書かれていたり、解析できない行があると、
+    // check が食い違いに出す。先に書かれた終端が勝つ。
     let p = e.vault.join("journal/2026/2026-11-01.md");
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(
         &p,
-        "## 作業ログ\n- 09:00 [slot] plan: k [start:2026-11-02T10:00Z end:2026-11-02T12:00Z]\n- 09:01 [slot] done: k\n- 09:02 [slot] drop: k\n- 09:03 [slot] done: ghost\n- 09:04 [slot] メモ\n",
+        "## 作業ログ\n- 09:00 [slot] done: k\n- 09:01 [slot] drop: k\n- 09:02 [slot] done: k\n- 09:03 [slot] plan: old [start:2026-11-02T10:00Z end:2026-11-02T12:00Z]\n- 09:04 [slot] メモ\n",
     )
     .unwrap();
     let c = slot_run(&e, 0, &["slot", "check"]);
@@ -679,15 +576,18 @@ fn slot_rejects_what_the_grammar_forbids_and_check_reports_merged_lines() {
         "{}",
         c.stdout
     );
-    assert!(
-        c.stdout
-            .contains("食い違い\tghost\t開いていない枠への done"),
+    assert_eq!(c.stdout.matches("食い違い\tk\t").count(), 1, "{}", c.stdout);
+    assert_eq!(
+        c.stdout.matches("解析できない行").count(),
+        2,
         "{}",
         c.stdout
     );
-    assert!(c.stdout.contains("解析できない行"), "{}", c.stdout);
     // 畳み込めた分は引ける。
-    assert_eq!(slot_run(&e, 0, &["slot", "open"]).stdout, "");
+    assert_eq!(
+        slot_run(&e, 0, &["slot", "closed"]).stdout,
+        "k\tdone\t2026-11-01\n"
+    );
     let listed = slot_run(
         &e,
         0,

@@ -16,14 +16,14 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
 
 ```json
 {
-  "version": 1, "object": "task-slot", "description": "…", "initial": "none",
+  "version": 3, "object": "task-slot", "description": "…", "initial": "none",
   "states": [
-    { "id": "scheduled", "terminal": false, "owner": "person", "shown_by": ["cli:worklog"] },
-    { "id": "done", "terminal": true }
+    { "id": "done", "terminal": true },
+    { "id": "dropped", "terminal": true }
   ],
   "events": [
-    { "id": "plan", "from": ["none"], "to": ["scheduled"], "by": "agent", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
-    { "id": "done", "from": ["scheduled"], "to": ["done"], "by": "person", "carriers": ["cli:worklog"] }
+    { "id": "done", "from": ["none"], "to": ["done"], "by": "person", "carriers": ["cli:worklog", "skill:daily-desk"], "gates": ["cli:worklog"] },
+    { "id": "drop", "from": ["none"], "to": ["dropped"], "by": "person", "carriers": ["cli:worklog", "skill:daily-desk"], "gates": ["cli:worklog"] }
   ]
 }
 ```
