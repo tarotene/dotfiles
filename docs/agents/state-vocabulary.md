@@ -80,7 +80,7 @@ skill を足す PR は、同じ PR で、その skill が行う事象か前提�
 
 環境の保守の対象(リポジトリ設定・routine・GPG 鍵・モデルの pin・GAS プロジェクト・Drive のファイル・ブラウザのセッション・skill 自体)の語彙は
 `config/agents/{repo-settings,routine,gpg-subkey,model-pin,gas-project,drive-file,browser-session,skill-authoring}/vocabulary.json`
-(決定の記録: ADR-0000)。
+(決定の記録: ADR-1305)。
 
 並行(トークン)は扱わない。Quint の模型検査と実装照合は、タイマー・並行・対象横断の条件がある対象に、兆候で昇格させる
 (ADR の D7。最初の候補はカレンダーの握手の実装照合)。Quint が読む `spec/vocab.jq` は、語彙から仕様のモジュールを生成する

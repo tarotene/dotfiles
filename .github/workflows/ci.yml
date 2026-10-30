@@ -343,7 +343,7 @@ jobs:
 
       # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
       # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills は、どの語彙にも
-      # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-0000)。
+      # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-1305)。
       - name: vocab-graph-check --selftest
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
