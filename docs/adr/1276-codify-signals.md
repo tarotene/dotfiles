@@ -129,6 +129,11 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `crates/issue-inbox/tests/vocab.rs`
 - `flake.nix`
 
+段 3(コマンドの形の記録):
+
+- `crates/command-inspection/src/cmd_shape.rs`
+- `crates/cmd-hash-log/src/lib.rs`
+
 ## Verification
 
 - `cargo test -p issue-inbox -p session-retrospective -p wrapup-stop-gate`(語彙の読み込み・行の検証・手順書の生成・事例集の鮮度・公開する事例の形式)。

@@ -232,6 +232,7 @@ dependencies = [
  "agent-session",
  "command-inspection",
  "git-repository",
+ "issue-inbox",
  "serde_json",
  "tempfile",
 ]

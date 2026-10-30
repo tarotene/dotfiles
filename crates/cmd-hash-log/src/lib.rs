@@ -3,6 +3,9 @@
 //! 昇格導線」段3)。逐語反復(SKILL.md のコードブロックが改変なしに繰り
 //! 返し実行されている)の検出入力になる。
 //!
+//! 各レコードには、コマンドの「形」(`heredoc-interp` など、閉じた語だけ)も添える。
+//! `session-retrospective` が「そのセッションで、その場のスクリプトを書いたか」の痕跡として使う(ADR-1276)。
+//!
 //! コマンド本文はどこにも書かない(ADR-0011 のプライバシー規約 —
 //! `agent-turn-log.sh` の「本文を1箇所以外に出さない」方針を、ここでは
 //! 「どこにも出さない(ハッシュのみ)」までさらに強める)。正規化・ハッシュ
@@ -42,9 +45,24 @@ pub fn build_record(input: &HookInput, repo_key: &str, ts_unix: u64) -> Option<S
             "session_id": input.session_id,
             "repo_key": repo_key,
             "hash": hash,
+            "shape": shapes(cmd),
         })
         .to_string(),
     )
+}
+
+/// コマンドの形(閉じた語だけ。`command_inspection::cmd_shape`)。空配列は「形なし」、`shape` 欄が
+/// 無い行は形の記録を足す前の古いレコード。コードの拡張子の一覧は語彙(codify-signals)が正本。
+fn shapes(cmd: &str) -> Vec<&'static str> {
+    let exts: Vec<&str> = issue_inbox::codify::Vocabulary::get()
+        .scratch_code_ext
+        .iter()
+        .map(String::as_str)
+        .collect();
+    command_inspection::cmd_shape::classify(cmd, &exts)
+        .into_iter()
+        .map(command_inspection::cmd_shape::Shape::id)
+        .collect()
 }
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。コマンドのハッシュを 1 行、ログに追記する。
@@ -123,6 +141,49 @@ mod tests {
     #[test]
     fn resolve_log_path_none_without_home() {
         assert_eq!(resolve_log_path(None, None, None), None);
+    }
+
+    fn record(cmd: &str) -> serde_json::Value {
+        let input = HookInput::parse(
+            &serde_json::json!({"tool_name":"Bash","tool_input":{"command":cmd},"session_id":"s1"})
+                .to_string(),
+        )
+        .unwrap();
+        serde_json::from_str(&build_record(&input, "/repo", 100).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_record_carries_shapes_but_never_the_text_or_its_length() {
+        let secret = "echo secret-token-xyz";
+        let r = record(&format!("python3 -c 'print(1)' && {secret}"));
+        assert_eq!(r["shape"], serde_json::json!(["inline-interp"]));
+        let text = r.to_string();
+        assert!(
+            !text.contains("secret-token-xyz") && !text.contains("print"),
+            "{text}"
+        );
+        let keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["hash", "repo_key", "session_id", "shape", "ts_unix"]);
+    }
+
+    #[test]
+    fn a_plain_command_has_an_empty_shape() {
+        assert_eq!(record("cargo test")["shape"], serde_json::json!([]));
+    }
+
+    /// 形の id の正本は語彙。分類器が出しうる id と、語彙の `shapes` は同じ集合でなければならない。
+    #[test]
+    fn shape_ids_match_the_vocabulary() {
+        use command_inspection::cmd_shape::Shape;
+        let mut code: Vec<&str> = Shape::ALL.iter().map(|s| s.id()).collect();
+        let mut vocab: Vec<&str> = issue_inbox::codify::Vocabulary::get()
+            .shapes
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect();
+        code.sort();
+        vocab.sort();
+        assert_eq!(code, vocab);
     }
 
     #[test]
