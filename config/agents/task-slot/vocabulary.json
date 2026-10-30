@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "作業の枠(自分一人でやる、時間枠つきの作業)の状態と出来事の閉語彙(正本)。worklog の slot kind が include_str! で読む。タイマーは持たない(再通知も失効もしない)。",
+  "initial": "none",
+  "states": [
+    { "id": "scheduled", "terminal": false },
+    { "id": "done", "terminal": true },
+    { "id": "dropped", "terminal": true }
+  ],
+  "events": [
+    { "id": "plan", "from": ["none"], "to": "scheduled", "by": "agent" },
+    { "id": "resched", "from": ["scheduled"], "to": "scheduled", "by": "person" },
+    { "id": "done", "from": ["scheduled"], "to": "done", "by": "person" },
+    { "id": "drop", "from": ["scheduled"], "to": "dropped", "by": "person" }
+  ]
+}
