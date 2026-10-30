@@ -191,9 +191,8 @@ bash "$HUB/state/performances/scripts/obligations.sh"
 
 ## 外部サービスへの書き込みはサニタイズ対象
 
-Calendar 等の外部サービスに送る文章は、`human-task-scheduling` と
-同じ理由でサニタイズする — プロジェクト名・リポジトリ名・内部の Issue
-番号・内部ファイルパスを書かない。
+Calendar 等の外部サービスに送る文章は、`agent-tooling-authoring` §3.2
+「外部サービスへ送る文」に従ってサニタイズする(禁止項目の一覧は正本のみ)。
 
 ## 事例
 
