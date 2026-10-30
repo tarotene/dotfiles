@@ -700,7 +700,7 @@ fn usage_errors() {
         ),
         (
             &["--set-status"][..],
-            "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R]",
+            "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]",
         ),
         (
             &["--migrate", ""][..],

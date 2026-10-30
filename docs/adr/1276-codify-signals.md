@@ -129,6 +129,13 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `crates/issue-inbox/tests/vocab.rs`
 - `flake.nix`
 
+段 5(候補の構造を Inbox に渡し、却下の理由を閉語彙にする):
+
+- `crates/issue-inbox/src/vault.rs`
+- `crates/issue-inbox/src/lib.rs`
+- `crates/wrapup-stop-gate/tests/vault_inbox.rs`
+- `config/agents/skills/backlog-cleanup/SKILL.md`
+
 段 4(痕跡による発火・`codify` kind・開き直し):
 
 - `crates/session-retrospective/src/traces.rs`

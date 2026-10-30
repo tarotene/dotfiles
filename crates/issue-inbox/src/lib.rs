@@ -829,20 +829,32 @@ use git_repository::raw as git_ok;
 // ---------------------------------------------------------------------------
 // 裁定の入口: open な気づきの一覧と、状態の変更(backlog-cleanup が使う)
 
-/// `--repo R` / `--json` と位置引数に分ける。
-fn split_flags(args: &[String]) -> (Vec<&str>, Option<&str>, bool) {
-    let mut pos = Vec::new();
-    let mut repo = None;
-    let mut json = false;
+/// `--repo R` / `--reason R` / `--json` と位置引数に分けたもの。
+struct Flags<'a> {
+    pos: Vec<&'a str>,
+    repo: Option<&'a str>,
+    json: bool,
+    /// `--set-status ... dropped` の却下の理由(語彙 codify-signals の `drop_reasons`)。
+    reason: Option<&'a str>,
+}
+
+fn split_flags(args: &[String]) -> Flags<'_> {
+    let mut f = Flags {
+        pos: Vec::new(),
+        repo: None,
+        json: false,
+        reason: None,
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--repo" => repo = it.next().map(String::as_str),
-            "--json" => json = true,
-            other => pos.push(other),
+            "--repo" => f.repo = it.next().map(String::as_str),
+            "--reason" => f.reason = it.next().map(String::as_str),
+            "--json" => f.json = true,
+            other => f.pos.push(other),
         }
     }
-    (pos, repo, json)
+    f
 }
 
 /// jsonl の行を、vault の open なノートと同じ形(行 1 つ = 再発 1 回)で見せる。
@@ -878,6 +890,9 @@ fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String
                     repo: repo_of,
                     first_seen: date,
                     rows: vec![row],
+                    signal: item.signal,
+                    mechanism: item.mechanism,
+                    existing: item.existing,
                 },
                 line,
             ))
@@ -889,7 +904,7 @@ fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String
 /// vault を宣言していれば vault のノート、無ければ inbox の jsonl(1 行 = 1 回)。
 /// vault の絶対パスは出さない(`note` は vault からの相対パス)。
 fn list_open_cmd(args: &[String]) -> Code {
-    let (_, repo, json) = split_flags(args);
+    let Flags { repo, json, .. } = split_flags(args);
     let project = project_dir();
     let _ = drain_to_vault(&project);
     let rows: Vec<(vault::OpenNote, &str, Option<String>)> = match open_vault() {
@@ -918,6 +933,7 @@ fn list_open_cmd(args: &[String]) -> Code {
                 serde_json::json!({
                     "title": n.title, "repo": n.repo, "count": n.rows.len(),
                     "first_seen": n.first_seen, "rows": n.rows, "note": n.note,
+                    "signal": n.signal, "mechanism": n.mechanism, "existing": n.existing,
                     "source": source, "line": line,
                 })
             })
@@ -931,17 +947,23 @@ fn list_open_cmd(args: &[String]) -> Code {
     0
 }
 
-/// `--set-status <title> <fixed|issued|dropped> [url] [--repo R]`: 気づきの状態を変える。
+/// `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]`: 気づきの状態を変える。
 /// vault では frontmatter だけを書き換える。jsonl の機体では、その行を取り除く
 /// (`<inbox>.filed.jsonl` に退避)。
+///
+/// `--reason` は `dropped` のときだけの、閉じた却下の理由(`semantic-judgment` など)。as-code 化の
+/// 候補(`signal` を持つノート)を捨てるときは必須で、兆候ごとの採用・却下を後から数える元になる。
+/// 理由は vault のノートにだけ残る(jsonl の機体では、行を取り除くので記録先が無い)。
 fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
-    let (pos, repo, _) = split_flags(args);
+    let Flags {
+        pos, repo, reason, ..
+    } = split_flags(args);
     let (Some(title), Some(status)) = (pos.first(), pos.get(1)) else {
         return usage_error(
             self_path,
             &Usage {
                 param: 2,
-                text: "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R]",
+                text: "usage: issue-inbox --set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]",
             },
         );
     };
@@ -950,7 +972,7 @@ fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
         let r = v
             .lock()
             .map_err(|e| e.to_string())
-            .and_then(|g| vault::set_status(&g, title, repo, status, url));
+            .and_then(|g| vault::set_status_with_reason(&g, title, repo, status, url, reason));
         return match r {
             Ok(note) => {
                 println!("{note}");

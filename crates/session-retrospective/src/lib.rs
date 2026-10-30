@@ -329,7 +329,14 @@ pub fn retro_add(sid: &str, line: &str) -> i32 {
             v["kind"].as_str().unwrap_or(""),
             v["mechanism"].as_str().unwrap_or("-")
         );
-        let item = json!({"ts": iso_now(), "title": v["what"], "detail": detail});
+        let mut item = json!({"ts": iso_now(), "title": v["what"], "detail": detail});
+        // as-code 化の候補は、兆候・手段・既存手段を構造で渡す(`detail` の文に溶かさない)。
+        // 後で /backlog-cleanup が採用・却下を裁定し、兆候ごとに数えられるようにするため(ADR-1276)。
+        for k in ["signal", "mechanism", "existing"] {
+            if let Some(x) = v[k].as_str().filter(|x| !x.trim().is_empty()) {
+                item[k] = json!(x);
+            }
+        }
         let code = add(&inbox_for(&project_dir()), &item.to_string());
         if code != 0 {
             return code;

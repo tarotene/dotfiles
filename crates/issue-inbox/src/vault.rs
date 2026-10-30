@@ -11,12 +11,17 @@
 //! issue: ""             # issued にしたときの URL
 //! pr: ""                # fixed にしたときの URL
 //! first_seen: "YYYY-MM-DD"
+//! signal: "..."         # 任意。as-code 化の候補のとき(兆候。codify-signals の語彙、ADR-1276)
+//! mechanism: "..."      # 同上(次から防ぐ手段)
+//! existing: "..."       # 同上(採用|拡張|自前)
+//! drop_reason: "..."    # 任意。signal を持つノートを dropped にしたときの閉じた理由
 //! ---
 //! - YYYY-MM-DD <detail>
 //! ```
 //!
 //! 書き換えるのは状態が変わるときだけ(一時ファイル + rename)。再発の追記は `O_APPEND`。
 
+use crate::codify::Vocabulary;
 use serde_json::Value;
 use std::io;
 use vault_note::{note_name, short_hash, Locked, Note};
@@ -28,12 +33,19 @@ pub const STATUSES: [&str; 4] = [OPEN, "fixed", "issued", "dropped"];
 
 /// `--add` の 1 行(`ts` / `title` / `detail` / 任意の `repo`)。`go` は読まない(裁定は
 /// backlog-cleanup で行うので、起票前の確認を行に持たせる必要が無い)。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// as-code 化の候補(retro の `codify` など)は、`signal`(兆候)・`mechanism`(段)・`existing`
+/// (採用|拡張|自前)も構造で持つ。空は「無い」。後から「どの兆候の候補が採用・却下されたか」を
+/// 数えるための欄で、`detail` の文には溶かさない(ADR-1276)。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Item {
     pub ts: String,
     pub title: String,
     pub detail: String,
     pub repo: String,
+    pub signal: String,
+    pub mechanism: String,
+    pub existing: String,
 }
 
 pub fn parse_item(line: &str) -> Result<Item, String> {
@@ -49,11 +61,20 @@ pub fn parse_item(line: &str) -> Result<Item, String> {
     if title.is_empty() {
         return Err("title が無い".into());
     }
+    let signal = get("signal");
+    if !signal.is_empty() && Vocabulary::get().signal(&signal).is_none() {
+        return Err(format!(
+            "signal は語彙(codify-signals)の id のいずれか: {signal}"
+        ));
+    }
     Ok(Item {
         ts: get("ts"),
         title,
         detail: get("detail"),
         repo: get("repo"),
+        signal,
+        mechanism: get("mechanism"),
+        existing: get("existing"),
     })
 }
 
@@ -158,15 +179,26 @@ pub fn add_item(g: &Locked, item: &Item, today: &str) -> io::Result<Added> {
     let (name, existing) = locate(g, item)?;
     let path = rel(&name);
     let Some(mut note) = existing else {
+        let mut front = vec![
+            ("title".into(), item.title.clone()),
+            ("repo".into(), item.repo.clone()),
+            ("status".into(), OPEN.into()),
+            ("issue".into(), String::new()),
+            ("pr".into(), String::new()),
+            ("first_seen".into(), date),
+        ];
+        // 空の欄は書かない: 既存のノートの形は変わらず、構造を持つのは as-code 化の候補だけ。
+        for (k, v) in [
+            ("signal", &item.signal),
+            ("mechanism", &item.mechanism),
+            ("existing", &item.existing),
+        ] {
+            if !v.is_empty() {
+                front.push((k.into(), v.clone()));
+            }
+        }
         let note = Note {
-            front: vec![
-                ("title".into(), item.title.clone()),
-                ("repo".into(), item.repo.clone()),
-                ("status".into(), OPEN.into()),
-                ("issue".into(), String::new()),
-                ("pr".into(), String::new()),
-                ("first_seen".into(), date),
-            ],
+            front,
             body: format!("{row}\n"),
         };
         g.replace(&path, &note.render())?;
@@ -179,6 +211,10 @@ pub fn add_item(g: &Locked, item: &Item, today: &str) -> io::Result<Added> {
     if reopen {
         // 直した・捨てたはずの気づきが再発した。状態を open に戻す(書き直しはこのときだけ)。
         note.set("status", OPEN);
+        if note.get("drop_reason").is_some() {
+            // 捨てた理由は、捨てた判断に付くもの。再発して開き直したら消す。
+            note.set("drop_reason", "");
+        }
         if !note.body.ends_with('\n') && !note.body.is_empty() {
             note.body.push('\n');
         }
@@ -201,6 +237,9 @@ pub struct OpenNote {
     pub repo: String,
     pub first_seen: String,
     pub rows: Vec<String>,
+    pub signal: String,
+    pub mechanism: String,
+    pub existing: String,
 }
 
 fn rows_of(body: &str) -> Vec<String> {
@@ -233,6 +272,9 @@ pub fn list_open(g: &Locked, repo: Option<&str>) -> io::Result<Vec<OpenNote>> {
             repo: n.get("repo").unwrap_or("").to_string(),
             first_seen: n.get("first_seen").unwrap_or("").to_string(),
             rows: rows_of(&n.body),
+            signal: n.get("signal").unwrap_or("").to_string(),
+            mechanism: n.get("mechanism").unwrap_or("").to_string(),
+            existing: n.get("existing").unwrap_or("").to_string(),
             note: path,
         })
         .collect();
@@ -257,6 +299,35 @@ pub fn set_status(
     status: &str,
     url: &str,
 ) -> Result<String, String> {
+    set_status_with_reason(g, title, repo, status, url, None)
+}
+
+/// [`set_status`] に、却下の理由(`reason`)を足したもの。`signal` を持つノート(as-code 化の候補)を
+/// `dropped` にするときは、閉じた理由(`codify-signals` の `drop_reasons`)が必須になる。後から
+/// 「どの兆候の候補が、なぜ却下されたか」を数えるため(ADR-1276)。`signal` を持たない旧い気づきは
+/// 理由なしで捨てられる。理由は `dropped` のときだけ付けられる。
+pub fn set_status_with_reason(
+    g: &Locked,
+    title: &str,
+    repo: Option<&str>,
+    status: &str,
+    url: &str,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    let vocab = Vocabulary::get();
+    if let Some(r) = reason {
+        if status != "dropped" {
+            return Err(format!(
+                "--reason は dropped のときだけ付けられる: {status}"
+            ));
+        }
+        if !vocab.is_drop_reason(r) {
+            return Err(format!(
+                "却下の理由は {} のいずれか: {r}",
+                vocab.drop_reasons.join(" | ")
+            ));
+        }
+    }
     if !STATUSES.contains(&status) {
         return Err(format!(
             "状態は {} のいずれか: {status}",
@@ -279,11 +350,23 @@ pub fn set_status(
         }
     }
     let (path, mut note) = hits.remove(0);
+    let is_candidate = note.get("signal").is_some_and(|s| !s.is_empty());
+    if status == "dropped" && is_candidate && reason.is_none() {
+        return Err(format!(
+            "as-code 化の候補(signal を持つノート)を捨てるには --reason が要る: {}",
+            vocab.drop_reasons.join(" | ")
+        ));
+    }
     note.set("status", status);
     match status {
         "fixed" => note.set("pr", url),
         "issued" => note.set("issue", url),
         _ => {}
+    }
+    if let Some(r) = reason {
+        note.set("drop_reason", r);
+    } else if note.get("drop_reason").is_some() {
+        note.set("drop_reason", "");
     }
     g.replace(&path, &note.render())
         .map_err(|e| e.to_string())?;
@@ -307,6 +390,17 @@ mod tests {
             title: title.into(),
             detail: detail.into(),
             repo: "o/r".into(),
+            ..Item::default()
+        }
+    }
+
+    /// as-code 化の候補(兆候・手段・既存手段を構造で持つ)。
+    fn candidate(title: &str) -> Item {
+        Item {
+            signal: "copy-drift".into(),
+            mechanism: "gate".into(),
+            existing: "拡張:pr-gate".into(),
+            ..item(title, "d", "2026-10-01")
         }
     }
 
@@ -320,7 +414,8 @@ mod tests {
                 ts: "t".into(),
                 title: "T".into(),
                 detail: "d".into(),
-                repo: "o/r".into()
+                repo: "o/r".into(),
+                ..Item::default()
             }
         );
         assert!(parse_item(r#"{"detail":"d"}"#).is_err());
@@ -460,5 +555,109 @@ mod tests {
         // 同じ題名の再発は、手書きのノートに足される。
         add_item(&g, &item("hand", "y", "2026-10-02"), "x").unwrap();
         assert_eq!(list_open(&g, None).unwrap()[0].rows.len(), 2);
+    }
+    #[test]
+    fn a_candidates_signal_mechanism_and_existing_reach_the_frontmatter() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &candidate("C"), "x").unwrap();
+        let text = g.read("inbox/C.md").unwrap().unwrap();
+        let note = Note::parse(&text);
+        assert_eq!(note.get("signal"), Some("copy-drift"));
+        assert_eq!(note.get("mechanism"), Some("gate"));
+        assert_eq!(note.get("existing"), Some("拡張:pr-gate"));
+        let open = list_open(&g, None).unwrap();
+        assert_eq!(
+            (
+                open[0].signal.as_str(),
+                open[0].mechanism.as_str(),
+                open[0].existing.as_str()
+            ),
+            ("copy-drift", "gate", "拡張:pr-gate")
+        );
+        // 再発しても、最初の値を保つ。
+        let mut again = candidate("C");
+        again.signal = "form-check".into();
+        again.detail = "second".into();
+        add_item(&g, &again, "x").unwrap();
+        let text = g.read("inbox/C.md").unwrap().unwrap();
+        assert_eq!(Note::parse(&text).get("signal"), Some("copy-drift"));
+    }
+
+    #[test]
+    fn a_plain_item_leaves_the_frontmatter_unchanged() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &item("P", "d", "2026-10-01"), "x").unwrap();
+        let text = g.read("inbox/P.md").unwrap().unwrap();
+        for k in ["signal:", "mechanism:", "existing:", "drop_reason:"] {
+            assert!(!text.contains(k), "{text}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_signal_is_refused_when_parsing() {
+        let e = parse_item(r#"{"title":"T","signal":"vibes"}"#).unwrap_err();
+        assert!(e.contains("signal"), "{e}");
+        let ok = parse_item(
+            r#"{"title":"T","signal":"copy-drift","mechanism":"gate","existing":"自前"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (ok.signal.as_str(), ok.existing.as_str()),
+            ("copy-drift", "自前")
+        );
+    }
+
+    #[test]
+    fn dropping_a_candidate_needs_a_closed_reason() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &candidate("C"), "x").unwrap();
+        // 理由なし・語彙外の理由は拒否。
+        let e = set_status(&g, "C", None, "dropped", "").unwrap_err();
+        assert!(e.contains("--reason"), "{e}");
+        let e = set_status_with_reason(&g, "C", None, "dropped", "", Some("boring")).unwrap_err();
+        assert!(e.contains("semantic-judgment"), "{e}");
+        assert_eq!(list_open(&g, None).unwrap().len(), 1);
+        // 閉じた理由なら捨てられ、ノートに残る。
+        set_status_with_reason(&g, "C", None, "dropped", "", Some("one-off")).unwrap();
+        let note = Note::parse(&g.read("inbox/C.md").unwrap().unwrap());
+        assert_eq!(note.get("status"), Some("dropped"));
+        assert_eq!(note.get("drop_reason"), Some("one-off"));
+    }
+
+    #[test]
+    fn a_legacy_note_can_be_dropped_without_a_reason() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &item("L", "d", "2026-10-01"), "x").unwrap();
+        set_status(&g, "L", None, "dropped", "").unwrap();
+        let text = g.read("inbox/L.md").unwrap().unwrap();
+        assert!(!text.contains("drop_reason"), "{text}");
+    }
+
+    #[test]
+    fn a_reason_is_only_for_dropped() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &candidate("C"), "x").unwrap();
+        let e = set_status_with_reason(&g, "C", None, "fixed", "u", Some("one-off")).unwrap_err();
+        assert!(e.contains("dropped"), "{e}");
+        assert_eq!(list_open(&g, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_recurrence_reopens_a_dropped_candidate_and_forgets_the_reason() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &candidate("C"), "x").unwrap();
+        set_status_with_reason(&g, "C", None, "dropped", "", Some("preference")).unwrap();
+        let mut again = candidate("C");
+        again.detail = "back again".into();
+        add_item(&g, &again, "x").unwrap();
+        let note = Note::parse(&g.read("inbox/C.md").unwrap().unwrap());
+        assert_eq!(note.get("status"), Some("open"));
+        assert_eq!(note.get("drop_reason"), Some(""));
     }
 }

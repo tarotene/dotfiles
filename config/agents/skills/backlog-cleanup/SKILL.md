@@ -21,7 +21,9 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 - **inbox**: `~/.claude/hooks/issue-inbox --list-open --repo <owner/repo> --json` で読む(`<owner/repo>` は
   このリポジトリの `origin`)。vault を宣言している機体では vault の `inbox/` の、状態が open のノートが、
   **再発の行数の多い順**(同数なら初出が古い順)に出る。各要素は `title`・`repo`・`count`(= 再発の回数)・
-  `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス)・`source`(`vault` / `jsonl`)。
+  `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス)・`source`(`vault` / `jsonl`)・
+  `signal`・`mechanism`・`existing`(as-code 化の候補のときだけ値がある。retro の `codify` などの行が渡す。
+  `signal` が兆候、`mechanism` が次から防ぐ手段、`existing` が採用|拡張|自前。§4 の選択肢の根拠に添える)。
   vault の無い機体では inbox の jsonl の行が同じ形で出る(`source: jsonl`、1 行 = 1 回)。
   **読むのは `--list-open` だけにする** — vault の絶対パスを知る必要も、ノートを直接読み書きする必要も無い
   (状態の変更は `--set-status`、追記は `--add` に限る。この制約はこのスキルでも不変)。再発の回数が
@@ -286,14 +288,29 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 ## 8. 気づきの消化タイミング
 
 その項目を含む**段**の PR 作成(`gh pr create` 成功)の直後に、対処した気づきの状態を
-`~/.claude/hooks/issue-inbox --set-status "<title>" <状態> [url] --repo <owner/repo>` で変える
+`~/.claude/hooks/issue-inbox --set-status "<title>" <状態> [url] --repo <owner/repo> [--reason <理由>]` で変える
 (題名はノートの `title` と完全一致で渡す。ノートの直接編集は不変で禁止)。
 
 | 裁定 | 状態 | url |
 |---|---|---|
 | PR で直した(Issue を経ない) | `fixed` | その段の PR の URL |
 | 大物・本人の作業として Issue にした | `issued` | `gh issue create` で作った Issue の URL |
-| 直さない・もう起きない | `dropped` | 無し |
+| 直さない・もう起きない | `dropped` | 無し(`signal` を持つ候補は `--reason` が必須) |
+
+- **`signal` を持つ候補(as-code 化の候補)を `dropped` にするときは、`--reason` に閉じた理由を 1 つ書く**。
+  兆候ごとの採用・却下と理由を日次で数え、却下が続く兆候の定義を直すための実績になる(ADR-1276)。
+  理由は「何が違ったか」で選ぶ:
+
+  | `--reason` | 選ぶとき |
+  |---|---|
+  | `semantic-judgment` | 意味の判断が要り、機械では決められない |
+  | `unobservable` | 機械から観測できない(チャットの報告、散在した書き込み経路など) |
+  | `preference` | 好みの問題で、例外ゼロの規則ではない |
+  | `one-off` | 一度きりの探索で、繰り返さない |
+  | `existing-suffices` | 既存の仕組みで足りていた(探索が浅かった) |
+  | `misread-signal` | 兆候の読み違い。この兆候の定義が当たっていない |
+
+  `signal` を持たない旧い気づきは、理由なしで `dropped` にできる。
 
 - **Issue にするのは L3 と L5 だけ**: 本人が裁定で「Issue にする」と選んだものを `gh issue create` で
   起票し(本文の末尾に出自フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」を

@@ -60,9 +60,20 @@ status: "open"        # open | fixed | issued | dropped
 issue: ""             # issued にしたときの URL
 pr: ""                # fixed にしたときの URL
 first_seen: "YYYY-MM-DD"
+signal: "copy-drift"            # 任意。as-code 化の候補のときだけ(以下 4 欄。ADR-1276)
+mechanism: "unrepresentable"    # 次から防ぐ手段(5 段)
+existing: "拡張:pipeline-map"   # 採用|拡張|自前
+drop_reason: ""                 # dropped にしたときの閉じた理由(下)
 ---
 - YYYY-MM-DD <detail>
 ```
+
+- `signal`・`mechanism`・`existing` は、retro の `codify` などの行(`--retro-add`)が `--add` に構造のまま渡す。
+  空の欄はノートに書かない(旧い気づきのノートの形は変わらない)。`signal` は語彙
+  (`config/agents/codify-signals/vocabulary.json`)の id だけを受け付ける。再発しても最初の値を保つ。
+- `signal` を持つノートを `dropped` にするには、閉じた理由 `--reason`(`semantic-judgment` / `unobservable` /
+  `preference` / `one-off` / `existing-suffices` / `misread-signal`)が要る。ノートの `drop_reason` に残り、
+  再発して `open` に戻ると消える。兆候ごとの採用・却下と理由は、日次の較正が数える(段 6)。
 
 - 再発は本文に 1 行足す(`O_APPEND`)。同じ日に同じ内容の行は足さない(冪等)。
 - `fixed` か `dropped` のノートに再発の行が付くと、`status` を `open` に戻す(直したはずのものが
@@ -111,8 +122,11 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   jsonl に退避する(`mkdir -p` + flock 追記)。初回利用時のディレクトリ不在で沈黙する事故を防ぐ。
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/backlog-cleanup` の唯一の収集口。
-- `--set-status <title> <fixed|issued|dropped> [url] [--repo R]` — ノートの frontmatter だけを書き換える
-  (本文はバイト単位でそのまま残す)。jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に退避)。
+  `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
+- `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]` — ノートの frontmatter だけを
+  書き換える(本文はバイト単位でそのまま残す)。jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に
+  退避)。`--reason` は `dropped` のときだけで、`signal` を持つノート(as-code 化の候補)では必須。jsonl の
+  機体では行を取り除くので、理由の記録先が無い(較正は vault の機体だけで効く)。
 - `--check-dup "<title>" [repo]` — `gh issue list --search` で同名 open Issue を検査する。
   exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能。Issue を作る前に、
   `/backlog-cleanup` と promotion-detect が使う。gh は 10 秒でタイムアウトし、プロセスグループごと打ち切る

@@ -293,3 +293,83 @@ fn session_start_counts_open_notes_and_leftover_lines_for_this_project() {
         r.stdout
     );
 }
+
+/// as-code 化の候補(兆候・手段・既存手段を構造で持つ)は、retro の行から Inbox のノートの frontmatter まで
+/// 構造のまま届き、`--list-open --json` に出る。捨てるには閉じた理由が要る(ADR-1276)。
+#[test]
+fn a_codify_candidate_keeps_its_structure_and_needs_a_reason_to_be_dropped() {
+    let e = Env::new();
+    let (v, p) = (vault(&e), project(&e));
+    let row = r#"{"kind":"codify","what":"手で転記した表","evidence":"adhoc:scratch:t.py","disposition":"inbox","mechanism":"unrepresentable","signal":"copy-drift","existing":"拡張:pipeline-map","searched":"pipeline-map,crates,skills"}"#;
+    let r = run_args(gate_in(&e, &v, &p), &["--retro-add", "s1", row]);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+
+    let n = note(&v, "手で転記した表.md");
+    assert!(n.contains("signal: \"copy-drift\""), "{n}");
+    assert!(n.contains("mechanism: \"unrepresentable\""), "{n}");
+    assert!(n.contains("existing: \"拡張:pipeline-map\""), "{n}");
+
+    let open = list(&e, &v, &p, &[]);
+    assert_eq!(open[0]["signal"], "copy-drift");
+    assert_eq!(open[0]["mechanism"], "unrepresentable");
+    assert_eq!(open[0]["existing"], "拡張:pipeline-map");
+
+    // 理由なし・語彙外の理由は拒否され、ノートは open のまま。
+    let r = run_args(
+        gate_in(&e, &v, &p),
+        &["--set-status", "手で転記した表", "dropped"],
+    );
+    assert_eq!(r.code, 1);
+    assert!(r.stderr.contains("--reason"), "{}", r.stderr);
+    let r = run_args(
+        gate_in(&e, &v, &p),
+        &[
+            "--set-status",
+            "手で転記した表",
+            "dropped",
+            "--reason",
+            "boring",
+        ],
+    );
+    assert_eq!(r.code, 1);
+    assert!(r.stderr.contains("semantic-judgment"), "{}", r.stderr);
+    assert_eq!(list(&e, &v, &p, &[]).len(), 1);
+
+    // 閉じた理由なら捨てられ、ノートに残る。位置引数(url)に理由が紛れない。
+    let r = run_args(
+        gate_in(&e, &v, &p),
+        &[
+            "--set-status",
+            "手で転記した表",
+            "dropped",
+            "--reason",
+            "one-off",
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let n = note(&v, "手で転記した表.md");
+    assert!(
+        n.contains("status: \"dropped\"") && n.contains("drop_reason: \"one-off\""),
+        "{n}"
+    );
+    assert!(list(&e, &v, &p, &[]).is_empty());
+}
+
+#[test]
+fn a_plain_finding_can_still_be_dropped_without_a_reason() {
+    let e = Env::new();
+    let (v, p) = (vault(&e), project(&e));
+    add(
+        &e,
+        &v,
+        &p,
+        &line("旧い気づき", "d", "2026-10-09T09:00:00+09:00"),
+    );
+    let r = run_args(
+        gate_in(&e, &v, &p),
+        &["--set-status", "旧い気づき", "dropped"],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let n = note(&v, "旧い気づき.md");
+    assert!(!n.contains("drop_reason"), "{n}");
+}
