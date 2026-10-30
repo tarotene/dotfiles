@@ -454,6 +454,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する(H1〜H6 の穴と S1〜S6・L1〜L3 を検査し、語彙を版 2 に上げる)。検査は nix の check で、表の 1 行が 1 derivation。
 - [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に `mail` kind を足し、読んだメールの裁定の結論(処分・要旨・出典の id)だけを vault の当日ノートに残す(ADR-998 の追記)。本文は `<処分>: <要旨> [<媒体>:<id>]` の閉語彙で、アドレス・URL の転記はコードが拒否し、出典の id が冪等の鍵になる。
 - [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を、`awaiting`・`decided` の未了と 4 つの終端の状態機械にし、`mail` 行を出来事として畳み込んで状態を決める(ADR-1256 の D2・D3・D5 を改める)。語彙は JSON 1 枚を正本に、`worklog` の書き込み検査と Quint の仕様が同じ表を読み、TLC で「終端から戻らない・スレッドごとの未了は 1 つ・`stale` の前に必ず `remind`・答えが無くてもいずれ終端」を検査する。終端の行の手削除は機体ごとの控えで検出する。
+- [ADR-1276](adr/1276-codify-signals.md) — retro の `mechanism` を `eliminate`・`unrepresentable`・`gate`・`tool`・`prose` の 5 段に引き直し、段を持つ行に兆候(`signal`)・既存手段(採用|拡張|自前)・探した範囲を必須にする(ADR-697 の語彙と ADR-543 の Q2 を改める)。語彙は JSON 1 枚を正本に、手順の文・行の検証・事例集の表がそこから出る。過去の retro 244 行での試し当てを受けて、兆候を 15 個にし、「どれにも入らない」を数える `unclassified` を持つ。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
@@ -499,6 +500,9 @@ Design and rationale for the hooks and commands deployed from
 - [`retro.md`](agents/retro.md) — ADR-697: 作業終了時のレトロを
   `wrapup-stop-gate` の Stop で強制する(記録の語彙・突き合わせる出来事・
   vault のノートへの書き出し・上限と抜け道)。出口は wrap-up inbox と共有。
+- [`codify-signals.md`](agents/codify-signals.md) — ADR-1276: retro が as-code 化
+  (決定論化)の候補を記録する閉語彙(5 段の手段・兆候・既存手段・探した範囲)と、
+  語彙から生成した事例集。語彙の正本は `config/agents/codify-signals/vocabulary.json`。
 - [`verdict-escalate.md`](agents/verdict-escalate.md) — ADR-478:
   `wrapup-stop-gate` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
   なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション

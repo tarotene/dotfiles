@@ -16,6 +16,7 @@
 //! 両実装が混在しても排他が成立する)。git と gh は外部コマンドのまま。
 
 pub use jq_json_compat::query as json;
+pub mod codify;
 pub mod shquote;
 pub mod vault;
 mod vault_init;

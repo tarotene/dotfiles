@@ -9,6 +9,7 @@
 //! (PR コメントは投稿しない。ADR-1136)。設計と根拠は docs/agents/retro.md。
 
 use agent_session::SessionLedger;
+use issue_inbox::codify::Vocabulary;
 use issue_inbox::{
     add, env_nonempty, feedback_stamp_file, home, inbox_for, shquote, updated_feedback_memories,
 };
@@ -86,12 +87,89 @@ fn valid_disposition(s: &str) -> bool {
             .is_some_and(|r| !r.trim().is_empty())
 }
 
-fn valid_mechanism(s: &str) -> bool {
-    matches!(s, "prose" | "script" | "gate")
-        || s.strip_prefix("existing:")
-            .is_some_and(|r| !r.trim().is_empty())
-        || s.strip_prefix("none:")
-            .is_some_and(|r| !r.trim().is_empty())
+/// `mechanism` の値の分類。段(eliminate|unrepresentable|gate|tool|prose)は語彙が正本(codify-signals)。
+enum Mechanism<'a> {
+    /// 段。`signal` / `existing` / `searched` が要る。
+    Level(&'a str),
+    /// すでにある仕組みが漏らした。名前は `what` に書く。
+    Existing(&'a str),
+    /// 決定論化しない。理由つき。
+    None,
+}
+
+fn parse_mechanism(s: &str) -> Result<Mechanism<'_>, String> {
+    let vocab = Vocabulary::get();
+    let nonempty = |r: &str| !r.trim().is_empty();
+    if vocab.level(s).is_some() {
+        return Ok(Mechanism::Level(s));
+    }
+    if let Some(to) = vocab.canonical_level(s) {
+        return Err(format!("mechanism `{s}` is retired: use `{to}`"));
+    }
+    if let Some(name) = s.strip_prefix("existing:").filter(|r| nonempty(r)) {
+        return Ok(Mechanism::Existing(name));
+    }
+    if s.strip_prefix("none:").is_some_and(nonempty) {
+        return Ok(Mechanism::None);
+    }
+    let levels: Vec<&str> = vocab.levels_desc().iter().map(|l| l.id.as_str()).collect();
+    Err(format!(
+        "mechanism must be {} | existing:<name> | none:<reason>",
+        levels.join(" | ")
+    ))
+}
+
+/// `existing` 欄の文法: `採用:<名前>` | `拡張:<名前>` | `自前`(語彙の verdicts)。
+fn check_existing(s: &str) -> Result<&str, String> {
+    let vocab = Vocabulary::get();
+    let (verdict, name) = match s.split_once(':') {
+        Some((v, n)) => (v.trim(), Some(n.trim())),
+        None => (s.trim(), None),
+    };
+    if !vocab.is_existing_verdict(verdict) {
+        return Err(format!(
+            "existing must be {} (a name after `:` for all but 自前)",
+            vocab.existing_verdicts.join(" | ")
+        ));
+    }
+    match (verdict, name) {
+        ("自前", None) => Ok(verdict),
+        ("自前", Some(_)) => Err("existing 自前 takes no name".into()),
+        (_, Some(n)) if !n.is_empty() => Ok(verdict),
+        _ => Err(format!(
+            "existing {verdict} requires `:<name>` (the existing mechanism)"
+        )),
+    }
+}
+
+/// `searched` 欄: 探した範囲のカンマ区切り。リポジトリ内は必ず探す。`自前` のときは外部も 1 回探す。
+fn check_searched(s: &str, own: bool) -> Result<(), String> {
+    let vocab = Vocabulary::get();
+    let tokens: Vec<&str> = s
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .collect();
+    let has = |scope: &str| {
+        tokens
+            .iter()
+            .any(|t| t.split(':').next().is_some_and(|head| head == scope))
+    };
+    for scope in &vocab.in_repo_scope {
+        if !has(scope) {
+            return Err(format!(
+                "searched must name the in-repo search: {} (missing `{scope}`)",
+                vocab.in_repo_scope.join(",")
+            ));
+        }
+    }
+    if own && !vocab.external_scope.iter().any(|scope| has(scope)) {
+        return Err(format!(
+            "existing 自前 requires one external search in `searched`: {} (e.g. upstream:<product>)",
+            vocab.external_scope.join(" | ")
+        ));
+    }
+    Ok(())
 }
 
 /// 行を検証する。エラー文は stderr にそのまま出す。
@@ -116,32 +194,101 @@ pub fn validate_row(v: &Value) -> Result<(), String> {
     if matches!(kind, "none" | "skipped") && !disp.starts_with("none:") {
         return Err(format!("kind {kind} requires disposition none:<reason>"));
     }
+    let codify_fields = ["signal", "level_reason", "existing", "searched"];
     match (str_field(o, "mechanism"), NEEDS_MECHANISM.contains(&kind)) {
         (None, true) => {
             return Err(format!(
-                "kind {kind} requires mechanism: prose | script | gate | existing:<name> | none:<reason>"
+                "kind {kind} requires mechanism: {} | existing:<name> | none:<reason>",
+                level_names()
             ))
         }
-        (Some(m), _) if !valid_mechanism(m) => {
-            return Err(
-                "mechanism must be prose | script | gate | existing:<name> | none:<reason>".into(),
-            )
+        (None, false) => {
+            if let Some(k) = codify_fields.iter().find(|k| o.contains_key(**k)) {
+                return Err(format!(
+                    "{k} is only valid on a row whose mechanism is a level"
+                ));
+            }
         }
-        (Some(m), _) => {
-            if let Some(name) = m.strip_prefix("existing:") {
+        (Some(m), _) => match parse_mechanism(m)? {
+            Mechanism::Existing(name) => {
                 if !what.contains(name.trim()) {
                     return Err(
                         "mechanism existing:<name> requires `what` to name that mechanism (the gap is its defect)".into(),
                     );
                 }
+                if let Some(k) = ["level_reason", "searched"]
+                    .iter()
+                    .find(|k| o.contains_key(**k))
+                {
+                    return Err(format!(
+                        "{k} is only valid on a row whose mechanism is a level"
+                    ));
+                }
+                if let Some(e) = str_field(o, "existing") {
+                    check_existing(e)?;
+                }
             }
-        }
-        (None, false) => {}
+            Mechanism::None => {
+                if let Some(k) = codify_fields.iter().find(|k| o.contains_key(**k)) {
+                    return Err(format!(
+                        "{k} is only valid on a row whose mechanism is a level (mechanism none:<reason> means not to codify)"
+                    ));
+                }
+            }
+            Mechanism::Level(level) => validate_level_row(o, level)?,
+        },
     }
     if kind == "skipped" {
         str_field(o, "quote").ok_or("kind skipped requires quote (the user's words, verbatim)")?;
     }
     Ok(())
+}
+
+fn level_names() -> String {
+    Vocabulary::get()
+        .levels_desc()
+        .iter()
+        .map(|l| l.id.as_str())
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+/// 段を持つ行の必須欄: `signal`(兆候)・`existing`(既存手段)・`searched`(探した範囲)。
+/// 兆候の既定の段と違う段を選ぶなら `level_reason` も要る。
+fn validate_level_row(o: &serde_json::Map<String, Value>, level: &str) -> Result<(), String> {
+    let vocab = Vocabulary::get();
+    let signal_ids: Vec<&str> = vocab.signals.iter().map(|s| s.id.as_str()).collect();
+    let id = str_field(o, "signal").ok_or_else(|| {
+        format!(
+            "mechanism {level} requires signal: {}",
+            signal_ids.join(" | ")
+        )
+    })?;
+    let signal = vocab
+        .signal(id)
+        .ok_or_else(|| format!("signal must be {}", signal_ids.join(" | ")))?;
+    if level != signal.default_level && str_field(o, "level_reason").is_none() {
+        return Err(format!(
+            "signal {id} defaults to {}; mechanism {level} requires level_reason (why this level instead)",
+            signal.default_level
+        ));
+    }
+    // 文章(prose)には「新しく作る物」が無いので、既存手段の探索は求めない。
+    // 上位の段を選ばなかった理由は、`level_reason`(既定の段と違うとき必須)が残す。
+    if level == "prose" {
+        for k in ["existing", "searched"] {
+            if o.contains_key(k) {
+                return Err(format!("{k} is not used on a prose row (nothing is built)"));
+            }
+        }
+        return Ok(());
+    }
+    let existing = str_field(o, "existing")
+        .ok_or("mechanism <level> requires existing: 採用:<name> | 拡張:<name> | 自前")?;
+    let verdict = check_existing(existing)?;
+    let searched = str_field(o, "searched")
+        .ok_or("mechanism <level> requires searched: the places looked at, comma-separated")?;
+    check_searched(searched, verdict == "自前")
 }
 
 fn project_dir() -> String {
@@ -465,6 +612,7 @@ pub fn procedure_text(self_path: &str, sid: &str) -> String {
         };
         ev.push_str(&format!("  - [{mark}] {id} — {desc}\n"));
     }
+    let vocab = Vocabulary::get();
     let utter = match user_messages(sid) {
         Some(ls) if !ls.is_empty() => {
             let mut s = String::new();
@@ -485,14 +633,23 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
      overlooked; judge yourself which ones are corrections or complaints):
 {utter}  3. For each correction, insight, friction or gate hit, add one row:
        '{q_self}' --retro-add {q_sid} '<json>'
-     json: {{"kind": "user-correction|insight|friction|gate-hit|none|skipped",
+     json: {{"kind": "{kinds}",
             "what": "<one line>", "evidence": "<event id, file, or the user's words>",
             "disposition": "inbox|issue:#<N>|none:<reason>",
-            "mechanism": "prose|script|gate|existing:<name>|none:<reason>"}}
-     - mechanism is required for user-correction / friction / gate-hit: the level
-       that would stop it recurring (prose = skill/AGENTS text, script, gate =
-       hook; existing:<name> = a mechanism already exists and leaked — name it
-       in `what`, it is that mechanism's defect).
+            "mechanism": "{levels}|existing:<name>|none:<reason>",
+            "signal": "<signal>", "level_reason": "<why, only if the level differs from the signal's default>",
+            "existing": "採用:<name>|拡張:<name>|自前", "searched": "{searched}[,{external}:<product>]"}}
+     - mechanism is required for user-correction / friction / gate-hit: the
+       highest level that would really stop it recurring ({levels}, best first;
+       existing:<name> = a mechanism already exists and leaked — name it in
+       `what`, it is that mechanism's defect; none:<reason> = not worth codifying).
+{level_guide}     - A level row also needs `signal` (why it looks codifiable), `existing` (is there
+       something to adopt or extend before building: 採用|拡張|自前) and `searched`
+       (where you looked, comma-separated). Look in this repository first, always:
+       pipeline-map.toml node ids, the crates/ names, the config/agents/skills/ names.
+       Look outside (nixpkgs, an upstream feature) once, and only when the answer would be 自前.
+       A level other than the signal's default needs `level_reason`.
+{signal_guide}     - The tables with examples: docs/agents/codify-signals.md.
      - disposition "inbox" also appends the row to the wrap-up inbox (a note in
        the user's vault, or a jsonl line on a machine without one). No Issue is
        filed for it: the user adjudicates it later with /backlog-cleanup. Do not
@@ -512,6 +669,30 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
 </hook-directive>
 "#,
         n_rows = rows.len(),
+        kinds = KINDS.join("|"),
+        levels = vocab
+            .levels_desc()
+            .iter()
+            .map(|l| l.id.as_str())
+            .collect::<Vec<_>>()
+            .join("|"),
+        searched = vocab.in_repo_scope.join(","),
+        external = vocab.external_scope.join("|"),
+        level_guide = vocab
+            .levels_desc()
+            .iter()
+            .map(|l| format!("       {} = {}\n", l.id, l.means))
+            .collect::<String>(),
+        signal_guide = vocab
+            .signals
+            .iter()
+            .map(|s| {
+                format!(
+                    "       signal {} (default {}): {}\n",
+                    s.id, s.default_level, s.look_for
+                )
+            })
+            .collect::<String>(),
     )
 }
 
@@ -532,6 +713,17 @@ fn cell(s: &str) -> String {
     s.replace('|', "\\|").replace(['\n', '\r'], " ")
 }
 
+/// 台帳の `mechanism` の表示。旧い `script` は今の `tool` と読み、元の値も残す
+/// (過去の台帳は書き換えない。ADR-697 の語彙の改訂で段の名前が変わった)。
+fn display_mechanism(m: Option<&str>) -> String {
+    let Some(m) = m else { return "-".into() };
+    let vocab = Vocabulary::get();
+    match vocab.canonical_level(m) {
+        Some(c) if c != m => cell(&format!("{c} ({m})")),
+        _ => cell(m),
+    }
+}
+
 /// 台帳の全行を kind ごとの表にした、ノートの本文。
 pub fn render_body(rows: &[Value]) -> String {
     let mut out = String::new();
@@ -541,18 +733,22 @@ pub fn render_body(rows: &[Value]) -> String {
             continue;
         }
         out.push_str(&format!("## {kind}\n\n"));
-        out.push_str("| what | evidence | disposition | mechanism |\n|---|---|---|---|\n");
+        out.push_str(
+            "| what | evidence | disposition | mechanism | signal | 既存手段 |\n|---|---|---|---|---|---|\n",
+        );
         for r in of_kind {
             let f = |k: &str| cell(r[k].as_str().unwrap_or("-"));
             out.push_str(&format!(
-                "| {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} |\n",
                 f("what"),
                 f("evidence"),
                 f("disposition"),
-                f("mechanism")
+                display_mechanism(r["mechanism"].as_str()),
+                f("signal"),
+                f("existing")
             ));
             if let Some(q) = r["quote"].as_str() {
-                out.push_str(&format!("|  | quote: {} |  |  |\n", cell(q)));
+                out.push_str(&format!("|  | quote: {} |  |  |  |  |\n", cell(q)));
             }
         }
         out.push('\n');
@@ -683,8 +879,12 @@ pub fn cli(self_path: &str, args: &[String]) -> i32 {
                 print!("{}", procedure_text(self_path, sid));
                 0
             }
+            Some("--retro-casebook") => {
+                print!("{}", Vocabulary::get().casebook_markdown());
+                0
+            }
             _ => {
-                eprintln!("session-retrospective: expected --retro-add, --retro-close or --retro-procedure and required arguments");
+                eprintln!("session-retrospective: expected --retro-add, --retro-close, --retro-procedure or --retro-casebook and required arguments");
                 1
             }
         })
@@ -730,12 +930,120 @@ mod tests {
         assert_eq!((y, m, d), (2026, 10, 2));
     }
 
+    /// 段 `gate` の行(兆候 repeated-violation の既定の段)。必須欄がすべて揃った正しい形。
+    fn gate_row() -> Value {
+        json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate",
+               "signal":"repeated-violation","existing":"拡張:pr-gate",
+               "searched":"pipeline-map,crates,skills"})
+    }
+
+    #[test]
+    fn a_level_row_needs_signal_existing_and_searched() {
+        assert!(validate_row(&gate_row()).is_ok());
+        for k in ["signal", "existing", "searched"] {
+            let mut r = gate_row();
+            r.as_object_mut().unwrap().remove(k);
+            let e = validate_row(&r).unwrap_err();
+            assert!(e.contains(k), "{k}: {e}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_signal_or_existing_verdict_is_refused() {
+        let mut r = gate_row();
+        r["signal"] = json!("vibes");
+        assert!(validate_row(&r).unwrap_err().contains("signal must be"));
+        let mut r = gate_row();
+        r["existing"] = json!("流用:x");
+        assert!(validate_row(&r).unwrap_err().contains("existing must be"));
+        let mut r = gate_row();
+        r["existing"] = json!("拡張");
+        assert!(validate_row(&r).unwrap_err().contains("requires `:<name>`"));
+        let mut r = gate_row();
+        r["existing"] = json!("自前:x");
+        assert!(validate_row(&r).unwrap_err().contains("takes no name"));
+    }
+
+    #[test]
+    fn a_level_other_than_the_signal_default_needs_a_reason() {
+        let mut r = gate_row();
+        r["mechanism"] = json!("tool"); // repeated-violation の既定は gate
+        let e = validate_row(&r).unwrap_err();
+        assert!(e.contains("level_reason"), "{e}");
+        r["level_reason"] = json!("一回きりで gate は重い");
+        assert!(validate_row(&r).is_ok());
+    }
+
+    #[test]
+    fn the_in_repo_search_is_mandatory_and_own_code_needs_an_outside_search() {
+        let mut r = gate_row();
+        r["searched"] = json!("crates,skills");
+        assert!(validate_row(&r).unwrap_err().contains("pipeline-map"));
+        let mut r = gate_row();
+        r["existing"] = json!("自前");
+        let e = validate_row(&r).unwrap_err();
+        assert!(e.contains("external search"), "{e}");
+        r["searched"] = json!("pipeline-map,crates,skills,upstream:foo");
+        assert!(validate_row(&r).is_ok());
+    }
+
+    #[test]
+    fn script_is_retired_and_none_forbids_the_codify_fields() {
+        let mut r = gate_row();
+        r["mechanism"] = json!("script");
+        let e = validate_row(&r).unwrap_err();
+        assert!(e.contains("retired") && e.contains("tool"), "{e}");
+        let mut n = gate_row();
+        n["mechanism"] = json!("none:one-off");
+        assert!(validate_row(&n).unwrap_err().contains("only valid"));
+        let plain = json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox","mechanism":"none:one-off"});
+        assert!(validate_row(&plain).is_ok());
+    }
+
+    #[test]
+    fn a_prose_row_names_a_signal_but_builds_nothing() {
+        let prose = json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox",
+                           "mechanism":"prose","signal":"repeated-violation",
+                           "level_reason":"機械から観測できない"});
+        assert!(validate_row(&prose).is_ok());
+        let mut r = prose.clone();
+        r["existing"] = json!("自前");
+        assert!(validate_row(&r).unwrap_err().contains("prose"));
+        let mut r = prose.clone();
+        r.as_object_mut().unwrap().remove("level_reason");
+        assert!(validate_row(&r).unwrap_err().contains("level_reason"));
+    }
+
+    #[test]
+    fn an_existing_row_may_carry_the_existing_field_only() {
+        let mut r = json!({"kind":"friction","what":"gate X leaked","evidence":"e","disposition":"inbox","mechanism":"existing:gate X"});
+        r["existing"] = json!("拡張:gate X");
+        assert!(validate_row(&r).is_ok());
+        r["searched"] = json!("crates");
+        assert!(validate_row(&r).is_err());
+    }
+
+    #[test]
+    fn the_procedure_is_generated_from_the_vocabulary() {
+        let text = procedure_text("/bin/session-retrospective", "sid-1");
+        let v = Vocabulary::get();
+        for s in &v.signals {
+            assert!(text.contains(&format!("signal {} (default {})", s.id, s.default_level)));
+        }
+        assert!(
+            text.contains("eliminate|unrepresentable|gate|tool|prose"),
+            "{text}"
+        );
+        assert!(text.contains("user-correction|insight|friction|gate-hit|none|skipped"));
+    }
+
     #[test]
     fn vocabulary() {
-        let ok = json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"});
+        let ok = gate_row();
         assert!(validate_row(&ok).is_ok());
         // user-correction は feedback: inbox には置けず、Issue か none:<理由>。
-        let fb = json!({"kind":"user-correction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate"});
+        let mut fb = gate_row();
+        fb["kind"] = json!("user-correction");
         assert!(validate_row(&fb).unwrap_err().contains("Issue"));
         let mut fb_issue = fb.clone();
         fb_issue["disposition"] = json!("issue:#12");
@@ -768,7 +1076,7 @@ mod tests {
         assert!(pos("## user-correction") < pos("## insight"));
         assert!(pos("## insight") < pos("## skipped"));
         assert!(
-            body.contains("| a \\| b | line1 line2 | inbox | prose |"),
+            body.contains("| a \\| b | line1 line2 | inbox | prose | - | - |"),
             "{body}"
         );
         assert!(body.contains("quote: 不要"), "{body}");

@@ -31,8 +31,12 @@ PR を作ったセッションでは、最初の Stop で `session-wrapup stop` 
 ## 判断の目安
 
 - **指摘(user-correction)**: ユーザーが方針・結果を直した発言。`mechanism` は、それを
-  次から防ぐ最も軽い手段(`prose` < `script` < `gate`)。すでに gate があるのに漏れたなら
-  `existing:<名前>` とし、その gate の欠陥として `what` に名前を書く。
+  次から防ぐのに実際に効く最も上位の手段(`eliminate` > `unrepresentable` > `gate` > `tool` >
+  `prose`)。`signal` で理由(兆候)を選び、その既定の段と違う段には `level_reason` を書く。
+  `prose` 以外の段は `existing`(採用|拡張|自前)と `searched` も要る。リポジトリ内は必ず探し、
+  外部は `自前` のときだけ 1 回探す。すでに gate があるのに漏れたなら
+  `existing:<名前>` とし、その gate の欠陥として `what` に名前を書く。語彙と事例は
+  `docs/agents/codify-signals.md`(手順書の出力にも兆候の一覧が出る)。
 - **気付き(insight)**: 次に効く発見。仕組みにするほどでなければ `disposition: none:<理由>`。
 - **詰まり(friction)**: 手戻り・待ち・迷い。
 - **gate 発火(gate-hit)**: deny や block に当たった事実。手順書の「events」に出る id を
