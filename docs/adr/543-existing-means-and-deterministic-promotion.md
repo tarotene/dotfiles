@@ -137,6 +137,18 @@ GitHub 上の "automation maturity level" 宣言スキーマを "maturity"
   持つ `Dn` への `既存手段:` 必須化、selftest 追加)。#412 で
   `config/claude/hooks/plan-precedent-gate.sh` から移植した。
 
+後続の段(段 2〜4)で実装済みの執行点。1 行 1 パス:
+
+- `crates/new-tool-guard/src/lib.rs` — Q1 の Write 時 gate(D1)。新しい道具・単位の Write を deny する
+- `crates/new-tool-guard/src/hook.rs`
+- `crates/pr-gate/src/gates/prior.rs` — PR 本文の `既存手段:` 照合(`G_prior`)
+- `crates/feedback-target-guard/src/lib.rs` — feedback Issue の `Target:` 検査(Q2 の記録機構)
+- `crates/cmd-hash-log/src/lib.rs` — 正規化したコマンドハッシュのログ(Q2 の記録機構)
+- `crates/command-inspection/src/cmd_hash.rs`
+- `crates/agent-session/src/gate_event.rs` — gate の deny・skip イベントの記録(Q2 の記録機構)
+- `crates/promotion-detect/src/lib.rs` — 昇格・降格候補の日次検出器(D2)
+- `home/modules/promotion-detect.nix` — 日次 timer の宣言
+
 ## Verification
 
 - `config/claude/hooks/plan-precedent-gate.sh --selftest`(重い欄あり・

@@ -167,9 +167,11 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   1 本でまとめて行う(新しい gate は呼ばない)。
 - 新しい道具・単位(shebang 付き新規ファイル、`bin/scripts/hooks/cmd`
   配下の新規ファイル、パッケージマニフェストの新設)を Write する前
-  倒しの機械強制、PR 本文での `既存手段:` 照合、決定論化の昇格・降格
-  候補の検出は後続の段で実装する(ADR-543 参照)。実装済みの範囲は
-  ADR-543 の `## 執行点` を参照。
+  倒しの機械強制(`new-tool-guard`)、PR 本文での `既存手段:` 照合
+  (pr-gate の `G_prior`)、決定論化の記録機構(`feedback-target-guard`・
+  `cmd-hash-log`・gate イベント記録)と、昇格・降格候補の日次検出
+  (`promotion-detect` の timer)は実装済み。パスは ADR-543 の
+  `## 執行点` を参照。
 
 ## GitHub 投稿の生成元明示(Claude Code のフッター文言)
 
