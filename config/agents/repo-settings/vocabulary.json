@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "object": "repo-settings",
+  "description": "1 リポジトリの設定(charter と governance)を整える流れの、状態と事象の閉語彙。元は config/agents/skills/repo-charter/SKILL.md(§1〜§3 charter・README・CONTRIBUTING、§8 GitHub メタデータと新規作成、§9 自己検証)と config/agents/skills/repo-governance/SKILL.md(Step 1 dry-run、Step 2 apply、Step 5 検証)。charter(README・CONTRIBUTING・description・topics)と governance(settings・files・rulesets)は別々に導入でき、どちらが済んだかで状態が分かれる。複数リポジトリのずれの検出と一括の直しは repo-config-drift の語彙が持ち(github-audit-triage は charter と govern の事象を一括で行う側の担い手)、導入後に起きるずれはここでなくそちらで追う。本文が書いていない遷移(review 層の撤去、exempt 後の扱い)は書かない。",
+  "initial": "none",
+  "states": [
+    { "id": "unconfigured", "terminal": false, "owner": "agent", "owner_detail": "既存のリポジトリ。charter も governance も未整備" },
+    { "id": "chartered", "terminal": false, "owner": "agent", "owner_detail": "charter(README・CONTRIBUTING・description・topics)は反映済み。governance は未導入" },
+    { "id": "governed", "terminal": false, "owner": "agent", "owner_detail": "governance(settings・files・rulesets)は導入済み。README・CONTRIBUTING の charter は未整備" },
+    { "id": "configured", "terminal": false, "owner": "agent", "owner_detail": "charter と governance の両方が導入済み。github-audit の自己検証を待つ" },
+    { "id": "verified", "terminal": true, "owner_detail": "github-audit の charters・naming・workflows・rulesets が ok。以後のずれは repo-config-drift が追う" }
+  ],
+  "events": [
+    { "id": "exist", "from": ["none"], "to": ["unconfigured"], "by": "person", "by_detail": "新規作成ではない既存リポジトリの適合化の依頼。監査が drifted と報告した組の扱いは repo-config-drift の語彙が持つ" },
+    { "id": "create", "from": ["none"], "to": ["governed"], "by": "agent", "by_detail": "scripts/create-repo.sh が、閉語彙チェック → gh repo create → topics(命名クラス・ライフサイクル・技術領域) → governance の播種を 1 本で行う。素の gh repo create は repo-create-guard が deny する。続けて README・CONTRIBUTING の charter を書く", "carriers": ["skill:repo-charter"], "gates": ["node:repo-create-guard"] },
+    { "id": "preview", "from": ["unconfigured", "chartered"], "to": ["same"], "by": "agent", "by_detail": "seed.sh --dry-run の出力を本人に見せ、進めてよいかを確かめる", "carriers": ["skill:repo-governance"] },
+    { "id": "charter", "from": ["unconfigured"], "to": ["chartered"], "by": "agent", "by_detail": "目的 1 文・命名クラス・Scope・Issue 受け入れ判定をインタビューで確定し、README・CONTRIBUTING・AGENTS.md に反映し、description と topics を gh repo edit で合わせる。複数リポジトリの一括は github-audit-triage が同じテンプレートで起草する", "carriers": ["skill:repo-charter", "skill:github-audit-triage"] },
+    { "id": "charter_governed", "from": ["governed"], "to": ["configured"], "by": "agent", "by_detail": "charter と同じ(governance が先に済んでいる場合)", "carriers": ["skill:repo-charter", "skill:github-audit-triage"] },
+    { "id": "govern", "from": ["unconfigured"], "to": ["governed"], "by": "agent", "by_detail": "プロファイル(rust・typst・astro-site)の seed.sh が、テンプレートのコピー・git hooks・merge 設定・rulesets の適用を行う。rulesets は apply-rulesets 経由で、素の gh api の書き込みは rulesets-write-guard が deny する。複数リポジトリの一括は github-audit-triage が同じ profile の手順を適用する", "carriers": ["skill:repo-governance", "skill:github-audit-triage", "cli:apply-rulesets"], "gates": ["node:rulesets-write-guard"] },
+    { "id": "govern_chartered", "from": ["chartered"], "to": ["configured"], "by": "agent", "by_detail": "govern と同じ(charter が先に済んでいる場合)", "carriers": ["skill:repo-governance", "skill:github-audit-triage", "cli:apply-rulesets"], "gates": ["node:rulesets-write-guard"] },
+    { "id": "verify", "from": ["configured"], "to": ["verified"], "by": "agent", "by_detail": "github-audit charters naming workflows rulesets を実行し、対象が 4 ドメインとも ok と出れば完了", "carriers": ["skill:repo-charter", "skill:github-audit-triage", "cli:github-audit"] },
+    { "id": "fix_missing", "from": ["configured"], "to": ["same"], "by": "agent", "by_detail": "drifted のとき、missing= の項目を読んで埋め直し、検証を繰り返す", "carriers": ["skill:repo-charter", "cli:github-audit"] }
+  ]
+}

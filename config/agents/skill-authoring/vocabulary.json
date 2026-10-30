@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "object": "skill-authoring",
+  "description": "skill 1 つを足す・改めるときの状態と事象の閉語彙。元は config/agents/skills/agent-tooling-authoring/SKILL.md の §1(器を選ぶ)・§2(配線チェックリスト)・§3(サニタイズ)・§5(散文の手順をスクリプトに昇格させるとき)と、docs/agents/promotion-detect.md(昇格・降格の候補の検出)。skill・hook の段階(散文・スクリプト・gate)は、宣言せず実体から導く(ADR-543 D4)ので、この語彙には保存しない。hook・CLAUDE.md の器を選んだ場合の手順は、本文が配線を書いていないので、ここでは skill の器に限る。",
+  "initial": "none",
+  "states": [
+    { "id": "drafted", "terminal": false, "owner": "agent", "owner_detail": "SKILL.md を作った、または既存の skill に追記した。まだ配線されていない" },
+    { "id": "wired", "terminal": false, "owner": "agent", "owner_detail": "home-manager への配線・設計ドキュメント・語彙への名指しが揃った" },
+    { "id": "deployed", "terminal": false, "owner": "agent", "owner_detail": "home-manager switch で配備し、skills 一覧にあることと自動発動を確かめた。以後の改訂は revise で drafted に戻る" }
+  ],
+  "events": [
+    { "id": "author", "from": ["none"], "to": ["drafted"], "by": "agent", "by_detail": "器(skill・hook・CLAUDE.md)を選び、skill なら config/agents/skills/<name>/SKILL.md を作る。frontmatter は name と description だけ。公開リポジトリに書く知見は固有名詞・URL・実物を持ち込まない", "carriers": ["skill:agent-tooling-authoring"] },
+    { "id": "wire", "from": ["drafted"], "to": ["wired"], "by": "agent", "by_detail": "home/modules/agents.nix に home.file を足し、docs/claude/<name>.md に設計ドキュメントを添え、語彙の carriers・gates・shown_by に skill:<名前> で名指しする(別リポジトリの対象は external-objects.json)。名指しできない skill は統合の候補。CI の vocab-graph-check --skills が、載っていない skill を落とす", "carriers": ["skill:agent-tooling-authoring"], "gates": ["node:ci"] },
+    { "id": "deploy", "from": ["wired"], "to": ["deployed"], "by": "agent", "by_detail": "home-manager switch で配備し、新しいセッションで skills 一覧にあることと、想定した場面で自動発動することを確かめる", "carriers": ["skill:agent-tooling-authoring", "cli:hms"] },
+    { "id": "revise", "from": ["deployed"], "to": ["drafted"], "by": "agent", "by_detail": "既存の skill の事例集(cases.md)に追記する、または本文を直す。散文の手順をスクリプトに昇格させるときも、散文は消さず、意図とフォールバックとして残す", "carriers": ["skill:agent-tooling-authoring"] },
+    { "id": "propose_revision", "from": ["deployed"], "to": ["same"], "by": "machine", "by_detail": "毎日、昇格の候補(同じ Target の feedback の再発・SKILL.md のコードブロックの逐語反復)と、降格の候補(gate の skip の滞留・多発)を検出し、wrap-up inbox に流す。段階は実体(スクリプト・hook 登録が実在するか)から導く", "carriers": ["node:promotion-detect"] }
+  ]
+}

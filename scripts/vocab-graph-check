@@ -30,7 +30,8 @@
 #       shown_by・carriers・gates の `skill:<名前>`、または
 #       config/agents/vocabulary/external-objects.json(別リポジトリの対象を担う skill の名前)の
 #       どれかに載っていることを検査する。載らない skill を列挙して終了コード 1。
-#       CI の必須の job にはまだ載せていない(ADR-1293 の D5)。
+#       external-objects.json の object は、kebab-case で、一意で、語彙の object と重ならない。
+#       CI の dry-run ジョブが回す(ADR-1293 の D6 を、ADR-1305 が果たす)。
 #   vocab-graph-check --refinements [--root <ルート>] [<対応表.json>...]
 #       語彙の具体化の対応表(config/agents/vocabulary/refinements/*.json。省略時は全部)を検査する
 #       (ADR-1297)。対応表は具体の語彙(object で指す)を抽象の語彙(awaiting-item)へ写す。
@@ -215,6 +216,28 @@ check_skills() {
       printf '%s: external-objects: [{"object": "<名前>", "skills": ["<skill 名>"]}] の形でない\n' "$ext_file" >&2
       rc=1
     else
+      # 対象の名前は kebab-case で、external-objects 内で一意、かつ dotfiles の語彙の object と重ならない
+      # (重なると、同じ名前が dotfiles の対象と別リポジトリの対象の両方を指す)
+      local dup vocab_objects=""
+      if ! jq -e 'all(.[]; .object | test("^[a-z][a-z0-9]*(-[a-z0-9]+)*$"))' "$ext_file" >/dev/null 2>&1; then
+        printf '%s: external-objects: object は kebab-case の名前でなければならない\n' "$ext_file" >&2
+        rc=1
+      fi
+      dup=$(jq -r '[.[].object] | group_by(.)[] | select(length > 1) | .[0]' "$ext_file")
+      if [[ -n $dup ]]; then
+        printf '%s: external-objects: object %s が重複している\n' "$ext_file" "$dup" >&2
+        rc=1
+      fi
+      if ((${#vocabs[@]} > 0)); then
+        vocab_objects=$(jq -r '.object' "${vocabs[@]}")
+        while IFS= read -r name; do
+          [[ -z $name ]] && continue
+          if grep -qxF -- "$name" <<<"$vocab_objects"; then
+            printf '%s: external-objects: object %s は dotfiles の語彙の object と重なっている\n' "$ext_file" "$name" >&2
+            rc=1
+          fi
+        done < <(jq -r '.[].object' "$ext_file")
+      fi
       covered+=$'\n'$(jq -r '.[].skills[]' "$ext_file")
       # 実在しない skill の名前(typo)は、載せたことにしない
       while IFS= read -r name; do
@@ -493,6 +516,12 @@ selftest() {
   expect_fail "external-objects の typo" external-objects --skills --root "$S"
   printf 'not json\n' >"$S/config/agents/vocabulary/external-objects.json"
   expect_fail "external-objects の形" external-objects --skills --root "$S"
+  printf '[{"object":"Bad_Name","skills":["alpha"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
+  expect_fail "external-objects の object が kebab-case でない" external-objects --skills --root "$S"
+  printf '[{"object":"dup","skills":["alpha"]},{"object":"dup","skills":["epsilon"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
+  expect_fail "external-objects の object が重複" external-objects --skills --root "$S"
+  printf '[{"object":"minimal-thing","skills":["alpha"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
+  expect_fail "external-objects の object が語彙の object と重なる" external-objects --skills --root "$S"
 
   # --- 具体化の対応表(実物の語彙と対応表を一時ディレクトリに写し、1 か所ずつ壊す)
   expect_pass "実物の対応表" --refinements

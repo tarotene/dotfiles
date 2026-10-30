@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "object": "drive-file",
+  "description": "ファイル 1 つが、手元と Google Drive の間を移るときの状態と事象の閉語彙。元は config/agents/skills/drive-upload/SKILL.md の §2(rclone copy で専用フォルダへ上げる)・§3(読み戻して報告する)・§4(rclone backend copyid で Drive の既存のファイルを取る)。rclone のリモート(gdrive-agent・gdrive-read)の初回セットアップと、token が失効したときの再認可はホストの前提で、ブラウザの認可を伴い本人にしかできないので、対象(ファイル)の状態に入れない。none → local と none → remote は、ファイルが現れる事象で、skill の遷移ではない(remote の locate だけ skill が手順を持つ)。",
+  "initial": "none",
+  "states": [
+    { "id": "local", "terminal": false, "owner": "agent", "owner_detail": "手元のファイル(PDF・画像など数 MB のバイナリ)。Drive に上がっていない" },
+    { "id": "uploaded", "terminal": false, "owner": "agent", "owner_detail": "専用フォルダの <purpose>/ に rclone copy で上げた。読み戻して確かめる前" },
+    { "id": "remote", "terminal": false, "owner": "agent", "owner_detail": "Drive にある既存の大きなファイル(10 MB 超など、コネクタで取れないもの)。ID が分かっている" },
+    { "id": "fetched", "terminal": false, "owner": "agent", "owner_detail": "rclone backend copyid で手元に取った。サイズを突き合わせる前" },
+    { "id": "verified", "terminal": true, "owner_detail": "読み戻した状態(アップロードは md5 とサイズ、取得はサイズ)が一致した。一致しないときは、そう報告する" }
+  ],
+  "events": [
+    { "id": "stage_local", "from": ["none"], "to": ["local"], "by": "agent", "by_detail": "上げたいファイルが手元にある" },
+    { "id": "locate", "from": ["none"], "to": ["remote"], "by": "agent", "by_detail": "取りたいファイルの ID を、Drive の URL か、コネクタの search_files・get_file_metadata から得る。10 MB 以下でコネクタで取れるなら、コネクタでよい", "carriers": ["skill:drive-upload"] },
+    { "id": "upload", "from": ["local"], "to": ["uploaded"], "by": "agent", "by_detail": "rclone copy <ファイル> gdrive-agent:<purpose>/。scope は drive.file で、rclone が作ったものしか触れない。同名は上書きされる。消す操作(delete・purge・sync)は本人の依頼が無い限り使わない", "carriers": ["skill:drive-upload"] },
+    { "id": "fetch", "from": ["remote"], "to": ["fetched"], "by": "agent", "by_detail": "rclone backend copyid gdrive-read: <ファイルの ID> <保存先>/。gdrive-read は drive.readonly で、書き込みには使わない。保存先は / で終える", "carriers": ["skill:drive-upload"] },
+    { "id": "verify_upload", "from": ["uploaded"], "to": ["verified"], "by": "agent", "by_detail": "rclone lsf --format pi と rclone md5sum の出力を、ローカルの md5sum とサイズに突き合わせる。報告には読み戻しのコマンドと Drive の ID を添える。共有の設定は変えない", "carriers": ["skill:drive-upload"] },
+    { "id": "verify_fetch", "from": ["fetched"], "to": ["verified"], "by": "agent", "by_detail": "取ったファイルのサイズを、Drive のメタデータの fileSize(get_file_metadata)と突き合わせて報告する", "carriers": ["skill:drive-upload"] }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "object": "browser-session",
+  "description": "ブラウザ操作の途中で、対象のアカウントが未ログインだったときのハンドオフの状態と事象の閉語彙。元は config/agents/skills/browser-login-handoff/SKILL.md の §1(未ログインの判定)・§2(ログイン画面への誘導)・§3(完了の確認)・§4(再開)・§5(personal ホストの Playwright MCP の同期)。パスワードと二段階認証の入力は、エージェントが代行しない領域で、本人の遷移(login)にだけ置く。personal ホストでは、普段の Firefox でログインし、確認のあと /mcp で playwright を再接続して同期をやり直す(その順序と、再接続が旧い process を先に終えるかは、本文が未確認と書く)。フォームを保存する前と、アクセス障害が起きたときの手順は reference/browser-operations.md が持ち、ここには書かない。",
+  "initial": "none",
+  "states": [
+    { "id": "logged_out", "terminal": false, "owner": "agent", "owner_detail": "未ログインと判定した。ページの状態を読んだ語(ログイン・サインイン)で機械的に判定する" },
+    { "id": "awaiting_login", "terminal": false, "owner": "person", "owner_detail": "本人にログインを頼んでいる。待つ間、対象のタブへ操作しない", "shown_by": ["skill:browser-login-handoff"] },
+    { "id": "claimed", "terminal": false, "owner": "agent", "owner_detail": "本人が「ログインした」と伝えた。伝えられただけで再開せず、状態を読み直す" },
+    { "id": "logged_in", "terminal": false, "owner": "agent", "owner_detail": "未ログインの判定に使った要素が消え、アカウント名が見えることを確認した" },
+    { "id": "resumed", "terminal": true, "owner_detail": "中断した箇所から作業を続けた" }
+  ],
+  "events": [
+    { "id": "detect", "from": ["none"], "to": ["logged_out"], "by": "agent", "by_detail": "サインインの要素がログイン後の位置にある、ログイン画面へリダイレクトされた、ログイン済みを示す要素が見えない、操作する要素がログイン専用ページに置き換わった、のいずれか", "carriers": ["skill:browser-login-handoff"] },
+    { "id": "handoff", "from": ["logged_out"], "to": ["awaiting_login"], "by": "agent", "by_detail": "ログイン画面へ誘導し、どのサービスのどのアカウントか、パスワードと二段階認証コードの入力はエージェントが行わないこと、完了したら知らせてほしいことを、画面名・ボタン名つきの手順で伝える", "carriers": ["skill:browser-login-handoff"] },
+    { "id": "login", "from": ["awaiting_login"], "to": ["claimed"], "by": "person", "by_detail": "パスワードと二段階認証を本人が入力し、完了を知らせる。personal ホストでは、エージェントのブラウザでなく普段の Firefox で行う" },
+    { "id": "reask", "from": ["claimed"], "to": ["awaiting_login"], "by": "agent", "by_detail": "状態を再取得しても未ログインの要素が消えていないとき、もう一度状態を尋ねる", "carriers": ["skill:browser-login-handoff"] },
+    { "id": "confirm", "from": ["claimed"], "to": ["logged_in"], "by": "agent", "by_detail": "tabs_context_mcp・get_page_text で対象のタブの状態を再取得し、未ログインの判定に使った要素が消えていることを確かめる", "carriers": ["skill:browser-login-handoff"] },
+    { "id": "resume", "from": ["logged_in"], "to": ["resumed"], "by": "agent", "by_detail": "中断した箇所から続ける。ページを再読込したときは、どのタブ・どの URL かを最初から確かめる。personal ホストの Playwright MCP は /mcp から再接続して同期をやり直す", "carriers": ["skill:browser-login-handoff"] }
+  ]
+}
