@@ -278,3 +278,29 @@ fn emit_candidate(
         .arg(&line)
         .status();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// cmd-hash-log は各行に `shape`(コマンドの形の閉じた語)を添える(ADR-1276)。
+    /// 形を足す前の古い行(`shape` が無い)と、形つきの新しい行の両方を読める。
+    #[test]
+    fn cmd_hashes_with_and_without_a_shape_are_both_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cmd-hashes.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"hash":"aaaaaaaaaaaaaaaa","repo_key":"/r","session_id":"s1","ts_unix":1}"#,
+                "\n",
+                r#"{"hash":"bbbbbbbbbbbbbbbb","repo_key":"/r","session_id":"s2","shape":["inline-interp"],"ts_unix":2}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let rows = read_cmd_hashes(&path);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].hash, "bbbbbbbbbbbbbbbb");
+    }
+}

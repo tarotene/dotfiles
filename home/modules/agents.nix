@@ -476,8 +476,11 @@
 #    で追記する——コマンド本文そのものはどこにも書かない(ADR-0011 の
 #    プライバシー規約 `agent-turn-log` をさらに強めた形)。判定は返さ
 #    ず、記録が失敗しても常に exit 0(fail-open)。正規化+ハッシュ関数は
-#    `hook_io::cmd_hash` が単一正本で、段4 の promotion-detect が SKILL.md
-#    のコードブロックを同じ関数でハッシュして照合する。
+#    `command_inspection::cmd_hash` が単一正本で、段4 の promotion-detect が
+#    SKILL.md のコードブロックを同じ関数でハッシュして照合する。各レコード
+#    には、コマンドの「形」(`shape`: heredoc-interp など、閉じた語の配列。
+#    `command_inspection::cmd_shape`、ADR-1276)も添える。session-retrospective
+#    が「そのセッションで、その場のスクリプトを書いたか」の痕跡に使う。
 #
 # 33) pr-followup-guard(PreToolUse, matcher: "Bash|mcp__.*"、
 #    docs/agents/pr-followup-guard.md、2026-09-30 改定):
