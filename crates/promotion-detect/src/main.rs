@@ -110,9 +110,73 @@ fn main() {
         ));
     }
 
-    for (title, detail) in candidates {
-        emit_candidate(&wrapup_bin, &inbox_path, &repo, &title, &detail, dry_run);
+    // --- 語彙の較正: 兆候ごとの採用・却下(ADR-1276)。vault のある機体だけ ---
+    for (title, detail) in promotion_detect::calibrate(
+        &read_signal_notes(&state_dir.join("wrapup")),
+        issue_inbox::codify::Vocabulary::get(),
+    ) {
+        candidates.push((title, detail));
     }
+
+    // 前回と同じ候補(題も本文も同じ)は入れ直さない。毎日の timer が同じ候補を入れると、ノートの行が
+    // 1 日に 1 つ増え、「再発の回数」(行数)が膨らむ。本文が変われば(件数が増えた、など)入れ直す。
+    let emitted_path = state_dir.join("promotion-detect").join("emitted.json");
+    let mut emitted = if dry_run {
+        std::collections::BTreeMap::new()
+    } else {
+        read_emitted(&emitted_path)
+    };
+    for (title, detail) in candidates {
+        if !dry_run && emitted.get(&title) == Some(&detail) {
+            continue;
+        }
+        if emit_candidate(&wrapup_bin, &inbox_path, &repo, &title, &detail, dry_run) {
+            emitted.insert(title, detail);
+        }
+    }
+    if !dry_run {
+        write_emitted(&emitted_path, &emitted);
+    }
+}
+
+type Emitted = std::collections::BTreeMap<String, String>;
+
+fn read_emitted(path: &Path) -> Emitted {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn write_emitted(path: &Path, emitted: &Emitted) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(emitted) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+/// vault の `inbox/` の、as-code 化の候補(`signal` を持つノート)を読む。vault を宣言していない・使えない
+/// 機体では空(較正は vault の機体だけで効く)。`lock_dir` は issue-inbox の状態ディレクトリ
+/// (`<state>/wrapup`)。
+fn read_signal_notes(lock_dir: &Path) -> Vec<promotion_detect::SignalNote> {
+    let Some(Ok(vault)) = vault_note::VaultNotes::open(lock_dir) else {
+        return Vec::new();
+    };
+    let Ok(guard) = vault.lock() else {
+        return Vec::new();
+    };
+    issue_inbox::vault::candidate_notes(&guard)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|n| promotion_detect::SignalNote {
+            signal: n.signal,
+            status: n.status,
+            drop_reason: n.drop_reason,
+            first_seen: n.first_seen,
+        })
+        .collect()
 }
 
 fn env_string(key: &str, default: &str) -> String {
@@ -248,6 +312,8 @@ fn scan_skip_ages(claude_dir: &Path, now: SystemTime) -> Vec<(String, u64)> {
         .collect()
 }
 
+/// 候補を 1 件、wrap-up inbox に入れる。入れた(`--add` が成功した)なら `true`。
+/// 同名の open Issue がある・`--add` が失敗した・道具が無いときは `false`(次回また試す)。
 fn emit_candidate(
     wrapup_bin: &Path,
     inbox_path: &Path,
@@ -255,14 +321,14 @@ fn emit_candidate(
     title: &str,
     detail: &str,
     dry_run: bool,
-) {
-    let line = promotion_detect::inbox_line(title, detail);
+) -> bool {
+    let line = promotion_detect::inbox_line(title, detail, repo);
     if dry_run {
         println!("{line}");
-        return;
+        return true;
     }
     if !wrapup_bin.is_file() {
-        return;
+        return false;
     }
     let is_dup = std::process::Command::new(wrapup_bin)
         .args(["--check-dup", title, repo])
@@ -270,13 +336,14 @@ fn emit_candidate(
         .map(|s| s.code() == Some(1))
         .unwrap_or(false);
     if is_dup {
-        return;
+        return false;
     }
-    let _ = std::process::Command::new(wrapup_bin)
+    std::process::Command::new(wrapup_bin)
         .arg("--add")
         .arg(inbox_path)
         .arg(&line)
-        .status();
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 #[cfg(test)]

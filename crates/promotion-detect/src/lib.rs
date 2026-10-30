@@ -249,9 +249,10 @@ pub fn repo_slug(nwo: &str) -> String {
 // wrap-up inbox 向けの文面組み立て
 // ---------------------------------------------------------------------------
 
-/// `wrapup-stop-gate --add` に渡す1行JSON。
-pub fn inbox_line(title: &str, detail: &str) -> String {
-    serde_json::json!({ "title": title, "detail": detail }).to_string()
+/// `wrapup-stop-gate --add` に渡す1行JSON。`repo` を必ず付ける: timer から動くときは作業ディレクトリが
+/// `$HOME` で、`--add` が repo を取り違える(jsonl のファイル名由来の値になる)。
+pub fn inbox_line(title: &str, detail: &str, repo: &str) -> String {
+    serde_json::json!({ "title": title, "detail": detail, "repo": repo }).to_string()
 }
 
 pub fn recurrence_title(c: &RecurrenceCandidate) -> String {
@@ -310,6 +311,126 @@ pub fn demotion_detail(c: &DemotionCandidate) -> String {
         "gate-events.jsonl によると gate {} は deny {}件・skip {}件です。skip が多用されていないか見直してください(ADR-543 段4)。",
         c.gate, c.deny_count, c.skip_count
     )
+}
+
+// ---------------------------------------------------------------------------
+// 語彙の較正(兆候ごとの採用・却下。ADR-1276)
+// ---------------------------------------------------------------------------
+
+use issue_inbox::codify::Vocabulary;
+
+/// Inbox のノートのうち、as-code 化の候補(`signal` を持つもの)の、較正に要る欄。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignalNote {
+    pub signal: String,
+    pub status: String,
+    pub drop_reason: String,
+    pub first_seen: String,
+}
+
+fn adjudicated(status: &str) -> bool {
+    matches!(status, "fixed" | "issued" | "dropped")
+}
+
+fn reasons_text(notes: &[&SignalNote]) -> String {
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    for n in notes.iter().filter(|n| !n.drop_reason.is_empty()) {
+        match counts.iter_mut().find(|(r, _)| *r == n.drop_reason) {
+            Some((_, c)) => *c += 1,
+            None => counts.push((&n.drop_reason, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    if counts.is_empty() {
+        return "理由なし".to_string();
+    }
+    counts
+        .iter()
+        .map(|(r, c)| format!("{r}×{c}"))
+        .collect::<Vec<_>>()
+        .join("、")
+}
+
+/// 兆候ごとの採用・却下を数え、語彙を直す候補を `(題, 本文)` で返す。しきい値は語彙の `calibration`。
+///
+/// - 却下が続く兆候: 却下 `min_dropped` 件以上かつ却下率 `drop_ratio` 以上、または `misread-signal` が
+///   `misread_min` 件以上 → 兆候の定義(`look_for`・既定の段)を直す候補。
+/// - `unclassified` が `unclassified_min` 件以上 → 語彙に足す候補。
+/// - `existing-suffices` の却下が全兆候で `existing_suffices_min` 件以上 → 既存手段の探索が浅い。
+///
+/// 兆候の `since` より前に初出のノートは数えない(定義を直したら数え直す)。語彙に無い兆候は無視する。
+/// 本文には件数と理由の id だけを書く(ノートの中身は書かない)。
+pub fn calibrate(notes: &[SignalNote], vocab: &Vocabulary) -> Vec<(String, String)> {
+    let cal = &vocab.calibration;
+    let (num, den) = (cal.drop_ratio.0 as usize, cal.drop_ratio.1 as usize);
+    let mut out = Vec::new();
+    let mut suffices = 0usize;
+    for sig in &vocab.signals {
+        let mine: Vec<&SignalNote> = notes
+            .iter()
+            .filter(|n| n.signal == sig.id && n.first_seen.as_str() >= sig.since.as_str())
+            .collect();
+        if sig.id == "unclassified" {
+            if mine.len() >= cal.unclassified_min as usize {
+                out.push((
+                    "語彙に足す兆候の候補: どれにも入らない気づきが溜まっています(ADR-1276)".to_string(),
+                    format!(
+                        "兆候 `unclassified`(どれにも入らない)の候補が {} 件あります。同じ種類のものがあれば、\
+                         `config/agents/codify-signals/vocabulary.json` に兆候として足す。",
+                        mine.len()
+                    ),
+                ));
+            }
+            continue;
+        }
+        let done: Vec<&SignalNote> = mine
+            .iter()
+            .copied()
+            .filter(|n| adjudicated(&n.status))
+            .collect();
+        let dropped: Vec<&SignalNote> = done
+            .iter()
+            .copied()
+            .filter(|n| n.status == "dropped")
+            .collect();
+        suffices += dropped
+            .iter()
+            .filter(|n| n.drop_reason == "existing-suffices")
+            .count();
+        let misread = dropped
+            .iter()
+            .filter(|n| n.drop_reason == "misread-signal")
+            .count();
+        let ratio_ok = !done.is_empty() && dropped.len() * den >= num * done.len();
+        if (dropped.len() >= cal.min_dropped as usize && ratio_ok)
+            || misread >= cal.misread_min as usize
+        {
+            out.push((
+                format!("兆候 {} の定義を直す候補: 却下が続いています(ADR-1276)", sig.id),
+                format!(
+                    "兆候 `{}`(既定の段 `{}`)の候補 {} 件のうち、{} 件が却下、{} 件が採用されました(理由: {})。\
+                     `config/agents/codify-signals/vocabulary.json` の `look_for` と既定の段を見直す。\
+                     直したら `since` を更新すると、数え直します。",
+                    sig.id,
+                    sig.default_level,
+                    done.len(),
+                    dropped.len(),
+                    done.len() - dropped.len(),
+                    reasons_text(&dropped)
+                ),
+            ));
+        }
+    }
+    if suffices >= cal.existing_suffices_min as usize {
+        out.push((
+            "既存手段の探索が浅い候補: 「既存で足りた」による却下が続いています(ADR-1276)".to_string(),
+            format!(
+                "`existing-suffices` による却下が {suffices} 件あります。retro の `searched`(リポジトリ内の探索)が浅い。\
+                 手順書の探索の案内を見直す。"
+            ),
+        ));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -475,9 +596,109 @@ mod tests {
 
     #[test]
     fn inbox_line_is_valid_json() {
-        let line = inbox_line("t", "d");
+        let line = inbox_line("t", "d", "o/r");
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(v["title"], "t");
         assert_eq!(v["detail"], "d");
+        // timer から動くとき、`--add` が repo を取り違えないように、行に repo を持たせる。
+        assert_eq!(v["repo"], "o/r");
+    }
+
+    fn note(signal: &str, status: &str, reason: &str, first_seen: &str) -> SignalNote {
+        SignalNote {
+            signal: signal.into(),
+            status: status.into(),
+            drop_reason: reason.into(),
+            first_seen: first_seen.into(),
+        }
+    }
+
+    fn many(n: usize, signal: &str, status: &str, reason: &str) -> Vec<SignalNote> {
+        (0..n)
+            .map(|_| note(signal, status, reason, "2026-11-01"))
+            .collect()
+    }
+
+    fn titles(v: &[(String, String)]) -> Vec<&str> {
+        v.iter().map(|(t, _)| t.as_str()).collect()
+    }
+
+    #[test]
+    fn a_signal_dropped_often_is_flagged_but_the_floor_and_ratio_hold() {
+        let vocab = Vocabulary::get();
+        // 却下 2 件(下限 3 に届かない)。
+        let mut notes = many(2, "form-check", "dropped", "one-off");
+        assert!(calibrate(&notes, vocab).is_empty());
+        // 却下 3 件、採用 0 件 → 却下率 100%。
+        notes.extend(many(1, "form-check", "dropped", "preference"));
+        let found = calibrate(&notes, vocab);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].0.contains("form-check"), "{found:?}");
+        assert!(found[0].1.contains("one-off×2"), "{found:?}");
+        // 採用が増えて却下率が 2/3 を割ると、旗は下りる(却下 3、採用 2 → 60%)。
+        notes.extend(many(2, "form-check", "fixed", ""));
+        assert!(calibrate(&notes, vocab).is_empty());
+        // 却下 4、採用 2 → ちょうど 2/3 → 旗が立つ(境界は含む)。
+        notes.extend(many(1, "form-check", "dropped", "one-off"));
+        assert_eq!(calibrate(&notes, vocab).len(), 1);
+    }
+
+    #[test]
+    fn open_notes_are_not_counted_as_adjudicated() {
+        let vocab = Vocabulary::get();
+        let mut notes = many(3, "form-check", "dropped", "one-off");
+        notes.extend(many(10, "form-check", "open", ""));
+        assert_eq!(calibrate(&notes, vocab).len(), 1);
+    }
+
+    #[test]
+    fn two_misreads_flag_a_signal_even_below_the_floor() {
+        let vocab = Vocabulary::get();
+        let notes = many(2, "copy-drift", "dropped", "misread-signal");
+        let found = calibrate(&notes, vocab);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].1.contains("misread-signal×2"), "{found:?}");
+        // 1 件では足りない。
+        assert!(calibrate(&many(1, "copy-drift", "dropped", "misread-signal"), vocab).is_empty());
+    }
+
+    #[test]
+    fn notes_before_the_signals_since_date_are_not_counted() {
+        let vocab = Vocabulary::get();
+        // since は 2026-10-30。定義を直す前のノートは数えない。
+        let old: Vec<SignalNote> = (0..5)
+            .map(|_| note("form-check", "dropped", "one-off", "2026-10-29"))
+            .collect();
+        assert!(calibrate(&old, vocab).is_empty());
+    }
+
+    #[test]
+    fn unclassified_piling_up_suggests_a_new_signal() {
+        let vocab = Vocabulary::get();
+        assert!(calibrate(&many(4, "unclassified", "open", ""), vocab).is_empty());
+        let found = calibrate(&many(5, "unclassified", "open", ""), vocab);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].0.contains("語彙に足す"), "{found:?}");
+    }
+
+    #[test]
+    fn existing_suffices_across_signals_points_at_the_search() {
+        let vocab = Vocabulary::get();
+        let mut notes = many(1, "form-check", "dropped", "existing-suffices");
+        notes.extend(many(1, "copy-drift", "dropped", "existing-suffices"));
+        assert!(calibrate(&notes, vocab).is_empty());
+        notes.extend(many(1, "guard-misfire", "dropped", "existing-suffices"));
+        let found = calibrate(&notes, vocab);
+        assert_eq!(titles(&found).len(), 1, "{found:?}");
+        assert!(found[0].0.contains("探索が浅い"), "{found:?}");
+    }
+
+    #[test]
+    fn unknown_signals_are_ignored_and_details_carry_no_note_text() {
+        let vocab = Vocabulary::get();
+        assert!(calibrate(&many(9, "vibes", "dropped", "one-off"), vocab).is_empty());
+        let found = calibrate(&many(3, "form-check", "dropped", "one-off"), vocab);
+        // 件数と理由の id と語彙のパスだけ。
+        assert!(found[0].1.chars().count() < 400, "{found:?}");
     }
 }

@@ -26,6 +26,17 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
    (新規 Rust gate の deny/skip イベント、`agent_session::gate_event` が記録)
    で、ある gate の skip 回数が3件以上のもの。
 
+5. **語彙の較正(ADR-1276)**: vault の `inbox/` のノートのうち、`signal` を持つもの(retro の `codify` などの
+   行が渡した、as-code 化の候補)を、兆候ごとに採用(`fixed`・`issued`)と却下(`dropped`。理由は
+   `drop_reason`)に分けて数える。しきい値は語彙(`config/agents/codify-signals/vocabulary.json` の
+   `calibration`)が正本。vault を宣言していない機体では何もしない。
+   - 却下が `min_dropped`(3)件以上で、裁定済みのうち却下が `drop_ratio`(2/3)以上、または
+     `misread-signal` が `misread_min`(2)件以上 → 「兆候 X の定義を直す候補」。
+   - `unclassified`(どれにも入らない)が `unclassified_min`(5)件以上 → 「語彙に足す兆候の候補」。
+   - `existing-suffices` による却下が全兆候で `existing_suffices_min`(3)件以上 → 「既存手段の探索が浅い」。
+   - 兆候の `since` より前に初出のノートは数えない。定義を直したら `since` を更新すると、数え直す。
+   本文には件数と理由の id だけを書く(ノートの中身は書かない)。
+
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
 (`RECURRENCE_THRESHOLD`・`VERBATIM_MIN_SESSIONS`・`SKIP_STALE_DAYS`・
 `DEMOTION_SKIP_THRESHOLD`)。
@@ -40,6 +51,14 @@ vault の無い機体では `~/.local/state/claude/wrapup/github-com-tarotene-do
 `/backlog-cleanup`」経路をそのまま再利用する。裁定は `/backlog-cleanup` だけが
 行い、Issue にするのは本人が選んだものだけである — 候補の文面は判断を含むため、
 公開 Issue 化は必ず人間のレビューを経る。Stop hook は Issue 化を促さない。
+
+## 同じ候補を毎日入れ直さない
+
+timer は毎日動く。`add` は同じ日・同じ本文の行しか重複とみなさないので、翌日に同じ候補を入れると、ノートの行が 1 つ
+増え、「再発の回数」(行数)が膨らんでいた。いまは `<state>/promotion-detect/emitted.json`(題 → 本文)に、
+`--add` が成功した候補を残し、題も本文も同じなら入れ直さない(本文が変われば、たとえば件数が増えれば入れ直す)。
+`--dry-run` はこの状態を読まず、書かない。`--add` が失敗した候補は残さないので、次回また試す。入れる行には
+`repo` を必ず付ける(timer の作業ディレクトリは `$HOME` で、付けないと `--add` が repo を取り違える)。
 
 ## なぜ段階(prose/scripted/gated)を宣言させないか
 
