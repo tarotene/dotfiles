@@ -54,7 +54,7 @@ pub enum Kind {
     Stuck,
     /// 読んだメールの出来事と出典の印(本文は書かない)。文法と状態は [`mail`]。
     Mail,
-    /// 作業の枠(自分一人でやる、時間枠つきの作業)の出来事。文法と状態は [`slot`]。
+    /// 作業の枠(自分一人でやる、時間枠つきの作業)の完了記録(済んだ・やめた)。文法と状態は [`slot`]。
     Slot,
 }
 
@@ -97,7 +97,7 @@ impl Kind {
 pub mod mail;
 pub use mail::{validate_mail, MAIL_CHANNELS, MAIL_SUMMARY_MAX_CHARS};
 
-// `slot` の文法・畳み込み(docs/agents/task-slot.md)。`mail` と同じ作りで、タイマーは持たない。
+// `slot` の文法・畳み込み(docs/agents/task-slot.md)。`mail` と同じ作りで、タイマーは持たない。時間枠は予定データが持つ。
 pub mod slot;
 pub use slot::validate_slot;
 
@@ -559,9 +559,8 @@ pub fn build_context(repo: Option<&str>, recent: &[&Row]) -> String {
          - mail: 読んだメールの出来事。`<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD]]`\
          (出来事は read|ask|draft|decide|apply|pass|move、媒体は gmail|linkedin|lapras|none)。\
          本文・相手の名前・アドレスは書かない。未了の一覧は `worklog mail open`\n\
-         - slot: 自分一人でやる作業の枠(時間枠つき)の出来事。`worklog add slot plan|resched|done|drop <鍵> \
-         [--start <ISO 時刻> --end <ISO 時刻> [--issue owner/repo#N]]`。済んだか・やめたかは本人の裁定を受けて書く。\
-         未了の一覧は `worklog slot open`、終了を過ぎたものは `worklog slot overdue`\n\
+         - slot: 自分一人でやる作業の枠(時間枠つき)の完了記録。`worklog add slot done|drop <鍵>`(鍵は予定データの予定 id)。\
+         済んだか・やめたかは本人の裁定を受けて書く。時間枠は書かない。記録済みの一覧は `worklog slot closed`\n\
          書かないもの: 会社の業務の中身、機密、既存の記録(Gmail の下書き・PR のマージ状態・\
          カレンダー)から導けること。\n\
          owner/repo は作業ディレクトリから自動で付きます。Issue・PR の番号は `--ref N` で渡します。\n\
@@ -855,7 +854,7 @@ mod tests {
         assert!(!build_context(None, &[&r]).contains("2026-10-25"));
         // 規範に mail の文法と禁止事項がある。
         assert!(none.contains("- mail:") && none.contains("read|ask|draft|decide|apply|pass|move"));
-        assert!(none.contains("- slot:") && none.contains("plan|resched|done|drop"));
+        assert!(none.contains("- slot:") && none.contains("worklog add slot done|drop"));
     }
 
     #[test]

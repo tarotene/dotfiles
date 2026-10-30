@@ -457,6 +457,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1276](adr/1276-codify-signals.md) — retro の `mechanism` を `eliminate`・`unrepresentable`・`gate`・`tool`・`prose` の 5 段に引き直し、段を持つ行に兆候(`signal`)・既存手段(採用|拡張|自前)・探した範囲を必須にする(ADR-697 の語彙と ADR-543 の Q2 を改める)。語彙は JSON 1 枚を正本に、手順の文・行の検証・事例集の表がそこから出る。過去の retro 244 行での試し当てを受けて、兆候を 15 個にし、「どれにも入らない」を数える `unclassified` を持つ。
 - [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠(自分一人でやる、時間枠つきの作業)の状態を、`worklog` の `slot` kind の行を出来事として畳み込んで追い、時間枠は行に持つ(ADR-998 の追記)。語彙は `mail` と別の JSON で、タイマーを持たず、「過ぎた」は終了時刻から導く。Quint の仕様は書かず、語彙の遷移表の全マスを試験する。
 - [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を「対象の状態遷移を行う、または前提を満たす手順書」と定義し、すべての skill が語彙 JSON の `carriers`・`gates`・`shown_by` に名指しされる条件を課す。メール項目・作業の枠・カレンダーの握手の語彙を、JSON Schema の共通の形(`to` は配列、`object`・行為者・担い手・前提の欄)へ移し(Quint の入力は移行の前後でバイト単位で同じ)、bash + jq の `scripts/vocab-graph-check` が到達・出口・終端・担い手の解決などを CI で検査する。載らない skill を拾う `--skills` は、全 skill を載せ切るまで必須の job にしない。Quint と実装照合への昇格は、タイマー・並行・対象横断の条件で行う。
+- [ADR-0000](adr/0000-slot-completion-record.md) — 作業の枠の時間の定義を予定データ(Git)の 1 か所に残し、`worklog` の `slot` kind を済んだ・やめたの完了記録(`done`・`drop`)だけに絞る(ADR-1291 の slot kind の仕様を置き換える)。`plan`・`resched`・`slot open`・`slot overdue` を廃止し、鍵は予定データの予定 id、同じ鍵に別々の終端は書けず先に書かれた終端が勝つ。読み出しは `worklog slot closed [--json]`。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 

@@ -4,10 +4,8 @@
 //! worklog add <kind> <text...> [--ref N] [--repo owner/repo]
 //! worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]
 //! worklog mail open|check|sweep [--today YYYY-MM-DD] [--dry-run]|restore <鍵>|forget <鍵>
-//! worklog add slot plan <鍵> --start <ISO> --end <ISO> [--issue owner/repo#N …]
-//! worklog add slot resched <鍵> --start <ISO> --end <ISO>
 //! worklog add slot done|drop <鍵>
-//! worklog slot open [--json]|overdue [--now <ISO>] [--json]|check
+//! worklog slot closed [--json]|check
 //! worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。vault を宣言していない機体では無音
 //! ```
 //!
@@ -32,10 +30,8 @@ fn usage() -> String {
          worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]\n  \
          worklog mail open|check\n  worklog mail sweep [--today YYYY-MM-DD] [--dry-run]\n  \
          worklog mail restore <鍵>|forget <鍵>\n  \
-         worklog add slot plan <鍵> --start <ISO 時刻> --end <ISO 時刻> [--issue owner/repo#N …]\n  \
-         worklog add slot resched <鍵> --start <ISO 時刻> --end <ISO 時刻>\n  \
          worklog add slot done|drop <鍵>   (出来事: {})\n  \
-         worklog slot open [--json]\n  worklog slot overdue [--now <ISO 時刻>] [--json]\n  worklog slot check\n  \
+         worklog slot closed [--json]\n  worklog slot check\n  \
          worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)\n\
          mail の本文: '<{}>: <要旨(結論だけ・{}字まで)> [<{}>:<スレッド>/<受信> [due:YYYY-MM-DD]]'\
          (媒体 none は '[none]'、move は to:<owner/repo#N|cal:YYYY-MM-DD|mail:<鍵>> が要る。\
@@ -176,38 +172,20 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `add slot <出来事> <鍵> [--start ISO --end ISO] [--issue owner/repo#N …]`。
-/// 本文は正規の形に組み立てて `slot::add_slot` に渡す(状態の検査はそこ)。
+/// `add slot <出来事> <鍵>`。本文は正規の形に組み立てて `slot::add_slot` に渡す(状態の検査はそこ)。
 fn add_slot_cmd(args: &[String]) -> Result<(), String> {
-    let (mut positional, mut start, mut end) = (Vec::new(), None, None);
-    let mut issues = Vec::new();
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--start" => start = Some(value(&mut it, "--start")?),
-            "--end" => end = Some(value(&mut it, "--end")?),
-            "--issue" => issues.push(value(&mut it, "--issue")?),
-            "--ref" | "--repo" => {
-                return Err("slot には owner/repo の参照を付けない(参照 Issue は --issue)".into())
-            }
-            other => positional.push(other),
-        }
+    if let Some(flag) = args.iter().find(|a| a.starts_with("--")) {
+        return Err(format!(
+            "slot に {flag} は付けない(時間枠・Issue・参照は予定データが持つ)。形は `worklog add slot <出来事> <鍵>`"
+        ));
     }
-    let [event, key] = positional[..] else {
+    let [event, key] = args else {
         return Err(format!(
             "slot は `<出来事> <鍵>` の 2 つが要る(出来事: {})",
             SlotVocabulary::get().event_names()
         ));
     };
-    let mut tag = Vec::new();
-    tag.extend(start.map(|s| format!("start:{s}")));
-    tag.extend(end.map(|s| format!("end:{s}")));
-    tag.extend(issues.iter().map(|i| format!("issue:{i}")));
-    let mut text = format!("{event}: {key}");
-    if !tag.is_empty() {
-        text.push_str(&format!(" [{}]", tag.join(" ")));
-    }
-    let line = slot::parse_slot(&text)?;
+    let line = slot::parse_slot(&format!("{event}: {key}"))?;
     let vault = open_vault()?;
     let (days, time) = jst_parts(now_unix());
     let r = slot::add_slot(&vault, days, &time, &slot::format_slot(&line))?;
@@ -219,36 +197,33 @@ fn add_slot_cmd(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `slot open|overdue|check`。`check` は食い違いがあれば exit 1。
+/// `slot closed|check`。`check` は食い違いがあれば exit 1。
 fn slot_cmd(args: &[String]) -> Result<ExitCode, String> {
     let sub = args.first().map(String::as_str).ok_or_else(usage)?;
-    let (mut json, mut now) = (false, None);
-    let mut it = args[1..].iter();
-    while let Some(a) = it.next() {
+    if !matches!(sub, "closed" | "check") {
+        return Err(usage());
+    }
+    let mut json = false;
+    for a in &args[1..] {
         match (sub, a.as_str()) {
-            ("open" | "overdue", "--json") => json = true,
-            ("overdue", "--now") => now = Some(slot::parse_instant(value(&mut it, "--now")?)?),
+            ("closed", "--json") => json = true,
             _ => return Err(usage()),
         }
     }
     let vault = open_vault()?;
-    // 「今」は --now があればそれ。読むノートも、その日(JST)までにする。
-    let now_epoch = now.map_or_else(|| now_unix() as i64, |n| n.epoch);
-    let until = jst_parts(u64::try_from(now_epoch).map_err(|_| "--now が 1970 年より前")?).0;
+    let (until, _) = jst_parts(now_unix());
     let (_, folded) = slot::load(&vault, until)?;
-    let print = |slots: Vec<&slot::Slot>| {
-        if json {
-            let a: Vec<_> = slots.iter().map(|s| s.to_json()).collect();
-            println!("{}", serde_json::Value::Array(a));
-        } else {
-            for s in slots {
-                println!("{}", s.tsv());
+    match sub {
+        "closed" => {
+            if json {
+                let a: Vec<_> = folded.closed.iter().map(|c| c.to_json()).collect();
+                println!("{}", serde_json::Value::Array(a));
+            } else {
+                for c in &folded.closed {
+                    println!("{}", c.tsv());
+                }
             }
         }
-    };
-    match sub {
-        "open" => print(folded.open()),
-        "overdue" => print(folded.overdue(now_epoch)),
         "check" => {
             for d in &folded.discrepancies {
                 println!("食い違い\t{}\t{}", d.key, d.message);

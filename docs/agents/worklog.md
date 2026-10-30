@@ -51,17 +51,17 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 - メールの本文・件名・相手の名前・アドレスは書かない。それらは Gmail に残り、ここには結論と鍵だけを置く。
   既存の記録(Gmail の下書き、PR のマージ状態、カレンダー)から導けることを書かない規範は、そのまま保つ。
 
-## slot — 作業の枠(自分一人でやる、時間枠つきの作業)の出来事と状態
+## slot — 作業の枠(自分一人でやる、時間枠つきの作業)の完了記録
 
-決定の記録: `docs/adr/1291-task-slot-worklog.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
+決定の記録: `docs/adr/0000-slot-completion-record.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
 
-`mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`plan`・`resched`・`done`・`drop`)。時間枠(`start:`・
-`end:`。ISO 8601 のオフセット付き)と参照 Issue は行に持ち、本文・個人名は書かない。タイマーは無く、
-終了を過ぎたものは `worklog slot overdue` が導く。既存の自由記述の `task` kind とは別の kind である。
+`mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`done`・`drop`)。時間枠の定義は予定データ(Git)に残り、
+作業ログが持つのは済んだ・やめたの完了記録だけ。鍵は予定データの予定 id で、時間枠・Issue・本文・個人名は書かない。
+タイマーは無い。既存の自由記述の `task` kind とは別の kind である。
 
 ```text
-worklog add slot plan <鍵> --start <ISO 時刻> --end <ISO 時刻> [--issue owner/repo#N …]
-worklog slot open | overdue [--now <ISO 時刻>] | check
+worklog add slot done <鍵> | drop <鍵>
+worklog slot closed [--json] | check
 ```
 
 ## vault の場所の解決
