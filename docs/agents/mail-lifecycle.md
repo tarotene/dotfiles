@@ -1,7 +1,7 @@
 # mail-lifecycle — 未裁定のメール項目が、状態をたどって必ず終わる
 
 決定の記録: `docs/adr/1259-mail-lifecycle.md`(ADR-1256 の D2・D3・D5 を改める)
-語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`
+語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`(版 2。共通の形は `docs/agents/state-vocabulary.md`。`to` は配列、各事象に `carriers`・`gates`)
 実体: `crates/worklog/src/mail.rs`(書き込みの検査・畳み込み・sweep・控え)、`crates/worklog/src/main.rs`(`worklog mail`)
 仕様と検査: `config/agents/mail-lifecycle/spec/`(Quint)、`home/tests/mail-lifecycle-spec.nix`、CI の `mail-lifecycle-spec` ジョブ
 

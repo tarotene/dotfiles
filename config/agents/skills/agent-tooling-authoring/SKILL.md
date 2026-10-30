@@ -23,7 +23,8 @@ description: Turn a lesson learned in a work session into a durable coding-agent
 1. `config/agents/skills/<name>/SKILL.md` を作成(frontmatter は `name` / `description` のみ。既存スキルの形式に合わせる)。事例集を持つなら同じディレクトリに `cases.md` 等の補助ファイルを置く。
 2. `home/modules/agents.nix` に `home.file.".claude/skills/<name>/<file>".source = repoConfig + "/agents/skills/<name>/<file>";` を追加する。ファイル冒頭の機能一覧コメントにも1項目追記する(既存のフックの説明スタイルに合わせ、動機と設計意図を書く)。
 3. `docs/claude/<name>.md` に設計ドキュメントを添える: 動機(どの失敗・不便から生まれたか)、器をスキルにした理由、内部構成の意図、運用(いつ・どう追記するか)。
-4. home-manager switch して配備を確認し、新しいセッションで `skills 一覧` にあることと、想定した場面で自動発動することを確認する。
+4. **語彙に名指しする**(ADR-0000、`docs/agents/state-vocabulary.md`)。新しい skill は、自分が行う事象、または自分が前提を満たす事象を、`config/agents/*/vocabulary.json` の `carriers`(行う)か `gates`(前提を検査する機械)に `skill:<skill 名>` で 1 つ以上名指しする。本人に見せる状態なら `shown_by` でもよい。別リポジトリの対象に仕える skill は、`config/agents/vocabulary/external-objects.json` に対象の名前と skill 名を足す(対象の中身は書かない)。名指しできない skill は、仕えている skill への統合候補である。`scripts/vocab-graph-check --skills` が載っていない skill を列挙する。
+5. home-manager switch して配備を確認し、新しいセッションで `skills 一覧` にあることと、想定した場面で自動発動することを確認する。
 
 ## 3. サニタイズ規則(正本 — 公開リポジトリに書く知見と、外部サービスへ送る文の両方。各スキルはここを参照し、重複させない)
 

@@ -1,15 +1,16 @@
 # vocabulary.json から、仕様が import する検査用モジュール vocab.qnt を作る(コミットしない生成物)。
 #   jq -r -f vocab.jq ../vocabulary.json > vocab.qnt
-# 出来事は from の要素ごとに (ev, from, to, by) の組へ展開する。to が "same" の出来事(remind)は、
+# 出来事は from と to の要素ごとに (ev, from, to, by) の組へ展開する。to が ["same"] の出来事(remind)は、
 # 組の to を from と同じにする(状態は変わらない)。TRANSITIONS_LIST の添字が、仕様の被覆の検査
 # (cov<i>)の添字になる。OPENING は from が ["none"] だけの出来事(読む・下書き・質問)、
 # TERM_EVENTS は終端の状態へ入りうる出来事。
+# 語彙の共通の形(config/agents/vocabulary/vocabulary.schema.json)では to は常に配列。
 def q: "\"" + . + "\"";
 def qs: [.[] | q] | join(", ");
 ([.states[] | select(.terminal) | .id]) as $term
 | ([.states[] | select(.terminal | not) | .id]) as $unres
-| [.events[] | . as $e | $e.from[] as $f
-   | { ev: $e.id, from: $f, to: (if $e.to == "same" then $f else $e.to end), by: $e.by }] as $ts
+| [.events[] | . as $e | $e.from[] as $f | $e.to[] as $t
+   | { ev: $e.id, from: $f, to: (if $t == "same" then $f else $t end), by: $e.by }] as $ts
 | ([.events[] | select(.from == ["none"]) | .id]) as $open
 | ([$ts[] | select(.to as $t | $term | any(. == $t)) | .ev] | unique) as $termev
 | "module vocab {\n  type Tr = { ev: str, from: str, to: str, by: str }\n"

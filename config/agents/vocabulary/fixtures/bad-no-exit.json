@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "object": "bad-no-exit",
+  "description": "負例(出口)。終端でない状態 stuck に入れるが、そこから出る事象が無い。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "stuck", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" },
+    { "id": "jam", "from": ["open"], "to": ["stuck"], "by": "machine" }
+  ]
+}

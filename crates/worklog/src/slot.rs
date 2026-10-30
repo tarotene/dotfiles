@@ -562,12 +562,12 @@ mod tests {
         assert!(!v.is_terminal("scheduled"));
         assert!(v.is_terminal("done") && v.is_terminal("dropped"));
         assert!(SlotVocabulary::parse(
-            r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":"same","by":"agent"}]}"#
+            r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":["same"],"by":"agent"}]}"#
         )
         .is_err());
         // タイマーを動かす書き手(machine)の出来事は置けない。
         assert!(SlotVocabulary::parse(
-            r#"{"states":[{"id":"a","terminal":false}],"events":[{"id":"x","from":["a"],"to":"same","by":"machine"}]}"#
+            r#"{"states":[{"id":"a","terminal":false}],"events":[{"id":"x","from":["a"],"to":["same"],"by":"machine"}]}"#
         )
         .is_err());
     }

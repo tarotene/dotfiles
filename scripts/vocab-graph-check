@@ -1,0 +1,406 @@
+#!/usr/bin/env bash
+# vocab-graph-check — 対象の状態遷移の語彙 JSON を検査する(ADR-0000)。
+#
+# 語彙 JSON は、対象(メール項目・作業の枠・カレンダーの枠など)ごとに、状態と事象(遷移)の閉語彙を
+# 1 枚で持つ正本。共通の形は config/agents/vocabulary/vocabulary.schema.json。この検査器は、その形と
+# 単一対象の有限状態グラフとしての性質を、CI で機械が見る。並行(トークン)は扱わない。
+#
+# 使い方:
+#   vocab-graph-check [--root <dotfiles のルート>] [--all] [<語彙.json>...]
+#       各語彙を次の順で検査する。違反は `ファイル: 規則: 内容` の 1 行ずつを標準エラーに出し、
+#       1 件でもあれば終了コード 1。使い方の誤りは 2。
+#         schema        vocabulary.schema.json に適合する(schema-validate.jq の部分集合)
+#         一意          状態 id・事象 id が一意。状態 id に予約語 none・same を使わない
+#         参照          from は状態か none、to は状態か same
+#         終端          終端の状態から出る事象が無い
+#         到達          initial(none)からすべての状態に到達できる
+#         出口          終端でない状態に、別の状態へ出る事象がある(自己遷移だけでは出口にならない)
+#         見せる担い手  owner が person の状態に shown_by の担い手がある
+#         担い手の解決  shown_by・carriers・gates の名前が実在する
+#                       skill:<名前> は config/agents/skills/<名前>/、node:<id> は pipeline-map.toml の
+#                       ノード、cli:<名前> は crates/<名前>/。external:<名前> は別リポジトリの担い手で解決しない
+#         孤立          どの事象の to にも現れない状態が無い
+#         対象の一意    渡した全語彙で object が一意
+#       --all は、<root>/config/agents/*/vocabulary.json のうち states と events を持つものを加える
+#       (config/agents/codify-signals/vocabulary.json のような別の形の語彙は対象外)。
+#   vocab-graph-check --skills [--root <ルート>]
+#       <root>/config/agents/skills/ の各 skill(SKILL.md を持つディレクトリ。description が
+#       `Compatibility entry for <X>` で始まるものは別名として X に読み替える)が、全語彙の
+#       shown_by・carriers・gates の `skill:<名前>`、または
+#       config/agents/vocabulary/external-objects.json(別リポジトリの対象を担う skill の名前)の
+#       どれかに載っていることを検査する。載らない skill を列挙して終了コード 1。
+#       CI の必須の job にはまだ載せていない(ADR-0000 の D5)。
+#   vocab-graph-check --selftest
+#       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill の負例で、
+#       各規則が期待どおり落ちる・通ることを確かめる。ネットワーク不使用。
+#
+# 実装は bash + jq。JSON Schema の検証は config/agents/skills/inbox-adjudication/reference/verdict-page/
+# schema-validate.jq を再利用する(複写しない)。
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+SCHEMA="$SELF_ROOT/config/agents/vocabulary/vocabulary.schema.json"
+VALIDATOR="$SELF_ROOT/config/agents/skills/inbox-adjudication/reference/verdict-page/schema-validate.jq"
+FIXTURES="$SELF_ROOT/config/agents/vocabulary/fixtures"
+
+usage() {
+  sed -n '2,/^set -euo/p' "$SELF" | sed '$d' | sed 's/^# \{0,1\}//'
+}
+
+die_usage() {
+  printf 'vocab-graph-check: %s\n' "$1" >&2
+  printf '使い方: vocab-graph-check [--root <ルート>] [--all] [<語彙.json>...] | --skills [--root <ルート>] | --selftest\n' >&2
+  exit 2
+}
+
+# ---------------------------------------------------------------- 名前の解決
+
+# $1 = ルート。SKILLS_JSON・NODES_JSON・CRATES_JSON(名前の配列)を決める。
+load_names() {
+  local root=$1
+  SKILLS_JSON=$({ [[ -d $root/config/agents/skills ]] && find "$root/config/agents/skills" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'; } 2>/dev/null | jq -R . | jq -s .) || SKILLS_JSON='[]'
+  CRATES_JSON=$({ [[ -d $root/crates ]] && find "$root/crates" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'; } 2>/dev/null | jq -R . | jq -s .) || CRATES_JSON='[]'
+  # pipeline-map.toml のノードは、`lane = ` を持つ `{ id = "<id>", …}` の行。
+  if [[ -f $root/pipeline-map.toml ]]; then
+    NODES_JSON=$(sed -nE 's/^[[:space:]]*\{ id = "([^"]+)",.*[[:space:]]lane = .*/\1/p' "$root/pipeline-map.toml" | jq -R . | jq -s .)
+  else
+    NODES_JSON='[]'
+  fi
+}
+
+# ---------------------------------------------------------------- グラフ検査(jq)
+
+# 入力は Schema に適合した語彙。違反ごとに `規則<TAB>内容` を出す。
+read -r -d '' GRAPH_JQ <<'EOF' || true
+def dups: group_by(.) | map(select(length > 1) | .[0]);
+def viol($rule; $msg): {rule: $rule, msg: $msg};
+def named($arr; $x): any($arr[]; . == $x);
+def step($evs): . as $s
+  | ($s + [ $evs[] | select(any(.from[]; IN($s[]))) | .to[] | select(. != "same") ]) | unique;
+
+. as $v
+| [ $v.states[].id ] as $sids
+| [ $v.events[].id ] as $eids
+| [ $v.states[] | select(.terminal) | .id ] as $term
+| ([ $v.events[].to[] | select(. != "same") ] | unique) as $allTo
+| (["none"] | until(step($v.events) == .; step($v.events))) as $reach
+| ( [ $v.states[] | .id as $i | (.shown_by // [])[] | {w: "状態 \($i) の shown_by", n: .} ]
+  + [ $v.events[] | .id as $i
+      | ((.carriers // [])[] | {w: "事象 \($i) の carriers", n: .}),
+        ((.gates // [])[] | {w: "事象 \($i) の gates", n: .}) ] ) as $names
+| [
+    ( $sids | dups[] | viol("一意"; "状態 id \(.) が重複している") ),
+    ( $eids | dups[] | viol("一意"; "事象 id \(.) が重複している") ),
+    ( $sids[] | select(. == "none" or . == "same") | viol("一意"; "状態 id に予約語 \(.) は使えない") ),
+    ( $v.events[] | . as $e
+      | ( $e.from[] | select(. != "none" and (IN($sids[]) | not))
+          | viol("参照"; "事象 \($e.id) の from \(.) が状態にない") ),
+        ( $e.to[] | select(. != "same" and (IN($sids[]) | not))
+          | viol("参照"; "事象 \($e.id) の to \(.) が状態にない") ) ),
+    ( $v.events[] | . as $e | $e.from[] | select(IN($term[]))
+      | viol("終端"; "終端の状態 \(.) から事象 \($e.id) が出る") ),
+    ( $sids[] | select(IN($allTo[]) and (IN($reach[]) | not))
+      | viol("到達"; "状態 \(.) が initial(none)から到達できない") ),
+    ( $v.states[] | select(.terminal | not) | .id as $id
+      | select([ $v.events[] | select(any(.from[]; . == $id)) | .to[] | select(. != "same" and . != $id) ] | length == 0)
+      | viol("出口"; "終端でない状態 \($id) から別の状態へ出る事象が無い") ),
+    ( $v.states[] | select(.owner == "person" and ((.shown_by // []) | length == 0)) | .id
+      | viol("見せる担い手"; "owner が person の状態 \(.) に shown_by の担い手が無い") ),
+    ( $names[] | . as $r | ($r.n | capture("^(?<k>[a-z]+):(?<x>.+)$")) as $c
+      | if   $c.k == "skill" and (named($skills; $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が config/agents/skills/ に実在しない")
+        elif $c.k == "node"  and (named($nodes;  $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が pipeline-map.toml のノードに実在しない")
+        elif $c.k == "cli"   and (named($crates; $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が crates/ に実在しない")
+        else empty end ),
+    ( $sids[] | select((IN($allTo[]) | not) and . != "none")
+      | viol("孤立"; "状態 \(.) がどの事象の to にも現れない") )
+  ][] | "\(.rule)\t\(.msg)"
+EOF
+
+# 1 ファイルを検査する。違反は標準エラーに出し、あれば戻り値 1。
+check_file() {
+  local file=$1 out line rule msg
+  if ! jq -e 'type == "object"' "$file" >/dev/null 2>&1; then
+    printf '%s: schema: JSON のオブジェクトとして読めない\n' "$file" >&2
+    return 1
+  fi
+  if ! out=$(jq -nr --slurpfile s "$SCHEMA" --slurpfile d "$file" -f "$VALIDATOR" 2>&1); then
+    printf '%s: schema: 検証器が失敗した: %s\n' "$file" "$out" >&2
+    return 1
+  fi
+  if [[ -n $out ]]; then
+    while IFS= read -r line; do printf '%s: schema: %s\n' "$file" "$line" >&2; done <<<"$out"
+    return 1
+  fi
+  if ! out=$(jq -r --argjson skills "$SKILLS_JSON" --argjson nodes "$NODES_JSON" --argjson crates "$CRATES_JSON" "$GRAPH_JQ" "$file" 2>&1); then
+    printf '%s: グラフ: 検査が失敗した: %s\n' "$file" "$out" >&2
+    return 1
+  fi
+  if [[ -n $out ]]; then
+    while IFS=$'\t' read -r rule msg; do printf '%s: %s: %s\n' "$file" "$rule" "$msg" >&2; done <<<"$out"
+    return 1
+  fi
+  return 0
+}
+
+# $1 = ルート。states と events を持つ語彙の一覧(config/agents/*/vocabulary.json)。
+discover_vocabs() {
+  local f
+  for f in "$1"/config/agents/*/vocabulary.json; do
+    [[ -f $f ]] || continue
+    if jq -e 'type == "object" and has("states") and has("events")' "$f" >/dev/null 2>&1; then
+      printf '%s\n' "$f"
+    fi
+  done
+}
+
+# 渡した全語彙のグラフ検査と、object の一意。
+check_vocabs() {
+  local root=$1 rc=0 f dup o fs
+  shift
+  load_names "$root"
+  for f in "$@"; do
+    check_file "$f" || rc=1
+  done
+  # object が重複しない(JSON として読めないファイルは object が無いので除く)
+  dup=$(for f in "$@"; do jq -r --arg f "$f" 'select(type == "object" and (.object | type) == "string") | "\(.object)\t\($f)"' "$f" 2>/dev/null || true; done \
+    | awk -F'\t' '{ n[$1]++; files[$1] = files[$1] (files[$1] == "" ? "" : ", ") $2 } END { for (o in n) if (n[o] > 1) printf "%s\t%s\n", o, files[o] }' | sort)
+  if [[ -n $dup ]]; then
+    while IFS=$'\t' read -r o fs; do
+      printf '%s: 対象の一意: object %s が複数の語彙にある\n' "$fs" "$o" >&2
+    done <<<"$dup"
+    rc=1
+  fi
+  return "$rc"
+}
+
+# ---------------------------------------------------------------- skill の検査
+
+# $1 = ルート。載っていない skill を `config/agents/skills/<名前>: skill: …` で出す。あれば戻り値 1。
+check_skills() {
+  local root=$1 skills_dir covered ext_file d name desc canonical rc=0 missing=0
+  skills_dir="$root/config/agents/skills"
+  [[ -d $skills_dir ]] || die_usage "skill のディレクトリが無い: $skills_dir"
+
+  local vocabs=()
+  mapfile -t vocabs < <(discover_vocabs "$root")
+  covered=""
+  if ((${#vocabs[@]} > 0)); then
+    covered=$(jq -r '
+      ( [ .states[] | (.shown_by // [])[] ]
+      + [ .events[] | ((.carriers // [])[], (.gates // [])[]) ] )[]
+      | select(startswith("skill:")) | .[6:]' "${vocabs[@]}")
+  fi
+
+  ext_file="$root/config/agents/vocabulary/external-objects.json"
+  if [[ -f $ext_file ]]; then
+    if ! jq -e 'type == "array" and all(.[]; (.object | type) == "string" and (.skills | type) == "array" and all(.skills[]; type == "string"))' "$ext_file" >/dev/null 2>&1; then
+      printf '%s: external-objects: [{"object": "<名前>", "skills": ["<skill 名>"]}] の形でない\n' "$ext_file" >&2
+      rc=1
+    else
+      covered+=$'\n'$(jq -r '.[].skills[]' "$ext_file")
+      # 実在しない skill の名前(typo)は、載せたことにしない
+      while IFS= read -r name; do
+        [[ -z $name ]] && continue
+        if [[ ! -f $skills_dir/$name/SKILL.md ]]; then
+          printf '%s: external-objects: skill %s が config/agents/skills/ に実在しない\n' "$ext_file" "$name" >&2
+          rc=1
+        fi
+      done < <(jq -r '.[].skills[]' "$ext_file")
+    fi
+  fi
+
+  for d in "$skills_dir"/*/; do
+    [[ -f $d/SKILL.md ]] || continue
+    name=$(basename "$d")
+    desc=$(sed -nE '/^description:/{s/^description:[[:space:]]*//;p;q}' "$d/SKILL.md")
+    canonical=$name
+    if [[ $desc =~ ^\"?Compatibility\ entry\ for\ ([A-Za-z0-9._-]+) ]]; then
+      canonical=${BASH_REMATCH[1]}
+    fi
+    if ! grep -qxF -- "$canonical" <<<"$covered"; then
+      if [[ $canonical != "$name" ]]; then
+        printf 'config/agents/skills/%s: skill: 別名 %s の正 %s が、どの語彙の carriers・gates・shown_by にも external-objects.json にも載っていない\n' "$name" "$name" "$canonical" >&2
+      else
+        printf 'config/agents/skills/%s: skill: どの語彙の carriers・gates・shown_by にも external-objects.json にも載っていない\n' "$name" >&2
+      fi
+      missing=$((missing + 1))
+    fi
+  done
+  if ((missing > 0)); then
+    printf 'vocab-graph-check: 載っていない skill が %d 本ある\n' "$missing" >&2
+    rc=1
+  fi
+  return "$rc"
+}
+
+# ---------------------------------------------------------------- selftest
+
+selftest() {
+  local pass=0 fail=0 out rc
+  T=$(mktemp -d)
+  trap 'rm -rf "${T:-}"' EXIT
+
+  # 解決先の架空のルート: skill alpha・beta、crate crate-a、ノード node-a
+  local R="$T/root"
+  mkdir -p "$R/config/agents/skills/alpha" "$R/config/agents/skills/beta" "$R/crates/crate-a"
+  printf -- '---\nname: alpha\ndescription: x\n---\n' >"$R/config/agents/skills/alpha/SKILL.md"
+  printf -- '---\nname: beta\ndescription: x\n---\n' >"$R/config/agents/skills/beta/SKILL.md"
+  printf '%s\n' 'node = [' '  { id = "node-a", label = "a", lane = "manual", auto = false },' ']' >"$R/pipeline-map.toml"
+
+  ok() { pass=$((pass + 1)); }
+  ng() {
+    fail=$((fail + 1))
+    printf 'FAIL: %s\n' "$1" >&2
+  }
+
+  # expect_pass <名前> <args...> / expect_fail <名前> <規則> <args...> / expect_code <名前> <コード> <args...>
+  expect_pass() {
+    local name=$1
+    shift
+    if out=$(bash "$SELF" "$@" 2>&1); then ok; else ng "$name: 通るはずが落ちた: $out"; fi
+  }
+  expect_fail() {
+    local name=$1 rule=$2
+    shift 2
+    set +e
+    out=$(bash "$SELF" "$@" 2>&1)
+    rc=$?
+    set -e
+    if ((rc != 1)); then
+      ng "$name: 終了コード 1 のはずが $rc: $out"
+      return
+    fi
+    if ! grep -qF -- ": $rule: " <<<"$out"; then
+      ng "$name: 規則 $rule の行が無い: $out"
+      return
+    fi
+    ok
+  }
+  expect_code() {
+    local name=$1 want=$2
+    shift 2
+    set +e
+    bash "$SELF" "$@" >/dev/null 2>&1
+    rc=$?
+    set -e
+    if ((rc == want)); then ok; else ng "$name: 終了コード $want のはずが $rc"; fi
+  }
+
+  # --- 正例
+  expect_pass "最小の語彙" --root "$R" "$FIXTURES/ok-minimal.json"
+  expect_pass "実物の既存の語彙" --all
+  # --- 規則ごとの負例
+  expect_fail "Schema 違反" schema --root "$R" "$FIXTURES/bad-schema.json"
+  expect_fail "重複した id" 一意 --root "$R" "$FIXTURES/bad-duplicate-id.json"
+  expect_fail "存在しない状態への参照" 参照 --root "$R" "$FIXTURES/bad-undefined-state.json"
+  expect_fail "終端から出る事象" 終端 --root "$R" "$FIXTURES/bad-terminal-out.json"
+  expect_fail "到達できない状態" 到達 --root "$R" "$FIXTURES/bad-unreachable.json"
+  expect_fail "出口の無い非終端" 出口 --root "$R" "$FIXTURES/bad-no-exit.json"
+  expect_fail "自己遷移だけの非終端" 出口 --root "$R" "$FIXTURES/bad-self-loop-only.json"
+  expect_fail "見せる担い手の無い person 待ち" 見せる担い手 --root "$R" "$FIXTURES/bad-person-no-shown.json"
+  expect_fail "解決しない skill" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-carrier.json"
+  expect_fail "解決しない node" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-node.json"
+  expect_fail "孤立した状態" 孤立 --root "$R" "$FIXTURES/bad-orphan.json"
+  expect_fail "object の重複" 対象の一意 --root "$R" "$FIXTURES/ok-minimal.json" "$FIXTURES/ok-minimal.json"
+  expect_code "語彙の指定なし" 2
+  expect_code "未知のオプション" 2 --nope
+  expect_code "存在しないファイル" 2 --root "$R" "$T/no-such.json"
+
+  # --- 実物の語彙を壊した版(終端から出る事象を足す、担い手の typo)
+  local real_mail="$SELF_ROOT/config/agents/mail-lifecycle/vocabulary.json"
+  jq '.events += [{"id":"zombie","from":["closed"],"to":["awaiting"],"by":"agent"}]' "$real_mail" >"$T/mail-broken-terminal.json"
+  expect_fail "実物 + 終端から出る事象" 終端 "$T/mail-broken-terminal.json"
+  jq '.events[0].carriers = ["skill:inbox-adjudicaton"]' "$real_mail" >"$T/mail-broken-typo.json"
+  expect_fail "実物 + 担い手の typo" 担い手の解決 "$T/mail-broken-typo.json"
+
+  # --- skill 側の負例(一時ディレクトリに skills/ を作る)
+  local S="$T/skills-root"
+  mkdir -p "$S/config/agents/skills"/{alpha,beta,gamma,delta,epsilon} "$S/config/agents/minimal" "$S/config/agents/vocabulary" "$S/crates/crate-a"
+  cp "$R/pipeline-map.toml" "$S/pipeline-map.toml"
+  cp "$FIXTURES/ok-minimal.json" "$S/config/agents/minimal/vocabulary.json"
+  printf -- '---\nname: alpha\ndescription: x\n---\n' >"$S/config/agents/skills/alpha/SKILL.md"
+  printf -- '---\nname: beta\ndescription: x\n---\n' >"$S/config/agents/skills/beta/SKILL.md"
+  printf -- '---\nname: gamma\ndescription: Compatibility entry for beta; use the canonical skill instructions.\n---\n' >"$S/config/agents/skills/gamma/SKILL.md"
+  printf -- '---\nname: delta\ndescription: Compatibility entry for alpha; use the canonical skill instructions.\n---\n' >"$S/config/agents/skills/delta/SKILL.md"
+  printf -- '---\nname: epsilon\ndescription: x\n---\n' >"$S/config/agents/skills/epsilon/SKILL.md"
+  printf '[{"object":"somewhere-else","skills":["epsilon"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
+  # alpha: 語彙に載る / delta: alpha の別名 / epsilon: external-objects に載る / beta: 載らない / gamma: beta の別名
+  set +e
+  out=$(bash "$SELF" --skills --root "$S" 2>&1)
+  rc=$?
+  set -e
+  if ((rc != 1)); then
+    ng "載らない skill: 終了コード 1 のはずが $rc: $out"
+  elif ! grep -qF 'skills/beta: skill:' <<<"$out" || ! grep -qF 'skills/gamma: skill: 別名 gamma の正 beta' <<<"$out"; then
+    ng "載らない skill と別名の読み替えが出ていない: $out"
+  elif grep -qE 'skills/(alpha|delta|epsilon):' <<<"$out"; then
+    ng "載っている skill が出ている: $out"
+  else
+    ok
+  fi
+  rm -r "${S:?}/config/agents/skills/beta" "${S:?}/config/agents/skills/gamma"
+  expect_pass "全 skill が載っている" --skills --root "$S"
+  printf '[{"object":"somewhere-else","skills":["no-such-skill"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
+  expect_fail "external-objects の typo" external-objects --skills --root "$S"
+  printf 'not json\n' >"$S/config/agents/vocabulary/external-objects.json"
+  expect_fail "external-objects の形" external-objects --skills --root "$S"
+
+  printf 'vocab-graph-check --selftest: %d 件通った、%d 件失敗\n' "$pass" "$fail"
+  ((fail == 0))
+}
+
+# ---------------------------------------------------------------- main
+
+ROOT="$SELF_ROOT"
+MODE=files
+ALL=0
+FILES=()
+while (($# > 0)); do
+  case $1 in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --root)
+      (($# >= 2)) || die_usage "--root にはディレクトリが要る"
+      [[ -d $2 ]] || die_usage "--root のディレクトリが無い: $2"
+      ROOT=$(cd "$2" && pwd)
+      shift 2
+      ;;
+    --skills)
+      MODE=skills
+      shift
+      ;;
+    --selftest)
+      MODE=selftest
+      shift
+      ;;
+    --all)
+      ALL=1
+      shift
+      ;;
+    --*) die_usage "未知のオプション: $1" ;;
+    *)
+      [[ -f $1 ]] || die_usage "ファイルが無い: $1"
+      FILES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+case $MODE in
+  selftest) selftest ;;
+  skills)
+    ((${#FILES[@]} == 0 && ALL == 0)) || die_usage "--skills には語彙ファイルも --all も渡せない"
+    check_skills "$ROOT"
+    ;;
+  files)
+    if ((ALL == 1)); then
+      mapfile -t found < <(discover_vocabs "$ROOT")
+      ((${#found[@]} == 0)) || FILES+=("${found[@]}")
+    fi
+    ((${#FILES[@]} > 0)) || die_usage "検査する語彙が無い"
+    check_vocabs "$ROOT" "${FILES[@]}"
+    ;;
+esac

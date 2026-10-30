@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "bad-undefined-state",
+  "description": "負例(参照)。from と to が、状態にない id を指す。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" },
+    { "id": "ghost", "from": ["nowhere"], "to": ["nothing"], "by": "agent" }
+  ]
+}

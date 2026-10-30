@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "object": "Bad Schema",
+  "description": "負例(schema)。terminal が無い状態、by が行為者の語でない事象、object が kebab-case でない。",
+  "initial": "none",
+  "states": [
+    { "id": "open" },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": "open", "by": "robot" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person", "extra": 1 }
+  ]
+}

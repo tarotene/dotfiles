@@ -13,10 +13,11 @@ let
   table = builtins.fromJSON (builtins.readFile (spec + "/scenarios.json"));
   vocabulary = builtins.fromJSON (builtins.readFile (root + "/vocabulary.json"));
 
-  # from × to に展開した遷移の数。handshake.qnt の cov0..cov19 を超えたら足りない
-  transitionCount = lib.foldl' (
-    n: t: n + builtins.length t.from * builtins.length t.to
-  ) 0 vocabulary.transitions;
+  # from × to に展開した遷移の数。handshake.qnt の cov0..cov19 を超えたら足りない。
+  # from が ["none"] だけの事象(予定を作る propose)は、仕様の遷移の表に含めない(spec/vocab.jq と同じ)。
+  transitionCount = lib.foldl' (n: t: n + builtins.length t.from * builtins.length t.to) 0 (
+    builtins.filter (e: e.from != [ "none" ]) vocabulary.events
+  );
 
   expand =
     s:

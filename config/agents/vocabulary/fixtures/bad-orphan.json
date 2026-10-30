@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "bad-orphan",
+  "description": "負例(孤立)。終端の状態 lost は、どの事象の to にも現れない。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true },
+    { "id": "lost", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" }
+  ]
+}

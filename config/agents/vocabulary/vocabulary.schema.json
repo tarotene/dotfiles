@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vocabulary.schema.json",
+  "title": "対象の状態遷移の語彙",
+  "description": "対象(メール項目・作業の枠・カレンダーの枠など)ごとに 1 つ持つ、状態と事象の閉語彙の共通の形(ADR-0000)。scripts/vocab-graph-check が、config/agents/skills/inbox-adjudication/reference/verdict-page/schema-validate.jq(JSON Schema の部分集合の検証器)でこの形を検査し、そのあとグラフの性質(到達・出口・担い手の解決など)を検査する。形で表せない規則(id の一意、from・to の参照、`owner` が person の状態の `shown_by`)は、グラフ検査が見る。",
+  "type": "object",
+  "required": ["version", "object", "description", "initial", "states", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "description": "人が読む世代番号。照合の根拠には使わない(握手の語彙は内容の sha256 を固定して読む)。" },
+    "object": { "$ref": "#/$defs/identifier", "description": "対象の id(kebab-case)。全語彙で一意。" },
+    "description": { "type": "string", "minLength": 1 },
+    "initial": { "const": "none", "description": "対象がまだ無い状態を表す予約語。固定。" },
+    "states": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/state" } },
+    "events": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/event" } },
+    "timers": {
+      "type": "object",
+      "description": "対象ごとの時間の決まり(日数など)。値は数。",
+      "additionalProperties": { "type": "number" }
+    },
+    "group_key": { "type": "string", "description": "握手の語彙が持つ。同じ会議の候補をまとめる鍵の決め方。" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*([_-][a-z0-9]+)*$"
+    },
+    "actor": {
+      "enum": ["person", "agent", "machine"],
+      "description": "行為者。person は本人、agent はエージェント、machine は hook・gate・CI・スクリプトなどの機械。"
+    },
+    "carrier": {
+      "type": "string",
+      "pattern": "^(skill|node|cli|external):[a-z0-9][a-z0-9_.-]*$",
+      "description": "担い手・前提の名前。skill:<skill 名>(config/agents/skills/ に実在)、node:<id>(pipeline-map.toml のノード id)、cli:<crate 名>(crates/ に実在)、external:<名前>(別リポジトリの担い手。解決しない)。"
+    },
+    "carriers": { "type": "array", "items": { "$ref": "#/$defs/carrier" } },
+    "state": {
+      "type": "object",
+      "required": ["id", "terminal"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "terminal": { "type": "boolean" },
+        "owner": { "$ref": "#/$defs/actor", "description": "状態にいる間の担当(握手の語彙では、印を置く者)。" },
+        "owner_detail": { "type": "string", "description": "owner の自由記述の補足(例: workplace-script)。" },
+        "shown_by": { "$ref": "#/$defs/carriers", "description": "この状態を本人に見せる担い手。owner が person の状態は必須(グラフ検査)。" },
+        "token": { "type": "string", "description": "握手の語彙が持つ。題名の先頭に置く印。" },
+        "hold": { "enum": ["soft", "hard"], "description": "握手の語彙が持つ。予定がほかの予定との重なりを避ける強さ。" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "from", "to", "by"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "from": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "状態 id か none。" },
+        "to": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "状態 id。複数ならそのどれか。[\"same\"] は自己遷移(状態を変えない)。" },
+        "by": { "$ref": "#/$defs/actor" },
+        "by_detail": { "type": "string", "description": "by の自由記述の補足(例: workplace-script)。" },
+        "carriers": { "$ref": "#/$defs/carriers", "description": "事象を実際に行う、または行う手順を持つ担い手。by が person でも、記録を書く担い手があれば書く。無ければ省く。" },
+        "gates": { "$ref": "#/$defs/carriers", "description": "事象の前提を検査する機械(gate)。" }
+      }
+    }
+  }
+}

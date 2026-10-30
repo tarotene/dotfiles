@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "bad-self-loop-only",
+  "description": "負例(出口)。終端でない状態 spinning は自己遷移 retry しか持たず、別の状態へ出られない。",
+  "initial": "none",
+  "states": [
+    { "id": "spinning", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["spinning"], "by": "agent" },
+    { "id": "retry", "from": ["spinning"], "to": ["same"], "by": "machine" },
+    { "id": "abort", "from": ["none"], "to": ["closed"], "by": "person" }
+  ]
+}

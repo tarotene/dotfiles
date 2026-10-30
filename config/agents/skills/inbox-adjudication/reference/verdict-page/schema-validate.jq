@@ -1,9 +1,11 @@
-# schema-validate.jq — JSON Schema(draft 2020-12)の部分集合の検証器。build.sh だけが使う。
+# schema-validate.jq — JSON Schema(draft 2020-12)の部分集合の検証器。build.sh と、
+# scripts/vocab-graph-check(語彙 JSON の Schema 検査、ADR-0000)が使う。
 #
 # 呼び出し: jq -nr --slurpfile s <schema.json> --slurpfile d <instance.json> -f schema-validate.jq
 # 出力: 違反 1 件につき 1 行。0 行なら適合。
 #
-# 対応するキーワードは、このディレクトリの 2 つのスキーマが使う分だけ(下の known)。
+# 対応するキーワードは、このディレクトリの 2 つのスキーマと、語彙 JSON のスキーマ
+# (config/agents/vocabulary/vocabulary.schema.json)が使う分だけ(下の known)。
 # 対応していないキーワード(例 uniqueItems、patternProperties)がスキーマに現れたら、黙って
 # 無視せず違反として出す。検証器が理解しないスキーマを「通る」ことにしないため。
 # format は 2020-12 の仕様で注釈(検証しない既定)なので、検証せず許す。
@@ -49,7 +51,11 @@ def check($root; $s; $p):
         | if $ap == false then
             [ $x | keys_unsorted[] | select(. as $k | ($s.properties // {}) | has($k) | not) | "\($p): 未定義の \(.) がある" ]
           elif $ap == true then []
-          else ["\($p): additionalProperties は true か false だけに対応"] end
+          elif ($ap | type) == "object" then
+            # properties に無いキーの値は、このスキーマに従う(語彙 JSON の timers が使う)
+            [ $x | to_entries[] | select(. as $e | ($s.properties // {}) | has($e.key) | not) | . as $e
+              | ($e.value | check($root; $ap; "\($p).\($e.key)"))[] ]
+          else ["\($p): additionalProperties は true・false・スキーマだけに対応"] end
       else [] end )
   + ( if ($s | has("items")) and $jt == "array" then
         [ range(0; $x | length) as $i | ($x[$i] | check($root; $s.items; "\($p)[\($i)]"))[] ]

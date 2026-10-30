@@ -1,7 +1,7 @@
 # task-slot — 作業の枠が、状態をたどって本人の裁定で終わる
 
 決定の記録: `docs/adr/1291-task-slot-worklog.md`(ADR-998 の追記。作りは ADR-1259 の `mail` と同じ)
-語彙の正本: `config/agents/task-slot/vocabulary.json`
+語彙の正本: `config/agents/task-slot/vocabulary.json`(版 2。共通の形は `docs/agents/state-vocabulary.md`)
 実体: `crates/worklog/src/slot.rs`(文法・畳み込み・書き込みの検査)、`crates/worklog/src/main.rs`(`worklog add slot`・`worklog slot`)
 
 ## 何を解くか
