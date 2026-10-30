@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "object": "gas-project",
+  "description": "Google Apps Script のプロジェクト 1 つを clasp で操作するときの、手元のコードとリモートの反映の状態と事象の閉語彙。元は config/agents/skills/gas-clasp-ops/SKILL.md の §2(初回セットアップの手順 5: Cloud プロジェクトへの紐付け)・§4(日常操作: push・run-function)。ホストごとの初回セットアップ(Cloud プロジェクト・OAuth クライアント・Apps Script API の有効化)と clasp login は、対象(GAS プロジェクト)の状態でなくホストの前提なので、事象の by_detail に書く。tail-logs は状態を動かさない。本文が書いていない遷移は書かない。",
+  "initial": "none",
+  "states": [
+    { "id": "local_ahead", "terminal": false, "owner": "agent", "owner_detail": "個人共通の Cloud プロジェクトに紐付いている。手元のコードがリモートに反映されていない" },
+    { "id": "pushed", "terminal": false, "owner": "agent", "owner_detail": "手元のコードがリモートに反映されている。関数をリモートで実行できる" }
+  ],
+  "events": [
+    { "id": "link", "from": ["none"], "to": ["local_ahead"], "by": "person", "by_detail": "操作したい Apps Script プロジェクトの Project Settings で、Google Cloud Platform (GCP) Project に個人共通のプロジェクトの番号(Project ID ではない)を設定する。ホストごとの初回セットアップが済んでいる前提", "carriers": ["skill:gas-clasp-ops"] },
+    { "id": "push", "from": ["local_ahead"], "to": ["pushed"], "by": "agent", "by_detail": ".clasp.json のあるディレクトリで clasp push する(clasp login 済みの前提)", "carriers": ["skill:gas-clasp-ops"] },
+    { "id": "run", "from": ["pushed"], "to": ["same"], "by": "agent", "by_detail": "clasp run-function <関数> --user run で関数をリモート実行し、戻り値を端末で受ける。Logger.log は応答に乗らないので、結果は戻り値で返す。Drive 上にオブジェクトを作る関数は、作成済みの ID を保存して冪等にする", "carriers": ["skill:gas-clasp-ops"] },
+    { "id": "edit", "from": ["pushed"], "to": ["local_ahead"], "by": "agent", "by_detail": "手元のコード(*.gs・appsscript.json)を直す。リモートは古くなる", "carriers": ["skill:gas-clasp-ops"] }
+  ]
+}

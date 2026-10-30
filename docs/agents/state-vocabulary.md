@@ -40,7 +40,7 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
 ```text
 scripts/vocab-graph-check --all                    # config/agents/*/vocabulary.json と config/agents/vocabulary/*.json のうち states と events を持つもの
 scripts/vocab-graph-check <語彙.json>...           # 指定した語彙
-scripts/vocab-graph-check --skills                 # どの語彙にも external-objects.json にも載らない skill を列挙(まだ必須の job にしない)
+scripts/vocab-graph-check --skills                 # どの語彙にも external-objects.json にも載らない skill を列挙(CI の dry-run ジョブが回す)
 scripts/vocab-graph-check --selftest               # fixtures/ の正例・負例と、skill の負例
 ```
 
@@ -61,7 +61,26 @@ scripts/vocab-graph-check --selftest               # fixtures/ の正例・負�
 
 `--skills` は、`config/agents/skills/` の各 skill(別名 `Compatibility entry for <X>` は X に読み替える)が、全語彙の
 `shown_by`・`carriers`・`gates`、または `config/agents/vocabulary/external-objects.json`(`[{"object": "<名前>", "skills": ["<skill 名>"]}]`。
-別リポジトリの対象の名前と skill 名だけを持ち、中身は書かない)のどれかに載っているかを見る。全 skill を載せ切るまでは、CI の必須の job にしない。
+別リポジトリの対象の名前と skill 名だけを持ち、中身は書かない)のどれかに載っているかを見る。CI の `dry-run` ジョブが回すので、
+載っていない skill を足した PR は落ちる(例外の一覧は持たない)。`external-objects.json` の `object` は、kebab-case で、そのファイル内で一意で、
+dotfiles の語彙の `object` と重ならない。
+
+## 新しい skill の足し方
+
+skill を足す PR は、同じ PR で、その skill が行う事象か前提を満たす事象を、語彙に名指しする(`agent-tooling-authoring` §2 の配線チェックリストの 4)。
+
+1. 対象が dotfiles にある(状態をこのリポジトリの語彙が持つ)とき: `config/agents/<対象>/vocabulary.json` の事象の `carriers`(行う)か `gates`
+   (前提を検査する機械)に `skill:<skill 名>` を足す。本人に見せる状態なら `shown_by` でもよい。対象の語彙がまだ無いときは、skill 本文から
+   読み取れる状態と事象だけで、語彙を新しく起こす(本文に無い状態は作らない。読めない遷移は ADR に「不明」と書く)。
+2. 対象が別の person-state リポジトリにあるとき: `config/agents/vocabulary/external-objects.json` に
+   `{"object": "<一般語の名前>", "skills": ["<skill 名>"]}` を足す。中身も個人の対象の詳細も書かない(名前と skill 名だけ)。
+3. 別名の skill(`description` が `Compatibility entry for <X>` で始まる)は、正の skill X が載っていれば足りる。
+4. `scripts/vocab-graph-check --all` と `--skills` を回す。どの語彙にも載せられない skill は、仕えている skill への統合の候補で、
+   `--skills` の例外にはしない。
+
+環境の保守の対象(リポジトリ設定・routine・GPG 鍵・モデルの pin・GAS プロジェクト・Drive のファイル・ブラウザのセッション・skill 自体)の語彙は
+`config/agents/{repo-settings,routine,gpg-subkey,model-pin,gas-project,drive-file,browser-session,skill-authoring}/vocabulary.json`
+(決定の記録: ADR-0000)。
 
 並行(トークン)は扱わない。Quint の模型検査と実装照合は、タイマー・並行・対象横断の条件がある対象に、兆候で昇格させる
 (ADR の D7。最初の候補はカレンダーの握手の実装照合)。Quint が読む `spec/vocab.jq` は、語彙から仕様のモジュールを生成する

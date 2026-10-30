@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "object": "gpg-subkey",
+  "description": "機体ローカルの GPG の [S]/[E] サブ鍵 1 本を、ローテーションして完了するまでの状態と事象の閉語彙。元は config/agents/skills/gpg-subkey-rotation/SKILL.md の §1(8 ステップ)・§2(完了条件)・§3(進行中の見分け方)・§4(落とし穴)と、docs/operations.md の remind(期限 30 日前の通知)。rotate だけでは何も完了せず、途中のどれかを飛ばすと「鍵は新しいが宣言と登録先は古い」状態で止まる。ステップ 2(revoke)は on-disk の旧サブ鍵が残っているときだけで、revoke のたびにステップ 3〜5 をやり直す。SKILL.md の冒頭は手順の数を 7 と書き、§1 の見出しは 8 つと書いて食い違っている(8 つが実体)。本文が書いていない遷移(rotate の失敗からの復旧の細目)は書かない。",
+  "initial": "none",
+  "states": [
+    { "id": "expiring", "terminal": false, "owner": "person", "owner_detail": "[S] サブ鍵の期限が 30 日以内。ローテーションを始めるのは本人(YubiKey の操作が要る)", "shown_by": ["node:gpg-subkey-remind"] },
+    { "id": "rotated", "terminal": false, "owner": "agent", "owner_detail": "新しいサブ鍵を作った。on-disk の旧サブ鍵が revoke されずに残っていることがある(revoke されていない同じ用途のサブ鍵が 2 本以上並ぶのが、進行中のサイン)" },
+    { "id": "revoked", "terminal": false, "owner": "agent", "owner_detail": "on-disk の旧サブ鍵を revoke した。鍵材料が変わったので、export と sync をやり直す" },
+    { "id": "exported", "terminal": false, "owner": "agent", "owner_detail": "keys/<identity>.pub を再 export し、新サブ鍵 ID を出した" },
+    { "id": "nix_updated", "terminal": false, "owner": "agent", "owner_detail": "home/hosts/<host>.nix の programs.git.signing.key を、新サブ鍵のフルフィンガープリントに更新した" },
+    { "id": "synced", "terminal": false, "owner": "agent", "owner_detail": "gpg-subkey sync が drift ゼロ(出力なし・exit 0)を報告した" },
+    { "id": "reencrypted", "terminal": false, "owner": "agent", "owner_detail": "[E] をローテーションしたとき、そのサブ鍵で暗号化しているファイルを再暗号化した" },
+    { "id": "pr_created", "terminal": false, "owner": "agent", "owner_detail": "keys/<identity>.pub と host module を 1 コミットにまとめた PR を作った" },
+    { "id": "applied", "terminal": false, "owner": "agent", "owner_detail": "PR のマージのあと、hms でこのホストに適用した" },
+    { "id": "completed", "terminal": true, "owner_detail": "完了条件の 4 つ(sync が drift ゼロ・現行のサブ鍵が 1 本・signing.key が現行と一致・直近の commit が verified)が揃った" }
+  ],
+  "events": [
+    { "id": "remind", "from": ["none"], "to": ["expiring"], "by": "machine", "by_detail": "毎日、[S] サブ鍵の期限が 30 日以内になると herdr に通知する(gpg-subkey remind --threshold 30 --notify)", "carriers": ["node:gpg-subkey-remind", "cli:gpg-subkey"] },
+    { "id": "rotate", "from": ["none", "expiring"], "to": ["rotated", "revoked"], "by": "person", "by_detail": "ステップ 1。YubiKey の挿入・タッチ・PIN 入力が要り、エージェントは代行しない。--revoke-old を付けると on-disk の旧サブ鍵は revoke されて revoked になる(カード紐付けの旧サブ鍵は revoke されない)", "carriers": ["skill:gpg-subkey-rotation", "cli:gpg-subkey"] },
+    { "id": "revoke", "from": ["rotated", "exported", "nix_updated", "synced"], "to": ["revoked"], "by": "person", "by_detail": "ステップ 2。on-disk の旧サブ鍵が revoke されずに残っているときだけ。gpg-subkey status で keyid を確かめ、revoke --key <primary-fpr> --subkey <keyid> を実行する。ハードウェア操作が要る。card-backed のサブ鍵は拒否される", "carriers": ["skill:gpg-subkey-rotation", "cli:gpg-subkey"] },
+    { "id": "export", "from": ["rotated", "revoked"], "to": ["exported"], "by": "agent", "by_detail": "ステップ 3。rotate の後にも revoke の後にも実行する。変更が無くても失敗ではない(べき等)", "carriers": ["skill:gpg-subkey-rotation", "cli:gpg-subkey"] },
+    { "id": "edit_nix", "from": ["exported"], "to": ["nix_updated"], "by": "agent", "by_detail": "ステップ 4。signing.key とコメント(生成日・失効日・旧サブ鍵 ID)を書き換える", "carriers": ["skill:gpg-subkey-rotation"] },
+    { "id": "sync", "from": ["nix_updated"], "to": ["synced"], "by": "agent", "by_detail": "ステップ 5。gpg-subkey sync で drift を見て、あれば --fix --yes(非対話では --yes が必須)。GitHub の GPG 鍵登録と keys.openpgp.org を現行のサブ鍵に収束させる。exit 0 になるまで繰り返す", "carriers": ["skill:gpg-subkey-rotation", "cli:gpg-subkey"], "gates": ["cli:gpg-subkey"] },
+    { "id": "reencrypt", "from": ["synced"], "to": ["reencrypted"], "by": "agent", "by_detail": "ステップ 6。[E] をローテーションしたときだけ。対象が無ければ飛ばしてよいが、確認はする", "carriers": ["skill:gpg-subkey-rotation"] },
+    { "id": "open_pr", "from": ["synced", "reencrypted"], "to": ["pr_created"], "by": "agent", "by_detail": "ステップ 7。同じセッションに dotfiles の他の open な PR があれば、その head ブランチを base にして積む", "carriers": ["skill:gpg-subkey-rotation", "skill:stacked-pr"] },
+    { "id": "apply", "from": ["pr_created"], "to": ["applied"], "by": "agent", "by_detail": "ステップ 8。PR のマージ(本人)のあと hms で適用する。飛ばすと、宣言と実際に使われる signing key が再び乖離する", "carriers": ["skill:gpg-subkey-rotation", "cli:hms"] },
+    { "id": "complete", "from": ["applied"], "to": ["completed"], "by": "agent", "by_detail": "§2 の 4 つの完了条件を、gpg-subkey sync・gpg-subkey status・host module と GitHub の commit の verification で読み戻して確かめる", "carriers": ["skill:gpg-subkey-rotation", "cli:gpg-subkey"] }
+  ]
+}

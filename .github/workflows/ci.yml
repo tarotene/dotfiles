@@ -342,12 +342,14 @@ jobs:
         run: scripts/ci-consumers --selftest
 
       # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
-      # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills(どの語彙にも載らない
-      # skill を落とす)は、全 skill を語彙に載せ切るまで必須の job にしない(ADR-1293 の D5)。
+      # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills は、どの語彙にも
+      # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-0000)。
       - name: vocab-graph-check --selftest
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
         run: scripts/vocab-graph-check --all
+      - name: vocab-graph-check (skills)
+        run: scripts/vocab-graph-check --skills
       # 具体化の対応表(ADR-1297): 各系統の語彙が「裁定待ちの項目」の抽象の遷移表に写ること(準同型)と、
       # 性質 P1(放置への手段)・P2(本人に見せる担い手)を満たすこと。
       - name: vocab-graph-check (refinements)

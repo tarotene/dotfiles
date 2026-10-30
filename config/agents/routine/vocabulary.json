@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "object": "routine",
+  "description": "Claude Code routine(claude.ai 上の scheduled cloud agent)1 つの、宣言(.claude/routines/<name>.{json,md})と live の突き合わせの状態と事象の閉語彙。元は config/agents/skills/claude-routines/SKILL.md と auditor.md、分類は scripts/routines-plan.sh の classify(refuse → suspended → ハッシュの 3 方比較の順)。状態 in_sync・declared_ahead・live_drift・conflict・suspended・refuse・new は classify の出力で、unmanaged は classify-unmanaged の出力。分類は保存せず、classify が実行のたびに導出する。宣言の state(enabled・disabled・retired)のうち、本文が手順を書く retired だけを状態にした(enabled と disabled の切り替えは本文に書かれていない)。suspended のあと、本人が手で対処する遷移は本文に書かれていないので書かない(終端として置く)。",
+  "initial": "none",
+  "states": [
+    { "id": "unmanaged", "terminal": false, "owner": "person", "owner_detail": "宣言を持たない cron routine(/schedule などの場当たり作成、または宣言が消えた孤児)", "shown_by": ["node:cloud-routine-auditor"] },
+    { "id": "new", "terminal": false, "owner": "agent", "owner_detail": "宣言に id が無い未作成の routine。create はローカルセッションだけが行う" },
+    { "id": "refuse", "terminal": false, "owner": "agent", "owner_detail": "live の prompt に routine-spec 注記が無い、または live の name が <home_repo>:<name> と一致しない。adopt からやり直す" },
+    { "id": "in_sync", "terminal": false, "owner": "agent", "owner_detail": "宣言と live が、注記のハッシュと一致している" },
+    { "id": "declared_ahead", "terminal": false, "owner": "agent", "owner_detail": "宣言だけが変わっている。update body で live に反映する" },
+    { "id": "live_drift", "terminal": false, "owner": "person", "owner_detail": "live だけが変わっている(UI 等での編集の可能性)。宣言に取り込むか、live を戻すかを人が判断する", "shown_by": ["node:cloud-routine-auditor"] },
+    { "id": "conflict", "terminal": false, "owner": "person", "owner_detail": "宣言と live の両方が注記から乖離している。どちらを正とするかを人が判断する", "shown_by": ["node:cloud-routine-auditor"] },
+    { "id": "suspended", "terminal": true, "owner": "person", "owner_detail": "suspension_reason・ended_reason が非空。自動で再有効化せず、原因を確認してから手で対処する(対処のあとの遷移は本文に書かれていない)", "shown_by": ["node:cloud-routine-auditor"] },
+    { "id": "retired", "terminal": true, "owner_detail": "state を retired にして update し、enabled:false に固定した。宣言ファイルは残す" }
+  ],
+  "events": [
+    { "id": "declare", "from": ["none"], "to": ["new"], "by": "agent", "by_detail": ".claude/routines/<name>.json(id は書かない)と <name>.md を書く。body は routines-plan.sh build-body で組み立てる", "carriers": ["skill:claude-routines"] },
+    { "id": "appear", "from": ["none"], "to": ["unmanaged"], "by": "person", "by_detail": "Web UI・/schedule・RemoteTrigger で、宣言を持たずに作った" },
+    { "id": "create", "from": ["new"], "to": ["in_sync"], "by": "agent", "by_detail": "build-body の出力を加工せず RemoteTrigger(create)に渡し、応答の trigger.id を宣言の id に書き戻して同じ commit に含める。クラウドの auditor は create しない(重複 create を取り消せないため)", "carriers": ["skill:claude-routines"], "gates": ["node:routines-write-guard"] },
+    { "id": "claim", "from": ["unmanaged"], "to": ["refuse"], "by": "agent", "by_detail": "adopt の前半。RemoteTrigger get で live を取り、既存の id で宣言と prompt 本体を書き起こす。この時点で live の prompt に注記が無いので、classify は refuse を返す", "carriers": ["skill:claude-routines"] },
+    { "id": "adopt", "from": ["refuse"], "to": ["in_sync"], "by": "agent", "by_detail": "adopt の後半。現状を反映させる update を送り、live の prompt に routine-spec 注記を付ける。以後は差分検出の対象になる", "carriers": ["skill:claude-routines"], "gates": ["node:routines-write-guard"] },
+    { "id": "edit_declaration", "from": ["in_sync"], "to": ["declared_ahead"], "by": "agent", "by_detail": "宣言(.json・.md)を直す", "carriers": ["skill:claude-routines"] },
+    { "id": "edit_declaration_drifted", "from": ["live_drift"], "to": ["conflict"], "by": "agent", "by_detail": "live が編集されたまま、宣言も直す", "carriers": ["skill:claude-routines"] },
+    { "id": "edit_live", "from": ["in_sync"], "to": ["live_drift"], "by": "person", "by_detail": "UI 等で live の routine を編集する" },
+    { "id": "edit_live_ahead", "from": ["declared_ahead"], "to": ["conflict"], "by": "person", "by_detail": "宣言が先行している間に、UI 等で live を編集する" },
+    { "id": "apply", "from": ["declared_ahead"], "to": ["in_sync"], "by": "agent", "by_detail": "classify の 2 行目以降の update body を、加工せず update に渡す。クラウドの auditor は、自分自身(role: auditor)以外の declared-ahead を同じ形で update する。guard が見るのはローカルの RemoteTrigger だけ", "carriers": ["skill:claude-routines", "node:cloud-routine-auditor"], "gates": ["node:routines-write-guard"] },
+    { "id": "resolve", "from": ["live_drift", "conflict"], "to": ["in_sync"], "by": "person", "by_detail": "宣言に取り込む(adopt し直す)か、live を戻すかを人が判断する。宣言を live で自動的に上書きしない", "carriers": ["skill:claude-routines"] },
+    { "id": "suspend", "from": ["in_sync", "declared_ahead", "live_drift", "conflict"], "to": ["suspended"], "by": "machine", "by_detail": "live の suspension_reason か ended_reason が非空になる。classify はハッシュの比較の前にこれを見る" },
+    { "id": "retire", "from": ["in_sync", "declared_ahead"], "to": ["retired"], "by": "agent", "by_detail": "state を retired に変え、宣言を適用して enabled:false にする。delete API が無く、宣言を消すと live に孤児が残るので、宣言ファイルは消さない", "carriers": ["skill:claude-routines"], "gates": ["node:routines-write-guard"] },
+    { "id": "report", "from": ["unmanaged", "new", "refuse", "live_drift", "conflict"], "to": ["same"], "by": "machine", "by_detail": "週次の auditor が、分類名・routine 名・判定の理由を書いた Issue を起票する(宣言を持たないものは person-state の repo に 1 件。suspended も同じ形で起票するが、終端なのでこの事象に含めない)。隠しマーカーで既存の Issue を探し、あればコメントで更新する", "carriers": ["node:cloud-routine-auditor", "skill:claude-routines"] }
+  ]
+}

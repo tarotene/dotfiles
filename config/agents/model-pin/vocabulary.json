@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "object": "model-pin",
+  "description": "外部 AI CLI に --model で固定 pin してある具体モデル ID 1 つを、新モデルの GA・旧モデルの廃止に追従して更新するまでの状態と事象の閉語彙。元は config/agents/skills/model-pin-update/SKILL.md の §1(棚卸し)・§2(上流確認)・§3(選定基準)・§4(スラッグ実機確認)・§5(3 箇所を同時に変える)・§6(完了条件)。完了は grep で旧 ID が 0 件になること。pin を持つリポジトリ側の selftest と lint は、そのリポジトリの検査で、ここでは担い手に名指しできない。",
+  "initial": "none",
+  "states": [
+    { "id": "stale", "terminal": false, "owner": "agent", "owner_detail": "旧 ID が pin に残っている。新モデルが GA した、または旧モデルが廃止の対象になった" },
+    { "id": "inventoried", "terminal": false, "owner": "agent", "owner_detail": "旧 ID と旧 CLI バージョン番号を 1 回の grep で列挙し、pin 箇所を洗い出した" },
+    { "id": "chosen", "terminal": false, "owner": "agent", "owner_detail": "上流の一次情報で確かめ、選定基準で新 ID を決め、無効な ID を送信前に弾くスラッグ実機確認も済んだ" },
+    { "id": "updated", "terminal": false, "owner": "agent", "owner_detail": "呼び出し本体の既定値・selftest の期待値・設計ドキュメントを同時に変えた" },
+    { "id": "done", "terminal": true, "owner_detail": "selftest が全通過・lint がクリーン・実機で 1 回確認・grep で旧 ID が 0 件" }
+  ],
+  "events": [
+    { "id": "follow", "from": ["none"], "to": ["stale"], "by": "person", "by_detail": "モデルアップデート追従・pin 更新の依頼。ベンダー側の GA・廃止のサイクルに合わせて定期的に起きる" },
+    { "id": "inventory", "from": ["stale"], "to": ["inventoried"], "by": "agent", "by_detail": "変更の前に必ず grep する。呼び出し本体の既定値・selftest の固定し直しブロック・フェイクバイナリの期待値・ラベル文字列・設計ドキュメントの記述を列挙する", "carriers": ["skill:model-pin-update"] },
+    { "id": "choose", "from": ["inventoried"], "to": ["chosen"], "by": "agent", "by_detail": "CLI の --help で渡しているフラグが現行にもあるか、ベンダーの公式 changelog で GA と廃止の期限を確かめ、役割適性・クロスベンダー独立性・課金方式で 1 つに決め、無効な ID が送信前にエラーになることでスラッグを確かめる", "carriers": ["skill:model-pin-update"] },
+    { "id": "edit", "from": ["chosen"], "to": ["updated"], "by": "agent", "by_detail": "呼び出し本体の既定値・selftest の期待値(固定し直し・契約値・ラベルの 3 種)・設計ドキュメントを同時に変える。実測の来歴は消さない", "carriers": ["skill:model-pin-update"] },
+    { "id": "fix_leftover", "from": ["updated"], "to": ["same"], "by": "agent", "by_detail": "grep で旧 ID が 1 件でもヒットする、または selftest・lint が落ちるときは未完了として、残りを直す", "carriers": ["skill:model-pin-update"] },
+    { "id": "verify", "from": ["updated"], "to": ["done"], "by": "agent", "by_detail": "selftest が新しい pin 値で全通過し、lint がクリーンで、実機で非ゲート消費の経路を 1 回実行してスキーマ適合の応答が返り、grep で旧 ID が 0 件", "carriers": ["skill:model-pin-update"] }
+  ]
+}

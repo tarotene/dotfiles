@@ -1,1 +1,7 @@
-[]
+[
+  { "object": "venue", "skills": ["venue-search"] },
+  { "object": "performance", "skills": ["music-performance-planning"] },
+  { "object": "calendar-slot", "skills": ["human-task-scheduling"] },
+  { "object": "writing-document", "skills": ["writing-style"] },
+  { "object": "presentation", "skills": ["presentation-authoring"] }
+]
