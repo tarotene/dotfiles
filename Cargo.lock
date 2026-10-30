@@ -1318,9 +1318,11 @@ version = "0.1.0"
 dependencies = [
  "command-inspection",
  "filetime",
+ "issue-inbox",
  "serde",
  "serde_json",
  "tempfile",
+ "vault-note",
 ]
 
 [[package]]

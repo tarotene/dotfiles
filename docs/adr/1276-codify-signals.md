@@ -129,6 +129,13 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `crates/issue-inbox/tests/vocab.rs`
 - `flake.nix`
 
+段 6(兆候ごとの較正と、`promotion-detect` の既存の不具合 2 件):
+
+- `crates/promotion-detect/src/lib.rs`
+- `crates/promotion-detect/src/main.rs`
+- `crates/promotion-detect/tests/cli.rs`
+- `home/modules/promotion-detect.nix`
+
 段 5(候補の構造を Inbox に渡し、却下の理由を閉語彙にする):
 
 - `crates/issue-inbox/src/vault.rs`

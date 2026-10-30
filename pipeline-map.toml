@@ -327,6 +327,7 @@ edge = [
   { from = "session-retrospective", to = "obsidian-vault", kind = "file", label = "retro/ note", pipelines = ["wrapup-to-issue"] },
   { from = "cmd-hash-log", to = "promotion-detect", kind = "file", label = "command hashes", pipelines = ["wrapup-to-issue", "evidence"] },
   { from = "cmd-hash-log", to = "session-retrospective", kind = "file", label = "session hashes and shapes", pipelines = ["wrapup-to-issue"] },
+  { from = "obsidian-vault", to = "promotion-detect", kind = "file", label = "inbox notes (calibration)", pipelines = ["wrapup-to-issue"] },
   { from = "claude-scratchpad", to = "session-retrospective", kind = "file", label = "ad-hoc code files", pipelines = ["wrapup-to-issue"] },
   { from = "promotion-detect", to = "wrapup-inbox", kind = "file", label = "promotion candidates", pipelines = ["wrapup-to-issue"] },
   { from = "github", to = "promotion-detect", kind = "context", label = "feedback Issues", pipelines = ["wrapup-to-issue"] },

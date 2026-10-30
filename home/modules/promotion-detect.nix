@@ -6,6 +6,10 @@
 # stale gate skip files, and skip-heavy gate-events.jsonl entries) and
 # writes candidates into this repo's own wrap-up inbox via
 # wrapup-stop-gate --check-dup/--add; this module only wires the timer.
+# It also calibrates the retro's as-code-candidate vocabulary (ADR-1276): it
+# reads the vault's inbox/ notes (the vault is found through the same
+# OBSIDIAN_VAULT / marker-file declaration the other tools use) and counts
+# adopted vs dropped candidates per signal.
 #
 # Daily cadence (not hourly like due-remind): unlike a missed deadline,
 # missing one day's detection run has no real cost — the underlying

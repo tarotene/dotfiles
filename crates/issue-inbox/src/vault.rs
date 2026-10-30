@@ -288,6 +288,32 @@ pub fn list_open(g: &Locked, repo: Option<&str>) -> io::Result<Vec<OpenNote>> {
     Ok(v)
 }
 
+/// as-code 化の候補(`signal` を持つノート)の、較正に要る欄だけ。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateNote {
+    pub signal: String,
+    pub status: String,
+    pub drop_reason: String,
+    pub first_seen: String,
+}
+
+/// `signal` を持つノートを、状態によらず全部返す。日次の較正(`promotion-detect`)が、兆候ごとの
+/// 採用・却下と理由を数えるために読む。
+pub fn candidate_notes(g: &Locked) -> io::Result<Vec<CandidateNote>> {
+    Ok(all_notes(g)?
+        .into_iter()
+        .filter_map(|(_, n)| {
+            let signal = n.get("signal").filter(|s| !s.is_empty())?.to_string();
+            Some(CandidateNote {
+                signal,
+                status: n.get("status").unwrap_or("").to_string(),
+                drop_reason: n.get("drop_reason").unwrap_or("").to_string(),
+                first_seen: n.get("first_seen").unwrap_or("").to_string(),
+            })
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------- 状態を変える
 
 /// 題名(と、あれば repo)で 1 枚を選び、状態を変える。`url` は fixed なら `pr`、issued なら
