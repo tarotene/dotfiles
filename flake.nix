@@ -271,7 +271,9 @@
             filter =
               path: type:
               (craneLib.filterCargoSources path type)
-              || (builtins.match ".*/crates/model-equivalence/page\\.html" path != null);
+              || (builtins.match ".*/crates/model-equivalence/page\\.html" path != null)
+              # worklog が include_str! で読む、未裁定のメール項目の語彙の正本(docs/agents/mail-lifecycle.md)。
+              || (builtins.match ".*/config/agents/mail-lifecycle/vocabulary\\.json" path != null);
             name = "source";
           };
           commonArgs = {
@@ -477,6 +479,17 @@
           # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。Apalache のサーバーが
           # ポート 8822 を使うので、derivation ごとの sandbox に分けられる Linux だけで回す。
           calendar-handshake-spec = import ./home/tests/calendar-handshake-spec.nix {
+            pkgs = pkgsFor.${system};
+            inherit lib;
+          };
+          # 未裁定のメール項目の寿命の仕様のモデル検査(config/agents/mail-lifecycle/spec)。
+          # 握手の仕様と同じ理由で Linux だけで回す。
+          mail-lifecycle-spec = import ./home/tests/mail-lifecycle-spec.nix {
+            pkgs = pkgsFor.${system};
+            inherit lib;
+          };
+          # 仕様の軌跡(ITF)。crates/worklog/tests/itf_replay.rs が実装の畳み込みに通す。
+          mail-lifecycle-itf = import ./home/tests/mail-lifecycle-itf.nix {
             pkgs = pkgsFor.${system};
             inherit lib;
           };

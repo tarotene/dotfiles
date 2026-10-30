@@ -669,6 +669,45 @@ jobs:
       - if: steps.scope.outputs.run == 'true'
         run: nix build --print-build-logs --no-link .#checks.x86_64-linux.calendar-handshake-spec
 
+  # 未裁定のメール項目の寿命の仕様のモデル検査(config/agents/mail-lifecycle/spec)。握手の仕様と
+  # 同じく、`flake-check` は --no-build で評価しかしないので、検査の derivation はここで実際に
+  # 作る。語彙・仕様・検査の定義、または語彙を読む worklog が変わった PR と、main への push だけで
+  # 回す(それ以外の PR では、checkout と判定の step だけで終わる)。
+  mail-lifecycle-spec:
+    runs-on: ubuntu-latest
+    name: Mail lifecycle spec
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/${BASE_REF}...HEAD" \
+              | grep -qE '^(config/agents/mail-lifecycle/|home/tests/mail-lifecycle-(spec|itf)\.nix$|crates/worklog/|flake\.(nix|lock)$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+      - if: steps.scope.outputs.run == 'true'
+        run: nix build --print-build-logs --no-link .#checks.x86_64-linux.mail-lifecycle-spec
+      # 仕様の軌跡(ITF)の各状態のノートの行を、実装の畳み込みに通して、仕様の結果と一致することを確かめる。
+      # 軌跡の置き場は MAIL_LIFECYCLE_ITF_DIR で渡す(無いと cargo test の itf_replay は skip する)。
+      - if: steps.scope.outputs.run == 'true'
+        name: Replay the spec's traces through the worklog fold
+        run: |
+          nix build --print-build-logs --out-link itf .#checks.x86_64-linux.mail-lifecycle-itf
+          nix develop --command bash -c '
+            set -eu
+            MAIL_LIFECYCLE_ITF_DIR="$PWD/itf" cargo test -p worklog --test itf_replay --locked -- --nocapture
+          '
+
   rust:
     runs-on: ubuntu-latest
     name: Rust workspace
@@ -999,7 +1038,7 @@ jobs:
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
-    needs: [gitleaks, shellcheck, dry-run, stack-position, flake-check, calendar-handshake-spec, rust, build-host, docs, docs-actions, codex-review-diff]
+    needs: [gitleaks, shellcheck, dry-run, stack-position, flake-check, calendar-handshake-spec, mail-lifecycle-spec, rust, build-host, docs, docs-actions, codex-review-diff]
     if: always()
     steps:
       - name: Fail if any required job failed or was cancelled

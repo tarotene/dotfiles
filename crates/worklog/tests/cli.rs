@@ -219,7 +219,7 @@ fn list_filters_by_repo_and_kind_and_reads_memos() {
 #[test]
 fn mail_is_validated_without_a_repo_reference_and_listed_by_kind() {
     let e = env();
-    let line = "draft: 面談の日程回答の下書きを作った [gmail:abc123]";
+    let line = "draft: 面談の日程回答の下書きを作った [gmail:abc123/m1]";
     // git のリポジトリの中で呼んでも、mail には owner/repo が付かない。
     let ok = run(&e, &e.repo, Some(&e.vault), &["add", "mail", line], "");
     assert_eq!(ok.code, 0, "{}", ok.stderr);
@@ -240,10 +240,11 @@ fn mail_is_validated_without_a_repo_reference_and_listed_by_kind() {
     // 文法に合わない mail と、--ref つきは止まり、ノートを変えない。
     let before = note(&e);
     for args in [
-        &["add", "mail", "read: a@b.c [gmail:x]"][..],
-        &["add", "mail", "skip: 読んだ [gmail:x]"][..],
+        &["add", "mail", "read: a@b.c [gmail:x/y]"][..],
+        &["add", "mail", "skip: 読んだ [gmail:x/y]"][..],
         &["add", "mail", "read: 出典なし"][..],
-        &["add", "mail", "read: 読んだ [gmail:x]", "--ref", "1"][..],
+        &["add", "mail", "read: 旧い文法 [gmail:x]"][..],
+        &["add", "mail", "read: 読んだ [gmail:x/y]", "--ref", "1"][..],
     ] {
         let bad = run(&e, &e.repo, Some(&e.vault), args, "");
         assert_eq!(bad.code, 2, "{args:?}");
@@ -253,7 +254,7 @@ fn mail_is_validated_without_a_repo_reference_and_listed_by_kind() {
     // list --kind mail で、記録済みのスレッドを id で引ける。
     let l = run(&e, &e.repo, Some(&e.vault), &["list", "--kind", "mail"], "");
     assert_eq!(l.code, 0, "{}", l.stderr);
-    assert!(l.stdout.contains("[gmail:abc123]"), "{}", l.stdout);
+    assert!(l.stdout.contains("[gmail:abc123/m1]"), "{}", l.stdout);
     assert_eq!(l.stdout.lines().count(), 2);
     // 文法はヘルプにも出る。
     let h = run(&e, &e.repo, Some(&e.vault), &["add"], "");

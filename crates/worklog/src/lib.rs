@@ -52,7 +52,7 @@ pub enum Kind {
     Found,
     /// 解決できずに残った詰まり。
     Stuck,
-    /// 読んだメールの裁定の結論と出典の id(本文は書かない)。文法は [`validate_mail`]。
+    /// 読んだメールの出来事と出典の印(本文は書かない)。文法と状態は [`mail`]。
     Mail,
 }
 
@@ -89,84 +89,9 @@ impl Kind {
     }
 }
 
-// ---------------------------------------------------------------- mail
-
-/// `mail` の処分(閉語彙)。読んだ・何もしない / 返信の下書きを作った / 断る・返さないと決めた /
-/// 通知への判断を決めた / 正本(予定・フィルタ規則など)へ反映した。
-pub const MAIL_DISPOSITIONS: [&str; 5] = ["read", "draft", "pass", "decide", "apply"];
-/// `mail` の出典の媒体(閉語彙)。`none` は件数をまとめた行など、特定のスレッドを指さない行。
-pub const MAIL_CHANNELS: [&str; 4] = ["gmail", "linkedin", "lapras", "none"];
-/// `mail` の要旨の最大文字数。
-pub const MAIL_SUMMARY_MAX_CHARS: usize = 120;
-
-/// `mail` の本文が `<処分>: <要旨> [<媒体>:<id>]` の形であることを検査する(ADR-998 の追記)。
-///
-/// 記録するのは本人の裁定の結論と出典の id だけで、メールの中身や相手の名前は書かない。
-/// 要旨に `@`・`http`・角括弧を許さないのは、アドレスや URL の転記を書けなくするため。
-/// 出典の印は冪等の鍵でもある(同じ kind・本文・参照の行は重ねない)。
-pub fn validate_mail(text: &str) -> Result<(), String> {
-    let form = "`<処分>: <要旨> [<媒体>:<id>]`";
-    let open = text
-        .rfind('[')
-        .filter(|_| text.ends_with(']'))
-        .filter(|&i| text[..i].ends_with(' '))
-        .ok_or_else(|| format!("mail の末尾に出典の印が要る。形は {form}"))?;
-    let head = text[..open].trim_end();
-    let tag = &text[open + 1..text.len() - 1];
-
-    let (channel, id) = match tag.split_once(':') {
-        Some((c, i)) => (c, Some(i)),
-        None => (tag, None),
-    };
-    if !MAIL_CHANNELS.contains(&channel) {
-        return Err(format!(
-            "mail の媒体が閉語彙の外: '{channel}'(使えるのは: {})",
-            MAIL_CHANNELS.join("|")
-        ));
-    }
-    match (channel, id) {
-        ("none", None) => {}
-        ("none", Some(_)) => return Err("媒体 none には id を付けない(`[none]`)".into()),
-        (_, None | Some("")) => {
-            return Err(format!("媒体 {channel} には id が要る(`[{channel}:<id>]`)"))
-        }
-        (_, Some(i)) => {
-            if !i
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '=' | '-'))
-            {
-                return Err(format!("id は [A-Za-z0-9_=-] だけ: '{i}'"));
-            }
-        }
-    }
-
-    let (disposition, summary) = head
-        .split_once(": ")
-        .ok_or_else(|| format!("mail は処分と要旨が要る。形は {form}"))?;
-    if !MAIL_DISPOSITIONS.contains(&disposition) {
-        return Err(format!(
-            "mail の処分が閉語彙の外: '{disposition}'(使えるのは: {})",
-            MAIL_DISPOSITIONS.join("|")
-        ));
-    }
-    let summary = summary.trim();
-    if summary.is_empty() {
-        return Err("mail の要旨が空".into());
-    }
-    if summary.contains(['@', '＠']) || summary.to_ascii_lowercase().contains("http") {
-        return Err("mail の要旨に '@' か 'http' を含めない(アドレス・URL は書かない)".into());
-    }
-    if summary.contains(['[', ']']) {
-        return Err("mail の要旨に角括弧を含めない(出典の印と区別できなくなる)".into());
-    }
-    let n = summary.chars().count();
-    if n > MAIL_SUMMARY_MAX_CHARS {
-        return Err(format!(
-            "mail の要旨が長い({n} 文字。上限 {MAIL_SUMMARY_MAX_CHARS})。結論だけにする"
-        ));
-    }
-    Ok(())
-}
+// `mail` の文法・畳み込み・sweep・終端の控え(ADR-1256 の D2・D3・D5 を改める。docs/agents/mail-lifecycle.md)。
+pub mod mail;
+pub use mail::{validate_mail, MAIL_CHANNELS, MAIL_SUMMARY_MAX_CHARS};
 
 /// 行の参照。`owner/repo` と、任意の Issue・PR 番号。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -617,8 +542,9 @@ pub fn build_context(repo: Option<&str>, recent: &[&Row]) -> String {
          - pr: マージ状態から導けない PR の裁き\n\
          - found: 試して分かったこと(次のセッションが知りたい結果)\n\
          - stuck: 解決できずに残った詰まり\n\
-         - mail: 読んだメールの裁定の結論。`<処分>: <要旨> [<媒体>:<id>]`(処分は read|draft|pass|decide|apply、\
-         媒体は gmail|linkedin|lapras|none)。本文・相手の名前・アドレスは書かない\n\
+         - mail: 読んだメールの出来事。`<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD]]`\
+         (出来事は read|ask|draft|decide|apply|pass|move、媒体は gmail|linkedin|lapras|none)。\
+         本文・相手の名前・アドレスは書かない。未了の一覧は `worklog mail open`\n\
          書かないもの: 会社の業務の中身、機密、既存の記録(Gmail の下書き・PR のマージ状態・\
          カレンダー)から導けること。\n\
          owner/repo は作業ディレクトリから自動で付きます。Issue・PR の番号は `--ref N` で渡します。\n\
@@ -911,68 +837,20 @@ mod tests {
         // git の外では、直近の行は載せない。
         assert!(!build_context(None, &[&r]).contains("2026-10-25"));
         // 規範に mail の文法と禁止事項がある。
-        assert!(none.contains("- mail:") && none.contains("read|draft|pass|decide|apply"));
-    }
-
-    #[test]
-    fn mail_accepts_every_disposition_and_channel() {
-        for d in MAIL_DISPOSITIONS {
-            let t = format!("{d}: 求人サービスの案内を処理した [gmail:19a2B_c=d-e]");
-            assert_eq!(validate_mail(&t), Ok(()), "{t}");
-        }
-        for c in ["gmail", "linkedin", "lapras"] {
-            let t = format!("draft: 面談の日程回答の下書きを作った [{c}:AbC123]");
-            assert_eq!(validate_mail(&t), Ok(()), "{t}");
-        }
-        // 集計の行は媒体 none で id 無し。
-        assert_eq!(
-            validate_mail("read: 直近 3 日の約 490 件を読んだ(自動通知を除く処分 4 件) [none]"),
-            Ok(())
-        );
-        // 要旨はちょうど 120 文字まで。
-        let max = "あ".repeat(MAIL_SUMMARY_MAX_CHARS);
-        assert_eq!(validate_mail(&format!("pass: {max} [gmail:x]")), Ok(()));
-    }
-
-    #[test]
-    fn mail_rejects_what_the_grammar_forbids() {
-        let bad = |t: &str| {
-            assert!(validate_mail(t).is_err(), "通ってしまった: {t}");
-        };
-        bad("skip: 読んだ [gmail:x]"); // 処分が閉語彙の外
-        bad("read 読んだ [gmail:x]"); // 処分と要旨の区切りが無い
-        bad("read: [gmail:x]"); // 要旨が空
-        bad("read: a@example.com から届いた [gmail:x]"); // '@'
-        bad("read: ＠付きの記述 [gmail:x]"); // 全角の '@'
-        bad("read: https://example.com を見た [gmail:x]"); // URL
-        bad("read: HTTP の案内 [gmail:x]"); // 大文字でも
-        bad("read: 括弧[入り] [gmail:x]"); // 要旨の角括弧
-        bad("read: 出典の印が無い");
-        bad("read: 出典の印が末尾でない [gmail:x] あとに続く");
-        bad("read: 空白が無い[gmail:x]");
-        bad("read: 媒体が違う [slack:x]");
-        bad("read: id が空 [gmail:]");
-        bad("read: id が無い [gmail]");
-        bad("read: id が空 [linkedin]");
-        bad("read: id に使えない字 [gmail:a/b]");
-        bad("read: none に id [none:x]");
-        bad(&format!(
-            "read: {} [gmail:x]",
-            "あ".repeat(MAIL_SUMMARY_MAX_CHARS + 1)
-        ));
+        assert!(none.contains("- mail:") && none.contains("read|ask|draft|decide|apply|pass|move"));
     }
 
     #[test]
     fn add_checks_mail_text_and_keeps_it_out_of_repos() {
         let d = tempfile::tempdir().unwrap();
         let v = std_vault(d.path());
-        let ok = "draft: 面談の日程回答の下書きを作った [linkedin:T123]";
+        let ok = "draft: 面談の日程回答の下書きを作った [linkedin:T123/20261029T2307]";
         assert!(matches!(
             add(&v, D, "09:00", Kind::Mail, ok, None),
             Ok(Added::Appended(_))
         ));
         // 文法に合わない mail は書かない。
-        assert!(add(&v, D, "09:01", Kind::Mail, "read: a@b.c [gmail:x]", None).is_err());
+        assert!(add(&v, D, "09:01", Kind::Mail, "read: a@b.c [gmail:x/y]", None).is_err());
         assert!(add(&v, D, "09:01", Kind::Mail, "メモ", None).is_err());
         // mail にはリポジトリの参照を付けない。
         assert!(add(&v, D, "09:01", Kind::Mail, ok, Reference::parse("o/r#1")).is_err());
@@ -980,24 +858,22 @@ mod tests {
         assert!(add(&v, D, "09:02", Kind::Found, "a@b.c", None).is_ok());
         assert_eq!(
             fs::read_to_string(v.note_path(D)).unwrap(),
-            "## 作業ログ\n- 09:00 [mail] draft: 面談の日程回答の下書きを作った [linkedin:T123]\n- 09:02 [found] a@b.c\n"
+            "## 作業ログ\n- 09:00 [mail] draft: 面談の日程回答の下書きを作った [linkedin:T123/20261029T2307]\n- 09:02 [found] a@b.c\n"
         );
     }
 
     #[test]
-    fn mail_lines_are_idempotent_by_source_id_and_read_back() {
+    fn identical_mail_lines_are_not_written_twice_and_are_read_back() {
         let d = tempfile::tempdir().unwrap();
         let v = std_vault(d.path());
-        let t = "pass: 求人の打診を断ると決めた [gmail:abc123]";
+        let t = "pass: 求人の打診を断ると決めた [gmail:abc123/m1]";
         add(&v, D, "09:00", Kind::Mail, t, None).unwrap();
         // 時刻が違っても同じ行は重ねない。
         assert!(matches!(
             add(&v, D, "10:00", Kind::Mail, t, None),
             Ok(Added::Duplicate(_))
         ));
-        // 同じスレッドでも処分が違えば別の行。id が違えば別のスレッド。
-        let applied = "apply: 予定に反映した [gmail:abc123]";
-        add(&v, D, "10:01", Kind::Mail, applied, None).unwrap();
+        // 状態の検査は mail::add_mail の仕事。ここは行の書き込みと読み戻しだけ。
         add(
             &v,
             D,
@@ -1008,7 +884,7 @@ mod tests {
         )
         .unwrap();
         let rows = list(&v, D, D).unwrap();
-        assert_eq!(rows.len(), 3);
+        assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|r| r.entry.kind == Some(Kind::Mail)));
         assert_eq!(rows[0].entry.text, t);
         assert_eq!(rows[0].entry.reference, None);

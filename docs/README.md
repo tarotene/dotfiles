@@ -453,6 +453,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、再訪の条件(固まりが負荷の高い区間に残る・AUR にしか無い必要なパッケージ・会社の EDR の明言)を atop の記録で確かめる。
 - [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する(H1〜H6 の穴と S1〜S6・L1〜L3 を検査し、語彙を版 2 に上げる)。検査は nix の check で、表の 1 行が 1 derivation。
 - [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に `mail` kind を足し、読んだメールの裁定の結論(処分・要旨・出典の id)だけを vault の当日ノートに残す(ADR-998 の追記)。本文は `<処分>: <要旨> [<媒体>:<id>]` の閉語彙で、アドレス・URL の転記はコードが拒否し、出典の id が冪等の鍵になる。
+- [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を、`awaiting`・`decided` の未了と 4 つの終端の状態機械にし、`mail` 行を出来事として畳み込んで状態を決める(ADR-1256 の D2・D3・D5 を改める)。語彙は JSON 1 枚を正本に、`worklog` の書き込み検査と Quint の仕様が同じ表を読み、TLC で「終端から戻らない・スレッドごとの未了は 1 つ・`stale` の前に必ず `remind`・答えが無くてもいずれ終端」を検査する。終端の行の手削除は機体ごとの控えで検出する。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
