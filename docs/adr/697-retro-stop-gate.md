@@ -107,3 +107,17 @@ vault を宣言していない機体では、台帳に残したまま完了に�
 - `crates/session-retrospective/src/lib.rs`
 - `crates/wrapup-stop-gate/tests/retro.rs`
 - `config/agents/skills/retro/SKILL.md`
+
+## Amendment (2026-10-30 — ADR-0000)
+
+D2 の行の語彙を改める。`mechanism` は `prose | script | gate | existing:<名前> | none:<理由>` から
+`eliminate | unrepresentable | gate | tool | prose | existing:<名前> | none:<理由>` になる(旧 `script` は `tool`。書き込みは
+拒否し、過去の台帳は表示で読み替える)。段を持つ行は、`signal`(兆候。語彙は
+`config/agents/codify-signals/vocabulary.json`)・`existing`(採用|拡張|自前)・`searched`(探した範囲)も必須になる
+(`prose` は `signal` のみ。既定の段と違う段には `level_reason`)。`--retro-casebook` が語彙から事例集の表を出す。
+発火条件(D1)と kind は、この Amendment では変えない。
+
+### 執行点
+
+- `crates/session-retrospective/src/lib.rs`
+- `crates/wrapup-stop-gate/tests/retro.rs`

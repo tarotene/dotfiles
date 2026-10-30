@@ -51,10 +51,15 @@ user-correction は feedback(ユーザーが方針・結果を直した発言)�
 |----|----|
 | `kind` | `user-correction` / `insight` / `friction` / `gate-hit` / `none` / `skipped` |
 | `disposition` | `inbox` / `issue:#N` / `none:<理由>` |
-| `mechanism` | `prose` / `script` / `gate` / `existing:<名前>` / `none:<理由>`(user-correction・friction・gate-hit で必須) |
+| `mechanism` | `eliminate` / `unrepresentable` / `gate` / `tool` / `prose` / `existing:<名前>` / `none:<理由>`(user-correction・friction・gate-hit で必須。旧 `script` は `tool` と読む) |
+| `signal` | 兆候の id(`vocabulary.json`)。`mechanism` が段のとき必須 |
+| `level_reason` | 兆候の既定の段と違う段を選んだときの理由(必須) |
+| `existing` / `searched` | `prose` 以外の段のとき必須。`採用:<名前>` / `拡張:<名前>` / `自前` と、探した範囲 |
 
 `none` と `skipped` は `disposition: none:<理由>` が必須。`skipped` は `quote`(ユーザーの
 発言の逐語)も必須。`existing:<名前>` は、その名前が `what` に書かれていなければ受け付けない。
+段・兆候・既存手段の意味と事例集は [codify-signals](codify-signals.md)(語彙の正本は
+`config/agents/codify-signals/vocabulary.json`、ADR-0000)。
 
 ## 状態ファイル
 

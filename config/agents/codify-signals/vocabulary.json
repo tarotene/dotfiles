@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "description": "as-code 化(決定論化)の候補を振り返りで記録するときの閉語彙(正本)。issue-inbox が include_str! で読み、session-retrospective・promotion-detect が使う。retro の手順の文と docs/agents/codify-signals.md の事例集の表はここから生成する。",
+  "levels": [
+    { "id": "eliminate", "rank": 5, "means": "手順や共有の状態そのものを無くす。誤りが起きる場が存在しなくなる" },
+    { "id": "unrepresentable", "rank": 4, "means": "型・閉じた語彙・単一の宣言・状態機械で、誤りを書けなくする" },
+    { "id": "gate", "rank": 3, "means": "実行前の拒否・Stop での差し戻し・CI で、誤りを止める" },
+    { "id": "tool", "rank": 2, "means": "正しいやり方を 1 本の CLI・スクリプトにする" },
+    { "id": "prose", "rank": 1, "means": "skill・AGENTS.md の文章。最後の手段" }
+  ],
+  "aliases": { "script": "tool" },
+  "signals": [
+    {
+      "id": "rebuilt-rule",
+      "default": "tool",
+      "since": "2026-10-30",
+      "look_for": "決められる規則を、毎回その場の会話で組み立て直した",
+      "examples": []
+    },
+    {
+      "id": "verbatim-repeat",
+      "default": "tool",
+      "since": "2026-10-30",
+      "look_for": "同じコマンド・手順を、そのまま繰り返し実行した",
+      "examples": ["ADR-543"]
+    },
+    {
+      "id": "adhoc-transform",
+      "default": "tool",
+      "since": "2026-10-30",
+      "look_for": "その場でデータの変換・集計のスクリプト(jq・awk・python)を書いた",
+      "examples": []
+    },
+    {
+      "id": "repeated-violation",
+      "default": "gate",
+      "since": "2026-10-30",
+      "look_for": "同じ規範違反が、文章で書いてあるのに繰り返された",
+      "examples": ["ADR-396", "ADR-598"]
+    },
+    {
+      "id": "form-check",
+      "default": "gate",
+      "since": "2026-10-30",
+      "look_for": "書式・必須要素を目で確かめた。機械で検査できる形だった",
+      "examples": ["ADR-0031"]
+    },
+    {
+      "id": "irreversible",
+      "default": "gate",
+      "since": "2026-10-30",
+      "look_for": "取り消せない・外向きの操作の手前で迷った、または踏み外した",
+      "examples": ["ADR-705", "ADR-544"]
+    },
+    {
+      "id": "copy-drift",
+      "default": "unrepresentable",
+      "since": "2026-10-30",
+      "look_for": "同じ事実の写しと実体がずれた。手で転記した。上流がこのリポジトリの外にあるものは、宣言では防げないので gate(検査)まで",
+      "examples": ["ADR-0033", "ADR-503", "ADR-872"]
+    },
+    {
+      "id": "hidden-state",
+      "default": "unrepresentable",
+      "since": "2026-10-30",
+      "look_for": "状態を頭・ブラウザ・会話の中だけで持ち、記録に戻らなかった",
+      "examples": ["ADR-1259"]
+    },
+    {
+      "id": "race-or-crash",
+      "default": "unrepresentable",
+      "since": "2026-10-30",
+      "formal_spec": true,
+      "look_for": "並行・中断で壊れうる手順。順序や途中失敗で状態が食い違う",
+      "examples": ["ADR-1242", "ADR-1259"]
+    },
+    {
+      "id": "shared-counter",
+      "default": "eliminate",
+      "since": "2026-10-30",
+      "look_for": "共有の採番・資源を並行する担い手が取り合った",
+      "examples": ["ADR-380"]
+    },
+    {
+      "id": "sandbox-env-gap",
+      "default": "unrepresentable",
+      "since": "2026-10-30",
+      "look_for": "sandbox の宣言・除外・許可の不足で、書き込みや署名や認証が失敗し、外での再実行や往復が要った",
+      "examples": ["#1164"]
+    },
+    {
+      "id": "guard-misfire",
+      "default": "gate",
+      "since": "2026-10-30",
+      "look_for": "gate や道具が誤検知した、過剰に再通知した、拒否文が行き止まりだった。直す先は既存の gate(拡張)",
+      "examples": ["#898"]
+    },
+    {
+      "id": "local-ci-gap",
+      "default": "gate",
+      "since": "2026-10-30",
+      "look_for": "CI でしか分からない失敗が、手元の検査では出なかった",
+      "examples": ["#1092"]
+    },
+    {
+      "id": "worktree-bootstrap",
+      "default": "tool",
+      "since": "2026-10-30",
+      "look_for": "新しい worktree に、依存・認証・検証の前提が無かった。作成直後の準備を毎回手で整えた",
+      "examples": []
+    },
+    {
+      "id": "unclassified",
+      "default": "prose",
+      "since": "2026-10-30",
+      "look_for": "上のどれにも入らないが、決定論化できそうだと思った。上位の段を選ぶなら level_reason が必須。数が溜まると語彙に足す候補になる",
+      "examples": []
+    }
+  ],
+  "existing": {
+    "verdicts": ["採用", "拡張", "自前"],
+    "in_repo_scope": ["pipeline-map", "crates", "skills"],
+    "external_scope": ["nixpkgs", "upstream"]
+  },
+  "shapes": [
+    { "id": "heredoc-interp", "tier": "strong" },
+    { "id": "heredoc-script", "tier": "strong" },
+    { "id": "inline-interp", "tier": "strong" },
+    { "id": "long-filter", "tier": "strong" },
+    { "id": "pipeline", "tier": "weak" }
+  ],
+  "traces": {
+    "scratch_code_ext": ["py", "sh", "bash", "zsh", "js", "mjs", "ts", "jq", "awk", "rb", "pl", "sql", "rs"],
+    "fire": { "scratch_code_files": 1, "shaped_repeat": 2, "strong_shapes_total": 3 }
+  },
+  "drop_reasons": [
+    "semantic-judgment",
+    "unobservable",
+    "preference",
+    "one-off",
+    "existing-suffices",
+    "misread-signal"
+  ],
+  "calibration": {
+    "min_dropped": 3,
+    "drop_ratio": [2, 3],
+    "misread_min": 2,
+    "existing_suffices_min": 3,
+    "unclassified_min": 5
+  }
+}
