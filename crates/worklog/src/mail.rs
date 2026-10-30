@@ -59,62 +59,71 @@ pub struct Vocabulary {
     pub remind_before_due_days: i64,
 }
 
+/// 状態 `(id, 終端か)` の並びと、出来事の並び。
+pub(crate) type StatesEvents = (Vec<(String, bool)>, Vec<EventDef>);
+
+/// 語彙 JSON の状態・出来事の部分を読み、from / to が状態にあることを検査する。
+/// `mail` と `slot` が同じ形の語彙を読むので共有する(タイマーは `mail` だけが持つ)。
+pub(crate) fn parse_states_events(v: &Value) -> Result<StatesEvents, String> {
+    let strs = |x: &Value| -> Result<Vec<String>, String> {
+        x.as_array()
+            .ok_or("配列でない")?
+            .iter()
+            .map(|s| {
+                s.as_str()
+                    .map(str::to_string)
+                    .ok_or("文字列でない".to_string())
+            })
+            .collect()
+    };
+    let field = |o: &Value, k: &str| -> Result<String, String> {
+        o.get(k)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or(format!("'{k}' が無い"))
+    };
+    let mut states = Vec::new();
+    for s in v["states"].as_array().ok_or("states が無い")? {
+        let terminal = s["terminal"].as_bool().ok_or("terminal が無い")?;
+        states.push((field(s, "id")?, terminal));
+    }
+    let mut events = Vec::new();
+    for e in v["events"].as_array().ok_or("events が無い")? {
+        events.push(EventDef {
+            id: field(e, "id")?,
+            from: strs(&e["from"])?,
+            to: field(e, "to")?,
+            by: field(e, "by")?,
+        });
+    }
+    for e in &events {
+        for f in &e.from {
+            if f != "none" && !states.iter().any(|(s, _)| s == f) {
+                return Err(format!("出来事 {} の from '{f}' が状態にない", e.id));
+            }
+        }
+        if e.to != "same" && !states.iter().any(|(s, _)| *s == e.to) {
+            return Err(format!("出来事 {} の to '{}' が状態にない", e.id, e.to));
+        }
+    }
+    Ok((states, events))
+}
+
 impl Vocabulary {
     pub fn parse(json: &str) -> Result<Vocabulary, String> {
         let v: Value =
             serde_json::from_str(json).map_err(|e| format!("語彙が JSON でない: {e}"))?;
-        let strs = |x: &Value| -> Result<Vec<String>, String> {
-            x.as_array()
-                .ok_or("配列でない")?
-                .iter()
-                .map(|s| {
-                    s.as_str()
-                        .map(str::to_string)
-                        .ok_or("文字列でない".to_string())
-                })
-                .collect()
-        };
-        let field = |o: &Value, k: &str| -> Result<String, String> {
-            o.get(k)
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .ok_or(format!("'{k}' が無い"))
-        };
-        let mut states = Vec::new();
-        for s in v["states"].as_array().ok_or("states が無い")? {
-            let terminal = s["terminal"].as_bool().ok_or("terminal が無い")?;
-            states.push((field(s, "id")?, terminal));
-        }
-        let mut events = Vec::new();
-        for e in v["events"].as_array().ok_or("events が無い")? {
-            events.push(EventDef {
-                id: field(e, "id")?,
-                from: strs(&e["from"])?,
-                to: field(e, "to")?,
-                by: field(e, "by")?,
-            });
-        }
+        let (states, events) = parse_states_events(&v)?;
         let t = |k: &str| -> Result<i64, String> {
             v["timers"][k].as_i64().ok_or(format!("timers.{k} が無い"))
         };
-        let vocab = Vocabulary {
+        Ok(Vocabulary {
             events,
             states,
             remind_after_days: t("remind_after_days")?,
             stale_after_remind_days: t("stale_after_remind_days")?,
             remind_before_due_days: t("remind_before_due_days")?,
-        };
-        for e in &vocab.events {
-            for f in &e.from {
-                if f != "none" && !vocab.states.iter().any(|(s, _)| s == f) {
-                    return Err(format!("出来事 {} の from '{f}' が状態にない", e.id));
-                }
-            }
-            if e.to != "same" && !vocab.states.iter().any(|(s, _)| *s == e.to) {
-                return Err(format!("出来事 {} の to '{}' が状態にない", e.id, e.to));
-            }
-        }
-        Ok(vocab)
+        })
     }
 
     pub fn get() -> &'static Vocabulary {

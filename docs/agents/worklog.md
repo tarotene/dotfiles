@@ -25,7 +25,7 @@ worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手
   kind の無い行は `memo`。以前の見出し `## 済んだこと` の行も読む。
 - 本人は Obsidian で同じ節に、kind も時刻も付けずに書いてよい。
 
-行の形は `- HH:MM [kind] 本文 (owner/repo#N)`。kind は `reply|deadline|task|pr|found|stuck|mail`。
+行の形は `- HH:MM [kind] 本文 (owner/repo#N)`。kind は `reply|deadline|task|pr|found|stuck|mail|slot`。
 
 ## mail — 読んだメールの出来事と、未裁定項目の状態
 
@@ -50,6 +50,19 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 - 「どのスレッドを処理済みか」は `worklog mail open`(未了)と `worklog list --kind mail --since YYYY-MM-DD`(全部)で引く。
 - メールの本文・件名・相手の名前・アドレスは書かない。それらは Gmail に残り、ここには結論と鍵だけを置く。
   既存の記録(Gmail の下書き、PR のマージ状態、カレンダー)から導けることを書かない規範は、そのまま保つ。
+
+## slot — 作業の枠(自分一人でやる、時間枠つきの作業)の出来事と状態
+
+決定の記録: `docs/adr/1291-task-slot-worklog.md`。状態・行の形・CLI は `docs/agents/task-slot.md`。
+
+`mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`plan`・`resched`・`done`・`drop`)。時間枠(`start:`・
+`end:`。ISO 8601 のオフセット付き)と参照 Issue は行に持ち、本文・個人名は書かない。タイマーは無く、
+終了を過ぎたものは `worklog slot overdue` が導く。既存の自由記述の `task` kind とは別の kind である。
+
+```text
+worklog add slot plan <鍵> --start <ISO 時刻> --end <ISO 時刻> [--issue owner/repo#N …]
+worklog slot open | overdue [--now <ISO 時刻>] | check
+```
 
 ## vault の場所の解決
 
