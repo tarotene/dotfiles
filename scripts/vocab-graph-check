@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vocab-graph-check — 対象の状態遷移の語彙 JSON を検査する(ADR-0000)。
+# vocab-graph-check — 対象の状態遷移の語彙 JSON を検査する(ADR-1293)。
 #
 # 語彙 JSON は、対象(メール項目・作業の枠・カレンダーの枠など)ごとに、状態と事象(遷移)の閉語彙を
 # 1 枚で持つ正本。共通の形は config/agents/vocabulary/vocabulary.schema.json。この検査器は、その形と
@@ -29,7 +29,7 @@
 #       shown_by・carriers・gates の `skill:<名前>`、または
 #       config/agents/vocabulary/external-objects.json(別リポジトリの対象を担う skill の名前)の
 #       どれかに載っていることを検査する。載らない skill を列挙して終了コード 1。
-#       CI の必須の job にはまだ載せていない(ADR-0000 の D5)。
+#       CI の必須の job にはまだ載せていない(ADR-1293 の D5)。
 #   vocab-graph-check --selftest
 #       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill の負例で、
 #       各規則が期待どおり落ちる・通ることを確かめる。ネットワーク不使用。

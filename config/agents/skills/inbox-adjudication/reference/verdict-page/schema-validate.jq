@@ -1,5 +1,5 @@
 # schema-validate.jq — JSON Schema(draft 2020-12)の部分集合の検証器。build.sh と、
-# scripts/vocab-graph-check(語彙 JSON の Schema 検査、ADR-0000)が使う。
+# scripts/vocab-graph-check(語彙 JSON の Schema 検査、ADR-1293)が使う。
 #
 # 呼び出し: jq -nr --slurpfile s <schema.json> --slurpfile d <instance.json> -f schema-validate.jq
 # 出力: 違反 1 件につき 1 行。0 行なら適合。

@@ -1,6 +1,6 @@
 # state-vocabulary — 対象の状態遷移の語彙 JSON の書き方と検査
 
-決定の記録: `docs/adr/0000-state-transition-vocabulary.md`
+決定の記録: `docs/adr/1293-state-transition-vocabulary.md`
 形の正本: `config/agents/vocabulary/vocabulary.schema.json`
 検査: `scripts/vocab-graph-check`(bash + jq。CI の `dry-run` ジョブ)
 

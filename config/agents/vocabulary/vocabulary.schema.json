@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "vocabulary.schema.json",
   "title": "対象の状態遷移の語彙",
-  "description": "対象(メール項目・作業の枠・カレンダーの枠など)ごとに 1 つ持つ、状態と事象の閉語彙の共通の形(ADR-0000)。scripts/vocab-graph-check が、config/agents/skills/inbox-adjudication/reference/verdict-page/schema-validate.jq(JSON Schema の部分集合の検証器)でこの形を検査し、そのあとグラフの性質(到達・出口・担い手の解決など)を検査する。形で表せない規則(id の一意、from・to の参照、`owner` が person の状態の `shown_by`)は、グラフ検査が見る。",
+  "description": "対象(メール項目・作業の枠・カレンダーの枠など)ごとに 1 つ持つ、状態と事象の閉語彙の共通の形(ADR-1293)。scripts/vocab-graph-check が、config/agents/skills/inbox-adjudication/reference/verdict-page/schema-validate.jq(JSON Schema の部分集合の検証器)でこの形を検査し、そのあとグラフの性質(到達・出口・担い手の解決など)を検査する。形で表せない規則(id の一意、from・to の参照、`owner` が person の状態の `shown_by`)は、グラフ検査が見る。",
   "type": "object",
   "required": ["version", "object", "description", "initial", "states", "events"],
   "additionalProperties": false,

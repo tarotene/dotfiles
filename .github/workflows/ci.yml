@@ -341,9 +341,9 @@ jobs:
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
-      # vocab-graph-check (ADR-0000, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
+      # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
       # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills(どの語彙にも載らない
-      # skill を落とす)は、全 skill を語彙に載せ切るまで必須の job にしない(ADR-0000 の D5)。
+      # skill を落とす)は、全 skill を語彙に載せ切るまで必須の job にしない(ADR-1293 の D5)。
       - name: vocab-graph-check --selftest
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
