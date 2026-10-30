@@ -90,7 +90,7 @@ repository from view entirely, and CI never gets a reason to exist —
 minimal CI-seeding PR / a CI-seeding Issue / an exempt} for a human to pick.
 
 **Why judgement is by rule-type union, not ruleset name/count.** The
-`*-repo-governance` skills' `templates/.github/rulesets/*.json` files
+`repo-governance` skill's per-profile `templates/.github/rulesets/*.json` files
 describe a 3-file core layout — Security, Quality, Workflow — with
 byte-identical Security/Workflow content across skills (plus a 4th,
 opt-in `review.json` file — see below; Quality differs per ecosystem's
@@ -147,7 +147,7 @@ short of exempting the whole `rulesets` domain (losing coverage of
 
 **Aggregating `pull_request` across two rulesets.** Once the review layer
 lives in its own ruleset (`review.json`, applied independently of the core
-3-file layout — see the `*-repo-governance` skills), a repository that has
+3-file layout — see the `repo-governance` skill), a repository that has
 opted in carries *two* active `pull_request` rules on its default branch:
 the core one (squash-only) and the review layer's (squash-only + thread
 resolution). GitHub aggregates same-type rules across active rulesets by
@@ -193,12 +193,12 @@ explicitly says `required_status_checks`' actual check-name list is
 project-specific and only reported for a human to read, never
 machine-judged. Since the required context declaration now lives in the
 target repository itself (`.github/rulesets/{security,quality,workflow}
-[,review].json`, not a *-repo-governance skill template outside the
+[,review].json`, not a `repo-governance` skill template outside the
 repository), the rulesets domain can machine-judge three more things:
 
 - `rulesets-declaration-missing` — the repository has a live governed
   ruleset but no `.github/rulesets/quality.json` (etc.) declaration at
-  HEAD. Remedy: seed one via the matching `*-repo-governance` skill's
+  HEAD. Remedy: seed one via the matching `repo-governance` profile's
   `copy-files.sh` (or `repo-governance-common`'s, for the `core` type).
 - `rulesets-declaration-drift:<name>` — the declared and live ruleset
   (matched by name: Security/Quality/Workflow/Review) differ after
@@ -730,7 +730,7 @@ no claim are `not-applicable`, the same convention `renovate`/`titles` use.
 
 Background: a `grill-me` session (2026-09-24) found that the releaser App
 had been created **per repository** (`config/agents/skills/
-rust-repo-governance/reference/manual-steps.md` used to name it
+repo-governance/rust/reference/manual-steps.md` used to name it
 `<REPO>-release-plz` and install it on that repository only), producing 4
 separate Apps on the personal account. The decision was to consolidate to
 **one** App (a bot identity is a permission set, not a per-repository
@@ -825,7 +825,7 @@ itself leak which private repositories exist. The App's *registration*
 Setup and rotation live in `docs/github-app-snapshot.md` (Manifest flow,
 secret distribution, rotation) and `config/agents/skills/
 repo-governance-common/reference/releaser-app.md` (per-repo install
-checklist), referenced by every `*-repo-governance` skill that ships a
+checklist), referenced by every `repo-governance` profile that ships a
 releaser workflow template.
 
 ### routines
@@ -1166,7 +1166,7 @@ above. Out of scope, tracked for a follow-up (wrap-up inbox / #153):
 - **Applying** a fix to a drifted/ungoverned repository — that's the
   `github-audit-triage` skill's job (decision loop: this audit → triage
   → human GO → applied → re-audit, ADR-0015), or the relevant
-  `*-repo-governance` skill for settings/renovate/ruleset application.
+  `repo-governance` skill for settings/renovate/ruleset application.
 - A "new repository created → baseline auto-applied" hook (#153).
 - Scheduled/periodic execution (a systemd user timer, mirroring
   `git-audit-worktrees` — `docs/worktree-lifecycle.md`). This is a manual
@@ -1176,7 +1176,7 @@ above. Out of scope, tracked for a follow-up (wrap-up inbox / #153):
   (the `repo-charter` skill's interview step).
 - The full-repository (every markdown file, not just README/CONTRIBUTING)
   language-mixing check — that's each repository's own per-repo CI
-  (seeded by the `*-repo-governance` skill templates).
+  (seeded by the `repo-governance` skill templates).
 
 As of the ADR-0016 schema change, every owned repository reports
 `drifted` under `charters` again — expected re-initialization, not a bug.

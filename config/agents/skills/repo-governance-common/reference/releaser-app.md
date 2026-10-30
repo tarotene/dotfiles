@@ -84,7 +84,7 @@ github-audit releaser
 
 Omit the `owner`/`repositories` inputs — leaving them empty scopes the
 minted token to the current repository only, which is what every
-`*-repo-governance` release workflow template relies on.
+`repo-governance` profile's release workflow template relies on.
 
 ## Key rotation
 

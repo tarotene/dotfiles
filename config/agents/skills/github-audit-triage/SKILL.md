@@ -5,7 +5,7 @@ description: github-audit(統合 6 ドメイン監査)が報告した drift を�
 
 `github-audit` は読み取り専用で drift を報告するだけで、直すのは
 `repo-charter` の 1 リポジトリずつの対話型インタビュー(charters/naming)や
-各 `*-repo-governance` スキル(settings/renovate/rulesets)しかない。多数の
+`repo-governance` スキル(settings/renovate/rulesets)しかない。多数の
 リポジトリが同時に drift している状態では、「次に触るタイミングで個別
 retrofit」は事実上収束しない。このスキルは、監査の findings を入力に LLM が
 複数リポジトリぶんの修正を一括起草し、人間の確認は 1 回の一括レビュー(表)に
@@ -18,10 +18,10 @@ retrofit」は事実上収束しない。このスキルは、監査の findings
 merge・merge 後のメタデータ反映まで自動で行っていたが、それは人間裁定を
 経ない正本への書き込みであり ADR-0015 のループ設計と矛盾するため廃止した。
 
-`repo-charter` / `*-repo-governance` との役割分担: このスキルは複数リポジトリ
+`repo-charter` / `repo-governance` との役割分担: このスキルは複数リポジトリ
 ぶんの**起草と一括レビューの取りまとめ**を担う。README/CONTRIBUTING のスキーマ
 定義・見出しリテラル・settings/renovate の基準値は `repo-charter` SKILL.md・
-各 `*-repo-governance` SKILL.md を正本として常に参照する(二重定義しない)。
+`repo-governance` SKILL.md と言語ごとの reference を正本として常に参照する(二重定義しない)。
 
 ## 1. 入力の取得
 
@@ -88,7 +88,7 @@ description・topics・settings フィールド・ファイルツリー・open I
   {最小 CI 播種 PR / CI 播種を促す誘導 Issue の起票 / exempt} の三択を
   提案する(ADR-0021)。コードを持つリポジトリは播種 PR、記録・ノート系は
   exempt、判断が割れる場合は Issue 起票を既定の推奨にする。
-- settings/renovate ドメインは、対象の `*-repo-governance` スキルの
+- settings/renovate ドメインは、対象の言語の `repo-governance` スキル(profile)の
   `apply-repo-settings.sh` / renovate テンプレートをそのまま適用する提案
   として表に書く。`auto-merge-disabled` / `dependabot-security-updates-
   enabled`(docs/adr/568-renovate-automerge-shared-preset.md D2/D5b)は
@@ -103,12 +103,12 @@ description・topics・settings フィールド・ファイルツリー・open I
     (dotfiles の composite action を呼ぶ caller。reusable workflow を呼ぶ
     旧形は ADR-591 D3 で退役し、`legacy-reusable-pr-title-call` が検出する)
     が無い。対象リポジトリの
-    言語に対応する `*-repo-governance` skill があれば、その
+    言語に対応する `repo-governance` の profile があれば、その
     `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
     テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
-    skill が無いリポジトリ(rust/typst/astro のいずれでもない)は
+    profile が無いリポジトリ(rust/typst/astro のいずれでもない)は
     `repo-governance-common/templates/.github/workflows/pr-title.yml`
-    (単一正本、rust/typst/astro-site の 3 skill はこのファイルへの symlink)
+    (単一正本、rust/typst/astro-site の 3 profile はこのファイルへの symlink)
     をそのまま `.github/workflows/pr-title.yml` にコピーする提案にする。
   - `pr-title-check-not-required` — 対象リポジトリの ruleset に required
     check context の完全一致(`"PR title"` または `"PR Title / PR title"`
@@ -117,7 +117,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     テンプレートの実際の check 名 `"check / PR title"` を誤って ok と
     判定し続けていた — を受けて廃止した)。対象リポジトリに
     `.github/rulesets/quality.json` 宣言が無ければ、対応する
-    `*-repo-governance` skill(rust/typst/astro)の `copy-files.sh` または
+    `repo-governance` skill の言語 profile(rust/typst/astro-site)の `copy-files.sh` または
     `repo-governance-common` の `copy-files.sh`(該当エコシステムが無い
     リポジトリ、`core` 型)で宣言を播く提案を先に書く
     (ADR-503、`rulesets-declaration-missing`
@@ -198,9 +198,9 @@ description・topics・settings フィールド・ファイルツリー・open I
   **丸ごとテンプレートで上書きしない** — 既存の job 本体(ステップ)は
   そのまま残し、構造(集約 job・`needs:`・`name:` 大小文字)だけを
   外科的に直す。
-  - `ci-yml-missing` — 対象リポジトリの言語に対応する `*-repo-governance`
-    skill があれば、その `templates/.github/workflows/ci.yml` を土台に
-    `# ADJUST:` 箇所を埋めて起草する。対応する skill が無い(rust/typst/
+  - `ci-yml-missing` — 対象リポジトリの言語に対応する `repo-governance`
+    の profile があれば、その `<profile>/templates/.github/workflows/ci.yml` を土台に
+    `# ADJUST:` 箇所を埋めて起草する。対応する profile が無い(rust/typst/
     astro のいずれでもない)場合はテンプレートが無いので低確信フラグに
     回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
     リポジトリは、それらを `ci.yml` に統合する。このとき既存 job の
@@ -215,7 +215,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     固有表記はそのまま保持)。
   - `ci-passed-job-missing` — 対象リポジトリの `ci.yml` に集約 job
     `ci-passed`(`name: CI passed`)を追加する。job 本体はいずれかの
-    `*-repo-governance` テンプレート(または本リポジトリ自身の
+    `repo-governance` の言語テンプレート(または本リポジトリ自身の
     `.github/workflows/ci.yml`)の `ci-passed` job をそのまま流用する
     (`needs:` を除き全リポジトリでバイト同一)。`needs:` には対象
     リポジトリの `ci.yml` に実在する job id を(`ci-passed` 自身を除き)
@@ -228,7 +228,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     `if: always()` を足し、後者は `steps:` に失敗判定 step
     (`if: contains(needs.*.result, 'failure') || contains(needs.*.result,
     'cancelled')` / `run: exit 1`)を足す。形は
-    `repo-governance-common` 以外の `*-repo-governance` テンプレートの `ci-passed`
+    `repo-governance-common` 以外の `repo-governance` の言語テンプレートの `ci-passed`
     と同一で、他の job には触れない。
   - `ci-gate-empty` — `ci.yml` に gate job(`ci-passed` 以外の job)が 1 つも無い
     (監査だけの finding、ADR-1005 D7)。`ci-absent` と同じく、{gate job を足す
@@ -280,7 +280,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     `pr-title-workflow-missing` と同じ扱い — この 1 ファイルは元々
     リポジトリ固有の中身を持たない)。**同じ PR で、`.github/rulesets/
     quality.json` の宣言が無いリポジトリには宣言を播く**(対応する
-    `*-repo-governance` skill の `copy-files.sh`、無ければ
+    `repo-governance` の言語 profile の `copy-files.sh`、無ければ
     `repo-governance-common/templates/.github/rulesets/` から)。live の ruleset
     が旧 context `PR Title / PR title` を必須にしている repo では、置換した瞬間
     head がその context を報告しなくなる。宣言が無いと `apply-rulesets --ref
@@ -325,7 +325,7 @@ description・topics・settings フィールド・ファイルツリー・open I
               upload: 'false'
     ```
     スタックを複数持つリポジトリは job id を `docs-<stack>` で分ける。
-    rust の `*-repo-governance` テンプレート(`rust-repo-governance/
+    `repo-governance` の rust profile テンプレート(`repo-governance/rust/
     templates/.github/workflows/ci.yml`)の `docs` job が実例。
   - `docs-wrong-ref:<stack>` — `uses:` の参照を `@main` に直す(他の行は
     触れない)。SHA や tag に固定しているのは意図的な pin の可能性が
@@ -501,7 +501,7 @@ SKILL.md §9 と同じ作法)。
 
 - `ok`(今回 PR 作成済み、または既に merge 済みで再監査に反映)
 - `exempt`(今回除外)
-- 依然 `drifted` だが「`repo-charter`/`*-repo-governance` へ送った」
+- 依然 `drifted` だが「`repo-charter`/`repo-governance` へ送った」
   「PR 作成済み・merge 待ち」「Issue 起票済み・追跡中」(ci-absent、
   ADR-0021)のいずれかとして最終報告に明記されている
 

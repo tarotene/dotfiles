@@ -98,7 +98,7 @@ pub fn judge_settings(s: &Settings) -> Vec<&'static str> {
         missing.push("projects-enabled");
     }
     // ADR-0031: 「PR タイトル = main の squash commit subject」という契約は
-    // この 2 値の上に成立する(*-repo-governance の apply-repo-settings.sh と
+    // この 2 値の上に成立する(repo-governance の apply-repo-settings.sh と
     // 同じ宣言値)。
     if s.squash_merge_commit_title.as_deref() != Some("PR_TITLE") {
         missing.push("squash-title-not-pr-title");

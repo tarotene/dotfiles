@@ -185,9 +185,9 @@ main() {
   case "$type" in
     "") echo "note: --type 無し — governance の播種は行いません(repo-charter §8 を参照)" ;;
     rust | typst | astro)
-      local skill="$type-repo-governance"
-      [ "$type" != astro ] || skill="astro-site-governance"
-      run "$SKILLS_DIR/$skill/scripts/seed.sh" --owner "$owner" --repo "$repo" --dest "$dest" "${passthrough[@]}"
+      local profile="$type"
+      [ "$type" != astro ] || profile="astro-site"
+      run "$SKILLS_DIR/repo-governance/$profile/scripts/seed.sh" --owner "$owner" --repo "$repo" --dest "$dest" "${passthrough[@]}"
       ! $plan_free_private || echo "note: rulesets は適用できません(無料プランの非公開)。seed.sh が rulesets の適用で失敗しても想定内です。Team に切り替えるときの手順: docs/agents/free-plan-declaration.md"
       ;;
     core)
@@ -211,7 +211,7 @@ selftest() {
   local fails=0 tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  mkdir -p "$tmp/audit" "$tmp/skills/repo-governance-common/scripts" "$tmp/skills/rust-repo-governance/scripts"
+  mkdir -p "$tmp/audit" "$tmp/skills/repo-governance-common/scripts" "$tmp/skills/repo-governance/rust/scripts"
   printf '# c\nacme\tdesc\t2026-01-01\n' > "$tmp/audit/codename-registry.tsv"
   printf 'priv\tdesc\t2026-01-01\n' > "$tmp/audit/codename-registry.local.tsv"
   printf '# s\narchive\t器\ncards\t集合\n' > "$tmp/audit/descriptive-species.tsv"
@@ -224,10 +224,10 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 exit 0
 STUB
   local s
-  for s in repo-governance-common/scripts/apply-repo-settings.sh repo-governance-common/scripts/copy-files.sh rust-repo-governance/scripts/seed.sh; do
+  for s in repo-governance-common/scripts/apply-repo-settings.sh repo-governance-common/scripts/copy-files.sh repo-governance/rust/scripts/seed.sh; do
     printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >> "$STUB_LOG"\n' "$(basename "$s")" > "$tmp/skills/$s"
   done
-  chmod +x "$tmp/gh" "$tmp"/skills/*/scripts/*.sh
+  chmod +x "$tmp/gh" "$tmp"/skills/*/scripts/*.sh "$tmp"/skills/repo-governance/*/scripts/*.sh
 
   # case <name> <want-rc> <log-pattern | !log-pattern | -> <args…>
   case_run() {

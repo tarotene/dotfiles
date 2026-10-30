@@ -17,8 +17,8 @@ let
     map (name: ".claude/skills/${name}") (names ++ [ "repo-governance-common" ])
     ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ]);
 in
-assert builtins.length names == 42;
-assert builtins.length shared == 41;
+assert builtins.length names == 43;
+assert builtins.length shared == 42;
 assert
   lib.sort builtins.lessThan (builtins.attrNames entries) == lib.sort builtins.lessThan expected;
 assert lib.all (entry: !entry.recursive && !entry.force) (builtins.attrValues entries);
@@ -44,24 +44,28 @@ pkgs.runCommand "agent-skills" { } (
           if [ -x "$file" ]; then test -x "$dir/$relative"; fi
         done < <(find -L "${sourceRoot}/$name" -type f -print0)
       done
-      for name in rust-repo-governance typst-repo-governance astro-site-governance; do
+      for profile in rust typst astro-site; do
         for script in setup-hooks.sh apply-repo-settings.sh; do
-          test -x "$root/$name/scripts/$script"
-          cmp "$root/$name/scripts/$script" "${sourceRoot}/repo-governance-common/scripts/$script"
+          test -x "$root/repo-governance/$profile/scripts/$script"
+          cmp "$root/repo-governance/$profile/scripts/$script" "${sourceRoot}/repo-governance-common/scripts/$script"
         done
         for rule in ${sourceRoot}/repo-governance-common/templates/.github/rulesets/*.json; do
-          relative="templates/.github/rulesets/$(basename "$rule")"
-          if [ -e "${sourceRoot}/$name/$relative" ]; then
-            cmp "$root/$name/$relative" "${sourceRoot}/$name/$relative"
+          relative="$profile/templates/.github/rulesets/$(basename "$rule")"
+          if [ -e "${sourceRoot}/repo-governance/$relative" ]; then
+            cmp "$root/repo-governance/$relative" "${sourceRoot}/repo-governance/$relative"
           else
-            cmp "$root/$name/$relative" "$rule"
+            cmp "$root/repo-governance/$relative" "$rule"
           fi
         done
+      done
+      # The former per-language skills stay as entries that carry no resources.
+      for name in rust-repo-governance typst-repo-governance astro-site-governance; do
+        test "$(find -L "$root/$name" -type f | wc -l)" -eq 1
       done
       for name in pr-description venue-search inbox-adjudication; do
         cmp "$root/$name/reference/browser-operations.md" ${../../config/agents/reference/browser-operations.md}
       done
-      for name in pr-description inbox-adjudication stacked-pr github-audit-triage rust-repo-governance typst-repo-governance astro-site-governance; do
+      for name in pr-description inbox-adjudication stacked-pr github-audit-triage repo-governance; do
         cmp "$root/$name/reference/ci-failures.md" "${sourceRoot}/repo-governance-common/reference/ci-failures.md"
       done
     done

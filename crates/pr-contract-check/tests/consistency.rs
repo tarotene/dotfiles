@@ -44,9 +44,9 @@ fn the_pr_title_caller_context_is_in_every_quality_json() {
     );
 
     for f in [
-        "config/agents/skills/rust-repo-governance/templates/.github/rulesets/quality.json",
-        "config/agents/skills/typst-repo-governance/templates/.github/rulesets/quality.json",
-        "config/agents/skills/astro-site-governance/templates/.github/rulesets/quality.json",
+        "config/agents/skills/repo-governance/rust/templates/.github/rulesets/quality.json",
+        "config/agents/skills/repo-governance/typst/templates/.github/rulesets/quality.json",
+        "config/agents/skills/repo-governance/astro-site/templates/.github/rulesets/quality.json",
         "config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
         ".github/rulesets/quality.json",
     ] {
@@ -77,9 +77,9 @@ fn every_ci_yml_template_passes_the_shared_workflow_judge() {
     let files = vec!["ci.yml".to_string(), "pr-title.yml".to_string()];
     for skill in [
         "repo-governance-common",
-        "rust-repo-governance",
-        "typst-repo-governance",
-        "astro-site-governance",
+        "repo-governance/rust",
+        "repo-governance/typst",
+        "repo-governance/astro-site",
     ] {
         let path = root.join(format!(
             "config/agents/skills/{skill}/templates/.github/workflows/ci.yml"
@@ -103,7 +103,7 @@ fn every_ci_yml_template_passes_the_shared_workflow_judge() {
 }
 
 /// `rulesets-context-check` が使う静的な突き合わせ(`job_names`)が、実在の宣言と実在の
-/// workflow(dotfiles 自身と、各 governance skill のテンプレート)に対して、宣言の required
+/// workflow(dotfiles 自身と、repo-governance skill の各言語のテンプレート)に対して、宣言の required
 /// context を全て見つけること。`PR title` は、この検査を走らせている job 自身の名前で、
 /// 別 workflow(`pr-title.yml`)にある — `ci.yml` だけを読むと正常な PR でも必ず落ちる(#1014)。
 #[test]
@@ -113,9 +113,9 @@ fn declared_contexts_are_found_statically_in_every_real_workflow_set() {
     let mut sets: Vec<(String, PathBuf)> = vec![("dotfiles".into(), root.join(".github"))];
     for skill in [
         "repo-governance-common",
-        "rust-repo-governance",
-        "typst-repo-governance",
-        "astro-site-governance",
+        "repo-governance/rust",
+        "repo-governance/typst",
+        "repo-governance/astro-site",
     ] {
         sets.push((
             skill.into(),

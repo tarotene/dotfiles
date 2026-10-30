@@ -1761,10 +1761,14 @@ let
   # Build regular-file trees before Home Manager links each skill directory.
   # Refer to the complete source root so relative template links can resolve
   # repo-governance-common while cp dereferences them.
-  governanceSkillNames = [
-    "rust-repo-governance"
-    "typst-repo-governance"
-    "astro-site-governance"
+  # One canonical skill carries a self-contained bundle per language profile
+  # (repo-governance/<profile>/{scripts,templates,reference}); the three former
+  # per-language skills remain as compatibility entries without resources.
+  governanceSkillNames = [ "repo-governance" ];
+  governanceProfiles = [
+    "rust"
+    "typst"
+    "astro-site"
   ];
   browserReferenceSkillNames = [
     "browser-login-handoff"
@@ -1786,11 +1790,13 @@ let
       cp -rL ${skillRoot}/${name}/. "$out/"
       chmod -R u+w "$out"
       ${lib.optionalString (builtins.elem name governanceSkillNames) ''
-        mkdir -p "$out/scripts" "$out/templates/.github/rulesets"
-        cp ${skillRoot}/repo-governance-common/scripts/{setup-hooks,apply-repo-settings}.sh "$out/scripts/"
-        for rule in ${skillRoot}/repo-governance-common/templates/.github/rulesets/*.json; do
-          target="$out/templates/.github/rulesets/$(basename "$rule")"
-          if [ ! -e "$target" ]; then cp "$rule" "$target"; fi
+        for profile in ${lib.concatStringsSep " " governanceProfiles}; do
+          mkdir -p "$out/$profile/scripts" "$out/$profile/templates/.github/rulesets"
+          cp ${skillRoot}/repo-governance-common/scripts/{setup-hooks,apply-repo-settings}.sh "$out/$profile/scripts/"
+          for rule in ${skillRoot}/repo-governance-common/templates/.github/rulesets/*.json; do
+            target="$out/$profile/templates/.github/rulesets/$(basename "$rule")"
+            if [ ! -e "$target" ]; then cp "$rule" "$target"; fi
+          done
         done
       ''}
       ${lib.optionalString (builtins.elem name browserReferenceSkillNames) ''

@@ -90,7 +90,7 @@ Discussion #46752 <https://github.com/orgs/community/discussions/46752>
 播きで required check が恒久的に「Expected」のまま merge を止める事故を
 起こした。ADR-0031 の 2026-09-26 Amendment 参照)。呼び出し workflow
 テンプレート(`config/agents/skills/repo-governance-common/templates/
-.github/workflows/pr-title.yml`、rust/typst/astro-site の 3 skill は
+.github/workflows/pr-title.yml`、rust/typst/astro-site の 3 profile は
 symlink で共有)は `check` job に `name: PR Title` を固定するため、連結名は
 常に `"PR Title / PR title"` になる。「最初の利用リポジトリへの展開時に
 実機で確認する」という手動手順は、`.github/actions/pr-title`(composite action)の
@@ -137,7 +137,7 @@ type に改題してから merge する運用とする(例:
 `squashMergeCommitTitle == "PR_TITLE"` / `squashMergeCommitMessage ==
 "BLANK"` を検査する(missing token: `squash-title-not-pr-title` /
 `squash-message-not-blank`)。適用側は
-`config/agents/skills/*-repo-governance/scripts/apply-repo-settings.sh`
+`config/agents/skills/repo-governance-common/scripts/apply-repo-settings.sh`
 に既に同じ値がある — audit 側に監査項目を追加するだけで、新しい宣言値を
 発明しない。
 

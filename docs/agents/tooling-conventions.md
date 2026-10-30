@@ -42,7 +42,7 @@ skill の frontmatter の `name` は、その `SKILL.md` を含むディレク�
 ### スキルはディレクトリ単位で配布する
 
 `home/modules/agents.nix` がソースの `SKILL.md` から配布対象を導出する。
-Claude 用は42件、共有の `.agents/skills/` 用は41件で、`browser-login-handoff` は
+Claude 用は43件、共有の `.agents/skills/` 用は42件で、`browser-login-handoff` は
 Claude 専用のままとする。`repo-governance-common` は補助ディレクトリとして両方に配る。
 
 各ディレクトリをビルド時にコピーし、相対リンクを実体化したうえで共有スクリプト・ruleset・

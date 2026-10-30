@@ -601,7 +601,7 @@ pkgs.rustPlatform.buildRustPackage {
 | (2) 起動 50ms 未満 | ◯(mean 13〜14ms) | ◎(mean 1.2ms、予算の 1/30 以下) | ◯(mean 23〜30ms、予算に対する余裕が最も小さい) |
 | (3) 保守性・表現力 | △(型なし、jq 依存のまま) | ◯(型・エラー伝播が構造的) | ◯(型・標準ライブラリが充実) |
 | (4) `--selftest`→テスト移行 | △〜◯(bats、実装コストあり) | ◎(cargo test に自然に 1:1) | ◎(deno test に 1:1、ただし机上調査の API 誤りに実装で気づいた) |
-| 既存資産との整合 | ◯(変更ゼロ) | ◎(herdr・telepath・rust-repo-governance と地続き) | △(ADR-0002 の literal 思想とは親和的だが nix 面で新規開拓) |
+| 既存資産との整合 | ◯(変更ゼロ) | ◎(herdr・telepath・repo-governance(rust profile)と地続き) | △(ADR-0002 の literal 思想とは親和的だが nix 面で新規開拓) |
 
 ## 参照
 

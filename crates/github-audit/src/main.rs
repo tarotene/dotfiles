@@ -102,7 +102,7 @@ always written to $XDG_STATE_HOME/github-audit/ledger.json (override with
 GITHUB_AUDIT_STATE_DIR).
 
 This audit only reports drift — it never applies a fix. Use the
-github-audit-triage skill (or the relevant *-repo-governance skill / gh
+github-audit-triage skill (or the relevant repo-governance skill / gh
 directly) to fix what it finds.
 
 Running against an owner this account does not administer (a company org,

@@ -4,7 +4,7 @@
 
 `github-audit`(前身の `github-audit-rulesets`/`github-audit-charters`)は
 決定的判定のみを行い、直すのは `repo-charter` の 1 リポジトリずつの対話型
-インタビューか、各 `*-repo-governance` スキルの手動実行しかなかった。
+インタビューか、`repo-governance` スキルの手動実行しかなかった。
 ADR-0013 導入時点のように**全リポジトリが drifted**な状態では、「次に触る
 タイミングで個別 retrofit」は事実上収束しない。
 

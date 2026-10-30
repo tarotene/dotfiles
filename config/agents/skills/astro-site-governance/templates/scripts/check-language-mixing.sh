@@ -1,1 +1,0 @@
-../../../repo-governance-common/templates/scripts/check-language-mixing.sh
