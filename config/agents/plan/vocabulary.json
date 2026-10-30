@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "object": "plan",
+  "description": "計画(plan mode で書くプランファイル 1 枚)のライフサイクルの状態と事象の閉語彙。元は config/agents/skills/{requirements-inventory,precedent-grounding,technology-selection}/SKILL.md の提出前の自己検査(requirements-inventory §7・precedent-grounding §6)と、ExitPlanMode で働く機械(plan-scope-gate・plan-precedent-gate・plan-fresh-gate・copilot-plan-review)、承認の記録(new-tool-guard-record)、承認後の新しい道具の Write の検査(new-tool-guard)。要求項目 1 行ごとの処分は plan-requirement の語彙が持つので、ここでは計画 1 枚の流れだけを書く(承認の事象が重なる点は ADR の Consequences に挙げた)。本文が書いていない遷移は書かない(承認されなかった計画の扱いは ADR の Consequences に不明として挙げた)。diagramming・test-grounding は、計画に載せる図・検証項目を書く手順書で、本文は計画に限定していない。",
+  "initial": "none",
+  "states": [
+    { "id": "drafting", "terminal": false, "owner": "agent", "owner_detail": "プランファイルを書いている。要求インベントリと、設計判断ごとの先行例との対比を書く" },
+    { "id": "checked", "terminal": false, "owner": "agent", "owner_detail": "提出前の自己検査(plan-scope-gate --check-plan、plan-precedent-gate --check)が OK になった。ExitPlanMode を呼べる" },
+    { "id": "awaiting_approval", "terminal": false, "owner": "person", "owner_detail": "ExitPlanMode の gate を通り、本人の承認を待つ", "shown_by": ["node:plan-view"] },
+    { "id": "approved", "terminal": false, "owner": "agent", "owner_detail": "承認された。実装の段を実行する" },
+    { "id": "executed", "terminal": true, "owner_detail": "全段の PR を作った(stacked-pr §3 の 1)" }
+  ],
+  "events": [
+    { "id": "draft", "from": ["none"], "to": ["drafting"], "by": "agent", "by_detail": "計画冒頭に要求インベントリを置く。計画の事実を取る前に base を最新にする(requirements-inventory §1・§1a)", "carriers": ["skill:requirements-inventory"] },
+    { "id": "ground", "from": ["drafting"], "to": ["same"], "by": "agent", "by_detail": "非自明な設計判断ごとに、先行例との対比の節(Dn・軸・技術選定なら本命と対抗馬と既存手段)を書く", "carriers": ["skill:precedent-grounding", "skill:technology-selection"] },
+    { "id": "compose", "from": ["drafting"], "to": ["same"], "by": "agent", "by_detail": "計画に載せる検証項目(test-grounding)と図(diagramming)を書く。どちらの本文も計画に限定していない。計画への紐づけは Issue の表による", "carriers": ["skill:test-grounding", "skill:diagramming"] },
+    { "id": "self_check", "from": ["drafting"], "to": ["checked"], "by": "agent", "by_detail": "ExitPlanMode の前に、OK が出るまで自己検査して直す(gate の deny を書式検査の代わりにしない)", "carriers": ["skill:requirements-inventory", "skill:precedent-grounding", "skill:technology-selection"], "gates": ["node:plan-scope-gate", "node:plan-precedent-gate"] },
+    { "id": "submit", "from": ["checked"], "to": ["awaiting_approval"], "by": "agent", "by_detail": "ExitPlanMode。処分の無い項目・Dn のトークン不足・参照ファイルの変更(base が進んだ)・批評の BLOCKER や MAJOR があると deny される", "carriers": ["node:plan-view"], "gates": ["node:plan-scope-gate", "node:plan-precedent-gate", "node:plan-fresh-gate", "node:copilot-plan-review"] },
+    { "id": "deny", "from": ["checked"], "to": ["drafting"], "by": "machine", "by_detail": "ExitPlanMode が gate に deny され、計画が差し戻される(requirements-inventory §1a)", "carriers": ["node:plan-scope-gate", "node:plan-precedent-gate", "node:plan-fresh-gate", "node:copilot-plan-review"] },
+    { "id": "approve", "from": ["awaiting_approval"], "to": ["approved"], "by": "person", "by_detail": "承認。承認された計画の既存手段の行を台帳へ書く", "carriers": ["node:new-tool-guard-record"] },
+    { "id": "execute", "from": ["approved"], "to": ["executed"], "by": "agent", "by_detail": "承認後は全段の PR 作成まで確認を挟まず進む(stacked-pr §3 の 1)。新しい道具・単位の Write は、既存手段の行が台帳に無いと deny される", "gates": ["node:new-tool-guard"] }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "object": "wip-pull-request",
+  "description": "WIP の PR(ユーザーの指示で作業を打ち切るときに作る Draft PR)の、中断から再開して Draft を外すまでの状態と事象の閉語彙。元は config/agents/skills/handoff/SKILL.md(§2 WIP を Draft PR にする・再開)と、crates/pr-gate の中断ハンドオフ(Draft かつ本文に Handoff: #N があり N が OPEN のときだけ G_link と G_CI を緩和する。判定できなければ緩めない)。ready のあとは pull-request の語彙の created と同じ PR になる。本文が書いていない遷移は書かない。残タスクの子 Issue の起票(handoff §4〜§6)は issue の語彙の対象で、ここには書かない。",
+  "initial": "none",
+  "states": [
+    { "id": "handed_off", "terminal": false, "owner": "agent", "owner_detail": "Draft PR。本文 1 行目は Handoff: #P で、Closes は書いていない。後で再開する", "shown_by": ["node:issue-index"] },
+    { "id": "resumed", "terminal": false, "owner": "agent", "owner_detail": "再開した。Handoff の行を、この PR で完了する子 Issue の Closes に差し替えた。まだ Draft" },
+    { "id": "ready", "terminal": true, "owner_detail": "Draft を解除した。以降は通常の PR で、pr-gate の全ゲートが効く" }
+  ],
+  "events": [
+    { "id": "handoff", "from": ["none"], "to": ["handed_off"], "by": "agent", "by_detail": "差分があれば commit して push し、Draft PR にする(既存 PR は gh pr ready --undo)。積みの途中なら最上段だけを対象にする。本文は pr-description の骨格で、Closes #P は書かず、1 行目に Handoff: #P を書く。ラベルの確認・作成は scripts/handoff.sh", "carriers": ["skill:handoff", "skill:pr-description"], "gates": ["node:pr-title-guard", "node:pr-followup-guard"] },
+    { "id": "relax", "from": ["handed_off"], "to": ["same"], "by": "machine", "by_detail": "Draft かつ Handoff: #N で N が OPEN のときだけ、G_link を LINKED 相当にし、G_CI の block を advisory に落とす。判定の材料が取れないときは緩めない", "carriers": ["node:pr-gate-stop"] },
+    { "id": "resume", "from": ["handed_off"], "to": ["resumed"], "by": "agent", "by_detail": "handoff:ai の子 Issue の着手可能な一覧(SessionStart の注入)か、指示から再開する。gh pr checkout で Draft PR のブランチに乗り、Handoff の行を、この PR で完了する子 Issue だけの Closes に置き換える。作業を続け、CI を通す", "carriers": ["skill:handoff"] },
+    { "id": "ready", "from": ["resumed"], "to": ["ready"], "by": "agent", "by_detail": "gh pr ready で Draft を解除する", "carriers": ["skill:handoff"], "gates": ["node:pr-gate-stop"] }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "object": "issue",
+  "description": "Issue(通常の Issue、tracking Issue の親、閉じるまで)の状態と事象の閉語彙。元は config/agents/skills/{tracking-issue,issue-hygiene,living-description,issue-ref-freshness}/SKILL.md。tracking-issue §1 は「普通の Issue として起票し、実作業が 2 つ以上の子に割れた時点で親に昇格させる」、§7 は親の閉じ方(完了と放棄)を定める。これらの遷移には機械の検査が無い(gates を持つのは、マージで Closes を拾って閉じる close-linked-issues だけ)。tracking-issue と issue-hygiene が同じ事象を重ねて担う箇所は、carriers に両方を並べて残した(ADR の Consequences に挙げた)。本文が書いていない遷移は書かない(放棄以外の理由で手で閉じる通常の Issue、停滞した Issue の扱いは ADR の Consequences に不明として挙げた)。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "agent", "owner_detail": "通常の Issue。親でも子でもよい" },
+    { "id": "parent", "terminal": false, "owner": "agent", "owner_detail": "sub-issues を持つ親(tracking Issue)。tracking ラベルを付け、本文は現在の合意状態の正本" },
+    { "id": "completed", "terminal": true, "owner_detail": "completed の理由で閉じた" },
+    { "id": "not_planned", "terminal": true, "owner_detail": "not planned の理由で閉じた。本文に、いつ・なぜ諦めたかを一言残す" }
+  ],
+  "events": [
+    { "id": "file", "from": ["none"], "to": ["open"], "by": "agent", "by_detail": "普通の Issue として起票する。最初から親として起票しない(空の傘を先に立てない)", "carriers": ["skill:tracking-issue"] },
+    { "id": "promote", "from": ["open"], "to": ["parent"], "by": "agent", "by_detail": "tracking-issue §1: 実作業が 2 つ以上の子に割れた時点で昇格する。issue-hygiene §1・§7: 出自か運用領域でクラスタを抽出し、割れたのに昇格していない Issue を洗い出して束ねる。どちらも sub-issues(gh issue edit --add-sub-issue)で親子を張り、tracking ラベルを付け、本文を tracking-issue のスケルトンで書く", "carriers": ["skill:tracking-issue", "skill:issue-hygiene"] },
+    { "id": "attach", "from": ["parent"], "to": ["same"], "by": "agent", "by_detail": "子を足す・付け替える・外す。tracking-issue §2(--parent・--add-sub-issue・--remove-parent)と issue-hygiene §2・§5(子として繋ぎ直す)が同じ操作を書く", "carriers": ["skill:tracking-issue", "skill:issue-hygiene"] },
+    { "id": "update_body", "from": ["open", "parent"], "to": ["same"], "by": "agent", "by_detail": "コメントで裁定・仕様変更が確定した時点で本文を編集し、古い値・警告バナーが残らないようにする。親は、方針・スコープ・完了定義が変わったときに更新する(tracking-issue §4 は living-description の一種とする)", "carriers": ["skill:living-description"] },
+    { "id": "refresh_refs", "from": ["open", "parent"], "to": ["same"], "by": "agent", "by_detail": "他リポジトリの Issue・PR を Open 前提で参照する文を、参照先の裁定(completed・not planned・duplicate)を読んで書き直す。本文は living-description の流儀で直接編集する。散文の手順で、機械の検査は無い", "carriers": ["skill:issue-ref-freshness"] },
+    { "id": "complete", "from": ["parent"], "to": ["completed"], "by": "agent", "by_detail": "tracking-issue §7: 全 sub-issue が closed で、かつ完了定義の一文が満たされているとき。issue-hygiene §5 は、子が全て決着済みなのに open の親を、本文を実態に合わせて直したうえで閉じる", "carriers": ["skill:tracking-issue", "skill:issue-hygiene"] },
+    { "id": "abandon", "from": ["parent"], "to": ["not_planned"], "by": "agent", "by_detail": "スコープを諦めた場合。本文に、いつ・なぜ諦めたかを一言残す(tracking-issue §7)", "carriers": ["skill:tracking-issue"] },
+    { "id": "close_by_merge", "from": ["open", "parent"], "to": ["completed"], "by": "machine", "by_detail": "PR の本文の Closes #N を、マージ時に拾って閉じる。GitHub 自身の closing keyword は default branch を向いた PR でしか働かず、積みの 2 段目以降は閉じないので、この workflow が補う(stacked-pr §6)。マージしても閉じたくない追跡 Issue は Closes を書かない(pr-description §1)", "carriers": ["node:close-linked-issues"] }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "object": "pull-request",
+  "description": "PR(作成から、スタックの積み・リンクを経て、マージまで)の状態と事象の閉語彙。元は config/agents/skills/stacked-pr/SKILL.md(§1 単一チェーン・§3 積む手順・§4 追従・§5 GitHub の stack 機能とマージ・§6 Issue リンク・§8 機械強制)と config/agents/skills/pr-description/SKILL.md(§0 投稿の正準形・§1 本文の骨格・§6 要確認の払い出し)。機械の検査は crates/pr-gate の Stop 判定(G_link・G_visual・G_stack・G_prior・G_CI・G_pr)と、作成時の stack-base-guard・pr-title-guard・pr-followup-guard。本文が書いていない遷移は書かない(マージせずに閉じた PR の扱いは ADR の Consequences に不明として挙げた)。WIP の PR(Draft と Handoff)は wip-pull-request の語彙が持つ。",
+  "initial": "none",
+  "states": [
+    { "id": "created", "terminal": false, "owner": "agent", "owner_detail": "gh pr create で作った。積みの途中なら、base は直前の段のブランチ" },
+    { "id": "stack_linked", "terminal": false, "owner": "agent", "owner_detail": "全段の CI が green であることを確かめたあと、gh stack link で GitHub 上の stack にまとめた。以後そのブランチには push しない" },
+    { "id": "merged", "terminal": true, "owner_detail": "マージした。スタックは最上段を 1 回マージすると、下の open な全段が一度に入る" }
+  ],
+  "events": [
+    { "id": "create", "from": ["none"], "to": ["created"], "by": "agent", "by_detail": "本文は Write でファイルにし、-R と --body-file で投稿する。1 行目は Closes #N か No-Issue:、積みなら Stack: base 行。見た目に影響する変更は Before / After か No-Visual:。セッション内 2 本目以降は直前の段の head を base にする(離脱は Independent-PR: だけ)。push 済みなのに PR が無いまま終わると Stop が block する(G_pr)", "carriers": ["skill:pr-description", "skill:stacked-pr"], "gates": ["node:bleep", "node:pr-title-guard", "node:pr-followup-guard", "node:stack-base-guard", "node:pr-gate-stop"] },
+    { "id": "check_completion", "from": ["created"], "to": ["same"], "by": "machine", "by_detail": "Stop で G_link(Closes か No-Issue)・G_visual(視覚証跡か No-Visual)・G_stack(積みの未リンク)・G_prior(新しい道具の既存手段の行)・G_CI(CI 未完了)を検査し、揃っていなければ block する", "carriers": ["node:pr-gate-stop"] },
+    { "id": "wait_checks", "from": ["created", "stack_linked"], "to": ["same"], "by": "agent", "by_detail": "required のチェックだけを pr-checks-wait で待つ。gh pr checks --watch や sleep のポーリングは実行前に deny される", "carriers": ["node:pr-checks-wait"], "gates": ["node:ci-wait-guard"] },
+    { "id": "update_body", "from": ["created", "stack_linked"], "to": ["same"], "by": "agent", "by_detail": "コメントで確定した裁定を、本文に反映する。本文を現在の合意状態の正本として保つ", "carriers": ["skill:living-description"] },
+    { "id": "stack_link", "from": ["created"], "to": ["stack_linked"], "by": "agent", "by_detail": "全段の内容を確定して push し、CI green を確認してから、最下段から順の PR 番号で gh stack link を 1 回だけ実行する。実行しないと Stop が block する(G_stack)", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait", "node:pr-gate-stop"] },
+    { "id": "unstack", "from": ["stack_linked"], "to": ["created"], "by": "agent", "by_detail": "link の後に修正が要るときは、gh stack unstack で解除し、push して CI を確認してから、再び link する", "carriers": ["skill:stacked-pr"] },
+    { "id": "merge", "from": ["created", "stack_linked"], "to": ["merged"], "by": "person", "by_detail": "エージェントはマージしない。本人が明示したときだけエージェントも行う。スタックは最上段(自分の head を base にする open な PR が無い PR)を merge-async で 1 回マージする。積みでない PR は gh pr merge", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait"] }
+  ]
+}
