@@ -79,6 +79,14 @@ in
         # The default Nix binary cache. Nix's own writes and daemon socket are not
         # declared here, so a build still runs outside the sandbox (#1050).
         "cache.nixos.org"
+        # PyPI: uv resolves from pypi.org and downloads the wheels from files.pythonhosted.org.
+        # Without them `uv sync` inside the sandbox fails on the download (measured 2026-10-29).
+        "pypi.org"
+        "files.pythonhosted.org"
+        # The Python standard library's Sphinx inventory. The docs-python action's generated
+        # conf.py reads it through intersphinx (docs/adr/640-stack-standard-api-docs.md,
+        # Amendment 2026-10-18), so a local docs build needs it in every Python repository.
+        "docs.python.org"
       ];
       description = "Known network destinations; this grants connectivity, not permission to send.";
     };
