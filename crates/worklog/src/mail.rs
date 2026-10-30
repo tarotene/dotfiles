@@ -89,11 +89,20 @@ pub(crate) fn parse_states_events(v: &Value) -> Result<StatesEvents, String> {
     }
     let mut events = Vec::new();
     for e in v["events"].as_array().ok_or("events が無い")? {
+        let id = field(e, "id")?;
+        // 共通の形(vocabulary.schema.json)では `to` は常に配列。複数なら遷移先が選べる(握手の判定)が、
+        // 書き込み口の出来事は遷移先を 1 つに決める。
+        let mut to = strs(&e["to"]).map_err(|m| format!("出来事 {id} の to が{m}"))?;
+        if to.len() != 1 {
+            return Err(format!(
+                "出来事 {id} の to は 1 要素の配列でなければならない"
+            ));
+        }
         events.push(EventDef {
-            id: field(e, "id")?,
             from: strs(&e["from"])?,
-            to: field(e, "to")?,
+            to: to.remove(0),
             by: field(e, "by")?,
+            id,
         });
     }
     for e in &events {
@@ -999,7 +1008,17 @@ mod tests {
         assert!(
             v.event("remind").unwrap().by == "machine" && v.event("stale").unwrap().by == "machine"
         );
-        assert!(Vocabulary::parse(r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":"same","by":"agent"}],"timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}}"#).is_err());
+        assert!(Vocabulary::parse(r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":["same"],"by":"agent"}],"timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}}"#).is_err());
+        // `to` は配列(旧い形の文字列、複数要素は読まない)。
+        let ok_timers = r#""timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}"#;
+        let with_to = |to: &str| {
+            format!(
+                r#"{{"states":[{{"id":"a","terminal":false}}],"events":[{{"id":"x","from":["none"],"to":{to},"by":"agent"}}],{ok_timers}}}"#
+            )
+        };
+        assert!(Vocabulary::parse(&with_to(r#"["a"]"#)).is_ok());
+        assert!(Vocabulary::parse(&with_to(r#""a""#)).is_err());
+        assert!(Vocabulary::parse(&with_to(r#"["a","a"]"#)).is_err());
     }
 
     #[test]

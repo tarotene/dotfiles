@@ -43,6 +43,12 @@
 `ng` は、本人が `candidate` に戻すまで動かない。`secured` から出るのは、不在との食い違いを script が見つけたときの `go` だけである。
 語彙の版 2 で、下 2 行を足した(版 1 は上 4 行)。足した理由と検査の結果は、仕様の節と ADR にある。
 
+版 3 で、語彙 JSON を対象の語彙の共通の形(`docs/agents/state-vocabulary.md`、ADR-1293)に移した。
+`transitions` を `events` に改め、事象に id を付けた(上の 6 行は `judge`・`confirm`・`reserve`・`secure`・`reopen`・`withdraw`)。
+`owner`・`by` の `workplace-script` は `machine`、`workplace-agent` は `agent` にし、元の名前は `owner_detail`・`by_detail` に残した。
+予定を作る事象 `propose`(`none` → `candidate`、person。担い手は `slot-availability`)を足した。`propose` は Quint の遷移の表に含めない
+(仕様の `personCreate` は遷移の記録を更新しないため)。`token`・`hold`・`group_key` は変えていない。
+
 ## 版の固定
 
 利用側は、`vocabulary.json` の内容の sha256 を自分の設定に pin し、読み込み時に照合する。

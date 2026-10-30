@@ -1,25 +1,26 @@
 {
-  "version": 1,
-  "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。",
+  "version": 2,
+  "object": "mail-item",
+  "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
   "initial": "none",
   "states": [
-    { "id": "awaiting", "terminal": false },
-    { "id": "decided", "terminal": false },
+    { "id": "awaiting", "terminal": false, "owner": "person", "shown_by": ["skill:inbox-adjudication", "skill:daily-desk"] },
+    { "id": "decided", "terminal": false, "owner": "agent" },
     { "id": "closed", "terminal": true },
     { "id": "dismissed", "terminal": true },
     { "id": "stale", "terminal": true },
     { "id": "superseded", "terminal": true }
   ],
   "events": [
-    { "id": "read", "from": ["none"], "to": "closed", "by": "agent" },
-    { "id": "draft", "from": ["none"], "to": "awaiting", "by": "agent" },
-    { "id": "ask", "from": ["none"], "to": "awaiting", "by": "agent" },
-    { "id": "decide", "from": ["awaiting"], "to": "decided", "by": "person" },
-    { "id": "apply", "from": ["awaiting", "decided"], "to": "closed", "by": "agent" },
-    { "id": "pass", "from": ["none", "awaiting", "decided"], "to": "dismissed", "by": "person" },
-    { "id": "remind", "from": ["awaiting", "decided"], "to": "same", "by": "machine" },
-    { "id": "move", "from": ["awaiting", "decided"], "to": "superseded", "by": "agent" },
-    { "id": "stale", "from": ["awaiting", "decided"], "to": "stale", "by": "machine" }
+    { "id": "read", "from": ["none"], "to": ["closed"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "draft", "from": ["none"], "to": ["awaiting"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "ask", "from": ["none"], "to": ["awaiting"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "decide", "from": ["awaiting"], "to": ["decided"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "apply", "from": ["awaiting", "decided"], "to": ["closed"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "pass", "from": ["none", "awaiting", "decided"], "to": ["dismissed"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "remind", "from": ["awaiting", "decided"], "to": ["same"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
+    { "id": "move", "from": ["awaiting", "decided"], "to": ["superseded"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "stale", "from": ["awaiting", "decided"], "to": ["stale"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] }
   ],
   "timers": {
     "remind_after_days": 7,

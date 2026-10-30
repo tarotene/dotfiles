@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "bad-duplicate-id",
+  "description": "負例(一意)。事象 id begin と、状態 id open が重複している。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "begin", "from": ["open"], "to": ["closed"], "by": "person" }
+  ]
+}

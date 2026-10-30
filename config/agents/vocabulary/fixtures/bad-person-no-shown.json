@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "object": "bad-person-no-shown",
+  "description": "負例(見せる担い手)。owner が person の状態 open に、本人に見せる担い手 shown_by が無い。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "person" },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" }
+  ]
+}

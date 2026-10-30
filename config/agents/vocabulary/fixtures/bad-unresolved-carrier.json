@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "object": "bad-unresolved-carrier",
+  "description": "負例(担い手の解決)。carriers の skill:no-such-skill と、gates の cli:no-such-crate が実在しない。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent", "carriers": ["skill:no-such-skill"], "gates": ["cli:no-such-crate"] },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" }
+  ]
+}

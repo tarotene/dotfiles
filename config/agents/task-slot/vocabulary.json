@@ -1,16 +1,17 @@
 {
-  "version": 1,
-  "description": "作業の枠(自分一人でやる、時間枠つきの作業)の状態と出来事の閉語彙(正本)。worklog の slot kind が include_str! で読む。タイマーは持たない(再通知も失効もしない)。",
+  "version": 2,
+  "object": "task-slot",
+  "description": "作業の枠(自分一人でやる、時間枠つきの作業)の状態と出来事の閉語彙(正本)。worklog の slot kind が include_str! で読む。タイマーは持たない(再通知も失効もしない)。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
   "initial": "none",
   "states": [
-    { "id": "scheduled", "terminal": false },
+    { "id": "scheduled", "terminal": false, "owner": "person", "shown_by": ["cli:worklog"] },
     { "id": "done", "terminal": true },
     { "id": "dropped", "terminal": true }
   ],
   "events": [
-    { "id": "plan", "from": ["none"], "to": "scheduled", "by": "agent" },
-    { "id": "resched", "from": ["scheduled"], "to": "scheduled", "by": "person" },
-    { "id": "done", "from": ["scheduled"], "to": "done", "by": "person" },
-    { "id": "drop", "from": ["scheduled"], "to": "dropped", "by": "person" }
+    { "id": "plan", "from": ["none"], "to": ["scheduled"], "by": "agent", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
+    { "id": "resched", "from": ["scheduled"], "to": ["scheduled"], "by": "person", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
+    { "id": "done", "from": ["scheduled"], "to": ["done"], "by": "person", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
+    { "id": "drop", "from": ["scheduled"], "to": ["dropped"], "by": "person", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] }
   ]
 }

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "minimal-thing",
+  "description": "正例。scripts/vocab-graph-check --selftest が、すべての規則を通る最小の語彙として使う(架空の対象)。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "person", "shown_by": ["skill:alpha"] },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent", "carriers": ["skill:alpha"], "gates": ["node:node-a", "cli:crate-a"] },
+    { "id": "nudge", "from": ["open"], "to": ["same"], "by": "machine", "carriers": ["external:other-repo-tool"] },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" }
+  ]
+}

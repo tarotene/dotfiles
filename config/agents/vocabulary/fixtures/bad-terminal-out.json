@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "object": "bad-terminal-out",
+  "description": "負例(終端)。終端の状態 closed から事象 reopen が出る。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" },
+    { "id": "reopen", "from": ["closed"], "to": ["open"], "by": "person" }
+  ]
+}

@@ -456,6 +456,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を、`awaiting`・`decided` の未了と 4 つの終端の状態機械にし、`mail` 行を出来事として畳み込んで状態を決める(ADR-1256 の D2・D3・D5 を改める)。語彙は JSON 1 枚を正本に、`worklog` の書き込み検査と Quint の仕様が同じ表を読み、TLC で「終端から戻らない・スレッドごとの未了は 1 つ・`stale` の前に必ず `remind`・答えが無くてもいずれ終端」を検査する。終端の行の手削除は機体ごとの控えで検出する。
 - [ADR-1276](adr/1276-codify-signals.md) — retro の `mechanism` を `eliminate`・`unrepresentable`・`gate`・`tool`・`prose` の 5 段に引き直し、段を持つ行に兆候(`signal`)・既存手段(採用|拡張|自前)・探した範囲を必須にする(ADR-697 の語彙と ADR-543 の Q2 を改める)。語彙は JSON 1 枚を正本に、手順の文・行の検証・事例集の表がそこから出る。過去の retro 244 行での試し当てを受けて、兆候を 15 個にし、「どれにも入らない」を数える `unclassified` を持つ。
 - [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠(自分一人でやる、時間枠つきの作業)の状態を、`worklog` の `slot` kind の行を出来事として畳み込んで追い、時間枠は行に持つ(ADR-998 の追記)。語彙は `mail` と別の JSON で、タイマーを持たず、「過ぎた」は終了時刻から導く。Quint の仕様は書かず、語彙の遷移表の全マスを試験する。
+- [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を「対象の状態遷移を行う、または前提を満たす手順書」と定義し、すべての skill が語彙 JSON の `carriers`・`gates`・`shown_by` に名指しされる条件を課す。メール項目・作業の枠・カレンダーの握手の語彙を、JSON Schema の共通の形(`to` は配列、`object`・行為者・担い手・前提の欄)へ移し(Quint の入力は移行の前後でバイト単位で同じ)、bash + jq の `scripts/vocab-graph-check` が到達・出口・終端・担い手の解決などを CI で検査する。載らない skill を拾う `--skills` は、全 skill を載せ切るまで必須の job にしない。Quint と実装照合への昇格は、タイマー・並行・対象横断の条件で行う。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
@@ -683,6 +684,7 @@ Design and rationale for the hooks and commands deployed from
 - [`agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — 個人スキル: 知見を
   この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
   公開リポジトリ向けサニタイズ規則の正本)。
+- [`state-vocabulary.md`](agents/state-vocabulary.md) — 対象の状態遷移の語彙 JSON の書き方(共通の形・担い手の名前空間)と、`scripts/vocab-graph-check` の規則・使い方。
 - [`living-description.md`](agents/living-description.md) — 個人スキル:
   Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
   正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。

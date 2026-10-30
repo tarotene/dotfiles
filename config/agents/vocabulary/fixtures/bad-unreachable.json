@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "object": "bad-unreachable",
+  "description": "負例(到達)。状態 left と right は互いに行き来できるが、initial(none)から入る道が無い。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false },
+    { "id": "closed", "terminal": true },
+    { "id": "left", "terminal": false },
+    { "id": "right", "terminal": false }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent" },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person" },
+    { "id": "swing-right", "from": ["left"], "to": ["right"], "by": "agent" },
+    { "id": "swing-left", "from": ["right"], "to": ["left"], "by": "agent" }
+  ]
+}

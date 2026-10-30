@@ -1,22 +1,25 @@
 {
-  "version": 2,
-  "description": "Closed vocabulary of title-leading markers for the personal/workplace calendar handshake. The title of an event on the handshake calendar starts with exactly one token; every state change is a title change.",
+  "version": 3,
+  "object": "calendar-handshake",
+  "description": "Closed vocabulary of title-leading markers for the personal/workplace calendar handshake. The title of an event on the handshake calendar starts with exactly one token; every state change is a title change. The common shape is config/agents/vocabulary/vocabulary.schema.json.",
+  "initial": "none",
   "group_key": "stamped-id-else-title-after-token",
   "states": [
-    { "id": "candidate", "token": "[hold] ", "owner": "person", "hold": "soft" },
-    { "id": "ok", "token": "[ok] ", "owner": "workplace-script", "hold": "soft" },
-    { "id": "resched", "token": "[resched] ", "owner": "workplace-script", "hold": "soft" },
-    { "id": "ng", "token": "[ng] ", "owner": "workplace-script", "hold": "soft" },
-    { "id": "go", "token": "[go] ", "owner": "person", "hold": "soft" },
-    { "id": "blocked", "token": "[blocked] ", "owner": "workplace-script", "hold": "hard" },
-    { "id": "secured", "token": "[secured] ", "owner": "workplace-agent", "hold": "hard" }
+    { "id": "candidate", "terminal": false, "token": "[hold] ", "owner": "person", "shown_by": ["skill:slot-availability"], "hold": "soft" },
+    { "id": "ok", "terminal": false, "token": "[ok] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
+    { "id": "resched", "terminal": false, "token": "[resched] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
+    { "id": "ng", "terminal": false, "token": "[ng] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
+    { "id": "go", "terminal": false, "token": "[go] ", "owner": "person", "shown_by": ["skill:daily-desk"], "hold": "soft" },
+    { "id": "blocked", "terminal": false, "token": "[blocked] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "hard" },
+    { "id": "secured", "terminal": false, "token": "[secured] ", "owner": "agent", "owner_detail": "workplace-agent", "hold": "hard" }
   ],
-  "transitions": [
-    { "from": ["candidate"], "to": ["ok", "resched", "ng"], "by": "workplace-script" },
-    { "from": ["ok", "resched"], "to": ["go"], "by": "person" },
-    { "from": ["go"], "to": ["blocked"], "by": "workplace-script" },
-    { "from": ["blocked"], "to": ["secured"], "by": "workplace-agent" },
-    { "from": ["blocked", "secured"], "to": ["go"], "by": "workplace-script" },
-    { "from": ["ok", "resched", "ng", "go", "blocked", "secured"], "to": ["candidate"], "by": "person" }
+  "events": [
+    { "id": "propose", "from": ["none"], "to": ["candidate"], "by": "person", "carriers": ["skill:slot-availability"] },
+    { "id": "judge", "from": ["candidate"], "to": ["ok", "resched", "ng"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
+    { "id": "confirm", "from": ["ok", "resched"], "to": ["go"], "by": "person" },
+    { "id": "reserve", "from": ["go"], "to": ["blocked"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
+    { "id": "secure", "from": ["blocked"], "to": ["secured"], "by": "agent", "by_detail": "workplace-agent", "carriers": ["external:workplace-agent"] },
+    { "id": "reopen", "from": ["blocked", "secured"], "to": ["go"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
+    { "id": "withdraw", "from": ["ok", "resched", "ng", "go", "blocked", "secured"], "to": ["candidate"], "by": "person" }
   ]
 }
