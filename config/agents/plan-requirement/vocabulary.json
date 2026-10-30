@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "object": "plan-requirement",
+  "description": "計画の要求項目(要求インベントリの Rn 1 行)の状態と事象の閉語彙。元は config/agents/skills/requirements-inventory/SKILL.md の §2(処分の書き方)・§7(提出前の自己検査)と crates/plan-scope-gate(ExitPlanMode の直前に、処分の無い項目・重複した処分・閉じていないタグを deny する)。本文が書いていない遷移は書かない(承認されなかった計画の項目、タグで閉じた項目の再開は ADR の Consequences に不明として挙げた)。閉じたタグは、項目を列挙した時点で処分として書くので、列挙(listed)から終端へ直接出る。",
+  "initial": "none",
+  "states": [
+    { "id": "listed", "terminal": false, "owner": "agent", "owner_detail": "依頼文と子 Issue から逐語で列挙した。処分が未記載" },
+    { "id": "planned", "terminal": false, "owner": "person", "owner_detail": "「段 N で実装」の処分を書いた計画が、ExitPlanMode の承認を待つ", "shown_by": ["skill:requirements-inventory"] },
+    { "id": "approved", "terminal": false, "owner": "agent", "owner_detail": "計画が承認された。実装を待つ" },
+    { "id": "implemented", "terminal": true },
+    { "id": "blocked_upstream", "terminal": true, "owner_detail": "Blocked-Upstream: 外部にブロックされている" },
+    { "id": "obsolete", "terminal": true, "owner_detail": "Obsolete: 要求が既に無効" },
+    { "id": "user_excluded", "terminal": true, "owner_detail": "User-Excluded: 依頼文で本人が明示的に除外した" }
+  ],
+  "events": [
+    { "id": "enumerate", "from": ["none"], "to": ["listed"], "by": "agent", "carriers": ["skill:requirements-inventory"] },
+    { "id": "plan", "from": ["listed"], "to": ["planned"], "by": "agent", "by_detail": "項目と同じ行に「段 N で実装」を書く", "carriers": ["skill:requirements-inventory"] },
+    { "id": "approve", "from": ["planned"], "to": ["approved"], "by": "person", "by_detail": "ExitPlanMode。処分の無い項目があると gate が deny し、承認の依頼まで進めない", "gates": ["node:plan-scope-gate"] },
+    { "id": "implement", "from": ["approved"], "to": ["implemented"], "by": "agent" },
+    { "id": "block", "from": ["listed"], "to": ["blocked_upstream"], "by": "agent", "by_detail": "Blocked-Upstream: <理由>", "carriers": ["skill:requirements-inventory"] },
+    { "id": "obsolete", "from": ["listed"], "to": ["obsolete"], "by": "agent", "by_detail": "Obsolete: <理由>", "carriers": ["skill:requirements-inventory"] },
+    { "id": "exclude", "from": ["listed"], "to": ["user_excluded"], "by": "agent", "by_detail": "User-Excluded: <理由>。本人が依頼文で除外した文言を書く", "carriers": ["skill:requirements-inventory"] }
+  ]
+}

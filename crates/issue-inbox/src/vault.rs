@@ -686,4 +686,91 @@ mod tests {
         assert_eq!(note.get("status"), Some("open"));
         assert_eq!(note.get("drop_reason"), Some(""));
     }
+
+    /// 気づきの語彙(`config/agents/wrapup-inbox/vocabulary.json`)は実装の記述で、実装を駆動しない。
+    /// 語彙が実装と食い違わないことを、実装の動きから導いた集合と突き合わせて確かめる:
+    /// 状態は `STATUSES`、`set_status` が行き着く先は fix・file・drop の `to`、再発で open に戻る状態は
+    /// `reopen` の `from`、戻らず事象も持たない状態(終端)は `issued` だけ。
+    #[test]
+    fn vocabulary_matches_vault_rules() {
+        const VOCABULARY_JSON: &str =
+            include_str!("../../../config/agents/wrapup-inbox/vocabulary.json");
+        let vocab: Value = serde_json::from_str(VOCABULARY_JSON).unwrap();
+        let strings = |v: &Value| -> Vec<String> {
+            let mut out: Vec<String> = v
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.as_str().unwrap().to_string())
+                .collect();
+            out.sort();
+            out
+        };
+        let event = |id: &str| -> Value {
+            vocab["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["id"] == id)
+                .unwrap_or_else(|| panic!("事象 {id} が語彙に無い"))
+                .clone()
+        };
+
+        // 状態
+        let mut statuses: Vec<String> = STATUSES.iter().map(|s| s.to_string()).collect();
+        statuses.sort();
+        let ids: Vec<Value> = vocab["states"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["id"].clone())
+            .collect();
+        assert_eq!(strings(&Value::Array(ids)), statuses);
+
+        // set_status の行き先(open 以外)は、fix・file・drop の to
+        let mut targets: Vec<String> = ["fix", "file", "drop"]
+            .iter()
+            .flat_map(|id| strings(&event(id)["to"]))
+            .collect();
+        targets.sort();
+        let mut non_open: Vec<String> = statuses.iter().filter(|s| *s != OPEN).cloned().collect();
+        non_open.sort();
+        assert_eq!(targets, non_open);
+
+        // 再発で open に戻る状態(add_item の実際の動き)
+        let mut reopened = Vec::new();
+        for status in STATUSES.iter().filter(|s| **s != OPEN) {
+            let (_d, v) = vault();
+            let g = v.lock().unwrap();
+            let title = format!("T-{status}");
+            add_item(&g, &item(&title, "a", "2026-10-01"), "x").unwrap();
+            set_status(&g, &title, None, status, "https://example.test/1").unwrap();
+            add_item(&g, &item(&title, "b", "2026-10-02"), "x").unwrap();
+            let n = Note::parse(&g.read(&format!("inbox/{title}.md")).unwrap().unwrap());
+            if n.get("status") == Some(OPEN) {
+                reopened.push(status.to_string());
+            }
+        }
+        reopened.sort();
+        let reopen = event("reopen");
+        assert_eq!(strings(&reopen["from"]), reopened);
+        assert_eq!(strings(&reopen["to"]), vec![OPEN.to_string()]);
+
+        // 終端は、再発で戻らない(open でも reopened でもない)状態だけ
+        let mut terminal: Vec<String> = vocab["states"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["terminal"] == true)
+            .map(|s| s["id"].as_str().unwrap().to_string())
+            .collect();
+        terminal.sort();
+        let mut expect: Vec<String> = non_open
+            .into_iter()
+            .filter(|s| !reopened.contains(s))
+            .collect();
+        expect.sort();
+        assert_eq!(terminal, expect);
+        assert_eq!(terminal, vec!["issued".to_string()]);
+    }
 }

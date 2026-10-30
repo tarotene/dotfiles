@@ -1,0 +1,20 @@
+{
+  "concrete": "inbox-finding",
+  "abstract": "awaiting-item",
+  "description": "作業中の気づき(issue-inbox、config/agents/wrapup-inbox/vocabulary.json)の、裁定待ちの項目への具体化。気づきは「裁定済み」を記録しない: 本人の裁定は backlog-cleanup の問いで行い、結果(fixed・issued・dropped)だけが残る。",
+  "states": {
+    "open": "shown",
+    "fixed": "settled",
+    "dropped": "settled",
+    "issued": "handed_off"
+  },
+  "reasons": {
+    "open": "拾った時点で vault のノートになり、backlog-cleanup が再発の多い順に本人へ見せる。拾う(picked)と見せる(shown)を分けて記録しない",
+    "fixed": "直した。再発すると open に戻るので、終端でなく settled(閉じているが再発を待つ)",
+    "dropped": "捨てた。再発すると open に戻るので settled。見送り(declined)の終端ではない",
+    "issued": "Issue にした。以後は Issue が追い、再発しても open に戻らない。別の追跡先への引き継ぎ"
+  },
+  "p1": {
+    "open": { "kind": "notification", "event": "remind", "carrier": "node:session-wrapup-start" }
+  }
+}
