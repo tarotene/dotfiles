@@ -129,6 +129,12 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `crates/issue-inbox/tests/vocab.rs`
 - `flake.nix`
 
+段 4(痕跡による発火・`codify` kind・開き直し):
+
+- `crates/session-retrospective/src/traces.rs`
+- `crates/wrapup-stop-gate/tests/retro_adhoc.rs`
+- `pipeline-map.toml`
+
 段 3(コマンドの形の記録):
 
 - `crates/command-inspection/src/cmd_shape.rs`
