@@ -139,29 +139,45 @@ slot-availability の SKILL.md「発行側の打診」に従う。予約型サ�
 
 ## 5. 当日タイムテーブル・遠征の Calendar dispatch
 
-`day_timetable` の相対時刻の表記は実例がまだ乏しく、決定的パーサ化は
-時期尚早(YAGNI、`docs/agents/music-performance-planning.md` 参照)。以下は
-Claude が対話的に行う手順:
+確定した当日・遠征の予定は、主カレンダーへ `create_event` で直書きしない。
+person-state リポジトリ側の演奏ファイルへ書く PR を出し、CI がそれを一方向に
+専用の射影カレンダーへ反映する。主カレンダーは本人の手入力の受付箱で、直書きして
+よいのは候補一覧型の仮押さえの `[hold] ` だけ(規則は `human-task-scheduling` の
+「何をするか」手順 4 と同じ。`slot-availability` の仮押さえとも矛盾しない — あちらは
+複数の候補を出して相手の裁定を待つ間の仮押さえで、当日・遠征の確定予定はこれに当たらない)。
+
+演奏ファイルに書く形(射影は `start` が `dateTime` で確定してから行う):
+
+- `day_timetable[]`: `key`(kebab-case、ファイル内で一意)・`relative_time`
+  (本番の `start` からの ISO 8601 の期間。前は負、例 `-PT2H`)・`activity`、
+  任意で `duration`(既定 `PT30M`)。時計の時刻は書かない — 射影が `start` から
+  導くので、本番の開始が動けば自動でずれる。
+- `travel.legs[]`: `key`・`mode`・`segment` に加え、確定した `depart`・`arrive`
+  (`{dateTime, timeZone}`)。両方が書かれた区間だけが射影される。
+- `calendar_event`(カレンダー予定 ID へのリンク)の欄は廃止された。書かない。
+
+資料の相対時刻の表記を ISO 8601 の期間へ直すところは実例がまだ乏しく、決定的
+パーサ化は時期尚早(YAGNI、`docs/agents/music-performance-planning.md` 参照)。
+以下は Claude が対話的に行う手順:
 
 1. 対象 performance ファイルを JSON 化し、`day_timetable`・`travel` の
-   中身を読む。`★ TODO` のプレースホルダが残っている項目は、Calendar へ
-   の登録対象から除外し、埋まっていないことを本人に伝える。
+   中身を読む。`★ TODO` のプレースホルダが残っている項目は、書き込み対象から
+   除外し、埋まっていないことを本人に伝える。
 2. 本番の開始時刻(トップレベル `start` が確定していればそれ、まだ
-   未確定なら本人に確認する)を基準に、`day_timetable` の各エントリの
-   相対時刻を絶対時刻へ変換する。
-3. `travel.legs` の各区間について、確定済みの日時があればそのまま、
-   無ければ「要確定」として一覧に残す(勝手に時刻を仮定しない)。
-   `travel.lodging` は「6. 付随作業」の `lodging-decision`/
-   `lodging-booking` が完了しているかどうかで扱いを分ける(未完了なら
-   Calendar への登録対象にしない)。
-4. 組み立てた Calendar 下書き予定の一覧(件名・開始・終了・説明)を
-   提示し、AskUserQuestion で承認を取る。
-5. 承認後、`create_event` で登録する。送り先は主カレンダー
-   (`tarotene@gmail.com`)に一本化する — 「Claude プロジェクト管理」
-   カレンダーは新規予定の送付先として使わない(person-state リポジトリ
-   側の裁定、`docs/agents/music-performance-planning.md` 参照)。
-6. `travel.legs[]`/`travel.lodging` に対応する確定情報を Edit ツールで
-   書き戻す(TOML 書き込みの分担は上記「前提」のとおり)。
+   未確定なら本人に確認する)を基準に、資料の項目を `key`・`relative_time`・
+   `activity`(・`duration`)に直す。`start` が `date` のままなら、
+   `day_timetable` は射影されないことを本人に伝える。
+3. `travel.legs` の各区間について、確定済みの日時があれば `depart`/`arrive`
+   として書く。無ければ「要確定」として一覧に残す(勝手に時刻を仮定しない)。
+   `travel.lodging` は射影されない — 「6. 付随作業」の `lodging-decision`/
+   `lodging-booking` で追う。
+4. 追加・更新するエントリ(`activity`/`segment` と、導かれる開始・終了)の
+   一覧を提示し、AskUserQuestion で承認を取る。
+5. 承認後、Edit ツールで演奏ファイルへ書き(TOML 書き込みの分担は上記「前提」の
+   とおり)、PR を出す。書き込み先は予定データであり、主カレンダーにも
+   「Claude プロジェクト管理」カレンダーにも `create_event` しない。
+6. 確定情報の書き戻しは、遠征の区間なら `depart`/`arrive`、宿泊なら
+   `travel.lodging.name` に Edit ツールで行う(手順 5 の PR に含める)。
 
 ## 6. 付随作業(会場確保・ドレスコード・宿泊)の確認
 
