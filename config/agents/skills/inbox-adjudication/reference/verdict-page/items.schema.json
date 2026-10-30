@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "メール裁定ページの入力(その回の項目の表)",
+  "description": "build.sh --data に渡す JSON。テンプレートの差し込み点 DATA にそのまま入る。ページの形式(テンプレートと保存先)が変わったら format_version を上げる(FORMAT.md)。items[].id の一意性と items[].key の一意性は、JSON Schema では書けないので build.sh が検査する。保存先の形は verdicts.schema.json。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "run_label", "items"],
+  "properties": {
+    "format_version": {
+      "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
+      "const": 2
+    },
+    "run_label": {
+      "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
+      "type": "string",
+      "minLength": 1
+    },
+    "alert": {
+      "description": "ページ上部の注意。省くと出ない。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "body"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "body": { "type": "string" }
+      }
+    },
+    "items": {
+      "description": "判断の表。表示順に並べる。",
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "drafts": {
+      "description": "Gmail の外の媒体の返信の下書き。省くと下書きの節が出ない。",
+      "type": "array",
+      "items": { "$ref": "#/$defs/draft" }
+    }
+  },
+  "$defs": {
+    "key": {
+      "description": "<媒体>:<スレッド>/<受信>。媒体は gmail|linkedin|lapras|none。スレッドと受信は [A-Za-z0-9_=-]+。保存先の文書 id は、この鍵の : と / を . に換えたもの。",
+      "type": "string",
+      "pattern": "^(gmail|linkedin|lapras|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "key", "when", "title", "from", "rec", "why"],
+      "properties": {
+        "id": {
+          "description": "ページ内で項目を指す短い名前(DOM の id に使う)。items 内で一意。",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "key": { "$ref": "#/$defs/key" },
+        "when": {
+          "description": "期限や急ぎ度の表示文字列。",
+          "type": "string",
+          "minLength": 1
+        },
+        "when_class": {
+          "description": "when の見た目の区分。urgent=赤、near=橙、空または省略=目立たせない。",
+          "enum": ["urgent", "near", ""]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "from": { "description": "差出人の種類や組織名(アドレスは書かない)。", "type": "string" },
+        "rec": { "description": "推奨。", "type": "string" },
+        "why": { "description": "根拠(スレッドの日付と要旨)。", "type": "string" }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "note", "key", "text"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "key": { "$ref": "#/$defs/key" },
+        "text": { "description": "下書き本文。ページ上で本人が直せる。", "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format_version": 2,
+  "run_label": "</script><script>alert(1)</script>",
+  "alert": {
+    "title": "<!-- コメント開始のような文字列",
+    "body": "&amp; \\ \" ' $& __DATA__ __FORMAT_VERSION__   </SCRIPT >"
+  },
+  "items": [
+    {
+      "id": "x1",
+      "key": "none:thread0009/msg0009",
+      "when": "</script>",
+      "title": "</script><!-- 件名に script の閉じタグを含む架空の項目",
+      "from": "<b>架空</b>",
+      "rec": "見送る",
+      "why": "`</script>` と `<!--` と `-->` を含む、架空の根拠。"
+    }
+  ],
+  "drafts": [
+    {
+      "name": "</script>",
+      "note": "<!--",
+      "key": "none:thread0009/msg0009",
+      "text": "</script><script>document.title = 'x'</script>"
+    }
+  ]
+}
