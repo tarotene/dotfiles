@@ -1,4 +1,4 @@
-# ADR-0000 — 開発の流れの対象(計画・PR・Issue・WIP の PR)の語彙を起こし、skill を担い手・前提として載せる
+# ADR-1301 — 開発の流れの対象(計画・PR・Issue・WIP の PR)の語彙を起こし、skill を担い手・前提として載せる
 
 - Status: Accepted
 - Date: 2026-10-31
