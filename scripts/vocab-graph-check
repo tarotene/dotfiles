@@ -33,7 +33,7 @@
 #       CI の必須の job にはまだ載せていない(ADR-1293 の D5)。
 #   vocab-graph-check --refinements [--root <ルート>] [<対応表.json>...]
 #       語彙の具体化の対応表(config/agents/vocabulary/refinements/*.json。省略時は全部)を検査する
-#       (ADR-0000)。対応表は具体の語彙(object で指す)を抽象の語彙(awaiting-item)へ写す。
+#       (ADR-1297)。対応表は具体の語彙(object で指す)を抽象の語彙(awaiting-item)へ写す。
 #         schema        refinement.schema.json に適合する
 #         参照          concrete・abstract が、<root> の語彙の object に実在する
 #         写像          具体の全状態が states に載り、写り先が抽象の状態である

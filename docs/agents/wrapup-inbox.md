@@ -230,7 +230,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
 ## 状態と再開の規則(語彙 JSON)
 
-気づきの状態と事象は `config/agents/wrapup-inbox/vocabulary.json`(`object: "inbox-finding"`)に書く(ADR-0000、書式は
+気づきの状態と事象は `config/agents/wrapup-inbox/vocabulary.json`(`object: "inbox-finding"`)に書く(ADR-1297、書式は
 [`state-vocabulary.md`](state-vocabulary.md))。語彙は実装の記述で、実装を駆動しない。コードの挙動は変えていない。
 
 | 状態 | 終端 | 意味 |

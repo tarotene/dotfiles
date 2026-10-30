@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "refinement.schema.json",
   "title": "語彙の具体化の対応表",
-  "description": "具体の語彙(object で指す)を、抽象の語彙(awaiting-item など)へ写す対応表(ADR-0000)。scripts/vocab-graph-check --refinements が、この形への適合と、写像が準同型であること(具体の各事象が抽象の事象か自己遷移に写る)・性質 P1(抽象の owner が person の状態に写る具体の状態ごとに、放置への手段がある)・P2(同じ状態に shown_by がある)を検査する。形で表せない規則はグラフ検査が見る。",
+  "description": "具体の語彙(object で指す)を、抽象の語彙(awaiting-item など)へ写す対応表(ADR-1297)。scripts/vocab-graph-check --refinements が、この形への適合と、写像が準同型であること(具体の各事象が抽象の事象か自己遷移に写る)・性質 P1(抽象の owner が person の状態に写る具体の状態ごとに、放置への手段がある)・P2(同じ状態に shown_by がある)を検査する。形で表せない規則はグラフ検査が見る。",
   "type": "object",
   "required": ["concrete", "abstract", "description", "states", "p1"],
   "additionalProperties": false,

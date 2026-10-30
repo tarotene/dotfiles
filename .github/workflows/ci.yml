@@ -348,7 +348,7 @@ jobs:
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
         run: scripts/vocab-graph-check --all
-      # 具体化の対応表(ADR-0000): 各系統の語彙が「裁定待ちの項目」の抽象の遷移表に写ること(準同型)と、
+      # 具体化の対応表(ADR-1297): 各系統の語彙が「裁定待ちの項目」の抽象の遷移表に写ること(準同型)と、
       # 性質 P1(放置への手段)・P2(本人に見せる担い手)を満たすこと。
       - name: vocab-graph-check (refinements)
         run: scripts/vocab-graph-check --refinements

@@ -72,7 +72,7 @@ scripts/vocab-graph-check --selftest               # fixtures/ の正例・負�
 「拾う → 本人にまとめて見せる → 本人が裁定 → 適用する/見送る/失効する」という同じ形の流れが、別々の語彙で 4 つの対象にある。
 語彙は統一せず、抽象の遷移表を 1 つ定め(`config/agents/vocabulary/awaiting-item.json`、`object: "awaiting-item"`)、各対象は
 自分の語彙の状態を抽象の状態へ写す対応表(`config/agents/vocabulary/refinements/<対象>.json`、形は `refinement.schema.json`)を持つ
-(決定の記録: ADR-0000)。
+(決定の記録: ADR-1297)。
 
 抽象の状態は、`picked`(拾った)・`shown`(見せた。owner が person)・`decided`(裁定済み)・`settled`(適用または見送りのあと、
 再発を待つ。非終端)・`applied`(適用)・`declined`(見送り)・`lapsed`(失効)・`handed_off`(別の追跡先へ移した)。
