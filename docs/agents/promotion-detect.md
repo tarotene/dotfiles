@@ -21,7 +21,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
 3. **降格(見直し候補・滞留)**: 既知の gate の skip ファイル
    (`~/.claude/<gate>/skip`)が30日以上存在し続けているもの。
 4. **降格(見直し候補・多発)**: `~/.local/state/claude/gate-events.jsonl`
-   (新規 Rust gate の deny/skip イベント、`hook_io::gate_event` が記録)
+   (新規 Rust gate の deny/skip イベント、`agent_session::gate_event` が記録)
    で、ある gate の skip 回数が3件以上のもの。
 
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
@@ -31,11 +31,13 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
 ## 出口は wrap-up inbox(公開 Issue 化は人間レビュー経由)
 
 候補は `issue-inbox --check-dup` で重複を避けたうえで
-`--add` により dotfiles 自身の wrap-up inbox
-(`~/.local/state/claude/wrapup/github-com-tarotene-dotfiles.jsonl`)に
-1候補1行で流す。新しい出口は作らず、既存の「気付き → inbox → Stop hook /
-`backlog-cleanup` → Issue 起票」経路をそのまま再利用する — 候補の文面は
-判断を含むため、公開 Issue 化は必ず人間のレビューを経る。
+`--add` により dotfiles 自身の wrap-up inbox に 1 候補 1 件で流す。
+vault のある機体では vault の `inbox/` のノート(同じ題なら行が積まれる)、
+vault の無い機体では `~/.local/state/claude/wrapup/github-com-tarotene-dotfiles.jsonl`
+の 1 行になる(ADR-1136)。新しい出口は作らず、既存の「気付き → inbox →
+`/backlog-cleanup`」経路をそのまま再利用する。裁定は `/backlog-cleanup` だけが
+行い、Issue にするのは本人が選んだものだけである — 候補の文面は判断を含むため、
+公開 Issue 化は必ず人間のレビューを経る。Stop hook は Issue 化を促さない。
 
 ## なぜ段階(prose/scripted/gated)を宣言させないか
 

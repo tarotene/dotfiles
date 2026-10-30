@@ -37,5 +37,5 @@ PR を作ったセッションでは、最初の Stop で `session-wrapup stop` 
 - **詰まり(friction)**: 手戻り・待ち・迷い。
 - **gate 発火(gate-hit)**: deny や block に当たった事実。手順書の「events」に出る id を
   `evidence` にそのまま書く(書かないと完了にならない)。
-- 同じ内容が既に Issue になっていてもよい。重複は再発コメントとして積まれ、ADR-543 の
-  昇格判断の材料になる。
+- 同じ内容が既に Inbox のノートになっていてもよい。同じ題の気付きはノートの行として積まれ、
+  行数が ADR-543 の昇格判断の材料になる(`issue-inbox --list-open` の `count`、ADR-1136)。
