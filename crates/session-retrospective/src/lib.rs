@@ -8,6 +8,8 @@
 //! 全行は、`--retro-close` が台帳から vault の `retro/` のノートに決定論的に書き出す
 //! (PR コメントは投稿しない。ADR-1136)。設計と根拠は docs/agents/retro.md。
 
+pub mod traces;
+
 use agent_session::SessionLedger;
 use issue_inbox::codify::Vocabulary;
 use issue_inbox::{
@@ -26,10 +28,11 @@ const KINDS: &[&str] = &[
     "insight",
     "friction",
     "gate-hit",
+    "codify",
     "none",
     "skipped",
 ];
-const NEEDS_MECHANISM: &[&str] = &["user-correction", "friction", "gate-hit"];
+const NEEDS_MECHANISM: &[&str] = &["user-correction", "friction", "gate-hit", "codify"];
 
 fn retro_dir() -> PathBuf {
     if let Some(d) = env_nonempty("WRAPUP_RETRO_DIR") {
@@ -392,6 +395,7 @@ pub fn events(sid: &str) -> Vec<(String, String)> {
             format!("feedback memory updated in this session: {p}"),
         ));
     }
+    out.extend(traces::collect(sid).events(Vocabulary::get()));
     out
 }
 
@@ -410,14 +414,18 @@ pub fn uncovered(sid: &str, rows: &[Value]) -> Vec<(String, String)> {
     }
     events(sid)
         .into_iter()
-        .filter(|(id, _)| {
-            !rows.iter().any(|r| {
-                r["evidence"]
-                    .as_str()
-                    .is_some_and(|e| e.contains(id.as_str()))
-            })
-        })
+        .filter(|(id, _)| !covers(rows, id))
         .collect()
+}
+
+/// 行のどれかが、この出来事の id を `evidence` に引いているか。その場のコードの痕跡(`adhoc:*`)は、
+/// 「決定論化できないか」を問う `codify` の行でしか消し込めない。
+fn covers(rows: &[Value], id: &str) -> bool {
+    let only_codify = id.starts_with("adhoc:");
+    rows.iter().any(|r| {
+        (!only_codify || r["kind"] == "codify")
+            && r["evidence"].as_str().is_some_and(|e| e.contains(id))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -516,15 +524,63 @@ fn read_count(sid: &str) -> u64 {
         .unwrap_or(0)
 }
 
+/// 閉じた retro を開き直せる回数(1 セッションあたり)。
+pub const MAX_REOPENS: u64 = 2;
+
+/// 閉じた後に、まだ行に引かれていない `adhoc:*` の痕跡があるか。`skipped` の行があれば免除。
+fn pending_adhoc(sid: &str, rows: &[Value]) -> bool {
+    if rows.iter().any(|r| r["kind"] == "skipped") {
+        return false;
+    }
+    traces::collect(sid)
+        .events(Vocabulary::get())
+        .iter()
+        .any(|(id, _)| !covers(rows, id))
+}
+
+/// 閉じた retro を、新しい痕跡の分だけ開き直す(上限 [`MAX_REOPENS`])。「作業の終わり」を機械で
+/// 推測しない(#854)ので、痕跡は最初の Stop で拾い、その後に書いたコードはここで拾う。
+fn reopen(sid: &str) -> bool {
+    if !pending_adhoc(sid, &read_rows(sid)) {
+        return false;
+    }
+    let n = fs::read_to_string(marker(sid, "reopen"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    if n >= MAX_REOPENS {
+        return false;
+    }
+    let _ = fs::write(marker(sid, "reopen"), (n + 1).to_string());
+    for ext in ["closed", "escalated", "count"] {
+        let _ = fs::remove_file(marker(sid, ext));
+    }
+    true
+}
+
 /// Stop 時の判定。block するなら指示文を返す。`stop_hook_active` では抜けない
 /// (複数往復が要るので pr-gate と同じカウンタ方式)。判定不能は黙って通す。
+///
+/// 発火は、このセッションで PR を作った、またはその場で書いたコードの痕跡がしきい値を超えた、のどちらか。
+/// 検査は軽い順(閉じた印 → PR の台帳 → scratchpad とハッシュのログ → `gh pr list`)に行う。
 pub fn stop_check(self_path: &str, sid: &str, project: &str, transcript: &str) -> Option<String> {
     if sid.is_empty() || sid == "unknown" || project.is_empty() {
         return None;
     }
-    if marker(sid, "closed").is_file() || !session_pr_created(sid, project) {
+    let why = if marker(sid, "closed").is_file() {
+        if !reopen(sid) {
+            return None;
+        }
+        "This session wrote more ad-hoc code after the retrospective was closed"
+    } else if ledger_pr(sid).is_some() {
+        "This session created a PR"
+    } else if traces::collect(sid).fires(Vocabulary::get()) {
+        "This session wrote ad-hoc code (a script or a one-off command worth asking \"can this be code?\")"
+    } else if branch_pr(sid, project).is_some() {
+        "This session created a PR"
+    } else {
         return None;
-    }
+    };
     if !transcript.is_empty() {
         let _ = fs::create_dir_all(retro_dir());
         let _ = fs::write(marker(sid, "transcript"), transcript);
@@ -559,7 +615,7 @@ pub fn stop_check(self_path: &str, sid: &str, project: &str, transcript: &str) -
     );
     Some(format!(
         "<hook-directive source=\"wrapup-stop-gate\" kind=\"retro\">\n\
-         This session created a PR, so the end-of-work retrospective is due ({status}).\n\
+         {why}, so the end-of-work retrospective is due ({status}).\n\
          Run `{cmd}` and follow its output.\n\
          </hook-directive>"
     ))
@@ -650,6 +706,12 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
        Look outside (nixpkgs, an upstream feature) once, and only when the answer would be 自前.
        A level other than the signal's default needs `level_reason`.
 {signal_guide}     - The tables with examples: docs/agents/codify-signals.md.
+     - kind codify: the `adhoc:*` events are traces of code written on the spot (a
+       scratchpad script, a one-off command run again, an interpreter one-liner). Ask of
+       each: could this run the same way every time (a tool, a gate, a declaration)?
+       Cite its id in `evidence`. If it is not worth codifying, still add a codify row
+       with mechanism none:<reason> (it needs judgment, it was one-off, ...). Only a
+       codify row clears an `adhoc:*` event.
      - disposition "inbox" also appends the row to the wrap-up inbox (a note in
        the user's vault, or a jsonl line on a machine without one). No Issue is
        filed for it: the user adjudicates it later with /backlog-cleanup. Do not
@@ -703,6 +765,7 @@ const KIND_ORDER: &[&str] = &[
     "user-correction",
     "friction",
     "gate-hit",
+    "codify",
     "insight",
     "none",
     "skipped",
@@ -1034,7 +1097,7 @@ mod tests {
             text.contains("eliminate|unrepresentable|gate|tool|prose"),
             "{text}"
         );
-        assert!(text.contains("user-correction|insight|friction|gate-hit|none|skipped"));
+        assert!(text.contains("user-correction|insight|friction|gate-hit|codify|none|skipped"));
     }
 
     #[test]

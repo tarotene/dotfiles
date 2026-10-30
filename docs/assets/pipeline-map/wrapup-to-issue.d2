@@ -270,6 +270,11 @@ l_external: "Sessions / services / state" {
     shape: cylinder
     style.stroke-dash: 4
   }
+  n_claude_scratchpad: "session scratchpad (per-session dir)" {
+    class: s_store
+    shape: cylinder
+    style.stroke-dash: 4
+  }
   n_obsidian_vault: "Obsidian vault" {
     class: s_store
     shape: cylinder
@@ -334,6 +339,12 @@ l_manual.n_session_retrospective -> l_external.n_obsidian_vault: "retro/ note" {
   class: e_file
 }
 n_agent_session.l_tool_call.n_cmd_hash_log -> l_timer.n_promotion_detect: "command hashes" {
+  class: e_file
+}
+n_agent_session.l_tool_call.n_cmd_hash_log -> l_manual.n_session_retrospective: "session hashes and shapes" {
+  class: e_file
+}
+l_external.n_claude_scratchpad -> l_manual.n_session_retrospective: "ad-hoc code files" {
   class: e_file
 }
 l_timer.n_promotion_detect -> l_external.n_wrapup_inbox: "promotion candidates" {
