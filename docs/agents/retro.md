@@ -59,7 +59,7 @@ user-correction は feedback(ユーザーが方針・結果を直した発言)�
 `none` と `skipped` は `disposition: none:<理由>` が必須。`skipped` は `quote`(ユーザーの
 発言の逐語)も必須。`existing:<名前>` は、その名前が `what` に書かれていなければ受け付けない。
 段・兆候・既存手段の意味と事例集は [codify-signals](codify-signals.md)(語彙の正本は
-`config/agents/codify-signals/vocabulary.json`、ADR-0000)。
+`config/agents/codify-signals/vocabulary.json`、ADR-1276)。
 
 ## 状態ファイル
 

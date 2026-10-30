@@ -4,7 +4,7 @@
 次の 3 つの閉じた語で記録する。何をどの手段で決定論化するかの嗅覚は、この語彙を実績で直して磨く。
 語彙の正本は [`config/agents/codify-signals/vocabulary.json`](../../config/agents/codify-signals/vocabulary.json)
 1 つで、retro の手順の文・行の検証・下の表・日次の較正は、すべてそこから出る(複写しない)。
-決定の理由と代替案は ADR-0000(仮番号。PR で改番する)。
+決定の理由と代替案は ADR-1276(仮番号。PR で改番する)。
 
 ## 3 つの語
 

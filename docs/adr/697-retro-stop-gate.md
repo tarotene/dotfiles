@@ -108,7 +108,7 @@ vault を宣言していない機体では、台帳に残したまま完了に�
 - `crates/wrapup-stop-gate/tests/retro.rs`
 - `config/agents/skills/retro/SKILL.md`
 
-## Amendment (2026-10-30 — ADR-0000)
+## Amendment (2026-10-30 — ADR-1276)
 
 D2 の行の語彙を改める。`mechanism` は `prose | script | gate | existing:<名前> | none:<理由>` から
 `eliminate | unrepresentable | gate | tool | prose | existing:<名前> | none:<理由>` になる(旧 `script` は `tool`。書き込みは
