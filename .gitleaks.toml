@@ -18,3 +18,16 @@ regexTarget = "line"
 regexes = [
   '''programs\.git\.signing\.key = "[A-F0-9]{40}"''',
 ]
+
+[[allowlists]]
+description = "worklog slot test fixtures: a `\"key\": \"<slug>-YYYYMMDD\"` JSON literal is a fictional slot id, not a secret"
+# generic-api-key matches the JSON field name `key` followed by a quoted slug. Match only the
+# fictional ids the slot tests use (`example-slot-…`, `other-slot-…`), in the test file itself.
+condition = "AND"
+paths = [
+  '''crates/worklog/tests/cli\.rs''',
+]
+regexTarget = "line"
+regexes = [
+  '''"key": "(example|other)-slot-[0-9]{8}"''',
+]
