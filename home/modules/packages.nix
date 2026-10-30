@@ -370,7 +370,7 @@
   # dotfiles/rulesets/*.json の複写。単一正本 > 複写+同期)。
   #
   # Rust 化(ADR-0024、#414)後の実体は crates/apply-rulesets の
-  # `apply-rulesets` だが、各 *-repo-governance skill の seed.sh(配布テンプレート)
+  # `apply-rulesets` だが、repo-governance skill の各 profile の seed.sh(配布テンプレート)
   # と docs が PATH 上の `apply-rulesets.sh` という名前を参照している
   # (`GOVERNANCE_APPLY_RULESETS_BIN` の既定値)ので、配備先の名前は旧名の
   # まま保つ。配布先の bash を書き換えずに済ませるための互換名。

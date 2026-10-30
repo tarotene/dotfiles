@@ -22,6 +22,9 @@
 | wrapup-chores | backlog-cleanup |
 | skill-gardening | agent-tooling-authoring |
 | external-call-scheduling | human-task-scheduling |
+| rust-repo-governance | repo-governance |
+| typst-repo-governance | repo-governance |
+| astro-site-governance | repo-governance |
 
 `wrapup-stop-gate`・`wrapup-session-start` は `session-wrapup stop|start` と責務別の三つの CLI へ移る。
 `hook-io`・`guard-core` の移動先は[ライブラリ一覧](agent-libraries.md)を参照する。
@@ -62,7 +65,7 @@ hook 登録は既存の managed-hooks 所有記録で reconcile し、前回の�
 参照検索と再検証の入口:
 
 ```sh
-rg -n 'copilot-model-bump|desk-start|esa-index|pr-confirm-guard|performance-planning|talk-script|scope-inventory|selection-grounding|sign-prewarm|settings-reconcile|worktree-fresh-base|git-checkout-freshness|wrapup-chores|skill-gardening|external-call-scheduling|wrapup-stop-gate|wrapup-session-start' home config crates docs
+rg -n 'copilot-model-bump|desk-start|esa-index|pr-confirm-guard|performance-planning|talk-script|scope-inventory|selection-grounding|sign-prewarm|settings-reconcile|worktree-fresh-base|git-checkout-freshness|wrapup-chores|skill-gardening|external-call-scheduling|rust-repo-governance|typst-repo-governance|astro-site-governance|wrapup-stop-gate|wrapup-session-start' home config crates docs
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
@@ -146,7 +149,6 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 
 | 対象 | 維持理由 |
 |---|---|
-| `astro-site-governance` | Astro サイトのリポジトリ規約を整える。 |
 | `browser-login-handoff` | ブラウザのログインを本人へ引き継ぐ。フォーム操作は共有参照へ分離。 |
 | `claude-routines` | Claude の routine 宣言と運用を扱う。 |
 | `daily-desk` | 朝の作業を順に進める入口。通知役の daily-desk-reminder と区別。 |
@@ -163,13 +165,12 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `pr-description` | PR 本文の記述手順を表す。 |
 | `precedent-grounding` | 設計判断を先行例と対比する。技術選定以外も対象。 |
 | `repo-charter` | リポジトリの目的と責務を決める。 |
+| `repo-governance` | Rust・Typst・Astro サイトのリポジトリ規約を、言語ごとの profile で整える。旧 3 名は互換入口。 |
 | `retro` | セッションの振り返り手順。session-retrospective は実装側。 |
-| `rust-repo-governance` | Rust リポジトリの規約を整える。 |
 | `slot-availability` | 予定の空き枠を判定する。 |
 | `stacked-pr` | PR のチェーン運用を表す。 |
 | `test-grounding` | テストの根拠を確かめる。 |
 | `tracking-issue` | 追跡用 Issue の構成と運用を表す。 |
-| `typst-repo-governance` | Typst リポジトリの規約を整える。 |
 | `venue-search` | 会場探しの手順を表す。 |
 | `writing-style` | 文体規約の正本を参照する。 |
 

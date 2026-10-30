@@ -5,7 +5,7 @@
 //!
 //! 設計と根拠(ADR-503):
 //! required_status_checks の正本を「対象リポジトリの外(このリポジトリの
-//! `*-repo-governance` skill テンプレート)」に置いていたことが telepath#243 を
+//! `repo-governance` skill テンプレート)」に置いていたことが telepath#243 を
 //! 含む複数リポジトリの BLOCKED 事故の直接原因だった — テンプレートの required
 //! context が対象リポジトリの実際のジョブ名と同じ PR で編集される保証が無い
 //! ため。
@@ -300,7 +300,7 @@ fn load_declarations(
             names_of(&missing)
         );
         eprintln!(
-            "  seed it first (copy-files.sh of the matching *-repo-governance skill, or copy"
+            "  seed it first (copy-files.sh of the matching repo-governance profile, or copy"
         );
         eprintln!("  .github/rulesets/ by hand), then re-run.");
         return Err(3);

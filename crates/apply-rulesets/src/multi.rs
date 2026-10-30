@@ -4,7 +4,7 @@
 //! `scripts/github-rulesets-apply` の Rust 移植(ADR-0024、#414)。
 //!
 //! ADR-503 以前は、対象リポジトリの「型」(rust/typst/astro/core/dotfiles)を引数に
-//! 取り、型ごとに別の apply-rulesets.sh(`*-repo-governance` skill 側、
+//! 取り、型ごとに別の apply-rulesets.sh(`repo-governance` skill 側、
 //! プレースホルダ置換入り)を呼び分ける 5 型構成だった。正本を対象リポジトリ自身の
 //! `.github/rulesets/*.json` に一本化した結果、型を問わず同じ `apply-rulesets` を
 //! 呼べば足りる(D4「還元」)。

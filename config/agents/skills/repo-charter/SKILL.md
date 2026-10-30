@@ -382,10 +382,10 @@ ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `rep
 内部で呼ぶ個々のコマンドで、スクリプトが失敗したときのフォールバック手順でもある。
 required status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
 一本化されている(`apply-rulesets.sh` は型を引数に取らない)。リポジトリの
-型が rust/typst/astro のいずれかで該当 governance skill を持つ場合:
+型が rust/typst/astro のいずれかで `repo-governance` に該当する profile を持つ場合:
 
 ```bash
-~/.claude/skills/<rust-repo-governance|typst-repo-governance|astro-site-governance>/scripts/seed.sh \
+~/.claude/skills/repo-governance/<rust|typst|astro-site>/scripts/seed.sh \
   --owner <owner> --repo <repo> --dest <ローカルの checkout パス> [エコシステム固有オプション]
 ```
 
@@ -394,7 +394,7 @@ apply を両方行う。まだ CI が 1 度も走っていないため apply は
 `--unverified-contexts` で行われる — CI が 1 回走った後、
 `apply-rulesets.sh <owner>/<repo> --reconcile` で検証付きに切り替える。)
 
-いずれの governance skill にも属さない場合(`core` 型、#337)は、rust/typst/
+いずれの `repo-governance` profile にも属さない場合(`core` 型、#337)は、rust/typst/
 astro の `seed.sh` と同じ呼び出し順(settings → files → rulesets)で
 `apply-repo-settings.sh` を先に呼ぶ(この呼び出しを省くと settings ドメイン
 が drift したまま残る — ADR-0013 Amendment 2026-09-29 の実例参照):
