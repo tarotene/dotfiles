@@ -472,6 +472,11 @@ jobs:
       - name: slot-hit.sh --selftest
         run: bash ./config/agents/skills/slot-availability/scripts/slot-hit.sh --selftest
 
+      # メール裁定ページの生成器(inbox-adjudication の reference/verdict-page)。bash + jq で、
+      # 生成物の script の構文検査にだけ node を使う(ubuntu-latest に同梱)。ネットワーク不使用。
+      - name: verdict-page build.sh --selftest
+        run: bash ./config/agents/skills/inbox-adjudication/reference/verdict-page/build.sh --selftest
+
       # performance-hub / writing-style-hub / detach-open are Rust now (#414,
       # ADR-0024 Stage 4e, crates/hub-resolve and crates/detach-open); their
       # former --selftest cases run as `cargo test --workspace` in the rust job.

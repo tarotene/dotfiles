@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "メール裁定ページの保存先(db)の文書",
+  "description": "ページが db に書く文書は 2 種類だけ。(1) コレクション verdicts の文書(verdictDoc)。文書 id(docId)は key の : と / を . に換えたもの(例: gmail:AbC_1/dEf-2 は gmail.AbC_1.dEf-2)。key は媒体・スレッド・受信の文字種を [A-Za-z0-9_=-] に限るので、この換えは一対一で、衝突しない。(2) 文書 guidance/standing(guidanceDoc)。保存するのは鍵と裁定の語とメモだけで、メールの要旨や本文は db に入れない。読む側は、verdict が空文字の文書を裁定として読まない。note の無い古い文書も読める。形を変えるときは FORMAT.md に従い、format_version を上げる。",
+  "oneOf": [
+    { "$ref": "#/$defs/verdictDoc" },
+    { "$ref": "#/$defs/guidanceDoc" }
+  ],
+  "$defs": {
+    "at": {
+      "description": "ISO 8601 の日時(ブラウザの Date.prototype.toISOString の出力。例 2026-01-02T03:04:05.678Z)。",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "verdictDoc": {
+      "description": "コレクション verdicts の文書。docId は key の : と / を . に換えたもの。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "verdict", "at"],
+      "properties": {
+        "key": {
+          "description": "<媒体>:<スレッド>/<受信>。items.schema.json の key と同じ形。",
+          "type": "string",
+          "pattern": "^(gmail|linkedin|lapras|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
+        },
+        "verdict": {
+          "description": "decide=対応する、pass=見送る、later=あとで。空文字は、メモだけが書かれて裁定が未選択の文書で、裁定として読まない。",
+          "enum": ["decide", "pass", "later", ""]
+        },
+        "note": {
+          "description": "この裁定の理由や、次から変えてほしいこと(任意。無い古い文書も読める)。最大 1000 文字。",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "at": { "$ref": "#/$defs/at" }
+      }
+    },
+    "guidanceDoc": {
+      "description": "文書 guidance/standing。今後の裁定へのフィードバック(全体向け)。最大 2000 文字。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "at"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 2000 },
+        "at": { "$ref": "#/$defs/at" }
+      }
+    }
+  }
+}
