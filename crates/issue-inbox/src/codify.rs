@@ -259,7 +259,7 @@ impl Vocabulary {
     /// 段を上位から下位の順に並べた id(`eliminate > … > prose`)。
     pub fn levels_desc(&self) -> Vec<&Level> {
         let mut v: Vec<&Level> = self.levels.iter().collect();
-        v.sort_by(|a, b| b.rank.cmp(&a.rank));
+        v.sort_by_key(|l| std::cmp::Reverse(l.rank));
         v
     }
 
