@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "refinement.schema.json",
+  "title": "語彙の具体化の対応表",
+  "description": "具体の語彙(object で指す)を、抽象の語彙(awaiting-item など)へ写す対応表(ADR-1297)。scripts/vocab-graph-check --refinements が、この形への適合と、写像が準同型であること(具体の各事象が抽象の事象か自己遷移に写る)・性質 P1(抽象の owner が person の状態に写る具体の状態ごとに、放置への手段がある)・P2(同じ状態に shown_by がある)を検査する。形で表せない規則はグラフ検査が見る。",
+  "type": "object",
+  "required": ["concrete", "abstract", "description", "states", "p1"],
+  "additionalProperties": false,
+  "properties": {
+    "concrete": { "$ref": "#/$defs/identifier", "description": "具体の語彙の object。" },
+    "abstract": { "$ref": "#/$defs/identifier", "description": "抽象の語彙の object。" },
+    "description": { "type": "string", "minLength": 1 },
+    "states": {
+      "type": "object",
+      "description": "具体の状態 id → 抽象の状態 id。具体の全状態を写す。",
+      "additionalProperties": { "$ref": "#/$defs/identifier" }
+    },
+    "reasons": {
+      "type": "object",
+      "description": "対応づけの理由。自明でない対応(別の追跡先へ移した、など)に書く。",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "p1": {
+      "type": "object",
+      "description": "性質 P1 の手段。抽象の owner が person の状態に写る具体の状態 id をキーにする。",
+      "additionalProperties": { "$ref": "#/$defs/p1entry" }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "本人の入力(裁定ページの選択など)と、具体の事象の対応。独立の状態機械ではなく、具体の語彙の事象への入力である。",
+      "additionalProperties": { "$ref": "#/$defs/input" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*([_-][a-z0-9]+)*$"
+    },
+    "p1entry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "語彙の timers の値が決める時間で、機械の事象(再通知・失効)が起きる。",
+          "required": ["kind", "timer", "event"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "timer" },
+            "timer": { "type": "string", "description": "具体の語彙の timers のキー。" },
+            "event": { "$ref": "#/$defs/identifier", "description": "その状態から出る、行為者が machine の事象。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "機械の再通知の事象(時間の決まりを語彙に持たない)。",
+          "required": ["kind", "event"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "reminder-event" },
+            "event": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "件数通知などの機械の担い手が行う再通知の事象。",
+          "required": ["kind", "event", "carrier"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "notification" },
+            "event": { "$ref": "#/$defs/identifier" },
+            "carrier": { "type": "string", "description": "その事象の carriers に載っている担い手の名前。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "裁定なしに先へ進めさせない gate。",
+          "required": ["kind", "gate"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "gate" },
+            "gate": { "type": "string", "description": "その状態から出る事象の gates に載っている名前。" }
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "object",
+      "required": ["event"],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "type": ["string", "null"], "description": "具体の語彙の事象 id。null は事象を起こさない入力(状態は動かない)。" },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "object": "awaiting-item",
+  "description": "「裁定待ちの項目」の抽象の遷移表(ADR-1297)。拾う → 本人にまとめて見せる → 本人が裁定 → 適用する/見送る/失効する/別の追跡先へ移す、という同じ形の流れを持つ系統(メール項目・作業中の気づき・リポジトリ設定のずれ・計画の要求項目)の共通の骨組み。各系統は語彙を統一せず、自分の語彙の状態をこの表の状態へ写す対応表(config/agents/vocabulary/refinements/<系統>.json)を持ち、scripts/vocab-graph-check --refinements が、各事象がこの表の事象に写ること(準同型)と、性質 P1(放置された項目は失効するか再通知される。または gate が裁定なしに先へ進めさせない)・P2(裁定を待つ項目は本人に見える場所に出す担い手を持つ)を検査する。本人に見せる状態は owner が person の状態で、それを「見せた」と読む。",
+  "initial": "none",
+  "states": [
+    { "id": "picked", "terminal": false, "owner": "agent" },
+    { "id": "shown", "terminal": false, "owner": "person", "shown_by": ["skill:daily-desk", "skill:inbox-adjudication", "skill:backlog-cleanup", "skill:github-audit-triage", "skill:requirements-inventory"] },
+    { "id": "decided", "terminal": false, "owner": "agent" },
+    { "id": "settled", "terminal": false, "owner": "machine" },
+    { "id": "applied", "terminal": true },
+    { "id": "declined", "terminal": true },
+    { "id": "lapsed", "terminal": true },
+    { "id": "handed_off", "terminal": true }
+  ],
+  "events": [
+    { "id": "pick", "from": ["none"], "to": ["picked"], "by": "agent", "by_detail": "機械が拾う系統もある" },
+    { "id": "show", "from": ["none", "picked"], "to": ["shown"], "by": "agent", "by_detail": "拾った時点で見せる場所に出る系統は none から" },
+    { "id": "remind", "from": ["shown"], "to": ["same"], "by": "machine", "by_detail": "再通知。性質 P1 の手段の 1 つ" },
+    { "id": "decide", "from": ["shown"], "to": ["decided"], "by": "person" },
+    { "id": "apply", "from": ["none", "shown", "decided"], "to": ["applied"], "by": "agent", "by_detail": "none からは、拾ってすぐ片付く場合" },
+    { "id": "decline", "from": ["none", "picked", "shown", "decided"], "to": ["declined"], "by": "person", "by_detail": "要求が依頼文で除外されていた場合など、拾う前に本人が決めていた場合を含む" },
+    { "id": "lapse", "from": ["picked", "shown", "decided"], "to": ["lapsed"], "by": "machine", "by_detail": "放置による失効。要求が既に無効と判ったときは agent" },
+    { "id": "hand_off", "from": ["shown", "decided"], "to": ["handed_off"], "by": "agent", "by_detail": "別の追跡先(Issue・別のリポジトリの担い手)へ移した。以後はそちらが追う" },
+    { "id": "settle", "from": ["shown", "decided"], "to": ["settled"], "by": "agent", "by_detail": "適用または見送りのあと、再発を待つ系統の閉じ方" },
+    { "id": "reopen", "from": ["settled"], "to": ["shown"], "by": "machine", "by_detail": "再発。別の項目にはしない" }
+  ]
+}

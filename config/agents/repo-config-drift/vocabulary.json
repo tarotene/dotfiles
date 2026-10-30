@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "object": "repo-config-drift",
+  "description": "リポジトリ設定のずれ(リポジトリ × ドメインの組)の、github-audit-triage が扱う範囲の状態と事象の閉語彙。元は config/agents/skills/github-audit-triage/SKILL.md の §1(入力)・§3(低確信フラグ)・§4(一括レビューと GO/修正/除外/exempt)・§6(一括適用)・§7(exempt)で、本文が書いていない遷移は書かない(修正のあとの遷移、除外の意味、適用後の再 drift は ADR の Consequences に不明として挙げた)。ずれの判定(verdict)は保存せず、github-audit が実行のたびに導出する。",
+  "initial": "none",
+  "states": [
+    { "id": "drifted", "terminal": false, "owner": "agent", "owner_detail": "監査が drifted または ungoverned と報告した組" },
+    { "id": "drafted", "terminal": false, "owner": "person", "owner_detail": "一括レビュー表に載り、GO/修正/除外/exempt の返答を待つ", "shown_by": ["skill:github-audit-triage"] },
+    { "id": "approved", "terminal": false, "owner": "agent", "owner_detail": "GO が出て、適用または送付を待つ" },
+    { "id": "applied", "terminal": true, "owner_detail": "PR 作成済み(merge は人間)、または rulesets を直接適用した" },
+    { "id": "routed", "terminal": true, "owner_detail": "repo-charter・repo-governance へ送った、または誘導の Issue を起票した" },
+    { "id": "excluded", "terminal": true, "owner_detail": "除外" },
+    { "id": "exempt", "terminal": true, "owner_detail": "overrides.tsv に exempt を書いた" }
+  ],
+  "events": [
+    { "id": "detect", "from": ["none"], "to": ["drifted"], "by": "machine", "carriers": ["cli:github-audit"] },
+    { "id": "draft", "from": ["drifted"], "to": ["drafted"], "by": "agent", "by_detail": "一括起草して、1 回の一括レビュー表(Artifact)に載せる", "carriers": ["skill:github-audit-triage"] },
+    { "id": "redetect", "from": ["drafted"], "to": ["same"], "by": "machine", "by_detail": "レビュー表はセッション内限りで、裁定が無ければ次の github-audit の実行が同じ組を drifted として再び報告する(定期の実行は無い。手動の実行のときだけ)", "carriers": ["cli:github-audit"] },
+    { "id": "go", "from": ["drafted"], "to": ["approved"], "by": "person", "carriers": ["skill:github-audit-triage"] },
+    { "id": "apply", "from": ["approved"], "to": ["applied"], "by": "agent", "by_detail": "GO 分だけ。PR 作成までが完了で、merge はしない", "carriers": ["skill:github-audit-triage", "cli:apply-rulesets"] },
+    { "id": "route", "from": ["approved"], "to": ["routed"], "by": "agent", "by_detail": "低確信フラグの組と ci-absent の誘導 Issue", "carriers": ["skill:github-audit-triage"] },
+    { "id": "exclude", "from": ["drafted"], "to": ["excluded"], "by": "person" },
+    { "id": "exempt", "from": ["drafted"], "to": ["exempt"], "by": "person", "carriers": ["skill:github-audit-triage"] }
+  ]
+}

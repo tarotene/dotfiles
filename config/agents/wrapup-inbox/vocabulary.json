@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "object": "inbox-finding",
+  "description": "作業中の気づき(wrap-up inbox の 1 ノート)の状態と事象の閉語彙。実装は crates/issue-inbox/src/vault.rs(状態 open|fixed|issued|dropped は STATUSES、再発で fixed・dropped が open に戻り issued は戻らない規則は add_item)。この語彙は実装の記述で、実装を駆動しない。語彙が実装と矛盾しないことは crates/issue-inbox のテスト(vocabulary_matches_vault_rules)が確かめる。fixed と dropped は「閉じているが、再発を待つ」非終端で、終端は issued だけ(以後は Issue が追う)。失効の状態は設けない。放置された open は、セッション開始時の hook が出す未裁定の件数で再通知される。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "person", "owner_detail": "本人が /backlog-cleanup で裁定する", "shown_by": ["skill:backlog-cleanup"] },
+    { "id": "fixed", "terminal": false, "owner": "machine", "owner_detail": "直した。再発すると open に戻る" },
+    { "id": "dropped", "terminal": false, "owner": "machine", "owner_detail": "捨てた。再発すると open に戻る" },
+    { "id": "issued", "terminal": true }
+  ],
+  "events": [
+    { "id": "add", "from": ["none"], "to": ["open"], "by": "agent", "carriers": ["cli:issue-inbox", "skill:retro"] },
+    { "id": "remind", "from": ["open"], "to": ["same"], "by": "machine", "by_detail": "セッション開始時に「未裁定の気づきが N 件ある」と出す(作業中のプロジェクトの open だけ数える)", "carriers": ["node:session-wrapup-start"] },
+    { "id": "recur", "from": ["open"], "to": ["same"], "by": "machine", "by_detail": "再発の行を本文に足す。状態は動かない。issued にも行は足すが、終端なので事象に書かない(issued は Issue 側で扱い、open に戻らない)", "carriers": ["cli:issue-inbox"] },
+    { "id": "reopen", "from": ["fixed", "dropped"], "to": ["open"], "by": "machine", "by_detail": "再発の行が付くと open に戻る。drop_reason は消える", "carriers": ["cli:issue-inbox"] },
+    { "id": "fix", "from": ["open"], "to": ["fixed"], "by": "agent", "by_detail": "本人の GO のあと、stacked PR で直し、PR の URL を書く", "carriers": ["skill:backlog-cleanup", "cli:issue-inbox"], "gates": ["cli:issue-inbox"] },
+    { "id": "file", "from": ["open"], "to": ["issued"], "by": "agent", "by_detail": "本人が選んだ大物・本人の作業が要るものだけ Issue にし、URL を書く", "carriers": ["skill:backlog-cleanup", "cli:issue-inbox"], "gates": ["cli:issue-inbox"] },
+    { "id": "drop", "from": ["open"], "to": ["dropped"], "by": "person", "by_detail": "as-code 化の候補(signal を持つノート)は閉じた理由が要る", "carriers": ["skill:backlog-cleanup", "cli:issue-inbox"], "gates": ["cli:issue-inbox"] }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "concrete": "mail-item",
+  "abstract": "awaiting-item",
+  "description": "メール項目(inbox-adjudication、config/agents/mail-lifecycle/vocabulary.json)の、裁定待ちの項目への具体化。裁定ページの選択(decide・pass・later)は、独立の状態機械ではなく、このメール項目の事象への入力として inputs に書く。",
+  "states": {
+    "awaiting": "shown",
+    "decided": "decided",
+    "closed": "applied",
+    "dismissed": "declined",
+    "stale": "lapsed",
+    "superseded": "handed_off"
+  },
+  "reasons": {
+    "closed": "正本へ反映した・送った(apply)と、読んだだけで済む(read)の両方。どちらも「適用」の終わり方",
+    "superseded": "別の追跡先(Issue・カレンダーの予定)へ移した(move)。裁定の結果ではなく引き継ぎで、以後は移し先が追う。失効(stale)は放置されたもので、別",
+    "decided": "本人が対応すると決めて、反映を待つ。抽象の decided と同じ"
+  },
+  "p1": {
+    "awaiting": { "kind": "timer", "timer": "remind_after_days", "event": "remind" }
+  },
+  "inputs": {
+    "decide": { "event": "decide" },
+    "pass": { "event": "pass" },
+    "later": { "event": null, "note": "何も書かない。状態は動かず、時計は動き続けて remind_after_days 日で remind が出る" }
+  }
+}

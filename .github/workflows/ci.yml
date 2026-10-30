@@ -348,6 +348,10 @@ jobs:
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
         run: scripts/vocab-graph-check --all
+      # 具体化の対応表(ADR-1297): 各系統の語彙が「裁定待ちの項目」の抽象の遷移表に写ること(準同型)と、
+      # 性質 P1(放置への手段)・P2(本人に見せる担い手)を満たすこと。
+      - name: vocab-graph-check (refinements)
+        run: scripts/vocab-graph-check --refinements
 
       # hook-ask-vs-allow-probe (#1052): Claude の hook の ask と設定の allow の優先順位を、
       # 分離した HOME で実測する確認スクリプト。selftest は claude・認証・ネットワークを使わず、

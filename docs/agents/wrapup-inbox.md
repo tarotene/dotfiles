@@ -228,6 +228,34 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 大物と本人の作業が要るものだけが Issue になる(`--set-status issued`)。捨てるものは `dropped`。
 **ノートは直接編集しない**(読み書きは `--add` / `--list-open` / `--set-status` を介する)。
 
+## 状態と再開の規則(語彙 JSON)
+
+気づきの状態と事象は `config/agents/wrapup-inbox/vocabulary.json`(`object: "inbox-finding"`)に書く(ADR-1297、書式は
+[`state-vocabulary.md`](state-vocabulary.md))。語彙は実装の記述で、実装を駆動しない。コードの挙動は変えていない。
+
+| 状態 | 終端 | 意味 |
+|---|---|---|
+| `open` | いいえ | 本人の裁定を待つ。`/backlog-cleanup` が再発の多い順に見せる |
+| `fixed` | いいえ | 直した。**再発すると `open` に戻る**(閉じているが、再発を待つ) |
+| `dropped` | いいえ | 捨てた。**再発すると `open` に戻る**(`drop_reason` は消える) |
+| `issued` | はい | Issue にした。以後は Issue が追い、**再発しても `open` に戻らない** |
+
+- 再開: `fixed`・`dropped` に再発の行が付くと `open` に戻る(事象 `reopen`、機械が行う)。再発を別の項目にはしない
+  (同じ題名は同じノートで、本文の行数が再発の回数)。`issued` は、行は足すが状態を動かさない。
+- 失効の状態は設けない。放置された `open` は、セッション開始時の hook(`session-wrapup start`、`node:session-wrapup-start`)が
+  「未裁定の気づきが N 件ある」と出す(事象 `remind`)ことで再通知する。これが、裁定待ちの項目の性質 P1 を満たす手段
+  (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`)。数えるのは作業中のプロジェクトの `open` だけで、
+  別のプロジェクトの `open` は、そのプロジェクトでセッションを始めるまで再通知されない。
+- `--set-status` は現在の状態を見ずに状態を書く(`issued` から `open` へも書ける)。語彙の `fix`・`file`・`drop` は
+  `open` からの遷移として書いてあり、これが想定する使い方である。
+
+### 語彙と実装の照合の方法
+
+`cargo test -p issue-inbox`(`vault.rs` の `vocabulary_matches_vault_rules`)が、語彙を `include_str!` で読み、実装の
+実際の動きから導いた集合と突き合わせる: 状態は `STATUSES`、`--set-status` の行き先は `fix`・`file`・`drop` の `to`、
+再発で `open` に戻る状態は `add_item` を実際に動かして得て `reopen` の `from`、終端は戻らない状態(`issued`)だけ。
+語彙だけ、または実装だけを変えるとテストが落ちる。
+
 ## 待ちターンでは出さない(#854)
 
 バックグラウンド処理の完了を待つターンでは、retro の指示も feedback の指示も出さない。仕組みと限界は

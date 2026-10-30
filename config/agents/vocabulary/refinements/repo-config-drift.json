@@ -1,0 +1,22 @@
+{
+  "concrete": "repo-config-drift",
+  "abstract": "awaiting-item",
+  "description": "リポジトリ設定のずれ(github-audit-triage、config/agents/repo-config-drift/vocabulary.json)の、裁定待ちの項目への具体化。",
+  "states": {
+    "drifted": "picked",
+    "drafted": "shown",
+    "approved": "decided",
+    "applied": "applied",
+    "routed": "handed_off",
+    "excluded": "declined",
+    "exempt": "declined"
+  },
+  "reasons": {
+    "routed": "repo-charter・repo-governance へ送る、または誘導の Issue を起票する。別の担い手・追跡先への引き継ぎ",
+    "excluded": "一括レビューで「除外」と返された組。意味(今回だけ外すのか)は skill の本文に書かれていないので、見送りに写す",
+    "exempt": "overrides.tsv に exempt を書いた組。以後の監査はこの組を報告しない。見送り"
+  },
+  "p1": {
+    "drafted": { "kind": "reminder-event", "event": "redetect" }
+  }
+}

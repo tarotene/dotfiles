@@ -1,0 +1,22 @@
+{
+  "concrete": "plan-requirement",
+  "abstract": "awaiting-item",
+  "description": "計画の要求項目(requirements-inventory、config/agents/plan-requirement/vocabulary.json)の、裁定待ちの項目への具体化。裁定なしに先へ進めさせないのは plan-scope-gate(P1 の手段は gate)。",
+  "states": {
+    "listed": "picked",
+    "planned": "shown",
+    "approved": "decided",
+    "implemented": "applied",
+    "blocked_upstream": "declined",
+    "obsolete": "lapsed",
+    "user_excluded": "declined"
+  },
+  "reasons": {
+    "blocked_upstream": "外部にブロックされていて、今は実装しない。見送り。ブロックが解けたときの再開は skill の本文に書かれていない",
+    "obsolete": "要求そのものが既に無効になった。誰の裁定も経ずに役目を終えたので、失効",
+    "user_excluded": "本人が依頼文で明示的に除外した。見送り"
+  },
+  "p1": {
+    "planned": { "kind": "gate", "gate": "node:plan-scope-gate" }
+  }
+}

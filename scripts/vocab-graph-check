@@ -21,8 +21,9 @@
 #                       ノード、cli:<名前> は crates/<名前>/。external:<名前> は別リポジトリの担い手で解決しない
 #         孤立          どの事象の to にも現れない状態が無い
 #         対象の一意    渡した全語彙で object が一意
-#       --all は、<root>/config/agents/*/vocabulary.json のうち states と events を持つものを加える
-#       (config/agents/codify-signals/vocabulary.json のような別の形の語彙は対象外)。
+#       --all は、<root>/config/agents/*/vocabulary.json と <root>/config/agents/vocabulary/*.json の
+#       うち states と events を持つものを加える(config/agents/codify-signals/vocabulary.json や
+#       vocabulary.schema.json のような別の形のファイルは対象外)。
 #   vocab-graph-check --skills [--root <ルート>]
 #       <root>/config/agents/skills/ の各 skill(SKILL.md を持つディレクトリ。description が
 #       `Compatibility entry for <X>` で始まるものは別名として X に読み替える)が、全語彙の
@@ -30,8 +31,23 @@
 #       config/agents/vocabulary/external-objects.json(別リポジトリの対象を担う skill の名前)の
 #       どれかに載っていることを検査する。載らない skill を列挙して終了コード 1。
 #       CI の必須の job にはまだ載せていない(ADR-1293 の D5)。
+#   vocab-graph-check --refinements [--root <ルート>] [<対応表.json>...]
+#       語彙の具体化の対応表(config/agents/vocabulary/refinements/*.json。省略時は全部)を検査する
+#       (ADR-1297)。対応表は具体の語彙(object で指す)を抽象の語彙(awaiting-item)へ写す。
+#         schema        refinement.schema.json に適合する
+#         参照          concrete・abstract が、<root> の語彙の object に実在する
+#         写像          具体の全状態が states に載り、写り先が抽象の状態である
+#         終端          具体の終端の状態は、抽象の終端の状態に写る
+#         準同型        具体の各事象(from → to)を抽象の状態へ写すと、抽象の事象になるか、同じ状態への
+#                       自己遷移(stuttering)になる
+#         P1            抽象の owner が person の状態(見せた)に、行為者が machine の事象がある。
+#                       その状態に写る具体の状態ごとに p1 の手段が書かれ、名前が語彙に実在する
+#                       (timer は timers のキーと機械の事象、reminder-event は機械の事象、notification は
+#                       機械の事象とその carriers、gate はその状態から出る事象の gates)
+#         P2            同じ具体の状態に shown_by の担い手がある
+#         入力          inputs の事象が具体の語彙に実在し、見せた状態から出る(null は note が要る)
 #   vocab-graph-check --selftest
-#       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill の負例で、
+#       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill・対応表の負例で、
 #       各規則が期待どおり落ちる・通ることを確かめる。ネットワーク不使用。
 #
 # 実装は bash + jq。JSON Schema の検証は config/agents/skills/inbox-adjudication/reference/verdict-page/
@@ -41,6 +57,7 @@ set -euo pipefail
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 SELF_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
 SCHEMA="$SELF_ROOT/config/agents/vocabulary/vocabulary.schema.json"
+REFINE_SCHEMA="$SELF_ROOT/config/agents/vocabulary/refinement.schema.json"
 VALIDATOR="$SELF_ROOT/config/agents/skills/inbox-adjudication/reference/verdict-page/schema-validate.jq"
 FIXTURES="$SELF_ROOT/config/agents/vocabulary/fixtures"
 
@@ -50,7 +67,7 @@ usage() {
 
 die_usage() {
   printf 'vocab-graph-check: %s\n' "$1" >&2
-  printf '使い方: vocab-graph-check [--root <ルート>] [--all] [<語彙.json>...] | --skills [--root <ルート>] | --selftest\n' >&2
+  printf '使い方: vocab-graph-check [--root <ルート>] [--all] [<語彙.json>...] | --skills [--root <ルート>] | --refinements [--root <ルート>] [<対応表.json>...] | --selftest\n' >&2
   exit 2
 }
 
@@ -146,7 +163,7 @@ check_file() {
 # $1 = ルート。states と events を持つ語彙の一覧(config/agents/*/vocabulary.json)。
 discover_vocabs() {
   local f
-  for f in "$1"/config/agents/*/vocabulary.json; do
+  for f in "$1"/config/agents/*/vocabulary.json "$1"/config/agents/vocabulary/*.json; do
     [[ -f $f ]] || continue
     if jq -e 'type == "object" and has("states") and has("events")' "$f" >/dev/null 2>&1; then
       printf '%s\n' "$f"
@@ -231,6 +248,137 @@ check_skills() {
     printf 'vocab-graph-check: 載っていない skill が %d 本ある\n' "$missing" >&2
     rc=1
   fi
+  return "$rc"
+}
+
+# ---------------------------------------------------------------- 具体化の対応表の検査
+
+# 入力は Schema に適合した対応表。--argjson c(具体の語彙)・a(抽象の語彙)を受け取る。
+# 違反ごとに `規則<TAB>内容` を出す。
+read -r -d '' REFINE_JQ <<'EOF' || true
+def viol($rule; $msg): {rule: $rule, msg: $msg};
+def machine_event_from($v; $s): [ $v.events[] | select(.by == "machine" and any(.from[]; . == $s)) ];
+def event_of($v; $id): [ $v.events[] | select(.id == $id) ][0];
+
+. as $R
+| ($R.states) as $m
+| ($m + {none: "none"}) as $map
+| [ $c.states[].id ] as $cs
+| [ $a.states[].id ] as $ast
+| [ $a.states[] | select(.owner == "person") | .id ] as $ashown
+| [ $a.states[] | select(.terminal) | .id ] as $aterm
+| [ $c.states[] | select(.terminal) | .id ] as $cterm
+| [ $cs[] | select($m[.] != null and (($m[.]) as $x | any($ashown[]; . == $x))) ] as $shown
+| [
+    ( $cs[] | select($m[.] == null) | viol("写像"; "具体の状態 \(.) が states に載っていない") ),
+    ( $m | keys[] | select(. as $k | any($cs[]; . == $k) | not) | viol("写像"; "states のキー \(.) が具体の語彙 \($c.object) に無い") ),
+    ( $m | to_entries[] | select(.value as $x | any($ast[]; . == $x) | not)
+      | viol("写像"; "状態 \(.key) の写り先 \(.value) が抽象の語彙 \($a.object) に無い") ),
+    ( $cterm[] | select($m[.] != null and (($m[.]) as $x | any($aterm[]; . == $x) | not))
+      | viol("終端"; "具体の終端の状態 \(.) が、抽象の終端でない状態 \($m[.]) に写る") ),
+    ( $c.events[] | . as $e
+      | $e.from[] as $f | ($e.to[] | select(. != "same")) as $t
+      | ($map[$f]) as $x | ($map[$t]) as $y
+      | select($x != null and $y != null and $x != $y)
+      | select([ $a.events[] | select(any(.from[]; . == $x) and any(.to[]; . == $y)) ] | length == 0)
+      | viol("準同型"; "事象 \($e.id) の \($f) → \($t) が、抽象では \($x) → \($y) になり、抽象の事象に無い") ),
+    ( $ashown[] | . as $s
+      | select(machine_event_from($a; $s) | length == 0)
+      | viol("P1"; "抽象の状態 \($s) から出る、行為者が machine の事象(再通知か失効)が抽象の語彙に無い") ),
+    ( ($R.p1 | keys[]) | select(. as $k | any($shown[]; . == $k) | not)
+      | viol("P1"; "p1 のキー \(.) は、抽象の見せた状態に写る具体の状態でない") ),
+    ( $shown[] | . as $s | ($R.p1[$s]) as $p
+      | if $p == null then viol("P1"; "具体の状態 \($s) は抽象の見せた状態に写るのに、p1 の手段が無い")
+        elif $p.kind == "gate" then
+          if [ $c.events[] | select(any(.from[]; . == $s) and any((.gates // [])[]; . == $p.gate)) ] | length == 0
+          then viol("P1"; "状態 \($s) の gate \($p.gate) が、その状態から出る事象の gates に無い") else empty end
+        else
+          ( event_of($c; $p.event) ) as $ev
+          | if $ev == null then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) が具体の語彙に無い")
+            elif $ev.by != "machine" then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) の行為者が machine でない")
+            elif (any($ev.from[]; . == $s) | not) then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) が、その状態から出ない")
+            elif $p.kind == "timer" and (($c.timers // {}) | has($p.timer) | not) then viol("P1"; "状態 \($s) の p1 の timer \($p.timer) が具体の語彙の timers に無い")
+            elif $p.kind == "notification" and (any(($ev.carriers // [])[]; . == $p.carrier) | not) then viol("P1"; "状態 \($s) の p1 の担い手 \($p.carrier) が事象 \($p.event) の carriers に無い")
+            else empty end
+        end ),
+    ( $shown[] | . as $s | select([ $c.states[] | select(.id == $s) | (.shown_by // []) | length ][0] == 0)
+      | viol("P2"; "具体の状態 \($s) は抽象の見せた状態に写るのに、shown_by の担い手が無い") ),
+    ( ($R.inputs // {}) | to_entries[] | . as $i
+      | if $i.value.event == null then
+          (if ($i.value.note // "") == "" then viol("入力"; "入力 \($i.key) は事象が null なので note が要る") else empty end)
+        else
+          ( event_of($c; $i.value.event) ) as $ev
+          | if $ev == null then viol("入力"; "入力 \($i.key) の事象 \($i.value.event) が具体の語彙に無い")
+            elif (any($ev.from[]; . as $f | any($shown[]; . == $f)) | not) then viol("入力"; "入力 \($i.key) の事象 \($i.value.event) が、見せた状態から出ない")
+            else empty end
+        end )
+  ][] | "\(.rule)\t\(.msg)"
+EOF
+
+# 語彙の object → ファイルの対応(ROOT の語彙)を VFILE に作る。
+declare -A VFILE
+load_vocab_index() {
+  local root=$1 f o
+  VFILE=()
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    o=$(jq -r '.object // empty' "$f" 2>/dev/null || true)
+    [[ -n $o ]] && VFILE[$o]=$f
+  done < <(discover_vocabs "$root")
+}
+
+# 1 つの対応表を検査する。違反は標準エラーに出し、あれば戻り値 1。
+check_refinement() {
+  local file=$1 out line rule msg c a
+  if ! jq -e 'type == "object"' "$file" >/dev/null 2>&1; then
+    printf '%s: schema: JSON のオブジェクトとして読めない\n' "$file" >&2
+    return 1
+  fi
+  if ! out=$(jq -nr --slurpfile s "$REFINE_SCHEMA" --slurpfile d "$file" -f "$VALIDATOR" 2>&1); then
+    printf '%s: schema: 検証器が失敗した: %s\n' "$file" "$out" >&2
+    return 1
+  fi
+  if [[ -n $out ]]; then
+    while IFS= read -r line; do printf '%s: schema: %s\n' "$file" "$line" >&2; done <<<"$out"
+    return 1
+  fi
+  c=$(jq -r .concrete "$file")
+  a=$(jq -r .abstract "$file")
+  if [[ -z ${VFILE[$c]:-} ]]; then
+    printf '%s: 参照: concrete %s の語彙が見つからない\n' "$file" "$c" >&2
+    return 1
+  fi
+  if [[ -z ${VFILE[$a]:-} ]]; then
+    printf '%s: 参照: abstract %s の語彙が見つからない\n' "$file" "$a" >&2
+    return 1
+  fi
+  if ! out=$(jq -r --slurpfile cc "${VFILE[$c]}" --slurpfile aa "${VFILE[$a]}" \
+    '$cc[0] as $c | $aa[0] as $a | '"$REFINE_JQ" "$file" 2>&1); then
+    printf '%s: 対応表: 検査が失敗した: %s\n' "$file" "$out" >&2
+    return 1
+  fi
+  if [[ -n $out ]]; then
+    while IFS=$'\t' read -r rule msg; do printf '%s: %s: %s\n' "$file" "$rule" "$msg" >&2; done <<<"$out"
+    return 1
+  fi
+  return 0
+}
+
+# $1 = ルート、残りは対応表(空なら <root>/config/agents/vocabulary/refinements/*.json)。
+check_refinements() {
+  local root=$1 rc=0 f
+  shift
+  local files=("$@")
+  if ((${#files[@]} == 0)); then
+    for f in "$root"/config/agents/vocabulary/refinements/*.json; do
+      [[ -f $f ]] && files+=("$f")
+    done
+  fi
+  ((${#files[@]} > 0)) || die_usage "検査する対応表が無い"
+  load_vocab_index "$root"
+  for f in "${files[@]}"; do
+    check_refinement "$f" || rc=1
+  done
   return "$rc"
 }
 
@@ -346,6 +494,74 @@ selftest() {
   printf 'not json\n' >"$S/config/agents/vocabulary/external-objects.json"
   expect_fail "external-objects の形" external-objects --skills --root "$S"
 
+  # --- 具体化の対応表(実物の語彙と対応表を一時ディレクトリに写し、1 か所ずつ壊す)
+  expect_pass "実物の対応表" --refinements
+  local Q="$T/ref-root" RDIR=config/agents/vocabulary/refinements
+  fresh_ref_root() {
+    local f rel
+    rm -rf "${Q:?}"
+    while IFS= read -r f; do
+      rel=${f#"$SELF_ROOT"/}
+      mkdir -p "$Q/$(dirname "$rel")"
+      cp "$f" "$Q/$rel"
+    done < <(discover_vocabs "$SELF_ROOT")
+    mkdir -p "$Q/$RDIR"
+    cp "$SELF_ROOT/$RDIR"/*.json "$Q/$RDIR/"
+  }
+  # break <Q の中の相対パス> <jq フィルタ>: その JSON を書き換える
+  break_json() {
+    jq "$2" "$Q/$1" >"$Q/$1.new" && mv "$Q/$1.new" "$Q/$1"
+  }
+  fresh_ref_root
+  expect_pass "対応表の写し" --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" 'del(.states.stale)'
+  expect_fail "写されていない状態" 写像 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.states.awaiting = "no_such_state"'
+  expect_fail "写り先が抽象の状態でない" 写像 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.states.decided = "picked"'
+  expect_fail "準同型を破る" 準同型 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.states.closed = "settled"'
+  expect_fail "終端が非終端に写る" 終端 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" 'del(.p1.awaiting)'
+  expect_fail "P1 の無い見せた状態" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.p1.awaiting.timer = "no_such_timer"'
+  expect_fail "P1 の timer が語彙に無い" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.p1.awaiting.event = "decide"'
+  expect_fail "P1 の事象が machine でない" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/inbox-finding.json" '.p1.open.carrier = "node:not-a-carrier"'
+  expect_fail "P1 の担い手が事象に無い" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/plan-requirement.json" '.p1.planned.gate = "node:not-a-gate"'
+  expect_fail "P1 の gate が事象に無い" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "config/agents/mail-lifecycle/vocabulary.json" 'del(.states[0].shown_by)'
+  expect_fail "shown_by の無い見せた状態" P2 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "config/agents/vocabulary/awaiting-item.json" '.events |= map(select(.id != "remind" and .id != "lapse"))'
+  expect_fail "抽象に再通知も失効も無い" P1 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.concrete = "no-such-object"'
+  expect_fail "具体の語彙が無い" 参照 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.inputs.decide.event = "no_such_event"'
+  expect_fail "入力の事象が語彙に無い" 入力 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" 'del(.inputs.later.note)'
+  expect_fail "null の入力に note が無い" 入力 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.p1.awaiting.kind = "bogus"'
+  expect_fail "p1 の kind が閉語彙でない" schema --refinements --root "$Q"
+  expect_code "対応表の指定が無い" 2 --refinements --root "$T/root"
+  expect_code "--refinements に --all" 2 --refinements --all
+
   printf 'vocab-graph-check --selftest: %d 件通った、%d 件失敗\n' "$pass" "$fail"
   ((fail == 0))
 }
@@ -372,6 +588,10 @@ while (($# > 0)); do
       MODE=skills
       shift
       ;;
+    --refinements)
+      MODE=refinements
+      shift
+      ;;
     --selftest)
       MODE=selftest
       shift
@@ -391,6 +611,10 @@ done
 
 case $MODE in
   selftest) selftest ;;
+  refinements)
+    ((ALL == 0)) || die_usage "--refinements には --all を渡せない"
+    check_refinements "$ROOT" ${FILES[@]+"${FILES[@]}"}
+    ;;
   skills)
     ((${#FILES[@]} == 0 && ALL == 0)) || die_usage "--skills には語彙ファイルも --all も渡せない"
     check_skills "$ROOT"
