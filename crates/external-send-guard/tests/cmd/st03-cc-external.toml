@@ -6,8 +6,8 @@ stdout = """
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "外部宛のメール送信は直接実行せず、Gmail の下書き作成(create_draft。返信は replyToMessageId 付き)を使ってください(deny)。宛先: me@example.com stranger@example.com。下書きを作成したら、ユーザーが Gmail 上で内容を確認・編集して送信します。あわせて、宛先アドレスが公式の一般問い合わせ窓口として文脈まで確認済みか(求人・採用等の別目的窓口の転用ではないか)を確認し、出典 URL・取得日を送信記録に残してください。"
+    "permissionDecision": "ask",
+    "permissionDecisionReason": "外部宛のメールを、下書きを介さずに直接送ろうとしています(宛先: me@example.com stranger@example.com)。この確認が本人の明示的な許可になり、許可すると送信されます(取り消せません)。宛先・件名・本文を確認してください。許可しないときは、create_draft で下書きにして、Gmail で本人が送ってください。"
   }
 }
 """

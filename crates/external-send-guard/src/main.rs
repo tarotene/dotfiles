@@ -13,7 +13,10 @@ fn main() {
     }
     // jq と同じく不正な UTF-8 は U+FFFD に置き換えてから読む
     let text = String::from_utf8_lossy(&raw);
-    if let Some(Outcome::Deny(reason)) = external_send_guard::hook(&text) {
-        let _ = std::io::stdout().write_all(external_send_guard::deny_json(&reason).as_bytes());
-    }
+    let out = match external_send_guard::hook(&text) {
+        Some(Outcome::Deny(reason)) => external_send_guard::deny_json(&reason),
+        Some(Outcome::Ask(reason)) => external_send_guard::ask_json(&reason),
+        _ => return,
+    };
+    let _ = std::io::stdout().write_all(out.as_bytes());
 }

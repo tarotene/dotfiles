@@ -87,8 +87,8 @@ fn load_cases(crate_dir: &str, keep: impl Fn(&toml::Value) -> bool) -> Vec<Case>
     out
 }
 
-/// 拒否を期待する fixture。
-fn deny_cases(crate_dir: &str) -> Vec<Case> {
+/// 指定した判定(`deny` または `ask`)を期待する fixture。
+fn decision_cases(crate_dir: &str, decision: &str) -> Vec<Case> {
     load_cases(crate_dir, |v| {
         let Some(stdout) = v.get("stdout").and_then(|s| s.as_str()) else {
             return false;
@@ -96,7 +96,7 @@ fn deny_cases(crate_dir: &str) -> Vec<Case> {
         let Ok(expected) = serde_json::from_str::<serde_json::Value>(stdout) else {
             return false;
         };
-        expected["hookSpecificOutput"]["permissionDecision"] == "deny"
+        expected["hookSpecificOutput"]["permissionDecision"] == decision
     })
 }
 
@@ -152,11 +152,11 @@ fn router_output(case: &Case, stub_gh: bool) -> Option<serde_json::Value> {
     serde_json::from_slice(&out.stdout).ok()
 }
 
-fn check_all(crate_dir: &str, at_least: usize) {
-    let cases = deny_cases(crate_dir);
+fn check_decision(crate_dir: &str, decision: &str, at_least: usize) {
+    let cases = decision_cases(crate_dir, decision);
     assert!(
         cases.len() >= at_least,
-        "{crate_dir}: 拒否を期待する fixture が {} 件(下限 {at_least})",
+        "{crate_dir}: {decision} を期待する fixture が {} 件(下限 {at_least})",
         cases.len()
     );
     for case in &cases {
@@ -178,13 +178,20 @@ fn check_all(crate_dir: &str, at_least: usize) {
 /// Bash の経路。複合の `Bash|mcp__.*` の matcher だった規則。
 #[test]
 fn attribution_guard_denies_with_the_same_reason_through_the_router() {
-    check_all("attribution-guard", 3);
+    check_decision("attribution-guard", "deny", 3);
 }
 
 /// MCP の経路。matcher が `mcp__.*` だった規則(Gmail の送信系の MCP ツール)。
 #[test]
 fn external_send_guard_denies_with_the_same_reason_through_the_router() {
-    check_all("external-send-guard", 14);
+    check_decision("external-send-guard", "deny", 7);
+}
+
+/// 外部宛の Gmail 送信は、deny でなく ask(本人の許可の確認)。旧 bin と同じ理由が、ルータの
+/// ask の応答にも含まれることを確かめる。
+#[test]
+fn external_send_guard_asks_with_the_same_reason_through_the_router() {
+    check_decision("external-send-guard", "ask", 7);
 }
 
 /// ExitPlanMode の拒否 2 件。旧 bin の fixture のうち、Claude の PreToolUse で `ExitPlanMode` を
