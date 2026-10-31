@@ -1,0 +1,9 @@
+# draftId が空文字で、宛先も無い send_message は、下書きの送信とは読まない → pass(送信として成立しない呼び出し)
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__send_message","tool_input":{"draftId":""}}'
+status.code = 0
+stdout = ""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }

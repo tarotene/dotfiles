@@ -7,7 +7,8 @@
 //! 判定は 2 つ:
 //! - Gmail: 外部宛(自分のアドレス以外を含む)の send_message / reply / forward →
 //!   **ask**(本人の明示的な許可を、Claude Code の許可の確認で 1 回求める。許可されれば送る)。
-//!   reply で宛先が暗黙(宛先を確認画面に出せない)は deny。create_draft・自分宛のみは通す。
+//!   reply で宛先が暗黙(宛先を確認画面に出せない)は deny。send_message が draftId だけで
+//!   下書きをそのまま送るときは、宛先を読めないので ask。create_draft・自分宛のみは通す。
 //! - Slack: send_message / reply / schedule_message / post_message 系の tool →
 //!   宛先を問わず無条件 deny。名前に draft を含む tool は対象外。
 //!
@@ -140,6 +141,13 @@ fn has_key(input: &Value, key: &str) -> bool {
         .is_some_and(|m| m.contains_key(key))
 }
 
+/// `draftId` が空でない文字列で渡されているか(下書きをそのまま送る呼び出し)。
+fn has_draft_id(input: &Value) -> bool {
+    input["tool_input"]["draftId"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty())
+}
+
 pub fn gmail_deny_reason(recipients: &str) -> String {
     format!(
         "外部宛のメール送信は直接実行せず、Gmail の下書き作成(create_draft。返信は replyToMessageId 付き)を使ってください(deny)。宛先: {recipients}。下書きを作成したら、ユーザーが Gmail 上で内容を確認・編集して送信します。あわせて、宛先アドレスが公式の一般問い合わせ窓口として文脈まで確認済みか(求人・採用等の別目的窓口の転用ではないか)を確認し、出典 URL・取得日を送信記録に残してください。"
@@ -151,6 +159,12 @@ pub fn gmail_ask_reason(recipients: &str) -> String {
     format!(
         "外部宛のメールを、下書きを介さずに直接送ろうとしています(宛先: {recipients})。この確認が本人の明示的な許可になり、許可すると送信されます(取り消せません)。宛先・件名・本文を確認してください。許可しないときは、create_draft で下書きにして、Gmail で本人が送ってください。"
     )
+}
+
+/// 下書きをそのまま送る(`draftId` 指定)ときに、本人の許可の確認にかけるときの理由文。
+/// 宛先と本文は下書きの中にあり、この確認画面には出ない。
+pub fn gmail_draft_ask_reason() -> String {
+    "下書きを、そのまま送ろうとしています。宛先と本文は下書きの中にあり、この確認画面には出ません。送る前に get_draft で宛先と本文を本人に見せ、OK をもらってから許可してください。この確認が本人の明示的な許可になり、許可すると送信されます(取り消せません)。".to_string()
 }
 
 pub const SLACK_DENY_REASON: &str = "Slack への直接送信は行わず、下書き系 tool(例: slack_draft_message / send_message_draft。接続先の MCP サーバーに存在しない場合は本文をチャットに出力し、ユーザー自身が Slack へ貼り付けてください)を使ってください(deny)。下書きを作成/提示したら、ユーザーが内容を確認・編集して送信します。";
@@ -193,6 +207,11 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<agent_s
             return Some(Outcome::Deny(gmail_deny_reason(
                 "(宛先未指定・スレッド由来のため判定不能。to を指定すれば、本人の許可の確認に回ります)",
             )));
+        }
+        // send_message に draftId だけが渡されたとき、宛先は下書きの中にあり hook からは読めない。
+        // 素通しにすると、外部宛の下書きを本人の許可なしに送れてしまう(2026-10-31 に実機で確認)ので ask にする。
+        if tool.contains("send_message") && has_draft_id(input) {
+            return Some(Outcome::Ask(gmail_draft_ask_reason()));
         }
         return None;
     }

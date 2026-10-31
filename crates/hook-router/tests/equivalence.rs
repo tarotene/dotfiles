@@ -191,7 +191,7 @@ fn external_send_guard_denies_with_the_same_reason_through_the_router() {
 /// ask の応答にも含まれることを確かめる。
 #[test]
 fn external_send_guard_asks_with_the_same_reason_through_the_router() {
-    check_decision("external-send-guard", "ask", 7);
+    check_decision("external-send-guard", "ask", 8);
 }
 
 /// ExitPlanMode の拒否 2 件。旧 bin の fixture のうち、Claude の PreToolUse で `ExitPlanMode` を
