@@ -5,8 +5,9 @@
 //! 設計と根拠: docs/agents/external-send-guard.md。
 //!
 //! 判定は 2 つ:
-//! - Gmail: 外部宛(自分のアドレス以外を含む、または reply で宛先が暗黙)の
-//!   send_message / reply / forward → deny。create_draft・自分宛のみは通す。
+//! - Gmail: 外部宛(自分のアドレス以外を含む)の send_message / reply / forward →
+//!   **ask**(本人の明示的な許可を、Claude Code の許可の確認で 1 回求める。許可されれば送る)。
+//!   reply で宛先が暗黙(宛先を確認画面に出せない)は deny。create_draft・自分宛のみは通す。
 //! - Slack: send_message / reply / schedule_message / post_message 系の tool →
 //!   宛先を問わず無条件 deny。名前に draft を含む tool は対象外。
 //!
@@ -145,10 +146,19 @@ pub fn gmail_deny_reason(recipients: &str) -> String {
     )
 }
 
+/// 外部宛の Gmail 送信を、本人の許可の確認(ask)にかけるときの理由文。確認画面に宛先が出る。
+pub fn gmail_ask_reason(recipients: &str) -> String {
+    format!(
+        "外部宛のメールを、下書きを介さずに直接送ろうとしています(宛先: {recipients})。この確認が本人の明示的な許可になり、許可すると送信されます(取り消せません)。宛先・件名・本文を確認してください。許可しないときは、create_draft で下書きにして、Gmail で本人が送ってください。"
+    )
+}
+
 pub const SLACK_DENY_REASON: &str = "Slack への直接送信は行わず、下書き系 tool(例: slack_draft_message / send_message_draft。接続先の MCP サーバーに存在しない場合は本文をチャットに出力し、ユーザー自身が Slack へ貼り付けてください)を使ってください(deny)。下書きを作成/提示したら、ユーザーが内容を確認・編集して送信します。";
 
-/// deny なら理由文、通すなら `None`。`self_set` は [`parse_self_list`] の結果。
-pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<String> {
+/// deny なら理由文(`Deny`)、本人の許可を求めるなら `Ask`、通すなら `None`。
+/// `self_set` は [`parse_self_list`] の結果。
+pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<agent_session::Outcome> {
+    use agent_session::Outcome;
     // Connected Apps prefixes the operation with its service (rather than
     // using that service as the MCP server name). Keep drafts outside the gate.
     let normalized;
@@ -166,7 +176,7 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<String>
         return None;
     }
     if any_line_matches(tool, &[b"Slack", b"slack"], SLACK_SUFFIXES) {
-        return Some(SLACK_DENY_REASON.to_string());
+        return Some(Outcome::Deny(SLACK_DENY_REASON.to_string()));
     }
     if !any_line_matches(tool, &[b"Gmail"], GMAIL_SUFFIXES) {
         return None;
@@ -174,14 +184,15 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<String>
     let rcpts = recipients(input);
     if rcpts.is_empty() {
         // reply で宛先が全く指定されていない → スレッド由来で判定不能 → deny
+        // (許可の確認画面に宛先を出せないので、許可を求めることもしない。to を指定すれば ask になる)
         if tool.contains("reply")
             && !has_key(input, "to")
             && !has_key(input, "cc")
             && !has_key(input, "bcc")
         {
-            return Some(gmail_deny_reason(
-                "(宛先未指定・スレッド由来のため判定不能)",
-            ));
+            return Some(Outcome::Deny(gmail_deny_reason(
+                "(宛先未指定・スレッド由来のため判定不能。to を指定すれば、本人の許可の確認に回ります)",
+            )));
         }
         return None;
     }
@@ -189,7 +200,7 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<String>
         let needle = a.as_bytes().to_ascii_lowercase();
         !self_set.contains(&needle)
     });
-    external.then(|| gmail_deny_reason(&rcpts.join(" ")))
+    external.then(|| Outcome::Ask(gmail_ask_reason(&rcpts.join(" "))))
 }
 
 /// jq と同じ規則で JSON 文字列リテラルを書く(制御文字と DEL は `\u00xx`)。
@@ -224,6 +235,14 @@ pub fn deny_json(reason: &str) -> String {
     )
 }
 
+/// 本人の許可を求める出力(`permissionDecision: "ask"`)。書式は [`deny_json`] と同じ。
+pub fn ask_json(reason: &str) -> String {
+    format!(
+        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"ask\",\n    \"permissionDecisionReason\": {}\n  }}\n}}\n",
+        jq_string(reason)
+    )
+}
+
 /// 自分のアドレスの一覧(`$XDG_CONFIG_HOME/external-send-guard/self.txt`)の場所。
 fn self_list_path() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -254,7 +273,7 @@ pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
         .and_then(|p| std::fs::read(p).ok())
         .map(|c| parse_self_list(&c))
         .unwrap_or_default();
-    decide(tool, &input, &self_set).map(agent_session::Outcome::Deny)
+    decide(tool, &input, &self_set)
 }
 
 #[cfg(test)]

@@ -4,11 +4,13 @@
 規約側: `config/agents/AGENTS.md`「外部発信は下書き止まり」節(#463。方針の
 宣言はそちらが正、機械強制はこの hook 単体が担う)
 
-Claude Code が Gmail MCP tool 経由で外部(自分以外)宛にメールを直接送信するのを
-deny し、`create_draft`(返信は `replyToMessageId` 付き)で下書きを作るところで
-止める。同様に、Slack MCP tool 経由の送信・返信・予約投稿も宛先(チャンネル)を
-問わず無条件 deny し、draft 系 tool へ誘導する(#463)。ユーザーが Gmail/Slack
-上でその下書きを編集・送信することが実質的な承認点になる。
+Claude Code が Gmail MCP tool 経由で外部(自分以外)宛にメールを直接送信しようと
+するとき、**本人の許可の確認(ask)にかける**。許可されれば送る。既定は、`create_draft`
+(返信は `replyToMessageId` 付き)で下書きを作るところまでで、本人が Gmail 上で編集・送信する
+こと(共有 AGENTS.md「外部発信は既定で下書き止まりにする」)。本人が代行送信を明示して頼んだ
+ときだけ、エージェントが送信ツールを呼び、この確認が本人の明示的な許可になる。
+Slack MCP tool 経由の送信・返信・予約投稿は、宛先(チャンネル)を問わず無条件 deny し、
+draft 系 tool へ誘導する(#463)。
 
 ## なぜ必要だったか(motivating case)
 
@@ -24,13 +26,24 @@ deny し、`create_draft`(返信は `replyToMessageId` 付き)で下書きを作
 公式ドキュメントを確認したが該当なし)。よって機械判定は諦め、**外部宛の直接送信
 そのものを一律止め、人間の目視確認を通過点にする**設計にした。
 
-## なぜ deny であって ask ではないか
+## Gmail は ask、Slack は deny の理由
 
-attribution-guard.sh と同じ理由(投稿・送信は通知が飛ぶ**不可逆操作**で、
-PreToolUse でしか止められない)に加えて、Claude はこの操作の代替
-(`create_draft`)を自分で実行できるので、`ask` にして人間の手数を増やす理由が
-ない。deny なら Claude が `create_draft` に切り替えるだけで往復 0 回、人間の
-手数は「Gmail の下書き欄で確認・送信する」という、どのみち必要な作業だけになる。
+当初は Gmail も deny だった(2026-09)。送信は通知が飛ぶ**不可逆操作**で、PreToolUse で
+しか止められず、Claude は代替(`create_draft`)を自分で実行できるので、`ask` にして人間の
+手数を増やす理由が無かった。deny なら Claude が `create_draft` に切り替えるだけで往復 0 回、
+人間の手数は「Gmail の下書き欄で確認・送信する」ことだけだった。
+
+この設計は、本人が**明示的に代行送信を頼んだとき**に行き止まりになる。deny は、本人の許可があっても
+送れない(2026-10-31、本人の指摘: 「私の許可をガードにするのは構わないけど、明示的に許可を出したら
+送ってほしい」。実際に、ブラウザ経由という検査の外の道に回すしかなくなった)。そこで、Gmail の
+外部宛送信だけを `ask` にした。確認画面に宛先が出るので、**この確認が本人の明示的な許可**になる。
+許可がなければ(または拒否されたら)送らず、下書きに戻す。
+
+- 既定は変わらない: エージェントは、頼まれていなければ `create_draft` で止める。`ask` が出るのは、
+  エージェントが意図して送信ツールを呼んだときだけ。
+- `reply` で宛先が暗黙のときは `ask` にしない(確認画面に宛先が出ず、本人が何を許可するのか
+  分からないため)。deny のままで、`to` を指定すれば `ask` になる。
+- Slack は `ask` にしない。「自分宛」の概念が無く、宛先を問わず deny を保つ(#463)。
 
 ## 判定の境界
 
@@ -39,11 +52,11 @@ PreToolUse でしか止められない)に加えて、Claude はこの操作の�
 | 形 | 判定 |
 |----|------|
 | `send_message` / `reply` / `forward` の宛先(to/cc/bcc)が全て自分のアドレス | 通す |
-| 上記以外(外部宛を1件でも含む) | **deny** |
-| `reply` で to/cc/bcc が全く指定されていない(宛先がスレッド由来で不明) | **deny**(安全側) |
+| 上記以外(外部宛を1件でも含む) | **ask**(本人の許可の確認。許可されれば送る) |
+| `reply` で to/cc/bcc が全く指定されていない(宛先がスレッド由来で不明) | **deny**(安全側。`to` を指定すれば ask) |
 | `create_draft` / `update_draft` / `list_drafts` 等の下書き系 | 対象外(常に通す) |
 | Gmail 以外の MCP tool・読み取り系(`get_thread` 等) | 対象外(常に通す) |
-| `self.txt` が存在しない/空 | fail-closed(自分宛でも deny) |
+| `self.txt` が存在しない/空 | fail-closed(自分宛でも ask) |
 
 ### Slack(#463)
 
@@ -125,11 +138,11 @@ bypass を再実行できてしまうため。この bypass の存在自体は�
 
 `nix develop --command cargo test -p external-send-guard` がネットワーク不使用で以下を検査する:
 
-- Gmail: 自分宛 send_message(通す)/ 外部宛 send_message(deny)/ cc への
-  外部宛混入(deny)/ reply 宛先暗黙(deny)/ reply 自分宛明示(通す)/ reply
-  外部宛明示(deny)/ forward 外部宛(deny)/ create_draft 非対象(通す)/
+- Gmail: 自分宛 send_message(通す)/ 外部宛 send_message(ask)/ cc への
+  外部宛混入(ask)/ reply 宛先暗黙(deny)/ reply 自分宛明示(通す)/ reply
+  外部宛明示(ask)/ forward 外部宛(ask)/ create_draft 非対象(通す)/
   無関係ツール非対象(通す)/ 宛先の大文字小文字を無視した一致(通す)/
-  `self.txt` 不在時の fail-closed(deny)。
+  `self.txt` 不在時の fail-closed(ask)。
 - Slack(#463): claude.ai コネクタ形・Slack 公式 MCP 形どちらの
   send_message も deny / reply も deny / schedule_message も deny /
   post_message も deny / draft 系 tool(`slack_draft_message` /
