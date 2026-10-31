@@ -7,7 +7,7 @@
 detect`)は、その「安定の兆候」を人間の想起に頼らず機械的に集計する
 日次バッチ。
 
-## 検出する4種類の候補
+## 検出する候補
 
 1. **再発(昇格候補)**: `tarotene/dotfiles` の `feedback` ラベル付き
    Issue のうち、同じ `Target:`(`feedback-target-guard`(`crates/feedback-target-guard`)が要求する
@@ -36,6 +36,17 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
    - `existing-suffices` による却下が全兆候で `existing_suffices_min`(3)件以上 → 「既存手段の探索が浅い」。
    - 兆候の `since` より前に初出のノートは数えない。定義を直したら `since` を更新すると、数え直す。
    本文には件数と理由の id だけを書く(ノートの中身は書かない)。
+6. **Git の外の状態の整合**: vault を宣言している機体で、`worklog mail check` を回す。
+   Git の外(vault)に置いた状態は、PR の差分の遷移検査が効かない。書き込み口(`worklog add mail`)は語彙に無い遷移を
+   拒むが、vault は Obsidian の画面から手で直せるので、書き込み口を通らない編集をここで毎日拾う。
+   - 終了コード 1(食い違いあり) → 「vault の mail の状態に食い違いが N 件あります」。本文に先頭 10 件の
+     `key: message` を並べ、残りは件数だけを書く。key は媒体・スレッド・受信の識別子で、メールの本文・相手の名前・
+     アドレスは含まない。
+   - 終了コード 2 以上・道具が無い・食い違いの行を読めない → 「vault の mail の状態の整合を読めませんでした」。
+     検査が回っていないことを、黙って飛ばさずに候補にする。
+   - vault を宣言していない機体では何もしない(`worklog` も呼ばない)。
+   - 今後、状態を Git の外へ移す変更は、同じ形の check を移す PR に同梱して、ここに足す。
+   `worklog` の場所は `PROMOTION_DETECT_WORKLOG_BIN`(既定 `~/.local/bin/worklog`)。
 
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
 (`RECURRENCE_THRESHOLD`・`VERBATIM_MIN_SESSIONS`・`SKIP_STALE_DAYS`・
