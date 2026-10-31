@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "run_label": "</script><script>alert(1)</script>",
   "alert": {
     "title": "<!-- コメント開始のような文字列",

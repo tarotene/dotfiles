@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "run_label": "テスト回",
   "alert": {
     "title": "期限が近い項目があります",
@@ -9,6 +9,7 @@
     {
       "id": "a1",
       "key": "gmail:thread0001/msg0001",
+      "group": "判断だけが要る",
       "when": "至急",
       "when_class": "urgent",
       "title": "架空の更新手続きの確認",
@@ -19,6 +20,7 @@
     {
       "id": "b2",
       "key": "linkedin:conv0002=/20260101T0900",
+      "group": "返信が要る",
       "when": "早めに",
       "when_class": "near",
       "title": "架空のスカウトへの返事",
@@ -29,6 +31,7 @@
     {
       "id": "c3",
       "key": "lapras:conv0003/20260102T1000",
+      "group": "判断だけが要る",
       "when": "期限なし",
       "title": "架空の販促",
       "from": "架空のサービス C",

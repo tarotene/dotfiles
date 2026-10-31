@@ -68,6 +68,10 @@ label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
 .saved { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); }
 .draft { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .draft pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: 0.9rem; background: var(--ground); border-radius: 4px; padding: 12px; }
+.item .draft { background: var(--ground); border-style: dashed; }
+.item .draft pre { background: var(--panel); }
+.pane { display: grid; gap: 10px; }
+.pane-title { margin: 0; font-size: 1rem; padding-bottom: 4px; border-bottom: 1px solid var(--rule); text-wrap: balance; }
 .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .status { font-size: 0.85rem; color: var(--muted); }
 .status.bad { color: var(--warn); }
@@ -87,7 +91,7 @@ label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
 
   <section style="display:grid;gap:12px" aria-labelledby="h-judge">
     <h2 id="h-judge">判断の表</h2>
-    <p class="sub">期限の近い順です。「対応する」「見送る」は記録に <span class="mono">decide</span>・<span class="mono">pass</span> として書かれます。「あとで」は何も書かず、7 日で再通知が出ます。各項目のメモ欄には、その裁定の理由や、次から変えてほしいことを書けます。「未確認」は、本文を読んでいない、または使っているサービスか分からないものです。</p>
+    <p class="sub">種類ごとの枠に並べています。返信の下書きは、その項目の枠の中にあります。「対応する」「見送る」は記録に <span class="mono">decide</span>・<span class="mono">pass</span> として書かれます。「あとで」は何も書かず、7 日で再通知が出ます。各項目のメモ欄には、その裁定の理由や、次から変えてほしいことを書けます。「未確認」は、本文を読んでいない、または使っているサービスか分からないものです。</p>
     <div class="list" id="list"></div>
     <div class="guidance">
       <h2 style="font-size:1rem">今後の裁定へのフィードバック</h2>
@@ -122,6 +126,20 @@ function docId(key) { return key.replace(/[:\/]/g, "."); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
 
+function draftNode(d) {
+  const c = el("div", "draft");
+  c.append(el("div", "title", d.name), el("p", "why", d.note));
+  const pre = el("pre", null, d.text); pre.setAttribute("contenteditable", "true"); pre.spellcheck = false;
+  const bar = el("div", "bar"); const b = el("button", null, "コピー"); b.type = "button";
+  const st = el("span", "status");
+  b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(pre.textContent); st.textContent = "コピーしました"; }
+    catch (e) { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); st.textContent = "コピーできませんでした。選択したので、手でコピーしてください"; }
+  });
+  bar.append(b, st); c.append(pre, bar);
+  return c;
+}
+
 const cards = {};
 function render() {
   document.getElementById("run-label").textContent = DATA.run_label || "";
@@ -131,7 +149,19 @@ function render() {
     a.hidden = false;
   }
   const list = document.getElementById("list");
+  /* 同じ種類の項目は同じ枠(pane)に並べる。group が同じ項目は、最初に出た順にまとまる。 */
+  const groups = [];
   for (const it of ITEMS) {
+    const name = it.group || "";
+    let g = groups.find(x => x.name === name);
+    if (!g) { g = { name, items: [] }; groups.push(g); }
+    g.items.push(it);
+  }
+  const usedDrafts = new Set();
+  for (const g of groups) {
+  const pane = el("section", "pane"); if (g.name) pane.append(el("h3", "pane-title", g.name));
+  const inner = el("div", "list");
+  for (const it of g.items) {
     const card = el("div", "item"); card.id = "it-" + it.id; cards[it.id] = card;
     const meta = el("div", "meta");
     const w = el("span", "when", it.when);
@@ -151,23 +181,19 @@ function render() {
     const ta = document.createElement("textarea"); ta.id = "n-" + it.id; ta.maxLength = 1000; ta.rows = 2;
     ta.addEventListener("input", () => noteInput(it, ta.value));
     nl.append(ta);
-    card.append(meta, from, rec, why, choices, nl);
-    list.append(card);
+    /* 下書きは、同じ鍵の項目の枠の中に置く。下書きを読んでから裁定を押すとき、画面を行き来させない。 */
+    const mine = DRAFTS.filter(d => d.key === it.key);
+    for (const d of mine) usedDrafts.add(d);
+    card.append(meta, from, rec, why, ...mine.map(draftNode), choices, nl);
+    inner.append(card);
   }
-  if (DRAFTS.length) document.getElementById("drafts-section").hidden = false;
+  pane.append(inner); list.append(pane);
+  }
+  /* どの項目の鍵にも当たらない下書きだけが、下の節に残る。 */
+  const rest = DRAFTS.filter(d => !usedDrafts.has(d));
+  if (rest.length) document.getElementById("drafts-section").hidden = false;
   const dr = document.getElementById("drafts");
-  for (const d of DRAFTS) {
-    const c = el("div", "draft");
-    c.append(el("div", "title", d.name), el("p", "why", d.note));
-    const pre = el("pre", null, d.text); pre.setAttribute("contenteditable", "true"); pre.spellcheck = false;
-    const bar = el("div", "bar"); const b = el("button", null, "コピー"); b.type = "button";
-    const st = el("span", "status");
-    b.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(pre.textContent); st.textContent = "コピーしました"; }
-      catch (e) { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); st.textContent = "コピーできませんでした。選択したので、手でコピーしてください"; }
-    });
-    bar.append(b, st); c.append(pre, bar); dr.append(c);
-  }
+  for (const d of rest) dr.append(draftNode(d));
 }
 
 function paint(id) {

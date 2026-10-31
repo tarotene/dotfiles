@@ -8,7 +8,7 @@
   "properties": {
     "format_version": {
       "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
-      "const": 2
+      "const": 3
     },
     "run_label": {
       "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
@@ -53,6 +53,10 @@
           "pattern": "^[A-Za-z0-9_-]+$"
         },
         "key": { "$ref": "#/$defs/key" },
+        "group": {
+          "description": "項目の種類。同じ値の項目は、同じ枠(pane)にまとまり、枠の見出しに出る。省くと見出しの無い枠に入る。枠の順は、最初に出た順。例: 返信が要る、判断だけが要る、期限のある作業。",
+          "type": "string"
+        },
         "when": {
           "description": "期限や急ぎ度の表示文字列。",
           "type": "string",

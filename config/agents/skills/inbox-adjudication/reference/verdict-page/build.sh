@@ -135,7 +135,7 @@ selftest() {
   mutate 'del(.run_label)' missing-run-label
   mutate '.extra = 1' extra-top
   mutate '.items[0].extra = 1' extra-item
-  mutate '.format_version = 3' wrong-version
+  mutate '.format_version = 2' wrong-version
   mutate '.items[0].when_class = "red"' bad-when-class
   mutate '.items[0].id = "a b"' bad-id
   mutate '.drafts[0].key = "x"' bad-draft-key
