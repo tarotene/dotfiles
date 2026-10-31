@@ -12,6 +12,7 @@
 //!   PROMOTION_DETECT_CLAUDE_DIR   既定 "$HOME/.claude"
 //!   PROMOTION_DETECT_STATE_DIR    既定 "${XDG_STATE_HOME:-$HOME/.local/state}/claude"
 //!   PROMOTION_DETECT_INBOX_PATH   既定 "<state_dir>/wrapup/<repo_slug>.jsonl"
+//!   PROMOTION_DETECT_WORKLOG_BIN  既定 "$HOME/.local/bin/worklog"(vault を宣言している機体だけが呼ぶ)
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -118,6 +119,17 @@ fn main() {
         candidates.push((title, detail));
     }
 
+    // --- Git の外の状態の整合: vault の mail の状態。vault のある機体だけ ---
+    // 状態を Git の外(vault)に置くと、PR の差分の遷移検査が効かない。書き込み口(`worklog add mail`)は語彙に無い
+    // 遷移を拒むが、vault は Obsidian の画面から手で直せるので、書き込み口の検査を通らない編集を毎日読んで拾う。
+    if vault_declared(&state_dir.join("wrapup")) {
+        let worklog_bin = env_path("PROMOTION_DETECT_WORKLOG_BIN")
+            .or_else(|| home.as_ref().map(|h| h.join(".local/bin/worklog")));
+        if let Some(candidate) = worklog_bin.as_deref().and_then(check_mail_state) {
+            candidates.push(candidate);
+        }
+    }
+
     // 前回と同じ候補(題も本文も同じ)は入れ直さない。毎日の timer が同じ候補を入れると、ノートの行が
     // 1 日に 1 つ増え、「再発の回数」(行数)が膨らむ。本文が変われば(件数が増えた、など)入れ直す。
     let emitted_path = state_dir.join("promotion-detect").join("emitted.json");
@@ -154,6 +166,56 @@ fn write_emitted(path: &Path, emitted: &Emitted) {
     }
     if let Ok(text) = serde_json::to_string_pretty(emitted) {
         let _ = std::fs::write(path, text);
+    }
+}
+
+/// この機体が vault を宣言しているか(`OBSIDIAN_VAULT` かマーカーファイル。他の道具と同じ宣言)。
+/// 宣言が無い機体では、vault の状態の検査を飛ばす(検査を回せない理由が「vault が無い」ことだから)。
+fn vault_declared(lock_dir: &Path) -> bool {
+    vault_note::VaultNotes::open(lock_dir).is_some()
+}
+
+/// `worklog mail check` を回し、結果を候補(題, 本文)にする。整合していれば `None`。
+/// 終了コード 0 は整合、1 は食い違い(標準出力に 1 件 1 行)、それ以外・起動の失敗は「検査を読めなかった」候補にする
+/// (黙って飛ばすと、検査が回っていないことに誰も気づかない)。
+fn check_mail_state(worklog_bin: &Path) -> Option<(String, String)> {
+    let failed = |reason: String| {
+        Some((
+            promotion_detect::mail_check_failed_title(),
+            promotion_detect::mail_check_failed_detail(&reason),
+        ))
+    };
+    let out = match std::process::Command::new(worklog_bin)
+        .args(["mail", "check"])
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => return failed(format!("{}: {e}", worklog_bin.display())),
+    };
+    match out.status.code() {
+        Some(0) => None,
+        Some(1) => {
+            let items = promotion_detect::parse_mail_check(&String::from_utf8_lossy(&out.stdout));
+            if items.is_empty() {
+                return failed("終了コード 1 だが、食い違いの行を読めなかった".to_string());
+            }
+            Some((
+                promotion_detect::mail_check_title(items.len()),
+                promotion_detect::mail_check_detail(&items),
+            ))
+        }
+        code => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let first = stderr.lines().next().unwrap_or("").trim();
+            let status = code.map_or("シグナルで終了".to_string(), |c| {
+                format!("終了コード {c}")
+            });
+            failed(if first.is_empty() {
+                status
+            } else {
+                format!("{status}: {first}")
+            })
+        }
     }
 }
 

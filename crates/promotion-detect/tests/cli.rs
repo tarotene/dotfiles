@@ -40,6 +40,15 @@ fn write_fake_wrapup(path: &Path, log: &Path) {
     write_exec(path, &script);
 }
 
+/// 偽の `worklog`。呼ばれた引数を 1 行ログに残し、決めた標準出力・標準エラー・終了コードを返す。
+fn write_fake_worklog(path: &Path, log: &Path, code: i32, stdout: &str, stderr: &str) {
+    let script = format!(
+        "#!/bin/sh\necho \"$*\" >> '{}'\ncat <<'EOF'\n{stdout}EOF\ncat >&2 <<'EOF'\n{stderr}EOF\nexit {code}\n",
+        log.display()
+    );
+    write_exec(path, &script);
+}
+
 fn run(env: &[(&str, &Path)], extra_env: &[(&str, &str)], dry_run: bool) -> std::process::Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_promotion-detect"));
     isolate(&mut cmd);
@@ -206,6 +215,14 @@ impl World {
             &tmp.path().join("wrapup-stop-gate"),
             &tmp.path().join("wrapup.log"),
         );
+        // 既定の worklog は、整合している(終了コード 0)。呼ばれた引数は worklog.log に残る。
+        write_fake_worklog(
+            &tmp.path().join("worklog"),
+            &tmp.path().join("worklog.log"),
+            0,
+            "",
+            "",
+        );
         World { tmp }
     }
     fn p(&self, name: &str) -> std::path::PathBuf {
@@ -219,10 +236,14 @@ impl World {
                 ("PROMOTION_DETECT_STATE_DIR", &self.p("state")),
                 ("PROMOTION_DETECT_WRAPUP_BIN", &self.p("wrapup-stop-gate")),
                 ("PROMOTION_DETECT_INBOX_PATH", &self.p("inbox.jsonl")),
+                ("PROMOTION_DETECT_WORKLOG_BIN", &self.p("worklog")),
             ],
             extra,
             dry_run,
         )
+    }
+    fn worklog_calls(&self) -> String {
+        fs::read_to_string(self.p("worklog.log")).unwrap_or_default()
     }
     fn add_log(&self) -> String {
         fs::read_to_string(self.p("wrapup.log")).unwrap_or_default()
@@ -315,4 +336,120 @@ fn a_signal_dropped_again_and_again_is_flagged_from_the_vault() {
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
+}
+
+/// vault を宣言した機体(`OBSIDIAN_VAULT`)にして、その値を返す。
+fn declare_vault(w: &World) -> String {
+    let vault = w.p("vault");
+    fs::create_dir_all(vault.join(".obsidian")).unwrap();
+    fs::write(vault.join(".obsidian/app.json"), "{}").unwrap();
+    vault.to_str().unwrap().to_string()
+}
+
+#[test]
+fn a_mail_discrepancy_in_the_vault_is_flagged() {
+    let w = World::new("[]");
+    write_fake_worklog(
+        &w.p("worklog"),
+        &w.p("worklog.log"),
+        1,
+        "食い違い\tgmail:t1/r1\t遷移が語彙に無い\n食い違い\tgmail:t2/r2\t終端の行が消えた(控え: closed / 今: -)\n",
+        "",
+    );
+    let vault = declare_vault(&w);
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault)], true);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("食い違いが2件"), "{stdout}");
+    assert!(stdout.contains("gmail:t1/r1"), "{stdout}");
+    assert!(stdout.contains(r#""repo":"tarotene/dotfiles""#), "{stdout}");
+    assert_eq!(w.worklog_calls().trim(), "mail check");
+}
+
+#[test]
+fn a_consistent_mail_state_adds_nothing() {
+    let w = World::new("[]");
+    let vault = declare_vault(&w);
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault)], true);
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(
+        w.worklog_calls().trim(),
+        "mail check",
+        "整合していても検査は回す"
+    );
+}
+
+#[test]
+fn a_machine_without_a_vault_never_runs_the_mail_check() {
+    let w = World::new("[]");
+    write_fake_worklog(
+        &w.p("worklog"),
+        &w.p("worklog.log"),
+        1,
+        "食い違い\tgmail:t1/r1\tm\n",
+        "",
+    );
+    let out = w.run(&[], true);
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        w.worklog_calls().is_empty(),
+        "vault が無い機体で worklog を呼んだ"
+    );
+}
+
+#[test]
+fn a_failing_mail_check_is_flagged_instead_of_skipped() {
+    // 検査が回っていないことを、黙って飛ばさない(終了コード 2 = worklog が読めなかった)。
+    let w = World::new("[]");
+    write_fake_worklog(
+        &w.p("worklog"),
+        &w.p("worklog.log"),
+        2,
+        "",
+        "worklog: vault を読めない\n二行目は載せない\n",
+    );
+    let vault = declare_vault(&w);
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault)], true);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("整合を読めませんでした"), "{stdout}");
+    assert!(
+        stdout.contains("終了コード 2: worklog: vault を読めない"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("二行目"), "{stdout}");
+}
+
+#[test]
+fn a_missing_worklog_binary_is_flagged_on_a_vault_machine() {
+    let w = World::new("[]");
+    fs::remove_file(w.p("worklog")).unwrap();
+    let vault = declare_vault(&w);
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault)], true);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("整合を読めませんでした"), "{stdout}");
+}
+
+#[test]
+fn an_unchanged_discrepancy_is_not_added_again_on_the_next_day() {
+    let w = World::new("[]");
+    write_fake_worklog(
+        &w.p("worklog"),
+        &w.p("worklog.log"),
+        1,
+        "食い違い\tgmail:t1/r1\t遷移が語彙に無い\n",
+        "",
+    );
+    let vault = declare_vault(&w);
+    w.run(&[("OBSIDIAN_VAULT", &vault)], false);
+    let first = w.add_log();
+    assert!(first.contains("食い違いが1件"), "{first}");
+    w.run(&[("OBSIDIAN_VAULT", &vault)], false);
+    assert_eq!(w.add_log(), first, "同じ食い違いを翌日も入れ直した");
 }

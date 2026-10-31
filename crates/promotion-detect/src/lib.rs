@@ -433,9 +433,130 @@ pub fn calibrate(notes: &[SignalNote], vocab: &Vocabulary) -> Vec<(String, Strin
     out
 }
 
+// ---------------------------------------------------------------------------
+// Git の外の状態の整合(`worklog mail check`)
+// ---------------------------------------------------------------------------
+
+/// `worklog mail check` が標準出力に出す食い違いの 1 行(`食い違い\t<key>\t<message>`)。
+/// key は媒体・スレッド・受信の識別子で、メールの本文・相手の名前・アドレスは含まない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailDiscrepancy {
+    pub key: String,
+    pub message: String,
+}
+
+/// 詳細に並べる食い違いの最大件数。超えた分は「ほか N 件」と数だけを書く。
+pub const MAIL_CHECK_LISTED: usize = 10;
+
+/// 詳細に書く失敗の理由の最大文字数(標準エラーの先頭の行を切る)。
+pub const MAIL_CHECK_REASON_CHARS: usize = 200;
+
+/// `worklog mail check` の標準出力から食い違いの行を取り出す。形に合わない行は読み飛ばす。
+pub fn parse_mail_check(stdout: &str) -> Vec<MailDiscrepancy> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, '\t');
+            if fields.next()? != "食い違い" {
+                return None;
+            }
+            Some(MailDiscrepancy {
+                key: fields.next()?.to_string(),
+                message: fields.next()?.to_string(),
+            })
+        })
+        .collect()
+}
+
+pub fn mail_check_title(count: usize) -> String {
+    format!("vault の mail の状態に食い違いが{count}件あります(Git の外の状態の整合)")
+}
+
+pub fn mail_check_detail(items: &[MailDiscrepancy]) -> String {
+    let listed: Vec<String> = items
+        .iter()
+        .take(MAIL_CHECK_LISTED)
+        .map(|d| format!("{}: {}", d.key, d.message))
+        .collect();
+    let rest = items.len().saturating_sub(MAIL_CHECK_LISTED);
+    let more = if rest > 0 {
+        format!(" ほか{rest}件。")
+    } else {
+        String::new()
+    };
+    format!(
+        "`worklog mail check` が食い違いを報告しています。{}。{more} 状態を Git の外(vault)に置くと、PR の差分の遷移検査が効かないので、\
+         書き込み口の検査を通らない手の編集(Obsidian の画面)を、毎日ここで拾います。\
+         `worklog mail check` で全件を読み、`worklog mail restore` か `forget` で直してください。",
+        listed.join(" / ")
+    )
+}
+
+/// 検査そのものを実行できなかった(道具が無い・vault を読めない・食い違いの行を読めない)。
+/// 黙って飛ばすと、検査が回っていないことに誰も気づかないので、候補として出す。
+pub fn mail_check_failed_title() -> String {
+    "vault の mail の状態の整合を読めませんでした(`worklog mail check` の失敗)".to_string()
+}
+
+pub fn mail_check_failed_detail(reason: &str) -> String {
+    let reason: String = reason.chars().take(MAIL_CHECK_REASON_CHARS).collect();
+    format!(
+        "vault を宣言している機体で `worklog mail check` を実行できませんでした: {reason}。\
+         この間、Git の外の mail の状態の整合は検査されていません。`worklog mail check` を手で実行して原因を確かめてください。"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_mail_check_reads_only_the_discrepancy_lines() {
+        let out = "食い違い\tgmail:t1/r1\t遷移が語彙に無い\nread\tgmail:t2/r2\t別の行\n食い違い\tgmail:t3/r3\t終端の行が消えた(控え: closed / 今: -)\n食い違い\t欠けた行\n";
+        let items = parse_mail_check(out);
+        assert_eq!(
+            items,
+            vec![
+                MailDiscrepancy {
+                    key: "gmail:t1/r1".to_string(),
+                    message: "遷移が語彙に無い".to_string()
+                },
+                MailDiscrepancy {
+                    key: "gmail:t3/r3".to_string(),
+                    message: "終端の行が消えた(控え: closed / 今: -)".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn mail_check_detail_lists_at_most_ten_and_counts_the_rest() {
+        let items: Vec<MailDiscrepancy> = (0..13)
+            .map(|i| MailDiscrepancy {
+                key: format!("k{i}"),
+                message: "m".to_string(),
+            })
+            .collect();
+        let detail = mail_check_detail(&items);
+        assert!(detail.contains("k9: m"), "{detail}");
+        assert!(!detail.contains("k10: m"), "{detail}");
+        assert!(detail.contains("ほか3件"), "{detail}");
+        assert!(mail_check_title(13).contains("13件"));
+    }
+
+    #[test]
+    fn mail_check_failed_detail_cuts_a_long_reason() {
+        let reason = "あ".repeat(500);
+        let detail = mail_check_failed_detail(&reason);
+        assert!(
+            detail.contains(&"あ".repeat(MAIL_CHECK_REASON_CHARS)),
+            "{detail}"
+        );
+        assert!(
+            !detail.contains(&"あ".repeat(MAIL_CHECK_REASON_CHARS + 1)),
+            "{detail}"
+        );
+    }
 
     #[test]
     fn parse_target_takes_first_value() {
