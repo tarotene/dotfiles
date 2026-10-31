@@ -167,6 +167,12 @@ git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広�
 `~/.local/state/claude`(`claude.nix`)と、vault(`obsidian.nix` の `vaultPath`。vega だけが宣言する)。
 `dotfiles.claudePermissions.allowWrite` は各モジュールが足した値の和になる。
 
+**uv のキャッシュと PyPI の通信先(2026-10-29)**: Python のリポジトリで、sandbox の中の `uv sync` が、`~/.cache/uv` を書けず
+`Read-only file system (os error 30)` で落ち、続けて `files.pythonhosted.org` への通信が拒否されて落ちた。
+docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型なので、uv を入れる `runtimes.nix` が
+`~/.cache/uv` を `allowWrite` に足し、`domains` の既定に `pypi.org`・`files.pythonhosted.org`・`docs.python.org` を足した。
+`numpy.org` のように 1 つのリポジトリだけが使う宛先は、共有の `domains` に足さない。
+
 宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
 
 ## 旧共有管理を撤去する
