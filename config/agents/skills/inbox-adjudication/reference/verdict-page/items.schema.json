@@ -8,7 +8,7 @@
   "properties": {
     "format_version": {
       "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
-      "const": 3
+      "const": 4
     },
     "run_label": {
       "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
@@ -45,7 +45,7 @@
     "item": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "key", "when", "title", "from", "rec", "why"],
+      "required": ["id", "key", "kind", "when", "title", "from", "rec", "why"],
       "properties": {
         "id": {
           "description": "ページ内で項目を指す短い名前(DOM の id に使う)。items 内で一意。",
@@ -53,9 +53,14 @@
           "pattern": "^[A-Za-z0-9_-]+$"
         },
         "key": { "$ref": "#/$defs/key" },
-        "group": {
-          "description": "項目の種類。同じ値の項目は、同じ枠(pane)にまとまり、枠の見出しに出る。省くと見出しの無い枠に入る。枠の順は、最初に出た順。例: 返信が要る、判断だけが要る、期限のある作業。",
-          "type": "string"
+        "kind": {
+          "description": "項目の種類。reply=返信を出す、notice=通知を確かめる(サインイン・漏えいの案内など)、task=期限のある作業。同じ種類の項目は 1 つの枠(pane)にまとまり、押せる選択肢(ボタンの語、verdict、owner、押した後の分担)は options.json の、この種類の表から決まる。",
+          "enum": ["reply", "notice", "task"]
+        },
+        "rec_option": {
+          "description": "推奨の選択肢の id(options.json の、この項目の kind の選択肢)。ボタンに「推奨」の印が付き、推奨の行に選択肢の語が出る。選択肢にない id は build.sh が落とす。省くと印は付かない。",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
         },
         "when": {
           "description": "期限や急ぎ度の表示文字列。",
@@ -68,8 +73,8 @@
         },
         "title": { "type": "string", "minLength": 1 },
         "from": { "description": "差出人の種類や組織名(アドレスは書かない)。", "type": "string" },
-        "rec": { "description": "推奨。", "type": "string" },
-        "why": { "description": "根拠(スレッドの日付と要旨)。", "type": "string" }
+        "rec": { "description": "推奨の理由。推奨の選択肢の語は、rec_option から画面が足す。", "type": "string" },
+        "why": { "description": "根拠(スレッドの日付と要旨)。改行はそのまま表示される。", "type": "string" }
       }
     },
     "draft": {

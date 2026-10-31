@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
-/* 机型の単一カラム: 上に件数、(任意の)注意、判断の表、(任意の)下書きの順。裁定は押した時だけ db に書く */
+/* 机型の単一カラム: 上に件数と分担の見取り図、(任意の)注意、種類ごとの枠(項目・下書き・選択肢・記入欄)の順。裁定は押した時だけ db に書く */
 :root {
   --ground: #f6f7f5;
   --panel: #ffffff;
@@ -36,17 +36,28 @@ body { margin: 0; background: var(--ground); color: var(--ink); font-family: var
 main { max-width: 760px; margin-inline: auto; display: grid; gap: 28px; }
 h1 { font-size: 1.6rem; line-height: 1.3; margin: 0; text-wrap: balance; }
 h2 { font-size: 1.1rem; margin: 0; text-wrap: balance; }
+h3 { margin: 0; }
 p { margin: 0; }
 .sub { color: var(--muted); font-size: 0.9rem; }
 .mono { font-family: var(--font-mono); }
 .counts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-variant-numeric: tabular-nums; }
 .counts b { font-size: 1.3rem; font-family: var(--font-mono); font-weight: 500; }
 .counts span { color: var(--muted); font-size: 0.85rem; }
+.handoff { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 16px; display: grid; gap: 8px; }
+.handoff h2 { font-size: 1rem; }
+.handoff .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 16px; }
+.handoff .col { min-width: 0; display: grid; gap: 2px; align-content: start; }
+.handoff .col h3 { font-size: 0.82rem; color: var(--muted); font-weight: 500; }
+.handoff .col ul { margin: 0; padding-left: 1.1em; font-size: 0.88rem; }
+.handoff .col li { overflow-wrap: anywhere; }
+.handoff .empty { color: var(--muted); font-size: 0.85rem; }
 .alert { background: var(--crit-bg); border-left: 4px solid var(--crit); padding: 12px 16px; border-radius: 4px; display: grid; gap: 4px; }
 .alert strong { color: var(--crit); }
 .list { display: grid; gap: 10px; }
-.item { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; min-width: 0; }
-.item[data-v="decide"], .item[data-v="pass"] { background: var(--chosen); }
+.pane { display: grid; gap: 10px; }
+.pane-title { font-size: 1rem; padding-bottom: 4px; border-bottom: 1px solid var(--rule); text-wrap: balance; }
+.item { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.item[data-d="1"] { background: var(--chosen); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
 .when { font-family: var(--font-mono); font-size: 0.8rem; padding: 1px 8px; border-radius: 3px; border: 1px solid var(--rule); }
 .when.urgent { background: var(--crit-bg); color: var(--crit); border-color: transparent; }
@@ -55,23 +66,36 @@ p { margin: 0; }
 .from { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
 .rec { font-size: 0.9rem; }
 .rec b { color: var(--accent); }
-.why { font-size: 0.88rem; color: var(--muted); overflow-wrap: anywhere; }
-.choices { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-button { font: inherit; font-size: 0.9rem; cursor: pointer; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 14px; min-height: 36px; }
+.why { font-size: 0.88rem; color: var(--muted); overflow-wrap: anywhere; white-space: pre-line; }
+.why-d summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; overflow-wrap: anywhere; }
+.why-d[open] summary { margin-bottom: 4px; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+button { font: inherit; font-size: 0.9rem; cursor: pointer; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 14px; min-height: 40px; }
 button:hover { border-color: var(--accent); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.opts button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.opts button .tag { display: block; font-size: 0.7rem; line-height: 1.2; color: var(--accent); font-family: var(--font-mono); }
+.opts button[aria-checked="true"] .tag { color: var(--accent-ink); }
+.opts button[data-rec="1"]:not([aria-checked="true"]) { border-color: var(--accent); }
+.after { background: var(--ground); border-radius: 4px; padding: 8px 12px; display: grid; gap: 2px; font-size: 0.86rem; }
+.after dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+.after dt { color: var(--muted); font-family: var(--font-mono); font-size: 0.78rem; }
+.after dd { margin: 0; overflow-wrap: anywhere; }
+.after .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.after.hint { color: var(--muted); }
+button.link { border: none; background: none; padding: 0 4px; min-height: 0; color: var(--muted); text-decoration: underline; font-size: 0.8rem; }
 textarea { font: inherit; font-size: 0.88rem; color: var(--ink); background: var(--ground); border: 1px solid var(--rule); border-radius: 4px; padding: 8px 10px; width: 100%; box-sizing: border-box; min-height: 3.2em; resize: vertical; line-height: 1.6; }
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
+label.note { font-size: 0.8rem; color: var(--muted); display: grid; gap: 4px; }
+label.note.must { color: var(--ink); }
+label.note.must textarea { border-color: var(--accent); border-width: 2px; }
+label.note .warn { color: var(--warn); font-size: 0.8rem; }
 .guidance { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
 .saved { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); }
 .draft { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .draft pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: 0.9rem; background: var(--ground); border-radius: 4px; padding: 12px; }
 .item .draft { background: var(--ground); border-style: dashed; }
 .item .draft pre { background: var(--panel); }
-.pane { display: grid; gap: 10px; }
-.pane-title { margin: 0; font-size: 1rem; padding-bottom: 4px; border-bottom: 1px solid var(--rule); text-wrap: balance; }
 .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .status { font-size: 0.85rem; color: var(--muted); }
 .status.bad { color: var(--warn); }
@@ -82,8 +106,9 @@ label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
 <main>
   <header style="display:grid;gap:10px">
     <h1>メール裁定</h1>
-    <p class="sub"><span id="run-label"></span>の一括処理。押した裁定は、この画面と記録の保存先に残り、次の机か次のセッションが読んで、記録(<span class="mono">worklog</span>)に書きます。</p>
+    <p class="sub"><span id="run-label"></span>。各項目で「どうするか」と「誰がやるか」を一緒に選びます。選んだ内容は保存先に残り、次の机か次のセッションが読んで、記録(<span class="mono">worklog</span>)に書きます。</p>
     <div class="counts" id="counts"></div>
+    <section class="handoff" id="handoff" aria-live="polite" aria-label="この選択のあとの分担"></section>
     <p class="status" id="dbstatus">保存先に接続中です。</p>
   </header>
 
@@ -91,7 +116,7 @@ label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
 
   <section style="display:grid;gap:12px" aria-labelledby="h-judge">
     <h2 id="h-judge">判断の表</h2>
-    <p class="sub">種類ごとの枠に並べています。返信の下書きは、その項目の枠の中にあります。「対応する」「見送る」は記録に <span class="mono">decide</span>・<span class="mono">pass</span> として書かれます。「あとで」は何も書かず、7 日で再通知が出ます。各項目のメモ欄には、その裁定の理由や、次から変えてほしいことを書けます。「未確認」は、本文を読んでいない、または使っているサービスか分からないものです。</p>
+    <p class="sub">種類ごとの枠に並べています。返信の下書きは、その項目の枠の中にあります。「推奨」の印は私の案で、選ぶのはあなたです。「その他」を選ぶと、項目の下の記入欄があなたの指示になり、次の机が読んでそのとおりに動きます。「あとで」は何も記録せず、7 日後に再通知します。選び直すときは「選択を外す」を押します。</p>
     <div class="list" id="list"></div>
     <div class="guidance">
       <h2 style="font-size:1rem">今後の裁定へのフィードバック</h2>
@@ -107,24 +132,42 @@ label.note { font-size: 0.78rem; color: var(--muted); display: grid; gap: 4px; }
   </section>
 
   <section id="drafts-section" style="display:grid;gap:12px" aria-labelledby="h-draft" hidden>
-    <h2 id="h-draft">Gmail の外の返信の下書き</h2>
+    <h2 id="h-draft">どの項目にも結びつかない下書き</h2>
     <p class="sub">送信はページから行いません。直して、元の画面に貼ってください。</p>
     <div class="list" id="drafts"></div>
   </section>
 </main>
 <script>
-/* 次の行が、生成器の差し込み点。入力の形は items.schema.json、保存先の形は verdicts.schema.json。 */
+/* 次の 2 行が、生成器の差し込み点。入力の形は items.schema.json、保存先の形は verdicts.schema.json、選択肢の正本は options.json。 */
 const DATA = __DATA__;
+const OPTIONS = __OPTIONS__;
 const ITEMS = DATA.items;
 const DRAFTS = DATA.drafts || [];
-const VERDICTS = [["decide", "対応する"], ["pass", "見送る"], ["later", "あとで"]];
-const state = {};          // id -> {verdict, at, note}
+const state = {};          // id -> {verdict, owner, option, at, note}
+const ITEM = {};           // id -> item
+for (const it of ITEMS) ITEM[it.id] = it;
 let col = null;            // db collection, null when unavailable
 const chain = {};          // id -> Promise, 1 doc 1 write at a time
 
 function docId(key) { return key.replace(/[:\/]/g, "."); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+function optsOf(it) { return OPTIONS.kinds[it.kind].options; }
+
+/* 保存された裁定から、押されたボタンを決める。option が無い古い文書は、verdict と owner から選ぶ。 */
+function optionOf(it, s) {
+  if (!s || !s.verdict) return null;
+  const opts = optsOf(it);
+  return opts.find(o => o.id === s.option && o.verdict === s.verdict)
+    || opts.find(o => o.verdict === s.verdict && (o.verdict !== "decide" || o.owner === (s.owner || "me")))
+    || null;
+}
+/* 次の机が動ける裁定か。その他は、記入欄に指示があるときだけ。 */
+function settled(s) {
+  if (!s || !s.verdict) return false;
+  if (s.verdict === "other") return !!(s.note && s.note.trim());
+  return s.verdict === "decide" || s.verdict === "pass";
+}
 
 function draftNode(d) {
   const c = el("div", "draft");
@@ -149,47 +192,52 @@ function render() {
     a.hidden = false;
   }
   const list = document.getElementById("list");
-  /* 同じ種類の項目は同じ枠(pane)に並べる。group が同じ項目は、最初に出た順にまとまる。 */
-  const groups = [];
-  for (const it of ITEMS) {
-    const name = it.group || "";
-    let g = groups.find(x => x.name === name);
-    if (!g) { g = { name, items: [] }; groups.push(g); }
-    g.items.push(it);
-  }
   const usedDrafts = new Set();
-  for (const g of groups) {
-  const pane = el("section", "pane"); if (g.name) pane.append(el("h3", "pane-title", g.name));
-  const inner = el("div", "list");
-  for (const it of g.items) {
-    const card = el("div", "item"); card.id = "it-" + it.id; cards[it.id] = card;
-    const meta = el("div", "meta");
-    const w = el("span", "when", it.when);
-    if (it.when_class === "urgent" || it.when_class === "near") w.classList.add(it.when_class);
-    meta.append(w, el("span", "title", it.title));
-    const from = el("div", "from", it.from);
-    const rec = el("div", "rec"); rec.append("推奨: ", Object.assign(el("b"), { textContent: it.rec }));
-    const why = el("div", "why", it.why);
-    const choices = el("div", "choices");
-    for (const [v, label] of VERDICTS) {
-      const b = el("button", null, label); b.type = "button"; b.dataset.v = v; b.id = "b-" + it.id + "-" + v; b.setAttribute("aria-pressed", "false");
-      b.addEventListener("click", () => choose(it, v));
-      choices.append(b);
+  /* 同じ種類の項目は同じ枠(pane)に並べる。枠の順は options.json の kind の順。 */
+  for (const kind of Object.keys(OPTIONS.kinds)) {
+    const mineItems = ITEMS.filter(it => it.kind === kind);
+    if (!mineItems.length) continue;
+    const pane = el("section", "pane"); pane.append(el("h3", "pane-title", OPTIONS.kinds[kind].pane + "(" + mineItems.length + ")"));
+    const inner = el("div", "list");
+    for (const it of mineItems) {
+      const card = el("div", "item"); card.id = "it-" + it.id; cards[it.id] = card;
+      const meta = el("div", "meta");
+      const w = el("span", "when", it.when);
+      if (it.when_class === "urgent" || it.when_class === "near") w.classList.add(it.when_class);
+      meta.append(w, el("span", "title", it.title));
+      const from = el("div", "from", it.from);
+      const recOpt = optsOf(it).find(o => o.id === it.rec_option);
+      const rec = el("div", "rec"); rec.append("推奨: ", Object.assign(el("b"), { textContent: (recOpt ? recOpt.label + "。" : "") + it.rec }));
+      /* 長い根拠は、1 行の要約に畳む。推奨とボタンが、根拠の下に押し出されないようにするため。 */
+      let why;
+      if (it.why.length > 160) {
+        why = el("details", "why-d");
+        why.append(el("summary", null, "根拠を読む: " + it.why.split("\n")[0].slice(0, 56) + "…"), el("div", "why", it.why));
+      } else {
+        why = el("div", "why", it.why);
+      }
+      const group = el("div", "opts"); group.setAttribute("role", "radiogroup"); group.setAttribute("aria-label", "この項目をどうするか");
+      for (const o of optsOf(it)) {
+        const b = el("button", null, o.label); b.type = "button"; b.id = "b-" + it.id + "-" + o.id; b.dataset.o = o.id;
+        b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
+        if (it.rec_option === o.id) { b.dataset.rec = "1"; b.append(el("span", "tag", "推奨")); }
+        b.addEventListener("click", () => choose(it, o));
+        group.append(b);
+      }
+      const after = el("div", "after hint"); after.id = "a-" + it.id;
+      const nl = el("label", "note"); nl.id = "nl-" + it.id;
+      const nt = el("span", null, "メモ(任意): 理由や、次から変えてほしいこと"); nt.id = "nt-" + it.id;
+      const ta = document.createElement("textarea"); ta.id = "n-" + it.id; ta.maxLength = 1000; ta.rows = 2;
+      ta.addEventListener("input", () => noteInput(it, ta.value));
+      const wn = el("span", "warn", ""); wn.id = "w-" + it.id;
+      nl.append(nt, ta, wn);
+      const mine = DRAFTS.filter(d => d.key === it.key);
+      for (const d of mine) usedDrafts.add(d);
+      card.append(meta, from, rec, why, ...mine.map(draftNode), group, after, nl);
+      inner.append(card);
     }
-    choices.append(Object.assign(el("span", "saved"), { id: "s-" + it.id }));
-    const nl = el("label", "note"); nl.append("メモ(この裁定の理由・次から変えてほしいこと)");
-    const ta = document.createElement("textarea"); ta.id = "n-" + it.id; ta.maxLength = 1000; ta.rows = 2;
-    ta.addEventListener("input", () => noteInput(it, ta.value));
-    nl.append(ta);
-    /* 下書きは、同じ鍵の項目の枠の中に置く。下書きを読んでから裁定を押すとき、画面を行き来させない。 */
-    const mine = DRAFTS.filter(d => d.key === it.key);
-    for (const d of mine) usedDrafts.add(d);
-    card.append(meta, from, rec, why, ...mine.map(draftNode), choices, nl);
-    inner.append(card);
+    pane.append(inner); list.append(pane);
   }
-  pane.append(inner); list.append(pane);
-  }
-  /* どの項目の鍵にも当たらない下書きだけが、下の節に残る。 */
   const rest = DRAFTS.filter(d => !usedDrafts.has(d));
   if (rest.length) document.getElementById("drafts-section").hidden = false;
   const dr = document.getElementById("drafts");
@@ -197,25 +245,75 @@ function render() {
 }
 
 function paint(id) {
-  const s = state[id], card = cards[id]; if (!card) return;
-  card.dataset.v = s && s.verdict ? s.verdict : "";
-  for (const [v] of VERDICTS) document.getElementById("b-" + id + "-" + v).setAttribute("aria-pressed", String(!!s && !!s.verdict && s.verdict === v));
-  document.getElementById("s-" + id).textContent = s && s.at ? (col ? "保存済み " : "") + hhmm(s.at) : "";
-  const ta = document.getElementById("n-" + id);
-  if (ta && s && typeof s.note === "string" && document.activeElement !== ta && ta.value !== s.note) ta.value = s.note;
-  counts();
+  const it = ITEM[id], s = state[id], card = cards[id]; if (!card) return;
+  const o = optionOf(it, s);
+  card.dataset.d = settled(s) ? "1" : "";
+  for (const b of card.querySelectorAll(".opts button")) b.setAttribute("aria-checked", String(!!o && b.dataset.o === o.id));
+  const after = document.getElementById("a-" + id);
+  after.textContent = "";
+  if (o) {
+    after.className = "after";
+    const dl = el("dl");
+    dl.append(el("dt", null, "あなた"), el("dd", null, o.you), el("dt", null, "私"), el("dd", null, o.agent));
+    const row = el("div", "row"); row.append(dl);
+    const right = el("div", "bar");
+    right.append(Object.assign(el("span", "saved"), { id: "s-" + id, textContent: s && s.at ? (col ? "保存済み " : "") + hhmm(s.at) : "" }));
+    const clr = el("button", "link", "選択を外す"); clr.type = "button"; clr.addEventListener("click", () => clearChoice(it));
+    right.append(clr); row.append(right);
+    after.append(row);
+  } else {
+    after.className = "after hint";
+    after.textContent = "選ぶと、あなたと私の分担がここに出ます。";
+  }
+  const isOther = !!o && o.verdict === "other";
+  const nl = document.getElementById("nl-" + id), ta = document.getElementById("n-" + id);
+  nl.className = "note" + (isOther ? " must" : "");
+  document.getElementById("nt-" + id).textContent = isOther
+    ? "その他の指示(必須): どうしたいかを書いてください。この欄が、そのまま次の机への指示になります"
+    : "メモ(任意): 理由や、次から変えてほしいこと";
+  ta.placeholder = isOther ? "例: 返信は私が送る。ただし先に、副業の可否だけ文面で聞いてほしい。" : "";
+  document.getElementById("w-" + id).textContent = isOther && !(s.note && s.note.trim()) ? "指示が空です。書くまで、次の机は動けません" : "";
+  if (s && typeof s.note === "string" && document.activeElement !== ta && ta.value !== s.note) ta.value = s.note;
+  summary();
 }
-function counts() {
-  const n = ITEMS.length, done = ITEMS.filter(i => state[i.id] && state[i.id].verdict).length;
+
+function summary() {
+  const n = ITEMS.length;
+  let decided = 0, later = 0, none = 0, waiting = 0, passed = 0;
+  const me = [], agent = [], other = [];
+  for (const it of ITEMS) {
+    const s = state[it.id], o = optionOf(it, s);
+    if (!o) { none++; continue; }
+    if (o.verdict === "later") { later++; continue; }
+    if (o.verdict === "other") { if (settled(s)) { decided++; other.push([it, s]); } else waiting++; continue; }
+    decided++;
+    if (o.verdict === "pass") { passed++; continue; }
+    (o.owner === "agent" ? agent : me).push([it, o]);
+  }
   const c = document.getElementById("counts"); c.textContent = "";
-  for (const [num, label] of [[n, "件"], [done, "選択済み"], [n - done, "未選択"]]) {
+  for (const [num, label] of [[n, "件"], [decided, "決めた"], [later, "あとで"], [none + waiting, "未選択・指示待ち"]]) {
     const d = el("div"); d.append(Object.assign(el("b"), { textContent: String(num) }), " ", Object.assign(el("span"), { textContent: label })); c.append(d);
   }
+  const h = document.getElementById("handoff"); h.textContent = "";
+  h.append(el("h2", null, "この選択のあとの分担"));
+  if (!me.length && !agent.length && !other.length) {
+    h.append(el("p", "empty", "まだ、やる・おまかせ・その他を選んだ項目はありません。選ぶと、あなたがやること・私がやること・指示を読んで動くことが、ここに分かれて出ます。"));
+  } else {
+    const cols = el("div", "cols");
+    for (const [name, rows] of [["あなたがやる", me.map(([it, o]) => it.title + "(" + o.label + ")")], ["私がやる(おまかせ)", agent.map(([it, o]) => it.title + "(" + o.label + ")")], ["指示を読んで動く(その他)", other.map(([it, s]) => it.title + ": " + s.note.trim().slice(0, 40) + (s.note.trim().length > 40 ? "…" : ""))]]) {
+      const col1 = el("div", "col"); col1.append(el("h3", null, name + "  " + rows.length));
+      if (rows.length) { const ul = el("ul"); for (const r of rows) ul.append(el("li", null, r)); col1.append(ul); }
+      cols.append(col1);
+    }
+    h.append(cols);
+  }
+  h.append(el("p", "sub", "やらない " + passed + " 件。あとで " + later + " 件。未選択 " + none + " 件。その他で指示が空 " + waiting + " 件。"));
 }
+
 function persist(it) {
   if (!col) return;
   const s = state[it.id]; if (!s) return;
-  const body = { key: it.key, verdict: s.verdict || "", note: s.note || "", at: s.at };
+  const body = { key: it.key, verdict: s.verdict || "", owner: s.owner || "", option: s.option || "", note: s.note || "", at: s.at };
   const ref = col.doc(docId(it.key));
   const run = () => ref.set(body).catch(e => {
     const st = document.getElementById("dbstatus"); st.className = "status bad";
@@ -223,17 +321,26 @@ function persist(it) {
   });
   chain[it.id] = (chain[it.id] || Promise.resolve()).then(run);
 }
-function choose(it, v) {
+function choose(it, o) {
   const at = new Date().toISOString();
-  state[it.id] = { verdict: v, at, note: (state[it.id] && state[it.id].note) || "" }; paint(it.id);
-  persist(it);
+  const prev = state[it.id] || {};
+  state[it.id] = { verdict: o.verdict, owner: o.owner || "", option: o.id, at, note: prev.note || "" };
+  paint(it.id); persist(it);
+  if (o.verdict === "other") { const ta = document.getElementById("n-" + it.id); if (ta) ta.focus(); }
+}
+function clearChoice(it) {
+  const at = new Date().toISOString();
+  const prev = state[it.id] || {};
+  state[it.id] = { verdict: "", owner: "", option: "", at, note: prev.note || "" };
+  paint(it.id); persist(it);
 }
 const timers = {};
 function noteInput(it, text) {
   const at = new Date().toISOString();
-  const prev = state[it.id] || { verdict: "" };
-  state[it.id] = { verdict: prev.verdict || "", at, note: text };
+  const prev = state[it.id] || { verdict: "", owner: "", option: "" };
+  state[it.id] = { verdict: prev.verdict || "", owner: prev.owner || "", option: prev.option || "", at, note: text };
   clearTimeout(timers[it.id]);
+  document.getElementById("w-" + it.id).textContent = "";
   timers[it.id] = setTimeout(() => { persist(it); paint(it.id); }, 900);
 }
 let gTimer = null;
@@ -253,10 +360,10 @@ document.getElementById("summarize").addEventListener("click", async () => {
   let picked = 0;
   for (const it of ITEMS) {
     const s = state[it.id]; if (!s) continue;
-    const v = s.verdict ? VERDICTS.find(x => x[0] === s.verdict)[1] : "";
-    if (!v && !s.note) continue;
-    if (v) picked++;
-    lines.push("- " + it.title + (v ? " → " + v : "") + (s.note ? "\n  メモ: " + s.note : ""));
+    const o = optionOf(it, s);
+    if (!o && !s.note) continue;
+    if (o) picked++;
+    lines.push("- " + it.title + (o ? " → " + o.label : "") + (s.note ? "\n  " + (o && o.verdict === "other" ? "指示: " : "メモ: ") + s.note : ""));
   }
   const g = document.getElementById("g-text").value.trim();
   const rest = ITEMS.length - picked;
@@ -267,7 +374,8 @@ document.getElementById("summarize").addEventListener("click", async () => {
   catch (e) { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); st.textContent = "コピーできませんでした。選択したので、手でコピーしてください"; }
 });
 
-render(); counts();
+render();
+for (const it of ITEMS) paint(it.id);
 (async () => {
   const st = document.getElementById("dbstatus");
   let db = null;
@@ -279,7 +387,7 @@ render(); counts();
     const byKey = new Map(snap.docs.map(d => [d.data().key, d.data()]));
     for (const it of ITEMS) {
       const d = byKey.get(it.key);
-      if (d && (!state[it.id] || state[it.id].at !== d.at)) { state[it.id] = { verdict: d.verdict || "", at: d.at, note: typeof d.note === "string" ? d.note : "" }; paint(it.id); }
+      if (d && (!state[it.id] || state[it.id].at !== d.at)) { state[it.id] = { verdict: d.verdict || "", owner: d.owner || "", option: d.option || "", at: d.at, note: typeof d.note === "string" ? d.note : "" }; paint(it.id); }
     }
   }, e => { st.className = "status bad"; st.textContent = "保存先との接続が切れました(" + (e && e.code ? e.code : "エラー") + ")。「回答をまとめる」で貼り付けてください。"; });
   gdoc = db.doc("guidance/standing");

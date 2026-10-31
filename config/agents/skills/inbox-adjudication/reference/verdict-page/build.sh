@@ -20,6 +20,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE="$HERE/template.html"
 ITEMS_SCHEMA="$HERE/items.schema.json"
 VERDICTS_SCHEMA="$HERE/verdicts.schema.json"
+OPTIONS_FILE="$HERE/options.json"
 VALIDATOR="$HERE/schema-validate.jq"
 
 die() { echo "error: $*" >&2; exit 2; }
@@ -62,16 +63,24 @@ build() {
       return 1
     fi
   done
+  # rec_option は、その項目の kind の選択肢にある id でなければならない(JSON Schema では書けない)。
+  dup=$(jq -r --slurpfile o "$OPTIONS_FILE" '.items[] | . as $it | select($it.rec_option != null) | select(([$o[0].kinds[$it.kind].options[].id] | index($it.rec_option)) == null) | "\($it.id): \($it.kind) に \($it.rec_option) の選択肢がありません"' "$data")
+  if [ -n "$dup" ]; then
+    echo "error: items[].rec_option が選択肢にありません: $dup" >&2
+    return 1
+  fi
   # 差し込み点は 1 か所ずつ(コメントなどに同じ語が残ると、置換が別の場所に当たる)。
-  for ph in __DATA__ __FORMAT_VERSION__; do
+  for ph in __DATA__ __OPTIONS__ __FORMAT_VERSION__; do
     n=$(grep -o "$ph" "$TEMPLATE" | wc -l || true)
     [ "$n" -eq 1 ] || die "template.html に $ph が $n 個ある(1 個でなければならない)"
   done
-  # 版を先に置き換える: データ側の文字列に __FORMAT_VERSION__ があっても、書き換わらない。
-  jq -nj --rawfile tpl "$TEMPLATE" --slurpfile d "$data" '
+  # 版、選択肢、データの順に置き換える: データ側の文字列に差し込み点の語があっても、書き換わらない。
+  jq -nj --rawfile tpl "$TEMPLATE" --slurpfile d "$data" --slurpfile o "$OPTIONS_FILE" '
     ($d[0] | tojson | gsub("<"; "\\u003c")) as $json
+    | ($o[0] | del(.description) | tojson | gsub("<"; "\\u003c")) as $opts
     | $tpl
     | sub("__FORMAT_VERSION__"; ($d[0].format_version | tostring))
+    | sub("__OPTIONS__"; $opts)
     | sub("__DATA__"; $json)'
 }
 
@@ -92,7 +101,7 @@ html_checks() {
   if [ "$n" -eq 1 ]; then ok "$name: </script が 1 個だけ"; else ng "$name: </script が $n 個ある"; fi
   n=$(grep -o '<!--' "$html" | wc -l || true)
   if [ "$n" -eq 0 ]; then ok "$name: <!-- が無い"; else ng "$name: <!-- が $n 個ある"; fi
-  if [ "$name" = valid ] && grep -q '__DATA__\|__FORMAT_VERSION__' "$html"; then
+  if [ "$name" = valid ] && grep -q '__DATA__\|__OPTIONS__\|__FORMAT_VERSION__' "$html"; then
     ng "$name: 差し込み点が残っている"
   else
     ok "$name: 差し込み点が残っていない"
@@ -111,6 +120,12 @@ html_checks() {
     ok "$name: DATA が入力と一致する"
   else
     ng "$name: DATA が入力と違う"
+  fi
+  # OPTIONS の行を JSON として読み戻し、options.json(description を除く)と同じであること。
+  if [ "$(grep '^const OPTIONS = ' "$html" | sed 's/^const OPTIONS = //; s/;$//' | jq -S .)" = "$(jq -S 'del(.description)' "$OPTIONS_FILE")" ]; then
+    ok "$name: OPTIONS が options.json と一致する"
+  else
+    ng "$name: OPTIONS が options.json と違う"
   fi
 }
 
@@ -139,7 +154,11 @@ selftest() {
   mutate '.items[0].when_class = "red"' bad-when-class
   mutate '.items[0].id = "a b"' bad-id
   mutate '.drafts[0].key = "x"' bad-draft-key
-  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key; do
+  mutate 'del(.items[0].kind)' missing-kind
+  mutate '.items[0].kind = "x"' bad-kind
+  mutate '.items[0].rec_option = "nope"' bad-rec-option
+  mutate '.items[0].rec_option = "send-me"' rec-option-of-other-kind
+  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind; do
     expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
   done
   printf '{' > "$tmp/not-json.json"
@@ -163,6 +182,11 @@ selftest() {
   expect_ok "保存先: note の無い古い文書" verdict '{key:"lapras:c1/20260102T1000", verdict:"pass", at:"2026-01-02T03:04:05Z"}'
   expect_ok "保存先: verdict が空文字の文書" verdict '{key:"none:t1/m1", verdict:"", note:"メモだけ", at:"2026-01-02T03:04:05.1+09:00"}'
   expect_ok "保存先: guidance/standing の文書" verdict '{text:"フィードバック", at:"2026-01-02T03:04:05.678Z"}'
+  expect_ok "保存先: おまかせ(decide と owner と option)" verdict '{key:"gmail:t1/m1", verdict:"decide", owner:"agent", option:"send-agent", note:"", at:"2026-01-02T03:04:05.678Z"}'
+  expect_ok "保存先: その他(note が指示)" verdict '{key:"gmail:t1/m1", verdict:"other", owner:"", option:"other", note:"先に条件だけ聞いてほしい", at:"2026-01-02T03:04:05.678Z"}'
+  expect_ok "保存先: option と owner の無い古い decide" verdict '{key:"gmail:t1/m1", verdict:"decide", note:"理由", at:"2026-01-02T03:04:05.678Z"}'
+  expect_fail "保存先: 知らない owner" verdict '{key:"gmail:t1/m1", verdict:"decide", owner:"robot", at:"2026-01-02T03:04:05Z"}'
+  expect_fail "保存先: option の文字種" verdict '{key:"gmail:t1/m1", verdict:"decide", option:"Send Me", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: 知らない裁定の語" verdict '{key:"gmail:t1/m1", verdict:"maybe", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: 要旨のような余計な欄" verdict '{key:"gmail:t1/m1", verdict:"pass", summary:"x", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: at が ISO 8601 でない" verdict '{key:"gmail:t1/m1", verdict:"pass", at:"昨日"}'
@@ -180,6 +204,27 @@ selftest() {
   if grep -qF 'db.doc("guidance/standing")' "$TEMPLATE"; then ok "テンプレート: 文書 guidance/standing"; else ng "テンプレート: guidance/standing が無い"; fi
   got=$(node -e "$(grep '^function docId' "$TEMPLATE"); console.log(docId('gmail:AbC_1/dEf-2'))")
   if [ "$got" = "gmail.AbC_1.dEf-2" ]; then ok "テンプレート: docId の換え方"; else ng "テンプレート: docId が $got"; fi
+
+  # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
+  want=$(jq -r '."$defs".item.properties.kind.enum | sort | join(",")' "$ITEMS_SCHEMA")
+  got=$(jq -r '.kinds | keys | sort | join(",")' "$OPTIONS_FILE")
+  if [ "$want" = "$got" ]; then ok "選択肢: kind が items.schema.json と一致 ($got)"; else ng "選択肢: kind [$got] が items.schema.json [$want] と違う"; fi
+  got=$(jq -r --slurpfile v "$VERDICTS_SCHEMA" '
+    ($v[0]."$defs".verdictDoc.properties.verdict.enum - [""]) as $verdicts
+    | ($v[0]."$defs".verdictDoc.properties.owner.enum - [""]) as $owners
+    | [.kinds | to_entries[] | .key as $k | .value.options as $os
+        | ( ([$os[].id] | length) != ([$os[].id] | unique | length) ) as $dupid
+        | ( [$os[] | select(.verdict == "later")] | length ) as $nl
+        | ( [$os[] | select(.verdict == "other")] | length ) as $no
+        | ( [$os[] | select(.verdict == "decide" and .owner == "me")] | length ) as $nme
+        | ( [$os[] | select(.verdict == "pass")] | length ) as $np
+        | ( [$os[] | select((.verdict as $x | $verdicts | index($x)) == null)] | length ) as $badverdict
+        | ( [$os[] | select((.verdict == "decide") != (.owner != null)) ] | length ) as $badowner
+        | ( [$os[] | select(.owner != null and ((.owner as $x | $owners | index($x)) == null))] | length ) as $badowner2
+        | ( [$os[] | select((.id | test("^[a-z][a-z0-9-]*$") | not) or ((.label // "") == "") or ((.you // "") == "") or ((.agent // "") == ""))] | length ) as $badfield
+        | select($dupid or $nl != 1 or $no != 1 or $nme < 1 or $np < 1 or $badverdict > 0 or $badowner > 0 or $badowner2 > 0 or $badfield > 0)
+        | $k] | join(",")' "$OPTIONS_FILE")
+  if [ -z "$got" ]; then ok "選択肢: 各 kind が later・other を 1 つずつ、decide(me)・pass を 1 つ以上持ち、語と担い手が保存先の語に収まる"; else ng "選択肢: 不整合のある kind [$got]"; fi
 
   echo "pass=$PASS fail=$FAIL"
   [ "$FAIL" -eq 0 ]

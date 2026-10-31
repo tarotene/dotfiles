@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "メール裁定ページの保存先(db)の文書",
-  "description": "ページが db に書く文書は 2 種類だけ。(1) コレクション verdicts の文書(verdictDoc)。文書 id(docId)は key の : と / を . に換えたもの(例: gmail:AbC_1/dEf-2 は gmail.AbC_1.dEf-2)。key は媒体・スレッド・受信の文字種を [A-Za-z0-9_=-] に限るので、この換えは一対一で、衝突しない。(2) 文書 guidance/standing(guidanceDoc)。保存するのは鍵と裁定の語とメモだけで、メールの要旨や本文は db に入れない。読む側は、verdict が空文字の文書を裁定として読まない。note の無い古い文書も読める。形を変えるときは FORMAT.md に従い、format_version を上げる。",
+  "description": "ページが db に書く文書は 2 種類だけ。(1) コレクション verdicts の文書(verdictDoc)。文書 id(docId)は key の : と / を . に換えたもの(例: gmail:AbC_1/dEf-2 は gmail.AbC_1.dEf-2)。key は媒体・スレッド・受信の文字種を [A-Za-z0-9_=-] に限るので、この換えは一対一で、衝突しない。(2) 文書 guidance/standing(guidanceDoc)。保存するのは鍵と、どうするか(verdict)と、誰がやるか(owner)と、押したボタン(option)と、メモだけで、メールの要旨や本文は db に入れない。読む側は、verdict が空文字の文書を裁定として読まない。note・owner・option の無い古い文書も読める(owner が無い decide は me として読む)。verdict が other の文書は、note が空でなければ、note を本人の指示として読む。note が空の other は裁定として読まない。形を変えるときは FORMAT.md に従い、format_version を上げる。",
   "oneOf": [
     { "$ref": "#/$defs/verdictDoc" },
     { "$ref": "#/$defs/guidanceDoc" }
@@ -24,11 +24,20 @@
           "pattern": "^(gmail|linkedin|lapras|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
         },
         "verdict": {
-          "description": "decide=対応する、pass=見送る、later=あとで。空文字は、メモだけが書かれて裁定が未選択の文書で、裁定として読まない。",
-          "enum": ["decide", "pass", "later", ""]
+          "description": "どうするか。decide=やる、pass=やらない、later=あとで、other=その他(note が指示)。空文字は、メモだけが書かれて裁定が未選択の文書で、裁定として読まない。語の意味の正本は options.json。",
+          "enum": ["decide", "pass", "later", "other", ""]
+        },
+        "owner": {
+          "description": "誰がやるか。decide のときだけ意味を持つ。me=本人、agent=おまかせ(エージェント)。decide 以外では空文字。無い古い文書の decide は me として読む。",
+          "enum": ["me", "agent", ""]
+        },
+        "option": {
+          "description": "押したボタンの id(options.json の、その項目の kind の選択肢)。verdict と owner はこの選択肢から決まる。無い古い文書も読める。",
+          "type": "string",
+          "pattern": "^([a-z][a-z0-9-]*)?$"
         },
         "note": {
-          "description": "この裁定の理由や、次から変えてほしいこと(任意。無い古い文書も読める)。最大 1000 文字。",
+          "description": "メモ(理由や、次から変えてほしいこと)。verdict が other のときは、本人の指示そのもの。任意で、無い古い文書も読める。最大 1000 文字。",
           "type": "string",
           "maxLength": 1000
         },
