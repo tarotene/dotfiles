@@ -1,4 +1,4 @@
-# ADR-0000 — Git の外に置いた状態の整合を、日次の timer で読む
+# ADR-1311 — Git の外に置いた状態の整合を、日次の timer で読む
 
 - Status: Accepted
 - Date: 2026-10-31
