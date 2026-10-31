@@ -1,0 +1,17 @@
+# send_message に draftId だけが渡された(宛先は下書きの中で読めない) → ask(素通しにしない)
+bin.name = "external-send-guard"
+stdin = '{"tool_name":"mcp__claude_ai_Gmail__send_message","tool_input":{"draftId":"r1234567890"}}'
+status.code = 0
+stdout = """
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask",
+    "permissionDecisionReason": "下書きを、そのまま送ろうとしています。宛先と本文は下書きの中にあり、この確認画面には出ません。送る前に get_draft で宛先と本文を本人に見せ、OK をもらってから許可してください。この確認が本人の明示的な許可になり、許可すると送信されます(取り消せません)。"
+  }
+}
+"""
+fs.cwd = "self-cfg"
+[env]
+remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+add = { XDG_CONFIG_HOME = "." }

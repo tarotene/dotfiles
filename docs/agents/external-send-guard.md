@@ -54,6 +54,7 @@ draft 系 tool へ誘導する(#463)。
 | `send_message` / `reply` / `forward` の宛先(to/cc/bcc)が全て自分のアドレス | 通す |
 | 上記以外(外部宛を1件でも含む) | **ask**(本人の許可の確認。許可されれば送る) |
 | `reply` で to/cc/bcc が全く指定されていない(宛先がスレッド由来で不明) | **deny**(安全側。`to` を指定すれば ask) |
+| `send_message` が `draftId` だけで、下書きをそのまま送る(宛先は下書きの中で、hook からは読めない) | **ask**(理由文に「`get_draft` で宛先と本文を本人に見せてから許可」と出す。2026-10-31 に実機で、素通しになっていたと確認した) |
 | `create_draft` / `update_draft` / `list_drafts` 等の下書き系 | 対象外(常に通す) |
 | Gmail 以外の MCP tool・読み取り系(`get_thread` 等) | 対象外(常に通す) |
 | `self.txt` が存在しない/空 | fail-closed(自分宛でも ask) |
