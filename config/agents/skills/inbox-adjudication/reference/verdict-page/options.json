@@ -1,0 +1,35 @@
+{
+  "description": "メール裁定ページの選択肢の正本。ボタンの語・押したときに保存先へ書く値(verdict と owner)・押した後の分担の説明を、項目の種類(kind)ごとに持つ。画面(template.html)・保存先の形(verdicts.schema.json)・読む側の契約(机の手順 2b-0)は、この表から導く。verdict は decide=やる、pass=やらない、later=あとで、other=その他(記入欄が指示)。owner は decide のときだけ、me=本人、agent=おまかせ(エージェント)。各 kind は later と other をちょうど 1 つ持つ。",
+  "kinds": {
+    "reply": {
+      "pane": "返信を出す",
+      "options": [
+        { "id": "send-me", "verdict": "decide", "owner": "me", "label": "自分で送る", "you": "下書きを直して、元の画面で送る", "agent": "送ったかを読み戻して、記録を閉じる" },
+        { "id": "send-agent", "verdict": "decide", "owner": "agent", "label": "おまかせで送る", "you": "送る直前に、画面・全文・宛先を見て、OK を 1 回返す", "agent": "次の机で、送信直前の画面・全文・宛先を見せる。OK のあとに送り、記録を閉じる" },
+        { "id": "skip", "verdict": "pass", "label": "返信しない", "you": "なし", "agent": "返信せずに閉じる" },
+        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
+        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+      ]
+    },
+    "notice": {
+      "pane": "通知を確かめる",
+      "options": [
+        { "id": "known", "verdict": "pass", "label": "心当たりあり(対応不要)", "you": "なし", "agent": "対応不要として閉じる" },
+        { "id": "act-me", "verdict": "decide", "owner": "me", "label": "対応が要る(自分でやる)", "you": "手続きや確認を、あなたがやる", "agent": "済んだかを読み戻して、記録を閉じる" },
+        { "id": "act-agent", "verdict": "decide", "owner": "agent", "label": "調べてもらう", "you": "報告を読んで判断する", "agent": "分かる範囲を調べて報告する。操作が要る手続きは、あなたに渡す" },
+        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
+        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+      ]
+    },
+    "task": {
+      "pane": "期限のある作業",
+      "options": [
+        { "id": "do-me", "verdict": "decide", "owner": "me", "label": "自分でやる", "you": "作業をやる", "agent": "済んだかを読み戻して、記録を閉じる" },
+        { "id": "do-agent", "verdict": "decide", "owner": "agent", "label": "おまかせ", "you": "認証・支払い・送信のような、あなたの操作が要る段だけ", "agent": "できる範囲を進める。あなたの操作が要る段で止めて渡す" },
+        { "id": "drop", "verdict": "pass", "label": "やらない", "you": "なし", "agent": "やらないものとして閉じる" },
+        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
+        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+      ]
+    }
+  }
+}

@@ -1,14 +1,16 @@
 {
-  "format_version": 2,
+  "format_version": 4,
   "run_label": "</script><script>alert(1)</script>",
   "alert": {
     "title": "<!-- コメント開始のような文字列",
-    "body": "&amp; \\ \" ' $& __DATA__ __FORMAT_VERSION__   </SCRIPT >"
+    "body": "&amp; \\ \" ' $& __DATA__ __OPTIONS__ __FORMAT_VERSION__   </SCRIPT >"
   },
   "items": [
     {
       "id": "x1",
       "key": "none:thread0009/msg0009",
+      "kind": "reply",
+      "rec_option": "skip",
       "when": "</script>",
       "title": "</script><!-- 件名に script の閉じタグを含む架空の項目",
       "from": "<b>架空</b>",
