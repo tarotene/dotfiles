@@ -45,6 +45,12 @@
 
 `machine` の出来事(`remind`・`stale`)は `worklog mail sweep` だけが書き、`worklog add mail` は拒否する。
 
+**本人が行う作業の追い方(2026-11-02 の本人の裁定)。** `decide` で担当が本人の項目は、`decided` のまま置かない。
+期限の有無によらず、書いたあとに Issue(担当は本人、ラベル `handoff:human`)を起票し、`move`(`to:<owner/repo#N>`)で
+`superseded` にする。以降の追跡は Issue が担い、作業ログの 7 日・14 日の時計には乗せない。期限があれば、期限の予定が
+`issue` 欄で Issue を指す。この規則は散文の手順で、状態機械の検査にはまだ入っていない(`decided` で本人担当の項目に
+`move` が無いことを `sweep` が検出する形への昇格は、同じ漏れが再発したときに検討する)。
+
 ## 行の形と鍵
 
 ```text
