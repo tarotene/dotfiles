@@ -156,8 +156,9 @@ push し、そのまま `gh pr create` まで実行してから終了してく�
 
 /// 本文由来の block メッセージ群(G_link / G_stack / G_visual / G_prior)。
 /// 判定だけ先に済ませ、block は最後に回す。G_push / G_CI が止める場面では、その
-/// block メッセージに相乗りさせる(本文の修正は CI を待たずに済むので、単独で
-/// 1 往復を消費させる理由がない)。
+/// block メッセージに G_stack 以外を相乗りさせる(本文の修正は CI を待たずに済む
+/// ので、単独で 1 往復を消費させる理由がない。G_stack は CI が通った後の単独
+/// block だけ)。
 #[derive(Default)]
 struct BodyFindings {
     link: Option<String>,
@@ -167,10 +168,12 @@ struct BodyFindings {
 }
 
 impl BodyFindings {
-    /// G_push / G_CI の block に相乗りさせる文面(link → stack → visual → prior →
-    /// advisory の順)。
+    /// G_push / G_CI の block に相乗りさせる文面(link → visual → prior → advisory の
+    /// 順)。stack は載せない: `gh stack link` は CI が緑になってから 1 回だけ行う
+    /// 手順(stacked-pr スキル、github/gh-stack#319)なので、CI 待ちの block で案内
+    /// すると手順書と食い違う。stack の案内は `standalone` の単独 block だけが担う。
     fn rider(&self, advisory: &str) -> String {
-        let mut parts: Vec<&str> = [&self.link, &self.stack, &self.visual, &self.prior]
+        let mut parts: Vec<&str> = [&self.link, &self.visual, &self.prior]
             .into_iter()
             .flatten()
             .map(String::as_str)

@@ -740,6 +740,57 @@ fn g_stack_unlinked_chain_blocks() {
 }
 
 #[test]
+fn g_stack_link_is_not_asked_while_ci_is_still_running() {
+    // gh stack link は CI が緑になってから 1 回だけ行う手順(stacked-pr スキル)。
+    // CI 待ちの block(未出現・pending)には載せず、通った後の単独 block だけが案内する。
+    let fx = stack_fixture();
+    fx.git(&["switch", "-q", "stage2"]);
+    let chain = fx.write("rider-chain.json", CHAIN_2);
+    let stacks = fx.write("rider-stacks.json", "[]");
+    let stack_env = [
+        ("PR_GATE_STUB_PR_NUM", "39"),
+        ("PR_GATE_STUB_BASE", "stage1"),
+        ("PR_GATE_STUB_CHAIN_FILE", chain.as_str()),
+        ("PR_GATE_STUB_STACKS_FILE", stacks.as_str()),
+    ];
+
+    // CI 未出現(required 2 件中 1 件)の block
+    let r = ci(
+        &fx,
+        "rider-missing-sid",
+        Some(RULES_2),
+        CHECKS_1OF2,
+        &stack_env,
+    );
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "job-b"), "{}", r.stderr); // CI 待ちの block である
+    assert!(!has(&r.stderr, "gh stack link"), "{}", r.stderr); // stack の案内は載らない
+
+    // CI が pending の block
+    let r = ci(
+        &fx,
+        "rider-pending-sid",
+        Some(RULES_2),
+        CHECKS_PARTIAL_PENDING,
+        &stack_env,
+    );
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "pending"), "{}", r.stderr);
+    assert!(!has(&r.stderr, "gh stack link"), "{}", r.stderr);
+
+    // CI が通った後の単独 block には載る
+    let r = ci(
+        &fx,
+        "rider-pass-sid",
+        Some(RULES_2),
+        CHECKS_2PASS,
+        &stack_env,
+    );
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "gh stack link 38 39"), "{}", r.stderr);
+}
+
+#[test]
 fn g_stack_linked_chain_passes() {
     let fx = stack_fixture();
     let r = gstack(

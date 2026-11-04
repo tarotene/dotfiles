@@ -335,8 +335,15 @@ API 呼び出しが 1 本増え、縮退経路（未ログイン・API 失敗時
 ### block の位置と `MAX_BLOCKS` の引き上げ
 
 `G_link` は判定だけ先に済ませ、**block は最後に回す**。`G_push` / `G_CI` が止める場面では、
-その block メッセージに相乗りさせる（実装中の `$rider`）。本文の修正は CI を待たずに
-済むので、単独で 1 往復を消費させる理由がない。
+その block メッセージに相乗りさせる（実装中の `rider()`）。本文の修正は CI を待たずに
+済むので、単独で 1 往復を消費させる理由がない。ただし `G_stack`（`gh stack link` の
+案内）は相乗りさせない。リンクは CI が緑になってから 1 回だけ行う手順
+（stacked-pr スキル、github/gh-stack#319）なので、CI 待ちの block で案内すると手順書と
+食い違う。`G_stack` は CI が通った後の単独 block だけが担う（wrap-up inbox の気づき。
+`rider()` の順序は link → visual → prior、単独 block の順序は link → visual → stack →
+prior のまま）。block の回数の数え方は変わらない — `G_stack` は元から最悪の連鎖に 1 回分
+数えてあり（下の「`MAX_BLOCKS` を 5 から 6 に上げた理由」）、相乗りを外しても連鎖の
+最大長は増えない。
 
 単独で block するのは push も CI も通った後 —— 「あとは終わるだけ」の一点で、まさに
 リンクが忘れられる瞬間だ。
