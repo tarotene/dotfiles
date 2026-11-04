@@ -119,7 +119,13 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 `gh auth status; echo "exit=$?"` が失敗し、`gh auth status` 単体が成功することを確かめた。
 
 - これらは単体で呼ぶ。`; echo …`・`cd <dir> &&`・`> file` のリダイレクト・`$(…)` を連結しない。
-- git は worktree の cwd で、`-C` なしに呼ぶ(シェルの cwd は呼び出しをまたいで保たれる)。除外は末尾だけに
+- git は worktree の cwd で、`-C` なしに呼ぶ。シェルの cwd が呼び出しをまたいで保たれるのは、プロジェクトの
+  ディレクトリと追加したディレクトリ(`--add-dir`・`/add-dir`・`additionalDirectories`)の中だけで、外へ `cd` すると
+  cwd は元に戻る(結果に `Shell cwd was reset to <dir>` が付く。Anthropic, "Tools reference"、
+  <https://code.claude.com/docs/en/tools-reference>、取得 2026-11-05)。セッションのプロジェクトの外にある worktree
+  (別のリポジトリの worktree など)で git を呼ぶときは、`cd <dir> && git …` と並べるしかなく、連結すると
+  除外パターンに合わず sandbox に残る。このときは、`SANDBOX_COMPOUND_GUARD_ALLOW=1` を足し、承認を得て
+  `dangerouslyDisableSandbox` で呼ぶ(2026-10-29 にこの形で運用した)。除外は末尾だけに
   `*` を持つパターン(`git commit *` など)だけが効き、`git -C <dir> commit` は sandbox に残って署名が
   `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
 - 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
