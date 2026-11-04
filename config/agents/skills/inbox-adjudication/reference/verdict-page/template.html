@@ -280,13 +280,15 @@ function paint(id) {
 function summary() {
   const n = ITEMS.length;
   let decided = 0, later = 0, none = 0, waiting = 0, passed = 0;
-  const me = [], agent = [], other = [];
+  const me = [], agent = [], other = [], answered = [];
   for (const it of ITEMS) {
     const s = state[it.id], o = optionOf(it, s);
     if (!o) { none++; continue; }
     if (o.verdict === "later") { later++; continue; }
     if (o.verdict === "other") { if (settled(s)) { decided++; other.push([it, s]); } else waiting++; continue; }
     decided++;
+    /* 事実の確認・完了報告(options.json で answer が true の kind)は、やる・やらないでなく答え。 */
+    if (OPTIONS.kinds[it.kind].answer) { answered.push([it, o]); continue; }
     if (o.verdict === "pass") { passed++; continue; }
     (o.owner === "agent" ? agent : me).push([it, o]);
   }
@@ -296,11 +298,11 @@ function summary() {
   }
   const h = document.getElementById("handoff"); h.textContent = "";
   h.append(el("h2", null, "この選択のあとの分担"));
-  if (!me.length && !agent.length && !other.length) {
-    h.append(el("p", "empty", "まだ、やる・おまかせ・その他を選んだ項目はありません。選ぶと、あなたがやること・私がやること・指示を読んで動くことが、ここに分かれて出ます。"));
+  if (!me.length && !agent.length && !other.length && !answered.length) {
+    h.append(el("p", "empty", "まだ、やる・おまかせ・その他・答えを選んだ項目はありません。選ぶと、あなたがやること・私がやること・指示を読んで動くこと・答えを読んで直すことが、ここに分かれて出ます。"));
   } else {
     const cols = el("div", "cols");
-    for (const [name, rows] of [["あなたがやる", me.map(([it, o]) => it.title + "(" + o.label + ")")], ["私がやる(おまかせ)", agent.map(([it, o]) => it.title + "(" + o.label + ")")], ["指示を読んで動く(その他)", other.map(([it, s]) => it.title + ": " + s.note.trim().slice(0, 40) + (s.note.trim().length > 40 ? "…" : ""))]]) {
+    for (const [name, rows] of [["あなたがやる", me.map(([it, o]) => it.title + "(" + o.label + ")")], ["私がやる(おまかせ)", agent.map(([it, o]) => it.title + "(" + o.label + ")")], ["指示を読んで動く(その他)", other.map(([it, s]) => it.title + ": " + s.note.trim().slice(0, 40) + (s.note.trim().length > 40 ? "…" : ""))], ["答えを読んで直す(確認・報告)", answered.map(([it, o]) => it.title + "(" + o.label + ")")]]) {
       const col1 = el("div", "col"); col1.append(el("h3", null, name + "  " + rows.length));
       if (rows.length) { const ul = el("ul"); for (const r of rows) ul.append(el("li", null, r)); col1.append(ul); }
       cols.append(col1);

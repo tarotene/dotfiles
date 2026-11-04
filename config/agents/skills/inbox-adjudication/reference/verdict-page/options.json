@@ -1,5 +1,5 @@
 {
-  "description": "メール裁定ページの選択肢の正本。ボタンの語・押したときに保存先へ書く値(verdict と owner)・押した後の分担の説明を、項目の種類(kind)ごとに持つ。画面(template.html)・保存先の形(verdicts.schema.json)・読む側の契約(机の手順 2b-0)は、この表から導く。verdict は decide=やる、pass=やらない、later=あとで、other=その他(記入欄が指示)。owner は decide のときだけ、me=本人、agent=おまかせ(エージェント)。各 kind は later と other をちょうど 1 つ持つ。",
+  "description": "メール裁定ページの選択肢の正本。ボタンの語・押したときに保存先へ書く値(verdict と owner)・押した後の分担の説明を、項目の種類(kind)ごとに持つ。画面(template.html)・保存先の形(verdicts.schema.json)・読む側の契約(机の手順 2b-0)は、この表から導く。verdict は decide=やる、pass=やらない、later=あとで、other=その他(記入欄が指示)。owner は decide のときだけ、me=本人、agent=おまかせ(エージェント)。各 kind は later と other をちょうど 1 つ持つ。answer が true の kind(fact=事実の確認、report=済んだかの報告)は、本人がやる・任せるを選ぶ項目ではなく、答えを返す項目で、decide は答え(はい・済んだ)、pass は答え(いいえ・やめた)を表す。画面の分担の表では「答えた」に分かれる。",
   "kinds": {
     "reply": {
       "pane": "返信を出す",
@@ -29,6 +29,26 @@
         { "id": "drop", "verdict": "pass", "label": "やらない", "you": "なし", "agent": "やらないものとして閉じる" },
         { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
         { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+      ]
+    },
+    "fact": {
+      "pane": "事実を確かめる",
+      "answer": true,
+      "options": [
+        { "id": "yes", "verdict": "decide", "owner": "me", "label": "はい", "you": "なし(答えるだけ)", "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す" },
+        { "id": "no", "verdict": "pass", "label": "いいえ", "you": "なし(答えるだけ)", "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す" },
+        { "id": "later", "verdict": "later", "label": "まだ", "you": "なし", "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す" },
+        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、答えと理由を書く", "agent": "次の机で記入欄を読み、そのとおりに記録・下書きを直す。分からなければ聞く" }
+      ]
+    },
+    "report": {
+      "pane": "済んだかを報告する",
+      "answer": true,
+      "options": [
+        { "id": "done", "verdict": "decide", "owner": "me", "label": "済んだ", "you": "なし(済んだと伝えるだけ)", "agent": "読める範囲で済んだことを読み戻して、記録を閉じる。読めなければ「未確認」と書いて閉じる" },
+        { "id": "dropped", "verdict": "pass", "label": "やめた(もう要らない)", "you": "なし", "agent": "やらないものとして閉じる" },
+        { "id": "later", "verdict": "later", "label": "まだ", "you": "なし", "agent": "何も記録しない。済むまで、次の机でもう一度出す" },
+        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、状況を書く", "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く" }
       ]
     }
   }

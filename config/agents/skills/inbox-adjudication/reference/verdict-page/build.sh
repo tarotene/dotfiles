@@ -158,7 +158,10 @@ selftest() {
   mutate '.items[0].kind = "x"' bad-kind
   mutate '.items[0].rec_option = "nope"' bad-rec-option
   mutate '.items[0].rec_option = "send-me"' rec-option-of-other-kind
-  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind; do
+  mutate '.format_version = 4' old-version
+  mutate '(.items[] | select(.kind == "fact") | .rec_option) = "do-me"' fact-rec-option-of-other-kind
+  mutate '(.items[] | select(.kind == "report") | .rec_option) = "yes"' report-rec-option-of-fact
+  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind old-version fact-rec-option-of-other-kind report-rec-option-of-fact; do
     expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
   done
   printf '{' > "$tmp/not-json.json"
@@ -225,6 +228,20 @@ selftest() {
         | select($dupid or $nl != 1 or $no != 1 or $nme < 1 or $np < 1 or $badverdict > 0 or $badowner > 0 or $badowner2 > 0 or $badfield > 0)
         | $k] | join(",")' "$OPTIONS_FILE")
   if [ -z "$got" ]; then ok "選択肢: 各 kind が later・other を 1 つずつ、decide(me)・pass を 1 つ以上持ち、語と担い手が保存先の語に収まる"; else ng "選択肢: 不整合のある kind [$got]"; fi
+  # answer(事実の確認・完了報告の kind)は真偽値で、画面(テンプレート)が answer を読む。
+  got=$(jq -r '[.kinds | to_entries[] | select(.value.answer != null and ((.value.answer | type) != "boolean")) | .key] | join(",")' "$OPTIONS_FILE")
+  if [ -z "$got" ]; then ok "選択肢: answer は真偽値"; else ng "選択肢: answer が真偽値でない kind [$got]"; fi
+  if [ "$(jq -r '[.kinds[] | select(.answer == true)] | length' "$OPTIONS_FILE")" -eq 0 ] || grep -qF 'OPTIONS.kinds[it.kind].answer' "$TEMPLATE"; then
+    ok "テンプレート: answer の kind を分担の表で分ける"
+  else
+    ng "テンプレート: options.json に answer の kind があるのに、テンプレートが answer を読まない"
+  fi
+  # 見本の入力が全 kind を含む(画面の検査が、新しい kind を素通りしない)。
+  want=$(jq -r '.kinds | keys | sort | join(",")' "$OPTIONS_FILE")
+  got=$(jq -r '[.items[].kind] | unique | sort | join(",")' "$valid")
+  if [ "$want" = "$got" ]; then ok "見本: valid.items.json が全 kind を含む ($got)"; else ng "見本: valid.items.json の kind [$got] が options.json [$want] と違う"; fi
+  # 見本の項目の rec_option が、その kind の選択肢にあること(生成が通ることの裏づけ。build が検査する)。
+  expect_ok "見本: 全 kind の項目を含む入力から HTML が組める" build "$valid"
 
   echo "pass=$PASS fail=$FAIL"
   [ "$FAIL" -eq 0 ]

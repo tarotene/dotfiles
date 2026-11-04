@@ -8,7 +8,7 @@
   "properties": {
     "format_version": {
       "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
-      "const": 4
+      "const": 5
     },
     "run_label": {
       "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
@@ -54,8 +54,8 @@
         },
         "key": { "$ref": "#/$defs/key" },
         "kind": {
-          "description": "項目の種類。reply=返信を出す、notice=通知を確かめる(サインイン・漏えいの案内など)、task=期限のある作業。同じ種類の項目は 1 つの枠(pane)にまとまり、押せる選択肢(ボタンの語、verdict、owner、押した後の分担)は options.json の、この種類の表から決まる。",
-          "enum": ["reply", "notice", "task"]
+          "description": "項目の種類。reply=返信を出す、notice=通知を確かめる(サインイン・漏えいの案内など)、task=期限のある作業、fact=事実の確認(本人しか知らない事実を、はい・いいえで答える。title は「はい」が答えとして読める問いの形に書く)、report=本人の手作業が済んだかの報告(済んだ・やめた・まだ)。fact・report は、メールの項目でなくてもよく、鍵の媒体は none を使う。同じ種類の項目は 1 つの枠(pane)にまとまり、押せる選択肢(ボタンの語、verdict、owner、押した後の分担)は options.json の、この種類の表から決まる。",
+          "enum": ["reply", "notice", "task", "fact", "report"]
         },
         "rec_option": {
           "description": "推奨の選択肢の id(options.json の、この項目の kind の選択肢)。ボタンに「推奨」の印が付き、推奨の行に選択肢の語が出る。選択肢にない id は build.sh が落とす。省くと印は付かない。",
