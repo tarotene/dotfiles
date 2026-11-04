@@ -636,10 +636,6 @@ Design and rationale for the hooks and commands deployed from
   notes on why tab-bar usage was deferred (#117). Space rows add each
   repository's open issue count (`$issues`) via workspace metadata, refreshed
   by a 5-minute timer.
-- [`session-overlap.md`](agents/session-overlap.md) — 同じ議題を別のセッションと
-  重ねないための、確かめる手段(`ListAgents`・`herdr workspace list`・wrap-up の
-  ログ)の実測。どれも議題そのものは返さず、セッション名と worktree の名前が
-  手がかりになる(#1263)。
 - [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
   Claude rate-limit usage (5h session window / weekly per-model cap) with a
   pace-at-reset projection (average pace since window start → projected % at
