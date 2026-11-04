@@ -188,9 +188,10 @@ fn installs_ini_with_no_or_many_defaults_is_refused() {
     assert!(t.rsync_log().is_empty());
 }
 
-/// 複製の lock が生きた process を指す間は同期を飛ばす。npx は起動する。
+/// 複製の lock が生きた process を指す間は、その複製に触らず、`<clone>-<pid>` の
+/// 新しい複製へ同期して、そちらで起動する(同じ複製だと Firefox が起動に失敗する)。
 #[test]
-fn skips_sync_while_clone_firefox_is_alive() {
+fn clone_in_use_moves_to_a_new_generation() {
     let t = T::new();
     fs::create_dir_all(t.clone_dir()).unwrap();
     symlink(
@@ -201,8 +202,105 @@ fn skips_sync_while_clone_firefox_is_alive() {
     let o = t.run(&[], &[]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
     assert!(text(&o.stderr).contains("使用中"), "{}", text(&o.stderr));
-    assert!(t.rsync_log().is_empty(), "使用中の複製へ rsync しない");
-    assert!(text(&o.stdout).contains("--user-data-dir"));
+
+    let clone = t.clone_dir().canonicalize().unwrap();
+    let log = t.rsync_log();
+    assert!(
+        !log.contains(&format!("{}/\n", clone.display())),
+        "使用中の複製へ rsync しない: {log}"
+    );
+    let out = text(&o.stdout);
+    let prefix = format!("{}-", clone.display());
+    let generation = out
+        .split('|')
+        .find(|a| a.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("新しい世代で起動する: {out}"));
+    assert!(
+        generation[prefix.len()..]
+            .bytes()
+            .all(|b| b.is_ascii_digit()),
+        "{generation}"
+    );
+    assert!(log.contains(&format!("{generation}/")), "{log}");
+    assert!(
+        !out.contains(&format!("|--user-data-dir|{}|", clone.display()))
+            && !out.ends_with(&format!("|--user-data-dir|{}", clone.display())),
+        "使用中の複製を渡さない: {out}"
+    );
+    let mode = fs::metadata(generation).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700, "世代も本人だけが読める");
+}
+
+/// `--sync-only` は世代を作らず、使用中の複製の同期を飛ばす。
+#[test]
+fn sync_only_skips_when_clone_in_use() {
+    let t = T::new();
+    fs::create_dir_all(t.clone_dir()).unwrap();
+    symlink(
+        format!("127.0.0.1:+{}", std::process::id()),
+        t.clone_dir().join("lock"),
+    )
+    .unwrap();
+    let o = t.run(&["--sync-only"], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(t.rsync_log().is_empty());
+    let siblings: Vec<_> = fs::read_dir(t.p("cache"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        siblings.iter().all(|n| !n.starts_with("clone-")),
+        "{siblings:?}"
+    );
+}
+
+/// 使用中でない世代(持ち主も lock も死んでいる)は消し、使用中の世代と無関係な
+/// ものは残す。
+#[test]
+fn stale_generations_are_pruned_and_live_ones_kept() {
+    let t = T::new();
+    let cache = t.p("cache");
+    let dead = cache.join(format!("clone-{}", i32::MAX));
+    let live = cache.join(format!("clone-{}", std::process::id()));
+    let other = cache.join("clone-notapid");
+    for d in [&dead, &live, &other] {
+        fs::create_dir_all(d).unwrap();
+        fs::write(d.join("f"), "x").unwrap();
+    }
+    let o = t.run(&[], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(!dead.exists(), "死んだ世代は消す");
+    assert!(live.exists(), "生きた持ち主の世代は残す");
+    assert!(other.exists(), "世代でない名前は触らない");
+}
+
+/// 使用中の世代が上限に達していたら、新しい世代を作らず診断して終わる。
+#[test]
+fn full_generations_refuse_with_a_diagnostic() {
+    let t = T::new();
+    fs::create_dir_all(t.clone_dir()).unwrap();
+    symlink(
+        format!("127.0.0.1:+{}", std::process::id()),
+        t.clone_dir().join("lock"),
+    )
+    .unwrap();
+    // 持ち主が生きている世代を上限の数だけ置く(持ち主は寝ている子 process)。
+    let mut owners: Vec<std::process::Child> = (0..playwright_mcp_launcher::MAX_GENERATIONS)
+        .map(|_| Command::new("sleep").arg("60").spawn().unwrap())
+        .collect();
+    for c in &owners {
+        fs::create_dir_all(t.p(&format!("cache/clone-{}", c.id()))).unwrap();
+    }
+    let o = t.run(&[], &[]);
+    for c in &mut owners {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o.stderr));
+    assert!(text(&o.stderr).contains("上限"), "{}", text(&o.stderr));
+    assert!(t.rsync_log().is_empty(), "rsync は呼ばない");
+    assert!(text(&o.stdout).is_empty(), "npx は起動しない");
 }
 
 /// 死んだ process を指す古い lock は使用中に数えない。

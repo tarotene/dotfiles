@@ -16,13 +16,19 @@
 //! 診断を出して exit 1 する(esa-mcp-launcher と同じ。黙って別のブラウザや空の
 //! プロファイルで動き続けると、未ログインの原因が見えなくなる)。
 //!
+//! 複製の Firefox が使用中(複製の `lock` が生きた process を指す)のときは、同じ複製を
+//! 渡すと「Firefox is already running」で起動に失敗するので、`<clone>-<pid>` の新しい
+//! 複製(世代)へ同期して、そちらで起動する。使用中でない世代は起動のたびに消し、
+//! 使用中の世代が `MAX_GENERATIONS` に達したら診断して終わる。
+//!
 //! stdout は MCP のプロトコルが使うので、rsync の出力は捨てる(診断は stderr)。
 //!
 //! 設計と根拠: docs/claude/claude-mcp-servers.md
 
 use playwright_mcp_launcher::{
-    default_profile_from_installs, find_in_path, npx_args, overlaps, parse_args, parse_lock_pid,
-    process_alive, rsync_args, Args, InstallsError,
+    default_profile_from_installs, find_in_path, generation_path, lock_owner, npx_args, overlaps,
+    parse_args, parse_generation_pid, plan_generations, process_alive, rsync_args, Args,
+    Generation, InstallsError, MAX_GENERATIONS,
 };
 use process_control::command_exists;
 use std::fs::{self, DirBuilder, OpenOptions};
@@ -67,7 +73,7 @@ fn main() -> ExitCode {
 
 fn run(args: Args) -> Result<ExitCode, Failure> {
     let source = source_profile(&args)?;
-    sync(&args, &source)?;
+    let clone = sync(&args, &source)?;
     if args.sync_only {
         return Ok(ExitCode::SUCCESS);
     }
@@ -80,11 +86,7 @@ fn run(args: Args) -> Result<ExitCode, Failure> {
         ));
     }
     let err = Command::new("npx")
-        .args(npx_args(
-            &args.clone,
-            executable.as_deref(),
-            &args.passthrough,
-        ))
+        .args(npx_args(&clone, executable.as_deref(), &args.passthrough))
         .exec();
     // exec が返るのは起動失敗のときだけ(シェルの `exec: not found` と同じ 127)。
     eprintln!("playwright-mcp-launcher: npx の起動に失敗した: {err}");
@@ -138,8 +140,10 @@ fn default_firefox_dir() -> Result<PathBuf, Failure> {
     })
 }
 
-/// 普段のプロファイルを複製へ一方向に同期する。複製の Firefox が使用中なら飛ばす。
-fn sync(args: &Args, source: &Path) -> Result<(), Failure> {
+/// 普段のプロファイルを複製へ一方向に同期し、Firefox を起動する複製の場所を返す。
+/// 複製の Firefox が使用中なら、`<clone>-<pid>` の新しい世代へ同期してそれを返す
+/// (`--sync-only` のときは世代を作らず、同期を飛ばす)。
+fn sync(args: &Args, source: &Path) -> Result<PathBuf, Failure> {
     let source = source.canonicalize().map_err(|e| {
         fail(
             format!("普段のプロファイルを開けない: {}: {e}", source.display()),
@@ -161,37 +165,10 @@ fn sync(args: &Args, source: &Path) -> Result<(), Failure> {
             )
         })?;
     }
-    // 複製にはログイン状態が入るので、本人だけが読める。
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&args.clone)
-        .map_err(|e| {
-            fail(
-                format!("複製を作れない: {}: {e}", args.clone.display()),
-                None,
-            )
-        })?;
-    let clone = args.clone.canonicalize().map_err(|e| {
-        fail(
-            format!("複製のパスを解決できない: {}: {e}", args.clone.display()),
-            None,
-        )
-    })?;
-    // `rsync --delete` が普段のプロファイルや、その兄弟(profiles.ini、他の
-    // プロファイル)を消す配置を拒否する。
-    if overlaps(&source, &clone) {
-        return Err(fail(
-            format!(
-                "複製 {} と普段のプロファイル {} が重なっている",
-                clone.display(),
-                source.display()
-            ),
-            Some("--clone は普段のプロファイルと無関係な場所にする(例: ~/.cache/playwright-mcp-profile/firefox)"),
-        ));
-    }
+    let clone = create_private_dir(&args.clone, "複製")?;
+    check_overlap(&source, &clone)?;
 
-    // 同時に起動した MCP が同じ複製を同期しないよう、複製の隣のロックで直列化する。
+    // 同時に起動した MCP が同じ複製・世代を選ばないよう、複製の隣のロックで直列化する。
     let mut lock_path = clone.as_os_str().to_owned();
     lock_path.push(".sync.lock");
     let lock = OpenOptions::new()
@@ -203,15 +180,38 @@ fn sync(args: &Args, source: &Path) -> Result<(), Failure> {
     lock.lock()
         .map_err(|e| fail(format!("同期のロックを取れない: {e}"), None))?;
 
-    if let Some(pid) = clone_in_use(&clone) {
-        eprintln!(
-            "playwright-mcp-launcher: 複製の Firefox が使用中(pid {pid})のため、同期を飛ばす"
-        );
-        return Ok(());
-    }
+    let generations = prune_generations(&clone);
+
+    let target = match lock_owner(&clone) {
+        Some(pid) if args.sync_only => {
+            eprintln!(
+                "playwright-mcp-launcher: 複製の Firefox が使用中(pid {pid})のため、同期を飛ばす"
+            );
+            return Ok(clone);
+        }
+        Some(pid) => {
+            if generations >= MAX_GENERATIONS {
+                return Err(fail(
+                    format!(
+                        "複製の Firefox が使用中(pid {pid})で、使用中の世代も上限({MAX_GENERATIONS})に達している"
+                    ),
+                    Some("不要な Playwright MCP のセッションを閉じる"),
+                ));
+            }
+            let generation = generation_path(&clone, std::process::id());
+            eprintln!(
+                "playwright-mcp-launcher: 複製の Firefox が使用中(pid {pid})のため、新しい複製 {} へ同期して起動する",
+                generation.display()
+            );
+            let generation = create_private_dir(&generation, "新しい複製")?;
+            check_overlap(&source, &generation)?;
+            generation
+        }
+        None => clone,
+    };
 
     let status = Command::new(&args.rsync)
-        .args(rsync_args(&source, &clone))
+        .args(rsync_args(&source, &target))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -220,7 +220,7 @@ fn sync(args: &Args, source: &Path) -> Result<(), Failure> {
     // 24 は「転送中に元のファイルが消えた」。使用中のプロファイルでは起こりうる
     // 良性の結果なので成功に数える。
     match status.code() {
-        Some(0) | Some(24) => Ok(()),
+        Some(0) | Some(24) => Ok(target),
         other => Err(fail(
             format!("rsync が失敗した(終了コード {other:?})"),
             Some("普段のプロファイルと複製の置き場の空き容量・権限を確認する"),
@@ -228,12 +228,71 @@ fn sync(args: &Args, source: &Path) -> Result<(), Failure> {
     }
 }
 
-/// 複製の `lock`(Firefox が起動中に張る symlink)が生きた process を指していれば
-/// その pid。
-fn clone_in_use(clone: &Path) -> Option<u32> {
-    let target = fs::read_link(clone.join("lock")).ok()?;
-    let pid = parse_lock_pid(&target.to_string_lossy())?;
-    process_alive(pid).then_some(pid)
+/// 複製(ログイン状態が入るので、本人だけが読める)を作り、正規化したパスを返す。
+fn create_private_dir(path: &Path, what: &str) -> Result<PathBuf, Failure> {
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+        .map_err(|e| fail(format!("{what}を作れない: {}: {e}", path.display()), None))?;
+    path.canonicalize().map_err(|e| {
+        fail(
+            format!("{what}のパスを解決できない: {}: {e}", path.display()),
+            None,
+        )
+    })
+}
+
+/// `rsync --delete` が普段のプロファイルや、その兄弟(profiles.ini、他の
+/// プロファイル)を消す配置を拒否する。
+fn check_overlap(source: &Path, clone: &Path) -> Result<(), Failure> {
+    if overlaps(source, clone) {
+        return Err(fail(
+            format!(
+                "複製 {} と普段のプロファイル {} が重なっている",
+                clone.display(),
+                source.display()
+            ),
+            Some("--clone は普段のプロファイルと無関係な場所にする(例: ~/.cache/playwright-mcp-profile/firefox)"),
+        ));
+    }
+    Ok(())
+}
+
+/// 複製の隣の世代(`<clone>-<pid>`)のうち使用中でないものを消し、使用中の世代の数を
+/// 返す。使用中は、持ち主のラッパー(pid)が生きている、または `lock` が生きた
+/// Firefox を指している。自分の pid の世代は数えない。消せなくても起動は止めず、
+/// 診断だけ出す(次の起動でまた試す)。
+fn prune_generations(clone: &Path) -> usize {
+    let (Some(parent), Some(base)) = (clone.parent(), clone.file_name()) else {
+        return 0;
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return 0;
+    };
+    let me = std::process::id();
+    let gens: Vec<Generation> = entries
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter_map(|e| {
+            let pid = parse_generation_pid(base, &e.file_name())?;
+            (pid != me).then(|| Generation {
+                pid,
+                in_use: process_alive(pid) || lock_owner(&e.path()).is_some(),
+            })
+        })
+        .collect();
+    let plan = plan_generations(&gens);
+    for pid in &plan.remove {
+        let dir = generation_path(clone, *pid);
+        if let Err(e) = fs::remove_dir_all(&dir) {
+            eprintln!(
+                "playwright-mcp-launcher: 使用中でない複製 {} を消せない: {e}",
+                dir.display()
+            );
+        }
+    }
+    gens.len() - plan.remove.len()
 }
 
 /// Playwright に渡す Firefox の実行ファイル。macOS は Playwright の既定の場所
