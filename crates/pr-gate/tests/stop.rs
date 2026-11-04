@@ -284,6 +284,88 @@ fn g_ci_partial_pending_blocks() {
     assert!(has(&r.stderr, "pending")); // ok   pending メッセージ
 }
 
+// --- G_CI と背景の待機(pr-checks-wait を背景で起動してターンを終える) ---
+// transcript の形は agent-session の `pending_background_tasks` のテストと同じ:
+// 開始は `toolUseResult.backgroundTaskId`、完了は queued_command の task-notification。
+
+const BG_STARTED: &str = r#"{"type":"user","toolUseResult":{"backgroundTaskId":"bg1","stdout":"","stderr":""}}
+"#;
+const BG_DONE: &str = r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>bg1</task-id>\n<status>completed</status>\n</task-notification>"}}
+"#;
+
+/// `ci()` と同じ状況に、`transcript`(None なら `transcript_path` 自体を渡さない)を足して
+/// Stop を流す。
+fn ci_with_transcript(
+    fx: &Fx,
+    sid: &str,
+    checks: &str,
+    transcript: Option<&str>,
+    extra: &[(&str, &str)],
+) -> common::Run {
+    let rules = fx.write(&format!("{sid}-rules.json"), RULES_2);
+    let checks = fx.write(&format!("{sid}-checks.json"), checks);
+    let mut all = vec![
+        ("PR_GATE_STUB_HEAD_OID", fx.real_head.as_str()),
+        ("PR_GATE_STUB_RULES_FILE", rules.as_str()),
+        ("PR_GATE_STUB_CHECKS_FILE", checks.as_str()),
+    ];
+    all.extend_from_slice(extra);
+    let stdin = match transcript {
+        Some(body) => {
+            let path = fx.write(&format!("{sid}-transcript.jsonl"), body);
+            format!(
+                r#"{{"cwd":"{}","session_id":"{sid}","transcript_path":"{path}"}}"#,
+                fx.repo.display()
+            )
+        }
+        None => fx.hookinput(sid),
+    };
+    fx.run_in(&fx.repo, "stop", &stdin, &all)
+}
+
+#[test]
+fn g_ci_pending_or_missing_is_advisory_while_a_background_task_is_running() {
+    for (sid, checks) in [
+        ("bg-pending-sid", CHECKS_PARTIAL_PENDING),
+        ("bg-missing-sid", CHECKS_1OF2),
+    ] {
+        let fx = Fx::new();
+        let r = ci_with_transcript(&fx, sid, checks, Some(BG_STARTED), &[]);
+        assert_eq!(r.code, 0, "{sid}: {}", r.stderr); // 未完了の背景タスクあり: block せず exit 0
+        assert!(has(&r.stderr, "未完了の背景タスク"), "{sid}: {}", r.stderr); // advisory に出る
+    }
+}
+
+#[test]
+fn g_ci_still_blocks_without_a_pending_background_task() {
+    let fx = Fx::new();
+    // 開始と完了通知が揃っている(背景タスクは終わった)
+    let done = format!("{BG_STARTED}{BG_DONE}");
+    let r = ci_with_transcript(&fx, "bg-done-sid", CHECKS_PARTIAL_PENDING, Some(&done), &[]);
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "pending"), "{}", r.stderr);
+    // transcript が無い・背景タスクの記録が無い
+    let r = ci_with_transcript(&fx, "bg-none-sid", CHECKS_PARTIAL_PENDING, None, &[]);
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    let r = ci_with_transcript(&fx, "bg-empty-sid", CHECKS_PARTIAL_PENDING, Some(""), &[]);
+    assert_eq!(r.code, 2, "{}", r.stderr);
+}
+
+#[test]
+fn g_ci_red_still_blocks_while_a_background_task_is_running() {
+    // 赤は待っても直らない。背景の待機があっても block する。
+    let fx = Fx::new();
+    let r = ci_with_transcript(
+        &fx,
+        "bg-red-sid",
+        CHECKS_PARTIAL_FAIL,
+        Some(BG_STARTED),
+        &[],
+    );
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "CI が赤です"), "{}", r.stderr);
+}
+
 #[test]
 fn g_ci_failed_job_blocks_with_log_command() {
     let fx = Fx::new();
@@ -788,6 +870,30 @@ fn g_stack_link_is_not_asked_while_ci_is_still_running() {
     );
     assert_eq!(r.code, 2, "{}", r.stderr);
     assert!(has(&r.stderr, "gh stack link 38 39"), "{}", r.stderr);
+}
+
+#[test]
+fn g_stack_link_waits_for_green_even_when_ci_is_left_to_a_background_task() {
+    // 背景の待機に任せて CI を block しなかったターンでも、CI が緑でないうちは
+    // 単独 block で stack のリンクを求めない。
+    let fx = stack_fixture();
+    fx.git(&["switch", "-q", "stage2"]);
+    let chain = fx.write("bgstack-chain.json", CHAIN_2);
+    let stacks = fx.write("bgstack-stacks.json", "[]");
+    let r = ci_with_transcript(
+        &fx,
+        "bgstack-sid",
+        CHECKS_PARTIAL_PENDING,
+        Some(BG_STARTED),
+        &[
+            ("PR_GATE_STUB_PR_NUM", "39"),
+            ("PR_GATE_STUB_BASE", "stage1"),
+            ("PR_GATE_STUB_CHAIN_FILE", chain.as_str()),
+            ("PR_GATE_STUB_STACKS_FILE", stacks.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(!has(&r.stderr, "gh stack link"), "{}", r.stderr);
 }
 
 #[test]

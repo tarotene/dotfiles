@@ -63,8 +63,50 @@ pub fn run(input: &str) -> i32 {
     };
     match jqv::first_field(&prs, "number") {
         None => no_pr(&st, &sid, &project, &nwo, &branch),
-        Some(pr_num) => with_pr(&cfg, &st, &sid, &project, &nwo, &branch, &prs, &pr_num),
+        Some(pr_num) => {
+            let transcript = transcript_path(input);
+            with_pr(
+                &cfg,
+                &st,
+                &sid,
+                &project,
+                &nwo,
+                &branch,
+                &prs,
+                &pr_num,
+                &transcript,
+            )
+        }
     }
+}
+
+/// hook 入力の `transcript_path`(無い・文字列でないときは空)。
+fn transcript_path(input: &str) -> String {
+    serde_json::from_str::<Value>(input)
+        .ok()
+        .and_then(|v| v.get("transcript_path")?.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// 背景タスクを「待ちの途中」と見なす上限(秒)。終わらない監視(`tail -F` など)が
+/// ゲートを際限なく緩めないための session-wrapup と同じ値。
+const WAIT_STALE_SECS: u64 = 3600;
+
+/// この Stop が、背景タスクの完了を待つ途中のターンか。`session_wrapup::waiting_on_background`
+/// (#854)と同じ導出(transcript の開始と完了通知の突き合わせ)で、pr-checks-wait の
+/// ID には絞らない簡易版。transcript が無い・読めないときは `false`(従来どおり block)。
+/// 同じターンで起動した直後は transcript が追いつかず検出が漏れ、その場合も `false`。
+fn waiting_on_background(transcript_path: &str) -> bool {
+    if transcript_path.is_empty() {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(transcript_path) else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    !agent_session::transcript::pending_background_tasks(&text, now, WAIT_STALE_SECS).is_empty()
 }
 
 /// `[[ "$x" =~ ^[0-9]+$ ]] && [[ "$x" -gt 0 ]]`。
@@ -182,9 +224,11 @@ impl BodyFindings {
         parts.join("\n\n")
     }
 
-    /// 単独 block の本文(link → visual → stack → prior、空なら `None`)。
-    fn standalone(&self) -> Option<String> {
-        let parts: Vec<&str> = [&self.link, &self.visual, &self.stack, &self.prior]
+    /// 単独 block の本文(link → visual → stack → prior、空なら `None`)。`with_stack` が
+    /// false のときは stack を載せない(CI がまだ緑でないとき)。
+    fn standalone(&self, with_stack: bool) -> Option<String> {
+        let stack = if with_stack { &self.stack } else { &None };
+        let parts: Vec<&str> = [&self.link, &self.visual, stack, &self.prior]
             .into_iter()
             .flatten()
             .map(String::as_str)
@@ -203,6 +247,7 @@ fn with_pr(
     branch: &str,
     prs: &Value,
     pr_num: &str,
+    transcript: &str,
 ) -> i32 {
     let first = &prs[0];
     let base = jqv::raw(first.get("baseRefName").unwrap_or(&Value::Null));
@@ -397,11 +442,28 @@ push してから終了してください。
     // 「揃っていない集合を緑と読む」ことにはならない(CI を評価しないだけ)。
     let default_base = git_repository::default_branch(project);
     let outcome = ci::run(cfg, nwo, pr_num, &base, default_base.as_deref());
+    // 背景の待機に任せて CI を block しなかったか(単独 block に stack の案内を載せない。
+    // `gh stack link` は CI が緑になってからの手順)。
+    let mut ci_deferred = false;
     if outcome.status != Status::Pass {
         if let Some(h) = &handoff_issue {
             advisory.push_str(&format!(
                 "\nG_CI: {}(Handoff: #{h} により advisory — 再開して
       `gh pr ready` するまで CI green は要求しません)",
+                outcome.status.as_str()
+            ));
+        } else if matches!(
+            outcome.status,
+            Status::Empty | Status::Missing | Status::Pending
+        ) && waiting_on_background(transcript)
+        {
+            // CI が出揃うのを背景の待機(pr-checks-wait 等)が待っている。完了すれば通知が届き、
+            // 次のターンで結果を読める。ここで block すると、待機を起動した直後のターンが
+            // 差し戻される(wrap-up inbox の気づき)。
+            ci_deferred = true;
+            advisory.push_str(&format!(
+                "\nG_CI: {}(未完了の背景タスクを検出したため advisory — 完了通知を待ってください。
+      CI が出揃わない・赤のまま終わるときは、次の Stop で判定し直します)",
                 outcome.status.as_str()
             ));
         } else {
@@ -463,7 +525,7 @@ pr-checks-wait {pr_num} で確認してから終わってください。
     // stack リンク忘れ・既存手段: 記載漏れが見落とされる瞬間なので、この位置で
     // 止める。欠けているものが複数あれば 1 つの block メッセージに合流させ、
     // まとめて 1 往復で直せるようにする(いずれも CI を再走させない修正のため)。
-    if let Some(body_msg) = f.standalone() {
+    if let Some(body_msg) = f.standalone(!ci_deferred) {
         return st.block_or_escalate(sid, &format!("{body_msg}\n\n{advisory}"));
     }
 
