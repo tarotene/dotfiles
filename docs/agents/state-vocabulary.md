@@ -105,8 +105,11 @@ skill を足す PR は、同じ PR で、その skill が行う事象か前提�
 | リポジトリ設定のずれ | `repo-config-drift/vocabulary.json` | drifted → picked、drafted → shown、approved → decided、applied → applied、routed → handed_off、excluded・exempt → declined | reminder-event: `redetect`(次の `github-audit` の実行が同じ組を再び報告する。定期の実行は無い) |
 | 計画の要求項目 | `plan-requirement/vocabulary.json` | listed → picked、planned → shown、approved → decided、implemented → applied、obsolete → lapsed、blocked_upstream・user_excluded → declined | gate: `plan-scope-gate`(処分の無い項目があると承認の依頼まで進めない) |
 
-裁定ページの選択(`decide`・`pass`・`later`)は独立の状態機械ではなく、メール項目の事象への入力である。対応表 `mail-item.json` の
-`inputs` に、`decide` → 事象 `decide`、`pass` → 事象 `pass`、`later` → 事象なし(何も書かない。状態は動かず、時計が動き続ける)と書く。
+裁定ページの選択(`decide`・`pass`・`later`・`other`)は独立の状態機械ではなく、メール項目の事象への入力である。対応表 `mail-item.json` の
+`inputs` に、`decide` → 事象 `decide`、`pass` → 事象 `pass`、`later` → 事象なし(何も書かない。状態は動かず、時計が動き続ける)、
+`other` → 事象なし(記入欄の指示を次の机が読み、次の事象を書く。語彙の版 3 で `instruct` が入るまでの暫定)と書く。
+画面の選択肢の表(`config/agents/skills/inbox-adjudication/reference/verdict-page/options.json`)の `verdict` の集合と、この
+`inputs` のキーの集合は、`--refinements` の `画面` 規則が双方向に突き合わせる(#1312)。
 
 共通の性質は抽象の側で 1 度だけ定め、各対象が守ることを `--refinements` が示す。
 
@@ -130,6 +133,7 @@ scripts/vocab-graph-check --refinements <対応表>   # 指定した対応表
 | `P1` | 上記。抽象の側と、写された具体の状態ごと |
 | `P2` | 上記 |
 | `入力` | `inputs` の事象が具体の語彙に実在し、`shown` に写る状態から出る(事象なしは `note` が要る) |
+| `画面` | `mail-item.json` だけ。`options.json` の全 `kind` の `verdict` の集合と `inputs` のキーの集合が一致する。選択肢に `inputs` が無い語(押したときの事象が決まらない)も、`inputs` に選択肢が無い語(画面から押せない)も落とす。`options.json` が無くても落ちる |
 
 限界: P1 は手段の**実在**を見る。手段が実際に働くか(`github-audit` を定期に回す人がいるか)は検査しない。
 

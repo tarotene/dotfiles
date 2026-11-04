@@ -47,6 +47,9 @@
 #                       機械の事象とその carriers、gate はその状態から出る事象の gates)
 #         P2            同じ具体の状態に shown_by の担い手がある
 #         入力          inputs の事象が具体の語彙に実在し、見せた状態から出る(null は note が要る)
+#         画面          mail-item の対応表だけ。裁定ページの選択肢の表(inbox-adjudication の
+#                       reference/verdict-page/options.json)の verdict の集合と、inputs のキーの集合が
+#                       双方向に一致する(#1312)
 #   vocab-graph-check --selftest
 #       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill・対応表の負例で、
 #       各規則が期待どおり落ちる・通ることを確かめる。ネットワーク不使用。
@@ -350,9 +353,38 @@ load_vocab_index() {
   done < <(discover_vocabs "$root")
 }
 
-# 1 つの対応表を検査する。違反は標準エラーに出し、あれば戻り値 1。
+# 裁定ページの選択肢の表(options.json)の verdict の集合と、mail-item の対応表の inputs のキーの集合を
+# 双方向に突き合わせる(#1312)。違反は標準エラーに出し、あれば戻り値 1。$1 = 対応表、$2 = ルート。
+SCREEN_OPTIONS_REL="config/agents/skills/inbox-adjudication/reference/verdict-page/options.json"
+check_screen_inputs() {
+  local file=$1 root=$2 opt out rule msg
+  opt="$root/$SCREEN_OPTIONS_REL"
+  if [[ ! -f $opt ]]; then
+    printf '%s: 画面: 選択肢の表 %s が無い\n' "$file" "$SCREEN_OPTIONS_REL" >&2
+    return 1
+  fi
+  if ! out=$(jq -r --slurpfile o "$opt" '
+    ([ $o[0].kinds[]?.options[]?.verdict ] | unique) as $vs
+    | ((.inputs // {}) | keys) as $ks
+    | ( $vs[] | select(. as $v | any($ks[]; . == $v) | not)
+        | "画面\t選択肢の表の verdict \(.) が、対応表の inputs に無い(押したときの事象が決まっていない)" ),
+      ( $ks[] | select(. as $k | any($vs[]; . == $k) | not)
+        | "画面\tinputs のキー \(.) が、選択肢の表のどの verdict にも無い(画面から押せない)" ),
+      ( if ($vs | length) == 0 then "画面\t選択肢の表に verdict が 1 つも無い" else empty end )
+  ' "$file" 2>&1); then
+    printf '%s: 画面: 検査が失敗した: %s\n' "$file" "$out" >&2
+    return 1
+  fi
+  if [[ -n $out ]]; then
+    while IFS=$'\t' read -r rule msg; do printf '%s: %s: %s\n' "$file" "$rule" "$msg" >&2; done <<<"$out"
+    return 1
+  fi
+  return 0
+}
+
+# 1 つの対応表を検査する。違反は標準エラーに出し、あれば戻り値 1。$2 = ルート(画面の検査に使う)。
 check_refinement() {
-  local file=$1 out line rule msg c a
+  local file=$1 root=${2:-$SELF_ROOT} out line rule msg c a
   if ! jq -e 'type == "object"' "$file" >/dev/null 2>&1; then
     printf '%s: schema: JSON のオブジェクトとして読めない\n' "$file" >&2
     return 1
@@ -384,6 +416,9 @@ check_refinement() {
     while IFS=$'\t' read -r rule msg; do printf '%s: %s: %s\n' "$file" "$rule" "$msg" >&2; done <<<"$out"
     return 1
   fi
+  if [[ $c == mail-item ]]; then
+    check_screen_inputs "$file" "$root" || return 1
+  fi
   return 0
 }
 
@@ -400,7 +435,7 @@ check_refinements() {
   ((${#files[@]} > 0)) || die_usage "検査する対応表が無い"
   load_vocab_index "$root"
   for f in "${files[@]}"; do
-    check_refinement "$f" || rc=1
+    check_refinement "$f" "$root" || rc=1
   done
   return "$rc"
 }
@@ -536,6 +571,8 @@ selftest() {
     done < <(discover_vocabs "$SELF_ROOT")
     mkdir -p "$Q/$RDIR"
     cp "$SELF_ROOT/$RDIR"/*.json "$Q/$RDIR/"
+    mkdir -p "$Q/$(dirname "$SCREEN_OPTIONS_REL")"
+    cp "$SELF_ROOT/$SCREEN_OPTIONS_REL" "$Q/$SCREEN_OPTIONS_REL"
   }
   # break <Q の中の相対パス> <jq フィルタ>: その JSON を書き換える
   break_json() {
@@ -588,6 +625,19 @@ selftest() {
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.p1.awaiting.kind = "bogus"'
   expect_fail "p1 の kind が閉語彙でない" schema --refinements --root "$Q"
+  # 画面(#1312): 選択肢の表と inputs の双方向の突き合わせ
+  fresh_ref_root
+  break_json "$SCREEN_OPTIONS_REL" '.kinds.task.options += [{id: "extra", verdict: "defer", label: "x", you: "x", agent: "x"}]'
+  expect_fail "選択肢の verdict が inputs に無い" 画面 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" '.inputs.bogus = {event: "decide"}'
+  expect_fail "inputs のキーが選択肢の表に無い" 画面 --refinements --root "$Q"
+  fresh_ref_root
+  break_json "$RDIR/mail-item.json" 'del(.inputs.other)'
+  expect_fail "other が inputs に無い" 画面 --refinements --root "$Q"
+  fresh_ref_root
+  rm -f "${Q:?}/$SCREEN_OPTIONS_REL"
+  expect_fail "選択肢の表が無い" 画面 --refinements --root "$Q"
   expect_code "対応表の指定が無い" 2 --refinements --root "$T/root"
   expect_code "--refinements に --all" 2 --refinements --all
 
