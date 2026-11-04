@@ -30,6 +30,7 @@
     ./modules/scratch-retention.nix
     ./modules/flatpak.nix
     ./modules/obsidian-vault.nix
+    ./modules/obsidian-livesync.nix
     ./modules/local-state-backup.nix
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix

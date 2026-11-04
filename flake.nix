@@ -531,6 +531,23 @@
             builtins.seq cfg.activationPackage.drvPath (
               pkgsFor.${system}.runCommand "pipeline-external-timer" { } "touch $out"
             );
+          # LiveSync CLI の daemon の宣言(home/modules/obsidian-livesync.nix、#1328)。
+          # 有効にした vega と既定の vega を評価して、unit の ExecStart・Assert・自動起動の
+          # 排他を `assert` で確かめる。build は generation を作らない(上の検査と同じ形)。
+          obsidian-livesync = import ./home/tests/obsidian-livesync.nix {
+            pkgs = pkgsFor.${system};
+            inherit lib;
+            enabled =
+              (mkHome linuxSystem ./home/hosts/vega.nix [
+                {
+                  dotfiles.obsidian.livesync = {
+                    enable = true;
+                    secretKey = "EXAMPLE_LIVESYNC_SETTINGS";
+                  };
+                }
+              ]).config;
+            disabled = self.homeConfigurations.vega.config;
+          };
         }
       );
 
