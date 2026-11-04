@@ -347,6 +347,14 @@
           );
         };
 
+      # Self-hosted LiveSync の公式 CLI(上流のタグ 1.0.44-cli をソースから build、#1328)。
+      # nixpkgs に該当するパッケージが無い(stable・unstable の `nix search` で 0 件)ので、
+      # 自前の derivation を置く。home/modules/obsidian-livesync.nix が、ラッパーの中でだけ
+      # 参照する(生の CLI は PATH に出さない)。
+      livesyncCliOverlay = final: _prev: {
+        obsidian-livesync-cli = final.callPackage ./nix/obsidian-livesync-cli.nix { };
+      };
+
       mkPkgs =
         system:
         import nixpkgs {
@@ -356,6 +364,7 @@
             (herdrOverlay system)
             rustOverlay
             bleepHookOverlay
+            livesyncCliOverlay
           ]
           ++ lib.optionals (lib.hasSuffix "-linux" system) [ nixglOverlay ];
         };
@@ -482,6 +491,10 @@
           dotfiles-tools-fmt = rust.fmt;
         }
         // lib.optionalAttrs (system == linuxSystem) {
+          # LiveSync CLI の build(leveldown などのネイティブ依存を含む)。`installCheckPhase` が
+          # `--help` と、外に出された依存の読み込みを確かめる(#1328)。名前で参照しないと、
+          # CI がこの build を回さない。
+          obsidian-livesync-cli = pkgsFor.${system}.obsidian-livesync-cli;
           # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。Apalache のサーバーが
           # ポート 8822 を使うので、derivation ごとの sandbox に分けられる Linux だけで回す。
           calendar-handshake-spec = import ./home/tests/calendar-handshake-spec.nix {
