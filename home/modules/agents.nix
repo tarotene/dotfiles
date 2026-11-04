@@ -595,6 +595,7 @@ let
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
   esaIndexCmd = "'${hooksDir}/esa-mirror-context'";
   deskStartCmd = "'${hooksDir}/daily-desk-reminder'";
+  calendarHandshakeStartCmd = "'${hooksDir}/calendar-handshake-reminder'";
   worklogStartCmd = "'${hooksDir}/worklog' session-start";
   signPrewarmCmd = "'${hooksDir}/gpg-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
@@ -1504,7 +1505,23 @@ let
       timeout = 10;
       "if" = "Bash(gh *)";
     }
+    # calendar-handshake-reminder は startup だけ: 下書き待ちの確認は新しいセッションの入口で
+    # 一度伝えれば足りる(daily-desk-reminder と同じ)。勤務先の機体でだけ登録する
+    # (下の enabledClaudeHookDeclarations が option で外す)。
+    {
+      event = "SessionStart";
+      node = "calendar-handshake-reminder";
+      matcher = "startup";
+      command = calendarHandshakeStartCmd;
+      timeout = 10;
+    }
   ];
+
+  # option で出し入れする宣言だけを、実際に登録する集合から外す。他機体では登録されず、無音になる。
+  # 宣言の表(上)は pipeline-map の走査の対象なので、条件分岐を持たせず、ここで絞る。
+  enabledClaudeHookDeclarations = lib.filter (
+    d: d.node != "calendar-handshake-reminder" || config.dotfiles.calendarHandshakeReminder.enable
+  ) claudeHookDeclarations;
 
   # 各宣言の `node` は pipeline-map.toml(自動発火する機構の地図、docs/pipeline-map.md)
   # のノード id を指すポインタ。nix の評価時に「node がある」「manifest に定義済み」を
@@ -1529,7 +1546,7 @@ let
 
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
-    register = map declareHook claudeHookDeclarations;
+    register = map declareHook enabledClaudeHookDeclarations;
     # 所有の記録(crates/agent-settings-reconcile の managed)。前回書いた (event, command) の集合を
     # ここに残し、次の switch で宣言から外れたものを settings.json から消す。
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-claude.json";
@@ -1597,7 +1614,7 @@ let
             )
           )
         ]
-    ) claudeHookDeclarations
+    ) enabledClaudeHookDeclarations
     ++ [
       {
         event = "Stop";
@@ -1846,6 +1863,12 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
       options.dotfiles.feedbackTrial.collector.enable =
         lib.mkEnableOption "the host-local Codex feedback trial collector";
     }
+    {
+      options.dotfiles.calendarHandshakeReminder.enable = lib.mkEnableOption ''
+        the SessionStart hook that injects the calendar-handshake draft check
+        (docs/agents/calendar-handshake.md). Enable it only on the workplace machine
+      '';
+    }
   ];
 
   # Only the selected host collects its saved conversations. Trial destinations
@@ -2061,6 +2084,11 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # daily-desk-reminder: 今日の朝の机(daily-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
   home.file.".claude/hooks/daily-desk-reminder".source =
     "${pkgs.dotfiles-tools}/bin/daily-desk-reminder";
+  # calendar-handshake-reminder: 勤務先の機体でだけ(dotfiles.calendarHandshakeReminder.enable)、
+  # 握手の下書き待ち([blocked] )を確かめる手順を SessionStart で注入する。
+  home.file.".claude/hooks/calendar-handshake-reminder" =
+    lib.mkIf config.dotfiles.calendarHandshakeReminder.enable
+      { source = "${pkgs.dotfiles-tools}/bin/calendar-handshake-reminder"; };
   # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
   # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault が無い)では無音。
   home.file.".claude/hooks/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";

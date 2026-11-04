@@ -16,6 +16,9 @@
 
   dotfiles.feedbackTrial.collector.enable = true;
   dotfiles.obsidian.initializeVault = true;
+  # The workplace machine: the only host that checks the calendar handshake for
+  # drafts waiting to be written (docs/agents/calendar-handshake.md, #1239).
+  dotfiles.calendarHandshakeReminder.enable = true;
 
   # Per-machine sign subkey on this host. On-disk, annual rotation
   # (ADR-0003 amended). Master fp 92E7B05978F0FE4E5500F6F76CFC837175BE257E →

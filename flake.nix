@@ -282,7 +282,9 @@
               # issue-inbox のテストが include_str! で読む、作業中の気づきの語彙(docs/agents/wrapup-inbox.md)。
               || (builtins.match ".*/config/agents/wrapup-inbox/vocabulary\\.json" path != null)
               # issue-inbox が include_str! で読む、as-code 化の候補の語彙(段・兆候・却下理由)の正本(docs/agents/codify-signals.md)。
-              || (builtins.match ".*/config/agents/codify-signals/vocabulary\\.json" path != null);
+              || (builtins.match ".*/config/agents/codify-signals/vocabulary\\.json" path != null)
+              # calendar-handshake-reminder が include_str! で読む、握手の印の語彙の正本(docs/agents/calendar-handshake.md)。
+              || (builtins.match ".*/config/agents/calendar-handshake/vocabulary\\.json" path != null);
             name = "source";
           };
           commonArgs = {
