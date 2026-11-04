@@ -245,7 +245,9 @@ This pull request is part of a stack and must be merged using the asynchronous m
 GitHub の公式文書は、非同期マージ API が stacked PR のマージに必須で、「stacked PR では、その操作は下位の open な PR をすべて含む」と書いている。同期のマージ API は stacked PR に対応しない
 (GitHub Docs, "REST API endpoints for pull requests" の "Merge a pull request asynchronously"、取得 2026-10-21)。
 
-したがって、**最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
+したがって、**GitHub の stack にリンクされたスタックでは、最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
+
+**この前提は、`gh stack link` でリンクした stack に限る。** base をブランチの連鎖にしただけの PR(リンクしていない)では成り立たない(2026-10-30 の実測: base が別 PR のブランチの PR に `merge-async` を呼ぶと、その PR は base のブランチに入っただけで、下の PR は OPEN のまま残り、head が進んで CI が再実行された。約 8 分の待ち。この連鎖が stack の機能を使っていたかは、そのときは未確認)。マージの前に、`gh stack` の状態(`gh api` の stacks の一覧、`pr-gate` の G_stack と同じ読み方)で、最上段と下の段が 1 つの stack にリンクされていることを確かめる。リンクされていなければ、下の段から順に 1 本ずつ入れる(各段で base が `main` に付け替わるのを読み戻す)か、先に `gh stack link` する。
 
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
 2. `pr-checks-wait <N>` を背景で実行して、required のチェックの完了だけを待つ(required でないチェックは
@@ -270,6 +272,12 @@ gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
 中間段を指定したときの挙動は未確認(文書の記述は「下位の open な PR を含む」までで、実測は最上段の例だけ)。エージェントはマージしない(完了定義は PR 作成まで)ので、この手順は本人がマージするときのためにある。
 
 本人が「マージも任せる」と明示したときだけ、エージェントも上の手順 1〜4 をそのまま行う(最上段の判定を省かない。#1002)。マージしてよい範囲は、本人が名指しした PR と、その下の open な段までで、名指しが無い段を、スタックの外から足さない。マージ後は `gh pr view <N> --json state` が `MERGED` になることと、下の各段の PR の `state` を読み戻してから報告する。
+
+**自動モードの分類器は、`gh pr merge` や `merge-async` を、本人が「全部代行してほしい」と述べた直後でも
+拒否することがある**(2026-10-30 に実測: 同じ種類の操作が通る場合と拒否される場合があり、理由の説明は出ない。
+分類器が止める範囲は、公開された一覧が無く、見えない)。止められたら、迂回せず、本人に実行する 1 行
+(`!` つきのコマンド)を渡す。繰り返し使うなら、本人が `autoMode.allow`(自然言語の例外。
+`docs/agents/agent-permissions.md` の分類器の行)に足す。
 
 ## 6. Issue リンクの書き分け
 
