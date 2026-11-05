@@ -24,7 +24,7 @@ Issue: No-Issue(wrap-up の気づき「`gh` を `;` や `|` やループの中�
 ## 判定
 
 コマンド文字列をトークン化し、区切り(`;`・`&`・`|`・改行など `command-inspection` の `is_sep`)で文に分ける。
-**文が 2 つ以上あり、そのどれかが除外パターンに当たれば deny** する。
+**文が 2 つ以上あり、そのどれかが除外パターンに当たれば deny** する。文が 1 つのときは、下の「前置」の場合だけ deny する。
 
 - 除外パターンは、実行時に `~/.config/agent-native/claude-permissions.json` の `sandbox.excluded_commands` から読む
   (home-manager が `home/modules/claude.nix` の宣言から配備する写し)。一覧をこの crate に持ち込まないので、
@@ -60,6 +60,31 @@ Issue: No-Issue(wrap-up の気づき「`gh` を `;` や `|` やループの中�
 - 連結が要る正当な理由があるときは、コマンドに `SANDBOX_COMPOUND_GUARD_ALLOW=1` の語を足す
   (`SANDBOX_COMPOUND_GUARD_ALLOW=1 gh a; echo x`)。環境変数でも同じ。値は `1` だけ。コマンドに残るので、
   あとから読める。
+
+## 前置(文が 1 つの呼び出し)
+
+連結でなくても、先頭の `VAR=value` が呼び出しを sandbox の中に残すことがある。2026-11-05、ある private リポジトリで
+`GIT_EDITOR=true git rebase --continue`(単体)が sandbox の中で動き、署名が `No secret key` で失敗した。
+
+- 根拠: 除外パターンは `Bash(...)` の権限規則と同じ書式で、呼び出しの文字列に合わせる(Anthropic, "Sandboxing"、
+  <https://code.claude.com/docs/en/sandboxing>、取得 2026-11-05。逐語: 「Claude Code matches the text of the call」)。
+  権限規則の照合は、既知の安全な環境変数の前置だけを剥がす。逐語: 「Claude Code also strips a leading assignment of
+  certain known-safe environment variables, so `Bash(npm test *)` matches `NODE_ENV=test npm test`. An allow rule won't match
+  past an assignment of any other variable.」(Anthropic, "Configure permissions"、Wrappers の節、
+  <https://code.claude.com/docs/en/permissions>、取得 2026-11-05)。安全な変数の一覧は文書に無い。除外パターンの照合が
+  同じ剥がし方をするとも、文書に書かれていない。ここは今回の失敗から推論している(`GIT_EDITOR` は一覧に無い)。
+- 一覧: Claude Code 2.1.285 の実行ファイルにある集合(`GOOS`・`NODE_ENV`・`LANG`・`TZ`・`CI` など 39 個。実行ファイルは
+  その外を "an environment variable prefix outside the safe list" と呼ぶ)を `SAFE_ENV` に写した。版が変わると食い違い
+  うる。一覧に無い変数は止め、一覧にある変数は止めない(一覧が古くて余分に止めても、前置をやめるだけで済む)。
+- 判定: 前置を全部剥がすと除外パターンに当たるのに、安全な変数だけを剥がしたのでは当たらない文を deny する。`env` も
+  剥がされるラッパーの一覧(`timeout`・`time`・`nice`・`nohup`・`stdbuf`・`command`・`builtin`・`noglob`)に無いので同じ。
+- 案内: 「前置せず単体で呼ぶ」「常に要る変数は設定の `env` に宣言する」(`dotfiles.claudePermissions.env`、
+  [agent-permissions](agent-permissions.md))。`GIT_EDITOR=true` は Claude Code が Bash の環境に既に入れているので、前置は
+  要らない。`git -c core.editor=true rebase` のように `-c` で渡す形も、`git rebase *` は呼び出しの先頭の語に合わせる
+  ので合わず、sandbox の中に残ると推論する(`git -C <dir> commit` が合わないことは実測済み。`home/modules/claude.nix` の
+  `excludedCommands` の注記。`-c` の形そのものは未実測)。この形は検出しない(拒否文で触れるだけ)。
+- 限界: 変数を `export` した別の呼び出しや、`bash -c` の中身は見ない。前置が要る正当な理由があるときは、
+  `SANDBOX_COMPOUND_GUARD_ALLOW=1` を足す(上の「逃げ道」)。
 
 ## 発火範囲
 
