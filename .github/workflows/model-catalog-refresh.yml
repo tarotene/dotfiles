@@ -26,9 +26,12 @@ jobs:
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
         run: |
           set -eu
+          # An unregistered key is a waiting state (registering it is an account operation
+          # for the owner, #1149), not a failure: say so and stop without opening a failure
+          # Issue every week (#1331). A later failure with the key present still reports.
           if [ -z "$ARTIFICIAL_ANALYSIS_API_KEY" ]; then
-            echo '::error::ARTIFICIAL_ANALYSIS_API_KEY is not configured'
-            exit 1
+            echo '::notice::ARTIFICIAL_ANALYSIS_API_KEY is not configured; skipping the refresh (#1149)'
+            exit 0
           fi
           cargo run --locked -p model-catalog -- fetch-aa --file crates/model-catalog/catalog.toml --write
           cargo run --locked -p model-catalog -- check --file crates/model-catalog/catalog.toml
