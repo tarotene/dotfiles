@@ -21,6 +21,11 @@
 //! 対象コマンド: コマンド位置の `gh pr create` と `gh pr edit ... --base ...`
 //! (`-R/--repo` によるクロスリポジトリ指定にも対応)。判定不能はすべて
 //! fail-open(通す) — ADR-0005 の binary-existence gating と同じ縮退方針。
+//!
+//! 層(iii) マージ時: base が別の open PR のブランチで、GitHub の stack に
+//! リンクされていない PR への `gh pr merge` と `gh api -X PUT .../merge-async` を
+//! 拒否する。マージは base のブランチにしか入らず、下の段が OPEN のまま残る
+//! (stacked-pr スキル「スタックの PR をマージする」)。
 
 use agent_session::hook::jq_r_path;
 use agent_session::hook::ToolCall;
@@ -28,14 +33,19 @@ use agent_session::ledger::SessionLedger;
 use agent_session::Agent;
 use command_inspection::command::first_deny;
 use command_inspection::command::gh_command_at;
+use command_inspection::shell::is_sep;
 use git_repository::ok as git_ok;
 use git_repository::out as git_out;
 use git_repository::repo::default_branch_or_gh;
 use git_repository::repo::owner_repo;
+use github_command::gh::api_method;
+use github_command::gh::api_path;
 use github_command::gh::command_substitution;
 use github_command::gh::has_heredoc;
 use github_command::gh::read_body_file;
 use github_command::marker::has_reasoned_tag;
+use github_command::url::parse_url;
+use pr_gate::gates::stack;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -48,6 +58,10 @@ pub const INDEPENDENT_TAG: &str = "Independent-PR:";
 pub enum Kind {
     Create,
     Edit,
+    /// `gh pr merge`
+    MergeCli,
+    /// `gh api …`(`merge-async` のパスかどうかは [`merge_async_target`] が見る)
+    MergeApi,
 }
 
 /// bash の `is_target_at`(attribution-guard.sh の同名関数を上書きしていたもの)。
@@ -56,6 +70,10 @@ pub fn is_target_at(tokens: &[String], i: usize) -> Option<Kind> {
         Some(Kind::Create)
     } else if gh_command_at(tokens, i, &["pr", "edit"]) {
         Some(Kind::Edit)
+    } else if gh_command_at(tokens, i, &["pr", "merge"]) {
+        Some(Kind::MergeCli)
+    } else if gh_command_at(tokens, i, &["api"]) {
+        Some(Kind::MergeApi)
     } else {
         None
     }
@@ -366,6 +384,149 @@ fn open_prs(nwo: &str) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// `gh api repos/<nwo>/stacks` の生 JSON(pr-gate の `gh::stacks` と同じ呼び出し)。
+/// 失敗(認証・ネットワーク・機能撤収のいずれか区別しない)・空は `None`。
+fn stacks(nwo: &str) -> Option<String> {
+    let out = Command::new("gh")
+        .args(["api", &format!("repos/{nwo}/stacks")])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = command_substitution(&String::from_utf8_lossy(&out.stdout));
+    (!s.is_empty()).then_some(s)
+}
+
+// ---------------------------------------------------------------------------
+// 層(iii): リンクしていない連鎖の非最下段へのマージ
+// ---------------------------------------------------------------------------
+
+/// `/repos/<o>/<r>/pulls/<N>/merge-async` なら `("<o>/<r>", "<N>")`。
+fn parse_merge_async_path(t: &str) -> Option<(String, String)> {
+    let seg: Vec<&str> = t.strip_prefix("/repos/")?.split('/').collect();
+    match seg.as_slice() {
+        [o, r, "pulls", n, "merge-async"]
+            if !o.is_empty()
+                && !r.is_empty()
+                && !n.is_empty()
+                && n.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            Some((format!("{o}/{r}"), (*n).to_string()))
+        }
+        _ => None,
+    }
+}
+
+/// `gh api -X PUT repos/<o>/<r>/pulls/<N>/merge-async` の (nwo, PR 番号)。
+fn merge_async_target(tokens: &[String]) -> Option<(String, String)> {
+    if !api_method(tokens)?.eq_ignore_ascii_case("PUT") {
+        return None;
+    }
+    let p = api_path(tokens, |t| parse_merge_async_path(t).is_some())?;
+    parse_merge_async_path(&p)
+}
+
+/// `gh pr merge` が値を取るフラグ(値トークンを対象 PR と取り違えない)。
+const MERGE_VALUE_FLAGS: &[&str] = &[
+    "--subject",
+    "-t",
+    "--body",
+    "-b",
+    "--body-file",
+    "-F",
+    "--match-head-commit",
+    "--author-email",
+    "-A",
+];
+
+/// `gh pr merge [<番号>|<URL>|<ブランチ>] [-R <o>/<r>]` の (nwo, 対象の指定)。
+/// 対象を省くと、現在のブランチの PR。
+fn merge_cli_target(project: &Path, tokens: &[String]) -> Option<(String, String)> {
+    let mut repo = String::new();
+    let mut positional: Option<String> = None;
+    let mut i = 3; // gh pr merge
+    while i < tokens.len() {
+        let a = tokens[i].as_str();
+        if a == "--help" || a == "-h" {
+            return None;
+        }
+        if let Some(v) = a.strip_prefix("--repo=") {
+            repo = v.to_string();
+        } else if a == "-R" || a == "--repo" {
+            repo = tokens.get(i + 1)?.clone();
+            i += 1;
+        } else if MERGE_VALUE_FLAGS.contains(&a) {
+            i += 1;
+        } else if !a.starts_with('-') && positional.is_none() {
+            positional = Some(a.to_string());
+        }
+        i += 1;
+    }
+    let nwo = |repo: String| {
+        if repo.is_empty() {
+            owner_repo(project)
+        } else {
+            Some(repo)
+        }
+    };
+    match positional {
+        Some(p) => match parse_url(&p) {
+            Some((_, url_nwo, num)) => Some((url_nwo, num.to_string())),
+            None => Some((nwo(repo)?, p)),
+        },
+        None => Some((
+            nwo(repo)?,
+            git_out(project, &["branch", "--show-current"]).filter(|b| !b.is_empty())?,
+        )),
+    }
+}
+
+/// マージする PR(`selector` は番号かブランチ名)が、base を別の open PR の
+/// ブランチにしていて(= chain の最下段でない)、かつ GitHub の stack にリンクされて
+/// いなければ、拒否の理由を返す。最下段(base が open PR の head でない)と、積みでない
+/// PR は対象外。`stacks` の取得に失敗したら判定不能で通す(fail-open)。
+///
+/// chain の検出とリンク判定は `pr-gate` の `G_stack` と同じ関数(`gates::stack`)。
+pub fn merge_verdict(
+    prs_json: &str,
+    selector: &str,
+    stacks: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    let rows = stack::parse_rows(prs_json)?;
+    let row = rows
+        .iter()
+        .find(|r| r.number == selector || r.head == selector)?;
+    let chain = stack::chain(&rows, &row.number, &row.head, &row.base)?;
+    if chain.first() == Some(&row.number) {
+        return None;
+    }
+    if stack::is_linked(&stacks()?, &chain) {
+        return None;
+    }
+    let (num, base, bottom) = (&row.number, &row.base, &chain[0]);
+    let all = chain.join(" ");
+    Some(format!(
+        "PR #{num} は base が別の open PR のブランチ({base})で、GitHub の stack にリンクされていません。この PR をマージすると base のブランチにしか入らず、下の段は OPEN のまま残ります(stacked-pr スキル「スタックの PR をマージする」)。先に `gh stack link {all}` でリンクしてください(最下段から順の PR 番号)。ただし link 後はそのブランチへの `pull_request` イベントが発火しない(github/gh-stack#319、stacked-pr スキル §3)ので、全段の CI が green になってから link し、以後は push しないでください。リンクせずに入れるなら、下の段から順に 1 本ずつ(最下段 #{bottom} から)です。"
+    ))
+}
+
+fn judge_merge(kind: Kind, project: &Path, tokens: &[String]) -> Option<String> {
+    let end = tokens
+        .iter()
+        .position(|t| is_sep(t))
+        .unwrap_or(tokens.len());
+    let tokens = &tokens[..end];
+    let (nwo, selector) = match kind {
+        Kind::MergeApi => merge_async_target(tokens)?,
+        _ => merge_cli_target(project, tokens)?,
+    };
+    let prs = open_prs(&nwo)?;
+    merge_verdict(&prs, &selector, || stacks(&nwo))
+}
+
 // ---------------------------------------------------------------------------
 // 判定本体
 // ---------------------------------------------------------------------------
@@ -445,9 +606,12 @@ impl Guard {
     /// bash の `decide_stack`: コマンド文字列全体から `gh pr create|edit` の
     /// 範囲を切り出して範囲ごとに判定する。deny なら理由。
     pub fn decide_stack(&self, cmd: &str, project: &Path) -> Option<String> {
-        first_deny(cmd, is_target_at, |r| {
-            let f = parse_pr_tokens(r.tokens, r.heredoc_bodies);
-            self.judge_range(r.kind, project, &f)
+        first_deny(cmd, is_target_at, |r| match r.kind {
+            Kind::MergeCli | Kind::MergeApi => judge_merge(r.kind, project, r.tokens),
+            Kind::Create | Kind::Edit => {
+                let f = parse_pr_tokens(r.tokens, r.heredoc_bodies);
+                self.judge_range(r.kind, project, &f)
+            }
         })
     }
 
@@ -471,6 +635,7 @@ impl Guard {
                 }
                 judge_edit(project, &prs, f)
             }
+            Kind::MergeCli | Kind::MergeApi => None,
         }
     }
 
@@ -852,5 +1017,65 @@ mod tests {
         let r = first_row_where(j, |e| Ok(jq_tostring(jq_index(e, "number")?) == "2")).unwrap();
         assert_eq!(r.head, "s2");
         assert!(first_row_where(j, |_| Ok(false)).is_none());
+    }
+
+    const CHAIN3: &str = r#"[{"number":1,"headRefName":"s1","baseRefName":"main"},{"number":2,"headRefName":"s2","baseRefName":"s1"},{"number":3,"headRefName":"s3","baseRefName":"s2"}]"#;
+    const LINKED3: &str =
+        r#"[{"open":true,"pull_requests":[{"number":1},{"number":2},{"number":3}]}]"#;
+
+    #[test]
+    fn merge_verdict_denies_non_bottom_of_unlinked_chain() {
+        let none = || Some("[]".to_string());
+        // 最上段も中間段も、番号でもブランチ名でも
+        for sel in ["3", "s3", "2", "s2"] {
+            let r = merge_verdict(CHAIN3, sel, none).unwrap();
+            assert!(r.contains("gh stack link 1 2 3"), "{sel}: {r}");
+            assert!(r.contains("最下段 #1"), "{sel}: {r}");
+        }
+        // 未リンクの判定は stacks の内容(open かつ全段を含む)で決まる
+        let partial =
+            || Some(r#"[{"open":true,"pull_requests":[{"number":1},{"number":2}]}]"#.to_string());
+        assert!(merge_verdict(CHAIN3, "3", partial).is_some());
+    }
+
+    #[test]
+    fn merge_verdict_passes_linked_bottom_single_and_unknown() {
+        let panics = || -> Option<String> { panic!("最下段では stacks を引かない") };
+        assert!(merge_verdict(CHAIN3, "1", panics).is_none());
+        assert!(merge_verdict(CHAIN3, "s1", panics).is_none());
+        assert!(merge_verdict(CHAIN3, "3", || Some(LINKED3.to_string())).is_none());
+        // 積みでない PR(chain が自分だけ)
+        let single = r#"[{"number":9,"headRefName":"x","baseRefName":"main"}]"#;
+        assert!(merge_verdict(single, "9", panics).is_none());
+        // 一覧に無い PR・読めない一覧は判定不能で通す
+        assert!(merge_verdict(CHAIN3, "99", panics).is_none());
+        assert!(merge_verdict("not json", "3", panics).is_none());
+        // stacks が取れなければ通す(fail-open)
+        assert!(merge_verdict(CHAIN3, "3", || None).is_none());
+    }
+
+    #[test]
+    fn merge_async_path_forms() {
+        let p = parse_merge_async_path;
+        assert_eq!(
+            p("/repos/o/r/pulls/12/merge-async"),
+            Some(("o/r".to_string(), "12".to_string()))
+        );
+        assert_eq!(p("/repos/o/r/pulls/x/merge-async"), None);
+        assert_eq!(p("/repos/o/r/pulls/12"), None);
+        assert_eq!(p("/repos/o/r/pulls/12/merge"), None);
+        assert_eq!(p("/repos//r/pulls/12/merge-async"), None);
+        // `repos/…` と `/repos/…` は同一視、メソッドは PUT だけ
+        let t = v(&["gh", "api", "-X", "put", "repos/o/r/pulls/12/merge-async"]);
+        assert_eq!(merge_async_target(&t), Some(("o/r".into(), "12".into())));
+        let t = v(&[
+            "gh",
+            "api",
+            "--method=PUT",
+            "/repos/o/r/pulls/12/merge-async",
+        ]);
+        assert!(merge_async_target(&t).is_some());
+        let t = v(&["gh", "api", "repos/o/r/pulls/12/merge-async"]);
+        assert_eq!(merge_async_target(&t), None);
     }
 }

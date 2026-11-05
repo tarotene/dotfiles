@@ -271,6 +271,8 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 (GitHub の stacks API とタイムラインで読んだ)。先の実測で未確認だった点、つまり stacks の一覧に
 入っていない連鎖で起きることを、これで確かめた。マージの前に、`gh stack` の状態(`gh api` の stacks の一覧、`pr-gate` の G_stack と同じ読み方)で、最上段と下の段が 1 つの stack にリンクされていることを確かめる。リンクされていなければ、下の段から順に 1 本ずつ入れる(各段で base が `main` に付け替わるのを読み戻す)か、先に `gh stack link` する。
 
+この確認は `stack-base-guard`(層(iii)、`docs/agents/stack-base-guard.md`)が実行前に機械で検査する。base が別の open PR のブランチで、stack にリンクされていない PR への `gh pr merge` と `merge-async` は拒否される。先に `gh stack link` するときは、link 後に CI が発火しなくなる(github/gh-stack#319、§3 手順 5)ので、全段の CI が green になってからにする。
+
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
 2. `pr-checks-wait <N>` を背景で実行して、required のチェックの完了だけを待つ(required でないチェックは
    マージ可否を決めないので待たない。#1001。赤が 1 件でも出れば即 NG で終わる。stacked PR で base が

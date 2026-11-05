@@ -15,6 +15,7 @@
     { "id": "update_body", "from": ["created", "stack_linked"], "to": ["same"], "by": "agent", "by_detail": "コメントで確定した裁定を、本文に反映する。本文を現在の合意状態の正本として保つ", "carriers": ["skill:living-description"] },
     { "id": "stack_link", "from": ["created"], "to": ["stack_linked"], "by": "agent", "by_detail": "全段の内容を確定して push し、CI green を確認してから、最下段から順の PR 番号で gh stack link を 1 回だけ実行する。実行しないと Stop が block する(G_stack)", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait", "node:pr-gate-stop"] },
     { "id": "unstack", "from": ["stack_linked"], "to": ["created"], "by": "agent", "by_detail": "link の後に修正が要るときは、gh stack unstack で解除し、push して CI を確認してから、再び link する", "carriers": ["skill:stacked-pr"] },
-    { "id": "merge", "from": ["created", "stack_linked"], "to": ["merged"], "by": "person", "by_detail": "エージェントはマージしない。本人が明示したときだけエージェントも行う。スタックは最上段(自分の head を base にする open な PR が無い PR)を merge-async で 1 回マージする。積みでない PR は gh pr merge", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait"] }
+    { "id": "merge", "from": ["created"], "to": ["merged"], "by": "person", "by_detail": "エージェントはマージしない。本人が明示したときだけエージェントも行う。積みでない PR は gh pr merge。積みの PR は、base が main の最下段だけを、下から 1 本ずつこの事象で入れる。base が別の open PR のブランチの PR は、リンクしていない(created の)ままでは、gh pr merge も merge-async も実行前に拒否される", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait", "node:stack-base-guard"] },
+    { "id": "merge_stack", "from": ["stack_linked"], "to": ["merged"], "by": "person", "by_detail": "リンクした stack は、最上段(自分の head を base にする open な PR が無い PR)を merge-async で 1 回マージすると、下の open な全段が一度に入る。積みの PR は stack_linked からだけ、この経路でマージする", "carriers": ["skill:stacked-pr"], "gates": ["node:pr-checks-wait", "node:stack-base-guard"] }
   ]
 }
