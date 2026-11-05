@@ -1,0 +1,12 @@
+{
+  "env": {
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "keep",
+    "UV_TOOL_DIR": "/home/example/.cache/uv/tools",
+    "JUST_TEMPDIR": "/home/example/.cache/just"
+  },
+  "model": "keep",
+  "permissions": {
+    "allow": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "env": {"ANTHROPIC_DEFAULT_OPUS_MODEL": "keep", "UV_TOOL_DIR": "/old/uv-tools"},
+  "model": "keep"
+}
