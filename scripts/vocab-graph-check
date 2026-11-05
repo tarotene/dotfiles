@@ -20,6 +20,11 @@
 #                       skill:<名前> は config/agents/skills/<名前>/、node:<id> は pipeline-map.toml の
 #                       ノード、cli:<名前> は crates/<名前>/。external:<名前> は別リポジトリの担い手で解決しない
 #         孤立          どの事象の to にも現れない状態が無い
+#         種類          kinds を持つ語彙だけ(持たない語彙の事象が kinds を持つのも違反)。種類の id が一意、
+#                       既定の種類がちょうど 1 つで tag を持たず、ほかの種類の tag が一意で状態の印と重ならない。
+#                       すべての事象が kinds を持ち、宣言した種類だけを指す。種類ごとに、その種類の事象だけで
+#                       none から到達できる状態があり、reaches を持つ種類は、reaches に無い状態に至らない
+#                       (reaches の状態 id は語彙の状態にある)
 #         対象の一意    渡した全語彙で object が一意
 #       --all は、<root>/config/agents/*/vocabulary.json と <root>/config/agents/vocabulary/*.json の
 #       うち states と events を持つものを加える(config/agents/codify-signals/vocabulary.json や
@@ -121,6 +126,9 @@ def step($evs): . as $s
   | ($s + [ $evs[] | select(any(.from[]; IN($s[]))) | .to[] | select(. != "same") ]) | unique;
 
 . as $v
+| ($v.kinds // []) as $kinds
+| [ $kinds[].id ] as $kids
+| [ $v.states[] | .token? // empty ] as $tokens
 | [ $v.states[].id ] as $sids
 | [ $v.events[].id ] as $eids
 | [ $v.states[] | select(.terminal) | .id ] as $term
@@ -154,7 +162,32 @@ def step($evs): . as $s
         elif $c.k == "cli"   and (named($crates; $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が crates/ に実在しない")
         else empty end ),
     ( $sids[] | select((IN($allTo[]) | not) and . != "none")
-      | viol("孤立"; "状態 \(.) がどの事象の to にも現れない") )
+      | viol("孤立"; "状態 \(.) がどの事象の to にも現れない") ),
+    # 種類(kinds を持つ語彙だけ)。持たない語彙で事象が kinds を持つのも違反
+    ( if ($v | has("kinds") | not) then
+        ( $v.events[] | select(has("kinds")) | viol("種類"; "語彙に kinds が無いのに、事象 \(.id) が kinds を持つ") )
+      else
+        ( $kids | dups[] | viol("種類"; "種類 id \(.) が重複している") ),
+        ( select(($kinds | map(select(.default == true)) | length) != 1)
+          | viol("種類"; "既定の種類(default: true)がちょうど 1 つでない(\($kinds | map(select(.default == true)) | length) 個)") ),
+        ( $kinds[] | select(.default == true and has("tag")) | viol("種類"; "既定の種類 \(.id) が tag を持つ") ),
+        ( $kinds[] | select(.default != true and (has("tag") | not)) | viol("種類"; "既定でない種類 \(.id) に tag が無い") ),
+        ( [ $kinds[] | .tag? // empty ] | dups[] | viol("種類"; "tag \(.) が重複している") ),
+        ( $kinds[] | select(has("tag") and (.tag | IN($tokens[]))) | viol("種類"; "種類 \(.id) の tag \(.tag) が状態の印と重なる") ),
+        ( $v.events[] | . as $e
+          | if ($e | has("kinds") | not) then viol("種類"; "事象 \($e.id) が kinds を持たない")
+            else ( ($e.kinds | dups[]) | viol("種類"; "事象 \($e.id) の kinds に \(.) が重複している") ),
+                 ( $e.kinds[] | select(IN($kids[]) | not) | viol("種類"; "事象 \($e.id) の kinds の \(.) が語彙の kinds にない") )
+            end ),
+        ( $kinds[] | . as $k
+          | [ $v.events[] | select(any(.kinds[]?; . == $k.id)) ] as $kev
+          | (["none"] | until(step($kev) == .; step($kev))) as $kr
+          | ( if ($kr | length) < 2 then viol("種類"; "種類 \($k.id) の事象だけでは、none からどの状態にも到達できない") else empty end ),
+            ( ($k.reaches // null) as $ra | select($ra != null)
+              | ( $ra[] | select(IN($sids[]) | not) | viol("種類"; "種類 \($k.id) の reaches の \(.) が状態にない") ),
+                ( $kr[] | select(. != "none" and (IN($ra[]) | not))
+                  | viol("種類"; "種類 \($k.id) の事象だけで状態 \(.) に至る。reaches は \($ra | join("・")) だけ") ) ) )
+      end )
   ][] | "\(.rule)\t\(.msg)"
 EOF
 
@@ -614,6 +647,8 @@ selftest() {
   expect_fail "解決しない skill" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-carrier.json"
   expect_fail "解決しない node" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-node.json"
   expect_fail "孤立した状態" 孤立 --root "$R" "$FIXTURES/bad-orphan.json"
+  expect_fail "宣言していない種類を指す事象" 種類 --root "$R" "$FIXTURES/bad-kind-undefined.json"
+  expect_fail "reaches を超えて到達する種類" 種類 --root "$R" "$FIXTURES/bad-kind-reach.json"
   expect_fail "object の重複" 対象の一意 --root "$R" "$FIXTURES/ok-minimal.json" "$FIXTURES/ok-minimal.json"
   expect_code "語彙の指定なし" 2
   expect_code "未知のオプション" 2 --nope
@@ -625,6 +660,12 @@ selftest() {
   expect_fail "実物 + 終端から出る事象" 終端 "$T/mail-broken-terminal.json"
   jq '.events[0].carriers = ["skill:inbox-adjudicaton"]' "$real_mail" >"$T/mail-broken-typo.json"
   expect_fail "実物 + 担い手の typo" 担い手の解決 "$T/mail-broken-typo.json"
+  # 握手の語彙: remote-trip に confirm を持たせると go に至る(reaches を超える)。kinds を外すと種類の規則が落とす
+  local real_hs="$SELF_ROOT/config/agents/calendar-handshake/vocabulary.json"
+  jq '(.events[] | select(.id == "confirm") | .kinds) = ["leave", "remote-trip"]' "$real_hs" >"$T/hs-remote-go.json"
+  expect_fail "実物(握手)+ remote-trip が go に至る" 種類 "$T/hs-remote-go.json"
+  jq 'del(.events[] | select(.id == "withdraw") | .kinds)' "$real_hs" >"$T/hs-no-kinds.json"
+  expect_fail "実物(握手)+ kinds の無い事象" 種類 "$T/hs-no-kinds.json"
 
   # --- skill 側の負例(一時ディレクトリに skills/ を作る)
   local S="$T/skills-root"

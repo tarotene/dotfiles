@@ -13,11 +13,31 @@ let
   table = builtins.fromJSON (builtins.readFile (spec + "/scenarios.json"));
   vocabulary = builtins.fromJSON (builtins.readFile (root + "/vocabulary.json"));
 
-  # from × to に展開した遷移の数。handshake.qnt の cov0..cov19 を超えたら足りない。
+  # 種類 × from × to に展開した遷移の数。handshake.qnt の cov0..cov23 を超えたら足りない。
   # from が ["none"] だけの事象(予定を作る propose)は、仕様の遷移の表に含めない(spec/vocab.jq と同じ)。
-  transitionCount = lib.foldl' (n: t: n + builtins.length t.from * builtins.length t.to) 0 (
-    builtins.filter (e: e.from != [ "none" ]) vocabulary.events
-  );
+  # 種類の組は、その種類の事象だけで none から到達できる from に限る(spec/vocab.jq と同じ)。
+  kindEvents = k: builtins.filter (e: builtins.elem k.id e.kinds) vocabulary.events;
+  reachable =
+    evs:
+    lib.converge (
+      s:
+      lib.unique (
+        s
+        ++ lib.concatMap (
+          e: lib.optionals (lib.any (f: builtins.elem f s) e.from) (lib.remove "same" e.to)
+        ) evs
+      )
+    ) [ "none" ];
+  kindTransitionCount =
+    k:
+    let
+      evs = kindEvents k;
+      reach = reachable evs;
+    in
+    lib.foldl' (
+      n: e: n + builtins.length (builtins.filter (f: builtins.elem f reach) e.from) * builtins.length e.to
+    ) 0 (builtins.filter (e: e.from != [ "none" ]) evs);
+  transitionCount = lib.foldl' (n: k: n + kindTransitionCount k) 0 vocabulary.kinds;
 
   expand =
     s:
@@ -76,7 +96,7 @@ let
         fi
       '';
 in
-assert transitionCount <= 20;
+assert transitionCount <= 24;
 pkgs.linkFarm "calendar-handshake-spec" (
   map (s: {
     name = s.name;

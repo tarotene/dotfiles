@@ -18,7 +18,13 @@
       "description": "対象ごとの時間の決まり(日数など)。値は数。",
       "additionalProperties": { "type": "number" }
     },
-    "group_key": { "type": "string", "description": "握手の語彙が持つ。同じ会議の候補をまとめる鍵の決め方。" }
+    "group_key": { "type": "string", "description": "握手の語彙が持つ。同じ会議の候補をまとめる鍵の決め方。" },
+    "kinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/kind" },
+      "description": "握手の語彙が持つ。対象の種類(題名の状態の印の直後の tag で表す)。持つ語彙では、すべての事象が `kinds` で、適用する種類を書く(グラフ検査の規則「種類」)。"
+    }
   },
   "$defs": {
     "identifier": {
@@ -35,6 +41,18 @@
       "description": "担い手・前提の名前。skill:<skill 名>(config/agents/skills/ に実在)、node:<id>(pipeline-map.toml のノード id)、cli:<crate 名>(crates/ に実在)、external:<名前>(別リポジトリの担い手。解決しない)。"
     },
     "carriers": { "type": "array", "items": { "$ref": "#/$defs/carrier" } },
+    "kind": {
+      "type": "object",
+      "required": ["id", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "default": { "type": "boolean", "description": "題名に tag が無いときの種類。ちょうど 1 つの種類が true で、tag を持たない。" },
+        "tag": { "type": "string", "description": "題名の状態の印の直後に置く tag(末尾の空白まで含む)。既定でない種類が持つ。" },
+        "reaches": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "この種類の事象だけで none から到達できる状態の上限(状態 id の集合)。持つ種類は、ここに無い状態に至れない。持たない種類は制約しない。" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
     "state": {
       "type": "object",
       "required": ["id", "terminal"],
@@ -59,6 +77,7 @@
         "to": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "状態 id。複数ならそのどれか。[\"same\"] は自己遷移(状態を変えない)。" },
         "by": { "$ref": "#/$defs/actor" },
         "by_detail": { "type": "string", "description": "by の自由記述の補足(例: workplace-script)。" },
+        "kinds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" }, "description": "握手の語彙が持つ。この事象を適用する種類(語彙の `kinds` の id)。" },
         "carriers": { "$ref": "#/$defs/carriers", "description": "事象を実際に行う、または行う手順を持つ担い手。by が person でも、記録を書く担い手があれば書く。無ければ省く。" },
         "gates": { "$ref": "#/$defs/carriers", "description": "事象の前提を検査する機械(gate)。" }
       }

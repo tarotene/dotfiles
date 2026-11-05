@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "object": "bad-kind-undefined",
+  "description": "負例(種類)。事象 finish の kinds が、語彙の kinds に宣言していない種類 ghost を指す。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "person", "shown_by": ["skill:alpha"] },
+    { "id": "closed", "terminal": true }
+  ],
+  "kinds": [
+    { "id": "plain", "default": true, "description": "既定の種類。" },
+    { "id": "special", "tag": "[special] ", "description": "tag を持つ種類。" }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent", "kinds": ["plain", "special"] },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person", "kinds": ["plain", "ghost"] }
+  ]
+}

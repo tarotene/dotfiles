@@ -1,9 +1,13 @@
 {
-  "version": 3,
+  "version": 4,
   "object": "calendar-handshake",
-  "description": "Closed vocabulary of title-leading markers for the personal/workplace calendar handshake. The title of an event on the handshake calendar starts with exactly one token; every state change is a title change. The common shape is config/agents/vocabulary/vocabulary.schema.json.",
+  "description": "Closed vocabulary of title-leading markers for the personal/workplace calendar handshake. The title of an event on the handshake calendar starts with exactly one token; every state change is a title change. A kind (a tag right after the token, for example \"[hold] [remote] ...\") selects which events apply to the event; no tag means the default kind. The common shape is config/agents/vocabulary/vocabulary.schema.json.",
   "initial": "none",
   "group_key": "stamped-id-else-title-after-token",
+  "kinds": [
+    { "id": "leave", "default": true, "description": "An event that takes the person away from work. Reaching [blocked] puts an absence on the workplace calendar. The title carries no tag." },
+    { "id": "remote-trip", "tag": "[remote] ", "reaches": ["candidate", "ok", "resched", "ng"],"description": "Work done remotely from another place: the person stays at work, so no absence is ever put on the workplace calendar. The workplace side judges it and goes no further; [go] is not accepted." }
+  ],
   "states": [
     { "id": "candidate", "terminal": false, "token": "[hold] ", "owner": "person", "shown_by": ["skill:slot-availability"], "hold": "soft" },
     { "id": "ok", "terminal": false, "token": "[ok] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
@@ -14,12 +18,12 @@
     { "id": "secured", "terminal": false, "token": "[secured] ", "owner": "agent", "owner_detail": "workplace-agent", "hold": "hard" }
   ],
   "events": [
-    { "id": "propose", "from": ["none"], "to": ["candidate"], "by": "person", "carriers": ["skill:slot-availability"] },
-    { "id": "judge", "from": ["candidate"], "to": ["ok", "resched", "ng"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
-    { "id": "confirm", "from": ["ok", "resched"], "to": ["go"], "by": "person" },
-    { "id": "reserve", "from": ["go"], "to": ["blocked"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
-    { "id": "secure", "from": ["blocked"], "to": ["secured"], "by": "agent", "by_detail": "workplace-agent", "carriers": ["external:workplace-agent"] },
-    { "id": "reopen", "from": ["blocked", "secured"], "to": ["go"], "by": "machine", "by_detail": "workplace-script", "carriers": ["external:workplace-script"] },
-    { "id": "withdraw", "from": ["ok", "resched", "ng", "go", "blocked", "secured"], "to": ["candidate"], "by": "person" }
+    { "id": "propose", "from": ["none"], "to": ["candidate"], "by": "person", "kinds": ["leave", "remote-trip"], "carriers": ["skill:slot-availability"] },
+    { "id": "judge", "from": ["candidate"], "to": ["ok", "resched", "ng"], "by": "machine", "by_detail": "workplace-script", "kinds": ["leave", "remote-trip"], "carriers": ["external:workplace-script"] },
+    { "id": "confirm", "from": ["ok", "resched"], "to": ["go"], "by": "person", "kinds": ["leave"] },
+    { "id": "reserve", "from": ["go"], "to": ["blocked"], "by": "machine", "by_detail": "workplace-script", "kinds": ["leave"], "carriers": ["external:workplace-script"] },
+    { "id": "secure", "from": ["blocked"], "to": ["secured"], "by": "agent", "by_detail": "workplace-agent", "kinds": ["leave"], "carriers": ["external:workplace-agent"] },
+    { "id": "reopen", "from": ["blocked", "secured"], "to": ["go"], "by": "machine", "by_detail": "workplace-script", "kinds": ["leave"], "carriers": ["external:workplace-script"] },
+    { "id": "withdraw", "from": ["ok", "resched", "ng", "go", "blocked", "secured"], "to": ["candidate"], "by": "person", "kinds": ["leave", "remote-trip"] }
   ]
 }

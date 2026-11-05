@@ -11,8 +11,14 @@
 //   会社 PC のエージェント [blocked] を [secured] にする(本人が送ったあとだけ)。
 //   朝の机(desk)         停滞を警告する。
 // 共有記憶:
-//   evs   専用カレンダー上の予定(印・題名の残り・日・組の id・最後に受理した印)
+//   evs   専用カレンダー上の予定(印・種類・題名の残り・日・組の id・最後に受理した印)
 //   abs   会社カレンダー上の不在(印の予定 id と日を持つ)
+//
+// 種類(語彙の kinds。題名の印の直後の tag で表す):
+//   leave         既定。[blocked] で不在を入れる。語彙のすべての遷移が使える。
+//   remote-trip   不在にならない。語彙のうち、その種類の事象だけの遷移を使える(判定と取り下げ)。
+//                 [go] は受け付けず、書かれたら最後に受理した印へ差し戻す(S6 の語彙の遷移が、種類ごとの集合になる)。
+//                 種類は予定ごとに固定する(題名の tag を本人が書き換えて種類を変えることは、モデルに入れていない)。
 //
 // 前提(外部の挙動。一次情報は ADR の「前提」の節):
 //   A1  events.update/patch は ETag を If-Match に付けると、変更されていれば 412 で失敗する。
@@ -26,10 +32,12 @@ module handshake {
 
   // ---------------------------------------------------------------- 型
   type Mark = Hold | Ok | Resched | Ng | Go | Blocked | Secured
+  type Kind = Leave | RemoteTrip
   type Phase = Idle | Read | Looked | Created | Pruned | Reset
   type Ev = {
     present: bool,
     mark: Mark,
+    kind: Kind,   // 種類(題名の tag)。予定ごとに固定
     title: str,   // 印を除いた題名の残り
     start: int,   // 開始日(抽象値)
     gid: str,     // script が最初の判定で刻む組の id(空 = まだ刻んでいない)
@@ -49,12 +57,13 @@ module handshake {
   pure val WARN_BEFORE = 2
   pure val MAX_ABS = 3
   pure val MARKS = Set(Hold, Ok, Resched, Ng, Go, Blocked, Secured)
+  pure val KIND_CHOICES = if (CAN_REMOTE) Set(Leave, RemoteTrip) else Set(Leave)
 
   pure val noEv: Ev = {
-    present: false, mark: Hold, title: "", start: 0, gid: "", ack: Hold, sent: false, intent: "",
+    present: false, mark: Hold, kind: Leave, title: "", start: 0, gid: "", ack: Hold, sent: false, intent: "",
   }
   pure val idleRun: Run = { ph: Idle, e: 0, snap: noEv, found: false }
-  pure val noTr: Tr = { from: "", to: "", by: "" }
+  pure val noTr: Tr = { from: "", to: "", by: "", kind: "" }
 
   // ---------------------------------------------------------------- 状態
   var evs: int -> Ev
@@ -74,8 +83,14 @@ module handshake {
     | Blocked => "blocked"
     | Secured => "secured"
   }
-  pure def legalStep(a: Mark, b: Mark): bool =
-    TRANSITIONS.exists(t => t.from == sid(a) and t.to == sid(b))
+  pure def kid(k: Kind): str = match k {
+    | Leave => "leave"
+    | RemoteTrip => "remote-trip"
+  }
+  // 種類ごとの遷移集合(語彙の kinds)。KIND_AWARE が false の環境は、種類を知らない会社側(版 3 まで)を表し、
+  // 種類によらず、どれかの種類に許される遷移を許す
+  pure def legalStep(k: Kind, a: Mark, b: Mark): bool =
+    TRANSITIONS.exists(t => t.from == sid(a) and t.to == sid(b) and (not(KIND_AWARE) or t.kind == kid(k)))
 
   pure def isHard(m: Mark): bool = m == Blocked or m == Secured
   pure def isSoft(m: Mark): bool = not(isHard(m))
@@ -145,9 +160,9 @@ module handshake {
   // 許されない書き換え(語彙の遷移に無い)を見つけた / 許される書き換えを見つけた
   def plain(r: int): bool = not(REVERT) or sn(r).ack == sn(r).mark
   def illegalSeen(r: int): bool =
-    REVERT and sn(r).ack != sn(r).mark and not(legalStep(sn(r).ack, sn(r).mark))
+    REVERT and sn(r).ack != sn(r).mark and not(legalStep(sn(r).kind, sn(r).ack, sn(r).mark))
   def legalSeen(r: int): bool =
-    REVERT and sn(r).ack != sn(r).mark and legalStep(sn(r).ack, sn(r).mark)
+    REVERT and sn(r).ack != sn(r).mark and legalStep(sn(r).kind, sn(r).ack, sn(r).mark)
 
   // S6: 許されない書き換えは、最後に受理した印へ差し戻す
   action doRevert(r: int): bool = all {
@@ -167,7 +182,7 @@ module handshake {
     all {
       readPhase(r), plain(r), sn(r).mark == Hold,
       casWrite(r, { ...sn(r), mark: j, ack: j, gid: stampOf(sn(r)) },
-               { from: "candidate", to: sid(j), by: "workplace-script" }),
+               { from: "candidate", to: sid(j), by: "workplace-script", kind: kid(sn(r).kind) }),
     }
   }
 
@@ -210,7 +225,7 @@ module handshake {
   action goBlock(r: int): bool = all {
     runs.get(r).ph == Pruned,
     casWrite(r, { ...sn(r), mark: Blocked, ack: Blocked },
-             { from: "go", to: "blocked", by: "workplace-script" }),
+             { from: "go", to: "blocked", by: "workplace-script", kind: kid(sn(r).kind) }),
   }
 
   // [blocked]/[secured]: 不在と整合していれば何もしない。食い違えば不在を消して [go] に戻す(H3・H5)
@@ -229,7 +244,7 @@ module handshake {
   action resetWrite(r: int): bool = all {
     runs.get(r).ph == Reset,
     casWrite(r, { ...sn(r), mark: Go, ack: Go, sent: false },
-             { from: sid(sn(r).mark), to: "go", by: "workplace-script" }),
+             { from: sid(sn(r).mark), to: "go", by: "workplace-script", kind: kid(sn(r).kind) }),
   }
 
   // 孤児の不在の掃除(S4)。本人が印を消した・戻したあとの取り消しの伝播
@@ -257,24 +272,26 @@ module handshake {
   val budget = env.edits < MAX_EDITS
   action spend = env' = { ...env, edits: env.edits + 1 }
 
-  action personCreate(e: int, t: str, s: int): bool = all {
+  action personCreate(e: int, t: str, s: int, k: Kind): bool = all {
     budget, not(evs.get(e).present),
-    evs' = evs.set(e, { present: true, mark: Hold, title: t, start: s, gid: "", ack: Hold,
+    evs' = evs.set(e, { present: true, mark: Hold, kind: k, title: t, start: s, gid: "", ack: Hold,
                         sent: false, intent: t }),
     spend, keepRuns, keepAbs, fired' = fired,
   }
-  // 正規の遷移: [ok]/[resched] → [go]
+  // 正規の遷移: [ok]/[resched] → [go]。remote-trip には [go] の手順が無い(朝の机も出さない)ので、
+  // 本人が書くなら手書き(personForge)になる。種類を知らない環境(KIND_AWARE が false)は、どの種類にも出す
   action personGo(e: int): bool = all {
     budget, evs.get(e).present, evs.get(e).mark == Ok or evs.get(e).mark == Resched,
+    not(KIND_AWARE) or evs.get(e).kind == Leave,
     evs' = evs.set(e, { ...evs.get(e), mark: Go }),
-    fired' = { from: sid(evs.get(e).mark), to: "go", by: "person" },
+    fired' = { from: sid(evs.get(e).mark), to: "go", by: "person", kind: kid(evs.get(e).kind) },
     spend, keepRuns, keepAbs,
   }
   // 取り下げ・やり直し(語彙の遷移): どの印からでも [hold] に戻す
   action personCancel(e: int): bool = all {
     CAN_CANCEL, budget, evs.get(e).present, evs.get(e).mark != Hold,
     evs' = evs.set(e, { ...evs.get(e), mark: Hold, sent: false }),
-    fired' = { from: sid(evs.get(e).mark), to: "candidate", by: "person" },
+    fired' = { from: sid(evs.get(e).mark), to: "candidate", by: "person", kind: kid(evs.get(e).kind) },
     spend, keepRuns, keepAbs,
   }
   action personEditTitle(e: int, t: str): bool = all {
@@ -311,7 +328,7 @@ module handshake {
   action agentSecure(e: int): bool = all {
     evs.get(e).present, evs.get(e).mark == Blocked, evs.get(e).sent,
     evs' = evs.set(e, { ...evs.get(e), mark: Secured }),
-    fired' = { from: "blocked", to: "secured", by: "workplace-agent" },
+    fired' = { from: "blocked", to: "secured", by: "workplace-agent", kind: kid(evs.get(e).kind) },
     env' = env, keepRuns, keepAbs,
   }
 
@@ -357,7 +374,8 @@ module handshake {
     nondet e = IDS.oneOf()
     nondet t = TITLES.oneOf()
     nondet s = STARTS.oneOf()
-    personCreate(e, t, s)
+    nondet k = KIND_CHOICES.oneOf()
+    personCreate(e, t, s, k)
   }
   action stepTitle = {
     nondet e = IDS.oneOf()
@@ -400,10 +418,14 @@ module handshake {
     (evs.get(e).present and isHard(evs.get(e).mark)) implies
       IDS.forall(o => (o != e and evs.get(o).present and evs.get(o).intent == evs.get(e).intent) implies
         (evs.get(o).mark == Hold or evs.get(o).mark == Ng)))
-  // S6: 仕様が起こした遷移は、すべて語彙の遷移にある
+  // S6: 仕様が起こした遷移は、すべて語彙の遷移にある(種類つき)
   val s6 = fired.from == "" or TRANSITIONS.contains(fired)
-  // 語彙の状態が仕様の印と一致する
+  // S7: remote-trip の予定には、不在が入らない(不在は script だけが、[go] を受理したあとに入れる。
+  // 本人の手書きの [go]・[blocked] は、不在を入れる前に差し戻される)
+  val s7 = IDS.forall(e => (evs.get(e).present and evs.get(e).kind == RemoteTrip) implies absFor(e).length() == 0)
+  // 語彙の状態・種類が仕様の印・種類と一致する
   val vocabStates = MARKS.map(m => sid(m)) == STATES
+  val vocabKinds = Set(Leave, RemoteTrip).map(k => kid(k)) == KINDS
 
   // 語彙の遷移ごとの被覆(到達できなければ、語彙に死んだ遷移がある)。違反の反例が出れば到達可能
   def notFired(i: int): bool = i >= TRANSITIONS_LIST.length() or fired != TRANSITIONS_LIST.nth(i)
@@ -427,6 +449,10 @@ module handshake {
   val cov17 = notFired(17)
   val cov18 = notFired(18)
   val cov19 = notFired(19)
+  val cov20 = notFired(20)
+  val cov21 = notFired(21)
+  val cov22 = notFired(22)
+  val cov23 = notFired(23)
 
   // ---------------------------------------------------------------- 公平性と活性
   val vars = (evs, abs, runs, lock, env, fired)
@@ -471,7 +497,8 @@ module handshake {
   temporal s2heal = fair implies (s2healAt(0) and s2healAt(1))
   // S6(応答): 許されない書き換えは、いずれ差し戻される
   def illegalMark(e: int): bool =
-    evs.get(e).present and evs.get(e).ack != evs.get(e).mark and not(legalStep(evs.get(e).ack, evs.get(e).mark))
+    evs.get(e).present and evs.get(e).ack != evs.get(e).mark
+    and not(legalStep(evs.get(e).kind, evs.get(e).ack, evs.get(e).mark))
   temporal s6revertAt(e: int): bool = always(illegalMark(e) implies eventually(not(illegalMark(e))))
   temporal s6revert = fair implies (s6revertAt(0) and s6revertAt(1))
 }
