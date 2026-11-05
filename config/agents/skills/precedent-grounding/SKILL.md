@@ -110,7 +110,7 @@ PR を出す計画は、**書き込みの段の前に、報告の各行を一次
 理由にしない(technology-selection スキル §0)。軸の定義・duality 閉集合・
 重い欄の詳しい書き方は `technology-selection` スキルを参照。重い欄を持つ
 `Dn` にはさらに `既存手段:` 行(ADR-543)も必須になる — 書式は
-technology-selection スキル §6 を参照。
+technology-selection スキル §4 を参照。
 
 gate は各 `Dn` ブロック(`- Dn:` 行とその下の従属行)内にトークンが揃っている
 かだけを見る。従属行の順序・行数は検査しない(1 行に詰めても、順序を入れ替えて

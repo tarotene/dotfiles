@@ -821,6 +821,54 @@ The synchronization remote and the backup remote are deliberately separate:
 Self-hosted LiveSync uses Cloudflare R2, while restic uses Backblaze B2 through
 its S3-Compatible API. Synchronization is not a backup.
 
+### Self-hosted LiveSync (operating notes)
+
+This section holds the rules; real values (bucket, endpoint, entry names,
+expiry dates) stay out of this public repository (ADR-0034).
+
+- **What it is.** Self-hosted LiveSync is the Obsidian plugin that
+  synchronises the vault between hosts and the phone through an
+  object-storage remote (Cloudflare R2 above). The plugin runs only while
+  Obsidian has a window, which is why `vega` starts Obsidian at login (#1196).
+  Replacing the plugin on `vega` with the official CLI's `daemon` is tracked in
+  #1328 (the investigation is #1327); until that lands, this section describes
+  the plugin.
+- **Where the design record lives.** The history of the setup (remote type,
+  encryption method, sync interval and why, credential placement, the
+  procedure for adding a device, key expiry) is in a closed Issue of the
+  private repository that holds personal state, not in this repository. Search
+  that repository, not only this one, before saying "there is no record"
+  (2026-11-01: a search limited to this repository gave exactly that wrong
+  answer).
+- **Where the credentials are.** The connection settings are an ordinary
+  password-manager item (login item), **not** a Bitwarden Secrets Manager
+  secret — the Secrets Manager project above holds only the restic secrets.
+  The item's name is not written here; the private record names it. This
+  repository has no unattended reader for an ordinary login item (the existing
+  Bitwarden integration reads only Secrets Manager, `crates/obsidian-backup`),
+  which is why #1328 keeps a separate copy in Secrets Manager for the daemon.
+- **Adding a device.** Generate a new Setup URI on a device that already syncs
+  normally, and follow the plugin's "Add another device" procedure on the new
+  device. The Setup URI is protected by its own passphrase, separate from the
+  vault's end-to-end encryption passphrase; store both securely and do not send
+  the URI and its passphrase through the same channel. Do not reuse the initial
+  Setup URI produced when the remote was provisioned. Source: the plugin's
+  documentation (vrtmrz/obsidian-livesync, `docs/setup_own_server.md`, lines
+  198 and 220-226, and the `quick_setup.md` sections it links, "Create a Setup
+  URI for another device" and "Add another device"; the setup guide was read on
+  2026-11-05, the linked `quick_setup.md` sections were **not** read). The menu
+  names on the installed plugin version are unconfirmed; follow the plugin's own
+  wizard on the device.
+- **Key expiry.** The remote's access key has an expiry date recorded in the
+  private record above. This repository does not hold it; check that record and
+  the remote's key list before the date, and rotate through a new key plus an
+  updated Setup URI on every device.
+- **Before touching the sync remote or the daemon.** Stop Obsidian (and the
+  daemon, once #1328 lands), take a restore point as in the restore section
+  below, and read #1327's finding: starting the daemon against an empty local
+  database without the settings write flag makes it re-create every file's
+  revision and can delete local files.
+
 ### One-time Backblaze and Bitwarden setup
 
 1. Create a private Backblaze B2 bucket with Object Lock disabled. Set its
