@@ -48,6 +48,16 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
    - 今後、状態を Git の外へ移す変更は、同じ形の check を移す PR に同梱して、ここに足す。
    `worklog` の場所は `PROMOTION_DETECT_WORKLOG_BIN`(既定 `~/.local/bin/worklog`)。
 
+7. **記録の層の宣言と実測のずれ(#1310、ADR-0000 record-layers)**: `PROMOTION_DETECT_GHR_DIR`(既定 `~/.ghr`)の下の
+   `<host>/<owner>/<repo>` のうち、`.config/record-layers.toml`(記録の層の宣言)を持つチェックアウトだけを読む。宣言の無い
+   チェックアウト(会社・org のリポジトリを含む)は読まない。判定は `crates/record-layer`(`record-layer-guard` と同じ宣言・
+   同じ照合)。詳細は [record-layers.md](record-layers.md)。
+   - 宣言の欠陥: 宣言を読めない、または `git ls-files` の各ファイルに当たる glob がちょうど 1 つでない → 「記録の層の宣言に欠陥があります
+     (owner/repo、…)」。本文に先頭 10 件の `path: 原因` を並べ、残りは件数だけを書く。
+   - 実測のずれ: 直近 7 日に書き換わった日の数が、L0 は 3 日以上・L1 は 5 日以上・L2 は毎日のファイル → 「記録の層の宣言と、実測の変化の
+     速さがずれています(owner/repo)」。本文は `path(層)` を先頭 10 件並べ、日数は書かない(毎日変わる数が入ると、同じ候補を毎日入れ直す)。
+   - 題に件数・日付を入れない(同じ題は同じ候補として、`emitted.json` と `--check-dup` が畳む)。
+
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
 (`RECURRENCE_THRESHOLD`・`VERBATIM_MIN_SESSIONS`・`SKIP_STALE_DAYS`・
 `DEMOTION_SKIP_THRESHOLD`)。
