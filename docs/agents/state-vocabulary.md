@@ -41,6 +41,7 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
 scripts/vocab-graph-check --all                    # config/agents/*/vocabulary.json と config/agents/vocabulary/*.json のうち states と events を持つもの
 scripts/vocab-graph-check <語彙.json>...           # 指定した語彙
 scripts/vocab-graph-check --skills                 # どの語彙にも external-objects.json にも載らない skill を列挙(CI の dry-run ジョブが回す)
+scripts/vocab-graph-check --stages                 # 事象ごとの段階を報告(報告専用。次の節)
 scripts/vocab-graph-check --selftest               # fixtures/ の正例・負例と、skill の負例
 ```
 
@@ -64,6 +65,43 @@ scripts/vocab-graph-check --selftest               # fixtures/ の正例・負�
 別リポジトリの対象の名前と skill 名だけを持ち、中身は書かない)のどれかに載っているかを見る。CI の `dry-run` ジョブが回すので、
 載っていない skill を足した PR は落ちる(例外の一覧は持たない)。`external-objects.json` の `object` は、kebab-case で、そのファイル内で一意で、
 dotfiles の語彙の `object` と重ならない。
+
+## 事象ごとの段階を導く(`--stages`)
+
+```text
+scripts/vocab-graph-check --stages                 # 全語彙の事象ごとの段階と、段階ごとの件数を標準出力に出す
+```
+
+事象を、散文(skill の手順書)・スクリプト・gate(自動で前提を検査する機械)のどれで担っているかを、宣言せず、事象の
+`carriers`・`gates` の名前と `pipeline-map.toml` のノードの `lane`・`auto` から導く(`docs/adr/543-existing-means-and-deterministic-promotion.md`
+の D4。宣言欄は作らない)。**報告専用**で、語彙の不備を見つけても落とさず、終了コードは常に 0(語彙の検査は `--all` が担う)。
+出力はコミットしない。段階の分布は、昇格の候補(散文だけで、`by` が `agent` の事象)を探す入口で、`promotion-detect` の兆候の置き換えではない。
+
+名前ごとの種類を決め、事象の段階は、含む種類のうち最も強いもの(gate > スクリプト > 散文 > 外部)とする。
+
+| 名前 | 種類 |
+|---|---|
+| `skill:<名前>` | 散文 |
+| `cli:<名前>` | スクリプト |
+| `gates` の `node:<id>` で、レーンが `tool-call`・`plan-approval`・`stop`・`git-hook`・`ci` のいずれかで `auto = true` | gate |
+| 上記以外の `node:<id>`(`carriers` の node、レーンが `manual` などで `auto = false`、レーンが `session-start`・`timer`・`cloud`・`external` の node) | スクリプト |
+| `external:<名前>` | 外部(別リポジトリの担い手。実体を読めないので、段階を判定しない) |
+
+| 事象の段階 | 条件 |
+|---|---|
+| gate | 種類に gate を含む |
+| スクリプト | gate を含まず、スクリプトを含む |
+| 散文 | 散文だけ(外部との組み合わせを含む) |
+| 散文+同梱 | 散文だけで、名指しされた skill のディレクトリに `scripts/` がある(語彙に名前の出ない同梱のスクリプトを補う) |
+| 外部 | 外部だけ |
+| 段階なし | 名前が無く、`by` が `person`(本人が行う事象) |
+| 名指しなし | 名前が無く、`by` が `agent` か `machine`(担い手が語彙に書かれていない。不備の候補) |
+
+- `carriers` の node を gate にしない。`gates` は「前提を検査する機械」で、`carriers` は「行う」担い手だから。自動で発火する機構が `carriers` に
+  あっても、事象の段階はスクリプトとして数える。
+- `auto = true` でもレーンが `session-start`・`timer`・`cloud` のノードは、前提を検査して止める機構でなく、時機で走る処理なので gate にしない。
+- 対応表の抽象の語彙(`awaiting-item`)は、具体の語彙の事象を写す先の表で担い手を持たないので、数えない。
+- 事象の一部だけがスクリプト化されているとき、事象の単位では最も強い段階しか出ない。出力の「構成」の列に、含む種類の組(`gate+prose` など)を併記する。
 
 ## 新しい skill の足し方
 
