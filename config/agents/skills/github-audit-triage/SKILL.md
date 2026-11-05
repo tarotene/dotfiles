@@ -106,7 +106,8 @@ description・topics・settings フィールド・ファイルツリー・open I
     言語に対応する `repo-governance` の profile があれば、その
     `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
     テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
-    profile が無いリポジトリ(rust/typst/astro のいずれでもない)は
+    profile が無いリポジトリ(`core` 型。`repo-governance` SKILL.md の
+    「Without a language profile (`core`)」)は
     `repo-governance-common/templates/.github/workflows/pr-title.yml`
     (単一正本、rust/typst/astro-site の 3 profile はこのファイルへの symlink)
     をそのまま `.github/workflows/pr-title.yml` にコピーする提案にする。
@@ -118,8 +119,8 @@ description・topics・settings フィールド・ファイルツリー・open I
     判定し続けていた — を受けて廃止した)。対象リポジトリに
     `.github/rulesets/quality.json` 宣言が無ければ、対応する
     `repo-governance` skill の言語 profile(rust/typst/astro-site)の `copy-files.sh` または
-    `repo-governance-common` の `copy-files.sh`(該当エコシステムが無い
-    リポジトリ、`core` 型)で宣言を播く提案を先に書く
+    `core` 型(`repo-governance` SKILL.md の「Without a language profile (`core`)」)の
+    `copy-files.sh` で宣言を播く提案を先に書く
     (ADR-503、`rulesets-declaration-missing`
     が該当)。宣言は既にあり live だけが古い場合は、
     `apply-rulesets.sh <owner>/<repo> --reconcile` を適用する提案として
@@ -200,9 +201,9 @@ description・topics・settings フィールド・ファイルツリー・open I
   外科的に直す。
   - `ci-yml-missing` — 対象リポジトリの言語に対応する `repo-governance`
     の profile があれば、その `<profile>/templates/.github/workflows/ci.yml` を土台に
-    `# ADJUST:` 箇所を埋めて起草する。対応する profile が無い(rust/typst/
-    astro のいずれでもない)場合はテンプレートが無いので低確信フラグに
-    回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
+    `# ADJUST:` 箇所を埋めて起草する。対応する profile が無い(`core` 型。
+    `repo-governance` SKILL.md の「Without a language profile (`core`)」)場合は
+    言語別のテンプレートが無いので低確信フラグに回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
     リポジトリは、それらを `ci.yml` に統合する。このとき既存 job の
     `name:` は変えない: live の ruleset の必須 check は旧 job 名のままで、
     名前を変えると reconcile の前に必須 check が「Expected」のまま PR を
@@ -280,8 +281,9 @@ description・topics・settings フィールド・ファイルツリー・open I
     `pr-title-workflow-missing` と同じ扱い — この 1 ファイルは元々
     リポジトリ固有の中身を持たない)。**同じ PR で、`.github/rulesets/
     quality.json` の宣言が無いリポジトリには宣言を播く**(対応する
-    `repo-governance` の言語 profile の `copy-files.sh`、無ければ
-    `repo-governance-common/templates/.github/rulesets/` から)。live の ruleset
+    `repo-governance` の言語 profile の `copy-files.sh`、無ければ `core` 型として
+    `repo-governance` SKILL.md の「Without a language profile (`core`)」の `copy-files.sh`
+    (`repo-governance-common/templates/.github/rulesets/` を播く))。live の ruleset
     が旧 context `PR Title / PR title` を必須にしている repo では、置換した瞬間
     head がその context を報告しなくなる。宣言が無いと `apply-rulesets --ref
     <branch> --verify-sha <head> --reconcile` で live を直す正本が無く、PR が
@@ -448,15 +450,12 @@ SKILL.md §9 と同じ作法)。
    (docs には残さない、§9 参照)。favicon は review と record で区別
    できるものを選ぶ。
 6. charters ドメインの description/topics 反映(`gh repo edit`)、naming
-   ドメインの `naming-*` topic 反映も、**該当 PR が merge された後**に
-   人間が個別に行う(この段階では行わない — README が正本、メタデータは
-   鏡という関係上、README merge 前に鏡だけ書き換えると矛盾した状態が
-   一時的に生まれる)。ただし naming ドメインで改名を伴わない場合(盲
-   再導出の一致度が高く、宣言のみで済む場合)は対応する PR 自体が存在
-   しないため、GO 直後に `gh repo edit --add-topic naming-<class>` を
-   直接実行してよい — 待つ理由(README merge 前の鏡の矛盾)がそもそも
-   発生しない。改名を伴う場合(`naming-pj` への移行など)は改名 PR の
-   merge を待つ。
+   ドメインの `naming-*` topic 反映も、`repo-charter` SKILL.md §8 の
+   「メタデータを反映する時機」の規定(正本)に従い、**該当 PR が merge された後**に
+   人間が個別に行う(この段階では行わない)。naming ドメインで改名を伴わず、
+   対応する PR が無い場合(盲再導出の一致度が高く、宣言のみで済む場合)は、
+   同じ規定の例外のとおり GO 直後に `gh repo edit --add-topic naming-<class>` を
+   直接実行してよい。
 
 ## 6a. サブエージェントへの委譲の運用(複数リポジトリを並列で回すとき)
 
@@ -524,8 +523,9 @@ SKILL.md §9 と同じ作法)。
   に書くときは、先にリポジトリごとの `visibility`(`PUBLIC`/`PRIVATE`)を読み、
   公開は名前を書き、非公開は名前を伏せて件数だけにする(例: 「非公開 14 件」)。
   名前を書いてから `bleep` の `repo-ref` に止められて書き直す往復を避ける(#1094)。
-- GitHub description/topics の反映は `gh repo edit` の即時反映であり、対応する
-  README/CONTRIBUTING の PR が merge されるまで実行しない(§6-5)。
+- GitHub description/topics の反映は `gh repo edit` の即時反映であり、`repo-charter`
+  SKILL.md §8 の時機の規定に従う(対応する README/CONTRIBUTING の PR が merge されるまで
+  実行しない。§6 の 6)。
 - `github-audit` の実行結果(ledger)には private リポジトリ名が含まれる
   ため、ローカルの `$XDG_STATE_HOME/github-audit/ledger.json` 以外の場所に
   コピーしない。

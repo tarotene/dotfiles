@@ -7,7 +7,9 @@ description: Bootstrap or replicate battle-tested GitHub governance (Security/Qu
 
 One procedure, three language profiles. The steps below are the same for every
 profile; the parts that differ (parameters, `# ADJUST:` table, CI gates,
-verification commands, browser flows) live in `reference/<profile>.md`.
+verification commands, browser flows) live in `reference/<profile>.md`. A
+repository with none of the three profiles is the `core` type — see "Without a
+language profile (`core`)" below.
 
 1. Copies parameterised CI/CD templates and config files into the target
    repository, substituting `__PLACEHOLDER__` values for your repo's specifics.
@@ -126,6 +128,47 @@ apply-rulesets.sh OWNER/REPO --unverified-contexts
 ~/.claude/skills/repo-governance/<profile>/scripts/setup-hooks.sh \
   --dest /path/to/repo
 ```
+
+---
+
+## Without a language profile (`core`)
+
+A repository that is none of Rust / Typst / Astro has no `<profile>` bundle and
+no `seed.sh`. It is the `core` type: the language-independent baseline, taken
+straight from `repo-governance-common` (the bundles above are that baseline plus
+a language's files). This section is the canonical procedure for `core`;
+`repo-charter` (new repositories, `create-repo.sh --type core`) and
+`github-audit-triage` (drift fixes across repositories) refer to it instead of
+restating it.
+
+`create-repo.sh --type core` runs the first two commands below. They are also the
+manual fallback when the script fails. Same order as every profile's `seed.sh`
+(settings → files → rulesets). Skipping `apply-repo-settings.sh` leaves the
+settings domain drifted (ADR-0013 Amendment 2026-09-29):
+
+```bash
+~/.claude/skills/repo-governance-common/scripts/apply-repo-settings.sh \
+  --owner OWNER --repo REPO
+~/.claude/skills/repo-governance-common/scripts/copy-files.sh \
+  --owner OWNER --repo REPO --dest /path/to/repo
+# commit + push, then:
+apply-rulesets.sh OWNER/REPO --from-dir /path/to/repo/.github/rulesets --unverified-contexts
+```
+
+`copy-files.sh` also seeds a minimal `ci.yml` that has only the `CI passed`
+aggregate job (an existing `ci.yml` is not overwritten). The rulesets declaration
+requires `CI passed` and `PR title`, and `CI passed` is reported by `ci.yml`, so
+**`ci.yml`, `CI passed` and the rulesets declaration go in the same stage.** If a
+later stage carries `ci.yml`, the first PR waits about 22 minutes for `CI passed`
+and then fails `rulesets-context-check`; if only the rulesets declaration is
+dropped, `workflow-naming-check` fails with `ci-yml-missing` (#794, #815).
+
+Because the minimal `ci.yml` has no gate job, `github-audit workflows rulesets`
+reports `ci-gate-empty` for a `core` repository until a gate job is added
+(`repo-charter` §9 says how to decide which).
+
+Free-plan private repositories cannot apply rulesets; the declaration files are
+still seeded for a later switch (`docs/agents/free-plan-declaration.md`).
 
 ---
 
