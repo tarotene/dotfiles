@@ -1,4 +1,4 @@
-# ADR-0000 — 握手の語彙に、勤務先の不在を入れない予定の種類 remote-trip を足す
+# ADR-1371 — 握手の語彙に、勤務先の不在を入れない予定の種類 remote-trip を足す
 
 - Status: Accepted
 - Date: 2026-11-05

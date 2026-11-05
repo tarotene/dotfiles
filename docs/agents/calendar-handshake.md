@@ -49,7 +49,7 @@
 予定を作る事象 `propose`(`none` → `candidate`、person。担い手は `slot-availability`)を足した。`propose` は Quint の遷移の表に含めない
 (仕様の `personCreate` は遷移の記録を更新しないため)。`token`・`hold`・`group_key` は変えていない。
 
-版 4 で、予定の種類(`kinds`)を足した(`docs/adr/0000-calendar-handshake-remote-kind.md`)。状態の印と遷移の表は変えていない。
+版 4 で、予定の種類(`kinds`)を足した(`docs/adr/1371-calendar-handshake-remote-kind.md`)。状態の印と遷移の表は変えていない。
 
 ## 種類(kinds)
 
