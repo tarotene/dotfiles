@@ -20,6 +20,11 @@
 //! 一覧を持ち込まないので、除外の宣言を変えても、この検査の更新は要らない。ファイルが無い・
 //! 読めない・空なら何も止めない(fail-open)。
 //!
+//! 文が 1 つの呼び出しでも、先頭の `VAR=value` や `env` を剥がすと除外パターンに当たるのに、
+//! Claude Code が剥がす範囲(既知の安全な変数だけ。`SAFE_ENV`)では当たらないものは止める。
+//! 前置が除外を打ち消し、`GIT_EDITOR=true git rebase --continue` が sandbox の中で動いて署名が
+//! 失敗した(2026-11-05)。案内は「前置せず単体で呼ぶ」「常に要る変数は設定の `env` に宣言する」。
+//!
 //! 逃げ道: 連結が要る正当な理由があるときは、コマンドに `SANDBOX_COMPOUND_GUARD_ALLOW=1` の語を
 //! 足す(環境変数でも同じ)。`dangerouslyDisableSandbox: true` の呼び出しは、sandbox の外で
 //! 動くので止めない。Claude Code の sandbox にだけ当たる検査なので、他のエージェントは対象外。
@@ -81,21 +86,96 @@ fn patterns_from_json(text: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Claude Code が、権限規則の照合の前に剥がす「既知の安全な環境変数」の前置。一覧は公開されて
+/// いない。Claude Code 2.1.285 の実行ファイルにある集合を写した(取得 2026-11-05。同じ実行
+/// ファイルは、この集合の外の前置を "an environment variable prefix outside the safe list" と
+/// 呼ぶ)。文書は「`NODE_ENV=test npm test` は `Bash(npm test *)` に合うが、allow 規則は他の変数の
+/// 前置を越えて合わない」と書く(Anthropic, "Configure permissions"、Wrappers の節)。この外の
+/// 前置は、除外パターンの照合でも剥がされないと推論する(下の `prefix_defeats_exclusion`)。
+const SAFE_ENV: &[&str] = &[
+    "GOEXPERIMENT",
+    "GOOS",
+    "GOARCH",
+    "CGO_ENABLED",
+    "GO111MODULE",
+    "RUST_BACKTRACE",
+    "RUST_LOG",
+    "NODE_ENV",
+    "PYTHONUNBUFFERED",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+    "PYTEST_DEBUG",
+    "ANTHROPIC_API_KEY",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_TIME",
+    "CHARSET",
+    "TERM",
+    "COLORTERM",
+    "NO_COLOR",
+    "FORCE_COLOR",
+    "TZ",
+    "LS_COLORS",
+    "LSCOLORS",
+    "GREP_COLOR",
+    "GREP_COLORS",
+    "GCC_COLORS",
+    "TIME_STYLE",
+    "BLOCK_SIZE",
+    "BLOCKSIZE",
+    "COLUMNS",
+    "LINES",
+    "CLICOLOR",
+    "CLICOLOR_FORCE",
+    "CI",
+    "DEBIAN_FRONTEND",
+    "GIT_TERMINAL_PROMPT",
+];
+
+/// `NAME=value` の NAME が、安全な変数か。
+fn is_safe_assignment(w: &str) -> bool {
+    w.split_once('=')
+        .is_some_and(|(name, _)| SAFE_ENV.contains(&name))
+}
+
+/// 文の先頭から、パターンと突き合わせるコマンドの語を取り出す。予約語は常に読み飛ばす。
+/// `strip_all` なら、先頭の `VAR=value` と `env` も読み飛ばす(実際に動くコマンドを見る)。
+/// そうでなければ、Claude Code が照合の前に剥がす安全な変数の前置だけを読み飛ばす
+/// (Claude Code が見るコマンドの形)。
+fn command_words(statement: &[String], strip_all: bool) -> Vec<&str> {
+    let mut words = statement.iter().map(String::as_str).peekable();
+    while let Some(w) = words.peek() {
+        let skip = TRANSPARENT.contains(w)
+            || (is_assignment(w) && (strip_all || is_safe_assignment(w)))
+            || (strip_all && *w == "env");
+        if !skip {
+            break;
+        }
+        words.next();
+    }
+    words.collect()
+}
+
 /// 1 つの文（区切りの間のトークン列）が、除外パターンに当たるか。
 ///
 /// パターンは空白区切りの語。末尾が `*` なら、それより前の語が文の先頭と一致すれば当たる
 /// （`gh *` は `gh pr list` に、`git commit *` は `git commit -m x` に当たる）。`*` で
 /// 終わらないパターンは、文全体の完全一致。先頭の `VAR=value`、`env`、予約語は読み飛ばす。
 fn statement_is_excluded(statement: &[String], patterns: &[String]) -> bool {
-    let mut words = statement.iter().map(String::as_str).peekable();
-    while let Some(w) = words.peek() {
-        if TRANSPARENT.contains(w) || is_assignment(w) || *w == "env" {
-            words.next();
-        } else {
-            break;
-        }
-    }
-    let words: Vec<&str> = words.collect();
+    words_match(&command_words(statement, true), patterns)
+}
+
+/// 先頭の前置を剥がせば除外パターンに当たるが、Claude Code が剥がす範囲(安全な変数だけ)では
+/// 当たらない文か。前置のせいで、その呼び出しは sandbox の中に残る(`GIT_EDITOR=true git rebase
+/// --continue` は署名が `No secret key` で失敗した)。単体の呼び出しでも起きる。
+fn prefix_defeats_exclusion(statement: &[String], patterns: &[String]) -> bool {
+    statement_is_excluded(statement, patterns)
+        && !words_match(&command_words(statement, false), patterns)
+}
+
+fn words_match(words: &[&str], patterns: &[String]) -> bool {
     if words.is_empty() {
         return false;
     }
@@ -144,6 +224,34 @@ fn hint(tool: &str) -> String {
     )
 }
 
+/// 前置の拒否文。`prefix` は、剥がされない前置の語(`GIT_EDITOR=true`、`env`)。
+fn prefix_hint(tool: &str, prefix: &str) -> String {
+    format!(
+        "`{prefix}` の前置は、Claude Code が除外パターンの照合の前に剥がす範囲(既知の安全な変数だけ)の外です。\
+`{tool}` は sandbox の外で動かす道具(sandbox.excludedCommands)ですが、前置があると呼び出し全体が除外パターンに\
+合わず、sandbox の中に残ります(`git rebase` の署名は `No secret key`、`gh` は HTTP 401 で失敗します。#1164)。\
+前置せず、単体で呼んでください。常に要る変数は、前置でなく設定の `env` に宣言します\
+(`dotfiles.claudePermissions.env`、docs/agents/agent-permissions.md。`GIT_EDITOR=true` は Claude Code が既に入れています)。\
+`git -c core.editor=true rebase` のように `-c` で渡す形も、`git rebase *` に合わないので同じく sandbox の中に残ると考えられます(未実測)。\
+前置が要る正当な理由があるときだけ、コマンドに {ALLOW_ENV}=1 を足してください。"
+    )
+}
+
+/// 文の先頭にある、剥がされない前置の語(安全でない `VAR=value` と `env`)。
+fn unstripped_prefix(statement: &[String]) -> String {
+    let mut prefix = Vec::new();
+    for w in statement.iter().map(String::as_str) {
+        if is_assignment(w) || w == "env" {
+            if w == "env" || !is_safe_assignment(w) {
+                prefix.push(w);
+            }
+        } else if !TRANSPARENT.contains(&w) {
+            break;
+        }
+    }
+    prefix.join(" ")
+}
+
 /// コマンド文字列全体を判定する。deny なら理由を返す。
 pub fn decide(cmd: &str, patterns: &[String], allow: bool) -> Option<String> {
     if allow || patterns.is_empty() {
@@ -154,6 +262,11 @@ pub fn decide(cmd: &str, patterns: &[String], allow: bool) -> Option<String> {
         return None;
     }
     let statements = statements(&parsed.tokens);
+    if let [only] = statements.as_slice() {
+        // 文が 1 つなら連結ではないが、前置が除外を打ち消すことがある。
+        return prefix_defeats_exclusion(only, patterns)
+            .then(|| prefix_hint(&display_name(only), &unstripped_prefix(only)));
+    }
     if statements.len() < 2 {
         return None;
     }
@@ -210,11 +323,58 @@ mod tests {
             "git push *",
             "git add *",
             "git fetch *",
+            "git rebase *",
             "nix build *",
             "nix fmt *",
         ]
         .map(str::to_owned)
         .to_vec()
+    }
+
+    #[test]
+    fn denies_a_single_call_whose_prefix_defeats_the_exclusion() {
+        // 2026-11-05: `GIT_EDITOR=true git rebase --continue` が sandbox の中で動き、署名が失敗した。
+        for (c, prefix) in [
+            ("GIT_EDITOR=true git rebase --continue", "`GIT_EDITOR=true`"),
+            ("JUST_TEMPDIR=/x gh pr list", "`JUST_TEMPDIR=/x`"),
+            ("env FOO=1 git push origin b", "`env FOO=1`"),
+            // 安全な変数は剥がされるので、安全でない方だけを名指す。
+            (
+                "LANG=C GIT_EDITOR=true git rebase main",
+                "`GIT_EDITOR=true`",
+            ),
+            ("! GIT_EDITOR=true git add x", "`GIT_EDITOR=true`"),
+        ] {
+            let r = reason(c).unwrap_or_else(|| panic!("{c}"));
+            assert!(r.contains(prefix), "{c}: {r}");
+            assert!(r.contains("前置せず、単体で呼んでください"), "{c}");
+            assert!(r.contains("設定の `env` に宣言"), "{c}");
+            assert!(r.contains("git -c core.editor=true rebase"), "{c}");
+        }
+        assert!(reason("GIT_EDITOR=true git rebase --continue")
+            .unwrap()
+            .contains("`git rebase` は sandbox の外"));
+    }
+
+    #[test]
+    fn passes_a_prefix_that_changes_nothing() {
+        for c in [
+            // 安全な変数は Claude Code が剥がすので、除外はそのまま効く。
+            "LANG=C git rebase main",
+            "CI=1 gh pr list",
+            "NODE_ENV=test TZ=UTC git fetch origin",
+            // 前置があっても、除外対象のコマンドでなければ関係ない。
+            "GIT_EDITOR=true git status",
+            "JUST_TEMPDIR=/x just ci",
+            "UV_TOOL_DIR=/x uvx ruff --version",
+            "env FOO=1 ls",
+            // 前置の無い単体の呼び出し。
+            "git rebase --continue",
+            // 逃げ道。
+            "SANDBOX_COMPOUND_GUARD_ALLOW=1 GIT_EDITOR=true git rebase --continue",
+        ] {
+            assert_eq!(reason(c), None, "{c}");
+        }
     }
 
     fn reason(cmd: &str) -> Option<String> {
