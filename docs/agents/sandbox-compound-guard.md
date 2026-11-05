@@ -42,6 +42,13 @@ Issue: No-Issue(wrap-up の気づき「`gh` を `;` や `|` やループの中�
 
 - `git -C <dir> commit` のように、除外パターン(`git commit *`)に当たらない単体の呼び出しは、この検査の対象外
   (連結ではないため)。文章の規範(`config/claude/CLAUDE.md`)が引き続き担う。
+- プロジェクトのディレクトリと追加したディレクトリの外にある worktree では、シェルの cwd が呼び出しごとに戻る
+  (Claude Code の仕様。Tools reference の "What persists between commands"、
+  <https://code.claude.com/docs/en/tools-reference>、取得 2026-11-05)。`cd <dir> && git …` は連結なので sandbox に残り、
+  署名が失敗する。この検査は拒否文で単体で呼ぶよう案内するが、この場合は単体では呼べない。正規の逃げ道は、
+  `SANDBOX_COMPOUND_GUARD_ALLOW=1` を足し、承認を得て `dangerouslyDisableSandbox` で呼ぶこと(下の「逃げ道」)。
+  別の worktree を `/add-dir` に足して cwd を保つ手順は、sandbox の書き込みが追加ディレクトリまで広がるかが未確認
+  なので、書かない。
 - ダブルクォート内のコマンド置換(`"$(gh pr list)"`)と、`bash -c '…'` の中身は見ない。
 - リダイレクト(`> file`)は連結に数えない。
 - 連結を書けない形にはできない(検出のみ)。実行前に弾いて、書き直す往復を 1 回に抑えるところまでが責務。
