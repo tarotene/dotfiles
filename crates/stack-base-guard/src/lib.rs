@@ -60,7 +60,7 @@ pub enum Kind {
     Edit,
     /// `gh pr merge`
     MergeCli,
-    /// `gh api …`(`merge-async` のパスかどうかは [`merge_async_target`] が見る)
+    /// `gh api …`(`merge-async` のパスかどうかは判定側が見る)
     MergeApi,
 }
 
