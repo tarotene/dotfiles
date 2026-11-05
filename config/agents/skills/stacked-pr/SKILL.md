@@ -191,31 +191,49 @@ nix flake check --all-systems --no-build   # このリポジトリでの回帰�
 git push --force-with-lease origin <最下段のブランチ>
 ```
 
-続けて 2 段目以降を rebase する際、単純に `git rebase <直下の段>` とは
-**書かない**。最下段を rebase すると最下段の commit SHA が変わるため、
-上位段の履歴にはまだ「古い SHA の最下段コミット」が残っている。ここで
-素の `git rebase <直下の段>` を打つと、git は「新しい直下の段に含まれない
-コミット」を古い最下段コミットもろとも再生しようとし、**既に解決した
-はずの衝突がもう一度(無意味に)出る**。`--onto` で「古い最下段コミットは
-飛ばして、直下の段より後のコミットだけを新しい直下の段の上に積み直す」と
+上位段は、段ごとに rebase せず、**最上段を 1 回だけ** `--onto` で rebase する。
+`rebase.updateRefs`(`home/modules/git.nix`)が有効なので、rebase する範囲の中にある中間段の
+ブランチ ref は一緒に動く。単純に `git rebase <直下の段>` とは**書かない**。最下段を
+rebase すると最下段の commit SHA が変わるため、上位段の履歴にはまだ「古い SHA の最下段
+コミット」が残っている。素の `git rebase` は、新しい直下の段に含まれないその
+コミットもろとも再生し、**既に解決したはずの衝突をもう一度(無意味に)出す**。
+`--onto` で「旧 base までは飛ばし、その後のコミットだけを新しい base の上へ積み直す」と
 明示する:
 
 ```bash
-git switch <2段目のブランチ>
-git rebase --onto <最下段のブランチ> <rebase 前の最下段コミットの SHA> <2段目のブランチ>
-# 2段目自身の変更が新しい最下段と実質衝突する場合のみコンフリクトが出る
-# (最下段の rebase 由来の衝突は再現しない)
+git switch <最上段のブランチ>
+git rebase --onto <新 base> <旧 base の SHA> <最上段のブランチ>
+# 出力の "Updated the following refs with --update-refs:" に、動いた中間段が並ぶ
 nix flake check --all-systems --no-build
-git push --force-with-lease origin <2段目のブランチ>
+git push --force-with-lease origin <最上段のブランチ>
+git push --force-with-lease origin <動いた中間段のブランチ>   # 動いた段ごとに
 ```
 
-3 段目以降も同じ要領で、直下の段のブランチ名と「rebase 前の直下の段の
-コミット SHA」(`git rebase --onto` 実行前に `git log --oneline -1
-<直下の段>` などで控えておく)を差し替えて繰り返す。各段を rebase する
-たびに `nix flake check --all-systems --no-build`(このリポジトリの回帰
-確認コマンド、他リポジトリではそれぞれの高速検証コマンドに読み替える)を
-挟み、全段 push し終えてから `pr-checks-wait <N>` で CI を待つ
-(`mergeable` が `MERGEABLE` に変わったことも合わせて確認する)。
+- 最下段を `main` へ rebase した場合: `<新 base>` は rebase 済みの最下段のブランチ、
+  `<旧 base の SHA>` は rebase する**前**の最下段の SHA(rebase の前に
+  `git rev-parse <最下段のブランチ>` で控える)。
+- 最下段がマージされた場合: `<新 base>` は `origin/main`(先に `git fetch origin main`)、
+  `<旧 base の SHA>` はマージ済みの PR の
+  `gh pr view <N> --json headRefOid --jq .headRefOid` で取る(squash でマージされても、
+  上位段の履歴にはその PR の head のコミットが残っている)。
+
+`git-rebase(1)`(git 2.54.0)の `--update-refs` の記述は「rebase するコミットを指す
+ブランチを自動で強制更新する。ただし、worktree でチェックアウト中のブランチは、この方法
+では更新されない」(`git help -m rebase`、取得 2026-11-05)。別の worktree で
+チェックアウトしている中間段は、最上段を rebase しても動かない(エラーも出ず、古い
+コミットを指したまま残る。2026-11-05 に使い捨てのリポジトリで実測: 3 段のうち中間段を別の
+worktree で checkout したまま最上段を `--onto` すると、最上段だけが動き、中間段は rebase 前の
+コミットに残った)。この場合だけ、下から順に段ごとに rebase する従来の手順を使う。段ごとに、
+その段を checkout している worktree で、直下の段のブランチと「rebase 前の直下の段の SHA」を
+差し替えて繰り返す:
+
+```bash
+git rebase --onto <直下の段のブランチ> <rebase 前の直下の段の SHA> <その段のブランチ>
+git push --force-with-lease origin <その段のブランチ>
+```
+
+各段を push したあとに `pr-checks-wait <N>` で CI を待つ(`mergeable` が `MERGEABLE` に
+変わったことも合わせて確認する)。
 
 ## 5. GitHub ネイティブの stack 機能
 
@@ -247,7 +265,11 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 
 したがって、**GitHub の stack にリンクされたスタックでは、最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
 
-**この前提は、`gh stack link` でリンクした stack に限る。** base をブランチの連鎖にしただけの PR(リンクしていない)では成り立たない(2026-10-30 の実測: base が別 PR のブランチの PR に `merge-async` を呼ぶと、その PR は base のブランチに入っただけで、下の PR は OPEN のまま残り、head が進んで CI が再実行された。約 8 分の待ち。この連鎖が stack の機能を使っていたかは、そのときは未確認)。マージの前に、`gh stack` の状態(`gh api` の stacks の一覧、`pr-gate` の G_stack と同じ読み方)で、最上段と下の段が 1 つの stack にリンクされていることを確かめる。リンクされていなければ、下の段から順に 1 本ずつ入れる(各段で base が `main` に付け替わるのを読み戻す)か、先に `gh stack link` する。
+**この前提は、`gh stack link` でリンクした stack に限る。** base をブランチの連鎖にしただけの PR(リンクしていない)では成り立たない(2026-10-30 の実測: base が別 PR のブランチの PR に `merge-async` を呼ぶと、その PR は base のブランチに入っただけで、下の PR は OPEN のまま残り、head が進んで CI が再実行された。約 8 分の待ち。この連鎖が stack の機能を使っていたかは、そのときは未確認)。
+ある private リポジトリで、2026-11-05、GitHub の stacks 一覧に無い連鎖(base を前の段のブランチにしただけ)の
+最上段に `merge-async` を呼ぶと、その PR は base のブランチにしか入らず、下の段は OPEN のまま残った
+(GitHub の stacks API とタイムラインで読んだ)。先の実測で未確認だった点、つまり stacks の一覧に
+入っていない連鎖で起きることを、これで確かめた。マージの前に、`gh stack` の状態(`gh api` の stacks の一覧、`pr-gate` の G_stack と同じ読み方)で、最上段と下の段が 1 つの stack にリンクされていることを確かめる。リンクされていなければ、下の段から順に 1 本ずつ入れる(各段で base が `main` に付け替わるのを読み戻す)か、先に `gh stack link` する。
 
 1. 最上段が下書きなら、`gh pr ready <N>` で外す。
 2. `pr-checks-wait <N>` を背景で実行して、required のチェックの完了だけを待つ(required でないチェックは
