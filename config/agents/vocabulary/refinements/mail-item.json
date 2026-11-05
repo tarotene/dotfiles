@@ -1,7 +1,7 @@
 {
   "concrete": "mail-item",
   "abstract": "awaiting-item",
-  "description": "メール項目(inbox-adjudication、config/agents/mail-lifecycle/vocabulary.json)の、裁定待ちの項目への具体化。裁定ページの選択(decide・pass・later)は、独立の状態機械ではなく、このメール項目の事象への入力として inputs に書く。",
+  "description": "メール項目(inbox-adjudication、config/agents/mail-lifecycle/vocabulary.json)の、裁定待ちの項目への具体化。裁定ページの選択(decide・pass・later・other)は、独立の状態機械ではなく、このメール項目の事象への入力として inputs に書く。",
   "states": {
     "awaiting": "shown",
     "decided": "decided",
@@ -21,6 +21,7 @@
   "inputs": {
     "decide": { "event": "decide" },
     "pass": { "event": "pass" },
-    "later": { "event": null, "note": "何も書かない。状態は動かず、時計は動き続けて remind_after_days 日で remind が出る" }
+    "later": { "event": null, "note": "何も書かない。状態は動かず、時計は動き続けて remind_after_days 日で remind が出る" },
+    "other": { "event": null, "note": "対応表の事象は書かない。記入欄の指示を次の机でエージェントが読み、本人の指示に沿って次の事象(decide・pass・move など)を書く。語彙の版 3 で instruct が入るまでの暫定" }
   }
 }
