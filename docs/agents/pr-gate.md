@@ -335,8 +335,15 @@ API 呼び出しが 1 本増え、縮退経路（未ログイン・API 失敗時
 ### block の位置と `MAX_BLOCKS` の引き上げ
 
 `G_link` は判定だけ先に済ませ、**block は最後に回す**。`G_push` / `G_CI` が止める場面では、
-その block メッセージに相乗りさせる（実装中の `$rider`）。本文の修正は CI を待たずに
-済むので、単独で 1 往復を消費させる理由がない。
+その block メッセージに相乗りさせる（実装中の `rider()`）。本文の修正は CI を待たずに
+済むので、単独で 1 往復を消費させる理由がない。ただし `G_stack`（`gh stack link` の
+案内）は相乗りさせない。リンクは CI が緑になってから 1 回だけ行う手順
+（stacked-pr スキル、github/gh-stack#319）なので、CI 待ちの block で案内すると手順書と
+食い違う。`G_stack` は CI が通った後の単独 block だけが担う（wrap-up inbox の気づき。
+`rider()` の順序は link → visual → prior、単独 block の順序は link → visual → stack →
+prior のまま）。block の回数の数え方は変わらない — `G_stack` は元から最悪の連鎖に 1 回分
+数えてあり（下の「`MAX_BLOCKS` を 5 から 6 に上げた理由」）、相乗りを外しても連鎖の
+最大長は増えない。
 
 単独で block するのは push も CI も通った後 —— 「あとは終わるだけ」の一点で、まさに
 リンクが忘れられる瞬間だ。
@@ -386,6 +393,28 @@ CI 未検証のまま Stop を素通りする」という抜け道になる。�
 いう恒常的な抜け道になる(中断のたび新設する一時的なマーカーではなく、
 誰でも常時使える汎用の逃げ道になってしまう)。`Handoff: #N` という中断固有の
 宣言を併置させることで、緩和が「今回だけの中断」に閉じる。
+
+## 背景の待機があるときの G_CI(wrap-up inbox の気づき)
+
+PR を作ったあと `pr-checks-wait <PR>` を背景(`run_in_background`)で起動してターンを終えると、
+CI がまだ出揃っていない最初の Stop で `G_CI`(`EMPTY` / `MISSING` / `PENDING`)が差し戻していた。
+待機は既に動いていて、完了すれば通知が届くので、この差し戻しは 1 往復を無駄にする。
+
+transcript に**未完了の背景タスクが 1 件でもあれば**、この 3 つの状態に限って block せず
+advisory に落とす(`stop.rs` の `waiting_on_background`)。
+
+- 検出: `agent_session::transcript::pending_background_tasks`(session-wrapup の
+  `waiting_on_background` と同じ部品、#854)。hook 入力の `transcript_path` を読み、開始
+  (`toolUseResult.backgroundTaskId` など)と完了通知(task-notification)を突き合わせる。
+  1 時間を超えた古い開始は数えない(終わらない監視で際限なく緩めないため)。
+- 簡易版: 待機が `pr-checks-wait` か、この PR のものかは照合しない。別の背景タスク
+  (別の監視・サブエージェント)でも緩む。緩むのは「CI が出揃うまでの待ち」だけで、
+  `FAILED`・`API_FAILURE` は緩めない(赤は待っても直らない)。
+- 検出が漏れる場合: Stop の時点で transcript が現在のターンの最新を含まないことがある
+  (Claude Code 公式 hooks 文書)。同じターンで起動した直後は検出できず、従来どおり
+  block に倒れる。transcript が無い・読めないときも従来どおり。
+- この advisory のターンでは、単独 block に stack の案内(`gh stack link`)を載せない。
+  CI が緑でないうちの案内は手順書と食い違うため(上の「block の位置」)。
 
 ## G_visual — なぜ「Before/After の視覚証跡」を block するのか
 
