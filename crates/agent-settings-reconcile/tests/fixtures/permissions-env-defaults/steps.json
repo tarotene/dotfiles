@@ -1,0 +1,14 @@
+[
+  [
+    "claude-permissions",
+    {
+      "retire_allow": [],
+      "allow": [],
+      "ask": [],
+      "env": {
+        "UV_TOOL_DIR": "/home/example/.cache/uv/tools",
+        "JUST_TEMPDIR": "/home/example/.cache/just"
+      }
+    }
+  ]
+]

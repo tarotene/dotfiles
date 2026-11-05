@@ -34,6 +34,12 @@ pub struct PermissionsSpec {
     /// 本人が足した要素は残す（和）。分類器は `~/.claude/settings.json` の `autoMode` だけを読む。
     #[serde(default)]
     pub auto_mode_allow: Vec<String>,
+    /// `env`(Claude Code が起動時にプロセスの環境へ足す環境変数)。宣言したキーだけを、
+    /// 宣言の値に合わせる(set-if-different)。宣言に無いキー(`claude-plan-model` が書く
+    /// `ANTHROPIC_DEFAULT_*_MODEL` など)には触れない。値は展開されずそのまま渡る
+    /// (Anthropic, "Settings reference" の `env`、取得 2026-11-05)ので、絶対パスで書く。
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
     /// 所有の記録のファイル。あれば、前回書いたが今回の宣言に無い `allow` を消し、今回の
     /// 宣言を記録する(#1161。`mcp_allow` から外した許可が残り続けた)。無ければ従来どおり
     /// `retire_allow` の完全一致だけで消す。
@@ -182,6 +188,14 @@ pub fn permissions(
     }
     if !spec.auto_mode_allow.is_empty() {
         apply_auto_mode_allow(top, &spec.auto_mode_allow)?;
+    }
+    if !spec.env.is_empty() {
+        let env = object_entry(top, "env")?;
+        for (key, value) in &spec.env {
+            if env.get(key.as_str()) != Some(&J::str(value)) {
+                env.insert(key.clone(), J::str(value));
+            }
+        }
     }
     Ok(())
 }

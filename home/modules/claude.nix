@@ -145,6 +145,8 @@ let
     ask = askRules;
     deny = secretReadRules;
     auto_mode_classify_all_shell = true;
+    # Claude Code の `env`(宣言したキーだけを合わせる)。option の `env` を参照。
+    inherit (cfg) env;
     # 分類器への例外（`autoMode.allow`、自然言語）。`Bash(git switch *)` などの allow ルールは、
     # `classifyAllShell` が有効なあいだ停止されるので効かない。自分の worktree でのブランチ作成が
     # 「共有資源の変更」(`[Modify Shared Resources]`)として拒否された（#939、2026-10-22 に 1 回）。
@@ -224,6 +226,19 @@ in
         Paths sandboxed commands may write (sandbox.filesystem.allowWrite). Other modules add
         their own: each definition is merged, so a host module can add its state without
         replacing the shared ones. Keep every entry as narrow as a directory the tool owns.
+      '';
+    };
+    env = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = ''
+        Environment variables Claude Code puts in every session's environment (`env` in
+        settings.json), so a call does not need a `VAR=value` prefix. A prefix outside Claude
+        Code's built-in safe list keeps the whole call out of `excludedCommands`, and inside
+        the sandbox (docs/agents/sandbox-compound-guard.md). Claude Code does not expand `$VAR`
+        or `~` in the values (Anthropic, "Settings reference", `env`, retrieved 2026-11-05), so
+        write absolute paths. Other modules add their own: each definition is merged. Only the
+        declared keys are written; other `env` keys (claude-plan-model's) are left alone.
       '';
     };
     excludedCommands = lib.mkOption {

@@ -184,6 +184,19 @@ ask の画面が実際に出るかは、`hms` で適用した後でないと確�
 Codex 側は、書き込み先が `workspace`・`temp` の 2 つの記号だけで(`agent-permissions.nix` の `writable_roots`)、道具ごとの
 キャッシュの宣言を持たないので、対応する変更は無い。
 
+**`just` と `uvx` の書き込み先を `env` で向ける(2026-11-05)**: sandbox の中で、`just` の shebang レシピは
+`/run/user/1000/just`(`$XDG_RUNTIME_DIR/just`)を書けず `Read-only file system` で、`uvx` は `~/.local/share/uv/tools` を
+書けず `Could not create temporary file` で落ちた。`JUST_TEMPDIR=… just`・`UV_TOOL_DIR=… uvx` と前置すると通るが、前置は
+Claude Code の既知の安全な変数(一覧は公開されていない)に無いので、除外パターンにも合わなくなる(`sandbox-compound-guard.md`)。
+そこで `runtimes.nix` が `dotfiles.claudePermissions.env` に `JUST_TEMPDIR=~/.cache/just`・`UV_TOOL_DIR=~/.cache/uv/tools` を
+絶対パスで宣言し、`agent-settings-reconcile claude-permissions` が settings.json の `env` へ書く(宣言したキーだけ。
+`claude-plan-model` の `ANTHROPIC_DEFAULT_*_MODEL` には触れない)。`env` の値は展開されない
+(Anthropic, "Settings reference" の `env`、取得 2026-11-05。「Claude Code doesn't expand `$VAR` or `~` in values」)ので `$TMPDIR` は使えない。
+`~/.local/share/uv/tools` を `allowWrite` に足す案は採らない(`~/.local/bin` から参照される実行ファイルを sandbox の中から置き換えられる)。
+`GIT_EDITOR=true` は宣言しない: Claude Code が Bash の環境にすでに入れていて(sandbox の中は `env` で、外の `git rebase --continue` は
+hook で確認)、前置は要らなかった。`uv tool install` は、`env` を効かせたセッションでは `~/.cache/uv/tools` に置かれ、
+`~/.local/bin` の参照先が sandbox から書ける場所になるので、そのセッションでは使わず `uvx` を使う。
+
 宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
 
 ## 旧共有管理を撤去する
