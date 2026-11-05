@@ -1760,6 +1760,7 @@ dependencies = [
  "command-inspection",
  "git-repository",
  "github-command",
+ "pr-gate",
  "serde_json",
  "tempfile",
 ]

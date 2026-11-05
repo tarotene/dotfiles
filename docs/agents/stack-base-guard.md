@@ -91,6 +91,25 @@ HEAD と**同じ先頭**を持つ open PR は、距離 0 の祖先として数�
 - 新しいセッションは記録が空なので新しいチェーンを開始できる
   (ADR-0027 の遡及適用はしない設計と一致)。
 
+### 層(iii): リンクしていない連鎖の非最下段へのマージ
+
+`gh pr merge` と `gh api -X PUT repos/<o>/<r>/pulls/<N>/merge-async` の対象 PR が、base を
+別の open PR のブランチにしていて(chain の最下段でない)、GitHub の stack にもリンクされて
+いなければ、実行前に deny する。そのまま入れると、PR は base のブランチにしか入らず、下の段は
+OPEN のまま残る(2026-10-30 と 2026-11-05 に、stacks の一覧に無い連鎖で実測。
+`config/agents/skills/stacked-pr/SKILL.md`「スタックの PR をマージする」)。base が main の
+最下段と積みでない PR は通す(下から 1 本ずつ入れる経路)。
+
+- chain の検出とリンク判定は `pr-gate` の `G_stack` と同じ関数(`pr_gate::gates::stack` の
+  `parse_rows`・`chain`・`is_linked`)を呼ぶ。単一正本にするため複写しない。
+- 判定には `gh pr list` に加えて `gh api repos/<nwo>/stacks` を 1 回引く(最下段のときは引かない)。
+  PreToolUse の timeout(20 秒)は層(i)の `gh pr list` と同じ枠で、`gh` が失敗(認証・ネットワーク・
+  機能撤収)したら判定不能で通す(fail-open。`G_stack` が stacks の取得失敗を advisory に落とすのと同じ)。
+- 理由文は `gh stack link <最下段から順の PR 番号>` を案内する。ただし link 後は CI が発火しない
+  (github/gh-stack#319)ので、全段が green になってから link する。
+- 状態の語彙は `config/agents/pull-request/vocabulary.json`(`merge` は積みでない PR と最下段、
+  `merge_stack` は `stack_linked` から)。
+
 ## コマンド解析エンジンを共有する
 
 対象コマンドの検出(コマンド位置判定)・heredoc 本体の分離・クォート
@@ -113,6 +132,7 @@ attribution-guard.sh を `source` して上書きしていた `is_target_at` に
 |---|---|
 | `gh pr create` | 常に判定(base 省略時は `origin/HEAD` の symref、それも無ければ `gh repo view` で default branch を解決) |
 | `gh pr edit [<target>] --base <v>` | `--base`/`-B`/`--base=` のいずれかが含まれるときのみ判定。含まなければ base に触れない edit なので対象外 |
+| `gh pr merge [<番号>\|<URL>\|<ブランチ>]` / `gh api -X PUT …/pulls/<N>/merge-async` | 層(iii)。対象 PR が非最下段で未リンクのときだけ deny(対象を省いた `gh pr merge` は現在のブランチの PR) |
 | `mcp__github*` の `create_pull*`/`update_pull*` | tool 名を書き込み系の語で絞ってから `.tool_input.base`/`.tool_input.body` を見る(MCP GitHub は現在未接続、命名は attribution-guard.sh と同じく #161 の未確認事項を引き継ぐ) |
 
 `-R`/`--repo` によるクロスリポジトリ指定にも対応する(`gh pr edit <N>
@@ -161,6 +181,7 @@ gating と同じ縮退方針。
 | default branch が解決できない(`--base` 省略時) | 判定不能で通す |
 | PR の `headRefOid` がローカルに実在しない | その候補を祖先検査から除外(他の候補で判定を続ける) |
 | `gh pr edit` の対象 PR が解決できない | 判定不能で通す |
+| マージの対象 PR が open PR の一覧に無い、または `gh api repos/<nwo>/stacks` が失敗 | 判定不能で通す(層(iii)) |
 | 本文が読めない(コマンド置換等、層(ii)のみ) | 判定不能で通す |
 
 抜け道: `SKIP_STACK_BASE_GUARD=1`、または

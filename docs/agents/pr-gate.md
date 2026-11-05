@@ -510,6 +510,10 @@ chain size が 1(他の PR と base チェーンで繋がっていない)なら 
 ローカル追跡状態への依存が排除できないため採用しなかった
 (`docs/stacked-pr-github-native.md` の実測、2026-09-09・2026-09-21 再確認)。
 
+chain の検出(`chain`)とこのリンク判定(`is_linked`)は、`stack-base-guard` の層(iii)
+(リンクしていない連鎖の非最下段へのマージを実行前に拒否する)も同じ関数を呼ぶ
+(`docs/agents/stack-base-guard.md`)。
+
 ### 縮退 — advisory への降格
 
 `gh-stack` 拡張が未導入(`gh stack --version` が失敗)、または `stacks`

@@ -23,9 +23,17 @@ use std::process::{Command, Stdio};
 ///   STACK_STUB_PR_LIST_RC     : gh pr list の exit code(既定 0)
 ///   STACK_STUB_PR_LIST_NWO    : 設定時は -R がこれと一致するときだけ応答を返す(#538)
 ///   STACK_STUB_DEFAULT_BRANCH : gh repo view --json defaultBranchRef の応答
+///   STACK_STUB_STACKS_FILE    : gh api repos/<nwo>/stacks の応答(未設定なら exit 1 = 取得失敗)
 const STUB_GH: &str = r#"#!/usr/bin/env bash
 jqbin="$(command -v jq)"
 case "$1" in
+  api)
+    if [[ "$2" == repos/*/stacks && -n "${STACK_STUB_STACKS_FILE:-}" && -f "${STACK_STUB_STACKS_FILE}" ]]; then
+      cat "${STACK_STUB_STACKS_FILE}"
+    else
+      exit 1
+    fi
+    ;;
   pr)
     case "$2" in
       list)
@@ -268,6 +276,7 @@ impl Fx {
             .env_remove("STACK_STUB_PR_LIST_FILE")
             .env_remove("STACK_STUB_PR_LIST_RC")
             .env_remove("STACK_STUB_PR_LIST_NWO")
+            .env_remove("STACK_STUB_STACKS_FILE")
             .env_remove("STACK_STUB_DEFAULT_BRANCH");
         c
     }
@@ -891,4 +900,82 @@ fn chain_uses_own_repo_records() {
     );
     assert!(r.denied(), "{}", r.stdout);
     assert!(r.stdout.contains("PR(stage1)"), "{}", r.stdout);
+}
+
+// --- 層(iii): リンクしていない連鎖の非最下段へのマージ(2026-11-05 の実測を受けた検査) ---
+
+const MERGE_ASYNC: &str =
+    "gh api -X PUT repos/example/example/pulls/2/merge-async -f merge_method=squash";
+
+/// stacks の応答(`gh api repos/<nwo>/stacks`)を置いて、マージのコマンドを判定する。
+fn decide_merge(fx: &Fx, cmd: &str, stacks: Option<&str>) -> Run {
+    let mut env = Vec::new();
+    let p;
+    if let Some(body) = stacks {
+        p = fx.write("stacks.json", body);
+        env.push(("STACK_STUB_STACKS_FILE", p.to_str().unwrap().to_string()));
+    }
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    fx.decide("prs-stage1-stage2.json", cmd, &fx.repo, &env)
+}
+
+#[test]
+fn merge_async_unlinked_top_is_denied() {
+    let fx = Fx::new();
+    let r = decide_merge(&fx, MERGE_ASYNC, Some("[]"));
+    assert!(r.denied(), "{}", r.stdout);
+    assert!(r.stdout.contains("gh stack link 1 2"), "{}", r.stdout);
+    assert!(r.stdout.contains("github/gh-stack#319"), "{}", r.stdout);
+}
+
+#[test]
+fn gh_pr_merge_unlinked_top_is_denied_by_number_url_and_branch() {
+    let fx = Fx::new();
+    for cmd in [
+        "gh pr merge 2 --squash",
+        "gh pr merge --squash https://github.com/example/example/pull/2",
+        "gh pr merge stage2 -R example/example",
+        "gh pr merge --subject s 2",
+    ] {
+        let r = decide_merge(&fx, cmd, Some("[]"));
+        assert!(r.denied(), "{cmd}: {}", r.stdout);
+    }
+    // 対象を省くと現在のブランチ(fixture は stage2 をチェックアウト中)
+    let r = decide_merge(&fx, "gh pr merge --squash", Some("[]"));
+    assert!(r.denied(), "{}", r.stdout);
+}
+
+#[test]
+fn merge_of_linked_stack_bottom_or_unrelated_passes() {
+    let fx = Fx::new();
+    let linked = r#"[{"open":true,"pull_requests":[{"number":1},{"number":2}]}]"#;
+    // リンク済み
+    assert!(decide_merge(&fx, MERGE_ASYNC, Some(linked)).passed());
+    // 最下段(base が main)を 1 本ずつ入れる経路は止めない
+    assert!(decide_merge(&fx, "gh pr merge 1 --squash", Some("[]")).passed());
+    assert!(decide_merge(
+        &fx,
+        "gh api -X PUT repos/example/example/pulls/1/merge-async",
+        Some("[]")
+    )
+    .passed());
+    // PUT でない・merge-async でない `gh api` と、`pr merge --help`
+    assert!(decide_merge(
+        &fx,
+        "gh api repos/example/example/pulls/2/merge-async",
+        Some("[]")
+    )
+    .passed());
+    assert!(decide_merge(&fx, "gh api repos/example/example/pulls/2", Some("[]")).passed());
+    assert!(decide_merge(&fx, "gh pr merge 2 --help", Some("[]")).passed());
+    // コマンド位置でない記述
+    assert!(decide_merge(&fx, "echo gh pr merge 2", Some("[]")).passed());
+}
+
+/// stacks が取れない(認証・ネットワーク・機能撤収)ときは判定不能で通す。
+#[test]
+fn merge_without_stacks_response_fails_open() {
+    let fx = Fx::new();
+    assert!(decide_merge(&fx, MERGE_ASYNC, None).passed());
+    assert!(decide_merge(&fx, "gh pr merge 2", None).passed());
 }
