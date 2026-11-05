@@ -32,6 +32,11 @@
 #       どれかに載っていることを検査する。載らない skill を列挙して終了コード 1。
 #       external-objects.json の object は、kebab-case で、一意で、語彙の object と重ならない。
 #       CI の dry-run ジョブが回す(ADR-1293 の D6 を、ADR-1305 が果たす)。
+#   vocab-graph-check --stages [--root <ルート>]
+#       全語彙の事象ごとに、段階(散文・スクリプト・gate)を carriers・gates と pipeline-map.toml の
+#       レーンから導いて標準出力に報告する(ADR-543 D4。段階は宣言せず、実体から導く)。報告専用で、
+#       語彙の不備では落とさない(常に終了コード 0。語彙の検査は --all が担う)。規則の表は
+#       docs/agents/state-vocabulary.md。
 #   vocab-graph-check --refinements [--root <ルート>] [<対応表.json>...]
 #       語彙の具体化の対応表(config/agents/vocabulary/refinements/*.json。省略時は全部)を検査する
 #       (ADR-1297)。対応表は具体の語彙(object で指す)を抽象の語彙(awaiting-item)へ写す。
@@ -71,7 +76,7 @@ usage() {
 
 die_usage() {
   printf 'vocab-graph-check: %s\n' "$1" >&2
-  printf '使い方: vocab-graph-check [--root <ルート>] [--all] [<語彙.json>...] | --skills [--root <ルート>] | --refinements [--root <ルート>] [<対応表.json>...] | --selftest\n' >&2
+  printf '使い方: vocab-graph-check [--root <ルート>] [--all] [<語彙.json>...] | --skills [--root <ルート>] | --stages [--root <ルート>] | --refinements [--root <ルート>] [<対応表.json>...] | --selftest\n' >&2
   exit 2
 }
 
@@ -88,6 +93,21 @@ load_names() {
   else
     NODES_JSON='[]'
   fi
+}
+
+# $1 = ルート。NODE_INFO_JSON(ノード id → {lane, auto} の連想配列)と、BUNDLED_JSON(`scripts/` を同梱する
+# skill の名前の配列)を決める。--stages が使う。
+load_node_info() {
+  local root=$1
+  if [[ -f $root/pipeline-map.toml ]]; then
+    NODE_INFO_JSON=$(grep -E '^[[:space:]]*\{ id = "[^"]+",.*[[:space:]]lane = ' "$root/pipeline-map.toml" | jq -R '
+      { (capture("id = \"(?<id>[^\"]+)\"").id):
+        { lane: capture("[[:space:]]lane = \"(?<l>[^\"]+)\"").l,
+          auto: test("auto = true") } }' | jq -s 'add // {}')
+  else
+    NODE_INFO_JSON='{}'
+  fi
+  BUNDLED_JSON=$({ [[ -d $root/config/agents/skills ]] && find "$root/config/agents/skills" -mindepth 2 -maxdepth 2 -type d -name scripts -printf '%h\n' | xargs -r -n1 basename; } 2>/dev/null | jq -R . | jq -s .) || BUNDLED_JSON='[]'
 }
 
 # ---------------------------------------------------------------- グラフ検査(jq)
@@ -275,6 +295,92 @@ check_skills() {
     rc=1
   fi
   return "$rc"
+}
+
+# ---------------------------------------------------------------- 事象ごとの段階の報告
+
+# 事象の carriers・gates の名前から段階を導く。入力は語彙の配列(jq -s)。
+# --argjson info(ノード id → {lane, auto})・bundled(scripts/ を同梱する skill の名前)を受け取る。
+# 名前ごとの種類: skill: は prose。cli: と node: は script。ただし gates の node: が、gate のレーン
+# (tool-call・plan-approval・stop・git-hook・ci)の auto = true のノードなら gate。external: は別リポジトリの
+# 担い手で、段階を判定しない(external)。事象の段階は、含む種類のうち gate > script > prose > external の順で最も強いもの。
+# 種類が空なら、行為者が person なら none(段階なし)、それ以外は unnamed(担い手の名指しなし)。
+# prose だけで、名指しされた skill が scripts/ を同梱するなら prose-bundled。
+# 1 事象 1 行の `段階<TAB>object.event<TAB>by<TAB>構成` を出す。
+read -r -d '' STAGES_JQ <<'EOF' || true
+def kind($n; $isgate):
+  ($n | capture("^(?<k>[a-z]+):(?<x>.+)$")) as $c
+  | if   $c.k == "skill"    then "prose"
+    elif $c.k == "external" then "external"
+    elif $c.k == "node" and $isgate
+         and (($info[$c.x] // null) as $i | $i != null and $i.auto and ($i.lane | IN("tool-call", "plan-approval", "stop", "git-hook", "ci")))
+      then "gate"
+    else "script" end;
+
+.[] | . as $v | $v.events[] | . as $e
+| ( [ ($e.carriers // [])[] | kind(.; false) ] + [ ($e.gates // [])[] | kind(.; true) ] ) as $kinds
+| ( [ "gate", "script", "prose", "external" | select(IN($kinds[])) ] ) as $set
+| ( [ ($e.carriers // [])[], ($e.gates // [])[] | select(startswith("skill:")) | .[6:] | select(IN($bundled[])) ] | length > 0 ) as $bund
+| ( if   ($set | length) == 0 then (if $e.by == "person" then "none" else "unnamed" end)
+    elif $set[0] == "prose" and $bund then "prose-bundled"
+    else $set[0] end ) as $stage
+| "\($stage)\t\($v.object).\($e.id)\t\($e.by)\t\($set | join("+"))"
+EOF
+
+# $1 = ルート。全語彙の事象ごとの段階を標準出力に出す。報告専用で、常に戻り値 0。
+report_stages() {
+  local root=$1 f
+  local vocabs=() ok_vocabs=() abstracts=""
+  mapfile -t vocabs < <(discover_vocabs "$root")
+  # 対応表の抽象の語彙(awaiting-item)は、具体の語彙の事象を写す先の表で、担い手を持たない。数えると二重になるので除く。
+  if compgen -G "$root/config/agents/vocabulary/refinements/*.json" >/dev/null; then
+    abstracts=$(jq -r '.abstract // empty' "$root"/config/agents/vocabulary/refinements/*.json 2>/dev/null || true)
+  fi
+  for f in ${vocabs[@]+"${vocabs[@]}"}; do
+    if jq -e 'type == "object" and (.object | type) == "string" and (.events | type) == "array" and all(.events[]; (.id | type) == "string" and (.by | type) == "string")' "$f" >/dev/null 2>&1; then
+      if [[ -n $abstracts ]] && grep -qxF -- "$(jq -r '.object' "$f")" <<<"$abstracts"; then
+        continue
+      fi
+      ok_vocabs+=("$f")
+    else
+      printf '%s: 段階: 事象を読めないので数えない(--all で検査する)\n' "$f" >&2
+    fi
+  done
+  if ((${#ok_vocabs[@]} == 0)); then
+    printf '報告する語彙が無い\n'
+    return 0
+  fi
+  load_node_info "$root"
+  local rows
+  rows=$(jq -r -s --argjson info "$NODE_INFO_JSON" --argjson bundled "$BUNDLED_JSON" "$STAGES_JQ" "${ok_vocabs[@]}" | sort -t$'\t' -k1,1 -k2,2) || {
+    printf 'vocab-graph-check: 段階の導出が失敗した(報告専用なので終了コードは 0)\n' >&2
+    return 0
+  }
+  local label stage name by kinds total=0
+  declare -A count=()
+  printf '段階\t事象\t行為者\t構成\n'
+  while IFS=$'\t' read -r stage name by kinds; do
+    [[ -z $stage ]] && continue
+    case $stage in
+      prose) label=散文 ;;
+      prose-bundled) label=散文+同梱 ;;
+      script) label=スクリプト ;;
+      gate) label=gate ;;
+      external) label=外部 ;;
+      unnamed) label=名指しなし ;;
+      *) label=段階なし ;;
+    esac
+    printf '%s\t%s\t%s\t%s\n' "$label" "$name" "$by" "${kinds:--}"
+    count[$label]=$(( ${count[$label]:-0} + 1 ))
+    total=$((total + 1))
+  done <<<"$rows"
+  printf '\n事象 %d 件\n' "$total"
+  for label in 散文 散文+同梱 スクリプト gate 外部 名指しなし 段階なし; do
+    printf '  %s: %d 件\n' "$label" "${count[$label]:-0}"
+  done
+  printf '構成(含む種類の組。gate 単独・gate を含む組み合わせなどの内訳)\n'
+  printf '%s\n' "$rows" | awk -F'\t' '{ k = ($4 == "" ? "-" : $4); c[k]++ } END { for (k in c) printf "  %s: %d 件\n", k, c[k] }' | sort
+  return 0
 }
 
 # ---------------------------------------------------------------- 具体化の対応表の検査
@@ -558,6 +664,49 @@ selftest() {
   printf '[{"object":"minimal-thing","skills":["alpha"]}]\n' >"$S/config/agents/vocabulary/external-objects.json"
   expect_fail "external-objects の object が語彙の object と重なる" external-objects --skills --root "$S"
 
+  # --- 事象ごとの段階(--stages。報告専用なので、導いた段階を出力の行で確かめる)
+  local G="$T/stages-root"
+  mkdir -p "$G/config/agents/skills"/{alpha,beta} "$G/config/agents/skills/beta/scripts" "$G/config/agents/demo" "$G/crates/crate-a"
+  printf -- '---\nname: alpha\ndescription: x\n---\n' >"$G/config/agents/skills/alpha/SKILL.md"
+  printf -- '---\nname: beta\ndescription: x\n---\n' >"$G/config/agents/skills/beta/SKILL.md"
+  printf '%s\n' 'node = [' \
+    '  { id = "hook-a", label = "a", lane = "tool-call", auto = true },' \
+    '  { id = "timer-a", label = "t", lane = "timer", auto = true },' \
+    '  { id = "manual-a", label = "m", lane = "manual", auto = false },' ']' >"$G/pipeline-map.toml"
+  cat >"$G/config/agents/demo/vocabulary.json" <<'JSON'
+{ "version": 1, "object": "demo", "description": "x", "initial": "none",
+  "states": [ { "id": "s", "terminal": false }, { "id": "t", "terminal": true } ],
+  "events": [
+    { "id": "prose", "from": ["none"], "to": ["s"], "by": "agent", "carriers": ["skill:alpha"] },
+    { "id": "script", "from": ["s"], "to": ["same"], "by": "agent", "carriers": ["skill:alpha", "cli:crate-a"] },
+    { "id": "timer", "from": ["s"], "to": ["same"], "by": "machine", "carriers": ["node:timer-a"], "gates": ["node:timer-a"] },
+    { "id": "manual", "from": ["s"], "to": ["same"], "by": "agent", "carriers": ["skill:alpha"], "gates": ["node:manual-a"] },
+    { "id": "gate", "from": ["s"], "to": ["same"], "by": "agent", "carriers": ["skill:alpha"], "gates": ["node:hook-a"] },
+    { "id": "none", "from": ["s"], "to": ["t"], "by": "person" },
+    { "id": "unnamed", "from": ["s"], "to": ["same"], "by": "machine" },
+    { "id": "bundled", "from": ["s"], "to": ["same"], "by": "agent", "carriers": ["skill:beta"] },
+    { "id": "ext", "from": ["s"], "to": ["same"], "by": "agent", "carriers": ["external:other"] }
+  ] }
+JSON
+  set +e
+  out=$(bash "$SELF" --stages --root "$G" 2>&1)
+  rc=$?
+  set -e
+  if ((rc != 0)); then
+    ng "--stages: 終了コード 0 のはずが $rc: $out"
+  else
+    local want miss=""
+    for want in $'散文\tdemo.prose\t' $'スクリプト\tdemo.script\t' $'スクリプト\tdemo.timer\t' $'スクリプト\tdemo.manual\t' \
+      $'gate\tdemo.gate\t' $'段階なし\tdemo.none\t' $'名指しなし\tdemo.unnamed\t' $'散文+同梱\tdemo.bundled\t' $'外部\tdemo.ext\t'; do
+      grep -qF -- "$want" <<<"$out" || miss+=" [${want//$'\t'/ }]"
+    done
+    if [[ -n $miss ]]; then ng "--stages: 期待した段階の行が無い:$miss: $out"; else ok; fi
+  fi
+  # 壊れた語彙があっても落とさない(報告専用)
+  printf '{"object":"demo","states":[],"events":[{"id":"x"}]}\n' >"$G/config/agents/demo/vocabulary.json"
+  expect_pass "--stages は壊れた語彙で落とさない" --stages --root "$G"
+  expect_code "--stages に --all" 2 --stages --all
+
   # --- 具体化の対応表(実物の語彙と対応表を一時ディレクトリに写し、1 か所ずつ壊す)
   expect_pass "実物の対応表" --refinements
   local Q="$T/ref-root" RDIR=config/agents/vocabulary/refinements
@@ -667,6 +816,10 @@ while (($# > 0)); do
       MODE=skills
       shift
       ;;
+    --stages)
+      MODE=stages
+      shift
+      ;;
     --refinements)
       MODE=refinements
       shift
@@ -697,6 +850,10 @@ case $MODE in
   skills)
     ((${#FILES[@]} == 0 && ALL == 0)) || die_usage "--skills には語彙ファイルも --all も渡せない"
     check_skills "$ROOT"
+    ;;
+  stages)
+    ((${#FILES[@]} == 0 && ALL == 0)) || die_usage "--stages には語彙ファイルも --all も渡せない"
+    report_stages "$ROOT"
     ;;
   files)
     if ((ALL == 1)); then
