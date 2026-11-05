@@ -830,9 +830,12 @@ expiry dates) stay out of this public repository (ADR-0034).
   synchronises the vault between hosts and the phone through an
   object-storage remote (Cloudflare R2 above). The plugin runs only while
   Obsidian has a window, which is why `vega` starts Obsidian at login (#1196).
-  Replacing the plugin on `vega` with the official CLI's `daemon` is tracked in
-  #1328 (the investigation is #1327); until that lands, this section describes
-  the plugin.
+  Replacing the plugin on `vega` with the official CLI's `daemon` is declared
+  (off by default, `dotfiles.obsidian.livesync.enable`) in
+  `home/modules/obsidian-livesync.nix` and described in
+  [`docs/agents/obsidian-livesync-cli.md`](agents/obsidian-livesync-cli.md);
+  it is tracked in #1328 (the investigation is #1327). Until it is enabled on
+  `vega`, this section describes the plugin.
 - **Where the design record lives.** The history of the setup (remote type,
   encryption method, sync interval and why, credential placement, the
   procedure for adding a device, key expiry) is in a closed Issue of the

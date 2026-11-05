@@ -87,11 +87,17 @@ in
   # next manual start (#1196).  Same shape as autostart/fcitx5.desktop in desktop.nix:
   # one interpolated value in an otherwise literal file (ADR-0002).  The store path of
   # the nixGL wrapper, not a profile symlink, so "declared" and "running" cannot diverge.
-  xdg.configFile."autostart/obsidian.desktop".source =
-    pkgs.replaceVars (../../config + "/autostart/obsidian.desktop")
-      {
-        obsidian = "${obsidianPackage}/bin/obsidian";
-      };
+  #
+  # Dropped while the LiveSync CLI daemon (obsidian-livesync.nix, #1328) is enabled: the
+  # daemon syncs without a window, and a running Obsidian plugin and the daemon writing the
+  # same vault is an unverified combination (docs/agents/obsidian-livesync-cli.md).
+  xdg.configFile = lib.mkIf (!config.dotfiles.obsidian.livesync.enable) {
+    "autostart/obsidian.desktop".source =
+      pkgs.replaceVars (../../config + "/autostart/obsidian.desktop")
+        {
+          obsidian = "${obsidianPackage}/bin/obsidian";
+        };
+  };
 
   assertions = [
     {
