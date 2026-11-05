@@ -376,6 +376,16 @@ gh repo edit <owner>/<repo> --add-topic <naming-クラス> --add-topic <topic2>
 README と CONTRIBUTING の正本言語を日本語にするなら、`--add-topic lang-ja` も
 付ける(ADR-805)。
 
+**メタデータを反映する時機(この規定が正本。`github-audit-triage` §6 の 6・§9 は参照する)。**
+description と topics は README・CONTRIBUTING の鏡で、正本は README・CONTRIBUTING である。
+既存リポジトリの適合化で README・CONTRIBUTING を PR で直すときは、**その PR が merge された後**に
+`gh repo edit` を実行する。README の merge より前に鏡だけを書き換えると、メタデータと README が
+食い違う状態が一時的にできる。例外は 2 つ。(a) 新規作成: `create-repo.sh` が作成時に topics を
+付ける(README がまだ無いので、食い違う相手がいない)。(b) `naming-*` topic だけを足し、改名を
+伴わず、対応する README の PR が無い場合: 待つ相手の PR が無いので、すぐ
+`gh repo edit --add-topic naming-<クラス>` してよい。改名を伴う場合(`naming-pj` への移行など)は、
+改名の PR の merge を待つ。
+
 **新規作成の場合、続けて標準 governance を播く**(#153、
 ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `repo create` 直後に
 走るフック機構が無いため、この手順が事実上の自動適用になる)。以下はスクリプトが
@@ -394,26 +404,11 @@ apply を両方行う。まだ CI が 1 度も走っていないため apply は
 `--unverified-contexts` で行われる — CI が 1 回走った後、
 `apply-rulesets.sh <owner>/<repo> --reconcile` で検証付きに切り替える。)
 
-いずれの `repo-governance` profile にも属さない場合(`core` 型、#337)は、rust/typst/
-astro の `seed.sh` と同じ呼び出し順(settings → files → rulesets)で
-`apply-repo-settings.sh` を先に呼ぶ(この呼び出しを省くと settings ドメイン
-が drift したまま残る — ADR-0013 Amendment 2026-09-29 の実例参照):
-
-```bash
-~/.claude/skills/repo-governance-common/scripts/apply-repo-settings.sh \
-  --owner <owner> --repo <repo>
-~/.claude/skills/repo-governance-common/scripts/copy-files.sh \
-  --owner <owner> --repo <repo> --dest <ローカルの checkout パス>
-# commit + push してから:
-apply-rulesets.sh <owner>/<repo> --from-dir <ローカルの checkout パス>/.github/rulesets --unverified-contexts
-```
-
-`copy-files.sh` は、集約 job `CI passed` だけを持つ最小の `ci.yml` も播く(既存の
-`ci.yml` は上書きしない)。rulesets の宣言の必須 check は `CI passed` と `PR title` で、
-`CI passed` は `ci.yml` が報告するため、**`ci.yml`・`CI passed`・rulesets の宣言は同じ段に
-置く**。段に分けるときに `ci.yml` を後の段に回すと、最初の PR は `rulesets-context-check` が
-`CI passed` の報告を約 22 分待って落ち、rulesets の宣言だけを外すと今度は
-`workflow-naming-check` が `ci-yml-missing` で落ちる(#794、#815)。
+いずれの `repo-governance` profile にも属さない場合(`core` 型、#337)の手順(settings → files →
+rulesets の呼び出し順、`ci.yml`・`CI passed`・rulesets の宣言を同じ段に置くこと)は、
+`repo-governance` SKILL.md の「Without a language profile (`core`)」節が正本である。
+`create-repo.sh --type core` はその節の最初の 2 コマンドを呼び、失敗したときのフォールバック
+もその節にある。ここには複写しない。
 
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。
