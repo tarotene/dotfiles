@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "object": "slot-offer",
+  "description": "相手に日程の候補を提示する 1 回の提案(押さえ=カレンダーの仮押さえと、提示=返信の送信)の状態と事象の閉語彙(正本)。提案ごとのジャーナル(~/.local/state/claude/slot-offer/<提案 id>.json)の state がこの語彙の状態で、worklog の offer サブコマンドが include_str! で同じ表を読む。押さえを全スロット読み戻して揃えてからでなければ提示(present)に進めない。カレンダーの操作と送信はエージェントが行い、この語彙の遷移は、その結果を worklog offer record で返したときにだけ起きる。握手の語彙(calendar-handshake)の candidate(仮押さえの印 [hold] )と propose は、この提案の押さえの題名の印として読むだけで、状態としては重ねない(握手は別リポジトリが内容の sha256 を固定するので触らない)。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
+  "initial": "none",
+  "states": [
+    { "id": "intended", "terminal": false, "owner": "agent" },
+    { "id": "held", "terminal": false, "owner": "agent" },
+    { "id": "offered", "terminal": false, "owner": "agent" },
+    { "id": "chosen", "terminal": true },
+    { "id": "cancelled", "terminal": true }
+  ],
+  "events": [
+    { "id": "intend", "from": ["none"], "to": ["intended"], "by": "agent", "carriers": ["cli:worklog", "skill:slot-availability"] },
+    { "id": "observe", "from": ["intended", "held", "offered"], "to": ["same"], "by": "agent", "by_detail": "押さえの読み戻しの結果を記録する。全スロットが揃っていなくても、状態は変えない(欠けた分は回復の計画が作り直しを指示する)", "carriers": ["cli:worklog"] },
+    { "id": "confirm_holds", "from": ["intended"], "to": ["held"], "by": "agent", "by_detail": "全スロットの押さえを読み戻して確かめたとき", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "lose_hold", "from": ["held"], "to": ["intended"], "by": "agent", "by_detail": "提示の前に、読み戻した押さえが欠けていたとき", "carriers": ["cli:worklog"] },
+    { "id": "present", "from": ["held"], "to": ["offered"], "by": "agent", "by_detail": "送信前の確認(画面・全文・宛先)を本人が済ませ、送って、送信済みの画面を読み戻したあと", "carriers": ["cli:worklog", "skill:inbox-adjudication", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "abort", "from": ["intended", "held"], "to": ["cancelled"], "by": "agent", "by_detail": "提示が出ていない提案の取消。押さえをすべて消し、残りが無いことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "retract", "from": ["offered"], "to": ["cancelled"], "by": "person", "by_detail": "出てしまった提示の取り下げ。相手への連絡は本人が決める。押さえをすべて消し、残りが無いことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "choose", "from": ["offered"], "to": ["chosen"], "by": "agent", "by_detail": "相手が日を選んだ。選ばれたスロットの確定と残りの解放は slot-hit.sh finalize が行う", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] }
+  ]
+}
