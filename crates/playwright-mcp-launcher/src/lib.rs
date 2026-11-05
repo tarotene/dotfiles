@@ -3,6 +3,7 @@
 //! 本体は `main.rs`。設計と根拠: docs/claude/claude-mcp-servers.md
 
 use std::ffi::{OsStr, OsString};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 起動する Playwright MCP の版。`@latest` のままだと npx のキャッシュが更新される
@@ -122,6 +123,64 @@ pub fn process_alive(pid: u32) -> bool {
     rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+/// 複製の `lock`(Firefox が起動中に張る symlink)が生きた process を指していれば
+/// その pid。`lock` が無い・読めない・pid が読めない・指す process が死んでいる
+/// ときは `None`(使用中ではない)。
+pub fn lock_owner(clone: &Path) -> Option<u32> {
+    let target = fs::read_link(clone.join("lock")).ok()?;
+    let pid = parse_lock_pid(&target.to_string_lossy())?;
+    process_alive(pid).then_some(pid)
+}
+
+/// 同時に使える「世代」(複製が使用中のときに作る、`<clone>-<pid>` の追加の複製)の
+/// 上限。使用中の世代がこれだけあると、これ以上は作らず診断して終わる
+/// (使用中でない世代は起動のたびに消すので、世代はこれ以上増え続けない)。
+pub const MAX_GENERATIONS: usize = 8;
+
+/// 複製が使用中のとき、衝突しない別の複製の置き場。`<clone>-<pid>`(`pid` は
+/// 起動するラッパー自身。npx を `exec` で引き継ぐので、その MCP が動く間は生きている)。
+pub fn generation_path(clone: &Path, pid: u32) -> PathBuf {
+    let mut s = clone.as_os_str().to_owned();
+    s.push(format!("-{pid}"));
+    PathBuf::from(s)
+}
+
+/// 複製の隣のディレクトリ名 `entry` が、複製 `base` の世代(`<base>-<pid>`、`pid` は
+/// 数字だけ)なら、その pid。`<base>.sync.lock` や別の名前は世代ではない。
+pub fn parse_generation_pid(base: &OsStr, entry: &OsStr) -> Option<u32> {
+    let base = base.to_str()?;
+    let digits = entry.to_str()?.strip_prefix(base)?.strip_prefix('-')?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// 既にある世代 1 つ。`in_use` は、持ち主のラッパー(`pid`)が生きている、または
+/// その複製の `lock` が生きた Firefox を指している。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Generation {
+    pub pid: u32,
+    pub in_use: bool,
+}
+
+/// 世代の整理の結果。`remove` は使用中でない世代の pid(消してよい)。`full` は
+/// 使用中の世代が上限に達していて、新しい世代を作れないこと。
+#[derive(Debug, PartialEq, Eq)]
+pub struct GenerationPlan {
+    pub remove: Vec<u32>,
+    pub full: bool,
+}
+
+pub fn plan_generations(gens: &[Generation]) -> GenerationPlan {
+    let remove = gens.iter().filter(|g| !g.in_use).map(|g| g.pid).collect();
+    let live = gens.iter().filter(|g| g.in_use).count();
+    GenerationPlan {
+        remove,
+        full: live >= MAX_GENERATIONS,
+    }
+}
+
 /// `src` と `dst` が同じ場所、または一方が他方の内側にあるか(正規化済みの絶対パス)。
 /// `rsync --delete` は dst の中の余計なものを消すので、dst が src の親だと
 /// 普段のプロファイルの兄弟(`profiles.ini` や他のプロファイル)まで消えうる。
@@ -220,6 +279,104 @@ mod tests {
         assert!(process_alive(std::process::id()));
         assert!(!process_alive(i32::MAX as u32));
         assert!(!process_alive(u32::MAX));
+    }
+
+    #[test]
+    fn lock_owner_follows_alive_pid_only() {
+        let d = tempfile::tempdir().unwrap();
+        // lock が無い: 使用中ではない(従来どおり同期する)。
+        assert_eq!(lock_owner(d.path()), None);
+        let lock = d.path().join("lock");
+        // 死んだ pid を指す古い lock: 使用中ではない。
+        std::os::unix::fs::symlink(format!("127.0.0.1:+{}", i32::MAX), &lock).unwrap();
+        assert_eq!(lock_owner(d.path()), None);
+        // 読めない行き先: 使用中ではない。
+        fs::remove_file(&lock).unwrap();
+        std::os::unix::fs::symlink("garbage", &lock).unwrap();
+        assert_eq!(lock_owner(d.path()), None);
+        // 生きた pid を指す lock: その pid。
+        fs::remove_file(&lock).unwrap();
+        let me = std::process::id();
+        std::os::unix::fs::symlink(format!("127.0.0.1:+{me}"), &lock).unwrap();
+        assert_eq!(lock_owner(d.path()), Some(me));
+    }
+
+    #[test]
+    fn generation_name_round_trip() {
+        let clone = Path::new("/c/playwright-mcp-profile/firefox");
+        let g = generation_path(clone, 4242);
+        assert_eq!(g, PathBuf::from("/c/playwright-mcp-profile/firefox-4242"));
+        let base = OsStr::new("firefox");
+        assert_eq!(
+            parse_generation_pid(base, g.file_name().unwrap()),
+            Some(4242)
+        );
+    }
+
+    #[test]
+    fn generation_name_rejects_non_generations() {
+        let base = OsStr::new("firefox");
+        for not in [
+            "firefox",
+            "firefox.sync.lock",
+            "firefox-",
+            "firefox-x",
+            "firefox-12a",
+            "firefox--1",
+            "firefox-+1",
+            "other-12",
+            "firefoxy-12",
+        ] {
+            assert_eq!(parse_generation_pid(base, OsStr::new(not)), None, "{not}");
+        }
+    }
+
+    #[test]
+    fn plan_removes_only_unused_generations() {
+        let gens = [
+            Generation {
+                pid: 1,
+                in_use: true,
+            },
+            Generation {
+                pid: 2,
+                in_use: false,
+            },
+            Generation {
+                pid: 3,
+                in_use: false,
+            },
+        ];
+        let plan = plan_generations(&gens);
+        assert_eq!(plan.remove, vec![2, 3]);
+        assert!(!plan.full);
+        assert_eq!(
+            plan_generations(&[]),
+            GenerationPlan {
+                remove: vec![],
+                full: false
+            }
+        );
+    }
+
+    #[test]
+    fn plan_is_full_at_the_cap_of_live_generations() {
+        let live = |n: usize| -> Vec<Generation> {
+            (0..n as u32)
+                .map(|pid| Generation { pid, in_use: true })
+                .collect()
+        };
+        assert!(!plan_generations(&live(MAX_GENERATIONS - 1)).full);
+        assert!(plan_generations(&live(MAX_GENERATIONS)).full);
+        // 使用中でない世代は上限に数えず、消す対象に回る。
+        let mut gens = live(MAX_GENERATIONS - 1);
+        gens.push(Generation {
+            pid: 999,
+            in_use: false,
+        });
+        let plan = plan_generations(&gens);
+        assert!(!plan.full);
+        assert_eq!(plan.remove, vec![999]);
     }
 
     #[test]

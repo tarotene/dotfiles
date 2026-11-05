@@ -80,7 +80,14 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   2. それを `~/.cache/playwright-mcp-profile/firefox`(0700)へ `rsync -a --delete` で
      一方向に差分同期する。除外は `lock` / `.parentlock` / `user.js` /
      `prefs.js.playwright` / セッション復元 / クラッシュ記録 / キャッシュ
-     (`EXCLUDES`)。複製の `lock` が生きた process を指す間は、同期を飛ばす。
+     (`EXCLUDES`)。複製の `lock` が生きた process を指す間(別のセッションの
+     Firefox が複製を使用中)は、その複製に触らず、`<複製>-<pid>`(`pid` は起動する
+     ラッパー自身)の新しい複製(世代)へ同期して、そちらで起動する。同じ複製を渡すと
+     Firefox が `Firefox is already running, but is not responding` で起動に失敗する
+     (#1286)。使用中でない世代(持ち主のラッパーも `lock` の指す process も死んでいる)は
+     起動のたびに消し、使用中の世代が 8 つ(`MAX_GENERATIONS`)に達していたら、世代を
+     作らず診断して exit 1 する。`lock` が無い・死んだ pid を指すときは、従来どおり
+     複製へ同期する。`--sync-only` は世代を作らず、使用中の複製の同期を飛ばす。
   3. `npx @playwright/mcp@<pin> --browser moz-firefox --user-data-dir <複製>` を exec する。
      Linux は PATH の `firefox` を `--executable-path` に渡す(Playwright の既定は
      `/snap/bin/firefox` で、apt の Firefox では合わない)。
@@ -104,6 +111,9 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   約 1.1GB の 1 回目の同期は 1.2 秒、2 回目は 0.2 秒。複製の素の Firefox は headed でも
   別のインスタンスとして約 2 秒で起動し、`github.com` にログイン済みで入れた。普段の
   プロファイルには `user.js` も `prefs.js.playwright` も作られなかった。
+  未確認: Firefox が「起動中」と判定するのが、`lock` の symlink だけか、`.parentlock` の
+  fcntl ロックも関わるか(#1286 の失敗は `lock` が生きた pid を指していたが、`lock` が
+  無く `.parentlock` だけが効く場合を、世代の選び方は見ない)。
   未確認: darwin(altair)の Firefox の場所と `installs.ini` の節の数。darwin では
   `lock` の symlink が無い(`.parentlock` の fcntl ロックを使う)ので、複製の使用中の
   検出は Linux でだけ働く。
