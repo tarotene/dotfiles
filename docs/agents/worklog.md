@@ -59,6 +59,11 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 作業ログが持つのは済んだ・やめたの完了記録だけ。鍵は予定データの予定 id で、時間枠・Issue・本文・個人名は書かない。
 タイマーは無い。既存の自由記述の `task` kind とは別の kind である。
 
+## offer — 日程の提示と仮押さえの、1 提案 1 ジャーナル
+
+Issue #1319。vault の行は書かず、機体のローカルなジャーナル(`~/.local/state/claude/slot-offer/<提案 id>.json`)で状態を持つ
+`worklog offer` サブコマンド。状態・コマンド・回復の表は `docs/agents/slot-offer.md`。カレンダーと送信には触れず、計画を出すだけ。
+
 ```text
 worklog add slot done <鍵> | drop <鍵>
 worklog slot closed [--json] | check

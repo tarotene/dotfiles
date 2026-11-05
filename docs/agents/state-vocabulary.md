@@ -177,5 +177,5 @@ scripts/vocab-graph-check --refinements <対応表>   # 指定した対応表
 
 ## 語彙を変えるとき
 
-- 語彙の JSON を直したら `scripts/vocab-graph-check --all` を回す。`worklog` が読む 2 つ(メール項目・作業の枠)は `cargo test -p worklog` も回す。
+- 語彙の JSON を直したら `scripts/vocab-graph-check --all` を回す。`worklog` が読む 3 つ(メール項目・作業の枠・日程の提示と仮押さえ。`docs/agents/slot-offer.md`)は `cargo test -p worklog` も回す。
 - 握手の語彙は、利用側(別リポジトリ)が内容の sha256 を固定して読む(`docs/agents/calendar-handshake.md`)。変えたら PR 本文に新しい hash を書く。

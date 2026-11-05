@@ -276,6 +276,9 @@
               || (builtins.match ".*/config/agents/mail-lifecycle/vocabulary\\.json" path != null)
               # worklog が include_str! で読む、作業の枠の語彙の正本(docs/agents/task-slot.md)。
               || (builtins.match ".*/config/agents/task-slot/vocabulary\\.json" path != null)
+              # worklog の offer が include_str! で読む、日程の提示と仮押さえの語彙の正本と、押さえの題名の印を読む握手の語彙(docs/agents/slot-offer.md)。
+              || (builtins.match ".*/config/agents/slot-offer/vocabulary\\.json" path != null)
+              || (builtins.match ".*/config/agents/calendar-handshake/vocabulary\\.json" path != null)
               # issue-inbox のテストが include_str! で読む、作業中の気づきの語彙(docs/agents/wrapup-inbox.md)。
               || (builtins.match ".*/config/agents/wrapup-inbox/vocabulary\\.json" path != null)
               # issue-inbox が include_str! で読む、as-code 化の候補の語彙(段・兆候・却下理由)の正本(docs/agents/codify-signals.md)。

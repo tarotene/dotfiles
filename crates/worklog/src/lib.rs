@@ -101,6 +101,10 @@ pub use mail::{validate_mail, MAIL_CHANNELS, MAIL_SUMMARY_MAX_CHARS};
 pub mod slot;
 pub use slot::validate_slot;
 
+// `offer`(日程の提示と仮押さえの 1 提案 1 ジャーナル。docs/agents/slot-offer.md)。vault の行は書かず、
+// 状態機械と回復の計画だけを持つ。
+pub mod offer;
+
 /// 行の参照。`owner/repo` と、任意の Issue・PR 番号。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {

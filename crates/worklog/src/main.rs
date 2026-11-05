@@ -6,11 +6,13 @@
 //! worklog mail open|check|sweep [--today YYYY-MM-DD] [--dry-run]|restore <鍵>|forget <鍵>
 //! worklog add slot done|drop <鍵>
 //! worklog slot closed [--json]|check
+//! worklog offer begin|plan|record|recover|abort|show|list …   # docs/agents/slot-offer.md
 //! worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。vault を宣言していない機体では無音
 //! ```
 //!
 //! `WORKLOG_NOW`(unix 秒)は試験用に今の時刻を固定する。`WORKLOG_STATE_DIR` は終端の控えの置き場
-//! (既定 `~/.local/state/claude/worklog`)。
+//! (既定 `~/.local/state/claude/worklog`)。`WORKLOG_OFFER_DIR` は `offer` のジャーナルの置き場
+//! (既定 `~/.local/state/claude/slot-offer`)。
 
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -18,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 use worklog::mail::{self, Actor, Ledger, Vocabulary};
+use worklog::offer;
 use worklog::slot::{self, SlotVocabulary};
 use worklog::{
     add, build_context, format_date, jst_parts, list, parse_date, select_recent, Added, Kind,
@@ -32,6 +35,7 @@ fn usage() -> String {
          worklog mail restore <鍵>|forget <鍵>\n  \
          worklog add slot done|drop <鍵>   (出来事: {})\n  \
          worklog slot closed [--json]\n  worklog slot check\n  \
+         worklog offer begin|plan|record|recover|abort|show|list   (引数なしの `worklog offer` で形を出す)\n  \
          worklog session-start [--agent claude|codex|copilot]\nkind: {} (list では memo も)\n\
          mail の本文: '<{}>: <要旨(結論だけ・{}字まで)> [<{}>:<スレッド>/<受信> [due:YYYY-MM-DD]]'\
          (媒体 none は '[none]'、move は to:<owner/repo#N|cal:YYYY-MM-DD|mail:<鍵>> が要る。\
@@ -51,6 +55,7 @@ fn main() -> ExitCode {
         Some("list") => list_cmd(&args[1..]).map(|()| ExitCode::SUCCESS),
         Some("mail") => mail_cmd(&args[1..]),
         Some("slot") => slot_cmd(&args[1..]),
+        Some("offer") => offer_cmd(&args[1..]).map(|()| ExitCode::SUCCESS),
         Some("session-start") => session_arg(&args[1..])
             .map(session_start)
             .map(|()| ExitCode::SUCCESS),
@@ -235,6 +240,16 @@ fn slot_cmd(args: &[String]) -> Result<ExitCode, String> {
         _ => return Err(usage()),
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `offer begin|plan|record|recover|abort|show|list`。カレンダーと送信には触れない(計画を出すだけ)。
+fn offer_cmd(args: &[String]) -> Result<(), String> {
+    let store = offer::Store::from_env()?;
+    let out = offer::cli(args, &store)?;
+    if !out.is_empty() {
+        println!("{out}");
+    }
+    Ok(())
 }
 
 /// `mail open|check|sweep|restore|forget`。`check` は食い違いがあれば exit 1。
