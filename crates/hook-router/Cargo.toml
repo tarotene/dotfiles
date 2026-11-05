@@ -31,6 +31,7 @@ plan-precedent-gate = { version = "0.1.0", path = "../plan-precedent-gate" }
 plan-scope-gate = { version = "0.1.0", path = "../plan-scope-gate" }
 pr-followup-guard = { version = "0.1.0", path = "../pr-followup-guard" }
 pr-title-guard = { version = "0.1.0", path = "../pr-title-guard" }
+record-layer = { version = "0.1.0", path = "../record-layer" }
 repo-create-guard = { version = "0.1.0", path = "../repo-create-guard" }
 routines-write-guard = { version = "0.1.0", path = "../routines-write-guard" }
 rulesets-write-guard = { version = "0.1.0", path = "../rulesets-write-guard" }

@@ -214,6 +214,13 @@ pub static RULES: &[Rule] = &[
         run: |_, raw| new_tool_guard::hook::hook(raw),
     },
     Rule {
+        node: "record-layer-guard",
+        event: Event::Pre,
+        tools: Tools::Named(&["Write"]),
+        budget: S10,
+        run: |_, raw| record_layer::hook::hook(raw),
+    },
+    Rule {
         node: "feedback-target-guard",
         event: Event::Pre,
         tools: Tools::Bash,
@@ -330,6 +337,7 @@ mod tests {
                 "plan-scope-gate",
                 "pr-followup-guard",
                 "pr-title-guard",
+                "record-layer-guard",
                 "repo-create-guard",
                 "routines-write-guard",
                 "rulesets-write-guard",

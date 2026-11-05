@@ -778,6 +778,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "globset"
+version = "0.4.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f98b0d85522dc0a824cfebbc9594ff4a9b289c568bea0370319dfbdf20ccdd2d"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "gpg-prewarm"
 version = "0.1.0"
 dependencies = [
@@ -867,6 +880,7 @@ dependencies = [
  "pr-followup-guard",
  "pr-title-guard",
  "process-control",
+ "record-layer",
  "repo-create-guard",
  "routines-write-guard",
  "rulesets-write-guard",
@@ -1318,7 +1332,9 @@ version = "0.1.0"
 dependencies = [
  "command-inspection",
  "filetime",
+ "git-repository",
  "issue-inbox",
+ "record-layer",
  "serde",
  "serde_json",
  "tempfile",
@@ -1393,6 +1409,19 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "record-layer"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "git-repository",
+ "globset",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

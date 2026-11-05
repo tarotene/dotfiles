@@ -27,11 +27,11 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 ## 載せるもの
 
-ルータの表(`rules.rs`)に載せた検査は 25 件(拒否だけを出す PreToolUse の 21 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
+ルータの表(`rules.rs`)に載せた検査は 26 件(拒否だけを出す PreToolUse の 22 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
+| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、main-checkout-guard-pre、new-tool-guard、pkexec-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、record-layer-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
@@ -102,9 +102,10 @@ standalone の bin は、Copilot の登録と、手で叩く用に残してあ�
   ツールでも起こりうる。Bash 単体の matcher だと、MCP 接続の瞬間に無検査になる。→ `Tools::BashOrMcp`。
 - **`mcp__.*` だけ**(external-send-guard): Gmail・Slack の送信系 MCP ツールだけが対象で、Bash 経由の送信は
   原理的に検出できない。→ `Tools::Mcp`。
-- **広い matcher + 規則内部の判定**(routines-write-guard、new-tool-guard): `RemoteTrigger` や `Write` は Bash では
+- **広い matcher + 規則内部の判定**(routines-write-guard、new-tool-guard、record-layer-guard): `RemoteTrigger` や `Write` は Bash では
   ないので、`Bash(...)` の `if` 構文が使えない。対象外の呼び出しは、規則自身が `None` を返して素通りにする。
-  → `Tools::Named(&["RemoteTrigger"])`、`Tools::Named(&["Write"])`。
+  → `Tools::Named(&["RemoteTrigger"])`、`Tools::Named(&["Write"])`。record-layer-guard(#1310)は、宣言
+  (`.config/record-layers.toml`)のあるリポジトリだけで発火し、無ければ素通りにする([record-layers.md](record-layers.md))。
 - **`ExitPlanMode` の matcher**(plan-scope-gate・plan-precedent-gate、#991): 旧登録は、ほかの ExitPlanMode の
   検査(copilot-plan-review・plan-view・plan-fresh-gate)と同じ matcher の別エントリで、Claude Code が並列に
   走らせていた。→ `Tools::Named(&["ExitPlanMode"])`。Codex には ExitPlanMode のツール呼び出しが無い

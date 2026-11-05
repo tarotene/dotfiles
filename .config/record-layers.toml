@@ -1,0 +1,102 @@
+# 記録の層(L0〜L4)の宣言(ADR-0000 record-layers、#1310)。「パス(glob)→ 層」の配列。
+#
+# - 層の語彙は L0〜L4 の閉集合。L0 不変(追記のみ)・L1 年〜月・L2 週は Git に置く。
+#   L3 日〜都度・L4 機械生成は Git の外に置く(L3 は Obsidian Vault が第一候補、L4 は vault の外)。
+# - glob はリポジトリのルートからの相対パス。`*` は `/` を越えず、ディレクトリの下は `dir/**` と書く。
+# - 1 パス 1 層: `git ls-files` の各ファイルに当たる glob がちょうど 1 つであること(漏れも重なりも不可)。
+#   `cargo test -p record-layer` が検査する。
+# - 宣言に無いパスと、L3・L4 のパスへの Write は、PreToolUse の `record-layer-guard`(hook-router)が拒否する。
+#   宣言と実測の変化の速さのずれは、promotion-detect の日次 timer が wrap-up inbox に流す。
+# - 運用: docs/agents/record-layers.md
+
+# リポジトリ直下のファイル(README・AGENTS.md・flake.nix・Cargo.toml・各種ロックファイルなど)。
+# flake.lock・Cargo.lock は機械が書くが、再現性の固定点(pin)で、月〜週の間隔で意図して更新する記録なので L1 とする。
+[[path]]
+glob = "*"
+layer = "L1"
+
+[[path]]
+glob = ".config/**"
+layer = "L1"
+
+[[path]]
+glob = ".github/**"
+layer = "L1"
+
+[[path]]
+glob = "config/**"
+layer = "L1"
+
+# `crates/model-catalog/catalog.toml` は手書きの部分と GENERATED ブロックが 1 ファイルに混在する。
+# 分割は別の作業で扱い(ADR-0000 record-layers D5)、分割するまでは crates 配下の一部として L1 と宣言する。
+[[path]]
+glob = "crates/**"
+layer = "L1"
+
+# ADR は追記のみ(Amendment を足す形)。
+[[path]]
+glob = "docs/adr/**"
+layer = "L0"
+
+[[path]]
+glob = "docs/*.md"
+layer = "L1"
+
+[[path]]
+glob = "docs/agents/**"
+layer = "L1"
+
+[[path]]
+glob = "docs/claude/**"
+layer = "L1"
+
+[[path]]
+glob = "docs/schemas/**"
+layer = "L1"
+
+[[path]]
+glob = "docs/assets/*"
+layer = "L1"
+
+# `cargo run -p pipeline-map -- render` が `pipeline-map.toml` から作る図(.d2 と .svg)。生成のたびに作り直される L4。
+# 置き場(Git の外のどこか)は別の作業で決める(ADR-0000 record-layers D5)。決まるまでは Git に残すが、
+# Write では作らない(拒否される)。
+[[path]]
+glob = "docs/assets/pipeline-map/**"
+layer = "L4"
+
+[[path]]
+glob = "home/**"
+layer = "L1"
+
+[[path]]
+glob = "keys/**"
+layer = "L1"
+
+[[path]]
+glob = "licenses/**"
+layer = "L1"
+
+[[path]]
+glob = "packages/**"
+layer = "L1"
+
+[[path]]
+glob = "patches/**"
+layer = "L1"
+
+[[path]]
+glob = "renovate/**"
+layer = "L1"
+
+[[path]]
+glob = "scripts/**"
+layer = "L1"
+
+[[path]]
+glob = "system/**"
+layer = "L1"
+
+[[path]]
+glob = "tests/**"
+layer = "L1"
