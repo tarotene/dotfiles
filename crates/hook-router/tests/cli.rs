@@ -310,3 +310,67 @@ fn removed_codex_permission_allow_entry_point_is_rejected() {
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());
 }
+
+/// 宣言(`.config/record-layers.toml`)のあるリポジトリへの Write を、ルータ経由で裁く(#1310)。
+/// 作業ツリーは本物の checkout なので `main-checkout-guard` も deny を返し、理由は連結される。
+/// ここでは、記録の層の拒否が出るか(出ないか)だけを理由の文面で確かめる。
+#[test]
+fn a_write_to_an_undeclared_or_outside_git_path_is_denied_by_record_layers() {
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    std::fs::create_dir_all(repo.path().join(".config")).unwrap();
+    std::fs::write(
+        repo.path().join(".config/record-layers.toml"),
+        "[[path]]\nglob = \"docs/**\"\nlayer = \"L1\"\n[[path]]\nglob = \"state/**\"\nlayer = \"L3\"\n",
+    )
+    .unwrap();
+    let write = |rel: &str| {
+        serde_json::json!({
+            "hook_event_name": "PreToolUse", "session_id": "record-layers-test",
+            "tool_name": "Write", "cwd": repo.path(),
+            "tool_input": {"file_path": repo.path().join(rel), "content": "x"},
+        })
+        .to_string()
+    };
+    let reason = |rel: &str| {
+        let (out, _h) = run(&["pre"], &write(rel));
+        assert!(out.status.success());
+        if out.stdout.is_empty() {
+            return String::new();
+        }
+        json(&out)["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    assert!(reason("src/new.rs").contains("記録の層の宣言"), "未宣言");
+    let l3 = reason("state/today.md");
+    assert!(l3.contains("記録の層の宣言") && l3.contains("L3"), "{l3}");
+    assert!(!reason("docs/a.md").contains("記録の層の宣言"), "L1 は通る");
+}
+
+#[test]
+fn a_write_in_a_repository_without_a_declaration_is_not_judged_by_record_layers() {
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    let raw = serde_json::json!({
+        "hook_event_name": "PreToolUse", "session_id": "record-layers-none",
+        "tool_name": "Write", "cwd": repo.path(),
+        "tool_input": {"file_path": repo.path().join("src/new.rs"), "content": "x"},
+    })
+    .to_string();
+    let (out, _h) = run(&["pre"], &raw);
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains("記録の層の宣言"), "{text}");
+}

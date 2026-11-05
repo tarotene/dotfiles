@@ -462,6 +462,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1301](adr/1301-dev-flow-vocabulary.md) — 開発の流れの 4 つの対象(計画 `plan`・PR `pull-request`・Issue `issue`・WIP の PR `wip-pull-request`)の語彙 JSON を、skill 本文から読み取れる状態と遷移に限って起こし、書き方の skill 12 本を担い手として載せる(`--skills` の載っていない skill は 34 本から 22 本)。要求項目の処分は `plan-requirement` に任せる。遷移表で見えた `tracking-issue` と `issue-hygiene` の重複、計画の承認の重なりを記録し、機械の検査が無い遷移は兆候が見つからないので昇格しない。
 - [ADR-1305](adr/1305-env-maintenance-vocabulary.md) — 環境の保守の 8 つの対象(リポジトリ設定 `repo-settings`・`routine`・`gpg-subkey`・`model-pin`・`gas-project`・`drive-file`・`browser-session`・`skill-authoring`)の語彙 JSON を、skill 本文から読み取れる状態と遷移に限って起こし、別リポジトリの対象を担う skill 5 本は `external-objects.json` に名前だけを足す。`--skills` の載っていない skill が 22 本から 0 本になったので、`vocab-graph-check --skills` を CI の `dry-run` ジョブに配線する。遷移表で見えた手順の数の食い違い(#1302)とリポジトリ設定を動かす 3 つの skill の重なり(#1303)を記録し、skill・hook の段階を実体から導く検査は同じ枠に載せられると結論する(実装は #1304)。
 - [ADR-1311](adr/1311-git-external-state-integrity.md) — Git の外(vault)に置いた状態は PR の差分の遷移検査が効かないので、書き込み口の検査に加えて、vault を宣言している機体で日次の `promotion-detect` が `worklog mail check` を回し、食い違いを wrap-up inbox に流す(検査を回せなかったときも候補にする)。ADR-543 の timer を共有する。
+- [ADR-1358](adr/1358-record-layers.md) — 記録を効いている期間で L0〜L4 の 5 層に分け(L0〜L2 は Git、L3 日〜都度・L4 機械生成は Git の外)、リポジトリの `.config/record-layers.toml` で「パス(glob)→ 層」を宣言する(1 パス 1 層、`git ls-files` の各ファイルに当たる glob がちょうど 1 つ)。宣言のあるリポジトリでは、宣言に無いパスと L3・L4 のパスへの Write を `hook-router` の `record-layer-guard` が拒否し、宣言と変化の速さのずれを `promotion-detect` が日次で wrap-up inbox に流す。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
@@ -469,8 +470,8 @@ Design and rationale for the hooks and commands deployed from
 `config/agents/` by `home/modules/agents.nix`:
 
 - [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 22 件(PreToolUse の
-  拒否 18 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
+- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 26 件(PreToolUse の
+  拒否 22 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
   書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかった検査(許可を出す検査・ExitPlanMode の
   一部・Stop・SessionStart・外部ツール)の、検査ごとの裁定と理由の表、規則ごとの打ち切りと panic の隔離、
   旧登録の matcher・timeout の記録。
@@ -657,6 +658,9 @@ Design and rationale for the hooks and commands deployed from
   hook: fail-open で設計した hook(copilot-plan-review)が、依存先の不調で素通りし続けて
   いること(`gate-events.jsonl` の `fail-open` が、最後の `pass` より後に既定 3 回以上)を、
   セッション開始時に先に知らせる。何も実行しない。
+- [`record-layers.md`](agents/record-layers.md) — 記録の層(L0〜L4)の宣言 `.config/record-layers.toml` の書き方と、
+  Write の拒否(`hook-router` の `record-layer-guard`)・日次のずれ検出(`promotion-detect`)の運用。
+  拒否されたときの直し方、宣言の欠陥の見つけ方、しきい値。
 - [`new-tool-guard.md`](agents/new-tool-guard.md) — PreToolUse(Write)の判定役と、
   ExitPlanMode 承認後(PostToolUse)の記録役: 新しい道具・単位の着手前に既存手段を問い、
   承認された計画の `既存手段:` 行を台帳へ転記して、手で `register` し直す二重入力をなくす。

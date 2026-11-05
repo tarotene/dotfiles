@@ -506,6 +506,77 @@ pub fn mail_check_failed_detail(reason: &str) -> String {
     )
 }
 
+// ---------------------------------------------------------------------------
+// 記録の層(#1310、ADR-1358 record-layers)。宣言のあるチェックアウトの、宣言の欠陥と、
+// 宣言した層と実測の変化の速さのずれ。判定は `record-layer` が持ち、ここは文面だけを組み立てる。
+// ---------------------------------------------------------------------------
+
+/// 詳細に並べる項目の最大件数。超えた分は「ほか N 件」と数だけを書く。
+pub const RECORD_LAYER_LISTED: usize = 10;
+
+/// 宣言の欠陥(漏れ・重なり)の 1 行。
+pub fn layer_defect_line(d: &record_layer::Defect) -> String {
+    match d {
+        record_layer::Defect::Uncovered(path) => format!("{path}: どの glob にも当たらない"),
+        record_layer::Defect::Overlapping(path, globs) => {
+            format!("{path}: 複数の glob に当たる({})", globs.join(" と "))
+        }
+    }
+}
+
+/// `repo` は `owner/repo`(チェックアウトのパスから取る)。題は日をまたいで変えない(件数を入れない)。
+pub fn layer_declaration_title(repo: &str) -> String {
+    format!("記録の層の宣言に欠陥があります({repo}、`.config/record-layers.toml`)")
+}
+
+pub fn layer_declaration_detail(repo: &str, problems: &[String]) -> String {
+    let listed: Vec<&str> = problems
+        .iter()
+        .take(RECORD_LAYER_LISTED)
+        .map(String::as_str)
+        .collect();
+    let rest = problems.len().saturating_sub(RECORD_LAYER_LISTED);
+    let more = if rest > 0 {
+        format!(" ほか{rest}件。")
+    } else {
+        String::new()
+    };
+    format!(
+        "{repo} の記録の層の宣言が、追跡されているファイルを 1 つの glob で覆えていません: {}。{more} \
+         宣言が壊れていると、Write の拒否(`hook-router` の `record-layer-guard`)は素通りになります。\
+         `.config/record-layers.toml` を直して、すべての追跡ファイルに当たる glob がちょうど 1 つになるようにしてください。",
+        listed.join(" / ")
+    )
+}
+
+pub fn layer_drift_title(repo: &str) -> String {
+    format!("記録の層の宣言と、実測の変化の速さがずれています({repo})")
+}
+
+/// 日数は入れない(毎日変わる数が本文に入ると、同じ候補を毎日入れ直してしまう)。
+pub fn layer_drift_detail(repo: &str, drifts: &[record_layer::drift::Drift]) -> String {
+    let listed: Vec<String> = drifts
+        .iter()
+        .take(RECORD_LAYER_LISTED)
+        .map(|d| format!("{}({})", d.path, d.layer))
+        .collect();
+    let rest = drifts.len().saturating_sub(RECORD_LAYER_LISTED);
+    let more = if rest > 0 {
+        format!(" ほか{rest}件。")
+    } else {
+        String::new()
+    };
+    format!(
+        "{repo} で、宣言した層に比べて書き換わる速さが速すぎるファイルがあります(直近{}日で、L0 は{}日以上・L1 は{}日以上・L2 は毎日、書き換わったもの): {}。{more} \
+         層は記録の種類に当てるもので、コミット数そのものではありません。記録が日〜都度(L3)の速さで入れ替わるなら、\
+         Git の外(Obsidian Vault)へ移し、層の宣言を直してください。速さが一時的なものなら、宣言はそのままで構いません。",
+        record_layer::drift::WINDOW_DAYS,
+        record_layer::drift::drift_threshold(record_layer::Layer::L0).unwrap_or(0),
+        record_layer::drift::drift_threshold(record_layer::Layer::L1).unwrap_or(0),
+        listed.join(" / ")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,5 +892,48 @@ mod tests {
         let found = calibrate(&many(3, "form-check", "dropped", "one-off"), vocab);
         // 件数と理由の id と語彙のパスだけ。
         assert!(found[0].1.chars().count() < 400, "{found:?}");
+    }
+
+    #[test]
+    fn record_layer_texts_are_stable_and_bounded() {
+        assert_eq!(
+            layer_declaration_title("o/r"),
+            layer_declaration_title("o/r"),
+            "題に件数や日を入れない"
+        );
+        let problems: Vec<String> = (0..13).map(|i| format!("p{i}: x")).collect();
+        let detail = layer_declaration_detail("o/r", &problems);
+        assert!(
+            detail.contains("p9: x") && !detail.contains("p10: x"),
+            "{detail}"
+        );
+        assert!(detail.contains("ほか3件"), "{detail}");
+
+        let drifts: Vec<record_layer::drift::Drift> = (0..2)
+            .map(|i| record_layer::drift::Drift {
+                path: format!("src/{i}.rs"),
+                layer: record_layer::Layer::L1,
+                days: 5 + i,
+            })
+            .collect();
+        let detail = layer_drift_detail("o/r", &drifts);
+        assert!(detail.contains("src/0.rs(L1) / src/1.rs(L1)"), "{detail}");
+        assert!(
+            !detail.contains("(5)") && !detail.contains("6日"),
+            "{detail}"
+        );
+    }
+
+    #[test]
+    fn layer_defect_lines_name_the_path_and_the_cause() {
+        assert!(
+            layer_defect_line(&record_layer::Defect::Uncovered("a/b".into()))
+                .contains("a/b: どの glob にも当たらない")
+        );
+        let l = layer_defect_line(&record_layer::Defect::Overlapping(
+            "a/b".into(),
+            vec!["a/**".into(), "a/b".into()],
+        ));
+        assert!(l.contains("a/** と a/b"), "{l}");
     }
 }

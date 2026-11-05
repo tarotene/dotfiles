@@ -453,3 +453,120 @@ fn an_unchanged_discrepancy_is_not_added_again_on_the_next_day() {
     w.run(&[("OBSIDIAN_VAULT", &vault)], false);
     assert_eq!(w.add_log(), first, "同じ食い違いを翌日も入れ直した");
 }
+
+// ---- 記録の層(#1310): 宣言のあるチェックアウトだけを読む ----
+
+fn git_in(dir: &Path, envs: &[(&str, &str)], args: &[&str]) {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+        ])
+        .args(args);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    assert!(cmd.output().unwrap().status.success(), "git {args:?}");
+}
+
+/// `<ghr>/github.com/o/r` に git リポジトリを作り、宣言(あれば)と `tracked` のファイルを書いてコミットする。
+fn declared_checkout(w: &World, declaration: Option<&str>, tracked: &[&str]) -> std::path::PathBuf {
+    let repo = w.p("ghr/github.com/o/r");
+    fs::create_dir_all(&repo).unwrap();
+    git_in(&repo, &[], &["init", "-q", "-b", "main"]);
+    if let Some(d) = declaration {
+        fs::create_dir_all(repo.join(".config")).unwrap();
+        fs::write(repo.join(".config/record-layers.toml"), d).unwrap();
+    }
+    for f in tracked {
+        fs::create_dir_all(repo.join(f).parent().unwrap()).unwrap();
+        fs::write(repo.join(f), "x").unwrap();
+    }
+    git_in(&repo, &[], &["add", "-A"]);
+    git_in(&repo, &[], &["commit", "-q", "-m", "init"]);
+    repo
+}
+
+fn run_with_ghr(w: &World) -> String {
+    let out = w.run(
+        &[("PROMOTION_DETECT_GHR_DIR", w.p("ghr").to_str().unwrap())],
+        true,
+    );
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+#[test]
+fn a_declaration_that_leaves_a_tracked_file_uncovered_is_reported() {
+    let w = World::new("[]");
+    declared_checkout(
+        &w,
+        Some("[[path]]\nglob = \".config/*\"\nlayer = \"L1\"\n[[path]]\nglob = \"docs/**\"\nlayer = \"L1\"\n"),
+        &["docs/a.md", "src/b.rs"],
+    );
+    let stdout = run_with_ghr(&w);
+    assert!(
+        stdout.contains("記録の層の宣言に欠陥があります(o/r"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("src/b.rs: どの glob にも当たらない"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn a_broken_declaration_is_reported_not_skipped() {
+    let w = World::new("[]");
+    declared_checkout(&w, Some("[[path]]\nglob = \"a\"\nlayer = \"L9\"\n"), &["a"]);
+    let stdout = run_with_ghr(&w);
+    assert!(
+        stdout.contains("記録の層の宣言に欠陥があります"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn an_l1_file_rewritten_on_five_days_is_reported_as_drift() {
+    let w = World::new("[]");
+    let repo = declared_checkout(
+        &w,
+        Some("[[path]]\nglob = \"**\"\nlayer = \"L1\"\n"),
+        &["hot.md", "cold.md"],
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    for i in 0..5u64 {
+        fs::write(repo.join("hot.md"), format!("v{i}")).unwrap();
+        let when = format!("{} +0000", now - i * 86_400);
+        git_in(
+            &repo,
+            &[("GIT_COMMITTER_DATE", &when), ("GIT_AUTHOR_DATE", &when)],
+            &["commit", "-q", "-a", "-m", "touch"],
+        );
+    }
+    let stdout = run_with_ghr(&w);
+    assert!(
+        stdout.contains("実測の変化の速さがずれています(o/r)"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("hot.md(L1)"), "{stdout}");
+    assert!(!stdout.contains("cold.md(L1)"), "{stdout}");
+}
+
+#[test]
+fn a_checkout_without_a_declaration_is_not_read() {
+    let w = World::new("[]");
+    declared_checkout(&w, None, &["src/b.rs"]);
+    let stdout = run_with_ghr(&w);
+    assert!(!stdout.contains("記録の層"), "{stdout}");
+}

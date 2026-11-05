@@ -13,6 +13,7 @@
 //!   PROMOTION_DETECT_STATE_DIR    既定 "${XDG_STATE_HOME:-$HOME/.local/state}/claude"
 //!   PROMOTION_DETECT_INBOX_PATH   既定 "<state_dir>/wrapup/<repo_slug>.jsonl"
 //!   PROMOTION_DETECT_WORKLOG_BIN  既定 "$HOME/.local/bin/worklog"(vault を宣言している機体だけが呼ぶ)
+//!   PROMOTION_DETECT_GHR_DIR      既定 "$HOME/.ghr"(`<host>/<owner>/<repo>` のチェックアウトのうち、記録の層の宣言を持つものだけを読む)
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -130,6 +131,17 @@ fn main() {
         }
     }
 
+    // --- 記録の層(#1310): 宣言のあるチェックアウトの、宣言の欠陥と、変化の速さのずれ ---
+    // Write の拒否(`record-layer-guard`)は Edit と Bash の書き込みを見ないので、宣言と実測のずれはここで毎日拾う。
+    // 宣言を持たないチェックアウト(会社・org のリポジトリを含む)は読まない(opt-in)。
+    let ghr_dir =
+        env_path("PROMOTION_DETECT_GHR_DIR").or_else(|| home.as_ref().map(|h| h.join(".ghr")));
+    if let Some(ghr_dir) = ghr_dir {
+        for (label, checkout) in declared_checkouts(&ghr_dir) {
+            candidates.extend(check_record_layers(&label, &checkout));
+        }
+    }
+
     // 前回と同じ候補(題も本文も同じ)は入れ直さない。毎日の timer が同じ候補を入れると、ノートの行が
     // 1 日に 1 つ増え、「再発の回数」(行数)が膨らむ。本文が変われば(件数が増えた、など)入れ直す。
     let emitted_path = state_dir.join("promotion-detect").join("emitted.json");
@@ -167,6 +179,102 @@ fn write_emitted(path: &Path, emitted: &Emitted) {
     if let Ok(text) = serde_json::to_string_pretty(emitted) {
         let _ = std::fs::write(path, text);
     }
+}
+
+/// `<ghr>/<host>/<owner>/<repo>` のうち、記録の層の宣言(`.config/record-layers.toml`)を持つチェックアウト。
+/// `(owner/repo, パス)` を、ラベルの昇順で返す。`git-audit-worktrees` と同じ置き場の規約(`~/.ghr`)。
+fn declared_checkouts(ghr_dir: &Path) -> Vec<(String, PathBuf)> {
+    fn dirs(p: &Path) -> Vec<PathBuf> {
+        let Ok(rd) = std::fs::read_dir(p) else {
+            return Vec::new();
+        };
+        let mut v: Vec<PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        v.sort();
+        v
+    }
+    let mut out = Vec::new();
+    for host in dirs(ghr_dir) {
+        for owner in dirs(&host) {
+            for repo in dirs(&owner) {
+                if !repo.join(record_layer::DECLARATION_PATH).is_file() {
+                    continue;
+                }
+                let name = |p: &Path| p.file_name().and_then(|n| n.to_str()).map(str::to_string);
+                if let (Some(o), Some(r)) = (name(&owner), name(&repo)) {
+                    out.push((format!("{o}/{r}"), repo));
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// 1 つのチェックアウトの記録の層を検査して、候補(題, 本文)にする。
+/// 宣言を読めない・追跡ファイルを覆えていない → 宣言の欠陥。宣言が正しければ、直近 7 日の書き換えの速さを実測する。
+/// git が読めないチェックアウトは何も出さない(別の検査の領分)。
+fn check_record_layers(label: &str, checkout: &Path) -> Vec<(String, String)> {
+    let declaration = |problems: Vec<String>| {
+        (
+            promotion_detect::layer_declaration_title(label),
+            promotion_detect::layer_declaration_detail(label, &problems),
+        )
+    };
+    let Ok(text) = std::fs::read_to_string(checkout.join(record_layer::DECLARATION_PATH)) else {
+        return Vec::new();
+    };
+    let decl = match record_layer::Declaration::parse(&text) {
+        Ok(d) => d,
+        Err(e) => return vec![declaration(vec![e.to_string()])],
+    };
+    let Some(listing) = git_repository::raw(checkout, &["ls-files", "-z"]) else {
+        return Vec::new();
+    };
+    let files: Vec<String> = String::from_utf8_lossy(&listing)
+        .split('\0')
+        .filter(|f| !f.is_empty())
+        .map(str::to_string)
+        .collect();
+    let defects = record_layer::check_files(&decl, files.iter().map(String::as_str));
+    if !defects.is_empty() {
+        return vec![declaration(
+            defects
+                .iter()
+                .map(promotion_detect::layer_defect_line)
+                .collect(),
+        )];
+    }
+    let since = format!("--since={}.days.ago", record_layer::drift::WINDOW_DAYS);
+    let Some(log) = git_repository::out(
+        checkout,
+        &[
+            "log",
+            &since,
+            "--name-only",
+            "--no-renames",
+            "--format=@%cs",
+        ],
+    ) else {
+        return Vec::new();
+    };
+    let tracked: std::collections::HashSet<&str> = files.iter().map(String::as_str).collect();
+    let touch: std::collections::BTreeMap<String, usize> =
+        record_layer::drift::parse_touch_log(&log)
+            .into_iter()
+            .filter(|(p, _)| tracked.contains(p.as_str()))
+            .collect();
+    let drifts = record_layer::drift::detect_layer_drift(&decl, &touch);
+    if drifts.is_empty() {
+        return Vec::new();
+    }
+    vec![(
+        promotion_detect::layer_drift_title(label),
+        promotion_detect::layer_drift_detail(label, &drifts),
+    )]
 }
 
 /// この機体が vault を宣言しているか(`OBSIDIAN_VAULT` かマーカーファイル。他の道具と同じ宣言)。
