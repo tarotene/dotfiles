@@ -1,4 +1,4 @@
-# 記録の層(L0〜L4)の宣言(ADR-0000 record-layers、#1310)。「パス(glob)→ 層」の配列。
+# 記録の層(L0〜L4)の宣言(ADR-1358 record-layers、#1310)。「パス(glob)→ 層」の配列。
 #
 # - 層の語彙は L0〜L4 の閉集合。L0 不変(追記のみ)・L1 年〜月・L2 週は Git に置く。
 #   L3 日〜都度・L4 機械生成は Git の外に置く(L3 は Obsidian Vault が第一候補、L4 は vault の外)。
@@ -28,7 +28,7 @@ glob = "config/**"
 layer = "L1"
 
 # `crates/model-catalog/catalog.toml` は手書きの部分と GENERATED ブロックが 1 ファイルに混在する。
-# 分割は別の作業で扱い(ADR-0000 record-layers D5)、分割するまでは crates 配下の一部として L1 と宣言する。
+# 分割は別の作業で扱い(ADR-1358 record-layers D5)、分割するまでは crates 配下の一部として L1 と宣言する。
 [[path]]
 glob = "crates/**"
 layer = "L1"
@@ -59,7 +59,7 @@ glob = "docs/assets/*"
 layer = "L1"
 
 # `cargo run -p pipeline-map -- render` が `pipeline-map.toml` から作る図(.d2 と .svg)。生成のたびに作り直される L4。
-# 置き場(Git の外のどこか)は別の作業で決める(ADR-0000 record-layers D5)。決まるまでは Git に残すが、
+# 置き場(Git の外のどこか)は別の作業で決める(ADR-1358 record-layers D5)。決まるまでは Git に残すが、
 # Write では作らない(拒否される)。
 [[path]]
 glob = "docs/assets/pipeline-map/**"

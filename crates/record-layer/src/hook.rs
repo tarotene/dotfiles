@@ -8,7 +8,7 @@
 //! 宣言のどの glob にも重なって当たる(宣言の欠陥)、`.gitignore` の対象、`.git/` の中。
 //! 宣言の欠陥は、日次のずれ検出(`promotion-detect`)と `cargo test` の網羅検査が拾う。
 //!
-//! 拒否するのは Write だけ。Edit と Bash の書き込みは、日次のずれ検出で拾う(ADR-0000 record-layers)。
+//! 拒否するのは Write だけ。Edit と Bash の書き込みは、日次のずれ検出で拾う(ADR-1358 record-layers)。
 
 use crate::{Declaration, Layer, Lookup, DECLARATION_PATH};
 use agent_session::{HookInput, Outcome};

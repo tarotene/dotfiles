@@ -1,6 +1,6 @@
 # record-layers — 記録の層(L0〜L4)の宣言と、Write の拒否・日次のずれ検出
 
-設計の正本は `docs/adr/0000-record-layers.md`(層の定義、宣言の形、拒否の範囲、検出のしきい値)。この文書は、運用の手順をまとめる。
+設計の正本は `docs/adr/1358-record-layers.md`(層の定義、宣言の形、拒否の範囲、検出のしきい値)。この文書は、運用の手順をまとめる。
 判定は `crates/record-layer`(lib)が 1 か所に持ち、`hook-router` の規則 `record-layer-guard` と `promotion-detect` が同じ関数を呼ぶ。
 
 ## 層

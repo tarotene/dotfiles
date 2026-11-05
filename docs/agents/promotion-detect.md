@@ -48,7 +48,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
    - 今後、状態を Git の外へ移す変更は、同じ形の check を移す PR に同梱して、ここに足す。
    `worklog` の場所は `PROMOTION_DETECT_WORKLOG_BIN`(既定 `~/.local/bin/worklog`)。
 
-7. **記録の層の宣言と実測のずれ(#1310、ADR-0000 record-layers)**: `PROMOTION_DETECT_GHR_DIR`(既定 `~/.ghr`)の下の
+7. **記録の層の宣言と実測のずれ(#1310、ADR-1358 record-layers)**: `PROMOTION_DETECT_GHR_DIR`(既定 `~/.ghr`)の下の
    `<host>/<owner>/<repo>` のうち、`.config/record-layers.toml`(記録の層の宣言)を持つチェックアウトだけを読む。宣言の無い
    チェックアウト(会社・org のリポジトリを含む)は読まない。判定は `crates/record-layer`(`record-layer-guard` と同じ宣言・
    同じ照合)。詳細は [record-layers.md](record-layers.md)。

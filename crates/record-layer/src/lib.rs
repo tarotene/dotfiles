@@ -1,4 +1,4 @@
-//! record-layer — 記録の層(L0〜L4)の宣言を読み、パスの層を引く(#1310、ADR-0000 record-layers)。
+//! record-layer — 記録の層(L0〜L4)の宣言を読み、パスの層を引く(#1310、ADR-1358 record-layers)。
 //!
 //! 個人のリポジトリに追跡されている記録を、効いている期間(入れ替わる速さ)で L0〜L4 に分ける。
 //! 宣言はリポジトリの `.config/record-layers.toml` で、「パス(glob)→ 層」の配列。語彙は

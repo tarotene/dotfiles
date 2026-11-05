@@ -1,6 +1,6 @@
 //! dotfiles 自身の宣言(`.config/record-layers.toml`)が、追跡されているファイルをちょうど 1 つの glob で
 //! 覆っていること。新しいパスを足したのに宣言を直さなかった PR は、ここで落ちる(CI の `cargo test`)。
-//! 重なりと漏れの検査は、glob 同士の包含を調べず、実在のファイルへの当たり方に落としている(ADR-0000 record-layers)。
+//! 重なりと漏れの検査は、glob 同士の包含を調べず、実在のファイルへの当たり方に落としている(ADR-1358 record-layers)。
 
 use record_layer::{check_files, Declaration, Layer, Lookup, DECLARATION_PATH};
 use std::path::Path;
@@ -79,7 +79,7 @@ fn the_declaration_covers_itself_and_the_known_special_cases() {
         decl.lookup("docs/assets/pipeline-map/overview.svg"),
         Lookup::One(Layer::L4)
     );
-    // 手書きと GENERATED ブロックが混在するので、分割するまで L1 と宣言している(ADR-0000 D5)。
+    // 手書きと GENERATED ブロックが混在するので、分割するまで L1 と宣言している(ADR-1358 D5)。
     assert_eq!(
         decl.lookup("crates/model-catalog/catalog.toml"),
         Lookup::One(Layer::L1)
