@@ -99,6 +99,7 @@ herdr のサイドバーには、hook の metadata、statusline、claude-usage�
 2. 登録箇所にポインタを書く。Claude Code の hook 宣言は nix 属性 `node = "<id>";`、timer と launchd agent は定義のそばの `dotfiles.pipeline.timerNodes.<名前> = "<id>";`(名前は `systemd.user.timers.<名前>` / `launchd.agents.<名前>` と同じ)、それ以外は登録の直前のコメント `pipeline-node: <id>`(Codex / Copilot の登録呼び出し、workflow、git hook、herdr の command 行、statusline の定義、`systemd.user.tmpfiles.rules`)。
 3. `cargo test -p pipeline-map` で、ポインタの漏れ・未定義の id・登録の無い自動ノードを確かめる。nix の評価時には、hook 宣言と、timer・launchd agent の対応付けの漏れが検査される(`hms` で早く気づく)。
 4. 図を作り直す: `nix develop` の中で `cargo run -p pipeline-map -- render`。`docs/assets/pipeline-map/` の差分をコミットする。CI が同じ手順で再生成し、差分があれば落とす。
+   Claude Code の sandbox の中では、`hms` で `~/.cargo/registry` の書き込み許可(`home/modules/runtimes.nix`)と PATH 上の `d2`(`home/modules/packages.nix`)が入った後なら、`nix develop` なしで `cargo run -p pipeline-map -- render` が通る。入る前は、`nix develop` が nix daemon のソケットを要するので、sandbox の外(`dangerouslyDisableSandbox`)で行う。
 5. 図を目視する(矢印の接続、はみ出し、重なり)。
 
 消すときも同じで、manifest のノードを消す。登録箇所が無くなった `auto = true` のノードは `cargo test` が落とす。

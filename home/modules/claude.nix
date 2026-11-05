@@ -80,7 +80,15 @@ let
   # 評価される、docs/agents/pkexec-guard.md 参照)。guard 自身が通すのは
   # `/usr/bin/pkexec <許可リスト> ...` の形だけなので、ここも同じ絶対パスで
   # 揃える(裸の `pkexec` はこのルールに一致せず、guard が deny する)。
-  askRules = [ "Bash(/usr/bin/pkexec *)" ];
+  #
+  # `google-chrome --headless=new *`(#1334)も同じ型の ask。headless Chrome は sandbox の中では
+  # Unix ソケットを作れず落ちるので excludedCommands で外に出すが、外では全権限で動く。歯止めは
+  # この ask だけなので、除外と必ず対にする(ask の画面が出ないと分かったら、除外を外す)。
+  # 照合は先頭の語列 + 末尾 `*` だけが効く(excludedCommands のコメント参照)。
+  askRules = [
+    "Bash(/usr/bin/pkexec *)"
+    "Bash(google-chrome --headless=new *)"
+  ];
   retiredAskRules = [ ];
 
   # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
@@ -262,6 +270,14 @@ in
         "nix eval *"
         "nix flake *"
         "nix fmt *"
+        # Headless Chrome creates Unix domain sockets (its IPC and crash handler), which the
+        # sandbox denies (#1334; measured inside the sandbox 2026-11-05). It is excluded only
+        # in this exact form, `google-chrome --headless=new <args>`, so a bare `google-chrome`
+        # or another flag set stays sandboxed. It runs with full access, so `askRules` above
+        # carries the same pattern and every call asks first. A call that chains it with
+        # another command, or redirects its output, stays sandboxed (see the matching note
+        # at the top of this list): call it alone.
+        "google-chrome --headless=new *"
       ];
       description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
     };

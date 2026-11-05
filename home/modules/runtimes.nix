@@ -19,7 +19,17 @@
   # `Read-only file system (os error 30)` at ~/.cache/uv (measured 2026-10-29). The tool owns
   # this directory, so declare just it (docs/agents/agent-permissions.md, #1164). The matching
   # network destinations (pypi.org, files.pythonhosted.org) are in agent-permissions.nix.
-  dotfiles.claudePermissions.allowWrite = [ "~/.cache/uv" ];
+  #
+  # cargo's crate registry (the downloaded index and crate sources). Inside the sandbox it was
+  # read-only, so `cargo metadata --offline --locked` (what `cargo run -p pipeline-map -- render`
+  # starts with) failed with exit 101 on a write under ~/.cargo (measured 2026-11-05). Declare
+  # just the registry, not ~/.cargo: `~/.cargo/bin` holds executables the sandbox must not be
+  # able to replace. Fetching a crate that is not cached yet also needs crates.io hosts, which are
+  # not in `domains`; that case is not measured yet.
+  dotfiles.claudePermissions.allowWrite = [
+    "~/.cache/uv"
+    "~/.cargo/registry"
+  ];
 
   home.packages = with pkgs; [
     # Runtime meta-tools; their shell hooks come from the zsh modules

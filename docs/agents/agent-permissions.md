@@ -173,6 +173,17 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 `~/.cache/uv` を `allowWrite` に足し、`domains` の既定に `pypi.org`・`files.pythonhosted.org`・`docs.python.org` を足した。
 `numpy.org` のように 1 つのリポジトリだけが使う宛先は、共有の `domains` に足さない。
 
+**cargo のレジストリと headless Chrome(2026-11-05、#1334)**: sandbox の中の `cargo metadata --offline --locked` が、
+`~/.cargo/registry/src` を作れず `Read-only file system (os error 30)` で落ちた(`cargo run -p pipeline-map -- render` の最初の段)。
+uv のキャッシュと同じ型なので、`runtimes.nix` が `~/.cargo/registry` だけを `allowWrite` に足した(`~/.cargo/bin` は足さない)。
+未取得の crate を取る通信先(crates.io)は `domains` に無く、足していない(未実測)。一方、headless Chrome は sandbox の中で
+Unix ソケットを作れず落ちる。`allowAllUnixSockets` は D-Bus・鍵束に届くので採らず、`google-chrome --headless=new *` を
+`excludedCommands` に足し、同じパターンを `askRules` にも足した。外では全権限で動くので、歯止めは ask だけになる。
+ask の画面が実際に出るかは、`hms` で適用した後でないと確かめられない(未実測)。出ないと分かったら、除外を外す。
+図(SVG)の PNG 化は、ブラウザを使わない `librsvg`(`rsvg-convert`)に任せ、sandbox の中で行う。
+Codex 側は、書き込み先が `workspace`・`temp` の 2 つの記号だけで(`agent-permissions.nix` の `writable_roots`)、道具ごとの
+キャッシュの宣言を持たないので、対応する変更は無い。
+
 宣言の仕組み・キーは [claude-permissions](../claude/claude-permissions.md#sandbox自動モード秘密パスも宣言する2026-10-27) に書く。
 
 ## 旧共有管理を撤去する
