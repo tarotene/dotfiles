@@ -78,6 +78,10 @@ glob = "licenses/**"
 layer = "L1"
 
 [[path]]
+glob = "nix/**"
+layer = "L1"
+
+[[path]]
 glob = "packages/**"
 layer = "L1"
 
