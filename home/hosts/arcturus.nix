@@ -27,6 +27,7 @@
   # config/ by scripts/install-packages.sh; the relay that feeds it is
   # home/modules/webcam-builtin.nix. (vega dropped v4l2loopback in #956 — no
   # consumer there; this host has one.)
+  dotfiles.webcam.builtin.enable = true;
   dotfiles.apt.extraPackages = [
     "# v4l2loopback: virtual camera device for the built-in IPU7 camera, whose"
     "# /dev/video0-31 only yield raw Bayer (docs/webcam-builtin-ipu7.md)."
