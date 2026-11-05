@@ -115,14 +115,21 @@ check_filename_matches_h1() {
 }
 
 check_readme_index() {
-  local adr_dir="$1" readme="$2" file base num fails=0
+  # $3 は表示用の索引のパス(`ADR_INDEX` の値)。実体は $2。
+  local adr_dir="$1" readme="$2" label="${3:-docs/README.md}" file base num fails=0
   for file in "$adr_dir"/*.md; do
     [[ -f $file ]] || continue
     base="$(basename "$file")"
     num="$(adr_number_of "$base")"
     [[ -n $num ]] || continue
+    # 索引ファイル自体が無いとき、ADR ごとの「未リンク」を並べず 1 行だけ示す
+    # (全 ADR 分の行に、本物の失敗が埋もれた)。終了コードは変えない。
+    if [[ ! -f $readme ]]; then
+      echo "adr-number-check: ADR の索引 $label がありません。索引を持たないリポジトリは ADR_INDEX= を空にして呼ぶ" >&2
+      return 1
+    fi
     if ! grep -qE "\[ADR-${num}\]" "$readme" 2> /dev/null; then
-      echo "adr-number-check: ADR-$num が docs/README.md の索引にリンクされていません" >&2
+      echo "adr-number-check: ADR-$num が $label の索引にリンクされていません" >&2
       fails=1
     fi
   done
@@ -402,6 +409,15 @@ selftest() {
   self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
   idx_run() { (cd "$idxrepo" && env "$@" bash "$self"); }
   check "17 索引が無く ADR_INDEX 未設定なら検出" 1 idx_run
+  # 索引ファイル自体が無いとき、ADR ごとの「未リンク」を並べず 1 行で示す。
+  idx_missing_one_line() {
+    local out
+    out="$(idx_run "$@" 2>&1 > /dev/null || true)"
+    [[ "$(printf '%s\n' "$out" | wc -l)" == 1 ]] \
+      && grep -qF 'ADR の索引 docs/README.md がありません' <<< "$out" \
+      && grep -qF 'ADR_INDEX= を空にして' <<< "$out"
+  }
+  check "17b 索引が無いときは 1 行だけ示す" 0 idx_missing_one_line
   check "18 ADR_INDEX を空にすると索引検査を無効化" 0 idx_run ADR_INDEX=
   printf -- '- [ADR-0001](adr/0001-a.md)\n' > "$idxrepo/docs/adr/README.md"
   check "19 ADR_INDEX で索引パスを変更できる" 0 idx_run ADR_INDEX=docs/adr/README.md
@@ -561,19 +577,20 @@ main() {
     esac
   done
 
-  local repo_root adr_dir readme fails=0
+  local repo_root adr_dir readme readme_label fails=0
   repo_root="$(git rev-parse --show-toplevel 2> /dev/null || pwd)"
   adr_dir="$repo_root/docs/adr"
   # 未設定は既定の docs/README.md、空文字は索引検査の無効化(索引を持たない
   # リポジトリ向け)。`${VAR-default}` は未設定のときだけ default を使う。
-  readme="${ADR_INDEX-docs/README.md}"
+  readme_label="${ADR_INDEX-docs/README.md}"
+  readme="$readme_label"
   [[ -z $readme ]] || readme="$repo_root/$readme"
 
   check_no_duplicates "$adr_dir" || fails=1
   check_no_draft "$adr_dir" || fails=1
   check_filename_matches_h1 "$adr_dir" || fails=1
   if [[ -n $readme ]]; then
-    check_readme_index "$adr_dir" "$readme" || fails=1
+    check_readme_index "$adr_dir" "$readme" "$readme_label" || fails=1
   fi
 
   if [[ -n $base ]]; then
