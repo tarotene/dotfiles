@@ -29,6 +29,7 @@
     ./modules/downloads.nix
     ./modules/scratch-retention.nix
     ./modules/flatpak.nix
+    ./modules/webcam-builtin.nix
     ./modules/obsidian-vault.nix
     ./modules/obsidian-livesync.nix
     ./modules/local-state-backup.nix
