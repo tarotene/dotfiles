@@ -142,8 +142,9 @@ worklog offer list [--all]                                                      
 
 ## SKILL への反映案
 
-`slot-availability/SKILL.md` と `inbox-adjudication/SKILL.md` は、この文書を書いた段では書き換えていない(Issue #1315 の 5 段の散文が先に入るため、
-同じ行を 2 つの段が書き換えない)。散文を `worklog offer` の呼び出しに置き換えるときの文面案を次に示す。
+`slot-availability/SKILL.md` の「候補を相手に出すときの順序」(#1315 が散文の 5 段で入れたもの)と、
+`inbox-adjudication/SKILL.md` の「代行送信の前に、本人の確認を取る」の日程の段落は、同じ PR で `worklog offer`
+の呼び出しに置き換えた。次は、置き換えた文面の控え(SKILL 側が正本)。
 
 ### `slot-availability/SKILL.md` の「発行側の打診」の、仮押さえの 5 段の散文と置き換える
 
