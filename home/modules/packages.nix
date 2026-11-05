@@ -201,6 +201,19 @@
       # (`xvfb-run -a drawio -x ...`, see desktop.nix). Linux-only: macOS has no X
       # server to fake, and drawio draws without one there.
       pkgs.xvfb-run
+
+      # rsvg-convert (#1334): SVG -> PNG without a browser, for the PR Before/After
+      # evidence of a diagram (config/agents/skills/pr-description/SKILL.md §5). It runs
+      # inside the Claude sandbox, whereas headless Chrome cannot create its Unix sockets
+      # there. Linux-only like the rest of this list: the sandbox is the reason it is here.
+      pkgs.librsvg
+
+      # d2: the diagram renderer `cargo run -p pipeline-map -- render` calls
+      # (docs/pipeline-map.md, ADR-872). flake.nix's devShell has it too, but `nix develop`
+      # cannot run inside the Claude sandbox (it needs the nix daemon socket), so the
+      # sandboxed agent needs it on PATH to regenerate the diagrams. The devShell entry
+      # stays: CI and darwin use it, and the flake.lock pin is the shared version.
+      pkgs.d2
     ];
 
   # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
