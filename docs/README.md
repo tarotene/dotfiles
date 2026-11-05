@@ -39,6 +39,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`webcam-osmo-pocket-3.md`](webcam-osmo-pocket-3.md) — Osmo Pocket 3 を
   vega の常用 Web カメラ + マイクにする: 機器側・アプリ側の手順、既定マイクを
   WirePlumber で固定する仕組み、実測値と未確認事項。
+- [`webcam-builtin-ipu7.md`](webcam-builtin-ipu7.md) — arcturus の内蔵カメラ
+  (Intel IPU7)を Web カメラにする: libcamera + v4l2loopback の仕組み、
+  使い方、`v4l2-relayd` の落とし穴、実測値と未確認事項。
 - [`github-audit.md`](github-audit.md) — read-only cross-repository GitHub
   audit unified across six domains (rulesets #130 / charters / naming
   ADR-0014 / settings / renovate — ADR-0015 / titles — ADR-0031): why it
