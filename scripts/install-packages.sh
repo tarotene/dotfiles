@@ -20,6 +20,10 @@ set -euo pipefail
 #     artifacts are not lost to a power cut (config/tmpfiles/tmp.conf)
 #   - Waydroid (Android container: root, a system service, kernel binder) and
 #     its apt repo, only on a host whose package list names `waydroid` — #323
+#   - built-in camera (Intel IPU7) files under /etc: a udev rule opening
+#     /dev/udmabuf for libcamera's software ISP, and the v4l2loopback module
+#     options + load list behind the virtual camera (config/udev,
+#     config/modprobe.d, config/modules-load.d; hosts with the IPU7 driver only)
 #
 # User-space CLIs are managed by home-manager (home/modules/packages.nix).
 # Usage: ./install-packages.sh [--dry-run]
@@ -105,6 +109,29 @@ if [[ -f "$TMP_DIST_CONF" && -f "$TMP_OVERRIDE_SRC" ]] \
     tmp_override_stale=true
 fi
 
+# Built-in camera (Intel IPU7) system-layer files: udev rule opening /dev/udmabuf
+# for libcamera's software ISP, plus the v4l2loopback module options and load
+# list behind the virtual /dev/video40 the apps open (home/modules/webcam-builtin.nix
+# feeds it). Gated on the IPU7 PCI driver being bound — hosts without that
+# camera (vega, CI) skip it — and on each deployed copy differing from the
+# checkout's, so a re-run is a no-op.
+CAM_IPU7_DRIVER="/sys/bus/pci/drivers/intel-ipu7"
+CAM_FILES=(
+    "udev/70-udmabuf-uaccess.rules:/etc/udev/rules.d/70-udmabuf-uaccess.rules"
+    "modprobe.d/v4l2loopback-builtin-camera.conf:/etc/modprobe.d/v4l2loopback-builtin-camera.conf"
+    "modules-load.d/v4l2loopback-builtin-camera.conf:/etc/modules-load.d/v4l2loopback-builtin-camera.conf"
+)
+cam_stale=false
+if [[ -d "$CAM_IPU7_DRIVER" ]]; then
+    for pair in "${CAM_FILES[@]}"; do
+        src="${SCRIPT_DIR}/../config/${pair%%:*}"
+        dst="${pair#*:}"
+        if [[ -f "$src" ]] && ! cmp -s "$src" "$dst"; then
+            cam_stale=true
+        fi
+    done
+fi
+
 # Tailscale apt repo/keyring (ADR-471): `tailscale` in apt-packages.txt needs
 # a third-party repo added before `apt-get update` can resolve it. Gated on
 # the keyring file the same way probe-rs's udev rule is gated below — a
@@ -138,6 +165,9 @@ if [[ "$DRY_RUN" == "true" ]]; then
     fi
     if [[ "$tmp_override_stale" == "true" ]]; then
         echo "[dry-run] Would install $TMP_OVERRIDE_DST (/tmp kept across reboot, 14-day age sweep)"
+    fi
+    if [[ "$cam_stale" == "true" ]]; then
+        echo "[dry-run] Would install the built-in camera files (udmabuf udev rule, v4l2loopback options) and load v4l2loopback"
     fi
     if [[ "$tailscale_repo_new" == "true" ]]; then
         echo "[dry-run] Would install Tailscale apt repo and run 'tailscale up --operator=\$USER'"
@@ -200,6 +230,20 @@ fi
 if [[ "$tmp_override_stale" == "true" ]]; then
     echo "Installing /tmp retention override..."
     sudo install -D -m 0644 "$TMP_OVERRIDE_SRC" "$TMP_OVERRIDE_DST"
+fi
+
+# Built-in camera files (see the CAM_* block above). The udev rule only tags
+# newly added devices, so re-trigger /dev/udmabuf to apply it to the running
+# system; modprobe loads v4l2loopback with the deployed options (a no-op when
+# it is already loaded, in which case a changed option applies at next boot).
+if [[ "$cam_stale" == "true" ]]; then
+    echo "Installing built-in camera files..."
+    for pair in "${CAM_FILES[@]}"; do
+        sudo install -D -m 0644 "${SCRIPT_DIR}/../config/${pair%%:*}" "${pair#*:}"
+    done
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger --action=change --name-match=udmabuf
+    sudo modprobe v4l2loopback
 fi
 
 # Bring Tailscale up once, right after its first install, so `--operator`

@@ -1,0 +1,21 @@
+# libcamera の Software ISP が使う /dev/udmabuf を、物理的にその席に居るユーザーへ開ける
+# (システム層)。scripts/install-packages.sh が /etc/udev/rules.d/ へ配る。
+#
+# 背景: IPU7(Lunar Lake)の内蔵カメラは、生の Bayer を返すだけで、色と露出は libcamera の
+# Software ISP が整える。その dma-buf の確保先は、/dev/dma_heap/* か /dev/udmabuf のどちらか。
+# 配布元の規則は udmabuf を `GROUP="kvm"`(/lib/udev/rules.d/50-udev-default.rules)にとどめるので、
+# kvm グループに居ないユーザーでは Software ISP が `Could not open any dma-buf provider` で
+# 無効になり、色のない生の Bayer しか出ない。
+#
+# 同じ規則は systemd の upstream にある(rules.d/70-uaccess.rules.in、
+# `# libcamera software ISP used with some cams requires udmabuf access` の次の行、
+# 取得 2026-11-05)。この機体の systemd 255 にはまだ入っていないので、同じ 1 行を足す。
+# systemd がこの規則を取り込んだら、このファイルは同じ内容の重複になるので消す。
+#
+# /dev/dma_heap/* は開けない。検索結果の要約では、dma_heap で確保したメモリは cgroup の
+# 上限に計上されないため、物理的にその席に居るユーザーへ開けるのは好ましくないと
+# 読めた(原文は 403 で読めておらず、要約のみ)。udmabuf は同じ用途を満たし、この機体で
+# `/dev/udmabuf` だけを開けた状態の `cam` が 4K・28.57 fps で動くことを実測した(2026-11-05)。
+#
+# 番号は 70: logind の uaccess 処理(73-seat-late.rules)より前に、TAG を付ける必要がある。
+KERNEL=="udmabuf", TAG+="uaccess"
