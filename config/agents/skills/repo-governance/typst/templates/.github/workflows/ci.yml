@@ -223,6 +223,11 @@ jobs:
       - name: Install uv
         if: steps.guard.outputs.run == 'true'
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          # This job only runs `uvx zizmor`; the repository has no uv.lock/pyproject.toml,
+          # so the action's default cache glob matches nothing and warns on every run
+          # (action.yml `enable-cache: auto`, restore-cache.ts: empty hash -> warning).
+          enable-cache: false
 
       # zizmor audits workflows for vulnerabilities (token permissions, injection, etc.)
       - name: Run zizmor
