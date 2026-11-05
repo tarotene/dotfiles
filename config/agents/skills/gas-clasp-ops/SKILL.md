@@ -92,6 +92,26 @@ clasp README は `--creds` 指定時に `.clasprc.json` をカレントディレ
 `.gitignore` へ追加する必要はない — 個人で 1 つの認証情報を使い回す
 という本スキルの設計とも整合する。
 
+### 認証ファイルが読めないとき
+
+`clasp push` や `clasp login` が `Unexpected end of JSON input` で落ちるのは、clasp が `~/.clasprc.json`
+を読むときに、ファイルがあれば JSON をそのまま解析するため、空(0 バイト)だと失敗するから
+(clasp 3.3.0 のソースの `auth/file_credential_store.js` を読んだ)。保存(`save()`)も最初に読むので、
+ログインし直しも同じエラーで落ちる。
+
+- Claude Code の sandbox の中では、`~/.clasprc.json` と `~/.config/clasp` は読み取り拒否の対象になっている
+  (`home/modules/claude.nix` の `denyRead`)。拒否したファイルが空に見えて、上のエラーになる可能性がある
+  (推測。sandbox の実装を読んだだけで、使っている版で同じかは未確認)。0 バイトに見えたときは、すぐに退避も
+  ログインし直しもせず、sandbox の外(承認を得て `dangerouslyDisableSandbox` で、または本人の端末で)で
+  `ls -l ~/.clasprc.json` を実行して、実物の大きさを確かめる。実物が空でなければ、原因は sandbox の読み取り
+  拒否で、実物を触る必要はない。
+- 認証ファイルを別の保存先(`clasp --auth <file>`、環境変数 `clasp_config_auth`)に置いて回避しない。読み取り
+  拒否の外にトークンを置くことになり、拒否の意図に反する。
+- 実物が空だったときだけ、`mv ~/.clasprc.json ~/.clasprc.json.empty-<日付>` で退避して `clasp login` をやり直す
+  (退避した空のファイルは消してよい)。空になった原因は未特定で、clasp の書き込みは `fs.writeFileSync` の 1 回だ
+  けなので、同時実行や書き込み中の停止は推測にとどまる。再発したら、clasp の同時実行・トークンの更新・ディスクの
+  空きを疑う。
+
 ## 4. 日常操作
 
 ```sh
@@ -100,6 +120,17 @@ clasp push                  # ローカルのコードを Apps Script プロジ�
 clasp run-function <fn> --user run   # 関数をリモート実行し、戻り値を端末で受け取る
 clasp tail-logs              # console.log の出力を追う(Cloud Logging 経由)
 ```
+
+### `clasp push` はリモートだけにあるファイルを消さないことがある
+
+変更が 0 件のとき、`clasp push` は `Script is already up to date.` で終わり、ローカルに無くてリモートにだけ
+あるファイルを消さない(clasp 3.3.0 のソースを読んだ: `core/files.js` の `getChangedFiles` はローカルのファイル
+だけを見て、リモートだけにあるファイルを「変更」に数えない。`commands/push.js` は変更 0 件で終わる)。変更が
+1 件でもあれば、ローカルの全ファイルを送り、リモートだけにあるファイルは消える。
+
+一時的な関数のファイルをローカルで撤去したのにリモートに残るときは、ローカルのファイルに一時的な変更(コメント
+1 行など)を入れて `clasp push` で全体を送り、変更を戻してもう一度 `clasp push` する。送ったあとは、Apps Script
+の画面のファイル一覧で、撤去したファイルが無いことを読み戻す(`clasp push` の成功応答を、消えた証拠にしない)。
 
 ## 5. スクリプト側の規約
 
