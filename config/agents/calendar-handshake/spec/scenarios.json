@@ -8,6 +8,8 @@
     "REVERT": true,
     "RECONCILE": true,
     "CANCEL_PROPAGATES": true,
+    "KIND_AWARE": true,
+    "CAN_REMOTE": false,
     "CAN_CRASH": false,
     "TWO_RUNS": false,
     "CAN_EDIT_TITLE": false,
@@ -143,6 +145,20 @@
       "expect": "pass"
     },
     {
+      "name": "s7_revised",
+      "about": "S7: remote-trip の予定には不在が入らない。本人が手書きで [go] などを書いても、script は受理せず最後に受理した印へ差し戻す(種類ごとの遷移集合)",
+      "flags": { "CAN_REMOTE": true, "CAN_FORGE": true, "MAX_EDITS": 3 },
+      "invariant": ["s7"],
+      "expect": "pass"
+    },
+    {
+      "name": "s7_unaware",
+      "about": "S7 の対照: 種類を知らない会社側(版 3 までの規則)は、remote-trip の [go] も語彙の遷移として受理し、不在を入れる。会社側の配備が済むまでの穴を回帰として残す",
+      "flags": { "CAN_REMOTE": true, "KIND_AWARE": false, "MAX_EDITS": 3 },
+      "invariant": ["s7"],
+      "expect": "fail"
+    },
+    {
       "name": "l1_revised",
       "about": "L1: [go] は、いずれ [go] でなくなる(落ちる実行があっても)",
       "flags": { "CAN_CRASH": true },
@@ -166,7 +182,7 @@
     {
       "name": "cover",
       "about": "語彙の遷移ごとの到達可能性。違反の反例が出れば、その遷移を仕様が起こせる。出なければ死んだ遷移",
-      "flags": { "CAN_CANCEL": true, "CAN_EDIT_START": true, "MAX_EDITS": 4 },
+      "flags": { "CAN_CANCEL": true, "CAN_EDIT_START": true, "CAN_REMOTE": true, "MAX_EDITS": 4 },
       "per_transition": true,
       "expect": "fail"
     }

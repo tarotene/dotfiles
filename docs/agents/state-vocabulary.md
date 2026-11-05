@@ -34,6 +34,8 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
   `external:<名前>`(別リポジトリの担い手。解決しない)。`by` が `person` でも、記録を書く担い手があれば `carriers` に書く。無ければ省く。
 - `owner` が `person` の状態は、`shown_by` に本人へ見せる担い手を書く(必須)。
 - `timers`(対象ごとの数値)は時間の決まりを持つ対象だけ。握手の語彙は `token`・`hold`・`group_key` も持つ。
+- `kinds` は、同じ対象に、使える事象の集合が違う種類がある語彙(握手)だけが持つ。種類は `id`・`description`・`default`(既定の種類)・`tag`
+  (題名の印の直後の目印)・`reaches`(その種類の事象だけで到達できる状態の上限)で、持つ語彙の事象はすべて、適用する種類を `kinds` に書く。
 
 ## 検査
 
@@ -58,6 +60,7 @@ scripts/vocab-graph-check --selftest               # fixtures/ の正例・負�
 | `見せる担い手` | `owner` が `person` の状態に `shown_by` の担い手がある |
 | `担い手の解決` | `shown_by`・`carriers`・`gates` の名前が実在する |
 | `孤立` | どの事象の `to` にも現れない状態が無い |
+| `種類` | `kinds` を持つ語彙だけ(握手の語彙)。種類の id・tag が一意で、既定の種類(`default: true`)がちょうど 1 つで tag を持たず、すべての事象が宣言した種類だけを `kinds` で指す。種類ごとに、その種類の事象だけで `none` から到達できる状態があり、`reaches` を持つ種類は、そこに無い状態に至らない。`kinds` を持たない語彙の事象が `kinds` を持つのも違反 |
 | `対象の一意` | 渡した全語彙で `object` が一意 |
 
 `--skills` は、`config/agents/skills/` の各 skill(別名 `Compatibility entry for <X>` は X に読み替える)が、全語彙の

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "object": "bad-kind-reach",
+  "description": "負例(種類)。種類 special は reaches で open だけに到達できると宣言するのに、事象 finish が special を持つので closed にも至る。",
+  "initial": "none",
+  "states": [
+    { "id": "open", "terminal": false, "owner": "person", "shown_by": ["skill:alpha"] },
+    { "id": "closed", "terminal": true }
+  ],
+  "kinds": [
+    { "id": "plain", "default": true, "description": "既定の種類。" },
+    { "id": "special", "tag": "[special] ", "reaches": ["open"], "description": "open より先に至らない種類。" }
+  ],
+  "events": [
+    { "id": "begin", "from": ["none"], "to": ["open"], "by": "agent", "kinds": ["plain", "special"] },
+    { "id": "finish", "from": ["open"], "to": ["closed"], "by": "person", "kinds": ["plain", "special"] }
+  ]
+}
