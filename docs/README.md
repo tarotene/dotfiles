@@ -467,6 +467,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1311](adr/1311-git-external-state-integrity.md) — Git の外(vault)に置いた状態は PR の差分の遷移検査が効かないので、書き込み口の検査に加えて、vault を宣言している機体で日次の `promotion-detect` が `worklog mail check` を回し、食い違いを wrap-up inbox に流す(検査を回せなかったときも候補にする)。ADR-543 の timer を共有する。
 - [ADR-1358](adr/1358-record-layers.md) — 記録を効いている期間で L0〜L4 の 5 層に分け(L0〜L2 は Git、L3 日〜都度・L4 機械生成は Git の外)、リポジトリの `.config/record-layers.toml` で「パス(glob)→ 層」を宣言する(1 パス 1 層、`git ls-files` の各ファイルに当たる glob がちょうど 1 つ)。宣言のあるリポジトリでは、宣言に無いパスと L3・L4 のパスへの Write を `hook-router` の `record-layer-guard` が拒否し、宣言と変化の速さのずれを `promotion-detect` が日次で wrap-up inbox に流す。
 - [ADR-1371](adr/1371-calendar-handshake-remote-kind.md) — 握手の語彙に、勤務先の不在を入れない予定の種類 `remote-trip`(題名の状態の印の直後の tag `[remote] `)を足す。種類は語彙の `kinds` で宣言し、事象ごとに適用する種類を持たせる(`remote-trip` は `propose`・`judge`・`withdraw` だけ)。`remote-trip` に書かれた `[go] ` は語彙に無い書き換えとして最後に受理した印へ差し戻され、不在が入らない。`vocab-graph-check` の規則「種類」と、仕様の不変条件 S7(種類を知らない規則で破れる対照つき)が守る。語彙は版 4 になり、利用側は pin を上げる。
+- [ADR-1379](adr/1379-issue-creation-ball-guard.md) — `tarotene` 配下のリポジトリの `gh issue create` を、排他のボールのラベル(`ball:me|them|agent`)がちょうど 1 つあり、本文の先頭行が非公開なら `next: YYYY-MM-DD`・公開なら日付の行なし、でなければ実行前に deny する。新しい crate `issue-create-guard` を hook-router の規則に載せ、公開/非公開は `gh repo view` で引き、引けなければラベルだけを検査する(fail-open)。`ledger-status` のラベルは免除し、`gh api`・MCP からの作成は見ない。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
@@ -595,6 +596,10 @@ Design and rationale for the hooks and commands deployed from
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する
   (`crates/pr-followup-guard`、`--agent codex` で Codex にも登録)。全リポジトリで発火する。
+- [`issue-create-guard.md`](agents/issue-create-guard.md) — ADR-1379: `tarotene` 配下のリポジトリの
+  `gh issue create` を、排他のボールのラベル(`ball:me|them|agent`)がちょうど 1 つあり、本文の先頭行が
+  非公開なら `next: YYYY-MM-DD`・公開なら日付の行なし、でなければ実行前に deny する
+  (`crates/issue-create-guard`、hook-router の規則)。`ledger-status` のラベルは免除する。
 - [`adr-numbering.md`](agents/adr-numbering.md) — ADR-380: ADR 番号をローカル
   連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
   アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に

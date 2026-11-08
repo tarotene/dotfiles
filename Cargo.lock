@@ -880,6 +880,7 @@ dependencies = [
  "gh-edit-allow",
  "git-stash-guard",
  "git-worktree-create-guard",
+ "issue-create-guard",
  "jq-json-compat",
  "main-checkout-guard",
  "new-tool-guard",
@@ -956,6 +957,17 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "issue-create-guard"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
+ "git-repository",
+ "github-command",
+ "tempfile",
+]
 
 [[package]]
 name = "issue-inbox"

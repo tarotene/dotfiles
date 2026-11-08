@@ -1,7 +1,7 @@
 {
   "version": 1,
   "object": "issue",
-  "description": "Issue(通常の Issue、tracking Issue の親、閉じるまで)の状態と事象の閉語彙。元は config/agents/skills/{tracking-issue,issue-hygiene,living-description,issue-ref-freshness}/SKILL.md。tracking-issue §1 は「普通の Issue として起票し、実作業が 2 つ以上の子に割れた時点で親に昇格させる」、§7 は親の閉じ方(完了と放棄)を定める。これらの遷移には機械の検査が無い(gates を持つのは、マージで Closes を拾って閉じる close-linked-issues だけ)。tracking-issue と issue-hygiene が同じ事象を重ねて担うのは promote だけ(起票側の昇格と、棚卸しでの洗い出しで、仕事が違う)。親の操作(attach)と閉じ方(complete)の正本は tracking-issue で、issue-hygiene は参照する(#1299)。本文が書いていない遷移は書かない(放棄以外の理由で手で閉じる通常の Issue、停滞した Issue の扱いは ADR の Consequences に不明として挙げた)。",
+  "description": "Issue(通常の Issue、tracking Issue の親、閉じるまで)の状態と事象の閉語彙。元は config/agents/skills/{tracking-issue,issue-hygiene,living-description,issue-ref-freshness}/SKILL.md。tracking-issue §1 は「普通の Issue として起票し、実作業が 2 つ以上の子に割れた時点で親に昇格させる」、§7 は親の閉じ方(完了と放棄)を定める。これらの遷移には機械の検査が無い(gates を持つのは、tarotene 配下の gh issue create を作成時に検査する issue-create-guard と、マージで Closes を拾って閉じる close-linked-issues だけ)。tracking-issue と issue-hygiene が同じ事象を重ねて担うのは promote だけ(起票側の昇格と、棚卸しでの洗い出しで、仕事が違う)。親の操作(attach)と閉じ方(complete)の正本は tracking-issue で、issue-hygiene は参照する(#1299)。本文が書いていない遷移は書かない(放棄以外の理由で手で閉じる通常の Issue、停滞した Issue の扱いは ADR の Consequences に不明として挙げた)。",
   "initial": "none",
   "states": [
     { "id": "open", "terminal": false, "owner": "agent", "owner_detail": "通常の Issue。親でも子でもよい" },
@@ -10,7 +10,7 @@
     { "id": "not_planned", "terminal": true, "owner_detail": "not planned の理由で閉じた。本文に、いつ・なぜ諦めたかを一言残す" }
   ],
   "events": [
-    { "id": "file", "from": ["none"], "to": ["open"], "by": "agent", "by_detail": "普通の Issue として起票する。最初から親として起票しない(空の傘を先に立てない)", "carriers": ["skill:tracking-issue"] },
+    { "id": "file", "from": ["none"], "to": ["open"], "by": "agent", "by_detail": "普通の Issue として起票する。最初から親として起票しない(空の傘を先に立てない)。tarotene 配下のリポジトリでは、作成の呼び出しに排他のボールのラベル(ball:me|them|agent)がちょうど 1 つ要り、本文の先頭行は、非公開なら next: YYYY-MM-DD、公開なら日付の行を書かない(issue-create-guard が実行前に deny する。ledger-status のラベルは免除)", "carriers": ["skill:tracking-issue"], "gates": ["node:issue-create-guard"] },
     { "id": "promote", "from": ["open"], "to": ["parent"], "by": "agent", "by_detail": "tracking-issue §1: 実作業が 2 つ以上の子に割れた時点で昇格する。issue-hygiene §1・§7: 出自か運用領域でクラスタを抽出し、割れたのに昇格していない Issue を洗い出して束ねる。どちらも sub-issues(gh issue edit --add-sub-issue)で親子を張り、tracking ラベルを付け、本文を tracking-issue のスケルトンで書く", "carriers": ["skill:tracking-issue", "skill:issue-hygiene"] },
     { "id": "attach", "from": ["parent"], "to": ["same"], "by": "agent", "by_detail": "子を足す・付け替える・外す。操作(--parent・--add-sub-issue・--remove-parent)は tracking-issue §2 が正本。issue-hygiene は棚卸しで繋ぎ直すとき、それを参照する", "carriers": ["skill:tracking-issue"] },
     { "id": "update_body", "from": ["open", "parent"], "to": ["same"], "by": "agent", "by_detail": "コメントで裁定・仕様変更が確定した時点で本文を編集し、古い値・警告バナーが残らないようにする。親は、方針・スコープ・完了定義が変わったときに更新する(tracking-issue §4 は living-description の一種とする)", "carriers": ["skill:living-description"] },

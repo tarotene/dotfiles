@@ -171,6 +171,14 @@ pub static RULES: &[Rule] = &[
         budget: S10,
         run: |agent, raw| pr_followup_guard::hook(agent, raw),
     },
+    // gh を呼ぶ(リポジトリの公開/非公開)が、時間を越えたら素通りになる(fail-open)ので 10 秒で足りる。
+    Rule {
+        node: "issue-create-guard",
+        event: Event::Pre,
+        tools: Tools::Bash,
+        budget: S10,
+        run: |agent, raw| issue_create_guard::hook(agent, raw),
+    },
     Rule {
         node: "decision-colocation-guard",
         event: Event::Pre,
@@ -330,6 +338,7 @@ mod tests {
                 "external-send-guard",
                 "feedback-target-guard",
                 "git-stash-guard",
+                "issue-create-guard",
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",
