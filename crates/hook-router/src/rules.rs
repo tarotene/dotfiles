@@ -165,6 +165,13 @@ pub static RULES: &[Rule] = &[
         run: |agent, raw| test_output_guard::hook(agent, raw),
     },
     Rule {
+        node: "pkill-guard",
+        event: Event::Pre,
+        tools: Tools::Bash,
+        budget: S10,
+        run: |agent, raw| pkill_guard::hook(agent, raw),
+    },
+    Rule {
         node: "pr-followup-guard",
         event: Event::Pre,
         tools: Tools::BashOrMcp,
@@ -342,6 +349,7 @@ mod tests {
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",
+                "pkill-guard",
                 "plan-precedent-gate",
                 "plan-scope-gate",
                 "pr-followup-guard",

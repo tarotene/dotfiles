@@ -38,6 +38,7 @@ routines-write-guard = { version = "0.1.0", path = "../routines-write-guard" }
 rulesets-write-guard = { version = "0.1.0", path = "../rulesets-write-guard" }
 stack-base-guard = { version = "0.1.0", path = "../stack-base-guard" }
 test-output-guard = { version = "0.1.0", path = "../test-output-guard" }
+pkill-guard = { version = "0.1.0", path = "../pkill-guard" }
 worktree-lease = { version = "0.1.0", path = "../worktree-lease" }
 
 [dev-dependencies]
