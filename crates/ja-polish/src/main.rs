@@ -4,6 +4,8 @@
 //!   ja-polish --stdin [--dry-run]               標準入力の本文を書き直して標準出力へ(報告は標準エラー)
 //!   ja-polish [--dry-run] [--no-baseline] FILE… ファイルをその場で書き直す
 //!   ja-polish --check [--no-baseline] FILE…|-   未通過の日本語の段落を一覧する(あれば終了コード 1)
+//!   ja-polish stop-gate                         Stop hook: 標準入力の Stop の入力を読み、通していない
+//!                                               文書があれば {"decision":"block"} を出す(常に終了コード 0)
 //!
 //! 書き直しは、基点(git なら origin の既定ブランチとの merge-base)に無い段落、つまり追加・
 //! 変更した段落だけが対象。基点が取れないときは文書全体が対象だが、一度通した段落は記録で
@@ -20,7 +22,8 @@ use std::process::ExitCode;
 const USAGE: &str = "使い方:
   ja-polish --stdin [--dry-run]
   ja-polish [--dry-run] [--no-baseline] FILE…
-  ja-polish --check [--no-baseline] FILE…|-";
+  ja-polish --check [--no-baseline] FILE…|-
+  ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)";
 
 #[derive(Default)]
 struct Opts {
@@ -61,6 +64,15 @@ fn read_stdin() -> std::io::Result<String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("stop-gate") {
+        // hook: 判定不能・入力が読めないときは何も出さず通す。
+        if let Ok(raw) = read_stdin() {
+            if let Some(out) = ja_polish::stop::run(&raw) {
+                println!("{out}");
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
     let opts = match parse(&args) {
         Ok(o) => o,
         Err(msg) => {
@@ -115,7 +127,7 @@ fn main() -> ExitCode {
         let base = if opts.no_baseline {
             None
         } else {
-            baseline::git_baseline(&path)
+            baseline::baseline_for(&path)
         };
         let result = app::run_polish(&env, &text, base.as_deref(), &LlmCli, opts.dry_run);
         if result.paras.is_empty() {
@@ -161,7 +173,7 @@ fn check(env: &Env, opts: &Opts) -> ExitCode {
                     let base = if opts.no_baseline {
                         None
                     } else {
-                        baseline::git_baseline(&path)
+                        baseline::baseline_for(&path)
                     };
                     (t, base)
                 }

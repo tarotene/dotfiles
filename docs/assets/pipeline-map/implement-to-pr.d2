@@ -273,6 +273,9 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+    n_ja_polish_snapshot: "ja-polish-snapshot" {
+      class: s_rust
+    }
     n_pr_followup_guard: "pr-followup-guard" {
       class: s_rust
       style.stroke: "#D55E00"
@@ -324,6 +327,11 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
   l_stop: "Turn end / Stop" {
     class: lane
     n_pr_gate_stop: "pr-gate (stop)" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
+    n_ja_polish_stop_gate: "ja-polish (stop)" {
       class: s_rust
       style.stroke: "#D55E00"
       style.stroke-width: 4
@@ -433,6 +441,12 @@ n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_too
   class: e_file
 }
 l_manual.n_ja_polish -> n_agent_session.l_tool_call.n_ja_polish_gate: "records.jsonl (polished paragraphs)" {
+  class: e_file
+}
+n_agent_session.l_tool_call.n_ja_polish_snapshot -> n_agent_session.l_stop.n_ja_polish_stop_gate: "base snapshots / touched docs" {
+  class: e_file
+}
+l_manual.n_ja_polish -> n_agent_session.l_stop.n_ja_polish_stop_gate: "records.jsonl (polished paragraphs)" {
   class: e_file
 }
 n_agent_session.l_tool_call.n_ci_wait_guard -> l_manual.n_pr_checks_wait: "points to" {

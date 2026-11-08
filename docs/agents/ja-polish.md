@@ -70,7 +70,7 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 
 - `sha`: 段落の**最終の**本文(空白をそろえてから)。書き直した段落は書き直した後の本文、素通しの段落は元の本文。
 - `state`: `polished`(書き直した、または直す必要が無いと確かめた)か `skipped`(素通し。`reason` つき)。
-- 関所(投稿の PreToolUse = 下の「投稿の関所」、文書ファイルの Stop = 後続の段で入る)は state を区別せず、`sha` があれば通したとみなす。
+- 関所(投稿の PreToolUse = 「投稿の関所」、文書ファイルの Stop = 「文書ファイルの関所」)は state を区別せず、`sha` があれば通したとみなす。
   素通しで止めないための設計で、素通しは次の gate イベントが知らせる。
 
 ## 投稿の関所(`ja-polish-gate`)
@@ -94,6 +94,27 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   中に残る)を示す。
 - 対象外(意図あり・未実装): Codex の MCP ツール名(`mcp__codex_apps__…`)、Gmail 以外のメール、Google Drive の
   ファイル作成、カレンダーの説明欄。
+
+## 文書ファイルの関所(`ja-polish-stop-gate`)と基点
+
+セッションの終わり(Stop)に、触れた日本語の文書に、通していない段落が残っていないかを記録だけで見る
+(`ja-polish stop-gate`、判定は `crates/ja-polish/src/stop.rs`)。LLM は呼ばない。
+
+- 見るファイル(拡張子 `.md` `.markdown` `.txt`)は、次の和集合: このセッションで `Write` / `Edit` /
+  `MultiEdit` した文書、cwd の git の作業ツリーで origin の既定ブランチとの merge-base から変わった、または
+  未追跡の文書(上限 40 件)。各ファイルは、基点に無い(追加・変更した)日本語の段落のうち、記録に無い
+  ものを数える。1 つでもあれば `{"decision":"block"}` を出し、`ja-polish <ファイル>` を促す。
+- **無限に止めない**: `stop_hook_active`(block の直後の再呼び出し)では黙る。通せなかった段落は `ja-polish`
+  が素通しとして記録するので、直せない状態でも止まり続けない。逃げ道は `JA_POLISH_GATE_ALLOW=1`。
+- **基点のスナップショット**(PreToolUse の規則 `ja-polish-snapshot`): git の外の文書(vault のノートなど)には
+  merge-base が無い。`Write` / `Edit` / `MultiEdit` の前に、そのファイルの内容を
+  `~/.local/state/claude/ja-polish/base/<パスのハッシュ>.snap` に残し(12 時間以内の新しいものがあれば
+  上書きしない)、触れた文書の一覧を `touched/<session_id>.txt` に足す。作業ツリーには何も書かない。
+  基点の優先順位は、git の merge-base、スナップショット、なし(文書全体が対象)。セッション ID を使わない
+  のは `ja-polish` の CLI が ID を知らないため。基点が古い側に寄っても、対象が増えるだけで、通した段落は
+  記録で飛ばすので書き換えは増えない。
+- 登録: Stop hook は `home/modules/agents.nix` の宣言(`dotfiles.jaPolish.enable` の機体だけ)。Codex には
+  Claude の宣言から導く規則でそのまま登録される。
 
 ## 失敗したとき
 

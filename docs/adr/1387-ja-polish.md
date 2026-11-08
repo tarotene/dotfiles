@@ -30,7 +30,7 @@ Claude と Codex が書く日本語には、翻訳調、硬い語、読み手に
 
 hook が書き込み・投稿の中身を黙って差し替える案は採らない。Claude の記憶とファイルの中身が食い違い、次の Edit が「元の文が見つからない」で失敗する。Edit は断片しか渡らないので文脈も欠ける。モデルの応答は数秒から数十秒かかり、ルータ(`hook-router`、1 規則の持ち時間 10〜20 秒)にも載らない。
 
-記録の単位は**段落**(空行で区切られた塊)。鍵は、空白をそろえた本文の SHA-256 の先頭 32 桁。関所は、投稿の本文(PreToolUse)と、文書ファイルの変更した段落(Stop)で、記録に無い日本語の段落を見つけたら止める。投稿の関所は `hook-router` の PreToolUse の規則(`ja-polish-gate`)で、文書ファイルの関所(Stop)は後続の段で入る。
+記録の単位は**段落**(空行で区切られた塊)。鍵は、空白をそろえた本文の SHA-256 の先頭 32 桁。関所は、投稿の本文(PreToolUse)と、文書ファイルの変更した段落(Stop)で、記録に無い日本語の段落を見つけたら止める。投稿の関所は `hook-router` の PreToolUse の規則(`ja-polish-gate`)で、文書ファイルの関所は Stop の hook(`ja-polish stop-gate`)で、git の外の文書の基点は書き込み前に残すスナップショットから取る。
 
 ### D3: 記法は伏せ字で守り、戻りを照合する
 
@@ -82,8 +82,11 @@ hook が書き込み・投稿の中身を黙って差し替える案は採らな
 - `nix/ja-polish-llm.nix`
 - `home/modules/claude.nix`
 - `home/modules/agent-permissions.nix`
+- `home/modules/agents.nix`
 - `crates/gate-failopen-advisory/src/main.rs`
 - `crates/ja-polish/src/gate.rs`
+- `crates/ja-polish/src/stop.rs`
+- `crates/ja-polish/src/snapshot.rs`
 - `crates/hook-router/src/rules.rs`
 
 ## 先行例との対比
