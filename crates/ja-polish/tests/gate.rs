@@ -25,6 +25,7 @@ fn gate_follows_config_records_and_escape_hatch() {
 
     // 1. 設定ファイルが無い機体(ja-polish を有効にしていない)では、何も検査しない。
     assert!(gate::hook(Agent::Claude, &raw_commit()).is_none());
+    assert!(gate::hook(Agent::Claude, "not json").is_none());
 
     // 2. 設定ファイルがあり、記録が無い: 拒否。
     let cfg_dir = dir.path().join("config/dotfiles");

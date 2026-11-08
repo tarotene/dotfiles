@@ -599,6 +599,8 @@ let
   esaIndexCmd = "'${hooksDir}/esa-mirror-context'";
   deskStartCmd = "'${hooksDir}/daily-desk-reminder'";
   calendarHandshakeStartCmd = "'${hooksDir}/calendar-handshake-reminder'";
+  # ja-polish の文書ファイルの関所(Stop)。本体は home/modules/ja-polish.nix が ~/.local/bin に置く。
+  jaPolishStopCmd = "'${config.home.homeDirectory}/.local/bin/ja-polish' stop-gate";
   worklogStartCmd = "'${hooksDir}/worklog' session-start";
   signPrewarmCmd = "'${hooksDir}/gpg-prewarm'";
   legacySignPrewarmCmd = "bash '${hooksDir}/sign-prewarm.sh'";
@@ -1350,6 +1352,15 @@ let
       command = prGateStopCmd;
       timeout = 600;
     }
+    # ja-polish の文書ファイルの関所: 触れた日本語の文書に、書き直しを通していない段落が残っていないかを
+    # 記録だけで見る(LLM は呼ばない)。dotfiles.jaPolish.enable の機体にだけ登録する
+    # (下の enabledClaudeHookDeclarations が option で外す)。docs/agents/ja-polish.md。
+    {
+      event = "Stop";
+      node = "ja-polish-stop-gate";
+      command = jaPolishStopCmd;
+      timeout = 30;
+    }
     # git-worktree-allow: if で "Bash(git -C *)" に絞る — それ以外の Bash 呼び出しでは
     # hook プロセス自体が起動しない。判定はすべて hook 側(パス実在・許可サブコマンド・
     # 単一 git 呼び出し)で行い、非該当は無出力 exit 0 で通常の permission フローに
@@ -1523,7 +1534,9 @@ let
   # option で出し入れする宣言だけを、実際に登録する集合から外す。他機体では登録されず、無音になる。
   # 宣言の表(上)は pipeline-map の走査の対象なので、条件分岐を持たせず、ここで絞る。
   enabledClaudeHookDeclarations = lib.filter (
-    d: d.node != "calendar-handshake-reminder" || config.dotfiles.calendarHandshakeReminder.enable
+    d:
+    (d.node != "calendar-handshake-reminder" || config.dotfiles.calendarHandshakeReminder.enable)
+    && (d.node != "ja-polish-stop-gate" || config.dotfiles.jaPolish.enable)
   ) claudeHookDeclarations;
 
   # 各宣言の `node` は pipeline-map.toml(自動発火する機構の地図、docs/pipeline-map.md)

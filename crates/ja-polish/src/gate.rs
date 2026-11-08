@@ -442,14 +442,4 @@ mod tests {
         assert!(decide_mcp("mcp__claude_ai_Claude_Docs__create", &docs, &HashSet::new()).is_some());
         assert!(decide_mcp("mcp__claude_ai_Claude_Docs__read", &docs, &HashSet::new()).is_none());
     }
-
-    #[test]
-    fn hook_is_silent_without_config_and_on_unparseable_input() {
-        // 設定ファイルが無い(HOME を空の場所に向ける)機体では何もしない。
-        let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
-        let raw = json!({"tool_name": "Bash", "tool_input": {"command": format!("git commit -m '{JP}'")}}).to_string();
-        assert!(hook(Agent::Claude, &raw).is_none());
-        assert!(hook(Agent::Claude, "not json").is_none());
-    }
 }

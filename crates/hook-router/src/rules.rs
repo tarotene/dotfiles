@@ -229,6 +229,14 @@ pub static RULES: &[Rule] = &[
         budget: S10,
         run: |agent, raw| ja_polish::gate::hook(agent, raw),
     },
+    // 書き込み前の基点と、触れた文書の一覧を残す(判定はしない。設定ファイルが無い機体では何もしない)。
+    Rule {
+        node: "ja-polish-snapshot",
+        event: Event::Pre,
+        tools: Tools::Named(&["Write", "Edit", "MultiEdit"]),
+        budget: S10,
+        run: |agent, raw| ja_polish::snapshot::hook(agent, raw),
+    },
     Rule {
         node: "new-tool-guard",
         event: Event::Pre,
@@ -355,6 +363,7 @@ mod tests {
                 "git-stash-guard",
                 "issue-create-guard",
                 "ja-polish-gate",
+                "ja-polish-snapshot",
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",
