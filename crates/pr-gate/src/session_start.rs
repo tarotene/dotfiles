@@ -6,8 +6,7 @@ use crate::body::{self, Link, Visual};
 use crate::config::Config;
 use crate::jqv::JqError;
 use crate::{gh, join_lines, jqv, repo};
-use agent_session::HookInput;
-use jq_json_compat::jqfmt::J;
+use agent_session::{Agent, HookEvent, HookInput, Reply};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -28,14 +27,10 @@ pub fn target(cfg: &Config, project: &Path) -> Option<String> {
 }
 
 fn emit(ctx: &str) {
-    let out = J::obj(vec![(
-        "hookSpecificOutput",
-        J::obj(vec![
-            ("hookEventName", J::str("SessionStart")),
-            ("additionalContext", J::str(ctx)),
-        ]),
-    )]);
-    println!("{}", out.pretty());
+    print!(
+        "{}",
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
+    );
 }
 
 /// FETCH_HEAD が `ttl` 秒より新しければ fetch を省く。fetch に失敗したら注記を返す。

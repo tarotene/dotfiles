@@ -65,7 +65,7 @@
 //! カウンタ([`state`])。
 //!
 //! bash 版は jq で JSON を読み書きしていた。Rust 版は jq に依存しない
-//! (serde_json で読み、SessionStart の出力は [`jq_json_compat::jqfmt`] で jq の整形出力と
+//! (serde_json で読み、SessionStart の出力は [`agent_session::Reply`] の描画で jq の整形出力と
 //! バイト一致させる)。
 //!
 //! エスケープハッチ: `touch ~/.claude/pr-gate/skip` または `SKIP_PR_GATE=1`。

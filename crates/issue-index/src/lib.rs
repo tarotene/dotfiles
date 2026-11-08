@@ -8,6 +8,7 @@
 //! bash 版は jq で JSON を読み書きしていた。Rust 版は jq に依存しないが、
 //! 出力は jq の整形出力(`jq -n --arg ctx …`)とバイト一致させる。
 
+use agent_session::{Agent, HookEvent, Reply};
 use serde_json::Value;
 
 /// `git remote -v` の出力から、`github.com` を含む最初の行の URL を取り出し、
@@ -356,37 +357,9 @@ pub fn build(c: &Context) -> (String, Option<String>) {
     (session_start_json(&ctx), warn)
 }
 
-/// `jq -n --arg ctx "$ctx" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'`
-/// の出力(末尾改行込み)。
-pub fn session_start_json(ctx: &str) -> String {
-    format!(
-        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"SessionStart\",\n    \"additionalContext\": {}\n  }}\n}}\n",
-        jq_string(ctx)
-    )
-}
-
-/// jq の文字列エスケープ(`\" \\ \n \t \r \b \f`、その他の C0 と DEL は `\u00xx`)。
-/// serde_json は DEL をエスケープしないので自前で持つ。
-pub fn jq_string(s: &str) -> String {
-    let mut o = String::with_capacity(s.len() + 2);
-    o.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            '\n' => o.push_str("\\n"),
-            '\t' => o.push_str("\\t"),
-            '\r' => o.push_str("\\r"),
-            '\u{8}' => o.push_str("\\b"),
-            '\u{c}' => o.push_str("\\f"),
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                o.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => o.push(c),
-        }
-    }
-    o.push('"');
-    o
+/// SessionStart の出力(末尾改行込み)。描画は `agent_session::Reply::render` が持つ。
+fn session_start_json(ctx: &str) -> String {
+    Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
 }
 
 #[cfg(test)]
@@ -433,10 +406,12 @@ mod tests {
     }
 
     #[test]
-    fn jq_string_escapes_del() {
+    fn session_start_json_escapes_like_jq() {
+        // jq は DEL と C0 を `\u00xx` に、`"` と `\` をバックスラッシュ付きにする。serde_json は DEL を
+        // 書き換えないので、出力のバイト列はここで固定する(描画は `Reply::render`)。
         assert_eq!(
-            jq_string("a\"\\\u{7f}\u{1}é"),
-            "\"a\\\"\\\\\\u007f\\u0001é\""
+            session_start_json("a\"\\\u{7f}\u{1}é"),
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"SessionStart\",\n    \"additionalContext\": \"a\\\"\\\\\\u007f\\u0001é\"\n  }\n}\n"
         );
     }
 
