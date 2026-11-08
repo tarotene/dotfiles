@@ -340,6 +340,21 @@ fn inside_work_tree(dir: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// `--body-file` の中身にバッククォートがあっても、未チェックの task list を判定する。
+    /// 以前は「中身が不明」として未判定のまま通していた(インラインコードを含む本文のほとんど)。
+    #[test]
+    fn body_file_with_backticks_is_still_judged() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.md");
+        std::fs::write(&bad, "## 要確認\n\n- [ ] 人の確認が要る `項目` です\n").unwrap();
+        let cmd =
+            |p: &std::path::Path| format!("gh pr create --title t --body-file {}", p.display());
+        assert!(decide(&cmd(&bad), false).is_some());
+        let ok = dir.path().join("ok.md");
+        std::fs::write(&ok, "## 要確認\n\n- #12 — `項目` の確認\n").unwrap();
+        assert!(decide(&cmd(&ok), false).is_none());
+    }
+
     #[test]
     fn code_spans_and_fences() {
         let t = "a `- [ ] x` b\n```\n- [ ] y\n```\n  ~~~\n- [ ] z\n  ~~~\n- [x] ok\nstray ` tick";

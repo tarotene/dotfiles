@@ -245,12 +245,15 @@ fn body_of(tokens: &[String], heredoc_bodies: &str) -> Option<String> {
     if flags.texts.is_empty() {
         return None;
     }
-    let joined = flags.texts.join("\n");
-    if joined.contains("$(") || joined.contains('`') {
+    // コマンド置換の判定は、インラインの `--body` の値だけに掛ける。`--body-file` の中身は読んだ後の
+    // 確定した文字列で、Markdown のインラインコード(バッククォート)を含んでよい
+    // (`github_command::gh::assemble_body_text` の説明)。
+    let inline = flags.inline_texts.join("\n");
+    if inline.contains("$(") || inline.contains('`') {
         return None;
     }
     // 空白だけでも本文として返す(非公開側では「先頭行が無い」違反になる)。
-    Some(assemble_body_text(&flags.texts, false, "").unwrap_or_default())
+    Some(assemble_body_text(&flags.inline_texts, &flags.file_texts, false, "").unwrap_or_default())
 }
 
 fn rewrite_hint() -> &'static str {
@@ -551,6 +554,20 @@ mod tests {
             let r = run(&format!("{base} {f}"), PRIV).unwrap_or_else(|| panic!("{name}"));
             assert!(r.contains("next: YYYY-MM-DD"), "{name}: {r}");
         }
+    }
+
+    /// `--body-file` の中身にバッククォート(Markdown のインラインコード)があっても、本文の検査を
+    /// 掛ける。以前は「中身が不明」として本文の検査を飛ばしていた(段 4 の穴と同じ形)。
+    #[test]
+    fn a_body_file_with_backticks_is_still_checked() {
+        let d = tempfile::tempdir().unwrap();
+        let base = "gh issue create -R tarotene/x --label ball:me --body-file";
+        let bad = write(&d, "bad.md", "`cargo test` を実行する\n");
+        let r =
+            run(&format!("{base} {bad}"), PRIV).expect("backtick 入りでも先頭行が無ければ deny");
+        assert!(r.contains("next: YYYY-MM-DD"), "{r}");
+        let ok = write(&d, "ok.md", "next: 2028-02-29\n`cargo test` を実行する\n");
+        assert_eq!(run(&format!("{base} {ok}"), PRIV), None);
     }
 
     #[test]

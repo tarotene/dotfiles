@@ -225,7 +225,8 @@ impl Attribution {
             }
         }
         self.judge_text(assemble_body_text(
-            &flags.texts,
+            &flags.inline_texts,
+            &flags.file_texts,
             has_heredoc(tokens),
             heredoc_bodies,
         ))
@@ -251,7 +252,8 @@ impl Attribution {
             return None;
         }
         self.judge_text(assemble_body_text(
-            &body.texts,
+            &body.inline_texts,
+            &body.file_texts,
             has_heredoc(tokens),
             heredoc_bodies,
         ))
@@ -316,6 +318,34 @@ pub fn hook(agent: Agent, raw: &str) -> Option<agent_session::Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `--body-file` の中身にバッククォート(Markdown のインラインコード)や `$(` があっても、
+    /// footer の有無を判定する。以前は「中身が不明」として未判定のまま通していた。
+    #[test]
+    fn body_file_with_backticks_is_still_judged() {
+        let a = Attribution::CLAUDE;
+        let dir = std::env::temp_dir().join(format!("attribution-guard-bt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cmd = |file: &std::path::Path| {
+            format!(
+                "gh pr create -R o/r --base main --title t --body-file {}",
+                file.display()
+            )
+        };
+        let bad = dir.join("bad.md");
+        std::fs::write(&bad, "本文に `cargo test` と $(x) を含む。フッターが無い\n").unwrap();
+        assert!(
+            a.decide(&cmd(&bad)).is_some(),
+            "backtick 入りでも footer 無しは deny"
+        );
+        let ok = dir.join("ok.md");
+        std::fs::write(
+            &ok,
+            format!("本文に `cargo test` を含む。\n\n{}\n", a.footer()),
+        )
+        .unwrap();
+        assert_eq!(a.decide(&cmd(&ok)), None, "footer があれば通る");
+    }
 
     /// #1109: 読めない絶対パスの `--body-file` は、footer を確かめられないので deny する。
     /// 読めない相対パス・標準入力・変数を含むパスは、実行時の値が分からないので通す。
