@@ -393,9 +393,19 @@ fn session_start_rejects_an_unknown_agent_or_argument() {
 }
 
 #[test]
-fn a_declared_but_broken_vault_is_reported_once_and_never_blocks() {
+fn a_vault_without_daily_note_settings_works_with_the_defaults() {
+    // #1363: `.obsidian/` はあるが `daily-notes.json` が無い vault を宣言した機体でも、exit 2 にならない。
     let e = env();
     std::fs::remove_file(e.vault.join(".obsidian/daily-notes.json")).unwrap();
+    let o = run(&e, &e.repo, Some(&e.vault), &["session-start"], "{}");
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_eq!(o.stderr, "", "{}", o.stderr);
+}
+
+#[test]
+fn a_declared_but_broken_vault_is_reported_once_and_never_blocks() {
+    let e = env();
+    std::fs::write(e.vault.join(".obsidian/daily-notes.json"), "not json").unwrap();
     let o = run(&e, &e.repo, Some(&e.vault), &["session-start"], "{}");
     assert_eq!(o.code, 0);
     assert_eq!(o.stdout, "");
