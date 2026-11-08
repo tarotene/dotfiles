@@ -173,6 +173,18 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 `~/.cache/uv` を `allowWrite` に足し、`domains` の既定に `pypi.org`・`files.pythonhosted.org`・`docs.python.org` を足した。
 `numpy.org` のように 1 つのリポジトリだけが使う宛先は、共有の `domains` に足さない。
 
+**npm のキャッシュ(2026-10-31 に観測、2026-11-08 に宣言)**: sandbox の中の `npm ci` が、`~/.npm/_cacache/tmp` を書けず
+`EROFS: read-only file system` で落ちた。`--cache` を scratchpad に向けると通った(レジストリの通信先は届いていた)ので、
+足りなかったのは書き込み許可だけである。uv・cargo と同じ型で、`runtimes.nix` が `~/.npm/_cacache` だけを `allowWrite` に足す
+(`~/.npm` 全体は足さない。`~/.npm/_logs` は既に書ける)。宣言後の読み戻し(`hms` の後の新しいセッションで `npm ci` が通ること)は未実施。
+
+**`hms` を sandbox の外で動かす(2026-11-08)**: `hms .` を sandbox の中で実行すると、適用ロック(`~/.local/state/hms/lock`)を
+取れず `Read-only file system` で落ち、sandbox の外で再実行する往復が要った。`hms` は home-manager の適用で実環境に書くので、
+`allowWrite` の拡張ではなく `excludedCommands` に足す。外では全権限で動くので、`google-chrome --headless=new *` と同じ型で、
+`askRules` にも同じパターンを足し、実行のたびに許可の確認を出す。引数なしの `hms` が `hms *` に一致するかは測っていないので、
+`hms` と `hms *` の両方を書く。宣言後の読み戻し(確認の画面が出ること、許可すると適用ロックが取れて通ること)は未実施で、
+`hms` の後の新しいセッションで確かめる。画面が出ないと分かったら、除外を外す(ask は除外と対にする)。
+
 **cargo のレジストリと headless Chrome(2026-11-05、#1334)**: sandbox の中の `cargo metadata --offline --locked` が、
 `~/.cargo/registry/src` を作れず `Read-only file system (os error 30)` で落ちた(`cargo run -p pipeline-map -- render` の最初の段)。
 uv のキャッシュと同じ型なので、`runtimes.nix` が `~/.cargo/registry` だけを `allowWrite` に足した(`~/.cargo/bin` は足さない)。
