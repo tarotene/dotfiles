@@ -38,10 +38,14 @@ fi\n",
     stub
 }
 
+/// 1 分おきの ts になる(同じ ts の連続は、並列の呼び出しとして 1 回に数える)。
 fn record_line(session_id: &str, term_hash: &str) -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::SeqCst);
     serde_json::json!({
         "v": 1,
-        "ts": "2026-09-25T00:00:00Z",
+        "ts": format!("2026-09-25T{:02}:{:02}:00Z", (n / 60) % 24, n % 60),
         "tool": "bleep",
         "tool_version": "0.2.0",
         "repo": "tarotene/bleep",
