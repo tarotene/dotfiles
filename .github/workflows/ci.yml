@@ -673,11 +673,15 @@ jobs:
       - id: scope
         env:
           EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          # 基準は PR の base ではなく既定ブランチ。stacked PR の子は base が親のブランチなので、
+          # base との差分には親で変えた仕様が出ず、子の PR で検査が飛んで `CI passed` が緑になる
+          # (main への push では毎回回るので、マージ後に初めて拾う)。既定ブランチとの差分なら、
+          # 親の変更も含めて見る。
           if [ "$EVENT" != pull_request ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "origin/${BASE_REF}...HEAD" \
+          elif git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD" \
               | grep -qE '^(config/agents/calendar-handshake/|home/tests/calendar-handshake-spec\.nix$|flake\.(nix|lock)$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
@@ -702,11 +706,15 @@ jobs:
       - id: scope
         env:
           EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          # 基準は PR の base ではなく既定ブランチ。stacked PR の子は base が親のブランチなので、
+          # base との差分には親で変えた仕様が出ず、子の PR で検査が飛んで `CI passed` が緑になる
+          # (main への push では毎回回るので、マージ後に初めて拾う)。既定ブランチとの差分なら、
+          # 親の変更も含めて見る。
           if [ "$EVENT" != pull_request ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "origin/${BASE_REF}...HEAD" \
+          elif git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD" \
               | grep -qE '^(config/agents/mail-lifecycle/|home/tests/mail-lifecycle-(spec|itf)\.nix$|crates/worklog/|flake\.(nix|lock)$)'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
