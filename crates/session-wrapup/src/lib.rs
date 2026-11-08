@@ -140,7 +140,8 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
          wrap-up inbox for this project: {inbox}\n\
          When something outside the current task's scope is worth recording (a sign of a\n\
          bug, debt, an improvement idea), append it right then as one line per finding:\n\
-         \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
+         \x20 '{gate}' --add '{inbox}' '{{\"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
+         (the timestamp \"ts\" is added for you; do not build it with $(date))\n\
          A finding becomes a note in the user's vault (inbox/, one note per title; the same title\n\
          adds a row instead of a duplicate) or, on a machine without a vault, a line in the jsonl above.\n\
          It is NOT filed as a GitHub Issue: the user adjudicates findings later with /my-cleanup,\n\

@@ -340,12 +340,34 @@ fn add_to_vault(vault: &vault_note::VaultNotes, inbox: &str, line: &str) -> Resu
         .map_err(|e| e.to_string())
 }
 
+/// 気づきの行(`title` を持つオブジェクト)に `ts` が無い(無い・null・空文字)とき、先頭に
+/// `ts: now` を足す。呼び出し側が `ts` を渡しているときは触らない。`title` の無いオブジェクトと
+/// オブジェクト以外の値も触らない(`--add` の `jq -ce .` 相当の出力を、気づきの行でない値では保つ)。
+fn fill_missing_ts(v: &mut J, now: &str) {
+    let J::Obj(pairs) = v else {
+        return;
+    };
+    if !pairs.iter().any(|(k, _)| k == "title") {
+        return;
+    }
+    let given = pairs
+        .iter()
+        .any(|(k, val)| k == "ts" && matches!(val, J::Str(s) if !s.is_empty()));
+    if !given {
+        pairs.retain(|(k, _)| k != "ts");
+        pairs.insert(0, ("ts".to_string(), J::str(now)));
+    }
+}
+
 /// `--add`: `jq -ce .` でコンパクト化して 1 行(複数値なら値ごとに 1 行)追記する。
+/// 行(JSON オブジェクト)に `ts` が無ければ、今の時刻(JST の ISO 8601)を機械が足す。
 /// vault を宣言している機体では、行ごとに vault のノートへ足す(Issue にはしない)。
 /// 書けなかった行(題名が無い・vault が書けない)は、従来どおり inbox の jsonl に残す。
 pub fn add(inbox: &str, line: &str) -> Code {
     let compact = match parse_stream(line) {
-        Ok(vals) if vals.last().is_some_and(json::truthy) => {
+        Ok(mut vals) if vals.last().is_some_and(json::truthy) => {
+            let now = vault::jst_now();
+            vals.iter_mut().for_each(|v| fill_missing_ts(v, &now));
             vals.iter().map(J::compact).collect::<Vec<_>>()
         }
         _ => {
@@ -721,6 +743,28 @@ fn has_feedback_type(content: &[u8]) -> bool {
     })
 }
 
+/// frontmatter(先頭の `---` から次の `---` まで)にある `originSessionId: <id>` の値。
+/// auto memory は `metadata:` の下に `originSessionId` を持つ(書いたセッションの id)。
+/// frontmatter が無い・欄が無い・空のときは `None`(本文中の同じ語は読まない)。
+fn origin_session_id(content: &[u8]) -> Option<String> {
+    let lines = split_lines(content);
+    let is_fence = |l: &[u8]| l.strip_suffix(b"\r").unwrap_or(l) == b"---";
+    if !lines.first().is_some_and(|l| is_fence(l)) {
+        return None;
+    }
+    for l in &lines[1..] {
+        if is_fence(l) {
+            return None;
+        }
+        let s = String::from_utf8_lossy(l);
+        if let Some(v) = s.trim().strip_prefix("originSessionId:") {
+            let v = v.trim().trim_matches(|c| c == '"' || c == '\'');
+            return (!v.is_empty()).then(|| v.to_string());
+        }
+    }
+    None
+}
+
 /// `#[0-9]+` を含むか。
 fn has_issue_ref(content: &[u8]) -> bool {
     content
@@ -731,6 +775,8 @@ fn has_issue_ref(content: &[u8]) -> bool {
 /// 今セッション中に更新され `#N` 参照を持たない `type: feedback` の auto memory
 /// を、find と同じ順(ディレクトリの読み出し順・前順)で列挙する。stamp が無い・
 /// root が無ければ空(判定不能は黙って何もしない側に倒す)。
+/// 更新時刻だけでは別セッションが書いたメモリも拾うので、frontmatter に `originSessionId` が
+/// あって今のセッションと違うものは除く(欄が無い古いメモリは、従来どおり更新時刻だけで帰属させる)。
 pub fn unlinked_feedback_memories(session_id: &str) -> Vec<String> {
     feedback_memories(session_id, true)
 }
@@ -757,7 +803,12 @@ fn feedback_memories(session_id: &str, only_unlinked: bool) -> Vec<String> {
     walk(&root, &mut |path, md| {
         if md.is_file() && memory_md_path(path) && md.modified().is_ok_and(|t| t > since) {
             if let Ok(content) = fs::read(path) {
-                if has_feedback_type(&content) && (!only_unlinked || !has_issue_ref(&content)) {
+                let by_other_session =
+                    origin_session_id(&content).is_some_and(|id| id != session_id);
+                if !by_other_session
+                    && has_feedback_type(&content)
+                    && (!only_unlinked || !has_issue_ref(&content))
+                {
                     out.push(path.to_string());
                 }
             }
@@ -1314,6 +1365,52 @@ mod tests {
         assert!(!has_feedback_type(b"x type: feedback\n"));
         assert!(has_issue_ref(b"see #12"));
         assert!(!has_issue_ref(b"# heading"));
+    }
+
+    #[test]
+    fn origin_session_id_is_read_from_the_frontmatter_only() {
+        let fm =
+            b"---\nname: x\nmetadata:\n  type: feedback\n  originSessionId: abc-123\n---\nbody\n";
+        assert_eq!(origin_session_id(fm).as_deref(), Some("abc-123"));
+        assert_eq!(
+            origin_session_id(b"---\nmetadata:\n  originSessionId: \"q\"\r\n---\n").as_deref(),
+            Some("q")
+        );
+        // 欄が無い・空・frontmatter が無い・本文中の同じ語は None。
+        assert_eq!(origin_session_id(b"---\nname: x\n---\nbody\n"), None);
+        assert_eq!(origin_session_id(b"---\n  originSessionId:\n---\n"), None);
+        assert_eq!(origin_session_id(b"originSessionId: a\n"), None);
+        assert_eq!(
+            origin_session_id(b"---\nname: x\n---\noriginSessionId: a\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn fill_missing_ts_adds_only_when_absent() {
+        let now = "2026-11-08T23:10:00+09:00";
+        let mut none = J::obj(vec![("title", J::str("T"))]);
+        fill_missing_ts(&mut none, now);
+        assert_eq!(
+            none.compact(),
+            r#"{"ts":"2026-11-08T23:10:00+09:00","title":"T"}"#
+        );
+        let mut given = J::obj(vec![("ts", J::str("t0")), ("title", J::str("T"))]);
+        fill_missing_ts(&mut given, now);
+        assert_eq!(given.compact(), r#"{"ts":"t0","title":"T"}"#);
+        let mut empty = J::obj(vec![("title", J::str("T")), ("ts", J::str(""))]);
+        fill_missing_ts(&mut empty, now);
+        assert_eq!(
+            empty.compact(),
+            r#"{"ts":"2026-11-08T23:10:00+09:00","title":"T"}"#
+        );
+        // 気づきの行でない(title の無い)オブジェクトは、そのまま通す。
+        let mut other = J::obj(vec![("z", J::str("1"))]);
+        fill_missing_ts(&mut other, now);
+        assert_eq!(other.compact(), r#"{"z":"1"}"#);
+        let mut not_obj = J::str("x");
+        fill_missing_ts(&mut not_obj, now);
+        assert_eq!(not_obj.compact(), r#""x""#);
     }
 
     #[test]

@@ -120,6 +120,10 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 
 - `--add <inbox> <json1行>` — JSON 検証 + 追記。vault を宣言していればノートへ(上記)。書けなかった行は
   jsonl に退避する(`mkdir -p` + flock 追記)。初回利用時のディレクトリ不在で沈黙する事故を防ぐ。
+  **`ts` は省略できる。** `title` を持つ行に `ts` が無い(無い・null・空文字)とき、機械が今の時刻
+  (JST の ISO 8601、`YYYY-MM-DDTHH:MM:SS+09:00`)を先頭に足す。渡された `ts` はそのまま残す。
+  `{"title","detail"}` だけを渡せばよく、`$(date -Iseconds)` を手で埋め込まない(`$(…)` は
+  sandbox の除外パターンにも合わない)。`title` の無い値は、従来どおり `jq -ce .` 相当で通す。
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/my-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
@@ -206,6 +210,13 @@ wrap-up inbox は「今回のタスクのスコープ外だが記録する価値
 (`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)の mtime を基準に `find -newer` で
 判定する。stamp が無い(SessionStart 未実行など)場合は判定不能として何もしない側に倒す(ADR-0005 と
 同じ fail-open)。
+
+更新時刻だけでは、同じ時間帯に走る別セッションが書いたメモリも「今セッションが更新した」と数える。
+auto memory は frontmatter の `metadata.originSessionId` に書いたセッションの id を持つので、**この欄が
+あって今のセッションの id と違うメモリは除く**(`crates/issue-inbox` の `feedback_memories`。欄は frontmatter
+の中だけを読み、本文中の同じ語は読まない)。欄が無い古いメモリは、従来どおり更新時刻だけで帰属させる。
+限界: セッションを引き継いで id が変わると、前の id で書かれたメモリは「別セッション」になって指示の
+対象から外れる(指示が出ない側に倒れる)。
 
 原則そのもの(不可視なローカルメモに閉じ込めない)は共有 AGENTS.md、
 auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
