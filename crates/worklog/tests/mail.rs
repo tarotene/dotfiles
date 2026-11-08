@@ -325,6 +325,74 @@ fn lines_before_the_cutover_use_the_old_grammar_and_are_not_folded() {
     assert!(l.stdout.contains("UNISEC"), "{}", l.stdout);
 }
 
+/// `MAIL_SINCE` から今日までが `list` の上限(400 日)を超えても、読む範囲を切ってエラーにしない。
+#[test]
+fn a_clock_far_past_the_cutover_still_reads_within_the_range_limit() {
+    let e = env();
+    ok(&add(&e, 0, "ask: 昔に開いた項目 [gmail:old/m1]"));
+    // 399 日後は、読む範囲の端(ちょうど MAIL_SINCE から 400 日を超える日)。
+    for days in [399, 800, 2000] {
+        for sub in ["open", "check", "sweep"] {
+            let o = run(&e, days, &["mail", sub]);
+            assert!(
+                o.code == 0 || o.code == 1,
+                "day +{days} mail {sub}: code={} stdout={} stderr={}",
+                o.code,
+                o.stdout,
+                o.stderr
+            );
+            assert!(
+                !o.stderr.contains("範囲が"),
+                "day +{days} {sub}: {}",
+                o.stderr
+            );
+        }
+    }
+    // 窓の中に開いた項目は、遠い日付でも読める。
+    ok(&add(&e, 800, "ask: 最近開いた項目 [gmail:new/m1]"));
+    let open = run(&e, 800, &["mail", "open"]);
+    ok(&open);
+    assert!(open.stdout.contains("gmail:new/m1"), "{}", open.stdout);
+    // 窓より前に開いた項目は読まれない(slot と同じ)。
+    assert!(!open.stdout.contains("gmail:old/m1"), "{}", open.stdout);
+}
+
+/// 本人担当の作業を `decide` したのに、Issue への `move` も `apply` も無いまま日をまたいだ項目を、
+/// sweep が(行を書かずに)挙げる。
+#[test]
+fn sweep_flags_a_decided_item_with_no_move_after_the_day_it_was_decided() {
+    let e = env();
+    ok(&add(&e, 0, "ask: 本人が対応する [gmail:t1/m1]"));
+    ok(&add(&e, 0, "decide: 対応する [gmail:t1/m1]"));
+    ok(&add(&e, 0, "ask: 見せただけ [gmail:t2/m1]"));
+    // 当日は猶予。
+    let same_day = run(&e, 0, &["mail", "sweep"]);
+    ok(&same_day);
+    assert!(!same_day.stdout.contains("flag\t"), "{}", same_day.stdout);
+    // 翌日は、decided のまま残る t1 だけを挙げる(awaiting の t2 は remind の担当)。
+    let before = note(&e, "2026-11-01");
+    let next_day = run(&e, 1, &["mail", "sweep"]);
+    ok(&next_day);
+    let flags: Vec<&str> = next_day
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("flag\t"))
+        .collect();
+    assert_eq!(flags.len(), 1, "{}", next_day.stdout);
+    assert!(flags[0].starts_with("flag\tgmail:t1/m1\t"), "{}", flags[0]);
+    // 行は書かない。
+    assert_eq!(note(&e, "2026-11-01"), before);
+    // move すると挙がらなくなる。
+    ok(&add(
+        &e,
+        1,
+        "move: Issue に移した [gmail:t1/m1 to:example/repo#1]",
+    ));
+    let after = run(&e, 2, &["mail", "sweep"]);
+    ok(&after);
+    assert!(!after.stdout.contains("flag\t"), "{}", after.stdout);
+}
+
 #[test]
 fn lines_after_the_cutover_that_do_not_parse_are_reported() {
     let e = env();

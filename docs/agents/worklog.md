@@ -41,7 +41,8 @@ worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
 ```
 
 - 出来事(閉語彙。正本は `config/agents/mail-lifecycle/vocabulary.json`): `read`・`ask`・`draft`・`decide`・
-  `apply`・`pass`・`move`。`remind`・`stale` は `mail sweep` だけが書く。
+  `apply`・`pass`・`move`。`remind`・`stale` は `mail sweep` だけが書く。`mail sweep` は行を書かずに、`decided` のまま
+  日をまたいだ未了を `flag<TAB><鍵><TAB><説明>` の行で挙げる(`docs/agents/mail-lifecycle.md`)。
 - 要旨: 結論だけ(相手は組織・サービス名か種類、何を決めたか)。120 文字まで。`@`・`http`・角括弧を含められない。
 - 出典の印: 媒体は `gmail|linkedin|lapras|none`。鍵は `<媒体>:<スレッド>/<受信>`(`[A-Za-z0-9_=-]+`。
   Gmail の受信はメッセージ ID、それ以外は `YYYYMMDDTHHMM`)。`none` は件数を集計する `read` の行 `[none]` にだけ使う。

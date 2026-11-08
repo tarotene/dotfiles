@@ -19,6 +19,16 @@
       "additionalProperties": { "type": "number" }
     },
     "group_key": { "type": "string", "description": "握手の語彙が持つ。同じ会議の候補をまとめる鍵の決め方。" },
+    "supersede_on_open": {
+      "type": "object",
+      "required": ["event", "description"],
+      "additionalProperties": false,
+      "description": "メール項目の語彙が持つ。`opens` の事象で新しい受信を開くとき、同じスレッドの古い未了を `event` で移す暗黙の規則。`event` は語彙の事象で、遷移先が終端の状態(グラフ検査の規則「開く出来事」)。",
+      "properties": {
+        "event": { "$ref": "#/$defs/identifier" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
     "kinds": {
       "type": "array",
       "minItems": 1,
@@ -76,6 +86,7 @@
         "from": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "状態 id か none。" },
         "to": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "状態 id。複数ならそのどれか。[\"same\"] は自己遷移(状態を変えない)。" },
         "by": { "$ref": "#/$defs/actor" },
+        "opens": { "type": "boolean", "description": "メール項目の語彙が持つ。対象をまだ開いていない状態(none)から開く事象の印。真の事象は `from` が none だけ(グラフ検査の規則「開く出来事」)で、読み直しで項目が増えず、語彙の `supersede_on_open` の対象になる。" },
         "by_detail": { "type": "string", "description": "by の自由記述の補足(例: workplace-script)。" },
         "kinds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" }, "description": "握手の語彙が持つ。この事象を適用する種類(語彙の `kinds` の id)。" },
         "carriers": { "$ref": "#/$defs/carriers", "description": "事象を実際に行う、または行う手順を持つ担い手。by が person でも、記録を書く担い手があれば書く。無ければ省く。" },
