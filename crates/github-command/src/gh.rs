@@ -55,6 +55,10 @@ pub struct BodyFlags {
     pub have_flag: bool,
     /// 取れた本文の値(出現順)。`--body-file` は読めたものだけ。
     pub texts: Vec<String>,
+    /// `texts` のうち、`--body` / `-b` / `--body=` で渡された値(シェルのコマンド置換を含みうる)。
+    pub inline_texts: Vec<String>,
+    /// `texts` のうち、`--body-file` / `-F` の中身(読んだ後の確定した文字列)。
+    pub file_texts: Vec<String>,
     /// 読めなかった `--body-file` の値(出現順)。存在しない・通常ファイルでない・読めない。
     /// 標準入力(`-`)と空は含めない。判定する側が、読めない本文を黙って通すかを決める(#1109)。
     pub unreadable_files: Vec<String>,
@@ -63,7 +67,10 @@ pub struct BodyFlags {
 impl BodyFlags {
     fn take_file(&mut self, p: &str) {
         match read_body_file(p) {
-            Some(s) => self.texts.push(s),
+            Some(s) => {
+                self.texts.push(s.clone());
+                self.file_texts.push(s);
+            }
             None if !p.is_empty() && p != "-" => self.unreadable_files.push(p.to_string()),
             None => {}
         }
@@ -82,6 +89,7 @@ impl BodyFlags {
                     out.have_flag = true;
                     if i + 1 < n {
                         out.texts.push(tokens[i + 1].clone());
+                        out.inline_texts.push(tokens[i + 1].clone());
                         i += 2;
                         continue;
                     }
@@ -98,6 +106,7 @@ impl BodyFlags {
                     if let Some(v) = t.strip_prefix("--body=") {
                         out.have_flag = true;
                         out.texts.push(v.to_string());
+                        out.inline_texts.push(v.to_string());
                     } else if let Some(p) = t.strip_prefix("--body-file=") {
                         out.have_flag = true;
                         out.take_file(p);
@@ -113,16 +122,33 @@ impl BodyFlags {
 /// 抽出した本文の値を 1 つの判定対象テキストにまとめる(bash の
 /// `text="$(printf '%s\n' "${texts[@]}")"` 以降)。判定不能なら `None`:
 /// - heredoc を使う範囲なら heredoc 本体を本文候補に加える
-/// - そうでなく本文がコマンド置換(`$(` / バッククォート)なら中身が不明 →
-///   `None`(`--body "$(cat body.md)"` を常に弾かないため)
+/// - そうでなく**インラインの本文**(`--body` の値)がコマンド置換(`$(` / バッククォート)
+///   なら中身が不明 → `None`(`--body "$(cat body.md)"` を常に弾かないため)
 /// - 空白しか残らなければ `None`
-pub fn assemble_body_text(texts: &[String], has_hd: bool, heredoc_bodies: &str) -> Option<String> {
-    let mut text = command_substitution(&texts.join("\n"));
+///
+/// `files` は `--body-file` / `-F` の中身(読んだ後の確定した文字列)で、**コマンド置換の判定を
+/// しない**。ファイルの中身は Markdown のインラインコード(バッククォート)や `$(` を含んでよく、
+/// それを「中身が不明」と読むと、PR 本文のファイルのほとんどが未判定のまま通ってしまう
+/// (pr-followup-guard の未チェック task list、attribution-guard のフッターの検査が効かなかった)。
+pub fn assemble_body_text(
+    inline: &[String],
+    files: &[String],
+    has_hd: bool,
+    heredoc_bodies: &str,
+) -> Option<String> {
+    let mut text = command_substitution(&inline.join("\n"));
     if has_hd && !heredoc_bodies.is_empty() {
         text.push('\n');
         text.push_str(heredoc_bodies);
     } else if text.contains("$(") || text.contains('`') {
         return None;
+    }
+    for f in files {
+        let f = command_substitution(f);
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&f);
     }
     if text.bytes().all(is_posix_space) {
         return None;
@@ -138,7 +164,12 @@ pub fn extract_body(tokens: &[String], heredoc_bodies: &str) -> Option<String> {
     if !flags.have_flag {
         return None;
     }
-    assemble_body_text(&flags.texts, has_heredoc(tokens), heredoc_bodies)
+    assemble_body_text(
+        &flags.inline_texts,
+        &flags.file_texts,
+        has_heredoc(tokens),
+        heredoc_bodies,
+    )
 }
 
 /// 値フラグ 1 種の仕様(例: `--base` / `-B` / `--base=`)。
@@ -229,6 +260,10 @@ pub struct ApiBody {
     /// 本文フラグがあった(`--input -` も真 — 値は取れない)。
     pub have_flag: bool,
     pub texts: Vec<String>,
+    /// `texts` のうち、`-f body=…` などの値(シェルのコマンド置換を含みうる)。
+    pub inline_texts: Vec<String>,
+    /// `texts` のうち、`--input <file>` の `.body`(読んだ後の確定した文字列)。
+    pub file_texts: Vec<String>,
 }
 
 impl ApiBody {
@@ -245,6 +280,7 @@ impl ApiBody {
                         if let Some(v) = tokens[i + 1].strip_prefix("body=") {
                             out.have_flag = true;
                             out.texts.push(v.to_string());
+                            out.inline_texts.push(v.to_string());
                             i += 2;
                             continue;
                         }
@@ -254,7 +290,8 @@ impl ApiBody {
                     if i + 1 < n {
                         out.have_flag = true;
                         if let Some(b) = input_file_body(&tokens[i + 1]) {
-                            out.texts.push(b);
+                            out.texts.push(b.clone());
+                            out.file_texts.push(b);
                         }
                         i += 2;
                         continue;
@@ -266,10 +303,12 @@ impl ApiBody {
                         // bash の `${tok#*=body=}`(最短一致の接頭辞を落とす)
                         let at = t.find("=body=").map_or(0, |p| p + "=body=".len());
                         out.texts.push(t[at..].to_string());
+                        out.inline_texts.push(t[at..].to_string());
                     } else if let Some(p) = t.strip_prefix("--input=") {
                         out.have_flag = true;
                         if let Some(b) = input_file_body(p) {
-                            out.texts.push(b);
+                            out.texts.push(b.clone());
+                            out.file_texts.push(b);
                         }
                     }
                 }
@@ -351,19 +390,65 @@ mod tests {
 
     #[test]
     fn assemble_rules() {
+        let none: &[String] = &[];
         assert_eq!(
-            assemble_body_text(&v(&["a\n", "b\n\n"]), false, ""),
+            assemble_body_text(&v(&["a\n", "b\n\n"]), none, false, ""),
             Some("a\n\nb".into())
         );
-        assert_eq!(assemble_body_text(&v(&["$(cat x)"]), false, ""), None);
-        assert_eq!(assemble_body_text(&v(&["`x`"]), false, ""), None);
+        assert_eq!(assemble_body_text(&v(&["$(cat x)"]), none, false, ""), None);
+        assert_eq!(assemble_body_text(&v(&["`x`"]), none, false, ""), None);
         // heredoc 併用時はコマンド置換でも本体を見る
         assert_eq!(
-            assemble_body_text(&v(&["$(cat <<'E'"]), true, "body\n"),
+            assemble_body_text(&v(&["$(cat <<'E'"]), none, true, "body\n"),
             Some("$(cat <<'E'\nbody\n".into())
         );
-        assert_eq!(assemble_body_text(&v(&[" \t"]), false, ""), None);
-        assert_eq!(assemble_body_text(&[], true, ""), None);
+        assert_eq!(assemble_body_text(&v(&[" \t"]), none, false, ""), None);
+        assert_eq!(assemble_body_text(none, none, true, ""), None);
+    }
+
+    /// `--body-file` の中身は、バッククォートや `$(` を含んでも「判定不能」にしない。
+    /// 以前は texts を一括で見ていたので、Markdown のインラインコードを含む本文のファイルが
+    /// すべて未判定のまま通っていた(pr-followup-guard・attribution-guard)。
+    #[test]
+    fn file_contents_with_backticks_are_not_undeterminable() {
+        let none: &[String] = &[];
+        let file = v(&["本文 `code` と $(echo x) を含む\n"]);
+        assert_eq!(
+            assemble_body_text(none, &file, false, ""),
+            Some("本文 `code` と $(echo x) を含む".into())
+        );
+        // インラインがコマンド置換なら、ファイルがあっても判定不能のまま(従来どおり)。
+        assert_eq!(
+            assemble_body_text(&v(&["$(cat x)"]), &file, false, ""),
+            None
+        );
+    }
+
+    #[test]
+    fn body_flags_split_inline_and_file_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("b.md");
+        std::fs::write(&p, "from file `x`\n").unwrap();
+        let f = BodyFlags::scan(&v(&[
+            "gh",
+            "pr",
+            "create",
+            "--body-file",
+            p.to_str().unwrap(),
+        ]));
+        assert_eq!(f.inline_texts, Vec::<String>::new());
+        assert_eq!(f.file_texts, ["from file `x`"]);
+        assert_eq!(f.texts, ["from file `x`"]);
+        let g = BodyFlags::scan(&v(&["gh", "pr", "create", "--body", "inline"]));
+        assert_eq!(g.inline_texts, ["inline"]);
+        assert!(g.file_texts.is_empty());
+        assert_eq!(
+            extract_body(
+                &v(&["gh", "pr", "create", "--body-file", p.to_str().unwrap()]),
+                ""
+            ),
+            Some("from file `x`".into())
+        );
     }
 
     #[test]
