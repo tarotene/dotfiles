@@ -9,8 +9,14 @@
 // `additionalContext` を stdout に出す。
 //
 // 環境変数: `CLAUDE_PROJECT_DIR`(無ければ stdin の `.cwd`)、
-// `WORKTREE_FRESH_BASE_FETCH_TTL`(秒、既定 600: FETCH_HEAD がこれより新しけ
-// れば fetch を省く)。
+// `WORKTREE_FRESH_BASE_FETCH_TTL`(秒、既定 600: このフック自身が base を fetch
+// した時刻の印([`STAMP`])がこれより新しければ fetch を省く)。
+//
+// fetch の省略は FETCH_HEAD の更新時刻では決めない: FETCH_HEAD は他の fetch
+// (別のブランチの `git fetch origin <branch>` など)でも更新されるので、base の
+// 追跡 ref が古いまま fetch を省き、古い土台から切った worktree に気づけなかった
+// 見込み(#1344。原因は未確認の仮説)。fetch できなかったときは、手元の追跡 ref
+// より遅れていれば、そのことを知らせる。
 
 use git_repository::out as git;
 use serde_json::json;
@@ -19,6 +25,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// このフックが base の fetch に成功した時刻の印(共通の git ディレクトリの下のファイル。更新時刻だけを使う)。
+const STAMP: &str = "worktree-base-sync.fetched";
 
 fn run() -> Option<()> {
     let mut raw = String::new();
@@ -50,8 +58,9 @@ fn run() -> Option<()> {
         .ok()
         .filter(|v| !v.is_empty())
         .map_or(600, |v| v.parse().unwrap_or(0));
+    let stamp = common_dir.join(STAMP);
     let mut do_fetch = true;
-    if let Ok(meta) = std::fs::metadata(common_dir.join("FETCH_HEAD")) {
+    if let Ok(meta) = std::fs::metadata(&stamp) {
         let mtime = meta
             .modified()
             .ok()
@@ -64,10 +73,18 @@ fn run() -> Option<()> {
             do_fetch = false;
         }
     }
-    if do_fetch && !git_repository::fetch_quiet(project, &base, FETCH_TIMEOUT) {
-        return None;
-    }
     let origin_base = format!("origin/{base}");
+    if do_fetch {
+        if git_repository::fetch_quiet(project, &base, FETCH_TIMEOUT) {
+            let _ = std::fs::File::create(&stamp); // 成功した時刻を残す(更新時刻だけを使う)
+        } else {
+            // fetch できなかった(ネットワーク・認証・時間切れ)。最新かは分からないが、手元の追跡 ref
+            // より遅れているなら、それだけは確かなので知らせる。黙って終わると、古い土台のまま作業を
+            // 始めても気づけない。
+            notify_if_behind(project, &base, &origin_base);
+            return None;
+        }
+    }
     git(project, &["rev-parse", "--verify", "-q", &origin_base])?;
 
     let ab = git(
@@ -97,6 +114,26 @@ fn run() -> Option<()> {
     }
 
     let ctx = format!("[worktree-base-sync] pristine worktree を origin/{base} へ {behind} コミット fast-forward しました({before} -> {after})。他 hook の SessionStart advisory(pr-gate の base 追従など)は並列実行の都合でこの更新前の状態を見ている場合があります。");
+    println!(
+        "{}",
+        json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})
+    );
+    Some(())
+}
+
+/// fetch できなかったときに、手元の `origin/<base>` より HEAD が遅れていれば、`additionalContext` で知らせる。
+fn notify_if_behind(project: &std::path::Path, base: &str, origin_base: &str) -> Option<()> {
+    git(project, &["rev-parse", "--verify", "-q", origin_base])?;
+    let behind: u64 = git(
+        project,
+        &["rev-list", "--count", &format!("HEAD..{origin_base}")],
+    )?
+    .parse()
+    .ok()?;
+    if behind == 0 {
+        return None;
+    }
+    let ctx = format!("[worktree-base-sync] origin/{base} を fetch できませんでした(ネットワーク・認証を確かめてください)。手元の origin/{base} に対して、この worktree は {behind} コミット遅れています(origin/{base} 自体が古い可能性もあります)。作業の前に `git fetch origin {base}` してから、`git rebase origin/{base}` で土台を追従させてください。");
     println!(
         "{}",
         json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})

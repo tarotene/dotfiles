@@ -207,12 +207,69 @@ fn degenerate_inputs_are_silent_exit_0() {
 }
 
 #[test]
-fn fresh_fetch_head_within_ttl_skips_fetch() {
+fn a_recent_stamp_within_ttl_skips_fetch() {
     let tmp = tempfile::tempdir().unwrap();
     let (_up, wt) = new_repo_pair(tmp.path(), "ttl");
-    // FETCH_HEAD を作って(新鮮)、origin/main の追跡 ref は古いまま:
+    // このフック自身が最近 fetch した印(新鮮)がある。origin/main の追跡 ref は古いまま:
     // fetch を省くので behind は 0 のまま何も起きない。
+    std::fs::write(wt.join(".git/worktree-base-sync.fetched"), "").unwrap();
+    let before = head(&wt);
+    let out = run_env(&wt);
+    assert_eq!(head(&wt), before);
+    assert_eq!(out, "");
+}
+
+#[test]
+fn a_fresh_fetch_head_alone_does_not_skip_fetch() {
+    // #1344: FETCH_HEAD は他の fetch(別のブランチの `git fetch origin <branch>` など)でも更新される。
+    // それだけで base の fetch を省くと、追跡 ref が古いまま、古い土台から切った worktree に気づけない。
+    let tmp = tempfile::tempdir().unwrap();
+    let (up, wt) = new_repo_pair(tmp.path(), "fetchhead");
     std::fs::write(wt.join(".git/FETCH_HEAD"), "").unwrap();
+    let out = run_env(&wt);
+    assert_eq!(head(&wt), head(&up), "fetch して FF した");
+    assert!(out.contains("fast-forward"), "{out}");
+    // 成功した fetch は印を残し、次の起動では省く。
+    assert!(wt.join(".git/worktree-base-sync.fetched").exists());
+}
+
+#[test]
+fn a_failed_fetch_says_so_when_the_worktree_is_behind_the_local_tracking_ref() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_up, wt) = new_repo_pair(tmp.path(), "nofetch");
+    // 手元の origin/main を進めてから(HEAD は古い土台のまま)、fetch できない URL にする。
+    git(&wt, &["fetch", "-q", "origin", "main"]);
+    git(
+        &wt,
+        &["remote", "set-url", "origin", "/nonexistent-upstream-xyz"],
+    );
+    let before = head(&wt);
+    let out = run_env(&wt);
+    assert_eq!(head(&wt), before, "fetch できないので動かさない");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let ctx = v["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert!(
+        ctx.starts_with("[worktree-base-sync] origin/main を fetch できませんでした"),
+        "{ctx}"
+    );
+    assert!(ctx.contains("1 コミット遅れています"), "{ctx}");
+    assert!(
+        !wt.join(".git/worktree-base-sync.fetched").exists(),
+        "失敗は印を残さない"
+    );
+}
+
+#[test]
+fn a_failed_fetch_is_silent_when_nothing_is_known_to_be_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_up, wt) = new_repo_pair(tmp.path(), "nofetch-quiet");
+    // 手元の追跡 ref も HEAD と同じ(遅れの根拠が無い)。fetch できなくても黙る。
+    git(
+        &wt,
+        &["remote", "set-url", "origin", "/nonexistent-upstream-xyz"],
+    );
     let before = head(&wt);
     let out = run_env(&wt);
     assert_eq!(head(&wt), before);
