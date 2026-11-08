@@ -32,6 +32,7 @@
     ./modules/webcam-builtin.nix
     ./modules/obsidian-vault.nix
     ./modules/obsidian-livesync.nix
+    ./modules/study-intake.nix
     ./modules/local-state-backup.nix
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix

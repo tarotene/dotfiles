@@ -997,6 +997,40 @@ vault. Never target the live vault with an unreviewed `restic restore`.
   machine token. Removing the Home Manager module removes the commands and
   units but intentionally does not delete any B2 data.
 
+## Scanned handwritten notes: the `study-intake` timer
+
+`home/modules/study-intake.nix` runs a skill named `study-intake`, which lives in a
+private repository, with `claude -p` on a timer. The skill reads the scanned PDFs
+from a Google Drive inbox folder, writes per-section transcriptions into the vault,
+and writes one notification line to the file named by `--notify-out`. This module
+only starts it and shows that line as a Herdr toast. The private repository's path
+is not written here; the private wrapper passes it as `dotfiles.studyIntake.workdir`.
+
+It is **off by default** (`dotfiles.studyIntake.enable = false`). Enable it from the
+private wrapper only after these have been checked on the host that will run it
+(none is verified yet; they need the real scanner and notebook):
+
+- An unattended `claude -p` can call the Google Drive connector tools listed in
+  `allowedTools`. A listing or download that asks for a permission fails the run.
+- The skill, started from the prompt in the module, is found and runs to the end.
+- The transcription of a real handwritten page is good enough to trust.
+
+Notes on operating it:
+
+- Each tick starts `claude -p` once, even when the inbox is empty (the skill's first
+  step is the Drive listing), so `calendar` (default every 15 minutes, 07:00-23:59)
+  trades latency against Claude usage. Tune it after measuring a day.
+- The vault reaches the phone through whichever LiveSync runs on this host (the
+  Obsidian autostart, or the LiveSync CLI daemon when enabled). While the host is
+  asleep or logged out the timer does not run and nothing syncs.
+- The notification goes to the desktop only (Herdr). `PushNotification` does not reach
+  a phone from an unattended `claude -p` (measured 2026-11-08: "Mobile push not sent
+  (Remote Control inactive)"). The phone route is undecided; when it is, change the one
+  `herdr notification show` line in the runner.
+- A failed run (non-zero exit, or the `timeout`) shows a toast and leaves the unit
+  failed (`systemctl --user --failed`, and `hms` reports it as degraded). The last run's
+  output is in `~/.local/state/dotfiles/study-intake/last-run.log`.
+
 ## Café Wi-Fi: Tailscale mesh, exit node, host firewall
 
 Rationale and the two-stage (cloud-now, home-later) shape:

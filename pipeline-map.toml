@@ -149,6 +149,7 @@ node = [
   { id = "gpg-subkey-remind", label = "gpg-subkey remind (daily)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/gpg-subkey", auto = true },
   { id = "detect-drift", label = "detect-drift (weekly)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/detect-drift", auto = true },
   { id = "promotion-detect", label = "promotion-detect (daily)", lane = "timer", group = "reminders", stack = "rust", pipelines = ["wrapup-to-issue", "evidence"], entity = "crates/promotion-detect", doc = "docs/agents/promotion-detect.md", auto = true },
+  { id = "study-intake", label = "study-intake (15 min, off by default)", lane = "timer", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/study-intake.nix", doc = "docs/operations.md", auto = true },
   { id = "obsidian-backup", label = "obsidian-backup (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-stale-check", label = "obsidian-backup stale-check (daily)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
   { id = "obsidian-backup-maintenance", label = "obsidian-backup maintenance (weekly)", lane = "timer", group = "backup", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
