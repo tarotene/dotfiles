@@ -1088,6 +1088,20 @@ pub fn pending_count(project: &str) -> usize {
     jsonl + in_vault
 }
 
+/// このプロジェクトの、まだ裁定していない気づきのうち、最後の行(初出か再発)からいちばん日数がたっている
+/// ものの経過日数(JST の `today`)。vault の open なノートだけを見る。jsonl の行は状態も時計も持たないので
+/// 数えず、vault が無い機体・数えられないときは `None`。
+/// 片付けの提案の判定が使う。失効(`vault::sweep`)と同じ時計。
+pub fn pending_oldest_age_days(project: &str, today: &str) -> Option<i64> {
+    let inbox = inbox_for(project);
+    let repo = default_repo(project, &inbox);
+    let vault = open_vault()?;
+    let g = vault.lock().ok()?;
+    vault::oldest_open_age_days(&g, Some(&repo), today)
+        .ok()
+        .flatten()
+}
+
 /// usage エラーを bash に似せて出す(`<self>: <n>: usage: ...`、exit 1)。
 pub fn usage_error(self_path: &str, u: &Usage) -> Code {
     eprintln!("{self_path}: {}: {}", u.param, u.text);

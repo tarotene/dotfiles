@@ -382,6 +382,38 @@ fn last_seen(note: &Note) -> String {
         .unwrap_or_default()
 }
 
+/// ノートの最後の行からの経過日数と、その最後の行の日付。`sweep`(失効)と
+/// [`oldest_open_age_days`](片付けの提案)が同じ時計を使うための 1 か所。日付を読めなければ `None`。
+fn age_since_last_seen(note: &Note, today_days: i64) -> Option<(String, i64)> {
+    let seen = last_seen(note);
+    parse_day(&seen).map(|d| (seen, today_days - d))
+}
+
+/// 状態が `open` のノート(`repo` が `Some` ならその repo だけ)のうち、最後の行(初出か再発)から
+/// いちばん日数がたっているものの経過日数。`open` が無い、または日付を読めるノートが無ければ `None`。
+///
+/// 起動時の片付けの提案が使う。時計は `sweep` の失効と同じ(最後の行の日付)で、初出の日ではない。
+/// 再発を続ける気づきは、初出が古くても、まだ生きているものとして数える。
+pub fn oldest_open_age_days(
+    g: &Locked,
+    repo: Option<&str>,
+    today: &str,
+) -> io::Result<Option<i64>> {
+    let Some(today_days) = parse_day(today) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("今日の日付を読めない: {today}"),
+        ));
+    };
+    Ok(all_notes(g)?
+        .iter()
+        .map(|(_, n)| n)
+        .filter(|n| n.get("status") == Some(OPEN))
+        .filter(|n| repo.is_none_or(|r| n.get("repo") == Some(r)))
+        .filter_map(|n| age_since_last_seen(n, today_days).map(|(_, age)| age))
+        .max())
+}
+
 /// 状態が `open` のまま、最後の行から [`LAPSE_AFTER_DAYS`] 日以上たったノートを `lapsed` にする
 /// (全 repo のノートが対象。`today` は JST の `YYYY-MM-DD`)。frontmatter の `status` だけを書き換え、
 /// 本文はそのまま残す。`dry_run` なら何も書かず、なるノートだけを返す。
@@ -401,8 +433,7 @@ pub fn sweep(g: &Locked, today: &str, dry_run: bool) -> io::Result<Vec<Lapsed>> 
         if note.get("status") != Some(OPEN) {
             continue;
         }
-        let seen = last_seen(&note);
-        let Some(age_days) = parse_day(&seen).map(|d| today_days - d) else {
+        let Some((seen, age_days)) = age_since_last_seen(&note, today_days) else {
             continue;
         };
         if age_days < LAPSE_AFTER_DAYS {
@@ -875,6 +906,60 @@ mod tests {
         assert_eq!(status_of(&g, "old but recurring"), "open");
         // 最後の行から 14 日たてば失効する。
         assert_eq!(sweep(&g, "2026-11-15", false).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_oldest_open_age_uses_the_latest_row_and_skips_closed_notes() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        assert_eq!(oldest_open_age_days(&g, None, "2026-11-08").unwrap(), None);
+        // 初出は古いが、再発が新しいノートは、再発の日から数える。
+        aged(&g, "recurring", "2026-09-01");
+        add_item(&g, &item("recurring", "again", "2026-11-05"), "x").unwrap();
+        assert_eq!(
+            oldest_open_age_days(&g, None, "2026-11-08").unwrap(),
+            Some(3)
+        );
+        aged(&g, "stale", "2026-11-01");
+        assert_eq!(
+            oldest_open_age_days(&g, None, "2026-11-08").unwrap(),
+            Some(7)
+        );
+        // 裁定済みのノートは数えない。
+        set_status(&g, "stale", None, "dropped", "").unwrap();
+        assert_eq!(
+            oldest_open_age_days(&g, None, "2026-11-08").unwrap(),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn the_oldest_open_age_can_be_limited_to_one_repo() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "mine", "2026-11-07");
+        let mut other = item("other", "d", "2026-10-01");
+        other.repo = "o/other".into();
+        add_item(&g, &other, "x").unwrap();
+        assert_eq!(
+            oldest_open_age_days(&g, Some("o/r"), "2026-11-08").unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            oldest_open_age_days(&g, Some("o/other"), "2026-11-08").unwrap(),
+            Some(38)
+        );
+        assert_eq!(
+            oldest_open_age_days(&g, None, "2026-11-08").unwrap(),
+            Some(38)
+        );
+    }
+
+    #[test]
+    fn the_oldest_open_age_refuses_an_unreadable_today() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        assert!(oldest_open_age_days(&g, None, "not-a-date").is_err());
     }
 
     #[test]
