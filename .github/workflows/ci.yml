@@ -476,10 +476,20 @@ jobs:
       # ADR-0010 D13). No network, no filesystem writes other than
       # --out-plan.
       # Keep the version equal to nixpkgs stable's yq-go (home/modules/packages.nix, #813).
-      - name: Install yq (single static binary, version-pinned)
+      #
+      # 取得は再試行つき(`--retry-all-errors`、5 回、間隔 10 秒)で、取得物の SHA-256 を固定する。
+      # GitHub のリリース配布物の取得が断続的に落ちた(2026-11-08、`wget` が終了コード 4 で 2 分 25 秒かけて
+      # 失敗。#1395)。再試行で一過性の失敗を吸収し、固定した SHA-256 で、途中で切れた取得物や、エラーの
+      # HTML を黙って実行しない。版を上げるときは、新しい版の `yq_linux_amd64` の `sha256sum` を読んで、
+      # URL の版と一緒に直す。
+      - name: Install yq (single static binary, version-pinned, checksum-pinned)
         run: |
-          wget -q "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64" \
-            -O /usr/local/bin/yq
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 20 \
+            --output /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64"
+          echo "d56bf5c6819e8e696340c312bd70f849dc1678a7cda9c2ad63eebd906371d56b  /usr/local/bin/yq" \
+            | sha256sum --check --strict -
           chmod +x /usr/local/bin/yq
           yq --version
 
