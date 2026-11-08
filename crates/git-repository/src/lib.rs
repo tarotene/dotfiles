@@ -222,11 +222,16 @@ mod tests {
         // commit がこの一時 repo でもブロックされ、テストが spurious に
         // 落ちる。CI は home-manager 由来の hook が無いホームで走るため
         // 再現しないが、ローカルでは常に効かせておく。
+        // `-c commit.gpgsign=false` も同じ理由: ホストの ~/.gitconfig が commit に署名を要求している
+        // 環境(`commit.gpgsign=true`)では、gpg-agent に届かない sandbox の中で署名に失敗し、
+        // この一時 repo の `commit` が `No secret key` で落ちる(2026-10-30)。
         let st = Command::new("git")
             .arg("-C")
             .arg(dir)
             .arg("-c")
             .arg("core.hooksPath=")
+            .arg("-c")
+            .arg("commit.gpgsign=false")
             .args(args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

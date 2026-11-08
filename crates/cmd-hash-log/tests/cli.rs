@@ -7,11 +7,15 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn git(dir: &Path, args: &[&str]) {
+    // `commit.gpgsign=false`: ホストの ~/.gitconfig が署名を要求していると、gpg-agent に届かない
+    // sandbox の中で、この一時 repo の commit が `No secret key` で落ちる(2026-10-30)。
     let st = Command::new("git")
         .arg("-C")
         .arg(dir)
         .arg("-c")
         .arg("core.hooksPath=")
+        .arg("-c")
+        .arg("commit.gpgsign=false")
         .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

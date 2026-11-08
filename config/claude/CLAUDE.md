@@ -174,10 +174,25 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
   (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する
   ので壊れないが、代役は `rm` で消せず(`Device or resource busy`)、セッションが続く間は残る。
-- **Unix ソケットを作るテストは sandbox の中では動かない**(2026-10-28 に vega で実測: `cargo test -p
-  claude-statusline --test integration` の 6 件が `UnixListener::bind` で `Operation not permitted` になる。
-  `tests/integration.rs:289`)。`codex-plan` の起動経路のテストも同じ型。失敗しても変更の不具合とは限らない
-  ので、`cargo test --workspace` の赤はこの型かを先に見て、CI の結果で確かめる。
+- **`cargo test --workspace` の赤は、変更の不具合とは限らない。** 2026-11-08 に vega で sandbox の中で回すと、
+  9 crate が赤だった。原因の型は 4 つ(`cargo test --workspace > <ファイル> 2>&1` で書き出して、失敗の行を
+  `grep -E 'FAILED|panicked'` で読む):
+  - **Unix ソケットを作るテストは sandbox の中では動かない**: `UnixListener::bind` が `Operation not permitted`
+    になる(`claude-statusline` の integration、`herdr-agent-metadata` の claude・codex・copilot、`herdr-client`、
+    `codex-plan` の `runtime`・`experiment`・`lifecycle`)。fixture では直せない。`herdr-agent-metadata` と
+    `codex-plan` は一時ディレクトリを `/tmp` に決め打ちにしていて(`tempdir_in("/tmp")`)、sandbox の中では
+    `/tmp` が読み取り専用で、そこで先に落ちる。決め打ちの理由はコードに書かれておらず、ソケットのパスの
+    長さの上限(`sun_path`)に収めるためかもしれないが、推測で、未確認。`TMPDIR` に向けても、その先の
+    `UnixListener::bind` が落ちる見込みで、直す意味が無い(`herdr-client` の `bind` が `Operation not
+    permitted` で落ちるのは実測した。この 2 crate の `bind` までは未実測)。
+  - **gpg**: `gpg-subkey` の selftest は、fixture の鍵の生成が gpg-agent のソケットに届かず落ちる(同上)。
+  - **git の commit の署名**(直した型): ホストの `~/.gitconfig` が `commit.gpgsign=true` だと、一時 repo の
+    `git commit` が `No secret key` で落ちる。テストの git 補助関数に `-c commit.gpgsign=false` を足した
+    (`git-repository`・`cmd-hash-log`・`update-own-tools`。`core.hooksPath=` を足した #428 と同じ型)。
+  - **`env_clear` で `TMPDIR` も消える**(直した型): 一時ディレクトリが `/tmp`(読み取り専用)になる。fixture の
+    下に向けた(`codex-launcher`)。
+  上の 2 つの型(ソケット・gpg)は直らないので、この 5 crate 以外の赤は、変更の不具合を先に疑う。ソケットの
+  型は、CI の結果で確かめる。
 
 ## テストの出力を `head` / `tail` で切らない
 

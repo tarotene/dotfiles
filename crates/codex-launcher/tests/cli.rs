@@ -51,8 +51,12 @@ exit 23"#
     }
     fn cmd(&self) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_codex-launcher"));
+        // `env_clear` で `TMPDIR` も消えるので、そのままでは `/tmp` に一時ディレクトリを作る。sandbox の
+        // 中では `/tmp` が読み取り専用で、`update` が `cannot create installer directory` で落ちる
+        // (2026-10-30)。fixture の下に向ける。
         c.env_clear()
             .env("HOME", self.home())
+            .env("TMPDIR", self.home())
             .env("PATH", self.home().join("bin"))
             .current_dir(self.home());
         c
