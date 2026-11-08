@@ -22,6 +22,10 @@ fn git(dir: &Path, args: &[&str]) -> String {
             "user.email=t@example.invalid",
             "-c",
             "core.hooksPath=",
+            // ホストの ~/.gitconfig が署名を要求していると、gpg-agent に届かない sandbox の中で、
+            // この一時 repo の commit が `No secret key` で落ちる(2026-10-30)。
+            "-c",
+            "commit.gpgsign=false",
         ])
         .args(args)
         .output()
