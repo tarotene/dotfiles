@@ -675,6 +675,7 @@ dependencies = [
 name = "git-audit-worktrees"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "serde_json",
  "tempfile",
 ]
@@ -883,7 +884,6 @@ dependencies = [
  "git-worktree-create-guard",
  "issue-create-guard",
  "ja-polish",
- "jq-json-compat",
  "main-checkout-guard",
  "new-tool-guard",
  "pkexec-guard",

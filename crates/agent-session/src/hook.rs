@@ -104,35 +104,6 @@ pub fn jq_r_path(v: &Value, path: &[&str]) -> Result<Option<String>, JqError> {
     Ok(jq_raw(cur).map(|s| command_substitution(&s)))
 }
 
-/// deny の hook 出力(bash の `emit_deny` / Copilot adapter の
-/// `emit_deny_copilot`)。Claude/Codex は `hookSpecificOutput` でラップし、
-/// Copilot はラップしない直下の JSON(Copilot adapter の実測記録)。
-///
-/// 描画は [`crate::reply::Reply::render`] が持つ。呼び出し側が `Reply` へ移ったら、この関数は消す。
-pub fn deny_output(agent: Agent, reason: &str) -> String {
-    crate::reply::Reply::deny(reason).render(agent, crate::event::HookEvent::PreToolUse)
-}
-
-/// `--agent <claude|codex|copilot>` / `--agent=<…>` を引数から読む。無い・
-/// 不正なら `Agent::Claude`(pkexec-guard と同じ既定)。
-pub fn agent_from_args(args: &[String]) -> Agent {
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if a == "--agent" {
-            if let Some(v) = it.next() {
-                if let Ok(agent) = v.parse() {
-                    return agent;
-                }
-            }
-        } else if let Some(v) = a.strip_prefix("--agent=") {
-            if let Ok(agent) = v.parse() {
-                return agent;
-            }
-        }
-    }
-    Agent::Claude
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,23 +156,5 @@ mod tests {
         )
         .unwrap();
         assert_eq!(c.tool_input_alt(&["body", "comment"]).as_deref(), Some(""));
-    }
-
-    #[test]
-    fn deny_output_shapes() {
-        assert_eq!(
-            deny_output(Agent::Copilot, "r"),
-            "{\n  \"permissionDecision\": \"deny\",\n  \"permissionDecisionReason\": \"r\"\n}\n"
-        );
-        assert!(deny_output(Agent::Codex, "r").starts_with("{\n  \"hookSpecificOutput\": {\n"));
-    }
-
-    #[test]
-    fn agent_args() {
-        let a = |v: &[&str]| agent_from_args(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        assert_eq!(a(&["--agent", "codex"]), Agent::Codex);
-        assert_eq!(a(&["--agent=copilot"]), Agent::Copilot);
-        assert_eq!(a(&["--agent", "x"]), Agent::Claude);
-        assert_eq!(a(&[]), Agent::Claude);
     }
 }

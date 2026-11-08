@@ -201,7 +201,7 @@ fn external_send_guard_asks_with_the_same_reason_through_the_router() {
 
 /// ExitPlanMode の拒否 2 件。旧 bin の fixture のうち、Claude の PreToolUse で `ExitPlanMode` を
 /// 呼ぶもの(標準出力が空のものも含む)を、ルータにも流す。ルータの出力を旧 bin と同じ書式に
-/// 描き直して(`jqfmt::deny_for_event`、trycmd の `\` → `/` の正規化を同じに当てる)、fixture の
+/// 描き直して(`Reply::render`、trycmd の `\` → `/` の正規化を同じに当てる)、fixture の
 /// 標準出力と**全文一致**することを確かめる。判定は同じ `hook` 関数なので、ここで確かめるのは
 /// 表の `Tools` と、判定の結果を出力へ運ぶ道(取りこぼしと、書式の差)である。
 ///

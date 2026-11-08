@@ -209,34 +209,73 @@ impl Reply {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jq_json_compat::jqfmt;
 
     fn deny(reason: &str) -> Reply {
         Reply::deny(reason)
     }
 
-    // ---- 従来の出力と、1 バイトも変わらないこと ----
+    // ---- 従来の jq の整形出力と、1 バイトも変わらないこと(固定値) ----
+    //
+    // 値は、従来の描画関数(`jqfmt::deny_for_event`・`jqfmt::system_message`)の出力から取った。
+    // DEL と C0 は `\u00xx`、`/` は書き換えない。関数は消えたので、この表が唯一の記録である。
+
+    /// (理由, PreToolUse の出力, PermissionRequest の出力)。
+    const DENY_GOLDENS: &[(&str, &str, &str)] = &[
+        (
+            "plain",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"plain\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"plain\"\n    }\n  }\n}\n",
+        ),
+        (
+            "line1\nline2",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"line1\\nline2\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"line1\\nline2\"\n    }\n  }\n}\n",
+        ),
+        (
+            "quote \" backslash \\ slash / tab \t",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"quote \\\" backslash \\\\ slash / tab \\t\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"quote \\\" backslash \\\\ slash / tab \\t\"\n    }\n  }\n}\n",
+        ),
+        (
+            "ctl \u{1} \u{1b} del \u{7f}",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"ctl \\u0001 \\u001b del \\u007f\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"ctl \\u0001 \\u001b del \\u007f\"\n    }\n  }\n}\n",
+        ),
+        (
+            "日本語と é",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"日本語と é\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"日本語と é\"\n    }\n  }\n}\n",
+        ),
+        (
+            "",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"\"\n  }\n}\n",
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"\"\n    }\n  }\n}\n",
+        ),
+    ];
+
+    /// (メッセージ, 出力)。
+    const SYSTEM_MESSAGE_GOLDENS: &[(&str, &str)] = &[
+        ("m", "{\n  \"systemMessage\": \"m\"\n}\n"),
+        ("a\nb", "{\n  \"systemMessage\": \"a\\nb\"\n}\n"),
+        (
+            "日本語 \" \\ \u{7f}",
+            "{\n  \"systemMessage\": \"日本語 \\\" \\\\ \\u007f\"\n}\n",
+        ),
+    ];
 
     #[test]
-    fn deny_is_byte_identical_to_the_legacy_renderers() {
-        for reason in [
-            "plain",
-            "line1\nline2",
-            "quote \" backslash \\ slash / tab \t",
-            "ctl \u{1} \u{1b} del \u{7f}",
-            "日本語と é",
-            "",
-        ] {
+    fn deny_renders_the_exact_bytes() {
+        for (reason, pre, perm) in DENY_GOLDENS {
             for agent in [Agent::Claude, Agent::Codex] {
                 assert_eq!(
                     deny(reason).render(agent, HookEvent::PreToolUse),
-                    jqfmt::deny_for_event("PreToolUse", reason),
+                    *pre,
                     "{agent:?} {reason:?}"
                 );
             }
             assert_eq!(
                 deny(reason).render(Agent::Claude, HookEvent::PermissionRequest),
-                jqfmt::deny_for_event("PermissionRequest", reason),
+                *perm,
                 "{reason:?}"
             );
             // 従来の Copilot の平らな形(hook::deny_output の旧実装)を、そのまま組み立てて比べる
@@ -244,7 +283,7 @@ mod tests {
                 "{}\n",
                 J::obj(vec![
                     ("permissionDecision", J::str("deny")),
-                    ("permissionDecisionReason", J::str(reason)),
+                    ("permissionDecisionReason", J::str(*reason)),
                 ])
                 .pretty()
             );
@@ -257,11 +296,11 @@ mod tests {
     }
 
     #[test]
-    fn system_message_is_byte_identical_to_the_legacy_renderer() {
-        for message in ["m", "a\nb", "日本語 \" \\ \u{7f}"] {
+    fn system_message_renders_the_exact_bytes() {
+        for (message, expected) in SYSTEM_MESSAGE_GOLDENS {
             assert_eq!(
-                Reply::system_message(message).render(Agent::Claude, HookEvent::PreToolUse),
-                jqfmt::system_message(message),
+                Reply::system_message(*message).render(Agent::Claude, HookEvent::PreToolUse),
+                *expected,
                 "{message:?}"
             );
         }

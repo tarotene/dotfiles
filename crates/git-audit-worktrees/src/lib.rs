@@ -11,6 +11,7 @@
 //!   バックスラッシュ+n の 2 文字として JSON に入る。
 //! - `$HERDR_BIN notification show` はクォートされていないので空白で分割される。
 
+use agent_session::{Agent, HookEvent, Reply};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
@@ -418,10 +419,7 @@ fn context(findings: &[String]) -> i32 {
         "[git-worktree-audit] 存在しない checkout の登録、または開いていない残骸 checkout があります。自動削除せず、git prune-worktrees で確認してください。\\n{}",
         chomp(&report)
     );
-    out(&format!(
-        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"SessionStart\",\n    \"additionalContext\": {}\n  }}\n}}\n",
-        json_string(&ctx)
-    ));
+    out(&Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart));
     0
 }
 

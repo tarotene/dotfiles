@@ -30,6 +30,12 @@ Copilot は PreToolUse の判定だけが平らな形。イベントごとの表
 複数の検査の結果を 1 つにする規則(deny > ask > allow、理由は空行、文脈は改行でつなぐ)は
 `Reply::from_outcomes` が持ち、`hook-router` の併合と同じ。
 
+返答の封筒の文字列(`hookSpecificOutput`)は `agent-session` だけが書き、hook の bin は標準入力を `read_stdin` で読む。
+`crates/repo-structure-check` の `hook_io` の検査が、`src/` に封筒の文字列を書いた crate と、標準入力を直接読む bin を落とす。
+例外は、外から来た JSON を読む 3 つの crate(`codex-plan-gate`・`copilot-plan-review`・`hook-router` の Codex 変換)と、
+hook でない CLI と遅延読みの 5 つの bin で、理由つきで `hook_io.rs` の定数に列挙してある。例外のファイルが
+違反の形を失ったら、例外のほうが落ちる。
+
 `command-inspection::simple_shell` は旧 hook-io の保守的な分割器、`command-inspection::shell` は
 旧 guard-core のシェル解析器である。前者は解釈できない入力を返さず、後者は guard の検査範囲を切り出す。
 同じ名前の関数でも戻り値の意味を揃えない。

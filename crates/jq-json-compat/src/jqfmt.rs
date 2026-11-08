@@ -158,51 +158,29 @@ pub fn escape(s: &str) -> String {
     out
 }
 
-/// `jq -n --arg m "$msg" '{systemMessage: $m}'`(末尾改行込み)。
-pub fn system_message(msg: &str) -> String {
-    format!(
-        "{}\n",
-        J::obj(vec![("systemMessage", J::str(msg))]).pretty()
-    )
-}
-
-/// plan gate 系の `deny_with()`: `PermissionRequest` なら `decision.behavior`、
-/// それ以外は `permissionDecision` の形(末尾改行込み)。
-pub fn deny_for_event(event: &str, reason: &str) -> String {
-    let inner = if event == "PermissionRequest" {
-        J::obj(vec![
-            ("hookEventName", J::str("PermissionRequest")),
-            (
-                "decision",
-                J::obj(vec![
-                    ("behavior", J::str("deny")),
-                    ("message", J::str(reason)),
-                ]),
-            ),
-        ])
-    } else {
-        J::obj(vec![
-            ("hookEventName", J::str("PreToolUse")),
-            ("permissionDecision", J::str("deny")),
-            ("permissionDecisionReason", J::str(reason)),
-        ])
-    };
-    format!("{}\n", J::obj(vec![("hookSpecificOutput", inner)]).pretty())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn pretty_matches_jq() {
+        // `jq .` と同じ整形: 2 空白のインデント、`"k": v`、キーは挿入順、入れ子も同じ。
+        let v = J::obj(vec![(
+            "hookSpecificOutput",
+            J::obj(vec![
+                ("hookEventName", J::str("PermissionRequest")),
+                (
+                    "decision",
+                    J::obj(vec![
+                        ("behavior", J::str("deny")),
+                        ("message", J::str("a\nb")),
+                    ]),
+                ),
+            ]),
+        )]);
         assert_eq!(
-            system_message("a\nb"),
-            "{\n  \"systemMessage\": \"a\\nb\"\n}\n"
-        );
-        assert_eq!(
-            deny_for_event("PermissionRequest", "r"),
-            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"r\"\n    }\n  }\n}\n"
+            v.pretty(),
+            "{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PermissionRequest\",\n    \"decision\": {\n      \"behavior\": \"deny\",\n      \"message\": \"a\\nb\"\n    }\n  }\n}"
         );
     }
 

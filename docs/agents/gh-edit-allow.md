@@ -26,7 +26,7 @@
 | PreToolUse(`Bash`、`if: Bash(gh *)`) | 判定 | 対象が台帳にあれば `permissionDecision: allow`。無ければ何も出さない |
 
 - **台帳**: `~/.claude/gh-edit-allow/state/<session_id>.ledger` に、1 行 1 件で
-  `pr owner/repo N` の形式で書く。実装は `hook-io::SessionLedger`
+  `pr owner/repo N` の形式で書く。実装は `agent_session::SessionLedger`
   (`stack-base-guard.sh` の `state_file()` と同型)。台帳はセッションごとに空から始まる。
 - **判定の対象**:
   - `gh pr edit <N|URL>` / `gh issue edit <N|URL>...`: 対象がすべて台帳にあれば allow する。

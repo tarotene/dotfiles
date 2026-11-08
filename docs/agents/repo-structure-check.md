@@ -2,7 +2,7 @@
 
 実装: `crates/repo-structure-check`(Rust のライブラリ。bin は持たない)
 走る場所: CI の `Rust workspace` ジョブの `cargo test --workspace`。手元は `cargo test -p repo-structure-check`
-Issue: #1434(親の tracking Issue は #1433)
+Issue: #1434(manifest)、#1435(hook の入出力)(親の tracking Issue は #1433)
 
 ## 動機
 
@@ -28,6 +28,20 @@ crate に集める。
 依存ゼロの 2 つは、他リポジトリの CI(`.github/actions/pr-title/action.yml`)が、root の `Cargo.toml` とこの 2 crate
 だけを sparse-checkout して `cargo build` する。依存を足すと、他リポジトリの build が重く、壊れやすくなる。
 `戻せない: 外部契約` に当たるので、例外は名前で列挙する(`manifest::ZERO_DEPENDENCY_CRATES`)。
+
+### hook の入出力(`hook_io::check_tree`)
+
+`crates/*/src/**/*.rs` のうち、コメントの行と、ファイル末尾のテストの節(`#[cfg(test)]` から後)を除いた行を読む。
+
+| 検査 | 内容 |
+|---|---|
+| 返答の封筒 | `hookSpecificOutput` の文字列は `agent-session`(`Reply::render`)だけが書く。ほかの crate の `src/` に書いたら落ちる |
+| 標準入力 | hook の bin(`src/main.rs`・`src/entry.rs`・`src/bin/*.rs`)は、`std::io::stdin()` を直接呼ばず、`agent_session::entry::read_stdin` を呼ぶ。端末かどうかを調べるだけの行(`is_terminal`)は読みではない |
+| 例外の鮮度 | 例外のファイルが、違反の形をもう持たない(または、ファイルが無い)と、例外のほうが落ちる |
+
+例外は、どれも**恒久**の例外で、`hook_io::ENVELOPE_EXCEPTIONS`(返答を書かず、外から来た JSON を読む・読み替える 3 ファイル)と
+`hook_io::STDIN_EXCEPTIONS`(hook でない CLI の 4 つと、遅延して読む `adr-number`)に、理由つきで列挙する。違反を先送りする
+一覧には使わない。
 
 ### 規則の置き方
 
@@ -56,5 +70,6 @@ crate に集める。
 ## 執行点
 
 - crates/repo-structure-check/src/manifest.rs
+- crates/repo-structure-check/src/hook_io.rs
 - crates/repo-structure-check/tests/tree.rs
 - Cargo.toml
