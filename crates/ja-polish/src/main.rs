@@ -66,10 +66,9 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("stop-gate") {
         // hook: 判定不能・入力が読めないときは何も出さず通す。
-        if let Ok(raw) = read_stdin() {
-            if let Some(out) = ja_polish::stop::run(&raw) {
-                println!("{out}");
-            }
+        let raw = agent_session::entry::read_stdin();
+        if let Some(out) = ja_polish::stop::run(&raw) {
+            println!("{out}");
         }
         return ExitCode::SUCCESS;
     }

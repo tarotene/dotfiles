@@ -4,7 +4,6 @@
 
 use issue_index::{build, build_human_only, owner_repo, total_count, Context, PrStatus, Scope};
 use serde_json::Value;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
@@ -106,8 +105,7 @@ fn main() {
     if !on_path("gh") {
         return;
     }
-    let mut input = String::new();
-    let _ = std::io::stdin().read_to_string(&mut input);
+    let input = agent_session::entry::read_stdin();
     let Some(project) = project_dir(&input) else {
         return;
     };

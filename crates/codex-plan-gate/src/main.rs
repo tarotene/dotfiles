@@ -214,8 +214,7 @@ fn run() -> Option<String> {
         return None;
     }
 
-    let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).ok()?;
+    let raw = agent_session::entry::read_stdin();
     let input: Value = serde_json::from_str(&raw).ok()?;
     if input.get("hook_event_name").and_then(Value::as_str) != Some("Stop") {
         return None;

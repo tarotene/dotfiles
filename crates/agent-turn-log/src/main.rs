@@ -21,7 +21,7 @@
 
 use serde_json::Value;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -157,11 +157,9 @@ fn run() -> Option<()> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "claude-code".to_string());
 
-    let mut raw = Vec::new();
-    let _ = std::io::stdin().read_to_end(&mut raw);
-    // jq と同じく不正な UTF-8 は U+FFFD に置き換え、JSON 値の並びとして読む。
+    // jq と同じく不正な UTF-8 は U+FFFD に置き換え(`read_stdin` が持つ)、JSON 値の並びとして読む。
     // 1 つでも壊れていれば(bash 版の `|| exit 0` と同じく)何もしない。
-    let text = String::from_utf8_lossy(&raw);
+    let text = agent_session::entry::read_stdin();
     let docs: Vec<Value> = serde_json::Deserializer::from_str(&text)
         .into_iter::<Value>()
         .collect::<Result<_, _>>()
