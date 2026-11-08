@@ -4,6 +4,9 @@
 //! 日次 timer から無引数で呼ばれる。`--dry-run` を付けると inbox へ書かず
 //! stdout に1候補1行(JSON)を出す(手動確認・selftest 用)。
 //!
+//! 候補の検出とは別に、vault の `inbox/` の気づきのうち、`open` のまま 14 日放置されたものを
+//! `lapsed` にする(ADR-0000。全 repo のノートが対象。`--dry-run` では書かず、件数を標準エラーに出す)。
+//!
 //! 環境変数(すべて未設定なら妥当な既定値にフォールバックする — due-remind
 //! の `DUE_REMIND_*` と同じ形、テストでの差し替えに使う):
 //!   PROMOTION_DETECT_REPO         既定 "tarotene/dotfiles"
@@ -150,6 +153,17 @@ fn main() {
     } else {
         read_emitted(&emitted_path)
     };
+    // --- 気づきの失効(ADR-0000): open のまま放置された気づきを lapsed にする。vault のある機体だけ ---
+    // セッションを始めたプロジェクトの件数通知(`remind`)は、別のプロジェクトの open には届かない。
+    // timer が全 repo のノートを日次で読んで、放置を終わらせる。失効したノートの候補は、まだ検出される
+    // なら入れ直す(再発として open に戻る)ので、上の `emitted` から外す。外さないと、条件が続いている
+    // 候補が「前回と同じ」のまま二度と入らず、14 日で黙って消える。
+    for lapsed in sweep_inbox(&state_dir.join("wrapup"), dry_run) {
+        if lapsed.repo == repo {
+            emitted.remove(&lapsed.title);
+        }
+    }
+
     for (title, detail) in candidates {
         if !dry_run && emitted.get(&title) == Some(&detail) {
             continue;
@@ -275,6 +289,36 @@ fn check_record_layers(label: &str, checkout: &Path) -> Vec<(String, String)> {
         promotion_detect::layer_drift_title(label),
         promotion_detect::layer_drift_detail(label, &drifts),
     )]
+}
+
+/// vault の `inbox/` の、`open` のまま 14 日以上放置された気づきを `lapsed` にする(全 repo)。
+/// `dry_run` なら書かない。結果の件数は標準エラーに 1 行出す(標準出力は候補の JSON 用)。vault を宣言していない・
+/// 使えない機体では何もしない。失敗は次の日にまたやり直せるので、理由を 1 行出して続ける。
+fn sweep_inbox(lock_dir: &Path, dry_run: bool) -> Vec<issue_inbox::vault::Lapsed> {
+    let Some(Ok(vault)) = vault_note::VaultNotes::open(lock_dir) else {
+        return Vec::new();
+    };
+    let swept = vault
+        .lock()
+        .and_then(|g| issue_inbox::vault::sweep(&g, &issue_inbox::vault::jst_today(), dry_run));
+    match swept {
+        Ok(lapsed) => {
+            eprintln!(
+                "promotion-detect: 気づきの失効: {} 件{}",
+                lapsed.len(),
+                if dry_run {
+                    "(dry-run: 書かない)"
+                } else {
+                    ""
+                }
+            );
+            lapsed
+        }
+        Err(e) => {
+            eprintln!("promotion-detect: 気づきの失効を読めない: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// この機体が vault を宣言しているか(`OBSIDIAN_VAULT` かマーカーファイル。他の道具と同じ宣言)。

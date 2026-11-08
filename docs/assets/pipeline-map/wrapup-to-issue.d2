@@ -358,6 +358,9 @@ l_external.n_claude_scratchpad -> l_manual.n_session_retrospective: "ad-hoc code
 l_timer.n_promotion_detect -> l_external.n_wrapup_inbox: "promotion candidates" {
   class: e_file
 }
+l_timer.n_promotion_detect -> l_external.n_obsidian_vault: "lapse stale open notes" {
+  class: e_file
+}
 l_external.n_github -> l_timer.n_promotion_detect: "feedback Issues" {
   class: e_context
 }

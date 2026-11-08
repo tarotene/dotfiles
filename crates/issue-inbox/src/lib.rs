@@ -1003,6 +1003,71 @@ fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
     }
 }
 
+/// `--sweep [--dry-run] [--as-of YYYY-MM-DD]`: 状態が `open` のまま、最後の行から
+/// [`vault::LAPSE_AFTER_DAYS`] 日以上たった気づきを、全 repo について `lapsed` にする(ADR-0000)。
+/// 日次の timer(`promotion-detect`)が同じ関数を呼ぶ。`--dry-run` は何も書かず、なるものを数えるだけ。
+/// `--as-of` は日付を差し替える見積り用で、`--dry-run` と一緒にだけ使える。繰り返しても二重に書かない。
+/// vault を宣言していない機体では何もしない(jsonl の行は状態を持たない)。
+fn sweep_cmd(args: &[String]) -> Code {
+    let mut dry_run = false;
+    let mut as_of: Option<&str> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--dry-run" => dry_run = true,
+            "--as-of" => match it.next() {
+                Some(d) => as_of = Some(d),
+                None => {
+                    eprintln!("issue-inbox: --sweep: --as-of に日付(YYYY-MM-DD)が要る");
+                    return 1;
+                }
+            },
+            other => {
+                eprintln!("issue-inbox: --sweep: 知らない引数: {other}");
+                return 1;
+            }
+        }
+    }
+    if as_of.is_some() && !dry_run {
+        eprintln!("issue-inbox: --sweep: --as-of は --dry-run と一緒にだけ使える");
+        return 1;
+    }
+    let Some(v) = open_vault() else {
+        println!("sweep: vault を宣言していない機体なので、対象なし");
+        return 0;
+    };
+    let today = as_of.map_or_else(vault::jst_today, str::to_string);
+    let r = v
+        .lock()
+        .and_then(|g| {
+            let open = vault::list_open(&g, None)?.len();
+            vault::sweep(&g, &today, dry_run).map(|l| (open, l))
+        })
+        .map_err(|e| e.to_string());
+    match r {
+        Ok((open, lapsed)) => {
+            for l in &lapsed {
+                println!("{}\t{}\t{}\t{}", l.age_days, l.last_seen, l.repo, l.title);
+            }
+            println!(
+                "sweep: {today} 時点で open {open} 件のうち、{} 件が{}({} 日以上)",
+                lapsed.len(),
+                if dry_run {
+                    "失効の対象"
+                } else {
+                    "失効した"
+                },
+                vault::LAPSE_AFTER_DAYS
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("issue-inbox: --sweep: {e}");
+            1
+        }
+    }
+}
+
 /// このプロジェクトの、まだ裁定していない気づきの件数(vault の open なノート + jsonl の行)。
 /// SessionStart が掲示する。数えられないときは 0。
 pub fn pending_count(project: &str) -> usize {
@@ -1094,6 +1159,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 check_dup(self_path, title, arg(2))
             }
             "--list-open" => list_open_cmd(&args[1..]),
+            "--sweep" => sweep_cmd(&args[1..]),
             "--set-status" => set_status_cmd(self_path, &args[1..]),
             "--mark-filed" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;

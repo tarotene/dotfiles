@@ -792,7 +792,8 @@ JSON
   break_json "$RDIR/mail-item.json" '.p1.awaiting.event = "decide"'
   expect_fail "P1 の事象が machine でない" P1 --refinements --root "$Q"
   fresh_ref_root
-  break_json "$RDIR/inbox-finding.json" '.p1.open.carrier = "node:not-a-carrier"'
+  # 気づきの p1 は timer(失効)に改めたので、notification の規則は、再通知の事象 remind を指す p1 に差し替えて確かめる。
+  break_json "$RDIR/inbox-finding.json" '.p1.open = {"kind": "notification", "event": "remind", "carrier": "node:not-a-carrier"}'
   expect_fail "P1 の担い手が事象に無い" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/plan-requirement.json" '.p1.planned.gate = "node:not-a-gate"'
