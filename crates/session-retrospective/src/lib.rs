@@ -322,7 +322,9 @@ pub fn retro_add(sid: &str, line: &str) -> i32 {
         eprintln!("wrapup-stop-gate: --retro-add: cannot write the retro ledger");
         return 1;
     }
-    if v["disposition"] == "inbox" {
+    // inbox に流す行(as-code 化の候補は、兆候・手段・既存手段を構造で渡す。`detail` の文に溶かさない。
+    // 後で /my-cleanup が採用・却下を裁定し、兆候ごとに数えられるようにするため。ADR-1276)。
+    let inbox_item = || {
         let detail = format!(
             "{} (retro {}; mechanism: {})",
             v["evidence"].as_str().unwrap_or(""),
@@ -330,16 +332,32 @@ pub fn retro_add(sid: &str, line: &str) -> i32 {
             v["mechanism"].as_str().unwrap_or("-")
         );
         let mut item = json!({"ts": iso_now(), "title": v["what"], "detail": detail});
-        // as-code 化の候補は、兆候・手段・既存手段を構造で渡す(`detail` の文に溶かさない)。
-        // 後で /my-cleanup が採用・却下を裁定し、兆候ごとに数えられるようにするため(ADR-1276)。
         for k in ["signal", "mechanism", "existing"] {
             if let Some(x) = v[k].as_str().filter(|x| !x.trim().is_empty()) {
                 item[k] = json!(x);
             }
         }
-        let code = add(&inbox_for(&project_dir()), &item.to_string());
+        item.to_string()
+    };
+    if v["disposition"] == "inbox" {
+        let code = add(&inbox_for(&project_dir()), &inbox_item());
         if code != 0 {
             return code;
+        }
+    } else if v["kind"] == "user-correction" {
+        // user-correction は feedback なので Inbox には流さず Issue にする(ADR-697)。そのままだと
+        // signal・mechanism が Inbox のノートに載らず、兆候ごとの採用・却下の集計(ADR-1276 D6)に
+        // 入らない。Issue にしたときは、同じ行を状態 `issued` のノートとして vault に残す
+        // (集計は `issued` を採用と数える)。`issue:#N` は作業中のプロジェクトの repo の Issue と読む。
+        // 集計の入力を足すだけなので、書けなくても retro は止めない。
+        let number = v["disposition"]
+            .as_str()
+            .and_then(|d| d.strip_prefix("issue:#"))
+            .and_then(|n| n.parse::<u64>().ok());
+        if let Some(n) = number {
+            if let Err(e) = issue_inbox::add_issued(&project_dir(), &inbox_item(), n) {
+                eprintln!("wrapup-stop-gate: --retro-add: 較正用のノートを残せない({e})");
+            }
         }
     }
     0

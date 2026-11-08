@@ -39,6 +39,8 @@ pub struct Traces {
 
 /// scratchpad の直下と 1 段下から、コードのファイルの名前を集める。コードとは、語彙の拡張子を持つか、
 /// 先頭が `#!` のもの(PR 本文や JSON など、コードでないファイルも scratchpad には置く)。
+/// `.git` を持つディレクトリ(scratchpad に `git clone` した他人のリポジトリの作業ツリー)には入らない:
+/// 中の設定ファイル(`vite.config.ts` など)は、このセッションで書いたコードではない(誤検知の入力)。
 pub fn scratch_code_files(dir: &Path, exts: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     collect_code(dir, exts, 2, &mut out);
@@ -55,7 +57,7 @@ fn collect_code(dir: &Path, exts: &[String], depth: usize, out: &mut Vec<String>
         let path = e.path();
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_dir() {
-            if depth > 1 {
+            if depth > 1 && !path.join(".git").exists() {
                 collect_code(&path, exts, depth - 1, out);
             }
         } else if ft.is_file() && is_code(&path, exts) {
@@ -309,6 +311,24 @@ mod tests {
             scratch_code_files(d.path(), &exts),
             ["noext", "x.py", "y.sh"]
         );
+    }
+
+    #[test]
+    fn a_cloned_working_tree_in_the_scratchpad_is_not_written_code() {
+        // scratchpad に `git clone` した第三者のリポジトリの設定ファイルを、
+        // このセッションで書いたコードとして数えない(2026-10-31 に 15 本が誤検知された)。
+        let d = tempfile::tempdir().unwrap();
+        let exts: Vec<String> = v().scratch_code_ext.clone();
+        let clone = d.path().join("some-repo");
+        std::fs::create_dir_all(clone.join(".git")).unwrap();
+        std::fs::write(clone.join("vite.config.ts"), "export default {}").unwrap();
+        std::fs::write(clone.join("eslint.config.mjs"), "export default []").unwrap();
+        assert!(scratch_code_files(d.path(), &exts).is_empty());
+        // clone でないディレクトリ(.git が無い)の中のコードは、従来どおり数える。
+        let own = d.path().join("own");
+        std::fs::create_dir(&own).unwrap();
+        std::fs::write(own.join("mine.py"), "print(1)").unwrap();
+        assert_eq!(scratch_code_files(d.path(), &exts), ["mine.py"]);
     }
 
     #[test]
