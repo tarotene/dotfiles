@@ -65,6 +65,24 @@ fn strip_quotes(v: &str) -> &str {
     v.strip_suffix('"').unwrap_or(v)
 }
 
+/// `needs:` の 1 項目(ブロックの `- job` の `job`、またはスカラー形式の値)。行末のコメントと
+/// 前後の空白・引用符を落とす。
+fn clean_needs_item(raw: &str) -> String {
+    let v = raw.split(" #").next().unwrap_or("");
+    let v = v.trim_matches([' ', '\t', '\r']);
+    let v = v
+        .strip_prefix('"')
+        .and_then(|x| x.strip_suffix('"'))
+        .or_else(|| v.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')))
+        .unwrap_or(v);
+    v.to_string()
+}
+
+/// `NEEDS` のレコード(項目をカンマでつなぐ。フロー形式の `[a, b]` の中身と同じ形)。
+fn needs_record(items: &[String]) -> Vec<String> {
+    vec!["NEEDS".into(), items.join(",")]
+}
+
 fn is_job_id(s: &str) -> bool {
     !s.is_empty()
         && s.bytes()
@@ -79,7 +97,22 @@ pub fn parse_ci_yaml(text: &str) -> CiYaml {
     let mut in_jobs = false;
     let mut job = String::new();
     let mut wf_seen = false;
+    // `ci-passed` の `needs:` をブロック形式(1 行 1 件の `- job`)で書いたときの、読み途中の項目。
+    let mut needs_block: Option<Vec<String>> = None;
     for line in text.split('\n') {
+        if let Some(items) = needs_block.as_mut() {
+            let t = strip_ws_tab(line.trim_end_matches('\r'));
+            let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+            if let Some(item) = t.strip_prefix('-').filter(|_| indent >= 4) {
+                items.push(clean_needs_item(item));
+                continue;
+            }
+            if t.is_empty() || t.starts_with('#') {
+                continue;
+            }
+            // 項目でも空行でもない行: ブロックの終わり。
+            records.push(needs_record(&needs_block.take().unwrap_or_default()));
+        }
         if !in_jobs && !wf_seen {
             if let Some(rest) = line.strip_prefix("name:") {
                 let v = strip_quotes(strip_ws_tab(rest));
@@ -135,7 +168,8 @@ pub fn parse_ci_yaml(text: &str) -> CiYaml {
                 continue;
             }
             if let Some(rest) = line.strip_prefix("    needs:") {
-                if let Some(v) = strip_ws_tab(rest).strip_prefix('[') {
+                let rest = strip_ws_tab(rest.trim_end_matches('\r'));
+                if let Some(v) = rest.strip_prefix('[') {
                     let v = v.split(']').next().unwrap_or("");
                     records.push(
                         format!("NEEDS\t{v}")
@@ -145,8 +179,20 @@ pub fn parse_ci_yaml(text: &str) -> CiYaml {
                     );
                     continue;
                 }
+                if rest.is_empty() || rest.starts_with('#') {
+                    // ブロック形式(次の行から `- job` が並ぶ)。
+                    needs_block = Some(Vec::new());
+                    continue;
+                }
+                // 1 件だけのスカラー形式(`needs: job`)。
+                records.push(needs_record(&[clean_needs_item(rest)]));
+                continue;
             }
         }
+    }
+
+    if let Some(items) = needs_block.take() {
+        records.push(needs_record(&items));
     }
 
     let field = |r: &Vec<String>, i: usize| r.get(i).cloned();
@@ -398,6 +444,68 @@ mod tests {
             p.ci_passed_needs,
             Some(vec!["a".to_string(), "b".to_string()])
         );
+    }
+
+    /// `needs:` を `needs_lines` で書いた `ci-passed` job の `needs` を読む。
+    fn needs_of(needs_lines: &str) -> Option<Vec<String>> {
+        let text = format!(
+            "name: CI\njobs:\n  a:\n    name: A\n  ci-passed:\n    name: CI passed\n{needs_lines}    if: always()\n    steps:\n      - run: echo hi\n"
+        );
+        parse_ci_yaml(&text).ci_passed_needs
+    }
+
+    #[test]
+    fn needs_accepts_the_block_list_and_the_scalar_form() {
+        let want = Some(vec!["a".to_string(), "b".to_string()]);
+        // フロー形式(従来)。
+        assert_eq!(needs_of("    needs: [a, b]\n"), want);
+        // ブロック形式(1 行 1 件)。引用符・行末コメント・項目の間の空行とコメント行・キーと同じ字下げの `-` も読む。
+        assert_eq!(needs_of("    needs:\n      - a\n      - b\n"), want);
+        assert_eq!(
+            needs_of("    needs:\n      - \"a\"\n      - 'b' # 注\n"),
+            want
+        );
+        assert_eq!(
+            needs_of("    needs:  # 注\n      - a\n\n      # 休み\n      - b\n"),
+            want
+        );
+        assert_eq!(needs_of("    needs:\n    - a\n    - b\n"), want);
+        // CRLF の改行でも同じ。
+        assert_eq!(needs_of("    needs:\r\n      - a\r\n      - b\r\n"), want);
+        // スカラー形式(1 件)。
+        assert_eq!(needs_of("    needs: a\n"), Some(vec!["a".to_string()]));
+        // 項目の無いブロックは空の一覧(`needs: []` と同じ。行が無いのは None)。
+        assert_eq!(needs_of("    needs:\n"), Some(vec![]));
+        assert_eq!(needs_of(""), None);
+    }
+
+    #[test]
+    fn a_block_list_at_the_end_of_the_file_and_other_jobs_needs_are_handled() {
+        // ブロックが最後の行で終わる(EOF で閉じる)。
+        let p = parse_ci_yaml(
+            "jobs:\n  ci-passed:\n    name: CI passed\n    needs:\n      - a\n      - b",
+        );
+        assert_eq!(
+            p.ci_passed_needs,
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        // ci-passed の後ろの job の needs は、ci-passed のものにしない。
+        let p = parse_ci_yaml(
+            "jobs:\n  ci-passed:\n    name: CI passed\n    needs:\n      - a\n  other:\n    needs:\n      - z\n",
+        );
+        assert_eq!(p.ci_passed_needs, Some(vec!["a".to_string()]));
+        // steps の `- name:` は needs の項目にならない。
+        let p = parse_ci_yaml(
+            "jobs:\n  ci-passed:\n    name: CI passed\n    needs:\n      - a\n    steps:\n      - name: x\n",
+        );
+        assert_eq!(p.ci_passed_needs, Some(vec!["a".to_string()]));
+    }
+
+    #[test]
+    fn a_block_needs_list_passes_the_judgment_like_the_flow_form() {
+        let block = CI_OK.replace("needs: [gitleaks]", "needs:\n      - gitleaks");
+        let m = judge(&["ci.yml"], &block, "", "", None);
+        assert!(!m.iter().any(|x| x.starts_with("ci-passed-needs")), "{m:?}");
     }
 
     fn names(v: &[&str]) -> Vec<String> {

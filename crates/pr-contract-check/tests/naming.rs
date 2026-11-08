@@ -250,3 +250,110 @@ fn usage_errors() {
         assert!(r.err.starts_with("usage:"));
     }
 }
+
+// ---- `--dir`(手元のチェックアウトを検査する。API を使わない)
+
+/// `.github/` 以下に置くファイル `(相対パス, 中身)` を一時ディレクトリに書いて、そのパスを返す。
+fn checkout(files: &[(&str, &str)]) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "workflow-naming-dir-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    for (rel, text) in files {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn check_dir(dir: &std::path::Path) -> common::Run {
+    // gh を使わないことの確認: 存在しない gh を指しても動く。
+    run(
+        BIN,
+        &[("WORKFLOW_NAMING_CHECK_GH_BIN", "/nonexistent/gh")],
+        &["--dir", dir.to_str().unwrap()],
+    )
+}
+
+#[test]
+fn dir_mode_accepts_a_compliant_local_checkout_without_gh() {
+    let d = checkout(&[
+        (".github/workflows/ci.yml", CI_OK),
+        (".github/rulesets/quality.json", QUALITY_OK),
+    ]);
+    let r = check_dir(&d);
+    assert_eq!(r.code, 0, "{}", r.both());
+    assert_eq!(r.out, "workflow-naming-check: OK\n");
+}
+
+/// ブロック形式の `needs:` は、フロー形式と同じに読む(以前は `ci-passed-needs-missing` になった)。
+#[test]
+fn dir_mode_reads_a_block_list_needs() {
+    let block = CI_OK.replace("needs: [gitleaks]", "needs:\n      - gitleaks");
+    let d = checkout(&[(".github/workflows/ci.yml", &block)]);
+    let r = check_dir(&d);
+    assert_eq!(r.code, 0, "{}", r.both());
+}
+
+#[test]
+fn dir_mode_reports_drift_in_the_local_files() {
+    let ci_bad = "name: ci
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+";
+    let d = checkout(&[(".github/workflows/ci.yml", ci_bad)]);
+    let r = check_dir(&d);
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("job-name-missing:gitleaks"), "{}", r.err);
+    assert!(r.err.contains("workflow-name-lowercase"), "{}", r.err);
+    assert!(
+        r.err.starts_with("workflow-naming-check: ")
+            && r.err.contains(d.to_str().unwrap())
+            && r.err.contains("has drifted"),
+        "{}",
+        r.err
+    );
+    // ワークフローの無いディレクトリは ci.yml の欠落。
+    let empty = checkout(&[]);
+    let r = check_dir(&empty);
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("  - ci-yml-missing"), "{}", r.err);
+}
+
+/// `--dir` は、手元のチェックアウトの単一正本(テンプレート)と quality.json を突き合わせる。
+#[test]
+fn dir_mode_compares_quality_json_with_the_checkout_template() {
+    let other = r#"{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Other"}]}}]}"#;
+    let d = checkout(&[
+        (".github/workflows/ci.yml", CI_OK),
+        (".github/rulesets/quality.json", other),
+        (
+            "config/agents/skills/repo-governance-common/templates/.github/rulesets/quality.json",
+            QUALITY_OK,
+        ),
+    ]);
+    let r = check_dir(&d);
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("quality-json-not-canonical"), "{}", r.err);
+}
+
+#[test]
+fn dir_mode_rejects_mixing_with_the_api_arguments() {
+    for args in [
+        &["--dir", ".", "owner/repo"][..],
+        &["--dir", ".", "--ref", "abc"],
+        &["--dir"],
+    ] {
+        let r = run(BIN, &[], args);
+        assert_eq!(r.code, 2, "{args:?}");
+        assert!(r.err.starts_with("usage:"), "{}", r.err);
+    }
+}

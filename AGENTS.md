@@ -170,6 +170,14 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 - The general CI workflow is a slim shell pass: shellcheck the surviving
   scripts, the installer scripts' `--dry-run` paths, a zsh module syntax
   check, every script's `--selftest`, and a full-history gitleaks scan.
+- Run the secret scan before pushing, in the dev shell (gitleaks is pinned
+  to the same version as CI): `nix develop --command gitleaks git --config
+  .gitleaks.toml --redact --no-banner --exit-code 1 .` — a test fixture such
+  as a fictional `"key": "..."` JSON literal can trip `generic-api-key` and
+  only show up red in CI otherwise. The PR-title check's workflow naming
+  rules (job names start uppercase, `ci-passed`'s `needs` lists every job)
+  also run on local files: `cargo run -p pr-contract-check --bin
+  workflow-naming-check -- --dir .`.
 
 ### Tool-adoption Issues (#688)
 - Before filing an Issue that proposes adding a tool to home-manager (the

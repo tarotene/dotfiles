@@ -9,6 +9,7 @@
 //! ```text
 //! pr-merge-settings-check <owner>/<repo>
 //! workflow-naming-check   <owner>/<repo> [--ref REF]
+//! workflow-naming-check   --dir <path>      # 手元のチェックアウトを検査する(API を使わない)
 //! rulesets-context-check  <owner>/<repo> <head_sha> <default_branch>
 //! ```
 //!
