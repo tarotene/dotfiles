@@ -134,6 +134,14 @@ pub fn execute(args: &[String], cwd: &Path, cfg: &Config) -> (i32, String) {
     let still_running = ci::pending_names(&w.reported, &[]);
     let o = &w.outcome;
     match o.status {
+        // required が 0 件のとき、Pass は「報告された件数が止まり、pending が無い」だけの quiesce の
+        // 結果である。待つ側が「全緑」と読み違えないよう、成功(exit 0)にせず判定不能にする(#1343)。
+        // Stop の G_CI は同じ `ci::wait` を使うので、ここだけで分ける。
+        Status::Pass if w.expected.is_empty() => unknown(format!(
+            "PR #{pr} — required のチェックが 0 件です(base {base} にも既定ブランチにも ruleset の required が\
+             ありません)。報告された {n} 件は pending が無い状態で止まっていますが、required の全緑ではないので\
+             成功とは読みません。`gh pr checks {pr}` で現在の状態を読んでください"
+        )),
         Status::Pass => {
             let mut out = format!(
                 "OK: PR #{pr} — 期待するチェックがすべて通りました({n} 件が報告済み、{secs} 秒)"

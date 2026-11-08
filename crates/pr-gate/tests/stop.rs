@@ -897,6 +897,55 @@ fn g_stack_link_waits_for_green_even_when_ci_is_left_to_a_background_task() {
 }
 
 #[test]
+fn g_stack_link_is_not_asked_while_another_stage_is_still_pending() {
+    // 現在の PR(#39)の CI が緑でも、チェーンの別の段(#38)の CI が pending のうちは、
+    // `gh stack link` を求めて block しない。link は全段の CI が緑になってから 1 回だけ。
+    let fx = stack_fixture();
+    fx.git(&["switch", "-q", "stage2"]);
+    let chain = fx.write("otherpending-chain.json", CHAIN_2);
+    let stacks = fx.write("otherpending-stacks.json", "[]");
+    let other = fx.write("otherpending-checks-38.json", CHECKS_PARTIAL_PENDING);
+    let r = ci(
+        &fx,
+        "otherpending-sid",
+        Some("[]"),
+        CHECKS_QUIESCE_PASS,
+        &[
+            ("PR_GATE_STUB_PR_NUM", "39"),
+            ("PR_GATE_STUB_BASE", "stage1"),
+            ("PR_GATE_STUB_CHAIN_FILE", chain.as_str()),
+            ("PR_GATE_STUB_STACKS_FILE", stacks.as_str()),
+            ("PR_GATE_STUB_CHECKS_FILE_38", other.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(!has(&r.stderr, "gh stack link 38 39"), "{}", r.stderr);
+    assert!(
+        has(&r.stderr, "別の段(#38)の CI が pending"),
+        "{}",
+        r.stderr
+    );
+
+    // 別の段も緑なら、従来どおり案内する。
+    let green = fx.write("otherpending-checks-38-green.json", CHECKS_QUIESCE_PASS);
+    let r = ci(
+        &fx,
+        "otherpending-green-sid",
+        Some("[]"),
+        CHECKS_QUIESCE_PASS,
+        &[
+            ("PR_GATE_STUB_PR_NUM", "39"),
+            ("PR_GATE_STUB_BASE", "stage1"),
+            ("PR_GATE_STUB_CHAIN_FILE", chain.as_str()),
+            ("PR_GATE_STUB_STACKS_FILE", stacks.as_str()),
+            ("PR_GATE_STUB_CHECKS_FILE_38", green.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 2, "{}", r.stderr);
+    assert!(has(&r.stderr, "gh stack link 38 39"), "{}", r.stderr);
+}
+
+#[test]
 fn g_stack_linked_chain_passes() {
     let fx = stack_fixture();
     let r = gstack(

@@ -188,11 +188,23 @@ fn no_rules_anywhere_falls_back_to_quiesce_and_still_fails_fast() {
     envs.push(checks_file(&fx, CHECKS_QUIESCE_FAIL));
     let r = run(&fx, &["37", "--timeout", "30"], &envs);
     assert_eq!(r.code, 1, "{}", r.all());
+}
+
+#[test]
+fn zero_required_checks_is_unknown_not_green() {
+    // #1343: required が 0 件のとき、quiesce の Pass を成功(exit 0)と読ませない。
+    // 待つ側は「required の全緑」と読み違える。判定不能(exit 2)にして、状態を読ませる。
+    let fx = Fx::new();
     let mut envs = with_rules(&fx, "[]", &[]);
     envs.push(checks_file(&fx, CHECKS_QUIESCE_PASS));
     let r = run(&fx, &["37", "--timeout", "30"], &envs);
-    assert_eq!(r.code, 0, "{}", r.all());
-    assert!(r.stdout.contains("ruleset の対象外"));
+    assert_eq!(r.code, 2, "{}", r.all());
+    assert!(
+        r.stdout.contains("required のチェックが 0 件"),
+        "{}",
+        r.stdout
+    );
+    assert!(!r.stdout.starts_with("OK:"), "{}", r.stdout);
 }
 
 #[test]

@@ -523,6 +523,15 @@ orphan PR(base 宣言の不整合)自体は発生しない —— base チェー
 `stack-base-guard` が `gh` CLI の引数検査だけで完結させており、
 `gh-stack` 拡張や `stacks` API の可用性に依存しないため。
 
+### 別の段の CI が pending のあいだは案内しない(2026-11-08)
+
+`gh stack link` は、全段の CI が緑になってから 1 回だけ行う手順(stacked-pr スキル。link 後は push の CI が走らない)。
+現在の PR の CI は `ci::run` が判定するが、これは**現在の PR の分だけ**で、チェーンの別の段の CI は見ない。そのため、現在の PR が
+緑でも最上段の CI が pending のうちに Stop すると、手順と食い違って `gh stack link` を求めて block した。`chain` の別の段
+(現在の PR 以外)に pending のチェックが 1 件でもあれば、リンクの block を出さず、advisory に「別の段(#N)の CI が pending」と
+書く(`crates/pr-gate/src/stop.rs`、テストは `g_stack_link_is_not_asked_while_another_stage_is_still_pending`)。
+別の段の CI を `gh pr checks` で段ごとに 1 回読むので、`gh` の呼び出しがチェーンの長さぶん増える。
+
 ### block の位置と PR 番号を指定する理由
 
 `G_link`/`G_visual` と同じ「あとは終わるだけ」の一点で、同じ block
@@ -710,7 +719,7 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 |---|---|---|
 | 1 | 報告のどれか 1 件でも bucket が `fail`(required でなくても) | **NG**(即時) |
 | 2 | E が非空で、E ⊆ 報告 かつ E の全件が `pass` / `skipping` | **OK**(即時。E 外の pending は待たない) |
-| 3 | E が空で、報告件数が `PR_GATE_QUIESCE` 秒静止(または出現待ちの上限)し pending が 0 | OK(静止による近似) |
+| 3 | E が空で、報告件数が `PR_GATE_QUIESCE` 秒静止(または出現待ちの上限)し pending が 0 | Stop の G_CI は OK(静止による近似)。`pr-checks-wait` は判定不能(exit 2。required の全緑ではないので成功と読ませない、#1343) |
 | — | それ以外 | 続行(上限で PENDING / MISSING / EMPTY) |
 
 同じ workflow に複数の run があれば、`link` の run ID が最大(最新)のものだけを判定に使う。同じ head に run が
@@ -748,7 +757,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 | 0 | OK(E が全緑) |
 | 1 | NG(赤 1 件以上。失敗ジョブ名・link・`gh run view … --log-failed` を出す) |
 | 8 | 時間切れで pending(gh の pending と同じ値) |
-| 2 | 判定不能(チェックが揃わない・API 失敗・引数の誤り)。PR が base と衝突(`mergeable: CONFLICTING`)していて CI が起動していないときは、その旨を注記する(GitHub は衝突した PR の `pull_request` CI を起動しない) |
+| 2 | 判定不能(チェックが揃わない・required が 0 件・API 失敗・引数の誤り)。required が 0 件のときは、報告が静止して pending が無くても成功にしない(#1343)。PR が base と衝突(`mergeable: CONFLICTING`)していて CI が起動していないときは、その旨を注記する(GitHub は衝突した PR の `pull_request` CI を起動しない) |
 
 結果は stdout の 1〜数行で、`run_in_background` の完了通知にそのまま載る。エージェントは
 `gh pr checks --watch` や `until` のポーリングでなく、これを背景で実行して完了通知を待つ。

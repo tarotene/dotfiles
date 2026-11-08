@@ -362,7 +362,25 @@ keyword は Issue ごとに書いてください(各行に `Closes #<番号>`)�
         } else {
             match gh::stacks(nwo).filter(|s| !s.is_empty()) {
                 Some(stacks_json) => {
-                    if !stack::is_linked(&stacks_json, &chain) {
+                    // `gh stack link` は、全段の CI が緑になってから 1 回だけ行う手順(stacked-pr
+                    // スキル。link 後は push の CI が走らない)。現在の PR の CI が通っていても、
+                    // チェーンの別の段の CI が pending のうちは案内しない(最上段の CI が走っている
+                    // 間に Stop して link を求められた、wrap-up inbox の気づき)。
+                    let waiting_stages: Vec<&str> = chain
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|n| *n != pr_num)
+                        .filter(|n| {
+                            !ci::pending_names(&gh::reported_checks(n, nwo), &[]).is_empty()
+                        })
+                        .collect();
+                    if !waiting_stages.is_empty() {
+                        advisory.push_str(&format!(
+                            "\nstack: 別の段(#{})の CI が pending のため、stack のリンクはまだ案内しません。\
+                             全段の CI が緑になってから 1 回だけリンクしてください(stacked-pr スキル)。",
+                            waiting_stages.join(", #")
+                        ));
+                    } else if !stack::is_linked(&stacks_json, &chain) {
                         f.stack = Some(format!(
                             "stacked PR チェーン(#{})が
 GitHub 上の stack にリンクされていません。最下段から順に PR **番号**を
