@@ -92,8 +92,9 @@ in
   home.file.".local/libexec/playwright-mcp-launcher".source =
     "${pkgs.dotfiles-tools}/bin/playwright-mcp-launcher";
 
-  # 日本語の文書を Gemini(llm 経由、無料の API キー)に書き直させる。無料枠は送った文面が
-  # 改善に使われうるので、会社の identity では有効にしない(home/modules/ja-polish.nix)。
+  # 日本語の文書を Gemini(llm 経由、無料の API キー)に書き直させる。今は、送り先の扱いを確かめ
+  # 済みのこの経路だけで有効にしている。会社の identity への横展開は、会社契約の Gemini の要件を
+  # 確かめてから(home/modules/ja-polish.nix の冒頭)。
   dotfiles.jaPolish.enable = true;
 
   dotfiles.claude.mcpServers = {

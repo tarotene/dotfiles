@@ -1,7 +1,8 @@
 # ja-polish — 日本語の文書を Gemini に書き直させ、通した証拠を残す
 
 設計の判断: `docs/adr/1387-ja-polish.md`。実装: `crates/ja-polish`。有効化: `home/modules/ja-polish.nix`
-(`dotfiles.jaPolish.enable`、個人の identity だけ)。
+(`dotfiles.jaPolish.enable`。今は個人の identity だけで有効にしている。機体にも identity にも縛られない機構で、
+会社への横展開の手順は「横展開」)。
 
 ## 何のためか
 
@@ -86,7 +87,7 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 
 - 設定ファイル: `~/.config/dotfiles/ja-polish.toml`(home-manager が置く)。`model`(既定
   `gemini-3.8-flash`)と `timeout_secs`(既定 120)。**このファイルの有無が、その機体で有効かどうかの
-  唯一の印**。無ければ関所は何も検査しない。会社の機体には置かれない。環境変数 `JA_POLISH_MODEL` で
+  唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` で
   その場だけ上書きできる。
 - API キー: 各機体で一度 `llm keys set gemini` を手で実行する。キーは `llm keys path` が指す
   `keys.json`(Linux は `~/.config/io.datasette.llm/`、macOS は `~/Library/Application Support/
@@ -94,8 +95,9 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   sandbox の中のコマンドと Read ツールから読めない。
 - キーは Google AI Studio で発行する。**無料枠は、送った文面が Google の製品の改善に使われ、人が読み
   うる契約**(Google, Gemini API Additional Terms of Service、更新 2026-03-23、
-  https://aistudio.google.com/docs/terms 、取得 2026-11-08)。そのため個人の機体だけで有効にし、
-  勤務先の文書は個人の機体でも通さない。
+  https://aistudio.google.com/docs/terms 、取得 2026-11-08)。個人の側は、それでよいと本人が裁定した。
+  この経路(個人の無料キー)で、勤務先の文書は通さない。会社契約の送り先は、別の経路として要件を
+  確かめてから足す(「横展開」)。
 
 ## なぜ Gemini CLI でなく llm か
 
@@ -133,9 +135,28 @@ llm-gemini 0.34 以降)。そのため overlay で、`llm-gemini` 0.35 と、そ
 
 ## 後続(意図は決まっていて、未着手)
 
-- 会社の機体(arcturus): 会社の Gemini 契約(Vertex AI や Workspace など)の接続方法を本人に確かめ、
-  `dotfiles.jaPolish` に送り先を足す。無料枠のキーは配らない。
-- Codex の sandbox の外で `ja-polish` を動かす。
+- 会社の機体(arcturus)への横展開(#1385)。下の「横展開」の確認事項を調べるところから。
+- Codex の sandbox の外で `ja-polish` を動かす(#1386)。
+
+## 横展開(会社の機体・ほかの identity)
+
+`ja-polish` は機体にも identity にも縛られない。今は個人の identity だけで有効にしているが、それは
+**送り先の扱い(送った文面が学習に使われるか)を確かめ済みの経路が、個人の無料 API キーだけ**だから
+で、会社を除外する理由があるわけではない。会社の側は、会社契約の Claude Code から会社契約の Gemini へ
+つなげられる見込みで、Gemini 側の要件はまだ調べていない。
+
+横展開の手順(確認事項が済んだあと):
+
+1. 確かめる: 会社契約の Gemini の接続方法(Vertex AI、Workspace など)と認証、送った文面が学習に使われ
+   ないことの根拠(契約書・公式ヘルプ)、人が読みうるか。
+2. 送り先に合う `llm` のプラグインを選び(採否は保守状況・API の要件を一次ソースで確かめる)、
+   `dotfiles.jaPolish.package` にその環境(`llm` と送り先のプラグイン)を、`dotfiles.jaPolish.model` に
+   モデル名を指定する。
+3. 会社の identity で `dotfiles.jaPolish.enable = true;` を立てる。設定ファイルが置かれて関所が有効に
+   なる。`ja-polish` 本体・記録・関所・失敗時の素通しは、そのまま使える。
+4. 認証の置き場が `llm keys` と違うとき(Application Default Credentials など)は、その保存先を
+   `agentPermissions.secret_paths` に足す(秘密パスの基準は `docs/claude/claude-permissions.md`)。
+   会社固有のパスは、このリポジトリ(公開)でなく private の wrapper に置く(ADR-0034)。
 
 ## 既存手段と代替
 

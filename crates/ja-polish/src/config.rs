@@ -2,7 +2,7 @@
 //!
 //! home-manager の `dotfiles.jaPolish.enable` が置く(`home/modules/ja-polish.nix`)。
 //! **このファイルの有無が、その機体で ja-polish が有効かどうかの唯一の印**: 関所は、無ければ
-//! 何も検査しない。会社の機体には置かれないので、関所も LLM への送信も起きない。
+//! 何も検査しない。置いていない機体(今は会社の機体)では、関所も LLM への送信も起きない。
 
 use serde::Deserialize;
 use std::path::PathBuf;
