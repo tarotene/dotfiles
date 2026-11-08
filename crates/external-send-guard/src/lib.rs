@@ -222,46 +222,6 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<agent_s
     external.then(|| Outcome::Ask(gmail_ask_reason(&rcpts.join(" "))))
 }
 
-/// jq と同じ規則で JSON 文字列リテラルを書く(制御文字と DEL は `\u00xx`)。
-pub fn jq_string(s: &str) -> String {
-    let mut o = String::with_capacity(s.len() + 2);
-    o.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            '\n' => o.push_str("\\n"),
-            '\t' => o.push_str("\\t"),
-            '\r' => o.push_str("\\r"),
-            '\u{8}' => o.push_str("\\b"),
-            '\u{c}' => o.push_str("\\f"),
-            c if (c as u32) < 0x20 || c == '\u{7f}' => {
-                o.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => o.push(c),
-        }
-    }
-    o.push('"');
-    o
-}
-
-/// bash 版の `jq -n --arg reason ... '{hookSpecificOutput: {...}}'` の整形出力
-/// (末尾改行込み)。
-pub fn deny_json(reason: &str) -> String {
-    format!(
-        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": {}\n  }}\n}}\n",
-        jq_string(reason)
-    )
-}
-
-/// 本人の許可を求める出力(`permissionDecision: "ask"`)。書式は [`deny_json`] と同じ。
-pub fn ask_json(reason: &str) -> String {
-    format!(
-        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"ask\",\n    \"permissionDecisionReason\": {}\n  }}\n}}\n",
-        jq_string(reason)
-    )
-}
-
 /// 自分のアドレスの一覧(`$XDG_CONFIG_HOME/external-send-guard/self.txt`)の場所。
 fn self_list_path() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -299,24 +259,6 @@ pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn jq_escaping() {
-        // jq 1.8.2 の出力: {"a":"x\u007fy\u0001\"\\\n"}
-        assert_eq!(
-            jq_string("x\u{7f}y\u{1}\"\\\n\u{8}\u{c}\r\t日"),
-            r#""x\u007fy\u0001\"\\\n\b\f\r\t日""#
-        );
-    }
-
-    #[test]
-    fn deny_json_parses_back() {
-        let v: Value = serde_json::from_str(&deny_json("a\"b")).unwrap();
-        assert_eq!(
-            v["hookSpecificOutput"]["permissionDecisionReason"],
-            json!("a\"b")
-        );
-    }
 
     #[test]
     fn regex_equivalents() {
