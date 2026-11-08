@@ -22,6 +22,7 @@
 | wrapup-chores | my-cleanup |
 | backlog-cleanup | my-cleanup |
 | issue-hygiene | my-cleanup |
+| daily-desk | my-desk |
 | skill-gardening | agent-tooling-authoring |
 | external-call-scheduling | human-task-scheduling |
 | rust-repo-governance | repo-governance |
@@ -74,6 +75,7 @@ cargo fmt --all --check
 nix flake check --all-systems --no-build
 ```
 
+旧スキル名 `daily-desk` は、通知役の `daily-desk-reminder` の前半と一致するので、上の検索には入れず、`rg -nP 'daily-desk(?!-reminder)' home config crates docs` で別に探す。
 検索結果のうち、この移行一覧、互換入口、旧名の照合値、保存先の契約、履歴・引用は削除対象の呼び出しに数えない。
 互換入口を除いた候補ツリーで、上の検証と各ホストの activation build を行う。
 確認結果はホストの記録・既存 Issue・PR から読み、手書きの恒久台帳を増やさない。
@@ -153,7 +155,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 |---|---|
 | `browser-login-handoff` | ブラウザのログインを本人へ引き継ぐ。フォーム操作は共有参照へ分離。 |
 | `claude-routines` | Claude の routine 宣言と運用を扱う。 |
-| `daily-desk` | 朝の作業を順に進める入口。通知役の daily-desk-reminder と区別。 |
+| `my-desk` | 朝の作業を順に進める入口。通知役の daily-desk-reminder と区別。旧名 `daily-desk` は互換入口。 |
 | `diagramming` | 図を作る判断と手順を扱う。 |
 | `drive-upload` | Drive へのアップロード手順を表す。 |
 | `gas-clasp-ops` | clasp を使った GAS 運用を表す。 |

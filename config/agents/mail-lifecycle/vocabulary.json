@@ -4,7 +4,7 @@
   "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
   "initial": "none",
   "states": [
-    { "id": "awaiting", "terminal": false, "owner": "person", "shown_by": ["skill:inbox-adjudication", "skill:daily-desk"] },
+    { "id": "awaiting", "terminal": false, "owner": "person", "shown_by": ["skill:inbox-adjudication", "skill:my-desk"] },
     { "id": "decided", "terminal": false, "owner": "agent" },
     { "id": "closed", "terminal": true },
     { "id": "dismissed", "terminal": true },
