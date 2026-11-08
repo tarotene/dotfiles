@@ -67,7 +67,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
      14 日で黙って消えない。検出されなくなった候補は `lapsed` のまま残る。
    - 失敗は理由を 1 行出して続ける(翌日にやり直せる)。vault を宣言していない機体では何もしない。
 
-9. **本人の Issue 台帳の生存の記録と逆向きの確認(ADR-0000)**: 実行の最後に、`ledger_heartbeat` が次を行う。台帳のリポジトリは非公開で、
+9. **本人の Issue 台帳の生存の記録と逆向きの確認(ADR-1382)**: 実行の最後に、`ledger_heartbeat` が次を行う。台帳のリポジトリは非公開で、
    名前は端末ローカルの設定 `$XDG_CONFIG_HOME/ledger-heartbeat/target`(無ければ `~/.config/ledger-heartbeat/target`、1 行 `OWNER/REPO`)から読む。
    ファイルが無い機体では何もしない。
    - 生存の記録: タイトル `ledger-heartbeat`・ラベル `ledger-status` の open な Issue の本文を、掃除のあとの wrap-up inbox の open 件数で

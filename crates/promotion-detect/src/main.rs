@@ -9,7 +9,7 @@
 //!
 //! 最後に、本人の Issue 台帳(非公開のリポジトリ。名前は端末ローカルの設定
 //! `$XDG_CONFIG_HOME/ledger-heartbeat/target` から読む。無ければ何もしない)の生存の記録を書き、クラウドの
-//! 日次の通知が途絶えていないかを確かめる(ADR-0000、`ledger_heartbeat`)。`--dry-run` では書かず、
+//! 日次の通知が途絶えていないかを確かめる(ADR-1382、`ledger_heartbeat`)。`--dry-run` では書かず、
 //! 書く本文を標準エラーに出す。
 //!
 //! 環境変数(すべて未設定なら妥当な既定値にフォールバックする — due-remind
@@ -183,7 +183,7 @@ fn main() {
         write_emitted(&emitted_path, &emitted);
     }
 
-    // --- 本人の Issue 台帳: 生存の記録と、クラウドの日次の通知が途絶えていないかの確認(ADR-0000) ---
+    // --- 本人の Issue 台帳: 生存の記録と、クラウドの日次の通知が途絶えていないかの確認(ADR-1382) ---
     // 掃除のあとに数えるので、失効した気づきは件数に入らない。設定が無い機体では何もしない。
     ledger_heartbeat(&state_dir, &gh_bin, home.as_deref(), dry_run);
 }
