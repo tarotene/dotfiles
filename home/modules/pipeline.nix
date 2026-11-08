@@ -1,14 +1,21 @@
 # pipeline-map(ADR-872、pipeline-map.toml)の、nix 側の登録のうち、systemd timer と
-# launchd agent を、評価時に確かめる。
+# launchd agent と、ログイン・セッションの開始で起動する常駐のもの(systemd user service、XDG autostart)を、
+# 評価時に確かめる。
 #
-# 各モジュールは、timer / agent を定義するそばに
+# 各モジュールは、timer / agent / 常駐のものを定義するそばに
 #
 #   dotfiles.pipeline.timerNodes.<名前> = "<pipeline-map のノード id>";
 #
-# を書く。<名前> は `systemd.user.timers.<名前>` / `launchd.agents.<名前>` の名前。同じ名前の
-# systemd timer と launchd agent は、1 行で足りる。ここは最終の config(全モジュールの合成後)の
-# timer と agent の名前を列挙して、対応付けの無いものと、manifest に無い id を `assertions` で落とす。
-# 生の `systemd.user.timers.*` を書いても、最終の config に現れるので、迂回できない。
+# を書く。<名前> は次のどれか:
+# - `systemd.user.timers.<名前>` / `launchd.agents.<名前>` の名前(同じ名前の systemd timer と launchd agent は、
+#   1 行で足りる)。
+# - `Install.WantedBy` を持つ `systemd.user.services.<名前>` の名前(常駐の service。timer が起動する service は
+#   `Install` を持たないので、timer の側の 1 行で足りる)。
+# - XDG autostart の `xdg.configFile."autostart/<X>.desktop"` は、`autostart-<X>`。`Hidden=true` の
+#   エントリ(システムの autostart を無効にするもの)は、何も起動しないので対象外。
+# ここは最終の config(全モジュールの合成後)のこれらの名前を列挙して、対応付けの無いものと、manifest に無い id を
+# `assertions` で落とす。生の `systemd.user.timers.*` や `systemd.user.services.*` を書いても、最終の config に
+# 現れるので、迂回できない。
 #
 # 逆向き(auto = true のノードに登録が 1 つも無い)は、ここでは確かめない。`lib.mkIf (isLinux && …)` の
 # 条件付きの登録があり、1 ホストの評価では、ほかのホストの登録を見られないため。`cargo test`
@@ -40,6 +47,31 @@ let
       d: if inRepo d.file && lib.isAttrs d.value then builtins.attrNames d.value else [ ]
     ) option.definitionsWithLocations;
 
+  # ログイン・セッションの開始で起動する常駐の user service: `Install.WantedBy` を持つもの。
+  # timer が起動する service は `Install` を持たない(timer の側で数える)。
+  residentServices = lib.filter (
+    n: lib.toList ((config.systemd.user.services.${n}.Install or { }).WantedBy or [ ]) != [ ]
+  ) (
+    lib.filter (n: builtins.elem n (builtins.attrNames config.systemd.user.services)) (
+      definedInRepo options.systemd.user.services
+    )
+  );
+
+  # XDG autostart のエントリ(`autostart/<X>.desktop`)。`Hidden=true` の無効化用のものは、何も起動しない。
+  autostartEntries = lib.filter (
+    n:
+    lib.hasPrefix "autostart/" n
+    && lib.hasSuffix ".desktop" n
+    && !(
+      # `.source` のエントリは `text` が null(fcitx5 など、本物の autostart)。
+      let
+        t = config.xdg.configFile.${n}.text;
+      in
+      t != null && lib.hasInfix "Hidden=true" t
+    )
+  ) (lib.filter (n: builtins.elem n (builtins.attrNames config.xdg.configFile)) (definedInRepo options.xdg.configFile));
+  autostartKey = n: "autostart-" + lib.removeSuffix ".desktop" (lib.removePrefix "autostart/" n);
+
   registeredNames = lib.unique (
     lib.filter (n: builtins.elem n (builtins.attrNames config.systemd.user.timers)) (
       definedInRepo options.systemd.user.timers
@@ -47,6 +79,8 @@ let
     ++ lib.filter (n: builtins.elem n (builtins.attrNames config.launchd.agents)) (
       definedInRepo options.launchd.agents
     )
+    ++ residentServices
+    ++ map autostartKey autostartEntries
   );
   unmapped = lib.filter (n: !(cfg.timerNodes ? ${n})) registeredNames;
   undefinedIds = lib.filterAttrs (_: id: !(builtins.elem id cfg.nodeIds)) cfg.timerNodes;
@@ -88,8 +122,9 @@ in
         due-remind = "due-remind";
       };
       description = ''
-        `systemd.user.timers.<名前>` / `launchd.agents.<名前>` の名前から、pipeline-map の
-        ノード id への対応。timer と agent を足したのに対応付けが無い、または id が
+        `systemd.user.timers.<名前>` / `launchd.agents.<名前>` の名前(常駐の
+        `systemd.user.services.<名前>` と XDG autostart の `autostart-<X>` を含む)から、
+        pipeline-map のノード id への対応。足したのに対応付けが無い、または id が
         pipeline-map.toml に無いと、評価が落ちる。
       '';
     };
@@ -99,8 +134,9 @@ in
     {
       assertion = unmapped == [ ];
       message = ''
-        dotfiles.pipeline.timerNodes: 次の systemd timer / launchd agent に、pipeline-map のノードの対応付けが無い: ${lib.concatStringsSep ", " unmapped}
+        dotfiles.pipeline.timerNodes: 次の systemd timer / launchd agent / 常駐の user service / XDG autostart に、pipeline-map のノードの対応付けが無い: ${lib.concatStringsSep ", " unmapped}
         その定義のそばに `dotfiles.pipeline.timerNodes.<名前> = "<ノード id>";` を足す(ノードは pipeline-map.toml、ADR-872)。
+        <名前> は、timer / agent / service はその名前、XDG autostart は `autostart-<X>`(`autostart/<X>.desktop`)。
         このリポジトリの外(上流のモジュール・別の flake)が作るものは、検査の対象外。'';
     }
     {

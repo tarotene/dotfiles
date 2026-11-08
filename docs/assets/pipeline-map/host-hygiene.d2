@@ -342,6 +342,22 @@ l_external: "Sessions / services / state" {
   }
 }
 
+l_login: "Login / autostart" {
+  class: lane
+  n_fcitx5_autostart: "fcitx5 (login autostart)" {
+    class: s_nix
+  }
+  n_obsidian_autostart: "obsidian (login autostart, vega)" {
+    class: s_nix
+  }
+  n_obsidian_livesync: "obsidian-livesync (resident daemon, opt-in)" {
+    class: s_nix
+  }
+  n_webcam_builtin_relay: "webcam-builtin-relay (resident, arcturus)" {
+    class: s_nix
+  }
+}
+
 l_manual.n_hms -> l_manual.n_agent_settings_reconcile: "activation" {
   class: e_invoke
 }
