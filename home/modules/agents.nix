@@ -1831,7 +1831,7 @@ let
       test -z "$(find "$out" -type l -print -quit)"
     ''
   );
-  # 入口と知識の 2 層(ADR-0000、docs/agents/tooling-conventions.md)。本人が手で打つ入口は
+  # 入口と知識の 2 層(ADR-1400、docs/agents/tooling-conventions.md)。本人が手で打つ入口は
   # 名前を `my-` で始める。それ以外のスキルは、Claude の `/` の一覧から隠す(SKILL.md の
   # frontmatter の先頭に `user-invocable: false` を 1 行足す。エージェントは今までどおり文脈で選べる。
   # Anthropic, "Extend Claude with skills", https://code.claude.com/docs/en/skills, 取得 2026-11-08)。

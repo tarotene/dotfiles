@@ -10,7 +10,7 @@ let
     builtins.attrNames (builtins.readDir sourceRoot)
   );
   shared = builtins.filter (name: name != "browser-login-handoff") names;
-  # 入口と知識の 2 層(ADR-0000)。手で打つ入口の名前は `my-` で始める(home/modules/agents.nix と同じ)。
+  # 入口と知識の 2 層(ADR-1400)。手で打つ入口の名前は `my-` で始める(home/modules/agents.nix と同じ)。
   entryPrefix = "my-";
   entryNames = builtins.filter (name: lib.hasPrefix entryPrefix name) names;
   entries = lib.filterAttrs (
