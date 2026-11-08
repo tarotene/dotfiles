@@ -297,6 +297,16 @@
     executable = true;
   };
 
+  # ci-consumers: 編集するパスを入力にしている CI の検査を列挙する CLI
+  # (docs/agents/ci-consumers.md)。pr-description スキル §6a と stacked-pr スキル §3 が
+  # 「どのリポジトリの根でも」引くよう求めるので、このリポジトリの `scripts/ci-consumers` だけに
+  # 置かず PATH に置く(スクリプトは cwd の git の根を見る)。無いリポジトリで exit 127 に
+  # なる問題への対処(スキル側にも `git grep` の代替がある)。adr-number-check と同じ置き方。
+  home.file.".local/bin/ci-consumers" = {
+    source = ../../scripts/ci-consumers;
+    executable = true;
+  };
+
   # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
   # colocation rule (docs/agents/decision-colocation.md — 決定成果物
   # (ADR/設計文書/skill)の新規追加、または既存 ADR への `## Amendment`

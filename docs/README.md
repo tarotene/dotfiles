@@ -679,7 +679,7 @@ Design and rationale for the hooks and commands deployed from
 - [`new-tool-guard.md`](agents/new-tool-guard.md) — PreToolUse(Write)の判定役と、
   ExitPlanMode 承認後(PostToolUse)の記録役: 新しい道具・単位の着手前に既存手段を問い、
   承認された計画の `既存手段:` 行を台帳へ転記して、手で `register` し直す二重入力をなくす。
-- [`ci-consumers.md`](agents/ci-consumers.md) — `scripts/ci-consumers <path>...`:
+- [`ci-consumers.md`](agents/ci-consumers.md) — `ci-consumers <path>...`(PATH に置く):
   編集するパスを入力にしている CI の検査(workflow の step・composite action・scripts・
   crates の tests)を、編集の前に、`file:line` と step 名つきで引く。
 - [`git-checkout-sync.md`](agents/git-checkout-sync.md) —
