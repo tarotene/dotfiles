@@ -45,6 +45,14 @@ user-correction は feedback(ユーザーが方針・結果を直した発言)�
 の user-correction は `--retro-add` が exit 64 で拒否する。先に `gh issue create` で Issue にして
 `issue:#<N>` と書くか、プロジェクト固有・機微な内容なら `none:<理由>` と書く。
 
+`issue:#<N>` で記録したときは、vault を宣言した機体に限り、同じ行を状態 `issued`(`issue` 欄は
+`https://github.com/<このプロジェクトの repo>/issues/<N>`)のノートとしても残す(`issue_inbox::add_issued`)。
+`signal`・`mechanism`・`existing` がノートに載り、日次の `promotion-detect` の、兆候ごとの採用・却下の集計
+(ADR-1276 D6。`issued` は採用と数える)に入る。指摘は「最も効く手段」の根拠になる行なので、較正から漏らさない。
+`issued` は open ではないので `--list-open` には出ず、`/my-cleanup` の裁定には載らない。ノートを書けなくても
+retro は止めない(集計の入力を足すだけ)。vault の無い機体(jsonl)では何も残さない(jsonl の行は状態を
+持たず、`issued` にすると取り除かれるだけ)。`issue:#<N>` は作業中のプロジェクトの repo の Issue と読む。
+
 ## 行の語彙
 
 | 欄 | 値 |
@@ -93,6 +101,9 @@ PR を作らないセッション(メールの裁定・調査・机の作業)で
   commit・PR 本文のヒアドキュメントは形に数えない。
 - scratchpad は `$CLAUDE_CODE_TMPDIR` と `/tmp/claude-<uid>` の直下を走査して、session_id の一致で選ぶ。
   全セッションで共有の `$TMPDIR` は見ない。
+- scratchpad の中で `.git` を持つディレクトリ(`git clone` した他人のリポジトリの作業ツリー)には入らない。
+  中の設定ファイル(`vite.config.ts` など)は、このセッションで書いたコードではない(2026-10-31 に 15 本が
+  誤検知された)。
 - `adhoc:*` は `kind: codify` の行でしか消し込めない。「決定論化しない」も `codify` 行に
   `mechanism: none:<理由>` で書く(検討を飛ばせない)。
 - 閉じた後に、まだ行に引かれていない `adhoc:*` が出たら、その分だけ retro を開き直す(1 セッションあたり

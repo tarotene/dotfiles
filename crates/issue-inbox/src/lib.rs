@@ -389,6 +389,29 @@ pub fn add(inbox: &str, line: &str) -> Code {
     }
 }
 
+/// 既に GitHub Issue にした気づきを、状態 `issued`(Issue の URL つき)のノートとして vault に残す。
+/// retro の user-correction は feedback なので Inbox には流さず Issue にする(ADR-697)が、そのままだと
+/// `signal`・`mechanism` がノートに載らず、兆候ごとの採用・却下の集計(ADR-1276 D6)に入らない。
+/// 集計は `issued` を採用として数えるので、起票と同時にこのノートを残す。
+///
+/// `line` は `--add` と同じ 1 件の JSON(`title` 必須)。ノートの repo は、行に無ければプロジェクトの
+/// `origin`。vault を宣言していない機体では何もせず `Ok(false)`(jsonl の行は状態を持たず、
+/// `issued` にすると取り除かれるだけなので、残す意味が無い)。残したら `Ok(true)`。
+pub fn add_issued(project: &str, line: &str, issue_number: u64) -> Result<bool, String> {
+    let Some(vault) = open_vault() else {
+        return Ok(false);
+    };
+    let mut item = vault::parse_item(line)?;
+    if item.repo.is_empty() {
+        item.repo = default_repo(project, &inbox_for(project));
+    }
+    let url = format!("https://github.com/{}/issues/{issue_number}", item.repo);
+    let g = vault.lock().map_err(|e| e.to_string())?;
+    vault::add_item(&g, &item, &vault::jst_today()).map_err(|e| e.to_string())?;
+    vault::set_status(&g, &item.title, Some(&item.repo), "issued", &url)?;
+    Ok(true)
+}
+
 /// プロジェクトの inbox の jsonl に残っている行を、vault のノートへ移す(vault を宣言している
 /// 機体だけ)。読めない行と、vault に書けなかった行は jsonl に残す。移した行は
 /// `<inbox>.filed.jsonl` に退避する。移した件数を返す。

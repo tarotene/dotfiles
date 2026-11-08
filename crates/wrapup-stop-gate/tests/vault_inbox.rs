@@ -355,6 +355,25 @@ fn a_codify_candidate_keeps_its_structure_and_needs_a_reason_to_be_dropped() {
     assert!(list(&e, &v, &p, &[]).is_empty());
 }
 
+/// user-correction は Inbox を通らず Issue になる(ADR-697)が、vault を宣言した機体では、兆候・手段を持つ
+/// 状態 `issued` のノートとしても残り、兆候ごとの採用・却下の集計(ADR-1276 D6)に入る。
+#[test]
+fn a_user_correction_filed_as_an_issue_is_kept_as_an_issued_note_for_calibration() {
+    let e = Env::new();
+    let (v, p) = (vault(&e), project(&e));
+    let row = r#"{"kind":"user-correction","what":"gate X が漏れた","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills"}"#;
+    let r = run_args(gate_in(&e, &v, &p), &["--retro-add", "s1", row]);
+    assert_eq!(r.code, 0, "{}", r.stderr);
+
+    let n = note(&v, "gate X が漏れた.md");
+    assert!(n.contains("status: \"issued\""), "{n}");
+    assert!(n.contains("signal: \"repeated-violation\""), "{n}");
+    assert!(n.contains("mechanism: \"gate\""), "{n}");
+    assert!(n.contains("/issues/12\""), "{n}");
+    // issued は open ではないので、裁定の一覧(--list-open)には出ない。
+    assert!(list(&e, &v, &p, &[]).is_empty());
+}
+
 #[test]
 fn a_plain_finding_can_still_be_dropped_without_a_reason() {
     let e = Env::new();
