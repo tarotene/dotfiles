@@ -270,6 +270,10 @@ l_external: "Sessions / services / state" {
     class: s_external
     style.stroke-dash: 4
   }
+  n_herdr: "herdr (sidebar / toast / tab bar)" {
+    class: s_herdr
+    style.stroke-dash: 4
+  }
   n_wrapup_inbox: "wrap-up inbox (jsonl; machine without a vault)" {
     class: s_store
     shape: cylinder
@@ -361,6 +365,12 @@ l_timer.n_promotion_detect -> l_external.n_wrapup_inbox: "promotion candidates" 
 l_timer.n_promotion_detect -> l_external.n_obsidian_vault: "lapse stale open notes" {
   class: e_file
 }
+l_timer.n_promotion_detect -> l_external.n_github: "ledger heartbeat body" {
+  class: e_issue
+}
+l_timer.n_promotion_detect -> l_external.n_herdr: "ledger digest stale toast" {
+  class: e_notify
+}
 l_external.n_github -> l_timer.n_promotion_detect: "feedback Issues" {
   class: e_context
 }
@@ -393,6 +403,9 @@ legend: "Legend" {
   }
   lg_s_git: "git hook" {
     class: s_git
+  }
+  lg_s_herdr: "herdr" {
+    class: s_herdr
   }
   lg_s_store: "state file" {
     class: s_store
@@ -436,6 +449,13 @@ legend: "Legend" {
     class: plain
     style.stroke: "#009E73"
     style.font-color: "#009E73"
+    style.fill: "#FFFFFF"
+    style.stroke-width: 3
+  }
+  lg_e_notify: "edge notify: toast, display, check" {
+    class: plain
+    style.stroke: "#888888"
+    style.font-color: "#888888"
     style.fill: "#FFFFFF"
     style.stroke-width: 3
   }

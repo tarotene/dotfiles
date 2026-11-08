@@ -11,6 +11,12 @@
 # OBSIDIAN_VAULT / marker-file declaration the other tools use) and counts
 # adopted vs dropped candidates per signal.
 #
+# At the end of each run it also writes a liveness record for the owner's
+# Issue ledger and checks that the cloud's daily digest is still arriving
+# (ADR-0000, ledger_heartbeat). The ledger repository is private, so its
+# name is not here: the crate reads it from the machine-local file
+# ~/.config/ledger-heartbeat/target and does nothing when that is absent.
+#
 # Daily cadence (not hourly like due-remind): unlike a missed deadline,
 # missing one day's detection run has no real cost — the underlying
 # signals (feedback Issue counts, cmd-hash counts, skip-file age) only
@@ -29,10 +35,13 @@ let
   # wrapup-stop-gate (Rust since #413, crates/wrapup-stop-gate), which this
   # binary execs, takes its inbox lock with flock(2) itself and no longer
   # needs bash/jq/flock(1)/grep/awk; it still shells out to git and gh.
+  # herdr: 本人の Issue 台帳の日次の通知が途絶えたときの通知(ADR-0000)。due-remind と同じ
+  # `herdr notification show`。
   servicePath = lib.makeBinPath [
     pkgs.coreutils
     pkgs.git
     pkgs.gh
+    pkgs.herdr
   ];
 in
 {
