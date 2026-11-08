@@ -331,10 +331,26 @@ pub struct Vault {
 
 impl Vault {
     /// `<root>/.obsidian/daily-notes.json` を読む。読めない・扱えない書式は理由つきで `Err`。
+    /// ファイルが**無い**ときは、`.obsidian/` がある vault に限り、キーが無いときと同じ既定値
+    /// (vault の直下・`YYYY-MM-DD`)で開く: 日次ノートの設定が無い vault を宣言した機体で、全サブ
+    /// コマンドが exit 2 になっていた(#1363)。`.obsidian/` も無い(vault の場所が違う)・読めない
+    /// (権限など)・JSON でない・扱えない書式は、従来どおり `Err`。
     pub fn open(root: &Path) -> Result<Vault, String> {
         let cfg = root.join(".obsidian/daily-notes.json");
-        let text = fs::read_to_string(&cfg)
-            .map_err(|e| format!("日次ノートの設定が読めない: {}({e})", cfg.display()))?;
+        let text = match fs::read_to_string(&cfg) {
+            Ok(t) => t,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound && root.join(".obsidian").is_dir() =>
+            {
+                "{}".to_string()
+            }
+            Err(e) => {
+                return Err(format!(
+                    "日次ノートの設定が読めない: {}({e})",
+                    cfg.display()
+                ))
+            }
+        };
         let v: Value = serde_json::from_str(&text)
             .map_err(|e| format!("日次ノートの設定が JSON でない: {}({e})", cfg.display()))?;
         let folder = v
@@ -691,7 +707,21 @@ mod tests {
         // 既定は YYYY-MM-DD、フォルダ無し。
         let v = open("{}").unwrap();
         assert_eq!(v.note_path(D), d.path().join("2026-10-25.md"));
+        // vault の場所が違う(`.obsidian/` も無い)ときは、既定値で開かず `Err`。
         assert!(Vault::open(&d.path().join("none")).is_err());
+    }
+
+    #[test]
+    fn a_vault_without_daily_note_settings_opens_with_the_defaults() {
+        // #1363: `.obsidian/` はあるが `daily-notes.json` が無い vault(日次ノートのプラグインを設定していない)。
+        let d = tempfile::tempdir().unwrap();
+        fs::create_dir_all(d.path().join(".obsidian")).unwrap();
+        fs::write(d.path().join(".obsidian/app.json"), "{}").unwrap();
+        let v = Vault::open(d.path()).unwrap();
+        assert_eq!(v.note_path(D), d.path().join("2026-10-25.md"));
+        // 設定ファイルが読めない(ディレクトリになっている)のは、無いのとは違うので `Err`。
+        fs::create_dir(d.path().join(".obsidian/daily-notes.json")).unwrap();
+        assert!(Vault::open(d.path()).is_err());
     }
 
     #[test]

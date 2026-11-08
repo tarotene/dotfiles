@@ -78,6 +78,12 @@ hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、無けれ
 `<vault>/.obsidian/app.json` で、worklog はさらに `<vault>/.obsidian/daily-notes.json` から、
 当日ノートの置き場と書式を読む。
 
+`daily-notes.json` が**無い** vault(`.obsidian/` はあるが、日次ノートのプラグインを設定していない)は、キーが
+無いときと同じ既定値 — vault の直下・書式 `YYYY-MM-DD` — で開く(#1363。以前は全サブコマンドが exit 2 で
+落ちていた)。`.obsidian/` も無い(vault の場所が違う)・ファイルを読めない(権限、ディレクトリになっている)・
+JSON でない・扱えない書式は、これまでどおりエラーにする。既定値で開いた vault には、当日ノートが vault の直下に
+作られる。
+
 ## SessionStart の注入
 
 - イベントは `startup` だけ。Claude Code、Codex、Copilot CLI のセッションに渡す(ADR-998 の 2026-10-28 の追記)。
