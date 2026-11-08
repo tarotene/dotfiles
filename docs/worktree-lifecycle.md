@@ -211,6 +211,19 @@ git config dotfiles.postWorktreeTrusted true
 `config/git/hooks/post-checkout --selftest`(opt-in の有無・clone・通常のブランチ切替・
 失敗・chain の 8 ケース)で、CI が実行する。
 
+## 古い土台の検出: 誰が何を担うか(#1344)
+
+herdr は worktree を親チェックアウトの HEAD から、fetch を挟まずに切る。親が古いと、worktree も古い土台から始まる。
+これを 2 つの仕組みが、重ならない範囲で担う:
+
+| 仕組み | 範囲 | いつ | 古さを見つけたとき |
+|---|---|---|---|
+| `git-checkout-sync`(systemd user timer、`docs/agents/git-checkout-sync.md`) | **親チェックアウト**(default branch に留まるもの) | 10 分ごと | fetch して `--ff-only` で揃える |
+| `worktree-base-sync`(SessionStart の hook、`docs/agents/worktree-base-sync.md`) | **何も積んでいない worktree** | セッションの開始 | fetch して `--ff-only` で揃える。fetch できなければ、手元の追跡 ref より遅れていることを知らせる |
+
+`post-checkout`(上の節)は、worktree 作成直後に宣言された初期取得手順を流すだけで、土台の古さは見ない。コミットを積んだ
+worktree の base 追従は、どちらも動かさない(rebase は本人かエージェントが行う。`docs/git-sync.md`)。
+
 ## 確認
 
 ```bash

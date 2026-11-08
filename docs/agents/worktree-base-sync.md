@@ -58,9 +58,22 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 `git fetch origin <base>` は `git fetch origin`(引数なし)と違って通信量が
 小さく、かつ実機検証済みで `refs/remotes/origin/<base>` を正しく更新する
 (clone 時に張られる既定の fetch refspec `+refs/heads/*:refs/remotes/origin/*`
-に `<base>` が含まれるため)。fetch 済みかどうかは共通 git ディレクトリの
-`FETCH_HEAD` の mtime を TTL(既定 600 秒、`WORKTREE_FRESH_BASE_FETCH_TTL` で
-上書き可)として判定し、pr-gate の SessionStart と同じパターンを踏む。
+に `<base>` が含まれるため)。fetch 済みかどうかは、共通 git ディレクトリの
+`worktree-base-sync.fetched`(この hook が base の fetch に成功したときに作る空ファイル)の更新時刻を TTL
+(既定 600 秒、`WORKTREE_FRESH_BASE_FETCH_TTL` で上書き可)として判定する。
+
+かつては `FETCH_HEAD` の更新時刻で判定していた(pr-gate の SessionStart と同じパターン)。しかし `FETCH_HEAD` は
+他の fetch(別のブランチの `git fetch origin <branch>`、他の hook の fetch)でも更新されるので、base の追跡 ref が
+古いまま fetch を省き、古いローカルの main から切った worktree に気づけない(2026-10-30、マージ済みの変更を含まない
+土台から切られた。#1344。原因は未確認で、これは有力な仮説。テストは、新しい `FETCH_HEAD` だけでは fetch を省かないことを
+固定した)。印は成功した fetch の後にだけ作るので、失敗は印を残さず、次の起動でまた試す。
+
+## fetch できなかったとき
+
+fetch に失敗した(ネットワーク・認証・時間切れ)ときは、手元の `origin/<base>` に対して HEAD が遅れていれば
+(`git rev-list --count HEAD..origin/<base>` が 1 以上)、`additionalContext` で知らせる。最新かは分からない(追跡 ref
+自体が古い可能性もある)が、遅れているという事実は確かなので、黙って終えない。遅れの根拠が無いとき(追跡 ref が無い、
+HEAD と同じ)は黙る。動かす(fast-forward)のは、fetch に成功したときだけ。
 
 ## 順序について: pr-gate との実行順は保証されない
 
