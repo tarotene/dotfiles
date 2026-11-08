@@ -167,6 +167,7 @@ node = [
   { id = "atop-trace", label = "atop-trace (10 s, vega)", lane = "timer", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/atop-trace.nix", doc = "docs/operations.md", auto = true },
   { id = "fcitx5-autostart", label = "fcitx5 (login autostart)", lane = "login", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/desktop.nix", doc = "docs/ime-chrome-diagnosis.md", auto = true },
   { id = "obsidian-autostart", label = "obsidian (login autostart, vega)", lane = "login", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian.nix", auto = true },
+  { id = "obsidian-livesync", label = "obsidian-livesync (resident daemon, opt-in)", lane = "login", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/obsidian-livesync.nix", doc = "docs/agents/obsidian-livesync-cli.md", auto = true },
   { id = "webcam-builtin-relay", label = "webcam-builtin-relay (resident, arcturus)", lane = "login", stack = "nix", pipelines = ["host-hygiene"], entity = "home/modules/webcam-builtin.nix", doc = "docs/webcam-builtin-ipu7.md", auto = true },
 
   # --- Cloud / LLM(auto = false: 登録箇所を持たない)

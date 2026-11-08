@@ -159,6 +159,9 @@ in
     # PATH に出すのはラッパーだけ。生の CLI は出さない。
     home.packages = [ wrapper ];
 
+    # ログインで起動する常駐の service の pipeline-map のノード(ADR-872)。
+    dotfiles.pipeline.timerNodes.obsidian-livesync = "obsidian-livesync";
+
     systemd.user.services.obsidian-livesync = lib.mkIf pkgs.stdenv.isLinux {
       Unit = {
         Description = "Self-hosted LiveSync CLI daemon for the personal Obsidian vault";
