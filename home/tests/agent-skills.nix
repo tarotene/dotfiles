@@ -17,8 +17,8 @@ let
     map (name: ".claude/skills/${name}") (names ++ [ "repo-governance-common" ])
     ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ]);
 in
-assert builtins.length names == 44;
-assert builtins.length shared == 43;
+assert builtins.length names == 45;
+assert builtins.length shared == 44;
 assert
   lib.sort builtins.lessThan (builtins.attrNames entries) == lib.sort builtins.lessThan expected;
 assert lib.all (entry: !entry.recursive && !entry.force) (builtins.attrValues entries);

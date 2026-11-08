@@ -1,8 +1,8 @@
-//! daily-desk-reminder の純関数部分(SessionStart hook、docs/agents/daily-desk.md)。
+//! daily-desk-reminder の純関数部分(SessionStart hook、docs/agents/my-desk.md)。
 //!
 //! その日最初のセッションで「今日の朝の机は未実施」を `additionalContext` で注入する。
 //! 実施済みの印は `~/.local/state/claude/desk/<JST の日付>` の空ファイル 1 つだけで、
-//! 机の完了を示す台帳ではない(`daily-desk` スキルが完了時に作る)。ハブ(手順の正本を持つ
+//! 机の完了を示す台帳ではない(`my-desk` スキルが完了時に作る)。ハブ(手順の正本を持つ
 //! private リポジトリ)が未設定の機体では発火しない。I/O は main.rs だけが行う。
 
 use serde::Serialize;
@@ -65,13 +65,13 @@ pub fn latest_date<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<Strin
         .map(str::to_string)
 }
 
-/// 注入文。本人が望むときにだけ `daily-desk` を実行させる(自動では走らせない)。
+/// 注入文。本人が望むときにだけ `my-desk` を実行させる(自動では走らせない)。
 pub fn build_context(today: &str, last: Option<&str>) -> String {
     let last = last.unwrap_or("なし");
     format!(
         "今日(JST {today})の朝の机は、まだ実施されていません(前回の机: {last})。\n\
          机は、その日にさばく作業(返信が要るメール、日程回答、人手タスク、未消費 PR の裁定、受信箱)を\n\
-         1 か所から順に片付ける入口で、`daily-desk` スキルが実行します。\n\
+         1 か所から順に片付ける入口で、`my-desk` スキルが実行します。\n\
          本人に一言で提案し、本人が望むときにだけ実行してください。このセッションの依頼を先に進めてかまいません。\n\
          最後の段まで終えると、実施済みの印が作られ、この注入は止まります。"
     )
@@ -149,7 +149,7 @@ mod tests {
         let c = build_context("2026-10-23", Some("2026-10-22"));
         assert!(c.contains("2026-10-23"));
         assert!(c.contains("前回の机: 2026-10-22"));
-        assert!(c.contains("`daily-desk`"));
+        assert!(c.contains("`my-desk`"));
         assert!(build_context("2026-10-23", None).contains("前回の机: なし"));
     }
 

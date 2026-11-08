@@ -534,8 +534,8 @@
 #    同じ gate の最後の pass より後の fail-open が閾値(既定 3)以上なら、セッション
 #    開始時に additionalContext で伝える。何も実行しない。fail-open。
 #
-# 38) daily-desk(個人スキル)+ daily-desk-reminder(SessionStart, matcher: startup、
-#    docs/agents/daily-desk.md):
+# 38) my-desk(個人スキル)+ daily-desk-reminder(SessionStart, matcher: startup、
+#    docs/agents/my-desk.md):
 #    その日にさばく作業(返信が要るメール、日程回答、人手タスク、未消費 PR の裁定、
 #    受信箱)の起点が、発火装置の違うものに散っていた問題への対処。手順の正本は
 #    private なハブ側の desk.md で、スキルはハブ(performance-hub)を解決して従うだけの
@@ -2085,7 +2085,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # esa-mirror-context: 社内 wiki の mirror の所在・検索手順・引用形式・鮮度を SessionStart で注入する。
   home.file.".claude/hooks/esa-mirror-context".source =
     "${pkgs.dotfiles-tools}/bin/esa-mirror-context";
-  # daily-desk-reminder: 今日の朝の机(daily-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
+  # daily-desk-reminder: 今日の朝の机(my-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
   home.file.".claude/hooks/daily-desk-reminder".source =
     "${pkgs.dotfiles-tools}/bin/daily-desk-reminder";
   # calendar-handshake-reminder: 勤務先の機体でだけ(dotfiles.calendarHandshakeReminder.enable)、

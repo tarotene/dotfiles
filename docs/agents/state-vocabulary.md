@@ -22,8 +22,8 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
     { "id": "dropped", "terminal": true }
   ],
   "events": [
-    { "id": "done", "from": ["none"], "to": ["done"], "by": "person", "carriers": ["cli:worklog", "skill:daily-desk"], "gates": ["cli:worklog"] },
-    { "id": "drop", "from": ["none"], "to": ["dropped"], "by": "person", "carriers": ["cli:worklog", "skill:daily-desk"], "gates": ["cli:worklog"] }
+    { "id": "done", "from": ["none"], "to": ["done"], "by": "person", "carriers": ["cli:worklog", "skill:my-desk"], "gates": ["cli:worklog"] },
+    { "id": "drop", "from": ["none"], "to": ["dropped"], "by": "person", "carriers": ["cli:worklog", "skill:my-desk"], "gates": ["cli:worklog"] }
   ]
 }
 ```

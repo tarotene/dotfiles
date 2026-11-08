@@ -48,7 +48,7 @@ fn injects_until_the_mark_exists() {
         .as_str()
         .unwrap();
     assert!(ctx.contains("前回の机: 2000-01-01"), "{ctx}");
-    assert!(ctx.contains("`daily-desk`"));
+    assert!(ctx.contains("`my-desk`"));
 
     // 本日の日付を、注入文から取り出して印を作ると、次は無音になる。
     let today = ctx

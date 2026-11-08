@@ -1,6 +1,9 @@
-# daily-desk — その日にさばく作業を、朝の机 1 か所に集める入口
+# my-desk — その日にさばく作業を、朝の机 1 か所に集める入口
 
-スキル: `config/agents/skills/daily-desk/SKILL.md`
+`/my-desk` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは片付けの `/my-cleanup`、[my-cleanup.md](my-cleanup.md))。
+旧名 `daily-desk` はこのスキルへの転送口で、通知役の hook `daily-desk-reminder` は実行名のまま変えない。
+
+スキル: `config/agents/skills/my-desk/SKILL.md`
 hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
 手順の正本: 別の private な person-state リポジトリの `state/reviews/daily/desk.md`
 (同リポジトリ側の ADR。出典は private リポジトリ側のため、ここでは決定の存在だけを参照する)
@@ -44,7 +47,7 @@ hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
 - ハブが未設定の機体(会社の機体など)では何も出さない。ハブはあるが `desk.md` が読めないときは、
   stderr に 1 行だけ出す。
 - 日付は JST で、`TZ` や `date(1)` に依存せず unix 秒から求める(`crates/daily-desk-reminder`)。
-- 注入文は、本人が望むときにだけ `daily-desk` を実行するよう促す。自動では走らせない。
+- 注入文は、本人が望むときにだけ `my-desk` を実行するよう促す。自動では走らせない。
 
 ## 実施済みの印
 

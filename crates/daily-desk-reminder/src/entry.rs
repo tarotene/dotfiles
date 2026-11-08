@@ -1,6 +1,6 @@
 // daily-desk-reminder の hook 本体(SessionStart)。縮退はすべて exit 0
 // (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
-// docs/agents/daily-desk.md。
+// docs/agents/my-desk.md。
 
 use daily_desk_reminder::{build_context, jst_date, latest_date, session_start_json, state_dir};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,7 +17,10 @@ fn main() {
     // ハブはあるのに手順が無い: 無音だと壊れた設定を隠すので 1 行だけ出す。
     let desk_md = std::path::Path::new(&hub).join("state/reviews/daily/desk.md");
     if !desk_md.is_file() {
-        eprintln!("[daily-desk-reminder] desk.md が読めません: {}", desk_md.display());
+        eprintln!(
+            "[daily-desk-reminder] desk.md が読めません: {}",
+            desk_md.display()
+        );
         return;
     }
     let Some(dir) = state_dir(

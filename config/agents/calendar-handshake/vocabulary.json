@@ -13,7 +13,7 @@
     { "id": "ok", "terminal": false, "token": "[ok] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
     { "id": "resched", "terminal": false, "token": "[resched] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
     { "id": "ng", "terminal": false, "token": "[ng] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "soft" },
-    { "id": "go", "terminal": false, "token": "[go] ", "owner": "person", "shown_by": ["skill:daily-desk"], "hold": "soft" },
+    { "id": "go", "terminal": false, "token": "[go] ", "owner": "person", "shown_by": ["skill:my-desk"], "hold": "soft" },
     { "id": "blocked", "terminal": false, "token": "[blocked] ", "owner": "machine", "owner_detail": "workplace-script", "hold": "hard" },
     { "id": "secured", "terminal": false, "token": "[secured] ", "owner": "agent", "owner_detail": "workplace-agent", "hold": "hard" }
   ],
