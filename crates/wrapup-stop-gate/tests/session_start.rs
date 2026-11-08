@@ -92,3 +92,106 @@ fn migrates_and_stamps() {
     assert_eq!(r.code, 0);
     assert!(e.stamp_dir().join("unknown.stamp").is_file());
 }
+
+const SUGGESTION: &str = "Propose running /my-cleanup to the user";
+
+fn start_in(e: &Env, project: &Path, vault: Option<&Path>) -> String {
+    let mut c = e.session_start();
+    c.env("CLAUDE_PROJECT_DIR", project);
+    if let Some(v) = vault {
+        c.env("OBSIDIAN_VAULT", v);
+    }
+    let r = run(c, &hook_input(project));
+    assert_eq!((r.code, r.stderr.as_str()), (0, ""));
+    r.stdout
+}
+
+fn days_ago(n: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    issue_inbox::vault::jst_date(now - n * 86_400)
+}
+
+/// vault を宣言し、`rows` の日付の行を持つ open なノートを 1 枚置く。repo は `example/vaulted`。
+fn put_note(vault: &Path, title: &str, first_seen: &str, rows: &[String]) {
+    std::fs::create_dir_all(vault.join(".obsidian")).unwrap();
+    std::fs::write(vault.join(".obsidian/app.json"), "{}").unwrap();
+    std::fs::create_dir_all(vault.join("inbox")).unwrap();
+    let body: String = rows.iter().map(|d| format!("- {d} 行\n")).collect();
+    std::fs::write(
+        vault.join("inbox").join(format!("{title}.md")),
+        format!(
+            "---\ntitle: \"{title}\"\nrepo: \"example/vaulted\"\nstatus: \"open\"\nissue: \"\"\npr: \"\"\nfirst_seen: \"{first_seen}\"\n---\n{body}"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn suggests_the_cleanup_when_ten_findings_have_piled_up() {
+    let e = Env::new();
+    let repo = repo(
+        &e.path().join("repo"),
+        Some("https://github.com/example/example.git"),
+    );
+    let inbox = inbox_of(&e, &repo);
+    for i in 0..9 {
+        run_args(e.gate(), &["--add", &inbox, &format!("{{\"a\":{i}}}")]);
+    }
+    let out = start_in(&e, &repo, None);
+    assert!(out.contains("9 unadjudicated finding(s)"), "{out}");
+    assert!(!out.contains(SUGGESTION), "9 件ではまだ提案しない: {out}");
+
+    run_args(e.gate(), &["--add", &inbox, "{\"a\":9}"]);
+    let out = start_in(&e, &repo, None);
+    assert!(out.contains("10 unadjudicated finding(s)"), "{out}");
+    assert!(out.contains(SUGGESTION), "10 件で提案する: {out}");
+}
+
+#[test]
+fn suggests_the_cleanup_when_an_open_note_is_a_week_past_its_last_row() {
+    let e = Env::new();
+    let repo = repo(
+        &e.path().join("repo"),
+        Some("https://github.com/example/vaulted.git"),
+    );
+    let vault = e.path().join("vault");
+    put_note(&vault, "放置", &days_ago(8), &[days_ago(8)]);
+    let out = start_in(&e, &repo, Some(&vault));
+    assert!(out.contains("1 unadjudicated finding(s)"), "{out}");
+    assert!(out.contains(SUGGESTION), "最後の行から 8 日: {out}");
+    assert!(out.contains("8 day(s) ago"), "{out}");
+}
+
+#[test]
+fn does_not_suggest_for_a_recent_note_even_if_it_was_first_seen_long_ago() {
+    let e = Env::new();
+    let repo = repo(
+        &e.path().join("repo"),
+        Some("https://github.com/example/vaulted.git"),
+    );
+    let vault = e.path().join("vault");
+    // 初出は 60 日前だが、再発が 3 日前。時計は最後の行(失効と同じ)から数える。
+    put_note(
+        &vault,
+        "再発中",
+        &days_ago(60),
+        &[days_ago(60), days_ago(3)],
+    );
+    let out = start_in(&e, &repo, Some(&vault));
+    assert!(out.contains("1 unadjudicated finding(s)"), "{out}");
+    assert!(!out.contains(SUGGESTION), "{out}");
+}
+
+#[test]
+fn does_not_suggest_without_findings() {
+    let e = Env::new();
+    let repo = repo(
+        &e.path().join("repo"),
+        Some("https://github.com/example/example.git"),
+    );
+    let out = start_in(&e, &repo, None);
+    assert!(!out.contains(SUGGESTION), "{out}");
+}

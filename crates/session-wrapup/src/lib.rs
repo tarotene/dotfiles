@@ -4,6 +4,31 @@ use issue_inbox::*;
 pub use issue_inbox::{read_hook_stdin, self_path, self_path_from_argv0};
 use session_retrospective as retro;
 use std::io::Write;
+
+/// 片付け(`/my-cleanup`)を起動時に提案する、未裁定の件数のしきい値。
+pub const CLEANUP_PENDING_THRESHOLD: usize = 10;
+/// 片付けを提案する、最後の行(初出か再発)からの日数。気づきが失効する日数(`vault::LAPSE_AFTER_DAYS`)の
+/// 半分で、「あと半分の日数以内に、黙って失効する気づきがある」ことを表す。時計は失効と同じ。
+pub const CLEANUP_STALE_DAYS: i64 = vault::LAPSE_AFTER_DAYS / 2;
+
+/// 未裁定の件数 `pending` と、最後の行からいちばん日数がたっている未裁定の経過日数
+/// `oldest_age_days`(vault が無ければ `None`)から、片付けを提案するかを決める。
+/// 前回いつ片付けたかの記録は持たない(新しい記録を足さず、既存の inbox の記録から導く)。
+pub fn should_suggest_cleanup(pending: usize, oldest_age_days: Option<i64>) -> bool {
+    pending >= CLEANUP_PENDING_THRESHOLD || oldest_age_days.is_some_and(|d| d >= CLEANUP_STALE_DAYS)
+}
+
+fn cleanup_suggestion(pending: usize, oldest_age_days: Option<i64>) -> String {
+    let age = oldest_age_days.map_or(String::new(), |d| {
+        format!(
+            "; the oldest was last seen {d} day(s) ago, and open findings lapse after {} days",
+            vault::LAPSE_AFTER_DAYS
+        )
+    });
+    format!(
+        "\nThe wrap-up inbox of this project has piled up ({pending} open{age}). Propose running /my-cleanup to the user in one short sentence, and run it only if the user wants it; do not start it on your own."
+    )
+}
 /// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
 pub fn stop_hook(self_path: &str, input: &str) -> Code {
     let h = HookJson::parse(input);
@@ -126,6 +151,10 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
         ctx.push_str(&format!(
             "\nThere are {pending} unadjudicated finding(s) for this project (including leftovers from past sessions)."
         ));
+        let oldest = pending_oldest_age_days(&project, &vault::jst_today());
+        if should_suggest_cleanup(pending, oldest) {
+            ctx.push_str(&cleanup_suggestion(pending, oldest));
+        }
     }
     ctx.push_str("\n</hook-directive>");
     match trial::hook(&trial_path, input, true) {
@@ -194,4 +223,43 @@ pub fn waiting_on_background(transcript_path: &str) -> bool {
         WAIT_STALE_SECS,
     )
     .is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_pending_count_threshold_is_ten() {
+        assert!(!should_suggest_cleanup(9, None));
+        assert!(should_suggest_cleanup(10, None));
+        assert!(should_suggest_cleanup(143, None));
+    }
+
+    #[test]
+    fn the_age_threshold_is_half_of_the_lapse_period() {
+        assert_eq!(CLEANUP_STALE_DAYS, 7);
+        assert!(!should_suggest_cleanup(1, Some(6)));
+        assert!(should_suggest_cleanup(1, Some(7)));
+        assert!(should_suggest_cleanup(1, Some(13)));
+    }
+
+    #[test]
+    fn either_condition_is_enough_and_no_age_means_only_the_count_counts() {
+        assert!(should_suggest_cleanup(10, Some(0)));
+        assert!(should_suggest_cleanup(1, Some(7)));
+        assert!(!should_suggest_cleanup(9, Some(6)));
+        assert!(!should_suggest_cleanup(9, None));
+    }
+
+    #[test]
+    fn the_suggestion_names_the_entry_and_forbids_starting_it_unasked() {
+        let s = cleanup_suggestion(12, Some(8));
+        assert!(s.contains("/my-cleanup"), "{s}");
+        assert!(s.contains("12 open"), "{s}");
+        assert!(s.contains("8 day(s) ago"), "{s}");
+        assert!(s.contains("only if the user wants it"), "{s}");
+        // vault が無く経過日数を持たないときは、日数の句を出さない。
+        assert!(!cleanup_suggestion(10, None).contains("day(s)"));
+    }
 }

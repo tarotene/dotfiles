@@ -21,7 +21,7 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 
 | 部品 | イベント | 役割 |
 |------|----------|------|
-| `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ。Issue にはしない」を `additionalContext` で注入。未裁定の件数も掲示 |
+| `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ。Issue にはしない」を `additionalContext` で注入。未裁定の件数も掲示し、溜まったときは `/my-cleanup` の提案も指示する |
 | `wrapup-stop-gate` | Stop | jsonl に残った行を vault へ移す。更新した feedback memory に `#N` が無ければ指示する。**気づきの起票は求めない** |
 | `/my-cleanup` | 手動 | vault の open な気づきを集め、本人が裁定し、直せるものは PR で直す(スキルは[`my-cleanup.md`](my-cleanup.md)) |
 
@@ -253,6 +253,12 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
   (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`。`lapsed` は抽象の `settled` に写る)。
   セッション開始時の hook(`session-wrapup start`、`node:session-wrapup-start`)の「未裁定の気づきが N 件ある」(事象 `remind`)は、
   失効の前の通知として残る。数えるのは作業中のプロジェクトの `open` だけである。
+- 片付けの提案: この通知は、未裁定が 10 件以上、または最後の行から 7 日以上(失効の 14 日の半分)たった `open` があるとき、
+  エージェントに「本人に一言で `/my-cleanup` を提案し、望むときだけ実行する」ことも指示する(`crates/session-wrapup` の
+  `should_suggest_cleanup`、しきい値は `CLEANUP_PENDING_THRESHOLD` と `CLEANUP_STALE_DAYS`)。経過日数は
+  `issue_inbox::vault::oldest_open_age_days` が、失効(`sweep`)と同じ「最後の行の日付」の時計で求める。前回いつ片付けたかの
+  記録は足さない(書き忘れで壊れる記録を作らず、既存の inbox の記録から導く)。vault の無い機体の jsonl は時計を持たないので、
+  件数の条件だけで判定する。朝の机の通知役(`daily-desk-reminder`)の「未実施なら提案する」と同じ型である。
 - `lapsed` は `--set-status` で書けない(掃除だけが書く)。`lapsed` から `issued` へは語彙の遷移に含めない(Issue にするには、再発して
   `open` に戻ってから)。
 - `--set-status` は現在の状態を見ずに状態を書く(`issued` から `open` へも書ける)。語彙の `fix`・`file`・`drop` は
