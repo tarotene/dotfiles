@@ -11,8 +11,8 @@
 //! スキップ手段: `touch ~/.claude/plan-scope-gate/skip` または
 //! `SKIP_PLAN_SCOPE_GATE=1`。
 
-use agent_session::Outcome;
-use jq_json_compat::jqfmt;
+use agent_session::entry::{emit, read_stdin, Call, Spec};
+use agent_session::{Agent, Reply};
 use plan_scope_gate::{
     judge_inventory, judge_issue, normalize_issue_ref, resolve_owner_repo, trim_newlines,
     try_fetch_children, EXAMPLE_BLOCK,
@@ -75,17 +75,27 @@ fn cmd_check_plan(plan_file: &str) -> ExitCode {
     ExitCode::from(1)
 }
 
+/// ExitPlanMode の gate は、PreToolUse と PermissionRequest の両方で同じ bin を使う。出力のイベントは
+/// 標準入力の `hook_event_name` で決まる(PermissionRequest 以外は PreToolUse)。`--agent` は読まない(Claude 固定)。
+const SPEC: Spec = Spec {
+    name: "plan-scope-gate",
+    agents: &[Agent::Claude],
+    event: None,
+};
+
 fn hook() -> ExitCode {
-    let mut buf = String::new();
-    let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf);
-    // 判定は lib の `hook`(ルータと同じ関数)。ここは出力の書式だけを持つ。
-    if let Some(Outcome::Deny(reason)) = plan_scope_gate::hook(&buf) {
-        let event = agent_session::HookInput::parse(&buf)
-            .unwrap_or_default()
-            .hook_event_name;
-        print!("{}", jqfmt::deny_for_event(&event, &reason));
-    }
-    ExitCode::SUCCESS
+    let raw = read_stdin();
+    // 判定は lib の `hook`(ルータと同じ関数)。出力の書式は `Reply::render` が持つ。
+    let call = Call {
+        agent: Agent::Claude,
+        rest: Vec::new(),
+    };
+    emit(
+        &SPEC,
+        &call,
+        &raw,
+        &Reply::from_outcome(plan_scope_gate::hook(&raw)),
+    )
 }
 
 fn main() -> ExitCode {
