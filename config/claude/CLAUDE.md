@@ -151,6 +151,22 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   scratchpad・`$TMPDIR` への書き込み。cargo を sandbox の外で回す必要は無い。
 - **sandbox の外が要る**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)。`new-tool-guard register` は
   `~/.local/state/claude/new-tool-guard/state` に書くので、sandbox の中でよい。
+- **`nix develop` は除外一覧に無い**ので、sandbox の中では nix の fetcher の置き場(`fetcher-locks`)が
+  `Read-only file system` で落ちる(2026-10-30 に `nix develop --command cargo run -p pipeline-map -- render` で発生)。
+  図の再生成は `nix develop` を介さず `cargo run -p pipeline-map -- render` を直接呼ぶ(`d2` は PATH にある。
+  `home/modules/packages.nix`)。CI と同じ clippy の再現は、次の項目の `nix build` を使う。
+- **CI の clippy は手元の `cargo clippy` と toolchain の版が違う**(CI は flake の nixpkgs の rustc、手元は rustup。
+  `--deny warnings` で `unnecessary_sort_by` が CI だけで落ち、上の段 4 本の積み直しになった。2026-10-30)。
+  push の前に、CI と同じ derivation を `nix build .#checks.x86_64-linux.dotfiles-tools-clippy --no-link`
+  (`flake.nix` の `checks`。単体で呼ぶ。2026-11-08 に vega で exit 0 で通ることを確かめた)で回す。
+- **プロセスの存在確認(`ps`・`pgrep`)は sandbox の外で行う。** sandbox の中は PID namespace が隔離されていて、
+  ホストのプロセス(Obsidian など)が見えず、自分のシェルの行にだけ当たって「動いていない」と誤判定する
+  (2026-10-28 に `pgrep -f obsidian` で発生)。一覧が本物かは、ホスト側にしか無いプロセス(`cosmic-comp` など)の
+  有無で確かめる。
+- **新しく作った `.nix`・`.rs`・skill のファイルは、`nix build`・`nix flake check` の前に `git add -N <path>` する。**
+  flake は git が追跡するファイルだけを見るので、未追跡のままだと `is not tracked by Git` で落ちる。もっと悪いのは
+  落ちずに通る場合で、未追跡のスキルを数えない評価が通り、コミット後にスキル数の assert が落ちる状態で push した
+  (2026-11-08)。`Git tree has uncommitted changes` の警告は、未追跡かどうかを区別しない。
 - **cwd はリポジトリのルートに保つ。** sandbox は、cwd と `cd` で入ったディレクトリごとに、書き込み禁止の代役
   (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
   (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する

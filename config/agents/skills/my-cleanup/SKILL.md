@@ -180,6 +180,12 @@ subagent への指示・返値の契約:
 承認されたが、実装前にソースを読むと関数 A は目次に効かなかった。「crate の型 B は公開
 されている」という Issue の前提も、実際のバージョンでは private だった。#970)。
 
+**選択肢や質問の本文に載せる件数は、暗算しない。** グループ別の列挙を足し算で書くと数え誤る(2026-10-28 に
+対象外を 29 件と書いたが 30 件で、#249 を二重に数えていた。除外件数を 21 と数え誤った実例もあり、再発している)。
+処分(L1〜L5 の振り分け、対象外、`Blocked-Upstream:`)ごとの番号の一覧を scratchpad に書き、件数はそこから
+`jq` や `wc -l` で出す。番号を列挙するときは、同じ一覧から文字列を作り、全体の件数(§1 の母集団)と
+グループの合計が一致することを確かめてから載せる。
+
 - **L2**: 1 件 1 問。§3 の返値(軸は検算済みのもの)を選択肢にし、「今回は除外」を必ず加える。
   1 回の呼び出しで最大 4 問(`AskUserQuestion` の上限)なので、件数が多ければ
   複数回に分けて呼ぶ
@@ -259,6 +265,12 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
   <clone> --branch <名前>` で切った worktree で編集・commit する
   (main-checkout-guard が clone への編集を deny する、#734)。
+  worktree がセッションのプロジェクトの外にあるときは、git の `add`・`commit`・`push` が `git -C` になるか、
+  `cd <dir> &&` と連結することになり、除外パターンに合わず sandbox に残って署名が `No secret key` で失敗する
+  (`fetch` も `.git` が書き込み許可の外で `Read-only file system`。2026-10-28 に private wrapper の worktree で、
+  段ごとに `dangerouslyDisableSandbox` を 3 回使った)。`config/claude/CLAUDE.md`「sandbox の外で動かす
+  コマンドは、単体で呼ぶ」の `SANDBOX_COMPOUND_GUARD_ALLOW=1` + 承認つきの `dangerouslyDisableSandbox` の
+  手順に従い、段ごとにその承認が要ることを、最初に本人へ伝える。
 - **Issue の置き場と対処先の可視性が違うとき**は、§3 の起草の時点で
   `gh repo view <OWNER/REPO> --json visibility` で両方を調べ、裁定の選択肢に
   載せる前に扱いを決める。Issue が private で、対処先が public のリポジトリなら:
@@ -271,7 +283,13 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   - private 側の Issue には、PR の URL をコメントして open のままにし、PR の
     マージ後に手で閉じる。閉じ忘れを拾えるよう、private 側の段の PR の
     `## 要確認` か本人への報告にポインタを置く(public 側の PR には書けない)。
-- サブエージェントへ段や repo を委譲するときは、`github-audit-triage` §6a の
+- **段の実装は、既定で本線が行う**(本人の指示 2026-11-08: 「サブエージェント払い出すと効率落ちるので
+  メインエージェントで集約して作業してほしい」、#1394)。払い出すたびに文脈の受け渡し・待ち・途中の中断の
+  再開・結果の読み戻しが要り、全体では効率が落ちた(別の worktree に切り替わったまま `git add -A` や
+  `git push` を別のリポジトリで実行した誤りも出た)。サブエージェントに出してよいのは、本線を止めたく
+  ない**読み取りだけの独立した調査**(§3 の起草など)と、利用上限(HTTP 429)に近く、本線で回し切れない
+  ときの例外だけである。
+- 例外として段や repo をサブエージェントへ委譲するときは、`github-audit-triage` §6a の
   委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
   あわせて、作業場所は次のとおり渡す(#1004):
   - **`Agent` の `isolation: worktree` を使わない。** 本物の checkout の `.claude/worktrees/` 配下に
