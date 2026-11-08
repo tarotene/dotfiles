@@ -1352,6 +1352,7 @@ name = "promotion-detect"
 version = "0.1.0"
 dependencies = [
  "command-inspection",
+ "due-remind",
  "filetime",
  "git-repository",
  "issue-inbox",

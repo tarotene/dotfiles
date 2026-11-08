@@ -15,6 +15,8 @@
 //!   または gate-events.jsonl の skip 回数が [`DEMOTION_SKIP_THRESHOLD`]
 //!   件以上 → 見直しを検討。
 
+pub mod ledger_heartbeat;
+
 use std::collections::{HashMap, HashSet};
 
 pub const RECURRENCE_THRESHOLD: usize = 2;

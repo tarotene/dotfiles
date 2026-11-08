@@ -7,6 +7,11 @@
 //! 候補の検出とは別に、vault の `inbox/` の気づきのうち、`open` のまま 14 日放置されたものを
 //! `lapsed` にする(ADR-1381。全 repo のノートが対象。`--dry-run` では書かず、件数を標準エラーに出す)。
 //!
+//! 最後に、本人の Issue 台帳(非公開のリポジトリ。名前は端末ローカルの設定
+//! `$XDG_CONFIG_HOME/ledger-heartbeat/target` から読む。無ければ何もしない)の生存の記録を書き、クラウドの
+//! 日次の通知が途絶えていないかを確かめる(ADR-1382、`ledger_heartbeat`)。`--dry-run` では書かず、
+//! 書く本文を標準エラーに出す。
+//!
 //! 環境変数(すべて未設定なら妥当な既定値にフォールバックする — due-remind
 //! の `DUE_REMIND_*` と同じ形、テストでの差し替えに使う):
 //!   PROMOTION_DETECT_REPO         既定 "tarotene/dotfiles"
@@ -17,6 +22,8 @@
 //!   PROMOTION_DETECT_INBOX_PATH   既定 "<state_dir>/wrapup/<repo_slug>.jsonl"
 //!   PROMOTION_DETECT_WORKLOG_BIN  既定 "$HOME/.local/bin/worklog"(vault を宣言している機体だけが呼ぶ)
 //!   PROMOTION_DETECT_GHR_DIR      既定 "$HOME/.ghr"(`<host>/<owner>/<repo>` のチェックアウトのうち、記録の層の宣言を持つものだけを読む)
+//!   PROMOTION_DETECT_HERDR_BIN    既定 "herdr"(台帳の日次の通知が途絶えたときの通知)
+//!   PROMOTION_DETECT_NOW          既定は現在時刻。unix 秒(台帳の生存の記録と確認の時刻。テストでの差し替えに使う)
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -175,6 +182,102 @@ fn main() {
     if !dry_run {
         write_emitted(&emitted_path, &emitted);
     }
+
+    // --- 本人の Issue 台帳: 生存の記録と、クラウドの日次の通知が途絶えていないかの確認(ADR-1382) ---
+    // 掃除のあとに数えるので、失効した気づきは件数に入らない。設定が無い機体では何もしない。
+    ledger_heartbeat(&state_dir, &gh_bin, home.as_deref(), dry_run);
+}
+
+/// 台帳のリポジトリを書いた端末ローカルの設定ファイル(`$XDG_CONFIG_HOME` か `~/.config` の下)。
+fn ledger_target_file(home: Option<&Path>) -> Option<PathBuf> {
+    let base = env_path("XDG_CONFIG_HOME").or_else(|| home.map(|h| h.join(".config")))?;
+    Some(base.join(promotion_detect::ledger_heartbeat::CONFIG_REL))
+}
+
+/// 現在時刻の unix 秒。`PROMOTION_DETECT_NOW` があればそれ(テストでの差し替え)。
+fn now_unix() -> i64 {
+    std::env::var("PROMOTION_DETECT_NOW")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64)
+        })
+}
+
+/// vault の `inbox/` の `open` を、プロジェクト(`repo`)ごとに数える。vault を宣言していない・読めない機体では `None`。
+fn open_counts(lock_dir: &Path) -> Option<std::collections::BTreeMap<String, usize>> {
+    let vault = match vault_note::VaultNotes::open(lock_dir) {
+        None => return None,
+        Some(Ok(v)) => v,
+        Some(Err(e)) => {
+            eprintln!("promotion-detect: vault を開けない: {e}");
+            return None;
+        }
+    };
+    let listed = vault
+        .lock()
+        .and_then(|g| issue_inbox::vault::list_open(&g, None));
+    match listed {
+        Ok(notes) => Some(promotion_detect::ledger_heartbeat::project_counts(
+            notes.into_iter().map(|n| n.repo),
+        )),
+        Err(e) => {
+            eprintln!("promotion-detect: wrap-up inbox の open を数えられない: {e}");
+            None
+        }
+    }
+}
+
+/// 設定が無ければ何もしない。失敗は標準エラーに出して続ける(日次の他の処理を止めない)。
+fn ledger_heartbeat(state_dir: &Path, gh_bin: &str, home: Option<&Path>, dry_run: bool) {
+    use promotion_detect::ledger_heartbeat as lh;
+    let Some(target_file) = ledger_target_file(home) else {
+        return;
+    };
+    let Ok(text) = std::fs::read_to_string(&target_file) else {
+        return; // 設定ファイルが無い: 機能は無効
+    };
+    let Some(repo) = lh::parse_target(&text) else {
+        eprintln!(
+            "promotion-detect: {} が OWNER/REPO の形でない。台帳の確認を飛ばす",
+            target_file.display()
+        );
+        return;
+    };
+    let counts = open_counts(&state_dir.join("wrapup"));
+    let now = now_unix();
+    if dry_run {
+        match &counts {
+            Some(c) => eprintln!(
+                "promotion-detect: 台帳の生存の記録(dry-run: 書かない):\n{}",
+                lh::render_body(now, c)
+            ),
+            None => eprintln!("promotion-detect: 台帳の生存の記録(dry-run: 件数を数えられない)"),
+        }
+        return;
+    }
+    let gh = lh::CommandGh {
+        bin: gh_bin.to_string(),
+    };
+    let herdr = lh::CommandHerdr {
+        bin: env_string("PROMOTION_DETECT_HERDR_BIN", "herdr"),
+    };
+    let report = lh::run(&lh::Run {
+        gh: &gh,
+        herdr: &herdr,
+        repo: &repo,
+        now_unix: now,
+        counts: counts.as_ref(),
+        notified_path: &state_dir
+            .join("promotion-detect")
+            .join("ledger-digest-notified"),
+    });
+    eprintln!(
+        "promotion-detect: 台帳の生存の記録: {:?}、日次の通知の確認: {:?}",
+        report.heartbeat, report.digest
+    );
 }
 
 type Emitted = std::collections::BTreeMap<String, String>;

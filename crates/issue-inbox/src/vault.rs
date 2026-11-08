@@ -87,7 +87,8 @@ pub fn parse_item(line: &str) -> Result<Item, String> {
 
 // ---------------------------------------------------------------- 日付(JST)
 
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+/// 1970-01-01 からの日数 → 暦の日付 `(年, 月, 日)`。
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
