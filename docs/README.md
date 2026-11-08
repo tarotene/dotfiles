@@ -468,6 +468,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1358](adr/1358-record-layers.md) — 記録を効いている期間で L0〜L4 の 5 層に分け(L0〜L2 は Git、L3 日〜都度・L4 機械生成は Git の外)、リポジトリの `.config/record-layers.toml` で「パス(glob)→ 層」を宣言する(1 パス 1 層、`git ls-files` の各ファイルに当たる glob がちょうど 1 つ)。宣言のあるリポジトリでは、宣言に無いパスと L3・L4 のパスへの Write を `hook-router` の `record-layer-guard` が拒否し、宣言と変化の速さのずれを `promotion-detect` が日次で wrap-up inbox に流す。
 - [ADR-1371](adr/1371-calendar-handshake-remote-kind.md) — 握手の語彙に、勤務先の不在を入れない予定の種類 `remote-trip`(題名の状態の印の直後の tag `[remote] `)を足す。種類は語彙の `kinds` で宣言し、事象ごとに適用する種類を持たせる(`remote-trip` は `propose`・`judge`・`withdraw` だけ)。`remote-trip` に書かれた `[go] ` は語彙に無い書き換えとして最後に受理した印へ差し戻され、不在が入らない。`vocab-graph-check` の規則「種類」と、仕様の不変条件 S7(種類を知らない規則で破れる対照つき)が守る。語彙は版 4 になり、利用側は pin を上げる。
 - [ADR-1379](adr/1379-issue-creation-ball-guard.md) — `tarotene` 配下のリポジトリの `gh issue create` を、排他のボールのラベル(`ball:me|them|agent`)がちょうど 1 つあり、本文の先頭行が非公開なら `next: YYYY-MM-DD`・公開なら日付の行なし、でなければ実行前に deny する。新しい crate `issue-create-guard` を hook-router の規則に載せ、公開/非公開は `gh repo view` で引き、引けなければラベルだけを検査する(fail-open)。`ledger-status` のラベルは免除し、`gh api`・MCP からの作成は見ない。
+- [ADR-1381](adr/1381-inbox-finding-lapse.md) — 作業中の気づきの `open` に 14 日の期限を置き、最後の行(初出か再発)から 14 日以上たったものを非終端の `lapsed` にする。同じ題が再発すれば `open` に戻り、裁定の手順(`--set-status`)で `fixed`・`dropped` にも進める。掃除は `issue-inbox --sweep`(`--dry-run` を持ち、冪等)で、日次の `promotion-detect` が全 repo のノートに対して呼ぶ。ADR-1297 の「失効の状態は設けない」を改め、具体化は `lapsed → settled`、`p1` は `timer` にする(抽象の `awaiting-item` は変えない)。
 
 ## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
 
@@ -525,6 +526,7 @@ Design and rationale for the hooks and commands deployed from
   日次 timer(Rust)。同じ規範・skill を指す feedback Issue の再発、
   SKILL.md コードブロックの逐語反復実行、gate skip ファイルの滞留・多発を
   検出し、Q2(LLM/散文 → 決定論への昇格)の候補を wrap-up inbox に追記する。
+  あわせて、`open` のまま 14 日放置された気づきを全 repo について `lapsed` にする(ADR-1381)。
 - [`main-checkout-guard.md`](agents/main-checkout-guard.md) — PreToolUse +
   Stop hook(Rust): 本物の checkout への Write/Edit・変更系 git を deny し、
   触れた checkout の状態差分を Stop で検出する。

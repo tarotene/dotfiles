@@ -58,6 +58,15 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
      速さがずれています(owner/repo)」。本文は `path(層)` を先頭 10 件並べ、日数は書かない(毎日変わる数が入ると、同じ候補を毎日入れ直す)。
    - 題に件数・日付を入れない(同じ題は同じ候補として、`emitted.json` と `--check-dup` が畳む)。
 
+8. **気づきの失効(ADR-1381)**: 候補の検出とは別に、vault を宣言している機体で、`issue_inbox::vault::sweep` を呼んで、
+   状態が `open` のまま最後の行(初出か再発)から 14 日以上たった気づきを `lapsed` にする。vault の `inbox/` は repo をまたいで
+   1 つなので、全 repo のノートが対象で、セッションを始めたプロジェクトには依らない。
+   - `status` だけを書き換える。繰り返しても二重に書かない(`lapsed` は `open` でない)。`--dry-run` では書かず、件数を標準エラーに出す
+     (標準出力は候補の JSON 用)。同じ操作は `issue-inbox --sweep [--dry-run]` でも手で行える。
+   - 失効したノートの題が `emitted.json` にあれば外す。検出が続いている候補は、同じ run で入れ直され(再発として `open` に戻り)、
+     14 日で黙って消えない。検出されなくなった候補は `lapsed` のまま残る。
+   - 失敗は理由を 1 行出して続ける(翌日にやり直せる)。vault を宣言していない機体では何もしない。
+
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
 (`RECURRENCE_THRESHOLD`・`VERBATIM_MIN_SESSIONS`・`SKIP_STALE_DAYS`・
 `DEMOTION_SKIP_THRESHOLD`)。

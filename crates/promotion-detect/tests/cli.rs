@@ -454,6 +454,118 @@ fn an_unchanged_discrepancy_is_not_added_again_on_the_next_day() {
     assert_eq!(w.add_log(), first, "同じ食い違いを翌日も入れ直した");
 }
 
+// ---- 気づきの失効(ADR-1381): open のまま 14 日放置された気づきを lapsed にする ----
+
+fn days_ago(n: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    issue_inbox::vault::jst_date(now - n * 86_400)
+}
+
+/// vault に、状態と最後の行の日付を決めた気づきを置く(frontmatter は issue-inbox の書式)。
+fn finding(vault: &Path, name: &str, title: &str, repo: &str, status: &str, last: &str) {
+    fs::create_dir_all(vault.join("inbox")).unwrap();
+    fs::write(
+        vault.join("inbox").join(format!("{name}.md")),
+        format!(
+            "---\ntitle: \"{title}\"\nrepo: \"{repo}\"\nstatus: \"{status}\"\nissue: \"\"\npr: \"\"\nfirst_seen: \"{last}\"\n---\n- {last} d\n"
+        ),
+    )
+    .unwrap();
+}
+
+fn status_of(vault: &Path, name: &str) -> String {
+    let text = fs::read_to_string(vault.join("inbox").join(format!("{name}.md"))).unwrap();
+    text.lines()
+        .find_map(|l| l.strip_prefix("status: "))
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+}
+
+#[test]
+fn open_findings_of_every_repo_lapse_at_14_days_and_the_rest_are_left() {
+    let w = World::new("[]");
+    let vault_str = declare_vault(&w);
+    let vault = w.p("vault");
+    finding(&vault, "a", "a", "o/r", "open", &days_ago(14));
+    finding(&vault, "b", "b", "o/other", "open", &days_ago(40));
+    finding(&vault, "c", "c", "o/r", "open", &days_ago(13));
+    finding(&vault, "d", "d", "o/r", "fixed", &days_ago(40));
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault_str)], false);
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("気づきの失効: 2 件"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let statuses: Vec<_> = ["a", "b", "c", "d"]
+        .iter()
+        .map(|n| status_of(&vault, n))
+        .collect();
+    assert_eq!(statuses, ["lapsed", "lapsed", "open", "fixed"]);
+    // 翌日も同じ状態で動いても、二重に書かない。
+    let before = fs::read(vault.join("inbox/a.md")).unwrap();
+    let again = w.run(&[("OBSIDIAN_VAULT", &vault_str)], false);
+    assert!(
+        String::from_utf8_lossy(&again.stderr).contains("気づきの失効: 0 件"),
+        "{}",
+        String::from_utf8_lossy(&again.stderr)
+    );
+    assert_eq!(fs::read(vault.join("inbox/a.md")).unwrap(), before);
+}
+
+#[test]
+fn a_dry_run_counts_the_lapsing_findings_without_writing() {
+    let w = World::new("[]");
+    let vault_str = declare_vault(&w);
+    let vault = w.p("vault");
+    finding(&vault, "a", "a", "o/r", "open", &days_ago(30));
+    let out = w.run(&[("OBSIDIAN_VAULT", &vault_str)], true);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("気づきの失効: 1 件(dry-run"), "{stderr}");
+    assert!(out.stdout.is_empty());
+    assert_eq!(status_of(&vault, "a"), "open");
+}
+
+#[test]
+fn a_machine_without_a_vault_sweeps_nothing() {
+    let w = World::new("[]");
+    let out = w.run(&[], false);
+    assert!(
+        !String::from_utf8_lossy(&out.stderr).contains("気づきの失効"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_lapsed_candidate_that_is_still_detected_is_added_again() {
+    // 検出される限り続く候補は、「前回と同じ」のまま二度と入らず 14 日で黙って消えないよう、
+    // 失効したら記録(emitted.json)から外して入れ直す(再発として open に戻る)。
+    let w = World::new(&recurrence_issues());
+    let vault_str = declare_vault(&w);
+    w.run(&[("OBSIDIAN_VAULT", &vault_str)], false);
+    assert_eq!(w.add_log().lines().count(), 1, "{}", w.add_log());
+    // 翌日: 変化が無ければ入れ直さない。
+    w.run(&[("OBSIDIAN_VAULT", &vault_str)], false);
+    assert_eq!(w.add_log().lines().count(), 1, "{}", w.add_log());
+    // 同じ題の気づきが、open のまま 20 日放置されている。
+    let title = "同じ Target: hook/foo-gate を持つ feedback Issue が2件あります(昇格候補、ADR-543)";
+    finding(
+        &w.p("vault"),
+        "cand",
+        title,
+        "tarotene/dotfiles",
+        "open",
+        &days_ago(20),
+    );
+    w.run(&[("OBSIDIAN_VAULT", &vault_str)], false);
+    assert_eq!(status_of(&w.p("vault"), "cand"), "lapsed");
+    assert_eq!(w.add_log().lines().count(), 2, "{}", w.add_log());
+}
+
 // ---- 記録の層(#1310): 宣言のあるチェックアウトだけを読む ----
 
 fn git_in(dir: &Path, envs: &[(&str, &str)], args: &[&str]) {

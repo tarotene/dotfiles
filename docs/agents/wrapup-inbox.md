@@ -56,7 +56,7 @@ vault の宣言は hub-resolve の `OBSIDIAN_VAULT`(環境変数、無ければ
 ---
 title: "<題名>"
 repo: "owner/repo"
-status: "open"        # open | fixed | issued | dropped
+status: "open"        # open | fixed | issued | dropped | lapsed
 issue: ""             # issued にしたときの URL
 pr: ""                # fixed にしたときの URL
 first_seen: "YYYY-MM-DD"
@@ -76,7 +76,7 @@ drop_reason: ""                 # dropped にしたときの閉じた理由(下)
   再発して `open` に戻ると消える。兆候ごとの採用・却下と理由は、日次の較正が数える(段 6)。
 
 - 再発は本文に 1 行足す(`O_APPEND`)。同じ日に同じ内容の行は足さない(冪等)。
-- `fixed` か `dropped` のノートに再発の行が付くと、`status` を `open` に戻す(直したはずのものが
+- `fixed`・`dropped`・`lapsed` のノートに再発の行が付くと、`status` を `open` に戻す(直したはずのものが
   再発した合図)。`issued` は動かさない(Issue 側で扱う)。書き直しは、状態が変わるときだけで、
   一時ファイル + rename(`vault-note::Locked::replace`)。内容が同じなら書かない。
 - 値は JSON の二重引用符文字列で書く(YAML としても正しい)。Obsidian の Properties で引用符なしに
@@ -123,6 +123,10 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/backlog-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
+- `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
+  `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
+  `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。
+  vault を宣言していない機体では何もしない。
 - `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]` — ノートの frontmatter だけを
   書き換える(本文はバイト単位でそのまま残す)。jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に
   退避)。`--reason` は `dropped` のときだけで、`signal` を持つノート(as-code 化の候補)では必須。jsonl の
@@ -238,21 +242,27 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 | `open` | いいえ | 本人の裁定を待つ。`/backlog-cleanup` が再発の多い順に見せる |
 | `fixed` | いいえ | 直した。**再発すると `open` に戻る**(閉じているが、再発を待つ) |
 | `dropped` | いいえ | 捨てた。**再発すると `open` に戻る**(`drop_reason` は消える) |
+| `lapsed` | いいえ | `open` のまま最後の行から 14 日以上たった。**再発すると `open` に戻り**(時計は再発の行から数え直す)、`--set-status` で `fixed`・`dropped` にも進める。`--list-open` と件数通知には出ない |
 | `issued` | はい | Issue にした。以後は Issue が追い、**再発しても `open` に戻らない** |
 
-- 再開: `fixed`・`dropped` に再発の行が付くと `open` に戻る(事象 `reopen`、機械が行う)。再発を別の項目にはしない
+- 再開: `fixed`・`dropped`・`lapsed` に再発の行が付くと `open` に戻る(事象 `reopen`、機械が行う)。再発を別の項目にはしない
   (同じ題名は同じノートで、本文の行数が再発の回数)。`issued` は、行は足すが状態を動かさない。
-- 失効の状態は設けない。放置された `open` は、セッション開始時の hook(`session-wrapup start`、`node:session-wrapup-start`)が
-  「未裁定の気づきが N 件ある」と出す(事象 `remind`)ことで再通知する。これが、裁定待ちの項目の性質 P1 を満たす手段
-  (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`)。数えるのは作業中のプロジェクトの `open` だけで、
-  別のプロジェクトの `open` は、そのプロジェクトでセッションを始めるまで再通知されない。
+- 失効(ADR-1381。ADR-1297 の「失効の状態は設けない」を改めた): `open` のまま最後の行(初出か再発)から 14 日以上たった気づきは、
+  日次の `promotion-detect`(`node:promotion-detect`)が `issue-inbox --sweep` と同じ掃除で `lapsed` にする(事象 `lapse`、機械が行う)。
+  全 repo のノートが対象で、セッションを始めたかどうかに依らない。これが、裁定待ちの項目の性質 P1 を満たす手段
+  (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`。`lapsed` は抽象の `settled` に写る)。
+  セッション開始時の hook(`session-wrapup start`、`node:session-wrapup-start`)の「未裁定の気づきが N 件ある」(事象 `remind`)は、
+  失効の前の通知として残る。数えるのは作業中のプロジェクトの `open` だけである。
+- `lapsed` は `--set-status` で書けない(掃除だけが書く)。`lapsed` から `issued` へは語彙の遷移に含めない(Issue にするには、再発して
+  `open` に戻ってから)。
 - `--set-status` は現在の状態を見ずに状態を書く(`issued` から `open` へも書ける)。語彙の `fix`・`file`・`drop` は
   `open` からの遷移として書いてあり、これが想定する使い方である。
 
 ### 語彙と実装の照合の方法
 
 `cargo test -p issue-inbox`(`vault.rs` の `vocabulary_matches_vault_rules`)が、語彙を `include_str!` で読み、実装の
-実際の動きから導いた集合と突き合わせる: 状態は `STATUSES`、`--set-status` の行き先は `fix`・`file`・`drop` の `to`、
+実際の動きから導いた集合と突き合わせる: 状態は `STATUSES`、`--set-status` の行き先(`lapsed` を除く)は `fix`・`file`・`drop` の `to`、
+`sweep` を実際に動かして得た `lapse` の `from`・`to`(と、時計の日数 `timers.lapse_after_days`)、
 再発で `open` に戻る状態は `add_item` を実際に動かして得て `reopen` の `from`、終端は戻らない状態(`issued`)だけ。
 語彙だけ、または実装だけを変えるとテストが落ちる。
 

@@ -7,7 +7,7 @@
 //! ---
 //! title: "<題名>"
 //! repo: "owner/repo"
-//! status: "open"        # open | fixed | issued | dropped
+//! status: "open"        # open | fixed | issued | dropped | lapsed
 //! issue: ""             # issued にしたときの URL
 //! pr: ""                # fixed にしたときの URL
 //! first_seen: "YYYY-MM-DD"
@@ -29,7 +29,14 @@ use vault_note::{note_name, short_hash, Locked, Note};
 pub const INBOX_DIR: &str = "inbox";
 
 pub const OPEN: &str = "open";
-pub const STATUSES: [&str; 4] = [OPEN, "fixed", "issued", "dropped"];
+/// `open` のまま放置された気づき(`sweep` だけが書く)。**非終端**: 再発すると `open` に戻り、
+/// `--set-status` で `fixed`・`dropped` にも進める。
+pub const LAPSED: &str = "lapsed";
+pub const STATUSES: [&str; 5] = [OPEN, "fixed", "issued", "dropped", LAPSED];
+
+/// `open` が、最後の行(初出か再発)からこの日数たつと `lapsed` になる(語彙 JSON の
+/// `timers.lapse_after_days`。`vocabulary_matches_vault_rules` が一致を確かめる)。
+pub const LAPSE_AFTER_DAYS: i64 = 14;
 
 /// `--add` の 1 行(`ts` / `title` / `detail` / 任意の `repo`)。`go` は読まない(裁定は
 /// backlog-cleanup で行うので、起票前の確認を行に持たせる必要が無い)。
@@ -91,6 +98,38 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// 暦の日付 → 1970-01-01 からの日数(`civil_from_days` の逆)。
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 } as i64;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// `YYYY-MM-DD`(暦に実在するもの)の、1970-01-01 からの日数。読めなければ `None`。
+pub fn parse_day(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    let shaped = b.len() == 10
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            _ => c.is_ascii_digit(),
+        });
+    if !shaped {
+        return None;
+    }
+    let (y, m, d) = (
+        s[..4].parse::<i64>().ok()?,
+        s[5..7].parse::<u32>().ok()?,
+        s[8..].parse::<u32>().ok()?,
+    );
+    let days = days_from_civil(y, m, d);
+    // 2026-02-30 のような実在しない日付は、往復すると別の日になる。
+    (civil_from_days(days) == (y, m, d)).then_some(days)
 }
 
 /// unix 秒の JST の日付 `YYYY-MM-DD`。
@@ -207,9 +246,10 @@ pub fn add_item(g: &Locked, item: &Item, today: &str) -> io::Result<Added> {
     if note.body.lines().any(|l| l.trim_end() == row) {
         return Ok(Added::Duplicate);
     }
-    let reopen = matches!(note.get("status"), Some("fixed" | "dropped"));
+    let reopen = matches!(note.get("status"), Some("fixed" | "dropped" | LAPSED));
     if reopen {
-        // 直した・捨てたはずの気づきが再発した。状態を open に戻す(書き直しはこのときだけ)。
+        // 直した・捨てた・失効したはずの気づきが再発した。状態を open に戻す(書き直しはこのときだけ)。
+        // 失効の時計(`sweep`)は、足したこの行の日付から数え直す。
         note.set("status", OPEN);
         if note.get("drop_reason").is_some() {
             // 捨てた理由は、捨てた判断に付くもの。再発して開き直したら消す。
@@ -314,6 +354,75 @@ pub fn candidate_notes(g: &Locked) -> io::Result<Vec<CandidateNote>> {
         .collect())
 }
 
+// ---------------------------------------------------------------- 失効(open の放置)
+
+/// `sweep` が `lapsed` にした(dry-run なら、する)気づき 1 件。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lapsed {
+    /// vault からの相対パス(`inbox/<名前>.md`)。
+    pub note: String,
+    pub title: String,
+    pub repo: String,
+    /// 最後の行(初出か再発)の日付。
+    pub last_seen: String,
+    /// `today` から `last_seen` までの日数。
+    pub age_days: i64,
+}
+
+/// ノートの最後の行(初出か再発)の日付。行の日付のうち最も新しいもの。行に日付が無ければ `first_seen`。
+fn last_seen(note: &Note) -> String {
+    rows_of(&note.body)
+        .iter()
+        .filter_map(|r| r.get(2..12))
+        .filter(|d| parse_day(d).is_some())
+        .max()
+        .map(str::to_string)
+        .or_else(|| note.get("first_seen").map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// 状態が `open` のまま、最後の行から [`LAPSE_AFTER_DAYS`] 日以上たったノートを `lapsed` にする
+/// (全 repo のノートが対象。`today` は JST の `YYYY-MM-DD`)。frontmatter の `status` だけを書き換え、
+/// 本文はそのまま残す。`dry_run` なら何も書かず、なるノートだけを返す。
+///
+/// 冪等: 一度 `lapsed` にしたノートは `open` でないので、繰り返しても二重に書かない。日付を読めない
+/// ノートは、判断できないので `open` のまま残す。`fixed`・`dropped`・`issued` には触れない。
+/// 返す順は、ノートのパスの昇順。
+pub fn sweep(g: &Locked, today: &str, dry_run: bool) -> io::Result<Vec<Lapsed>> {
+    let Some(today_days) = parse_day(today) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("今日の日付を読めない: {today}"),
+        ));
+    };
+    let mut out = Vec::new();
+    for (path, mut note) in all_notes(g)? {
+        if note.get("status") != Some(OPEN) {
+            continue;
+        }
+        let seen = last_seen(&note);
+        let Some(age_days) = parse_day(&seen).map(|d| today_days - d) else {
+            continue;
+        };
+        if age_days < LAPSE_AFTER_DAYS {
+            continue;
+        }
+        let lapsed = Lapsed {
+            title: note.get("title").unwrap_or("").to_string(),
+            repo: note.get("repo").unwrap_or("").to_string(),
+            note: path.clone(),
+            last_seen: seen,
+            age_days,
+        };
+        if !dry_run {
+            note.set("status", LAPSED);
+            g.replace(&path, &note.render())?;
+        }
+        out.push(lapsed);
+    }
+    Ok(out)
+}
+
 // ---------------------------------------------------------------- 状態を変える
 
 /// 題名(と、あれば repo)で 1 枚を選び、状態を変える。`url` は fixed なら `pr`、issued なら
@@ -354,10 +463,16 @@ pub fn set_status_with_reason(
             ));
         }
     }
+    if status == LAPSED {
+        return Err(format!(
+            "{LAPSED} は --sweep だけが書く(open の放置の失効。再発で open に戻る): {status}"
+        ));
+    }
     if !STATUSES.contains(&status) {
+        let settable: Vec<&str> = STATUSES.into_iter().filter(|s| *s != LAPSED).collect();
         return Err(format!(
             "状態は {} のいずれか: {status}",
-            STATUSES.join(" | ")
+            settable.join(" | ")
         ));
     }
     let mut hits: Vec<(String, Note)> = all_notes(g)
@@ -687,10 +802,214 @@ mod tests {
         assert_eq!(note.get("drop_reason"), Some(""));
     }
 
+    // ------------------------------------------------------------ 失効(sweep)
+
+    /// 最後の行が `last` の日付の、open なノートを 1 枚作る。
+    fn aged(g: &Locked, title: &str, last: &str) {
+        add_item(g, &item(title, "d", last), "x").unwrap();
+    }
+
+    fn status_of(g: &Locked, title: &str) -> String {
+        let n = Note::parse(&g.read(&format!("inbox/{title}.md")).unwrap().unwrap());
+        n.get("status").unwrap().to_string()
+    }
+
+    #[test]
+    fn parse_day_round_trips_and_refuses_a_date_that_does_not_exist() {
+        assert_eq!(parse_day("1970-01-01"), Some(0));
+        assert_eq!(
+            parse_day("2026-11-08").unwrap() - parse_day("2026-10-25").unwrap(),
+            14
+        );
+        // 月をまたぐ・年をまたぐ・うるう日。
+        assert_eq!(
+            parse_day("2026-03-01").unwrap() - parse_day("2026-02-28").unwrap(),
+            1
+        );
+        assert_eq!(
+            parse_day("2024-03-01").unwrap() - parse_day("2024-02-28").unwrap(),
+            2
+        );
+        assert_eq!(
+            parse_day("2027-01-01").unwrap() - parse_day("2026-12-31").unwrap(),
+            1
+        );
+        for bad in [
+            "2026-02-30",
+            "2026-13-01",
+            "2026-1-01",
+            "x",
+            "",
+            "2026-11-08T",
+        ] {
+            assert_eq!(parse_day(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn an_open_note_lapses_at_exactly_14_days_not_at_13() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "d13", "2026-10-26");
+        aged(&g, "d14", "2026-10-25");
+        aged(&g, "d15", "2026-10-24");
+        let lapsed = sweep(&g, "2026-11-08", false).unwrap();
+        let titles: Vec<_> = lapsed
+            .iter()
+            .map(|l| (l.title.as_str(), l.age_days))
+            .collect();
+        assert_eq!(titles, [("d14", 14), ("d15", 15)]);
+        assert_eq!(status_of(&g, "d13"), "open");
+        assert_eq!(status_of(&g, "d14"), LAPSED);
+        assert_eq!(status_of(&g, "d15"), LAPSED);
+    }
+
+    #[test]
+    fn the_clock_runs_from_the_latest_row_not_from_first_seen() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "old but recurring", "2026-09-01");
+        add_item(&g, &item("old but recurring", "again", "2026-11-01"), "x").unwrap();
+        assert!(sweep(&g, "2026-11-08", false).unwrap().is_empty());
+        assert_eq!(status_of(&g, "old but recurring"), "open");
+        // 最後の行から 14 日たてば失効する。
+        assert_eq!(sweep(&g, "2026-11-15", false).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sweeping_twice_writes_nothing_the_second_time() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "T", "2026-10-01");
+        assert_eq!(sweep(&g, "2026-11-08", false).unwrap().len(), 1);
+        let once = g.read("inbox/T.md").unwrap().unwrap();
+        assert!(sweep(&g, "2026-11-08", false).unwrap().is_empty());
+        assert!(sweep(&g, "2026-12-31", false).unwrap().is_empty());
+        assert_eq!(g.read("inbox/T.md").unwrap().unwrap(), once);
+    }
+
+    #[test]
+    fn a_dry_run_reports_without_writing() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "T", "2026-10-01");
+        let before = g.read("inbox/T.md").unwrap().unwrap();
+        let would = sweep(&g, "2026-11-08", true).unwrap();
+        assert_eq!(would.len(), 1);
+        assert_eq!(would[0].last_seen, "2026-10-01");
+        assert_eq!(g.read("inbox/T.md").unwrap().unwrap(), before);
+        assert_eq!(status_of(&g, "T"), "open");
+    }
+
+    #[test]
+    fn lapsing_changes_only_the_status_and_leaves_the_body_bytes() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "T", "2026-10-01");
+        g.append_line("inbox/T.md", "手書きの追記").unwrap();
+        let before = Note::parse(&g.read("inbox/T.md").unwrap().unwrap());
+        sweep(&g, "2026-11-08", false).unwrap();
+        let after = Note::parse(&g.read("inbox/T.md").unwrap().unwrap());
+        assert_eq!(after.body, before.body);
+        assert_eq!(after.get("status"), Some(LAPSED));
+        let keys = |n: &Note| n.front.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>();
+        assert_eq!(keys(&after), keys(&before));
+    }
+
+    #[test]
+    fn sweep_only_touches_open_notes_in_every_repo() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        for status in ["fixed", "issued", "dropped"] {
+            aged(&g, status, "2026-10-01");
+            set_status(&g, status, None, status, "https://example.test/1").unwrap();
+        }
+        let mut other = item("other repo", "d", "2026-10-01");
+        other.repo = "o/other".into();
+        add_item(&g, &other, "x").unwrap();
+        aged(&g, "this repo", "2026-10-01");
+        let lapsed: Vec<_> = sweep(&g, "2026-11-08", false)
+            .unwrap()
+            .into_iter()
+            .map(|l| (l.repo, l.title))
+            .collect();
+        assert_eq!(
+            lapsed,
+            [
+                ("o/other".to_string(), "other repo".to_string()),
+                ("o/r".to_string(), "this repo".to_string())
+            ]
+        );
+        for status in ["fixed", "issued", "dropped"] {
+            assert_eq!(status_of(&g, status), status);
+        }
+    }
+
+    #[test]
+    fn a_note_whose_dates_cannot_be_read_stays_open() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        g.replace(
+            "inbox/odd.md",
+            "---\ntitle: odd\nrepo: o/r\nstatus: open\nfirst_seen: yesterday\n---\n- no date here\n",
+        )
+        .unwrap();
+        assert!(sweep(&g, "2026-11-08", false).unwrap().is_empty());
+        assert!(sweep(&g, "not a date", false).is_err());
+    }
+
+    #[test]
+    fn a_recurrence_reopens_a_lapsed_note_and_restarts_the_clock() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "T", "2026-10-01");
+        sweep(&g, "2026-11-08", false).unwrap();
+        assert_eq!(status_of(&g, "T"), LAPSED);
+        // list_open にも pending にも出ない(再通知の対象でない)。
+        assert!(list_open(&g, None).unwrap().is_empty());
+        // 同じ題の再発 → open に戻り、行が足される(別の項目にはしない)。
+        assert_eq!(
+            add_item(&g, &item("T", "back", "2026-11-10"), "x").unwrap(),
+            Added::Appended
+        );
+        assert_eq!(status_of(&g, "T"), "open");
+        let n = Note::parse(&g.read("inbox/T.md").unwrap().unwrap());
+        assert_eq!(rows_of(&n.body).len(), 2);
+        // 時計は再発の行から数え直す: 13 日後はまだ、14 日後に失効。
+        assert!(sweep(&g, "2026-11-23", false).unwrap().is_empty());
+        assert_eq!(sweep(&g, "2026-11-24", false).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_lapsed_note_can_be_settled_by_the_adjudication_command() {
+        for (to, url) in [("fixed", "https://example.test/pull/1"), ("dropped", "")] {
+            let (_d, v) = vault();
+            let g = v.lock().unwrap();
+            aged(&g, "T", "2026-10-01");
+            sweep(&g, "2026-11-08", false).unwrap();
+            set_status(&g, "T", None, to, url).unwrap();
+            assert_eq!(status_of(&g, "T"), to);
+            // settled になったので、もう掃除の対象でない。
+            assert!(sweep(&g, "2026-12-31", false).unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn lapsed_is_written_only_by_the_sweep() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "T", "2026-11-08");
+        let e = set_status(&g, "T", None, LAPSED, "").unwrap_err();
+        assert!(e.contains("--sweep"), "{e}");
+        assert_eq!(status_of(&g, "T"), "open");
+    }
+
     /// 気づきの語彙(`config/agents/wrapup-inbox/vocabulary.json`)は実装の記述で、実装を駆動しない。
     /// 語彙が実装と食い違わないことを、実装の動きから導いた集合と突き合わせて確かめる:
-    /// 状態は `STATUSES`、`set_status` が行き着く先は fix・file・drop の `to`、再発で open に戻る状態は
-    /// `reopen` の `from`、戻らず事象も持たない状態(終端)は `issued` だけ。
+    /// 状態は `STATUSES`、`set_status` が行き着く先(`lapsed` は `sweep` だけが書く)は fix・file・drop の
+    /// `to`、`sweep` が行き着く先と、その入口の状態は `lapse` の `to` と `from`、時計の日数は
+    /// `timers.lapse_after_days`、再発で open に戻る状態は `reopen` の `from`、戻らず事象も持たない状態
+    /// (終端)は `issued` だけ。
     #[test]
     fn vocabulary_matches_vault_rules() {
         const VOCABULARY_JSON: &str =
@@ -727,7 +1046,7 @@ mod tests {
             .collect();
         assert_eq!(strings(&Value::Array(ids)), statuses);
 
-        // set_status の行き先(open 以外)は、fix・file・drop の to
+        // set_status の行き先(open と lapsed 以外)は、fix・file・drop の to
         let mut targets: Vec<String> = ["fix", "file", "drop"]
             .iter()
             .flat_map(|id| strings(&event(id)["to"]))
@@ -735,7 +1054,58 @@ mod tests {
         targets.sort();
         let mut non_open: Vec<String> = statuses.iter().filter(|s| *s != OPEN).cloned().collect();
         non_open.sort();
-        assert_eq!(targets, non_open);
+        let mut settable: Vec<String> = non_open.iter().filter(|s| *s != LAPSED).cloned().collect();
+        settable.sort();
+        assert_eq!(targets, settable);
+
+        // 失効(sweep の実際の動き): open だけが lapsed になり、ほかの状態は動かない。時計の日数は語彙の timers と一致する。
+        assert_eq!(
+            vocab["timers"]["lapse_after_days"].as_i64(),
+            Some(LAPSE_AFTER_DAYS)
+        );
+        let mut lapse_from = Vec::new();
+        for status in STATUSES {
+            let (_d, v) = vault();
+            let g = v.lock().unwrap();
+            let title = format!("T-{status}");
+            add_item(&g, &item(&title, "a", "2026-10-01"), "x").unwrap();
+            if status != OPEN && status != LAPSED {
+                set_status(&g, &title, None, status, "https://example.test/1").unwrap();
+            }
+            if status == LAPSED {
+                sweep(&g, "2026-11-08", false).unwrap();
+            }
+            let before = Note::parse(&g.read(&format!("inbox/{title}.md")).unwrap().unwrap());
+            sweep(&g, "2026-11-30", false).unwrap();
+            let after = Note::parse(&g.read(&format!("inbox/{title}.md")).unwrap().unwrap());
+            if before.get("status") != after.get("status") {
+                assert_eq!(after.get("status"), Some(LAPSED));
+                lapse_from.push(status.to_string());
+            }
+        }
+        lapse_from.sort();
+        let lapse = event("lapse");
+        assert_eq!(strings(&lapse["from"]), lapse_from);
+        assert_eq!(strings(&lapse["to"]), vec![LAPSED.to_string()]);
+        assert_eq!(lapse["by"], "machine");
+
+        // 裁定の手順(set_status)で fixed・dropped に進める状態は、open と lapsed。fix・drop の from がそれ。
+        let mut settle_from = vec![OPEN.to_string(), LAPSED.to_string()];
+        settle_from.sort();
+        for (id, to) in [("fix", "fixed"), ("drop", "dropped")] {
+            for from in [OPEN, LAPSED] {
+                let (_d, v) = vault();
+                let g = v.lock().unwrap();
+                add_item(&g, &item("T", "a", "2026-10-01"), "x").unwrap();
+                if from == LAPSED {
+                    sweep(&g, "2026-11-08", false).unwrap();
+                }
+                set_status(&g, "T", None, to, "").unwrap();
+                let n = Note::parse(&g.read("inbox/T.md").unwrap().unwrap());
+                assert_eq!(n.get("status"), Some(to), "{from} -> {to}");
+            }
+            assert_eq!(strings(&event(id)["from"]), settle_from, "{id}");
+        }
 
         // 再発で open に戻る状態(add_item の実際の動き)
         let mut reopened = Vec::new();
@@ -744,7 +1114,11 @@ mod tests {
             let g = v.lock().unwrap();
             let title = format!("T-{status}");
             add_item(&g, &item(&title, "a", "2026-10-01"), "x").unwrap();
-            set_status(&g, &title, None, status, "https://example.test/1").unwrap();
+            if *status == LAPSED {
+                sweep(&g, "2026-11-08", false).unwrap();
+            } else {
+                set_status(&g, &title, None, status, "https://example.test/1").unwrap();
+            }
             add_item(&g, &item(&title, "b", "2026-10-02"), "x").unwrap();
             let n = Note::parse(&g.read(&format!("inbox/{title}.md")).unwrap().unwrap());
             if n.get("status") == Some(OPEN) {
