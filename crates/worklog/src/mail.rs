@@ -41,12 +41,15 @@ pub struct EventDef {
     pub to: String,
     /// `agent` | `person` | `machine`。強制するのは `machine`(`sweep` だけが書く)。
     pub by: String,
+    /// 項目を開く出来事の印(語彙 JSON の `opens`。read / draft / ask)。開く出来事は `from` が `none`
+    /// だけで、読み直しで重ならず、同じスレッドの古い未了を移す(`supersede_on_open`)。
+    pub opens: bool,
 }
 
 impl EventDef {
-    /// 項目をまだ開いていない状態からだけ書ける出来事(read / draft / ask)。読み直しで重ならない。
+    /// 項目をまだ開いていない状態からだけ書ける出来事(read / draft / ask)。語彙の `opens` の印で決める。
     pub fn is_pure_opening(&self) -> bool {
-        self.from == ["none"]
+        self.opens
     }
 }
 
@@ -54,6 +57,12 @@ impl EventDef {
 pub struct Vocabulary {
     pub events: Vec<EventDef>,
     pub states: Vec<(String, bool)>,
+    /// 新しい受信を開くとき、同じスレッドの古い未了を移す出来事(語彙の `supersede_on_open.event`)。
+    pub supersede_event: String,
+    /// その出来事の遷移先(終端の状態。古い未了が入る)。
+    pub supersede_state: String,
+    /// 裁定済みで反映がまだの状態(`decide` の遷移先)。
+    pub decided_state: String,
     pub remind_after_days: i64,
     pub stale_after_remind_days: i64,
     pub remind_before_due_days: i64,
@@ -98,10 +107,23 @@ pub(crate) fn parse_states_events(v: &Value) -> Result<StatesEvents, String> {
                 "出来事 {id} の to は 1 要素の配列でなければならない"
             ));
         }
+        let from = strs(&e["from"])?;
+        let opens = match e.get("opens") {
+            None => false,
+            Some(o) => o
+                .as_bool()
+                .ok_or(format!("出来事 {id} の opens が真偽値でない"))?,
+        };
+        if opens && from != ["none"] {
+            return Err(format!(
+                "出来事 {id} は opens だが、from が none だけでない"
+            ));
+        }
         events.push(EventDef {
-            from: strs(&e["from"])?,
+            from,
             to: to.remove(0),
             by: field(e, "by")?,
+            opens,
             id,
         });
     }
@@ -126,9 +148,35 @@ impl Vocabulary {
         let t = |k: &str| -> Result<i64, String> {
             v["timers"][k].as_i64().ok_or(format!("timers.{k} が無い"))
         };
+        let supersede_event = v["supersede_on_open"]["event"]
+            .as_str()
+            .ok_or("supersede_on_open.event が無い")?
+            .to_string();
+        let supersede_state = events
+            .iter()
+            .find(|e| e.id == supersede_event)
+            .ok_or(format!(
+                "supersede_on_open.event '{supersede_event}' が出来事にない"
+            ))?
+            .to
+            .clone();
+        if !states.iter().any(|(s, t)| *s == supersede_state && *t) {
+            return Err(format!(
+                "出来事 {supersede_event} の遷移先 '{supersede_state}' が終端の状態でない"
+            ));
+        }
+        let decided_state = events
+            .iter()
+            .find(|e| e.id == "decide")
+            .ok_or("出来事 decide が無い")?
+            .to
+            .clone();
         Ok(Vocabulary {
             events,
             states,
+            supersede_event,
+            supersede_state,
+            decided_state,
             remind_after_days: t("remind_after_days")?,
             stale_after_remind_days: t("stale_after_remind_days")?,
             remind_before_due_days: t("remind_before_due_days")?,
@@ -558,7 +606,7 @@ pub fn fold(events: &[Ev]) -> Folded {
                             && !vocab.is_terminal(&other.state)
                             && receipt_newer(&item.id.receipt, &other.id.receipt)
                         {
-                            other.state = "superseded".into();
+                            other.state = vocab.supersede_state.clone();
                         }
                     }
                     if !vocab.is_terminal(&item.state)
@@ -568,7 +616,7 @@ pub fn fold(events: &[Ev]) -> Folded {
                                 && receipt_newer(&o.id.receipt, &item.id.receipt)
                         })
                     {
-                        item.state = "superseded".into();
+                        item.state = vocab.supersede_state.clone();
                     }
                 }
                 out.items.insert(key, item);
@@ -609,9 +657,14 @@ pub fn fold(events: &[Ev]) -> Folded {
     out
 }
 
-/// 今日までの `[mail]` 行を読んで畳み込む。
+/// 今日までの `[mail]` 行を読んで畳み込む。読む範囲は `MAIL_SINCE` から、ただし `list` の
+/// 上限(400 日)に収まる分まで(`MAIL_SINCE` が上限より古くなると、範囲が長すぎて `mail open|check|sweep`
+/// が全部エラーになるため。上限より前に開いた項目は読まれない — `slot::load` と同じ)。
 pub fn load(vault: &Vault, today: i64) -> Result<(Vec<Ev>, Folded), String> {
-    let since = parse_date(MAIL_SINCE).expect("MAIL_SINCE").min(today);
+    let since = parse_date(MAIL_SINCE)
+        .expect("MAIL_SINCE")
+        .max(today - (crate::MAX_RANGE_DAYS - 1))
+        .min(today);
     let rows = list(vault, since, today)?;
     let (evs, bad) = collect(&rows);
     let mut folded = fold(&evs);
@@ -857,7 +910,8 @@ pub fn add_mail(
                     && receipt_newer(new_receipt, &i.id.receipt)
             }) {
                 let mv = format!(
-                    "move: {} [{} to:mail:{key}]",
+                    "{}: {} [{} to:mail:{key}]",
+                    vocab.supersede_event,
                     old.summary,
                     format_tag(&Tag {
                         to: None,
@@ -865,7 +919,7 @@ pub fn add_mail(
                     })
                 );
                 write(&mv)?;
-                ledger.record(&old.key, "superseded", &mv)?;
+                ledger.record(&old.key, &vocab.supersede_state, &mv)?;
                 superseded.push(old.key.clone());
             }
         }
@@ -936,6 +990,39 @@ pub fn sweep_plan(folded: &Folded, skip: &BTreeSet<String>, today: i64) -> Vec<S
     out
 }
 
+/// `sweep` が行を書かずに知らせる、本人の手が要りそうな項目。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepFlag {
+    pub key: String,
+    pub message: String,
+}
+
+/// `decide` の後に反映(`apply`)も移し替え(`move`)も無いまま、前の日から `decided` で残っている未了を挙げる
+/// (純関数。docs/agents/mail-lifecycle.md の「本人が行う作業の追い方」。同じ漏れが再発したので、散文の
+/// 規則から sweep の検出へ昇格した)。
+///
+/// 本人担当の作業は、`decide` のあとに Issue を起票して `move` で `superseded` にする規則だが、行には担当の
+/// 印が無く、機械は本人担当かエージェントの反映待ちかを見分けられない。どちらも `decided` のまま日をまたぐと
+/// 追う先を失うので、区別せずに挙げる。当日は、Issue を起票して `move` するまでの猶予として挙げない。
+/// 終端の行が消えた項目(`skip`)は、机で別に見せるので挙げない。
+pub fn sweep_flags(folded: &Folded, skip: &BTreeSet<String>, today: i64) -> Vec<SweepFlag> {
+    let v = Vocabulary::get();
+    let decided = &v.decided_state;
+    folded
+        .items
+        .values()
+        .filter(|i| &i.state == decided && i.last_day < today && !skip.contains(&i.key))
+        .map(|i| SweepFlag {
+            key: i.key.clone(),
+            message: format!(
+                "{decided} のまま {} 日たった。本人担当なら Issue を起票して {} に、反映待ちなら apply に進める",
+                today - i.last_day,
+                v.supersede_event
+            ),
+        })
+        .collect()
+}
+
 /// `sweep` の実行。書いた(`dry_run` なら書くはずの)行を返す。
 pub fn sweep(
     vault: &Vault,
@@ -956,6 +1043,16 @@ pub fn sweep(
         }
     }
     Ok(plan)
+}
+
+/// `sweep_flags` の実行(何も書かない)。
+pub fn flags(vault: &Vault, ledger: &Ledger, days: i64) -> Result<Vec<SweepFlag>, String> {
+    let (_, folded) = load(vault, days)?;
+    let skip: BTreeSet<String> = deleted_terminals(&folded, &ledger.entries()?)
+        .into_iter()
+        .map(|(k, _, _)| k)
+        .collect();
+    Ok(sweep_flags(&folded, &skip, days))
 }
 
 /// `Entry` から mail の行を取り出す(試験用)。
@@ -1009,14 +1106,39 @@ mod tests {
             v.event("remind").unwrap().by == "machine" && v.event("stale").unwrap().by == "machine"
         );
         assert!(Vocabulary::parse(r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":["same"],"by":"agent"}],"timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}}"#).is_err());
+        // 開く出来事の印と、暗黙の移し替え(supersede_on_open)は語彙から読む。
+        let o = v.event("read").unwrap();
+        assert!(o.opens && v.event("draft").unwrap().opens && v.event("ask").unwrap().opens);
+        assert!(
+            !v.event("pass").unwrap().opens,
+            "pass は none からも書けるが、開く出来事ではない"
+        );
+        assert_eq!(
+            (
+                v.supersede_event.as_str(),
+                v.supersede_state.as_str(),
+                v.decided_state.as_str()
+            ),
+            ("move", "superseded", "decided")
+        );
         // `to` は配列(旧い形の文字列、複数要素は読まない)。
         let ok_timers = r#""timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}"#;
         let with_to = |to: &str| {
             format!(
-                r#"{{"states":[{{"id":"a","terminal":false}}],"events":[{{"id":"x","from":["none"],"to":{to},"by":"agent"}}],{ok_timers}}}"#
+                r#"{{"states":[{{"id":"a","terminal":false}},{{"id":"t","terminal":true}}],"events":[{{"id":"x","from":["none"],"to":{to},"by":"agent","opens":true}},{{"id":"decide","from":["a"],"to":["a"],"by":"person"}},{{"id":"m","from":["a"],"to":["t"],"by":"agent"}}],"supersede_on_open":{{"event":"m"}},{ok_timers}}}"#
             )
         };
         assert!(Vocabulary::parse(&with_to(r#"["a"]"#)).is_ok());
+        // opens の事象は from が none だけ。supersede_on_open の事象は終端へ移すもの。
+        let bad_opens = with_to(r#"["a"]"#).replace(
+            r#""from":["a"],"to":["a"],"by":"person""#,
+            r#""from":["a"],"to":["a"],"by":"person","opens":true"#,
+        );
+        assert!(Vocabulary::parse(&bad_opens).is_err());
+        let bad_super = with_to(r#"["a"]"#).replace(r#""event":"m""#, r#""event":"decide""#);
+        assert!(Vocabulary::parse(&bad_super).is_err());
+        let no_super = with_to(r#"["a"]"#).replace(r#""supersede_on_open":{"event":"m"},"#, "");
+        assert!(Vocabulary::parse(&no_super).is_err());
         assert!(Vocabulary::parse(&with_to(r#""a""#)).is_err());
         assert!(Vocabulary::parse(&with_to(r#"["a","a"]"#)).is_err());
     }
@@ -1136,6 +1258,38 @@ mod tests {
         ];
         assert!(plan(&decided, D + 14).is_empty());
         assert_eq!(plan(&decided, D + 15)[0].event, "remind");
+    }
+
+    #[test]
+    fn sweep_flags_a_decided_item_that_outlived_its_day_without_apply_or_move() {
+        let flags = |evs: &[Ev], today| sweep_flags(&fold(evs), &BTreeSet::new(), today);
+        let decided = [
+            ev(D, "ask: 方針 [gmail:t1/m1]"),
+            ev(D, "decide: 本人が対応する [gmail:t1/m1]"),
+        ];
+        // 当日は、Issue を起票して move するまでの猶予として挙げない。
+        assert!(flags(&decided, D).is_empty());
+        let f = flags(&decided, D + 1);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].key, "gmail:t1/m1");
+        assert!(f[0].message.contains("1 日たった"), "{}", f[0].message);
+        // move・apply が後にあれば終端なので挙げない。awaiting も挙げない(remind と stale の担当)。
+        let moved = [
+            decided[0].clone(),
+            decided[1].clone(),
+            ev(D + 1, "move: Issue へ [gmail:t1/m1 to:example/repo#1]"),
+        ];
+        assert!(flags(&moved, D + 4).is_empty());
+        let applied = [
+            decided[0].clone(),
+            decided[1].clone(),
+            ev(D + 1, "apply: 反映した [gmail:t1/m1]"),
+        ];
+        assert!(flags(&applied, D + 4).is_empty());
+        assert!(flags(&[ev(D, "ask: 方針 [gmail:t1/m1]")], D + 3).is_empty());
+        // 終端の行が消えた項目(skip)は挙げない。
+        let skip: BTreeSet<String> = ["gmail:t1/m1".to_string()].into();
+        assert!(sweep_flags(&fold(&decided), &skip, D + 3).is_empty());
     }
 
     #[test]

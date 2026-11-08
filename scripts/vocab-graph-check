@@ -25,6 +25,8 @@
 #                       すべての事象が kinds を持ち、宣言した種類だけを指す。種類ごとに、その種類の事象だけで
 #                       none から到達できる状態があり、reaches を持つ種類は、reaches に無い状態に至らない
 #                       (reaches の状態 id は語彙の状態にある)
+#         開く出来事    opens を持つ事象は from が none だけ。supersede_on_open を持つ語彙は、その event が
+#                       語彙の事象で、from が未了の状態だけ・to が終端の状態であり、opens の事象が 1 つ以上ある
 #         対象の一意    渡した全語彙で object が一意
 #       --all は、<root>/config/agents/*/vocabulary.json と <root>/config/agents/vocabulary/*.json の
 #       うち states と events を持つものを加える(config/agents/codify-signals/vocabulary.json や
@@ -163,6 +165,22 @@ def step($evs): . as $s
         else empty end ),
     ( $sids[] | select((IN($allTo[]) | not) and . != "none")
       | viol("孤立"; "状態 \(.) がどの事象の to にも現れない") ),
+    # 開く出来事(opens を持つ事象と supersede_on_open を持つ語彙だけ)
+    ( $v.events[] | select(.opens == true and .from != ["none"])
+      | viol("開く出来事"; "opens の事象 \(.id) の from が none だけでない") ),
+    ( if ($v | has("supersede_on_open")) then
+        ( $v.supersede_on_open.event as $se
+          | ( [ $v.events[] | select(.opens == true) ] | length ) as $nopen
+          | ( [ $v.events[] | select(.id == $se) ] ) as $found
+          | if ($found | length) == 0 then viol("開く出来事"; "supersede_on_open の事象 \($se) が事象にない")
+            else ( $found[0] as $m
+                   | ( $m.to[] | select(IN($term[]) | not)
+                       | viol("開く出来事"; "supersede_on_open の事象 \($se) の遷移先 \(.) が終端の状態でない") ),
+                     ( $m.from[] | select(. == "none" or IN($term[]))
+                       | viol("開く出来事"; "supersede_on_open の事象 \($se) の from \(.) は、未了の状態でない") ) )
+            end,
+            ( if $nopen == 0 then viol("開く出来事"; "supersede_on_open があるのに、opens の事象が無い") else empty end ) )
+      else empty end ),
     # 種類(kinds を持つ語彙だけ)。持たない語彙で事象が kinds を持つのも違反
     ( if ($v | has("kinds") | not) then
         ( $v.events[] | select(has("kinds")) | viol("種類"; "語彙に kinds が無いのに、事象 \(.id) が kinds を持つ") )
@@ -660,6 +678,15 @@ selftest() {
   expect_fail "実物 + 終端から出る事象" 終端 "$T/mail-broken-terminal.json"
   jq '.events[0].carriers = ["skill:inbox-adjudicaton"]' "$real_mail" >"$T/mail-broken-typo.json"
   expect_fail "実物 + 担い手の typo" 担い手の解決 "$T/mail-broken-typo.json"
+  # 開く出来事: opens の事象は from が none だけ。supersede_on_open の事象は、未了から終端へ移すもの
+  jq '(.events[] | select(.id == "decide") | .opens) = true' "$real_mail" >"$T/mail-opens-from.json"
+  expect_fail "実物 + from が none でない opens" 開く出来事 "$T/mail-opens-from.json"
+  jq '.supersede_on_open.event = "no_such_event"' "$real_mail" >"$T/mail-supersede-missing.json"
+  expect_fail "実物 + 無い事象を指す supersede_on_open" 開く出来事 "$T/mail-supersede-missing.json"
+  jq '.supersede_on_open.event = "decide"' "$real_mail" >"$T/mail-supersede-nonterminal.json"
+  expect_fail "実物 + 遷移先が終端でない supersede_on_open" 開く出来事 "$T/mail-supersede-nonterminal.json"
+  jq 'del(.events[].opens)' "$real_mail" >"$T/mail-no-opens.json"
+  expect_fail "実物 + opens の無い supersede_on_open" 開く出来事 "$T/mail-no-opens.json"
   # 握手の語彙: remote-trip に confirm を持たせると go に至る(reaches を超える)。kinds を外すと種類の規則が落とす
   local real_hs="$SELF_ROOT/config/agents/calendar-handshake/vocabulary.json"
   jq '(.events[] | select(.id == "confirm") | .kinds) = ["leave", "remote-trip"]' "$real_hs" >"$T/hs-remote-go.json"

@@ -1,7 +1,7 @@
 # mail-lifecycle — 未裁定のメール項目が、状態をたどって必ず終わる
 
 決定の記録: `docs/adr/1259-mail-lifecycle.md`(ADR-1256 の D2・D3・D5 を改める)
-語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`(版 2。共通の形は `docs/agents/state-vocabulary.md`。`to` は配列、各事象に `carriers`・`gates`)
+語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`(版 3。共通の形は `docs/agents/state-vocabulary.md`。`to` は配列、各事象に `carriers`・`gates`)
 実体: `crates/worklog/src/mail.rs`(書き込みの検査・畳み込み・sweep・控え)、`crates/worklog/src/main.rs`(`worklog mail`)
 仕様と検査: `config/agents/mail-lifecycle/spec/`(Quint)、`home/tests/mail-lifecycle-spec.nix`、CI の `mail-lifecycle-spec` ジョブ
 
@@ -45,11 +45,21 @@
 
 `machine` の出来事(`remind`・`stale`)は `worklog mail sweep` だけが書き、`worklog add mail` は拒否する。
 
+読む範囲は、切替の日(`MAIL_SINCE`、2026-10-30)から今日まで。ただし `worklog list` の上限(400 日)に収まる分
+(今日の 399 日前)までで、それより前に開いて今も未了の項目は読まれない(`slot` の読み方と同じ。以前は範囲を切らず、
+切替の日から 400 日後の 2027-12 ごろから `mail open|check|sweep` が全部エラーになる状態だった)。
+
 **本人が行う作業の追い方(2026-11-02 の本人の裁定)。** `decide` で担当が本人の項目は、`decided` のまま置かない。
 期限の有無によらず、書いたあとに Issue(担当は本人、ラベル `handoff:human`)を起票し、`move`(`to:<owner/repo#N>`)で
 `superseded` にする。以降の追跡は Issue が担い、作業ログの 7 日・14 日の時計には乗せない。期限があれば、期限の予定が
-`issue` 欄で Issue を指す。この規則は散文の手順で、状態機械の検査にはまだ入っていない(`decided` で本人担当の項目に
-`move` が無いことを `sweep` が検出する形への昇格は、同じ漏れが再発したときに検討する)。
+`issue` 欄で Issue を指す。
+
+この規則の漏れは再発した(2026-10-30 に `decide` した本人担当の 3 件が、同日に `move` した 12 件から漏れ、`decided` の
+まま 4 日残った)ので、`worklog mail sweep` の検出に昇格した: `decided` のまま、`decide` の日より後の日まで
+`apply` も `move` も無い未了を、行を書かずに `flag<TAB><鍵><TAB><説明>` の行で標準出力に挙げる(`--dry-run` でも出る)。
+**限界**: 行に担当の印が無いので、機械は本人担当かエージェントの反映待ちかを見分けられない。どちらも `decided` のまま
+日をまたぐと追う先を失うので、区別せずに挙げる(当日は猶予)。本人担当を行で表す印を足すかは、未実装(意図なし。必要に
+なれば別に判断する)。
 
 ## 行の形と鍵
 
@@ -67,7 +77,9 @@
   「見つからない」と返り、現在の下書きは別のメッセージ ID で存在していた)。鍵に下書き側の ID を使うと、
   次の保存で鍵が指せなくなり、`draft` を `apply` に閉じる送信済みの照合も働かない。下書きを指したいときは、
   変わらない下書き id(`r-…` の形)を要旨や別の記録に添える(鍵の欄には使わない)。
-- 同じスレッドの未了は常に 1 つ。新しい受信を `read`・`draft`・`ask` で開くとき(`read` で即座に終端になる
+- 同じスレッドの未了は常に 1 つ。この規則は語彙 JSON が持つ: 項目を開く事象は `opens: true`(`read`・`draft`・`ask`)、
+  開くときに古い未了を移す事象は `supersede_on_open.event`(`move`)で、`worklog` はこの 2 つを読む。
+  新しい受信を `read`・`draft`・`ask` で開くとき(`read` で即座に終端になる
   受信でも)、`worklog` は同じ命令の中で、古い未了を先に `move`(移し先 `to:mail:<新しい鍵>`)で移す。
   未記録の鍵への `pass` では移さない(本人が新しい受信を見送っても、古い未了の判断は残す)。
 - 受信の新旧は、画面の受信日時(固定幅)は字句順、Gmail のメッセージ ID は長さ、字句順で比べる。Gmail の ID が

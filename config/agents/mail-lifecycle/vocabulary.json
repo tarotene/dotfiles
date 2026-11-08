@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "object": "mail-item",
   "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
   "initial": "none",
@@ -12,9 +12,9 @@
     { "id": "superseded", "terminal": true }
   ],
   "events": [
-    { "id": "read", "from": ["none"], "to": ["closed"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "draft", "from": ["none"], "to": ["awaiting"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "ask", "from": ["none"], "to": ["awaiting"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "read", "from": ["none"], "to": ["closed"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "draft", "from": ["none"], "to": ["awaiting"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "ask", "from": ["none"], "to": ["awaiting"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "decide", "from": ["awaiting"], "to": ["decided"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "apply", "from": ["awaiting", "decided"], "to": ["closed"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "pass", "from": ["none", "awaiting", "decided"], "to": ["dismissed"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
@@ -22,6 +22,10 @@
     { "id": "move", "from": ["awaiting", "decided"], "to": ["superseded"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "stale", "from": ["awaiting", "decided"], "to": ["stale"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] }
   ],
+  "supersede_on_open": {
+    "event": "move",
+    "description": "項目を開く出来事(opens)で新しい受信を開くとき、同じスレッドの古い未了を、この出来事(移し先 to:mail:<新しい鍵>)で移す。開く出来事が read のように即座に終端になる受信でも同じ。未記録の鍵への pass は開く出来事ではないので移さない。"
+  },
   "timers": {
     "remind_after_days": 7,
     "stale_after_remind_days": 7,

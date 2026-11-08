@@ -316,6 +316,10 @@ fn mail_cmd(args: &[String]) -> Result<ExitCode, String> {
             for a in mail::sweep(&vault, &ledger, day, &time, dry_run)? {
                 println!("{}\t{}\t{}", a.event, a.key, a.text);
             }
+            // 行は書かず、本人の手が要りそうな項目だけ知らせる(decide のあと、反映も move も無いまま日をまたいだ未了)。
+            for f in mail::flags(&vault, &ledger, day)? {
+                println!("flag\t{}\t{}", f.key, f.message);
+            }
             Ok(ExitCode::SUCCESS)
         }
         "restore" | "forget" if rest.len() == 1 => {
