@@ -221,6 +221,14 @@ pub static RULES: &[Rule] = &[
         budget: S10,
         run: |agent, raw| pkexec_guard::hook(agent, raw),
     },
+    // ja-polish の設定ファイルが無い機体では何もしない(docs/agents/ja-polish.md)。
+    Rule {
+        node: "ja-polish-gate",
+        event: Event::Pre,
+        tools: Tools::BashOrMcp,
+        budget: S10,
+        run: |agent, raw| ja_polish::gate::hook(agent, raw),
+    },
     Rule {
         node: "new-tool-guard",
         event: Event::Pre,
@@ -346,6 +354,7 @@ mod tests {
                 "feedback-target-guard",
                 "git-stash-guard",
                 "issue-create-guard",
+                "ja-polish-gate",
                 "main-checkout-guard-pre",
                 "new-tool-guard",
                 "pkexec-guard",

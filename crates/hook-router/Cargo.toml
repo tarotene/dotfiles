@@ -25,6 +25,7 @@ gh-edit-allow = { version = "0.1.0", path = "../gh-edit-allow" }
 git-stash-guard = { version = "0.1.0", path = "../git-stash-guard" }
 issue-create-guard = { version = "0.1.0", path = "../issue-create-guard" }
 git-worktree-create-guard = { version = "0.1.0", path = "../git-worktree-create-guard" }
+ja-polish = { version = "0.1.0", path = "../ja-polish" }
 main-checkout-guard = { version = "0.1.0", path = "../main-checkout-guard" }
 new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
 pkexec-guard = { version = "0.1.0", path = "../pkexec-guard" }

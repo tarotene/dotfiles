@@ -858,6 +858,10 @@ Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発
   (個人の無料 API キー。送った文面が Google の製品の改善に使われうる)では通さない。会社契約の
   送り先は、要件を確かめてから足す。
 
+形式検査は `ja-polish-gate`(PreToolUse、`hook-router` の規則)が担う。`gh` の本文・`git commit` のメッセージ・
+Gmail と Slack の下書き・Claude Docs の本文に、通していない日本語の段落があると、実行前に拒否する。
+gate に当たる前に自発的に通すこと — gate は漏れを拾うためのもので、一次的な手段ではない。
+
 設計と手順は `docs/agents/ja-polish.md`(dotfiles リポジトリ)。
 
 # 外部システムへの書き込みは、読み戻して確かめた状態だけを報告する
