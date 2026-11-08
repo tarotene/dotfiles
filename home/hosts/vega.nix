@@ -61,6 +61,26 @@ in
   # flatpak.nix instead (zoom precedent).
   home.packages = [ (nixGLWrap musescorePulse) ];
 
+  # Flatpaks installed by hand on vega that no declaration covered (#929): found with
+  # `flatpak list --app --columns=application,origin,installation` on 2026-11-08, all from
+  # the Flathub user installation. Declaring them makes a fresh machine reproduce the set
+  # (ADR-0001); nothing is removed or reinstalled (nix-flatpak does not uninstall
+  # unmanaged apps, `uninstallUnmanaged` is off). Per-host: the shared list (flatpak.nix)
+  # is for apps every Linux host runs, and LocalSend is declared for the company identity
+  # in its own module. Drop a line here to retire an app once it is uninstalled.
+  # Not declared on purpose: com.slack.Slack (the nix package is vega's Slack, #957) and
+  # com.onepassword.OnePassword (a *system* installation, which a user-level
+  # declaration cannot manage).
+  services.flatpak.packages = [
+    "com.discordapp.Discord"
+    "com.github.tchx84.Flatseal"
+    "com.vscodium.codium"
+    "im.riot.Riot"
+    "org.audiveris.audiveris"
+    "org.localsend.localsend_app"
+    "org.mozilla.thunderbird_esr"
+  ];
+
   # ROS is scoped to the personal host only (#215 / ADR-0002): place the
   # host-scoped zsh module and source it after the shared modules. home-manager
   # loads the env (/opt/ros/* installed via apt/rosdep); nothing more.
