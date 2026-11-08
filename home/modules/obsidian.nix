@@ -91,6 +91,10 @@ in
   # Dropped while the LiveSync CLI daemon (obsidian-livesync.nix, #1328) is enabled: the
   # daemon syncs without a window, and a running Obsidian plugin and the daemon writing the
   # same vault is an unverified combination (docs/agents/obsidian-livesync-cli.md).
+  # 上の autostart の pipeline-map のノード(ADR-872)。autostart が無い(daemon が有効な)ときも、
+  # 対応付けは害にならない。
+  dotfiles.pipeline.timerNodes.autostart-obsidian = "obsidian-autostart";
+
   xdg.configFile = lib.mkIf (!config.dotfiles.obsidian.livesync.enable) {
     "autostart/obsidian.desktop".source =
       pkgs.replaceVars (../../config + "/autostart/obsidian.desktop")

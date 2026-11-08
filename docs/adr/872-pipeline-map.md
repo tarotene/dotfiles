@@ -198,3 +198,34 @@ Issue の案は、`node` を必須の引数にする nix のヘルパ(`mkTimer` 
 - `flake.nix`
 
 `flake.nix` の執行点は `checks.x86_64-linux.pipeline-external-timer`(このリポジトリの外が足した timer で評価が落ちないこと)。
+
+## Amendment (2026-11-08 — 登録箇所に、ログインで起動する常駐のもの(user service・XDG autostart)を加える)
+
+D3 と 2026-10-27 の Amendment は、nix 側の登録箇所として timer と launchd agent だけを認めた。ログイン・セッションの
+開始で起動する常駐のもの — `Install.WantedBy` を持つ `systemd.user.services.<名前>` と、XDG autostart の
+`xdg.configFile."autostart/<X>.desktop"` — は、自動で発火するのに地図から漏れた。`atop-trace` は、この漏れを避けるために、
+常駐の service でなく timer で書き直した(`home/modules/atop-trace.nix` のコメント)。登録箇所の種類に合わせて道具の設計を
+曲げる形は逆で、地図の側を直す(wrap-up の気づき)。
+
+- `home/modules/pipeline.nix` の検査を、同じ option `dotfiles.pipeline.timerNodes` のまま、次の名前にも広げる:
+  `Install.WantedBy` が空でない、このリポジトリが定義した `systemd.user.services.<名前>`(timer が起動する service は
+  `Install` を持たないので、timer の側の 1 行で足りる)と、`autostart-<X>`(`autostart/<X>.desktop`。`Hidden=true` の
+  エントリ — システムの autostart を無効にするもの — は何も起動しないので対象外)。option 名は変えない(既存の行と
+  `cargo test` の走査を壊さない)。
+- `cargo test` 側は、同じ `timerNodes.<名前> = "<id>";` の行を登録箇所として数えるので、変えない。逆向き(`auto = true`
+  のノードに登録が 1 つも無い)は、これまでどおり `cargo test`。
+- manifest に、レーン `login`(Login / autostart)を足す。
+
+### 検証
+
+- `nix eval .#homeConfigurations.<host>.activationPackage --apply 'p: p.drvPath'` が、vega・arcturus・altair の 3 ホストで通る。
+- 陰性対照(対応付けを足す前の評価): vega は「対応付けが無い: autostart-fcitx5, autostart-obsidian」、arcturus は
+  「対応付けが無い: webcam-builtin-relay」で落ちた。arcturus の `webcam-builtin-relay` は、これまで地図に載っていなかった
+  常駐の service で、この検査が実際に拾った。足したあと 3 ホストとも通る。
+- `nix build .#checks.x86_64-linux.pipeline-external-timer`(このリポジトリの外が足したもので評価が落ちないこと)が通る。
+
+### 執行点
+
+- `home/modules/pipeline.nix`
+- `home/modules/webcam-builtin.nix`
+- `pipeline-map.toml`

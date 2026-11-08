@@ -139,6 +139,9 @@ in
       # Make the home-managed font discoverable by fontconfig.
       fonts.fontconfig.enable = true;
 
+      # fcitx5 の autostart(下の `autostart/fcitx5.desktop`)の pipeline-map のノード(ADR-872)。
+      dotfiles.pipeline.timerNodes.autostart-fcitx5 = "fcitx5-autostart";
+
       xdg.configFile = {
         # Terminal — literal alacritty.toml.
         "alacritty/alacritty.toml".source = repoConfig + "/alacritty/alacritty.toml";

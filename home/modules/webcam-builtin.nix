@@ -75,6 +75,9 @@ in
       }
     ];
 
+    # ログインで起動する常駐の service の pipeline-map のノード(ADR-872)。
+    dotfiles.pipeline.timerNodes.webcam-builtin-relay = "webcam-builtin-relay";
+
     systemd.user.services.webcam-builtin-relay = lib.mkIf pkgs.stdenv.isLinux {
       Unit = {
         Description = "Relay the built-in camera (IPU7) into the v4l2loopback virtual camera, on demand";

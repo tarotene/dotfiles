@@ -25,9 +25,10 @@ in
   home.packages = [ pkgs.atop ];
 
   # 1 つの service は 24 時間(10 秒 × 8640 サンプル)で終わり、timer が終了の 1 分後に
-  # 日付の新しいファイルで起動し直す。常駐の service + Restart= にしないのは、(1) pipeline-map が
-  # 自動発火の登録箇所として認めるのは timer だけだから(ADR-872)、(2) atop が壊れたとき、
-  # Restart= は 5 秒ごとに再起動を繰り返すが、timer は 1 分に 1 回で済むから。
+  # 日付の新しいファイルで起動し直す。常駐の service + Restart= にしないのは、atop が壊れたとき、
+  # Restart= は 5 秒ごとに再起動を繰り返すが、timer は 1 分に 1 回で済むから。(以前はもう 1 つ、
+  # pipeline-map が自動発火の登録箇所として認めるのは timer だけだから、という理由があった。常駐の
+  # service も登録箇所に加えた — ADR-872 の 2026-11-08 の Amendment — ので、今は理由でない。)
   dotfiles.pipeline.timerNodes.atop-trace = "atop-trace";
 
   systemd.user.services.atop-trace = {

@@ -264,7 +264,7 @@ row1: "" {
 
 row2: "" {
   class: invisible
-  grid-columns: 4
+  grid-columns: 5
   grid-gap: 40
   l_timer: "7  Timers / periodic" {
     class: lane
@@ -346,6 +346,20 @@ row2: "" {
     g_state: "state (6)  P2,P3,P6" {
       class: s_store
       shape: cylinder
+    }
+  }
+  l_login: "11  Login / autostart" {
+    class: lane
+    grid-columns: 1
+    grid-gap: 10
+    g_fcitx5_autostart: "fcitx5 (login autostart)  P6" {
+      class: s_nix
+    }
+    g_obsidian_autostart: "obsidian (login autostart, vega)  P6" {
+      class: s_nix
+    }
+    g_webcam_builtin_relay: "webcam-builtin-relay (resident, arcturus)  P6" {
+      class: s_nix
     }
   }
 }
