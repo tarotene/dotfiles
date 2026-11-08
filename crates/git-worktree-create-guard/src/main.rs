@@ -1,17 +1,17 @@
 //! git-worktree-create-guard — PreToolUse(Bash)の stdin JSON を読み、直接の
-//! worktree 追加を deny する。判定なし・縮退はすべて無出力 exit 0。
+//! worktree 追加を deny する。判定なし・縮退はすべて無出力 exit 0。入口(引数・標準入力・出力)は
+//! `agent_session::entry` が持つ。
 
-use agent_session::Agent;
-use agent_session::Outcome;
-use agent_session::PermissionDecision;
-use std::io::Read;
+use agent_session::entry::{run, Spec};
+use agent_session::{Agent, HookEvent};
+use std::process::ExitCode;
 
-fn main() {
-    let mut raw = String::new();
-    if std::io::stdin().read_to_string(&mut raw).is_err() {
-        return;
-    }
-    if let Some(Outcome::Deny(reason)) = git_worktree_create_guard::hook(&raw) {
-        PermissionDecision::deny(reason).emit(Agent::Claude);
-    }
+const SPEC: Spec = Spec {
+    name: "git-worktree-create-guard",
+    agents: &[Agent::Claude],
+    event: Some(HookEvent::PreToolUse),
+};
+
+fn main() -> ExitCode {
+    run(&SPEC, |_, raw| git_worktree_create_guard::hook(raw))
 }
