@@ -19,7 +19,7 @@ runs:
   steps:
     - name: Install Typst compiler
       # renovate: datasource=github-releases depName=typst/typst
-      uses: typst-community/setup-typst@fee4b65b091cc546f02ce3be15fad8760f38a108 # v5
+      uses: typst-community/setup-typst@6a2cfaf0b28d636b00148f965e315bae81079aaa # v5
       with:
         typst-version: ${{ inputs.typst-version }}
 
