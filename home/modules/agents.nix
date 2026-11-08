@@ -18,13 +18,17 @@
 #    詳細は docs/agents/copilot-plan-review.md(旧 Codex 版の設計経緯も同ファイルに
 #    履歴として残る)。
 #
-# 2) wrap-up inbox(SessionStart + Stop):
-#    スコープ外の気づきの「収集」と「起票」を分離する。SessionStart hook が
-#    additionalContext で「気づきは state 領域の inbox(JSONL)に --add で追記せよ」
-#    と注入し、Stop hook が inbox 非空かつ起票可能(gh あり・git repo・GitHub
-#    remote あり)なら exit 2 + stderr 指示でフルコンテキストの本体 Claude に
-#    gh issue create させる。それ以外は黙って exit 0(ADR-0005 の binary-existence
-#    gating に倣う)。詳細は docs/agents/wrapup-inbox.md。
+# 2) wrap-up inbox(SessionStart + Stop、ADR-1136):
+#    スコープ外の気づきの「収集」と「裁定」を分離する。SessionStart hook
+#    (`session-wrapup start`)が additionalContext で「気づきは `issue-inbox --add` で
+#    追記せよ。Issue にはしない」と注入し、未裁定の件数を掲示する。気づきは Obsidian vault の
+#    `inbox/` に 1 件 1 ノートで溜まる(vault の無い機体では機体の jsonl)。Stop hook
+#    (`session-wrapup stop`)は気づきの起票を求めない。jsonl に残った行を vault へ移し、
+#    更新した feedback memory に `#N` が無いときと、振り返り・期限付き試行の未完了のときだけ
+#    exit 2 + stderr で指示する。それ以外は黙って exit 0(ADR-0005 の binary-existence
+#    gating に倣う)。裁定は本人が `/backlog-cleanup` で行い、Issue にするのは裁定で選んだものだけ。
+#    旧 `wrapup-stop-gate` / `wrapup-session-start` は互換入口として配備だけ残している
+#    (削除条件は docs/agents/tooling-migration.md)。詳細は docs/agents/wrapup-inbox.md。
 #
 # 3) plan-view(PreToolUse / ExitPlanMode + CLI):
 #    プランを pandoc で HTML にして Chrome の専用窓(--app)に飛ばす。LLM は呼ばず、
@@ -138,11 +142,10 @@
 #    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
 #    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
 #    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。backlog-cleanup
-#    は 2) の wrap-up inbox のうち判断を要さない軽微な項目(未起票の inbox 行 +
-#    起票済みの wrapup 由来 open Issue)をまとめて triage し、1 回の確認後に 1 つの
-#    chores PR で一括対処する習慣 — hook 自体には手を入れず、削除は既存の
-#    `--mark-filed` 経由のみを使う。model-pin-update は外部 AI CLI(Copilot CLI 等)
-#    に固定 pin した具体モデル ID を、ベンダー側の GA・廃止サイクルに追従して更新する
+#    は 2) の wrap-up inbox の未裁定の気づき(vault の open なノート)と、起票済みの
+#    wrapup 由来 open Issue をまとめて棚卸しし、本人が 1 件ずつ裁定したうえで、直せるものを
+#    stacked PR で一括対処する習慣 — 状態の更新は `issue-inbox --set-status` を使う。
+#    model-pin-update は外部 AI CLI(Copilot CLI 等)に固定 pin した具体モデル ID を、ベンダー側の GA・廃止サイクルに追従して更新する
 #    定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。issue-hygiene
 #    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
 #    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
@@ -572,7 +575,7 @@ let
   # (legacyPlan*Cmd)。
   planReviewCmd = "'${hooksDir}/copilot-plan-review'";
   # #413 (ADR-0024 Stage 4d): session/表示系の hook は Rust バイナリ
-  # (crates/wrapup-stop-gate など、pkgs.dotfiles-tools)になり、下の home.file が
+  # (crates/session-wrapup など、pkgs.dotfiles-tools)になり、下の home.file が
   # ~/.claude/hooks/<name>(拡張子無し、ADR-0007)として配備する。bash を介さず
   # 直接起動する。旧 `bash '….sh'` の command は retiredHookEntries / --retire で
   # 完全一致削除する(legacy*Cmd、#638 と同じ形)。
@@ -1942,10 +1945,11 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".copilot/agents/plan-reviewer.agent.md".source =
     repoConfig + "/copilot/agents/plan-reviewer.agent.md";
 
-  # wrap-up inbox の 2 hook。session-start は stop-gate と同じパス計算を使い、
-  # 同じディレクトリに並んでいることを前提に stop-gate のパスを指示文に埋める。
-  # #413: どちらも crates/wrapup-stop-gate の bin。指示文に埋める自身のパスは argv[0]
-  # 由来(store path ではなくこの安定パス)。
+  # wrap-up inbox の旧入口 2 本(互換入口。正準は session-wrapup start|stop)。どちらも
+  # crates/wrapup-stop-gate の bin で、同じ実装(session-wrapup と issue-inbox)へ転送する。
+  # 適用前の設定を持つホスト・継続中のセッションの hook と、promotion-detect の
+  # `wrapup-stop-gate --add` が、このパスを使う。削除条件は docs/agents/tooling-migration.md の
+  # 「旧入口の削除条件」。指示文に埋める自身のパスは argv[0] 由来(store path ではなくこの安定パス)。
   home.file.".claude/hooks/wrapup-stop-gate".source = "${pkgs.dotfiles-tools}/bin/wrapup-stop-gate";
   home.file.".claude/hooks/wrapup-session-start".source =
     "${pkgs.dotfiles-tools}/bin/wrapup-session-start";
@@ -2035,7 +2039,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 理由付けの安定パス symlink。
   home.file.".claude/hooks/cmd-hash-log".source = "${pkgs.dotfiles-tools}/bin/cmd-hash-log";
   # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
-  # ないので register には乗せない — wrapup-stop-gate が同じディレクトリから
+  # ないので register には乗せない — session-wrapup stop が呼ぶ issue-inbox が、同じディレクトリから
   # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
   # の register とは別の消費経路)。
   home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
