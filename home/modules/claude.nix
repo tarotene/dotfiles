@@ -285,6 +285,22 @@ in
         "nix eval *"
         "nix flake *"
         "nix fmt *"
+        # `nix develop` failed inside the sandbox writing the fetcher lock under the nix cache:
+        # `error: opening lock file ... fetcher-locks ...: Read-only file system` (measured
+        # 2026-11-08, started in the background). It is excluded only with `--command`, the
+        # non-interactive form an agent uses (`nix develop --command <cmd>`). The inner command
+        # then runs with full access too, as `nix build *` above runs arbitrary build code:
+        # in auto mode the classifier reviews each call (see the note at the top of this list).
+        # The pattern syntax is a `Bash(...)` rule with a trailing ` *` (Anthropic, "Sandboxing",
+        # https://code.claude.com/docs/en/sandboxing, retrieved 2026-11-08); that this exact
+        # pattern takes a call out of the sandbox is not measured yet.
+        "nix develop --command *"
+        # `herdr worktree create` exited with `Operation not permitted` inside the sandbox
+        # (measured on 2026-10-29, 2026-10-31 and 2026-11-01, each time for a worktree of a
+        # repository other than the session's) and passed outside it. Call it alone: the
+        # worktree can be cut from a stale local `main`, so `git fetch origin` in it first
+        # (config/claude/CLAUDE.md).
+        "herdr worktree create *"
         # Headless Chrome creates Unix domain sockets (its IPC and crash handler), which the
         # sandbox denies (#1334; measured inside the sandbox 2026-11-05). It is excluded only
         # in this exact form, `google-chrome --headless=new <args>`, so a bare `google-chrome`

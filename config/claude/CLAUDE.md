@@ -129,6 +129,15 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   `*` を持つパターン(`git commit *` など)だけが効き、`git -C <dir> commit` は sandbox に残って署名が
   `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
 - 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
+- **別のリポジトリの worktree で作業する手順**(`herdr worktree create` は sandbox の中では
+  `Operation not permitted` で落ちた。2026-10-29・10-31・11-01 に実測):
+  1. `herdr worktree create --cwd <repo> --branch <name>` を単体で呼ぶ(`sandbox.excludedCommands` に入れてある)。
+  2. 作った worktree で、最初に `git fetch origin` を呼び、`origin/main` との差を `git log` で見る。worktree は
+     古いローカルの `main` から切られることがある(2026-10-29 に、マージ済みの PR を含まない `main` から
+     切られた)。ずれていれば `git rebase origin/main` で追従する。
+  3. 編集は、worktree の絶対パスを指定した Edit/Write で行う。Bash の `sed -i` などは、worktree が
+     sandbox の書き込み許可の外にあるので `Read-only file system` になる。git の書き込みは上の項のとおり。
+  4. `gh` は `-R OWNER/REPO` を付ける(付けないと cwd のリポジトリを見に行く)。
 
 形式検査は `sandbox-compound-guard`(PreToolUse deny、`hook-router` の規則)が担う。除外一覧(`sandbox.excludedCommands`)
 のコマンドを `;`・`&&`・`|`・ループ・改行で別のコマンドと並べる形を実行前に拒否し、単体で呼ぶよう案内する
