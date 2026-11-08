@@ -49,7 +49,12 @@ Google Drive の PDF の図に載る数値(寸法公差など)は、`read_file_c
 jq -r .content <保存された JSON> | base64 -d > doc.pdf
 pdftotext -layout doc.pdf -        # テキスト
 pdfimages -f N -l N -j doc.pdf fig # 図は埋込画像として取り出し、拡大して読む
+# 逐語の引用をページ番号つきで探す(改ページは form feed。折り返しの改行は空白 1 つに畳んで照合する)
+pdftotext -layout doc.pdf - | awk -v RS='\f' -v q='<探す語句>' '{t=$0; gsub(/[ \t\n]+/," ",t)} index(t,q){print "p." NR}'
+pdftotext -layout -f N -l N doc.pdf -  # 出たページだけを読み、前後の文脈ごと逐語で引く
 ```
+
+`p.` の番号は PDF の先頭からの通し番号で、紙面に印字されたページ番号とは限らない。引用に添えるときは、どちらかを書く。
 
 埋込画像の解像度が足りず桁を読めないときは「未確認」と書き、相手に確認する(#894)。
 

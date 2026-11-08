@@ -595,6 +595,13 @@
               # (ELK 同梱の単一バイナリ)。CI の再生成差分検査も同じ d2 を使うので、
               # flake.lock の pin でローカルと CI の出力が一致する(ADR-872)。
               pkgs.d2
+              # CI の `Secret scan (gitleaks)` と同じ検査を、push の前に手元で回す:
+              #   gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 .
+              # CI は `go install ...@v8.30.1` で版を固定している(.github/workflows/ci.yml)。
+              # nixpkgs(nixos-26.05)の gitleaks は 8.30.1 で一致する(2026-11-08 に
+              # `nix eval` で確認)。版がずれると規則(generic-api-key など)が変わりうるので、
+              # ci.yml の版を上げるときは、ここも同じ版か確かめる。
+              pkgs.gitleaks
             ];
           };
         }
