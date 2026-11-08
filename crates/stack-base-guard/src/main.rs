@@ -5,7 +5,9 @@
 //! (config/codex/hooks/stack-base-guard.sh)の代わりに `--agent <claude|codex>`
 //! で入力の読み方を切り替える。省略時は `claude`。state ディレクトリ
 //! (~/.claude/stack-base-guard/state)は Claude と Codex で共有する —
-//! session_id で区切られるため衝突しない。
+//! session_id で区切られるため衝突しない。入口(引数・標準入力・出力)は
+//! `agent_session::entry` が持つ。`--agent copilot` は受けるが、判定は何もしない
+//! (`lib.rs` の `check` は Copilot を None にする)。
 //!
 //! 使い方:
 //!   hook として: stdin JSON(PreToolUse)
@@ -13,24 +15,31 @@
 //!               deny なら `deny: <理由>` を出して exit 1、通すなら `pass`。
 //!               セッション ID は環境変数 `SESSION_ID`(無ければ unknown)。
 //!
-//! 縮退(ADR-0005 の binary-existence gating に倣う): stdin が読めない・
-//! 不正 JSON・git/gh が無い・判定できない場合は何も出さず exit 0。
+//! 縮退(ADR-0005 の binary-existence gating に倣う): 不正 JSON・git/gh が無い・
+//! 判定できない場合は何も出さず exit 0。
 
-use agent_session::hook::agent_from_args;
-use agent_session::hook::deny_output;
-use agent_session::Outcome;
+use agent_session::entry::{emit, enter, read_stdin, Spec};
+use agent_session::{Agent, HookEvent, Reply};
 use stack_base_guard::Guard;
-use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let agent = agent_from_args(&args);
+const SPEC: Spec = Spec {
+    name: "stack-base-guard",
+    agents: &[Agent::Claude, Agent::Codex, Agent::Copilot],
+    event: Some(HookEvent::PreToolUse),
+};
 
-    if let Some(pos) = args.iter().position(|a| a == "--check") {
-        let cmd = args.get(pos + 1).map(String::as_str).unwrap_or("");
-        let project = args
+fn main() -> ExitCode {
+    let call = match enter(&SPEC) {
+        Ok(call) => call,
+        Err(code) => return code,
+    };
+
+    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
+        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
+        let project = call
+            .rest
             .get(pos + 2)
             .filter(|p| !p.is_empty())
             .map(PathBuf::from)
@@ -49,13 +58,8 @@ fn main() -> ExitCode {
         };
     }
 
-    // skip は stdin を読む前に見る(bash 版 main と同じ順)は `hook` の中。
-    let mut buf = String::new();
-    if std::io::stdin().read_to_string(&mut buf).is_err() {
-        return ExitCode::SUCCESS;
-    }
-    if let Some(Outcome::Deny(reason)) = stack_base_guard::hook(agent, &buf) {
-        print!("{}", deny_output(agent, &reason));
-    }
-    ExitCode::SUCCESS
+    // skip は stdin を読んだあとの `hook` の中で見る(stdin は常に読む)。
+    let raw = read_stdin();
+    let reply = Reply::from_outcome(stack_base_guard::hook(call.agent, &raw));
+    emit(&SPEC, &call, &raw, &reply)
 }

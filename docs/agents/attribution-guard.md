@@ -283,6 +283,11 @@ Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
 Copilot CLI の `preToolUse` には matcher が無く全 tool call で無条件発火
 するため、`toolName=="bash"` 以外はバイナリ内部で早期 exit する。
 
+`--agent` は `agent_session::entry` が厳密に解析する(`docs/agents/agent-libraries.md`)。値が無い・
+`claude|codex|copilot` 以外・2 回以上は、標準エラーに理由を出して終了コード 1 で終わる
+(`tests/cmd/agent-0*.toml`)。従来は、未知の値が黙って Claude の形に倒れていたので、タイプミスの登録が
+検査を素通りにする経路だった。出力の形(上の表)は、`Reply::render` が持つ。
+
 ### スコープ外にしたもの
 
 MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま
