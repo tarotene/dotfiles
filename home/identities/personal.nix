@@ -92,6 +92,11 @@ in
   home.file.".local/libexec/playwright-mcp-launcher".source =
     "${pkgs.dotfiles-tools}/bin/playwright-mcp-launcher";
 
+  # 日本語の文書を Gemini(llm 経由、無料の API キー)に書き直させる。今は、送り先の扱いを確かめ
+  # 済みのこの経路だけで有効にしている。会社の identity への横展開は、会社契約の Gemini の要件を
+  # 確かめてから(home/modules/ja-polish.nix の冒頭)。
+  dotfiles.jaPolish.enable = true;
+
   dotfiles.claude.mcpServers = {
     # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
     # Web UI の実地確認に使う。普段の Firefox のログイン状態をそのまま使うため、

@@ -325,6 +325,11 @@ in
         # alone (a chained call stays sandboxed, see the matching note at the top of this list).
         "hms"
         "hms *"
+        # ja-polish calls `llm`, which reads its key from ~/.config/io.datasette.llm (a secret
+        # path the sandbox hides) and reaches generativelanguage.googleapis.com (not a declared
+        # domain). It runs outside the sandbox and sends only the paragraphs it is given.
+        # Deployed only where dotfiles.jaPolish.enable is set (home/modules/ja-polish.nix).
+        "ja-polish *"
       ];
       description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
     };

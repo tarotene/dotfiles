@@ -26,10 +26,16 @@ const DEFAULT_THRESHOLD: usize = 3;
 /// 監視する gate と、閾値に届いたときに添える復旧の手がかり。gate 名は、その gate が
 /// `gate-events.jsonl` に書く名前(`crates/copilot-plan-review` の `GATE_NAME`)と同じ。
 /// 他の fail-open の hook を足すときは、ここに 1 行足す。
-const GATES: &[(&str, &str)] = &[(
-    "copilot-plan-review",
-    "ExitPlanMode のたびに出る systemMessage に、実行に失敗した原因(copilot の stderr の先頭行)が書かれています。copilot CLI が起動できるか、固定しているモデルが catalog に残っているか(`model-pin-update` スキル)、ログインが切れていないかを確かめてください。手順は docs/agents/copilot-plan-review.md。",
-)];
+const GATES: &[(&str, &str)] = &[
+    (
+        "copilot-plan-review",
+        "ExitPlanMode のたびに出る systemMessage に、実行に失敗した原因(copilot の stderr の先頭行)が書かれています。copilot CLI が起動できるか、固定しているモデルが catalog に残っているか(`model-pin-update` スキル)、ログインが切れていないかを確かめてください。手順は docs/agents/copilot-plan-review.md。",
+    ),
+    (
+        "ja-polish",
+        "`ja-polish` の報告(素通しの理由)に原因が書かれています。API キーが入っているか(`llm keys list`)、無料枠の上限、スタイルガイドのハブが解決できるか(`writing-style-hub`)、設定のモデル名が `llm models` に残っているかを確かめてください。手順は docs/agents/ja-polish.md。",
+    ),
+];
 
 fn threshold_from(raw: Option<&str>) -> usize {
     raw.and_then(|s| s.trim().parse::<usize>().ok())
@@ -45,7 +51,7 @@ fn advisory(events: &Path, threshold: usize) -> Option<String> {
             let n = trailing_fail_open(events, gate);
             (n >= threshold).then(|| {
                 format!(
-                    "{gate} が {n} 回連続で fail-open(依存先の不調でレビューを実行できないまま素通り)しています。{hint}"
+                    "{gate} が {n} 回連続で fail-open(依存先の不調で処理を実行できないまま素通り)しています。{hint}"
                 )
             })
         })
