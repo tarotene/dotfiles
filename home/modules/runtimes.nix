@@ -29,10 +29,17 @@ in
   # just the registry, not ~/.cargo: `~/.cargo/bin` holds executables the sandbox must not be
   # able to replace. Fetching a crate that is not cached yet also needs crates.io hosts, which are
   # not in `domains`; that case is not measured yet.
+  #
+  # npm's package cache. Inside the sandbox it was read-only, so `npm ci` failed with
+  # `EROFS: read-only file system, open '~/.npm/_cacache/tmp/...'` (measured 2026-10-31); the run
+  # passed once `--cache` pointed at the scratchpad, so the registry host was reachable and only
+  # the write was missing. Declare just the cache, not ~/.npm: the tool owns this directory and it
+  # holds no executable the sandbox could replace. (`~/.npm/_logs` is already writable.)
   dotfiles.claudePermissions.allowWrite = [
     "~/.cache/uv"
     "~/.cargo/registry"
     "~/.cache/just"
+    "~/.npm/_cacache"
   ];
 
   # Where `just` and `uv` write inside the sandbox, so a call needs no `VAR=value` prefix.

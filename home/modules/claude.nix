@@ -85,9 +85,17 @@ let
   # Unix ソケットを作れず落ちるので excludedCommands で外に出すが、外では全権限で動く。歯止めは
   # この ask だけなので、除外と必ず対にする(ask の画面が出ないと分かったら、除外を外す)。
   # 照合は先頭の語列 + 末尾 `*` だけが効く(excludedCommands のコメント参照)。
+  #
+  # `hms`(引数なしの正準の適用)と `hms *`(`hms .` など)も同じ型の ask。hms は home-manager の適用で、
+  # 実環境に書き、適用ロック(`~/.local/state/hms/lock`)を取るが、そのロックは sandbox の中では
+  # `Read-only file system` で取れない(2026-11-08)ので excludedCommands で外に出す。外では全権限で動くので、
+  # 歯止めはこの ask だけで、除外と必ず対にする。引数なしの `hms` は `hms *` に一致するかを測っていないので、
+  # 両方を書く。
   askRules = [
     "Bash(/usr/bin/pkexec *)"
     "Bash(google-chrome --headless=new *)"
+    "Bash(hms)"
+    "Bash(hms *)"
   ];
   retiredAskRules = [ ];
 
@@ -309,6 +317,14 @@ in
         # another command, or redirects its output, stays sandboxed (see the matching note
         # at the top of this list): call it alone.
         "google-chrome --headless=new *"
+        # `hms` applies the home-manager configuration to the real environment and takes an apply
+        # lock under `~/.local/state/hms`, read-only in the sandbox (`適用ロックを取れません:
+        # Read-only file system`, measured 2026-11-08). It runs with full access, so `askRules`
+        # above carries the same patterns and every call asks first. `hms` alone and `hms *` are
+        # both listed because whether the bare form matches the `*` form is not measured. Call it
+        # alone (a chained call stays sandboxed, see the matching note at the top of this list).
+        "hms"
+        "hms *"
       ];
       description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
     };

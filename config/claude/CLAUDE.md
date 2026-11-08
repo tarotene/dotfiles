@@ -100,6 +100,9 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 - 背景タスクの出力: 完了通知を待つか、`Monitor` の `until` ループ(共有
   AGENTS.md「長い処理では…」の形)で待つ。
 - 前景の `sleep` で待たない。
+- 背景タスクを `(cmd; echo exit=$?)` の形で束ねない。完了通知の終了コードが `echo` のもの(常に 0)になり、
+  `cmd` が失敗しても成功に見える(2026-10-31、`npm ci` が `EROFS` で落ちたのに完了通知は成功だった)。
+  終了コードが要るときは、`cmd` を単体で背景に出し、通知の終了コードを読む。
 
 形式検査は `ci-wait-guard`(PreToolUse deny、`hook-router` の規則)が担う。Bash と
 `Monitor` で、`gh pr checks --watch`・`gh run watch`・`until`/`while`/`sleep` で
