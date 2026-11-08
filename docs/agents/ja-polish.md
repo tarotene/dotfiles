@@ -1,6 +1,6 @@
 # ja-polish — 日本語の文書を Gemini に書き直させ、通した証拠を残す
 
-設計の判断: `docs/adr/0000-ja-polish.md`。実装: `crates/ja-polish`。有効化: `home/modules/ja-polish.nix`
+設計の判断: `docs/adr/1387-ja-polish.md`。実装: `crates/ja-polish`。有効化: `home/modules/ja-polish.nix`
 (`dotfiles.jaPolish.enable`、個人の identity だけ)。
 
 ## 何のためか
