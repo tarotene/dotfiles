@@ -140,10 +140,31 @@ pub fn jst_date(unix_secs: u64) -> String {
 }
 
 pub fn jst_today() -> String {
-    let now = std::time::SystemTime::now()
+    jst_date(unix_now())
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    jst_date(now)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// unix 秒の JST の日時 `YYYY-MM-DDTHH:MM:SS+09:00`(ISO 8601。`ts` の形)。
+pub fn jst_datetime(unix_secs: u64) -> String {
+    let secs = unix_secs + 9 * 3600;
+    let rem = secs % 86_400;
+    format!(
+        "{}T{:02}:{:02}:{:02}+09:00",
+        jst_date(unix_secs),
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
+}
+
+/// 今の JST の日時(`ts` の既定値)。
+pub fn jst_now() -> String {
+    jst_datetime(unix_now())
 }
 
 /// `ts`(ISO 8601)の日付部分。読めなければ `today`。
@@ -600,6 +621,15 @@ mod tests {
         // 2026-10-27T15:30:00Z は JST では 10-28。
         assert_eq!(jst_date(1_793_115_000), "2026-10-28");
         assert_eq!(jst_date(0), "1970-01-01");
+    }
+
+    #[test]
+    fn jst_datetime_is_iso8601_with_the_offset() {
+        assert_eq!(jst_datetime(0), "1970-01-01T09:00:00+09:00");
+        // 2026-10-27T15:30:00Z は JST では 10-28 00:30:00。
+        assert_eq!(jst_datetime(1_793_115_000), "2026-10-28T00:30:00+09:00");
+        // ts の日付部分は jst_date と同じ(row_date が読む)。
+        assert_eq!(&jst_datetime(1_793_115_000)[..10], jst_date(1_793_115_000));
     }
 
     #[test]
