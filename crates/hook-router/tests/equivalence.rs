@@ -109,6 +109,11 @@ fn router_reason(case: &Case) -> Option<String> {
 /// ルータの標準出力(JSON)。出力が無ければ `None`。`stub_gh` は、`gh` の存在だけを見る検査
 /// (`plan-scope-gate`、ADR-0005)を、ホストの `gh` に頼らず動かすための、常に失敗するスタブ。
 fn router_output(case: &Case, stub_gh: bool) -> Option<serde_json::Value> {
+    serde_json::from_str(&router_stdout(case, stub_gh)).ok()
+}
+
+/// ルータの標準出力そのもの(バイト列を文字列にしたもの)。何も出さなければ空の文字列。
+fn router_stdout(case: &Case, stub_gh: bool) -> String {
     let home = tempfile::tempdir().unwrap();
     let mut path = std::env::var_os("PATH").unwrap_or_default();
     if stub_gh {
@@ -149,7 +154,7 @@ fn router_output(case: &Case, stub_gh: bool) -> Option<serde_json::Value> {
         .unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success(), "{}", case.file.display());
-    serde_json::from_slice(&out.stdout).ok()
+    String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 fn check_decision(crate_dir: &str, decision: &str, at_least: usize) {
@@ -224,7 +229,8 @@ fn check_exit_plan_mode(crate_dir: &str, deny_at_least: usize, stub_gh: bool, sk
     }
     let mut denies = 0;
     for case in &cases {
-        let out = router_output(case, stub_gh);
+        let stdout = router_stdout(case, stub_gh);
+        let out: Option<serde_json::Value> = serde_json::from_str(&stdout).ok();
         let reason = out
             .as_ref()
             .and_then(|v| v["hookSpecificOutput"]["permissionDecisionReason"].as_str());
@@ -234,12 +240,11 @@ fn check_exit_plan_mode(crate_dir: &str, deny_at_least: usize, stub_gh: bool, sk
             "{}: 検査が素通りになった: {out:?}",
             case.file.display()
         );
-        let got = reason
-            .map(|r| jq_json_compat::jqfmt::deny_for_event("PreToolUse", r).replace('\\', "/"))
-            .unwrap_or_default();
+        // ルータの標準出力と、旧 bin の fixture の標準出力は、バイト単位で一致する(整形し直さず、
+        // 末尾の空白も落とさない)。trycmd が保存するときの `\` → `/` の正規化だけを、ルータの側に当てる。
         assert_eq!(
-            got.trim_end(),
-            case.expected_stdout.trim_end(),
+            stdout.replace('\\', "/"),
+            case.expected_stdout,
             "{}: ルータの出力が、旧 bin の標準出力と違う",
             case.file.display()
         );

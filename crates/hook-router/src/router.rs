@@ -11,9 +11,7 @@
 //! - 素通りさせた規則(panic・時間切れ)があれば、`systemMessage` で利用者に知らせる。
 
 use crate::rules::{Event, Rule};
-use agent_session::Agent;
-use agent_session::Outcome;
-use serde_json::{json, Map, Value};
+use agent_session::{Agent, HookEvent, Outcome, PermissionDecision, Reply};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
@@ -136,54 +134,48 @@ pub fn merge(results: &[(&'static str, Verdict)]) -> Merged {
     m
 }
 
-/// Claude Code に返す 1 行の JSON。何も出すものが無ければ `None`。
-pub fn render(event: Event, m: &Merged) -> Option<String> {
-    let mut specific = Map::new();
-    specific.insert("hookEventName".into(), json!(event.name()));
-    let mut any = false;
-    if event == Event::Pre {
-        for (decision, reasons) in [("deny", &m.deny), ("ask", &m.ask), ("allow", &m.allow)] {
-            if !reasons.is_empty() {
-                specific.insert("permissionDecision".into(), json!(decision));
-                specific.insert(
-                    "permissionDecisionReason".into(),
-                    json!(reasons.join("\n\n")),
-                );
-                any = true;
-                break;
-            }
-        }
-    }
-    if !m.context.is_empty() {
-        specific.insert("additionalContext".into(), json!(m.context.join("\n")));
-        any = true;
-    }
-
-    let mut out = Map::new();
-    if any {
-        out.insert("hookSpecificOutput".into(), Value::Object(specific));
-    }
-    if !m.failed_open.is_empty() {
+/// 併合した結果を、返答の型にする。判定は deny > ask > allow の順で最初に空でないものを採り、
+/// 理由は空行で、文脈は改行でつなぐ(`Reply::from_outcomes` と同じ規則)。
+fn to_reply(m: &Merged) -> Reply {
+    let joined = |v: &[String], sep: &str| (!v.is_empty()).then(|| v.join(sep));
+    let decision = joined(&m.deny, "\n\n")
+        .map(PermissionDecision::deny)
+        .or_else(|| joined(&m.ask, "\n\n").map(PermissionDecision::ask))
+        .or_else(|| joined(&m.allow, "\n\n").map(PermissionDecision::allow));
+    let system_message = (!m.failed_open.is_empty()).then(|| {
         let list: Vec<String> = m
             .failed_open
             .iter()
             .map(|(node, why)| format!("{node}({why})"))
             .collect();
-        out.insert(
-            "systemMessage".into(),
-            json!(format!(
-                "[hook-router] 次の検査を素通りにしました(検査が panic したか、時間を越えました): {}",
-                list.join(", ")
-            )),
-        );
+        format!(
+            "[hook-router] 次の検査を素通りにしました(検査が panic したか、時間を越えました): {}",
+            list.join(", ")
+        )
+    });
+    Reply {
+        decision,
+        context: joined(&m.context, "\n"),
+        system_message,
     }
-    (!out.is_empty()).then(|| Value::Object(out).to_string())
+}
+
+/// Claude Code に返す JSON(整形して末尾に改行)。何も出すものが無ければ `None`。
+/// 出力の形は `Reply::render` が持つ。PostToolUse は判定を出さない。
+pub fn render(event: Event, m: &Merged) -> Option<String> {
+    let event = match event {
+        Event::Pre => HookEvent::PreToolUse,
+        Event::Post => HookEvent::PostToolUse,
+    };
+    let out = to_reply(m).render(Agent::Claude, event);
+    (!out.is_empty()).then_some(out)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::Tools;
+    use serde_json::Value;
     use std::time::Duration;
 
     fn rule(node: &'static str, ms: u64, run: fn(Agent, &str) -> Option<Outcome>) -> Rule {
@@ -303,6 +295,20 @@ mod tests {
     fn no_rules_means_no_output() {
         assert!(execute(&[], "{}").is_empty());
         assert_eq!(render(Event::Pre, &merge(&[])), None);
+    }
+
+    #[test]
+    fn the_router_output_is_exactly_what_reply_renders() {
+        // 二重の改行や、キー順の食い違いを拾う: ルータの出力は Reply::render と同じ関数の結果。
+        let m = Merged {
+            deny: vec!["A".into()],
+            ..Default::default()
+        };
+        let want = Reply::deny("A").render(Agent::Claude, HookEvent::PreToolUse);
+        assert_eq!(render(Event::Pre, &m), Some(want.clone()));
+        assert!(want.ends_with("}\n") && !want.ends_with("\n\n"));
+        assert!(want
+            .starts_with("{\n  \"hookSpecificOutput\": {\n    \"hookEventName\": \"PreToolUse\","));
     }
 
     #[test]
