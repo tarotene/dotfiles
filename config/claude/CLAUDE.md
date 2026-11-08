@@ -166,7 +166,7 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   (#1100、#1166)。cargo の workspace は `.` で始まる名前を拾わず、`.gitignore` は代役の名前を無視する
   ので壊れないが、代役は `rm` で消せず(`Device or resource busy`)、セッションが続く間は残る。
 - **`cargo test --workspace` の赤は、変更の不具合とは限らない。** 2026-11-08 に vega で sandbox の中で回すと、
-  11 crate が赤だった。原因の型は 4 つ(`cargo test --workspace > <ファイル> 2>&1` で書き出して、失敗の行を
+  9 crate が赤だった。原因の型は 4 つ(`cargo test --workspace > <ファイル> 2>&1` で書き出して、失敗の行を
   `grep -E 'FAILED|panicked'` で読む):
   - **Unix ソケットを作るテストは sandbox の中では動かない**: `UnixListener::bind` が `Operation not permitted`
     になる(`claude-statusline` の integration、`herdr-agent-metadata` の claude・codex・copilot、`herdr-client`、
