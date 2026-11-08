@@ -32,6 +32,12 @@
 - fingerprint = `(tool, reason_id, match_class, term_hash)` でグループ化し、
   件数が閾値(`THRESHOLD = 3`)以上のものだけを昇格候補にする。**平文の
   マッチ語では群化しない** — bleep が守ろうとしている値そのものだから。
+- 件数は、同じ fingerprint の判定を `ts`(秒精度)が `BURST_WINDOW_SECS = 15` 秒以内に
+  連続したものを 1 つにまとめたときの「まとまり」の数で数える。1 回の応答で同じ形の呼び出しを
+  並列に出して全部が同じ理由で拒否されたとき(2026-10-28 の実例: 10 秒以内の 5 本)を、
+  「5 回弾かれ続けた」と同じ重みで昇格させないため。間を置いた再試行は別々に数える。`ts` が
+  読めない行は、まとめず 1 件ずつ数える(数え漏らす側に倒さない)。15 秒は実例から置いた仮値で、
+  実測で直す(判定レコードは応答を識別する id を持たないので、応答単位では数えられない)。
 - 候補ごとに、セッション×fingerprint の stamp 台帳
   (`~/.claude/verdict-escalate/state/<session_id>.stamped`、`hook_io::SessionLedger`)
   に無ければ、`issue-inbox --add <inbox> <json>`(サブプロセス)を
@@ -40,9 +46,14 @@
   (`wrapup-stop-gate`)を呼ぶだけ。
 - 追記する行は `{"ts","title","detail","repo","go":"ask"}`。`repo` はレコードの
   `repo` フィールド(既定の起票先)、`go:"ask"` は「起票前に人間の明示的な GO
-  が要る」印。`detail` には fingerprint・件数・`session_id`・ローカルレッジャー
+  が要る」印。`detail` には fingerprint・件数・`session_id`・`key_id`・ローカルレッジャー
   への grep 手順を書くが、**平文のマッチ語・コマンド本文は書かない**
   (`term_hash` は短い辞書語なら総当たり可能なので本文にも出さない)。
+- `key_id` は、レッジャーと同じディレクトリの鍵ファイル `hmac-key` の SHA-256 の先頭 8 桁(hex)。
+  `term_hash` の鍵は機体ごとに違うので、語を確かめる `bleep explain` は、弾かれた機体(= 同じ
+  `key_id` の鍵を持つ機体)で実行しないと一致しない。機体名を書かずに、どの機体で実行するかを
+  本文から分かるようにする(公開リポジトリに新しい実値を足さない。ADR-0034)。鍵が読めなければ
+  `key_id=unknown`。8 桁(32 bit)の指紋は鍵の復元には使えない。
 
 ## 先行例との差分
 
