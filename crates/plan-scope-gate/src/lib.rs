@@ -40,6 +40,9 @@ static RN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*[-*]?\s*\*{0,2}R([0-9]+)\*{0,2}[:.)]").unwrap());
 static STAGE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(段[0-9]+|Stage\s*[0-9]+)").unwrap());
+/// 数字でない段の記号(`段B`・`Stage B`)。処分として読まれない理由を、専用の文言で名指しするために使う。
+static LETTER_STAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(段[A-Za-z]|Stage\s*[A-Za-z])([^A-Za-z]|$)").unwrap());
 static CLOSED_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(Blocked-Upstream|Obsolete|User-Excluded):").unwrap());
 static STAGE_OR_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -504,6 +507,13 @@ pub fn judge_inventory(plan: &str) -> Vec<String> {
                 "R{id}: 閉じたタグ集合に無い棄却タグ({}:)が使われています",
                 &t[1]
             ));
+        } else if let Some(l) = LETTER_STAGE_RE.captures(rest) {
+            // 英字の段(段B)は処分として読めない。「未記載」とだけ返すと、書いてあるのに何が足りないかが
+            // 分からず、原因が分かるまで 3 往復した(2026-10-31)。
+            out.push(format!(
+                "R{id}: 段の記号({})が英字です。段は数字で書いてください(`段B` なら `段2` のように。`段1`・`Stage 1` の形だけを処分として読みます)",
+                &l[1]
+            ));
         } else {
             out.push(format!(
                 "R{id}: 処分(実装する段、または棄却タグ)が未記載です"
@@ -830,6 +840,29 @@ mod tests {
         );
         assert_eq!(
             judge_inventory("## 要求インベントリ\n- R1: 逐語\n## 別の節\n  段1で実装\n"),
+            vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
+        );
+    }
+
+    /// 英字の段(`段B`・`Stage B`)は処分として読めない。「未記載」とだけ返さず、何が足りないか
+    /// (段は数字で書く)を名指しする(2026-10-31、原因が分かるまで 3 往復した)。
+    #[test]
+    fn a_letter_stage_is_named_instead_of_reported_as_missing() {
+        let got = judge_inventory(
+            "## 要求インベントリ\n- R1: 逐語 — 段Bで実装\n- R2: 逐語 — Stage C で実装\n",
+        );
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert!(got[0].starts_with("R1: 段の記号(段B)が英字です"), "{got:?}");
+        assert!(got[0].contains("`段2`"), "{got:?}");
+        assert!(
+            got[1].starts_with("R2: 段の記号(Stage C)が英字です"),
+            "{got:?}"
+        );
+        assert!(!got.iter().any(|l| l.contains("未記載")), "{got:?}");
+        // 数字の段、または「段階」のような別の語は、これまでどおり。
+        assert!(judge_inventory("## 要求インベントリ\n- R1: 逐語 — 段2で実装\n").is_empty());
+        assert_eq!(
+            judge_inventory("## 要求インベントリ\n- R1: 段階的に対応する\n"),
             vec!["R1: 処分(実装する段、または棄却タグ)が未記載です"]
         );
     }
