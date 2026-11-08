@@ -70,8 +70,30 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 
 - `sha`: 段落の**最終の**本文(空白をそろえてから)。書き直した段落は書き直した後の本文、素通しの段落は元の本文。
 - `state`: `polished`(書き直した、または直す必要が無いと確かめた)か `skipped`(素通し。`reason` つき)。
-- 関所(投稿の PreToolUse、文書ファイルの Stop。後続の段で入る)は state を区別せず、`sha` があれば通したとみなす。
+- 関所(投稿の PreToolUse = 下の「投稿の関所」、文書ファイルの Stop = 後続の段で入る)は state を区別せず、`sha` があれば通したとみなす。
   素通しで止めないための設計で、素通しは次の gate イベントが知らせる。
+
+## 投稿の関所(`ja-polish-gate`)
+
+`hook-router` の PreToolUse の規則(`crates/hook-router/src/rules.rs`、判定は `crates/ja-polish/src/gate.rs`)。
+本文に、記録に無い日本語の段落が 1 つでもあれば、呼び出しを実行前に拒否する。LLM は呼ばず、記録を引く
+だけなので、ルータの持ち時間(10 秒)に収まる。
+
+- 見る対象: `gh pr|issue create|edit|comment` と `gh pr review` の `--body` / `--body-file`、`gh api` の
+  `-f body=…` / `--input`、`git commit` の `-m` / `--message` / `-F` / `--file`。MCP は Gmail の下書き・返信・
+  送信(`body`、無ければ `htmlBody`。件名は見ない)、Slack の下書き・送信(`message` `text` `body` `content`
+  `markdown`)、Claude Docs の作成・更新・一括(文字列すべて)。
+- 通すもの: 設定ファイルが無い機体、本文に `No-Attribution:` の行がある(本人の文の代理投稿)、
+  環境変数 `JA_POLISH_GATE_ALLOW=1`(ja-polish が壊れたときの逃げ道)、本文が取れないもの(`--body-file` が
+  読めない、知らない形の MCP 入力)。判定不能を拒否に変えない。
+- 本文の組み立てを自前にした理由: `github-command` の `assemble_body_text` は、本文にバッククォートか `$(`
+  があると「判定不能」で `None` を返す。`--body-file` の中身はほぼ必ず Markdown のインラインコード
+  (バッククォート)を含むので、そのまま使うと関所が素通しになる。断片をそのまま判定し、断片どうしは空行で
+  区切る(前後の断片と繋がって別の段落になるのを防ぐ)。
+- 拒否の文は、`ja-polish <ファイル>` で書き直す手順と、`ja-polish` を単体で呼ぶ理由(リダイレクトで sandbox の
+  中に残る)を示す。
+- 対象外(意図あり・未実装): Codex の MCP ツール名(`mcp__codex_apps__…`)、Gmail 以外のメール、Google Drive の
+  ファイル作成、カレンダーの説明欄。
 
 ## 失敗したとき
 

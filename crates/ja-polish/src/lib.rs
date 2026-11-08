@@ -9,6 +9,7 @@
 //! - `polish`: 書き直しの本体と、未通過の段落の判定(`polish::pending`)
 //! - `records`: 通した段落の記録(形式の正本)
 //! - `config`: 設定ファイル。あれば有効な機体
+//! - `gate`: 投稿の関所(PreToolUse)。記録に無い日本語の段落を持つ本文を拒否する
 //! - `baseline`・`style`: 基点の内容と、書き直しの基準(文体規約)の取得
 //! - `app`: 1 回分の流れと報告
 
@@ -16,6 +17,7 @@ pub mod app;
 pub mod baseline;
 pub mod blocks;
 pub mod config;
+pub mod gate;
 pub mod llm;
 pub mod mask;
 pub mod polish;

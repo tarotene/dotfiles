@@ -268,6 +268,11 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+    n_ja_polish_gate: "ja-polish-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
     n_pr_followup_guard: "pr-followup-guard" {
       class: s_rust
       style.stroke: "#D55E00"
@@ -425,6 +430,9 @@ n_agent_session.l_tool_call.n_worktree_lease -> n_agent_session.l_stop.n_pr_gate
   class: e_file
 }
 n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_tool_call.n_new_tool_guard: "session ledger" {
+  class: e_file
+}
+l_manual.n_ja_polish -> n_agent_session.l_tool_call.n_ja_polish_gate: "records.jsonl (polished paragraphs)" {
   class: e_file
 }
 n_agent_session.l_tool_call.n_ci_wait_guard -> l_manual.n_pr_checks_wait: "points to" {

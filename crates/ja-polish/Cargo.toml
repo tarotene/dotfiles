@@ -11,6 +11,8 @@ description = "日本語の文書を llm 経由で Gemini に書き直させ、�
 # 判定を呼ぶ。記録の形式を 1 か所に保つため(docs/agents/ja-polish.md)。
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+command-inspection = { version = "0.1.0", path = "../command-inspection" }
+github-command = { version = "0.1.0", path = "../github-command" }
 hub-resolve = { version = "0.1.0", path = "../hub-resolve" }
 process-control = { version = "0.1.0", path = "../process-control" }
 regex = "1.13.1"
