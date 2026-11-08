@@ -360,6 +360,13 @@
         obsidian-livesync-cli = final.callPackage ./nix/obsidian-livesync-cli.nix { };
       };
 
+      # ja-polish が呼ぶ llm + llm-gemini(nixpkgs の版では gemini-3.8-flash を呼べない)。
+      # 理由と外す条件は nix/ja-polish-llm.nix の冒頭。home/modules/ja-polish.nix が、
+      # dotfiles.jaPolish.enable の機体にだけ入れる(会社の機体には配らない)。
+      jaPolishLlmOverlay = final: _prev: {
+        ja-polish-llm = final.callPackage ./nix/ja-polish-llm.nix { };
+      };
+
       mkPkgs =
         system:
         import nixpkgs {
@@ -370,6 +377,7 @@
             rustOverlay
             bleepHookOverlay
             livesyncCliOverlay
+            jaPolishLlmOverlay
           ]
           ++ lib.optionals (lib.hasSuffix "-linux" system) [ nixglOverlay ];
         };
@@ -494,6 +502,9 @@
           dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
           dotfiles-tools-fmt = rust.fmt;
+          # ja-polish が呼ぶ llm + llm-gemini。名前で参照しないと、CI がこの build を回さない
+          # (home/modules/ja-polish.nix は dotfiles.jaPolish.enable の機体にだけ入れる)。
+          ja-polish-llm = pkgsFor.${system}.ja-polish-llm;
         }
         // lib.optionalAttrs (system == linuxSystem) {
           # LiveSync CLI の build(leveldown などのネイティブ依存を含む)。`installCheckPhase` が

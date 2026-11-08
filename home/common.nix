@@ -37,6 +37,7 @@
     ./modules/runtimes.nix
     ./modules/hm-warnings.nix
     ./modules/pipeline.nix
+    ./modules/ja-polish.nix
   ];
 
   programs.home-manager.enable = true;

@@ -58,6 +58,11 @@ in
         "~/.clasprc.json"
         "~/.config/clasp"
         "~/.local/share/keyrings"
+        # llm's key store (`llm keys set gemini` writes keys.json here; macOS keeps the same
+        # directory under Application Support). ja-polish (home/modules/ja-polish.nix) reads it
+        # outside the sandbox; the agent itself must not read the key.
+        "~/.config/io.datasette.llm"
+        "~/Library/Application Support/io.datasette.llm"
       ];
       description = ''
         Credential paths excluded from ordinary file reads; use reviewed operations.
