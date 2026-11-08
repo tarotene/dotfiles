@@ -2,6 +2,7 @@
 
 `/my-desk` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは片付けの `/my-cleanup`、[my-cleanup.md](my-cleanup.md))。
 旧名 `daily-desk` はこのスキルへの転送口で、通知役の hook `daily-desk-reminder` は実行名のまま変えない。
+名前の付け方は[ツールの命名と配置](tooling-conventions.md)の「入口と知識の 2 層」にある。
 
 スキル: `config/agents/skills/my-desk/SKILL.md`
 hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)

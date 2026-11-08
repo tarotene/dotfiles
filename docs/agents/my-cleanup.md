@@ -2,6 +2,8 @@
 
 `/my-cleanup` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは朝の机の `/my-desk`)。旧名 `backlog-cleanup`
 (さらに前は `wrapup-chores`)と、open Issue の親子の整理を担っていた `issue-hygiene` は、このスキルへの転送口である。
+名前を `my-` で揃えた理由と、入口でないスキルを `/` の一覧から消す仕組みは、
+[ツールの命名と配置](tooling-conventions.md)の「入口と知識の 2 層」にある。
 
 ## 動機
 

@@ -1831,6 +1831,28 @@ let
       test -z "$(find "$out" -type l -print -quit)"
     ''
   );
+  # 入口と知識の 2 層(ADR-1400、docs/agents/tooling-conventions.md)。本人が手で打つ入口は
+  # 名前を `my-` で始める。それ以外のスキルは、Claude の `/` の一覧から隠す(SKILL.md の
+  # frontmatter の先頭に `user-invocable: false` を 1 行足す。エージェントは今までどおり文脈で選べる。
+  # Anthropic, "Extend Claude with skills", https://code.claude.com/docs/en/skills, 取得 2026-11-08)。
+  # 隠す対象は名前だけから導き、スキルごとの宣言も手書きの一覧も持たない。Codex の公式文書
+  # (https://learn.chatgpt.com/docs/build-skills, 取得 2026-11-08)には、本人の一覧から隠す設定の
+  # 記述が無い(`allow_implicit_invocation` は逆向きの設定)ので、`.agents/skills` には足さない。
+  entrySkillPrefix = "my-";
+  isEntrySkill = name: lib.hasPrefix entrySkillPrefix name;
+  hiddenFromMenu =
+    name: dist:
+    pkgs.runCommand "agent-skill-${name}-hidden" { } ''
+      mkdir -p "$out"
+      cp -r ${dist}/. "$out/"
+      chmod -R u+w "$out"
+      awk 'NR == 1 && $0 == "---" { print; print "user-invocable: false"; next } { print }' ${dist}/SKILL.md > "$out/SKILL.md"
+      test "$(sed -n 2p "$out/SKILL.md")" = "user-invocable: false"
+    '';
+  claudeSkillDistributions = lib.mapAttrs (
+    name: dist:
+    if builtins.elem name skillNames && !isEntrySkill name then hiddenFromMenu name dist else dist
+  ) skillDistributions;
   skillFiles = lib.listToAttrs (
     lib.concatMap
       (
@@ -1839,7 +1861,8 @@ let
           (name: {
             name = "${root}/${name}";
             value = {
-              source = skillDistributions.${name};
+              source =
+                if root == ".claude/skills" then claudeSkillDistributions.${name} else skillDistributions.${name};
               recursive = false;
             };
           })

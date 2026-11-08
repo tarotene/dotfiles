@@ -21,6 +21,33 @@
 発火イベントは登録宣言が持つ。PreToolUse・Stop といった時点から接尾辞を決めない。
 許可の裏付けを返す `allow`、状態を知らせる `advisory` など、上の三語以外も責務に合えば使う。
 
+## 入口と知識の 2 層(ADR-1400)
+
+skill は、使われ方で 2 層に分け、名前の付け方も層ごとに変える。上の「名前は責務を端的に説明する」は、知識の層に当てる。
+
+| 層 | 使われ方 | 名前 | `/` の一覧 |
+|---|---|---|---|
+| 入口 | 本人が習慣として手で打つ。数本に絞る | `my-` + 「いつ打つか」で覚えられる語(`my-desk`・`my-cleanup`) | 出る |
+| 知識 | エージェントが文脈で選ぶ。本人は名前を覚えなくてよい | 責務を表す名前(従来どおり) | 出ない |
+
+- **理由**: 責務を正確に表す名前は、毎日手で打つ名前としては覚えにくい。2026-11-08 に過去の会話記録で手打ちの回数を数えると、
+  旧名 `/wrapup-chores` は 32 回打たれていたが、責務どおりに改名した `/backlog-cleanup` は 0 回で、習慣の名前が切れていた。
+  一覧に全 skill が並ぶと、`/` を打っても習慣の入口を探せない。入口に共通の接頭辞を付ければ、覚えるのは `/my` だけになる。
+- **隠す仕組みは名前から導く**: `home/modules/agents.nix` が、`my-` で始まらない skill の `SKILL.md` に、frontmatter の先頭の 1 行として
+  `user-invocable: false` を足して Claude 用に配る。この設定は、`/` の一覧から消し、`/名前` と打っても動かさず、エージェントは
+  今までどおり文脈で選べる(Anthropic, "Extend Claude with skills", https://code.claude.com/docs/en/skills, 取得 2026-11-08)。
+  skill ごとの宣言も手書きの一覧も持たない。`checks.<system>.agent-skills` は、隠した skill の `SKILL.md` が、2 行目の 1 行を除いて元と
+  一致すること、入口に足されていないこと、Codex 用(`.agents/skills`)に足されていないことを検査する。
+- **Codex では隠さない**: Codex の公式文書(https://learn.chatgpt.com/docs/build-skills, 取得 2026-11-08)には、本人の一覧から隠す設定が無い
+  (`allow_implicit_invocation` は逆向きの設定)ので、Codex 用には足さない。Codex では接頭辞で絞るだけになる。
+- **新しい skill は、既定で知識の層**に置く。入口にするのは、手打ちの実績があるときだけにする。実績は会話記録から数える:
+  `grep -rhoE '<command-name>/[a-z0-9:-]+</command-name>' ~/.claude/projects --include='*.jsonl' | sort | uniq -c | sort -rn`。
+  入口にするときは名前を `my-` で始め、`config/agents/skills/agent-tooling-authoring/SKILL.md` の配線チェックリストに従う。
+- **旧名の入口(互換入口)は知識の層**として隠れる。本人が旧名を打つ習慣は、新名(`my-` の入口)に移る。
+- **第三者製 skill は upstream の名前のまま**で、隠さない(`/grill-me` など)。
+- **他のリポジトリのプロジェクト skill にも同じ規約を当てる**。そちらは配布の仕組みを共有しないので、入口でない skill の
+  frontmatter に `user-invocable: false` を手で書く。
+
 ## 正本と配布を分ける
 
 共有 skill は `config/agents/skills/`、共有参照資料は `config/agents/reference/`、共有指示は
@@ -48,7 +75,7 @@ Claude 専用のままとする。`repo-governance-common` は補助ディレク
 各ディレクトリをビルド時にコピーし、相対リンクを実体化したうえで共有スクリプト・ruleset・
 参照資料を合成する。実行権限を保持し、Home Manager は `recursive = false` で
 ディレクトリ全体へのリンクを配置する。`SKILL.md` 自体をリンクにしない。
-`checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致、実行権限を検査する。
+`checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致(Claude 用で隠した `SKILL.md` は、足した 1 行を除く)、実行権限を検査する。
 
 既存のファイル単位配布からは `hms .` の `-b backup` で移行する。旧ディレクトリは
 同じ場所の `<スキル名>.backup` に残る。同名のバックアップがあれば適用が止まるため、
