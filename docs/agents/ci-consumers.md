@@ -62,6 +62,17 @@ $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
   忘れて CI の `Rust workspace` が落ちた)。移植の完了に伴い、2026-10-24 に撤去した(ADR-0024
   Amendment 5)。新しい道具の既定が Rust であることは、`docs/rust-migration.md` の「新しい道具の既定」を参照。
 
+## どのリポジトリでも呼べる
+
+`home/modules/packages.nix` が、この script を `~/.local/bin/ci-consumers` に置く(`adr-number-check`
+と同じ置き方)。script は cwd の git の根(`git rev-parse --show-toplevel`)を見るので、
+`scripts/ci-consumers` を持たないリポジトリの根でも、`ci-consumers <path>...` で呼べる。そのリポジトリの
+`.github/`・`scripts/`・`crates/*/tests/` のうち、あるものだけを探す。
+
+置く前は、`pr-description` スキル §6a が指す `scripts/ci-consumers` が無いリポジトリで終了コード 127 になり、
+消費者の確認を手で代替した(別のリポジトリで 4 回記録された)。PATH に無い機体(`hms` 前)のための
+代替は、同スキル §6a の `git grep -n -F -- '<path>' -- .github/`。
+
 ## 登録
 
 - `scripts/ci-consumers --selftest` は `.github/workflows/ci.yml`(`Escape-hatch dry-run` job)が実行する。

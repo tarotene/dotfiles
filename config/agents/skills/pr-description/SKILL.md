@@ -225,10 +225,23 @@ PR 作成後に残作業(マージ後の適用・外部サービスでの操作�
 ## 6a. 検証に「消費者の確認」を含める
 
 PR 本文の「検証」には、編集したファイルを入力にする CI の検査(消費者)を引いた結果も書く。
-`scripts/ci-consumers <編集したパス>...` が、そのパスを読む workflow の step・composite action・
-scripts・crates の tests を列挙する。出た step を手元で走らせた結果(または、消費者が無いこと)を、
-コマンドと結果で書く。ファイルを一括編集する前に引かないと、配布元テンプレートとのバイト一致の
-検査のように、そのファイルを入力にする CI が、CI で初めて落ちる(`docs/agents/ci-consumers.md`)。
+`ci-consumers <編集したパス>...`(リポジトリの根で呼ぶ)が、そのパスを読む workflow の step・
+composite action・scripts・crates の tests を列挙する。出た step を手元で走らせた結果(または、
+消費者が無いこと)を、コマンドと結果で書く。ファイルを一括編集する前に引かないと、配布元
+テンプレートとのバイト一致の検査のように、そのファイルを入力にする CI が、CI で初めて落ちる
+(`docs/agents/ci-consumers.md`)。
+
+`ci-consumers` は home-manager が `~/.local/bin` に置くので、どのリポジトリの根でも呼べる。PATH に
+無くて終了コード 127 になる(まだ `hms` していない機体など)ときは、次の代替で同じ問いに答える:
+
+```
+git grep -n -F -- '<編集したパス>' -- .github/
+```
+
+出た workflow の step を読み、そのパスを入力にする検査(`run:` のコマンド、`paths:` の絞り込み、
+composite action の入力)を列挙して、検証に書く。リポジトリに `scripts/` や `crates/*/tests/` が
+あるときは、`-- .github/ scripts/ 'crates/*/tests/'` のように範囲を足す。`git grep` は固定文字列の
+検索なので、パスを組み立てて参照する消費者は拾えない(拾えないことと、無いことは別)。
 
 ## 7. 完成の定義(二層)
 
