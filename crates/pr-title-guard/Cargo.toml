@@ -13,4 +13,4 @@ git-repository = { version = "0.1.0", path = "../git-repository" }
 pr-title-check = { version = "0.1.0", path = "../pr-title-check" }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

@@ -7,7 +7,7 @@ publish.workspace = true
 description = "hms — home-manager switch の正準適用ラッパ(scripts/hms.sh の Rust 移植、ADR-0024 / ADR-0034)"
 
 [dependencies]
-serde_json = "1.0.151"
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

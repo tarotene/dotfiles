@@ -10,4 +10,4 @@ process-control = { version = "0.1.0", path = "../process-control" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

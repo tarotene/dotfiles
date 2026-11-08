@@ -12,7 +12,7 @@ issue-inbox = { version = "0.1.0", path = "../issue-inbox" }
 cmd-hash-log = { version = "0.1.0", path = "../cmd-hash-log" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 vault-note = { version = "0.1.0", path = "../vault-note" }
-serde_json = "1.0.151"
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

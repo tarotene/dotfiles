@@ -6,13 +6,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-indexmap = "2.14.2"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-sha2 = "0.10.9"
+indexmap.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
 # `~/.codex/config.toml` の宣言キーだけを書式・コメントごと保って書き換える(codex_config)。
 # 既存の Cargo.lock に推移的に入っている版(snapbox 経由)に揃える。
-toml_edit = { version = "0.25.15", default-features = false, features = ["parse", "display"] }
+toml_edit = { workspace = true, features = ["parse", "display"] }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

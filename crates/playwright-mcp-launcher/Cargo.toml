@@ -7,8 +7,8 @@ publish.workspace = true
 description = "Playwright MCP の起動ラッパー(普段の Firefox プロファイルの複製で素の Firefox を操作する)"
 
 [dependencies]
-libc = "0.2.189"
+libc.workspace = true
 process-control = { version = "0.1.0", path = "../process-control" }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

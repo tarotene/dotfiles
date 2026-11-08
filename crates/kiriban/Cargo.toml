@@ -11,4 +11,4 @@ publish.workspace = true
 [dependencies]
 
 [dev-dependencies]
-trycmd = "1.2.1"
+trycmd.workspace = true

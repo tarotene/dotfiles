@@ -10,13 +10,13 @@ agent-observations = { path = "../agent-observations" }
 codex-launcher = { path = "../codex-launcher" }
 github-command = { path = "../github-command" }
 model-catalog = { path = "../model-catalog" }
-anyhow = "1"
-futures-util = { version = "0.3", features = ["sink"] }
-libc = "0.2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0.151"
-tempfile = "3.27.0"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "net", "io-util", "signal", "time"] }
-tokio-tungstenite = "0.28"
-tokio-util = { version = "0.7", features = ["codec"] }
-toml = "1.1.8"
+anyhow.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "process", "net", "io-util", "signal", "time"] }
+tokio-tungstenite.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+toml = { workspace = true, features = ["default"] }

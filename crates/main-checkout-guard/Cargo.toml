@@ -9,7 +9,7 @@ publish.workspace = true
 agent-session = { version = "0.1.0", path = "../agent-session" }
 command-inspection = { version = "0.1.0", path = "../command-inspection" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
-serde_json = "1.0.151"
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

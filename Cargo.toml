@@ -11,6 +11,33 @@ edition = "2021"
 license = "MIT"
 publish = false
 
+# 外部依存の版は、ここが唯一の正本。メンバーは `name.workspace = true` で継承し、
+# 必要な feature だけを `features = [...]` で足す(`default-features` は、ここで決める)。
+# 例外は pr-title-check と pr-contract-check の 2 つだけで、他リポジトリの CI が
+# 1 crate ずつ sparse-checkout するため、標準ライブラリだけに保つ
+# (docs/agents/repo-structure-check.md、crates/repo-structure-check が検査する)。
+[workspace.dependencies]
+aho-corasick = "1.1.5"
+anyhow = "1"
+filetime = "0.2.29"
+futures-util = "0.3"
+globset = "0.4.16"
+indexmap = "2.14.2"
+jiff = { version = "0.2.37", default-features = false }
+libc = "0.2.189"
+regex = "1.13.1"
+schemars = "1.0"
+serde = "1.0.229"
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+tempfile = "3.27.0"
+tokio = "1"
+tokio-tungstenite = "0.28"
+tokio-util = "0.7"
+toml = { version = "1.1.8", default-features = false }
+toml_edit = { version = "0.25.15", default-features = false }
+trycmd = "1.2.1"
+
 [profile.release]
 # LTO は off(2026-10-24、docs/rust-workspace-measurements.md §5)。69 本の bin
 # それぞれに fat LTO のリンクが走り、クリーンビルドは 107 秒、hook-io を 1 行

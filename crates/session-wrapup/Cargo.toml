@@ -10,8 +10,8 @@ agent-session = { version = "0.1.0", path = "../agent-session" }
 issue-inbox = { version = "0.1.0", path = "../issue-inbox" }
 session-retrospective = { version = "0.1.0", path = "../session-retrospective" }
 feedback-trial = { version = "0.1.0", path = "../feedback-trial" }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

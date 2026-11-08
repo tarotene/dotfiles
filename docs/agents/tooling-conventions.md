@@ -66,6 +66,14 @@ skill の frontmatter の `name` は、その `SKILL.md` を含むディレク�
 `repo-governance-common/reference/ci-failures.md`、人手タスクの予定化は `human-task-scheduling` を正本とする。
 利用する skill には、その場面で必ず読む指示を残す。
 
+### 外部依存の版は workspace に集める
+
+外部依存の版と `default-features` は、root の `Cargo.toml` の `[workspace.dependencies]` が唯一の正本。
+メンバー crate は `name.workspace = true` で継承し、必要な feature だけを `features = [...]` で足す。
+例外は `pr-title-check` と `pr-contract-check` の 2 つで、他リポジトリの CI が 1 crate ずつ sparse-checkout して
+build するため、`[dependencies]` を空(標準ライブラリだけ)に保つ。検査は
+[`repo-structure-check`](repo-structure-check.md)(`cargo test`)が行う。
+
 ### スキルはディレクトリ単位で配布する
 
 `home/modules/agents.nix` がソースの `SKILL.md` から配布対象を導出する。
