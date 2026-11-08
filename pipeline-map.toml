@@ -176,7 +176,7 @@ node = [
   { id = "pr-description", label = "skill: pr-description", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["implement-to-pr"], entity = "config/agents/skills/pr-description", doc = "docs/agents/pr-description.md", auto = false },
   { id = "handoff", label = "skill: handoff", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["implement-to-pr"], entity = "config/agents/skills/handoff", doc = "docs/agents/handoff.md", auto = false },
   { id = "retro", label = "skill: retro", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["wrapup-to-issue"], entity = "config/agents/skills/retro", doc = "docs/agents/retro.md", auto = false },
-  { id = "backlog-cleanup", label = "skill: backlog-cleanup", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["wrapup-to-issue"], entity = "config/agents/skills/backlog-cleanup", doc = "docs/agents/backlog-cleanup.md", auto = false },
+  { id = "my-cleanup", label = "skill: my-cleanup", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["wrapup-to-issue"], entity = "config/agents/skills/my-cleanup", doc = "docs/agents/my-cleanup.md", auto = false },
   { id = "repo-charter", label = "skill: repo-charter", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["repo-governance"], entity = "config/agents/skills/repo-charter", doc = "docs/agents/repo-charter.md", auto = false },
   { id = "github-audit-triage", label = "skill: github-audit-triage", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["repo-governance"], entity = "config/agents/skills/github-audit-triage", doc = "docs/agents/github-audit-triage.md", auto = false },
   { id = "claude-routines", label = "skill: claude-routines", lane = "manual", group = "skills", stack = "skill", llm = true, pipelines = ["routines"], entity = "config/agents/skills/claude-routines", doc = "docs/claude/claude-routines.md", auto = false },
@@ -342,9 +342,9 @@ edge = [
   { from = "github", to = "promotion-detect", kind = "context", label = "feedback Issues", pipelines = ["wrapup-to-issue"] },
   { from = "feedback-target-guard", to = "agent-session", kind = "deny", label = "no Target:", pipelines = ["wrapup-to-issue"] },
   { from = "issue-create-guard", to = "agent-session", kind = "deny", label = "no ball label / next line", pipelines = ["wrapup-to-issue"] },
-  { from = "backlog-cleanup", to = "wrapup-inbox", kind = "file", label = "sweep (no vault)", pipelines = ["wrapup-to-issue"] },
-  { from = "backlog-cleanup", to = "obsidian-vault", kind = "file", label = "sweep open notes / set-status", pipelines = ["wrapup-to-issue"] },
-  { from = "backlog-cleanup", to = "github", kind = "pr", label = "chores PRs", pipelines = ["wrapup-to-issue"] },
+  { from = "my-cleanup", to = "wrapup-inbox", kind = "file", label = "sweep (no vault)", pipelines = ["wrapup-to-issue"] },
+  { from = "my-cleanup", to = "obsidian-vault", kind = "file", label = "sweep open notes / set-status", pipelines = ["wrapup-to-issue"] },
+  { from = "my-cleanup", to = "github", kind = "pr", label = "chores PRs", pipelines = ["wrapup-to-issue"] },
 
   # === Repo governance
   { from = "github", to = "github-audit", kind = "context", label = "REST / GraphQL", pipelines = ["repo-governance"] },

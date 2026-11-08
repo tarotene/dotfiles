@@ -827,7 +827,7 @@ pub use agent_session::legacy_input::{read_hook_stdin, HookJson};
 use git_repository::raw as git_ok;
 
 // ---------------------------------------------------------------------------
-// 裁定の入口: open な気づきの一覧と、状態の変更(backlog-cleanup が使う)
+// 裁定の入口: open な気づきの一覧と、状態の変更(my-cleanup が使う)
 
 /// `--repo R` / `--reason R` / `--json` と位置引数に分けたもの。
 struct Flags<'a> {
@@ -1219,7 +1219,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
     }
 
     // vault を宣言している機体では、jsonl に残っている行を移す。気づきの起票は Stop では求めない
-    // (裁定は backlog-cleanup。ADR-1136)。
+    // (裁定は my-cleanup。ADR-1136)。
     if let Err(e) = drain_to_vault(&project) {
         eprintln!("wrapup-stop-gate: drain: {e}");
     }

@@ -1,4 +1,7 @@
-# backlog-cleanup — wrap-up inbox の気づきを、本人が裁定して stacked PR で一括消化するスキル
+# my-cleanup — 片付けの入口: wrap-up inbox の気づきと open Issue を、本人が裁定して stacked PR で一括消化するスキル
+
+`/my-cleanup` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは朝の机の `/my-desk`)。旧名 `backlog-cleanup`
+(さらに前は `wrapup-chores`)と、open Issue の親子の整理を担っていた `issue-hygiene` は、このスキルへの転送口である。
 
 ## 動機
 
@@ -161,3 +164,29 @@ title / detail をそのまま列挙することで監査可能性を担保し�
 - hook の `--add`/`--mark-filed`/`--check-dup` の契約・`~/.claude/settings.json` の登録は
   変更しない。気づきの収集は `--list-open`、状態の変更は `--set-status` に限り、ノートと jsonl の
   直接編集は禁止のまま。vault の絶対パスをスキルが知る必要は無い。
+
+## issue-hygiene の取り込み(Issue の構造の整理を、片付けの 1 段にした理由)
+
+`issue-hygiene` は、open Issue を出自(同一 ADR・先行 PR・構想)ごとに GitHub の sub-issues で束ね、腐った
+tracking Issue を清算する手順だった。このスキルの母集団(open Issue 全件。§1)と同じ集合を読み、
+同じ集合を別の入口から触っていた。互いを参照せず、停滞 Issue の扱いも食い違っていた
+(`my-cleanup` は裁定を経て `Obsolete:` で閉じ、`issue-hygiene` §8 は「ユーザーの明示判断なしに閉じない」)。
+ADR-1293 D2 は、同じ対象の同じ遷移を担う skill を統合の候補とし、統合は後の段で行うとしていた。
+ADR-1301 の Consequences は、`issue-hygiene` に単独で担う事象が無いことを記録していた。今回がその後の段にあたる。
+
+取り込んだものは SKILL.md の §2a にある。親子の操作・`tracking` ラベル・閉じ方の正本は、これまでどおり
+`tracking-issue`(§2・§4・§6・§7)に 1 つだけ置き、ここには複写しない(#1299 で複写を参照に直した判断を引き継ぐ)。
+
+- **sub-issues を使い、本文にチェックボックスを書かない**: チェックボックスは子の状態と同期せず、全子が closed
+  でも親が open のまま残る腐敗が実際に起きた。sub-issues は進捗を GitHub が集計する。
+- **束ねる根拠は出自**: 「同じ時期に起票された」だけでは束ねない。運用領域で束ねるときは傘の本文に理由を書く。
+  「open Issue の数を減らしたいから」は根拠にならず、2 件程度の傘も乱立させない。
+- **昇格候補は 3 経路で機械的に洗い出す**: 本文の `- [ ] #NN`、`Closes` が 2 本以上ぶら下がる Issue、親子未設定の
+  クラスタ。事後昇格は誰かが操作しないと起きないため。
+- **停滞 Issue は構造の整理では閉じない**: 閉じるのは §4 の裁定で本人が選んだものだけ。これで 2 つのスキルの食い違いが
+  1 つの規則になった。
+- **PR を伴わない操作**は、段の PR とは別に、GO のあとでまとめて行う。
+
+`github-audit-triage`(全リポジトリの監査結果のずれ)と `issue-ref-freshness`(他リポジトリの Issue 参照の鮮度)は、
+読む対象が違う(母集団が open Issue でない)ので取り込まず、`/` の一覧から隠した知識スキルとして残し、
+このスキルの手順から呼ぶ。

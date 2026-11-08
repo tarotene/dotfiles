@@ -17,7 +17,7 @@ fn expected_json(inbox: &str, pending: usize) -> String {
          \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
          A finding becomes a note in the user's vault (inbox/, one note per title; the same title\n\
          adds a row instead of a duplicate) or, on a machine without a vault, a line in the jsonl above.\n\
-         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /backlog-cleanup,\n\
+         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /my-cleanup,\n\
          which fixes them by PR and files an Issue only for the ones the user picks. Do not file an\n\
          Issue for a finding yourself, and do not edit the inbox directly (always go through --add).",
         gate = gate.display()

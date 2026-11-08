@@ -118,7 +118,7 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
          \x20 '{gate}' --add '{inbox}' '{{\"ts\": \"<ISO8601>\", \"title\": \"<title>\", \"detail\": \"<what and why>\"}}'\n\
          A finding becomes a note in the user's vault (inbox/, one note per title; the same title\n\
          adds a row instead of a duplicate) or, on a machine without a vault, a line in the jsonl above.\n\
-         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /backlog-cleanup,\n\
+         It is NOT filed as a GitHub Issue: the user adjudicates findings later with /my-cleanup,\n\
          which fixes them by PR and files an Issue only for the ones the user picks. Do not file an\n\
          Issue for a finding yourself, and do not edit the inbox directly (always go through --add)."
     );
@@ -162,7 +162,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> i32 {
             | "--mark-filed"
             | "--selftest",
         ) => issue_inbox::gate_main(self_path, args),
-        // 起票の手順書と実行中の印は無くなった(気づきは vault に入り、裁定は backlog-cleanup)。
+        // 起票の手順書と実行中の印は無くなった(気づきは vault に入り、裁定は my-cleanup)。
         // 未知のフラグは Stop hook として動いてしまうので、無言で通さず、はっきり断る。
         Some(flag @ ("--procedure" | "--chores-begin" | "--chores-end")) => {
             eprintln!(

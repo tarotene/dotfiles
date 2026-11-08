@@ -26,7 +26,7 @@
 #    (`session-wrapup stop`)は気づきの起票を求めない。jsonl に残った行を vault へ移し、
 #    更新した feedback memory に `#N` が無いときと、振り返り・期限付き試行の未完了のときだけ
 #    exit 2 + stderr で指示する。それ以外は黙って exit 0(ADR-0005 の binary-existence
-#    gating に倣う)。裁定は本人が `/backlog-cleanup` で行い、Issue にするのは裁定で選んだものだけ。
+#    gating に倣う)。裁定は本人が `/my-cleanup` で行い、Issue にするのは裁定で選んだものだけ。
 #    旧 `wrapup-stop-gate` / `wrapup-session-start` は互換入口として配備だけ残している
 #    (削除条件は docs/agents/tooling-migration.md)。詳細は docs/agents/wrapup-inbox.md。
 #
@@ -126,7 +126,7 @@
 #
 # 12) 個人スキル(diagramming, agent-tooling-authoring, living-description,
 #     issue-ref-freshness, pr-description,
-#     backlog-cleanup, model-pin-update, issue-hygiene, tracking-issue, stacked-pr):
+#     my-cleanup(旧 backlog-cleanup・issue-hygiene を含む), model-pin-update, tracking-issue, stacked-pr):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
 #    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
@@ -141,21 +141,21 @@
 #    (常時監視の timer は置かず、機会発動 + 手動の一括点検)。pr-description は PR 本文の標準スケルトン(課題・
 #    解決策・Before/After・検証・要確認)と、見た目に影響する変更には Before/After
 #    証跡を必ず添える習慣を持つ — 証跡の有無は 5) の pr-gate(G_visual)が機械強制
-#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。backlog-cleanup
+#    し、対比の完全性(ペア性)はこのスキルの責務として二層に分ける。my-cleanup
 #    は 2) の wrap-up inbox の未裁定の気づき(vault の open なノート)と、起票済みの
 #    wrapup 由来 open Issue をまとめて棚卸しし、本人が 1 件ずつ裁定したうえで、直せるものを
 #    stacked PR で一括対処する習慣 — 状態の更新は `issue-inbox --set-status` を使う。
 #    model-pin-update は外部 AI CLI(Copilot CLI 等)に固定 pin した具体モデル ID を、ベンダー側の GA・廃止サイクルに追従して更新する
-#    定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。issue-hygiene
+#    定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。my-cleanup の §2a(旧 issue-hygiene)
 #    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
 #    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
 #    未更新のまま open で残る「腐った tracking Issue」を清算する定期衛生管理の手順
 #    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。tracking-issue
-#    は issue-hygiene から「書く/更新する」側を分離したスキルで、親 Issue を起票・
+#    は旧 issue-hygiene から「書く/更新する」側を分離したスキルで、親 Issue を起票・
 #    更新するときの本文スケルトン(目的/スコープ・完了定義・傘の外への依存・
 #    スコープ外 + 維持義務の一文)・禁止事項(子 Issue へのチェックボックス参照・
 #    期日の本文への記載・親を議論の場にすること)・`tracking` ラベルによる
-#    findability を持つ。issue-hygiene は事後の衛生管理(clean up)、tracking-issue
+#    findability を持つ。my-cleanup §2a は事後の衛生管理(clean up)、tracking-issue
 #    は起票・更新時の書式(write)に責務を分ける。stacked-pr は
 #    PR 同士に依存関係がある(先行 PR の成果物を後続が参照する、または同一ファイルの
 #    同じ節を逐次編集する)ときに main 起点で並行させず base を親ブランチにした
@@ -167,8 +167,8 @@
 #    docs/agents/diagramming.md、docs/agents/agent-tooling-authoring.md、
 #    docs/agents/living-description.md、docs/agents/issue-ref-freshness.md、
 #    docs/agents/pr-description.md、
-#    docs/agents/backlog-cleanup.md、docs/agents/model-pin-update.md、
-#    docs/agents/issue-hygiene.md、docs/agents/tracking-issue.md、
+#    docs/agents/my-cleanup.md、docs/agents/model-pin-update.md、
+#    docs/agents/tracking-issue.md、
 #    docs/agents/stacked-pr.md
 #    (腐る事実は docs/stacked-pr-github-native.md に切り出す、ADR-0008)。
 #    presentation-authoring は発表のスライドを作るとき、発表原稿(単独で練習でき、

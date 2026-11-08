@@ -24,7 +24,7 @@ PR を作ったセッション、またはその場で書いたコードの痕�
    `retro/<年>/` に 1 件のノートとして書き出し、読み戻してから完了にする(PR にはコメントしない。表を
    自分で書き直さない)。vault の無い機体では、台帳に残したまま完了になる。
 5. `disposition: inbox` にした行は、通常の気づきと同じく inbox(vault のノート、vault の無い機体では
-   jsonl)に入る。Issue にはならず、`/backlog-cleanup` で本人が裁定する。ここで直接
+   jsonl)に入る。Issue にはならず、`/my-cleanup` で本人が裁定する。ここで直接
    `gh issue create` しない。ただし `kind: user-correction` の行は `inbox` にできない(共有 AGENTS.md の
    「フィードバックは Issue 化」)。先に `gh issue create` で Issue にして `issue:#<N>` と書くか、
    プロジェクト固有・機微な内容なら `none:<理由>` と書く。

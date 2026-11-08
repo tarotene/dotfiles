@@ -51,7 +51,7 @@ Stop で `pr-gate` が、push・PR・Issue のリンク・見た目の証跡・s
 Stop で `wrapup-stop-gate` が inbox に未起票の行があれば止め、エージェントが `gh issue create` で Issue にする。
 bleep と pre-push の走査は verdict ledger に判定を書き、同じ指紋の deny / ask が 3 回たまると、Stop の gate が呼ぶ `verdict-escalate` が inbox に行を足す([`verdict-escalate.md`](agents/verdict-escalate.md))。
 `promotion-detect`(日次)は、実行したコマンドのハッシュと feedback の Issue を読み、決定論へ昇格させる候補を inbox に足す。
-retro の skill は振り返りの行を足し、backlog-cleanup の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
+retro の skill は振り返りの行を足し、my-cleanup の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
 
 ### P4 repo governance
 

@@ -8,7 +8,7 @@
 
 PR を作ったセッション、またはその場で書いたコードの痕跡(下の「その場のコードの痕跡」)がしきい値を超えた
 セッションの最初の Stop で、`wrapup-stop-gate` がセッション全体の振り返りを求める。全行は、`--retro-close` が vault の `retro/` に 1 件のノートとして書き出す(PR にはコメントしない。
-ADR-1136 の段2、ADR-697 の Amendment)。出口(inbox → `/backlog-cleanup` での裁定)は [wrap-up inbox](wrapup-inbox.md) と
+ADR-1136 の段2、ADR-697 の Amendment)。出口(inbox → `/my-cleanup` での裁定)は [wrap-up inbox](wrapup-inbox.md) と
 共有し、入口と強制だけが別。`disposition: inbox` の行は Issue にならず、vault のノートに溜まる。決定の理由と代替案は
 [ADR-697](../adr/697-retro-stop-gate.md)。
 

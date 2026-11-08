@@ -1,6 +1,6 @@
 ---
 name: tracking-issue
-description: 複数の子作業を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と GitHub sub-issues の二重管理を避け、更新すべき箇所を最小化する。Tracking Issue を作る・親 Issue に昇格させる・傘の本文を書く・umbrella issue・epic issue・tracking issue template、といった文脈で使う。issue-hygiene(既存の傘を清算する事後衛生管理)とは役割が異なる — こちらは書く/更新する側。
+description: 複数の子作業を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と GitHub sub-issues の二重管理を避け、更新すべき箇所を最小化する。Tracking Issue を作る・親 Issue に昇格させる・傘の本文を書く・umbrella issue・epic issue・tracking issue template、といった文脈で使う。my-cleanup の §2a(既存の傘を清算する事後の棚卸し。旧 issue-hygiene)とは役割が異なる — こちらは書く/更新する側。
 ---
 
 複数の子作業を束ねる親 Issue は、本文に子の一覧を手書きすると GitHub ネイティブ sub-issues の自動集計と二重管理になり、どちらかが更新を止めた瞬間に腐る。このスキルは「親に何を書き、何を書かないか」を固定し、更新すべき箇所そのものを最小化する。
@@ -67,7 +67,7 @@ Issue 化しない粒度の受け入れ条件・作業ステップ(手順の各�
 - **完了**: 全 sub-issue が closed かつ `## 完了定義` の一文が満たされている → `completed` 理由でクローズ。
 - **放棄**: スコープを諦めた場合 → `not planned` 理由でクローズし、本文に一言(いつ・なぜ諦めたか)を残す。
 
-腐って放置された傘の清算手順・定期衛生管理は `issue-hygiene` スキルが持つ(このスキルは書く/更新する側、`issue-hygiene` は事後の棚卸し・清算側)。
+腐って放置された傘の清算手順・定期衛生管理は `my-cleanup` スキルの §2a(旧 `issue-hygiene`)が持つ(このスキルは書く/更新する側、`my-cleanup` §2a は事後の棚卸し・清算側)。
 
 ## サニタイズ
 
