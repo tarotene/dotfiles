@@ -1,7 +1,7 @@
 {
   "concrete": "inbox-finding",
   "abstract": "awaiting-item",
-  "description": "作業中の気づき(issue-inbox、config/agents/wrapup-inbox/vocabulary.json)の、裁定待ちの項目への具体化。気づきは「裁定済み」を記録しない: 本人の裁定は backlog-cleanup の問いで行い、結果(fixed・issued・dropped)だけが残る。裁定されないまま放置された open は、lapse_after_days 日で lapsed になる(ADR-0000)。",
+  "description": "作業中の気づき(issue-inbox、config/agents/wrapup-inbox/vocabulary.json)の、裁定待ちの項目への具体化。気づきは「裁定済み」を記録しない: 本人の裁定は backlog-cleanup の問いで行い、結果(fixed・issued・dropped)だけが残る。裁定されないまま放置された open は、lapse_after_days 日で lapsed になる(ADR-1381)。",
   "states": {
     "open": "shown",
     "fixed": "settled",

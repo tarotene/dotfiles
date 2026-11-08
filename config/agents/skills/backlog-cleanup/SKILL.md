@@ -327,7 +327,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   変える主体はこの機構には存在しない。PR 作成直後に変えておけば、記録は PR 本文と commit に
   恒久的に残る。
 - 直したはずの気づきが再発したときは、`--add` がノートを自動で open に戻す(再発の行が足される)。
-- 裁定されないまま `open` で 14 日たった気づきは、日次の `promotion-detect` が `lapsed` にする(ADR-0000)。`lapsed` は
+- 裁定されないまま `open` で 14 日たった気づきは、日次の `promotion-detect` が `lapsed` にする(ADR-1381)。`lapsed` は
   `--list-open` に出ない。再発すれば `--add` が open に戻し、`--set-status` で `fixed`・`dropped` にも進められる。
 
 ## 9. 完成の定義

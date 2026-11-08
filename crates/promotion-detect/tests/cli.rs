@@ -454,7 +454,7 @@ fn an_unchanged_discrepancy_is_not_added_again_on_the_next_day() {
     assert_eq!(w.add_log(), first, "同じ食い違いを翌日も入れ直した");
 }
 
-// ---- 気づきの失効(ADR-0000): open のまま 14 日放置された気づきを lapsed にする ----
+// ---- 気づきの失効(ADR-1381): open のまま 14 日放置された気づきを lapsed にする ----
 
 fn days_ago(n: u64) -> String {
     let now = std::time::SystemTime::now()

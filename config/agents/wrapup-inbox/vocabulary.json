@@ -1,7 +1,7 @@
 {
   "version": 1,
   "object": "inbox-finding",
-  "description": "作業中の気づき(wrap-up inbox の 1 ノート)の状態と事象の閉語彙。実装は crates/issue-inbox/src/vault.rs(状態 open|fixed|issued|dropped|lapsed は STATUSES、再発で fixed・dropped・lapsed が open に戻り issued は戻らない規則は add_item、open の失効は sweep)。この語彙は実装の記述で、実装を駆動しない。語彙が実装と矛盾しないことは crates/issue-inbox のテスト(vocabulary_matches_vault_rules)が確かめる。fixed・dropped・lapsed は「閉じているが、再発を待つ」非終端で、終端は issued だけ(以後は Issue が追う)。open は、最後の行(初出か再発)から lapse_after_days 日たつと、日次の timer(promotion-detect)が全 repo のノートに対して lapsed にする(ADR-0000)。lapsed は裁定の手順(--set-status)で fixed・dropped にも進める。放置された open は、失効の前も、セッション開始時の hook が出す未裁定の件数で再通知される。",
+  "description": "作業中の気づき(wrap-up inbox の 1 ノート)の状態と事象の閉語彙。実装は crates/issue-inbox/src/vault.rs(状態 open|fixed|issued|dropped|lapsed は STATUSES、再発で fixed・dropped・lapsed が open に戻り issued は戻らない規則は add_item、open の失効は sweep)。この語彙は実装の記述で、実装を駆動しない。語彙が実装と矛盾しないことは crates/issue-inbox のテスト(vocabulary_matches_vault_rules)が確かめる。fixed・dropped・lapsed は「閉じているが、再発を待つ」非終端で、終端は issued だけ(以後は Issue が追う)。open は、最後の行(初出か再発)から lapse_after_days 日たつと、日次の timer(promotion-detect)が全 repo のノートに対して lapsed にする(ADR-1381)。lapsed は裁定の手順(--set-status)で fixed・dropped にも進める。放置された open は、失効の前も、セッション開始時の hook が出す未裁定の件数で再通知される。",
   "initial": "none",
   "states": [
     { "id": "open", "terminal": false, "owner": "person", "owner_detail": "本人が /backlog-cleanup で裁定する", "shown_by": ["skill:backlog-cleanup"] },

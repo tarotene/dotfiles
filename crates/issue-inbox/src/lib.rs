@@ -1004,7 +1004,7 @@ fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
 }
 
 /// `--sweep [--dry-run] [--as-of YYYY-MM-DD]`: 状態が `open` のまま、最後の行から
-/// [`vault::LAPSE_AFTER_DAYS`] 日以上たった気づきを、全 repo について `lapsed` にする(ADR-0000)。
+/// [`vault::LAPSE_AFTER_DAYS`] 日以上たった気づきを、全 repo について `lapsed` にする(ADR-1381)。
 /// 日次の timer(`promotion-detect`)が同じ関数を呼ぶ。`--dry-run` は何も書かず、なるものを数えるだけ。
 /// `--as-of` は日付を差し替える見積り用で、`--dry-run` と一緒にだけ使える。繰り返しても二重に書かない。
 /// vault を宣言していない機体では何もしない(jsonl の行は状態を持たない)。

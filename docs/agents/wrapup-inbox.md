@@ -124,7 +124,7 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/backlog-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
 - `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
-  `lapsed` にする(ADR-0000)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
+  `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。
   vault を宣言していない機体では何もしない。
 - `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]` — ノートの frontmatter だけを
@@ -247,7 +247,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
 - 再開: `fixed`・`dropped`・`lapsed` に再発の行が付くと `open` に戻る(事象 `reopen`、機械が行う)。再発を別の項目にはしない
   (同じ題名は同じノートで、本文の行数が再発の回数)。`issued` は、行は足すが状態を動かさない。
-- 失効(ADR-0000。ADR-1297 の「失効の状態は設けない」を改めた): `open` のまま最後の行(初出か再発)から 14 日以上たった気づきは、
+- 失効(ADR-1381。ADR-1297 の「失効の状態は設けない」を改めた): `open` のまま最後の行(初出か再発)から 14 日以上たった気づきは、
   日次の `promotion-detect`(`node:promotion-detect`)が `issue-inbox --sweep` と同じ掃除で `lapsed` にする(事象 `lapse`、機械が行う)。
   全 repo のノートが対象で、セッションを始めたかどうかに依らない。これが、裁定待ちの項目の性質 P1 を満たす手段
   (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`。`lapsed` は抽象の `settled` に写る)。
