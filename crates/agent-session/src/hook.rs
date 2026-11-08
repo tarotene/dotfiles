@@ -10,8 +10,6 @@
 //! 末尾改行)— `jq_json_compat::jqfmt` を使う。
 
 use crate::Agent;
-use jq_json_compat::jqfmt;
-use jq_json_compat::jqfmt::J;
 use serde_json::Value;
 
 use jq_json_compat::raw::jq_raw;
@@ -109,18 +107,10 @@ pub fn jq_r_path(v: &Value, path: &[&str]) -> Result<Option<String>, JqError> {
 /// deny の hook 出力(bash の `emit_deny` / Copilot adapter の
 /// `emit_deny_copilot`)。Claude/Codex は `hookSpecificOutput` でラップし、
 /// Copilot はラップしない直下の JSON(Copilot adapter の実測記録)。
+///
+/// 描画は [`crate::reply::Reply::render`] が持つ。呼び出し側が `Reply` へ移ったら、この関数は消す。
 pub fn deny_output(agent: Agent, reason: &str) -> String {
-    match agent {
-        Agent::Claude | Agent::Codex => jqfmt::deny_for_event("PreToolUse", reason),
-        Agent::Copilot => format!(
-            "{}\n",
-            J::obj(vec![
-                ("permissionDecision", J::str("deny")),
-                ("permissionDecisionReason", J::str(reason)),
-            ])
-            .pretty()
-        ),
-    }
+    crate::reply::Reply::deny(reason).render(agent, crate::event::HookEvent::PreToolUse)
 }
 
 /// `--agent <claude|codex|copilot>` / `--agent=<…>` を引数から読む。無い・

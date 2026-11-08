@@ -17,7 +17,8 @@ pub enum Decision {
 }
 
 impl Decision {
-    fn as_str(self) -> &'static str {
+    /// 出力の `permissionDecision` に書く語。
+    pub fn as_str(self) -> &'static str {
         match self {
             Decision::Allow => "allow",
             Decision::Deny => "deny",
