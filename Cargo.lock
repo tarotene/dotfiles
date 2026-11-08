@@ -885,6 +885,7 @@ dependencies = [
  "main-checkout-guard",
  "new-tool-guard",
  "pkexec-guard",
+ "pkill-guard",
  "plan-precedent-gate",
  "plan-scope-gate",
  "pr-followup-guard",
@@ -1196,6 +1197,15 @@ dependencies = [
  "agent-session",
  "command-inspection",
  "serde_json",
+]
+
+[[package]]
+name = "pkill-guard"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
+ "regex",
 ]
 
 [[package]]

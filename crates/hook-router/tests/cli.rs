@@ -62,6 +62,22 @@ fn a_bare_git_stash_is_denied_through_the_router() {
 }
 
 #[test]
+fn a_pkill_whose_pattern_matches_its_own_command_line_is_denied_through_the_router() {
+    let (out, _h) = run(&["pre"], &bash("PreToolUse", "pkill -f trial.sh"));
+    assert!(out.status.success());
+    let v = json(&out);
+    assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "deny");
+    let reason = v["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .unwrap();
+    assert!(reason.contains("pkill -f '[t]rial.sh'"), "{reason}");
+    // 括弧の技で書けば通る(無出力)。
+    let (out, _h) = run(&["pre"], &bash("PreToolUse", "pkill -f '[t]rial.sh'"));
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty());
+}
+
+#[test]
 fn a_harmless_command_produces_no_output() {
     let (out, _h) = run(&["pre"], &bash("PreToolUse", "ls -la"));
     assert!(out.status.success());
