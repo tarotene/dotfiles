@@ -22,6 +22,7 @@ use std::process::{Command, Stdio};
 ///   PR_GATE_STUB_CHECKS_FILE        : gh pr checks --json の応答(未指定なら [])
 ///   PR_GATE_STUB_CHECKS_SEQ         : 指定すると CHECKS_FILE の代わりに、呼ぶたびに
 ///     `<SEQ>.0` `<SEQ>.1` … を順に返す(最後の 1 つで止まる。進み具合は `<SEQ>.n`)
+///   PR_GATE_STUB_CHECKS_FILE_<番号> : その PR 番号だけの gh pr checks --json の応答(CHECKS_FILE / SEQ より優先)
 ///   PR_GATE_STUB_CHECKS_RC          : gh pr checks --json の exit code(既定 0。pending の 8 を再現する)
 ///   PR_GATE_STUB_LOG                : 指定すると gh の全呼び出しの引数を 1 行ずつ追記する
 ///   PR_GATE_STUB_RULES_DEFAULT_FILE : gh api rules/branches/main の応答(RULES_FILE より優先)
@@ -71,6 +72,11 @@ No-Visual: selftest 既定本文}" \
         if [[ "$*" == *"--watch"* ]]; then
           echo "stub: --watch は呼ばない設計" >&2
           exit 97
+        fi
+        pr_file_var="PR_GATE_STUB_CHECKS_FILE_$3"
+        if [[ -n "${!pr_file_var:-}" && -f "${!pr_file_var}" ]]; then
+          cat "${!pr_file_var}"
+          exit "${PR_GATE_STUB_CHECKS_RC:-0}"
         fi
         if [[ -n "${PR_GATE_STUB_CHECKS_SEQ:-}" ]]; then
           S="${PR_GATE_STUB_CHECKS_SEQ}"
