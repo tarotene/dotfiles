@@ -13,10 +13,18 @@
 //! ログが無い・読めない・閾値に届かない場合は何も出さない(全経路 fail-open)。hook の入力
 //! (stdin)は使わない。
 
+use agent_session::entry::{enter, Spec};
 use agent_session::gate_event::default_path;
 use agent_session::gate_event::trailing_fail_open;
-use serde_json::json;
+use agent_session::{Agent, HookEvent, Reply};
 use std::path::Path;
+use std::process::ExitCode;
+
+const SPEC: Spec = Spec {
+    name: "gate-failopen-advisory",
+    agents: &[Agent::Claude, Agent::Codex],
+    event: Some(HookEvent::SessionStart),
+};
 
 /// 既定の閾値。`promotion-detect` の `DEMOTION_SKIP_THRESHOLD`(3)にそろえる。タイムアウト等の
 /// 一過性の失敗は 1〜2 回で収まり、ExitPlanMode は 1 日に数回なので、当日中に検出できる
@@ -63,15 +71,20 @@ fn run() -> Option<()> {
     let events = default_path()?;
     let threshold = threshold_from(std::env::var("GATE_FAILOPEN_THRESHOLD").ok().as_deref());
     let ctx = advisory(&events, threshold)?;
-    println!(
+    print!(
         "{}",
-        json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
     );
     Some(())
 }
 
-fn main() {
+fn main() -> ExitCode {
+    // 標準入力は読まない(読まずに閉じてよい)ので、引数だけを解析する。
+    if let Err(code) = enter(&SPEC) {
+        return code;
+    }
     let _ = run();
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]

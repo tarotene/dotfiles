@@ -5,7 +5,6 @@
 //! 机の完了を示す台帳ではない(`my-desk` スキルが完了時に作る)。ハブ(手順の正本を持つ
 //! private リポジトリ)が未設定の機体では発火しない。I/O は main.rs だけが行う。
 
-use serde::Serialize;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -77,30 +76,6 @@ pub fn build_context(today: &str, last: Option<&str>) -> String {
     )
 }
 
-#[derive(Serialize)]
-struct Out<'a> {
-    #[serde(rename = "hookSpecificOutput")]
-    hook_specific_output: Inner<'a>,
-}
-
-#[derive(Serialize)]
-struct Inner<'a> {
-    #[serde(rename = "hookEventName")]
-    hook_event_name: &'a str,
-    #[serde(rename = "additionalContext")]
-    additional_context: &'a str,
-}
-
-pub fn session_start_json(ctx: &str) -> String {
-    serde_json::to_string_pretty(&Out {
-        hook_specific_output: Inner {
-            hook_event_name: "SessionStart",
-            additional_context: ctx,
-        },
-    })
-    .expect("serialize session-start output")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,13 +126,5 @@ mod tests {
         assert!(c.contains("前回の机: 2026-10-22"));
         assert!(c.contains("`my-desk`"));
         assert!(build_context("2026-10-23", None).contains("前回の机: なし"));
-    }
-
-    #[test]
-    fn json_roundtrip() {
-        let j = session_start_json("x");
-        let v: serde_json::Value = serde_json::from_str(&j).unwrap();
-        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
-        assert_eq!(v["hookSpecificOutput"]["additionalContext"], "x");
     }
 }

@@ -13,6 +13,9 @@
 //! | SessionStart | `hookSpecificOutput{hookEventName, additionalContext}`(判定は捨てる) | 平ら `{additionalContext}` |
 //! | PermissionRequest | deny だけ `hookSpecificOutput{hookEventName, decision{behavior, message}}` | 捨てる |
 //!
+//! Copilot の SessionStart が最上位の `additionalContext` だけを読むことの出典: GitHub Docs,
+//! "GitHub Copilot hooks reference" の `sessionStart`(取得 2026-10-28)。
+//!
 //! `systemMessage` はどのイベントでも、最上位に付く。Copilot の PostToolUse・systemMessage・
 //! PermissionRequest の形は、このリポジトリに実測の記録が無い(未確認)。従来の挙動を保つ。
 

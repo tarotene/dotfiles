@@ -9,8 +9,7 @@ description = "SessionStart hook: 今日の朝の机(my-desk)が未実施なら�
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
 hub-resolve = { path = "../hub-resolve" }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true

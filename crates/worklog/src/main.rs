@@ -14,7 +14,8 @@
 //! (既定 `~/.local/state/claude/worklog`)。`WORKLOG_OFFER_DIR` は `offer` のジャーナルの置き場
 //! (既定 `~/.local/state/claude/slot-offer`)。
 
-use serde_json::json;
+use agent_session::entry::{parse_call, Spec};
+use agent_session::{Agent, HookEvent, Reply};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -391,53 +392,27 @@ fn list_cmd(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// SessionStart の出力の形。Claude Code と Codex は `hookSpecificOutput` に入れ子で読み、Copilot CLI は
-/// 最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks reference" の
-/// `sessionStart`、取得 2026-10-28)。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Shape {
-    Nested,
-    TopLevel,
-}
+/// `session-start` の引数。`--agent` の解析は `agent_session::entry::parse_call` が持ち、出力の形
+/// (Claude Code と Codex は入れ子、Copilot CLI は最上位の `additionalContext` だけ)は
+/// `Reply::render` が持つ。
+const SESSION_SPEC: Spec = Spec {
+    name: "worklog",
+    agents: &[Agent::Claude, Agent::Codex, Agent::Copilot],
+    event: Some(HookEvent::SessionStart),
+};
 
-/// `session-start [--agent claude|codex|copilot]`。既定は `claude`(入れ子)。
-fn session_arg(args: &[String]) -> Result<Shape, String> {
-    let mut shape = Shape::Nested;
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--agent" => {
-                shape = match value(&mut it, "--agent")? {
-                    "claude" | "codex" => Shape::Nested,
-                    "copilot" => Shape::TopLevel,
-                    other => {
-                        return Err(format!(
-                            "--agent は claude|codex|copilot のいずれか: '{other}'"
-                        ))
-                    }
-                };
-            }
-            other => return Err(format!("session-start に未知の引数: '{other}'")),
-        }
-    }
-    Ok(shape)
-}
-
-/// 注入する JSON。`context` はそのまま `additionalContext` に入る。
-fn session_output(shape: Shape, context: String) -> serde_json::Value {
-    match shape {
-        Shape::Nested => json!({
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": context,
-            }
-        }),
-        Shape::TopLevel => json!({ "additionalContext": context }),
+/// `session-start [--agent claude|codex|copilot]`。既定は `claude`。誤りは、他の部分と同じく
+/// 使い方の誤り(終了コード 2)として返す。
+fn session_arg(args: &[String]) -> Result<Agent, String> {
+    let call = parse_call(&SESSION_SPEC, args)?;
+    match call.rest.first() {
+        Some(other) => Err(format!("session-start に未知の引数: '{other}'")),
+        None => Ok(call.agent),
     }
 }
 
 /// SessionStart hook。常に exit 0。vault を宣言していない機体では何も出さない。
-fn session_start(shape: Shape) {
+fn session_start(agent: Agent) {
     let getenv = |k: &str| std::env::var(k).ok();
     let declared = getenv(VAULT.env_var).is_some_and(|v| !v.is_empty())
         || hub_resolve::marker_path(&VAULT, &getenv).is_file();
@@ -467,9 +442,9 @@ fn session_start(shape: Shape) {
         .as_deref()
         .map(|r| select_recent(&rows, r, SESSION_MAX_LINES))
         .unwrap_or_default();
-    let out = session_output(shape, build_context(repo.as_deref(), &recent));
-    println!(
+    print!(
         "{}",
-        serde_json::to_string_pretty(&out).expect("serialize session-start output")
+        Reply::context(build_context(repo.as_deref(), &recent))
+            .render(agent, HookEvent::SessionStart)
     );
 }

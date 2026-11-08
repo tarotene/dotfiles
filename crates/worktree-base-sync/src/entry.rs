@@ -18,10 +18,17 @@
 // 見込み(#1344。原因は未確認の仮説)。fetch できなかったときは、手元の追跡 ref
 // より遅れていれば、そのことを知らせる。
 
+use agent_session::entry::{enter, read_stdin, Spec};
+use agent_session::{Agent, HookEvent, Reply};
 use git_repository::out as git;
-use serde_json::json;
-use std::io::Read;
+use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const SPEC: Spec = Spec {
+    name: "worktree-base-sync",
+    agents: &[Agent::Claude, Agent::Codex],
+    event: Some(HookEvent::SessionStart),
+};
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -29,8 +36,7 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 const STAMP: &str = "worktree-base-sync.fetched";
 
 fn run() -> Option<()> {
-    let mut raw = String::new();
-    std::io::stdin().read_to_string(&mut raw).ok();
+    let raw = read_stdin();
     let input = agent_session::HookInput::parse(&raw).unwrap_or_default();
     let project = input.project_dir()?;
     let project = project.as_path();
@@ -114,9 +120,9 @@ fn run() -> Option<()> {
     }
 
     let ctx = format!("[worktree-base-sync] pristine worktree を origin/{base} へ {behind} コミット fast-forward しました({before} -> {after})。他 hook の SessionStart advisory(pr-gate の base 追従など)は並列実行の都合でこの更新前の状態を見ている場合があります。");
-    println!(
+    print!(
         "{}",
-        json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
     );
     Some(())
 }
@@ -134,13 +140,17 @@ fn notify_if_behind(project: &std::path::Path, base: &str, origin_base: &str) ->
         return None;
     }
     let ctx = format!("[worktree-base-sync] origin/{base} を fetch できませんでした(ネットワーク・認証を確かめてください)。手元の origin/{base} に対して、この worktree は {behind} コミット遅れています(origin/{base} 自体が古い可能性もあります)。作業の前に `git fetch origin {base}` してから、`git rebase origin/{base}` で土台を追従させてください。");
-    println!(
+    print!(
         "{}",
-        json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
     );
     Some(())
 }
 
-fn main() {
+fn main() -> ExitCode {
+    if let Err(code) = enter(&SPEC) {
+        return code;
+    }
     let _ = run();
+    ExitCode::SUCCESS
 }

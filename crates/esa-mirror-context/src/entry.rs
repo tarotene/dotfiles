@@ -2,8 +2,9 @@
 // (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
 // docs/agents/esa-mirror-context.md。
 
+use agent_session::{Agent, HookEvent, Reply};
 use esa_mirror_context::{
-    build_context, config_path, freshness, org_allowed, owner_of, parse_config, session_start_json,
+    build_context, config_path, freshness, org_allowed, owner_of, parse_config,
 };
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -59,5 +60,8 @@ fn main() {
         .and_then(|o| freshness(&String::from_utf8_lossy(&o.stdout), now));
     let today = process_control::date("%Y-%m-%d");
     let ctx = build_context(&cfg.mirror_path, fresh.as_ref(), &today);
-    print!("{}", session_start_json(&ctx));
+    print!(
+        "{}",
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
+    );
 }

@@ -5,7 +5,7 @@
 //! このクレートは値を持たず、private wrapper flake が描画した設定ファイル
 //! (`home/modules/esa-mirror-context.nix`)から読む。I/O は main.rs だけが行う。
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -101,30 +101,6 @@ pub fn build_context(mirror: &Path, fresh: Option<&Freshness>, today: &str) -> S
     )
 }
 
-#[derive(Serialize)]
-struct Out<'a> {
-    #[serde(rename = "hookSpecificOutput")]
-    hook_specific_output: Inner<'a>,
-}
-
-#[derive(Serialize)]
-struct Inner<'a> {
-    #[serde(rename = "hookEventName")]
-    hook_event_name: &'a str,
-    #[serde(rename = "additionalContext")]
-    additional_context: &'a str,
-}
-
-pub fn session_start_json(ctx: &str) -> String {
-    serde_json::to_string_pretty(&Out {
-        hook_specific_output: Inner {
-            hook_event_name: "SessionStart",
-            additional_context: ctx,
-        },
-    })
-    .expect("serialize session-start output")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,13 +167,5 @@ mod tests {
         let unknown = build_context(Path::new("/m"), None, "");
         assert!(unknown.contains("Last dump: unknown"));
         assert!(!unknown.contains("Today:"));
-    }
-
-    #[test]
-    fn json_roundtrip() {
-        let j = session_start_json("x");
-        let v: serde_json::Value = serde_json::from_str(&j).unwrap();
-        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
-        assert_eq!(v["hookSpecificOutput"]["additionalContext"], "x");
     }
 }

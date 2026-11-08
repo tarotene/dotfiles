@@ -8,7 +8,7 @@ description = "fail-open で素通りし続けている gate を SessionStart �
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
-serde_json.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true

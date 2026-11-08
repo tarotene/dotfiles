@@ -6,7 +6,6 @@
 //! 本人がする(外部発信は下書き止まり)。印のトークンは語彙 JSON(正本)から取る。
 //! I/O は main.rs だけが行う。
 
-use serde::Serialize;
 use serde_json::Value;
 
 /// 語彙の正本(`config/agents/calendar-handshake/vocabulary.json`)。
@@ -54,30 +53,6 @@ pub fn build_context(blocked: &str, secured: &str) -> String {
     )
 }
 
-#[derive(Serialize)]
-struct Out<'a> {
-    #[serde(rename = "hookSpecificOutput")]
-    hook_specific_output: Inner<'a>,
-}
-
-#[derive(Serialize)]
-struct Inner<'a> {
-    #[serde(rename = "hookEventName")]
-    hook_event_name: &'a str,
-    #[serde(rename = "additionalContext")]
-    additional_context: &'a str,
-}
-
-pub fn session_start_json(ctx: &str) -> String {
-    serde_json::to_string_pretty(&Out {
-        hook_specific_output: Inner {
-            hook_event_name: "SessionStart",
-            additional_context: ctx,
-        },
-    })
-    .expect("serialize session-start output")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,13 +84,5 @@ mod tests {
         assert!(c.contains("送信はしません"));
         assert!(c.contains("本人申告"));
         assert!(c.contains("件数はここでは数えていません"));
-    }
-
-    #[test]
-    fn json_roundtrip() {
-        let j = session_start_json("x");
-        let v: serde_json::Value = serde_json::from_str(&j).unwrap();
-        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "SessionStart");
-        assert_eq!(v["hookSpecificOutput"]["additionalContext"], "x");
     }
 }

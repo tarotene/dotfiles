@@ -189,7 +189,6 @@ name = "calendar-handshake-reminder"
 version = "0.1.0"
 dependencies = [
  "agent-session",
- "serde",
  "serde_json",
 ]
 
@@ -370,7 +369,6 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "hub-resolve",
- "serde",
  "serde_json",
  "tempfile",
 ]
@@ -853,6 +851,7 @@ dependencies = [
 name = "herdr-status-advisory"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "serde_json",
  "tempfile",
 ]
