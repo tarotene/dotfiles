@@ -1,5 +1,5 @@
 //! issue-create-guard — `gh issue create` を作成時点で検査する PreToolUse(Bash) の判定
-//! (設計と根拠は docs/agents/issue-create-guard.md、ADR-0000)。
+//! (設計と根拠は docs/agents/issue-create-guard.md、ADR-1379)。
 //!
 //! 本人の Issue 台帳の不変条件は、未完了の Issue が (1) ボール保持者を排他ラベル
 //! `ball:me` / `ball:them` / `ball:agent` のちょうど 1 つで持ち、(2) 次に動く契機

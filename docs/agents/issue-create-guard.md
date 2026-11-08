@@ -2,7 +2,7 @@
 
 実装: `crates/issue-create-guard`(Rust)。`hook-router` の規則として走る(`crates/hook-router/src/rules.rs`、`tools: Bash`)。
 エージェントの種類は問わない(`Bash` のコマンド文字列だけを見る)。
-決定の記録: `docs/adr/0000-issue-creation-ball-guard.md`
+決定の記録: `docs/adr/1379-issue-creation-ball-guard.md`
 Issue: No-Issue(本人の Issue 台帳の不変条件を、事後の検査だけでなく作成時にも守らせる設計の依頼)
 
 ## 動機

@@ -1,4 +1,4 @@
-# ADR-0000 — `gh issue create` を、ボールのラベルと本文の先頭行を持たせないと作れなくする
+# ADR-1379 — `gh issue create` を、ボールのラベルと本文の先頭行を持たせないと作れなくする
 
 - Status: Accepted
 - Date: 2026-11-08
