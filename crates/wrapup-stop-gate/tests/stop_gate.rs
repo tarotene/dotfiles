@@ -139,7 +139,7 @@ fn add_matches_jq_compact() {
     }
 }
 
-/// 気づきの inbox は、Stop の指示を出さない(起票は backlog-cleanup の裁定、
+/// 気づきの inbox は、Stop の指示を出さない(起票は my-cleanup の裁定、
 /// ADR-1136)。gh も GitHub remote もあり、行が溜まっていても素通りする。
 #[test]
 fn a_non_empty_inbox_never_blocks_the_stop() {
@@ -513,7 +513,7 @@ fn check_dup_odd_gh_output() {
 }
 
 /// verdict-escalate は Stop のたびに呼ばれ、追記した行は inbox に残る。行があっても Stop は
-/// 素通りする(裁定は backlog-cleanup)。verdict-escalate 未配備でも素通り。
+/// 素通りする(裁定は my-cleanup)。verdict-escalate 未配備でも素通り。
 #[test]
 fn verdict_escalate_wiring() {
     let e = Env::new();

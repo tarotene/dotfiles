@@ -19,7 +19,9 @@
 | settings-reconcile | agent-settings-reconcile |
 | worktree-fresh-base | worktree-base-sync |
 | git-checkout-freshness | git-checkout-sync |
-| wrapup-chores | backlog-cleanup |
+| wrapup-chores | my-cleanup |
+| backlog-cleanup | my-cleanup |
+| issue-hygiene | my-cleanup |
 | skill-gardening | agent-tooling-authoring |
 | external-call-scheduling | human-task-scheduling |
 | rust-repo-governance | repo-governance |
@@ -65,7 +67,7 @@ hook 登録は既存の managed-hooks 所有記録で reconcile し、前回の�
 参照検索と再検証の入口:
 
 ```sh
-rg -n 'copilot-model-bump|desk-start|esa-index|pr-confirm-guard|performance-planning|talk-script|scope-inventory|selection-grounding|sign-prewarm|settings-reconcile|worktree-fresh-base|git-checkout-freshness|wrapup-chores|skill-gardening|external-call-scheduling|rust-repo-governance|typst-repo-governance|astro-site-governance|wrapup-stop-gate|wrapup-session-start' home config crates docs
+rg -n 'copilot-model-bump|desk-start|esa-index|pr-confirm-guard|performance-planning|talk-script|scope-inventory|selection-grounding|sign-prewarm|settings-reconcile|worktree-fresh-base|git-checkout-freshness|wrapup-chores|backlog-cleanup|issue-hygiene|skill-gardening|external-call-scheduling|rust-repo-governance|typst-repo-governance|astro-site-governance|wrapup-stop-gate|wrapup-session-start' home config crates docs
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
@@ -159,9 +161,9 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `gpg-subkey-rotation` | GPG サブ鍵のローテーション手順を表す。 |
 | `handoff` | 作業の引き継ぎを整える。予定化は human-task-scheduling に委ねる。 |
 | `inbox-adjudication` | 受信項目への対応を裁定する。CI 障害手順は共有参照へ分離。 |
-| `issue-hygiene` | Issue の状態と記述を整える。 |
 | `issue-ref-freshness` | Issue 参照の鮮度を確認する。 |
 | `living-description` | 進行に合わせて説明を更新する。 |
+| `my-cleanup` | 片付けの入口。気づきの inbox と open Issue を裁定して PR で消化し、Issue の親子も整える。旧 3 名は互換入口。 |
 | `pr-description` | PR 本文の記述手順を表す。 |
 | `precedent-grounding` | 設計判断を先行例と対比する。技術選定以外も対象。 |
 | `repo-charter` | リポジトリの目的と責務を決める。 |

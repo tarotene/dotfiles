@@ -89,7 +89,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
 vault のある機体では vault の `inbox/` のノート(同じ題なら行が積まれる)、
 vault の無い機体では `~/.local/state/claude/wrapup/github-com-tarotene-dotfiles.jsonl`
 の 1 行になる(ADR-1136)。新しい出口は作らず、既存の「気付き → inbox →
-`/backlog-cleanup`」経路をそのまま再利用する。裁定は `/backlog-cleanup` だけが
+`/my-cleanup`」経路をそのまま再利用する。裁定は `/my-cleanup` だけが
 行い、Issue にするのは本人が選んだものだけである — 候補の文面は判断を含むため、
 公開 Issue 化は必ず人間のレビューを経る。Stop hook は Issue 化を促さない。
 

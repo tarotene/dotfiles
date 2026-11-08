@@ -290,7 +290,7 @@ impl Vocabulary {
                 g.id, g.default_level, spec, g.look_for, ex
             ));
         }
-        s.push_str("\n### 却下の理由(`/backlog-cleanup` で却下するとき)\n\n");
+        s.push_str("\n### 却下の理由(`/my-cleanup` で却下するとき)\n\n");
         for r in &self.drop_reasons {
             s.push_str(&format!("- `{r}`\n"));
         }

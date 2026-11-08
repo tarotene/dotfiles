@@ -64,7 +64,7 @@
 | `worktree-bootstrap` | `tool` | 新しい worktree に、依存・認証・検証の前提が無かった。作成直後の準備を毎回手で整えた | — |
 | `unclassified` | `prose` | 上のどれにも入らないが、決定論化できそうだと思った。上位の段を選ぶなら level_reason が必須。数が溜まると語彙に足す候補になる | — |
 
-### 却下の理由(`/backlog-cleanup` で却下するとき)
+### 却下の理由(`/my-cleanup` で却下するとき)
 
 - `semantic-judgment`
 - `unobservable`
@@ -81,6 +81,6 @@ ADR・PR の番号だけを載せる(ADR-0034。`crates/issue-inbox/tests/vocab.
 ## 限界
 
 - 段の付け方は LLM の判断で、機械は「語彙の内か」「必須欄が揃っているか」しか見ない。当たっているかは、
-  `/backlog-cleanup` での採用・却下の実績で測る(却下には閉じた理由を書く)。
+  `/my-cleanup` での採用・却下の実績で測る(却下には閉じた理由を書く)。
 - 兆候の `since` より前のノートは、その兆候の較正に数えない(定義を直したら数え直す)。
 - user-correction の行は Inbox を通らず Issue になるので、較正の集計には入らない。

@@ -39,7 +39,7 @@ pub const STATUSES: [&str; 5] = [OPEN, "fixed", "issued", "dropped", LAPSED];
 pub const LAPSE_AFTER_DAYS: i64 = 14;
 
 /// `--add` の 1 行(`ts` / `title` / `detail` / 任意の `repo`)。`go` は読まない(裁定は
-/// backlog-cleanup で行うので、起票前の確認を行に持たせる必要が無い)。
+/// my-cleanup で行うので、起票前の確認を行に持たせる必要が無い)。
 ///
 /// as-code 化の候補(retro の `codify` など)は、`signal`(兆候)・`mechanism`(段)・`existing`
 /// (採用|拡張|自前)も構造で持つ。空は「無い」。後から「どの兆候の候補が採用・却下されたか」を

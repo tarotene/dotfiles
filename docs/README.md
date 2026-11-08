@@ -404,7 +404,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   触れた checkout の baseline を記録して Stop で状態の差分を検出する(Bash 経由の
   迂回を字面でなく状態で捕まえる)。逃げ道なし、Claude と Codex 共通。
 - [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
-  強制する。出口(inbox → `/backlog-cleanup` での裁定)は wrap-up inbox と共有し、
+  強制する。出口(inbox → `/my-cleanup` での裁定)は wrap-up inbox と共有し、
   入口(閉語彙の構造化記録 + 決定論的な出来事との突き合わせ)と強制を
   `wrapup-stop-gate` に足す。全行は、台帳から vault の `retro/` のノートに決定論的に
   書き出す(PR にはコメントしない。ADR-1136 の Amendment)。
@@ -508,10 +508,11 @@ Design and rationale for the hooks and commands deployed from
   in-progress plan to HTML in Chrome.
 - [`wrapup-inbox.md`](agents/wrapup-inbox.md) — Stop hook: out-of-scope
   findings land in an issue-filing inbox.
-- [`backlog-cleanup.md`](agents/backlog-cleanup.md) — 個人スキル: 未起票の
-  inbox 行と起票済みだが未着手の wrapup 由来 Issue をまとめて棚卸しし、
-  triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO として stacked
-  PR で一括対処する `/backlog-cleanup` の手順(ADR-387)。
+- [`my-cleanup.md`](agents/my-cleanup.md) — 個人スキル(片付けの入口。旧
+  `backlog-cleanup`・`issue-hygiene`): inbox の未裁定の気づきと open Issue を
+  まとめて棚卸しし、triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO
+  として stacked PR で一括対処する `/my-cleanup` の手順(ADR-387)。open Issue の
+  親子の整理(sub-issues・腐った tracking Issue の清算)も 1 段として持つ。
 - [`retro.md`](agents/retro.md) — ADR-697: 作業終了時のレトロを
   `wrapup-stop-gate` の Stop で強制する(記録の語彙・突き合わせる出来事・
   vault のノートへの書き出し・上限と抜け道)。出口は wrap-up inbox と共有。
@@ -727,11 +728,7 @@ Design and rationale for the hooks and commands deployed from
 - [`tracking-issue.md`](agents/tracking-issue.md) — 個人スキル: 複数の子作業
   を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
   sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
-  `issue-hygiene` が担う。
-- [`issue-hygiene.md`](agents/issue-hygiene.md) — 個人スキル: open Issue が
-  出自ごとに束ねられず積み上がったとき、GitHub の sub-issues 機能で親子構造を
-  明示し直し、腐った tracking Issue を清算する定期衛生管理の手順。起票・更新
-  する側の規約は `tracking-issue` が担う。
+  `my-cleanup` の §2a(旧 `issue-hygiene`)が担う。
 - [`requirements-inventory.md`](agents/requirements-inventory.md) — グローバル CLAUDE.md
   ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
   子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。

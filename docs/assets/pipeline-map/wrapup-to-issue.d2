@@ -237,7 +237,7 @@ l_manual: "Manual / skills" {
     shape: hexagon
     style.stroke-dash: 4
   }
-  n_backlog_cleanup: "skill: backlog-cleanup" {
+  n_my_cleanup: "skill: my-cleanup" {
     class: s_skill
     shape: hexagon
     style.stroke-dash: 4
@@ -374,13 +374,13 @@ l_timer.n_promotion_detect -> l_external.n_herdr: "ledger digest stale toast" {
 l_external.n_github -> l_timer.n_promotion_detect: "feedback Issues" {
   class: e_context
 }
-l_manual.n_backlog_cleanup -> l_external.n_wrapup_inbox: "sweep (no vault)" {
+l_manual.n_my_cleanup -> l_external.n_wrapup_inbox: "sweep (no vault)" {
   class: e_file
 }
-l_manual.n_backlog_cleanup -> l_external.n_obsidian_vault: "sweep open notes / set-status" {
+l_manual.n_my_cleanup -> l_external.n_obsidian_vault: "sweep open notes / set-status" {
   class: e_file
 }
-l_manual.n_backlog_cleanup -> l_external.n_github: "chores PRs" {
+l_manual.n_my_cleanup -> l_external.n_github: "chores PRs" {
   class: e_pr
 }
 

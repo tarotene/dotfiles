@@ -4,7 +4,7 @@
 //! 構造化した JSONL として書かせ、決定論的に取れる出来事(判定レッジャーの
 //! deny/ask・pr-gate の block・更新した feedback memory)が全て行に引かれて
 //! いなければ block する。`disposition: inbox` の行は既存の wrap-up inbox(vault の
-//! ノート)に流れ、裁定は backlog-cleanup が担う(出口は共有、入口と強制だけが新設)。
+//! ノート)に流れ、裁定は my-cleanup が担う(出口は共有、入口と強制だけが新設)。
 //! 全行は、`--retro-close` が台帳から vault の `retro/` のノートに決定論的に書き出す
 //! (PR コメントは投稿しない。ADR-1136)。設計と根拠は docs/agents/retro.md。
 
@@ -331,7 +331,7 @@ pub fn retro_add(sid: &str, line: &str) -> i32 {
         );
         let mut item = json!({"ts": iso_now(), "title": v["what"], "detail": detail});
         // as-code 化の候補は、兆候・手段・既存手段を構造で渡す(`detail` の文に溶かさない)。
-        // 後で /backlog-cleanup が採用・却下を裁定し、兆候ごとに数えられるようにするため(ADR-1276)。
+        // 後で /my-cleanup が採用・却下を裁定し、兆候ごとに数えられるようにするため(ADR-1276)。
         for k in ["signal", "mechanism", "existing"] {
             if let Some(x) = v[k].as_str().filter(|x| !x.trim().is_empty()) {
                 item[k] = json!(x);
@@ -721,7 +721,7 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
        codify row clears an `adhoc:*` event.
      - disposition "inbox" also appends the row to the wrap-up inbox (a note in
        the user's vault, or a jsonl line on a machine without one). No Issue is
-       filed for it: the user adjudicates it later with /backlog-cleanup. Do not
+       filed for it: the user adjudicates it later with /my-cleanup. Do not
        add it to the inbox yourself.
      - A user-correction is feedback and is never kept in the inbox: file it as a
        GitHub Issue first (gh issue create) and use "issue:#<N>", or use

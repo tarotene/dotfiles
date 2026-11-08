@@ -7,7 +7,7 @@
 `docs/adr/1136-wrapup-inbox-to-vault.md`(起草中の仮番号。PR 作成後に `scripts/adr-number-check --fix` で改番される)。
 
 作業中に出た「今回のタスクのスコープ外だが記録する価値のある気づき」が揮発する問題への
-対処。**収集**(セッション中に inbox へ溜める)と**裁定**(本人が `/backlog-cleanup` でまとめて決める)を
+対処。**収集**(セッション中に inbox へ溜める)と**裁定**(本人が `/my-cleanup` でまとめて決める)を
 分離する。**Issue にするのは裁定で選んだものだけ**で、Stop は起票を求めない。以前は Stop が毎セッション、
 inbox の全行を Issue にさせていたため、些細な気づきの Issue が増えて、大事な開発タスクが埋もれた
 (ADR-1136 の背景)。
@@ -23,7 +23,7 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 |------|----------|------|
 | `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ。Issue にはしない」を `additionalContext` で注入。未裁定の件数も掲示 |
 | `wrapup-stop-gate` | Stop | jsonl に残った行を vault へ移す。更新した feedback memory に `#N` が無ければ指示する。**気づきの起票は求めない** |
-| `/backlog-cleanup` | 手動 | vault の open な気づきを集め、本人が裁定し、直せるものは PR で直す(スキルは[`backlog-cleanup.md`](backlog-cleanup.md)) |
+| `/my-cleanup` | 手動 | vault の open な気づきを集め、本人が裁定し、直せるものは PR で直す(スキルは[`my-cleanup.md`](my-cleanup.md)) |
 
 配備は `home/modules/agents.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通。vault の場所の宣言は
@@ -105,8 +105,8 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 | スコープ | user グローバル(`~/.claude/settings.json`) | 気づきの記録はプロジェクト非依存。home-manager 配備で全ホストに自動展開 |
 | 粒度 | ターン単位・session_id フィルタなし | 気づいた直後の記録が最も文脈が濃い。残骸はどのセッションでも自己修復的に回収される |
 | 収集指示の経路 | SessionStart `additionalContext` 注入 | グローバル CLAUDE.md を store symlink にすると `#` メモリ追記が壊れる。skill は受動的ルールの担い手として発火が不確実 |
-| 起票 | しない(裁定は `/backlog-cleanup`) | 毎セッションの起票は些細な Issue を増やし、本当に大事な開発タスクを埋もれさせた。Issue にするのは、本人が選んだ大物・本人の作業が要るものだけ |
-| `go: ask` の行 | `go` は読まない | 起票前の確認を行に持たせる必要が無くなった(裁定は `/backlog-cleanup`) |
+| 起票 | しない(裁定は `/my-cleanup`) | 毎セッションの起票は些細な Issue を増やし、本当に大事な開発タスクを埋もれさせた。Issue にするのは、本人が選んだ大物・本人の作業が要るものだけ |
+| `go: ask` の行 | `go` は読まない | 起票前の確認を行に持たせる必要が無くなった(裁定は `/my-cleanup`) |
 | 縮退 | vault 無し・使えない → jsonl。gh 不在 / git repo 外 / GitHub remote 不在 → feedback の指示を出さない | ADR-0005 の binary-existence gating。記録は残り、条件が揃う環境・セッションで回収される |
 | jsonl のスキーマ | 最小 JSONL `{"ts", "title", "detail"}`、任意で `repo` | vault の無い機体の保存形式。題名の無い行は vault に書けず jsonl に残る |
 | jsonl の置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク |
@@ -121,7 +121,7 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 - `--add <inbox> <json1行>` — JSON 検証 + 追記。vault を宣言していればノートへ(上記)。書けなかった行は
   jsonl に退避する(`mkdir -p` + flock 追記)。初回利用時のディレクトリ不在で沈黙する事故を防ぐ。
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
-  機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/backlog-cleanup` の唯一の収集口。
+  機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/my-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
 - `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
@@ -133,7 +133,7 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   機体では行を取り除くので、理由の記録先が無い(較正は vault の機体だけで効く)。
 - `--check-dup "<title>" [repo]` — `gh issue list --search` で同名 open Issue を検査する。
   exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能。Issue を作る前に、
-  `/backlog-cleanup` と promotion-detect が使う。gh は 10 秒でタイムアウトし、プロセスグループごと打ち切る
+  `/my-cleanup` と promotion-detect が使う。gh は 10 秒でタイムアウトし、プロセスグループごと打ち切る
   (exit 3。#1129)。Stop で起票を求めていたころの「失敗した照会のあと、変化の無い行を保留する」台帳
   (`--check-dup --inbox --session-id`、`lookup_failure`)は、保留する相手の指示が無くなったので削除した。
 - `--mark-filed <inbox> <json1行>` — jsonl の**行全体の完全一致で先頭 1 行だけ**削除
@@ -146,7 +146,7 @@ jsonl の flock は `--add` と `--mark-filed` の両方が取る。vault 側は
 固定してあり、逆順で取る経路が無いのでデッドロックしない。
 
 削除したサブコマンド: `--procedure`(起票の手順書)、`--chores-begin` / `--chores-end`
-(`/backlog-cleanup` の実行中に Stop の起票指示を黙らせる印。#820)。Stop が気づきの起票を
+(`/my-cleanup` の実行中に Stop の起票指示を黙らせる印。#820)。Stop が気づきの起票を
 求めなくなったので、黙らせる対象が無い。呼ぶと「削除された」と断って exit 1 する。
 
 ## slug のリポジトリ単位化と自己修復マージ
@@ -222,12 +222,12 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 この経路が書く行は、最小スキーマに `repo`(任意、`"owner/repo"`: ノートの `repo`)と
 `go`(任意、`"ask"` 固定)を足す。`go` は、以前は「起票前に人間の明示的な GO が要る」印で、Stop の
 指示が AskUserQuestion で確認させていた(ADR-478 D6)。気づきが起票されなくなったので、
-`go` は読まない — 裁定は `/backlog-cleanup` で行い、「収集・集約は自動、Issue にするのは人間が
+`go` は読まない — 裁定は `/my-cleanup` で行い、「収集・集約は自動、Issue にするのは人間が
 選んだもののみ」は同じ形で保たれる。
 
 ## 消化経路
 
-溜まった気づきは、[`backlog-cleanup` スキル](backlog-cleanup.md)が `--list-open` で集め、再発の
+溜まった気づきは、[`my-cleanup` スキル](my-cleanup.md)が `--list-open` で集め、再発の
 回数の多い順に本人が裁定する。直せるものは Issue を経ずに stacked PR で直し(`--set-status fixed`)、
 大物と本人の作業が要るものだけが Issue になる(`--set-status issued`)。捨てるものは `dropped`。
 **ノートは直接編集しない**(読み書きは `--add` / `--list-open` / `--set-status` を介する)。
@@ -239,7 +239,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
 | 状態 | 終端 | 意味 |
 |---|---|---|
-| `open` | いいえ | 本人の裁定を待つ。`/backlog-cleanup` が再発の多い順に見せる |
+| `open` | いいえ | 本人の裁定を待つ。`/my-cleanup` が再発の多い順に見せる |
 | `fixed` | いいえ | 直した。**再発すると `open` に戻る**(閉じているが、再発を待つ) |
 | `dropped` | いいえ | 捨てた。**再発すると `open` に戻る**(`drop_reason` は消える) |
 | `lapsed` | いいえ | `open` のまま最後の行から 14 日以上たった。**再発すると `open` に戻り**(時計は再発の行から数え直す)、`--set-status` で `fixed`・`dropped` にも進める。`--list-open` と件数通知には出ない |
@@ -275,7 +275,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
 同じ気づきが何度出ても再発回数がどこにも残らないと、ADR-543 が散文 → script → gate への昇格の合図に
 している「同じ規範違反が繰り返し起きる」が見えなくなる(以前の手順書は、重複を黙って捨てていた)。
-ノートの本文の行数が再発の回数である。`--list-open` が回数の多い順に返すので、`/backlog-cleanup` は
+ノートの本文の行数が再発の回数である。`--list-open` が回数の多い順に返すので、`/my-cleanup` は
 繰り返されているものから裁定する。日次 timer で自動検出する仕組みは持たない(繰り返し見落としが
 起きたときに、ADR-543 の昇格型に従って検討する)。先行例は Google SRE Workbook ch.10
 "Postmortem Culture"(https://sre.google/workbook/postmortem-culture/、取得 2026-10-02)で、

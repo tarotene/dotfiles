@@ -5,7 +5,7 @@
   "initial": "none",
   "states": [
     { "id": "picked", "terminal": false, "owner": "agent" },
-    { "id": "shown", "terminal": false, "owner": "person", "shown_by": ["skill:daily-desk", "skill:inbox-adjudication", "skill:backlog-cleanup", "skill:github-audit-triage", "skill:requirements-inventory"] },
+    { "id": "shown", "terminal": false, "owner": "person", "shown_by": ["skill:daily-desk", "skill:inbox-adjudication", "skill:my-cleanup", "skill:github-audit-triage", "skill:requirements-inventory"] },
     { "id": "decided", "terminal": false, "owner": "agent" },
     { "id": "settled", "terminal": false, "owner": "machine" },
     { "id": "applied", "terminal": true },
