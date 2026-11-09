@@ -1,0 +1,3 @@
+# pr-gate が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
+# ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
+tarotene/dotfiles

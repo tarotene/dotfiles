@@ -1,0 +1,4 @@
+[Desktop Entry]
+Type=Application
+Name=Chromium (hidden — LINE-only install, see home/modules/line.nix)
+NoDisplay=true

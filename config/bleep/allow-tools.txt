@@ -1,0 +1,7 @@
+# 組織内 Slack の下書き(送信ではない。本人が確認してから送る)
+mcp__.*__slack_send_message_draft
+# Copilot の読み取り専用ツール
+view
+grep
+glob
+rg

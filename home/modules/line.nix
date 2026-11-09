@@ -76,12 +76,8 @@ in
       # suppress an entry without deleting the file it shadows (same
       # ~/.local/share > nix-profile XDG_DATA_DIRS precedence as
       # desktop.nix's Alacritty.desktop override).
-      "applications/chromium-browser.desktop".text = ''
-        [Desktop Entry]
-        Type=Application
-        Name=Chromium (hidden — LINE-only install, see home/modules/line.nix)
-        NoDisplay=true
-      '';
+      "applications/chromium-browser.desktop".source =
+        repoConfig + "/applications/chromium-browser.desktop";
     };
   };
 }
