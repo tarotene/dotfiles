@@ -25,6 +25,22 @@ pub const BLOCKS: [(&str, &str); 4] = [
     ("claude", "claude"),
 ];
 
+/// ADR の見出しが宣言する、ほかの ADR との関係。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Kind {
+    Supersedes,
+    Amends,
+}
+
+impl Kind {
+    fn label(self) -> &'static str {
+        match self {
+            Kind::Supersedes => "置換",
+            Kind::Amends => "改訂",
+        }
+    }
+}
+
 /// 索引に載る 1 つの文書。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Doc {
@@ -32,6 +48,18 @@ pub struct Doc {
     pub rel: String,
     /// H1 の文字列。
     pub title: String,
+    /// この ADR が宣言する、ほかの ADR への関係(`- Supersedes:` と `- Amends:`)。ADR 以外は空。
+    pub relations: Vec<(Kind, u64)>,
+}
+
+impl Doc {
+    pub fn new(rel: &str, title: &str) -> Doc {
+        Doc {
+            rel: rel.to_string(),
+            title: title.to_string(),
+            relations: Vec::new(),
+        }
+    }
 }
 
 /// Markdown の最初の H1(コードの囲みの中は読まない)。
@@ -72,6 +100,59 @@ pub fn adr_title(h1: &str) -> &str {
     h1
 }
 
+/// ファイル名の番号(`0033-x.md` なら 33)。番号で始まらなければ `None`。
+fn file_number(rel: &str) -> Option<u64> {
+    adr_number(rel).parse().ok()
+}
+
+/// ADR の見出し(最初の `## ` より前)の `- Supersedes:` と `- Amends:` から、対象の ADR 番号を読む。
+/// 値は次の `- ` の行か空行までの続きの行を含み、`ADR-<数字>` の並びを拾う(重複と自分自身は除く)。
+/// 値が `なし` で始まるものと、ADR の番号を含まないもの(skill のパスなど)は、関係を持たない。
+pub fn adr_relations(md: &str, own: Option<u64>) -> Vec<(Kind, u64)> {
+    let head = md.split("\n## ").next().unwrap_or(md);
+    let lines: Vec<&str> = head.lines().collect();
+    let mut out: Vec<(Kind, u64)> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let kind = if lines[i].starts_with("- Supersedes:") {
+            Some((Kind::Supersedes, "- Supersedes:"))
+        } else if lines[i].starts_with("- Amends:") {
+            Some((Kind::Amends, "- Amends:"))
+        } else {
+            None
+        };
+        let Some((kind, prefix)) = kind else {
+            i += 1;
+            continue;
+        };
+        let mut value = lines[i][prefix.len()..].trim().to_string();
+        i += 1;
+        while i < lines.len()
+            && !lines[i].trim().is_empty()
+            && !lines[i].starts_with("- ")
+            && !lines[i].starts_with('#')
+        {
+            value.push(' ');
+            value.push_str(lines[i].trim());
+            i += 1;
+        }
+        if value.starts_with("なし") {
+            continue;
+        }
+        let mut rest = value.as_str();
+        while let Some(at) = rest.find("ADR-") {
+            rest = &rest[at + 4..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            if let Ok(n) = digits.parse::<u64>() {
+                if Some(n) != own && !out.contains(&(kind, n)) {
+                    out.push((kind, n));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `docs/<dir>/` の直下の `*.md` を読む。`README.md` は索引自身なので載せない。
 fn read_dir_docs(docs: &Path, dir: &str, problems: &mut Vec<String>) -> Vec<Doc> {
     let path = if dir.is_empty() {
@@ -98,7 +179,18 @@ fn read_dir_docs(docs: &Path, dir: &str, problems: &mut Vec<String>) -> Vec<Doc>
         };
         match fs::read_to_string(docs.join(&rel)) {
             Ok(md) => match first_h1(&md) {
-                Some(title) => out.push(Doc { rel, title }),
+                Some(title) => {
+                    let relations = if dir == "adr" {
+                        adr_relations(&md, file_number(&rel))
+                    } else {
+                        Vec::new()
+                    };
+                    out.push(Doc {
+                        rel,
+                        title,
+                        relations,
+                    })
+                }
                 None => problems.push(format!("docs/{rel}: H1(`# 題名`)が無い")),
             },
             Err(e) => problems.push(format!("docs/{rel}: 読めない: {e}")),
@@ -160,6 +252,7 @@ pub fn scan(docs: &Path) -> Result<BTreeMap<&'static str, Vec<Doc>>, Vec<String>
         out.insert(id, read_dir_docs(docs, dir, &mut problems));
     }
     unknown_places(docs, &mut problems);
+    problems.extend(check_relations(&out["adr"]));
     if problems.is_empty() {
         Ok(out)
     } else {
@@ -179,18 +272,81 @@ fn adr_sort_key(rel: &str) -> (u64, String) {
     (if n == 0 { u64::MAX } else { n }, rel.to_string())
 }
 
+/// 並べ替えと比較に使う番号。仮番号(0)は、どの番号より後に出る ADR として扱う。
+fn effective_number(rel: &str) -> u64 {
+    match file_number(rel) {
+        Some(0) | None => u64::MAX,
+        Some(n) => n,
+    }
+}
+
+/// ADR の関係の検査: 対象の ADR が実在し、宣言する側の番号が対象より大きい
+/// (後から出た決定が、前の決定を置き換える・改める)。
+pub fn check_relations(adrs: &[Doc]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for d in adrs {
+        for (kind, target) in &d.relations {
+            let exists = adrs.iter().any(|t| file_number(&t.rel) == Some(*target));
+            if !exists {
+                problems.push(format!(
+                    "docs/{}: {} の対象 ADR-{target} が docs/adr/ に無い",
+                    d.rel,
+                    kind.label()
+                ));
+            } else if effective_number(&d.rel) <= *target {
+                problems.push(format!(
+                    "docs/{}: {} の対象 ADR-{target} より大きい番号でない(後から出た決定が前の決定を改める)",
+                    d.rel,
+                    kind.label()
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// `target` を置き換える・改める ADR を、索引の行の後ろに付ける文字列。無ければ空。
+/// 古い ADR は accepted 後に書き換えない(immutable)ので、後方のリンクは、新しい側の宣言から導く。
+fn backlink_suffix(adrs: &[Doc], target: u64) -> String {
+    let mut groups: Vec<String> = Vec::new();
+    for kind in [Kind::Supersedes, Kind::Amends] {
+        let mut sources: Vec<&Doc> = adrs
+            .iter()
+            .filter(|s| s.relations.contains(&(kind, target)))
+            .collect();
+        sources.sort_by_key(|s| adr_sort_key(&s.rel));
+        if !sources.is_empty() {
+            let names: Vec<String> = sources
+                .iter()
+                .map(|s| format!("ADR-{}", adr_number(&s.rel)))
+                .collect();
+            groups.push(format!("{} {}", kind.label(), names.join(", ")));
+        }
+    }
+    if groups.is_empty() {
+        String::new()
+    } else {
+        format!(" (後続: {})", groups.join("; "))
+    }
+}
+
 /// 節 1 つ分の行。最後の行にも改行を付ける。
 pub fn render_block(id: &str, docs: &[Doc]) -> String {
     let mut docs: Vec<&Doc> = docs.iter().collect();
     let mut out = String::new();
     if id == "adr" {
         docs.sort_by_key(|d| adr_sort_key(&d.rel));
+        let all: Vec<Doc> = docs.iter().map(|d| (*d).clone()).collect();
         for d in docs {
+            let suffix = file_number(&d.rel)
+                .map(|n| backlink_suffix(&all, n))
+                .unwrap_or_default();
             out.push_str(&format!(
-                "- [ADR-{}]({}) — {}\n",
+                "- [ADR-{}]({}) — {}{}\n",
                 adr_number(&d.rel),
                 d.rel,
-                adr_title(&d.title)
+                adr_title(&d.title),
+                suffix
             ));
         }
     } else {
@@ -293,10 +449,7 @@ mod tests {
     use super::*;
 
     fn doc(rel: &str, title: &str) -> Doc {
-        Doc {
-            rel: rel.into(),
-            title: title.into(),
-        }
+        Doc::new(rel, title)
     }
 
     #[test]
@@ -412,6 +565,72 @@ mod tests {
             first_difference("a\n", "a\nb\n"),
             Some((2, "(行なし)".into(), "b".into()))
         );
+    }
+
+    #[test]
+    fn adr_relations_read_the_header_only_and_skip_none_self_and_non_adr_targets() {
+        let md = "# ADR-0033 — x\n\n- Status: Accepted\n\
+- Amends: ADR-0016(Decision 5 の適用範囲を広げる。\n  ADR-0017 も同じ)。ADR-0016 を二度書いても 1 つ\n\
+- Supersedes: なし。ADR-0001 は破らない\n- Issue: #1\n\n## Context\n- Amends: ADR-9999(本文の中は読まない)\n";
+        assert_eq!(
+            adr_relations(md, Some(33)),
+            vec![(Kind::Amends, 16), (Kind::Amends, 17)]
+        );
+        let skill = "# ADR-0027 — x\n- Supersedes: `config/agents/skills/stacked-pr/SKILL.md` §1 を改める\n- Amends: ADR-0027 自身は除く\n\n## Context\n";
+        assert_eq!(adr_relations(skill, Some(27)), vec![]);
+    }
+
+    fn rel(kind: Kind, target: u64) -> (Kind, u64) {
+        (kind, target)
+    }
+
+    #[test]
+    fn back_links_are_derived_from_the_declaring_side_and_grouped_by_kind() {
+        let mut new = doc("adr/0033-nav.md", "ADR-0033 — nav");
+        new.relations = vec![rel(Kind::Amends, 16)];
+        let mut newer = doc("adr/1000-later.md", "ADR-1000 — later");
+        newer.relations = vec![rel(Kind::Supersedes, 16), rel(Kind::Amends, 33)];
+        let old = doc("adr/0016-canon.md", "ADR-0016 — canon");
+        let out = render_block("adr", &[newer, new, old]);
+        assert!(
+            out.contains(
+                "- [ADR-0016](adr/0016-canon.md) — canon (後続: 置換 ADR-1000; 改訂 ADR-0033)\n"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains("- [ADR-0033](adr/0033-nav.md) — nav (後続: 改訂 ADR-1000)\n"),
+            "{out}"
+        );
+        // 何にも宣言されない ADR には何も付かない。
+        assert!(
+            out.contains("- [ADR-1000](adr/1000-later.md) — later\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn relations_to_a_missing_or_not_earlier_adr_fail() {
+        let mut a = doc("adr/0010-a.md", "ADR-0010 — a");
+        a.relations = vec![rel(Kind::Amends, 99)];
+        let mut b = doc("adr/0020-b.md", "ADR-0020 — b");
+        b.relations = vec![rel(Kind::Supersedes, 30)];
+        let c = doc("adr/0030-c.md", "ADR-0030 — c");
+        let problems = check_relations(&[a, b, c]);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(
+            problems[0].contains("ADR-99") && problems[0].contains("無い"),
+            "{problems:?}"
+        );
+        assert!(
+            problems[1].contains("ADR-30") && problems[1].contains("大きい番号"),
+            "{problems:?}"
+        );
+        // 仮番号(0)は最後に出る決定として扱うので、どの対象より後になる。
+        let draft = format!("adr/{}-new.md", "0".repeat(4));
+        let mut d = doc(&draft, "draft");
+        d.relations = vec![rel(Kind::Amends, 10)];
+        assert!(check_relations(&[d, doc("adr/0010-a.md", "a")]).is_empty());
     }
 
     fn write(root: &Path, rel: &str, body: &str) {

@@ -35,6 +35,13 @@ Issue: #1450(親の tracking Issue は #1433)
 - ADR の `[ADR-<番号>]` の形は、`scripts/adr-number-check` の索引の網羅の検査(`\[ADR-<番号>\]`)が読む。
   番号は、ファイル名の番号の文字列のまま使う(`872` と `0033` が混在する)。
 
+## ADR の後続(旧 ADR からのリンク)
+
+ADR の行には、その ADR を置き換える・改める後続の ADR を、`(後続: 置換 ADR-…; 改訂 ADR-…)` の形で付ける。
+旧 ADR は accepted 後に書き換えない(immutable)ので、手で書かず、新しい ADR の見出しの宣言(`- Supersedes:`・`- Amends:`)から導く
+(ADR-0008 の Amendment)。値の中の `ADR-<番号>` を拾い、値が `なし` で始まるもの、ADR の番号を含まないもの(skill のパスなど)、自分自身は
+関係に数えない。対象の ADR が実在すること、宣言する側の番号が対象より大きいこと(仮番号は最後)を、索引を作るときに検査する。
+
 ## ADR の仮番号と改番
 
 ADR は仮番号 `0000-<slug>.md` で起草し、PR を作ったあとに `scripts/adr-number-check --fix <PR番号>` で改番する
@@ -47,7 +54,7 @@ ADR は仮番号 `0000-<slug>.md` で起草し、PR を作ったあとに `scrip
 |---|---|
 | `tests/tree.rs` の `the_docs_index_matches_the_h1_of_every_document` | あるべき `docs/README.md` と現在の内容が一致する。落ちたら、最初に違う行と `render` の案内を出す |
 | `tests/tree.rs` の `every_document_appears_exactly_once_in_the_generated_blocks` | 生成の節の中で、どの文書のリンクもちょうど 1 回出る |
-| `src/lib.rs` のテスト | H1 の読み(コードの囲みの中を読まない)、ADR の並び(`0000` が最後)、マーカーの欠落、置き場の知らない文書 |
+| `src/lib.rs` のテスト | H1 の読み(コードの囲みの中を読まない)、ADR の並び(`0000` が最後)、マーカーの欠落、置き場の知らない文書、ADR の関係の読み・後続の付き方・対象の実在と番号の順 |
 
 ## 既存手段との関係
 

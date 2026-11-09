@@ -152,3 +152,26 @@ Zimmermann の立場を明示的に採用することで、既存の運用を裁
 ドキュメントのみの変更のため実行時検証はなし。`docs/README.md` と
 ルート `CLAUDE.md` の Architecture Decision Records 一覧にこの ADR への
 参照を追加したことを確認する。
+
+## Amendment (2026-11-09 — 旧 ADR からのリンクは、索引が新しい ADR の宣言から導く, #1453)
+
+Decision 2 の 2 番目は、accepted 後の ADR を immutable としたうえで、「覆すときは新 ADR を起こして `Status` に
+`Superseded by ADR-NNNN` と書き、旧 ADR からも新 ADR へリンクする」と書く。この 2 つは両立しない: immutable な旧 ADR に、
+後から新 ADR への参照を書き足すことになる。実際の運用は、新しい ADR が見出しに `- Supersedes:` や `- Amends:` で対象を
+宣言し、旧 ADR には何も書かない形で揃っていた(2026-11-09 に数えた: 宣言は 39 関係で、対象の ADR の見出しに宣言した側への逆参照が
+あるのは 3 関係だけ。残りの 36 関係は、旧 ADR の側が何も書いていない)。
+
+旧 ADR からのリンクは、手で書かない。`docs/README.md` の ADR の索引の各行に、その ADR を置き換える・改める後続の ADR を、
+新しい ADR の宣言から導いて付ける(`(後続: 置換 ADR-…; 改訂 ADR-…)`)。
+
+- **導く規則**: ADR の見出し(最初の `## ` より前)の `- Supersedes:` と `- Amends:` の値(続きの行を含む)から、
+  `ADR-<番号>` を拾う。値が `なし` で始まるものと、ADR の番号を含まないもの(skill のパスなど)は関係を持たない。
+- **検査**: 対象の ADR が `docs/adr/` に実在すること、宣言する側の番号が対象より大きいこと(仮番号は最後に出る決定として扱う)。
+  どちらも、`docs-index` が索引を作るときの失敗になる。
+- 旧 ADR の `Status` への手書き(`Superseded by`)は要らない。書いてあっても、索引は影響を受けない。
+- Decision 2 の『accepted 後は immutable』は、そのまま有効。
+
+### 執行点
+
+- `crates/docs-index/src/lib.rs`
+- `crates/docs-index/tests/tree.rs`

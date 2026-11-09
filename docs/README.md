@@ -17,32 +17,32 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 [`adr-numbering.md`](agents/adr-numbering.md))。一覧は番号の昇順で、仮番号は最後に並ぶ。
 
 <!-- BEGIN GENERATED: docs-index adr -->
-- [ADR-0001](adr/0001-home-manager-as-source-of-truth.md) — home-manager is the source of truth; apt and per-project runtimes are escape hatches
-- [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime consolidation + hybrid config translation
+- [ADR-0001](adr/0001-home-manager-as-source-of-truth.md) — home-manager is the source of truth; apt and per-project runtimes are escape hatches (後続: 改訂 ADR-0029, ADR-457, ADR-1228)
+- [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime consolidation + hybrid config translation (後続: 改訂 ADR-0029)
 - [ADR-0003](adr/0003-secrets-and-identity.md) — secrets & identity: YubiKey-rooted, runtime-decrypted SOPS
 - [ADR-0004](adr/0004-repo-identity-and-relocation.md) — repo identity & relocation to public `tarotene/dotfiles`
 - [ADR-0005](adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, never on auth
-- [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI アプリは自前の GL スタックを抱える
+- [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI アプリは自前の GL スタックを抱える (後続: 改訂 ADR-0029)
 - [ADR-0007](adr/0007-naming-and-layout-conventions.md) — 命名・配置規約
-- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択規約
+- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択規約 (後続: 改訂 ADR-380)
 - [ADR-0009](adr/0009-publish-guard-upstream-split.md) — 公開面ガードの上流分離と配布
-- [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム復号チャネルの退役
+- [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム復号チャネルの退役 (後続: 改訂 ADR-0022)
 - [ADR-0011](adr/0011-local-activity-log-capture.md) — ローカル活動ログの採取(atuin + Claude Code ターンログ)
 - [ADR-0012](adr/0012-precedent-grounding-over-prompted-adversarial-review.md) — プロンプトでの「敵対的レビュー」要求を、先行例接地 + 監査に機構化する
-- [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリに README charter スキーマを強制する
-- [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス体系を定め、GitHub topics を正本にする
-- [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を統合 CLI に再編し、決定論ノード+LLM ノードの判断ループにする
-- [ADR-0016](adr/0016-repository-document-canon.md) — リポジトリ文書正典: README 正形・litmus 移設・ルート閉集合・人間/AI 文書分離
-- [ADR-0017](adr/0017-contributing-schema.md) — CONTRIBUTING.md の固定スキーマと「Issue litmus」語彙の廃止
-- [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — darwin ホストと macOS システム層の Homebrew 薄層写像
+- [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリに README charter スキーマを強制する (後続: 置換 ADR-0016, ADR-0017)
+- [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス体系を定め、GitHub topics を正本にする (後続: 置換 ADR-0026; 改訂 ADR-833)
+- [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を統合 CLI に再編し、決定論ノード+LLM ノードの判断ループにする (後続: 改訂 ADR-0021)
+- [ADR-0016](adr/0016-repository-document-canon.md) — リポジトリ文書正典: README 正形・litmus 移設・ルート閉集合・人間/AI 文書分離 (後続: 置換 ADR-0017, ADR-0028; 改訂 ADR-0033, ADR-805)
+- [ADR-0017](adr/0017-contributing-schema.md) — CONTRIBUTING.md の固定スキーマと「Issue litmus」語彙の廃止 (後続: 改訂 ADR-805)
+- [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — darwin ホストと macOS システム層の Homebrew 薄層写像 (後続: 改訂 ADR-1228)
 - [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) — 恒星コードネームのホスト命名と論理ホスト名のマーカー解決
-- [ADR-0020](adr/0020-generative-repo-governance-rules.md) — リポジトリ統制を生成側規則(閉じた文法+語彙)に反転する
+- [ADR-0020](adr/0020-generative-repo-governance-rules.md) — リポジトリ統制を生成側規則(閉じた文法+語彙)に反転する (後続: 改訂 ADR-0026)
 - [ADR-0021](adr/0021-ruleset-review-layer-addin.md) — ruleset baseline のコア層/レビュー層 2 層化
 - [ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md) — esa MCP トークンをホストローカル GPG ファイル + 専用 launcher で供給する
 - [ADR-0023](adr/0023-repo-lifecycle-governance.md) — リポジトリライフサイクル統制(visibility/license/triage/consolidation)を dotfiles に正本化する
-- [ADR-0024](adr/0024-hook-cli-scripts-target-rust.md) — hook / CLI スクリプト群の実装技術を Rust とする
-- [ADR-0025](adr/0025-update-own-tools-local-registry.md) — 自作 pre-release CLI の導入をホストローカルレジストリで opt-in する
-- [ADR-0026](adr/0026-naming-lifecycle-axis-and-codename-split.md) — 命名クラス体系にライフサイクル軸を直交させ、naming-codename を分割する
+- [ADR-0024](adr/0024-hook-cli-scripts-target-rust.md) — hook / CLI スクリプト群の実装技術を Rust とする (後続: 置換 ADR-0027)
+- [ADR-0025](adr/0025-update-own-tools-local-registry.md) — 自作 pre-release CLI の導入をホストローカルレジストリで opt-in する (後続: 改訂 ADR-0029, ADR-457)
+- [ADR-0026](adr/0026-naming-lifecycle-axis-and-codename-split.md) — 命名クラス体系にライフサイクル軸を直交させ、naming-codename を分割する (後続: 改訂 ADR-833)
 - [ADR-0027](adr/0027-uncertainty-first-stacking.md) — セッション内 PR は依存予測をやめ常時単一チェーンに積む(uncertainty-first stacking)
 - [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README banner と第三者素材(repo ライセンスと異なる素材)の同梱規則
 - [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH の優先順位を ADR-0001 の執行機構として宣言下に置く
@@ -63,25 +63,25 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-503](adr/503-rulesets-declaration-in-repo.md) — required status check の正本を対象リポジトリ自身の宣言に一本化する
 - [ADR-519](adr/519-routines-declaration-in-repo.md) — Claude Code routine の正本を対象リポジトリ自身の宣言に一本化する
 - [ADR-528](adr/528-due-remind-timer.md) — a generic reader for another repository's local due-index, on an hourly Herdr-notified timer
-- [ADR-543](adr/543-existing-means-and-deterministic-promotion.md) — 既存手段の前倒し接地と、決定論への昇格導線
+- [ADR-543](adr/543-existing-means-and-deterministic-promotion.md) — 既存手段の前倒し接地と、決定論への昇格導線 (後続: 改訂 ADR-1276, ADR-1311, ADR-1382)
 - [ADR-544](adr/544-auto-prune-by-content-evidence.md) — worktree/branch の無人削除を「内容保全の証拠」で判定する
 - [ADR-568](adr/568-renovate-automerge-shared-preset.md) — Renovate の自動マージ方針を単一の共有 preset に一本化し、Dependabot の修正経路を閉じる
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の登録・install 先・secret 配布を 3 層すべて宣言 → 検出の対象にする
-- [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow 命名基準を統一する
+- [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow 命名基準を統一する (後続: 改訂 ADR-1005)
 - [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の人待ちチェックボックスを廃し、人の確認を後続 Issue へ払い出す
 - [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
 - [ADR-640](adr/640-stack-standard-api-docs.md) — 技術スタック標準の API ドキュメントのビルドを全リポジトリで必須にする
-- [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロスペクティブを Stop hook で強制する
+- [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロスペクティブを Stop hook で強制する (後続: 改訂 ADR-1276)
 - [ADR-705](adr/705-main-checkout-guard.md) — 本物の checkout(main worktree)を変更させない
 - [ADR-751](adr/751-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から歴史的経緯と書き直しの作業量を除く
 - [ADR-792](adr/792-free-plan-declaration.md) — 無料プランの非公開リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査だけを外す
 - [ADR-795](adr/795-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在を SessionStart hook で注入する(esa-index)
 - [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査だけを外す
-- [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスクは、着手可能になった日のうちに予定化する
+- [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスクは、着手可能になった日のうちに予定化する (後続: 改訂 ADR-1000)
 - [ADR-833](adr/833-archived-naming-not-applicable.md) — アーカイブ済みのリポジトリには、naming の宣言の欠落(`class-undeclared`)を要求しない
 - [ADR-872](adr/872-pipeline-map.md) — 自動発火する機構の地図を単一正本にし、登録箇所のポインタで網羅性を検査する
 - [ADR-961](adr/961-annotations-domain.md) — GitHub Actions の warning を横断で拾う annotations ドメインを github-audit に足す
-- [ADR-998](adr/998-worklog-vault-daily-note.md) — 粒度の小さい作業ログを、Obsidian vault の当日ノートへ worklog で追記し、SessionStart で渡す
+- [ADR-998](adr/998-worklog-vault-daily-note.md) — 粒度の小さい作業ログを、Obsidian vault の当日ノートへ worklog で追記し、SessionStart で渡す (後続: 改訂 ADR-1256, ADR-1291)
 - [ADR-1000](adr/1000-schedule-light-tasks-before-unblock.md) — 待ちのある軽い人手タスクも、連鎖ごと先に予定へ入れる
 - [ADR-1005](adr/1005-ci-gate-job-criteria.md) — CI の gate job を ci.yml に入れる基準を決め、検出と部品で全リポジトリに揃える
 - [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名・責務・共有配置
@@ -89,14 +89,14 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする
 - [ADR-1228](adr/1228-system-layer-declarations.md) — システム層の宣言と適用を分ける
 - [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、固まりの記録で再訪の条件を確かめる
-- [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する。語彙は版 2 に上げる
-- [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に mail kind を足し、読んだメールの裁定結論を vault に残す
-- [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を閉じた状態機械で表し、必ず終端に入ることを形式検査する
+- [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する。語彙は版 2 に上げる (後続: 改訂 ADR-1293)
+- [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に mail kind を足し、読んだメールの裁定結論を vault に残す (後続: 改訂 ADR-1259)
+- [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を閉じた状態機械で表し、必ず終端に入ることを形式検査する (後続: 改訂 ADR-1293)
 - [ADR-1276](adr/1276-codify-signals.md) — 振り返りで as-code 化の候補を閉じた語彙で記録し、採用・却下の実績で語彙を直す
-- [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠の状態を worklog の slot kind で追い、時間枠は行に持つ
-- [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を対象の状態遷移の担い手と定義し、語彙 JSON の共通の形とグラフ検査を置く
+- [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠の状態を worklog の slot kind で追い、時間枠は行に持つ (後続: 置換 ADR-1295; 改訂 ADR-1293)
+- [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を対象の状態遷移の担い手と定義し、語彙 JSON の共通の形とグラフ検査を置く (後続: 改訂 ADR-1297, ADR-1400)
 - [ADR-1295](adr/1295-slot-completion-record.md) — 作業の枠の時間は予定データに残し、worklog の slot kind は済んだ・やめたの完了記録だけを持つ
-- [ADR-1297](adr/1297-awaiting-item-abstraction.md) — 「裁定待ちの項目」の抽象の遷移表を定め、メール項目・気づき・設定のずれ・計画の要求項目を具体化として書く
+- [ADR-1297](adr/1297-awaiting-item-abstraction.md) — 「裁定待ちの項目」の抽象の遷移表を定め、メール項目・気づき・設定のずれ・計画の要求項目を具体化として書く (後続: 改訂 ADR-1381)
 - [ADR-1301](adr/1301-dev-flow-vocabulary.md) — 開発の流れの対象(計画・PR・Issue・WIP の PR)の語彙を起こし、skill を担い手・前提として載せる
 - [ADR-1305](adr/1305-env-maintenance-vocabulary.md) — 環境の保守の対象の語彙を起こし、載らない skill を落とす検査を CI に配線する
 - [ADR-1311](adr/1311-git-external-state-integrity.md) — Git の外に置いた状態の整合を、日次の timer で読む
