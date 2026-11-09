@@ -56,6 +56,12 @@ fn parse(args: &[String]) -> Result<Opts, String> {
     Ok(o)
 }
 
+const STOP_SPEC: agent_session::entry::StopSpec = agent_session::entry::StopSpec {
+    name: "ja-polish",
+    agents: &[agent_session::Agent::Claude, agent_session::Agent::Codex],
+    reentry: ja_polish::stop::REENTRY,
+};
+
 fn read_stdin() -> std::io::Result<String> {
     let mut buf = String::new();
     std::io::stdin().read_to_string(&mut buf)?;
@@ -66,11 +72,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("stop-gate") {
         // hook: 判定不能・入力が読めないときは何も出さず通す。
-        let raw = agent_session::entry::read_stdin();
-        if let Some(out) = ja_polish::stop::run(&raw) {
-            println!("{out}");
-        }
-        return ExitCode::SUCCESS;
+        return agent_session::entry::run_stop(&STOP_SPEC, ja_polish::stop::hook);
     }
     let opts = match parse(&args) {
         Ok(o) => o,

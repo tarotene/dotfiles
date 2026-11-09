@@ -30,6 +30,8 @@
 //! エスケープハッチ: `touch ~/.codex/codex-plan-gate/skip` または
 //! `SKIP_CODEX_PLAN_GATE=1`。
 
+use agent_session::entry::{run_stop, StopSpec};
+use agent_session::{Agent, Reentry, StopOutcome};
 use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
@@ -165,11 +167,6 @@ fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<St
                     .replace("ExitPlanMode を呼ぶ", "修正した Plan を提案する")
                     .replace("ExitPlanMode を呼んで", "修正した Plan を提案して")
             ));
-        } else if result["decision"] == "block" {
-            findings.push(format!(
-                "--- {name} ---\n{}",
-                result["reason"].as_str().unwrap_or("plan rejected")
-            ));
         } else if !status.success() {
             execution_incomplete = true;
             notices.push(format!("{name}: exited with {status}"));
@@ -190,7 +187,7 @@ fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<St
     (findings, notices)
 }
 
-fn run() -> Option<String> {
+fn run(raw: &str) -> Option<StopOutcome> {
     let state_root = env_path("CODEX_PLAN_GATE_DIR", || {
         home().join(".codex/codex-plan-gate")
     });
@@ -214,8 +211,7 @@ fn run() -> Option<String> {
         return None;
     }
 
-    let raw = agent_session::entry::read_stdin();
-    let input: Value = serde_json::from_str(&raw).ok()?;
+    let input: Value = serde_json::from_str(raw).ok()?;
     if input.get("hook_event_name").and_then(Value::as_str) != Some("Stop") {
         return None;
     }
@@ -270,10 +266,7 @@ fn run() -> Option<String> {
                     trim_trailing_newlines(&out2)
                 ));
             }
-            return serde_json::to_string_pretty(
-                &serde_json::json!({"decision": "block", "reason": reason}),
-            )
-            .ok();
+            return Some(StopOutcome::block(reason));
         }
     }
 
@@ -282,8 +275,7 @@ fn run() -> Option<String> {
     // failure must never consume or suppress their first (or subsequent) deny.
     let (findings, notices) = plan_engines(&claude_hooks, &input, plan_body);
     if findings.is_empty() {
-        return (!notices.is_empty())
-            .then(|| serde_json::json!({"systemMessage": notices.join("\n")}).to_string());
+        return (!notices.is_empty()).then(|| StopOutcome::notice(notices.join("\n")));
     }
     let mut reason = String::from(
         "Codex の Plan が検査を通過していません。指摘を確認して再提案してください。\n",
@@ -291,18 +283,23 @@ fn run() -> Option<String> {
     for finding in findings {
         reason.push_str(&format!("\n{finding}\n"));
     }
-    let mut doc = serde_json::json!({"decision": "block", "reason": reason});
-    if !notices.is_empty() {
-        doc["systemMessage"] = serde_json::json!(notices.join("\n"));
-    }
-    serde_json::to_string_pretty(&doc).ok()
+    Some(if notices.is_empty() {
+        StopOutcome::block(reason)
+    } else {
+        StopOutcome::block_with_notice(reason, notices.join("\n"))
+    })
 }
 
+/// `stop_hook_active` は見ない(block 直後の再呼び出しでも検査する)。無限 block は、session_id ごとの
+/// 独自カウンタ(上限 `CODEX_PLAN_GATE_MAX_BLOCKS`)が、形式検査の拒否だけを止める。
+const SPEC: StopSpec = StopSpec {
+    name: "codex-plan-gate",
+    agents: &[Agent::Codex],
+    reentry: Reentry::Recheck,
+};
+
 fn main() -> ExitCode {
-    if let Some(out) = run() {
-        println!("{out}");
-    }
-    ExitCode::SUCCESS
+    run_stop(&SPEC, |input| Ok(run(input.raw())))
 }
 
 #[cfg(test)]
