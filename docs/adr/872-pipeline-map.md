@@ -229,3 +229,32 @@ D3 と 2026-10-27 の Amendment は、nix 側の登録箇所として timer と 
 - `home/modules/pipeline.nix`
 - `home/modules/webcam-builtin.nix`
 - `pipeline-map.toml`
+
+## Amendment (2026-11-09 — hook のレーンの自動ノードは、設計を読める文書を指す)
+
+ADR-0007 §5 は「doc を持たない hook(孤立 hook)を作らない」と決めた。この規約は散文のままで、検査が無く、hook の自動ノード
+(`session = true` のレーンの `auto = true`)の 5 つが `doc` を持たないまま残っていた: `new-tool-guard`・`feedback-target-guard`・
+`cmd-hash-log`(tool-call)、`atuin-history`(tool-call、外部の道具)、`agent-turn-log`(stop)。専用の `docs/agents/<名前>.md` が
+無いものは、設計と記録先を説明する別の文書(機能全体の文書、記録の方式を決めた ADR)を指せば足りる。`audit` の検査は、`doc` の
+実在(従来)に加えて、この「hook なのに `doc` が無い」を見る。
+
+- `crates/pipeline-map/src/lib.rs` の `audit` に、「`session = true` のレーンに属する `auto = true` のノードは `doc` を持つ」を足す。
+  timer・workflow など、ほかのレーンには広げない(孤立の再発の記録が無い。広げるのは、再発が出てから)。手動の CLI と skill
+  (`auto = false`)は対象外。
+- 5 つのノードに `doc` を足した: `new-tool-guard` は `docs/agents/new-tool-guard.md`、`feedback-target-guard` と `cmd-hash-log` は
+  それらの出力(`Target:` の閉語彙、`cmd-hashes.jsonl`)を読む `docs/agents/promotion-detect.md`、`agent-turn-log` と `atuin-history`
+  は記録の方式を決めた `docs/adr/0011-local-activity-log-capture.md`。専用の文書を新しく書くことはしない(読む先が既にある)。
+- 「doc 欄が無いノードは 3 件」としていた見積りは誤りで、全体では 22 件、hook のレーンでは 5 件だった。検査は hook のレーンに
+  限るので、残る 17 件(timer・workflow・git hook など)は検査の対象外のまま。
+
+### 検証
+
+- 単体テスト 4 件(`a_hook_node_without_doc_fails`・`a_hook_node_with_an_existing_doc_passes`・`a_non_hook_lane_does_not_need_a_doc`・
+  `a_manual_hook_lane_node_does_not_need_a_doc`)が通る。`doc` を足す前のリポジトリ本体に対する `tests/coverage.rs` は、5 つのノード
+  ぴったりを名指しして落ちた(陰性対照)。足したあとは通る。
+- `cargo run -p pipeline-map -- render` の差分が空(`doc` は図の生成が読まない欄)。
+
+### 執行点
+
+- `crates/pipeline-map/src/lib.rs`
+- `pipeline-map.toml`

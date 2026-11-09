@@ -649,6 +649,13 @@ pub fn audit(root: &Path, m: &Manifest) -> Report {
     dup(m.pipeline.iter().map(|x| &x.id), "pipeline", p);
     dup(m.node.iter().map(|x| &x.id), "node", p);
     let lanes: BTreeSet<&str> = m.lane.iter().map(|x| x.id.as_str()).collect();
+    // hook(セッションの中で発火する)のレーン。ここの自動ノードは、設計を読める文書(`doc`)を持つ。
+    let session_lanes: BTreeSet<&str> = m
+        .lane
+        .iter()
+        .filter(|l| l.session)
+        .map(|l| l.id.as_str())
+        .collect();
     let pipes: BTreeSet<&str> = m.pipeline.iter().map(|x| x.id.as_str()).collect();
     let nodes: BTreeMap<&str, &Node> = m.node.iter().map(|n| (n.id.as_str(), n)).collect();
 
@@ -719,6 +726,14 @@ pub fn audit(root: &Path, m: &Manifest) -> Report {
                     p.push(format!("{what}: {key} `{path}` が存在しない"));
                 }
             }
+        }
+        // 孤立した hook を作らない(ADR-0007 §5)。hook のレーンの自動ノードは `doc` を持つ。
+        // timer・workflow など、ほかのレーンには広げない(孤立の再発の記録が無い)。
+        if n.auto && session_lanes.contains(n.lane.as_str()) && n.doc.is_none() {
+            p.push(format!(
+                "{what}: hook(session = true のレーン `{}`)の自動ノードに doc が無い(設計を読める文書を 1 つ指す。ADR-0007 §5)",
+                n.lane
+            ));
         }
     }
     for l in &m.lane {
@@ -1270,5 +1285,87 @@ label = "blocks"
                 .any(|m| m.contains("guard-a") && m.contains("登録")),
             "{p:#?}"
         );
+    }
+
+    // ---- hook のレーンの自動ノードは doc を持つ ----
+
+    /// hook のレーン(`session = true`)と hub を持つ最小の manifest。`{DOC}` を node の行に差し込む。
+    fn hook_manifest(extra_node_line: &str, lane_session: bool, auto: bool) -> String {
+        format!(
+            r#"
+[[lane]]
+id = "tool-call"
+label = "Tool call"
+order = 1
+session = {lane_session}
+[[lane]]
+id = "timer"
+label = "Timer"
+order = 2
+[[pipeline]]
+id = "p1"
+label = "P1"
+order = 1
+[[node]]
+id = "session"
+label = "session"
+lane = "timer"
+stack = "cloud-llm"
+pipelines = ["p1"]
+auto = false
+hub = true
+[[node]]
+id = "guard-a"
+label = "guard-a"
+lane = "tool-call"
+stack = "rust"
+pipelines = ["p1"]
+auto = {auto}
+{extra_node_line}
+"#
+        )
+    }
+
+    #[test]
+    fn a_hook_node_without_doc_fails() {
+        let d = repo();
+        write(d.path(), MANIFEST, &hook_manifest("", true, true));
+        let p = problems(d.path());
+        assert!(
+            p.iter()
+                .any(|x| x.contains("`guard-a`") && x.contains("doc が無い")),
+            "{p:#?}"
+        );
+    }
+
+    #[test]
+    fn a_hook_node_with_an_existing_doc_passes() {
+        let d = repo();
+        write(d.path(), "docs/agents/guard-a.md", "# guard-a\n");
+        write(
+            d.path(),
+            MANIFEST,
+            &hook_manifest("doc = \"docs/agents/guard-a.md\"", true, true),
+        );
+        let p = problems(d.path());
+        assert!(!p.iter().any(|x| x.contains("doc が無い")), "{p:#?}");
+    }
+
+    #[test]
+    fn a_non_hook_lane_does_not_need_a_doc() {
+        // 同じ node でも、レーンが session = true でなければ(timer など)doc を求めない。
+        let d = repo();
+        write(d.path(), MANIFEST, &hook_manifest("", false, true));
+        let p = problems(d.path());
+        assert!(!p.iter().any(|x| x.contains("doc が無い")), "{p:#?}");
+    }
+
+    #[test]
+    fn a_manual_hook_lane_node_does_not_need_a_doc() {
+        // auto = false(手動の CLI や skill)は、登録箇所を持たないので対象外。
+        let d = repo();
+        write(d.path(), MANIFEST, &hook_manifest("", true, false));
+        let p = problems(d.path());
+        assert!(!p.iter().any(|x| x.contains("doc が無い")), "{p:#?}");
     }
 }

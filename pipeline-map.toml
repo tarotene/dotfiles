@@ -15,6 +15,9 @@
 #     auto = false のノード(skill・手動 CLI・外部サービス・状態ファイル)は
 #     hand-off 先として描くだけで、ポインタを要求しない(ポインタされていたら fail)。
 #   - label は ASCII のみ(図のフォントは CJK を持たない。日本語の説明は md の散文に書く)。
+#   - hook のレーン(session = true)の auto = true のノードは `doc` を持つ(設計を読める文書を 1 つ指す。
+#     ADR-0007 §5「孤立した hook を作らない」)。専用の docs/agents/<名前>.md が無い hook は、
+#     その hook の設計と記録先を説明する別の文書(ADR、機能全体の文書)を指してよい。
 #
 # 実値の扱い(ADR-0034): このリポジトリは公開。private なリポジトリ名・bucket 名などの
 # 実値は書かず、役割で呼ぶ(private-issue-repo など)。
@@ -90,7 +93,7 @@ node = [
   { id = "worktree-create-guard", label = "worktree-create-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/git-worktree-create-guard", doc = "docs/worktree-lifecycle.md", auto = true },
   { id = "worktree-lease", label = "worktree-lease", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/worktree-lease", doc = "docs/agents/worktree-lease.md", auto = true },
   { id = "pkexec-guard", label = "pkexec-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/pkexec-guard", doc = "docs/agents/pkexec-guard.md", auto = true },
-  { id = "new-tool-guard", label = "new-tool-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/new-tool-guard", auto = true },
+  { id = "new-tool-guard", label = "new-tool-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/new-tool-guard", doc = "docs/agents/new-tool-guard.md", auto = true },
   { id = "record-layer-guard", label = "record-layer-guard", lane = "tool-call", group = "git-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/record-layer", doc = "docs/agents/record-layers.md", auto = true },
   { id = "new-tool-guard-record", label = "new-tool-guard (record)", lane = "plan-approval", group = "plan-gates", stack = "rust", pipelines = ["implement-to-pr", "plan-approval"], entity = "crates/new-tool-guard", doc = "docs/agents/new-tool-guard.md", auto = true },
   { id = "bleep", label = "bleep", lane = "tool-call", group = "leak-guards", stack = "external", pipelines = ["implement-to-pr", "wrapup-to-issue"], doc = "docs/agents/public-publish-guard.md", auto = true },
@@ -106,7 +109,7 @@ node = [
   { id = "pkill-guard", label = "pkill-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pkill-guard", doc = "docs/agents/pkill-guard.md", auto = true },
   { id = "decision-colocation-guard", label = "decision-colocation-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/decision-colocation", doc = "docs/agents/decision-colocation.md", auto = true },
   { id = "stack-base-guard", label = "stack-base-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/stack-base-guard", doc = "docs/agents/stack-base-guard.md", auto = true },
-  { id = "feedback-target-guard", label = "feedback-target-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/feedback-target-guard", auto = true },
+  { id = "feedback-target-guard", label = "feedback-target-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/feedback-target-guard", doc = "docs/agents/promotion-detect.md", auto = true },
   { id = "issue-create-guard", label = "issue-create-guard", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["wrapup-to-issue"], entity = "crates/issue-create-guard", doc = "docs/agents/issue-create-guard.md", auto = true },
   { id = "gh-edit-allow-record", label = "gh-edit-allow (record)", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/gh-edit-allow", doc = "docs/agents/gh-edit-allow.md", auto = true },
   { id = "gh-edit-allow-judge", label = "gh-edit-allow (judge)", lane = "tool-call", group = "gh-guards", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/gh-edit-allow", doc = "docs/agents/gh-edit-allow.md", auto = true },
@@ -114,8 +117,8 @@ node = [
   { id = "repo-create-guard", label = "repo-create-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["repo-governance"], entity = "crates/repo-create-guard", doc = "docs/agents/repo-create-guard.md", auto = true },
   { id = "rulesets-write-guard", label = "rulesets-write-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["repo-governance"], entity = "crates/rulesets-write-guard", doc = "docs/agents/rulesets-write-guard.md", auto = true },
   { id = "routines-write-guard", label = "routines-write-guard", lane = "tool-call", group = "governance-guards", stack = "rust", pipelines = ["routines"], entity = "crates/routines-write-guard", doc = "docs/agents/routines-write-guard.md", auto = true },
-  { id = "cmd-hash-log", label = "cmd-hash-log", lane = "tool-call", group = "telemetry", stack = "rust", pipelines = ["evidence", "wrapup-to-issue"], entity = "crates/cmd-hash-log", auto = true },
-  { id = "atuin-history", label = "atuin hook", lane = "tool-call", group = "telemetry", stack = "external", pipelines = ["evidence"], auto = true },
+  { id = "cmd-hash-log", label = "cmd-hash-log", lane = "tool-call", group = "telemetry", stack = "rust", pipelines = ["evidence", "wrapup-to-issue"], entity = "crates/cmd-hash-log", doc = "docs/agents/promotion-detect.md", auto = true },
+  { id = "atuin-history", label = "atuin hook", lane = "tool-call", group = "telemetry", stack = "external", pipelines = ["evidence"], doc = "docs/adr/0011-local-activity-log-capture.md", auto = true },
   { id = "herdr-agent-metadata", label = "herdr-agent-metadata", lane = "tool-call", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/herdr-agent-metadata", doc = "docs/agents/herdr-sidebar-metadata.md", auto = true },
 
   # --- Turn end / Stop
@@ -124,7 +127,7 @@ node = [
   { id = "ja-polish-stop-gate", label = "ja-polish (stop)", lane = "stop", group = "stop-gates", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/ja-polish", doc = "docs/agents/ja-polish.md", auto = true },
   { id = "main-checkout-guard-stop", label = "main-checkout-guard (stop)", lane = "stop", group = "stop-gates", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/main-checkout-guard", doc = "docs/agents/main-checkout-guard.md", auto = true },
   { id = "codex-plan-gate", label = "codex-plan-gate", lane = "stop", group = "plan-gates", stack = "rust", pipelines = ["plan-approval"], entity = "crates/codex-plan-gate", doc = "docs/claude/codex-plan-gate.md", auto = true },
-  { id = "agent-turn-log", label = "agent-turn-log", lane = "stop", group = "telemetry", stack = "rust", pipelines = ["evidence"], entity = "crates/agent-turn-log", auto = true },
+  { id = "agent-turn-log", label = "agent-turn-log", lane = "stop", group = "telemetry", stack = "rust", pipelines = ["evidence"], entity = "crates/agent-turn-log", doc = "docs/adr/0011-local-activity-log-capture.md", auto = true },
   { id = "claude-statusline", label = "claude-statusline", lane = "stop", group = "herdr-feeds", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/claude-statusline", doc = "docs/agents/herdr-sidebar-metadata.md", auto = true },
 
   # --- git hooks
