@@ -31,9 +31,59 @@ pub fn judge(project: &Path, body_text: &str, added: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// 記載が欠けている各ファイルについて、`new-tool-guard` の台帳に登録済みの `既存手段:` 行
+/// (そのファイルのパスを持つ最初の 1 行)。本文は公開の記録で正本のままだが、同じ文を手で
+/// 書き直す往復を、差し戻しの文に正しい行を載せて 1 回にする。台帳が読めない・登録が無い
+/// ファイルは、何も返さない(一般の書式の案内だけが出る)。
+pub fn registered_lines(project: &Path, missing: &[String]) -> Vec<String> {
+    let Some(ledger) = new_tool_guard::hook::default_ledger() else {
+        return Vec::new();
+    };
+    let Some(key) = new_tool_guard::hook::ledger_key(project) else {
+        return Vec::new();
+    };
+    registered_lines_from(&ledger.records(&key), project, missing)
+}
+
+/// [`registered_lines`] の純粋な部分。`records` は台帳の全行、`root` は git toplevel。
+pub fn registered_lines_from(records: &[String], root: &Path, missing: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for file in missing {
+        let want = new_tool_guard::normalize_path(root, file);
+        let found = records.iter().find(|r| {
+            new_tool_guard::record_path(r)
+                .map(|p| new_tool_guard::normalize_path(root, &p) == want)
+                .unwrap_or(false)
+        });
+        if let Some(line) = found {
+            if !out.contains(line) {
+                out.push(line.clone());
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registered_line_is_found_by_path_not_by_prefix() {
+        let root = Path::new("/repo");
+        let records = vec![
+            "既存手段: crates/foo-extra/Cargo.toml — 採用: x".to_string(),
+            "既存手段: /repo/crates/foo/Cargo.toml — 拡張: crates/bar".to_string(),
+        ];
+        let missing = vec!["crates/foo/Cargo.toml".to_string()];
+        assert_eq!(
+            registered_lines_from(&records, root, &missing),
+            vec!["既存手段: /repo/crates/foo/Cargo.toml — 拡張: crates/bar".to_string()]
+        );
+        // 登録が無いファイルは何も返さない。
+        let none = vec!["crates/nothing/Cargo.toml".to_string()];
+        assert!(registered_lines_from(&records, root, &none).is_empty());
+    }
 
     #[test]
     fn empty_input_yields_nothing() {

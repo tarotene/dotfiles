@@ -387,13 +387,23 @@ GitHub 上の stack にリンクされていません。最下段から順に PR
         if !missing.is_empty() {
             // bash 版は `printf '  - %s\n' "$missing_kizon"` に改行区切りの 1 引数を
             // 渡していたため、2 件目以降に "  - " が付かない。移植では挙動を保つ。
+            // 台帳(new-tool-guard)に登録済みの行があれば、そのまま本文に追記できる形で載せる。
+            let registered = prior::registered_lines(project, &missing);
+            let registered_block = if registered.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "\n登録済みの行(new-tool-guard の台帳から。そのまま `## 解決策` 節に追記できます):\n\n  {}\n",
+                    registered.join("\n  ")
+                )
+            };
             f.prior = Some(format!(
                 "PR #{pr_num} で新しい道具・単位を追加していますが、本文に
 `既存手段:` の記載がありません(ADR-543「既存手段の前倒し接地と、決定論
 への昇格導線」):
 
   - {}
-
+{registered_block}
 既存の枯れた技術で足りないか検討し、次のいずれかの形式で本文の
 `## 解決策` 節に1行ずつ追記してから再試行してください(pr-description
 スキル):

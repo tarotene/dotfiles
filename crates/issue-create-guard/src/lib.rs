@@ -427,6 +427,17 @@ mod tests {
     }
 
     #[test]
+    fn viewing_the_help_is_not_creating_an_issue() {
+        for cmd in [
+            "gh issue create --help",
+            "gh issue create -h",
+            "gh issue create -R tarotene/x --help",
+        ] {
+            assert_eq!(run(cmd, PRIV), None, "{cmd}");
+        }
+    }
+
+    #[test]
     fn denies_a_missing_ball_label_and_shows_the_rewrite() {
         let r = run("gh issue create -R tarotene/x --title t --label bug", PRIV).unwrap();
         assert!(r.contains("ボールのラベルがありません"), "{r}");

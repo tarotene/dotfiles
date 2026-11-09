@@ -25,6 +25,10 @@
 //! 前置が除外を打ち消し、`GIT_EDITOR=true git rebase --continue` が sandbox の中で動いて署名が
 //! 失敗した(2026-11-05)。案内は「前置せず単体で呼ぶ」「常に要る変数は設定の `env` に宣言する」。
 //!
+//! 文が 1 つでも、除外パターンに当たる文の引数にバッククォートか `$(` があると、呼び出し全体が
+//! sandbox の中に残る(`git commit -m` の本文のバッククォートで署名が失敗した。2026-11-10 に
+//! vega で、引用の種類と heredoc 形を含めて実測した)。これも止めて、`-F <ファイル>` へ案内する。
+//!
 //! 逃げ道: 連結が要る正当な理由があるときは、コマンドに `SANDBOX_COMPOUND_GUARD_ALLOW=1` の語を
 //! 足す(呼び出し単位)。人が起動前に `SKIP_SANDBOX_COMPOUND_GUARD=1` を設定してもよい(セッション単位)。`dangerouslyDisableSandbox: true` の呼び出しは、sandbox の外で
 //! 動くので止めない。Claude Code の sandbox にだけ当たる検査なので、他のエージェントは対象外。
@@ -232,6 +236,33 @@ fn prefix_hint(tool: &str, prefix: &str) -> String {
     )
 }
 
+/// 文のどこかに、バッククォートか `$(` があるか。引用の中でも、単引用符の中でも数える
+/// (2026-11-10、vega で `gh api user` を使って実測: どちらの引用でも、`$(echo hi)` でも
+/// `$(cat <<'EOF' …)` でも、呼び出し全体が sandbox の中に残り HTTP 401 になった。
+/// `$VAR` と、二重引用符の中のバックスラッシュは、sandbox の外で動いた)。
+/// 引用の外の `$(` は `(` で区切られ、直前のトークンが `$` で終わる。
+fn has_substitution(statement: &[String]) -> bool {
+    statement
+        .iter()
+        .any(|t| t.contains('`') || t.contains("$("))
+        || statement
+            .windows(2)
+            .any(|w| w[0].ends_with('$') && w[1] == "(")
+}
+
+/// コマンド置換の拒否文。`tool` は除外対象のコマンドの語。
+fn substitution_hint(tool: &str) -> String {
+    format!(
+        "`{tool}` は sandbox の外で動かす道具(sandbox.excludedCommands)ですが、引数の中にバッククォートか \
+`$(` があると、呼び出し全体が除外パターンに合わず、sandbox の中に残ります(`git commit` は署名が \
+`No secret key`、`gh` は HTTP 401 で失敗します。引用の中でも、`$(cat <<'EOF' …)` の形でも同じです。\
+2026-11-10、vega で実測)。本文は Write でファイルにして `git commit -F <絶対パス>` や \
+`gh … --body-file <絶対パス>` で渡し、パスや値は、コマンド置換でなく、先に読んだ文字列を直接書いてください。\
+{how_to}",
+        how_to = SANDBOX_COMPOUND_GUARD.how_to().unwrap_or_default()
+    )
+}
+
 /// 文の先頭にある、剥がされない前置の語(安全でない `VAR=value` と `env`)。
 fn unstripped_prefix(statement: &[String]) -> String {
     let mut prefix = Vec::new();
@@ -261,9 +292,12 @@ pub fn decide(cmd: &str, patterns: &[String], allow: bool) -> Option<String> {
     }
     let statements = statements(&parsed.tokens);
     if let [only] = statements.as_slice() {
-        // 文が 1 つなら連結ではないが、前置が除外を打ち消すことがある。
-        return prefix_defeats_exclusion(only, patterns)
-            .then(|| prefix_hint(&display_name(only), &unstripped_prefix(only)));
+        // 文が 1 つなら連結ではないが、前置や引数の中のコマンド置換が除外を打ち消すことがある。
+        if prefix_defeats_exclusion(only, patterns) {
+            return Some(prefix_hint(&display_name(only), &unstripped_prefix(only)));
+        }
+        return (statement_is_excluded(only, patterns) && has_substitution(only))
+            .then(|| substitution_hint(&display_name(only)));
     }
     if statements.len() < 2 {
         return None;
@@ -422,13 +456,37 @@ mod tests {
             "gh auth status",
             "gh issue list -R o/r --json number --jq '.[].number'",
             "git commit -m \"a; b && c | d\"",
-            "git commit -m \"$(cat <<'EOF'\nfix: x; y\nEOF\n)\"",
             "echo \"gh pr list | head\"",
             "cargo test -p x && cargo clippy",
             "git status | head",
             "ls; pwd",
             "git log --oneline -3 | cat",
             "git -C /tmp/x log | head",
+        ] {
+            assert_eq!(reason(c), None, "{c}");
+        }
+    }
+
+    #[test]
+    fn denies_command_substitution_in_an_excluded_command() {
+        // 引用の中でも、heredoc 形でも、sandbox の中に残る(実測)。
+        for c in [
+            "git commit -m \"fix: use `foo`\"",
+            "git commit -m 'fix: use `foo`'",
+            "git commit -m \"$(cat <<'EOF'\nfix: x; y\nEOF\n)\"",
+            "gh api user -H \"X: $(echo hi)\"",
+            "gh api user -H 'X: $(x)'",
+        ] {
+            let r = reason(c).unwrap_or_else(|| panic!("通ってしまった: {c}"));
+            assert!(r.contains("バッククォートか `$(`"), "{c}: {r}");
+        }
+        // 除外パターンに当たらないコマンドの引数は、関係しない。
+        assert_eq!(reason("echo `date`"), None);
+        // `$VAR` と本文のファイル渡しは、sandbox の外で動く。
+        for c in [
+            "gh api user -H 'X: $HOME'",
+            "git commit -F /tmp/msg.txt",
+            "gh pr create --body-file /tmp/b.md --title t",
         ] {
             assert_eq!(reason(c), None, "{c}");
         }
