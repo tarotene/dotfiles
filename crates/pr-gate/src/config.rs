@@ -65,7 +65,7 @@ impl Config {
             quiesce: env_num("PR_GATE_QUIESCE", 15),
             fetch_ttl: env_num("PR_GATE_FETCH_TTL", 600),
             max_blocks: env_num("PR_GATE_MAX_BLOCKS", 6),
-            skip_env: env_nonempty("SKIP_PR_GATE").as_deref() == Some("1"),
+            skip_env: agent_session::escape::PR_GATE.active(None, None).is_some(),
         }
     }
 
@@ -73,8 +73,17 @@ impl Config {
         self.state_root.join("state")
     }
 
-    /// `[[ -f "$STATE_ROOT/skip" ]] || [[ "${SKIP_PR_GATE:-0}" == "1" ]]`。
+    /// `$STATE_ROOT/skip` があるか `SKIP_PR_GATE=1` なら真(名前と真偽は `agent_session::escape` の表が決める。
+    /// skip ファイルは、従来の `is_file` から、ほかの guard と同じ「存在」に統一した)。
     pub fn skipped(&self) -> bool {
-        self.state_root.join("skip").is_file() || self.skip_env
+        agent_session::escape::PR_GATE
+            .judge(
+                self.skip_env.then_some("1"),
+                self.state_root
+                    .join(agent_session::escape::SKIP_FILE)
+                    .exists(),
+                None,
+            )
+            .is_some()
     }
 }

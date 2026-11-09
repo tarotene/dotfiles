@@ -86,7 +86,7 @@ impl Env {
             "PLAN_VIEW_HIGHLIGHT",
             "PLAN_VIEW_WINDOW_SIZE",
             "PLAN_VIEW_RETENTION_DAYS",
-            "PLAN_VIEW_SKIP",
+            "SKIP_PLAN_VIEW",
             "PLAN_VIEW_UNAME_OVERRIDE",
             "PLAN_VIEW_DARWIN_CHROME_APP",
             "WAYLAND_DISPLAY",
@@ -361,7 +361,7 @@ fn assert_silent_noop(e: &Env, out: &Output) {
 fn hook_skip_env() {
     let e = Env::new();
     let mut c = e.cmd(&[]);
-    c.env("PLAN_VIEW_SKIP", "1");
+    c.env("SKIP_PLAN_VIEW", "1");
     let out = e.run(
         c,
         &e.hook_input("s-skip", Some("# skip されるプラン\n"), None),
@@ -695,7 +695,7 @@ fn cli_help() {
     assert!(out.status.success());
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(s.starts_with("使い方: plan-view [FILE|-] [--title T] [--no-open] [--out PATH]\n\n"));
-    assert!(s.ends_with("無効化:   PLAN_VIEW_SKIP=1 または ~/.claude/plan-views/skip\n"));
+    assert!(s.ends_with("無効化:   SKIP_PLAN_VIEW=1 または ~/.claude/plan-views/skip\n"));
     assert_eq!(s.lines().count(), 10);
     let out2 = e.run(e.cmd(&["-h"]), "");
     assert_eq!(out.stdout, out2.stdout);

@@ -184,7 +184,7 @@ impl Env {
             "COPILOT_PLAN_REVIEW_RETENTION_DAYS",
             "COPILOT_PLAN_REVIEW_SCHEMA",
             "MAX_PLAN_REVIEWS",
-            "SKIP_PLAN_REVIEW",
+            "SKIP_COPILOT_PLAN_REVIEW",
             "FAKE_COPILOT_EXPECT_MODEL",
             "FAKE_COPILOT_EXPECT_AGENT",
         ] {
@@ -427,7 +427,7 @@ fn skip_env_and_flag() {
     let e = Env::new();
     let out = e.hook(
         &input("selftest-skip"),
-        &[("COPILOT_BIN", "true"), ("SKIP_PLAN_REVIEW", "1")],
+        &[("COPILOT_BIN", "true"), ("SKIP_COPILOT_PLAN_REVIEW", "1")],
     );
     assert_eq!(out, "");
     fs::write(e.review.join("skip"), "").unwrap();

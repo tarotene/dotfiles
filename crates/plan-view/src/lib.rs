@@ -11,7 +11,7 @@
 //!   permissionDecision として解釈されるため。表示するだけの道具)。
 //! - CLI モード: `plan-view [FILE|-] [--title T] [--no-open] [--out PATH]`
 //!
-//! スキップ手段: `touch ~/.claude/plan-views/skip` または `PLAN_VIEW_SKIP=1`
+//! スキップ手段: `touch ~/.claude/plan-views/skip` または `SKIP_PLAN_VIEW=1`
 //!
 //! 既知の罠(bash 版から引き継ぐ):
 //! - ブラウザを同期起動すると承認ダイアログが出ない。必ず切り離して(待たずに)
@@ -475,7 +475,7 @@ const USAGE: &str = "使い方: plan-view [FILE|-] [--title T] [--no-open] [--ou
 
 環境変数: PLAN_VIEW_DIR PLAN_VIEW_PANDOC PLAN_VIEW_BROWSER PLAN_VIEW_CSS
           PLAN_VIEW_HIGHLIGHT PLAN_VIEW_WINDOW_SIZE PLAN_VIEW_RETENTION_DAYS
-無効化:   PLAN_VIEW_SKIP=1 または ~/.claude/plan-views/skip
+無効化:   SKIP_PLAN_VIEW=1 または ~/.claude/plan-views/skip
 ";
 
 fn die(msg: &str) -> i32 {
@@ -638,7 +638,9 @@ pub fn run_cli(cfg: &Config, args: &[String]) -> i32 {
 /// hook モード。何があっても stdout に書かない(呼び出し側で exit 0)。
 pub fn run_hook(cfg: &Config, stdin: &str) {
     // --- エスケープハッチ ---
-    if cfg.view_dir.join("skip").exists() || std::env::var("PLAN_VIEW_SKIP").is_ok_and(|v| v == "1")
+    if agent_session::escape::PLAN_VIEW
+        .active(Some(&cfg.view_dir), None)
+        .is_some()
     {
         return;
     }

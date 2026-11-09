@@ -134,8 +134,9 @@ pub fn default_ledger() -> Option<SessionLedger> {
 /// hook 全体を止める skip 機構: `SKIP_GH_EDIT_ALLOW=1` か `<base>/skip` の存在
 /// (`stack-base-guard.sh` / `plan-fresh-gate.sh` と同じ形)。
 pub fn skipped() -> bool {
-    std::env::var_os("SKIP_GH_EDIT_ALLOW").is_some_and(|v| v == "1")
-        || base_dir().is_some_and(|d| d.join("skip").exists())
+    agent_session::escape::GH_EDIT_ALLOW
+        .active(base_dir().as_deref(), None)
+        .is_some()
 }
 
 /// 記録役(PostToolUse)の本体。`gh pr/issue create` の結果を、このセッションの台帳に足す。

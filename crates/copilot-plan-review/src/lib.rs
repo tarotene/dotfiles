@@ -844,8 +844,9 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
         return pass_through("");
     }
     // --- エスケープハッチ ---
-    if Path::new(&format!("{}/skip", cfg.review_dir)).exists()
-        || std::env::var("SKIP_PLAN_REVIEW").is_ok_and(|s| s == "1")
+    if agent_session::escape::COPILOT_PLAN_REVIEW
+        .active(Some(Path::new(&cfg.review_dir)), None)
+        .is_some()
     {
         return pass_through("");
     }

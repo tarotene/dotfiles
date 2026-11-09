@@ -271,7 +271,7 @@ deny の文言側では GO/NO-GO それぞれの次の行動を明示するよ�
   スキーマ不適合・パース不能はすべて警告付き素通り。copilot が無いマシンでは黙って
   no-op（ADR-0005 のバイナリ存在ゲート）なので、全ホストに無条件でデプロイしている。
 - **エスケープハッチ。** `touch ~/.claude/plan-reviews/skip` または
-  `SKIP_PLAN_REVIEW=1`。
+  `SKIP_COPILOT_PLAN_REVIEW=1`。
 - **`--advisory` はゲートなし。** deny 経路に到達せず、ラウンドも消費しない。
 
 ## Copilot への移行
@@ -413,7 +413,7 @@ no-op になるので、導入前のホストにも安全にデプロイでき�
 | `COPILOT_PLAN_REVIEW_RETENTION_DAYS` | `30` | log / json / backlog / state の保持期限。`0` で無効 |
 | `COPILOT_PLAN_REVIEW_DIR` | `~/.claude/plan-reviews` | 出力先（selftest が差し替える） |
 | `COPILOT_PLAN_REVIEW_SCHEMA` | スクリプトと同じディレクトリ | 契約文書として読む schema.json のパス（jq validator 自体はスクリプトにハードコードしてあり、このファイルを実行時に読み込むわけではない） |
-| `SKIP_PLAN_REVIEW` | — | `1` でスキップ |
+| `SKIP_COPILOT_PLAN_REVIEW` | — | `1` でスキップ |
 
 `COPILOT_PLAN_REVIEW_GATE_SEVERITIES` と `MAX_PLAN_REVIEWS` は `home/modules/agents.nix` の
 `home.sessionVariables` で `BLOCKER` / `2` に再校正している。実測（`~/.claude/plan-reviews/`

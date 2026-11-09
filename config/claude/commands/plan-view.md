@@ -27,7 +27,7 @@ ExitPlanMode 時には同じものが自動で開く。このコマンドは、*
   指示があるまでプランを書き換えないこと。
 - 失敗した場合（`pandoc` 不在・`DISPLAY` なし・ブラウザ不在）は非ゼロで理由が
   stderr に出る。リトライせず、その理由をそのまま報告すること。
-- 無効化されているとき（`PLAN_VIEW_SKIP=1` または `~/.claude/plan-views/skip`）でも、
+- 無効化されているとき（`SKIP_PLAN_VIEW=1` または `~/.claude/plan-views/skip`）でも、
   この CLI 経路は動く。無効化は ExitPlanMode の自動発火だけを止める。
 
 $ARGUMENTS

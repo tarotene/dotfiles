@@ -156,15 +156,15 @@ fn cases_1_to_11() {
     assert!(!out.contains("別の呼び出しに分けて"), "11: {out}");
 }
 
-/// bash 版の deny 文と同じ全文(checker 出力を挟む)。
+/// deny 文の全文(checker 出力を挟む。案内の文は `escape` の表が作る)。
 #[test]
-fn deny_text_is_byte_identical_to_bash() {
+fn deny_text_is_pinned() {
     let dir = env_repo();
     let out = decide(false, "gh pr create --base main", dir.path()).unwrap();
     assert_eq!(
         out,
         format!(
-            "決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への Amendment 追加が、その執行点(実際に実装する変更)を同じ PR に伴っていません(config/agents/AGENTS.md「決定成果物は執行点と同じ PR に出す」、docs/adr/396-decision-colocation.md)。詳細:\n{CHECK_OUT}\n一時的に無効化するには SKIP_DECISION_COLOCATION_GUARD=1 を設定してください。"
+            "決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への Amendment 追加が、その執行点(実際に実装する変更)を同じ PR に伴っていません(config/agents/AGENTS.md「決定成果物は執行点と同じ PR に出す」、docs/adr/396-decision-colocation.md)。詳細:\n{CHECK_OUT}\nやむを得ないときだけ、人が `SKIP_DECISION_COLOCATION_GUARD=1` を設定して起動し直す(エージェントは設定できない)。"
         )
     );
     let out = decide(false, "true; gh pr create --base main", dir.path()).unwrap();
