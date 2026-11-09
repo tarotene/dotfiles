@@ -50,24 +50,12 @@ fn marker(sid: &str, ext: &str) -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// 時刻(chrono を入れない。1970-01-01 起点の日数 ↔ 暦日は Hinnant の civil 変換)
+// 時刻(chrono を入れない。暦の変換は `civil-time` が持つ)
 
-use agent_session::time::civil_from_days;
-pub use agent_session::time::parse_iso_epoch;
+pub use civil_time::parse_iso_epoch;
 
 fn iso_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
-    let r = secs.rem_euclid(86_400);
-    format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
-        r / 3600,
-        r % 3600 / 60,
-        r % 60
-    )
+    civil_time::utc_timestamp(civil_time::now_unix())
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,7 +999,7 @@ mod tests {
         let t = parse_iso_epoch("2026-10-02T01:02:03Z").unwrap();
         assert_eq!(t, 1_790_902_923);
         assert_eq!(parse_iso_epoch("2026-10-02 01:02:03"), None);
-        let (y, m, d) = civil_from_days(t.div_euclid(86_400));
+        let (y, m, d) = civil_time::civil_from_days(t.div_euclid(86_400));
         assert_eq!((y, m, d), (2026, 10, 2));
     }
 

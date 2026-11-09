@@ -17,6 +17,7 @@ name = "github-audit"
 path = "src/main.rs"
 
 [dependencies]
+civil-time = { version = "0.1.0", path = "../civil-time" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-control = { version = "0.1.0", path = "../process-control" }
 # settings / workflows の判定の単一正本(依存ゼロ。他リポジトリの required check も同じ関数を使う)。

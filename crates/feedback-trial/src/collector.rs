@@ -113,8 +113,8 @@ fn segments(c: &Config, state: &State, include_open: bool) -> Result<Vec<Segment
     paths.sort();
     let mut result = Vec::new();
     let mut seen = state.collector.done.clone();
-    let start = agent_session::time::parse_iso_epoch(&c.start).ok_or("invalid start")?;
-    let end = agent_session::time::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?;
+    let start = civil_time::parse_iso_epoch(&c.start).ok_or("invalid start")?;
+    let end = civil_time::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?;
     for path in paths {
         let mut sid = String::new();
         let mut turn = String::new();
@@ -185,7 +185,7 @@ fn segments(c: &Config, state: &State, include_open: bool) -> Result<Vec<Segment
                 let at = v["timestamp"].as_str().and_then(|s| {
                     // Rollout timestamps have fractional seconds; configuration instants don't.
                     let whole = s.split_once('.').map(|(prefix, _)| format!("{prefix}Z"));
-                    agent_session::time::parse_iso_epoch(whole.as_deref().unwrap_or(s))
+                    civil_time::parse_iso_epoch(whole.as_deref().unwrap_or(s))
                 });
                 eligible = safe_id(&turn)
                     && at.is_some_and(|t| start <= t && t < end)

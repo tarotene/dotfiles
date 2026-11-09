@@ -11,6 +11,7 @@ description = "Obsidian vault の当日ノートに作業ログを 1 行ずつ�
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+civil-time = { version = "0.1.0", path = "../civil-time" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 hub-resolve = { path = "../hub-resolve" }
 serde = { workspace = true, features = ["derive"] }

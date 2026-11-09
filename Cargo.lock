@@ -33,6 +33,7 @@ dependencies = [
 name = "agent-session"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "jq-json-compat",
  "process-env",
  "serde",
@@ -57,6 +58,7 @@ name = "agent-turn-log"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "process-env",
  "serde_json",
  "tempfile",
@@ -209,6 +211,10 @@ dependencies = [
  "command-inspection",
  "serde_json",
 ]
+
+[[package]]
+name = "civil-time"
+version = "0.1.0"
 
 [[package]]
 name = "claude-plan-model"
@@ -375,6 +381,7 @@ name = "daily-desk-reminder"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "hub-resolve",
  "process-env",
  "serde_json",
@@ -441,6 +448,7 @@ dependencies = [
 name = "detect-drift"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "process-env",
  "serde",
  "serde_json",
@@ -484,6 +492,7 @@ dependencies = [
 name = "due-remind"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "process-env",
  "serde_json",
  "tempfile",
@@ -577,6 +586,7 @@ name = "feedback-trial"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "process-env",
  "serde",
  "serde_json",
@@ -786,6 +796,7 @@ dependencies = [
 name = "github-audit"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "jq-json-compat",
  "pr-contract-check",
  "process-control",
@@ -1008,6 +1019,7 @@ name = "issue-inbox"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "git-repository",
  "jq-json-compat",
  "process-control",
@@ -1164,6 +1176,7 @@ dependencies = [
 name = "model-catalog"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "serde",
  "serde_json",
  "tempfile",
@@ -1725,6 +1738,7 @@ name = "session-retrospective"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "cmd-hash-log",
  "git-repository",
  "issue-inbox",
@@ -2116,6 +2130,7 @@ name = "verdict-escalate"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "process-env",
  "schemars",
  "serde",
@@ -2209,6 +2224,7 @@ name = "worklog"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "git-repository",
  "hub-resolve",
  "serde",

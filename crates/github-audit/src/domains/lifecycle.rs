@@ -23,17 +23,6 @@ pub const LIFECYCLE_STALE_RELEASE_DAYS: i64 = 365;
 pub const LIFECYCLE_STALE_ISSUE_DAYS: i64 = 180;
 pub const LIFECYCLE_CANDIDATE_SCORE_THRESHOLD: i64 = 3;
 
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    // Howard Hinnant の days_from_civil(1970-01-01 起点の日数)。
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe - 719468
-}
-
 fn num(s: &str) -> Option<i64> {
     (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
         .then(|| s.parse().ok())
@@ -63,7 +52,10 @@ fn parse_iso8601(ts: &str) -> Option<i64> {
     if tp.next().is_some() || h > 23 || mi > 59 || s > 60 {
         return None;
     }
-    Some(days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + s - offset)
+    Some(
+        civil_time::days_from_civil(y, mo as u32, d as u32) * 86400 + h * 3600 + mi * 60 + s
+            - offset,
+    )
 }
 
 /// `date -u -d <ts> +%s`。上の形で読めなければ GNU date に委ねる(bash 版と

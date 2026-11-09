@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use repo_structure_check::civil_time;
 use repo_structure_check::escape;
 use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS};
 use repo_structure_check::host_names;
@@ -177,4 +178,15 @@ fn the_process_env_check_reads_what_it_is_about() {
     for (path, _) in XDG_EXCEPTIONS.iter().chain(HELPER_EXCEPTIONS) {
         assert!(sources.iter().any(|s| s.path == *path), "{path} が無い");
     }
+}
+
+#[test]
+fn the_tree_keeps_the_calendar_conversion_in_civil_time() {
+    let violations = civil_time::check_tree(&repo_root()).expect("read the sources");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "暦の変換の定数が civil-time の外にある:\n{}",
+        report.join("\n")
+    );
 }

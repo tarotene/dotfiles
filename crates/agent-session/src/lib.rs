@@ -23,4 +23,3 @@ pub use reply::Reply;
 pub use stop::StopInput;
 
 pub mod legacy_input;
-pub mod time;

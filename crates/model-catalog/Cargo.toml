@@ -8,6 +8,7 @@ description = "ベンダー中立のモデルカタログ(価格・文脈長・�
 
 # HTTP は新しい依存を足さず、github-app-snapshot と同じく curl を呼ぶ(鍵は標準入力で渡す)。
 [dependencies]
+civil-time = { version = "0.1.0", path = "../civil-time" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 toml = { workspace = true, features = ["default"] }

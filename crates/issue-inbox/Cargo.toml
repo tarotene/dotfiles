@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+civil-time = { version = "0.1.0", path = "../civil-time" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-env = { version = "0.1.0", path = "../process-env" }

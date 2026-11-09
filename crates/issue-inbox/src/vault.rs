@@ -87,84 +87,12 @@ pub fn parse_item(line: &str) -> Result<Item, String> {
 
 // ---------------------------------------------------------------- 日付(JST)
 
-/// 1970-01-01 からの日数 → 暦の日付 `(年, 月, 日)`。
-pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-/// 暦の日付 → 1970-01-01 からの日数(`civil_from_days` の逆)。
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y.rem_euclid(400);
-    let mp = if m > 2 { m - 3 } else { m + 9 } as i64;
-    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-/// `YYYY-MM-DD`(暦に実在するもの)の、1970-01-01 からの日数。読めなければ `None`。
-pub fn parse_day(s: &str) -> Option<i64> {
-    let b = s.as_bytes();
-    let shaped = b.len() == 10
-        && b.iter().enumerate().all(|(i, c)| match i {
-            4 | 7 => *c == b'-',
-            _ => c.is_ascii_digit(),
-        });
-    if !shaped {
-        return None;
-    }
-    let (y, m, d) = (
-        s[..4].parse::<i64>().ok()?,
-        s[5..7].parse::<u32>().ok()?,
-        s[8..].parse::<u32>().ok()?,
-    );
-    let days = days_from_civil(y, m, d);
-    // 2026-02-30 のような実在しない日付は、往復すると別の日になる。
-    (civil_from_days(days) == (y, m, d)).then_some(days)
-}
-
-/// unix 秒の JST の日付 `YYYY-MM-DD`。
-pub fn jst_date(unix_secs: u64) -> String {
-    let (y, m, d) = civil_from_days(((unix_secs + 9 * 3600) / 86_400) as i64);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-pub fn jst_today() -> String {
-    jst_date(unix_now())
-}
-
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
-/// unix 秒の JST の日時 `YYYY-MM-DDTHH:MM:SS+09:00`(ISO 8601。`ts` の形)。
-pub fn jst_datetime(unix_secs: u64) -> String {
-    let secs = unix_secs + 9 * 3600;
-    let rem = secs % 86_400;
-    format!(
-        "{}T{:02}:{:02}:{:02}+09:00",
-        jst_date(unix_secs),
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    )
-}
+/// 暦の計算は `civil-time` が持つ。このモジュールの利用者(promotion-detect・session-retrospective・テスト)の呼び名を保つ。
+pub use civil_time::{civil_from_days, jst_date, jst_datetime, jst_today, parse_day};
 
 /// 今の JST の日時(`ts` の既定値)。
 pub fn jst_now() -> String {
-    jst_datetime(unix_now())
+    jst_datetime(civil_time::now_unix())
 }
 
 /// `ts`(ISO 8601)の日付部分。読めなければ `today`。
