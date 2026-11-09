@@ -16,10 +16,11 @@
 //! 限定する(ADR-0031 D4 と、その 2026-10-13 の追補)。owner が解決できない場合は
 //! fail-open(通す)。
 //!
-//! escape hatch: 環境変数 `PR_TITLE_GUARD_ALLOW=1` で一時的に無効化する
+//! escape hatch: 環境変数 `SKIP_PR_TITLE_GUARD=1` で一時的に無効化する
 //! (`No-Issue:` のような本文タグ型ではない — 単発の緊急対応向けの一時解除
 //! であり、本文に恒久的に残す決定ではないため)。
 
+use agent_session::escape::PR_TITLE_GUARD;
 use agent_session::hook::jq_r_path;
 use agent_session::hook::ToolCall;
 use command_inspection::command::first_deny;
@@ -71,7 +72,7 @@ fn has_pr_title_workflow(project: &Path) -> bool {
 }
 
 /// コマンド文字列全体を判定する(`decide_pr_title`)。deny なら理由を返す。
-/// `allow` は `PR_TITLE_GUARD_ALLOW=1`(呼び出し側が env から決める)。
+/// `allow` は `SKIP_PR_TITLE_GUARD=1`(呼び出し側が env から決める)。
 pub fn decide(cmd: &str, project: &Path, allow: bool) -> Option<String> {
     first_deny(cmd, is_target_at, |range| {
         // 1 パスで読む(`--title -R` の `-R` を `--repo` と誤読しない)。
@@ -114,8 +115,9 @@ pub fn decide(cmd: &str, project: &Path, allow: bool) -> Option<String> {
             return None;
         }
         Some(format!(
-            "PR タイトル '{}' は commit-message 契約(ADR-0031)に非適合です。'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください。一時的に無効化するには PR_TITLE_GUARD_ALLOW=1 を設定してください。",
-            title.value
+            "PR タイトル '{}' は commit-message 契約(ADR-0031)に非適合です。'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください。{how_to}",
+            title.value,
+            how_to = PR_TITLE_GUARD.how_to().unwrap_or_default()
         ))
     })
 }
@@ -165,7 +167,7 @@ fn is_inside_work_tree(project: &Path) -> bool {
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 pub fn hook(agent: agent_session::Agent, raw: &str) -> Option<agent_session::Outcome> {
-    let allow = std::env::var("PR_TITLE_GUARD_ALLOW").is_ok_and(|v| v == "1");
+    let allow = PR_TITLE_GUARD.active(None, None).is_some();
     let call = ToolCall::parse(agent, raw)?;
     let env_project = std::env::var("CLAUDE_PROJECT_DIR").ok();
     check(&call, env_project.as_deref(), allow).map(agent_session::Outcome::Deny)

@@ -84,7 +84,7 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   送信(`body`、無ければ `htmlBody`。件名は見ない)、Slack の下書き・送信(`message` `text` `body` `content`
   `markdown`)、Claude Docs の作成・更新・一括(文字列すべて)。
 - 通すもの: 設定ファイルが無い機体、本文に `No-Attribution:` の行がある(本人の文の代理投稿)、
-  環境変数 `JA_POLISH_GATE_ALLOW=1`(ja-polish が壊れたときの逃げ道)、本文が取れないもの(`--body-file` が
+  環境変数 `SKIP_JA_POLISH_GATE=1`(ja-polish が壊れたときの逃げ道)、本文が取れないもの(`--body-file` が
   読めない、知らない形の MCP 入力)。判定不能を拒否に変えない。
 - 本文の組み立てを自前にした理由(`github-command` の `assemble_body_text` を使わない): 断片どうしを空行で
   区切る(共有の関数は改行 1 つで繋ぐので、前後の断片と繋がって別の段落になり、記録のハッシュと合わない)。
@@ -107,7 +107,7 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   未追跡の文書(上限 40 件)。各ファイルは、基点に無い(追加・変更した)日本語の段落のうち、記録に無い
   ものを数える。1 つでもあれば `{"decision":"block"}` を出し、`ja-polish <ファイル>` を促す。
 - **無限に止めない**: `stop_hook_active`(block の直後の再呼び出し)では黙る。通せなかった段落は `ja-polish`
-  が素通しとして記録するので、直せない状態でも止まり続けない。逃げ道は `JA_POLISH_GATE_ALLOW=1`。
+  が素通しとして記録するので、直せない状態でも止まり続けない。逃げ道は `SKIP_JA_POLISH_GATE=1`。
 - **基点のスナップショット**(PreToolUse の規則 `ja-polish-snapshot`): git の外の文書(vault のノートなど)には
   merge-base が無い。`Write` / `Edit` / `MultiEdit` の前に、そのファイルの内容を
   `~/.local/state/claude/ja-polish/base/<パスのハッシュ>.snap` に残し(12 時間以内の新しいものがあれば

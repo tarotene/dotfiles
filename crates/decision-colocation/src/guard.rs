@@ -23,7 +23,7 @@
 //! (ADR-0005 の binary-existence gating と同じ fail-open 方針)。
 //!
 //! escape hatch: 環境変数 `SKIP_DECISION_COLOCATION_GUARD=1` で一時的に
-//! 無効化する(`PR_TITLE_GUARD_ALLOW` と同じ性質 — 恒久的な本文タグでは
+//! 無効化する(`SKIP_PR_TITLE_GUARD` と同じ性質 — 恒久的な本文タグでは
 //! ない)。
 
 use git_repository::ok as git_ok;

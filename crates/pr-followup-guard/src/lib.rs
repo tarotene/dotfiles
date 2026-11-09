@@ -30,7 +30,7 @@
 //! 両方直せる)。「払い出し先の Issue が実在し妥当か」は判定せず、
 //! pr-description スキル(LLM の判断)の責務にする(`G_visual` と同じ二層分担)。
 //!
-//! escape hatch: 環境変数 `PR_CONFIRM_GUARD_ALLOW=1`(本文タグ型の恒久
+//! escape hatch: 環境変数 `SKIP_PR_FOLLOWUP_GUARD=1`(本文タグ型の恒久
 //! エスケープではない)。
 //!
 //! bash 版は `LC_ALL=C` で動くので `[[:space:]]` / `[[:alnum:]]` は ASCII だけ。
@@ -279,15 +279,18 @@ pub fn judge_confirm(body: &str) -> Option<String> {
         out.push_str(v);
         out.push_str("\n\n");
     }
-    out.push_str(
-        "各項目は次の形で書いてください(pr-description スキル §1):\n  ## 検証\n  - [x] <実施済みの確認>\n\n  ## 要確認\n  - #<Issue番号> — <一言>\n\n一時的に無効化するには PR_CONFIRM_GUARD_ALLOW=1 を設定してください。",
-    );
+    out.push_str(&format!(
+        "各項目は次の形で書いてください(pr-description スキル §1):\n  ## 検証\n  - [x] <実施済みの確認>\n\n  ## 要確認\n  - #<Issue番号> — <一言>\n\n{}",
+        agent_session::escape::PR_FOLLOWUP_GUARD
+            .how_to()
+            .unwrap_or_default()
+    ));
     Some(out)
 }
 
 /// bash の `decide_pr_confirm`: コマンド文字列全体。範囲ごとに独立に本文を
 /// 抽出して判定し、最初の deny の理由文を返す。`allow` は
-/// `PR_CONFIRM_GUARD_ALLOW=1`(bash は範囲ごとに環境変数を見る)。
+/// セッション単位の逃げ道 `SKIP_PR_FOLLOWUP_GUARD=1`(bash は範囲ごとに環境変数を見た)。
 pub fn decide(cmd: &str, allow: bool) -> Option<String> {
     first_deny(cmd, is_target_at, |r| {
         if allow {
@@ -298,9 +301,12 @@ pub fn decide(cmd: &str, allow: bool) -> Option<String> {
     })
 }
 
-/// 環境変数 `PR_CONFIRM_GUARD_ALLOW`(厳密に `1` のときだけ有効)。
+/// セッション単位の逃げ道 `SKIP_PR_FOLLOWUP_GUARD`(厳密に `1` のときだけ有効)。名前は
+/// `agent_session::escape` の表が決める(従来の綴りは、guard の改名 `pr-confirm-guard` → `pr-followup-guard` に追従していなかった)。
 pub fn allow_from_env() -> bool {
-    std::env::var("PR_CONFIRM_GUARD_ALLOW").is_ok_and(|v| v == "1")
+    agent_session::escape::PR_FOLLOWUP_GUARD
+        .active(None, None)
+        .is_some()
 }
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が

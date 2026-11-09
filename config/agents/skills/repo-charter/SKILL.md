@@ -331,7 +331,7 @@ ln -s ../../.agents/skills/<name> .claude/skills/<name>
 repo-create-guard が deny する。guard が強制したいのは「この手順に載せること」
 なので、手順そのもの(閉語彙チェック → `gh repo create` → `--add-topic` →
 governance 播種)を 1 本で実行するスクリプトが正規の入口で、バイパス用の環境変数
-(`REPO_CREATE_GUARD_BYPASS=1`)は要らない — auto モードの分類器は、これを
+(`SKIP_REPO_CREATE_GUARD=1`)は要らない — auto モードの分類器は、これを
 safety bypass と判定して拒否する。guard は Bash のコマンド文字列しか見ないので、
 スクリプト内の `gh repo create` は deny に当たらない(`apply-rulesets` と同じ形、#707)。
 

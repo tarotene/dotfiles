@@ -379,7 +379,8 @@ mod tests {
 
     #[test]
     fn a_hatch_without_a_call_scope_never_reads_the_command() {
-        let t = words(&["PR_TITLE_GUARD_ALLOW=1", "SKIP_PR_TITLE_GUARD=1"]);
+        let call_word = format!("{}_ALLOW=1", PR_TITLE_GUARD.stem);
+        let t = words(&[call_word.as_str(), "SKIP_PR_TITLE_GUARD=1"]);
         assert_eq!(PR_TITLE_GUARD.judge(None, false, Some(&t)), None);
         assert_eq!(
             PR_TITLE_GUARD.judge(Some("1"), false, Some(&t)),

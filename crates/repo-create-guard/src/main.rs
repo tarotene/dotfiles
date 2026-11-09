@@ -4,7 +4,7 @@
 //! 使い方: settings.json の PreToolUse(matcher: "Bash|mcp__.*")から stdin JSON
 //! で呼ばれる。Bash 以外(mcp__github* は現在未接続)は判定しない。
 //!
-//! 縮退(bash 版と同じ): `REPO_CREATE_GUARD_BYPASS` が空でなければ何もせず
+//! 縮退(bash 版と同じ): `SKIP_REPO_CREATE_GUARD=1` なら何もせず
 //! exit 0(バイパスは hook 入出力層の責務)。不正 JSON・
 //! Bash 以外・コマンドが空でも exit 0。
 

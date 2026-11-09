@@ -14,9 +14,9 @@ const BIN: &str = env!("CARGO_BIN_EXE_pr-followup-guard");
 fn check(cmd: &str, allow: bool) -> (i32, String) {
     let mut c = Command::new(BIN);
     c.args(["--check", cmd])
-        .env_remove("PR_CONFIRM_GUARD_ALLOW");
+        .env_remove("SKIP_PR_FOLLOWUP_GUARD");
     if allow {
-        c.env("PR_CONFIRM_GUARD_ALLOW", "1");
+        c.env("SKIP_PR_FOLLOWUP_GUARD", "1");
     }
     let o = c.output().unwrap();
     (
@@ -133,7 +133,7 @@ fn st15_escape_hatch() {
     // 厳密に "1" のときだけ(bash の `!= 1`)
     let o = Command::new(BIN)
         .args(["--check", &pr(UNCHECKED)])
-        .env("PR_CONFIRM_GUARD_ALLOW", "true")
+        .env("SKIP_PR_FOLLOWUP_GUARD", "true")
         .output()
         .unwrap();
     assert_eq!(o.status.code(), Some(1));
@@ -188,7 +188,7 @@ fn run_hook(args: &[&str], stdin: &str, envs: &[(&str, &str)]) -> Output {
     let mut c = Command::new(BIN);
     c.args(args)
         .env_remove("CLAUDE_PROJECT_DIR")
-        .env_remove("PR_CONFIRM_GUARD_ALLOW")
+        .env_remove("SKIP_PR_FOLLOWUP_GUARD")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -287,7 +287,7 @@ fn claude_hook_output_shape_and_project_resolution() {
     let o = run_hook(
         &[],
         &input(repo.to_str().unwrap(), &cmd),
-        &[("PR_CONFIRM_GUARD_ALLOW", "1")],
+        &[("SKIP_PR_FOLLOWUP_GUARD", "1")],
     );
     assert!(o.stdout.is_empty());
 }

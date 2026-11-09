@@ -236,10 +236,13 @@ fn self_list_path() -> Option<std::path::PathBuf> {
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 ///
-/// `EXTERNAL_SEND_GUARD_ALLOW=1` なら判定しない。`raw` は、不正な UTF-8 を U+FFFD に
+/// `SKIP_EXTERNAL_SEND_GUARD=1` なら判定しない。`raw` は、不正な UTF-8 を U+FFFD に
 /// 置き換えたあとの文字列(jq と同じ)。
 pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
-    if std::env::var_os("EXTERNAL_SEND_GUARD_ALLOW").as_deref() == Some("1".as_ref()) {
+    if agent_session::escape::EXTERNAL_SEND_GUARD
+        .active(None, None)
+        .is_some()
+    {
         return None;
     }
     let input = serde_json::from_str::<Value>(raw).ok()?;

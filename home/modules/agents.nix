@@ -309,7 +309,7 @@
 #    判定エンジンの単一ソース)に非適合なら deny する。発火は owner が tarotene
 #    のリポジトリ限定(会社ホストにも common 層として配備されるため)。判定不能・
 #    非 tarotene owner はすべて fail-open。一時解除は環境変数
-#    PR_TITLE_GUARD_ALLOW=1。判定は Rust(crates/pr-title-guard、ADR-0024
+#    SKIP_PR_TITLE_GUARD=1。判定は Rust(crates/pr-title-guard、ADR-0024
 #    Stage 4a #415)で、3 エージェントから同じ 1 バイナリを
 #    `--agent claude|codex|copilot` で呼ぶ(#391、attribution-guard と同じ型)。
 #    詳細は
@@ -495,7 +495,7 @@
 #    節に転換した(社内の別リポジトリで観測された、未チェック task list を
 #    残したままマージされた実例が動機)。全リポジトリで発火する(owner スコープ
 #    を持たない — attribution-guard.sh と同じ「書き手側の規律」の類型)。
-#    escape hatch は PR_CONFIRM_GUARD_ALLOW=1。判定は Rust(crates/
+#    escape hatch は SKIP_PR_FOLLOWUP_GUARD=1。判定は Rust(crates/
 #    pr-followup-guard、ADR-0024 Stage 4a #415)で、Codex にも同じバイナリを
 #    `--agent codex` で登録する(下記 registerCodexPrConfirmGuardHooks)。
 #

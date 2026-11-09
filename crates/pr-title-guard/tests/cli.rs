@@ -51,9 +51,9 @@ fn check(cmd: &str, project: &Path, allow: bool) -> (i32, String) {
     let mut c = Command::new(BIN);
     c.args(["--check", cmd])
         .arg(project)
-        .env_remove("PR_TITLE_GUARD_ALLOW");
+        .env_remove("SKIP_PR_TITLE_GUARD");
     if allow {
-        c.env("PR_TITLE_GUARD_ALLOW", "1");
+        c.env("SKIP_PR_TITLE_GUARD", "1");
     }
     let o = c.output().unwrap();
     (
@@ -77,7 +77,7 @@ fn assert_pass(cmd: &str, project: &Path) {
 fn hook(args: &[&str], stdin: &str, envs: &[(&str, &str)]) -> String {
     let mut c = Command::new(BIN);
     c.args(args)
-        .env_remove("PR_TITLE_GUARD_ALLOW")
+        .env_remove("SKIP_PR_TITLE_GUARD")
         .env_remove("CLAUDE_PROJECT_DIR")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
@@ -110,7 +110,7 @@ fn st1_non_conforming_create_denies() {
     assert!(out.starts_with(&format!(
         "deny: {REASON_HEAD}'type(scope)?!?: subject' 形式"
     )));
-    assert!(out.ends_with("PR_TITLE_GUARD_ALLOW=1 を設定してください。\n"));
+    assert!(out.ends_with("やむを得ないときだけ、人が `SKIP_PR_TITLE_GUARD=1` を設定して起動し直す(エージェントは設定できない)。\n"));
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn hook_claude_deny_bytes() {
         &[],
     );
     let want = format!(
-        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"{REASON_HEAD}'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください。一時的に無効化するには PR_TITLE_GUARD_ALLOW=1 を設定してください。\"\n  }}\n}}\n"
+        "{{\n  \"hookSpecificOutput\": {{\n    \"hookEventName\": \"PreToolUse\",\n    \"permissionDecision\": \"deny\",\n    \"permissionDecisionReason\": \"{REASON_HEAD}'type(scope)?!?: subject' 形式(type は feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)にしてください。やむを得ないときだけ、人が `SKIP_PR_TITLE_GUARD=1` を設定して起動し直す(エージェントは設定できない)。\"\n  }}\n}}\n"
     );
     assert_eq!(out, want);
 }
