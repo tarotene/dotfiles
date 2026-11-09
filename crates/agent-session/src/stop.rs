@@ -3,7 +3,7 @@
 //!
 //! 検査は、`stop_hook_active` を自分で読まず、[`Reentry`] を宣言して [`StopInput::permits`] に
 //! 問う。`Quiet` の検査は、立っているとき黙る。`Recheck` の検査は、見ずに検査する。
-//! `repo-structure-check` の `hook_io` が、`stop_hook_active` の文字列を `agent-session` の外に
+//! `repo-structure-check` の `hook_io` 検査(モジュール名)が、`stop_hook_active` の文字列を `agent-session` の外に
 //! 書いた crate を落とす。
 
 use serde_json::Value;

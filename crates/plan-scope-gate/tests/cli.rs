@@ -3,7 +3,7 @@
 //! fixture は bash 版(旧 config/claude/hooks/plan-scope-gate.sh)から生成したもの
 //! (docs/rust-migration.md の段1〜3)。trycmd は出力の `\` を `/` に
 //! 正規化して比較するため、JSON 文字列中の `\n` は fixture 上 `/n` に見える。
-//! エスケープ自体のバイト一致は hook-io の jqfmt の単体テストが受け持つ。
+//! エスケープ自体のバイト一致は `jq-json-compat` の `jqfmt` の単体テストが受け持つ。
 
 #[test]
 fn cli() {

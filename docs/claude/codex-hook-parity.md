@@ -3,7 +3,7 @@
 最終確認: 2026-10-26。対象は dotfiles の保守者。登録方法を変えるときは対応表と
 先行例を読み、適用するときは末尾の手順を使う。
 
-Claude と Codex の登録は `home/modules/claude.nix` の同じ宣言から生成する。
+Claude と Codex の登録は `home/modules/agents.nix` の同じ宣言から生成する。
 ツール呼び出しの検査も `crates/hook-router/src/rules.rs` の同じ表を使う。
 Codex 固有の入力変換を境界に集め、各検査を別実装にしない。登録後は Codex
 自身の信頼確認が必要であり、設定に存在するだけでは発火しない。
@@ -126,7 +126,7 @@ trust はそのcommandを実行してよいという本人の許可を指す。
 
 ## 執行点
 
-- home/modules/claude.nix
+- home/modules/agents.nix
 - home/modules/herdr.nix
 - home/modules/worktree.nix
 - crates/hook-router/src/codex.rs

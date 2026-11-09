@@ -1,6 +1,6 @@
 //! 新規 Rust gate の deny/skip イベントを JSONL に記録する(ADR-543 段3、
 //! 降格候補検出の入力)。既存 bash gate には計装しない —
-//! bash→Rust 移行時に hook-io 側で拾う方が二度手間にならない(ADR-543 の
+//! bash→Rust 移行時に共通の入口(当時の hook-io、いまは agent-session)で拾う方が二度手間にならない(ADR-543 の
 //! `## 先行例との対比` D6 参照)。
 //!
 //! フォーマットは1行1レコードの JSON(`{ts_unix, gate, decision}`)。

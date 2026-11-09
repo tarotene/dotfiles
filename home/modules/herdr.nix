@@ -131,7 +131,7 @@ in
   # 未起動・オフライン等での install 失敗が switch 自体を止めないための保険
   # (herdr 未インストール環境や headless CI でも无害)。
   #
-  # settings.json への書き込みは registerClaudeHooks(claude.nix)と同じ
+  # settings.json への書き込みは registerClaudeHooks(agents.nix)と同じ
   # ファイルを対象にするため、jq merge の lost-update 窓(#61 と同種)を
   # 避けて entryAfter で明示的にその後ろに置く。
   #

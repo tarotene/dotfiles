@@ -1220,7 +1220,7 @@ fn apply(
     // bleep を main の最新に追従させる(リモート適用のみ — `hms .` は checkout の pin を
     // そのまま検証する場)。flake.lock の pin は「検証済みの既知良好版」で、ここでの
     // override は適用時だけ。bleep 側の破壊的変更で dotfiles の配線と噛み合わなく
-    // なる版は、配備された hook の canary(home.checks、home/modules/claude.nix)で
+    // なる版は、配備された hook の canary(home.checks、home/modules/agents.nix)で
     // generation の build 自体が失敗するので、事前 build で確かめて pin に戻す。
     if !ref_is_local && plan != ApplyPlan::Route {
         if let Some(pin) = bleep_pin(&ref_meta_json) {

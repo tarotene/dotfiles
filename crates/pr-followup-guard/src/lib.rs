@@ -5,7 +5,7 @@
 //!
 //! bash 版 `config/claude/hooks/pr-confirm-guard.sh`(と Codex adapter
 //! `config/codex/hooks/pr-confirm-guard.sh`)の移植。コマンド解析と本文抽出
-//! (`extract_body`)は `guard-core` にあり、ここには本文の判定だけを置く。
+//! (`extract_body`)は `github-command` にあり、ここには本文の判定だけを置く。
 //!
 //! 動機(2026-09-30 のグリルセッション): 「要確認」を人手ブロッキング項目を
 //! 手順付きで書く節から、既に払い出した後続 Issue へのポインタだけを書く節に

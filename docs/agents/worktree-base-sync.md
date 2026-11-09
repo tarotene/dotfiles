@@ -49,9 +49,11 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
   `$1=project $2=nwo` を取り、symbolic-ref が失敗したら `gh repo view -R "$nwo" --json
   defaultBranchRef` にフォールバックする 2 引数版。
 
-変更時はこの列挙をまず更新し、そのうえで各実装を揃える。根本解決(hook-io
-相当の共通クレートへの集約)は Rust 移行 Tracking Issue #389 の Stage 2
-(#391)で行う予定。
+変更時はこの列挙をまず更新し、そのうえで各実装を揃える。根本解決(共通クレートへの集約)は Rust 移行
+Tracking Issue #389 の Stage 2(#391)で進み、`crates/git-repository`
+([`agent-libraries.md`](agent-libraries.md))の `default_branch` に寄った。**この節の列挙は 2026-09-23 の実測のままで、
+現在の実体とは一致しない**(byte-identical の 4 箇所は無くなり、`origin/HEAD` を自前で読む箇所が `crates/git-audit-worktrees` と
+`crates/ja-polish` に残る)。列挙の書き直しは、`git` の実行を寄せるリファクタリング(親 Issue #1433 の段12)で行う。
 
 ## fetch は base ブランチ名を明示する
 

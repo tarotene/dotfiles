@@ -4,7 +4,7 @@
 //! ADR-0024 Stage 4a #415)。
 //!
 //! bash 版 `config/claude/hooks/feedback-target-guard.sh` の移植。コマンド解析と
-//! 本文抽出は `guard-core`(`gh::extract_body`)にあり、ここには feedback ラベルの
+//! 本文抽出は `github-command`(`gh::extract_body`)にあり、ここには feedback ラベルの
 //! 検出と `Target:` の実在照合だけを置く。
 //!
 //! 動機: Q2(LLM/散文 → 決定論への昇格)の兆候の 1 つは「同じ規範・skill に
@@ -165,7 +165,7 @@ fn deny_reason_feedback(why: &str) -> String {
 
   Target: skill/<name>          — config/agents/skills/<name>/SKILL.md
   Target: agents-md/<節見出し>   — ~/.agents/AGENTS.md・~/.claude/CLAUDE.md の実在する見出し
-  Target: hook/<name>            — config/claude/hooks/<name>* の実在するファイル
+  Target: hook/<name>            — ~/.claude/hooks/<name>* の実在するファイル
 
 (共有 AGENTS.md「ユーザーからのフィードバックは不可視なローカルメモに
 閉じ込めない」、ADR-543「既存手段の前倒し接地と、決定論への昇格導線」参照)"

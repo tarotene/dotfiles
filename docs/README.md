@@ -180,7 +180,6 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/global-agents-md.md`](agents/global-agents-md.md) — global-agents-md — グローバル agent 指示の正本を共有 AGENTS.md に一元化する
 - [`agents/gpg-prewarm.md`](agents/gpg-prewarm.md) — gpg-prewarm — [S]/[E] パスフレーズ入力を安全な瞬間に前倒しする hook
 - [`agents/gpg-subkey-rotation.md`](agents/gpg-subkey-rotation.md) — gpg-subkey-rotation — GPG サブ鍵ローテーションを抜け漏れなく終わらせる
-- [`agents/guard-core.md`](agents/guard-core.md) — 旧 guard-core の API と移行先
 - [`agents/handoff.md`](agents/handoff.md) — handoff — 中断ハンドオフを Human / AI 双方に起票する仕組みの設計記録
 - [`agents/herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) — herdr-sidebar-metadata — エージェント毎のモード/モデルを Herdr サイドバーに常時表示する
 - [`agents/herdr-status-advisory.md`](agents/herdr-status-advisory.md) — herdr-status-advisory — herdr の client と server の版の食い違いを、作業ツリーを切る前に知らせる

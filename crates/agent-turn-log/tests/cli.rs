@@ -273,7 +273,7 @@ fn copilot_snake_case_payload_with_fallback_id() {
 fn copilot_camel_case_payload_is_ignored() {
     let e = Env::new();
     // camelCase のイベント名で登録すると hook_event_name の無い payload になり、
-    // 何も書かない(home/modules/claude.nix のコメントどおり)
+    // 何も書かない(home/modules/agents.nix のコメントどおり)
     e.run(
         br#"{"timestamp":1,"cwd":"/w","sessionId":"cp","prompt":"x"}"#,
         &[("AGENT_NAME", "copilot")],

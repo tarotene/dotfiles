@@ -114,11 +114,11 @@ OPEN のまま残る(2026-10-30 と 2026-11-05 に、stacks の一覧に無い�
 
 対象コマンドの検出(コマンド位置判定)・heredoc 本体の分離・クォート
 解釈トークナイザは attribution-guard と同じ `crates/github-command` を使う
-(`docs/agents/guard-core.md`)。`gh pr create`/`edit` の検出は
-`guard_core::command::first_deny` に渡す対象判定関数(bash 版で
+([`agent-libraries.md`](agent-libraries.md))。`gh pr create`/`edit` の検出は
+`command_inspection::command::first_deny` に渡す対象判定関数(bash 版で
 attribution-guard.sh を `source` して上書きしていた `is_target_at` に
 当たる)で差し替える。`--base`/`--head`/`--repo`/本文/読み飛ばすフラグ/
-位置引数を 1 ループで読む `parse_pr_tokens` は `guard_core::gh` の
+位置引数を 1 ループで読む `parse_pr_tokens` は `github_command::gh` の
 `read_body_file`/`has_heredoc` を部品にしてこのクレートが持つ。
 
 この共有により、コマンド文字列全体を正規表現で見て docs やコミット

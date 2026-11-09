@@ -25,7 +25,7 @@
   register はしない** — 判定(allow/deny/ask)を一切返さないため、他の hook と
   同列に並列実行させると inbox 読み取りとの順序が非決定になる。
 - stdin で Stop の入力 JSON をそのまま受け取り、`session_id` を読む
-  (`hook_io::input::HookInput`、Claude/Codex/Copilot 共通)。
+  (`agent_session::HookInput`、Claude/Codex/Copilot 共通)。
 - `$AGENT_VERDICTS_DIR`(既定 `$XDG_STATE_HOME/agent-verdicts`)配下の
   `*.jsonl` すべてから、その `session_id` に一致し `verdict` が `deny`/`ask`
   のレコードを読む。壊れた行・未知のスキーマの行は無視する(fail-open)。
@@ -39,7 +39,7 @@
   読めない行は、まとめず 1 件ずつ数える(数え漏らす側に倒さない)。15 秒は実例から置いた仮値で、
   実測で直す(判定レコードは応答を識別する id を持たないので、応答単位では数えられない)。
 - 候補ごとに、セッション×fingerprint の stamp 台帳
-  (`~/.claude/verdict-escalate/state/<session_id>.stamped`、`hook_io::SessionLedger`)
+  (`~/.claude/verdict-escalate/state/<session_id>.stamped`、`agent_session::SessionLedger`)
   に無ければ、`issue-inbox --add <inbox> <json>`(サブプロセス)を
   呼んで inbox に 1 行追記し、成功したら stamp する。**inbox への追記ロジック
   (flock・`jq -ce` での compact 化)は再実装しない** — 唯一の実装

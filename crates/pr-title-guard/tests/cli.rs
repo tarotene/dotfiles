@@ -8,7 +8,7 @@
 //!   表現不可能になった(PR_TITLE_CHECK_BIN も廃止)。代わりに同じ「判定不能は
 //!   通す」縮退の `degrade_*` を置く。
 //! - `codex_*` / `copilot_*`: 旧 Codex/Copilot adapter の --selftest(2 + 3 件)。
-//! - `hook_*` / `extra_*`: main() の分岐と guard-core の継ぎ目の追加ケース。
+//! - `hook_*` / `extra_*`: main() の分岐と `github-command` の継ぎ目の追加ケース。
 //!
 //! 状態(git remote)を持つので trycmd ではなく統合テストにしている
 //! (wrapup-stop-gate / plan-fresh-gate と同じ型)。
@@ -226,7 +226,7 @@ fn degrade_unresolvable_owner_passes() {
     assert_pass(&format!("gh pr create --title '{BAD}'"), d.path());
 }
 
-// --- guard-core の継ぎ目(bash の parse_pr_title_tokens と同じ 1 パス) ---
+// --- github-command の継ぎ目(bash の parse_pr_title_tokens と同じ 1 パス) ---
 
 #[test]
 fn extra_short_and_equals_forms() {

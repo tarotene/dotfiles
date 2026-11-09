@@ -18,9 +18,10 @@
       curl
       wget
       gh
-      # Declares jq for the Claude Code hooks (config/claude/hooks/*.sh) that
-      # depend on it unconditionally — a stray /usr/bin/jq may exist on an
-      # inherited host but was never declared anywhere (#28), so hooks would
+      # Declares jq for the bash scripts that depend on it unconditionally (the
+      # skill scripts under config/agents/skills/*/scripts, scripts/vocab-graph-check,
+      # config/agents/bleep-canary.sh) — a stray /usr/bin/jq may exist on an
+      # inherited host but was never declared anywhere (#28), so they would
       # silently emit nothing on a freshly provisioned machine.
       jq
       # mikefarah's yq (binary `yq`): the slot-availability skill's slot-hit.sh and
@@ -59,7 +60,7 @@
       ripgrep
       fd
 
-      # Document conversion. The plan-view hook (home/modules/claude.nix) renders
+      # Document conversion. The plan-view hook (home/modules/agents.nix) renders
       # plans to HTML with it. A stray /usr/bin/pandoc may exist on an inherited
       # host but is not declared in packages/declarative/apt-packages.txt, so the
       # declarative answer is to own it here (ADR-0001: user-space CLIs are the
@@ -226,7 +227,7 @@
     # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
     # ラッパー(docs/agents/git-stash-guard.md)。~/.local/bin に置くだけで
     # git のサブコマンド解決に乗り、`git shelve` / `git unshelve` と呼べる
-    # (alias 不要)。config/claude/hooks/git-stash-guard.sh の deny 案内が
+    # (alias 不要)。git-stash-guard(crates/git-stash-guard)の deny 案内が
     # ここへ誘導する。Rust 実装(crates/git-shelve、#416)の bin を指す。
     "git-shelve"
     "git-unshelve"

@@ -7,7 +7,7 @@ publish.workspace = true
 description = "Obsidian vault の当日ノートに作業ログを 1 行ずつ追記し、読む CLI と SessionStart hook"
 
 # vault の場所は hub-resolve の「環境変数 + マーカーファイル」で解決する(同じ間接参照の型)。
-# owner/repo は hook-io の git::origin_nwo で cwd から導く。
+# owner/repo は git-repository の origin_nwo で cwd から導く。
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }

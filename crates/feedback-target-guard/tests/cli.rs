@@ -199,7 +199,7 @@ fn deny_reason_text_is_verbatim() {
 
   Target: skill/<name>          — config/agents/skills/<name>/SKILL.md
   Target: agents-md/<節見出し>   — ~/.agents/AGENTS.md・~/.claude/CLAUDE.md の実在する見出し
-  Target: hook/<name>            — config/claude/hooks/<name>* の実在するファイル
+  Target: hook/<name>            — ~/.claude/hooks/<name>* の実在するファイル
 
 (共有 AGENTS.md「ユーザーからのフィードバックは不可視なローカルメモに
 閉じ込めない」、ADR-543「既存手段の前倒し接地と、決定論への昇格導線」参照)"

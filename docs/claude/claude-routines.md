@@ -8,8 +8,8 @@ Plan agent による敵対的レビュー(replan)を経て、対象リポジト�
 
 実装は `config/agents/skills/claude-routines/`(手順は `SKILL.md`〔ローカル
 session での create/adopt/apply〕と `auditor.md`〔クラウドの自己監査
-routine の汎用手順〕、決定論的な差分コアは `scripts/routines-plan.sh` +
-`scripts/lib.jq`)。機構側は `crates/routines-write-guard`(段2)と
+routine の汎用手順〕、決定論的な差分コアは
+`config/agents/skills/claude-routines/scripts/routines-plan.sh` と同ディレクトリの `lib.jq`)。機構側は `crates/routines-write-guard`(段2)と
 `github-audit`(`crates/github-audit`)の routines ドメイン(段3)。詳しい設計判断の一覧は
 `docs/adr/519-routines-declaration-in-repo.md` を参照。
 

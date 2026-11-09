@@ -136,8 +136,8 @@ Amendment ではなく、別の ADR を立てる。
 | 検査 | 旧 `if` | 影響 |
 |---|---|---|
 | git-stash-guard | `Bash(git *)` | 規則自身が複合コマンドも解析する(理由文に「複合コマンドの中に git stash が含まれています」)。新しく見るのは、`git` で始まらないコマンドの中の `git stash`(`cd x && git stash` など) |
-| rulesets-write-guard | `Bash(gh *)` | 厳しい語分割(`hook_io::shell::split`)は、複合コマンドを「判定できない」として素通りにする。旧と同じで、より緩くはならない |
-| feedback-target-guard | `Bash(gh *)` | `guard-core` の複合コマンド対応の解析なので、`cd x && gh issue create --label feedback …` のような呼び出しを新しく検出する |
+| rulesets-write-guard | `Bash(gh *)` | 厳しい語分割(`command_inspection::simple_shell::split`)は、複合コマンドを「判定できない」として素通りにする。旧と同じで、より緩くはならない |
+| feedback-target-guard | `Bash(gh *)` | `command_inspection::shell` の複合コマンド対応の解析なので、`cd x && gh issue create --label feedback …` のような呼び出しを新しく検出する |
 
 どれも、規則の判定そのものは変えず、規則に入る入力が増える(拒否が増えうる)だけで、許可が増える変更は無い。
 

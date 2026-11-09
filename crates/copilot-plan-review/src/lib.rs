@@ -132,7 +132,7 @@ impl Config {
     }
 }
 
-/// 本家 gate の register 登録値(home/modules/claude.nix)に合わせた precheck の timeout。
+/// 本家 gate の register 登録値(home/modules/agents.nix)に合わせた precheck の timeout。
 const PLAN_PRECEDENT_GATE_TIMEOUT: Duration = Duration::from_secs(10);
 const PLAN_SCOPE_GATE_TIMEOUT: Duration = Duration::from_secs(20);
 

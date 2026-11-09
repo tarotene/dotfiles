@@ -3,8 +3,8 @@
 //! (docs/agents/attribution-guard.md、#192、ADR-0024 Stage 4a #415)。
 //!
 //! bash 版 `config/claude/hooks/attribution-guard.sh` の移植。コマンド解析
-//! (heredoc 分離・トークナイザ・コマンド位置・本文フラグ)は `guard-core` に
-//! 切り出し、ここには attribution 固有の判定(フッター文言・対象コマンド・
+//! (heredoc 分離・トークナイザ・コマンド位置)は `command-inspection`、
+//! 本文フラグは `github-command` に切り出し、ここには attribution 固有の判定(フッター文言・対象コマンド・
 //! `gh api` の対象エンドポイント・MCP の書き込み系 tool 名)だけを置く。
 //!
 //! 判定は 1 つだけ: 投稿本文に attribution フッター または

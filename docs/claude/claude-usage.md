@@ -47,7 +47,7 @@ interval_seconds = 60, timeout_seconds = 10 }` を追加した。Herdr の comma
 リファレンス確認済み)。ANSI エスケープシーケンスは herdr 側で除去される
 (詳細は後述)ため、出力は常にプレーンテキスト 1 行にしている。
 
-`~/.claude/hooks/claude-usage`(`home/modules/claude.nix` が配備)がこの
+`~/.claude/hooks/claude-usage`(`home/modules/agents.nix` が配備)がこの
 command の実体。**Claude Code hook ではない**ので `settings.json` には一切登録
 しない — herdr が直接 `/bin/sh -lc` で呼ぶだけの独立スクリプト。
 

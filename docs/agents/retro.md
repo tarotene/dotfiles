@@ -118,7 +118,7 @@ PR を作らないセッション(メールの裁定・調査・机の作業)で
 指示がターンごとに 5 回以上届いた。
 
 Stop の入力にバックグラウンドの状態は無いので、transcript から導く
-(`hook_io::transcript::pending_background_tasks`)。開始は `toolUseResult.backgroundTaskId` か、
+(`agent_session::transcript::pending_background_tasks`)。開始は `toolUseResult.backgroundTaskId` か、
 `toolUseResult.agentId` で `status == "async_launched"`。完了は task-notification の
 `<task-id>`(新しい記録形式は `attachment.type == "queued_command"`、古い形式は
 `origin.kind == "task-notification"`)。未完了が 1 件以上あれば、retro も inbox の指示も出さず、

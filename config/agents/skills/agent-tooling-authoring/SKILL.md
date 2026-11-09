@@ -10,7 +10,7 @@ description: Turn a lesson learned in a work session into a durable coding-agent
 | 知見の種類 | 器 |
 |---|---|
 | モデルが読んで従うべき判断知識(「こう考えろ」) | スキル。既存スキルの守備範囲に収まるなら、そのスキルの事例集(`cases.md` 等)に追記。新しい領域なら新設 |
-| 機械的に検査・強制できる違反(「このパターンのファイル操作をしたら止める」) | フック(`config/claude/hooks/`) |
+| 機械的に検査・強制できる違反(「このパターンのファイル操作をしたら止める」) | フック(Rust の `crates/<名前>` と、`home/modules/agents.nix` の登録。`docs/agents/tooling-conventions.md`) |
 | ほぼ全セッションで常に必要な、ごく短い原則 | グローバル `CLAUDE.md`(コンテキスト税が全セッションにかかるので最終手段) |
 
 判断の目安:

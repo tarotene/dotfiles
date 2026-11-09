@@ -152,7 +152,7 @@ the stack targets the base of the stack."、GitHub Docs "Stacked pull requests"�
 
 中間段(bottom でも tip でもない段)、または変更 path が build/rust の
 入力に含まれない段(bottom・tip を含む、ADR-468 Amendment 2026-09-26)は
-`nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
+`ci.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
 / `build altair`)が既定で skip される(ADR-468)。修正した段を rebase で
 上位段に追従させれば tip の合成木で改めて検査されるが、rebase せずに
 その段を単独でマージする場合は `ci:full` ラベルを貼って heavy を手動で

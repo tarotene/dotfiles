@@ -104,7 +104,7 @@ Draft PR や `Handoff: #N` のような本文タグ型の例外は設けない �
 `config/claude/hooks/attribution-guard.sh` を `source` して再利用していたが、
 そのコマンド解析(コマンド位置判定・heredoc 分離・クォート解釈・本文フラグの
 抽出 `extract_body`)は共有ライブラリ `crates/github-command` に移った
-(`docs/agents/guard-core.md`)。ここには本文の判定(未チェック task list・
+([`agent-libraries.md`](agent-libraries.md))。ここには本文の判定(未チェック task list・
 `## 要確認` の節切り出し・項目分割・Issue 参照)だけがある。フェンス・
 インラインコードスパンの除去(`strip_code_spans`)は `pr-gate` の同名関数と
 同じ簡略化を持つ(pr-gate の本文処理を巻き込まないため別実装)。

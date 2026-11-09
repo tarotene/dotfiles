@@ -156,7 +156,7 @@ impl Edge {
 /// ポインタを要求する登録箇所のクラス(母集団の閉集合)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {
-    /// `claude.nix` の `claudeHookDeclarations` の 1 エントリ(nix 属性 `node`)。
+    /// `agents.nix` の `claudeHookDeclarations` の 1 エントリ(nix 属性 `node`)。
     ClaudeHookDecl,
     /// `run ${settingsReconcile} codex-hooks-spec` / `copilot-hooks-spec` の呼び出し(Codex と Copilot の hook の登録)。
     RegistrarCall,

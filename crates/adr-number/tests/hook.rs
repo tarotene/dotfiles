@@ -344,7 +344,7 @@ fn codex_not_opted_in_repo_is_silent() {
     assert_eq!(out, "");
 }
 
-// ---- command_ran_pr_create の境界(guard-core の対応表どおり) ----
+// ---- command_ran_pr_create の境界(`command-inspection` の `gh_command_at` の境界どおり) ----
 
 #[test]
 fn pr_create_detection_boundaries() {
