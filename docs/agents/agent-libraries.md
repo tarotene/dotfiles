@@ -30,6 +30,13 @@ Copilot は PreToolUse の判定だけが平らな形。イベントごとの表
 複数の検査の結果を 1 つにする規則(deny > ask > allow、理由は空行、文脈は改行でつなぐ)は
 `Reply::from_outcomes` が持ち、`hook-router` の併合と同じ。
 
+Stop の結果は、ルータの `Outcome` とは別の `StopOutcome`(`Block`・`Notice`。沈黙は `None`)で表す。ルータに載せない
+(pr-gate が CI を最大 300 秒待つ)ことが、型でも守られる。`stop_hook_active` の扱いは検査ごとに `Reentry`
+(`Quiet`: 立っていたら黙る、`Recheck`: 見ずに検査する)として宣言し、読みは `StopInput` だけが持つ。block は終了コード 0 の
+JSON(`decision: "block"` と `reason`。`systemMessage` を添えられる)で運ぶ。ブロックしない hook エラーは `Fault` で、終了コード 0 と 2
+は作れない(2 は「止める」の意味)。Stop の bin の入口は `entry::run_stop`(単一の検査)か、`entry::finish_stop`(サブコマンドを
+持つ bin)。
+
 返答の封筒の文字列(`hookSpecificOutput`)は `agent-session` だけが書き、hook の bin は標準入力を `read_stdin` で読む。
 `crates/repo-structure-check` の `hook_io` の検査が、`src/` に封筒の文字列を書いた crate と、標準入力を直接読む bin を落とす。
 例外は、外から来た JSON を読む 3 つの crate(`codex-plan-gate`・`copilot-plan-review`・`hook-router` の Codex 変換)と、

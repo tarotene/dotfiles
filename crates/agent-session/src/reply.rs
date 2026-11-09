@@ -12,6 +12,7 @@
 //! | PostToolUse | `hookSpecificOutput{hookEventName, additionalContext}`(判定は捨てる) | 入れ子(従来の adr-number と同じ) |
 //! | SessionStart | `hookSpecificOutput{hookEventName, additionalContext}`(判定は捨てる) | 平ら `{additionalContext}` |
 //! | PermissionRequest | deny だけ `hookSpecificOutput{hookEventName, decision{behavior, message}}` | 捨てる |
+//! | Stop | deny だけ、最上位の `decision: "block"` と `reason`(`hookSpecificOutput` は使わない) | 捨てる |
 //!
 //! Copilot の SessionStart が最上位の `additionalContext` だけを読むことの出典: GitHub Docs,
 //! "GitHub Copilot hooks reference" の `sessionStart`(取得 2026-10-28)。
@@ -24,7 +25,7 @@ use jq_json_compat::jqfmt::J;
 use crate::decision::{Decision, PermissionDecision};
 use crate::event::HookEvent;
 use crate::input::Agent;
-use crate::outcome::Outcome;
+use crate::outcome::{Outcome, StopOutcome};
 
 /// hook の返答。`render` が JSON にする。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -59,6 +60,20 @@ impl Reply {
         Reply {
             system_message: Some(message.into()),
             ..Reply::default()
+        }
+    }
+
+    /// Stop の結果から。`Block` は deny の判定として運び(Stop の描画が `decision: "block"` にする)、
+    /// `Notice` と `Block` の `notice` は `systemMessage` にする。`None` は「言うことが無い」。
+    pub fn from_stop(outcome: Option<StopOutcome>) -> Reply {
+        match outcome {
+            None => Reply::default(),
+            Some(StopOutcome::Block { reason, notice }) => Reply {
+                decision: Some(PermissionDecision::deny(reason)),
+                context: None,
+                system_message: notice,
+            },
+            Some(StopOutcome::Notice(text)) => Reply::system_message(text),
         }
     }
 
@@ -120,6 +135,7 @@ impl Reply {
     pub fn render(&self, agent: Agent, event: HookEvent) -> String {
         let mut top: Vec<(&str, J)> = Vec::new();
         match agent {
+            Agent::Claude | Agent::Codex if event == HookEvent::Stop => self.stop_fields(&mut top),
             Agent::Claude | Agent::Codex => {
                 if let Some(specific) = self.specific(event) {
                     top.push(("hookSpecificOutput", specific));
@@ -134,6 +150,18 @@ impl Reply {
             return String::new();
         }
         format!("{}\n", J::obj(top).pretty())
+    }
+
+    /// Stop の block。最上位の `decision` と `reason`。deny 以外の判定は捨てる(PermissionRequest と同じ)。
+    fn stop_fields(&self, top: &mut Vec<(&'static str, J)>) {
+        if let Some(d) = self
+            .decision
+            .as_ref()
+            .filter(|d| d.decision == Decision::Deny)
+        {
+            top.push(("decision", J::str("block")));
+            top.push(("reason", J::str(d.reason.clone())));
+        }
     }
 
     /// `hookSpecificOutput` の中身。`hookEventName` のほかに言うことが無ければ `None`。
@@ -154,6 +182,8 @@ impl Reply {
                     pairs.push(("additionalContext", J::str(c.clone())));
                 }
             }
+            // Stop は `stop_fields` が描く。`hookSpecificOutput` は作らない。
+            HookEvent::Stop => return None,
             HookEvent::PermissionRequest => {
                 if let Some(d) = self
                     .decision
@@ -201,7 +231,8 @@ impl Reply {
                     top.push(("additionalContext", J::str(c.clone())));
                 }
             }
-            HookEvent::PermissionRequest => {}
+            // Copilot の Stop に判定を出す出力元は無い(未確認)。何も出さない。
+            HookEvent::PermissionRequest | HookEvent::Stop => {}
         }
     }
 }
@@ -503,5 +534,71 @@ mod tests {
     #[test]
     fn from_outcome_none_is_an_empty_reply() {
         assert_eq!(Reply::from_outcome(None), Reply::default());
+    }
+
+    // ---- Stop ----
+
+    #[test]
+    fn stop_block_is_a_top_level_decision() {
+        let r = Reply::from_stop(Some(StopOutcome::block("理由\n2 行目")));
+        for agent in [Agent::Claude, Agent::Codex] {
+            assert_eq!(
+                r.render(agent, HookEvent::Stop),
+                "{\n  \"decision\": \"block\",\n  \"reason\": \"理由\\n2 行目\"\n}\n"
+            );
+        }
+    }
+
+    #[test]
+    fn stop_block_with_a_notice_adds_the_system_message_last() {
+        let r = Reply::from_stop(Some(StopOutcome::block_with_notice("r", "n")));
+        assert_eq!(
+            r.render(Agent::Claude, HookEvent::Stop),
+            "{\n  \"decision\": \"block\",\n  \"reason\": \"r\",\n  \"systemMessage\": \"n\"\n}\n"
+        );
+    }
+
+    #[test]
+    fn stop_notice_is_the_system_message_alone() {
+        let r = Reply::from_stop(Some(StopOutcome::notice("n")));
+        assert_eq!(
+            r.render(Agent::Claude, HookEvent::Stop),
+            Reply::system_message("n").render(Agent::Claude, HookEvent::Stop)
+        );
+        assert_eq!(
+            r.render(Agent::Claude, HookEvent::Stop),
+            "{\n  \"systemMessage\": \"n\"\n}\n"
+        );
+    }
+
+    #[test]
+    fn stop_says_nothing_for_none_and_never_writes_the_envelope() {
+        assert_eq!(
+            Reply::from_stop(None).render(Agent::Claude, HookEvent::Stop),
+            ""
+        );
+        let out =
+            Reply::from_stop(Some(StopOutcome::block("r"))).render(Agent::Codex, HookEvent::Stop);
+        assert!(!out.contains("hookSpecificOutput"), "{out}");
+    }
+
+    #[test]
+    fn stop_drops_ask_and_allow_like_the_other_events() {
+        for d in [
+            PermissionDecision::ask("?"),
+            PermissionDecision::allow("ok"),
+        ] {
+            let r = Reply {
+                decision: Some(d),
+                ..Reply::default()
+            };
+            assert_eq!(r.render(Agent::Claude, HookEvent::Stop), "");
+        }
+    }
+
+    #[test]
+    fn stop_has_no_copilot_shape() {
+        let r = Reply::from_stop(Some(StopOutcome::block("r")));
+        assert_eq!(r.render(Agent::Copilot, HookEvent::Stop), "");
     }
 }
