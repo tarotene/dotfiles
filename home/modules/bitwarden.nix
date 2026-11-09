@@ -7,10 +7,7 @@
 # needs to read the github-apps project, and vice versa). A single
 # xdg.configFile."bws/config" definition keeps that from ever becoming two
 # home-manager modules racing to declare the same path.
-{ pkgs, ... }:
-let
-  repoConfig = ../../config;
-in
+{ pkgs, repoConfig, ... }:
 {
   home.packages = [
     pkgs.bws

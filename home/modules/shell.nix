@@ -19,10 +19,10 @@
   lib,
   pkgs,
   config,
+  repoConfig,
   ...
 }:
 let
-  repoConfig = ../../config;
   loginShell = "${config.home.homeDirectory}/.nix-profile/bin/zsh";
 in
 {

@@ -3,10 +3,10 @@
   config,
   lib,
   pkgs,
+  repoConfig,
   ...
 }:
 let
-  repoConfig = ../../config;
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
 
   cfg = config.dotfiles.codexPermissions;
