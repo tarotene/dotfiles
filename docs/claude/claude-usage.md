@@ -186,9 +186,10 @@ header = "anthropic-beta: oauth-2025-04-20"
 CURLCFG
 ```
 
-`--selftest` はこの経路をスタブ curl(argv に `Bearer` が現れたら即 exit 9)+
-偽 credentials で実際に通し、stdout・state file にトークン文字列が現れないこと
-を grep で検証する。
+統合テスト(`crates/claude-usage/tests/integration.rs`)が、この経路をスタブ curl(argv に
+`Bearer` が現れたら即 exit 9)+偽 credentials で実際に通し、stdout・state file にトークン文字列が
+現れないことを検証する(かつての bash 版の `--selftest` の全ケースを写したもの。実行時の
+`--selftest` は無い)。
 
 ## 縮退表: stale-if-error
 
@@ -278,7 +279,7 @@ nix develop --command cargo test -p claude-usage
 - 30 秒の再取得ガード(curl が 1 回しか呼ばれないこと)
 
 内部専用の隠しサブコマンド `claude-usage __render <usage_json_file>
-<state_file> <now_epoch>` が fetch を挟まずレンダリングだけを行う — selftest は
+<state_file> <now_epoch>` が fetch を挟まずレンダリングだけを行う — 統合テストは
 これでフィクスチャを直接叩く。決定的にするため `TZ=UTC` 固定・`now` は実行時刻
 に依存しない固定 epoch を使う。実運用では herdr の command がホストのローカル
 TZ を継承するので、`→` の表示はユーザーのローカル時刻になる。

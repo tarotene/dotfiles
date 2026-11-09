@@ -4,7 +4,6 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-mod selftest;
 
 const APP: &str = "obsidian-backup";
 const CREDENTIAL: &str = "bws-access-token";
@@ -265,7 +264,6 @@ fn run() -> Result<(), String> {
     let op = op.to_str().ok_or("invalid operation")?;
     let mut rest: Vec<OsString> = args.collect();
     match op {
-        "--selftest" => selftest::run(),
         "configure-token" if rest.is_empty() => configure_token(),
         "clear-token" if rest.is_empty() => checked(command("OBSIDIAN_BACKUP_SECRET_TOOL_BIN", "secret-tool").args(["clear", "application", APP, "credential", CREDENTIAL])),
         "__run" if !rest.is_empty() => { let inner_op = rest.remove(0).into_string().map_err(|_| "invalid inner operation")?; inner(&inner_op, &rest) },

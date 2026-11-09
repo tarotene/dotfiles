@@ -69,12 +69,6 @@ pub fn check_repo(gh: &Gh, owner_repo: &str) -> Verdict {
 /// CLI の入口。`args` は `argv[1..]`。戻り値は終了コード。
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
-        Some("--selftest") => {
-            eprintln!(
-                "pr-merge-settings-check: --selftest は `cargo test -p pr-contract-check` に移った"
-            );
-            0
-        }
         Some("-h" | "--help") => {
             print!("{USAGE}");
             0

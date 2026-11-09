@@ -176,8 +176,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> i32 {
             | "--check-dup"
             | "--list-open"
             | "--set-status"
-            | "--mark-filed"
-            | "--selftest",
+            | "--mark-filed",
         ) => issue_inbox::gate_main(self_path, args),
         // 起票の手順書と実行中の印は無くなった(気づきは vault に入り、裁定は my-cleanup)。
         // 未知のフラグは Stop hook として動いてしまうので、無言で通さず、はっきり断る。

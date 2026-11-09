@@ -48,7 +48,10 @@ GitHub Scientist 型の Parallel Run は、bash と Rust を両方実行して�
 
 ## 新しい道具の既定
 
-新しい hook・CLI・検査の実装は、既定で Rust(ADR-0024)。対象外は ADR-0024 の Context が
+新しい hook・CLI・検査の実装は、既定で Rust(ADR-0024)。Rust の bin は実行時の `--selftest` を
+持たない: ADR-0024 の「cases は `#[test]` へ 1:1 で移す」の完了後に、`--selftest` を「`cargo test` に
+移った」と告げるだけの腕が 11 crate に残っていたので除いた(`--selftest` を渡すと、未知の引数として使法つきで
+終了コード 2 になる)。テストは `cargo test --workspace` が走らせる。対象外は ADR-0024 の Context が
 列挙するもの: escape-hatch(`bootstrap.sh` 等)、他リポジトリへ配布する skills の
 templates/scripts、git hooks、zsh モジュール(ADR-0007 の性質分類、可搬性維持のため)。
 

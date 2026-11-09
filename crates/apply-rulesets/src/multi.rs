@@ -23,7 +23,6 @@ const USAGE: &str = "\
 usage: github-rulesets-apply [--ref REF] [--reconcile] [--dry-run]
                               [--unverified-contexts] <owner/repo>...
                               [-- <passthrough args>]
-       github-rulesets-apply --selftest
 
 対象リポジトリごとに apply-rulesets.sh <owner/repo> を呼び、その
 リポジトリ自身の .github/rulesets/*.json 宣言を live な branch ruleset に
@@ -67,12 +66,6 @@ fn apply_one(script: &PathBuf, args: &[String]) -> bool {
 /// `github-rulesets-apply` の入口。戻り値は終了コード。
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
-        Some("--selftest") => {
-            eprintln!(
-                "github-rulesets-apply: --selftest は `cargo test -p apply-rulesets` に移った(#414)"
-            );
-            return 0;
-        }
         Some("--help") | Some("-h") => {
             print!("{USAGE}");
             return 0;

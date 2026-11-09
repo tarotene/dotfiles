@@ -37,7 +37,6 @@ pub const KNOWN_KEYS: [&str; 4] = [
 
 const USAGE: &str = "\
 Usage: tailscale-prefs apply [--prefs-file <path>]
-       tailscale-prefs --selftest
 
 Apply the declared Tailscale prefs (exit_node, exit_node_allow_lan_access,
 shields_up, ssh) via `tailscale set`. Warn-only: a missing tailscale binary, an
@@ -200,12 +199,6 @@ pub fn cmd_apply(args: &[String]) -> i32 {
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("apply") => cmd_apply(&args[1..]),
-        Some("--selftest") => {
-            eprintln!(
-                "tailscale-prefs: --selftest は `cargo test -p tailscale-prefs` に移った(#414)"
-            );
-            0
-        }
         Some("-h") | Some("--help") => {
             print!("{USAGE}");
             0

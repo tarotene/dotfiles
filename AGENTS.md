@@ -180,6 +180,9 @@ Preserve the compatibility contracts and removal conditions in the migration doc
 - The general CI workflow is a slim shell pass: shellcheck the surviving
   scripts, the installer scripts' `--dry-run` paths, a zsh module syntax
   check, every script's `--selftest`, and a full-history gitleaks scan.
+- Rust bins carry no `--selftest` (ADR-0024: the cases are `#[test]`, run by
+  `cargo test --workspace`); the `--selftest` in the bullet above means the
+  shell and perl scripts.
 - Run the secret scan before pushing, in the dev shell (gitleaks is pinned
   to the same version as CI): `nix develop --command gitleaks git --config
   .gitleaks.toml --redact --no-banner --exit-code 1 .` — a test fixture such
