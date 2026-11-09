@@ -9,6 +9,11 @@
 let
   cfg = config.dotfiles.agentPermissions;
   inherit (lib) mkOption types;
+  # The activation step that retires shared edits. Named once, here: the Claude and Codex
+  # native writers order themselves after it through `retireStep`, so the name is never
+  # copied into a second module as a string (a misspelt `entryAfter` target is dropped
+  # silently by the home-manager DAG).
+  retireStepName = "retireAgentPermissions";
   policy = {
     version = 1;
     inherit (cfg)
@@ -148,6 +153,17 @@ in
       description = "Removed; has no effect. List project paths in `projects`.";
     };
 
+    retireStep = mkOption {
+      type = types.str;
+      readOnly = true;
+      default = retireStepName;
+      description = ''
+        Name of the activation step that retires proven shared edits. A module whose native
+        writer must run after it orders itself with
+        `lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ]`.
+      '';
+    };
+
     policyFile = mkOption {
       type = types.path;
       readOnly = true;
@@ -159,6 +175,13 @@ in
   config.warnings =
     lib.optional (cfg.project_rules != { })
       "dotfiles.agentPermissions.project_rules was removed (#1099) and has no effect; list the project paths in `dotfiles.agentPermissions.projects`.";
+
+  # Retire proven shared edits before either native writer runs. This is not a
+  # runtime permission check: an unrelated setting never blocks tool execution.
+  config.home.activation.${retireStepName} = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # pipeline-node: agent-settings-reconcile
+    run ${pkgs.dotfiles-tools}/bin/agent-permissions retire --home "$HOME"
+  '';
 
   # Compatibility inputs only during the three-host retirement. Product modules
   # consume these defaults; no shared policy, ownership check or gate is deployed.

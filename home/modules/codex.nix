@@ -133,14 +133,8 @@ in
       export PATH
     '';
 
-    # Retire proven shared edits before either native writer runs. This is not a
-    # runtime permission check: an unrelated setting never blocks tool execution.
-    home.activation.retireAgentPermissions = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      # pipeline-node: agent-settings-reconcile
-      run ${pkgs.dotfiles-tools}/bin/agent-permissions retire --home "$HOME"
-    '';
-
-    home.activation.reconcileCodexPermissions = lib.hm.dag.entryAfter [ "retireAgentPermissions" ] ''
+    home.activation.reconcileCodexPermissions =
+      lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ] ''
       # pipeline-node: agent-settings-reconcile
       run ${settingsReconcile} codex-permissions "$HOME/.codex/config.toml" \
         ${lib.escapeShellArg (
