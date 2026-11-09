@@ -12,10 +12,18 @@
 //! `herdr status` が失敗・タイムアウト、JSON を読めない、のいずれでも何も出さない。
 //! 食い違い(またはその前兆)を見つけたときだけ `additionalContext` を stdout に出す。
 
-use serde_json::{json, Value};
+use agent_session::entry::{enter, Spec};
+use agent_session::{Agent, HookEvent, Reply};
+use serde_json::Value;
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
+
+const SPEC: Spec = Spec {
+    name: "herdr-status-advisory",
+    agents: &[Agent::Claude, Agent::Codex],
+    event: Some(HookEvent::SessionStart),
+};
 
 const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -102,20 +110,26 @@ fn run() -> Option<()> {
     let raw = herdr_status()?;
     let status: Value = serde_json::from_str(&raw).ok()?;
     let ctx = advisory(&status)?;
-    println!(
+    print!(
         "{}",
-        json!({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
     );
     Some(())
 }
 
-fn main() {
+fn main() -> ExitCode {
+    // 標準入力は読まない(読まずに閉じてよい)ので、引数だけを解析する。
+    if let Err(code) = enter(&SPEC) {
+        return code;
+    }
     let _ = run();
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn status(server: Value, update: Value) -> Value {
         json!({"client": {"protocol": 22}, "server": server, "update": update})

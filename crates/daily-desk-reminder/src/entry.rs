@@ -2,7 +2,8 @@
 // (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
 // docs/agents/my-desk.md。
 
-use daily_desk_reminder::{build_context, jst_date, latest_date, session_start_json, state_dir};
+use agent_session::{Agent, HookEvent, Reply};
+use daily_desk_reminder::{build_context, jst_date, latest_date, state_dir};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
@@ -48,6 +49,7 @@ fn main() {
     let last = latest_date(names.iter().map(String::as_str));
     print!(
         "{}",
-        session_start_json(&build_context(&today, last.as_deref()))
+        Reply::context(build_context(&today, last.as_deref()))
+            .render(Agent::Claude, HookEvent::SessionStart)
     );
 }
