@@ -15,7 +15,10 @@ fn main() {
                 Err(code) => code,
             }
         }
-        Some("stop") => session_wrapup::stop_hook(&path, &session_wrapup::read_hook_stdin()),
+        Some("stop") => i32::from(agent_session::entry::write_stop(
+            agent_session::Agent::Claude,
+            session_wrapup::stop_hook(&path, &session_wrapup::read_hook_stdin()),
+        )),
         _ => {
             eprintln!("usage: session-wrapup start|stop");
             1

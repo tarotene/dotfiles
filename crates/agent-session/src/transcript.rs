@@ -177,6 +177,28 @@ fn parse_iso8601_utc(s: &str) -> Option<u64> {
     u64::try_from(days * 86_400 + hh * 3600 + mm * 60 + ss).ok()
 }
 
+/// 背景タスクを「待ちの途中」と見なす上限(秒)。終わらない監視(`tail -F` など)が
+/// ゲートを際限なく緩めないための値。
+pub const WAIT_STALE_SECS: u64 = 3600;
+
+/// この Stop が、バックグラウンド処理の完了を待つ途中のターンか(#854)。Stop の入力に
+/// バックグラウンドの状態は無いので、transcript の開始と完了通知から導く。待ちのターンは
+/// 作業の終わりではないので、Stop の検査(振り返り、起票の指示、PR の完了の検査)は黙る。
+/// transcript が無い・読めないときは `false`(従来どおり判定する)。同じターンで起動した直後は
+/// transcript が追いつかず、検出が漏れる(その場合も `false`)。
+pub fn waiting_on_background(transcript_path: &str) -> bool {
+    if transcript_path.is_empty() {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(transcript_path) else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    !pending_background_tasks(&text, now, WAIT_STALE_SECS).is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

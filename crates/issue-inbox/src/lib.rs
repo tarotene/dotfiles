@@ -21,6 +21,7 @@ pub mod shquote;
 pub mod vault;
 mod vault_init;
 
+use agent_session::{Fault, Reentry, StopOutcome, StopResult};
 use jq_json_compat::jqfmt::J;
 use jq_json_compat::jqparse::parse_stream;
 use std::ffi::OsStr;
@@ -1269,22 +1270,22 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
     run().unwrap_or_else(|c| c)
 }
 
-pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
-    if h.stop_hook_active() {
-        return 0;
-    }
+/// wrap-up inbox の Stop の判定部。再入(`stop_hook_active`)の扱いは呼び出し側が宣言して適用する
+/// ([`STOP_REENTRY`])。入力が読めなかったときは [`Fault::MALFORMED_INPUT`]、移行に失敗したときは
+/// [`Fault::FAILED`]。どちらもブロックしない hook エラー。
+pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> StopResult {
     let project = match h.project() {
         Ok(p) => p,
-        Err(c) => return c,
+        Err(_) => return Err(Fault::MALFORMED_INPUT),
     };
     if project.is_empty() {
-        return 0;
+        return Ok(None);
     }
     let session_id = h.session_id();
 
     if let Err(e) = migrate_legacy_inbox(&project) {
         eprintln!("wrapup-stop-gate: --migrate: {e}");
-        return 1;
+        return Err(Fault::FAILED);
     }
     let inbox = inbox_for(&project);
 
@@ -1296,6 +1297,8 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
             .arg("--inbox")
             .arg(&inbox)
             .stdin(Stdio::piped())
+            // Stop の標準出力は JSON だけにする(Codex は平文を無効とする)。子の出力は継承しない。
+            .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
         {
@@ -1314,22 +1317,24 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> Code {
 
     let unlinked = unlinked_feedback_memories(&session_id);
     if unlinked.is_empty() {
-        return 0;
+        return Ok(None);
     }
     if on_path("gh").is_none() {
-        return 0;
+        return Ok(None);
     }
     if git_ok(&project, &["rev-parse", "--is-inside-work-tree"]).is_none() {
-        return 0;
+        return Ok(None);
     }
     match git_ok(&project, &["remote", "-v"]) {
         Some(out) if out.windows(7).any(|w| w == b"github.") => {}
-        _ => return 0,
+        _ => return Ok(None),
     }
 
-    let _ = writeln!(std::io::stderr(), "{}", stop_message(&unlinked));
-    2
+    Ok(Some(StopOutcome::block(stop_message(&unlinked))))
 }
+
+/// 立っていたら黙る。block の直後の再呼び出しでは、verdict-escalate の起動・移行・drain も飛ばす。
+pub const STOP_REENTRY: Reentry = Reentry::Quiet;
 
 #[cfg(test)]
 mod tests {

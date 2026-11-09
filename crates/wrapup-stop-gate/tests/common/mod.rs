@@ -212,13 +212,36 @@ impl Env {
     }
 }
 
-pub fn run(mut c: Command, stdin: &str) -> Run {
+/// 読み替えない、プロセスの出力そのもの。
+pub fn run_raw(mut c: Command, stdin: &str) -> Run {
     c.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = c.spawn().unwrap();
     let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
     child.wait_with_output().unwrap().into()
+}
+
+/// 旧い観測形で返す: Stop の block は、標準出力の JSON(`decision: "block"`、終了コード 0)で出るが、
+/// このテストの assert の多くは、終了コード 2 と標準エラー(理由 + 改行)で書かれている。
+/// 輸送そのものは `run_raw` と、`feedback_memory_check` の末尾が確かめる。
+pub fn run(c: Command, stdin: &str) -> Run {
+    let raw = run_raw(c, stdin);
+    if raw.code != 0 {
+        return raw;
+    }
+    let reason = serde_json::from_str::<serde_json::Value>(&raw.stdout)
+        .ok()
+        .filter(|v| v["decision"] == "block")
+        .and_then(|v| v["reason"].as_str().map(str::to_string));
+    match reason {
+        Some(reason) => Run {
+            code: 2,
+            stdout: String::new(),
+            stderr: format!("{}{reason}\n", raw.stderr),
+        },
+        None => raw,
+    }
 }
 
 pub fn run_args(mut c: Command, args: &[&str]) -> Run {

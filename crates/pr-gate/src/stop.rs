@@ -89,27 +89,6 @@ fn transcript_path(input: &str) -> String {
         .unwrap_or_default()
 }
 
-/// 背景タスクを「待ちの途中」と見なす上限(秒)。終わらない監視(`tail -F` など)が
-/// ゲートを際限なく緩めないための session-wrapup と同じ値。
-const WAIT_STALE_SECS: u64 = 3600;
-
-/// この Stop が、背景タスクの完了を待つ途中のターンか。`session_wrapup::waiting_on_background`
-/// (#854)と同じ導出(transcript の開始と完了通知の突き合わせ)で、pr-checks-wait の
-/// ID には絞らない簡易版。transcript が無い・読めないときは `false`(従来どおり block)。
-/// 同じターンで起動した直後は transcript が追いつかず検出が漏れ、その場合も `false`。
-fn waiting_on_background(transcript_path: &str) -> bool {
-    if transcript_path.is_empty() {
-        return false;
-    }
-    let Ok(text) = std::fs::read_to_string(transcript_path) else {
-        return false;
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    !agent_session::transcript::pending_background_tasks(&text, now, WAIT_STALE_SECS).is_empty()
-}
-
 /// `[[ "$x" =~ ^[0-9]+$ ]] && [[ "$x" -gt 0 ]]`。
 fn positive(x: &str) -> bool {
     !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit()) && x.parse::<u64>().is_ok_and(|n| n > 0)
@@ -472,7 +451,7 @@ push してから終了してください。
         } else if matches!(
             outcome.status,
             Status::Empty | Status::Missing | Status::Pending
-        ) && waiting_on_background(transcript)
+        ) && agent_session::transcript::waiting_on_background(transcript)
         {
             // CI が出揃うのを背景の待機(pr-checks-wait 等)が待っている。完了すれば通知が届き、
             // 次のターンで結果を読める。ここで block すると、待機を起動した直後のターンが

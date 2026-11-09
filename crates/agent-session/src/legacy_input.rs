@@ -33,11 +33,6 @@ impl HookJson {
         json::jq_r_alt(v, key, alt)
     }
 
-    /// `jq -r '.stop_hook_active // false'` が `true`。
-    pub fn stop_hook_active(&self) -> bool {
-        self.get("stop_hook_active", Some("false")).as_deref() == Ok("true")
-    }
-
     /// `${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty')}`。jq が失敗すると
     /// bash は `set -e` で jq の終了コード 5 のまま抜けていた。
     pub fn project(&self) -> Result<String, i32> {
