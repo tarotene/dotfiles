@@ -30,6 +30,10 @@ Copilot は PreToolUse の判定だけが平らな形。イベントごとの表
 複数の検査の結果を 1 つにする規則(deny > ask > allow、理由は空行、文脈は改行でつなぐ)は
 `Reply::from_outcomes` が持ち、`hook-router` の併合と同じ。
 
+逃げ道(guard・gate を一時的に止める手段)の名前・スコープ・真偽・案内は `escape::ALL` の表が唯一の正本で、
+呼び出し単位は `<STEM>_ALLOW=1`(コマンドの語)、セッション単位は `SKIP_<STEM>=1`(環境変数。skip ファイルを持つ guard は
+その存在も同じ意味)、真は `1` だけ。手動モード(`--check`)の出力と終了コードは `cli`(`pass` / `deny: …`、0・1・2)。
+
 Stop の結果は、ルータの `Outcome` とは別の `StopOutcome`(`Block`・`Notice`。沈黙は `None`)で表す。ルータに載せない
 (pr-gate が CI を最大 300 秒待つ)ことが、型でも守られる。`stop_hook_active` の扱いは検査ごとに `Reentry`
 (`Quiet`: 立っていたら黙る、`Recheck`: 見ずに検査する)として宣言し、読みは `StopInput` だけが持つ。block は終了コード 0 の

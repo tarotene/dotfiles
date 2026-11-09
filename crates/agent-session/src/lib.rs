@@ -1,6 +1,8 @@
 //! agent-session: responsibility-scoped agent tooling.
+pub mod cli;
 pub mod decision;
 pub mod entry;
+pub mod escape;
 pub mod event;
 pub mod gate_event;
 pub mod hook;
