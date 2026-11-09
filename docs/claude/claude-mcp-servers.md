@@ -7,7 +7,7 @@ hook 登録 / permissions(`docs/claude/claude-permissions.md`)と
 `agent-settings-reconcile`(`crates/agent-settings-reconcile`、#414)のサブコマンド。
 
 配備は独立モジュール `home/modules/claude-mcp-servers.nix`(`home/modules/quarantine.nix`
-と同じ「1 option = 1 ファイル」の粒度、`home/common.nix` の imports に追加)の
+と同じ「1 option = 1 ファイル」の粒度、`home/modules/` に置く)の
 `options.dotfiles.claude.mcpServers` /
 `home.activation.registerClaudeMcpServers`。
 
@@ -57,7 +57,7 @@ Gmail/Calendar/Drive/Claude Docs)はいずれも別の管理主体を持つの�
 identity 層(`home/identities/personal.nix` / `home/identities/company.nix`)からも
 `home/modules/claude.nix` 自身からも、同じ属性に足せる。会社 workspace 専用の
 接続情報を common 層に書いてしまう事故(全ホストへの意図しない配備)を、
-モジュール分割そのもので防ぐ。現在の populate は `home/modules/esa.nix` の `esa`
+モジュール分割そのもので防ぐ。現在の populate は `home/identities/personal/esa.nix` の `esa`
 (personal 限定、ADR-0022)と `home/identities/personal.nix` の `playwright` —
 外部サービス(ブラウザ経由の Web UI)に繋ぐ経路なので identity 層に置いている
 (warp-terminal #9 と同じ判断)。
@@ -191,7 +191,7 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
   `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
   スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
-  (`home/modules/esa.nix` + `crates/esa-mcp-launcher`、
+  (`home/identities/personal/esa.nix` + `crates/esa-mcp-launcher`、
   [`esa-mcp.md`](../agents/esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
   トークン(例: 別プロセスが供給する company workspace のトークン)なら
   `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。

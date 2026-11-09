@@ -25,7 +25,7 @@
 # zoom, warp-terminal — others hardcode an absolute store path — Chrome,
 # Slack — and the rewrite is needed for the latter) *and* because a bulk
 # `cp -r ${pkg}/share "$out/share"; chmod -R u+w "$out/share"` was bisected
-# (adding chromium as a consumer, home/modules/line.nix) to intermittently
+# (adding chromium as a consumer, home/identities/personal/line.nix) to intermittently
 # fail deep in the build sandbox — "Operation not permitted" chmod'ing
 # share/applications/chromium-browser.desktop, a file the same builder just
 # created moments earlier, not reproducible outside the sandbox on an

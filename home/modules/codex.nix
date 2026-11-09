@@ -78,7 +78,6 @@ let
 
 in
 {
-  imports = [ ./agent-permissions.nix ];
   options.dotfiles.codexPermissions = {
     apps = lib.mkOption {
       type = lib.types.attrsOf (
@@ -134,18 +133,19 @@ in
     '';
 
     home.activation.reconcileCodexPermissions =
-      lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ] ''
-      # pipeline-node: agent-settings-reconcile
-      run ${settingsReconcile} codex-permissions "$HOME/.codex/config.toml" \
-        ${lib.escapeShellArg (
-          builtins.toJSON {
-            settings = permissionSpec;
-            mcp_allow = cfg.mcpAllow;
-            # 前回書いた MCP 許可の記録。宣言から外した許可を config.toml から消す（#1161）。
-            state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-mcp-allow-codex.json";
-          }
-        )}
-    '';
+      lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ]
+        ''
+          # pipeline-node: agent-settings-reconcile
+          run ${settingsReconcile} codex-permissions "$HOME/.codex/config.toml" \
+            ${lib.escapeShellArg (
+              builtins.toJSON {
+                settings = permissionSpec;
+                mcp_allow = cfg.mcpAllow;
+                # 前回書いた MCP 許可の記録。宣言から外した許可を config.toml から消す（#1161）。
+                state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-mcp-allow-codex.json";
+              }
+            )}
+        '';
 
     # A single writer preserves Codex-owned trust, model selection, and formatting.
     # TUI overrides last until the next switch; new sessions load the declaration.

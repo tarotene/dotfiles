@@ -8,7 +8,7 @@
 # extensible option」の型。どちらかが未設定なら何も配備せず、hook は
 # 設定ファイルが無いので無音で終わる。
 #
-# なお home/modules/esa.nix は別物(個人の esa MCP のトークン供給、ADR-0022)。
+# なお home/identities/personal/esa.nix は別物(個人の esa MCP のトークン供給、ADR-0022)。
 { config, lib, ... }:
 let
   cfg = config.dotfiles.esaIndex;

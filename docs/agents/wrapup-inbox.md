@@ -27,7 +27,7 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 
 配備は `home/modules/agents.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通。vault の場所の宣言は
-`home/modules/obsidian.nix` が置くマーカー 1 つ(下の「行き先」)。
+`home/hosts/vega/obsidian.nix` が置くマーカー 1 つ(下の「行き先」)。
 
 ## 行き先: vault のノート、vault の無い機体では jsonl
 
@@ -37,7 +37,7 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 
 vault の宣言は hub-resolve の `OBSIDIAN_VAULT`(環境変数、無ければ
 `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目。worklog と同じ単一の正本)で、
-実値は `home/modules/obsidian.nix` の 1 か所だけにある(ADR-0034)。宣言があるのに読めないとき
+実値は `home/hosts/vega/obsidian.nix` の 1 か所だけにある(ADR-0034)。宣言があるのに読めないとき
 (パスが無い、`.obsidian/app.json` が無い)は、理由を 1 行出して jsonl に退避する。黙って捨てない。
 
 全機体を vault に寄せることは**未実装(意図あり)**で、いまは vault を持つ機体だけが対象である

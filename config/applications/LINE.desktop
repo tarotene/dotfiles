@@ -15,7 +15,7 @@
 # how it packages the popup.
 #
 # The @chromium@ placeholder is substituted with the nixGL-wrapped store path
-# by pkgs.replaceVars in home/modules/line.nix, on the same reasoning as
+# by pkgs.replaceVars in home/identities/personal/line.nix, on the same reasoning as
 # config/applications/Alacritty.desktop: a store path cannot let "declared"
 # and "running" diverge, and chromium is a GL consumer that needs the wrap
 # (ADR-0006). TryExec mirrors Exec for the same reason as Alacritty.desktop —

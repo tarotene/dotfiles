@@ -1,9 +1,9 @@
 # spotify-player (#861): a Spotify TUI that doubles as a scriptable CLI
 # (`spotify_player search|playback|get|playlist ...`, JSON on stdout).
 #
-# Imported from home/identities/personal.nix, not common.nix: a personal
-# streaming account, kept off company hosts like esa.nix and line.nix. Needs a
-# Spotify Premium account.
+# Lives in home/identities/personal/ (evaluated by the personal identity only),
+# not home/modules/: a personal streaming account, kept off company hosts like
+# esa.nix and line.nix. Needs a Spotify Premium account.
 #
 # Package: the overlay in flake.nix hands over the nixpkgs-unstable build
 # (0.25.1). The pinned stable 0.23.0 cannot parse the Web API responses of a

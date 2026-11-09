@@ -1,5 +1,11 @@
 # esa.io MCP サーバのトークン供給(ADR-0022)。
 #
+# 個人 identity 専用(home/identities/personal/ に置く)。トークンの gpg 受信者はこの
+# identity の master fingerprint で、GnuPG が YubiKey の [E] subkey に解決する(ADR-0003
+# Amendment)。会社の機体の YubiKey では復号できないので、全ホストが評価する
+# home/modules/ には置かない。置くと、会社の機体では毎セッション起動に失敗する MCP
+# サーバを登録するだけになる。
+#
 # `~/.claude.json` の `.mcpServers.esa` は従来
 # `env.ESA_ACCESS_TOKEN = "${ESA_ACCESS_TOKEN}"` という記法を使っていた。この
 # `${VAR}` 記法自体は Claude Code がセッション起動時の環境変数で正しく展開する

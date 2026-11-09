@@ -2,7 +2,7 @@
 
 esa.io MCP サーバ(`@esaio/esa-mcp-server`)を全セッションから動く状態に保つ
 仕組み。実装は `crates/esa-mcp-launcher`(Rust、旧 `scripts/esa-mcp-launcher` を #414 / ADR-0024 Stage 4e で移植。配備先
-`~/.local/libexec/esa-mcp-launcher`)+ `home/modules/esa.nix` が populate する
+`~/.local/libexec/esa-mcp-launcher`)+ `home/identities/personal/esa.nix` が populate する
 `dotfiles.claude.mcpServers.esa`(登録の仕組み自体は
 [`claude-mcp-servers.md`](../claude/claude-mcp-servers.md) の共通機構)。裁定の経緯と
 代替案の比較は `docs/adr/0022-esa-mcp-host-local-gpg-secret.md`。
@@ -123,7 +123,7 @@ unset tok
 
 ## `~/.claude.json` への登録
 
-`home/modules/esa.nix` は `dotfiles.claude.mcpServers.esa` に値を populate
+`home/identities/personal/esa.nix` は `dotfiles.claude.mcpServers.esa` に値を populate
 するだけで、`~/.claude.json` への冪等 jq merge の仕組み自体は持たない —
 その仕組みは `home/modules/claude-mcp-servers.nix` が一元的に持つ共通の
 「口」で、`docs/claude/claude-mcp-servers.md` が設計を記録している。esa は
@@ -131,11 +131,11 @@ unset tok
 
 ## なぜ personal identity 層限定か
 
-`home/modules/esa.nix` は `home/identities/personal.nix` からのみ import する
-(`home/common.nix` には入れない)。トークンの gpg 宛先が personal の master
+`home/identities/personal/esa.nix` は personal identity だけが評価する(`home/identities/personal.nix` が
+`home/identities/personal/` の全ファイルを import する。全ホストが評価する `home/modules/` には置かない)。トークンの gpg 宛先が personal の master
 fingerprint である以上、company ホスト(arcturus、旧 company-pop-new。かつて
 存在した company-pop-old は退役済み、#214)の YubiKey では原理的に復号できない。
-common.nix に置くと company ホストには
+`home/modules/`(全ホストが評価する)に置くと company ホストには
 「毎セッション必ず失敗する MCP 登録」だけが残ることになる。「クラウド AI
 ツールは personal identity のみ」という既存方針(warp-terminal, #9)とも
 整合する。

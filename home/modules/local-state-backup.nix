@@ -50,7 +50,6 @@ let
   };
 in
 {
-  imports = [ ./bitwarden.nix ];
   options.dotfiles.localStateBackup.enable = lib.mkEnableOption "off-site local state backup";
   config = lib.mkIf cfg.enable {
     assertions = [

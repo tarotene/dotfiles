@@ -360,10 +360,11 @@ in
     '';
     home.file.".local/bin/claude-plan-model".source = planModelBin;
     home.activation.registerClaudePermissions =
-      lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ] ''
-      # pipeline-node: agent-settings-reconcile
-      run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
-        ${lib.escapeShellArg (builtins.toJSON claudePermissionsApplySpec)}
-    '';
+      lib.hm.dag.entryAfter [ config.dotfiles.agentPermissions.retireStep ]
+        ''
+          # pipeline-node: agent-settings-reconcile
+          run ${settingsReconcile} claude-permissions "$HOME/.claude/settings.json" \
+            ${lib.escapeShellArg (builtins.toJSON claudePermissionsApplySpec)}
+        '';
   };
 }

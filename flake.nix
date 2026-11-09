@@ -240,7 +240,7 @@
       # migration (aome510/spotify-player#973), first released in v0.25.0; the
       # locked unstable rev ships 0.25.1. Like herdr it is only ever `exec`'d,
       # so no `follows`. No override here — the Linux audio backend is chosen
-      # in home/modules/spotify-player.nix, because that override is the one
+      # in home/identities/personal/spotify-player.nix, because that override is the one
       # that forces a from-source build. Drop the entry once stable ships
       # spotify-player >= 0.25.0 (#861).
       herdrOverlay =

@@ -2,7 +2,7 @@
 
 決定の記録: `docs/adr/998-worklog-vault-daily-note.md`
 実体: `crates/worklog`(CLI と SessionStart hook)
-配備: `home/modules/obsidian.nix`(CLI `~/.local/bin/worklog` と vault のマーカー)、
+配備: `home/hosts/vega/obsidian.nix`(CLI `~/.local/bin/worklog` と vault のマーカー)、
 `home/modules/agents.nix`(hook `~/.claude/hooks/worklog`)
 
 ## 何を解くか

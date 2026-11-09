@@ -777,7 +777,7 @@ Things this does not settle: `.service` apps autostarted by the session
 
 Rationale: ADR-1237 (#249 is on hold; its first revisit
 condition is "the freezes remain in a CPU-heavy interval after the updates").
-`home/modules/atop-trace.nix` runs `atop -w` as a user service on `vega` only:
+`home/hosts/vega/atop-trace.nix` runs `atop -w` as a user service on `vega` only:
 one raw file per day, `~/.local/state/atop/atop_YYYYMMDD`, every 10 seconds, the
 last 3 days kept (about 65 MB a day, measured 2026-10-28). It runs without root,
 so short-lived processes that exit between two samples are not recorded.
@@ -811,7 +811,7 @@ To stop: `systemctl --user disable --now atop-trace.service`.
 
 ## Obsidian vault backup
 
-`home/modules/obsidian.nix` installs Obsidian, restic, `bws`, and
+`home/hosts/vega/obsidian.nix` installs Obsidian, restic, `bws`, and
 `obsidian-backup` on `vega` only. Obsidian is wrapped with nixGL like
 the other Electron GUI applications. Three persistent systemd user timers run
 a daily backup, weekly retention/health maintenance, and a monthly restore
@@ -969,7 +969,7 @@ the layer that does). The three fixtures it compares —
 `acceptance/roundtrip.md`, `acceptance/attachment.png`, and
 `acceptance/attachment.pdf` — are permanent vault contents, not a
 one-time setup artifact: `systemd.user.services.obsidian-backup-restore-test`
-in `home/modules/obsidian.nix` hardcodes those paths, so the unit fails with
+in `home/hosts/vega/obsidian.nix` hardcodes those paths, so the unit fails with
 "source fixture is missing" if they are ever deleted from the vault.
 
 For an ad-hoc restore test, pass one or more vault-relative files:
@@ -1199,7 +1199,7 @@ Codex CLI instead"). Codex CLI itself is a scoped exception like `claude`
 
 ## spotify-player: your own client ID
 
-`home/modules/spotify-player.nix` (#861) installs `spotify_player` on the
+`home/identities/personal/spotify-player.nix` (#861) installs `spotify_player` on the
 personal hosts. Out of the box it authenticates with ncspot's shared client ID,
 whose request quota is shared by every user of it; the first Web API calls after
 login came back `429 Too Many Requests`. Registering your own application gives

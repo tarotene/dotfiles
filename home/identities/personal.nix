@@ -13,33 +13,15 @@ let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix. Only needed on
   # Linux — darwin has its own native GL stack.
   nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
+  importDir = import ../lib/import-dir.nix { inherit lib; };
 in
 {
-  imports = [
-    # The typed identity declaration (`dotfiles.identity`, set below) and the
-    # environment variables derived from it.
-    ../modules/identity.nix
-
-    # esa MCP token supply (ADR-0022). esa is a personal-identity service —
-    # the token's gpg recipient is this identity's master fingerprint, which
-    # GnuPG resolves to the YubiKey [E] subkey (ADR-0003 Amendment). A
-    # company host's YubiKey cannot decrypt it, so this stays out of
-    # common.nix: importing it there would just register an MCP server that
-    # fails to start every session on company hosts.
-    ../modules/esa.nix
-
-    # LINE (chromium --app around the official Chrome extension, see that
-    # module's header for the full rationale). Same judgment as esa above —
-    # a personal messaging account, kept out of common.nix so it does not
-    # land on company hosts.
-    ../modules/line.nix
-
-    # spotify-player (#861), a Spotify TUI/CLI. Same judgment as esa and LINE
-    # above — a personal streaming account, kept out of common.nix so it does
-    # not land on company hosts. The module's header has the package source,
-    # the Linux audio-backend override and the client-ID rule.
-    ../modules/spotify-player.nix
-  ];
+  # Every module in ./personal is evaluated by this identity and by no other:
+  # personal-account services (esa, LINE, spotify-player) stay off company
+  # hosts. Each module's header says why. The typed identity declaration
+  # (`dotfiles.identity`, set below) comes from home/modules/identity.nix,
+  # which every host evaluates.
+  imports = importDir ./personal;
 
   home.username = lib.mkDefault "tarotene";
   home.homeDirectory = lib.mkDefault "/home/tarotene";
@@ -80,7 +62,7 @@ in
 
   # user scope の MCP サーバー(`~/.claude.json` の `.mcpServers`)。
   # `home/modules/claude-mcp-servers.nix` が reconcile する — ここと
-  # `../modules/esa.nix` に挙がっていない user scope のサーバーは switch のたびに
+  # `./personal/esa.nix` に挙がっていない user scope のサーバーは switch のたびに
   # 削除される。company ホストはこのファイルを import しないので user scope は
   # 空になる(意図した動作)。
   #

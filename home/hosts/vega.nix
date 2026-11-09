@@ -8,6 +8,7 @@
 let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix.
   nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
+  importDir = import ../lib/import-dir.nix { inherit lib; };
 
   # MuseScore opens ALSA's "default" PCM. nix's alsa-lib reads the *host's*
   # /etc/alsa/conf.d, whose 99-pipewire-default.conf routes "default" to the
@@ -38,13 +39,13 @@ let
   };
 in
 {
+  # ./vega holds the modules only this host evaluates (obsidian, the GitHub App
+  # snapshot, atop-trace); every file in it is imported.
   imports = [
     ../common.nix
     ../identities/personal.nix
-    ../modules/obsidian.nix
-    ../modules/github-apps.nix
-    ../modules/atop-trace.nix
-  ];
+  ]
+  ++ importDir ./vega;
 
   # Per-machine sign subkey. On-disk, annual rotation (ADR-0003 Amendment 3).
   # Master fp 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 → [S] subkey created

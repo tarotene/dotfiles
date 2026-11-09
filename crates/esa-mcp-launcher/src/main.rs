@@ -4,7 +4,7 @@
 //! ホストローカル(git 管理外)の GPG 暗号化トークン `~/.config/esa/token.gpg` を
 //! 復号して `ESA_ACCESS_TOKEN` として環境に載せ、`exec npx -y @esaio/esa-mcp-server`
 //! する。`~/.claude.json` の `mcpServers.esa` がこの launcher を指す
-//! (home/modules/esa.nix が activation の冪等マージで宣言)。汎用 secret ラッパーに
+//! (home/identities/personal/esa.nix が activation の冪等マージで宣言)。汎用 secret ラッパーに
 //! はしない — env トークン依存の MCP サーバは esa だけと調査済みで、抽象化する
 //! 利用者が他にいない。
 //!

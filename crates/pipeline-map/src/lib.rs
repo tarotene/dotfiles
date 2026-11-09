@@ -290,6 +290,37 @@ fn sorted_files(root: &Path, dir: &str, keep: impl Fn(&str) -> bool) -> Vec<Stri
     out
 }
 
+/// `dir` 以下の通常ファイルを再帰的に集める(`root` からの相対パス、辞書順)。名前が `.` で始まるものは
+/// 読まない(`home/lib/import-dir.nix` が一覧に含めない規則と同じ。追跡外の `.DS_Store` や、道具の代役)。
+fn sorted_files_recursive(root: &Path, dir: &str, keep: &impl Fn(&str) -> bool) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(rd) = fs::read_dir(root.join(dir)) else {
+        return out;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        let rel = format!("{dir}/{name}");
+        if p.is_dir() {
+            out.extend(sorted_files_recursive(root, &rel, keep));
+        } else if p.is_file() && keep(name) {
+            out.push(rel);
+        }
+    }
+    out.sort();
+    out
+}
+
+/// nix の module を置くディレクトリ。`home/modules` は全ホストが評価する集合で、identity 専用と host 専用の
+/// module は `home/identities/<identity>/` と `home/hosts/<host>/` に置く。登録箇所のポインタは、どれの中にも
+/// 書かれうる。
+const NIX_MODULE_DIRS: [&str; 3] = ["home/modules", "home/identities", "home/hosts"];
+
 const HOOK_DECLARATIONS_NIX: &str = "home/modules/agents.nix";
 
 fn scan_claude_decls(root: &Path, scan: &mut Scan) {
@@ -394,7 +425,10 @@ fn timer_node_binding(t: &str) -> Option<(String, String)> {
 }
 
 fn scan_nix_modules(root: &Path, scan: &mut Scan) {
-    for rel in sorted_files(root, "home/modules", |n| n.ends_with(".nix")) {
+    let nix_files = NIX_MODULE_DIRS
+        .iter()
+        .flat_map(|dir| sorted_files_recursive(root, dir, &|n: &str| n.ends_with(".nix")));
+    for rel in nix_files {
         let Ok(src) = read_lines(root, &rel) else {
             continue;
         };
@@ -1367,5 +1401,50 @@ auto = {auto}
         write(d.path(), MANIFEST, &hook_manifest("", true, false));
         let p = problems(d.path());
         assert!(!p.iter().any(|x| x.contains("doc が無い")), "{p:#?}");
+    }
+
+    // ---- identity 専用・host 専用の module の登録箇所も走査する ----
+
+    #[test]
+    fn registrations_in_identity_and_host_directories_are_scanned() {
+        // 基準の repo は home/modules の t.nix で `tick` を 1 回登録している。
+        // 同じ id を、identity 専用と host 専用のディレクトリにも置くと、登録箇所が 2 つ増える。
+        let d = repo();
+        let before = scan(d.path()).sites.len();
+        write(
+            d.path(),
+            "home/identities/personal/x.nix",
+            "dotfiles.pipeline.timerNodes.tick-x = \"tick\";\n",
+        );
+        write(
+            d.path(),
+            "home/hosts/vega/y.nix",
+            "dotfiles.pipeline.timerNodes.tick-y = \"tick\";\n",
+        );
+        write(
+            d.path(),
+            "home/hosts/vega.nix",
+            "dotfiles.pipeline.timerNodes.tick-z = \"tick\";\n",
+        );
+        assert_eq!(scan(d.path()).sites.len(), before + 3);
+    }
+
+    #[test]
+    fn hidden_entries_in_module_directories_are_not_read() {
+        // `.` で始まる名前(追跡外の `.DS_Store`、道具の代役のディレクトリ)は、home/lib/import-dir.nix が
+        // 一覧に含めない規則と同じく読まない。
+        let d = repo();
+        let before = scan(d.path()).sites.len();
+        write(
+            d.path(),
+            "home/modules/.hidden.nix",
+            "dotfiles.pipeline.timerNodes.h = \"tick\";\n",
+        );
+        write(
+            d.path(),
+            "home/hosts/.claude/z.nix",
+            "dotfiles.pipeline.timerNodes.z = \"tick\";\n",
+        );
+        assert_eq!(scan(d.path()).sites.len(), before);
     }
 }

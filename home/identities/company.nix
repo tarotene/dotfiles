@@ -5,8 +5,6 @@
 # module (#211 / ADR-0003).
 { lib, pkgs, ... }:
 {
-  imports = [ ../modules/identity.nix ];
-
   home.username = lib.mkDefault "tarotene";
   home.homeDirectory = lib.mkDefault "/home/tarotene";
 

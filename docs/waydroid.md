@@ -1,6 +1,6 @@
 # Waydroid(Android コンテナ)で Android 版 LINE を動かす — vega
 
-#323。LINE は今、Chromium の `--app` 方式の独立アプリ(`home/modules/line.nix`)で動いている。Waydroid +
+#323。LINE は今、Chromium の `--app` 方式の独立アプリ(`home/identities/personal/line.nix`)で動いている。Waydroid +
 Android 版 LINE は、より本物に近い代替。この文書は、宣言(何を置いたか)と、人が実機で行う手順、まだ確かめていないことを分ける。
 
 ## 宣言したもの(この変更)
@@ -56,4 +56,4 @@ Android 版 LINE は、より本物に近い代替。この文書は、宣言(�
 - binderfs の mount、Rust 版 binder での実動作、Android の初期化(手順 2)。
 - 初期化の引数と、Play ストアの要否(手順 3)。
 - COSMIC(Wayland)での表示と入力(fcitx5 での日本語入力を含む)。
-- 動いたときに、Chromium の LINE(`home/modules/line.nix`)を外すか残すか。
+- 動いたときに、Chromium の LINE(`home/identities/personal/line.nix`)を外すか残すか。
