@@ -466,7 +466,7 @@ pub fn restrict_umask() {
     }
 }
 
-const USAGE: &str = "使い方: plan-view [FILE|-] [--title T] [--no-open] [--out PATH]
+const USAGE_BASE: &str = "使い方: plan-view [FILE|-] [--title T] [--no-open] [--out PATH]
 
   FILE      Markdown ファイル。`-` で標準入力。省略時は ~/.claude/plans/ の最新。
   --title   <title> と表示タイトル。既定は本文の最初の h1、無ければファイル名。
@@ -475,8 +475,15 @@ const USAGE: &str = "使い方: plan-view [FILE|-] [--title T] [--no-open] [--ou
 
 環境変数: PLAN_VIEW_DIR PLAN_VIEW_PANDOC PLAN_VIEW_BROWSER PLAN_VIEW_CSS
           PLAN_VIEW_HIGHLIGHT PLAN_VIEW_WINDOW_SIZE PLAN_VIEW_RETENTION_DAYS
-無効化:   SKIP_PLAN_VIEW=1 または ~/.claude/plan-views/skip
 ";
+
+/// 使い方。無効化の行は、逃げ道の表(`agent_session::escape`)から作る。
+fn usage() -> String {
+    format!(
+        "{USAGE_BASE}無効化:   {}=1 または ~/.claude/plan-views/skip\n",
+        agent_session::escape::PLAN_VIEW.session_name()
+    )
+}
 
 fn die(msg: &str) -> i32 {
     eprintln!("plan-view: {msg}");
@@ -534,7 +541,7 @@ pub fn run_cli(cfg: &Config, args: &[String]) -> i32 {
                 i += 1;
             }
             "-h" | "--help" => {
-                print!("{USAGE}");
+                print!("{}", usage());
                 return 0;
             }
             "--" => {

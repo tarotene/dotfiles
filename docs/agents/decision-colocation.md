@@ -152,6 +152,12 @@ main へ入った既存の ADR を新規と誤読して deny する。ローカ�
 required check として登録されていれば、それだけで `G_CI` 経由で Stop も
 ブロックされる — 新しい `G_*` を足す仕事が無い(還元性)。
 
+## 逃げ道
+
+セッション単位だけ: 人が起動前に環境変数 `SKIP_DECISION_COLOCATION_GUARD=1` を設定する(値は `1` だけ)。エージェントは、
+hook のプロセスの環境を呼び出しの中から変えられない。拒否文は、この案内を出す。名前と真偽は
+`agent_session::escape` の表が決める。CI の `decision-colocation-check` は、この逃げ道の影響を受けない。
+
 ## スコープ外(意図的)
 
 - Codex / Copilot 向け adapter — CI required check が全エージェント共通の

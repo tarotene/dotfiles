@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use repo_structure_check::escape;
 use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS};
 use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_CRATES};
 
@@ -67,4 +68,55 @@ fn the_hook_io_check_reads_the_sources_it_is_about() {
         assert!(paths.contains(&expected), "{expected} が読まれていない");
     }
     assert!(sources.len() > 300, "ソースが少なすぎる: {}", sources.len());
+}
+
+#[test]
+fn the_tree_satisfies_the_escape_hatch_invariants() {
+    let violations = escape::check_tree(&repo_root()).expect("read the tree");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "hook の逃げ道の不変条件に反する箇所がある:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 空のツリーを読んで「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_escape_check_reads_what_it_is_about() {
+    let files = escape::read_text_files(&repo_root());
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    for expected in [
+        "docs/adr/1040-agent-tooling-names-and-responsibilities.md",
+        "crates/agent-session/src/escape.rs",
+        "config/claude/CLAUDE.md",
+        "home/modules/agents.nix",
+    ] {
+        assert!(paths.contains(&expected), "{expected} が読まれていない");
+    }
+    assert!(files.len() > 1000, "ファイルが少なすぎる: {}", files.len());
+}
+
+/// 表(`escape::ALL`)の各項目が、説明の文書に、自分の名前で載っている(表と文書の対)。
+#[test]
+fn every_hatch_is_documented_under_its_own_names() {
+    for h in agent_session::escape::ALL {
+        let text = std::fs::read_to_string(repo_root().join(h.doc))
+            .unwrap_or_else(|e| panic!("{} を読めない: {e}", h.doc));
+        if h.session {
+            assert!(
+                text.contains(&h.session_name()),
+                "{} に `{}` が書かれていない",
+                h.doc,
+                h.session_name()
+            );
+        }
+        if let Some(call) = h.call_name() {
+            assert!(
+                text.contains(&call),
+                "{} に `{call}` が書かれていない",
+                h.doc
+            );
+        }
+    }
 }
