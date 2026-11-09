@@ -171,3 +171,9 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `existing-suffices` による却下 5 件は、同じ事象(uv の置き場に書けなかった件。修正先は `home/modules/runtimes.nix`)で、
   retro の探索範囲(`pipeline-map` / `crates` / `skills`)の外に修正先があった。リポジトリ内の探索に `home-modules`
   (sandbox・service・権限の宣言)と `inbox`(同題の気づきのノート)を足した。`searched` の検証が、この 2 つも要求する。
+
+### 執行点
+
+- `config/agents/codify-signals/vocabulary.json`
+- `crates/promotion-detect/src/lib.rs`
+- `crates/session-retrospective/src/lib.rs`
