@@ -614,6 +614,11 @@ jobs:
       # system.
       - run: nix flake check --all-systems --no-build --print-build-logs
 
+      # AGENTS.md の「Format with `nix fmt`」を検査にする(ADR-543 の昇格型。整形の差が
+      # 1 ファイル残っていた: home/modules/pipeline.nix)。treefmt の --fail-on-change は、
+      # 整形で 1 ファイルでも変わると、そのパスを出して終了コード 1 になる。
+      - run: nix fmt -- --fail-on-change
+
       # docs/adr/568-renovate-automerge-shared-preset.md D4: the shared
       # preset (renovate/policy.json) and this repo's own renovate.json
       # (which extends it) are the only Renovate config in this repo — the

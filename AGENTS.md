@@ -117,7 +117,8 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   the identities directory; per-machine values (signing key bound to the
   host's YubiKey/[S] subkey) go in the hosts directory.
 - Format with `nix fmt` (nixfmt-tree — a treefmt wrapper that feeds nixfmt
-  every Nix file, so no arguments are needed).
+  every Nix file, so no arguments are needed). CI runs `nix fmt -- --fail-on-change`
+  (the `Nix flake check` job) and fails on an unformatted file.
 
 ### Private machine-state values vs. public rules (ADR-0034)
 - This repo is PUBLIC. Write the **rule, schema, or derivation procedure** for
