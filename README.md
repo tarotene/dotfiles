@@ -6,7 +6,7 @@
 
 # dotfiles
 
-Flake-based home-manager config that reproduces one user environment identically across Pop!_OS hosts.
+Flake-based home-manager config for one user's Pop!_OS and macOS hosts, plus agent tooling and GitHub governance.
 
 ## Background
 
@@ -20,7 +20,7 @@ Further reading: the [home-manager manual](https://nix-community.github.io/home-
 
 ## Install
 
-Greenfield (fresh Pop!_OS install):
+Greenfield (a fresh Pop!_OS or macOS install; macOS needs the extra steps in [`docs/setup-macos.md`](docs/setup-macos.md)):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tarotene/dotfiles/main/bootstrap.sh | bash
@@ -56,11 +56,11 @@ Routine operations and the tool-layer decision flow (new CLI → home-manager pa
 
 ## Scope
 
-home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the shared coding-agent tooling under `config/agents/` (with product-specific configuration under `config/claude/` and `config/codex/`). Two layers stay outside it as escape hatches — a thin apt system layer for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
+home-manager owns the user environment: shell, git, GPG, terminal, input method, GUI apps, and the shared coding-agent tooling under `config/agents/` (with product-specific configuration under `config/claude/` and `config/codex/`). It also holds the GitHub governance of the owner's repositories: the repository charters, rulesets, shared required checks and workflow templates, and a read-only cross-repository audit (ADR-0015, ADR-0023). Two layers stay outside it as escape hatches — a thin apt system layer for anything needing root or to be loaded into an apt-installed process, and per-project language toolchains (`mise`/`direnv`/`rustup` launchers; the actual toolchain versions stay project-scoped).
 
-This repository does not manage per-project language toolchains, the judgement engine behind `bleep` (formerly `publish-guard`; lives in [tarotene/bleep](https://github.com/tarotene/bleep); this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
+This repository does not manage per-project language toolchains, the judgement engine behind `bleep` (lives in [tarotene/bleep](https://github.com/tarotene/bleep); this repo only wires it in), or feature development on the upstream tools it merely consumes (e.g. `herdr` — those live in their own repos).
 
-Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are Pop!_OS 24.04 (three machines) plus one macOS host, `altair` (ADR-0018); other Linux distros are not targeted.
+Caveats: identity is hardware-rooted, so inserting the YubiKey and trusting keys cannot be declarative (ADR-0003). `chsh` stays manual (`bootstrap.sh` cannot reliably change the login shell under `curl | bash`). The apt system layer is not reproducible — only the package *list* is version-controlled. Hosts are two Pop!_OS 24.04 machines plus one macOS host, `altair` (ADR-0018); other Linux distros are not targeted.
 
 ## Development
 
@@ -70,7 +70,7 @@ nix flake check    # evaluate every host's activation package
 hms .               # build + activate this checkout for end-to-end verification
 ```
 
-CI (`.github/workflows/`) runs a per-host activation build matrix plus a slim shellcheck pass over the surviving escape-hatch scripts.
+CI (`.github/workflows/`) runs `nix flake check`, a per-host activation build (macOS in `darwin-build.yml`), the Rust workspace tests, and a slim shell pass (shellcheck, installer dry-runs, a secret scan).
 
 ## License
 

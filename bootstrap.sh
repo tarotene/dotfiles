@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bootstrap a fresh Pop!_OS / Ubuntu host from bare metal to a fully managed
-# home-manager environment.  One command (plus a manual YubiKey step).
+# Bootstrap a fresh Pop!_OS, Ubuntu or macOS host (the closed list is classify_os
+# below) from bare metal to a fully managed home-manager environment.  One command (plus a manual YubiKey step).
 #
 # Usage:
 #   curl -fsSL <raw-url>/bootstrap.sh | bash          # greenfield
