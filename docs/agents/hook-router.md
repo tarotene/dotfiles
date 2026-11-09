@@ -87,6 +87,9 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
   素通りにしました: …」)。あわせて、`gate-events.jsonl` に `fail-open` を記録する。
 - **まとめ方**: PreToolUse は deny → ask → allow → 通常処理の順で採る。同じ判定の理由は表の順にすべて(空行で区切って)並べる。
   `additionalContext` は、表の順に改行でつなぐ。PostToolUse は判定を出さない。
+- **出力の書式**: 描画は `agent-session` の `Reply::render` が持つ(`jq .` と同じ整形、キーは挿入順、末尾に改行)。
+  ルータが書式を持たないので、standalone の bin と同じ形の出力になる。`equivalence.rs` は、ルータの標準出力と
+  旧 bin の fixture の標準出力を、バイト単位で比べる。
 - **判定できない入力**(JSON でない、`tool_name` が無い)は素通す。
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの

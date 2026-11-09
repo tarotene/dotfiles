@@ -83,9 +83,10 @@ fn main() {
         }
     }
 
-    if let Some(line) = render(event, &merge(&results)) {
+    if let Some(rendered) = render(event, &merge(&results)) {
+        // 描画の文字列が、末尾の改行まで持つ(`Reply::render`)。
         let mut out = std::io::stdout();
-        let _ = writeln!(out, "{line}");
+        let _ = out.write_all(rendered.as_bytes());
         let _ = out.flush();
     }
     // 時間を越えた規則のスレッドを待たずに、プロセスごと終わる。
