@@ -234,6 +234,10 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   evaluation (hook declarations, timers, launchd agents) or `cargo test`
   (everything else; plus a node with no registration at all). Manual CLIs and skills are drawn as `auto = false` nodes and
   need no pointer. Rules and rationale: ADR-872.
+- An automatically fired hook (a node in a `session = true` lane) also points at a
+  `doc` — a document that explains its design (ADR-0007 §5, no orphan hooks). A hook
+  without its own `docs/agents/<name>.md` may point at the feature-level doc or the ADR
+  that decided its recording; `cargo test -p pipeline-map` fails otherwise.
 
 ### Pull request descriptions
 - A coding task is **not done** until the PR exists: commit → push →
