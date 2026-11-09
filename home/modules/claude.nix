@@ -3,10 +3,10 @@
   config,
   lib,
   pkgs,
+  repoConfig,
   ...
 }:
 let
-  repoConfig = ../../config;
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
   # pipeline-node: claude-statusline

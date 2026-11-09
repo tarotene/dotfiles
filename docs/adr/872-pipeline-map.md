@@ -258,3 +258,33 @@ ADR-0007 §5 は「doc を持たない hook(孤立 hook)を作らない」と決
 
 - `crates/pipeline-map/src/lib.rs`
 - `pipeline-map.toml`
+
+## Amendment (2026-11-09 — timer と launchd agent の形を共有する関数は、2026-10-27 の裁定の外)
+
+2026-10-27 の Amendment は、`mkTimer` のような**ポインタ強制の執行点としての関数**を退けた(生の `systemd.user.timers.*` で迂回でき、
+強制は `home/modules/pipeline.nix` の評価時の assertion が持つため)。同じ文を、timer と launchd agent の**定義の形を共有する**
+関数まで退ける裁定としては読まない。8 つの組(`due-remind`・`detect-drift`・`hms-follow`・`promotion-detect`・`herdr-issue-counts`・
+`gpg-subkey-remind`・`git-audit-worktrees`・`git-checkout-sync`)が、oneshot の service、その service を起動する timer、`timers.target`
+への install、同じ PATH 一覧を渡す launchd agent、を手で複写していた。
+
+- `home/lib/timer-pair.nix` の `timerPair { … }` が、その形を 1 つにする。説明・プログラムと引数・PATH・スケジュール・launchd 側の
+  スケジュールは引数に残る。`dotfiles.pipeline.timerNodes.<名前> = "<id>";` の 1 行は**書かない**。ポインタが呼び出し側から消えると、
+  assertion が「関数が構成上満たすもの」になり、検査の意味が薄れる。呼び出し側が手で書く。
+- `schedule` は 2 つの閉じた形(`{ calendar; persistent; … }` と `{ afterBoot; every; … }`)だけを受ける。`Persistent=` は
+  `OnCalendar=` の timer にしか効かない(#442)ので、経過時間の timer に `persistent` を書くと評価が落ちる。死んだ宣言を書けなくする。
+  これで、`git-audit-worktrees` と `git-checkout-sync` の `Persistent = true`(`OnBootSec=` + `OnUnitActiveSec=` だけの timer なので効いていなかった)が消えた。
+- 生の `systemd.user.timers.*` で書いた timer も、これまでどおり assertion が `timerNodes` との対応を見る。`git-auto-prune` は
+  1 つの service が `ExecStart=` を 2 行持ち、launchd 側が別名の 2 つの agent に分かれる形なので、`timerPair` を使わず、そのまま残した。
+
+### 検証
+
+- 配備される unit と plist の、新旧の JSON(vega と arcturus の `systemd.user.services` / `timers`、altair の `launchd.agents`。`detect-drift` と
+  `local-state-backup` を有効にした構成)を比べた。差は、上の 2 つの timer から `Persistent` の行が消えた 4 行(vega と arcturus に 2 行ずつ)だけで、
+  それ以外の unit と plist はバイト単位で同一。
+- `schedule` の検査: 有効な 2 つの形は通り、経過時間 + `persistent`、カレンダー + `accuracy`、形なし、`afterBoot` だけ、の 4 つは評価が落ちる。
+
+### 執行点
+
+- `home/lib/timer-pair.nix`
+- `home/modules/worktree.nix`
+- `home/modules/due-remind.nix`

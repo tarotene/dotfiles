@@ -560,12 +560,12 @@
   config,
   lib,
   pkgs,
+  repoConfig,
   bleep,
   frontend-slides,
   ...
 }:
 let
-  repoConfig = ../../config;
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
   # #412 (ADR-0024 Stage 4b): ExitPlanMode の plan hook 5 本(copilot-plan-review /
   # plan-view / plan-scope-gate / plan-precedent-gate / plan-fresh-gate)は Rust

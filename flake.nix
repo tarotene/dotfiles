@@ -420,8 +420,14 @@
           # claude.nix only needs its store path for home.file.source, not a
           # package derivation (ADR-0009). frontend-slides is threaded the same
           # way (home.file.source only, docs/agents/presentation-authoring.md).
+          #
+          # repoConfig (this repo's config/) is threaded here, not through `_module.args`:
+          # agents.nix derives attribute names from a readDir of it, and a `_module.args`
+          # value that decides attribute names is an infinite recursion (the module
+          # system needs the attribute names to find `_module.args`).
           extraSpecialArgs = {
             inherit bleep frontend-slides;
+            repoConfig = ./config;
           };
         };
     in

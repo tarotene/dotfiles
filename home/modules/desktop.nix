@@ -14,9 +14,13 @@
 # runtime). If fcitx5 wrote its default profile before the first switch, recover
 # with: rm ~/.config/fcitx5/profile && home-manager switch &&
 # systemctl --user restart app-fcitx5@autostart.service
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  repoConfig,
+  ...
+}:
 let
-  repoConfig = ../../config;
 
   # fcitx5 5.1.19 + mozc 2.30, from the pinned nixos-26.05.
   #

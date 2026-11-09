@@ -31,8 +31,38 @@ let
     "/usr/bin"
     "/bin"
   ];
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    (timerPair {
+      name = "hms-follow";
+      enable = cfg.enable;
+      description = "Apply pushed main with hms when this generation was made by a bare hms";
+      timerDescription = "Follow pushed main with hms every 10 minutes";
+      exec = hmsPath;
+      args = [ "--follow" ];
+      path = followPath;
+      # keep-old: switch は、この unit が実行中でも再起動しない。追従の最中の switch が
+      # 自分自身を再起動して、適用を途中で打ち切るのを防ぐ。
+      unit.X-SwitchMethod = "keep-old";
+      # oneshot の既定の TimeoutStartSec は無限。止まった適用が次の周期を塞ぎ続けない
+      # ように、ビルドを含めても十分長い上限を置く。
+      service.TimeoutStartSec = "1h";
+      schedule = {
+        afterBoot = "5min";
+        every = "10min";
+        randomizedDelay = "1min";
+      };
+      launchd = {
+        StartInterval = 600;
+        RunAtLoad = false;
+        StandardOutPath = "${home}/Library/Logs/hms-follow.log";
+        StandardErrorPath = "${home}/Library/Logs/hms-follow.log";
+      };
+    })
+  ];
+
   options.dotfiles.hmsFollow.enable = lib.mkOption {
     type = lib.types.bool;
     default = true;
@@ -44,54 +74,11 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.hms-follow = lib.mkIf pkgs.stdenv.isLinux {
-      Unit = {
-        Description = "Apply pushed main with hms when this generation was made by a bare hms";
-        # keep-old: switch は、この unit が実行中でも再起動しない。追従の最中の switch が
-        # 自分自身を再起動して、適用を途中で打ち切るのを防ぐ。
-        X-SwitchMethod = "keep-old";
-      };
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${hmsPath} --follow";
-        Environment = "PATH=${followPath}";
-        # oneshot の既定の TimeoutStartSec は無限。止まった適用が次の周期を塞ぎ続けない
-        # ように、ビルドを含めても十分長い上限を置く。
-        TimeoutStartSec = "1h";
-      };
-    };
-
-    # `Persistent=` は OnCalendar= の timer にだけ効く(drift.nix の注記)ので書かない。
-    # 起動の 5 分後に最初の追従を見て、以後 10 分おき。起動直後のネットワーク未復帰と
-    # ぶつからないよう、少しずらす。
-    dotfiles.pipeline.timerNodes.hms-follow = "hms-follow";
-    systemd.user.timers.hms-follow = lib.mkIf pkgs.stdenv.isLinux {
-      Unit.Description = "Follow pushed main with hms every 10 minutes";
-      Timer = {
-        OnBootSec = "5min";
-        OnUnitActiveSec = "10min";
-        RandomizedDelaySec = "1min";
-        Unit = "hms-follow.service";
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
-
-    # launchd 版(ADR-0018)。StandardOutPath の親ディレクトリは launchd が作らないので、
+    # `Persistent=` は OnCalendar= の timer にだけ効く(drift.nix の注記)ので、起動の 5 分後に最初の
+    # 追従を見て以後 10 分おきにするこの timer には書けない(timerPair の schedule の形が拒む)。
+    # 起動直後のネットワーク未復帰とぶつからないよう、少しずらす。
+    # launchd 版(ADR-0018)の StandardOutPath の親ディレクトリは launchd が作らないので、
     # 既存の `~/Library/Logs` に置く。
-    # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.hms-follow が兼ねる。
-    launchd.agents.hms-follow = lib.mkIf pkgs.stdenv.isDarwin {
-      enable = true;
-      config = {
-        ProgramArguments = [
-          hmsPath
-          "--follow"
-        ];
-        StartInterval = 600;
-        RunAtLoad = false;
-        EnvironmentVariables.PATH = followPath;
-        StandardOutPath = "${home}/Library/Logs/hms-follow.log";
-        StandardErrorPath = "${home}/Library/Logs/hms-follow.log";
-      };
-    };
+    dotfiles.pipeline.timerNodes.hms-follow = "hms-follow";
   };
 }

@@ -22,8 +22,35 @@ let
   driftServicePath =
     lib.makeBinPath [ pkgs.nix-index ]
     + ":${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.local/share/mise/shims:${config.home.homeDirectory}/.cargo/bin:/usr/bin:/bin";
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    (timerPair {
+      name = "detect-drift";
+      # `cfg.issueRepo != null` を欠いた unit(検出のみ)は意図的に置かない —
+      # dotfiles.detectDrift.issueRepo のドキュメント参照。
+      enable = cfg.issueRepo != null;
+      description = "Detect apt/cargo/npm/pipx installs outside their declaration";
+      timerDescription = "Check for ad-hoc install drift weekly";
+      exec = driftPath;
+      args = [
+        "--file-issue"
+        cfg.issueRepo
+      ];
+      path = driftServicePath;
+      schedule = {
+        calendar = "weekly";
+        persistent = true;
+        randomizedDelay = "30min";
+      };
+      launchd = {
+        StartInterval = 604800; # 7d
+        RunAtLoad = false; # #4 は週次前提。ログイン毎の実行は意図しない
+      };
+    })
+  ];
+
   # 起票先の private リポジトリ(`<owner>/<repo>`)。machine-state の実値
   # (ad-hoc install の在庫)を書き込む宛先なので、このソースツリー自体は
   # 一切値を持たない(ADR-0034「規則は public・実値は private」) — 値は
@@ -70,47 +97,14 @@ in
     #
     # `cfg.issueRepo != null` を欠いた unit(検出のみ)は上と同じ理由で
     # 意図的に置かない — dotfiles.detectDrift.issueRepo のドキュメント参照。
-    systemd.user.services.detect-drift = lib.mkIf (pkgs.stdenv.isLinux && cfg.issueRepo != null) {
-      Unit.Description = "Detect apt/cargo/npm/pipx installs outside their declaration";
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${driftPath} --file-issue ${cfg.issueRepo}";
-        Environment = "PATH=${driftServicePath}";
-      };
-    };
-
     # `Persistent=` は OnCalendar= timer にのみ効く(systemd.timer(5))。旧来の
     # OnBootSec=/OnUnitActiveSec= の組み合わせでは死んだ宣言になり、ログイン
     # (boot)毎に再発火していた(2026-09-24 実測、1日に3回発火し #440 に
     # 同じ内容のコメントが3回積まれた)。OnCalendar=weekly に切り替え、
-    # RandomizedDelaySec でログイン直後のネットワーク未復帰との衝突を薄める。
+    # RandomizedDelaySec でログイン直後のネットワーク未復帰との衝突を薄める
+    # (timerPair の schedule の形は、この組み合わせを書けなくしている)。
+    # launchd 版(ADR-0018)の EnvironmentVariables.PATH は systemd の Environment= と違い
+    # 置換なので、同じ一覧をそのまま渡す。
     dotfiles.pipeline.timerNodes.detect-drift = "detect-drift";
-    systemd.user.timers.detect-drift = lib.mkIf (pkgs.stdenv.isLinux && cfg.issueRepo != null) {
-      Unit.Description = "Check for ad-hoc install drift weekly";
-      Timer = {
-        OnCalendar = "weekly";
-        Persistent = true;
-        RandomizedDelaySec = "30min";
-        Unit = "detect-drift.service";
-      };
-      Install.WantedBy = [ "timers.target" ];
-    };
-
-    # launchd 版(ADR-0018)。EnvironmentVariables.PATH は systemd の
-    # Environment= と違い置換なので、同じ一覧をそのまま渡す。
-    # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.detect-drift が兼ねる。
-    launchd.agents.detect-drift = lib.mkIf (pkgs.stdenv.isDarwin && cfg.issueRepo != null) {
-      enable = true;
-      config = {
-        ProgramArguments = [
-          driftPath
-          "--file-issue"
-          cfg.issueRepo
-        ];
-        StartInterval = 604800; # 7d
-        RunAtLoad = false; # #4 は週次前提。ログイン毎の実行は意図しない
-        EnvironmentVariables.PATH = driftServicePath;
-      };
-    };
   };
 }

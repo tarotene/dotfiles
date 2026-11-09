@@ -10,10 +10,12 @@
 #
 # This module retires config/git/config.local — the "machine subkey system"
 # include is no longer needed once each host declares its own signingkey.
-{ lib, pkgs, ... }:
-let
-  repoConfig = ../../config;
-in
+{
+  lib,
+  pkgs,
+  repoConfig,
+  ...
+}:
 {
   programs.git = {
     enable = true;

@@ -27,6 +27,7 @@ let
     pkgs.coreutils # `date +%F` — see crates/due-remind/src/main.rs::today()
     pkgs.herdr
   ];
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
   home.file.".local/bin/due-remind" = {
@@ -38,45 +39,31 @@ in
   # above — see quarantine.nix for why this is a shared helper.
   dotfiles.quarantine.managedFiles = [ ".local/bin/due-remind" ];
 
-  systemd.user.services.due-remind = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Post a Herdr toast for deadlines due within 7 days (another repo's due-index)";
-    Service = {
-      Type = "oneshot";
-      ExecStart = deployedPath;
-      Environment = "PATH=${servicePath}";
+  # OnCalendar= のみを使うので persistent は生きた宣言になる(#442 の教訓 — OnBootSec=/
+  # OnUnitActiveSec= だけの herdr-issue-counts では書けない。timerPair の schedule の形が
+  # 区別する)。launchd は StartInterval が「起動後 N 秒毎」なので使わず、
+  # StartCalendarInterval を時間毎に 11 エントリ並べる(gpg-subkey-remind の 1 エントリ版と同型)。
+  # EnvironmentVariables.PATH は launchd が PATH を置換するので、呼び出す全バイナリを列挙する。
+  dotfiles.pipeline.timerNodes.due-remind = "due-remind";
+  imports = [
+    (timerPair {
+      name = "due-remind";
+      description = "Post a Herdr toast for deadlines due within 7 days (another repo's due-index)";
+      timerDescription = "Check due-indexes hourly, 09:00-19:00";
+      exec = deployedPath;
+      launchdExec = storePath;
+      path = servicePath;
       # oneshot の既定 TimeoutStartSec は無限。herdr が固まっても次の周期を
       # 塞がないよう上限を置く(herdr-issue-counts と同じ理由)。
-      TimeoutStartSec = "1min";
-    };
-  };
-
-  # OnCalendar= のみを使うので Persistent= は生きた宣言になる(#442 の教訓 —
-  # OnBootSec=/OnUnitActiveSec= だけの herdr-issue-counts では書かない)。
-  dotfiles.pipeline.timerNodes.due-remind = "due-remind";
-  systemd.user.timers.due-remind = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Check due-indexes hourly, 09:00-19:00";
-    Timer = {
-      OnCalendar = "*-*-* 09..19:00:00";
-      Persistent = true;
-      Unit = "due-remind.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # launchd 双子(ADR-0018)。StartInterval は「起動後 N 秒毎」なので使わず、
-  # StartCalendarInterval を時間毎に11エントリ並べる(gpg-subkey-remind の
-  # 1エントリ版と同型)。EnvironmentVariables.PATH は launchd が PATH を
-  # 置換するので、呼び出す全バイナリを列挙する。
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.due-remind が兼ねる。
-  launchd.agents.due-remind = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [ storePath ];
-      StartCalendarInterval = map (h: {
+      service.TimeoutStartSec = "1min";
+      schedule = {
+        calendar = "*-*-* 09..19:00:00";
+        persistent = true;
+      };
+      launchd.StartCalendarInterval = map (h: {
         Hour = h;
         Minute = 0;
       }) (lib.range 9 19);
-      EnvironmentVariables.PATH = servicePath;
-    };
-  };
+    })
+  ];
 }

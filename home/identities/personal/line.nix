@@ -29,9 +29,13 @@
 # messaging account, and desktop.nix is imported unconditionally by
 # common.nix for every host, including company ones. This module lives in
 # home/identities/personal/, which only the personal identity imports.
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  repoConfig,
+  ...
+}:
 let
-  repoConfig = ../../../config;
 
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix's
   # warp-terminal entry. chromium is a GL consumer like alacritty/Chrome/Slack
