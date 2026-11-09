@@ -1232,7 +1232,6 @@ dependencies = [
  "agent-session",
  "aho-corasick",
  "git-repository",
- "jq-json-compat",
  "process-control",
  "serde_json",
  "tempfile",
@@ -1244,7 +1243,6 @@ name = "plan-precedent-gate"
 version = "0.1.0"
 dependencies = [
  "agent-session",
- "jq-json-compat",
  "process-control",
  "regex",
  "tempfile",

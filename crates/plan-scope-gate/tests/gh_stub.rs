@@ -417,7 +417,10 @@ fn hook_route_a_denies_missing_children() {
     lines.push("R2: 処分(実装する段、または棄却タグ)が未記載です".into());
     assert_eq!(
         s(&o.stdout),
-        jq_json_compat::jqfmt::deny_for_event("PreToolUse", &deny_message(&lines))
+        agent_session::Reply::deny(deny_message(&lines)).render(
+            agent_session::Agent::Claude,
+            agent_session::HookEvent::PreToolUse
+        )
     );
     let calls = e.calls();
     assert!(!calls.contains("number=999") && !calls.contains("number=998"));

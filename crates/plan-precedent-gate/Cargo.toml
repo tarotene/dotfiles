@@ -7,7 +7,6 @@ publish.workspace = true
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
-jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-control = { version = "0.1.0", path = "../process-control" }
 regex.workspace = true
 

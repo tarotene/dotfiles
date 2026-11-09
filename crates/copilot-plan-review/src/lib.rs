@@ -19,6 +19,7 @@ pub mod prompts;
 
 use agent_session::plan::plan_source;
 use agent_session::plan::PlanSource;
+use agent_session::{Agent, HookEvent, Reply};
 use jq_json_compat::jqfmt;
 use judge::{chomp, Judged};
 use process_control::command_exists;
@@ -635,7 +636,7 @@ fn pass_through(msg: &str) -> String {
     if msg.is_empty() {
         String::new()
     } else {
-        jqfmt::system_message(msg)
+        Reply::system_message(msg).render(Agent::Claude, HookEvent::PreToolUse)
     }
 }
 
@@ -730,7 +731,7 @@ struct Hook<'a> {
 
 impl Hook<'_> {
     fn deny(&self, reason: &str) -> String {
-        jqfmt::deny_for_event(&self.event, reason)
+        Reply::deny(reason).render(Agent::Claude, HookEvent::from_input_name(&self.event))
     }
 
     /// `escalate_with`。

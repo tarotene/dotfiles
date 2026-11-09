@@ -4,9 +4,8 @@
 //! スキップ手段: `touch ~/.claude/plan-fresh-gate/skip` または
 //! `SKIP_PLAN_FRESH_GATE=1`。
 
-use agent_session::HookInput;
 use agent_session::SessionLedger;
-use jq_json_compat::jqfmt;
+use agent_session::{Agent, HookEvent, HookInput, Reply};
 use plan_fresh_gate::{git, git_ok, intersect_files, MAX_DENY_DISPLAY};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -29,7 +28,10 @@ fn short(sha: &str) -> &str {
 }
 
 fn pass_through(msg: &str) -> ExitCode {
-    print!("{}", jqfmt::system_message(msg));
+    print!(
+        "{}",
+        Reply::system_message(msg).render(Agent::Claude, HookEvent::PreToolUse)
+    );
     ExitCode::SUCCESS
 }
 
@@ -197,7 +199,10 @@ fn run() -> ExitCode {
 
     print!(
         "{}",
-        jqfmt::deny_for_event(&input.hook_event_name, &lines.join("\n"))
+        Reply::deny(lines.join("\n")).render(
+            Agent::Claude,
+            HookEvent::from_input_name(&input.hook_event_name)
+        )
     );
     ExitCode::SUCCESS
 }
