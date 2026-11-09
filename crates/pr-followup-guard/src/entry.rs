@@ -19,6 +19,7 @@
 // `.cwd`)、Codex は `.cwd` だけ。project は git 作業ツリーの中かを見るだけで
 // 判定には使わない(bash 版でも未使用の引数)。
 
+use agent_session::cli::{self, Verdict};
 use agent_session::entry::{emit, enter, read_stdin, Spec};
 use agent_session::{Agent, HookEvent, Reply};
 use pr_followup_guard::{allow_from_env, decide};
@@ -36,18 +37,16 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
 
-    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
-        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
-        return match decide(cmd, allow_from_env()) {
-            Some(reason) => {
-                println!("deny: {reason}");
-                ExitCode::from(1)
-            }
-            None => {
-                println!("pass");
-                ExitCode::SUCCESS
-            }
+    if let Some(rest) = cli::manual(&call.rest) {
+        let verdict = match cli::args(rest, 1, 0) {
+            Ok(a) => Verdict::from(decide(a[0], allow_from_env())),
+            Err(usage) => usage,
         };
+        return cli::finish(
+            "pr-followup-guard",
+            "pr-followup-guard [--agent claude|codex|copilot] --check <command>",
+            verdict,
+        );
     }
 
     let raw = read_stdin();

@@ -1,0 +1,10 @@
+# --check: 存在しないファイル(issue-ref なし) → 使い方の誤り(stderr)、exit 2
+bin.name = "plan-scope-gate"
+args = ["--check", "nope.md"]
+status.code = 2
+stdout = ""
+stderr = """
+plan-scope-gate: plan file not found: nope.md
+usage: plan-scope-gate --check <plan.md> [<issue-ref>]
+"""
+fs.sandbox = true

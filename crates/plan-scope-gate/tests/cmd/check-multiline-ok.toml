@@ -1,0 +1,9 @@
+# --check: 折り返した項目(処分が継続行にある)も適合(#876)
+bin.name = "plan-scope-gate"
+args = ["--check", "plan.md"]
+status.code = 0
+stdout = """
+pass
+"""
+stderr = ""
+fs.sandbox = true

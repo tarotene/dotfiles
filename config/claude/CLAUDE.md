@@ -64,7 +64,7 @@ gate に当たる前に自発的に執行点を含めること — gate は漏�
 計画冒頭に `## 要求インベントリ` を置き、依頼文と参照 Issue の子項目を
 逐語で 1 行 1 項目・`R1..Rn` の ID 付きで列挙してから設計に入る。列挙は
 本線で行う(Plan/Explore サブエージェントは CLAUDE.md を読み飛ばす)。
-ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check-plan
+ExitPlanMode を呼ぶ前に `~/.claude/hooks/plan-scope-gate --check
 <プランファイル>` で節内整合性(処分・タグ)を自己検査する。実装中に
 見つかった隣接負債は AskUserQuestion で stack か wrap-up inbox かを聞く。
 手順は requirements-inventory スキルに従う。

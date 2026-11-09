@@ -226,7 +226,8 @@ dotfiles リポジトリ自身では発火しなくなっていく**見込みで
 と `SKIP_PLAN_SCOPE_GATE=1` がエスケープハッチ。
 
 `--selftest` は `gh` をシェル関数で上書きしてネットワークを使わずに全経路を検査
-する。`--check <plan.md> <issue-ref>` は実 Issue に対する手動 e2e 用の CLI で、
+する。`--check <plan.md> <issue-ref>` は実 Issue に対する手動 e2e 用の CLI(出力は `pass` / `deny: …`、
+終了コードは 0・1・2。子項目の取得結果と処分の状態は標準エラー)で、
 このリポジトリの親 Issue #136(sub-issues に #137/#138 を持つ、この機能自体の
 tracking issue)を使って実測済み: 子番号の欠落検出・全カバー・`Reference-Only:`
 宣言による免除の 3 経路すべてが期待どおりに判定された。
@@ -245,7 +246,6 @@ dotfiles 系セッションのトランスクリプト(プランセッション 
 同一セッションで deny が反復した率は 59% だった。対策として、
 precedent-grounding gate と同型の `example_block()`(そのまま写せば通る
 `## 要求インベントリ` の完全例)を deny 文末尾に同梱し、経路B(インベントリ
-内整合性)だけをプラン単体で回す `--check-plan <プランファイル>` 自走モード
-を追加した(経路A の Issue 子項目カバレッジは引き続き `--check <plan.md>
-<issue-ref>` の担当)。CLAUDE.md とスキルにも ExitPlanMode 前の自己検査導線
+内整合性)だけをプラン単体で回す自走モード(現在は `--check <プランファイル>`、issue-ref を渡さない形)
+を追加した(経路A の Issue 子項目カバレッジは `--check <plan.md> <issue-ref>` の担当)。CLAUDE.md とスキルにも ExitPlanMode 前の自己検査導線
 を追記した。

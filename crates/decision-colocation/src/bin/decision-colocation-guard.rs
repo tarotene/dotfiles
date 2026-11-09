@@ -16,6 +16,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use agent_session::cli::{self, Verdict};
 use agent_session::entry::{emit, enter, read_stdin, Spec};
 use agent_session::{Agent, HookEvent, Reply};
 use decision_colocation::guard::Guard;
@@ -32,22 +33,22 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
 
-    if call.rest.first().map(String::as_str) == Some("--check") {
-        let cmd = call.rest.get(1).map(String::as_str).unwrap_or("");
-        let project = match call.rest.get(2).filter(|p| !p.is_empty()) {
-            Some(p) => PathBuf::from(p),
-            None => std::env::current_dir().unwrap_or_default(),
-        };
-        return match Guard::with_env(|g| g.decide(cmd, &project)) {
-            Some(reason) => {
-                println!("deny: {reason}");
-                ExitCode::from(1)
+    if let Some(rest) = cli::manual(&call.rest) {
+        let verdict = match cli::args(rest, 1, 1) {
+            Ok(a) => {
+                let project = match a.get(1).filter(|p| !p.is_empty()) {
+                    Some(p) => PathBuf::from(p),
+                    None => std::env::current_dir().unwrap_or_default(),
+                };
+                Verdict::from(Guard::with_env(|g| g.decide(a[0], &project)))
             }
-            None => {
-                println!("pass");
-                ExitCode::SUCCESS
-            }
+            Err(usage) => usage,
         };
+        return cli::finish(
+            "decision-colocation-guard",
+            "decision-colocation-guard --check <command> [<project>]",
+            verdict,
+        );
     }
 
     let raw = read_stdin();

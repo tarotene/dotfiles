@@ -1,9 +1,10 @@
-# --check: 存在しないファイル → stderr、exit 1
+# --check: 存在しないファイル → 使い方の誤り(stderr)、exit 2
 bin.name = "plan-precedent-gate"
 args = ["--check", "nope.md"]
-status.code = 1
+status.code = 2
 stdout = ""
 stderr = """
-plan file not found: nope.md
+plan-precedent-gate: plan file not found: nope.md
+usage: plan-precedent-gate --check <plan.md>
 """
 fs.sandbox = true

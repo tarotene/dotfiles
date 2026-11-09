@@ -230,7 +230,7 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
   `ExitPlanMode` を呼ぶ。機械化できる(保存と diff だけ)ので、同じ差し戻しが繰り返された
   ら script への昇格を検討する(ADR-543 の昇格型)。
 - 自己検査 2 本を走らせて指摘ゼロを確認してから `ExitPlanMode`:
-  - `~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>`
+  - `~/.claude/hooks/plan-scope-gate --check <プランファイル>`
   - `~/.claude/hooks/plan-precedent-gate --check <プランファイル>`
 
 **`ExitPlanMode` が GO を兼ねる。** 個別の裁定は §4 で既に済んでいるので、
@@ -397,7 +397,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 
 - 母集団の全件が `## 要求インベントリ` にちょうど 1 回ずつ現れ、処分を持つ
   (発見漏れゼロ)
-- `plan-scope-gate --check-plan` と `plan-precedent-gate --check` が
+- `plan-scope-gate --check` と `plan-precedent-gate --check` が
   指摘ゼロ
 - 全段の PR が作成済み(`stacked-pr` の完了定義に従う)
 - 対処した項目の `Closes #N` が段ごとに 1:1 対応している(Issue を経ない直接消化分は

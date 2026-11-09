@@ -41,12 +41,12 @@ hook として実装し、直前の応答(`last_assistant_message`)から
 書き出し、既存の
 
 ```
-plan-scope-gate --check-plan <file>
+plan-scope-gate --check <file>
 plan-precedent-gate --check <file>
 ```
 
 をそのまま呼ぶだけで、新しい判定ロジックは一切持たない。両方が exit 0
-(「OK: ...」)なら無出力で通す。どちらかが非 0(指摘あり)なら、両方の
+(`pass`)なら無出力で通す。どちらかが非 0(指摘あり)なら、両方の
 出力を連結して `{"decision":"block","reason":"..."}` を返す。
 
 `plan-fresh-gate`(worktree の drift 検査)は今回の対象外 — 入力が

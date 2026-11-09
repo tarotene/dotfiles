@@ -1,9 +1,10 @@
-# --check: 引数なし → stderr、exit 1
+# --check: 引数なし → 使い方の誤り(stderr)、exit 2
 bin.name = "plan-precedent-gate"
 args = ["--check"]
-status.code = 1
+status.code = 2
 stdout = ""
 stderr = """
-plan file not found: 
+plan-precedent-gate: 引数は 1 個
+usage: plan-precedent-gate --check <plan.md>
 """
 fs.sandbox = true

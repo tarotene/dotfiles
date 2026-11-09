@@ -1,0 +1,10 @@
+# --check: 引数なし → 使い方の誤り(stderr)、exit 2
+bin.name = "plan-scope-gate"
+args = ["--check"]
+status.code = 2
+stdout = ""
+stderr = """
+plan-scope-gate: 引数は 1 個(任意で 1 個まで追加)
+usage: plan-scope-gate --check <plan.md> [<issue-ref>]
+"""
+fs.sandbox = true

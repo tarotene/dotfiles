@@ -1,0 +1,9 @@
+# --check: 適合プランは `pass` で exit 0
+bin.name = "plan-scope-gate"
+args = ["--check", "plan.md"]
+status.code = 0
+stdout = """
+pass
+"""
+stderr = ""
+fs.sandbox = true
