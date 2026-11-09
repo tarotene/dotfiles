@@ -20,8 +20,11 @@ let
     map (name: ".claude/skills/${name}") (names ++ [ "repo-governance-common" ])
     ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ]);
 in
-assert builtins.length names == 45;
-assert builtins.length shared == 44;
+# スキルの本数は、source の readDir から導いた集合(`names`)の長さで、固定値を持たない
+# (足すたびに手で更新する値は、同じ集合を数えるだけの循環した検査だった)。ここで見るのは
+# 意図の側: Codex・Copilot へ配らないスキルは `browser-login-handoff` の 1 本だけ。
+assert builtins.length shared == builtins.length names - 1;
+assert builtins.length names > 0;
 # 接頭辞の付け間違いで入口が 0 本になると、`/` の一覧から全スキルが消える。
 assert builtins.length entryNames > 0;
 assert

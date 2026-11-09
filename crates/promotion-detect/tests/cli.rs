@@ -1,5 +1,5 @@
-//! main.rs のワイヤリング(gh/wrapup-stop-gate の呼び出し・ファイル探索)
-//! を、偽の `gh`/`wrapup-stop-gate` を使った結合テストで検査する
+//! main.rs のワイヤリング(gh/issue-inbox の呼び出し・ファイル探索)
+//! を、偽の `gh`/`issue-inbox` を使った結合テストで検査する
 //! (`due-remind`/`git-audit-worktrees` の「本物の代わりに固定応答を返す
 //! スタブ」と同型)。純粋な検出ロジックは lib.rs の単体テストで検査済み。
 
@@ -31,7 +31,7 @@ fn write_fake_gh(dir: &Path, issues_json: &str) {
 }
 
 /// `--check-dup` は常に非重複(exit 0)を返し、`--add` は呼び出し引数を
-/// ログファイルに1行追記する偽 `wrapup-stop-gate`。
+/// ログファイルに1行追記する偽 `issue-inbox`。
 fn write_fake_wrapup(path: &Path, log: &Path) {
     let script = format!(
         "#!/bin/sh\ncase \"$1\" in\n  --check-dup) exit 0 ;;\n  --add) echo \"$2 $3\" >> '{}' ;;\nesac\n",
@@ -89,7 +89,7 @@ fn dry_run_reports_recurrence_candidate_without_calling_wrapup() {
     fs::create_dir_all(&state_dir).unwrap();
     let inbox = tmp.path().join("inbox.jsonl");
     let wrapup_log = tmp.path().join("wrapup.log");
-    let wrapup_bin = tmp.path().join("wrapup-stop-gate");
+    let wrapup_bin = tmp.path().join("issue-inbox");
     write_fake_wrapup(&wrapup_bin, &wrapup_log);
 
     let out = run(
@@ -97,7 +97,7 @@ fn dry_run_reports_recurrence_candidate_without_calling_wrapup() {
             ("PROMOTION_DETECT_GH_BIN", &tmp.path().join("gh")),
             ("PROMOTION_DETECT_CLAUDE_DIR", &claude_dir),
             ("PROMOTION_DETECT_STATE_DIR", &state_dir),
-            ("PROMOTION_DETECT_WRAPUP_BIN", &wrapup_bin),
+            ("PROMOTION_DETECT_INBOX_BIN", &wrapup_bin),
             ("PROMOTION_DETECT_INBOX_PATH", &inbox),
         ],
         &[],
@@ -124,7 +124,7 @@ fn writes_to_inbox_via_wrapup_when_not_dry_run() {
     fs::create_dir_all(&state_dir).unwrap();
     let inbox = tmp.path().join("inbox.jsonl");
     let wrapup_log = tmp.path().join("wrapup.log");
-    let wrapup_bin = tmp.path().join("wrapup-stop-gate");
+    let wrapup_bin = tmp.path().join("issue-inbox");
     write_fake_wrapup(&wrapup_bin, &wrapup_log);
 
     let out = run(
@@ -132,7 +132,7 @@ fn writes_to_inbox_via_wrapup_when_not_dry_run() {
             ("PROMOTION_DETECT_GH_BIN", &tmp.path().join("gh")),
             ("PROMOTION_DETECT_CLAUDE_DIR", &claude_dir),
             ("PROMOTION_DETECT_STATE_DIR", &state_dir),
-            ("PROMOTION_DETECT_WRAPUP_BIN", &wrapup_bin),
+            ("PROMOTION_DETECT_INBOX_BIN", &wrapup_bin),
             ("PROMOTION_DETECT_INBOX_PATH", &inbox),
         ],
         &[],
@@ -212,7 +212,7 @@ impl World {
         fs::create_dir_all(tmp.path().join("claude")).unwrap();
         fs::create_dir_all(tmp.path().join("state")).unwrap();
         write_fake_wrapup(
-            &tmp.path().join("wrapup-stop-gate"),
+            &tmp.path().join("issue-inbox"),
             &tmp.path().join("wrapup.log"),
         );
         // 既定の worklog は、整合している(終了コード 0)。呼ばれた引数は worklog.log に残る。
@@ -234,7 +234,7 @@ impl World {
                 ("PROMOTION_DETECT_GH_BIN", &self.p("gh")),
                 ("PROMOTION_DETECT_CLAUDE_DIR", &self.p("claude")),
                 ("PROMOTION_DETECT_STATE_DIR", &self.p("state")),
-                ("PROMOTION_DETECT_WRAPUP_BIN", &self.p("wrapup-stop-gate")),
+                ("PROMOTION_DETECT_INBOX_BIN", &self.p("issue-inbox")),
                 ("PROMOTION_DETECT_INBOX_PATH", &self.p("inbox.jsonl")),
                 ("PROMOTION_DETECT_WORKLOG_BIN", &self.p("worklog")),
             ],
@@ -282,12 +282,12 @@ fn a_candidate_whose_add_failed_is_tried_again() {
     let w = World::new(&recurrence_issues());
     // --add が失敗する wrapup。
     write_exec(
-        &w.p("wrapup-stop-gate"),
+        &w.p("issue-inbox"),
         "#!/bin/sh\ncase \"$1\" in\n  --check-dup) exit 0 ;;\n  --add) exit 1 ;;\nesac\n",
     );
     w.run(&[], false);
     // 記録されていないので、直った翌日に入れ直せる。
-    write_fake_wrapup(&w.p("wrapup-stop-gate"), &w.p("wrapup.log"));
+    write_fake_wrapup(&w.p("issue-inbox"), &w.p("wrapup.log"));
     w.run(&[], false);
     assert_eq!(w.add_log().lines().count(), 1, "{}", w.add_log());
 }

@@ -5,7 +5,7 @@
 # skill/hook/AGENTS.md section, verbatim-repeated SKILL.md code blocks,
 # stale gate skip files, and skip-heavy gate-events.jsonl entries) and
 # writes candidates into this repo's own wrap-up inbox via
-# wrapup-stop-gate --check-dup/--add; this module only wires the timer.
+# issue-inbox --check-dup/--add; this module only wires the timer.
 # It also calibrates the retro's as-code-candidate vocabulary (ADR-1276): it
 # reads the vault's inbox/ notes (the vault is found through the same
 # OBSIDIAN_VAULT / marker-file declaration the other tools use) and counts
@@ -32,7 +32,7 @@
 let
   storePath = "${pkgs.dotfiles-tools}/bin/promotion-detect";
   deployedPath = "${config.home.homeDirectory}/.local/bin/promotion-detect";
-  # wrapup-stop-gate (Rust since #413, crates/wrapup-stop-gate), which this
+  # issue-inbox (Rust, crates/issue-inbox), which this
   # binary execs, takes its inbox lock with flock(2) itself and no longer
   # needs bash/jq/flock(1)/grep/awk; it still shells out to git and gh.
   # herdr: 本人の Issue 台帳の日次の通知が途絶えたときの通知(ADR-1382)。due-remind と同じ
@@ -78,7 +78,7 @@ in
   dotfiles.quarantine.managedFiles = [ ".local/bin/promotion-detect" ];
 
   # launchd 版(ADR-0018)の EnvironmentVariables.PATH は、launchd が PATH を延ばさず置換するので、
-  # promotion-detect と、これが exec する wrapup-stop-gate が呼ぶ全バイナリを列挙する
+  # promotion-detect と、これが exec する issue-inbox が呼ぶ全バイナリを列挙する
   # (git-audit-worktrees の agent と同じ理由)。
   dotfiles.pipeline.timerNodes.promotion-detect = "promotion-detect";
 }

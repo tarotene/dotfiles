@@ -1,9 +1,9 @@
 //! `verdict_escalate::run()` の統合テスト: レッジャー dir → inbox 追記 →
-//! stamp 台帳までの一連の副作用。`wrapup-stop-gate --add` は
-//! `WRAPUP_STOP_GATE_BIN` で差し替えた最小スタブ(受け取った行のタイムスタンプ
+//! stamp 台帳までの一連の副作用。`issue-inbox --add` は
+//! `ISSUE_INBOX_BIN` で差し替えた最小スタブ(受け取った行のタイムスタンプ
 //! を固定文字列に正規化してから追記する)で代替する — 実体は
-//! `crates/wrapup-stop-gate` の `--add`(flock + jq -ce 相当の
-//! compact 化)そのものを別途 crates/wrapup-stop-gate のテストで検証している。
+//! `crates/issue-inbox` の `--add`(flock + jq -ce 相当の
+//! compact 化)そのものを別途 crates/issue-inbox のテストで検証している。
 //!
 //! 各テストは環境変数(プロセスグローバル)を触るため、`serial_test` を
 //! 使わずシングルスレッド実行を強制する(`--test-threads=1`)代わりに、
@@ -18,7 +18,7 @@ use std::sync::Mutex;
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn write_stub(dir: &Path) -> std::path::PathBuf {
-    let stub = dir.join("wrapup-stop-gate-stub.sh");
+    let stub = dir.join("issue-inbox-stub.sh");
     fs::write(
         &stub,
         "#!/usr/bin/env bash\n\
@@ -76,7 +76,7 @@ impl Env {
         let stub = write_stub(tmp.path());
         std::env::set_var("AGENT_VERDICTS_DIR", &verdicts);
         std::env::set_var("VERDICT_ESCALATE_STATE_DIR", &state);
-        std::env::set_var("WRAPUP_STOP_GATE_BIN", &stub);
+        std::env::set_var("ISSUE_INBOX_BIN", &stub);
         Self { _guard: guard, tmp }
     }
 
@@ -104,7 +104,7 @@ impl Drop for Env {
     fn drop(&mut self) {
         std::env::remove_var("AGENT_VERDICTS_DIR");
         std::env::remove_var("VERDICT_ESCALATE_STATE_DIR");
-        std::env::remove_var("WRAPUP_STOP_GATE_BIN");
+        std::env::remove_var("ISSUE_INBOX_BIN");
     }
 }
 

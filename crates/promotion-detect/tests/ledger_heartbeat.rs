@@ -36,7 +36,7 @@ struct World {
 }
 
 impl World {
-    /// 偽の `gh`・`herdr`・`wrapup-stop-gate`・`worklog`、vault、設定(`example/ledger`)を用意する。
+    /// 偽の `gh`・`herdr`・`issue-inbox`・`worklog`、vault、設定(`example/ledger`)を用意する。
     /// `age_hours` は digest の最新のコメントの古さ(`None` ならコメントが無い)。
     fn new(age_hours: Option<i64>) -> World {
         let tmp = tempfile::tempdir().unwrap();
@@ -95,7 +95,7 @@ impl World {
             ),
         );
         write_exec(
-            &d.join("wrapup-stop-gate"),
+            &d.join("issue-inbox"),
             "#!/bin/sh\ncase \"$1\" in --check-dup) exit 0;; esac\n",
         );
         write_exec(&d.join("worklog"), "#!/bin/sh\nexit 0\n");
@@ -116,7 +116,7 @@ impl World {
             .env("PROMOTION_DETECT_HERDR_BIN", self.p("herdr"))
             .env("PROMOTION_DETECT_CLAUDE_DIR", self.p("claude"))
             .env("PROMOTION_DETECT_STATE_DIR", self.p("state"))
-            .env("PROMOTION_DETECT_WRAPUP_BIN", self.p("wrapup-stop-gate"))
+            .env("PROMOTION_DETECT_INBOX_BIN", self.p("issue-inbox"))
             .env("PROMOTION_DETECT_INBOX_PATH", self.p("inbox.jsonl"))
             .env("PROMOTION_DETECT_WORKLOG_BIN", self.p("worklog"))
             .env("PROMOTION_DETECT_NOW", NOW.to_string());
@@ -245,7 +245,7 @@ fn a_failing_gh_stops_nothing_else_in_the_daily_run() {
     )
     .unwrap();
     write_exec(
-        &w.p("wrapup-stop-gate"),
+        &w.p("issue-inbox"),
         &format!(
             "#!/bin/sh\ncase \"$1\" in --check-dup) exit 0;; --add) echo added >> '{}';; esac\n",
             w.p("wrapup.log").display()
@@ -291,7 +291,7 @@ fn a_machine_without_a_vault_does_not_claim_an_empty_inbox() {
         .env("PROMOTION_DETECT_HERDR_BIN", w.p("herdr"))
         .env("PROMOTION_DETECT_CLAUDE_DIR", w.p("claude"))
         .env("PROMOTION_DETECT_STATE_DIR", w.p("state"))
-        .env("PROMOTION_DETECT_WRAPUP_BIN", w.p("wrapup-stop-gate"))
+        .env("PROMOTION_DETECT_INBOX_BIN", w.p("issue-inbox"))
         .env("PROMOTION_DETECT_INBOX_PATH", w.p("inbox.jsonl"))
         .env("PROMOTION_DETECT_NOW", NOW.to_string())
         .stdout(Stdio::piped())

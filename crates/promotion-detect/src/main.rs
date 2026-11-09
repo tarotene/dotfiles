@@ -16,7 +16,7 @@
 //! の `DUE_REMIND_*` と同じ形、テストでの差し替えに使う):
 //!   PROMOTION_DETECT_REPO         既定 "tarotene/dotfiles"
 //!   PROMOTION_DETECT_GH_BIN       既定 "gh"
-//!   PROMOTION_DETECT_WRAPUP_BIN   既定 "$HOME/.claude/hooks/wrapup-stop-gate"
+//!   PROMOTION_DETECT_INBOX_BIN    既定 "$HOME/.claude/hooks/issue-inbox"
 //!   PROMOTION_DETECT_CLAUDE_DIR   既定 "$HOME/.claude"
 //!   PROMOTION_DETECT_STATE_DIR    既定 "${XDG_STATE_HOME:-$HOME/.local/state}/claude"
 //!   PROMOTION_DETECT_INBOX_PATH   既定 "<state_dir>/wrapup/<repo_slug>.jsonl"
@@ -56,11 +56,8 @@ fn main() {
             .or_else(|| home.as_ref().map(|h| h.join(".local/state")))?;
         Some(base.join("claude"))
     });
-    let wrapup_bin = env_path("PROMOTION_DETECT_WRAPUP_BIN").or_else(|| {
-        claude_dir
-            .as_ref()
-            .map(|d| d.join("hooks/wrapup-stop-gate"))
-    });
+    let wrapup_bin = env_path("PROMOTION_DETECT_INBOX_BIN")
+        .or_else(|| claude_dir.as_ref().map(|d| d.join("hooks/issue-inbox")));
     let inbox_path = env_path("PROMOTION_DETECT_INBOX_PATH").or_else(|| {
         state_dir.as_ref().map(|d| {
             d.join("wrapup")
