@@ -65,12 +65,9 @@ fn g_push_blocks_unpushed_head() {
 }
 
 /// 輸送: block は、終了コード 0 の標準出力の JSON(`decision: "block"`)で出る。標準エラーには理由を出さない。
-/// 旧い観測形(終了コード 2)への読み替えは、ハーネスの `run_in` が持つ(旧 bash の oracle には当てはまらない)。
+/// 旧い観測形(終了コード 2)への読み替えは、ハーネスの `run_in` が持つ。
 #[test]
 fn stop_block_travels_as_json_on_stdout() {
-    if std::env::var_os("PR_GATE_ORACLE").is_some_and(|v| !v.is_empty()) {
-        return;
-    }
     let fx = Fx::new();
     let raw = fx.stop_raw("transport-sid", &[("PR_GATE_STUB_HEAD_OID", ZERO_OID)]);
     assert_eq!(raw.code, 0, "{}", raw.all());
@@ -1076,11 +1073,6 @@ fn g_prior_blocks_new_tool_without_kizon() {
         ("PR_GATE_STUB_HEAD_OID", head.as_str()),
         ("PR_GATE_STUB_CHECKS_FILE", checks.as_str()),
     ];
-    if std::env::var_os("PR_GATE_ORACLE").is_some() {
-        // bash 版は new-tool-guard バイナリ(NEW_TOOL_GUARD_BIN)を要するが、
-        // このクレートのテストからは参照できないのでオラクル実行では省く。
-        return;
-    }
     let r = fx.stop("prior-sid", &base_env);
     assert_eq!(r.code, 2, "{}", r.stderr);
     // bash 版の printf の都合で 2 件目以降には "  - " が付かない(挙動を保存)。

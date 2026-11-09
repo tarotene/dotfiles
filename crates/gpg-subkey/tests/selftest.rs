@@ -1,8 +1,7 @@
 //! `scripts/gpg-subkey --selftest` の全ケース(47 チェック)を再現する統合テスト
 //! (#414、docs/rust-migration.md の段 1-2)。
 //!
-//! 対象は既定で cargo bin(Rust 版)。`GPG_SUBKEY_ORACLE` に bash 版のパスを入れると、
-//! CLI 経由のケースを bash 版に向けて走らせる(移植前の緑確認用)。
+//! 対象は、cargo がビルドした bin(Rust 版)。
 //!
 //! bash selftest と同じ方針で、generate/rotate/revoke/status/remind/export は
 //! **実 GnuPG** を、使い捨ての空 passphrase primary 鍵 + 隔離した GNUPGHOME で走らせる
@@ -38,14 +37,7 @@ impl Out {
 }
 
 fn target() -> Command {
-    match std::env::var_os("GPG_SUBKEY_ORACLE") {
-        Some(script) => {
-            let mut c = Command::new("bash");
-            c.arg(script);
-            c
-        }
-        None => Command::new(env!("CARGO_BIN_EXE_gpg-subkey")),
-    }
+    Command::new(env!("CARGO_BIN_EXE_gpg-subkey"))
 }
 
 fn write_exec(path: &Path, text: &str) {
@@ -633,11 +625,8 @@ fn argument_and_usage_errors() {
 
 #[test]
 fn unknown_key_is_reported_not_silent() {
-    // bash 版は set -e のせいでこのメッセージが出ず gpg の終了コード 2 で無言で落ちて
-    // いた(意図的な修正、lib.rs 冒頭参照)。
-    if std::env::var_os("GPG_SUBKEY_ORACLE").is_some() {
-        return;
-    }
+    // かつての bash 版は set -e のせいでこのメッセージが出ず gpg の終了コード 2 で無言で
+    // 落ちていた(意図的な修正、lib.rs 冒頭参照)。
     let fx = Fx::new();
     let g = fx.gs(&["generate", "--key", "NOSUCHKEY"]);
     assert_eq!(g.rc, 1);
@@ -673,9 +662,7 @@ fn secrets_never_reach_output() {
             .output()
             .unwrap(),
     );
-    if std::env::var_os("GPG_SUBKEY_ORACLE").is_none() {
-        assert_eq!(o.rc, 1);
-        assert!(o.stderr.contains("subkey 生成に失敗しました"));
-    }
+    assert_eq!(o.rc, 1);
+    assert!(o.stderr.contains("subkey 生成に失敗しました"));
     assert!(!o.both().contains("hunter2-secret"));
 }

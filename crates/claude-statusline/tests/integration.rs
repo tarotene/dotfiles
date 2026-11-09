@@ -2,8 +2,7 @@
 //! Herdr への報告)。純粋な stdin→stdout のケースは `tests/cases/claude-statusline/`
 //! (trycmd)にある。
 //!
-//! 対象バイナリ: `CLAUDE_STATUSLINE_ORACLE`(bash スクリプトのパス、`bash` で起動 —
-//! 配備側の statusLine command と同じ)を最優先にし、未設定なら既定の実装を使う。
+//! 対象バイナリ: cargo がビルドした bin。
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -13,11 +12,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 fn target() -> Command {
-    if let Some(o) = std::env::var_os("CLAUDE_STATUSLINE_ORACLE") {
-        let mut c = Command::new("bash");
-        c.arg(o);
-        return c;
-    }
     Command::new(env!("CARGO_BIN_EXE_claude-statusline"))
 }
 

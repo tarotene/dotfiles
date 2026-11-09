@@ -4,22 +4,16 @@
 //! JSON 行を受け取って比較する。`id` の時刻・乱数部と `seq` は非決定なので
 //! [`normalize`] で置き換えてから比べる(それ以外はバイト一致)。
 //!
-//! 対象実装は `HERDR_AGENT_METADATA_ORACLE` で切り替える:
-//! - `bash`: 移植元の `config/<agent>/hooks/herdr-<agent>-metadata.sh` を `sh` で起動
-//! - `rust`: `herdr-agent-metadata --agent <agent>`
-//!
-//! 未設定時は [`DEFAULT_ORACLE`]。
+//! 対象は、cargo がビルドした `herdr-agent-metadata --agent <agent>`。
 
 #![allow(dead_code)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
-
-pub const DEFAULT_ORACLE: &str = "rust";
 
 pub const PANE: &str = "pane-1";
 
@@ -42,14 +36,6 @@ pub struct Run {
     pub stderr: String,
     /// 正規化済みの受信行。
     pub lines: Vec<String>,
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn oracle() -> String {
-    std::env::var("HERDR_AGENT_METADATA_ORACLE").unwrap_or_else(|_| DEFAULT_ORACLE.to_string())
 }
 
 impl Harness {
@@ -108,21 +94,8 @@ impl Harness {
     }
 
     pub fn command(&self, agent: &str, args: &[&str]) -> Command {
-        let mut c = if oracle() == "bash" {
-            let rel = match agent {
-                "claude" => "config/claude/hooks/herdr-claude-metadata.sh",
-                "codex" => "config/codex/hooks/herdr-codex-metadata.sh",
-                "copilot" => "config/copilot/hooks/herdr-copilot-metadata.sh",
-                other => panic!("unknown agent {other}"),
-            };
-            let mut c = Command::new("sh");
-            c.arg(repo_root().join(rel));
-            c
-        } else {
-            let mut c = Command::new(env!("CARGO_BIN_EXE_herdr-agent-metadata"));
-            c.args(["--agent", agent]);
-            c
-        };
+        let mut c = Command::new(env!("CARGO_BIN_EXE_herdr-agent-metadata"));
+        c.args(["--agent", agent]);
         c.args(args);
         c.env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())

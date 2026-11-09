@@ -1,8 +1,7 @@
 //! `config/claude/hooks/issue-index.sh --selftest` の全ケースを、実際の一時 git
 //! repo と gh スタブで再現する統合テスト(#413、docs/rust-migration.md の段 1-2)。
 //!
-//! テスト対象は既定で cargo bin(Rust 版)。`ISSUE_INDEX_ORACLE` に bash 版の
-//! パスを入れると、同じケースを bash 版に向けて走らせる(移植前の緑確認用)。
+//! テスト対象は、cargo がビルドした bin(Rust 版)。
 //! 各ケースの stdout / stderr は `tests/expected/` のバイト列と完全一致させる
 //! (bash 版から `ISSUE_INDEX_BLESS=1` で生成した)。
 //!
@@ -176,18 +175,9 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(st.success(), "git {args:?}");
 }
 
-/// テスト対象。`ISSUE_INDEX_ORACLE` があれば bash 版を絶対パスの bash で起動する
-/// (PATH を絞るケースでも `#!/usr/bin/env bash` の解決に失敗しないように —
-/// bash selftest の `"$BASH" "$self"` と同じ)。
+/// テスト対象(cargo がビルドした bin)。
 fn target() -> Command {
-    match std::env::var_os("ISSUE_INDEX_ORACLE") {
-        Some(script) => {
-            let mut c = Command::new(which("bash"));
-            c.arg(script);
-            c
-        }
-        None => Command::new(env!("CARGO_BIN_EXE_issue-index")),
-    }
+    Command::new(env!("CARGO_BIN_EXE_issue-index"))
 }
 
 fn run_with_stdin(mut cmd: Command, stdin: &str) -> Out {

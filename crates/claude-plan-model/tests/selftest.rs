@@ -2,8 +2,7 @@
 //! 実バイナリと一時 settings.json で再現する統合テスト(#414、
 //! docs/rust-migration.md の段 1-2)。
 //!
-//! テスト対象は既定で cargo bin(Rust 版)。`CLAUDE_PLAN_MODEL_ORACLE` に bash 版の
-//! パスを入れると同じケースを bash 版に向けて走らせる(移植前の緑確認用)。
+//! テスト対象は、cargo がビルドした bin(Rust 版)。
 //! カタログは `CLAUDE_PLAN_MODEL_CATALOG` で差し替える(bash 版の継ぎ目と同じ)ので、
 //! どの claude が入っているかに依存しない。ラベルは bash selftest の `1a` 等と同じ。
 //!
@@ -21,14 +20,7 @@ const M_FABLE_OPUS: &str =
     r#"{"fb":["claude-sonnet-5"],"p":"claude-fable-5-1","x":"claude-opus-5"}"#;
 
 fn target() -> Command {
-    match std::env::var_os("CLAUDE_PLAN_MODEL_ORACLE") {
-        Some(script) => {
-            let mut c = Command::new("bash");
-            c.arg(script);
-            c
-        }
-        None => Command::new(env!("CARGO_BIN_EXE_claude-plan-model")),
-    }
+    Command::new(env!("CARGO_BIN_EXE_claude-plan-model"))
 }
 
 struct Run {

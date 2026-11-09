@@ -1,9 +1,7 @@
 //! claude-usage の統合テスト。bash 版 `--selftest` の全ケースを写し、
 //! curl の起動形(トークンを argv に載せない)と state file のバイト列を足した。
 //!
-//! 対象バイナリ: `CLAUDE_USAGE_ORACLE`(bash 版スクリプトのパス、直接 exec —
-//! herdr の `/bin/sh -lc` と同じく shebang で起動)を最優先にし、未設定なら
-//! 既定の実装を使う。
+//! 対象バイナリ: cargo がビルドした bin。
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -11,9 +9,6 @@ use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn target() -> Command {
-    if let Some(o) = std::env::var_os("CLAUDE_USAGE_ORACLE") {
-        return Command::new(o);
-    }
     Command::new(env!("CARGO_BIN_EXE_claude-usage"))
 }
 
