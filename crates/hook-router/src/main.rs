@@ -6,7 +6,7 @@ use agent_session::Agent;
 use hook_router::{
     applicable, execute_inputs_for, merge, render, tool_name, Event, Tools, Verdict,
 };
-use std::io::{Read, Write};
+use std::io::Write;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -32,12 +32,8 @@ fn main() {
         }
     };
 
-    let mut bytes = Vec::new();
-    if std::io::stdin().read_to_end(&mut bytes).is_err() {
-        bytes.clear();
-    }
-    // jq と同じく、不正な UTF-8 は U+FFFD に置き換えてから読む。
-    let raw = String::from_utf8_lossy(&bytes).into_owned();
+    // 不正な UTF-8 は、jq と同じく U+FFFD に置き換えてから読む(`read_stdin` が持つ)。
+    let raw = agent_session::entry::read_stdin();
     if atuin {
         hook_router::codex::atuin(&raw);
         return;

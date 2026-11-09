@@ -55,6 +55,7 @@ dependencies = [
 name = "agent-turn-log"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "serde_json",
  "tempfile",
 ]
@@ -801,6 +802,7 @@ dependencies = [
 name = "gpg-prewarm"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "tempfile",
  "trycmd",
 ]

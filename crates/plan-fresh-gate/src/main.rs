@@ -50,8 +50,7 @@ fn run() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let mut buf = String::new();
-    let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf);
+    let buf = agent_session::entry::read_stdin();
     // 不正 JSON は bash 版(jq 失敗時の既定値)と同じく PreToolUse / unknown に倒す。
     let input = HookInput::parse(&buf).unwrap_or_else(|| HookInput {
         session_id: "unknown".into(),

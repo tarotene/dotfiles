@@ -8,7 +8,6 @@
 //! と同じ)。終了コードは常に 0。
 
 use agent_session::Agent;
-use std::io::Read;
 
 fn main() {
     let mut agent = Agent::Claude;
@@ -33,7 +32,5 @@ fn main() {
             seen_action = true;
         }
     }
-    let mut buf = Vec::new();
-    let _ = std::io::stdin().read_to_end(&mut buf);
-    herdr_agent_metadata::run(agent, &action, &String::from_utf8_lossy(&buf));
+    herdr_agent_metadata::run(agent, &action, &agent_session::entry::read_stdin());
 }
