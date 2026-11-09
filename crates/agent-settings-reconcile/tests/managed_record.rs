@@ -10,7 +10,7 @@ use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_agent-settings-reconcile");
 
-/// herdr 自身が settings.json に書く SessionStart の統合 hook(home/modules/claude.nix の
+/// herdr 自身が settings.json に書く SessionStart の統合 hook(home/modules/agents.nix の
 /// 退役の一覧の注記を参照)。`~/.claude/hooks/` の下にあるが、dotfiles の所有ではない。
 const HERDR_OWN: &str = "bash '/home/u/.claude/hooks/herdr-agent-state.sh' session";
 

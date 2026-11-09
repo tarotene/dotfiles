@@ -139,8 +139,7 @@ hook は #415(ADR-0024 Stage 4a)で bash から Rust(`crates/adr-number`、
 `adr-number --agent claude|codex`)になった。Claude 版と Codex adapter は
 1 バイナリに統合され、違いは「プロジェクト dir を示す環境変数」
 (`CLAUDE_PROJECT_DIR` / `CODEX_PROJECT_DIR`)だけ。`gh pr create` の検出は
-`guard-core` の `command::parse` + `gh_command_at`(対応表は
-`guard-core.md`)。挙動は旧 `adr-number.sh --selftest` の全ケースを
+`command-inspection` の `command::parse` + `gh_command_at`。挙動は旧 `adr-number.sh --selftest` の全ケースを
 `crates/adr-number/tests/hook.rs` に写し、bash 版にも同じテストを流して
 一致を確認した。
 

@@ -31,7 +31,7 @@ PreToolUse の判定)と同じ。
 
 ## 既存手段と代替
 
-- 既存手段: 拡張 — `crates/gh-edit-allow` の 2 イベント型と、`hook_io::plan::plan_text`(計画の取得)、
+- 既存手段: 拡張 — `crates/gh-edit-allow` の 2 イベント型と、`agent_session::plan::plan_text`(計画の取得)、
   `SessionLedger`(台帳)。新しい crate は作らない。
 - 対抗馬: 手順への 1 行の追記(`register` を着手前に実行する)。二重入力が残る。`plan-precedent-gate` の通過時に
   登録する案は、拒否された計画でも登録が残る。`new-tool-guard` の deny 時に最新の計画を参照して allow する案は、

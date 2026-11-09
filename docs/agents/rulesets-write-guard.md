@@ -20,7 +20,7 @@ telepath#243 を含む複数リポジトリで required check を永久 Expected
 PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役は
 持たない。
 
-- `hook_io::shell::split` で語分割し、`gh api ...` の呼び出しだけを対象に
+- `command_inspection::simple_shell::split` で語分割し、`gh api ...` の呼び出しだけを対象に
   する。判定に使えない入力(複合コマンド・展開・リダイレクト・glob・未知の
   フラグ)は `gh-edit-allow` と同じ理由で素通しする(位置引数を取り違える
   おそれがあるため)。
@@ -42,7 +42,7 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
 
 ## 先行例との差分
 
-- **`gh-edit-allow`**: 同じ `hook_io::shell` 語分割・同じ「未知の入力は
+- **`gh-edit-allow`**: 同じ `command_inspection::simple_shell` 語分割・同じ「未知の入力は
   判定しない」設計を踏襲する。gh-edit-allow は allow-only、この hook は
   deny-only という向きの違いがある。語分割は `crates/gh-edit-allow/src/
   shell.rs` から `crates/command-inspection/src/simple_shell.rs` へ引き上げて共有した

@@ -9,8 +9,8 @@
 //! 旧 selftest でも別プロセスで起動していた。
 //!
 //! 旧 selftest 冒頭の「owner_repo() の式の骨格が pr-gate.sh / issue-index.sh と
-//! ズレていないか」の検査は、式が guard-core の `repo::owner_repo` 1 箇所に
-//! 集約されたので不要になった(guard-core の単体テストが同じ式を固定する)。
+//! ズレていないか」の検査は、式が `git_repository::owner_repo` 1 箇所に
+//! 集約されたので不要になった(`git-repository` の単体テストが同じ式を固定する)。
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

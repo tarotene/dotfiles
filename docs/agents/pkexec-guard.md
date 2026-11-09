@@ -146,11 +146,11 @@ root で実行するため、以後の `tailscale set` や `tailscale status` �
 "pkexec-guard が pkexec という語を含む..."; echo done`)まで fail closed に
 なっていた。回避策(この語を含む文字列は他の文と連結せず単独の Bash
 呼び出しにする)をこの文書に明記するだけで済ませる案もあったが、
-`hook_io::shell` の既存 quote-aware tokenizer を文分割まで拡張する対応の
+`command_inspection::simple_shell` の既存 quote-aware tokenizer を文分割まで拡張する対応の
 方が、同じ誤検知クラスの再発(実装中に本 PR 自身の作業で 2 回踏んだ)を
 構造的に防げるため、そちらを採った。
 
-`hook_io::shell::split_segments` が `;`/`&&`/`||`/`|`/`|&`/`&`/改行(クォート
+`command_inspection::simple_shell::split_segments` が `;`/`&&`/`||`/`|`/`|&`/`&`/改行(クォート
 外でのみ区切りとして働く)で複合コマンドを文に分割し、各文を独立に
 `split` と同じ規則で解析する。`mentions_pkexec` の判定は文ごとに次のいずれか:
 
@@ -267,7 +267,7 @@ org.freedesktop.policykit.exec for unix-process:... [...eval
 
 ## 先行例との差分
 
-- **`rulesets-write-guard`**: 同じ「`hook_io::shell::split` で語分割し、
+- **`rulesets-write-guard`**: 同じ「`command_inspection::simple_shell::split` で語分割し、
   未知の入力は判定しない/deny-only」の型を踏襲する。ただし pkexec-guard は
   「判定できない(複合コマン等)」を rulesets-write-guard と違い fail
   **closed** にする——rulesets-write-guard は gh の書き込みを見逃しても

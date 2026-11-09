@@ -2,8 +2,8 @@
 #
 # ~/.claude.json は Claude-Code-owned(`claude mcp add` が実行時に書き換える)なので
 # ~/.claude/settings.json と同じ制約が掛かる — store symlink にはできず、activation
-# 時の冪等書き換えにする(home/modules/claude.nix の hook / permissions
-# 登録と同じ agent-settings-reconcile の別サブコマンド)。ただしこのモジュール自身はサーバーの値を
+# 時の冪等書き換えにする(home/modules/agents.nix の hook 登録、claude.nix の permissions
+# と同じ agent-settings-reconcile の別サブコマンド)。ただしこのモジュール自身はサーバーの値を
 # 一切持たない: home/modules/quarantine.nix の `dotfiles.quarantine.managedFiles` と
 # 同型の extensible option として「口」だけを公開し、personal.nix / company.nix /
 # このファイル自身のいずれからも `dotfiles.claude.mcpServers.<name> = {...}` で

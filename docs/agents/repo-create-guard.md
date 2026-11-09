@@ -49,7 +49,7 @@ repo-charter の手順自体が実行不能になる。
 ## コマンド解析エンジンを共有する
 
 対象コマンドの検出(コマンド位置判定)・heredoc 本体の分離・クォート解釈
-トークナイザは `crates/github-command` を使う(`docs/agents/guard-core.md`。bash
+トークナイザは `crates/github-command` を使う([`agent-libraries.md`](agent-libraries.md)。bash
 時代は `attribution-guard.sh` を `source` して `is_target_at`/`decide_tokens`/
 `decide_api_tokens` を後勝ちで上書きしていた)。この crate が持つのは対象
 コマンド(`gh repo create`、`gh api`)・エンドポイント判定・deny 文言だけ。
@@ -95,7 +95,7 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
   と播種スクリプトに対して、閉語彙チェックの合否・topic 必須・既存リポジトリの再開・
   `--dry-run` で `gh` を呼ばないこと等を固定。ci.yml が実行する)。
 - `crates/repo-create-guard/tests/cli.rs` が、bash 版 `--selftest` の全 9 ケースを
-  ネットワーク無しに実バイナリへ固定している(`cargo test --workspace`、nix.yml の
+  ネットワーク無しに実バイナリへ固定している(`cargo test --workspace`、ci.yml の
   rust ジョブ)。
 
 ## 登録形

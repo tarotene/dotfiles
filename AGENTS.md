@@ -33,13 +33,16 @@ per-package `nixGL` wrapper (the shared wrapper module, ADR-0006), applied to
 Linux GUI packages in the desktop module and identity-scoped ones like
 `warp-terminal` (the personal identity module, #9).
 
-Note on `herdr`: not yet in the pinned stable nixpkgs channel. Comes from a
-single-package `nixpkgs-unstable` overlay in `flake.nix` (ADR-0001 Amendment,
-#42) — drop the overlay entry once stable catches up. Unlike `nixgl`, this
-overlay does not need `inputs.nixpkgs.follows`: herdr is only ever `exec`'d,
-never `dlopen`'d into another package's process, so a second glibc in its
-closure is harmless. (`gh`'s own version-capped escape hatch on this same
-overlay was dropped once stable shipped >= 2.99.0, see #91.)
+Note on `herdr`, `mise` and `spotify-player`: not yet in the pinned stable nixpkgs
+channel at the version we need. They come from one `nixpkgs-unstable` overlay in
+`flake.nix` (ADR-0001 Amendment, #42, #823, #861); `flake.nix` states each entry's
+removal condition (`mise` >= 2026.7.5, `spotify-player` >= 0.25.0) — drop an entry once
+stable catches up. `herdr` also carries a permanent local patch
+(`patches/herdr-worktree-names.patch`, decided in #449). Unlike `nixgl`, this overlay
+does not need `inputs.nixpkgs.follows`: these packages are only ever `exec`'d, never
+`dlopen`'d into another package's process, so a second glibc in their closure is
+harmless. (`gh`'s own version-capped escape hatch on this same overlay was dropped once
+stable shipped >= 2.99.0, see #91.)
 
 Note on `claude`: not managed via nix at all — the native installer is the
 source of truth on every host (ADR-457, a scoped exception to ADR-0001).
@@ -173,13 +176,12 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   belong in `home/modules/packages.nix`, not apt.
 
 ### CI (nix-centric)
-- The nix workflow runs `nix flake check` + a per-host activation build
-  matrix, plus a rust job: crane package/clippy/rustfmt checks and
-  `cargo test --workspace` (fixture oracles + the migration-allowlist audit,
-  ADR-0024/#389).
-- The general CI workflow is a slim shell pass: shellcheck the surviving
-  scripts, the installer scripts' `--dry-run` paths, a zsh module syntax
-  check, every script's `--selftest`, and a full-history gitleaks scan.
+- `ci.yml` is the single Linux CI workflow (ADR-591). Its jobs run `nix flake check` and a
+  per-host activation build (vega, arcturus), a rust job (crane package/clippy/rustfmt
+  checks and `cargo test --workspace`, including the migration-allowlist audit,
+  ADR-0024/#389), and a slim shell pass: shellcheck the surviving scripts, the installer
+  scripts' `--dry-run` paths, a zsh module syntax check, every script's `--selftest`, and
+  a full-history gitleaks scan. `darwin-build.yml` builds the darwin host (altair) on macOS.
 - Rust bins carry no `--selftest` (ADR-0024: the cases are `#[test]`, run by
   `cargo test --workspace`); the `--selftest` in the bullet above means the
   shell and perl scripts.

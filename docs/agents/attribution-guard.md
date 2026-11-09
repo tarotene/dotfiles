@@ -1,7 +1,7 @@
 # attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
 
 実装: `crates/attribution-guard`(Rust、3 エージェント共通の 1 バイナリ、`--agent claude|codex|copilot`)
-コマンド解析エンジン: `crates/github-command`(公開 API は [`guard-core.md`](guard-core.md))
+コマンド解析エンジン: `crates/command-inspection`(コマンド位置・heredoc・トークナイザ)と `crates/github-command`(`gh` の本文フラグ)。責務は [`agent-libraries.md`](agent-libraries.md)
 旧 bash 判定エンジン: `config/claude/hooks/attribution-guard.sh`(#415 で削除。他の gh guard が `source` する共有エンジンだったが、全 guard が `crates/github-command` に移ったため不要になった)
 規約側: `config/claude/CLAUDE.md`「GitHub に投稿するテキストには生成元を明示する」
 Issue: #190、#192(Codex CLI / Copilot CLI への展開)、#415(Rust 移植、ADR-0024 Stage 4a)
@@ -117,8 +117,8 @@ allow 側で「諦める = 許可を出さない = 安全側」。deny 側では
    bash 版のコメントは「`<<<`(herestring)はタグの正規表現にマッチせず除外される」と
    書いていたが、実際には `<<<EOF` / `<<< "x"` も 2 文字目からの `<<` で一致し
    heredoc として扱われる。Rust 移植(#415)は bash の実挙動を保った
-   (`crates/command-inspection/src/shell.rs` のテストで固定、[`guard-core.md`](guard-core.md)
-   「bash の挙動が疑わしい箇所」)。
+   (`crates/command-inspection/src/shell.rs` のテストで固定。その doc コメントに、
+   実挙動のまま保った点を書いてある)。
 2. **残りをトークン化し、コマンド位置の `gh` 呼び出しだけを対象とする**。コマンド位置 =
    トークン列の先頭、または区切りトークン（`;` `|` `&` `(` `)` 改行）の直後。クォート
    された文字列は 1 トークンになるのでコマンド位置には来ない。

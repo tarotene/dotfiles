@@ -7,7 +7,7 @@ checker(単一ソース): `crates/decision-colocation` の `check::run_check`
 サーバ側 required check: `.github/workflows/ci.yml` の `dry-run` job
 client guard: `crates/decision-colocation` の bin `decision-colocation-guard`
 (段2。bash 版 `config/claude/hooks/decision-colocation-guard.sh` の移植。
-コマンド解析は `crates/github-command`、[`guard-core.md`](guard-core.md))
+コマンド解析は `crates/command-inspection` と `crates/github-command`、[`agent-libraries.md`](agent-libraries.md))
 規範: `config/agents/AGENTS.md`「決定成果物は執行点と同じ PR に出す」(段2)
 
 「ADR だけ残して実装を後続 Issue に先送りする」判断をエージェントができない
@@ -38,7 +38,7 @@ ADR のうち 12 本が docs-only、うち 2 本は追跡 Issue が今日まで�
 ```markdown
 ## 執行点
 
-- config/claude/hooks/foo-gate.sh
+- crates/foo-gate/src/main.rs
 - `home/modules/agents.nix` — hook 登録
 ```
 

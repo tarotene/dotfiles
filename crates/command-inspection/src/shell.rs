@@ -45,8 +45,10 @@ pub struct HeredocSplit {
 /// と同じ(行内の最左一致)。bash 版のコメントは「`<<<`(herestring)は
 /// タグの正規表現にマッチせず除外される」と書くが、実際には `<<<EOF` や
 /// `<<< "x"` も 2 文字目からの `<<` で一致し heredoc として扱われる —
-/// 移植では bash の実挙動を保つ(docs/agents/guard-core.md「bash の挙動が
-/// 疑わしい箇所」)。
+/// 移植では bash の実挙動を保つ。同じく、bash 版冒頭のコメントは unmatched
+/// quote と heredoc を「範囲文字列全体をフォールバックで検査」と書くが、実装は
+/// そうなっていない(unmatched quote は素通し、heredoc は本体を本文候補に足す
+/// だけ)— これも実挙動のまま。
 pub fn split_heredoc(cmd: &str) -> HeredocSplit {
     let mut out = HeredocSplit::default();
     let mut tag: Option<String> = None;

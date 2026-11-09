@@ -33,7 +33,7 @@
     # so `flake.lock` fully determines the content. This pin is the last
     # known-good rev, not the one `hms` applies: `hms` (remote apply) pre-builds
     # with `--override-input bleep` at bleep's main and applies that only if the
-    # deployed-hook canary (`home.checks`, home/modules/claude.nix) passes,
+    # deployed-hook canary (`home.checks`, home/modules/agents.nix) passes,
     # otherwise it falls back to this pin (crates/hms). `hms .` and CI use
     # this pin as-is. Bump it by hand — together with the call sites it
     # changes — when bleep makes a breaking change the canary rejects.
@@ -292,9 +292,9 @@
             pname = "dotfiles-tools";
             version = "0.1.0";
             strictDeps = true;
-            # Tests run in CI through `nix develop` (nix.yml), not in the
-            # build sandbox: the fixture oracles execute the bash originals,
-            # which need /usr/bin/env and the rest of the repo tree.
+            # Tests run in CI through `nix develop` (ci.yml's rust job), not in the
+            # build sandbox: they read the rest of the repo tree (docs/, config/)
+            # and shell out to git and bash.
             doCheck = false;
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -417,7 +417,7 @@
           ++ extraModules;
           # bleep is a plain source tree (flake = false), threaded
           # through as an extra module argument rather than an overlay —
-          # claude.nix only needs its store path for home.file.source, not a
+          # agents.nix only needs its store path for home.file.source, not a
           # package derivation (ADR-0009). frontend-slides is threaded the same
           # way (home.file.source only, docs/agents/presentation-authoring.md).
           #
@@ -485,7 +485,7 @@
       # activationPackage actually targets it.
       #
       # The Rust workspace adds its package, clippy and rustfmt checks on top
-      # (ADR-0024 / #391); nix.yml's rust job builds these.
+      # (ADR-0024 / #391); ci.yml's rust job builds these.
       checks = forAllSystems (
         system:
         let
@@ -587,9 +587,9 @@
         dotfiles-tools = pkgsFor.${system}.dotfiles-tools;
       });
 
-      # `nix develop`: the toolchain for crates/ (ADR-0024). nix.yml's rust
+      # `nix develop`: the toolchain for crates/ (ADR-0024). ci.yml's rust
       # job runs cargo test through this shell, so jq/git/bash are here for
-      # the fixture oracles that execute the bash originals.
+      # the tests that shell out to them.
       devShells = forAllSystems (
         system:
         let

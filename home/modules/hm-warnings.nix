@@ -1,6 +1,6 @@
 # home-manager 自体が apply 時(hms/home-manager switch)に出す活性化ノイズの
 # 抑止だけを束ねる。三点とも upstream で未解決/意図的に revert 済みの警告で
-# あり、根絶にはローカルでの上書きしかない(docs/README.md 参照)。
+# あり、根絶にはローカルでの上書きしかない(各警告の経緯は、以下の W1〜W3 のコメントに書いた)。
 { config, lib, ... }:
 {
   # W1: `warning: Using 'builtins.derivation' to create a derivation named

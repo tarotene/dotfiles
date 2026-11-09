@@ -660,10 +660,9 @@ let
   bleepClaudeCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
   bleepCodexCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
   bleepCopilotCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
-  # #561 で env prefix を足す前の command 文字列。register() は完全一致でしか
-  # 既存登録を見つけられないため(claude.nix 内の register() 定義のコメント
-  # 参照)、これを先に --retire/completely-remove してからでないと、新旧
-  # 2本が settings.json に同時に残ってしまう。
+  # #561 で env prefix を足す前の command 文字列。退役は command の完全一致で削除する
+  # (agent-settings-reconcile、docs/agents/agent-settings-reconcile.md。bash 版の register() も
+  # 同じ規則だった)ので、これを退役の一覧に残さないと、新旧 2本が settings.json に同時に残ってしまう。
   legacyBleepClaudeCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
   legacyBleepCodexCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
   legacyBleepCopilotCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
@@ -880,8 +879,8 @@ let
   # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
   # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
   # history.db に記録する。`atuin hook install claude-code` は settings.json
-  # を直接書き換えて宣言的管理の外に出るため使わず、この repo の既存の
-  # register() 経由で配線する。コマンド文字列は atuin, "Agent Hooks",
+  # を直接書き換えて宣言的管理の外に出るため使わず、この repo の
+  # hook 宣言(agent-settings-reconcile)経由で配線する。コマンド文字列は atuin, "Agent Hooks",
   # <https://docs.atuin.sh/latest/guide/agent-hooks/>(2026-09-14 取得)が
   # 文書化する契約のとおり(引数なし)。
   atuinHookClaudeCodeCmd = "atuin hook claude-code";
@@ -1019,10 +1018,10 @@ let
       command = legacyCodexPlanReviewCmd;
     }
     # public-publish-guard の上流分離(ADR-0009)。旧 command は matcher が
-    # "Bash" 単体だったが、新 command は "Bash|mcp__.*" で登録する — register()
-    # の存在判定は command の完全一致だけで matcher を見ないため、retire を
-    # 挟まないと matcher が古いまま更新されない(既知の罠、claude.nix 内の
-    # register() 定義のコメント参照)。
+    # "Bash" 単体だったが、新 command は "Bash|mcp__.*" で登録する。command が
+    # 違うので、旧 command を退役しないと新旧が並ぶ(bash 版の register() は存在判定が
+    # command の完全一致だけで matcher を見ず、matcher も古いまま残る罠があった。
+    # agent-settings-reconcile は matcher も宣言に合わせる)。
     {
       event = "PreToolUse";
       command = legacyPublicPublishGuardCmd;

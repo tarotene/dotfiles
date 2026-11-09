@@ -118,8 +118,8 @@ const SKIP_VALUE_FLAGS: &[&str] = &[
 
 /// bash の `parse_pr_tokens`: 1 つの `gh pr create|edit` 呼び出しぶんの
 /// トークン列から、本文・値フラグ・読み飛ばしリスト・位置引数を 1 ループで
-/// 読む(guard-core の `scan_value_flags` に収まらないので自前、
-/// docs/agents/guard-core.md)。
+/// 読む(`github_command::gh::scan_value_flags` に収まらないので自前。
+/// 位置引数を拾う guard の参考になる)。
 ///
 /// 既知の限界: `--title` 等、値を取る未知フラグの値が `target`(edit の対象
 /// 識別子)に誤って捕捉されることがある。誤捕捉は「対象 PR が解決できない」

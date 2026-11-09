@@ -6,7 +6,7 @@
 //!   共有する単一ソース。
 //! - [`guard`]: PreToolUse hook の判定(bash 版
 //!   `config/claude/hooks/decision-colocation-guard.sh`)。コマンド解析は
-//!   `guard-core`。
+//!   `command-inspection`。
 
 pub mod check;
 pub mod guard;

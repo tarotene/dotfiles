@@ -8,6 +8,9 @@ ADR-0024 本体ではなくここに置く。
   rustc 1.94.1、nix 2.28.4、crane `73b9805`、hyperfine(nixos-26.05)
 - 対象: `Cargo.toml` の workspace(`crates/hook-io` ほか)。
   `[profile.release]` は `lto = true` / `strip = true`
+- 注: この文書の `hook-io`(共有 lib)は計測時の crate で、その後 `agent-session`・`command-inspection` など
+  責務別のライブラリに分かれて廃止した([ライブラリ一覧](agents/agent-libraries.md))。以下の `hook-io` の行は、
+  「全 bin が依存する共有 lib を 1 行変えたときの再ビルド」の代表として読む。
 
 ## 1. 1 メンバーの 1 行変更時の再ビルド秒数
 

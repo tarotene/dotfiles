@@ -1,11 +1,6 @@
-# Global code owners - automatically request reviews for all PRs
+# Global code owner — automatically requests a review from the owner on every PR.
+# The path-specific lines this file used to carry (scripts/, config/, docs/, .github/,
+# packages/) named the same owner, so they added nothing over this rule.
+# No ruleset requires a code-owner review (`require_code_owner_review` is false in
+# .github/rulesets/workflow.json); this file only auto-requests it.
 * @tarotene
-
-# Specific ownership for different areas
-scripts/ @tarotene
-config/ @tarotene
-packages/ @tarotene
-docs/ @tarotene
-
-# GitHub configuration and workflows
-.github/ @tarotene

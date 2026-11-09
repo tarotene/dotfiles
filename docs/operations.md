@@ -191,7 +191,7 @@ not `hms .`), `hms` therefore resolves bleep's main with `nix flake prefetch
 activation package with `--override-input bleep github:tarotene/bleep/<rev>`
 (`dotfiles/bleep` on a wrapper host) before switching. The build runs the
 deployed-hook canary (`config/agents/bleep-canary.sh`, wired as a
-`home.checks` derivation in `home/modules/claude.nix`): the *deployed* bash
+`home.checks` derivation in `home/modules/agents.nix`): the *deployed* bash
 body and `bleep-hook` are fed canary hook inputs and must still deny/pass as
 dotfiles' wiring expects. A failing canary fails the build, so:
 
@@ -400,7 +400,7 @@ Notes:
   via `gh search prs --author 'app/renovate'`), so the manual routine above
   remains the *sole* mechanism until the App's access is widened to "All
   repositories" (a manual runbook step, D5). Once the App runs here, review
-  and merge the Renovate PR the same way as any other — `nix.yml`'s CI still
+  and merge the Renovate PR the same way as any other — `ci.yml`'s CI still
   gates it, and a non-major `flake.lock` bump automerges on green checks
   ([#3](https://github.com/tarotene/dotfiles/issues/3)). The GitHub App
   token + `DeterminateSystems/update-flake-lock` route #3 originally
@@ -488,7 +488,7 @@ it.
 ### Checking for orphaned hook / statusLine entries after a `--rollback`
 
 `agent-settings-reconcile`'s declarative retirement (`claude-hooks` / `claude-statusline`)
-(`retiredHookEntries` / `retiredStatusLineCommands` in `home/modules/claude.nix`)
+(`retiredHookEntries` in `home/modules/agents.nix`, `retiredStatusLineCommands` in `home/modules/claude.nix`)
 only runs as part of the activation script baked into a given home-manager
 generation. A **forward** `hms` picks it up; a `home-manager switch --rollback`
 to a generation that predates the retirement re-executes *that generation's*

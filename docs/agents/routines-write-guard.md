@@ -45,7 +45,7 @@ decision-colocation の Codex/Copilot adapter 不要判断〔ADR-396 D8〕と同
 
 - **`rulesets-write-guard`**: 同じ「deny のみ返す・判定できない入力は
   素通し」の設計を踏襲するが、対象ツールが Bash ではないため
-  `hook_io::shell::split` も bypass env var も使わない。判定条件を
+  `command_inspection::simple_shell::split` も bypass env var も使わない。判定条件を
   「コマンド文字列の字句解析」から「body の構造検査」に置き換えた。
 - **実装言語**: ADR-0024 は新規 hook を既定で Rust とする。この hook は
   JSON の構造検査だけで完結し、既存の巨大 bash 資産を source する必要が

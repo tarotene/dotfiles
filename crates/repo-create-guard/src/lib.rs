@@ -6,7 +6,7 @@
 //! ADR-0024 Stage 4a #415)。
 //!
 //! bash 版 `config/claude/hooks/repo-create-guard.sh` の移植。コマンド解析は
-//! `guard-core` にあり、ここには対象コマンドと deny 文言だけを置く。
+//! `command-inspection` と `github-command` にあり、ここには対象コマンドと deny 文言だけを置く。
 //!
 //! 動機: `gh repo create` 自体には作成直後に走るフック機構が無く、作成時の
 //! 強制点は `repo-charter` スキルという散文的手順のみだった(ADR-0013 D2)。

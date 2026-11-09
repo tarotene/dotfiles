@@ -4,7 +4,7 @@
 # home/modules/agents.nix の home.checks が、generation の build 時にこれを
 # 配備後のレイアウト(`<home-files>/.claude/hooks`)に対して走らせる。bleep 入力の
 # pin が決める hook の実体(.claude/hooks/bleep/ の bash 本体と、crane でビルドした
-# .claude/hooks/bleep-hook)に、登録コマンド(claude.nix の bleepEnvPrefix)と同じ環境を
+# .claude/hooks/bleep-hook)に、登録コマンド(agents.nix の bleepEnvPrefix)と同じ環境を
 # 与え、隔離した denylist と stub の gh(全リポジトリが private の cwd、pub/repo だけ
 # PUBLIC)で判定させる。bleep 側の破壊的変更に dotfiles の配線が追従していない版は、
 # ここで落ちて generation が build できない(hms が bleep main を適用前に確かめる
