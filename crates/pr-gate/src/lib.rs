@@ -54,12 +54,13 @@
 //! - 警告 1 行 + fail-open → gh 未ログイン・API 失敗・fetch 失敗・
 //!   G_pr の merged/closed 検査 API 失敗・G_stack の gh-stack 拡張不在
 //!   または stacks API 取得不能(advisory 降格)
-//! - hard block(exit 2) → G_push 不一致 / G_unpushed / G_pr / G_link 欠落 /
+//! - block(終了コード 0 の標準出力の JSON。`decision: "block"`) → G_push 不一致 / G_unpushed / G_pr / G_link 欠落 /
 //!   G_visual 欠落 / G_stack(chain 2 以上・未リンク・拡張/API 利用可能) /
 //!   G_prior / G_CI が揃わない・失敗・pending(ただし中断ハンドオフ成立時は
 //!   G_link 欠落 / G_CI 不揃いを advisory に降格)
 //!
-//! `stop_hook_active` は見ない。wrapup-stop-gate と同じ即 exit 0 にすると、
+//! `stop_hook_active` は見ない(`Reentry::Recheck`。`stop::REENTRY`)。block の直後の再呼び出しでも判定する。
+//! 即 exit 0 にすると、
 //! G_push で 1 回 block した直後の再呼び出しが CI 判定に到達しない
 //! (docs/agents/copilot-plan-review.md の「第二次の非収束」と同型)。上限は独自
 //! カウンタ([`state`])。

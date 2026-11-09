@@ -350,7 +350,30 @@ impl Fx {
     }
 
     /// 対象を呼ぶ。`sub` は "stop" / "session-start"。
+    /// 旧い観測形で返す: Stop の block は、標準出力の JSON(`decision: "block"`、終了コード 0)で出るが、
+    /// このテストの約 110 の assert は、終了コード 2 と標準エラー(理由 + 改行)で書かれている。
+    /// 輸送そのものは `run_in_raw` と、`stop_block_travels_as_json_on_stdout` が確かめる。
     pub fn run_in(&self, project: &Path, sub: &str, stdin: &str, envs: &[(&str, &str)]) -> Run {
+        let raw = self.run_in_raw(project, sub, stdin, envs);
+        if sub != "stop" || raw.code != 0 {
+            return raw;
+        }
+        let block = serde_json::from_str::<serde_json::Value>(&raw.stdout)
+            .ok()
+            .filter(|v| v["decision"] == "block")
+            .and_then(|v| v["reason"].as_str().map(str::to_string));
+        match block {
+            Some(reason) => Run {
+                code: 2,
+                stdout: String::new(),
+                stderr: format!("{}{reason}\n", raw.stderr),
+            },
+            None => raw,
+        }
+    }
+
+    /// 読み替えない、プロセスの出力そのもの。
+    pub fn run_in_raw(&self, project: &Path, sub: &str, stdin: &str, envs: &[(&str, &str)]) -> Run {
         let mut c = match oracle() {
             Some(p) => {
                 let mut c = Command::new(which("bash"));
@@ -432,6 +455,10 @@ impl Fx {
 
     pub fn stop(&self, sid: &str, envs: &[(&str, &str)]) -> Run {
         self.run_in(&self.repo, "stop", &self.hookinput(sid), envs)
+    }
+    /// 読み替えない `stop`。
+    pub fn stop_raw(&self, sid: &str, envs: &[(&str, &str)]) -> Run {
+        self.run_in_raw(&self.repo, "stop", &self.hookinput(sid), envs)
     }
     pub fn session_start(&self, sid: &str, envs: &[(&str, &str)]) -> Run {
         self.run_in(&self.repo, "session-start", &self.hookinput(sid), envs)

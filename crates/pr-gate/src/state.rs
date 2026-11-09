@@ -7,6 +7,7 @@
 
 use crate::config::Config;
 use agent_session::SessionLedger;
+use agent_session::StopOutcome;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -82,20 +83,19 @@ impl State {
         self.read_count(sid) >= self.max_blocks
     }
 
-    /// block メッセージを stderr に出し、exit code 2 を返す。上限に達したら
-    /// escalate 文言に差し替え、escalated フラグを立てる。
-    pub fn block_or_escalate(&self, sid: &str, message: &str) -> i32 {
+    /// block を返す。上限に達したら escalate 文言に差し替え、escalated フラグを立てる。
+    /// 理由は、モデルへ渡す文(`StopOutcome::Block` の `reason`)。
+    pub fn block_or_escalate(&self, sid: &str, message: &str) -> StopOutcome {
         let n = self.read_count(sid) + 1;
         let _ = fs::write(self.count_path(sid), n.to_string());
         if n >= self.max_blocks {
             let _ = fs::write(self.escalated.path(sid), "");
-            eprint!(
-                "{max} 回ブロックしましたが解消していません。残存:\n{message}\n\nAskUserQuestion で GO/NO-GO を取ってから終了してください。\n(次回以降このゲートは素通りします)\n",
+            StopOutcome::block(format!(
+                "{max} 回ブロックしましたが解消していません。残存:\n{message}\n\nAskUserQuestion で GO/NO-GO を取ってから終了してください。\n(次回以降このゲートは素通りします)",
                 max = self.max_blocks
-            );
+            ))
         } else {
-            eprintln!("{message}");
+            StopOutcome::block(message)
         }
-        2
     }
 }

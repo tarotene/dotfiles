@@ -1,5 +1,5 @@
-//! Stop hook: PR completion barrier。block は exit 2 + stderr、素通りは exit 0
-//! (advisory があれば stderr に出す)。
+//! Stop hook: PR completion barrier。block は `StopOutcome::Block`(終了コード 0 の標準出力の JSON。
+//! 描画は `agent_session::Reply::render`)、素通りは `None`(advisory があれば stderr に出す)。
 
 use crate::body::{self, Link, Visual};
 use crate::config::Config;
@@ -9,6 +9,7 @@ use crate::gates::{prior, stack};
 use crate::state::{self, State};
 use crate::{gh, join_lines, jqv, repo, session_start};
 use agent_session::HookInput;
+use agent_session::{Reentry, StopOutcome};
 use serde_json::Value;
 use std::path::Path;
 
@@ -20,46 +21,46 @@ fn session_id(input: &str) -> String {
     agent_session::ledger::sanitize_session_id(&sid)
 }
 
-pub fn run(input: &str) -> i32 {
+/// 再入(`stop_hook_active`)は見ない。block の直後の再呼び出しでも判定する。無限に block しないための
+/// 上限は、`State` の session_id ごとのカウンタが持つ(上限到達で escalate して以後は素通り)。
+pub const REENTRY: Reentry = Reentry::Recheck;
+
+pub fn run(input: &str) -> Option<StopOutcome> {
     if !process_control::command_exists("gh") || !process_control::command_exists("git") {
-        return 0;
+        return None;
     }
     let cfg = Config::from_env();
     if cfg.skipped() {
-        return 0;
+        return None;
     }
     let sid = session_id(input);
-    let Some(project) = session_start::project_dir(input) else {
-        return 0;
-    };
-    let Some(nwo) = session_start::target(&cfg, &project) else {
-        return 0;
-    };
+    let project = session_start::project_dir(input)?;
+    let nwo = session_start::target(&cfg, &project)?;
     // 同じ linked worktree を別のセッションが今使っているときは、そちらが動かしたブランチ・
     // 作った commit・PR をこのセッションのものとして block しない(2026-10-27 に別セッションの
     // PR #1173 が帰属された)。判定は worktree-lease の印(docs/agents/worktree-lease.md)。
     if HookInput::parse(input)
         .is_some_and(|i| worktree_lease::held_by_other(&project, &i.session_id))
     {
-        return 0;
+        return None;
     }
 
     state::ensure_dirs(&cfg);
     let st = State::new(&cfg);
     if st.is_escalated(&sid) || st.at_limit(&sid) {
-        return 0;
+        return None;
     }
 
     let branch = repo::git_ok(&project, &["branch", "--show-current"]).unwrap_or_default();
     if branch.is_empty() {
-        return 0;
+        return None;
     }
 
     let pr_json = gh::pr_for_branch(&nwo, &branch, "number,baseRefName,headRefOid,body,isDraft");
-    // bash 版は gh の応答が JSON として読めないと jq の失敗(exit 2 = block 扱い
+    // bash 版は gh の応答が JSON として読めないと jq の失敗(終了コード 2 = block 扱い
     // になりうる)で異常終了していた。判定不能なので素通す。
     let Ok(prs) = serde_json::from_str::<Value>(&pr_json) else {
-        return 0;
+        return None;
     };
     match jqv::first_field(&prs, "number") {
         None => no_pr(&st, &sid, &project, &nwo, &branch),
@@ -120,7 +121,7 @@ fn positive(x: &str) -> bool {
 /// 無条件に完全沈黙していたため、コミットを積んで push せずに終わる
 /// セッションを何も止めなかった。PR を作るべきかには踏み込まず、
 /// 「積んだコミットが 1 個もリモートに無い」事実だけを見る(G_unpushed)。
-fn no_pr(st: &State, sid: &str, project: &Path, nwo: &str, branch: &str) -> i32 {
+fn no_pr(st: &State, sid: &str, project: &Path, nwo: &str, branch: &str) -> Option<StopOutcome> {
     let unpushed = repo::unpushed_count(project, branch);
     let default_br = git_repository::default_branch(project).unwrap_or_default();
     if positive(&unpushed) {
@@ -128,7 +129,7 @@ fn no_pr(st: &State, sid: &str, project: &Path, nwo: &str, branch: &str) -> i32 
             repo::stale_base_line(project, &default_br),
             format!("未コミット: {} ファイル", repo::uncommitted_count(project)),
         ]);
-        return st.block_or_escalate(
+        return Some(st.block_or_escalate(
             sid,
             &format!(
                 "未 push の commit が {unpushed} 件あります。PR はまだありません。
@@ -141,7 +142,7 @@ push し、そのまま `gh pr create` まで実行してから終了してく�
 
 {hygiene}"
             ),
-        );
+        ));
     }
 
     // G_pr — push 済みなのに PR が無いまま終わろうとする事故を塞ぐ。
@@ -153,34 +154,32 @@ push し、そのまま `gh pr create` まで実行してから終了してく�
     //   - default_br が空(origin/HEAD 未設定。判定不能)
     //   - branch が default branch そのもの(PR フロー外の直接作業)
     if unpushed != "0" || default_br.is_empty() || branch == default_br {
-        return 0;
+        return None;
     }
     let (ahead, _) = repo::ahead_behind(project, &default_br);
     // ahead が非数値("?": origin/<default_br> が手元に無い)か 0
     // (PR に値する commit が無い)なら判定できない/対象外として素通す。
     if !positive(&ahead) {
-        return 0;
+        return None;
     }
 
     // merged/closed の PR が既にある場合は block しない — squash merge 後の
     // 残骸ブランチ(ahead>0 のまま残る)や、意図的に閉じた PR まで block
     // すると「PR を作れ」という案内が誤りになる。gh 失敗時は fail-open
     // (空応答と API 失敗を区別せず、どちらも「分からないので止めない」に倒す)。
-    let Some(all_json) = gh::pr_for_branch_any_state(nwo, branch) else {
-        return 0;
-    };
+    let all_json = gh::pr_for_branch_any_state(nwo, branch)?;
     let Ok(all) = serde_json::from_str::<Value>(&all_json) else {
-        return 0;
+        return None;
     };
     if jqv::first_field(&all, "state").is_some_and(|s| !s.is_empty()) {
-        return 0;
+        return None;
     }
 
     let hygiene = join_lines(&[format!(
         "未コミット: {} ファイル",
         repo::uncommitted_count(project)
     )]);
-    st.block_or_escalate(
+    Some(st.block_or_escalate(
         sid,
         &format!(
             "ブランチ {branch} は push 済みですが PR がありません
@@ -193,7 +192,7 @@ push し、そのまま `gh pr create` まで実行してから終了してく�
 
 {hygiene}"
         ),
-    )
+    ))
 }
 
 /// 本文由来の block メッセージ群(G_link / G_stack / G_visual / G_prior)。
@@ -248,7 +247,7 @@ fn with_pr(
     prs: &Value,
     pr_num: &str,
     transcript: &str,
-) -> i32 {
+) -> Option<StopOutcome> {
     let first = &prs[0];
     let base = jqv::raw(first.get("baseRefName").unwrap_or(&Value::Null));
     let head_oid = jqv::raw(first.get("headRefOid").unwrap_or(&Value::Null));
@@ -437,7 +436,7 @@ GitHub 上の stack にリンクされていません。最下段から順に PR
     if !local_head.is_empty() && local_head != head_oid {
         let unpushed = repo::unpushed_since(project, &head_oid);
         let short: String = head_oid.chars().take(7).collect();
-        return st.block_or_escalate(
+        return Some(st.block_or_escalate(
             sid,
             &format!(
                 "未 push の commit が {unpushed} 件あります。
@@ -451,7 +450,7 @@ push してから終了してください。
 
 {rider}"
             ),
-        );
+        ));
     }
 
     // G_CI — Handoff 成立時は block ではなく advisory の rider に回す(中断中の
@@ -529,7 +528,7 @@ pr-checks-wait {pr_num} で確認してから終わってください。
 {rider}"
                 ),
             };
-            return st.block_or_escalate(sid, &msg);
+            return Some(st.block_or_escalate(sid, &msg));
         }
     }
 
@@ -544,9 +543,9 @@ pr-checks-wait {pr_num} で確認してから終わってください。
     // 止める。欠けているものが複数あれば 1 つの block メッセージに合流させ、
     // まとめて 1 往復で直せるようにする(いずれも CI を再走させない修正のため)。
     if let Some(body_msg) = f.standalone(!ci_deferred) {
-        return st.block_or_escalate(sid, &format!("{body_msg}\n\n{advisory}"));
+        return Some(st.block_or_escalate(sid, &format!("{body_msg}\n\n{advisory}")));
     }
 
     eprintln!("{advisory}");
-    0
+    None
 }
