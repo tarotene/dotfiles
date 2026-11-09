@@ -320,8 +320,9 @@ fn gate_dir() -> std::path::PathBuf {
 /// (作業ディレクトリへは移らず、`HookInput::effective_cwd` を相対パスの解決にだけ使う)。外の読み取りは、
 /// プランのファイルと、例文の取得日のための `date` だけ。
 pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
-    if gate_dir().join("skip").exists()
-        || std::env::var("SKIP_PLAN_PRECEDENT_GATE").as_deref() == Ok("1")
+    if agent_session::escape::PLAN_PRECEDENT_GATE
+        .active(Some(&gate_dir()), None)
+        .is_some()
     {
         return None;
     }

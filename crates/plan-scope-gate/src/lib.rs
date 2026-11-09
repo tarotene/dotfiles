@@ -580,8 +580,9 @@ pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
     if !process_control::command_exists("gh") {
         return None;
     }
-    if gate_dir().join("skip").exists()
-        || std::env::var("SKIP_PLAN_SCOPE_GATE").as_deref() == Ok("1")
+    if agent_session::escape::PLAN_SCOPE_GATE
+        .active(Some(&gate_dir()), None)
+        .is_some()
     {
         return None;
     }

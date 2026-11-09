@@ -567,10 +567,12 @@ impl Guard {
         Guard { dir, session_id }
     }
 
-    /// `$STACK_BASE_GUARD_DIR/skip` があるか `SKIP_STACK_BASE_GUARD=1` なら真。
+    /// `$STACK_BASE_GUARD_DIR/skip` があるか `SKIP_STACK_BASE_GUARD=1` なら真(名前と真偽は
+    /// `agent_session::escape` の表が決める)。
     pub fn skipped(&self) -> bool {
-        self.dir.join("skip").exists()
-            || std::env::var("SKIP_STACK_BASE_GUARD").as_deref() == Ok("1")
+        agent_session::escape::STACK_BASE_GUARD
+            .active(Some(&self.dir), None)
+            .is_some()
     }
 
     fn sid(&self) -> &str {

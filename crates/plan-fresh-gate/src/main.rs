@@ -46,7 +46,10 @@ fn run() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let dir = gate_dir();
-    if dir.join("skip").exists() || std::env::var("SKIP_PLAN_FRESH_GATE").as_deref() == Ok("1") {
+    if agent_session::escape::PLAN_FRESH_GATE
+        .active(Some(&dir), None)
+        .is_some()
+    {
         return ExitCode::SUCCESS;
     }
 

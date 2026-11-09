@@ -205,8 +205,9 @@ fn run(raw: &str) -> Option<StopOutcome> {
     if !(is_executable(&scope_gate) && is_executable(&precedent_gate)) {
         return None;
     }
-    if state_root.join("skip").exists()
-        || std::env::var("SKIP_CODEX_PLAN_GATE").as_deref() == Ok("1")
+    if agent_session::escape::CODEX_PLAN_GATE
+        .active(Some(&state_root), None)
+        .is_some()
     {
         return None;
     }

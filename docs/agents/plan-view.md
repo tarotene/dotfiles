@@ -54,7 +54,7 @@ plan-view は表示するだけの道具なので、承認を許可も拒否も�
 
 ```
 touch ~/.claude/plan-views/skip     # 恒久的に止める
-PLAN_VIEW_SKIP=1 claude             # このセッションだけ止める
+SKIP_PLAN_VIEW=1 claude             # このセッションだけ止める
 ```
 
 `skip` は保持期限の掃除から除外する。消えると無効化が黙って解除されるため。
@@ -246,7 +246,7 @@ plan-view ~/.claude/plans/<slug>.md
 plan-view --no-open --out /tmp/p.html ~/.claude/plans/<slug>.md
 
 # 無効化
-PLAN_VIEW_SKIP=1 claude
+SKIP_PLAN_VIEW=1 claude
 ```
 
 `home-manager switch` を 2 回連続で走らせても `settings.json` のエントリが増殖しない

@@ -101,7 +101,10 @@ fn deny_reason(out: &str) -> String {
     format!(
         "決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への Amendment 追加が、その執行点(実際に実装する変更)を同じ PR に伴っていません(config/agents/AGENTS.md「決定成果物は執行点と同じ PR に出す」、docs/adr/396-decision-colocation.md)。詳細:
 {out}
-一時的に無効化するには SKIP_DECISION_COLOCATION_GUARD=1 を設定してください。"
+{how_to}",
+        how_to = agent_session::escape::DECISION_COLOCATION_GUARD
+            .how_to()
+            .unwrap_or_default()
     )
 }
 
@@ -122,7 +125,9 @@ pub struct Guard<'a> {
 impl Guard<'_> {
     /// 環境変数と実際の checker を使う既定の設定で `f` を走らせる。
     pub fn with_env<R>(f: impl FnOnce(&Guard<'_>) -> R) -> R {
-        let skip = std::env::var("SKIP_DECISION_COLOCATION_GUARD").as_deref() == Ok("1");
+        let skip = agent_session::escape::DECISION_COLOCATION_GUARD
+            .active(None, None)
+            .is_some();
         f(&Guard {
             skip,
             checker: &real_checker,

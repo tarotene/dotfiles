@@ -144,8 +144,9 @@ fn base_dir() -> Option<PathBuf> {
 
 /// `SKIP_NEW_TOOL_GUARD=1` か `<base>/skip` の存在(既存 gate と同じ形)。
 pub fn skipped() -> bool {
-    std::env::var_os("SKIP_NEW_TOOL_GUARD").is_some_and(|v| v == "1")
-        || base_dir().is_some_and(|d| d.join("skip").exists())
+    agent_session::escape::NEW_TOOL_GUARD
+        .active(base_dir().as_deref(), None)
+        .is_some()
 }
 
 /// ledger キー: session_id ではなく git toplevel(ADR-543 D7 の差分)。
