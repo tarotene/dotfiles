@@ -1,4 +1,4 @@
-# Cutover runbook
+# Cutover runbook — 手続き型の dotfiles から home-manager への、ホストごとの切り替え手順
 
 Per-host migration from the procedural dotfiles to the home-manager environment.
 Tracked by #217.

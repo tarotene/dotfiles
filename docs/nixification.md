@@ -1,4 +1,4 @@
-# Nixification roadmap
+# Nixification — 将来 Nix の DSL に訳す価値のある設定ファイル
 
 Per ADR-0002 the migration uses a **hybrid** translation: keep working config
 files literal, use Nix DSL only where interpolation pays. This file tracks

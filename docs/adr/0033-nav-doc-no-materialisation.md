@@ -166,3 +166,29 @@ README の日本語訳として足した)。
 - `crates/github-audit/src/domains/charters.rs`
 - `crates/github-audit/tests/pipeline.rs`
 
+
+## Amendment (2026-11-09 — `docs/README.md` の索引は生成に見合う規模になった, #1450)
+
+`## Alternatives considered` の 1 つ目は、一覧の自動生成を、対象の一覧が数行〜十数行で小さいことを理由に棄却し、
+「将来リポジトリの一覧が生成に見合う規模になった場合にこの解を採る道は塞いでいない」と記録した。`docs/README.md` の
+索引は 203 項目、820 行になり(2026-11-09 に数えた)、2 つの腐り方をした: 文書を足して載せ忘れる(18 件が未リンク)、
+手で書いた要約が文書の内容とずれる。この索引について、その道を採る。
+
+- **索引の一覧は、各文書の H1 から生成する。** 1 行は、リンクと H1 だけで、手で書いた要約は持たない。生成の節は
+  `<!-- BEGIN GENERATED: docs-index <id> -->` と `<!-- END GENERATED -->` の間で、外の文章は手で書いたまま残る。
+- **drift は `cargo test` が検出する。** `crates/docs-index/tests/tree.rs` が、あるべき内容と現在の `docs/README.md` を
+  比べる。`.github/actions/stack-position/action.yml` の `RUST_EXTRA_INPUTS` に `docs/` を足し、文書だけを変える PR でも
+  `Rust workspace` ジョブが走る。
+- **`nav-doc-exempt` マーカーは使わない。** `github-audit` の `nav_doc_scan` が走査するのはルートの README・CONTRIBUTING・
+  AGENTS.md・CLAUDE.md で、`docs/README.md` は対象外。対象外のファイルにマーカーを置くと `nav-doc-exempt-unused` に当たる。
+  この ADR の Decision(導線文書は実体を複製しない)は、そのまま有効。
+
+AGENTS.md の ADR 節の「単一の索引、ここに複製しない」は変わらない。索引の中身を手で書く場所が、生成に変わっただけである。
+既存手段の調べ(MkDocs のプラグイン、adr-tools の `generate toc`)と、それぞれを採らない理由は
+`docs/agents/docs-index.md` に残した。
+
+### 執行点
+
+- `crates/docs-index/src/lib.rs`
+- `crates/docs-index/tests/tree.rs`
+- `.github/actions/stack-position/action.yml`

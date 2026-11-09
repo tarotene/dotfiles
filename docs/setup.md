@@ -1,4 +1,4 @@
-# Setup Guide
+# Setup Guide — ホストのセットアップ手順(Pop!_OS)
 
 Bring a Pop!_OS host up to the declarative home-manager environment. For the
 full per-host migration procedure (existing machines, rollback, greenfield

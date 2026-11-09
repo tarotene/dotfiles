@@ -1,4 +1,4 @@
-# Bounded Codex feedback trial
+# Bounded Codex feedback trial — 保存した Codex の会話から、観測の候補を別の収集役が集める試行
 
 A separate collector reads saved Codex conversations and stores observation
 candidates locally. Normal SessionStart and Stop paths never inject trial

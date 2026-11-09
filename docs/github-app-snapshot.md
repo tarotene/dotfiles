@@ -1,4 +1,4 @@
-# github-app-snapshot
+# github-app-snapshot — GitHub App の設定を JSON で保存する読み取り専用の CLI
 
 `github-app-snapshot` (Rust, `crates/github-app-snapshot`; ported from the
 former bash `scripts/github-app-snapshot`, #414) is the only command in this

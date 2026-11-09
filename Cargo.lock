@@ -450,6 +450,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "docs-index"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "dotfiles-doctor"
 version = "0.1.0"
 dependencies = [

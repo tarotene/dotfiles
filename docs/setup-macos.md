@@ -1,4 +1,4 @@
-# macOS Setup Guide (altair)
+# macOS Setup Guide (altair) — darwin ホストのセットアップ手順
 
 Bring a macOS host (currently: **altair**, a 2022 M2 MacBook Air,
 aarch64-darwin) up to the declarative home-manager environment. See
