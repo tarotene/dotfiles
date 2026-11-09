@@ -1,10 +1,7 @@
 //! 旧 `stack-base-guard.sh --selftest`(Claude 版 18 ケース)と Codex adapter の
 //! `--selftest`(2 ケース)の移植(#415)。ケース番号・名前は bash 版のまま。
 //!
-//! 対象は既定で cargo の bin。`STACK_BASE_GUARD_ORACLE_DIR` にリポジトリの
-//! `config/` を入れると bash 版(`claude/hooks/stack-base-guard.sh` /
-//! `codex/hooks/stack-base-guard.sh`)に差し替わる(移植手順の段 2: 同じ
-//! ケースを bash に向けて先に緑にする、docs/rust-migration.md)。
+//! 対象は、cargo がビルドした bin。
 //!
 //! 旧 selftest は decide_stack() をプロセス内で直接呼んでいた。ここでは同じ
 //! 関数を外から叩ける `--check '<cmd>' <project>`(セッション ID は環境変数
@@ -154,12 +151,6 @@ fn init_repo(dir: &Path, url: &str, base_msg: &str) {
     );
 }
 
-fn oracle_dir() -> Option<PathBuf> {
-    std::env::var_os("STACK_BASE_GUARD_ORACLE_DIR")
-        .filter(|v| !v.is_empty())
-        .map(|p| std::fs::canonicalize(p).expect("oracle dir"))
-}
-
 impl Fx {
     fn new() -> Self {
         let tmp = tempfile::tempdir().unwrap();
@@ -245,27 +236,12 @@ impl Fx {
         git_in(&self.repo, &["switch", b, "-q"]);
     }
 
-    /// 対象(cargo bin、または bash オラクル)のコマンド。`codex` なら Codex 版。
+    /// 対象(cargo bin)のコマンド。`codex` なら Codex 版。
     fn cmd(&self, codex: bool) -> Command {
-        let mut c = match oracle_dir() {
-            Some(d) => {
-                let script = if codex {
-                    d.join("codex/hooks/stack-base-guard.sh")
-                } else {
-                    d.join("claude/hooks/stack-base-guard.sh")
-                };
-                let mut c = Command::new("bash");
-                c.arg(script);
-                c
-            }
-            None => {
-                let mut c = Command::new(env!("CARGO_BIN_EXE_stack-base-guard"));
-                if codex {
-                    c.args(["--agent", "codex"]);
-                }
-                c
-            }
-        };
+        let mut c = Command::new(env!("CARGO_BIN_EXE_stack-base-guard"));
+        if codex {
+            c.args(["--agent", "codex"]);
+        }
         git_env(&mut c);
         c.env("PATH", &self.path)
             .env("HOME", self.dir())

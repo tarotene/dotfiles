@@ -1,8 +1,7 @@
 //! `config/claude/hooks/sign-prewarm.sh --selftest` の全ケースを、gpg スタブと
 //! 隔離した git config で再現する統合テスト(#413、docs/rust-migration.md の段 1-2)。
 //!
-//! テスト対象は既定で cargo bin(Rust 版)。`SIGN_PREWARM_ORACLE` に bash 版の
-//! パスを入れると同じケースを bash 版に向けて走らせる(移植前の緑確認用)。
+//! テスト対象は、cargo がビルドした bin(Rust 版)。
 //! bash selftest は本体を `source` して `run_prewarm` を呼んでいたが、ここでは
 //! hook として直接起動する(`GPG_BIN` を env で差し替えるのは同じ)。
 //!
@@ -119,14 +118,7 @@ impl<'a> Case<'a> {
 }
 
 fn target() -> Command {
-    match std::env::var_os("SIGN_PREWARM_ORACLE") {
-        Some(script) => {
-            let mut c = Command::new("bash");
-            c.arg(script);
-            c
-        }
-        None => Command::new(env!("CARGO_BIN_EXE_gpg-prewarm")),
-    }
+    Command::new(env!("CARGO_BIN_EXE_gpg-prewarm"))
 }
 
 impl Fx {

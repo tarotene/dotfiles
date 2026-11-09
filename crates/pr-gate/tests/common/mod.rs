@@ -1,8 +1,6 @@
 //! 統合テストの共通部品(旧 `pr-gate.sh --selftest` の実験環境の移植、#415)。
 //!
-//! 対象は既定で cargo の bin。`PR_GATE_ORACLE` に bash 版スクリプトのパスを
-//! 入れると `bash <path>` に差し替わる(移植手順の段 2: 同じケースを bash に
-//! 向けて先に緑にする、docs/rust-migration.md)。
+//! 対象は、cargo がビルドした bin。
 //!
 //! 旧 selftest は 1 つの repo を順に書き換えながら全ケースを流していた。ここでは
 //! ケースごとに同じ初期状態の repo を作り直し、そのケースが前提にしていた状態
@@ -200,12 +198,6 @@ fn serde_ctx(stdout: &str) -> String {
         .unwrap_or_default()
 }
 
-fn oracle() -> Option<PathBuf> {
-    std::env::var_os("PR_GATE_ORACLE")
-        .filter(|v| !v.is_empty())
-        .map(|p| std::fs::canonicalize(p).expect("oracle path"))
-}
-
 /// 親の PATH から実行ファイルの絶対パスを引く(子の PATH を差し替えるため)。
 pub fn which(name: &str) -> PathBuf {
     let path = std::env::var_os("PATH").unwrap_or_default();
@@ -374,14 +366,7 @@ impl Fx {
 
     /// 読み替えない、プロセスの出力そのもの。
     pub fn run_in_raw(&self, project: &Path, sub: &str, stdin: &str, envs: &[(&str, &str)]) -> Run {
-        let mut c = match oracle() {
-            Some(p) => {
-                let mut c = Command::new(which("bash"));
-                c.arg(p);
-                c
-            }
-            None => Command::new(env!("CARGO_BIN_EXE_pr-gate")),
-        };
+        let mut c = Command::new(env!("CARGO_BIN_EXE_pr-gate"));
         c.arg(sub).env_clear();
         for k in ["LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"] {
             if let Some(v) = std::env::var_os(k) {

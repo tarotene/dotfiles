@@ -11,8 +11,7 @@
 //! - payload に `prompt_id` / `turn_id` が無いときの代替 ID
 //!   `"<数字>-<数字>"` → `"<FALLBACK-ID>"`
 //!
-//! テスト対象は `AGENT_TURN_LOG_ORACLE`(bash 版のパス)で差し替えられる。
-//! 未設定なら cargo がビルドした Rust 版を使う。
+//! テスト対象は、cargo がビルドした bin。
 
 use std::fs;
 use std::io::Write;
@@ -22,10 +21,7 @@ use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn bin() -> PathBuf {
-    match std::env::var_os("AGENT_TURN_LOG_ORACLE") {
-        Some(p) if !p.is_empty() => PathBuf::from(p),
-        _ => PathBuf::from(env!("CARGO_BIN_EXE_agent-turn-log")),
-    }
+    PathBuf::from(env!("CARGO_BIN_EXE_agent-turn-log"))
 }
 
 struct Env {
