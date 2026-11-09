@@ -5,15 +5,17 @@ development environment.
 
 ## Issues
 
-Judging question: Does resolving this change what `home-manager switch` (or the documented apt/bootstrap escape hatch) provisions or configures on a host?
+Judging question: Does resolving this change what this repository provisions or enforces: on a host through `home-manager switch` (or the documented apt/bootstrap escape hatch), or in the owner's other repositories through the governance defined here (audit, templates, required checks)?
 
 Accepted:
 - adopt a new CLI tool into home-manager's package list
 - fix a home-manager module that fails to activate on a host
+- change a governance template or a required check that the owner's other repositories consume
 
 Rejected:
 - add a new feature to `herdr` itself (belongs in the upstream `herdr` repo)
 - pin a specific project's Rust toolchain version (belongs to that project's `mise`/`rustup` config, not this repo)
+- change the code of one specific other repository (belongs in that repository; only the governance applied to it lives here)
 
 Exception: kiriban request issues (label `kiririku`) opened automatically by `.github/workflows/kiriban.yml` are exempt from the judging question above.
 

@@ -336,5 +336,6 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   Nix — that stays in the thin apt system layer.
 - Do **not** re-introduce the procedural symlink/dev-tool/keybase installers;
   they were retired in Phase 4 (#218). Git history preserves them.
-- Do **not** add a root-level `*.md` file outside README/CONTRIBUTING/CHANGELOG/
-  AGENTS.md/CLAUDE.md/LICENSE* — deep documentation goes in `docs/` (ADR-0016).
+- Do **not** add a root-level `*.md` file outside the root allowlist
+  (`ROOT_ALLOWLIST_EXACT` in `crates/github-audit/src/domains/charters.rs`, plus `LICENSE*`) —
+  deep documentation goes in `docs/` (ADR-0016).
