@@ -303,6 +303,16 @@ gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
 (`!` つきのコマンド)を渡す。繰り返し使うなら、本人が `autoMode.allow`(自然言語の例外。
 `docs/agents/agent-permissions.md` の分類器の行)に足す。
 
+**計画にマージを含めるとき**(計画の時点で「マージは私が実行する」と書く前に)、この拒否を前提にする。
+分類器の既定の規則「Merge Without Review」は、本人が「レビューなしのマージ」を名指しした依頼でないと
+通さない(`claude auto-mode defaults` の `soft_deny`。公式文書 Claude Code, "Auto mode config"、
+<https://code.claude.com/docs/en/auto-mode-config>、取得 2026-11-10。要旨(逐語でない): ユーザーの
+メッセージが、Claude がこれからやるまさにその操作を直接かつ具体的に述べているときだけ、明示の意図が
+soft block を上書きする。一般的な依頼は数えない)。計画の承認は、マージを名指ししたことにならない。したがって、
+(a) 本人の言葉で「#N をレビューなしでマージして」と名指しの承認を得るか、(b) 得られなければ、最初から
+本人が `!` で実行する 1 行を計画に書く。「私が実行する」と本人に確認して承認を得ただけでは、実行環境の
+権限と食い違う(2026-11-08、`merge-async` が拒否された)。
+
 ## 6. Issue リンクの書き分け
 
 各段の PR 本文の 1 行目(`Closes #N` / `No-Issue:`)は、**その段で完了する
