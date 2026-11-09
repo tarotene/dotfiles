@@ -2,7 +2,7 @@
 
 実装: `crates/repo-structure-check`(Rust のライブラリ。bin は持たない)
 走る場所: CI の `Rust workspace` ジョブの `cargo test --workspace`。手元は `cargo test -p repo-structure-check`
-Issue: #1434(manifest)、#1435(hook の入出力)、#1436(Stop の block と再入)(親の tracking Issue は #1433)
+Issue: #1434(manifest)、#1435(hook の入出力)、#1436(Stop の block と再入)、#1437(逃げ道)(親の tracking Issue は #1433)
 
 ## 動機
 
@@ -44,6 +44,19 @@ crate に集める。
 `hook_io::STDIN_EXCEPTIONS`(hook でない CLI の 4 つと、遅延して読む `adr-number`)に、理由つきで列挙する。違反を先送りする
 一覧には使わない。
 
+### 逃げ道(`escape::check_tree`)
+
+名前・スコープ・真偽・案内は `agent_session::escape` の表が唯一の正本である(ADR-1040 の 2026-11-09 の Amendment)。
+
+| 検査 | 内容 |
+|---|---|
+| 表の外の綴り | guard の `src/`(コメントとテストの節を除く)に、逃げ道の名前の形(`SKIP_` で始まる、または `_ALLOW`・`_BYPASS`・`_SKIP` で終わる全大文字の文字列)を直書きしない。拒否文の `NAME=1` の直書きも同じ。名前と案内は `Hatch` から導く |
+| skip ファイル | `join("skip")` を直書きしない。ディレクトリだけを `Hatch::active` に渡す |
+| 退役した名前 | 改名した旧名 8 個と、廃止した旧フラグが、凍結する ADR(`docs/adr/`)とこの検査のほかに、ツリーのどこにも残っていない(テストとコメントも読む)。旧名は別名として読まない |
+| 表と文書の対(`tests/tree.rs`) | `escape::ALL` の各項目の `doc` に、自分の名前(セッション単位を持つなら `SKIP_<STEM>`、呼び出し単位を持つなら `<STEM>_ALLOW`)が書かれている |
+
+例外は無い。退役した名前の一覧は `escape::RETIRED`(後継の名前つき)。
+
 ### 規則の置き方
 
 - root の表に `default-features = false` を書いた依存(`jiff`、`toml`、`toml_edit`)は、メンバーが `features` で
@@ -72,5 +85,6 @@ crate に集める。
 
 - crates/repo-structure-check/src/manifest.rs
 - crates/repo-structure-check/src/hook_io.rs
+- crates/repo-structure-check/src/escape.rs
 - crates/repo-structure-check/tests/tree.rs
 - Cargo.toml

@@ -7,3 +7,6 @@ publish.workspace = true
 
 [dependencies]
 toml = { workspace = true, features = ["parse", "serde"] }
+
+[dev-dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }

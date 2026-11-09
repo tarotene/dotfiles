@@ -38,6 +38,12 @@ PreToolUse の判定)と同じ。
   並列セッションの別の計画を指しうる。
 - 軸: 還元 — 台帳を計画に還元して手入力を消す。Bash の heredoc 経路は検出のみのまま。
 
+## 逃げ道
+
+セッション単位だけ: 環境変数 `SKIP_NEW_TOOL_GUARD=1`、または `~/.local/state/claude/new-tool-guard/skip` の存在(値は `1` だけ。
+置き場所はこの機能が持つ)。止めるのは、Write の判定と台帳の記録で、止めたときは gate-event に `skip` を記録する。
+拒否文には案内を出さない(エージェントが自分で外せてはならない)。名前と真偽は `agent_session::escape` の表が決める。
+
 ## 試験
 
 `crates/new-tool-guard/tests/cli.rs` が実バイナリで、承認された計画からの転記(転記後に新規 `Cargo.toml` の

@@ -39,6 +39,8 @@ pub struct Hatch {
     pub call: bool,
     /// skip ファイルを持つか(セッション単位の別の印)。
     pub skip_file: bool,
+    /// セッション単位(`SKIP_<STEM>=1`)を持つか。呼び出し単位だけの guard は持たない。
+    pub session: bool,
     /// 拒否文・案内に、逃げ道の存在を書くか。外部への送信など、エージェントが自分で外せてはならない
     /// ものは、書かない。
     pub disclose: bool,
@@ -57,8 +59,17 @@ const fn hatch(
         stem,
         call,
         skip_file,
+        session: true,
         disclose,
         doc,
+    }
+}
+
+impl Hatch {
+    /// セッション単位を持たない宣言にする(呼び出し単位だけの guard)。
+    const fn call_only(mut self) -> Hatch {
+        self.session = false;
+        self
     }
 }
 
@@ -98,7 +109,8 @@ pub const RULESETS_WRITE_GUARD: Hatch = hatch(
     false,
     false,
     "docs/agents/rulesets-write-guard.md",
-);
+)
+.call_only();
 // セッション単位だけ(案内する)。
 pub const PR_TITLE_GUARD: Hatch = hatch(
     "PR_TITLE_GUARD",
@@ -254,11 +266,12 @@ impl Hatch {
             return None;
         }
         let session = self.session_name();
-        Some(match self.call_name() {
-            Some(call) => format!(
+        Some(match (self.call_name(), self.session) {
+            (Some(call), true) => format!(
                 "やむを得ないときだけ、コマンドに `{call}=1` を足す(人が起動前に `{session}=1` を設定してもよい)。"
             ),
-            None => format!(
+            (Some(call), false) => format!("やむを得ないときだけ、コマンドに `{call}=1` を足す。"),
+            (None, _) => format!(
                 "やむを得ないときだけ、人が `{session}=1` を設定して起動し直す(エージェントは設定できない)。"
             ),
         })
@@ -275,7 +288,7 @@ impl Hatch {
         skip_exists: bool,
         tokens: Option<&[String]>,
     ) -> Option<Scope> {
-        if truthy(session_env) || (self.skip_file && skip_exists) {
+        if self.session && (truthy(session_env) || (self.skip_file && skip_exists)) {
             return Some(Scope::Session);
         }
         let call = self.call_name()?;
@@ -386,6 +399,18 @@ mod tests {
             PR_TITLE_GUARD.judge(Some("1"), false, Some(&t)),
             Some(Scope::Session)
         );
+    }
+
+    #[test]
+    fn a_call_only_hatch_ignores_the_session_scope() {
+        let t = words(&["RULESETS_WRITE_GUARD_ALLOW=1"]);
+        assert_eq!(RULESETS_WRITE_GUARD.judge(Some("1"), true, None), None);
+        assert_eq!(
+            RULESETS_WRITE_GUARD.judge(None, false, Some(&t)),
+            Some(Scope::Call)
+        );
+        // 案内は出さない設計の guard。出すとしても、人の SKIP は書かない。
+        assert_eq!(RULESETS_WRITE_GUARD.how_to(), None);
     }
 
     #[test]

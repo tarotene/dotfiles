@@ -87,7 +87,7 @@ fn violation(path: &str, detail: impl Into<String>) -> Violation {
 }
 
 /// 検査の対象になる行(1 から数えた行番号と、行)。コメントの行と、テストの節(`#[cfg(test)]` の行から後)は読まない。
-fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
+pub(crate) fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
     text.lines()
         .enumerate()
         .map(|(i, l)| (i + 1, l))
@@ -96,7 +96,7 @@ fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
 }
 
 /// 入口の持ち主(`agent-session`)と、この検査自身(検査の対象の文字列を定数に持つ)は、検査しない。
-fn is_owner(path: &str) -> bool {
+pub(crate) fn is_owner(path: &str) -> bool {
     path.starts_with("crates/agent-session/") || path.starts_with("crates/repo-structure-check/")
 }
 
