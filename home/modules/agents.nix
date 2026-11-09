@@ -2204,15 +2204,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # ガード external-send-guard が下書き止まりにする)。サーバー名は機体で違うので
   # `.*` に任せる。home-manager が読み取り専用のリンクとして配るため、手での追記や
   # エージェントによる書き換えはできない。
-  xdg.configFile."bleep/allow-tools.txt".text = ''
-    # 組織内 Slack の下書き(送信ではない。本人が確認してから送る)
-    mcp__.*__slack_send_message_draft
-    # Copilot の読み取り専用ツール
-    view
-    grep
-    glob
-    rg
-  '';
+  xdg.configFile."bleep/allow-tools.txt".source = repoConfig + "/bleep/allow-tools.txt";
   # 配備された bleep hook の canary(#604)。bleep 入力の pin が決める hook の実体を、
   # 登録コマンドと同じ環境で実際に動かして判定を確かめる。home.checks は失敗すると
   # generation の build 自体が失敗し、closure には残らない — つまり bleep 側の破壊的
@@ -2381,11 +2373,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
           sessionStart ${lib.escapeShellArg "${worklogStartCmd} --agent copilot"} 10
       '';
 
-  home.file.".claude/pr-gate-repos".text = ''
-    # pr-gate が Stop / SessionStart で判定する対象リポジトリ(owner/repo, 1行1つ)。
-    # ここに無い repo では完全沈黙する。# 始まりの行と空行は無視。
-    tarotene/dotfiles
-  '';
+  home.file.".claude/pr-gate-repos".source = repoConfig + "/claude/pr-gate-repos";
 
   # Hook の外からも使える手動の入口。
   # 同じバイナリを置く(CSS は $HOME/.claude/hooks/plan-view.css へのフォール

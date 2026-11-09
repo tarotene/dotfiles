@@ -8,6 +8,9 @@
 # xdg.configFile."bws/config" definition keeps that from ever becoming two
 # home-manager modules racing to declare the same path.
 { pkgs, ... }:
+let
+  repoConfig = ../../config;
+in
 {
   home.packages = [
     pkgs.bws
@@ -29,9 +32,8 @@
   # config state-opt-out true` writes `state_opt_out = "true"`; a bare `true`
   # fails config parsing outright (crates/bws/src/config.rs) and every `bws
   # run` invocation errors before touching Bitwarden at all.
-  xdg.configFile."bws/config".text = ''
-    [profiles.default]
-    server_base = "https://vault.bitwarden.com"
-    state_opt_out = "true"
-  '';
+  #
+  # The file is literal (no interpolation), so it lives under config/ and is
+  # deployed verbatim (ADR-0002).
+  xdg.configFile."bws/config".source = repoConfig + "/bws/config";
 }

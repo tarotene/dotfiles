@@ -9,10 +9,14 @@ cutover is not blocked on rewriting everything up front.
 |---|---|---|---|
 | Shell plugins | `config/sheldon/plugins.toml` | native home-manager plugin management (e.g. `programs.zsh.plugins` / zsh-abbr) | Keep sheldon literal for now (#209). |
 | Zsh modules | 15× `config/zsh/modules/*.zsh` via `xdg.configFile` | selective rewrite into `programs.zsh` options | Translate only modules where Nix interpolation pays. |
-| Prompt | `config/starship.toml` | `programs.starship.settings` | Literal first (#209). |
+| Prompt | `config/starship.toml`, read by `lib.importTOML` into `programs.starship.settings` (`home/modules/shell.nix`) | done — the TOML stays the source of truth (the settings are re-serialised, so comments are not deployed) | #209. |
 | Terminal | `config/alacritty/alacritty.toml` | `programs.alacritty.settings` | Literal first (#214). |
 | fcitx5 autostart | `config/autostart/fcitx5.desktop` + `pkgs.replaceVars` for `Exec=` | `systemd.user.services.fcitx5` | Blocked on COSMIC gaining native XDG autostart (pop-os/cosmic-session#67, pop-os/cosmic-epoch#274). Today the `.desktop` is the only mechanism; `systemd-xdg-autostart-generator` converts it. One interpolated value, so the file stays literal (ADR-0002). |
 | fcitx5 config / profile | `config/fcitx5/{config,profile}`, seeded if absent | `i18n.inputMethod.fcitx5` — **not applicable** to standalone home-manager (it is an NixOS option) | fcitx5 rewrites both at runtime, so a store symlink cannot work. Seed-if-absent is the end state, not a way-station. |
 | Claude Code plan-review hook | `config/claude/{hooks,commands}` via `home.file` (`home/modules/claude.nix`) | stays literal — no `programs.*` module covers Claude Code hooks | Acceptance-convergent GitHub Copilot CLI review gate on ExitPlanMode: a read-only custom agent emits findings that the hook's shell+jq validator and judge verify, and the gate is "no BLOCKER/MAJOR left open" (max 2 rounds, fail-open; silent no-op without a copilot binary per ADR-0005). Rationale and operations: [`copilot-plan-review.md`](agents/copilot-plan-review.md). `~/.claude/settings.json` is Claude-Code-owned, so registration is an idempotent jq merge at activation, same constraint class as the fcitx5 profile. |
 
 Add rows as new literal configs land; remove them once nixified.
+
+Literal configs with no interpolation live under `config/` and are deployed with `.source` (never as an inline `.text`
+string in a module): `bws/config`, `bleep/allow-tools.txt`, `claude/pr-gate-repos`, `applications/chromium-browser.desktop`
+are the four that were inline until the 2026-11 refactor. An inline `.text` is for content that interpolates a Nix value.
