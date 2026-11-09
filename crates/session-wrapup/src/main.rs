@@ -8,7 +8,7 @@ fn main() {
         Some("start") => {
             match session_wrapup::session_start(&path, &session_wrapup::read_hook_stdin()) {
                 Ok(Some(out)) => {
-                    println!("{out}");
+                    print!("{out}");
                     0
                 }
                 Ok(None) => 0,

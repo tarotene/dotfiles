@@ -988,6 +988,7 @@ dependencies = [
 name = "issue-index"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "serde_json",
  "tempfile",
  "trycmd",
@@ -1328,7 +1329,6 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
- "jq-json-compat",
  "new-tool-guard",
  "process-control",
  "regex",
@@ -1697,8 +1697,6 @@ dependencies = [
  "agent-session",
  "feedback-trial",
  "issue-inbox",
- "serde",
- "serde_json",
  "session-retrospective",
  "tempfile",
 ]

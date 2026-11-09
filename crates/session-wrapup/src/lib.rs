@@ -1,4 +1,5 @@
 //! Sequential session lifecycle orchestration. State is owned by each component.
+use agent_session::{Agent, HookEvent, Reply};
 use feedback_trial as trial;
 use issue_inbox::*;
 pub use issue_inbox::{read_hook_stdin, self_path, self_path_from_argv0};
@@ -86,21 +87,8 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
 // ---------------------------------------------------------------------------
 // SessionStart
 
-#[derive(serde::Serialize)]
-struct SessionStartOut<'a> {
-    #[serde(rename = "hookSpecificOutput")]
-    hook_specific_output: SessionStartInner<'a>,
-}
-
-#[derive(serde::Serialize)]
-struct SessionStartInner<'a> {
-    #[serde(rename = "hookEventName")]
-    hook_event_name: &'a str,
-    #[serde(rename = "additionalContext")]
-    additional_context: &'a str,
-}
-
-/// SessionStart hook 本体。注入 JSON を返す(何も注入しないときは `None`)。
+/// SessionStart hook 本体。注入 JSON(末尾の改行込み)を返す(何も注入しないときは `None`)。
+/// 描画は `Reply::render` が持つ。
 /// `self_path` は session-start 自身のパスで、指示文には同じディレクトリの
 /// `wrapup-stop-gate` を示す。
 pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Code> {
@@ -166,14 +154,8 @@ pub fn session_start(self_path: &str, input: &str) -> Result<Option<String>, Cod
         Ok(None) => {}
         Err(error) => eprintln!("trial: {error}; pending state retained, retry next input/resume"),
     }
-    let out = SessionStartOut {
-        hook_specific_output: SessionStartInner {
-            hook_event_name: "SessionStart",
-            additional_context: &ctx,
-        },
-    };
     Ok(Some(
-        serde_json::to_string_pretty(&out).expect("serialize session-start output"),
+        Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart),
     ))
 }
 
