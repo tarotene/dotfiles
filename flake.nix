@@ -503,7 +503,7 @@
           };
           dotfiles-tools = rust.package;
           # 依存だけの build(crane の buildDepsOnly)。CI の build-host が GC root に
-          # して、キャッシュに残す(.github/workflows/ci.yml の「Root the Rust
+          # して、キャッシュに残す(.github/actions/nix-gc-roots の「Root the Rust
           # dependency artifacts」)。ここに名前が無いと、参照する手段が無い。
           dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
