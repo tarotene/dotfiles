@@ -12,4 +12,6 @@ session-retrospective = { version = "0.1.0", path = "../session-retrospective" }
 feedback-trial = { version = "0.1.0", path = "../feedback-trial" }
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true
+trycmd.workspace = true

@@ -1,15 +1,18 @@
 //! 統合テストの共通部品(#413)。
 //!
-//! 対象バイナリは既定で cargo の bin。`WRAPUP_STOP_GATE_ORACLE` /
-//! `WRAPUP_SESSION_START_ORACLE` に bash 版スクリプトのパスを入れると
-//! `bash <path>` に差し替わる(移植手順の段 2: 同じケースを bash に向けて
-//! 先に緑にする、docs/rust-migration.md)。
+//! 流れ(Stop、SessionStart、`--add`、`--retro-*`、`--trial`)は、正本の 4 つの bin
+//! (session-wrapup、issue-inbox、session-retrospective、feedback-trial)をまたぐ。`gate()` と
+//! `session_start()` は、引数が決まる前の見かけの入口(旧 `wrapup-stop-gate` と同じ使い方)で、
+//! 実行の直前(`run_raw` か `routed`)に、最初の引数で正本の bin へ振り分ける。session-wrapup 以外の 3 つは
+//! 別 package の bin で `CARGO_BIN_EXE_*` が無いので、同じ target のディレクトリに置かれたものを探し、
+//! 無ければ一度だけ `cargo build` で作る(`cargo test --workspace` では、最初から揃っている)。
 
 #![allow(dead_code)]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::Once;
 
 /// 1 ケース分の隔離環境(実 $HOME・実 state を汚さない)。
 pub struct Env {
@@ -32,48 +35,112 @@ impl From<Output> for Run {
     }
 }
 
-fn oracle(var: &str) -> Option<PathBuf> {
-    std::env::var_os(var)
-        .filter(|v| !v.is_empty())
-        .map(|p| std::fs::canonicalize(p).expect("oracle path"))
+/// 引数が決まる前の見かけの入口。`routed` が正本の bin に置き換える。
+const GATE: &str = "<gate>";
+const SESSION_START: &str = "<session-start>";
+
+const RETRO_FLAGS: [&str; 3] = ["--retro-add", "--retro-close", "--retro-procedure"];
+const INBOX_FLAGS: [&str; 8] = [
+    "--inbox-path",
+    "--migrate",
+    "--stamp-feedback-session",
+    "--add",
+    "--check-dup",
+    "--list-open",
+    "--set-status",
+    "--mark-filed",
+];
+
+fn session_wrapup_bin() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_session-wrapup"))
 }
 
-/// bash 版に向けているか。
-pub fn is_oracle() -> bool {
-    oracle("WRAPUP_STOP_GATE_ORACLE").is_some()
-}
-
-/// gate 自身のパス(指示文に出る `self_path`)。
-pub fn gate_path() -> PathBuf {
-    oracle("WRAPUP_STOP_GATE_ORACLE")
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_wrapup-stop-gate")))
-}
-
-/// session-start のパス。
-pub fn session_start_path() -> PathBuf {
-    oracle("WRAPUP_SESSION_START_ORACLE")
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_wrapup-session-start")))
-}
-
-/// session-start の指示文が指す gate のパス(自分と同じディレクトリ)。
-pub fn session_start_gate_path() -> PathBuf {
-    let ss = session_start_path();
-    let name = if oracle("WRAPUP_SESSION_START_ORACLE").is_some() {
-        "wrapup-stop-gate.sh"
-    } else {
-        "wrapup-stop-gate"
-    };
-    ss.parent().unwrap().join(name)
-}
-
-fn command_for(path: &Path, is_bash: bool) -> Command {
-    if is_bash {
-        let mut c = Command::new("bash");
-        c.arg(path);
-        c
-    } else {
-        Command::new(path)
+/// 同じ target に置かれた、他の package の bin。無ければ一度だけ作る。
+pub fn sibling(name: &str) -> PathBuf {
+    static BUILD: Once = Once::new();
+    let dir = session_wrapup_bin().parent().unwrap().to_path_buf();
+    let path = dir.join(name);
+    if !path.is_file() {
+        BUILD.call_once(|| {
+            let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+            let mut c = Command::new(cargo);
+            c.args([
+                "build",
+                "-p",
+                "issue-inbox",
+                "-p",
+                "session-retrospective",
+                "-p",
+                "feedback-trial",
+            ]);
+            match dir.file_name().unwrap().to_string_lossy().as_ref() {
+                "debug" => {}
+                "release" => {
+                    c.arg("--release");
+                }
+                profile => {
+                    c.args(["--profile", profile]);
+                }
+            }
+            assert!(c.status().expect("cargo build").success(), "cargo build");
+        });
     }
+    assert!(path.is_file(), "{} が無い", path.display());
+    path
+}
+
+/// 見かけの入口の Command を、最初の引数で正本の bin に置き換える(env・cwd・引数は引き継ぐ)。
+pub fn routed(c: Command) -> Command {
+    let program = c.get_program().to_string_lossy().into_owned();
+    if program != GATE && program != SESSION_START {
+        return c;
+    }
+    let mut args: Vec<String> = c
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let first = args.first().cloned().unwrap_or_default();
+    let bin = if program == SESSION_START {
+        args.insert(0, "start".into());
+        session_wrapup_bin()
+    } else if first == "--trial" {
+        args.remove(0);
+        sibling("feedback-trial")
+    } else if RETRO_FLAGS.contains(&first.as_str()) {
+        sibling("session-retrospective")
+    } else if INBOX_FLAGS.contains(&first.as_str()) {
+        sibling("issue-inbox")
+    } else {
+        args.insert(0, "stop".into());
+        session_wrapup_bin()
+    };
+    let mut out = Command::new(bin);
+    out.args(args);
+    if let Some(dir) = c.get_current_dir() {
+        out.current_dir(dir);
+    }
+    for (k, v) in c.get_envs() {
+        match v {
+            Some(v) => out.env(k, v),
+            None => out.env_remove(k),
+        };
+    }
+    out
+}
+
+/// gate の見かけの入口(`Command::new` に渡す)。
+pub fn gate_path() -> PathBuf {
+    PathBuf::from(GATE)
+}
+
+/// session-start の見かけの入口。
+pub fn session_start_path() -> PathBuf {
+    PathBuf::from(SESSION_START)
+}
+
+/// session-start の指示文が指す gate のパス(自分と同じディレクトリの issue-inbox)。
+pub fn session_start_gate_path() -> PathBuf {
+    session_wrapup_bin().parent().unwrap().join("issue-inbox")
 }
 
 pub const STUB_GH: &str = r#"#!/usr/bin/env bash
@@ -201,19 +268,17 @@ impl Env {
     }
 
     pub fn gate(&self) -> Command {
-        self.base(command_for(&gate_path(), is_oracle()))
+        self.base(Command::new(gate_path()))
     }
 
     pub fn session_start(&self) -> Command {
-        self.base(command_for(
-            &session_start_path(),
-            oracle("WRAPUP_SESSION_START_ORACLE").is_some(),
-        ))
+        self.base(Command::new(session_start_path()))
     }
 }
 
 /// 読み替えない、プロセスの出力そのもの。
-pub fn run_raw(mut c: Command, stdin: &str) -> Run {
+pub fn run_raw(c: Command, stdin: &str) -> Run {
+    let mut c = routed(c);
     c.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -1,5 +1,5 @@
 # --add は不正 JSON を exit 64 で拒否し、inbox を作らない
-bin.name = "wrapup-stop-gate"
+bin.name = "issue-inbox"
 args = ["--add", "/nonexistent/fixture-oracle/inbox.jsonl", "not-json"]
 status.code = 64
 stdout = ""

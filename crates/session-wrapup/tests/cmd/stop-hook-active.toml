@@ -1,5 +1,6 @@
 # stop_hook_active(無限ループガード)なら何も読まずに素通り
-bin.name = "wrapup-stop-gate"
+bin.name = "session-wrapup"
+args = ["stop"]
 stdin = '{"cwd":"","stop_hook_active":true}'
 status.code = 0
 stdout = ""

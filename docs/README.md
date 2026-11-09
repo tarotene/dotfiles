@@ -416,7 +416,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
   出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式。
   Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
   `--procedure` で取りに行く。範囲は wrapup 系のみで確定し、他 hook へは展開しない
-  (#624 の評価。境界は `crates/wrapup-stop-gate/tests/directive_scope.rs` が検査する)。
+  (#624 の評価。境界は `crates/session-wrapup/tests/directive_scope.rs` が検査する)。
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
   先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
   (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用コマンド
