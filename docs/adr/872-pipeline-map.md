@@ -288,3 +288,33 @@ ADR-0007 §5 は「doc を持たない hook(孤立 hook)を作らない」と決
 - `home/lib/timer-pair.nix`
 - `home/modules/worktree.nix`
 - `home/modules/due-remind.nix`
+
+## Amendment (2026-11-09 — Codex と Copilot の hook の登録呼び出しを、spec の 2 呼び出しにまとめる)
+
+D4 のクラス 2(`RegistrarCall`)は、Codex・Copilot の hook を登録する activation の呼び出し(`run ${registerCodexHooks}` と
+`run ${registerCopilotHooks}`、後者は argv 形)を登録箇所として数えた。その呼び出しは 9 回に分かれ、`home/modules/agents.nix`・
+`herdr.nix`・`worktree.nix` に散らばっていた。herdr の Codex の 5 行と Copilot の 4 行、worktree の Codex の退役は、所有の記録を持たない命令的な
+呼び出しで、宣言から外しても消えなかった(記録を持つのは Claude と、Codex の共通分だけだった)。
+
+- 登録は、`home/modules/agents.nix` の 2 つの spec に寄せた: `codexHookDeclarations`(Claude の宣言から導く共通の行に herdr の 5 行を足したもの)を
+  `codex-hooks-spec`、`copilotHookDeclarations`(10 行と退役の 10 件)を新しい `copilot-hooks-spec`(`crates/agent-settings-reconcile`)で登録する。
+  どちらも所有の記録(`managed-hooks-codex.json`・`managed-hooks-copilot.json`)を持ち、宣言から外した hook は次の適用で消える。
+- `crates/pipeline-map/src/lib.rs` の `RegistrarCall` の走査は、`run ${settingsReconcile} codex-hooks-spec` と `copilot-hooks-spec` の 2 つを数える。
+  ポインタ(`# pipeline-node: …`)は、Copilot の activation に 7 つのノード、Codex の activation に `herdr-agent-metadata` を足した。
+- 名前を取り違えた `entryAfter` / `entryBefore` が黙って捨てられる問題(この変更が消した 7 つの activation は、互いの後ろに順序付けていた)を、
+  `home/modules/activation-order.nix` の評価時の assertion が拒む。
+
+### 検証
+
+- 旧の呼び出し 10 件(argv 形 9、spec 1)と新の呼び出し 2 件を、同じ `agent-settings-reconcile` で、空の状態から適用した結果を比べた: Codex は 28 件、Copilot は
+  11 件で、エントリの集合は同一(順序は、旧が herdr → … の呼び出し順、新が宣言の並び順で違う)。**旧で適用済みの状態に新を当てると、`hooks.json` と
+  `settings.json` は 1 バイトも変わらず、2 回当てても変わらない**(vega と arcturus の両方)。
+- `copilot-hooks-spec` の単体テスト: 他ツールが同じ event に書いたエントリに触れず、宣言から外した hook だけを消し、退役の一覧の command は記録に無くても消す。
+- `activation-order` の assertion: 存在する名前への順序は通り、取り違えた・消えた名前への `after` と `before` は落ちる。
+
+### 執行点
+
+- `crates/agent-settings-reconcile/src/lib.rs`
+- `crates/pipeline-map/src/lib.rs`
+- `home/modules/agents.nix`
+- `home/modules/activation-order.nix`

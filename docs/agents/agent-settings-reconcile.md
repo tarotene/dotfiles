@@ -13,8 +13,9 @@ home-manager は activation のたびに、**宣言したものだけ**をこれ
 | `claude-permissions` | 同 `.permissions.allow` / `.ask` | spec(`permissionRules` ほか) |
 | `claude-statusline` | 同 `.statusLine` | spec(`statusLineCmd` + `retiredStatusLineCommands`) |
 | `claude-mcp-servers` | `~/.claude.json` の `.mcpServers` | `dotfiles.claude.mcpServers` の JSON |
-| `codex-hooks` | `~/.codex/hooks.json` | argv(`--retire <event> <command>`… `--register` `<event> <matcher> <command> <timeout>`…) |
-| `copilot-hooks` | `~/.copilot/settings.json` | argv(`<event> <command> <timeoutSec>`) |
+| `codex-hooks-spec` | `~/.codex/hooks.json` | spec(`codexHookDeclarations` + 退役の一覧 + `state`) |
+| `copilot-hooks-spec` | `~/.copilot/settings.json` | spec(`copilotHookDeclarations` + 退役の一覧 + `state`) |
+| `codex-hooks` / `copilot-hooks` | 同上 | argv(`--retire <event> <command>`… `--register` `<event> [<matcher>] <command> <timeout>`…)。nix は呼ばない。テストが、入れ子の形と平らな形の振る舞いを駆動するために使う |
 
 ## hook は宣言を正とする
 
@@ -35,7 +36,7 @@ hook は `(event, command)` をキーに reconcile する。旧実装は「comma
 command 文字列そのものを変える場合は別キーなので、旧文字列を `retiredHookEntries`
 (Claude)/ `--retire`(Codex / Copilot)に移す運用は従来どおり。
 
-## 所有の記録(`claude-hooks` だけ)
+## 所有の記録(`claude-hooks`・`codex-hooks-spec`・`copilot-hooks-spec`)
 
 宣言から外した hook を消すために、退役の一覧に command を書き足す方式は、書き忘れると
 旧エントリが残り続けた(消えたパスを指して毎イベントで ENOENT、#44)。そこで
@@ -53,9 +54,14 @@ managed-hooks-claude.json`)を渡すと、`crates/agent-settings-reconcile/src/m
 - 記録が無い・壊れているときは初回として扱い(stderr に警告)、適用は止めない。
 - 記録は settings.json の書き込みが成功したあとにだけ更新する。同値なら書かない。
 - `state` を渡さなければ従来どおり(記録は作らない)。
-- `codex-hooks` / `copilot-hooks` には使っていない。1 つのファイルに、複数のモジュールの
-  約 18 の呼び出しが、それぞれ別の部分集合を登録しており、記録を 1 つにすると、ある
-  呼び出しが、別の呼び出しが登録した分を「宣言から外れた」と見て消してしまう。
+- Codex と Copilot も、同じ spec と記録で登録する(`managed-hooks-codex.json`・
+  `managed-hooks-copilot.json`)。かつては、1 つのファイルに、複数のモジュール(`agents.nix`・
+  `herdr.nix`・`worktree.nix`)の 10 の呼び出し(argv 形 9、spec 1)が、それぞれ別の部分集合を
+  登録しており、記録を 1 つにすると、ある呼び出しが、別の呼び出しが登録した分を「宣言から
+  外れた」と見て消してしまった(Codex の共通分だけが記録を持ち、herdr と worktree の分は持たなかった)。
+  いまは宣言が `agents.nix` の 1 か所にあり、1 つの activation が 1 つのファイルを書く。
+  Codex の `/hooks` の信頼は、command・timeout・`statusMessage` から作る識別子なので、herdr の 5 行は
+  従来の表示名 `herdr agent metadata` のまま登録する(ノードの label にそろえると、3 機体で信頼し直しになる)。
 
 ## 書き込みの性質
 

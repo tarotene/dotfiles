@@ -371,14 +371,14 @@ hook payload の `.model` から、mode は `.permission_mode`(`bypassPermission
 から、branch は `.cwd` から git 呼び出しで取る。
 `agent_id` が付くサブアージェントイベントは親ペイン共有のため無視する。
 
-登録は `agent-settings-reconcile codex-hooks`(`crates/agent-settings-reconcile`、#414。variadic な
-`(event, matcher, command, timeout)` タプルを何個でも受け取る冪等 reconcile。
-旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
-後継で、`home/modules/worktree.nix` の worktree guard/context hooks も同じ
-サブコマンドを使う)。書き込み先が
-`home/modules/worktree.nix` の activation と同じ `~/.codex/hooks.json` なので、
-`home/modules/herdr.nix` の `registerCodexHerdrMetadataHooks` はその後ろに
-`entryAfter` で明示的に順序付けている(lost-update 対策、#61 と同種)。
+登録は `agent-settings-reconcile codex-hooks-spec`(`crates/agent-settings-reconcile`、#414)。5 行
+(`SessionStart`・`UserPromptSubmit`・`PreToolUse`・`Stop`・`SessionEnd`)は、`home/modules/agents.nix` の
+`codexHerdrMetadataHooks` が持ち、Claude の宣言から導く共通の行と同じ spec・同じ activation
+(`registerCodexSharedHooks`)・同じ所有の記録(`managed-hooks-codex.json`)で登録される。かつては
+`home/modules/herdr.nix` が `codex-hooks`(argv 形)で別に登録し、`worktree.nix` の activation の後ろに
+`entryAfter` で順序付けて lost-update(#61 と同種)を避けていたが、書き手が 1 つになったので
+その順序付けは要らない。旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
+後継。
 
 **Codex の hook trust**: `~/.codex/config.toml` の `hooks.state.*.trusted_hash`
 はエントリ単位で、command・matcher・timeout の変更や並び替えは trust を無効化
@@ -398,7 +398,8 @@ Copilot CLI の hook payload には event 名も model も乗らない(公式リ
   (Copilot CLI 自身が永続化する現在のモデル設定)から読む。`/model` 直後は
   Copilot 側の書き込みタイミング次第で遅延しうるが、表示専用なので許容する。
 
-登録は `agent-settings-reconcile copilot-hooks`(旧 `scripts/register-copilot-hooks`)。Copilot の native hook 形は
+登録は `agent-settings-reconcile copilot-hooks-spec`(`home/modules/agents.nix` の `copilotHookDeclarations`、
+旧 `scripts/register-copilot-hooks`)。Copilot の native hook 形は
 Claude/Codex の `{matcher?, hooks:[...]}` ネストと違い `{type, bash,
 timeoutSec}` を camelCase イベント配列に直置きする形なので(herdr 自身が
 `~/.copilot/settings.json` の `.hooks.SessionStart` に入れている既存エントリと
