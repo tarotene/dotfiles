@@ -19,12 +19,13 @@ fn main() {
             match args.next().map(|v| v.parse::<Agent>()) {
                 Some(Ok(v)) => agent = v,
                 Some(Err(e)) => {
+                    // hook として登録された bin: 終了コード 2 は「止める」の意味なので、使い方の誤りは 1。
                     eprintln!("herdr-agent-metadata: {e}");
-                    std::process::exit(64);
+                    std::process::exit(1);
                 }
                 None => {
                     eprintln!("herdr-agent-metadata: --agent needs a value");
-                    std::process::exit(64);
+                    std::process::exit(1);
                 }
             }
         } else if !seen_action {

@@ -1,9 +1,10 @@
-# --check: 存在しないファイル → stderr、exit 1(gh は呼ばない)
+# --check: 存在しないファイル → 使い方の誤り(stderr)、exit 2(gh は呼ばない)
 bin.name = "plan-scope-gate"
 args = ["--check", "nope.md", "o/r#1"]
-status.code = 1
+status.code = 2
 stdout = ""
 stderr = """
-plan file not found: nope.md
+plan-scope-gate: plan file not found: nope.md
+usage: plan-scope-gate --check <plan.md> [<issue-ref>]
 """
 fs.sandbox = true

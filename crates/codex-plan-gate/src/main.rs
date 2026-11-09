@@ -10,7 +10,7 @@
 //! として現れる(Codex TUI バイナリの文字列リテラルで確認、2026-09-28)。この
 //! hook は Stop イベントで直前の応答(`last_assistant_message`)から
 //! `<proposed_plan>` を検出し、見つかったときだけ既存の
-//! `plan-scope-gate --check-plan` / `plan-precedent-gate --check` をそのまま
+//! `plan-scope-gate --check` / `plan-precedent-gate --check` をそのまま
 //! 呼ぶ。新しい判定ロジックは一切持たない(D1)。両者は Rust バイナリ
 //! (crates/plan-scope-gate・crates/plan-precedent-gate、#412)で、
 //! `~/.claude/hooks/` に配備済みのものを子プロセスとして直接実行する
@@ -240,7 +240,7 @@ fn run(raw: &str) -> Option<StopOutcome> {
     let _cleanup = Cleanup(plan_file.clone());
 
     // 起動できない(=判定不能)ときは通す。
-    let (rc1, out1) = run_merged(&scope_gate, "--check-plan", &plan_file)?;
+    let (rc1, out1) = run_merged(&scope_gate, "--check", &plan_file)?;
     let (rc2, out2) = run_merged(&precedent_gate, "--check", &plan_file)?;
     if (rc1 != 0 || rc2 != 0) && !escalated_file.exists() {
         let count = fs::read_to_string(&count_file)

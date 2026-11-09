@@ -18,6 +18,7 @@
 //! 縮退(ADR-0005 の binary-existence gating に倣う): 不正 JSON・git/gh が無い・
 //! 判定できない場合は何も出さず exit 0。
 
+use agent_session::cli::{self, Verdict};
 use agent_session::entry::{emit, enter, read_stdin, Spec};
 use agent_session::{Agent, HookEvent, Reply};
 use stack_base_guard::Guard;
@@ -36,26 +37,25 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
 
-    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
-        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
-        let project = call
-            .rest
-            .get(pos + 2)
-            .filter(|p| !p.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| std::env::current_dir().ok())
-            .unwrap_or_default();
-        let guard = Guard::from_env(std::env::var("SESSION_ID").unwrap_or_default());
-        return match guard.decide_stack(cmd, &project) {
-            Some(reason) => {
-                println!("deny: {reason}");
-                ExitCode::from(1)
+    if let Some(rest) = cli::manual(&call.rest) {
+        let verdict = match cli::args(rest, 1, 1) {
+            Ok(a) => {
+                let project = a
+                    .get(1)
+                    .filter(|p| !p.is_empty())
+                    .map(PathBuf::from)
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_default();
+                let guard = Guard::from_env(std::env::var("SESSION_ID").unwrap_or_default());
+                Verdict::from(guard.decide_stack(a[0], &project))
             }
-            None => {
-                println!("pass");
-                ExitCode::SUCCESS
-            }
+            Err(usage) => usage,
         };
+        return cli::finish(
+            "stack-base-guard",
+            "stack-base-guard [--agent claude|codex|copilot] --check <command> [<project>]  (環境変数 SESSION_ID)",
+            verdict,
+        );
     }
 
     // skip は stdin を読んだあとの `hook` の中で見る(stdin は常に読む)。

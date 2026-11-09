@@ -213,7 +213,7 @@ precedent-grounding と共有の gate をそのまま使う:
 ~/.claude/hooks/plan-precedent-gate --check <プランファイル>
 ```
 
-`OK:` が出るまで修正してから ExitPlanMode を呼ぶ。gate は `軸:` の
+`pass` が出るまで修正してから ExitPlanMode を呼ぶ。gate は `軸:` の
 形式(必須トークンか)、重い欄の節内整合性(本命/対抗馬が揃っているか)、
 `既存手段:` の有無(ADR-543)、閉語彙のコスト語と `戻せない:` の値
 (ADR-751)だけを見る — 3 軸の判定内容が妥当かは lens A

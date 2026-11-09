@@ -15,6 +15,7 @@
 //! 縮退(ADR-0005 の binary-existence gating に倣う): 不正 JSON なら何も出さず exit 0。
 //! 判定できない場合は断定に変えず素通す。
 
+use agent_session::cli::{self, Verdict};
 use agent_session::entry::{emit, enter, read_stdin, Spec};
 use agent_session::{Agent, HookEvent, Reply};
 use attribution_guard::Attribution;
@@ -32,18 +33,16 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
 
-    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
-        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
-        return match Attribution::for_agent(call.agent).decide(cmd) {
-            Some(reason) => {
-                println!("deny: {reason}");
-                ExitCode::from(1)
-            }
-            None => {
-                println!("pass");
-                ExitCode::SUCCESS
-            }
+    if let Some(rest) = cli::manual(&call.rest) {
+        let verdict = match cli::args(rest, 1, 0) {
+            Ok(a) => Verdict::from(Attribution::for_agent(call.agent).decide(a[0])),
+            Err(usage) => usage,
         };
+        return cli::finish(
+            "attribution-guard",
+            "attribution-guard [--agent claude|codex|copilot] --check <command>",
+            verdict,
+        );
     }
 
     let raw = read_stdin();

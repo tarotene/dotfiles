@@ -14,6 +14,7 @@
 //!
 //! 縮退: 不正 JSON なら何も出さず exit 0(fail-open)。
 
+use agent_session::cli::{self, Verdict};
 use agent_session::entry::{emit, enter, read_stdin, Spec};
 use agent_session::escape::PR_TITLE_GUARD;
 use agent_session::{Agent, HookEvent, Reply};
@@ -33,24 +34,24 @@ fn main() -> ExitCode {
         Err(code) => return code,
     };
 
-    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
+    if let Some(rest) = cli::manual(&call.rest) {
         let allow = PR_TITLE_GUARD.active(None, None).is_some();
-        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
-        // bash の `proj="${3:-$PWD}"`(空文字列も PWD に倒す)。
-        let project = match call.rest.get(pos + 2).filter(|s| !s.is_empty()) {
-            Some(p) => PathBuf::from(p),
-            None => std::env::current_dir().unwrap_or_default(),
-        };
-        return match decide(cmd, &project, allow) {
-            Some(reason) => {
-                println!("deny: {reason}");
-                ExitCode::from(1)
+        let verdict = match cli::args(rest, 1, 1) {
+            Ok(a) => {
+                // bash の `proj="${3:-$PWD}"`(空文字列も PWD に倒す)。
+                let project = match a.get(1).filter(|s| !s.is_empty()) {
+                    Some(p) => PathBuf::from(p),
+                    None => std::env::current_dir().unwrap_or_default(),
+                };
+                Verdict::from(decide(a[0], &project, allow))
             }
-            None => {
-                println!("pass");
-                ExitCode::SUCCESS
-            }
+            Err(usage) => usage,
         };
+        return cli::finish(
+            "pr-title-guard",
+            "pr-title-guard [--agent claude|codex|copilot] --check <command> [<project>]",
+            verdict,
+        );
     }
 
     let raw = read_stdin();

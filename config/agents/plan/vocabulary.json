@@ -5,7 +5,7 @@
   "initial": "none",
   "states": [
     { "id": "drafting", "terminal": false, "owner": "agent", "owner_detail": "プランファイルを書いている。要求インベントリと、設計判断ごとの先行例との対比を書く" },
-    { "id": "checked", "terminal": false, "owner": "agent", "owner_detail": "提出前の自己検査(plan-scope-gate --check-plan、plan-precedent-gate --check)が OK になった。ExitPlanMode を呼べる" },
+    { "id": "checked", "terminal": false, "owner": "agent", "owner_detail": "提出前の自己検査(plan-scope-gate --check、plan-precedent-gate --check)が OK になった。ExitPlanMode を呼べる" },
     { "id": "awaiting_approval", "terminal": false, "owner": "person", "owner_detail": "ExitPlanMode の gate を通り、本人の承認を待つ", "shown_by": ["node:plan-view"] },
     { "id": "approved", "terminal": false, "owner": "agent", "owner_detail": "承認された。実装の段を実行する" },
     { "id": "executed", "terminal": true, "owner_detail": "全段の PR を作った(stacked-pr §3 の 1)" }

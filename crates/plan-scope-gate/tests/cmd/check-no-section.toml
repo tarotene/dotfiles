@@ -1,0 +1,9 @@
+# --check: 節なしも OK
+bin.name = "plan-scope-gate"
+args = ["--check", "plan.md"]
+status.code = 0
+stdout = """
+pass
+"""
+stderr = ""
+fs.sandbox = true

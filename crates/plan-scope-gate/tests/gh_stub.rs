@@ -130,11 +130,14 @@ fn check_sub_issues_missing() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
+    // 欠落は拒否(終了コード 1)。子項目の取得結果と処分の状態は、情報として標準エラーに出る。
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
     assert_eq!(
-        s(&o.stdout),
+        s(&o.stderr),
         "children: {\"totalCount\":2,\"kind\":\"sub\",\"items\":[{\"number\":137,\"title\":\"t1\"},{\"number\":138,\"title\":\"t2\"}]}\nMISSING\n#138 t2\n"
     );
+    assert!(s(&o.stdout).starts_with("deny: "), "{}", s(&o.stdout));
+    assert!(s(&o.stdout).contains("#138 t2"), "{}", s(&o.stdout));
     let calls = e.calls();
     assert!(
         calls.contains("-f owner=o -f repo=r -F number=136"),
@@ -160,7 +163,9 @@ fn check_covered_and_reference_only() {
         "",
         &e.path_var(),
     );
-    assert!(s(&o.stdout).ends_with("\nCOVERED\n"), "{}", s(&o.stdout));
+    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
+    assert_eq!(s(&o.stdout), "pass\n");
+    assert!(s(&o.stderr).ends_with("\nCOVERED\n"), "{}", s(&o.stderr));
     fs::write(e.p("plan.md"), "Reference-Only: o/r#136 — 参照のみ\n").unwrap();
     let o = e.run(
         &["--check", "plan.md", "o/r#136"],
@@ -168,10 +173,11 @@ fn check_covered_and_reference_only() {
         "",
         &e.path_var(),
     );
+    assert_eq!(s(&o.stdout), "pass\n");
     assert!(
-        s(&o.stdout).ends_with("\nREFERENCE_ONLY\n"),
+        s(&o.stderr).ends_with("\nREFERENCE_ONLY\n"),
         "{}",
-        s(&o.stdout)
+        s(&o.stderr)
     );
 }
 
@@ -183,9 +189,9 @@ fn check_bare_ref_resolves_origin() {
     git_repo(&repo, "git@github.com:foo/bar.git");
     fs::write(repo.join("plan.md"), "x\n").unwrap();
     let o = e.run(&["--check", "plan.md", "#136"], &repo, "", &e.path_var());
-    assert_eq!(o.status.code(), Some(0), "{}", s(&o.stderr));
+    assert_eq!(o.status.code(), Some(1), "{}", s(&o.stderr));
     assert!(e.calls().contains("-f owner=foo -f repo=bar -F number=136"));
-    assert!(s(&o.stdout).contains("\nMISSING\n#137 t1\n#138 t2\n"));
+    assert!(s(&o.stderr).contains("\nMISSING\n#137 t1\n#138 t2\n"));
 }
 
 /// #896: 番号だけの参照(`#` も無い)は、書式の誤りとして落とさず origin から補う。
@@ -197,7 +203,8 @@ fn check_number_only_ref_resolves_origin() {
     git_repo(&repo, "git@github.com:foo/bar.git");
     fs::write(repo.join("plan.md"), "x\n").unwrap();
     let o = e.run(&["--check", "plan.md", "1273"], &repo, "", &e.path_var());
-    assert_eq!(o.status.code(), Some(0), "{}", diag(&o));
+    // 子項目が処分されていないので拒否(1)。使い方の誤り(2)ではない = 書式の誤りとして落ちていない。
+    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
     assert!(
         e.calls()
             .contains("-f owner=foo -f repo=bar -F number=1273"),
@@ -220,12 +227,13 @@ fn check_malformed_ref_is_reported_as_a_format_error() {
             "",
             &e.path_var(),
         );
-        assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+        assert_eq!(o.status.code(), Some(2), "{}", diag(&o));
         assert_eq!(o.stdout, b"");
         let err = s(&o.stderr);
         assert!(
-            err.starts_with(&format!("issue-ref の書式が不正です: {arg:?}"))
-                && err.contains("owner/repo#N")
+            err.starts_with(&format!(
+                "plan-scope-gate: issue-ref の書式が不正です: {arg:?}"
+            )) && err.contains("owner/repo#N")
                 && !err.contains("gh 不在"),
             "{err}"
         );
@@ -243,11 +251,11 @@ fn check_bare_ref_without_remote_fails() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(o.status.code(), Some(2));
     assert_eq!(o.stdout, b"");
     assert_eq!(
         s(&o.stderr),
-        "cwd is not inside a GitHub-remote repo; pass owner/repo#N explicitly\n"
+        "plan-scope-gate: cwd is not inside a GitHub-remote repo; pass owner/repo#N explicitly\nusage: plan-scope-gate --check <plan.md> [<issue-ref>]\n"
     );
 }
 
@@ -261,10 +269,10 @@ fn check_gh_failure() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(o.status.code(), Some(2));
     assert_eq!(
         s(&o.stderr),
-        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 1)\n"
+        "plan-scope-gate: failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 1)\nusage: plan-scope-gate --check <plan.md> [<issue-ref>]\n"
     );
 }
 
@@ -283,10 +291,10 @@ fn check_gh_failure_keeps_exit_status_and_stderr() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    assert_eq!(o.status.code(), Some(2), "{}", diag(&o));
     assert_eq!(
         s(&o.stderr),
-        "failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 4): HTTP 401: Bad credentials / second line\n"
+        "plan-scope-gate: failed to fetch children for o/r#1: gh api graphql が失敗しました(exit status: 4): HTTP 401: Bad credentials / second line\nusage: plan-scope-gate --check <plan.md> [<issue-ref>]\n"
     );
 }
 
@@ -303,11 +311,11 @@ fn check_gh_spawn_failure_keeps_the_os_error() {
         "",
         &empty.display().to_string(),
     );
-    assert_eq!(o.status.code(), Some(1), "{}", diag(&o));
+    assert_eq!(o.status.code(), Some(2), "{}", diag(&o));
     let err = s(&o.stderr);
     assert!(
         err.starts_with(
-            "failed to fetch children for o/r#1: gh を起動できません(gh api graphql): "
+            "plan-scope-gate: failed to fetch children for o/r#1: gh を起動できません(gh api graphql): "
         ) && err.contains("No such file or directory"),
         "{err}"
     );
@@ -329,9 +337,9 @@ fn check_checkbox_fallback() {
         "",
         &e.path_var(),
     );
-    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(o.status.code(), Some(1));
     assert_eq!(
-        s(&o.stdout),
+        s(&o.stderr),
         "children: {\"totalCount\":3,\"kind\":\"checkbox\",\"items\":[{\"text\":\"child item one two three four five\"},{\"text\":\"SECOND unchecked item that is quite long indeed and more\"},{\"text\":\"short\"}]}\nMISSING\nSECOND unchecked item that is quite long indeed and more\n"
     );
     assert!(e
@@ -349,7 +357,8 @@ fn check_checkbox_fallback() {
         "",
         &e.path_var(),
     );
-    assert!(s(&o.stdout).ends_with("\nCOVERED\n"), "{}", s(&o.stdout));
+    assert_eq!(s(&o.stdout), "pass\n");
+    assert!(s(&o.stderr).ends_with("\nCOVERED\n"), "{}", s(&o.stderr));
 }
 
 #[test]
@@ -363,8 +372,9 @@ fn check_issue_view_failure_is_none() {
         "",
         &e.path_var(),
     );
+    assert_eq!(s(&o.stdout), "pass\n");
     assert_eq!(
-        s(&o.stdout),
+        s(&o.stderr),
         "children: {\"totalCount\":0,\"kind\":\"none\",\"items\":[]}\nSKIP\n"
     );
 }

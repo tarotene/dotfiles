@@ -172,5 +172,5 @@ BLOCKER。
 ~/.claude/hooks/plan-precedent-gate --check <プランファイル>
 ```
 
-`OK:` が出るまで修正してから抜ける。gate の deny を書式検査代わりに使わない
+`pass` が出るまで修正してから抜ける。gate の deny を書式検査代わりに使わない
 (deny 1 往復ごとに並列の Copilot レビューも巻き添えで走る)。

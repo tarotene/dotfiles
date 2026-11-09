@@ -1,9 +1,9 @@
-# --check-plan: 指摘あり → 指摘 + 例文ブロック、exit 1
+# --check: 指摘あり → `deny:` + 指摘 + 例文ブロック、exit 1
 bin.name = "plan-scope-gate"
-args = ["--check-plan", "plan.md"]
+args = ["--check", "plan.md"]
 status.code = 1
 stdout = """
-R1 が複数回処分されています
+deny: R1 が複数回処分されています
 R2: 閉じたタグ集合に無い棄却タグ(Conflicts:)が使われています
 R3: 処分(実装する段、または棄却タグ)が未記載です
 

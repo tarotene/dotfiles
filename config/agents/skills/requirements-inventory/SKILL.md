@@ -121,10 +121,10 @@ ADR-0027)。今のセッションでやるなら stacked PR の一段として�
 プランファイルを書き終えたら、ExitPlanMode の前に必ず:
 
 ```bash
-~/.claude/hooks/plan-scope-gate --check-plan <プランファイル>
+~/.claude/hooks/plan-scope-gate --check <プランファイル>
 ```
 
-`OK:` が出るまで修正してから抜ける(節内整合性=経路Bだけの検査。参照
+`pass` が出るまで修正してから抜ける(issue-ref を渡さない形は、節内整合性=経路Bだけの検査。参照
 Issue の子項目カバレッジ=経路Aは gate 本体が ExitPlanMode 時に行う)。
 gate の deny を書式検査代わりに使わない(deny 1 往復ごとに並列の Copilot
 レビューも巻き添えで走る)。

@@ -23,7 +23,7 @@ technology-selection スキル(`~/.agents/skills/`)に従う。
 
 ```
 ~/.claude/hooks/plan-precedent-gate --check <このターンで書いたPlan本文のファイル>
-~/.claude/hooks/plan-scope-gate --check-plan <同上>
+~/.claude/hooks/plan-scope-gate --check <同上>
 ```
 
 ### PR 運用(セッション内チェーン・完了定義)
