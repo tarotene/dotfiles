@@ -105,6 +105,20 @@ option `dotfiles.host.name` で受け取る。
 - `HOME=""`(空)は、`verdict-escalate`・`esa-mirror-context`・`daily-desk-reminder` で、これまで「無い」(`None`)としていたが、
   相対パスを作るようになった(シェルの `${HOME}/…` と同じ)。
 
+### 暦の変換(`civil_time::check_tree`)
+
+`crates/*/src/**/*.rs` を、`process_env` と同じく(コメントの行と、末尾のテストの節を除いて)読む。Howard Hinnant の
+`days_from_civil` / `civil_from_days` が、8 つの crate(`agent-session`・`issue-inbox`・`worklog`・`detect-drift`・`github-audit`・
+`daily-desk-reminder`・`model-catalog`・`agent-turn-log`)に手で複写され、さらに 3 つの crate(`agent-session` の transcript、
+`due-remind`、`verdict-escalate`)が `days_from_civil` の本体を持っていた。月日の型も `i64` と `u32` が混ざっていた。変換は
+`crates/civil-time`(依存ゼロ)が持つ。
+
+| 検査 | 内容 |
+|---|---|
+| 暦の定数 | `719468` と `146097`(数のかたまり単位で比べる。`1_460_970` のような別の数には当たらない)を、`civil-time` の外の `crates/*/src` に書かない。`tests/` の独立な実装(逆変換を手で書いて突き合わせる)は対象にしない |
+
+例外は無い。
+
 ### 規則の置き方
 
 - root の表に `default-features = false` を書いた依存(`jiff`、`toml`、`toml_edit`)は、メンバーが `features` で
@@ -136,6 +150,8 @@ option `dotfiles.host.name` で受け取る。
 - crates/repo-structure-check/src/escape.rs
 - crates/repo-structure-check/src/host_names.rs
 - crates/repo-structure-check/src/process_env.rs
+- crates/repo-structure-check/src/civil_time.rs
+- crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
 - home/modules/host.nix

@@ -98,8 +98,8 @@ fn config() -> Result<Option<Config>> {
     if !c.enabled {
         return Ok(None);
     }
-    let start = agent_session::time::parse_iso_epoch(&c.start).ok_or("invalid start")?;
-    let end = agent_session::time::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?;
+    let start = civil_time::parse_iso_epoch(&c.start).ok_or("invalid start")?;
+    let end = civil_time::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?;
     if c.posting_authorization
         .as_ref()
         .is_some_and(|x| x.trim().is_empty())
@@ -250,8 +250,7 @@ pub fn hook(gate: &str, input: &str, start: bool) -> Result<Option<String>> {
         .values()
         .filter(|x| x.status != Status::NoCandidate && x.applied_commit.is_empty())
         .count();
-    let final_due = now()
-        >= agent_session::time::parse_iso_epoch(&c.end_exclusive).unwrap_or(i64::MAX)
+    let final_due = now() >= civil_time::parse_iso_epoch(&c.end_exclusive).unwrap_or(i64::MAX)
         && state.finalized_commit.is_empty();
     let failure = !state.collector.last_error.is_empty();
     if pending == 0 && !final_due && !failure {
@@ -452,9 +451,7 @@ pub fn cli(args: &[String]) -> i32 {
                     return Err("collector has unread intervals; collect before finalizing".into());
                 }
                 if std::env::var("CODEX_THREAD_ID").as_deref() != Ok(&c.report_thread)
-                    || now()
-                        < agent_session::time::parse_iso_epoch(&c.end_exclusive)
-                            .ok_or("invalid end")?
+                    || now() < civil_time::parse_iso_epoch(&c.end_exclusive).ok_or("invalid end")?
                     || state
                         .checks
                         .values()

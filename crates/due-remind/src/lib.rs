@@ -60,11 +60,9 @@ fn days_in_month(y: i64, m: u32) -> u32 {
 }
 
 /// `YYYY-MM-DD`(厳密に4桁-2桁-2桁、実在する日付)を 1970-01-01 起点の日数
-/// (エポック日)に変換する。Howard Hinnant, "chrono-Compatible Low-Level Date
-/// Algorithms" <http://howardhinnant.github.io/date_algorithms.html>
-/// (取得 2026-09-28)の `days_from_civil` をそのまま実装したもの — 西暦の日付を
-/// 単純な整数の日数差に変換するだけの計算に、日付ライブラリを1つ増やす理由は
-/// ない(このクレートが日付を扱うのはここだけ)。
+/// (エポック日)に変換する。暦の計算は `civil-time`(Howard Hinnant, "chrono-Compatible
+/// Low-Level Date Algorithms" <http://howardhinnant.github.io/date_algorithms.html>、
+/// 取得 2026-09-28 の `days_from_civil`)が持つ。ここは、形(4-2-2 桁)と実在(月ごとの日数)の検査だけ。
 pub fn civil_to_epoch_day(s: &str) -> Option<i64> {
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() != 3 {
@@ -80,13 +78,7 @@ pub fn civil_to_epoch_day(s: &str) -> Option<i64> {
     if !(1..=12).contains(&m) || d == 0 || d > days_in_month(y, m) {
         return None;
     }
-    let y_ = if m <= 2 { y - 1 } else { y };
-    let era = if y_ >= 0 { y_ } else { y_ - 399 } / 400;
-    let yoe = y_ - era * 400; // [0, 399]
-    let mp = (m as i64 + 9) % 12; // [0, 11]
-    let doy = (153 * mp + 2) / 5 + d as i64 - 1; // [0, 365]
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
-    Some(era * 146097 + doe - 719468)
+    Some(civil_time::days_from_civil(y, m, d))
 }
 
 /// 1行を「今日から何日後(負なら超過何日)」に分類する。ウィンドウは

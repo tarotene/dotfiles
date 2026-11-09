@@ -10,6 +10,7 @@
 | jq-json-compat | jq 互換の JSON 読み取り・表現 | jqfmt, jqparse, raw |
 | process-control | プロセス起動・タイムアウト・実行ファイル探索 | proc |
 | git-repository | Git の状態取得・操作と remote の解決 | git, repo |
+| civil-time | unix 秒と暦(UTC と固定の +09:00=JST)の相互変換(`days_from_civil`・`civil_from_days`・`parse_day`・`jst_date`・`utc_timestamp` など)。依存ゼロ | (新設。旧 `agent-session::time`) |
 | process-env | 環境変数の非空の読み(`${VAR:-}`)・`HOME`・XDG の基準ディレクトリの解決(`Xdg`)。依存ゼロ | (新設) |
 | herdr-client | herdr との通信 | herdr |
 | vault-note | Obsidian vault のノートの解決・一時ファイル + rename での書き換え・追記・排他・frontmatter・ノート名の規則(wrap-up の気づき・retro・裁定待ちの写し) | (新設) |
@@ -47,6 +48,9 @@ JSON(`decision: "block"` と `reason`。`systemMessage` を添えられる)で�
 例外は、外から来た JSON を読む 3 つの crate(`codex-plan-gate`・`copilot-plan-review`・`hook-router` の Codex 変換)と、
 hook でない CLI と遅延読みの 5 つの bin で、理由つきで `hook_io.rs` の定数に列挙してある。例外のファイルが
 違反の形を失ったら、例外のほうが落ちる。
+
+unix 秒と暦日の変換は `civil-time` が持つ。Howard Hinnant の変換の定数(`719468` と `146097`)を `civil-time` の外の
+`crates/*/src` に書くと、`crates/repo-structure-check` の `civil_time` の検査が落ちる(例外は無い)。時刻帯のデータベースは持たない。
 
 環境変数と基準ディレクトリは `process-env` が持つ。`process_env::var_nonempty`(空を未設定として扱う)、`process_env::home`、
 `process_env::Xdg::{Config,State,Cache,Data}` の `resolve`(`HOME` が無ければ `None`)・`resolve_lossy`(空の `HOME` として続ける)・

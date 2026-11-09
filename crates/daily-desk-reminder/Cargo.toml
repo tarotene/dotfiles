@@ -8,6 +8,7 @@ description = "SessionStart hook: 今日の朝の机(my-desk)が未実施なら�
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+civil-time = { version = "0.1.0", path = "../civil-time" }
 hub-resolve = { path = "../hub-resolve" }
 process-env = { version = "0.1.0", path = "../process-env" }
 

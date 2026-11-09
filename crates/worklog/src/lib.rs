@@ -259,55 +259,8 @@ fn last_heading(content: &str) -> Option<&str> {
 
 // ---------------------------------------------------------------- 日付(JST)
 
-/// 西暦の年月日 → 1970-01-01 からの日数(Howard Hinnant の days_from_civil)。
-pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y.rem_euclid(400);
-    let mp = (m as i64 + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-/// 1970-01-01 からの日数 → 西暦の年月日(Howard Hinnant の civil_from_days)。
-pub fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-/// `YYYY-MM-DD` → 日数。実在しない日付(2 月 30 日など)は `None`。
-pub fn parse_date(s: &str) -> Option<i64> {
-    let b = s.as_bytes();
-    let shaped = b.len() == 10
-        && b.iter().enumerate().all(|(i, c)| match i {
-            4 | 7 => *c == b'-',
-            _ => c.is_ascii_digit(),
-        });
-    if !shaped {
-        return None;
-    }
-    let (y, m, d) = (
-        s[0..4].parse::<i64>().ok()?,
-        s[5..7].parse::<u32>().ok()?,
-        s[8..10].parse::<u32>().ok()?,
-    );
-    let days = days_from_civil(y, m, d);
-    (civil_from_days(days) == (y, m, d)).then_some(days)
-}
-
-pub fn format_date(days: i64) -> String {
-    let (y, m, d) = civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}")
-}
+/// 暦の計算は `civil-time` が持つ。
+pub use civil_time::{format_date, parse_day as parse_date};
 
 /// unix 秒 → JST の (日数, `HH:MM`)。`date(1)` や `TZ` に依存しない。
 pub fn jst_parts(unix_secs: u64) -> (i64, String) {
@@ -394,7 +347,7 @@ impl Vault {
 
     /// 日数に対応する当日ノートの絶対パス。
     pub fn note_path(&self, days: i64) -> PathBuf {
-        let (y, m, d) = civil_from_days(days);
+        let (y, m, d) = civil_time::civil_from_days(days);
         let name = self
             .format
             .replace("YYYY", &format!("{y:04}"))
