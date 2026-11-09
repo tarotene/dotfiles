@@ -161,19 +161,24 @@ impl StopSpec {
     }
 }
 
-/// Stop の結果を標準出力に書く。`Ok` は終了コード 0(block も JSON で運ぶ)。`Err(Fault)` は、ブロックしない
-/// hook エラーの終了コード(0 と 2 は作れない)。
-pub fn finish_stop(agent: Agent, result: StopResult) -> ExitCode {
+/// Stop の結果を標準出力に書き、終了コードを返す。`Ok` は 0(block も JSON で運ぶ)。`Err(Fault)` は、
+/// ブロックしない hook エラーの終了コード(0 と 2 は作れない)。終了コードを数値で扱う古い入口用。
+pub fn write_stop(agent: Agent, result: StopResult) -> u8 {
     match result {
         Ok(outcome) => {
             let out = Reply::from_stop(outcome).render(agent, HookEvent::Stop);
             if !out.is_empty() {
                 let _ = std::io::stdout().write_all(out.as_bytes());
             }
-            ExitCode::SUCCESS
+            0
         }
-        Err(fault) => ExitCode::from(fault.code()),
+        Err(fault) => fault.code(),
     }
+}
+
+/// [`write_stop`] の `ExitCode` 版。
+pub fn finish_stop(agent: Agent, result: StopResult) -> ExitCode {
+    ExitCode::from(write_stop(agent, result))
 }
 
 /// Stop の bin の入口の全部: 引数の解析、標準入力の読み、再入の判定、検査、出力。

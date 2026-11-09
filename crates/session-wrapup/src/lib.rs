@@ -1,10 +1,10 @@
 //! Sequential session lifecycle orchestration. State is owned by each component.
-use agent_session::{Agent, HookEvent, Reply};
+use agent_session::entry::write_stop;
+use agent_session::{Agent, HookEvent, Reply, StopInput, StopOutcome, StopResult};
 use feedback_trial as trial;
 use issue_inbox::*;
 pub use issue_inbox::{read_hook_stdin, self_path, self_path_from_argv0};
 use session_retrospective as retro;
-use std::io::Write;
 
 /// 片付け(`/my-cleanup`)を起動時に提案する、未裁定の件数のしきい値。
 pub const CLEANUP_PENDING_THRESHOLD: usize = 10;
@@ -30,13 +30,19 @@ fn cleanup_suggestion(pending: usize, oldest_age_days: Option<i64>) -> String {
         "\nThe wrap-up inbox of this project has piled up ({pending} open{age}). Propose running /my-cleanup to the user in one short sentence, and run it only if the user wants it; do not start it on your own."
     )
 }
-/// Stop hook 本体。0 = 素通り、2 = ゲート(stderr に指示)。
-pub fn stop_hook(self_path: &str, input: &str) -> Code {
+/// Stop hook 本体。`Ok(None)` は素通り、`Ok(Some(Block))` は続けさせる指示、`Err(Fault)` はブロックしない
+/// hook エラー(入力が読めない、移行の失敗)。
+///
+/// 再入(`stop_hook_active`)の扱いは、段ごとに違う: 振り返りは見ずに検査する(複数往復が要る。上限は
+/// セッション単位のカウンタ)、wrap-up inbox の判定部は立っていたら黙る([`STOP_REENTRY`])。
+pub fn stop_hook(self_path: &str, input: &str) -> StopResult {
     let h = HookJson::parse(input);
     // バックグラウンド処理の完了を待つターンは、作業の終わりではない(#854)。振り返りも
     // 起票の指示も出さず、振り返りの上限 3 回のカウンタも消費しない。
-    if waiting_on_background(&h.get("transcript_path", None).unwrap_or_default()) {
-        return 0;
+    if agent_session::transcript::waiting_on_background(
+        &h.get("transcript_path", None).unwrap_or_default(),
+    ) {
+        return Ok(None);
     }
     let canonical = std::path::Path::new(self_path)
         .file_name()
@@ -46,13 +52,10 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
     } else {
         self_path.to_owned()
     };
-    match trial::hook(&trial_path, input, false) {
-        Ok(Some(message)) => {
-            eprintln!("{message}");
-            return 2;
-        }
-        Ok(None) => {}
-        Err(error) => eprintln!("trial: {error}; pending state retained, retry next input/resume"),
+    // Stop では、trial の報告は診断として標準エラーに出るだけで、結果は `Ok(None)` である
+    // (`Some` を返すのは `start = true` の SessionStart だけ)。
+    if let Err(error) = trial::hook(&trial_path, input, false) {
+        eprintln!("trial: {error}; pending state retained, retry next input/resume");
     }
     // レトロは stop_hook_active で抜けない(複数往復が要る。上限はセッション単位の
     // カウンタ)。PR を作っていないセッションでは台帳を 1 つ読むだけで何も起きない。
@@ -70,9 +73,11 @@ pub fn stop_hook(self_path: &str, input: &str) -> Code {
             &proj,
             &transcript,
         ) {
-            let _ = writeln!(std::io::stderr(), "{msg}");
-            return 2;
+            return Ok(Some(StopOutcome::block(msg)));
         }
+    }
+    if !StopInput::new(input).permits(STOP_REENTRY) {
+        return Ok(None);
     }
     issue_inbox::stop_check(
         &if canonical {
@@ -182,30 +187,11 @@ pub fn gate_main(self_path: &str, args: &[String]) -> i32 {
             );
             1
         }
-        _ => stop_hook(self_path, &read_hook_stdin()),
+        _ => i32::from(write_stop(
+            Agent::Claude,
+            stop_hook(self_path, &read_hook_stdin()),
+        )),
     }
-}
-
-const WAIT_STALE_SECS: u64 = 3600;
-/// この Stop が、バックグラウンド処理の完了を待つ途中のターンか(#854)。Stop の入力に
-/// バックグラウンドの状態は無いので、transcript の開始と完了通知から導く。待ちのターンは
-/// 作業の終わりではなく、振り返りの対象は「セッション全体」なので、途中で出すとやり直しになる。
-/// transcript が読めないときは `false`(従来どおり判定する)。
-pub fn waiting_on_background(transcript_path: &str) -> bool {
-    if transcript_path.is_empty() {
-        return false;
-    }
-    let Ok(text) = std::fs::read_to_string(transcript_path) else {
-        return false;
-    };
-    !agent_session::transcript::pending_background_tasks(
-        &text,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs()),
-        WAIT_STALE_SECS,
-    )
-    .is_empty()
 }
 
 #[cfg(test)]

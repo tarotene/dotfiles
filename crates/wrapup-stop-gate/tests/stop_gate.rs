@@ -545,8 +545,10 @@ echo ve-stderr >&2
     let r = run(c, &input);
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(!r.stderr.contains("ve-stderr"));
-    // verdict-escalate の stdout は hook の stdout にそのまま流れる
-    assert_eq!(r.stdout, "ve-stdout\n");
+    // verdict-escalate の stdout は、hook の stdout に流さない。Stop の stdout は JSON だけにする
+    // (block を JSON で運ぶので、子の出力が前に混ざると読めなくなる。Codex は平文を無効とする)。
+    // 旧 bash の oracle は、そのまま流す。
+    assert_eq!(r.stdout, if is_oracle() { "ve-stdout\n" } else { "" });
     // stdin は `$(cat)` 由来で末尾改行が落ちたものが渡る
     assert_eq!(read(&e.path().join("ve-bin/stdin.txt")), hook_input(&repo1));
     let inbox = inbox_path(&e, &repo1);
@@ -609,6 +611,19 @@ fn feedback_memory_check() {
     let r = stop_fb();
     assert_eq!(r.code, 2);
     assert_eq!(r.stderr, format!("{}\n", feedback_block(&[&unlinked])));
+
+    // 輸送: block は、終了コード 0 の標準出力の JSON(`decision: "block"`)で出る。標準エラーには理由を出さない。
+    // 旧 bash の oracle は終了コード 2 と標準エラーで出すので、この確認は飛ばす。
+    if !is_oracle() {
+        let mut c = e.gate();
+        c.env("CLAUDE_PROJECT_DIR", &fb);
+        let raw = run_raw(c, &input);
+        assert_eq!(raw.code, 0, "{}", raw.stderr);
+        let v: serde_json::Value = serde_json::from_str(&raw.stdout).expect("stdout is JSON");
+        assert_eq!(v["decision"], "block");
+        assert_eq!(v["reason"], feedback_block(&[&unlinked]));
+        assert_eq!(raw.stderr, "");
+    }
 
     std::fs::write(
         &unlinked,
