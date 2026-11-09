@@ -151,3 +151,25 @@ hlissner/dotfiles の `bin/` のような正規レイヤとしての物理分離
 
 ドキュメントのみの変更のため実行時検証はなし。`CLAUDE.md` の Architecture
 Decision Records 一覧にこの ADR への参照を追加したことを確認する。
+
+## Amendment (2026-11-09 — 同梱アセットの置き場は、製品固有なら `config/claude/assets/`, #1451)
+
+Decision 4 は、hook でない同梱アセット(`*.schema.json`、`*.css`)を `config/agents/assets/` に置くと
+書いた。hook 本体が Rust の crate に移り、`config/claude/hooks/` が無くなった今、残るアセットは 2 つで、
+どちらも Claude Code の hook にだけ使われる: `plan-view.css`(`plan-view` が `ExitPlanMode` で出すプランの見た目、
+`crates/plan-view`)と `copilot-plan-review.schema.json`(`copilot-plan-review` の critic の出力契約)。
+`docs/agents/tooling-conventions.md` は、共有の正本を `config/agents/`、製品固有のものを `config/claude/` に置くと
+決めている。製品固有のアセットを `config/agents/assets/` に置くと、読み手に Codex や Copilot でも使うと誤解させる。
+
+- 2 つのアセットを `config/claude/assets/` に移す(`config/agents/assets/` は無くなる)。置き場の規則は、
+  『共有のアセットは `config/agents/assets/`、製品固有のアセットは `config/<製品>/assets/`』とする。
+- 配備先は変わらない(`~/.claude/hooks/` に hook と並べて置く。Decision 4 の後段のとおり、配備先の規約ではない)。
+- `plan-view` の CSS の探索から、`SCRIPT_DIR` の一つ上の `assets/` という候補を除く。バイナリがソースツリーの中から
+  起動されることは無く(配備先の `~/.claude/hooks/` か `~/.local/bin/`)、この候補は、`config/claude/hooks/` に bash
+  のスクリプトがあった時代の名残で、実在するパスを指さなくなっていた。
+
+### 執行点
+
+- `home/modules/agents.nix`
+- `crates/plan-view/src/lib.rs`
+- `crates/plan-view/tests/cli.rs`

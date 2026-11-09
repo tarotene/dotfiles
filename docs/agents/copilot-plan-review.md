@@ -2,7 +2,7 @@
 
 Claude Code の plan mode で書いたプランを、Approve 直前に GitHub Copilot CLI が
 自動レビューする仕組みの設計記録。実装は `crates/copilot-plan-review` と
-`config/agents/assets/copilot-plan-review.schema.json`、read-only custom agent は
+`config/claude/assets/copilot-plan-review.schema.json`、read-only custom agent は
 `config/copilot/agents/plan-reviewer.agent.md`、デプロイは `home/modules/agents.nix`。
 
 > **註（履歴と現行の区別）**: 以下の「初期実装は収束しなかった」「第二次の非収束」
