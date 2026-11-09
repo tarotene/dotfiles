@@ -16,7 +16,7 @@
 
 加えて次の欄がある。
 
-- `searched`: 探した範囲(カンマ区切り)。リポジトリ内(`pipeline-map` / `crates` / `skills`)は必ず探す。外部(`nixpkgs` /
+- `searched`: 探した範囲(カンマ区切り)。リポジトリ内(`pipeline-map` / `crates` / `skills` / `home-modules` / `inbox`)は必ず探す。外部(`nixpkgs` /
   `upstream:<製品>`)は `existing` が `自前` のとき 1 回探して書く。
 - `level_reason`: 兆候の既定の段と違う段を選んだときの理由。既定は「ここまで上を目指せ」という値なので、届かなかった
   行は理由を書く。理由が溜まると、既定の段を直す根拠になる。
@@ -62,6 +62,7 @@
 | `guard-misfire` | `gate` | gate や道具が誤検知した、過剰に再通知した、拒否文が行き止まりだった。直す先は既存の gate(拡張) | #898 |
 | `local-ci-gap` | `gate` | CI でしか分からない失敗が、手元の検査では出なかった | #1092 |
 | `worktree-bootstrap` | `tool` | 新しい worktree に、依存・認証・検証の前提が無かった。作成直後の準備を毎回手で整えた | — |
+| `tool-semantics` | `tool` | 道具の暗黙の挙動(参照の上書き・新しいシェルでの実行・git が追跡しないファイルを見ない)で、エラーも無く違う結果になった。正しい呼び方を 1 本の入口にする | — |
 | `unclassified` | `prose` | 上のどれにも入らないが、決定論化できそうだと思った。上位の段を選ぶなら level_reason が必須。数が溜まると語彙に足す候補になる | — |
 
 ### 却下の理由(`/my-cleanup` で却下するとき)

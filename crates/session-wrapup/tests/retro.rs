@@ -159,7 +159,7 @@ fn inbox_disposition_reaches_the_wrapup_inbox() {
 fn a_user_correction_is_recorded_against_an_issue_not_the_inbox() {
     let e = Env::new();
     let p = project(&e);
-    let row = r#"{"kind":"user-correction","what":"gate X leaked","evidence":"user: no","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills"}"#;
+    let row = r#"{"kind":"user-correction","what":"gate X leaked","evidence":"user: no","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills,home-modules,inbox"}"#;
     assert_eq!(add_row(&e, &p, row).code, 0);
     let mut c = e.gate();
     c.env("CLAUDE_PROJECT_DIR", &p);
@@ -240,7 +240,7 @@ fn close_writes_one_note_into_the_vault_and_reads_it_back() {
     assert_eq!(close_in(&e, &v, &p, SID).code, 1); // 行が無い
     let rows = [
         r#"{"kind":"friction","what":"a | b","evidence":"e","disposition":"inbox","mechanism":"prose","signal":"unclassified"}"#,
-        r#"{"kind":"user-correction","what":"直された","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills"}"#,
+        r#"{"kind":"user-correction","what":"直された","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills,home-modules,inbox"}"#,
         ROW_OK,
     ];
     for r in rows {

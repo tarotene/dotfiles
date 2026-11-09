@@ -712,7 +712,9 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
 {level_guide}     - A level row also needs `signal` (why it looks codifiable), `existing` (is there
        something to adopt or extend before building: 採用|拡張|自前) and `searched`
        (where you looked, comma-separated). Look in this repository first, always:
-       pipeline-map.toml node ids, the crates/ names, the config/agents/skills/ names.
+       pipeline-map.toml node ids, the crates/ names, the config/agents/skills/ names,
+       the home/modules/ names (sandbox, service and permission declarations: `home-modules`),
+       and a note with the same title in the wrap-up inbox (`issue-inbox --list-open`: `inbox`).
        Look outside (nixpkgs, an upstream feature) once, and only when the answer would be 自前.
        A level other than the signal's default needs `level_reason`.
 {signal_guide}     - The tables with examples: docs/agents/codify-signals.md.
@@ -1007,7 +1009,7 @@ mod tests {
     fn gate_row() -> Value {
         json!({"kind":"friction","what":"w","evidence":"e","disposition":"inbox","mechanism":"gate",
                "signal":"repeated-violation","existing":"拡張:pr-gate",
-               "searched":"pipeline-map,crates,skills"})
+               "searched":"pipeline-map,crates,skills,home-modules,inbox"})
     }
 
     #[test]
@@ -1056,7 +1058,7 @@ mod tests {
         r["existing"] = json!("自前");
         let e = validate_row(&r).unwrap_err();
         assert!(e.contains("external search"), "{e}");
-        r["searched"] = json!("pipeline-map,crates,skills,upstream:foo");
+        r["searched"] = json!("pipeline-map,crates,skills,home-modules,inbox,upstream:foo");
         assert!(validate_row(&r).is_ok());
     }
 

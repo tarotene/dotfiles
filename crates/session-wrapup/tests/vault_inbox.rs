@@ -300,7 +300,7 @@ fn session_start_counts_open_notes_and_leftover_lines_for_this_project() {
 fn a_codify_candidate_keeps_its_structure_and_needs_a_reason_to_be_dropped() {
     let e = Env::new();
     let (v, p) = (vault(&e), project(&e));
-    let row = r#"{"kind":"codify","what":"手で転記した表","evidence":"adhoc:scratch:t.py","disposition":"inbox","mechanism":"unrepresentable","signal":"copy-drift","existing":"拡張:pipeline-map","searched":"pipeline-map,crates,skills"}"#;
+    let row = r#"{"kind":"codify","what":"手で転記した表","evidence":"adhoc:scratch:t.py","disposition":"inbox","mechanism":"unrepresentable","signal":"copy-drift","existing":"拡張:pipeline-map","searched":"pipeline-map,crates,skills,home-modules,inbox"}"#;
     let r = run_args(gate_in(&e, &v, &p), &["--retro-add", "s1", row]);
     assert_eq!(r.code, 0, "{}", r.stderr);
 
@@ -361,7 +361,7 @@ fn a_codify_candidate_keeps_its_structure_and_needs_a_reason_to_be_dropped() {
 fn a_user_correction_filed_as_an_issue_is_kept_as_an_issued_note_for_calibration() {
     let e = Env::new();
     let (v, p) = (vault(&e), project(&e));
-    let row = r#"{"kind":"user-correction","what":"gate X が漏れた","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills"}"#;
+    let row = r#"{"kind":"user-correction","what":"gate X が漏れた","evidence":"user: 違う","disposition":"issue:#12","mechanism":"gate","signal":"repeated-violation","existing":"拡張:pr-gate","searched":"pipeline-map,crates,skills,home-modules,inbox"}"#;
     let r = run_args(gate_in(&e, &v, &p), &["--retro-add", "s1", row]);
     assert_eq!(r.code, 0, "{}", r.stderr);
 

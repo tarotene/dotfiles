@@ -926,6 +926,15 @@ fn split_flags(args: &[String]) -> Flags<'_> {
     f
 }
 
+/// vault の無い機体で、気づきを指す ID(`--list-open --json` の `note`)。vault のノート名と同じく、
+/// repo と題名から決まる短いハッシュで、`--set-status` の第 1 引数に渡せる。
+fn jsonl_id(repo: &str, title: &str) -> String {
+    format!(
+        "jsonl:{}",
+        vault_note::short_hash(&format!("{repo}\0{title}"))
+    )
+}
+
 /// jsonl の行を、vault の open なノートと同じ形(行 1 つ = 再発 1 回)で見せる。
 fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String)> {
     let inbox = inbox_for(project);
@@ -952,9 +961,11 @@ fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String
                 String::new()
             };
             let row = format!("- {date} {}", item.detail).trim_end().to_string();
+            // vault の無い機体のノートの代わりの ID。題名の完全一致でなく、これで指せる。
+            let id = jsonl_id(&repo_of, &item.title);
             Some((
                 vault::OpenNote {
-                    note: String::new(),
+                    note: id,
                     title: item.title,
                     repo: repo_of,
                     first_seen: date,
@@ -1062,7 +1073,7 @@ fn set_status_cmd(self_path: &str, args: &[String]) -> Code {
     let project = project_dir();
     let hit = jsonl_open(&project, repo)
         .into_iter()
-        .find(|(n, _)| n.title == *title);
+        .find(|(n, _)| n.title == *title || n.note == *title);
     match hit {
         Some((_, line)) => mark_filed(&inbox_for(&project), &line),
         None => {
@@ -1327,6 +1338,18 @@ pub const STOP_REENTRY: Reentry = Reentry::Quiet;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jsonl_id_is_stable_and_separates_repos() {
+        let a = jsonl_id("o/a", "T");
+        assert!(
+            a.starts_with("jsonl:") && a.len() == "jsonl:".len() + 8,
+            "{a}"
+        );
+        assert_eq!(a, jsonl_id("o/a", "T"));
+        assert_ne!(a, jsonl_id("o/b", "T"));
+        assert_ne!(a, jsonl_id("o/a", "U"));
+    }
 
     #[test]
     fn normalize_examples() {

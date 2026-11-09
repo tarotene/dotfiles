@@ -1431,6 +1431,7 @@ version = "0.1.0"
 name = "promotion-detect"
 version = "0.1.0"
 dependencies = [
+ "agent-session",
  "command-inspection",
  "due-remind",
  "filetime",

@@ -24,7 +24,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 - **inbox**: `~/.claude/hooks/issue-inbox --list-open --repo <owner/repo> --json` で読む(`<owner/repo>` は
   このリポジトリの `origin`)。vault を宣言している機体では vault の `inbox/` の、状態が open のノートが、
   **再発の行数の多い順**(同数なら初出が古い順)に出る。各要素は `title`・`repo`・`count`(= 再発の回数)・
-  `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス)・`source`(`vault` / `jsonl`)・
+  `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス。jsonl の機体では `jsonl:<8 桁>`。§8 の `--set-status` の第 1 引数に、題名の代わりに渡せる)・`source`(`vault` / `jsonl`)・
   `signal`・`mechanism`・`existing`(as-code 化の候補のときだけ値がある。retro の `codify` などの行が渡す。
   `signal` が兆候、`mechanism` が次から防ぐ手段、`existing` が採用|拡張|自前。§4 の選択肢の根拠に添える)。
   vault の無い機体では inbox の jsonl の行が同じ形で出る(`source: jsonl`、1 行 = 1 回)。
@@ -350,7 +350,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 
 その項目を含む**段**の PR 作成(`gh pr create` 成功)の直後に、対処した気づきの状態を
 `~/.claude/hooks/issue-inbox --set-status "<title>" <状態> [url] --repo <owner/repo> [--reason <理由>]` で変える
-(題名はノートの `title` と完全一致で渡す。ノートの直接編集は不変で禁止)。
+(第 1 引数は、ノートの `title` の完全一致か、`--list-open --json` の `note`。長い題名は `note` で指す。ノートの直接編集は不変で禁止)。
 
 | 裁定 | 状態 | url |
 |---|---|---|

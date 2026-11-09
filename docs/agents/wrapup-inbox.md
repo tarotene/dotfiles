@@ -131,9 +131,11 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。
   vault を宣言していない機体では何もしない。
-- `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]` — ノートの frontmatter だけを
-  書き換える(本文はバイト単位でそのまま残す)。jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に
-  退避)。`--reason` は `dropped` のときだけで、`signal` を持つノート(as-code 化の候補)では必須。jsonl の
+- `--set-status <title|note> <fixed|issued|dropped> [url] [--repo R] [--reason R]` — ノートの frontmatter だけを
+  書き換える(本文はバイト単位でそのまま残す)。第 1 引数は、題名の完全一致か、`--list-open --json` の `note`
+  (vault では `inbox/<名前>.md`、jsonl の機体では `jsonl:<repo と題名から決まる 8 桁のハッシュ>`)。ノート名は題名と
+  衝突時のハッシュで一意になるので、`note` で指せば 1 枚に決まり、長い題名を打ち間違えず、先頭一致の補助も要らない。
+  jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に退避)。`--reason` は `dropped` のときだけで、`signal` を持つノート(as-code 化の候補)では必須。jsonl の
   機体では行を取り除くので、理由の記録先が無い(較正は vault の機体だけで効く)。
 - `--check-dup "<title>" [repo]` — `gh issue list --search` で同名 open Issue を検査する。
   exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能。Issue を作る前に、
