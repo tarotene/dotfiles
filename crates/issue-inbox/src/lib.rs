@@ -1255,12 +1255,6 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 let line = need(2, "usage: wrapup-stop-gate.sh --mark-filed <inbox> <json>")?;
                 mark_filed(inbox, line)
             }
-            "--selftest" => {
-                eprintln!(
-                    "wrapup-stop-gate: --selftest は `cargo test -p wrapup-stop-gate` に移った(#413)"
-                );
-                0
-            }
             _ => {
                 eprintln!("issue-inbox: expected an inbox operation");
                 1

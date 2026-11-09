@@ -169,12 +169,6 @@ pub fn run(args: &[String]) -> i32 {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--selftest" => {
-                eprintln!(
-                    "workflow-naming-check: --selftest は `cargo test -p pr-contract-check` に移った"
-                );
-                return 0;
-            }
             "--ref" => {
                 let Some(v) = args.get(i + 1) else {
                     eprint!("{USAGE}");

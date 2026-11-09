@@ -138,7 +138,7 @@ fn plan_free_private_declaration() {
 }
 
 #[test]
-fn usage_and_selftest_notice() {
+fn usage_and_exit_codes() {
     let r = run(BIN, &[], &["--help"]);
     assert_eq!(r.code, 0);
     assert!(r.out.starts_with("usage: pr-merge-settings-check"));
@@ -147,7 +147,8 @@ fn usage_and_selftest_notice() {
     let r = run(BIN, &[], &["not-a-repo"]);
     assert_eq!(r.code, 2);
     assert!(r.err.starts_with("usage:"));
+    // 実行時の --selftest は無い(ADR-0024: cases は #[test])。未知の引数として扱う。
     let r = run(BIN, &[], &["--selftest"]);
-    assert_eq!(r.code, 0);
-    assert!(r.err.contains("cargo test"));
+    assert_eq!(r.code, 2);
+    assert!(r.err.starts_with("usage:"));
 }

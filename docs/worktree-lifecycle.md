@@ -249,18 +249,16 @@ git prune-branches --auto --dry-run
 通知重複抑止を一連で確認する(audit は検出専用になったため、git 本体の
 `worktree prune` で登録が消え branch は残ることも同じ selftest 内で直接確認する)。
 `--evidence`(C1/C2/C3・herdr 到達不能・gh 失敗・shallow・detached HEAD)は
-`selftest_evidence` という別関数で確認する(`git-audit-worktrees --selftest`
-が両方を続けて実行する)。
+`crates/git-audit-worktrees/tests/evidence.rs` で確認する(検出は同じ crate の
+`modes.rs` と `selftest.rs`)。
 `git-prune-worktrees`/`git-prune-branches` それぞれも、既定の対話確認モード
 (スタブの audit 結果を使い、削除・確認ゲート・`--dry-run`・削除直前の
-再検証(TOCTOU)・`--force` によるコミット拒否の押し切りを確認する
-`selftest`)と、`--auto` モード(スタブの `--evidence` 結果を使い、
-C1/C2/C3・`--dry-run`・TOCTOU・log.tsv への記録を確認する `selftest_auto`)
-の2関数を続けて実行する。
+再検証(TOCTOU)・`--force` によるコミット拒否の押し切りを確認する。
+`crates/git-prune/tests/prune_worktrees.rs`・`prune_branches.rs` の対話確認の節)と、
+`--auto` モード(スタブの `--evidence` 結果を使い、C1/C2/C3・`--dry-run`・TOCTOU・
+log.tsv への記録を確認する。同じファイルの `--auto` の節)を確認する。実行時の
+`--selftest` は無く(ADR-0024: cases は `#[test]`)、`cargo test` が走らせる。
 
 ```bash
-crates/git-audit-worktrees --selftest
-crates/git-prune --selftest
-crates/git-prune --selftest
-crates/git-worktree-create-guard --selftest
+cargo test -p git-audit-worktrees -p git-prune -p git-worktree-create-guard
 ```

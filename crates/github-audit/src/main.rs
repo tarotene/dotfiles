@@ -6,7 +6,7 @@ use github_audit::{
 };
 use std::process::ExitCode;
 
-const USAGE: &str = r#"usage: github-audit [--json|--selftest] [domain...]
+const USAGE: &str = r#"usage: github-audit [--json] [domain...]
 
 Read-only cross-repository audit (ADR-0015). For every non-archived,
 non-fork repository owned by $GITHUB_AUDIT_OWNER (default: tarotene),
@@ -146,14 +146,6 @@ fn main() -> ExitCode {
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--json" => json = true,
-            "--selftest" => {
-                // bash 版の --selftest は cargo test -p github-audit
-                // (crates/github-audit/tests/)に移った。
-                eprintln!(
-                    "github-audit: --selftest is now `cargo test -p github-audit` (crates/github-audit/tests/)"
-                );
-                return ExitCode::from(2);
-            }
             "-h" | "--help" => {
                 print!("{USAGE}{OPT_IN_USAGE}");
                 return ExitCode::SUCCESS;

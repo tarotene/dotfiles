@@ -20,7 +20,6 @@ use std::process::ExitCode;
 
 const USAGE: &str =
     "usage: github-app-registry-check [--manifests-dir DIR] [--snapshot FILE] [--json]
-       github-app-registry-check --selftest
 ";
 
 const SELF: &str = "github-app-registry-check";

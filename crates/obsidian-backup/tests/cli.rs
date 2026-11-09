@@ -144,15 +144,8 @@ fn backup_acquires_token_and_runs_through_bws() {
 }
 
 #[test]
-fn legacy_cli_selftest_and_exit_codes_are_preserved() {
+fn exit_codes_are_preserved() {
     let t = Test::new();
-    let out = t.cmd().arg("--selftest").output().unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(String::from_utf8_lossy(&out.stdout).contains("obsidian-backup selftest passed"));
     for args in [
         vec![],
         vec!["configure-token", "unexpected"],

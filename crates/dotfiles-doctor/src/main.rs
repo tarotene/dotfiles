@@ -159,10 +159,6 @@ fn check_style_hub() -> bool {
 }
 
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--selftest") {
-        eprintln!("dotfiles-doctor: --selftest は `cargo test -p dotfiles-doctor` に移った(#414)");
-        return;
-    }
     let config = config_home();
     check_host(&config);
     check_private_hub(&config);

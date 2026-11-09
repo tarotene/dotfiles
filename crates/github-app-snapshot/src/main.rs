@@ -28,7 +28,6 @@ const USAGE: &str = "usage:
   github-app-snapshot convert <name> <code>
   github-app-snapshot run [--out FILE]
   github-app-snapshot exec -- <cmd...>
-  github-app-snapshot --selftest
 
 The Bitwarden Secrets Manager machine account must have read-only access to
 a project holding, per owned App <name>: GITHUB_APP_<NAME>_ID,

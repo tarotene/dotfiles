@@ -1078,12 +1078,6 @@ pub fn run(args: &[String]) -> i32 {
     if args.first().map(String::as_str) == Some("--advisory") {
         return advisory(&cfg, &args[1..]);
     }
-    if args.first().map(String::as_str) == Some("--selftest") {
-        eprintln!(
-            "copilot-plan-review: --selftest は cargo test -p copilot-plan-review に移行しました"
-        );
-        return 2;
-    }
     ensure_dirs(&cfg);
     prune_old(&cfg);
     let mut raw = String::new();

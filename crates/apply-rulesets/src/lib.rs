@@ -727,12 +727,6 @@ fn delete_ruleset(gh: &Gh, owner_repo: &str, decls: &Decls, opts: &Opts) -> Resu
 /// `apply-rulesets` の入口。戻り値は終了コード。
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
-        Some("--selftest") => {
-            eprintln!(
-                "apply-rulesets: --selftest は `cargo test -p apply-rulesets` に移った(#414)"
-            );
-            0
-        }
         Some("--help") | Some("-h") => {
             print!("{USAGE}");
             0
