@@ -36,8 +36,38 @@
 let
   repoRoot = ../..;
   subkeyPath = "${config.home.homeDirectory}/.local/bin/gpg-subkey";
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    # launchd's EnvironmentVariables.PATH must list every binary the script shells out to
+    # (launchd replaces PATH rather than extending it; see worktree.nix's git-audit-worktrees).
+    (timerPair {
+      name = "gpg-subkey-remind";
+      description = "Warn when a GPG [S] signing subkey is close to expiry";
+      timerDescription = "Check GPG [S] subkey expiry once a day";
+      exec = subkeyPath;
+      args = [
+        "remind"
+        "--notify"
+      ];
+      path = lib.makeBinPath [
+        pkgs.gnupg
+        pkgs.herdr
+      ];
+      schedule = {
+        calendar = "daily";
+        persistent = true;
+      };
+      launchd.StartCalendarInterval = [
+        {
+          Hour = 9;
+          Minute = 0;
+        }
+      ];
+    })
+  ];
+
   programs.gpg = {
     enable = true;
 
@@ -146,55 +176,7 @@ in
   # The dangling cron this replaces (from the archived predecessor tool
   # above) had been failing silently for ~11 months; a systemd/launchd unit
   # shows up in `systemctl --user --failed` instead.
-  systemd.user.services.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Warn when a GPG [S] signing subkey is close to expiry";
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${subkeyPath} remind --notify";
-      Environment = "PATH=${
-        lib.makeBinPath [
-          pkgs.gnupg
-          pkgs.herdr
-        ]
-      }";
-    };
-  };
-
   dotfiles.pipeline.timerNodes.gpg-subkey-remind = "gpg-subkey-remind";
-  systemd.user.timers.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Check GPG [S] subkey expiry once a day";
-    Timer = {
-      OnCalendar = "daily";
-      Persistent = true;
-      Unit = "gpg-subkey-remind.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # launchd equivalent (ADR-0018) — see worktree.nix's git-audit-worktrees
-  # agent for why EnvironmentVariables.PATH must list every binary the
-  # script shells out to (launchd replaces PATH rather than extending it).
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.gpg-subkey-remind が兼ねる。
-  launchd.agents.gpg-subkey-remind = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [
-        subkeyPath
-        "remind"
-        "--notify"
-      ];
-      StartCalendarInterval = [
-        {
-          Hour = 9;
-          Minute = 0;
-        }
-      ];
-      EnvironmentVariables.PATH = lib.makeBinPath [
-        pkgs.gnupg
-        pkgs.herdr
-      ];
-    };
-  };
 
   # Import committed public keys at activation time.  On a fresh host the user
   # still needs to run `gpg --card-status` and set trust (see header).

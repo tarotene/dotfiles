@@ -43,8 +43,33 @@ let
     pkgs.gh
     pkgs.herdr
   ];
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    (timerPair {
+      name = "promotion-detect";
+      description = "Detect Q2 promotion/demotion candidates for tarotene/dotfiles (ADR-543)";
+      timerDescription = "Run promotion-detect once a day";
+      exec = deployedPath;
+      launchdExec = storePath;
+      path = servicePath;
+      # gh calls hit the network; don't let a hung request block the next
+      # cycle indefinitely (same reasoning as herdr-issue-counts/due-remind).
+      service.TimeoutStartSec = "2min";
+      schedule = {
+        calendar = "daily";
+        persistent = true;
+      };
+      launchd.StartCalendarInterval = [
+        {
+          Hour = 9;
+          Minute = 30;
+        }
+      ];
+    })
+  ];
+
   home.file.".local/bin/promotion-detect" = {
     source = storePath;
     executable = true;
@@ -52,45 +77,8 @@ in
 
   dotfiles.quarantine.managedFiles = [ ".local/bin/promotion-detect" ];
 
-  systemd.user.services.promotion-detect = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Detect Q2 promotion/demotion candidates for tarotene/dotfiles (ADR-543)";
-    Service = {
-      Type = "oneshot";
-      ExecStart = deployedPath;
-      Environment = "PATH=${servicePath}";
-      # gh calls hit the network; don't let a hung request block the next
-      # cycle indefinitely (same reasoning as herdr-issue-counts/due-remind).
-      TimeoutStartSec = "2min";
-    };
-  };
-
+  # launchd 版(ADR-0018)の EnvironmentVariables.PATH は、launchd が PATH を延ばさず置換するので、
+  # promotion-detect と、これが exec する wrapup-stop-gate が呼ぶ全バイナリを列挙する
+  # (git-audit-worktrees の agent と同じ理由)。
   dotfiles.pipeline.timerNodes.promotion-detect = "promotion-detect";
-  systemd.user.timers.promotion-detect = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Run promotion-detect once a day";
-    Timer = {
-      OnCalendar = "daily";
-      Persistent = true;
-      Unit = "promotion-detect.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # launchd twin (ADR-0018). EnvironmentVariables.PATH replaces (rather than
-  # extends) launchd's PATH, so every binary promotion-detect or the
-  # wrapup-stop-gate it shells out to needs must be listed explicitly
-  # (same reasoning as git-audit-worktrees' launchd agent).
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.promotion-detect が兼ねる。
-  launchd.agents.promotion-detect = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [ storePath ];
-      StartCalendarInterval = [
-        {
-          Hour = 9;
-          Minute = 30;
-        }
-      ];
-      EnvironmentVariables.PATH = servicePath;
-    };
-  };
 }

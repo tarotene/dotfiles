@@ -92,8 +92,84 @@ let
       };
     };
   };
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    (timerPair {
+      name = "git-audit-worktrees";
+      description = "Detect stale Git worktree registrations and orphaned checkouts";
+      timerDescription = "Check for stale Git worktrees every minute";
+      exec = auditPath;
+      args = [ "--notify" ];
+      path = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.git
+        pkgs.gnused # crates/git-audit-worktrees の `sed -n 's#^worktree ##p'`
+        pkgs.jq
+        pkgs.util-linux
+        pkgs.herdr
+      ];
+      # launchd's EnvironmentVariables *replaces* the agent's PATH rather than
+      # extending it (unlike systemd's Environment=), so every binary
+      # git-audit-worktrees actually shells out to must be listed explicitly.
+      # coreutils/findutils do not provide grep/sed/awk — those are separate
+      # nixpkgs packages — and the script uses all three (is_shelved,
+      # scan_orphaned, prunable_rows/orphaned_rows). Omitting them silently
+      # breaks the --notify scan on darwin instead of erroring loudly.
+      launchdPath = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.gnugrep
+        pkgs.gnused
+        pkgs.gawk
+        pkgs.git
+        pkgs.jq
+        pkgs.flock
+        pkgs.herdr
+      ];
+      schedule = {
+        afterBoot = "1min";
+        every = "1min";
+        accuracy = "1s";
+      };
+      launchd = {
+        StartInterval = 60;
+        RunAtLoad = true;
+      };
+    })
+    (timerPair {
+      name = "git-checkout-sync";
+      description = "Fast-forward parent Git checkouts to origin/<base>";
+      timerDescription = "Keep parent Git checkouts fresh every 10 minutes";
+      exec = checkoutFreshnessPath;
+      args = checkoutFreshnessPaths;
+      path = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.git
+        pkgs.util-linux # timeout(1)
+      ];
+      launchdPath = lib.makeBinPath [
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.git
+      ];
+      schedule = {
+        afterBoot = "2min";
+        every = "10min";
+        accuracy = "30s";
+      };
+      launchd = {
+        StartInterval = 600;
+        RunAtLoad = true;
+      };
+    })
+  ];
+
   home.packages = [ flockPkg ];
 
   # The three CLIs below and the guard are Rust (ADR-0024, #416): the stable
@@ -136,128 +212,19 @@ in
   # around — the old "git-worktree-audit" name had the words reversed from
   # the command, which is how a `git worktree-audit` typo actually happened.
   #
-  # systemd --user is Linux-only. darwin's equivalent is the launchd.agents
-  # block below (ADR-0018) — home-manager's own launchd module asserts
-  # `agentPlists != {} -> isDarwin`, so declaring it unconditionally would
-  # fail eval on Linux; the mkIf here is required, not just documentation.
-  systemd.user.services.git-audit-worktrees = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Detect stale Git worktree registrations and orphaned checkouts";
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${auditPath} --notify";
-      Environment = "PATH=${
-        lib.makeBinPath [
-          pkgs.bash
-          pkgs.coreutils
-          pkgs.findutils
-          pkgs.git
-          pkgs.gnused # crates/git-audit-worktrees の `sed -n 's#^worktree ##p'`
-          pkgs.jq
-          pkgs.util-linux
-          pkgs.herdr
-        ]
-      }";
-    };
-  };
-
+  # The systemd service/timer and the launchd agent (ADR-0018) are one `timerPair`
+  # at the top of this module. The timer fires one minute after boot and every
+  # minute after that; launchd's StartInterval (seconds) is OnUnitActiveSec, and
+  # RunAtLoad covers OnBootSec (fires once when the agent is first loaded).
   dotfiles.pipeline.timerNodes.git-audit-worktrees = "git-audit-worktrees";
-  systemd.user.timers.git-audit-worktrees = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Check for stale Git worktrees every minute";
-    Timer = {
-      OnBootSec = "1min";
-      OnUnitActiveSec = "1min";
-      AccuracySec = "1s";
-      Persistent = true;
-      Unit = "git-audit-worktrees.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # launchd equivalent of the systemd timer+service pair above. StartInterval
-  # (seconds) is launchd's OnUnitActiveSec; RunAtLoad covers OnBootSec (fires
-  # once when the agent is first loaded, then every StartInterval thereafter).
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.git-audit-worktrees が兼ねる。
-  launchd.agents.git-audit-worktrees = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [
-        auditPath
-        "--notify"
-      ];
-      StartInterval = 60;
-      RunAtLoad = true;
-      # launchd's EnvironmentVariables *replaces* the agent's PATH rather than
-      # extending it (unlike systemd's Environment=), so every binary
-      # git-audit-worktrees actually shells out to must be listed explicitly.
-      # coreutils/findutils do not provide grep/sed/awk — those are separate
-      # nixpkgs packages — and the script uses all three (is_shelved,
-      # scan_orphaned, prunable_rows/orphaned_rows). Omitting them silently
-      # breaks the --notify scan on darwin instead of erroring loudly.
-      EnvironmentVariables.PATH = lib.makeBinPath [
-        pkgs.bash
-        pkgs.coreutils
-        pkgs.findutils
-        pkgs.gnugrep
-        pkgs.gnused
-        pkgs.gawk
-        pkgs.git
-        pkgs.jq
-        pkgs.flock
-        pkgs.herdr
-      ];
-    };
-  };
 
   # git-checkout-sync timer (#78). 10-minute interval: frequent enough
   # that a parent checkout rarely sits more than 10 minutes stale before the
   # next Workspace Fork, but far less chatty against origin than
   # git-audit-worktrees' 1-minute read-only scan (this one does a real
-  # `git fetch` per path per run).
-  systemd.user.services.git-checkout-sync = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Fast-forward parent Git checkouts to origin/<base>";
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${checkoutFreshnessPath} ${
-        lib.concatMapStringsSep " " lib.escapeShellArg checkoutFreshnessPaths
-      }";
-      Environment = "PATH=${
-        lib.makeBinPath [
-          pkgs.bash
-          pkgs.coreutils
-          pkgs.git
-          pkgs.util-linux # timeout(1)
-        ]
-      }";
-    };
-  };
-
+  # `git fetch` per path per run). The pair itself is the second `timerPair`
+  # at the top of this module.
   dotfiles.pipeline.timerNodes.git-checkout-sync = "git-checkout-sync";
-  systemd.user.timers.git-checkout-sync = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Keep parent Git checkouts fresh every 10 minutes";
-    Timer = {
-      OnBootSec = "2min";
-      OnUnitActiveSec = "10min";
-      AccuracySec = "30s";
-      Persistent = true;
-      Unit = "git-checkout-sync.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.git-checkout-sync が兼ねる。
-  launchd.agents.git-checkout-sync = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [ checkoutFreshnessPath ] ++ checkoutFreshnessPaths;
-      StartInterval = 600;
-      RunAtLoad = true;
-      EnvironmentVariables.PATH = lib.makeBinPath [
-        pkgs.bash
-        pkgs.coreutils
-        pkgs.git
-      ];
-    };
-  };
 
   # git-auto-prune: unattended deletion of content-preservation-evidence-
   # backed worktrees/branches (C1/C2/C3, docs/worktree-lifecycle.md) — a

@@ -51,8 +51,31 @@ let
     pkgs.git
     pkgs.herdr
   ];
+  timerPair = import ../lib/timer-pair.nix { inherit lib pkgs; };
 in
 {
+  imports = [
+    (timerPair {
+      name = "herdr-issue-counts";
+      description = "Report each Herdr workspace's open GitHub issue count";
+      timerDescription = "Refresh Herdr sidebar issue counts every 5 minutes";
+      exec = issueCountsPath;
+      path = issueCountsServicePath;
+      # oneshot の既定 TimeoutStartSec は無限。gh がネットワークで固まっても
+      # 次の周期を塞がないよう上限を置く。
+      service.TimeoutStartSec = "2min";
+      schedule = {
+        afterBoot = "1min";
+        every = "5min";
+        accuracy = "30s";
+      };
+      launchd = {
+        StartInterval = 300;
+        RunAtLoad = true;
+      };
+    })
+  ];
+
   home.packages = [ pkgs.herdr ];
 
   # Codex は worktree.nix の registerCodexWorktreeHooks も同じ
@@ -118,43 +141,11 @@ in
   # exit_code、detect-drift と同じ考え方、#442): herdr 未起動・gh 未認証・
   # GitHub リポの workspace 無しは恒久状態になり得るので 0(stderr に 1 行)、
   # GraphQL・報告の失敗は 1。後者は一過性で、次の成功で failed が消える。
-  systemd.user.services.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Report each Herdr workspace's open GitHub issue count";
-    Service = {
-      Type = "oneshot";
-      ExecStart = issueCountsPath;
-      Environment = "PATH=${issueCountsServicePath}";
-      # oneshot の既定 TimeoutStartSec は無限。gh がネットワークで固まっても
-      # 次の周期を塞がないよう上限を置く。
-      TimeoutStartSec = "2min";
-    };
-  };
-
-  # Persistent= は書かない — OnCalendar= にしか効かない死んだ宣言になる
-  # (drift.nix の #442 の教訓、systemd.timer(5))。
+  #
+  # Persistent= は書けない — OnCalendar= にしか効かない死んだ宣言になる(drift.nix の #442 の教訓、
+  # systemd.timer(5)。timerPair の schedule の形が拒む)。launchd の RunAtLoad が systemd の
+  # OnBootSec に相当する。
   dotfiles.pipeline.timerNodes.herdr-issue-counts = "herdr-issue-counts";
-  systemd.user.timers.herdr-issue-counts = lib.mkIf pkgs.stdenv.isLinux {
-    Unit.Description = "Refresh Herdr sidebar issue counts every 5 minutes";
-    Timer = {
-      OnBootSec = "1min";
-      OnUnitActiveSec = "5min";
-      AccuracySec = "30s";
-      Unit = "herdr-issue-counts.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  # launchd 版(ADR-0018)。RunAtLoad が systemd の OnBootSec に相当する。
-  # pipeline-map の対応付けは、上の systemd 側の dotfiles.pipeline.timerNodes.herdr-issue-counts が兼ねる。
-  launchd.agents.herdr-issue-counts = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [ issueCountsPath ];
-      StartInterval = 300;
-      RunAtLoad = true;
-      EnvironmentVariables.PATH = issueCountsServicePath;
-    };
-  };
 
   # herdr's config.toml is a real file with switch history behind it (a prior
   # -b backup can leave config.toml.backup sitting next to it), so it hits the
