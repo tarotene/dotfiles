@@ -37,8 +37,10 @@
 
 ## 維持する契約
 
-永続パス、環境変数、JSON 形式、記録 ID、ロック、承認記録、投稿マーカーを維持する。
-たとえば `esa-index/config.json`、`WORKTREE_FRESH_BASE_FETCH_TTL`、wrapup の state root、
+永続パス(skip ファイルの置き場所を含む)、JSON 形式、記録 ID、ロック、承認記録、投稿マーカーを維持する。
+環境変数は、hook の逃げ道を `agent_session::escape` の表に寄せたため、維持の対象から外した(ADR-1040 の 2026-11-09 の
+Amendment)。逃げ道でない環境変数は、変えるときに参照元を同じ変更で直す。
+たとえば `esa-index/config.json`、wrapup の state root、
 `<!-- codex-trial:ID -->`、`<!-- wrapup-retro -->` はそのまま使う。
 既存の directive 識別子 `esa-index` と gate-event 識別子 `pr-confirm-guard` も、実行名と分けて維持する。
 `agent-permissions` の旧 CLI は互換入口として残す。共有権限管理の撤去は
