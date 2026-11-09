@@ -22,9 +22,9 @@
 use agent_session::hook::jq_r_path;
 use agent_session::hook::ToolCall;
 use agent_session::Agent;
+use agent_session::{HookEvent, Reply};
 use command_inspection::command;
 use command_inspection::command::gh_command_at;
-use jq_json_compat::jqfmt::J;
 use process_control::command_exists;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
@@ -160,14 +160,8 @@ fn stage_changed(project: &Path, before: &[(String, String)]) -> Vec<String> {
 /// バイト列・末尾改行込み)。
 pub fn context_output(pr_number: &str, fix_out: &str, changed: &[String]) -> String {
     let msg = context_message(pr_number, fix_out, changed);
-    let v = J::obj(vec![(
-        "hookSpecificOutput",
-        J::obj(vec![
-            ("hookEventName", J::str("PostToolUse")),
-            ("additionalContext", J::str(msg)),
-        ]),
-    )]);
-    format!("{}\n", v.pretty())
+    // Claude と Codex は同じ形。描画は `Reply::render` が持つ。
+    Reply::context(msg).render(Agent::Claude, HookEvent::PostToolUse)
 }
 
 /// `$(...)` と同じく末尾の改行を落とす。

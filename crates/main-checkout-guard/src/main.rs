@@ -1,67 +1,43 @@
 //! main-checkout-guard — `pre`(PreToolUse)と `stop`(Stop)の 2 つのサブコマンド。
 //! `--agent claude|codex`(既定 claude)。判定なし・縮退はすべて無出力 exit 0。
 
-use agent_session::Agent;
-use agent_session::HookInput;
-use agent_session::Outcome;
-use agent_session::PermissionDecision;
+use agent_session::entry::{emit, enter, read_stdin, Call, Spec};
+use agent_session::{Agent, HookEvent, HookInput, Reply};
 use serde_json::{json, Value};
-use std::io::Read;
+use std::process::ExitCode;
 
-fn main() {
-    let mut agent = Agent::Claude;
-    let mut sub = None;
-    let mut args = std::env::args().skip(1);
-    while let Some(a) = args.next() {
-        let value = if a == "--agent" {
-            args.next()
-        } else {
-            a.strip_prefix("--agent=").map(str::to_string)
-        };
-        match value {
-            Some(v) => match v.parse::<Agent>() {
-                Ok(Agent::Copilot) | Err(_) => {
-                    // exit 2 は Claude/Codex で「ブロック」扱いになるので使わない。
-                    eprintln!("main-checkout-guard: --agent は claude|codex のみ: {v}");
-                    std::process::exit(1);
-                }
-                Ok(ag) => agent = ag,
-            },
-            None => sub = Some(a),
-        }
-    }
+const SPEC: Spec = Spec {
+    name: "main-checkout-guard",
+    agents: &[Agent::Claude, Agent::Codex],
+    event: Some(HookEvent::PreToolUse),
+};
 
-    let mut raw = String::new();
-    if std::io::stdin().read_to_string(&mut raw).is_err() {
-        return;
-    }
-    let Some(input) = HookInput::parse(&raw) else {
-        return;
+fn main() -> ExitCode {
+    // exit 2 は Claude/Codex で「ブロック」扱いになるので、引数の誤りは exit 1(entry が出す)。
+    let call = match enter(&SPEC) {
+        Ok(call) => call,
+        Err(code) => return code,
     };
-    match sub.as_deref() {
-        Some("pre") => pre(&input, agent),
-        Some("stop") => stop(&input, &raw),
+    let raw = read_stdin();
+    let Some(input) = HookInput::parse(&raw) else {
+        return ExitCode::SUCCESS;
+    };
+    match call.rest.first().map(String::as_str) {
+        Some("pre") => pre(&call, &raw, &input),
+        Some("stop") => {
+            stop(&input, &raw);
+            ExitCode::SUCCESS
+        }
         _ => {
             eprintln!("usage: main-checkout-guard [--agent claude|codex] pre|stop");
-            std::process::exit(1);
+            ExitCode::from(1)
         }
     }
 }
 
-fn pre(input: &HookInput, agent: Agent) {
-    match main_checkout_guard::pre_hook(agent, input) {
-        Some(Outcome::Deny(reason)) => PermissionDecision::deny(reason).emit(agent),
-        Some(Outcome::Ask(reason)) => PermissionDecision::ask(reason).emit(agent),
-        Some(Outcome::Allow(reason)) => PermissionDecision::allow(reason).emit(agent),
-        Some(Outcome::Context(text)) => println!(
-            "{}",
-            json!({"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "additionalContext": text,
-            }})
-        ),
-        None => {}
-    }
+fn pre(call: &Call, raw: &str, input: &HookInput) -> ExitCode {
+    let reply = Reply::from_outcome(main_checkout_guard::pre_hook(call.agent, input));
+    emit(&SPEC, call, raw, &reply)
 }
 
 fn stop(input: &HookInput, raw: &str) {
