@@ -1,6 +1,6 @@
 //! verdict-escalate — 判定レッジャー(`agent-verdicts/*.jsonl`、ADR-478)を
 //! セッション単位・fingerprint 単位に集約し、閾値を超えたら
-//! wrap-up inbox(`wrapup-stop-gate --add`)へ 1 行追記する。
+//! wrap-up inbox(`issue-inbox --add`)へ 1 行追記する。
 //!
 //! 起票そのものは行わない — 追記する行には常に `"go":"ask"` を付け、
 //! 実際の Issue 化は Stop の指示文経由で人間の明示的な GO を得てから
@@ -8,7 +8,7 @@
 //! 確定要件を、既存の wrap-up inbox 配管に最小差分で乗せる。
 //!
 //! どの失敗経路でも fail-open — 判定レッジャーが読めない・
-//! wrapup-stop-gate が見つからない等はすべて「今回は何もしない」で
+//! issue-inbox が見つからない等はすべて「今回は何もしない」で
 //! 縮退する(ADR-0005)。
 
 pub mod record;
@@ -232,18 +232,18 @@ pub fn stamp_ledger() -> Option<SessionLedger> {
     Some(SessionLedger::new(dir, "stamped"))
 }
 
-/// `wrapup-stop-gate` のパス。`${WRAPUP_STOP_GATE_BIN}` で上書き可能
-/// (テスト用 — 実配備では `~/.claude/hooks/wrapup-stop-gate`)。
-pub fn wrapup_stop_gate_bin() -> Option<PathBuf> {
-    if let Some(p) = non_empty_env("WRAPUP_STOP_GATE_BIN") {
+/// `issue-inbox` のパス。`${ISSUE_INBOX_BIN}` で上書き可能
+/// (テスト用 — 実配備では `~/.claude/hooks/issue-inbox`)。
+pub fn issue_inbox_bin() -> Option<PathBuf> {
+    if let Some(p) = non_empty_env("ISSUE_INBOX_BIN") {
         return Some(PathBuf::from(p));
     }
-    Some(PathBuf::from(non_empty_env("HOME")?).join(".claude/hooks/wrapup-stop-gate"))
+    Some(PathBuf::from(non_empty_env("HOME")?).join(".claude/hooks/issue-inbox"))
 }
 
 /// `session_id` の判定レッジャーを集約し、閾値を超えた未 stamp の
 /// fingerprint を `inbox` へ追記して stamp する。追記に成功した件数を返す。
-/// 前提(レッジャー dir・stamp 台帳・`wrapup-stop-gate`)のいずれかが
+/// 前提(レッジャー dir・stamp 台帳・`issue-inbox`)のいずれかが
 /// 揃わなければ何もせず `0` を返す(fail-open)。
 pub fn run(session_id: &str, inbox: &Path) -> usize {
     let Some(dir) = ledger_dir() else {
@@ -257,7 +257,7 @@ pub fn run(session_id: &str, inbox: &Path) -> usize {
     let Some(stamp) = stamp_ledger() else {
         return 0;
     };
-    let Some(bin) = wrapup_stop_gate_bin() else {
+    let Some(bin) = issue_inbox_bin() else {
         return 0;
     };
     let now = now_iso8601();

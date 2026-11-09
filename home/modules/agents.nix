@@ -2150,8 +2150,9 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     "copilot-plan-review"
     # wrap-up inbox の旧入口 2 本(互換入口。正準は session-wrapup start|stop)。どちらも
     # crates/wrapup-stop-gate の bin で、同じ実装(session-wrapup と issue-inbox)へ転送する。
-    # 適用前の設定を持つホスト・継続中のセッションの hook と、promotion-detect の
-    # `wrapup-stop-gate --add` が、このパスを使う。削除条件は docs/agents/tooling-migration.md の
+    # 適用前の設定を持つホスト・継続中のセッションの hook が、このパスを使う
+    # (verdict-escalate と promotion-detect は、正本の issue-inbox を呼ぶように付け替えた)。
+    # 削除条件は docs/agents/tooling-migration.md の
     # 「旧入口の削除条件」。指示文に埋める自身のパスは argv[0] 由来(store path ではなくこの安定パス)。
     "wrapup-stop-gate"
     "wrapup-session-start"
