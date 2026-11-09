@@ -1,13 +1,21 @@
 [
  [
-  "codex-hooks",
-  "PreToolUse",
-  "Bash",
-  "guard-command",
-  "10",
-  "SessionStart",
-  "startup|resume",
-  "context-command",
-  "30"
+  "codex-hooks-spec",
+  {
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash",
+     "command": "guard-command",
+     "timeout": 10
+    },
+    {
+     "event": "SessionStart",
+     "matcher": "startup|resume",
+     "command": "context-command",
+     "timeout": 30
+    }
+   ]
+  }
  ]
 ]

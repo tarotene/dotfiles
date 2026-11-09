@@ -15,7 +15,6 @@ home-manager は activation のたびに、**宣言したものだけ**をこれ
 | `claude-mcp-servers` | `~/.claude.json` の `.mcpServers` | `dotfiles.claude.mcpServers` の JSON |
 | `codex-hooks-spec` | `~/.codex/hooks.json` | spec(`codexHookDeclarations` + 退役の一覧 + `state`) |
 | `copilot-hooks-spec` | `~/.copilot/settings.json` | spec(`copilotHookDeclarations` + 退役の一覧 + `state`) |
-| `codex-hooks` / `copilot-hooks` | 同上 | argv(`--retire <event> <command>`… `--register` `<event> [<matcher>] <command> <timeout>`…)。nix は呼ばない。テストが、入れ子の形と平らな形の振る舞いを駆動するために使う |
 
 ## hook は宣言を正とする
 

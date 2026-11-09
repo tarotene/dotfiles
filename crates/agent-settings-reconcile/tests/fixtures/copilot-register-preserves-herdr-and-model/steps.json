@@ -1,17 +1,29 @@
 [
  [
-  "copilot-hooks",
-  "sessionStart",
-  "report-cmd",
-  "10",
-  "userPromptSubmitted",
-  "report-cmd",
-  "10",
-  "agentStop",
-  "report-cmd",
-  "10",
-  "sessionEnd",
-  "clear-cmd",
-  "10"
+  "copilot-hooks-spec",
+  {
+   "register": [
+    {
+     "event": "sessionStart",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "userPromptSubmitted",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "agentStop",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "sessionEnd",
+     "command": "clear-cmd",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]

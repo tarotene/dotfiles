@@ -15,8 +15,6 @@
 //! agent-settings-reconcile claude-statusline  <settings.json> <spec-json>
 //! agent-settings-reconcile claude-mcp-servers <claude.json>   <servers-json>
 //! agent-settings-reconcile codex-config       <config.toml>   <spec-json>
-//! agent-settings-reconcile codex-hooks  <hooks.json>     [--retire <event> <command>]... [--register] [<event> <matcher> <command> <timeout>]...
-//! agent-settings-reconcile copilot-hooks <settings.json>  [--retire <event> <command>]... [--register] [<event> <command> <timeoutSec>]...
 //! ```
 //!
 //! spec の JSON スキーマは `hooks::HooksSpec` / `settings::PermissionsSpec` /
@@ -30,7 +28,7 @@ pub mod json;
 pub mod managed;
 pub mod settings;
 
-use hooks::{Flavor, HooksSpec, Register, Retire};
+use hooks::{Flavor, HooksSpec};
 use json::J;
 use std::path::Path;
 
@@ -63,9 +61,7 @@ usage: agent-settings-reconcile <subcommand> <file> ...
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
   codex-config <config.toml> <spec-json>
-  codex-permissions <config.toml> <{settings: object, mcp_allow: array}>
-  codex-hooks <hooks.json> [--retire <event> <command>]... [--register] <event> <matcher> <command> <timeout> [...]
-  copilot-hooks <settings.json> [--retire <event> <command>]... [--register] <event> <command> <timeoutSec> [...]";
+  codex-permissions <config.toml> <{settings: object, mcp_allow: array}>";
 
 pub fn run(args: &[String]) -> Result<(), Failure> {
     let Some(sub) = args.first() else {
@@ -88,8 +84,6 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
                 codex_config::apply(Path::new(file), spec).map_err(fail)
             }
         }
-        "codex-hooks" => argv_hooks(rest, Flavor::Nested),
-        "copilot-hooks" => argv_hooks(rest, Flavor::Flat),
         _ => Err(usage(USAGE)),
     }
 }
@@ -173,84 +167,5 @@ fn mcp_servers(rest: &[String]) -> Result<(), Failure> {
             eprintln!("agent-settings-reconcile: 宣言外の MCP サーバーを削除します: {name}");
         }
         Ok(())
-    })
-}
-
-/// codex-hooks / copilot-hooks の旧 bash と同じ argv 形式。
-/// `<file> [--retire <event> <command>]... [--status-message <text>] [--register] <tuples>...`。
-/// `--status-message` は codex-hooks のみで、この呼び出しで登録するすべての hook の
-/// 表示名(`statusMessage`)にする。
-/// retire は pair ごとに `--retire` トークンを付ける(複数 pair の前に 1 つだけ
-/// 置く形は、後続の引数を 1 つずつずらして register を黙って no-op にした
-/// 実害があった、#576)。tuple の個数が割り切れない場合は usage エラー(2)。
-fn argv_hooks(rest: &[String], flavor: Flavor) -> Result<(), Failure> {
-    let width = if flavor == Flavor::Nested { 4 } else { 3 };
-    let name = if flavor == Flavor::Nested {
-        "codex-hooks"
-    } else {
-        "copilot-hooks"
-    };
-    // 旧 bash の入口判定: `--retire` で始まるか、1 組以上の tuple が割り切れること。
-    let n = rest.len();
-    if !(n >= 1
-        && (rest.get(1).map(String::as_str) == Some("--retire")
-            || (n > width && (n - 1).is_multiple_of(width))))
-    {
-        return Err(usage(USAGE));
-    }
-    let file = &rest[0];
-    let mut a = &rest[1..];
-    let mut spec = HooksSpec::default();
-    while a.first().map(String::as_str) == Some("--retire") {
-        if a.len() < 3 {
-            return Err(usage(format!(
-                "{name}: --retire requires an <event> <command> pair"
-            )));
-        }
-        spec.retire.push(Retire {
-            event: a[1].clone(),
-            command: a[2].clone(),
-        });
-        a = &a[3..];
-    }
-    let mut status_message = None;
-    if a.first().map(String::as_str) == Some("--status-message") {
-        if flavor != Flavor::Nested || a.len() < 2 {
-            return Err(usage(format!(
-                "{name}: --status-message は codex-hooks で <text> を 1 つ取る"
-            )));
-        }
-        status_message = Some(a[1].clone());
-        a = &a[2..];
-    }
-    if a.first().map(String::as_str) == Some("--register") {
-        a = &a[1..];
-    }
-    if !a.is_empty() && !a.len().is_multiple_of(width) {
-        return Err(usage(format!(
-            "{name}: register tuples must come in groups of {width}, got {} leftover arg(s)",
-            a.len()
-        )));
-    }
-    for t in a.chunks(width) {
-        let (matcher, command, timeout) = if flavor == Flavor::Nested {
-            (Some(t[1].clone()), t[2].clone(), &t[3])
-        } else {
-            (None, t[1].clone(), &t[2])
-        };
-        let timeout: serde_json::Number = timeout
-            .parse()
-            .map_err(|_| usage(format!("{name}: timeout は数値: {timeout}")))?;
-        spec.register.push(Register {
-            event: t[0].clone(),
-            matcher,
-            command,
-            timeout: Some(timeout),
-            if_rule: None,
-            status_message: status_message.clone(),
-        });
-    }
-    edit(Path::new(file), |root| {
-        hooks::apply(root, flavor, &spec, None).map(|_| ())
     })
 }

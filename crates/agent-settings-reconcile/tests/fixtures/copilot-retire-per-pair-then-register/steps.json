@@ -1,15 +1,24 @@
 [
  [
-  "copilot-hooks",
-  "--retire",
-  "userPromptSubmitted",
-  "report-cmd",
-  "--retire",
-  "sessionStart",
-  "new-report-cmd",
-  "--register",
-  "userPromptSubmitted",
-  "final-cmd",
-  "10"
+  "copilot-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "userPromptSubmitted",
+     "command": "report-cmd"
+    },
+    {
+     "event": "sessionStart",
+     "command": "new-report-cmd"
+    }
+   ],
+   "register": [
+    {
+     "event": "userPromptSubmitted",
+     "command": "final-cmd",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]

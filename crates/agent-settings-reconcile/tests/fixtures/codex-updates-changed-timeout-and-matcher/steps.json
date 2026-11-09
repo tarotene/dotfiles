@@ -1,9 +1,15 @@
 [
  [
-  "codex-hooks",
-  "PreToolUse",
-  "Bash|mcp__.*",
-  "guard",
-  "20"
+  "codex-hooks-spec",
+  {
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash|mcp__.*",
+     "command": "guard",
+     "timeout": 20
+    }
+   ]
+  }
  ]
 ]

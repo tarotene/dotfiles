@@ -105,60 +105,7 @@ fn strs(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
-// --- bash selftest の arity エラー(usage = exit 2、黙って no-op にしない) ---
-
-#[test]
-fn codex_leftover_args_not_multiple_of_four_is_usage_error() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(
-        &strs(&["codex-hooks", "SessionStart", "", "only-three-args"]),
-        &f,
-    );
-    assert_eq!(out.status.code(), Some(2));
-    assert_eq!(std::fs::read_to_string(&f).unwrap(), "{}\n");
-}
-
-#[test]
-fn copilot_leftover_args_not_multiple_of_three_is_usage_error() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(
-        &strs(&["copilot-hooks", "sessionStart", "only-two-args"]),
-        &f,
-    );
-    assert_eq!(out.status.code(), Some(2));
-    assert_eq!(std::fs::read_to_string(&f).unwrap(), "{}\n");
-}
-
-#[test]
-fn retire_without_pair_is_usage_error() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(&strs(&["codex-hooks", "--retire", "PreToolUse"]), &f);
-    assert_eq!(out.status.code(), Some(2));
-}
-
-// #576: 複数 pair の前に `--retire` を 1 つだけ置く形は usage エラー(以前は後続の
-// 引数が 1 つずつずれて register が黙って no-op になった)。
-#[test]
-fn bare_retire_pairs_after_single_retire_token_is_usage_error() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(
-        &strs(&[
-            "codex-hooks",
-            "--retire",
-            "Stop",
-            "a",
-            "Stop",
-            "b",
-            "--register",
-            "Stop",
-            "",
-            "c",
-            "10",
-        ]),
-        &f,
-    );
-    assert_eq!(out.status.code(), Some(2));
-}
+// --- usage エラー(exit 2、黙って no-op にしない) ---
 
 #[test]
 fn bad_spec_json_is_usage_error_and_leaves_file_alone() {
@@ -220,7 +167,10 @@ fn missing_file_and_parent_dir_are_created_as_empty_object() {
     let d = tempfile::tempdir().unwrap();
     let f = d.path().join("nested/dir/hooks.json");
     let out = run(
-        &strs(&["codex-hooks", "--retire", "Stop", "x", "--register"]),
+        &strs(&[
+            "codex-hooks-spec",
+            r#"{"retire":[{"event":"Stop","command":"x"}]}"#,
+        ]),
         &f,
     );
     assert!(out.status.success());
@@ -301,71 +251,6 @@ fn declared_status_message_names_the_handler_and_undeclared_one_is_kept() {
         read_json(&f)["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
         "gate B"
     );
-}
-
-#[test]
-fn argv_status_message_names_every_registered_tuple() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(
-        &strs(&[
-            "codex-hooks",
-            "--retire",
-            "Stop",
-            "old",
-            "--status-message",
-            "metadata",
-            "--register",
-            "SessionStart",
-            "",
-            "cmd1",
-            "10",
-            "Stop",
-            "",
-            "cmd2",
-            "10",
-        ]),
-        &f,
-    );
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let v = read_json(&f);
-    assert_eq!(
-        v["hooks"]["SessionStart"][0]["hooks"][0]["statusMessage"],
-        "metadata"
-    );
-    assert_eq!(
-        v["hooks"]["Stop"][0]["hooks"][0]["statusMessage"],
-        "metadata"
-    );
-}
-
-#[test]
-fn status_message_flag_without_a_value_or_for_copilot_is_usage_error() {
-    let (_d, f) = tmp_file(Some("{}\n"));
-    let out = run(
-        &strs(&["codex-hooks", "--retire", "Stop", "old", "--status-message"]),
-        &f,
-    );
-    assert_eq!(out.status.code(), Some(2));
-    let out = run(
-        &strs(&[
-            "copilot-hooks",
-            "--retire",
-            "Stop",
-            "old",
-            "--status-message",
-            "x",
-            "--register",
-            "Stop",
-            "cmd",
-            "10",
-        ]),
-        &f,
-    );
-    assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]

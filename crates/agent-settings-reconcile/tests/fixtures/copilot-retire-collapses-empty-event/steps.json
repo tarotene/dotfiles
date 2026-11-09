@@ -1,19 +1,31 @@
 [
  [
-  "copilot-hooks",
-  "--retire",
-  "sessionEnd",
-  "clear-cmd",
-  "--register"
+  "copilot-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "sessionEnd",
+     "command": "clear-cmd"
+    }
+   ]
+  }
  ],
  [
-  "copilot-hooks",
-  "--retire",
-  "agentStop",
-  "report-cmd",
-  "--register",
-  "sessionStart",
-  "new-report-cmd",
-  "10"
+  "copilot-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "agentStop",
+     "command": "report-cmd"
+    }
+   ],
+   "register": [
+    {
+     "event": "sessionStart",
+     "command": "new-report-cmd",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]
