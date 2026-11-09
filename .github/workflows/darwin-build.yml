@@ -13,7 +13,7 @@ name: Darwin build
 # pipeline-node: darwin-build
 on:
   push:
-    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+    branches: [ main ]
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
@@ -30,8 +30,6 @@ jobs:
       contents: read
       actions: write
       pull-requests: read
-    outputs:
-      build_host: ${{ steps.stack-position.outputs.build_host }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
