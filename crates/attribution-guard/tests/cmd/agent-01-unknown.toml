@@ -1,0 +1,10 @@
+# `--agent` は厳密に解析する(agent_session::entry): 未知の値は、標準エラーに理由を出して exit 1。
+# 従来は黙って claude の形に倒れていた(タイプミスの登録が、検査を素通りにする経路だった)。
+bin.name = "attribution-guard"
+args = ["--agent", "bogus"]
+stdin = ""
+status.code = 1
+stdout = ""
+stderr = """
+attribution-guard: --agent は claude|codex|copilot のみ: bogus
+"""

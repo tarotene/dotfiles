@@ -1,0 +1,9 @@
+# `--agent` に値が無いときも exit 1(終了コード 2 は Claude Code で「止める」の意味なので使わない)。
+bin.name = "attribution-guard"
+args = ["--check", "x", "--agent"]
+stdin = ""
+status.code = 1
+stdout = ""
+stderr = """
+attribution-guard: --agent に値が無い(claude|codex|copilot)
+"""

@@ -5,28 +5,36 @@
 //! `source` する per-agent adapter」(config/{codex,copilot}/hooks/
 //! attribution-guard.sh)の代わりに、`--agent <claude|codex|copilot>` で
 //! 入力の形・フッター文言・出力の形を切り替える。省略時は `claude`。
+//! 入口(引数・標準入力・出力)は `agent_session::entry` が持つ。
 //!
 //! 使い方:
 //!   hook として: stdin JSON(PreToolUse)
 //!   手動 e2e:   attribution-guard [--agent <a>] --check '<コマンド文字列>'
 //!               deny なら `deny: <理由>` を出して exit 1、通すなら `pass`
 //!
-//! 縮退(ADR-0005 の binary-existence gating に倣う): stdin が読めない・
-//! 不正 JSON なら何も出さず exit 0。判定できない場合は断定に変えず素通す。
+//! 縮退(ADR-0005 の binary-existence gating に倣う): 不正 JSON なら何も出さず exit 0。
+//! 判定できない場合は断定に変えず素通す。
 
-use agent_session::hook::agent_from_args;
-use agent_session::hook::deny_output;
+use agent_session::entry::{emit, enter, read_stdin, Spec};
+use agent_session::{Agent, HookEvent, Reply};
 use attribution_guard::Attribution;
-use std::io::Read;
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let agent = agent_from_args(&args);
+const SPEC: Spec = Spec {
+    name: "attribution-guard",
+    agents: &[Agent::Claude, Agent::Codex, Agent::Copilot],
+    event: Some(HookEvent::PreToolUse),
+};
 
-    if let Some(pos) = args.iter().position(|a| a == "--check") {
-        let cmd = args.get(pos + 1).map(String::as_str).unwrap_or("");
-        return match Attribution::for_agent(agent).decide(cmd) {
+fn main() -> ExitCode {
+    let call = match enter(&SPEC) {
+        Ok(call) => call,
+        Err(code) => return code,
+    };
+
+    if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
+        let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
+        return match Attribution::for_agent(call.agent).decide(cmd) {
             Some(reason) => {
                 println!("deny: {reason}");
                 ExitCode::from(1)
@@ -38,12 +46,7 @@ fn main() -> ExitCode {
         };
     }
 
-    let mut buf = String::new();
-    if std::io::stdin().read_to_string(&mut buf).is_err() {
-        return ExitCode::SUCCESS;
-    }
-    if let Some(agent_session::Outcome::Deny(reason)) = attribution_guard::hook(agent, &buf) {
-        print!("{}", deny_output(agent, &reason));
-    }
-    ExitCode::SUCCESS
+    let raw = read_stdin();
+    let reply = Reply::from_outcome(attribution_guard::hook(call.agent, &raw));
+    emit(&SPEC, &call, &raw, &reply)
 }
