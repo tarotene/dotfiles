@@ -4,814 +4,260 @@
 
 What runs automatically, when, and on which stack: see the [pipeline map](pipeline-map.md).
 
-## Operations
+## この索引について
 
-- [`agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex の native 権限設定と旧共有管理の撤去手順。
-- [`codex-network-exceptions.md`](agents/codex-network-exceptions.md) — Codex の通信先と Unix socket の制限。
-- [`model-equivalence.md`](model-equivalence.md) — (モデル × エフォート) の乗り換え先を、公開ベンチと履歴の内訳から役ごとに判定する(同等性検定)。
-- [`codex-plan.md`](codex-plan.md) — opt-in native Codex launcher that pairs
-  configurable Plan/Auto models with cost/context comparisons and local usage estimates,
-  preserving native permissions and history.
-- [`operations.md`](operations.md) — the canonical apply (`hms`), routine
-  flake update, and the tool-layer decision flow for new tools.
-- [`local-state-backup.md`](local-state-backup.md) — local state backup, verification and recovery.
-- [`pipeline-map.md`](pipeline-map.md) — the map of every mechanism that
-  fires without being typed (hooks, timers, workflows, git hooks): when it
-  runs, what it hands to the next one, and the stack it runs on, with one
-  diagram per pipeline. Generated from the repository-root manifest.
-- [`kiriban.md`](kiriban.md) — celebrate an Issue / PR number that lands on a
-  milestone (multiples of 100, 3+ digit repdigits, ±1 of a multiple of 1000):
-  comment + `kiriban` label, and a request issue for 1000-multiples and
-  repdigits. One rule and wording source (`crates/kiriban`), a per-repository
-  workflow from the governance templates.
-- [`setup.md`](setup.md) — step-by-step host setup guide (moved from root
-  `SETUP.md`, ADR-0016 root-document allowlist).
-- [`setup-macos.md`](setup-macos.md) — macOS (darwin) host setup guide:
-  erase → update → bootstrap → signing-subkey provisioning (ADR-0018 /
-  ADR-0019).
-- [`cutover-runbook.md`](cutover-runbook.md) — per-host provisioning /
-  migration procedure, including rollback.
-- [`git-sync.md`](git-sync.md) — machine-wide git config + hooks that
-  guard herdr's parallel-worktree workflow (stale base, protected-branch
-  commits, stale `[gone]` branches).
-- [`worktree-lifecycle.md`](worktree-lifecycle.md) — reject unmanaged worktree
-  creation, detect stale registrations, and notify through Herdr.
-- [`webcam-osmo-pocket-3.md`](webcam-osmo-pocket-3.md) — Osmo Pocket 3 を
-  vega の常用 Web カメラ + マイクにする: 機器側・アプリ側の手順、既定マイクを
-  WirePlumber で固定する仕組み、実測値と未確認事項。
-- [`webcam-builtin-ipu7.md`](webcam-builtin-ipu7.md) — arcturus の内蔵カメラ
-  (Intel IPU7)を Web カメラにする: libcamera + v4l2loopback の仕組み、
-  使い方、`v4l2-relayd` の落とし穴、実測値と未確認事項。
-- [`github-audit.md`](github-audit.md) — read-only cross-repository GitHub
-  audit unified across six domains (rulesets #130 / charters / naming
-  ADR-0014 / settings / renovate — ADR-0015 / titles — ADR-0031): why it
-  lives here instead of a dedicated inventory repo, why each domain judges
-  the way it does (rule-type union, literal schema match, naming-class
-  pattern, …), and why it's one command instead of six sibling scripts.
-- [`repo-lifecycle.md`](repo-lifecycle.md) — visibility/license 方針・
-  Maintain/Archive/Delete triage 基準・deprecate-then-archive チェックリスト・
-  テーマ monorepo への consolidation(snapshot+PROVENANCE)手順。
-  別の私設ポートフォリオ管理リポジトリ(PRIVATE)から正本を移管
-  (ADR-0023)。`github-audit` が扱う drift 検査とは別層(存続判定)。
-- [`agent-settings-reconcile.md`](agents/agent-settings-reconcile.md) — `settings.json` /
-  `hooks.json` / `~/.claude.json` への宣言 reconcile(hook・permissions・
-  statusLine・MCP server)の Rust 実装(`crates/agent-settings-reconcile`、#414)。
-- [`update-own-tools.md`](update-own-tools.md) — 自作 pre-release CLI を
-  ホストローカルのレジストリに従って `origin/main` からビルドする
-  `update-own-tools` のスキーマ・動作・退出手順(ADR-0025、#276)。
-- [`rust-migration.md`](rust-migration.md) — hook/CLI の bash → Rust 移植の
-  記録(ADR-0024、#389): 移行は完了(2026-10-24)。workspace 構成、かつての
-  fixture 抽出 → bash で緑 → Rust で緑 → bash 削除の 4 段、Parallel Run を
-  採らなかった理由、新しい道具の既定が Rust であることの執行。
-- [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールが
-  自前クラウドプロジェクト(GCP 等)を要求する場面向けの、プロジェクト名・
-  OAuth 同意画面・公開ステータス・OAuth クライアントの決定論的な導出規則。
-- [`cloud-artifacts-and-runbooks.md`](cloud-artifacts-and-runbooks.md) —
-  GCP 以外のクラウド成果物(Calendar・Drive 等)の命名規則と、人手を要する
-  手順書(runbook)の書式。`personal-cloud-projects.md` と同じ決定論的な
-  導出規則の型を一般化したもの(#505)。
-- [`github-app-snapshot.md`](github-app-snapshot.md) — GitHub App の登録・
-  install 先・secret 配布(3 層)のうち、秘密(PEM)を
-  読み書きする唯一のコマンド `github-app-snapshot`(`crates/github-app-snapshot`)のセットアップ・
-  Manifest フローでの新規 App 作成・secret 配布・ローテーション手順
-  (ADR-590)。
+文書の一覧は、各文書の H1(`# 題名`)から [`docs-index`](agents/docs-index.md) が生成する。1 行は、文書へのリンクと H1 だけで、
+手で書いた要約は持たない(要約は文書の側で腐るので、見出しを正本にする)。文書を足す、題名を変える、置き場を移したら、
+`cargo run -p docs-index -- render` で書き直す。書き直し忘れは、`cargo test --workspace`(CI の `Rust workspace`)が
+`crates/docs-index/tests/tree.rs` で落とす。生成の外の文章は、手で書いたまま残る。
 
-## Architecture Decision Records ([`adr/`](adr/))
+## Architecture Decision Records
 
-- [ADR-0001](adr/0001-home-manager-as-source-of-truth.md) — home-manager is
-  the source of truth; apt + per-project runtimes are escape hatches.
-- [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime
-  consolidation + hybrid config translation.
-- [ADR-0003](adr/0003-secrets-and-identity.md) — secrets & identity
-  (YubiKey-rooted key model). See the Amendment for the deployed model; the
-  runtime-SOPS Decision item is retired by ADR-0010.
-- [ADR-0004](adr/0004-repo-identity-and-relocation.md) — repo identity &
-  relocation.
-- [ADR-0005](adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension
-  init gates on binary existence, not auth.
-- [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI apps carry their own
-  GL stack (nixGL); the system graphics stack stays apt.
+決定の記録は [`adr/`](adr/) に置く。ADR の番号は、それを出す PR の番号に合わせる(起草中は仮番号 `0000`、
+[`adr-numbering.md`](agents/adr-numbering.md))。一覧は番号の昇順で、仮番号は最後に並ぶ。
+
+<!-- BEGIN GENERATED: docs-index adr -->
+- [ADR-0001](adr/0001-home-manager-as-source-of-truth.md) — home-manager is the source of truth; apt and per-project runtimes are escape hatches
+- [ADR-0002](adr/0002-runtimes-and-hybrid-translation.md) — runtime consolidation + hybrid config translation
+- [ADR-0003](adr/0003-secrets-and-identity.md) — secrets & identity: YubiKey-rooted, runtime-decrypted SOPS
+- [ADR-0004](adr/0004-repo-identity-and-relocation.md) — repo identity & relocation to public `tarotene/dotfiles`
+- [ADR-0005](adr/0005-shell-extension-init-no-auth-gate.md) — shell-extension init gates on binary existence, never on auth
+- [ADR-0006](adr/0006-gl-for-nix-gui-apps.md) — nix GUI アプリは自前の GL スタックを抱える
 - [ADR-0007](adr/0007-naming-and-layout-conventions.md) — 命名・配置規約
-  (拡張子・shebang・hook 語彙・`config/claude/hooks/` の純度・docs 対応原則・
-  環境変数接尾辞・`scripts/` の位置づけ・モジュール分割の軸)。
-- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択
-  規約: 新しい判断・調査を ADR / `docs/claude/*.md` / Investigation record の
-  どれに書くか、腐る事実と腐らない決定を分離する理由。
-- [ADR-0009](adr/0009-publish-guard-upstream-split.md) — 公開面ガード
-  (public-publish-guard)を別リポジトリ `tarotene/publish-guard`(2026-09-24
-  に `tarotene/bleep` へ改名)へ切り出し、flake input で逆消費する決定。
-  「No semver releases」と plugin 配布の commit-SHA/tag pin が両立しない
-  ことが理由。
-- [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム
-  復号チャネル(シェル起動時の自動シークレットロード)の全撤去。棚卸しで
-  全消費者(MCP-gdrive・brave-search・Falcon Sensor 含む)が代替済みまたは
-  消滅済みと判明したため。ADR-0003 の該当 Decision 項目を supersede。
-- [ADR-0011](adr/0011-local-activity-log-capture.md) — ローカル活動ログの
-  採取(atuin + Claude Code ターンログ)。オフライン専用の atuin
-  history.db と `agent-events.jsonl` の 2 採取点、出力パス・JSON 行の形式
-  という消費側(別リポジトリ)向けの契約を固定する。
-- [ADR-0012](adr/0012-precedent-grounding-over-prompted-adversarial-review.md)
-  — プロンプトでの「敵対的レビュー」「文献調査」の都度指示を、常設
-  システムプロンプトへの抽象指示にはせず、著者が先行例へ接地し文脈を
-  切った批評者(既存 copilot-plan-review の lens A)が監査する形に
-  機構化する決定。文献調査(自己批評の非収束性)を根拠に、抽象指示への
-  変換を明示的に棄却した。
-- [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリの README
-  に machine-checkable な charter(目的1文 = description のミラー /
-  `## Scope` / `## Issue litmus` / topics)を強制する決定。作成時
-  (`repo-charter` スキル)と事後(`github-audit charters`)の二点で強制し、
-  Issue 起票時の意味照合は第 2 弾に送る。README スキーマ自体は
-  ADR-0016 が、Issue litmus 項は ADR-0017 が部分 supersede。
-- [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス
-  体系(codename / descriptive / pj / site の 4 種)を定め、正本を GitHub
-  topics に置く決定。形式一致は機械判定、クラス帰属の意味判断は
-  `github-audit-triage` 経由で人間が裁定する。Decision 1(4 クラス体系)は
-  ADR-0026 が supersede。
-- [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を
-  `github-audit` 統合 CLI に再編し、決定論ノード(監査)と LLM ノード
-  (`github-audit-triage`)を分離した判断ループとして定義する決定。
-  charter-sweep(#180)の「merge まで自動」を廃止し、完了定義を PR 作成
-  までに固定する。
-- [ADR-0016](adr/0016-repository-document-canon.md) — README 全節固定
-  スキーマ・Issue litmus の CONTRIBUTING.md 移設・ルート文書 allowlist・
-  markdown 単位の言語混在禁止・人間文書/AI 文書の完全分離
-  (AGENTS.md 正本化・CLAUDE.md ルータ化・skills の `.agents/skills/`
-  ルーティング)を、一次情報(standard-readme・GitHub 公式・Art of
-  README・Google style guide 等)に接地して定める決定。ADR-0013 の
-  README スキーマと AGENTS.md 扱いを部分 supersede。
-- [ADR-0017](adr/0017-contributing-schema.md) — CONTRIBUTING.md 自体の節構成
-  を固定スキーマ(`## Issues` の judging question + Accepted/Rejected 例・
-  `## Pull requests`・`## Expectations`)にし、自作語彙「Issue litmus」を
-  GitHub 自身の "Issues" 語彙へ廃止する決定。GitHub 公式・Open Source
-  Guides・nayafia/contributing-template に接地。ADR-0013 Decision 1 の
-  Issue litmus 項と ADR-0016 Decision 2 を部分 supersede。
-- [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — 最初の darwin
-  ホスト(altair)は standalone home-manager をそのまま拡張し、macOS
-  システム層を Homebrew Bundle(Brewfile)に委ねた決定。nix-darwin 不採用は
-  [ADR-1228](adr/1228-system-layer-declarations.md) が変更。Linux 専用モジュールは各モジュール内で isLinux/isDarwin
-  分岐する。
-- [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) —
-  新規ホストは恒星コードネームで命名し(役割・identity・世代を名前に
-  埋め込まない)、論理ホスト名はマーカーファイル優先・`hostname`
-  フォールバックで解決する決定。既存 3 ホストの改名は別 Issue。
-- [ADR-0020](adr/0020-generative-repo-governance-rules.md) — リポジトリ
-  統制(命名クラス・ruleset baseline)を、監査対象へ都度問い合わせる
-  分岐ロジックから、生成側が従うべき閉じた文法+語彙(codename-registry
-  等の TSV)へ反転する決定。
-- [ADR-0021](adr/0021-ruleset-review-layer-addin.md) — `github-audit` の
-  ruleset baseline をコア層(常に必須)とレビュー層(Copilot code review +
-  会話 resolve 必須、opt-in アドイン)の 2 層に分割する決定。フェーズ宣言
-  台帳ではなく存在検出方式を採用し、開発初期リポでレビュー往復を強制
-  しない。ADR-0015 の rulesets ドメイン baseline を部分 amend。
-- [ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md) — esa.io MCP サーバの
-  トークン供給を、供給元が壊れていた別の private リポジトリ(SOPS +
-  direnv、実質シークレット 1 個のための器)から、ホストローカルの素の GPG
-  暗号化ファイル + 専用 launcher + `~/.claude.json` への宣言的 merge へ
-  置き換える決定。その private リポジトリは archive。ADR-0010 の
-  「供給チャネルを都度選び直す」の初適用例。`sops` パッケージの削除は、
-  他の消費者が現役だったため Amendment(#451)で撤回した。
-- [ADR-0023](adr/0023-repo-lifecycle-governance.md) — リポジトリの
-  visibility/license 方針・Maintain/Archive/Delete triage 基準・
-  deprecate-then-archive チェックリスト・consolidation 手順を、別の私設
-  ポートフォリオ管理リポジトリ(PRIVATE)から dotfiles の
-  `docs/repo-lifecycle.md` へ正本化する決定。`github-audit`(drift 検査)
-  とは別層(存続判定)であることを明確化する。私設リポジトリは移設内容の
-  検証後に archive。
-- [ADR-0024](adr/0024-hook-cli-scripts-target-rust.md) — hook / CLI
-  スクリプト群(約 40 本・15,000 行)の実装技術を Rust とする決定。
-  bash 続投(writeShellApplication)は closure 固定は解けても保守性・
-  表現力の主因を解決せず、Deno + TypeScript は closure 固定手法
-  (deno2nix)がアーカイブ済みで must 制約未達のため不採用。PoC 実測で
-  Rust の起動 1.2ms(50ms 予算の 1/30 以下)・出力完全一致・
-  `cargo test` 移行を確認。一括移行はせず後続 Issue に段階分割する。
-- [ADR-0025](adr/0025-update-own-tools-local-registry.md) — 自作・
-  タグ付きリリース未達の pre-release CLI(実例: `tarotene/telepath`)の
-  導入を、ホストローカルレジストリファイルによる opt-in 方式で実現する
-  決定。dotfiles 側はスクリプトとスキーマのみ提供し、対象リポの名前は
-  git 管理外のホストローカル設定ファイルにのみ記録する。当初検討した
-  マーカーファイル opt-in 方式(対象リポ自身に痕跡を置く)は、開発中の
-  自作 OSS への不自然な露出になるため棄却。ADR-0001 への scoped
-  exception。
-- [ADR-0026](adr/0026-naming-lifecycle-axis-and-codename-split.md) —
-  命名クラス体系(ADR-0014)の改訂決定。`naming-codename` を「無意味な
-  恣意的ラベル」と「著者固有の命名形態論に基づく造語」の
-  `naming-coined` に分割し 5 クラス体制にする。加えて
-  `lifecycle-timeboxed` / `lifecycle-study` という `naming-*` と併用
-  できるライフサイクル軸を新設し、完了済み研究アーカイブが
-  `naming-descriptive` の受けに流れていた問題を解消する。ADR-0014
-  Decision 1 を supersede。
-- [ADR-0027](adr/0027-uncertainty-first-stacking.md) — セッション内の
-  複数 PR は依存関係を予測せず常に作成順の単一チェーンに積む決定
-  (uncertainty-first stacking)。ある private リポジトリで 1 セッション
-  約 10 PR を作った際、依存予測に基づく判定条件が外れて base 宣言と実体が
-  不整合になり(汚染 diff・orphan PR)、`docs/agents/stacked-pr.md` の
-  保留条項が発火した。離脱は閉じたタグ `Independent-PR:` のみとし、
-  作成時 PreToolUse hook(`stack-base-guard`)と完了時 Stop judgement
-  (`G_stack`)の両端で機械強制する。`stacked-pr` スキル §1 の判定条件を
-  「積むか否か」の判定としては supersede。
-- [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README
-  banner と第三者素材(repo ライセンスと異なる素材)の同梱規則を定める決定。
-  ADR-0016 の README 固定スキーマ・ルート文書 allowlist を部分的に拡張し、
-  画像アセットの置き場所・banner の位置・帰属注記の書式・素材の利用点数
-  管理を規定する。Amendment(2026-10-22)で banner を必須にし、位置だけを
-  監査(`readme-banner-missing`)で検出する。
-- [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH
-  の優先順位を ADR-0001 の*執行機構*として宣言下に置く決定。nix は
-  `/etc/profile.d/nix.sh` がシステムレベルで PATH に入れるため、
-  ユーザレベルの prepend は構造的に必ず nix を追い越す — COSMIC
-  ランチャーの Alacritty 重複を調べた結果、実は両エントリとも
-  `~/.profile` の `. "$HOME/.cargo/env"` が先頭に置いた cargo 版
-  0.15.1 を起動しており、宣言済みの 0.17.0-nixgl は一度も動いて
-  いなかった(同様の shadow は計 10 件 + `deno`)。順序を
-  `.local/bin` → nix → system → ad-hoc installer dirs に規定し、
-  ad-hoc インストーラの prepend を禁じ、`~/.profile` を home-manager
-  管理下(read-only store symlink)に取る。`.desktop` の `Exec=` も
-  store path に固定して二枚重ねにする。ADR-0001 の決定自体は変えない。
-- [ADR-0030](adr/0030-gas-clasp-basis-placement.md) — GAS/clasp 基盤の配置
-  決定。Google Apps Script を公式 CLI `clasp` で操作する基盤を導入し、GAS
-  コード自体の正本は各利用リポジトリに分散配置したまま、ツールのナレッジ
-  (セットアップ・ログイン・日常操作・規約)だけを `gas-clasp-ops` skill として
-  dotfiles に集約する。認証情報はホストローカルのまま home-manager 管理には
-  置かない。
-- [ADR-0031](adr/0031-pr-title-as-commit-message-contract.md) — PR タイトルを
-  commit-message 契約として機械強制する決定。squash-only 運用では PR タイトルが
-  `main` の commit subject になる唯一のテキストであり、non-conventional な
-  commit が混入する経路を client guard(PreToolUse deny)・server required
-  check(CI)・`github-audit titles` ドメイン(仕組みの存在検査)の三層で塞ぐ。
-  文法は Conventional Commits + Angular 慣行の 11 type 閉集合。
-- [ADR-0032](adr/0032-global-agent-instructions-canon.md) — グローバル agent
-  指示ファイルの正本を `config/agents/AGENTS.md`(agent 非依存の共有規範)
-  とし、`~/.agents/AGENTS.md`・`~/.codex/AGENTS.md`・
-  `~/.copilot/copilot-instructions.md` の 3 箇所に同一ソースをマウントする
-  決定。`~/.claude/CLAUDE.md` は `@~/.agents/AGENTS.md` を import する
-  router + Claude Code 固有の gate 配線に縮約する。ADR-0016 のリポジトリ
-  単位の AGENTS.md/CLAUDE.md 二層構造をグローバル階層に拡張したもの。
-- [ADR-0034](adr/0034-machine-state-wrapper-flake.md) — 私的な
-  machine-state 実値(実 bucket 名・GCP プロジェクト ID・PRIVATE リポ名等)
-  は、外側の private wrapper flake に置く決定。dotfiles は `lib.mkHome` を
-  export し、private wrapper flake がそれを呼んで自分の `homeConfigurations`
-  を再定義する — 依存の向きは常にこの1本(dotfiles は private リポを
-  flake input に取らない。`flake.lock` が input 名を平文で記録するため)。
-  所在は `hms` の `~/.config/dotfiles/private-hub` マーカー1個で間接参照
-  する。境界述語は「規則・スキーマは public、実値は private」。
-- [ADR-0033](adr/0033-nav-doc-no-materialisation.md) — 導線文書は実体を
-  複製しない決定(nav-doc no-materialisation)。ディレクトリ構成図・
-  コンテンツ一覧・他ファイルの中身の転記といった「実体が他所にある情報」の
-  複製を禁じ、参照(リンク・パス言及)に置き換える。ADR-0016 Decision 5 の
-  適用範囲を「導線文書同士の複製」から「導線文書が実体を複製すること」
-  全般へ拡張する。
-- [ADR-0035](adr/0035-selection-grounding.md) — 技術・仕組みの選択を 3 軸
-  (宣言的・単一正本・型付き/pin 固定 → 保守コスト最小 → 新しさ)の辞書式
-  順序に接地させる決定(technology-selection)。自己申告の「クリーンかつ
-  先進的」という基準は表層で、実際の決定はこの辞書式順序で説明でき、
-  「新しさ」は前 2 軸が同点のときのみ効く決定要因であることを、dotfiles と
-  件の private リポジトリの決定履歴の横断調査から導いた。
-- [ADR-380](adr/380-adr-number-by-pr.md) — ADR 番号をローカル連番でなく
-  導入 PR の番号にする決定。ADR-0020→0021・ADR-0033 二重の 2 度の採番衝突を
-  受け、連番という「分散システムに置かれた中央アロケータ」を無くす。
-  `n < 0100` は grandfathered 連番(重複のみ検査)、`n >= 0100` は導入 PR の
-  番号と一致必須。判定エンジン `scripts/adr-number-check` を単一ソースとし、
-  CI required check が呼ぶ。ADR-0008 を amend する。
-- [ADR-387](adr/387-wrapup-chores-adjudication-first.md) — `backlog-cleanup`
-  スキルを裁定前倒し型(adjudication-first)に反転する決定。確認の総数ではなく位置を
-  変え、triage フェーズで `AskUserQuestion` により裁定を尽くしたうえで
-  `ExitPlanMode` 以降は一切止まらない。除外は `Blocked-Upstream:` /
-  `Obsolete:` / `User-Excluded:` の閉じたタグのみとし、規模・工数を棄却理由
-  から外す。検査器は新設せず `plan-scope-gate` を再利用し、大物も裁定
-  対象にして選ばれたものは ADR-0027 の stacked PR の段として受ける。
-- [ADR-396](adr/396-decision-colocation.md) — 決定成果物(ADR/設計文書/
-  skill)の新規追加、または既存 ADR への `## Amendment` 追加に、その決定を
-  執行する実ファイルの同梱を要求する決定。「後続 Issue への実装分離」を
-  機械的に成立不能にする — repo 内の実測で ADR 27 本中 12 本が docs-only、
-  うち 2 本は追跡 Issue が一度も作られなかった。執行点として認めるパスは
-  「非 `.md` かつ `docs/` 配下でない」の 2 述語のみで、パス分類台帳を持た
-  ない。既存機構の無変更併記だけでは合格しない(ADR-387 を意図的に不合格
-  側に倒して検算)。判定エンジンは `crates/decision-colocation` の
-  `check::run_check`(CI required check + client guard が共有)。`gh pr create` 後に番号を
-  導入 PR の番号へ改番する(ADR-380)。
-- [ADR-436](adr/436-single-releaser-github-app.md) — releaser 用 GitHub
-  App(release-plz/release-please)を repo ごとでなく 1 個に集約する決定。
-  個人アカウントには account-level の Actions secret が存在しないため、
-  `RELEASER_APP_CLIENT_ID`/`RELEASER_APP_PRIVATE_KEY` の repo ごとのコピーだけは
-  還元できず、そこを `github-audit`(`crates/github-audit`)の `releaser` ドメインが検出
-  する。対象 repo を列挙する registry ファイルは持たない(ADR-0025 と同じ
-  理由)— 宣言の正本は release workflow ファイルの存在に還元する。
-- [ADR-457](adr/457-claude-native-install-source-of-truth.md) — Claude
-  Code 本体は nixpkgs の `claude-code` でなく native installer
-  (`~/.local/bin/claude`)を正本とする決定(ADR-0001 への scoped
-  exception、ADR-0025 と同型)。`claude-plan-model`(`crates/claude-plan-model`)がインストール
-  済みバイナリの model catalog を読むため、実体は 1 つでなければならない。
-  自動更新は宣言で OFF にし、更新は `claude update`(zsh 関数が
-  `claude-plan-model sync` を直後に実行)の 1 経路に絞る。
-- [ADR-468](adr/468-stack-aware-heavy-ci.md) — stacked PR の中間段では
-  `nix.yml` の重いジョブ(`rust workspace` / `build vega` / `build arcturus`
-  / `build altair`)を skip する gate job `stack-position` を追加する決定
-  (#419)。job-level `if:` の skip は `skipped` = 成功扱いで required check
-  を block しないが、workflow 単位の path filter skip は `Pending` のまま
-  block する非対称性(GitHub Docs)を根拠にする。required 宣言
-  (`rulesets/quality.json`、#420)を live に反映する運用も併記。Amendment
-  (2026-09-26)で第 2 の軸を追加: 変更 path が build/rust の入力に含まれない
-  PR は bottom 段でも skip する。Amendment(2026-09-27)で
-  `build vega`/`build arcturus` の required 昇格を撤回: matrix job は
-  skip 時に per-host 名を展開しないため required context が永久に
-  unreportable になる(`rust workspace` は単一 job なので対象外)。
-- [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) —
-  カフェ Wi-Fi 対策。メッシュ VPN(Tailscale、中長期で Headscale)+ Mullvad
-  出口ノード + ホスト firewall(Linux は ufw、darwin は ALF block-all)。
-  Obsidian の「今はクラウド、中長期でローカル」と同型の二段構え。
-- [ADR-478](adr/478-agent-verdict-ledger.md) — 自作ツール(bleep 等)の
-  PreToolUse deny/ask をローカルの判定レッジャー(`agent-verdicts/*.jsonl`)
-  に集約し、wrap-up inbox 経由で人間の明示的な GO を得てから開発元へ
-  Issue 起票できるようにする配管。判定を下したツール自身が記録し
-  (tarotene/bleep 側は別 PR)、`crates/verdict-escalate` がセッション単位・
-  fingerprint 単位に集約する。
-- [ADR-503](adr/503-rulesets-declaration-in-repo.md) —
-  required status check の正本を対象リポジトリ外のテンプレートから、
-  リポジトリ自身の `.github/rulesets/*.json` へ一本化する。apply 前に
-  context を実測 job 名と突合して拒否する検証を追加し、`gh api` での
-  直接書換は `crates/rulesets-write-guard` が deny する。
-- [ADR-519](adr/519-routines-declaration-in-repo.md) — Claude Code
-  routine(scheduled cloud agent)の設定・prompt の正本を、対象
-  リポジトリ自身の `.claude/routines/*.{json,md}` へ一本化する。
-- [ADR-528](adr/528-due-remind-timer.md) — 別の private リポジトリが
-  持つ平文 due-index の二キー契約だけを知る汎用 reader を
-  `crates/due-remind` として実装し、Herdr 通知の hourly timer から呼ぶ。
-- [ADR-544](adr/544-auto-prune-by-content-evidence.md) — worktree/branch
-  の無人削除の根拠を `[gone]` ではなく「内容保全の証拠」(C1: prunable
-  登録 / C2: default branch の祖先 / C3: closed・merged PR の head と
-  一致)の閉集合にする。`git audit-worktrees --evidence` が検出し、
-  `git prune-worktrees --auto` / `git prune-branches --auto` が
-  hourly timer から削除する(この ADR は導入 PR の番号に改番される予定)。
-- [ADR-543](adr/543-existing-means-and-deterministic-promotion.md)
-  — 「既存手段で足りないか」(Q1)と「決定論に置き換えられないか」(Q2)を
-  日々の開発フローに埋め込む決定。撤収コストと昇格コストの非対称性から、
-  Q1 は新しい道具・単位の誕生を発火点にした前倒し型、Q2 は規範違反の
-  再発・コードブロックの逐語反復といった安定の兆候で問う昇格型に分ける
-  (段1: `既存手段:` 語彙の新設と `plan-precedent-gate` への必須化)。
-- [ADR-568](adr/568-renovate-automerge-shared-preset.md) — Renovate の
-  自動マージ方針(非 major automerge・GitHub ネイティブ auto-merge・
-  minimumReleaseAge 3 日)を単一の共有 preset(`renovate/policy.json`)に
-  一本化し、Dependabot security updates を OFF にして修正 PR の経路を
-  Renovate の `vulnerabilityAlerts` へ一本化する。Self-host との比較と
-  発火条件も記録。
-- [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow
-  命名基準の統一。required check は集約 job `CI passed` + `PR title` に
-  固定して quality.json を単一正本化し(ADR-468 Amendment の先送りを
-  解消)、PR title 検査を reusable workflow から composite action へ
-  置換して `<caller>/<callee>` 連結名の不一致クラスを消す。ファイル名は
-  `.yml`・kebab-case・予約名2つのみ、`name:` は workflow/job とも必須・
-  sentence case。
-- [ADR-1005](adr/1005-ci-gate-job-criteria.md) — CI の gate job を
-  `ci.yml`(blocking)に入れる基準を、2 段(① 落ちたまま main に入ると main の
-  不変条件が壊れる、② flaky・外部依存・p75 10 分超なら外へ出す)で決め、
-  `ci-passed` の判定の形(`always()` と失敗判定 step)・gate job 0 個・
-  外の workflow の main での失敗を github-audit で検出し、言語別テンプレに
-  中間段 skip を入れる。ADR-591 D1 の配置の規則に、何を内に置くかを足す。
-- [ADR-961](adr/961-annotations-domain.md) — GitHub Actions の warning
-  (Node.js 20 の非推奨、キャッシュの空振り)を横断で拾う annotations
-  ドメインを github-audit に足す。明示指定でだけ走り、Rust 版にだけ置く。
-- [ADR-833](adr/833-archived-naming-not-applicable.md) — アーカイブ済みの
-  リポジトリには、naming の宣言の欠落(`class-undeclared`)を要求せず
-  `not-applicable` にする。アーカイブするとトピックを書き換えられず、
-  直す手段が状態の往復しか無いため。`lifecycle-*` の候補検出と、
-  2 クラス宣言・パターン不一致の検査は変えない。
-- [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスク(1 回で完結・
-  現地の作業が 2 時間以内・費用 3,000 円以内・取り消せない確定操作を含まない)は、
-  閉じたラベル `handoff:light` で宣言し、issue-index が owner 全体の検索で着手可能な
-  ものを SessionStart に出す。見えたセッションは `handoff` スキル §7 で、その日の
-  うちに予定化する。cwd の owner が viewer 自身のときだけ使い、会社など別 owner の
-  セッションには出さない。
-- [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、
-  トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査
-  (`readme-cjk-present`・`contributing-cjk-present`)だけを外す。宣言が実態と
-  食い違えば `lang-ja-stale` で監査が検出する。見出しのリテラル・節の順序・
-  目的文の一致は宣言があっても変わらない。
-- [ADR-795](adr/795-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在・
-  引用形式・鮮度を、SessionStart hook `esa-mirror-context` で注入する。ミラーのパスと対象 org は
-  private wrapper flake が option 経由で注入し、公開側は口だけを持つ。鮮度は既存の
-  `git-checkout-sync` タイマーに任せ、出力は ADR-625 の形式。
-- [ADR-792](adr/792-free-plan-declaration.md) — 無料プランの非公開
-  リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査
-  (自動マージの有効化、live の branch ruleset の照合)だけを外す。宣言が実態と
-  食い違えば `plan-free-private-stale` で監査が検出し、`create-repo.sh` が所有者の
-  プランを検出して宣言を播く。Team に切り替えるときは宣言を外すだけで検査が戻る。
-- [ADR-751](adr/751-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から
-  歴史的経緯と書き直しの作業量を除く。コード 0 行の白紙から 3 軸で選び、
-  戻せないもの(データ・外部契約・人手)だけを数える。完全に同点なら現職を維持し、
-  裁定と実行を分ける。`plan-precedent-gate` が閉語彙のコスト語を deny する。
-- [ADR-705](adr/705-main-checkout-guard.md) — 本物の checkout(main
-  worktree)を変更させない。Write/Edit と変更系 git を PreToolUse で deny し、
-  触れた checkout の baseline を記録して Stop で状態の差分を検出する(Bash 経由の
-  迂回を字面でなく状態で捕まえる)。逃げ道なし、Claude と Codex 共通。
-- [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロを Stop hook で
-  強制する。出口(inbox → `/my-cleanup` での裁定)は wrap-up inbox と共有し、
-  入口(閉語彙の構造化記録 + 決定論的な出来事との突き合わせ)と強制を
-  `wrapup-stop-gate` に足す。全行は、台帳から vault の `retro/` のノートに決定論的に
-  書き出す(PR にはコメントしない。ADR-1136 の Amendment)。
-- [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の未チェック
-  task list(`- [ ]`)を廃し、人の確認が要る残作業は後続 Issue へ払い出す
-  決定。`## 要確認` を「手順を書く節」から「Issue へのポインタ専用の節」に
-  転換し、`pr-followup-guard` を全リポジトリで発火する形に拡張する。
-- [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook
-  出力を `<hook-directive>` 外枠 + 英語本文(照合語は原文のまま)で書く書式。
-  Stop 出力は人にも見えるため短いポインタにし、詳細はエージェントが
-  `--procedure` で取りに行く。範囲は wrapup 系のみで確定し、他 hook へは展開しない
-  (#624 の評価。境界は `crates/session-wrapup/tests/directive_scope.rs` が検査する)。
-- [ADR-590](adr/590-github-app-as-code.md) — GitHub App の「登録」「install
-  先集合」「secret 配布」の 3 層すべてを宣言 → 検出の対象にする。所有 App
-  (releaser)の登録正本は Manifest JSON、観測は秘密を持つ専用コマンド
-  `github-app-snapshot` がスナップショットを書き `github-audit` は
-  lazy に読むだけ(github-audit は秘密を要求しないという ADR-436 D4 を
-  維持)。PEM は Bitwarden Secrets Manager に保管する。第三者 App(Claude)
-  の到達範囲は、fine-grained PAT が `/web-setup` で使えないため、Claude
-  GitHub App の install 先(Only select repositories)で絞る方針に改めた。
-- [ADR-640](adr/640-stack-standard-api-docs.md) — 技術スタック標準の API
-  ドキュメント(rustdoc / Sphinx / TypeDoc)の strict ビルドを、`ci.yml` の
-  docs job と `CI passed` の `needs` で全リポジトリに必須化する決定。実体は
-  pr-title と同形の composite action(ADR-591 D3)で、マニフェスト → ツールの
-  閉表で適用を判定し、PUBLIC かつ docs.rs 対象外だけ Pages へ deploy する。
+- [ADR-0008](adr/0008-documentation-artifact-selection.md) — 記録の器の選択規約
+- [ADR-0009](adr/0009-publish-guard-upstream-split.md) — 公開面ガードの上流分離と配布
+- [ADR-0010](adr/0010-retire-sops-runtime-secrets.md) — SOPS ランタイム復号チャネルの退役
+- [ADR-0011](adr/0011-local-activity-log-capture.md) — ローカル活動ログの採取(atuin + Claude Code ターンログ)
+- [ADR-0012](adr/0012-precedent-grounding-over-prompted-adversarial-review.md) — プロンプトでの「敵対的レビュー」要求を、先行例接地 + 監査に機構化する
+- [ADR-0013](adr/0013-repo-charter-schema.md) — 全自作リポジトリに README charter スキーマを強制する
+- [ADR-0014](adr/0014-repository-naming-classes.md) — リポジトリ命名クラス体系を定め、GitHub topics を正本にする
+- [ADR-0015](adr/0015-unified-github-audit-and-triage-loop.md) — 診断を統合 CLI に再編し、決定論ノード+LLM ノードの判断ループにする
+- [ADR-0016](adr/0016-repository-document-canon.md) — リポジトリ文書正典: README 正形・litmus 移設・ルート閉集合・人間/AI 文書分離
+- [ADR-0017](adr/0017-contributing-schema.md) — CONTRIBUTING.md の固定スキーマと「Issue litmus」語彙の廃止
+- [ADR-0018](adr/0018-darwin-host-and-homebrew-layer.md) — darwin ホストと macOS システム層の Homebrew 薄層写像
+- [ADR-0019](adr/0019-star-codename-hosts-and-marker-resolution.md) — 恒星コードネームのホスト命名と論理ホスト名のマーカー解決
+- [ADR-0020](adr/0020-generative-repo-governance-rules.md) — リポジトリ統制を生成側規則(閉じた文法+語彙)に反転する
+- [ADR-0021](adr/0021-ruleset-review-layer-addin.md) — ruleset baseline のコア層/レビュー層 2 層化
+- [ADR-0022](adr/0022-esa-mcp-host-local-gpg-secret.md) — esa MCP トークンをホストローカル GPG ファイル + 専用 launcher で供給する
+- [ADR-0023](adr/0023-repo-lifecycle-governance.md) — リポジトリライフサイクル統制(visibility/license/triage/consolidation)を dotfiles に正本化する
+- [ADR-0024](adr/0024-hook-cli-scripts-target-rust.md) — hook / CLI スクリプト群の実装技術を Rust とする
+- [ADR-0025](adr/0025-update-own-tools-local-registry.md) — 自作 pre-release CLI の導入をホストローカルレジストリで opt-in する
+- [ADR-0026](adr/0026-naming-lifecycle-axis-and-codename-split.md) — 命名クラス体系にライフサイクル軸を直交させ、naming-codename を分割する
+- [ADR-0027](adr/0027-uncertainty-first-stacking.md) — セッション内 PR は依存予測をやめ常時単一チェーンに積む(uncertainty-first stacking)
+- [ADR-0028](adr/0028-readme-banner-and-third-party-assets.md) — README banner と第三者素材(repo ライセンスと異なる素材)の同梱規則
+- [ADR-0029](adr/0029-path-precedence-enforces-source-of-truth.md) — PATH の優先順位を ADR-0001 の執行機構として宣言下に置く
+- [ADR-0030](adr/0030-gas-clasp-basis-placement.md) — GAS/clasp 基盤の配置(正本分散・ナレッジは dotfiles・秘密はホストローカル)
+- [ADR-0031](adr/0031-pr-title-as-commit-message-contract.md) — PR タイトルを commit-message 契約として機械強制する
+- [ADR-0032](adr/0032-global-agent-instructions-canon.md) — グローバル agent 指示ファイルの正本は共有 AGENTS.md、CLAUDE.md は router
+- [ADR-0033](adr/0033-nav-doc-no-materialisation.md) — 導線文書は実体を複製しない(nav-doc no-materialisation)
+- [ADR-0034](adr/0034-machine-state-wrapper-flake.md) — 私的な machine-state 実値は、外側の private wrapper flake に置く
+- [ADR-0035](adr/0035-selection-grounding.md) — 技術・仕組みの選択を 3 軸の辞書式順序に接地させる(selection-grounding)
+- [ADR-380](adr/380-adr-number-by-pr.md) — ADR 番号をローカル連番でなく導入 PR の番号にする
+- [ADR-387](adr/387-wrapup-chores-adjudication-first.md) — wrapup-chores を裁定前倒し型に反転する(adjudication-first)
+- [ADR-396](adr/396-decision-colocation.md) — 決定成果物とその執行点を同じ PR にコロケーションする
+- [ADR-436](adr/436-single-releaser-github-app.md) — releaser GitHub App を 1 個に集約し、宣言を workflow ファイルの存在に還元する
+- [ADR-457](adr/457-claude-native-install-source-of-truth.md) — Claude Code 本体は native installer を正本にする
+- [ADR-468](adr/468-stack-aware-heavy-ci.md) — stacked PR の中間段では重い CI ジョブを skip する
+- [ADR-471](adr/471-cafe-wifi-tailscale-mesh-and-host-firewall.md) — カフェ Wi-Fi 対策: Tailscale メッシュ + Mullvad 出口 + ホスト firewall
+- [ADR-478](adr/478-agent-verdict-ledger.md) — 自作ツールの deny/ask をローカルの判定レッジャーに集約し、人間の GO 後に開発元へフィードバックする
+- [ADR-503](adr/503-rulesets-declaration-in-repo.md) — required status check の正本を対象リポジトリ自身の宣言に一本化する
+- [ADR-519](adr/519-routines-declaration-in-repo.md) — Claude Code routine の正本を対象リポジトリ自身の宣言に一本化する
+- [ADR-528](adr/528-due-remind-timer.md) — a generic reader for another repository's local due-index, on an hourly Herdr-notified timer
+- [ADR-543](adr/543-existing-means-and-deterministic-promotion.md) — 既存手段の前倒し接地と、決定論への昇格導線
+- [ADR-544](adr/544-auto-prune-by-content-evidence.md) — worktree/branch の無人削除を「内容保全の証拠」で判定する
+- [ADR-568](adr/568-renovate-automerge-shared-preset.md) — Renovate の自動マージ方針を単一の共有 preset に一本化し、Dependabot の修正経路を閉じる
+- [ADR-590](adr/590-github-app-as-code.md) — GitHub App の登録・install 先・secret 配布を 3 層すべて宣言 → 検出の対象にする
+- [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow 命名基準を統一する
+- [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の人待ちチェックボックスを廃し、人の確認を後続 Issue へ払い出す
+- [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
+- [ADR-640](adr/640-stack-standard-api-docs.md) — 技術スタック標準の API ドキュメントのビルドを全リポジトリで必須にする
+- [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロスペクティブを Stop hook で強制する
+- [ADR-705](adr/705-main-checkout-guard.md) — 本物の checkout(main worktree)を変更させない
+- [ADR-751](adr/751-sunk-cost-exclusion-in-selection.md) — 技術選定の裁定から歴史的経緯と書き直しの作業量を除く
+- [ADR-792](adr/792-free-plan-declaration.md) — 無料プランの非公開リポジトリは、トピック `plan-free-private` の宣言で、成り立たない前提検査だけを外す
+- [ADR-795](adr/795-esa-index-session-start-hook.md) — 社内 wiki のミラーの所在を SessionStart hook で注入する(esa-index)
+- [ADR-805](adr/805-lang-ja-declaration.md) — 日本語が正本のリポジトリは、トピック `lang-ja` の宣言で、README/CONTRIBUTING の CJK 検査だけを外す
+- [ADR-829](adr/829-actionable-light-human-tasks.md) — 軽い人手タスクは、着手可能になった日のうちに予定化する
+- [ADR-833](adr/833-archived-naming-not-applicable.md) — アーカイブ済みのリポジトリには、naming の宣言の欠落(`class-undeclared`)を要求しない
+- [ADR-872](adr/872-pipeline-map.md) — 自動発火する機構の地図を単一正本にし、登録箇所のポインタで網羅性を検査する
+- [ADR-961](adr/961-annotations-domain.md) — GitHub Actions の warning を横断で拾う annotations ドメインを github-audit に足す
+- [ADR-998](adr/998-worklog-vault-daily-note.md) — 粒度の小さい作業ログを、Obsidian vault の当日ノートへ worklog で追記し、SessionStart で渡す
+- [ADR-1000](adr/1000-schedule-light-tasks-before-unblock.md) — 待ちのある軽い人手タスクも、連鎖ごと先に予定へ入れる
+- [ADR-1005](adr/1005-ci-gate-job-criteria.md) — CI の gate job を ci.yml に入れる基準を決め、検出と部品で全リポジトリに揃える
+- [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名・責務・共有配置
+- [ADR-1068](adr/1068-hms-follow-main.md) — main の更新に沿って hms を自動で当てる。ただし hms が main から作った世代だけに追従する
+- [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする
+- [ADR-1228](adr/1228-system-layer-declarations.md) — システム層の宣言と適用を分ける
+- [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、固まりの記録で再訪の条件を確かめる
+- [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する。語彙は版 2 に上げる
+- [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に mail kind を足し、読んだメールの裁定結論を vault に残す
+- [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を閉じた状態機械で表し、必ず終端に入ることを形式検査する
+- [ADR-1276](adr/1276-codify-signals.md) — 振り返りで as-code 化の候補を閉じた語彙で記録し、採用・却下の実績で語彙を直す
+- [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠の状態を worklog の slot kind で追い、時間枠は行に持つ
+- [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を対象の状態遷移の担い手と定義し、語彙 JSON の共通の形とグラフ検査を置く
+- [ADR-1295](adr/1295-slot-completion-record.md) — 作業の枠の時間は予定データに残し、worklog の slot kind は済んだ・やめたの完了記録だけを持つ
+- [ADR-1297](adr/1297-awaiting-item-abstraction.md) — 「裁定待ちの項目」の抽象の遷移表を定め、メール項目・気づき・設定のずれ・計画の要求項目を具体化として書く
+- [ADR-1301](adr/1301-dev-flow-vocabulary.md) — 開発の流れの対象(計画・PR・Issue・WIP の PR)の語彙を起こし、skill を担い手・前提として載せる
+- [ADR-1305](adr/1305-env-maintenance-vocabulary.md) — 環境の保守の対象の語彙を起こし、載らない skill を落とす検査を CI に配線する
+- [ADR-1311](adr/1311-git-external-state-integrity.md) — Git の外に置いた状態の整合を、日次の timer で読む
+- [ADR-1358](adr/1358-record-layers.md) — 記録の層(L0〜L4)を宣言し、Write 時の拒否と日次のずれ検出で守る
+- [ADR-1371](adr/1371-calendar-handshake-remote-kind.md) — 握手の語彙に、勤務先の不在を入れない予定の種類 remote-trip を足す
+- [ADR-1379](adr/1379-issue-creation-ball-guard.md) — `gh issue create` を、ボールのラベルと本文の先頭行を持たせないと作れなくする
+- [ADR-1381](adr/1381-inbox-finding-lapse.md) — 作業中の気づきの `open` に 14 日の期限を置き、超えたものを非終端の `lapsed` にする
+- [ADR-1382](adr/1382-ledger-heartbeat.md) — 本人の Issue 台帳の、端末の生存の記録と、クラウドの日次の通知が途絶えたことを知る逆向きの確認
+- [ADR-1387](adr/1387-ja-polish.md) — 日本語の文書は、Gemini の書き直しを通した証拠を記録して出す
+- [ADR-1400](adr/1400-skill-entry-layers.md) — skill を「手で打つ入口」と「エージェントが選ぶ知識」の 2 層に分け、入口だけに `my-` を付けて、それ以外を `/` の一覧から隠す
+- [ADR-1472](adr/1472-stop-outcome.md) — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
+<!-- END GENERATED -->
 
-- [ADR-872](adr/872-pipeline-map.md) — 自動発火する機構(hook・timer・
-  workflow・git hook・herdr の周期コマンド)の地図を、root の
-  `pipeline-map.toml` を単一正本にして持つ決定。登録箇所からノードを指す
-  ポインタ(Claude hook の宣言は nix 属性 `node`、timer と launchd agent は
-  `dotfiles.pipeline.timerNodes`、それ以外は直前のコメント `pipeline-node:`)の漏れ・未定義 ID・登録の無い自動ノードを、nix の評価と
-  `cargo test`(`crates/pipeline-map`)が落とす。図は D2 で manifest から
-  生成する。
-- [ADR-998](adr/998-worklog-vault-daily-note.md) — Git で管理するには重い
-  粒度の作業ログ(返信した・試した・詰まった)を、Obsidian vault の当日ノート
-  の `## 作業ログ` へ 1 行ずつ追記する `worklog` を持つ決定。vault の場所は
-  hub-resolve と同じマーカーで渡し、owner/repo は作業ディレクトリから付け、
-  SessionStart で規範と同じリポジトリの直近の stuck / found を注入する。
-  Git へ上げる段は持たない。
-- [ADR-1000](adr/1000-schedule-light-tasks-before-unblock.md) — 軽い人手 Issue は
-  「1 件 = 1 回の作業」にそろえ、待ち(`blocked_by`)があっても、連鎖の最後の段から逆算して
-  起票した日のうちに予定へ入れる(ADR-829 の「待ちが解けてから」を改める)。issue-index は
-  待ちのあるものも「(待ち N 件)」付きで出す。日付は予定データだけが持ち、Issue には書かない。
+## 運用・調査・設計(`docs/` 直下)
 
-- [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名を責務から決め、共通ライブラリ・終了処理・共有正本の配置を揃える。旧 CLI・skill は薄い入口として移行する。
-- [ADR-1068](adr/1068-hms-follow-main.md) — main が進んだら `hms --follow` が自動で追従する。ただし、いまの世代を引数なしの `hms` が作った場合だけで、`hms .` などで当てた検証用の世代・hms を通さない switch・許可ポリシーの変更を含む main には当てず、herdr の通知で 1 回だけ知らせる。適用は hms 全体で 1 つのロックで直列にする。
-- [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault の `inbox/` のノート(1 件 1 ノート、再発は行数)に溜め、Stop は起票を求めない。Issue にするのは `/backlog-cleanup` で本人が選んだ大物と本人の作業だけ。vault の無い機体は jsonl。共通部品 `vault-note` と、worklog と共有する vault のマーカーを足す。
-- [ADR-1228](adr/1228-system-layer-declarations.md) — Linux と macOS のシステム層の対象設定を system-manager と nix-darwin で宣言し、root 適用を home-manager と分ける。
-- [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、再訪の条件(固まりが負荷の高い区間に残る・AUR にしか無い必要なパッケージ・会社の EDR の明言)を atop の記録で確かめる。
-- [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する(H1〜H6 の穴と S1〜S6・L1〜L3 を検査し、語彙を版 2 に上げる)。検査は nix の check で、表の 1 行が 1 derivation。
-- [ADR-1256](adr/1256-worklog-mail-kind.md) — worklog に `mail` kind を足し、読んだメールの裁定の結論(処分・要旨・出典の id)だけを vault の当日ノートに残す(ADR-998 の追記)。本文は `<処分>: <要旨> [<媒体>:<id>]` の閉語彙で、アドレス・URL の転記はコードが拒否し、出典の id が冪等の鍵になる。
-- [ADR-1259](adr/1259-mail-lifecycle.md) — 未裁定のメール項目を、`awaiting`・`decided` の未了と 4 つの終端の状態機械にし、`mail` 行を出来事として畳み込んで状態を決める(ADR-1256 の D2・D3・D5 を改める)。語彙は JSON 1 枚を正本に、`worklog` の書き込み検査と Quint の仕様が同じ表を読み、TLC で「終端から戻らない・スレッドごとの未了は 1 つ・`stale` の前に必ず `remind`・答えが無くてもいずれ終端」を検査する。終端の行の手削除は機体ごとの控えで検出する。
-- [ADR-1276](adr/1276-codify-signals.md) — retro の `mechanism` を `eliminate`・`unrepresentable`・`gate`・`tool`・`prose` の 5 段に引き直し、段を持つ行に兆候(`signal`)・既存手段(採用|拡張|自前)・探した範囲を必須にする(ADR-697 の語彙と ADR-543 の Q2 を改める)。語彙は JSON 1 枚を正本に、手順の文・行の検証・事例集の表がそこから出る。過去の retro 244 行での試し当てを受けて、兆候を 15 個にし、「どれにも入らない」を数える `unclassified` を持つ。
-- [ADR-1291](adr/1291-task-slot-worklog.md) — 作業の枠(自分一人でやる、時間枠つきの作業)の状態を、`worklog` の `slot` kind の行を出来事として畳み込んで追い、時間枠は行に持つ(ADR-998 の追記)。語彙は `mail` と別の JSON で、タイマーを持たず、「過ぎた」は終了時刻から導く。Quint の仕様は書かず、語彙の遷移表の全マスを試験する。
-- [ADR-1293](adr/1293-state-transition-vocabulary.md) — skill を「対象の状態遷移を行う、または前提を満たす手順書」と定義し、すべての skill が語彙 JSON の `carriers`・`gates`・`shown_by` に名指しされる条件を課す。メール項目・作業の枠・カレンダーの握手の語彙を、JSON Schema の共通の形(`to` は配列、`object`・行為者・担い手・前提の欄)へ移し(Quint の入力は移行の前後でバイト単位で同じ)、bash + jq の `scripts/vocab-graph-check` が到達・出口・終端・担い手の解決などを CI で検査する。載らない skill を拾う `--skills` は、全 skill を載せ切るまで必須の job にしない。Quint と実装照合への昇格は、タイマー・並行・対象横断の条件で行う。
-- [ADR-1295](adr/1295-slot-completion-record.md) — 作業の枠の時間の定義を予定データ(Git)の 1 か所に残し、`worklog` の `slot` kind を済んだ・やめたの完了記録(`done`・`drop`)だけに絞る(ADR-1291 の slot kind の仕様を置き換える)。`plan`・`resched`・`slot open`・`slot overdue` を廃止し、鍵は予定データの予定 id、同じ鍵に別々の終端は書けず先に書かれた終端が勝つ。読み出しは `worklog slot closed [--json]`。
-- [ADR-1297](adr/1297-awaiting-item-abstraction.md) — 「拾う → 見せる → 本人が裁定 → 適用・見送り・失効」という同じ形の流れを持つ 4 つの対象(メール項目・作業中の気づき・リポジトリ設定のずれ・計画の要求項目)の語彙を統一せず、抽象の遷移表 `awaiting-item`(`settled` は再発を待つ非終端)を 1 つ定め、各対象をその具体化(状態の対応表)として書く。気づきは再発で `fixed`・`dropped` が `open` に戻り、失効の状態は設けず、件数通知を再通知として載せる。`scripts/vocab-graph-check --refinements` が、準同型と、放置への手段(P1)・本人に見せる担い手(P2)を CI で検査する。
-- [ADR-1301](adr/1301-dev-flow-vocabulary.md) — 開発の流れの 4 つの対象(計画 `plan`・PR `pull-request`・Issue `issue`・WIP の PR `wip-pull-request`)の語彙 JSON を、skill 本文から読み取れる状態と遷移に限って起こし、書き方の skill 12 本を担い手として載せる(`--skills` の載っていない skill は 34 本から 22 本)。要求項目の処分は `plan-requirement` に任せる。遷移表で見えた `tracking-issue` と `issue-hygiene` の重複、計画の承認の重なりを記録し、機械の検査が無い遷移は兆候が見つからないので昇格しない。
-- [ADR-1305](adr/1305-env-maintenance-vocabulary.md) — 環境の保守の 8 つの対象(リポジトリ設定 `repo-settings`・`routine`・`gpg-subkey`・`model-pin`・`gas-project`・`drive-file`・`browser-session`・`skill-authoring`)の語彙 JSON を、skill 本文から読み取れる状態と遷移に限って起こし、別リポジトリの対象を担う skill 5 本は `external-objects.json` に名前だけを足す。`--skills` の載っていない skill が 22 本から 0 本になったので、`vocab-graph-check --skills` を CI の `dry-run` ジョブに配線する。遷移表で見えた手順の数の食い違い(#1302)とリポジトリ設定を動かす 3 つの skill の重なり(#1303)を記録し、skill・hook の段階を実体から導く検査は同じ枠に載せられると結論する(実装は #1304)。
-- [ADR-1311](adr/1311-git-external-state-integrity.md) — Git の外(vault)に置いた状態は PR の差分の遷移検査が効かないので、書き込み口の検査に加えて、vault を宣言している機体で日次の `promotion-detect` が `worklog mail check` を回し、食い違いを wrap-up inbox に流す(検査を回せなかったときも候補にする)。ADR-543 の timer を共有する。
-- [ADR-1358](adr/1358-record-layers.md) — 記録を効いている期間で L0〜L4 の 5 層に分け(L0〜L2 は Git、L3 日〜都度・L4 機械生成は Git の外)、リポジトリの `.config/record-layers.toml` で「パス(glob)→ 層」を宣言する(1 パス 1 層、`git ls-files` の各ファイルに当たる glob がちょうど 1 つ)。宣言のあるリポジトリでは、宣言に無いパスと L3・L4 のパスへの Write を `hook-router` の `record-layer-guard` が拒否し、宣言と変化の速さのずれを `promotion-detect` が日次で wrap-up inbox に流す。
-- [ADR-1387](adr/1387-ja-polish.md) — 日本語の文書(人が後で読むもの)を、`llm` + `llm-gemini` 経由で Gemini に書き直させ、通した段落のハッシュを記録して出す決定。呼び出しは道具を持たない `llm`(Gemini CLI の「Login with Google」は廃止済み)、記法は伏せ字で守って戻りを照合し、既存の文書は追加・変更した段落だけを対象にする。失敗は素通しにして記録し、`gate-failopen-advisory` が後から知らせる。機体にも identity にも縛られず、今は送り先の扱いを確かめ済みの個人の identity だけで有効にする(会社へは同じ形で横展開できる)。
-- [ADR-1371](adr/1371-calendar-handshake-remote-kind.md) — 握手の語彙に、勤務先の不在を入れない予定の種類 `remote-trip`(題名の状態の印の直後の tag `[remote] `)を足す。種類は語彙の `kinds` で宣言し、事象ごとに適用する種類を持たせる(`remote-trip` は `propose`・`judge`・`withdraw` だけ)。`remote-trip` に書かれた `[go] ` は語彙に無い書き換えとして最後に受理した印へ差し戻され、不在が入らない。`vocab-graph-check` の規則「種類」と、仕様の不変条件 S7(種類を知らない規則で破れる対照つき)が守る。語彙は版 4 になり、利用側は pin を上げる。
-- [ADR-1379](adr/1379-issue-creation-ball-guard.md) — `tarotene` 配下のリポジトリの `gh issue create` を、排他のボールのラベル(`ball:me|them|agent`)がちょうど 1 つあり、本文の先頭行が非公開なら `next: YYYY-MM-DD`・公開なら日付の行なし、でなければ実行前に deny する。新しい crate `issue-create-guard` を hook-router の規則に載せ、公開/非公開は `gh repo view` で引き、引けなければラベルだけを検査する(fail-open)。`ledger-status` のラベルは免除し、`gh api`・MCP からの作成は見ない。
-- [ADR-1381](adr/1381-inbox-finding-lapse.md) — 作業中の気づきの `open` に 14 日の期限を置き、最後の行(初出か再発)から 14 日以上たったものを非終端の `lapsed` にする。同じ題が再発すれば `open` に戻り、裁定の手順(`--set-status`)で `fixed`・`dropped` にも進める。掃除は `issue-inbox --sweep`(`--dry-run` を持ち、冪等)で、日次の `promotion-detect` が全 repo のノートに対して呼ぶ。ADR-1297 の「失効の状態は設けない」を改め、具体化は `lapsed → settled`、`p1` は `timer` にする(抽象の `awaiting-item` は変えない)。
-- [ADR-1382](adr/1382-ledger-heartbeat.md) — 本人の Issue 台帳の日次の通知はクラウドが届け、クラウドは vault を読めない。そこで日次の `promotion-detect` が、台帳の常設 Issue `ledger-heartbeat` の本文を `asof:`(UTC)と `inbox <プロジェクト名>: <open 件数>` の行で全面的に書き換え、同じ実行で `ledger-digest` の最新のコメントが 36 時間より古ければ(Issue・コメントが無い場合を含む)Herdr で 1 日 1 回知らせる(相互監視)。台帳のリポジトリ名は端末ローカルの設定 `~/.config/ledger-heartbeat/target` から読み、無ければ何もしない。クラウドと端末が同時に止まると誰も気づかないことを設計限界として書く。
-- [ADR-1400](adr/1400-skill-entry-layers.md) — skill を、本人が習慣として手で打つ「入口」と、エージェントが文脈で選ぶ「知識」の 2 層に分ける。入口の名前だけに `my-` を付け(`my-desk`・`my-cleanup`)、それ以外は Claude 用の配布で `user-invocable: false` を名前から導いて足し、`/` の一覧から隠す(Codex 用には足さない)。新しい skill は既定で知識の層で、入口にするのは手打ちの実績があるときだけ。同じ open Issue を読んでいた `backlog-cleanup` と `issue-hygiene` を `my-cleanup` に統合する(ADR-1293 D2 の統合の段)。`checks.<system>.agent-skills` が、隠し方を検査する。
-- [ADR-1472](adr/1472-stop-outcome.md) — Stop hook の結果(block、沈黙、`stop_hook_active` の扱い)を、ルータの `Outcome` とは別の型 `StopOutcome` と `Reentry` で持ち、描画を `Reply::render` の 1 か所に集める。block は終了コード 2 と標準エラーでなく、終了コード 0 の JSON で運ぶ。ブロックしない失敗は `Fault` で、0 と 2 を作れない。Stop はルータに載せない(`pr-gate` が CI を最大 300 秒待つ)。`repo-structure-check` が、Stop の block を手で書く行と、`stop_hook_active` の直読みを落とす。
+<!-- BEGIN GENERATED: docs-index root -->
+- [`cloud-artifacts-and-runbooks.md`](cloud-artifacts-and-runbooks.md) — クラウド成果物の命名規則と、人手を要する手順書(runbook)の書式
+- [`codex-plan.md`](codex-plan.md) — codex-plan — Plan と実行のモデルを切り替える
+- [`cutover-runbook.md`](cutover-runbook.md) — Cutover runbook — 手続き型の dotfiles から home-manager への、ホストごとの切り替え手順
+- [`dotfiles-identity.md`](dotfiles-identity.md) — dotfiles-identity — 機体の identity とログイン中の Claude アカウントの一致を確かめる
+- [`falcon-sensor.md`](falcon-sensor.md) — Falcon Sensor は専用スクリプトで会社用 PC に導入する
+- [`gdrive-upload.md`](gdrive-upload.md) — gdrive-upload — ローカルのファイルを Google Drive の専用フォルダへ上げる(rclone、`drive.file`)。既存のファイルを取る読み取り側も持つ(`drive.readonly`)
+- [`git-sync.md`](git-sync.md) — Git 同期設定 — herdr の並行 worktree が生む同期事故への手当て
+- [`github-app-snapshot.md`](github-app-snapshot.md) — github-app-snapshot — GitHub App の設定を JSON で保存する読み取り専用の CLI
+- [`github-audit.md`](github-audit.md) — github-audit — 全リポジトリを横断する GitHub の読み取り専用の監査
+- [`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md) — Ctrl+Space が黙って効かない問題 — 調査記録
+- [`kiriban.md`](kiriban.md) — キリ番(Issue / PR 番号のキリ番を祝う)
+- [`local-state-backup.md`](local-state-backup.md) — ローカル状態バックアップと復旧
+- [`model-equivalence.md`](model-equivalence.md) — model-equivalence — (モデル × エフォート)の乗り換え先を、根拠付きで引く
+- [`nixification.md`](nixification.md) — Nixification — 将来 Nix の DSL に訳す価値のある設定ファイル
+- [`operations.md`](operations.md) — Operations — 適用(hms)・flake の更新・新しい道具の置き場
+- [`personal-cloud-projects.md`](personal-cloud-projects.md) — 個人ツールの自前クラウドプロジェクト命名・設定ポリシー
+- [`pipeline-map.md`](pipeline-map.md) — 自動発火する機構の地図
+- [`repo-lifecycle.md`](repo-lifecycle.md) — リポジトリライフサイクル統制(visibility / license / triage / consolidation)
+- [`rust-migration.md`](rust-migration.md) — bash → Rust 移植の記録(ADR-0024、#389)
+- [`rust-workspace-measurements.md`](rust-workspace-measurements.md) — Rust workspace の実測(#391 の完了条件)
+- [`setup-macos.md`](setup-macos.md) — macOS Setup Guide (altair) — darwin ホストのセットアップ手順
+- [`setup.md`](setup.md) — Setup Guide — ホストのセットアップ手順(Pop!_OS)
+- [`shell-successor-research.md`](shell-successor-research.md) — シェルスクリプトの後継技術調査 — investigation record
+- [`stacked-pr-github-native.md`](stacked-pr-github-native.md) — GitHub ネイティブ Stacked PR 機能の実態(調査記録)
+- [`update-own-tools.md`](update-own-tools.md) — update-own-tools — 自作 pre-release CLI の更新
+- [`waydroid.md`](waydroid.md) — Waydroid(Android コンテナ)で Android 版 LINE を動かす — vega
+- [`webcam-builtin-ipu7.md`](webcam-builtin-ipu7.md) — 内蔵カメラ(Intel IPU7 + ov08x40)を arcturus の Web カメラにする
+- [`webcam-osmo-pocket-3.md`](webcam-osmo-pocket-3.md) — Osmo Pocket 3 を vega の常用 Web カメラ + マイクにする
+- [`worktree-lifecycle.md`](worktree-lifecycle.md) — worktree のライフサイクル監査
+<!-- END GENERATED -->
 
-## Agent tooling ([`agents/`](agents/), product-specific: [`claude/`](claude/))
+## Agent tooling
 
-Design and rationale for the hooks and commands deployed from
-`config/agents/` by `home/modules/agents.nix`:
+[`agents/`](agents/) は、`config/agents/` から `home/modules/agents.nix` が配備する hook とコマンドの設計と根拠。
 
-- [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査(PreToolUse の
-  検査と PostToolUse の記録役)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
-  書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかった検査(許可を出す検査・ExitPlanMode の
-  一部・Stop・SessionStart・外部ツール)の、検査ごとの裁定と理由の表、規則ごとの打ち切りと panic の隔離、
-  旧登録の matcher・timeout の記録。
-- [`copilot-plan-review.md`](agents/copilot-plan-review.md) — ExitPlanMode gate:
-  a read-only GitHub Copilot CLI custom agent reviews the plan; the gate is on
-  severity, not on a verdict.
-- [`pr-gate.md`](agents/pr-gate.md) — Stop hook: PR completion barrier (CI 待ち・push 忘れ・Issue リンク忘れ・視覚証跡忘れ・
-  stacked PR チェーンの stack link 忘れ)(CI/push, not review/base).
-- [`pr-description.md`](agents/pr-description.md) — PR 本文の標準スケルトンと
-  Before/After 視覚証跡の判断知識(スキル)+ `G_visual` による強制(ゲート)の
-  二層構成。`gh --attach` (>= 2.99.0) の事実と charm-freeze 選定理由も記録。
-- [`issue-index.md`](agents/issue-index.md) — SessionStart hook: inject an
-  Issue index, not a full crawl.
-- [`handoff.md`](agents/handoff.md) — 個人スキル + pr-gate の中断ハンドオフ節 +
-  issue-index の着手可能な handoff:ai 節: ユーザーの指示で作業を途中で
-  打ち切るとき、残タスクを Human/AI 双方に振り分けて起票する。
-- [`claude-routines.md`](claude/claude-routines.md) — 個人スキル:
-  Claude Code routine(scheduled cloud agent)の設定・prompt を対象
-  リポジトリ自身の `.claude/routines/` へ as-code 化する。差分コアは
-  bash + jq の決定的 CLI(ADR-519-routines-declaration-in-repo)。
-- [`gpg-prewarm.md`](agents/gpg-prewarm.md) — SessionStart hook: pre-warm
-  the git-signing passphrase cache.
-- [`pkexec-guard.md`](agents/pkexec-guard.md) — PreToolUse hook: agent
-  セッションが root 権限のコマンドを実行するとき、polkit(`pkexec`)の
-  認証ダイアログに全文が表示される範囲だけを通す(PR #326 の裁定し直し)。
-- [`plan-view.md`](agents/plan-view.md) — `/plan-view`: render the
-  in-progress plan to HTML in Chrome.
-- [`wrapup-inbox.md`](agents/wrapup-inbox.md) — Stop hook: out-of-scope
-  findings land in an issue-filing inbox.
-- [`my-cleanup.md`](agents/my-cleanup.md) — 個人スキル(片付けの入口。旧
-  `backlog-cleanup`・`issue-hygiene`): inbox の未裁定の気づきと open Issue を
-  まとめて棚卸しし、triage フェーズで裁定を尽くしたうえで `ExitPlanMode` を GO
-  として stacked PR で一括対処する `/my-cleanup` の手順(ADR-387)。open Issue の
-  親子の整理(sub-issues・腐った tracking Issue の清算)も 1 段として持つ。
-- [`retro.md`](agents/retro.md) — ADR-697: 作業終了時のレトロを
-  `wrapup-stop-gate` の Stop で強制する(記録の語彙・突き合わせる出来事・
-  vault のノートへの書き出し・上限と抜け道)。出口は wrap-up inbox と共有。
-- [`codify-signals.md`](agents/codify-signals.md) — ADR-1276: retro が as-code 化
-  (決定論化)の候補を記録する閉語彙(5 段の手段・兆候・既存手段・探した範囲)と、
-  語彙から生成した事例集。語彙の正本は `config/agents/codify-signals/vocabulary.json`。
-- [`verdict-escalate.md`](agents/verdict-escalate.md) — ADR-478:
-  `wrapup-stop-gate` が Stop 本体で逐次呼ぶ集約 CLI(Rust、hook 登録
-  なし)。自作ツールの判定レッジャー(`agent-verdicts/*.jsonl`)をセッション
-  単位・fingerprint 単位に集約し、閾値超えの候補を `repo`/`go:"ask"` 付きで
-  wrap-up inbox に追記する。
-- [`promotion-detect.md`](agents/promotion-detect.md) — ADR-543 段4:
-  日次 timer(Rust)。同じ規範・skill を指す feedback Issue の再発、
-  SKILL.md コードブロックの逐語反復実行、gate skip ファイルの滞留・多発を
-  検出し、Q2(LLM/散文 → 決定論への昇格)の候補を wrap-up inbox に追記する。
-  あわせて、`open` のまま 14 日放置された気づきを全 repo について `lapsed` にする(ADR-1381)。
-  さらに、設定のある機体では、本人の Issue 台帳の生存の記録と、クラウドの日次の通知が途絶えていないかの確認を行う(ADR-1382)。
-- [`main-checkout-guard.md`](agents/main-checkout-guard.md) — PreToolUse +
-  Stop hook(Rust): 本物の checkout への Write/Edit・変更系 git を deny し、
-  触れた checkout の状態差分を Stop で検出する。
-- [`git-worktree-allow.md`](agents/git-worktree-allow.md) — PreToolUse hook:
-  validated programmatic allow for `git -C <worktree>`, replacing unsafe
-  mid-pattern wildcard rules.
-- [`gh-edit-allow.md`](agents/gh-edit-allow.md) — Pre/PostToolUse hook
-  (Rust, #392): validated programmatic allow for `gh pr|issue edit` /
-  `gh issue create` on PRs/Issues this session itself created, via a
-  session ledger fed from `gh … create` output — never a wildcard rule.
-- [`rulesets-write-guard.md`](agents/rulesets-write-guard.md) — PreToolUse
-  hook (Rust, ADR-503): denies `gh api`
-  writes (POST/PUT/PATCH/DELETE) to a repository's `rulesets` endpoint,
-  forcing all applies through `apply-rulesets.sh`'s context
-  verification (Rust, `crates/apply-rulesets`).
-- [`routines-write-guard.md`](agents/routines-write-guard.md) — PreToolUse
-  hook (Rust, ADR-519): denies a cron-bearing
-  `RemoteTrigger` create/update whose body lacks the namespace-key name and
-  `routine-spec` annotation that `claude-routines`' `routines-plan.sh`
-  always produces.
-- [`git-stash-guard.md`](agents/git-stash-guard.md) — PreToolUse hook: deny
-  bare `git stash` (the stack is shared across herdr's parallel worktrees).
-- [`public-publish-guard.md`](agents/public-publish-guard.md) — dotfiles-side
-  wiring for the PreToolUse hook (deny/ask on `git push` / `gh pr|issue
-  create|edit|comment` / MCP GitHub tool calls that would leak a company or
-  private repository name); the design and denylist mechanism now live
-  upstream in [tarotene/bleep](https://github.com/tarotene/bleep) (formerly
-  `tarotene/publish-guard`, ADR-0009).
-- [`attribution-guard.md`](agents/attribution-guard.md) — PreToolUse hook: deny
-  a `gh pr|issue create|edit|comment` / `gh pr review` whose body carries no
-  Claude-Code attribution footer (escape hatch: `No-Attribution: <reason>`).
-  Covers the two holes left by the harness-supplied footer: comments never got
-  one, and the PR/Issue body side had no repo-side enforcement at all.
-- [`agent-libraries.md`](agents/agent-libraries.md) — hook 入出力・シェル解析・GitHub 引数解析・jq 互換・プロセス・Git・herdr の責務別ライブラリ。旧 hook-io / guard-core の移行先。
-- [`guard-core.md`](agents/guard-core.md) — 旧 API の履歴と移行先への案内。
-- [`external-send-guard.md`](agents/external-send-guard.md) — PreToolUse hook:
-  Gmail MCP tool 経由の外部(自分以外)宛メール直接送信を deny し、
-  `create_draft` へ誘導する。実在するアドレスでも「何の窓口か」の文脈判定は
-  機械では原理的に難しいという実インシデント(2026-09-22)を受けた
-  fail-closed 設計(`self.txt` 不在時は自分宛アドレス 0 件扱い)。
-- [`stack-base-guard.md`](agents/stack-base-guard.md) — PreToolUse hook
-  (ADR-0027): `gh pr create` / `gh pr edit --base` の作成時に、セッション内の
-  複数 PR が常に作成順の単一チェーンに積まれることを機械強制する。層(i)
-  状態レスの祖先一致検査(タグでも抜けられない)+ 層(ii) セッション ID
-  単位のチェーン状態(離脱は `Independent-PR: <理由>` のみ)。
-  Rust の `crates/stack-base-guard`(コマンド解析は `crates/guard-core`、
-  Claude/Codex 共通の 1 バイナリ、#415)。
-- [`lang-ja-declaration.md`](agents/lang-ja-declaration.md) — ADR-805: 日本語が正本の
-  リポジトリを、トピック `lang-ja` の宣言で CJK 検査から外す手順と、嘘になったときの
-  検出(`lang-ja-stale`)。
-- [`free-plan-declaration.md`](agents/free-plan-declaration.md) — ADR-792: 無料プランの
-  非公開リポジトリで成り立たない前提(自動マージ、live の ruleset)を、トピック
-  `plan-free-private` の宣言で外す手順と、Team 切替で戻す手順。
-- [`pr-title-contract.md`](agents/pr-title-contract.md) — ADR-0031: squash-only
-  運用では PR タイトルがそのまま `main` の commit subject になるため、
-  client guard(`pr-title-guard`)・server required check
-  (`pr-title.yml`)・`github-audit` の `titles` ドメインの三層で
-  Conventional Commits 文法を機械強制する。単一ソースの checker は
-  `crates/pr-title-check`(Rust)。
-- [`ci-wait-guard.md`](agents/ci-wait-guard.md) — CI を `gh pr checks --watch`・`gh run watch`・
-  `until`/`while`/`sleep` のポーリングで待つ形を、Bash と Monitor の実行前に deny し、赤 1 件で即 NG・
-  required 全緑で即 OK の `pr-checks-wait` へ案内する(`crates/ci-wait-guard`、hook-router の規則)。
-  待ち方の判定の正本は `docs/agents/pr-gate.md`「待ち方」。
-- [`sandbox-compound-guard.md`](agents/sandbox-compound-guard.md) — sandbox の外で動かす道具(`gh`・`git commit`・
-  `nix build` など。`sandbox.excludedCommands`)を別のコマンドと連結した Bash 呼び出しを、実行前に deny し、
-  「単体で呼ぶ」へ案内する(連結すると全体が sandbox の中に残り、`gh` は 401・署名は `No secret key` になる。
-  `crates/sandbox-compound-guard`、hook-router の規則)。
-- [`pkill-guard.md`](agents/pkill-guard.md) — 検索語が実行するシェル自身のコマンド行に当たる `pkill -f` /
-  `pgrep -f`(自分のシェルを止める。終了コード 143・144)を、Bash の実行前に deny し、括弧の技
-  `pkill -f '[t]rial.sh'` へ案内する(`crates/pkill-guard`、hook-router の規則)。
-- [`repo-structure-check.md`](agents/repo-structure-check.md) — リポジトリ構造の不変条件を `cargo test` で検査する
-  (外部依存の版は root の `[workspace.dependencies]` が唯一の正本で、メンバーは `workspace = true` で継承する。
-  `pr-title-check` と `pr-contract-check` だけは依存ゼロの例外。`crates/repo-structure-check`)。
-- [`pr-followup-guard.md`](agents/pr-followup-guard.md) — ADR-598: PR 本文に
-  未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
-  参照があることを `gh pr create/edit` の呼び出し時に機械検査する
-  (`crates/pr-followup-guard`、`--agent codex` で Codex にも登録)。全リポジトリで発火する。
-- [`issue-create-guard.md`](agents/issue-create-guard.md) — ADR-1379: `tarotene` 配下のリポジトリの
-  `gh issue create` を、排他のボールのラベル(`ball:me|them|agent`)がちょうど 1 つあり、本文の先頭行が
-  非公開なら `next: YYYY-MM-DD`・公開なら日付の行なし、でなければ実行前に deny する
-  (`crates/issue-create-guard`、hook-router の規則)。`ledger-status` のラベルは免除する。
-- [`adr-numbering.md`](agents/adr-numbering.md) — ADR-380: ADR 番号をローカル
-  連番でなく導入 PR の番号にする決定。連番という分散システム上の中央
-  アロケータを無くし、採番衝突(ADR-0020→0021、ADR-0033 二重)を構造的に
-  不可能にする。判定エンジンは `scripts/adr-number-check`(CI required check
-  + `--fix` + 段3の PostToolUse hook `crates/adr-number` が共有)。
-- [`decision-colocation.md`](agents/decision-colocation.md) — ADR-396:
-  決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
-  `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する。
-  判定エンジンは `crates/decision-colocation` の `check::run_check`(CI
-  required check の `decision-colocation-check` + client guard
-  `decision-colocation-guard` が共有)。
-- [`repo-create-guard.md`](agents/repo-create-guard.md) — PreToolUse hook
-  (ADR-0013 Amendment 2026-09-29): `gh repo create` / `gh api -X POST
-  user/repos`・`orgs/*/repos` を作成時点で deny し、`repo-charter` スキルの
-  手順(命名インタビュー → GitHub メタデータ反映 → governance 播種)に
-  強制的に載せる。attribution-guard.sh のコマンド解析エンジンを source
-  して再利用する。
-- [`claude-permissions.md`](claude/claude-permissions.md) —
-  `permissions.allow` under nix: declarative, idempotent jq merge + retirement.
-- [`claude-mcp-servers.md`](claude/claude-mcp-servers.md) — `~/.claude.json`'s
-  `.mcpServers`: an extensible option (`dotfiles.claude.mcpServers`, same shape
-  as `quarantine.nix`'s `managedFiles`) that ships with zero values — a
-  mechanism for identity modules to populate later, not a data migration.
-  First populated value: `esa`(下記、ADR-0022)。
-- [`esa-mcp.md`](agents/esa-mcp.md) — esa.io MCP サーバのトークン供給:
-  ホストローカルの GPG 暗号化ファイルを起動時に復号する専用 launcher +
-  `dotfiles.claude.mcpServers.esa` への populate(personal identity 層限定、
-  ADR-0022)。
-- [`writing-style.md`](agents/writing-style.md) — 執筆規約(別 private
-  リポジトリの `docs/style/`)への薄いポインタスキル。ハブの絶対パスは
-  マーカーファイル/環境変数で間接参照し、未設定・パス不在・レイアウト
-  不一致のいずれも無音失敗にせず明示的に止まる(#115)。
-- [`opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — Opus Plan
-  Mode は *エイリアス* のペア: `opus`(Plan 側)と `sonnet`(実行側)を乗っ取り、
-  モードを **(Plan 側, 実行側) のペア 3 種**(`opus/sonnet`(既定)/ `fable/sonnet` /
-  `fable/opus`)として `claude-plan-model` で巡回する。モードは実行時状態、
-  具体モデル ID は宣言が `latest_per_family` から毎回引き直す(pin ゼロ)。
-  `.model` が `opusplan` でなければ書き込む前に落ちる。`fallbackModel` は
-  Usage limit では発火しない。
-- [`herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) — Herdr
-  sidebar: per-agent mode/model/metrics via pane metadata. Claude is 2-channel
-  (hook for permission mode, statusline for model/ctx/cost/effort); Codex and
-  Copilot get a leaner branch+model-only reporter each, plus the research
-  notes on why tab-bar usage was deferred (#117). Space rows add each
-  repository's open issue count (`$issues`) via workspace metadata, refreshed
-  by a 5-minute timer.
-- [`claude-usage.md`](claude/claude-usage.md) — Herdr tab bar:
-  Claude rate-limit usage (5h session window / weekly per-model cap) with a
-  pace-at-reset projection (average pace since window start → projected % at
-  reset), from the undocumented `/usage` API (fail-soft: the segment just
-  disappears).
-- [`herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — Herdr tab bar:
-  a host-local extension slot. The public config only names a mechanism
-  (`~/.config/herdr/tab-bar-right.local`); what that file runs lives on each
-  host, outside git (ADR-0025's registry shape, ADR-0034's boundary). A missing
-  file just clears the segment, which is also why a broken one is silent.
-- [`worktree-base-sync.md`](agents/worktree-base-sync.md) — SessionStart
-  hook: pristine な herdr worktree だけを origin/`<base>` へ黙って
-  fast-forward する。
-- [`herdr-status-advisory.md`](agents/herdr-status-advisory.md) — SessionStart
-  hook: herdr の client と server の版が食い違っているとき(`herdr worktree create`
-  が `protocol_mismatch` で失敗する前)に、`herdr status --json` を読んで先に知らせる。
-  復旧は本人の操作で、hook は何も実行しない。
-- [`gate-failopen-advisory.md`](agents/gate-failopen-advisory.md) — SessionStart
-  hook: fail-open で設計した hook(copilot-plan-review)が、依存先の不調で素通りし続けて
-  いること(`gate-events.jsonl` の `fail-open` が、最後の `pass` より後に既定 3 回以上)を、
-  セッション開始時に先に知らせる。何も実行しない。
-- [`ja-polish.md`](agents/ja-polish.md) — 日本語の文書を `llm` 経由で Gemini に書き直させる `ja-polish` の使い方と、
-  記録(`records.jsonl`)・伏せ字と照合・失敗時の素通し・キーの入れ方。今は個人の機体で有効(会社への横展開の手順も載せている)。
-- [`record-layers.md`](agents/record-layers.md) — 記録の層(L0〜L4)の宣言 `.config/record-layers.toml` の書き方と、
-  Write の拒否(`hook-router` の `record-layer-guard`)・日次のずれ検出(`promotion-detect`)の運用。
-  拒否されたときの直し方、宣言の欠陥の見つけ方、しきい値。
-- [`new-tool-guard.md`](agents/new-tool-guard.md) — PreToolUse(Write)の判定役と、
-  ExitPlanMode 承認後(PostToolUse)の記録役: 新しい道具・単位の着手前に既存手段を問い、
-  承認された計画の `既存手段:` 行を台帳へ転記して、手で `register` し直す二重入力をなくす。
-- [`ci-consumers.md`](agents/ci-consumers.md) — `ci-consumers <path>...`(PATH に置く):
-  編集するパスを入力にしている CI の検査(workflow の step・composite action・scripts・
-  crates の tests)を、編集の前に、`file:line` と step 名つきで引く。
-- [`git-checkout-sync.md`](agents/git-checkout-sync.md) —
-  home-manager 管理の systemd user timer: 親チェックアウト自身を
-  origin/`<base>` へ定期的に fast-forward する(worktree-base-sync.md の
-  一段上、#78)。
-- [`plan-fresh-gate.md`](agents/plan-fresh-gate.md) — PreToolUse /
-  ExitPlanMode hook: 並行 worktree 運用で drift したコードベースを見たまま
-  プランが承認されるのを防ぐ。pristine なら ff-only で追従しつつ、
-  origin/`<base>` の進行分がプラン参照ファイルと交差するときだけ deny する。
-  deny 済み SHA のセッション state で収束を保証する。
-- [`global-agents-md.md`](agents/global-agents-md.md) — グローバル
-  `~/.agents/AGENTS.md`(正本、ADR-0032): agent 非依存の調査規律・PR 運用・
-  生成元明示の方針を Codex CLI・Copilot CLI・Claude Code の 3 CLI に
-  home.file マウントで共有する。
-- [`global-claude-md.md`](claude/global-claude-md.md) — グローバル
-  `~/.claude/CLAUDE.md`: 上記共有 AGENTS.md を import する router +
-  Claude Code 固有の gate 配線(read-only 配布、`#` 追記は agent-tooling-authoring
-  の PR フローへ)。
-- [`diagramming.md`](agents/diagramming.md) — 個人スキル: 作図時に内容の型に
-  合うジャンル・技術を選ぶ処方と、手書き SVG の技術非依存の不変条件。
-- [`presentation-authoring.md`](agents/presentation-authoring.md) — 個人スキル: 発表のスライドを
-  作るとき、発表原稿(単独で練習できるプレインテキスト)を正本として先に全文書き、
-  スライドを補助資料として派生させる。正本は Marp Markdown 1 ファイルで、
-  frontend-slides を丸ごと採らなかった判断も持つ。
-- [`agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — 個人スキル: 知見を
-  この公開リポジトリにスキル化するときのメタスキル(器の判断・配線チェックリスト・
-  公開リポジトリ向けサニタイズ規則の正本)。
-- [`state-vocabulary.md`](agents/state-vocabulary.md) — 対象の状態遷移の語彙 JSON の書き方(共通の形・担い手の名前空間)と、`scripts/vocab-graph-check` の規則・使い方。
-- [`living-description.md`](agents/living-description.md) — 個人スキル:
-  Issue/PR の本文を「起票時点のスナップショット」ではなく「現在の合意状態を表す
-  正本」として運用し、コメントで裁定が確定した時点で本文を編集し続ける習慣。
-- [`issue-ref-freshness.md`](agents/issue-ref-freshness.md) — 個人スキル:
-  他リポジトリの issue/PR を Open 前提で参照している記述を、参照先の裁定
-  (close・merge・not planned)を読んで書き直す手順。常時監視を置かず、機会
-  発動と手動の一括点検で回す理由を記録。
-- [`test-grounding.md`](agents/test-grounding.md) — 個人スキル: 複数の実
-  コンポーネントが絡む検証項目・試験手順を書く前に、facts 文書+層別モデルで
-  一次資料に当たることを強制する。
-- [`model-pin-update.md`](agents/model-pin-update.md) — 個人スキル: 外部
-  AI CLI に固定 pin した具体モデル ID を GA・廃止サイクルに追従して更新する
-  定型手順(pin 箇所の棚卸し・上流確認・スラッグ実機確認・完了条件)。
-- [`stacked-pr.md`](agents/stacked-pr.md) — 個人スキル: PR 同士に依存関係が
-  あるとき main 起点で並行させず base を親ブランチにした stacked PR として
-  積む手順。なぜ素の `--base` + `gh stack link` を選び `init/submit/sync` を
-  避けたか、なぜ pr-gate.sh を触らなかったかの裁定を記録。
-- [`tracking-issue.md`](agents/tracking-issue.md) — 個人スキル: 複数の子作業
-  を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と
-  sub-issues の二重管理を避け、更新すべき箇所を最小化する。事後の棚卸し・清算は
-  `my-cleanup` の §2a(旧 `issue-hygiene`)が担う。
-- [`requirements-inventory.md`](agents/requirements-inventory.md) — グローバル CLAUDE.md
-  ルール + 個人スキル: Tracking Issue や複数項目の依頼を計画に起こすとき、
-  子タスクを黙って落とさせないための要求インベントリ(`R1..Rn`)の作り方。
-  gate: `plan-scope-gate`。
-- [`precedent-grounding.md`](agents/precedent-grounding.md) — グローバル
-  CLAUDE.md ルール + 個人スキル: Plan の非自明な設計判断ごとに先行例との
-  対比(`D1..Dn`)を成果物に残す書き方。プロンプトでの「敵対的レビュー」
-  「文献調査」の都度指示を機構化した経緯は ADR-0012。批評は既存
-  copilot-plan-review の lens A、形式検査は `plan-precedent-gate`(gh/LLM
-  を呼ばない決定論的 judge)。
-- [`technology-selection.md`](agents/technology-selection.md) — ADR-0035:
-  「クリーンかつ先進的な技術選定を好む」という自認を、
-  `## 先行例との対比` 節にトークンを 1 つ足すだけで検証可能な 3 軸
-  (表現不可能性 → 還元性 → 先進性の辞書式順序)に変換した設計記録。
-  独立した plan 節・専用 gate を新設せず `plan-precedent-gate` への
-  加算で済ませた理由(還元性)も記録。
-- [`repo-charter.md`](agents/repo-charter.md) — 個人スキル: 自作リポジトリの
-  README/CONTRIBUTING.md に machine-checkable な charter(目的1文・
-  `## Scope`・CONTRIBUTING の Issues 節・命名クラス・topics)を播く/適合化し、
-  AGENTS.md/CLAUDE.md ルーティングと skills 配置を整える手順(ADR-0016・
-  ADR-0017 で部分改訂)。事後の横断監査は `github-audit.md` が担う。
-  パイロット適合(命名と責務の乖離が判明した経緯)も記録。
-- [`github-audit-triage.md`](agents/github-audit-triage.md) — 個人スキル:
-  `github-audit` の findings を入力に複数リポジトリぶんの修正を一括起草し、
-  1 回の一括レビューを経て一括 PR 化する手順(ADR-0015 の LLM ノード)。
-  charter-sweep(#180)を巻き取り、完了定義を PR 作成までに変更した理由
-  (品質劣化・人間裁定なしの正本書き換えという 2 つの実害)を記録。
-- [`gpg-subkey-rotation.md`](agents/gpg-subkey-rotation.md) — 個人スキル:
-  `gpg-subkey rotate` 単体では完了しない GPG サブ鍵ローテーション
-  (export → nix 編集 → GitHub/keyserver 同期 → PR → `hms` 適用)を
-  抜け漏れなく終わらせる手順。途中で止まっても壊れて見えない
-  (旧サブ鍵がまだ有効)ため、次の PR の CI で `unknown_key` として
-  初めて発覚するという失敗モードへの対処。
-- [`gdrive-upload.md`](gdrive-upload.md) — `drive-upload` スキルの設計と初回セットアップ: ローカルの
-  PDF・画像を rclone(`drive.file`)で Google Drive の専用フォルダへ上げる。コネクタの base64 渡しは
-  数 MB に向かない。書き込み先を許可の範囲で専用フォルダに閉じ、読み戻してから報告する。
-- [`gas-clasp-ops.md`](agents/gas-clasp-ops.md) — 個人スキル: Google Apps
-  Script (GAS) を公式 CLI `clasp` で操作する基盤(ADR-0030)。GAS コード
-  自体の正本は各利用リポジトリに分散配置したまま、セットアップ・
-  ログイン・日常操作・規約のナレッジだけをここに集約する。
-- [`human-task-scheduling.md`](agents/human-task-scheduling.md) —
-  個人スキル: 電話等 Claude が代行できないハンドオフ作業を、相手の営業
-  時間とユーザーの空き時間を突き合わせてカレンダーに反映する判断知識。
-  「トークスクリプトを渡して終わり」がユーザーの自発的な想起に賭ける
-  設計だった問題への対処。
-- [`browser-login-handoff.md`](agents/browser-login-handoff.md) — 個人
-  スキル: Playwright MCP・claude-in-chrome でのブラウザ操作中に未ログイン
-  を検知したときのハンドオフ手順(#562)。パスワード・二段階認証の入力を
-  Claude が代行しないよう、都度その場で組み立てていた手順を型化した。
+<!-- BEGIN GENERATED: docs-index agents -->
+- [`agents/adr-numbering.md`](agents/adr-numbering.md) — adr-numbering — ADR 番号をローカル連番でなく導入 PR の番号にする
+- [`agents/agent-libraries.md`](agents/agent-libraries.md) — エージェント向け共通ライブラリ
+- [`agents/agent-permissions.md`](agents/agent-permissions.md) — Claude と Codex はそれぞれの native 権限設定を使う
+- [`agents/agent-settings-reconcile.md`](agents/agent-settings-reconcile.md) — agent-settings-reconcile — 宣言を settings 系ファイルへ反映する
+- [`agents/agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — agent-tooling-authoring スキル
+- [`agents/attribution-guard.md`](agents/attribution-guard.md) — attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
+- [`agents/browser-login-handoff.md`](agents/browser-login-handoff.md) — browser-login-handoff — ブラウザ未ログイン時のハンドオフ手順を型化した理由
+- [`agents/calendar-handshake.md`](agents/calendar-handshake.md) — calendar-handshake — 個人と勤務先のカレンダーの握手に使う印の語彙
+- [`agents/ci-consumers.md`](agents/ci-consumers.md) — ci-consumers — 編集するパスを入力にしている CI の検査を、編集の前に引く
+- [`agents/ci-wait-guard.md`](agents/ci-wait-guard.md) — ci-wait-guard — CI の待ち方を実行前に止め、`pr-checks-wait` へ案内する
+- [`agents/codex-network-exceptions.md`](agents/codex-network-exceptions.md) — Codex の調査用ネットワーク例外
+- [`agents/codify-signals.md`](agents/codify-signals.md) — as-code 化の候補を振り返りで記録する(段・兆候・既存手段)
+- [`agents/copilot-plan-review.md`](agents/copilot-plan-review.md) — プランレビューは critic を黙らせるのではなく、受入基準で閉じる
+- [`agents/decision-colocation.md`](agents/decision-colocation.md) — decision-colocation — 決定成果物と執行点を同じ PR に強制する
+- [`agents/diagramming.md`](agents/diagramming.md) — diagramming スキル
+- [`agents/docs-index.md`](agents/docs-index.md) — docs-index — `docs/README.md` の索引を、文書の H1 から生成する
+- [`agents/esa-mcp.md`](agents/esa-mcp.md) — esa-mcp — esa.io MCP サーバのトークン供給
+- [`agents/esa-mirror-context.md`](agents/esa-mirror-context.md) — esa-mirror-context — 社内 wiki のミラーの所在と引用形式を注入する hook
+- [`agents/external-send-guard.md`](agents/external-send-guard.md) — external-send-guard — 外部宛メール・Slack 送信を下書きへ誘導する PreToolUse hook
+- [`agents/feedback-trial.md`](agents/feedback-trial.md) — Bounded Codex feedback trial — 保存した Codex の会話から、観測の候補を別の収集役が集める試行
+- [`agents/free-plan-declaration.md`](agents/free-plan-declaration.md) — free-plan-declaration — 無料プランの非公開リポジトリを、宣言 1 つで前提検査から外す
+- [`agents/gas-clasp-ops.md`](agents/gas-clasp-ops.md) — gas-clasp-ops — Google Apps Script を clasp で CLI 操作する
+- [`agents/gate-failopen-advisory.md`](agents/gate-failopen-advisory.md) — gate-failopen-advisory — fail-open で素通りし続けている gate を、セッション開始時に知らせる
+- [`agents/gh-edit-allow.md`](agents/gh-edit-allow.md) — gh-edit-allow — 自セッションが作成した PR/Issue の編集を検証付きで allow する
+- [`agents/git-checkout-sync.md`](agents/git-checkout-sync.md) — 親チェックアウトの鮮度を保つ systemd user timer
+- [`agents/git-stash-guard.md`](agents/git-stash-guard.md) — git-stash-guard — 素の `git stash` を弾く PreToolUse hook
+- [`agents/git-worktree-allow.md`](agents/git-worktree-allow.md) — git-worktree-allow — `git -C <worktree>` を検証つきで許可する PreToolUse hook
+- [`agents/github-audit-triage.md`](agents/github-audit-triage.md) — github-audit-triage: 監査駆動の一括裁定スキルの設計理由
+- [`agents/global-agents-md.md`](agents/global-agents-md.md) — global-agents-md — グローバル agent 指示の正本を共有 AGENTS.md に一元化する
+- [`agents/gpg-prewarm.md`](agents/gpg-prewarm.md) — gpg-prewarm — [S]/[E] パスフレーズ入力を安全な瞬間に前倒しする hook
+- [`agents/gpg-subkey-rotation.md`](agents/gpg-subkey-rotation.md) — gpg-subkey-rotation — GPG サブ鍵ローテーションを抜け漏れなく終わらせる
+- [`agents/guard-core.md`](agents/guard-core.md) — 旧 guard-core の API と移行先
+- [`agents/handoff.md`](agents/handoff.md) — handoff — 中断ハンドオフを Human / AI 双方に起票する仕組みの設計記録
+- [`agents/herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) — herdr-sidebar-metadata — エージェント毎のモード/モデルを Herdr サイドバーに常時表示する
+- [`agents/herdr-status-advisory.md`](agents/herdr-status-advisory.md) — herdr-status-advisory — herdr の client と server の版の食い違いを、作業ツリーを切る前に知らせる
+- [`agents/herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — herdr-tab-bar-local — タブバー右側に、ホストごとの 1 行を出すスロット
+- [`agents/hook-router.md`](agents/hook-router.md) — hook-router — ツール呼び出しの検査を、1 つの登録にまとめる
+- [`agents/human-task-scheduling.md`](agents/human-task-scheduling.md) — human-task-scheduling — 電話等ハンドオフ作業をカレンダーに反映する判断知識
+- [`agents/inbox-adjudication.md`](agents/inbox-adjudication.md) — inbox-adjudication — 溜まった受信箱を、返信の裁定から処理する判断知識
+- [`agents/issue-create-guard.md`](agents/issue-create-guard.md) — issue-create-guard — `gh issue create` を、ボールのラベルと本文の先頭行を持たせて作らせる
+- [`agents/issue-index.md`](agents/issue-index.md) — issue-index — 自分に関係する open Issue の索引だけを注入する hook
+- [`agents/issue-ref-freshness.md`](agents/issue-ref-freshness.md) — issue-ref-freshness スキル
+- [`agents/ja-polish.md`](agents/ja-polish.md) — ja-polish — 日本語の文書を Gemini に書き直させ、通した証拠を残す
+- [`agents/lang-ja-declaration.md`](agents/lang-ja-declaration.md) — lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から外す
+- [`agents/living-description.md`](agents/living-description.md) — living-description スキル
+- [`agents/mail-lifecycle.md`](agents/mail-lifecycle.md) — mail-lifecycle — 未裁定のメール項目が、状態をたどって必ず終わる
+- [`agents/main-checkout-guard.md`](agents/main-checkout-guard.md) — main-checkout-guard — 本物の checkout を変更させない PreToolUse + Stop hook
+- [`agents/model-pin-update.md`](agents/model-pin-update.md) — model-pin-update スキル
+- [`agents/music-performance-planning.md`](agents/music-performance-planning.md) — music-performance-planning — 演奏本番の練習・合わせ・当日ロジ支援
+- [`agents/my-cleanup.md`](agents/my-cleanup.md) — my-cleanup — 片付けの入口: wrap-up inbox の気づきと open Issue を、本人が裁定して stacked PR で一括消化するスキル
+- [`agents/my-desk.md`](agents/my-desk.md) — my-desk — その日にさばく作業を、朝の机 1 か所に集める入口
+- [`agents/new-tool-guard.md`](agents/new-tool-guard.md) — new-tool-guard — 新しい道具・単位の着手前に、既存手段で足りないかを問う
+- [`agents/obsidian-livesync-cli.md`](agents/obsidian-livesync-cli.md) — obsidian-livesync-cli — vega の LiveSync を公式 CLI の daemon に置き換える運用
+- [`agents/pkexec-guard.md`](agents/pkexec-guard.md) — pkexec-guard — agent セッションから root 権限コマンドを polkit 経由で許す
+- [`agents/pkill-guard.md`](agents/pkill-guard.md) — pkill-guard — 検索語が自分のコマンド行に当たる `pkill -f` / `pgrep -f` を、実行前に止める
+- [`agents/plan-fresh-gate.md`](agents/plan-fresh-gate.md) — plan-fresh-gate — ExitPlanMode 直前のコードベース鮮度ゲート
+- [`agents/plan-view.md`](agents/plan-view.md) — plan-view — プランを HTML にして Chrome の専用窓へ飛ばす
+- [`agents/pr-description.md`](agents/pr-description.md) — pr-description スキル
+- [`agents/pr-followup-guard.md`](agents/pr-followup-guard.md) — pr-followup-guard — PR 本文に未チェック task list を残さず、人の確認は Issue へ払い出す
+- [`agents/pr-gate.md`](agents/pr-gate.md) — PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
+- [`agents/pr-title-contract.md`](agents/pr-title-contract.md) — pr-title-contract — PR タイトルを commit-message 契約として機械強制する
+- [`agents/precedent-grounding.md`](agents/precedent-grounding.md) — precedent-grounding — 「敵対的レビュー」の都度指示を、先行例接地 + 監査に置き換える
+- [`agents/presentation-authoring.md`](agents/presentation-authoring.md) — presentation-authoring スキル
+- [`agents/promotion-detect.md`](agents/promotion-detect.md) — promotion-detect — Q2 の昇格・降格候補を日次で検出する
+- [`agents/public-publish-guard.md`](agents/public-publish-guard.md) — public-publish-guard — 上流リポジトリへの配線(dotfiles 固有部分)
+- [`agents/record-layers.md`](agents/record-layers.md) — record-layers — 記録の層(L0〜L4)の宣言と、Write の拒否・日次のずれ検出
+- [`agents/repo-charter.md`](agents/repo-charter.md) — repo-charter: README charter スキーマの設計理由
+- [`agents/repo-create-guard.md`](agents/repo-create-guard.md) — repo-create-guard — `gh repo create` を作成時点で repo-charter 手順に載せる PreToolUse hook
+- [`agents/repo-structure-check.md`](agents/repo-structure-check.md) — repo-structure-check — リポジトリ構造の不変条件を、`cargo test` で検査する
+- [`agents/requirements-inventory.md`](agents/requirements-inventory.md) — requirements-inventory — 依頼スコープの脱落を計画段階で塞ぐ
+- [`agents/retro.md`](agents/retro.md) — 作業終了時のレトロ(ADR-697)
+- [`agents/routines-write-guard.md`](agents/routines-write-guard.md) — routines-write-guard — 宣言外の cron routine 作成/更新を deny する
+- [`agents/rulesets-write-guard.md`](agents/rulesets-write-guard.md) — rulesets-write-guard — GitHub ruleset の直接書換を deny する
+- [`agents/sandbox-compound-guard.md`](agents/sandbox-compound-guard.md) — sandbox-compound-guard — sandbox の外で動かす道具の連結を、実行前に止める
+- [`agents/slot-availability.md`](agents/slot-availability.md) — slot-availability — 候補日程 × Google Calendar の3コマ当たり判定
+- [`agents/slot-offer.md`](agents/slot-offer.md) — slot-offer — 日程の提示と仮押さえを、1 提案 1 ジャーナルで食い違わせない
+- [`agents/stack-base-guard.md`](agents/stack-base-guard.md) — stack-base-guard — セッション内 PR を常時単一チェーンに積む PreToolUse hook
+- [`agents/stacked-pr.md`](agents/stacked-pr.md) — stacked-pr スキル
+- [`agents/state-vocabulary.md`](agents/state-vocabulary.md) — state-vocabulary — 対象の状態遷移の語彙 JSON の書き方と検査
+- [`agents/task-slot.md`](agents/task-slot.md) — task-slot — 作業の枠の「済んだ・やめた」を、作業ログに完了記録として残す
+- [`agents/technology-selection.md`](agents/technology-selection.md) — technology-selection — 「クリーンかつ先進的」を検証可能な 3 軸に変換する
+- [`agents/test-grounding.md`](agents/test-grounding.md) — test-grounding スキル
+- [`agents/test-output-guard.md`](agents/test-output-guard.md) — test-output-guard — テストの出力を `head` / `tail` で切る形を、実行前に止める
+- [`agents/tooling-conventions.md`](agents/tooling-conventions.md) — エージェント向けツールの命名と配置
+- [`agents/tooling-migration.md`](agents/tooling-migration.md) — エージェント向けツールの移行
+- [`agents/tracking-issue.md`](agents/tracking-issue.md) — tracking-issue スキル
+- [`agents/venue-search.md`](agents/venue-search.md) — venue-search — 会場探しの判断知識と URL 生成
+- [`agents/verdict-escalate.md`](agents/verdict-escalate.md) — verdict-escalate — 判定レッジャーの deny/ask を集約し、人間の GO 後に開発元へフィードバックする
+- [`agents/worklog.md`](agents/worklog.md) — worklog — 粒度の小さい作業ログを、vault の当日ノートに 1 行ずつ書く
+- [`agents/worktree-base-sync.md`](agents/worktree-base-sync.md) — pristine worktree の自動 fast-forward — herdr Workspace Fork の鮮度問題
+- [`agents/worktree-lease.md`](agents/worktree-lease.md) — worktree-lease — 1 つの linked worktree を、同時に 2 つのセッションが git で動かさない
+- [`agents/wrapup-inbox.md`](agents/wrapup-inbox.md) — wrap-up inbox — スコープ外の気づきを、vault のノートに溜めて、あとでまとめて裁定する
+- [`agents/writing-style.md`](agents/writing-style.md) — writing-style — 執筆規約への薄いポインタ
+<!-- END GENERATED -->
 
-## Investigation records
+## Claude Code 固有
 
-- [`ime-chrome-diagnosis.md`](ime-chrome-diagnosis.md) — fcitx5 trigger-key
-  investigation (#14): methodology, traces, and the recovery path.
-- [`stacked-pr-github-native.md`](stacked-pr-github-native.md) — GitHub
-  ネイティブ Stacked pull requests 機能の実測(preview ステータス・API
-  サーフェス・`gh-stack` 拡張の既知 issue)。時間で腐る事実を
-  `claude/stacked-pr.md` の裁定から分離するための器(ADR-0008)。
-- [`shell-successor-research.md`](shell-successor-research.md) — シェル
-  スクリプトの後継技術調査: bash 続投(writeShellApplication/resholve)・
-  Rust・Deno の deep dive、Go/Babashka/Nushell の浅掘り、学術文献
-  (Bash in the Wild, ACM TOSEM 2022)、`git-stash-guard.sh` の実移植 PoC
-  (起動レイテンシ・closure サイズ・テスト移行の実測)。決定は ADR-0024。
-- [`rust-workspace-measurements.md`](rust-workspace-measurements.md) —
-  Rust workspace(ADR-0024、#391)の実測: 1 行変更時の crane / cargo
-  再ビルド秒数、`src/bin/` 単一クレートとの差、hook 起動時間。
+[`claude/`](claude/) は、Claude Code に固有の設計と根拠。
 
-## Miscellaneous
-
-- [`falcon-sensor.md`](falcon-sensor.md) — company EDR agent notes.
-- [`nixification-roadmap.md`](nixification-roadmap.md) — literal configs
-  worth translating to Nix DSL later, per ADR-0002.
+<!-- BEGIN GENERATED: docs-index claude -->
+- [`claude/claude-mcp-servers.md`](claude/claude-mcp-servers.md) — claude-mcp-servers — `~/.claude.json` の `.mcpServers` を宣言的に管理する「口」
+- [`claude/claude-permissions.md`](claude/claude-permissions.md) — claude-permissions — `permissions.allow` を宣言的に配る
+- [`claude/claude-routines.md`](claude/claude-routines.md) — claude-routines — Claude Code routine を as-code で扱う仕組みの設計記録
+- [`claude/claude-usage.md`](claude/claude-usage.md) — claude-usage — Herdr のタブバーに Claude の Rate Limit / Fable 使用量を常時表示する
+- [`claude/codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude と Codex で同じ Hook の検査を使う
+- [`claude/codex-plan-gate.md`](claude/codex-plan-gate.md) — codex-plan-gate — Codex CLI の Plan mode に ExitPlanMode 相当の機械検査を課す Stop hook
+- [`claude/global-claude-md.md`](claude/global-claude-md.md) — global-claude-md — 調査規律を全セッションに常時注入する
+- [`claude/opusplan-model-aliases.md`](claude/opusplan-model-aliases.md) — opusplan-model-aliases — Plan/実行のモデルをペアで切り替える
+<!-- END GENERATED -->
 
 ## エージェント向けツールの共通規約
 

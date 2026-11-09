@@ -1,4 +1,4 @@
-# Operations
+# Operations — 適用(hms)・flake の更新・新しい道具の置き場
 
 Routine care of the declarative environment. For provisioning and migration,
 see [`cutover-runbook.md`](cutover-runbook.md).

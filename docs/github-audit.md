@@ -1,4 +1,4 @@
-# github-audit: unified cross-repository GitHub audit
+# github-audit — 全リポジトリを横断する GitHub の読み取り専用の監査
 
 Read-only audit across eleven domains (plus one opt-in domain,
 `annotations`, below) — reports drift for every one of

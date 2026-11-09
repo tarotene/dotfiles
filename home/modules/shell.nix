@@ -72,7 +72,7 @@ in
     settings = lib.importTOML (repoConfig + "/starship.toml");
   };
 
-  # Sheldon stays literal for now (nixification-roadmap.md): provide the binary,
+  # Sheldon stays literal for now (docs/nixification.md): provide the binary,
   # let the literal module 50-tools-sheldon.zsh source it. pkgs.zsh is what
   # makes ~/.nix-profile/bin/zsh exist as the login-shell binary (#245).
   home.packages = [

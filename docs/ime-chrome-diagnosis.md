@@ -1,4 +1,4 @@
-# Ctrl+Space silently fails — investigation record
+# Ctrl+Space が黙って効かない問題 — 調査記録
 
 Status: **root cause found and locally worked around; upstream report outstanding.**
 A measurement log, not a decision. Several plausible-looking hypotheses were

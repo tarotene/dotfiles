@@ -74,12 +74,12 @@ deployed scripts, the apt package list, architecture/operating docs,
 source patches applied via the flake's package overlay, committed public
 keys, and the greenfield installer. Browse the tree directly (GitHub's
 file view, or a local checkout) for the full breakdown — see
-[the docs index](docs/README.md) for a curated, by-category list of the
-design-rationale docs.
+[the docs index](docs/README.md) for the by-directory list of the
+design-rationale docs (generated from each document's H1, `docs/agents/docs-index.md`).
 
 ## Architecture Decision Records
 
-Full list with one-line summaries: [`docs/README.md`](docs/README.md#architecture-decision-records)
+Full list, generated from each ADR's H1: [`docs/README.md`](docs/README.md#architecture-decision-records)
 (kept as the single index — do not duplicate it here, ADR-0033). Browse
 `docs/adr/` directly for the full text of any decision.
 
@@ -146,7 +146,7 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   a blank sheet and kept, #750).
 - **Use Nix DSL only where interpolation pays** — per-host/identity values, or
   where a `programs.*` module removes real boilerplate.
-- Track literal configs worth nixifying later in the nixification roadmap doc.
+- Track literal configs worth nixifying later in the nixification doc (`docs/nixification.md`).
 
 ### Shell-extension init (ADR-0005)
 - `eval "$(tool init …)"` / `source <(tool …)` MUST gate only on binary
@@ -306,6 +306,9 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   terminal block as `G_link`, so both body fixes cost one round trip.
 
 ## Verification / Testing
+- After adding, retitling or moving a document under `docs/`, run
+  `cargo run -p docs-index -- render`; `cargo test --workspace` fails on a stale
+  `docs/README.md` index (`docs/agents/docs-index.md`).
 - `nix flake check` — evaluates every host's activation package.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
 - `hms` — canonical apply (pushed main); `hms .` applies the current

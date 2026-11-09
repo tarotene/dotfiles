@@ -35,7 +35,7 @@ ADR の `Issue:` 欄は `No-Issue(...)` が最頻であり、Issue 番号方式�
 
 ## 起草フロー(二相)
 
-1. `docs/adr/0000-<slug>.md` を書く(本文 H1 も `# ADR-0000 — ...`)
+1. `docs/adr/0000-<slug>.md` を書く(本文 H1 も `# ADR-0000 — ...`)。`cargo run -p docs-index -- render` で索引に載せる
 2. commit → push → `gh pr create`
 3. `<PR番号>-<slug>.md` へ改番し、本文 H1 も書き換える
    - 段 3 が着地していれば PostToolUse hook が自動でやる。hook は opt-in:
@@ -43,7 +43,11 @@ ADR の `Issue:` 欄は `No-Issue(...)` が最頻であり、Issue 番号方式�
      テンプレートが播く複製)を持つときだけ動き、無ければ何もしない
      (PATH 上のバイナリや dotfiles 側の複製は適用判定に使わない)
    - まだなら手動: `adr-number-check --fix <PR番号>`
-4. commit + push(この時点で CI が green になる)
+4. `cargo run -p docs-index -- render` で `docs/README.md` の索引を書き直す(`docs/agents/docs-index.md`)。
+   `--fix` は索引の `ADR-0000` の行の番号を書き換えるが、並び(仮番号は最後、そのほかは番号の昇順)は
+   直さないので、書き直さないと `crates/docs-index/tests/tree.rs` が落ちる。rebase で索引が衝突したときも、
+   生成の節は `render` で作り直せば解ける
+5. commit + push(この時点で CI が green になる)
 
 `--fix` は `0000-*.md` のリネームだけでなく、既に採番済みの ADR を
 別番号へ改番する用途(2026-09-19 の `ec16267` 相当の手動改番)にも使える
