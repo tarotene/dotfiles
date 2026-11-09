@@ -4,10 +4,10 @@
 //!   `process-env`(`Xdg`)だけが持つ。ほかの crate の `src/` は、`process_env::Xdg::<種類>.resolve()` などで基準を
 //!   解決する。環境変数が空のときを未設定として扱う規則(bash の `${VAR:-}`)が、約 20 の crate に手で複写され、
 //!   複写ごとに空の扱いと `HOME` が無いときの扱いが違っていた。
-//!   例外は [`XDG_EXCEPTIONS`](解決でなく、子プロセスへ引き渡す変数の名前の一覧)。
+//!   例外は [`XDG_EXCEPTIONS`] (解決でなく、子プロセスへ引き渡す変数の名前の一覧)。
 //! - **補助関数の複写**: `env_nonempty`・`non_empty_env`・`nonempty_env`・`xdg_dir`・`xdg_state_home`・`config_home`・
 //!   `env_path`・`home` という名前の関数を、`process-env` の外に定義しない。非空の環境変数を読むのは
-//!   `process_env::var_nonempty`、`HOME` は `process_env::home`。例外は [`HELPER_EXCEPTIONS`](同じ名前でも別の仕事)。
+//!   `process_env::var_nonempty`、`HOME` は `process_env::home`。例外は [`HELPER_EXCEPTIONS`] (同じ名前でも別の仕事)。
 //!
 //! 検査は、コメントの行と、ファイル末尾のテストの節(`#[cfg(test)]` から後)を読まない。
 //! 例外の一覧は、いずれも**恒久**の例外である。例外のファイルが、もう違反の形を持たないときは、
