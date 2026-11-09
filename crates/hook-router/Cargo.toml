@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# ツール呼び出しに付く検査(PreToolUse の拒否だけを出すもの、PostToolUse の記録役)を、
+# ツール呼び出しに付く検査(PreToolUse の検査、PostToolUse の記録役)を、
 # 1 つのプロセスで、規則の表に従って走らせる。各検査の判定は、それぞれの crate の
 # `hook` 関数(`main` が標準入力を読んだあとの処理)で、ここはそれを呼ぶだけ。
 [dependencies]

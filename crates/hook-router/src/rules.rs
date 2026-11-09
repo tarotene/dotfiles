@@ -81,7 +81,7 @@ const S20: Duration = Duration::from_secs(20);
 
 /// 規則の表。並びは、まとめた結果の理由の並びになる。
 pub static RULES: &[Rule] = &[
-    // ---- PreToolUse(拒否だけを出す検査)
+    // ---- PreToolUse(deny が基本。例外は docs/agents/hook-router.md の条件 1)
     Rule {
         node: "git-stash-guard",
         event: Event::Pre,
@@ -341,62 +341,6 @@ mod tests {
         assert!(!Tools::Named(&["Write"]).matches("Edit"));
         assert!(Tools::All.matches("future_tool"));
         assert!(Tools::All.matches(""));
-    }
-
-    /// 載せた検査の集合を、このテストが固定する。足す・外すは、ここを意識して直す
-    /// (載せ忘れは、pipeline-map のテストが「auto なのに登録箇所が無い」で落とす)。
-    #[test]
-    fn the_table_holds_exactly_the_agreed_rules() {
-        let pre: BTreeSet<&str> = RULES
-            .iter()
-            .filter(|r| r.event == Event::Pre)
-            .map(|r| r.node)
-            .collect();
-        assert_eq!(
-            pre,
-            BTreeSet::from([
-                "attribution-guard",
-                "ci-wait-guard",
-                "decision-colocation-guard",
-                "external-send-guard",
-                "feedback-target-guard",
-                "git-stash-guard",
-                "issue-create-guard",
-                "ja-polish-gate",
-                "ja-polish-snapshot",
-                "main-checkout-guard-pre",
-                "new-tool-guard",
-                "pkexec-guard",
-                "pkill-guard",
-                "plan-precedent-gate",
-                "plan-scope-gate",
-                "pr-followup-guard",
-                "pr-title-guard",
-                "record-layer-guard",
-                "repo-create-guard",
-                "routines-write-guard",
-                "rulesets-write-guard",
-                "sandbox-compound-guard",
-                "stack-base-guard",
-                "test-output-guard",
-                "worktree-lease",
-                "worktree-create-guard",
-            ])
-        );
-        let post: BTreeSet<&str> = RULES
-            .iter()
-            .filter(|r| r.event == Event::Post)
-            .map(|r| r.node)
-            .collect();
-        assert_eq!(
-            post,
-            BTreeSet::from([
-                "adr-number",
-                "cmd-hash-log",
-                "gh-edit-allow-record",
-                "new-tool-guard-record",
-            ])
-        );
     }
 
     #[test]

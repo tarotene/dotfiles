@@ -1,7 +1,7 @@
 //! hook-router — ツール呼び出しに付く検査を、1 つのプロセスで、規則の表に従って走らせる。
 //!
 //! ```text
-//! hook-router pre    # PreToolUse(拒否だけを出す検査)
+//! hook-router pre    # PreToolUse(検査)
 //! hook-router post   # PostToolUse(記録役)
 //! ```
 //!

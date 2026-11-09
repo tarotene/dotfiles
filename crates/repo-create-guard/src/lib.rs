@@ -21,10 +21,10 @@
 //! `api.github.com/user/repos` を叩く経路や Web UI からの作成はこの hook の
 //! 対象外(ADR-543 D1 と同型の限界、フルスクラッチ自体は表現不可能にできない)。
 //!
-//! バイパス: `SKIP_REPO_CREATE_GUARD=1`(rulesets-write-guard と同型)。
-//! bash 版と同じく hook 入出力層(main)の責務で、`decide` 自体は判定
-//! ロジックだけを持つ。MCP(`mcp__github*`)は現在未接続のため Bash のみ判定する
-//! — attribution-guard の `decide_mcp` と同じ理由。
+//! バイパス: `SKIP_REPO_CREATE_GUARD=1`(セッション単位。名前と真偽は `agent_session::escape` の表が決める)。
+//! hook 入出力層(`hook`)の責務で、`decide` 自体は判定ロジックだけを持つ。
+//! MCP(`mcp__github*`)は現在未接続のため Bash のみ判定する(MCP の判定は未実装・意図あり)
+//! — attribution-guard の `decide_mcp` と同じ形で、接続されたら足す。
 
 use command_inspection::command::first_deny;
 use command_inspection::command::gh_command_at;
