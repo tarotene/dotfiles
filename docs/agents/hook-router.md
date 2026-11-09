@@ -37,7 +37,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
 
 1. **出せる判定が決まっている。** PreToolUse なら deny だけ(allow・ask は、共通権限の検査だけ)、PostToolUse なら
-   `additionalContext` だけ。`Outcome` に無い形(Stop の block、`PermissionRequest`)を出す検査は載せられない。
+   `additionalContext` だけ。`Outcome` に無い形(Stop の `StopOutcome`、`PermissionRequest`)を出す検査は載せられない。
 2. **プロセス全体の状態を変えない。** 規則は同じプロセスの別スレッドで並列に走る。作業ディレクトリ
    (`set_current_dir`)、umask、シグナルは全スレッドに及ぶので、触る検査は載せられない。作業ツリーを書き換える
    検査も、並列の別規則が読む状態を変えるので載せない。
@@ -60,9 +60,9 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 | copilot-plan-review | PreToolUse(ExitPlanMode) | 残す | 条件 3 に反する。外部の LLM(Copilot CLI)のレビューを待つ `timeout` は 300 秒で、ルータの最大の予算の 15 倍。ルータは越えた規則を素通りにするので、載せると、レビューが常に「検査しない」になる | 読んだ: `agents.nix` の `timeout = 300`。内容は #991 |
 | git-worktree-allow | PreToolUse(Bash、`if: Bash(git -C *)`) | 残す | 条件 1 に反する(allow を出す)。`if` の絞り込みが許可の範囲を決め、その評価は Claude Code の意味である。型付きの述語に写し直すと、複合コマンドでの許可の範囲が変わりうる。**白紙から選んでも、許可の範囲を決める文字列は、評価する側(Claude Code)に置く** | #991、本ドキュメントの旧「載せない」の節 |
 | gh-edit-allow(判定役) | PreToolUse(Bash、`if: Bash(gh *)`) | 残す | 同上。記録役(PostToolUse の `gh-edit-allow-record`)は、判定を出さないので載せた | 同上 |
-| pr-gate | Stop | 残す | 条件 1・3 に反する。CI の完了を最大 300 秒待ち(`PR_GATE_CI_TIMEOUT`、`timeout` は 600 秒)、出力は Stop の block。`stop_hook_active` を見ない設計(再呼び出しでも判定する) | 読んだ: `docs/agents/pr-gate.md:675`、`crates/pr-gate/src/lib.rs:62`、`agents.nix` の `timeout = 600` |
-| session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は終了コード 2 + 標準エラーで、1 つの入口の中でも `stop_hook_active` の扱いが違う(レトロは抜けない、wrap-up inbox は即 exit 0)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
-| main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の block)。`stop_hook_active` を読んで扱いを変える。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
+| pr-gate | Stop | 残す | 条件 1・3 に反する。CI の完了を最大 300 秒待ち(`PR_GATE_CI_TIMEOUT`、`timeout` は 600 秒)、出力は `StopOutcome::Block`(終了コード 0 の JSON)。再入は `Reentry::Recheck`(`stop_hook_active` を見ない設計。再呼び出しでも判定する) | 読んだ: `docs/agents/pr-gate.md:675`、`crates/pr-gate/src/lib.rs:62`、`agents.nix` の `timeout = 600` |
+| session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は `StopOutcome::Block`(終了コード 0 の JSON)で、再入の扱いは段ごとに宣言する(レトロは `Recheck`、wrap-up inbox の判定部は `Quiet`)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
+| main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の `StopOutcome`)。再入は `Reentry::Quiet`(立っていたら黙る)。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
 | agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
 | SessionStart の 11 件(session-wrapup-start、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、SessionStart の規則を載せる口を持たない(条件 1 に反する。SessionStart の出力の形そのものは `Reply::render` が持つ)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
 | herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
@@ -70,9 +70,11 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 | atuin-history | PreToolUse・PostToolUse・PostToolUseFailure(Bash) | 残す | 外部ツール(`atuin`)の入口で、この crate のものではない | `agents.nix` の宣言 |
 
 読み方: 「残す」は、**今のところ載せない** であって、永久に載せない約束ではない。表の理由(条件 1〜4 のどれに
-反するか)が解ける形になったら、載せる。たとえば Stop を載せるなら、`Outcome` に Stop の結果(block と
-`stop_hook_active` の扱い)を型で足し、規則ごとの出力の 2 流儀(exit 2 + 標準エラーと、JSON の block)を
-そろえる必要がある。そのときは ADR-872 の Amendment ではなく、ルータの契約を広げる ADR を立てる。
+反するか)が解ける形になったら、載せる。Stop は、型と描画の統一が済んだ(`StopOutcome`・`Reentry`・`Reply::render`。
+ADR-1472)。それでもルータには載せない: `StopOutcome` はルータの `Outcome` と別の型で、
+ルータの併合は `Outcome` の網羅 match なので、Stop の規則を表に載せられないことが型で守られる。載せない理由は、
+`pr-gate` が CI を最大 300 秒待つこと(条件 3)で、型の有無ではない。ルータの契約を広げるなら、ADR-872 の
+Amendment ではなく、別の ADR を立てる。
 
 ## 契約
 
