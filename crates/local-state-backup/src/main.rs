@@ -120,9 +120,8 @@ impl Drop for Lock {
     }
 }
 fn state_path(home: &Path) -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".local/state"))
+    process_env::Xdg::State
+        .resolve_under(home)
         .join("local-state-backup")
 }
 fn lock(home: &Path) -> Result<Lock, &'static str> {
@@ -187,9 +186,8 @@ fn staging_root(home: &Path) -> Result<PathBuf, &'static str> {
 
 fn record_result(home: &Path, operation: &str, success: bool) -> Result<(), &'static str> {
     use std::os::unix::fs::DirBuilderExt;
-    let state = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".local/state"))
+    let state = process_env::Xdg::State
+        .resolve_under(home)
         .join("local-state-backup/local");
     std::fs::DirBuilder::new()
         .recursive(true)
@@ -1077,9 +1075,8 @@ fn run_inner(operation: &str) -> Result<(), &'static str> {
     staging_root(&home)?;
     let bytes = required("LOCAL_STATE_PROFILE")?;
     let profile = profile::parse(bytes.as_bytes())?;
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".config"))
+    let config = process_env::Xdg::Config
+        .resolve_under(&home)
         .join("local-state-backup");
     profile::persist(bytes.as_bytes(), &config)?;
     if operation == "backup" && metered()? {

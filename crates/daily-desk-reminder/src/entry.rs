@@ -26,8 +26,7 @@ fn main() {
     }
     let Some(dir) = state_dir(
         std::env::var_os("DESK_STATE_DIR"),
-        std::env::var_os("XDG_STATE_HOME"),
-        std::env::var_os("HOME"),
+        process_env::Xdg::State.resolve(),
     ) else {
         return;
     };

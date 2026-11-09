@@ -8,6 +8,7 @@ description = "esa.io MCP サーバの起動ラッパー(scripts/esa-mcp-launche
 
 [dependencies]
 process-control = { version = "0.1.0", path = "../process-control" }
+process-env = { version = "0.1.0", path = "../process-env" }
 
 [dev-dependencies]
 tempfile.workspace = true

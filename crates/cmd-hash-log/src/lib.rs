@@ -16,23 +16,15 @@ use agent_session::HookInput;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
-/// `explicit`(`CMD_HASH_LOG_PATH`)→ `xdg_state_home` → `home` の順に解決。
+/// `explicit`(`CMD_HASH_LOG_PATH`)→ 状態の基準ディレクトリ(`${XDG_STATE_HOME:-$HOME/.local/state}`)の順に解決。
 /// `agent_session::gate_event::default_path_with` と同じ優先順位。
-pub fn resolve_log_path(
-    explicit: Option<&OsStr>,
-    xdg_state_home: Option<&OsStr>,
-    home: Option<&OsStr>,
-) -> Option<PathBuf> {
+pub fn resolve_log_path(explicit: Option<&OsStr>, state_base: Option<PathBuf>) -> Option<PathBuf> {
     if let Some(p) = explicit {
         if !p.is_empty() {
             return Some(PathBuf::from(p));
         }
     }
-    let base = match xdg_state_home {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(home?).join(".local/state"),
-    };
-    Some(base.join("claude").join("cmd-hashes.jsonl"))
+    Some(state_base?.join("claude").join("cmd-hashes.jsonl"))
 }
 
 /// Bash 以外・コマンドが空なら記録しない(`None`)。
@@ -89,8 +81,7 @@ pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
 
     let path = resolve_log_path(
         std::env::var_os("CMD_HASH_LOG_PATH").as_deref(),
-        std::env::var_os("XDG_STATE_HOME").as_deref(),
-        std::env::var_os("HOME").as_deref(),
+        process_env::Xdg::State.resolve(),
     )?;
 
     if let Some(parent) = path.parent() {
@@ -113,34 +104,27 @@ mod tests {
     #[test]
     fn resolve_log_path_prefers_explicit() {
         assert_eq!(
-            resolve_log_path(
-                Some(OsStr::new("/explicit")),
-                Some(OsStr::new("/xdg")),
-                Some(OsStr::new("/home"))
-            ),
+            resolve_log_path(Some(OsStr::new("/explicit")), Some(PathBuf::from("/xdg"))),
             Some(PathBuf::from("/explicit"))
         );
     }
 
     #[test]
-    fn resolve_log_path_prefers_xdg_over_home() {
+    fn resolve_log_path_joins_the_state_base() {
         assert_eq!(
-            resolve_log_path(None, Some(OsStr::new("/xdg")), Some(OsStr::new("/home"))),
+            resolve_log_path(None, Some(PathBuf::from("/xdg"))),
+            Some(PathBuf::from("/xdg/claude/cmd-hashes.jsonl"))
+        );
+        // 空の explicit は未設定扱い。
+        assert_eq!(
+            resolve_log_path(Some(OsStr::new("")), Some(PathBuf::from("/xdg"))),
             Some(PathBuf::from("/xdg/claude/cmd-hashes.jsonl"))
         );
     }
 
     #[test]
-    fn resolve_log_path_falls_back_to_home() {
-        assert_eq!(
-            resolve_log_path(None, None, Some(OsStr::new("/home"))),
-            Some(PathBuf::from("/home/.local/state/claude/cmd-hashes.jsonl"))
-        );
-    }
-
-    #[test]
-    fn resolve_log_path_none_without_home() {
-        assert_eq!(resolve_log_path(None, None, None), None);
+    fn resolve_log_path_none_without_a_base() {
+        assert_eq!(resolve_log_path(None, None), None);
     }
 
     fn record(cmd: &str) -> serde_json::Value {

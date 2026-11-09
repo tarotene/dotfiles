@@ -216,13 +216,6 @@ pub fn on_path(name: &str) -> bool {
         .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
 }
 
-pub fn xdg_dir(var: &str, fallback: &str) -> Option<PathBuf> {
-    match std::env::var_os(var) {
-        Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
-        _ => std::env::var_os("HOME").map(|h| PathBuf::from(h).join(fallback)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

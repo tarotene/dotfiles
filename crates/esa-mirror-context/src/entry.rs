@@ -19,8 +19,7 @@ fn main() {
     };
     let Some(cfg_path) = config_path(
         std::env::var_os("ESA_INDEX_CONFIG"),
-        std::env::var_os("XDG_CONFIG_HOME"),
-        std::env::var_os("HOME"),
+        process_env::Xdg::Config.resolve(),
     ) else {
         return;
     };

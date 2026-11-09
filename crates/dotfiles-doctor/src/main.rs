@@ -38,13 +38,6 @@ use std::process::{Command, Stdio};
 
 const DEFAULT_PRIVATE_HUB_REF: &str = "github:tarotene/dotfiles";
 
-fn config_home() -> PathBuf {
-    match std::env::var("XDG_CONFIG_HOME") {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"),
-    }
-}
-
 /// 先頭 1 行の全空白を除いたもの。読めない/空なら空文字(`head -n1 | tr -d '[:space:]'`)。
 fn read_marker(path: &Path) -> String {
     let Ok(bytes) = std::fs::read(path) else {
@@ -159,7 +152,7 @@ fn check_style_hub() -> bool {
 }
 
 fn main() {
-    let config = config_home();
+    let config = process_env::Xdg::Config.resolve_lossy();
     check_host(&config);
     check_private_hub(&config);
     let warned = check_style_hub();

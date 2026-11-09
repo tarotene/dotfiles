@@ -56,11 +56,12 @@ fn now() -> u64 {
 /// 状態のディレクトリ: `${XDG_STATE_HOME:-$HOME/.local/state}/claude/ja-polish`
 /// (gate-events.jsonl と同じ親)。
 pub fn state_dir() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_STATE_HOME") {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(std::env::var_os("HOME")?).join(".local/state"),
-    };
-    Some(base.join("claude").join("ja-polish"))
+    Some(
+        process_env::Xdg::State
+            .resolve()?
+            .join("claude")
+            .join("ja-polish"),
+    )
 }
 
 pub fn records_path() -> Option<PathBuf> {

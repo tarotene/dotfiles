@@ -29,10 +29,8 @@ pub fn codex_home() -> Result<PathBuf> {
 }
 
 pub fn observations_path() -> Result<PathBuf> {
-    Ok(std::env::var_os("XDG_STATE_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|v| PathBuf::from(v).join(".local/state")))
+    Ok(process_env::Xdg::State
+        .resolve()
         .context("XDG_STATE_HOME or HOME is required")?
         .join("codex-plan/rate-observations.jsonl"))
 }

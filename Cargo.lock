@@ -34,6 +34,7 @@ name = "agent-session"
 version = "0.1.0"
 dependencies = [
  "jq-json-compat",
+ "process-env",
  "serde",
  "serde_json",
  "tempfile",
@@ -56,6 +57,7 @@ name = "agent-turn-log"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -242,6 +244,7 @@ dependencies = [
  "command-inspection",
  "git-repository",
  "issue-inbox",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -265,6 +268,7 @@ dependencies = [
  "github-command",
  "libc",
  "model-catalog",
+ "process-env",
  "serde",
  "serde_json",
  "tempfile",
@@ -281,6 +285,7 @@ dependencies = [
  "agent-session",
  "new-tool-guard",
  "process-control",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -315,6 +320,7 @@ dependencies = [
  "jq-json-compat",
  "libc",
  "process-control",
+ "process-env",
  "serde_json",
  "tempfile",
  "trycmd",
@@ -370,6 +376,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "hub-resolve",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -434,6 +441,7 @@ dependencies = [
 name = "detect-drift"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "serde",
  "serde_json",
  "update-own-tools",
@@ -461,6 +469,7 @@ name = "dotfiles-doctor"
 version = "0.1.0"
 dependencies = [
  "process-control",
+ "process-env",
  "tempfile",
 ]
 
@@ -475,6 +484,7 @@ dependencies = [
 name = "due-remind"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -518,6 +528,7 @@ name = "esa-mcp-launcher"
 version = "0.1.0"
 dependencies = [
  "process-control",
+ "process-env",
  "tempfile",
 ]
 
@@ -528,6 +539,7 @@ dependencies = [
  "agent-session",
  "git-repository",
  "process-control",
+ "process-env",
  "serde",
  "serde_json",
  "tempfile",
@@ -538,6 +550,7 @@ name = "external-send-guard"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "serde_json",
  "trycmd",
 ]
@@ -564,6 +577,7 @@ name = "feedback-trial"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "serde",
  "serde_json",
  "tempfile",
@@ -683,6 +697,7 @@ name = "git-audit-worktrees"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -700,6 +715,7 @@ dependencies = [
 name = "git-prune"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "tempfile",
 ]
 
@@ -750,6 +766,7 @@ name = "github-app-registry-check"
 version = "0.1.0"
 dependencies = [
  "jq-json-compat",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -760,6 +777,7 @@ version = "0.1.0"
 dependencies = [
  "github-audit",
  "jq-json-compat",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -771,6 +789,7 @@ dependencies = [
  "jq-json-compat",
  "pr-contract-check",
  "process-control",
+ "process-env",
  "regex",
  "serde",
  "serde_json",
@@ -811,6 +830,7 @@ name = "gpg-prewarm"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "tempfile",
  "trycmd",
 ]
@@ -820,6 +840,7 @@ name = "gpg-subkey"
 version = "0.1.0"
 dependencies = [
  "jq-json-compat",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -837,6 +858,7 @@ dependencies = [
  "agent-session",
  "git-repository",
  "herdr-client",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -870,6 +892,7 @@ dependencies = [
 name = "hms"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -933,6 +956,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 name = "hub-resolve"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "tempfile",
 ]
 
@@ -987,6 +1011,7 @@ dependencies = [
  "git-repository",
  "jq-json-compat",
  "process-control",
+ "process-env",
  "serde_json",
  "tempfile",
  "vault-note",
@@ -1017,6 +1042,7 @@ dependencies = [
  "github-command",
  "hub-resolve",
  "process-control",
+ "process-env",
  "regex",
  "serde",
  "serde_json",
@@ -1095,6 +1121,7 @@ version = "0.1.0"
 dependencies = [
  "backup-runtime",
  "libc",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -1149,6 +1176,7 @@ version = "0.1.0"
 dependencies = [
  "agent-observations",
  "model-catalog",
+ "process-env",
  "serde",
  "serde_json",
  "tempfile",
@@ -1161,6 +1189,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
+ "process-env",
  "serde_json",
  "tempfile",
 ]
@@ -1339,6 +1368,7 @@ dependencies = [
  "git-repository",
  "new-tool-guard",
  "process-control",
+ "process-env",
  "regex",
  "serde_json",
  "tempfile",
@@ -1381,6 +1411,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-env"
+version = "0.1.0"
+
+[[package]]
 name = "promotion-detect"
 version = "0.1.0"
 dependencies = [
@@ -1389,6 +1423,7 @@ dependencies = [
  "filetime",
  "git-repository",
  "issue-inbox",
+ "process-env",
  "record-layer",
  "serde",
  "serde_json",
@@ -1693,6 +1728,7 @@ dependencies = [
  "cmd-hash-log",
  "git-repository",
  "issue-inbox",
+ "process-env",
  "serde_json",
  "tempfile",
  "vault-note",
@@ -1846,6 +1882,7 @@ name = "tailscale-prefs"
 version = "0.1.0"
 dependencies = [
  "process-control",
+ "process-env",
  "tempfile",
 ]
 
@@ -2047,6 +2084,7 @@ checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 name = "update-own-tools"
 version = "0.1.0"
 dependencies = [
+ "process-env",
  "serde",
  "tempfile",
  "toml",
@@ -2078,6 +2116,7 @@ name = "verdict-escalate"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "process-env",
  "schemars",
  "serde",
  "serde_json",

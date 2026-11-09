@@ -7,6 +7,7 @@ publish.workspace = true
 description = "hms — home-manager switch の正準適用ラッパ(scripts/hms.sh の Rust 移植、ADR-0024 / ADR-0034)"
 
 [dependencies]
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]

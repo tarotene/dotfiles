@@ -21,3 +21,4 @@ path = "src/bin/performance-hub.rs"
 tempfile.workspace = true
 
 [dependencies]
+process-env = { version = "0.1.0", path = "../process-env" }

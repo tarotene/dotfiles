@@ -31,19 +31,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-/// `${NAME:-}` が非空なら値。
-pub fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var_os(name)
-        .filter(|v| !v.is_empty())
-        .map(|v| v.to_string_lossy().into_owned())
-}
-
-pub fn home() -> String {
-    std::env::var_os("HOME")
-        .map(|v| v.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}
-
 /// usage エラー(bash の `${2:?usage: ...}`)。bash は
 /// `<script>: line N: 2: usage: ...` を出して exit 1 する。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,9 +145,12 @@ pub fn self_path() -> String {
 
 /// `${WRAPUP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/claude/wrapup`
 pub fn state_root() -> String {
-    let base = env_nonempty("WRAPUP_STATE_DIR")
-        .or_else(|| env_nonempty("XDG_STATE_HOME"))
-        .unwrap_or_else(|| format!("{}/.local/state", home()));
+    let base = process_env::var_nonempty("WRAPUP_STATE_DIR").unwrap_or_else(|| {
+        process_env::Xdg::State
+            .resolve_lossy()
+            .display()
+            .to_string()
+    });
     format!("{base}/claude/wrapup")
 }
 
@@ -314,7 +304,7 @@ fn open_vault() -> Option<vault_note::VaultNotes> {
 
 /// 作業中のプロジェクトのディレクトリ(`CLAUDE_PROJECT_DIR`、無ければ cwd)。
 fn project_dir() -> String {
-    env_nonempty("CLAUDE_PROJECT_DIR").unwrap_or_else(|| {
+    process_env::var_nonempty("CLAUDE_PROJECT_DIR").unwrap_or_else(|| {
         std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default()
@@ -722,13 +712,17 @@ pub fn stamp_feedback_session(session_id: &str) {
 }
 
 fn feedback_stamp_dir() -> String {
-    env_nonempty("WRAPUP_FEEDBACK_STAMP_DIR")
-        .unwrap_or_else(|| format!("{}/.claude/wrapup-stop-gate/feedback-session", home()))
+    process_env::var_nonempty("WRAPUP_FEEDBACK_STAMP_DIR").unwrap_or_else(|| {
+        format!(
+            "{}/.claude/wrapup-stop-gate/feedback-session",
+            process_env::home().display()
+        )
+    })
 }
 
 fn feedback_memory_root() -> String {
-    env_nonempty("WRAPUP_FEEDBACK_MEMORY_DIR")
-        .unwrap_or_else(|| format!("{}/.claude/projects", home()))
+    process_env::var_nonempty("WRAPUP_FEEDBACK_MEMORY_DIR")
+        .unwrap_or_else(|| format!("{}/.claude/projects", process_env::home().display()))
 }
 
 pub fn feedback_stamp_file(session_id: &str) -> String {
@@ -868,8 +862,8 @@ fn walk(path: &str, f: &mut dyn FnMut(&str, &fs::Metadata)) {
 
 pub fn attribution() -> (String, String) {
     (
-        env_nonempty("ATTRIBUTION_AGENT_NAME").unwrap_or_else(|| "Claude Code".into()),
-        env_nonempty("ATTRIBUTION_AGENT_URL")
+        process_env::var_nonempty("ATTRIBUTION_AGENT_NAME").unwrap_or_else(|| "Claude Code".into()),
+        process_env::var_nonempty("ATTRIBUTION_AGENT_URL")
             .unwrap_or_else(|| "https://claude.com/claude-code".into()),
     )
 }
@@ -1284,7 +1278,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> StopResult {
     let inbox = inbox_for(&project);
 
     // 判定レッジャーの集約(ADR-478)は inbox 読み取りより前に逐次呼ぶ。
-    let ve = env_nonempty("WRAPUP_VERDICT_ESCALATE_BIN")
+    let ve = process_env::var_nonempty("WRAPUP_VERDICT_ESCALATE_BIN")
         .unwrap_or_else(|| format!("{}/verdict-escalate", dirname(self_path)));
     if fs::metadata(&ve).is_ok_and(|m| m.permissions().mode() & 0o111 != 0) {
         if let Ok(mut child) = Command::new(&ve)

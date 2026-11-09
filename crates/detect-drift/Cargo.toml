@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+process-env = { version = "0.1.0", path = "../process-env" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 # ADR-0025 レジストリのスキーマ(Registry/Tool)とパーサ(parse_registry)を

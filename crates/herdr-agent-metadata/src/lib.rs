@@ -114,15 +114,9 @@ pub fn lookup_mark(marks: &str, talent: &str) -> String {
 
 /// `${XDG_CONFIG_HOME:-$HOME/.config}/herdr/oshi-marks.tsv`。
 fn marks_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home().join(".config"));
-    base.join("herdr/oshi-marks.tsv")
-}
-
-fn home() -> PathBuf {
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+    process_env::Xdg::Config
+        .resolve_lossy()
+        .join("herdr/oshi-marks.tsv")
 }
 
 /// 推しマーク(ファンマーク)絵文字。非 worktree・未登録は空文字。
@@ -313,7 +307,7 @@ pub fn plan_copilot(
 
 /// `$HOME/.copilot/settings.json` の `.model`。欠落・不正 JSON は空文字。
 pub fn copilot_settings_model() -> String {
-    let p = home().join(".copilot/settings.json");
+    let p = process_env::home().join(".copilot/settings.json");
     if !p.is_file() {
         return String::new();
     }

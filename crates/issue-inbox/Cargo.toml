@@ -9,6 +9,7 @@ publish.workspace = true
 agent-session = { version = "0.1.0", path = "../agent-session" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 process-control = { version = "0.1.0", path = "../process-control" }
 vault-note = { version = "0.1.0", path = "../vault-note" }

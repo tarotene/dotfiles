@@ -21,16 +21,16 @@
 //! 判定)を hms が再実装することになり、適用契約そのものを変える。`nix eval` は
 //! switch をそのまま使い、読むだけで済む。
 
-use super::{home, readlink_f};
+use super::readlink_f;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 fn profile_link() -> PathBuf {
-    home().join(".local/state/nix/profiles/home-manager")
+    process_env::home().join(".local/state/nix/profiles/home-manager")
 }
 
 fn current_home_link() -> PathBuf {
-    home().join(".local/state/home-manager/gcroots/current-home")
+    process_env::home().join(".local/state/home-manager/gcroots/current-home")
 }
 
 /// 今の profile が指す世代の store path(無ければ空)。

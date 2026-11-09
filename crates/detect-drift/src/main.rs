@@ -180,7 +180,7 @@ fn file_issue(owner_repo: &str, drifts: &[LayerDrift]) -> Result<(), String> {
         ));
     }
 
-    let registry = match update_own_tools::xdg_dir("XDG_CONFIG_HOME", ".config") {
+    let registry = match process_env::Xdg::Config.resolve() {
         Some(base) => {
             let path = base.join("update-own-tools/registry.toml");
             match std::fs::read_to_string(&path) {
@@ -327,12 +327,8 @@ fn apt_declared_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("DETECT_DRIFT_APT_DECLARED") {
         return std::path::PathBuf::from(p);
     }
-    let xdg_config = std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var("HOME").ok().map(|h| format!("{h}/.config")));
-    if let Some(base) = xdg_config {
-        let deployed = std::path::PathBuf::from(base).join("dotfiles/apt-packages.txt");
+    if let Some(base) = process_env::Xdg::Config.resolve() {
+        let deployed = base.join("dotfiles/apt-packages.txt");
         if deployed.is_file() {
             return deployed;
         }
@@ -348,16 +344,10 @@ fn apt_baseline_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("DETECT_DRIFT_APT_BASELINE") {
         return std::path::PathBuf::from(p);
     }
-    let xdg_state = std::env::var("XDG_STATE_HOME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            std::env::var("HOME")
-                .ok()
-                .map(|h| format!("{h}/.local/state"))
-        });
-    let base = xdg_state.unwrap_or_else(|| ".".to_string());
-    std::path::PathBuf::from(base).join("detect-drift/apt-baseline.txt")
+    let base = process_env::Xdg::State
+        .resolve()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    base.join("detect-drift/apt-baseline.txt")
 }
 
 /// `detect-drift apt-baseline --init|--from-history` のディスパッチ(#445)。

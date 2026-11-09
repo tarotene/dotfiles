@@ -193,30 +193,18 @@ fn render_report(findings: &[Finding]) -> String {
     out
 }
 
-fn default_dir(xdg_var: &str, home_rel: &str, tail: &str) -> PathBuf {
-    let base = match std::env::var(xdg_var) {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(home_rel),
-    };
-    base.join(tail)
+fn default_dir(xdg: process_env::Xdg, tail: &str) -> PathBuf {
+    xdg.resolve_lossy().join(tail)
 }
 
 fn main() -> ExitCode {
     let mut manifests_dir = match std::env::var("GITHUB_APP_REGISTRY_CHECK_MANIFESTS_DIR") {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => default_dir(
-            "XDG_CONFIG_HOME",
-            ".config",
-            "github-app-snapshot/manifests",
-        ),
+        _ => default_dir(process_env::Xdg::Config, "github-app-snapshot/manifests"),
     };
     let mut snapshot_file = match std::env::var("GITHUB_APP_REGISTRY_CHECK_SNAPSHOT_FILE") {
         Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => default_dir(
-            "XDG_STATE_HOME",
-            ".local/state",
-            "github-audit/app-snapshot.json",
-        ),
+        _ => default_dir(process_env::Xdg::State, "github-audit/app-snapshot.json"),
     };
     let mut json = false;
     let mut args = std::env::args().skip(1);

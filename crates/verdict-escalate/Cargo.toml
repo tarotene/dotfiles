@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+process-env = { version = "0.1.0", path = "../process-env" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 # 鍵ファイルの指紋(key_id)用。agent-settings-reconcile と同じ版(workspace の lock に既にある)。

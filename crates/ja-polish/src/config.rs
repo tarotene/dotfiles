@@ -33,11 +33,12 @@ struct File {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_CONFIG_HOME") {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
-    };
-    Some(base.join("dotfiles").join("ja-polish.toml"))
+    Some(
+        process_env::Xdg::Config
+            .resolve()?
+            .join("dotfiles")
+            .join("ja-polish.toml"),
+    )
 }
 
 /// 設定ファイルがあれば読む(有効な機体)。無ければ `None`(無効な機体)。壊れていても

@@ -10,19 +10,11 @@ use std::path::PathBuf;
 
 /// 印を置くディレクトリ。`DESK_STATE_DIR` > `$XDG_STATE_HOME/claude/desk` >
 /// `$HOME/.local/state/claude/desk`。
-pub fn state_dir(
-    env_override: Option<OsString>,
-    xdg_state: Option<OsString>,
-    home: Option<OsString>,
-) -> Option<PathBuf> {
-    let non_empty = |v: Option<OsString>| v.filter(|s| !s.is_empty()).map(PathBuf::from);
-    if let Some(p) = non_empty(env_override) {
-        return Some(p);
+pub fn state_dir(env_override: Option<OsString>, state_base: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(p) = env_override.filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(p));
     }
-    if let Some(x) = non_empty(xdg_state) {
-        return Some(x.join("claude/desk"));
-    }
-    non_empty(home).map(|h| h.join(".local/state/claude/desk"))
+    state_base.map(|b| b.join("claude/desk"))
 }
 
 /// unix 秒を JST(UTC+9)の `YYYY-MM-DD` にする。`date(1)` や `TZ` に依存しない。
@@ -83,16 +75,11 @@ mod tests {
     #[test]
     fn state_dir_precedence() {
         let s = |x: &str| Some(OsString::from(x));
-        assert_eq!(state_dir(s("/o"), s("/x"), s("/h")), Some("/o".into()));
-        assert_eq!(
-            state_dir(None, s("/x"), s("/h")),
-            Some("/x/claude/desk".into())
-        );
-        assert_eq!(
-            state_dir(s(""), s(""), s("/h")),
-            Some("/h/.local/state/claude/desk".into())
-        );
-        assert_eq!(state_dir(None, None, None), None);
+        let b = || Some(PathBuf::from("/x"));
+        assert_eq!(state_dir(s("/o"), b()), Some("/o".into()));
+        assert_eq!(state_dir(None, b()), Some("/x/claude/desk".into()));
+        assert_eq!(state_dir(s(""), b()), Some("/x/claude/desk".into()));
+        assert_eq!(state_dir(None, None), None);
     }
 
     #[test]

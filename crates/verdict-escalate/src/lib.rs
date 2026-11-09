@@ -35,18 +35,10 @@ pub const BURST_WINDOW_SECS: i64 = 15;
 /// 複数ツールが書く前提の共有ディレクトリなのでここでは汎用の
 /// `AGENT_VERDICTS_DIR` だけを持つ)。
 pub fn ledger_dir() -> Option<PathBuf> {
-    if let Some(d) = non_empty_env("AGENT_VERDICTS_DIR") {
+    if let Some(d) = process_env::var_nonempty("AGENT_VERDICTS_DIR") {
         return Some(PathBuf::from(d));
     }
-    if let Some(d) = non_empty_env("XDG_STATE_HOME") {
-        return Some(PathBuf::from(d).join("agent-verdicts"));
-    }
-    let home = non_empty_env("HOME")?;
-    Some(PathBuf::from(home).join(".local/state/agent-verdicts"))
-}
-
-fn non_empty_env(key: &str) -> Option<String> {
-    std::env::var(key).ok().filter(|v| !v.is_empty())
+    Some(process_env::Xdg::State.resolve()?.join("agent-verdicts"))
 }
 
 /// `dir` 内の `*.jsonl` すべてから、`session_id` に一致し verdict が
@@ -225,9 +217,11 @@ pub fn now_iso8601() -> String {
 /// キーは fingerprint 文字列(改行を含まないので `SessionLedger` の制約を
 /// 満たす)。
 pub fn stamp_ledger() -> Option<SessionLedger> {
-    let dir = match non_empty_env("VERDICT_ESCALATE_STATE_DIR") {
+    let dir = match process_env::var_nonempty("VERDICT_ESCALATE_STATE_DIR") {
         Some(d) => PathBuf::from(d),
-        None => PathBuf::from(non_empty_env("HOME")?).join(".claude/verdict-escalate/state"),
+        None => {
+            PathBuf::from(process_env::var_nonempty("HOME")?).join(".claude/verdict-escalate/state")
+        }
     };
     Some(SessionLedger::new(dir, "stamped"))
 }
@@ -235,10 +229,10 @@ pub fn stamp_ledger() -> Option<SessionLedger> {
 /// `issue-inbox` のパス。`${ISSUE_INBOX_BIN}` で上書き可能
 /// (テスト用 — 実配備では `~/.claude/hooks/issue-inbox`)。
 pub fn issue_inbox_bin() -> Option<PathBuf> {
-    if let Some(p) = non_empty_env("ISSUE_INBOX_BIN") {
+    if let Some(p) = process_env::var_nonempty("ISSUE_INBOX_BIN") {
         return Some(PathBuf::from(p));
     }
-    Some(PathBuf::from(non_empty_env("HOME")?).join(".claude/hooks/issue-inbox"))
+    Some(PathBuf::from(process_env::var_nonempty("HOME")?).join(".claude/hooks/issue-inbox"))
 }
 
 /// `session_id` の判定レッジャーを集約し、閾値を超えた未 stamp の

@@ -8,6 +8,7 @@ description = "tailscale-prefs apply (scripts/tailscale-prefs の Rust 移植、
 
 [dependencies]
 process-control = { version = "0.1.0", path = "../process-control" }
+process-env = { version = "0.1.0", path = "../process-env" }
 
 [dev-dependencies]
 tempfile.workspace = true

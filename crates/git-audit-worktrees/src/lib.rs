@@ -61,31 +61,31 @@ pub struct Config {
     pub gh_bin: String,
 }
 
-fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.is_empty())
-}
-
-fn home() -> Result<String, String> {
-    std::env::var("HOME").map_err(|_| "HOME: unbound variable".to_string())
+/// bash の `${HOME:?}` 相当: `HOME` が無ければ bash と同じ文面のエラー。
+fn home_required() -> Result<String, String> {
+    process_env::home_opt()
+        .map(|h| h.to_string_lossy().into_owned())
+        .ok_or_else(|| "HOME: unbound variable".to_string())
 }
 
 impl Config {
     pub fn from_env() -> Result<Self, String> {
-        let ghr_dir = match env_nonempty("GIT_WORKTREE_AUDIT_GHR_DIR") {
+        let ghr_dir = match process_env::var_nonempty("GIT_WORKTREE_AUDIT_GHR_DIR") {
             Some(v) => v,
-            None => format!("{}/.ghr", home()?),
+            None => format!("{}/.ghr", home_required()?),
         };
-        let herdr_dir = match env_nonempty("GIT_WORKTREE_AUDIT_HERDR_DIR") {
+        let herdr_dir = match process_env::var_nonempty("GIT_WORKTREE_AUDIT_HERDR_DIR") {
             Some(v) => v,
-            None => format!("{}/.herdr/worktrees", home()?),
+            None => format!("{}/.herdr/worktrees", home_required()?),
         };
-        let state_dir = match env_nonempty("GIT_WORKTREE_AUDIT_STATE_DIR") {
+        let state_dir = match process_env::var_nonempty("GIT_WORKTREE_AUDIT_STATE_DIR") {
             Some(v) => v,
             None => {
-                let base = match env_nonempty("XDG_STATE_HOME") {
-                    Some(v) => v,
-                    None => format!("{}/.local/state", home()?),
-                };
+                let base = process_env::Xdg::State
+                    .resolve()
+                    .ok_or_else(|| "HOME: unbound variable".to_string())?
+                    .display()
+                    .to_string();
                 format!("{base}/git-worktree-audit")
             }
         };
@@ -93,9 +93,10 @@ impl Config {
             ghr_dir,
             herdr_dir,
             state_dir,
-            herdr_bin: env_nonempty("GIT_WORKTREE_AUDIT_HERDR_BIN")
+            herdr_bin: process_env::var_nonempty("GIT_WORKTREE_AUDIT_HERDR_BIN")
                 .unwrap_or_else(|| "herdr".into()),
-            gh_bin: env_nonempty("GIT_WORKTREE_AUDIT_GH_BIN").unwrap_or_else(|| "gh".into()),
+            gh_bin: process_env::var_nonempty("GIT_WORKTREE_AUDIT_GH_BIN")
+                .unwrap_or_else(|| "gh".into()),
         })
     }
 }
@@ -278,7 +279,7 @@ fn json_string(s: &str) -> String {
 /// bash の `${s:0:230}` は locale 依存(UTF-8 なら文字、C なら byte)。
 fn locale_is_utf8() -> bool {
     for k in ["LC_ALL", "LC_CTYPE", "LANG"] {
-        if let Some(v) = env_nonempty(k) {
+        if let Some(v) = process_env::var_nonempty(k) {
             let v = v.to_ascii_lowercase();
             return v.contains("utf-8") || v.contains("utf8");
         }

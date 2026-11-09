@@ -7,6 +7,7 @@ use repo_structure_check::escape;
 use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS};
 use repo_structure_check::host_names;
 use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_CRATES};
+use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -150,4 +151,30 @@ fn the_host_name_check_reads_the_hosts_it_is_about() {
         host_names::MARKER_WRITER
     );
     assert!(files.len() > 40, "読んだ nix が少なすぎる: {}", files.len());
+}
+
+#[test]
+fn the_tree_satisfies_the_process_env_invariants() {
+    let violations = process_env::check_tree(&repo_root()).expect("read the sources");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "process-env の不変条件に反する箇所がある:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 空のツリーを読んで「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_process_env_check_reads_what_it_is_about() {
+    let sources = hook_io::read_sources(&repo_root()).expect("read the sources");
+    for expected in ["crates/process-env/src/lib.rs", "crates/hms/src/lib.rs"] {
+        assert!(
+            sources.iter().any(|s| s.path == expected),
+            "{expected} を読んでいない"
+        );
+    }
+    for (path, _) in XDG_EXCEPTIONS.iter().chain(HELPER_EXCEPTIONS) {
+        assert!(sources.iter().any(|s| s.path == *path), "{path} が無い");
+    }
 }

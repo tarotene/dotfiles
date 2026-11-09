@@ -10,6 +10,7 @@ agent-session = { version = "0.1.0", path = "../agent-session" }
 command-inspection = { version = "0.1.0", path = "../command-inspection" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 issue-inbox = { version = "0.1.0", path = "../issue-inbox" }
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]

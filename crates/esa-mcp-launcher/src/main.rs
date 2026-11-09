@@ -46,21 +46,14 @@ fn die(msg: &str, hint: Option<&str>) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn non_empty_env(key: &str) -> Option<OsString> {
-    std::env::var_os(key).filter(|v| !v.is_empty())
-}
-
 /// `${ESA_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/esa/token.gpg}`
 /// (空文字は未設定扱い)。gpg-prewarm も同じ規則(crates/gpg-prewarm)。
 fn token_file() -> PathBuf {
-    if let Some(f) = non_empty_env("ESA_TOKEN_FILE") {
-        return PathBuf::from(f);
-    }
-    let base = non_empty_env("XDG_CONFIG_HOME").map_or_else(
-        || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"),
-        PathBuf::from,
-    );
-    base.join("esa/token.gpg")
+    process_env::var_nonempty_path("ESA_TOKEN_FILE").unwrap_or_else(|| {
+        process_env::Xdg::Config
+            .resolve_lossy()
+            .join("esa/token.gpg")
+    })
 }
 
 fn main() -> ExitCode {

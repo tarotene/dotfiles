@@ -10,6 +10,7 @@ agent-session = { version = "0.1.0", path = "../agent-session" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-control = { version = "0.1.0", path = "../process-control" }
 libc.workspace = true
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]

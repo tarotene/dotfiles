@@ -15,6 +15,7 @@ command-inspection = { version = "0.1.0", path = "../command-inspection" }
 github-command = { version = "0.1.0", path = "../github-command" }
 hub-resolve = { version = "0.1.0", path = "../hub-resolve" }
 process-control = { version = "0.1.0", path = "../process-control" }
+process-env = { version = "0.1.0", path = "../process-env" }
 regex.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

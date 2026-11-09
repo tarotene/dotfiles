@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
 # Outcome(ルータに載る検査の結果)の型だけを使う。
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]

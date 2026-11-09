@@ -8,6 +8,7 @@ description = "dotfiles-doctor (scripts/dotfiles-doctor の Rust 移植、#368 /
 
 [dependencies]
 process-control = { version = "0.1.0", path = "../process-control" }
+process-env = { version = "0.1.0", path = "../process-env" }
 
 [dev-dependencies]
 tempfile.workspace = true

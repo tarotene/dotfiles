@@ -558,21 +558,16 @@ pub fn notification_shown(json: &str) -> bool {
 // 環境の解決
 // ---------------------------------------------------------------------------
 
-fn home() -> PathBuf {
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-}
-
-fn config_home() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home().join(".config"))
-}
-
 /// マーカーファイルの 1 行目から空白をすべて除いたもの(`head -n1 | tr -d '[:space:]'`)。
 /// マーカーが読めない・空なら None。
 fn read_marker(name: &str) -> Option<String> {
-    let text = std::fs::read_to_string(config_home().join("dotfiles").join(name)).ok()?;
+    let text = std::fs::read_to_string(
+        process_env::Xdg::Config
+            .resolve_lossy()
+            .join("dotfiles")
+            .join(name),
+    )
+    .ok()?;
     let first = text.lines().next().unwrap_or("");
     let v: String = first.chars().filter(|c| !c.is_whitespace()).collect();
     (!v.is_empty()).then_some(v)
@@ -719,7 +714,7 @@ fn run_inherit(cmd: &mut Command) -> i32 {
 // ---------------------------------------------------------------------------
 
 fn state_dir() -> PathBuf {
-    home().join(".local/state/hms")
+    process_env::home().join(".local/state/hms")
 }
 
 /// 排他ロックの保持者。drop(またはプロセスの終了)で解放される。
@@ -761,7 +756,7 @@ fn acquire_apply_lock(wait: bool) -> std::io::Result<Option<ApplyLock>> {
 }
 
 fn profile_link() -> PathBuf {
-    home().join(".local/state/nix/profiles/home-manager")
+    process_env::home().join(".local/state/nix/profiles/home-manager")
 }
 
 /// 状態ディレクトリのファイルを丸ごと書く。一時ファイルに書いてから rename するので、
@@ -795,7 +790,7 @@ fn write_apply_record(
         public_rev.or(generation_rev().as_deref()),
         generation,
         &verify::current_profile_generation(),
-        &readlink_f(&home().join(".local/state/home-manager/gcroots/current-home")),
+        &readlink_f(&process_env::home().join(".local/state/home-manager/gcroots/current-home")),
         applied_at,
     )?;
     write_state_file("last-apply.json", &text)
@@ -871,8 +866,9 @@ fn check_herdr_staleness() {
 /// いるか(失敗後の呼び出しが true を渡す)— そうでないと締めの文が、今まさに失敗した
 /// switch について「この switch が解消する」と言ってしまう。
 fn check_generation_consistency(switch_already_failed: bool) {
-    let profile_link = home().join(".local/state/nix/profiles/home-manager");
-    let current_home_link = home().join(".local/state/home-manager/gcroots/current-home");
+    let profile_link = process_env::home().join(".local/state/nix/profiles/home-manager");
+    let current_home_link =
+        process_env::home().join(".local/state/home-manager/gcroots/current-home");
     if !(profile_link.exists() && current_home_link.exists()) {
         return;
     }
@@ -944,7 +940,8 @@ fn refreshed_bleep_revision() -> Option<String> {
 /// flake.nix の `mkHome` が置く 1 行)。読めなければ `None`。コンパイル時に埋め込むと
 /// コミットごとにワークスペース全体が再ビルドされるので、実行時に読む(#807)。
 fn generation_rev() -> Option<String> {
-    let text = std::fs::read_to_string(home().join(".local/share/dotfiles/rev")).ok()?;
+    let text =
+        std::fs::read_to_string(process_env::home().join(".local/share/dotfiles/rev")).ok()?;
     let rev = text.trim();
     (!rev.is_empty()).then(|| rev.to_string())
 }
@@ -1097,7 +1094,7 @@ fn apply(
     // --public-only の明示指定も無いなら、wrapper が配る私的な value module
     // (bleep の denylist config 等)を無警告で撤去する適用になる。実際にこの手順で
     // 起きた事故(2026-09-29、#567)を機械的に検知して止める。
-    let profile_link = home().join(".local/state/nix/profiles/home-manager");
+    let profile_link = process_env::home().join(".local/state/nix/profiles/home-manager");
     let had_marker_prev_gen = profile_link.exists()
         && PathBuf::from(readlink_f(&profile_link))
             .join("home-files/.config/dotfiles/private-hub")
@@ -1520,7 +1517,10 @@ fn policy_preflight(p: &Prepared) -> Result<(), PreflightStop> {
         let candidate = Path::new(package)
             .join("home-files/.config/agent-native")
             .join(name);
-        let deployed = config_home().join("agent-native").join(name);
+        let deployed = process_env::Xdg::Config
+            .resolve_lossy()
+            .join("agent-native")
+            .join(name);
         // Preserve the error distinction in diagnostics rather than equating
         // failed reads to matching absent files.
         let read = |path: &Path| match std::fs::read(path) {

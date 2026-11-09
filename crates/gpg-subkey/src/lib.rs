@@ -175,7 +175,7 @@ pub struct Cfg {
 
 impl Cfg {
     pub fn from_env() -> Cfg {
-        let nonempty = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let nonempty = process_env::var_nonempty;
         Cfg {
             gpg_bin: nonempty("GPG_SUBKEY_GPG_BIN").unwrap_or_else(|| "gpg".into()),
             herdr_bin: nonempty("GPG_SUBKEY_HERDR_BIN").unwrap_or_else(|| "herdr".into()),
@@ -949,11 +949,8 @@ fn cmd_sync(cfg: &Cfg, args: &[String]) -> i32 {
     // `hostname`。
     let mut stale_hosts: Vec<String> = Vec::new();
     let mut this_host_source = "dotfiles/host マーカー";
-    let xdg = std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| format!("{}/.config", std::env::var("HOME").unwrap_or_default()));
-    let marker = format!("{xdg}/dotfiles/host");
+    let xdg = process_env::Xdg::Config.resolve_lossy();
+    let marker = format!("{}/dotfiles/host", xdg.display());
     let mut this_host = fs::read_to_string(&marker)
         .ok()
         .map(|s| {

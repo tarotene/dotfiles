@@ -19,17 +19,12 @@ pub struct Config {
 /// 設定ファイルの場所。`ESA_INDEX_CONFIG` > `$XDG_CONFIG_HOME` > `$HOME/.config`。
 pub fn config_path(
     env_override: Option<OsString>,
-    xdg: Option<OsString>,
-    home: Option<OsString>,
+    config_base: Option<PathBuf>,
 ) -> Option<PathBuf> {
-    let non_empty = |v: Option<OsString>| v.filter(|s| !s.is_empty()).map(PathBuf::from);
-    if let Some(p) = non_empty(env_override) {
-        return Some(p);
+    if let Some(p) = env_override.filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(p));
     }
-    if let Some(x) = non_empty(xdg) {
-        return Some(x.join("esa-index/config.json"));
-    }
-    non_empty(home).map(|h| h.join(".config/esa-index/config.json"))
+    config_base.map(|b| b.join("esa-index/config.json"))
 }
 
 /// 設定を読む。壊れている・パスが空・org が空なら `None`(発火しない)。
@@ -108,16 +103,17 @@ mod tests {
     #[test]
     fn config_path_precedence() {
         let s = |x: &str| Some(OsString::from(x));
-        assert_eq!(config_path(s("/o"), s("/x"), s("/h")), Some("/o".into()));
+        let b = || Some(PathBuf::from("/x"));
+        assert_eq!(config_path(s("/o"), b()), Some("/o".into()));
         assert_eq!(
-            config_path(None, s("/x"), s("/h")),
+            config_path(None, b()),
             Some("/x/esa-index/config.json".into())
         );
         assert_eq!(
-            config_path(s(""), s(""), s("/h")),
-            Some("/h/.config/esa-index/config.json".into())
+            config_path(s(""), b()),
+            Some("/x/esa-index/config.json".into())
         );
-        assert_eq!(config_path(None, None, None), None);
+        assert_eq!(config_path(None, None), None);
     }
 
     #[test]

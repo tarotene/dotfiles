@@ -56,20 +56,15 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Config {
-        let home = env::var("HOME").unwrap_or_default();
         let config_dir = path_var(
             "GITHUB_AUDIT_CONFIG_DIR",
-            var("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| Path::new(&home).join(".config"))
+            process_env::Xdg::Config
+                .resolve_lossy()
                 .join("github-audit"),
         );
         let state_dir = path_var(
             "GITHUB_AUDIT_STATE_DIR",
-            var("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| Path::new(&home).join(".local/state"))
-                .join("github-audit"),
+            process_env::Xdg::State.resolve_lossy().join("github-audit"),
         );
         let c = |name: &str, file: &str| path_var(name, config_dir.join(file));
         Config {

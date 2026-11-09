@@ -9,6 +9,7 @@ publish.workspace = true
 agent-session = { version = "0.1.0", path = "../agent-session" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 herdr-client = { version = "0.1.0", path = "../herdr-client" }
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]
