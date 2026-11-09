@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn jimae_word_inside_adopt_description_is_not_a_choice() {
         let p = plan_with(
-            "既存手段: home/modules/nixgl.nix — 採用: nixpkgs musescore + 既存 nixGLWrap(自前 derivation は書かない)",
+            "既存手段: home/lib/nixgl.nix — 採用: nixpkgs musescore + 既存 nixGLWrap(自前 derivation は書かない)",
         );
         assert!(judge_precedent(&p).is_empty(), "{:?}", judge_precedent(&p));
     }

@@ -2,43 +2,16 @@
 # identity-specific values (git identity, …) live in the host / identity
 # modules that import this file.
 { lib, ... }:
+let
+  importDir = import ./lib/import-dir.nix { inherit lib; };
+in
 {
-  imports = [
-    ./modules/agents.nix
-    ./modules/claude.nix
-    ./modules/claude-mcp-servers.nix
-    ./modules/codex.nix
-    ./modules/herdr.nix
-    ./modules/worktree.nix
-    ./modules/drift.nix
-    ./modules/wrapper-hub.nix
-    ./modules/esa-mirror-context.nix
-    ./modules/checkout-freshness.nix
-    ./modules/hms-follow.nix
-    ./modules/apt.nix
-    ./modules/quarantine.nix
-    ./modules/shell.nix
-    ./modules/atuin.nix
-    ./modules/git.nix
-    ./modules/gpg.nix
-    ./modules/due-remind.nix
-    ./modules/promotion-detect.nix
-    ./modules/packages.nix
-    ./modules/tailscale.nix
-    ./modules/desktop.nix
-    ./modules/downloads.nix
-    ./modules/scratch-retention.nix
-    ./modules/flatpak.nix
-    ./modules/webcam-builtin.nix
-    ./modules/obsidian-vault.nix
-    ./modules/obsidian-livesync.nix
-    ./modules/study-intake.nix
-    ./modules/local-state-backup.nix
-    ./modules/runtimes.nix
-    ./modules/hm-warnings.nix
-    ./modules/pipeline.nix
-    ./modules/ja-polish.nix
-  ];
+  # home/modules/ is the set of modules every host evaluates: the directory's
+  # contents are the import list, so a new module placed there is evaluated
+  # (no second list to update). A module only one identity or one host needs
+  # goes in home/identities/<identity>/ or home/hosts/<host>/; a plain function
+  # that is not a module (nixgl.nix) goes in home/lib/.
+  imports = importDir ./modules;
 
   programs.home-manager.enable = true;
 

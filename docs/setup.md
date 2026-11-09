@@ -70,7 +70,7 @@ chsh -s "$NIX_ZSH"             # log out and back in to take effect
 ## Manual step: esa MCP token (host-local, personal identity only)
 
 The esa.io MCP server (`@esaio/esa-mcp-server`, registered via
-`home/modules/esa.nix`) reads its token from `~/.config/esa/token.gpg`. The
+`home/identities/personal/esa.nix`) reads its token from `~/.config/esa/token.gpg`. The
 file is host-local and never enters git. Personal hosts only (`vega`,
 `altair`) — company hosts do not import this module. The token only needs
 issuing once, but under the per-machine on-disk [E] subkey model (#252,

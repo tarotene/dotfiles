@@ -6,7 +6,7 @@
   ...
 }:
 let
-  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../../lib/nixgl.nix { inherit pkgs; };
   obsidianPackage = nixGLWrap pkgs.obsidian;
   backupPath = "${config.home.homeDirectory}/.local/bin/obsidian-backup";
   vaultPath = config.dotfiles.obsidian.vaultPath;
@@ -73,8 +73,6 @@ let
   };
 in
 {
-  imports = [ ./bitwarden.nix ];
-
   dotfiles.obsidian.vaultPath = lib.mkDefault "${config.home.homeDirectory}/Documents/obsidian/personal";
 
   home.packages = [
@@ -97,7 +95,7 @@ in
 
   xdg.configFile = lib.mkIf (!config.dotfiles.obsidian.livesync.enable) {
     "autostart/obsidian.desktop".source =
-      pkgs.replaceVars (../../config + "/autostart/obsidian.desktop")
+      pkgs.replaceVars (../../../config + "/autostart/obsidian.desktop")
         {
           obsidian = "${obsidianPackage}/bin/obsidian";
         };
@@ -105,7 +103,7 @@ in
 
   assertions = [
     {
-      assertion = builtins.pathExists ../../crates/obsidian-backup/src/main.rs;
+      assertion = builtins.pathExists ../../../crates/obsidian-backup/src/main.rs;
       message = "obsidian-backup Rust source must exist";
     }
   ];

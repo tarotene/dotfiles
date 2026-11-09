@@ -12,7 +12,7 @@ prune 直後に destination から復旧できるかは未実測である。
 ## 実行時の設定
 
 private wrapper で `dotfiles.localStateBackup.enable = true;` を vega にだけ指定する。
-本モジュールを `home/common.nix` に import し、timer の node を `pipeline-map.toml` に
+本モジュールは `home/modules/` に置いて(`home/common.nix` が import する)、timer の node を `pipeline-map.toml` に
 登録した上で評価する。root での適用や、vega への適用はこの文書の変更だけでは行わない。
 
 BWS の専用 project に次のキーを登録する。値は public repository や Nix store に置かない。

@@ -52,7 +52,7 @@ skill は、使われ方で 2 層に分け、名前の付け方も層ごとに�
 
 共有 skill は `config/agents/skills/`、共有参照資料は `config/agents/reference/`、共有指示は
 `config/agents/AGENTS.md`、共有設計文書は `docs/agents/` に置く。
-共有の配布・hook 宣言は `home/modules/agents.nix` が持ち、`home/common.nix` から明示的に import する。
+共有の配布・hook 宣言は `home/modules/agents.nix` が持つ。`home/modules/` の全ファイルは `home/common.nix` が import する(全ホストが評価する集合)。
 製品固有の設定・説明は `config/claude/`・`config/codex/`・`docs/claude/` など製品別の場所に残す。
 配布先と対応製品の範囲は、共有正本への移動だけを理由に広げない。
 

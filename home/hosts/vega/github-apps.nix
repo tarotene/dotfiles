@@ -1,11 +1,9 @@
 # github-app-snapshot deployment (ADR-590 D3/D5).
-# vega-only for now (imported from home/hosts/vega.nix only) — the only
-# host this snapshot has actually been run from; add to another host's
-# import list once that host also needs to run it.
+# vega-only for now (it lives in home/hosts/vega/, which only vega imports) —
+# the only host this snapshot has actually been run from; move it to
+# home/modules/ once every host needs to run it.
 { pkgs, ... }:
 {
-  imports = [ ./bitwarden.nix ];
-
   home.packages = [ pkgs.openssl ];
 
   # Rust, from crates/github-app-snapshot via pkgs.dotfiles-tools (ADR-0024,
@@ -25,5 +23,5 @@
   # PEM — see config/github-app-manifests/*.json's own header for what this
   # is and isn't.
   xdg.configFile."github-app-snapshot/manifests/releaser.json".source =
-    ../../config/github-app-manifests/releaser.json;
+    ../../../config/github-app-manifests/releaser.json;
 }

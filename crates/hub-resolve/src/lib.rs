@@ -57,7 +57,7 @@ pub const PERFORMANCE_HUB: Hub = Hub {
 };
 
 /// Obsidian vault(worklog と vault-note が共有する単一の正本)。マーカーの実値は
-/// `home/modules/obsidian.nix` が 1 か所だけで置く(ADR-0034)。存在確認は `.obsidian/app.json`
+/// `home/hosts/vega/obsidian.nix` が 1 か所だけで置く(ADR-0034)。存在確認は `.obsidian/app.json`
 /// で、日次ノートの設定(`daily-notes.json`)を要るのは worklog だけが追加で確かめる。
 pub const OBSIDIAN_VAULT: Hub = Hub {
     name: "obsidian-vault",

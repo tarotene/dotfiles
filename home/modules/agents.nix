@@ -545,7 +545,7 @@
 # 39) worklog(SessionStart, matcher: startup、docs/agents/worklog.md):
 #    Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートへ 1 行ずつ
 #    書かせる。hook は書く時点と kind の規範と、同じリポジトリの直近 7 日の stuck / found を
-#    注入する。vault は ~/.config/dotfiles/obsidian-vault(home/modules/obsidian.nix が置く)で
+#    注入する。vault は ~/.config/dotfiles/obsidian-vault(home/hosts/vega/obsidian.nix が置く)で
 #    宣言され、無い機体では黙って no-op するため、hook は全ホストへ無条件配備する。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・

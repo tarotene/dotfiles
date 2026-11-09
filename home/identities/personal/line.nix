@@ -1,3 +1,7 @@
+# Personal identity only (it lives in home/identities/personal/): a personal
+# messaging account, kept out of home/modules/ so it does not land on company
+# hosts.
+#
 # LINE — no Linux native client exists, and its own Firefox extension is
 # retired; the official LINE Chrome extension (Chrome Web Store id
 # ophjlpahpchlmihnnnihgmmeilfjmjjc) is the only officially supported browser
@@ -23,16 +27,16 @@
 # Identity-scoped rather than in desktop.nix on purpose, same judgment as
 # warp-terminal (#9) and esa (ADR-0022, see that module) — LINE is a personal
 # messaging account, and desktop.nix is imported unconditionally by
-# common.nix for every host, including company ones. Only imported from
-# home/identities/personal.nix.
+# common.nix for every host, including company ones. This module lives in
+# home/identities/personal/, which only the personal identity imports.
 { lib, pkgs, ... }:
 let
-  repoConfig = ../../config;
+  repoConfig = ../../../config;
 
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix's
   # warp-terminal entry. chromium is a GL consumer like alacritty/Chrome/Slack
   # — same /run/opengl-driver bootstrap problem on these Pop!_OS hosts.
-  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../../lib/nixgl.nix { inherit pkgs; };
 
   # Bound rather than inlined: both programs.chromium.package and the
   # launcher entry's Exec= need this exact derivation's store path

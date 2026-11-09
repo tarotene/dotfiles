@@ -10,7 +10,7 @@
 # Verify with: systemctl --user status app-obsidian@autostart.service
 #
 # Exec is @obsidian@, substituted with the nixGL-wrapped store path by pkgs.replaceVars
-# in home/modules/obsidian.nix.  An unmatched placeholder is a build failure, not a
+# in home/hosts/vega/obsidian.nix.  An unmatched placeholder is a build failure, not a
 # silently wrong Exec=.
 
 [Desktop Entry]
