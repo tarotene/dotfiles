@@ -158,7 +158,7 @@ impl Edge {
 pub enum Class {
     /// `claude.nix` の `claudeHookDeclarations` の 1 エントリ(nix 属性 `node`)。
     ClaudeHookDecl,
-    /// `run ${registerCodexHooks}` / `run ${registerCopilotHooks}` の呼び出し。
+    /// `run ${settingsReconcile} codex-hooks-spec` / `copilot-hooks-spec` の呼び出し(Codex と Copilot の hook の登録)。
     RegistrarCall,
     /// `dotfiles.pipeline.timerNodes.<名前> = "<id>";`(`systemd.user.timers.*` と `launchd.agents.*` の
     /// 対応付け。対応付けの有無は nix の評価時に `home/modules/pipeline.nix` が確かめる)と、
@@ -438,9 +438,8 @@ fn scan_nix_modules(root: &Path, scan: &mut Scan) {
                 continue;
             }
             let t = l.trim();
-            if t.starts_with("run ${registerCodexHooks}")
-                || t.starts_with("run ${registerCopilotHooks}")
-                || t.starts_with("run ${settingsReconcile} codex-hooks-spec ")
+            if t.starts_with("run ${settingsReconcile} codex-hooks-spec ")
+                || t.starts_with("run ${settingsReconcile} copilot-hooks-spec ")
             {
                 push_site(
                     scan,
@@ -941,7 +940,7 @@ label = "blocks"
         write(
             r,
             "home/modules/herdr.nix",
-            "  home.activation.x = ''\n    # pipeline-node: guard-a\n    run ${registerCodexHooks} \"$HOME/h.json\" \\\n      Stop \"\" cmd 10\n  '';\n",
+            "  home.activation.x = ''\n    # pipeline-node: guard-a\n    run ${settingsReconcile} codex-hooks-spec \"$HOME/h.json\" \\\n      Stop \"\" cmd 10\n  '';\n",
         );
         write(
             r,
@@ -1017,7 +1016,7 @@ label = "blocks"
         write(
             d.path(),
             "home/modules/herdr.nix",
-            "  home.activation.x = ''\n    run ${registerCodexHooks} \"$HOME/h.json\" \\\n      Stop \"\" cmd 10\n  '';\n",
+            "  home.activation.x = ''\n    run ${settingsReconcile} codex-hooks-spec \"$HOME/h.json\" \\\n      Stop \"\" cmd 10\n  '';\n",
         );
         let p = problems(d.path());
         assert!(

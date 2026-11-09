@@ -346,9 +346,9 @@ command: '~/.claude/hooks/attribution-guard' --agent codex
 旧 bash adapter の command は `--retire` で完全一致削除してから登録する。
 新しい command は Codex 側で一度 `/hooks` から trust し直す必要がある。
 
-Copilot CLI（`~/.copilot/settings.json`、同モジュールの
-`registerCopilotAttributionGuardHooks`、bleep の Copilot 登録の
-後ろに順序付け）:
+Copilot CLI（`~/.copilot/settings.json`、同モジュールの `copilotHookDeclarations` の 1 行。
+かつては専用の activation で bleep の登録の後ろに順序付けていたが、Copilot の登録は 1 つの
+activation `registerCopilotHooks` にまとまった）:
 
 ```
 preToolUse / matcher なし（Copilot 自体が対応していない）/ timeoutSec 10

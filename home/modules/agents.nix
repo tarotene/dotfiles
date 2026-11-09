@@ -684,7 +684,6 @@ let
   # jq に分かれていた。サブコマンドごとに引数の形が違う(codex/copilot は旧 bash と
   # 同じ argv、claude-* は `builtins.toJSON` で作った宣言 JSON)。
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
-  registerCopilotHooks = "${settingsReconcile} copilot-hooks";
   # attribution-guard の Codex/Copilot 展開(#192)。#415(ADR-0024 Stage 4a)で
   # Rust バイナリ(crates/attribution-guard)になり、Claude と同じ
   # ~/.claude/hooks/attribution-guard を `--agent codex|copilot` 付きで直接
@@ -695,10 +694,14 @@ let
   legacyCodexAttributionGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/attribution-guard.sh'";
   legacyCopilotAttributionGuardCmd = "bash '${config.home.homeDirectory}/.copilot/hooks/attribution-guard.sh'";
   # #413: herdr metadata は Claude/Codex/Copilot の 3 本を 1 バイナリ
-  # (crates/herdr-agent-metadata、--agent で入力差を吸収)にまとめた。Codex/
-  # Copilot 側の登録は home/modules/herdr.nix。
+  # (crates/herdr-agent-metadata、--agent で入力差を吸収)にまとめた。Codex/Copilot の
+  # 登録も、下の codexHookDeclarations / copilotHookDeclarations が持つ。
   herdrMetadataCmd = "'${hooksDir}/herdr-agent-metadata'";
   legacyHerdrMetadataCmd = "bash '${hooksDir}/herdr-claude-metadata.sh'";
+  codexMetadataCmd = "${herdrMetadataCmd} --agent codex";
+  copilotMetadataCmd = "${herdrMetadataCmd} --agent copilot";
+  legacyCodexMetadataCmd = "sh '${config.home.homeDirectory}/.codex/herdr-codex-metadata.sh'";
+  legacyCopilotMetadataCmd = "sh '${config.home.homeDirectory}/.copilot/hooks/herdr-copilot-metadata.sh'";
   worktreeFreshBaseCmd = "'${hooksDir}/worktree-base-sync'";
   herdrStatusAdvisoryCmd = "'${hooksDir}/herdr-status-advisory'";
   gateFailopenAdvisoryCmd = "'${hooksDir}/gate-failopen-advisory'";
@@ -1547,18 +1550,21 @@ let
   pipelineNodeIds = config.dotfiles.pipeline.nodeIds;
   declareHook =
     d:
-    assert lib.assertMsg (
-      d ? node
-    ) "claudeHookDeclarations: node が無い宣言がある (event = ${d.event}, command = ${d.command})";
+    assert lib.assertMsg (d ? node)
+      "hook の宣言(claude/copilotHookDeclarations): node が無い宣言がある (event = ${d.event}, command = ${d.command})";
     assert lib.assertMsg (builtins.elem d.node pipelineNodeIds)
-      "claudeHookDeclarations: node `${d.node}` が pipeline-map.toml に定義されていない";
+      "hook の宣言(claude/copilotHookDeclarations): node `${d.node}` が pipeline-map.toml に定義されていない";
     builtins.removeAttrs d [ "node" ];
 
   # Codex の `/hooks` は、statusMessage の無い hook をすべて `Unnamed hook` と表示する(#1122)。
   # 表示名は pipeline-map.toml のノードの label(ASCII)を使う。Claude の宣言には付けない
   # (Claude は statusMessage をフック実行中の表示にも使う)。
+  #
+  # 行が自分の statusMessage を持つときは、それを使う。herdr-agent-metadata の 5 行は、`/hooks` の
+  # 信頼(Codex が command・timeout・statusMessage から作る識別子)を保つため、従来の表示名
+  # "herdr agent metadata" のまま登録する。ノードの label にそろえると、3 機体で信頼し直しになる。
   declareCodexHook =
-    d: declareHook d // { statusMessage = config.dotfiles.pipeline.nodeLabels.${d.node}; };
+    d: { statusMessage = config.dotfiles.pipeline.nodeLabels.${d.node}; } // declareHook d;
 
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
@@ -1589,7 +1595,7 @@ let
       if builtins.elem d.node codexPlanNodes then
         [ ]
       else if d.node == "herdr-agent-metadata" then
-        [ ] # herdr.nix owns the agent-specific metadata lifecycle
+        [ ] # Codex の 5 イベントは、下の codexHerdrMetadataHooks が持つ(Claude の行とは event・timeout が違う)
       else if
         builtins.elem d.node [
           "git-worktree-allow"
@@ -1631,6 +1637,7 @@ let
           )
         ]
     ) enabledClaudeHookDeclarations
+    ++ codexHerdrMetadataHooks
     ++ [
       {
         event = "Stop";
@@ -1639,6 +1646,42 @@ let
         timeout = 400;
       }
     ];
+  # herdr の metadata hook(crates/herdr-agent-metadata)。PreToolUse は、ツールの実行が始まるときにも
+  # Codex の metadata を更新する。SessionEnd の timeout は Codex の上限の 3 秒に揃える: Codex は SessionEnd と
+  # Interrupt の timeout を 1〜3 秒に丸め、超える宣言は起動のたびに `clamping SessionEnd hook timeout to 3s`
+  # の警告を出す(#858。openai/codex rust-v0.160.0 の codex-rs/hooks/src/events/session_end.rs、取得 2026-10-21)。
+  # herdr-agent-metadata の SessionEnd は socket へ 1 行を送るだけ(各 500ms の timeout)で、3 秒に収まる。
+  # ほかの 4 イベントの既定は 600 秒なので 10 のまま。
+  codexHerdrMetadataHooks =
+    map
+      (e: {
+        inherit (e) event timeout;
+        node = "herdr-agent-metadata";
+        command = codexMetadataCmd;
+        statusMessage = "herdr agent metadata";
+      })
+      [
+        {
+          event = "SessionStart";
+          timeout = 10;
+        }
+        {
+          event = "UserPromptSubmit";
+          timeout = 10;
+        }
+        {
+          event = "PreToolUse";
+          timeout = 10;
+        }
+        {
+          event = "Stop";
+          timeout = 10;
+        }
+        {
+          event = "SessionEnd";
+          timeout = 3;
+        }
+      ];
   codexHooksSpec = builtins.toJSON {
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-codex.json";
     register = map declareCodexHook codexHookDeclarations;
@@ -1678,6 +1721,7 @@ let
         codexPrConfirmGuardCmd
         legacyCodexPrConfirmGuardCmd
         "'${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard'"
+        legacyWorktreeCreateGuardCmd
       ]
     )
     ++ (map
@@ -1702,6 +1746,19 @@ let
         legacyWrapupSessionStartCmd
         legacySignPrewarmCmd
         legacyPrGateSessionStartCmd
+        legacyWorktreeAuditContextCmd
+      ]
+    )
+    ++ (map
+      (event: {
+        inherit event;
+        command = legacyCodexMetadataCmd;
+      })
+      [
+        "SessionStart"
+        "UserPromptSubmit"
+        "Stop"
+        "SessionEnd"
       ]
     )
     ++ (map
@@ -1721,6 +1778,133 @@ let
       {
         event = "UserPromptSubmit";
         command = legacyCodexAgentTurnLogCmd;
+      }
+    ];
+  };
+
+  # Copilot CLI(~/.copilot/settings.json)の hook。Claude・Codex と同じく、宣言(行)と所有の記録
+  # (managed-hooks-copilot.json)で登録する。行は Copilot の native な event 名(camelCase)で書き、
+  # herdr 自身の PascalCase のエントリとは共存する(docs/agents/herdr-sidebar-metadata.md)。Copilot の
+  # 平らな形(`{type, bash, timeoutSec}`)は matcher・if・statusMessage を持たない。
+  # Copilot CLI の sessionStart は最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks
+  # reference"、取得 2026-10-28)ので、worklog は `--agent copilot` でその形を出させる(ADR-998 の追記。
+  # Codex は共通宣言の SessionStart から展開済み)。
+  copilotHookDeclarations = [
+    {
+      event = "preToolUse";
+      node = "bleep";
+      command = bleepCopilotCmd;
+      timeout = 20;
+    }
+    {
+      event = "preToolUse";
+      node = "attribution-guard";
+      command = copilotAttributionGuardCmd;
+      timeout = 10;
+    }
+    {
+      event = "preToolUse";
+      node = "pr-title-guard";
+      command = copilotPrTitleGuardCmd;
+      timeout = 10;
+    }
+    # pkexec-guard は判定ロジックを持たず、`pkexec` を含む Bash コマンドを常に deny する
+    # (docs/agents/pkexec-guard.md「Codex / Copilot からは pkexec を一切許さない」)。
+    {
+      event = "preToolUse";
+      node = "pkexec-guard";
+      command = pkexecGuardCopilotCmd;
+      timeout = 10;
+    }
+    {
+      event = "UserPromptSubmit";
+      node = "agent-turn-log";
+      command = copilotAgentTurnLogCmd;
+      timeout = 10;
+    }
+    {
+      event = "Stop";
+      node = "agent-turn-log";
+      command = copilotAgentTurnLogCmd;
+      timeout = 10;
+    }
+    {
+      event = "sessionStart";
+      node = "worklog";
+      command = "${worklogStartCmd} --agent copilot";
+      timeout = 10;
+    }
+    {
+      event = "sessionStart";
+      node = "herdr-agent-metadata";
+      command = "${copilotMetadataCmd} report";
+      timeout = 10;
+    }
+    {
+      event = "userPromptSubmitted";
+      node = "herdr-agent-metadata";
+      command = "${copilotMetadataCmd} report";
+      timeout = 10;
+    }
+    {
+      event = "agentStop";
+      node = "herdr-agent-metadata";
+      command = "${copilotMetadataCmd} report";
+      timeout = 10;
+    }
+    {
+      event = "sessionEnd";
+      node = "herdr-agent-metadata";
+      command = "${copilotMetadataCmd} clear";
+      timeout = 10;
+    }
+  ];
+  # 旧 command は、完全一致で先に取り除く。#25-28(Rust hook cutover + bleep 改名)で旧
+  # adapters/copilot-adapter.sh が upstream から削除されたため、削除せず放置すると、存在しない
+  # パスを指したまま毎 tool call で失敗する(Claude 側の retiredHookEntries と同型)。
+  copilotHooksSpec = builtins.toJSON {
+    state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-copilot.json";
+    register = map declareHook copilotHookDeclarations;
+    retire = [
+      {
+        event = "preToolUse";
+        command = legacyPublishGuardCopilotAdapterCmd;
+      }
+      {
+        event = "preToolUse";
+        command = legacyBleepCopilotCmdUnprefixed;
+      }
+      {
+        event = "preToolUse";
+        command = legacyCopilotAttributionGuardCmd;
+      }
+      {
+        event = "preToolUse";
+        command = legacyCopilotPrTitleGuardCmd;
+      }
+      {
+        event = "UserPromptSubmit";
+        command = legacyCopilotAgentTurnLogCmd;
+      }
+      {
+        event = "Stop";
+        command = legacyCopilotAgentTurnLogCmd;
+      }
+      {
+        event = "sessionStart";
+        command = "${legacyCopilotMetadataCmd} report";
+      }
+      {
+        event = "userPromptSubmitted";
+        command = "${legacyCopilotMetadataCmd} report";
+      }
+      {
+        event = "agentStop";
+        command = "${legacyCopilotMetadataCmd} report";
+      }
+      {
+        event = "sessionEnd";
+        command = "${legacyCopilotMetadataCmd} clear";
       }
     ];
   };
@@ -2267,94 +2451,13 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     )
   ];
 
-  # Codex/Copilot 版 shim の配線(#160)。Claude Code plugin 相当の配線
-  # (上の settings.json マージ)はあったが、Codex CLI (~/.codex/hooks.json) /
-  # Copilot CLI (~/.copilot/settings.json) には ADR-0009 決定7で明示的に
-  # 対象外としたまま配線していなかった。agent-settings-reconcile の
-  # codex-hooks / copilot-hooks は worktree.nix / herdr.nix が同じ対象ファイルを
-  # 書き換える registrar なので、lost-update 窓(#61 と同種)を避けるため
-  # それらの後ろに明示的に順序付ける。#25-28(Rust hook cutover + bleep
-  # 改名)で旧 adapters/{codex,copilot}-adapter.sh が upstream から削除された
-  # ため、--retire で旧 command 文字列を先に取り除いてから新 bleep.sh の
-  # command を登録する(register-{codex,copilot}-hooks に追加した --retire、
-  # Claude 側の retiredHookEntries と同型 — 削除せず放置すると存在しない
-  # パスを指したまま毎 tool call で失敗する)。
-
-  home.activation.registerCopilotBleepHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
-      ''
-        # pipeline-node: bleep
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          --retire preToolUse ${lib.escapeShellArg legacyPublishGuardCopilotAdapterCmd} \
-          --retire preToolUse ${lib.escapeShellArg legacyBleepCopilotCmdUnprefixed} \
-          --register \
-          preToolUse ${lib.escapeShellArg bleepCopilotCmd} 20
-      '';
-
-  # attribution-guard の Codex/Copilot 展開(#192)。同じ lost-update 対策で
-  # bleep の登録の後ろに明示的に順序付ける。
-
-  home.activation.registerCopilotAttributionGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotBleepHooks" ]
-      ''
-        # pipeline-node: attribution-guard
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          --retire preToolUse ${lib.escapeShellArg legacyCopilotAttributionGuardCmd} \
-          --register \
-          preToolUse ${lib.escapeShellArg copilotAttributionGuardCmd} 10
-      '';
-
-  # pr-title-guard の Codex/Copilot 展開(ADR-0031、#192 の型を踏襲)。同じ
-  # lost-update 対策で attribution-guard の登録の後ろに明示的に順序付ける。
-
-  home.activation.registerCopilotPrTitleGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAttributionGuardHooks" ]
-      ''
-        # pipeline-node: pr-title-guard
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          --retire preToolUse ${lib.escapeShellArg legacyCopilotPrTitleGuardCmd} \
-          --register \
-          preToolUse ${lib.escapeShellArg copilotPrTitleGuardCmd} 10
-      '';
-
-  # pkexec-guard(29番)の Codex/Copilot 展開: 判定ロジックは持たず、`pkexec`
-  # を含む Bash コマンドを常に deny する(docs/agents/pkexec-guard.md「Codex /
-  # Copilot からは pkexec を一切許さない」)。attribution-guard/pr-title-guard
-  # と同じ lost-update 対策で、その後ろに明示的に順序付ける。
-
-  home.activation.registerCopilotPkexecGuardHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPrTitleGuardHooks" ]
-      ''
-        # pipeline-node: pkexec-guard
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          preToolUse ${lib.escapeShellArg pkexecGuardCopilotCmd} 10
-      '';
-
-  # agent-turn-log の Copilot 展開(ADR-0032 Amendment 2026-10-01)。同じ
-  # lost-update 対策で、最後尾の pkexec-guard の登録の後ろに明示的に順序付ける。
-  home.activation.registerCopilotAgentTurnLogHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotPkexecGuardHooks" ]
-      ''
-        # pipeline-node: agent-turn-log
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          --retire UserPromptSubmit ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
-          --retire Stop ${lib.escapeShellArg legacyCopilotAgentTurnLogCmd} \
-          --register \
-          UserPromptSubmit ${lib.escapeShellArg copilotAgentTurnLogCmd} 10 \
-          Stop ${lib.escapeShellArg copilotAgentTurnLogCmd} 10
-      '';
-
-  # worklog の Copilot 展開(ADR-998 の追記)。Codex は共通宣言の SessionStart から展開済み。Copilot
-  # CLI の sessionStart は最上位の `additionalContext` だけを読む(GitHub Docs, "GitHub Copilot hooks
-  # reference"、取得 2026-10-28)ので、`--agent copilot` でその形を出させる。同じ lost-update 対策で、
-  # 最後尾の agent-turn-log の登録の後ろに明示的に順序付ける。
-  home.activation.registerCopilotWorklogHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotAgentTurnLogHooks" ]
-      ''
-        # pipeline-node: worklog
-        run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-          sessionStart ${lib.escapeShellArg "${worklogStartCmd} --agent copilot"} 10
-      '';
+  # Copilot の hook は、宣言(上の copilotHookDeclarations)と所有の記録で 1 つの activation が登録する。
+  # Claude・Codex と違い、ほかに ~/.copilot/settings.json を書く activation は無い
+  # (かつては 7 つの登録が互いの後ろに順序付けられ、lost-update の窓を避けていた)。
+  home.activation.registerCopilotHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # pipeline-node: bleep, attribution-guard, pr-title-guard, pkexec-guard, agent-turn-log, worklog, herdr-agent-metadata
+    run ${settingsReconcile} copilot-hooks-spec "$HOME/.copilot/settings.json" ${lib.escapeShellArg copilotHooksSpec}
+  '';
 
   home.file.".claude/pr-gate-repos".source = repoConfig + "/claude/pr-gate-repos";
 
@@ -2434,17 +2537,10 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # docs/claude/global-claude-md.md。
 
   # 宣言(claudeHookDeclarations / retiredHookEntries)は JSON で 1 引数に渡す。
-  home.activation.registerCodexSharedHooks =
-    lib.hm.dag.entryAfter
-      [
-        "writeBoundary"
-        "registerCodexWorktreeHooks"
-        "registerCodexHerdrMetadataHooks"
-      ]
-      ''
-        # pipeline-node: hook-router-pre, hook-router-post, codex-plan-gate
-        run ${settingsReconcile} codex-hooks-spec "$HOME/.codex/hooks.json" ${lib.escapeShellArg codexHooksSpec}
-      '';
+  home.activation.registerCodexSharedHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # pipeline-node: hook-router-pre, hook-router-post, codex-plan-gate, herdr-agent-metadata
+    run ${settingsReconcile} codex-hooks-spec "$HOME/.codex/hooks.json" ${lib.escapeShellArg codexHooksSpec}
+  '';
 
   home.activation.registerClaudeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     run ${settingsReconcile} claude-hooks "$HOME/.claude/settings.json" \

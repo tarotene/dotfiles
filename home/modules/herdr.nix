@@ -29,19 +29,6 @@
   ...
 }:
 let
-  # hooks.json / settings.json への冪等 reconcile(crates/agent-settings-reconcile、#414)。
-  settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
-  registerCodexHooks = "${settingsReconcile} codex-hooks";
-  registerCopilotHooks = "${settingsReconcile} copilot-hooks";
-  # #413 (ADR-0024 Stage 4d): Codex/Copilot 版は Claude 版と同じ Rust バイナリ
-  # (crates/herdr-agent-metadata、home/modules/claude.nix が ~/.claude/hooks/ に
-  # 配備)を --agent で呼ぶ。旧 `sh '….sh'` の command は --retire で完全一致削除する。
-  metadataBin = "${config.home.homeDirectory}/.claude/hooks/herdr-agent-metadata";
-  codexMetadataCmd = "'${metadataBin}' --agent codex";
-  copilotMetadataCmd = "'${metadataBin}' --agent copilot";
-  legacyCodexMetadataCmd = "sh '${config.home.homeDirectory}/.codex/herdr-codex-metadata.sh'";
-  legacyCopilotMetadataCmd = "sh '${config.home.homeDirectory}/.copilot/hooks/herdr-copilot-metadata.sh'";
-
   issueCountsPath = "${config.home.homeDirectory}/.local/bin/herdr-issue-counts";
   # herdr(workspace list / report-metadata)、git(remote -v)、gh(auth status /
   # api graphql)だけを呼ぶ。launchd の EnvironmentVariables.PATH は置換なので
@@ -78,51 +65,9 @@ in
 
   home.packages = [ pkgs.herdr ];
 
-  # Codex は worktree.nix の registerCodexWorktreeHooks も同じ
-  # ~/.codex/hooks.json を jq で書き換える — lost-update 窓(#61 と同種)を
-  # 避けるため明示的にその後ろに順序付ける
-  # (installHerdrClaudeIntegration が registerClaudeHooks の後ろに並ぶのと同じ手法)。
-  # PreToolUse also refreshes the Codex metadata when tool execution starts.
-  home.activation.registerCodexHerdrMetadataHooks =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexWorktreeHooks" ]
-      ''
-        # SessionEnd の timeout は Codex の上限の 3 秒に揃える。Codex は SessionEnd と
-        # Interrupt の timeout を 1〜3 秒に丸め、超える宣言は起動のたびに
-        # `clamping SessionEnd hook timeout to 3s` の警告を出す(#858。openai/codex
-        # rust-v0.160.0 の codex-rs/hooks/src/events/session_end.rs、取得 2026-10-21)。
-        # herdr-agent-metadata の SessionEnd は socket へ 1 行を送るだけ(各 500ms の
-        # timeout)で、3 秒に収まる。ほかの 3 イベントの既定は 600 秒なので 10 のまま。
-        # pipeline-node: herdr-agent-metadata
-        run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-          --retire SessionStart ${lib.escapeShellArg legacyCodexMetadataCmd} \
-          --retire UserPromptSubmit ${lib.escapeShellArg legacyCodexMetadataCmd} \
-          --retire Stop ${lib.escapeShellArg legacyCodexMetadataCmd} \
-          --retire SessionEnd ${lib.escapeShellArg legacyCodexMetadataCmd} \
-          --status-message ${lib.escapeShellArg "herdr agent metadata"} \
-          --register \
-          SessionStart "" ${lib.escapeShellArg codexMetadataCmd} 10 \
-          UserPromptSubmit "" ${lib.escapeShellArg codexMetadataCmd} 10 \
-          PreToolUse "" ${lib.escapeShellArg codexMetadataCmd} 10 \
-          Stop "" ${lib.escapeShellArg codexMetadataCmd} 10 \
-          SessionEnd "" ${lib.escapeShellArg codexMetadataCmd} 3
-      '';
-
-  # ~/.copilot/settings.json を activation で書くものは他に無いので
-  # writeBoundary だけで足りる。イベント名は Copilot CLI の native camelCase
-  # (herdr 自身の PascalCase エントリと共存する — herdr-sidebar-metadata.md 参照)。
-  home.activation.registerCopilotHerdrMetadataHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    # pipeline-node: herdr-agent-metadata
-    run ${registerCopilotHooks} "$HOME/.copilot/settings.json" \
-      --retire sessionStart ${lib.escapeShellArg "${legacyCopilotMetadataCmd} report"} \
-      --retire userPromptSubmitted ${lib.escapeShellArg "${legacyCopilotMetadataCmd} report"} \
-      --retire agentStop ${lib.escapeShellArg "${legacyCopilotMetadataCmd} report"} \
-      --retire sessionEnd ${lib.escapeShellArg "${legacyCopilotMetadataCmd} clear"} \
-      --register \
-      sessionStart ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
-      userPromptSubmitted ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
-      agentStop ${lib.escapeShellArg "${copilotMetadataCmd} report"} 10 \
-      sessionEnd ${lib.escapeShellArg "${copilotMetadataCmd} clear"} 10
-  '';
+  # Codex と Copilot の metadata hook(herdr-agent-metadata の --agent codex / copilot)の登録は、
+  # home/modules/agents.nix の宣言(codexHerdrMetadataHooks / copilotHookDeclarations)が持つ。
+  # Claude 版と同じ Rust バイナリ(crates/herdr-agent-metadata)を --agent で呼ぶ。
 
   xdg.configFile."herdr/config.toml".source = ../../config/herdr/config.toml;
 
@@ -208,17 +153,11 @@ in
 
   # codex/copilot 版。上の installHerdrClaudeIntegration と同じ理由・同じ
   # ゲート方式(ファイル存在、`herdr integration status` のテキストはパース
-  # しない)。entryAfter の対象は、対象 hooks.json/settings.json を jq merge
-  # する registrar(このモジュール内 registerCodex/CopilotHerdrMetadataHooks、
-  # codex はさらに worktree.nix の registerCodexWorktreeHooks)— claude 版と
-  # 同じ lost-update 回避(#61 と同種)。
+  # しない)。entryAfter の対象は、対象の hooks.json / settings.json を書く registrar
+  # (home/modules/agents.nix の registerCodexSharedHooks / registerCopilotHooks)—
+  # claude 版と同じ lost-update 回避(#61 と同種)。
   home.activation.installHerdrCodexIntegration =
-    lib.hm.dag.entryAfter
-      [
-        "writeBoundary"
-        "registerCodexWorktreeHooks"
-        "registerCodexHerdrMetadataHooks"
-      ]
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCodexSharedHooks" ]
       ''
         if [ ! -e "$HOME/.codex/herdr-agent-state.sh" ]; then
           run ${pkgs.herdr}/bin/herdr integration install codex || true
@@ -226,7 +165,7 @@ in
       '';
 
   home.activation.installHerdrCopilotIntegration =
-    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHerdrMetadataHooks" ]
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerCopilotHooks" ]
       ''
         if [ ! -e "$HOME/.copilot/hooks/herdr-agent-state.sh" ]; then
           run ${pkgs.herdr}/bin/herdr integration install copilot || true

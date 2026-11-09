@@ -12,20 +12,6 @@ let
   # predates this module and needs no interpolation of its own), but the
   # auto-prune timer below has to reference its path too.
   pruneBranchesPath = "${config.home.homeDirectory}/.local/bin/git-prune-branches";
-  guardPath = "${config.home.homeDirectory}/.local/libexec/git-worktree-create-guard";
-  # The Rust ports (#416, crates/git-audit-worktrees and
-  # crates/git-worktree-create-guard) are native executables, so these hook
-  # commands run them directly rather than through `bash`.
-  guardCmd = "'${guardPath}'";
-  contextCmd = "'${auditPath}' --context";
-  # 旧(bash 経由)の command 文字列。register は command の完全一致で存在判定
-  # するので、先に --retire で消さないと旧エントリが残る。
-  legacyGuardCmd = "bash '${guardPath}'";
-  legacyContextCmd = "bash '${auditPath}' --context";
-
-  # hooks.json への冪等 reconcile(crates/agent-settings-reconcile、#414)。
-  registerCodexHooks = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile codex-hooks";
-
   # #78: parent checkouts that herdr's Workspace Fork reads HEAD from
   # without fetching first. Explicit allowlist rather than a directory
   # scan (ghr's ~/.ghr tree can contain many repos this host has no
@@ -197,18 +183,8 @@ in
     "git-worktree-create-guard"
   ];
 
-  # Codex owns hooks.json at runtime, as Herdr's integration does. Merge only
-  # our two commands and preserve all unrelated entries.
-  home.activation.registerCodexWorktreeHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    # pipeline-node: worktree-create-guard, worktree-audit-context
-    run ${registerCodexHooks} "$HOME/.codex/hooks.json" \
-      --retire PreToolUse ${lib.escapeShellArg legacyGuardCmd} \
-      --retire PreToolUse ${lib.escapeShellArg guardCmd} \
-      --retire SessionStart ${lib.escapeShellArg legacyContextCmd} \
-      --status-message ${lib.escapeShellArg "worktree audit context"} \
-      --register \
-      SessionStart ${lib.escapeShellArg "startup|resume"} ${lib.escapeShellArg contextCmd} 30
-  '';
+  # The Codex registration of the worktree hooks (the create guard's retirement and the SessionStart
+  # audit context) lives with the others in home/modules/agents.nix (codexHooksSpec), not here.
 
   # Named after the command it runs (git-audit-worktrees), not the other way
   # around — the old "git-worktree-audit" name had the words reversed from

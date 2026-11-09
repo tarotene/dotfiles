@@ -9,6 +9,8 @@
 //!
 //! ```text
 //! agent-settings-reconcile claude-hooks       <settings.json> <spec-json>
+//! agent-settings-reconcile codex-hooks-spec   <hooks.json>    <spec-json>
+//! agent-settings-reconcile copilot-hooks-spec <settings.json> <spec-json>
 //! agent-settings-reconcile claude-permissions <settings.json> <spec-json>
 //! agent-settings-reconcile claude-statusline  <settings.json> <spec-json>
 //! agent-settings-reconcile claude-mcp-servers <claude.json>   <servers-json>
@@ -56,6 +58,7 @@ pub const USAGE: &str = "\
 usage: agent-settings-reconcile <subcommand> <file> ...
   claude-hooks <settings.json> <spec-json>
   codex-hooks-spec <hooks.json> <spec-json>
+  copilot-hooks-spec <settings.json> <spec-json>
   claude-permissions <settings.json> <spec-json>
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
@@ -70,7 +73,8 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
     };
     let rest = &args[1..];
     match sub.as_str() {
-        "claude-hooks" | "codex-hooks-spec" => claude_hooks(rest),
+        "claude-hooks" | "codex-hooks-spec" => hooks_spec(rest, Flavor::Nested),
+        "copilot-hooks-spec" => hooks_spec(rest, Flavor::Flat),
         "claude-permissions" => claude_permissions(rest),
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
@@ -108,11 +112,13 @@ fn with_json_spec<S: serde::de::DeserializeOwned>(
     edit(Path::new(file), |root| f(root, spec))
 }
 
-/// `claude-hooks <settings.json> <spec-json>`。spec に `state` があれば、所有の記録
+/// `claude-hooks` / `codex-hooks-spec` / `copilot-hooks-spec` `<hooks ファイル> <spec-json>`。
+/// 3 つは同じ spec を取り、ファイルの形だけが違う(`flavor`: Claude と Codex は入れ子、
+/// Copilot は event 配列に直接並べる平らな形)。spec に `state` があれば、所有の記録
 /// (`managed`)を使う: 前回書いたが今回の宣言に無い hook を消し、今回の宣言を記録する。
 /// 記録は settings.json の書き込みが成功したあとにだけ更新する(失敗した適用を
 /// 「書いた」ことにしない)。
-fn claude_hooks(rest: &[String]) -> Result<(), Failure> {
+fn hooks_spec(rest: &[String], flavor: Flavor) -> Result<(), Failure> {
     let [file, spec] = rest else {
         return Err(usage(USAGE));
     };
@@ -122,12 +128,7 @@ fn claude_hooks(rest: &[String]) -> Result<(), Failure> {
     let previous = state.and_then(managed::load);
     let mut declared = None;
     edit(Path::new(file), |root| {
-        declared = Some(hooks::apply(
-            root,
-            Flavor::Nested,
-            &spec,
-            previous.as_ref(),
-        )?);
+        declared = Some(hooks::apply(root, flavor, &spec, previous.as_ref())?);
         Ok(())
     })?;
     if let (Some(path), Some(declared)) = (state, declared) {

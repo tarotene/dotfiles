@@ -265,3 +265,75 @@ fn naming_migration_replaces_owned_hooks_preserves_custom_and_converges() {
     assert_eq!(std::fs::read(&e.settings).unwrap(), first);
     assert_eq!(std::fs::read(&e.state).unwrap(), first_state);
 }
+
+// ---- copilot-hooks-spec: Copilot の settings.json(event 配列に平らな形で並べる) ----
+
+fn run_copilot(env: &Env, register: &[Value], retire: &[Value]) -> Output {
+    let spec = json!({
+        "register": register,
+        "retire": retire,
+        "state": env.state.to_string_lossy(),
+    });
+    Command::new(BIN)
+        .arg("copilot-hooks-spec")
+        .arg(&env.settings)
+        .arg(spec.to_string())
+        .output()
+        .unwrap()
+}
+
+fn bashes(settings: &Path, event: &str) -> Vec<String> {
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
+    v["hooks"][event]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e["bash"].as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn copilot_hooks_spec_writes_flat_entries_and_removes_what_the_declaration_dropped() {
+    let env = env();
+    // 他ツールが書いたエントリ(記録に無い)は、同じ event にあっても触らない。
+    std::fs::write(
+        &env.settings,
+        json!({"hooks": {"preToolUse": [{"type": "command", "bash": "other-tool", "timeoutSec": 5}]}})
+            .to_string(),
+    )
+    .unwrap();
+
+    // 1 回目: 2 つ登録する。Copilot の平らな形では timeout は timeoutSec になる。
+    ok(&run_copilot(
+        &env,
+        &[
+            reg("preToolUse", "dotfiles-a"),
+            reg("preToolUse", "dotfiles-b"),
+        ],
+        &[],
+    ));
+    assert_eq!(
+        bashes(&env.settings, "preToolUse"),
+        ["other-tool", "dotfiles-a", "dotfiles-b"]
+    );
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&env.settings).unwrap()).unwrap();
+    assert_eq!(v["hooks"]["preToolUse"][1]["timeoutSec"], 10);
+    assert!(v["hooks"]["preToolUse"][1].get("matcher").is_none());
+
+    // 2 回目: 宣言から dotfiles-b を外す。記録にあったので消え、他ツールのエントリは残る。
+    ok(&run_copilot(&env, &[reg("preToolUse", "dotfiles-a")], &[]));
+    assert_eq!(
+        bashes(&env.settings, "preToolUse"),
+        ["other-tool", "dotfiles-a"]
+    );
+
+    // 3 回目: retire に挙げた command は、記録に無くても消える(退役の一覧)。
+    ok(&run_copilot(
+        &env,
+        &[reg("preToolUse", "dotfiles-a")],
+        &[json!({"event": "preToolUse", "command": "other-tool"})],
+    ));
+    assert_eq!(bashes(&env.settings, "preToolUse"), ["dotfiles-a"]);
+}
