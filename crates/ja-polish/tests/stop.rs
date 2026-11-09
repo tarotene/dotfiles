@@ -58,7 +58,7 @@ fn stop_gate_end_to_end() {
     let root = dir.path().canonicalize().unwrap();
     std::env::set_var("XDG_CONFIG_HOME", root.join("config"));
     std::env::set_var("XDG_STATE_HOME", root.join("state"));
-    std::env::remove_var("JA_POLISH_GATE_ALLOW");
+    std::env::remove_var("SKIP_JA_POLISH_GATE");
 
     // git のリポジトリ: 基点に承認済みの段落、作業ツリーに足した段落。
     let repo = root.join("repo");
@@ -94,9 +94,9 @@ fn stop_gate_end_to_end() {
 
     // 3. block の直後の再呼び出し(stop_hook_active)と、逃げ道の環境変数では黙る。
     assert!(run(&stop_input(&repo, true)).is_none());
-    std::env::set_var("JA_POLISH_GATE_ALLOW", "1");
+    std::env::set_var("SKIP_JA_POLISH_GATE", "1");
     assert!(run(&stop_input(&repo, false)).is_none());
-    std::env::remove_var("JA_POLISH_GATE_ALLOW");
+    std::env::remove_var("SKIP_JA_POLISH_GATE");
 
     // 4. 記録に段落があれば通る。
     records::append(

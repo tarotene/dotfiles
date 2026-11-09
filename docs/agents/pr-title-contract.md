@@ -67,7 +67,7 @@ type(scope)?!?: subject
 workflow を持つリポジトリは、サーバ側の required check が同じ文法で既に
 判定しているので、client で先に止めても慣行とは衝突しない。
 
-一時的に無効化したいときは `PR_TITLE_GUARD_ALLOW=1` を立てる(`No-Issue:`
+一時的に無効化したいときは `SKIP_PR_TITLE_GUARD=1` を立てる(`No-Issue:`
 のような本文タグ型 escape hatch ではない — 理由を本文に残す恒久的な決定
 ではなく、単発の緊急対応向けの一時解除のため)。
 

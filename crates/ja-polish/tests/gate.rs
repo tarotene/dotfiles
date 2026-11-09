@@ -21,7 +21,7 @@ fn gate_follows_config_records_and_escape_hatch() {
     let dir = tempfile::tempdir().unwrap();
     std::env::set_var("XDG_CONFIG_HOME", dir.path().join("config"));
     std::env::set_var("XDG_STATE_HOME", dir.path().join("state"));
-    std::env::remove_var("JA_POLISH_GATE_ALLOW");
+    std::env::remove_var("SKIP_JA_POLISH_GATE");
 
     // 1. 設定ファイルが無い機体(ja-polish を有効にしていない)では、何も検査しない。
     assert!(gate::hook(Agent::Claude, &raw_commit()).is_none());
@@ -36,9 +36,9 @@ fn gate_follows_config_records_and_escape_hatch() {
     assert!(is_deny(gate::hook(Agent::Codex, &raw_commit())));
 
     // 3. 逃げ道の環境変数。
-    std::env::set_var("JA_POLISH_GATE_ALLOW", "1");
+    std::env::set_var("SKIP_JA_POLISH_GATE", "1");
     assert!(gate::hook(Agent::Claude, &raw_commit()).is_none());
-    std::env::remove_var("JA_POLISH_GATE_ALLOW");
+    std::env::remove_var("SKIP_JA_POLISH_GATE");
     assert!(is_deny(gate::hook(Agent::Claude, &raw_commit())));
 
     // 4. 記録に段落があれば通る(書き直した段落も、素通しにした段落も同じ)。

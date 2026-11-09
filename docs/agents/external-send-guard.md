@@ -104,7 +104,7 @@ Gmail/Slack 共通のマッチング(`decide_mcp`)より先に行う: tool 名�
 「判定を諦める = 素通し」を避ける方針(`docs/agents/git-stash-guard.md`)と
 同じ考え方。
 
-## bypass: `EXTERNAL_SEND_GUARD_ALLOW=1`
+## bypass: `SKIP_EXTERNAL_SEND_GUARD=1`
 
 bleep と同じ形の env var bypass を持つ。**deny の理由文にはこの env var
 名を書いていない** — 制約される当事者(Claude)が deny の理由を読んで自分で

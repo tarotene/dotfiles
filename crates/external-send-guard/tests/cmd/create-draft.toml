@@ -4,5 +4,5 @@ stdin = '{"tool_name":"mcp__claude_ai_Gmail__create_draft","tool_input":{"to":["
 status.code = 0
 stdout = ""
 [env]
-remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+remove = ["SKIP_EXTERNAL_SEND_GUARD"]
 add = { XDG_CONFIG_HOME = "/nonexistent/fixture-oracle" }

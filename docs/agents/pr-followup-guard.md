@@ -92,8 +92,8 @@ allowlist(既定 `tarotene/dotfiles` のみ)に入っていないリポジトリ
 作業を残さない」という書き手側の規律であり、`attribution-guard.sh`(自分の
 投稿本文の規律、owner スコープ無し)と同じ類型なので、その先例に揃えた。
 
-一時的に無効化したいときは `PR_CONFIRM_GUARD_ALLOW=1` を立てる
-(`PR_TITLE_GUARD_ALLOW=1` と同型 — 本文タグ型の恒久エスケープではない)。
+一時的に無効化したいときは `SKIP_PR_FOLLOWUP_GUARD=1` を立てる
+(`SKIP_PR_TITLE_GUARD=1` と同型 — 本文タグ型の恒久エスケープではない)。
 Draft PR や `Handoff: #N` のような本文タグ型の例外は設けない — 正しい代替
 (Issue への払い出し)が常に実行可能なため、例外を許すとチェックボックスと
 同じ抜け道が復活する。

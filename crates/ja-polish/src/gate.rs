@@ -14,7 +14,7 @@
 //! 通すもの:
 //! - 設定ファイルが無い機体(ja-polish を有効にしていない機体)
 //! - 本文に `No-Attribution:` の行がある(本人の文の代理投稿。書き直しの対象外)
-//! - 環境変数 `JA_POLISH_GATE_ALLOW=1`(ja-polish が壊れたときの逃げ道)
+//! - 環境変数 `SKIP_JA_POLISH_GATE=1`(ja-polish が壊れたときの逃げ道)
 //! - 本文が取れない(コマンド置換の中身が不明、`--body-file` が読めない、知らない形の MCP 入力)。
 //!   判定不能を拒否に変えない
 //!
@@ -258,7 +258,10 @@ pub fn decide_mcp(tool: &str, input: &Value, known: &HashSet<String>) -> Option<
 
 /// hook 本体(ルータの規則 `ja-polish-gate` が呼ぶ)。
 pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
-    if std::env::var("JA_POLISH_GATE_ALLOW").is_ok_and(|v| v == "1") {
+    if agent_session::escape::JA_POLISH_GATE
+        .active(None, None)
+        .is_some()
+    {
         return None;
     }
     // 設定ファイルの無い機体は、ja-polish を有効にしていない。何も検査しない。

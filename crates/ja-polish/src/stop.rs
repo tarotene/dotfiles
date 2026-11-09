@@ -96,7 +96,10 @@ pub fn hook(input: &StopInput) -> StopResult {
 }
 
 fn check(raw: &str) -> Option<StopOutcome> {
-    if std::env::var("JA_POLISH_GATE_ALLOW").is_ok_and(|v| v == "1") {
+    if agent_session::escape::JA_POLISH_GATE
+        .active(None, None)
+        .is_some()
+    {
         return None;
     }
     config::load()?;

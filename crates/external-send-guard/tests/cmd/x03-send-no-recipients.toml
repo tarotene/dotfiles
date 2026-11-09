@@ -5,5 +5,5 @@ status.code = 0
 stdout = ""
 fs.cwd = "self-cfg"
 [env]
-remove = ["EXTERNAL_SEND_GUARD_ALLOW"]
+remove = ["SKIP_EXTERNAL_SEND_GUARD"]
 add = { XDG_CONFIG_HOME = "." }

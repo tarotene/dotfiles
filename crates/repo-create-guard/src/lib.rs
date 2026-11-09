@@ -21,7 +21,7 @@
 //! `api.github.com/user/repos` を叩く経路や Web UI からの作成はこの hook の
 //! 対象外(ADR-543 D1 と同型の限界、フルスクラッチ自体は表現不可能にできない)。
 //!
-//! バイパス: `REPO_CREATE_GUARD_BYPASS=1`(rulesets-write-guard と同型)。
+//! バイパス: `SKIP_REPO_CREATE_GUARD=1`(rulesets-write-guard と同型)。
 //! bash 版と同じく hook 入出力層(main)の責務で、`decide` 自体は判定
 //! ロジックだけを持つ。MCP(`mcp__github*`)は現在未接続のため Bash のみ判定する
 //! — attribution-guard の `decide_mcp` と同じ理由。
@@ -53,7 +53,7 @@ pub fn is_target_at(tokens: &[String], i: usize) -> Option<TargetKind> {
     gh_command_at(tokens, i, &["repo", "create"]).then_some(TargetKind::Cli)
 }
 
-const DENY_HINT: &str = "repo-charter スキルの作成スクリプトを使ってください
+const DENY_HINT_BASE: &str = "repo-charter スキルの作成スクリプトを使ってください
 (config/agents/skills/repo-charter/SKILL.md §8):
 
   ~/.claude/skills/repo-charter/scripts/create-repo.sh --owner <owner> --repo <repo> \\
@@ -64,17 +64,31 @@ const DENY_HINT: &str = "repo-charter スキルの作成スクリプトを使っ
 スクリプトは §1 の閉語彙チェック(naming-codename/naming-descriptive 等のクラス確定)
 → `gh repo create` → `gh repo edit --add-topic <クラス>` → 型別の governance 播種まで
 一式で行います。スクリプト経由なら迂回用の環境変数は要りません。
+エージェントが自分でコマンドに前置しても、hook のプロセスの環境には届かず、auto モードの分類器にも
+拒否されます(#754。ADR-0013 Amendment 2026-09-29 参照)。
+";
 
-REPO_CREATE_GUARD_BYPASS=1 は、本人が `!` 付きで実行するときのためのものです。
-エージェントが自分で前置しても auto モードの分類器に拒否されます(#754)
-(ADR-0013 Amendment 2026-09-29 参照)。";
+fn deny_hint() -> String {
+    format!(
+        "{DENY_HINT_BASE}{}",
+        agent_session::escape::REPO_CREATE_GUARD
+            .how_to()
+            .unwrap_or_default()
+    )
+}
 
 fn deny_reason_repo_create() -> String {
-    format!("素の `gh repo create` は使わないでください。\n\n{DENY_HINT}")
+    format!(
+        "素の `gh repo create` は使わないでください。\n\n{}",
+        deny_hint()
+    )
 }
 
 fn deny_reason_repo_create_api(path: &str) -> String {
-    format!("`gh api` での repo 作成({path})は使わないでください。\n\n{DENY_HINT}")
+    format!(
+        "`gh api` での repo 作成({path})は使わないでください。\n\n{}",
+        deny_hint()
+    )
 }
 
 /// `REPO_CREATE_API_RE='^/(user/repos|orgs/[^/]+/repos)$'`。
@@ -120,9 +134,13 @@ pub fn decide(cmd: &str) -> Option<String> {
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が
 /// 同じ関数を呼ぶ。入力が読めない・不正 JSON などは `None`(判定しない)。
 ///
-/// `REPO_CREATE_GUARD_BYPASS` が空でなければ判定しない(バイパスは hook 入出力層の責務)。
+/// セッション単位の逃げ道 `SKIP_REPO_CREATE_GUARD=1`(値は `1` だけ)なら判定しない
+/// (バイパスは hook 入出力層の責務)。
 pub fn hook(raw: &str) -> Option<agent_session::Outcome> {
-    if std::env::var_os("REPO_CREATE_GUARD_BYPASS").is_some_and(|v| !v.is_empty()) {
+    if agent_session::escape::REPO_CREATE_GUARD
+        .active(None, None)
+        .is_some()
+    {
         return None;
     }
     let call = agent_session::hook::ToolCall::parse(agent_session::Agent::Claude, raw)?;

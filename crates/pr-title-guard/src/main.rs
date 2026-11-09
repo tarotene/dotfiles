@@ -15,6 +15,7 @@
 //! 縮退: 不正 JSON なら何も出さず exit 0(fail-open)。
 
 use agent_session::entry::{emit, enter, read_stdin, Spec};
+use agent_session::escape::PR_TITLE_GUARD;
 use agent_session::{Agent, HookEvent, Reply};
 use pr_title_guard::decide;
 use std::path::PathBuf;
@@ -33,7 +34,7 @@ fn main() -> ExitCode {
     };
 
     if let Some(pos) = call.rest.iter().position(|a| a == "--check") {
-        let allow = std::env::var("PR_TITLE_GUARD_ALLOW").is_ok_and(|v| v == "1");
+        let allow = PR_TITLE_GUARD.active(None, None).is_some();
         let cmd = call.rest.get(pos + 1).map(String::as_str).unwrap_or("");
         // bash の `proj="${3:-$PWD}"`(空文字列も PWD に倒す)。
         let project = match call.rest.get(pos + 2).filter(|s| !s.is_empty()) {

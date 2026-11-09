@@ -77,7 +77,7 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
 判定不能はすべて fail-open(通す)— 不正な入力 JSON、`tool_name` が `Bash` 以外、
 `command` が空、のいずれも完全沈黙で通す。
 
-バイパス: `REPO_CREATE_GUARD_BYPASS=1`(`crates/rulesets-write-guard` の
+バイパス: `SKIP_REPO_CREATE_GUARD=1`(`crates/rulesets-write-guard` の
 バイパス env var と同型)。`main()` の入口だけで見る — `decide()` 自体は
 判定ロジックだけを持ち、バイパスは hook 入出力層の責務にする
 (`stack-base-guard.sh` の `SKIP_STACK_BASE_GUARD` と同じ配置)。
