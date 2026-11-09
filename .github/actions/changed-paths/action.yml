@@ -1,0 +1,50 @@
+name: 'Changed paths'
+description: >-
+  PR が既定ブランチに対して、指定の正規表現に当たるパスを変えたかを判定する。PR 以外のイベントは
+  常に true。基準は PR の base でなく既定ブランチ: stacked PR の子は base が親のブランチなので、
+  base との差分には親で変えたパスが出ず、子の PR で検査が飛んで集約が緑になるため(main への
+  push では毎回回るので、マージ後に初めて拾う)。
+
+  呼び出し側は、actions/checkout を fetch-depth: 0 で先に実行すること。git diff の失敗と
+  正規表現の誤りは fail-open(true)にする: 判定できないときに検査を飛ばして緑にしない
+  (stack-position と同じ方針、ADR-468)。
+inputs:
+  pattern:
+    description: 'grep -E の正規表現。`git diff --name-only origin/<既定ブランチ>...HEAD` の各行に当てる'
+    required: true
+outputs:
+  run:
+    description: "'true' なら、対象のパスを変えた(または PR 以外のイベント)"
+    value: ${{ steps.judge.outputs.run }}
+runs:
+  using: composite
+  steps:
+    - id: judge
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        PATTERN: ${{ inputs.pattern }}
+      run: |
+        set -uo pipefail
+        if [ "$EVENT" != pull_request ]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # 変更の一覧を変数に取ってから grep に渡す。`git diff | grep -q` だと、grep -q の早期終了で
+        # git diff が SIGPIPE になり、pipefail で偽(誤って skip)になりうる。
+        if ! files="$(git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD")"; then
+          echo "::warning::changed-paths: git diff failed (fail-open: run)"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        rc=0
+        grep -qE -- "$PATTERN" <<<"$files" || rc=$?
+        case "$rc" in
+          0) echo "run=true" >> "$GITHUB_OUTPUT" ;;
+          1) echo "run=false" >> "$GITHUB_OUTPUT" ;;
+          *)
+            echo "::warning::changed-paths: grep failed with $rc (fail-open: run)"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            ;;
+        esac

@@ -508,14 +508,18 @@
           dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
           dotfiles-tools-fmt = rust.fmt;
-          # ja-polish が呼ぶ llm + llm-gemini。名前で参照しないと、CI がこの build を回さない
-          # (home/modules/ja-polish.nix は dotfiles.jaPolish.enable の機体にだけ入れる)。
+          # ja-polish が呼ぶ llm + llm-gemini。personal identity が dotfiles.jaPolish.enable を
+          # 有効にする(home/identities/personal.nix)ので、vega の activationPackage の
+          # closure に入り、CI の `Build vega` が build する。名前で出すのは、手元で単体の
+          # build を回せるようにするため。
           ja-polish-llm = pkgsFor.${system}.ja-polish-llm;
         }
         // lib.optionalAttrs (system == linuxSystem) {
           # LiveSync CLI の build(leveldown などのネイティブ依存を含む)。`installCheckPhase` が
-          # `--help` と、外に出された依存の読み込みを確かめる(#1328)。名前で参照しないと、
-          # CI がこの build を回さない。
+          # `--help` と、外に出された依存の読み込みを確かめる(#1328)。どの機体も既定では
+          # 有効にしない(dotfiles.obsidian.livesync.enable)ので、activationPackage の
+          # closure に入らない。CI の `Nix flake check` が、CLI の定義か flake が変わった
+          # PR と main への push で、名前を指して build する(.github/workflows/ci.yml)。
           obsidian-livesync-cli = pkgsFor.${system}.obsidian-livesync-cli;
           # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。Apalache のサーバーが
           # ポート 8822 を使うので、derivation ごとの sandbox に分けられる Linux だけで回す。

@@ -596,7 +596,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Nix flake check
     steps:
+      # fetch-depth: 0 は、下の changed-paths が既定ブランチとの差分を読むため。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       # Determinate Systems installer (ADR-0001).
       - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
@@ -630,6 +633,19 @@ jobs:
             renovate-config-validator --strict --no-global \
               renovate/policy.json renovate.json
 
+      # LiveSync CLI は、既定ではどの機体も有効にしない(dotfiles.obsidian.livesync.enable)ので、
+      # 上の評価だけでは build されず、build-host の activationPackage にも入らない。leveldown などの
+      # ネイティブ依存の build と、`installCheckPhase`(`--help` と、外に出された依存の読み込み、
+      # #1328)は、ここで実際に回す。取得(fetchFromGitHub と npm)を含むので、常には回さず、
+      # CLI の定義(nix/obsidian-livesync-cli.nix)か flake が変わった PR と、main への push だけで回す。
+      - id: livesync
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^(nix/obsidian-livesync-cli\.nix$|flake\.(nix|lock)$|\.github/actions/changed-paths/)'
+      - if: steps.livesync.outputs.run == 'true'
+        name: Build the LiveSync CLI (no host activates it by default)
+        run: nix build --print-build-logs --no-link .#checks.x86_64-linux.obsidian-livesync-cli
+
   # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。`flake-check` は --no-build
   # で評価しかしないので、検査の derivation はここで実際に作る。表の 1 行が 1 derivation で、
   # 4 コアの runner で数分かかる。握手の語彙・仕様・検査の定義が変わった PR と、main への
@@ -642,22 +658,9 @@ jobs:
         with:
           fetch-depth: 0
       - id: scope
-        env:
-          EVENT: ${{ github.event_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          # 基準は PR の base ではなく既定ブランチ。stacked PR の子は base が親のブランチなので、
-          # base との差分には親で変えた仕様が出ず、子の PR で検査が飛んで `CI passed` が緑になる
-          # (main への push では毎回回るので、マージ後に初めて拾う)。既定ブランチとの差分なら、
-          # 親の変更も含めて見る。
-          if [ "$EVENT" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD" \
-              | grep -qE '^(config/agents/calendar-handshake/|home/tests/calendar-handshake-spec\.nix$|flake\.(nix|lock)$)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^(config/agents/calendar-handshake/|home/tests/calendar-handshake-spec\.nix$|flake\.(nix|lock)$|\.github/actions/changed-paths/)'
       - if: steps.scope.outputs.run == 'true'
         uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       - if: steps.scope.outputs.run == 'true'
@@ -675,22 +678,9 @@ jobs:
         with:
           fetch-depth: 0
       - id: scope
-        env:
-          EVENT: ${{ github.event_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          # 基準は PR の base ではなく既定ブランチ。stacked PR の子は base が親のブランチなので、
-          # base との差分には親で変えた仕様が出ず、子の PR で検査が飛んで `CI passed` が緑になる
-          # (main への push では毎回回るので、マージ後に初めて拾う)。既定ブランチとの差分なら、
-          # 親の変更も含めて見る。
-          if [ "$EVENT" != pull_request ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD" \
-              | grep -qE '^(config/agents/mail-lifecycle/|home/tests/mail-lifecycle-(spec|itf)\.nix$|crates/worklog/|flake\.(nix|lock)$)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/changed-paths
+        with:
+          pattern: '^(config/agents/mail-lifecycle/|home/tests/mail-lifecycle-(spec|itf)\.nix$|crates/worklog/|flake\.(nix|lock)$|\.github/actions/changed-paths/)'
       - if: steps.scope.outputs.run == 'true'
         uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
       - if: steps.scope.outputs.run == 'true'
