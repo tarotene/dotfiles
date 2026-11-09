@@ -7,7 +7,7 @@
 { lib, pkgs, ... }:
 let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix.
-  nixGLWrap = import ../modules/nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
 
   # MuseScore opens ALSA's "default" PCM. nix's alsa-lib reads the *host's*
   # /etc/alsa/conf.d, whose 99-pipewire-default.conf routes "default" to the

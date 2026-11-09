@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # nixgl-restore.test.zsh — config/zsh/modules/05-nixgl-restore.zsh の挙動試験(#851)。
 #
-# nixGL の wrapper(home/modules/nixgl.nix)は、GL の変数を足す前の値を
+# nixGL の wrapper(home/lib/nixgl.nix)は、GL の変数を足す前の値を
 # `__NIXGL_SAVED_<VAR>` に退避し(元が未設定なら `__NIXGL_UNSET__`)、`NIXGL_WRAPPED=1` を
 # 立てる。モジュールは、印があるときだけ、対話シェルで元の値へ戻す。
 #   zsh config/zsh/tests/nixgl-restore.test.zsh

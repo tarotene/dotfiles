@@ -39,9 +39,9 @@ let
   };
 
   # GL/EGL for nix-built GUI apps on Pop!_OS (#13 / ADR-0006). Extracted to
-  # nixgl.nix (#9) so identity-scoped modules can reuse the same wrapper —
+  # home/lib/nixgl.nix (#9) so identity-scoped modules can reuse the same wrapper —
   # see that file for the full rationale.
-  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
 
   # Slack Technologies, slack-desktop_4.52.182_amd64.deb and SHA-256,
   # retrieved 2026-10-28:

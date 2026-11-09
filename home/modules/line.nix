@@ -32,7 +32,7 @@ let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix / personal.nix's
   # warp-terminal entry. chromium is a GL consumer like alacritty/Chrome/Slack
   # — same /run/opengl-driver bootstrap problem on these Pop!_OS hosts.
-  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
 
   # Bound rather than inlined: both programs.chromium.package and the
   # launcher entry's Exec= need this exact derivation's store path

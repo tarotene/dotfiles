@@ -6,7 +6,7 @@
   ...
 }:
 let
-  nixGLWrap = import ./nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
   obsidianPackage = nixGLWrap pkgs.obsidian;
   backupPath = "${config.home.homeDirectory}/.local/bin/obsidian-backup";
   vaultPath = config.dotfiles.obsidian.vaultPath;

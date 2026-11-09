@@ -12,7 +12,7 @@
 let
   # nixGL wrapper (#13 / ADR-0006), shared with desktop.nix. Only needed on
   # Linux — darwin has its own native GL stack.
-  nixGLWrap = import ../modules/nixgl.nix { inherit pkgs; };
+  nixGLWrap = import ../lib/nixgl.nix { inherit pkgs; };
 in
 {
   imports = [

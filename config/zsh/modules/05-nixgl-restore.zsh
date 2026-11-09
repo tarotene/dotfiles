@@ -2,7 +2,7 @@
 # 05-nixgl-restore.zsh - give an interactive shell the GL environment it had *before*
 # a nixGL-wrapped terminal started it (#851)
 #
-# Why: the nixGL wrapper (home/modules/nixgl.nix) sets LD_LIBRARY_PATH,
+# Why: the nixGL wrapper (home/lib/nixgl.nix) sets LD_LIBRARY_PATH,
 # LIBGL_DRIVERS_PATH and friends so the wrapped GUI app (alacritty, warp-terminal)
 # can load nix's own mesa. Every descendant inherits them -- including the shell
 # the terminal starts and everything typed into it -- so an apt-installed GL app
