@@ -64,6 +64,27 @@ fn g_push_blocks_unpushed_head() {
     assert!(has(&r.stderr, "bleep が deny")); // ok   未push で block: pre-push 迂回は bleep が deny する旨
 }
 
+/// 輸送: block は、終了コード 0 の標準出力の JSON(`decision: "block"`)で出る。標準エラーには理由を出さない。
+/// 旧い観測形(終了コード 2)への読み替えは、ハーネスの `run_in` が持つ(旧 bash の oracle には当てはまらない)。
+#[test]
+fn stop_block_travels_as_json_on_stdout() {
+    if std::env::var_os("PR_GATE_ORACLE").is_some_and(|v| !v.is_empty()) {
+        return;
+    }
+    let fx = Fx::new();
+    let raw = fx.stop_raw("transport-sid", &[("PR_GATE_STUB_HEAD_OID", ZERO_OID)]);
+    assert_eq!(raw.code, 0, "{}", raw.all());
+    let v: serde_json::Value = serde_json::from_str(&raw.stdout).expect("stdout is JSON");
+    assert_eq!(v["decision"], "block");
+    let reason = v["reason"].as_str().expect("reason");
+    assert!(has(reason, "未 push"), "{reason}");
+    assert!(!has(&raw.stderr, "未 push"), "{}", raw.stderr);
+    // 読み替えたあとの観測形は、同じ理由 + 改行
+    let seen = fx.stop("transport-sid-2", &[("PR_GATE_STUB_HEAD_OID", ZERO_OID)]);
+    assert_eq!(seen.code, 2);
+    assert!(seen.stderr.ends_with('\n'));
+}
+
 // --- 同じ linked worktree を別のセッションが使っている(worktree-lease) ---
 
 /// 本物の checkout から linked worktree を作り、そこで `session` が Bash を 1 回使った印

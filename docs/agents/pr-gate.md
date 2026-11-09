@@ -606,6 +606,13 @@ PR 作成時に追加ファイルの diff を見る `G_prior` が拾う。Write 
 block メッセージに合流させる。案内文は `## 解決策` 節への `既存手段:`
 追記と `gh pr edit --body-file` を示す(pr-description スキル)。
 
+## block の運び方
+
+block は、終了コード 0 の標準出力の JSON(`{"decision": "block", "reason": …}`)で出す。以前は終了コード 2 と標準エラーで
+出していた。Stop の結果は `agent_session::StopOutcome` に型があり、描画は `Reply::render`(Stop)の 1 か所が持つ
+(`docs/agents/agent-libraries.md`)。素通りで出す advisory は、診断として標準エラーに残す。モデルへ渡る文は同じ
+(標準エラーの文字列と JSON の `reason` は同一)で、利用者への表示のラベルが変わりうる(未確認。後続の実機確認で見る)。
+
 ## `stop_hook_active` を見ない理由
 
 既存の `wrapup-stop-gate` は `stop_hook_active == true` を見て即 `exit 0` する
@@ -615,7 +622,7 @@ Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=tru
 
 これは `docs/agents/copilot-plan-review.md` の「第二次の非収束」（最終ラウンドに carry-over 判定の
 機会が無く、`open set = ∅` が原理的に到達不能だった話）と同型の穴である。pr-gate は
-`stop_hook_active` を無視し、**独自カウンタ**（`state/<sid>.count`）で上限を持つ。
+`stop_hook_active` を無視し(型では `Reentry::Recheck`。`stop::REENTRY`)、**独自カウンタ**（`state/<sid>.count`）で上限を持つ。
 `count == MAX_BLOCKS` に達したら 1 回だけ escalate 文言を返して
 `state/<sid>.escalated` を touch し、以後そのセッションは無条件で素通る。
 `escalated` のチェックは上限判定より**前**に置く（`docs/agents/copilot-plan-review.md` の closer /
@@ -817,7 +824,7 @@ hook 経路を end-to-end に駆動する。旧 `pr-gate.sh --selftest` の 111 
   stacked PR は既定ブランチの required で判定、取り直しながら待って緑に変わるケース
 - **チェック 0 件・部分出現・stacked PR フォールバックのそれぞれで block/pass が
   正しく分岐すること**
-- **`G_unpushed`**: PR 無し + 未 push commit あり(exit 2)/ PR 無し + 0 件(完全沈黙)
+- **`G_unpushed`**: PR 無し + 未 push commit あり(block)/ PR 無し + 0 件(完全沈黙)
   の両方
 - **`G_pr`**: push 済み・PR 無し・ahead>0 で block、merged/closed PR が既にある
   ときは block しない、`origin/HEAD` 不明のときは block しない、ahead 0 のときは
