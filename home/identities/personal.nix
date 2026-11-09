@@ -60,19 +60,20 @@ in
   # Revisit once the pinned channel picks up a fix.
   home.packages = lib.optionals pkgs.stdenv.isLinux [ (nixGLWrap pkgs.warp-terminal) ];
 
-  # user scope の MCP サーバー(`~/.claude.json` の `.mcpServers`)。
-  # `home/modules/claude-mcp-servers.nix` が reconcile する — ここと
-  # `./personal/esa.nix` に挙がっていない user scope のサーバーは switch のたびに
-  # 削除される。company ホストはこのファイルを import しないので user scope は
-  # 空になる(意図した動作)。
-  #
-  # identity 層に置くのは warp-terminal(#9)や esa(ADR-0022)と同じ判断 —
-  # どちらも外部サービスに繋ぐ経路であり、common.nix に置くと company ホストへ
-  # 黙って配備される。
-  # playwright の起動ラッパー(crates/playwright-mcp-launcher)。esa と同じく
-  # ~/.local/libexec に置き、下の mcpServers.playwright.command が指す。
-  home.file.".local/libexec/playwright-mcp-launcher".source =
-    "${pkgs.dotfiles-tools}/bin/playwright-mcp-launcher";
+  dotfiles.binaries.".local/libexec" = [
+    # user scope の MCP サーバー(`~/.claude.json` の `.mcpServers`)。
+    # `home/modules/claude-mcp-servers.nix` が reconcile する — ここと
+    # `./personal/esa.nix` に挙がっていない user scope のサーバーは switch のたびに
+    # 削除される。company ホストはこのファイルを import しないので user scope は
+    # 空になる(意図した動作)。
+    #
+    # identity 層に置くのは warp-terminal(#9)や esa(ADR-0022)と同じ判断 —
+    # どちらも外部サービスに繋ぐ経路であり、common.nix に置くと company ホストへ
+    # 黙って配備される。
+    # playwright の起動ラッパー(crates/playwright-mcp-launcher)。esa と同じく
+    # ~/.local/libexec に置き、下の mcpServers.playwright.command が指す。
+    "playwright-mcp-launcher"
+  ];
 
   # 日本語の文書を Gemini(llm 経由、無料の API キー)に書き直させる。今は、送り先の扱いを確かめ
   # 済みのこの経路だけで有効にしている。会社の identity への横展開は、会社契約の Gemini の要件を

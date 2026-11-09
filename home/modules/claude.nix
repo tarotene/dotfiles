@@ -344,8 +344,10 @@ in
     home.packages = sandboxDeps;
     xdg.configFile."agent-native/claude-permissions.json".text = builtins.toJSON permissionsSpec;
     home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
-    home.file.".claude/hooks/claude-statusline".source = "${pkgs.dotfiles-tools}/bin/claude-statusline";
-    home.file.".claude/hooks/claude-usage".source = "${pkgs.dotfiles-tools}/bin/claude-usage";
+    dotfiles.binaries.".claude/hooks" = [
+      "claude-statusline"
+      "claude-usage"
+    ];
     home.activation.registerClaudeStatusLine = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       run ${settingsReconcile} claude-statusline "$HOME/.claude/settings.json" \
         ${lib.escapeShellArg (

@@ -59,7 +59,9 @@ in
 
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
-    home.file.".local/bin/ja-polish".source = "${pkgs.dotfiles-tools}/bin/ja-polish";
+    dotfiles.binaries.".local/bin" = [
+      "ja-polish"
+    ];
     xdg.configFile."dotfiles/ja-polish.toml".text = ''
       model = "${cfg.model}"
     '';

@@ -1962,8 +1962,161 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     DISABLE_AUTOUPDATER = "1";
   };
 
-  home.file.".claude/hooks/copilot-plan-review".source =
-    "${pkgs.dotfiles-tools}/bin/copilot-plan-review";
+  dotfiles.binaries.".claude/hooks" = [
+    "copilot-plan-review"
+    # wrap-up inbox の旧入口 2 本(互換入口。正準は session-wrapup start|stop)。どちらも
+    # crates/wrapup-stop-gate の bin で、同じ実装(session-wrapup と issue-inbox)へ転送する。
+    # 適用前の設定を持つホスト・継続中のセッションの hook と、promotion-detect の
+    # `wrapup-stop-gate --add` が、このパスを使う。削除条件は docs/agents/tooling-migration.md の
+    # 「旧入口の削除条件」。指示文に埋める自身のパスは argv[0] 由来(store path ではなくこの安定パス)。
+    "wrapup-stop-gate"
+    "wrapup-session-start"
+    # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
+    # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
+    # 解決しない)のディレクトリ相対で解決するので、配備先では 2 ファイルを
+    # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/agents/assets/ に
+    # 分離している(ADR-0007)。$HOME/.claude/hooks/plan-view.css も最後の候補として
+    # 探すので、~/.local/bin/plan-view からの起動でも解決する。
+    "plan-view"
+    # agent-turn-log: UserPromptSubmit / Stop の1ターン境界を JSONL 追記する
+    # 純粋なロガー(ゲートではない)。出力契約は docs/adr/0011。
+    "agent-turn-log"
+    # plan-scope-gate: 要求インベントリ(requirements-inventory、15番)の脱落を機械検査する。
+    # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
+    "plan-scope-gate"
+    # plan-precedent-gate: 先行例との対比(precedent-grounding、16番、ADR-0012)の
+    # 脱落を機械検査する。同じ matcher に 4 つ目のエントリとして並ぶ。
+    "plan-precedent-gate"
+    # plan-fresh-gate: ExitPlanMode 直前に origin/<base> の進行を検出し、プラン
+    # 参照ファイルと交差するときだけ deny する(docs/agents/plan-fresh-gate.md)。
+    # 同じ matcher に 5 つ目のエントリとして並ぶ。
+    "plan-fresh-gate"
+    # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
+    # フッターを強制する(docs/agents/attribution-guard.md)。#415 で Rust
+    # バイナリ(crates/attribution-guard)への安定パスの symlink になった
+    # (gh-edit-allow と同じ理由付け)。Codex/Copilot もこの同じパスを
+    # `--agent codex|copilot` 付きで呼ぶ。
+    "attribution-guard"
+    # stack-base-guard(ADR-0027): セッション内の複数 PR を常時単一チェーンに
+    # 積むことを作成時に機械強制する(docs/agents/stack-base-guard.md)。#415 で
+    # Rust バイナリ(crates/stack-base-guard)への安定パスの symlink になった
+    # (attribution-guard と同じ理由付け)。Codex もこの同じパスを
+    # `--agent codex` 付きで呼ぶ。
+    "stack-base-guard"
+    # feedback-target-guard(ADR-543 段3): #415 で Rust バイナリ(crates/
+    # feedback-target-guard)への安定パスの symlink になった(attribution-guard と
+    # 同じ理由付け)。
+    "feedback-target-guard"
+    # repo-create-guard(ADR-0013 Amendment 2026-09-29): #415 で Rust バイナリ
+    # (crates/repo-create-guard)への安定パスの symlink になった。
+    "repo-create-guard"
+    # external-send-guard(docs/agents/external-send-guard.md): 外部宛メールの
+    # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
+    # source しない。
+    "external-send-guard"
+    # adr-number(ADR-380, docs/agents/adr-numbering.md): PostToolUse で
+    # ADR-478 を PR 番号へ自動改番する段3(利便性層)。#415 で Rust バイナリ
+    # (crates/adr-number)への安定パスの symlink になった(gh-edit-allow と
+    # 同じ理由付け)。Codex もこの同じパスを `--agent codex` 付きで呼ぶ。
+    "adr-number"
+    # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
+    # flake.nix の rustOverlay)への安定パスの symlink。
+    "gh-edit-allow"
+    # rulesets-write-guard(ADR-503 D7): crates/
+    # rulesets-write-guard のビルド成果物への安定パスの symlink(gh-edit-allow
+    # と同じ理由付け)。
+    "rulesets-write-guard"
+    # routines-write-guard(28番、ADR-519 D7):
+    # crates/routines-write-guard のビルド成果物への安定パスの symlink
+    # (gh-edit-allow と同じ理由付け)。
+    "routines-write-guard"
+    # pkexec-guard(29番、docs/agents/pkexec-guard.md): crates/pkexec-guard の
+    # ビルド成果物への安定パスの symlink(gh-edit-allow と同じ理由付け)。
+    # Codex/Copilot もこの同じ store path を `--agent codex|copilot` 付きで
+    # 呼ぶ(per-agent の別コピーは持たない、pkexecGuardCodexCmd/
+    # pkexecGuardCopilotCmd 参照)。
+    "pkexec-guard"
+    # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
+    # promotion.md): crates/new-tool-guard のビルド成果物への安定パスの
+    # symlink(gh-edit-allow と同じ理由付け)。`register` サブコマンドも
+    # このパスから手動 Bash 実行される(deny メッセージが案内する)。
+    "new-tool-guard"
+    # cmd-hash-log(ADR-543 段3、crates/cmd-hash-log): gh-edit-allow と同じ
+    # 理由付けの安定パス symlink。
+    "cmd-hash-log"
+    # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
+    # ないので register には乗せない — session-wrapup stop が呼ぶ issue-inbox が、同じディレクトリから
+    # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
+    # の register とは別の消費経路)。
+    "verdict-escalate"
+    # pr-title-guard(ADR-0031): PR タイトルを commit-message 契約として
+    # 作成時に機械強制する(docs/agents/pr-title-contract.md)。
+    # #415 で Rust バイナリ(crates/pr-title-guard)への安定パスの symlink に
+    # なった(attribution-guard と同じ)。Codex/Copilot もこの同じパスを
+    # `--agent codex|copilot` 付きで呼ぶ(bash 時代の per-agent adapter は廃止)。
+    "pr-title-guard"
+    # pr-followup-guard(docs/agents/pr-followup-guard.md): PR 本文に未チェック
+    # の task list を残さない・`## 要確認` の各項目に Issue 参照を持たせる
+    # ことを作成時に機械強制する。#415 で Rust バイナリ(crates/pr-followup-guard)
+    # への安定パスの symlink になった。Codex もこの同じパスを `--agent codex`
+    # 付きで呼ぶ(bash 時代の ~/.codex/hooks/ の adapter は廃止)。
+    "pr-followup-guard"
+    # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
+    # 追加を執行点と同じ PR に機械強制する(docs/agents/decision-colocation.md)。
+    # #415 で Rust バイナリ(crates/decision-colocation)への安定パスの symlink
+    # になった(gh-edit-allow と同じ理由付け)。Codex/Copilot adapter は意図的に
+    # 作らない(CI required check が全エージェント共通の backstop になるため)。
+    "decision-colocation-guard"
+    # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
+    "issue-index"
+    # esa-mirror-context: 社内 wiki の mirror の所在・検索手順・引用形式・鮮度を SessionStart で注入する。
+    "esa-mirror-context"
+    # daily-desk-reminder: 今日の朝の机(my-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
+    "daily-desk-reminder"
+    # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
+    # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault が無い)では無音。
+    "worklog"
+    # gpg-prewarm: git commit の署名パスフレーズをログイン直後に温める。
+    "gpg-prewarm"
+    # herdr-sidebar-metadata: permission mode(hook)とモデル・メトリクス(statusline)
+    # を Herdr サイドバーのカスタムトークンに流す 2 チャネル構成。表示側の行定義は
+    # config/herdr/config.toml(home/modules/herdr.nix が配備)。herdr が自動
+    # インストールする統合 hook(herdr-agent-state.sh、herdr 管理)の隣に並ぶが、
+    # 互いに自分のエントリしか触らないので衝突しない。
+    # #413: Claude/Codex/Copilot 共通の 1 バイナリ(--agent)。Codex/Copilot の登録
+    # (home/modules/herdr.nix)もこのパスを指す。
+    "herdr-agent-metadata"
+    # worktree-base-sync: pristine な worktree だけを origin/<base> へ黙って
+    # fast-forward する SessionStart hook。
+    "worktree-base-sync"
+    # herdr-status-advisory: herdr の client と server の版の食い違いを、
+    # セッション開始時に知らせる SessionStart hook。
+    "herdr-status-advisory"
+    # gate-failopen-advisory: fail-open で素通りし続けている gate を、セッション開始時に
+    # 知らせる SessionStart hook(#822)。
+    "gate-failopen-advisory"
+    # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
+    # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
+    "pr-gate"
+    # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
+    "git-worktree-allow"
+    # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
+    "git-stash-guard"
+    # hook-router: ツール呼び出しに付く検査の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
+    "hook-router"
+    # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
+    "main-checkout-guard"
+    # Temporary compatibility entries. Each delegates to the canonical implementation.
+    "desk-start"
+    "esa-index"
+    "pr-confirm-guard"
+    "sign-prewarm"
+    "worktree-fresh-base"
+    "session-wrapup"
+    "issue-inbox"
+    "session-retrospective"
+    "feedback-trial"
+  ];
 
   # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
   # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
@@ -1981,118 +2134,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".copilot/agents/plan-reviewer.agent.md".source =
     repoConfig + "/copilot/agents/plan-reviewer.agent.md";
 
-  # wrap-up inbox の旧入口 2 本(互換入口。正準は session-wrapup start|stop)。どちらも
-  # crates/wrapup-stop-gate の bin で、同じ実装(session-wrapup と issue-inbox)へ転送する。
-  # 適用前の設定を持つホスト・継続中のセッションの hook と、promotion-detect の
-  # `wrapup-stop-gate --add` が、このパスを使う。削除条件は docs/agents/tooling-migration.md の
-  # 「旧入口の削除条件」。指示文に埋める自身のパスは argv[0] 由来(store path ではなくこの安定パス)。
-  home.file.".claude/hooks/wrapup-stop-gate".source = "${pkgs.dotfiles-tools}/bin/wrapup-stop-gate";
-  home.file.".claude/hooks/wrapup-session-start".source =
-    "${pkgs.dotfiles-tools}/bin/wrapup-session-start";
-
-  # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
-  # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
-  # 解決しない)のディレクトリ相対で解決するので、配備先では 2 ファイルを
-  # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/agents/assets/ に
-  # 分離している(ADR-0007)。$HOME/.claude/hooks/plan-view.css も最後の候補として
-  # 探すので、~/.local/bin/plan-view からの起動でも解決する。
-  home.file.".claude/hooks/plan-view".source = "${pkgs.dotfiles-tools}/bin/plan-view";
   home.file.".claude/hooks/plan-view.css".source = repoConfig + "/agents/assets/plan-view.css";
-
-  # agent-turn-log: UserPromptSubmit / Stop の1ターン境界を JSONL 追記する
-  # 純粋なロガー(ゲートではない)。出力契約は docs/adr/0011。
-  home.file.".claude/hooks/agent-turn-log".source = "${pkgs.dotfiles-tools}/bin/agent-turn-log";
-
-  # plan-scope-gate: 要求インベントリ(requirements-inventory、15番)の脱落を機械検査する。
-  # plan-review / plan-view と同じ matcher に 3 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-scope-gate".source = "${pkgs.dotfiles-tools}/bin/plan-scope-gate";
-
-  # plan-precedent-gate: 先行例との対比(precedent-grounding、16番、ADR-0012)の
-  # 脱落を機械検査する。同じ matcher に 4 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-precedent-gate".source =
-    "${pkgs.dotfiles-tools}/bin/plan-precedent-gate";
-
-  # plan-fresh-gate: ExitPlanMode 直前に origin/<base> の進行を検出し、プラン
-  # 参照ファイルと交差するときだけ deny する(docs/agents/plan-fresh-gate.md)。
-  # 同じ matcher に 5 つ目のエントリとして並ぶ。
-  home.file.".claude/hooks/plan-fresh-gate".source = "${pkgs.dotfiles-tools}/bin/plan-fresh-gate";
-
-  # attribution-guard: Claude が GitHub に書く外向きテキストに attribution
-  # フッターを強制する(docs/agents/attribution-guard.md)。#415 で Rust
-  # バイナリ(crates/attribution-guard)への安定パスの symlink になった
-  # (gh-edit-allow と同じ理由付け)。Codex/Copilot もこの同じパスを
-  # `--agent codex|copilot` 付きで呼ぶ。
-  home.file.".claude/hooks/attribution-guard".source = "${pkgs.dotfiles-tools}/bin/attribution-guard";
-  # stack-base-guard(ADR-0027): セッション内の複数 PR を常時単一チェーンに
-  # 積むことを作成時に機械強制する(docs/agents/stack-base-guard.md)。#415 で
-  # Rust バイナリ(crates/stack-base-guard)への安定パスの symlink になった
-  # (attribution-guard と同じ理由付け)。Codex もこの同じパスを
-  # `--agent codex` 付きで呼ぶ。
-  home.file.".claude/hooks/stack-base-guard".source = "${pkgs.dotfiles-tools}/bin/stack-base-guard";
-  # feedback-target-guard(ADR-543 段3): #415 で Rust バイナリ(crates/
-  # feedback-target-guard)への安定パスの symlink になった(attribution-guard と
-  # 同じ理由付け)。
-  home.file.".claude/hooks/feedback-target-guard".source =
-    "${pkgs.dotfiles-tools}/bin/feedback-target-guard";
-  # repo-create-guard(ADR-0013 Amendment 2026-09-29): #415 で Rust バイナリ
-  # (crates/repo-create-guard)への安定パスの symlink になった。
-  home.file.".claude/hooks/repo-create-guard".source = "${pkgs.dotfiles-tools}/bin/repo-create-guard";
-  # external-send-guard(docs/agents/external-send-guard.md): 外部宛メールの
-  # 直接送信を deny し create_draft へ誘導する。独立ファイルで他 hook を
-  # source しない。
-  home.file.".claude/hooks/external-send-guard".source =
-    "${pkgs.dotfiles-tools}/bin/external-send-guard";
-  # adr-number(ADR-380, docs/agents/adr-numbering.md): PostToolUse で
-  # ADR-478 を PR 番号へ自動改番する段3(利便性層)。#415 で Rust バイナリ
-  # (crates/adr-number)への安定パスの symlink になった(gh-edit-allow と
-  # 同じ理由付け)。Codex もこの同じパスを `--agent codex` 付きで呼ぶ。
-  home.file.".claude/hooks/adr-number".source = "${pkgs.dotfiles-tools}/bin/adr-number";
-  # gh-edit-allow(#392): crates/gh-edit-allow のビルド成果物(pkgs.dotfiles-tools、
-  # flake.nix の rustOverlay)への安定パスの symlink。
-  home.file.".claude/hooks/gh-edit-allow".source = "${pkgs.dotfiles-tools}/bin/gh-edit-allow";
-  # rulesets-write-guard(ADR-503 D7): crates/
-  # rulesets-write-guard のビルド成果物への安定パスの symlink(gh-edit-allow
-  # と同じ理由付け)。
-  home.file.".claude/hooks/rulesets-write-guard".source =
-    "${pkgs.dotfiles-tools}/bin/rulesets-write-guard";
-  # routines-write-guard(28番、ADR-519 D7):
-  # crates/routines-write-guard のビルド成果物への安定パスの symlink
-  # (gh-edit-allow と同じ理由付け)。
-  home.file.".claude/hooks/routines-write-guard".source =
-    "${pkgs.dotfiles-tools}/bin/routines-write-guard";
-  # pkexec-guard(29番、docs/agents/pkexec-guard.md): crates/pkexec-guard の
-  # ビルド成果物への安定パスの symlink(gh-edit-allow と同じ理由付け)。
-  # Codex/Copilot もこの同じ store path を `--agent codex|copilot` 付きで
-  # 呼ぶ(per-agent の別コピーは持たない、pkexecGuardCodexCmd/
-  # pkexecGuardCopilotCmd 参照)。
-  home.file.".claude/hooks/pkexec-guard".source = "${pkgs.dotfiles-tools}/bin/pkexec-guard";
-  # new-tool-guard(30番、docs/adr/543-existing-means-and-deterministic-
-  # promotion.md): crates/new-tool-guard のビルド成果物への安定パスの
-  # symlink(gh-edit-allow と同じ理由付け)。`register` サブコマンドも
-  # このパスから手動 Bash 実行される(deny メッセージが案内する)。
-  home.file.".claude/hooks/new-tool-guard".source = "${pkgs.dotfiles-tools}/bin/new-tool-guard";
-  # cmd-hash-log(ADR-543 段3、crates/cmd-hash-log): gh-edit-allow と同じ
-  # 理由付けの安定パス symlink。
-  home.file.".claude/hooks/cmd-hash-log".source = "${pkgs.dotfiles-tools}/bin/cmd-hash-log";
-  # verdict-escalate(ADR-478、crates/verdict-escalate): 判定を返す hook では
-  # ないので register には乗せない — session-wrapup stop が呼ぶ issue-inbox が、同じディレクトリから
-  # 絶対パスで見つけて逐次呼ぶ(gh-edit-allow と同じ配置、PreToolUse/PostToolUse
-  # の register とは別の消費経路)。
-  home.file.".claude/hooks/verdict-escalate".source = "${pkgs.dotfiles-tools}/bin/verdict-escalate";
-
-  # pr-title-guard(ADR-0031): PR タイトルを commit-message 契約として
-  # 作成時に機械強制する(docs/agents/pr-title-contract.md)。
-  # #415 で Rust バイナリ(crates/pr-title-guard)への安定パスの symlink に
-  # なった(attribution-guard と同じ)。Codex/Copilot もこの同じパスを
-  # `--agent codex|copilot` 付きで呼ぶ(bash 時代の per-agent adapter は廃止)。
-  home.file.".claude/hooks/pr-title-guard".source = "${pkgs.dotfiles-tools}/bin/pr-title-guard";
-
-  # pr-followup-guard(docs/agents/pr-followup-guard.md): PR 本文に未チェック
-  # の task list を残さない・`## 要確認` の各項目に Issue 参照を持たせる
-  # ことを作成時に機械強制する。#415 で Rust バイナリ(crates/pr-followup-guard)
-  # への安定パスの symlink になった。Codex もこの同じパスを `--agent codex`
-  # 付きで呼ぶ(bash 時代の ~/.codex/hooks/ の adapter は廃止)。
-  home.file.".claude/hooks/pr-followup-guard".source = "${pkgs.dotfiles-tools}/bin/pr-followup-guard";
 
   # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
   # Codex 用の adapter ファイルは #416 で廃止し、Rust バイナリを --host codex
@@ -2103,48 +2145,17 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # #415 で廃止し、Rust バイナリを --agent codex で直接登録する
   # (codexStackBaseGuardCmd)。
 
-  # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
-  # 他 hook を source しない独立ファイル。
-  home.file.".codex/hooks/codex-plan-gate".source = "${pkgs.dotfiles-tools}/bin/codex-plan-gate";
+  dotfiles.binaries.".codex/hooks" = [
+    # codex-plan-gate(ADR-0032 Amendment #531、docs/claude/codex-plan-gate.md):
+    # 他 hook を source しない独立ファイル。
+    "codex-plan-gate"
+  ];
 
-  # decision-colocation-guard(ADR-396): 決定成果物(ADR/設計文書/skill)の
-  # 追加を執行点と同じ PR に機械強制する(docs/agents/decision-colocation.md)。
-  # #415 で Rust バイナリ(crates/decision-colocation)への安定パスの symlink
-  # になった(gh-edit-allow と同じ理由付け)。Codex/Copilot adapter は意図的に
-  # 作らない(CI required check が全エージェント共通の backstop になるため)。
-  home.file.".claude/hooks/decision-colocation-guard".source =
-    "${pkgs.dotfiles-tools}/bin/decision-colocation-guard";
-
-  # issue-index: 自分に関係する open Issue の索引だけを SessionStart で注入する。
-  home.file.".claude/hooks/issue-index".source = "${pkgs.dotfiles-tools}/bin/issue-index";
-
-  # esa-mirror-context: 社内 wiki の mirror の所在・検索手順・引用形式・鮮度を SessionStart で注入する。
-  home.file.".claude/hooks/esa-mirror-context".source =
-    "${pkgs.dotfiles-tools}/bin/esa-mirror-context";
-  # daily-desk-reminder: 今日の朝の机(my-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
-  home.file.".claude/hooks/daily-desk-reminder".source =
-    "${pkgs.dotfiles-tools}/bin/daily-desk-reminder";
   # calendar-handshake-reminder: 勤務先の機体でだけ(dotfiles.calendarHandshakeReminder.enable)、
   # 握手の下書き待ち([blocked] )を確かめる手順を SessionStart で注入する。
   home.file.".claude/hooks/calendar-handshake-reminder" =
     lib.mkIf config.dotfiles.calendarHandshakeReminder.enable
       { source = "${pkgs.dotfiles-tools}/bin/calendar-handshake-reminder"; };
-  # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
-  # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault が無い)では無音。
-  home.file.".claude/hooks/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
-
-  # gpg-prewarm: git commit の署名パスフレーズをログイン直後に温める。
-  home.file.".claude/hooks/gpg-prewarm".source = "${pkgs.dotfiles-tools}/bin/gpg-prewarm";
-
-  # herdr-sidebar-metadata: permission mode(hook)とモデル・メトリクス(statusline)
-  # を Herdr サイドバーのカスタムトークンに流す 2 チャネル構成。表示側の行定義は
-  # config/herdr/config.toml(home/modules/herdr.nix が配備)。herdr が自動
-  # インストールする統合 hook(herdr-agent-state.sh、herdr 管理)の隣に並ぶが、
-  # 互いに自分のエントリしか触らないので衝突しない。
-  # #413: Claude/Codex/Copilot 共通の 1 バイナリ(--agent)。Codex/Copilot の登録
-  # (home/modules/herdr.nix)もこのパスを指す。
-  home.file.".claude/hooks/herdr-agent-metadata".source =
-    "${pkgs.dotfiles-tools}/bin/herdr-agent-metadata";
 
   # claude-usage: herdr の tab_bar_right command が interval 実行する(Claude Code
   # hook ではない — settings.json には登録しない)。呼び出し側は
@@ -2152,34 +2163,6 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 実体は crates/claude-usage(#413)。配備先は herdr のハードコード実行パスに
   # 合わせて引き続き ~/.claude/hooks/(拡張子は ADR-0007 に従い落とした)。
 
-  # worktree-base-sync: pristine な worktree だけを origin/<base> へ黙って
-  # fast-forward する SessionStart hook。
-  home.file.".claude/hooks/worktree-base-sync".source =
-    "${pkgs.dotfiles-tools}/bin/worktree-base-sync";
-
-  # herdr-status-advisory: herdr の client と server の版の食い違いを、
-  # セッション開始時に知らせる SessionStart hook。
-  home.file.".claude/hooks/herdr-status-advisory".source =
-    "${pkgs.dotfiles-tools}/bin/herdr-status-advisory";
-
-  # gate-failopen-advisory: fail-open で素通りし続けている gate を、セッション開始時に
-  # 知らせる SessionStart hook(#822)。
-  home.file.".claude/hooks/gate-failopen-advisory".source =
-    "${pkgs.dotfiles-tools}/bin/gate-failopen-advisory";
-
-  # pr-gate: PR completion barrier。判定対象は allowlist に列挙した nwo だけ
-  # (既定は本リポジトリのみ)なので、他リポジトリでは完全沈黙する。
-  home.file.".claude/hooks/pr-gate".source = "${pkgs.dotfiles-tools}/bin/pr-gate";
-  # git-worktree-allow: herdr worktree への `git -C` を検証つきで許可する PreToolUse hook。
-  home.file.".claude/hooks/git-worktree-allow".source =
-    "${pkgs.dotfiles-tools}/bin/git-worktree-allow";
-  # git-stash-guard: 素の `git stash` を deny する PreToolUse hook。
-  home.file.".claude/hooks/git-stash-guard".source = "${pkgs.dotfiles-tools}/bin/git-stash-guard";
-  # hook-router: ツール呼び出しに付く検査の入口(上の hookRouterPreCmd / hookRouterPostCmd)。
-  home.file.".claude/hooks/hook-router".source = "${pkgs.dotfiles-tools}/bin/hook-router";
-  # main-checkout-guard: 本物の checkout を変更させない PreToolUse + Stop hook。
-  home.file.".claude/hooks/main-checkout-guard".source =
-    "${pkgs.dotfiles-tools}/bin/main-checkout-guard";
   # bleep(旧 publish-guard): 会社/private リポジトリの実名が PUBLIC な面に
   # 漏れるのを防ぐ PreToolUse hook。上流を別リポジトリ tarotene/bleep に
   # 切り出し(ADR-0009)、flake input(pinned rev)からツリーごと配備する。
@@ -2375,10 +2358,20 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
 
   home.file.".claude/pr-gate-repos".source = repoConfig + "/claude/pr-gate-repos";
 
-  # Hook の外からも使える手動の入口。
-  # 同じバイナリを置く(CSS は $HOME/.claude/hooks/plan-view.css へのフォール
-  # バックで解決する、上の plan-view 節参照)。
-  home.file.".local/bin/plan-view".source = "${pkgs.dotfiles-tools}/bin/plan-view";
+  dotfiles.binaries.".local/bin" = [
+    # Hook の外からも使える手動の入口。
+    # 同じバイナリを置く(CSS は $HOME/.claude/hooks/plan-view.css へのフォール
+    # バックで解決する、上の plan-view 節参照)。
+    "plan-view"
+    # Opt-in native Codex launcher; the user's pair and config.toml stay writable
+    # and are never seeded/reset by activation (docs/codex-plan.md).
+    "codex-plan"
+    # Model equivalence (docs/model-equivalence.md): the vendor-neutral catalog tool and the
+    # judge/page generator. Manual CLIs; the key for `fetch-aa` is read from the environment or the
+    # login keyring at run time, never deployed.
+    "model-catalog"
+    "model-equivalence"
+  ];
 
   # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
   # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
@@ -2386,16 +2379,6 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 従い配備名から .sh を落とす)。activation はこの配備物ではなく store 上の同じ
   # 実体を `sync` で呼ぶ(Rust 版、#414。bash 版が要した jq・coreutils 等の PATH
   # は不要になった)。
-
-  # Opt-in native Codex launcher; the user's pair and config.toml stay writable
-  # and are never seeded/reset by activation (docs/codex-plan.md).
-  home.file.".local/bin/codex-plan".source = "${pkgs.dotfiles-tools}/bin/codex-plan";
-
-  # Model equivalence (docs/model-equivalence.md): the vendor-neutral catalog tool and the
-  # judge/page generator. Manual CLIs; the key for `fetch-aa` is read from the environment or the
-  # login keyring at run time, never deployed.
-  home.file.".local/bin/model-catalog".source = "${pkgs.dotfiles-tools}/bin/model-catalog";
-  home.file.".local/bin/model-equivalence".source = "${pkgs.dotfiles-tools}/bin/model-equivalence";
 
   # コマンドファイルは @home@ プレースホルダを config.home.homeDirectory に
   # 展開する(ADR-0002: literal + 1 変数の replaceVars パターン、
@@ -2479,18 +2462,5 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # registerClaudeHooks と同じ DAG 位置(writeBoundary の後)で、独立した
   # activation script として走らせる — 片方が既存の hooks 登録ロジックを
   # 壊さないようにするため、jq マージの責務を混ぜない。
-
-  # Temporary compatibility entries. Each delegates to the canonical implementation.
-  home.file.".claude/hooks/desk-start".source = "${pkgs.dotfiles-tools}/bin/desk-start";
-  home.file.".claude/hooks/esa-index".source = "${pkgs.dotfiles-tools}/bin/esa-index";
-  home.file.".claude/hooks/pr-confirm-guard".source = "${pkgs.dotfiles-tools}/bin/pr-confirm-guard";
-  home.file.".claude/hooks/sign-prewarm".source = "${pkgs.dotfiles-tools}/bin/sign-prewarm";
-  home.file.".claude/hooks/worktree-fresh-base".source =
-    "${pkgs.dotfiles-tools}/bin/worktree-fresh-base";
-  home.file.".claude/hooks/session-wrapup".source = "${pkgs.dotfiles-tools}/bin/session-wrapup";
-  home.file.".claude/hooks/issue-inbox".source = "${pkgs.dotfiles-tools}/bin/issue-inbox";
-  home.file.".claude/hooks/session-retrospective".source =
-    "${pkgs.dotfiles-tools}/bin/session-retrospective";
-  home.file.".claude/hooks/feedback-trial".source = "${pkgs.dotfiles-tools}/bin/feedback-trial";
 
 }

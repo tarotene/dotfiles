@@ -74,8 +74,10 @@ in
   };
 
   config = {
-    # Rust、crates/tailscale-prefs(ADR-0024、#414)経由で pkgs.dotfiles-tools から配備。
-    home.file.".local/bin/tailscale-prefs".source = "${pkgs.dotfiles-tools}/bin/tailscale-prefs";
+    dotfiles.binaries.".local/bin" = [
+      # Rust、crates/tailscale-prefs(ADR-0024、#414)経由で pkgs.dotfiles-tools から配備。
+      "tailscale-prefs"
+    ];
 
     # The closed vocabulary crates/tailscale-prefs reads (an unknown key fails
     # its own tests), one `key=value` per line.
