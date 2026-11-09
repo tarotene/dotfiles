@@ -50,9 +50,10 @@ $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
 - 既存手段: 自前 — 探索: `scripts/`・`.github/workflows/ci.yml`・`crates/` を `consumers`・`BUILD_INPUTS` で grep した。
   パスの消費者を引く道具は無く、類例は `ci.yml` の「生成物の同期」の検査(render して `git status` の差分を見る)と、
   `.github/actions/stack-position/action.yml` の `BUILD_INPUTS` の宣言だけで、どちらも消費者を事前に引くものではない。
-- 対抗馬: Rust の小さな crate(ADR-0024 の既定は新規の hook と CLI に Rust)。ただし ADR-0024 の対象は hook と
-  `~/.local/bin` の CLI で、リポジトリ内の escape-hatch の `scripts/` は対象外。YAML の step 名は直前の
-  `- name:` 行で足りるので、bash で済む。
+- 対抗馬: Rust の小さな crate(ADR-0024 の既定は新規の hook と CLI に Rust)。この道具は `scripts/` に置くが、
+  `~/.local/bin/ci-consumers` にも配る(下の「どのリポジトリでも呼べる」)ので、配布先で見れば、ADR-0024 の
+  対象の「`~/.local/bin` の CLI」にも当たる。bash に残す理由: 判定は固定文字列の grep と、直前の `- name:`
+  行の読み取りだけで、型で表現不可能にすべき不正な状態が無い(表現不可能性の軸に差が出ない)。
 - 棄却した代替: 手順への追記だけ(本人が選ばなかった)、pre-push hook で同期の検査を走らせる案(1 つの検査の
   複製で、ほかの step には効かない)、生成化(GitHub Actions が committed な複写を要求するので、バイト一致
   そのものを表現不可能にはできない)。
