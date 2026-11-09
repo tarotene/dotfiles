@@ -23,7 +23,10 @@ let
   service = operation: {
     Unit = {
       Description = "Local state backup: ${operation}";
-      ConditionHost = "vega";
+      # Runs only on the host that enabled the module. systemd compares this with
+      # the machine's hostname, which is the host's codename on this fleet
+      # (ADR-0019: the rename runbook sets the OS hostname to it).
+      ConditionHost = config.dotfiles.host.name;
     };
     Service = {
       Type = "oneshot";

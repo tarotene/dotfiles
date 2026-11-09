@@ -103,6 +103,11 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   a module for one host in `home/hosts/<host>/` (the host module imports it),
   and a plain function that is not a module (`nixgl.nix`) in `home/lib/`. A
   non-`*.nix` file in an imported directory fails the evaluation.
+- A module never writes a host's name. Each host module declares its own with
+  `dotfiles.host.name` (`home/modules/host.nix`, which also writes the
+  `~/.config/dotfiles/host` marker), and a module that needs it reads
+  `config.dotfiles.host.name`; `repo-structure-check` rejects a host name in a
+  string outside that host's own files.
 - `homeConfigurations.<hostname>` in the flake is keyed by hostname so
   `home-manager switch --flake .#"$(hostname)"` auto-selects per machine.
 - Identity-scoped values (git `user.name`/`email`, browser default) go in

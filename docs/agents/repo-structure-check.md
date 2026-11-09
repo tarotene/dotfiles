@@ -2,7 +2,7 @@
 
 実装: `crates/repo-structure-check`(Rust のライブラリ。bin は持たない)
 走る場所: CI の `Rust workspace` ジョブの `cargo test --workspace`。手元は `cargo test -p repo-structure-check`
-Issue: #1434(manifest)、#1435(hook の入出力)、#1436(Stop の block と再入)、#1437(逃げ道)(親の tracking Issue は #1433)
+Issue: #1434(manifest)、#1435(hook の入出力)、#1436(Stop の block と再入)、#1437(逃げ道)、#1440(ホスト名)(親の tracking Issue は #1433)
 
 ## 動機
 
@@ -57,6 +57,21 @@ crate に集める。
 
 例外は無い。退役した名前の一覧は `escape::RETIRED`(後継の名前つき)。
 
+### ホスト名(`host_names::check_tree`)
+
+`home/**/*.nix` を Nix の字句解析(コメントを読まず、文字列の中身と `${…}` の中を区別する)で読む。ホスト名の正本は
+`home/hosts/*.nix` のファイル名(`vega`・`arcturus`・`altair`)。module は機体の名前を、`home/modules/host.nix` が宣言する
+option `dotfiles.host.name` で受け取る。
+
+| 検査 | 内容 |
+|---|---|
+| 文字列のホスト名 | Nix の**文字列**に、ほかの機体のホスト名が単語として現れたら落ちる(自分の機体のファイル、`home/hosts/<host>.nix` と `home/hosts/<host>/**`、の中は自分の名前を持ってよい)。コメントは読まない。説明は `<host>` のように書く |
+| 自分の名前の宣言 | `home/hosts/<host>.nix` は `dotfiles.host.name = "<host>";` を持つ。ファイル名と宣言がずれると、`~/.config/dotfiles/host`(`hms` が機体を決める元)が別の機体を指す |
+| マーカーの書き手 | `~/.config/dotfiles/host` を書く(`xdg.configFile."dotfiles/host"`)のは `home/modules/host.nix` だけ。`xdg.configFile.<名前>.text` は文字列を連結する型なので、書き手が 2 つあると評価は通り、マーカーが `vega\n\nvega\n` のように壊れる(`lines` の合成を評価して確かめた) |
+
+`dotfiles.host.name` は既定値を持たない。名前を宣言しない機体は、評価が「option を使っているが定義が無い」で落ち、別の機体を
+指すマーカーを配備しない。綴りは `[a-z][a-z0-9-]*`(型で縛る)。例外は無い。
+
 ### 規則の置き方
 
 - root の表に `default-features = false` を書いた依存(`jiff`、`toml`、`toml_edit`)は、メンバーが `features` で
@@ -86,5 +101,7 @@ crate に集める。
 - crates/repo-structure-check/src/manifest.rs
 - crates/repo-structure-check/src/hook_io.rs
 - crates/repo-structure-check/src/escape.rs
+- crates/repo-structure-check/src/host_names.rs
 - crates/repo-structure-check/tests/tree.rs
+- home/modules/host.nix
 - Cargo.toml

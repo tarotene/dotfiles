@@ -39,11 +39,12 @@
   # [S] subkey created 2026-07-13, expires 2027-07-13.
   programs.git.signing.key = "57B25182FB450B06570860488608A3F925E329CC";
 
-  # Declarative marker for resolve_host() (ADR-0019): once this activates,
+  # This host's name. home/modules/host.nix writes it as the declarative
+  # marker for resolve_host() (ADR-0019): once this activates,
   # hms/bootstrap.sh resolve this host as "arcturus" even with no marker
   # present yet, as long as $(hostname) already reports "arcturus" (the
   # rename runbook, docs/cutover-runbook.md, sets the OS hostname first via
   # `hostnamectl` before running `hms`). From this switch onward, this
   # declaration is the marker's source of truth (ADR-0019 D3, Amendment 2).
-  xdg.configFile."dotfiles/host".text = "arcturus\n";
+  dotfiles.host.name = "arcturus";
 }

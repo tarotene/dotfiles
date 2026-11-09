@@ -338,8 +338,9 @@ whose value only the wrapper's `extraModules` set — the value still never
 lives in this repository's source — so placing the marker becomes a side
 effect of applying through the wrapper, and `hms` also refuses to silently
 downgrade away from a host that had it registered last generation. `host`
-is different: each star-codename host module declares its own marker via
-`xdg.configFile."dotfiles/host"` (ADR-0019 D3), so after a host's first
+is different: each star-codename host module declares its own name with
+`dotfiles.host.name`, and `home/modules/host.nix` writes the marker from it
+(ADR-0019 D3), so after a host's first
 switch under its new name, that declaration is the marker's source of
 truth. On Linux it doesn't even need hand-placing: the rename runbook (see
 [`cutover-runbook.md`](cutover-runbook.md#renaming-an-existing-host-to-a-star-codename))

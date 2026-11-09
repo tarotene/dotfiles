@@ -64,7 +64,7 @@ let
         "OBSIDIAN_BACKUP_RESTIC_BIN=${pkgs.restic}/bin/restic"
         "OBSIDIAN_BACKUP_SECRET_TOOL_BIN=${pkgs.libsecret}/bin/secret-tool"
         "OBSIDIAN_BACKUP_VAULT=${vaultPath}"
-        "OBSIDIAN_BACKUP_HOST=vega"
+        "OBSIDIAN_BACKUP_HOST=${config.dotfiles.host.name}"
       ];
       NoNewPrivileges = true;
       PrivateTmp = true;

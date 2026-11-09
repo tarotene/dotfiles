@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use repo_structure_check::escape;
 use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS};
+use repo_structure_check::host_names;
 use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_CRATES};
 
 fn repo_root() -> PathBuf {
@@ -119,4 +120,34 @@ fn every_hatch_is_documented_under_its_own_names() {
             );
         }
     }
+}
+
+#[test]
+fn the_tree_satisfies_the_host_name_invariants() {
+    let violations = host_names::check_tree(&repo_root()).expect("read the nix sources");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "ホスト名の不変条件に反する箇所がある:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 空のツリーを読んで「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_host_name_check_reads_the_hosts_it_is_about() {
+    let files = host_names::read_files(&repo_root()).expect("read the nix sources");
+    let hosts = host_names::host_names(&files);
+    for expected in ["altair", "arcturus", "vega"] {
+        assert!(
+            hosts.iter().any(|h| h == expected),
+            "home/hosts/{expected}.nix が読めていない: {hosts:?}"
+        );
+    }
+    assert!(
+        files.iter().any(|f| f.path == host_names::MARKER_WRITER),
+        "{} が読めていない",
+        host_names::MARKER_WRITER
+    );
+    assert!(files.len() > 40, "読んだ nix が少なすぎる: {}", files.len());
 }

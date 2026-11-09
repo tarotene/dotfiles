@@ -94,13 +94,14 @@ in
     unset _hm
   '';
 
-  # Declarative marker for resolve_host() (ADR-0019): once this activates,
+  # This host's name. home/modules/host.nix writes it as the declarative
+  # marker for resolve_host() (ADR-0019): once this activates,
   # hms/bootstrap.sh resolve this host as "vega" even with no marker present
   # yet, as long as $(hostname) already reports "vega" (the rename runbook,
   # docs/cutover-runbook.md, sets the OS hostname first via `hostnamectl`
   # before running `hms`). From this switch onward, this declaration is the
   # marker's source of truth (ADR-0019 D3, Amendment 2).
-  xdg.configFile."dotfiles/host".text = "vega\n";
+  dotfiles.host.name = "vega";
 
   # Osmo Pocket 3 as the desk webcam + mic (DJI Mic 2 via its receiver): make
   # its USB mic the default input whenever it is plugged in.  Drop-in for the
