@@ -16,17 +16,16 @@
 //! `bash -c '<script>'` の中身は再帰して見る。トークン化できないコマンド・正規表現として読めない検索語は
 //! 判定不能として通す(fail-open)。
 //!
-//! 逃げ道: 正当な理由があるときは、コマンドに `PKILL_GUARD_ALLOW=1` の語を足す(環境変数でも同じ)。
+//! 逃げ道: 正当な理由があるときは、コマンドに `PKILL_GUARD_ALLOW=1` の語を足す(呼び出し単位)。人が起動前に
+//! `SKIP_PKILL_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は `agent_session::escape` の表が決める。
 //! コマンドに残るので、あとから読める。
 
+use agent_session::escape::PKILL_GUARD;
 use agent_session::hook::ToolCall;
 use agent_session::{Agent, Outcome};
 use command_inspection::parse;
 use command_inspection::shell::is_sep;
 use regex::Regex;
-
-/// 逃げ道の語。環境変数名と、コマンドに足す `NAME=1` の両方で使う。
-pub const ALLOW_ENV: &str = "PKILL_GUARD_ALLOW";
 
 /// 再帰して見る `sh -c '…'` の深さ上限。
 const MAX_DEPTH: usize = 2;
@@ -57,11 +56,6 @@ const VALUE_LONG: &[&str] = &[
     "--older",
     "--signal",
 ];
-
-/// 環境変数 `PKILL_GUARD_ALLOW=1` か。
-pub fn allow_from_env() -> bool {
-    std::env::var(ALLOW_ENV).is_ok_and(|v| v == "1")
-}
 
 fn basename(t: &str) -> &str {
     t.rsplit('/').next().unwrap_or(t)
@@ -194,7 +188,8 @@ fn hint(cmd: &str, pattern: &str) -> String {
 「動いている」と誤判定します(2026-10-28)。\
 検索語の 1 文字を `[]` で囲むと、正規表現としては同じ語に当たり、検索語の文字列そのものには当たらなくなります: \
 `{cmd} -f '{safe}'`。完全一致で足りるなら `-x` を付ける(`-fx`)か、`-f` を外してプロセス名で探してください。\
-正当な理由があるときだけ、コマンドに PKILL_GUARD_ALLOW=1 を足してください。"
+{how_to}",
+        how_to = PKILL_GUARD.how_to().unwrap_or_default()
     )
 }
 
@@ -222,7 +217,7 @@ fn judge_segment(words: &[&str]) -> Option<String> {
 }
 
 fn judge(tokens: &[String], depth: usize) -> Option<String> {
-    if tokens.iter().any(|t| t == &format!("{ALLOW_ENV}=1")) {
+    if PKILL_GUARD.judge(None, false, Some(tokens)).is_some() {
         return None;
     }
     // `bash -c '<script>'` の中身。
@@ -242,8 +237,9 @@ fn judge(tokens: &[String], depth: usize) -> Option<String> {
         .find_map(|words| judge_segment(words))
 }
 
-/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は
-/// `PKILL_GUARD_ALLOW=1`(呼び出し側が env から決める)。
+/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は、セッション単位の逃げ道
+/// (`SKIP_PKILL_GUARD=1`。呼び出し側が env から決める)。呼び出し単位の `PKILL_GUARD_ALLOW=1` は、
+/// コマンドの語から、ここで見る。
 pub fn decide(cmd: &str, allow: bool) -> Option<String> {
     if allow {
         return None;
@@ -256,7 +252,7 @@ pub fn decide(cmd: &str, allow: bool) -> Option<String> {
 pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     let call = ToolCall::parse(agent, raw)?;
     let cmd = call.bash_command()?;
-    decide(&cmd, allow_from_env()).map(Outcome::Deny)
+    decide(&cmd, PKILL_GUARD.active(None, None).is_some()).map(Outcome::Deny)
 }
 
 #[cfg(test)]

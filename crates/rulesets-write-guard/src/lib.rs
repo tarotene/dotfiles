@@ -18,11 +18,10 @@
 //! ような巨大な既存 bash 資産を source する必要が無い hook は Rust が既定)。
 //! 語分割は `command_inspection::simple_shell::split` を共有する。
 
+use agent_session::escape::RULESETS_WRITE_GUARD;
 use agent_session::HookInput;
 use agent_session::PermissionDecision;
 use command_inspection::simple_shell as shell;
-
-const BYPASS_VAR: &str = "RULESETS_WRITE_GUARD_BYPASS";
 
 const WRITE_METHODS: &[&str] = &["POST", "PUT", "PATCH", "DELETE"];
 
@@ -149,16 +148,17 @@ fn parse_gh_api(words: &[String]) -> Option<(String, String)> {
 pub fn check(input: &HookInput) -> Option<PermissionDecision> {
     let mut words = shell::split(input.bash_command()?)?;
 
-    // 先頭の env var 代入群をスキップしつつ、bypass 変数の有無を見る。
-    let mut bypassed = false;
-    while let Some((name, value)) = words.first().and_then(|w| as_env_assignment(w)) {
-        if name == BYPASS_VAR && !value.is_empty() {
-            bypassed = true;
-        }
-        words.remove(0);
-    }
-    if bypassed {
+    // 呼び出し単位の逃げ道(`RULESETS_WRITE_GUARD_ALLOW=1`。真は `1` だけ)。名前と真偽は
+    // `agent_session::escape` の表が決める。この guard は、拒否文に逃げ道を案内しない。
+    if RULESETS_WRITE_GUARD
+        .judge(None, false, Some(&words))
+        .is_some()
+    {
         return None;
+    }
+    // 先頭の env var 代入群をスキップする(無関係な代入の後ろの `gh api` も判定する)。
+    while words.first().and_then(|w| as_env_assignment(w)).is_some() {
+        words.remove(0);
     }
 
     if words.len() < 2 || words[0] != "gh" || words[1] != "api" {
@@ -234,14 +234,24 @@ mod tests {
     }
 
     #[test]
-    fn bypass_env_assignment_skips_judgement() {
+    fn allow_word_skips_judgement() {
         assert!(!denies(
-            "RULESETS_WRITE_GUARD_BYPASS=1 gh api -X PUT repos/a/b/rulesets/1"
+            "RULESETS_WRITE_GUARD_ALLOW=1 gh api -X PUT repos/a/b/rulesets/1"
         ));
-        // 値が空の代入は bypass 扱いしない。
-        assert!(denies(
-            "RULESETS_WRITE_GUARD_BYPASS= gh api -X PUT repos/a/b/rulesets/1"
-        ));
+        // 真は `1` だけ。空・0・ほかの値は逃げ道にならない(従来の BYPASS は「空でない」で通った)。
+        for v in ["", "0", "true", "2"] {
+            assert!(
+                denies(&format!(
+                    "RULESETS_WRITE_GUARD_ALLOW={v} gh api -X PUT repos/a/b/rulesets/1"
+                )),
+                "{v:?}"
+            );
+        }
+        // 別の綴り(`BYPASS`)は読まない。
+        assert!(denies(&format!(
+            "RULESETS_WRITE_GUARD_{}=1 gh api -X PUT repos/a/b/rulesets/1",
+            "BYPASS"
+        )));
         // 無関係な先頭の env var 代入は素通り解釈し、その後ろの gh api は
         // 引き続き判定する。
         assert!(denies("GH_TOKEN=x gh api -X PUT repos/a/b/rulesets/1"));

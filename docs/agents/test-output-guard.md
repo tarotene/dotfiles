@@ -43,8 +43,9 @@ PR #1199 に載せ、後で気づいて直して積み直した。
 ## 逃げ道
 
 切り詰めが要る正当な理由があるときは、コマンドに `TEST_OUTPUT_GUARD_ALLOW=1` の語を足す
-(`TEST_OUTPUT_GUARD_ALLOW=1 cargo test | head`)。環境変数でも同じ。値は `1` だけ。コマンドに残るので、
-あとから読める。
+(`TEST_OUTPUT_GUARD_ALLOW=1 cargo test | head`)。値は `1` だけ(呼び出し単位)。コマンドに残るので、
+あとから読める。人は、起動前に環境変数 `SKIP_TEST_OUTPUT_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は
+`agent_session::escape` の表が決める。
 
 ## 発火範囲
 

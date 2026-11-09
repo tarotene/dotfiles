@@ -14,17 +14,16 @@
 //! 判定不能として通す(fail-open)。
 //!
 //! 逃げ道: PR に紐づかない workflow run(release など)を待つときのために、コマンドに
-//! `CI_WAIT_GUARD_ALLOW=1` の語を足す(環境変数でも同じ)。静かな無効化ではなく、
+//! `CI_WAIT_GUARD_ALLOW=1` の語を足す(呼び出し単位)。人が起動前に `SKIP_CI_WAIT_GUARD=1` を設定してもよい
+//! (セッション単位)。名前と真偽は `agent_session::escape` の表が決める。静かな無効化ではなく、
 //! コマンドに残るので、あとから読める。
 
+use agent_session::escape::CI_WAIT_GUARD;
 use agent_session::hook::{jq_r_path, ToolCall};
 use agent_session::{Agent, Outcome};
 use command_inspection::command::{gh_command_at, is_gh};
 use command_inspection::parse;
 use command_inspection::shell::is_sep;
-
-/// 逃げ道の語。環境変数名と、コマンドに足す `NAME=1` の両方で使う。
-pub const ALLOW_ENV: &str = "CI_WAIT_GUARD_ALLOW";
 
 /// 再帰して見る `sh -c '…'` の深さ上限。
 const MAX_DEPTH: usize = 2;
@@ -37,23 +36,30 @@ const WAITERS: &[&str] = &["until", "while", "sleep", "watch"];
 /// 直後の語がコマンド位置になる予約語(`do sleep 5`、`! gh pr checks` など)。
 const TRANSPARENT: &[&str] = &["do", "then", "else", "!", "time", "exec", "{"];
 
-const WATCH_HINT: &str = "CI を待つのに `gh pr checks --watch` / `gh run watch` は使いません。\
+const WATCH_BASE: &str = "CI を待つのに `gh pr checks --watch` / `gh run watch` は使いません。\
 `pr-checks-wait <PR番号>` を run_in_background で実行し、完了通知を待ってください。\
 赤が 1 件でも出れば即 NG(exit 1)、required が全緑になれば即 OK(exit 0)で終わります\
 (`gh pr checks --required --watch` は集約ジョブ `CI passed` の完了まで NG が返らず、\
 `--required` なしは required でないチェックの完了まで OK が出ません)。\
 現在の状態を 1 回読むだけなら `gh pr checks <PR番号> --required`。\
-PR に紐づかない workflow run(release など)を待つときだけ、コマンドに CI_WAIT_GUARD_ALLOW=1 を足してください。";
+PR に紐づかない workflow run(release など)を待つのが、やむを得ない典型です。";
 
-const POLL_HINT: &str = "CI を `until` / `while` / `sleep` / `watch` のポーリングで待ちません。\
+const POLL_BASE: &str = "CI を `until` / `while` / `sleep` / `watch` のポーリングで待ちません。\
 `pr-checks-wait <PR番号>` を run_in_background で実行し、完了通知を待ってください。\
 赤が 1 件でも出れば即 NG(exit 1)、required が全緑になれば即 OK(exit 0)で終わります。\
 現在の状態を 1 回読むだけなら `gh pr checks <PR番号> --required`(ループに入れない)。\
-PR に紐づかない workflow run(release など)を待つときだけ、コマンドに CI_WAIT_GUARD_ALLOW=1 を足してください。";
+PR に紐づかない workflow run(release など)を待つのが、やむを得ない典型です。";
 
-/// 環境変数 `CI_WAIT_GUARD_ALLOW=1` か。
-pub fn allow_from_env() -> bool {
-    std::env::var(ALLOW_ENV).is_ok_and(|v| v == "1")
+fn with_how_to(base: &str) -> String {
+    format!("{base}{}", CI_WAIT_GUARD.how_to().unwrap_or_default())
+}
+
+fn watch_hint() -> String {
+    with_how_to(WATCH_BASE)
+}
+
+fn poll_hint() -> String {
+    with_how_to(POLL_BASE)
 }
 
 /// `tokens[i]` がコマンド位置にあるか(先頭・区切りの直後・予約語の直後)。
@@ -100,7 +106,7 @@ fn is_ci_query_at(tokens: &[String], i: usize) -> bool {
 }
 
 fn judge(tokens: &[String], depth: usize) -> Option<String> {
-    if tokens.iter().any(|t| t == &format!("{ALLOW_ENV}=1")) {
+    if CI_WAIT_GUARD.judge(None, false, Some(tokens)).is_some() {
         return None;
     }
     // `bash -c '<script>'` の中身。
@@ -123,10 +129,10 @@ fn judge(tokens: &[String], depth: usize) -> Option<String> {
                 .iter()
                 .any(|t| t == "--watch" || t.starts_with("--watch="))
         {
-            return Some(WATCH_HINT.to_string());
+            return Some(watch_hint());
         }
         if gh_command_at(tokens, i, &["run", "watch"]) {
-            return Some(WATCH_HINT.to_string());
+            return Some(watch_hint());
         }
     }
 
@@ -134,13 +140,14 @@ fn judge(tokens: &[String], depth: usize) -> Option<String> {
     let waits = (0..tokens.len())
         .any(|i| WAITERS.contains(&tokens[i].as_str()) && at_command_position(tokens, i));
     if waits && (0..tokens.len()).any(|i| is_ci_query_at(tokens, i)) {
-        return Some(POLL_HINT.to_string());
+        return Some(poll_hint());
     }
     None
 }
 
-/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は
-/// `CI_WAIT_GUARD_ALLOW=1`(呼び出し側が env から決める)。
+/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は、セッション単位の逃げ道
+/// (`SKIP_CI_WAIT_GUARD=1`。呼び出し側が env から決める)。呼び出し単位の `CI_WAIT_GUARD_ALLOW=1` は、
+/// コマンドの語から、ここで見る。
 pub fn decide(cmd: &str, allow: bool) -> Option<String> {
     if allow {
         return None;
@@ -168,7 +175,7 @@ fn command_of(call: &ToolCall) -> Option<String> {
 pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     let call = ToolCall::parse(agent, raw)?;
     let cmd = command_of(&call)?;
-    decide(&cmd, allow_from_env()).map(Outcome::Deny)
+    decide(&cmd, CI_WAIT_GUARD.active(None, None).is_some()).map(Outcome::Deny)
 }
 
 #[cfg(test)]
@@ -190,7 +197,7 @@ mod tests {
             "cd x && gh pr checks 12 --watch | tail -5",
         ] {
             let r = decide(c, false);
-            assert_eq!(r.as_deref(), Some(WATCH_HINT), "{c}");
+            assert_eq!(r.as_deref(), Some(watch_hint().as_str()), "{c}");
         }
     }
 
@@ -209,7 +216,7 @@ mod tests {
             "bash -lc \"gh run list --limit 1; sleep 5\"",
         ] {
             let r = decide(c, false);
-            assert_eq!(r.as_deref(), Some(POLL_HINT), "{c}");
+            assert_eq!(r.as_deref(), Some(poll_hint().as_str()), "{c}");
         }
     }
 
