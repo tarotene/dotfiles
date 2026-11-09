@@ -1,4 +1,4 @@
-# ADR-0000 — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
+# ADR-1472 — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
 
 - Status: Accepted
 - Date: 2026-11-09

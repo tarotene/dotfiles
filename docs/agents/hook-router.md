@@ -71,7 +71,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 読み方: 「残す」は、**今のところ載せない** であって、永久に載せない約束ではない。表の理由(条件 1〜4 のどれに
 反するか)が解ける形になったら、載せる。Stop は、型と描画の統一が済んだ(`StopOutcome`・`Reentry`・`Reply::render`。
-ADR-0000-stop-outcome)。それでもルータには載せない: `StopOutcome` はルータの `Outcome` と別の型で、
+ADR-1472)。それでもルータには載せない: `StopOutcome` はルータの `Outcome` と別の型で、
 ルータの併合は `Outcome` の網羅 match なので、Stop の規則を表に載せられないことが型で守られる。載せない理由は、
 `pr-gate` が CI を最大 300 秒待つこと(条件 3)で、型の有無ではない。ルータの契約を広げるなら、ADR-872 の
 Amendment ではなく、別の ADR を立てる。

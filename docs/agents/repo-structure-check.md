@@ -37,7 +37,7 @@ crate に集める。
 |---|---|
 | 返答の封筒 | `hookSpecificOutput` の文字列は `agent-session`(`Reply::render`)だけが書く。ほかの crate の `src/` に書いたら落ちる |
 | 標準入力 | hook の bin(`src/main.rs`・`src/entry.rs`・`src/bin/*.rs`)は、`std::io::stdin()` を直接呼ばず、`agent_session::entry::read_stdin` を呼ぶ。端末かどうかを調べるだけの行(`is_terminal`)は読みではない |
-| Stop の block と再入 | Stop の block(`"decision"` と `"block"` が同じ行)を手で書く行と、`stop_hook_active` を読む行は、`agent-session`(`Reply::render` と `StopInput`)だけが持つ。例外は無い(ADR-0000-stop-outcome) |
+| Stop の block と再入 | Stop の block(`"decision"` と `"block"` が同じ行)を手で書く行と、`stop_hook_active` を読む行は、`agent-session`(`Reply::render` と `StopInput`)だけが持つ。例外は無い(ADR-1472) |
 | 例外の鮮度 | 例外のファイルが、違反の形をもう持たない(または、ファイルが無い)と、例外のほうが落ちる |
 
 例外は、どれも**恒久**の例外で、`hook_io::ENVELOPE_EXCEPTIONS`(返答を書かず、外から来た JSON を読む・読み替える 3 ファイル)と
