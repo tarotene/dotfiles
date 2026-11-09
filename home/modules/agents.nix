@@ -2158,7 +2158,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
     # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
     # 解決しない)のディレクトリ相対で解決するので、配備先では 2 ファイルを
-    # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/agents/assets/ に
+    # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/claude/assets/ に
     # 分離している(ADR-0007)。$HOME/.claude/hooks/plan-view.css も最後の候補として
     # 探すので、~/.local/bin/plan-view からの起動でも解決する。
     "plan-view"
@@ -2307,10 +2307,10 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 実際の検証は hook 内の CRITIC_SCHEMA_JQ が行う — この JSON はその契約を
   # 人間 / プロンプト向けに文書化したものである。配備先は hook と同じ
   # ~/.claude/hooks/ に並べて置く(hook が自身のディレクトリ相対で解決するため)
-  # が、ソースツリー上は非 hook アセットとして config/agents/assets/ に分離
+  # が、ソースツリー上は非 hook アセットとして config/claude/assets/ に分離
   # している(ADR-0007)。
   home.file.".claude/hooks/copilot-plan-review.schema.json".source =
-    repoConfig + "/agents/assets/copilot-plan-review.schema.json";
+    repoConfig + "/claude/assets/copilot-plan-review.schema.json";
 
   # plan-reviewer: copilot-plan-review が `--agent plan-reviewer` で呼ぶ
   # read-only custom agent。tools は view/grep/glob だけで、
@@ -2318,7 +2318,7 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   home.file.".copilot/agents/plan-reviewer.agent.md".source =
     repoConfig + "/copilot/agents/plan-reviewer.agent.md";
 
-  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/agents/assets/plan-view.css";
+  home.file.".claude/hooks/plan-view.css".source = repoConfig + "/claude/assets/plan-view.css";
 
   # git-stash-guard(ADR-0032 Amendment #531): 素の `git stash` を弾く。
   # Codex 用の adapter ファイルは #416 で廃止し、Rust バイナリを --host codex

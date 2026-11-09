@@ -111,13 +111,13 @@ impl Config {
     }
 
     /// CSS の探索。配備後は `~/.claude/hooks/` に本体と .css が並ぶので
-    /// SCRIPT_DIR 相対で足りる。リポジトリ上では `config/agents/assets/` に
-    /// 分離されている(ADR-0007)ので SCRIPT_DIR の一つ上の assets/ も探す。
+    /// SCRIPT_DIR 相対で足りる。`~/.local/bin/plan-view` からの起動は、
+    /// 最後の候補 `$HOME/.claude/hooks/plan-view.css` で解決する。リポジトリ上の
+    /// `config/claude/assets/` は、バイナリの隣ではないので探さない(ADR-0007)。
     pub fn find_css(&self) -> Option<PathBuf> {
         let candidates = [
             PathBuf::from(&self.css_override),
             self.script_dir.join("plan-view.css"),
-            self.script_dir.join("../assets/plan-view.css"),
             self.home.join(".claude/hooks/plan-view.css"),
         ];
         candidates
@@ -880,13 +880,13 @@ mod tests {
             c.find_css(),
             Some(c.home.join(".claude/hooks/plan-view.css"))
         );
-        // `hooks/../assets` はカーネルが hooks の実在を要求する(bash 版も同じ)
+        // 一つ上の assets/ は探さない(バイナリの隣ではない)。
         fs::create_dir_all(&c.script_dir).unwrap();
         fs::create_dir_all(d.path().join("assets")).unwrap();
         fs::write(d.path().join("assets/plan-view.css"), "a").unwrap();
         assert_eq!(
             c.find_css(),
-            Some(c.script_dir.join("../assets/plan-view.css"))
+            Some(c.home.join(".claude/hooks/plan-view.css"))
         );
         fs::write(c.script_dir.join("plan-view.css"), "s").unwrap();
         assert_eq!(c.find_css(), Some(c.script_dir.join("plan-view.css")));
