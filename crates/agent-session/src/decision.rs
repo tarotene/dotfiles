@@ -1,13 +1,7 @@
-//! クラスタ A: `permissionDecision` の emit。
+//! PreToolUse の判定(allow・ask・deny)と理由の型。
 //!
-//! 吸収元(10 個の独立実装のうち代表):
-//! - `config/claude/hooks/git-worktree-allow.sh:97-103`(allow)
-//! - `config/claude/hooks/stack-base-guard.sh:480-485`(deny)
-//! - `config/codex/hooks/attribution-guard.sh:17-19`(Codex: Claude と同形)
-//! - `config/copilot/hooks/attribution-guard.sh:48-53`(Copilot: ラップ無しの直下)
-
-use crate::input::Agent;
-use serde_json::{json, Value};
+//! 出力の形(Claude・Codex の `hookSpecificOutput` の封筒、Copilot の平らな形)は、
+//! [`crate::reply::Reply::render`] が持つ。この型は、判定を値として運ぶだけで、JSON を作らない。
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
@@ -56,30 +50,6 @@ impl PermissionDecision {
             reason: reason.into(),
         }
     }
-
-    /// エージェントが読む形の JSON。
-    pub fn to_json(&self, agent: Agent) -> Value {
-        let body = json!({
-            "permissionDecision": self.decision.as_str(),
-            "permissionDecisionReason": self.reason,
-        });
-        match agent {
-            Agent::Copilot => body,
-            Agent::Claude | Agent::Codex => {
-                let mut wrapped = json!({ "hookEventName": "PreToolUse" });
-                wrapped
-                    .as_object_mut()
-                    .expect("object literal")
-                    .extend(body.as_object().expect("object literal").clone());
-                json!({ "hookSpecificOutput": wrapped })
-            }
-        }
-    }
-
-    /// stdout に 1 行で書き出す。
-    pub fn emit(&self, agent: Agent) {
-        println!("{}", self.to_json(agent));
-    }
 }
 
 #[cfg(test)]
@@ -87,27 +57,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn claude_and_codex_are_wrapped() {
-        let v = PermissionDecision::allow("ok").to_json(Agent::Claude);
-        assert_eq!(
-            v,
-            json!({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"ok"}})
-        );
-        assert_eq!(v, PermissionDecision::allow("ok").to_json(Agent::Codex));
-    }
-
-    #[test]
-    fn copilot_is_flat() {
-        let v = PermissionDecision::deny("no").to_json(Agent::Copilot);
-        assert_eq!(
-            v,
-            json!({"permissionDecision":"deny","permissionDecisionReason":"no"})
-        );
-    }
-
-    #[test]
-    fn ask_value() {
-        let v = PermissionDecision::ask("?").to_json(Agent::Copilot);
-        assert_eq!(v["permissionDecision"], "ask");
+    fn constructors_carry_the_decision_and_the_reason() {
+        for (d, word) in [
+            (PermissionDecision::allow("r"), "allow"),
+            (PermissionDecision::deny("r"), "deny"),
+            (PermissionDecision::ask("r"), "ask"),
+        ] {
+            assert_eq!(d.decision.as_str(), word);
+            assert_eq!(d.reason, "r");
+        }
     }
 }

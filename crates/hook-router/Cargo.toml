@@ -44,7 +44,5 @@ worktree-lease = { version = "0.1.0", path = "../worktree-lease" }
 
 [dev-dependencies]
 tempfile.workspace = true
-# 旧 bin の出力の書式(`deny_for_event`)を、ルータの出力から描き直す。
-jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 # 旧 bin の trycmd の fixture(標準入力と期待する標準出力)を読んで、ルータと突き合わせる。
 toml = { workspace = true, features = ["parse", "serde"] }

@@ -272,7 +272,7 @@ adapter だけを持つ型(`tarotene/bleep` の旧 `adapters/{codex,copilot}-ada
 
 Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
 `tarotene/bleep` の同種 adapter が実機で確認済みの事実をそのまま
-引き継いでいる(`guard_core::hook::ToolCall` / `deny_output`):
+引き継いでいる(`agent_session::hook::ToolCall` と、出力の `agent_session::Reply::render`):
 
 | | 入力 | tool 名 | 出力 |
 |---|---|---|---|

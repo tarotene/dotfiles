@@ -6,4 +6,5 @@
 //! `tests/tree.rs` が行う。検査を足すときは、違反を作る fixture(負例)を同じ場所に置き、
 //! 検査が実際に落ちることを確かめる。
 
+pub mod hook_io;
 pub mod manifest;

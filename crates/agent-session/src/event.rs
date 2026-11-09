@@ -24,7 +24,7 @@ impl HookEvent {
 
     /// 標準入力の `hook_event_name` から決める。`PermissionRequest` 以外(空・未知を含む)は
     /// `PreToolUse`。plan gate が、PreToolUse と PermissionRequest の両方で同じ bin を使うための規則で、
-    /// 従来の `jqfmt::deny_for_event` と同じ。
+    /// `PermissionRequest` 以外は PreToolUse に倒す(従来の plan gate 系と同じ)。
     pub fn from_input_name(name: &str) -> HookEvent {
         if name == "PermissionRequest" {
             HookEvent::PermissionRequest

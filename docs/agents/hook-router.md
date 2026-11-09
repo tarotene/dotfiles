@@ -64,7 +64,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 | session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は終了コード 2 + 標準エラーで、1 つの入口の中でも `stop_hook_active` の扱いが違う(レトロは抜けない、wrap-up inbox は即 exit 0)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
 | main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の block)。`stop_hook_active` を読んで扱いを変える。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
 | agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
-| SessionStart の 11 件(session-wrapup-start、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、`render` は SessionStart の出力(複数の検査の `additionalContext` を 1 つにまとめる形)を持たない(条件 1 に反する)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
+| SessionStart の 11 件(session-wrapup-start、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、SessionStart の規則を載せる口を持たない(条件 1 に反する。SessionStart の出力の形そのものは `Reply::render` が持つ)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
 | herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
 | bleep | PreToolUse(`Bash|mcp__.*`) | 残す | 外部ツール(上流 `tarotene/bleep`、ADR-0009)。この crate の `hook` 関数に切り出せない | `agents.nix` の宣言、ADR-0009 |
 | atuin-history | PreToolUse・PostToolUse・PostToolUseFailure(Bash) | 残す | 外部ツール(`atuin`)の入口で、この crate のものではない | `agents.nix` の宣言 |
@@ -93,8 +93,9 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 - **判定できない入力**(JSON でない、`tool_name` が無い)は素通す。
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの
-両方が同じ関数を呼ぶ。standalone の bin の出力は変わらない(既存の trycmd の fixture が、そのまま通る)。
-standalone の bin は、Copilot の登録と、手で叩く用に残してある。
+両方が同じ関数を呼ぶ。standalone の bin の出力も `Reply::render` が描くので、ルータと同じ形(`jq .` の整形)になる。
+元の bash の出力は入力に数えない(ADR-751)ので、書式をそろえたときに、bin の trycmd の fixture(compact で書かれていた
+`gh-edit-allow` の 1 件)を作り直した。standalone の bin は、Copilot の登録と、手で叩く用に残してある。
 
 ## 旧登録の記録(matcher と timeout の理由)
 
@@ -140,8 +141,9 @@ standalone の bin は、Copilot の登録と、手で叩く用に残してあ�
 
 ## 規則の足し方
 
-1. 検査の crate に `pub fn hook(raw: &str) -> Option<hook_io::Outcome>` を置き、`main` はそれを呼んで、これまでと
-   同じ書式で出力する(bin の出力を変えない)。
+1. 検査の crate に `pub fn hook(raw: &str) -> Option<agent_session::Outcome>` を置き、`main` は
+   `agent_session::entry::run(&SPEC, …)` に渡す(標準入力の読み、`--agent`、描画は入口が持つ。手で封筒の文字列を書かない。
+   `repo-structure-check` の `hook_io` の検査が、書いたら落とす)。
 2. `rules.rs` の表に、`node`・`event`・`tools`・`budget`・`run` を持つ `Rule` を足す。`node` は
    `pipeline-map.toml` のノード id(無ければ足す)。
 3. 表の集合を固定しているテスト(`the_table_holds_exactly_the_agreed_rules`)を、意識して直す。
