@@ -20,6 +20,18 @@ pub enum Outcome {
 
 use crate::decision::{Decision, PermissionDecision};
 
+/// 判定を、そのまま検査の結果にする(allow・ask・deny のどれでも)。`from_decision` は、ルータに載せる
+/// 検査のために deny だけを拾う別の関数で、こちらは全てを運ぶ。
+impl From<PermissionDecision> for Outcome {
+    fn from(d: PermissionDecision) -> Outcome {
+        match d.decision {
+            Decision::Deny => Outcome::Deny(d.reason),
+            Decision::Ask => Outcome::Ask(d.reason),
+            Decision::Allow => Outcome::Allow(d.reason),
+        }
+    }
+}
+
 impl Outcome {
     /// deny の `PermissionDecision` を `Outcome` にする。allow / ask は `None`: ルータに載せるのは
     /// deny だけを出す検査で、allow / ask を出す検査(`git-worktree-allow`、`gh-edit-allow` の判定役)は
@@ -52,5 +64,21 @@ mod tests {
             None
         );
         assert_eq!(Outcome::from_decision(PermissionDecision::ask("?")), None);
+    }
+
+    #[test]
+    fn from_carries_every_decision() {
+        assert_eq!(
+            Outcome::from(PermissionDecision::deny("d")),
+            Outcome::Deny("d".into())
+        );
+        assert_eq!(
+            Outcome::from(PermissionDecision::ask("k")),
+            Outcome::Ask("k".into())
+        );
+        assert_eq!(
+            Outcome::from(PermissionDecision::allow("a")),
+            Outcome::Allow("a".into())
+        );
     }
 }
