@@ -10,6 +10,7 @@ description = "Codex CLI の Stop hook(config/codex/hooks/codex-plan-gate.sh の
 agent-session = { version = "0.1.0", path = "../agent-session" }
 process-control = { version = "0.1.0", path = "../process-control" }
 new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 
 [dev-dependencies]

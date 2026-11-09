@@ -3,7 +3,7 @@
 //! 詳細は lib.rs と docs/update-own-tools.md。
 
 use std::process::ExitCode;
-use update_own_tools::{execute, on_path, parse_registry, plan, xdg_dir};
+use update_own_tools::{execute, on_path, parse_registry, plan};
 
 const USAGE: &str = "usage: update-own-tools [--dry-run] [--registry <path>] [<name>...]";
 
@@ -34,12 +34,16 @@ fn main() -> ExitCode {
         }
     }
     let Some(registry) = registry.or_else(|| {
-        xdg_dir("XDG_CONFIG_HOME", ".config").map(|d| d.join("update-own-tools/registry.toml"))
+        process_env::Xdg::Config
+            .resolve()
+            .map(|d| d.join("update-own-tools/registry.toml"))
     }) else {
         eprintln!("update-own-tools: HOME が未設定です");
         return ExitCode::FAILURE;
     };
-    let Some(cache) = xdg_dir("XDG_CACHE_HOME", ".cache").map(|d| d.join("update-own-tools"))
+    let Some(cache) = process_env::Xdg::Cache
+        .resolve()
+        .map(|d| d.join("update-own-tools"))
     else {
         eprintln!("update-own-tools: HOME が未設定です");
         return ExitCode::FAILURE;

@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 github-audit = { version = "0.1.0", path = "../github-audit" }
+process-env = { version = "0.1.0", path = "../process-env" }
 tempfile.workspace = true
 
 [dev-dependencies]

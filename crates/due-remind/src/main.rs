@@ -46,25 +46,20 @@ fn main() -> ExitCode {
     ExitCode::from(exit_code(run(dry_run)))
 }
 
-fn xdg_state_home() -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").expect("HOME must be set");
-            PathBuf::from(home).join(".local/state")
-        })
+fn state_base() -> PathBuf {
+    process_env::Xdg::State.resolve().expect("HOME must be set")
 }
 
 fn state_dir() -> PathBuf {
     std::env::var_os("DUE_REMIND_STATE_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| xdg_state_home().join("due-remind"))
+        .unwrap_or_else(|| state_base().join("due-remind"))
 }
 
 fn claude_dir() -> PathBuf {
     std::env::var_os("DUE_REMIND_CLAUDE_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| xdg_state_home().join("claude"))
+        .unwrap_or_else(|| state_base().join("claude"))
 }
 
 fn herdr_bin() -> String {

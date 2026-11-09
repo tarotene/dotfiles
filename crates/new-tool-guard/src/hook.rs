@@ -132,13 +132,12 @@ pub fn default_ledger() -> Option<SessionLedger> {
 fn base_dir() -> Option<PathBuf> {
     match std::env::var_os("NEW_TOOL_GUARD_DIR") {
         Some(d) if !d.is_empty() => Some(d.into()),
-        _ => {
-            let state = match std::env::var_os("XDG_STATE_HOME") {
-                Some(d) if !d.is_empty() => PathBuf::from(d),
-                _ => Path::new(&std::env::var_os("HOME")?).join(".local/state"),
-            };
-            Some(state.join("claude").join("new-tool-guard"))
-        }
+        _ => Some(
+            process_env::Xdg::State
+                .resolve()?
+                .join("claude")
+                .join("new-tool-guard"),
+        ),
     }
 }
 

@@ -112,11 +112,10 @@ fn warn(msg: &str) {
 }
 
 fn default_prefs_file() -> PathBuf {
-    let base = match std::env::var("XDG_CONFIG_HOME") {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"),
-    };
-    base.join("dotfiles").join("tailscale-prefs")
+    process_env::Xdg::Config
+        .resolve_lossy()
+        .join("dotfiles")
+        .join("tailscale-prefs")
 }
 
 /// `tailscale-prefs apply`。どの縮退経路も exit 0(hms を落とさない)。

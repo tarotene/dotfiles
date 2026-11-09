@@ -8,5 +8,6 @@ publish.workspace = true
 [dependencies]
 backup-runtime = { path = "../backup-runtime" }
 libc.workspace = true
+process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true
 tempfile.workspace = true

@@ -13,6 +13,7 @@ model-catalog = { path = "../model-catalog" }
 anyhow.workspace = true
 futures-util = { workspace = true, features = ["sink"] }
 libc.workspace = true
+process-env = { version = "0.1.0", path = "../process-env" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tempfile.workspace = true

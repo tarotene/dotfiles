@@ -184,7 +184,7 @@ pub fn scratch_dirs(sid: &str) -> Vec<PathBuf> {
     let uid = std::env::var_os("HOME")
         .and_then(|h| std::fs::metadata(h).ok())
         .map(|m| std::os::unix::fs::MetadataExt::uid(&m));
-    if let Some(t) = issue_inbox::env_nonempty("CLAUDE_CODE_TMPDIR") {
+    if let Some(t) = process_env::var_nonempty("CLAUDE_CODE_TMPDIR") {
         let t = PathBuf::from(t);
         if let Some(uid) = uid {
             roots.push(t.join(format!("claude-{uid}")));
@@ -220,8 +220,7 @@ pub fn collect(sid: &str) -> Traces {
     scratch.dedup();
     let log = cmd_hash_log::resolve_log_path(
         std::env::var_os("CMD_HASH_LOG_PATH").as_deref(),
-        std::env::var_os("XDG_STATE_HOME").as_deref(),
-        std::env::var_os("HOME").as_deref(),
+        process_env::Xdg::State.resolve(),
     )
     .and_then(|p| std::fs::read_to_string(p).ok())
     .unwrap_or_default();

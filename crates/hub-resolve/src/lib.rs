@@ -77,10 +77,9 @@ fn non_empty(v: Option<String>) -> Option<String> {
 
 /// マーカーファイルのパス(`${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<marker>`)。
 pub fn marker_path(hub: &Hub, getenv: Getenv) -> PathBuf {
-    let base = non_empty(getenv("XDG_CONFIG_HOME")).map_or_else(
-        || PathBuf::from(getenv("HOME").unwrap_or_default()).join(".config"),
-        PathBuf::from,
-    );
+    let base = process_env::Xdg::Config
+        .resolve_with(|n| getenv(n).map(std::ffi::OsString::from))
+        .unwrap_or_else(|| PathBuf::from(process_env::Xdg::Config.default_under_home()));
     base.join("dotfiles").join(hub.marker_name)
 }
 

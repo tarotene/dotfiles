@@ -42,17 +42,6 @@ use std::process::{Command, ExitCode, Stdio};
 const OPEN_TAG: &str = "<proposed_plan>";
 const CLOSE_TAG: &str = "</proposed_plan>";
 
-fn home() -> PathBuf {
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-}
-
-fn env_path(key: &str, default: impl FnOnce() -> PathBuf) -> PathBuf {
-    std::env::var_os(key)
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(default)
-}
-
 fn is_executable(p: &Path) -> bool {
     p.is_file()
         && fs::metadata(p)
@@ -94,7 +83,7 @@ fn run_merged(bin: &Path, flag: &str, file: &Path) -> Option<(i32, String)> {
 }
 
 fn write_plan_file(body: &str) -> Option<PathBuf> {
-    let dir = env_path("TMPDIR", || PathBuf::from("/tmp"));
+    let dir = process_env::var_nonempty_path("TMPDIR").unwrap_or_else(|| PathBuf::from("/tmp"));
     let pid = std::process::id();
     for n in 0..100u32 {
         let nanos = std::time::SystemTime::now()
@@ -188,17 +177,15 @@ fn plan_engines(hooks: &Path, input: &Value, plan: &str) -> (Vec<String>, Vec<St
 }
 
 fn run(raw: &str) -> Option<StopOutcome> {
-    let state_root = env_path("CODEX_PLAN_GATE_DIR", || {
-        home().join(".codex/codex-plan-gate")
-    });
+    let state_root = process_env::var_nonempty_path("CODEX_PLAN_GATE_DIR")
+        .unwrap_or_else(|| process_env::home().join(".codex/codex-plan-gate"));
     let state_dir = state_root.join("state");
     let max_blocks: u64 = std::env::var("CODEX_PLAN_GATE_MAX_BLOCKS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(4);
-    let claude_hooks = env_path("CODEX_PLAN_GATE_CLAUDE_HOOKS_DIR", || {
-        home().join(".claude/hooks")
-    });
+    let claude_hooks = process_env::var_nonempty_path("CODEX_PLAN_GATE_CLAUDE_HOOKS_DIR")
+        .unwrap_or_else(|| process_env::home().join(".claude/hooks"));
     let scope_gate = claude_hooks.join("plan-scope-gate");
     let precedent_gate = claude_hooks.join("plan-precedent-gate");
 

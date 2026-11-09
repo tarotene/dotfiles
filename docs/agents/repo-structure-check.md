@@ -72,6 +72,39 @@ option `dotfiles.host.name` で受け取る。
 `dotfiles.host.name` は既定値を持たない。名前を宣言しない機体は、評価が「option を使っているが定義が無い」で落ち、別の機体を
 指すマーカーを配備しない。綴りは `[a-z][a-z0-9-]*`(型で縛る)。例外は無い。
 
+### 環境変数・ホーム・XDG(`process_env::check_tree`)
+
+`crates/*/src/**/*.rs` のうち、コメントの行と、ファイル末尾のテストの節(`#[cfg(test)]` から後)を除いた行を読む。環境変数が
+空のときを未設定として扱う規則(bash の `${VAR:-}`)と、`${XDG_*_HOME:-$HOME/<既定>}` の形が、約 20 の crate に手で
+複写され、複写ごとに空の扱い(`XDG_STATE_HOME=""` を未設定とするか)と `HOME` が無いときの扱い(空のパス・エラー・panic)が
+違っていた。解決は `crates/process-env`(依存ゼロ)が持つ。
+
+| 検査 | 内容 |
+|---|---|
+| XDG の変数名 | `XDG_CONFIG_HOME`・`XDG_STATE_HOME`・`XDG_CACHE_HOME`・`XDG_DATA_HOME` の名前の文字列は、`process-env` だけが持つ。ほかの crate の `src/` は、`process_env::Xdg::<種類>.resolve()`・`resolve_lossy()`・`resolve_under(home)` で基準を解決する |
+| 補助関数の複写 | `env_nonempty`・`non_empty_env`・`nonempty_env`・`xdg_dir`・`xdg_state_home`・`config_home`・`env_path`・`home()` という名前の関数(と、前の 3 つのクロージャ)を、`process-env` の外に定義しない。非空の環境変数は `process_env::var_nonempty`、`HOME` は `process_env::home` |
+
+例外は、どれも**恒久**で、理由つきで `process_env.rs` の定数に列挙する。`XDG_EXCEPTIONS`: `local-state-backup` は XDG の変数名を
+子プロセスへ引き渡す名前の一覧として持つ(解決ではない)。`HELPER_EXCEPTIONS`: `backup-runtime` の `nonempty_env` は、値を返さず、
+空なら失敗にする検証で、非空の値を読む仕事ではない。例外のファイルが違反の形を失ったら、例外のほうが落ちる。
+
+`HOME` の 1 行読み(`std::env::var_os("HOME")`)は、論理を持たない定型なので対象にしない。基準ディレクトリの**解決**と、非空の判定の
+**複写**が対象。
+
+#### 寄せたときに挙動が揃った点
+
+複写ごとに違っていた 3 点を、`process-env` の規則(bash の `${VAR:-}` と同じ)に揃えた。いずれも、通常の環境(`HOME` が
+設定されていて、XDG の変数は未設定か非空)では変わらない。
+
+- `XDG_STATE_HOME=""` や `XDG_CONFIG_HOME=""`(空)を、**未設定として扱う**。`due-remind`・`feedback-trial`(設定ファイルの場所)・
+  `model-equivalence`(codex-plan の設定の場所)・`local-state-backup`・`promotion-detect`(状態の場所)は、これまで空を設定済みとして、
+  相対パスを作っていた。
+- `HOME` が無いときの結果は、`resolve_lossy` では空の `HOME` として相対パス(`.local/state` など)に揃った。これまでは
+  `/.local/state`(絶対)と `.local/state`(相対)が混ざっていた。`HOME` を要る呼び出し側(`git-prune`・`git-audit-worktrees`・
+  `due-remind`・`codex-plan`)は、これまでどおり失敗にする。
+- `HOME=""`(空)は、`verdict-escalate`・`esa-mirror-context`・`daily-desk-reminder` で、これまで「無い」(`None`)としていたが、
+  相対パスを作るようになった(シェルの `${HOME}/…` と同じ)。
+
 ### 規則の置き方
 
 - root の表に `default-features = false` を書いた依存(`jiff`、`toml`、`toml_edit`)は、メンバーが `features` で
@@ -102,6 +135,8 @@ option `dotfiles.host.name` で受け取る。
 - crates/repo-structure-check/src/hook_io.rs
 - crates/repo-structure-check/src/escape.rs
 - crates/repo-structure-check/src/host_names.rs
+- crates/repo-structure-check/src/process_env.rs
+- crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
 - home/modules/host.nix
 - Cargo.toml

@@ -29,17 +29,11 @@ fn env_or(name: &str, default: impl FnOnce() -> String) -> String {
     }
 }
 
-fn xdg(var: &str, home_rel: &str) -> PathBuf {
-    match std::env::var(var) {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(home_rel),
-    }
-}
-
 impl Config {
     pub fn from_env() -> Config {
         let config_dir = PathBuf::from(env_or("GITHUB_APP_SNAPSHOT_CONFIG_DIR", || {
-            xdg("XDG_CONFIG_HOME", ".config")
+            process_env::Xdg::Config
+                .resolve_lossy()
                 .join("github-app-snapshot")
                 .to_string_lossy()
                 .into_owned()
@@ -47,7 +41,8 @@ impl Config {
         // github-audit と同じ state ディレクトリ: github-audit が遅延して読む
         // ファイルそのもので、別の名前空間ではない(docs/github-audit.md)。
         let state_dir = PathBuf::from(env_or("GITHUB_APP_SNAPSHOT_STATE_DIR", || {
-            xdg("XDG_STATE_HOME", ".local/state")
+            process_env::Xdg::State
+                .resolve_lossy()
                 .join("github-audit")
                 .to_string_lossy()
                 .into_owned()

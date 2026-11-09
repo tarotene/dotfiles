@@ -41,10 +41,6 @@ fn env_or(name: &str, default: &str) -> String {
     }
 }
 
-fn home() -> String {
-    std::env::var("HOME").unwrap_or_default()
-}
-
 /// 実行時設定(bash 版のグローバル変数)。
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -90,7 +86,7 @@ fn self_dir() -> String {
         };
         dir.to_string_lossy().into_owned()
     } else {
-        format!("{}/.claude/hooks", home())
+        format!("{}/.claude/hooks", process_env::home().display())
     }
 }
 
@@ -98,7 +94,7 @@ impl Config {
     pub fn from_env() -> Self {
         let review_dir = env_or(
             "COPILOT_PLAN_REVIEW_DIR",
-            &format!("{}/.claude/plan-reviews", home()),
+            &format!("{}/.claude/plan-reviews", process_env::home().display()),
         );
         let max_reviews_raw = env_or("MAX_PLAN_REVIEWS", "3");
         let timeout_raw = env_or("COPILOT_PLAN_REVIEW_TIMEOUT", "280");
@@ -416,8 +412,8 @@ fn run_critic(
     let cwd0 = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let cur_dir = if Path::new(workdir).is_dir() {
         lexical(&cwd0, Path::new(workdir))
-    } else if Path::new(&home()).is_dir() {
-        lexical(&cwd0, Path::new(&home()))
+    } else if process_env::home().is_dir() {
+        lexical(&cwd0, &process_env::home())
     } else {
         return CriticExit::failed(None);
     };
@@ -797,7 +793,7 @@ pub fn hook(cfg: &Config, raw_input: &str) -> String {
     let cwd = if !cwd_raw.is_empty() && Path::new(&cwd_raw).is_dir() {
         cwd_raw
     } else {
-        home()
+        process_env::home().to_string_lossy().into_owned()
     };
 
     // デバッグ用ダンプはメタデータのみ。プラン本文と transcript_path は残さない。

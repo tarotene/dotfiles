@@ -48,17 +48,15 @@ fn main() {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let repo = env_string("PROMOTION_DETECT_REPO", "tarotene/dotfiles");
     let gh_bin = env_string("PROMOTION_DETECT_GH_BIN", "gh");
-    let claude_dir = env_path("PROMOTION_DETECT_CLAUDE_DIR")
+    let claude_dir = process_env::var_nonempty_path("PROMOTION_DETECT_CLAUDE_DIR")
         .or_else(|| home.as_ref().map(|h| h.join(".claude")));
-    let state_dir = env_path("PROMOTION_DETECT_STATE_DIR").or_else(|| {
-        let base = std::env::var_os("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| home.as_ref().map(|h| h.join(".local/state")))?;
+    let state_dir = process_env::var_nonempty_path("PROMOTION_DETECT_STATE_DIR").or_else(|| {
+        let base = process_env::Xdg::State.resolve()?;
         Some(base.join("claude"))
     });
-    let wrapup_bin = env_path("PROMOTION_DETECT_INBOX_BIN")
+    let wrapup_bin = process_env::var_nonempty_path("PROMOTION_DETECT_INBOX_BIN")
         .or_else(|| claude_dir.as_ref().map(|d| d.join("hooks/issue-inbox")));
-    let inbox_path = env_path("PROMOTION_DETECT_INBOX_PATH").or_else(|| {
+    let inbox_path = process_env::var_nonempty_path("PROMOTION_DETECT_INBOX_PATH").or_else(|| {
         state_dir.as_ref().map(|d| {
             d.join("wrapup")
                 .join(format!("{}.jsonl", promotion_detect::repo_slug(&repo)))
@@ -131,7 +129,7 @@ fn main() {
     // 状態を Git の外(vault)に置くと、PR の差分の遷移検査が効かない。書き込み口(`worklog add mail`)は語彙に無い
     // 遷移を拒むが、vault は Obsidian の画面から手で直せるので、書き込み口の検査を通らない編集を毎日読んで拾う。
     if vault_declared(&state_dir.join("wrapup")) {
-        let worklog_bin = env_path("PROMOTION_DETECT_WORKLOG_BIN")
+        let worklog_bin = process_env::var_nonempty_path("PROMOTION_DETECT_WORKLOG_BIN")
             .or_else(|| home.as_ref().map(|h| h.join(".local/bin/worklog")));
         if let Some(candidate) = worklog_bin.as_deref().and_then(check_mail_state) {
             candidates.push(candidate);
@@ -141,8 +139,8 @@ fn main() {
     // --- 記録の層(#1310): 宣言のあるチェックアウトの、宣言の欠陥と、変化の速さのずれ ---
     // Write の拒否(`record-layer-guard`)は Edit と Bash の書き込みを見ないので、宣言と実測のずれはここで毎日拾う。
     // 宣言を持たないチェックアウト(会社・org のリポジトリを含む)は読まない(opt-in)。
-    let ghr_dir =
-        env_path("PROMOTION_DETECT_GHR_DIR").or_else(|| home.as_ref().map(|h| h.join(".ghr")));
+    let ghr_dir = process_env::var_nonempty_path("PROMOTION_DETECT_GHR_DIR")
+        .or_else(|| home.as_ref().map(|h| h.join(".ghr")));
     if let Some(ghr_dir) = ghr_dir {
         for (label, checkout) in declared_checkouts(&ghr_dir) {
             candidates.extend(check_record_layers(&label, &checkout));
@@ -182,12 +180,12 @@ fn main() {
 
     // --- 本人の Issue 台帳: 生存の記録と、クラウドの日次の通知が途絶えていないかの確認(ADR-1382) ---
     // 掃除のあとに数えるので、失効した気づきは件数に入らない。設定が無い機体では何もしない。
-    ledger_heartbeat(&state_dir, &gh_bin, home.as_deref(), dry_run);
+    ledger_heartbeat(&state_dir, &gh_bin, dry_run);
 }
 
 /// 台帳のリポジトリを書いた端末ローカルの設定ファイル(`$XDG_CONFIG_HOME` か `~/.config` の下)。
-fn ledger_target_file(home: Option<&Path>) -> Option<PathBuf> {
-    let base = env_path("XDG_CONFIG_HOME").or_else(|| home.map(|h| h.join(".config")))?;
+fn ledger_target_file() -> Option<PathBuf> {
+    let base = process_env::Xdg::Config.resolve()?;
     Some(base.join(promotion_detect::ledger_heartbeat::CONFIG_REL))
 }
 
@@ -228,9 +226,9 @@ fn open_counts(lock_dir: &Path) -> Option<std::collections::BTreeMap<String, usi
 }
 
 /// 設定が無ければ何もしない。失敗は標準エラーに出して続ける(日次の他の処理を止めない)。
-fn ledger_heartbeat(state_dir: &Path, gh_bin: &str, home: Option<&Path>, dry_run: bool) {
+fn ledger_heartbeat(state_dir: &Path, gh_bin: &str, dry_run: bool) {
     use promotion_detect::ledger_heartbeat as lh;
-    let Some(target_file) = ledger_target_file(home) else {
+    let Some(target_file) = ledger_target_file() else {
         return;
     };
     let Ok(text) = std::fs::read_to_string(&target_file) else {
@@ -498,12 +496,6 @@ fn env_string(key: &str, default: &str) -> String {
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| default.to_string())
-}
-
-fn env_path(key: &str) -> Option<PathBuf> {
-    std::env::var_os(key)
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
 }
 
 #[derive(Debug, Deserialize)]

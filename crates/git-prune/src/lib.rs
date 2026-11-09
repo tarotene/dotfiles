@@ -26,32 +26,21 @@ pub fn err(s: &str) {
     let _ = writeln!(io::stderr(), "{s}");
 }
 
-/// bash の `${VAR:-}`: 未設定と空文字を同一視する。
-pub fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.is_empty())
-}
-
 /// `${<LOG_ENV>:-${XDG_STATE_HOME:-$HOME/.local/state}/git-auto-prune}`。
 pub fn log_dir(log_env: &str) -> Result<PathBuf, i32> {
-    if let Some(d) = env_nonempty(log_env) {
+    if let Some(d) = process_env::var_nonempty(log_env) {
         return Ok(PathBuf::from(d));
     }
-    let base = match env_nonempty("XDG_STATE_HOME") {
-        Some(x) => PathBuf::from(x),
-        None => match std::env::var_os("HOME") {
-            Some(h) => PathBuf::from(h).join(".local/state"),
-            None => {
-                err("HOME: unbound variable");
-                return Err(1);
-            }
-        },
+    let Some(base) = process_env::Xdg::State.resolve() else {
+        err("HOME: unbound variable");
+        return Err(1);
     };
     Ok(base.join("git-auto-prune"))
 }
 
 /// `${<AUDIT_ENV>:-git-audit-worktrees}`。PATH 解決は `Command` に任せる。
 pub fn audit_bin(audit_env: &str) -> String {
-    env_nonempty(audit_env).unwrap_or_else(|| "git-audit-worktrees".to_string())
+    process_env::var_nonempty(audit_env).unwrap_or_else(|| "git-audit-worktrees".to_string())
 }
 
 fn code_of(status: std::process::ExitStatus) -> i32 {
@@ -205,7 +194,7 @@ pub fn git_stdout(args: &[&str]) -> Result<String, i32> {
 /// `GIT_PRUNE_*_TEST_PRE_ACT_HOOK`(テスト専用シーム、通常運用では未設定)。
 /// bash 版の `eval "$HOOK"` 相当(`bash -c`)。非 0 は `set -e` で終了。
 pub fn run_pre_act_hook(hook_env: &str) -> Exit {
-    if let Some(h) = env_nonempty(hook_env) {
+    if let Some(h) = process_env::var_nonempty(hook_env) {
         match Command::new("bash").arg("-c").arg(h).status() {
             Ok(s) if s.success() => {}
             Ok(s) => return Err(code_of(s)),

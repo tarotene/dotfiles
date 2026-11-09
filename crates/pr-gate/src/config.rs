@@ -32,19 +32,15 @@ pub struct Config {
     pub skip_env: bool,
 }
 
-fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.is_empty())
-}
-
 fn env_secs(name: &str, default: f64) -> f64 {
-    env_nonempty(name)
+    process_env::var_nonempty(name)
         .and_then(|v| v.trim().parse::<f64>().ok())
         .filter(|v| v.is_finite() && *v >= 0.0)
         .unwrap_or(default)
 }
 
 fn env_num(name: &str, default: u64) -> u64 {
-    env_nonempty(name)
+    process_env::var_nonempty(name)
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(default)
 }
@@ -53,10 +49,10 @@ impl Config {
     pub fn from_env() -> Self {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         Config {
-            state_root: env_nonempty("PR_GATE_DIR")
+            state_root: process_env::var_nonempty("PR_GATE_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".claude/pr-gate")),
-            allowlist: env_nonempty("PR_GATE_ALLOWLIST")
+            allowlist: process_env::var_nonempty("PR_GATE_ALLOWLIST")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".claude/pr-gate-repos")),
             ci_timeout: Duration::from_secs(env_num("PR_GATE_CI_TIMEOUT", 300)),

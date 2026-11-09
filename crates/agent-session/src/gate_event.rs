@@ -26,19 +26,12 @@ struct Record<'a> {
 
 /// `${XDG_STATE_HOME:-$HOME/.local/state}/claude/gate-events.jsonl`。
 pub fn default_path() -> Option<PathBuf> {
-    default_path_with(std::env::var_os("XDG_STATE_HOME"), std::env::var_os("HOME"))
+    default_path_with(process_env::Xdg::State.resolve())
 }
 
-/// [`default_path`] の環境変数を注入可能にした版(テスト用)。
-pub fn default_path_with(
-    xdg_state_home: Option<std::ffi::OsString>,
-    home: Option<std::ffi::OsString>,
-) -> Option<PathBuf> {
-    let base = match xdg_state_home {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(home?).join(".local/state"),
-    };
-    Some(base.join("claude").join("gate-events.jsonl"))
+/// [`default_path`] の基準ディレクトリ(`${XDG_STATE_HOME:-$HOME/.local/state}`)を注入可能にした版(テスト用)。
+pub fn default_path_with(state_base: Option<PathBuf>) -> Option<PathBuf> {
+    Some(state_base?.join("claude").join("gate-events.jsonl"))
 }
 
 /// `decision` は `"deny"`・`"skip"`・`"fail-open"`・`"pass"`。呼び出し側の都合で失敗は無視してよい
@@ -91,32 +84,19 @@ pub fn trailing_fail_open(path: &Path, gate: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::OsString;
 
+    // 基準ディレクトリの解決(XDG_STATE_HOME が空なら未設定、HOME からの既定)は process-env のテストが持つ。
     #[test]
-    fn default_path_prefers_xdg_state_home() {
+    fn default_path_joins_the_state_base() {
         assert_eq!(
-            default_path_with(
-                Some(OsString::from("/xdg")),
-                Some(OsString::from("/home/u"))
-            ),
+            default_path_with(Some(PathBuf::from("/xdg"))),
             Some(PathBuf::from("/xdg/claude/gate-events.jsonl"))
         );
     }
 
     #[test]
-    fn default_path_falls_back_to_home() {
-        assert_eq!(
-            default_path_with(None, Some(OsString::from("/home/u"))),
-            Some(PathBuf::from(
-                "/home/u/.local/state/claude/gate-events.jsonl"
-            ))
-        );
-    }
-
-    #[test]
-    fn default_path_none_without_home() {
-        assert_eq!(default_path_with(None, None), None);
+    fn default_path_none_without_a_base() {
+        assert_eq!(default_path_with(None), None);
     }
 
     fn write_events(path: &Path, events: &[(&str, &str)]) {

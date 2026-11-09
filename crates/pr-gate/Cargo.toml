@@ -10,6 +10,7 @@ agent-session = { version = "0.1.0", path = "../agent-session" }
 process-control = { version = "0.1.0", path = "../process-control" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 new-tool-guard = { version = "0.1.0", path = "../new-tool-guard" }
+process-env = { version = "0.1.0", path = "../process-env" }
 worktree-lease = { version = "0.1.0", path = "../worktree-lease" }
 regex.workspace = true
 serde_json.workspace = true

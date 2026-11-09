@@ -224,13 +224,11 @@ pub fn decide(tool: &str, input: &Value, self_set: &[Vec<u8>]) -> Option<agent_s
 
 /// 自分のアドレスの一覧(`$XDG_CONFIG_HOME/external-send-guard/self.txt`)の場所。
 fn self_list_path() -> Option<std::path::PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|s| !s.is_empty())
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
-        })?;
-    Some(base.join("external-send-guard/self.txt"))
+    Some(
+        process_env::Xdg::Config
+            .resolve()?
+            .join("external-send-guard/self.txt"),
+    )
 }
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が

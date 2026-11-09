@@ -129,11 +129,7 @@ fn utc_timestamp(secs: u64) -> String {
 }
 
 fn out_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))?;
-    Some(base.join("daily-report"))
+    Some(process_env::Xdg::State.resolve()?.join("daily-report"))
 }
 
 /// 1 行ぶんの JSON object を組み立てる(フィールド順 = 出力契約の順)。

@@ -70,14 +70,12 @@ struct State {
 
 /// Trial owns its existing persistent location; naming migration does not move records.
 fn state_root() -> String {
-    let env_nonempty = |name| {
-        std::env::var_os(name)
-            .filter(|v| !v.is_empty())
-            .map(|v| v.to_string_lossy().into_owned())
-    };
-    let base = env_nonempty("WRAPUP_STATE_DIR")
-        .or_else(|| env_nonempty("XDG_STATE_HOME"))
-        .unwrap_or_else(|| format!("{}/.local/state", std::env::var("HOME").unwrap_or_default()));
+    let base = process_env::var_nonempty("WRAPUP_STATE_DIR").unwrap_or_else(|| {
+        process_env::Xdg::State
+            .resolve_lossy()
+            .display()
+            .to_string()
+    });
     format!("{base}/claude/wrapup")
 }
 
@@ -85,12 +83,9 @@ fn config_path() -> PathBuf {
     std::env::var_os("WRAPUP_TRIAL_CONFIG")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            let root = std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| {
-                    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config")
-                });
-            root.join("codex/feedback-trial.json")
+            process_env::Xdg::Config
+                .resolve_lossy()
+                .join("codex/feedback-trial.json")
         })
 }
 

@@ -83,15 +83,9 @@ impl Flags {
 }
 
 fn default_lens_path() -> String {
-    let base = std::env::var("XDG_STATE_HOME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            std::env::var("HOME")
-                .ok()
-                .map(|h| format!("{h}/.local/state"))
-        })
-        .unwrap_or_else(|| ".".into());
+    let base = process_env::Xdg::State
+        .resolve()
+        .map_or_else(|| ".".to_string(), |p| p.display().to_string());
     format!("{base}/model-equivalence/lens.json")
 }
 
@@ -416,8 +410,8 @@ fn cmd_observations(args: impl Iterator<Item = String>) -> Result<ExitCode, Stri
     let claude_home = std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| home.join(".claude"));
-    let config_home = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
+    let config_home = process_env::Xdg::Config
+        .resolve()
         .unwrap_or_else(|| home.join(".config"));
     let settings = config_home.join("codex-plan/settings.toml");
     #[derive(serde::Deserialize)]

@@ -41,10 +41,8 @@ async fn run() -> Result<i32> {
         println!("{USAGE}");
         return Ok(0);
     }
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+    let config = process_env::Xdg::Config
+        .resolve()
         .context("HOME or XDG_CONFIG_HOME is required")?
         .join("codex-plan/settings.toml");
     // The shared launcher prepares the session server and strips credentials

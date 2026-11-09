@@ -12,9 +12,7 @@ pub mod traces;
 
 use agent_session::SessionLedger;
 use issue_inbox::codify::Vocabulary;
-use issue_inbox::{
-    add, env_nonempty, feedback_stamp_file, home, inbox_for, shquote, updated_feedback_memories,
-};
+use issue_inbox::{add, feedback_stamp_file, inbox_for, shquote, updated_feedback_memories};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,13 +33,12 @@ const KINDS: &[&str] = &[
 const NEEDS_MECHANISM: &[&str] = &["user-correction", "friction", "gate-hit", "codify"];
 
 fn retro_dir() -> PathBuf {
-    if let Some(d) = env_nonempty("WRAPUP_RETRO_DIR") {
+    if let Some(d) = process_env::var_nonempty("WRAPUP_RETRO_DIR") {
         return PathBuf::from(d);
     }
-    if let Some(x) = env_nonempty("XDG_STATE_HOME") {
-        return PathBuf::from(x).join("claude/wrapup/retro");
-    }
-    PathBuf::from(home()).join(".local/state/claude/wrapup/retro")
+    process_env::Xdg::State
+        .resolve_lossy()
+        .join("claude/wrapup/retro")
 }
 
 fn rows_ledger() -> SessionLedger {
@@ -295,7 +292,7 @@ fn validate_level_row(o: &serde_json::Map<String, Value>, level: &str) -> Result
 }
 
 fn project_dir() -> String {
-    env_nonempty("CLAUDE_PROJECT_DIR").unwrap_or_else(|| {
+    process_env::var_nonempty("CLAUDE_PROJECT_DIR").unwrap_or_else(|| {
         std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default()
@@ -396,9 +393,9 @@ pub fn events(sid: &str) -> Vec<(String, String)> {
             }
         }
     }
-    let pr_dir = env_nonempty("PR_GATE_DIR")
+    let pr_dir = process_env::var_nonempty("PR_GATE_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(home()).join(".claude/pr-gate"));
+        .unwrap_or_else(|| process_env::home().join(".claude/pr-gate"));
     let blocks = SessionLedger::new(pr_dir.join("state"), "count").path(sid);
     if fs::read_to_string(blocks)
         .ok()
@@ -459,9 +456,9 @@ fn covers(rows: &[Value], id: &str) -> bool {
 /// gh-edit-allow の台帳(Claude のみ)の最後の `pr <owner/repo> <N>` 行。stack のときは、最後に作った
 /// PR(= 最上段)になる。
 fn ledger_pr(sid: &str) -> Option<(String, String)> {
-    let dir = env_nonempty("GH_EDIT_ALLOW_DIR")
+    let dir = process_env::var_nonempty("GH_EDIT_ALLOW_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(home()).join(".claude/gh-edit-allow"));
+        .unwrap_or_else(|| process_env::home().join(".claude/gh-edit-allow"));
     SessionLedger::new(dir.join("state"), "ledger")
         .records(sid)
         .iter()
