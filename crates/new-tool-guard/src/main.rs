@@ -2,7 +2,8 @@
 //! docs/adr/543-existing-means-and-deterministic-promotion.md。
 //!
 //! - 無引数(hook モード): PreToolUse(Write)の stdin JSON を読み、新しい
-//!   道具・単位を ledger 未登録のまま作ろうとしていれば deny する。
+//!   道具・単位を ledger 未登録のまま作ろうとしていれば deny する。入口(引数・標準入力・出力)は
+//!   `agent_session::entry` が持つ。
 //! - `classify <path>`: ディスク上の `<path>` を読み、[`new_tool_guard::
 //!   is_new_tool_unit`] の判定を単一正本として公開する(pr-gate.sh の
 //!   `judge_prior` から呼ばれる、ADR-0024 の「hook と呼び出し元が同じ
@@ -10,37 +11,49 @@
 //! - `register <既存手段: ...>`: 現在の worktree(git toplevel)の session
 //!   ledger に 1 行追記する。
 
-use agent_session::Agent;
-use agent_session::Outcome;
-use agent_session::PermissionDecision;
+use agent_session::entry::{emit, enter, read_stdin, Call, Spec};
+use agent_session::{Agent, HookEvent, Reply};
 use new_tool_guard::hook::{default_ledger, ledger_key};
-use std::io::Read;
+use std::process::ExitCode;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+const SPEC: Spec = Spec {
+    name: "new-tool-guard",
+    agents: &[Agent::Claude],
+    event: Some(HookEvent::PreToolUse),
+};
+
+fn main() -> ExitCode {
+    let call = match enter(&SPEC) {
+        Ok(call) => call,
+        Err(code) => return code,
+    };
+    let mut args = call.rest.iter().cloned();
     match args.next().as_deref() {
         Some("classify") => cmd_classify(args.next()),
-        Some("register") => cmd_register(args.next()),
+        Some("register") => {
+            cmd_register(args.next());
+            ExitCode::SUCCESS
+        }
         Some(other) => {
             eprintln!("new-tool-guard: unknown subcommand: {other}(classify|register)");
-            std::process::exit(2);
+            ExitCode::from(2)
         }
-        None => cmd_hook(),
+        None => cmd_hook(&call),
     }
 }
 
-fn cmd_classify(path: Option<String>) {
+fn cmd_classify(path: Option<String>) -> ExitCode {
     let Some(path) = path else {
         eprintln!("usage: new-tool-guard classify <path>");
-        std::process::exit(2);
+        return ExitCode::from(2);
     };
     let content = std::fs::read_to_string(&path).unwrap_or_default();
     if new_tool_guard::is_new_tool_unit(&path, &content) {
         println!("yes");
-        std::process::exit(0);
+        return ExitCode::SUCCESS;
     }
     println!("no");
-    std::process::exit(1);
+    ExitCode::from(1)
 }
 
 fn cmd_register(line: Option<String>) {
@@ -69,12 +82,8 @@ fn cmd_register(line: Option<String>) {
     }
 }
 
-fn cmd_hook() {
-    let mut raw = String::new();
-    if std::io::stdin().read_to_string(&mut raw).is_err() {
-        return;
-    }
-    if let Some(Outcome::Deny(reason)) = new_tool_guard::hook::hook(&raw) {
-        PermissionDecision::deny(reason).emit(Agent::Claude);
-    }
+fn cmd_hook(call: &Call) -> ExitCode {
+    let raw = read_stdin();
+    let reply = Reply::from_outcome(new_tool_guard::hook::hook(&raw));
+    emit(&SPEC, call, &raw, &reply)
 }

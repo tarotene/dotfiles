@@ -138,10 +138,7 @@ fn hook_denies_new_unregistered_tool_unit() {
 
     let out = run_hook(repo.path(), home.path(), &stdin);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("\"permissionDecision\":\"deny\""),
-        "{stdout}"
-    );
+    assert_eq!(decision_of(&stdout).as_deref(), Some("deny"), "{stdout}");
     assert!(stdout.contains("既存手段の前倒し接地"), "{stdout}");
 
     // ADR-543 段3: deny 時に gate-events.jsonl へ記録される。
@@ -387,8 +384,16 @@ fn ledger_lines(home: &Path) -> Vec<String> {
         .collect()
 }
 
+/// hook の標準出力(JSON)の `hookSpecificOutput.permissionDecision`。整形の形に依らず読む。
+fn decision_of(stdout: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(stdout).ok()?;
+    v["hookSpecificOutput"]["permissionDecision"]
+        .as_str()
+        .map(str::to_string)
+}
+
 fn denied(out: &std::process::Output) -> bool {
-    String::from_utf8_lossy(&out.stdout).contains("\"permissionDecision\":\"deny\"")
+    decision_of(&String::from_utf8_lossy(&out.stdout)).as_deref() == Some("deny")
 }
 
 #[test]
