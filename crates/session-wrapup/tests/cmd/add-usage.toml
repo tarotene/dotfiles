@@ -1,5 +1,5 @@
 # --add の引数不足は usage を stderr に出して exit 1(bash の `${3:?usage: ...}`)
-bin.name = "wrapup-stop-gate"
+bin.name = "issue-inbox"
 args = ["--add", "/nonexistent/fixture-oracle/inbox.jsonl"]
 status.code = 1
 stdout = ""

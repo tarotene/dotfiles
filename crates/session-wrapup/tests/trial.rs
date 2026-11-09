@@ -1,5 +1,5 @@
 mod common;
-use common::{write_exec, Env, Run};
+use common::{routed, write_exec, Env, Run};
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -83,8 +83,7 @@ else:
         c
     }
     fn hook(&self, sid: &str, turn: &str, recursive: bool, start: bool) -> Run {
-        let mut p = self
-            .cmd(start)
+        let mut p = routed(self.cmd(start))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -94,12 +93,9 @@ else:
         p.wait_with_output().unwrap().into()
     }
     fn cli(&self, args: &[&str]) -> Run {
-        self.cmd(false)
-            .arg("--trial")
-            .args(args)
-            .output()
-            .unwrap()
-            .into()
+        let mut c = self.cmd(false);
+        c.arg("--trial").args(args);
+        routed(c).output().unwrap().into()
     }
     fn state(&self) -> Value {
         serde_json::from_str(&self.cli(&["list"]).stdout).unwrap()
@@ -178,13 +174,11 @@ fn only_report_thread_in_default_can_mutate_legacy_observations() {
     let t = Trial::new();
     t.seed();
     let body = t.draft();
-    let source: Run = t
-        .cmd(false)
+    let mut source_cmd = t.cmd(false);
+    source_cmd
         .env("CODEX_THREAD_ID", "source")
-        .args(["--trial", "draft", "source:t1", &body])
-        .output()
-        .unwrap()
-        .into();
+        .args(["--trial", "draft", "source:t1", &body]);
+    let source: Run = routed(source_cmd).output().unwrap().into();
     assert_eq!(source.code, 1);
     t.context("r1", "plan");
     let before = t.state();

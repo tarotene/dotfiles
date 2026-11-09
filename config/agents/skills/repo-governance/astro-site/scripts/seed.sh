@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# seed.sh — Main orchestrator for astro-site-governance Skill.
+# seed.sh — Main orchestrator for the repo-governance (astro-site) Skill.
 # Applies all governance templates to a target Astro site repository.
 set -euo pipefail
 

@@ -596,7 +596,7 @@ let
   planViewCmd = "'${hooksDir}/plan-view'";
   issueIndexCmd = "'${hooksDir}/issue-index'";
   legacyIssueIndexCmd = "bash '${hooksDir}/issue-index.sh'";
-  esaIndexCmd = "'${hooksDir}/esa-mirror-context'";
+  esaMirrorContextCmd = "'${hooksDir}/esa-mirror-context'";
   deskStartCmd = "'${hooksDir}/daily-desk-reminder'";
   calendarHandshakeStartCmd = "'${hooksDir}/calendar-handshake-reminder'";
   # ja-polish の文書ファイルの関所(Stop)。本体は home/modules/ja-polish.nix が ~/.local/bin に置く。
@@ -1274,7 +1274,7 @@ let
       event = "SessionStart";
       node = "esa-mirror-context";
       matcher = "startup|resume|compact";
-      command = esaIndexCmd;
+      command = esaMirrorContextCmd;
       timeout = 10;
     }
     # daily-desk-reminder は startup だけで発火する: 机の未実施は新しいセッションの入口で一度伝えれば

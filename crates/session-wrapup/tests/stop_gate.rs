@@ -157,21 +157,6 @@ fn a_non_empty_inbox_never_blocks_the_stop() {
     assert_eq!(read(Path::new(&inbox)), format!("{LINE1}\n{LINE2}\n"));
 }
 
-/// 手順書(`--procedure`)と実行中の印(`--chores-*`)は無くなった。
-#[test]
-fn the_filing_procedure_and_chores_marks_are_gone() {
-    let e = Env::new();
-    for args in [
-        &["--procedure", "/x/y.jsonl"][..],
-        &["--chores-begin", "/x/y.jsonl"][..],
-        &["--chores-end", "/x/y.jsonl"][..],
-    ] {
-        let r = run_args(e.gate(), args);
-        assert_eq!(r.code, 1, "{args:?}");
-        assert!(r.stderr.contains("was removed"), "{}", r.stderr);
-    }
-}
-
 /// selftest: 「gh 不在で素通り」
 #[test]
 fn no_gh_passes() {
@@ -201,21 +186,7 @@ fn no_gh_passes() {
             .unwrap_or_else(|| panic!("{c} not on PATH"));
         std::os::unix::fs::symlink(found, nogh.join(c)).unwrap();
     }
-    let mut c = if is_oracle() {
-        // bash 版は "$BASH" で起動していた(PATH に bash が無いため)
-        let mut c = std::process::Command::new(
-            std::env::var("PATH")
-                .unwrap()
-                .split(':')
-                .map(|d| Path::new(d).join("bash"))
-                .find(|p| p.is_file())
-                .unwrap(),
-        );
-        c.arg(gate_path());
-        c
-    } else {
-        std::process::Command::new(gate_path())
-    };
+    let mut c = std::process::Command::new(gate_path());
     c.env("HOME", e.home())
         .env("WRAPUP_STATE_DIR", e.state())
         .env("WRAPUP_FEEDBACK_STAMP_DIR", e.stamp_dir())
@@ -547,8 +518,7 @@ echo ve-stderr >&2
     assert!(!r.stderr.contains("ve-stderr"));
     // verdict-escalate の stdout は、hook の stdout に流さない。Stop の stdout は JSON だけにする
     // (block を JSON で運ぶので、子の出力が前に混ざると読めなくなる。Codex は平文を無効とする)。
-    // 旧 bash の oracle は、そのまま流す。
-    assert_eq!(r.stdout, if is_oracle() { "ve-stdout\n" } else { "" });
+    assert_eq!(r.stdout, "");
     // stdin は `$(cat)` 由来で末尾改行が落ちたものが渡る
     assert_eq!(read(&e.path().join("ve-bin/stdin.txt")), hook_input(&repo1));
     let inbox = inbox_path(&e, &repo1);
@@ -613,8 +583,7 @@ fn feedback_memory_check() {
     assert_eq!(r.stderr, format!("{}\n", feedback_block(&[&unlinked])));
 
     // 輸送: block は、終了コード 0 の標準出力の JSON(`decision: "block"`)で出る。標準エラーには理由を出さない。
-    // 旧 bash の oracle は終了コード 2 と標準エラーで出すので、この確認は飛ばす。
-    if !is_oracle() {
+    {
         let mut c = e.gate();
         c.env("CLAUDE_PROJECT_DIR", &fb);
         let raw = run_raw(c, &input);
@@ -766,8 +735,9 @@ fn add_waits_for_inbox_lock() {
         .unwrap();
     lock.lock().unwrap();
     let mut c = e.gate();
-    c.args(["--add", inbox.to_str().unwrap(), LINE1])
-        .stdin(std::process::Stdio::null());
+    c.args(["--add", inbox.to_str().unwrap(), LINE1]);
+    let mut c = routed(c);
+    c.stdin(std::process::Stdio::null());
     let mut child = c.spawn().unwrap();
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(

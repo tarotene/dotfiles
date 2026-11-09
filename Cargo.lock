@@ -1699,8 +1699,10 @@ dependencies = [
  "agent-session",
  "feedback-trial",
  "issue-inbox",
+ "serde_json",
  "session-retrospective",
  "tempfile",
+ "trycmd",
 ]
 
 [[package]]
@@ -2197,8 +2199,6 @@ dependencies = [
  "serde_json",
  "session-retrospective",
  "session-wrapup",
- "tempfile",
- "trycmd",
 ]
 
 [[package]]
