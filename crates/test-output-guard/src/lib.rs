@@ -11,15 +11,14 @@
 //! `bash -c '<script>'` の中身は再帰して見る。トークン化できないコマンドは判定不能として通す(fail-open)。
 //!
 //! 逃げ道: 切り詰めが要る正当な理由があるときは、コマンドに `TEST_OUTPUT_GUARD_ALLOW=1` の語を足す
-//! (環境変数でも同じ)。コマンドに残るので、あとから読める。
+//! (呼び出し単位)。人が起動前に `SKIP_TEST_OUTPUT_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は
+//! `agent_session::escape` の表が決める。コマンドに残るので、あとから読める。
 
+use agent_session::escape::TEST_OUTPUT_GUARD;
 use agent_session::hook::ToolCall;
 use agent_session::{Agent, Outcome};
 use command_inspection::parse;
 use command_inspection::shell::is_sep;
-
-/// 逃げ道の語。環境変数名と、コマンドに足す `NAME=1` の両方で使う。
-pub const ALLOW_ENV: &str = "TEST_OUTPUT_GUARD_ALLOW";
 
 /// 再帰して見る `sh -c '…'` の深さ上限。
 const MAX_DEPTH: usize = 2;
@@ -38,16 +37,18 @@ const PASS_THROUGH: &[&str] = &["tee", "cat"];
 /// 直後の語がコマンド位置になる予約語。
 const TRANSPARENT: &[&str] = &["do", "then", "else", "!", "time", "exec", "{"];
 
-const HINT: &str = "`cargo test` / `cargo nextest` の出力を `| head` / `| tail` で切りません。\
+const HINT_BASE: &str = "`cargo test` / `cargo nextest` の出力を `| head` / `| tail` で切りません。\
 失敗を示す行(`FAILED`・`panicked`)が切れた範囲の外に出ると見えず、落ちるテストを見落とします\
 (パイプの終了コードは `head` / `tail` のものなので、失敗が成功に見えます。2026-10-28、PR #1199)。\
 絞るなら `cargo test … 2>&1 | grep -E 'FAILED|panicked|test result'` のように必要な行を拾うか、\
 出力をファイルに書いて(`> $TMPDIR/test.log 2>&1`)終了コードを別に確かめ、必要な行だけを読んでください。\
-切り詰めが要る正当な理由があるときだけ、コマンドに TEST_OUTPUT_GUARD_ALLOW=1 を足してください。";
+切り詰めが要る正当な理由は、ほぼありません。";
 
-/// 環境変数 `TEST_OUTPUT_GUARD_ALLOW=1` か。
-pub fn allow_from_env() -> bool {
-    std::env::var(ALLOW_ENV).is_ok_and(|v| v == "1")
+fn hint() -> String {
+    format!(
+        "{HINT_BASE}{}",
+        TEST_OUTPUT_GUARD.how_to().unwrap_or_default()
+    )
 }
 
 fn basename(t: &str) -> &str {
@@ -143,7 +144,7 @@ fn command_name<'a>(words: &'a [&'a str]) -> Option<&'a str> {
 }
 
 fn judge(tokens: &[String], depth: usize) -> Option<String> {
-    if tokens.iter().any(|t| t == &format!("{ALLOW_ENV}=1")) {
+    if TEST_OUTPUT_GUARD.judge(None, false, Some(tokens)).is_some() {
         return None;
     }
     // `bash -c '<script>'` の中身。
@@ -168,7 +169,7 @@ fn judge(tokens: &[String], depth: usize) -> Option<String> {
         }
         if armed {
             match command_name(&seg.words) {
-                Some(c) if TRUNCATORS.contains(&c) => return Some(HINT.to_string()),
+                Some(c) if TRUNCATORS.contains(&c) => return Some(hint()),
                 Some(c) if PASS_THROUGH.contains(&c) => {}
                 _ => armed = false,
             }
@@ -180,8 +181,9 @@ fn judge(tokens: &[String], depth: usize) -> Option<String> {
     None
 }
 
-/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は
-/// `TEST_OUTPUT_GUARD_ALLOW=1`(呼び出し側が env から決める)。
+/// コマンド文字列全体を判定する。deny なら理由を返す。`allow` は、セッション単位の逃げ道
+/// (`SKIP_TEST_OUTPUT_GUARD=1`。呼び出し側が env から決める)。呼び出し単位の `TEST_OUTPUT_GUARD_ALLOW=1` は、
+/// コマンドの語から、ここで見る。
 pub fn decide(cmd: &str, allow: bool) -> Option<String> {
     if allow {
         return None;
@@ -194,7 +196,7 @@ pub fn decide(cmd: &str, allow: bool) -> Option<String> {
 pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     let call = ToolCall::parse(agent, raw)?;
     let cmd = call.bash_command()?;
-    decide(&cmd, allow_from_env()).map(Outcome::Deny)
+    decide(&cmd, TEST_OUTPUT_GUARD.active(None, None).is_some()).map(Outcome::Deny)
 }
 
 #[cfg(test)]
@@ -224,7 +226,7 @@ mod tests {
             "bash -c 'cargo test | head -5'",
             "time cargo test | head",
         ] {
-            assert_eq!(decide(c, false).as_deref(), Some(HINT), "{c}");
+            assert_eq!(decide(c, false).as_deref(), Some(hint().as_str()), "{c}");
         }
     }
 

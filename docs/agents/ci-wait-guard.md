@@ -53,7 +53,7 @@ PR を出したあとの CI 待ちでセッションが終わらない。待ち�
 
 PR に紐づかない workflow run(release など)は `pr-checks-wait` の対象外なので、`gh run watch` で待ちたいことがある。
 そのときは、コマンドに `CI_WAIT_GUARD_ALLOW=1` の語を足す(`CI_WAIT_GUARD_ALLOW=1 gh run watch <id> --exit-status`)。
-環境変数でも同じ。値は `1` だけ。コマンドに残るので、あとから読める。PR の CI に使うのは、この逃げ道の趣旨に反する。
+値は `1` だけ(呼び出し単位)。コマンドに残るので、あとから読める。人は、起動前に環境変数 `SKIP_CI_WAIT_GUARD=1` を設定してもよい(セッション単位)。PR の CI に使うのは、この逃げ道の趣旨に反する。名前と真偽は `agent_session::escape` の表が決める。
 
 ## 発火範囲
 

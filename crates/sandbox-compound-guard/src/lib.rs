@@ -26,17 +26,15 @@
 //! 失敗した(2026-11-05)。案内は「前置せず単体で呼ぶ」「常に要る変数は設定の `env` に宣言する」。
 //!
 //! 逃げ道: 連結が要る正当な理由があるときは、コマンドに `SANDBOX_COMPOUND_GUARD_ALLOW=1` の語を
-//! 足す(環境変数でも同じ)。`dangerouslyDisableSandbox: true` の呼び出しは、sandbox の外で
+//! 足す(呼び出し単位)。人が起動前に `SKIP_SANDBOX_COMPOUND_GUARD=1` を設定してもよい(セッション単位)。`dangerouslyDisableSandbox: true` の呼び出しは、sandbox の外で
 //! 動くので止めない。Claude Code の sandbox にだけ当たる検査なので、他のエージェントは対象外。
 
+use agent_session::escape::SANDBOX_COMPOUND_GUARD;
 use agent_session::hook::{jq_r_path, ToolCall};
 use agent_session::{Agent, Outcome};
 use command_inspection::parse;
 use command_inspection::shell::is_sep;
 use std::path::{Path, PathBuf};
-
-/// 逃げ道の語。環境変数名と、コマンドに足す `NAME=1` の両方で使う。
-pub const ALLOW_ENV: &str = "SANDBOX_COMPOUND_GUARD_ALLOW";
 
 /// 除外パターンの一覧を差し替える環境変数（試験用。値はファイルのパス）。
 pub const SPEC_ENV: &str = "SANDBOX_COMPOUND_GUARD_SPEC";
@@ -45,11 +43,6 @@ pub const SPEC_ENV: &str = "SANDBOX_COMPOUND_GUARD_SPEC";
 const TRANSPARENT: &[&str] = &[
     "do", "then", "else", "elif", "if", "while", "until", "!", "time", "exec", "{", "(",
 ];
-
-/// 環境変数 `SANDBOX_COMPOUND_GUARD_ALLOW=1` か。
-pub fn allow_from_env() -> bool {
-    std::env::var(ALLOW_ENV).is_ok_and(|v| v == "1")
-}
 
 /// 除外パターンの一覧の置き場所。
 fn spec_path() -> Option<PathBuf> {
@@ -220,7 +213,8 @@ fn hint(tool: &str) -> String {
 出力の加工が要るときは `gh … --jq` のように道具側の機能を使い、複数のコマンドは別々の Bash 呼び出しに分けます\
 (プロジェクトのディレクトリと追加したディレクトリの中では、`cd <dir> &&` は要りません。シェルの cwd が呼び出しをまたいで保たれるからです。\
 それらの外の worktree では cwd が呼び出しごとに戻るので、承認を得て `dangerouslyDisableSandbox` で `cd <dir> && …` と呼びます)。\
-連結が要る正当な理由があるときだけ、コマンドに {ALLOW_ENV}=1 を足してください。"
+{how_to}",
+        how_to = SANDBOX_COMPOUND_GUARD.how_to().unwrap_or_default()
     )
 }
 
@@ -233,7 +227,8 @@ fn prefix_hint(tool: &str, prefix: &str) -> String {
 前置せず、単体で呼んでください。常に要る変数は、前置でなく設定の `env` に宣言します\
 (`dotfiles.claudePermissions.env`、docs/agents/agent-permissions.md。`GIT_EDITOR=true` は Claude Code が既に入れています)。\
 `git -c core.editor=true rebase` のように `-c` で渡す形も、`git rebase *` に合わないので同じく sandbox の中に残ると考えられます(未実測)。\
-前置が要る正当な理由があるときだけ、コマンドに {ALLOW_ENV}=1 を足してください。"
+{how_to}",
+        how_to = SANDBOX_COMPOUND_GUARD.how_to().unwrap_or_default()
     )
 }
 
@@ -258,7 +253,10 @@ pub fn decide(cmd: &str, patterns: &[String], allow: bool) -> Option<String> {
         return None;
     }
     let parsed = parse(cmd)?;
-    if parsed.tokens.iter().any(|t| t == &format!("{ALLOW_ENV}=1")) {
+    if SANDBOX_COMPOUND_GUARD
+        .judge(None, false, Some(&parsed.tokens))
+        .is_some()
+    {
         return None;
     }
     let statements = statements(&parsed.tokens);
@@ -309,7 +307,12 @@ pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     if runs_outside_sandbox(&call) {
         return None;
     }
-    decide(&cmd, &excluded_patterns(), allow_from_env()).map(Outcome::Deny)
+    decide(
+        &cmd,
+        &excluded_patterns(),
+        SANDBOX_COMPOUND_GUARD.active(None, None).is_some(),
+    )
+    .map(Outcome::Deny)
 }
 
 #[cfg(test)]

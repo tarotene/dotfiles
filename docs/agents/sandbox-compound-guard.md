@@ -58,8 +58,9 @@ Issue: No-Issue(wrap-up の気づき「`gh` を `;` や `|` やループの中�
 - `dangerouslyDisableSandbox: true` の呼び出しは、sandbox の外で動くので止めない(`tool_input` にその欄が届く
   ことは、実装時に読んだ範囲では未確認。届かない場合は次の語を使う)。
 - 連結が要る正当な理由があるときは、コマンドに `SANDBOX_COMPOUND_GUARD_ALLOW=1` の語を足す
-  (`SANDBOX_COMPOUND_GUARD_ALLOW=1 gh a; echo x`)。環境変数でも同じ。値は `1` だけ。コマンドに残るので、
-  あとから読める。
+  (`SANDBOX_COMPOUND_GUARD_ALLOW=1 gh a; echo x`)。値は `1` だけ(呼び出し単位)。コマンドに残るので、
+  あとから読める。人は、起動前に環境変数 `SKIP_SANDBOX_COMPOUND_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は
+  `agent_session::escape` の表が決める。
 
 ## 前置(文が 1 つの呼び出し)
 

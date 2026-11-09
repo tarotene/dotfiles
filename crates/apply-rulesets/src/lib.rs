@@ -77,7 +77,7 @@ pull_request 系の run が存在しないため)。--unverified-contexts で拒
 rulesets-write-guard(PreToolUse hook)が deny するのは、Claude が直に発行する
 `gh api -X POST/PUT/PATCH/DELETE repos/O/R/rulesets[/id]` だけである。この
 コマンド自体(`apply-rulesets ...` の 1 回の呼び出し)は guard の対象外なので、
-RULESETS_WRITE_GUARD_BYPASS=1 を前置する必要はない。auto モードでは、前置すると
+RULESETS_WRITE_GUARD_ALLOW=1 を前置する必要はない。auto モードでは、前置すると
 分類器が safety bypass と判定して拒否する(#707)。
 ";
 

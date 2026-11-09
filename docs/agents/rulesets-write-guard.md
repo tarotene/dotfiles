@@ -31,9 +31,10 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
   に一致すれば deny する。
 - **deny のみ返す**(allow/ask は一切出さない)。不一致は通常の確認フローに
   そのまま落ちる。
-- **bypass**: コマンド文字列の先頭に `RULESETS_WRITE_GUARD_BYPASS=<非空値>`
-  という env var 代入があれば判定しない。使うのは、本人が `!` で
-  `RULESETS_WRITE_GUARD_BYPASS=1 gh api ...` を手動で叩くときだけである。
+- **逃げ道**: コマンドに `RULESETS_WRITE_GUARD_ALLOW=1` の語があれば判定しない(呼び出し単位。値は `1` だけ。
+  従来の `BYPASS` の綴り(空でなければ通った)は廃止した。`0` でも通る性質を、閉語彙に合わせて改めた)。
+  使うのは、本人が `!` で `RULESETS_WRITE_GUARD_ALLOW=1 gh api ...` を手動で叩くときだけである。拒否文には案内しない。
+  名前と真偽は `agent_session::escape` の表が決める。
   `apply-rulesets` の呼び出し(1 回の Bash tool 呼び出し)はそもそも
   この hook の deny に一致しないので、前置は不要で、`apply-rulesets` 自身も
   子プロセスに立てない(立てても hook は子の環境変数を見ない)。auto モードでは
