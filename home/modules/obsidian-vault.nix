@@ -19,7 +19,9 @@ in
   };
 
   config = lib.mkIf (cfg.vaultPath != null) {
-    home.file.".local/bin/worklog".source = "${pkgs.dotfiles-tools}/bin/worklog";
+    dotfiles.binaries.".local/bin" = [
+      "worklog"
+    ];
     xdg.configFile."dotfiles/obsidian-vault".text = "${cfg.vaultPath}\n";
     dotfiles.claudePermissions.allowWrite = [ cfg.vaultPath ];
     # Do not publish a marker for a missing or invalid vault. Preparation is

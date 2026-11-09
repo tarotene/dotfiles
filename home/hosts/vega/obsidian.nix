@@ -107,7 +107,9 @@ in
       message = "obsidian-backup Rust source must exist";
     }
   ];
-  home.file.".local/bin/obsidian-backup".source = "${pkgs.dotfiles-tools}/bin/obsidian-backup";
+  dotfiles.binaries.".local/bin" = [
+    "obsidian-backup"
+  ];
   dotfiles.quarantine.managedFiles = [ ".local/bin/obsidian-backup" ];
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {

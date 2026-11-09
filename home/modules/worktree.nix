@@ -172,28 +172,30 @@ in
 
   home.packages = [ flockPkg ];
 
-  # The three CLIs below and the guard are Rust (ADR-0024, #416): the stable
-  # ~/.local/bin / ~/.local/libexec paths the systemd units, launchd agents
-  # and git's `git-<subcommand>` lookup rely on stay, but now point at the
-  # crane-built binary in pkgs.dotfiles-tools instead of a bash script.
-  home.file.".local/bin/git-audit-worktrees".source =
-    "${pkgs.dotfiles-tools}/bin/git-audit-worktrees";
-  # git-prune-worktrees: the checkout-deleting half of the pair (docs/worktree-lifecycle.md).
-  # Deployed as a plain ~/.local/bin executable — same "no alias needed"
-  # placement as git-shelve/git-prune-branches (home/modules/packages.nix) —
-  # rather than here as one more xdg.configFile, since its default
-  # (confirmation-prompting) mode is user-invoked. Its --auto mode is what
-  # the git-auto-prune timer below calls; that mode has no prompt.
-  home.file.".local/bin/git-prune-worktrees".source =
-    "${pkgs.dotfiles-tools}/bin/git-prune-worktrees";
-  home.file.".local/libexec/git-worktree-create-guard".source =
-    "${pkgs.dotfiles-tools}/bin/git-worktree-create-guard";
-  # git-checkout-sync: fetch + `merge --ff-only` a parent checkout onto
-  # origin/<base> when clean and on the default branch (docs/claude/
-  # git-checkout-sync.md) — the one-level-up companion to
-  # worktree-base-sync (crates/worktree-base-sync), which does the same for a
-  # pristine *worktree*.
-  home.file.".local/bin/git-checkout-sync".source = "${pkgs.dotfiles-tools}/bin/git-checkout-sync";
+  dotfiles.binaries.".local/bin" = [
+    # The three CLIs below and the guard are Rust (ADR-0024, #416): the stable
+    # ~/.local/bin / ~/.local/libexec paths the systemd units, launchd agents
+    # and git's `git-<subcommand>` lookup rely on stay, but now point at the
+    # crane-built binary in pkgs.dotfiles-tools instead of a bash script.
+    "git-audit-worktrees"
+    # git-prune-worktrees: the checkout-deleting half of the pair (docs/worktree-lifecycle.md).
+    # Deployed as a plain ~/.local/bin executable — same "no alias needed"
+    # placement as git-shelve/git-prune-branches (home/modules/packages.nix) —
+    # rather than here as one more xdg.configFile, since its default
+    # (confirmation-prompting) mode is user-invoked. Its --auto mode is what
+    # the git-auto-prune timer below calls; that mode has no prompt.
+    "git-prune-worktrees"
+    # git-checkout-sync: fetch + `merge --ff-only` a parent checkout onto
+    # origin/<base> when clean and on the default branch (docs/claude/
+    # git-checkout-sync.md) — the one-level-up companion to
+    # worktree-base-sync (crates/worktree-base-sync), which does the same for a
+    # pristine *worktree*.
+    "git-checkout-sync"
+    "git-checkout-freshness"
+  ];
+  dotfiles.binaries.".local/libexec" = [
+    "git-worktree-create-guard"
+  ];
 
   # Codex owns hooks.json at runtime, as Herdr's integration does. Merge only
   # our two commands and preserve all unrelated entries.
@@ -312,6 +314,4 @@ in
   launchd.agents.git-auto-prune-branches = lib.mkIf pkgs.stdenv.isDarwin (
     autoPruneAgent pruneBranchesPath
   );
-  home.file.".local/bin/git-checkout-freshness".source =
-    "${pkgs.dotfiles-tools}/bin/git-checkout-freshness";
 }

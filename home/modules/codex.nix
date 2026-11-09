@@ -113,8 +113,10 @@ in
   };
 
   config = {
-    # Kept as a manual retirement/recovery utility, never a runtime gate.
-    home.file.".local/bin/agent-permissions".source = "${pkgs.dotfiles-tools}/bin/agent-permissions";
+    dotfiles.binaries.".local/bin" = [
+      # Kept as a manual retirement/recovery utility, never a runtime gate.
+      "agent-permissions"
+    ];
     xdg.configFile."agent-native/codex-permissions.json".text = builtins.toJSON {
       settings = permissionSpec;
       mcp_allow = cfg.mcpAllow;

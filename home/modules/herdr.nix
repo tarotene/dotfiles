@@ -130,12 +130,14 @@ in
   # 3 エージェントの metadata hook 共通で参照する。docs/agents/herdr-sidebar-metadata.md 参照。
   xdg.configFile."herdr/oshi-marks.tsv".source = ../../config/herdr/oshi-marks.tsv;
 
-  # サイドバー workspace 行の $issues(リポジトリの open Issue 数、PR 除く)。
-  # Rust、crates/herdr-issue-counts(ADR-0024)を pkgs.dotfiles-tools から配備し、
-  # 5 分毎のタイマーで workspace metadata として報告する(ttl 15 分なので、
-  # タイマーが止まれば herdr 自身が値を消す)。drift.nix と同じ「配備 + timer
-  # 同居」型。docs/agents/herdr-sidebar-metadata.md「$issues」節参照。
-  home.file.".local/bin/herdr-issue-counts".source = "${pkgs.dotfiles-tools}/bin/herdr-issue-counts";
+  dotfiles.binaries.".local/bin" = [
+    # サイドバー workspace 行の $issues(リポジトリの open Issue 数、PR 除く)。
+    # Rust、crates/herdr-issue-counts(ADR-0024)を pkgs.dotfiles-tools から配備し、
+    # 5 分毎のタイマーで workspace metadata として報告する(ttl 15 分なので、
+    # タイマーが止まれば herdr 自身が値を消す)。drift.nix と同じ「配備 + timer
+    # 同居」型。docs/agents/herdr-sidebar-metadata.md「$issues」節参照。
+    "herdr-issue-counts"
+  ];
 
   # exit code は「配信の成否」だけを表す(crates/herdr-issue-counts の
   # exit_code、detect-drift と同じ考え方、#442): herdr 未起動・gh 未認証・
