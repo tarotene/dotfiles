@@ -10,7 +10,7 @@
 //!   宣言は適用(`hms`)に至らない。
 //! - それ以外の登録箇所は、登録の直前のコメントに `pipeline-node: <id>`。
 //!
-//! 母集団(ポインタを要求する登録箇所)は [`Class`] の閉じた 7 クラスで、手動 CLI と
+//! 母集団(ポインタを要求する登録箇所)は [`Class`] の閉じた列挙で、手動 CLI と
 //! skill は含まない(`auto = false` のノードとして図に描くだけ)。
 //!
 //! 検査は [`audit`]、リポジトリ本体への適用は `tests/coverage.rs`(`cargo test`)。
@@ -545,7 +545,7 @@ fn scan_router_rules(root: &Path, scan: &mut Scan) {
     }
 }
 
-/// 8 クラスの登録箇所を列挙する。
+/// [`Class`] の各クラスの登録箇所を列挙する。
 pub fn scan(root: &Path) -> Scan {
     let mut s = Scan::default();
     scan_claude_decls(root, &mut s);

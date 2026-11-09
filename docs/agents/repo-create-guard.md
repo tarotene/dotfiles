@@ -77,8 +77,8 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
 判定不能はすべて fail-open(通す)— 不正な入力 JSON、`tool_name` が `Bash` 以外、
 `command` が空、のいずれも完全沈黙で通す。
 
-バイパス: `SKIP_REPO_CREATE_GUARD=1`(`crates/rulesets-write-guard` の
-バイパス env var と同型)。`main()` の入口だけで見る — `decide()` 自体は
+バイパス: `SKIP_REPO_CREATE_GUARD=1`(セッション単位。人が起動前に設定する。名前と真偽は
+`agent_session::escape` の表が決める)。`hook` の入口で見る — `decide()` 自体は
 判定ロジックだけを持ち、バイパスは hook 入出力層の責務にする
 (`stack-base-guard.sh` の `SKIP_STACK_BASE_GUARD` と同じ配置)。
 
@@ -100,13 +100,8 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
 
 ## 登録形
 
-```
-PreToolUse / matcher: "Bash|mcp__.*" / timeout 15
-```
-
-`attribution-guard`/`stack-base-guard` と同じ複合 matcher(Bash 単体だと
-MCP 接続の瞬間に無検査になる、同じ理由の繰り返し)。現在 `mcp__github*` は
-未接続のため実質 Bash のみが判定対象になる(`main()` が `tool_name ==
-Bash` 以外を即 exit する) — 将来 MCP 接続時は `attribution-guard.sh` の
-`decide_mcp` と同じ形で対応を追加する。判定は文字列処理のみで gh API 往復を
-持たないため、timeout は `pr-title-guard.sh` 並みの短さでよい。
+hook-router の規則の表(`crates/hook-router/src/rules.rs`、node `repo-create-guard`)に、`Tools::BashOrMcp`・
+予算 15 秒で載っている([hook-router.md](hook-router.md))。GitHub の MCP が接続されたとき、Bash 単体の登録だと
+無検査になるため、`attribution-guard` と同じ範囲にしてある。ただし MCP の判定は未実装(意図あり)で、`hook` は
+Bash 以外(MCP を含む)を判定せず通す(`ToolCall::bash_command()` が `None`)。GitHub の MCP が接続されたら、
+`attribution-guard` の `decide_mcp` と同じ形で足す。判定は文字列処理のみで gh API 往復を持たない。

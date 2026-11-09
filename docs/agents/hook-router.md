@@ -19,15 +19,15 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 `(event, command)` が宣言の一意キーなので 2 つ目が無視され、MCP の経路が無検査のまま残る(bleep の旧実装が
 `Bash` 単体の matcher だったために持っていた最大の欠陥)。
 
-ルータは、ツール呼び出しに付く検査のうち、権限の逸脱検査・拒否の検査と記録役(PostToolUse の
-4 件)を、**1 つのプロセスで、規則の表に従って**走らせる。Claude Code には `PreToolUse` と `PostToolUse` の
+ルータは、ツール呼び出しに付く検査のうち、権限の逸脱検査・拒否の検査と記録役(PostToolUse)を、**1 つのプロセスで、規則の表に従って**走らせる。Claude Code には `PreToolUse` と `PostToolUse` の
 2 件だけを、`matcher` なしで登録する。どのツールにどの検査を当てるかは、表の [`Tools`](型) が持つ:
 `All` / `Bash` / `BashOrMcp` / `Mcp` / `Named(&[…])` の 5 通りだけが書ける。文字列の書き間違いはコンパイルが
 通らず、表に載せ忘れた検査は pipeline-map の `cargo test` が「auto なのに登録箇所が無い」で落とす。
 
 ## 載せるもの
 
-ルータの表(`rules.rs`)に載せた検査は 30 件(拒否だけを出す PreToolUse の 26 件と、記録役の PostToolUse の 4 件)。共有権限の検査は撤去した。
+ルータの表(`rules.rs`)に載せた検査は、次の表のとおり。**規則名の集合は `crates/hook-router/src/rules.rs` が唯一の正本**で、この表は同じ集合を持つ
+(`crates/hook-router/tests/doc_table.rs` が、足し忘れ・消し忘れ・綴りの誤りを `cargo test` で落とす)。件数は書かない。共有権限の検査は撤去した。
 
 | イベント | 検査 |
 |---|---|
@@ -36,8 +36,12 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
 
-1. **出せる判定が決まっている。** PreToolUse なら deny だけ(allow・ask は、共通権限の検査だけ)、PostToolUse なら
-   `additionalContext` だけ。`Outcome` に無い形(Stop の `StopOutcome`、`PermissionRequest`)を出す検査は載せられない。
+1. **出せる判定が決まっている。** PreToolUse は deny が基本で、例外は 2 つ、どちらも意図したもの。`external-send-guard` は、
+   外部宛の Gmail 送信を ask(Claude Code の許可の確認を本人に 1 回求める)にする(#1317 で deny から変えた。hms 適用後の
+   実機確認は #1316 が持つ)。`main-checkout-guard-pre` は、初めて触れた checkout を `additionalContext` で知らせる
+   (Claude のみ)。allow を出す検査は載せない(許可の範囲を `if` が決めるので、評価を Claude Code に任せる。下の裁定の表)。
+   PostToolUse は `additionalContext` だけ。`Outcome` に無い形(Stop の `StopOutcome`、`PermissionRequest`)を出す検査は
+   載せられない。この条件は、判定の種類が実行時に決まるので、機械検査できない(散文のまま。再発したら昇格を検討する)。
 2. **プロセス全体の状態を変えない。** 規則は同じプロセスの別スレッドで並列に走る。作業ディレクトリ
    (`set_current_dir`)、umask、シグナルは全スレッドに及ぶので、触る検査は載せられない。作業ツリーを書き換える
    検査も、並列の別規則が読む状態を変えるので載せない。
@@ -64,7 +68,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 | session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は `StopOutcome::Block`(終了コード 0 の JSON)で、再入の扱いは段ごとに宣言する(レトロは `Recheck`、wrap-up inbox の判定部は `Quiet`)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
 | main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の `StopOutcome`)。再入は `Reentry::Quiet`(立っていたら黙る)。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
 | agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
-| SessionStart の 11 件(session-wrapup-start、issue-index、esa-mirror-context、daily-desk-reminder、worklog、gpg-prewarm、worktree-base-sync、herdr-status-advisory、gate-failopen-advisory、pr-gate-session-start、worktree-audit-context) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、SessionStart の規則を載せる口を持たない(条件 1 に反する。SessionStart の出力の形そのものは `Reply::render` が持つ)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
+| SessionStart の検査すべて(個別の名前は書かない。`pipeline-map.toml` の `lane = "session-start"` の node が正本) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、SessionStart の規則を載せる口を持たない(条件 1 に反する。SessionStart の出力の形そのものは `Reply::render` が持つ)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
 | herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
 | bleep | PreToolUse(`Bash|mcp__.*`) | 残す | 外部ツール(上流 `tarotene/bleep`、ADR-0009)。この crate の `hook` 関数に切り出せない | `agents.nix` の宣言、ADR-0009 |
 | atuin-history | PreToolUse・PostToolUse・PostToolUseFailure(Bash) | 残す | 外部ツール(`atuin`)の入口で、この crate のものではない | `agents.nix` の宣言 |
@@ -108,6 +112,9 @@ Amendment ではなく、別の ADR を立てる。
   ツールでも起こりうる。Bash 単体の matcher だと、MCP 接続の瞬間に無検査になる。→ `Tools::BashOrMcp`。
 - **`mcp__.*` だけ**(external-send-guard): Gmail・Slack の送信系 MCP ツールだけが対象で、Bash 経由の送信は
   原理的に検出できない。→ `Tools::Mcp`。
+- **`BashOrMcp` は、規則を呼ぶ範囲の宣言である。** MCP を実際に判定するかは各 `hook` が決める(判定しない規則は
+  `None` を返す)。`attribution-guard` などは MCP も判定し、`repo-create-guard`・`pr-title-guard`・`pr-followup-guard`・
+  `decision-colocation-guard` は、MCP の判定が未実装(意図あり。GitHub の MCP が接続されたら足す)である。
 - **広い matcher + 規則内部の判定**(routines-write-guard、new-tool-guard、record-layer-guard): `RemoteTrigger` や `Write` は Bash では
   ないので、`Bash(...)` の `if` 構文が使えない。対象外の呼び出しは、規則自身が `None` を返して素通りにする。
   → `Tools::Named(&["RemoteTrigger"])`、`Tools::Named(&["Write"])`。record-layer-guard(#1310)は、宣言
@@ -148,14 +155,15 @@ Amendment ではなく、別の ADR を立てる。
    `repo-structure-check` の `hook_io` の検査が、書いたら落とす)。
 2. `rules.rs` の表に、`node`・`event`・`tools`・`budget`・`run` を持つ `Rule` を足す。`node` は
    `pipeline-map.toml` のノード id(無ければ足す)。
-3. 表の集合を固定しているテスト(`the_table_holds_exactly_the_agreed_rules`)を、意識して直す。
+3. この文書の「載せるもの」の表の、同じイベントの行に検査名を足す(`doc_table.rs` が、`rules.rs` と同じ集合であることを確かめる)。
+   `node` には `doc` を持たせる(hook のレーンの自動ノードは `doc` が必須。`pipeline-map` の audit が見る)。
 
 許可(allow)を出す検査や、Stop・SessionStart の検査は、足さない(「載せなかった検査の裁定」の表の理由)。
 
 ## 実測
 
 2026-10-24、x86_64-linux(14 コア)、`cargo build --release`(LTO off)、`hyperfine -N`(200 回、一時の HOME、
-実リポジトリを cwd にした入力)。
+実リポジトリを cwd にした入力)。下の「当たる規則」の数は、この測定の時点のもの。
 
 | 呼び出し | 平均 [ms] | p99 [ms] |
 |---|---:|---:|

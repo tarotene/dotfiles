@@ -480,8 +480,8 @@ Design and rationale for the hooks and commands deployed from
 `config/agents/` by `home/modules/agents.nix`:
 
 - [`codex-hook-parity.md`](claude/codex-hook-parity.md) — Claude/Codex の共通Hook、入力変換、上流の残条件、信頼確認。
-- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査 26 件(PreToolUse の
-  拒否 22 件、PostToolUse の記録 4 件)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
+- [`hook-router.md`](agents/hook-router.md) — ツール呼び出しに付く検査(PreToolUse の
+  検査と PostToolUse の記録役)を、1 つのプロセスで規則の表に従って走らせる。`matcher` の
   書き間違いによる素通りを、型(`Tools`)で書けなくする。載せなかった検査(許可を出す検査・ExitPlanMode の
   一部・Stop・SessionStart・外部ツール)の、検査ごとの裁定と理由の表、規則ごとの打ち切りと panic の隔離、
   旧登録の matcher・timeout の記録。
