@@ -7,4 +7,4 @@ publish.workspace = true
 
 [dependencies]
 backup-runtime = { path = "../backup-runtime" }
-tempfile = "3"
+tempfile.workspace = true

@@ -7,4 +7,4 @@ publish.workspace = true
 description = "この機体の identity(personal / company)と、ログイン中の Claude アカウントが一致するかを確かめる CLI"
 
 [dependencies]
-serde_json = "1.0.151"
+serde_json.workspace = true

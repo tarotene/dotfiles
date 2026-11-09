@@ -8,5 +8,5 @@ description = "SessionStart hook: 勤務先の機体で、カレンダーの握�
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

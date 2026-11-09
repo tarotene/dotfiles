@@ -1534,6 +1534,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "repo-structure-check"
+version = "0.1.0"
+dependencies = [
+ "toml",
+]
+
+[[package]]
 name = "routines-write-guard"
 version = "0.1.0"
 dependencies = [

@@ -9,4 +9,4 @@ description = "git prune-worktrees / git prune-branches (scripts/git-prune-workt
 [dependencies]
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

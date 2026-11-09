@@ -8,4 +8,4 @@ publish.workspace = true
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
 command-inspection = { version = "0.1.0", path = "../command-inspection" }
-serde_json = "1.0.151"
+serde_json.workspace = true

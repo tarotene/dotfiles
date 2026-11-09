@@ -602,6 +602,9 @@ Design and rationale for the hooks and commands deployed from
 - [`pkill-guard.md`](agents/pkill-guard.md) — 検索語が実行するシェル自身のコマンド行に当たる `pkill -f` /
   `pgrep -f`(自分のシェルを止める。終了コード 143・144)を、Bash の実行前に deny し、括弧の技
   `pkill -f '[t]rial.sh'` へ案内する(`crates/pkill-guard`、hook-router の規則)。
+- [`repo-structure-check.md`](agents/repo-structure-check.md) — リポジトリ構造の不変条件を `cargo test` で検査する
+  (外部依存の版は root の `[workspace.dependencies]` が唯一の正本で、メンバーは `workspace = true` で継承する。
+  `pr-title-check` と `pr-contract-check` だけは依存ゼロの例外。`crates/repo-structure-check`)。
 - [`pr-followup-guard.md`](agents/pr-followup-guard.md) — ADR-598: PR 本文に
   未チェックの task list(`- [ ]`)を残さない・`## 要確認` の各項目に Issue
   参照があることを `gh pr create/edit` の呼び出し時に機械検査する

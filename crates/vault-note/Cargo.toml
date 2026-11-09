@@ -11,7 +11,7 @@ description = "Obsidian vault のノートを、解決・原子的に書き換�
 
 [dependencies]
 hub-resolve = { version = "0.1.0", path = "../hub-resolve" }
-serde_json = "1.0.151"
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

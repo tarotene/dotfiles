@@ -11,4 +11,4 @@ command-inspection = { version = "0.1.0", path = "../command-inspection" }
 github-command = { version = "0.1.0", path = "../github-command" }
 
 [dev-dependencies]
-trycmd = "1.2.1"
+trycmd.workspace = true

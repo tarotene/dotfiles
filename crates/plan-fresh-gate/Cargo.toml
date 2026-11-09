@@ -10,9 +10,9 @@ agent-session = { version = "0.1.0", path = "../agent-session" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-control = { version = "0.1.0", path = "../process-control" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
-aho-corasick = "1.1.5"
+aho-corasick.workspace = true
 
 [dev-dependencies]
-serde_json = "1.0.151"
-tempfile = "3.27.0"
-trycmd = "1.2.1"
+serde_json.workspace = true
+tempfile.workspace = true
+trycmd.workspace = true

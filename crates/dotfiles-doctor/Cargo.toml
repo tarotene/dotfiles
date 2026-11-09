@@ -10,4 +10,4 @@ description = "dotfiles-doctor (scripts/dotfiles-doctor の Rust 移植、#368 /
 process-control = { version = "0.1.0", path = "../process-control" }
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true

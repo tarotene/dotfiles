@@ -12,7 +12,7 @@ github-command = { version = "0.1.0", path = "../github-command" }
 git-repository = { version = "0.1.0", path = "../git-repository" }
 # 層(iii)の chain 検出とリンク判定は、pr-gate の G_stack と同じ関数(gates::stack)を使う。
 pr-gate = { version = "0.1.0", path = "../pr-gate" }
-serde_json = "1.0.151"
+serde_json.workspace = true
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile.workspace = true
