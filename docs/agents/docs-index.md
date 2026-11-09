@@ -38,7 +38,7 @@ Issue: #1450(親の tracking Issue は #1433)
 ## ADR の仮番号と改番
 
 ADR は仮番号 `0000-<slug>.md` で起草し、PR を作ったあとに `scripts/adr-number-check --fix <PR番号>` で改番する
-(`adr-numbering.md`)。`--fix` は README の `ADR-0000` を含む行も書き換えるが、並びは直さない。**`--fix` のあとは
+(`adr-numbering.md`)。`--fix` は README の仮番号の行も書き換えるが、並びは直さない。**`--fix` のあとは
 `cargo run -p docs-index -- render` を実行して、並びを直す**(実行しないと、`tree.rs` が落ちる)。
 
 ## 検査

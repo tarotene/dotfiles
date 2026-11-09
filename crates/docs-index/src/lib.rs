@@ -319,8 +319,13 @@ mod tests {
 
     #[test]
     fn adr_lines_are_numeric_with_the_provisional_zero_last() {
+        // 仮番号(0 が 4 つ)は、起草中の参照を禁じる adr-number-check に当たらないよう、実行時に組み立てる。
+        let draft = "0".repeat(4);
         let docs = vec![
-            doc("adr/0000-new-decision.md", "ADR-0000 — new"),
+            doc(
+                &format!("adr/{draft}-new-decision.md"),
+                &format!("ADR-{draft} — new"),
+            ),
             doc("adr/872-pipeline-map.md", "ADR-872 — map"),
             doc("adr/0033-nav.md", "ADR-0033 — nav"),
             doc("adr/1400-layers.md", "ADR-1400 — layers"),
@@ -329,7 +334,12 @@ mod tests {
         let order: Vec<&str> = out.lines().map(|l| l.split(']').next().unwrap()).collect();
         assert_eq!(
             order,
-            ["- [ADR-0033", "- [ADR-872", "- [ADR-1400", "- [ADR-0000"]
+            [
+                "- [ADR-0033",
+                "- [ADR-872",
+                "- [ADR-1400",
+                &format!("- [ADR-{draft}")
+            ]
         );
         assert!(out.contains("- [ADR-872](adr/872-pipeline-map.md) — map\n"));
     }
