@@ -49,27 +49,35 @@ let
 
   # ログイン・セッションの開始で起動する常駐の user service: `Install.WantedBy` を持つもの。
   # timer が起動する service は `Install` を持たない(timer の側で数える)。
-  residentServices = lib.filter (
-    n: lib.toList ((config.systemd.user.services.${n}.Install or { }).WantedBy or [ ]) != [ ]
-  ) (
-    lib.filter (n: builtins.elem n (builtins.attrNames config.systemd.user.services)) (
-      definedInRepo options.systemd.user.services
-    )
-  );
+  residentServices =
+    lib.filter
+      (n: lib.toList ((config.systemd.user.services.${n}.Install or { }).WantedBy or [ ]) != [ ])
+      (
+        lib.filter (n: builtins.elem n (builtins.attrNames config.systemd.user.services)) (
+          definedInRepo options.systemd.user.services
+        )
+      );
 
   # XDG autostart のエントリ(`autostart/<X>.desktop`)。`Hidden=true` の無効化用のものは、何も起動しない。
-  autostartEntries = lib.filter (
-    n:
-    lib.hasPrefix "autostart/" n
-    && lib.hasSuffix ".desktop" n
-    && !(
-      # `.source` のエントリは `text` が null(fcitx5 など、本物の autostart)。
-      let
-        t = config.xdg.configFile.${n}.text;
-      in
-      t != null && lib.hasInfix "Hidden=true" t
-    )
-  ) (lib.filter (n: builtins.elem n (builtins.attrNames config.xdg.configFile)) (definedInRepo options.xdg.configFile));
+  autostartEntries =
+    lib.filter
+      (
+        n:
+        lib.hasPrefix "autostart/" n
+        && lib.hasSuffix ".desktop" n
+        && !(
+          # `.source` のエントリは `text` が null(fcitx5 など、本物の autostart)。
+          let
+            t = config.xdg.configFile.${n}.text;
+          in
+          t != null && lib.hasInfix "Hidden=true" t
+        )
+      )
+      (
+        lib.filter (n: builtins.elem n (builtins.attrNames config.xdg.configFile)) (
+          definedInRepo options.xdg.configFile
+        )
+      );
   autostartKey = n: "autostart-" + lib.removeSuffix ".desktop" (lib.removePrefix "autostart/" n);
 
   registeredNames = lib.unique (
