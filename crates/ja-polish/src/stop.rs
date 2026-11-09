@@ -16,7 +16,8 @@
 //! `ja-polish` が素通しとして記録するので、直そうとして直せない状態でも止まり続けない。
 
 use crate::{baseline, config, polish, records, snapshot};
-use serde_json::{json, Value};
+use agent_session::{Reentry, StopInput, StopOutcome, StopResult};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// 1 回に見るファイル数の上限(ブランチが大きいとき、Stop の持ち時間を使い切らないため)。
@@ -86,21 +87,20 @@ fn reason(cwd: &Path, files: &[Unpolished]) -> String {
     s
 }
 
-/// Stop の入力(JSON)を判定する。止めるときは出力の JSON、通すときは `None`。
-pub fn run(raw: &str) -> Option<String> {
+/// block の直後の再呼び出しでは黙る(無限 block 対策)。入口(`StopSpec`)がこの宣言を適用する。
+pub const REENTRY: Reentry = Reentry::Quiet;
+
+/// Stop の入力(JSON)を判定する。止めるときは `Block`、通すときは `None`。
+pub fn hook(input: &StopInput) -> StopResult {
+    Ok(check(input.raw()))
+}
+
+fn check(raw: &str) -> Option<StopOutcome> {
     if std::env::var("JA_POLISH_GATE_ALLOW").is_ok_and(|v| v == "1") {
         return None;
     }
     config::load()?;
     let input: Value = serde_json::from_str(raw).ok()?;
-    // block の直後の再呼び出しでは黙る(無限 block 対策)。
-    if input
-        .get("stop_hook_active")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return None;
-    }
     let cwd = input
         .get("cwd")
         .and_then(Value::as_str)
@@ -117,5 +117,5 @@ pub fn run(raw: &str) -> Option<String> {
     if files.is_empty() {
         return None;
     }
-    Some(json!({"decision": "block", "reason": reason(&cwd, &files)}).to_string())
+    Some(StopOutcome::block(reason(&cwd, &files)))
 }

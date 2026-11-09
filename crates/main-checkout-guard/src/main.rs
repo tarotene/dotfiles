@@ -1,9 +1,10 @@
 //! main-checkout-guard — `pre`(PreToolUse)と `stop`(Stop)の 2 つのサブコマンド。
 //! `--agent claude|codex`(既定 claude)。判定なし・縮退はすべて無出力 exit 0。
 
-use agent_session::entry::{emit, enter, read_stdin, Call, Spec};
-use agent_session::{Agent, HookEvent, HookInput, Reply};
-use serde_json::{json, Value};
+use agent_session::entry::{emit, enter, finish_stop, read_stdin, Call, Spec};
+use agent_session::{
+    Agent, HookEvent, HookInput, Reentry, Reply, StopInput, StopOutcome, StopResult,
+};
 use std::process::ExitCode;
 
 const SPEC: Spec = Spec {
@@ -24,10 +25,7 @@ fn main() -> ExitCode {
     };
     match call.rest.first().map(String::as_str) {
         Some("pre") => pre(&call, &raw, &input),
-        Some("stop") => {
-            stop(&input, &raw);
-            ExitCode::SUCCESS
-        }
+        Some("stop") => finish_stop(call.agent, stop(&input, &raw)),
         _ => {
             eprintln!("usage: main-checkout-guard [--agent claude|codex] pre|stop");
             ExitCode::from(1)
@@ -40,30 +38,28 @@ fn pre(call: &Call, raw: &str, input: &HookInput) -> ExitCode {
     emit(&SPEC, call, raw, &reply)
 }
 
-fn stop(input: &HookInput, raw: &str) {
-    // block の直後の再呼び出しでは黙る(台帳の更新が使えない場合の無限 block 対策)。
-    let active = serde_json::from_str::<Value>(raw)
-        .ok()
-        .and_then(|v| v.get("stop_hook_active").and_then(Value::as_bool))
-        .unwrap_or(false);
-    if active {
-        return;
+/// block の直後の再呼び出しでは黙る(台帳の更新が使えない場合の無限 block 対策)。入口が適用する宣言。
+const STOP_REENTRY: Reentry = Reentry::Quiet;
+
+fn stop(input: &HookInput, raw: &str) -> StopResult {
+    if !StopInput::new(raw).permits(STOP_REENTRY) {
+        return Ok(None);
     }
     let Some(ledger) = main_checkout_guard::ledger() else {
-        return;
+        return Ok(None);
     };
     let drift = main_checkout_guard::check_drift(&ledger, &input.session_id);
     // 読み取りだけで触れた checkout の移動は block せず、ユーザーへの注意書き
     // (`systemMessage`)だけにする(#898)。
     let notice =
         (!drift.notices.is_empty()).then(|| main_checkout_guard::notice_text(&drift.notices));
-    if !drift.blocking.is_empty() {
-        let mut out = json!({"decision": "block", "reason": main_checkout_guard::drift_reason(&drift.blocking)});
-        if let Some(n) = notice {
-            out["systemMessage"] = json!(n);
-        }
-        println!("{out}");
-    } else if let Some(n) = notice {
-        println!("{}", json!({"systemMessage": n}));
-    }
+    Ok(if !drift.blocking.is_empty() {
+        let reason = main_checkout_guard::drift_reason(&drift.blocking);
+        Some(match notice {
+            Some(n) => StopOutcome::block_with_notice(reason, n),
+            None => StopOutcome::block(reason),
+        })
+    } else {
+        notice.map(StopOutcome::notice)
+    })
 }

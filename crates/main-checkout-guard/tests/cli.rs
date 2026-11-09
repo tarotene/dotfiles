@@ -304,7 +304,7 @@ fn upgrade_to_may_write_rebases_the_baseline() {
     // 以後の変更(迂回の書き込み)は block する。
     std::fs::write(f.main.join("a.txt"), "changed\n").unwrap();
     let out = run(&f, "stop", &stop(&f.linked, false));
-    assert!(out.contains("\"decision\":\"block\""), "{out}");
+    assert!(out.contains("\"decision\": \"block\""), "{out}");
 }
 
 /// 後方互換: 列が無い旧い書式の baseline 行は、書きうる操作で触れたものとして読み、
