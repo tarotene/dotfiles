@@ -8,6 +8,10 @@
 //!   調べるだけの行(`is_terminal`)は読みではない。例外は [`STDIN_EXCEPTIONS`](hook でない CLI と、
 //!   遅延して読む 1 つ)。
 //!
+//! - **Stop の block と再入**: Stop の block(`"decision": "block"`)を手で書く文字列と、`stop_hook_active` を読む
+//!   文字列は、`agent-session`(`Reply::render` と `StopInput`)だけが持つ。ほかの crate の `src/` は、
+//!   `StopOutcome` を返し、再入は `Reentry` を宣言する。例外は無い。
+//!
 //! 検査は、コメントの行と、ファイル末尾のテストの節(`#[cfg(test)]` から後)を読まない。
 //! 例外の一覧は、いずれも**恒久**の例外である。例外のファイルが、もう違反の形を持たないときは、
 //! 一覧に残さず消す(古い例外は、それ自体が違反になる)。
@@ -31,7 +35,7 @@ const TERMINAL_CHECK: &str = "is_terminal";
 pub const ENVELOPE_EXCEPTIONS: &[(&str, &str)] = &[
     (
         "crates/codex-plan-gate/src/main.rs",
-        "ExitPlanMode の gate(子のプロセス)が返した JSON から、拒否の理由を読む。返答は Stop の形で別に書く",
+        "ExitPlanMode の gate(子のプロセス)が返した JSON から、拒否の理由を読む。自分の返答は StopOutcome で返す",
     ),
     (
         "crates/copilot-plan-review/src/lib.rs",
@@ -126,6 +130,39 @@ pub fn check_envelope_literals(sources: &[Source]) -> Vec<Violation> {
             out.push(violation(
                 path,
                 "ENVELOPE_EXCEPTIONS にあるが、ファイルが無い。例外から消す",
+            ));
+        }
+    }
+    out
+}
+
+/// Stop の block を手で書いた行か。`\"decision\"` のようにエスケープした形も、バックスラッシュを除いて見る。
+fn writes_stop_block(line: &str) -> bool {
+    let plain = line.replace('\\', "");
+    plain.contains("\"decision\"") && plain.contains("\"block\"")
+}
+
+/// `stop_hook_active` を読む文字列。
+const REENTRY_KEY: &str = "stop_hook_active";
+
+/// Stop の block を手で書く文字列と、`stop_hook_active` の読みが、`agent-session` のほかに無いことを検査する。
+pub fn check_stop_literals(sources: &[Source]) -> Vec<Violation> {
+    let mut out = Vec::new();
+    for s in sources.iter().filter(|s| !is_owner(&s.path)) {
+        if let Some((n, _)) = code_lines(&s.text).find(|(_, l)| writes_stop_block(l)) {
+            out.push(violation(
+                &s.path,
+                format!(
+                    "{n} 行目で Stop の block(`decision` と `block`)を手で書いている。StopOutcome を返す(描画は Reply::render が持つ)"
+                ),
+            ));
+        }
+        if let Some((n, _)) = code_lines(&s.text).find(|(_, l)| l.contains(REENTRY_KEY)) {
+            out.push(violation(
+                &s.path,
+                format!(
+                    "{n} 行目で `{REENTRY_KEY}` を読んでいる。再入は Reentry を宣言して StopInput::permits に問う"
+                ),
             ));
         }
     }
@@ -232,6 +269,7 @@ pub fn check_tree(root: &Path) -> Result<Vec<Violation>, String> {
     let sources = read_sources(root)?;
     let mut out = check_envelope_literals(&sources);
     out.extend(check_stdin_reads(&sources));
+    out.extend(check_stop_literals(&sources));
     Ok(out)
 }
 
@@ -358,6 +396,62 @@ mod tests {
         let vs = check_stdin_reads(&v);
         assert_eq!(vs.len(), 1, "{vs:?}");
         assert!(vs[0].detail.contains("例外から消す"));
+    }
+
+    // ---- Stop の block と再入: 正例 ----
+
+    #[test]
+    fn stop_literals_in_agent_session_comments_and_tests_are_fine() {
+        let text = "//! `{\"decision\": \"block\"}` と stop_hook_active の説明\n\
+                    fn f() {}\n\
+                    #[cfg(test)]\n\
+                    mod tests { const X: &str = \"{\\\"decision\\\":\\\"block\\\"} stop_hook_active\"; }\n";
+        let v = vec![
+            src("crates/x/src/lib.rs", text),
+            src(
+                "crates/agent-session/src/reply.rs",
+                "top.push((\"decision\", J::str(\"block\")));\nlet k = \"stop_hook_active\";\n",
+            ),
+        ];
+        assert_eq!(check_stop_literals(&v), vec![]);
+    }
+
+    // ---- Stop の block と再入: 負例(検査が実際に落ちること) ----
+
+    #[test]
+    fn a_handwritten_stop_block_is_a_violation() {
+        for line in [
+            "let out = json!({\"decision\": \"block\", \"reason\": r});",
+            "println!(\"{{\\\"decision\\\":\\\"block\\\"}}\");",
+        ] {
+            let v = vec![src(
+                "crates/x/src/main.rs",
+                &format!("fn main() {{\n    {line}\n}}\n"),
+            )];
+            let vs = check_stop_literals(&v);
+            assert_eq!(vs.len(), 1, "{line}: {vs:?}");
+            assert!(vs[0].detail.contains("2 行目"), "{}", vs[0].detail);
+        }
+    }
+
+    #[test]
+    fn reading_stop_hook_active_outside_agent_session_is_a_violation() {
+        let v = vec![src(
+            "crates/x/src/lib.rs",
+            "fn f(v: &Value) -> bool {\n    v.get(\"stop_hook_active\").is_some()\n}\n",
+        )];
+        let vs = check_stop_literals(&v);
+        assert_eq!(vs.len(), 1, "{vs:?}");
+        assert!(vs[0].detail.contains("2 行目"), "{}", vs[0].detail);
+    }
+
+    #[test]
+    fn decision_without_block_is_not_a_stop_block() {
+        let v = vec![src(
+            "crates/x/src/lib.rs",
+            "let d = v[\"decision\"].as_str(); // block ではない\n",
+        )];
+        assert_eq!(check_stop_literals(&v), vec![]);
     }
 
     #[test]
