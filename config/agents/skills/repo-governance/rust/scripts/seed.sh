@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# seed.sh — Main orchestrator for rust-repo-governance Skill.
+# seed.sh — Main orchestrator for the repo-governance (rust) Skill.
 # Applies all governance templates to a target Rust workspace repository.
 set -euo pipefail
 

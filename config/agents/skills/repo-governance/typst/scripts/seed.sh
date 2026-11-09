@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# seed.sh — Main orchestrator for typst-repo-governance Skill.
+# seed.sh — Main orchestrator for the repo-governance (typst) Skill.
 # Applies all governance templates to a target Typst document repository.
 set -euo pipefail
 
