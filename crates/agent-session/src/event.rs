@@ -1,6 +1,6 @@
 //! hook を発火させるイベント。出力の形(`Reply::render`)がイベントごとに違う。
 
-/// hook が受けるイベント。Stop は段3(Stop の結果を型にする)で足す。
+/// hook が受けるイベント。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HookEvent {
@@ -9,6 +9,8 @@ pub enum HookEvent {
     SessionStart,
     /// `ExitPlanMode` の許可要求。deny だけが `decision.behavior` の形で出る。
     PermissionRequest,
+    /// 応答の終わり。block は最上位の `decision`・`reason` で出す(`hookSpecificOutput` を使わない)。
+    Stop,
 }
 
 impl HookEvent {
@@ -19,12 +21,13 @@ impl HookEvent {
             HookEvent::PostToolUse => "PostToolUse",
             HookEvent::SessionStart => "SessionStart",
             HookEvent::PermissionRequest => "PermissionRequest",
+            HookEvent::Stop => "Stop",
         }
     }
 
     /// 標準入力の `hook_event_name` から決める。`PermissionRequest` 以外(空・未知を含む)は
-    /// `PreToolUse`。plan gate が、PreToolUse と PermissionRequest の両方で同じ bin を使うための規則で、
-    /// `PermissionRequest` 以外は PreToolUse に倒す(従来の plan gate 系と同じ)。
+    /// `PreToolUse`。plan gate が、PreToolUse と PermissionRequest の両方で同じ bin を使うための規則
+    /// (従来の plan gate 系と同じ)。Stop の bin は `StopSpec` でイベントを固定するので、この規則を通らない。
     pub fn from_input_name(name: &str) -> HookEvent {
         if name == "PermissionRequest" {
             HookEvent::PermissionRequest
@@ -44,7 +47,7 @@ mod tests {
             HookEvent::from_input_name("PermissionRequest"),
             HookEvent::PermissionRequest
         );
-        for other in ["PreToolUse", "PostToolUse", "SessionStart", "", "x"] {
+        for other in ["PreToolUse", "PostToolUse", "SessionStart", "Stop", "", "x"] {
             assert_eq!(HookEvent::from_input_name(other), HookEvent::PreToolUse);
         }
     }
@@ -55,5 +58,6 @@ mod tests {
         assert_eq!(HookEvent::PostToolUse.name(), "PostToolUse");
         assert_eq!(HookEvent::SessionStart.name(), "SessionStart");
         assert_eq!(HookEvent::PermissionRequest.name(), "PermissionRequest");
+        assert_eq!(HookEvent::Stop.name(), "Stop");
     }
 }

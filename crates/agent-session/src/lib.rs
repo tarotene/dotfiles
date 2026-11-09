@@ -9,14 +9,16 @@ pub mod ledger;
 pub mod outcome;
 pub mod plan;
 pub mod reply;
+pub mod stop;
 pub mod transcript;
 
 pub use decision::{Decision, PermissionDecision};
 pub use event::HookEvent;
 pub use input::{Agent, HookInput};
 pub use ledger::SessionLedger;
-pub use outcome::Outcome;
+pub use outcome::{Fault, Outcome, Reentry, StopOutcome, StopResult};
 pub use reply::Reply;
+pub use stop::StopInput;
 
 pub mod legacy_input;
 pub mod time;

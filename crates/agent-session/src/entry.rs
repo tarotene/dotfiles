@@ -25,8 +25,9 @@ use std::process::ExitCode;
 
 use crate::event::HookEvent;
 use crate::input::Agent;
-use crate::outcome::Outcome;
+use crate::outcome::{Outcome, Reentry, StopResult};
 use crate::reply::Reply;
+use crate::stop::StopInput;
 
 /// bin の宣言。
 #[derive(Debug, Clone, Copy)]
@@ -137,6 +138,55 @@ pub fn run(spec: &Spec, hook: fn(Agent, &str) -> Option<Outcome>) -> ExitCode {
     let raw = read_stdin();
     let reply = Reply::from_outcome(hook(call.agent, &raw));
     emit(spec, &call, &raw, &reply)
+}
+
+/// Stop の bin の宣言。出力のイベントは Stop に固定される。
+#[derive(Debug, Clone, Copy)]
+pub struct StopSpec {
+    /// 標準エラーの接頭辞に使う bin の名前。
+    pub name: &'static str,
+    /// この bin が受ける `--agent`。先頭が、`--agent` が無いときの既定。
+    pub agents: &'static [Agent],
+    /// 再入(`stop_hook_active`)の扱い。`Quiet` なら、立っているとき検査せずに黙る。
+    pub reentry: Reentry,
+}
+
+impl StopSpec {
+    fn spec(&self) -> Spec {
+        Spec {
+            name: self.name,
+            agents: self.agents,
+            event: Some(HookEvent::Stop),
+        }
+    }
+}
+
+/// Stop の結果を標準出力に書く。`Ok` は終了コード 0(block も JSON で運ぶ)。`Err(Fault)` は、ブロックしない
+/// hook エラーの終了コード(0 と 2 は作れない)。
+pub fn finish_stop(agent: Agent, result: StopResult) -> ExitCode {
+    match result {
+        Ok(outcome) => {
+            let out = Reply::from_stop(outcome).render(agent, HookEvent::Stop);
+            if !out.is_empty() {
+                let _ = std::io::stdout().write_all(out.as_bytes());
+            }
+            ExitCode::SUCCESS
+        }
+        Err(fault) => ExitCode::from(fault.code()),
+    }
+}
+
+/// Stop の bin の入口の全部: 引数の解析、標準入力の読み、再入の判定、検査、出力。
+pub fn run_stop(spec: &StopSpec, check: impl FnOnce(&StopInput) -> StopResult) -> ExitCode {
+    let call = match enter(&spec.spec()) {
+        Ok(call) => call,
+        Err(code) => return code,
+    };
+    let input = StopInput::new(read_stdin());
+    if !input.permits(spec.reentry) {
+        return ExitCode::SUCCESS;
+    }
+    finish_stop(call.agent, check(&input))
 }
 
 #[cfg(test)]
