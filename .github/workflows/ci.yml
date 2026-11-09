@@ -11,10 +11,10 @@ name: CI
 # pipeline-node: ci
 on:
   push:
-    branches: [ main, "feat/home-manager", "feat/hm-**" ]
+    branches: [ main ]
   # No branches filter here (unlike push above): these checks are required
   # status checks (pr-gate ruleset, docs/agents/pr-gate.md), and a required check
-  # that never gets reported on a stacked PR (base != main/feat/hm-*) leaves
+  # that never gets reported on a stacked PR (base != main) leaves
   # that PR's Stop gate permanently blocked on a check that will never exist.
   #
   # `labeled` is added (旧 nix.yml から引き継ぐ) so the `ci:full` manual
@@ -136,46 +136,15 @@ jobs:
           SHELLCHECK_OPTS: -e SC1091
 
       # config/ is excluded above because it holds zsh modules and the fcitx5
-      # profile, which shellcheck cannot parse (SC1071).  config/claude/hooks/
-      # is genuine bash, though, and it carries the plan-review gate's judge
-      # logic, so it gets its own pass with the exclusion lifted.
-      - name: ShellCheck Claude Code hooks
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: './config/claude/hooks'
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
-      # config/ is excluded above for the same reason as the Claude Code hooks
-      # step: config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
-      # pre-commit chain), so it gets its own pass with the exclusion lifted.
+      # profile, which shellcheck cannot parse (SC1071). config/git/hooks/* is
+      # genuine bash (the core.hooksPath pre-push / pre-commit chain), so it
+      # gets its own pass with the exclusion lifted. (The Claude Code, Codex and
+      # Copilot hooks are Rust, crates/*, and run as `cargo test --workspace` in
+      # the `rust` job below.)
       - name: ShellCheck git hooks
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: './config/git/hooks'
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
-      # config/codex/hooks/ and config/copilot/hooks/ hold the Codex CLI /
-      # Copilot CLI hook adapters (the herdr sidebar metadata reporters that
-      # used to live here are Rust since #413, crates/herdr-agent-metadata),
-      # excluded above for the same reason as the other config/ subdirectories.
-      # The Stage 4d hooks/statusline removed from the selftest steps below
-      # (#413) run as `cargo test --workspace` in the `rust` job below.
-      - name: ShellCheck Codex CLI hooks
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: './config/codex/hooks'
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
-      - name: ShellCheck Copilot CLI hooks
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: './config/copilot/hooks'
           severity: error
         env:
           SHELLCHECK_OPTS: -e SC1091
@@ -219,14 +188,13 @@ jobs:
       # only ever appears in files that implement one (bash, POSIX sh, perl,
       # python). `config/agents/skills/*/scripts` (not the whole skills tree)
       # is deliberately scoped to skill code directories — SKILL.md docs
-      # elsewhere under config/claude/skills mention `--selftest` in prose
+      # elsewhere under config/agents/skills mention `--selftest` in prose
       # without implementing a dispatcher, which would false-positive here.
       - name: Every --selftest is wired into CI
         run: |
           missing=0
           for f in $(grep -rl -- --selftest \
-              config/claude/hooks config/codex/hooks \
-              config/copilot/hooks config/git/hooks config/agents/skills/*/scripts scripts); do
+              config/git/hooks config/agents/skills/*/scripts scripts); do
             if ! grep -qF -- "$f --selftest" .github/workflows/ci.yml; then
               echo "::error file=$f::has a --selftest dispatcher but ci.yml never runs it"
               missing=1
@@ -403,9 +371,10 @@ jobs:
       # — この検査は PR の diff に対してのみ意味を持つ。
       # #415(ADR-0024 Stage 4a)で Rust(crates/decision-colocation)になった。
       # required check はこの job なので、ここで同じバイナリを build して呼ぶ
-      # (ubuntu-latest の既定の stable cargo で足りる。依存は hook-io /
-      # guard-core のみで build は数十秒)。旧 --selftest の全ケースは rust job
-      # の `cargo test --workspace` が走らせる。
+      # (ubuntu-latest の既定の stable cargo で足りる。依存は agent-session・
+      # command-inspection・github-command・git-repository の 4 つの crate〔
+      # crates/decision-colocation/Cargo.toml〕。build の所要時間は未測定)。旧 --selftest の
+      # 全ケースは rust job の `cargo test --workspace` が走らせる。
       - name: decision-colocation-check
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -661,14 +630,6 @@ jobs:
             renovate-config-validator --strict --no-global \
               renovate/policy.json renovate.json
 
-  # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
-  # clippy (--deny warnings) and rustfmt run as crane derivations from
-  # flake.nix's checks, in the build sandbox. cargo test runs through
-  # `nix develop` instead, outside the sandbox: several tests read the rest of the
-  # repo tree (pipeline-map scans config/, scripts/, home/ and the workflows;
-  # pr-contract-check's consistency test reads the governance templates) and run
-  # jq, git and gnupg from the devShell — none of that is available inside a
-  # crane derivation's cleaned cargo source.
   # 握手の仕様のモデル検査(config/agents/calendar-handshake/spec)。`flake-check` は --no-build
   # で評価しかしないので、検査の derivation はここで実際に作る。表の 1 行が 1 derivation で、
   # 4 コアの runner で数分かかる。握手の語彙・仕様・検査の定義が変わった PR と、main への
@@ -745,6 +706,22 @@ jobs:
             MAIL_LIFECYCLE_ITF_DIR="$PWD/itf" cargo test -p worklog --test itf_replay --locked -- --nocapture
           '
 
+  # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024, #391).
+  # Rust is built on purpose through three routes, not one (the same release build
+  # repeated in three jobs was already removed, #978):
+  #  1. crane (this job): clippy (--deny warnings) and rustfmt run as crane derivations
+  #     from flake.nix's checks, in the build sandbox. They are hermetic, and the same
+  #     `nix build` reproduces them by hand. The dependency artifacts are shared with the
+  #     package (`dotfiles-tools-deps`), which `build-host` roots.
+  #  2. `nix develop` + cargo test (this job): several tests read the rest of the repo tree
+  #     (pipeline-map scans config/, scripts/, home/ and the workflows; pr-contract-check's
+  #     consistency test reads the governance templates) and run jq, git and gnupg from the
+  #     devShell — none of that is available inside a crane derivation's cleaned cargo source.
+  #  3. the runner's own cargo: the `dry-run` job's decision-colocation-check (it must run on
+  #     every PR, including the middle stage of a stacked PR where this job is skipped, and
+  #     should not wait for nix) and the actions other repositories use
+  #     (.github/actions/pr-title and kiriban build on a runner without nix).
+  # The release package itself is built by `build-host`'s activationPackage, not here.
   rust:
     runs-on: ubuntu-latest
     name: Rust workspace
@@ -880,23 +857,6 @@ jobs:
             --print-build-logs --no-link
       - name: Build system configuration
         run: nix build ".#systemConfigs.${{ matrix.host }}" --print-build-logs --no-link
-      # #602: the Codex/Copilot adapters `source` the Claude hook engines.
-      # Running their --selftest from the source tree cannot catch a broken
-      # source path, because there ../../claude/hooks exists; in the deployed
-      # home-files layout it does not (~/.codex/hooks vs ~/.claude/hooks are
-      # flat siblings). Run them from the built activationPackage with HOME
-      # pointed at its home-files, i.e. the deployed shape.
-      - name: Adapter selftests in the deployed layout
-        run: |
-          set -euo pipefail
-          out="$(nix build \
-            ".#homeConfigurations.${{ matrix.host }}.activationPackage" \
-            --no-link --print-out-paths)"
-          for f in "$out"/home-files/.codex/hooks/*.sh "$out"/home-files/.copilot/hooks/*.sh; do
-            [ -e "$f" ] || continue
-            echo "== $f"
-            HOME="$out/home-files" bash "$f" --selftest
-          done
       # #604: the deployed bleep hook canary is no longer a step here — it is a
       # `home.checks` derivation (home/modules/claude.nix, config/claude/
       # bleep-canary.sh), so the build above already fails on a bleep pin the
