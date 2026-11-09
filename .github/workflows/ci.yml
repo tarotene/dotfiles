@@ -424,7 +424,7 @@ jobs:
       # plan-fresh-gate) are Rust now (#412, ADR-0024 Stage 4b); their former
       # --selftest cases run as `cargo test --workspace` in the rust job.
       - name: copilot-plan-review output schema is valid JSON
-        run: jq empty config/agents/assets/copilot-plan-review.schema.json
+        run: jq empty config/claude/assets/copilot-plan-review.schema.json
 
       # codex-plan-gate (ADR-0032 Amendment #531) is Rust now (#389, ADR-0024
       # Stage 4b); its former --selftest cases run as `cargo test --workspace`
@@ -800,7 +800,7 @@ jobs:
       - name: Build system configuration
         run: nix build ".#systemConfigs.${{ matrix.host }}" --print-build-logs --no-link
       # #604: the deployed bleep hook canary is no longer a step here — it is a
-      # `home.checks` derivation (home/modules/claude.nix, config/claude/
+      # `home.checks` derivation (home/modules/agents.nix, config/agents/
       # bleep-canary.sh), so the build above already fails on a bleep pin the
       # wiring cannot live with, and so does `hms` before it switches.
       # 非 substitutable な herdr / bws と、crane の Rust の依存を GC root にして、キャッシュに
