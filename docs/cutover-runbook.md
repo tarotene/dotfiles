@@ -244,8 +244,8 @@ hms
 
 With no `dotfiles/host` marker yet, `resolve_host()` falls back to `hostname`
 — now `<star-name>` — and selects `.#<star-name>`. `home/hosts/<star-name>.nix`'s
-own `xdg.configFile."dotfiles/host"` declaration then deploys the marker on
-this same switch, so from here on the marker is the resolution's source of
+own `dotfiles.host.name` declaration then deploys the marker (written by
+`home/modules/host.nix`) on this same switch, so from here on the marker is the resolution's source of
 truth and the OS hostname is a (now-matching) display name kept in sync by
 this procedure, not by any ongoing mechanism.
 

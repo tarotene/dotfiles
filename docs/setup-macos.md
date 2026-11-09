@@ -54,7 +54,8 @@ echo altair > ~/.config/dotfiles/host
 The marker is what `resolve_host()` (in `crates/hms` and
 `bootstrap.sh`) reads to select the `altair` homeConfiguration — macOS's own
 `hostname` is never consulted (ADR-0019). `home/hosts/altair.nix` declares
-this same marker via `xdg.configFile`, so after the first successful
+the host's name with `dotfiles.host.name`, from which `home/modules/host.nix`
+writes this same marker, so after the first successful
 activation the file becomes home-manager-managed; the hand-placed copy above
 only needs to exist long enough for that first activation to happen.
 

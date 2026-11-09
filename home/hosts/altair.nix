@@ -19,11 +19,12 @@
   # needs importing on the physical machine before the first `hms` there.
   programs.git.signing.key = "464382A473897DEBF8BCB369F7F5798C1372F95D";
 
-  # Declarative marker for resolve_host() (ADR-0019): once this activates,
+  # This host's name. home/modules/host.nix writes it as the declarative
+  # marker for resolve_host() (ADR-0019): once this activates,
   # `hms`/`bootstrap.sh` resolve this host as "altair" regardless of what
   # macOS reports as $(hostname). The very first bootstrap still needs the
   # marker hand-placed before activation can even select this host module —
   # see docs/setup-macos.md — but from the second switch onward, this
   # declaration is the marker's source of truth.
-  xdg.configFile."dotfiles/host".text = "altair\n";
+  dotfiles.host.name = "altair";
 }

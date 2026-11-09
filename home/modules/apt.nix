@@ -35,7 +35,7 @@ in
     description = ''
       This host's additions to the apt system layer, appended after the
       shared `packages/declarative/apt-packages.txt`. A host module (e.g.
-      `home/hosts/vega.nix`) sets this for packages that genuinely need
+      `home/hosts/<host>.nix`) sets this for packages that genuinely need
       root, a system service, or a driver on THAT host only — putting them
       in the shared file would make `scripts/install-packages.sh` try to
       install them on every other Linux host too.

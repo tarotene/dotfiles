@@ -8,4 +8,5 @@
 
 pub mod escape;
 pub mod hook_io;
+pub mod host_names;
 pub mod manifest;
