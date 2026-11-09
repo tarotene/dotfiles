@@ -1,0 +1,64 @@
+name: 'Nix store cache'
+description: >-
+  Nix を入れ、host ごとの nix store のキャッシュを復元する。保存は job の最後の post step。
+  PR の run は保存しない。呼び出し側は actions/checkout を先に実行し、job の permissions に
+  actions: write を持つこと(キャッシュの purge が REST API で消すため)。
+
+  ci.yml の build-host と darwin-build.yml の build-altair が、同じ形を 2 回書いていたのを
+  1 つにしたもの。キャッシュの鍵は従来と同じ文字列(`nix-<host>-<os>-<hash>`)なので、
+  既存の main のキャッシュはそのまま復元できる。
+inputs:
+  host:
+    description: キャッシュの鍵と purge の接頭辞を host ごとに分ける名前(vega / arcturus / altair)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+
+    # cache.nixos.org never substitutes two classes of package this repo
+    # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
+    # Amendment, invalidates the substitutable derivation) and bws
+    # (Bitwarden Secrets Manager CLI, unfree — Hydra never builds unfree
+    # packages, so no substitutable output can ever exist upstream;
+    # vega (the personal host) only, via home/hosts/vega/obsidian.nix). Both are
+    # permanent per-run costs unless this cache actually retains them.
+    #
+    # The primary-key hashes home/**, system/**, config/** and packages/** in addition to the flake
+    # inputs, and includes the host: a key that only tracks
+    # flake.lock/flake.nix/patches/** stays byte-identical across changes
+    # to home/hosts/vega/obsidian.nix, so cache-nix-action's own "exact hit
+    # on primary-key -> skip saving" rule (nix-community/cache-nix-action
+    # README, 取得 2026-09-23) silently discarded every bws build this
+    # cache ever produced. A host-scoped key additionally stops
+    # vega's bws-bearing closure and arcturus's bws-less closure from
+    # overwriting each other under one shared key.
+    #
+    # A key that changes on every home/** edit is not a regression:
+    # restore-prefixes-first-match still restores the nearest prior cache
+    # for this host, so bws comes back from the store instead of
+    # rebuilding — a key miss is not a cache miss.
+    - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+      with:
+        primary-key: nix-${{ inputs.host }}-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix', 'patches/**', 'home/**', 'system/**', 'config/**', 'packages/**', 'Cargo.lock', 'crates/**') }}
+        restore-prefixes-first-match: nix-${{ inputs.host }}-${{ runner.os }}-
+        # Never save from a pull_request run. A cache created there is
+        # scoped to refs/pull/N/merge and "can only be restored by re-runs
+        # of the pull request" (GitHub Docs, "Dependency caching
+        # reference", 取得 2026-10-25), yet each is ~800 MB and counts
+        # against the 10 GB repo limit; past it, eviction is oldest
+        # last-access first, i.e. main's restorable caches. 2026-10-25:
+        # 11.36 GB used, vega found no cache and rebuilt 346 derivations in
+        # 32 min (#1014). Pushes to main still save.
+        save: ${{ github.event_name != 'pull_request' }}
+        gc-max-store-size-linux: 1G
+        gc-max-store-size-macos: 1G
+        purge: true
+        purge-prefixes: nix-${{ inputs.host }}-${{ runner.os }}-
+        purge-primary-key: never
+        # ISO 8601 durations (nix-community/cache-nix-action README, 取得
+        # 2026-09-23: "a non-negative number or a string in the ISO 8601
+        # duration format" — plain "30d"/"14d" is neither and was silently
+        # treated as an immediate cutoff in testing).
+        purge-created: P30D
+        purge-last-accessed: P14D
