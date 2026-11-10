@@ -7,6 +7,7 @@
 //! 検査が実際に落ちることを確かめる。
 
 pub mod civil_time;
+pub mod deps;
 pub mod escape;
 pub mod hook_io;
 pub mod host_names;

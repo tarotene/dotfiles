@@ -119,6 +119,31 @@ option `dotfiles.host.name` で受け取る。
 
 例外は無い。
 
+### 依存グラフ(`deps::check_tree`、#1446)
+
+各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
+`[dev-dependencies]` は試験の道具なので対象外。**機能 crate(hook・CLI)は、他の機能 crate に依存しない**。機能 crate が別の
+機能 crate の関数を呼ぶと、その機能の変更が、呼び出し側の挙動を黙って変える。共有の仕事は、`docs/agents/agent-libraries.md` の
+ライブラリが持つ。許される辺は次の 3 つだけ。
+
+| 辺 | 内容 |
+|---|---|
+| ライブラリへの依存 | `deps::LIBRARIES`(責務表の 10 ライブラリと、同じ目的の共有 crate、依存ゼロの 2 crate)に名前で列挙する |
+| 集約役からの依存 | `deps::AGGREGATORS`(`hook-router`・`session-wrapup`、互換入口の `wrapup-stop-gate`)に名前で列挙する |
+| 既知の例外 | `deps::EXCEPTIONS` に `(依存する crate, 依存される crate, 理由)` で 1 件ずつ列挙する |
+
+例外は、解消した(辺が消えた)ら、例外のほうが落ちる(鮮度の検査)。列挙した crate が workspace に無いときも落ちる。新しい違反を
+足すには、共有の仕事をライブラリへ移すか、例外に理由つきで足す。初回(2026-11-10)の例外は 14 件(`pr-gate` → `new-tool-guard`・
+`worktree-lease`、`stack-base-guard` → `pr-gate`、`session-retrospective` → `cmd-hash-log`・`issue-inbox`・`verdict-escalate`、
+`promotion-detect` → `due-remind`・`issue-inbox`・`record-layer`、`detect-drift` → `update-own-tools`、`cmd-hash-log` →
+`issue-inbox`、`codex-plan-gate` → `new-tool-guard`、`codex-plan` → `codex-launcher`、`github-app-snapshot` → `github-audit`)で、
+どれも、共有の仕事を移す先のライブラリの設計が要る(意図は決まっていて、未着手。#1446)。
+
+`claude-plan-model` は `model-catalog` に依存しない(#1446 の最初の確認)。ADR-457 は、Opus Plan Mode の具体モデル ID を、
+**インストールされた実行ファイルが持つカタログ**(`latest_per_family`)から読むと決めている(`config/zsh/modules/53-tools-claude.zsh`
+も同じ。実行ファイルの更新に pin が遅れないため)。`model-catalog` は、リポジトリが持つ手書きの対応表で、情報の出どころが違う。
+読ませると、実行ファイルのカタログに対して遅れる。
+
 ### 規則の置き方
 
 - root の表に `default-features = false` を書いた依存(`jiff`、`toml`、`toml_edit`)は、メンバーが `features` で
@@ -151,6 +176,7 @@ option `dotfiles.host.name` で受け取る。
 - crates/repo-structure-check/src/host_names.rs
 - crates/repo-structure-check/src/process_env.rs
 - crates/repo-structure-check/src/civil_time.rs
+- crates/repo-structure-check/src/deps.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
