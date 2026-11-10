@@ -7,22 +7,6 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-/// `command -v <name>`(PATH 上の実行可能ファイル)。
-fn on_path(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|d| {
-        let p = d.join(name);
-        std::fs::metadata(&p)
-            .map(|m| {
-                use std::os::unix::fs::PermissionsExt;
-                m.is_file() && m.permissions().mode() & 0o111 != 0
-            })
-            .unwrap_or(false)
-    })
-}
-
 fn git(project: &Path, args: &[&str]) -> Option<Output> {
     git_repository::run(project, args)
 }
@@ -95,7 +79,7 @@ fn parse(raw: &str) -> Value {
 }
 
 fn main() {
-    if !on_path("gh") {
+    if !process_control::command_exists("gh") {
         return;
     }
     let input = agent_session::entry::read_stdin();

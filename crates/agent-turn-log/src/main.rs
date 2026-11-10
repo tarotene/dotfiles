@@ -79,13 +79,10 @@ fn jq_compact(v: &Value, o: &mut String) {
     }
 }
 
-/// jq -r が 1 値を出力するときの文字列。
+/// jq -r が 1 値を出力するときの文字列。`query` は null と false を先に除くので、
+/// `jq_json_compat::raw::jq_raw` が `None` を返す値(null・false)はここへ来ない。
 fn jq_raw(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Array(_) | Value::Object(_) => serde_json::to_string_pretty(v).unwrap_or_default(),
-        other => other.to_string(),
-    }
+    jq_json_compat::raw::jq_raw(v).unwrap_or_default()
 }
 
 /// `jq -r '.a // .b // empty' file` を `$(...)` で受けた値。stdin の各 JSON 値

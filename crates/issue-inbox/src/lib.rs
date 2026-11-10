@@ -1305,7 +1305,7 @@ pub fn stop_check(self_path: &str, input: &str, h: &HookJson) -> StopResult {
     if unlinked.is_empty() {
         return Ok(None);
     }
-    if on_path("gh").is_none() {
+    if !process_control::command_exists("gh") {
         return Ok(None);
     }
     if git_ok(&project, &["rev-parse", "--is-inside-work-tree"]).is_none() {

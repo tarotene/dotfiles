@@ -59,6 +59,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "civil-time",
+ "jq-json-compat",
  "process-env",
  "serde_json",
  "tempfile",
@@ -845,6 +846,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
+ "process-control",
  "process-env",
  "tempfile",
  "trycmd",
@@ -1040,6 +1042,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
+ "process-control",
  "serde_json",
  "tempfile",
  "trycmd",
