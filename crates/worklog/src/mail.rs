@@ -961,7 +961,7 @@ pub fn add_mail(
                     "{key} は送信の裁定(send:yes)で、confirm がまだ無い。送信直前の画面・全文・宛先を本人に見せて OK を得て、confirm を書いてから apply する"
                 ));
             }
-            if def.id == "confirm" && !(item.send && !item.confirmed) {
+            if def.id == "confirm" && (!item.send || item.confirmed) {
                 return Err(format!(
                     "{key} に confirm を書けるのは、send:yes の decide のあと、まだ確認していないときだけ"
                 ));
