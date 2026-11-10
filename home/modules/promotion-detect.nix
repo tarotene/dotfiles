@@ -16,6 +16,7 @@
 # (ADR-1382, ledger_heartbeat). The ledger repository is private, so its
 # name is not here: the crate reads it from the machine-local file
 # ~/.config/ledger-heartbeat/target and does nothing when that is absent.
+# A second timer (promotion-detect-digest-check) runs only the digest check hourly in the daytime (`--digest-check`).
 #
 # Daily cadence (not hourly like due-remind): unlike a missed deadline,
 # missing one day's detection run has no real cost — the underlying
@@ -68,6 +69,30 @@ in
         }
       ];
     })
+    # The daily run also checks the cloud's daily digest (ADR-1382), but the toast is only shown when Herdr is up
+    # at that moment; when it was not, no once-a-day mark is written and the next daily run is a day away. This
+    # second timer runs only that check (`--digest-check`) hourly in the daytime, the same schedule as due-remind,
+    # so the notice is retried the same day. The once-a-day mark is shared with the daily run: whichever shows the
+    # notice first, the other stays quiet for the rest of that day. It does nothing when the digest is fresh or the
+    # config file is absent.
+    (timerPair {
+      name = "promotion-detect-digest-check";
+      description = "Retry the notice that the ledger's daily digest has stopped arriving (ADR-1382)";
+      timerDescription = "Check the ledger's daily digest hourly, 09:00-19:00";
+      exec = deployedPath;
+      args = [ "--digest-check" ];
+      launchdExec = storePath;
+      path = servicePath;
+      service.TimeoutStartSec = "1min";
+      schedule = {
+        calendar = "*-*-* 09..19:00:00";
+        persistent = true;
+      };
+      launchd.StartCalendarInterval = map (h: {
+        Hour = h;
+        Minute = 0;
+      }) (lib.range 9 19);
+    })
   ];
 
   home.file.".local/bin/promotion-detect" = {
@@ -81,4 +106,6 @@ in
   # promotion-detect と、これが exec する issue-inbox が呼ぶ全バイナリを列挙する
   # (git-audit-worktrees の agent と同じ理由)。
   dotfiles.pipeline.timerNodes.promotion-detect = "promotion-detect";
+  # The same binary with `--digest-check`: one node, two timers (git-auto-prune-* is the same shape).
+  dotfiles.pipeline.timerNodes.promotion-detect-digest-check = "promotion-detect";
 }

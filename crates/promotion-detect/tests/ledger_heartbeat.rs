@@ -107,6 +107,19 @@ impl World {
     }
 
     fn run(&self, dry_run: bool) -> Output {
+        self.run_args(if dry_run { &["--dry-run"] } else { &[] })
+    }
+
+    /// 台帳の日次の通知の確認だけを行う入口(`--digest-check`)。
+    fn digest_check(&self, dry_run: bool) -> Output {
+        self.run_args(if dry_run {
+            &["--digest-check", "--dry-run"]
+        } else {
+            &["--digest-check"]
+        })
+    }
+
+    fn run_args(&self, args: &[&str]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_promotion-detect"));
         cmd.env("HOME", "/nonexistent-home")
             .env_remove("XDG_STATE_HOME")
@@ -120,9 +133,7 @@ impl World {
             .env("PROMOTION_DETECT_INBOX_PATH", self.p("inbox.jsonl"))
             .env("PROMOTION_DETECT_WORKLOG_BIN", self.p("worklog"))
             .env("PROMOTION_DETECT_NOW", NOW.to_string());
-        if dry_run {
-            cmd.arg("--dry-run");
-        }
+        cmd.args(args);
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.output().unwrap()
     }
@@ -228,6 +239,113 @@ fn a_digest_with_no_comment_notifies() {
     let w = World::new(None);
     w.run(false);
     assert_eq!(w.read("herdr.log").lines().count(), 1);
+}
+
+/// 通知を出せなかった(herdr が `shown: false` を返す)ときの偽の herdr。
+fn herdr_that_shows_nothing(w: &World) {
+    write_exec(
+        &w.p("herdr"),
+        &format!(
+            "#!/bin/sh\necho \"$*\" >> '{d}/herdr.log'\necho '{{\"result\":{{\"shown\":false,\"reason\":null}}}}'\n",
+            d = w.tmp.path().display()
+        ),
+    );
+}
+
+#[test]
+fn digest_check_only_checks_the_digest_and_writes_nothing_else() {
+    let w = World::new(Some(40));
+    w.finding("a", "example/a", "open", &days_ago(1));
+    // 別の検出(feedback Issue の再発)があっても、この入口は検出も失効も生存の記録もしない。
+    fs::write(
+        w.p("feedback.json"),
+        serde_json::json!([
+            {"number": 1, "body": "Target: hook/foo-gate\\n本文"},
+            {"number": 2, "body": "Target: hook/foo-gate\\n本文2"},
+        ])
+        .to_string(),
+    )
+    .unwrap();
+    write_exec(
+        &w.p("issue-inbox"),
+        &format!(
+            "#!/bin/sh\ncase \"$1\" in --check-dup) exit 0;; --add) echo added >> '{}';; esac\n",
+            w.p("wrapup.log").display()
+        ),
+    );
+    let out = w.digest_check(false);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let log = w.read("herdr.log");
+    assert_eq!(log.lines().count(), 1, "{log}");
+    assert!(log.contains("36 時間届いていない"), "{log}");
+    assert!(!w.p("edit-body").exists(), "生存の記録を書いた");
+    assert!(!w.p("wrapup.log").exists(), "候補を inbox に流した");
+    assert!(
+        stderr(&out).contains("日次の通知の確認"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn digest_check_retries_the_same_day_when_the_notice_could_not_be_shown() {
+    let w = World::new(Some(40));
+    herdr_that_shows_nothing(&w);
+    // 日次の実行の時刻に Herdr が通知を出せなかった日。印は書かれない。
+    w.run(false);
+    assert_eq!(w.read("herdr.log").lines().count(), 1);
+    // 時間ごとの確認が、その日のうちに再試行する。今度は出せる。
+    write_exec(
+        &w.p("herdr"),
+        &format!(
+            "#!/bin/sh\necho \"$*\" >> '{d}/herdr.log'\necho '{{\"result\":{{\"shown\":true,\"reason\":null}}}}'\n",
+            d = w.tmp.path().display()
+        ),
+    );
+    w.digest_check(false);
+    assert_eq!(
+        w.read("herdr.log").lines().count(),
+        2,
+        "{}",
+        w.read("herdr.log")
+    );
+    // 出せたら印が書かれ、次の確認は重ねない。
+    w.digest_check(false);
+    assert_eq!(w.read("herdr.log").lines().count(), 2);
+}
+
+#[test]
+fn digest_check_and_the_daily_run_share_the_once_a_day_mark() {
+    let w = World::new(Some(40));
+    w.run(false); // 日次が出す
+    assert_eq!(w.read("herdr.log").lines().count(), 1);
+    w.digest_check(false); // 同じ日の確認は重ねない
+    assert_eq!(w.read("herdr.log").lines().count(), 1);
+
+    let w = World::new(Some(40));
+    w.digest_check(false); // 確認が先に出す
+    assert_eq!(w.read("herdr.log").lines().count(), 1);
+    w.run(false); // 同じ日の日次は重ねない
+    assert_eq!(w.read("herdr.log").lines().count(), 1);
+}
+
+#[test]
+fn digest_check_stays_quiet_when_the_digest_is_fresh_or_the_config_is_missing_or_dry() {
+    let fresh = World::new(Some(1));
+    fresh.digest_check(false);
+    assert!(!fresh.p("herdr.log").exists());
+
+    let no_config = World::new(Some(48));
+    fs::remove_file(no_config.p("config/ledger-heartbeat/target")).unwrap();
+    no_config.digest_check(false);
+    assert!(!no_config.p("herdr.log").exists());
+    assert!(!no_config.p("gh.log").exists() || !no_config.read("gh.log").contains("graphql"));
+
+    let dry = World::new(Some(48));
+    let out = dry.digest_check(true);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(!dry.p("herdr.log").exists());
+    assert!(!dry.read("gh.log").contains("graphql"));
 }
 
 #[test]

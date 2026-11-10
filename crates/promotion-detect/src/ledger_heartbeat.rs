@@ -346,6 +346,21 @@ pub fn run(r: &Run) -> Report {
     }
 }
 
+/// 逆向きの確認だけを行う(`--digest-check`)。生存の記録は書かない(`counts` は使わない)。
+/// 日次の `run` も同じ確認を最後に行う。通知が出せなかった日(`Notified::NotShown`。Herdr が起動していない、
+/// 通知が無効、など)は 1 日 1 回の印を書かないので、この入口を時間ごとの timer が呼べば、その日のうちに再試行できる。
+/// 印(`notified_path`)は日次と共通なので、どちらかが出せば、その日の残りは出さない。
+pub fn run_digest_check(r: &Run) -> Notified {
+    let issues = match list_status_issues(r.gh, r.repo) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("promotion-detect: 台帳の常設 Issue を読めない: {e}");
+            return Notified::Failed;
+        }
+    };
+    check_digest(r, issues.iter().find(|i| i.title == DIGEST_TITLE))
+}
+
 fn write_heartbeat(r: &Run, issue: Option<&RawIssue>) -> Wrote {
     let Some(issue) = issue else {
         eprintln!("promotion-detect: {HEARTBEAT_TITLE} の Issue が無い(端末側からは作らない)。生存の記録を書かない");
