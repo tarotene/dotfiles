@@ -58,6 +58,7 @@ pipeline = [
 
 # ---------------------------------------------------------------- nodes
 node = [
+  { id = "browser-settings", label = "browser-settings", lane = "manual", stack = "rust", pipelines = ["host-hygiene"], entity = "crates/browser-settings", doc = "docs/agents/browser-settings.md", auto = false },
   { id = "codex-launcher", label = "codex launcher", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/codex-launcher", doc = "docs/agents/agent-permissions.md", auto = false },
   { id = "pr-checks-wait", label = "pr-checks-wait", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/agents/pr-gate.md", auto = false },
   { id = "ja-polish", label = "ja-polish", lane = "manual", stack = "rust", llm = true, pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/ja-polish", doc = "docs/agents/ja-polish.md", auto = false },

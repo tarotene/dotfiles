@@ -2474,7 +2474,14 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     # login keyring at run time, never deployed.
     "model-catalog"
     "model-equivalence"
+    # browser-settings (docs/agents/browser-settings.md, #1420): read / paste / verify one settings
+    # field in a dedicated-profile Chrome. Manual CLI; the saving step is always the user's.
+    "browser-settings"
   ];
+
+  # browser-settings' per-service screen data (selectors). Literal file, edited in the repo (ADR-0002).
+  xdg.configFile."browser-settings/services.toml".source =
+    repoConfig + "/browser-settings/services.toml";
 
   # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
   # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や

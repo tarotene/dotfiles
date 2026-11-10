@@ -1,0 +1,17 @@
+[package]
+name = "browser-settings"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "専用プロファイルの Chrome で、サービスの設定画面の 1 項目を、読み取り・貼り付け・読み戻しする手動の CLI(保存の確定は人が行う)"
+
+[dependencies]
+headless_chrome = { workspace = true, features = ["offline"] }
+process-env = { version = "0.1.0", path = "../process-env" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml = { workspace = true, features = ["parse", "serde"] }
+
+[dev-dependencies]
+tempfile.workspace = true
