@@ -96,6 +96,10 @@ Alternatives)ので採らない。既定ブランチ以外すべてで注意を�
 
 ## 限界(検出のみ)
 
+- 追跡ファイルを別の場所へ移した PR のあとに、旧ディレクトリに残る未追跡のもの(ビルド成果物・submodule の作業コピー)は、
+  `git-checkout-sync` が fast-forward のあとに退避する(`docs/agents/git-checkout-sync.md` の「移動した PR の残骸」)。
+  guard は通常の変更と区別して案内はしない(残骸が本物の checkout に残らない構造にした、#1505)。
+
 - Bash が絶対パスを引数に取らず、cwd も向き先でない書き込みは、触れたことを推定できない。
 - Codex の編集ツール(`apply_patch`)は PreToolUse の対象外。Stop の事後検出だけが受ける。
 - 判定不能な文(展開・未終端引用符)は粗い空白分割で見る。

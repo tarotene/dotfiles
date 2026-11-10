@@ -716,8 +716,10 @@ dependencies = [
 name = "git-checkout-sync"
 version = "0.1.0"
 dependencies = [
+ "civil-time",
  "git-repository",
  "process-control",
+ "process-env",
  "tempfile",
 ]
 
