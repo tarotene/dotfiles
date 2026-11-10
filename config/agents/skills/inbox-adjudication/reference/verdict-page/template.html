@@ -125,10 +125,15 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
       <span class="saved" id="g-saved"></span>
     </div>
     <div class="bar">
+      <button id="adopt" type="button">推奨をすべて採用</button>
       <button id="summarize" type="button">回答をまとめる</button>
       <span class="status" id="sumstatus"></span>
     </div>
     <pre id="summary" hidden></pre>
+  </section>
+
+  <section id="excluded-section" style="display:grid;gap:8px" hidden>
+    <details class="why-d"><summary id="excluded-sum"></summary><ul id="excluded-list"></ul></details>
   </section>
 
   <section id="drafts-section" style="display:grid;gap:12px" aria-labelledby="h-draft" hidden>
@@ -356,6 +361,26 @@ function guidanceInput(text) {
   }, 900);
 }
 let gdoc = null;
+
+/* 「推奨をすべて採用」: まだ選ばれていない項目のうち、推奨(rec_option)のある項目だけを、推奨の選択肢にする。
+   すでに選んだ項目と、推奨の無い項目、推奨が「その他」の項目は、そのままにする。例外だけを、あとから個別に直せる。 */
+document.getElementById("adopt").addEventListener("click", () => {
+  for (const it of ITEMS) {
+    if (!it.rec_option || settled(state[it.id])) continue;
+    const o = optsOf(it).find(x => x.id === it.rec_option);
+    if (o && o.verdict !== "other") choose(it, o);
+  }
+});
+
+/* 規則ありと判定して外した候補を、根拠つきで、末尾に畳んで出す。 */
+(function () {
+  const ex = DATA.excluded || [];
+  if (!ex.length) return;
+  document.getElementById("excluded-section").hidden = false;
+  document.getElementById("excluded-sum").textContent = "規則ありと判定して一覧から外した候補(" + ex.length + ")";
+  const ul = document.getElementById("excluded-list");
+  for (const e of ex) ul.append(el("li", null, e.title + " — " + e.rule));
+})();
 
 document.getElementById("summarize").addEventListener("click", async () => {
   const lines = [];

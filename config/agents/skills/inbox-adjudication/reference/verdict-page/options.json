@@ -4,51 +4,248 @@
     "reply": {
       "pane": "返信を出す",
       "options": [
-        { "id": "send-me", "verdict": "decide", "owner": "me", "label": "自分で送る", "you": "下書きを直して、元の画面で送る", "agent": "送ったかを読み戻して、記録を閉じる" },
-        { "id": "send-agent", "verdict": "decide", "owner": "agent", "label": "おまかせで送る", "you": "送る直前に、画面・全文・宛先を見て、OK を 1 回返す", "agent": "次の机で、送信直前の画面・全文・宛先を見せる。OK のあとに送り、記録を閉じる" },
-        { "id": "skip", "verdict": "pass", "label": "返信しない", "you": "なし", "agent": "返信せずに閉じる" },
-        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
-        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+        {
+          "id": "send-me",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "自分で送る",
+          "you": "下書きを直して、元の画面で送る",
+          "agent": "送ったかを読み戻して、記録を閉じる"
+        },
+        {
+          "id": "send-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "label": "おまかせで送る",
+          "you": "送る直前に、画面・全文・宛先を見て、OK を 1 回返す",
+          "agent": "次の机で、送信直前の画面・全文・宛先を見せる。OK のあとに送り、記録を閉じる"
+        },
+        {
+          "id": "skip",
+          "verdict": "pass",
+          "label": "返信しない",
+          "you": "なし",
+          "agent": "返信せずに閉じる"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。7 日後に再通知する"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
       ]
     },
     "notice": {
       "pane": "通知を確かめる",
       "options": [
-        { "id": "known", "verdict": "pass", "label": "心当たりあり(対応不要)", "you": "なし", "agent": "対応不要として閉じる" },
-        { "id": "act-me", "verdict": "decide", "owner": "me", "label": "対応が要る(自分でやる)", "you": "手続きや確認を、あなたがやる", "agent": "済んだかを読み戻して、記録を閉じる" },
-        { "id": "act-agent", "verdict": "decide", "owner": "agent", "label": "調べてもらう", "you": "報告を読んで判断する", "agent": "分かる範囲を調べて報告する。操作が要る手続きは、あなたに渡す" },
-        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
-        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+        {
+          "id": "known",
+          "verdict": "pass",
+          "label": "心当たりあり(対応不要)",
+          "you": "なし",
+          "agent": "対応不要として閉じる"
+        },
+        {
+          "id": "act-me",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "対応が要る(自分でやる)",
+          "you": "手続きや確認を、あなたがやる",
+          "agent": "済んだかを読み戻して、記録を閉じる"
+        },
+        {
+          "id": "act-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "label": "調べてもらう",
+          "you": "報告を読んで判断する",
+          "agent": "分かる範囲を調べて報告する。操作が要る手続きは、あなたに渡す"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。7 日後に再通知する"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
       ]
     },
     "task": {
       "pane": "期限のある作業",
       "options": [
-        { "id": "do-me", "verdict": "decide", "owner": "me", "label": "自分でやる", "you": "作業をやる", "agent": "済んだかを読み戻して、記録を閉じる" },
-        { "id": "do-agent", "verdict": "decide", "owner": "agent", "label": "おまかせ", "you": "認証・支払い・送信のような、あなたの操作が要る段だけ", "agent": "できる範囲を進める。あなたの操作が要る段で止めて渡す" },
-        { "id": "drop", "verdict": "pass", "label": "やらない", "you": "なし", "agent": "やらないものとして閉じる" },
-        { "id": "later", "verdict": "later", "label": "あとで", "you": "なし", "agent": "何も記録しない。7 日後に再通知する" },
-        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、どうしたいかを書く", "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く" }
+        {
+          "id": "do-me",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "自分でやる",
+          "you": "作業をやる",
+          "agent": "済んだかを読み戻して、記録を閉じる"
+        },
+        {
+          "id": "do-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "label": "おまかせ",
+          "you": "認証・支払い・送信のような、あなたの操作が要る段だけ",
+          "agent": "できる範囲を進める。あなたの操作が要る段で止めて渡す"
+        },
+        {
+          "id": "drop",
+          "verdict": "pass",
+          "label": "やらない",
+          "you": "なし",
+          "agent": "やらないものとして閉じる"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。7 日後に再通知する"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
       ]
     },
     "fact": {
       "pane": "事実を確かめる",
       "answer": true,
       "options": [
-        { "id": "yes", "verdict": "decide", "owner": "me", "label": "はい", "you": "なし(答えるだけ)", "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す" },
-        { "id": "no", "verdict": "pass", "label": "いいえ", "you": "なし(答えるだけ)", "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す" },
-        { "id": "later", "verdict": "later", "label": "まだ", "you": "なし", "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す" },
-        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、答えと理由を書く", "agent": "次の机で記入欄を読み、そのとおりに記録・下書きを直す。分からなければ聞く" }
+        {
+          "id": "yes",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "はい",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す"
+        },
+        {
+          "id": "no",
+          "verdict": "pass",
+          "label": "いいえ",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "まだ",
+          "you": "なし",
+          "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、答えと理由を書く",
+          "agent": "次の机で記入欄を読み、そのとおりに記録・下書きを直す。分からなければ聞く"
+        }
       ]
     },
     "report": {
       "pane": "済んだかを報告する",
       "answer": true,
       "options": [
-        { "id": "done", "verdict": "decide", "owner": "me", "label": "済んだ", "you": "なし(済んだと伝えるだけ)", "agent": "読める範囲で済んだことを読み戻して、記録を閉じる。読めなければ「未確認」と書いて閉じる" },
-        { "id": "dropped", "verdict": "pass", "label": "やめた(もう要らない)", "you": "なし", "agent": "やらないものとして閉じる" },
-        { "id": "later", "verdict": "later", "label": "まだ", "you": "なし", "agent": "何も記録しない。済むまで、次の机でもう一度出す" },
-        { "id": "other", "verdict": "other", "label": "その他", "you": "下の欄に、状況を書く", "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く" }
+        {
+          "id": "done",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "済んだ",
+          "you": "なし(済んだと伝えるだけ)",
+          "agent": "読める範囲で済んだことを読み戻して、記録を閉じる。読めなければ「未確認」と書いて閉じる"
+        },
+        {
+          "id": "dropped",
+          "verdict": "pass",
+          "label": "やめた(もう要らない)",
+          "you": "なし",
+          "agent": "やらないものとして閉じる"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "まだ",
+          "you": "なし",
+          "agent": "何も記録しない。済むまで、次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、状況を書く",
+          "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "sender": {
+      "pane": "差出人の扱いを決める",
+      "answer": true,
+      "options": [
+        {
+          "id": "keep",
+          "verdict": "pass",
+          "label": "受信箱に残す",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、この差出人をフィルタにせず、受信箱に残す扱いにする"
+        },
+        {
+          "id": "reading",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "読み物にする",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、この差出人を「読み物」のフィルタ(受信箱には出さず、読み物のラベルで取っておく)の定義にする。フィルタは PR にし、反映はあなたが確かめる"
+        },
+        {
+          "id": "archive",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "既読で保管",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、この差出人を「既読にして保管」のフィルタの定義にする。フィルタは PR にし、反映はあなたが確かめる"
+        },
+        {
+          "id": "trash",
+          "verdict": "decide",
+          "owner": "me",
+          "label": "捨てる",
+          "you": "なし(答えるだけ)",
+          "agent": "次の机で答えを読み、この差出人を「捨てる」のフィルタの定義にする。フィルタは PR にし、反映はあなたが確かめる"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "label": "まだ",
+          "you": "なし",
+          "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く"
+        }
       ]
     }
   }
