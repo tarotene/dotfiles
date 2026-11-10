@@ -143,6 +143,62 @@ fn as_of_estimates_a_later_day_but_only_as_a_dry_run() {
 }
 
 #[test]
+fn list_lapsed_shows_what_the_sweep_lapsed_and_list_open_does_not() {
+    let e = Env::new();
+    note(&e.vault(), "recent", "open", &days_ago(13));
+    note(&e.vault(), "stale", "open", &days_ago(14));
+    // 失効する前は、list_lapsed に何も出ない。
+    let before = e.run(&["--list-lapsed", "--json"]);
+    assert!(before.status.success());
+    assert_eq!(stdout(&before).trim(), "[]");
+
+    assert!(e.run(&["--sweep"]).status.success());
+
+    let lapsed = e.run(&["--list-lapsed", "--json"]);
+    assert!(
+        lapsed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&lapsed.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_str(stdout(&lapsed).trim()).unwrap();
+    let titles: Vec<&str> = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles, ["stale"]);
+    // 形は --list-open と同じ(note は vault からの相対パス)。
+    assert_eq!(v[0]["note"], "inbox/stale.md");
+    assert_eq!(v[0]["source"], "vault");
+
+    let open = e.run(&["--list-open", "--json"]);
+    let o: serde_json::Value = serde_json::from_str(stdout(&open).trim()).unwrap();
+    let open_titles: Vec<&str> = o
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(open_titles, ["recent"]);
+}
+
+#[test]
+fn list_lapsed_on_a_machine_without_a_vault_prints_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_issue-inbox"))
+        .args(["--list-lapsed", "--json"])
+        .env("HOME", tmp.path())
+        .env_remove("OBSIDIAN_VAULT")
+        .env_remove("XDG_CONFIG_HOME")
+        .env("WRAPUP_STATE_DIR", tmp.path().join("state"))
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    assert_eq!(stdout(&o).trim(), "[]");
+}
+
+#[test]
 fn a_machine_without_a_vault_has_nothing_to_sweep() {
     let tmp = tempfile::tempdir().unwrap();
     let o = Command::new(env!("CARGO_BIN_EXE_issue-inbox"))
