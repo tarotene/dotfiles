@@ -1109,9 +1109,11 @@ pub struct SweepFlag {
 /// (純関数。docs/agents/mail-lifecycle.md の「本人が行う作業の追い方」。同じ漏れが再発したので、散文の
 /// 規則から sweep の検出へ昇格した)。
 ///
-/// 本人担当の作業は、`decide` のあとに Issue を起票して `move` で `superseded` にする規則だが、行には担当の
-/// 印が無く、機械は本人担当かエージェントの反映待ちかを見分けられない。どちらも `decided` のまま日をまたぐと
-/// 追う先を失うので、区別せずに挙げる。当日は、Issue を起票して `move` するまでの猶予として挙げない。
+/// `decided` に居るのは、エージェントが反映する裁定(おまかせ、または本人が決めて反映するもの)だけのはずで、本人が
+/// 行う作業は `decide` を書かず、Issue を起票して `awaiting` から直接 `move` で `superseded` にする規則だが、行には
+/// 担当の印が無く、機械は本人担当の旧い書き方(`decide` を書いて `move` を忘れた)か、エージェントの反映待ちかを
+/// 見分けられない。どちらも `decided` のまま日をまたぐと追う先を失うので、区別せずに挙げる(説明に両方の直し方を書く)。
+/// 当日は、同じ日のうちに `apply` か `move` するまでの猶予として挙げない。
 /// 終端の行が消えた項目(`skip`)は、机で別に見せるので挙げない。
 pub fn sweep_flags(folded: &Folded, skip: &BTreeSet<String>, today: i64) -> Vec<SweepFlag> {
     let v = Vocabulary::get();
@@ -1123,7 +1125,7 @@ pub fn sweep_flags(folded: &Folded, skip: &BTreeSet<String>, today: i64) -> Vec<
         .map(|i| SweepFlag {
             key: i.key.clone(),
             message: format!(
-                "{decided} のまま {} 日たった。本人担当なら Issue を起票して {} に、反映待ちなら apply に進める",
+                "{decided} のまま {} 日たった。反映待ちなら apply に進める。本人が行う作業なら、Issue を起票して {} に直す(本人担当は decide を書かない運用)",
                 today - i.last_day,
                 v.supersede_event
             ),
@@ -1502,6 +1504,14 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].key, "gmail:t1/m1");
         assert!(f[0].message.contains("1 日たった"), "{}", f[0].message);
+        // 説明は、反映待ちの直し方(apply)と、本人担当の旧い書き方の直し方(Issue を起票して move)の両方を示す。
+        assert!(
+            f[0].message.contains("apply")
+                && f[0].message.contains("move")
+                && f[0].message.contains("Issue"),
+            "{}",
+            f[0].message
+        );
         // move・apply が後にあれば終端なので挙げない。awaiting も挙げない(remind と stale の担当)。
         let moved = [
             decided[0].clone(),

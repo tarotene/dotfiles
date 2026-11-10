@@ -5,7 +5,7 @@
   "initial": "none",
   "states": [
     { "id": "awaiting", "terminal": false, "owner": "person", "shown_by": ["skill:inbox-adjudication", "skill:my-desk"] },
-    { "id": "decided", "terminal": false, "owner": "agent" },
+    { "id": "decided", "terminal": false, "owner": "agent", "owner_detail": "エージェントが反映する裁定(おまかせ、または本人が決めて私が反映するもの)だけが居る状態。本人が行う作業は decided に置かず、decide を書かずに Issue を起票して move(to:<owner/repo#N>)で superseded にする" },
     { "id": "instructed", "terminal": false, "owner": "agent", "owner_detail": "本人が「その他」で自由記述の指示を出した(instruct)。エージェントが指示を読んで、次の出来事を書く" },
     { "id": "closed", "terminal": true },
     { "id": "dismissed", "terminal": true },
