@@ -105,19 +105,8 @@ pub fn context_message(pr_number: &str, fix_out: &str, changed: &[String]) -> St
 
 /// `git status --porcelain` の 1 行を (行そのもの, 現在のパス) にする。リネームは新しい側。
 fn status_entries(project: &Path) -> Vec<(String, String)> {
-    let Ok(out) = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(project)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-    else {
-        return Vec::new();
-    };
-    if !out.status.success() {
-        return Vec::new();
-    }
-    String::from_utf8_lossy(&out.stdout)
+    git_repository::out(project, &["status", "--porcelain"])
+        .unwrap_or_default()
         .lines()
         .filter(|l| l.len() > 3)
         .map(|l| {
@@ -139,16 +128,9 @@ fn stage_changed(project: &Path, before: &[(String, String)]) -> Vec<String> {
     if changed.is_empty() {
         return changed;
     }
-    let ok = Command::new("git")
-        .args(["add", "--"])
-        .args(&changed)
-        .current_dir(project)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+    let mut args: Vec<&str> = vec!["add", "--"];
+    args.extend(changed.iter().map(String::as_str));
+    let ok = git_repository::ok(project, &args);
     if ok {
         changed
     } else {

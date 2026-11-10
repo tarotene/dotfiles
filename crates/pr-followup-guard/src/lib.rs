@@ -333,13 +333,7 @@ pub fn hook(agent: agent_session::Agent, raw: &str) -> Option<agent_session::Out
 
 /// `git -C <dir> rev-parse --is-inside-work-tree` が成功するか。
 fn inside_work_tree(dir: &str) -> bool {
-    std::process::Command::new("git")
-        .args(["-C", dir, "rev-parse", "--is-inside-work-tree"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+    git_repository::ok(dir, &["rev-parse", "--is-inside-work-tree"])
 }
 
 #[cfg(test)]

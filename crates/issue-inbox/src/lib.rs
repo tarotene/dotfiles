@@ -175,20 +175,7 @@ pub fn normalize_remote_url(u: &str) -> String {
 
 /// `git -C <dir> config --get remote.origin.url` を正規化した slug。
 pub fn repo_slug(dir: &str) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["config", "--get", "remote.origin.url"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let url = String::from_utf8_lossy(&out.stdout)
-        .trim_end_matches('\n')
-        .to_string();
+    let url = git_repository::out(dir, &["config", "--get", "remote.origin.url"])?;
     if url.is_empty() {
         return None;
     }

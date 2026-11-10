@@ -84,20 +84,7 @@ pub fn trim_newlines(mut s: String) -> String {
 
 /// origin の owner/repo(git remote だけで判定、gh は呼ばない)。判定できなければ空。
 pub fn resolve_owner_repo(cwd: &Path) -> String {
-    let Ok(out) = Command::new("git")
-        .arg("-C")
-        .arg(cwd)
-        .args(["remote", "get-url", "origin"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-    else {
-        return String::new();
-    };
-    if !out.status.success() {
-        return String::new();
-    }
-    let url = trim_newlines(String::from_utf8_lossy(&out.stdout).into_owned());
+    let url = git_repository::out(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
     let rest = [
         "git@github.com:",
         "ssh://git@github.com/",

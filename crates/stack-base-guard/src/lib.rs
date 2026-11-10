@@ -48,7 +48,6 @@ use github_command::url::parse_url;
 use pr_gate::gates::stack;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 /// 理由を伴って初めて成立する(No-Issue: / No-Attribution: と同型)。
 pub const INDEPENDENT_TAG: &str = "Independent-PR:";
@@ -360,44 +359,14 @@ fn first_row_where(
 
 /// `gh pr list -R <nwo> --state open --limit 100 --json …`。失敗・空は `None`。
 fn open_prs(nwo: &str) -> Option<String> {
-    let out = Command::new("gh")
-        .args([
-            "pr",
-            "list",
-            "-R",
-            nwo,
-            "--state",
-            "open",
-            "--limit",
-            "100",
-            "--json",
-            "number,headRefName,headRefOid,baseRefName",
-        ])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = command_substitution(&String::from_utf8_lossy(&out.stdout));
-    (!s.is_empty()).then_some(s)
+    github_command::exec::open_prs(nwo, "number,headRefName,headRefOid,baseRefName")
+        .filter(|s| !s.is_empty())
 }
 
-/// `gh api repos/<nwo>/stacks` の生 JSON(pr-gate の `gh::stacks` と同じ呼び出し)。
+/// `gh api repos/<nwo>/stacks` の生 JSON(`github_command::exec::stacks`。pr-gate の `gh::stacks` と同じ呼び出し)。
 /// 失敗(認証・ネットワーク・機能撤収のいずれか区別しない)・空は `None`。
 fn stacks(nwo: &str) -> Option<String> {
-    let out = Command::new("gh")
-        .args(["api", &format!("repos/{nwo}/stacks")])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = command_substitution(&String::from_utf8_lossy(&out.stdout));
-    (!s.is_empty()).then_some(s)
+    github_command::exec::stacks(nwo).filter(|s| !s.is_empty())
 }
 
 // ---------------------------------------------------------------------------

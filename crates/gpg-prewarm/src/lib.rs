@@ -125,21 +125,7 @@ impl Prewarm {
 
     /// scope なしの `git -C <probe> config --get <key>`(失敗は空文字)。
     fn global_git_config(probe: &Path, key: &str) -> String {
-        Command::new("git")
-            .arg("-C")
-            .arg(probe)
-            .args(["config", "--get", key])
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .trim_end_matches('\n')
-                    .to_string()
-            })
-            .unwrap_or_default()
+        git_repository::out(probe, &["config", "--get", key]).unwrap_or_default()
     }
 
     fn listing(&self, key: &str) -> String {

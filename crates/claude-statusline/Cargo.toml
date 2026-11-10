@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+git-repository = { version = "0.1.0", path = "../git-repository" }
 herdr-client = { version = "0.1.0", path = "../herdr-client" }
 serde_json = { workspace = true, features = ["raw_value"] }
 

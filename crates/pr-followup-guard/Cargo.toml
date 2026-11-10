@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
 command-inspection = { version = "0.1.0", path = "../command-inspection" }
+git-repository = { version = "0.1.0", path = "../git-repository" }
 github-command = { version = "0.1.0", path = "../github-command" }
 
 [dev-dependencies]

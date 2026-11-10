@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 civil-time = { version = "0.1.0", path = "../civil-time" }
+github-command = { version = "0.1.0", path = "../github-command" }
 process-env = { version = "0.1.0", path = "../process-env" }
 verdict-escalate = { version = "0.1.0", path = "../verdict-escalate" }
 agent-session = { version = "0.1.0", path = "../agent-session" }

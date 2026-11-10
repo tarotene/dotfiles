@@ -24,14 +24,7 @@ fn on_path(name: &str) -> bool {
 }
 
 fn git(project: &Path, args: &[&str]) -> Option<Output> {
-    Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
+    git_repository::run(project, args)
 }
 
 /// bash の `${CLAUDE_PROJECT_DIR:-$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || echo '')}`。

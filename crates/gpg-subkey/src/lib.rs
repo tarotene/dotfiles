@@ -719,14 +719,7 @@ fn hostname() -> String {
 }
 
 fn gh_user_gpg_keys() -> Option<serde_json::Value> {
-    let o = Command::new("gh")
-        .args(["api", "user/gpg_keys"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    let text = String::from_utf8_lossy(&o.stdout);
+    let text = github_command::exec::gh_ok(&["api", "user/gpg_keys"])?;
     if text.trim().is_empty() {
         return None;
     }

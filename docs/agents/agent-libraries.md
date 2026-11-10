@@ -6,7 +6,7 @@
 |---|---|---|
 | agent-session | hook の入口(引数・標準入力・返答の出力)・判定・計画・会話とセッションの記録 | decision, entry, event, gate_event, input, ledger, outcome, plan, reply, transcript, hook |
 | command-inspection | シェルの解析・コマンド範囲・ハッシュ | shell, command, cmd_hash |
-| github-command | GitHub コマンドの引数・本文・本文マーカーの解析、PR・Issue の URL の認識（`url`: `gh-edit-allow` と `codex-plan` が共有する単一正本） | gh, marker, url |
+| github-command | GitHub コマンドの引数・本文・本文マーカーの解析、PR・Issue の URL の認識（`url`: `gh-edit-allow` と `codex-plan` が共有する単一正本）、`gh` の実行（`exec`: stdin を閉じ stderr を捨てる呼び出し。`gh_ok`・`stacks`・`open_prs`） | gh, marker, url, exec |
 | jq-json-compat | jq 互換の JSON 読み取り・表現 | jqfmt, jqparse, raw |
 | process-control | プロセス起動・タイムアウト・実行ファイル探索 | proc |
 | git-repository | Git の状態取得・操作と remote の解決 | git, repo |
@@ -65,6 +65,11 @@ unix 秒と暦日の変換は `civil-time` が持つ。Howard Hinnant の変換�
 `process-control::output_with_timeout` は出力を捕捉し、`status_with_group_timeout` は呼出元の stdio を使う。
 worktree 用の fetch は直下の子を打ち切り、親 checkout 用の fetch はプロセスグループを打ち切る。
 `git-repository` の三つの fetch 入口で、この既存の違いを保持する。
+
+`git -C <dir> …` を静かに(stdin を閉じ、stderr を捨てて)呼ぶ核は `git_repository::{run, raw, out, ok}` が持つ。`out` は末尾の
+`\n` だけを落とし、`raw` はバイト列をそのまま返す(`-z` の出力や、ファイルの内容を読む呼び出しは `raw`)。`gh` の同じ形の呼び出しは
+`github_command::exec`。stdout や stderr を引き継ぐ呼び出し、timeout を持つ呼び出し、stdin を引き継ぐ呼び出し(`feedback-trial`・
+`detect-drift` など)は、挙動が違うので各 crate が持つ。
 対象ブランチ・TTL・通知・失敗後に進む条件は、各 CLI が決める。
 `plan-fresh-gate` は計画の鮮度を判定し、checkout の更新操作を `git-repository` へ委ねる。
 

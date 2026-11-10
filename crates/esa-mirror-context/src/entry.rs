@@ -6,7 +6,6 @@ use agent_session::{Agent, HookEvent, Reply};
 use esa_mirror_context::{
     build_context, config_path, freshness, org_allowed, owner_of, parse_config,
 };
-use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
@@ -47,16 +46,8 @@ fn main() {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let fresh = Command::new("git")
-        .arg("-C")
-        .arg(&cfg.mirror_path)
-        .args(["log", "-1", "--format=%cs %ct"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| freshness(&String::from_utf8_lossy(&o.stdout), now));
+    let fresh = git_repository::out(&cfg.mirror_path, &["log", "-1", "--format=%cs %ct"])
+        .and_then(|s| freshness(&s, now));
     let today = process_control::date("%Y-%m-%d");
     let ctx = build_context(&cfg.mirror_path, fresh.as_ref(), &today);
     print!(

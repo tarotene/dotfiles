@@ -53,16 +53,7 @@ fn is_tarotene_owned(nwo: &str) -> bool {
 /// (`pr-title-check`)を呼ぶ。それがあるリポジトリでは、最下段の PR タイトルが
 /// CI で落ちる前に client で止めてよい。リポジトリ外・解決不能は `false`。
 fn has_pr_title_workflow(project: &Path) -> bool {
-    let top = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(["rev-parse", "--show-toplevel"])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let top = git_repository::out(project, &["rev-parse", "--show-toplevel"]);
     match top {
         Some(top) if !top.is_empty() => Path::new(&top)
             .join(".github/workflows/pr-title.yml")
@@ -152,16 +143,7 @@ pub fn check(call: &ToolCall, claude_project_dir: Option<&str>, allow: bool) -> 
 
 /// `git -C <project> rev-parse --is-inside-work-tree` が成功するか。
 fn is_inside_work_tree(project: &Path) -> bool {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(project)
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    git_repository::ok(project, &["rev-parse", "--is-inside-work-tree"])
 }
 
 /// hook 本体(`main` が標準入力を読んだあとの処理)。`main` と、ルータ(`crates/hook-router`)が

@@ -47,16 +47,12 @@ fn repo_name(project_dir: &str) -> String {
             .map(|b| subst(&String::from_utf8_lossy(&b)))
             .unwrap_or_default();
     }
-    let out = Command::new("git")
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .current_dir(project_dir)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
-    let common = match out {
-        Ok(o) if o.status.success() => subst(&String::from_utf8_lossy(&o.stdout)),
-        _ => String::new(),
-    };
+    let common = git_repository::out(
+        project_dir,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .map(|s| subst(&s))
+    .unwrap_or_default();
     if common.is_empty() {
         return String::new();
     }
