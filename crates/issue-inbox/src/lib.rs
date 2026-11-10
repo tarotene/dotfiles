@@ -17,6 +17,7 @@
 
 pub use jq_json_compat::query as json;
 pub mod codify;
+pub mod collect;
 pub mod shquote;
 pub mod vault;
 mod vault_init;
@@ -970,32 +971,28 @@ fn jsonl_open(project: &str, repo: Option<&str>) -> Vec<(vault::OpenNote, String
 /// `--list-open [--repo R] [--json]`: 状態が open の気づきを、再発の行数の多い順に出す。
 /// vault を宣言していれば vault のノート、無ければ inbox の jsonl(1 行 = 1 回)。
 /// vault の絶対パスは出さない(`note` は vault からの相対パス)。
-fn list_open_cmd(args: &[String]) -> Code {
-    let Flags { repo, json, .. } = split_flags(args);
-    let project = project_dir();
-    let _ = drain_to_vault(&project);
-    let rows: Vec<(vault::OpenNote, &str, Option<String>)> = match open_vault() {
-        Some(v) => {
-            let listed = v
-                .lock()
-                .and_then(|g| vault::list_open(&g, repo))
-                .map_err(|e| e.to_string());
-            match listed {
-                Ok(l) => l.into_iter().map(|n| (n, "vault", None)).collect(),
-                Err(e) => {
-                    eprintln!("issue-inbox: --list-open: {e}");
-                    return 1;
-                }
-            }
-        }
-        None => jsonl_open(&project, repo)
+type OpenRow = (vault::OpenNote, &'static str, Option<String>);
+
+/// open な気づきの行(vault のノート、vault の無い機体では inbox の jsonl)。
+fn open_rows(project: &str, repo: Option<&str>) -> Result<Vec<OpenRow>, String> {
+    let _ = drain_to_vault(project);
+    match open_vault() {
+        Some(v) => v
+            .lock()
+            .and_then(|g| vault::list_open(&g, repo))
+            .map_err(|e| e.to_string())
+            .map(|l| l.into_iter().map(|n| (n, "vault", None)).collect()),
+        None => Ok(jsonl_open(project, repo)
             .into_iter()
             .map(|(n, line)| (n, "jsonl", Some(line)))
-            .collect(),
-    };
-    if json {
-        let arr: Vec<serde_json::Value> = rows
-            .iter()
+            .collect()),
+    }
+}
+
+/// `--list-open --json` の配列。
+fn open_rows_json(rows: &[OpenRow]) -> serde_json::Value {
+    serde_json::Value::Array(
+        rows.iter()
             .map(|(n, source, line)| {
                 serde_json::json!({
                     "title": n.title, "repo": n.repo, "count": n.rows.len(),
@@ -1004,14 +1001,189 @@ fn list_open_cmd(args: &[String]) -> Code {
                     "source": source, "line": line,
                 })
             })
-            .collect();
-        println!("{}", serde_json::Value::Array(arr));
+            .collect(),
+    )
+}
+
+fn list_open_cmd(args: &[String]) -> Code {
+    let Flags { repo, json, .. } = split_flags(args);
+    let project = project_dir();
+    let rows = match open_rows(&project, repo) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("issue-inbox: --list-open: {e}");
+            return 1;
+        }
+    };
+    if json {
+        println!("{}", open_rows_json(&rows));
     } else {
         for (n, _, _) in &rows {
             println!("{}\t{}\t{}", n.rows.len(), n.repo, n.title);
         }
     }
     0
+}
+
+/// 母集団の取得: open な Issue(除外ラベルを除く)。`--limit` と同数が返ったら打ち切りの可能性があるので、
+/// limit を倍にして取り直す(`/my-cleanup` §1)。
+fn fetch_population(repo: &str) -> Result<Vec<collect::Pop>, String> {
+    let mut limit = 500usize;
+    loop {
+        let text = github_command::exec::gh_ok(&[
+            "issue",
+            "list",
+            "-R",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            &limit.to_string(),
+            "--json",
+            "number,title,labels,updatedAt",
+        ])
+        .ok_or_else(|| format!("gh issue list -R {repo} が失敗した(認証・ネットワーク)"))?;
+        let all: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("Issue の一覧を読めない: {e}"))?;
+        if all.as_array().is_some_and(|a| a.len() >= limit) && limit < 8000 {
+            limit *= 2;
+            continue;
+        }
+        return collect::parse_population(&text);
+    }
+}
+
+/// 収集の入力(repo と保存先)を解く。repo は `--repo` か、作業ディレクトリの remote。
+fn collect_target(args: &[String]) -> Result<(String, std::path::PathBuf), String> {
+    let Flags { pos, repo, .. } = split_flags(args);
+    let dir = pos
+        .first()
+        .ok_or("usage: issue-inbox --collect <dir> [--repo R]")?;
+    let project = project_dir();
+    let repo = match repo {
+        Some(r) => r.to_string(),
+        None => default_repo(&project, &inbox_for(&project)),
+    };
+    if repo.is_empty() {
+        return Err("repo を決められない(--repo owner/repo を渡す)".into());
+    }
+    Ok((repo, std::path::PathBuf::from(dir)))
+}
+
+fn write_json(path: &Path, v: &serde_json::Value) -> Result<(), String> {
+    fs::write(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(v).unwrap_or_default()),
+    )
+    .map_err(|e| format!("{} を書けない: {e}", path.display()))
+}
+
+fn read_json(path: &Path) -> Result<serde_json::Value, String> {
+    let text =
+        fs::read_to_string(path).map_err(|e| format!("{} を読めない: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("{} を読めない: {e}", path.display()))
+}
+
+/// `--collect <dir> [--repo R]`: open な Issue と open な気づきを、`<dir>` に保存する。
+fn collect_cmd(args: &[String]) -> Code {
+    let run = || -> Result<(), String> {
+        let (repo, dir) = collect_target(args)?;
+        let pop = fetch_population(&repo)?;
+        let rows = open_rows(&project_dir(), Some(&repo))?;
+        fs::create_dir_all(&dir).map_err(|e| format!("{} を作れない: {e}", dir.display()))?;
+        write_json(
+            &dir.join("population.json"),
+            &collect::population_json(&pop),
+        )?;
+        write_json(&dir.join("findings.json"), &open_rows_json(&rows))?;
+        println!(
+            "collected: {} issue(s), {} finding(s) -> {}",
+            pop.len(),
+            rows.len(),
+            dir.display()
+        );
+        Ok(())
+    };
+    match run() {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("issue-inbox: --collect: {e}");
+            1
+        }
+    }
+}
+
+/// `--collect-diff <dir> [--repo R]`: 取り直して、保存した結果との差分だけを出す。差分が無ければ
+/// `no changes`(終了コード 0)、あれば差分の行(終了コード 1)。保存した結果は書き換えない。
+fn collect_diff_cmd(args: &[String]) -> Code {
+    let run = || -> Result<bool, String> {
+        let (repo, dir) = collect_target(args)?;
+        let old_pop = collect::read_population(&read_json(&dir.join("population.json"))?)?;
+        let old_findings = collect::read_findings(&read_json(&dir.join("findings.json"))?)?;
+        let new_pop = fetch_population(&repo)?;
+        let rows = open_rows(&project_dir(), Some(&repo))?;
+        let new_findings = collect::read_findings(&open_rows_json(&rows))?;
+        let mut lines = collect::diff_population(&old_pop, &new_pop);
+        lines.extend(collect::diff_findings(&old_findings, &new_findings));
+        if lines.is_empty() {
+            println!("no changes");
+            return Ok(false);
+        }
+        for l in lines {
+            println!("{l}");
+        }
+        Ok(true)
+    };
+    match run() {
+        Ok(false) => 0,
+        Ok(true) => 1,
+        Err(e) => {
+            eprintln!("issue-inbox: --collect-diff: {e}");
+            2
+        }
+    }
+}
+
+/// `--adjudication-items <dir> [--rec <file>] [--label L]`: 保存した 2 つの JSON から、裁定ページの
+/// 入力(`<dir>/items.json`)を作る。`build.sh --data <dir>/items.json --out <page.html>` に渡す。
+fn adjudication_items_cmd(args: &[String]) -> Code {
+    let run = || -> Result<std::path::PathBuf, String> {
+        let mut rec_path: Option<&str> = None;
+        let mut label: Option<&str> = None;
+        let mut rest: Vec<String> = Vec::new();
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            match a.as_str() {
+                "--rec" => rec_path = it.next().map(String::as_str),
+                "--label" => label = it.next().map(String::as_str),
+                _ => rest.push(a.clone()),
+            }
+        }
+        let dir =
+            std::path::PathBuf::from(rest.first().ok_or(
+                "usage: issue-inbox --adjudication-items <dir> [--rec <file>] [--label L]",
+            )?);
+        let pop = collect::read_population(&read_json(&dir.join("population.json"))?)?;
+        let findings = collect::read_findings(&read_json(&dir.join("findings.json"))?)?;
+        let recs = rec_path.map(|p| read_json(Path::new(p))).transpose()?;
+        let label = label
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("my-cleanup {}", civil_time::jst_today()));
+        let items = collect::items_json(&label, &pop, &findings, recs.as_ref());
+        let out = dir.join("items.json");
+        write_json(&out, &items)?;
+        Ok(out)
+    };
+    match run() {
+        Ok(out) => {
+            println!("{}", out.display());
+            0
+        }
+        Err(e) => {
+            eprintln!("issue-inbox: --adjudication-items: {e}");
+            1
+        }
+    }
 }
 
 /// `--set-status <title> <fixed|issued|dropped> [url] [--repo R] [--reason R]`: 気づきの状態を変える。
@@ -1240,6 +1412,9 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
                 check_dup(self_path, title, arg(2))
             }
             "--list-open" => list_open_cmd(&args[1..]),
+            "--collect" => collect_cmd(&args[1..]),
+            "--collect-diff" => collect_diff_cmd(&args[1..]),
+            "--adjudication-items" => adjudication_items_cmd(&args[1..]),
             "--sweep" => sweep_cmd(&args[1..]),
             "--set-status" => set_status_cmd(self_path, &args[1..]),
             "--mark-filed" => {

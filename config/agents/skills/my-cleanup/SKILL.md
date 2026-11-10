@@ -39,6 +39,11 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
   ```
   この結果は scratchpad のファイル(例 `population-<取得時刻>.json`)に保存しておく。
   §5 の `ExitPlanMode` の直前に、同じクエリを取り直して差分を取るために使う(#971)。
+  **この収集と差分は 1 コマンドにしてある**: `~/.claude/hooks/issue-inbox --collect <scratchpad のディレクトリ> --repo <owner/repo>`
+  が、除外ラベルを除いた open な Issue(番号・題・更新日時)を `population.json` に、open な気づき(`--list-open --json` と同じ形)を
+  `findings.json` に保存する。`--limit` と同数が返ったら、limit を倍にして取り直す(§1 の規則)のも、このコマンドが行う。本文
+  (`body`)は保存しない(§2 の粗振り分けで本文が要る Issue は、`gh issue view` か、1 回の `gh issue list --json number,body` で
+  読む)。§5 の差分は `--collect-diff`(同じ引数)。#1421。
   **取得件数が `--limit` と一致したら打ち切りの可能性がある**ので、その場合は limit を倍にして再実行する。wrap-up フッター regex(統合形 `Filed from [Claude Code](...) wrap-up inbox` と旧 2 行形式の両方にマッチする `test("Filed from \\[?Claude Code.*wrap-up inbox")`)は廃止しない — マッチする Issue は粗振り分けを経ずに無条件で候補に含める**ヒント**として使う。
 
 ## 2. 粗振り分け(本線・title + body だけで判断)
@@ -217,10 +222,10 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
   起草の再起動や本人への質問が挟まると、Plan の前提が古くなる(実例: 起草エージェントの
   再起動が半日続く間に、別セッションが起票した Issue が母集団に 1 件増え、`ExitPlanMode` を
   本人に差し戻された)。次の 3 つを取り直して、§1 に保存した結果・Plan を書いたときの値と比べる:
-  - open Issue: §1 と同じクエリを取り直し、番号の増減と `updatedAt` の変化を `diff` する
-    (`jq -r '.[] | "\(.number) \(.updatedAt)"' <ファイル> | sort` を両方に掛ける)
-  - 気づき: `--list-open --repo <owner/repo> --json` を取り直し、§1 に保存した結果と `title` と `count` を
-    `diff` する(別のセッションが `--add` した新しい気づきや、再発の増えたものが見つかる)
+  - open Issue と気づき: `~/.claude/hooks/issue-inbox --collect-diff <§1 のディレクトリ> --repo <owner/repo>` が、取り直して、
+    保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった。気づきは `再発 N -> M 回`)。差分が無ければ
+    `no changes`(終了コード 0)、あれば差分の行(終了コード 1)、取得の失敗は終了コード 2。保存した結果は書き換えない。
+    別のセッションが起票した Issue や、`--add` した新しい気づき、再発の増えたものが見つかる
   - default branch の先頭: `git fetch` 後の `origin/<default>` の SHA。Plan を書き始めたときと
     変わっていたら、Plan が根拠にしたファイルの差分を読む(`requirements-inventory` §1a)
   - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。

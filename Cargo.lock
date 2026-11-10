@@ -1028,6 +1028,7 @@ dependencies = [
  "agent-session",
  "civil-time",
  "git-repository",
+ "github-command",
  "jq-json-compat",
  "process-control",
  "process-env",

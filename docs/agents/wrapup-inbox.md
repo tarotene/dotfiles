@@ -127,6 +127,13 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/my-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
+- `--collect <dir> [--repo R]` — `/my-cleanup` の収集(#1421)。除外ラベル(`blocked-by-upstream`)を除いた open な Issue
+  (番号・題・更新日時)を `<dir>/population.json` に、open な気づき(`--list-open --json` と同じ形)を `<dir>/findings.json` に
+  保存する。`gh issue list` が `--limit` と同数を返したら、limit を倍にして取り直す。
+  `--collect-diff <dir> [--repo R]` は、取り直して、保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった、
+  気づきは再発の回数の変化)。差分が無ければ `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗は 2。保存した結果は
+  書き換えない。`--adjudication-items <dir> [--rec <file>] [--label L]` は、保存した 2 つの JSON から、裁定ページの入力
+  (`<dir>/items.json`。`reference/verdict-page/` の `build.sh --data` に渡す)を作る。推奨・根拠は `--rec` で渡す。
 - `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。
