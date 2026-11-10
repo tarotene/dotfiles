@@ -313,6 +313,17 @@
               cargoClippyExtraArgs = "--workspace --all-targets -- --deny warnings";
             }
           );
+          # CI の docs-rust(.github/actions/docs-rust)と同じ条件で API docs を作る:
+          # `cargo doc --no-deps --workspace` を `RUSTDOCFLAGS=-D warnings` で回す。手元の
+          # `cargo doc --document-private-items` は条件が違い、unresolved link の失敗を再現できなかった。
+          doc = craneLib.cargoDoc (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              cargoDocExtraArgs = "--no-deps --workspace";
+              RUSTDOCFLAGS = "-D warnings";
+            }
+          );
           fmt = craneLib.cargoFmt {
             inherit src;
             inherit (commonArgs) pname version;
@@ -507,6 +518,7 @@
           # dependency artifacts」)。ここに名前が無いと、参照する手段が無い。
           dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
+          dotfiles-tools-doc = rust.doc;
           dotfiles-tools-fmt = rust.fmt;
           # ja-polish が呼ぶ llm + llm-gemini。personal identity が dotfiles.jaPolish.enable を
           # 有効にする(home/identities/personal.nix)ので、vega の activationPackage の

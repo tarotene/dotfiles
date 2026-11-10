@@ -56,8 +56,8 @@
       # Plain `pkgs.ghr` is tcnksm/ghr, a GitHub Release uploader. Binary: `ghr`.
       siketyan-ghr
 
-      # Search tools
-      ripgrep
+      # Search tools. ripgrep is installed by programs.ripgrep (below), which also
+      # writes its default arguments.
       fd
 
       # Document conversion. The plan-view hook (home/modules/agents.nix) renders
@@ -405,6 +405,19 @@
   # sources 列(PUBLIC repos only — 同じ PUBLIC/PRIVATE 分離)。
   xdg.configFile."github-audit/routines-auditor-sources.tsv".source =
     ../../config/github-audit/routines-auditor-sources.tsv;
+
+  # ripgrep は既定で隠しディレクトリ(`.github/` など)を読まない。ファイルを移すときの旧パスの
+  # 参照探しで `.github/workflows/ci.yml` の参照を取りこぼし、CI の Escape-hatch dry-run が
+  # 落ちた(2026-11-09)。`--hidden` を既定にし、`.git/` は除く。`.gitignore` の無視は従来どおり効く
+  # (`.claude/` などは除かれたまま)。home-manager が ripgreprc を書き、`RIPGREP_CONFIG_PATH` を
+  # 設定する(新しいシェルから効く)。
+  programs.ripgrep = {
+    enable = true;
+    arguments = [
+      "--hidden"
+      "--glob=!.git/"
+    ];
+  };
 
   # gh-stack 拡張(stacked-pr スキルが使う `gh stack link` の提供元、#124)を
   # 宣言的に管理する。`gh extension install` は ~/.local/share/gh/extensions/
