@@ -11,7 +11,8 @@ description: >-
 
   `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を
   生成する(リポジトリ側に Sphinx の設定を強要しない)。生成する構成には、
-  標準ライブラリの型参照を解決する intersphinx(Python 公式の目録)を含める。生成した conf.py は
+  標準ライブラリの型参照を解決する intersphinx(Python 公式の目録。取得に失敗したときは
+  action に同梱した写し `python-objects.inv`)を含める。生成した conf.py は
   `doctest_global_setup` でパッケージを import する — sphinx.ext.doctest は
   autodoc 対象モジュールを自動 import しないため、これが無いと docstring の
   doctest が NameError で落ちる(fixture で実測)。
@@ -118,7 +119,11 @@ runs:
           # 警告にする。sphinx-apidoc の最小構成は intersphinx を持たないので、
           # 型注釈に標準ライブラリの型を書いただけで strict ビルドが落ちる(2026-10-18、
           # 実リポジトリで 42 件中 36 件がこれ)。Python 公式の目録を引いて解決する。
-          printf '\nextensions.append("sphinx.ext.intersphinx")\nintersphinx_mapping = {"python": ("https://docs.python.org/3", None)}\n' >> "$src/conf.py"
+          # 目録の場所は 2 つ並べる: 先頭の `None` は <URL>/objects.inv。取得に失敗(SSLError など。
+          # 2026-11-08 に fixture が落ちた)したら、action に同梱した写しを使う。Sphinx は場所を順に試し、
+          # あとの場所が成功すれば失敗は警告にならない(-W に引っかからない)。写しは古くなりうるが、
+          # 使うのは URL が取れなかったときだけで、標準ライブラリの型名の解決には十分。
+          printf '\nextensions.append("sphinx.ext.intersphinx")\nintersphinx_mapping = {"python": ("https://docs.python.org/3", (None, "%s/python-objects.inv"))}\n' "$GITHUB_ACTION_PATH" >> "$src/conf.py"
         fi
         site="$PWD/.docs-site"
         rm -rf "$site"
