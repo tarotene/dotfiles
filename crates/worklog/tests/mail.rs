@@ -446,3 +446,74 @@ fn a_late_older_receipt_does_not_supersede_the_newer_one() {
     assert_eq!(open.stdout.lines().count(), 1, "{}", open.stdout);
     assert!(open.stdout.contains("gmail:t1/m2"), "{}", open.stdout);
 }
+
+#[test]
+fn a_send_decision_closes_only_after_confirm_and_instruct_hands_the_item_to_the_agent() {
+    let e = env();
+    ok(&add(&e, 0, "draft: 返信を用意 [gmail:t1/m1]"));
+    // 「その他」の指示は instruct。項目はエージェントの番(instructed)になり、open に出る。
+    ok(&add(&e, 0, "instruct: 来週の予定で返す [gmail:t1/m1]"));
+    let open = run(&e, 0, &["mail", "open"]);
+    ok(&open);
+    assert!(
+        open.stdout.starts_with("instructed\tgmail:t1/m1\t"),
+        "{}",
+        open.stdout
+    );
+    // instructed から instruct はもう書けない。decide は書ける(send の印つき)。
+    rejected(&add(&e, 0, "instruct: もう一度 [gmail:t1/m1]"));
+    // owner:・send: は decide だけ。send:yes は owner:agent と一緒に付ける。
+    rejected(&add(
+        &e,
+        0,
+        "apply: 印は decide だけ [gmail:t1/m1 send:yes]",
+    ));
+    rejected(&add(&e, 0, "decide: send だけ [gmail:t1/m1 send:yes]"));
+    ok(&add(
+        &e,
+        0,
+        "decide: おまかせで送る [gmail:t1/m1 owner:agent send:yes]",
+    ));
+    // confirm の前の apply は、書かずに止める(送信の前に、本人が画面・全文・宛先を見た記録が要る)。
+    let early = add(&e, 0, "apply: 送った [gmail:t1/m1]");
+    rejected(&early);
+    assert!(early.stderr.contains("confirm"), "{}", early.stderr);
+    ok(&add(
+        &e,
+        0,
+        "confirm: 画面・全文・宛先を見て OK [gmail:t1/m1]",
+    ));
+    // 確認は 1 回だけ。続けて apply で閉じる。
+    rejected(&add(&e, 0, "confirm: もう一度 [gmail:t1/m1]"));
+    ok(&add(&e, 0, "apply: 送った [gmail:t1/m1]"));
+    assert!(ledger(&e).contains(r#""state":"closed""#));
+    assert_eq!(run(&e, 0, &["mail", "check"]).code, 0);
+
+    // 送信でない decide(owner:agent だけ、印なし)には confirm を書けず、apply はそのまま通る。
+    ok(&add(&e, 0, "ask: 別の件 [gmail:t2/m1]"));
+    ok(&add(
+        &e,
+        0,
+        "decide: 調べてもらう [gmail:t2/m1 owner:agent]",
+    ));
+    rejected(&add(&e, 0, "confirm: 要らない確認 [gmail:t2/m1]"));
+    ok(&add(&e, 0, "apply: 報告した [gmail:t2/m1]"));
+}
+
+#[test]
+fn an_agent_turn_item_is_reminded_sooner_than_a_person_turn_item() {
+    let e = env();
+    ok(&add(&e, 0, "ask: 本人の番 [gmail:t1/m1]"));
+    ok(&add(&e, 0, "ask: 指示を待つ [gmail:t2/m1]"));
+    ok(&add(&e, 0, "instruct: 調べて [gmail:t2/m1]"));
+    // 3 日たつと、エージェントの番(instructed)だけが再通知される。本人の番は 7 日。
+    let early = run(&e, 3, &["mail", "sweep", "--dry-run"]);
+    ok(&early);
+    assert!(
+        early.stdout.contains("gmail:t2/m1") && !early.stdout.contains("gmail:t1/m1"),
+        "{}",
+        early.stdout
+    );
+    let later = run(&e, 7, &["mail", "sweep", "--dry-run"]);
+    assert!(later.stdout.contains("gmail:t1/m1"), "{}", later.stdout);
+}

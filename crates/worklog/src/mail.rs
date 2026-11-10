@@ -9,7 +9,8 @@
 //! - 09:12 [mail] ask: UNISEC 英語コースの募集 [gmail:19a2b/19a2c due:2026-11-28]
 //! ```
 //!
-//! 出典の印は `[<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD] [to:<移し先>]]`。鍵は
+//! 出典の印は `[<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD] [to:<移し先>] [owner:me|agent] [send:yes]]`
+//! (`owner:`・`send:` は `decide` だけ)。鍵は
 //! 「スレッド + その項目を開いた受信」で、同じ受信を読み直しても項目は増えない。
 //! `[none]` は件数をまとめた行(`read` だけ)で、項目にならない。
 
@@ -64,6 +65,10 @@ pub struct Vocabulary {
     /// 裁定済みで反映がまだの状態(`decide` の遷移先)。
     pub decided_state: String,
     pub remind_after_days: i64,
+    /// エージェントの番の項目の remind の周期(本人の番の `remind_after_days` より短い。性質 S9)。
+    pub agent_remind_after_days: i64,
+    /// 語彙で `owner` が `agent` の未了の状態(エージェントの番。`decided`・`instructed`)。
+    pub agent_states: Vec<String>,
     pub stale_after_remind_days: i64,
     pub remind_before_due_days: i64,
 }
@@ -171,6 +176,13 @@ impl Vocabulary {
             .ok_or("出来事 decide が無い")?
             .to
             .clone();
+        let agent_states = v["states"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|s| s["owner"] == "agent" && s["terminal"] == false)
+            .filter_map(|s| s["id"].as_str().map(str::to_string))
+            .collect();
         Ok(Vocabulary {
             events,
             states,
@@ -178,6 +190,8 @@ impl Vocabulary {
             supersede_state,
             decided_state,
             remind_after_days: t("remind_after_days")?,
+            agent_remind_after_days: t("agent_remind_after_days")?,
+            agent_states,
             stale_after_remind_days: t("stale_after_remind_days")?,
             remind_before_due_days: t("remind_before_due_days")?,
         })
@@ -244,6 +258,10 @@ pub struct Tag {
     pub item: Option<ItemId>,
     pub due: Option<i64>,
     pub to: Option<Dest>,
+    /// `decide` の担い手(`me` | `agent`)。印の無い旧い行は `None`(エージェントの番として扱う)。
+    pub owner: Option<String>,
+    /// `decide` が、エージェントによる外部への送信であること(`owner:agent` のとき)。`apply` の前に `confirm` が要る。
+    pub send: bool,
 }
 
 impl Tag {
@@ -274,6 +292,12 @@ fn format_tag(t: &Tag) -> String {
     if let Some(to) = &t.to {
         s.push_str(&format!(" to:{to}"));
     }
+    if let Some(o) = &t.owner {
+        s.push_str(&format!(" owner:{o}"));
+    }
+    if t.send {
+        s.push_str(" send:yes");
+    }
     s
 }
 
@@ -284,7 +308,7 @@ pub struct MailLine {
     pub tag: Tag,
 }
 
-const FORM: &str = "`<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD] [to:<移し先>]]`";
+const FORM: &str = "`<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD] [to:<移し先>] [owner:me|agent] [send:yes]]`";
 
 fn id_chars_ok(s: &str) -> bool {
     !s.is_empty()
@@ -379,7 +403,7 @@ fn parse_tag(tag: &str) -> Result<Tag, String> {
         }
         _ => {}
     }
-    let (mut due, mut to) = (None, None);
+    let (mut due, mut to, mut owner, mut send) = (None, None, None, false);
     for t in tokens {
         if let Some(d) = t.strip_prefix("due:") {
             if due
@@ -392,20 +416,38 @@ fn parse_tag(tag: &str) -> Result<Tag, String> {
             if to.replace(parse_dest(x)?).is_some() {
                 return Err("to: は 1 つだけ".into());
             }
+        } else if let Some(x) = t.strip_prefix("owner:") {
+            if !["me", "agent"].contains(&x) {
+                return Err(format!("owner: は me か agent: '{x}'"));
+            }
+            if owner.replace(x.to_string()).is_some() {
+                return Err("owner: は 1 つだけ".into());
+            }
+        } else if t == "send:yes" {
+            if std::mem::replace(&mut send, true) {
+                return Err("send: は 1 つだけ".into());
+            }
         } else {
             return Err(format!(
-                "出典の印に未知の項目: '{t}'(使えるのは due: と to:)"
+                "出典の印に未知の項目: '{t}'(使えるのは due:・to:・owner:・send:yes)"
             ));
         }
     }
-    if channel == "none" && (due.is_some() || to.is_some()) {
-        return Err("媒体 none には due: も to: も付けない".into());
+    if channel == "none" && (due.is_some() || to.is_some() || owner.is_some() || send) {
+        return Err("媒体 none には due:・to:・owner:・send: を付けない".into());
+    }
+    if send && owner.as_deref() != Some("agent") {
+        return Err(
+            "send:yes は owner:agent と一緒に付ける(エージェントによる外部への送信)".into(),
+        );
     }
     Ok(Tag {
         channel: channel.to_string(),
         item,
         due,
         to,
+        owner,
+        send,
     })
 }
 
@@ -456,6 +498,9 @@ pub fn parse_mail(text: &str) -> Result<MailLine, String> {
         (e, Some(_)) if e != "move" => return Err("to: を付けられるのは move だけ".into()),
         _ => {}
     }
+    if event != "decide" && (tag.owner.is_some() || tag.send) {
+        return Err("owner:・send: を付けられるのは decide だけ".into());
+    }
     let _ = def;
     Ok(MailLine {
         event: event.to_string(),
@@ -498,6 +543,12 @@ pub struct Item {
     pub summary: String,
     pub channel: String,
     pub id: ItemId,
+    /// 最後の `decide` の担い手(印の無い旧い行は `None`)。
+    pub owner: Option<String>,
+    /// 最後の `decide` が、エージェントによる外部への送信だった。
+    pub send: bool,
+    /// その `decide` のあとに `confirm` があった。
+    pub confirmed: bool,
 }
 
 impl Item {
@@ -507,7 +558,21 @@ impl Item {
             item: Some(self.id.clone()),
             due: self.due,
             to: None,
+            owner: None,
+            send: false,
         }
+    }
+
+    /// エージェントの番か。語彙で `owner` が `agent` の状態(`decided`・`instructed`)。ただし `decide` の担い手が
+    /// 本人(`owner:me`)なら本人の番。
+    pub fn is_agent_turn(&self, v: &Vocabulary) -> bool {
+        v.agent_states.contains(&self.state)
+            && !(self.state == v.decided_state && self.owner.as_deref() == Some("me"))
+    }
+
+    /// 送信の裁定のあとで、`confirm` がまだ無い(`apply` を書けない。性質 S8)。
+    pub fn awaits_confirm(&self, v: &Vocabulary) -> bool {
+        self.state == v.decided_state && self.send && !self.confirmed
     }
 }
 
@@ -594,6 +659,9 @@ pub fn fold(events: &[Ev]) -> Folded {
                     summary: ev.line.summary.clone(),
                     channel: ev.line.tag.channel.clone(),
                     id: ev.line.tag.item.clone().expect("key があれば item がある"),
+                    owner: None,
+                    send: false,
+                    confirmed: false,
                 };
                 // 新しい受信を `read`・`draft`・`ask` で開くと、同じスレッドの古い未了は移したとみなす
                 // (`read` などで即座に終端になる受信でも同じ。未記録の鍵への `pass` は含めない: 本人が新しい
@@ -644,6 +712,15 @@ pub fn fold(events: &[Ev]) -> Folded {
                     }
                     if ev.line.tag.due.is_some() {
                         item.due = ev.line.tag.due;
+                    }
+                    match def.id.as_str() {
+                        "decide" => {
+                            item.owner = ev.line.tag.owner.clone();
+                            item.send = ev.line.tag.send;
+                            item.confirmed = false;
+                        }
+                        "confirm" => item.confirmed = true,
+                        _ => {}
                     }
                 } else if !def.is_pure_opening() {
                     out.discrepancies.push(Discrepancy {
@@ -877,6 +954,18 @@ pub fn add_mail(
                 }
                 return Err(format!("{key} は {} で、{} は書けない", item.state, def.id));
             }
+            // 外部への送信の裁定(`decide` の send:yes)は、本人が送信直前の画面・全文・宛先を見て `confirm` を
+            // 返したあとにしか `apply` で閉じない(性質 S8)。`confirm` は、その裁定のあとにだけ書く。
+            if def.id == "apply" && item.awaits_confirm(vocab) {
+                return Err(format!(
+                    "{key} は送信の裁定(send:yes)で、confirm がまだ無い。送信直前の画面・全文・宛先を本人に見せて OK を得て、confirm を書いてから apply する"
+                ));
+            }
+            if def.id == "confirm" && !(item.send && !item.confirmed) {
+                return Err(format!(
+                    "{key} に confirm を書けるのは、send:yes の decide のあと、まだ確認していないときだけ"
+                ));
+            }
         }
         None => {
             if !def.from.iter().any(|f| f == "none") {
@@ -960,7 +1049,8 @@ pub struct SweepAction {
 
 /// 期限と経過日数から、今日書く remind / stale を決める(純関数)。
 ///
-/// - remind まだ: 最後の出来事から `remind_after_days` 日たった、または期限の `remind_before_due_days` 日前。
+/// - remind まだ: 最後の出来事から `remind_after_days`(エージェントの番の項目は `agent_remind_after_days`)日たった、
+///   または期限の `remind_before_due_days` 日前。
 /// - remind 済み: remind が今日より前で、さらに `stale_after_remind_days` 日たった、または期限を過ぎた。
 ///
 /// stale の前には必ず(実質的な出来事より後の、今日より前の)remind がある。
@@ -976,8 +1066,14 @@ pub fn sweep_plan(folded: &Folded, skip: &BTreeSet<String>, today: i64) -> Vec<S
             .due
             .is_some_and(|d| today >= d - v.remind_before_due_days);
         let past_due = item.due.is_some_and(|d| today > d);
+        // エージェントの番の項目は、本人の番より短い周期で再通知する(性質 S9)。
+        let after = if item.is_agent_turn(v) {
+            v.agent_remind_after_days
+        } else {
+            v.remind_after_days
+        };
         let event = match item.remind_day {
-            None if today - item.last_day >= v.remind_after_days || near_due => "remind",
+            None if today - item.last_day >= after || near_due => "remind",
             Some(r) if r < today && (today - r >= v.stale_after_remind_days || past_due) => "stale",
             _ => continue,
         };
@@ -1086,7 +1182,7 @@ mod tests {
         let v = Vocabulary::get();
         assert_eq!(
             v.event_names(),
-            "read|draft|ask|decide|apply|pass|remind|move|stale"
+            "read|draft|ask|instruct|decide|confirm|apply|pass|remind|move|stale"
         );
         assert_eq!(
             (
@@ -1096,16 +1192,19 @@ mod tests {
             ),
             (7, 7, 3)
         );
+        // エージェントの番の remind は、本人の番より短い周期(性質 S9)。エージェントの番は decided と instructed。
+        assert!(v.agent_remind_after_days < v.remind_after_days);
+        assert_eq!(v.agent_states, ["decided", "instructed"]);
         for s in ["closed", "dismissed", "stale", "superseded"] {
             assert!(v.is_terminal(s), "{s}");
         }
-        for s in ["awaiting", "decided"] {
+        for s in ["awaiting", "decided", "instructed"] {
             assert!(!v.is_terminal(s), "{s}");
         }
         assert!(
             v.event("remind").unwrap().by == "machine" && v.event("stale").unwrap().by == "machine"
         );
-        assert!(Vocabulary::parse(r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":["same"],"by":"agent"}],"timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}}"#).is_err());
+        assert!(Vocabulary::parse(r#"{"states":[],"events":[{"id":"x","from":["nope"],"to":["same"],"by":"agent"}],"timers":{"remind_after_days":1,"agent_remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}}"#).is_err());
         // 開く出来事の印と、暗黙の移し替え(supersede_on_open)は語彙から読む。
         let o = v.event("read").unwrap();
         assert!(o.opens && v.event("draft").unwrap().opens && v.event("ask").unwrap().opens);
@@ -1122,7 +1221,7 @@ mod tests {
             ("move", "superseded", "decided")
         );
         // `to` は配列(旧い形の文字列、複数要素は読まない)。
-        let ok_timers = r#""timers":{"remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}"#;
+        let ok_timers = r#""timers":{"remind_after_days":1,"agent_remind_after_days":1,"stale_after_remind_days":1,"remind_before_due_days":1}"#;
         let with_to = |to: &str| {
             format!(
                 r#"{{"states":[{{"id":"a","terminal":false}},{{"id":"t","terminal":true}}],"events":[{{"id":"x","from":["none"],"to":{to},"by":"agent","opens":true}},{{"id":"decide","from":["a"],"to":["a"],"by":"person"}},{{"id":"m","from":["a"],"to":["t"],"by":"agent"}}],"supersede_on_open":{{"event":"m"}},{ok_timers}}}"#
@@ -1167,11 +1266,128 @@ mod tests {
             "apply: none は read だけ [none]",
             "read: none に印は付けない [none due:2026-11-01]",
             "ask: 未知の項目 [gmail:t/m x:1]",
+            "ask: owner は decide だけ [gmail:t/m owner:agent]",
+            "apply: send は decide だけ [gmail:t/m send:yes]",
+            "decide: owner が閉語彙の外 [gmail:t/m owner:you]",
+            "decide: send は owner:agent と一緒 [gmail:t/m send:yes]",
+            "decide: send は owner:agent と一緒 [gmail:t/m owner:me send:yes]",
+            "decide: owner は 1 つだけ [gmail:t/m owner:me owner:agent]",
+            "decide: send は 1 つだけ [gmail:t/m owner:agent send:yes send:yes]",
         ] {
             assert!(parse_mail(bad).is_err(), "{bad}");
         }
         let long = "あ".repeat(MAIL_SUMMARY_MAX_CHARS + 1);
         assert!(parse_mail(&format!("ask: {long} [gmail:t/m]")).is_err());
+        // decide の印: 誰がやるか(owner:)と、エージェントによる外部への送信か(send:yes)。印の無い旧い行も読める。
+        let old = parse_mail("decide: 旧い書き方 [gmail:t/m]").unwrap();
+        assert_eq!((old.tag.owner.as_deref(), old.tag.send), (None, false));
+        let me = parse_mail("decide: 自分で送る [gmail:t/m owner:me]").unwrap();
+        assert_eq!((me.tag.owner.as_deref(), me.tag.send), (Some("me"), false));
+        let send = parse_mail("decide: おまかせで送る [gmail:t/m owner:agent send:yes]").unwrap();
+        assert_eq!(
+            (send.tag.owner.as_deref(), send.tag.send),
+            (Some("agent"), true)
+        );
+        assert_eq!(
+            format_tag(&send.tag),
+            "gmail:t/m owner:agent send:yes",
+            "書き戻しても同じ形"
+        );
+        assert!(parse_mail("instruct: 来週の予定で返す [gmail:t/m]").is_ok());
+        assert!(parse_mail("confirm: 画面と全文と宛先を見て OK [gmail:t/m]").is_ok());
+    }
+
+    #[test]
+    fn instruct_hands_the_item_to_the_agent_and_confirm_follows_a_send_decision() {
+        let v = Vocabulary::get();
+        let f = fold(&[
+            ev(D, "draft: 返信を用意 [gmail:t1/m1]"),
+            ev(D, "instruct: 来週の予定で返す [gmail:t1/m1]"),
+            ev(
+                D + 1,
+                "decide: おまかせで送る [gmail:t1/m1 owner:agent send:yes]",
+            ),
+        ]);
+        let item = &f.items["gmail:t1/m1"];
+        assert_eq!(item.state, "decided");
+        assert!(f.discrepancies.is_empty(), "{:?}", f.discrepancies);
+        assert!(item.send && !item.confirmed && item.awaits_confirm(v));
+        assert!(item.is_agent_turn(v));
+        let f2 = fold(&[
+            ev(D, "draft: 返信を用意 [gmail:t1/m1]"),
+            ev(
+                D,
+                "decide: おまかせで送る [gmail:t1/m1 owner:agent send:yes]",
+            ),
+            ev(D, "confirm: 画面・全文・宛先を見て OK [gmail:t1/m1]"),
+        ]);
+        let item2 = &f2.items["gmail:t1/m1"];
+        assert!(
+            item2.confirmed && !item2.awaits_confirm(v),
+            "confirm のあとは apply できる"
+        );
+        // 新しい decide は確認を数え直す。
+        let f3 = fold(&[
+            ev(D, "draft: 返信を用意 [gmail:t1/m1]"),
+            ev(D, "instruct: 直して [gmail:t1/m1]"),
+            ev(D, "decide: 送る [gmail:t1/m1 owner:agent send:yes]"),
+            ev(D, "confirm: OK [gmail:t1/m1]"),
+            ev(D, "apply: 送った [gmail:t1/m1]"),
+        ]);
+        assert_eq!(state_of(&f3, "gmail:t1/m1"), "closed");
+        // instructed から move・pass・apply で出られ、awaiting 以外からは instruct できない(食い違い)。
+        let f4 = fold(&[
+            ev(D, "draft: a [gmail:t1/m1]"),
+            ev(D, "instruct: 調べて [gmail:t1/m1]"),
+            ev(D, "instruct: もう一度 [gmail:t1/m1]"),
+            ev(D, "move: Issue へ [gmail:t1/m1 to:example/repo#1]"),
+        ]);
+        assert_eq!(state_of(&f4, "gmail:t1/m1"), "superseded");
+        assert_eq!(f4.discrepancies.len(), 1, "{:?}", f4.discrepancies);
+        // owner:me の decided は本人の番、印の無い旧い decided とエージェントの instructed はエージェントの番。
+        let turn = |evs: &[Ev]| fold(evs).items["gmail:t1/m1"].is_agent_turn(v);
+        assert!(!turn(&[
+            ev(D, "ask: a [gmail:t1/m1]"),
+            ev(D, "decide: 自分で [gmail:t1/m1 owner:me]")
+        ]));
+        assert!(turn(&[
+            ev(D, "ask: a [gmail:t1/m1]"),
+            ev(D, "decide: 旧い [gmail:t1/m1]")
+        ]));
+        assert!(turn(&[
+            ev(D, "ask: a [gmail:t1/m1]"),
+            ev(D, "instruct: 調べて [gmail:t1/m1]")
+        ]));
+        assert!(!turn(&[ev(D, "ask: a [gmail:t1/m1]")]));
+    }
+
+    #[test]
+    fn sweep_reminds_an_agent_turn_item_sooner_than_a_person_turn_item() {
+        let plan = |evs: &[Ev], today| sweep_plan(&fold(evs), &BTreeSet::new(), today);
+        let (a, d) = (
+            [
+                ev(D, "ask: a [gmail:t1/m1]"),
+                ev(D, "instruct: 調べて [gmail:t1/m1]"),
+            ],
+            [ev(D, "ask: a [gmail:t1/m1]")],
+        );
+        // 本人の番(awaiting)は 7 日、エージェントの番(instructed)は 3 日。
+        assert!(plan(&d, D + 3).is_empty() && plan(&d, D + 6).is_empty());
+        assert_eq!(plan(&d, D + 7)[0].event, "remind");
+        assert!(plan(&a, D + 2).is_empty());
+        assert_eq!(plan(&a, D + 3)[0].event, "remind");
+        // decide の担い手が本人(owner:me)なら、decided でも本人の番の周期。
+        let me = [
+            ev(D, "ask: a [gmail:t1/m1]"),
+            ev(D, "decide: 自分で [gmail:t1/m1 owner:me]"),
+        ];
+        assert!(plan(&me, D + 3).is_empty() && plan(&me, D + 6).is_empty());
+        assert_eq!(plan(&me, D + 7)[0].event, "remind");
+        let ag = [
+            ev(D, "ask: a [gmail:t1/m1]"),
+            ev(D, "decide: おまかせ [gmail:t1/m1 owner:agent]"),
+        ];
+        assert_eq!(plan(&ag, D + 3)[0].event, "remind");
     }
 
     #[test]
@@ -1256,8 +1472,9 @@ mod tests {
             ev(D + 7, "remind: 方針 [gmail:t1/m1]"),
             ev(D + 8, "decide: やる [gmail:t1/m1]"),
         ];
-        assert!(plan(&decided, D + 14).is_empty());
-        assert_eq!(plan(&decided, D + 15)[0].event, "remind");
+        // 印の無い decide はエージェントの番で、周期は 3 日(D + 8 から数える)。
+        assert!(plan(&decided, D + 10).is_empty());
+        assert_eq!(plan(&decided, D + 11)[0].event, "remind");
     }
 
     #[test]

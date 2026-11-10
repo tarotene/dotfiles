@@ -13,7 +13,10 @@
 //   エージェント(agent)  メールを読む。開く出来事(read/draft/ask)と apply/move を書く。
 //                          新しい受信がスレッドの未裁定の項目の後に来たら、先にその項目の move を書き、
 //                          そのあとで新しい項目を開く。draft は行の記録と Gmail の下書きの作成の 2 手。
-//   本人(person)         decide/pass を書く。答えないこともある(公平性の仮定を置かない)。
+//   本人(person)         decide/instruct/confirm/pass を書く。答えないこともある(公平性の仮定を置かない)。
+//                          decide は誰がやるか(owner: me | agent)と、エージェントによる外部への送信か(send)を持つ。
+//                          instruct は「その他」の自由記述の指示(awaiting → instructed。エージェントの番)。
+//                          confirm は、送信の直前の画面・全文・宛先を見て OK を返した記録(send の decide のあと)。
 //                          Gmail の下書きを消す・送る。ノートの行を 1 本だけ消す(未裁定の行、終端の行)。
 //   掃引(sweep)          remind/stale だけを書く。規則が許す前には書かない。
 // 機体は 2 つ(TWO_MACHINES)。それぞれ vault のノートの行を自分の写し(views)に持ち、
@@ -50,13 +53,16 @@ module lifecycle {
   // ---------------------------------------------------------------- 型
   // k: 項目、ev: 出来事、d: 書いた日、due: 期日(-1 = 無し、開く行だけ)、
   // bl: 開く行の書き手が、古い未裁定の項目を見ていなかった(ゴースト)、
-  // chk: stale の行の書き手が、その時点で「最後の非 remind のあとに、今日より前の日の remind がある」を満たしていた(ゴースト)
-  type Line = { k: int, ev: str, d: int, due: int, bl: bool, chk: bool }
+  // ow: decide の行の担い手(""(旧い行)| "me" | "agent")、snd: decide が、エージェントによる外部への送信(owner = agent)
+  // chk: stale の行の書き手が、その時点で「最後の非 remind のあとに、今日より前の日の remind がある」を満たしていた(ゴースト)。
+  //      apply の行の書き手が、その時点で「送信の裁定なら、confirm のあとだった」を満たしていた(ゴースト)
+  type Line = { k: int, ev: str, d: int, due: int, bl: bool, chk: bool, ow: str, snd: bool }
   type Rc = { arr: bool, kind: str, due: int }
   type Ag = { pk: int, mode: str }
   // st: 状態、terms: 終端へ入った回数、disc: 食い違いの数、L: 最後の非 remind の日、
-  // hasR/R: 最後の非 remind のあとの remind とその日、due: 期日
-  type Acc = { st: str, terms: int, disc: int, L: int, hasR: bool, R: int, due: int }
+  // hasR/R: 最後の非 remind のあとの remind とその日、due: 期日、
+  // ow/snd: 最後の decide の担い手と送信の印、conf: その decide のあとに confirm があった
+  type Acc = { st: str, terms: int, disc: int, L: int, hasR: bool, R: int, due: int, ow: str, snd: bool, conf: bool }
   type Fo = { a: int -> Acc, badImp: bool }
   type Sys = {
     views: int -> List[Line],     // 機体ごとの、ノートの行の写し
@@ -92,6 +98,9 @@ module lifecycle {
   pure val KINDS = Set("read", "draft", "ask").filter(x =>
     (x == "read" and ALLOW_READ) or (x == "draft" and ALLOW_DRAFT) or (x == "ask" and ALLOW_ASK))
   pure val DELTAS = if (WITH_DUE) Set(-1, 1, 2) else Set(-1)
+  // decide の担い手の選び方。0 = 印の無い旧い行、1 = owner: me、2 = owner: agent、3 = owner: agent と send
+  pure val OWNER_CODES = if (WITH_OWNER) Set(1, 2, 3) else Set(0)
+  pure def ownerOf(c: int): str = if (c == 1) "me" else if (c >= 2) "agent" else ""
 
   pure def thr(k: int): int = if (k >= 2) 1 else 0
   pure def prevK(k: int): int = if (k > 0) k - 1 else 0
@@ -99,12 +108,14 @@ module lifecycle {
   pure val noLines: List[Line] = []
   pure val noRc: Rc = { arr: false, kind: "", due: -1 }
   pure val idleAg: Ag = { pk: -1, mode: "" }
-  pure val accInit: Acc = { st: INITIAL, terms: 0, disc: 0, L: 0, hasR: false, R: 0, due: -1 }
+  pure val accInit: Acc = { st: INITIAL, terms: 0, disc: 0, L: 0, hasR: false, R: 0, due: -1, ow: "", snd: false, conf: false }
   pure val foInit: Fo = { a: KEYS.mapBy(k => accInit), badImp: false }
 
   // ---------------------------------------------------------------- 畳み込み(語彙が正本)
   pure def isTerm(st: str): bool = TERMINAL.contains(st)
   pure def isUnres(st: str): bool = UNRESOLVED.contains(st)
+  // エージェントの番: 語彙で owner が agent の状態。ただし decide の担い手が本人(owner: me)なら本人の番
+  pure def agentTurn(x: Acc): bool = AGENT_STATES.contains(x.st) and not(x.st == "decided" and x.ow == "me")
 
   // 語彙で、状態 st から出来事 ev で行き着く状態。無ければ ""
   pure def target(ev: str, st: str): str = {
@@ -138,6 +149,9 @@ module lifecycle {
         hasR: isRem,
         R: if (isRem) l.d else x.R,
         due: if (seenKey) x.due else l.due,
+        ow: if (l.ev == "decide") l.ow else x.ow,
+        snd: if (l.ev == "decide") l.snd else x.snd,
+        conf: if (l.ev == "decide") false else if (l.ev == "confirm") true else x.conf,
       }
       else { ...x, disc: x.disc + 1 }
     // 新しく開いた項目と、同じスレッドの項目との暗黙の supersede。
@@ -179,7 +193,9 @@ module lifecycle {
     KEYS.filter(j => thr(j) == thr(k) and j < k and isUnres(stOf(m, j)) and not(flagged(m).contains(j)))
 
   pure def mkLine(k: int, ev: str, d: int, due: int, bl: bool, chk: bool): Line =
-    { k: k, ev: ev, d: d, due: due, bl: bl, chk: chk }
+    { k: k, ev: ev, d: d, due: due, bl: bl, chk: chk, ow: "", snd: false }
+  pure def decideLine(k: int, d: int, c: int): Line =
+    { k: k, ev: "decide", d: d, due: -1, bl: true, chk: true, ow: ownerOf(c), snd: c == 3 }
 
   // ---------------------------------------------------------------- 書き込みの部品
   pure def addLine(x: Sys, m: int, l: Line): Sys = {
@@ -381,20 +397,40 @@ module lifecycle {
     isUnres(stOf(m, k)), not(flagged(m).contains(k)),
     commit({ ...s, gm: s.gm.set(k, "exists") }, Set(), false),
   }
-  // 決定を実行する、または本人が下書きを送ったのを見て閉じる
+  // 決定を実行する、指示を読んで済ませる、または本人が下書きを送ったのを見て閉じる。
+  // 送信の裁定(send)は、confirm のあとにしか閉じない(CONFIRM_GATE)。chk は、その時点で満たしていたか(S8)
+  def sendOk(m: int, k: int): bool = not(fm(m).a.get(k).snd) or fm(m).a.get(k).conf
   action agentApply(m: int, k: int): bool = all {
     MACH.contains(m), idle(m), isUnres(stOf(m, k)), not(flagged(m).contains(k)),
-    stOf(m, k) == "decided" or s.gm.get(k) == "sent",
-    commit(addLine(s, m, mkLine(k, "apply", s.today, -1, true, true)),
+    stOf(m, k) == "decided" or stOf(m, k) == "instructed" or s.gm.get(k) == "sent",
+    not(CONFIRM_GATE) or sendOk(m, k),
+    commit(addLine(s, m, mkLine(k, "apply", s.today, -1, true, sendOk(m, k))),
            Set({ ev: "apply", from: stOf(m, k), to: "closed", by: "agent" }), false),
   }
 
   // ---------------------------------------------------------------- 本人
-  action personDecide(m: int, k: int): bool = all {
-    CAN_DECIDE, MACH.contains(m), s.ops < MAX_PERSON,
+  action personDecide(m: int, k: int): bool = {
+    nondet oc = OWNER_CODES.oneOf()
+    all {
+      CAN_DECIDE, MACH.contains(m), s.ops < MAX_PERSON,
+      stOf(m, k) == "awaiting" or stOf(m, k) == "instructed", not(flagged(m).contains(k)),
+      commit({ ...addLine(s, m, decideLine(k, s.today, oc)), ops: s.ops + 1 },
+             Set({ ev: "decide", from: stOf(m, k), to: "decided", by: "person" }), false),
+    }
+  }
+  // 「その他」の自由記述の指示。エージェントの番に移る
+  action personInstruct(m: int, k: int): bool = all {
+    CAN_INSTRUCT, MACH.contains(m), s.ops < MAX_PERSON,
     stOf(m, k) == "awaiting", not(flagged(m).contains(k)),
-    commit({ ...addLine(s, m, mkLine(k, "decide", s.today, -1, true, true)), ops: s.ops + 1 },
-           Set({ ev: "decide", from: "awaiting", to: "decided", by: "person" }), false),
+    commit({ ...addLine(s, m, mkLine(k, "instruct", s.today, -1, true, true)), ops: s.ops + 1 },
+           Set({ ev: "instruct", from: "awaiting", to: "instructed", by: "person" }), false),
+  }
+  // 送信の裁定(send)に、送信直前の画面・全文・宛先を見て OK を返す
+  action personConfirm(m: int, k: int): bool = all {
+    WITH_OWNER, MACH.contains(m), s.ops < MAX_PERSON,
+    stOf(m, k) == "decided", fm(m).a.get(k).snd, not(fm(m).a.get(k).conf), not(flagged(m).contains(k)),
+    commit({ ...addLine(s, m, mkLine(k, "confirm", s.today, -1, true, true)), ops: s.ops + 1 },
+           Set({ ev: "confirm", from: "decided", to: "decided", by: "person" }), false),
   }
   action personPass(m: int, k: int): bool = all {
     CAN_PASS, MACH.contains(m), s.ops < MAX_PERSON, s.rc.get(k).arr,
@@ -435,10 +471,12 @@ module lifecycle {
 
   // ---------------------------------------------------------------- 掃引(remind / stale だけ)
   // R: 最後の非 remind のあとの remind の日。期日 D があれば、その 3 日前(BEFORE_DUE)から remind できる
+  // エージェントの番の項目は、本人の番より短い周期で remind する(OWNER_PERIOD)
+  def remindAfter(x: Acc): int = if (OWNER_PERIOD and agentTurn(x)) REMIND_AFTER_AGENT else REMIND_AFTER
   def remindOk(m: int, k: int): bool = {
     val x = fm(m).a.get(k)
     isUnres(x.st) and not(x.hasR) and
-    (s.today - x.L >= REMIND_AFTER or (x.due >= 0 and s.today >= x.due - BEFORE_DUE))
+    (s.today - x.L >= remindAfter(x) or (x.due >= 0 and s.today >= x.due - BEFORE_DUE))
   }
   // remind が既にあり、それが今日より前の日で、remind から STALE_AFTER 日経つか期日を過ぎている
   def staleOk(m: int, k: int): bool = {
@@ -476,7 +514,8 @@ module lifecycle {
     nondet m = MACH.oneOf()
     nondet k = KEYS.oneOf()
     any { agentOpen(m, k), redraft(m, k), agentApply(m, k), sweepRemind(m, k), sweepStale(m, k),
-          ledgerAppend(m, k), ledgerCrash(m, k), personDecide(m, k), personPass(m, k) }
+          ledgerAppend(m, k), ledgerCrash(m, k), personDecide(m, k), personPass(m, k),
+          personInstruct(m, k), personConfirm(m, k) }
   }
   action stepMachine = {
     nondet m = MACH.oneOf()
@@ -510,10 +549,18 @@ module lifecycle {
     flagged(m) == s.wrote.get(m).filter(k => not(hasTerm(s.views.get(m), k))))
   // S7: 拾った項目を、ふつうの未裁定の項目として remind しない
   val s7b = not(s.badRem)
+  // S8: 送信の裁定(send)の apply の行は、書いた時点で confirm のあとだった(外部への送信の前に、本人が確かめた)
+  val s8 = MACH.forall(m => s.views.get(m).select(l => l.ev == "apply" and not(l.chk)).length() == 0)
+  // S9: エージェントの番の項目で、最後の非 remind から REMIND_AFTER_AGENT 日たったものには、掃引が remind を書ける
+  // (本人の番の周期より短い。OWNER_PERIOD を外して同じ周期にすると、書けない日が出る)
+  val s9 = MACH.forall(m => KEYS.forall(k => {
+    val x = fm(m).a.get(k)
+    (isUnres(x.st) and not(x.hasR) and agentTurn(x) and s.today - x.L >= REMIND_AFTER_AGENT) implies remindOk(m, k)
+  }))
   // 状態に持つ畳み込みの結果が、写しの行から畳み込み直した結果と一致する
   val cacheOk = MACH.forall(m => s.fo.get(m) == foldView(s.views.get(m)))
   // 語彙の状態が、仕様の状態と一致する
-  val vocabStates = Set("awaiting", "decided", "closed", "dismissed", "stale", "superseded") == STATES
+  val vocabStates = Set("awaiting", "decided", "instructed", "closed", "dismissed", "stale", "superseded") == STATES
 
   // 語彙の遷移ごとの被覆(到達できなければ、語彙に死んだ遷移がある)。違反の反例が出れば到達可能
   def notFired(i: int): bool = i >= TRANSITIONS_LIST.length() or not(s.fired.contains(TRANSITIONS_LIST.nth(i)))
@@ -537,6 +584,10 @@ module lifecycle {
   val cov17 = notFired(17)
   val cov18 = notFired(18)
   val cov19 = notFired(19)
+  val cov20 = notFired(20)
+  val cov21 = notFired(21)
+  val cov22 = notFired(22)
+  val cov23 = notFired(23)
 
   // ---------------------------------------------------------------- 公平性と活性
   // 公平性は、日が進む・LiveSync が届く・掃引・エージェントの読み取り・台帳への追記に置く。
@@ -562,4 +613,8 @@ module lifecycle {
   temporal l3at(k: int): bool = always(s.tried.contains(k) implies
     eventually(s.rec.contains(k) and (s.gm.get(k) != "none" or MACH.exists(m => isTerm(stOf(m, k))))))
   temporal l3 = fair implies AKEYS.forall(k => l3at(k))
+  // L4: エージェントの番の instructed は、いずれ別の状態に移る(エージェントが読んで動くか、掃引が stale にする)
+  def instrF(m: int, k: int): bool = stOf(m, k) == "instructed" and not(flagged(m).contains(k))
+  temporal l4at(m: int, k: int): bool = always(instrF(m, k) implies eventually(not(instrF(m, k))))
+  temporal l4 = fair implies MACH.forall(m => (SWEEP_ALL or m == 0) implies AKEYS.forall(k => l4at(m, k)))
 }

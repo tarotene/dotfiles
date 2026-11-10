@@ -13,7 +13,7 @@ let
   table = builtins.fromJSON (builtins.readFile (spec + "/scenarios.json"));
   vocabulary = builtins.fromJSON (builtins.readFile (root + "/vocabulary.json"));
 
-  # 出来事 × from × to に展開した遷移の数(spec/vocab.jq と同じ)。lifecycle.qnt の cov0..cov19 を超えたら足りない
+  # 出来事 × from × to に展開した遷移の数(spec/vocab.jq と同じ)。lifecycle.qnt の cov0..cov23 を超えたら足りない
   transitionCount = lib.foldl' (
     n: e: n + builtins.length e.from * builtins.length e.to
   ) 0 vocabulary.events;
@@ -74,7 +74,9 @@ let
         fi
       '';
 in
-assert transitionCount <= 20;
+assert transitionCount <= 24;
+# エージェントの番の remind の周期は、本人の番より短い(性質 S9 の前提。仕様の REMIND_AFTER_AGENT < REMIND_AFTER と同じ向き)
+assert vocabulary.timers.agent_remind_after_days < vocabulary.timers.remind_after_days;
 pkgs.linkFarm "mail-lifecycle-spec" (
   map (s: {
     name = s.name;
