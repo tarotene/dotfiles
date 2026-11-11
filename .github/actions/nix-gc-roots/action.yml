@@ -60,6 +60,41 @@ runs:
         done < <(comm -12 /tmp/ultimate.txt /tmp/closure.txt)
         echo "rooted $i locally built paths"
 
+    # 配布元から取ってきた fixed-output の path(tarball など)も root する(#1395)。上の規則は
+    # 「activationPackage の closure に残る path」だけを見るので、build の時だけの入力である取得物は
+    # 対象にならない。取得物を使う package の側(obsidian は electron ごと約 1.4 GB)は集約出力として
+    # 外されるので、取得物は毎回、配布元から取り直されていた。配布元が不調のとき(2026-11-08、
+    # github.com のリリース配布物が HTTP 504)、`Build vega` だけが特に落ちた。
+    # 対象は、この runner が自分で取得した(`ultimate: true`)fixed-output(`ca` が `fixed:`)の path のうち、
+    # activationPackage の build に要るもの(derivation の closure と、その出力)。cache.nixos.org から
+    # 置き換えた path は `ultimate: false` なので入らない。大きさの閾値は上の手順と同じ。
+    - name: Root fixed-output fetches the build needed (upstream tarballs)
+      shell: bash
+      env:
+        HOST: ${{ inputs.host }}
+      run: |
+        set -euo pipefail
+        drv="$(nix eval --raw ".#homeConfigurations.${HOST}.activationPackage.drvPath")"
+        nix-store -qR --include-outputs "$drv" | sort > /tmp/buildtime.txt
+        nix path-info --json --all \
+          | jq -r 'to_entries[] | select(.value.ultimate == true and ((.value.ca // "") | startswith("fixed:"))) | .key' \
+          | sort > /tmp/fixed.txt
+        mkdir -p /tmp/nix-gcroots
+        max_closure_bytes=$((500 * 1024 * 1024))
+        i=0
+        while read -r p; do
+          [ -n "$p" ] || continue
+          size=$(nix path-info -S "$p" | awk '{print $2}')
+          if [ "$size" -gt "$max_closure_bytes" ]; then
+            echo "skipping $p (own closure ${size} bytes)"
+            continue
+          fi
+          nix-store --add-root "/tmp/nix-gcroots/fixed-$i" --indirect --realise "$p" >/dev/null
+          echo "rooted $p"
+          i=$((i + 1))
+        done < <(comm -12 /tmp/fixed.txt /tmp/buildtime.txt)
+        echo "rooted $i fixed-output fetches"
+
     # Rust の依存(crane の buildDepsOnly の出力)は、dotfiles-tools の build 時だけの
     # 入力で、どの activationPackage の closure にも入らない。上の「ultimate かつ
     # closure に残る」の規則では、構造的に root されず、GC で消えてキャッシュに残らない
