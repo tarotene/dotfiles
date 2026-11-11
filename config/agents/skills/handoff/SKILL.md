@@ -87,6 +87,11 @@ bash config/agents/skills/handoff/scripts/handoff.sh create-labels <owner/repo> 
 起票する(親が `tracking-issue` の子として native sub-issue を使う理由と
 同じ)。
 
+例外: 同じ機体・同じ接続で 1 回の作業で確かめられる**実機確認**は、1 項目 1 Issue にせず、
+その単位の台帳 Issue の close 条件に追記する(台帳が無いときだけ起票して、それを次の台帳に
+する)。割れると、実機が無い期間はすべて待ち状態のまま積み上がり、確認の時間も項目の数だけ
+かかる(#1506)。手順は `pr-description` スキル §6 の手順 4。
+
 **Human 担当**(`handoff:human` ラベル、assignee は `@me`):
 
 ```
