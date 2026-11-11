@@ -137,7 +137,14 @@ option `dotfiles.host.name` で受け取る。
 `worktree-lease`、`stack-base-guard` → `pr-gate`、`session-retrospective` → `cmd-hash-log`・`issue-inbox`・`verdict-escalate`、
 `promotion-detect` → `due-remind`・`issue-inbox`・`record-layer`、`detect-drift` → `update-own-tools`、`cmd-hash-log` →
 `issue-inbox`、`codex-plan-gate` → `new-tool-guard`、`codex-plan` → `codex-launcher`、`github-app-snapshot` → `github-audit`)で、
-どれも、共有の仕事を移す先のライブラリの設計が要る(意図は決まっていて、未着手。#1446)。
+どれも、共有の仕事を移す先のライブラリの設計が要る(意図は決まっていて、未着手)。
+
+残りの作業の正本は `deps::EXCEPTIONS` の一覧そのものとし、追跡用の Issue は持たない(#1446 を閉じたときに、ここへ移した。
+ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちるので、一覧は実体とずれない。解消の方向は、各例外の理由欄に書く。
+共通の条件は 2 つある。(1) 状態の置き場を解決する関数(`cmd-hash-log` の `resolve_log_path`、`verdict-escalate` の `ledger_dir`)は、
+ライブラリへ移さず、その状態を書く機能 crate に残す。ライブラリへ移すのは、純粋な部分(語彙・判定・型の読み)に限る。
+(2) `stack-base-guard` → `pr-gate` は、stack の連鎖の判定(`gates::stack`)を `github-command` へ移すと消える。その前提として、
+`pr-gate` の `jqv` を先に整理する。
 
 `claude-plan-model` は `model-catalog` に依存しない(#1446 の最初の確認)。ADR-457 は、Opus Plan Mode の具体モデル ID を、
 **インストールされた実行ファイルが持つカタログ**(`latest_per_family`)から読むと決めている(`config/zsh/modules/53-tools-claude.zsh`

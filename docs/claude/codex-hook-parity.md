@@ -48,7 +48,7 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 
 ## 上流から渡らない情報は「不明」を保つ
 
-残条件の追跡先: [#1021 — stdin・workdir・終了コードの入力不足](https://github.com/tarotene/dotfiles/issues/1021)。
+残条件の経緯: [#1021 — stdin・workdir・終了コードの入力不足](https://github.com/tarotene/dotfiles/issues/1021)(閉じた。残条件と解消の手順の正本はこの節)。
 
 - Blocked-Upstream: Codex 0.164.0 の `write_stdin` は入力前の Hook を呼ばない。
   起動済みの対話プロセスへ後から送った文字列は、この Hook 構成では検査できない。
@@ -61,6 +61,13 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 
 これらを解消するために Codex の fork や別の実行ラッパーを導入しない。
 上流が各情報を Hook に公開した時点で、境界の変換と回帰テストを更新する。
+
+解消の手順は、三つの条件を別々に扱う。上流の新しい版がその情報を Hook に公開したら、その版を固定してコードを読み、
+実際の Hook payload で、公開前の版と比べて A/B で確かめる。そのうえで dotfiles の固定版を更新し、
+`crates/hook-router/src/codex.rs` の入力変換と回帰テストを直して、この節から該当の `Blocked-Upstream:` の行を除く。
+終了コードが渡るようになったら、Atuin に -1 を渡す補正(`atuin_input` とそのテスト)も外す。PostToolUseFailure が
+無いことは、登録を隔離して `codex app-server` の `hooks/list` で読み、対応しているイベントを指定した対照群と比べて実測した。
+新しい版でも同じ方法で確かめ直す。
 
 ## 先行例との対比
 

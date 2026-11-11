@@ -70,6 +70,17 @@ worktree 用の fetch は直下の子を打ち切り、親 checkout 用の fetch
 `\n` だけを落とし、`raw` はバイト列をそのまま返す(`-z` の出力や、ファイルの内容を読む呼び出しは `raw`)。`gh` の同じ形の呼び出しは
 `github_command::exec`。stdout や stderr を引き継ぐ呼び出し、timeout を持つ呼び出し、stdin を引き継ぐ呼び出し(`feedback-trial`・
 `detect-drift` など)は、挙動が違うので各 crate が持つ。
+
+`jq -r .` の 1 値の文字列化は `jq_json_compat::raw::jq_raw` が持つ(null と false は `None`、配列とオブジェクトは pretty で出す)。
+挙動が違う 3 つの複写は、各 crate が持つ。`external-send-guard` の版は、null と false を `"null"`・`"false"` として返す(配列の
+要素を渡すので、置き換えると null の要素が消える)。`herdr-agent-metadata` と `copilot-plan-review` の版は、配列とオブジェクトを
+compact で出す。実行ファイルの探索は `process_control::command_exists`(実行ビットを見る)が持つ。`update-own-tools` の `on_path` は
+実行ビットを見ず(`is_file` だけ)、`issue-inbox` の `on_path` は見つけたパスを返すので、どちらも各 crate が持つ。手で書いた一時
+ファイルと rename を `tempfile`(`Builder::tempfile_in` と `persist`)に寄せると、権限が 0600 にそろい(`codex-plan-gate`・`hms`・
+`worktree-lease` で変わる)、`TMPDIR` が空のときの扱いも変わりうるので、置き換えていない(`gpg-subkey`・`claude-plan-model`・
+`claude-usage`・`codex-plan-gate` ほか)。これらを寄せるには、共有側に別の関数を足すか(`jq -r .` の compact 版・`find_executable`)、
+挙動の変化を許すかを、箇所ごとに裁定する必要がある(意図は決まっていて、未着手)。箇所の一覧は、#1445(段12 の複写の整理。
+閉じて、ここへ移した)の 2026-11-10 のコメントにある。
 対象ブランチ・TTL・通知・失敗後に進む条件は、各 CLI が決める。
 `plan-fresh-gate` は計画の鮮度を判定し、checkout の更新操作を `git-repository` へ委ねる。
 

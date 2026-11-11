@@ -808,6 +808,9 @@ How to read it (the decision table in the #249 comment of 2026-10-26): a freeze
 that coincides with a high CPU `some` pressure points to the scheduler priorities
 first; a freeze with low pressure while `cosmic-comp` spikes in CPU is a
 compositor problem to report upstream. Judge only after 1–2 days of recording.
+Write the judgement (which freeze, which interval, which reading of the table) into
+ADR-1237 itself, not into an Issue: #249 is closed and the ADR is the canonical record
+of the hold and its revisit conditions (ADR-1237 "残る作業と未確認の事項", ADR-1529).
 To stop: `systemctl --user disable --now atop-trace.service`.
 
 ## Obsidian vault backup
