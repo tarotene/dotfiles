@@ -26,7 +26,7 @@
 #      5. 追加された docs/adr/*.md は最大 1 本
 #      6. 追加された ADR の番号が n >= 0100 なら n == PR 番号
 #         (--pr 無指定なら skip)。n < 0100 なら緩衝帯として通過させる
-#      7. base との diff の追加行に起草中の参照(ADR-0000 / adr/0000-)が
+#      7. base との diff の追加行(追跡されていない新規ファイルを含む)に起草中の参照(ADR-0000 / adr/0000-)が
 #         無い(--fix は ADR のファイル名しか直さないため、他ファイルからの
 #         参照は改番されずに main へ残っていた、#644)。採番の仕組みを説明する
 #         ファイルは ADR_REF_ALLOW(下記)で除外する
@@ -177,21 +177,34 @@ check_added_adrs() {
 # 採番の仕組みを説明・検査するファイルは ADR-0000 を正当に含む。
 ADR_REF_ALLOW_DEFAULT="scripts/adr-number-check config/agents/skills/repo-governance-common/templates/scripts/adr-number-check config/claude/hooks/adr-number.sh config/codex/hooks/adr-number.sh crates/adr-number/src/lib.rs crates/adr-number/tests/hook.rs docs/agents/adr-numbering.md"
 
-# base と作業ツリーの diff で追加された行のうち、起草中の参照を含むものを
-# `path<TAB>行番号<TAB>本文` で出す(ADR_REF_ALLOW のファイルは除く)。追加行
-# だけを見るので、base に既にある行(説明文など)は拾わない。
+# base と作業ツリーの diff で追加された行(追跡されていない新規ファイルの全行を含む)のうち、
+# 起草中の参照を含むものを `path<TAB>行番号<TAB>本文` で出す(ADR_REF_ALLOW のファイルは除く)。
+# 追加行だけを見るので、base に既にある行(説明文など)は拾わない。
 added_draft_refs() {
   local repo_root="$1" base_ref="$2" allow path line text
   allow=" ${ADR_REF_ALLOW-$ADR_REF_ALLOW_DEFAULT} "
-  git -C "$repo_root" diff -U0 --no-color --no-ext-diff --diff-filter=ACMR "$base_ref" -- 2> /dev/null \
-    | awk '
-        /^\+\+\+ / { f = ($0 == "+++ /dev/null") ? "" : substr($0, 7); next }
-        /^@@/ { match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
-        /^\+/ {
-          if (f != "" && ($0 ~ /ADR-0000/ || $0 ~ /adr\/0000-/)) printf "%s\t%d\t%s\n", f, n, substr($0, 2)
-          n++
-        }
-      ' \
+  {
+    git -C "$repo_root" diff -U0 --no-color --no-ext-diff --diff-filter=ACMR "$base_ref" -- 2> /dev/null \
+      | awk '
+          /^\+\+\+ / { f = ($0 == "+++ /dev/null") ? "" : substr($0, 7); next }
+          /^@@/ { match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0; next }
+          /^\+/ {
+            if (f != "" && ($0 ~ /ADR-0000/ || $0 ~ /adr\/0000-/)) printf "%s\t%d\t%s\n", f, n, substr($0, 2)
+            n++
+          }
+        '
+    # 追跡されていない新規ファイルは `git diff <base>` に出ない。全行が追加行なので、中身を読む
+    # (.gitignore されたファイルと、バイナリは除く)。PR 1496 は、新しい crate のファイルがこの穴に
+    # 落ちて、手元で通ったのに CI で落ちた(2026-11-09)。
+    git -C "$repo_root" ls-files --others --exclude-standard -z 2> /dev/null \
+      | while IFS= read -r -d '' untracked; do
+        [[ -f $repo_root/$untracked ]] || continue
+        grep -nIE 'ADR-0000|adr/0000-' -- "$repo_root/$untracked" 2> /dev/null \
+          | while IFS= read -r hit; do
+            printf '%s\t%s\t%s\n' "$untracked" "${hit%%:*}" "${hit#*:}"
+          done
+      done
+  } \
     | while IFS=$'\t' read -r path line text; do
       [[ $allow == *" $path "* ]] && continue
       printf '%s\t%s\t%s\n' "$path" "$line" "$text"
@@ -361,6 +374,7 @@ selftest() {
   git -C "$repo" config core.hooksPath /dev/null # ホストの pre-commit guard から隔離
   git -C "$repo" config user.email test@example.com
   git -C "$repo" config user.name test
+  git -C "$repo" config commit.gpgsign false
   printf '# ADR-0001 — a\n' > "$repo/docs/adr/0001-a.md"
   git -C "$repo" add -A
   git -C "$repo" commit -qm "base"
@@ -455,6 +469,7 @@ selftest() {
   git -C "$refrepo" config core.hooksPath /dev/null
   git -C "$refrepo" config user.email test@example.com
   git -C "$refrepo" config user.name test
+  git -C "$refrepo" config commit.gpgsign false
   printf 'ADR-0000 は起草中の番号(base に既にある説明文)\n' > "$refrepo/docs/notes.md"
   printf 'x\n' > "$refrepo/docs/agents/adr-numbering.md"
   git -C "$refrepo" add -A
@@ -502,6 +517,7 @@ selftest() {
   git -C "$defrepo" config core.hooksPath /dev/null
   git -C "$defrepo" config user.email test@example.com
   git -C "$defrepo" config user.name test
+  git -C "$defrepo" config commit.gpgsign false
   printf '# ADR-0001 — a\n' > "$defrepo/docs/adr/0001-a.md"
   git -C "$defrepo" add -A
   git -C "$defrepo" commit -qm base
@@ -518,6 +534,15 @@ selftest() {
   rm "$defrepo/docs/adr/0000-new.md"
   git -C "$defrepo" switch -q main
   check "28 main 上(差分なし)は通過" 0 check_default_base_draft_refs "$defrepo"
+  # 追跡されていない新規ファイルの参照も検出する(`git diff <base>` には出ない。2026-11-09 に PR 1496 で
+  # 手元の無引数実行が通り、CI だけが落ちた)。.gitignore されたファイルは見ない。
+  printf 'see ADR-0000 here\n' > "$defrepo/docs/new-untracked.md"
+  check "29 追跡されていない新規ファイルの起草中の参照を検出" 1 check_default_base_draft_refs "$defrepo"
+  rm "$defrepo/docs/new-untracked.md"
+  printf 'ignored.md\n' > "$defrepo/.gitignore"
+  printf 'see ADR-0000 here\n' > "$defrepo/ignored.md"
+  check "30 .gitignore されたファイルは見ない" 0 check_default_base_draft_refs "$defrepo"
+  rm "$defrepo/ignored.md" "$defrepo/.gitignore"
 
   rm -rf "$tmp"
 

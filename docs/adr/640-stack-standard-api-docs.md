@@ -275,3 +275,27 @@ setup-python の「入力が空なら `.python-version` を読む」機能に任
 - .github/actions/docs-python/action.yml
 - .github/workflows/ci.yml
 - tests/docs-fixtures/python-myst/.python-version
+
+## Amendment 2026-11-10: docs-python の目録の取得先を、URL と同梱の写しの 2 つにする
+
+2026-11-08〜09 に、`Docs actions (fixtures)` の Python fixture が、`https://docs.python.org/3/objects.inv` の取得が
+`SSLError` になって落ちた(run 42527149376)。Sphinx は警告をエラー扱い(`-W`)で回すので、目録の取得失敗が
+そのまま赤になる。同じ変更の別の PR では通っており、外部取得の一時的な失敗だった。action は他のリポジトリの
+CI から `@main` で使われるので、この失敗は他のリポジトリの docs ジョブにも同じ形で出る。
+
+決定: 生成する `conf.py` の intersphinx の目録を、`(None, "<action のディレクトリ>/python-objects.inv")` の 2 つの
+場所にする。先頭の `None` は `<URL>/objects.inv` で、取得に失敗したら action に同梱した写しを使う。Sphinx 9.1.0 は、
+場所の組を順に試し、あとの場所が成功すれば、先頭の失敗を警告にしない(実測、2026-11-10: 取得できない宛先と
+同梱の写しの組では `-W -n` のビルドが成功する。同梱の写し無しの同じ宛先では、`WARNING: failed to reach any of the
+inventories` となって終了コード 1 になる)。写しは古くなりうるが、使うのは URL が取れなかったときだけで、
+標準ライブラリの型名の解決には十分。写しの更新は、Renovate の対象にしない(型名は版を越えて安定している)。
+
+代替案: fixture だけで intersphinx を外す案は、標準ライブラリの型(`name_of(path: Path)`)が解決できることを確かめる
+fixture の目的を失うので採らない。取得を再試行する案は、Sphinx が取得失敗を内部で扱うため、action の外から再試行できず、
+失敗が長引くと結局落ちる。取得失敗だけを警告にする案は、取得失敗の警告に `type` が付かず `suppress_warnings` で
+狙えない(Sphinx 9.2.0 の `intersphinx/_load.py`)ので実現できない。
+
+### 執行点
+
+- .github/actions/docs-python/action.yml
+- .github/actions/docs-python/python-objects.inv
