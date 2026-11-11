@@ -109,7 +109,7 @@ fn ledger_section(project: &Path, nwo: &str, host: &str, list: Res) -> Option<St
     let number = issue.get("number")?.as_u64()?;
     let parsed = ledger::parse(issue.get("body").and_then(Value::as_str).unwrap_or(""));
 
-    let mut prs: Vec<u64> = parsed.open.iter().map(|i| i.pr).collect();
+    let mut prs: Vec<u64> = parsed.open.iter().filter_map(|i| i.pr).collect();
     prs.sort_unstable();
     prs.dedup();
     let states = match nwo.split_once('/') {
@@ -144,7 +144,7 @@ fn ledger_section(project: &Path, nwo: &str, host: &str, list: Res) -> Option<St
     let status: Vec<_> = parsed
         .open
         .iter()
-        .map(|i| ledger::readiness(states.get(&i.pr), applied))
+        .map(|i| ledger::item_readiness(i, &states, applied))
         .collect();
     ledger::section(number, host, &parsed, &status)
 }
