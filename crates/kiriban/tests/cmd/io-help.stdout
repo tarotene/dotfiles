@@ -1,1 +1,1 @@
-usage: kiriban <classify N | labels | comment … | request-title --number N | request-body …>
+usage: kiriban <classify N | labels | comment … | request-title --number N | request-body … | request-allowed … | expired … | expire-comment …>

@@ -12,12 +12,18 @@ name: Kiriban
 # 書き込めないので、job ごと skip する(skipped は成功扱い)。pull_request_target
 # にすれば書けるが、fork のコードに書き込み権限を渡す経路を作るので採らない。
 # 取りこぼした番号は、下の workflow_dispatch に番号を渡せば後から祝える。
+#
+# schedule: 毎日 1 回、受付期限を過ぎた open のキリリク受付 Issue に締め切りの
+# コメントを書いて閉じる(mode: expire)。踏んだのが owner 本人のときは、受付 Issue
+# そのものを開かない(docs/kiriban.md)。
 
 on:
   issues:
     types: [opened]
   pull_request:
     types: [opened]
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       number:
@@ -28,7 +34,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: kiriban-${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
+  group: kiriban-${{ github.event.issue.number || github.event.pull_request.number || inputs.number || 'expire' }}
   cancel-in-progress: false
 
 jobs:
@@ -47,3 +53,4 @@ jobs:
       - uses: tarotene/dotfiles/.github/actions/kiriban@main
         with:
           number: ${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
+          mode: ${{ github.event_name == 'schedule' && 'expire' || 'celebrate' }}
