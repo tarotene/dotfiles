@@ -55,15 +55,30 @@ dotfiles.obsidian.livesync = {
 3. LiveSync の設定の JSON を、Secrets Manager の、obsidian-backup の machine token が読めるプロジェクトに
    登録する。形式は CLI 上流 README の「Configuration」のとおりプラグインと同じ(`couchDB_URI`・
    `couchDB_USER`・`couchDB_PASSWORD`・`couchDB_DBNAME`・`isConfigured: true`、暗号化を使うなら
-   `encrypt`・`passphrase`)。プラグインの設定ファイルをそのまま使えるかは未確認。値は argv に載るので、
-   手元の端末で 1 回だけ行い、ファイルに残さない。
+   `encrypt`・`passphrase`)。プラグインの設定ファイルは、合言葉を平文に戻せば使える(下)。登録は、Bitwarden の
+   Web 画面の Secrets Manager で「New」→「Secret」から行う(2026-11-11 の初回はこの経路)。`bws secret create`
+   で登録する場合は、値が argv に載るので、手元の端末で 1 回だけ行い、ファイルに残さない(鍵束の machine
+   token は読み取り専用なので、書き込みの権限を持つ token が別に要る)。
 
-   ```bash
-   bws secret create "<KEY>" "$(cat <設定の JSON>)" "<PROJECT_ID>"
+   **秘密を作っただけでは、machine account は読めない。** obsidian-backup の machine account には、
+   プロジェクト単位でなく、秘密ごとに読む権限が付いている(2026-11-11 に vega で確かめた。同じプロジェクトに
+   置いた新しい秘密が、`bws run` の環境に現れなかった)。秘密の「Granted Machine Accounts」に、obsidian-backup の
+   machine account を「Can read」で足す。秘密の名前(Name)は、option の `secretKey` と 1 文字違わず同じにする
+   (環境変数名として渡るので、英大文字・数字・`_` だけ)。プロジェクトを分ける場合は、別の machine token を
+   鍵束に置く経路が要り、この実装は 1 つの token だけを扱う。
+
+   中身は、プラグインの設定ファイル(vault の `.obsidian/plugins/obsidian-livesync/data.json`)から作れる。ただし
+   プラグイン 1.0.30 は、端末間暗号化の合言葉を暗号化した形(`encryptedPassphrase`)でしか保存しないので、合言葉
+   (プラグインの設定画面の「End-to-End Encryption」→「Passphrase」の値)を平文で入れ直す。値を端末の画面にも
+   ファイルにも残さない形(zsh。クリップボードに入るので、Secrets Manager の Value に貼り付けたら
+   `wl-copy --clear` で消す):
+
+   ```zsh
+   read -rs 'pp?合言葉: '; echo; jq -c --arg pp "$pp" 'del(.encryptedPassphrase, .configPassphraseStore, .remoteConfigurations) | .passphrase = $pp' <vault>/.obsidian/plugins/obsidian-livesync/data.json | wl-copy; unset pp
    ```
 
-   obsidian-backup と同じ machine account が、この秘密も読めるようになる(読み取り専用)。プロジェクトを
-   分ける場合は、別の machine token を鍵束に置く経路が要り、この実装は 1 つの token だけを扱う。
+   この形で作った設定で、vega の初回の `init` が通った(2026-11-11。320 件中 311 件を取り込み、9 件を飛ばし、
+   失敗 0)。
 4. private wrapper で上の option を有効にし、`hms` で当てる。この時点では印が無いので、unit は
    `Assertion failed` で起動しない(`hms` の degraded と `systemctl --user --failed` に出る。想定内)。
 
