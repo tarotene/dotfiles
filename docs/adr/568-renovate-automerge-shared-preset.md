@@ -415,3 +415,30 @@ Renovate の `github-actions` マネージャは、マニフェストの有無�
 
 - crates/github-audit/src/domains/renovate.rs
 - scripts/github-audit
+
+## Amendment (2026-11-11 — 通常の PR と lockFileMaintenance の枠を、月曜の終日に広げる)
+
+### 背景
+
+公開リポジトリ `tarotene/bleep` で、Actions のメジャー更新の PR が、月曜の朝の枠(`before 6am on monday`、
+Asia/Tokyo。0:00〜5:59 の 6 時間)を 2 回(2026-10-26・2026-11-02)過ぎても出なかった。Dependency Dashboard は
+枠の外で更新され続けていた(#1250)。Renovate, "Scheduling" <https://docs.renovatebot.com/key-concepts/scheduling/>
+(取得 2026-11-08)は、"Renovate can only update a dependency if _both_ of these conditions are true: The Renovate
+program is running … [and] The schedule set in the Renovate config file(s) allows Renovate to look for updates" と書き、
+"Avoid schedules like 'Run Renovate for an hour each Sunday' as you _will_ run into problems" と警告する。実行の記録は
+Mend のポータルでしか読めないので、枠が狭いことが原因かは未確認である。
+
+### 決定
+
+`schedule` と `lockFileMaintenance.schedule` を `["on monday"]`(月曜の終日、Asia/Tokyo)にする。週に 1 回の
+リズムは保ち、hosted の実行と枠が重なる時間を 6 時間から 24 時間に広げる。上の「lockFileMaintenance を週次に
+する」Amendment の「通常の PR の `schedule` と同じ窓」は保つ(両方を同じ値に変える)。
+
+- 確かめ方: 次の月曜(2026-11-16)のあとに、`gh pr list -R tarotene/bleep --state all --author app/renovate` を
+  読み、PR が出たかを #1250 に書く。出なければ、枠ではなく実行そのもの(Mend の hosted app がこのリポジトリを
+  走らせているか)を疑い、Mend のポータルを読む(本人の作業)。戻すときは、この値を元に戻すだけでよい。
+- 軸: 還元 — 新しい機構を足さず、既存の枠の幅だけを変える。
+
+### 執行点
+
+- renovate/policy.json

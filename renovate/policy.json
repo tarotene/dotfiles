@@ -8,7 +8,8 @@
     "internalChecksFilter=strict (default, restated for clarity): a version younger than minimumReleaseAge is filtered out entirely, so no PR exists until it ages past the wait — platform auto-merge cannot fire on a pending version.",
     "D3 Amendment (2026-10-21, #639): lockFileMaintenance is exempt from minimumReleaseAge. Renovate cannot apply a release age to a lock-file refresh (it delegates to the package manager) and, since Renovate 42, treats a missing release timestamp as 'not yet past the age', so the renovate/stability-days status stayed pending and platform auto-merge never fired.",
     "lockFileMaintenance runs weekly (Monday, the same window as regular PRs; Renovate's own default is also once per week). vulnerabilityAlerts only raises PRs for direct dependencies, so an alert on a transitive dependency clears only when the lock file is regenerated: in a private Astro site repository 15 of 23 open alerts cleared on a regenerated lock (2026-10-23).",
-    "github-actions.managerFilePatterns has no override (#474): an earlier per-template override narrowed it to workflows only, which silently excluded composite actions (.github/actions/*/action.yml) from digest-pin updates. Renovate's own default already covers both — restated here, not re-narrowed."
+    "github-actions.managerFilePatterns has no override (#474): an earlier per-template override narrowed it to workflows only, which silently excluded composite actions (.github/actions/*/action.yml) from digest-pin updates. Renovate's own default already covers both — restated here, not re-narrowed.",
+    "schedule widened from 'before 6am on monday' to 'on monday' (2026-11-11, #1250): no Renovate PR was raised in tarotene/bleep across the 2026-10-26 and 2026-11-02 windows while its Dependency Dashboard kept updating outside them. Renovate's Scheduling docs warn that a narrow window runs into problems (both the hosted run and the schedule must line up; granularity is at least one hour). A whole day keeps the weekly rhythm; check the next Monday's PR list to confirm."
   ],
   "extends": [
     "config:recommended",
@@ -16,7 +17,7 @@
     ":semanticCommitTypeAll(chore)",
     ":timezone(Asia/Tokyo)"
   ],
-  "schedule": ["before 6am on monday"],
+  "schedule": ["on monday"],
   "commitMessagePrefix": "chore(deps):",
   "labels": ["dependencies"],
   "rebaseWhen": "behind-base-branch",
@@ -35,7 +36,7 @@
     "enabled": true,
     "automerge": true,
     "minimumReleaseAge": null,
-    "schedule": ["before 6am on monday"]
+    "schedule": ["on monday"]
   },
   "vulnerabilityAlerts": {
     "enabled": true,
