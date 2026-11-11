@@ -1,4 +1,4 @@
-//! Issue の流量の検出(ADR-0000「Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけ」)。
+//! Issue の流量の検出(ADR-1529「Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけ」)。
 //!
 //! 共有の AGENTS.md「Issue に置くのは…」の節は、起票の前に置き場を選ぶ順を決めた。この順から外れた起票を、
 //! 日次で数えて wrap-up inbox に流す(ADR-543 の昇格型の「検出」の段。再発が続けば、作成時の拒否へ昇格を検討する)。
@@ -153,7 +153,7 @@ fn listed(numbers: &[u64]) -> String {
 }
 
 pub fn shadow_title() -> String {
-    "Issue の流量: PR で 1 日以内に閉じた、コメントの無い Issue が続いています(ADR-0000)"
+    "Issue の流量: PR で 1 日以内に閉じた、コメントの無い Issue が続いています(ADR-1529)"
         .to_string()
 }
 
@@ -168,7 +168,7 @@ pub fn shadow_detail(numbers: &[u64]) -> String {
 }
 
 pub fn outside_ledger_title() -> String {
-    "Issue の流量: 実機確認が、確認の台帳の外に起票されました(ADR-0000)".to_string()
+    "Issue の流量: 実機確認が、確認の台帳の外に起票されました(ADR-1529)".to_string()
 }
 
 pub fn outside_ledger_detail(numbers: &[u64]) -> String {
@@ -181,7 +181,7 @@ pub fn outside_ledger_detail(numbers: &[u64]) -> String {
 }
 
 pub fn open_title() -> String {
-    format!("Issue の流量: open の Issue が {OPEN_THRESHOLD} 件を超えています(ADR-0000)")
+    format!("Issue の流量: open の Issue が {OPEN_THRESHOLD} 件を超えています(ADR-1529)")
 }
 
 /// 件数は 10 件単位に丸める(毎日変わる数が本文に入ると、同じ候補を毎日入れ直してしまう)。

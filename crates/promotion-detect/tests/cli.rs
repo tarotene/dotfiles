@@ -683,7 +683,7 @@ fn a_checkout_without_a_declaration_is_not_read() {
     assert!(!stdout.contains("記録の層"), "{stdout}");
 }
 
-/// Issue の流量(ADR-0000): 直近の起票と open の全件を別々に問い合わせ、PR の影と台帳の外の実機確認を候補にする。
+/// Issue の流量(ADR-1529): 直近の起票と open の全件を別々に問い合わせ、PR の影と台帳の外の実機確認を候補にする。
 /// 偽の `gh` は、`--search created:>=…` を含む呼び出しに直近の起票を、`--state open` に open の全件を、
 /// feedback の問い合わせに空の一覧を返す。呼び出しの引数はログに残す。
 #[test]

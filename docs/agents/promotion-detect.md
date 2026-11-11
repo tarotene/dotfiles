@@ -61,7 +61,7 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
      速さがずれています(owner/repo)」。本文は `path(層)` を先頭 10 件並べ、日数は書かない(毎日変わる数が入ると、同じ候補を毎日入れ直す)。
    - 題に件数・日付を入れない(同じ題は同じ候補として、`emitted.json` と `--check-dup` が畳む)。
 
-8. **Issue の流量(ADR-0000)**: 共有 AGENTS.md「Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけ」の
+8. **Issue の流量(ADR-1529)**: 共有 AGENTS.md「Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけ」の
    置き場の順から外れた起票を数える。`gh issue list -R <repo>` を 2 回呼ぶ(直近 7 日の起票を `--state all --search created:>=<UTC の日付>`
    で、open の全件を `--state open` で)。判定は `crates/promotion-detect/src/issue_flow.rs`(純粋関数)。bot(login が `app/` で始まる)の起票は数えない。
    - PR の影: PR の `Closes` で閉じ(`closedByPullRequestsReferences` が空でない)、起票から 24 時間以内に閉じ、コメントが 0 件の Issue が

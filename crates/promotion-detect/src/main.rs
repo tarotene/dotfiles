@@ -4,7 +4,7 @@
 //! 日次 timer から無引数で呼ばれる。`--dry-run` を付けると inbox へ書かず
 //! stdout に1候補1行(JSON)を出す(手動確認・selftest 用)。
 //!
-//! 候補には、Issue の流量(PR の影の Issue・確認の台帳の外の実機確認・open の件数。ADR-0000、
+//! 候補には、Issue の流量(PR の影の Issue・確認の台帳の外の実機確認・open の件数。ADR-1529、
 //! `promotion_detect::issue_flow`)も含む。`gh issue list` を 2 回呼ぶ(直近の起票と、open の全件)。
 //!
 //! 候補の検出とは別に、vault の `inbox/` の気づきのうち、`open` のまま 14 日放置されたものを
@@ -224,7 +224,7 @@ fn main() {
         }
     }
 
-    // --- Issue の流量(ADR-0000): 置き場の順から外れた起票と、open の件数 ---
+    // --- Issue の流量(ADR-1529): 置き場の順から外れた起票と、open の件数 ---
     // 起票の前に置き場を選ぶ順(共有 AGENTS.md「Issue に置くのは…」)は散文なので、外れた起票を毎日数える。
     // 取得に失敗したら何も出さない(次の日にやり直す)。
     let now = now_unix();
