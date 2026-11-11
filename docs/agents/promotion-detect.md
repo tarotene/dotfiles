@@ -61,7 +61,19 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
      速さがずれています(owner/repo)」。本文は `path(層)` を先頭 10 件並べ、日数は書かない(毎日変わる数が入ると、同じ候補を毎日入れ直す)。
    - 題に件数・日付を入れない(同じ題は同じ候補として、`emitted.json` と `--check-dup` が畳む)。
 
-8. **気づきの失効(ADR-1381)**: 候補の検出とは別に、vault を宣言している機体で、`issue_inbox::vault::sweep` を呼んで、
+8. **Issue の流量(ADR-1529)**: 共有 AGENTS.md「Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけ」の
+   置き場の順から外れた起票を数える。`gh issue list -R <repo>` を 2 回呼ぶ(直近 7 日の起票を `--state all --search created:>=<UTC の日付>`
+   で、open の全件を `--state open` で)。判定は `crates/promotion-detect/src/issue_flow.rs`(純粋関数)。bot(login が `app/` で始まる)の起票は数えない。
+   - PR の影: PR の `Closes` で閉じ(`closedByPullRequestsReferences` が空でない)、起票から 24 時間以内に閉じ、コメントが 0 件の Issue が
+     2 件以上 → 「Issue の流量: PR で 1 日以内に閉じた、コメントの無い Issue が続いています」。PR の作成時刻は `gh issue list` が返さないので見ない。
+   - 台帳の外の実機確認: 題が `human:`・`verify:`・`verify(` で始まるか `handoff:human` を持ち、題が `verify-ledger:` で始まらない Issue が
+     1 件以上 → 「Issue の流量: 実機確認が、確認の台帳の外に起票されました」。
+   - open の件数: bot を除く open が 30 件を超えた → 「Issue の流量: open の Issue が 30 件を超えています」。本文の件数は 10 件単位に丸め、
+     古い順に 5 件の番号を並べる(毎日変わる数を入れると、同じ候補を毎日入れ直す)。
+   - 取得か解析に失敗したら、この検出だけを飛ばす(次の日にやり直す)。閾値は `issue_flow.rs` の定数(`WINDOW_DAYS`・
+     `SHADOW_THRESHOLD`・`OPEN_THRESHOLD`)。
+
+9. **気づきの失効(ADR-1381)**: 候補の検出とは別に、vault を宣言している機体で、`issue_inbox::vault::sweep` を呼んで、
    状態が `open` のまま最後の行(初出か再発)から 14 日以上たった気づきを `lapsed` にする。vault の `inbox/` は repo をまたいで
    1 つなので、全 repo のノートが対象で、セッションを始めたプロジェクトには依らない。
    - `status` だけを書き換える。繰り返しても二重に書かない(`lapsed` は `open` でない)。`--dry-run` では書かず、件数を標準エラーに出す
@@ -70,16 +82,16 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
      14 日で黙って消えない。検出されなくなった候補は `lapsed` のまま残る。
    - 失敗は理由を 1 行出して続ける(翌日にやり直せる)。vault を宣言していない機体では何もしない。
 
-9. **本人の Issue 台帳の生存の記録と逆向きの確認(ADR-1382)**: 実行の最後に、`ledger_heartbeat` が次を行う。台帳のリポジトリは非公開で、
-   名前は端末ローカルの設定 `$XDG_CONFIG_HOME/ledger-heartbeat/target`(無ければ `~/.config/ledger-heartbeat/target`、1 行 `OWNER/REPO`)から読む。
-   ファイルが無い機体では何もしない。
-   - 生存の記録: タイトル `ledger-heartbeat`・ラベル `ledger-status` の open な Issue の本文を、掃除のあとの wrap-up inbox の open 件数で
-     全面的に書き換える(先頭行 `asof: <UTC の ISO8601>`、続けて `inbox <プロジェクト名>: <件数>` を 1 プロジェクト 1 行、0 件は書かない)。
-     Issue が無ければ作らず、1 行出して続ける。vault を使えない機体は、「件数 0」と誤読されないよう書かない。
-   - 逆向きの確認: タイトル `ledger-digest`・ラベル `ledger-status` の Issue の最新のコメントが 36 時間より古い(Issue・コメントが無い場合を含む)なら、
-     `herdr notification show` で知らせる。1 日 1 回(`<state>/promotion-detect/ledger-digest-notified`)。読み取りに失敗したときは通知しない。
-   - `gh` の失敗は理由を 1 行出して続け、日次の他の処理を止めない。`--dry-run` は書かず、本文を標準エラーに出す。
-   - Herdr は `PROMOTION_DETECT_HERDR_BIN`、時刻は `PROMOTION_DETECT_NOW`(unix 秒)で差し替えられる(テスト用)。
+10. **本人の Issue 台帳の生存の記録と逆向きの確認(ADR-1382)**: 実行の最後に、`ledger_heartbeat` が次を行う。台帳のリポジトリは非公開で、
+    名前は端末ローカルの設定 `$XDG_CONFIG_HOME/ledger-heartbeat/target`(無ければ `~/.config/ledger-heartbeat/target`、1 行 `OWNER/REPO`)から読む。
+    ファイルが無い機体では何もしない。
+    - 生存の記録: タイトル `ledger-heartbeat`・ラベル `ledger-status` の open な Issue の本文を、掃除のあとの wrap-up inbox の open 件数で
+      全面的に書き換える(先頭行 `asof: <UTC の ISO8601>`、続けて `inbox <プロジェクト名>: <件数>` を 1 プロジェクト 1 行、0 件は書かない)。
+      Issue が無ければ作らず、1 行出して続ける。vault を使えない機体は、「件数 0」と誤読されないよう書かない。
+    - 逆向きの確認: タイトル `ledger-digest`・ラベル `ledger-status` の Issue の最新のコメントが 36 時間より古い(Issue・コメントが無い場合を含む)なら、
+      `herdr notification show` で知らせる。1 日 1 回(`<state>/promotion-detect/ledger-digest-notified`)。読み取りに失敗したときは通知しない。
+    - `gh` の失敗は理由を 1 行出して続け、日次の他の処理を止めない。`--dry-run` は書かず、本文を標準エラーに出す。
+    - Herdr は `PROMOTION_DETECT_HERDR_BIN`、時刻は `PROMOTION_DETECT_NOW`(unix 秒)で差し替えられる(テスト用)。
 
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数
 (`RECURRENCE_THRESHOLD`・`VERBATIM_MIN_SESSIONS`・`SKIP_STALE_DAYS`・

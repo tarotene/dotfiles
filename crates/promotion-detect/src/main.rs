@@ -4,6 +4,9 @@
 //! 日次 timer から無引数で呼ばれる。`--dry-run` を付けると inbox へ書かず
 //! stdout に1候補1行(JSON)を出す(手動確認・selftest 用)。
 //!
+//! 候補には、Issue の流量(PR の影の Issue・確認の台帳の外の実機確認・open の件数。ADR-1529、
+//! `promotion_detect::issue_flow`)も含む。`gh issue list` を 2 回呼ぶ(直近の起票と、open の全件)。
+//!
 //! 候補の検出とは別に、vault の `inbox/` の気づきのうち、`open` のまま 14 日放置されたものを
 //! `lapsed` にする(ADR-1381。全 repo のノートが対象。`--dry-run` では書かず、件数を標準エラーに出す)。
 //!
@@ -218,6 +221,21 @@ fn main() {
     if let Some(ghr_dir) = ghr_dir {
         for (label, checkout) in declared_checkouts(&ghr_dir) {
             candidates.extend(check_record_layers(&label, &checkout));
+        }
+    }
+
+    // --- Issue の流量(ADR-1529): 置き場の順から外れた起票と、open の件数 ---
+    // 起票の前に置き場を選ぶ順(共有 AGENTS.md「Issue に置くのは…」)は散文なので、外れた起票を毎日数える。
+    // 取得に失敗したら何も出さない(次の日にやり直す)。
+    let now = now_unix();
+    let since = civil_time::utc_date(
+        u64::try_from(now - promotion_detect::issue_flow::WINDOW_DAYS * 86_400).unwrap_or(0),
+    );
+    let recent = fetch_flow_issues(&gh_bin, &repo, "all", FLOW_RECENT_FIELDS, Some(&since));
+    let open = fetch_flow_issues(&gh_bin, &repo, "open", FLOW_OPEN_FIELDS, None);
+    if let (Some(recent), Some(open)) = (recent, open) {
+        for f in promotion_detect::issue_flow::detect(&recent, &open, now) {
+            candidates.push((f.title, f.detail));
         }
     }
 
@@ -611,6 +629,78 @@ fn fetch_feedback_issues(gh_bin: &str, repo: &str) -> Vec<promotion_detect::Feed
             target: r.body.as_deref().and_then(promotion_detect::parse_target),
         })
         .collect()
+}
+
+/// 直近の起票の判定に要る欄(PR の影・台帳の外の実機確認)。
+const FLOW_RECENT_FIELDS: &str =
+    "number,title,createdAt,closedAt,comments,closedByPullRequestsReferences,labels,author";
+/// open の件数と古さに要る欄。
+const FLOW_OPEN_FIELDS: &str = "number,title,createdAt,author";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawFlowIssue {
+    number: u64,
+    #[serde(default)]
+    title: String,
+    created_at: Option<String>,
+    closed_at: Option<String>,
+    #[serde(default)]
+    comments: Vec<serde::de::IgnoredAny>,
+    #[serde(default)]
+    closed_by_pull_requests_references: Vec<serde::de::IgnoredAny>,
+    #[serde(default)]
+    labels: Vec<RawLabel>,
+    author: Option<RawAuthor>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLabel {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAuthor {
+    login: String,
+}
+
+/// `gh issue list` で Issue を読む。`since`(`YYYY-MM-DD`)があれば、その日以後の起票だけを読む。
+/// 起票の時刻を読めない行は捨てる。取得や解析に失敗したら `None`(判定しない)。
+fn fetch_flow_issues(
+    gh_bin: &str,
+    repo: &str,
+    state: &str,
+    fields: &str,
+    since: Option<&str>,
+) -> Option<Vec<promotion_detect::issue_flow::FlowIssue>> {
+    let mut cmd = std::process::Command::new(gh_bin);
+    cmd.args([
+        "issue", "list", "-R", repo, "--state", state, "--limit", "1000", "--json", fields,
+    ]);
+    if let Some(since) = since {
+        cmd.args(["--search", &format!("created:>={since}")]);
+    }
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let raw: Vec<RawFlowIssue> = serde_json::from_slice(&out.stdout).ok()?;
+    Some(
+        raw.into_iter()
+            .filter_map(|r| {
+                Some(promotion_detect::issue_flow::FlowIssue {
+                    number: r.number,
+                    title: r.title,
+                    created: civil_time::parse_iso_epoch(r.created_at.as_deref()?)?,
+                    closed: r.closed_at.as_deref().and_then(civil_time::parse_iso_epoch),
+                    comments: r.comments.len(),
+                    closed_by_pr: !r.closed_by_pull_requests_references.is_empty(),
+                    labels: r.labels.into_iter().map(|l| l.name).collect(),
+                    author: r.author.map(|a| a.login).unwrap_or_default(),
+                })
+            })
+            .collect(),
+    )
 }
 
 #[derive(Debug, Deserialize)]

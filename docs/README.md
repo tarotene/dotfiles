@@ -68,7 +68,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-568](adr/568-renovate-automerge-shared-preset.md) — Renovate の自動マージ方針を単一の共有 preset に一本化し、Dependabot の修正経路を閉じる
 - [ADR-590](adr/590-github-app-as-code.md) — GitHub App の登録・install 先・secret 配布を 3 層すべて宣言 → 検出の対象にする
 - [ADR-591](adr/591-ci-workflow-naming.md) — 全リポジトリの CI workflow 命名基準を統一する (後続: 改訂 ADR-1005)
-- [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の人待ちチェックボックスを廃し、人の確認を後続 Issue へ払い出す
+- [ADR-598](adr/598-pr-pending-work-to-issues.md) — PR 本文の人待ちチェックボックスを廃し、人の確認を後続 Issue へ払い出す (後続: 改訂 ADR-1529)
 - [ADR-625](adr/625-llm-facing-hook-message-format.md) — LLM 向け hook 出力を `<hook-directive>` 外枠 + 英語本文で書く(試験導入)
 - [ADR-640](adr/640-stack-standard-api-docs.md) — 技術スタック標準の API ドキュメントのビルドを全リポジトリで必須にする
 - [ADR-697](adr/697-retro-stop-gate.md) — 作業終了時のレトロスペクティブを Stop hook で強制する (後続: 改訂 ADR-1276)
@@ -86,7 +86,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1005](adr/1005-ci-gate-job-criteria.md) — CI の gate job を ci.yml に入れる基準を決め、検出と部品で全リポジトリに揃える
 - [ADR-1040](adr/1040-agent-tooling-names-and-responsibilities.md) — エージェント向けツールの命名・責務・共有配置
 - [ADR-1068](adr/1068-hms-follow-main.md) — main の更新に沿って hms を自動で当てる。ただし hms が main から作った世代だけに追従する
-- [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする
+- [ADR-1136](adr/1136-wrapup-inbox-to-vault.md) — wrap-up inbox の気づきを Issue でなく vault のノートに溜め、裁定したものだけを Issue にする (後続: 改訂 ADR-1529)
 - [ADR-1228](adr/1228-system-layer-declarations.md) — システム層の宣言と適用を分ける
 - [ADR-1237](adr/1237-cachyos-migration-hold.md) — CachyOS への移行(#249)を保留し、固まりの記録で再訪の条件を確かめる
 - [ADR-1242](adr/1242-calendar-handshake-spec.md) — 個人と勤務先のカレンダーの握手を Quint の仕様に書き、TLC で検査する。語彙は版 2 に上げる (後続: 改訂 ADR-1293)
@@ -108,6 +108,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1387](adr/1387-ja-polish.md) — 日本語の文書は、Gemini の書き直しを通した証拠を記録して出す
 - [ADR-1400](adr/1400-skill-entry-layers.md) — skill を「手で打つ入口」と「エージェントが選ぶ知識」の 2 層に分け、入口だけに `my-` を付けて、それ以外を `/` の一覧から隠す
 - [ADR-1472](adr/1472-stop-outcome.md) — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
+- [ADR-1529](adr/1529-issue-inflow-criterion.md) — Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけにする
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
