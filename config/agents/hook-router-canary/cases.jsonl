@@ -1,0 +1,7 @@
+{"label": "pkill -f の検索語が自分のシェルに当たる(pkill-guard)", "event": "pre", "agent": "claude", "expect": "deny", "input": {"tool_name": "Bash", "tool_input": {"command": "pkill -f trial.sh"}, "cwd": "/"}}
+{"label": "括弧で囲んだ pkill -f は通す(pkill-guard)", "event": "pre", "agent": "claude", "expect": "pass", "input": {"tool_name": "Bash", "tool_input": {"command": "pkill -f '[t]rial.sh'"}, "cwd": "/"}}
+{"label": "cargo test の出力を head で切る(test-output-guard)", "event": "pre", "agent": "claude", "expect": "deny", "input": {"tool_name": "Bash", "tool_input": {"command": "cargo test -p x | head -3"}, "cwd": "/"}}
+{"label": "gh pr checks --watch で待つ(ci-wait-guard)", "event": "pre", "agent": "claude", "expect": "deny", "input": {"tool_name": "Bash", "tool_input": {"command": "gh pr checks 12 --watch"}, "cwd": "/"}}
+{"label": "無関係なコマンドは通す", "event": "pre", "agent": "claude", "expect": "pass", "input": {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": "/"}}
+{"label": "Codex の pkill -f(pkill-guard)", "event": "pre", "agent": "codex", "expect": "deny", "input": {"tool_name": "Bash", "tool_input": {"command": "pkill -f trial.sh"}, "cwd": "/"}}
+{"label": "Codex の無関係なコマンドは通す", "event": "pre", "agent": "codex", "expect": "pass", "input": {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": "/"}}

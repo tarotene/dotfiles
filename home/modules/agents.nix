@@ -2404,6 +2404,25 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
         touch $out
       ''
     )
+    # 配備された hook-router の canary(ADR-1529 の段3)。bleep-canary と同じ型で、配備後の
+    # レイアウトの hook-router に fixture(config/agents/hook-router-canary/cases.jsonl)を流し、
+    # 判定を比べる。CI は 3 構成を build するので、「この hook が拒否するか」を機体ごとの実機確認
+    # なしに確かめられる(確認の台帳に積まず、fixture を足す。pr-description スキル §6)。
+    (pkgs.runCommand "hook-router-canary"
+      {
+        nativeBuildInputs = with pkgs; [
+          bash
+          coreutils
+          jq
+        ];
+      }
+      ''
+        bash ${repoConfig}/agents/hook-router-canary.sh \
+          ${config.home-files}/.claude/hooks/hook-router \
+          ${repoConfig}/agents/hook-router-canary/cases.jsonl
+        touch $out
+      ''
+    )
     # スキル配布の検査(#1124)。`checks.<system>.agent-skills`(flake.nix)と同じ定義を、
     # 適用する配布物そのもの(この config の home.file)に掛ける。flake の check は
     # activation build の依存ではなく、`hms .` は検査に落ちた配布物を実ホームへ置けた。
