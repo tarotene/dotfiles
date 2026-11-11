@@ -5,6 +5,7 @@
   "states": {
     "awaiting": "shown",
     "decided": "decided",
+    "instructed": "decided",
     "closed": "applied",
     "dismissed": "declined",
     "stale": "lapsed",
@@ -13,7 +14,8 @@
   "reasons": {
     "closed": "正本へ反映した・送った(apply)と、読んだだけで済む(read)の両方。どちらも「適用」の終わり方",
     "superseded": "別の追跡先(Issue・カレンダーの予定)へ移した(move)。裁定の結果ではなく引き継ぎで、以後は移し先が追う。失効(stale)は放置されたもので、別",
-    "decided": "本人が対応すると決めて、反映を待つ。抽象の decided と同じ"
+    "decided": "本人が対応すると決めて、反映を待つ。抽象の decided と同じ",
+    "instructed": "本人が「その他」で自由記述の指示を出し、エージェントが読んで動くのを待つ。本人は裁定した(指示を出した)ので抽象の decided に写る。そのあとの decide・apply・pass・move は、抽象でも decided から出る事象になる"
   },
   "p1": {
     "awaiting": { "kind": "timer", "timer": "remind_after_days", "event": "remind" }
@@ -22,6 +24,6 @@
     "decide": { "event": "decide" },
     "pass": { "event": "pass" },
     "later": { "event": null, "note": "何も書かない。状態は動かず、時計は動き続けて remind_after_days 日で remind が出る" },
-    "other": { "event": null, "note": "対応表の事象は書かない。記入欄の指示を次の机でエージェントが読み、本人の指示に沿って次の事象(decide・pass・move など)を書く。語彙の版 3 で instruct が入るまでの暫定" }
+    "other": { "event": "instruct" }
   }
 }

@@ -1,11 +1,12 @@
 {
-  "version": 3,
+  "version": 4,
   "object": "mail-item",
   "description": "未裁定のメール項目の状態と出来事の閉語彙(正本)。worklog の mail kind が include_str! で読み、Quint の仕様が vocab.jq で同じ表から生成する。共通の形は config/agents/vocabulary/vocabulary.schema.json。",
   "initial": "none",
   "states": [
     { "id": "awaiting", "terminal": false, "owner": "person", "shown_by": ["skill:inbox-adjudication", "skill:my-desk"] },
     { "id": "decided", "terminal": false, "owner": "agent" },
+    { "id": "instructed", "terminal": false, "owner": "agent", "owner_detail": "本人が「その他」で自由記述の指示を出した(instruct)。エージェントが指示を読んで、次の出来事を書く" },
     { "id": "closed", "terminal": true },
     { "id": "dismissed", "terminal": true },
     { "id": "stale", "terminal": true },
@@ -15,12 +16,14 @@
     { "id": "read", "from": ["none"], "to": ["closed"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "draft", "from": ["none"], "to": ["awaiting"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
     { "id": "ask", "from": ["none"], "to": ["awaiting"], "by": "agent", "opens": true, "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "decide", "from": ["awaiting"], "to": ["decided"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "apply", "from": ["awaiting", "decided"], "to": ["closed"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "pass", "from": ["none", "awaiting", "decided"], "to": ["dismissed"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "remind", "from": ["awaiting", "decided"], "to": ["same"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
-    { "id": "move", "from": ["awaiting", "decided"], "to": ["superseded"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
-    { "id": "stale", "from": ["awaiting", "decided"], "to": ["stale"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] }
+    { "id": "instruct", "from": ["awaiting"], "to": ["instructed"], "by": "person", "by_detail": "要旨が本人の指示の結論。裁定ページの「その他」", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "decide", "from": ["awaiting", "instructed"], "to": ["decided"], "by": "person", "by_detail": "印 owner:me|agent(誰がやるか。印が無い旧い行は agent)と send:yes(owner:agent の裁定がエージェントによる外部への送信であること。apply の前に confirm が要る)を持てる。owner:me の項目は、decided でも本人の番", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "confirm", "from": ["decided"], "to": ["same"], "by": "person", "by_detail": "外部への送信の前に、送信直前の画面・全文・宛先を見て OK を返した記録。send:yes の decide を、apply の前提(gate)で満たす", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "apply", "from": ["awaiting", "decided", "instructed"], "to": ["closed"], "by": "agent", "by_detail": "send:yes の decide のあとは、confirm の後にしか書けない", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "pass", "from": ["none", "awaiting", "decided", "instructed"], "to": ["dismissed"], "by": "person", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "remind", "from": ["awaiting", "decided", "instructed"], "to": ["same"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] },
+    { "id": "move", "from": ["awaiting", "decided", "instructed"], "to": ["superseded"], "by": "agent", "carriers": ["skill:inbox-adjudication"], "gates": ["cli:worklog"] },
+    { "id": "stale", "from": ["awaiting", "decided", "instructed"], "to": ["stale"], "by": "machine", "carriers": ["cli:worklog"], "gates": ["cli:worklog"] }
   ],
   "supersede_on_open": {
     "event": "move",
@@ -28,6 +31,7 @@
   },
   "timers": {
     "remind_after_days": 7,
+    "agent_remind_after_days": 3,
     "stale_after_remind_days": 7,
     "remind_before_due_days": 3
   }

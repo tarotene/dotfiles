@@ -50,6 +50,12 @@ fn to_event(line: &Value) -> Ev {
                 item: Some(ItemId { thread, receipt }),
                 due: None,
                 to: None,
+                // decide の行の担い手と送信の印。仕様の ow は "" | "me" | "agent"
+                owner: line["ow"]
+                    .as_str()
+                    .filter(|o| !o.is_empty())
+                    .map(str::to_string),
+                send: line["snd"].as_bool().expect("snd"),
             },
         },
     }
@@ -108,6 +114,18 @@ fn the_implementation_folds_the_specs_trace_lines_the_same_way() {
                         "食い違いの数が仕様と違う: {}",
                         ctx()
                     );
+                    // 送信の裁定の印と、confirm の有無(S8 の根拠)も、仕様の畳み込みと同じ。
+                    if let Some(item) = folded.items.get(&key) {
+                        assert_eq!(
+                            (item.send, item.confirmed),
+                            (
+                                acc["snd"].as_bool().unwrap(),
+                                acc["conf"].as_bool().unwrap()
+                            ),
+                            "send・confirm の畳み込みが仕様と違う: {}",
+                            ctx()
+                        );
+                    }
                     if want == "superseded"
                         && evs
                             .iter()

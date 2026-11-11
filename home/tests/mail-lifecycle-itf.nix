@@ -25,13 +25,31 @@ let
     MAX_CRASHES = 2;
     MAX_PERSON = 3;
     SWEEP_ALL = true;
+    # 版 4: 「その他」の指示(instruct)、decide の担い手と送信の印、送信前の確認(confirm)
+    CAN_INSTRUCT = true;
+    WITH_OWNER = true;
+  };
+  # 版 4 の手(instruct → decide(送信の印)→ confirm → apply)を厚く通す軌跡。上の全部入りの探索は、手の列が長く
+  # 偶然には confirm まで届きにくいので、本人の手を decide・instruct・confirm に絞り、項目 1 つ・1 機体で別に作る。
+  flagsOwner = table.defaults // {
+    N_KEYS = 1;
+    ALLOW_READ = false;
+    ALLOW_ASK = false;
+    CAN_PASS = false;
+    MAX_PERSON = 3;
+    CAN_INSTRUCT = true;
+    WITH_OWNER = true;
   };
   render = v: if builtins.isBool v then (if v then "true" else "false") else toString v;
-  cfg = pkgs.writeText "cfg.qnt" ''
-    module cfg {
-    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "  pure val ${k} = ${render v}") flags)}
-    }
-  '';
+  cfgOf =
+    fl:
+    pkgs.writeText "cfg.qnt" ''
+      module cfg {
+      ${lib.concatStringsSep "\n" (lib.mapAttrsToList (k: v: "  pure val ${k} = ${render v}") fl)}
+      }
+    '';
+  cfg = cfgOf flags;
+  cfgOwner = cfgOf flagsOwner;
 in
 pkgs.runCommand "mail-lifecycle-itf"
   {
@@ -47,9 +65,17 @@ pkgs.runCommand "mail-lifecycle-itf"
     cp ${spec + "/lifecycle.qnt"} lifecycle.qnt
     jq -r -f ${spec + "/vocab.jq"} ${root + "/vocabulary.json"} > vocab.qnt
     cp ${cfg} cfg.qnt
-    quint run --main lifecycle --seed 0x5eed --max-samples 60 --max-steps 60 \
-      --n-traces 60 --out-itf "$out/trace_{seq}.itf.json" lifecycle.qnt > $out/run.log 2>&1 \
+    quint run --main lifecycle --seed 0x5eed --max-samples 300 --max-steps 60 \
+      --n-traces 300 --out-itf "$out/trace_{seq}.itf.json" lifecycle.qnt > $out/run.log 2>&1 \
       || { cat $out/run.log; exit 1; }
+    mkdir ../work-owner
+    cd ../work-owner
+    cp ${spec + "/lifecycle.qnt"} lifecycle.qnt
+    cp ../work/vocab.qnt vocab.qnt
+    cp ${cfgOwner} cfg.qnt
+    quint run --main lifecycle --seed 0x5eed --max-samples 300 --max-steps 40 \
+      --n-traces 300 --out-itf "$out/owner_{seq}.itf.json" lifecycle.qnt > $out/run-owner.log 2>&1 \
+      || { cat $out/run-owner.log; exit 1; }
     n=$(ls $out/*.itf.json | wc -l)
     test "$n" -gt 0 || { cat $out/run.log; echo "軌跡ができなかった"; exit 1; }
   ''

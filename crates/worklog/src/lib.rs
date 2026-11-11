@@ -530,7 +530,7 @@ pub fn build_context(repo: Option<&str>, recent: &[&Row]) -> String {
          - found: 試して分かったこと(次のセッションが知りたい結果)\n\
          - stuck: 解決できずに残った詰まり\n\
          - mail: 読んだメールの出来事。`<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD]]`\
-         (出来事は read|ask|draft|decide|apply|pass|move、媒体は gmail|linkedin|lapras|none)。\
+         (出来事は read|ask|draft|instruct|decide|confirm|apply|pass|move、媒体は gmail|linkedin|lapras|none)。\
          本文・相手の名前・アドレスは書かない。未了の一覧は `worklog mail open`\n\
          - slot: 自分一人でやる作業の枠(時間枠つき)の完了記録。`worklog add slot done|drop <鍵>`(鍵は予定データの予定 id)。\
          済んだか・やめたかは本人の裁定を受けて書く。時間枠は書かない。記録済みの一覧は `worklog slot closed`\n\
@@ -840,7 +840,10 @@ mod tests {
         // git の外では、直近の行は載せない。
         assert!(!build_context(None, &[&r]).contains("2026-10-25"));
         // 規範に mail の文法と禁止事項がある。
-        assert!(none.contains("- mail:") && none.contains("read|ask|draft|decide|apply|pass|move"));
+        assert!(
+            none.contains("- mail:")
+                && none.contains("read|ask|draft|instruct|decide|confirm|apply|pass|move")
+        );
         assert!(none.contains("- slot:") && none.contains("worklog add slot done|drop"));
     }
 

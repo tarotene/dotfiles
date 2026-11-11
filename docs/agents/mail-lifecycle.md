@@ -1,7 +1,7 @@
 # mail-lifecycle — 未裁定のメール項目が、状態をたどって必ず終わる
 
 決定の記録: `docs/adr/1259-mail-lifecycle.md`(ADR-1256 の D2・D3・D5 を改める)
-語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`(版 3。共通の形は `docs/agents/state-vocabulary.md`。`to` は配列、各事象に `carriers`・`gates`)
+語彙の正本: `config/agents/mail-lifecycle/vocabulary.json`(版 4。共通の形は `docs/agents/state-vocabulary.md`。`to` は配列、各事象に `carriers`・`gates`)
 実体: `crates/worklog/src/mail.rs`(書き込みの検査・畳み込み・sweep・控え)、`crates/worklog/src/main.rs`(`worklog mail`)
 仕様と検査: `config/agents/mail-lifecycle/spec/`(Quint)、`home/tests/mail-lifecycle-spec.nix`、CI の `mail-lifecycle-spec` ジョブ
 
@@ -22,8 +22,9 @@
 
 | 状態 | 種別 | 意味 |
 |---|---|---|
-| `awaiting` | 未了 | 本人の裁定待ち(推奨や下書きを見せた) |
-| `decided` | 未了 | 裁定済みで、反映がまだ |
+| `awaiting` | 未了 | 本人の裁定待ち(推奨や下書きを見せた)。ボールは本人 |
+| `decided` | 未了 | 裁定済みで、反映がまだ。ボールはエージェント(`decide` の印 `owner:me` のときだけ本人) |
+| `instructed` | 未了 | 本人が「その他」で自由記述の指示を出した。ボールはエージェント。指示を読んで、次の出来事を書く |
 | `closed` | 終端 | 終わった(返信を送った・正本に反映した・何もしなくてよい) |
 | `dismissed` | 終端 | 本人が断った・見送った |
 | `stale` | 終端 | 返事が無いまま期限が来て、機械が閉じた |
@@ -36,14 +37,36 @@
 | `read` | (新規) → closed | agent |
 | `draft` | (新規) → awaiting | agent |
 | `ask` | (新規) → awaiting | agent |
-| `decide` | awaiting → decided | person |
-| `apply` | awaiting / decided → closed | agent |
-| `pass` | (新規) / awaiting / decided → dismissed | person |
-| `remind` | awaiting / decided → 同じ状態 | machine |
-| `move` | awaiting / decided → superseded(移し先 `to:` が要る) | agent |
-| `stale` | awaiting / decided → stale | machine |
+| `instruct` | awaiting → instructed | person |
+| `decide` | awaiting / instructed → decided(印 `owner:`・`send:` を持てる) | person |
+| `confirm` | decided → 同じ状態(`send:yes` の `decide` のあと) | person |
+| `apply` | awaiting / decided / instructed → closed | agent |
+| `pass` | (新規) / awaiting / decided / instructed → dismissed | person |
+| `remind` | awaiting / decided / instructed → 同じ状態 | machine |
+| `move` | awaiting / decided / instructed → superseded(移し先 `to:` が要る) | agent |
+| `stale` | awaiting / decided / instructed → stale | machine |
 
 `machine` の出来事(`remind`・`stale`)は `worklog mail sweep` だけが書き、`worklog add mail` は拒否する。
+
+**ボールがどちらにあるか(版 4、#1341)。** 項目の裁定は 2 軸で、どうするか(やる・やらない・あとで・その他)と、
+誰がやるか(本人・エージェント)。状態にボールの位置を持たせ、裁定ページの「その他」と「おまかせ」が、画面の写しでなく
+語彙の事象になった。
+
+- `instruct`: 裁定ページの「その他」。要旨が本人の指示の結論で、項目は `instructed`(エージェントの番)に移る。
+  エージェントが指示を読み、`decide`・`apply`・`pass`・`move` のうち合うものを書いて出る。
+- `decide` の印: `owner:me`(本人がやる)・`owner:agent`(おまかせ)。印が無い旧い行は、`decided` の担当どおりエージェントの番。
+  `send:yes` は、`owner:agent` の裁定が、エージェントによる外部への送信であること(印は `owner:agent` と一緒に付ける)。
+  この印は `decide` だけに付き、ほかの出来事に付けると書き込み口が拒否する。
+- `confirm`: 送信直前の画面・全文・宛先を本人に見せ、OK を得た記録。`send:yes` の `decide` のあとにだけ書け、
+  そのあとの `apply` の前提になる。`send:yes` の項目に `confirm` の前に `apply` を書くと、`worklog` は書かずに拒否する
+  (`external-send-guard` が Gmail の外部宛の送信を別に止める。この前提は、送る前に本人が中身を見た、という記録の側)。
+  新しい `decide` は確認を数え直す。
+- 再通知の周期: エージェントの番(`decided` と `instructed`。ただし `owner:me` の `decided` は本人の番)は 3 日
+  (`agent_remind_after_days`)、本人の番は 7 日。エージェントの番が放置されないよう、短くしている。
+
+画面のボタンと語彙の対応は `config/agents/vocabulary/refinements/mail-item.json` の `inputs` が持ち、裁定ページの選択肢の表
+(`options.json`)の `verdict` と双方向に一致することを `scripts/vocab-graph-check --refinements` が検査する(#1312)。
+`other` は `instruct`、`decide` の `owner` は印の `owner:` になる。
 
 読む範囲は、切替の日(`MAIL_SINCE`、2026-10-30)から今日まで。ただし `worklog list` の上限(400 日)に収まる分
 (今日の 399 日前)までで、それより前に開いて今も未了の項目は読まれない(`slot` の読み方と同じ。以前は範囲を切らず、
@@ -91,10 +114,10 @@
 
 ## 時間の決まり
 
-`vocabulary.json` の `timers`(7 / 7 / 3)で、`worklog mail sweep` が決める。判定は純関数で、
+`vocabulary.json` の `timers`(7 / 3(エージェントの番の再通知)/ 7 / 3)で、`worklog mail sweep` が決める。判定は純関数で、
 朝の机が結果を本人に見せる。
 
-- 最後の出来事から 7 日たった未了、または期限の 3 日前の未了に `remind` を書く。
+- 最後の出来事から 7 日(エージェントの番の項目は 3 日)たった未了、または期限の 3 日前の未了に `remind` を書く。
 - `remind` が今日より前にあり、さらに 7 日たった、または期限を過ぎた未了に `stale` を書く。
   **`stale` の前には、必ず(最後の実質的な出来事より後の、今日より前の)`remind` がある。**
 - 実質的な出来事(`decide` など)は、時計と `remind` を数え直す。
@@ -160,9 +183,12 @@ worklog mail restore <鍵> | forget <鍵>
 | S5 | 同じ受信を読み直しても、状態は変わらない | 不変条件 `s5` |
 | S6 | 仕様が起こす遷移はすべて語彙にあり、語彙の遷移はすべて起こせる | 不変条件 `s6`、`cover` |
 | S7 | 手で消された終端の行は、同じ機体の `check` が必ず出す。出した項目に掃引は書かない | 不変条件 `s7`・`s7b` |
+| S8 | 送信の裁定(`send:yes`)の `apply` の行は、書いた時点で `confirm` のあとである | 不変条件 `s8` |
+| S9 | エージェントの番の項目は、本人の番より短い周期で `remind` できる | 不変条件 `s9` |
 | L1 | 開いた項目は、いずれ終端に入る(本人が答えなくても) | 活性 `l1` |
 | L2 | 届いた受信は、いずれ項目になる(または記録済みと判定される) | 活性 `l2` |
 | L3 | 下書きを作る前に落ちた項目は、いずれ作り直されるか終端に入る | 活性 `l3` |
+| L4 | `instructed` の項目は、いずれ別の状態に移る(エージェントが読んで動くか、掃引が `stale` にする) | 活性 `l4` |
 
 活性は、日が進み、同期が届き、机が `sweep` を回し、読む側が動く、という公平性の仮定のもとで検査する。
 本人の行動には公平性を置かない(答えなくても終端に入ることを検査する)。
@@ -172,6 +198,13 @@ worklog mail restore <鍵> | forget <鍵>
 実時間の閾値(7・7・3 日)は、仕様では小さい値(`scenarios.json` の `REMIND_AFTER` など)に置き換えていて、
 語彙の `timers` を読まない。`timers` を変えても検査は追随しない(実装の `sweep` は `timers` を読み、単体試験が
 7・7・3 を確かめる)。機体の間で行が届く順が違うと、畳み込みの最終状態が食い違いうる(収束は性質に入れていない)。
+版 4 の性質(#1341 の S7〜S9 は、この文書の S7 が既に使われているので、L4・S8・S9 と呼ぶ): L4 は活性、S8 は
+`apply` の行に「書いた時点で `confirm` のあとか」を持たせた不変条件(`CONFIRM_GATE` を外すと破れる)、S9 は「最後の非
+`remind` から `REMIND_AFTER_AGENT` 日たったエージェントの番の項目には、掃引が `remind` を書ける」ことの不変条件(`OWNER_PERIOD` を
+外すと破れる)。**限界**: 仕様は、エージェントが実際に外部へ送ることを手にしておらず、`apply` の行を書くことを「送り終えた記録」と
+みなす。S9 は、掃引の判定が周期の宣言と食い違わないことを見るもので、掃引が毎日走る保証は性質に入れていない
+(日が進み掃引が走る公平性の仮定のもとでの活性は `l1`・`l4`)。周期の大小(`agent_remind_after_days` < `remind_after_days`)は、
+`home/tests/mail-lifecycle-spec.nix` の assert と `worklog` の単体試験が見る。
 `s3` は、畳み込みに暗黙の supersede を入れた形で検査している(新しい項目を開いたとき、書き手が古い未了を
 見ていなかった行で働いたら破れる)。
 

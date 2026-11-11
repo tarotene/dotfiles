@@ -33,7 +33,12 @@
     "TRACK_S1": false,
     "TRACK_S5": false,
     "TRACK_FIRED": false,
-    "WITH_TIME": true
+    "WITH_TIME": true,
+    "CAN_INSTRUCT": false,
+    "WITH_OWNER": false,
+    "CONFIRM_GATE": true,
+    "OWNER_PERIOD": true,
+    "REMIND_AFTER_AGENT": 1
   },
   "scenarios": [
     {
@@ -108,12 +113,15 @@
     },
     {
       "name": "vocab",
-      "about": "S6: 仕様が起こす遷移はすべて語彙にある(下書きの削除・送信を含む)",
+      "about": "S6: 仕様が起こす遷移はすべて語彙にある(下書きの削除・送信、instruct・confirm と担い手つきの decide を含む)",
       "flags": {
         "TRACK_FIRED": true,
         "WITH_DUE": true,
         "CAN_DEL_DRAFT": true,
-        "CAN_SEND": true
+        "CAN_SEND": true,
+        "CAN_INSTRUCT": true,
+        "WITH_OWNER": true,
+        "MAX_PERSON": 2
       },
       "invariant": [
         "s6"
@@ -188,6 +196,60 @@
       },
       "temporal": [
         "l3"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "instruct",
+      "about": "S8 S9: 本人が「その他」の指示を出して instructed(エージェントの番)になり、decide(担い手 me / agent、送信の印)・confirm と続いても、終端は吸収され、スレッドごとの未裁定は高々 1 つで、送信の裁定の apply は confirm のあとにしか書かれず、エージェントの番の項目は短い周期で remind できる",
+      "flags": {
+        "CAN_INSTRUCT": true,
+        "WITH_OWNER": true,
+        "MAX_PERSON": 2,
+        "TRACK_S1": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s8",
+        "s9",
+        "vocabStates",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "instruct_machines",
+      "about": "S8 S9: 2 機体の LiveSync の遅延のもとでも、指示・決定・確認の行が機体の間で届く順が違っても、送信の裁定の apply は、書いた機体の写しで confirm のあとである",
+      "flags": {
+        "CAN_INSTRUCT": true,
+        "WITH_OWNER": true,
+        "TWO_MACHINES": true,
+        "WITH_TIME": false,
+        "TRACK_S1": true,
+        "TRACK_S5": true
+      },
+      "invariant": [
+        "s1",
+        "s2",
+        "s5",
+        "s8",
+        "cacheOk"
+      ],
+      "expect": "pass"
+    },
+    {
+      "name": "l4",
+      "about": "L4: instructed の項目は、いずれ別の状態に移る(エージェントが読んで動くか、掃引が stale にする)。本人が続きを答えなくても",
+      "flags": {
+        "CAN_INSTRUCT": true,
+        "WITH_OWNER": true,
+        "TWO_MACHINES": true
+      },
+      "temporal": [
+        "l4"
       ],
       "expect": "pass"
     },
@@ -293,6 +355,30 @@
       "expect": "fail"
     },
     {
+      "name": "s8_gate_off",
+      "about": "S8 を外す: 送信の裁定の項目を、confirm の前にも閉じられる(CONFIRM_GATE を外す)と、確認なしの送信の apply が書かれる",
+      "flags": {
+        "WITH_OWNER": true,
+        "CONFIRM_GATE": false
+      },
+      "invariant": [
+        "s8"
+      ],
+      "expect": "fail"
+    },
+    {
+      "name": "s9_period_off",
+      "about": "S9 を外す: エージェントの番の項目にも本人の番と同じ周期を使う(OWNER_PERIOD を外す)と、短い周期に達した項目に remind を書けない日が出る",
+      "flags": {
+        "WITH_OWNER": true,
+        "OWNER_PERIOD": false
+      },
+      "invariant": [
+        "s9"
+      ],
+      "expect": "fail"
+    },
+    {
       "name": "cover",
       "about": "語彙の遷移ごとの到達可能性。違反の反例が出れば、その遷移を仕様が起こせる。出なければ死んだ遷移",
       "flags": {
@@ -300,7 +386,9 @@
         "TRACK_FIRED": true,
         "WITH_DUE": true,
         "CAN_SEND": true,
-        "MAX_PERSON": 2
+        "MAX_PERSON": 2,
+        "CAN_INSTRUCT": true,
+        "WITH_OWNER": true
       },
       "per_transition": true,
       "expect": "fail"

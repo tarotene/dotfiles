@@ -146,14 +146,14 @@ skill を足す PR は、同じ PR で、その skill が行う事象か前提�
 
 | 具体化(対象) | 語彙 | 写し方 | P1(放置への手段) |
 |---|---|---|---|
-| メール項目 | `mail-lifecycle/vocabulary.json` | awaiting → shown、decided → decided、closed → applied、dismissed → declined、stale → lapsed、superseded → handed_off | timer: `remind_after_days` と事象 `remind`(失効は `stale`) |
+| メール項目 | `mail-lifecycle/vocabulary.json` | awaiting → shown、decided・instructed → decided、closed → applied、dismissed → declined、stale → lapsed、superseded → handed_off | timer: `remind_after_days` と事象 `remind`(失効は `stale`) |
 | 作業中の気づき | `wrapup-inbox/vocabulary.json` | open → shown、fixed・dropped → settled、issued → handed_off | notification: セッション開始時の件数通知(`node:session-wrapup-start`)の事象 `remind` |
 | リポジトリ設定のずれ | `repo-config-drift/vocabulary.json` | drifted → picked、drafted → shown、approved → decided、applied → applied、routed → handed_off、excluded・exempt → declined | reminder-event: `redetect`(次の `github-audit` の実行が同じ組を再び報告する。定期の実行は無い) |
 | 計画の要求項目 | `plan-requirement/vocabulary.json` | listed → picked、planned → shown、approved → decided、implemented → applied、obsolete → lapsed、blocked_upstream・user_excluded → declined | gate: `plan-scope-gate`(処分の無い項目があると承認の依頼まで進めない) |
 
 裁定ページの選択(`decide`・`pass`・`later`・`other`)は独立の状態機械ではなく、メール項目の事象への入力である。対応表 `mail-item.json` の
 `inputs` に、`decide` → 事象 `decide`、`pass` → 事象 `pass`、`later` → 事象なし(何も書かない。状態は動かず、時計が動き続ける)、
-`other` → 事象なし(記入欄の指示を次の机が読み、次の事象を書く。語彙の版 3 で `instruct` が入るまでの暫定)と書く。
+`other` → 事象 `instruct`(記入欄の指示が要旨になり、項目はエージェントの番の `instructed` に移る。語彙の版 4、#1341)と書く。
 画面の選択肢の表(`config/agents/skills/inbox-adjudication/reference/verdict-page/options.json`)の `verdict` の集合と、この
 `inputs` のキーの集合は、`--refinements` の `画面` 規則が双方向に突き合わせる(#1312)。
 
