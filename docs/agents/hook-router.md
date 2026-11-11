@@ -160,6 +160,28 @@ Amendment ではなく、別の ADR を立てる。
 
 許可(allow)を出す検査や、Stop・SessionStart の検査は、足さない(「載せなかった検査の裁定」の表の理由)。
 
+規則を足したら、判定が設定や状態に依らない(入力の JSON だけで決まる)ものは、canary の fixture
+(`config/agents/hook-router-canary/cases.jsonl`)に 1 行足す(下の「配備した router の canary」)。
+
+## 配備した router の canary
+
+`home.checks` の `hook-router-canary`(`home/modules/agents.nix`、`config/agents/hook-router-canary.sh`)が、
+generation の build のときに、配備後のレイアウトの `~/.claude/hooks/hook-router` に fixture を流し、判定(`deny`・`ask`・
+`pass`)を比べる。Codex 向けの行は `--agent codex` を付けて流す。食い違えば generation が build できない
+(`bleep-canary` と同じ型。#604)。
+
+- **何を確かめるか**: 規則の判定そのものは各 crate の `cargo test` が持つ。canary が確かめるのは、配備される binary と
+  登録の引数の組が、その判定を返すこと。CI は vega・arcturus・altair の 3 構成を build するので、「この hook が
+  拒否するか」を、機体ごとの実機確認なしに全機体で確かめられる。マージ後の実機確認を確認の台帳(ADR-1529 の
+  置き場 6)に積む前に、ここに fixture を足せないかを問う(`pr-description` スキル §6 の手順 6)。
+- **何を確かめないか**: Claude Code・Codex が実際にその hook を呼ぶか(登録が `settings.json`・`hooks.json` に
+  入っているか)は、activation が書くホストの状態で、build の中では読めない。登録の読み戻しは、確認の台帳の
+  `machine` の項目(`managed-hooks-*.json` の件数など)に残る。
+- **fixture にしない規則**: 設定ファイルや状態を読む規則(`sandbox-compound-guard` は除外の一覧を設定から読む、
+  `main-checkout-guard` は git の checkout を読む、など)は、HOME が空の build の中では判定が決まらない。
+  2026-11-11 に、空の HOME で `gh auth status; echo x` を流すと `sandbox-compound-guard` は通した(推測: 除外の
+  一覧が読めないため)。
+
 ## 実測
 
 2026-10-24、x86_64-linux(14 コア)、`cargo build --release`(LTO off)、`hyperfine -N`(200 回、一時の HOME、
