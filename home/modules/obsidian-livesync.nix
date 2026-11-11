@@ -124,7 +124,7 @@ let
 
         # 同期先が S3 互換(オブジェクトストレージ)だと、常時接続の liveSync は使えず、`--interval` が無いと
         # daemon は何も同期しない(1.0.44 の dist/index.cjs、`[Daemon] Warning: liveSync and syncOnStart are both
-        # disabled`。2026-11-11 に vega で実測)。プラグインの定期同期と同じく、一定の間隔でポーリングする。
+        # disabled`。2026-11-11 に実測)。プラグインの定期同期と同じく、一定の間隔でポーリングする。
         exec "$cli" "$db" --vault "$vault" --settings "$work/settings.json" daemon --interval ${toString cfg.interval}
       }
 
