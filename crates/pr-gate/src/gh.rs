@@ -1,30 +1,7 @@
 //! `gh` の呼び出し(外部コマンド)。引数の並びは bash 版と同じにしてある
 //! (テストの gh スタブは `$*` の部分一致で応答を選ぶ)。stderr は常に捨てる。
 
-use crate::trim_nl;
-use std::process::{Command, Stdio};
-
-/// `gh <args>` の (成功したか, stdout 末尾改行除去)。起動できなければ `None`。
-pub fn gh(args: &[&str]) -> Option<(bool, String)> {
-    let out = Command::new("gh")
-        .args(args)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    Some((
-        out.status.success(),
-        trim_nl(&String::from_utf8_lossy(&out.stdout)).to_string(),
-    ))
-}
-
-/// 成功時の stdout。失敗・起動不能は `None`。
-pub fn gh_ok(args: &[&str]) -> Option<String> {
-    match gh(args)? {
-        (true, out) => Some(out),
-        _ => None,
-    }
-}
+pub use github_command::exec::{gh, gh_ok};
 
 /// `x="$(gh …)" || x=""; [[ -n "$x" ]] || x='[]'`。
 fn or_empty_array(out: Option<String>) -> String {
@@ -51,18 +28,7 @@ pub fn pr_for_branch_any_state(nwo: &str, branch: &str) -> Option<String> {
 
 /// G_stack 用: open PR の一覧(head/base のチェーンをたどる材料)。
 pub fn open_prs(nwo: &str) -> Option<String> {
-    gh_ok(&[
-        "pr",
-        "list",
-        "-R",
-        nwo,
-        "--state",
-        "open",
-        "--limit",
-        "100",
-        "--json",
-        "number,headRefName,baseRefName",
-    ])
+    github_command::exec::open_prs(nwo, "number,headRefName,baseRefName")
 }
 
 /// judge_handoff 用: Issue の state(`OPEN` 等)。取得できなければ `None`。
@@ -81,7 +47,7 @@ pub fn stack_extension_available() -> bool {
 /// `repos/<nwo>/stacks` の生 JSON。取得不能(404・機能撤収・ネットワーク障害の
 /// いずれか区別しない)なら `None`。
 pub fn stacks(nwo: &str) -> Option<String> {
-    gh_ok(&["api", &format!("repos/{nwo}/stacks")])
+    github_command::exec::stacks(nwo)
 }
 
 /// ruleset の `rules/branches/<base>`(base の `/` は `%2F`)。gh 自体の失敗は `None`。

@@ -229,6 +229,7 @@ dependencies = [
 name = "claude-statusline"
 version = "0.1.0"
 dependencies = [
+ "git-repository",
  "herdr-client",
  "serde_json",
  "trycmd",
@@ -843,6 +844,7 @@ name = "gpg-prewarm"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "git-repository",
  "process-env",
  "tempfile",
  "trycmd",
@@ -852,6 +854,7 @@ dependencies = [
 name = "gpg-subkey"
 version = "0.1.0"
 dependencies = [
+ "github-command",
  "jq-json-compat",
  "process-env",
  "serde_json",
@@ -1036,6 +1039,7 @@ name = "issue-index"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "git-repository",
  "serde_json",
  "tempfile",
  "trycmd",
@@ -1307,6 +1311,7 @@ name = "plan-scope-gate"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "git-repository",
  "jq-json-compat",
  "process-control",
  "regex",
@@ -1370,6 +1375,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "command-inspection",
+ "git-repository",
  "github-command",
  "serde_json",
  "tempfile",
@@ -1381,6 +1387,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "git-repository",
+ "github-command",
  "new-tool-guard",
  "process-control",
  "process-env",
@@ -1744,6 +1751,7 @@ dependencies = [
  "civil-time",
  "cmd-hash-log",
  "git-repository",
+ "github-command",
  "issue-inbox",
  "process-env",
  "serde_json",
@@ -2251,6 +2259,7 @@ version = "0.1.0"
 dependencies = [
  "agent-session",
  "command-inspection",
+ "git-repository",
  "serde_json",
  "tempfile",
 ]

@@ -65,22 +65,16 @@ pub fn parse_visibility(s: &str) -> Option<Visibility> {
 
 /// `gh repo view <owner/repo>` で公開/非公開を引く。引けなければ `None`(呼び出し側は日付の検査を飛ばす)。
 pub fn gh_visibility(nwo: &str) -> Option<Visibility> {
-    let out = std::process::Command::new("gh")
-        .args([
-            "repo",
-            "view",
-            nwo,
-            "--json",
-            "visibility",
-            "--jq",
-            ".visibility",
-        ])
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    parse_visibility(&String::from_utf8_lossy(&out.stdout))
+    let out = github_command::exec::gh_ok(&[
+        "repo",
+        "view",
+        nwo,
+        "--json",
+        "visibility",
+        "--jq",
+        ".visibility",
+    ])?;
+    parse_visibility(&out)
 }
 
 /// `gh issue create` だけを対象にする。

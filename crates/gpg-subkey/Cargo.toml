@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+github-command = { version = "0.1.0", path = "../github-command" }
 jq-json-compat = { version = "0.1.0", path = "../jq-json-compat" }
 process-env = { version = "0.1.0", path = "../process-env" }
 serde_json.workspace = true

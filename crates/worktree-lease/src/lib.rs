@@ -21,7 +21,6 @@ use agent_session::{HookInput, Outcome};
 use command_inspection::simple_shell::split_segments;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 /// この秒数以内に更新された別セッションの lease は「生きている」。
 pub const ACTIVE_SECS: u64 = 120;
@@ -43,18 +42,11 @@ fn now() -> u64 {
 
 /// `dir` が linked worktree なら、その git-dir の絶対パス。本物の checkout・git の外は `None`。
 fn linked_git_dir(dir: &Path) -> Option<PathBuf> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["rev-parse", "--git-dir", "--git-common-dir"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8(out.stdout).ok()?;
+    let text = String::from_utf8(git_repository::raw(
+        dir,
+        &["rev-parse", "--git-dir", "--git-common-dir"],
+    )?)
+    .ok()?;
     let mut lines = text.lines();
     let abs = |p: &str| {
         let p = Path::new(p);
@@ -253,6 +245,7 @@ pub fn hook(raw: &str) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     fn run(dir: &Path, args: &[&str]) {
         let ok = Command::new("git")

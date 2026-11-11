@@ -16,7 +16,6 @@ use issue_inbox::{add, feedback_stamp_file, inbox_for, shquote, updated_feedback
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 /// retro 系の block の上限(pr-gate と同じセッション単位カウンタ方式)。
 pub const MAX_BLOCKS: u64 = 3;
@@ -471,18 +470,11 @@ fn branch_pr(sid: &str, project: &str) -> Option<String> {
         .ok()?
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?;
-    let branch = Command::new("git")
-        .args(["-C", project, "rev-parse", "--abbrev-ref", "HEAD"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    let branch = git_repository::out(project, &["rev-parse", "--abbrev-ref", "HEAD"])
         .filter(|b| !b.is_empty() && b != "HEAD")?;
-    let out = Command::new("gh")
-        .current_dir(project)
-        .args([
+    github_command::exec::gh_ok_in(
+        Some(std::path::Path::new(project)),
+        &[
             "pr",
             "list",
             "--head",
@@ -493,21 +485,16 @@ fn branch_pr(sid: &str, project: &str) -> Option<String> {
             "createdAt,number",
             "--jq",
             r#".[] | "\(.createdAt) \(.number)""#,
-        ])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| {
-            let mut w = l.split_whitespace();
-            let t = parse_iso_epoch(w.next()?)?;
-            (t >= since.as_secs() as i64).then(|| (t, w.next().unwrap_or("").to_string()))
-        })
-        .max_by_key(|(t, _)| *t)
-        .map(|(_, n)| n)
+        ],
+    )?
+    .lines()
+    .filter_map(|l| {
+        let mut w = l.split_whitespace();
+        let t = parse_iso_epoch(w.next()?)?;
+        (t >= since.as_secs() as i64).then(|| (t, w.next().unwrap_or("").to_string()))
+    })
+    .max_by_key(|(t, _)| *t)
+    .map(|(_, n)| n)
 }
 
 pub fn session_pr_created(sid: &str, project: &str) -> bool {
