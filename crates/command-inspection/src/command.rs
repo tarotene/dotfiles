@@ -119,6 +119,10 @@ pub fn is_gh(tok: &str) -> bool {
 /// `tokens[i..]` が `gh <words…>` で始まれば真(各 guard の `is_target_at` の
 /// 定型部分。例: `gh_command_at(t, i, &["pr", "create"])`)。bash の
 /// `((i + k < n)) || return 1` と同じく、語が足りなければ偽。
+///
+/// 次の区切りまでに `--help` か `-h` があるときは偽。ヘルプの表示は、作成も変更もしない
+/// ので、各 guard の対象にしない(`gh issue create --help` が Issue の作成として拒否された)。
+/// 判定をここに置くのは、同じ穴が guard ごとに複写されるのを避けるため。
 pub fn gh_command_at(tokens: &[String], i: usize, words: &[&str]) -> bool {
     if i + words.len() >= tokens.len() {
         return false;
@@ -128,6 +132,15 @@ pub fn gh_command_at(tokens: &[String], i: usize, words: &[&str]) -> bool {
             .iter()
             .enumerate()
             .all(|(k, w)| tokens[i + 1 + k] == *w)
+        && !asks_for_help(&tokens[i + 1 + words.len()..])
+}
+
+/// 次の区切りまでの引数に、トークンそのものが `--help` か `-h` のものがあれば真。
+/// 引用の中の文字列(`--body "use --help"`)は 1 つのトークンなので、数えない。
+fn asks_for_help(rest: &[String]) -> bool {
+    rest.iter()
+        .take_while(|t| !is_sep(t))
+        .any(|t| t == "--help" || t == "-h")
 }
 
 #[cfg(test)]
@@ -168,6 +181,30 @@ mod tests {
     fn unparsable_is_none() {
         assert!(parse("gh pr create --body 'x").is_none());
         assert!(first_deny("gh pr create --body 'x", pr_create, |_| Some("d".into())).is_none());
+    }
+
+    #[test]
+    fn help_is_not_a_target() {
+        // ヘルプの表示は作成ではない。`--help` も `-h` も、位置が先でも後でも対象外。
+        for cmd in [
+            "gh pr create --help",
+            "gh pr create -h",
+            "gh pr create --title x --help",
+            "gh pr create --help --title x",
+        ] {
+            let p = parse(cmd).unwrap();
+            assert!(p.ranges(pr_create).is_empty(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn help_after_a_separator_does_not_hide_the_command() {
+        // 区切りの後ろの別コマンドの `--help` は、前の `gh pr create` に関係しない。
+        let p = parse("gh pr create --title x && other --help").unwrap();
+        assert_eq!(p.ranges(pr_create).len(), 1);
+        // 引用の中の文字列は 1 つのトークンで、`--help` そのものではない。
+        let p = parse("gh pr create --body 'use --help'").unwrap();
+        assert_eq!(p.ranges(pr_create).len(), 1);
     }
 
     #[test]
