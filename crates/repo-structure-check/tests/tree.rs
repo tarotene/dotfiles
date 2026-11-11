@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use repo_structure_check::civil_time;
+use repo_structure_check::deps;
 use repo_structure_check::escape;
 use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS};
 use repo_structure_check::host_names;
@@ -41,6 +42,17 @@ fn the_check_reads_the_members_it_is_about() {
         );
     }
     assert!(names.len() > 90, "members が少なすぎる: {}", names.len());
+}
+
+#[test]
+fn the_tree_satisfies_the_dependency_graph_invariants() {
+    let violations = deps::check_tree(&repo_root()).expect("read the tree");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "依存グラフの不変条件に反する箇所がある:\n{}",
+        report.join("\n")
+    );
 }
 
 #[test]
