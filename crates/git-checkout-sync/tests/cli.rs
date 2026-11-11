@@ -202,3 +202,122 @@ fn fetch_failure_is_skipped_with_exit_0() {
     assert_eq!(git(&co, &["rev-parse", "HEAD"]), before);
     assert!(stderr(&out).contains("fetch failed or timed out"));
 }
+
+// --- 移動した PR の残骸(#1505): 削除せず、退避する ---
+
+fn run_with_leftovers(paths: &[&Path], leftovers: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_git-checkout-sync"))
+        .args(paths)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_CHECKOUT_SYNC_LEFTOVERS_DIR", leftovers)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap()
+}
+
+/// upstream が `old/a.txt` を `new/a.txt` へ移し、`keep/a.txt` を消した状態の (upstream, checkout)。
+/// checkout の `old/` には、無視されたファイル(`.env` とビルド成果物)が残っている。`keep/` には
+/// 追跡ファイル `b.txt` が残り、無視された `.env` もある。
+fn moved_files_pair(root: &Path) -> (PathBuf, PathBuf) {
+    let up = root.join("moved-upstream");
+    let co = root.join("moved-checkout");
+    std::fs::create_dir_all(up.join("old")).unwrap();
+    std::fs::create_dir_all(up.join("keep")).unwrap();
+    git(&up, &["init", "-q", "-b", "main"]);
+    std::fs::write(up.join(".gitignore"), ".env\nbuild/\n").unwrap();
+    std::fs::write(up.join("old/a.txt"), "a\n").unwrap();
+    std::fs::write(up.join("keep/a.txt"), "a\n").unwrap();
+    std::fs::write(up.join("keep/b.txt"), "b\n").unwrap();
+    git(&up, &["add", "-A"]);
+    git(&up, &["commit", "-q", "-m", "base"]);
+    git(
+        root,
+        &["clone", "-q", up.to_str().unwrap(), co.to_str().unwrap()],
+    );
+    git(
+        &co,
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+        ],
+    );
+    std::fs::write(co.join("old/.env"), "SECRET=1\n").unwrap();
+    std::fs::create_dir_all(co.join("old/build")).unwrap();
+    std::fs::write(co.join("old/build/out.o"), "obj\n").unwrap();
+    std::fs::write(co.join("keep/.env"), "SECRET=2\n").unwrap();
+    std::fs::create_dir_all(up.join("new")).unwrap();
+    git(&up, &["mv", "old/a.txt", "new/a.txt"]);
+    git(&up, &["rm", "-q", "keep/a.txt"]);
+    git(&up, &["commit", "-q", "-m", "move"]);
+    (up, co)
+}
+
+#[test]
+fn a_directory_left_without_tracked_files_is_moved_intact_not_deleted() {
+    let t = tempfile::tempdir().unwrap();
+    let (_up, co) = moved_files_pair(t.path());
+    let leftovers = t.path().join("leftovers");
+    // 移したあとの checkout が clean であること(同期が止まり続けないこと)が目的。
+    assert!(git(&co, &["status", "--porcelain"]).is_empty());
+    let out = run_with_leftovers(&[&co], &leftovers);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stderr(&out).contains("MOVED"), "{}", stderr(&out));
+    // 追跡ファイルが無くなった `old/` は checkout から消え、中身はそのまま退避先にある。
+    assert!(!co.join("old").exists());
+    let batches: Vec<PathBuf> = std::fs::read_dir(&leftovers)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(batches.len(), 1, "{batches:?}");
+    assert_eq!(
+        std::fs::read_to_string(batches[0].join("old/.env")).unwrap(),
+        "SECRET=1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(batches[0].join("old/build/out.o")).unwrap(),
+        "obj\n"
+    );
+    // 移動した先の追跡ファイルは触らない。
+    assert!(co.join("new/a.txt").is_file());
+    assert!(git(&co, &["status", "--porcelain"]).is_empty());
+}
+
+#[test]
+fn a_directory_that_still_has_tracked_files_is_never_touched() {
+    let t = tempfile::tempdir().unwrap();
+    let (_up, co) = moved_files_pair(t.path());
+    let leftovers = t.path().join("leftovers");
+    let out = run_with_leftovers(&[&co], &leftovers);
+    assert_eq!(out.status.code(), Some(0));
+    // `keep/a.txt` は消えたが、`keep/b.txt` が追跡されている。無視された `.env` も、そのまま残る。
+    assert_eq!(
+        std::fs::read_to_string(co.join("keep/.env")).unwrap(),
+        "SECRET=2\n"
+    );
+    assert!(co.join("keep/b.txt").is_file());
+    let moved: Vec<String> = std::fs::read_dir(&leftovers)
+        .unwrap()
+        .flat_map(|b| std::fs::read_dir(b.unwrap().path()).unwrap())
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(moved, ["old"], "keep/ を動かしてはならない");
+}
+
+#[test]
+fn a_failed_move_leaves_the_directory_in_place_and_still_exits_zero() {
+    let t = tempfile::tempdir().unwrap();
+    let (_up, co) = moved_files_pair(t.path());
+    // 退避先の親が通常のファイルなので、ディレクトリを作れない。
+    let blocker = t.path().join("blocker");
+    std::fs::write(&blocker, "x").unwrap();
+    let out = run_with_leftovers(&[&co], &blocker.join("leftovers"));
+    assert_eq!(out.status.code(), Some(0));
+    assert!(stderr(&out).contains("LEFT"), "{}", stderr(&out));
+    assert_eq!(
+        std::fs::read_to_string(co.join("old/.env")).unwrap(),
+        "SECRET=1\n",
+        "データを失ってはならない"
+    );
+}
