@@ -210,35 +210,17 @@ pub fn prune_old(cfg: &Config) {
     }
 }
 
-/// `mktemp "$dir/<prefix>XXXXXX<suffix>"`。
+/// `mktemp "$dir/<prefix>XXXXXX<suffix>"`(0600 で排他作成。`tempfile` の `Builder`、`keep` で残す)。
 fn mktemp(dir: &str, prefix: &str, suffix: &str) -> Option<String> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut seed = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-        ^ (u64::from(std::process::id()) << 20);
-    const CH: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    for _ in 0..100 {
-        let mut name = String::new();
-        for _ in 0..6 {
-            seed = seed
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            name.push(CH[((seed >> 33) % CH.len() as u64) as usize] as char);
-        }
-        let path = format!("{dir}/{prefix}{name}{suffix}");
-        if OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-            .is_ok()
-        {
-            return Some(path);
-        }
-    }
-    None
+    let (_file, path) = tempfile::Builder::new()
+        .prefix(prefix)
+        .suffix(suffix)
+        .rand_bytes(6)
+        .tempfile_in(dir)
+        .ok()?
+        .keep()
+        .ok()?;
+    path.to_str().map(str::to_string)
 }
 
 /// `ls -t "$dir"/*.md | head -1`(隠しファイルは glob に入らない)。

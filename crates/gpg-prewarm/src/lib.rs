@@ -13,8 +13,8 @@
 //! - `[S]` / `[E]` は独立。一方の対象外・失敗が他方を妨げない。
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 /// bash 版の `timeout 90`。Claude Code 側の timeout(120)より先に刈る。
 pub const WARMUP_TIMEOUT: Duration = Duration::from_secs(90);
@@ -56,61 +56,11 @@ pub fn esa_token_file() -> PathBuf {
     })
 }
 
-/// `command -v <prog>`。`/` を含めばそのパスの実行可能ファイル、無ければ PATH 探索。
-pub fn command_exists(prog: &str) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    let exec = |p: &Path| {
-        std::fs::metadata(p)
-            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    };
-    if prog.is_empty() {
-        return false;
-    }
-    if prog.contains('/') {
-        return exec(Path::new(prog));
-    }
-    std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).any(|d| exec(&d.join(prog))))
-        .unwrap_or(false)
-}
-
-/// プロセスグループごと TERM を送る(`timeout(1)` は `--foreground` 無しだと
-/// 自分の新しいプロセスグループ全体にシグナルを送る)。
-fn kill_group(child: &mut Child) {
-    let pgid = child.id().to_string();
-    let _ = Command::new("kill")
-        .args(["-TERM", "--", &format!("-{pgid}")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let _ = child.kill();
-}
-
-/// `timeout <limit> cmd`。正常終了(exit 0)なら true。起動失敗・非 0・
-/// タイムアウトはすべて false(bash 版はどれも「温められなかった」扱い)。
-/// 子は新しいプロセスグループで動かし、刈るときはグループ全体に TERM を送る。
-pub fn run_with_timeout(cmd: &mut Command, limit: Duration) -> bool {
-    use std::os::unix::process::CommandExt;
-    let Ok(mut child) = cmd.process_group(0).spawn() else {
-        return false;
-    };
-    let start = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(st)) => return st.success(),
-            Ok(None) => {}
-            Err(_) => return false,
-        }
-        if start.elapsed() >= limit {
-            kill_group(&mut child);
-            let _ = child.wait();
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
+/// `command -v <prog>`(`process_control::command_exists`)と、`timeout <limit> cmd`(新しいプロセス
+/// グループで動かし、刈るときはグループ全体に TERM。正常終了なら true、起動失敗・非 0・タイムアウトは false。
+/// `process_control::status_with_group_timeout`)。以前はこの 2 つを私的に複写していた。
+pub use process_control::command_exists;
+pub use process_control::status_with_group_timeout as run_with_timeout;
 
 /// 外部コマンドの組み立て(gpg のバイナリ名と、git config を読む一時ディレクトリ)。
 pub struct Prewarm {
@@ -307,6 +257,7 @@ impl Drop for ProbeDir {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     const ONDISK: &str = "\
 sec:u:255:22:6CFC837175BE257E:1753115795:::u:::scESCA:::D2760001240100000006246379980000::ed25519:::0:

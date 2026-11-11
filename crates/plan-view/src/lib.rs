@@ -24,10 +24,10 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 /// 環境変数由来の設定(bash 版の冒頭のグローバル)。
 #[derive(Debug, Clone)]
@@ -425,37 +425,17 @@ pub fn basename(s: &str) -> String {
     t.rsplit('/').next().unwrap_or(t).to_string()
 }
 
-/// `mktemp "$dir/<prefix>XXXXXX<suffix>"`(0600 で排他作成)。
+/// `mktemp "$dir/<prefix>XXXXXX<suffix>"`(0600 で排他作成。`tempfile` の `Builder`、`keep` で残す)。
 pub fn mktemp(dir: &Path, prefix: &str, suffix: &str) -> Option<(PathBuf, fs::File)> {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let mut seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-        ^ ((std::process::id() as u64) << 32);
-    for _ in 0..100 {
-        let mut name = String::from(prefix);
-        for _ in 0..6 {
-            // xorshift64
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            name.push(ALPHABET[(seed % ALPHABET.len() as u64) as usize] as char);
-        }
-        name.push_str(suffix);
-        let path = dir.join(name);
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-        {
-            Ok(f) => return Some((path, f)),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(_) => return None,
-        }
-    }
-    None
+    let (file, path) = tempfile::Builder::new()
+        .prefix(prefix)
+        .suffix(suffix)
+        .rand_bytes(6)
+        .tempfile_in(dir)
+        .ok()?
+        .keep()
+        .ok()?;
+    Some((path, file))
 }
 
 /// 生成物はプラン本文そのものを含むため、既定 umask に任せず 077 に落とす。
