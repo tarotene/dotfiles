@@ -37,6 +37,14 @@ HEAD(`gh pr create` の場合)または編集対象 PR の head(`gh pr edit --ba
 の場合)が、他の open PR のコミットを祖先として含むなら、`base` はその
 PR の head branch でなければならない。
 
+`gh pr edit --base` の対象 PR の head は、既定では `gh pr list` の `headRefOid` を使う。ただし強制 push の
+直後は、GitHub 側の `headRefOid` が数十秒のあいだ載せ替え前のまま残り、古い先頭コミットで最近傍の祖先 PR を
+求めて誤って拒否する(2026-11-11)。次の 3 つがすべて成り立つときだけ、手元の `HEAD` に置き換える
+(`crates/stack-base-guard/src/lib.rs` の `effective_head_oid`): 対象のリポジトリが手元のプロジェクトのリポジトリ
+(`-R` で別のリポジトリを指すときは、同名のブランチがあっても置き換えない)、対象 PR の head ブランチが現在の
+ブランチ、`HEAD` が push 済み(上流の追跡 ref、無ければ `origin/<ブランチ>` と等しい。載せ替えただけで未 push の
+状態は、GitHub 上の PR の実体と食い違うので置き換えない)。
+
 HEAD は PreToolUse の時点、つまり Bash コマンドを**実行する前**に読む。
 `git commit ... && gh pr create ...` を 1 回の呼び出しで流すと、commit
 前の HEAD で判定されるため、意図と違う判定になりうる。commit と

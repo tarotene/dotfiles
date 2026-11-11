@@ -626,6 +626,101 @@ fn t15_edit_cross_repo_is_denied() {
     assert!(r.stdout.contains("stage1"));
 }
 
+/// 強制 push の直後は、GitHub 側の headRefOid が載せ替え前のまま残る。stage2 の GitHub 側の
+/// 先頭を「stage1 を含まない古いコミット」(unrelated の先頭)にした一覧と、その状態を作る補助。
+impl Fx {
+    fn write_stale_stage2(&self) -> String {
+        let stale = git_in(&self.repo, &["rev-parse", "unrelated"]);
+        self.write(
+            "prs-stale-stage2.json",
+            &format!(
+                r#"[{{"number":1,"headRefName":"stage1","headRefOid":"{}","baseRefName":"main"}},{{"number":2,"headRefName":"stage2","headRefOid":"{stale}","baseRefName":"main"}}]"#,
+                self.stage1
+            ),
+        );
+        stale
+    }
+
+    fn set_tracking_ref(&self, branch: &str, oid: &str) {
+        git_in(
+            &self.repo,
+            &["update-ref", &format!("refs/remotes/origin/{branch}"), oid],
+        );
+    }
+}
+
+/// 強制 push の直後(HEAD が追跡 ref と等しく、GitHub 側の headRefOid だけ古い)は、手元の HEAD で
+/// 判定する。古い oid のままなら祖先が見つからず pass してしまう base の誤りを、拒否できる。
+#[test]
+fn t12a_edit_after_force_push_uses_the_local_head() {
+    let fx = Fx::new();
+    fx.reset_state();
+    fx.write_stale_stage2();
+    fx.set_tracking_ref("stage2", &fx.stage2);
+    let r = fx.decide(
+        "prs-stale-stage2.json",
+        "gh pr edit 2 --base main",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.denied(), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("gh pr edit 2 --base stage1"),
+        "{}",
+        r.stdout
+    );
+}
+
+/// 載せ替えたが push していない(追跡 ref が HEAD と違う)ときは、GitHub 上の PR の実体と食い違うので、
+/// 手元の HEAD に置き換えず、GitHub 側の oid で判定する。
+#[test]
+fn t12b_edit_with_unpushed_rebase_uses_the_pr_oid() {
+    let fx = Fx::new();
+    fx.reset_state();
+    let stale = fx.write_stale_stage2();
+    fx.set_tracking_ref("stage2", &stale);
+    let r = fx.decide(
+        "prs-stale-stage2.json",
+        "gh pr edit 2 --base main",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.passed(), "{}", r.stdout);
+}
+
+/// `-R` で別のリポジトリを指すとき、同名のブランチが手元にあっても置き換えない。
+#[test]
+fn t12c_edit_in_another_repo_uses_the_pr_oid() {
+    let fx = Fx::new();
+    fx.reset_state();
+    fx.write_stale_stage2();
+    fx.set_tracking_ref("stage2", &fx.stage2);
+    let r = fx.decide(
+        "prs-stale-stage2.json",
+        "gh pr edit 2 -R other-owner/other-repo --base main",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.passed(), "{}", r.stdout);
+}
+
+/// 対象 PR の head が、手元の現在のブランチでないときは置き換えない。
+#[test]
+fn t12d_edit_of_another_branch_uses_the_pr_oid() {
+    let fx = Fx::new();
+    fx.reset_state();
+    fx.write_stale_stage2();
+    fx.set_tracking_ref("stage2", &fx.stage2);
+    fx.switch("unrelated");
+    let r = fx.decide(
+        "prs-stale-stage2.json",
+        "gh pr edit 2 --base main",
+        &fx.repo,
+        &[],
+    );
+    assert!(r.passed(), "{}", r.stdout);
+}
+
 /// #538: CLAUDE_PROJECT_DIR($repo、stage1/stage2 の chain あり)とは別に
 /// clone された $repo2(chain なし)で -R 無しの create。cwd を優先すれば
 /// nwo=other-owner/other-repo に解決され、スタブは空一覧を返す(pass)。
