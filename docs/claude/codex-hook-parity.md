@@ -108,8 +108,8 @@ Codex の `/hooks` は、hook の `statusMessage` を表示名にし、無い（
 - 共有の宣言（`codexHookDeclarations`）: `pipeline-map.toml` のノードの `label` を表示名にする。
   `label` は ASCII で、`home/modules/pipeline.nix` の `nodeLabels` が nix の評価時に引く。
   node の無い宣言は、評価の時点で落ちる（表示名の無い hook を登録できない）。
-- herdr の統合と worktree の context: `agent-settings-reconcile codex-hooks` の
-  `--status-message <text>` で、その呼び出しで登録するすべての hook に同じ表示名を付ける。
+- herdr の統合と worktree の context: 共有の spec(`codex-hooks-spec`)の各 `register` の `statusMessage` で表示名を付ける。
+  かつての argv 形(`codex-hooks` の `--status-message <text>`)は削除した。
 - Claude の宣言には付けない。Claude は `statusMessage` を hook の実行中の表示にも使うため、
   共有の宣言から導く対象は Codex だけにしている。`statusMessage` は宣言があるときだけ書き、
   宣言の無いハンドラの既存の値（他のツールや本人が足したもの）には触れない。

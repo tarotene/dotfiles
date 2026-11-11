@@ -1,16 +1,24 @@
 [
  [
-  "codex-hooks",
-  "--retire",
-  "UserPromptSubmit",
-  "report-cmd",
-  "--retire",
-  "PreToolUse",
-  "new-guard-command",
-  "--register",
-  "UserPromptSubmit",
-  "",
-  "final-cmd",
-  "10"
+  "codex-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "UserPromptSubmit",
+     "command": "report-cmd"
+    },
+    {
+     "event": "PreToolUse",
+     "command": "new-guard-command"
+    }
+   ],
+   "register": [
+    {
+     "event": "UserPromptSubmit",
+     "command": "final-cmd",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]

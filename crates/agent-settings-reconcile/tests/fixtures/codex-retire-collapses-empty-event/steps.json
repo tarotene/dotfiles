@@ -1,20 +1,32 @@
 [
  [
-  "codex-hooks",
-  "--retire",
-  "PreToolUse",
-  "guard-command",
-  "--register"
+  "codex-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "PreToolUse",
+     "command": "guard-command"
+    }
+   ]
+  }
  ],
  [
-  "codex-hooks",
-  "--retire",
-  "SessionStart",
-  "report-cmd",
-  "--register",
-  "PreToolUse",
-  "Bash",
-  "new-guard-command",
-  "10"
+  "codex-hooks-spec",
+  {
+   "retire": [
+    {
+     "event": "SessionStart",
+     "command": "report-cmd"
+    }
+   ],
+   "register": [
+    {
+     "event": "PreToolUse",
+     "matcher": "Bash",
+     "command": "new-guard-command",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]

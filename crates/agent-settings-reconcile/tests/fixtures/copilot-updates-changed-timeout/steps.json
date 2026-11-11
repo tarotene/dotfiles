@@ -1,8 +1,14 @@
 [
  [
-  "copilot-hooks",
-  "preToolUse",
-  "guard",
-  "20"
+  "copilot-hooks-spec",
+  {
+   "register": [
+    {
+     "event": "preToolUse",
+     "command": "guard",
+     "timeout": 20
+    }
+   ]
+  }
  ]
 ]

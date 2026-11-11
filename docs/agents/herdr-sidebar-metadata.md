@@ -375,7 +375,7 @@ hook payload の `.model` から、mode は `.permission_mode`(`bypassPermission
 (`SessionStart`・`UserPromptSubmit`・`PreToolUse`・`Stop`・`SessionEnd`)は、`home/modules/agents.nix` の
 `codexHerdrMetadataHooks` が持ち、Claude の宣言から導く共通の行と同じ spec・同じ activation
 (`registerCodexSharedHooks`)・同じ所有の記録(`managed-hooks-codex.json`)で登録される。かつては
-`home/modules/herdr.nix` が `codex-hooks`(argv 形)で別に登録し、`worktree.nix` の activation の後ろに
+`home/modules/herdr.nix` が `codex-hooks`(argv 形。いまは削除した)で別に登録し、`worktree.nix` の activation の後ろに
 `entryAfter` で順序付けて lost-update(#61 と同種)を避けていたが、書き手が 1 つになったので
 その順序付けは要らない。旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
 後継。

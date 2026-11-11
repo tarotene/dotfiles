@@ -1,21 +1,29 @@
 [
  [
-  "codex-hooks",
-  "SessionStart",
-  "",
-  "report-cmd",
-  "10",
-  "UserPromptSubmit",
-  "",
-  "report-cmd",
-  "10",
-  "Stop",
-  "",
-  "report-cmd",
-  "10",
-  "SessionEnd",
-  "",
-  "clear-cmd",
-  "10"
+  "codex-hooks-spec",
+  {
+   "register": [
+    {
+     "event": "SessionStart",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "UserPromptSubmit",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "Stop",
+     "command": "report-cmd",
+     "timeout": 10
+    },
+    {
+     "event": "SessionEnd",
+     "command": "clear-cmd",
+     "timeout": 10
+    }
+   ]
+  }
  ]
 ]
