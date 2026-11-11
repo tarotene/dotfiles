@@ -8,6 +8,8 @@
 //! bash 版は jq で JSON を読み書きしていた。Rust 版は jq に依存しないが、
 //! 出力は jq の整形出力(`jq -n --arg ctx …`)とバイト一致させる。
 
+pub mod ledger;
+
 use agent_session::{Agent, HookEvent, Reply};
 use serde_json::Value;
 
@@ -128,6 +130,8 @@ pub struct Context<'a> {
     /// 取得失敗、viewer が不明、owner が viewer と別(会社の owner など)のときは None
     /// (個人の予定に他人の作業を流さない。判定は main.rs が行う)。
     pub human: Option<&'a str>,
+    /// この機体の確認の台帳の節(`ledger::section` が組み立てたもの)。台帳が無い・未了が無いなら None。
+    pub ledger: Option<&'a str>,
 }
 
 /// `items_text` の 1 行(jq の `"#\(.number) \($t)" + labels + 起票者`)。
@@ -353,6 +357,10 @@ pub fn build(c: &Context) -> (String, Option<String>) {
         ctx.push_str("\n\n");
         ctx.push_str(HUMAN_HEADING);
         ctx.push_str(&human);
+    }
+    if let Some(ledger) = c.ledger {
+        ctx.push_str("\n\n");
+        ctx.push_str(ledger);
     }
     (session_start_json(&ctx), warn)
 }

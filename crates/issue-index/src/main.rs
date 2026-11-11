@@ -2,7 +2,9 @@
 //! (SessionStart は exit 2 でもブロックできない)。詳細は lib.rs と
 //! docs/agents/issue-index.md。
 
-use issue_index::{build, build_human_only, owner_repo, total_count, Context, PrStatus, Scope};
+use issue_index::{
+    build, build_human_only, ledger, owner_repo, total_count, Context, PrStatus, Scope,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -71,6 +73,80 @@ fn fail(err: &str) -> ! {
     };
     eprintln!("[issue-index] Issue 索引の取得に失敗しました: {msg}");
     std::process::exit(0);
+}
+
+/// 機体の名前(`dotfiles.host.name` が書く `$XDG_CONFIG_HOME/dotfiles/host`)。無い・空なら `None`。
+fn read_host() -> Option<String> {
+    let path = process_env::Xdg::Config.resolve()?.join("dotfiles/host");
+    let text = std::fs::read_to_string(path).ok()?;
+    let host = text.trim();
+    (!host.is_empty()).then(|| host.to_string())
+}
+
+/// hms がこの機体に最後に適用した dotfiles の rev(`$XDG_STATE_HOME/hms/last-apply.json`)。
+fn applied_rev() -> Option<String> {
+    let path = process_env::Xdg::State
+        .resolve()?
+        .join("hms/last-apply.json");
+    ledger::applied_rev(&std::fs::read_to_string(path).ok()?)
+}
+
+/// 台帳の節を組み立てる。台帳が無い・取得に失敗した・未了が無いなら `None`(沈黙)。
+///
+/// 着手の可否: 台帳の各項目の PR の状態を 1 回の GraphQL で読み、マージ済みなら merge commit が
+/// この機体の適用 rev の祖先かを `git merge-base --is-ancestor` で確かめる。適用 rev がこの repo の
+/// commit でない(別の repo の台帳、記録が無い)ときは、適用を確かめられないものとして扱う。
+fn ledger_section(project: &Path, nwo: &str, host: &str, list: Res) -> Option<String> {
+    if !list.ok {
+        return None;
+    }
+    let v: Value = serde_json::from_str(&list.stdout).ok()?;
+    let title = ledger::ledger_title(host);
+    let issue = v
+        .as_array()?
+        .iter()
+        .find(|i| i.get("title").and_then(Value::as_str) == Some(title.as_str()))?;
+    let number = issue.get("number")?.as_u64()?;
+    let parsed = ledger::parse(issue.get("body").and_then(Value::as_str).unwrap_or(""));
+
+    let mut prs: Vec<u64> = parsed.open.iter().map(|i| i.pr).collect();
+    prs.sort_unstable();
+    prs.dedup();
+    let states = match nwo.split_once('/') {
+        Some((owner, name)) if !prs.is_empty() => {
+            let query = ledger::pr_states_query(owner, name, &prs);
+            let r = wait(gh(
+                &["api", "graphql", "-f", &format!("query={query}")],
+                false,
+            ));
+            if r.ok {
+                ledger::pr_states(&r.stdout)
+            } else {
+                Default::default()
+            }
+        }
+        _ => Default::default(),
+    };
+
+    let rev = applied_rev().filter(|rev| {
+        git(project, &["cat-file", "-e", &format!("{rev}^{{commit}}")])
+            .is_some_and(|o| o.status.success())
+    });
+    let applied = |oid: &str| -> Option<bool> {
+        let rev = rev.as_deref()?;
+        let o = git(project, &["merge-base", "--is-ancestor", oid, rev])?;
+        match o.status.code() {
+            Some(0) => Some(true),
+            Some(1) => Some(false),
+            _ => None,
+        }
+    };
+    let status: Vec<_> = parsed
+        .open
+        .iter()
+        .map(|i| ledger::readiness(states.get(&i.pr), applied))
+        .collect();
+    ledger::section(number, host, &parsed, &status)
 }
 
 /// `jq -r '.total_count // 0' file 2>/dev/null || echo 0` 相当(不正 JSON・空は 0)。
@@ -177,12 +253,39 @@ fn main() {
         true,
     );
 
+    // この機体の確認の台帳(ADR-1529 の置き場 6)。機体の名前は home-manager が書く marker から読み、
+    // marker の無い機体では問い合わせない。題の完全一致は、取得のあとで見る(検索は語に分けて当てる)。
+    let host = read_host();
+    let ledger_list = host.as_ref().map(|_| {
+        gh(
+            &[
+                "issue",
+                "list",
+                "-R",
+                &nwo,
+                "--state",
+                "open",
+                "--search",
+                "verify-ledger in:title",
+                "--json",
+                "number,title,body",
+                "--limit",
+                "20",
+            ],
+            false,
+        )
+    });
+
     let mine = wait(mine);
     let all = wait(all);
     let pr = pr.map(wait);
     let who = wait(who);
     let handoff = wait(handoff);
     let human = wait(human);
+    let ledger_text = match (host.as_deref(), ledger_list) {
+        (Some(host), Some(child)) => ledger_section(&project, &nwo, host, wait(child)),
+        _ => None,
+    };
 
     // `[[ rc_who -eq 0 && -s who.txt ]] && me="$(cat who.txt)"`
     let me = if who.ok && !who.stdout.is_empty() {
@@ -233,6 +336,7 @@ fn main() {
         pr: pr_status,
         handoff: handoff.ok.then_some(handoff.stdout.as_str()),
         human: human_raw,
+        ledger: ledger_text.as_deref(),
     };
     let (stdout, warn) = build(&ctx);
     if let Some(w) = warn {

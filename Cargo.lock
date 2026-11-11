@@ -1390,6 +1390,7 @@ dependencies = [
  "agent-session",
  "git-repository",
  "process-control",
+ "process-env",
  "serde_json",
  "tempfile",
  "trycmd",
