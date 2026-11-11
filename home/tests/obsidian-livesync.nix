@@ -54,5 +54,7 @@ pkgs.runCommand "obsidian-livesync" { inherit wrapper; } ''
   rc=0; ${wrapper}/bin/obsidian-livesync daemon 2>err || rc=$?
   test "$rc" -eq 1
   grep -q 'not initialised' err
+  # 同期先が S3 互換だと、--interval が無い daemon は何も同期しない(2026-11-11 に vega で実測)。
+  grep -q -- 'daemon --interval 60$' ${wrapper}/bin/obsidian-livesync
   touch $out
 ''

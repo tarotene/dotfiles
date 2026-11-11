@@ -122,7 +122,10 @@ let
         jq --arg s "$suffix" '.additionalSuffixOfDatabaseName = $s' "$work/settings.json" >"$work/settings.next.json"
         mv "$work/settings.next.json" "$work/settings.json"
 
-        exec "$cli" "$db" --vault "$vault" --settings "$work/settings.json" daemon
+        # 同期先が S3 互換(オブジェクトストレージ)だと、常時接続の liveSync は使えず、`--interval` が無いと
+        # daemon は何も同期しない(1.0.44 の dist/index.cjs、`[Daemon] Warning: liveSync and syncOnStart are both
+        # disabled`。2026-11-11 に vega で実測)。プラグインの定期同期と同じく、一定の間隔でポーリングする。
+        exec "$cli" "$db" --vault "$vault" --settings "$work/settings.json" daemon --interval ${toString cfg.interval}
       }
 
       case "$1" in
@@ -140,6 +143,15 @@ in
       and stop autostarting Obsidian. Needs a one-time `obsidian-livesync init` by hand
       (docs/agents/obsidian-livesync-cli.md)
     '';
+    interval = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 60;
+      description = ''
+        Seconds between polling replications of the daemon (`daemon --interval`). The
+        default matches the plugin's periodic replication (`periodicReplicationInterval`
+        = 60). Without it the daemon does not sync at all against an object-storage remote.
+      '';
+    };
     secretKey = lib.mkOption {
       type = lib.types.nullOr (lib.types.strMatching "[A-Za-z_][A-Za-z0-9_]*");
       default = null;
