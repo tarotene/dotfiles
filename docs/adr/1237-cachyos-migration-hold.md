@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-28
-- Issue: No-Issue(#249 は保留の記録として open のまま。再訪の条件が成立したら、この ADR を改訂する)
+- Issue: No-Issue(#249 は保留の記録として open にしていたが、2026-11-11 の棚卸しで閉じ、この ADR を保留の正本にした。再訪の条件が成立したら、この ADR を改訂する)
 
 ## Context
 
@@ -49,7 +49,7 @@ user service として回す。自前の timer で `/proc/pressure/*` を記録�
 
 ## Consequences
 
-- #249 は open のまま、現在の合意は「保留」。条件①〜③が成立したら、この ADR を改訂して、移行するか見送りを確定する。
+- 現在の合意は「保留」。条件①〜③が成立したら、この ADR を改訂して、移行するか見送りを確定する。#249 は 2026-11-11 に閉じた(下の「残る作業と未確認の事項」)。
 - vega は atop の raw ファイルを `~/.local/state/atop/atop_YYYYMMDD` に溜める(3 日分、約 200 MB)。固まったら `logger -t freeze-mark …` で印を付けて、
   `docs/operations.md` の「Freeze trace」で該当区間を開く。
 - PSI の値の読みを、固まりと突き合わせる作業は人の判断で、記録が 1〜2 日溜まってから行う。
@@ -60,11 +60,11 @@ user service として回す。自前の timer で `/proc/pressure/*` を記録�
 - `home/hosts/vega.nix`
 - `pipeline-map.toml`
 
-## Amendment(2026-11-11): #249 を閉じ、この ADR を保留の正本にする
+## 残る作業と未確認の事項(2026-11-11、#249 から移した)
 
-#249(CachyOS への移行構想の Issue)は閉じた。保留の現在の合意、再訪の条件①〜③、固まりの判定表は、この ADR が正本である
-(ADR-1529 D1 の置き場 4「保留の裁定・再訪の条件」)。上の「Issue:」行と Consequences の「#249 は open のまま」は、この節で
-置き換える。#249 の本文とコメント(2026-10-26 の分析、2026-10-28 の再検討)は、経緯と出典の記録として読める。
+この節は決定を変えない。#249(CachyOS への移行構想の Issue)を閉じたので、Issue にしか無かった残りを、保留の正本であるこの ADR に
+移した(ADR-1529 D1 の置き場 4「保留の裁定・再訪の条件」)。#249 の本文とコメント(2026-10-26 の分析、2026-10-28 の再検討)は、
+経緯と出典の記録として読める。
 
 - 残る作業: 条件①の判定は人が行う。atop の記録と `freeze-mark` の印を、PSI の CPU の圧力と突き合わせる作業である。2026-11-11 の
   時点で、判定の結果は Issue と ADR のどこにも見つからない。固まりが起きて印を付けたら、`docs/operations.md` の「Freeze trace」の
@@ -80,7 +80,3 @@ user service として回す。自前の timer で `/proc/pressure/*` を記録�
 - 範囲外: nix 閉包の x86-64-v3 ソースビルドと自前のバイナリキャッシュは、この構想とは別の検討項目で、起票していない。
 - 執行点の訂正: `home/modules/atop-trace.nix` は `home/hosts/vega/atop-trace.nix` に移った(`pipeline-map.toml` の `atop-trace`
   ノードの `entity`)。上の「執行点」の節を直した。
-
-### 執行点
-
-- `docs/operations.md`
