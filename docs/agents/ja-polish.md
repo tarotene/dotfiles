@@ -33,7 +33,10 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 
 `ja-polish` は `llm` を呼び、キーと Google への通信に届く必要があるので、Claude の sandbox の外で
 動かす(`home/modules/claude.nix` の `excludedCommands` に `ja-polish *`)。Codex の sandbox では
-通信できず、段落は「素通し」になる(下の「失敗したとき」)。Codex 側の対応は未実装(意図あり)。
+通信できず、段落は「素通し」になっていた(下の「失敗したとき」)ので、Codex の rules
+(`~/.codex/rules/dotfiles.rules` の `prefix_rule`、`home/modules/codex.nix`)で `ja-polish` を `allow`
+(sandbox の外で、確認なしに動かす)にする。`dotfiles.jaPolish.enable` の機体だけに置く。rules は公式文書で
+「experimental」とされている(`docs/agents/agent-permissions.md`)。反映は `hms` の適用と Codex の再起動のあと。
 
 ## 何が起きるか
 
@@ -181,7 +184,6 @@ llm-gemini 0.34 以降)。そのため overlay で、`llm-gemini` 0.35 と、そ
 ## 後続(意図は決まっていて、未着手)
 
 - 会社の機体(arcturus)への横展開(#1385)。下の「横展開」の確認事項を調べるところから。
-- Codex の sandbox の外で `ja-polish` を動かす(#1386)。
 
 ## 横展開(会社の機体・ほかの identity)
 
